@@ -1,19 +1,20 @@
 % -*- LaTeX -*-
-% $Id: Ident.lhs,v 1.20 2003/10/23 10:52:56 wlux Exp $
+% $Id: Ident.lhs,v 1.21 2004/10/29 13:08:09 wlux Exp $
 %
-% Copyright (c) 1999-2003, Wolfgang Lux
+% Copyright (c) 1999-2004, Wolfgang Lux
 % See LICENSE for the full license.
 %
 \nwfilename{Ident.lhs}
 \section{Identifiers}
-This module provides the implementation of identifiers and, in 
-addition, some utility functions for identifiers which are used at 
-various places in the compiler.
+This module provides the implementation of identifiers and some
+utility functions for identifiers, which are used at various places in
+the compiler.
 
-Identifiers comprise the name of the denoted entity and a unique 
-\emph{id} that can be used to distinguish different entities with the 
-same name, e.g., in different scopes. We take the convention that an 
-\emph{id} of $0$ is ignored if the name is not empty.
+Identifiers comprise the name of the denoted entity and an \emph{id},
+which can be used for renaming identifiers, e.g., in order to resolve
+name conflicts between identifiers from different scopes. An
+identifier with an \emph{id} $0$ is considered as not being renamed
+and, hence, its \emph{id} will not be shown.
 
 \ToDo{Probably we should use \texttt{Integer} for the \emph{id}s.}
 
@@ -34,7 +35,8 @@ unqualified identifier.}
 >              successId,trueId,falseId,nilId,consId,mainId,
 >              tupleId,isTupleId,tupleArity,selectorId,isSelectorId,
 >              minusId,fminusId,
->              qUnitId,qNilId,qConsId,qTrueId,qFalseId,qSuccessId,qIOId,
+>              qUnitId,qBoolId,qCharId,qIntId,qFloatId,qListId,qIOId,
+>              qSuccessId,qTrueId,qFalseId,qNilId,qConsId,
 >              qTupleId,isQTupleId,qTupleArity,isQSelectorId) where
 > import Char
 > import List
@@ -94,8 +96,8 @@ unqualified identifier.}
 
 \end{verbatim}
 The functions \texttt{qualify} and \texttt{qualifyWith} convert an
-unqualified identifier into a qualified identifier (without or with a
-given module prefix).
+unqualified identifier into a qualified identifier (without and with a
+given module prefix, respectively).
 \begin{verbatim}
 
 > qualify :: Ident -> QualIdent
@@ -133,7 +135,7 @@ given module prefix).
 > splitQualIdent (QualIdent m x) = (Just m,x)
 
 \end{verbatim}
-A few identfiers a predefined here.
+A few identifiers a predefined here.
 \begin{verbatim}
 
 > emptyMIdent, mainMIdent, preludeMIdent :: ModuleIdent
@@ -186,16 +188,23 @@ A few identfiers a predefined here.
 > minusId = Ident "-" 0
 > fminusId = Ident "-." 0
 
-> qUnitId, qNilId, qConsId :: QualIdent
+> qUnitId, qNilId, qConsId, qListId :: QualIdent
 > qUnitId = UnqualIdent unitId
+> qListId = UnqualIdent listId
 > qNilId  = UnqualIdent nilId
 > qConsId = UnqualIdent consId
 
-> qTrueId, qFalseId, qSuccessId, qIOId :: QualIdent
-> qTrueId = QualIdent preludeMIdent trueId
-> qFalseId = QualIdent preludeMIdent falseId
+> qBoolId, qCharId, qIntId, qFloatId, qSuccessId, qIOId :: QualIdent
+> qBoolId = QualIdent preludeMIdent boolId
+> qCharId = QualIdent preludeMIdent charId
+> qIntId = QualIdent preludeMIdent intId
+> qFloatId = QualIdent preludeMIdent floatId
 > qSuccessId = QualIdent preludeMIdent successId
 > qIOId = QualIdent preludeMIdent ioId
+
+> qTrueId, qFalseId :: QualIdent
+> qTrueId = QualIdent preludeMIdent trueId
+> qFalseId = QualIdent preludeMIdent falseId
 
 > qTupleId :: Int -> QualIdent
 > qTupleId = UnqualIdent . tupleId

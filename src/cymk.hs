@@ -19,7 +19,8 @@ data Options =
     debug :: Bool,
     linkAlways :: Bool,
     mkDepend :: Bool,
-    mkClean :: Bool
+    mkClean :: Bool,
+    flat :: Bool
   }
 
 defaultOptions =
@@ -30,12 +31,13 @@ defaultOptions =
     debug = False,
     linkAlways = False,
     mkDepend = False,
-    mkClean = False
+    mkClean = False,
+    flat = False,
   }
 
 data Option =
     Help | ImportPath FilePath | LibPath FilePath | Output FilePath
-  | Debug | LinkAlways | Clean | Depend
+  | Debug | LinkAlways | Clean | Depend | Flat
   deriving Eq
 
 options = [
@@ -53,6 +55,8 @@ options = [
            "search for library interfaces in DIR",
     Option ""  ["clean"] (NoArg Clean)
            "remove compiled file for all targets",
+    Option ""  ["flat"] (NoArg Flat)
+           "generate flat curry code",
     Option "?h" ["help"] (NoArg Help)
            "display this help and exit"
   ]
@@ -65,6 +69,7 @@ selectOption Debug opts = opts{ debug = True }
 selectOption LinkAlways opts = opts{ linkAlways = True }
 selectOption Depend opts = opts{ mkDepend = True }
 selectOption Clean opts = opts{ mkClean = True }
+selectOption Flat opts = opts{ flat = True }
 
 main :: IO ()
 main =
@@ -112,7 +117,7 @@ processFiles opts prog files
       do
         es <- fmap concat (mapM script files)
 	unless (null es) (mapM putErrLn es >> exitWith (ExitFailure 2))
-  where script = buildScript (mkClean opts) (debug opts) (linkAlways opts)
+  where script = buildScript (mkClean opts) (debug opts) (linkAlways opts) (flat opts)
 			     (importPaths opts) (libPaths opts) (output opts)
 
 putErr, putErrLn :: String -> IO ()

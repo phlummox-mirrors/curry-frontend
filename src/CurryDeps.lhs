@@ -38,9 +38,9 @@ computes either a build or clean script for a module while
 Makefile.
 \begin{verbatim}
 
-> buildScript :: Bool -> Bool -> Bool -> [FilePath] -> [FilePath]
+> buildScript :: Bool -> Bool -> Bool -> Bool -> [FilePath] -> [FilePath]
 >             -> Maybe FilePath -> FilePath -> IO [String]
-> buildScript clean debug linkAlways paths libPaths ofn fn =
+> buildScript clean debug linkAlways flat paths libPaths ofn fn =
 >   do
 >     (ms,es) <-
 >       fmap (flattenDeps . sortDeps)
@@ -51,7 +51,7 @@ Makefile.
 >   where outputFile
 >           | extension fn `elem` moduleExts ++ objectExts = Nothing
 >           | otherwise = ofn `mplus` Just fn
->         flat = flatExt `isSuffixOf` fn
+>         --flat = flatExt `isSuffixOf` fn
 >         makeScript clean = if clean then makeCleanScript else makeBuildScript
 
 > makeDepend :: [FilePath] -> [FilePath] -> Maybe FilePath -> [FilePath]
@@ -96,13 +96,23 @@ paths from the library paths in order to avoid scanning such
 directories more than twice.
 \begin{verbatim}
 
+
 > lookupModule :: [FilePath] -> [FilePath] -> ModuleIdent
 >              -> IO (Maybe FilePath)
 > lookupModule paths libPaths m =
 >   lookupFile [p `catPath` fn ++ e | p <- "" : paths, e <- moduleExts] >>=
->   maybe (lookupFile [p `catPath` fn ++ icurryExt | p <- libPaths])
+>   maybe (lookupFile [p `catPath` fn ++ e 
+>                      | p <- libPaths, e <- [icurryExt, curryExt]])
 >         (return . Just)
 >   where fn = foldr1 catPath (moduleQualifiers m)
+
+> --lookupModule :: [FilePath] -> [FilePath] -> ModuleIdent
+> --             -> IO (Maybe FilePath)
+> --lookupModule paths libPaths m =
+> --  lookupFile [p `catPath` fn ++ e | p <- "" : paths, e <- moduleExts] >>=
+> --  maybe (lookupFile [p `catPath` fn ++ icurryExt | p <- libPaths])
+> --        (return . Just)
+> --  where fn = foldr1 catPath (moduleQualifiers m)
 
 \end{verbatim}
 In order to compute the dependency graph, source files for each module
@@ -233,7 +243,7 @@ first error.
 >           where os = reverse (catMaybes (map (object . snd) mEnv))
 >         newer fn fns = unwords ("$CURRY_PATH/newer" : fn : fns)
 >         compile fn = unwords ["compile",cFlag,fn,"-o",targetName fn]
->         cFlag = if flat then "-F" else "-c"
+>         cFlag = if flat then "--flat" else "-c"
 >         link fn os = unwords ("link" : "-o" : fn : os)
 >         interf m =
 >           case lookup m mEnv of
@@ -290,7 +300,10 @@ file.
 > curryExt = ".curry"
 > lcurryExt = ".lcurry"
 > icurryExt = ".icurry"
-> flatExt = ".flat"
+> flatExt = ".fcy"
+> flatIntExt = ".fint"
+> acyExt = ".acy"
+> xmlExt = "_flat.xml"
 > oExt = ".o"
 > debugExt = ".d.o"
 

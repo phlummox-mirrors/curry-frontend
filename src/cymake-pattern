@@ -97,7 +97,8 @@ while test $# -gt 0; do
   case $1 in
     # Overall options
     -M | --depend ) depend=$1;;
-    -[cCFS] | -flat | --flat ) echo 1>&2 "$cymake: unsupported option $1"; exit 1;;
+    -[cCS] ) echo 1>&2 "$cymake: unsupported option $1"; exit 1;;
+    -F | -flat | --flat ) mkopts="$mkopts --flat";;
     -a ) mkopts="$mkopts $1";;
     -e ) goal=$2; shift;;
     -e* ) goal=`expr "$1" : '-e\(.*\)'`;;

@@ -1,5 +1,5 @@
 % -*- LaTeX -*-
-% $Id: TypeCheck.lhs,v 1.85 2004/02/29 16:28:57 wlux Exp $
+% $Id: TypeCheck.lhs,v 1.90 2004/11/06 18:34:07 wlux Exp $
 %
 % Copyright (c) 1999-2004, Wolfgang Lux
 % See LICENSE for the full license.
@@ -22,6 +22,7 @@ type annotation is present.
 > module TypeCheck(typeCheck,typeCheckGoal) where
 > import Base
 > import Pretty
+> import Ident
 > import CurryPP
 > import Env
 > import TopEnv
@@ -237,6 +238,16 @@ extended type environment. Finally, the types for the left and right
 hand sides are unified and the types of all defined functions are
 generalized. The generalization step will also check that the type
 signatures given by the user match the inferred types.
+
+Argument and result types of foreign functions using the
+\texttt{ccall} calling convention are restricted to the basic types
+\texttt{Bool}, \texttt{Char}, \texttt{Int}, and \texttt{Float}. In
+addition, \texttt{IO}~$t$ is a legitimate result type when $t$ is
+either one of the basic types or \texttt{()}.
+
+\ToDo{Extend the set of legitimate types to match the types admitted
+  by the Haskell Foreign Function Interface
+  Addendum.~\cite{Chakravarty03:FFI}}
 \begin{verbatim}
 
 > tcDecls :: ModuleIdent -> TCEnv -> SigEnv -> [Decl] -> TcState ()
@@ -246,6 +257,8 @@ signatures given by the user match the inferred types.
 >   where (vds,ods) = partition isValueDecl ds
 
 > tcDeclGroup :: ModuleIdent -> TCEnv -> SigEnv -> [Decl] -> TcState ()
+> --tcDeclGroup m tcEnv _ [ForeignDecl p cc _ f ty] =
+> --  tcForeignFunct m tcEnv p cc f ty
 > tcDeclGroup m tcEnv _ [ExternalDecl _ _ _ f ty] =
 >   tcExternalFunct m tcEnv f ty
 > tcDeclGroup m tcEnv sigs [FlatExternalDecl _ fs] =
@@ -260,6 +273,27 @@ signatures given by the user match the inferred types.
 >     sequence_ (zipWith3 (unifyDecl m) ds tysLhs tysRhs)
 >     theta <- liftSt fetchSt
 >     mapM_ (genDecl m tcEnv sigs (fvEnv (subst theta tyEnv0)) theta) ds
+
+> --tcForeignFunct :: ModuleIdent -> TCEnv -> Position -> CallConv -> Ident
+> --               -> TypeExpr -> TcState ()
+> --tcForeignFunct m tcEnv p cc f ty =
+> --  updateSt_ (bindFun m f (checkForeignType cc (expandPolyType tcEnv ty)))
+> --  where checkForeignType CallConvPrimitive ty = ty
+> --        checkForeignType CallConvCCall (ForAll n ty) =
+> --          ForAll n (checkCCallType ty)
+> --        checkCCallType (TypeArrow ty1 ty2)
+> --          | isCArgType ty1 = TypeArrow ty1 (checkCCallType ty2)
+> --          | otherwise = errorAt p (invalidCType "argument" m ty1)
+> --        checkCCallType ty
+> --          | isCResultType ty = ty
+> --          | otherwise = errorAt p (invalidCType "result" m ty)
+> --        isCArgType (TypeConstructor tc []) = tc `elem` basicTypeId
+> --        isCArgType _ = False
+> --        isCResultType (TypeConstructor tc []) = tc `elem` basicTypeId
+> --        isCResultType (TypeConstructor tc [ty]) =
+> --          tc == qIOId && (ty == unitType || isCArgType ty)
+> --        isCResultType _ = False
+> --        basicTypeId = [qBoolId,qCharId,qIntId,qFloatId]
 
 > tcExternalFunct :: ModuleIdent -> TCEnv -> Ident -> TypeExpr -> TcState ()
 > tcExternalFunct m tcEnv  f ty =
@@ -602,15 +636,14 @@ signature the declared type must be too general.
 >     theta <- liftSt fetchSt
 >     tcDecls m tcEnv sigs ds
 >     ty <- tcExpr m tcEnv sigs p e
->     when (any isExtraVariables ds)
->          (unify p "existentially quantified expression" (ppExpr 0 e)
->                 m successType ty)
 >     checkSkolems p m (text "Expression:" <+> ppExpr 0 e) tyEnv0 ty
 > tcExpr m tcEnv sigs p (Do sts e) =
 >   do
 >     tyEnv0 <- fetchSt
 >     mapM_ (tcStmt m tcEnv sigs p) sts
+>     alpha <- freshTypeVar
 >     ty <- tcExpr m tcEnv sigs p e
+>     unify p "statement" (ppExpr 0 e) m (ioType alpha) ty
 >     checkSkolems p m (text "Expression:" <+> ppExpr 0 e) tyEnv0 ty
 > tcExpr m tcEnv sigs p e@(IfThenElse e1 e2 e3) =
 >   do
@@ -718,43 +751,49 @@ of~\cite{PeytonJones87:Book}).
 >     theta <- fetchSt
 >     let ty1' = subst theta ty1
 >     let ty2' = subst theta ty2
->     maybe (errorAt p (typeMismatch what doc m ty1' ty2'))
->           (updateSt_ . compose)
->           (unifyTypes ty1' ty2')
+>     either (errorAt p . typeMismatch what doc m ty1' ty2')
+>            (updateSt_ . compose)
+>            (unifyTypes m ty1' ty2')
 
-> unifyTypes :: Type -> Type -> Maybe TypeSubst
-> unifyTypes (TypeVariable tv1) (TypeVariable tv2)
->   | tv1 == tv2 = Just idSubst
->   | otherwise = Just (bindSubst tv1 (TypeVariable tv2) idSubst)
-> unifyTypes (TypeVariable tv) ty
->   | tv `elem` typeVars ty = Nothing
->   | otherwise = Just (bindSubst tv ty idSubst)
-> unifyTypes ty (TypeVariable tv)
->   | tv `elem` typeVars ty = Nothing
->   | otherwise = Just (bindSubst tv ty idSubst)
-> unifyTypes (TypeConstrained tys1 tv1) (TypeConstrained tys2 tv2)
->   | tv1 == tv2 = Just idSubst
->   | tys1 == tys2 = Just (bindSubst tv1 (TypeConstrained tys2 tv2) idSubst)
-> unifyTypes (TypeConstrained tys tv) ty =
->   liftM (bindSubst tv ty) (foldr mplus Nothing (map (unifyTypes ty) tys))
-> unifyTypes ty (TypeConstrained tys tv) =
->   liftM (bindSubst tv ty) (foldr mplus Nothing (map (unifyTypes ty) tys))
-> unifyTypes (TypeConstructor tc1 tys1) (TypeConstructor tc2 tys2)
->   | tc1 == tc2 = unifyTypeLists tys1 tys2
-> unifyTypes (TypeArrow ty11 ty12) (TypeArrow ty21 ty22) =
->   unifyTypeLists [ty11,ty12] [ty21,ty22]
-> unifyTypes (TypeSkolem k1) (TypeSkolem k2)
->   | k1 == k2 = Just idSubst
-> unifyTypes _ _ = Nothing
+> unifyTypes :: ModuleIdent -> Type -> Type -> Either Doc TypeSubst
+> unifyTypes _ (TypeVariable tv1) (TypeVariable tv2)
+>   | tv1 == tv2 = Right idSubst
+>   | otherwise = Right (bindSubst tv1 (TypeVariable tv2) idSubst)
+> unifyTypes m (TypeVariable tv) ty
+>   | tv `elem` typeVars ty = Left (recursiveType m tv ty)
+>   | otherwise = Right (bindSubst tv ty idSubst)
+> unifyTypes m ty (TypeVariable tv)
+>   | tv `elem` typeVars ty = Left (recursiveType m tv ty)
+>   | otherwise = Right (bindSubst tv ty idSubst)
+> unifyTypes _ (TypeConstrained tys1 tv1) (TypeConstrained tys2 tv2)
+>   | tv1 == tv2 = Right idSubst
+>   | tys1 == tys2 = Right (bindSubst tv1 (TypeConstrained tys2 tv2) idSubst)
+> unifyTypes m (TypeConstrained tys tv) ty =
+>   foldr (choose . unifyTypes m ty) (Left (incompatibleTypes m ty (head tys)))
+>         tys
+>   where choose (Left _) theta' = theta'
+>         choose (Right theta) _ = Right (bindSubst tv ty theta)
+> unifyTypes m ty (TypeConstrained tys tv) =
+>   foldr (choose . unifyTypes m ty) (Left (incompatibleTypes m ty (head tys)))
+>         tys
+>   where choose (Left _) theta' = theta'
+>         choose (Right theta) _ = Right (bindSubst tv ty theta)
+> unifyTypes m (TypeConstructor tc1 tys1) (TypeConstructor tc2 tys2)
+>   | tc1 == tc2 = unifyTypeLists m tys1 tys2
+> unifyTypes m (TypeArrow ty11 ty12) (TypeArrow ty21 ty22) =
+>   unifyTypeLists m [ty11,ty12] [ty21,ty22]
+> unifyTypes _ (TypeSkolem k1) (TypeSkolem k2)
+>   | k1 == k2 = Right idSubst
+> unifyTypes m ty1 ty2 = Left (incompatibleTypes m ty1 ty2)
 
-> unifyTypeLists :: [Type] -> [Type] -> Maybe TypeSubst
-> unifyTypeLists [] _ = Just idSubst
-> unifyTypeLists _ [] = Just idSubst
-> unifyTypeLists (ty1:tys1) (ty2:tys2) =
->   unifyTypeLists tys1 tys2 >>= unifyTypesTheta ty1 ty2
->   where unifyTypesTheta ty1 ty2 theta =
->           fmap (flip compose theta)
->                (unifyTypes (subst theta ty1) (subst theta ty2))
+> unifyTypeLists :: ModuleIdent -> [Type] -> [Type] -> Either Doc TypeSubst
+> unifyTypeLists _ [] _ = Right idSubst
+> unifyTypeLists _ _ [] = Right idSubst
+> unifyTypeLists m (ty1:tys1) (ty2:tys2) =
+>   either Left (unifyTypesTheta m ty1 ty2) (unifyTypeLists m tys1 tys2)
+>   where unifyTypesTheta m ty1 ty2 theta =
+>           either Left (Right . flip compose theta)
+>                  (unifyTypes m (subst theta ty1) (subst theta ty2))
 
 \end{verbatim}
 For each declaration group, the type checker has to ensure that no
@@ -933,15 +972,30 @@ Error functions.
 >         text "Type:" <+> ppType m ty,
 >         text "Cannot be used as binary operator"]
 
-> typeMismatch :: String -> Doc -> ModuleIdent -> Type -> Type -> String
-> typeMismatch what doc m ty1 ty2 = show $
+> typeMismatch :: String -> Doc -> ModuleIdent -> Type -> Type -> Doc -> String
+> typeMismatch what doc m ty1 ty2 reason = show $
 >   vcat [text "Type error in" <+> text what, doc,
 >         text "Inferred type:" <+> ppType m ty2,
->         text "Expected type:" <+> ppType m ty1]
+>         text "Expected type:" <+> ppType m ty1,
+>         reason]
 
 > skolemEscapingScope :: ModuleIdent -> Doc -> Type -> String
 > skolemEscapingScope m what ty = show $
 >   vcat [text "Existential type escapes out of its scope", what,
 >         text "Type:" <+> ppType m ty]
+
+> invalidCType :: String -> ModuleIdent -> Type -> String
+> invalidCType what m ty = show $
+>   vcat [text ("Invalid " ++ what ++ " type in foreign declaration"),
+>         ppType m ty]
+
+> recursiveType :: ModuleIdent -> Int -> Type -> Doc
+> recursiveType m tv ty = incompatibleTypes m (TypeVariable tv) ty
+
+> incompatibleTypes :: ModuleIdent -> Type -> Type -> Doc
+> incompatibleTypes m ty1 ty2 =
+>   sep [text "Types" <+> ppType m ty1,
+>        nest 2 (text "and" <+> ppType m ty2),
+>        text "are incompatible"]
 
 \end{verbatim}

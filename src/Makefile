@@ -23,9 +23,11 @@ MCC3_OBJ   = $(MCC3_SRC:%.lhs=%.o)
 
 CYCC_SRC   = cycc.hs
 CYCC       = cycc
+CYCC_OBJ   = cycc.o
 
 CYMK_SRC   = cymk.hs
 CYMK       = cymk
+CYMK_OBJ   = cymk.o
 
 # a little program needed by "cymake"
 NEWER_LHS  = newer.lhs
@@ -96,10 +98,12 @@ $(MCC3_OBJ): %.o: %.lhs $(MCC2_OBJ) $(MCC1_OBJ) $(GETOPT_OBJ)
 	$(HC) $(HC_OPTS) -c $<
 
 $(CYCC): $(CYCC_SRC) $(MCC3_OBJ) $(MCC2_OBJ) $(MCC1_OBJ) $(GETOPT_OBJ)
+	@rm $(CYCC_OBJ)
 	$(HC) $(HC_OPTS) -o $(CYCC) $(CYCC_SRC) \
 			    $(MCC3_OBJ) $(MCC2_OBJ) $(MCC1_OBJ) $(GETOPT_OBJ)
 
 $(CYMK): $(CYMK_SRC) $(MCC3_OBJ) $(MCC2_OBJ) $(MCC1_OBJ) $(GETOPT_OBJ)
+	@rm $(CYMK_OBJ)
 	$(HC) $(HC_OPTS) -o $(CYMK) $(CYMK_SRC) \
 			    $(MCC3_OBJ) $(MCC2_OBJ) $(MCC1_OBJ) $(GETOPT_OBJ)
 
