@@ -97,7 +97,7 @@ matching code.}
 >     mapM_ (doDump opts) 
 >           (dumps ++ if flat || abstract || xml then [] else dumps')
 >     unless (noInterface opts) (updateInterface fn intf)
->     if flat || abstract || xml then genCurry opts fn m' il'
+>     if flat || abstract || xml then genCurry opts fn mEnv m' il'
 >        else writeCode (output opts) fn (maybe ccode (merge ccode) ccode')
 >   where abstract = abstractCurry opts
 >         flat     = flatCurry opts
@@ -475,15 +475,15 @@ curry representations (FlatCurry, AbstractCurry and FlatXML)
 depending on the specified option.
 \begin{verbatim}
 
-> genCurry :: Options -> FilePath -> Module -> IL.Module -> IO ()
-> genCurry opts fname mod il
+> genCurry :: Options -> FilePath -> ModuleEnv -> Module -> IL.Module -> IO ()
+> genCurry opts fname mEnv mod il
 >   | flat      = writeFlat fname' fname info il
 >   | abstract  = error "AbstractCurry program generation not supported" 
 >   | xml       = writeXML fname' fname info il 
 >   | otherwise = error "Illegal option"
 >  where
 >  fname'   = output opts
->  info     = genCurryInfo mod
+>  info     = genCurryInfo mEnv mod
 >  flat     = flatCurry opts
 >  abstract = abstractCurry opts
 >  xml      = flatXML opts

@@ -2,6 +2,7 @@ module IL2FlatCurry where
 
 import IL
 import Ident
+import Base (ModuleEnv)
 import Env
 import CurryInfo
 import FlatCurry hiding (Literal, Expr(Or, Case, Let), CaseType(..))
@@ -17,7 +18,11 @@ il2flatCurry :: CurryInfo -> Module -> Prog
 il2flatCurry info (Module mident imports decls) 
    = fst (visitModule env (Module mident imports decls))
  where
- env = flatEnv mident info
+ env = flatEnv mident emptyEnv info -- TO BE MODIFIED!
+
+
+-- transforms intermediate language code (IL) to FlatCurry interfaces
+--il2flatInterface :: CurryInfo -> Module -> Prog
 
 
 -------------------------------------------------------------------------------
@@ -26,14 +31,23 @@ il2flatCurry info (Module mident imports decls)
 --
 visitModule :: FlatEnv -> Module -> (Prog, FlatEnv)
 visitModule env (Module mident imports decls)
-   = let (ts, env2) = mapVisit visitTypeDecl env  (filter isTypeDecl decls)
-	 (fs, env3) = mapVisit visitFuncDecl env2 (filter isFuncDecl decls)
-	 prog       = Prog (visitModuleIdent mident)
-		           (map visitModuleIdent imports)
-			   ts
-			   fs
-			   (genOpDecls env3)
-     in  (prog, env3)
+   = let (isTDecl, isFDecl)
+	             | genFlatIntf env = (isPublicTypeDecl env, 
+					  isPublicFuncDecl env)
+		     | otherwise       = (isTypeDecl, isFuncDecl)
+         (ts, env1)  = mapVisit visitTypeDecl env  (filter isTDecl decls)
+	 (fs, env2)  = mapVisit visitFuncDecl env1 (filter isFDecl decls)
+	 idecls      | genFlatIntf env = [] --getExportedIDecls env -- TODO
+		     | otherwise       = []
+	 (ts', env3) = mapVisit visitTypeIDecl env2 (filter isTypeIDecl idecls)
+	 (fs', env4) = mapVisit visitFuncIDecl env3 (filter isFuncIDecl idecls)
+	 (os', env5) = ([],env4) --mapVisit visitOpIDecl   env4 (filter isOpIDecl   idecls)
+	 prog        = Prog (visitModuleIdent mident)
+		            (map visitModuleIdent imports)
+			    (ts' ++ (genTypeSynonyms env5) ++ ts)
+			    (fs' ++ fs)
+			    (os' ++ (genOpDecls env5))
+     in  (prog, env5)
 
 
 --
@@ -147,7 +161,7 @@ visitExpression env (Or expr1 expr2)
 visitExpression env (Exist ident expr)
    = let (fexpr, env1)  = visitExpression env expr
 	 (findex, env2) = visitVarIdent env1 ident
-     in  (Free [findex] fexpr, env1)
+     in  (Free [findex] fexpr, env2)
 
 visitExpression env (Let binding expr)
    = let (fbinding, env1) = visitBinding env binding
@@ -205,6 +219,75 @@ visitBinding env (Binding ident expr)
      in  ((findex,fexpr), env2)
 
 
+-------------------------------------------------------------------------------
+
+--
+visitFuncIDecl :: FlatEnv -> CurrySyntax.IDecl -> (FuncDecl, FlatEnv)
+visitFuncIDecl env (CurrySyntax.IFunctionDecl _ qident typeexpr)
+   = let iltype            = csType2ilType env [] typeexpr
+	 (ftypeexpr, env1) = visitType env iltype
+         ffuncdecl         = Func (visitQualIdent env1 qident)
+			          (getArityFromType iltype)
+				  Public
+				  ftypeexpr
+				  (External (qualName qident))
+     in  (ffuncdecl, env1)
+
+
+--
+visitTypeIDecl :: FlatEnv -> CurrySyntax.IDecl -> (TypeDecl, FlatEnv)
+visitTypeIDecl env (CurrySyntax.IDataDecl _ qident params mcdecls)
+   = let fparams         = [0 .. ((length params) - 1)]
+	 env1            = env{ tvarIds = zip params fparams }
+	 cdecls          = map fromJust (filter isJust mcdecls)
+	 (mmident, _)    = splitQualIdent qident
+	 mident          = fromMaybe (error "IL2FlatCurry.visitTypeIDecl")
+			             mmident
+	 (fcdecls, env2) = mapVisit (visitConstrIDecl mident) env1 cdecls
+	 ftypedecl       = Type (visitQualIdent env2 qident)
+			        Public
+				fparams
+				fcdecls
+     in  (ftypedecl, env2)
+
+visitTypeIDecl env (CurrySyntax.ITypeDecl _ qident params typeexpr)
+   = let fparams           = [0 .. ((length params) - 1)]
+	 tvis              = zip params fparams
+	 iltype            = csType2ilType env tvis typeexpr
+	 (ftypeexpr, env1) = visitType env iltype
+	 ftypedecl         = TypeSyn (visitQualIdent env1 qident)
+			             Public
+				     fparams
+				     ftypeexpr
+     in  (ftypedecl, env1)
+
+
+--
+visitConstrIDecl :: ModuleIdent -> FlatEnv -> CurrySyntax.ConstrDecl
+		    -> (ConsDecl, FlatEnv)
+visitConstrIDecl mident env (CurrySyntax.ConstrDecl _ _ ident typeexprs)
+   = let qident = qualifyWith mident ident
+	 iltypes = map (csType2ilType env (tvarIds env)) typeexprs
+	 (ftypeexprs, env1) = mapVisit visitType env iltypes
+	 fconsdecl          = Cons (visitQualIdent env1 qident)
+			           (length typeexprs)
+				   Public
+				   ftypeexprs
+     in  (fconsdecl, env1)
+
+visitConstrIDecl mident env (CurrySyntax.ConOpDecl _ _ type1 ident type2)
+   = let qident = qualifyWith mident ident
+	 iltypes = map (csType2ilType env (tvarIds env)) [type1, type2]
+	 (ftypeexprs, env1) = mapVisit visitType env iltypes
+	 fconsdecl          = Cons (visitQualIdent env1 qident)
+			           2
+				   Public
+				   ftypeexprs
+     in  (fconsdecl, env1)
+
+
+-------------------------------------------------------------------------------
+
 --
 mapVisit :: (FlatEnv -> a -> (b, FlatEnv)) -> FlatEnv -> [a] -> ([b], FlatEnv)
 mapVisit visitTerm env [] = ([], env)
@@ -246,8 +329,8 @@ visitExternalName env name = (moduleName (moduleId env)) ++ "." ++ name
 --
 getVisibility :: FlatEnv -> QualIdent -> Visibility
 getVisibility env qident
-   | elem (unqualify qident) (getExports info) = Public
-   | otherwise                                    = Private
+   | elem qident (getPublicIds info) = Public
+   | otherwise                       = Private
  where
  info = curryInfo env
 
@@ -312,22 +395,84 @@ genOpDecl env (CurrySyntax.IInfixDecl _ fixity prec qident)
    p_genOpFixity CurrySyntax.Infix  = InfixOp
 
 
+--
+genTypeSynonyms :: FlatEnv -> [TypeDecl]
+genTypeSynonyms env = map (genTypeSynonym env) (getTypeSyns (curryInfo env))
+
+--
+genTypeSynonym :: FlatEnv -> CurrySyntax.IDecl -> TypeDecl
+genTypeSynonym env (CurrySyntax.ITypeDecl _ qident params typeexpr)
+   = let fparams    = [0 .. ((length params) - 1)]
+         iltype     = csType2ilType env (zip params fparams) typeexpr
+	 (ftype, _) = visitType env iltype
+     in  TypeSyn (visitQualIdent env qident)
+                 (getVisibility env qident)
+		 fparams
+		 ftype
+		                 
+
+--
+csType2ilType :: FlatEnv -> [(Ident,Int)] -> CurrySyntax.TypeExpr
+		  -> Type
+csType2ilType env ids (CurrySyntax.ConstructorType qident typeexprs)
+   = TypeConstructor qident (map (csType2ilType env ids) typeexprs)
+csType2ilType env ids (CurrySyntax.VariableType ident)
+   = TypeVariable (fromJust (lookup ident ids))
+csType2ilType env ids (CurrySyntax.ArrowType type1 type2)
+   = TypeArrow (csType2ilType env ids type1) (csType2ilType env ids type2)
+csType2ilType env ids (CurrySyntax.ListType typeexpr)
+   = TypeConstructor (qualify listId) [(csType2ilType env ids typeexpr)]
+csType2ilType env ids (CurrySyntax.TupleType typeexprs)
+   = TypeConstructor (qTupleId ((length typeexprs) - 1))
+                     (map (csType2ilType env ids) typeexprs)
+
+
 -------------------------------------------------------------------------------
 -------------------------------------------------------------------------------
 
 --
 isTypeDecl :: Decl -> Bool
-isTypeDecl decl = case decl of
-		    DataDecl _ _ _ -> True
-		    _              -> False
+isTypeDecl (DataDecl _ _ _) = True
+isTypeDecl _                = False
 
 --
 isFuncDecl :: Decl -> Bool
-isFuncDecl decl = case decl of
-		    FunctionDecl _ _ _ _ -> True
-		    NewtypeDecl _ _ _    -> True
-		    ExternalDecl _ _ _ _ -> True
-		    _                    -> False
+isFuncDecl (FunctionDecl _ _ _ _) = True
+isFuncDecl (ExternalDecl _ _ _ _) = True
+isFuncDecl _                      = False
+
+--
+isPublicTypeDecl :: FlatEnv -> Decl -> Bool
+isPublicTypeDecl env (DataDecl qident _ _ )
+   = (getVisibility env qident) == Public
+isPublicTypeDecl env _ 
+   = False
+
+--
+isPublicFuncDecl :: FlatEnv -> Decl -> Bool
+isPublicFuncDecl env (FunctionDecl qident _ _ _)
+   = (getVisibility env qident) == Public
+isPublicFuncDecl env (ExternalDecl qident _ _ _)
+   = (getVisibility env qident) == Public
+isPublicFuncDecl env _ 
+   = False
+
+
+--
+isTypeIDecl :: CurrySyntax.IDecl -> Bool
+isTypeIDecl (CurrySyntax.IDataDecl _ _ _ _) = True
+isTypeIDecl (CurrySyntax.ITypeDecl _ _ _ _) = True
+isTypeIDecl _                               = False
+
+--
+isFuncIDecl :: CurrySyntax.IDecl -> Bool
+isFuncIDecl (CurrySyntax.IFunctionDecl _ _ _) = True
+isFuncIDecl _                                 = False
+
+--
+isOpIDecl :: CurrySyntax.IDecl -> Bool
+isOpIDecl (CurrySyntax.IInfixDecl _ _ _ _) = True
+isOpIDecl _                                = False 
 
 
 -------------------------------------------------------------------------------
@@ -342,18 +487,22 @@ int2num i | i < 0     = (-1) * i
 -------------------------------------------------------------------------------
 
 
-data FlatEnv = FlatEnv { moduleId  :: ModuleIdent,
-			 curryInfo :: CurryInfo,
-			 varIds    :: [(Ident, Int)],
-			 tvarIds   :: [(Ident, Int)]
+data FlatEnv = FlatEnv { moduleId    :: ModuleIdent,
+			 moduleEnv   :: ModuleEnv,
+			 curryInfo   :: CurryInfo,
+			 varIds      :: [(Ident, Int)],
+			 tvarIds     :: [(Ident, Int)],
+			 genFlatIntf :: Bool
 		       }
 
 --
-flatEnv mid info = FlatEnv{ moduleId  = mid,
-			    curryInfo = info,
-			    varIds    = [],
-			    tvarIds   = []
-			  }
+flatEnv mid menv info = FlatEnv{ moduleId    = mid,
+				 moduleEnv   = menv,
+				 curryInfo   = info,
+				 varIds      = [],
+				 tvarIds     = [],
+				 genFlatIntf = False
+			       }
 
 -------------------------------------------------------------------------------
 -------------------------------------------------------------------------------

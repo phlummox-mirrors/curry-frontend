@@ -36,12 +36,14 @@ generateExec :: String -> String -> String -> IO ()
 generateExec date path name
    = do putStrLn ("Generating file \"" ++ name ++ "\"...")
         pattfile <- readFile (name ++ "-pattern")
-	writeFile name pattfile
-	codes1 <- replace name [("%BUILD_DIR%",  path),
-			        ("%BUILD_DATE%", date)]
-	mapM_ (flip checkExitCode ("config: 'sed-replace' failed on \"" 
-                                     ++ name ++ "\""))
-              codes1
+	writeFile name (replace [("%BUILD_DIR%",  path),
+				 ("%BUILD_DATE%", date)]
+			        pattfile)
+	--codes1 <- replace name [("%BUILD_DIR%",  path),
+	--		        ("%BUILD_DATE%", date)]
+	--mapM_ (flip checkExitCode ("config: 'sed-replace' failed on \"" 
+        --                             ++ name ++ "\""))
+        --      codes1
 	--code2 <- system ("chmod 755 " ++ name)
 	--checkExitCode code2 ("config: 'chmod' failed on \"" ++ name ++ "\"")
 	putStrLn "...done"
@@ -49,14 +51,28 @@ generateExec date path name
 
 -------------------------------------------------------------------------------
 
-replace :: String -> [(String, String)] -> IO [ExitCode]
-replace file replacements
-   = mapM (\(old,new) -> system ("sed -i 's/"++esc old++"/"++esc new++"/' "++file)) 
-           replacements
+--
+replace :: [(String,String)] -> String -> String
+replace reps [] = []
+replace reps (c:cs)
+   = maybe (c:(replace reps cs))
+           (\ (old, new) -> new ++ (replace reps (drop (length old) (c:cs))))
+           (p_getReplacement reps (c:cs))
  where
-   esc "" = ""
-   esc ('/':xs) = '\\':'/':esc xs
-   esc (x:xs) = x:esc xs
+ p_getReplacement []               text = Nothing
+ p_getReplacement ((old,new):reps) text
+    | isPrefix old text = Just (old, new)
+    | otherwise         = p_getReplacement reps text
+
+
+--replace :: String -> [(String, String)] -> IO [ExitCode]
+--replace file replacements
+--   = mapM (\(old,new) -> system ("sed -i 's/"++esc old++"/"++esc new++"/' "++file)) 
+--           replacements
+-- where
+--   esc "" = ""
+--   esc ('/':xs) = '\\':'/':esc xs
+--   esc (x:xs) = x:esc xs
 
 -------------------------------------------------------------------------------
 
@@ -107,6 +123,14 @@ concatDirs (d1:d2:ds) = d1 ++ ('/':(concatDirs (d2:ds)))
 getPathFor :: String -> String -> String
 getPathFor dir path
    = concatDirs ((takeWhile ((/=) dir) (splitPath path)) ++ [dir])
+
+
+--
+isPrefix :: String -> String -> Bool
+isPrefix []     []     = True
+isPrefix (x:xs) []     = False
+isPrefix []     (y:ys) = True
+isPrefix (x:xs) (y:ys) = x == y && isPrefix xs ys
 
 
 -------------------------------------------------------------------------------

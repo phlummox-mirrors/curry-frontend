@@ -55,7 +55,7 @@ type QName = (String,String)
 
 data Visibility = Public    -- public (exported) entity
                 | Private   -- private entity
-		deriving (Read, Show)
+		deriving (Read, Show, Eq)
 
 --- The data type for representing type variables.
 --- They are represented by (TVar i) where i is a type variable index.

@@ -1,13 +1,18 @@
 module CurryInfo (CurryInfo, genCurryInfo,
+		  getModuleName, getPublicIds,
                   getExports, getOpFixity, getTypeSyns) where
 
 import CurrySyntax
 import Ident
+import Base
+import Env
 import Maybe
 
 ------------------------------------------------------------------------------
 
-data CurryInfo = CurryInfo { exports  :: [Ident],
+data CurryInfo = CurryInfo { modname  :: ModuleIdent,
+			     exports  :: [Export],
+			     publics  :: [QualIdent],
 			     ops      :: [IDecl],
 			     typesyns :: [IDecl]
 			   }
@@ -15,17 +20,25 @@ data CurryInfo = CurryInfo { exports  :: [Ident],
 -------------------------------------------------------------------------------
 
 --
-genCurryInfo :: Module -> CurryInfo
-genCurryInfo mod = CurryInfo expinfo opinfo tsyninfo
- where
- expinfo  = genExportInfo mod
- opinfo   = genOpInfo mod
- tsyninfo = genTypeSynInfo mod
-
+genCurryInfo :: ModuleEnv -> Module -> CurryInfo
+genCurryInfo menv mod = CurryInfo { modname  = genModuleName menv mod,
+				    exports  = genExports menv mod,
+				    publics  = genExportInfo menv mod,
+				    ops      = genOpInfo menv mod,
+				    typesyns = genTypeSynInfo menv mod
+				  }
 
 --
-getExports :: CurryInfo -> [Ident]
+getModuleName :: CurryInfo -> ModuleIdent
+getModuleName info = modname info
+
+--
+getExports :: CurryInfo -> [Export]
 getExports info = exports info
+
+--
+getPublicIds :: CurryInfo -> [QualIdent]
+getPublicIds info = publics info
 
 --
 getOpFixity :: CurryInfo -> [IDecl]
@@ -40,49 +53,81 @@ getTypeSyns info = typesyns info
 -------------------------------------------------------------------------------
 
 --
-genExportInfo :: Module -> [Ident]
-genExportInfo (Module mident expspec decls)
-   | isJust expspec = getPublicIdsFromExports mident (fromJust expspec) decls
-   | otherwise      = getIdentsFromTopLevelDecls decls
+genModuleName :: ModuleEnv -> Module -> ModuleIdent
+genModuleName _ (Module mident _ _) = mident
+
+
+-------------------------------------------------------------------------------
+
+--
+genExports :: ModuleEnv -> Module -> [Export]
+genExports menv (Module mident (Just (Exporting pos exps)) decls) 
+   = filter (isExportedImport mident) exps
+genExports menv _
+   = []
 
 
 --
-getPublicIdsFromExports ::  ModuleIdent -> ExportSpec -> [Decl] -> [Ident]
-getPublicIdsFromExports mident (Exporting pos exps) decls =
-   getIdentsFromExports mident decls (map name (getIdentsFromTopLevelDecls decls)) exps 
+isExportedImport :: ModuleIdent -> Export -> Bool
+isExportedImport mident (Export qident) 
+   = isNothing (localIdent mident qident)
+isExportedImport mident (ExportTypeWith qident _)
+   = isNothing (localIdent mident qident)
+isExportedImport mident (ExportTypeAll qident)
+   = isNothing (localIdent mident qident)
+isExportedImport mident (ExportModule mident')
+   = mident /= mident'
+
+
+-------------------------------------------------------------------------------
+
+--
+genExportInfo :: ModuleEnv -> Module -> [QualIdent]
+genExportInfo menv (Module mident expspec decls)
+   | isJust expspec = getPublicIdsFromExports menv mident (fromJust expspec) decls
+   | otherwise      = map (qualifyWith mident) (getIdentsFromTopLevelDecls decls)
 
 
 --
-getIdentsFromExports :: ModuleIdent -> [Decl] -> [String] -> [Export] -> [Ident]
-getIdentsFromExports mident decls names [] = []
-
-getIdentsFromExports mident decls names ((Export qident):es)
-   | isDeclaredIdent qident mident names
-     = (unqualify qident):(getIdentsFromExports mident decls names es)
-   | otherwise
-     = getIdentsFromExports mident decls names es
-
-getIdentsFromExports mident decls names ((ExportTypeWith qident cidents):es)
-   | isDeclaredIdent qident mident names
-     = cidents ++ ((unqualify qident):(getIdentsFromExports mident decls names es))
-   | otherwise
-     = getIdentsFromExports mident decls names es
-
-getIdentsFromExports mident decls names ((ExportTypeAll qident):es) =
-   getIdentsFromExports  mident
-                         decls 
-                         names
-                         ((ExportTypeWith qident 
-                                          (getConstrIdentsForDataType (unqualify qident) decls)):es)
-
-getIdentsFromExports mident decls names ((ExportModule mident'):es) =
-   getIdentsFromExports mident decls names es
+getPublicIdsFromExports :: ModuleEnv ->  ModuleIdent -> ExportSpec -> [Decl] 
+			-> [QualIdent]
+getPublicIdsFromExports menv mident (Exporting pos exps) decls
+   = getIdentsFromExports menv 
+		       	  mident 
+			  decls 
+			  exps 
 
 
 --
-isDeclaredIdent :: QualIdent -> ModuleIdent -> [String] -> Bool
-isDeclaredIdent qident mident names 
-   = isJust (localIdent mident qident) && any ((==) (name (unqualify qident))) names
+getIdentsFromExports :: ModuleEnv -> ModuleIdent -> [Decl] -> [Export] 
+		     -> [QualIdent]
+getIdentsFromExports menv mident decls [] = []
+
+getIdentsFromExports menv mident decls ((Export qident):es)
+   = qident:(getIdentsFromExports menv mident decls es)
+
+getIdentsFromExports menv mident decls ((ExportTypeWith qident cidents):es)
+   = (map (qualifyWith mident) cidents) 
+     ++ qident:(getIdentsFromExports menv mident decls es)
+
+getIdentsFromExports menv mident decls ((ExportTypeAll qident):es)
+   = getIdentsFromExports 
+       menv
+       mident 
+       decls 
+       ((ExportTypeWith qident 
+	 (getConstrIdentsForDataType (unqualify qident) decls)):es)
+
+getIdentsFromExports menv mident decls ((ExportModule mident'):es)
+   = map (qualifyWith mident') 
+         (maybe [] getIdentsFromIDecls (lookupEnv mident' menv))
+     ++ (getIdentsFromExports menv mident decls es)
+
+
+--
+--isDeclaredIdent :: QualIdent -> ModuleIdent -> [String] -> Bool
+--isDeclaredIdent qident mident names 
+--   = isJust (localIdent mident qident) && any ((==) (name (unqualify qident))) names
 
 
 --
@@ -134,16 +179,36 @@ getIdentFromConstrDecl :: ConstrDecl -> Ident
 getIdentFromConstrDecl (ConstrDecl pos ids ident texpr)      = ident
 getIdentFromConstrDecl (ConOpDecl pos ids ltype ident rtype) = ident
 
-
+--
 getIdentFromNewConstrDecl ::  NewConstrDecl -> Ident
 getIdentFromNewConstrDecl (NewConstrDecl pos ids ident texpr) = ident
+
+
+--
+getIdentsFromIDecls :: [IDecl] -> [Ident]
+getIdentsFromIDecls [] = []
+getIdentsFromIDecls ((IImportDecl _ _):idecls)
+   = getIdentsFromIDecls idecls
+getIdentsFromIDecls ((IInfixDecl _ _ _ _):idecls)
+   = getIdentsFromIDecls idecls
+getIdentsFromIDecls ((HidingDataDecl _ _ _):idecls)
+   = getIdentsFromIDecls idecls
+getIdentsFromIDecls ((IDataDecl _ qident _ mcdecls):idecls)
+   = (map (getIdentFromConstrDecl . fromJust) (filter isJust mcdecls))
+     ++ (unqualify qident):(getIdentsFromIDecls idecls)
+getIdentsFromIDecls ((INewtypeDecl _ qident _ ncdecl):idecls)
+   = (getIdentFromNewConstrDecl ncdecl):(getIdentsFromIDecls idecls)
+getIdentsFromIDecls ((ITypeDecl _ qident _ _):idecls)
+   = (unqualify qident):(getIdentsFromIDecls idecls)
+getIdentsFromIDecls ((IFunctionDecl _ qident _):idecls)
+   = (unqualify qident):(getIdentsFromIDecls idecls)
 
 
 -------------------------------------------------------------------------------
 
 --
-genOpInfo :: Module -> [IDecl]
-genOpInfo (Module mident expspec decls)
+genOpInfo :: ModuleEnv -> Module -> [IDecl]
+genOpInfo _ (Module mident expspec decls)
    = collectIInfixDecls mident decls
 
 --
@@ -160,8 +225,8 @@ collectIInfixDecls mident (_:decls) = collectIInfixDecls mident decls
 -------------------------------------------------------------------------------
 
 --
-genTypeSynInfo :: Module -> [IDecl]
-genTypeSynInfo (Module mident expspec decls)
+genTypeSynInfo :: ModuleEnv -> Module -> [IDecl]
+genTypeSynInfo _ (Module mident expspec decls)
    = collectITypeDecls mident decls
 
 

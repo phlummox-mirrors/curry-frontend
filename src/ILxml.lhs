@@ -44,7 +44,7 @@ similar to that of Flat-Curry XML representation.
 >                 moduleDecl      = [name]
 >                 importDecl      = imports
 >                 operatorDecl    = getOpFixity info
->                 translationDecl = map (qualifyWith name) (getExports info)
+>                 translationDecl = getPublicIds info
 >                 (functionDecl,typeDecl) = splitDecls decls
 
 > -- =========================================================================
