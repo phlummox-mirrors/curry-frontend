@@ -12,7 +12,7 @@ MCC1_SRC   = Position.lhs Cam.lhs Map.lhs Set.lhs SCC.lhs CPS.lhs Ident.lhs  \
 	     KindCheck.lhs TypeSubst.lhs Typing.lhs Simplify.lhs Desugar.lhs \
 	     TypeCheck.lhs NestEnv.lhs SyntaxCheck.lhs PathUtils.lhs         \
 	     Options.lhs CurryDeps.lhs
-MCC2_SRC   = CaseCompletion.hs FlatCurry.hs           \
+MCC2_SRC   = ScopeEnv.hs ILScope.hs CaseCompletion.hs FlatCurry.hs           \
 	     CurryInfo.hs IL2FlatCurry.hs
 MCC3_SRC   = ILxml.lhs Modules.lhs
 
