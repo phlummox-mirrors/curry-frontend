@@ -184,9 +184,15 @@ matching code.}
 >   where ofn  = fromMaybe (rootname sfn ++ xmlExt) tfn
 >         code = (xmlModule fi il)
 
-> writeFlat :: Maybe FilePath -> FilePath -> CurryInfo -> IL.Module -> IO ()
-> writeFlat tfn sfn fi il = writeFlatCurry fname (il2flatCurry fi il)
+> writeFlat :: Maybe FilePath -> FilePath -> CurryInfo -> ModuleEnv 
+>              -> IL.Module -> IO ()
+> writeFlat tfn sfn fi menv il = writeFlatCurry fname (il2flatCurry fi menv il)
 >   where fname = fromMaybe (rootname sfn ++ flatExt) tfn
+
+> writeFInt :: Maybe FilePath -> FilePath -> CurryInfo -> ModuleEnv
+>              -> IL.Module -> IO ()
+> writeFInt tfn sfn fi menv il = writeFlatCurry fname (il2flatInterface fi menv il)
+>  where fname = fromMaybe (rootname sfn ++ fintExt) tfn
 
 > writeCode :: Maybe FilePath -> FilePath -> Either CFile [CFile] -> IO ()
 > writeCode tfn sfn (Left cfile) = writeCCode ofn cfile
@@ -477,8 +483,9 @@ depending on the specified option.
 
 > genCurry :: Options -> FilePath -> ModuleEnv -> Module -> IL.Module -> IO ()
 > genCurry opts fname mEnv mod il
->   | flat      = writeFlat fname' fname info il
->   | abstract  = error "AbstractCurry program generation not supported" 
+>   | flat      = do writeFlat Nothing fname info mEnv il 
+>                    writeFInt Nothing fname info mEnv il
+>   | abstract  = error "AbstractCurry program representation not yet supported" 
 >   | xml       = writeXML fname' fname info il 
 >   | otherwise = error "Illegal option"
 >  where
@@ -509,7 +516,7 @@ Various filename extensions
 > cExt = ".c"
 > xmlExt = "_flat.xml"
 > flatExt = ".fcy"
-> flatIntExt = ".fint"
+> fintExt = ".fint"
 > acyExt = ".acy"
 > intfExt = ".icurry"
 > litExt = ".lcurry"

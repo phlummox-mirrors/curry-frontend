@@ -7,22 +7,27 @@ import Env
 import CurryInfo
 import FlatCurry hiding (Literal, Expr(Or, Case, Let), CaseType(..))
 import qualified FlatCurry (Literal, Expr(Or, Case, Let), CaseType(..))
-import qualified CurrySyntax
+import qualified CurrySyntax hiding (Export(..))
+import CurrySyntax (Export(..))
 import Maybe
 
 
 -------------------------------------------------------------------------------
 
 -- transforms intermediate language code (IL) to FlatCurry code
-il2flatCurry :: CurryInfo -> Module -> Prog
-il2flatCurry info (Module mident imports decls) 
+il2flatCurry :: CurryInfo -> ModuleEnv -> Module -> Prog
+il2flatCurry info menv (Module mident imports decls) 
    = fst (visitModule env (Module mident imports decls))
  where
- env = flatEnv mident emptyEnv info -- TO BE MODIFIED!
+ env = flatEnv mident menv info
 
 
 -- transforms intermediate language code (IL) to FlatCurry interfaces
---il2flatInterface :: CurryInfo -> Module -> Prog
+il2flatInterface :: CurryInfo -> ModuleEnv -> Module -> Prog
+il2flatInterface info menv (Module mident imports decls)
+   = fst (visitModule env (Module mident imports decls))
+ where
+ env = (flatEnv mident menv info) { genFlatIntf = True }
 
 
 -------------------------------------------------------------------------------
@@ -37,11 +42,11 @@ visitModule env (Module mident imports decls)
 		     | otherwise       = (isTypeDecl, isFuncDecl)
          (ts, env1)  = mapVisit visitTypeDecl env  (filter isTDecl decls)
 	 (fs, env2)  = mapVisit visitFuncDecl env1 (filter isFDecl decls)
-	 idecls      | genFlatIntf env = [] --getExportedIDecls env -- TODO
+	 idecls      | genFlatIntf env = getExportedIDecls env
 		     | otherwise       = []
 	 (ts', env3) = mapVisit visitTypeIDecl env2 (filter isTypeIDecl idecls)
 	 (fs', env4) = mapVisit visitFuncIDecl env3 (filter isFuncIDecl idecls)
-	 (os', env5) = ([],env4) --mapVisit visitOpIDecl   env4 (filter isOpIDecl   idecls)
+	 (os', env5) = mapVisit visitOpIDecl   env4 (filter isOpIDecl   idecls)
 	 prog        = Prog (visitModuleIdent mident)
 		            (map visitModuleIdent imports)
 			    (ts' ++ (genTypeSynonyms env5) ++ ts)
@@ -105,20 +110,28 @@ visitFuncDecl env (FunctionDecl qident params typeexpr expr)
    = let (fparams, env1)   = mapVisit visitVarIdent env params
          (ftypeexpr, env2) = visitType env1 typeexpr
 	 (fexpr, env3)     = visitExpression env2 expr
-         funcdecl          = Func (visitQualIdent env2 qident)
-		                  (length params)
-				  (getVisibility env3 qident)
-				  ftypeexpr
-				  (Rule fparams fexpr)
+	 visibility        = getVisibility env3 qident
+	 funcdecl | genFlatIntf env && visibility == Public
+		     = Func (visitQualIdent env3 qident)
+		            (length params)
+			    Public
+			    ftypeexpr
+			    (External (show qident))
+	          | otherwise
+                     = Func (visitQualIdent env3 qident)
+		            (length params)
+			    visibility
+			    ftypeexpr
+			    (Rule fparams fexpr)
      in  (funcdecl, (env3{ varIds = [] }))
 
 visitFuncDecl env (ExternalDecl qident _ name typeexpr)
    = let (ftypeexpr, env1) = visitType env typeexpr
-	 funcdecl          = Func (visitQualIdent env1 qident)
-			          (getArityFromType typeexpr)
-				  (getVisibility env1 qident)
-				  ftypeexpr
-				  (External (visitExternalName env name))
+	 funcdecl = Func (visitQualIdent env1 qident)
+		         (getArityFromType typeexpr)
+			 (getVisibility env1 qident)
+			 ftypeexpr
+			 (External (visitExternalName env name))
      in  (funcdecl, env1)
 
 visitFuncDecl env (NewtypeDecl _ _ _)
@@ -286,6 +299,16 @@ visitConstrIDecl mident env (CurrySyntax.ConOpDecl _ _ type1 ident type2)
      in  (fconsdecl, env1)
 
 
+--
+visitOpIDecl :: FlatEnv -> CurrySyntax.IDecl -> (OpDecl, FlatEnv)
+visitOpIDecl env (CurrySyntax.IInfixDecl _ fix prec qident)
+   = let ffix | fix == CurrySyntax.InfixL = InfixlOp
+	      | fix == CurrySyntax.InfixR = InfixrOp
+	      | otherwise                 = InfixOp
+         fopdecl = Op (visitQualIdent env qident) ffix prec
+     in (fopdecl, env)
+
+
 -------------------------------------------------------------------------------
 
 --
@@ -323,8 +346,8 @@ visitExternalName :: FlatEnv -> String -> String
 visitExternalName env name = (moduleName (moduleId env)) ++ "." ++ name
 
 
-------------------------------------------------------------------------------
---------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
 
 --
 getVisibility :: FlatEnv -> QualIdent -> Visibility
@@ -333,6 +356,113 @@ getVisibility env qident
    | otherwise                       = Private
  where
  info = curryInfo env
+
+
+--
+getExportedIDecls :: FlatEnv -> [CurrySyntax.IDecl]
+getExportedIDecls env 
+   = let mident     = moduleId env
+	 menv       = moduleEnv env
+	 info       = curryInfo env
+	 exps       = getExports info
+	 expImports = getExportedImports mident emptyEnv exps
+     in  insertExportedIDecls menv [] (envToList expImports)
+
+
+--
+getExportedImports :: ModuleIdent -> Env ModuleIdent [Export] 
+		      -> [Export] -> Env ModuleIdent [Export]
+getExportedImports mident expenv [] = expenv
+getExportedImports mident expenv ((Export qident):exps)
+   = getExportedImports mident 
+	         	(bindExportedImport mident qident (Export qident) expenv) 
+			exps
+getExportedImports mident expenv ((ExportTypeWith qident idents):exps)
+   = getExportedImports mident 
+		        (bindExportedImport mident 
+		                            qident 
+		                            (ExportTypeWith qident idents) 
+		                            expenv)
+			exps
+getExportedImports mident expenv ((ExportTypeAll qident):exps)
+   = getExportedImports mident 
+	 	        (bindExportedImport mident qident (ExportTypeAll qident) expenv) 
+			exps
+getExportedImports mident expenv ((ExportModule mident'):exps)
+   = getExportedImports mident (bindEnv mident' [] expenv) exps
+
+
+--
+bindExportedImport :: ModuleIdent -> QualIdent -> Export -> Env ModuleIdent [Export]
+		       -> Env ModuleIdent [Export]
+bindExportedImport mident qident export expenv
+   | isJust (localIdent mident qident)
+     = expenv
+   | otherwise
+     = let (mmod, _) = splitQualIdent qident
+	   mod       = fromJust mmod
+       in  maybe (bindEnv mod [export] expenv)
+	         (\es -> bindEnv mod (export:es) expenv) 
+		 (lookupEnv mod expenv)
+
+
+--
+insertExportedIDecls :: ModuleEnv -> [CurrySyntax.IDecl] -> [(ModuleIdent,[Export])]
+			-> [CurrySyntax.IDecl]
+insertExportedIDecls menv idecls [] = idecls
+insertExportedIDecls menv idecls ((mident, exports):mes)
+   = let idecls' = maybe idecls
+		         (p_insertExportedIDecls mident idecls exports)
+			 (lookupEnv mident menv)
+     in insertExportedIDecls menv idecls' mes
+ where
+   p_insertExportedIDecls mident idecls exports impidecls
+      | null exports = (map (qualifyIDecl mident) impidecls) ++ idecls
+      | otherwise    = (filter (isExportedIDecl exports) 
+			       (map (qualifyIDecl mident) impidecls))
+		       ++ idecls
+
+
+-- 
+isExportedIDecl :: [Export] -> CurrySyntax.IDecl -> Bool
+isExportedIDecl exports (CurrySyntax.IInfixDecl _ _ _ qident)
+   = isExportedQualIdent qident exports
+isExportedIDecl exports (CurrySyntax.IDataDecl _ qident _ _)
+   = isExportedQualIdent qident exports
+isExportedIDecl exports (CurrySyntax.ITypeDecl _ qident _ _)
+   = isExportedQualIdent qident exports
+isExportedIDecl exports (CurrySyntax.IFunctionDecl _ qident _)
+   = isExportedQualIdent qident exports
+isExportedIDecl exports _
+   = False
+
+
+--
+isExportedQualIdent :: QualIdent -> [Export] -> Bool
+isExportedQualIdent qident [] = False
+isExportedQualIdent qident ((Export qident'):exps)
+   = qident == qident' || isExportedQualIdent qident exps
+isExportedQualIdent qident ((ExportTypeWith qident' idents):exps)
+   = qident == qident' || isExportedQualIdent qident exps
+isExportedQualIdent qident ((ExportTypeAll qident'):exps)
+   = qident == qident' || isExportedQualIdent qident exps
+isExportedQualIdent qident ((ExportModule _):exps)
+   = isExportedQualIdent qident exps
+
+
+--
+qualifyIDecl :: ModuleIdent -> CurrySyntax.IDecl -> CurrySyntax.IDecl
+qualifyIDecl mident (CurrySyntax.IInfixDecl pos fix prec qident)
+   = (CurrySyntax.IInfixDecl pos fix prec (qualQualify mident qident))
+qualifyIDecl mident (CurrySyntax.IDataDecl pos qident idents cdecls)
+   = (CurrySyntax.IDataDecl pos (qualQualify mident qident) idents cdecls)
+qualifyIDecl mident (CurrySyntax.INewtypeDecl pos qident idents ncdecl)
+   = (CurrySyntax.INewtypeDecl pos (qualQualify mident qident) idents ncdecl)
+qualifyIDecl mident (CurrySyntax.ITypeDecl pos qident idents texpr)
+   = (CurrySyntax.ITypeDecl pos (qualQualify mident qident) idents texpr)
+qualifyIDecl mident (CurrySyntax.IFunctionDecl pos qident texpr)
+   = (CurrySyntax.IFunctionDecl pos (qualQualify mident qident) texpr)
+qualifyIDecl _ idecl = idecl
 
 
 --
