@@ -1,0 +1,407 @@
+\nwfilename{gc_2space.nw}\nwbegindocs{0}% -*- noweb-code-mode: c-mode -*-% ===> this file was generated automatically by noweave --- better not edit it
+% $Id: gc_2space.nw,v 2.9 2004/04/15 11:14:45 wlux Exp $
+%
+% Copyright (c) 2001-2004, Wolfgang Lux
+% See ../LICENSE for the full license.
+%
+\subsection{Two space copying collector}
+By default, the run-time system uses a two-space copying garbage
+collector. The collector operates on two separate heap spaces,
+from-space and to-space. Allocation is always performed in
+from-space. When the allocator runs out of memory, it copies all live
+nodes from from-space to to-space and then flips the roles of both
+spaces. A copying collector is very fast because it has to scan only
+the live data in the heap and has to touch every live node only once.
+
+Unfortunately, the simple copying approach implemented here cannot
+preserve the allocation order in the heap. Therefore, the heap limit
+pointers in the choicepoints are reset to the end of the heap at the
+end of the collection. This may lead to redundant trailing and
+therefore a higher allocation rate.
+
+A better choice were using a more advanced copying algorithm that
+divides the heap into segments separated by choicepoints and search
+contexts, and processes those segments
+separately~\cite{DemoenEngelsTarau96:OrderPreserving}. Unfortunately,
+the implementation of this algorithm is not trivial in our runtime
+system because cross-segment pointers are not restricted to the
+(global) trail, but may occur in the saved trails of search spaces,
+which are scattered around in the heap.
+
+Another disadvantage of the two-space copying collector is that it
+requires twice as much memory because of using two separate copies of
+the heap. In our implementation, the garbage collector allocates one
+large heap array and then splits it into two halves. The pointer
+{\Tt{}from{\_}space\nwendquote} points to the base of the active heap, while
+{\Tt{}to{\_}space\nwendquote} points to the inactive space. The size of both halves is
+stored in the variable {\Tt{}heap{\_}size\nwendquote}. The size of the heap as well as
+the start of both heap spaces is aligned to a page boundary.
+
+Note that we must keep the variables {\Tt{}heap{\_}base\nwendquote} and {\Tt{}heap{\_}end\nwendquote} in
+sync with these variables when the two heaps are flipped after a
+garbage collection.
+
+\nwenddocs{}\nwbegincode{1}\sublabel{NW1jcPek-3uyqHh-1}\nwmargintag{{\nwtagstyle{}\subpageref{NW1jcPek-3uyqHh-1}}}\moddef{gc\_2space.c~{\nwtagstyle{}\subpageref{NW1jcPek-3uyqHh-1}}}\endmoddef\nwstartdeflinemarkup\nwprevnextdefs{\relax}{NW1jcPek-3uyqHh-2}\nwenddeflinemarkup
+#include "config.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include "debug.h"
+#include "run.h"
+#include "heap.h"
+#include "stack.h"
+#include "trail.h"
+#include "threads.h"
+#include "spaces.h"
+#include "vars.h"
+#include "stats.h"
+#include "main.h"
+
+\LA{}Garbage collector definitions~{\nwtagstyle{}\subpageref{NW1jcPek-1RUuRm-1}}\RA{}
+
+static word *from_space;
+static word *to_space;
+static unsigned long heap_size;
+
+void
+init_heap(unsigned long size)
+\{
+    heap_size = (size + pagemask) & ~pagemask;
+    heap_base = (word *)malloc(2 * heap_size + pagemask);
+    if ( heap_base == (word *)0 )
+    \{
+        fprintf(stderr, "not enough memory to allocate heap\\n");
+        exit(1);
+    \}
+
+    heap_base  = (word *)(((long)heap_base + pagemask) & ~pagemask);
+    heap_size /= word_size;
+    from_space = heap_base;
+    to_space   = from_space + heap_size;
+    heap_end   = to_space;
+    hp = hlim  = heap_base;
+\}
+
+\nwalsodefined{\\{NW1jcPek-3uyqHh-2}\\{NW1jcPek-3uyqHh-3}\\{NW1jcPek-3uyqHh-4}}\nwnotused{gc_2space.c}\nwendcode{}\nwbegindocs{2}\nwdocspar
+\nwenddocs{}\nwbegincode{3}\sublabel{NW1jcPek-1Sz8uv-1}\nwmargintag{{\nwtagstyle{}\subpageref{NW1jcPek-1Sz8uv-1}}}\moddef{Flip the semi-spaces~{\nwtagstyle{}\subpageref{NW1jcPek-1Sz8uv-1}}}\endmoddef\nwstartdeflinemarkup\nwusesondefline{\\{NW1jcPek-3uyqHh-3}}\nwenddeflinemarkup
+aux = from_space; from_space = to_space; to_space = aux;
+heap_base = from_space; heap_end = from_space + heap_size;
+
+\nwused{\\{NW1jcPek-3uyqHh-3}}\nwendcode{}\nwbegindocs{4}\nwdocspar
+Because the copying collector scans only the live cells in the heap,
+finalized objects must be registered explicitely. The garbage
+collector uses a global array for saving pointers to finalized
+objects. It scans all elements in this array after the live nodes
+have been copied and calls the finialization functions of those nodes
+that were not copied.
+
+\nwenddocs{}\nwbegincode{5}\sublabel{NW1jcPek-3uyqHh-2}\nwmargintag{{\nwtagstyle{}\subpageref{NW1jcPek-3uyqHh-2}}}\moddef{gc\_2space.c~{\nwtagstyle{}\subpageref{NW1jcPek-3uyqHh-1}}}\plusendmoddef\nwstartdeflinemarkup\nwprevnextdefs{NW1jcPek-3uyqHh-1}{NW1jcPek-3uyqHh-3}\nwenddeflinemarkup
+static unsigned int n_finals, max_finals;
+static Node         **finals;
+
+void
+register_final(Node *fin)
+\{
+    ASSERT(fin->info->final_fun != (FinalFun)0);
+
+    if ( n_finals == max_finals )
+    \{
+        max_finals += 1024;
+        if ( finals == (Node **)0 )
+            finals = (Node **)malloc(max_finals * sizeof(Node *));
+        else
+            finals = (Node **)realloc(finals, max_finals * sizeof(Node *));
+        if ( finals == (Node **)0 )
+        \{
+            fprintf(stderr,
+                    "Not enough memory to extend final table to %u entries\\n",
+                    max_finals);
+            exit(1);
+        \}
+    \}
+
+    finals[n_finals++] = fin;
+\}
+
+\nwendcode{}\nwbegindocs{6}\nwdocspar
+The two-space collector uses the two pointers {\Tt{}scan\nwendquote} and {\Tt{}copy\nwendquote} as
+the start and end of the queue of objects that still need to be
+processed. {\Tt{}copy\nwendquote} also serves as the allocation pointer and becomes
+the new heap pointer after the collection is finished.
+
+\nwenddocs{}\nwbegincode{7}\sublabel{NW1jcPek-3uyqHh-3}\nwmargintag{{\nwtagstyle{}\subpageref{NW1jcPek-3uyqHh-3}}}\moddef{gc\_2space.c~{\nwtagstyle{}\subpageref{NW1jcPek-3uyqHh-1}}}\plusendmoddef\nwstartdeflinemarkup\nwprevnextdefs{NW1jcPek-3uyqHh-2}{NW1jcPek-3uyqHh-4}\nwenddeflinemarkup
+void
+collect(unsigned int request)
+\{
+    unsigned int     i, j, len;
+    word             *aux;
+    Node             **scan, **copy, **lroots;
+    GlobalRoot       *groots;
+    Choicepoint      *cp, *prev_cp, *next_cp;
+    struct dict_node *dict;
+
+    stats_begin_gc(hp - heap_base);
+    in_gc = true;
+    copy  = (Node **)to_space;
+    \LA{}Copy all roots into to-space~{\nwtagstyle{}\subpageref{NW1jcPek-4LTZPa-1}}\RA{}
+    \LA{}Scan to-space and copy all reachable nodes into to-space~{\nwtagstyle{}\subpageref{NW1jcPek-3UZBPV-1}}\RA{}
+    \LA{}Update the variable name dictionary~{\nwtagstyle{}\subpageref{NW1jcPek-3OZnZb-1}}\RA{}
+    \LA{}Update the finalized objects table~{\nwtagstyle{}\subpageref{NW1jcPek-2Bl7rc-1}}\RA{}
+    \LA{}Flip the semi-spaces~{\nwtagstyle{}\subpageref{NW1jcPek-1Sz8uv-1}}\RA{}
+    hp = (word *)copy;
+    if ( bp != (Choicepoint *)0 )
+    \{
+        hlim = hp;
+        for ( cp = bp; cp != (Choicepoint *)0; cp = cp->btBp )
+            cp->btHp = hp;
+    \}
+    else
+    \{
+        ASSERT(hlim == to_space);
+        hlim = heap_base;
+    \}
+    if ( hp + request >= heap_end )
+        heap_exhausted();
+    cleanup_names();
+    in_gc = false;
+    stats_end_gc(hp - heap_base);
+\}
+
+\nwendcode{}\nwbegindocs{8}\nwdocspar
+When a node is copied from from-space to to-space, its info pointer in
+from-space is replaced by a forwarding pointer to the new location.
+The lowest bit of the info pointer is used to mark forwarding
+pointers.
+
+\nwenddocs{}\nwbegincode{9}\sublabel{NW1jcPek-1RUuRm-1}\nwmargintag{{\nwtagstyle{}\subpageref{NW1jcPek-1RUuRm-1}}}\moddef{Garbage collector definitions~{\nwtagstyle{}\subpageref{NW1jcPek-1RUuRm-1}}}\endmoddef\nwstartdeflinemarkup\nwusesondefline{\\{NW1jcPek-3uyqHh-1}}\nwprevnextdefs{\relax}{NW1jcPek-1RUuRm-2}\nwenddeflinemarkup
+#define GC_FLAGS                0x03
+#define FORWARD_FLAG            0x01
+#define is_forwarded(node)      ((*(unsigned int *)(node)) & FORWARD_FLAG)
+#define forward(node,new) \\
+    ((*(unsigned int *)(node)) = (unsigned int)(new) | FORWARD_FLAG)
+#define get_forward(node)       ((Node *)(*(unsigned int *)(node) & ~GC_FLAGS))
+
+\nwalsodefined{\\{NW1jcPek-1RUuRm-2}}\nwused{\\{NW1jcPek-3uyqHh-1}}\nwendcode{}\nwbegindocs{10}\nwdocspar
+Before copying an object referenced by a pointer from a live node or
+global root, we must first check whether its info pointer is already
+replaced by a forwarding pointer. In that case, only the pointer to
+the object must be updated to point to the new location. Otherwise, a
+binary copy of the object is created in the active heap and its info
+pointer is replaced. Pointers to objects outside of the heap are not
+followed at all.
+
+\nwenddocs{}\nwbegincode{11}\sublabel{NW1jcPek-1RUuRm-2}\nwmargintag{{\nwtagstyle{}\subpageref{NW1jcPek-1RUuRm-2}}}\moddef{Garbage collector definitions~{\nwtagstyle{}\subpageref{NW1jcPek-1RUuRm-1}}}\plusendmoddef\nwstartdeflinemarkup\nwusesondefline{\\{NW1jcPek-3uyqHh-1}}\nwprevnextdefs{NW1jcPek-1RUuRm-1}{\relax}\nwenddeflinemarkup
+#define GC_copy(node) do \{ \\
+    if ( is_boxed(node) && (node) >= (Node *)heap_base && (node) < (Node *)hp ) \{ \\
+        if ( is_forwarded(node) ) \\
+            node = get_forward(node); \\
+        else \{ \\
+            unsigned int sz = node_size(node); \\
+            if ( sz == 0 ) sz = (node)->a.length; \\
+            ASSERT((word *)copy + sz <= to_space + heap_size); \\
+            memcpy(copy, (node), sz * word_size); \\
+            forward(node, copy); \\
+            (node) = (Node *)copy; \\
+            copy += sz; \\
+        \} \\
+    \} \\
+\} while ( 0 )
+
+\nwused{\\{NW1jcPek-3uyqHh-1}}\nwendcode{}\nwbegindocs{12}\nwdocspar
+For all additional roots, we have to follow all their arguments and
+copy them into the to-space. The argument pointers then have to be
+replaced by the new addresses. Note that we do not copy the root
+objects themselves; they are allocated outside of the heap.
+
+\nwenddocs{}\nwbegincode{13}\sublabel{NW1jcPek-4LTZPa-1}\nwmargintag{{\nwtagstyle{}\subpageref{NW1jcPek-4LTZPa-1}}}\moddef{Copy all roots into to-space~{\nwtagstyle{}\subpageref{NW1jcPek-4LTZPa-1}}}\endmoddef\nwstartdeflinemarkup\nwusesondefline{\\{NW1jcPek-3uyqHh-3}}\nwprevnextdefs{\relax}{NW1jcPek-4LTZPa-2}\nwenddeflinemarkup
+for ( groots = global_roots; groots != (GlobalRoot *)0; groots = groots->next )
+    GC_copy(*groots->root);
+for ( lroots = local_roots; lroots != (Node **)0; lroots = (Node **)lroots[1] )
+\{
+    for ( i = (unsigned)lroots[0], scan = (Node **)lroots + 2;
+          i > 0;
+          i--, scan++ )
+        GC_copy(*scan);
+\}
+
+\nwalsodefined{\\{NW1jcPek-4LTZPa-2}\\{NW1jcPek-4LTZPa-3}\\{NW1jcPek-4LTZPa-4}}\nwused{\\{NW1jcPek-3uyqHh-3}}\nwendcode{}\nwbegindocs{14}\nwdocspar
+The stack is processed from bottom to top. In order to detect
+choicepoints and search contexts in the stack, their links are
+reversed temporarily.
+
+For each choicepoint and search context, we must copy the ready queue
+and update the saved heap limit. The latter is done at the end of the
+collection where the heap limits are reset to the end of the heap.
+
+\nwenddocs{}\nwbegincode{15}\sublabel{NW1jcPek-4LTZPa-2}\nwmargintag{{\nwtagstyle{}\subpageref{NW1jcPek-4LTZPa-2}}}\moddef{Copy all roots into to-space~{\nwtagstyle{}\subpageref{NW1jcPek-4LTZPa-1}}}\plusendmoddef\nwstartdeflinemarkup\nwusesondefline{\\{NW1jcPek-3uyqHh-3}}\nwprevnextdefs{NW1jcPek-4LTZPa-1}{NW1jcPek-4LTZPa-3}\nwenddeflinemarkup
+prev_cp = next_cp = (Choicepoint *)0;
+for ( cp = bp; cp != (Choicepoint *)0; cp = prev_cp )
+\{
+    prev_cp  = cp->btBp;
+    cp->btBp = next_cp;
+    next_cp  = cp;
+\}
+
+scan = stack_end;
+for ( cp = next_cp; cp != (Choicepoint *)0; cp = next_cp )
+\{
+    while ( --scan >= (Node **)(cp + 1) )
+        GC_copy(*scan);
+
+    GC_copy((Node *)cp->btRq);
+
+    next_cp  = cp->btBp;
+    cp->btBp = prev_cp;
+    prev_cp  = cp;
+    scan     = (Node **)cp;
+\}
+while ( --scan >= sp )
+    GC_copy(*scan);
+
+\nwused{\\{NW1jcPek-3uyqHh-3}}\nwendcode{}\nwbegindocs{16}\nwdocspar
+Next, the contents of the trail have to be processed. We copy the
+updated nodes and the saved values into to-space.
+
+\nwenddocs{}\nwbegincode{17}\sublabel{NW1jcPek-4LTZPa-3}\nwmargintag{{\nwtagstyle{}\subpageref{NW1jcPek-4LTZPa-3}}}\moddef{Copy all roots into to-space~{\nwtagstyle{}\subpageref{NW1jcPek-4LTZPa-1}}}\plusendmoddef\nwstartdeflinemarkup\nwusesondefline{\\{NW1jcPek-3uyqHh-3}}\nwprevnextdefs{NW1jcPek-4LTZPa-2}{NW1jcPek-4LTZPa-4}\nwenddeflinemarkup
+\{
+    SaveRec *scan_trail;
+
+    for ( scan_trail = trail_base; scan_trail != tp; scan_trail++ )
+    \{
+        GC_copy((Node *)scan_trail->addr);
+        GC_copy((Node *)scan_trail->val);
+    \}
+\}
+
+\nwused{\\{NW1jcPek-3uyqHh-3}}\nwendcode{}\nwbegindocs{18}\nwdocspar
+Finally, the current search space and ready queue are also roots.
+
+\nwenddocs{}\nwbegincode{19}\sublabel{NW1jcPek-4LTZPa-4}\nwmargintag{{\nwtagstyle{}\subpageref{NW1jcPek-4LTZPa-4}}}\moddef{Copy all roots into to-space~{\nwtagstyle{}\subpageref{NW1jcPek-4LTZPa-1}}}\plusendmoddef\nwstartdeflinemarkup\nwusesondefline{\\{NW1jcPek-3uyqHh-3}}\nwprevnextdefs{NW1jcPek-4LTZPa-3}{\relax}\nwenddeflinemarkup
+GC_copy((Node *)rq);
+GC_copy((Node *)ss);
+
+\nwused{\\{NW1jcPek-3uyqHh-3}}\nwendcode{}\nwbegindocs{20}\nwdocspar
+After all roots have been processed, the nodes in to-space now form a
+queue of nodes that still need to be processed. For each node, we
+simply copy all nodes that are referenced by it into to-space as well.
+
+\nwenddocs{}\nwbegincode{21}\sublabel{NW1jcPek-3UZBPV-1}\nwmargintag{{\nwtagstyle{}\subpageref{NW1jcPek-3UZBPV-1}}}\moddef{Scan to-space and copy all reachable nodes into to-space~{\nwtagstyle{}\subpageref{NW1jcPek-3UZBPV-1}}}\endmoddef\nwstartdeflinemarkup\nwusesondefline{\\{NW1jcPek-3uyqHh-3}}\nwenddeflinemarkup
+for ( scan = (Node **)to_space; scan != copy; scan += len )
+\{
+    boolean   is_vect;
+    int       n, el_len;
+    NodeInfo  *info;
+    const int *otable;
+
+    ASSERT(!is_forwarded(scan));
+    info    = ((Node *)scan)->info;
+    len     = info->length;
+    otable  = info->offset_table;
+    is_vect = len == 0;
+    if ( is_vect )
+        len = (int)scan[1];
+
+    if ( otable == (const int *)0 )
+    \{
+        for ( i = is_vect ? 2 : 1 ; i < len; i++ )
+            GC_copy(scan[i]);
+    \}
+    else
+    \{
+        n = *otable++;
+        if ( n >= 0 )
+        \{
+            while ( n-- > 0 )
+            \{
+                i = *otable++;
+                GC_copy(scan[i]);
+            \}
+        \}
+        else
+        \{
+            ASSERT(is_vect);
+            el_len = -n;
+            for ( j = 2; j < len; j += el_len )
+            \{
+                otable = info->offset_table + 1;
+                n      = *otable++;
+                while ( n-- > 0 )
+                \{
+                    i = *otable++;
+                    GC_copy(scan[j+i]);
+                \}
+            \}
+            ASSERT(j == len);
+        \}
+    \}
+\}
+
+\nwused{\\{NW1jcPek-3uyqHh-3}}\nwendcode{}\nwbegindocs{22}\nwdocspar
+After the live objects in the heap have been copied, the variable
+name dictionary and the table containing the finalized objects have
+to be updated.  In addition, all objects which have not been copied
+must be finalized. As a side effect of processing the table, we also
+compact it by removing the entries of all objects which are no longer
+live.
+
+\nwenddocs{}\nwbegincode{23}\sublabel{NW1jcPek-2Bl7rc-1}\nwmargintag{{\nwtagstyle{}\subpageref{NW1jcPek-2Bl7rc-1}}}\moddef{Update the finalized objects table~{\nwtagstyle{}\subpageref{NW1jcPek-2Bl7rc-1}}}\endmoddef\nwstartdeflinemarkup\nwusesondefline{\\{NW1jcPek-3uyqHh-3}}\nwenddeflinemarkup
+for ( i = j = 0; i < n_finals; i++ )
+    if ( is_forwarded(finals[i]) )
+        finals[j++] = get_forward(finals[i]);
+    else
+        finals[i]->info->final_fun(finals[i]);
+n_finals = j;
+
+\nwused{\\{NW1jcPek-3uyqHh-3}}\nwendcode{}\nwbegindocs{24}\nwdocspar
+For the variable name dictionary, we simply replace all forwarded
+pointers by the new address and reset all other pointers to {\Tt{}0\nwendquote}. The
+function {\Tt{}cleanup{\_}names\nwendquote} releases these entries at the end of the
+collection.
+
+\nwenddocs{}\nwbegincode{25}\sublabel{NW1jcPek-3OZnZb-1}\nwmargintag{{\nwtagstyle{}\subpageref{NW1jcPek-3OZnZb-1}}}\moddef{Update the variable name dictionary~{\nwtagstyle{}\subpageref{NW1jcPek-3OZnZb-1}}}\endmoddef\nwstartdeflinemarkup\nwusesondefline{\\{NW1jcPek-3uyqHh-3}}\nwenddeflinemarkup
+for ( dict = names_dict; dict != (struct dict_node *)0; dict = dict->next )
+    if ( is_forwarded(dict->node) )
+        dict->node = get_forward(dict->node);
+    else
+        dict->node = (Node *)0;
+
+\nwused{\\{NW1jcPek-3uyqHh-3}}\nwendcode{}\nwbegindocs{26}\nwdocspar
+If a computation fails, all memory allocated since the current
+choicepoint or search context is released immediately. In order to
+finalize all objects allocated in this region of the heap, we have to
+scan the table of finalized objects and check their addresses. Because
+the order of the entries in the table reflects the order of creation
+and the garbage collector maintains the order of nodes with respect to
+the current heap limit (either by copying the complete heap below the
+current heap limit in case of a choicepoint or by setting all heap
+limits to the top of the heap after the collection), we only need to
+scan the finalized objects table until reaching a pointer whose
+address is below the current heap limit. All other entries point to
+nodes below the current heap limit as well.
+
+\nwenddocs{}\nwbegincode{27}\sublabel{NW1jcPek-3uyqHh-4}\nwmargintag{{\nwtagstyle{}\subpageref{NW1jcPek-3uyqHh-4}}}\moddef{gc\_2space.c~{\nwtagstyle{}\subpageref{NW1jcPek-3uyqHh-1}}}\plusendmoddef\nwstartdeflinemarkup\nwprevnextdefs{NW1jcPek-3uyqHh-3}{\relax}\nwenddeflinemarkup
+void
+release_mem()
+\{
+    unsigned int i = n_finals;
+
+    while ( i-- > 0 && (word *)finals[i] >= hlim )
+    \{
+        ASSERT((word *)finals[i] < hp);
+        finals[i]->info->final_fun(finals[i]);
+    \}
+    n_finals = ++i;
+
+    stats_backtrack(hp - hlim);
+    hp = hlim;
+\}
+\nwendcode{}
+
+\nwixlogsorted{c}{{Copy all roots into to-space}{NW1jcPek-4LTZPa-1}{\nwixu{NW1jcPek-3uyqHh-3}\nwixd{NW1jcPek-4LTZPa-1}\nwixd{NW1jcPek-4LTZPa-2}\nwixd{NW1jcPek-4LTZPa-3}\nwixd{NW1jcPek-4LTZPa-4}}}%
+\nwixlogsorted{c}{{Flip the semi-spaces}{NW1jcPek-1Sz8uv-1}{\nwixd{NW1jcPek-1Sz8uv-1}\nwixu{NW1jcPek-3uyqHh-3}}}%
+\nwixlogsorted{c}{{Garbage collector definitions}{NW1jcPek-1RUuRm-1}{\nwixu{NW1jcPek-3uyqHh-1}\nwixd{NW1jcPek-1RUuRm-1}\nwixd{NW1jcPek-1RUuRm-2}}}%
+\nwixlogsorted{c}{{gc_2space.c}{NW1jcPek-3uyqHh-1}{\nwixd{NW1jcPek-3uyqHh-1}\nwixd{NW1jcPek-3uyqHh-2}\nwixd{NW1jcPek-3uyqHh-3}\nwixd{NW1jcPek-3uyqHh-4}}}%
+\nwixlogsorted{c}{{Scan to-space and copy all reachable nodes into to-space}{NW1jcPek-3UZBPV-1}{\nwixu{NW1jcPek-3uyqHh-3}\nwixd{NW1jcPek-3UZBPV-1}}}%
+\nwixlogsorted{c}{{Update the finalized objects table}{NW1jcPek-2Bl7rc-1}{\nwixu{NW1jcPek-3uyqHh-3}\nwixd{NW1jcPek-2Bl7rc-1}}}%
+\nwixlogsorted{c}{{Update the variable name dictionary}{NW1jcPek-3OZnZb-1}{\nwixu{NW1jcPek-3uyqHh-3}\nwixd{NW1jcPek-3OZnZb-1}}}%
+

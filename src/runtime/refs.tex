@@ -1,0 +1,115 @@
+\nwfilename{refs.nw}\nwbegindocs{0}% -*- noweb-code-mode: c-mode -*-% ===> this file was generated automatically by noweave --- better not edit it
+% $Id: refs.nw,v 2.1 2004/03/22 14:36:43 wlux Exp $
+%
+% Copyright (c) 2004, Wolfgang Lux
+% See ../LICENSE for the full license.
+%
+\subsection{Mutable references}
+The \texttt{IOExts} library implements mutable references in the
+\texttt{IO} monad. The implementation is based on three primitives
+that are defined in this file.
+
+\nwenddocs{}\nwbegincode{1}\sublabel{NW1zFxc5-2LjkGD-1}\nwmargintag{{\nwtagstyle{}\subpageref{NW1zFxc5-2LjkGD-1}}}\moddef{refs.c~{\nwtagstyle{}\subpageref{NW1zFxc5-2LjkGD-1}}}\endmoddef\nwstartdeflinemarkup\nwprevnextdefs{\relax}{NW1zFxc5-2LjkGD-2}\nwenddeflinemarkup
+#include "config.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include "debug.h"
+#include "run.h"
+#include "heap.h"
+#include "stack.h"
+#include "trail.h"
+#include "eval.h"
+#include "threads.h"
+#include "trace.h"
+#include "cam.h"
+
+enum \{ IOREF_TAG \};
+
+struct ioref_node \{
+    NodeInfo *info;
+    Node     *ref;
+\};
+
+#define ioref_node_size wordsof(struct ioref_node)
+
+static NodeInfo ioref_info = \{
+    IOREF_TAG, ioref_node_size, (const int *)0, (Label)eval_whnf, "IORef",
+    (FinalFun)0
+\};
+
+\nwalsodefined{\\{NW1zFxc5-2LjkGD-2}\\{NW1zFxc5-2LjkGD-3}\\{NW1zFxc5-2LjkGD-4}}\nwnotused{refs.c}\nwendcode{}\nwbegindocs{2}\nwdocspar
+The function {\Tt{}newIORef\nwendquote} creates a new {\Tt{}IORef\nwendquote} and initializes it
+with the specified value.
+
+\nwenddocs{}\nwbegincode{3}\sublabel{NW1zFxc5-2LjkGD-2}\nwmargintag{{\nwtagstyle{}\subpageref{NW1zFxc5-2LjkGD-2}}}\moddef{refs.c~{\nwtagstyle{}\subpageref{NW1zFxc5-2LjkGD-1}}}\plusendmoddef\nwstartdeflinemarkup\nwprevnextdefs{NW1zFxc5-2LjkGD-1}{NW1zFxc5-2LjkGD-3}\nwenddeflinemarkup
+DECLARE_ENTRYPOINT(__newIORef);
+
+FUNCTION(__newIORef)
+\{
+    struct ioref_node *ref;
+
+    EXPORT_LABEL(__newIORef)
+ ENTRY_LABEL(__newIORef)
+    CHECK_HEAP(ioref_node_size);
+    ref       = (struct ioref_node *)hp;
+    ref->info = &ioref_info;
+    ref->ref  = sp[0];
+    hp       += ioref_node_size;
+    
+    sp += 2;
+    RETURN((Node *)ref);
+\}
+
+\nwendcode{}\nwbegindocs{4}\nwdocspar
+The function {\Tt{}readIORef\nwendquote} returns the value that is currently saved
+in a mutable reference. Note that the value is \emph{not} evaluated
+to head normal form because the \texttt{IO} monad is lazy in Curry
+(as it is in Haskell).
+
+\nwenddocs{}\nwbegincode{5}\sublabel{NW1zFxc5-2LjkGD-3}\nwmargintag{{\nwtagstyle{}\subpageref{NW1zFxc5-2LjkGD-3}}}\moddef{refs.c~{\nwtagstyle{}\subpageref{NW1zFxc5-2LjkGD-1}}}\plusendmoddef\nwstartdeflinemarkup\nwprevnextdefs{NW1zFxc5-2LjkGD-2}{NW1zFxc5-2LjkGD-4}\nwenddeflinemarkup
+DECLARE_ENTRYPOINT(__readIORef);
+
+FUNCTION(__readIORef)
+\{
+    struct ioref_node *ref;
+
+   EXPORT_LABEL(__readIORef)
+ ENTRY_LABEL(__readIORef)
+    EVAL_RIGID(__readIORef);
+    ASSERT(node_tag(sp[0]) == IOREF_TAG);
+    ref = (struct ioref_node *)sp[0];
+    sp += 2;
+    RETURN(ref->ref);
+\}
+
+\nwendcode{}\nwbegindocs{6}\nwdocspar
+The function {\Tt{}writeIORef\nwendquote} updates the value saved in a mutable
+reference. The old value is saved on the trail even though the
+\texttt{IO} monad is expected to run only deterministic code. However,
+trailing prevents program crashes when this function is used inside an
+{\Tt{}unsafePerformIO\nwendquote}. Note that this makes it impossible to use mutable
+references for generating globally unique indices that are different
+even across different branches of a non-deterministic search.
+
+\nwenddocs{}\nwbegincode{7}\sublabel{NW1zFxc5-2LjkGD-4}\nwmargintag{{\nwtagstyle{}\subpageref{NW1zFxc5-2LjkGD-4}}}\moddef{refs.c~{\nwtagstyle{}\subpageref{NW1zFxc5-2LjkGD-1}}}\plusendmoddef\nwstartdeflinemarkup\nwprevnextdefs{NW1zFxc5-2LjkGD-3}{\relax}\nwenddeflinemarkup
+DECLARE_ENTRYPOINT(__writeIORef);
+
+FUNCTION(__writeIORef)
+\{
+    struct ioref_node *ref;
+
+    EXPORT_LABEL(__writeIORef)
+ ENTRY_LABEL(__writeIORef)
+    EVAL_RIGID(__writeIORef);
+    ASSERT(node_tag(sp[0]) == IOREF_TAG);
+    ref = (struct ioref_node *)sp[0];
+    SAVE(ref, ref);
+    ref->ref = sp[1];
+    sp += 3;
+    RETURN(unit);
+\}
+\nwendcode{}
+
+\nwixlogsorted{c}{{refs.c}{NW1zFxc5-2LjkGD-1}{\nwixd{NW1zFxc5-2LjkGD-1}\nwixd{NW1zFxc5-2LjkGD-2}\nwixd{NW1zFxc5-2LjkGD-3}\nwixd{NW1zFxc5-2LjkGD-4}}}%
+

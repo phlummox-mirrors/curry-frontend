@@ -1,0 +1,71 @@
+===============================================================================
+==
+==  Münster-Curry-Compiler
+==  Distribution zur Anwendung in PAKCS
+==
+
+Diese Distribution enthält eine leicht 
+modifizierte, einfache Version des Münster-Curry-Compilers (MCC). Dieser
+Compiler ist u.a. in der Lage Curry-Programme (entwickelt nach PAKCS-
+Standard) in einer Flat-XML-Darstellung zu übersetzen.
+
+
+Installation
+------------
+
+Der Compiler wird durch Aufruf von 'make' im Verzeichnis 'mcc' installiert.
+
+
+Anwendung
+---------
+
+Im Verzeichnis 'mcc/bin/' befinden sich nach erfolgreicher Installation
+folgende ausführbare Dateien:
+
+	cyc		- der Curry-Compiler
+	cymake		- der Curry-Programm-Builder
+	cyxml		- der Flat-XML-Generator (verwendet 'cyc' und
+			  'cymake')
+
+Die Übsersetzung eines Curry-Programms '<prog>' in die Flat-XML-
+Darstellung wird durch folgenden Aufruf bewirkt:
+
+	cyxml <prog>
+
+Die hierdurch generierte Flat-XML-Datei hat die Endung '.flat'.
+
+Die Funktionen 'cyc' und 'cymake' funktionieren wie im MCC üblich.
+
+
+Anmerkungen
+-----------
+
+- Neben der Flat-XML-Darstellung erzeugt ein Aufruf von 'cyxml'
+  noch weitere Dateien, wie Interfaces ('.icurry') und Objektdateien
+  ('.o'). Dies ist bedingt durch die interne sequentielle Abarbeitung
+  von 'cymake' (zur Auflösung der Import-Abhängigkeiten) und
+  'cyc' (zur Übersetzung in die Flat-XML-Darstellung).
+
+- Der MCC ist leider nicht in der Lage, die Prelude aus der PAKCS-
+  Distribution zu nutzen. Daher greift MCC auf eine "gepatchte"
+  Version dieser Prelude zurück, die sich im Verzeichnis 'mcc/lib/curry/'
+  befindet
+
+- Um die PAKCS-Bibliotheken für Übersetzungen nutzen zu können müssen
+  die Dateien zunächst selbst übersetzt werden. Da dies nicht mit
+  'cymake' funktioniert (und damit auch nicht mit 'cyxml'), müssen
+  die Dateien in Reihenfolge ihrer Import-Abhängigkeit (beginnend
+  mit der unabhängigsten Datei) "von Hand" wie folgt übersetzt werden:
+
+	cyc --flat <curry prog>
+
+  Um die Dateien für den MCC sichtbar zu machen, muß nun noch die
+  Umgebungsvariable 'PAKCS_LIB' entsprechend auf die PACKS-Bibliotheken
+  gesetzt werden, z.B. mittels
+
+	export PAKCS_LIB=<pakcs path>/pacs/lib:<pakcs path>/pacs/lib/meta:...
+
+ wobei <pakcs path> das Verzeichnis ist, das die PAKCS-Distribution
+ enthält.
+
+

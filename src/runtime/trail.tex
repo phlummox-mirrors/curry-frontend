@@ -1,0 +1,145 @@
+\nwfilename{trail.nw}\nwbegindocs{0}% -*- noweb-code-mode: c-mode -*-% ===> this file was generated automatically by noweave --- better not edit it
+% $Id: trail.nw,v 2.1 2002/12/01 10:32:27 lux Exp $
+%
+% Copyright (c) 2002, Wolfgang Lux
+% See ../LICENSE for the full license.
+%
+\subsection{The trail}
+The trail is used to record all destructive updates that must be
+undone when backtracking to a choicepoint or leaving a search
+space. Updates apply to updatable nodes, i.e. variables, queue-me
+closures and suspensions, but also array elements and thread-queue
+entries can be changed. Some of these updates only change one field of
+a node, while other also change the node type by overwriting the
+info-pointer. For simplicity we always save the info pointer on the
+trail. Other possible options could be to use the least significant
+bit of the address to distinguish between one word and two word
+updates, store both updates separately, or to use two different trail
+stacks.
+
+\nwenddocs{}\nwbegincode{1}\sublabel{NW48gkSr-4DSJry-1}\nwmargintag{{\nwtagstyle{}\subpageref{NW48gkSr-4DSJry-1}}}\moddef{trail.h~{\nwtagstyle{}\subpageref{NW48gkSr-4DSJry-1}}}\endmoddef\nwstartdeflinemarkup\nwprevnextdefs{\relax}{NW48gkSr-4DSJry-2}\nwenddeflinemarkup
+typedef struct save_rec \{
+    word         *addr;         /* address of updated node */
+    word         info;          /* old info vector */
+    unsigned int ofs;           /* offset within node */
+    word         val;           /* saved value */
+\} SaveRec;
+
+\nwalsodefined{\\{NW48gkSr-4DSJry-2}\\{NW48gkSr-4DSJry-3}\\{NW48gkSr-4DSJry-4}\\{NW48gkSr-4DSJry-5}}\nwnotused{trail.h}\nwendcode{}\nwbegindocs{2}\nwdocspar
+The trail is implemented as a single array starting at the address
+{\Tt{}trail{\_}base\nwendquote} and ending at {\Tt{}trail{\_}end\nwendquote}. The register {\Tt{}tp\nwendquote}
+serves as an allocation pointer for the trail. Before adding a new
+entry to the trail it must checked that there is no trail
+overflow. This can be done with the {\Tt{}CHECK{\_}TRAIL\nwendquote} or
+{\Tt{}CHECK{\_}TRAIL1\nwendquote} macro.
+
+\nwenddocs{}\nwbegincode{3}\sublabel{NW48gkSr-4DSJry-2}\nwmargintag{{\nwtagstyle{}\subpageref{NW48gkSr-4DSJry-2}}}\moddef{trail.h~{\nwtagstyle{}\subpageref{NW48gkSr-4DSJry-1}}}\plusendmoddef\nwstartdeflinemarkup\nwprevnextdefs{NW48gkSr-4DSJry-1}{NW48gkSr-4DSJry-3}\nwenddeflinemarkup
+extern SaveRec *trail_base, *trail_end;
+extern SaveRec *tp;
+
+extern void trail_overflow(void) __attribute__ ((noreturn));
+
+#define CHECK_TRAIL1()  if ( tp == trail_end ) trail_overflow();
+#define CHECK_TRAIL(n)  if ( tp + n > trail_end ) trail_overflow();
+
+\nwendcode{}\nwbegindocs{4}\nwdocspar
+\nwenddocs{}\nwbegincode{5}\sublabel{NW48gkSr-2BZDgM-1}\nwmargintag{{\nwtagstyle{}\subpageref{NW48gkSr-2BZDgM-1}}}\moddef{trail.c~{\nwtagstyle{}\subpageref{NW48gkSr-2BZDgM-1}}}\endmoddef\nwstartdeflinemarkup\nwprevnextdefs{\relax}{NW48gkSr-2BZDgM-2}\nwenddeflinemarkup
+#include "config.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include "run.h"
+#include "heap.h"
+#include "trail.h"
+#include "main.h"
+
+SaveRec *tp;
+SaveRec *trail_base;
+SaveRec *trail_end;
+
+void
+trail_overflow()
+\{
+    fprintf(stderr, "Trail overflow, aborting ...\\n");
+    exit(2);
+\}
+
+\nwalsodefined{\\{NW48gkSr-2BZDgM-2}}\nwnotused{trail.c}\nwendcode{}\nwbegindocs{6}\nwdocspar
+The initialization function allocates a trail array with the specified
+size and initializes the trail pointer.
+
+\nwenddocs{}\nwbegincode{7}\sublabel{NW48gkSr-4DSJry-3}\nwmargintag{{\nwtagstyle{}\subpageref{NW48gkSr-4DSJry-3}}}\moddef{trail.h~{\nwtagstyle{}\subpageref{NW48gkSr-4DSJry-1}}}\plusendmoddef\nwstartdeflinemarkup\nwprevnextdefs{NW48gkSr-4DSJry-2}{NW48gkSr-4DSJry-4}\nwenddeflinemarkup
+extern void init_trail(unsigned int trail_size);
+
+\nwendcode{}\nwbegindocs{8}\nwdocspar
+\nwenddocs{}\nwbegincode{9}\sublabel{NW48gkSr-2BZDgM-2}\nwmargintag{{\nwtagstyle{}\subpageref{NW48gkSr-2BZDgM-2}}}\moddef{trail.c~{\nwtagstyle{}\subpageref{NW48gkSr-2BZDgM-1}}}\plusendmoddef\nwstartdeflinemarkup\nwprevnextdefs{NW48gkSr-2BZDgM-1}{\relax}\nwenddeflinemarkup
+void
+init_trail(unsigned int trail_size)
+\{
+    trail_size = (trail_size + pagemask) & ~pagemask;
+    trail_base = (SaveRec *)malloc(trail_size + pagemask);
+    if ( trail_base == (SaveRec *)0 )
+    \{
+        fprintf(stderr, "not enough memory to allocate trail\\n");
+        exit(1);
+    \}
+
+    trail_base = (SaveRec *)(((long)trail_base + pagemask) & ~pagemask);
+    trail_end = trail_base + trail_size / sizeof(SaveRec);
+    tp        = trail_base;
+\}
+
+\nwendcode{}\nwbegindocs{10}\nwdocspar
+When an updatable node is changed, the info-pointer and the changed
+field of the node have to be saved on the trail if the overwritten
+state of the node may be restored later. This is the case for all
+nodes which are not allocated in the current heap segment, i.e. before
+the current choicepoint or search context was pushed onto the
+stack. In addition, for fields that can be updated more than, like the
+wait-queue of a variable node, the old state need to be saved only
+once for each heap segment. As the compiler uses fresh values to
+overwrite the node in this case, we need not scan the trail to detect
+such multiple changes of the same field. Instead we can check the
+contents field that is going to be saved. If its current value points
+to a node in the current heap segment while the node itself is in
+another segment, the node has been overwritten and saved
+already. Thus, it is not necessary to save it again. The {\Tt{}SAVE\nwendquote}
+macro checks for both conditions and saves the info pointer and old
+value only when necessary. In contrast, the {\Tt{}DO{\_}SAVE\nwendquote} macro always
+saves its argument to the trail.
+
+\nwenddocs{}\nwbegincode{11}\sublabel{NW48gkSr-4DSJry-4}\nwmargintag{{\nwtagstyle{}\subpageref{NW48gkSr-4DSJry-4}}}\moddef{trail.h~{\nwtagstyle{}\subpageref{NW48gkSr-4DSJry-1}}}\plusendmoddef\nwstartdeflinemarkup\nwprevnextdefs{NW48gkSr-4DSJry-3}{NW48gkSr-4DSJry-5}\nwenddeflinemarkup
+#define INFO_OFS        ((word *)&((Node *)0)->info - (word *)0)
+
+#define DO_SAVE(v,f) do \{ \\
+    CHECK_TRAIL1(); \\
+    tp->addr = (word *)(v); \\
+    tp->info = tp->addr[INFO_OFS]; \\
+    tp->ofs  = (word *)&(v->f) - (word *)(v); \\
+    tp->val  = (word)(v->f); \\
+    tp++; \\
+\} while (0)
+#define SAVE(v,f) do \{ \\
+    if ( (word *)(v) < hlim && (word *)(v->f) < hlim ) \\
+        DO_SAVE(v,f); \\
+\} while (0)
+
+\nwendcode{}\nwbegindocs{12}\nwdocspar
+Upon backtracking, the values saved in the trail have to be
+restored. This can be done by decrementing the trail pointer and
+restoring the saved value from the trail entry until the old value of
+the trail pointer is reached. The {\Tt{}RESTORE\nwendquote} macro performs this
+task.
+
+\nwenddocs{}\nwbegincode{13}\sublabel{NW48gkSr-4DSJry-5}\nwmargintag{{\nwtagstyle{}\subpageref{NW48gkSr-4DSJry-5}}}\moddef{trail.h~{\nwtagstyle{}\subpageref{NW48gkSr-4DSJry-1}}}\plusendmoddef\nwstartdeflinemarkup\nwprevnextdefs{NW48gkSr-4DSJry-4}{\relax}\nwenddeflinemarkup
+#define RESTORE(oldTp) do \{ \\
+    while ( tp > oldTp ) \{ \\
+        --tp; \\
+        tp->addr[INFO_OFS] = tp->info; \\
+        tp->addr[tp->ofs]  = tp->val; \\
+    \} \\
+\} while (0)
+\nwendcode{}
+
+\nwixlogsorted{c}{{trail.c}{NW48gkSr-2BZDgM-1}{\nwixd{NW48gkSr-2BZDgM-1}\nwixd{NW48gkSr-2BZDgM-2}}}%
+\nwixlogsorted{c}{{trail.h}{NW48gkSr-4DSJry-1}{\nwixd{NW48gkSr-4DSJry-1}\nwixd{NW48gkSr-4DSJry-2}\nwixd{NW48gkSr-4DSJry-3}\nwixd{NW48gkSr-4DSJry-4}\nwixd{NW48gkSr-4DSJry-5}}}%
+

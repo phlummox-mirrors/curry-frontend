@@ -1,0 +1,25 @@
+__interface "Main" Subst 1 500 where
+__export  Subst IntSubst{isubst ivar} Subst{Subst} bindSubst compose idSubst isubstVar restrictSubstTo substToList substVarzq unbindSubst;
+import PrelConc;
+import List;
+import PrelBase ! :: 1;
+import PrelNum :: 1;
+import PrelTup :: 1;
+import PrelShow :: 1;
+import PrelList :: 1;
+import Map :: 1 1 1 FM 1 addToFM 1 deleteFromFM 1 lookupFM 1 toListFM 1 zdfEqFM 1 zdfShowFM 1 zzeroFM 1;
+import Utils :: 1 1 1;
+import PrelMaybe :: 1;
+;
+instance __forall a b (PrelBase.Ord a, PrelShow.Show a, PrelShow.Show b) => {PrelShow.Show (Subst a b)} = zdfShowSubst ;
+isubstVar :: __forall e (IntSubst e) => Subst PrelBase.Int e -> PrelBase.Int -> e;
+restrictSubstTo :: __forall v e (PrelBase.Ord v) => [v] -> Subst v e -> Subst v e;
+substVarzq :: __forall v e (PrelBase.Ord v) => (v -> e) -> (Subst v e -> e -> e) -> Subst v e -> v -> e;
+compose :: __forall v e (PrelShow.Show v, PrelBase.Ord v, PrelShow.Show e) => Subst v e -> Subst v e -> Subst v e;
+unbindSubst :: __forall v e (PrelBase.Ord v) => v -> Subst v e -> Subst v e;
+bindSubst :: __forall v e (PrelBase.Ord v) => v -> e -> Subst v e -> Subst v e;
+substToList :: __forall v e (PrelBase.Ord v) => Subst v e -> [(v, e)];
+idSubst :: __forall a b (PrelBase.Ord a) => Subst a b;
+data Subst a b = Subst PrelBase.Bool (Map.FM a b);
+class IntSubst e where { ivar :: PrelBase.Int -> e; isubst :: Subst PrelBase.Int e -> e -> e; };
+zdfShowSubst :: __forall a b (PrelBase.Ord a, PrelShow.Show a, PrelShow.Show b) => {PrelShow.Show (Subst a b)};

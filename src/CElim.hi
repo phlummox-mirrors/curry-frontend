@@ -1,0 +1,16 @@
+__interface "Main" CElim 1 500 where
+__export  CElim elimUnused;
+import PrelNum;
+import PrelShow;
+import Maybe;
+import List;
+import PrelBase ! :: 1;
+import PrelFloat :: 1;
+import PrelTup :: 1;
+import PrelList :: 1;
+import CCode :: 1 1 1 CBlock 1 CCase 1 CExpr 1 CInitializzer 1 CStmt 1 LVar 1 zdfEqCCase 1 zdfEqCExpr 1 zdfEqCInitializzer 1 zdfEqCStmt 1 zdfEqLVar 1;
+import Set :: 1 1 1 Set 1 addToSet 1 deleteFromSet 1 elemSet 1 unionSet 1 zdfEqSet 1 zzeroSet 1;
+import PrelMaybe :: 1;
+import Map :: 1 1 FM 1;
+;
+elimUnused :: [CCode.CStmt] -> [CCode.CStmt];

@@ -1,0 +1,25 @@
+\nwfilename{debug.nw}\nwbegindocs{0}% -*- noweb-code-mode: c-mode -*-% ===> this file was generated automatically by noweave --- better not edit it
+% $Id: debug.nw,v 2.1 2002/12/01 10:32:25 lux Exp $
+%
+% Copyright (c) 2002, Wolfgang Lux
+% See ../LICENSE for the full license.
+%
+\subsection{Debugging}
+When the pre-processor symbol {\Tt{}DEBUG\nwendquote} is turned on, the code will
+include a few assertions. Otherwise these assertions are ignored.
+
+\nwenddocs{}\nwbegincode{1}\sublabel{NW2YhG2A-2Jof4O-1}\nwmargintag{{\nwtagstyle{}\subpageref{NW2YhG2A-2Jof4O-1}}}\moddef{debug.h~{\nwtagstyle{}\subpageref{NW2YhG2A-2Jof4O-1}}}\endmoddef\nwstartdeflinemarkup\nwenddeflinemarkup
+#ifdef DEBUG
+# ifdef NDEBUG
+#  undef NDEBUG
+# endif
+
+# include <assert.h>
+# define ASSERT(e) assert(e)
+#else
+# define ASSERT(e)
+#endif
+\nwnotused{debug.h}\nwendcode{}
+
+\nwixlogsorted{c}{{debug.h}{NW2YhG2A-2Jof4O-1}{\nwixd{NW2YhG2A-2Jof4O-1}}}%
+

@@ -1,0 +1,8 @@
+#!/bin/sh
+#
+# Shell script for removing all curry interfaces and
+# flat xml files
+
+rm -f *.icurry
+rm -f *.flat
+

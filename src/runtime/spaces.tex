@@ -1,0 +1,701 @@
+\nwfilename{spaces.nw}\nwbegindocs{0}% -*- noweb-code-mode: c-mode -*-% ===> this file was generated automatically by noweave --- better not edit it
+% $Id: spaces.nw,v 1.5 2003/06/10 20:12:15 wlux Exp $
+%
+% Copyright (c) 2003, Wolfgang Lux
+% See ../LICENSE for the full license.
+%
+\subsection{Managing search spaces}
+The runtime system uses an extended trailing scheme to manage multiple
+bindings for variables and shared applications in an encapsulated
+search. A search space is associated with each node in the search tree
+of the goal that is evaluated in the encapsulated search. In each
+search space the machine saves the current bindings of the local
+variables and shared applications when the encapsulated search
+returns. The current search space is maintained in the global variable
+{\Tt{}ss\nwendquote}.
+
+\nwenddocs{}\nwbegincode{1}\sublabel{NW2WyO2R-JK3Oe-1}\nwmargintag{{\nwtagstyle{}\subpageref{NW2WyO2R-JK3Oe-1}}}\moddef{spaces.h~{\nwtagstyle{}\subpageref{NW2WyO2R-JK3Oe-1}}}\endmoddef\nwstartdeflinemarkup\nwprevnextdefs{\relax}{NW2WyO2R-JK3Oe-2}\nwenddeflinemarkup
+#if 0
+typedef struct search_space SearchSpace; /* already declared in heap.h */
+#endif
+typedef struct script Script;
+
+struct search_space \{
+    NodeInfo    *info;
+    SearchSpace *root;          /* pointer to root space */
+    SearchSpace *parent;        /* parent space */
+    SearchSpace *active;        /* active space (valid only on root) */
+    Script      *script;        /* saved local bindings */
+\};
+
+extern struct search_space *ss;
+
+\nwalsodefined{\\{NW2WyO2R-JK3Oe-2}\\{NW2WyO2R-JK3Oe-3}\\{NW2WyO2R-JK3Oe-4}\\{NW2WyO2R-JK3Oe-5}\\{NW2WyO2R-JK3Oe-6}\\{NW2WyO2R-JK3Oe-7}\\{NW2WyO2R-JK3Oe-8}\\{NW2WyO2R-JK3Oe-9}}\nwnotused{spaces.h}\nwendcode{}\nwbegindocs{2}\nwdocspar
+\nwenddocs{}\nwbegincode{3}\sublabel{NW2WyO2R-2LUkiK-1}\nwmargintag{{\nwtagstyle{}\subpageref{NW2WyO2R-2LUkiK-1}}}\moddef{spaces.c~{\nwtagstyle{}\subpageref{NW2WyO2R-2LUkiK-1}}}\endmoddef\nwstartdeflinemarkup\nwprevnextdefs{\relax}{NW2WyO2R-2LUkiK-2}\nwenddeflinemarkup
+#include "config.h"
+#include "debug.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <setjmp.h>
+#include "run.h"
+#include "heap.h"
+#include "stack.h"
+#include "threads.h"
+#include "spaces.h"
+#include "trail.h"
+#include "eval.h"
+#include "vars.h"
+
+static void switch_bindings(SearchSpace *space);
+static void finalize_search_space(Node *);
+static Node *copy_node(Node *node, SearchSpace *space);
+
+static NodeInfo search_space_info = \{
+    0, wordsof(struct search_space), (const int *)0, (Label)no_eval, (const char *)0,
+    finalize_search_space
+\};
+
+struct search_space *ss;
+
+\nwalsodefined{\\{NW2WyO2R-2LUkiK-2}\\{NW2WyO2R-2LUkiK-3}\\{NW2WyO2R-2LUkiK-4}\\{NW2WyO2R-2LUkiK-5}\\{NW2WyO2R-2LUkiK-6}\\{NW2WyO2R-2LUkiK-7}\\{NW2WyO2R-2LUkiK-8}\\{NW2WyO2R-2LUkiK-9}\\{NW2WyO2R-2LUkiK-A}\\{NW2WyO2R-2LUkiK-B}\\{NW2WyO2R-2LUkiK-C}\\{NW2WyO2R-2LUkiK-D}\\{NW2WyO2R-2LUkiK-E}}\nwnotused{spaces.c}\nwendcode{}\nwbegindocs{4}\nwdocspar
+Each variable and shared application is tagged with the search space
+in which it was created. A variable is local when its search space and
+the current search space have them same root.
+
+\nwenddocs{}\nwbegincode{5}\sublabel{NW2WyO2R-JK3Oe-2}\nwmargintag{{\nwtagstyle{}\subpageref{NW2WyO2R-JK3Oe-2}}}\moddef{spaces.h~{\nwtagstyle{}\subpageref{NW2WyO2R-JK3Oe-1}}}\plusendmoddef\nwstartdeflinemarkup\nwprevnextdefs{NW2WyO2R-JK3Oe-1}{NW2WyO2R-JK3Oe-3}\nwenddeflinemarkup
+#define is_local_space(space) ( \\
+    ss == (SearchSpace *)0 \\
+    ? (space) == (SearchSpace *)0 \\
+    : (space) != (SearchSpace *)0 && (space)->root == ss->root \\
+)
+
+\nwendcode{}\nwbegindocs{6}\nwdocspar
+As the bindings in a search space effect only local variables and
+applications it is possible to switch bindings lazily when a new
+search space is entered. Using the tree structure of search spaces it
+is possible to undo and redo only those updates between the closest
+common ancestor of the current and the new active search space.
+
+\nwenddocs{}\nwbegincode{7}\sublabel{NW2WyO2R-JK3Oe-3}\nwmargintag{{\nwtagstyle{}\subpageref{NW2WyO2R-JK3Oe-3}}}\moddef{spaces.h~{\nwtagstyle{}\subpageref{NW2WyO2R-JK3Oe-1}}}\plusendmoddef\nwstartdeflinemarkup\nwprevnextdefs{NW2WyO2R-JK3Oe-2}{NW2WyO2R-JK3Oe-4}\nwenddeflinemarkup
+typedef struct script_rec \{
+    word         *addr;         /* address to be updated */
+    word         inInfo;        /* info vector inside space */
+    word         outInfo;       /* info vector outside space */
+    unsigned int ofs;           /* offset within node */
+    word         inVal;         /* value inside space */
+    word         outVal;        /* value outside space */
+\} ScriptRec;
+
+struct script \{
+    NodeInfo  *info;
+    unsigned  length;
+    ScriptRec data[1];
+\};
+
+\nwendcode{}\nwbegindocs{8}\nwdocspar
+\nwenddocs{}\nwbegincode{9}\sublabel{NW2WyO2R-2LUkiK-2}\nwmargintag{{\nwtagstyle{}\subpageref{NW2WyO2R-2LUkiK-2}}}\moddef{spaces.c~{\nwtagstyle{}\subpageref{NW2WyO2R-2LUkiK-1}}}\plusendmoddef\nwstartdeflinemarkup\nwprevnextdefs{NW2WyO2R-2LUkiK-1}{NW2WyO2R-2LUkiK-3}\nwenddeflinemarkup
+static const int ot_script[] = \{
+    -wordsof(ScriptRec), 3,
+    word_offsetof(ScriptRec, addr),
+    word_offsetof(ScriptRec, inVal),
+    word_offsetof(ScriptRec, outVal)
+\};
+static NodeInfo script_info = \{
+    SCRIPT_TAG, 0, ot_script, (Label)no_eval, (const char *)0, (FinalFun)0
+\};
+
+\nwendcode{}\nwbegindocs{10}\nwdocspar
+When we switch the bindings between two search spaces of the same
+goal, we only need to undo the bindings of all search spaces up to the
+closest common ancestor of the active space and the space which is
+going to be activated. In order to find this search space, we first
+mark all search spaces along the path from the new space down to the
+root of the tree. Next, we process all search spaces along the path
+from the current active space until reaching a marked search space
+which must be the closest common ancestor and undo the bindings of all
+spaces traversed. Finally, we reset the marks along the path from the
+root space to the new active space and restore the bindings of all
+search spaces starting from the closest common ancestor up to the new
+space.
+
+During the first marking phase we also reverse the parent pointers of
+all spaces so that the last phase can traverse the path in the correct
+direction without recursion. In order to mark a search space, we simply
+set the least significant bit of the reversed parent pointer.
+
+\nwenddocs{}\nwbegincode{11}\sublabel{NW2WyO2R-2LUkiK-3}\nwmargintag{{\nwtagstyle{}\subpageref{NW2WyO2R-2LUkiK-3}}}\moddef{spaces.c~{\nwtagstyle{}\subpageref{NW2WyO2R-2LUkiK-1}}}\plusendmoddef\nwstartdeflinemarkup\nwprevnextdefs{NW2WyO2R-2LUkiK-2}{NW2WyO2R-2LUkiK-4}\nwenddeflinemarkup
+static void
+switch_bindings(SearchSpace *space)
+\{
+    unsigned int n;
+    ScriptRec    *script;
+    SearchSpace  *root, *common, *child, *parent;
+
+    root = space->root;
+
+    /* Return if the space is already active */
+    if ( root->active == space )
+        return;
+
+    /* Phase 1: mark everything upto the root and reverse parent pointers */
+    child = (SearchSpace *)0;
+    while ( space != (SearchSpace *)0 )
+    \{
+        parent        = space->parent;
+        space->parent = (SearchSpace *)((long)child | 0x01);
+        child         = space;
+        space         = parent; 
+    \}
+
+    /* Phase 2: undo bindings up to closest common ancestor */
+    space = root->active;
+    while ( !((long)space->parent & 0x01) )
+    \{
+        if ( space->script != (Script *)0 )
+        \{
+            n      = vector_argc(space->script) / wordsof(ScriptRec);
+            script = space->script->data + n;
+            while ( n-- > 0 )
+            \{
+                --script;
+                ASSERT(heap_base <= script->addr && script->addr < heap_end);
+                script->addr[INFO_OFS]    = script->outInfo;
+                script->addr[script->ofs] = script->outVal;
+            \}
+        \}
+        space = space->parent;
+    \}
+
+    /* Phase 3: unmark everything and activate bindings of new space */
+    common = space;
+    parent = (SearchSpace *)0;
+    space  = root;
+    while ( space != (SearchSpace *)0 )
+    \{
+        child         = (SearchSpace *)((long)space->parent & ~0x01);
+        space->parent = parent;
+        if ( space == common )
+            common = (SearchSpace *)0;
+        else if ( common == (SearchSpace *)0 )
+            if ( space->script != (Script *)0 )
+            \{
+                n = vector_argc(space->script) / wordsof(ScriptRec);
+                script = space->script->data;
+                for ( ; n-- > 0; script++ )
+                \{
+                    ASSERT(heap_base <= script->addr
+                           && script->addr < heap_end);
+                    script->addr[INFO_OFS]    = script->inInfo;
+                    script->addr[script->ofs] = script->inVal;
+                \}
+            \}
+        parent        = space;
+        space         = child;
+    \}
+
+    /* The new space is now active */
+    root->active = parent;
+\}
+
+\nwendcode{}\nwbegindocs{12}\nwdocspar
+We have to be a little bit careful with the lazy update strategy in
+conjunction with the immediate release upon failure policy employed by
+the runtime system. If a search goal is evaluated inside another
+encapsulated search or within the global search, failure of the outer
+search may leave dangling pointers in the heap because the currently
+active search space may have become garbage. In this case we have to
+undo all bindings of the active search space and all its parents that
+have become garbage as well. For this reason, search spaces are
+finalized objects. The finalization function is applied only to active
+search spaces; in addition the bindings need to be undone only if the
+root space is still live. In particular this means that the
+finalization function does not have to perform any action during a
+normal garbage collection as the active space can become garbage only
+if the root space is garbage as well.
+
+\nwenddocs{}\nwbegincode{13}\sublabel{NW2WyO2R-2LUkiK-4}\nwmargintag{{\nwtagstyle{}\subpageref{NW2WyO2R-2LUkiK-4}}}\moddef{spaces.c~{\nwtagstyle{}\subpageref{NW2WyO2R-2LUkiK-1}}}\plusendmoddef\nwstartdeflinemarkup\nwprevnextdefs{NW2WyO2R-2LUkiK-3}{NW2WyO2R-2LUkiK-5}\nwenddeflinemarkup
+static void
+finalize_search_space(Node *node)
+\{
+    unsigned    n;
+    ScriptRec   *script;
+    SearchSpace *space = (SearchSpace *)node;
+
+    /* do nothing during "normal" gc or when root is dead */
+    if ( !in_gc && (word *)space->root < hlim && space->root->active == space )
+    \{
+        for ( ; (word *)space >= hlim; space = space->parent )
+            if ( space->script != (Script *)0 )
+            \{
+                n = vector_argc(space->script) / wordsof(ScriptRec);
+                script = space->script->data + n;
+                while ( n-- > 0 )
+                \{
+                    --script;
+                    ASSERT(heap_base <= script->addr
+                           && script->addr < heap_end);
+                    script->addr[INFO_OFS]    = script->outInfo;
+                    script->addr[script->ofs] = script->outVal;
+                \}
+            \}
+        space->root->active = space;
+    \}
+\}
+
+\nwendcode{}\nwbegindocs{14}\nwdocspar
+The function {\Tt{}new{\_}search{\_}space\nwendquote} creates a new root search space. If
+an existing space is passed to {\Tt{}new{\_}search{\_}space\nwendquote}, the new space
+becomes a child of that space and its bindings are activated.
+
+\nwenddocs{}\nwbegincode{15}\sublabel{NW2WyO2R-JK3Oe-4}\nwmargintag{{\nwtagstyle{}\subpageref{NW2WyO2R-JK3Oe-4}}}\moddef{spaces.h~{\nwtagstyle{}\subpageref{NW2WyO2R-JK3Oe-1}}}\plusendmoddef\nwstartdeflinemarkup\nwprevnextdefs{NW2WyO2R-JK3Oe-3}{NW2WyO2R-JK3Oe-5}\nwenddeflinemarkup
+extern void new_search_space(SearchSpace *);
+
+\nwendcode{}\nwbegindocs{16}\nwdocspar
+\nwenddocs{}\nwbegincode{17}\sublabel{NW2WyO2R-2LUkiK-5}\nwmargintag{{\nwtagstyle{}\subpageref{NW2WyO2R-2LUkiK-5}}}\moddef{spaces.c~{\nwtagstyle{}\subpageref{NW2WyO2R-2LUkiK-1}}}\plusendmoddef\nwstartdeflinemarkup\nwprevnextdefs{NW2WyO2R-2LUkiK-4}{NW2WyO2R-2LUkiK-6}\nwenddeflinemarkup
+void
+new_search_space(SearchSpace *parentSpace)
+\{
+    SearchSpace *newSpace;
+    ADD_LOCAL_ROOTS1((Node *)parentSpace);
+#define parentSpace ((SearchSpace *)LOCAL_ROOT[0])
+
+    /* activate the parent's bindings */
+    if ( parentSpace != (SearchSpace *)0 )
+        switch_bindings(parentSpace);
+
+    /* allocate the new search space */
+    CHECK_HEAP(wordsof(SearchSpace));
+    ss = newSpace    = (SearchSpace *)hp;
+    newSpace->info   = &search_space_info;
+    newSpace->root   =
+        parentSpace == (SearchSpace *)0 ? newSpace : parentSpace->root;
+    newSpace->parent = parentSpace;
+    newSpace->active = (SearchSpace *)0;
+    newSpace->script = (Script *)0;
+    hp              += wordsof(SearchSpace);
+    register_final((Node *)newSpace);
+
+#undef parentSpace
+    DROP_LOCAL_ROOTS();
+\}
+
+\nwendcode{}\nwbegindocs{18}\nwdocspar
+The function {\Tt{}inject{\_}search{\_}space\nwendquote} tries to inject the bindings of a
+space into the current search space. This is possible only if the
+current space is a root space. Otherwise the graph of the search
+continuation must be copied into the current space.
+
+\nwenddocs{}\nwbegincode{19}\sublabel{NW2WyO2R-JK3Oe-5}\nwmargintag{{\nwtagstyle{}\subpageref{NW2WyO2R-JK3Oe-5}}}\moddef{spaces.h~{\nwtagstyle{}\subpageref{NW2WyO2R-JK3Oe-1}}}\plusendmoddef\nwstartdeflinemarkup\nwprevnextdefs{NW2WyO2R-JK3Oe-4}{NW2WyO2R-JK3Oe-6}\nwenddeflinemarkup
+extern boolean inject_search_space(SearchSpace *);
+
+\nwendcode{}\nwbegindocs{20}\nwdocspar
+\nwenddocs{}\nwbegincode{21}\sublabel{NW2WyO2R-2LUkiK-6}\nwmargintag{{\nwtagstyle{}\subpageref{NW2WyO2R-2LUkiK-6}}}\moddef{spaces.c~{\nwtagstyle{}\subpageref{NW2WyO2R-2LUkiK-1}}}\plusendmoddef\nwstartdeflinemarkup\nwprevnextdefs{NW2WyO2R-2LUkiK-5}{NW2WyO2R-2LUkiK-7}\nwenddeflinemarkup
+boolean
+inject_search_space(SearchSpace *space)
+\{
+    /* fail if current space is not a root space */
+    if ( ss == (SearchSpace *)0 || ss->parent != (SearchSpace *)0 )
+        return false;
+
+    /* otherwise re-parent the current space */
+    ss->root   = space->root;
+    ss->parent = space;
+
+    /* activate the parent's bindings and succeed */
+    switch_bindings(space);
+    return true;
+\}
+
+\nwendcode{}\nwbegindocs{22}\nwdocspar
+The function {\Tt{}save{\_}search{\_}space\nwendquote} fixes the current search space.
+
+\nwenddocs{}\nwbegincode{23}\sublabel{NW2WyO2R-JK3Oe-6}\nwmargintag{{\nwtagstyle{}\subpageref{NW2WyO2R-JK3Oe-6}}}\moddef{spaces.h~{\nwtagstyle{}\subpageref{NW2WyO2R-JK3Oe-1}}}\plusendmoddef\nwstartdeflinemarkup\nwprevnextdefs{NW2WyO2R-JK3Oe-5}{NW2WyO2R-JK3Oe-7}\nwenddeflinemarkup
+extern void save_search_space(void);
+
+\nwendcode{}\nwbegindocs{24}\nwdocspar
+\nwenddocs{}\nwbegincode{25}\sublabel{NW2WyO2R-2LUkiK-7}\nwmargintag{{\nwtagstyle{}\subpageref{NW2WyO2R-2LUkiK-7}}}\moddef{spaces.c~{\nwtagstyle{}\subpageref{NW2WyO2R-2LUkiK-1}}}\plusendmoddef\nwstartdeflinemarkup\nwprevnextdefs{NW2WyO2R-2LUkiK-6}{NW2WyO2R-2LUkiK-8}\nwenddeflinemarkup
+void
+save_search_space()
+\{
+    unsigned int n;
+    SaveRec      *trail;
+    ScriptRec    *script;
+
+    ASSERT(ss != (SearchSpace *)0);
+
+    /* save the current trail segment into the search space */
+    n = tp - bp->btTp;
+    if ( n > 0 )
+    \{
+        CHECK_HEAP(vector_node_size(n * wordsof(ScriptRec)));
+
+        /* initialize the script */
+        ss->script         = (Script *)hp;
+        ss->script->info   = &script_info;
+        ss->script->length = vector_node_size(n * wordsof(ScriptRec));
+        hp                += vector_node_size(n * wordsof(ScriptRec));
+
+        script = ss->script->data + n;
+        trail  = tp;
+        while ( n-- > 0 )
+        \{
+            trail--;
+            script--;
+            script->addr    = trail->addr;
+            script->inInfo  = trail->addr[INFO_OFS];
+            script->outInfo = trail->info;
+            script->ofs     = trail->ofs;
+            script->inVal   = trail->addr[trail->ofs];
+            script->outVal  = trail->val;
+        \}
+    \}
+
+    /* this search space is now active */
+    ss->root->active = ss;
+\}
+
+\nwendcode{}\nwbegindocs{26}\nwdocspar
+The function {\Tt{}discard{\_}search{\_}space\nwendquote} discards the current space
+releasing all memory allocated in the space.
+
+\nwenddocs{}\nwbegincode{27}\sublabel{NW2WyO2R-JK3Oe-7}\nwmargintag{{\nwtagstyle{}\subpageref{NW2WyO2R-JK3Oe-7}}}\moddef{spaces.h~{\nwtagstyle{}\subpageref{NW2WyO2R-JK3Oe-1}}}\plusendmoddef\nwstartdeflinemarkup\nwprevnextdefs{NW2WyO2R-JK3Oe-6}{NW2WyO2R-JK3Oe-8}\nwenddeflinemarkup
+extern void discard_search_space(void);
+
+\nwendcode{}\nwbegindocs{28}\nwdocspar
+\nwenddocs{}\nwbegincode{29}\sublabel{NW2WyO2R-2LUkiK-8}\nwmargintag{{\nwtagstyle{}\subpageref{NW2WyO2R-2LUkiK-8}}}\moddef{spaces.c~{\nwtagstyle{}\subpageref{NW2WyO2R-2LUkiK-1}}}\plusendmoddef\nwstartdeflinemarkup\nwprevnextdefs{NW2WyO2R-2LUkiK-7}{NW2WyO2R-2LUkiK-9}\nwenddeflinemarkup
+void
+discard_search_space()
+\{
+    /* undo the bindings of the current space */
+    RESTORE(bp->btTp);
+
+    /* release the memory allocated in the current space */
+    release_names(bp->btDict);
+    release_mem();
+\}
+
+\nwendcode{}\nwbegindocs{30}\nwdocspar
+The functions {\Tt{}resume{\_}search{\_}space\nwendquote} restores a search space.
+
+\nwenddocs{}\nwbegincode{31}\sublabel{NW2WyO2R-JK3Oe-8}\nwmargintag{{\nwtagstyle{}\subpageref{NW2WyO2R-JK3Oe-8}}}\moddef{spaces.h~{\nwtagstyle{}\subpageref{NW2WyO2R-JK3Oe-1}}}\plusendmoddef\nwstartdeflinemarkup\nwprevnextdefs{NW2WyO2R-JK3Oe-7}{NW2WyO2R-JK3Oe-9}\nwenddeflinemarkup
+extern void resume_search_space(SearchSpace *space);
+
+\nwendcode{}\nwbegindocs{32}\nwdocspar
+\nwenddocs{}\nwbegincode{33}\sublabel{NW2WyO2R-2LUkiK-9}\nwmargintag{{\nwtagstyle{}\subpageref{NW2WyO2R-2LUkiK-9}}}\moddef{spaces.c~{\nwtagstyle{}\subpageref{NW2WyO2R-2LUkiK-1}}}\plusendmoddef\nwstartdeflinemarkup\nwprevnextdefs{NW2WyO2R-2LUkiK-8}{NW2WyO2R-2LUkiK-A}\nwenddeflinemarkup
+void
+resume_search_space(SearchSpace *space)
+\{
+    unsigned int i, n;
+    ScriptRec    *script;
+
+    ASSERT(space != (SearchSpace *)0);
+
+    /* change the current search space and activate its bindings */
+    ss = space;
+    switch_bindings(ss);
+
+    /* restore the trail */
+    if ( ss->script != (Script *)0 )
+    \{
+        n = vector_argc(ss->script) / wordsof(ScriptRec);
+        CHECK_TRAIL(n);
+
+        script     = ss->script->data;
+        ss->script = (Script *)0;
+        for ( i = 0; i < n; i++ )
+        \{
+            tp->addr = script->addr;
+            tp->info = script->outInfo;
+            tp->ofs  = script->ofs;
+            tp->val  = script->outVal;
+            tp++;
+            script++;
+        \}
+    \}
+\}
+
+\nwendcode{}\nwbegindocs{34}\nwdocspar
+Because every search space has at most one parent we cannot restore a
+search continuation into a non-root search space. Instead, we have to
+copy the graph corresponding to the search continuation in this
+case. Copying is implemented by the function {\Tt{}copy{\_}graph\nwendquote} and is
+also used to copy the solution of a solved goal into the current
+search space.
+
+\nwenddocs{}\nwbegincode{35}\sublabel{NW2WyO2R-JK3Oe-9}\nwmargintag{{\nwtagstyle{}\subpageref{NW2WyO2R-JK3Oe-9}}}\moddef{spaces.h~{\nwtagstyle{}\subpageref{NW2WyO2R-JK3Oe-1}}}\plusendmoddef\nwstartdeflinemarkup\nwprevnextdefs{NW2WyO2R-JK3Oe-8}{\relax}\nwenddeflinemarkup
+extern Node *copy_graph(Node *graph, SearchSpace *space);
+
+\nwendcode{}\nwbegindocs{36}\nwdocspar
+A graph is copied with an algorithm similar to that of a two-space
+copying garbage collection. The algorithm uses two pointers into the
+free space above the current allocation pointer {\Tt{}hp\nwendquote}. The pointer
+{\Tt{}alloc\nwendquote} is a temporary allocation pointer, while {\Tt{}scan\nwendquote} processes
+the copied nodes that have been copied already but whose arguments
+still need to be copied. Whenever a node is copied, its info pointer
+is replaced by a forwarding pointer to the new node. In contrast to a
+copying garbage collector we need to restore the old info pointer
+after copying has finished, however. Therefore, we have to record the
+addresses of all copied nodes. Note that we do not need to save the
+info pointers as they can be recovered from the copy of the nodes. We
+use our own trail pointer pointer {\Tt{}ntp\nwendquote} to save these addresses at
+the end of the heap.
+
+Some special care has to be taken when we run out of memory while
+copying a graph, i.e., when {\Tt{}alloc\nwendquote} reaches {\Tt{}ntp\nwendquote}. The garbage
+collectors would have to be extended to handle the forwarding pointers
+and also ensure that the partially copied graph remains at the top of
+the heap. We choose a simpler solution and restart the copying process
+after the garbage collection. Note that this is computationally not
+more expensive than an extended garbage collection which also needs to
+traverse the part of the graph already copied in order to update the
+pointers.
+
+If we run out of memory for a second time in {\Tt{}copy{\_}graph\nwendquote}, the
+program is aborted as a further garbage collection cannot recover
+additional space.
+
+\nwenddocs{}\nwbegincode{37}\sublabel{NW2WyO2R-2LUkiK-A}\nwmargintag{{\nwtagstyle{}\subpageref{NW2WyO2R-2LUkiK-A}}}\moddef{spaces.c~{\nwtagstyle{}\subpageref{NW2WyO2R-2LUkiK-1}}}\plusendmoddef\nwstartdeflinemarkup\nwprevnextdefs{NW2WyO2R-2LUkiK-9}{NW2WyO2R-2LUkiK-B}\nwenddeflinemarkup
+static Node **alloc;                    /* temp. allocation pointer */
+static Node **ntp;                      /* used for saving updated node */
+
+\nwendcode{}\nwbegindocs{38}\nwdocspar
+We use the least significant bit in the info pointer of a node to mark
+forwarding pointers.
+
+\nwenddocs{}\nwbegincode{39}\sublabel{NW2WyO2R-2LUkiK-B}\nwmargintag{{\nwtagstyle{}\subpageref{NW2WyO2R-2LUkiK-B}}}\moddef{spaces.c~{\nwtagstyle{}\subpageref{NW2WyO2R-2LUkiK-1}}}\plusendmoddef\nwstartdeflinemarkup\nwprevnextdefs{NW2WyO2R-2LUkiK-A}{NW2WyO2R-2LUkiK-C}\nwenddeflinemarkup
+#define FORWARD_FLAG            0x01
+#define is_forwarded(node)      ((int)(node)->info & FORWARD_FLAG)
+#define forward(node,new)       ((node)->info = (NodeInfo *)((int)(new) | FORWARD_FLAG))
+#define get_forward(node)       ((Node *)((int)(node)->info & ~FORWARD_FLAG))
+
+\nwendcode{}\nwbegindocs{40}\nwdocspar
+In order to request a garbage collection while copying a graph, a
+{\Tt{}longjmp\nwendquote} to {\Tt{}restart{\_}copy\nwendquote} must be executed.
+
+\nwenddocs{}\nwbegincode{41}\sublabel{NW2WyO2R-2LUkiK-C}\nwmargintag{{\nwtagstyle{}\subpageref{NW2WyO2R-2LUkiK-C}}}\moddef{spaces.c~{\nwtagstyle{}\subpageref{NW2WyO2R-2LUkiK-1}}}\plusendmoddef\nwstartdeflinemarkup\nwprevnextdefs{NW2WyO2R-2LUkiK-B}{NW2WyO2R-2LUkiK-D}\nwenddeflinemarkup
+static jmp_buf restart_copy;
+
+\nwendcode{}\nwbegindocs{42}\nwdocspar
+The function {\Tt{}copy{\_}node\nwendquote} copies a single node from the graph. It
+returns the original node if the node is allocated outside of the heap
+as well as for non-local variables and shared applications. Otherwise,
+the node is copied to the top of the heap and a forwarding pointer is
+left in the old node.
+
+\nwenddocs{}\nwbegincode{43}\sublabel{NW2WyO2R-2LUkiK-D}\nwmargintag{{\nwtagstyle{}\subpageref{NW2WyO2R-2LUkiK-D}}}\moddef{spaces.c~{\nwtagstyle{}\subpageref{NW2WyO2R-2LUkiK-1}}}\plusendmoddef\nwstartdeflinemarkup\nwprevnextdefs{NW2WyO2R-2LUkiK-C}{NW2WyO2R-2LUkiK-E}\nwenddeflinemarkup
+static Node *
+copy_node(Node *node, SearchSpace *space)
+\{
+    boolean      do_copy;
+    unsigned int sz;
+
+    while ( is_boxed(node) && node >= (Node *)heap_base && node < (Node *)hp )
+    \{
+        /* check for a node that is already forwarded */
+        if ( is_forwarded(node) )
+            node = get_forward(node);
+
+        /* check whether we can/must share the node */
+        else
+        \{
+            switch ( node_tag(node) )
+            \{
+            case CHAR_TAG:
+            case INT_TAG:
+            case FLOAT_TAG:
+                do_copy = false;
+                break;
+
+            case INDIR_TAG:
+                node = node->n.node;
+                continue;
+
+            case VARIABLE_TAG:
+                do_copy = node->v.spc != (SearchSpace *)0
+                    && node->v.spc->root == space->root;
+                break;
+            case SUSPEND_TAG:
+                do_copy = node->s.spc != (SearchSpace *)0
+                    && node->s.spc->root == space->root;
+                break;
+            case QUEUEME_TAG:
+                do_copy = node->q.spc != (SearchSpace *)0
+                    && node->q.spc->root == space->root;
+                break;
+
+            case SEARCH_CONT_TAG:
+                do_copy = node->sc.spc == space;
+                break;
+
+            default:
+                do_copy = !is_abstract_node(node);
+                break;
+            \}
+
+            if ( do_copy )
+            \{
+                /* the node has to be copied check if space is available */
+                sz = node_size(node);
+                if ( sz == 0 )
+                    sz = node->a.length;
+                if ( alloc + sz + 1 >= ntp )
+                    longjmp(restart_copy, sz + 1);
+
+                /* copy the node to the new location and leave a forwarding
+                 * pointer in the original node */
+                memcpy(alloc, node, sz * word_size);
+                *--ntp = node;
+                forward(node, alloc);
+                node   = (Node *)alloc;
+                alloc += sz;
+            \}
+        \}
+        break;
+    \}
+
+    /* return the new address */
+    return node;
+\}
+
+\nwendcode{}\nwbegindocs{44}\nwdocspar
+{\Tt{}copy{\_}graph\nwendquote} implements the main loop of the algorithm. After
+activating the bindings of the source space and copying the root node
+of the graph, the function scans the copied nodes and recursively
+copies their arguments. Finally, the info pointers of the copied nodes
+are restored.
+
+\nwenddocs{}\nwbegincode{45}\sublabel{NW2WyO2R-2LUkiK-E}\nwmargintag{{\nwtagstyle{}\subpageref{NW2WyO2R-2LUkiK-E}}}\moddef{spaces.c~{\nwtagstyle{}\subpageref{NW2WyO2R-2LUkiK-1}}}\plusendmoddef\nwstartdeflinemarkup\nwprevnextdefs{NW2WyO2R-2LUkiK-D}{\relax}\nwenddeflinemarkup
+Node *
+copy_graph(Node *graph, SearchSpace *space)
+\{
+    boolean      gc_done = false;
+    unsigned int sz;
+    Node         *copy, *scan;
+    ADD_LOCAL_ROOTS2(graph, (Node *)space);
+#define graph LOCAL_ROOT[0]
+#define space (SearchSpace *)LOCAL_ROOT[1]
+
+    /* activate the bindings of the graph's space */
+    switch_bindings(space);
+
+    /* handle gc request */
+    sz = setjmp(restart_copy);
+    if ( sz != 0 )
+    \{
+        if ( gc_done )
+            heap_exhausted();
+
+        sz += alloc - (Node **)hp;
+        sz += (Node **)heap_end - ntp;
+        for ( ; ntp < (Node **)heap_end; ntp++ )
+        \{
+            ASSERT(is_forwarded(*ntp));
+            (*ntp)->info = get_forward(*ntp)->info;
+        \}
+        collect(sz);
+        gc_done = true;
+    \}
+
+    /* copy the root of the graph */
+    alloc = (Node **)hp;
+    ntp   = (Node **)heap_end;
+    copy  = copy_node(graph, space);
+
+    /* copy all children */
+    for ( scan = (Node *)hp; scan < (Node *)alloc; (Node **)scan += sz )
+    \{
+        unsigned int i, n;
+        ThreadQueue  tq;
+
+        sz = node_size(scan);
+        if ( sz == 0 )
+            sz = scan->a.length;
+
+        switch ( node_tag(scan) )
+        \{
+        case CHAR_TAG:
+        case INT_TAG:
+        case FLOAT_TAG:
+            break;
+
+        case SUSPEND_TAG:
+            scan->s.fn  = copy_node(scan->s.fn, space);
+            scan->s.spc = ss;
+            break;
+
+        case QUEUEME_TAG:
+            scan->q.wq  = (ThreadQueue)copy_node((Node *)scan->q.wq, space);
+            scan->q.spc = ss;
+            break;
+
+        case VARIABLE_TAG:
+            scan->v.cstrs = (Constraint *)copy_node((Node *)scan->v.cstrs, space);
+            scan->v.wq    = (ThreadQueue)copy_node((Node *)scan->v.wq, space);
+            scan->v.spc   = ss;
+            break;
+
+        case SEARCH_CONT_TAG:
+            scan->sc.susp = copy_node(scan->sc.susp, space);
+            scan->sc.var  = copy_node(scan->sc.var, space);
+            scan->sc.ds   = copy_node(scan->sc.ds, space);
+            scan->sc.rq   = (ThreadQueue)copy_node((Node *)scan->sc.rq, space);
+            scan->sc.spc  = ss;
+            break;
+
+        case THREAD_TAG:
+            tq = (ThreadQueue)scan;
+            if ( tq->t.id != 0 )
+            \{
+                tq->t.next = (ThreadQueue)copy_node((Node *)tq->t.next, space);
+                tq->t.ds   = copy_node(tq->t.ds, space);
+            \}
+            else
+            \{
+                tq->s.next = (ThreadQueue)copy_node((Node *)tq->s.next, space);
+                tq->s.thd  = (ThreadQueue)copy_node((Node *)tq->s.thd, space);
+                tq->s.link = (ThreadQueue)copy_node((Node *)tq->s.link, space);
+            \}
+            break;
+
+        default:
+            if ( is_abstract_node(scan) )
+                break;
+            ASSERT(is_constr_node(scan));
+            /* FALL THROUGH*/
+        case PAPP_TAG:
+        case CLOSURE_TAG:
+            if ( is_vector(scan) )
+            \{
+                i = 1;
+                n = vector_argc(scan) + 1;
+            \}
+            else
+            \{
+                i = 0;
+                n = constr_argc(scan);
+            \}
+            for ( ; i < n; i++ )
+                scan->c.args[i] = copy_node(scan->c.args[i], space);
+            break;
+        \}
+    \}
+    ASSERT(scan == (Node *)alloc);
+    DROP_LOCAL_ROOTS();
+#undef graph
+#undef space
+    hp = (word *)alloc;
+
+    /* restore the old graph and return its copy */
+    for ( ; ntp < (Node **)heap_end; ntp++ )
+    \{
+        ASSERT(is_forwarded(*ntp));
+        (*ntp)->info = get_forward(*ntp)->info;
+    \}
+    return copy;
+\}
+\nwendcode{}
+
+\nwixlogsorted{c}{{spaces.c}{NW2WyO2R-2LUkiK-1}{\nwixd{NW2WyO2R-2LUkiK-1}\nwixd{NW2WyO2R-2LUkiK-2}\nwixd{NW2WyO2R-2LUkiK-3}\nwixd{NW2WyO2R-2LUkiK-4}\nwixd{NW2WyO2R-2LUkiK-5}\nwixd{NW2WyO2R-2LUkiK-6}\nwixd{NW2WyO2R-2LUkiK-7}\nwixd{NW2WyO2R-2LUkiK-8}\nwixd{NW2WyO2R-2LUkiK-9}\nwixd{NW2WyO2R-2LUkiK-A}\nwixd{NW2WyO2R-2LUkiK-B}\nwixd{NW2WyO2R-2LUkiK-C}\nwixd{NW2WyO2R-2LUkiK-D}\nwixd{NW2WyO2R-2LUkiK-E}}}%
+\nwixlogsorted{c}{{spaces.h}{NW2WyO2R-JK3Oe-1}{\nwixd{NW2WyO2R-JK3Oe-1}\nwixd{NW2WyO2R-JK3Oe-2}\nwixd{NW2WyO2R-JK3Oe-3}\nwixd{NW2WyO2R-JK3Oe-4}\nwixd{NW2WyO2R-JK3Oe-5}\nwixd{NW2WyO2R-JK3Oe-6}\nwixd{NW2WyO2R-JK3Oe-7}\nwixd{NW2WyO2R-JK3Oe-8}\nwixd{NW2WyO2R-JK3Oe-9}}}%
+

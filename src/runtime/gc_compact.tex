@@ -1,0 +1,456 @@
+\nwfilename{gc_compact.nw}\nwbegindocs{0}% -*- noweb-code-mode: c-mode -*-% ===> this file was generated automatically by noweave --- better not edit it
+% $Id: gc_compact.nw,v 2.9 2004/04/15 11:14:45 wlux Exp $
+%
+% Copyright (c) 2001-2004, Wolfgang Lux
+% See ../LICENSE for the full license.
+%
+\subsection{The compacting collector}
+The compacting collector is based on Martin's                                %'
+algorithm~\cite{Martin82:Compaction} except that we use a recursive
+marking algorithm.
+
+\nwenddocs{}\nwbegincode{1}\sublabel{NW2PS3Xo-25TkDU-1}\nwmargintag{{\nwtagstyle{}\subpageref{NW2PS3Xo-25TkDU-1}}}\moddef{gc\_compact.c~{\nwtagstyle{}\subpageref{NW2PS3Xo-25TkDU-1}}}\endmoddef\nwstartdeflinemarkup\nwprevnextdefs{\relax}{NW2PS3Xo-25TkDU-2}\nwenddeflinemarkup
+#include "config.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>       
+#include "debug.h"
+#include "run.h"
+#include "heap.h"
+#include "stack.h"
+#include "trail.h"
+#include "threads.h"
+#include "spaces.h"
+#include "vars.h"
+#include "stats.h"
+#include "main.h"
+
+\LA{}Garbage collector definitions~{\nwtagstyle{}\subpageref{NW2PS3Xo-1RUuRm-1}}\RA{}
+
+void
+init_heap(unsigned long heap_size)
+\{
+    heap_base = (word *)malloc(heap_size + pagemask);
+    if ( heap_base == (word *)0 )
+    \{
+        fprintf(stderr, "not enough memory to allocate heap\\n");
+        exit(1);
+    \}
+    heap_base = (word *)(((long)heap_base + pagemask) & ~pagemask);
+    heap_end  = heap_base + heap_size / word_size;
+    hp = hlim = heap_base;
+\}
+
+void
+collect(unsigned int request)
+\{
+    unsigned int     i, heap_limit = 0;
+    Node             **scan, **free, **lroots;
+    GlobalRoot       *groots;
+    Choicepoint      *cp;
+    struct dict_node *dict;
+
+    stats_begin_gc(hp - heap_base);
+    in_gc = true;
+    \LA{}Mark all live nodes~{\nwtagstyle{}\subpageref{NW2PS3Xo-33Oknf-1}}\RA{}
+    \LA{}Process the variable name dictionary~{\nwtagstyle{}\subpageref{NW2PS3Xo-40mfDd-1}}\RA{}
+    \LA{}Compact the heap~{\nwtagstyle{}\subpageref{NW2PS3Xo-160bnQ-1}}\RA{}
+    hp   = (word *)free;
+    hlim = bp != (Choicepoint *)0 ? bp->btHp : heap_base;
+    if ( hp + request >= heap_end )
+        heap_exhausted();
+    cleanup_names();
+    in_gc = false;
+    stats_end_gc(hp - heap_base);
+\}
+
+\nwalsodefined{\\{NW2PS3Xo-25TkDU-2}\\{NW2PS3Xo-25TkDU-3}\\{NW2PS3Xo-25TkDU-4}}\nwnotused{gc_compact.c}\nwendcode{}\nwbegindocs{2}\nwdocspar
+Handling finalized objects in the compacting collector is trivial
+because the heap is scanned for live objects after the marking phase.
+Therefore finalized objects do not need to be registered with the
+garbage collector.
+
+\nwenddocs{}\nwbegincode{3}\sublabel{NW2PS3Xo-25TkDU-2}\nwmargintag{{\nwtagstyle{}\subpageref{NW2PS3Xo-25TkDU-2}}}\moddef{gc\_compact.c~{\nwtagstyle{}\subpageref{NW2PS3Xo-25TkDU-1}}}\plusendmoddef\nwstartdeflinemarkup\nwprevnextdefs{NW2PS3Xo-25TkDU-1}{NW2PS3Xo-25TkDU-3}\nwenddeflinemarkup
+void
+register_final(Node *fin)
+\{
+\}
+
+\nwendcode{}\nwbegindocs{4}\nwdocspar
+The compactor uses the least significant bit in the info pointer of a
+node as a mark bit, and the least but one bit to mark threaded
+pointers.
+
+\nwenddocs{}\nwbegincode{5}\sublabel{NW2PS3Xo-1RUuRm-1}\nwmargintag{{\nwtagstyle{}\subpageref{NW2PS3Xo-1RUuRm-1}}}\moddef{Garbage collector definitions~{\nwtagstyle{}\subpageref{NW2PS3Xo-1RUuRm-1}}}\endmoddef\nwstartdeflinemarkup\nwusesondefline{\\{NW2PS3Xo-25TkDU-1}}\nwprevnextdefs{\relax}{NW2PS3Xo-1RUuRm-2}\nwenddeflinemarkup
+#define GC_FLAGS                0x03
+#define MARK_FLAG               0x01
+#define PTR_FLAG                0x02
+
+#define is_marked(node)         ((*(unsigned int *)(node)) & MARK_FLAG)
+#define is_unmarked(node)       !is_marked(node)
+#define mark_node(node)         ((*(unsigned int *)(node)) |= MARK_FLAG)
+#define unmark_node(node)       ((*(unsigned int *)(node)) &= ~MARK_FLAG)
+
+#define is_threaded(node)       ((*(unsigned int *)(node)) & PTR_FLAG)
+
+\nwalsodefined{\\{NW2PS3Xo-1RUuRm-2}\\{NW2PS3Xo-1RUuRm-3}\\{NW2PS3Xo-1RUuRm-4}}\nwused{\\{NW2PS3Xo-25TkDU-1}}\nwendcode{}\nwbegindocs{6}\nwdocspar
+When an unmarked node is marked, all of its children have to be marked
+as well. This recursive marking is done by calling the function
+{\Tt{}mark\nwendquote} which is described below. In addition, the marking phase
+prepares the marked node for being moved by reversing the pointers
+that reference it from an external root outside of the heap and from
+nodes at higher addresses in the heap. References from nodes at lower
+addresses in the heap will be reversed after those nodes have been
+moved to their new location. The reversed pointers are threaded in the
+info pointer of the marked node.
+
+\nwenddocs{}\nwbegincode{7}\sublabel{NW2PS3Xo-1RUuRm-2}\nwmargintag{{\nwtagstyle{}\subpageref{NW2PS3Xo-1RUuRm-2}}}\moddef{Garbage collector definitions~{\nwtagstyle{}\subpageref{NW2PS3Xo-1RUuRm-1}}}\plusendmoddef\nwstartdeflinemarkup\nwusesondefline{\\{NW2PS3Xo-25TkDU-1}}\nwprevnextdefs{NW2PS3Xo-1RUuRm-1}{NW2PS3Xo-1RUuRm-3}\nwenddeflinemarkup
+static void mark(Node *node);
+
+#define GC_mark(node) do \{ \\
+    if ( is_boxed(node) && (word *)(node) >= heap_base && (word *)(node) < hp ) \{ \\
+        if ( is_unmarked(node) ) mark((Node *)node); \\
+        if ( is_downward_pointer(node) ) thread_pointer(node); \\
+    \} \\
+\} while ( 0 )
+
+#define is_downward_pointer(node) \\
+    ((word *)&(node) >= (word *)(node) || (word *)&(node) < heap_base)
+#define is_upward_pointer(node) \\
+    ((word *)&(node) < (word *)(node) && (word *)(node) < hp)
+
+\nwused{\\{NW2PS3Xo-25TkDU-1}}\nwendcode{}\nwbegindocs{8}\nwdocspar
+When a pointer to a node is threaded, the current info pointer of the
+node is saved in place of the pointer and a pointer to its address is
+written into info word of the node. This pointer is then marked and
+its least but one significant bit is set in order to identify it as a
+threaded pointer.
+
+\nwenddocs{}\nwbegincode{9}\sublabel{NW2PS3Xo-1RUuRm-3}\nwmargintag{{\nwtagstyle{}\subpageref{NW2PS3Xo-1RUuRm-3}}}\moddef{Garbage collector definitions~{\nwtagstyle{}\subpageref{NW2PS3Xo-1RUuRm-1}}}\plusendmoddef\nwstartdeflinemarkup\nwusesondefline{\\{NW2PS3Xo-25TkDU-1}}\nwprevnextdefs{NW2PS3Xo-1RUuRm-2}{NW2PS3Xo-1RUuRm-4}\nwenddeflinemarkup
+#define thread_pointer(p) do \{ \\
+    unsigned int *q = (unsigned int *)(p); \\
+    *(Node **)&(p) = (Node *)*q; \\
+    *q = (unsigned int)&(p) | (MARK_FLAG|PTR_FLAG); \\
+\} while ( 0 )
+
+\nwused{\\{NW2PS3Xo-25TkDU-1}}\nwendcode{}\nwbegindocs{10}\nwdocspar
+When a list of pointers is unthreaded, the new address of the node is
+written to the original pointer field. As explained below, the
+pointers are unthreaded before the node is actually moved. Therefore,
+the new address of the node must be passed explicitly to
+{\Tt{}unthread{\_}pointer\nwendquote} in the second argument.
+
+\nwenddocs{}\nwbegincode{11}\sublabel{NW2PS3Xo-1RUuRm-4}\nwmargintag{{\nwtagstyle{}\subpageref{NW2PS3Xo-1RUuRm-4}}}\moddef{Garbage collector definitions~{\nwtagstyle{}\subpageref{NW2PS3Xo-1RUuRm-1}}}\plusendmoddef\nwstartdeflinemarkup\nwusesondefline{\\{NW2PS3Xo-25TkDU-1}}\nwprevnextdefs{NW2PS3Xo-1RUuRm-3}{\relax}\nwenddeflinemarkup
+#define unthread_pointer(node,free) do \{ \\
+    unsigned int *q = \\
+        (unsigned int *)(*(unsigned int *)(node) & ~(MARK_FLAG|PTR_FLAG)); \\
+    *(unsigned int *)(node) = *q; *q = (unsigned int)(free); \\
+\} while ( 0 )
+
+\nwused{\\{NW2PS3Xo-25TkDU-1}}\nwendcode{}\nwbegindocs{12}\nwdocspar
+The marking phase recursively marks all nodes that are reachable from
+the root nodes.
+
+\nwenddocs{}\nwbegincode{13}\sublabel{NW2PS3Xo-33Oknf-1}\nwmargintag{{\nwtagstyle{}\subpageref{NW2PS3Xo-33Oknf-1}}}\moddef{Mark all live nodes~{\nwtagstyle{}\subpageref{NW2PS3Xo-33Oknf-1}}}\endmoddef\nwstartdeflinemarkup\nwusesondefline{\\{NW2PS3Xo-25TkDU-1}}\nwprevnextdefs{\relax}{NW2PS3Xo-33Oknf-2}\nwenddeflinemarkup
+for ( groots = global_roots; groots != (GlobalRoot *)0; groots = groots->next )
+    GC_mark(*groots->root);
+for ( lroots = local_roots; lroots != (Node **)0; lroots = (Node **)lroots[1] )
+\{
+    for ( i = (unsigned int)lroots[0], scan = (Node **)lroots + 2;
+          i > 0;
+          i--, scan++ )
+        GC_mark(*scan);
+\}
+
+\nwalsodefined{\\{NW2PS3Xo-33Oknf-2}\\{NW2PS3Xo-33Oknf-3}\\{NW2PS3Xo-33Oknf-4}\\{NW2PS3Xo-33Oknf-5}}\nwused{\\{NW2PS3Xo-25TkDU-1}}\nwendcode{}\nwbegindocs{14}\nwdocspar
+The stack is processed from top to bottom. For each choicepoint, we
+must mark the saved ready queue. Because the heap limit need not point
+to a live node, we cannot mark it here. Instead, we post-process the
+stack after the marking phase to update all heap limits to the next
+live node above the limit.
+
+\nwenddocs{}\nwbegincode{15}\sublabel{NW2PS3Xo-33Oknf-2}\nwmargintag{{\nwtagstyle{}\subpageref{NW2PS3Xo-33Oknf-2}}}\moddef{Mark all live nodes~{\nwtagstyle{}\subpageref{NW2PS3Xo-33Oknf-1}}}\plusendmoddef\nwstartdeflinemarkup\nwusesondefline{\\{NW2PS3Xo-25TkDU-1}}\nwprevnextdefs{NW2PS3Xo-33Oknf-1}{NW2PS3Xo-33Oknf-3}\nwenddeflinemarkup
+scan = sp;
+for ( cp = bp; cp != (Choicepoint *)0; cp = cp->btBp )
+\{
+    GC_mark(cp->btRq);
+    for ( ; scan < (Node **)cp; scan++ )
+        GC_mark(*scan);
+    scan = (Node **)(cp + 1);
+\}
+for ( ; scan < stack_end; scan++ )
+    GC_mark(*scan);
+
+\nwused{\\{NW2PS3Xo-25TkDU-1}}\nwendcode{}\nwbegindocs{16}\nwdocspar
+When marking the trail, we have to mark the saved old values as well
+as the updated nodes.
+
+\nwenddocs{}\nwbegincode{17}\sublabel{NW2PS3Xo-33Oknf-3}\nwmargintag{{\nwtagstyle{}\subpageref{NW2PS3Xo-33Oknf-3}}}\moddef{Mark all live nodes~{\nwtagstyle{}\subpageref{NW2PS3Xo-33Oknf-1}}}\plusendmoddef\nwstartdeflinemarkup\nwusesondefline{\\{NW2PS3Xo-25TkDU-1}}\nwprevnextdefs{NW2PS3Xo-33Oknf-2}{NW2PS3Xo-33Oknf-4}\nwenddeflinemarkup
+\{
+    SaveRec *scan_trail;
+
+    for ( scan_trail = trail_base; scan_trail != tp; scan_trail++ )
+    \{
+        GC_mark(scan_trail->addr);
+        GC_mark(scan_trail->val);
+    \}
+\}
+
+\nwused{\\{NW2PS3Xo-25TkDU-1}}\nwendcode{}\nwbegindocs{18}\nwdocspar
+Finally, the current search space as well as the ready queue are marked.
+
+\nwenddocs{}\nwbegincode{19}\sublabel{NW2PS3Xo-33Oknf-4}\nwmargintag{{\nwtagstyle{}\subpageref{NW2PS3Xo-33Oknf-4}}}\moddef{Mark all live nodes~{\nwtagstyle{}\subpageref{NW2PS3Xo-33Oknf-1}}}\plusendmoddef\nwstartdeflinemarkup\nwusesondefline{\\{NW2PS3Xo-25TkDU-1}}\nwprevnextdefs{NW2PS3Xo-33Oknf-3}{NW2PS3Xo-33Oknf-5}\nwenddeflinemarkup
+GC_mark(rq);
+GC_mark(ss);
+
+\nwused{\\{NW2PS3Xo-25TkDU-1}}\nwendcode{}\nwbegindocs{20}\nwdocspar
+The marking itself is handled by the function {\Tt{}mark\nwendquote}, which expects
+a pointer to an unmarked node as its argument. After setting the mark
+bit of the node, all children of the node are marked recursively.
+
+\nwenddocs{}\nwbegincode{21}\sublabel{NW2PS3Xo-25TkDU-3}\nwmargintag{{\nwtagstyle{}\subpageref{NW2PS3Xo-25TkDU-3}}}\moddef{gc\_compact.c~{\nwtagstyle{}\subpageref{NW2PS3Xo-25TkDU-1}}}\plusendmoddef\nwstartdeflinemarkup\nwprevnextdefs{NW2PS3Xo-25TkDU-2}{NW2PS3Xo-25TkDU-4}\nwenddeflinemarkup
+static void
+mark(Node *node)
+\{
+    boolean      is_vect;
+    unsigned int i, j, len;
+    int          n, el_len;
+    Node         **scan;
+    NodeInfo     *info;
+    const int    *otable;
+
+    scan    = (Node **)node;
+    info    = node->info;
+    len     = info->length;
+    otable  = info->offset_table;
+    is_vect = len == 0;
+    if ( is_vect )
+        len = (int)scan[1];
+
+    mark_node(node);
+
+    if ( otable == (const int *)0 )
+    \{
+        for ( i = is_vect ? 2 : 1; i < len; i++ )
+            GC_mark(scan[i]);
+    \}
+    else
+    \{
+        n = *otable++;
+        if ( n >= 0 )
+        \{
+            while ( n-- > 0 )
+            \{
+                i = *otable++;
+                GC_mark(scan[i]);
+            \}
+        \}
+        else
+        \{
+            ASSERT(is_vect);
+            el_len = -n;
+            for ( j = 2; j < len; j += el_len )
+            \{
+                otable = info->offset_table + 1;
+                n      = *otable++;
+                while ( n-- > 0 )
+                \{
+                    i = *otable++;
+                    GC_mark(scan[j+i]);
+                \}
+            \}
+            ASSERT(j == len);
+        \}
+    \}
+\}
+
+\nwendcode{}\nwbegindocs{22}\nwdocspar
+The heap limits in choicepoints and search contexts need some special
+treatment. As the limits do not necessarily point to a live object,
+the marking phase did ignore them. After all nodes have been marked, we
+are now going to adjust the heap limits such that they point to the
+next live node and thread the heap limit pointers in the corresponding
+nodes. If there is no live node above the limit, we thread the pointer
+in the variable {\Tt{}heap{\_}limit\nwendquote}.
+
+\nwenddocs{}\nwbegincode{23}\sublabel{NW2PS3Xo-33Oknf-5}\nwmargintag{{\nwtagstyle{}\subpageref{NW2PS3Xo-33Oknf-5}}}\moddef{Mark all live nodes~{\nwtagstyle{}\subpageref{NW2PS3Xo-33Oknf-1}}}\plusendmoddef\nwstartdeflinemarkup\nwusesondefline{\\{NW2PS3Xo-25TkDU-1}}\nwprevnextdefs{NW2PS3Xo-33Oknf-4}{\relax}\nwenddeflinemarkup
+\{
+    unsigned int sz;
+
+    for ( cp = bp; cp != (Choicepoint *)0; cp = cp->btBp )
+        if ( cp->btHp != 0 )
+        \{
+            while ( cp->btHp < hp && is_unmarked(cp->btHp) )
+            \{
+                sz = node_size((Node *)cp->btHp);
+                if ( sz == 0 )
+                    sz = ((Node *)cp->btHp)->a.length;
+                cp->btHp += sz;
+            \}
+            ASSERT(cp->btHp <= hp);
+            if ( cp->btHp == hp )
+                cp->btHp = (word *)&heap_limit;
+            thread_pointer(cp->btHp);
+        \}
+\}
+
+\nwused{\\{NW2PS3Xo-25TkDU-1}}\nwendcode{}\nwbegindocs{24}\nwdocspar
+References from the dictionary associating variables with their names
+should not contribute to the liveness of a node, i.e., they are weak
+pointers. Still the entries to all live nodes in the dictionary have
+to be updated during the garbage compaction to reflect the new
+locations of the live variable nodes.
+
+This is implemented by scanning the variable name dictionary after the
+marking phase. All pointers to dead nodes are replaced by {\Tt{}0\nwendquote}
+pointers. These entries are released by a call to {\Tt{}cleanup{\_}names\nwendquote} at
+the end of the garbage collection. For all other entries, the pointer
+is handled like an external reference, i.e., it is threaded in the
+first word of the node.
+
+\nwenddocs{}\nwbegincode{25}\sublabel{NW2PS3Xo-40mfDd-1}\nwmargintag{{\nwtagstyle{}\subpageref{NW2PS3Xo-40mfDd-1}}}\moddef{Process the variable name dictionary~{\nwtagstyle{}\subpageref{NW2PS3Xo-40mfDd-1}}}\endmoddef\nwstartdeflinemarkup\nwusesondefline{\\{NW2PS3Xo-25TkDU-1}}\nwenddeflinemarkup
+for ( dict = names_dict; dict != (struct dict_node *)0; dict = dict->next )
+    if ( is_marked(dict->node) )
+        thread_pointer(dict->node);
+    else
+        dict->node = (Node *)0;
+
+\nwused{\\{NW2PS3Xo-25TkDU-1}}\nwendcode{}\nwbegindocs{26}\nwdocspar
+After all nodes have been marked, the collector compacts the heap by
+sliding all live nodes downwards. All pointers threaded to the header
+word of a live node are unthreaded and thus updated to point to the
+new address of the node. In addition, we must thread all upward
+pointers inside the heap during this pass. For all unmarked nodes with
+a finalization function, this function is called.
+
+Note that we must unthread all pointers using the new address of the
+node \emph{before} actually copying the node. Otherwise references
+from the node to itself would not be updated properly.
+
+\nwenddocs{}\nwbegincode{27}\sublabel{NW2PS3Xo-160bnQ-1}\nwmargintag{{\nwtagstyle{}\subpageref{NW2PS3Xo-160bnQ-1}}}\moddef{Compact the heap~{\nwtagstyle{}\subpageref{NW2PS3Xo-160bnQ-1}}}\endmoddef\nwstartdeflinemarkup\nwusesondefline{\\{NW2PS3Xo-25TkDU-1}}\nwprevnextdefs{\relax}{NW2PS3Xo-160bnQ-2}\nwenddeflinemarkup
+scan = free = (Node **)heap_base;
+while ( (word *)scan < hp )
+\{
+    boolean      is_vect;
+    int          n, el_len;
+    unsigned int j, len;
+    NodeInfo     *info;
+    const int    *otable;
+
+    if ( is_marked((Node *)scan) )
+    \{
+        while ( is_threaded((Node *)scan) )
+            unthread_pointer(scan, free);
+        unmark_node((Node *)scan);
+
+        info    = ((Node *)scan)->info;
+        len     = info->length;
+        is_vect = len == 0;
+        if ( is_vect )
+            len = (int)scan[1];
+        memcpy(free, scan, len * word_size);
+
+        \LA{}Thread all upward pointers from the node at \code{}free\edoc{}~{\nwtagstyle{}\subpageref{NW2PS3Xo-urPMA-1}}\RA{}
+
+        scan += len;
+        free += len;
+    \}
+    else
+    \{
+        info    = ((Node *)scan)->info;
+        len     = info->length;
+        is_vect = len == 0;
+        if ( is_vect )
+            len = (int)scan[1];
+        if ( info->final_fun != (FinalFun)0 )
+            info->final_fun((Node *)scan);
+        scan += len;
+    \}
+\}
+ASSERT((word *)scan == hp);
+
+\nwalsodefined{\\{NW2PS3Xo-160bnQ-2}}\nwused{\\{NW2PS3Xo-25TkDU-1}}\nwendcode{}\nwbegindocs{28}\nwdocspar
+After the heap has been compacted, we can unthread all pointers to the
+end of the heap, which were threaded in the variable {\Tt{}heap{\_}limit\nwendquote}.
+
+\nwenddocs{}\nwbegincode{29}\sublabel{NW2PS3Xo-160bnQ-2}\nwmargintag{{\nwtagstyle{}\subpageref{NW2PS3Xo-160bnQ-2}}}\moddef{Compact the heap~{\nwtagstyle{}\subpageref{NW2PS3Xo-160bnQ-1}}}\plusendmoddef\nwstartdeflinemarkup\nwusesondefline{\\{NW2PS3Xo-25TkDU-1}}\nwprevnextdefs{NW2PS3Xo-160bnQ-1}{\relax}\nwenddeflinemarkup
+while ( heap_limit != 0 )
+    unthread_pointer(&heap_limit, free);
+
+\nwused{\\{NW2PS3Xo-25TkDU-1}}\nwendcode{}\nwbegindocs{30}\nwdocspar
+After moving a node to its new location, we must thread all upward
+pointers originating from one of its arguments.
+
+\nwenddocs{}\nwbegincode{31}\sublabel{NW2PS3Xo-urPMA-1}\nwmargintag{{\nwtagstyle{}\subpageref{NW2PS3Xo-urPMA-1}}}\moddef{Thread all upward pointers from the node at \code{}free\edoc{}~{\nwtagstyle{}\subpageref{NW2PS3Xo-urPMA-1}}}\endmoddef\nwstartdeflinemarkup\nwusesondefline{\\{NW2PS3Xo-160bnQ-1}}\nwenddeflinemarkup
+otable = info->offset_table;
+if ( otable == (const int *)0 )
+\{
+    for ( i = is_vect ? 2 : 1; i < len; i++ )
+    \{
+        if ( is_boxed(free[i]) && is_upward_pointer(free[i]) )
+            thread_pointer(free[i]);
+    \}
+\}
+else
+\{
+    n = *otable++;
+    if ( n >= 0 )
+    \{
+        while ( n-- > 0 )
+        \{
+            i = *otable++;
+            if ( is_boxed(free[i]) && is_upward_pointer(free[i]) )
+                thread_pointer(free[i]);
+        \}
+    \}
+    else
+    \{
+        el_len = -n;
+        for ( j = 2; j < len; j += el_len )
+        \{
+            otable = info->offset_table + 1;
+            n      = *otable++;
+            while ( n-- > 0 )
+            \{
+                i = *otable++;
+                if ( is_boxed(free[j+i]) && is_upward_pointer(free[j+i]) )
+                    thread_pointer(free[j+i]);
+            \}
+        \}
+    \}
+\}
+
+\nwused{\\{NW2PS3Xo-160bnQ-1}}\nwendcode{}\nwbegindocs{32}\nwdocspar
+The function {\Tt{}release{\_}mem\nwendquote} releases the memory above the current heap
+limit and calls the finalization function for all objects in that
+region. This function is used to implement the immediate release upon
+failure policy of the runtime system.
+
+\nwenddocs{}\nwbegincode{33}\sublabel{NW2PS3Xo-25TkDU-4}\nwmargintag{{\nwtagstyle{}\subpageref{NW2PS3Xo-25TkDU-4}}}\moddef{gc\_compact.c~{\nwtagstyle{}\subpageref{NW2PS3Xo-25TkDU-1}}}\plusendmoddef\nwstartdeflinemarkup\nwprevnextdefs{NW2PS3Xo-25TkDU-3}{\relax}\nwenddeflinemarkup
+void
+release_mem()
+\{
+    unsigned int sz;
+    Node         *scan;
+
+    for ( scan = (Node *)hlim; (word *)scan < hp; (word *)scan += sz )
+    \{
+        if ( scan->info->final_fun != (FinalFun)0 )
+            scan->info->final_fun(scan);
+        sz = node_size(scan);
+        if ( sz == 0 )
+            sz = ((Node *)scan)->a.length;
+    \}
+
+    stats_backtrack(hp - hlim);
+    hp = hlim;
+\}
+\nwendcode{}
+
+\nwixlogsorted{c}{{Compact the heap}{NW2PS3Xo-160bnQ-1}{\nwixu{NW2PS3Xo-25TkDU-1}\nwixd{NW2PS3Xo-160bnQ-1}\nwixd{NW2PS3Xo-160bnQ-2}}}%
+\nwixlogsorted{c}{{Garbage collector definitions}{NW2PS3Xo-1RUuRm-1}{\nwixu{NW2PS3Xo-25TkDU-1}\nwixd{NW2PS3Xo-1RUuRm-1}\nwixd{NW2PS3Xo-1RUuRm-2}\nwixd{NW2PS3Xo-1RUuRm-3}\nwixd{NW2PS3Xo-1RUuRm-4}}}%
+\nwixlogsorted{c}{{gc_compact.c}{NW2PS3Xo-25TkDU-1}{\nwixd{NW2PS3Xo-25TkDU-1}\nwixd{NW2PS3Xo-25TkDU-2}\nwixd{NW2PS3Xo-25TkDU-3}\nwixd{NW2PS3Xo-25TkDU-4}}}%
+\nwixlogsorted{c}{{Mark all live nodes}{NW2PS3Xo-33Oknf-1}{\nwixu{NW2PS3Xo-25TkDU-1}\nwixd{NW2PS3Xo-33Oknf-1}\nwixd{NW2PS3Xo-33Oknf-2}\nwixd{NW2PS3Xo-33Oknf-3}\nwixd{NW2PS3Xo-33Oknf-4}\nwixd{NW2PS3Xo-33Oknf-5}}}%
+\nwixlogsorted{c}{{Process the variable name dictionary}{NW2PS3Xo-40mfDd-1}{\nwixu{NW2PS3Xo-25TkDU-1}\nwixd{NW2PS3Xo-40mfDd-1}}}%
+\nwixlogsorted{c}{{Thread all upward pointers from the node at \code{}free\edoc{}}{NW2PS3Xo-urPMA-1}{\nwixu{NW2PS3Xo-160bnQ-1}\nwixd{NW2PS3Xo-urPMA-1}}}%
+

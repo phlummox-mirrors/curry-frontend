@@ -1,0 +1,215 @@
+\nwfilename{cstring.nw}\nwbegindocs{0}% -*- noweb-code-mode: c-mode -*-% ===> this file was generated automatically by noweave --- better not edit it
+% $Id: cstring.nw,v 2.6 2003/06/10 20:12:02 wlux Exp $
+%
+% Copyright (c) 2001-2003, Wolfgang Lux
+% See ../LICENSE for the full license.
+%
+\subsection{C string interface}\label{sec:string}
+The C string library interface provides some functions to translate
+between C strings and Curry strings. This interface is used by various
+parts of the runtime system.
+
+\nwenddocs{}\nwbegincode{1}\sublabel{NW33jGxm-Ju9lI-1}\nwmargintag{{\nwtagstyle{}\subpageref{NW33jGxm-Ju9lI-1}}}\moddef{cstring.h~{\nwtagstyle{}\subpageref{NW33jGxm-Ju9lI-1}}}\endmoddef\nwstartdeflinemarkup\nwenddeflinemarkup
+extern Node     *from_string(const char *cp);
+extern Node     *prefix_string(const char *cp, Node *);
+extern unsigned string_length(Node *);
+extern char     *copy_string(Node *, char *buf);
+extern char     *to_string(Node *);
+
+DECLARE_ENTRYPOINT(nf_string);
+
+\nwnotused{cstring.h}\nwendcode{}\nwbegindocs{2}\nwdocspar
+\nwenddocs{}\nwbegincode{3}\sublabel{NW33jGxm-2M4r4y-1}\nwmargintag{{\nwtagstyle{}\subpageref{NW33jGxm-2M4r4y-1}}}\moddef{cstring.c~{\nwtagstyle{}\subpageref{NW33jGxm-2M4r4y-1}}}\endmoddef\nwstartdeflinemarkup\nwprevnextdefs{\relax}{NW33jGxm-2M4r4y-2}\nwenddeflinemarkup
+#include "config.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include "debug.h"
+#include "run.h"
+#include "heap.h"
+#include "stack.h"
+#include "threads.h"
+#include "eval.h"
+#include "cstring.h"
+#include "cam.h"
+#include "trace.h"
+
+\nwalsodefined{\\{NW33jGxm-2M4r4y-2}\\{NW33jGxm-2M4r4y-3}\\{NW33jGxm-2M4r4y-4}}\nwnotused{cstring.c}\nwendcode{}\nwbegindocs{4}\nwdocspar
+The {\Tt{}from{\_}string\nwendquote} translates a C string into the corresponding Curry
+list of characters and returns a pointer to the list. The whole string
+is translated at once with this function. In order to prepend a C
+string to a given list of characters, use the function {\Tt{}prefix{\_}string\nwendquote},
+instead.
+
+\nwenddocs{}\nwbegincode{5}\sublabel{NW33jGxm-2M4r4y-2}\nwmargintag{{\nwtagstyle{}\subpageref{NW33jGxm-2M4r4y-2}}}\moddef{cstring.c~{\nwtagstyle{}\subpageref{NW33jGxm-2M4r4y-1}}}\plusendmoddef\nwstartdeflinemarkup\nwprevnextdefs{NW33jGxm-2M4r4y-1}{NW33jGxm-2M4r4y-3}\nwenddeflinemarkup
+Node *
+from_string(const char *cp)
+\{
+    return prefix_string(cp, nil);
+\}
+
+Node *
+prefix_string(const char *cp, Node *list)
+\{
+    int l = strlen(cp);
+
+    if ( l > 0 )
+    \{
+        Node *tail;
+        ADD_LOCAL_ROOTS1(list);
+#define list LOCAL_ROOT[0]
+        CHECK_HEAP(l * cons_node_size);
+
+        cp  += l;
+        tail = list;
+        DROP_LOCAL_ROOTS();
+#undef list
+
+        do
+        \{
+            list            = (Node *)hp;
+            list->c.info    = &cons_info;
+            list->c.args[0] = (Node *)(char_table + (*--cp & 0xff));
+            list->c.args[1] = tail;
+            hp             += cons_node_size;
+            tail            = list;
+        \}
+        while ( --l > 0 );
+    \}
+    return list;
+\}
+
+\nwendcode{}\nwbegindocs{6}\nwdocspar
+Translating a Curry string into a C string is more difficult because
+we have to evaluate the string to a ground normal form, first. The
+Curry code {\Tt{}nf{\_}string\nwendquote} can be used to handle this.
+
+\nwenddocs{}\nwbegincode{7}\sublabel{NW33jGxm-2M4r4y-3}\nwmargintag{{\nwtagstyle{}\subpageref{NW33jGxm-2M4r4y-3}}}\moddef{cstring.c~{\nwtagstyle{}\subpageref{NW33jGxm-2M4r4y-1}}}\plusendmoddef\nwstartdeflinemarkup\nwprevnextdefs{NW33jGxm-2M4r4y-2}{NW33jGxm-2M4r4y-4}\nwenddeflinemarkup
+DECLARE_LABEL(nf_string_1);
+DECLARE_LABEL(nf_string_2);
+
+FUNCTION(nf_string)
+\{
+    EXPORT_LABEL(nf_string)
+ ENTRY_LABEL(nf_string)
+    TRACE(("%I enter nf_string%V\\n", 1, sp));
+    CHECK_STACK1();
+    sp   -= 1;
+    sp[0] = sp[1];
+    GOTO(nf_string_1);
+\}
+
+static
+FUNCTION(nf_string_1)
+\{
+    Node *list;
+
+ ENTRY_LABEL(nf_string_1)
+    EVAL_RIGID(nf_string_1);
+    list = sp[0];
+    switch ( node_tag(list) )
+    \{
+    case NIL_TAG:
+        list = sp[1];
+        sp  += 2;
+        RETURN(list);
+    case CONS_TAG:
+        CHECK_STACK1();
+        sp   -= 1;
+        sp[0] = list->c.args[0];
+        sp[1] = list->c.args[1];
+        GOTO(nf_string_2);
+    default:
+        break;
+    \}
+    fprintf(stderr, "nf_string: invalid argument\\n");
+    exit(2);
+\}
+
+static
+FUNCTION(nf_string_2)
+\{
+ ENTRY_LABEL(nf_string_2)
+    EVAL_RIGID_CHAR(nf_string_2);
+    sp++;
+
+    /* continue to evaluate the tail of the string */
+    GOTO(nf_string_1);
+\}
+
+\nwendcode{}\nwbegindocs{8}\nwdocspar
+The function {\Tt{}string{\_}length\nwendquote} returns the length of a Curry string.
+The function {\Tt{}copy{\_}string\nwendquote} copies a Curry string into a string 
+buffer terminated with a final {\Tt{}'{\nwbackslash}0'\nwendquote} character. The buffer must be
+large enough to hold the string including the terminator
+character. Finally, the function {\Tt{}to{\_}string\nwendquote} uses {\Tt{}malloc\nwendquote} to
+allocate a suitable buffer and copies the Curry string argument into
+this buffer.
+
+\nwenddocs{}\nwbegincode{9}\sublabel{NW33jGxm-2M4r4y-4}\nwmargintag{{\nwtagstyle{}\subpageref{NW33jGxm-2M4r4y-4}}}\moddef{cstring.c~{\nwtagstyle{}\subpageref{NW33jGxm-2M4r4y-1}}}\plusendmoddef\nwstartdeflinemarkup\nwprevnextdefs{NW33jGxm-2M4r4y-3}{\relax}\nwenddeflinemarkup
+unsigned
+string_length(Node *list)
+\{
+    unsigned n = 0;
+
+    while ( list->info->tag == INDIR_TAG )
+        list = list->n.node;
+    while ( list->info->tag == CONS_TAG )
+    \{
+        n++;
+        list = list->c.args[1];
+        while ( list->info->tag == INDIR_TAG )
+            list = list->n.node;
+    \}
+    ASSERT(list->info->tag == NIL_TAG);
+    return n;
+\}
+
+char *
+copy_string(Node *list, char *buf)
+\{
+    char *cp = buf;
+    Node *head;
+
+    while ( list->info->tag != NIL_TAG )
+        switch ( list->info->tag )
+        \{
+        case INDIR_TAG:
+            list = list->n.node;
+            break;
+        case CONS_TAG:
+            head = list->c.args[0];
+            while ( is_boxed(head) && head->info->tag == INDIR_TAG )
+                head = head->n.node;
+            ASSERT(is_boxed(head) && is_char_node(head));
+            *cp++ = head->ch.ch;
+            list  = list->c.args[1];
+            break;
+        default:
+            fprintf(stderr,
+                    "copy_string: Invalid string or not in normal form\\n");
+            exit(1);
+        \}
+    *cp = '\\0';
+    return buf;
+\}
+
+char *
+to_string(Node *list)
+\{
+    unsigned n   = string_length(list);
+    char     *cp = (char *)malloc(n + 1);
+
+    if ( cp == (char *)0 )
+    \{
+        fprintf(stderr, "to_string: memory exhausted\\n");
+        exit(1);
+    \}
+
+    return copy_string(list, cp);
+\}
+\nwendcode{}
+
+\nwixlogsorted{c}{{cstring.c}{NW33jGxm-2M4r4y-1}{\nwixd{NW33jGxm-2M4r4y-1}\nwixd{NW33jGxm-2M4r4y-2}\nwixd{NW33jGxm-2M4r4y-3}\nwixd{NW33jGxm-2M4r4y-4}}}%
+\nwixlogsorted{c}{{cstring.h}{NW33jGxm-Ju9lI-1}{\nwixd{NW33jGxm-Ju9lI-1}}}%
+

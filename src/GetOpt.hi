@@ -1,0 +1,15 @@
+__interface "Main" GetOpt 1 500 where
+__export  GetOpt ArgDescr{NoArg OptArg ReqArg} ArgOrder{Permute RequireOrder ReturnInOrder} OptDescr{Option} getOpt usageInfo;
+import PrelBase ! :: 1;
+import PrelTup :: 1;
+import PrelShow :: 1;
+import PrelList :: 1;
+import List :: 1;
+import PrelMaybe :: 1;
+;
+getOpt :: __forall a => ArgOrder a -> [OptDescr a] -> [PrelBase.String] -> ([a], [PrelBase.String], [PrelBase.String]);
+usageInfo :: __forall a => PrelBase.String -> [OptDescr a] -> PrelBase.String;
+data ArgOrder a = RequireOrder | Permute | ReturnInOrder (PrelBase.String -> a);
+data OptDescr a = Option [PrelBase.Char] [PrelBase.String] (ArgDescr a) PrelBase.String;
+data ArgDescr a = NoArg a | ReqArg (PrelBase.String -> a) PrelBase.String | OptArg (PrelMaybe.Maybe PrelBase.String -> a) PrelBase.String;
+data OptKind a = Opt a | NonOpt PrelBase.String | EndOfOpts | OptErr PrelBase.String;
