@@ -24,16 +24,16 @@ import Directory
 -- the specified curry file.
 main :: IO ()
 main
-   = do file <- getFilename
+   = do fileArg <- getFilename
+        let suffix = getSuffix fileArg
+            file = if suffix=="" then fileArg++".curry" else fileArg
 	fileExist <- doesFileExist file
-	suffix <- return (getSuffix file)
 	if fileExist
-	   then if suffix == "curry" || suffix == "lcurry"
+	   then if suffix == "curry" || suffix == "lcurry" || suffix ==""
 		then generateFlatXML (take ((length file) 
 					    - (1 + length suffix)) file)
 		else raiseError ("not a curry file: \"" ++ file ++ "\"")
 	   else raiseError ("file \"" ++ file ++ "\" does not exist")
-
 
 -------------------------------------------------------------------------------
 -------------------------------------------------------------------------------
@@ -61,12 +61,16 @@ getFilename
    = do args <- getArgs
         if null args
 	   then raiseError "cyxml: missing filename"
-           else return (head args)
+           else return (head args)  
 
 
 getSuffix :: String -> String
-getSuffix file = reverse (takeWhile ((/=) '.') (reverse file))
-
+getSuffix file = suff "" (reverse file)   
+   where
+     suff s "" = ""
+     suff s ('.':_) = s
+     suff s ('/':_) = ""
+     suff s (c:cs) = suff (c:s) cs
 
 raiseError :: String -> IO a
 raiseError reason
