@@ -37,9 +37,11 @@ generateExec date path name
    = do putStrLn ("Generating file \"" ++ name ++ "\"...")
         pattfile <- readFile (name ++ "-pattern")
 	writeFile name pattfile
-	code1 <- replace name [("%BUILD_DIR%",  path),
-			       ("%BUILD_DATE%", date)]
-	checkExitCode code1 ("config: 'replace' failed on \"" ++ name ++ "\"")
+	codes1 <- replace name [("%BUILD_DIR%",  path),
+			        ("%BUILD_DATE%", date)]
+	mapM_ (flip checkExitCode ("config: 'sed-replace' failed on \"" 
+                                     ++ name ++ "\""))
+              codes1
 	--code2 <- system ("chmod 755 " ++ name)
 	--checkExitCode code2 ("config: 'chmod' failed on \"" ++ name ++ "\"")
 	putStrLn "...done"
@@ -47,11 +49,10 @@ generateExec date path name
 
 -------------------------------------------------------------------------------
 
-replace :: String -> [(String, String)] -> IO ExitCode
+replace :: String -> [(String, String)] -> IO [ExitCode]
 replace file replacements
-   = system ("replace -s " 
-             ++ (p_buildReplacements replacements)
-	     ++ " -- " ++ file)
+   = mapM (\(old,new) -> system ("sed -i s/"++old++"/"++new++"/ "++file)) 
+           replacements
  where
  p_buildReplacements [] = error "config: missing replacements"
  p_buildReplacements ((p,r):prs) 
