@@ -1,12 +1,13 @@
-__interface "Main" Main 4 500 where
+__interface "Main" Main 7 500 where
 __export  Main main;
 import PrelBase ! :: 1;
+import PrelNum :: 1;
 import PrelTup :: 1;
 import PrelIOBase :: 1;
+import PrelShow :: 1;
 import PrelList :: 1;
 import PrelIO :: 1;
-import Time :: 1;
 import System :: 1;
 import Directory :: 1;
 ;
-3 main :: PrelIOBase.IO ();
+main :: PrelIOBase.IO ();

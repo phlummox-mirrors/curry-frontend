@@ -1,23 +1,25 @@
 
 # necessary files for builing a simple version of the Muenster Curry Compiler
-MCC_SRC    = Position.lhs Cam.lhs Map.lhs Set.lhs SCC.lhs CPS.lhs Ident.lhs  \
+GETOPT_SRC = GetOpt.hs
+MCC1_SRC   = Position.lhs Cam.lhs Map.lhs Set.lhs SCC.lhs CPS.lhs Ident.lhs  \
 	     CurrySyntax.lhs Types.lhs Utils.lhs Subst.lhs Unlit.lhs IL.lhs  \
-	     DTransform.lhs CCode.lhs CElim.lhs CGen.lhs FlatInfo.lhs        \
+	     DTransform.lhs CCode.lhs CElim.lhs CGen.lhs                     \
 	     Pretty.lhs ILPP.lhs CurryPP.lhs CPretty.lhs CamPP.lhs Error.lhs \
 	     Combined.lhs ILLift.lhs LexComb.lhs CurryLexer.lhs              \
 	     LLParseComb.lhs CurryParser.lhs Env.lhs ILCompile.lhs           \
-	     TopEnv.lhs Base.lhs ILTrans.lhs ILxml.lhs Lift.lhs Qual.lhs     \
+	     TopEnv.lhs Base.lhs ILTrans.lhs Lift.lhs Qual.lhs               \
 	     Eval.lhs Exports.lhs Imports.lhs IntfCheck.lhs PrecCheck.lhs    \
 	     KindCheck.lhs TypeSubst.lhs Typing.lhs Simplify.lhs Desugar.lhs \
 	     TypeCheck.lhs NestEnv.lhs SyntaxCheck.lhs PathUtils.lhs         \
-	     Options.lhs Modules.lhs CurryDeps.lhs
+	     Options.lhs CurryDeps.lhs
+MCC2_SRC   = ScopeEnv.hs ILScope.hs CaseCompletion.hs FlatCurry.hs           \
+	     CurryInfo.hs IL2FlatCurry.hs
+MCC3_SRC   = ILxml.lhs Modules.lhs
 
-MCC_INTF   = $(MCC_SRC:%.lhs=%.hi)
-MCC_OBJ    = $(MCC_SRC:%.lhs=%.o)
-
-GETOPT_SRC = GetOpt.hs
-GETOPT_INTF= GetOpt.hi
 GETOPT_OBJ = GetOpt.o
+MCC1_OBJ   = $(MCC1_SRC:%.lhs=%.o)
+MCC2_OBJ   = $(MCC2_SRC:%.hs=%.o)
+MCC3_OBJ   = $(MCC3_SRC:%.lhs=%.o)
 
 CYCC_SRC   = cycc.hs
 CYCC       = cycc
@@ -46,6 +48,7 @@ CYXML         = cyxml
 
 # the haskell compiler
 HC         = ghc -syslib lang
+HC_OPTS	   = -v0
 
 
 # The following variables are exported by top level makefile
@@ -77,28 +80,31 @@ all: src conf mcc runtime install
 # Compile MCC components and generate "cycc" and "cymk"
 .PHONY: src
 
-src: $(GETOPT_OBJ) $(MCC_OBJ) $(CYCC) $(CYMK) $(NEWER)
+src: $(GETOPT_OBJ) $(MCC1_OBJ) $(MCC2_OBJ) $(MCC3_OBJ) $(CYCC) $(CYMK) $(NEWER)
 
-$(GETOPT_INTF): $(GETOPT_SRC)
-	$(HC) -c $(GETOPT_SRC)
 
 $(GETOPT_OBJ): $(GETOPT_SRC)
-	$(HC) -c $(GETOPT_SRC)
+	$(HC) $(HC_OPTS) -c $(GETOPT_SRC)
 
-$(MCC_INTF): %.hi: %.lhs $(GETOPT_INTF)
-	$(HC) -c $<
+$(MCC1_OBJ): %.o: %.lhs $(GETOPT_OBJ)
+	$(HC) $(HC_OPTS) -c $<
 
-$(MCC_OBJ): %.o: %.lhs $(GETOPT_INTF)
-	$(HC) -c $<
+$(MCC2_OBJ): %.o: %.hs $(MCC1_OBJ) $(GETOPT_OBJ)
+	$(HC) $(HC_OPTS) -c $<
 
-$(CYCC): $(MCC_INTF) $(MCC_OBJ) $(GETOPT_INTF) $(GETOPT_OBJ) $(CYCC_SRC)
-	$(HC) -o $(CYCC) $(CYCC_SRC) $(MCC_OBJ) $(GETOPT_OBJ)
+$(MCC3_OBJ): %.o: %.lhs $(MCC2_OBJ) $(MCC1_OBJ) $(GETOPT_OBJ)
+	$(HC) $(HC_OPTS) -c $<
 
-$(CYMK): $(MCC_INTF) $(MCC_OBJ) $(GETOPT_INTF) $(GETOPT_OBJ) $(CYMK_SRC)
-	$(HC) -o $(CYMK) $(CYMK_SRC) $(MCC_OBJ) $(GETOPT_OBJ)
+$(CYCC): $(CYCC_SRC) $(MCC3_OBJ) $(MCC2_OBJ) $(MCC1_OBJ) $(GETOPT_OBJ)
+	$(HC) $(HC_OPTS) -o $(CYCC) $(CYCC_SRC) \
+			    $(MCC3_OBJ) $(MCC2_OBJ) $(MCC1_OBJ) $(GETOPT_OBJ)
+
+$(CYMK): $(CYMK_SRC) $(MCC3_OBJ) $(MCC2_OBJ) $(MCC1_OBJ) $(GETOPT_OBJ)
+	$(HC) $(HC_OPTS) -o $(CYMK) $(CYMK_SRC) \
+			    $(MCC3_OBJ) $(MCC2_OBJ) $(MCC1_OBJ) $(GETOPT_OBJ)
 
 $(NEWER): $(NEWER_LHS)
-	$(HC) -o $(NEWER) $(NEWER_LHS)
+	$(HC) $(HC_OPTS) -o $(NEWER) $(NEWER_LHS)
 
 
 # Compile configuration file "config.hs"
@@ -107,7 +113,7 @@ $(NEWER): $(NEWER_LHS)
 conf: $(CONFIG)
 
 $(CONFIG): $(CONFIG_SRC)
-	$(HC) -o $(CONFIG) $(CONFIG_SRC)
+	$(HC) $(HC_OPTS) -o $(CONFIG) $(CONFIG_SRC)
 
 
 # Generate "cyc", "cymake" and "cyxml"
@@ -117,16 +123,18 @@ mcc: $(CYC) $(CYMAKE) $(CYXML)
 
 $(CYC): $(CONFIG) $(CYC_PATT)
 	@./$(CONFIG) $(CYC)
+	@chmod 755 $(CYC)
 	@cd $(MCC_SRC_CURRY) && clean
 
 $(CYMAKE): $(CONFIG) $(CYMAKE_PATT) $(NEWER)
 	@./$(CONFIG) $(CYMAKE)
+	@chmod 755 $(CYMAKE)
 
 $(CYXML_HS): $(CYXML_HS_PATT)
 	@./$(CONFIG) $(CYXML_HS)
 
 $(CYXML): $(CYXML_HS) $(CYXML_HS_PATT) $(CYC) $(CYMAKE)
-	$(HC) -o $(CYXML) $(CYXML_HS)
+	$(HC) $(HC_OPTS) -o $(CYXML) $(CYXML_HS)
 
 
 # Generate the MCC runtime components

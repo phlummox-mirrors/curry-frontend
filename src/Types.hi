@@ -2,12 +2,12 @@ __interface "Main" Types 1 500 where
 __export  Types ExistTypeScheme{ForAllExist} Type{TypeArrow TypeConstrained TypeConstructor TypeSkolem TypeVariable} TypeScheme{ForAll} arrowArgs arrowArity arrowBase boolType charType floatType intType ioType isArrowType listType monoType polyType primType stringType successType tupleType typeConstrs typeSkolems typeVar typeVars unitType;
 import Char;
 import PrelMaybe;
+import Ident :: 1 1 1 Ident 1 ModuleIdent 1 QualIdent 1 boolId 1 charId 1 floatId 1 intId 1 ioId 1 listId 1 preludeMIdent 1 qualifyWith 1 successId 1 tupleId 1 unitId 1 zdfEqIdent 1 zdfEqModuleIdent 1 zdfEqQualIdent 1 zdfOrdIdent 1 zdfOrdModuleIdent 1 zdfOrdQualIdent 1 zdfShowIdent 1 zdfShowModuleIdent 1 zdfShowQualIdent 1;
 import PrelBase ! :: 1;
 import PrelNum :: 1;
 import PrelTup :: 1;
 import PrelShow :: 1;
 import PrelList :: 1;
-import Ident :: 1 1 1 Ident 1 ModuleIdent 1 QualIdent 1 boolId 1 charId 1 floatId 1 intId 1 ioId 1 listId 1 preludeMIdent 1 qualifyWith 1 successId 1 tupleId 1 unitId 1 zdfEqIdent 1 zdfEqModuleIdent 1 zdfEqQualIdent 1 zdfOrdIdent 1 zdfOrdModuleIdent 1 zdfOrdQualIdent 1 zdfShowIdent 1 zdfShowModuleIdent 1 zdfShowQualIdent 1;
 import List :: 1;
 ;
 instance {PrelBase.Eq ExistTypeScheme} = zdfEqExistTypeScheme ;

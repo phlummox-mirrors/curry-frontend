@@ -1,10 +1,10 @@
 __interface "Main" CCode 1 500 where
 __export  CCode CBlock CCase{CCase CDefault} CConst{CConst} CExpr{CAdd CAddr CCast CDiv CElem CExpr CField CFloat CFunCall CInt CMod CMul CRel CShift CString CSub} CFile CInitializzer{CInit CStruct} CStmt{CAssign CBlock CBreak CContinue CDecrBy CGoto CIf CIncrBy CLabel CLocalVar CLoop CProcCall CReturn CStaticArray CSwitch CTrace CppCondStmts} CTopDecl{CArrayDef CEnumDecl CExternArrayDecl CExternVarDecl CFuncDecl CFuncDef CMainFunc CVarDef CppCondDecls CppInclude} CVisibility{CPrivate CPublic} LVar{LElem LField LVar} mergeCFile;
+import Maybe :: 1;
 import PrelBase ! :: 1;
 import PrelFloat :: 1;
-import List :: 1;
-import Maybe :: 1;
 import PrelMaybe :: 1;
+import List :: 1;
 infixr 8 CCast infixl 5 CShift infixl 7 CMod infixl 7 CDiv infixl 7 CMul infixl 6 CSub infixl 6 CAdd infixl 9 CField infixl 9 CElem;
 instance {PrelBase.Eq CExpr} = zdfEqCExpr ;
 instance {PrelBase.Eq CCase} = zdfEqCCase ;

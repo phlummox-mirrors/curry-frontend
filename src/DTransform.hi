@@ -1,15 +1,15 @@
 __interface "Main" DTransform 1 500 where
 __export  DTransform DebugTypeList SecondPhaseResult SymbolType{IsConstructor IsExternal IsFunction IsNewConstructor} buildLetExp buildLetrecExp changeFunctionqId collectSymbolTypes createApply createEmptyNode createTree dAddMain dEvalApply dEvalId dTransform debugAuxiliary debugBuildList debugBuildPairExp debugClean debugDecls debugFirstPhase debugFunction debugFunctionName debugFunctionqId debugIdentCons debugIdentNil debugIdentPair debugIdentTuple debugNil debugPrefix debugPreludeModule debugPreludeName debugQualPrelude debugQualPreludeName debugRenameId debugSplitDecls debugTry debugTypeCTree debugTypeChar debugTypeCleanTree debugTypeLCTree debugTypeLCleanTree debugTypeList debugTypeMainAux debugTypePair debugTypePredef debugTypeString debugTypeTuple decomposeExp emptyNode extractApply extractBindings extractBindingsAlts extractBindingsApply extractBindingsBinding extractBindingsLBindings extractBindingsList extractLets firstPhaseBinding firstPhaseExp firstPhaseQual fixLetrecExp generateAuxFunc generateAuxFuncs generateExternal idAuxiliarFunction isPreludeFunction newBindings newIdName newLocalDeclarations newMain newModuleName noCaseOr noCaseOrBinding node outerLets reconstructExpr retrieveCleanTree transformType transformTypezq typeArity typeCons typeTuple typesBody typesConst typesData typesDatum typesExpr typesExternal typesExternals typesFunction typesFunctions typesPredefined void;
 import Char;
+import Ident :: 1 1 1 Ident 1 ModuleIdent 1 QualIdent 1 charId 1 consId 1 emptyMIdent 1 isQSelectorId 1 isTupleId 1 listId 1 mkIdent 1 mkMIdent 1 moduleName 1 name 1 nilId 1 preludeMIdent 1 qSuccessId 1 qualify 1 qualifyWith 1 renameIdent 1 splitQualIdent 1 tupleId 1 uniqueId 1 zdfEqIdent 1 zdfEqModuleIdent 1 zdfEqQualIdent 1 zdfOrdIdent 1 zdfOrdModuleIdent 1 zdfOrdQualIdent 1 zdfShowIdent 1 zdfShowModuleIdent 1 zdfShowQualIdent 1;
 import PrelBase ! :: 1;
 import PrelNum :: 1;
 import PrelTup :: 1;
 import PrelEnum :: 1;
 import PrelShow :: 1;
 import PrelList :: 1;
-import Ident :: 1 1 1 Ident 1 ModuleIdent 1 QualIdent 1 charId 1 consId 1 emptyMIdent 1 isQSelectorId 1 isTupleId 1 listId 1 mkIdent 1 mkMIdent 1 moduleName 1 name 1 nilId 1 preludeMIdent 1 qSuccessId 1 qualify 1 qualifyWith 1 renameIdent 1 splitQualIdent 1 tupleId 1 uniqueId 1 zdfEqIdent 1 zdfEqModuleIdent 1 zdfEqQualIdent 1 zdfOrdIdent 1 zdfOrdModuleIdent 1 zdfOrdQualIdent 1 zdfShowIdent 1 zdfShowModuleIdent 1 zdfShowQualIdent 1;
-import List :: 1;
 import IL :: 1 1 1 Alt 1 Binding 1 CallConv 1 ConstrDecl 1 ConstrTerm 1 Decl 1 Eval 1 Expression 1 Literal 1 Module 1 Type 1 zdfEqAlt 1 zdfEqBinding 1 zdfEqCallConv 1 zdfEqConstrDecl 1 zdfEqConstrTerm 1 zdfEqDecl 1 zdfEqEval 1 zdfEqExpression 1 zdfEqLiteral 1 zdfEqModule 1 zdfEqType 1 zdfShowAlt 1 zdfShowBinding 1 zdfShowCallConv 1 zdfShowConstrDecl 1 zdfShowConstrTerm 1 zdfShowDecl 1 zdfShowEval 1 zdfShowExpression 1 zdfShowLiteral 1 zdfShowModule 1 zdfShowType 1;
+import List :: 1;
 import PrelMaybe :: 1;
 ;
 instance {PrelBase.Eq SymbolType} = zdfEqSymbolType ;

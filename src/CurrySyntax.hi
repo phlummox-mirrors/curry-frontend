@@ -1,18 +1,18 @@
 __interface "Main" CurrySyntax 1 500 where
 __export  CurrySyntax Alt{Alt} CallConv{CallConvCCall CallConvPrimitive} CondExpr{CondExpr} ConstrDecl{ConOpDecl ConstrDecl} ConstrTerm{AsPattern ConstructorPattern InfixPattern LazzyPattern ListPattern LiteralPattern NegativePattern ParenPattern TuplePattern VariablePattern} Decl{DataDecl EvalAnnot ExternalDecl ExtraVariables FlatExternalDecl FunctionDecl ImportDecl InfixDecl NewtypeDecl PatternDecl TypeDecl TypeSig} Equation{Equation} EvalAnnotation{EvalChoice EvalRigid} Export{Export ExportModule ExportTypeAll ExportTypeWith} ExportSpec{Exporting} Expression{Apply Case Constructor Do EnumFrom EnumFromThen EnumFromThenTo EnumFromTo IfThenElse InfixApply Lambda LeftSection Let List ListCompr Literal Paren RightSection Tuple Typed UnaryMinus Variable} Goal{Goal} IDecl{HidingDataDecl IDataDecl IFunctionDecl IImportDecl IInfixDecl INewtypeDecl ITypeDecl} Import{Import ImportTypeAll ImportTypeWith} ImportSpec{Hiding Importing} Infix{Infix InfixL InfixR} InfixOp{InfixConstr InfixOp} Interface{Interface} Lhs{ApLhs FunLhs OpLhs} Literal{Char Float Int String} Module{Module} NewConstrDecl{NewConstrDecl} Qualified Rhs{GuardedRhs SimpleRhs} Statement{StmtBind StmtDecl StmtExpr} TypeExpr{ArrowType ConstructorType ListType TupleType VariableType} flatLhs opName;
+import Char;
 import PrelReal;
 import PrelEnum;
 import PrelList;
-import Char;
 import List;
+import Ident :: 1 1 1 Ident 1 ModuleIdent 1 QualIdent 1 zdfEqIdent 1 zdfEqModuleIdent 1 zdfEqQualIdent 1 zdfOrdIdent 1 zdfOrdModuleIdent 1 zdfOrdQualIdent 1 zdfShowIdent 1 zdfShowModuleIdent 1 zdfShowQualIdent 1;
+import Position :: 1 1 1 Position 1 zdfEqPosition 1 zdfOrdPosition 1 zdfShowPosition 1;
 import PrelBase ! :: 1;
 import PrelFloat :: 1;
 import PrelNum :: 1;
 import PrelTup :: 1;
 import PrelIOBase :: 1;
 import PrelShow :: 1;
-import Ident :: 1 1 1 Ident 1 ModuleIdent 1 QualIdent 1 zdfEqIdent 1 zdfEqModuleIdent 1 zdfEqQualIdent 1 zdfOrdIdent 1 zdfOrdModuleIdent 1 zdfOrdQualIdent 1 zdfShowIdent 1 zdfShowModuleIdent 1 zdfShowQualIdent 1;
-import Position :: 1 1 1 Position 1 zdfEqPosition 1 zdfOrdPosition 1 zdfShowPosition 1;
 import PrelMaybe :: 1;
 ;
 instance {PrelBase.Eq Goal} = zdfEqGoal ;

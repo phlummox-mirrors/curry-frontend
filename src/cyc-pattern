@@ -87,6 +87,8 @@ while test $# -gt 0; do
     -c ) toO=1;;
     -C ) toC=1;;
     -F | -flat | --flat ) toF=1; cyccopts="$cyccopts --flat";;
+    -X | -xml | --xml )toX=1; cyccopts="$cyccopts --xml";;
+    -A | -abstract | --abstract )toA=1; cyccopts="$cyccopts --abstract";;
     -S ) toS=1;;
     -o ) ofile=$2; shift;;
     -o* ) ofile=`expr "$1" : '-o\(.*\)'`;;
@@ -220,7 +222,7 @@ trap 'test "$temps" && rm -f $temps' 0 1 2 3 15
 
 # Process all files
 set -- $files
-if test -n "$ofile" -a -n "$toF$toC$toS$toO" -a $# -gt 1; then
+if test -n "$ofile" -a -n "$toF$toX$toA$toC$toS$toO" -a $# -gt 1; then
   echo 1>&2 "$cyc: cannot specify -o with -c, -S, -C, or -F and multiple input files"
   exit 1
 fi
@@ -247,8 +249,14 @@ for f in $files; do
       curry=$f
       stem=`expr "$f" : '\(.*\)\.curry'`
       stem=$stem`expr "$f" : '\(.*\)\.lcurry'`
-      if test -n "$toF$toC"; then
-	if test -n "$toF"; then suffix=.flat; else suffix=.c; fi
+      if test -n "$toF$toX$toA$toC"; then
+	if test -n "$toF"; then suffix=.fcy; 
+	else if test -n "$toX"; then suffix=_flat.xml; 
+	     else if test -n "$toA"; then suffix=.acy;
+		  else suffix=.c;
+		  fi
+	     fi
+	fi
         if test -n "$ofile"; then
 	  target=$ofile
 	else
@@ -275,7 +283,7 @@ for f in $files; do
       f=$target
       ;;
   esac
-  test -n "$toF$toC" && continue
+  test -n "$toF$toX$toA$toC" && continue
 
   # Compile C/assembler code into assembler code or object files
   case $f in
@@ -308,7 +316,7 @@ for f in $files; do
 done
 
 # Eventually link the program
-if test -z "$toF$toC$toS$toO"; then
+if test -z "$toF$toX$toA$toC$toS$toO"; then
   temps="$temps /tmp/cyc$$.c"
   if test -n "$goal"; then
     test -n "$main" || main="$curry"

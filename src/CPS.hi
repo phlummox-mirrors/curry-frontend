@@ -1,9 +1,8 @@
 __interface "Main" CPS 1 500 where
 __export  CPS CPSFunction{CPSFunction} CPSStmt{CPSApply CPSBind CPSChoices CPSDelay CPSEnter CPSExec CPSJump CPSLocalSwitch CPSLock CPSReturn CPSSwitch CPSUpdate CPSYield} CaseBlock{CaseBlock} ChoicesList{ChoicesList} caseBlockTag cpsApply cpsFunction cpsVars fresh fromCaseBlock;
+import Maybe;
 import PrelRead;
 import Char;
-import Maybe;
-import SCC :: 1 1 1 scc 1;
 import PrelBase ! :: 1;
 import PrelNum :: 1;
 import PrelTup :: 1;
@@ -11,10 +10,11 @@ import PrelEnum :: 1;
 import PrelShow :: 1;
 import PrelList :: 1;
 import Cam :: 1 1 1 Alt 1 Bind 1 Case 1 Expr 1 Literal 1 Name 1 RF 1 Stmt 1 Tag 1 zdfEqBind 1 zdfEqCase 1 zdfEqExpr 1 zdfEqLiteral 1 zdfEqName 1 zdfEqRF 1 zdfEqStmt 1 zdfEqTag 1 zdfOrdName 1 zdfShowBind 1 zdfShowCase 1 zdfShowExpr 1 zdfShowLiteral 1 zdfShowName 1 zdfShowRF 1 zdfShowStmt 1 zdfShowTag 1;
-import List :: 1;
-import Set :: 1 1 1 Set 1 fromListSet 1 notElemSet 1 zdfEqSet 1 zdfShowSet 1;
 import PrelMaybe :: 1;
+import SCC :: 1 1 1 scc 1;
+import Set :: 1 1 1 Set 1 fromListSet 1 notElemSet 1 zdfEqSet 1 zdfShowSet 1;
 import Map :: 1 1 FM 1;
+import List :: 1;
 ;
 instance {PrelShow.Show ChoicesList} = zdfShowChoicesList ;
 instance {PrelShow.Show CaseBlock} = zdfShowCaseBlock ;

@@ -1,6 +1,8 @@
 __interface "Main" LexComb 1 500 where
 __export  LexComb Context Indent P closeP0 closeP1 convertFloating convertIntegral convertSignedFloating convertSignedIntegral failP parse parseError popContext pushContext returnP thenP thenPzu;
 import Monad;
+import Position :: 1 1 1 Position 1 first 1 zdfEqPosition 1 zdfOrdPosition 1 zdfShowPosition 1;
+import Error :: 1 1 1 Error 1 zdfEqError 1 zdfMonadError 1 zdfOrdError 1 zdfShowError 1;
 import PrelBase ! :: 1;
 import PrelFloat :: 1;
 import PrelNum :: 1;
@@ -10,8 +12,6 @@ import PrelReal :: 1;
 import PrelEnum :: 1;
 import PrelShow :: 1;
 import PrelList :: 1;
-import Position :: 1 1 1 Position 1 first 1 zdfEqPosition 1 zdfOrdPosition 1 zdfShowPosition 1;
-import Error :: 1 1 1 Error 1 zdfEqError 1 zdfMonadError 1 zdfOrdError 1 zdfShowError 1;
 import Char :: 1;
 infixl 1 thenPzu infixl 1 thenP;
 convertSignedFloating :: __forall a (PrelReal.Fractional a) => PrelBase.String -> PrelBase.String -> PrelBase.Int -> a;

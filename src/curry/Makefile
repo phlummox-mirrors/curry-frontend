@@ -2,10 +2,9 @@
 # MCC prelude
 PRELUDE_CURRY  	= prelude.curry
 PRELUDE_INTF   	= $(PRELUDE_CURRY:%.curry=%.icurry)
-PRELUDE_FLAT   	= $(PRELUDE_CURRY:%.curry=%.flat)
+PRELUDE_FLAT   	= $(PRELUDE_CURRY:%.curry=%.fcy)
 
 # MCC library
-LIB_CURRY	= 
 
 # The following variables are exported by top level makefile
 # MCC_PATH	- root path of the MCC
@@ -43,5 +42,5 @@ $(PRELUDE_FLAT): $(PRELUDE_CURRY)
 install: $(PRELUDE_INTF) $(PRELUDE_FLAT)
 	@cp ./*.curry $(MCC_LIB_CURRY)/
 	@cp ./*.icurry $(MCC_LIB_CURRY)/
-	@cp ./*.flat $(MCC_LIB_CURRY)/
+	@cp ./*.fcy $(MCC_LIB_CURRY)/
 

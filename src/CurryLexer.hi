@@ -1,6 +1,8 @@
 __interface "Main" CurryLexer 1 500 where
 __export  CurryLexer Attributes{CharAttributes FloatAttributes IdentAttributes IntAttributes NoAttributes StringAttributes cval fval ival modul sval} Category{At Backquote Backslash Bar CharTok Colon Comma DotDot DoubleColon EOF Equals FloatTok Id Idzuas Idzuccall Idzuforall Idzuhiding Idzuinterface Idzuprimitive Idzuqualified IntTok KWzucase KWzuchoice KWzudata KWzudo KWzuelse KWzueval KWzuexternal KWzufree KWzuif KWzuimport KWzuin KWzuinfix KWzuinfixl KWzuinfixr KWzulet KWzumodule KWzunewtype KWzuof KWzurigid KWzuthen KWzutype KWzuwhere LeftArrow LeftBrace LeftBracket LeftParen QId QSym RightArrow RightBrace RightBracket RightParen Semicolon StringTok Sym SymzuDot SymzuMinus SymzuMinusDot Tilde Underscore VRightBrace VSemicolon} FailP SuccessP Token{Token} asciiEscape charTok floatTok idTok intTok isHexit isIdent isOctit isSym lexBOL lexChar lexCharEnd lexEscape lexExponent lexFile lexHexadecimal lexIdent lexNumber lexOctal lexOptExponent lexOptFraction lexOptQual lexQualIdent lexQualSym lexSignedExponent lexString lexStringEscape lexStringGap lexStringRest lexSym lexToken lexer nestedComment numEscape reservedzuandzuspecialzuids reservedzuandzuspecialzuops reservedzuids reservedzuops stringTok tok;
 import Monad;
+import Position :: 1 1 1 Position 1 incr 1 next 1 nl 1 tab 1 zdfEqPosition 1 zdfOrdPosition 1 zdfShowPosition 1;
+import Char :: 1;
 import PrelBase ! :: 1;
 import PrelFloat :: 1;
 import PrelNum :: 1;
@@ -10,14 +12,12 @@ import PrelReal :: 1;
 import PrelEnum :: 1;
 import PrelShow :: 1;
 import PrelList :: 1;
-import Prelude :: 1;
 import LexComb :: 1 1 1 Context 1 Indent 1 P 1 convertFloating 1 convertIntegral 1 failP 1 returnP 1 thenP 1;
-import Position :: 1 1 1 Position 1 incr 1 next 1 nl 1 tab 1 zdfEqPosition 1 zdfOrdPosition 1 zdfShowPosition 1;
 import Map :: 1 1 1 FM 1 addToFM 1 fromListFM 1 lookupFM 1 zdfEqFM 1 zdfShowFM 1;
-import Char :: 1;
+import Error :: 1 1 Error 1 zdfEqError 1 zdfOrdError 1 zdfShowError 1;
+import Prelude :: 1;
 import List :: 1;
 import PrelMaybe :: 1;
-import Error :: 1 1 Error 1 zdfEqError 1 zdfOrdError 1 zdfShowError 1;
 ;
 instance {PrelBase.Eq Category} = zdfEqCategory ;
 instance {PrelBase.Ord Category} = zdfOrdCategory ;

@@ -20,7 +20,8 @@ similar to that of Flat-Curry XML representation.
 > import Ident
 > import IL
 > import ILTrans
-> import FlatInfo
+> import qualified CurrySyntax
+> import CurryInfo
 > import Pretty
 > import Char(chr,ord,isAlphaNum)
 
@@ -28,10 +29,10 @@ similar to that of Flat-Curry XML representation.
 > level::Int
 > level = 3
 
-> xmlModule :: FlatInfo -> Module -> Doc
+> xmlModule :: CurryInfo -> Module -> Doc
 > xmlModule info m = text "<prog>" $$ nest level (xmlBody info m) $$ text "</prog>"
 
-> xmlBody :: FlatInfo -> Module -> Doc
+> xmlBody :: CurryInfo -> Module -> Doc
 > xmlBody info (Module name imports decls) =
 >                   xmlElement "module"      xmlModuleDecl      moduleDecl   $$
 >                   xmlElement "import"      xmlImportDecl      importDecl   $$
@@ -42,8 +43,8 @@ similar to that of Flat-Curry XML representation.
 >               where
 >                 moduleDecl      = [name]
 >                 importDecl      = imports
->                 operatorDecl    = getFlatOpInfo info
->                 translationDecl = map (qualifyWith name) (getFlatExport info)
+>                 operatorDecl    = getOpFixity info
+>                 translationDecl = map (qualifyWith name) (getExports info)
 >                 (functionDecl,typeDecl) = splitDecls decls
 
 > -- =========================================================================
@@ -196,8 +197,8 @@ similar to that of Flat-Curry XML representation.
 > xmlExpr d (Or expr1 expr2)          = xmlOr     d expr1 expr2
 > xmlExpr d (Exist ident expr)        = xmlFree   d ident expr
 > xmlExpr d (Let binding expr)        = xmlLet    d binding expr
-> xmlExpr d (Letrec lBinding expr)    = -- xmlLetrec d lBinding expr
->   error "Recursive let bindings not supported in FlatCurry"
+> xmlExpr d (Letrec lBinding expr)    = xmlLetrec d lBinding expr
+>   --error "Recursive let bindings not supported in FlatCurry"
 
 > -- =========================================================================
 
@@ -433,17 +434,17 @@ similar to that of Flat-Curry XML representation.
 > xmlLit (Int n) = text "<intc>" <>  xmlInt n <> text "</intc>"
 > xmlLit (Float n) = text "<floatc>" <>  xmlFloat n <> text "</floatc>"
 
-> xmlOperatorDecl :: FlatOpInfo -> Doc
-> xmlOperatorDecl opinfo =
->     text "<op fixity=\"" <> xmlFixity opinfo 
->     <> text "\" prec=\"" <> xmlInt (getOpPrec opinfo) <> text "\">"
->     <> xmlIdent (getOpIdent opinfo)
+> xmlOperatorDecl :: CurrySyntax.IDecl -> Doc
+> xmlOperatorDecl (CurrySyntax.IInfixDecl _ fixity prec qident) =
+>     text "<op fixity=\"" <> xmlFixity fixity 
+>     <> text "\" prec=\"" <> xmlInt prec <> text "\">"
+>     <> xmlIdent (unqualify qident)
 >     <> text "</op>"
 
-> xmlFixity :: FlatOpInfo -> Doc
-> xmlFixity opinfo | isInfixL opinfo = text "InfixlOp"
->                  | isInfixR opinfo = text "InfixrOp"
->                  | otherwise       = text "InfixOp"
+> xmlFixity :: CurrySyntax.Infix -> Doc
+> xmlFixity CurrySyntax.InfixL = text "InfixlOp"
+> xmlFixity CurrySyntax.InfixR = text "InfixrOp"
+> xmlFixity CurrySyntax.Infix  = text "InfixOp"
 
 
 > xmlTranslationDecl :: QualIdent -> Doc

@@ -1,10 +1,10 @@
 __interface "Main" Error 1 500 where
 __export  Error Error{Error Ok} emap ok okM;
+import Monad :: 1;
 import PrelBase ! :: 1;
 import PrelNum :: 1;
 import PrelTup :: 1;
 import PrelShow :: 1;
-import Monad :: 1;
 ;
 instance __forall a (PrelBase.Eq a) => {PrelBase.Eq (Error a)} = zdfEqError ;
 instance __forall a (PrelBase.Ord a) => {PrelBase.Ord (Error a)} = zdfOrdError ;

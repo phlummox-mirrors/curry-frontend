@@ -1,7 +1,7 @@
 -------------------------------------------------------------------------------
 -------------------------------------------------------------------------------
 --
--- A small configuration program for generating extending pattern files
+-- A small configuration program for extending pattern files
 --
 --
 -- January 2005,
@@ -40,10 +40,12 @@ generateExec date path name
 	code1 <- replace name [("%BUILD_DIR%",  path),
 			       ("%BUILD_DATE%", date)]
 	checkExitCode code1 ("config: 'replace' failed on \"" ++ name ++ "\"")
-	code2 <- system ("chmod 755 " ++ name)
-	checkExitCode code2 ("config: 'chmod' failed on \"" ++ name ++ "\"")
+	--code2 <- system ("chmod 755 " ++ name)
+	--checkExitCode code2 ("config: 'chmod' failed on \"" ++ name ++ "\"")
 	putStrLn "...done"
 
+
+-------------------------------------------------------------------------------
 
 replace :: String -> [(String, String)] -> IO ExitCode
 replace file replacements
@@ -75,9 +77,7 @@ getDate
 
 
 getPath :: IO String
-getPath 
-   = do path' <- getCurrentDirectory
-        return (getPathFor "mcc" path')
+getPath = getEnv "MCC_PATH"
 
 
 

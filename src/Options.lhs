@@ -23,7 +23,9 @@ all compiler options.
 >     goal :: Maybe (Maybe String),     -- goal to be evaluated
 >     typeIt :: Maybe String,           -- goal to be typed
 >     noInterface :: Bool,              -- do not create an interface file
+>     flatXML :: Bool,                  -- generate flat XML code
 >     flatCurry :: Bool,                -- emit flat curry instead of C code
+>     abstractCurry :: Bool,            -- generate abstract curry code
 >     splitCode :: Bool,                -- split C code
 >     debug :: Bool,                    -- add debugging transformation
 >     trusted :: Bool,                  -- trusted module for debugging
@@ -38,7 +40,9 @@ all compiler options.
 >     goal = Nothing,
 >     typeIt = Nothing,
 >     noInterface = False,
+>     flatXML = False,
 >     flatCurry = False,
+>     abstractCurry = False,
 >     splitCode = False,
 >     debug = False,
 >     trusted = False,
@@ -67,7 +71,8 @@ library.
 >     Help
 >   | ImportPath FilePath | Output FilePath
 >   | Eval (Maybe String) | Type String
->   | SplitCode | NoInterface | Flat | Debug | Trusted | Dump [Dump]
+>   | SplitCode | NoInterface 
+>   | FlatXML | Flat | Abstract | Debug | Trusted | Dump [Dump]
 >   deriving (Eq,Show)
 
 \end{verbatim}
@@ -86,8 +91,12 @@ recognized by the compiler.
 >            "write code to FILE",
 >     Option "" ["no-icurry"] (NoArg NoInterface)
 >            "do not create an interface file",
+>     Option "" ["xml"] (NoArg FlatXML)
+>            "generate flat xml code instead of C code",
 >     Option "" ["flat"] (NoArg Flat)
 >            "emit flat curry instead of C code",
+>     Option "" ["abstract"] (NoArg Abstract)
+>            "generate abstract curry code instead of C code",
 >     Option "" ["split-code"] (NoArg SplitCode)
 >            "emit one C file for each function",
 >     Option "g" ["debug"] (NoArg Debug)
@@ -132,7 +141,9 @@ print its usage message and terminate.
 > selectOption (Eval goal) opts = opts{ goal = Just goal }
 > selectOption (Type goal) opts = opts{ typeIt = Just goal }
 > selectOption NoInterface opts = opts{ noInterface = True }
+> selectOption FlatXML opts = opts{ flatXML = True }
 > selectOption Flat opts = opts{ flatCurry = True }
+> selectOption Abstract opts = opts{ abstractCurry = True }
 > selectOption SplitCode opts = opts{ splitCode = True }
 > selectOption Debug opts = opts{ debug = True }
 > selectOption Trusted opts = opts{ trusted = True }

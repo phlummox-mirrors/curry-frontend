@@ -25,10 +25,13 @@ This module controls the compilation of modules.
 > import Desugar(desugar,desugarGoal)
 > import Simplify(simplify)
 > import Lift(lift)
+> import CurryInfo
+> import FlatCurry
 > import qualified IL
 > import ILTrans(ilTrans,ilTransIntf)
 > import ILLift(liftProg)
 > import ILxml(xmlModule)
+> import IL2FlatCurry
 > import DTransform(dTransform,dAddMain)
 > import ILCompile(camCompile,camCompileData,fun)
 > import qualified CamPP(ppModule)
@@ -38,7 +41,7 @@ This module controls the compilation of modules.
 > import CurryPP(ppModule,ppInterface,ppIDecl,ppGoal)
 > import qualified ILPP(ppModule)
 > import Options(Options(..),Dump(..))
-> import FlatInfo
+> import CaseCompletion
 > import PathUtils
 > import List
 > import IO
@@ -90,12 +93,15 @@ matching code.}
 >           transModule flat (debug opts) (trusted opts) mEnv tyEnv m'
 >         (ccode,dumps') = ccodeModule (splitCode opts) mEnv il
 >         ccode' = compileDefaultGoal (debug opts) mEnv intf
->     mapM_ (doDump opts) (dumps ++ if flat then [] else dumps')
+>         il' = completeCase mEnv il
+>     mapM_ (doDump opts) 
+>           (dumps ++ if flat || abstract || xml then [] else dumps')
 >     unless (noInterface opts) (updateInterface fn intf)
->     if flat
->       then writeFlat (output opts) fn (xmlModule (genFlatInfo m) il)
->       else writeCode (output opts) fn (maybe ccode (merge ccode) ccode')
->   where flat = flatCurry opts
+>     if flat || abstract || xml then genCurry opts fn m' il'
+>        else writeCode (output opts) fn (maybe ccode (merge ccode) ccode')
+>   where abstract = abstractCurry opts
+>         flat     = flatCurry opts
+>         xml      = flatXML opts
 >         merge (Left cf1) cf2 = Left (mergeCFile cf1 cf2)
 >         merge (Right cfs) cf = Right (cf : cfs)
 
@@ -173,9 +179,14 @@ matching code.}
 >   concat [ilTransIntf (Interface m ds) | (m,ds) <- envToList mEnv,
 >                                          m `elem` is]
 
-> writeFlat :: Maybe FilePath -> FilePath -> Doc -> IO ()
-> writeFlat tfn sfn flat = writeFile ofn (showln flat)
->   where ofn = fromMaybe (rootname sfn ++ flatExt) tfn
+> writeXML :: Maybe FilePath -> FilePath -> CurryInfo -> IL.Module -> IO ()
+> writeXML tfn sfn fi il = writeFile ofn (showln code)
+>   where ofn  = fromMaybe (rootname sfn ++ xmlExt) tfn
+>         code = (xmlModule fi il)
+
+> writeFlat :: Maybe FilePath -> FilePath -> CurryInfo -> IL.Module -> IO ()
+> writeFlat tfn sfn fi il = writeFlatCurry fname (il2flatCurry fi il)
+>   where fname = fromMaybe (rootname sfn ++ flatExt) tfn
 
 > writeCode :: Maybe FilePath -> FilePath -> Either CFile [CFile] -> IO ()
 > writeCode tfn sfn (Left cfile) = writeCCode ofn cfile
@@ -457,6 +468,27 @@ standard output.
 > dumpHeader DumpNormalized = "Intermediate code after normalization"
 > dumpHeader DumpCam = "Abstract machine code"
 
+
+\end{verbatim}
+The function \testtt{genCurry} generates several kinds of abstract
+curry representations (FlatCurry, AbstractCurry and FlatXML)
+depending on the specified option.
+\begin{verbatim}
+
+> genCurry :: Options -> FilePath -> Module -> IL.Module -> IO ()
+> genCurry opts fname mod il
+>   | flat      = writeFlat fname' fname info il
+>   | abstract  = error "AbstractCurry program generation not supported" 
+>   | xml       = writeXML fname' fname info il 
+>   | otherwise = error "Illegal option"
+>  where
+>  fname'   = output opts
+>  info     = genCurryInfo mod
+>  flat     = flatCurry opts
+>  abstract = abstractCurry opts
+>  xml      = flatXML opts
+
+
 \end{verbatim}
 The function \texttt{ppTypes} is used for pretty-printing the types
 from the type environment.
@@ -475,7 +507,10 @@ Various filename extensions
 \begin{verbatim}
 
 > cExt = ".c"
-> flatExt = ".flat"
+> xmlExt = "_flat.xml"
+> flatExt = ".fcy"
+> flatIntExt = ".fint"
+> acyExt = ".acy"
 > intfExt = ".icurry"
 > litExt = ".lcurry"
 

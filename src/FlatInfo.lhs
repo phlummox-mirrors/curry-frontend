@@ -4,6 +4,7 @@
 >                  isInfix, isInfixL, isInfixR) where
 
 > import CurrySyntax
+> import qualified IL
 > import Ident
 > import Maybe
 
@@ -11,7 +12,7 @@
 
 > data FlatInfo = FlatInfo [Ident] [FlatOpInfo]
 
-> type FlatOpInfo = (Ident, (Infix, Int))
+> type FlatOpInfo  = (Ident, (Infix, Int))
 
 -------------------------------------------------------------------------------
 
