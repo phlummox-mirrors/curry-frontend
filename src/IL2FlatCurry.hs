@@ -40,13 +40,13 @@ visitModule env (Module mident imports decls)
 	             | genFlatIntf env = (isPublicTypeDecl env, 
 					  isPublicFuncDecl env)
 		     | otherwise       = (isTypeDecl, isFuncDecl)
-         (ts, env1)  = mapVisit visitTypeDecl env  (filter isTDecl decls)
-	 (fs, env2)  = mapVisit visitFuncDecl env1 (filter isFDecl decls)
+         (ts, env1)  = emap visitTypeDecl env  (filter isTDecl decls)
+	 (fs, env2)  = emap visitFuncDecl env1 (filter isFDecl decls)
 	 idecls      | genFlatIntf env = getExportedIDecls env
 		     | otherwise       = []
-	 (ts', env3) = mapVisit visitTypeIDecl env2 (filter isTypeIDecl idecls)
-	 (fs', env4) = mapVisit visitFuncIDecl env3 (filter isFuncIDecl idecls)
-	 (os', env5) = mapVisit visitOpIDecl   env4 (filter isOpIDecl   idecls)
+	 (ts', env3) = emap visitTypeIDecl env2 (filter isTypeIDecl idecls)
+	 (fs', env4) = emap visitFuncIDecl env3 (filter isFuncIDecl idecls)
+	 (os', env5) = emap visitOpIDecl   env4 (filter isOpIDecl   idecls)
 	 prog        = Prog (visitModuleIdent mident)
 		            (map visitModuleIdent imports)
 			    (ts' ++ (genTypeSynonyms env5) ++ ts)
@@ -58,7 +58,7 @@ visitModule env (Module mident imports decls)
 --
 visitTypeDecl :: FlatEnv -> Decl -> (TypeDecl, FlatEnv)
 visitTypeDecl env (DataDecl qident arity cdecls)
-   = let (cs, env1) = mapVisit visitConstrDecl env cdecls
+   = let (cs, env1) = emap visitConstrDecl env cdecls
          typedecl   = Type (visitQualIdent env1 qident)
 		           (getVisibility env1 qident)
 			   [0 .. (arity - 1)]
@@ -69,7 +69,7 @@ visitTypeDecl env (DataDecl qident arity cdecls)
 --
 visitConstrDecl :: FlatEnv -> ConstrDecl [Type] -> (ConsDecl, FlatEnv)
 visitConstrDecl env (ConstrDecl qident tparams)
-   = let (ts, env1) = mapVisit visitType env tparams
+   = let (ts, env1) = emap visitType env tparams
 	 consdecl   = Cons (visitQualIdent env1 qident)
 		           (length tparams)
 			   (getVisibility env1 qident)
@@ -80,7 +80,7 @@ visitConstrDecl env (ConstrDecl qident tparams)
 --
 visitType :: FlatEnv -> Type -> (TypeExpr, FlatEnv)
 visitType env (TypeConstructor qident targs)
-   = let (ts, env1) = mapVisit visitType env targs
+   = let (ts, env1) = emap visitType env targs
      in  if (qualName qident) == "Identity"
 	     then (head ts, env1)
 	     else (TCons (visitQualIdent env1 qident) ts, env1)
@@ -107,7 +107,7 @@ visitVarIdent env ident
 --
 visitFuncDecl :: FlatEnv -> Decl -> (FuncDecl, FlatEnv)
 visitFuncDecl env (FunctionDecl qident params typeexpr expr)
-   = let (fparams, env1)   = mapVisit visitVarIdent env params
+   = let (fparams, env1)   = emap visitVarIdent env params
          (ftypeexpr, env2) = visitType env1 typeexpr
 	 (fexpr, env3)     = visitExpression env2 expr
 	 visibility        = getVisibility env3 qident
@@ -163,7 +163,7 @@ visitExpression env (Apply expr1 expr2)
 visitExpression env (Case evalannot expr alts)
    = let (feval, env1) = visitEval env evalannot
 	 (fexpr, env2) = visitExpression env1 expr
-	 (falts, env3) = mapVisit visitAlt env alts
+	 (falts, env3) = emap visitAlt env alts
      in  (FlatCurry.Case feval fexpr falts, env3)
 
 visitExpression env (Or expr1 expr2)
@@ -182,7 +182,7 @@ visitExpression env (Let binding expr)
      in  (FlatCurry.Let [fbinding] fexpr, env2)
 
 visitExpression env (Letrec bindings expr)
-   = let (fbindings, env1) = mapVisit visitBinding env bindings
+   = let (fbindings, env1) = emap visitBinding env bindings
 	 (fexpr, env2)     = visitExpression env1 expr
      in  (FlatCurry.Let fbindings fexpr, env2)
 
@@ -209,7 +209,7 @@ visitConstrTerm env (LiteralPattern lit)
      in  (LPattern flit, env1)
 
 visitConstrTerm env (ConstructorPattern qident args)
-   = let (fargs, env1) = mapVisit visitVarIdent env args
+   = let (fargs, env1) = emap visitVarIdent env args
      in  (Pattern (visitQualIdent env qident) fargs, env1)
 
 visitConstrTerm env (VariablePattern ident)
@@ -237,7 +237,7 @@ visitBinding env (Binding ident expr)
 --
 visitFuncIDecl :: FlatEnv -> CurrySyntax.IDecl -> (FuncDecl, FlatEnv)
 visitFuncIDecl env (CurrySyntax.IFunctionDecl _ qident typeexpr)
-   = let iltype            = csType2ilType env [] typeexpr
+   = let (iltype, _)       = csType2ilType [] typeexpr
 	 (ftypeexpr, env1) = visitType env iltype
          ffuncdecl         = Func (visitQualIdent env1 qident)
 			          (getArityFromType iltype)
@@ -256,7 +256,7 @@ visitTypeIDecl env (CurrySyntax.IDataDecl _ qident params mcdecls)
 	 (mmident, _)    = splitQualIdent qident
 	 mident          = fromMaybe (error "IL2FlatCurry.visitTypeIDecl")
 			             mmident
-	 (fcdecls, env2) = mapVisit (visitConstrIDecl mident) env1 cdecls
+	 (fcdecls, env2) = emap (visitConstrIDecl mident) env1 cdecls
 	 ftypedecl       = Type (visitQualIdent env2 qident)
 			        Public
 				fparams
@@ -266,7 +266,7 @@ visitTypeIDecl env (CurrySyntax.IDataDecl _ qident params mcdecls)
 visitTypeIDecl env (CurrySyntax.ITypeDecl _ qident params typeexpr)
    = let fparams           = [0 .. ((length params) - 1)]
 	 tvis              = zip params fparams
-	 iltype            = csType2ilType env tvis typeexpr
+	 (iltype, _)       = csType2ilType tvis typeexpr
 	 (ftypeexpr, env1) = visitType env iltype
 	 ftypedecl         = TypeSyn (visitQualIdent env1 qident)
 			             Public
@@ -279,9 +279,9 @@ visitTypeIDecl env (CurrySyntax.ITypeDecl _ qident params typeexpr)
 visitConstrIDecl :: ModuleIdent -> FlatEnv -> CurrySyntax.ConstrDecl
 		    -> (ConsDecl, FlatEnv)
 visitConstrIDecl mident env (CurrySyntax.ConstrDecl _ _ ident typeexprs)
-   = let qident = qualifyWith mident ident
-	 iltypes = map (csType2ilType env (tvarIds env)) typeexprs
-	 (ftypeexprs, env1) = mapVisit visitType env iltypes
+   = let qident             = qualifyWith mident ident
+	 (iltypes, _)       = emap csType2ilType (tvarIds env) typeexprs
+	 (ftypeexprs, env1) = emap visitType env iltypes
 	 fconsdecl          = Cons (visitQualIdent env1 qident)
 			           (length typeexprs)
 				   Public
@@ -290,8 +290,8 @@ visitConstrIDecl mident env (CurrySyntax.ConstrDecl _ _ ident typeexprs)
 
 visitConstrIDecl mident env (CurrySyntax.ConOpDecl _ _ type1 ident type2)
    = let qident = qualifyWith mident ident
-	 iltypes = map (csType2ilType env (tvarIds env)) [type1, type2]
-	 (ftypeexprs, env1) = mapVisit visitType env iltypes
+	 (iltypes, _)       = emap csType2ilType (tvarIds env) [type1, type2]
+	 (ftypeexprs, env1) = emap visitType env iltypes
 	 fconsdecl          = Cons (visitQualIdent env1 qident)
 			           2
 				   Public
@@ -312,12 +312,12 @@ visitOpIDecl env (CurrySyntax.IInfixDecl _ fix prec qident)
 -------------------------------------------------------------------------------
 
 --
-mapVisit :: (FlatEnv -> a -> (b, FlatEnv)) -> FlatEnv -> [a] -> ([b], FlatEnv)
-mapVisit visitTerm env [] = ([], env)
-mapVisit visitTerm env (term:terms)
-   = let (term', env')   = visitTerm env term
-         (terms', env'') = mapVisit visitTerm env' terms
-     in  ((term':terms'), env'')
+--mapVisit :: (FlatEnv -> a -> (b, FlatEnv)) -> FlatEnv -> [a] -> ([b], FlatEnv)
+--mapVisit visitTerm env [] = ([], env)
+--mapVisit visitTerm env (term:terms)
+--   = let (term', env')   = visitTerm env term
+--         (terms', env'') = mapVisit visitTerm env' terms
+--     in  ((term':terms'), env'')
 
 
 -------------------------------------------------------------------------------
@@ -497,7 +497,7 @@ genFlatApplication env applicexpr
       = p_genComb env qident args ConsCall
 
    p_genComb env qident args combtype
-      = let (fexpr, env1) = mapVisit visitExpression env args
+      = let (fexpr, env1) = emap visitExpression env args
         in  (Comb combtype (visitQualIdent env qident) fexpr, env1)
 	 
    p_genApplicComb env fexpr [] = (fexpr, env)
@@ -532,9 +532,9 @@ genTypeSynonyms env = map (genTypeSynonym env) (getTypeSyns (curryInfo env))
 --
 genTypeSynonym :: FlatEnv -> CurrySyntax.IDecl -> TypeDecl
 genTypeSynonym env (CurrySyntax.ITypeDecl _ qident params typeexpr)
-   = let fparams    = [0 .. ((length params) - 1)]
-         iltype     = csType2ilType env (zip params fparams) typeexpr
-	 (ftype, _) = visitType env iltype
+   = let fparams     = [0 .. ((length params) - 1)]
+         (iltype, _) = csType2ilType (zip params fparams) typeexpr
+	 (ftype, _)  = visitType env iltype
      in  TypeSyn (visitQualIdent env qident)
                  (getVisibility env qident)
 		 fparams
@@ -542,19 +542,52 @@ genTypeSynonym env (CurrySyntax.ITypeDecl _ qident params typeexpr)
 		                 
 
 --
-csType2ilType :: FlatEnv -> [(Ident,Int)] -> CurrySyntax.TypeExpr
-		  -> Type
-csType2ilType env ids (CurrySyntax.ConstructorType qident typeexprs)
-   = TypeConstructor qident (map (csType2ilType env ids) typeexprs)
-csType2ilType env ids (CurrySyntax.VariableType ident)
-   = TypeVariable (fromJust (lookup ident ids))
-csType2ilType env ids (CurrySyntax.ArrowType type1 type2)
-   = TypeArrow (csType2ilType env ids type1) (csType2ilType env ids type2)
-csType2ilType env ids (CurrySyntax.ListType typeexpr)
-   = TypeConstructor (qualify listId) [(csType2ilType env ids typeexpr)]
-csType2ilType env ids (CurrySyntax.TupleType typeexprs)
-   = TypeConstructor (qTupleId ((length typeexprs) - 1))
-                     (map (csType2ilType env ids) typeexprs)
+--csType2ilType :: FlatEnv -> [(Ident,Int)] -> CurrySyntax.TypeExpr
+--		  -> Type
+--csType2ilType env ids (CurrySyntax.ConstructorType qident typeexprs)
+--   = TypeConstructor qident (map (csType2ilType env ids) typeexprs)
+--csType2ilType env ids (CurrySyntax.VariableType ident)
+--   = TypeVariable (maybe (error "Bla") id (lookup ident ids)) --(fromJust (lookup ident ids))
+--csType2ilType env ids (CurrySyntax.ArrowType type1 type2)
+--   = TypeArrow (csType2ilType env ids type1) (csType2ilType env ids type2)
+--csType2ilType env ids (CurrySyntax.ListType typeexpr)
+--   = TypeConstructor (qualify listId) [(csType2ilType env ids typeexpr)]
+--csType2ilType env ids (CurrySyntax.TupleType typeexprs)
+--   = TypeConstructor (qTupleId ((length typeexprs) - 1))
+--                     (map (csType2ilType env ids) typeexprs)
+
+
+--
+csType2ilType :: [(Ident,Int)] -> CurrySyntax.TypeExpr -> (Type, [(Ident,Int)])
+csType2ilType ids (CurrySyntax.ConstructorType qident typeexprs)
+   = let (ilTypeexprs, ids') = emap csType2ilType ids typeexprs
+     in  (TypeConstructor qident ilTypeexprs, ids')
+csType2ilType ids (CurrySyntax.VariableType ident)
+   = let mid        = lookup ident ids
+	 nid        | null ids  = 0
+		    | otherwise = 1 + snd (head ids)
+	 (id, ids') | isJust mid = (fromJust mid, ids)
+		    | otherwise  = (nid, (ident, nid):ids)
+     in  (TypeVariable id, ids')
+csType2ilType ids (CurrySyntax.ArrowType type1 type2)
+   = let (ilType1, ids')  = csType2ilType ids type1
+	 (ilType2, ids'') = csType2ilType ids' type2
+     in  (TypeArrow ilType1 ilType2, ids'')
+csType2ilType ids (CurrySyntax.ListType typeexpr)
+   = let (ilTypeexpr, ids') = csType2ilType ids typeexpr
+     in  (TypeConstructor (qualify listId) [ilTypeexpr], ids')
+csType2ilType ids (CurrySyntax.TupleType typeexprs)
+   = let (ilTypeexprs, ids') = emap csType2ilType ids typeexprs
+     in  (TypeConstructor (qTupleId ((length ilTypeexprs) - 1)) ilTypeexprs,
+          ids')
+
+
+--
+emap :: (e -> a -> (b,e)) -> e -> [a] -> ([b], e)
+emap _ env []     = ([], env)
+emap f env (x:xs) = let (x',env')    = f env x
+			(xs', env'') = emap f env xs
+		    in  ((x':xs'), env'')
 
 
 -------------------------------------------------------------------------------
