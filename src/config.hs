@@ -51,14 +51,12 @@ generateExec date path name
 
 replace :: String -> [(String, String)] -> IO [ExitCode]
 replace file replacements
-   = mapM (\(old,new) -> system ("sed -i s/"++old++"/"++new++"/ "++file)) 
+   = mapM (\(old,new) -> system ("sed -i 's/"++esc old++"/"++esc new++"/' "++file)) 
            replacements
  where
- p_buildReplacements [] = error "config: missing replacements"
- p_buildReplacements ((p,r):prs) 
-    = "\"" ++ p ++ "\" \"" ++ r ++ "\""
-      ++ (if not (null prs) then " " ++ (p_buildReplacements prs) else "")
-
+   esc "" = ""
+   esc ('/':xs) = '\\':'/':esc xs
+   esc (x:xs) = x:esc xs
 
 -------------------------------------------------------------------------------
 

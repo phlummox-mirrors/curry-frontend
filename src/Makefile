@@ -128,7 +128,7 @@ mcc: $(CYC) $(CYMAKE) $(CYXML)
 $(CYC): $(CONFIG) $(CYC_PATT)
 	@./$(CONFIG) $(CYC)
 	@chmod 755 $(CYC)
-	@cd $(MCC_SRC_CURRY) && clean
+	@cd $(MCC_SRC_CURRY) && ./clean
 
 $(CYMAKE): $(CONFIG) $(CYMAKE_PATT) $(NEWER)
 	@./$(CONFIG) $(CYMAKE)
