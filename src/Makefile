@@ -98,12 +98,12 @@ $(MCC3_OBJ): %.o: %.lhs $(MCC2_OBJ) $(MCC1_OBJ) $(GETOPT_OBJ)
 	$(HC) $(HC_OPTS) -c $<
 
 $(CYCC): $(CYCC_SRC) $(MCC3_OBJ) $(MCC2_OBJ) $(MCC1_OBJ) $(GETOPT_OBJ)
-	@rm $(CYCC_OBJ)
+	@rm -f $(CYCC_OBJ)
 	$(HC) $(HC_OPTS) -o $(CYCC) $(CYCC_SRC) \
 			    $(MCC3_OBJ) $(MCC2_OBJ) $(MCC1_OBJ) $(GETOPT_OBJ)
 
 $(CYMK): $(CYMK_SRC) $(MCC3_OBJ) $(MCC2_OBJ) $(MCC1_OBJ) $(GETOPT_OBJ)
-	@rm $(CYMK_OBJ)
+	@rm -f $(CYMK_OBJ)
 	$(HC) $(HC_OPTS) -o $(CYMK) $(CYMK_SRC) \
 			    $(MCC3_OBJ) $(MCC2_OBJ) $(MCC1_OBJ) $(GETOPT_OBJ)
 
