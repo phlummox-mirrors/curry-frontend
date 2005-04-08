@@ -95,13 +95,12 @@ visitType env (TypeArrow type1 type2)
 --
 visitVarIdent :: FlatEnv -> Ident -> (Int, FlatEnv)
 visitVarIdent env ident
-   | isJust idx = (fromJust idx, env)
-   | otherwise  = (idx', env')
- where
- vis  = varIds env
- idx  = lookup ident vis
- idx' = 1 + (if null vis then 0 else snd (head vis))
- env' = env{ varIds = ((ident, idx'):vis) }
+   = let vis  = varIds env
+	 nidx | null vis  = 0
+	      | otherwise = 1 + snd (head vis)
+     in  maybe (nidx, env{ varIds = ((ident, nidx):vis) })
+	       (\idx -> (idx, env))
+	       (lookup ident vis)
 
 
 --
@@ -586,7 +585,7 @@ csType2ilType ids (CurrySyntax.TupleType typeexprs)
 emap :: (e -> a -> (b,e)) -> e -> [a] -> ([b], e)
 emap _ env []     = ([], env)
 emap f env (x:xs) = let (x',env')    = f env x
-			(xs', env'') = emap f env xs
+			(xs', env'') = emap f env' xs
 		    in  ((x':xs'), env'')
 
 

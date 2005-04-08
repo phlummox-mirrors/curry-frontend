@@ -85,6 +85,12 @@ further information is needed for global variables.
 > renameInfo (NewtypeConstructor _ _) = Constr 1
 > renameInfo _ = GlobalVar
 
+> --isRenameable :: ModuleIdent -> ValueInfo -> Bool
+> --isRenameable m (Value qident _) 
+> --  = isNothing mm' || (isJust mm' && m == (fromJust mm'))
+> -- where
+> -- (mm', _) = splitQualIdent
+
 > bindConstrs :: ModuleIdent -> Decl -> RenameEnv -> RenameEnv
 > bindConstrs m (DataDecl _ tc _ cs) env = foldr (bindConstr m) env cs
 > bindConstrs m (NewtypeDecl _ tc _ nc) env = bindNewConstr m nc env
