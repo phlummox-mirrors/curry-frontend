@@ -81,7 +81,10 @@ f $! x  = x `seq` f x
 
 --- Aborts the execution with an error message.
 error :: String -> _
-error external
+error x = seq (groundNormalForm x) (prim_error x)
+
+prim_error    :: String -> _
+prim_error external
 
 --- A non-reducible polymorphic function.
 --- It is useful to express a failure in a search branch of the execution.
@@ -118,9 +121,8 @@ otherwise       = True
 
 --- The standard conditional. It suspends if the condition is a free variable.
 if_then_else           :: Bool -> a -> a -> a
-if_then_else b t f = ifThenElse (ensureNotFree b) t f
- where ifThenElse True  x _ = x
-       ifThenElse False _ y = y
+if_then_else b t f = case b of True  -> t
+                               False -> f
 
 
 --- Ordering type. Useful as a result of comparison functions.
@@ -411,12 +413,17 @@ type String = [Char]
 
 --- Converts a character into its ASCII value.
 ord :: Char -> Int
-ord external
+ord c = seq (ensureNotFree c) (prim_ord c)
+
+prim_ord :: Char -> Int
+prim_ord external
 
 --- Converts an ASCII value into a character.
 chr :: Int -> Char
-chr external
+chr n = seq (ensureNotFree n) (prim_chr n)
 
+prim_chr :: Int -> Char
+prim_chr external
 
 -- Types of primitive arithmetic functions and predicates
 data Int
@@ -424,29 +431,44 @@ data Int
 
 --- Adds two integers.
 (+)   :: Int -> Int -> Int
-(+) external
+x + y = seq (ensureNotFree x) (seq (ensureNotFree y) (prim_Int_plus x y))
+
+prim_Int_plus :: Int -> Int -> Int
+prim_Int_plus external
 
 --- Subtracts two integers.
 (-)   :: Int -> Int -> Int
-(-) external
+x - y = seq (ensureNotFree x) (seq (ensureNotFree y) (prim_Int_minus x y))
+
+prim_Int_minus :: Int -> Int -> Int
+prim_Int_minus external
 
 --- Multiplies two integers.
 (*)   :: Int -> Int -> Int
-(*) external
+x * y = seq (ensureNotFree x) (seq (ensureNotFree y) (prim_Int_times x y))
+
+prim_Int_times :: Int -> Int -> Int
+prim_Int_times external
 
 --- Integer division. The value is the integer quotient of its arguments
 --- and always truncated towards zero.
 --- Thus, the value of <code>13 `div` 5</code> is <code>2</code>,
 --- and the value of <code>-15 `div` 4</code> is <code>-3</code>.
 div   :: Int -> Int -> Int
-div external
+x `div` y = seq (ensureNotFree x) (seq (ensureNotFree y) (prim_Int_div x y))
+
+prim_Int_div :: Int -> Int -> Int
+prim_Int_div external
 
 --- Integer remainder. The value is the remainder of the integer division and
 --- it obeys the rule <code>x `mod` y = x - y * (x `div` y)</code>.
 --- Thus, the value of <code>13 `mod` 5</code> is <code>3</code>,
 --- and the value of <code>-15 `mod` 4</code> is <code>-3</code>.
 mod   :: Int -> Int -> Int
-mod external
+x `mod` y = seq (ensureNotFree x) (seq (ensureNotFree y) (prim_Int_mod x y))
+
+prim_Int_mod :: Int -> Int -> Int
+prim_Int_mod external
 
 --- Unary minus. Usually written as "- e".
 negate :: Int -> Int
@@ -454,20 +476,31 @@ negate x = 0 - x
 
 --- Is one integer less than another?
 (<)   :: Int -> Int -> Bool
-(<) external
+x < y = seq (ensureNotFree x) (seq (ensureNotFree y) (prim_Int_le x y))
+
+prim_Int_le :: Int -> Int -> Bool
+prim_Int_le external
 
 --- Is one integer less than another?
 (>)   :: Int -> Int -> Bool
-(>) external
+x > y = seq (ensureNotFree x) (seq (ensureNotFree y) (prim_Int_ge x y))
+
+prim_Int_ge :: Int -> Int -> Bool
+prim_Int_ge external
 
 --- Is one integer less than or equal to another?
 (<=)  :: Int -> Int -> Bool
-(<=) external
+x <= y = seq (ensureNotFree x) (seq (ensureNotFree y) (prim_Int_leq x y))
+
+prim_Int_leq :: Int -> Int -> Bool
+prim_Int_leq external
 
 --- Is one integer greater than or equal to another?
 (>=)  :: Int -> Int -> Bool
-(>=) external
+x >= y = seq (ensureNotFree x) (seq (ensureNotFree y) (prim_Int_geq x y))
 
+prim_Int_geq :: Int -> Int -> Bool
+prim_Int_geq external
 
 data Float
 
@@ -548,7 +581,10 @@ done              = return ()
 
 --- An action that puts its character argument on standard output.
 putChar           :: Char -> IO ()
-putChar external
+putChar c = seq (ensureNotFree c) (prim_putChar c)
+
+prim_putChar           :: Char -> IO ()
+prim_putChar external
 
 --- An action that reads a character from standard output and returns it.
 getChar           :: IO Char
@@ -556,20 +592,32 @@ getChar external
 
 --- An action that (lazily) reads a file and returns its contents.
 readFile          :: String -> IO String
-readFile external
+readFile f = seq (groundNormalForm f) (prim_readFile f)
+
+prim_readFile          :: String -> IO String
+prim_readFile external
+-- for internal implementation of readFile:
+prim_readFileContents          :: String -> IO String
+prim_readFileContents external
 
 --- An action that writes a file.
 --- @param filename - The name of the file to be written.
 --- @param contents - The contents to be written to the file.
 writeFile         :: String -> String -> IO ()
-writeFile external
+writeFile f s = seq (groundNormalForm f) (prim_writeFile f s)
+
+prim_writeFile         :: String -> String -> IO ()
+prim_writeFile external
 
 --- An action that appends a string to a file.
 --- It behaves like writeFile if the file does not exist.
 --- @param filename - The name of the file to be written.
 --- @param contents - The contents to be appended to the file.
 appendFile        :: String -> String -> IO ()
-appendFile external
+appendFile f s = seq (groundNormalForm f) (prim_appendFile f s)
+
+prim_appendFile         :: String -> String -> IO ()
+prim_appendFile external
 
 --- Catches a possible failure during the execution of an I/O action.
 --- <CODE>(catchFail act err)</CODE>:
@@ -596,7 +644,10 @@ getLine           = do c <- getChar
 
 --- Converts an arbitrary term into an external string representation.
 show    :: _ -> String
-show external
+show x = seq (groundNormalForm x) (prim_show x)
+
+prim_show    :: _ -> String
+prim_show external
 
 --- Converts a term into a string and prints it.
 print   :: _ -> IO ()
@@ -774,6 +825,15 @@ unpack g | g x  = x  where x free
 PEVAL   :: a -> a
 PEVAL x = x
 
+--- Evaluates the argument to normal form and returns it.
+normalForm :: a -> a
+normalForm x | x=:=y = y where y free
+
+--- Evaluates the argument to ground normal form and returns it.
+--- Suspends as long as the normal form of the argument is not ground.
+groundNormalForm :: a -> a
+groundNormalForm x | y==y = y where y = normalForm x
+
 -- Only for internal use:
 -- Represenation of higher-order applications in FlatCurry.
 apply :: (a->b) -> a -> b
@@ -788,5 +848,10 @@ cond external
 -- Representation of committed choice in FlatCurry.
 commit :: a -> a
 commit external
+
+-- Only for internal use:
+-- letrec ones (1:ones) -> bind ones to (1:ones)
+letrec :: a -> a -> Success
+letrec external
 
 -- the end
