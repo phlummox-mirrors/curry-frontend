@@ -38,15 +38,16 @@ computes either a build or clean script for a module while
 Makefile.
 \begin{verbatim}
 
-> buildScript :: Bool -> Bool -> Bool -> Bool -> [FilePath] -> [FilePath]
->             -> Maybe FilePath -> FilePath -> IO [String]
-> buildScript clean debug linkAlways flat paths libPaths ofn fn =
+> buildScript :: Bool -> Bool -> Bool -> Bool -> Bool 
+>             -> [FilePath] -> [FilePath] -> Maybe FilePath -> FilePath 
+>             -> IO [String]
+> buildScript clean debug linkAlways flat xml paths libPaths ofn fn =
 >   do
 >     (ms,es) <-
 >       fmap (flattenDeps . sortDeps)
 >            (deps paths (filter (`notElem` paths) libPaths) emptyEnv fn)
 >     when (null es)
->          (putStr (makeScript clean debug flat linkAlways outputFile ms))
+>          (putStr (makeScript clean debug flat xml linkAlways outputFile ms))
 >     return es
 >   where outputFile
 >           | extension fn `elem` moduleExts ++ objectExts = Nothing
@@ -227,9 +228,9 @@ the \verb|-e| shell option so that the script is terminated upon the
 first error.
 \begin{verbatim}
 
-> makeBuildScript :: Bool -> Bool -> Bool -> Maybe FilePath
+> makeBuildScript :: Bool -> Bool -> Bool -> Bool -> Maybe FilePath
 >                 -> [(ModuleIdent,Source)] -> String
-> makeBuildScript debug flat linkAlways ofn mEnv =
+> makeBuildScript debug flat xml linkAlways ofn mEnv =
 >   unlines ("set -e" : concatMap (compCommands . snd) mEnv ++
 >            maybe [] linkCommands ofn)
 >   where compCommands (Source fn ms) =
@@ -243,7 +244,9 @@ first error.
 >           where os = reverse (catMaybes (map (object . snd) mEnv))
 >         newer fn fns = unwords ("$CURRY_PATH/newer" : fn : fns)
 >         compile fn = unwords ["compile",cFlag,fn,"-o",targetName fn]
->         cFlag = if flat then "--flat" else "-c"
+>         cFlag | flat      = "--flat" 
+>               | xml       = "--xml"
+>               | otherwise = "-c"
 >         link fn os = unwords ("link" : "-o" : fn : os)
 >         interf m =
 >           case lookup m mEnv of
@@ -254,7 +257,9 @@ first error.
 >         object (Source fn _) = Just (targetName fn)
 >         object (Interface _) = Nothing
 >         object Unknown = Nothing
->         targetName = if flat then flatName else objectName debug
+>         targetName | flat      = flatName
+>                    | xml       = xmlName
+>                    | otherwise = objectName debug
 
 \end{verbatim}
 The function \texttt{makeCleanScript} returns a shell script that
@@ -263,9 +268,9 @@ removes all compiled files for a module. The script uses the command
 reasonable value in the environment where the script is executed.
 \begin{verbatim}
 
-> makeCleanScript :: Bool -> Bool -> Bool -> Maybe FilePath
+> makeCleanScript :: Bool -> Bool -> Bool -> Bool -> Maybe FilePath
 >                 -> [(ModuleIdent,Source)] -> String
-> makeCleanScript debug flat _ ofn mEnv =
+> makeCleanScript debug flat xml _ ofn mEnv =
 >   unwords ("remove" : foldr files (maybe [] return ofn) (map snd mEnv))
 >   where d = if debug then 2 else 0
 >         files = if flat then flatFiles else nonFlatFiles
@@ -291,6 +296,9 @@ file.
 
 > flatName :: FilePath -> FilePath
 > flatName fn = rootname fn ++ flatExt
+
+> xmlName :: FilePath -> FilePath
+> xmlName fn = rootname fn ++ xmlExt
 
 > objectName :: Bool -> FilePath -> FilePath
 > objectName debug = name (if debug then debugExt else oExt)

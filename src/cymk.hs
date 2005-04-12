@@ -20,7 +20,8 @@ data Options =
     linkAlways :: Bool,
     mkDepend :: Bool,
     mkClean :: Bool,
-    flat :: Bool
+    flat :: Bool,
+    xml :: Bool
   }
 
 defaultOptions =
@@ -33,11 +34,12 @@ defaultOptions =
     mkDepend = False,
     mkClean = False,
     flat = False,
+    xml = False
   }
 
 data Option =
     Help | ImportPath FilePath | LibPath FilePath | Output FilePath
-  | Debug | LinkAlways | Clean | Depend | Flat
+  | Debug | LinkAlways | Clean | Depend | Flat | XML
   deriving Eq
 
 options = [
@@ -57,6 +59,8 @@ options = [
            "remove compiled file for all targets",
     Option ""  ["flat"] (NoArg Flat)
            "generate flat curry code",
+    Option ""  ["xml"] (NoArg XML)
+           "generate flat xml code",
     Option "?h" ["help"] (NoArg Help)
            "display this help and exit"
   ]
@@ -70,6 +74,7 @@ selectOption LinkAlways opts = opts{ linkAlways = True }
 selectOption Depend opts = opts{ mkDepend = True }
 selectOption Clean opts = opts{ mkClean = True }
 selectOption Flat opts = opts{ flat = True }
+selectOption XML opts = opts{ xml = True }
 
 main :: IO ()
 main =
@@ -117,7 +122,8 @@ processFiles opts prog files
       do
         es <- fmap concat (mapM script files)
 	unless (null es) (mapM putErrLn es >> exitWith (ExitFailure 2))
-  where script = buildScript (mkClean opts) (debug opts) (linkAlways opts) (flat opts)
+  where script = buildScript (mkClean opts) (debug opts) (linkAlways opts) 
+		             (flat opts) (xml opts)
 			     (importPaths opts) (libPaths opts) (output opts)
 
 putErr, putErrLn :: String -> IO ()

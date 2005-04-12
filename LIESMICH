@@ -3,11 +3,14 @@
 ==  Münster-Curry-Compiler
 ==  Distribution zur Anwendung in PAKCS
 ==
+==  Letztes Update: 12.04.05
 
 Diese Distribution enthält eine leicht 
 modifizierte, einfache Version des Münster-Curry-Compilers (MCC). Dieser
-Compiler ist u.a. in der Lage Curry-Programme (entwickelt nach PAKCS-
-Standard) in einer Flat-XML-Darstellung zu übersetzen.
+Compiler ist u.a. in der Lage aus Curry-Programmen (entwickelt nach PAKCS-
+Standard) FlatCurry- (.fcy), FlatInterface- (.fint) und FlatXML- (_flat.xml)
+Darstellungen zu generieren.
+
 
 
 Installation
@@ -24,48 +27,79 @@ folgende ausführbare Dateien:
 
 	cyc		- der Curry-Compiler
 	cymake		- der Curry-Programm-Builder
-	cyxml		- der Flat-XML-Generator (verwendet 'cyc' und
-			  'cymake')
 
-Die Übsersetzung eines Curry-Programms '<prog>' in die Flat-XML-
-Darstellung wird durch folgenden Aufruf bewirkt:
+Das Kommando 'cyxml' zur Erzeugung von Flat-Dateien sollte in 
+Zukunft nicht mehr verwendet werden, da 'cyc' und 'cymake' nun
+über entsprechende Optionen verfügen.
 
-	cyxml <prog>
+Die Übersetzung eines Curry-Programms 'file.curry', sowie sämtlicher
+importierter Module nach FlatCurry bzw. FlatInterface, bewirkt folgendes
+Kommando:
 
-Die hierdurch generierte Flat-XML-Datei hat die Endung '.flat'.
+	cymake --flat file.curry
 
-Die Funktionen 'cyc' und 'cymake' funktionieren wie im MCC üblich.
+Hierdurch werden die Dateien mit den entsprechenden Endungen ".fcy" und
+".fint" generiert.
+
+Die analogen Übersetzungen in die FlatXML-Darstellung geschehen mittels
+
+	cymake --xml file.curry
+
+Die hierdurch generierte Flat-XML-Datei hat die Endung '_flat.xml'.
+
+Während 'cymake' auch alle Importabhängigkeiten auflöst und die entsprechenden
+Module in die gewünschte(n) Darstellung(en) übersetzt, können mittels
+'cyc' einzelne Dateien übersetzt werden. Die hierzu nötigen Optionen
+sind die selben, wie bei 'cymake'.
+
 
 
 Anmerkungen
 -----------
 
-- Neben der Flat-XML-Darstellung erzeugt ein Aufruf von 'cyxml'
-  noch weitere Dateien, wie Interfaces ('.icurry') und Objektdateien
-  ('.o'). Dies ist bedingt durch die interne sequentielle Abarbeitung
-  von 'cymake' (zur Auflösung der Import-Abhängigkeiten) und
-  'cyc' (zur Übersetzung in die Flat-XML-Darstellung).
+- Neben den gewünschten Darstellungen werden zusätzlich noch
+  Interface-Dateien (Endung ".icurry") erzeugt. Diese werden
+  intern vom MCC benötigt (z.B. zur Auflösung von Import-Abhängigkeiten).
 
 - Der MCC ist leider nicht in der Lage, die Prelude aus der PAKCS-
-  Distribution zu nutzen. Daher greift MCC auf eine "gepatchte"
-  Version dieser Prelude zurück, die sich im Verzeichnis 'mcc/lib/curry/'
-  befindet
+  Distribution zu nutzen. Daher wird eine erweiterte Version dieser
+  Prelude verwendet, die sich im Verzeichnis 'mcc/lib/curry/'
+  befindet.
 
-- Um die PAKCS-Bibliotheken für Übersetzungen nutzen zu können müssen
-  die Dateien zunächst selbst übersetzt werden. Da dies nicht mit
-  'cymake' funktioniert (und damit auch nicht mit 'cyxml'), müssen
-  die Dateien in Reihenfolge ihrer Import-Abhängigkeit (beginnend
-  mit der unabhängigsten Datei) "von Hand" wie folgt übersetzt werden:
-
-	cyc --flat <curry prog>
-
-  Um die Dateien für den MCC sichtbar zu machen, muß nun noch die
-  Umgebungsvariable 'PAKCS_LIB' entsprechend auf die PACKS-Bibliotheken
-  gesetzt werden, z.B. mittels
+- Um die PAKCS-Bibliotheken für Übersetzungen nutzen zu können 
+  muß die Umgebungsvariable 'PAKCS_LIB' auf die entsprechenden Pfade
+  verweisen, z.B. mittels
 
 	export PAKCS_LIB=<pakcs path>/pacs/lib:<pakcs path>/pacs/lib/meta:...
 
  wobei <pakcs path> das Verzeichnis ist, das die PAKCS-Distribution
  enthält.
+
+
+
+Bekannte Probeleme
+------------------
+
+- Der MCC erlaubt leider (noch) nicht das gleichzeitige Überschreiben und
+  Exportieren importierter Bezeichner. Es kann z.B. nicht die Funktion 'map'
+  aus der Prelude neu definert und exportiert werden.
+
+- Alle importierten Module benötigen eine 'module ... where'-Deklaration,
+  da sie sonst die Bezeichnung 'main' bekommen und nicht importiert
+  werden können.
+
+- Lambda-Ausdrücke müssen grundsätzlich geklammert werden.
+
+- 'let'-Anweisungen dürfen nicht folgendes Layout besitzen:
+
+           let x = <expr>
+               in ...
+
+- FlatXML-Übersetzungen können derzeit mittels der Funktionen aus dem
+  PAKCS-Modul "FlatXML" noch nicht eingelesen werden, da es Unstimmigkeiten
+  zwischen dem generierten und den erforderlichen Formaten gibt.
+
+- Leider gibt der MCC derzeit noch keinerlei Warnungen und nur sehr einfach 
+  gehaltene Fehlermeldungen aus.
 
 
