@@ -54,6 +54,7 @@ all names must be properly qualified before calling this module.}
 > import Monad
 > import Typing
 > import Utils
+> import Ident
 
 \end{verbatim}
 New identifiers may be introduced while desugaring pattern
@@ -328,9 +329,11 @@ type \texttt{Bool} of the guard because the guard's type defaults to
 > expandGuards :: ValueEnv -> Expression -> [CondExpr] -> Expression
 > expandGuards tyEnv e0 es
 >   | booleanGuards tyEnv es = foldr mkIfThenElse e0 es
->   | otherwise = mkCase es
+>   | otherwise = mkCond es
 >   where mkIfThenElse (CondExpr _ g e) = IfThenElse g e
->         mkCase [CondExpr p g e] = Case g [caseAlt p successPattern e]
+>         mkCond [CondExpr p g e] = Apply (Apply (Variable qCondId) g) e
+>         qCondId = qualifyWith preludeMIdent (mkIdent "cond")
+>         -- mkCase [CondExpr p g e] = Case g [caseAlt p successPattern e]
 
 > booleanGuards :: ValueEnv -> [CondExpr] -> Bool
 > booleanGuards _ [] = False

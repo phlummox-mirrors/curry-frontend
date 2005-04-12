@@ -408,6 +408,7 @@ enumFromThenTo n1 n2 m = takeWhile p (enumFromThen n1 n2)
                                    | otherwise = (x >= m)
 
 
+--- Data type representing characters
 data Char
 type String = [Char]
 
@@ -425,9 +426,10 @@ chr n = seq (ensureNotFree n) (prim_chr n)
 prim_chr :: Int -> Char
 prim_chr external
 
+
 -- Types of primitive arithmetic functions and predicates
 data Int
-
+data Float
 
 --- Adds two integers.
 (+)   :: Int -> Int -> Int
@@ -501,8 +503,6 @@ x >= y = seq (ensureNotFree x) (seq (ensureNotFree y) (prim_Int_geq x y))
 
 prim_Int_geq :: Int -> Int -> Bool
 prim_Int_geq external
-
-data Float
 
 
 -- Constraints

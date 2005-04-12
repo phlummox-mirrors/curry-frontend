@@ -171,9 +171,11 @@ visitExpression env (Or expr1 expr2)
      in  (FlatCurry.Or fexpr1 fexpr2, env2)
 
 visitExpression env (Exist ident expr)
-   = let (fexpr, env1)  = visitExpression env expr
-	 (findex, env2) = visitVarIdent env1 ident
-     in  (Free [findex] fexpr, env2)
+   = let (findex, env1) = visitVarIdent env ident
+	 (fexpr, env2)  = visitExpression env1 expr
+     in  case fexpr of
+           Free findices' fexpr' -> (Free (findex:findices') fexpr', env2)
+           _                     -> (Free [findex] fexpr, env2)
 
 visitExpression env (Let binding expr)
    = let (fbinding, env1) = visitBinding env binding
@@ -226,9 +228,14 @@ visitEval env Flex  = (FlatCurry.Flex, env)
 --
 visitBinding :: FlatEnv -> Binding -> ((VarIndex, FlatCurry.Expr), FlatEnv)
 visitBinding env (Binding ident expr)
-   = let (fexpr, env1)  = visitExpression env expr
+   = let ids  = varIds env
+	 env1 | isJust (lookup ident ids)
+		= env{ varIds = filter (((/=) ident).fst) ids }
+	      | otherwise
+		= env
 	 (findex, env2) = visitVarIdent env1 ident
-     in  ((findex,fexpr), env2)
+	 (fexpr, env3)  = visitExpression env2 expr
+     in  ((findex,fexpr), env3)
 
 
 -------------------------------------------------------------------------------
