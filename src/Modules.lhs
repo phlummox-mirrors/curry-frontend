@@ -86,7 +86,7 @@ matching code.}
 > compileModule :: Options -> FilePath -> IO ()
 > compileModule opts fn =
 >   do
->     m <- liftM (parseModule flat fn) (readFile fn)
+>     m <- liftM (parseModule flat fn) (readFile fn >>= maybePatchPrelude fn)
 >     mEnv <- loadInterfaces (importPath opts) m
 >     let (tyEnv,m',intf) = checkModule mEnv m
 >         (il,dumps) =
@@ -104,6 +104,24 @@ matching code.}
 >         xml      = flatXML opts
 >         merge (Left cf1) cf2 = Left (mergeCFile cf1 cf2)
 >         merge (Right cfs) cf = Right (cf : cfs)
+
+If the file we read is the prelude, we need to append a few definitions.
+
+> maybePatchPrelude :: FilePath -> String -> IO String
+> maybePatchPrelude fn xs = 
+>    case basename fn of 
+>     "prelude.curry" -> return (xs ++ preludePatch)
+>     _ -> return xs
+
+The things we need to add to the prelude:
+
+> preludePatch =  "\n\n"
+>              ++ "data Int\n" 
+>              ++ "data Float\n" 
+>              ++ "data Char\n"
+>              ++ "data Success\n"
+>              ++ "data IO\n"
+>              ++ "data Bool = True | False"
 
 > parseModule :: Bool -> FilePath -> String -> Module
 > parseModule flat fn =
