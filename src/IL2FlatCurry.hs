@@ -47,9 +47,13 @@ visitModule env (Module mident imports decls)
 	 (ts', env3) = emap visitTypeIDecl env2 (filter isTypeIDecl idecls)
 	 (fs', env4) = emap visitFuncIDecl env3 (filter isFuncIDecl idecls)
 	 (os', env5) = emap visitOpIDecl   env4 (filter isOpIDecl   idecls)
+         ts''        | mident == preludeMIdent = prelude_types
+                     | otherwise               = []
+	 imports'    | mident == preludeMIdent = []
+	             | otherwise               = imports
 	 prog        = Prog (visitModuleIdent mident)
-		            (map visitModuleIdent imports)
-			    (ts' ++ (genTypeSynonyms env5) ++ ts)
+		            (map visitModuleIdent imports')
+			    (ts'' ++ ts' ++ (genTypeSynonyms env5) ++ ts)
 			    (fs' ++ fs)
 			    (os' ++ (genOpDecls env5))
      in  (prog, env5)
@@ -318,17 +322,6 @@ visitOpIDecl env (CurrySyntax.IInfixDecl _ fix prec qident)
 -------------------------------------------------------------------------------
 
 --
---mapVisit :: (FlatEnv -> a -> (b, FlatEnv)) -> FlatEnv -> [a] -> ([b], FlatEnv)
---mapVisit visitTerm env [] = ([], env)
---mapVisit visitTerm env (term:terms)
---   = let (term', env')   = visitTerm env term
---         (terms', env'') = mapVisit visitTerm env' terms
---     in  ((term':terms'), env'')
-
-
--------------------------------------------------------------------------------
-
---
 visitModuleIdent :: ModuleIdent -> String
 visitModuleIdent mident = moduleName mident
 
@@ -545,22 +538,6 @@ genTypeSynonym env (CurrySyntax.ITypeDecl _ qident params typeexpr)
                  (getVisibility env qident)
 		 fparams
 		 ftype
-		                 
-
---
---csType2ilType :: FlatEnv -> [(Ident,Int)] -> CurrySyntax.TypeExpr
---		  -> Type
---csType2ilType env ids (CurrySyntax.ConstructorType qident typeexprs)
---   = TypeConstructor qident (map (csType2ilType env ids) typeexprs)
---csType2ilType env ids (CurrySyntax.VariableType ident)
---   = TypeVariable (maybe (error "Bla") id (lookup ident ids)) --(fromJust (lookup ident ids))
---csType2ilType env ids (CurrySyntax.ArrowType type1 type2)
---   = TypeArrow (csType2ilType env ids type1) (csType2ilType env ids type2)
---csType2ilType env ids (CurrySyntax.ListType typeexpr)
---   = TypeConstructor (qualify listId) [(csType2ilType env ids typeexpr)]
---csType2ilType env ids (CurrySyntax.TupleType typeexprs)
---   = TypeConstructor (qTupleId ((length typeexprs) - 1))
---                     (map (csType2ilType env ids) typeexprs)
 
 
 --
@@ -594,6 +571,79 @@ emap _ env []     = ([], env)
 emap f env (x:xs) = let (x',env')    = f env x
 			(xs', env'') = emap f env' xs
 		    in  ((x':xs'), env'')
+
+
+-------------------------------------------------------------------------------
+
+prelude_types :: [TypeDecl]
+prelude_types = [(Type ("prelude","()") Public [] 
+		  [(Cons ("prelude","()") 0 Public [])]),
+		 (Type ("prelude","[]") Public [0] 
+		  [(Cons ("prelude","[]") 0 Public []),
+		   (Cons ("prelude",":") 2 Public 
+		    [(TVar 0),(TCons ("prelude","[]") [(TVar 0)])])]),
+		 (Type ("prelude","(,)") Public [0,1] 
+		  [(Cons ("prelude","(,)") 2 Public [(TVar 0),(TVar 1)])]),
+		 (Type ("prelude","(,,)") Public [0,1,2]
+		  [(Cons ("prelude","(,,)") 3 Public 
+		    [(TVar 0),(TVar 1),(TVar 2)])]),
+		 (Type ("prelude","(,,,)") Public [0,1,2,3] 
+		  [(Cons ("prelude","(,,,)") 4 Public 
+		    [(TVar 0),(TVar 1),(TVar 2),(TVar 3)])]),
+		 (Type ("prelude","(,,,,)") Public [0,1,2,3,4] 
+		  [(Cons ("prelude","(,,,,)") 5 Public 
+		    [(TVar 0),(TVar 1),(TVar 2),(TVar 3),(TVar 4)])]),
+		 (Type ("prelude","(,,,,,)") Public [0,1,2,3,4,5] 
+		  [(Cons ("prelude","(,,,,,)") 6 Public 
+		    [(TVar 0),(TVar 1),(TVar 2),(TVar 3),(TVar 4),(TVar 5)])]),
+		 (Type ("prelude","(,,,,,,)") Public [0,1,2,3,4,5,6] 
+		  [(Cons ("prelude","(,,,,,,)") 7 Public 
+		    [(TVar 0),(TVar 1),(TVar 2),(TVar 3),
+		     (TVar 4),(TVar 5),(TVar 6)])]),
+		 (Type ("prelude","(,,,,,,,)") Public [0,1,2,3,4,5,6,7] 
+		  [(Cons ("prelude","(,,,,,,,)") 8 Public 
+		    [(TVar 0),(TVar 1),(TVar 2),(TVar 3),
+		     (TVar 4),(TVar 5),(TVar 6),(TVar 7)])]),
+		 (Type ("prelude","(,,,,,,,,)") Public [0,1,2,3,4,5,6,7,8] 
+		  [(Cons ("prelude","(,,,,,,,,)") 9 Public
+		    [(TVar 0),(TVar 1),(TVar 2),(TVar 3),
+		     (TVar 4),(TVar 5),(TVar 6),(TVar 7),(TVar 8)])]),
+		 (Type ("prelude","(,,,,,,,,,)") Public [0,1,2,3,4,5,6,7,8,9] 
+		  [(Cons ("prelude","(,,,,,,,,,)") 10 Public 
+		    [(TVar 0),(TVar 1),(TVar 2),(TVar 3),
+		     (TVar 4),(TVar 5),(TVar 6),(TVar 7),(TVar 8),(TVar 9)])]),
+		 (Type ("prelude","(,,,,,,,,,,)") Public 
+		  [0,1,2,3,4,5,6,7,8,9,10] 
+		  [(Cons ("prelude","(,,,,,,,,,,)") 11 Public 
+		    [(TVar 0),(TVar 1),(TVar 2),(TVar 3),
+		     (TVar 4),(TVar 5),(TVar 6),(TVar 7),(TVar 8),
+		     (TVar 9),(TVar 10)])]),
+		 (Type ("prelude","(,,,,,,,,,,,)") Public 
+		  [0,1,2,3,4,5,6,7,8,9,10,11] 
+		  [(Cons ("prelude","(,,,,,,,,,,,)") 12 Public 
+		    [(TVar 0),(TVar 1),(TVar 2),(TVar 3),
+		     (TVar 4),(TVar 5),(TVar 6),(TVar 7),(TVar 8),
+		     (TVar 9),(TVar 10),(TVar 11)])]),
+		 (Type ("prelude","(,,,,,,,,,,,,)") Public 
+		  [0,1,2,3,4,5,6,7,8,9,10,11,12] 
+		  [(Cons ("prelude","(,,,,,,,,,,,,)") 13 Public 
+		    [(TVar 0),(TVar 1),(TVar 2),(TVar 3),
+		     (TVar 4),(TVar 5),(TVar 6),(TVar 7),
+		     (TVar 8),(TVar 9),(TVar 10),(TVar 11),(TVar 12)])]),
+		 (Type ("prelude","(,,,,,,,,,,,,,)") Public 
+		  [0,1,2,3,4,5,6,7,8,9,10,11,12,13] 
+		  [(Cons ("prelude","(,,,,,,,,,,,,,)") 14 Public 
+		    [(TVar 0),(TVar 1),(TVar 2),(TVar 3),
+		     (TVar 4),(TVar 5),(TVar 6),(TVar 7),
+		     (TVar 8),(TVar 9),(TVar 10),(TVar 11),
+		     (TVar 12),(TVar 13)])]),
+		 (Type ("prelude","(,,,,,,,,,,,,,,)") Public 
+		  [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14] 
+		  [(Cons ("prelude","(,,,,,,,,,,,,,,)") 15 Public 
+		    [(TVar 0),(TVar 1),(TVar 2),(TVar 3),
+		     (TVar 4),(TVar 5),(TVar 6),(TVar 7),
+		     (TVar 8),(TVar 9),(TVar 10),(TVar 11),
+		     (TVar 12),(TVar 13),(TVar 14)])])]
 
 
 -------------------------------------------------------------------------------

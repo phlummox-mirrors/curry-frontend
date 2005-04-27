@@ -1,8 +1,9 @@
 #!/bin/sh
 #
-# Shell script for removing all curry interfaces and
-# flat xml files
+# Shell script for removing all curry interfaces,
+# FlatCurry and FlatInterface files
 
 rm -f *.icurry
-rm -f *.flat
+rm -f *.fcy
+rm -f *.fint
 

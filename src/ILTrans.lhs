@@ -168,24 +168,39 @@ uses flexible matching except if its result type is (an instance of)
 
 > translFunction :: Bool -> ModuleIdent -> ValueEnv -> EvalEnv
 >                -> Ident -> [Equation] -> IL.Decl
-> translFunction flat m tyEnv evEnv f eqs =
->   IL.FunctionDecl f' vs (translType ty)
->                   (match ev vs (map (translEquation tyEnv vs vs'') eqs))
->   where f' = qualifyWith m f
->         ty = varType tyEnv f'
->         ev = maybe (defaultMode ty) evalMode (lookupEval f evEnv)
->         vs = if not flat && isSelectorId f then translArgs eqs vs' else vs'
->         (vs',vs'') = splitAt (arrowArity ty) (argNames (mkIdent ""))
+> translFunction flat m tyEnv evEnv f eqs
+>    = IL.FunctionDecl f' vs (translType ty) expr
+>    -- = IL.FunctionDecl f' vs (translType ty)
+>    --                  (match ev vs (map (translEquation tyEnv vs vs'') eqs))
+>   where f'  = qualifyWith m f
+>         ty  = varType tyEnv f'
+>         ev' = lookupEval f evEnv
+>         ev  = maybe (defaultMode ty) evalMode ev'
+>         vs  = if not flat && isSelectorId f then translArgs eqs vs' else vs'
+>         (vs',vs'') = splitAt (equationArity (head eqs)) 
+>                              (argNames (mkIdent ""))
+>         expr | isJust ev' && (fromJust ev') == EvalChoice
+>                = IL.Apply 
+>                    (IL.Function 
+>                       (qualifyWith preludeMIdent (mkIdent "commit"))
+>                       1)
+>                    (match IL.Rigid vs 
+>                       (map (translEquation tyEnv vs vs'') eqs))
+>              | otherwise
+>                =  match ev vs (map (translEquation tyEnv vs vs'') eqs)
+>         ---
+>         -- (vs',vs'') = splitAt (arrowArity ty) (argNames (mkIdent ""))
 
 > evalMode :: EvalAnnotation -> IL.Eval
 > evalMode EvalRigid = IL.Rigid
 > evalMode EvalChoice = error "eval choice is not yet supported"
 
 > defaultMode :: Type -> IL.Eval
-> defaultMode ty = if isIO (arrowBase ty) then IL.Rigid else IL.Flex
->   where TypeConstructor qIOId _ = ioType undefined
->         isIO (TypeConstructor tc [_]) = tc == qIOId
->         isIO _ = False
+> defaultMode _ = IL.Flex
+> --defaultMode ty = if isIO (arrowBase ty) then IL.Rigid else IL.Flex
+> --  where TypeConstructor qIOId _ = ioType undefined
+> --        isIO (TypeConstructor tc [_]) = tc == qIOId
+> --        isIO _ = False
 
 > translArgs :: [Equation] -> [Ident] -> [Ident]
 > translArgs [Equation _ (FunLhs _ (t:ts)) _] (v:_) =
@@ -200,6 +215,15 @@ uses flexible matching except if its result type is (an instance of)
 
 > translRhs :: ValueEnv -> [Ident] -> RenameEnv -> Rhs -> IL.Expression
 > translRhs tyEnv vs env (SimpleRhs _ e _) = translExpr tyEnv vs env e
+
+
+> equationArity :: Equation -> Int
+> equationArity (Equation _ lhs _) = p_equArity lhs
+>  where
+>    p_equArity (FunLhs _ ts) = length ts
+>    p_equArity (OpLhs _ _ _) = 2
+>    p_equArity _             = error "ILTrans - illegal equation"
+
 
 \end{verbatim}
 \paragraph{Pattern Matching}
@@ -282,6 +306,7 @@ position in the remaining arguments. If one is found,
 >   | null nonVars = e2
 >   | otherwise = optMatch ev (IL.Or e1 e2) (v:) vs (map skipArg alts)
 >   where (vars,nonVars) = partition isDefaultMatch (map tagAlt alts)
+>         (nonArgs,args) = partition (null.fst) alts
 >         e1 = matchInductive ev id v vs nonVars
 >         e2 = match ev vs (map snd vars)
 >         tagAlt (t:ts,e) = (pattern t,(arguments t ++ ts,e))

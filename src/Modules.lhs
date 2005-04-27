@@ -105,24 +105,6 @@ matching code.}
 >         merge (Left cf1) cf2 = Left (mergeCFile cf1 cf2)
 >         merge (Right cfs) cf = Right (cf : cfs)
 
-If the file we read is the prelude, we need to append a few definitions.
-
-> maybePatchPrelude :: FilePath -> String -> IO String
-> maybePatchPrelude fn xs = 
->    case basename fn of 
->     "prelude.curry" -> return (xs ++ preludePatch)
->     _ -> return xs
-
-The things we need to add to the prelude:
-
-> preludePatch =  "\n\n"
->              ++ "data Int\n" 
->              ++ "data Float\n" 
->              ++ "data Char\n"
->              ++ "data Success\n"
->              ++ "data IO\n"
->              ++ "data Bool = True | False"
-
 > parseModule :: Bool -> FilePath -> String -> Module
 > parseModule flat fn =
 >   importPrelude fn . ok . parseSource flat fn . unlitLiterate fn
@@ -526,6 +508,28 @@ from the type environment.
 >         isValue (DataConstructor _ _) = False
 >         isValue (NewtypeConstructor _ _) = False
 >         isValue (Value _ _) = True
+
+
+\end{verbatim}
+If the source file is the prelude, we need to append a few definitions.
+This is necessary to run the compiler with the PAKCS prelude.
+\begin{verbatim}
+
+> maybePatchPrelude :: FilePath -> String -> IO String
+> maybePatchPrelude fn xs
+>    | (basename (rootname fn)) == "prelude" 
+>      = return (xs ++ "\n\n" ++ unlines preludePatch)
+>    | otherwise 
+>      = return xs
+
+> preludePatch = ["data Int", 
+>                 "data Float",
+>                 "data Char",
+>                 "data Success",
+>                 "data IO a",
+>                 "data Bool = True | False",
+>                 "type String = [Char]"]
+
 
 \end{verbatim}
 Various filename extensions

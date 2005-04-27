@@ -228,8 +228,11 @@ applying the right hand side to those variables.
 >     vs <- mapM (freshIdent m "_#eta" . monoType) (drop (length ts) tys)
 >     (ds',ts') <- mapAccumM (desugarTerm m p) [] ts
 >     rhs' <- desugarRhs m p (addDecls ds' rhs)
->     return (Equation p (FunLhs f (ts' ++ map VariablePattern vs))
->                      (applyRhs rhs' (map mkVar vs)))
+>     return (Equation p (FunLhs f ts') rhs')
+>     ---
+>     --return (Equation p (FunLhs f (ts' ++ map VariablePattern vs))
+>     --                 (applyRhs rhs' (map mkVar vs)))
+>     ---
 >   where (f,ts) = flatLhs lhs
 >         applyRhs (SimpleRhs p e _) vs = SimpleRhs p (apply e vs) []
 

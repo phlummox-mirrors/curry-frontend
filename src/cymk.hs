@@ -118,7 +118,7 @@ processFiles opts prog files
       makeDepend (importPaths opts) (libPaths opts) (output opts) files
   | isJust (output opts) && length files > 1 =
       badUsage prog ["cannot specify -o with multiple targets\n"]
-  | otherwise =
+  | otherwise = 
       do
         es <- fmap concat (mapM script files)
 	unless (null es) (mapM putErrLn es >> exitWith (ExitFailure 2))

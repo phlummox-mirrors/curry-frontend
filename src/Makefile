@@ -29,9 +29,10 @@ CYMK_SRC   = cymk.hs
 CYMK       = cymk
 CYMK_OBJ   = cymk.o
 
-# a little program needed by "cymake"
-NEWER_LHS  = newer.lhs
-NEWER      = newer
+# a little program for updating target files depending on
+# several source files (needed by cymake)
+SMAKE_HS   = smake.hs
+SMAKE      = smake
 
 # configuration file for generating "cyc", "cymake" and "cyxml.hs"
 CONFIG_SRC = config.hs
@@ -101,14 +102,16 @@ $(CYCC): $(CYCC_SRC) $(MCC3_OBJ) $(MCC2_OBJ) $(MCC1_OBJ) $(GETOPT_OBJ)
 	@rm -f $(CYCC_OBJ)
 	$(HC) $(HC_OPTS) -o $(CYCC) $(CYCC_SRC) \
 			    $(MCC3_OBJ) $(MCC2_OBJ) $(MCC1_OBJ) $(GETOPT_OBJ)
+	@cd $(MCC_SRC_CURRY) && ./clean
 
 $(CYMK): $(CYMK_SRC) $(MCC3_OBJ) $(MCC2_OBJ) $(MCC1_OBJ) $(GETOPT_OBJ)
 	@rm -f $(CYMK_OBJ)
 	$(HC) $(HC_OPTS) -o $(CYMK) $(CYMK_SRC) \
 			    $(MCC3_OBJ) $(MCC2_OBJ) $(MCC1_OBJ) $(GETOPT_OBJ)
+	@cd $(MCC_SRC_CURRY) && ./clean
 
-$(NEWER): $(NEWER_LHS)
-	$(HC) $(HC_OPTS) -o $(NEWER) $(NEWER_LHS)
+$(SMAKE): $(SMAKE_HS)
+	$(HC) $(HC_OPTS) -o $(SMAKE) $(SMAKE_HS)
 
 
 # Compile configuration file "config.hs"
@@ -130,9 +133,11 @@ $(CYC): $(CONFIG) $(CYC_PATT)
 	@chmod 755 $(CYC)
 	@cd $(MCC_SRC_CURRY) && ./clean
 
-$(CYMAKE): $(CONFIG) $(CYMAKE_PATT) $(NEWER)
+$(CYMAKE): $(CONFIG) $(CYMAKE_PATT) $(SMAKE)
 	@./$(CONFIG) $(CYMAKE)
 	@chmod 755 $(CYMAKE)
+	@cd $(MCC_SRC_CURRY) && ./clean
+
 
 $(CYXML_HS): $(CYXML_HS_PATT)
 	@./$(CONFIG) $(CYXML_HS)
@@ -151,7 +156,7 @@ runtime:
 # Install the compiler
 .PHONY: install
 
-install: inst_bin inst_rts inst_lib
+install: inst_bin inst_rts
 
 inst_bin: $(CYC) $(CYMAKE) $(CYXML)
 	@cp ./$(CYC) $(MCC_BIN)/
@@ -159,9 +164,9 @@ inst_bin: $(CYC) $(CYMAKE) $(CYXML)
 	@cp ./$(CYXML) $(MCC_BIN)/
 
 inst_rts:
-	@cp ./$(NEWER) $(MCC_LIB_RUNTIME)/
+	@cp ./$(SMAKE) $(MCC_LIB_RUNTIME)/
 	@cp ./$(CYCC) $(MCC_LIB_RUNTIME)/
 	@cp ./$(CYMK) $(MCC_LIB_RUNTIME)/
 
-inst_lib: $(CYC) inst_rts
-	@cd $(MCC_SRC_CURRY) && make
+#inst_lib: $(CYC) $(CYMAKE) inst_rts
+#	@cd $(MCC_SRC_CURRY) && make

@@ -4,6 +4,8 @@
 % Copyright (c) 2002-2004, Wolfgang Lux
 % See LICENSE for the full license.
 %
+% Modified in April 2005,
+% Martin Engelke (men@informatik.uni-kiel.
 \nwfilename{CurryDeps.lhs}
 \section{Building Programs}
 This module implements the functions to compute the dependency
@@ -43,10 +45,13 @@ Makefile.
 >             -> IO [String]
 > buildScript clean debug linkAlways flat xml paths libPaths ofn fn =
 >   do
->     (ms,es) <-
->       fmap (flattenDeps . sortDeps)
->            (deps paths (filter (`notElem` paths) libPaths) emptyEnv fn)
+>     ds      <- deps paths (filter (`notElem` paths) libPaths) emptyEnv fn
+>     (ms,es) <- fmap 
+>                 (flattenDeps . sortDeps)
+>                 (deps paths (filter (`notElem` paths) libPaths) emptyEnv fn)
 >     when (null es)
+>          --(error (show ds))
+>          --(error (makeScript clean debug flat xml linkAlways outputFile ms))
 >          (putStr (makeScript clean debug flat xml linkAlways outputFile ms))
 >     return es
 >   where outputFile
@@ -103,9 +108,10 @@ directories more than twice.
 > lookupModule paths libPaths m =
 >   lookupFile [p `catPath` fn ++ e | p <- "" : paths, e <- moduleExts] >>=
 >   maybe (lookupFile [p `catPath` fn ++ e 
->                      | p <- libPaths, e <- [icurryExt, curryExt]])
+>                      | p <- libPaths, e <- moduleExts])
 >         (return . Just)
 >   where fn = foldr1 catPath (moduleQualifiers m)
+>                      -- | p <- libPaths, e <- [icurryExt, curryExt, lcurryExt]])
 
 > --lookupModule :: [FilePath] -> [FilePath] -> ModuleIdent
 > --             -> IO (Maybe FilePath)
@@ -220,46 +226,70 @@ that the dependency graph should not contain any cycles.
 
 \end{verbatim}
 The function \texttt{makeBuildScript} returns a shell script that
-rebuilds a program given a sorted list of module informations. The
-script uses the commands \verb|compile| and \verb|link| to build the
-program. They should be defined to reasonable values in the
-environment where the script is executed. The script deliberately uses
+rebuilds several program representations (e.g. interfaces, FlatCurry etc.)
+given a sorted list of module informations. The
+script uses the command \verb|compile| and \verb|link| to build
+programs and representations. They should be defined to reasonable values in the
+environment where the script is executed (e.g. compile=cyc
+The script deliberately uses
 the \verb|-e| shell option so that the script is terminated upon the
-first error.
+first error. Unlike the original function \texttt{makeBuildScript} this
+modification uses the command "smake" to check the out-of-dateness
+of dependend program files.
 \begin{verbatim}
 
 > makeBuildScript :: Bool -> Bool -> Bool -> Bool -> Maybe FilePath
 >                 -> [(ModuleIdent,Source)] -> String
 > makeBuildScript debug flat xml linkAlways ofn mEnv =
->   unlines ("set -e" : concatMap (compCommands . snd) mEnv ++
->            maybe [] linkCommands ofn)
->   where compCommands (Source fn ms) =
->           [newer ofn (fn : catMaybes (map interf ms)) ++ " || \\",compile fn]
->           where ofn = targetName fn
->         compCommands (Interface _) = []
+>   unlines ("set -e" : (map (compCommands . snd) mEnv)
+>                       ++ (maybe [] linkCommands ofn))
+>   where 
+>         compCommands (Source fn ms)
+>            = (smake ((interfName fn):(targetNames fn))
+>                     (fn : catMaybes (map interf ms))
+>                     "")
+>              ++ " && \\rm -f " ++ (interfName fn)
+>              ++ " && \\" ++ (compile fn)
+>         compCommands (Interface fn) = []
 >         compCommands Unknown = []
+>
 >         linkCommands fn
 >           | linkAlways = [link fn os]
->           | otherwise = [newer fn os ++ " || \\", link fn os]
+>           | otherwise  = [smake [fn] os "", " && \\", (link fn os)]
 >           where os = reverse (catMaybes (map (object . snd) mEnv))
->         newer fn fns = unwords ("$CURRY_PATH/newer" : fn : fns)
->         compile fn = unwords ["compile",cFlag,fn,"-o",targetName fn]
+>
+>         smake ts ds rule
+>            = "$CURRY_PATH/smake " 
+>              ++ (unwords ts) ++ " : " 
+>              ++ (unwords ds)
+>              ++ (if null rule then "" else " : " ++ rule)
+>
+>         compile fn = unwords ["compile",cFlag,fn,"-o", head (targetNames fn)] 
+>
 >         cFlag | flat      = "--flat" 
 >               | xml       = "--xml"
 >               | otherwise = "-c"
+>
+>         oGen fn | flat || xml = []
+>                 | otherwise   = ["-o", head (targetNames fn)]
+>
 >         link fn os = unwords ("link" : "-o" : fn : os)
+>
 >         interf m =
 >           case lookup m mEnv of
 >             Just (Source fn _) -> Just (interfName fn)
 >             Just (Interface fn) -> Just fn
 >             Just Unknown -> Nothing
 >             Nothing -> Nothing
->         object (Source fn _) = Just (targetName fn)
+>
+>         object (Source fn _) = Just (head (targetNames fn))
 >         object (Interface _) = Nothing
 >         object Unknown = Nothing
->         targetName | flat      = flatName
->                    | xml       = xmlName
->                    | otherwise = objectName debug
+>
+>         targetNames fn | flat      = [flatName fn, flatIntName fn]
+>                        | xml       = [xmlName fn]
+>                        | otherwise = [objectName debug fn]
+
 
 \end{verbatim}
 The function \texttt{makeCleanScript} returns a shell script that
@@ -297,6 +327,9 @@ file.
 > flatName :: FilePath -> FilePath
 > flatName fn = rootname fn ++ flatExt
 
+> flatIntName :: FilePath -> FilePath
+> flatIntName fn = rootname fn ++ flatIntExt
+
 > xmlName :: FilePath -> FilePath
 > xmlName fn = rootname fn ++ xmlExt
 
@@ -318,6 +351,6 @@ file.
 > sourceExts, moduleExts, objectExts :: [String]
 > sourceExts = [lcurryExt,curryExt]
 > moduleExts = sourceExts ++ [icurryExt]
-> objectExts = [flatExt,oExt]
+> objectExts = [oExt]
 
 \end{verbatim}
