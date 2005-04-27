@@ -45,16 +45,16 @@ Makefile.
 >             -> IO [String]
 > buildScript clean debug linkAlways flat xml paths libPaths ofn fn =
 >   do
->     ds      <- deps paths (filter (`notElem` paths) libPaths) emptyEnv fn
+>     fn'     <- getSourceName fn
 >     (ms,es) <- fmap 
 >                 (flattenDeps . sortDeps)
->                 (deps paths (filter (`notElem` paths) libPaths) emptyEnv fn)
+>                 (deps paths (filter (`notElem` paths) libPaths) emptyEnv fn')
 >     when (null es)
->          --(error (show ds))
 >          --(error (makeScript clean debug flat xml linkAlways outputFile ms))
->          (putStr (makeScript clean debug flat xml linkAlways outputFile ms))
+>          (putStr 
+>            (makeScript clean debug flat xml linkAlways (outputFile fn') ms))
 >     return es
->   where outputFile
+>   where outputFile fn
 >           | extension fn `elem` moduleExts ++ objectExts = Nothing
 >           | otherwise = ofn `mplus` Just fn
 >         --flat = flatExt `isSuffixOf` fn
@@ -315,8 +315,24 @@ reasonable value in the environment where the script is executed.
 >         nonFlatFiles Unknown fs = fs
 
 \end{verbatim}
-The functions \texttt{interfName} and \texttt{objectName} compute the
-name of an interface and object file for a source module. Note that
+The function \verb|getSourceName| searches for the corresponding 
+\texttt{.curry} or \texttt{.lcurry} file, if the given file name
+has no extension.
+\begin{verbatim}
+
+> getSourceName :: FilePath -> IO FilePath
+> getSourceName fn
+>    | null (extension fn)
+>       = do mfn <- lookupFile [fn ++ ext' | ext' <- sourceExts]
+>            return (fromMaybe fn mfn)
+>    | otherwise 
+>      = return fn
+
+
+\end{verbatim}
+The following functions compute the name of the target file (e.g.
+interface file, flat curry file etc.)
+for a source module. Note that
 output files are always created in the same directory as the source
 file.
 \begin{verbatim}
@@ -349,7 +365,7 @@ file.
 > debugExt = ".d.o"
 
 > sourceExts, moduleExts, objectExts :: [String]
-> sourceExts = [lcurryExt,curryExt]
+> sourceExts = [curryExt,lcurryExt]
 > moduleExts = sourceExts ++ [icurryExt]
 > objectExts = [oExt]
 

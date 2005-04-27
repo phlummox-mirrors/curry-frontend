@@ -36,14 +36,15 @@ Die Übersetzung eines Curry-Programms 'file.curry', sowie sämtlicher
 importierter Module nach FlatCurry bzw. FlatInterface, bewirkt folgendes
 Kommando:
 
-	cymake --flat file.curry
+	cymake --flat <file name>
 
 Hierdurch werden die Dateien mit den entsprechenden Endungen ".fcy" und
-".fint" generiert.
+".fint" generiert. Der Dateiname <file name> kann hierbei mit oder ohne 
+Endung ".curry" bzw. ".lcurry" angegeben werden.
 
 Die analogen Übersetzungen in die FlatXML-Darstellung geschehen mittels
 
-	cymake --xml file.curry
+	cymake --xml <file name>
 
 Die hierdurch generierte Flat-XML-Datei hat die Endung '_flat.xml'.
 
@@ -61,14 +62,9 @@ Anmerkungen
   Interface-Dateien (Endung ".icurry") erzeugt. Diese werden
   intern vom MCC benötigt (z.B. zur Auflösung von Import-Abhängigkeiten).
 
-- Der MCC ist leider nicht in der Lage, die Prelude aus der PAKCS-
-  Distribution zu nutzen. Daher wird eine erweiterte Version dieser
-  Prelude verwendet, die sich im Verzeichnis 'mcc/lib/curry/'
-  befindet.
-
-- Um die PAKCS-Bibliotheken für Übersetzungen nutzen zu können 
-  muß die Umgebungsvariable 'PAKCS_LIB' auf die entsprechenden Pfade
-  verweisen, z.B. mittels
+- Um die PAKCS-Bibliotheken (insbesondere die Prelude) für Übersetzungen 
+  nutzen zu können muß die Umgebungsvariable 'PAKCS_LIB' auf die
+  entsprechenden Pfade verweisen, z.B. mittels
 
 	export PAKCS_LIB=<pakcs path>/pacs/lib:<pakcs path>/pacs/lib/meta:...
 
