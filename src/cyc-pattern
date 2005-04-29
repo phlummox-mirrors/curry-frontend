@@ -22,7 +22,7 @@ build="%BUILD_DATE%"
 # to get used with the MCC
 prefix=%BUILD_DIR%
 CURRY_PATH=$prefix/lib/runtime
-CURRY_IMPORTS=$prefix/lib/runtime:$PAKCS_LIB
+CURRY_IMPORTS=$prefix/lib/runtime:$CURRYPATH:$PAKCSLIBPATH:$PAKCS_LIB
 #CURRY_IMPORTS=$prefix/lib/curry:$prefix/lib/runtime:$PAKCS_LIB
 CC="gcc -fno-defer-pop"
 
