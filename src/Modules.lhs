@@ -4,6 +4,8 @@
 % Copyright (c) 1999-2004, Wolfgang Lux
 % See LICENSE for the full license.
 %
+% Modified in May 2005,
+% Martin Engelke (men@informatik.uni-kiel.de)
 \nwfilename{Modules.lhs}
 \section{Modules}
 This module controls the compilation of modules.
@@ -86,7 +88,8 @@ matching code.}
 > compileModule :: Options -> FilePath -> IO ()
 > compileModule opts fn =
 >   do
->     m <- liftM (parseModule flat fn) (readFile fn >>= maybePatchPrelude fn)
+>     m <- liftM (parseModule likeFlat fn) 
+>                (readFile fn >>= maybePatchPrelude fn)
 >     mEnv <- loadInterfaces (importPath opts) m
 >     let (tyEnv,m',intf) = checkModule mEnv m
 >         (il,dumps) =
@@ -102,12 +105,13 @@ matching code.}
 >   where abstract = abstractCurry opts
 >         flat     = flatCurry opts
 >         xml      = flatXML opts
+>         likeFlat = (flatCurry opts) || (flatXML opts) || (abstractCurry opts)
 >         merge (Left cf1) cf2 = Left (mergeCFile cf1 cf2)
 >         merge (Right cfs) cf = Right (cf : cfs)
 
 > parseModule :: Bool -> FilePath -> String -> Module
-> parseModule flat fn =
->   importPrelude fn . ok . parseSource flat fn . unlitLiterate fn
+> parseModule likeFlat fn =
+>   importPrelude fn . ok . parseSource likeFlat fn . unlitLiterate fn
 
 > loadInterfaces :: [FilePath] -> Module -> IO ModuleEnv
 > loadInterfaces paths (Module m _ ds) =

@@ -4,6 +4,8 @@
 % Copyright (c) 2001-2003, Wolfgang Lux
 % See LICENSE for the full license.
 %
+% Modified in March 2005,
+% Martin Engelke (men@informatik.uni-kiel.de)
 \nwfilename{Options.lhs}
 \section{Compiler options}
 \begin{verbatim}
