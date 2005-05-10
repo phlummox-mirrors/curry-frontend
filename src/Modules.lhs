@@ -44,6 +44,7 @@ This module controls the compilation of modules.
 > import qualified ILPP(ppModule)
 > import Options(Options(..),Dump(..))
 > import CaseCompletion
+> import PatchPrelude
 > import PathUtils
 > import List
 > import IO
@@ -89,7 +90,7 @@ matching code.}
 > compileModule opts fn =
 >   do
 >     m <- liftM (parseModule likeFlat fn) 
->                (readFile fn >>= maybePatchPrelude fn)
+>                (readFile fn >>= return . (patchPreludeSource fn))
 >     mEnv <- loadInterfaces (importPath opts) m
 >     let (tyEnv,m',intf) = checkModule mEnv m
 >         (il,dumps) =

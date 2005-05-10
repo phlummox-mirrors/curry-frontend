@@ -45,12 +45,14 @@ Makefile.
 >             -> IO [String]
 > buildScript clean debug linkAlways flat xml paths libPaths ofn fn =
 >   do
->     fn'     <- getSourceName fn
+>     mfn'    <- getSourcePath paths libPaths fn
+>     fn'     <- return (fromMaybe (error ("missing source file for " ++ fn)) 
+>                                  mfn')
 >     (ms,es) <- fmap 
 >                 (flattenDeps . sortDeps)
 >                 (deps paths (filter (`notElem` paths) libPaths) emptyEnv fn')
 >     when (null es)
->          --(error (makeScript clean debug flat xml linkAlways outputFile ms))
+>          --(error (makeScript clean debug flat xml linkAlways (outputFile fn') ms))
 >          (putStr 
 >            (makeScript clean debug flat xml linkAlways (outputFile fn') ms))
 >     return es
@@ -320,13 +322,22 @@ The function \verb|getSourceName| searches for the corresponding
 has no extension.
 \begin{verbatim}
 
-> getSourceName :: FilePath -> IO FilePath
-> getSourceName fn
->    | null (extension fn)
->       = do mfn <- lookupFile [fn ++ ext' | ext' <- sourceExts]
->            return (fromMaybe fn mfn)
->    | otherwise 
->      = return fn
+> --getSourceName :: FilePath -> IO FilePath
+> --getSourceName fn
+> --   | null (extension fn)
+> --      = do mfn <- lookupFile [fn ++ ext' | ext' <- sourceExts]
+> --           return (fromMaybe fn mfn)
+> --   | otherwise 
+> --     = return fn
+
+> getSourcePath :: [FilePath] -> [FilePath] -> FilePath -> IO (Maybe FilePath)
+> getSourcePath paths libPaths fn
+>   = lookupFile filepaths
+>  where
+>  filepaths = [p `catPath` fn' | p   <- "":(paths ++ libPaths),
+>                                 fn' <- fns']
+>  fns' | null (extension fn) = [fn ++ ext' | ext' <- sourceExts]
+>       | otherwise           = [fn]
 
 
 \end{verbatim}

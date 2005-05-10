@@ -1,4 +1,5 @@
-module IL2FlatCurry where
+module IL2FlatCurry (il2flatCurry,
+		     il2flatInterface) where
 
 import IL
 import Ident
@@ -9,6 +10,7 @@ import FlatCurry hiding (Literal, Expr(Or, Case, Let), CaseType(..))
 import qualified FlatCurry (Literal, Expr(Or, Case, Let), CaseType(..))
 import qualified CurrySyntax hiding (Export(..))
 import CurrySyntax (Export(..))
+import PatchPrelude
 import Maybe
 
 
@@ -16,18 +18,18 @@ import Maybe
 
 -- transforms intermediate language code (IL) to FlatCurry code
 il2flatCurry :: CurryInfo -> ModuleEnv -> Module -> Prog
-il2flatCurry info menv (Module mident imports decls) 
-   = fst (visitModule env (Module mident imports decls))
+il2flatCurry info menv mod 
+   = patchPreludeFCY (fst (visitModule env mod))
  where
- env = flatEnv mident menv info
+ env = flatEnv (getModuleIdent mod) menv info
 
 
 -- transforms intermediate language code (IL) to FlatCurry interfaces
 il2flatInterface :: CurryInfo -> ModuleEnv -> Module -> Prog
-il2flatInterface info menv (Module mident imports decls)
-   = fst (visitModule env (Module mident imports decls))
+il2flatInterface info menv mod
+   = patchPreludeFCY (fst (visitModule env mod))
  where
- env = (flatEnv mident menv info) { genFlatIntf = True }
+ env = (flatEnv (getModuleIdent mod) menv info) { genFlatIntf = True }
 
 
 -------------------------------------------------------------------------------
@@ -47,13 +49,13 @@ visitModule env (Module mident imports decls)
 	 (ts', env3) = emap visitTypeIDecl env2 (filter isTypeIDecl idecls)
 	 (fs', env4) = emap visitFuncIDecl env3 (filter isFuncIDecl idecls)
 	 (os', env5) = emap visitOpIDecl   env4 (filter isOpIDecl   idecls)
-         ts''        | mident == preludeMIdent = prelude_types
-                     | otherwise               = []
-	 imports'    | mident == preludeMIdent = []
-	             | otherwise               = imports
+         --ts''        | mident == preludeMIdent = prelude_types
+         --            | otherwise               = []
+	 --imports'    | mident == preludeMIdent = []
+	 --            | otherwise               = imports
 	 prog        = Prog (visitModuleIdent mident)
-		            (map visitModuleIdent imports')
-			    (ts'' ++ ts' ++ (genTypeSynonyms env5) ++ ts)
+		            (map visitModuleIdent imports)
+			    (ts' ++ (genTypeSynonyms env5) ++ ts)
 			    (fs' ++ fs)
 			    (os' ++ (genOpDecls env5))
      in  (prog, env5)
@@ -701,6 +703,9 @@ int2num :: Int -> Int
 int2num i | i < 0     = (-1) * i
 	  | otherwise = i
 
+
+getModuleIdent :: Module -> ModuleIdent
+getModuleIdent (Module mident _ _) = mident
 
 -------------------------------------------------------------------------------
 -------------------------------------------------------------------------------

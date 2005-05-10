@@ -7,7 +7,7 @@
 # Copyright (c) 2002-2004, Wolfgang Lux
 # See LICENSE for the full license.
 #
-# Modified in January 2005 by
+# Modified in May 2005 by
 # Martin Engelke (men@informatik.uni-kiel.de)
 #
 
@@ -205,9 +205,11 @@ fi
 for f in $files; do
   case $f in
     *.curry | *.lcurry ) target=$f;;
-    *.flat ) target=`get_source "$f" .flat` || exit $?;;
+    *.flat ) target=$f;;
+    #*.flat ) target=`get_source "$f" .flat` || exit $?;;
     *.o ) target=`get_source "$f" .o` || exit $?;;
-    * ) target=`get_source "$f"` || exit $?;;
+    * ) target=$f;;
+    #* ) target=`get_source "$f"` || exit $?;;
   esac
   test -n "$verbose" && echo 1>&2 $cymk $clean $mkopts $imports $f
   $cymk $clean $mkopts $imports $f > /tmp/cymake$$
