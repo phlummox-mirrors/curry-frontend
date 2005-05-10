@@ -212,11 +212,11 @@ for f in $files; do
     #* ) target=`get_source "$f"` || exit $?;;
   esac
   test -n "$verbose" && echo 1>&2 $cymk $clean $mkopts $imports $f
-  $cymk $clean $mkopts $imports $f > /tmp/cymake$$
+  $cymk $clean $mkopts $imports $f > /tmp/cymake$$ || exit $?
 
   . /tmp/cymake$$
   set +e
 done
 
 # done
-exit 0
+exit $?

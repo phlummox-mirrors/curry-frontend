@@ -122,10 +122,13 @@ processFiles opts prog files
       do
         es <- fmap concat (mapM script files)
 	unless (null es) (mapM putErrLn es >> exitWith (ExitFailure 2))
-  where script = buildScript (mkClean opts) (debug opts) (linkAlways opts) 
-		             (flat opts) (xml opts)
-			     (importPaths opts) (libPaths opts) (output opts)
+  where 
+     script = buildScript (mkClean opts) (debug opts) (linkAlways opts) 
+	                  (flat opts) (xml opts)
+	                  (importPaths opts) (libPaths opts) (output opts)
 
 putErr, putErrLn :: String -> IO ()
 putErr = hPutStr stderr
 putErrLn = hPutStr stderr . (++ "\n")
+
+-------------------------------------------------------------------------------

@@ -13,12 +13,12 @@
 --
 -- Without specifying <rule> smake can be used to check the out-of-dateness
 -- between the files in <targets> and the files in <dependencies>.
--- smake returns 0, if any file in <dependencies> is newer than any file
--- in <targets> or if any file in <targets> doesn't exisit, and otherwise 1.
+-- smake returns 1, if any file in <dependencies> is newer than any file
+-- in <targets> or if any file in <targets> doesn't exisit, and otherwise 0.
 --
 -- If smake failes on any reason, the returned error code is 2.
 --
--- April 2005,
+-- May 2005,
 -- Martin Engelke (men@informatik.uni-kiel.de)
 --
 
@@ -26,6 +26,7 @@ import System
 import Directory
 import Time
 import Monad
+import Maybe
 
 
 -------------------------------------------------------------------------------
@@ -51,13 +52,17 @@ smake opts
  where
    checkTimes tgtimes dptimes
       | (length tgtimes) < (length (targets opts))
-	= execRule (rule opts) >>= return
+	= maybe (return (ExitFailure 1))
+                execRule
+		(rule opts) --execRule (fromMaybe "" (rule opts)) >>= return
       | null dptimes 
 	= return (ExitFailure 2)
       | outOfDate tgtimes dptimes 
-	= execRule (rule opts) >>= return
+	= maybe (return (ExitFailure 1))
+                execRule
+		(rule opts) --execRule (fromMaybe "" (rule opts)) >>= return
       | otherwise
-        = return (ExitFailure 1)
+        = return ExitSuccess
 
 
 getTargetTimes :: [String] -> IO [ClockTime]
@@ -91,19 +96,21 @@ outOfDate tgtimes dptimes = or (map (\t -> or (map ((<) t) dptimes)) tgtimes)
 
 data Options = Options { targets :: [FilePath],
 			 deps    :: [FilePath],
-			 rule    :: String
+			 rule    :: Maybe String
 		       }
 
 
 parseArgs :: [String] -> IO Options
 parseArgs args = return Options { targets = ts,
 				  deps    = ds,
-				  rule    = unwords rs
+				  rule    = mrs
 				}
  where
    (ts, args')  = span ((/=) ":") args
    (ds, args'') = span ((/=) ":") (rest args')
    rs           = rest (args'')
+   mrs          | null rs   = Nothing
+		| otherwise = Just (unwords rs)
 
 
 -------------------------------------------------------------------------------

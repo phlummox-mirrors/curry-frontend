@@ -45,12 +45,14 @@ Makefile.
 >             -> IO [String]
 > buildScript clean debug linkAlways flat xml paths libPaths ofn fn =
 >   do
->     mfn'    <- getSourcePath paths libPaths fn
->     fn'     <- return (fromMaybe (error ("missing source file for " ++ fn)) 
->                                  mfn')
->     (ms,es) <- fmap 
->                 (flattenDeps . sortDeps)
->                 (deps paths (filter (`notElem` paths) libPaths) emptyEnv fn')
+>     mfn'      <- getSourcePath paths libPaths fn
+>     (fn',es1) <- return (maybe ("",["Error: missing module \"" ++ fn ++ "\""])
+>                                (\x -> (x,[]))
+>                                mfn')
+>     (ms,es2)  <- fmap 
+>                   (flattenDeps . sortDeps)
+>                   (deps paths (filter (`notElem` paths) libPaths) emptyEnv fn')
+>     es        <- return (es1 ++ es2)
 >     when (null es)
 >          --(error (makeScript clean debug flat xml linkAlways (outputFile fn') ms))
 >          (putStr 
@@ -250,14 +252,14 @@ of dependend program files.
 >            = (smake ((interfName fn):(targetNames fn))
 >                     (fn : catMaybes (map interf ms))
 >                     "")
->              ++ " && \\rm -f " ++ (interfName fn)
->              ++ " && \\" ++ (compile fn)
+>              ++ " || (\\rm -f " ++ (interfName fn)
+>              ++ " && \\" ++ (compile fn) ++ ")"
 >         compCommands (Interface fn) = []
 >         compCommands Unknown = []
 >
 >         linkCommands fn
 >           | linkAlways = [link fn os]
->           | otherwise  = [smake [fn] os "", " && \\", (link fn os)]
+>           | otherwise  = [smake [fn] os "", " || \\", (link fn os)]
 >           where os = reverse (catMaybes (map (object . snd) mEnv))
 >
 >         smake ts ds rule
