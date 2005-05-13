@@ -1,7 +1,8 @@
 -------------------------------------------------------------------------------
 -------------------------------------------------------------------------------
 --
--- A small configuration program for extending pattern files
+-- A small configuration program for generating text files by replacing
+-- strings within pattern files
 --
 --
 -- January 2005,
@@ -15,11 +16,14 @@ import Directory
 
 -------------------------------------------------------------------------------
 
--- Call:
+-- Usage:
 --    config <filename>
 --
 -- Generates the file <filename> by modifying the pattern file
--- "<filename>-pattern".
+-- "<filename>-pattern". It replaces the following string in
+-- the pattern file:
+--      - "%BUILD_DIR%" with the path from the environment variable MCC_PATH
+--      - "%BUILD_DATE%" with the actual date
 --
 main :: IO ()
 main
@@ -32,6 +36,13 @@ main
 -------------------------------------------------------------------------------
 -------------------------------------------------------------------------------
 
+-- Executive function of 'main' (see above)
+--
+-- Call:
+--      generateExec <string containing the date>
+--                   <string containing the path to MCC>
+--                   <name of the pattern file without suffix "-pattern">
+-- 
 generateExec :: String -> String -> String -> IO ()
 generateExec date path name
    = do putStrLn ("Generating file \"" ++ name ++ "\"...")
@@ -39,18 +50,16 @@ generateExec date path name
 	writeFile name (replace [("%BUILD_DIR%",  path),
 				 ("%BUILD_DATE%", date)]
 			        pattfile)
-	--codes1 <- replace name [("%BUILD_DIR%",  path),
-	--		        ("%BUILD_DATE%", date)]
-	--mapM_ (flip checkExitCode ("config: 'sed-replace' failed on \"" 
-        --                             ++ name ++ "\""))
-        --      codes1
-	--code2 <- system ("chmod 755 " ++ name)
-	--checkExitCode code2 ("config: 'chmod' failed on \"" ++ name ++ "\"")
 	putStrLn "...done"
 
 
 -------------------------------------------------------------------------------
 
+-- A small function for replacing parts within a string.
+--
+-- Call:
+--      replace <list of pairs (old string, new string)>
+--              <string where to perform the replacements>
 --
 replace :: [(String,String)] -> String -> String
 replace reps [] = []
@@ -65,16 +74,10 @@ replace reps (c:cs)
     | otherwise         = p_getReplacement reps text
 
 
---replace :: String -> [(String, String)] -> IO [ExitCode]
---replace file replacements
---   = mapM (\(old,new) -> system ("sed -i 's/"++esc old++"/"++esc new++"/' "++file)) 
---           replacements
--- where
---   esc "" = ""
---   esc ('/':xs) = '\\':'/':esc xs
---   esc (x:xs) = x:esc xs
-
 -------------------------------------------------------------------------------
+-- Some functions for getting several information like command line arguments
+-- (filename), actual date, path to MCC (from the environment variable
+-- MCC_PATH).
 
 getFilename :: IO String
 getFilename
@@ -95,7 +98,8 @@ getPath :: IO String
 getPath = getEnv "MCC_PATH"
 
 
-
+-- Prints a reasond and exits the program if the exit code
+-- is not 'ExitSuccess'
 checkExitCode :: ExitCode -> String -> IO ()
 checkExitCode exitcode reason
    = case exitcode of
@@ -105,27 +109,7 @@ checkExitCode exitcode reason
 
 -------------------------------------------------------------------------------
 
-splitPath :: String -> [String]
-splitPath path = p_splitPath "" path
- where
- p_splitPath dir [] = [reverse dir]
- p_splitPath dir (c:cs)
-    | c == '/'  = (reverse dir):(p_splitPath "" cs)
-    | otherwise = p_splitPath (c:dir) cs
-
-
-concatDirs :: [String] -> String
-concatDirs []         = []
-concatDirs [dir]      = dir
-concatDirs (d1:d2:ds) = d1 ++ ('/':(concatDirs (d2:ds)))
-
-
-getPathFor :: String -> String -> String
-getPathFor dir path
-   = concatDirs ((takeWhile ((/=) dir) (splitPath path)) ++ [dir])
-
-
---
+-- Returns 'True' if the first string argument is a prefix of the second
 isPrefix :: String -> String -> Bool
 isPrefix []     []     = True
 isPrefix (x:xs) []     = False

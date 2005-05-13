@@ -43,6 +43,9 @@ main = do prog <- getProgName
 
 -------------------------------------------------------------------------------
 -------------------------------------------------------------------------------
+-- The executive functions for 'main'. The function 'smake' uses an argument
+-- of type 'Options' (see below) to handle the command line arguments from
+-- 'main'.
 
 smake :: Options -> IO ExitCode
 smake opts
@@ -54,13 +57,13 @@ smake opts
       | (length tgtimes) < (length (targets opts))
 	= maybe (return (ExitFailure 1))
                 execRule
-		(rule opts) --execRule (fromMaybe "" (rule opts)) >>= return
+		(rule opts)
       | null dptimes 
 	= return (ExitFailure 2)
       | outOfDate tgtimes dptimes 
 	= maybe (return (ExitFailure 1))
                 execRule
-		(rule opts) --execRule (fromMaybe "" (rule opts)) >>= return
+		(rule opts)
       | otherwise
         = return ExitSuccess
 
@@ -93,6 +96,8 @@ outOfDate tgtimes dptimes = or (map (\t -> or (map ((<) t) dptimes)) tgtimes)
 
 
 -------------------------------------------------------------------------------
+-- Data Type for handling options. These options are built from the
+-- command line arguments using the function 'parseArgs'.
 
 data Options = Options { targets :: [FilePath],
 			 deps    :: [FilePath],
@@ -115,6 +120,7 @@ parseArgs args = return Options { targets = ts,
 
 -------------------------------------------------------------------------------
 
+-- Prints a failure message and exits the program with exit code 2
 badUsage :: String -> String -> IO ()
 badUsage prog reason = do putStrLn ("Fail: " ++ reason)
 			  putStrLn ("Usage: " ++ prog

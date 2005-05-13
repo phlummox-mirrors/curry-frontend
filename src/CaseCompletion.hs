@@ -1,3 +1,16 @@
+-------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
+--
+-- CaseCompletion - expands case branches with missing constructors
+--
+-- The MMC translates case expressions into the intermediate language
+-- representation (IL) without completing them (i.e. without generating
+-- case branches for missing contructors). Because they are necessary for
+-- the PAKCS back end this module expands all case expressions accordingly.
+--
+-- May 2005,
+-- Martin Engelke, (men@informatik.uni-kiel.de)
+-- 
 module CaseCompletion where
 
 
@@ -12,16 +25,20 @@ import Maybe
 
 -------------------------------------------------------------------------------
 
--- Noetige Parameter:
--- mEnv - fuer importierte Konstruktoren
--- mod  - fuer Konstruktoren des gleichen Moduls
-
+-- Completes case expressions by adding branches for missing constructors.
+-- The module environment 'menv' is needed to compute these constructors.
+--
+-- Call:
+--      completeCase <module environment>
+--                   <IL module>
 --
 completeCase :: ModuleEnv -> Module -> Module
 completeCase menv mod = let (mod', _) = visitModule menv mod in mod'
 
 
 -------------------------------------------------------------------------------
+-- The following functions run through an IL term searching for
+-- case expressions
 
 --
 visitModule :: ModuleEnv -> Module -> (Module, [Message])
@@ -152,7 +169,20 @@ visitList visitTerm insertScope msgs senv (term:terms)
 
 -------------------------------------------------------------------------------
 -------------------------------------------------------------------------------
+-- Functions for completing case alternatives
 
+-- Completes a case alternative list which branches via constructor patterns
+-- by adding alternatives of the form
+--
+--      comp_pattern -> default_expr
+--
+-- where "comp_pattern" is a complementary constructor pattern and
+-- "default_expr" is the expression from the first alternative containing
+-- a variable pattern. If there is no such alternative the defualt expression
+-- is set to the prelude function 'failed'.
+--
+-- This funtions uses a scope environment ('ScopeEnv') to generate fresh
+-- variables for the arguments of the new constructors.
 --
 completeConsAlts :: Module -> ModuleEnv -> ScopeEnv 
 		    -> Eval -> Expression -> [Alt]
@@ -160,12 +190,16 @@ completeConsAlts :: Module -> ModuleEnv -> ScopeEnv
 completeConsAlts mod menv senv evalannot expr alts
    = (Case evalannot expr (alts1 ++ alts2))
  where
-   defaultexpr = getDefaultExpr alts
+   (Alt varpatt defaultexpr) = getDefaultAlt alts
+   (VariablePattern varid)   = varpatt
    alts1       = filter isConstrAlt alts
    constrs     = (map p_getConsAltIdent alts1)
    cconsinfos  = getComplConstrs mod menv constrs
    cconstrs    = map (p_genConstrTerm senv) cconsinfos
-   alts2       = map (\cconstr -> (Alt cconstr defaultexpr)) cconstrs
+   alts2       = map (\cconstr -> 
+		      (Alt cconstr 
+		       (replaceVar varid (cterm2expr cconstr) defaultexpr))) 
+		     cconstrs
 
    p_getConsAltIdent (Alt (ConstructorPattern qident _) _) = qident
 
@@ -173,6 +207,25 @@ completeConsAlts mod menv senv evalannot expr alts
       = ConstructorPattern qident (ScopeEnv.genIdentList arity "x" senv)
 
 
+-- If the alternatives branches via literal pattern complementary
+-- constructor list cannot be generated because it would become infinite.
+-- So the function 'completeLitAlts' transforms case expressions like
+--      case <cexpr> of
+--        <lit_1> -> <expr_1>
+--        <lit_2> -> <expr_2>
+--                    :
+--        <lit_n> -> <expr_n>
+--       [<var>   -> <default_expr>]
+-- to 
+--      case (<cexpr> == <lit_1>) of
+--        True  -> <expr_1>
+--        False -> case (<cexpr> == <lit_2>) of
+--                   True  -> <expr_2>
+--                   False -> case ...
+--                                  :
+--                               -> case (<cexpr> == <lit_n>) of
+--                                    True  -> <expr_n>
+--                                    False -> <default_expr>
 --
 completeLitAlts :: Eval -> Expression -> [Alt] -> Expression
 completeLitAlts evalannot expr [] = failedExpr
@@ -190,7 +243,14 @@ completeLitAlts evalannot expr (alt:alts)
 				         "literal pattern expected"
 
 
---
+-- For the unusual case of having only one alternative containing a variable
+-- pattern it is necessary to tranform it to a 'let' term because FlatCurry
+-- does not support variable patterns in case alternatives. So the
+-- case expression
+--      case <ce> of 
+--        x -> <expr>
+-- is transformed ot
+--      let x = <ce> in <expr>
 completeVarAlts :: Expression -> [Alt] -> Expression
 completeVarAlts expr [] = failedExpr
 completeVarAlts expr (alt:_)
@@ -204,8 +264,11 @@ completeVarAlts expr (alt:_)
 
 
 -------------------------------------------------------------------------------
-
--- Removes redundant case alternatives
+-- The function 'removeRedundantAlts' removes case branches which are
+-- either idle (i.e. they will never be reached) or multiply declared.
+-- Note: unlike the PAKCS frontend MCC does not support warnings. So
+-- there will be no messages if alternatives have been removed.
+ 
 removeRedundantAlts :: [Message] -> [Alt] -> ([Alt], [Message])
 removeRedundantAlts msgs alts
    = let
@@ -215,14 +278,13 @@ removeRedundantAlts msgs alts
          (alts2, msgs2)
 
 
--- Removes idle alternative (i.e. removes all alternatives
--- which occur behind the first alternative containing a variable pattern);
--- e.g. in
+-- An alternative is idle if it occurs anywehere behind another alternative 
+-- which contains a variable pattern. Example:
 --    case x of
 --      (y:ys) -> e1
 --      z      -> e2
 --      []     -> e3
--- all alternatives behind (z -> e2) will be removed (here: [] -> e3)
+-- Here all alternatives behind (z  -> e2) are idle and will be removed.
 removeIdleAlts :: [Message] -> [Alt] -> ([Alt], [Message])
 removeIdleAlts msgs alts 
    | null alts2 = (alts1, msgs)
@@ -231,12 +293,15 @@ removeIdleAlts msgs alts
    (alts1, alts2) = splitAfter isVarAlt alts
 
 
--- Removes multiple occurances of alternatives; e.g. in
+-- An alternative occures multiply if at least two alternatives
+-- use the same pattern. Example:
 --    case x of
 --      []     -> e1
 --      (y:ys) -> e2
 --      []     -> e3
--- the last alternative will be removed
+-- Here the last alternative occures multiply because its pattern is already
+-- used in the first alternative. All multiple alternatives will be
+-- removed except for the first occurance.
 removeMultipleAlts :: [Message] -> [Alt] -> ([Alt], [Message])
 removeMultipleAlts msgs alts
    = p_remove msgs [] alts
@@ -263,6 +328,7 @@ removeMultipleAlts msgs alts
 
 
 -------------------------------------------------------------------------------
+-- Some functions for testing and extracting terms from case alternatives
 
 --
 isVarAlt :: Alt -> Bool
@@ -293,13 +359,93 @@ getAltPatt :: Alt -> ConstrTerm
 getAltPatt (Alt cterm _) = cterm
 
 
---
-getDefaultExpr :: [Alt] -> Expression
-getDefaultExpr alts 
-   = maybe failedExpr getAltExpr (find isVarAlt alts)
+-- Note: the newly generated variable 'x!' is just a dummy and will never
+-- occur in the transformed program
+getDefaultAlt :: [Alt] -> Alt
+getDefaultAlt alts 
+   = fromMaybe (Alt (VariablePattern (mkIdent "x!")) failedExpr)
+               (find isVarAlt alts)
 
 
 -------------------------------------------------------------------------------
+-- This part of the module contains functions for replacing variables
+-- with expressions. This is necessary in the case of having a default 
+-- alternative like
+--      v -> <expr>
+-- where the variable v occurs in the default expression <expr>. When
+-- building additional alternatives for this default expression the variable
+-- must be replaced with the newly generated constructors.
+
+-- Call:
+--      replaceVar <variable id>
+--                 <replace-with expression>
+--                 <replace-in expression>
+--
+replaceVar :: Ident -> Expression -> Expression -> Expression
+replaceVar ident expr (Variable ident')
+   | ident == ident' = expr
+   | otherwise       = Variable ident'
+replaceVar ident expr (Apply expr1 expr2)
+   = Apply (replaceVar ident expr expr1) (replaceVar ident expr expr1)
+replaceVar ident expr (Case eval expr' alts)
+   = Case eval 
+          (replaceVar ident expr expr') 
+	  (map (replaceVarInAlt ident expr) alts)
+replaceVar ident expr (Or expr1 expr2)
+   = Or (replaceVar ident expr expr1) (replaceVar ident expr expr2)
+replaceVar ident expr (Exist ident' expr')
+   | ident == ident' = Exist ident' expr'
+   | otherwise       = Exist ident' (replaceVar ident expr expr')
+replaceVar ident expr (Let binding expr')
+   | varOccursInBinding ident binding
+     = Let binding expr'
+   | otherwise
+     = Let (replaceVarInBinding ident expr binding) 
+	   (replaceVar ident expr expr')
+replaceVar ident expr (Letrec bindings expr')
+   | any (varOccursInBinding ident) bindings
+     = Letrec bindings expr'
+   | otherwise
+     = Letrec (map (replaceVarInBinding ident expr) bindings)
+              (replaceVar ident expr expr')
+replaceVar _ _ expr'
+   = expr'
+
+
+--
+replaceVarInAlt :: Ident -> Expression -> Alt -> Alt
+replaceVarInAlt ident expr (Alt patt expr')
+   | varOccursInPattern ident patt 
+     = Alt patt expr'
+   | otherwise 
+     = Alt patt (replaceVar ident expr expr')
+
+
+--
+replaceVarInBinding :: Ident -> Expression -> Binding -> Binding
+replaceVarInBinding ident expr (Binding ident' expr')
+   | ident == ident' = Binding ident' expr'
+   | otherwise       = Binding ident' (replaceVar ident expr expr')
+
+
+--
+varOccursInPattern :: Ident -> ConstrTerm -> Bool
+varOccursInPattern ident (VariablePattern ident')
+   = ident == ident'
+varOccursInPattern ident (ConstructorPattern _ idents)
+   = elem ident idents
+varOccursInPattern _ _
+   = False
+
+
+--
+varOccursInBinding :: Ident -> Binding -> Bool
+varOccursInBinding ident (Binding ident' _)
+   = ident == ident'
+
+
+-------------------------------------------------------------------------------
+-- The following functions generate several IL expressions and patterns
 
 --
 failedExpr :: Expression
@@ -323,9 +469,32 @@ falsePatt :: ConstrTerm
 falsePatt = ConstructorPattern qFalseId []
 
 
+--
+cterm2expr :: ConstrTerm -> Expression
+cterm2expr (LiteralPattern lit) = Literal lit
+cterm2expr (ConstructorPattern qident args)
+   = p_genApplic (Constructor qident (length args)) args
+ where
+   p_genApplic expr []     = expr
+   p_genApplic expr (v:vs) = p_genApplic (Apply expr (Variable v)) vs
+cterm2expr (VariablePattern ident) = Variable ident
+
+
 
 -------------------------------------------------------------------------------
+-- The folowing functions compute the missing constructors for generating
+-- new case alternatives
 
+-- Computes the complementary constructors for a list of constructors. All
+-- specified constructors must have the same type.
+-- This functions uses the module environment 'menv' which contains all known
+-- constructors, except for those which are declared in the module and
+-- except for the list constructors.
+--
+-- Call:
+--      getComplConstr <IL module>
+--                     <module environment>
+--                     <list of (qualified) constructor ids>
 --
 getComplConstrs :: Module -> ModuleEnv -> [QualIdent] -> [(QualIdent, Int)]
 getComplConstrs (Module mid _ decls) menv constrs
@@ -345,7 +514,8 @@ getComplConstrs (Module mid _ decls) menv constrs
    mid' = maybe mid id mmid'
 
 
---
+-- Find complementary constructors within the declarations of the
+-- current module
 getCCFromDecls :: ModuleIdent -> [QualIdent] -> [Decl] -> [(QualIdent, Int)]
 getCCFromDecls _ constrs decls
    = let
@@ -372,7 +542,7 @@ getCCFromDecls _ constrs decls
    p_getConstrDeclInfo (ConstrDecl qident types) = (qident, length types)
 
 
---
+-- Find complementary constructors within the module environment
 getCCFromIDecls :: ModuleIdent -> [QualIdent] -> [CurrySyntax.IDecl] 
 		   -> [(QualIdent, Int)]
 getCCFromIDecls mident constrs idecls
@@ -413,7 +583,7 @@ getCCFromIDecls mident constrs idecls
       = (qualifyWith mid ident, 2)
 
 
---
+-- Compute complementary constructors
 getCC :: [QualIdent] -> [(QualIdent, Int)] -> [(QualIdent, Int)]
 getCC _ [] = []
 getCC constrs ((qident,arity):cis)
@@ -431,7 +601,7 @@ type Message = String
 -------------------------------------------------------------------------------
 -- Miscellaneous
 
---
+-- Splits a list behind the first element which satify 'cond'
 splitAfter :: (a -> Bool) -> [a] -> ([a], [a])
 splitAfter cond xs = p_splitAfter cond [] xs
  where
@@ -440,20 +610,22 @@ splitAfter cond xs = p_splitAfter cond [] xs
 			    | otherwise = p_splitAfter c (l:fs) ls
 
 
---
+-- Returns the first element which satisfy 'cond'. The returned element is
+-- embedded in a 'Maybe' term
 find :: (a -> Bool) -> [a] -> Maybe a
 find _    []     = Nothing
 find cond (x:xs) | cond x    = Just x
 		 | otherwise = find cond xs
 
 
---
+-- Prefixes an element to a list if it does not already exit within the
+-- list
 insertUnique :: Eq a => a -> [a] -> [a]
 insertUnique x xs | elem x xs = xs
 		  | otherwise = x:xs
 
 
---
+-- Raises an internal error
 intError :: String -> String -> a
 intError fun msg = error ("CaseCompletion." ++ fun ++ " - " ++ msg)
 
