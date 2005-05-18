@@ -483,15 +483,19 @@ genFlatApplication env applicexpr
 	  (Apply expr1 expr2)    
 	      -> p_genFlatApplic env (cnt + 1) (expr2:args) expr1
 	  (Function qident arity) 
-	      -> p_genFuncCall env qident (arity - cnt) args
+	      -> p_genFuncCall env qident arity cnt args
 	  (Constructor qident _)  
 	      -> p_genConsCall env qident args
 	  _                       
 	      -> let (fexpr, env1) = visitExpression env expr
 		 in  p_genApplicComb env fexpr args
 
-   p_genFuncCall env qident missing args
-      | missing > 0 = p_genComb env qident args (PartCall missing)
+   p_genFuncCall env qident arity cnt args
+      | arity > cnt = p_genComb env qident args (PartCall (arity - cnt))
+      | arity < cnt 
+	= let (funcargs, applicargs) = splitAt arity args
+	      (funccall,env1)        = p_genComb env qident funcargs FuncCall
+	  in  p_genApplicComb env1 funccall applicargs
       | otherwise   = p_genComb env qident args FuncCall
 
    p_genConsCall env qident args

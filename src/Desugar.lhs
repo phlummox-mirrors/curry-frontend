@@ -4,13 +4,17 @@
 % Copyright (c) 2001-2004, Wolfgang Lux
 % See LICENSE for the full license.
 %
+% Modified by Martin Engelke (men@informatik.uni-kiel.de)
+%
 \nwfilename{Desugar.lhs}
 \section{Desugaring Curry Expressions}
 The desugaring pass removes all syntactic sugar from the module. In
 particular, the output of the desugarer will have the following
 properties.
 \begin{itemize}
-\item All function definitions are $\eta$-expanded.
+\item All function definitions are $\eta$-expanded.\\
+  {\em Note:} The $\eta$-expansion is disabled in the version
+  for PAKCS
 \item No guarded right hand sides occur in equations, pattern
   declarations, and case alternatives. In addition, the declaration
   lists of the right hand sides are empty; local declarations are
@@ -205,7 +209,8 @@ declarations to the group that must be desugared as well.
 \end{verbatim}
 After desugaring its right hand side, each equation is $\eta$-expanded
 by adding as many variables as necessary to the argument list and
-applying the right hand side to those variables.
+applying the right hand side to those variables ({\em Note:} $\eta$-expansion
+is disabled in the version for PAKCS).
 \begin{verbatim}
 
 > desugarDeclRhs :: ModuleIdent -> Decl -> DesugarState Decl
@@ -229,10 +234,12 @@ applying the right hand side to those variables.
 >     (ds',ts') <- mapAccumM (desugarTerm m p) [] ts
 >     rhs' <- desugarRhs m p (addDecls ds' rhs)
 >     return (Equation p (FunLhs f ts') rhs')
->     ---
+>     -------------------------------------------------
+>     -- Original MCC-code:
+>     --
 >     --return (Equation p (FunLhs f (ts' ++ map VariablePattern vs))
 >     --                 (applyRhs rhs' (map mkVar vs)))
->     ---
+>     -------------------------------------------------
 >   where (f,ts) = flatLhs lhs
 >         applyRhs (SimpleRhs p e _) vs = SimpleRhs p (apply e vs) []
 

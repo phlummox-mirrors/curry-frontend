@@ -198,7 +198,7 @@ completeConsAlts mod menv senv evalannot expr alts
    cconstrs    = map (p_genConstrTerm senv) cconsinfos
    alts2       = map (\cconstr -> 
 		      (Alt cconstr 
-		       (replaceVar varid (cterm2expr cconstr) defaultexpr))) 
+		        (replaceVar varid (cterm2expr cconstr) defaultexpr))) 
 		     cconstrs
 
    p_getConsAltIdent (Alt (ConstructorPattern qident _) _) = qident
@@ -386,7 +386,7 @@ replaceVar ident expr (Variable ident')
    | ident == ident' = expr
    | otherwise       = Variable ident'
 replaceVar ident expr (Apply expr1 expr2)
-   = Apply (replaceVar ident expr expr1) (replaceVar ident expr expr1)
+   = Apply (replaceVar ident expr expr1) (replaceVar ident expr expr2)
 replaceVar ident expr (Case eval expr' alts)
    = Case eval 
           (replaceVar ident expr expr') 
