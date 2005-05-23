@@ -3,10 +3,10 @@
 ==  Münster-Curry-Compiler
 ==  Distribution zur Anwendung in PAKCS
 ==
-==  Letztes Update: 12.04.05
+==  Letztes Update: 23.05.05
 
 Diese Distribution enthält eine leicht 
-modifizierte, einfache Version des Münster-Curry-Compilers (MCC). Dieser
+modifizierte, vereinfachte Version des Münster-Curry-Compilers (MCC). Dieser
 Compiler ist u.a. in der Lage aus Curry-Programmen (entwickelt nach PAKCS-
 Standard) FlatCurry- (.fcy), FlatInterface- (.fint) und FlatXML- (_flat.xml)
 Darstellungen zu generieren.
@@ -90,6 +90,12 @@ Bekannte Probeleme
 
            let x = <expr>
                in ...
+
+- Der Zahlenbereich von ganzzahligen Werten (Typ 'Int') ist, im Gegensatz
+  zu PAKCS, beschränkt. Diese Schranken ergeben sich aus der internen
+  Verwendung des Haskell-Typs 'Int' und lassen sich mit den Haskell-Funktionen
+  'minBound' und 'maxBound' in Erfahrung bringen (i.d.R. sind davon nur
+  besonders große bzw. besonders kleine Werte betroffen).
 
 - FlatXML-Übersetzungen können derzeit mittels der Funktionen aus dem
   PAKCS-Modul "FlatXML" noch nicht eingelesen werden, da es Unstimmigkeiten

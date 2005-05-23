@@ -4,6 +4,7 @@
 % Copyright (c) 1999-2004, Wolfgang Lux
 % See LICENSE for the full license.
 %
+% Modified by Martin Engelke (men@informatik.uni-kiel.de)
 \nwfilename{CurryLexer.lhs}
 \section{A Lexer for Curry}
 In this section a lexer for Curry is implemented.
@@ -354,14 +355,34 @@ Lexing functions
 >         (incr p (length sym)) rest
 >   where (sym,rest) = span isSym s
 
+\end{verbatim}
+{\em Note:} if the lexer reads an integer number which is out of the range
+of Haskell type \texttt{Int}, it will raise an error (This is of course
+an actually unwanted behaviour because the Curry type \texttt{Int} covers 
+an unlimited range of numbers. But the whole MCC uses the limited Haskell
+type \texttt{Int} instead of the more appropriate type \texttt{Integer}.
+This will be changed in the future).
+\begin{verbatim}
+
 > lexNumber :: (Token -> P a) -> P a
 > lexNumber cont p ('0':c:s)
 >   | c `elem` "oO" = lexOctal cont nullCont (incr p 2) s
 >   | c `elem` "xX" = lexHexadecimal cont nullCont (incr p 2) s
 >   where nullCont _ _ = cont (intTok 10 "0") (next p) (c:s)
-> lexNumber cont p s =
->   lexOptFraction cont (intTok 10 digits) digits (incr p (length digits)) rest
+> lexNumber cont p s
+>   | num < minInt || num > maxInt
+>     = error (show p ++ ": number out of range: " ++ show num)
+>   | otherwise
+>     = lexOptFraction cont (intTok 10 digits) digits 
+>                      (incr p (length digits)) rest
 >   where (digits,rest) = span isDigit s
+>         num           = (read digits) :: Integer
+>         minInt        = toInteger (minBound :: Int)
+>         maxInt        = toInteger (maxBound :: Int)
+>
+> --lexNumber cont p s =
+> --  lexOptFraction cont (intTok 10 digits) digits (incr p (length digits)) rest
+> --  where (digits,rest) = span isDigit s
 
 > lexOctal :: (Token -> P a) -> P a -> P a
 > lexOctal cont nullCont p s
