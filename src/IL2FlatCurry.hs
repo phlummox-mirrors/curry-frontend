@@ -566,9 +566,12 @@ csType2ilType ids (CurrySyntax.ListType typeexpr)
    = let (ilTypeexpr, ids') = csType2ilType ids typeexpr
      in  (TypeConstructor (qualify listId) [ilTypeexpr], ids')
 csType2ilType ids (CurrySyntax.TupleType typeexprs)
-   = let (ilTypeexprs, ids') = emap csType2ilType ids typeexprs
-     in  (TypeConstructor (qTupleId ((length ilTypeexprs) - 1)) ilTypeexprs,
-          ids')
+   | null typeexprs
+     = (TypeConstructor qUnitId [], ids)
+   | otherwise
+     = let (ilTypeexprs, ids') = emap csType2ilType ids typeexprs
+       in  (TypeConstructor (qTupleId ((length ilTypeexprs) - 1)) ilTypeexprs,
+            ids')
 
 
 --

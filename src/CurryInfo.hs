@@ -243,14 +243,17 @@ collectITypeDecls mident (_:decls) = collectITypeDecls mident decls
 --
 simplifyTypeExpr :: TypeExpr -> TypeExpr
 simplifyTypeExpr (ConstructorType qident typeexprs)
-   = (ConstructorType qident (map simplifyTypeExpr typeexprs))
+   = ConstructorType qident (map simplifyTypeExpr typeexprs)
 simplifyTypeExpr (VariableType ident)
-   = (VariableType ident)
+   = VariableType ident
 simplifyTypeExpr (ArrowType type1 type2)
-   = (ArrowType (simplifyTypeExpr type1) (simplifyTypeExpr type2))
+   = ArrowType (simplifyTypeExpr type1) (simplifyTypeExpr type2)
 simplifyTypeExpr (TupleType typeexprs)
-   = (ConstructorType (qTupleId (length typeexprs)) 
-                      (map simplifyTypeExpr typeexprs))
+   | null typeexprs 
+     = ConstructorType qUnitId []
+   | otherwise
+     = ConstructorType (qTupleId (length typeexprs)) 
+                       (map simplifyTypeExpr typeexprs)
 simplifyTypeExpr (ListType typeexpr)
    = (ConstructorType (qualify listId) [(simplifyTypeExpr typeexpr)])
 
