@@ -91,8 +91,8 @@ genIdent name (topleveltab, leveltabs, _)
        []     -> genId name topleveltab
 
 
--- Generates a list of new identifiers where each identifier consits of
--- a prefix 'name' and an index (i.e. "var3" if 'name' is "var").
+-- Generates a list of new identifiers where each identifier has
+-- the prefix 'name' followed by  an index (i.e. "var3" if 'name' was "var").
 -- All returned identifiers are unique within the current scope.
 genIdentList :: Int -> String -> ScopeEnv -> [Ident]
 genIdentList size name scopeenv = p_genIdentList size name scopeenv 0

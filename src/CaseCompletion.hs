@@ -94,6 +94,8 @@ visitExpr mod menv msgs senv (Apply expr1 expr2)
 visitExpr mod menv msgs senv (Case evalannot expr alts)
    | null altsR
      = intError "visitExpr" "empty alternative list"
+   | evalannot == Flex   -- a flexible case descends from pattern matching
+     = (Case evalannot expr' altsR, msgs)
    | isConstrAlt altR
      = (completeConsAlts mod menv senv evalannot expr' altsR, msgs3)
    | isLitAlt altR
