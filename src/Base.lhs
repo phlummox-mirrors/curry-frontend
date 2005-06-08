@@ -4,6 +4,8 @@
 % Copyright (c) 1999-2004, Wolfgang Lux
 % See LICENSE for the full license.
 %
+% Modified by Martin Engelke (men@informatik.uni-kiel.de)
+%
 \nwfilename{Base.lhs}
 \section{Common Definitions for the Compiler}
 The module \texttt{Base} provides common definitions for the various 
@@ -313,9 +315,13 @@ interface of a module.
 
 If no fixity is assigned to an operator, it will be given the default
 precedence 9 and assumed to be a left-associative operator.
+
+\em{Note:} this modified version uses Haskell type \texttt{Integer}
+for representing the precedence. This change had to be done due to the
+introduction of unlimited integer constants in the parser / lexer.
 \begin{verbatim}
 
-> data OpPrec = OpPrec Infix Int deriving Eq
+> data OpPrec = OpPrec Infix Integer deriving Eq
 
 > instance Show OpPrec where
 >   showsPrec _ (OpPrec fix p) = showString (assoc fix) . shows p

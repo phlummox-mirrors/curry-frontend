@@ -42,7 +42,8 @@ Hierdurch werden die Dateien mit den entsprechenden Endungen ".fcy" und
 ".fint" generiert. Der Dateiname <file name> kann hierbei mit oder ohne 
 Endung ".curry" bzw. ".lcurry" angegeben werden.
 
-Die analogen Übersetzungen in die FlatXML-Darstellung geschehen mittels
+Die analogen Übersetzungen in die FlatXML-Darstellung bewirkt folgendes
+Kommando:
 
 	cymake --xml <file name>
 
@@ -90,12 +91,6 @@ Bekannte Probeleme
 
            let x = <expr>
                in ...
-
-- Der Zahlenbereich von ganzzahligen Werten (Typ 'Int') ist, im Gegensatz
-  zu PAKCS, beschränkt. Diese Schranken ergeben sich aus der internen
-  Verwendung des Haskell-Typs 'Int' und lassen sich mit den Haskell-Funktionen
-  'minBound' und 'maxBound' in Erfahrung bringen (i.d.R. sind davon nur
-  besonders große bzw. besonders kleine Werte betroffen).
 
 - FlatXML-Übersetzungen können derzeit mittels der Funktionen aus dem
   PAKCS-Modul "FlatXML" noch nicht eingelesen werden, da es Unstimmigkeiten

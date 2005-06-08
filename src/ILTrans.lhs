@@ -4,6 +4,8 @@
 % Copyright (c) 1999-2003, Wolfgang Lux
 % See LICENSE for the full license.
 %
+% Modified by Martin Engelke (men@informatik.uni-kiel.de)
+%
 \nwfilename{ILTrans.lhs}
 \section{Translating Curry into the Intermediate Language}
 After desugaring and lifting have been performed, the source code is
@@ -160,8 +162,7 @@ computed for its first argument.
 
 If an evaluation annotation is available for a function, it determines
 the evaluation mode of the case expression. Otherwise, the function
-uses flexible matching except if its result type is (an instance of)
-\texttt{IO~\_}.
+uses flexible matching.
 \begin{verbatim}
 
 > type RenameEnv = Env Ident Ident
@@ -197,6 +198,7 @@ uses flexible matching except if its result type is (an instance of)
 
 > defaultMode :: Type -> IL.Eval
 > defaultMode _ = IL.Flex
+>
 > --defaultMode ty = if isIO (arrowBase ty) then IL.Rigid else IL.Flex
 > --  where TypeConstructor qIOId _ = ioType undefined
 > --        isIO (TypeConstructor tc [_]) = tc == qIOId

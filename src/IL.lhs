@@ -4,6 +4,8 @@
 % Copyright (c) 1999-2003 Wolfgang Lux
 % See LICENSE for the full license.
 %
+% Modified by Martin Engelke (men@informatik.uni-kiel.de)
+%
 \nwfilename{IL.lhs}
 \section{The intermediate language}
 The module \texttt{IL} defines the intermediate language which will be
@@ -31,6 +33,10 @@ non-recursive variable binding, and \texttt{Letrec} expressions
 introduce multiple variables with recursive initializer expressions.
 The intermediate language explicitly distinguishes (local) variables
 and (global) functions in expressions.
+
+\em{Note:} this modified version uses haskell type \texttt{Integer}
+instead of \texttt{Int} for representing integer values. This provides
+an unlimited range of integer constants in Curry programs.
 \begin{verbatim}
 
 > module IL where
@@ -54,7 +60,7 @@ and (global) functions in expressions.
 >   | TypeArrow Type Type
 >   deriving (Eq,Show)
 
-> data Literal = Char Char | Int Int | Float Double deriving (Eq,Show)
+> data Literal = Char Char | Int Integer | Float Double deriving (Eq,Show)
 
 > data ConstrTerm =
 >   -- literal patterns

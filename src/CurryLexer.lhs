@@ -5,6 +5,7 @@
 % See LICENSE for the full license.
 %
 % Modified by Martin Engelke (men@informatik.uni-kiel.de)
+%
 \nwfilename{CurryLexer.lhs}
 \section{A Lexer for Curry}
 In this section a lexer for Curry is implemented.
@@ -31,7 +32,7 @@ In this section a lexer for Curry is implemented.
 
 > data Category =
 >   -- literals
->     CharTok | IntTok | FloatTok | StringTok
+>     CharTok | IntTok | FloatTok | IntegerTok | StringTok
 >   -- identifiers
 >   | Id | QId | Sym | QSym
 >   -- punctuation symbols
@@ -70,6 +71,7 @@ attribute values we make use of records.
 >   | CharAttributes{ cval :: Char }
 >   | IntAttributes{ ival :: Int }
 >   | FloatAttributes{ fval :: Double }
+>   | IntegerAttributes{ intval :: Integer }
 >   | StringAttributes{ sval :: String }
 >   | IdentAttributes{ modul :: [String], sval :: String }
 
@@ -78,6 +80,7 @@ attribute values we make use of records.
 >   showsPrec _ (CharAttributes cval) = shows cval
 >   showsPrec _ (IntAttributes ival) = shows ival
 >   showsPrec _ (FloatAttributes fval) = shows fval
+>   showsPrec _ (IntegerAttributes intval) = shows intval
 >   showsPrec _ (StringAttributes sval) = shows sval
 >   showsPrec _ (IdentAttributes mIdent ident) =
 >     showString ("`" ++ concat (intersperse "." (mIdent ++ [ident])) ++ "'")
@@ -104,6 +107,11 @@ specific attributes.
 > floatTok mant frac exp =
 >   Token FloatTok FloatAttributes{ fval = convertFloating mant frac exp }
 
+> integerTok :: Integer -> String -> Token
+> integerTok base digits =
+>   Token IntegerTok
+>         IntegerAttributes{intval = (convertIntegral base digits) :: Integer}
+
 > stringTok :: String -> Token
 > stringTok cs = Token StringTok StringAttributes{ sval = cs }
 
@@ -120,6 +128,7 @@ all tokens in their source representation.
 >   showsPrec _ (Token IntTok a) = showString "integer " . shows a
 >   showsPrec _ (Token FloatTok a) = showString "float " . shows a
 >   showsPrec _ (Token CharTok a) = showString "character " . shows a
+>   showsPrec _ (Token IntegerTok a) = showString "integer " . shows a
 >   showsPrec _ (Token StringTok a) = showString "string " . shows a
 >   showsPrec _ (Token LeftParen _) = showString "`('"
 >   showsPrec _ (Token RightParen _) = showString "`)'"
@@ -358,7 +367,7 @@ Lexing functions
 \end{verbatim}
 {\em Note:} if the lexer reads an integer number which is out of the range
 of Haskell type \texttt{Int}, it will raise an error (This is of course
-an actually unwanted behaviour because the Curry type \texttt{Int} covers 
+an currently unwanted behaviour because the Curry type \texttt{Int} covers 
 an unlimited range of numbers. But the whole MCC uses the limited Haskell
 type \texttt{Int} instead of the more appropriate type \texttt{Integer}.
 This will be changed in the future).
@@ -370,10 +379,10 @@ This will be changed in the future).
 >   | c `elem` "xX" = lexHexadecimal cont nullCont (incr p 2) s
 >   where nullCont _ _ = cont (intTok 10 "0") (next p) (c:s)
 > lexNumber cont p s
->   | num < minInt || num > maxInt
->     = error (show p ++ ": number out of range: " ++ show num)
->   | otherwise
->     = lexOptFraction cont (intTok 10 digits) digits 
+>   -- | num < minInt || num > maxInt
+>   --   = error (show p ++ ": number out of range: " ++ show num)
+>   -- | otherwise
+>     = lexOptFraction cont (integerTok 10 digits) digits
 >                      (incr p (length digits)) rest
 >   where (digits,rest) = span isDigit s
 >         num           = (read digits) :: Integer
@@ -387,13 +396,13 @@ This will be changed in the future).
 > lexOctal :: (Token -> P a) -> P a -> P a
 > lexOctal cont nullCont p s
 >   | null digits = nullCont undefined undefined
->   | otherwise = cont (intTok 8 digits) (incr p (length digits)) rest
+>   | otherwise = cont (integerTok 8 digits) (incr p (length digits)) rest
 >   where (digits,rest) = span isOctit s
 
 > lexHexadecimal :: (Token -> P a) -> P a -> P a
 > lexHexadecimal cont nullCont p s
 >   | null digits = nullCont undefined undefined
->   | otherwise = cont (intTok 16 digits) (incr p (length digits)) rest
+>   | otherwise = cont (integerTok 16 digits) (incr p (length digits)) rest
 >   where (digits,rest) = span isHexit s
 
 > lexOptFraction :: (Token -> P a) -> Token -> String -> P a

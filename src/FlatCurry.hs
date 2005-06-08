@@ -110,8 +110,11 @@ data TypeExpr =
 --- Data type for operator declarations.
 --- An operator declaration "fix p n" in Curry corresponds to the
 --- FlatCurry term (Op n fix p).
+--- Note: the constructor definition of 'Op' differs from the original
+--- PAKCS definition using Haskell type 'Integer' instead of 'Int'
+--- for representing the precedence.
 
-data OpDecl = Op QName Fixity Int deriving (Read, Show)
+data OpDecl = Op QName Fixity Integer deriving (Read, Show)
 
 --- Data types for the different choices for the fixity of an operator.
 
@@ -275,8 +278,11 @@ data Pattern = Pattern QName [VarIndex]
 
 --- Data type for representing literals occurring in an expression
 --- or case branch. It is either an integer, a float, or a character constant.
+--- Note: the constructor definition of 'Intc' differs from the original
+--- PAKCS definition using Haskell type 'Integer' instead of 'Int'
+--- (this is necessary to represent an unlimited range of integer numbers).
 
-data Literal = Intc   Int
+data Literal = Intc   Integer
              | Floatc Double
              | Charc  Char
 	     deriving (Read, Show)

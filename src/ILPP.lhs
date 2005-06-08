@@ -4,6 +4,8 @@
 % Copyright (c) 1999-2003 Wolfgang Lux
 % See LICENSE for the full license.
 %
+% Modified by Martin Engelke (men@informatik.uni-kiel.de)
+%
 \nwfilename{ILPP.lhs}
 \section{A pretty printer for the intermediate language}
 This module implements just another pretty printer, this time for the
@@ -86,7 +88,7 @@ Marlow's pretty printer for Haskell.
 
 > ppLiteral :: Literal -> Doc
 > ppLiteral (Char c) = text (show c)
-> ppLiteral (Int i) = int i
+> ppLiteral (Int i) = integer i
 > ppLiteral (Float f) = double f
 
 > ppConstrTerm :: ConstrTerm -> Doc

@@ -4,6 +4,8 @@
 % Copyright (c) 1999-2004, Wolfgang Lux
 % See LICENSE for the full license.
 %
+% Modified by Martin Engelke (men@informatik.uni-kiel.de)
+%
 \nwfilename{CurryParser.lhs}
 \section{A Parser for Curry}
 The Curry parser is implemented using the (mostly) LL(1) parsing
@@ -126,8 +128,8 @@ combinators described in appendix~\ref{sec:ll-parsecomb}.
 > infixDecl :: Parser Token Decl a
 > infixDecl = infixDeclLhs InfixDecl <*> funop `sepBy1` comma
 
-> infixDeclLhs :: (Position -> Infix -> Int -> a) -> Parser Token a b
-> infixDeclLhs f = f <$> position <*> tokenOps infixKW <*> int
+> infixDeclLhs :: (Position -> Infix -> Integer -> a) -> Parser Token a b
+> infixDeclLhs f = f <$> position <*> tokenOps infixKW <*> integer
 >   where infixKW = [(KW_infix,Infix),(KW_infixl,InfixL),(KW_infixr,InfixR)]
 
 > dataDecl :: Bool -> Parser Token Decl a
@@ -339,7 +341,7 @@ combinators described in appendix~\ref{sec:ll-parsecomb}.
 
 > literal :: Parser Token Literal a
 > literal = Char <$> char
->       <|> Int anonId <$> int
+>       <|> Int anonId <$> integer
 >       <|> Float <$> float
 >       <|> String <$> string
 
@@ -411,8 +413,10 @@ the left-hand side of a declaration.
 > gconId = colon <|> tupleCommas
 
 > negNum,negFloat :: Parser Token (Ident -> ConstrTerm) a
-> negNum = flip NegativePattern <$> (Int anonId <$> int <|> Float <$> float)
-> negFloat = flip NegativePattern . Float <$> (fromIntegral <$> int <|> float)
+> negNum = flip NegativePattern 
+>          <$> (Int anonId <$> integer <|> Float <$> float)
+> negFloat = flip NegativePattern . Float 
+>            <$> (fromIntegral <$> integer <|> float)
 
 > optAsPattern :: Parser Token (Ident -> ConstrTerm) a
 > optAsPattern = flip AsPattern <$-> token At <*> constrTerm2
@@ -602,6 +606,10 @@ prefix of a let expression.
 > float, checkFloat :: Parser Token Double a
 > float = fval <$> token FloatTok
 > checkFloat = float <?> "floating point number expected"
+
+> integer, checkInteger :: Parser Token Integer a
+> integer = intval <$> token IntegerTok
+> checkInteger = integer <?> "integer number expected"
 
 > string :: Parser Token String a
 > string = sval <$> token StringTok

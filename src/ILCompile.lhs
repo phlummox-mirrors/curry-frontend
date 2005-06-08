@@ -4,6 +4,8 @@
 % Copyright (c) 1999-2004, Wolfgang Lux
 % See LICENSE for the full license.
 %
+% Modified by Martin Engelke (men@informatik.uni-kiel.de)
+%
 \nwfilename{ILCompile.lhs}
 \section{Compiling the Intermediate Language}
 This section describes a compiler that translates the intermediate
@@ -210,7 +212,7 @@ code.
 
 > literal :: Literal -> Cam.Literal
 > literal (Char c) = Cam.Char c
-> literal (Int i) = Cam.Int i
+> literal (Int i) = Cam.Int (fromInteger i)
 > literal (Float f) = Cam.Float f
 
 > addHnfs :: [Binding] -> [Ident] -> [Ident]

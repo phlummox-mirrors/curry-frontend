@@ -4,10 +4,16 @@
 % Copyright (c) 1999-2004, Wolfgang Lux
 % See LICENSE for the full license.
 %
+% Modified by Martin Engelke (men@informatik.uni-kiel.de)
+%
 \nwfilename{CurrySyntax.lhs}
 \section{The Parse Tree}
 This module provides the necessary data structures to maintain the
 parsed representation of a Curry program.
+
+\em{Note:} this modified version uses haskell type \texttt{Integer}
+instead of \texttt{Int} for representing integer values. This provides
+an unlimited range of integer constants in Curry programs.
 \begin{verbatim}
 
 > module CurrySyntax where
@@ -45,7 +51,7 @@ parsed representation of a Curry program.
 > data Decl =
 >     ImportDecl Position ModuleIdent Qualified (Maybe ModuleIdent)
 >                (Maybe ImportSpec)
->   | InfixDecl Position Infix Int [Ident]
+>   | InfixDecl Position Infix Integer [Ident]
 >   | DataDecl Position Ident [Ident] [ConstrDecl]
 >   | NewtypeDecl Position Ident [Ident] NewConstrDecl
 >   | TypeDecl Position Ident [Ident] TypeExpr
@@ -80,7 +86,7 @@ Interface declarations are restricted to type declarations and signatures.
 
 > data IDecl =
 >     IImportDecl Position ModuleIdent
->   | IInfixDecl Position Infix Int QualIdent
+>   | IInfixDecl Position Infix Integer QualIdent
 >   | HidingDataDecl Position Ident [Ident] 
 >   | IDataDecl Position QualIdent [Ident] [Maybe ConstrDecl]
 >   | INewtypeDecl Position QualIdent [Ident] NewConstrDecl
@@ -132,7 +138,7 @@ the identifier of the \texttt{Int} literal for maintaining its type.
 
 > data Literal =
 >     Char Char                         -- should be Int to handle Unicode
->   | Int Ident Int
+>   | Int Ident Integer
 >   | Float Double
 >   | String String                     -- should be [Int] to handle Unicode
 >   deriving (Eq,Show)

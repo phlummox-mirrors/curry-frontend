@@ -7,6 +7,8 @@
 % Pretty printer in XML for the intermediate language added.
 %
 %
+% Modified by Martin Engelke (men@informatik.uni-kiel.de)
+%
 \nwfilename{ILxml.lhs}
 \section{A pretty printer in XML for the intermediate language}
 This module implements just another pretty printer, this time in XML and for
@@ -431,13 +433,13 @@ similar to that of Flat-Curry XML representation.
 
 > xmlLit :: Literal -> Doc
 > xmlLit (Char c) = text "<charc>" <>  xmlInt (ord c) <> text "</charc>"
-> xmlLit (Int n) = text "<intc>" <>  xmlInt n <> text "</intc>"
+> xmlLit (Int n) = text "<intc>" <>  xmlInteger n <> text "</intc>"
 > xmlLit (Float n) = text "<floatc>" <>  xmlFloat n <> text "</floatc>"
 
 > xmlOperatorDecl :: CurrySyntax.IDecl -> Doc
 > xmlOperatorDecl (CurrySyntax.IInfixDecl _ fixity prec qident) =
 >     text "<op fixity=\"" <> xmlFixity fixity 
->     <> text "\" prec=\"" <> xmlInt prec <> text "\">"
+>     <> text "\" prec=\"" <> xmlInteger prec <> text "\">"
 >     <> xmlIdent (unqualify qident)
 >     <> text "</op>"
 
@@ -460,6 +462,9 @@ similar to that of Flat-Curry XML representation.
 
 > xmlInt :: Int -> Doc
 > xmlInt n = text (show n)
+
+> xmlInteger :: Integer -> Doc
+> xmlInteger n = text (show n)
 
 > xmlFloat :: Double -> Doc
 > xmlFloat n = text (show n)

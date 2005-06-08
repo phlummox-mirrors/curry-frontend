@@ -257,6 +257,12 @@ pointers.
 >   CVarDef CPrivate "struct int_node" (constInt i)
 >           (CStruct $ map CInit [CAddr (CExpr "int_info"),CInt i])
 
+> integerConstant :: Integer -> CTopDecl
+> integerConstant i =
+>   CVarDef CPrivate "struct int_node" (constInt i')
+>           (CStruct $ map CInit [CAddr (CExpr "int_info"),CInt i'])
+>  where i' = fromInteger i
+
 > floatConstant :: Double -> CTopDecl
 > floatConstant f =
 >   CVarDef CPrivate "struct float_node" (constFloat f)

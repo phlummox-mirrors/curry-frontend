@@ -4,6 +4,8 @@
 % Copyright (c) 1999-2004, Wolfgang Lux
 % See LICENSE for the full license.
 %
+% Modified by Martin Engelke (men@informatik.uni-kiel.de)
+%
 \nwfilename{CurryPP.lhs}
 \section{A Pretty Printer for Curry}\label{sec:CurryPP}
 This module implements a pretty printer for Curry expressions. It was
@@ -86,12 +88,12 @@ Declarations
 > ppImport (ImportTypeWith tc cs) = ppIdent tc <> parenList (map ppIdent cs)
 > ppImport (ImportTypeAll tc) = ppIdent tc <> text "(..)"
 
-> ppPrec :: Infix -> Int -> Doc
+> ppPrec :: Infix -> Integer -> Doc
 > ppPrec fix p = ppAssoc fix <+> ppPrio p
 >   where ppAssoc InfixL = text "infixl"
 >         ppAssoc InfixR = text "infixr"
 >         ppAssoc Infix = text "infix"
->         ppPrio p = if p < 0 then empty else int p
+>         ppPrio p = if p < 0 then empty else integer p
 
 > ppTypeDeclLhs :: String -> Ident -> [Ident] -> Doc
 > ppTypeDeclLhs kw tc tvs = text kw <+> ppIdent tc <+> hsep (map ppIdent tvs)
@@ -181,7 +183,7 @@ Literals
 
 > ppLiteral :: Literal -> Doc
 > ppLiteral (Char c) = text (show c)
-> ppLiteral (Int _ i) = int i
+> ppLiteral (Int _ i) = integer i
 > ppLiteral (Float f) = double f
 > ppLiteral (String s) = text (show s)
 
