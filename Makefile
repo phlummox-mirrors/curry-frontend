@@ -24,3 +24,7 @@ compile:
 	@export MCC=$(MCC_PATH)
 	@cd $(MCC_PATH)/src && make
 
+# Clean object files
+.PHONY: clean
+clean:
+	@cd $(MCC_PATH)/src && rm -f *.hi *.o
