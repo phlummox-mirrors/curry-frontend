@@ -12,7 +12,7 @@ This module provides the necessary data structures to maintain the
 parsed representation of a Curry program.
 
 \em{Note:} this modified version uses haskell type \texttt{Integer}
-instead of \texttt{Int} for representing integer values. This provides
+instead of \texttt{Int} for representing integer values. This allows
 an unlimited range of integer constants in Curry programs.
 \begin{verbatim}
 

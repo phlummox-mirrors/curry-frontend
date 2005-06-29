@@ -59,12 +59,13 @@ This module controls the compilation of modules.
 \end{verbatim}
 The function \texttt{compileModule} is the main entry-point of this
 module for compiling a Curry source module. Depending on the command
-line options it will emit either C code or FlatCurry code in XML
-representation for the module. In both cases, the first step is to
+line options it will emit either C code or FlatCurry code (directly 
+or in XML
+representation) for the module. In both cases, the first step is to
 check the module and translate the code into the intermediate
 language. If necessary, this phase will also update the module's
-interface file. The resulting code then is either written out -- in
-the XML format -- or translated further into C code.
+interface file. The resulting code then is either written out (in
+FlatCurry or FlatCurry-XML format) or translated further into C code.
 
 The compiler automatically loads the prelude when compiling any
 module, except for the prelude itself, by adding an appropriate import
@@ -89,8 +90,9 @@ matching code.}
 > compileModule :: Options -> FilePath -> IO ()
 > compileModule opts fn =
 >   do
->     m <- liftM (parseModule likeFlat fn) 
->                (readFile fn >>= return . (patchPreludeSource fn))
+>     mod <- liftM (parseModule likeFlat fn) 
+>                  (readFile fn >>= return . (patchPreludeSource fn))
+>     let m = patchModuleId fn mod
 >     mEnv <- loadInterfaces (importPath opts) m
 >     let (tyEnv,m',intf) = checkModule mEnv m
 >         (il,dumps) =
@@ -516,24 +518,17 @@ from the type environment.
 
 
 \end{verbatim}
-If the source file is the prelude, we need to append a few definitions.
-This is necessary to run the compiler with the PAKCS prelude.
+A module which doesn't contain a \texttt{module ... where} declaration
+obtains its filename as module identifier (unlike the definition in
+Haskell and original MCC where a module obtains \texttt{main}).
 \begin{verbatim}
 
-> maybePatchPrelude :: FilePath -> String -> IO String
-> maybePatchPrelude fn xs
->    | (basename (rootname fn)) == "prelude" 
->      = return (xs ++ "\n\n" ++ unlines preludePatch)
->    | otherwise 
->      = return xs
-
-> preludePatch = ["data Int", 
->                 "data Float",
->                 "data Char",
->                 "data Success",
->                 "data IO a",
->                 "data Bool = True | False",
->                 "type String = [Char]"]
+> patchModuleId :: FilePath -> Module -> Module
+> patchModuleId fn (Module mid mexports decls)
+>    | (moduleName mid) == "main"
+>      = Module (mkMIdent [basename (rootname fn)]) mexports decls
+>    | otherwise
+>      = Module mid mexports decls
 
 
 \end{verbatim}
