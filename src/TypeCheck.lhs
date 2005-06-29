@@ -4,6 +4,8 @@
 % Copyright (c) 1999-2004, Wolfgang Lux
 % See LICENSE for the full license.
 %
+% Modified by Martin Engelke (men@informatik.uni-kiel.de)
+%
 \nwfilename{TypeCheck.lhs}
 \section{Type Checking Curry Programs}
 This module implements the type checker of the Curry compiler. The
@@ -500,7 +502,7 @@ signature the declared type must be too general.
 > tcExpr m tcEnv sigs p (Variable v) =
 >   case qualLookupTypeSig m v sigs of
 >     Just ty -> inst (expandPolyType tcEnv ty)
->     Nothing -> fetchSt >>= inst . funType v
+>     Nothing -> fetchSt >>= inst . funType m v
 > tcExpr m tcEnv sigs p (Constructor c) = fetchSt >>= instExist . constrType c
 > tcExpr m tcEnv sigs p (Typed e sig) =
 >   do
@@ -887,11 +889,13 @@ unambiguously refers to the local definition.
 >     Value _ sigma : _ -> sigma
 >     _ -> internalError ("varType " ++ show v)
 
-> funType :: QualIdent -> ValueEnv -> TypeScheme
-> funType f tyEnv =
->   case qualLookupValue f tyEnv of
+> funType :: ModuleIdent -> QualIdent -> ValueEnv -> TypeScheme
+> funType m f tyEnv =
+>   case (qualLookupValue f tyEnv) of
 >     [Value _ sigma] -> sigma
->     _ -> internalError ("funType " ++ show f)
+>     vs -> case (qualLookupValue (qualQualify m f) tyEnv) of
+>             [Value _ sigma] -> sigma
+>             _ -> internalError ("funType " ++ show f)
 
 \end{verbatim}
 The function \texttt{expandType} expands all type synonyms in a type

@@ -4,6 +4,8 @@
 % Copyright (c) 2003, Wolfgang Lux
 % See LICENSE for the full license.
 %
+% Modified by Martin Engelke (men@informatik.uni-kiel.de)
+%
 \nwfilename{Simplify.lhs}
 \section{Optimizing the Desugared Code}\label{sec:simplify}
 After desugaring the source code, but before lifting local
@@ -136,7 +138,7 @@ explicitly in a Curry expression.
 > inlineFun m tyEnv evEnv p (FunLhs f ts)
 >           (SimpleRhs _ (Let [FunctionDecl _ f' eqs'] e) _)
 >   | f' `notElem` qfv m eqs' && e' == Variable (qualify f') &&
->     n == arrowArity (funType tyEnv (qualify f')) &&
+>     n == arrowArity (funType m tyEnv (qualify f')) &&
 >     (evMode evEnv f == evMode evEnv f' ||
 >      and [all isVarPattern ts | Equation _ (FunLhs _ ts) _ <- eqs']) =
 >     map (merge p f ts' vs') eqs'
@@ -243,21 +245,21 @@ functions to access the pattern variables.
 >   do
 >     ds' <- mapM (simplifyDecl flat m env) ds
 >     tyEnv <- fetchSt
->     e' <- simplifyLet flat m (inlineVars tyEnv ds' env) dss e
+>     e' <- simplifyLet flat m (inlineVars m tyEnv ds' env) dss e
 >     dss'' <-
 >       mapM (expandPatternBindings flat m tyEnv (qfv m ds' ++ qfv m e')) ds'
 >     return (foldr (mkLet m) e' (scc bv (qfv m) (concat dss'')))
 
-> inlineVars :: ValueEnv -> [Decl] -> InlineEnv -> InlineEnv
-> inlineVars tyEnv [PatternDecl _ (VariablePattern v) (SimpleRhs _ e _)] env
+> inlineVars :: ModuleIdent -> ValueEnv -> [Decl] -> InlineEnv -> InlineEnv
+> inlineVars m tyEnv [PatternDecl _ (VariablePattern v) (SimpleRhs _ e _)] env
 >   | canInline e = bindEnv v e env
 >   where canInline (Literal _) = True
 >         canInline (Constructor _) = True
 >         canInline (Variable v')
->           | isQualified v' = arrowArity (funType tyEnv v') > 0
+>           | isQualified v' = arrowArity (funType m tyEnv v') > 0
 >           | otherwise = v /= unqualify v'
 >         canInline _ = False
-> inlineVars _ _ env = env
+> inlineVars _ _ _ env = env
 
 > mkLet :: ModuleIdent -> [Decl] -> Expression -> Expression
 > mkLet m [ExtraVariables p vs] e
@@ -402,11 +404,13 @@ Auxiliary functions
 > isVarPattern (ConstructorPattern _ _) = False
 > isVarPattern (LiteralPattern _) = False
 
-> funType :: ValueEnv -> QualIdent -> Type
-> funType tyEnv f =
->   case qualLookupValue f tyEnv of
+> funType :: ModuleIdent -> ValueEnv -> QualIdent -> Type
+> funType m tyEnv f =
+>   case (qualLookupValue f tyEnv) of
 >     [Value _ (ForAll _ ty)] -> ty
->     _ -> internalError ("funType " ++ show f)
+>     vs -> case (qualLookupValue (qualQualify m f) tyEnv) of
+>             [Value _ (ForAll _ ty)] -> ty
+>             _ -> internalError ("funType " ++ show f)
 
 > evMode :: EvalEnv -> Ident -> Maybe EvalAnnotation
 > evMode evEnv f = lookupEnv f evEnv

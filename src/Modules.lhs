@@ -4,8 +4,8 @@
 % Copyright (c) 1999-2004, Wolfgang Lux
 % See LICENSE for the full license.
 %
-% Modified in May 2005,
-% Martin Engelke (men@informatik.uni-kiel.de)
+% Modified by Martin Engelke (men@informatik.uni-kiel.de)
+%
 \nwfilename{Modules.lhs}
 \section{Modules}
 This module controls the compilation of modules.
@@ -127,7 +127,7 @@ matching code.}
 >         (pEnv',topDs') = precCheck m pEnv $ syntaxCheck m tyEnv
 >                                           $ kindCheck m tcEnv topDs
 >         (tcEnv',tyEnv') = typeCheck m tcEnv tyEnv topDs'
->         ds' = impDs ++ qual tyEnv' topDs'
+>         ds' = impDs ++ qual m tyEnv' topDs'
 >         modul = expandInterface (Module m es ds') tcEnv' tyEnv'
 >         (pEnv'',tcEnv'',tyEnv'') = qualifyEnv mEnv pEnv' tcEnv' tyEnv'
 

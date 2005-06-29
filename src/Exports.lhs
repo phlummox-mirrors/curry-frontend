@@ -4,6 +4,8 @@
 % Copyright (c) 2000-2004, Wolfgang Lux
 % See LICENSE for the full license.
 %
+% Modified by Martin Engelke (men@informatik.uni-kiel.de)
+%
 \nwfilename{Exports.lhs}
 \section{Creating Interfaces}
 This section describes how the exported interface of a compiled module
@@ -56,6 +58,9 @@ from exported functions, the former are translated into the equivalent
 form \verb|T()|. Note that the export specification \texttt{x} may
 export a type constructor \texttt{x} \emph{and} a global function
 \texttt{x} at the same time.
+
+\em{Note:} This version allows redeclaration and export of imported
+identifiers.
 \begin{verbatim}
 
 > expandSpecs :: Set ModuleIdent -> ModuleIdent -> TCEnv -> ValueEnv
@@ -65,7 +70,7 @@ export a type constructor \texttt{x} \emph{and} a global function
 
 > expandExport :: Position -> Set ModuleIdent -> ModuleIdent -> TCEnv
 >              -> ValueEnv -> Export -> [Export]
-> expandExport p _ _ tcEnv tyEnv (Export x) = expandThing p tcEnv tyEnv x
+> expandExport p _ m tcEnv tyEnv (Export x) = expandThing p m tcEnv tyEnv x
 > expandExport p _ _ tcEnv _ (ExportTypeWith tc cs) =
 >   [expandTypeWith p tcEnv tc cs]
 > expandExport p _ _ tcEnv _ (ExportTypeAll tc) = [expandTypeAll p tcEnv tc]
@@ -75,21 +80,26 @@ export a type constructor \texttt{x} \emph{and} a global function
 >   | m' `elemSet` ms = expandModule tcEnv tyEnv m'
 >   | otherwise = errorAt p (moduleNotImported m')
 
-> expandThing :: Position -> TCEnv -> ValueEnv -> QualIdent -> [Export]
-> expandThing p tcEnv tyEnv tc =
+> expandThing :: Position -> ModuleIdent -> TCEnv -> ValueEnv -> QualIdent
+>                -> [Export]
+> expandThing p m tcEnv tyEnv tc =
 >   case qualLookupTC tc tcEnv of
->     [] -> expandThing' p tyEnv tc Nothing
->     [t] -> expandThing' p tyEnv tc (Just [ExportTypeWith (origName t) []])
+>     [] -> expandThing' p m tyEnv tc Nothing
+>     [t] -> expandThing' p m tyEnv tc (Just [ExportTypeWith (origName t) []])
 >     _ -> errorAt p (ambiguousType tc)
 
-> expandThing' :: Position -> ValueEnv -> QualIdent -> Maybe [Export]
->              -> [Export]
-> expandThing' p tyEnv f tcExport =
->   case qualLookupValue f tyEnv of
+> expandThing' :: Position -> ModuleIdent -> ValueEnv -> QualIdent
+>              -> Maybe [Export] -> [Export]
+> expandThing' p m tyEnv f tcExport =
+>   case (qualLookupValue f tyEnv) of
 >     [] -> fromMaybe (errorAt p (undefinedEntity f)) tcExport
 >     [Value f' _] -> Export f' : fromMaybe [] tcExport
 >     [_] -> fromMaybe (errorAt p (exportDataConstr f)) tcExport
->     _ -> errorAt p (ambiguousName f)
+>     vs -> case (qualLookupValue (qualQualify m f) tyEnv) of
+>             [] -> fromMaybe (errorAt p (undefinedEntity f)) tcExport
+>             [Value f'' _] -> Export f'' : fromMaybe [] tcExport
+>             [_] -> fromMaybe (errorAt p (exportDataConstr f)) tcExport
+>             _   -> errorAt p (ambiguousName f)
 
 > expandTypeWith :: Position -> TCEnv -> QualIdent -> [Ident] -> Export
 > expandTypeWith p tcEnv tc cs =
