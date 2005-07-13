@@ -195,7 +195,6 @@ Tables for reserved operators and identifiers
 > reserved_ops, reserved_and_special_ops :: FM String Category
 > reserved_ops = fromListFM [
 >     ("@",  At),
->     (":",  Colon),
 >     ("::", DoubleColon),
 >     ("..", DotDot),
 >     ("=",  Equals),
@@ -206,6 +205,7 @@ Tables for reserved operators and identifiers
 >     ("~",  Tilde)
 >   ]
 > reserved_and_special_ops = foldr (uncurry addToFM) reserved_ops [
+>     (":",  Colon),
 >     (".",  Sym_Dot),
 >     ("-",  Sym_Minus),
 >     ("-.", Sym_MinusDot)
