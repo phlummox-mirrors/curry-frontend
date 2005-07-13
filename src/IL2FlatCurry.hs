@@ -49,10 +49,6 @@ visitModule env (Module mident imports decls)
 	 (ts', env3) = emap visitTypeIDecl env2 (filter isTypeIDecl idecls)
 	 (fs', env4) = emap visitFuncIDecl env3 (filter isFuncIDecl idecls)
 	 (os', env5) = emap visitOpIDecl   env4 (filter isOpIDecl   idecls)
-         --ts''        | mident == preludeMIdent = prelude_types
-         --            | otherwise               = []
-	 --imports'    | mident == preludeMIdent = []
-	 --            | otherwise               = imports
 	 prog        = Prog (visitModuleIdent mident)
 		            (map visitModuleIdent imports)
 			    (ts' ++ (genTypeSynonyms env5) ++ ts)

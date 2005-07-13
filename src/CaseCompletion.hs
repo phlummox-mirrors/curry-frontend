@@ -11,7 +11,7 @@
 -- May 2005,
 -- Martin Engelke, (men@informatik.uni-kiel.de)
 -- 
-module CaseCompletion where
+module CaseCompletion (completeCase) where
 
 
 import qualified CurrySyntax

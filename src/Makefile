@@ -13,7 +13,7 @@ MCC1_SRC   = Position.lhs Cam.lhs Map.lhs Set.lhs SCC.lhs CPS.lhs Ident.lhs  \
 	     TypeCheck.lhs NestEnv.lhs SyntaxCheck.lhs PathUtils.lhs         \
 	     Options.lhs CurryDeps.lhs
 MCC2_SRC   = ScopeEnv.hs ILScope.hs CaseCompletion.hs FlatCurry.hs           \
-	     CurryInfo.hs PatchPrelude.hs IL2FlatCurry.hs
+	     AbstractCurry.hs CurryInfo.hs PatchPrelude.hs IL2FlatCurry.hs
 MCC3_SRC   = ILxml.lhs Modules.lhs
 
 GETOPT_OBJ = GetOpt.o

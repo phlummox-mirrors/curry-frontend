@@ -125,12 +125,6 @@ getIdentsFromExports menv mident decls ((ExportModule mident'):es)
 
 
 --
---isDeclaredIdent :: QualIdent -> ModuleIdent -> [String] -> Bool
---isDeclaredIdent qident mident names 
---   = isJust (localIdent mident qident) && any ((==) (name (unqualify qident))) names
-
-
---
 getConstrIdentsForDataType :: Ident -> [Decl] -> [Ident]
 getConstrIdentsForDataType ident [] = []
 getConstrIdentsForDataType ident (decl:decls) =

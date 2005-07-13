@@ -3,13 +3,12 @@
 ==  Münster-Curry-Compiler
 ==  Distribution zur Anwendung in PAKCS
 ==
-==  Letztes Update: 23.05.05
+==  Letztes Update: 13.07.05
 
-Diese Distribution enthält eine leicht 
-modifizierte, vereinfachte Version des Münster-Curry-Compilers (MCC). Dieser
-Compiler ist u.a. in der Lage aus Curry-Programmen (entwickelt nach PAKCS-
-Standard) FlatCurry- (.fcy), FlatInterface- (.fint) und FlatXML- (_flat.xml)
-Darstellungen zu generieren.
+Diese Distribution enthält eine modifizierte Version des 
+Münster-Curry-Compilers (MCC). Dieser Compiler ist u.a. in der Lage aus 
+Curry-Programmen (entwickelt nach PAKCS-Standard) FlatCurry- (.fcy), 
+FlatInterface- (.fint) und FlatXML- (_flat.xml) Darstellungen zu generieren.
 
 
 
@@ -17,6 +16,8 @@ Installation
 ------------
 
 Der Compiler wird durch Aufruf von 'make' im Verzeichnis 'mcc' installiert.
+Befindet sich im Verzeichnis 'mcc' bereits eine compilierte Version,
+so wird empfohlen vor einer erneuten Installation 'make clean' auszuführen.
 
 
 Anwendung
@@ -77,26 +78,24 @@ Anmerkungen
 Bekannte Probeleme
 ------------------
 
-- Der MCC erlaubt leider (noch) nicht das gleichzeitige Überschreiben und
-  Exportieren importierter Bezeichner. Es kann z.B. nicht die Funktion 'map'
-  aus der Prelude neu definert und exportiert werden.
-
-- Alle importierten Module benötigen eine 'module ... where'-Deklaration,
-  da sie sonst die Bezeichnung 'main' bekommen und nicht importiert
-  werden können.
-
-- Lambda-Ausdrücke müssen grundsätzlich geklammert werden.
+- Lambda-, do-, case-, oder let-Ausdrücke, die in Argumenten von
+  Funktionsaufrufen verwendet werden, müssen immer geklammert werden.
 
 - 'let'-Anweisungen dürfen nicht folgendes Layout besitzen:
 
            let x = <expr>
                in ...
 
+- Die Regeln einer Funktionsdeklaration müssen immer zusammenstehen, d.h.
+  Nicht durch andere Deklarationen unterbrochen werden.
+
+- Aufgrund eines Fehlers im Parser ist es nicht möglich, den Listenoperator (:)
+  zu qualifizieren ('prelude.:' führt zu einem Fehler).
+
 - FlatXML-Übersetzungen können derzeit mittels der Funktionen aus dem
   PAKCS-Modul "FlatXML" noch nicht eingelesen werden, da es Unstimmigkeiten
   zwischen dem generierten und den erforderlichen Formaten gibt.
 
-- Leider gibt der MCC derzeit noch keinerlei Warnungen und nur sehr einfach 
-  gehaltene Fehlermeldungen aus.
+- Leider gibt der MCC derzeit noch keinerlei Warnungen aus.
 
 

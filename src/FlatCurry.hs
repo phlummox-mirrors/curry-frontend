@@ -7,9 +7,9 @@
 --- @author Michael Hanus
 --- @version September 2003
 ---
---- Version for Haskell:
---  December 2004, Martin Engelke
---
+--- Version for Haskell (slightly modified):
+---  December 2004, Martin Engelke (men@informatik.uni-kiel.de)
+---
 ------------------------------------------------------------------------------
 
 module FlatCurry (Prog(..), QName, Visibility(..),
@@ -21,10 +21,6 @@ module FlatCurry (Prog(..), QName, Visibility(..),
                   Pattern(..), Literal(..),
 		  readFlatCurry, writeFlatCurry) where
 
---import System
---import Directory
---import Char
---import ReadShowTerm
 
 ------------------------------------------------------------------------------
 -- Definition of data types for representing FlatCurry programs:

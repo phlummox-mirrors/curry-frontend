@@ -4,8 +4,8 @@
 % Copyright (c) 2001-2003, Wolfgang Lux
 % See LICENSE for the full license.
 %
-% Modified in March 2005,
-% Martin Engelke (men@informatik.uni-kiel.de)
+% Modified by Martin Engelke (men@informatik.uni-kiel.de)
+%
 \nwfilename{Options.lhs}
 \section{Compiler options}
 \begin{verbatim}
@@ -26,8 +26,10 @@ all compiler options.
 >     typeIt :: Maybe String,           -- goal to be typed
 >     noInterface :: Bool,              -- do not create an interface file
 >     flatXML :: Bool,                  -- generate flat XML code
->     flatCurry :: Bool,                -- emit flat curry instead of C code
->     abstractCurry :: Bool,            -- generate abstract curry code
+>     flatCurry :: Bool,                -- generate FlatCurry code
+>     abstractCurry :: Bool,            -- generate AbstractCurry code
+>     untypedAbstractCurry :: Bool,     -- generate untyped AbstractCurry code
+>     typeSigAbstractCurry :: Bool,     -- generate typed AbstractCurry code
 >     splitCode :: Bool,                -- split C code
 >     debug :: Bool,                    -- add debugging transformation
 >     trusted :: Bool,                  -- trusted module for debugging
@@ -45,6 +47,8 @@ all compiler options.
 >     flatXML = False,
 >     flatCurry = False,
 >     abstractCurry = False,
+>     untypedAbstractCurry = False,
+>     typeSigAbstractCurry = False,
 >     splitCode = False,
 >     debug = False,
 >     trusted = False,
@@ -63,6 +67,7 @@ all compiler options.
 >   | DumpCam                           -- dump abstract machine code
 >   deriving (Eq,Bounded,Enum,Show)
 
+
 \end{verbatim}
 The \texttt{Option} type maps every command line switch on a data
 constructor. This is needed in order to use the \texttt{GetOpt}
@@ -74,7 +79,8 @@ library.
 >   | ImportPath FilePath | Output FilePath
 >   | Eval (Maybe String) | Type String
 >   | SplitCode | NoInterface 
->   | FlatXML | Flat | Abstract | Debug | Trusted | Dump [Dump]
+>   | FlatXML | Flat | Abstract | UntypedAbstract | TypeSigAbstract
+>   | Debug | Trusted | Dump [Dump]
 >   deriving (Eq,Show)
 
 \end{verbatim}
@@ -146,6 +152,8 @@ print its usage message and terminate.
 > selectOption FlatXML opts = opts{ flatXML = True }
 > selectOption Flat opts = opts{ flatCurry = True }
 > selectOption Abstract opts = opts{ abstractCurry = True }
+> selectOption UntypedAbstract opts = opts{ untypedAbstractCurry = True }
+> selectOption TypeSigAbstract opts = opts{ typeSigAbstractCurry = True }
 > selectOption SplitCode opts = opts{ splitCode = True }
 > selectOption Debug opts = opts{ debug = True }
 > selectOption Trusted opts = opts{ trusted = True }

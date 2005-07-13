@@ -426,7 +426,7 @@ signature the declared type must be too general.
 > tcConstrTerm m tcEnv sigs p t@(ConstructorPattern c ts) =
 >   do
 >     tyEnv <- fetchSt
->     ty <- skol (constrType c tyEnv)
+>     ty <- skol (constrType m c tyEnv)
 >     unifyArgs (ppConstrTerm 0 t) ts ty
 >   where unifyArgs _ [] ty = return ty
 >         unifyArgs doc (t:ts) (TypeArrow ty1 ty2) =
@@ -438,7 +438,7 @@ signature the declared type must be too general.
 > tcConstrTerm m tcEnv sigs p t@(InfixPattern t1 op t2) =
 >   do
 >     tyEnv <- fetchSt
->     ty <- skol (constrType op tyEnv)
+>     ty <- skol (constrType m op tyEnv)
 >     unifyArgs (ppConstrTerm 0 t) [t1,t2] ty
 >   where unifyArgs _ [] ty = return ty
 >         unifyArgs doc (t:ts) (TypeArrow ty1 ty2) =
@@ -503,7 +503,7 @@ signature the declared type must be too general.
 >   case qualLookupTypeSig m v sigs of
 >     Just ty -> inst (expandPolyType tcEnv ty)
 >     Nothing -> fetchSt >>= inst . funType m v
-> tcExpr m tcEnv sigs p (Constructor c) = fetchSt >>= instExist . constrType c
+> tcExpr m tcEnv sigs p (Constructor c) = fetchSt >>= instExist . constrType m c
 > tcExpr m tcEnv sigs p (Typed e sig) =
 >   do
 >     tyEnv0 <- fetchSt
@@ -876,12 +876,15 @@ the type of an identifier on the left hand side of a rule where it
 unambiguously refers to the local definition.
 \begin{verbatim}
 
-> constrType :: QualIdent -> ValueEnv -> ExistTypeScheme
-> constrType c tyEnv =
+> constrType :: ModuleIdent -> QualIdent -> ValueEnv -> ExistTypeScheme
+> constrType m c tyEnv =
 >   case qualLookupValue c tyEnv of
 >     [DataConstructor _ sigma] -> sigma
 >     [NewtypeConstructor _ sigma] -> sigma
->     _ -> internalError ("constrType " ++ show c)
+>     _ -> case (qualLookupValue (qualQualify m c) tyEnv) of
+>            [DataConstructor _ sigma] -> sigma
+>            [NewtypeConstructor _ sigma] -> sigma
+>            _ -> internalError ("constrType " ++ show c)
 
 > varType :: Ident -> ValueEnv -> TypeScheme
 > varType v tyEnv =

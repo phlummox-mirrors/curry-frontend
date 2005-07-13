@@ -59,13 +59,17 @@ This module controls the compilation of modules.
 \end{verbatim}
 The function \texttt{compileModule} is the main entry-point of this
 module for compiling a Curry source module. Depending on the command
-line options it will emit either C code or FlatCurry code (directly 
+line options it will emit either C code or FlatCurry code (standard 
 or in XML
-representation) for the module. In both cases, the first step is to
-check the module and translate the code into the intermediate
+representation) or AbtractCurry code (typed, untyped or with type
+signatures) for the module. Usually the first step is to
+check the module. Then the code is translated into the intermediate
 language. If necessary, this phase will also update the module's
 interface file. The resulting code then is either written out (in
-FlatCurry or FlatCurry-XML format) or translated further into C code.
+FlatCurry or XML format) or translated further into C code.
+The untyped or type signed AbstractCurry representation is written
+out directly after parsing the source file. The typed AbstractCurry
+code is written out after checking the module.
 
 The compiler automatically loads the prelude when compiling any
 module, except for the prelude itself, by adding an appropriate import
@@ -101,14 +105,22 @@ matching code.}
 >         ccode' = compileDefaultGoal (debug opts) mEnv intf
 >         il' = completeCase mEnv il
 >     mapM_ (doDump opts) 
->           (dumps ++ if flat || abstract || xml then [] else dumps')
+>           (dumps ++ if flat || acy || xml then [] else dumps')
 >     unless (noInterface opts) (updateInterface fn intf)
->     if flat || abstract || xml then genCurry opts fn mEnv m' il'
+>     if flat || xml || acy || uacy || tacy
+>        then do when (flat || xml) (genFlat opts fn mEnv tyEnv m' il')
+>                when acy  (genAbstract opts fn mEnv tyEnv m')
+>                when (tacy || uacy) (genAbstract opts fn mEnv tyEnv m)
 >        else writeCode (output opts) fn (maybe ccode (merge ccode) ccode')
->   where abstract = abstractCurry opts
+>     -- if flat || xml || acy then genCurry opts fn mEnv tyEnv m' (Just il')
+>     --   else if uacy || tacy then genCurry opts fn mEnv emptyEnv m emptyIL
+>     --   else writeCode (output opts) fn (maybe ccode (merge ccode) ccode')
+>   where acy      = abstractCurry opts
+>         uacy     = False
+>         tacy     = False
 >         flat     = flatCurry opts
 >         xml      = flatXML opts
->         likeFlat = (flatCurry opts) || (flatXML opts) || (abstractCurry opts)
+>         likeFlat = flat || xml || acy || uacy || tacy
 >         merge (Left cf1) cf2 = Left (mergeCFile cf1 cf2)
 >         merge (Right cfs) cf = Right (cf : cfs)
 
@@ -483,24 +495,27 @@ standard output.
 
 
 \end{verbatim}
-The function \testtt{genCurry} generates several kinds of abstract
-curry representations (FlatCurry, AbstractCurry and FlatXML)
+The functions \texttt{genFlat} and \texttt{genAbstract} generate
+several curry representations
 depending on the specified option.
 \begin{verbatim}
 
-> genCurry :: Options -> FilePath -> ModuleEnv -> Module -> IL.Module -> IO ()
-> genCurry opts fname mEnv mod il
->   | flat      = do writeFlat Nothing fname info mEnv il 
->                    writeFInt Nothing fname info mEnv il
->   | abstract  = error "AbstractCurry program representation not yet supported" 
->   | xml       = writeXML fname' fname info il 
->   | otherwise = error "Illegal option"
->  where
->  fname'   = output opts
->  info     = genCurryInfo mEnv mod
->  flat     = flatCurry opts
->  abstract = abstractCurry opts
->  xml      = flatXML opts
+> genFlat :: Options -> FilePath -> ModuleEnv -> ValueEnv
+>            -> Module -> IL.Module -> IO ()
+> genFlat opts fname mEnv tyEnv mod il
+>    = do let info = genCurryInfo mEnv mod
+>         when (flatCurry opts) 
+>              (do writeFlat Nothing fname info mEnv il
+>                  writeFInt Nothing fname info mEnv il)
+>         when (flatXML opts) 
+>              (writeXML (output opts) fname info il)
+
+
+> genAbstract :: Options -> FilePath -> ModuleEnv -> ValueEnv
+>                -> Module -> IO ()
+> genAbstract opts fname mEnv tyEnv mod
+>    = error "AbstractCurry program representation not yet supported"
+
 
 
 \end{verbatim}
