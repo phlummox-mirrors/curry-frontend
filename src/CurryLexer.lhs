@@ -342,10 +342,18 @@ Lexing functions
 >        (incr p (length sym)) rest
 >   where (sym,rest) = span isSym s
 
+\end{verbatim}
+
+The case for lexQualPreludeSym in the next function lexOptQual enables the qualified
+uses of ``prelude.[]'', ``prelude.(,)'' and the like.
+
+\begin{verbatim}
+
 > lexOptQual :: (Token -> P a) -> Token -> [String] -> P a
 > lexOptQual cont token mIdent p ('.':c:s)
 >   | isAlpha c = lexQualIdent cont identCont mIdent (next p) (c:s)
 >   | isSym c = lexQualSym cont identCont mIdent (next p) (c:s)
+>   | c=='(' || c=='[' = lexQualPreludeSym cont token identCont mIdent (next p) (c:s)
 >   where identCont _ _ = cont token p ('.':c:s)
 > lexOptQual cont token mIdent p s = cont token p s
 
@@ -363,6 +371,16 @@ Lexing functions
 >         (lookupFM sym reserved_ops)
 >         (incr p (length sym)) rest
 >   where (sym,rest) = span isSym s
+
+
+> lexQualPreludeSym :: (Token -> P a) -> Token -> P a -> [String] -> P a
+> lexQualPreludeSym cont _ identCont mIdent p ('[':']':rest) =
+>   cont (idTok QId mIdent "[]") (incr p 2) rest
+> lexQualPreludeSym cont _ identCont mIdent p ('(':rest)
+>   | not (null rest') && head rest'==')' 
+>   = cont (idTok QId mIdent ('(':tup++")")) (incr p (length tup+2)) (tail rest')
+>   where (tup,rest') = span (==',') rest
+> lexQualPreludeSym cont token _ _ p s =  cont token p s
 
 \end{verbatim}
 {\em Note:} if the lexer reads an integer number which is out of the range
