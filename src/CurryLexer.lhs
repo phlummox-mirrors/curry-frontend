@@ -343,18 +343,17 @@ Lexing functions
 >   where (sym,rest) = span isSym s
 
 \end{verbatim}
-
-The case for lexQualPreludeSym in the next function lexOptQual enables the qualified
-uses of ``prelude.[]'', ``prelude.(,)'' and the like.
-
+{\em Note:} the function \texttt{lexOptQual} has been extended to provide
+the qualified use of the Prelude list operators and tuples.
 \begin{verbatim}
 
 > lexOptQual :: (Token -> P a) -> Token -> [String] -> P a
 > lexOptQual cont token mIdent p ('.':c:s)
 >   | isAlpha c = lexQualIdent cont identCont mIdent (next p) (c:s)
 >   | isSym c = lexQualSym cont identCont mIdent (next p) (c:s)
->   | c=='(' || c=='[' = lexQualPreludeSym cont token identCont mIdent (next p) (c:s)
->   where identCont _ _ = cont token p ('.':c:s)
+>   | c=='(' || c=='[' 
+>     = lexQualPreludeSym cont token identCont mIdent (next p) (c:s)
+>  where identCont _ _ = cont token p ('.':c:s)
 > lexOptQual cont token mIdent p s = cont token p s
 
 > lexQualIdent :: (Token -> P a) -> P a -> [String] -> P a
@@ -382,13 +381,10 @@ uses of ``prelude.[]'', ``prelude.(,)'' and the like.
 >   where (tup,rest') = span (==',') rest
 > lexQualPreludeSym cont token _ _ p s =  cont token p s
 
+
 \end{verbatim}
-{\em Note:} if the lexer reads an integer number which is out of the range
-of Haskell type \texttt{Int}, it will raise an error (This is of course
-an currently unwanted behaviour because the Curry type \texttt{Int} covers 
-an unlimited range of numbers. But the whole MCC uses the limited Haskell
-type \texttt{Int} instead of the more appropriate type \texttt{Integer}.
-This will be changed in the future).
+{\em Note:} since Curry allows an unlimited range of integer numbers,
+read numbers must be converted to Haskell type \texttt{Integer}.
 \begin{verbatim}
 
 > lexNumber :: (Token -> P a) -> P a
@@ -397,9 +393,6 @@ This will be changed in the future).
 >   | c `elem` "xX" = lexHexadecimal cont nullCont (incr p 2) s
 >   where nullCont _ _ = cont (intTok 10 "0") (next p) (c:s)
 > lexNumber cont p s
->   -- | num < minInt || num > maxInt
->   --   = error (show p ++ ": number out of range: " ++ show num)
->   -- | otherwise
 >     = lexOptFraction cont (integerTok 10 digits) digits
 >                      (incr p (length digits)) rest
 >   where (digits,rest) = span isDigit s

@@ -34,6 +34,8 @@ This module controls the compilation of modules.
 > import ILLift(liftProg)
 > import ILxml(xmlModule)
 > import IL2FlatCurry
+> import AbstractCurry
+> import GenAbstractCurry
 > import DTransform(dTransform,dAddMain)
 > import ILCompile(camCompile,camCompileData,fun)
 > import qualified CamPP(ppModule)
@@ -108,14 +110,13 @@ matching code.}
 >           (dumps ++ if flat || acy || xml then [] else dumps')
 >     unless (noInterface opts) (updateInterface fn intf)
 >     if flat || xml || acy || uacy || tacy
->        then do when (flat || xml) (genFlat opts fn mEnv tyEnv m' il')
->                when acy  (genAbstract opts fn mEnv tyEnv m')
->                when (tacy || uacy) (genAbstract opts fn mEnv tyEnv m)
+>        then do when flat (genFlat opts fn mEnv m' il')
+>                when xml  (genFlat opts fn mEnv m' il')
+>                when acy  (genAbstract opts fn tyEnv m')
+>                when tacy (genAbstract opts fn tyEnv m)
+>                when uacy (genAbstract opts fn tyEnv m)
 >        else writeCode (output opts) fn (maybe ccode (merge ccode) ccode')
->     -- if flat || xml || acy then genCurry opts fn mEnv tyEnv m' (Just il')
->     --   else if uacy || tacy then genCurry opts fn mEnv emptyEnv m emptyIL
->     --   else writeCode (output opts) fn (maybe ccode (merge ccode) ccode')
->   where acy      = abstractCurry opts
+>   where acy      = abstract opts
 >         uacy     = False
 >         tacy     = False
 >         flat     = flatCurry opts
@@ -210,8 +211,24 @@ matching code.}
 
 > writeFInt :: Maybe FilePath -> FilePath -> CurryInfo -> ModuleEnv
 >              -> IL.Module -> IO ()
-> writeFInt tfn sfn fi menv il = writeFlatCurry fname (il2flatInterface fi menv il)
+> writeFInt tfn sfn fi menv il 
+>    = writeFlatCurry fname (il2flatInterface fi menv il)
 >  where fname = fromMaybe (rootname sfn ++ fintExt) tfn
+
+> writeTypedAbs :: Maybe FilePath -> FilePath -> ValueEnv -> Module -> IO ()
+> writeTypedAbs tfn sfn tyEnv mod
+>    = writeCurry fname (genTypedAbstract tyEnv mod)
+>  where fname = fromMaybe (rootname sfn ++ acyExt) tfn
+
+> writeUntypedAbs :: Maybe FilePath -> FilePath -> ValueEnv -> Module -> IO ()
+> writeUntypedAbs tfn sfn tyEnv mod
+>    = writeCurry fname (genUntypedAbstract mod)
+>  where fname = fromMaybe (rootname sfn ++ uacyExt) tfn
+
+> writeTypeSigAbs :: Maybe FilePath -> FilePath -> ValueEnv -> Module -> IO ()
+> writeTypeSigAbs tfn sfn tyEnv mod
+>    = writeCurry fname (genTypeSigAbstract mod)
+>  where fname = fromMaybe (rootname sfn ++ tacyExt) tfn
 
 > writeCode :: Maybe FilePath -> FilePath -> Either CFile [CFile] -> IO ()
 > writeCode tfn sfn (Left cfile) = writeCCode ofn cfile
@@ -496,25 +513,33 @@ standard output.
 
 \end{verbatim}
 The functions \texttt{genFlat} and \texttt{genAbstract} generate
-several curry representations
-depending on the specified option.
+flat and abstract curry representations depending on the specified option.
 \begin{verbatim}
 
-> genFlat :: Options -> FilePath -> ModuleEnv -> ValueEnv
->            -> Module -> IL.Module -> IO ()
-> genFlat opts fname mEnv tyEnv mod il
->    = do let info = genCurryInfo mEnv mod
->         when (flatCurry opts) 
->              (do writeFlat Nothing fname info mEnv il
->                  writeFInt Nothing fname info mEnv il)
->         when (flatXML opts) 
->              (writeXML (output opts) fname info il)
+> genFlat :: Options -> FilePath -> ModuleEnv -> Module
+>            -> IL.Module -> IO ()
+> genFlat opts fname mEnv mod il
+>   | flatCurry opts
+>     = writeFlat Nothing fname info mEnv il
+>       >> writeFInt Nothing fname info mEnv il
+>   | flatXML opts
+>     = writeXML (output opts) fname info il
+>   | otherwise
+>     = internalError "illegal option (genFlat)"
+>  where
+>    info = genCurryInfo mEnv mod
 
 
-> genAbstract :: Options -> FilePath -> ModuleEnv -> ValueEnv
->                -> Module -> IO ()
-> genAbstract opts fname mEnv tyEnv mod
->    = error "AbstractCurry program representation not yet supported"
+> genAbstract :: Options -> FilePath  -> ValueEnv -> Module -> IO ()
+> genAbstract opts fname tyEnv mod
+>    | abstract opts
+>      = writeTypedAbs Nothing fname tyEnv mod
+>    | untypedAbstract opts
+>      = writeUntypedAbs Nothing fname tyEnv mod
+>    | typeSigAbstract opts
+>      = writeTypeSigAbs Nothing fname tyEnv mod
+>    | otherwise
+>      = internalError "illegal option (genAbstract)"
 
 
 
@@ -555,6 +580,8 @@ Various filename extensions
 > flatExt = ".fcy"
 > fintExt = ".fint"
 > acyExt = ".acy"
+> uacyExt = ".uacy"
+> tacyExt = ".tacy"
 > intfExt = ".icurry"
 > litExt = ".lcurry"
 

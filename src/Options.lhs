@@ -27,9 +27,9 @@ all compiler options.
 >     noInterface :: Bool,              -- do not create an interface file
 >     flatXML :: Bool,                  -- generate flat XML code
 >     flatCurry :: Bool,                -- generate FlatCurry code
->     abstractCurry :: Bool,            -- generate AbstractCurry code
->     untypedAbstractCurry :: Bool,     -- generate untyped AbstractCurry code
->     typeSigAbstractCurry :: Bool,     -- generate typed AbstractCurry code
+>     abstract :: Bool,                 -- generate AbstractCurry code
+>     untypedAbstract :: Bool,          -- generate untyped AbstractCurry code
+>     typeSigAbstract :: Bool,          -- generate typed AbstractCurry code
 >     splitCode :: Bool,                -- split C code
 >     debug :: Bool,                    -- add debugging transformation
 >     trusted :: Bool,                  -- trusted module for debugging
@@ -46,9 +46,9 @@ all compiler options.
 >     noInterface = False,
 >     flatXML = False,
 >     flatCurry = False,
->     abstractCurry = False,
->     untypedAbstractCurry = False,
->     typeSigAbstractCurry = False,
+>     abstract = False,
+>     untypedAbstract = False,
+>     typeSigAbstract = False,
 >     splitCode = False,
 >     debug = False,
 >     trusted = False,
@@ -100,11 +100,15 @@ recognized by the compiler.
 >     Option "" ["no-icurry"] (NoArg NoInterface)
 >            "do not create an interface file",
 >     Option "" ["xml"] (NoArg FlatXML)
->            "generate flat xml code instead of C code",
+>            "generate flat xml code",
 >     Option "" ["flat"] (NoArg Flat)
->            "emit flat curry instead of C code",
->     Option "" ["abstract"] (NoArg Abstract)
->            "generate abstract curry code instead of C code",
+>            "generate FlatCurry code",
+>     Option "" ["acy"] (NoArg Abstract)
+>            "generate (type infered) AbstractCurry code",
+>     Option "" ["uacy"] (NoArg UntypedAbstract)
+>            "generate untyped AbstractCurry code",
+>     Option "" ["tacy"] (NoArg TypeSigAbstract)
+>            "generate type signated AbstractCurry code",
 >     Option "" ["split-code"] (NoArg SplitCode)
 >            "emit one C file for each function",
 >     Option "g" ["debug"] (NoArg Debug)
@@ -151,9 +155,9 @@ print its usage message and terminate.
 > selectOption NoInterface opts = opts{ noInterface = True }
 > selectOption FlatXML opts = opts{ flatXML = True }
 > selectOption Flat opts = opts{ flatCurry = True }
-> selectOption Abstract opts = opts{ abstractCurry = True }
-> selectOption UntypedAbstract opts = opts{ untypedAbstractCurry = True }
-> selectOption TypeSigAbstract opts = opts{ typeSigAbstractCurry = True }
+> selectOption Abstract opts = opts{ abstract = True }
+> selectOption UntypedAbstract opts = opts{ untypedAbstract = True }
+> selectOption TypeSigAbstract opts = opts{ typeSigAbstract = True }
 > selectOption SplitCode opts = opts{ splitCode = True }
 > selectOption Debug opts = opts{ debug = True }
 > selectOption Trusted opts = opts{ trusted = True }

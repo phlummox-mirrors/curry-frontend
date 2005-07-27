@@ -115,7 +115,7 @@ data CTypeExpr =
 --- An operator declaration "fix p n" in Curry corresponds to the
 --- AbstractCurry term (COp n fix p).
 
-data COpDecl = COp QName CFixity Int deriving (Read, Show)
+data COpDecl = COp QName CFixity Integer deriving (Read, Show)
 
 data CFixity = CInfixOp   -- non-associative infix operator
              | CInfixlOp  -- left-associative infix operator
@@ -219,9 +219,14 @@ data CBranchExpr = CBranch CPattern CExpr deriving (Read, Show)
 
 --- Data type for representing literals occurring in an expression.
 --- It is either an integer, a float, or a character constant.
+--- Note: the constructor definition of 'CIntc' differs from the original
+--- PAKCS definition. It uses Haskell type 'Integer' instead of 'Int'
+--- to provide an unlimited range of integer numbers. Furthermore
+--- float values are represented with Haskell type 'Double' instead of
+--- 'Float'.
 
-data CLiteral = CIntc   Int
-              | CFloatc Float
+data CLiteral = CIntc   Integer
+              | CFloatc Double
               | CCharc  Char
 		deriving (Read, Show, Eq)
 

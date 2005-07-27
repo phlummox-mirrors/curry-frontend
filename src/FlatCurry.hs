@@ -275,8 +275,10 @@ data Pattern = Pattern QName [VarIndex]
 --- Data type for representing literals occurring in an expression
 --- or case branch. It is either an integer, a float, or a character constant.
 --- Note: the constructor definition of 'Intc' differs from the original
---- PAKCS definition using Haskell type 'Integer' instead of 'Int'
---- (this is necessary to represent an unlimited range of integer numbers).
+--- PAKCS definition. It uses Haskell type 'Integer' instead of 'Int'
+--- to provide an unlimited range of integer numbers. Furthermore
+--- float values are represented with Haskell type 'Double' instead of
+--- 'Float'.
 
 data Literal = Intc   Integer
              | Floatc Double

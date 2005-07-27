@@ -2,6 +2,8 @@
 --
 -- Copyright (c) 2002-2003, Wolfgang Lux
 -- See LICENSE for the full license.
+--
+-- Modified by Martin Engelke (men@informatik.uni-kiel.de)
 
 import CurryDeps
 import GetOpt
@@ -21,7 +23,10 @@ data Options =
     mkDepend :: Bool,
     mkClean :: Bool,
     flat :: Bool,
-    xml :: Bool
+    xml :: Bool,
+    abstract :: Bool,
+    typeSigAbstract :: Bool,
+    untypedAbstract :: Bool
   }
 
 defaultOptions =
@@ -34,12 +39,16 @@ defaultOptions =
     mkDepend = False,
     mkClean = False,
     flat = False,
-    xml = False
+    xml = False,
+    abstract = False,
+    typeSigAbstract = False,
+    untypedAbstract = False
   }
 
 data Option =
     Help | ImportPath FilePath | LibPath FilePath | Output FilePath
   | Debug | LinkAlways | Clean | Depend | Flat | XML
+  | Abstract | TypeSigAbstract | UntypedAbstract
   deriving Eq
 
 options = [
@@ -58,9 +67,15 @@ options = [
     Option ""  ["clean"] (NoArg Clean)
            "remove compiled file for all targets",
     Option ""  ["flat"] (NoArg Flat)
-           "generate flat curry code",
+           "generate FlatCurry code",
     Option ""  ["xml"] (NoArg XML)
            "generate flat xml code",
+    Option ""  ["acy"] (NoArg Abstract)
+           "generate (type infered) AbstractCurry code",
+    Option ""  ["tacy"] (NoArg TypeSigAbstract)
+           "generate type signated AbstractCurry code",
+    Option ""  ["uacy"] (NoArg UntypedAbstract)
+           "generate untyped AbstractCurry code",
     Option "?h" ["help"] (NoArg Help)
            "display this help and exit"
   ]
@@ -75,6 +90,9 @@ selectOption Depend opts = opts{ mkDepend = True }
 selectOption Clean opts = opts{ mkClean = True }
 selectOption Flat opts = opts{ flat = True }
 selectOption XML opts = opts{ xml = True }
+selectOption Abstract opts = opts{ abstract = True }
+selectOption TypeSigAbstract opts = opts{ typeSigAbstract = True }
+selectOption UntypedAbstract opts = opts{ untypedAbstract = True }
 
 main :: IO ()
 main =
@@ -125,6 +143,8 @@ processFiles opts prog files
   where 
      script = buildScript (mkClean opts) (debug opts) (linkAlways opts) 
 	                  (flat opts) (xml opts)
+			  (abstract opts) (untypedAbstract opts)
+			  (typeSigAbstract opts)
 	                  (importPaths opts) (libPaths opts) (output opts)
 
 putErr, putErrLn :: String -> IO ()

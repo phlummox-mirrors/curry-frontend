@@ -78,7 +78,7 @@ Anmerkungen
 Bekannte Probeleme
 ------------------
 
-- Lambda-, do-, case-, oder let-Ausdrücke, die in Argumenten von
+- Lambda-, do-, if-, case-, oder let-Ausdrücke, die in Argumenten von
   Funktionsaufrufen verwendet werden, müssen immer geklammert werden.
 
 - 'let'-Anweisungen dürfen nicht folgendes Layout besitzen:

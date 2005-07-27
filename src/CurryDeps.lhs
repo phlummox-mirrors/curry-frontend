@@ -4,8 +4,7 @@
 % Copyright (c) 2002-2004, Wolfgang Lux
 % See LICENSE for the full license.
 %
-% Modified in April 2005,
-% Martin Engelke (men@informatik.uni-kiel.
+% Modified by Martin Engelke (men@informatik.uni-kiel.de)
 \nwfilename{CurryDeps.lhs}
 \section{Building Programs}
 This module implements the functions to compute the dependency
@@ -40,10 +39,11 @@ computes either a build or clean script for a module while
 Makefile.
 \begin{verbatim}
 
-> buildScript :: Bool -> Bool -> Bool -> Bool -> Bool 
+> buildScript :: Bool -> Bool -> Bool -> Bool -> Bool -> Bool -> Bool -> Bool
 >             -> [FilePath] -> [FilePath] -> Maybe FilePath -> FilePath 
 >             -> IO [String]
-> buildScript clean debug linkAlways flat xml paths libPaths ofn fn =
+> buildScript clean debug linkAlways flat xml acy uacy tacy 
+>             paths libPaths ofn fn =
 >   do
 >     mfn'      <- getSourcePath paths libPaths fn
 >     (fn',es1) <- return (maybe ("",["Error: missing module \"" ++ fn ++ "\""])
@@ -54,14 +54,13 @@ Makefile.
 >                   (deps paths (filter (`notElem` paths) libPaths) emptyEnv fn')
 >     es        <- return (es1 ++ es2)
 >     when (null es)
->          --(error (makeScript clean debug flat xml linkAlways (outputFile fn') ms))
 >          (putStr 
->            (makeScript clean debug flat xml linkAlways (outputFile fn') ms))
+>            (makeScript clean debug flat xml acy uacy tacy linkAlways 
+>                        (outputFile fn') fn ms))
 >     return es
 >   where outputFile fn
 >           | extension fn `elem` moduleExts ++ objectExts = Nothing
 >           | otherwise = ofn `mplus` Just fn
->         --flat = flatExt `isSuffixOf` fn
 >         makeScript clean = if clean then makeCleanScript else makeBuildScript
 
 > makeDepend :: [FilePath] -> [FilePath] -> Maybe FilePath -> [FilePath]
@@ -242,24 +241,34 @@ modification uses the command "smake" to check the out-of-dateness
 of dependend program files.
 \begin{verbatim}
 
-> makeBuildScript :: Bool -> Bool -> Bool -> Bool -> Maybe FilePath
->                 -> [(ModuleIdent,Source)] -> String
-> makeBuildScript debug flat xml linkAlways ofn mEnv =
+> makeBuildScript :: Bool -> Bool -> Bool -> Bool -> Bool -> Bool -> Bool 
+>                 -> Maybe FilePath -> FilePath -> [(ModuleIdent,Source)] 
+>                 -> String
+> makeBuildScript debug flat xml acy uacy tacy linkAlways ofn fn mEnv =
 >   unlines ("set -e" : (map (compCommands . snd) mEnv)
 >                       ++ (maybe [] linkCommands ofn))
 >   where 
->         compCommands (Source fn ms)
->            = (smake ((interfName fn):(targetNames fn))
->                     (fn : catMaybes (map interf ms))
->                     "")
->              ++ " || (\\rm -f " ++ (interfName fn)
->              ++ " && \\" ++ (compile fn) ++ ")"
->         compCommands (Interface fn) = []
+>         compCommands (Source fn' ms)
+>            | (acy || uacy || tacy) && rootname fn /= rootname fn'
+>              = (smake ((interfName fn'):[flatName fn', flatIntName fn'])
+>                       (fn' : catMaybes (map interf ms))
+>                       "")
+>                ++ " || (\\rm -f " ++ (interfName fn') ++ " && \\"
+>                ++ unwords ["compile", "--flat", fn', "-o",
+>                            flatName fn']
+>                ++ ")"
+>            | otherwise
+>              = (smake ((interfName fn'):(targetNames fn'))
+>                       (fn' : catMaybes (map interf ms))
+>                       "")
+>                ++ " || (\\rm -f " ++ (interfName fn')
+>                ++ " && \\" ++ (compile fn') ++ ")"
+>         compCommands (Interface _) = []
 >         compCommands Unknown = []
 >
->         linkCommands fn
->           | linkAlways = [link fn os]
->           | otherwise  = [smake [fn] os "", " || \\", (link fn os)]
+>         linkCommands fn'
+>           | linkAlways = [link fn' os]
+>           | otherwise  = [smake [fn'] os "", " || \\", (link fn' os)]
 >           where os = reverse (catMaybes (map (object . snd) mEnv))
 >
 >         smake ts ds rule
@@ -268,31 +277,38 @@ of dependend program files.
 >              ++ (unwords ds)
 >              ++ (if null rule then "" else " : " ++ rule)
 >
->         compile fn = unwords ["compile",cFlag,fn,"-o", head (targetNames fn)] 
+>         compile fn' = unwords ["compile", cFlag, fn', "-o", 
+>                                head (targetNames fn')] 
 >
->         cFlag | flat      = "--flat" 
+>         cFlag | flat      = "--flat"
 >               | xml       = "--xml"
+>               | acy       = "--acy"
+>               | tacy      = "--tacy"
+>               | uacy      = "--uacy"
 >               | otherwise = "-c"
 >
->         oGen fn | flat || xml = []
->                 | otherwise   = ["-o", head (targetNames fn)]
+>         oGen fn' | flat || xml || acy || uacy || tacy = []
+>                  | otherwise   = ["-o", head (targetNames fn')]
 >
->         link fn os = unwords ("link" : "-o" : fn : os)
+>         link fn' os = unwords ("link" : "-o" : fn' : os)
 >
 >         interf m =
 >           case lookup m mEnv of
->             Just (Source fn _) -> Just (interfName fn)
->             Just (Interface fn) -> Just fn
+>             Just (Source fn' _) -> Just (interfName fn')
+>             Just (Interface fn') -> Just fn'
 >             Just Unknown -> Nothing
 >             Nothing -> Nothing
 >
->         object (Source fn _) = Just (head (targetNames fn))
+>         object (Source fn' _) = Just (head (targetNames fn'))
 >         object (Interface _) = Nothing
 >         object Unknown = Nothing
 >
->         targetNames fn | flat      = [flatName fn, flatIntName fn]
->                        | xml       = [xmlName fn]
->                        | otherwise = [objectName debug fn]
+>         targetNames fn' | flat      = [flatName fn', flatIntName fn']
+>                         | xml       = [xmlName fn']
+>                         | acy       = [acyName fn']
+>                         | tacy      = [tacyName fn']
+>                         | uacy      = [uacyName fn']
+>                         | otherwise = [objectName debug fn']
 
 
 \end{verbatim}
@@ -302,9 +318,10 @@ removes all compiled files for a module. The script uses the command
 reasonable value in the environment where the script is executed.
 \begin{verbatim}
 
-> makeCleanScript :: Bool -> Bool -> Bool -> Bool -> Maybe FilePath
->                 -> [(ModuleIdent,Source)] -> String
-> makeCleanScript debug flat xml _ ofn mEnv =
+> makeCleanScript :: Bool -> Bool -> Bool -> Bool -> Bool -> Bool -> Bool 
+>                 -> Maybe FilePath -> FilePath -> [(ModuleIdent,Source)] 
+>                 -> String
+> makeCleanScript debug flat xml acy uacy tacy _ ofn _ mEnv =
 >   unwords ("remove" : foldr files (maybe [] return ofn) (map snd mEnv))
 >   where d = if debug then 2 else 0
 >         files = if flat then flatFiles else nonFlatFiles
@@ -319,18 +336,10 @@ reasonable value in the environment where the script is executed.
 >         nonFlatFiles Unknown fs = fs
 
 \end{verbatim}
-The function \verb|getSourceName| searches for the corresponding 
-\texttt{.curry} or \texttt{.lcurry} file, if the given file name
-has no extension.
+The function \verb|getSourcePath| searches in predefined paths
+for the corresponding \texttt{.curry} or \texttt{.lcurry} file, 
+if the given file name has no extension.
 \begin{verbatim}
-
-> --getSourceName :: FilePath -> IO FilePath
-> --getSourceName fn
-> --   | null (extension fn)
-> --      = do mfn <- lookupFile [fn ++ ext' | ext' <- sourceExts]
-> --           return (fromMaybe fn mfn)
-> --   | otherwise 
-> --     = return fn
 
 > getSourcePath :: [FilePath] -> [FilePath] -> FilePath -> IO (Maybe FilePath)
 > getSourcePath paths libPaths fn
@@ -340,6 +349,14 @@ has no extension.
 >                                 fn' <- fns']
 >  fns' | null (extension fn) = [fn ++ ext' | ext' <- sourceExts]
 >       | otherwise           = [fn]
+
+> --getSourceName :: FilePath -> IO FilePath
+> --getSourceName fn
+> --   | null (extension fn)
+> --      = do mfn <- lookupFile [fn ++ ext' | ext' <- sourceExts]
+> --           return (fromMaybe fn mfn)
+> --   | otherwise 
+> --     = return fn
 
 
 \end{verbatim}
@@ -362,6 +379,15 @@ file.
 > xmlName :: FilePath -> FilePath
 > xmlName fn = rootname fn ++ xmlExt
 
+> acyName :: FilePath -> FilePath
+> acyName fn = rootname fn ++ acyExt
+
+> uacyName :: FilePath -> FilePath
+> uacyName fn = rootname fn ++ uacyExt
+
+> tacyName :: FilePath -> FilePath
+> tacyName fn = rootname fn ++ tacyExt
+
 > objectName :: Bool -> FilePath -> FilePath
 > objectName debug = name (if debug then debugExt else oExt)
 >   where name ext fn = rootname fn ++ ext
@@ -372,8 +398,10 @@ file.
 > icurryExt = ".icurry"
 > flatExt = ".fcy"
 > flatIntExt = ".fint"
-> acyExt = ".acy"
 > xmlExt = "_flat.xml"
+> acyExt = ".acy"
+> uacyExt = ".uacy"
+> tacyExt = ".tacy"
 > oExt = ".o"
 > debugExt = ".d.o"
 
