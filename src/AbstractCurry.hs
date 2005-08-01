@@ -243,7 +243,8 @@ readCurry filename
 
 -- Writes an AbstractCurry program term into a file
 writeCurry :: String -> CurryProg -> IO ()
-writeCurry filename prog = writeFile filename (show prog)
+writeCurry filename prog 
+   = catch (writeFile filename (show prog)) (\e -> ioError e)
 
 ------------------------------------------------------------------------------
 ------------------------------------------------------------------------------

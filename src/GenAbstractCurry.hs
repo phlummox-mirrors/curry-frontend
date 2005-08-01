@@ -196,7 +196,10 @@ genTypeExpr env (VariableType ident)
    midx        = getTVarIndex env ident
    (idx, env') = genTVarIndex env ident
 genTypeExpr env (TupleType targs)
-   = genTypeExpr env (ConstructorType (qTupleId (length targs)) targs)
+   | len > 1   = genTypeExpr env (ConstructorType (qTupleId len) targs)
+   | len == 0  = genTypeExpr env (ConstructorType qUnitId targs)
+   | len == 1  = genTypeExpr env (head targs)
+ where len = length targs
 genTypeExpr env (ListType typeexpr)
    = genTypeExpr env (ConstructorType qListId [typeexpr])
 genTypeExpr env (ArrowType texpr1 texpr2)
@@ -363,6 +366,7 @@ genLocalDecls env decls
 
    genLocals :: AbstractEnv -> [(Ident,[Decl])] -> [Decl] 
 	        -> ([CLocalDecl], AbstractEnv)
+   genLocals env _ [] = ([], env)
    genLocals env fdecls ((FunctionDecl _ ident _):decls)
       = let (funcdecl, env1) = genLocalFuncDecl (beginScope env) fdecls ident
 	    (locals, env2)   = genLocals (endScope env1) fdecls decls
@@ -400,8 +404,10 @@ genLocalDecls env decls
 	      decls' = (ExtraVariables pos (tail idents)):decls
 	      (locals, env') = genLocals env fdecls decls'
           in  ((CLocalVar (idx, name ident)):locals, env')
-   genLocals env _ [] = ([], env)
-   genLocals _   _ _  = internalError "unexpected local declaration"
+   genLocals env fdecls ((TypeSig _ _ _):decls)
+      = genLocals env fdecls decls
+   genLocals _ _ decl = internalError ("unexpected local declaration: \n"
+				       ++ show (head decl))
 
    genLocalFuncDecl :: AbstractEnv -> [(Ident,[Decl])] -> Ident 
 		       -> (CLocalDecl, AbstractEnv)
@@ -434,9 +440,13 @@ genLocalDecls env decls
    genLocalPattern pos env (ParenPattern patt)
       = genLocalPattern pos env patt
    genLocalPattern pos env (TuplePattern args)
-      = let tupleName     = genQName env (qTupleId (length args))
-	    (args', env') = mapfoldl (genLocalPattern pos) env args
-        in  (CPComb tupleName args', env')
+      | len > 1  
+        = genLocalPattern pos env (ConstructorPattern (qTupleId len) args)
+      | len == 1
+	= genLocalPattern pos env (head args)
+      | len == 0
+	= genLocalPattern pos env (ConstructorPattern qUnitId [])
+    where len = length args
    genLocalPattern pos env (ListPattern args)
       = genLocalPattern pos env 
 	  (foldr (\p1 p2 -> ConstructorPattern qConsId [p1,p2])
@@ -476,7 +486,13 @@ genExpr pos env (Paren expr)
 genExpr pos env (Typed expr _)
    = genExpr pos env expr
 genExpr pos env (Tuple args)
-   = genExpr pos env (foldl Apply (Variable (qTupleId (length args))) args)
+   | len > 1
+     = genExpr pos env (foldl Apply (Variable (qTupleId (length args))) args)
+   | len == 1
+     = genExpr pos env (head args)
+   | len == 0
+     = genExpr pos env (Variable qUnitId)
+ where len = length args
 genExpr pos env (List args)
    = let cons = Constructor qConsId
 	 nil  = Constructor qNilId
@@ -583,9 +599,13 @@ genPattern pos env (InfixPattern larg qident rarg)
 genPattern pos env (ParenPattern patt)
    = genPattern pos env patt
 genPattern pos env (TuplePattern args)
-   = let tupleName     = genQName env (qTupleId (length args))
-	 (args', env') = mapfoldl (genPattern pos) env args
-     in  (CPComb tupleName args', env')
+   | len > 1
+     = genPattern pos env (ConstructorPattern (qTupleId len) args)
+   | len == 1
+     = genPattern pos env (head args)
+   | len == 0
+     = genPattern pos env (ConstructorPattern qUnitId [])
+ where len = length args
 genPattern pos env (ListPattern args)
    = genPattern pos env (foldr (\x1 x2 -> ConstructorPattern qConsId [x1, x2]) 
 		         (ConstructorPattern qNilId []) 
