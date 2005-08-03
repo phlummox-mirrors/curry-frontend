@@ -19,10 +19,6 @@ Der Compiler wird durch Aufruf von 'make' im Verzeichnis 'mcc' installiert.
 Befindet sich im Verzeichnis 'mcc' bereits eine compilierte Version,
 so wird empfohlen vor einer erneuten Installation 'make clean' auszuführen.
 
-
-Anwendung
----------
-
 Im Verzeichnis 'mcc/bin/' befinden sich nach erfolgreicher Installation
 folgende ausführbare Dateien:
 
@@ -33,14 +29,19 @@ Das Kommando 'cyxml' zur Erzeugung von Flat-Dateien sollte in
 Zukunft nicht mehr verwendet werden, da 'cyc' und 'cymake' nun
 über entsprechende Optionen verfügen.
 
+
+
+Erzeugung von FlatCurry- und FlatXML-Programmen
+-----------------------------------------------
+
 Die Übersetzung eines Curry-Programms 'file.curry', sowie sämtlicher
 importierter Module nach FlatCurry bzw. FlatInterface, bewirkt folgendes
 Kommando:
 
-	cymake --flat <file name>
+	cymake --flat <filename>
 
 Hierdurch werden die Dateien mit den entsprechenden Endungen ".fcy" und
-".fint" generiert. Der Dateiname <file name> kann hierbei mit oder ohne 
+".fint" generiert. Der Dateiname <filename> kann hierbei mit oder ohne 
 Endung ".curry" bzw. ".lcurry" angegeben werden.
 
 Die analogen Übersetzungen in die FlatXML-Darstellung bewirkt folgendes
@@ -49,6 +50,25 @@ Kommando:
 	cymake --xml <file name>
 
 Die hierdurch generierte Flat-XML-Datei hat die Endung '_flat.xml'.
+
+
+
+Erzeugung von AbstractCurry-Programmen
+--------------------------------------
+
+Die Übersetzung eines Curry-Programms 'file.curry' nach (typinferiertem)
+AbstractCurry bewirkt folgendes Kommando:
+
+	cymake --acy <filename>
+
+Hierdurch wird die entsprechende Datei (mit der Endung ".acy") generiert.
+Der Dateiname <filename> kann hierbei mit oder ohne Endung ".curry" bzw.
+".lcurry" angegeben werden.
+
+Bei der Generierung von AbstractCurry-Dateien werden FlatCurry-Dateien 
+für alle Importe erzeugt. Dies ist notwendig, da die entsprechenden 
+Interfaces für die Typinferenz und die statisch-semantische Analyse
+benötigt werden.
 
 Während 'cymake' auch alle Importabhängigkeiten auflöst und die entsprechenden
 Module in die gewünschte(n) Darstellung(en) übersetzt, können mittels
@@ -59,6 +79,11 @@ sind die selben, wie bei 'cymake'.
 
 Anmerkungen
 -----------
+
+- Während 'cymake' auch alle Importabhängigkeiten auflöst und die
+  entsprechenden Module in die gewünschte(n) Darstellung(en) übersetzt, können
+  mittels 'cyc' einzelne Dateien übersetzt werden. Die hierzu nötigen Optionen
+  sind die selben, wie bei 'cymake'.
 
 - Neben den gewünschten Darstellungen werden zusätzlich noch
   Interface-Dateien (Endung ".icurry") erzeugt. Diese werden
@@ -89,8 +114,10 @@ Bekannte Probeleme
 - Die Regeln einer Funktionsdeklaration müssen immer zusammenstehen, d.h.
   Nicht durch andere Deklarationen unterbrochen werden.
 
-- Aufgrund eines Fehlers im Parser ist es nicht möglich, den Listenoperator (:)
-  zu qualifizieren ('prelude.:' führt zu einem Fehler).
+- Aufgrund eines Fehlers im Parser ist es nicht möglich, den 
+  Listenoperator (:), den Konstruktor für leere Listen [], sowie 
+  den Unit-Konstruktor () zu qualifizieren (z.B. führt 'prelude.:' führt 
+  zu einem Fehler).
 
 - FlatXML-Übersetzungen können derzeit mittels der Funktionen aus dem
   PAKCS-Modul "FlatXML" noch nicht eingelesen werden, da es Unstimmigkeiten

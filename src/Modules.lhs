@@ -571,6 +571,21 @@ Haskell and original MCC where a module obtains \texttt{main}).
 >      = Module mid mexports decls
 
 
+> patchPrelude :: FilePath -> Module -> Module
+> patchPrelude fn (Module mid mexps decls)
+>   | (moduleName mid) == "prelude"
+>     = Module mid mexps (listdecl:decls)
+>   | otherwise
+>     = (Module mid mexps decls)
+>  where
+>  listdecl = DataDecl pos listId [a]
+>               [ConOpDecl pos [] (VariableType a) consId
+>                  (ConstructorType qListId [VariableType a]),
+>                ConstrDecl pos [] nilId []]
+>  pos = first fn
+>  a   = mkIdent "a"
+
+
 \end{verbatim}
 Various filename extensions
 \begin{verbatim}
