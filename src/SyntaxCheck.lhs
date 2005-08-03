@@ -75,6 +75,9 @@ applications in patterns are saturated. For local variables the
 environment records the new name of the variable after renaming.
 Global variables are recorded with qualified identifiers in order
 to distinguish multiply declared entities.
+
+\em{Note:} the function \texttt{qualLookupVar} has been extended to
+allow the usage of the qualified list constructor \texttt{(prelude.:)}.
 \begin{verbatim}
 
 > type RenameEnv = NestEnv RenameInfo
@@ -122,7 +125,16 @@ to distinguish multiply declared entities.
 
 > qualLookupVar :: QualIdent -> RenameEnv -> [RenameInfo]
 > qualLookupVar v env =
->   qualLookupNestEnv v env ++! lookupTupleConstr (unqualify v)
+>   qualLookupNestEnv v env
+>   ++! qualLookupListCons v env
+>   ++! lookupTupleConstr (unqualify v)
+
+> qualLookupListCons :: QualIdent -> RenameEnv -> [RenameInfo]
+> qualLookupListCons v env
+>    | (isJust mmid) && ((fromJust mmid) == preludeMIdent) && (ident == consId)
+>       = qualLookupNestEnv (qualify ident) env
+>    | otherwise = []
+>  where (mmid, ident) = splitQualIdent v
 
 > lookupTupleConstr :: Ident -> [RenameInfo]
 > lookupTupleConstr v

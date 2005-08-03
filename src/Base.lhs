@@ -27,6 +27,7 @@ phases of the compiler.
 > import Monad
 > import Set
 > import Utils
+> import Maybe
 
 \end{verbatim}
 \paragraph{Types}
@@ -259,8 +260,11 @@ are considered equal if their original names match.
 \end{verbatim}
 Even though value declarations may be nested, the compiler uses only
 flat environments for saving type information. This is possible
-because all identifiers are renamed by the compiler. Again, we need
+because all identifiers are renamed by the compiler. Here we need
 special cases for handling tuple constructors.
+
+\em{Note:} the function \texttt{qualLookupValue} has been extended to
+allow the usage of the qualified list constructor \texttt{(prelude.:)}.
 \begin{verbatim}
 
 > type ValueEnv = TopEnv ValueInfo
@@ -290,7 +294,16 @@ special cases for handling tuple constructors.
 
 > qualLookupValue :: QualIdent -> ValueEnv -> [ValueInfo]
 > qualLookupValue x tyEnv =
->   qualLookupTopEnv x tyEnv ++! lookupTuple (unqualify x)
+>   qualLookupTopEnv x tyEnv 
+>   ++! qualLookupCons x tyEnv
+>   ++! lookupTuple (unqualify x)
+
+> qualLookupCons :: QualIdent -> ValueEnv -> [ValueInfo]
+> qualLookupCons x tyEnv
+>    | (isJust mmid) && ((fromJust mmid) == preludeMIdent) && (ident == consId)
+>       = qualLookupTopEnv (qualify ident) tyEnv
+>    | otherwise = []
+>  where (mmid, ident) = splitQualIdent x
 
 > lookupTuple :: Ident -> [ValueInfo]
 > lookupTuple c
