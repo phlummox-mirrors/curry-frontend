@@ -112,7 +112,7 @@ Bekannte Probeleme
                in ...
 
 - Die Regeln einer Funktionsdeklaration müssen immer zusammenstehen, d.h.
-  Nicht durch andere Deklarationen unterbrochen werden.
+  nicht durch andere Deklarationen unterbrochen werden.
 
 - Aufgrund eines Fehlers im Parser ist es nicht möglich, den 
   Listenoperator (:), den Konstruktor für leere Listen [], sowie 
