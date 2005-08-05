@@ -10,6 +10,7 @@
 --- Version for Haskell (slightly modified):
 ---  December 2004, Martin Engelke (men@informatik.uni-kiel.de)
 ---
+--- Added part calls for constructors, Bernd Brassel, August 2005
 ------------------------------------------------------------------------------
 
 module FlatCurry (Prog(..), QName, Visibility(..),
@@ -18,7 +19,7 @@ module FlatCurry (Prog(..), QName, Visibility(..),
                   VarIndex, 
                   FuncDecl(..), Rule(..), 
                   CaseType(..), CombType(..), Expr(..), BranchExpr(..),
-                  Pattern(..), Literal(..),
+                  Pattern(..), Literal(..), Appliance(..),
 		  readFlatCurry, writeFlatCurry) where
 
 
@@ -37,7 +38,7 @@ module FlatCurry (Prog(..), QName, Visibility(..),
 ---       and constructor/function names: see below
 
 data Prog = Prog String [String] [TypeDecl] [FuncDecl] [OpDecl] 
-	    deriving (Read, Show)
+	    deriving (Read, Show, Eq)
 
 
 --- The data type for representing qualified names.
@@ -79,13 +80,13 @@ type TVarIndex = Int
 
 data TypeDecl = Type    QName Visibility [TVarIndex] [ConsDecl]
               | TypeSyn QName Visibility [TVarIndex] TypeExpr
-	      deriving (Read, Show)
+	      deriving (Read, Show, Eq)
 
 --- A constructor declaration consists of the name and arity of the
 --- constructor and a list of the argument types of the constructor.
 
 data ConsDecl = Cons QName Int Visibility [TypeExpr]
-	      deriving (Read, Show)
+	      deriving (Read, Show, Eq)
 
 
 --- Data type for type expressions.
@@ -100,7 +101,7 @@ data TypeExpr =
      TVar TVarIndex                 -- type variable
    | FuncType TypeExpr TypeExpr     -- function type t1->t2
    | TCons QName [TypeExpr]         -- type constructor application
-   deriving (Read, Show)            --    TCons module name typeargs
+   deriving (Read, Show, Eq)            --    TCons module name typeargs
 
 
 --- Data type for operator declarations.
@@ -108,13 +109,13 @@ data TypeExpr =
 --- FlatCurry term (Op n fix p).
 --- Note: the constructor definition of 'Op' differs from the original
 --- PAKCS definition using Haskell type 'Integer' instead of 'Int'
---- for representing the precedence.
+--- for representing the precedence. 
 
-data OpDecl = Op QName Fixity Integer deriving (Read, Show)
+data OpDecl = Op QName Fixity Integer deriving (Read, Show, Eq)
 
 --- Data types for the different choices for the fixity of an operator.
 
-data Fixity = InfixOp | InfixlOp | InfixrOp deriving (Read, Show)
+data Fixity = InfixOp | InfixlOp | InfixrOp deriving (Read, Show, Eq)
 
 
 --- Data type for representing object variables.
@@ -147,7 +148,7 @@ type VarIndex = Int
 --- </PRE>
 
 data FuncDecl = Func QName Int Visibility TypeExpr Rule
-	      deriving (Read, Show)
+	      deriving (Read, Show, Eq)
 
 
 --- A rule is either a list of formal parameters together with an expression
@@ -155,23 +156,29 @@ data FuncDecl = Func QName Int Visibility TypeExpr Rule
 
 data Rule = Rule [VarIndex] Expr
           | External String
-	  deriving (Read, Show)
+	  deriving (Read, Show, Eq)
 
 --- Data type for classifying case expressions.
 --- Case expressions can be either flexible or rigid in Curry.
 
-data CaseType = Rigid | Flex deriving (Read, Show)
+data CaseType = Rigid | Flex deriving (Read, Show, Eq)
 
 --- Data type for classifying combinations
 --- (i.e., a function/constructor applied to some arguments).
---- @cons FuncCall - a call to a function where all arguments are provided
---- @cons PartCall - a partial call to a function (i.e., not all arguments
----                  are provided) where the parameter is the number of
----                  missing arguments
---- @cons ConsCall - a call with a constructor at the top (where it is
----                  possible that not all arguments are provided)
+--- @cons FuncCall - a call to a function 
+--- @cons ConsCall - a call with a constructor at the top 
 
-data CombType = FuncCall | PartCall Int | ConsCall deriving (Read, Show)
+data CombType = FuncCall | ConsCall deriving (Read, Show, Eq)
+
+--- Data type for the information, whether all arguments for a 
+--- function/constructor are provided or if some are missing.
+--- @cons Full    - all arguments are provided
+--- @cons Partial - a partial call to a function/constructor
+---                  (i.e., not all arguments are provided) 
+---                  where the parameter is the number of
+---                  missing arguments
+
+data Appliance = Full | Partial Int deriving (Read, Show, Eq)
 
 --- Data type for representing expressions.
 ---
@@ -242,12 +249,12 @@ data CombType = FuncCall | PartCall Int | ConsCall deriving (Read, Show)
 
 data Expr = Var VarIndex 
           | Lit Literal
-          | Comb CombType QName [Expr]
+          | Comb CombType Appliance QName [Expr]
           | Free [VarIndex] Expr
           | Let [(VarIndex,Expr)] Expr
           | Or Expr Expr
           | Case CaseType Expr [BranchExpr]
-	  deriving (Read, Show)
+	  deriving (Read, Show, Eq)
 
 
 --- Data type for representing branches in a case expression.
@@ -264,13 +271,13 @@ data Expr = Var VarIndex
 --- like float or character constants).
 --- </PRE>
 
-data BranchExpr = Branch Pattern Expr deriving (Read, Show)
+data BranchExpr = Branch Pattern Expr deriving (Read, Show, Eq)
 
 --- Data type for representing patterns in case expressions.
 
 data Pattern = Pattern QName [VarIndex]
              | LPattern Literal
-	     deriving (Read, Show)
+	     deriving (Read, Show, Eq)
 
 --- Data type for representing literals occurring in an expression
 --- or case branch. It is either an integer, a float, or a character constant.
@@ -283,7 +290,7 @@ data Pattern = Pattern QName [VarIndex]
 data Literal = Intc   Integer
              | Floatc Double
              | Charc  Char
-	     deriving (Read, Show)
+	     deriving (Read, Show, Eq)
 
 
 ------------------------------------------------------------------------------
@@ -294,8 +301,7 @@ data Literal = Intc   Integer
 readFlatCurry :: String -> IO Prog
 readFlatCurry filename
    = do file <- readFile filename
-	let prog = (read file) :: Prog
-        return prog
+	return (read file)
 
 
 -- Writes a FlatCurry program term into a file

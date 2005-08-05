@@ -13,7 +13,6 @@ import CurrySyntax (Export(..))
 import PatchPrelude
 import Maybe
 
-
 -------------------------------------------------------------------------------
 
 -- transforms intermediate language code (IL) to FlatCurry code
@@ -30,6 +29,7 @@ il2flatInterface info menv mod
    = patchPreludeFCY (fst (visitModule env mod))
  where
  env = (flatEnv (getModuleIdent mod) menv info) { genFlatIntf = True }
+
 
 
 -------------------------------------------------------------------------------
@@ -152,11 +152,12 @@ visitExpression env (Variable ident)
      in  (Var findex, env)
 
 visitExpression env (Function qident arity)
-   | arity > 0 = (Comb (PartCall arity) (visitQualIdent env qident) [], env)
-   | otherwise = (Comb FuncCall (visitQualIdent env qident) [], env)
+   | arity > 0 = (Comb FuncCall (Partial arity) (visitQualIdent env qident) [], env)
+   | otherwise = (Comb FuncCall Full (visitQualIdent env qident) [], env)
 
-visitExpression env (Constructor qident _)
-   = (Comb ConsCall (visitQualIdent env qident) [], env)
+visitExpression env (Constructor qident arity)
+   | arity > 0 = (Comb ConsCall (Partial arity) (visitQualIdent env qident) [], env)
+   | otherwise = (Comb ConsCall Full (visitQualIdent env qident) [], env)
 
 visitExpression env (Apply expr1 expr2)
    = genFlatApplication env (Apply expr1 expr2)
@@ -480,31 +481,36 @@ genFlatApplication env applicexpr
 	      -> p_genFlatApplic env (cnt + 1) (expr2:args) expr1
 	  (Function qident arity) 
 	      -> p_genFuncCall env qident arity cnt args
-	  (Constructor qident _)  
-	      -> p_genConsCall env qident args
+	  (Constructor qident arity)  
+	      -> p_genConsCall env qident arity cnt args
 	  _                       
 	      -> let (fexpr, env1) = visitExpression env expr
 		 in  p_genApplicComb env fexpr args
 
    p_genFuncCall env qident arity cnt args
-      | arity > cnt = p_genComb env qident args (PartCall (arity - cnt))
+      | arity > cnt = p_genComb env qident args FuncCall (Partial (arity - cnt))
       | arity < cnt 
 	= let (funcargs, applicargs) = splitAt arity args
-	      (funccall,env1)        = p_genComb env qident funcargs FuncCall
+	      (funccall,env1)        = p_genComb env qident funcargs FuncCall Full
 	  in  p_genApplicComb env1 funccall applicargs
-      | otherwise   = p_genComb env qident args FuncCall
+      | otherwise   = p_genComb env qident args FuncCall Full
 
-   p_genConsCall env qident args
-      = p_genComb env qident args ConsCall
+   p_genConsCall env qident arity cnt args
+      | arity > cnt = p_genComb env qident args ConsCall (Partial (arity - cnt))
+      | arity < cnt 
+	= let (funcargs, applicargs) = splitAt arity args
+	      (funccall,env1)        = p_genComb env qident funcargs ConsCall Full
+	  in  p_genApplicComb env1 funccall applicargs
+      | otherwise = p_genComb env qident args ConsCall Full
 
-   p_genComb env qident args combtype
+   p_genComb env qident args combtype appliance
       = let (fexpr, env1) = emap visitExpression env args
-        in  (Comb combtype (visitQualIdent env qident) fexpr, env1)
+        in  (Comb combtype appliance (visitQualIdent env qident) fexpr, env1)
 	 
    p_genApplicComb env fexpr [] = (fexpr, env)
    p_genApplicComb env fexpr (e1:es)
       = let (fe1, env1) = visitExpression env e1
-            appcomb     = Comb FuncCall 
+            appcomb     = Comb FuncCall Full
 			       (visitQualIdent env p_qidApply)
 			       [fexpr, fe1]
 	in  p_genApplicComb env1 appcomb es

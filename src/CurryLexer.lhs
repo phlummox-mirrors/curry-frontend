@@ -10,7 +10,7 @@
 \section{A Lexer for Curry}
 In this section a lexer for Curry is implemented.
 \begin{verbatim}
-
+ 
 > module CurryLexer where
 > import LexComb
 > import Position
