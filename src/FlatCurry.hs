@@ -19,7 +19,7 @@ module FlatCurry (Prog(..), QName, Visibility(..),
                   VarIndex, 
                   FuncDecl(..), Rule(..), 
                   CaseType(..), CombType(..), Expr(..), BranchExpr(..),
-                  Pattern(..), Literal(..), Appliance(..),
+                  Pattern(..), Literal(..), 
 		  readFlatCurry, writeFlatCurry) where
 
 
@@ -165,20 +165,20 @@ data CaseType = Rigid | Flex deriving (Read, Show, Eq)
 
 --- Data type for classifying combinations
 --- (i.e., a function/constructor applied to some arguments).
---- @cons FuncCall - a call to a function 
---- @cons ConsCall - a call with a constructor at the top 
+--- @cons FuncCall     - a call to a function all arguments are provided
+--- @cons ConsCall     - a call with a constructor at the top,
+---                      all arguments are provided
+--- @cons FuncPartCall - a partial call to a function
+---                      (i.e., not all arguments are provided) 
+---                      where the parameter is the number of
+---                      missing arguments
+--- @cons ConsPartCall - a partial call to a constructor along with 
+---                      number of missing arguments
 
-data CombType = FuncCall | ConsCall deriving (Read, Show, Eq)
-
---- Data type for the information, whether all arguments for a 
---- function/constructor are provided or if some are missing.
---- @cons Full    - all arguments are provided
---- @cons Partial - a partial call to a function/constructor
----                  (i.e., not all arguments are provided) 
----                  where the parameter is the number of
----                  missing arguments
-
-data Appliance = Full | Partial Int deriving (Read, Show, Eq)
+data CombType = FuncCall 
+              | ConsCall 
+              | FuncPartCall Int 
+              | ConsPartCall Int deriving (Read, Show, Eq)
 
 --- Data type for representing expressions.
 ---
@@ -249,7 +249,7 @@ data Appliance = Full | Partial Int deriving (Read, Show, Eq)
 
 data Expr = Var VarIndex 
           | Lit Literal
-          | Comb CombType Appliance QName [Expr]
+          | Comb CombType QName [Expr]
           | Free [VarIndex] Expr
           | Let [(VarIndex,Expr)] Expr
           | Or Expr Expr
