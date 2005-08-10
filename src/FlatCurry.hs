@@ -298,10 +298,10 @@ data Literal = Intc   Integer
 
 -- Reads a FlatCurry file and returns the corresponding FlatCurry
 -- program term (type 'Prog')
-readFlatCurry :: String -> IO Prog
+readFlatCurry :: String -> IO (Maybe Prog)
 readFlatCurry filename
-   = do file <- readFile filename
-	return (read file)
+   = catch  (readFile filename >>= return . Just . read)
+            (\_ -> putStrLn ("error opening "++filename) >> return Nothing)
 
 
 -- Writes a FlatCurry program term into a file
