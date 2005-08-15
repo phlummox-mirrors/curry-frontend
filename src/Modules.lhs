@@ -69,9 +69,9 @@ check the module. Then the code is translated into the intermediate
 language. If necessary, this phase will also update the module's
 interface file. The resulting code then is either written out (in
 FlatCurry or XML format) or translated further into C code.
-The untyped or type signed AbstractCurry representation is written
-out directly after parsing the source file. The typed AbstractCurry
-code is written out after checking the module.
+The untyped  AbstractCurry representation is written
+out directly after parsing and simple checking the source file. 
+The typed AbstractCurry code is written out after checking the module.
 
 The compiler automatically loads the prelude when compiling any
 module, except for the prelude itself, by adding an appropriate import
@@ -100,28 +100,33 @@ matching code.}
 >                  (readFile fn >>= return . (patchPreludeSource fn))
 >     let m = patchModuleId fn mod
 >     mEnv <- loadInterfaces (importPath opts) m
->     let (tyEnv,m',intf) = checkModule mEnv m
->         (il,dumps) =
->           transModule flat (debug opts) (trusted opts) mEnv tyEnv m'
->         (ccode,dumps') = ccodeModule (splitCode opts) mEnv il
->         ccode' = compileDefaultGoal (debug opts) mEnv intf
->         il' = completeCase mEnv il
->     mapM_ (doDump opts) 
->           (dumps ++ if flat || acy || xml then [] else dumps')
->     unless (noInterface opts) (updateInterface fn intf)
->     if flat || xml || acy || uacy || tacy
->        then do when flat (genFlat opts fn mEnv m' il')
->                when xml  (genFlat opts fn mEnv m' il')
->                when acy  (genAbstract opts fn tyEnv m')
->                when tacy (genAbstract opts fn tyEnv m)
->                when uacy (genAbstract opts fn tyEnv m)
->        else writeCode (output opts) fn (maybe ccode (merge ccode) ccode')
+>     if uacy 
+>        then 
+>          do 
+>             let (tyEnv, m', intf) = simpleCheckModule mEnv m
+>             genAbstract opts fn tyEnv m'
+>        else
+>          do let (tyEnv,m',intf) = checkModule mEnv m
+>                 (il,dumps) =
+>                   transModule flat (debug opts) (trusted opts) mEnv tyEnv m'
+>                 (ccode,dumps') = ccodeModule (splitCode opts) mEnv il
+>                 ccode' = compileDefaultGoal (debug opts) mEnv intf
+>                 il' = completeCase mEnv il
+>             mapM_ (doDump opts) 
+>                   (dumps ++ if flat || acy || xml then [] else dumps')
+>             unless (noInterface opts) (updateInterface fn intf)
+>             if flat || xml || acy || uacy
+>                then do when flat (genFlat opts fn mEnv m' il')
+>                        when xml  (genFlat opts fn mEnv m' il')
+>                        when acy  (genAbstract opts fn tyEnv m')
+>                        when uacy (return ())
+>                else writeCode (output opts) fn 
+>                               (maybe ccode (merge ccode) ccode')
 >   where acy      = abstract opts
->         uacy     = False
->         tacy     = False
+>         uacy     = untypedAbstract opts
 >         flat     = flatCurry opts
 >         xml      = flatXML opts
->         likeFlat = flat || xml || acy || uacy || tacy
+>         likeFlat = flat || xml || acy || uacy
 >         merge (Left cf1) cf2 = Left (mergeCFile cf1 cf2)
 >         merge (Right cfs) cf = Right (cf : cfs)
 
@@ -133,6 +138,18 @@ matching code.}
 > loadInterfaces paths (Module m _ ds) =
 >   foldM (loadInterface paths [m]) emptyEnv
 >         [(p,m) | ImportDecl p m _ _ _ <- ds]
+
+> simpleCheckModule :: ModuleEnv -> Module -> (ValueEnv,Module,Interface)
+> simpleCheckModule mEnv (Module m es ds) = -- error (show ds')
+>    (tyEnv'', modul, exportInterface modul pEnv' tcEnv'' tyEnv'')
+>   where (impDs,topDs) = partition isImportDecl ds
+>         (pEnv,tcEnv,tyEnv) = importModules mEnv impDs
+>         (pEnv',topDs') = precCheck m pEnv $ syntaxCheck m tyEnv
+>                                           $ kindCheck m tcEnv topDs
+>         -- (tcEnv',tyEnv') = typeCheck m tcEnv tyEnv topDs'
+>         ds' = impDs ++ qual m tyEnv topDs'
+>         modul = expandInterface (Module m es ds') tcEnv tyEnv
+>         (pEnv'',tcEnv'',tyEnv'') = qualifyEnv mEnv pEnv' tcEnv tyEnv
 
 > checkModule :: ModuleEnv -> Module -> (ValueEnv,Module,Interface)
 > checkModule mEnv (Module m es ds) =
@@ -224,11 +241,6 @@ matching code.}
 > writeUntypedAbs tfn sfn tyEnv mod
 >    = writeCurry fname (genUntypedAbstract mod)
 >  where fname = fromMaybe (rootname sfn ++ uacyExt) tfn
-
-> writeTypeSigAbs :: Maybe FilePath -> FilePath -> ValueEnv -> Module -> IO ()
-> writeTypeSigAbs tfn sfn tyEnv mod
->    = writeCurry fname (genTypeSigAbstract mod)
->  where fname = fromMaybe (rootname sfn ++ tacyExt) tfn
 
 > writeCode :: Maybe FilePath -> FilePath -> Either CFile [CFile] -> IO ()
 > writeCode tfn sfn (Left cfile) = writeCCode ofn cfile
@@ -536,8 +548,6 @@ flat and abstract curry representations depending on the specified option.
 >      = writeTypedAbs Nothing fname tyEnv mod
 >    | untypedAbstract opts
 >      = writeUntypedAbs Nothing fname tyEnv mod
->    | typeSigAbstract opts
->      = writeTypeSigAbs Nothing fname tyEnv mod
 >    | otherwise
 >      = internalError "illegal option (genAbstract)"
 
@@ -596,7 +606,6 @@ Various filename extensions
 > fintExt = ".fint"
 > acyExt = ".acy"
 > uacyExt = ".uacy"
-> tacyExt = ".tacy"
 > intfExt = ".icurry"
 > litExt = ".lcurry"
 

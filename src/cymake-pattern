@@ -104,7 +104,6 @@ while test $# -gt 0; do
     -F | -flat | --flat ) mkopts="$mkopts --flat";;
     -X | -xml | --xml ) mkopts="$mkopts --xml";;
     --abstract | --acy ) mkopts="$mkopts --acy";;
-    --typesig-abstract | --tacy ) mkopts="$mkopts --tacy";;
     --untyped-abstract | --uacy ) mkopts="$mkopts --uacy";;
     -a ) mkopts="$mkopts $1";;
     -e ) goal=$2; shift;;

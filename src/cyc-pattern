@@ -90,8 +90,7 @@ while test $# -gt 0; do
     -F | -flat | --flat ) toF=1; cyccopts="$cyccopts --flat";;
     -X | -xml | --xml )toX=1; cyccopts="$cyccopts --xml";;
     --abstract | --acy )toA=1; cyccopts="$cyccopts --acy";;
-    --untyped-abstract | --uacy )toUA=1; cyccopts="$cyccopts --uacy";; 
-    --typesig-abstract | --tacy )toTA=1; cyccopts="$cyccopts --tacy";; 
+    --untyped-abstract | --uacy )toUA=1; cyccopts="$cyccopts --uacy";;
     -S ) toS=1;;
     -o ) ofile=$2; shift;;
     -o* ) ofile=`expr "$1" : '-o\(.*\)'`;;
@@ -225,7 +224,7 @@ trap 'test "$temps" && rm -f $temps' 0 1 2 3 15
 
 # Process all files
 set -- $files
-if test -n "$ofile" -a -n "$toF$toX$toA$toUA$toTA$toC$toS$toO" -a $# -gt 1; then
+if test -n "$ofile" -a -n "$toF$toX$toA$toUA$toC$toS$toO" -a $# -gt 1; then
   echo 1>&2 "$cyc: cannot specify -o with -c, -S, -C or flat or abstract options and multiple input files"
   exit 1
 fi
@@ -252,14 +251,12 @@ for f in $files; do
       curry=$f
       stem=`expr "$f" : '\(.*\)\.curry'`
       stem=$stem`expr "$f" : '\(.*\)\.lcurry'`
-      if test -n "$toF$toX$toA$toUA$toTA$toC"; then
+      if test -n "$toF$toX$toA$toUA$toC"; then
 	if test -n "$toF"; then suffix=.fcy; 
 	else if test -n "$toX"; then suffix=_flat.xml; 
 	     else if test -n "$toA"; then suffix=.acy;
 		  else if test -n "$toUA"; then suffix=.uacy;
-		       else if test -n "$toTA"; then suffix=.tacy;
-			    else suffix=.c;
-			    fi
+		       else suffix=.c;
 		       fi
 		  fi
 	     fi
@@ -290,7 +287,7 @@ for f in $files; do
       f=$target
       ;;
   esac
-  test -n "$toF$toX$toA$toUA$toTA$toC" && continue
+  test -n "$toF$toX$toA$toUA$toC" && continue
 
   # Compile C/assembler code into assembler code or object files
   case $f in
@@ -323,7 +320,7 @@ for f in $files; do
 done
 
 # Eventually link the program
-if test -z "$toF$toX$toA$toUA$toTA$toC$toS$toO"; then
+if test -z "$toF$toX$toA$toUA$toC$toS$toO"; then
   temps="$temps /tmp/cyc$$.c"
   if test -n "$goal"; then
     test -n "$main" || main="$curry"

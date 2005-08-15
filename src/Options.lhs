@@ -27,9 +27,8 @@ all compiler options.
 >     noInterface :: Bool,              -- do not create an interface file
 >     flatXML :: Bool,                  -- generate flat XML code
 >     flatCurry :: Bool,                -- generate FlatCurry code
->     abstract :: Bool,                 -- generate AbstractCurry code
+>     abstract :: Bool,                 -- generate typed AbstractCurry code
 >     untypedAbstract :: Bool,          -- generate untyped AbstractCurry code
->     typeSigAbstract :: Bool,          -- generate typed AbstractCurry code
 >     splitCode :: Bool,                -- split C code
 >     debug :: Bool,                    -- add debugging transformation
 >     trusted :: Bool,                  -- trusted module for debugging
@@ -48,7 +47,6 @@ all compiler options.
 >     flatCurry = False,
 >     abstract = False,
 >     untypedAbstract = False,
->     typeSigAbstract = False,
 >     splitCode = False,
 >     debug = False,
 >     trusted = False,
@@ -79,7 +77,7 @@ library.
 >   | ImportPath FilePath | Output FilePath
 >   | Eval (Maybe String) | Type String
 >   | SplitCode | NoInterface 
->   | FlatXML | Flat | Abstract | UntypedAbstract | TypeSigAbstract
+>   | FlatXML | Flat | Abstract | UntypedAbstract
 >   | Debug | Trusted | Dump [Dump]
 >   deriving (Eq,Show)
 
@@ -107,8 +105,6 @@ recognized by the compiler.
 >            "generate (type infered) AbstractCurry code",
 >     Option "" ["uacy"] (NoArg UntypedAbstract)
 >            "generate untyped AbstractCurry code",
->     Option "" ["tacy"] (NoArg TypeSigAbstract)
->            "generate type signated AbstractCurry code",
 >     Option "" ["split-code"] (NoArg SplitCode)
 >            "emit one C file for each function",
 >     Option "g" ["debug"] (NoArg Debug)
@@ -157,7 +153,6 @@ print its usage message and terminate.
 > selectOption Flat opts = opts{ flatCurry = True }
 > selectOption Abstract opts = opts{ abstract = True }
 > selectOption UntypedAbstract opts = opts{ untypedAbstract = True }
-> selectOption TypeSigAbstract opts = opts{ typeSigAbstract = True }
 > selectOption SplitCode opts = opts{ splitCode = True }
 > selectOption Debug opts = opts{ debug = True }
 > selectOption Trusted opts = opts{ trusted = True }

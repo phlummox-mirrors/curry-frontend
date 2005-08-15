@@ -39,10 +39,10 @@ computes either a build or clean script for a module while
 Makefile.
 \begin{verbatim}
 
-> buildScript :: Bool -> Bool -> Bool -> Bool -> Bool -> Bool -> Bool -> Bool
+> buildScript :: Bool -> Bool -> Bool -> Bool -> Bool -> Bool -> Bool
 >             -> [FilePath] -> [FilePath] -> Maybe FilePath -> FilePath 
 >             -> IO [String]
-> buildScript clean debug linkAlways flat xml acy uacy tacy 
+> buildScript clean debug linkAlways flat xml acy uacy
 >             paths libPaths ofn fn =
 >   do
 >     mfn'      <- getSourcePath paths libPaths fn
@@ -55,7 +55,7 @@ Makefile.
 >     es        <- return (es1 ++ es2)
 >     when (null es)
 >          (putStr 
->            (makeScript clean debug flat xml acy uacy tacy linkAlways 
+>            (makeScript clean debug flat xml acy uacy linkAlways 
 >                        (outputFile fn') fn ms))
 >     return es
 >   where outputFile fn
@@ -241,15 +241,15 @@ modification uses the command "smake" to check the out-of-dateness
 of dependend program files.
 \begin{verbatim}
 
-> makeBuildScript :: Bool -> Bool -> Bool -> Bool -> Bool -> Bool -> Bool 
+> makeBuildScript :: Bool -> Bool -> Bool -> Bool -> Bool -> Bool 
 >                 -> Maybe FilePath -> FilePath -> [(ModuleIdent,Source)] 
 >                 -> String
-> makeBuildScript debug flat xml acy uacy tacy linkAlways ofn fn mEnv =
+> makeBuildScript debug flat xml acy uacy linkAlways ofn fn mEnv =
 >   unlines ("set -e" : (map (compCommands . snd) mEnv)
 >                       ++ (maybe [] linkCommands ofn))
 >   where 
 >         compCommands (Source fn' ms)
->            | (acy || uacy || tacy) && rootname fn /= rootname fn'
+>            | (acy || uacy) && rootname fn /= rootname fn'
 >              = (smake ((interfName fn'):[flatName fn', flatIntName fn'])
 >                       (fn' : catMaybes (map interf ms))
 >                       "")
@@ -283,11 +283,10 @@ of dependend program files.
 >         cFlag | flat      = "--flat"
 >               | xml       = "--xml"
 >               | acy       = "--acy"
->               | tacy      = "--tacy"
 >               | uacy      = "--uacy"
 >               | otherwise = "-c"
 >
->         oGen fn' | flat || xml || acy || uacy || tacy = []
+>         oGen fn' | flat || xml || acy || uacy = []
 >                  | otherwise   = ["-o", head (targetNames fn')]
 >
 >         link fn' os = unwords ("link" : "-o" : fn' : os)
@@ -306,7 +305,6 @@ of dependend program files.
 >         targetNames fn' | flat      = [flatName fn', flatIntName fn']
 >                         | xml       = [xmlName fn']
 >                         | acy       = [acyName fn']
->                         | tacy      = [tacyName fn']
 >                         | uacy      = [uacyName fn']
 >                         | otherwise = [objectName debug fn']
 
@@ -318,10 +316,10 @@ removes all compiled files for a module. The script uses the command
 reasonable value in the environment where the script is executed.
 \begin{verbatim}
 
-> makeCleanScript :: Bool -> Bool -> Bool -> Bool -> Bool -> Bool -> Bool 
+> makeCleanScript :: Bool -> Bool -> Bool -> Bool -> Bool -> Bool 
 >                 -> Maybe FilePath -> FilePath -> [(ModuleIdent,Source)] 
 >                 -> String
-> makeCleanScript debug flat xml acy uacy tacy _ ofn _ mEnv =
+> makeCleanScript debug flat xml acy uacy _ ofn _ mEnv =
 >   unwords ("remove" : foldr files (maybe [] return ofn) (map snd mEnv))
 >   where d = if debug then 2 else 0
 >         files = if flat then flatFiles else nonFlatFiles
@@ -385,9 +383,6 @@ file.
 > uacyName :: FilePath -> FilePath
 > uacyName fn = rootname fn ++ uacyExt
 
-> tacyName :: FilePath -> FilePath
-> tacyName fn = rootname fn ++ tacyExt
-
 > objectName :: Bool -> FilePath -> FilePath
 > objectName debug = name (if debug then debugExt else oExt)
 >   where name ext fn = rootname fn ++ ext
@@ -401,7 +396,6 @@ file.
 > xmlExt = "_flat.xml"
 > acyExt = ".acy"
 > uacyExt = ".uacy"
-> tacyExt = ".tacy"
 > oExt = ".o"
 > debugExt = ".d.o"
 

@@ -15,6 +15,8 @@ expression such that their module prefix matches the module of their
 definition. This is done also for functions and constructors declared
 in the current module. Only functions and variables declared in local
 declarations groups as well as function arguments remain unchanged.
+
+\em{Note:} The modified version also qualifies type constructors
 \begin{verbatim}
 
 > module Qual(qual,qualGoal) where
@@ -136,6 +138,6 @@ declarations groups as well as function arguments remain unchanged.
 >         [y] -> origName y
 >         vs  -> case (qualLookupValue (qualQualify m x) tyEnv) of
 >                  [y] -> origName y
->                  _ -> internalError ("qualIdent: " ++ show x)
+>                  _ -> qualQualify m x -- internalError ("qualIdent: " ++ show x)
 
 \end{verbatim}

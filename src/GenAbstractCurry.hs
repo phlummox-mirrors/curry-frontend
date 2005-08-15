@@ -8,8 +8,7 @@
 -- Martin Engelke (men@informatik.uni-kiel.de)
 --
 module GenAbstractCurry (genTypedAbstract, 
-			 genUntypedAbstract,
-			 genTypeSigAbstract) where
+			 genUntypedAbstract) where
 
 import CurrySyntax
 import AbstractCurry
@@ -39,15 +38,6 @@ genTypedAbstract tyEnv mod
 genUntypedAbstract :: Module -> CurryProg
 genUntypedAbstract mod
    = genAbstract (genAbstractEnv UntypedAcy emptyTopEnv mod) mod
-
-
--- Generates type signated AbstractCurry code from a CurrySyntax module.
--- All functions get annotated with their type signature. If a function
--- don't have a type signature, it will be annotated with the dummy type
--- 'prelude.untyped'
-genTypeSigAbstract :: Module -> CurryProg
-genTypeSigAbstract mod 
-  = genAbstract (genAbstractEnv TypeSignatedAcy emptyTopEnv mod) mod
 
 
 -------------------------------------------------------------------------------
@@ -224,13 +214,6 @@ genFixity InfixR = CInfixrOp
 genFixity Infix  = CInfixOp
 
 
---
---genTopLevelFunc :: AbstractEnv -> (Ident, [Decl]) -> (CFuncDecl, AbstractEnv)
---genTopLevelFunc env fdecl
---   = let (fdecl', env') = genFuncDecl env fdecl
---     in  (fdecl', resetScope env')
-
-
 -- Generate an AbstractCurry function declaration from a list of CurrySyntax
 -- function declarations.
 -- NOTES: 
@@ -264,7 +247,7 @@ genFuncDecl isLocal env (ident, decls)
 		      ++ show ident ++ "\"")
  where
    genFuncType env decls
-      | acytype == TypeSignatedAcy
+      | acytype == UntypedAcy
 	= applyMaybe (genTypeSig env) (find isTypeSig decls)
       | acytype == TypedAcy
 	= applyMaybe (genTypeExpr env) mftype
@@ -679,9 +662,9 @@ data AbstractEnv = AbstractEnv {moduleId   :: ModuleIdent,
                                 acyType    :: AbstractType
 			       } deriving Show
 
--- Data type for indicating the type of AbstractCurry code to be generated
--- (typed infered, untyped and type signated)
-data AbstractType = TypedAcy | UntypedAcy | TypeSignatedAcy deriving (Eq, Show)
+-- Data type representing the type of AbstractCurry code to be generated
+-- (typed infered or untyped (i.e. type signated))
+data AbstractType = TypedAcy | UntypedAcy deriving (Eq, Show)
 
 
 -- Initializes the AbstractCurry generator environment.
@@ -699,7 +682,25 @@ genAbstractEnv absType tyEnv (Module mid exps decls)
         acyType      = absType
        }
  where
-   exps' = maybe [] (\ (Exporting _ es) -> es) exps
+   exps' = maybe (buildExports mid decls) (\ (Exporting _ es) -> es) exps
+
+
+-- Generates a list of exports for all specified top level declarations
+buildExports :: ModuleIdent -> [Decl] -> [Export]
+buildExports _ [] = []
+buildExports mid ((DataDecl _ ident _ _):ds) 
+   = (ExportTypeAll (qualifyWith mid ident)):(buildExports mid ds)
+buildExports mid ((NewtypeDecl _ ident _ _):ds)
+   = (ExportTypeAll (qualifyWith mid ident)):(buildExports mid ds)
+buildExports mid ((TypeDecl _ ident _ _):ds)
+   = (Export (qualifyWith mid ident)):(buildExports mid ds)
+buildExports mid ((FunctionDecl _ ident _):ds)
+   = (Export (qualifyWith mid ident)):(buildExports mid ds)
+buildExports mid ((ExternalDecl _ _ _ ident _):ds)
+   = (Export (qualifyWith mid ident)):(buildExports mid ds)
+buildExports mid ((FlatExternalDecl _ idents):ds)
+   = (map (Export . (qualifyWith mid)) idents) ++ (buildExports mid ds)
+buildExports mid (_:ds) = buildExports mid ds
 
 
 -- Builds a table containing all exported (i.e. public) identifiers

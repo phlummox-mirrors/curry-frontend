@@ -25,7 +25,6 @@ data Options =
     flat :: Bool,
     xml :: Bool,
     abstract :: Bool,
-    typeSigAbstract :: Bool,
     untypedAbstract :: Bool
   }
 
@@ -41,14 +40,13 @@ defaultOptions =
     flat = False,
     xml = False,
     abstract = False,
-    typeSigAbstract = False,
     untypedAbstract = False
   }
 
 data Option =
     Help | ImportPath FilePath | LibPath FilePath | Output FilePath
   | Debug | LinkAlways | Clean | Depend | Flat | XML
-  | Abstract | TypeSigAbstract | UntypedAbstract
+  | Abstract | UntypedAbstract
   deriving Eq
 
 options = [
@@ -72,8 +70,6 @@ options = [
            "generate flat xml code",
     Option ""  ["acy"] (NoArg Abstract)
            "generate (type infered) AbstractCurry code",
-    Option ""  ["tacy"] (NoArg TypeSigAbstract)
-           "generate type signated AbstractCurry code",
     Option ""  ["uacy"] (NoArg UntypedAbstract)
            "generate untyped AbstractCurry code",
     Option "?h" ["help"] (NoArg Help)
@@ -91,7 +87,6 @@ selectOption Clean opts = opts{ mkClean = True }
 selectOption Flat opts = opts{ flat = True }
 selectOption XML opts = opts{ xml = True }
 selectOption Abstract opts = opts{ abstract = True }
-selectOption TypeSigAbstract opts = opts{ typeSigAbstract = True }
 selectOption UntypedAbstract opts = opts{ untypedAbstract = True }
 
 main :: IO ()
@@ -144,7 +139,6 @@ processFiles opts prog files
      script = buildScript (mkClean opts) (debug opts) (linkAlways opts) 
 	                  (flat opts) (xml opts)
 			  (abstract opts) (untypedAbstract opts)
-			  (typeSigAbstract opts)
 	                  (importPaths opts) (libPaths opts) (output opts)
 
 putErr, putErrLn :: String -> IO ()
