@@ -28,16 +28,17 @@ import Char
 -- Generates standard (type infered) AbstractCurry code from a CurrySyntax
 -- module. The function needs the type environment 'tyEnv' to determin the
 -- infered function types.
-genTypedAbstract :: ValueEnv -> Module -> CurryProg
-genTypedAbstract tyEnv mod
-   = genAbstract (genAbstractEnv TypedAcy tyEnv mod) mod
+genTypedAbstract :: ValueEnv -> TCEnv -> Module -> CurryProg
+genTypedAbstract tyEnv tcEnv mod
+   = genAbstract (genAbstractEnv TypedAcy tyEnv tcEnv mod) mod
 
 
--- Generates untyped AbstractCurry code from a CurrySyntax module. The dummy
--- type 'prelude.untyped' takes place in every function type annotation.
-genUntypedAbstract :: Module -> CurryProg
-genUntypedAbstract mod
-   = genAbstract (genAbstractEnv UntypedAcy emptyTopEnv mod) mod
+-- Generates untyped AbstractCurry code from a CurrySyntax module. The type
+-- signature takes place in every function type annotation, if it exists, 
+-- otherwise the dummy type "prelude.untyped" is used.
+genUntypedAbstract :: ValueEnv -> TCEnv -> Module -> CurryProg
+genUntypedAbstract tyEnv tcEnv mod
+   = genAbstract (genAbstractEnv UntypedAcy tyEnv tcEnv mod) mod
 
 
 -------------------------------------------------------------------------------
@@ -59,7 +60,7 @@ genAbstract env (Module mid exp decls)
 			(funcDecls partitions)
 	 (ops, _)   
 	     = mapfoldl genOpDecl env (reverse (opDecls partitions))
-     in  CurryProg modname imps types funcs ops -- CurryProg modname imps types funcs ops
+     in  CurryProg modname imps types funcs ops
 
 
 -------------------------------------------------------------------------------
@@ -142,7 +143,7 @@ genTypeDecl :: AbstractEnv -> Decl -> (CTypeDecl, AbstractEnv)
 genTypeDecl env (DataDecl _ ident params cdecls)
    = let (idxs, env1)    = mapfoldl genTVarIndex env params
 	 (cdecls', env2) = mapfoldl genConsDecl env1 cdecls
-     in  (CType (genQName env2 (qualifyWith (moduleId env) ident))
+     in  (CType (genQName True env2 (qualifyWith (moduleId env) ident))
 	        (genVisibility env2 ident)
 	        (zip idxs (map name params))
 	        cdecls',
@@ -150,7 +151,7 @@ genTypeDecl env (DataDecl _ ident params cdecls)
 genTypeDecl env (TypeDecl _ ident params typeexpr)
    = let (idxs, env1)      = mapfoldl genTVarIndex env params
 	 (typeexpr', env2) = genTypeExpr env1 typeexpr
-     in  (CTypeSyn (genQName env2 (qualifyWith (moduleId env) ident))
+     in  (CTypeSyn (genQName True env2 (qualifyWith (moduleId env) ident))
 	           (genVisibility env2 ident)
 	           (zip idxs (map name params))
 	           typeexpr',
@@ -165,7 +166,7 @@ genTypeDecl env _
 genConsDecl :: AbstractEnv -> ConstrDecl -> (CConsDecl, AbstractEnv)
 genConsDecl env (ConstrDecl _ _ ident params)
    = let (params', env') = mapfoldl genTypeExpr env params
-     in  (CCons (genQName env' (qualifyWith (moduleId env) ident))
+     in  (CCons (genQName False env' (qualifyWith (moduleId env) ident))
 	        (length params)
 	        (genVisibility env' ident)
 	        params',
@@ -178,7 +179,7 @@ genConsDecl env (ConOpDecl pos ids ltype ident rtype)
 genTypeExpr :: AbstractEnv -> TypeExpr -> (CTypeExpr, AbstractEnv)
 genTypeExpr env (ConstructorType qident targs)
    = let (targs', env') = mapfoldl genTypeExpr env targs
-     in  (CTCons (genQName env' qident) targs', env')
+     in  (CTCons (genQName True env' qident) targs', env')
 genTypeExpr env (VariableType ident)
    | isJust midx = (CTVar (fromJust midx, name ident), env)
    | otherwise   = (CTVar (idx, name ident), env')
@@ -201,7 +202,7 @@ genTypeExpr env (ArrowType texpr1 texpr2)
 -- NOTE: every infix declaration must declare exactly one operator.
 genOpDecl :: AbstractEnv -> Decl -> (COpDecl, AbstractEnv)
 genOpDecl env (InfixDecl _ fix prec [ident])
-   = (COp (genQName env (qualifyWith (moduleId env) ident))
+   = (COp (genQName False env (qualifyWith (moduleId env) ident))
           (genFixity fix)
           prec,
       env)
@@ -224,7 +225,7 @@ genFixity Infix  = CInfixOp
 genFuncDecl :: Bool -> AbstractEnv -> (Ident, [Decl]) -> (CFuncDecl, AbstractEnv)
 genFuncDecl isLocal env (ident, decls)
    | not (null decls)
-     = let name          = genQName env (qualify ident)
+     = let name          = genQName False env (qualify ident)
 	   visibility    = genVisibility env ident
            evalannot     = maybe CFlex 
 	                         (\ (EvalAnnot _ _ ea) -> genEvalAnnot ea)
@@ -417,7 +418,7 @@ genLocalDecls env decls
         in  (CPVar (idx, name ident), env)
    genLocalPattern pos env (ConstructorPattern qident args)
       = let (args', env') = mapfoldl (genLocalPattern pos) env args
-	in (CPComb (genQName env qident) args', env')
+	in (CPComb (genQName False env qident) args', env')
    genLocalPattern pos env (InfixPattern larg qident rarg)
       = genLocalPattern pos env (ConstructorPattern qident [larg, rarg])
    genLocalPattern pos env (ParenPattern patt)
@@ -457,13 +458,13 @@ genExpr pos env (Literal lit)
        _         -> (CLit (genLiteral lit), env)
 genExpr _ env (Variable qident)
    | isJust midx          = (CVar (fromJust midx, name ident), env)
-   | qident == qSuccessId = (CSymbol (genQName env qSuccessFunId), env)
-   | otherwise            = (CSymbol (genQName env qident), env)
+   | qident == qSuccessId = (CSymbol (genQName False env qSuccessFunId), env)
+   | otherwise            = (CSymbol (genQName False env qident), env)
  where
    ident = unqualify qident
    midx  = getVarIndex env ident
 genExpr _ env (Constructor qident)
-   = (CSymbol (genQName env qident), env)
+   = (CSymbol (genQName False env qident), env)
 genExpr pos env (Paren expr)
    = genExpr pos env expr
 genExpr pos env (Typed expr _)
@@ -576,7 +577,7 @@ genPattern _ env (VariablePattern ident)
      in  (CPVar (idx, name ident), env')
 genPattern pos env (ConstructorPattern qident args)
    = let (args', env') = mapfoldl (genPattern pos) env args
-     in  (CPComb (genQName env qident) args', env')
+     in  (CPComb (genQName False env qident) args', env')
 genPattern pos env (InfixPattern larg qident rarg)
    = genPattern pos env (ConstructorPattern qident [larg, rarg])
 genPattern pos env (ParenPattern patt)
@@ -606,21 +607,46 @@ genLiteral :: Literal -> CLiteral
 genLiteral (Char c)  = CCharc c
 genLiteral (Int _ i) = CIntc i
 genLiteral (Float f) = CFloatc f
-genLiteral _         = error "internal error: non-supported literal occured"
+genLiteral _         = internalError "non-supported literal occured"
 
 
---
-genQName :: AbstractEnv -> QualIdent -> QName
-genQName env qident
+-- Notes: 
+-- - Some prelude identifiers are not quialified. The first check ensures
+--   that they get a correct qualifier.
+-- - The test for unqualified identifiers is necessary to qualify
+--   them correctly in the untyped AbstractCurry representation.
+genQName :: Bool -> AbstractEnv -> QualIdent -> QName
+genQName isTypeCons env qident
    | isPreludeSymbol qident
-     = ("prelude", name (unqualify qident))
+     = genQualName (qualQualify preludeMIdent qident)
+   | not (isQualified qident)
+     = genQualName (getQualIdent (unqualify qident))
    | otherwise
-     = let (mmid, ident) = splitQualIdent qident 
-           mid' = maybe (moduleId env)
-	                (\mid -> fromMaybe mid 
-	                                   (lookupEnv mid (imports env)))
-			 mmid
-       in  (moduleName mid', name ident)
+     = genQualName qident
+ where
+  ident = unqualify qident
+
+  genQualName qid
+     = let (mmid, id) = splitQualIdent qid
+	   mid = maybe (moduleId env)
+		       (\mid' -> fromMaybe mid' (lookupEnv mid' (imports env)))
+		       mmid
+       in  (moduleName mid, name id)
+
+  getQualIdent id
+     | isTypeCons = case (lookupTC id (tconsEnv env)) of
+		      --[DataType qid _ _] -> qid
+		      --[RenamingType qid _ _] -> qid
+		      --[AliasType qid _ _] -> qid
+		      [info] -> origName info
+		      _ ->  qualifyWith (moduleId env) id
+     | otherwise  = case (lookupValue id (typeEnv env)) of
+		      --[DataConstructor qid _] -> qid
+		      --[NewtypeConstructor qid _] -> qid
+		      --[Value qid _] -> qid
+		      [info] -> origName info
+		      _ -> qualifyWith (moduleId env) id
+		      
 
 
 --
@@ -653,6 +679,7 @@ genEvalAnnot EvalChoice = CChoice
 --    acyType     - type of AbstractCurry code to be generated
 data AbstractEnv = AbstractEnv {moduleId   :: ModuleIdent,
 				typeEnv    :: ValueEnv,
+				tconsEnv   :: TCEnv,
 				exports    :: Env Ident (),
 				imports    :: Env ModuleIdent ModuleIdent,
 				varIndex   :: Int,
@@ -668,11 +695,12 @@ data AbstractType = TypedAcy | UntypedAcy deriving (Eq, Show)
 
 
 -- Initializes the AbstractCurry generator environment.
-genAbstractEnv :: AbstractType -> ValueEnv -> Module -> AbstractEnv
-genAbstractEnv absType tyEnv (Module mid exps decls)
+genAbstractEnv :: AbstractType -> ValueEnv -> TCEnv -> Module -> AbstractEnv
+genAbstractEnv absType tyEnv tcEnv (Module mid exps decls)
    = AbstractEnv 
        {moduleId     = mid,
 	typeEnv      = tyEnv,
+	tconsEnv     = tcEnv,
 	exports      = foldl (buildExportTable mid decls) emptyEnv exps',
 	imports      = foldl buildImportTable emptyEnv decls,
 	varIndex     = 0,
@@ -851,14 +879,6 @@ qSuccessFunId     = qualifyWith preludeMIdent (mkIdent "success")
 
 
 -- The following functions check whether a declaration is of a certain kind
---TypeSig :: Decl -> Bool
---TypeSig (TypeSig _ _ _) = True
---TypeSig _               = False
-
---EvalAnnot :: Decl -> Bool
---EvalAnnot (EvalAnnot _ _ _) = True
---EvalAnnot _                 = False
-
 isFunctionDecl :: Decl -> Bool
 isFunctionDecl (FunctionDecl _ _ _) = True
 isFunctionDecl _                    = False
@@ -923,6 +943,32 @@ toCSType (TypeArrow type1 type2)
 toCSType (TypeSkolem idx)
    = VariableType (mkVarIdent idx)
 
+{-
+--
+solveTypeSyn :: TCEnv -> QualIdent -> [TypeExpr] -> Maybe TypeExpr
+solveTypeSyn tcEnv qident args
+   = case (qualLookupTC qident tcEnv) of
+       [AliasType _ _ t] -> Just (adaptType args t)
+       _ -> case (lookupTC (unqualify qident) tcEnv) of
+	       [AliasType _ _ t] -> Just (adaptType args t)
+	       _ -> Nothing
+
+--
+adaptType :: [TypeExpr] -> Type -> TypeExpr
+adaptType args texpr = adapt (zip [0 .. ((length args) - 1)] args) texpr
+ where
+ adapt its (TypeConstructor qident types)
+    = ConstructorType qident (map (adapt its) types)
+ adapt its (TypeVariable idx)
+    = fromMaybe (internalError "cannot adapt type variable")
+	        (lookup idx its)
+ adapt its (TypeConstrained types _)
+    = adapt its (head types)
+ adapt its (TypeArrow type1 type2)
+    = ArrowType (adapt its type1) (adapt its type2)
+ adapt its (TypeSkolem idx)
+    = adapt its (TypeVariable idx)
+-}
 
 -- Generates a variable name from an index.
 mkVarIdent :: Int -> Ident

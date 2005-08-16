@@ -1,4 +1,4 @@
-% -*- LaTeX -*-
+
 % $Id: Modules.lhs,v 1.84 2004/02/10 17:46:07 wlux Exp $
 %
 % Copyright (c) 1999-2004, Wolfgang Lux
@@ -103,10 +103,10 @@ matching code.}
 >     if uacy 
 >        then 
 >          do 
->             let (tyEnv, m', intf) = simpleCheckModule mEnv m
->             genAbstract opts fn tyEnv m'
+>             let (tyEnv, tcEnv, m', intf) = simpleCheckModule mEnv m
+>             genAbstract opts fn tyEnv tcEnv m'
 >        else
->          do let (tyEnv,m',intf) = checkModule mEnv m
+>          do let (tyEnv,tcEnv,m',intf) = checkModule mEnv m
 >                 (il,dumps) =
 >                   transModule flat (debug opts) (trusted opts) mEnv tyEnv m'
 >                 (ccode,dumps') = ccodeModule (splitCode opts) mEnv il
@@ -118,7 +118,7 @@ matching code.}
 >             if flat || xml || acy || uacy
 >                then do when flat (genFlat opts fn mEnv m' il')
 >                        when xml  (genFlat opts fn mEnv m' il')
->                        when acy  (genAbstract opts fn tyEnv m')
+>                        when acy  (genAbstract opts fn tyEnv tcEnv m')
 >                        when uacy (return ())
 >                else writeCode (output opts) fn 
 >                               (maybe ccode (merge ccode) ccode')
@@ -139,9 +139,10 @@ matching code.}
 >   foldM (loadInterface paths [m]) emptyEnv
 >         [(p,m) | ImportDecl p m _ _ _ <- ds]
 
-> simpleCheckModule :: ModuleEnv -> Module -> (ValueEnv,Module,Interface)
-> simpleCheckModule mEnv (Module m es ds) = -- error (show ds')
->    (tyEnv'', modul, exportInterface modul pEnv' tcEnv'' tyEnv'')
+> simpleCheckModule :: ModuleEnv -> Module -> (ValueEnv,TCEnv,Module,Interface)
+> simpleCheckModule mEnv (Module m es ds) =
+>    (tyEnv'', tcEnv, modul, exportInterface modul pEnv' tcEnv'' tyEnv'')
+>    -- error (show (lookupTC (mkIdent "Int") tcEnv''))
 >   where (impDs,topDs) = partition isImportDecl ds
 >         (pEnv,tcEnv,tyEnv) = importModules mEnv impDs
 >         (pEnv',topDs') = precCheck m pEnv $ syntaxCheck m tyEnv
@@ -151,9 +152,9 @@ matching code.}
 >         modul = expandInterface (Module m es ds') tcEnv tyEnv
 >         (pEnv'',tcEnv'',tyEnv'') = qualifyEnv mEnv pEnv' tcEnv tyEnv
 
-> checkModule :: ModuleEnv -> Module -> (ValueEnv,Module,Interface)
+> checkModule :: ModuleEnv -> Module -> (ValueEnv,TCEnv,Module,Interface)
 > checkModule mEnv (Module m es ds) =
->   (tyEnv'',modul,exportInterface modul pEnv'' tcEnv'' tyEnv'')
+>   (tyEnv'',tcEnv'',modul,exportInterface modul pEnv'' tcEnv'' tyEnv'')
 >   where (impDs,topDs) = partition isImportDecl ds
 >         (pEnv,tcEnv,tyEnv) = importModules mEnv impDs
 >         (pEnv',topDs') = precCheck m pEnv $ syntaxCheck m tyEnv
@@ -232,14 +233,16 @@ matching code.}
 >    = writeFlatCurry fname (il2flatInterface fi menv il)
 >  where fname = fromMaybe (rootname sfn ++ fintExt) tfn
 
-> writeTypedAbs :: Maybe FilePath -> FilePath -> ValueEnv -> Module -> IO ()
-> writeTypedAbs tfn sfn tyEnv mod
->    = writeCurry fname (genTypedAbstract tyEnv mod)
+> writeTypedAbs :: Maybe FilePath -> FilePath -> ValueEnv -> TCEnv -> Module
+>	           -> IO ()
+> writeTypedAbs tfn sfn tyEnv tcEnv mod
+>    = writeCurry fname (genTypedAbstract tyEnv tcEnv mod)
 >  where fname = fromMaybe (rootname sfn ++ acyExt) tfn
 
-> writeUntypedAbs :: Maybe FilePath -> FilePath -> ValueEnv -> Module -> IO ()
-> writeUntypedAbs tfn sfn tyEnv mod
->    = writeCurry fname (genUntypedAbstract mod)
+> writeUntypedAbs :: Maybe FilePath -> FilePath -> ValueEnv -> TCEnv  
+>	             -> Module -> IO ()
+> writeUntypedAbs tfn sfn tyEnv tcEnv mod
+>    = writeCurry fname (genUntypedAbstract tyEnv tcEnv mod)
 >  where fname = fromMaybe (rootname sfn ++ uacyExt) tfn
 
 > writeCode :: Maybe FilePath -> FilePath -> Either CFile [CFile] -> IO ()
@@ -298,7 +301,7 @@ compilation of a goal is similar to that of a module.
 >   do
 >     Module m _ ds <- maybe (return emptyModule) parseGoalModule fn
 >     mEnv <- loadInterfaces paths (Module m Nothing ds)
->     let (_,_,intf) = checkModule mEnv (Module m Nothing ds)
+>     let (_,_,_,intf) = checkModule mEnv (Module m Nothing ds)
 >     return (bindModule intf mEnv,m,filter isImportDecl ds ++ [importMain m])
 >   where emptyModule = importPrelude "" (Module emptyMIdent Nothing [])
 >         parseGoalModule fn = liftM (parseModule False fn) (readFile fn)
@@ -542,12 +545,12 @@ flat and abstract curry representations depending on the specified option.
 >    info = genCurryInfo mEnv mod
 
 
-> genAbstract :: Options -> FilePath  -> ValueEnv -> Module -> IO ()
-> genAbstract opts fname tyEnv mod
+> genAbstract :: Options -> FilePath  -> ValueEnv -> TCEnv -> Module -> IO ()
+> genAbstract opts fname tyEnv tcEnv mod
 >    | abstract opts
->      = writeTypedAbs Nothing fname tyEnv mod
+>      = writeTypedAbs Nothing fname tyEnv tcEnv mod
 >    | untypedAbstract opts
->      = writeUntypedAbs Nothing fname tyEnv mod
+>      = writeUntypedAbs Nothing fname tyEnv tcEnv mod
 >    | otherwise
 >      = internalError "illegal option (genAbstract)"
 

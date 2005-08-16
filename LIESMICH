@@ -3,17 +3,19 @@
 ==  Münster-Curry-Compiler
 ==  Distribution zur Anwendung in PAKCS
 ==
-==  Letztes Update: 13.07.05
+==  Letztes Update: 16.08.05
 
 Diese Distribution enthält eine modifizierte Version des 
 Münster-Curry-Compilers (MCC). Dieser Compiler ist u.a. in der Lage aus 
-Curry-Programmen (entwickelt nach PAKCS-Standard) FlatCurry- (.fcy), 
-FlatInterface- (.fint) und FlatXML- (_flat.xml) Darstellungen zu generieren.
+Curry-Programmen (entwickelt nach PAKCS-Standard) Flat-Darstellungen
+(FlatCurry ".fcy", FlatInterface ".fint" und FlatXML "_flat.xml"),
+sowie Abatract-Darstellungen (AbstractCurry ".acy" und untyped
+AbstractCurry ".uacy") zu generieren.
 
 
 
-Installation
-------------
+1. Installation
+---------------
 
 Der Compiler wird durch Aufruf von 'make' im Verzeichnis 'mcc' installiert.
 Befindet sich im Verzeichnis 'mcc' bereits eine compilierte Version,
@@ -25,14 +27,31 @@ folgende ausführbare Dateien:
 	cyc		- der Curry-Compiler
 	cymake		- der Curry-Programm-Builder
 
-Das Kommando 'cyxml' zur Erzeugung von Flat-Dateien sollte in 
-Zukunft nicht mehr verwendet werden, da 'cyc' und 'cymake' nun
-über entsprechende Optionen verfügen.
+'cyc' übersetzt einzelne Curry-Programme, wobei allerding keine Import-
+Abhängigkeiten aufgelöst werden. Sämtliche importierten Module müssen
+bereits übersetzt sein, ansonsten kommt es zu einer Fehlermeldung.
+'cymake' übersetzt ein Curry-Programm, sowie auch alle importierten
+Module.
+Beide Kommandos funktionieren mit allen in den folgenden Abschnitten
+beschriebenen Optionen.
 
 
 
-Erzeugung von FlatCurry- und FlatXML-Programmen
------------------------------------------------
+2. Kommandoübersicht
+--------------------
+
+In der folgenden Tabelle sind die Optionen zur Generierung der jeweiligen
+Darstellungen für die Kommandos 'cyc' und 'cymake' aufgelistet:
+
+	--flat		: Erzeugt FlatCurry- und FlatInterface-Datei
+	--xml		: Erzeugt FlatXML-Datei
+	--acy		: Erzeugt (typinferierte) AbstractCurry-Datei
+	--uacy		: Erzeugt ungetypte AbstractCurry-Datei
+
+
+
+3. Erzeugung von FlatCurry- und FlatXML-Programmen
+--------------------------------------------------
 
 Die Übersetzung eines Curry-Programms 'file.curry', sowie sämtlicher
 importierter Module nach FlatCurry bzw. FlatInterface, bewirkt folgendes
@@ -53,10 +72,10 @@ Die hierdurch generierte Flat-XML-Datei hat die Endung '_flat.xml'.
 
 
 
-Erzeugung von AbstractCurry-Programmen
---------------------------------------
+4. Erzeugung von AbstractCurry-Programmen
+-----------------------------------------
 
-Die Übersetzung eines Curry-Programms 'file.curry' nach (typinferiertem)
+Die Übersetzung eines Curry-Programms 'file.curry' nach (typgeprüftem)
 AbstractCurry bewirkt folgendes Kommando:
 
 	cymake --acy <filename>
@@ -70,20 +89,26 @@ für alle Importe erzeugt. Dies ist notwendig, da die entsprechenden
 Interfaces für die Typinferenz und die statisch-semantische Analyse
 benötigt werden.
 
-Während 'cymake' auch alle Importabhängigkeiten auflöst und die entsprechenden
-Module in die gewünschte(n) Darstellung(en) übersetzt, können mittels
-'cyc' einzelne Dateien übersetzt werden. Die hierzu nötigen Optionen
-sind die selben, wie bei 'cymake'.
+Ungetypte, bzw. typsignierte AbstractCurry-Programme werden mit folgendem
+Kommando generiert:
+
+	cymake --uacy <filename>
+
+Die hierdurch generierte Datei besitzt die Endung ".uacy".
+
+Die Generierung des ungetypten AbstractCurry-Programms findet ohne
+Typüberprüfung statt (d.h. auch Programme mit Typfehlern werden übersetzt).
+Alle Funktionen besitzen entweder die im Quellprogramm angegebenen Typsignatur,
+oder, sofern diese nicht vorhanden ist, den Dummy-Typ "prelude.untyped".
+
+Auch bei der Übersetzung in die ungetypte AbstractCurry-Darstellung werden
+für alle importierten Module FlatCurry-Dateien erzeugt.
 
 
 
-Anmerkungen
------------
 
-- Während 'cymake' auch alle Importabhängigkeiten auflöst und die
-  entsprechenden Module in die gewünschte(n) Darstellung(en) übersetzt, können
-  mittels 'cyc' einzelne Dateien übersetzt werden. Die hierzu nötigen Optionen
-  sind die selben, wie bei 'cymake'.
+5. Anmerkungen
+--------------
 
 - Neben den gewünschten Darstellungen werden zusätzlich noch
   Interface-Dateien (Endung ".icurry") erzeugt. Diese werden
@@ -114,14 +139,26 @@ Bekannte Probeleme
 - Die Regeln einer Funktionsdeklaration müssen immer zusammenstehen, d.h.
   nicht durch andere Deklarationen unterbrochen werden.
 
-- Aufgrund eines Fehlers im Parser ist es nicht möglich, den 
-  Listenoperator (:), den Konstruktor für leere Listen [], sowie 
-  den Unit-Konstruktor () zu qualifizieren (z.B. führt 'prelude.:' führt 
-  zu einem Fehler).
+- In einigen Fällen kann es vorkommen, daß die Angabe der Funktionsstelligkeit
+  in FlatCurry-Programmen nicht mit der Anzahl der Argumente übereinstimmt.
+  Der MCC berechnet Funktionsstelligkeiten anhand der Funktionstypen.
+
+- Es ist bislang nicht möglich, den Konstruktor für leere Listen [], sowie 
+  den Unit-Konstruktor () zu qualifizieren (z.B. führt 'prelude.[]' zu 
+  einem Fehler). Der Listenkonstruktor (:), sowie Tupel-Konstruktoren
+  dagegen sind qualifizierbar.
 
 - FlatXML-Übersetzungen können derzeit mittels der Funktionen aus dem
   PAKCS-Modul "FlatXML" noch nicht eingelesen werden, da es Unstimmigkeiten
   zwischen dem generierten und den erforderlichen Formaten gibt.
+
+- Bei der Erzeugung von typgeprüftem AbstractCurry können die im Quelltext
+  verwendeten Bezeichner für Typvariablen nicht ins AbstractCurry-Programm
+  übernommen werden. Stattdessen generiert der Übersetzer neue
+  Bezeichner.
+
+- Bei der Erzeugung von ungetyptem AbstractCurry werden Typsynonyme in
+  Typsignaturen von Funktionen nicht dereferenziert.
 
 - Leider gibt der MCC derzeit noch keinerlei Warnungen aus.
 
