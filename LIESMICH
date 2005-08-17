@@ -125,7 +125,7 @@ für alle importierten Module FlatCurry-Dateien erzeugt.
 
 
 
-Bekannte Probeleme
+Bekannte Probleme
 ------------------
 
 - Lambda-, do-, if-, case-, oder let-Ausdrücke, die in Argumenten von
