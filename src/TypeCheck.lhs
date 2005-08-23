@@ -1,4 +1,3 @@
-% -*- LaTeX -*-
 % $Id: TypeCheck.lhs,v 1.90 2004/11/06 18:34:07 wlux Exp $
 %
 % Copyright (c) 1999-2004, Wolfgang Lux
@@ -380,7 +379,7 @@ signature the declared type must be too general.
 > genVar poly m tcEnv sigs lvs theta p v tyEnv =
 >   case lookupTypeSig v sigs of
 >     Just sigTy
->       | sigma == expandPolyType tcEnv sigTy -> tyEnv'
+>       | cmpTypes sigma (expandPolyType tcEnv sigTy) -> tyEnv'
 >       | otherwise -> errorAt p (typeSigTooGeneral m what sigTy sigma)
 >     Nothing -> tyEnv'
 >   where what = text (if poly then "Function:" else "Variable:") <+> ppIdent v
@@ -390,6 +389,7 @@ signature the declared type must be too general.
 >           | n > 0 = internalError "genVar"
 >           | poly = gen lvs ty
 >           | otherwise = monoType ty
+>         cmpTypes (ForAll _ t1) (ForAll _ t2) = equTypes t1 t2
 
 > tcEquation :: ModuleIdent -> TCEnv -> ValueEnv -> SigEnv -> Equation
 >            -> TcState Type

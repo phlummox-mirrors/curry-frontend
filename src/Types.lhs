@@ -1,8 +1,9 @@
-% -*- LaTeX -*-
 % $Id: Types.lhs,v 1.11 2004/02/08 22:14:02 wlux Exp $
 %
 % Copyright (c) 2002, Wolfgang Lux
 % See LICENSE for the full license.
+%
+% Modified by Martin Engelke (men@informatik.uni-kiel.de)
 %
 \nwfilename{Types.lhs}
 \section{Types}
@@ -98,6 +99,37 @@ type variables because they cannot be generalized.
 >         skolems (TypeConstrained _ _) sks = sks
 >         skolems (TypeArrow ty1 ty2) sks = skolems ty1 (skolems ty2 sks)
 >         skolems (TypeSkolem k) sks = k : sks
+
+> equTypes :: Type -> Type -> Bool
+> equTypes t1 t2 = fst (equ [] t1 t2)
+>  where 
+>  equ is (TypeConstructor qid1 ts1) (TypeConstructor qid2 ts2)
+>     | qid1 == qid2 = equs is ts1 ts2
+>     | otherwise    = (False, is)
+>  equ is (TypeVariable i1) (TypeVariable i2)
+>     = maybe (True, (i1,i2):is) 
+>             (\ i2' -> (i2 == i2', is))
+>             (lookup i1 is)
+>  equ is (TypeConstrained ts1 i1) (TypeConstrained ts2 i2)
+>     = let (res, is') = equs is ts1 ts2
+>       in  maybe (res, (i1,i2):is')
+>                 (\ i2' -> (res && i2 == i2', is'))
+>                 (lookup i1 is')
+>  equ is (TypeArrow tf1 tt1) (TypeArrow tf2 tt2)
+>     = let (res1, is1) = equ is tf1 tf2
+>           (res2, is2) = equ is1 tt1 tt2
+>       in  (res1 && res2, is2)
+>  equ is (TypeSkolem i1) (TypeSkolem i2)
+>     = maybe (True, (i1,i2):is)
+>             (\ i2' -> (i2 == i2', is))
+>             (lookup i1 is)
+>  equ is _ _ = (False, is)
+>
+>  equs is [] [] = (True, is)
+>  equs is (t1:ts1) (t2:ts2)
+>     = let (res1, is1) = equ is t1 t2
+>           (res2, is2) = equs is1 ts1 ts2
+>       in  (res1 && res2, is2)
 
 \end{verbatim}
 We support two kinds of quantifications of types here, universally

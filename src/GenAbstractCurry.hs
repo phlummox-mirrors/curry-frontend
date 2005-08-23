@@ -972,7 +972,8 @@ adaptType args texpr = adapt (zip [0 .. ((length args) - 1)] args) texpr
 
 -- Generates a variable name from an index.
 mkVarIdent :: Int -> Ident
-mkVarIdent i | i < 26    = mkIdent [chr (i + ord 'a')]
+mkVarIdent i | i < 0     = mkIdent ('b':(show (i * (-1)))) 
+             | i < 26    = mkIdent [chr (i + ord 'a')]
 	     | otherwise = mkIdent ('a':(show i))
        
 
