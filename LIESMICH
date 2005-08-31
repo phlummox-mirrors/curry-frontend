@@ -3,7 +3,7 @@
 ==  Münster-Curry-Compiler
 ==  Distribution zur Anwendung in PAKCS
 ==
-==  Letztes Update: 16.08.05
+==  Letztes Update: 31.08.05
 
 Diese Distribution enthält eine modifizierte Version des 
 Münster-Curry-Compilers (MCC). Dieser Compiler ist u.a. in der Lage aus 
@@ -17,9 +17,25 @@ AbstractCurry ".uacy") zu generieren.
 1. Installation
 ---------------
 
-Der Compiler wird durch Aufruf von 'make' im Verzeichnis 'mcc' installiert.
-Befindet sich im Verzeichnis 'mcc' bereits eine compilierte Version,
-so wird empfohlen vor einer erneuten Installation 'make clean' auszuführen.
+1.1 Installation der Binary-Distribution
+
+Die Binary-Distribution befindet sich in einem tar-Archiv und wird
+durch folgendes Kommando entpackt:
+
+	tar zxvf <Distribution>.tar.gz
+
+Danach steht der Compiler im Verzeichnis 'mcc' zur Verfügung.
+
+
+1.2 Installation der Source-Distribution
+
+Nach dem Entpacken des tar-Archivs mittels
+
+	tar zxvf <Distribution>.tar.gz
+
+kann der Compiler durch Aufruf von 'make' im Verzeichnis 'mcc' installiert
+werden. Bei Recompilierung (z.B. nach Änderungen in der Quelldateien)
+wird empfohlen vor einer erneuten Installation 'make clean' auszuführen.
 
 Im Verzeichnis 'mcc/bin/' befinden sich nach erfolgreicher Installation
 folgende ausführbare Dateien:
