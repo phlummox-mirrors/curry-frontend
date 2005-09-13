@@ -117,7 +117,7 @@ visitFuncDecl env (FunctionDecl qident params typeexpr expr)
 		            (length params)
 			    Public
 			    ftypeexpr
-			    (External (show qident))
+			    (Rule [] (Var 0))
 	          | otherwise
                      = Func (visitQualIdent env3 qident)
 		            (length params)
