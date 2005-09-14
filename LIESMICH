@@ -126,18 +126,14 @@ für alle importierten Module FlatCurry-Dateien erzeugt.
 5. Anmerkungen
 --------------
 
-- Neben den gewünschten Darstellungen werden zusätzlich noch
-  Interface-Dateien (Endung ".icurry") erzeugt. Diese werden
-  intern vom MCC benötigt (z.B. zur Auflösung von Import-Abhängigkeiten).
-
 - Um die PAKCS-Bibliotheken (insbesondere die Prelude) für Übersetzungen 
   nutzen zu können muß die Umgebungsvariable 'PAKCS_LIB' auf die
   entsprechenden Pfade verweisen, z.B. mittels
 
 	export PAKCS_LIB=<pakcs path>/pacs/lib:<pakcs path>/pacs/lib/meta:...
 
- wobei <pakcs path> das Verzeichnis ist, das die PAKCS-Distribution
- enthält.
+  wobei <pakcs path> das Verzeichnis ist, das die PAKCS-Distribution
+  enthält.
 
 
 
