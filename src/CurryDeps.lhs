@@ -1,4 +1,4 @@
-% -*- LaTeX -*-
+
 % $Id: CurryDeps.lhs,v 1.14 2004/02/09 17:10:05 wlux Exp $
 %
 % Copyright (c) 2002-2004, Wolfgang Lux
@@ -250,19 +250,19 @@ of dependend program files.
 >   where 
 >         compCommands (Source fn' ms)
 >            | (acy || uacy) && rootname fn /= rootname fn'
->              = (smake ((interfName fn'):[flatName fn', flatIntName fn'])
->                       (fn' : catMaybes (map interf ms))
+>              = (smake ([flatName fn', flatIntName fn'])
+>                       (fn' : catMaybes (map flatInt ms))
 >                       "")
->                ++ " || (\\rm -f " ++ (interfName fn') ++ " && \\"
+>                ++ " || (\\" --rm -f " ++ (interfName fn') ++ " && \\"
 >                ++ unwords ["compile", "--flat", fn', "-o",
 >                            flatName fn']
 >                ++ ")"
 >            | otherwise
->              = (smake ((interfName fn'):(targetNames fn'))
->                       (fn' : catMaybes (map interf ms))
+>              = (smake (targetNames fn')
+>                       (fn' : catMaybes (map flatInt ms))
 >                       "")
->                ++ " || (\\rm -f " ++ (interfName fn')
->                ++ " && \\" ++ (compile fn') ++ ")"
+>                ++ " || (\\" --rm -f " ++ (interfName fn')
+>                ++ (compile fn') ++ ")"
 >         compCommands (Interface _) = []
 >         compCommands Unknown = []
 >
@@ -291,12 +291,15 @@ of dependend program files.
 >
 >         link fn' os = unwords ("link" : "-o" : fn' : os)
 >
->         interf m =
+>         flatInt m =
 >           case lookup m mEnv of
->             Just (Source fn' _) -> Just (interfName fn')
->             Just (Interface fn') -> Just fn'
->             Just Unknown -> Nothing
->             Nothing -> Nothing
+>             Just (Source fn' _) 
+>	        -> Just (flatIntName fn')
+>             Just (Interface fn') 
+>	        -> Just (flatIntName (basename (rootname fn')))
+>             Just Unknown 
+>	        -> Nothing
+>             _ -> Nothing
 >
 >         object (Source fn' _) = Just (head (targetNames fn'))
 >         object (Interface _) = Nothing

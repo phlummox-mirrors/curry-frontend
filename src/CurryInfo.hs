@@ -20,13 +20,14 @@ data CurryInfo = CurryInfo { modname  :: ModuleIdent,
 -------------------------------------------------------------------------------
 
 --
-genCurryInfo :: ModuleEnv -> Module -> CurryInfo
-genCurryInfo menv mod = CurryInfo { modname  = genModuleName menv mod,
-				    exports  = genExports menv mod,
-				    publics  = genExportInfo menv mod,
-				    ops      = genOpInfo menv mod,
-				    typesyns = genTypeSynInfo menv mod
-				  }
+genCurryInfo :: ModuleEnv -> TCEnv -> Module -> CurryInfo
+genCurryInfo menv tcEnv mod 
+   = CurryInfo { modname  = genModuleName menv mod,
+		 exports  = genExports menv mod,
+		 publics  = genExportInfo menv mod,
+		 ops      = genOpInfo menv mod,
+		 typesyns = genTypeSynInfo tcEnv mod
+	       }
 
 --
 getModuleName :: CurryInfo -> ModuleIdent
@@ -219,37 +220,113 @@ collectIInfixDecls mident (_:decls) = collectIInfixDecls mident decls
 -------------------------------------------------------------------------------
 
 --
-genTypeSynInfo :: ModuleEnv -> Module -> [IDecl]
-genTypeSynInfo _ (Module mident expspec decls)
-   = collectITypeDecls mident decls
+genTypeSynInfo :: TCEnv -> Module -> [IDecl]
+genTypeSynInfo tcEnv (Module mident expspec decls)
+   = map (genTypeSynDecl mident tcEnv) 
+         [ident | ident@(TypeDecl _ _ _ _) <- decls]
+--   = collectITypeDecls tcEnv mident decls
+
+--
+--genTypeSynDecl :: ModuleIdent -> TCEnv -> QualIdent -> IDecl
+--genTypeSynDecl mident tcEnv qident
+--   = maybe (internalError "missing definition for \"" ++ show qident ++ "\"")
+--           (\typeexpr -> ITypeDecl (first (moduleName mident)) 
+--	                           qident
+--	                           BLA
+--	                           typeexpr)
+
+--
+--collectITypeDecls :: TCEnv -> ModuleIdent -> [Decl] -> [IDecl]
+--collectITypeDecls _ mident [] = []
+--collectITypeDecls tcEnv mident ((TypeDecl pos ident params typeexpr):decls)
+----   = ITypeDecl pos qident params 
+----               (fromMaybe (simplifyTypeExpr typeexpr)
+----		          (lookupAliasType qident tcEnv)
+---- where qident = qualifyWith mident ident
+--   = (ITypeDecl pos (qualifyWith mident ident) params 
+--                (simplifyTypeExpr tcEnv typeexpr))
+--     :(collectITypeDecls tcEnv mident decls)
+--collectITypeDecls tcEnv mident (_:decls) 
+--   = collectITypeDecls tcEnv mident decls
+
+--
+genTypeSynDecl :: ModuleIdent -> TCEnv -> Decl -> IDecl
+genTypeSynDecl mid tcEnv (TypeDecl pos ident params typeexpr)
+   = ITypeDecl pos (qualifyWith mid ident) params 
+               (modifyTypeExpr tcEnv typeexpr)
+genTypeSynDecl _ _ _ 
+   = internalError "@CurryInfo.genTypeSynDecl: illegal declaration"
 
 
 --
-collectITypeDecls :: ModuleIdent -> [Decl] -> [IDecl]
-collectITypeDecls mident [] = []
-collectITypeDecls mident ((TypeDecl pos ident params typeexpr):decls)
-   = (ITypeDecl pos (qualifyWith mident ident) params 
-                (simplifyTypeExpr typeexpr))
-     :(collectITypeDecls mident decls)
-collectITypeDecls mident (_:decls) = collectITypeDecls mident decls
-
-
---
-simplifyTypeExpr :: TypeExpr -> TypeExpr
-simplifyTypeExpr (ConstructorType qident typeexprs)
-   = ConstructorType qident (map simplifyTypeExpr typeexprs)
-simplifyTypeExpr (VariableType ident)
+modifyTypeExpr :: TCEnv -> TypeExpr -> TypeExpr
+modifyTypeExpr tcEnv (ConstructorType qident typeexprs)
+   = case (qualLookupTC qident tcEnv) of
+       [AliasType _ arity rhstype]
+          -> modifyTypeExpr tcEnv 
+	                    (genTypeSynDeref (zip [0 .. (arity-1)] typeexprs)
+			                     rhstype)
+       _  -> ConstructorType (fromMaybe qident (lookupTCId qident tcEnv))
+                             (map (modifyTypeExpr tcEnv) typeexprs)
+modifyTypeExpr _ (VariableType ident)
    = VariableType ident
-simplifyTypeExpr (ArrowType type1 type2)
-   = ArrowType (simplifyTypeExpr type1) (simplifyTypeExpr type2)
-simplifyTypeExpr (TupleType typeexprs)
+modifyTypeExpr tcEnv (ArrowType type1 type2)
+   = ArrowType (modifyTypeExpr tcEnv type1) (modifyTypeExpr tcEnv type2)
+modifyTypeExpr tcEnv (TupleType typeexprs)
    | null typeexprs 
      = ConstructorType qUnitId []
    | otherwise
      = ConstructorType (qTupleId (length typeexprs)) 
-                       (map simplifyTypeExpr typeexprs)
-simplifyTypeExpr (ListType typeexpr)
-   = (ConstructorType (qualify listId) [(simplifyTypeExpr typeexpr)])
+                       (map (modifyTypeExpr tcEnv) typeexprs)
+modifyTypeExpr tcEnv (ListType typeexpr)
+   = (ConstructorType (qualify listId) [(modifyTypeExpr tcEnv typeexpr)])
+
+--
+genTypeSynDeref :: [(Int,TypeExpr)] -> Type -> TypeExpr
+genTypeSynDeref its (TypeConstructor qident typeexprs)
+   = ConstructorType qident (map (genTypeSynDeref its) typeexprs)
+genTypeSynDeref its (TypeVariable i)
+   = fromMaybe (internalError ("@CurryInfo.genTypeSynDeref: " ++
+			       "unkown type var index"))
+               (lookup i its)
+genTypeSynDeref its (TypeConstrained typeexprs i)
+   = internalError ("@CurryInfo.genTypeSynDeref: " ++
+		    "illegal constrained type occured")
+genTypeSynDeref its (TypeArrow type1 type2)
+   = ArrowType (genTypeSynDeref its type1) (genTypeSynDeref its type2)
+genTypeSynDeref its (TypeSkolem i)
+   = internalError ("@CurryInfo.genTypeSynDeref: " ++
+		    "illegal skolem type occured")
+
+--
+lookupTCId :: QualIdent -> TCEnv -> Maybe QualIdent
+lookupTCId qident tcEnv
+   = case (qualLookupTC qident tcEnv) of
+       [DataType qident' _ _]     -> Just qident'
+       [RenamingType qident' _ _] -> Just qident'
+       [AliasType qident' _ _]    -> Just qident'
+       _                          -> Nothing
+
+
+-- Looks up the declaration of a type synonym
+--lookupAliasType :: QualIdent -> TCEnv -> Maybe Type
+--lookupAliasType qident tcEnv 
+--   = case (qualLookupTC qident tcEnv) of
+--       [AliasType _ _ t]    -> Just t
+--       _                    -> Nothing
+
+--
+--convertType :: Type -> TypeExpr
+--convertType (TypeConstructor qident typeexprs)
+--   = ConstructorType qident (map convertType typeexprs)
+--convertType (TypeVariable idx)
+--   = VariableType (mkIdent ("a" ++ show idx))
+--convertType (TypeConstrained typeexprs idx)
+--   = internalError "constrained type occured in type synonym"
+--convertType (TypeArrow type1 type2)
+--   = ArrowType (convertType type1) (convertType type2)
+--convertType (TypeSkolem idx)
+--   = internalError "skolem type occured in type synonym"
 
 
 -------------------------------------------------------------------------------

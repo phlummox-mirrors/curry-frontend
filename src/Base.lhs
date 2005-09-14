@@ -1,4 +1,4 @@
-% -*- LaTeX -*-
+
 % $Id: Base.lhs,v 1.77 2004/02/15 22:10:25 wlux Exp $
 %
 % Copyright (c) 1999-2004, Wolfgang Lux
@@ -20,6 +20,7 @@ phases of the compiler.
 > import CurrySyntax
 > import CurryPP
 > import Pretty
+> import FlatCurry hiding (Fixity(..), TypeExpr, Expr(..))
 > import Env
 > import TopEnv
 > import List
@@ -28,6 +29,8 @@ phases of the compiler.
 > import Set
 > import Utils
 > import Maybe
+
+> import qualified FlatCurry(Fixity(..), TypeExpr)
 
 \end{verbatim}
 \paragraph{Types}
@@ -129,12 +132,80 @@ The following functions implement pretty-printing for types.
 \paragraph{Interfaces}
 The compiler maintains a global environment holding all (directly or
 indirectly) imported interfaces.
+
+The function \texttt{bindFlatInterfac} transforms FlatInterface
+information (type \texttt{FlatCurry.Prog} to MCC interface declarations
+(type \texttt{CurrySyntax.IDecl}. This is necessary to process
+FlatInterfaces instead of ".icurry" files when using MCC as frontend
+for PAKCS.
 \begin{verbatim}
 
 > type ModuleEnv = Env ModuleIdent [IDecl]
 
 > bindModule :: Interface -> ModuleEnv -> ModuleEnv
 > bindModule (Interface m ds) = bindEnv m ds
+
+> bindFlatInterface :: Prog -> ModuleEnv -> ModuleEnv
+> bindFlatInterface (Prog m imps ts fs os)
+>    = bindModule (Interface (mkMIdent [m])
+>	                     ((map genIImportDecl imps)
+>		              ++ (map genITypeDecl ts')
+>		              ++ (map genIFuncDecl fs)
+>		              ++ (map genIOpDecl os)))
+>  where
+>  genIImportDecl :: String -> IDecl
+>  genIImportDecl imp = IImportDecl pos (mkMIdent [imp])
+>
+>  genITypeDecl :: TypeDecl -> IDecl
+>  genITypeDecl (Type qn _ is cs)
+>     = IDataDecl pos 
+>                 (genQualIdent qn) 
+>                 (map (genVarIndexIdent "a") is) 
+>                 (map (Just . genConstrDecl) cs)
+>  genITypeDecl (TypeSyn qn _ is t)
+>     = ITypeDecl pos
+>                 (genQualIdent qn)
+>                 (map (genVarIndexIdent "a") is)
+>                 (genTypeExpr t)
+>
+>  genIFuncDecl :: FuncDecl -> IDecl
+>  genIFuncDecl (Func qn _ _ t _) 
+>     = IFunctionDecl pos (genQualIdent qn) (genTypeExpr t)
+>
+>  genIOpDecl :: OpDecl -> IDecl
+>  genIOpDecl (Op qn f p) = IInfixDecl pos (genInfix f) p  (genQualIdent qn)
+>
+>  genConstrDecl :: ConsDecl -> ConstrDecl
+>  genConstrDecl (Cons qn _ _ ts)
+>     = ConstrDecl pos [] (mkIdent (snd qn)) (map genTypeExpr ts)
+>
+>  genTypeExpr :: FlatCurry.TypeExpr -> CurrySyntax.TypeExpr
+>  genTypeExpr (TVar i)
+>     = VariableType (genVarIndexIdent "a" i)
+>  genTypeExpr (FuncType t1 t2) 
+>     = ArrowType (genTypeExpr t1) (genTypeExpr t2)
+>  genTypeExpr (TCons qn ts) 
+>     = ConstructorType (genQualIdent qn) (map genTypeExpr ts)
+>
+>  genInfix :: FlatCurry.Fixity -> Infix
+>  genInfix FlatCurry.InfixOp  = Infix
+>  genInfix FlatCurry.InfixlOp = InfixL
+>  genInfix FlatCurry.InfixrOp = InfixR
+>
+>  genQualIdent :: QName -> QualIdent
+>  --genQualIdent (_,name) = qualify (mkIdent name)
+>  genQualIdent (mod,name) = qualifyWith (mkMIdent [mod]) (mkIdent name)
+>
+>  genVarIndexIdent :: String -> Int -> Ident
+>  genVarIndexIdent v i = mkIdent (v ++ show i)
+>
+>  isSpecialPreludeType :: TypeDecl -> Bool
+>  isSpecialPreludeType (Type (mod,name) _ _ _) 
+>     = (name == "[]" || name == "()") && mod == "prelude"
+>  isSpecialPreludeType _ = False
+>
+>  pos = first m
+>  ts' = filter (not . isSpecialPreludeType) ts
 
 > lookupModule :: ModuleIdent -> ModuleEnv -> Maybe [IDecl]
 > lookupModule = lookupEnv
@@ -432,6 +503,7 @@ identifiers.
 >     (unitType,   [Data unitId 0 []]),
 >     (listType a, [Data nilId 0 [],Data consId 0 [a,listType a]])
 >   ]
+
 
 \end{verbatim}
 \paragraph{Free and bound variables}

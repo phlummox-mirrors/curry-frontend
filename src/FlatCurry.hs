@@ -20,7 +20,10 @@ module FlatCurry (Prog(..), QName, Visibility(..),
                   FuncDecl(..), Rule(..), 
                   CaseType(..), CombType(..), Expr(..), BranchExpr(..),
                   Pattern(..), Literal(..), 
-		  readFlatCurry, writeFlatCurry) where
+		  readFlatCurry, readFlatInterface, readFlat, 
+		  writeFlatCurry) where
+
+import Directory
 
 
 ------------------------------------------------------------------------------
@@ -296,22 +299,42 @@ data Literal = Intc   Integer
 ------------------------------------------------------------------------------
 ------------------------------------------------------------------------------
 
--- Reads a FlatCurry file and returns the corresponding FlatCurry
--- program term (type 'Prog')
-readFlatCurry :: String -> IO Prog
-readFlatCurry fn = do
-   let filename = if drop (length fn - 4) fn == ".fcy"  ||
-                     drop (length fn - 5) fn == ".fint"
-                    then fn 
-                    else fn++".fcy"
-   readFile filename >>= return . read
-            
+-- Reads a FlatCurry file (extension ".fcy") and returns the corresponding
+-- FlatCurry program term (type 'Prog') as a value of type 'Maybe'.
+readFlatCurry :: FilePath -> IO (Maybe Prog)
+readFlatCurry fn 
+   = do let filename = genFlatFilename ".fcy" fn
+        readFlat filename
 
+-- Reads a FlatInterface file (extension ".fint") and returns the
+-- corresponding term (type 'Prog') as a value of type 'Maybe'.
+readFlatInterface :: String -> IO (Maybe Prog)
+readFlatInterface fn
+   = do let filename = genFlatFilename ".fint" fn
+        readFlat filename
 
--- Writes a FlatCurry program term into a file
+-- Reads a Flat file and returns the corresponding term (type 'Prog') as
+-- a value of type 'Maybe'.
+readFlat :: FilePath -> IO (Maybe Prog)
+readFlat filename
+   = do fileExists <- doesFileExist filename
+	if fileExists then readFile filename >>= return . Just . read
+	              else return Nothing
+
+-- Writes a FlatCurry program term into a file.
 writeFlatCurry :: String -> Prog -> IO ()
 writeFlatCurry filename prog
    = writeFile filename (show prog)
+
+
+-- Add the extension 'ext' to the filename 'fn' if it doesn't
+-- already exist.
+genFlatFilename :: String -> FilePath -> FilePath
+genFlatFilename ext fn
+   | drop (length fn - length ext) fn == ext
+     = fn
+   | otherwise
+     = fn ++ ext
 
 
 ------------------------------------------------------------------------------

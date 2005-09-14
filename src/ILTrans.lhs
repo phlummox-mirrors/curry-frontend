@@ -1,4 +1,4 @@
-% -*- LaTeX -*-
+
 % $Id: ILTrans.lhs,v 1.86 2004/02/13 19:23:58 wlux Exp $
 %
 % Copyright (c) 1999-2003, Wolfgang Lux

@@ -1,4 +1,4 @@
-% -*- LaTeX -*-
+
 % $Id: CurrySyntax.lhs,v 1.43 2004/02/15 22:10:31 wlux Exp $
 %
 % Copyright (c) 1999-2004, Wolfgang Lux

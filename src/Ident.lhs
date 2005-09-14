@@ -1,4 +1,4 @@
-% -*- LaTeX -*-
+
 % $Id: Ident.lhs,v 1.21 2004/10/29 13:08:09 wlux Exp $
 %
 % Copyright (c) 1999-2004, Wolfgang Lux

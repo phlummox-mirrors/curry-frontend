@@ -1,4 +1,4 @@
-% -*- LaTeX -*-
+
 % $Id: Imports.lhs,v 1.25 2004/02/13 19:24:00 wlux Exp $
 %
 % Copyright (c) 2000-2003, Wolfgang Lux

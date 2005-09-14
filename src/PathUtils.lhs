@@ -1,4 +1,4 @@
-% -*- LaTeX -*-
+
 % $Id: PathUtils.lhs,v 1.5 2003/05/04 16:12:35 wlux Exp $
 %
 % Copyright (c) 1999-2003, Wolfgang Lux

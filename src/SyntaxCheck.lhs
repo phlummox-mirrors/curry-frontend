@@ -1,4 +1,4 @@
-% -*- LaTeX -*-
+
 % $Id: SyntaxCheck.lhs,v 1.53 2004/02/15 22:10:37 wlux Exp $
 %
 % Copyright (c) 1999-2004, Wolfgang Lux
@@ -435,7 +435,7 @@ top-level.
 >     [GlobalVar _] -> return (Variable v)
 >     [LocalVar v'] -> return (Variable (qualify v'))
 >     rs -> case (qualLookupVar (qualQualify m v) env) of
->             [] -> errorAt p (ambiguousIdent rs v) --errorAt p (undefinedVariable v)
+>             [] -> errorAt p (undefinedVariable v) -- errorAt p (ambiguousIdent rs v)
 >             [Constr _] -> return (Constructor v)
 >             [GlobalVar _] -> return (Variable v)
 >             [LocalVar v'] -> return (Variable (qualify v'))
@@ -536,12 +536,12 @@ top-level.
 > checkOp :: Position -> ModuleIdent -> RenameEnv -> InfixOp -> InfixOp
 > checkOp p m env op =
 >   case (qualLookupVar v env) of
->     [] ->errorAt p (undefinedVariable v)
+>     [] -> errorAt p (undefinedVariable v)
 >     [Constr _] -> InfixConstr v
 >     [GlobalVar _] -> InfixOp v
 >     [LocalVar v'] -> InfixOp (qualify v')
 >     rs -> case (qualLookupVar (qualQualify m v) env) of
->             [] -> errorAt p (ambiguousIdent rs v) --errorAt p (undefinedVariable v)
+>             [] -> errorAt p (undefinedVariable v) --errorAt p (ambiguousIdent rs v)
 >             [Constr _] -> InfixConstr v
 >             [GlobalVar _] -> InfixOp v
 >             [LocalVar v'] -> InfixOp (qualify v')
