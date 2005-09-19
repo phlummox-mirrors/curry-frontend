@@ -1,8 +1,10 @@
-% -*- LaTeX -*-
+
 % $Id: KindCheck.lhs,v 1.33 2004/02/13 19:24:04 wlux Exp $
 %
 % Copyright (c) 1999-2004, Wolfgang Lux
 % See LICENSE for the full license.
+%
+% Modified by Martin Engelke (men@informatik.uni-kiel.de)
 %
 \nwfilename{KindCheck.lhs}
 \section{Checking Type Definitions}
@@ -22,7 +24,7 @@ is defined more than once.
 \begin{verbatim}
 
 > module KindCheck(kindCheck,kindCheckGoal) where
-> import Base
+> import Base hiding (bindArity)
 > import Maybe
 > import TopEnv
 
@@ -39,15 +41,16 @@ finally, the declarations are checked within this environment.
 > kindCheck :: ModuleIdent -> TCEnv -> [Decl] -> [Decl]
 > kindCheck m tcEnv ds =
 >   case linear (map tconstr ds') of
->     Linear -> map (checkDecl kEnv) ds
+>     Linear -> map (checkDecl m kEnv) ds
 >     NonLinear (PIdent p tc) -> errorAt p (duplicateType tc)
 >   where ds' = filter isTypeDecl ds
 >         kEnv = foldr (bindArity m) (fmap tcArity tcEnv) ds'
 
 > kindCheckGoal :: TCEnv -> Goal -> Goal
 > kindCheckGoal tcEnv (Goal p e ds) =
->   Goal p (checkExpr kEnv p e) (map (checkDecl kEnv) ds)
+>   Goal p (checkExpr m kEnv p e) (map (checkDecl m kEnv) ds)
 >   where kEnv = fmap tcArity tcEnv
+>	  m = mkMIdent []
 
 \end{verbatim}
 The kind environment only needs to record the arity of each type constructor.
@@ -79,25 +82,25 @@ the right hand side. Function and pattern declarations must be
 traversed because they can contain local type signatures.
 \begin{verbatim}
 
-> checkDecl :: KindEnv -> Decl -> Decl
-> checkDecl kEnv (DataDecl p tc tvs cs) =
->   DataDecl p tc tvs' (map (checkConstrDecl kEnv tvs') cs)
+> checkDecl :: ModuleIdent -> KindEnv -> Decl -> Decl
+> checkDecl m kEnv (DataDecl p tc tvs cs) =
+>   DataDecl p tc tvs' (map (checkConstrDecl m kEnv tvs') cs)
 >   where tvs' = checkTypeLhs kEnv p tvs
-> checkDecl kEnv (NewtypeDecl p tc tvs nc) =
->   NewtypeDecl p tc tvs' (checkNewConstrDecl kEnv tvs' nc)
+> checkDecl m kEnv (NewtypeDecl p tc tvs nc) =
+>   NewtypeDecl p tc tvs' (checkNewConstrDecl m kEnv tvs' nc)
 >   where tvs' = checkTypeLhs kEnv p tvs
-> checkDecl kEnv (TypeDecl p tc tvs ty) =
->   TypeDecl p tc tvs' (checkClosedType kEnv p tvs' ty)
+> checkDecl m kEnv (TypeDecl p tc tvs ty) =
+>   TypeDecl p tc tvs' (checkClosedType m kEnv p tvs' ty)
 >   where tvs' = checkTypeLhs kEnv p tvs
-> checkDecl kEnv (TypeSig p vs ty) =
->   TypeSig p vs (checkType kEnv p ty)
-> checkDecl kEnv (FunctionDecl p f eqs) =
->   FunctionDecl p f (map (checkEquation kEnv) eqs)
-> checkDecl kEnv (PatternDecl p t rhs) =
->   PatternDecl p t (checkRhs kEnv rhs)
-> checkDecl kEnv (ExternalDecl p cc ie f ty) =
->   ExternalDecl p cc ie f (checkType kEnv p ty)
-> checkDecl _ d = d
+> checkDecl m kEnv (TypeSig p vs ty) =
+>   TypeSig p vs (checkType m kEnv p ty)
+> checkDecl m kEnv (FunctionDecl p f eqs) =
+>   FunctionDecl p f (map (checkEquation m kEnv) eqs)
+> checkDecl m kEnv (PatternDecl p t rhs) =
+>   PatternDecl p t (checkRhs m kEnv rhs)
+> checkDecl m kEnv (ExternalDecl p cc ie f ty) =
+>   ExternalDecl p cc ie f (checkType m kEnv p ty)
+> checkDecl _ _ d = d
 
 > checkTypeLhs :: KindEnv -> Position -> [Ident] -> [Ident]
 > checkTypeLhs kEnv p (tv:tvs)
@@ -108,20 +111,21 @@ traversed because they can contain local type signatures.
 >   where isTypeConstr tv = not (null (lookupKind tv kEnv))
 > checkTypeLhs kEnv p [] = []
 
-> checkConstrDecl :: KindEnv -> [Ident] -> ConstrDecl -> ConstrDecl
-> checkConstrDecl kEnv tvs (ConstrDecl p evs c tys) =
->   ConstrDecl p evs' c (map (checkClosedType kEnv p tvs') tys)
+> checkConstrDecl :: ModuleIdent -> KindEnv -> [Ident] -> ConstrDecl -> ConstrDecl
+> checkConstrDecl m kEnv tvs (ConstrDecl p evs c tys) =
+>   ConstrDecl p evs' c (map (checkClosedType m kEnv p tvs') tys)
 >   where evs' = checkTypeLhs kEnv p evs
 >         tvs' = evs' ++ tvs
-> checkConstrDecl kEnv tvs (ConOpDecl p evs ty1 op ty2) =
->   ConOpDecl p evs' (checkClosedType kEnv p tvs' ty1) op
->             (checkClosedType kEnv p tvs' ty2)
+> checkConstrDecl m kEnv tvs (ConOpDecl p evs ty1 op ty2) =
+>   ConOpDecl p evs' (checkClosedType m kEnv p tvs' ty1) op
+>             (checkClosedType m kEnv p tvs' ty2)
 >   where evs' = checkTypeLhs kEnv p evs
 >         tvs' = evs' ++ tvs
 
-> checkNewConstrDecl :: KindEnv -> [Ident] -> NewConstrDecl -> NewConstrDecl
-> checkNewConstrDecl kEnv tvs (NewConstrDecl p evs c ty) =
->   NewConstrDecl p evs' c (checkClosedType kEnv p tvs' ty)
+> checkNewConstrDecl :: ModuleIdent -> KindEnv -> [Ident] -> NewConstrDecl 
+>	     -> NewConstrDecl
+> checkNewConstrDecl m kEnv tvs (NewConstrDecl p evs c ty) =
+>   NewConstrDecl p evs' c (checkClosedType m kEnv p tvs' ty)
 >   where evs' = checkTypeLhs kEnv p evs
 >         tvs' = evs' ++ tvs
 
@@ -131,63 +135,64 @@ only traverse the structure of expressions in order to find local
 declaration groups.
 \begin{verbatim}
 
-> checkEquation :: KindEnv -> Equation -> Equation
-> checkEquation kEnv (Equation p lhs rhs) = Equation p lhs (checkRhs kEnv rhs)
+> checkEquation :: ModuleIdent -> KindEnv -> Equation -> Equation
+> checkEquation m kEnv (Equation p lhs rhs) = 
+>     Equation p lhs (checkRhs m kEnv rhs)
 
-> checkRhs :: KindEnv -> Rhs -> Rhs
-> checkRhs kEnv (SimpleRhs p e ds) =
->   SimpleRhs p (checkExpr kEnv p e) (map (checkDecl kEnv) ds)
-> checkRhs kEnv (GuardedRhs es ds) =
->   GuardedRhs (map (checkCondExpr kEnv) es) (map (checkDecl kEnv) ds)
+> checkRhs :: ModuleIdent -> KindEnv -> Rhs -> Rhs
+> checkRhs m kEnv (SimpleRhs p e ds) =
+>   SimpleRhs p (checkExpr m kEnv p e) (map (checkDecl m kEnv) ds)
+> checkRhs m kEnv (GuardedRhs es ds) =
+>   GuardedRhs (map (checkCondExpr m kEnv) es) (map (checkDecl m kEnv) ds)
 
-> checkCondExpr :: KindEnv -> CondExpr -> CondExpr
-> checkCondExpr kEnv (CondExpr p g e) =
->   CondExpr p (checkExpr kEnv p g) (checkExpr kEnv p e)
+> checkCondExpr :: ModuleIdent -> KindEnv -> CondExpr -> CondExpr
+> checkCondExpr m kEnv (CondExpr p g e) =
+>   CondExpr p (checkExpr m kEnv p g) (checkExpr m kEnv p e)
 
-> checkExpr :: KindEnv -> Position -> Expression -> Expression
-> checkExpr _ _ (Literal l) = Literal l
-> checkExpr _ _ (Variable v) = Variable v
-> checkExpr _ _ (Constructor c) = Constructor c
-> checkExpr kEnv p (Paren e) = Paren (checkExpr kEnv p e)
-> checkExpr kEnv p (Typed e ty) =
->   Typed (checkExpr kEnv p e) (checkType kEnv p ty)
-> checkExpr kEnv p (Tuple es) = Tuple (map (checkExpr kEnv p) es)
-> checkExpr kEnv p (List es) = List (map (checkExpr kEnv p) es)
-> checkExpr kEnv p (ListCompr e qs) =
->   ListCompr (checkExpr kEnv p e) (map (checkStmt kEnv p) qs)
-> checkExpr kEnv p (EnumFrom e) = EnumFrom (checkExpr kEnv p e)
-> checkExpr kEnv p (EnumFromThen e1 e2) =
->   EnumFromThen (checkExpr kEnv p e1) (checkExpr kEnv p e2)
-> checkExpr kEnv p (EnumFromTo e1 e2) =
->   EnumFromTo (checkExpr kEnv p e1) (checkExpr kEnv p e2)
-> checkExpr kEnv p (EnumFromThenTo e1 e2 e3) =
->   EnumFromThenTo (checkExpr kEnv p e1) (checkExpr kEnv p e2)
->                  (checkExpr kEnv p e3)
-> checkExpr kEnv p (UnaryMinus op e) = UnaryMinus op (checkExpr kEnv p e)
-> checkExpr kEnv p (Apply e1 e2) =
->   Apply (checkExpr kEnv p e1) (checkExpr kEnv p e2)
-> checkExpr kEnv p (InfixApply e1 op e2) =
->   InfixApply (checkExpr kEnv p e1) op (checkExpr kEnv p e2)
-> checkExpr kEnv p (LeftSection e op) = LeftSection (checkExpr kEnv p e) op
-> checkExpr kEnv p (RightSection op e) = RightSection op (checkExpr kEnv p e)
-> checkExpr kEnv p (Lambda ts e) = Lambda ts (checkExpr kEnv p e)
-> checkExpr kEnv p (Let ds e) =
->   Let (map (checkDecl kEnv) ds) (checkExpr kEnv p e)
-> checkExpr kEnv p (Do sts e) =
->   Do (map (checkStmt kEnv p) sts) (checkExpr kEnv p e)
-> checkExpr kEnv p (IfThenElse e1 e2 e3) =
->   IfThenElse (checkExpr kEnv p e1) (checkExpr kEnv p e2)
->              (checkExpr kEnv p e3)
-> checkExpr kEnv p (Case e alts) =
->   Case (checkExpr kEnv p e) (map (checkAlt kEnv) alts)
+> checkExpr :: ModuleIdent -> KindEnv -> Position -> Expression -> Expression
+> checkExpr _ _ _ (Literal l) = Literal l
+> checkExpr _ _ _ (Variable v) = Variable v
+> checkExpr _ _ _ (Constructor c) = Constructor c
+> checkExpr m kEnv p (Paren e) = Paren (checkExpr m kEnv p e)
+> checkExpr m kEnv p (Typed e ty) =
+>   Typed (checkExpr m kEnv p e) (checkType m kEnv p ty)
+> checkExpr m kEnv p (Tuple es) = Tuple (map (checkExpr m kEnv p) es)
+> checkExpr m kEnv p (List es) = List (map (checkExpr m kEnv p) es)
+> checkExpr m kEnv p (ListCompr e qs) =
+>   ListCompr (checkExpr m kEnv p e) (map (checkStmt m kEnv p) qs)
+> checkExpr m kEnv p (EnumFrom e) = EnumFrom (checkExpr m kEnv p e)
+> checkExpr m kEnv p (EnumFromThen e1 e2) =
+>   EnumFromThen (checkExpr m kEnv p e1) (checkExpr m kEnv p e2)
+> checkExpr m kEnv p (EnumFromTo e1 e2) =
+>   EnumFromTo (checkExpr m kEnv p e1) (checkExpr m kEnv p e2)
+> checkExpr m kEnv p (EnumFromThenTo e1 e2 e3) =
+>   EnumFromThenTo (checkExpr m kEnv p e1) (checkExpr m kEnv p e2)
+>                  (checkExpr m kEnv p e3)
+> checkExpr m kEnv p (UnaryMinus op e) = UnaryMinus op (checkExpr m kEnv p e)
+> checkExpr m kEnv p (Apply e1 e2) =
+>   Apply (checkExpr m kEnv p e1) (checkExpr m kEnv p e2)
+> checkExpr m kEnv p (InfixApply e1 op e2) =
+>   InfixApply (checkExpr m kEnv p e1) op (checkExpr m kEnv p e2)
+> checkExpr m kEnv p (LeftSection e op) = LeftSection (checkExpr m kEnv p e) op
+> checkExpr m kEnv p (RightSection op e) = RightSection op (checkExpr m kEnv p e)
+> checkExpr m kEnv p (Lambda ts e) = Lambda ts (checkExpr m kEnv p e)
+> checkExpr m kEnv p (Let ds e) =
+>   Let (map (checkDecl m kEnv) ds) (checkExpr m kEnv p e)
+> checkExpr m kEnv p (Do sts e) =
+>   Do (map (checkStmt m kEnv p) sts) (checkExpr m kEnv p e)
+> checkExpr m kEnv p (IfThenElse e1 e2 e3) =
+>   IfThenElse (checkExpr m kEnv p e1) (checkExpr m kEnv p e2)
+>              (checkExpr m kEnv p e3)
+> checkExpr m kEnv p (Case e alts) =
+>   Case (checkExpr m kEnv p e) (map (checkAlt m kEnv) alts)
 
-> checkStmt :: KindEnv -> Position -> Statement -> Statement
-> checkStmt kEnv p (StmtExpr e) = StmtExpr (checkExpr kEnv p e)
-> checkStmt kEnv p (StmtBind t e) = StmtBind t (checkExpr kEnv p e)
-> checkStmt kEnv p (StmtDecl ds) = StmtDecl (map (checkDecl kEnv) ds)
+> checkStmt :: ModuleIdent -> KindEnv -> Position -> Statement -> Statement
+> checkStmt m kEnv p (StmtExpr e) = StmtExpr (checkExpr m kEnv p e)
+> checkStmt m kEnv p (StmtBind t e) = StmtBind t (checkExpr m kEnv p e)
+> checkStmt m kEnv p (StmtDecl ds) = StmtDecl (map (checkDecl m kEnv) ds)
 
-> checkAlt :: KindEnv -> Alt -> Alt
-> checkAlt kEnv (Alt p t rhs) = Alt p t (checkRhs kEnv rhs)
+> checkAlt :: ModuleIdent -> KindEnv -> Alt -> Alt
+> checkAlt m kEnv (Alt p t rhs) = Alt p t (checkRhs m kEnv rhs)
 
 \end{verbatim}
 The parser cannot distinguish unqualified nullary type constructors
@@ -196,29 +201,34 @@ identifier in a position where a type variable is admissible, it will
 interpret the identifier as such.
 \begin{verbatim}
 
-> checkClosedType :: KindEnv -> Position -> [Ident] -> TypeExpr -> TypeExpr
-> checkClosedType kEnv p tvs ty = checkClosed p tvs (checkType kEnv p ty)
+> checkClosedType :: ModuleIdent -> KindEnv -> Position -> [Ident] -> TypeExpr 
+>	  -> TypeExpr
+> checkClosedType m kEnv p tvs ty = checkClosed p tvs (checkType m kEnv p ty)
 
-> checkType :: KindEnv -> Position -> TypeExpr -> TypeExpr
-> checkType kEnv p (ConstructorType tc tys) =
+> checkType :: ModuleIdent -> KindEnv -> Position -> TypeExpr -> TypeExpr
+> checkType m kEnv p (ConstructorType tc tys) =
 >   case qualLookupKind tc kEnv of
 >     []
 >       | not (isQualified tc) && null tys -> VariableType (unqualify tc)
 >       | otherwise -> errorAt p (undefinedType tc)
 >     [n]
->       | n == n' -> ConstructorType tc (map (checkType kEnv p) tys)
+>       | n == n' -> ConstructorType tc (map (checkType m kEnv p) tys)
 >       | otherwise -> errorAt p (wrongArity tc n n')
->       where n' = length tys
->     _ -> errorAt p (ambiguousType tc)
-> checkType kEnv p (VariableType tv)
+>     _ -> case (qualLookupKind (qualQualify m tc) kEnv) of
+>            [n] 
+>               | n == n' -> ConstructorType tc (map (checkType m kEnv p) tys)
+>               | otherwise -> errorAt p (wrongArity tc n n')
+>            _ -> errorAt p (ambiguousType tc)
+>  where n' = length tys 
+> checkType m kEnv p (VariableType tv)
 >   | tv == anonId = VariableType tv
->   | otherwise = checkType kEnv p (ConstructorType (qualify tv) [])
-> checkType kEnv p (TupleType tys) =
->   TupleType (map (checkType kEnv p) tys)
-> checkType kEnv p (ListType ty) =
->   ListType (checkType kEnv p ty)
-> checkType kEnv p (ArrowType ty1 ty2) =
->   ArrowType (checkType kEnv p ty1) (checkType kEnv p ty2)
+>   | otherwise = checkType m kEnv p (ConstructorType (qualify tv) [])
+> checkType m kEnv p (TupleType tys) =
+>   TupleType (map (checkType m kEnv p) tys)
+> checkType m kEnv p (ListType ty) =
+>   ListType (checkType m kEnv p ty)
+> checkType m kEnv p (ArrowType ty1 ty2) =
+>   ArrowType (checkType m kEnv p ty1) (checkType m kEnv p ty2)
 
 > checkClosed :: Position -> [Ident] -> TypeExpr -> TypeExpr
 > checkClosed p tvs (ConstructorType tc tys) =

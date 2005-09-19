@@ -1,5 +1,5 @@
 module CurryInfo (CurryInfo, genCurryInfo,
-		  getModuleName, getPublicIds,
+		  emptyCurryInfo, getModuleName, getPublicIds,
                   getExports, getOpFixity, getTypeSyns) where
 
 import CurrySyntax
@@ -28,6 +28,15 @@ genCurryInfo menv tcEnv mod
 		 ops      = genOpInfo menv mod,
 		 typesyns = genTypeSynInfo tcEnv mod
 	       }
+
+--
+emptyCurryInfo :: CurryInfo
+emptyCurryInfo = CurryInfo { modname  = mkMIdent [],
+			     exports  = [],
+			     publics  = [],
+			     ops      = [],
+			     typesyns = []
+			   }
 
 --
 getModuleName :: CurryInfo -> ModuleIdent
@@ -195,7 +204,7 @@ getIdentsFromIDecls ((INewtypeDecl _ qident _ ncdecl):idecls)
    = (getIdentFromNewConstrDecl ncdecl):(getIdentsFromIDecls idecls)
 getIdentsFromIDecls ((ITypeDecl _ qident _ _):idecls)
    = (unqualify qident):(getIdentsFromIDecls idecls)
-getIdentsFromIDecls ((IFunctionDecl _ qident _):idecls)
+getIdentsFromIDecls ((IFunctionDecl _ qident _ _):idecls)
    = (unqualify qident):(getIdentsFromIDecls idecls)
 
 

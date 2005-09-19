@@ -117,14 +117,14 @@ and \texttt{expandMonoTypes}, respectively.
 > bindTC m tcEnv (DataDecl _ tc tvs cs) =
 >   bindTypeInfo DataType m tc tvs (map (Just . mkData) cs)
 >   where mkData (ConstrDecl _ evs c tys) = Data c (length evs) tys'
->           where tys' = expandMonoTypes tcEnv (cleanTVars tvs evs) tys
+>           where tys' = expandMonoTypes m tcEnv (cleanTVars tvs evs) tys
 >         mkData (ConOpDecl _ evs ty1 op ty2) = Data op (length evs) tys'
->           where tys' = expandMonoTypes tcEnv (cleanTVars tvs evs) [ty1,ty2]
+>           where tys' = expandMonoTypes m tcEnv (cleanTVars tvs evs) [ty1,ty2]
 > bindTC m tcEnv (NewtypeDecl _ tc tvs (NewConstrDecl _ evs c ty)) =
 >   bindTypeInfo RenamingType m tc tvs (Data c (length evs) ty')
->   where ty' = expandMonoType tcEnv (cleanTVars tvs evs) ty
+>   where ty' = expandMonoType m tcEnv (cleanTVars tvs evs) ty
 > bindTC m tcEnv (TypeDecl _ tc tvs ty) =
->   bindTypeInfo AliasType m tc tvs (expandMonoType tcEnv tvs ty)
+>   bindTypeInfo AliasType m tc tvs (expandMonoType m tcEnv tvs ty)
 > bindTC _ _ _ = id
 
 > cleanTVars :: [Ident] -> [Ident] -> [Ident]
@@ -298,14 +298,14 @@ either one of the basic types or \texttt{()}.
 
 > tcExternalFunct :: ModuleIdent -> TCEnv -> Ident -> TypeExpr -> TcState ()
 > tcExternalFunct m tcEnv  f ty =
->   updateSt_ (bindFun m f (expandPolyType tcEnv ty))
+>   updateSt_ (bindFun m f (expandPolyType m tcEnv ty))
 
 > tcFlatExternalFunct :: ModuleIdent -> TCEnv -> SigEnv -> Ident -> TcState ()
 > tcFlatExternalFunct m tcEnv sigs f =
 >   typeOf f tcEnv sigs >>= updateSt_ . bindFun m f
 >   where typeOf f tcEnv sigs =
 >           case lookupTypeSig f sigs of
->             Just ty -> return (expandPolyType tcEnv ty)
+>             Just ty -> return (expandPolyType m tcEnv ty)
 >             Nothing -> internalError "tcFlatExternalFunct"
 
 > tcExtraVar :: ModuleIdent -> TCEnv -> SigEnv -> Position -> Ident
@@ -317,7 +317,7 @@ either one of the basic types or \texttt{()}.
 >             Just ty
 >               | n == 0 -> return ty'
 >               | otherwise -> errorAt p (polymorphicFreeVar v)
->               where ForAll n ty' = expandPolyType tcEnv ty
+>               where ForAll n ty' = expandPolyType m tcEnv ty
 >             Nothing -> freshTypeVar
 
 > tcDeclLhs :: ModuleIdent -> TCEnv -> SigEnv -> Decl -> TcState Type
@@ -379,7 +379,7 @@ signature the declared type must be too general.
 > genVar poly m tcEnv sigs lvs theta p v tyEnv =
 >   case lookupTypeSig v sigs of
 >     Just sigTy
->       | cmpTypes sigma (expandPolyType tcEnv sigTy) -> tyEnv'
+>       | cmpTypes sigma (expandPolyType m tcEnv sigTy) -> tyEnv'
 >       | otherwise -> errorAt p (typeSigTooGeneral m what sigTy sigma)
 >     Nothing -> tyEnv'
 >   where what = text (if poly then "Function:" else "Variable:") <+> ppIdent v
@@ -419,7 +419,7 @@ signature the declared type must be too general.
 >   do
 >     ty <-
 >       case lookupTypeSig v sigs of
->         Just ty -> inst (expandPolyType tcEnv ty)
+>         Just ty -> inst (expandPolyType m tcEnv ty)
 >         Nothing -> freshTypeVar
 >     updateSt_ (bindFun m v (monoType ty))
 >     return ty
@@ -501,7 +501,7 @@ signature the declared type must be too general.
 > tcExpr m _ _ _ (Literal l) = tcLiteral m l
 > tcExpr m tcEnv sigs p (Variable v) =
 >   case qualLookupTypeSig m v sigs of
->     Just ty -> inst (expandPolyType tcEnv ty)
+>     Just ty -> inst (expandPolyType m tcEnv ty)
 >     Nothing -> fetchSt >>= inst . funType m v
 > tcExpr m tcEnv sigs p (Constructor c) = fetchSt >>= instExist . constrType m c
 > tcExpr m tcEnv sigs p (Typed e sig) =
@@ -517,7 +517,7 @@ signature the declared type must be too general.
 >                  sig' sigma))
 >     return ty
 >   where sig' = nameSigType sig
->         sigma' = expandPolyType tcEnv sig'
+>         sigma' = expandPolyType m tcEnv sig'
 > tcExpr m tcEnv sigs p (Paren e) = tcExpr m tcEnv sigs p e
 > tcExpr m tcEnv sigs p (Tuple es)
 >   | null es = return unitType
@@ -906,28 +906,33 @@ and also qualifies all type constructors with the name of the module
 in which the type was defined.
 \begin{verbatim}
 
-> expandMonoType :: TCEnv -> [Ident] -> TypeExpr -> Type
-> expandMonoType tcEnv tvs ty = expandType tcEnv (toType tvs ty)
+> expandMonoType :: ModuleIdent -> TCEnv -> [Ident] -> TypeExpr -> Type
+> expandMonoType m tcEnv tvs ty = expandType m tcEnv (toType tvs ty)
 
-> expandMonoTypes :: TCEnv -> [Ident] -> [TypeExpr] -> [Type]
-> expandMonoTypes tcEnv tvs tys = map (expandType tcEnv) (toTypes tvs tys)
+> expandMonoTypes :: ModuleIdent -> TCEnv -> [Ident] -> [TypeExpr] -> [Type]
+> expandMonoTypes m tcEnv tvs tys = map (expandType m tcEnv) (toTypes tvs tys)
 
-> expandPolyType :: TCEnv -> TypeExpr -> TypeScheme
-> expandPolyType tcEnv ty = polyType $ normalize $ expandMonoType tcEnv [] ty
+> expandPolyType :: ModuleIdent -> TCEnv -> TypeExpr -> TypeScheme
+> expandPolyType m tcEnv ty = 
+>     polyType $ normalize $ expandMonoType m tcEnv [] ty
 
-> expandType :: TCEnv -> Type -> Type
-> expandType tcEnv (TypeConstructor tc tys) =
+> expandType :: ModuleIdent -> TCEnv -> Type -> Type
+> expandType m tcEnv (TypeConstructor tc tys) =
 >   case qualLookupTC tc tcEnv of
 >     [DataType tc' _ _] -> TypeConstructor tc' tys'
 >     [RenamingType tc' _ _] -> TypeConstructor tc' tys'
 >     [AliasType _ _ ty] -> expandAliasType tys' ty
->     _ -> internalError ("expandType " ++ show tc)
->   where tys' = map (expandType tcEnv) tys
-> expandType _ (TypeVariable tv) = TypeVariable tv
-> expandType _ (TypeConstrained tys tv) = TypeConstrained tys tv
-> expandType tcEnv (TypeArrow ty1 ty2) =
->   TypeArrow (expandType tcEnv ty1) (expandType tcEnv ty2)
-> expandType tcEnv (TypeSkolem k) = TypeSkolem k
+>     _ -> case (qualLookupTC (qualQualify m tc) tcEnv) of
+>            [DataType tc' _ _] -> TypeConstructor tc' tys'
+>            [RenamingType tc' _ _] -> TypeConstructor tc' tys'
+>            [AliasType _ _ ty] -> expandAliasType tys' ty
+>            _ -> internalError ("expandType " ++ show tc)
+>   where tys' = map (expandType m tcEnv) tys
+> expandType _ _ (TypeVariable tv) = TypeVariable tv
+> expandType _ _ (TypeConstrained tys tv) = TypeConstrained tys tv
+> expandType m tcEnv (TypeArrow ty1 ty2) =
+>   TypeArrow (expandType m tcEnv ty1) (expandType m tcEnv ty2)
+> expandType _ tcEnv (TypeSkolem k) = TypeSkolem k
 
 \end{verbatim}
 The functions \texttt{fvEnv} and \texttt{fsEnv} compute the set of

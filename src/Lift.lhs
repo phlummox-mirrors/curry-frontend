@@ -1,4 +1,4 @@
-% -*- LaTeX -*-
+
 % $Id: Lift.lhs,v 1.23 2004/02/13 14:02:54 wlux Exp $
 %
 % Copyright (c) 2001-2003, Wolfgang Lux
@@ -305,6 +305,7 @@ to the top-level.
 >     _ -> internalError ("varType " ++ show v)
 
 > liftIdent :: String -> Ident -> Ident
-> liftIdent prefix x = renameIdent (mkIdent (prefix ++ name x)) (uniqueId x)
+> liftIdent prefix x =
+>    renameIdent (mkIdent (prefix ++ name x ++ show (uniqueId x))) (uniqueId x)
 
 \end{verbatim}

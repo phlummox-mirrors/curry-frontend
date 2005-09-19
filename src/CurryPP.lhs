@@ -1,4 +1,4 @@
-% -*- LaTeX -*-
+
 % $Id: CurryPP.lhs,v 1.50 2004/02/15 22:10:27 wlux Exp $
 %
 % Copyright (c) 1999-2004, Wolfgang Lux
@@ -155,7 +155,7 @@ Interfaces
 >   sep [ppITypeDeclLhs "newtype" tc tvs <+> equals,indent (ppNewConstr nc)]
 > ppIDecl (ITypeDecl _ tc tvs ty) =
 >   sep [ppITypeDeclLhs "type" tc tvs <+> equals,indent (ppTypeExpr 0 ty)]
-> ppIDecl (IFunctionDecl _ f ty) = ppQIdent f <+> text "::" <+> ppTypeExpr 0 ty
+> ppIDecl (IFunctionDecl _ f _ ty) = ppQIdent f <+> text "::" <+> ppTypeExpr 0 ty
 
 > ppITypeDeclLhs :: String -> QualIdent -> [Ident] -> Doc
 > ppITypeDeclLhs kw tc tvs = text kw <+> ppQIdent tc <+> hsep (map ppIdent tvs)

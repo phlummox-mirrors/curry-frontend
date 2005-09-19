@@ -151,10 +151,6 @@ Bekannte Probleme
 - Die Regeln einer Funktionsdeklaration müssen immer zusammenstehen, d.h.
   nicht durch andere Deklarationen unterbrochen werden.
 
-- In einigen Fällen kann es vorkommen, daß die Angabe der Funktionsstelligkeit
-  in FlatCurry-Programmen nicht mit der Anzahl der Argumente übereinstimmt.
-  Der MCC berechnet Funktionsstelligkeiten anhand der Funktionstypen.
-
 - Es ist bislang nicht möglich, den Konstruktor für leere Listen [], sowie 
   den Unit-Konstruktor () zu qualifizieren (z.B. führt 'prelude.[]' zu 
   einem Fehler). Der Listenkonstruktor (:), sowie Tupel-Konstruktoren

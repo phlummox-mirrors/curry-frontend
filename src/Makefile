@@ -1,68 +1,61 @@
 
-# necessary files for builing a simple version of the Muenster Curry Compiler
-GETOPT_SRC = GetOpt.hs
-MCC1_SRC   = Position.lhs Cam.lhs Map.lhs Set.lhs SCC.lhs CPS.lhs Ident.lhs  \
-	     CurrySyntax.lhs Types.lhs Utils.lhs Subst.lhs Unlit.lhs IL.lhs  \
-	     DTransform.lhs CCode.lhs CElim.lhs CGen.lhs                     \
-	     Pretty.lhs ILPP.lhs CurryPP.lhs CPretty.lhs CamPP.lhs Error.lhs \
-	     Combined.lhs ILLift.lhs LexComb.lhs CurryLexer.lhs              \
-	     LLParseComb.lhs CurryParser.lhs Env.lhs ILCompile.lhs           \
-	     TopEnv.lhs Base.lhs ILTrans.lhs Lift.lhs Qual.lhs               \
-	     Eval.lhs Exports.lhs Imports.lhs IntfCheck.lhs PrecCheck.lhs    \
-	     KindCheck.lhs TypeSubst.lhs Typing.lhs Simplify.lhs Desugar.lhs \
-	     TypeCheck.lhs NestEnv.lhs SyntaxCheck.lhs PathUtils.lhs         \
-	     Options.lhs CurryDeps.lhs
-MCC2_SRC   = ScopeEnv.hs ILScope.hs CaseCompletion.hs FlatCurry.hs           \
-	     AbstractCurry.hs GenAbstractCurry.hs CurryInfo.hs               \
-             PatchPrelude.hs  IL2FlatCurry.hs
-MCC3_SRC   = ILxml.lhs Modules.lhs
+# necessary files for builing a modified version of the Muenster Curry Compiler
+# which is used as PAKCS frontend
 
-GETOPT_OBJ = GetOpt.o
-MCC1_OBJ   = $(MCC1_SRC:%.lhs=%.o)
-MCC2_OBJ   = $(MCC2_SRC:%.hs=%.o)
-MCC3_OBJ   = $(MCC3_SRC:%.lhs=%.o)
+MCC_SRC = AbstractCurry.hs CurrySyntax.lhs IL2FlatCurry.old.hs Options.lhs \
+          CurrySyntaxTools.lhs ILCompile.lhs PatchPrelude.hs Arity.hs      \
+          IL.lhs PathUtils.lhs Base.lhs ILLift.lhs Position.lhs Cam.lhs    \
+          ILPP.lhs PrecCheck.lhs CamPP.lhs ILScope.hs Pretty.lhs           \
+          CaseCompletion.hs Desugar.lhs ILTrans.lhs Qual.lhs               \
+          DTransform.lhs ILxml.lhs SCC.lhs CCode.lhs Env.lhs Imports.lhs   \
+          ScopeEnv.hs CElim.lhs Error.lhs Set.lhs CGen.lhs Eval.lhs        \
+          Simplify.lhs Combined.lhs Exports.lhs KindCheck.lhs FlatCurry.hs \
+          LexComb.lhs Subst.lhs CPretty.lhs FlatCurry.lhs Lift.lhs         \
+          SyntaxCheck.lhs CPS.lhs LLParseComb.lhs TopEnv.lhs CurryDeps.lhs \
+          FlatInfo.lhs Map.lhs TypeCheck.lhs CurryInfo.hs                  \
+          GenAbstractCurry.hs Types.lhs CurryLexer.lhs GetOpt.hs           \
+          Modules.lhs TypeSubst.lhs Typing.lhs CurryParser.lhs Ident.lhs   \
+          NestEnv.lhs Unlit.lhs CurryPP.lhs IL2FlatCurry.hs Utils.lhs      \
+
 
 CYCC_SRC   = cycc.hs
 CYCC       = cycc
-CYCC_OBJ   = cycc.o
 
 CYMK_SRC   = cymk.hs
 CYMK       = cymk
-CYMK_OBJ   = cymk.o
 
 # a little program for updating target files depending on
 # several source files (needed by cymake)
-SMAKE_HS   = smake.hs
+SMAKE_SRC  = smake.hs
 SMAKE      = smake
 
-# configuration file for generating "cyc", "cymake" and "cyxml.hs"
+# configuration file for generating script files "cyc" and "cymake"
 CONFIG_SRC = config.hs
 CONFIG     = config
 
-
+# "cyc" and "cymake" samples
 CYC_PATT   = cyc-pattern
 CYC        = cyc
 
 CYMAKE_PATT= cymake-pattern
 CYMAKE     = cymake
 
-CYXML_HS_PATT = cyxml.hs-pattern
-CYXML_HS      = cyxml.hs
-CYXML         = cyxml
 
 # the haskell compiler
-HC         = ghc -syslib lang
-HC_OPTS	   = -v0
+HC         = ghc
+HC_OPTS	   = -syslib lang --make
 
 
 # The following variables are exported by top level makefile
 # MCC_PATH	- root path of the MCC
 
+MCC_SRC = $(CURDIR)
+
 # path to the MCC runtime source files
-MCC_SRC_RUNTIME	= $(MCC_PATH)/src/runtime
+MCC_SRC_RUNTIME	= $(MCC_SRC)/runtime
 
 # path to the MCC library source files
-MCC_SRC_CURRY 	= $(MCC_PATH)/src/curry
+MCC_SRC_CURRY 	= $(MCC_SRC)/curry
 
 # path to the mcc binaries
 MCC_BIN  	= $(MCC_PATH)/bin
@@ -78,80 +71,55 @@ MCC_LIB_RUNTIME	= $(MCC_PATH)/lib/runtime
 # Compile all MCC components
 .PHONY: all
 
-all: src conf mcc runtime install
+#all: src conf mcc runtime install
+all: src conf mcc install
 
 
-# Compile MCC components and generate "cycc" and "cymk"
+# Compile MCC components and generate "cycc", "cymk" and "smake"
 .PHONY: src
 
-src: $(GETOPT_OBJ) $(MCC1_OBJ) $(MCC2_OBJ) $(MCC3_OBJ) $(CYCC) $(CYMK) $(NEWER)
+src: $(CYCC) $(SMAKE) $(CYMK)
+
+$(CYCC): $(MCC_SRC)
+	$(HC) $(HC_OPTS) $(CYCC) -o $(CYCC)
+
+$(SMAKE): $(SMAKE_SRC)
+	$(HC) $(HC_OPTS) $(SMAKE) -o $(SMAKE)
+
+$(CYMK): $(MCC_SRC) $(CYCC) $(SMAKE)
+	$(HC) $(HC_OPTS) $(CYMK) -o $(CYMK)
 
 
-$(GETOPT_OBJ): $(GETOPT_SRC)
-	$(HC) $(HC_OPTS) -c $(GETOPT_SRC)
-
-$(MCC1_OBJ): %.o: %.lhs $(GETOPT_OBJ)
-	$(HC) $(HC_OPTS) -c $<
-
-$(MCC2_OBJ): %.o: %.hs $(MCC1_OBJ) $(GETOPT_OBJ)
-	$(HC) $(HC_OPTS) -c $<
-
-$(MCC3_OBJ): %.o: %.lhs $(MCC2_OBJ) $(MCC1_OBJ) $(GETOPT_OBJ)
-	$(HC) $(HC_OPTS) -c $<
-
-$(CYCC): $(CYCC_SRC) $(MCC3_OBJ) $(MCC2_OBJ) $(MCC1_OBJ) $(GETOPT_OBJ)
-	@rm -f $(CYCC_OBJ)
-	$(HC) $(HC_OPTS) -o $(CYCC) $(CYCC_SRC) \
-			    $(MCC3_OBJ) $(MCC2_OBJ) $(MCC1_OBJ) $(GETOPT_OBJ)
-	@cd $(MCC_SRC_CURRY) && ./clean
-
-$(CYMK): $(CYMK_SRC) $(MCC3_OBJ) $(MCC2_OBJ) $(MCC1_OBJ) $(GETOPT_OBJ)
-	@rm -f $(CYMK_OBJ)
-	$(HC) $(HC_OPTS) -o $(CYMK) $(CYMK_SRC) \
-			    $(MCC3_OBJ) $(MCC2_OBJ) $(MCC1_OBJ) $(GETOPT_OBJ)
-	@cd $(MCC_SRC_CURRY) && ./clean
-
-$(SMAKE): $(SMAKE_HS)
-	$(HC) $(HC_OPTS) -o $(SMAKE) $(SMAKE_HS)
-
-
-# Compile configuration file "config.hs"
+# Gnerate configuration program "config"
 .PHONY: conf
 
 conf: $(CONFIG)
 
 $(CONFIG): $(CONFIG_SRC)
-	$(HC) $(HC_OPTS) -o $(CONFIG) $(CONFIG_SRC)
+	$(HC) $(HC_OPTS) $(CONFIG) -o $(CONFIG)
 
 
-# Generate "cyc", "cymake" and "cyxml"
+# Generate "cyc" and "cymake"
 .PHONY: mcc
 
-mcc: $(CYC) $(CYMAKE) $(CYXML)
+mcc: $(CYC) $(CYMAKE)
 
-$(CYC): $(CONFIG) $(CYC_PATT)
+$(CYC): $(CYCC) $(CYC_PATT) $(CONFIG)
 	@./$(CONFIG) $(CYC)
 	@chmod 755 $(CYC)
-	@cd $(MCC_SRC_CURRY) && ./clean
 
-$(CYMAKE): $(CONFIG) $(CYMAKE_PATT) $(SMAKE)
+$(CYMAKE): $(CYMK) $(CYMAKE_PATT) $(CONFIG)
 	@./$(CONFIG) $(CYMAKE)
 	@chmod 755 $(CYMAKE)
-	@cd $(MCC_SRC_CURRY) && ./clean
-
-
-$(CYXML_HS): $(CYXML_HS_PATT)
-	@./$(CONFIG) $(CYXML_HS)
-
-$(CYXML): $(CYXML_HS) $(CYXML_HS_PATT) $(CYC) $(CYMAKE)
-	$(HC) $(HC_OPTS) -o $(CYXML) $(CYXML_HS)
 
 
 # Generate the MCC runtime components
-.PHONY: runtime
+#.PHONY: runtime
 
-runtime:
-	@cd $(MCC_SRC_RUNTIME) && make
+#runtime:
+#	echo Pos03
+#	@cd $(MCC_SRC_RUNTIME) && make
+#	echo Pos3
 
 
 # Install the compiler
@@ -159,15 +127,12 @@ runtime:
 
 install: inst_bin inst_rts
 
-inst_bin: $(CYC) $(CYMAKE) $(CYXML)
+inst_bin: $(CYC) $(CYMAKE)
 	@cp ./$(CYC) $(MCC_BIN)/
 	@cp ./$(CYMAKE) $(MCC_BIN)/
-	@cp ./$(CYXML) $(MCC_BIN)/
 
 inst_rts:
 	@cp ./$(SMAKE) $(MCC_LIB_RUNTIME)/
 	@cp ./$(CYCC) $(MCC_LIB_RUNTIME)/
 	@cp ./$(CYMK) $(MCC_LIB_RUNTIME)/
 
-#inst_lib: $(CYC) $(CYMAKE) inst_rts
-#	@cd $(MCC_SRC_CURRY) && make

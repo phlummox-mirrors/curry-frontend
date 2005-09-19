@@ -1,4 +1,4 @@
-% -*- LaTeX -*-
+
 % $Id: CurryParser.lhs,v 1.75 2004/02/15 23:11:28 wlux Exp $
 %
 % Copyright (c) 1999-2004, Wolfgang Lux
@@ -59,16 +59,18 @@ combinators described in appendix~\ref{sec:ll-parsecomb}.
 
 \end{verbatim}
 \paragraph{Interfaces}
+Since this modified version of MCC uses FlatCurry interfaces instead of
+.icurry files nothing has to be parsed.
 \begin{verbatim}
 
-> parseInterface :: FilePath -> String -> Error Interface
-> parseInterface fn s = applyParser parseIface lexer fn s
+> --parseInterface :: FilePath -> String -> Error Interface
+> --parseInterface fn s = applyParser parseIface lexer fn s
 
-> parseIface :: Parser Token Interface a
-> parseIface = Interface <$-> token Id_interface
->                        <*> (mIdent <?> "module name expected")
->                        <*-> (token KW_where <?> "where expected")
->                        <*> braces intfDecls
+> --parseIface :: Parser Token Interface a
+> --parseIface = Interface <$-> token Id_interface
+> --                       <*> (mIdent <?> "module name expected")
+> --                       <*-> (token KW_where <?> "where expected")
+> --                       <*> braces intfDecls
 
 \end{verbatim}
 \paragraph{Goals}
@@ -258,50 +260,50 @@ combinators described in appendix~\ref{sec:ll-parsecomb}.
 \paragraph{Interface declarations}
 \begin{verbatim}
 
-> intfDecls :: Parser Token [IDecl] a
-> intfDecls = (:) <$> iImportDecl <*> (semicolon <-*> intfDecls `opt` [])
->         <|> intfDecl `sepBy` semicolon
+> --intfDecls :: Parser Token [IDecl] a
+> --intfDecls = (:) <$> iImportDecl <*> (semicolon <-*> intfDecls `opt` [])
+> --        <|> intfDecl `sepBy` semicolon
 
-> intfDecl :: Parser Token IDecl a
-> intfDecl = iInfixDecl
->        <|> iHidingDecl <|> iDataDecl <|> iNewtypeDecl <|> iTypeDecl
->        <|> iFunctionDecl <\> token Id_hiding
+> --intfDecl :: Parser Token IDecl a
+> --intfDecl = iInfixDecl
+> --       <|> iHidingDecl <|> iDataDecl <|> iNewtypeDecl <|> iTypeDecl
+> --       <|> iFunctionDecl <\> token Id_hiding
 
-> iImportDecl :: Parser Token IDecl a
-> iImportDecl = IImportDecl <$> position <*-> token KW_import <*> mIdent
+> --iImportDecl :: Parser Token IDecl a
+> --iImportDecl = IImportDecl <$> position <*-> token KW_import <*> mIdent
 
-> iInfixDecl :: Parser Token IDecl a
-> iInfixDecl = infixDeclLhs IInfixDecl <*> qfunop
+> --iInfixDecl :: Parser Token IDecl a
+> --iInfixDecl = infixDeclLhs IInfixDecl <*> qfunop
 
-> iHidingDecl :: Parser Token IDecl a
-> iHidingDecl = position <*-> token Id_hiding <**> (dataDecl <|> funcDecl)
->   where dataDecl = hiddenData <$-> token KW_data <*> tycon <*> many tyvar
->         funcDecl = hidingFunc <$-> token DoubleColon <*> type0
->         hiddenData tc tvs p = HidingDataDecl p tc tvs
->         hidingFunc ty p = IFunctionDecl p hidingId ty
->         hidingId = qualify (mkIdent "hiding")
+> --iHidingDecl :: Parser Token IDecl a
+> --iHidingDecl = position <*-> token Id_hiding <**> (dataDecl <|> funcDecl)
+> --  where dataDecl = hiddenData <$-> token KW_data <*> tycon <*> many tyvar
+> --        funcDecl = hidingFunc <$-> token DoubleColon <*> type0
+> --        hiddenData tc tvs p = HidingDataDecl p tc tvs
+> --        hidingFunc ty p = IFunctionDecl p hidingId ty
+> --        hidingId = qualify (mkIdent "hiding")
 
-> iDataDecl :: Parser Token IDecl a
-> iDataDecl = iTypeDeclLhs IDataDecl KW_data <*> constrs
->   where constrs = equals <-*> iConstrDecl `sepBy1` bar
->             `opt` []
->         iConstrDecl = Just <$> constrDecl False <\> token Underscore
->                   <|> Nothing <$-> token Underscore
+> --iDataDecl :: Parser Token IDecl a
+> --iDataDecl = iTypeDeclLhs IDataDecl KW_data <*> constrs
+> --  where constrs = equals <-*> iConstrDecl `sepBy1` bar
+> --            `opt` []
+> --        iConstrDecl = Just <$> constrDecl False <\> token Underscore
+> --                  <|> Nothing <$-> token Underscore
 
-> iNewtypeDecl :: Parser Token IDecl a
-> iNewtypeDecl =
->   iTypeDeclLhs INewtypeDecl KW_newtype <*-> equals <*> newConstrDecl
+> --iNewtypeDecl :: Parser Token IDecl a
+> --iNewtypeDecl =
+> --  iTypeDeclLhs INewtypeDecl KW_newtype <*-> equals <*> newConstrDecl
 
-> iTypeDecl :: Parser Token IDecl a
-> iTypeDecl = iTypeDeclLhs ITypeDecl KW_type <*-> equals <*> type0
+> --iTypeDecl :: Parser Token IDecl a
+> --iTypeDecl = iTypeDeclLhs ITypeDecl KW_type <*-> equals <*> type0
 
-> iTypeDeclLhs :: (Position -> QualIdent -> [Ident] -> a) -> Category
->              -> Parser Token a b
-> iTypeDeclLhs f kw = f <$> position <*-> token kw <*> qtycon <*> many tyvar
+> --iTypeDeclLhs :: (Position -> QualIdent -> [Ident] -> a) -> Category
+> --             -> Parser Token a b
+> --iTypeDeclLhs f kw = f <$> position <*-> token kw <*> qtycon <*> many tyvar
 
-> iFunctionDecl :: Parser Token IDecl a
-> iFunctionDecl = IFunctionDecl <$> position <*> qfun <*-> token DoubleColon
->                               <*> type0
+> --iFunctionDecl :: Parser Token IDecl a
+> --iFunctionDecl = IFunctionDecl <$> position <*> qfun <*-> token DoubleColon
+> --                              <*> type0
 
 \end{verbatim}
 \paragraph{Types}

@@ -1,9 +1,19 @@
+-------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
+--
+-- IL2FlatCurry - Generates FlatCurry program terms and FlatCurry interfaces
+--                (type 'FlatCurry.Prog')
+--
+-- September 2005,
+-- Martin Engelke (men@informatik.uni-kiel.de)
+--
 module IL2FlatCurry (il2flatCurry,
 		     il2flatInterface) where
 
 import IL
 import Ident
-import Base (ModuleEnv)
+import Base (ModuleEnv, ArityEnv, ArityInfo(..), qualLookupArity)
+import TopEnv
 import Env
 import CurryInfo
 import FlatCurry hiding (Literal, Expr(Or, Case, Let), CaseType(..))
@@ -16,20 +26,26 @@ import Maybe
 -------------------------------------------------------------------------------
 
 -- transforms intermediate language code (IL) to FlatCurry code
-il2flatCurry :: CurryInfo -> ModuleEnv -> Module -> Prog
-il2flatCurry info menv mod 
+il2flatCurry :: CurryInfo -> ModuleEnv -> ArityEnv -> Module -> Prog
+il2flatCurry info mEnv aEnv mod 
    = patchPreludeFCY (fst (visitModule env mod))
  where
- env = flatEnv (getModuleIdent mod) menv info
+ env = initFlatEnv {moduleId     = getModuleIdent mod,
+		    curryInfo    = info,
+		    moduleEnv    = mEnv,
+		    arityEnv     = aEnv,
+	            genInterface = False}
 
 
 -- transforms intermediate language code (IL) to FlatCurry interfaces
 il2flatInterface :: CurryInfo -> ModuleEnv -> Module -> Prog
-il2flatInterface info menv mod
+il2flatInterface info mEnv mod
    = patchPreludeFCY (fst (visitModule env mod))
  where
- env = (flatEnv (getModuleIdent mod) menv info) { genFlatIntf = True }
-
+ env = initFlatEnv {moduleId     = getModuleIdent mod,
+		    curryInfo    = info,
+		    moduleEnv    = mEnv,
+	            genInterface = True}
 
 
 -------------------------------------------------------------------------------
@@ -39,13 +55,13 @@ il2flatInterface info menv mod
 visitModule :: FlatEnv -> Module -> (Prog, FlatEnv)
 visitModule env (Module mident imports decls)
    = let (isTDecl, isFDecl)
-	             | genFlatIntf env = (isPublicTypeDecl env, 
-					  isPublicFuncDecl env)
-		     | otherwise       = (isTypeDecl, isFuncDecl)
+	             | genInterface env = (isPublicTypeDecl env, 
+					   isPublicFuncDecl env)
+		     | otherwise        = (isTypeDecl, isFuncDecl)
          (ts, env1)  = emap visitTypeDecl env  (filter isTDecl decls)
 	 (fs, env2)  = emap visitFuncDecl env1 (filter isFDecl decls)
-	 idecls      | genFlatIntf env = getExportedIDecls env
-		     | otherwise       = []
+	 idecls      | genInterface env = getExportedIDecls env
+		     | otherwise        = []
 	 (ts', env3) = emap visitTypeIDecl env2 (filter isTypeIDecl idecls)
 	 (fs', env4) = emap visitFuncIDecl env3 (filter isFuncIDecl idecls)
 	 (os', env5) = emap visitOpIDecl   env4 (filter isOpIDecl   idecls)
@@ -112,7 +128,7 @@ visitFuncDecl env (FunctionDecl qident params typeexpr expr)
          (ftypeexpr, env2) = visitType env1 typeexpr
 	 (fexpr, env3)     = visitExpression env2 expr
 	 visibility        = getVisibility env3 qident
-	 funcdecl | genFlatIntf env && visibility == Public
+	 funcdecl | genInterface env && visibility == Public
 		     = Func (visitQualIdent env3 qident)
 		            (length params)
 			    Public
@@ -129,7 +145,7 @@ visitFuncDecl env (FunctionDecl qident params typeexpr expr)
 visitFuncDecl env (ExternalDecl qident _ name typeexpr)
    = let (ftypeexpr, env1) = visitType env typeexpr
 	 funcdecl = Func (visitQualIdent env1 qident)
-		         (getArityFromType typeexpr)
+		         (getTypeArity typeexpr)
 			 (getVisibility env1 qident)
 			 ftypeexpr
 			 (External (visitExternalName env name))
@@ -245,11 +261,11 @@ visitBinding env (Binding ident expr)
 
 --
 visitFuncIDecl :: FlatEnv -> CurrySyntax.IDecl -> (FuncDecl, FlatEnv)
-visitFuncIDecl env (CurrySyntax.IFunctionDecl _ qident typeexpr)
+visitFuncIDecl env (CurrySyntax.IFunctionDecl _ qident arity typeexpr)
    = let (iltype, _)       = csType2ilType [] typeexpr
 	 (ftypeexpr, env1) = visitType env iltype
          ffuncdecl         = Func (visitQualIdent env1 qident)
-			          (getArityFromType iltype)
+			          arity
 				  Public
 				  ftypeexpr
 				  (External (qualName qident))
@@ -429,7 +445,7 @@ isExportedIDecl exports (CurrySyntax.IDataDecl _ qident _ _)
    = isExportedQualIdent qident exports
 isExportedIDecl exports (CurrySyntax.ITypeDecl _ qident _ _)
    = isExportedQualIdent qident exports
-isExportedIDecl exports (CurrySyntax.IFunctionDecl _ qident _)
+isExportedIDecl exports (CurrySyntax.IFunctionDecl _ qident _ _)
    = isExportedQualIdent qident exports
 isExportedIDecl exports _
    = False
@@ -458,16 +474,16 @@ qualifyIDecl mident (CurrySyntax.INewtypeDecl pos qident idents ncdecl)
    = (CurrySyntax.INewtypeDecl pos (qualQualify mident qident) idents ncdecl)
 qualifyIDecl mident (CurrySyntax.ITypeDecl pos qident idents texpr)
    = (CurrySyntax.ITypeDecl pos (qualQualify mident qident) idents texpr)
-qualifyIDecl mident (CurrySyntax.IFunctionDecl pos qident texpr)
-   = (CurrySyntax.IFunctionDecl pos (qualQualify mident qident) texpr)
+qualifyIDecl mident (CurrySyntax.IFunctionDecl pos qident arity texpr)
+   = (CurrySyntax.IFunctionDecl pos (qualQualify mident qident) arity texpr)
 qualifyIDecl _ idecl = idecl
 
 
 --
-getArityFromType :: Type -> Int
-getArityFromType (TypeArrow _ t)       = 1 + (getArityFromType t)
-getArityFromType (TypeConstructor _ _) = 0
-getArityFromType (TypeVariable _)      = 0
+getTypeArity :: Type -> Int
+getTypeArity (TypeArrow _ t)       = 1 + (getTypeArity t)
+getTypeArity (TypeConstructor _ _) = 0
+getTypeArity (TypeVariable _)      = 0
 
 
 --
@@ -480,9 +496,15 @@ genFlatApplication env applicexpr
 	  (Apply expr1 expr2)    
 	      -> p_genFlatApplic env (cnt + 1) (expr2:args) expr1
 	  (Function qident arity) 
-	      -> p_genFuncCall env qident arity cnt args
+	      -> case (qualLookupArity qident (arityEnv env)) of
+		   [ArityInfo qident' arity']
+		     -> p_genFuncCall env qident' arity' cnt args
+		   _ -> p_genFuncCall env qident arity cnt args
 	  (Constructor qident arity)  
-	      -> p_genConsCall env qident arity cnt args
+	      -> case (qualLookupArity qident (arityEnv env)) of
+		   [ArityInfo qident' arity']
+		     -> p_genConsCall env qident' arity' cnt args
+		   _ -> p_genConsCall env qident arity cnt args
 	  _                       
 	      -> let (fexpr, env1) = visitExpression env expr
 		 in  p_genApplicComb env fexpr args
@@ -696,8 +718,8 @@ isTypeIDecl _                               = False
 
 --
 isFuncIDecl :: CurrySyntax.IDecl -> Bool
-isFuncIDecl (CurrySyntax.IFunctionDecl _ _ _) = True
-isFuncIDecl _                                 = False
+isFuncIDecl (CurrySyntax.IFunctionDecl _ _ _ _) = True
+isFuncIDecl _                                   = False
 
 --
 isOpIDecl :: CurrySyntax.IDecl -> Bool
@@ -719,23 +741,27 @@ getModuleIdent (Module mident _ _) = mident
 -------------------------------------------------------------------------------
 -------------------------------------------------------------------------------
 
-
-data FlatEnv = FlatEnv { moduleId    :: ModuleIdent,
-			 moduleEnv   :: ModuleEnv,
-			 curryInfo   :: CurryInfo,
-			 varIds      :: [(Ident, Int)],
-			 tvarIds     :: [(Ident, Int)],
-			 genFlatIntf :: Bool
+-- Data type representing an environment which contains information needed
+-- for generating FlatCurry code.
+data FlatEnv = FlatEnv { moduleId     :: ModuleIdent,
+			 moduleEnv    :: ModuleEnv,
+			 arityEnv     :: ArityEnv,
+			 curryInfo    :: CurryInfo,
+			 varIds       :: [(Ident, Int)],
+			 tvarIds      :: [(Ident, Int)],
+			 genInterface :: Bool
 		       }
 
---
-flatEnv mid menv info = FlatEnv{ moduleId    = mid,
-				 moduleEnv   = menv,
-				 curryInfo   = info,
-				 varIds      = [],
-				 tvarIds     = [],
-				 genFlatIntf = False
-			       }
+-- Initial environment for generating FlatCurry code
+initFlatEnv :: FlatEnv
+initFlatEnv = FlatEnv { moduleId     = mkMIdent [],
+			moduleEnv    = emptyEnv,
+			arityEnv     = emptyTopEnv,
+			curryInfo    = emptyCurryInfo,
+			varIds       = [],
+			tvarIds      = [],
+			genInterface = False
+		      }
 
 -------------------------------------------------------------------------------
 -------------------------------------------------------------------------------

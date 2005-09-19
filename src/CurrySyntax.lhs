@@ -79,7 +79,10 @@ an unlimited range of integer constants in Curry programs.
 
 \end{verbatim}
 \paragraph{Module interfaces}
-Interface declarations are restricted to type declarations and signatures.
+Interface declarations are restricted to type declarations and signatures. 
+Note that an interface function declaration additionaly contains the 
+function arity (= number of parameters) in order to generate
+correct FlatCurry function applications.
 \begin{verbatim}
 
 > data Interface = Interface ModuleIdent [IDecl] deriving (Eq,Show)
@@ -91,7 +94,7 @@ Interface declarations are restricted to type declarations and signatures.
 >   | IDataDecl Position QualIdent [Ident] [Maybe ConstrDecl]
 >   | INewtypeDecl Position QualIdent [Ident] NewConstrDecl
 >   | ITypeDecl Position QualIdent [Ident] TypeExpr
->   | IFunctionDecl Position QualIdent TypeExpr
+>   | IFunctionDecl Position QualIdent Int TypeExpr
 >   deriving (Eq,Show)
 
 \end{verbatim}

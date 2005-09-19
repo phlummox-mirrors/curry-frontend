@@ -169,8 +169,8 @@ for PAKCS.
 >                 (genTypeExpr t)
 >
 >  genIFuncDecl :: FuncDecl -> IDecl
->  genIFuncDecl (Func qn _ _ t _) 
->     = IFunctionDecl pos (genQualIdent qn) (genTypeExpr t)
+>  genIFuncDecl (Func qn a _ t _) 
+>     = IFunctionDecl pos (genQualIdent qn) a (genTypeExpr t)
 >
 >  genIOpDecl :: OpDecl -> IDecl
 >  genIOpDecl (Op qn f p) = IInfixDecl pos (genInfix f) p  (genQualIdent qn)
@@ -193,7 +193,6 @@ for PAKCS.
 >  genInfix FlatCurry.InfixrOp = InfixR
 >
 >  genQualIdent :: QName -> QualIdent
->  --genQualIdent (_,name) = qualify (mkIdent name)
 >  genQualIdent (mod,name) = qualifyWith (mkMIdent [mod]) (mkIdent name)
 >
 >  genVarIndexIdent :: String -> Int -> Ident
@@ -314,7 +313,8 @@ In order to test the type correctness of a module, the compiler needs
 to determine the type of every data constructor, function, and
 variable in the module. For the purpose of type checking there is no
 need for distinguishing between variables and functions. For all objects
-their original names and their types are saved. On import two values
+their original names and their types are saved. Functions also
+contains an arity information. On import two values
 are considered equal if their original names match.
 \begin{verbatim}
 
@@ -327,6 +327,7 @@ are considered equal if their original names match.
 >   origName (DataConstructor origName _) = origName
 >   origName (NewtypeConstructor origName _) = origName
 >   origName (Value origName _) = origName
+
 
 \end{verbatim}
 Even though value declarations may be nested, the compiler uses only
@@ -371,10 +372,10 @@ allow the usage of the qualified list constructor \texttt{(prelude.:)}.
 
 > qualLookupCons :: QualIdent -> ValueEnv -> [ValueInfo]
 > qualLookupCons x tyEnv
->    | (isJust mmid) && ((fromJust mmid) == preludeMIdent) && (ident == consId)
->       = qualLookupTopEnv (qualify ident) tyEnv
+>    | (maybe False ((==) preludeMIdent) mmid) && (id == consId)
+>       = qualLookupTopEnv (qualify id) tyEnv
 >    | otherwise = []
->  where (mmid, ident) = splitQualIdent x
+>  where (mmid, id) = splitQualIdent x
 
 > lookupTuple :: Ident -> [ValueInfo]
 > lookupTuple c
@@ -387,6 +388,55 @@ allow the usage of the qualified list constructor \texttt{(prelude.:)}.
 >           DataConstructor (qualUnqualify preludeMIdent tc)
 >                           (ForAllExist (length tys) 0
 >                                        (foldr TypeArrow (tupleType tys) tys))
+
+\end{verbatim}
+\paragraph{Arity}
+In order to generate correct FlatCurry application it is necessary
+to define the number of arguments as the arity value (instead of
+using the arity computed from the type). For this reason the compiler
+needs a table containing the information for all known functions
+and constructors. 
+\begin{verbatim}
+
+> type ArityEnv = TopEnv ArityInfo
+
+> data ArityInfo = ArityInfo QualIdent Int deriving Show
+
+> instance Entity ArityInfo where
+>   origName (ArityInfo origName _) = origName
+
+> bindArity :: ModuleIdent -> Ident -> Int -> ArityEnv -> ArityEnv
+> bindArity mid id arity aEnv
+>    | uniqueId id == 0 
+>      = bindTopEnv id arityInfo (qualBindTopEnv qid arityInfo aEnv)
+>    | otherwise        
+>      = bindTopEnv id arityInfo aEnv
+>  where
+>  qid = qualifyWith mid id
+>  arityInfo = ArityInfo qid arity
+
+> lookupArity :: Ident -> ArityEnv -> [ArityInfo]
+> lookupArity id aEnv = lookupTopEnv id aEnv ++! lookupTupleArity id
+
+> qualLookupArity :: QualIdent -> ArityEnv -> [ArityInfo]
+> qualLookupArity qid aEnv = qualLookupTopEnv qid aEnv
+>		             ++! qualLookupConsArity qid aEnv
+>			     ++! lookupTupleArity (unqualify qid)
+
+> qualLookupConsArity :: QualIdent -> ArityEnv -> [ArityInfo]
+> qualLookupConsArity qid aEnv
+>    | (maybe False ((==) preludeMIdent) mmid) && (id == consId)
+>      = qualLookupTopEnv (qualify id) aEnv
+>    | otherwise
+>      = []
+>  where (mmid, id) = splitQualIdent qid
+
+> lookupTupleArity :: Ident -> [ArityInfo]
+> lookupTupleArity id 
+>    | isTupleId id 
+>      = [ArityInfo (qualifyWith preludeMIdent id) (tupleArity id)]
+>    | otherwise
+>      = []
 
 \end{verbatim}
 \paragraph{Operator precedences}
@@ -496,6 +546,13 @@ identifiers.
 >         predefDC c ty = predefTopEnv c' (DataConstructor c' ty)
 >           where c' = qualify c
 >         constrType (ForAll n ty) n' = ForAllExist n n' . foldr TypeArrow ty
+
+> initAEnv :: ArityEnv
+> initAEnv
+>    = foldr bindPredefArity emptyTopEnv (concatMap snd predefTypes)
+>  where
+>  bindPredefArity (Data id _ ts) aEnv
+>     = bindArity preludeMIdent id (length ts) aEnv
 
 > predefTypes :: [(Type,[Data [Type]])]
 > predefTypes =

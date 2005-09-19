@@ -1,4 +1,4 @@
-% -*- LaTeX -*-
+
 % $Id: Exports.lhs,v 1.32 2004/02/13 19:23:57 wlux Exp $
 %
 % Copyright (c) 2000-2004, Wolfgang Lux
@@ -231,7 +231,8 @@ exported function.
 > funDecl m tyEnv (Export f) ds =
 >   case qualLookupValue f tyEnv of
 >     [Value _ (ForAll _ ty)] ->
->       IFunctionDecl noPos (qualUnqualify m f) (fromQualType m ty) : ds
+>       IFunctionDecl noPos (qualUnqualify m f) (arrowArity ty) 
+>		  (fromQualType m ty) : ds
 >     _ -> internalError "funDecl"
 > funDecl _ _ (ExportTypeWith _ _) ds = ds
 
@@ -264,7 +265,7 @@ not module \texttt{B}.
 >   tc : foldr identsConstrDecl xs (catMaybes cs)
 > identsDecl (INewtypeDecl _ tc _ nc) xs = tc : identsNewConstrDecl nc xs
 > identsDecl (ITypeDecl _ tc _ ty) xs = tc : identsType ty xs
-> identsDecl (IFunctionDecl _ f ty) xs = f : identsType ty xs
+> identsDecl (IFunctionDecl _ f _ ty) xs = f : identsType ty xs
 
 > identsConstrDecl :: ConstrDecl -> [QualIdent] -> [QualIdent]
 > identsConstrDecl (ConstrDecl _ _ _ tys) xs = foldr identsType xs tys
@@ -311,7 +312,7 @@ distinguished from type variables.
 >   foldr usedTypesConstrDecl tcs (catMaybes cs)
 > usedTypesDecl (INewtypeDecl _ _ _ nc) tcs = usedTypesNewConstrDecl nc tcs
 > usedTypesDecl (ITypeDecl _ _ _ ty) tcs = usedTypesType ty tcs
-> usedTypesDecl (IFunctionDecl _ _ ty) tcs = usedTypesType ty tcs
+> usedTypesDecl (IFunctionDecl _ _ _ ty) tcs = usedTypesType ty tcs
 
 > usedTypesConstrDecl :: ConstrDecl -> [QualIdent] -> [QualIdent]
 > usedTypesConstrDecl (ConstrDecl _ _ _ tys) tcs = foldr usedTypesType tcs tys
@@ -336,7 +337,7 @@ distinguished from type variables.
 > definedType (IDataDecl _ tc _ _) tcs = tc : tcs
 > definedType (INewtypeDecl _ tc _ _) tcs = tc : tcs
 > definedType (ITypeDecl _ tc _ _) tcs = tc : tcs
-> definedType (IFunctionDecl _ _ _)  tcs = tcs
+> definedType (IFunctionDecl _ _ _ _)  tcs = tcs
 
 \end{verbatim}
 Auxiliary definitions

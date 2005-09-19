@@ -14,12 +14,13 @@ This module controls the compilation of modules.
 > module Modules(compileModule,compileGoal,typeGoal) where
 > import Base
 > import Unlit(unlit)
-> import CurryParser(parseSource,parseInterface,parseGoal)
+> import CurryParser(parseSource,parseGoal)
 > import KindCheck(kindCheck,kindCheckGoal)
 > import SyntaxCheck(syntaxCheck,syntaxCheckGoal)
 > import PrecCheck(precCheck,precCheckGoal)
 > import TypeCheck(typeCheck,typeCheckGoal)
-> import IntfCheck(intfCheck,fixInterface,intfEquiv) -- maybe obsolete
+> --import IntfCheck(intfCheck,fixInterface,intfEquiv) -- obsolete
+> import Arity
 > import Imports(importInterface,importInterfaceIntf,importUnifyData)
 > import Exports(expandInterface,exportInterface)
 > import Eval(evalEnv,evalEnvGoal)
@@ -103,10 +104,10 @@ matching code.}
 >     if uacy 
 >        then 
 >          do 
->             let (tyEnv, tcEnv, m', intf) = simpleCheckModule mEnv m
+>             let (tyEnv, tcEnv, aEnv, m', intf) = simpleCheckModule mEnv m
 >             genAbstract opts fn tyEnv tcEnv m'
 >        else
->          do let (tyEnv,tcEnv,m',intf) = checkModule mEnv m
+>          do let (tyEnv, tcEnv, aEnv, m', intf) = checkModule mEnv m
 >                 (il,dumps) =
 >                   transModule flat (debug opts) (trusted opts) mEnv tyEnv m'
 >                 (ccode,dumps') = ccodeModule (splitCode opts) mEnv il -- wegmachen
@@ -116,8 +117,8 @@ matching code.}
 >                   (dumps ++ if flat || acy || xml then [] else dumps')
 >             --unless (noInterface opts) (updateInterface fn intf)
 >             if flat || xml || acy || uacy
->                then do when flat (genFlat opts fn mEnv tcEnv m' il')
->                        when xml  (genFlat opts fn mEnv tcEnv m' il')
+>                then do when flat (genFlat opts fn mEnv tcEnv aEnv m' il')
+>                        when xml  (genFlat opts fn mEnv tcEnv aEnv m' il')
 >                        when acy  (genAbstract opts fn tyEnv tcEnv m')
 >                        when uacy (return ())
 >                else writeCode (output opts) fn 
@@ -139,30 +140,35 @@ matching code.}
 >   foldM (loadInterface paths [m]) emptyEnv
 >         [(p,m) | ImportDecl p m _ _ _ <- ds]
 
-> simpleCheckModule :: ModuleEnv -> Module -> (ValueEnv,TCEnv,Module,Interface)
+> simpleCheckModule :: ModuleEnv -> Module 
+>	    -> (ValueEnv,TCEnv,ArityEnv,Module,Interface)
 > simpleCheckModule mEnv (Module m es ds) =
->    (tyEnv'', tcEnv, modul, exportInterface modul pEnv' tcEnv'' tyEnv'')
+>    (tyEnv'', tcEnv, aEnv', modul, exportInterface modul pEnv' tcEnv'' tyEnv'')
 >   where (impDs,topDs) = partition isImportDecl ds
->         (pEnv,tcEnv,tyEnv) = importModules mEnv impDs
+>         (pEnv,tcEnv,tyEnv,aEnv) = importModules mEnv impDs
 >         (pEnv',topDs') = precCheck m pEnv $ syntaxCheck m tyEnv
 >                                           $ kindCheck m tcEnv topDs
 >         ds' = impDs ++ qual m tyEnv topDs'
 >         modul = expandInterface (Module m es ds') tcEnv tyEnv
+>	  aEnv' = expandArityEnv aEnv modul
 >         (pEnv'',tcEnv'',tyEnv'') = qualifyEnv mEnv pEnv' tcEnv tyEnv
 
-> checkModule :: ModuleEnv -> Module -> (ValueEnv,TCEnv,Module,Interface)
+> checkModule :: ModuleEnv -> Module 
+>      -> (ValueEnv,TCEnv,ArityEnv,Module,Interface)
 > checkModule mEnv (Module m es ds) =
 >   --error (show (qualLookupTC (qualify (mkIdent "String")) tcEnv))
 >   --error (show (qualLookupValue qConsId tyEnv''))
+>   --error (show (lookupArity (mkIdent "##") aEnv'))
 >   --(tyEnv'',tcEnv'',modul,exportInterface modul pEnv'' tcEnv'' tyEnv'')
->   (tyEnv'',tcEnv',modul,exportInterface modul pEnv'' tcEnv'' tyEnv'')
+>   (tyEnv'',tcEnv',aEnv',modul,exportInterface modul pEnv'' tcEnv'' tyEnv'')
 >   where (impDs,topDs) = partition isImportDecl ds
->         (pEnv,tcEnv,tyEnv) = importModules mEnv impDs
+>         (pEnv,tcEnv,tyEnv,aEnv) = importModules mEnv impDs
 >         (pEnv',topDs') = precCheck m pEnv $ syntaxCheck m tyEnv
 >                                           $ kindCheck m tcEnv topDs
 >         (tcEnv',tyEnv') = typeCheck m tcEnv tyEnv topDs'
 >         ds' = impDs ++ qual m tyEnv' topDs'
 >         modul = expandInterface (Module m es ds') tcEnv' tyEnv'
+>	  aEnv' = expandArityEnv aEnv modul
 >         (pEnv'',tcEnv'',tyEnv'') = qualifyEnv mEnv pEnv' tcEnv' tyEnv'
 
 > transModule :: Bool -> Bool -> Bool -> ModuleEnv -> ValueEnv -> Module
@@ -204,10 +210,10 @@ matching code.}
 >   (foldr bindQual pEnv' (localBindings pEnv),
 >    foldr bindQual tcEnv' (localBindings tcEnv),
 >    foldr bindGlobal tyEnv' (localBindings tyEnv))
->   where (pEnv',tcEnv',tyEnv') =
+>   where (pEnv',tcEnv',tyEnv',aEnv') =
 >           foldl importInterface initEnvs (envToList mEnv)
->         importInterface (pEnv,tcEnv,tyEnv) (m,ds) =
->           importInterfaceIntf (Interface m ds) pEnv tcEnv tyEnv
+>         importInterface (pEnv,tcEnv,tyEnv,aEnv) (m,ds) =
+>           importInterfaceIntf (Interface m ds) pEnv tcEnv tyEnv aEnv
 >         bindQual (_,y) = qualBindTopEnv (origName y) y
 >         bindGlobal (x,y)
 >           | uniqueId x == 0 = bindQual (x,y)
@@ -224,14 +230,15 @@ matching code.}
 >         code = (xmlModule fi il)
 
 > writeFlat :: Maybe FilePath -> FilePath -> CurryInfo -> ModuleEnv 
->              -> IL.Module -> IO ()
-> writeFlat tfn sfn fi menv il = writeFlatCurry fname (il2flatCurry fi menv il)
+>              -> ArityEnv -> IL.Module -> IO ()
+> writeFlat tfn sfn fi mEnv aEnv il
+>    = writeFlatCurry fname (il2flatCurry fi mEnv aEnv il)
 >   where fname = fromMaybe (rootname sfn ++ flatExt) tfn
 
 > writeFInt :: Maybe FilePath -> FilePath -> CurryInfo -> ModuleEnv
->              -> IL.Module -> IO ()
-> writeFInt tfn sfn fi menv il 
->    = writeFlatCurry fname (il2flatInterface fi menv il)
+>              -> ArityEnv -> IL.Module -> IO ()
+> writeFInt tfn sfn fi mEnv aEnv il 
+>    = writeFlatCurry fname (il2flatInterface fi mEnv il)
 >  where fname = fromMaybe (rootname sfn ++ fintExt) tfn
 
 > writeTypedAbs :: Maybe FilePath -> FilePath -> ValueEnv -> TCEnv -> Module
@@ -304,7 +311,7 @@ for PAKCS.
 >   do
 >     Module m _ ds <- maybe (return emptyModule) parseGoalModule fn
 >     mEnv <- loadInterfaces paths (Module m Nothing ds)
->     let (_,_,_,intf) = checkModule mEnv (Module m Nothing ds)
+>     let (_,_,_,_,intf) = checkModule mEnv (Module m Nothing ds)
 >     return (bindModule intf mEnv,m,filter isImportDecl ds ++ [importMain m])
 >   where emptyModule = importPrelude "" (Module emptyMIdent Nothing [])
 >         parseGoalModule fn = liftM (parseModule False fn) (readFile fn)
@@ -312,7 +319,7 @@ for PAKCS.
 
 > checkGoal :: ModuleEnv -> [Decl] -> Goal -> (ValueEnv,Goal)
 > checkGoal mEnv impDs g = (tyEnv'',qualGoal tyEnv' g')
->   where (pEnv,tcEnv,tyEnv) = importModules mEnv impDs
+>   where (pEnv,tcEnv,tyEnv,aEnv) = importModules mEnv impDs
 >         g' = precCheckGoal pEnv $ syntaxCheckGoal tyEnv
 >                                 $ kindCheckGoal tcEnv g
 >         tyEnv' = typeCheckGoal tcEnv tyEnv g'
@@ -354,7 +361,7 @@ to determine the type of the goal when linking the program.
 
 > compileDefaultGoal :: Bool -> ModuleEnv -> Interface -> Maybe CFile
 > compileDefaultGoal debug mEnv (Interface m ds)
->   | m == mainMIdent && any (qMainId ==) [f | IFunctionDecl _ f _ <- ds] =
+>   | m == mainMIdent && any (qMainId ==) [f | IFunctionDecl _ f _ _ <- ds] =
 >       Just ccode
 >   | otherwise = Nothing
 >   where qMainId = qualify mainId
@@ -369,18 +376,18 @@ The function \texttt{importModules} brings the declarations of all
 imported modules into scope for the current module.
 \begin{verbatim}
 
-> importModules :: ModuleEnv -> [Decl] -> (PEnv,TCEnv,ValueEnv)
-> importModules mEnv ds = (pEnv,importUnifyData tcEnv,tyEnv)
->   where (pEnv,tcEnv,tyEnv) = foldl importModule initEnvs ds
->         importModule (pEnv,tcEnv,tyEnv) (ImportDecl p m q asM is) =
+> importModules :: ModuleEnv -> [Decl] -> (PEnv,TCEnv,ValueEnv,ArityEnv)
+> importModules mEnv ds = (pEnv,importUnifyData tcEnv,tyEnv,aEnv)
+>   where (pEnv,tcEnv,tyEnv,aEnv) = foldl importModule initEnvs ds
+>         importModule (pEnv,tcEnv,tyEnv,aEnv) (ImportDecl p m q asM is) =
 >           case lookupModule m mEnv of
 >             Just ds -> importInterface p (fromMaybe m asM) q is
->                                        (Interface m ds) pEnv tcEnv tyEnv
+>                                        (Interface m ds) pEnv tcEnv tyEnv aEnv
 >             Nothing -> internalError "importModule"
->         importModule (pEnv,tcEnv,tyEnv) _ = (pEnv,tcEnv,tyEnv)
+>         importModule (pEnv,tcEnv,tyEnv,aEnv) _ = (pEnv,tcEnv,tyEnv,aEnv)
 
-> initEnvs :: (PEnv,TCEnv,ValueEnv)
-> initEnvs = (initPEnv,initTCEnv,initDCEnv)
+> initEnvs :: (PEnv,TCEnv,ValueEnv,ArityEnv)
+> initEnvs = (initPEnv,initTCEnv,initDCEnv,initAEnv)
 
 \end{verbatim}
 An implicit import of the prelude is added to the declarations of
@@ -501,24 +508,24 @@ the interface file in this case and therefore it doesn't matter when
 the file is closed.
 \begin{verbatim}
 
-> updateInterface :: FilePath -> Interface -> IO ()
-> updateInterface sfn i =
->   do
->     eq <- catch (matchInterface ifn i) (const (return False))
->     unless eq (writeInterface ifn i)
->   where ifn = rootname sfn ++ intfExt
+> --updateInterface :: FilePath -> Interface -> IO ()
+> --updateInterface sfn i =
+> --  do
+> --    eq <- catch (matchInterface ifn i) (const (return False))
+> --    unless eq (writeInterface ifn i)
+> --  where ifn = rootname sfn ++ intfExt
 
-> matchInterface :: FilePath -> Interface -> IO Bool
-> matchInterface ifn i =
->   do
->     h <- openFile ifn ReadMode
->     s <- hGetContents h
->     case parseInterface ifn s of
->       Ok i' | i `intfEquiv` fixInterface i' -> return True
->       _ -> hClose h >> return False
+> --matchInterface :: FilePath -> Interface -> IO Bool
+> --matchInterface ifn i =
+> --  do
+> --    h <- openFile ifn ReadMode
+> --    s <- hGetContents h
+> --    case parseInterface ifn s of
+> --      Ok i' | i `intfEquiv` fixInterface i' -> return True
+> --      _ -> hClose h >> return False
 
-> writeInterface :: FilePath -> Interface -> IO ()
-> writeInterface ifn = writeFile ifn . showln . ppInterface
+> --writeInterface :: FilePath -> Interface -> IO ()
+> --writeInterface ifn = writeFile ifn . showln . ppInterface
 
 \end{verbatim}
 The compiler searches for interface files in the import search path
@@ -577,16 +584,16 @@ The functions \texttt{genFlat} and \texttt{genAbstract} generate
 flat and abstract curry representations depending on the specified option.
 \begin{verbatim}
 
-> genFlat :: Options -> FilePath -> ModuleEnv -> TCEnv -> Module
+> genFlat :: Options -> FilePath -> ModuleEnv -> TCEnv -> ArityEnv -> Module
 >            -> IL.Module -> IO ()
-> genFlat opts fname mEnv tcEnv mod il
+> genFlat opts fname mEnv tcEnv aEnv mod il
 >   | flatCurry opts
->     = writeFlat Nothing fname info mEnv il
->       >> writeFInt Nothing fname info mEnv il
+>     = writeFlat Nothing fname info mEnv aEnv il
+>       >> writeFInt Nothing fname info mEnv aEnv il
 >   | flatXML opts
 >     = writeXML (output opts) fname info il
 >   | otherwise
->     = internalError "illegal option (genFlat)"
+>     = internalError "@Modules.genFlat: illegal option"
 >  where
 >    info = genCurryInfo mEnv tcEnv mod
 
@@ -598,7 +605,7 @@ flat and abstract curry representations depending on the specified option.
 >    | untypedAbstract opts
 >      = writeUntypedAbs Nothing fname tyEnv tcEnv mod
 >    | otherwise
->      = internalError "illegal option (genAbstract)"
+>      = internalError "@Modules.genAbstract: illegal option"
 
 
 
@@ -610,7 +617,8 @@ from the type environment.
 > ppTypes :: ModuleIdent -> [(Ident,ValueInfo)] -> Doc
 > ppTypes m = vcat . map (ppIDecl . mkDecl) . filter (isValue . snd)
 >   where mkDecl (v,Value _ (ForAll _ ty)) =
->           IFunctionDecl undefined (qualify v) (fromQualType m ty)
+>           IFunctionDecl undefined (qualify v) (arrowArity ty) 
+>		      (fromQualType m ty)
 >         isValue (DataConstructor _ _) = False
 >         isValue (NewtypeConstructor _ _) = False
 >         isValue (Value _ _) = True
