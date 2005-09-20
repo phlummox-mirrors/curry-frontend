@@ -15,7 +15,7 @@ data CurryInfo = CurryInfo { modname  :: ModuleIdent,
 			     publics  :: [QualIdent],
 			     ops      :: [IDecl],
 			     typesyns :: [IDecl]
-			   }
+			   } deriving Show
 
 -------------------------------------------------------------------------------
 

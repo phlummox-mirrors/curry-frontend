@@ -12,7 +12,8 @@ module IL2FlatCurry (il2flatCurry,
 
 import IL
 import Ident
-import Base (ModuleEnv, ArityEnv, ArityInfo(..), qualLookupArity)
+import Base (ModuleEnv, ArityEnv, ArityInfo(..), 
+	     qualLookupArity, lookupArity, internalError)
 import TopEnv
 import Env
 import CurryInfo
@@ -124,23 +125,24 @@ visitVarIdent env ident
 --
 visitFuncDecl :: FlatEnv -> Decl -> (FuncDecl, FlatEnv)
 visitFuncDecl env (FunctionDecl qident params typeexpr expr)
-   = let (fparams, env1)   = emap visitVarIdent env params
-         (ftypeexpr, env2) = visitType env1 typeexpr
-	 (fexpr, env3)     = visitExpression env2 expr
-	 visibility        = getVisibility env3 qident
-	 funcdecl | genInterface env && visibility == Public
-		     = Func (visitQualIdent env3 qident)
-		            (length params)
-			    Public
-			    ftypeexpr
-			    (Rule [] (Var 0))
-	          | otherwise
-                     = Func (visitQualIdent env3 qident)
-		            (length params)
-			    visibility
-			    ftypeexpr
-			    (Rule fparams fexpr)
-     in  (funcdecl, (env3{ varIds = [] }))
+   | genInterface env
+     = let (ftypeexpr, env1) = visitType env typeexpr
+       in  (Func (visitQualIdent env1 qident)
+	         (length params)
+	         Public
+	         ftypeexpr
+	         (Rule [] (Var 0)),
+	    env1{ varIds = [] })
+   | otherwise
+     = let (fparams, env1)   = emap visitVarIdent env params
+           (ftypeexpr, env2) = visitType env1 typeexpr
+	   (fexpr, env3)     = visitExpression env2 expr
+       in  (Func (visitQualIdent env3 qident)
+	         (length params)
+	         (getVisibility env3 qident)
+	         ftypeexpr
+	         (Rule fparams fexpr),
+	    env3{ varIds = [] })
 
 visitFuncDecl env (ExternalDecl qident _ name typeexpr)
    = let (ftypeexpr, env1) = visitType env typeexpr
@@ -491,22 +493,29 @@ genFlatApplication :: FlatEnv -> Expression -> (FlatCurry.Expr, FlatEnv)
 genFlatApplication env applicexpr
    = p_genFlatApplic env 0 [] applicexpr
  where
-   p_genFlatApplic env cnt args expr
+   p_genFlatApplic env cnt args expr 
       = case expr of
 	  (Apply expr1 expr2)    
 	      -> p_genFlatApplic env (cnt + 1) (expr2:args) expr1
 	  (Function qident arity) 
 	      -> case (qualLookupArity qident (arityEnv env)) of
 		   [ArityInfo qident' arity']
-		     -> p_genFuncCall env qident' arity' cnt args
-		   _ -> p_genFuncCall env qident arity cnt args
+		      -> p_genFuncCall env qident' arity' cnt args
+		   [] -> case (lookupArity (unqualify qident) (arityEnv env)) of
+			   [ArityInfo qident' arity']
+			      -> p_genFuncCall env qident' arity' cnt args
+			   _  -> internalError (funcArity qident)
+		   _  ->  internalError (funcArity qident)
 	  (Constructor qident arity)  
 	      -> case (qualLookupArity qident (arityEnv env)) of
 		   [ArityInfo qident' arity']
-		     -> p_genConsCall env qident' arity' cnt args
-		   _ -> p_genConsCall env qident arity cnt args
-	  _                       
-	      -> let (fexpr, env1) = visitExpression env expr
+		      -> p_genConsCall env qident' arity' cnt args
+		   [] -> case (lookupArity (unqualify qident) (arityEnv env)) of
+			   [ArityInfo qident' arity']
+			      -> p_genFuncCall env qident' arity' cnt args
+			   _  -> internalError (consArity qident)
+		   _  -> internalError (consArity qident)
+	  _   -> let (fexpr, env1) = visitExpression env expr
 		 in  p_genApplicComb env fexpr args
 
    p_genFuncCall env qident arity cnt args
@@ -527,17 +536,20 @@ genFlatApplication env applicexpr
 
    p_genComb env qident args combtype 
       = let (fexpr, env1) = emap visitExpression env args
-        in  (Comb combtype (visitQualIdent env qident) fexpr, env1)
+        in  (Comb combtype (visitQualIdent env1 qident) fexpr, env1)
 	 
    p_genApplicComb env fexpr [] = (fexpr, env)
    p_genApplicComb env fexpr (e1:es)
       = let (fe1, env1) = visitExpression env e1
             appcomb     = Comb FuncCall 
-			       (visitQualIdent env p_qidApply)
+			       (visitQualIdent env1 p_qidApply)
 			       [fexpr, fe1]
 	in  p_genApplicComb env1 appcomb es
 
    p_qidApply = qualifyWith preludeMIdent (mkIdent "apply")
+
+   funcArity qid = "cannot compute function arity of \"" ++ show qid ++ "\""
+   consArity qid = "cannot compute constructor arity of \"" ++ show qid ++ "\""
 
 
 --
@@ -750,7 +762,7 @@ data FlatEnv = FlatEnv { moduleId     :: ModuleIdent,
 			 varIds       :: [(Ident, Int)],
 			 tvarIds      :: [(Ident, Int)],
 			 genInterface :: Bool
-		       }
+		       } deriving Show
 
 -- Initial environment for generating FlatCurry code
 initFlatEnv :: FlatEnv

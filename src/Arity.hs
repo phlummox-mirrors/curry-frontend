@@ -7,7 +7,7 @@
 -- September 2005,
 -- Martin Engelke (men@informatik.uni-kiel.de)
 --
-module Arity (expandArityEnv) where
+module Arity (bindArities) where
 
 import Base
 import CurrySyntax
@@ -18,8 +18,8 @@ import Ident
 
 -- Expands the arity envorinment with (global / local) function arities and
 -- constructor arities
-expandArityEnv :: ArityEnv -> Module -> ArityEnv
-expandArityEnv aEnv (Module mid _ decls)
+bindArities :: ArityEnv -> Module -> ArityEnv
+bindArities aEnv (Module mid _ decls)
    = foldl (visitDecl mid) aEnv decls
 
 
@@ -44,7 +44,7 @@ visitConstrDecl mid aEnv (ConOpDecl _ _ _ id _)
 
 
 visitLhs :: ModuleIdent -> Ident -> ArityEnv -> Lhs -> ArityEnv
-visitLhs mid id aEnv (FunLhs _ params)
+visitLhs mid _ aEnv (FunLhs id params)
    = bindArity mid id (length params) aEnv
 visitLhs mid id aEnv (OpLhs _ _ _)
    = bindArity mid id 2 aEnv

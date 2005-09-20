@@ -306,6 +306,7 @@ to the top-level.
 
 > liftIdent :: String -> Ident -> Ident
 > liftIdent prefix x =
->    renameIdent (mkIdent (prefix ++ name x ++ show (uniqueId x))) (uniqueId x)
+>     renameIdent (mkIdent (prefix ++ (show x))) (uniqueId x)
+>    --renameIdent (mkIdent (prefix ++ name x ++ show (uniqueId x))) (uniqueId x)
 
 \end{verbatim}

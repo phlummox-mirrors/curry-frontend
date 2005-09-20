@@ -108,8 +108,8 @@ matching code.}
 >             genAbstract opts fn tyEnv tcEnv m'
 >        else
 >          do let (tyEnv, tcEnv, aEnv, m', intf) = checkModule mEnv m
->                 (il,dumps) =
->                   transModule flat (debug opts) (trusted opts) mEnv tyEnv m'
+>                 (il,aEnv',dumps) = transModule flat (debug opts) 
+>			                (trusted opts) mEnv tyEnv aEnv m'
 >                 (ccode,dumps') = ccodeModule (splitCode opts) mEnv il -- wegmachen
 >                 ccode' = compileDefaultGoal (debug opts) mEnv intf
 >                 il' = completeCase mEnv il
@@ -117,8 +117,8 @@ matching code.}
 >                   (dumps ++ if flat || acy || xml then [] else dumps')
 >             --unless (noInterface opts) (updateInterface fn intf)
 >             if flat || xml || acy || uacy
->                then do when flat (genFlat opts fn mEnv tcEnv aEnv m' il')
->                        when xml  (genFlat opts fn mEnv tcEnv aEnv m' il')
+>                then do when flat (genFlat opts fn mEnv tcEnv aEnv' m' il')
+>                        when xml  (genFlat opts fn mEnv tcEnv aEnv' m' il')
 >                        when acy  (genAbstract opts fn tyEnv tcEnv m')
 >                        when uacy (return ())
 >                else writeCode (output opts) fn 
@@ -143,24 +143,25 @@ matching code.}
 > simpleCheckModule :: ModuleEnv -> Module 
 >	    -> (ValueEnv,TCEnv,ArityEnv,Module,Interface)
 > simpleCheckModule mEnv (Module m es ds) =
->    (tyEnv'', tcEnv, aEnv', modul, exportInterface modul pEnv' tcEnv'' tyEnv'')
+>    (tyEnv'', tcEnv, aEnv'', modul, intf)
 >   where (impDs,topDs) = partition isImportDecl ds
 >         (pEnv,tcEnv,tyEnv,aEnv) = importModules mEnv impDs
 >         (pEnv',topDs') = precCheck m pEnv $ syntaxCheck m tyEnv
 >                                           $ kindCheck m tcEnv topDs
 >         ds' = impDs ++ qual m tyEnv topDs'
 >         modul = expandInterface (Module m es ds') tcEnv tyEnv
->	  aEnv' = expandArityEnv aEnv modul
->         (pEnv'',tcEnv'',tyEnv'') = qualifyEnv mEnv pEnv' tcEnv tyEnv
+>	  --aEnv' = bindGlobalArities aEnv modul
+>         (pEnv'',tcEnv'',tyEnv'',aEnv'') 
+>            = qualifyEnv mEnv pEnv' tcEnv tyEnv aEnv
+>         intf = exportInterface modul pEnv' tcEnv'' tyEnv''
 
 > checkModule :: ModuleEnv -> Module 
 >      -> (ValueEnv,TCEnv,ArityEnv,Module,Interface)
 > checkModule mEnv (Module m es ds) =
 >   --error (show (qualLookupTC (qualify (mkIdent "String")) tcEnv))
->   --error (show (qualLookupValue qConsId tyEnv''))
->   --error (show (lookupArity (mkIdent "##") aEnv'))
+>   --error (show (qualLookupValue (qualifyWith (mkMIdent ["RBT"]) (mkIdent "empty")) tyEnv'))
 >   --(tyEnv'',tcEnv'',modul,exportInterface modul pEnv'' tcEnv'' tyEnv'')
->   (tyEnv'',tcEnv',aEnv',modul,exportInterface modul pEnv'' tcEnv'' tyEnv'')
+>   (tyEnv'', tcEnv', aEnv'', modul, intf)
 >   where (impDs,topDs) = partition isImportDecl ds
 >         (pEnv,tcEnv,tyEnv,aEnv) = importModules mEnv impDs
 >         (pEnv',topDs') = precCheck m pEnv $ syntaxCheck m tyEnv
@@ -168,17 +169,23 @@ matching code.}
 >         (tcEnv',tyEnv') = typeCheck m tcEnv tyEnv topDs'
 >         ds' = impDs ++ qual m tyEnv' topDs'
 >         modul = expandInterface (Module m es ds') tcEnv' tyEnv'
->	  aEnv' = expandArityEnv aEnv modul
->         (pEnv'',tcEnv'',tyEnv'') = qualifyEnv mEnv pEnv' tcEnv' tyEnv'
+>	  --aEnv' = bindGlobalArities aEnv modul
+>         (pEnv'',tcEnv'',tyEnv'',aEnv'') 
+>            = qualifyEnv mEnv pEnv' tcEnv' tyEnv' aEnv
+>         intf = exportInterface modul pEnv'' tcEnv'' tyEnv''
 
-> transModule :: Bool -> Bool -> Bool -> ModuleEnv -> ValueEnv -> Module
->             -> (IL.Module,[(Dump,Doc)])
-> transModule flat debug trusted mEnv tyEnv (Module m es ds) = (ilDbg,dumps)
+> transModule :: Bool -> Bool -> Bool -> ModuleEnv -> ValueEnv -> ArityEnv
+>      -> Module -> (IL.Module,ArityEnv,[(Dump,Doc)])
+> transModule flat debug trusted mEnv tyEnv aEnv (Module m es ds) = 
+>     (ilDbg,aEnv',dumps)
+>     --error ("!! " ++ show (qualLookupArity (qualifyWith (mkMIdent ["RedBlackTree"]) (mkIdent "empty")) aEnv'))
+>     --error (let (Module _ _ ds)=lifted in unlines (map show (take 10 ds)))
 >   where topDs = filter (not . isImportDecl) ds
 >         evEnv = evalEnv topDs
 >         (desugared,tyEnv') = desugar tyEnv (Module m es topDs)
 >         (simplified,tyEnv'') = simplify flat tyEnv' evEnv desugared
 >         (lifted,tyEnv''',evEnv') = lift tyEnv'' evEnv simplified
+>         aEnv' = bindArities aEnv lifted
 >         il = ilTrans flat tyEnv''' evEnv' lifted
 >         ilDbg = if debug then dTransform trusted il else il
 >         dumps = [
@@ -205,11 +212,13 @@ matching code.}
 >             (DumpCam,CamPP.ppModule cam)
 >           ]
 
-> qualifyEnv :: ModuleEnv -> PEnv -> TCEnv -> ValueEnv -> (PEnv,TCEnv,ValueEnv)
-> qualifyEnv mEnv pEnv tcEnv tyEnv =
+> qualifyEnv :: ModuleEnv -> PEnv -> TCEnv -> ValueEnv -> ArityEnv
+>     -> (PEnv,TCEnv,ValueEnv,ArityEnv)
+> qualifyEnv mEnv pEnv tcEnv tyEnv aEnv =
 >   (foldr bindQual pEnv' (localBindings pEnv),
 >    foldr bindQual tcEnv' (localBindings tcEnv),
->    foldr bindGlobal tyEnv' (localBindings tyEnv))
+>    foldr bindGlobal tyEnv' (localBindings tyEnv),
+>    foldr bindQual aEnv' (localBindings aEnv))
 >   where (pEnv',tcEnv',tyEnv',aEnv') =
 >           foldl importInterface initEnvs (envToList mEnv)
 >         importInterface (pEnv,tcEnv,tyEnv,aEnv) (m,ds) =
@@ -323,7 +332,7 @@ for PAKCS.
 >         g' = precCheckGoal pEnv $ syntaxCheckGoal tyEnv
 >                                 $ kindCheckGoal tcEnv g
 >         tyEnv' = typeCheckGoal tcEnv tyEnv g'
->         (_,_,tyEnv'') = qualifyEnv mEnv pEnv tcEnv tyEnv'
+>         (_,_,tyEnv'',_) = qualifyEnv mEnv pEnv tcEnv tyEnv' emptyTopEnv
 
 > transGoal :: Bool -> String -> ModuleEnv -> ValueEnv -> Ident -> Goal
 >           -> (CFile,[(Dump,Doc)])
