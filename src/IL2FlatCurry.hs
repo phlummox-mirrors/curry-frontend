@@ -169,13 +169,19 @@ visitExpression env (Variable ident)
    = let (findex, env1) = visitVarIdent env ident
      in  (Var findex, env)
 
-visitExpression env (Function qident arity)
-   | arity > 0 = (Comb (FuncPartCall arity) (visitQualIdent env qident) [], env)
-   | otherwise = (Comb FuncCall (visitQualIdent env qident) [], env)
+visitExpression env (Function qident _)
+   = maybe (internalError (funcArity qident))
+           (\arity -> genFuncCall env qident arity [])
+	   (getArity env qident)
+   -- | arity > 0 = (Comb (FuncPartCall arity) (visitQualIdent env qident) [], env)
+   -- | otherwise = (Comb FuncCall (visitQualIdent env qident) [], env)
 
 visitExpression env (Constructor qident arity)
-   | arity > 0 = (Comb (ConsPartCall arity) (visitQualIdent env qident) [], env)
-   | otherwise = (Comb ConsCall (visitQualIdent env qident) [], env)
+   = maybe (internalError (consArity qident))
+           (\arity -> genConsCall env qident arity [])
+	   (getArity env qident)
+   -- | arity > 0 = (Comb (ConsPartCall arity) (visitQualIdent env qident) [], env)
+   -- | otherwise = (Comb ConsCall (visitQualIdent env qident) [], env)
 
 visitExpression env (Apply expr1 expr2)
    = genFlatApplication env (Apply expr1 expr2)
@@ -491,65 +497,119 @@ getTypeArity (TypeVariable _)      = 0
 --
 genFlatApplication :: FlatEnv -> Expression -> (FlatCurry.Expr, FlatEnv)
 genFlatApplication env applicexpr
-   = p_genFlatApplic env 0 [] applicexpr
+   = genFlatApplic env [] applicexpr
  where
-   p_genFlatApplic env cnt args expr 
+   genFlatApplic env args expr 
       = case expr of
 	  (Apply expr1 expr2)    
-	      -> p_genFlatApplic env (cnt + 1) (expr2:args) expr1
-	  (Function qident arity) 
-	      -> case (qualLookupArity qident (arityEnv env)) of
-		   [ArityInfo qident' arity']
-		      -> p_genFuncCall env qident' arity' cnt args
-		   [] -> case (lookupArity (unqualify qident) (arityEnv env)) of
-			   [ArityInfo qident' arity']
-			      -> p_genFuncCall env qident' arity' cnt args
-			   _  -> internalError (funcArity qident)
-		   _  ->  internalError (funcArity qident)
-	  (Constructor qident arity)  
-	      -> case (qualLookupArity qident (arityEnv env)) of
-		   [ArityInfo qident' arity']
-		      -> p_genConsCall env qident' arity' cnt args
-		   [] -> case (lookupArity (unqualify qident) (arityEnv env)) of
-			   [ArityInfo qident' arity']
-			      -> p_genFuncCall env qident' arity' cnt args
-			   _  -> internalError (consArity qident)
-		   _  -> internalError (consArity qident)
+	      -> genFlatApplic env (expr2:args) expr1
+	  (Function qident _)
+	      -> maybe (internalError (funcArity qident))
+		       (\arity -> genFuncCall env qident arity args)
+		       (getArity env qident)
+	     -- -> case (qualLookupArity qident (arityEnv env)) of
+		--   [ArityInfo qident' arity']
+		--      -> p_genFuncCall env qident' arity' cnt args
+		--   [] -> case (lookupArity (unqualify qident) (arityEnv env)) of
+		--	   [ArityInfo qident' arity']
+		--	      -> p_genFuncCall env qident' arity' cnt args
+		--	   _  -> internalError (funcArity qident)
+		--   _  ->  internalError (funcArity qident)
+	  (Constructor qident _)
+	      -> maybe (internalError (consArity qident))
+		       (\arity -> genConsCall env qident arity args)
+		       (getArity env qident)
+	     -- -> case (qualLookupArity qident (arityEnv env)) of
+		--   [ArityInfo qident' arity']
+		--      -> p_genConsCall env qident' arity' cnt args
+		--   [] -> case (lookupArity (unqualify qident) (arityEnv env)) of
+		--	   [ArityInfo qident' arity']
+		--	      -> p_genFuncCall env qident' arity' cnt args
+		--	   _  -> internalError (consArity qident)
+		--   _  -> internalError (consArity qident)
 	  _   -> let (fexpr, env1) = visitExpression env expr
-		 in  p_genApplicComb env fexpr args
+		 in  genApplicComb env fexpr args
 
-   p_genFuncCall env qident arity cnt args
-      | arity > cnt = p_genComb env qident args (FuncPartCall (arity - cnt))
-      | arity < cnt 
-	= let (funcargs, applicargs) = splitAt arity args
-	      (funccall,env1)        = p_genComb env qident funcargs FuncCall 
-	  in  p_genApplicComb env1 funccall applicargs
-      | otherwise   = p_genComb env qident args FuncCall 
+   --p_genFuncCall env qident arity cnt args
+   --   | arity > cnt = p_genComb env qident args (FuncPartCall (arity - cnt))
+   --   | arity < cnt 
+	-- = let (funcargs, applicargs) = splitAt arity args
+	--      (funccall,env1)        = p_genComb env qident funcargs FuncCall 
+	--  in  p_genApplicComb env1 funccall applicargs
+   --   | otherwise   = p_genComb env qident args FuncCall 
 
-   p_genConsCall env qident arity cnt args
-      | arity > cnt = p_genComb env qident args (ConsPartCall (arity - cnt))
-      | arity < cnt 
-	= let (funcargs, applicargs) = splitAt arity args
-	      (funccall,env1)        = p_genComb env qident funcargs ConsCall 
-	  in  p_genApplicComb env1 funccall applicargs
-      | otherwise = p_genComb env qident args ConsCall 
+   --p_genConsCall env qident arity cnt args
+   --   | arity > cnt = p_genComb env qident args (ConsPartCall (arity - cnt))
+   --   | arity < cnt 
+	-- = let (funcargs, applicargs) = splitAt arity args
+	--      (funccall,env1)        = p_genComb env qident funcargs ConsCall 
+	--  in  p_genApplicComb env1 funccall applicargs
+      -- | otherwise = p_genComb env qident args ConsCall 
 
-   p_genComb env qident args combtype 
-      = let (fexpr, env1) = emap visitExpression env args
-        in  (Comb combtype (visitQualIdent env1 qident) fexpr, env1)
+   --p_genComb env qident args combtype 
+   --   = let (fexpr, env1) = emap visitExpression env args
+   --     in  (Comb combtype (visitQualIdent env1 qident) fexpr, env1)
 	 
-   p_genApplicComb env fexpr [] = (fexpr, env)
-   p_genApplicComb env fexpr (e1:es)
-      = let (fe1, env1) = visitExpression env e1
-            appcomb     = Comb FuncCall 
-			       (visitQualIdent env1 p_qidApply)
-			       [fexpr, fe1]
-	in  p_genApplicComb env1 appcomb es
+   --p_genApplicComb env fexpr [] = (fexpr, env)
+   --p_genApplicComb env fexpr (e1:es)
+   --   = let (fe1, env1) = visitExpression env e1
+   --         appcomb     = Comb FuncCall 
+	--		       (visitQualIdent env1 p_qidApply)
+	--		       [fexpr, fe1]
+	--in  p_genApplicComb env1 appcomb es
 
-   p_qidApply = qualifyWith preludeMIdent (mkIdent "apply")
+   --p_qidApply = qualifyWith preludeMIdent (mkIdent "apply")
 
-   funcArity qid = "cannot compute function arity of \"" ++ show qid ++ "\""
-   consArity qid = "cannot compute constructor arity of \"" ++ show qid ++ "\""
+   --funcArity qid = "cannot compute function arity of \"" ++ show qid ++ "\""
+   --consArity qid = "cannot compute constructor arity of \"" ++ show qid ++ "\""
+
+--
+genFuncCall :: FlatEnv -> QualIdent -> Int -> [Expression]
+	       -> (FlatCurry.Expr, FlatEnv)
+genFuncCall env qident arity args
+   | arity > cnt = genComb env qident args (FuncPartCall (arity - cnt))
+   | arity < cnt 
+     = let (funcargs, applicargs) = splitAt arity args
+	   (funccall,env1)        = genComb env qident funcargs FuncCall 
+       in  genApplicComb env1 funccall applicargs
+   | otherwise   = genComb env qident args FuncCall
+ where cnt = length args
+
+--
+genConsCall :: FlatEnv -> QualIdent -> Int -> [Expression]
+	       -> (FlatCurry.Expr, FlatEnv)
+genConsCall env qident arity args
+   | arity > cnt = genComb env qident args (ConsPartCall (arity - cnt))
+   | arity < cnt 
+     = let (funcargs, applicargs) = splitAt arity args
+	   (funccall,env1)        = genComb env qident funcargs ConsCall 
+       in  genApplicComb env1 funccall applicargs
+   | otherwise = genComb env qident args ConsCall 
+ where cnt = length args
+
+--
+genComb :: FlatEnv -> QualIdent -> [Expression] -> FlatCurry.CombType
+	   -> (FlatCurry.Expr, FlatEnv)
+genComb env qident args combtype 
+   = let (fexpr, env1) = emap visitExpression env args
+     in  (Comb combtype (visitQualIdent env1 qident) fexpr, env1)
+	 
+--
+genApplicComb :: FlatEnv -> FlatCurry.Expr -> [Expression]
+		 -> (FlatCurry.Expr, FlatEnv)
+genApplicComb env fexpr [] = (fexpr, env)
+genApplicComb env fexpr (e1:es)
+   = let (fe1, env1) = visitExpression env e1
+	 appcomb     = Comb FuncCall 
+		            (visitQualIdent env1 qidApply)
+			    [fexpr, fe1]
+     in  genApplicComb env1 appcomb es
+ where
+ qidApply = qualifyWith preludeMIdent (mkIdent "apply")
+
+--
+funcArity qid = "cannot compute function arity of \"" ++ show qid ++ "\""
+consArity qid = "cannot compute constructor arity of \"" ++ show qid ++ "\""
 
 
 --
@@ -610,12 +670,16 @@ csType2ilType ids (CurrySyntax.TupleType typeexprs)
             ids')
 
 
---
-emap :: (e -> a -> (b,e)) -> e -> [a] -> ([b], e)
-emap _ env []     = ([], env)
-emap f env (x:xs) = let (x',env')    = f env x
-			(xs', env'') = emap f env' xs
-		    in  ((x':xs'), env'')
+-- Returns the arity (= number of parameters) of an indentifier
+getArity :: FlatEnv -> QualIdent -> Maybe Int
+getArity env qident
+   = case (qualLookupArity qident aEnv) of
+       [ArityInfo _ arity] -> Just arity
+       []                  -> case (lookupArity (unqualify qident) aEnv) of
+			        [ArityInfo _ arity] -> Just arity
+				_                   -> Nothing
+       _                   -> Nothing
+ where aEnv = arityEnv env
 
 
 -------------------------------------------------------------------------------
@@ -739,6 +803,11 @@ isOpIDecl (CurrySyntax.IInfixDecl _ _ _ _) = True
 isOpIDecl _                                = False 
 
 
+--
+getModuleIdent :: Module -> ModuleIdent
+getModuleIdent (Module mident _ _) = mident
+
+
 -------------------------------------------------------------------------------
 -------------------------------------------------------------------------------
 
@@ -747,8 +816,11 @@ int2num i | i < 0     = (-1) * i
 	  | otherwise = i
 
 
-getModuleIdent :: Module -> ModuleIdent
-getModuleIdent (Module mident _ _) = mident
+emap :: (e -> a -> (b,e)) -> e -> [a] -> ([b], e)
+emap _ env []     = ([], env)
+emap f env (x:xs) = let (x',env')    = f env x
+			(xs', env'') = emap f env' xs
+		    in  ((x':xs'), env'')
 
 -------------------------------------------------------------------------------
 -------------------------------------------------------------------------------

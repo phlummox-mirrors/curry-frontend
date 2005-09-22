@@ -1,4 +1,4 @@
-% -*- LaTeX -*-
+
 % $Id: Options.lhs,v 1.12 2003/05/23 21:12:46 wlux Exp $
 %
 % Copyright (c) 2001-2003, Wolfgang Lux
@@ -89,15 +89,15 @@ recognized by the compiler.
 > options = [
 >     Option "i" ["import-dir"] (ReqArg ImportPath "DIR")
 >            "search for imports in DIR",
->     Option "e" ["eval"] (OptArg Eval "GOAL")
+>     Option "e" ["eval"] (OptArg Eval "GOAL") -- obsolete
 >            "generate code to evaluate GOAL",
->     Option "t" ["type"] (ReqArg Type "GOAL")
+>     Option "t" ["type"] (ReqArg Type "GOAL") -- obsolete
 >            "print type of GOAL",
 >     Option "o" ["output"] (ReqArg Output "FILE")
 >            "write code to FILE",
->     Option "" ["no-icurry"] (NoArg NoInterface)
+>     Option "" ["no-icurry"] (NoArg NoInterface)  -- make comform with .fint
 >            "do not create an interface file",
->     Option "" ["xml"] (NoArg FlatXML)
+>     Option "" ["xml"] (NoArg FlatXML)  -- maybe obsolete
 >            "generate flat xml code",
 >     Option "" ["flat"] (NoArg Flat)
 >            "generate FlatCurry code",
@@ -105,11 +105,11 @@ recognized by the compiler.
 >            "generate (type infered) AbstractCurry code",
 >     Option "" ["uacy"] (NoArg UntypedAbstract)
 >            "generate untyped AbstractCurry code",
->     Option "" ["split-code"] (NoArg SplitCode)
+>     Option "" ["split-code"] (NoArg SplitCode)  -- obsolete
 >            "emit one C file for each function",
->     Option "g" ["debug"] (NoArg Debug)
+>     Option "g" ["debug"] (NoArg Debug)  -- obsolete
 >            "transform code for debugging",
->     Option "" ["trusted"] (NoArg Trusted)
+>     Option "" ["trusted"] (NoArg Trusted)  -- obsolete
 >            "trust this module (if compiled with -g/--debug)",
 >     Option "" ["dump-all"] (NoArg (Dump [minBound..maxBound]))
 >            "dump everything",
@@ -129,11 +129,11 @@ recognized by the compiler.
 >            "dump IL code after debugging transformation",
 >     Option "" ["dump-normalized"] (NoArg (Dump [DumpNormalized]))
 >            "dump IL code after normalization",
->     Option "" ["dump-cam"] (NoArg (Dump [DumpCam]))
+>     Option "" ["dump-cam"] (NoArg (Dump [DumpCam]))  -- obsolete
 >            "dump abstract machine code",
 >     Option "?h" ["help"] (NoArg Help)
 >            "display this help and exit"
->   ]
+>   ]  -- create an additional dump for case expansion
 
 \end{verbatim}
 The function \texttt{selectOption} applies an \texttt{Option} to an

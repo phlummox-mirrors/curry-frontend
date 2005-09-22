@@ -18,10 +18,10 @@ data Options =
     importPaths :: [FilePath],
     libPaths :: [FilePath],
     output :: Maybe FilePath,
-    debug :: Bool,
-    linkAlways :: Bool,
-    mkDepend :: Bool,
-    mkClean :: Bool,
+    debug :: Bool,  -- obsolete
+    linkAlways :: Bool,  -- obsolete
+    mkDepend :: Bool,  -- maybe obsolete
+    mkClean :: Bool,  -- maybe obsolete
     flat :: Bool,
     xml :: Bool,
     abstract :: Bool,
