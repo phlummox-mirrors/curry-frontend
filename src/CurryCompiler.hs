@@ -13,7 +13,6 @@ module CurryCompiler (compileCurry) where
 import CurryCompilerOpts
 import qualified Options as Opts
 import Modules
-import PathUtils
 import System
 import IO
 
