@@ -59,8 +59,6 @@ makeCurry options deps file
       = smake [flatName file', flatIntName file']
               (file':catMaybes (map flatInterface mods))
 	      (putStrLn ("compiling " ++ file' ++ " ...")
-	       --(putStrLn ("smake " ++ show [flatName file', flatIntName file']
-		--	 ++ " " ++ show (file':catMaybes (map flatInterface mods)))
 	       >> compileCurry (compOpts True) file')
  compile _ = return ()
 

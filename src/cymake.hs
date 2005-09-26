@@ -37,7 +37,7 @@ cymake prog args imports
    | elem Help opts = printUsage prog
    | null files     = badUsage prog ["no files"]
    | null errs'     = mapM_ (buildCurry options') files
-   | otherwise      = badUsage prog errs
+   | otherwise      = badUsage prog errs'
  where
  (opts, files, errs) = getOpt Permute options args
  options' = foldr selectOption defaultOpts{ libPaths = imports } opts

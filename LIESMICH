@@ -1,16 +1,16 @@
 ===============================================================================
 ==
 ==  Münster-Curry-Compiler
-==  Distribution zur Anwendung in PAKCS
+==  Distribution zur Anwendung als Frontend in PAKCS
 ==
-==  Letztes Update: 31.08.05
+==  Letztes Update: 26.09.05
 
-Diese Distribution enthält eine modifizierte Version des 
-Münster-Curry-Compilers (MCC). Dieser Compiler ist u.a. in der Lage aus 
-Curry-Programmen (entwickelt nach PAKCS-Standard) Flat-Darstellungen
-(FlatCurry ".fcy", FlatInterface ".fint" und FlatXML "_flat.xml"),
-sowie Abatract-Darstellungen (AbstractCurry ".acy" und untyped
-AbstractCurry ".uacy") zu generieren.
+Diese Distribution enthält die modifizierte Version des 
+Münster-Curry-Compilers (MCC) für die Verwendung als Frontend in PAKCS. Dieses 
+System ist u.a. in der Lage aus Curry-Programmen (entwickelt nach 
+PAKCS-Standard) Flat-Darstellungen (FlatCurry ".fcy", FlatInterface ".fint" 
+und FlatXML "_flat.xml"), sowie Abstract-Darstellungen (AbstractCurry ".acy" 
+und untyped AbstractCurry ".uacy") zu generieren.
 
 
 
@@ -37,19 +37,15 @@ kann der Compiler durch Aufruf von 'make' im Verzeichnis 'mcc' installiert
 werden. Bei Recompilierung (z.B. nach Änderungen in der Quelldateien)
 wird empfohlen vor einer erneuten Installation 'make clean' auszuführen.
 
-Im Verzeichnis 'mcc/bin/' befinden sich nach erfolgreicher Installation
-folgende ausführbare Dateien:
 
-	cyc		- der Curry-Compiler
+
+Nach erfolgreicher Installation befindet sich im Verzeichnis 'mcc/bin/'
+folgende ausführbare Datei:
+
 	cymake		- der Curry-Programm-Builder
 
-'cyc' übersetzt einzelne Curry-Programme, wobei allerding keine Import-
-Abhängigkeiten aufgelöst werden. Sämtliche importierten Module müssen
-bereits übersetzt sein, ansonsten kommt es zu einer Fehlermeldung.
-'cymake' übersetzt ein Curry-Programm, sowie auch alle importierten
-Module.
-Beide Kommandos funktionieren mit allen in den folgenden Abschnitten
-beschriebenen Optionen.
+Dieses Tool übersetzt Curry-Programme unter Berücksichtigung der Import-
+abhängigkeiten.
 
 
 
@@ -57,7 +53,7 @@ beschriebenen Optionen.
 --------------------
 
 In der folgenden Tabelle sind die Optionen zur Generierung der jeweiligen
-Darstellungen für die Kommandos 'cyc' und 'cymake' aufgelistet:
+Darstellungen für das Kommando 'cymake' aufgelistet:
 
 	--flat		: Erzeugt FlatCurry- und FlatInterface-Datei
 	--xml		: Erzeugt FlatXML-Datei
@@ -100,11 +96,6 @@ Hierdurch wird die entsprechende Datei (mit der Endung ".acy") generiert.
 Der Dateiname <filename> kann hierbei mit oder ohne Endung ".curry" bzw.
 ".lcurry" angegeben werden.
 
-Bei der Generierung von AbstractCurry-Dateien werden FlatCurry-Dateien 
-für alle Importe erzeugt. Dies ist notwendig, da die entsprechenden 
-Interfaces für die Typinferenz und die statisch-semantische Analyse
-benötigt werden.
-
 Ungetypte, bzw. typsignierte AbstractCurry-Programme werden mit folgendem
 Kommando generiert:
 
@@ -117,9 +108,11 @@ Typüberprüfung statt (d.h. auch Programme mit Typfehlern werden übersetzt).
 Alle Funktionen besitzen entweder die im Quellprogramm angegebenen Typsignatur,
 oder, sofern diese nicht vorhanden ist, den Dummy-Typ "prelude.untyped".
 
-Auch bei der Übersetzung in die ungetypte AbstractCurry-Darstellung werden
-für alle importierten Module FlatCurry-Dateien erzeugt.
-
+In beiden Fällen werden für die Übersetzung FlatCurry-Dateien 
+für alle importierten Module erzeugt. Dies ist notwendig, da die 
+entsprechenden Interfaces für die Typinferenz (nur im Fall der getypten 
+AbstractCurry-Generierung) und die statisch-semantische Analyse benötigt 
+werden.
 
 
 
@@ -168,6 +161,6 @@ Bekannte Probleme
 - Bei der Erzeugung von ungetyptem AbstractCurry werden Typsynonyme in
   Typsignaturen von Funktionen nicht dereferenziert.
 
-- Leider gibt der MCC derzeit noch keinerlei Warnungen aus.
+- Das Frontend gibt derzeit noch keinerlei Warnungen aus.
 
 

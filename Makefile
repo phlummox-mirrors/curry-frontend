@@ -6,12 +6,11 @@
 
 
 # Path of the MCC
-export MCC_PATH		= $(CURDIR)
+MCC	 = $(CURDIR)
 
-MCC_SRC  = $(MCC_PATH)/src
-MCC_BIN  = $(MCC_PATH)/bin
-#MCC_LIB  = $(MCC_PATH)/lib
-MCC_DIST = $(MCC_PATH)/dist
+MCC_SRC  = $(MCC)/src
+MCC_BIN  = $(MCC)/bin
+MCC_DIST = $(MCC)/dist
 
 # distribution
 MCC_DIST_NAME = mcc_for_pakcs
@@ -30,7 +29,6 @@ all: compile
 .PHONY: compile
 
 compile:
-	@export MCC=$(MCC_PATH)
 	@cd $(MCC_SRC) && make
 
 # Clean object files
@@ -46,15 +44,9 @@ dist: compile mk_dist
 
 mk_dist: 
 	@mkdir -p $(MCC_DIST)/mcc/bin
-	#@mkdir -p $(MCC_DIST)/mcc/lib/runtime
-
-	#@cp $(MCC_LIB)/runtime/cycc $(MCC_DIST)/mcc/lib/runtime
-	#@cp $(MCC_LIB)/runtime/cymk $(MCC_DIST)/mcc/lib/runtime
-	#@cp $(MCC_LIB)/runtime/smake $(MCC_DIST)/mcc/lib/runtime
-	#@cp $(MCC_BIN)/cyc $(MCC_DIST)/mcc/bin/
 	@cp $(MCC_BIN)/cymake $(MCC_DIST)/mcc/bin/
-	@cp $(MCC_PATH)/LIESMICH $(MCC_DIST)/mcc
-	@cp $(MCC_PATH)/LICENSE $(MCC_DIST)/mcc
+	@cp $(MCC)/LIESMICH $(MCC_DIST)/mcc
+	@cp $(MCC)/LICENSE $(MCC_DIST)/mcc
 
 	@cd $(MCC_DIST)  && tar cvf $(MCC_DIST_NAME).tar mcc/*		\
 			 && gzip -f9 -S .gz $(MCC_DIST_NAME).tar
