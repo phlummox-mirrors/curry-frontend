@@ -45,7 +45,7 @@ Makefile.
 > buildScript clean debug linkAlways flat xml acy uacy
 >             paths libPaths ofn fn =
 >   do
->     mfn'      <- getSourcePath paths libPaths fn
+>     mfn'      <- getCurryPath paths libPaths fn
 >     (fn',es1) <- return (maybe ("",["Error: missing module \"" ++ fn ++ "\""])
 >                                (\x -> (x,[]))
 >                                mfn')
@@ -337,13 +337,13 @@ reasonable value in the environment where the script is executed.
 >         nonFlatFiles Unknown fs = fs
 
 \end{verbatim}
-The function \verb|getSourcePath| searches in predefined paths
+The function \verb|getCurryPath| searches in predefined paths
 for the corresponding \texttt{.curry} or \texttt{.lcurry} file, 
 if the given file name has no extension.
 \begin{verbatim}
 
-> getSourcePath :: [FilePath] -> [FilePath] -> FilePath -> IO (Maybe FilePath)
-> getSourcePath paths libPaths fn
+> getCurryPath :: [FilePath] -> [FilePath] -> FilePath -> IO (Maybe FilePath)
+> getCurryPath paths libPaths fn
 >   = lookupFile filepaths
 >  where
 >  filepaths = [p `catPath` fn' | p   <- "":(paths ++ libPaths),

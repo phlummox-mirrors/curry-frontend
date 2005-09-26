@@ -5,16 +5,16 @@
 #--
 
 
-# Paths of the MCC
+# Path of the MCC
 export MCC_PATH		= $(CURDIR)
 
 MCC_SRC  = $(MCC_PATH)/src
 MCC_BIN  = $(MCC_PATH)/bin
-MCC_LIB  = $(MCC_PATH)/lib
+#MCC_LIB  = $(MCC_PATH)/lib
 MCC_DIST = $(MCC_PATH)/dist
 
 # distribution
-MCC_DIST_NAME = mcc_for_pakcs-082005
+MCC_DIST_NAME = mcc_for_pakcs
 
 
 #------------------------------------------------------------------------------
@@ -46,12 +46,12 @@ dist: compile mk_dist
 
 mk_dist: 
 	@mkdir -p $(MCC_DIST)/mcc/bin
-	@mkdir -p $(MCC_DIST)/mcc/lib/runtime
+	#@mkdir -p $(MCC_DIST)/mcc/lib/runtime
 
-	@cp $(MCC_LIB)/runtime/cycc $(MCC_DIST)/mcc/lib/runtime
-	@cp $(MCC_LIB)/runtime/cymk $(MCC_DIST)/mcc/lib/runtime
-	@cp $(MCC_LIB)/runtime/smake $(MCC_DIST)/mcc/lib/runtime
-	@cp $(MCC_BIN)/cyc $(MCC_DIST)/mcc/bin/
+	#@cp $(MCC_LIB)/runtime/cycc $(MCC_DIST)/mcc/lib/runtime
+	#@cp $(MCC_LIB)/runtime/cymk $(MCC_DIST)/mcc/lib/runtime
+	#@cp $(MCC_LIB)/runtime/smake $(MCC_DIST)/mcc/lib/runtime
+	#@cp $(MCC_BIN)/cyc $(MCC_DIST)/mcc/bin/
 	@cp $(MCC_BIN)/cymake $(MCC_DIST)/mcc/bin/
 	@cp $(MCC_PATH)/LIESMICH $(MCC_DIST)/mcc
 	@cp $(MCC_PATH)/LICENSE $(MCC_DIST)/mcc
