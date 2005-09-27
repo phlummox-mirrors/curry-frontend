@@ -39,8 +39,8 @@ wird empfohlen vor einer erneuten Installation 'make clean' auszuführen.
 
 
 
-Nach erfolgreicher Installation befindet sich im Verzeichnis 'mcc/bin/'
-folgende ausführbare Datei:
+Nach erfolgreicher Installation befindet sich in beiden Fällen im Verzeichnis 
+'mcc/bin/' folgende ausführbare Datei:
 
 	cymake		- der Curry-Programm-Builder
 
