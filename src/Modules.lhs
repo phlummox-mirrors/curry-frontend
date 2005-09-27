@@ -9,9 +9,12 @@
 \nwfilename{Modules.lhs}
 \section{Modules}
 This module controls the compilation of modules.
+
+Since this version is only used as a frontend for PAKCS, some of the following 
+import declarations are commented out
 \begin{verbatim}
 
-> module Modules(compileModule,compileGoal,typeGoal) where
+> module Modules(compileModule) where
 > import Base
 > import Unlit(unlit)
 > import CurryParser(parseSource,parseGoal)
@@ -19,7 +22,7 @@ This module controls the compilation of modules.
 > import SyntaxCheck(syntaxCheck,syntaxCheckGoal)
 > import PrecCheck(precCheck,precCheckGoal)
 > import TypeCheck(typeCheck,typeCheckGoal)
-> --import IntfCheck(intfCheck,fixInterface,intfEquiv) -- obsolete
+> --import IntfCheck(intfCheck,fixInterface,intfEquiv)
 > import Arity
 > import Imports(importInterface,importInterfaceIntf,importUnifyData)
 > import Exports(expandInterface,exportInterface)
@@ -32,17 +35,17 @@ This module controls the compilation of modules.
 > import qualified IL
 > import ILTrans(ilTrans,ilTransIntf)
 > import ILLift(liftProg)
-> import ILxml(xmlModule) -- maybe obsolete
+> import ILxml(xmlModule) -- check
 > import FlatCurry
 > import IL2FlatCurry
 > import AbstractCurry
 > import GenAbstractCurry
-> import DTransform(dTransform,dAddMain) -- force revision
-> import ILCompile(camCompile,camCompileData,fun) -- force revision
-> import qualified CamPP(ppModule) -- force revision
-> import CGen(genMain,genEntry,genModule,genSplitModule) -- should be obsolete
-> import CCode(CFile,mergeCFile) -- should be obsolete
-> import CPretty(ppCFile) -- should be obsolete
+> --import DTransform(dTransform,dAddMain)
+> --import ILCompile(camCompile,camCompileData,fun)
+> --import qualified CamPP(ppModule)
+> --import CGen(genMain,genEntry,genModule,genSplitModule)
+> --import CCode(CFile,mergeCFile)
+> --import CPretty(ppCFile) -- should be obsolete
 > import CurryPP(ppModule,ppInterface,ppIDecl,ppGoal)
 > import qualified ILPP(ppModule)
 > import Options(Options(..),Dump(..))
@@ -76,22 +79,11 @@ The typed AbstractCurry code is written out after checking the module.
 
 The compiler automatically loads the prelude when compiling any
 module, except for the prelude itself, by adding an appropriate import
-declaration to the module. However, the compiler does not load the
-\texttt{DebugPrelude} when the debugging transformation is used, even
-though entities from this module are entered into the code. We do not
-load the \texttt{DebugPrelude} because it \emph{necessarily} imports
-the prelude and the compiler is not capable of handling mutual
-recursion between modules. Fortunately, all information that is needed
-to generate C code from the transformed code -- in particular, the
-arities of the functions and constructors -- is already available in
-the intermediate language code. In addition, the transformed code does
-not perform pattern matchings against any of the data constructors
-exported from \texttt{DebugPrelude} which cannot be implemented
-without the interface file.\footnote{The interface declarations were
-needed in order to determine the tag number of each data constructor.
-With the help of the tag numbers, the compiler generates indexed
-switches instead of nested if-then-else cascades for the pattern
-matching code.}
+declaration to the module. 
+
+Since this modified version of the Muenster Curry Compiler is used
+as a frontend for PAKCS, all functions for evaluating goals and generating C 
+code are obsolete and commented out.
 \begin{verbatim}
 
 > compileModule :: Options -> FilePath -> IO ()
@@ -110,26 +102,24 @@ matching code.}
 >          do let (tyEnv, tcEnv, aEnv, m', intf) = checkModule mEnv m
 >                 (il,aEnv',dumps) = transModule flat (debug opts) 
 >			                (trusted opts) mEnv tyEnv aEnv m'
->                 (ccode,dumps') = ccodeModule (splitCode opts) mEnv il -- wegmachen
->                 ccode' = compileDefaultGoal (debug opts) mEnv intf
+>                 --(ccode,dumps') = ccodeModule (splitCode opts) mEnv il
+>                 --ccode' = compileDefaultGoal (debug opts) mEnv intf
 >                 il' = completeCase mEnv il
->             mapM_ (doDump opts) 
->                   (dumps ++ if flat || acy || xml then [] else dumps')
+>             mapM_ (doDump opts) dumps
 >             --unless (noInterface opts) (updateInterface fn intf)
 >             if flat || xml || acy || uacy
 >                then do when flat (genFlat opts fn mEnv tcEnv aEnv' m' il')
 >                        when xml  (genFlat opts fn mEnv tcEnv aEnv' m' il')
 >                        when acy  (genAbstract opts fn tyEnv tcEnv m')
 >                        when uacy (return ())
->                else writeCode (output opts) fn 
->                               (maybe ccode (merge ccode) ccode')
+>                else (genFlat opts fn mEnv tcEnv aEnv' m' il')
 >   where acy      = abstract opts
 >         uacy     = untypedAbstract opts
 >         flat     = flatCurry opts
 >         xml      = flatXML opts
 >         likeFlat = flat || xml || acy || uacy
->         merge (Left cf1) cf2 = Left (mergeCFile cf1 cf2)
->         merge (Right cfs) cf = Right (cf : cfs)
+>         --merge (Left cf1) cf2 = Left (mergeCFile cf1 cf2)
+>         --merge (Right cfs) cf = Right (cf : cfs)
 
 > parseModule :: Bool -> FilePath -> String -> Module
 > parseModule likeFlat fn =
@@ -150,7 +140,6 @@ matching code.}
 >                                           $ kindCheck m tcEnv topDs
 >         ds' = impDs ++ qual m tyEnv topDs'
 >         modul = expandInterface (Module m es ds') tcEnv tyEnv
->	  --aEnv' = bindGlobalArities aEnv modul
 >         (pEnv'',tcEnv'',tyEnv'',aEnv'') 
 >            = qualifyEnv mEnv pEnv' tcEnv tyEnv aEnv
 >         intf = exportInterface modul pEnv' tcEnv'' tyEnv''
@@ -158,9 +147,6 @@ matching code.}
 > checkModule :: ModuleEnv -> Module 
 >      -> (ValueEnv,TCEnv,ArityEnv,Module,Interface)
 > checkModule mEnv (Module m es ds) =
->   --error (show (qualLookupTC (qualify (mkIdent "String")) tcEnv))
->   --error (show (qualLookupValue (qualifyWith (mkMIdent ["RBT"]) (mkIdent "empty")) tyEnv'))
->   --(tyEnv'',tcEnv'',modul,exportInterface modul pEnv'' tcEnv'' tyEnv'')
 >   (tyEnv'', tcEnv', aEnv'', modul, intf)
 >   where (impDs,topDs) = partition isImportDecl ds
 >         (pEnv,tcEnv,tyEnv,aEnv) = importModules mEnv impDs
@@ -169,7 +155,6 @@ matching code.}
 >         (tcEnv',tyEnv') = typeCheck m tcEnv tyEnv topDs'
 >         ds' = impDs ++ qual m tyEnv' topDs'
 >         modul = expandInterface (Module m es ds') tcEnv' tyEnv'
->	  --aEnv' = bindGlobalArities aEnv modul
 >         (pEnv'',tcEnv'',tyEnv'',aEnv'') 
 >            = qualifyEnv mEnv pEnv' tcEnv' tyEnv' aEnv
 >         intf = exportInterface modul pEnv'' tcEnv'' tyEnv''
@@ -177,9 +162,7 @@ matching code.}
 > transModule :: Bool -> Bool -> Bool -> ModuleEnv -> ValueEnv -> ArityEnv
 >      -> Module -> (IL.Module,ArityEnv,[(Dump,Doc)])
 > transModule flat debug trusted mEnv tyEnv aEnv (Module m es ds) = 
->     (ilDbg,aEnv',dumps)
->     --error ("!! " ++ show (qualLookupArity (qualifyWith (mkMIdent ["RedBlackTree"]) (mkIdent "empty")) aEnv'))
->     --error (let (Module _ _ ds)=lifted in unlines (map show (take 10 ds)))
+>     (il,aEnv',dumps)
 >   where topDs = filter (not . isImportDecl) ds
 >         evEnv = evalEnv topDs
 >         (desugared,tyEnv') = desugar tyEnv (Module m es topDs)
@@ -187,30 +170,29 @@ matching code.}
 >         (lifted,tyEnv''',evEnv') = lift tyEnv'' evEnv simplified
 >         aEnv' = bindArities aEnv lifted
 >         il = ilTrans flat tyEnv''' evEnv' lifted
->         ilDbg = if debug then dTransform trusted il else il
->         dumps = [
->             (DumpRenamed,ppModule (Module m es ds)),
->             (DumpTypes,ppTypes m (localBindings tyEnv)),
->             (DumpDesugared,ppModule desugared),
->             (DumpSimplified,ppModule simplified),
->             (DumpLifted,ppModule lifted),
->             (DumpIL,ILPP.ppModule il),
->             (DumpTransformed,ILPP.ppModule ilDbg)
->           ]
+>         --ilDbg = if debug then dTransform trusted il else il
+>         dumps = [(DumpRenamed,ppModule (Module m es ds)),
+>	           (DumpTypes,ppTypes m (localBindings tyEnv)),
+>	           (DumpDesugared,ppModule desugared),
+>                  (DumpSimplified,ppModule simplified),
+>                  (DumpLifted,ppModule lifted),
+>                  (DumpIL,ILPP.ppModule il)
+>                   --(DumpTransformed,ILPP.ppModule ilDbg)
+>	          ]
 
-> ccodeModule :: Bool -> ModuleEnv -> IL.Module
->             -> (Either CFile [CFile],[(Dump,Doc)])
-> ccodeModule split mEnv il = (ccode,dumps)
->   where ilNormal = liftProg il
->         cam = camCompile ilNormal
->         imports = camCompileData (ilImports mEnv il)
->         ccode
->           | split = Right (genSplitModule imports cam)
->           | otherwise = Left (genModule imports cam)
->         dumps = [
->             (DumpNormalized,ILPP.ppModule ilNormal),
->             (DumpCam,CamPP.ppModule cam)
->           ]
+> --ccodeModule :: Bool -> ModuleEnv -> IL.Module
+> --            -> (Either CFile [CFile],[(Dump,Doc)])
+> --ccodeModule split mEnv il = (ccode,dumps)
+> --  where ilNormal = liftProg il
+> --        cam = camCompile ilNormal
+> --        imports = camCompileData (ilImports mEnv il)
+> --        ccode
+> --          | split = Right (genSplitModule imports cam)
+> --          | otherwise = Left (genModule imports cam)
+> --        dumps = [
+> --            (DumpNormalized,ILPP.ppModule ilNormal),
+> --            (DumpCam,CamPP.ppModule cam)
+> --          ]
 
 > qualifyEnv :: ModuleEnv -> PEnv -> TCEnv -> ValueEnv -> ArityEnv
 >     -> (PEnv,TCEnv,ValueEnv,ArityEnv)
@@ -262,15 +244,15 @@ matching code.}
 >    = writeCurry fname (genUntypedAbstract tyEnv tcEnv mod)
 >  where fname = fromMaybe (rootname sfn ++ uacyExt) tfn
 
-> writeCode :: Maybe FilePath -> FilePath -> Either CFile [CFile] -> IO ()
-> writeCode tfn sfn (Left cfile) = writeCCode ofn cfile
->   where ofn = fromMaybe (rootname sfn ++ cExt) tfn
-> writeCode tfn sfn (Right cfiles) = zipWithM_ (writeCCode . mkFn) [1..] cfiles
->   where prefix = fromMaybe (rootname sfn) tfn
->         mkFn i = prefix ++ show i ++ cExt
+> --writeCode :: Maybe FilePath -> FilePath -> Either CFile [CFile] -> IO ()
+> --writeCode tfn sfn (Left cfile) = writeCCode ofn cfile
+> --  where ofn = fromMaybe (rootname sfn ++ cExt) tfn
+> --writeCode tfn sfn (Right cfiles) = zipWithM_ (writeCCode . mkFn) [1..] cfiles
+> --  where prefix = fromMaybe (rootname sfn) tfn
+> --        mkFn i = prefix ++ show i ++ cExt
 
-> writeCCode :: FilePath -> CFile -> IO ()
-> writeCCode fn = writeFile fn . showln . ppCFile
+> --writeCCode :: FilePath -> CFile -> IO ()
+> --writeCCode fn = writeFile fn . showln . ppCFile
 
 > showln :: Show a => a -> String
 > showln x = shows x "\n"
@@ -280,87 +262,88 @@ A goal is compiled with respect to a given module. If no module is
 specified the Curry prelude is used. The source module has to be
 parsed and type checked before the goal can be compiled.  Otherwise
 compilation of a goal is similar to that of a module.
+
 \em{Note:} These functions are obsolete when using the MCC as frontend
 for PAKCS.
 \begin{verbatim}
 
-> compileGoal :: Options -> Maybe String -> Maybe FilePath -> IO ()
-> compileGoal opts g fn =
->   do
->     (ccode,dumps) <- maybe (return startupCode) goalCode g
->     mapM_ (doDump opts) dumps
->     writeCCode ofn ccode
->   where ofn = fromMaybe (internalError "No filename for startup code")
->                         (output opts)
->         startupCode = (genMain "curry_run",[])
->         goalCode = doCompileGoal (debug opts) (importPath opts) fn
+> --compileGoal :: Options -> Maybe String -> Maybe FilePath -> IO ()
+> --compileGoal opts g fn =
+> --  do
+> --    (ccode,dumps) <- maybe (return startupCode) goalCode g
+> --    mapM_ (doDump opts) dumps
+> --    writeCCode ofn ccode
+> --  where ofn = fromMaybe (internalError "No filename for startup code")
+> --                        (output opts)
+> --        startupCode = (genMain "curry_run",[])
+> --        goalCode = doCompileGoal (debug opts) (importPath opts) fn
 
-> doCompileGoal :: Bool -> [FilePath] -> Maybe FilePath -> String
->               -> IO (CFile,[(Dump,Doc)])
-> doCompileGoal debug paths fn g =
->   do
->     (mEnv,_,ds) <- loadGoalModule paths fn
->     let (tyEnv,g') = checkGoal mEnv ds (ok (parseGoal g))
->         (ccode,dumps) =
->           transGoal debug runGoal mEnv tyEnv (mkIdent "goal") g'
->         ccode' = genMain runGoal
->     return (mergeCFile ccode ccode',dumps)
->   where runGoal = "curry_runGoal"
+> --doCompileGoal :: Bool -> [FilePath] -> Maybe FilePath -> String
+> --              -> IO (CFile,[(Dump,Doc)])
+> --doCompileGoal debug paths fn g =
+> --  do
+> --    (mEnv,_,ds) <- loadGoalModule paths fn
+> --    let (tyEnv,g') = checkGoal mEnv ds (ok (parseGoal g))
+> --        (ccode,dumps) =
+> --          transGoal debug runGoal mEnv tyEnv (mkIdent "goal") g'
+> --        ccode' = genMain runGoal
+> --    return (mergeCFile ccode ccode',dumps)
+> --  where runGoal = "curry_runGoal"
 
-> typeGoal :: Options -> String -> Maybe FilePath -> IO ()
-> typeGoal opts g fn =
->   do
->     (mEnv,m,ds) <- loadGoalModule (importPath opts) fn
->     let (tyEnv,Goal _ e _) = checkGoal mEnv ds (ok (parseGoal g))
->     print (ppType m (typeOf tyEnv e))
+> --typeGoal :: Options -> String -> Maybe FilePath -> IO ()
+> --typeGoal opts g fn =
+> --  do
+> --    (mEnv,m,ds) <- loadGoalModule (importPath opts) fn
+> --    let (tyEnv,Goal _ e _) = checkGoal mEnv ds (ok (parseGoal g))
+> --    print (ppType m (typeOf tyEnv e))
 
-> loadGoalModule :: [FilePath] -> Maybe FilePath
->                -> IO (ModuleEnv,ModuleIdent,[Decl])
-> loadGoalModule paths fn =
->   do
->     Module m _ ds <- maybe (return emptyModule) parseGoalModule fn
->     mEnv <- loadInterfaces paths (Module m Nothing ds)
->     let (_,_,_,_,intf) = checkModule mEnv (Module m Nothing ds)
->     return (bindModule intf mEnv,m,filter isImportDecl ds ++ [importMain m])
->   where emptyModule = importPrelude "" (Module emptyMIdent Nothing [])
->         parseGoalModule fn = liftM (parseModule False fn) (readFile fn)
->         importMain m = ImportDecl (first "") m False Nothing Nothing
+> --loadGoalModule :: [FilePath] -> Maybe FilePath
+> --               -> IO (ModuleEnv,ModuleIdent,[Decl])
+> --loadGoalModule paths fn =
+> --  do
+> --    Module m _ ds <- maybe (return emptyModule) parseGoalModule fn
+> --    mEnv <- loadInterfaces paths (Module m Nothing ds)
+> --    let (_,_,_,_,intf) = checkModule mEnv (Module m Nothing ds)
+> --    return (bindModule intf mEnv,m,filter isImportDecl ds ++ [importMain m])
+> --  where emptyModule = importPrelude "" (Module emptyMIdent Nothing [])
+> --        parseGoalModule fn = liftM (parseModule False fn) (readFile fn)
+> --        importMain m = ImportDecl (first "") m False Nothing Nothing
 
-> checkGoal :: ModuleEnv -> [Decl] -> Goal -> (ValueEnv,Goal)
-> checkGoal mEnv impDs g = (tyEnv'',qualGoal tyEnv' g')
->   where (pEnv,tcEnv,tyEnv,aEnv) = importModules mEnv impDs
->         g' = precCheckGoal pEnv $ syntaxCheckGoal tyEnv
->                                 $ kindCheckGoal tcEnv g
->         tyEnv' = typeCheckGoal tcEnv tyEnv g'
->         (_,_,tyEnv'',_) = qualifyEnv mEnv pEnv tcEnv tyEnv' emptyTopEnv
+> --checkGoal :: ModuleEnv -> [Decl] -> Goal -> (ValueEnv,Goal)
+> --checkGoal mEnv impDs g = (tyEnv'',qualGoal tyEnv' g')
+> --  where (pEnv,tcEnv,tyEnv,aEnv) = importModules mEnv impDs
+> --        g' = precCheckGoal pEnv $ syntaxCheckGoal tyEnv
+> --                                $ kindCheckGoal tcEnv g
+> --        tyEnv' = typeCheckGoal tcEnv tyEnv g'
+> --        (_,_,tyEnv'',_) = qualifyEnv mEnv pEnv tcEnv tyEnv' emptyTopEnv
 
-> transGoal :: Bool -> String -> ModuleEnv -> ValueEnv -> Ident -> Goal
->           -> (CFile,[(Dump,Doc)])
-> transGoal debug run mEnv tyEnv goalId g = (ccode,dumps)
->   where qGoalId = qualifyWith emptyMIdent goalId
->         evEnv = evalEnvGoal g
->         (vs,desugared,tyEnv') = desugarGoal debug tyEnv emptyMIdent goalId g
->         (simplified,tyEnv'') = simplify False tyEnv' evEnv desugared
->         (lifted,tyEnv''',evEnv') = lift tyEnv'' evEnv simplified
->         il = ilTrans False tyEnv''' evEnv' lifted
->         ilDbg = if debug then dAddMain goalId (dTransform False il) else il
->         ilNormal = liftProg ilDbg
->         cam = camCompile ilNormal
->         imports = camCompileData (ilImports mEnv ilDbg)
->         ccode =
->           genModule imports cam ++
->           genEntry run (fun qGoalId) (fmap (map name) vs)
->         dumps = [
->             (DumpRenamed,ppGoal g),
->             (DumpTypes,ppTypes emptyMIdent (localBindings tyEnv)),
->             (DumpDesugared,ppModule desugared),
->             (DumpSimplified,ppModule simplified),
->             (DumpLifted,ppModule lifted),
->             (DumpIL,ILPP.ppModule il),
->             (DumpTransformed,ILPP.ppModule ilDbg),
->             (DumpNormalized,ILPP.ppModule ilNormal),
->             (DumpCam,CamPP.ppModule cam)
->           ]
+> --transGoal :: Bool -> String -> ModuleEnv -> ValueEnv -> Ident -> Goal
+> --          -> (CFile,[(Dump,Doc)])
+> --transGoal debug run mEnv tyEnv goalId g = (ccode,dumps)
+> --  where qGoalId = qualifyWith emptyMIdent goalId
+> --        evEnv = evalEnvGoal g
+> --        (vs,desugared,tyEnv') = desugarGoal debug tyEnv emptyMIdent goalId g
+> --        (simplified,tyEnv'') = simplify False tyEnv' evEnv desugared
+> --        (lifted,tyEnv''',evEnv') = lift tyEnv'' evEnv simplified
+> --        il = ilTrans False tyEnv''' evEnv' lifted
+> --        ilDbg = if debug then dAddMain goalId (dTransform False il) else il
+> --        ilNormal = liftProg ilDbg
+> --        cam = camCompile ilNormal
+> --        imports = camCompileData (ilImports mEnv ilDbg)
+> --        ccode =
+> --          genModule imports cam ++
+> --          genEntry run (fun qGoalId) (fmap (map name) vs)
+> --        dumps = [
+> --            (DumpRenamed,ppGoal g),
+> --            (DumpTypes,ppTypes emptyMIdent (localBindings tyEnv)),
+> --            (DumpDesugared,ppModule desugared),
+> --            (DumpSimplified,ppModule simplified),
+> --            (DumpLifted,ppModule lifted),
+> --            (DumpIL,ILPP.ppModule il),
+> --            (DumpTransformed,ILPP.ppModule ilDbg),
+> --            (DumpNormalized,ILPP.ppModule ilNormal),
+> --            (DumpCam,CamPP.ppModule cam)
+> --          ]
 
 \end{verbatim}
 The compiler adds a startup function for the default goal
@@ -368,17 +351,17 @@ The compiler adds a startup function for the default goal
 to determine the type of the goal when linking the program.
 \begin{verbatim}
 
-> compileDefaultGoal :: Bool -> ModuleEnv -> Interface -> Maybe CFile
-> compileDefaultGoal debug mEnv (Interface m ds)
->   | m == mainMIdent && any (qMainId ==) [f | IFunctionDecl _ f _ _ <- ds] =
->       Just ccode
->   | otherwise = Nothing
->   where qMainId = qualify mainId
->         mEnv' = bindModule (Interface m ds) mEnv
->         (tyEnv,g) =
->           checkGoal mEnv' [ImportDecl (first "") m False Nothing Nothing]
->                     (Goal (first "") (Variable qMainId) [])
->         (ccode,_) = transGoal debug "curry_run" mEnv' tyEnv mainId g
+> --compileDefaultGoal :: Bool -> ModuleEnv -> Interface -> Maybe CFile
+> --compileDefaultGoal debug mEnv (Interface m ds)
+> --  | m == mainMIdent && any (qMainId ==) [f | IFunctionDecl _ f _ _ <- ds] =
+> --      Just ccode
+> --  | otherwise = Nothing
+> --  where qMainId = qualify mainId
+> --        mEnv' = bindModule (Interface m ds) mEnv
+> --        (tyEnv,g) =
+> --          checkGoal mEnv' [ImportDecl (first "") m False Nothing Nothing]
+> --                    (Goal (first "") (Variable qMainId) [])
+> --        (ccode,_) = transGoal debug "curry_run" mEnv' tyEnv mainId g
 
 \end{verbatim}
 The function \texttt{importModules} brings the declarations of all
@@ -436,20 +419,12 @@ and compiled.
 >   where isLoaded m mEnv = maybe False (const True) (lookupModule m mEnv)
 
 \end{verbatim}
-After parsing an interface, all imported interfaces are recursively
-loaded and entered into the interface's environment.
+After reading an interface, all imported interfaces are recursively
+loaded and entered into the interface's environment. There is no need
+to check FlatCurry-Interfaces, since these files contain automaticaly
+generated FlatCurry terms (type \texttt{Prog}).
 \begin{verbatim}
 
-> --compileInterface :: [FilePath] -> [ModuleIdent] -> ModuleEnv -> ModuleIdent
-> --                 -> FilePath -> IO ModuleEnv
-> --compileInterface paths ctxt mEnv m fn =
-> --  do
-> --    intf@(Interface m' _) <- liftM (ok . parseInterface fn) (readFile fn)
-> --    unless (m == m') (errorAt (first fn) (wrongInterface m m'))
-> --    mEnv' <- loadIntfInterfaces paths ctxt mEnv intf
-> --    return (bindModule (checkInterface mEnv' intf) mEnv')
-
-> -- NEW:
 > compileInterface :: [FilePath] -> [ModuleIdent] -> ModuleEnv -> ModuleIdent
 >                  -> FilePath -> IO ModuleEnv
 > compileInterface paths ctxt mEnv m fn =
@@ -462,12 +437,12 @@ loaded and entered into the interface's environment.
 >     mEnv' <- loadFlatInterfaces paths ctxt mEnv intf
 >     return (bindFlatInterface intf mEnv')
 
-> loadIntfInterfaces :: [FilePath] -> [ModuleIdent] -> ModuleEnv -> Interface
->                    -> IO ModuleEnv
-> loadIntfInterfaces paths ctxt mEnv (Interface m ds) =
->   foldM (loadInterface paths (m:ctxt)) mEnv [(p,m) | IImportDecl p m <- ds]
+> --loadIntfInterfaces :: [FilePath] -> [ModuleIdent] -> ModuleEnv -> Interface
+> --                   -> IO ModuleEnv
+> --loadIntfInterfaces paths ctxt mEnv (Interface m ds) =
+> --  foldM (loadInterface paths (m:ctxt)) mEnv [(p,m) | IImportDecl p m <- ds]
 
-> -- NEW:
+
 > loadFlatInterfaces :: [FilePath] -> [ModuleIdent] -> ModuleEnv -> Prog
 >                    -> IO ModuleEnv
 > loadFlatInterfaces paths ctxt mEnv (Prog m is _ _ _) =
@@ -475,10 +450,6 @@ loaded and entered into the interface's environment.
 >         mEnv 
 >         (map (\i -> (p, mkMIdent [i])) is)
 >  where p = first m
-
--- Wird im fuer das PAKCS-Frontend nicht benoetigt, da Interface-Dateien
--- grundsaetzliche gemeinsam mit FlatCurry-Dateien gebildet werden
--- und diese einen eigenen Check durchlaufen.
 
 > --checkInterface :: ModuleEnv -> Interface -> Interface
 > --checkInterface mEnv (Interface m ds) =
@@ -490,19 +461,12 @@ loaded and entered into the interface's environment.
 > --            Nothing -> internalError "importInterface"
 > --        importInterface (pEnv,tcEnv,tyEnv) _ = (pEnv,tcEnv,tyEnv)
 
-> -- NEW:
-> --checkInterface :: ModuleEnv -> Prog -> Prog
-> --checkInterface mEnv prog@(Prog _ is _ _ _) =
-> --  intfCheck pEnv tcEnv tyEnv prog -- TODO
-> --  where 
-> --  (pEnv,tcEnv,tyEnv) = foldl importInterface initEnvs is
-> --  importInterface (pEnv,tcEnv,tyEnv) m' =
-> --     case lookupModule m' mEnv of
-> --       Just ds' -> importInterfaceIntf (Interface m' ds') pEnv tcEnv tyEnv
-> --       Nothing  -> internalError "importInterface"
-
 
 \end{verbatim}
+Interface files are updated by the Curry builder when necessary.
+(see module \texttt{CurryBuilder}).
+
+Description of the following obsolete functions:
 After checking the module successfully, the compiler may need to
 update the module's interface file. The file will be updated only if
 the interface has been changed or the file did not exist before.
@@ -538,15 +502,10 @@ the file is closed.
 
 \end{verbatim}
 The compiler searches for interface files in the import search path
-using the extension \texttt{".icurry"}. Note that the current
+using the extension \texttt{".fint"}. Note that the current
 directory is always searched first.
 \begin{verbatim}
 
-> --lookupInterface :: [FilePath] -> ModuleIdent -> IO (Maybe FilePath)
-> --lookupInterface paths m = lookupFile (ifn : [catPath p ifn | p <- paths])
-> --  where ifn = foldr1 catPath (moduleQualifiers m) ++ intfExt
-
-> -- NEW:
 > lookupInterface :: [FilePath] -> ModuleIdent -> IO (Maybe FilePath)
 > lookupInterface paths m = lookupFile (ifn : [catPath p ifn | p <- paths])
 >   where ifn = foldr1 catPath (moduleQualifiers m) ++ fintExt
@@ -583,9 +542,9 @@ standard output.
 > dumpHeader DumpSimplified = "Source code after simplification"
 > dumpHeader DumpLifted = "Source code after lifting"
 > dumpHeader DumpIL = "Intermediate code"
-> dumpHeader DumpTransformed = "Transformed code" 
-> dumpHeader DumpNormalized = "Intermediate code after normalization"
-> dumpHeader DumpCam = "Abstract machine code"
+> --dumpHeader DumpTransformed = "Transformed code" 
+> --dumpHeader DumpNormalized = "Intermediate code after normalization"
+> --dumpHeader DumpCam = "Abstract machine code"
 
 
 \end{verbatim}

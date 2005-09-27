@@ -1,9 +1,0 @@
-#!/bin/sh
-#
-# Shell script for removing all curry interfaces,
-# FlatCurry and FlatInterface files
-
-rm -f *.icurry
-rm -f *.fcy
-rm -f *.fint
-

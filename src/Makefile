@@ -2,14 +2,13 @@
 # necessary files for builing a modified version of the Muenster Curry Compiler
 # which is used as PAKCS frontend
 
-MCC_SRC = AbstractCurry.hs Cam.lhs CCode.lhs Pretty.lhs CPretty.lhs CamPP.lhs  \
-	  FlatCurry.hs Utils.lhs Position.lhs Unlit.lhs Error.lhs LexComb.lhs  \
-	  Combined.lhs Ident.lhs CurrySyntax.lhs CurryPP.lhs Types.lhs IL.lhs  \
-	  ILPP.lhs DTransform.lhs ILLift.lhs Map.lhs Set.lhs SCC.lhs CElim.lhs \
-	  CPS.lhs CurryLexer.lhs LLParseComb.lhs CurryParser.lhs Subst.lhs     \
-	  CGen.lhs Env.lhs TopEnv.lhs Base.lhs TypeSubst.lhs Typing.lhs        \
-	  Desugar.lhs Qual.lhs Exports.lhs Arity.hs KindCheck.lhs ScopeEnv.hs  \
-	  ILScope.hs CaseCompletion.hs ILCompile.lhs GenAbstractCurry.hs       \
+MCC_SRC = AbstractCurry.hs Pretty.lhs FlatCurry.hs Utils.lhs Position.lhs      \
+	  Unlit.lhs Error.lhs LexComb.lhs Combined.lhs Ident.lhs               \
+	  CurrySyntax.lhs CurryPP.lhs Types.lhs IL.lhs ILPP.lhs ILLift.lhs     \
+	  Map.lhs Set.lhs SCC.lhs CurryLexer.lhs LLParseComb.lhs               \
+	  CurryParser.lhs Subst.lhs Env.lhs TopEnv.lhs Base.lhs TypeSubst.lhs  \
+	  Typing.lhs Desugar.lhs Qual.lhs Exports.lhs Arity.hs KindCheck.lhs   \
+	  ScopeEnv.hs ILScope.hs CaseCompletion.hs GenAbstractCurry.hs         \
 	  CurryInfo.hs ILTrans.lhs ILxml.lhs Lift.lhs Simplify.lhs Eval.lhs    \
 	  Imports.lhs TypeCheck.lhs PrecCheck.lhs NestEnv.lhs SyntaxCheck.lhs  \
 	  GetOpt.hs Options.lhs CurryCompilerOpts.hs CurryBuilderOpts.hs       \
