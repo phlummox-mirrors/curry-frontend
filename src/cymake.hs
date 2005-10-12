@@ -6,6 +6,7 @@
 --          Command line tool for generating Curry representations (e.g.
 --          FlatCurry, AbstractCurry) for a Curry source file including
 --          all imported modules.
+--
 -- September 2005,
 -- Martin Engelke (men@informatik.uni-kiel.de)
 --
@@ -40,7 +41,11 @@ cymake prog args imports
    | otherwise      = badUsage prog errs'
  where
  (opts, files, errs) = getOpt Permute options args
- options' = foldr selectOption defaultOpts{ libPaths = imports } opts
+ opts'    = foldr selectOption defaultOpts{ libPaths = imports } opts
+ options' = if  flat opts' || flatXml opts' 
+	        || abstract opts' || untypedAbstract opts'
+	        then  opts'
+	        else  opts'{ flat = True }
  errs'    = errs ++ check options' files
 
 

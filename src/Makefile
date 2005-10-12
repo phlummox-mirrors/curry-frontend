@@ -1,27 +1,10 @@
 
-# necessary files for builing a modified version of the Muenster Curry Compiler
-# which is used as PAKCS frontend
-
-MCC_SRC = AbstractCurry.hs Pretty.lhs FlatCurry.hs Utils.lhs Position.lhs      \
-	  Unlit.lhs Error.lhs LexComb.lhs Combined.lhs Ident.lhs               \
-	  CurrySyntax.lhs CurryPP.lhs Types.lhs IL.lhs ILPP.lhs ILLift.lhs     \
-	  Map.lhs Set.lhs SCC.lhs CurryLexer.lhs LLParseComb.lhs               \
-	  CurryParser.lhs Subst.lhs Env.lhs TopEnv.lhs Base.lhs TypeSubst.lhs  \
-	  Typing.lhs Desugar.lhs Qual.lhs Exports.lhs Arity.hs KindCheck.lhs   \
-	  ScopeEnv.hs ILScope.hs CaseCompletion.hs GenAbstractCurry.hs         \
-	  CurryInfo.hs ILTrans.lhs ILxml.lhs Lift.lhs Simplify.lhs Eval.lhs    \
-	  Imports.lhs TypeCheck.lhs PrecCheck.lhs NestEnv.lhs SyntaxCheck.lhs  \
-	  GetOpt.hs Options.lhs CurryCompilerOpts.hs CurryBuilderOpts.hs       \
-	  PathUtils.lhs CurryDeps.lhs PatchPrelude.hs IL2FlatCurry.hs          \
-	  Modules.lhs CurryCompiler.hs CurryBuilder.hs Variables.hs
-
 # the command line compiler 'cymake'
-CYMAKE_SRC = cymake.hs
 CYMAKE     = cymake
 
 # the haskell compiler
 HC         = ghc
-HC_OPTS	   = -syslib lang --make
+HC_OPTS	   = -v1 -syslib lang --make
 
 
 # MCC paths
@@ -43,12 +26,10 @@ MCC_BIN  	= $(MCC)/bin
 all: src install
 
 
-# Compile MCC components and generate "cycc", "cymk" and "smake"
+# Compile MCC components and generate "cymake"
 .PHONY: src
 
-src: $(CYMAKE)
-
-$(CYMAKE): $(CYMAKE_SRC) $(MCC_SRC)
+src:
 	$(HC) $(HC_OPTS) $(CYMAKE) -o $(CYMAKE)
 
 
@@ -56,5 +37,5 @@ $(CYMAKE): $(CYMAKE_SRC) $(MCC_SRC)
 .PHONY: install
 
 
-install: $(CYC) $(CYMAKE)
+install: $(CYMAKE)
 	@mv ./$(CYMAKE) $(MCC_BIN)/
