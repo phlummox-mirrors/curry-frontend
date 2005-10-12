@@ -57,4 +57,4 @@ $(CYMAKE): $(CYMAKE_SRC) $(MCC_SRC)
 
 
 install: $(CYC) $(CYMAKE)
-	@cp ./$(CYMAKE) $(MCC_BIN)/
+	@mv ./$(CYMAKE) $(MCC_BIN)/
