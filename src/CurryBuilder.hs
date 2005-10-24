@@ -51,15 +51,19 @@ makeCurry options deps file
  where
  compile (Source file' mods)
     | rootname file == rootname file'
-      = smake (targetNames file')
-              (file':catMaybes (map flatInterface mods))
-              (putStrLn ("generating " ++ (head (targetNames file')) ++ " ...")
-	       >> compileCurry (compOpts False) file')
+      = if (null (dump options))
+	then smake (targetNames file')
+                   (file':catMaybes (map flatInterface mods))
+		   (putStrLn ("generating " ++ (head (targetNames file')) ++ " ...")
+		    >> compileCurry (compOpts False) file')
+	else putStrLn ("generating " ++ (head (targetNames file')) ++ " ...")
+	     >> compileCurry (compOpts False) file'
     | otherwise
       = smake [flatName file', flatIntName file']
-              (file':catMaybes (map flatInterface mods))
+	      (file':catMaybes (map flatInterface mods))
 	      (putStrLn ("compiling " ++ file' ++ " ...")
 	       >> compileCurry (compOpts True) file')
+	  
  compile _ = return ()
 
  targetNames fn | flat options            = [flatName fn, flatIntName fn]
@@ -82,7 +86,8 @@ makeCurry options deps file
 	    COpts.flat = True,
 	    COpts.flatXml = False,
 	    COpts.abstract = False,
-	    COpts.untypedAbstract = False
+	    COpts.untypedAbstract = False,
+	    COpts.dump = []
 	   }
     | otherwise
       = COpts.defaultOpts 
@@ -91,7 +96,8 @@ makeCurry options deps file
 	    COpts.flat = flat options,
 	    COpts.flatXml = flatXml options,
 	    COpts.abstract = abstract options,
-	    COpts.untypedAbstract = untypedAbstract options
+	    COpts.untypedAbstract = untypedAbstract options,
+	    COpts.dump = dump options
 	   }
 			 
 

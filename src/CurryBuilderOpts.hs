@@ -11,6 +11,7 @@
 module CurryBuilderOpts where
 
 import GetOpt
+import Options (Dump(..))
 
 
 -------------------------------------------------------------------------------
@@ -23,8 +24,9 @@ data Options
 	     flat :: Bool,               -- generate FlatCurry code
 	     flatXml :: Bool,            -- generate FlatXML code
 	     abstract :: Bool,           -- generate AbstractCurry code
-	     untypedAbstract :: Bool     -- generate untyped AbstractCurry
-	    }                             -- code
+	     untypedAbstract :: Bool,    -- generate untyped AbstractCurry
+	     dump :: [Dump]              -- dumps
+	    }
 
 -- Default builder options
 defaultOpts = Options{importPaths     = [],
@@ -33,14 +35,15 @@ defaultOpts = Options{importPaths     = [],
 		      flat            = False,
 		      flatXml         = False,
 		      abstract        = False,
-		      untypedAbstract = False
+		      untypedAbstract = False,
+		      dump            = []
 		     }
 
 
 -- Data type for representing all available options (needed to read and parse
 -- the options from the command line; see module "GetOpt")
 data Option = Help | ImportPath FilePath | LibPath FilePath | Output FilePath
-	    | Flat | FlatXML | Abstract | UntypedAbstract
+	    | Flat | FlatXML | Abstract | UntypedAbstract | Dump [Dump]
 	    deriving Eq
 
 
@@ -59,6 +62,8 @@ options = [Option "i" ["import-dir"] (ReqArg ImportPath "DIR")
 	          "generate (type infered) AbstractCurry code",
 	   Option ""  ["uacy"] (NoArg UntypedAbstract)
 	          "generate untyped AbstractCurry code",
+	   Option ""  ["dump-all"] (NoArg (Dump [minBound..maxBound]))
+                  "dump everything",
 	   Option "?h" ["help"] (NoArg Help)
 	          "display this help and exit"
 	  ]
@@ -75,6 +80,7 @@ selectOption Flat opts            = opts{ flat = True }
 selectOption FlatXML opts         = opts{ flatXml = True }
 selectOption Abstract opts        = opts{ abstract = True }
 selectOption UntypedAbstract opts = opts{ untypedAbstract = True }
+selectOption (Dump ds) opts       = opts{ dump = ds ++ dump opts }
 
 
 -------------------------------------------------------------------------------
