@@ -17,7 +17,7 @@ MCC_DIST_SRC = $(MCC_DIST)/source
 
 # distributions
 MCC_SRC_NAME = mcc_for_pakcs_src
-MCC_BIN_NAME = mcc_for_pakcs_bin
+MCC_BIN_NAME = mcc_for_pakcs_`uname -s`
 
 
 #------------------------------------------------------------------------------
