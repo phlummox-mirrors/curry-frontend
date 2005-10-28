@@ -48,33 +48,39 @@ clean_dist:
 
 
 # Generate distribution
+
+# name of the root directory of the distribution:
+DISTROOT=mccparser
+
 .PHONY: dist
 
 dist: compile dist_src dist_bin
 
 dist_src:
-	@mkdir -p $(MCC_DIST_SRC)/mcc/src
-	@mkdir -p $(MCC_DIST_SRC)/mcc/bin
-	@mkdir -p $(MCC_DIST_SRC)/mcc/dist
-	@cp $(MCC_SRC)/*.lhs $(MCC_DIST_SRC)/mcc/src
-	@cp $(MCC_SRC)/*.hs $(MCC_DIST_SRC)/mcc/src
-	@cp $(MCC_SRC)/Makefile $(MCC_DIST_SRC)/mcc/src
-	@cp $(MCC)/LIESMICH $(MCC_DIST_SRC)/mcc
-	@cp $(MCC)/LICENSE $(MCC_DIST_SRC)/mcc
-	@cp $(MCC)/Makefile $(MCC_DIST_SRC)/mcc
+	@mkdir -p $(MCC_DIST_SRC)/$(DISTROOT)/src
+	@mkdir -p $(MCC_DIST_SRC)/$(DISTROOT)/bin
+	@mkdir -p $(MCC_DIST_SRC)/$(DISTROOT)/dist
+	@cp $(MCC_SRC)/*.lhs $(MCC_DIST_SRC)/$(DISTROOT)/src
+	@cp $(MCC_SRC)/*.hs $(MCC_DIST_SRC)/$(DISTROOT)/src
+	@cp $(MCC_SRC)/Makefile $(MCC_DIST_SRC)/$(DISTROOT)/src
+	@cp $(MCC)/LIESMICH $(MCC_DIST_SRC)/$(DISTROOT)
+	@cp $(MCC)/LICENSE $(MCC_DIST_SRC)/$(DISTROOT)
+	@cp $(MCC)/Makefile $(MCC_DIST_SRC)/$(DISTROOT)
 
 	@cd $(MCC_DIST_SRC)                               \
-		&& tar cvf $(MCC_SRC_NAME).tar mcc/*      \
+		&& tar cvf $(MCC_SRC_NAME).tar $(DISTROOT)/*      \
 		&& gzip -f9 -S .gz $(MCC_SRC_NAME).tar    \
 		&& mv $(MCC_SRC_NAME).tar.gz $(MCC_DIST)
+	@rm -rf $(MCC_DIST_SRC)
 
 dist_bin:
-	@mkdir -p $(MCC_DIST_BIN)/mcc/bin
-	@cp $(MCC_BIN)/cymake $(MCC_DIST_BIN)/mcc/bin
-	@cp $(MCC)/LIESMICH $(MCC_DIST_BIN)/mcc
-	@cp $(MCC)/LICENSE $(MCC_DIST_BIN)/mcc
+	@mkdir -p $(MCC_DIST_BIN)/$(DISTROOT)/bin
+	@cp $(MCC_BIN)/cymake $(MCC_DIST_BIN)/$(DISTROOT)/bin
+	@cp $(MCC)/LIESMICH $(MCC_DIST_BIN)/$(DISTROOT)
+	@cp $(MCC)/LICENSE $(MCC_DIST_BIN)/$(DISTROOT)
 
 	@cd $(MCC_DIST_BIN)                               \
-		&& tar cvf $(MCC_BIN_NAME).tar mcc/*      \
+		&& tar cvf $(MCC_BIN_NAME).tar $(DISTROOT)/*      \
 		&& gzip -f9 -S .gz $(MCC_BIN_NAME).tar    \
 		&& mv $(MCC_BIN_NAME).tar.gz $(MCC_DIST)
+	@rm -rf $(MCC_DIST_BIN)
