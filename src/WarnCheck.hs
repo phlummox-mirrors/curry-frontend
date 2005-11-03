@@ -172,8 +172,13 @@ checkExpression mid pos (Tuple exprs)
 checkExpression mid pos (List exprs)
    = foldM' (checkExpression mid pos) exprs
 checkExpression mid pos (ListCompr expr stmts)
-   = do --foldM' (checkStatement mid pos) stmts -- weil wegen sequentiell (TODO)
+   = do beginScope
+	foldM' (checkStatement mid pos) stmts
 	checkExpression mid pos expr
+	idents' <- returnUnrefIds
+	when (not (null idents'))
+	     (foldM' (genWarning pos) (map unrefVar idents'))
+	endScope
 checkExpression mid pos (EnumFrom expr)
    = checkExpression mid pos expr
 checkExpression mid pos (EnumFromThen expr1 expr2)
@@ -210,13 +215,45 @@ checkExpression mid pos (Let decls expr)
 	when (not (null idents'))
 	     (foldM' (genWarning pos) (map unrefVar idents'))
 	endScope
- --checkExpression mid pos (Do stmts expr)
- --   = return () -- TO BE DONE
+checkExpression mid pos (Do stmts expr)
+   = do beginScope
+	foldM' (checkStatement mid pos) stmts
+	checkExpression mid pos expr
+	idents' <- returnUnrefIds
+	when (not (null idents'))
+	     (foldM' (genWarning pos) (map unrefVar idents'))
+	endScope
 checkExpression mid pos (IfThenElse expr1 expr2 expr3)
    = foldM' (checkExpression mid pos) [expr1, expr2, expr3]
- --checkExpression mid pos (Case expr alts)
- --   = return () -- TO BE DONE
+checkExpression mid pos (Case expr alts)
+   = do checkExpression mid pos expr
+	beginScope
+	foldM' (checkAlt mid) alts
+	idents' <-  returnUnrefIds
+	when (not (null idents'))
+	     (foldM' (genWarning pos) (map unrefVar idents'))
+	-- checkCaseAlternatives mid alts  -- check for idle and overlapping alts
+	endScope
 checkExpression _ _ _ = return ()
+
+--
+checkStatement :: ModuleIdent -> Position -> Statement -> CheckState ()
+checkStatement mid pos (StmtExpr expr)
+   = checkExpression mid pos expr
+checkStatement mid pos (StmtDecl decls)
+   = do foldM' insertDecl decls
+	foldM' (checkDecl mid) decls
+checkStatement mid pos (StmtBind cterm expr)
+   = do checkConstrTerm mid pos cterm
+	insertConstrTerm cterm
+	checkExpression mid pos expr
+
+--
+checkAlt :: ModuleIdent -> Alt -> CheckState ()
+checkAlt mid (Alt pos cterm rhs)
+   = do checkConstrTerm mid pos cterm
+	insertConstrTerm cterm
+	checkRhs mid rhs
 
 
 -------------------------------------------------------------------------------
@@ -458,7 +495,7 @@ unrefVar :: Ident -> String
 unrefVar id = "unreferenced variable \"" ++ show id ++ "\""
 
 shadowingVar :: Ident -> String
-shadowingVar id = "shadowing variable \"" ++ show id ++ "\""
+shadowingVar id = "shadowing symbol \"" ++ show id ++ "\""
 
 
 -------------------------------------------------------------------------------
