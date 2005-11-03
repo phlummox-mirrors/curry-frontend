@@ -138,7 +138,13 @@ checkCondExpr mid (CondExpr pos cond expr)
    = do checkExpression mid pos cond
 	checkExpression mid pos expr
 
---
+-- Dummerweise weiss er bei 'VariablePattern' nicht, ob 'ident' eine
+-- Variable oder ein Konstructor ist.
+-- Idee: Rueckgabe des CheckState-Inhaltes und Weiterleitung?
+-- oder Verwendung der ModuleEnv (eher einer Tabelle, die aus der
+-- ModuleEnv gebildet wird und zusaetzlich noch Infos aus dem
+-- aktuellen Modul enthaelt -> Gibt es bereits! Schau mal in der
+-- Funktion 'checkModule' beim Ausdruck 'importModules mEnv impDs' nach!)?
 checkConstrTerm :: ModuleIdent -> Position -> ConstrTerm -> CheckState ()
 checkConstrTerm mid pos (VariablePattern ident)
    = when' (isShadowingId ident) (genWarning pos (shadowingVar ident))

@@ -54,14 +54,21 @@ makeCurry options deps file
       = if (null (dump options))
 	then smake (targetNames file')
                    (file':catMaybes (map flatInterface mods))
-		   (putStrLn ("generating " ++ (head (targetNames file')) ++ " ...")
+		   (unless (noVerb options)
+		           (putStrLn ("generating " 
+				      ++ (head (targetNames file')) 
+				      ++ " ..."))
 		    >> compileCurry (compOpts False) file')
-	else putStrLn ("generating " ++ (head (targetNames file')) ++ " ...")
-	     >> compileCurry (compOpts False) file'
+	else unless (noVerb options)
+	            (putStrLn ("generating " 
+			       ++ (head (targetNames file')) 
+			       ++ " ..."))
+             >> compileCurry (compOpts False) file'
     | otherwise
       = smake [flatName file', flatIntName file']
 	      (file':catMaybes (map flatInterface mods))
-	      (putStrLn ("compiling " ++ file' ++ " ...")
+	      (unless (noVerb options) 
+	              (putStrLn ("compiling " ++ file' ++ " ..."))
 	       >> compileCurry (compOpts True) file')
 	  
  compile _ = return ()
@@ -83,6 +90,8 @@ makeCurry options deps file
       = COpts.defaultOpts 
 	   {COpts.importPaths = importPaths options ++ libPaths options,
 	    COpts.output = output options,
+	    COpts.noVerb = noVerb options,
+	    COpts.noWarn = noWarn options,
 	    COpts.flat = True,
 	    COpts.flatXml = False,
 	    COpts.abstract = False,
@@ -93,6 +102,8 @@ makeCurry options deps file
       = COpts.defaultOpts 
 	   {COpts.importPaths = importPaths options ++ libPaths options,
 	    COpts.output = output options,
+	    COpts.noVerb = noVerb options,
+	    COpts.noWarn = noWarn options,
 	    COpts.flat = flat options,
 	    COpts.flatXml = flatXml options,
 	    COpts.abstract = abstract options,

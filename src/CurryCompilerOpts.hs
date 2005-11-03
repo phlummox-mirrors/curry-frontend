@@ -10,7 +10,7 @@
 module CurryCompilerOpts where
 
 import GetOpt
-import Options (Dump(..))
+--import Options (Dump(..))
 
 
 -------------------------------------------------------------------------------
@@ -20,6 +20,8 @@ data Options
    = Options{importPaths :: [FilePath], -- directories for searching imports
 	     output :: Maybe FilePath,  -- name of output file
 	     noInterface :: Bool,       -- do not create an interface file
+	     noVerb :: Bool,            -- verbosity on/off
+	     noWarn :: Bool,            -- warnings on/off
 	     flat :: Bool,              -- generate FlatCurry code
 	     flatXml :: Bool,           -- generate flat XML code
 	     abstract :: Bool,          -- generate typed AbstracCurry code
@@ -32,6 +34,8 @@ data Options
 defaultOpts = Options{importPaths = [],
 		      output          = Nothing,
 		      noInterface     = False,
+		      noVerb          = False,
+		      noWarn          = False,
 		      flat            = False,
 		      flatXml         = False,
 		      abstract        = False,
@@ -42,7 +46,8 @@ defaultOpts = Options{importPaths = [],
 
 -- Data type for representing all available options (needed to read and parse
 -- the options from the command line; see module "GetOpt")
-data Option = Help | ImportPath FilePath | Output FilePath | NoInterface
+data Option = Help | ImportPath FilePath | Output FilePath
+	    | NoInterface | NoVerb | NoWarn
 	    | FlatXML | Flat | Abstract | UntypedAbstract | Dump [Dump]
 
 
@@ -53,6 +58,10 @@ options = [Option "i" ["import-dir"] (ReqArg ImportPath "DIR")
                   "write code to FILE",
 	   Option "" ["no-intf"] (NoArg NoInterface)
                   "do not create an interface file",
+	   Option "" ["no-verb"] (NoArg NoVerb)
+	          "do not print compiler messages",
+	   Option "" ["no-warn"] (NoArg NoWarn)
+	          "do not print warnings",
 	   Option "" ["flat"] (NoArg Flat)
                   "generate FlatCurry code",
 	   Option "" ["xml"] (NoArg FlatXML)
@@ -90,6 +99,8 @@ selectOption (ImportPath dir) opts
    = opts{ importPaths = dir:(importPaths opts) }
 selectOption (Output file) opts   = opts{ output = Just file }
 selectOption NoInterface opts     = opts{ noInterface = True }
+selectOption NoVerb opts          = opts{ noVerb = True, noWarn = True }
+selectOption NoWarn opts          = opts{ noWarn = True }
 selectOption Flat opts            = opts{ flat = True }
 selectOption FlatXML opts         = opts{ flatXml = True }
 selectOption Abstract opts        = opts{ abstract = True }
@@ -102,15 +113,15 @@ selectOption (Dump ds) opts       = opts{ dump = ds ++ dump opts }
 -- Data type for representing code dumps
 -- TODO: dump FlatCurry code, dump AbstractCurry code, dump after 'case'
 --       expansion
---data Dump = DumpRenamed      -- dump source after renaming
---	  | DumpTypes        -- dump types after typechecking
---	  | DumpDesugared    -- dump source after desugaring
---	  | DumpSimplified   -- dump source after simplification
---	  | DumpLifted       -- dump source after lambda-lifting
---	  | DumpIL           -- dump IL code after translation
---	  | DumpTransformed  -- dump transformed code
---	  | DumpNormalized   -- dump IL code after normalization
---	    deriving (Eq,Bounded,Enum,Show)
+data Dump = DumpRenamed      -- dump source after renaming
+	  | DumpTypes        -- dump types after typechecking
+	  | DumpDesugared    -- dump source after desugaring
+	  | DumpSimplified   -- dump source after simplification
+	  | DumpLifted       -- dump source after lambda-lifting
+	  | DumpIL           -- dump IL code after translation
+	  | DumpTransformed  -- dump transformed code
+	  | DumpNormalized   -- dump IL code after normalization
+	    deriving (Eq,Bounded,Enum,Show)
 
 
 -------------------------------------------------------------------------------

@@ -50,7 +50,7 @@ import declarations are commented out
 > --import CPretty(ppCFile) -- should be obsolete
 > import CurryPP(ppModule,ppInterface,ppIDecl,ppGoal)
 > import qualified ILPP(ppModule)
-> import Options(Options(..),Dump(..))
+> import CurryCompilerOpts(Options(..),Dump(..)) --Options(Options(..),Dump(..))
 > import CaseCompletion
 > import PatchPrelude
 > import PathUtils
@@ -94,33 +94,33 @@ code are obsolete and commented out.
 >     mod <- liftM (parseModule likeFlat fn) 
 >                  (readFile fn >>= return . (patchPreludeSource fn))
 >     let m = patchModuleId fn mod
->     mEnv <- loadInterfaces (importPath opts) m
+>     mEnv <- loadInterfaces (importPaths opts) m
 >     if uacy 
 >        then 
 >          do 
->             let (tyEnv, tcEnv, aEnv, m', intf) = simpleCheckModule mEnv m
+>             let (tyEnv, tcEnv, aEnv, m', intf) = simpleCheckModule opts mEnv m
 >             genAbstract opts fn tyEnv tcEnv m'
 >        else
->          do (tyEnv, tcEnv, aEnv, m', intf) <- checkModule mEnv m
+>          do (tyEnv, tcEnv, aEnv, m', intf) <- checkModule opts mEnv m
 >             let --(tyEnv, tcEnv, aEnv, m', intf) = checkModule mEnv m
->                 (il,aEnv',dumps) = transModule flat (debug opts) 
->			                (trusted opts) mEnv tyEnv aEnv m'
+>                 (il,aEnv',dumps) = transModule fcy False False 
+>			                         mEnv tyEnv aEnv m'
 >                 --(ccode,dumps') = ccodeModule (splitCode opts) mEnv il
 >                 --ccode' = compileDefaultGoal (debug opts) mEnv intf
 >                 il' = completeCase mEnv il
 >             mapM_ (doDump opts) dumps
 >             --unless (noInterface opts) (updateInterface fn intf)
->             if flat || xml || acy || uacy
->                then do when flat (genFlat opts fn mEnv tcEnv aEnv' m' il')
+>             if fcy || xml || acy || uacy
+>                then do when fcy  (genFlat opts fn mEnv tcEnv aEnv' m' il')
 >                        when xml  (genFlat opts fn mEnv tcEnv aEnv' m' il')
 >                        when acy  (genAbstract opts fn tyEnv tcEnv m')
 >                        when uacy (return ())
 >                else (genFlat opts fn mEnv tcEnv aEnv' m' il')
 >   where acy      = abstract opts
 >         uacy     = untypedAbstract opts
->         flat     = flatCurry opts
->         xml      = flatXML opts
->         likeFlat = flat || xml || acy || uacy
+>         fcy      = flat opts
+>         xml      = flatXml opts
+>         likeFlat = fcy || xml || acy || uacy
 >         --merge (Left cf1) cf2 = Left (mergeCFile cf1 cf2)
 >         --merge (Right cfs) cf = Right (cf : cfs)
 
@@ -133,9 +133,9 @@ code are obsolete and commented out.
 >   foldM (loadInterface paths [m]) emptyEnv
 >         [(p,m) | ImportDecl p m _ _ _ <- ds]
 
-> simpleCheckModule :: ModuleEnv -> Module 
+> simpleCheckModule :: Options -> ModuleEnv -> Module 
 >	    -> (ValueEnv,TCEnv,ArityEnv,Module,Interface)
-> simpleCheckModule mEnv (Module m es ds) =
+> simpleCheckModule opts mEnv (Module m es ds) =
 >    (tyEnv'', tcEnv, aEnv'', modul, intf)
 >   where (impDs,topDs) = partition isImportDecl ds
 >         (pEnv,tcEnv,tyEnv,aEnv) = importModules mEnv impDs
@@ -147,10 +147,11 @@ code are obsolete and commented out.
 >            = qualifyEnv mEnv pEnv' tcEnv tyEnv aEnv
 >         intf = exportInterface modul pEnv' tcEnv'' tyEnv''
 
-> checkModule :: ModuleEnv -> Module 
+> checkModule :: Options -> ModuleEnv -> Module 
 >      -> IO (ValueEnv,TCEnv,ArityEnv,Module,Interface)
-> checkModule mEnv (Module m es ds) =
->   do when (not (null msgs)) (putStrLn (unlines (map (showMessage show) msgs)))
+> checkModule opts mEnv (Module m es ds) =
+>   do unless (noWarn opts || null msgs)
+>	      (putStrLn (unlines (map (showMessage show) msgs)))
 >      return (tyEnv'', tcEnv', aEnv'', modul, intf)
 >   where msgs = warnCheck (Module m es ds)
 >         (impDs,topDs) = partition isImportDecl ds
@@ -575,10 +576,10 @@ flat and abstract curry representations depending on the specified option.
 > genFlat :: Options -> FilePath -> ModuleEnv -> TCEnv -> ArityEnv -> Module
 >            -> IL.Module -> IO ()
 > genFlat opts fname mEnv tcEnv aEnv mod il
->   | flatCurry opts
+>   | flat opts
 >     = writeFlat Nothing fname info mEnv aEnv il
 >       >> writeFInt Nothing fname info mEnv aEnv il
->   | flatXML opts
+>   | flatXml opts
 >     = writeXML (output opts) fname info il
 >   | otherwise
 >     = internalError "@Modules.genFlat: illegal option"

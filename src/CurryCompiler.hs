@@ -11,7 +11,7 @@
 module CurryCompiler (compileCurry) where
 
 import CurryCompilerOpts
-import qualified Options as Opts
+--import qualified Options as Opts
 import Modules
 import System
 import IO
@@ -21,9 +21,9 @@ import IO
 
 compileCurry :: Options -> FilePath -> IO ()
 compileCurry options file
-   = compileModule opts file
+   = compileModule options file
  where
- opts = Opts.defaultOptions{ Opts.importPath = importPaths options,
+{- opts = Opts.defaultOptions{ Opts.importPath = importPaths options,
 			     Opts.output = output options,
 			     Opts.noInterface = noInterface options,
 			     Opts.flatCurry = flat options,
@@ -32,7 +32,7 @@ compileCurry options file
 			     Opts.untypedAbstract = untypedAbstract options,
 			     Opts.dump = dump options
 			   }
-
+-}
 
 -------------------------------------------------------------------------------
 -- Error handling

@@ -11,7 +11,8 @@
 module CurryBuilderOpts where
 
 import GetOpt
-import Options (Dump(..))
+import CurryCompilerOpts (Dump(..))
+--import Options (Dump(..))
 
 
 -------------------------------------------------------------------------------
@@ -21,6 +22,8 @@ data Options
    = Options{importPaths :: [FilePath],  -- import paths
 	     libPaths :: [FilePath],     -- library paths
 	     output :: Maybe FilePath,   -- output file paths
+	     noVerb :: Bool,             -- verbosity on/off
+	     noWarn :: Bool,             -- warnings on/off
 	     flat :: Bool,               -- generate FlatCurry code
 	     flatXml :: Bool,            -- generate FlatXML code
 	     abstract :: Bool,           -- generate AbstractCurry code
@@ -32,6 +35,8 @@ data Options
 defaultOpts = Options{importPaths     = [],
 		      libPaths        = [],
 		      output          = Nothing,
+		      noVerb          = False,
+		      noWarn          = False,
 		      flat            = False,
 		      flatXml         = False,
 		      abstract        = False,
@@ -43,6 +48,7 @@ defaultOpts = Options{importPaths     = [],
 -- Data type for representing all available options (needed to read and parse
 -- the options from the command line; see module "GetOpt")
 data Option = Help | ImportPath FilePath | LibPath FilePath | Output FilePath
+	    | NoVerb | NoWarn
 	    | Flat | FlatXML | Abstract | UntypedAbstract | Dump [Dump]
 	    deriving Eq
 
@@ -54,6 +60,10 @@ options = [Option "i" ["import-dir"] (ReqArg ImportPath "DIR")
 	          "output goes to FILE",
 	   Option "P" ["lib-dir"] (ReqArg LibPath "DIR")
 	          "search for library interfaces in DIR",
+	   Option "" ["no-verb"] (NoArg NoVerb)
+	          "do not print compiler messages",
+	   Option "" ["no-warn"] (NoArg NoWarn)
+	          "do not print warnings",
 	   Option ""  ["flat"] (NoArg Flat)
 	          "generate FlatCurry code",
 	   Option ""  ["xml"] (NoArg FlatXML)
@@ -76,6 +86,8 @@ selectOption (ImportPath dir) opts
 selectOption (LibPath dir) opts 
    = opts{ libPaths = dir:(libPaths opts) }
 selectOption (Output file) opts   = opts{ output = Just file }
+selectOption NoVerb opts          = opts{ noVerb = True, noWarn = True }
+selectOption NoWarn opts          = opts{ noWarn = True }
 selectOption Flat opts            = opts{ flat = True }
 selectOption FlatXML opts         = opts{ flatXml = True }
 selectOption Abstract opts        = opts{ abstract = True }
