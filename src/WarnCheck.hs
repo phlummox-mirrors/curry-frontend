@@ -27,7 +27,8 @@ warnCheck (Module mid _ decls)
 -------------------------------------------------------------------------------
 -------------------------------------------------------------------------------
 -- The following functions check a curry program (in 'CurrySyntax' 
--- representation) for unreferenced and shadowing variables
+-- representation) for unreferenced and shadowing variables as well as
+-- idle and overlapping case alternatives.
 
 checkDecls :: ModuleIdent -> [Decl] -> CheckState ()
 checkDecls  mid decls
@@ -191,10 +192,24 @@ checkExpression mid pos (LeftSection expr _)
    = checkExpression mid pos expr
 checkExpression mid pos (RightSection _ expr)
    = checkExpression mid pos expr
- --checkExpression mid pos (Lambda cterms expr)
- --   = return () -- TO BE DONE
- --checkExpression mid pos (Let decls expr)
- --   = return () -- TO BE DONE
+checkExpression mid pos (Lambda cterms expr)
+   = do beginScope
+	foldM' (checkConstrTerm mid pos) cterms
+	foldM' insertConstrTerm cterms
+	checkExpression mid pos expr
+	idents' <- returnUnrefIds
+	when (not (null idents'))
+	     (foldM' (genWarning pos) (map unrefVar idents'))
+	endScope
+checkExpression mid pos (Let decls expr)
+   = do beginScope
+	foldM' insertDecl decls
+	foldM' (checkDecl mid) decls
+	checkExpression mid pos expr
+	idents' <- returnUnrefIds
+	when (not (null idents'))
+	     (foldM' (genWarning pos) (map unrefVar idents'))
+	endScope
  --checkExpression mid pos (Do stmts expr)
  --   = return () -- TO BE DONE
 checkExpression mid pos (IfThenElse expr1 expr2 expr3)
@@ -383,10 +398,11 @@ isUnrefTypeId id
 
 --
 returnUnrefIds :: CheckState [Ident]
-returnUnrefIds = CheckState (\msgs senv
-			     -> (msgs,
-				 senv,
-				 map fst (filter (not . snd) (toListSE senv))))
+returnUnrefIds 
+   = CheckState (\msgs senv
+		 -> (msgs,
+		     senv,
+		     map fst (filter (not . snd) (toLevelListSE senv))))
 
 --
 beginScope :: CheckState ()
@@ -507,7 +523,8 @@ existsSE key env = select existsLev env
  existsLev lev local = maybe False (const True) (lookupEnv key local)
 
 
---
+-- Pushes the current scope onto the top of the stack and increments the
+-- level counter
 beginScopeSE :: Ord a => ScopeEnv a b -> ScopeEnv a b
 beginScopeSE (ScopeEnv lev top [])
    = ScopeEnv (lev + 1) top [top]
@@ -515,7 +532,9 @@ beginScopeSE (ScopeEnv lev top (local:locals))
    = ScopeEnv (lev + 1) top (local:local:locals)
 
 
---
+-- Pops the current scope from the top of the stack, updates the subjacent
+-- scope (i.e. maintains the values from the poped scope for all keys in
+-- the subjacent scope) and decrements the level counter.
 endScopeSE :: Ord a => ScopeEnv a b -> ScopeEnv a b
 endScopeSE (ScopeEnv _ top [])
    = ScopeEnv 0 top []
@@ -532,6 +551,15 @@ toListSE :: Ord a => ScopeEnv a b -> [(a,b)]
 toListSE env = select toListLev env
  where
  toListLev lev local = map (\ (key,(val,_)) -> (key,val)) (envToList local)
+
+-- Returns all (key,value) pairs of the current scope which has been inserted
+-- in the current level
+toLevelListSE :: Ord a => ScopeEnv a b -> [(a,b)]
+toLevelListSE env = select toLevelListLev env
+ where
+ toLevelListLev lev local
+    = map (\ (key,(val,_)) -> (key,val))
+          (filter (\ (_,(_,lev')) -> lev' == lev) (envToList local))
 
 
 --
