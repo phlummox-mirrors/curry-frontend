@@ -91,11 +91,11 @@ checkTypeExpr mid pos (ConstructorType _ texprs)
    = foldM' (checkTypeExpr mid pos) texprs
 checkTypeExpr mid pos (VariableType ident)
    = visitTypeId ident
-checktypeExpr mid pos (TupleType texprs)
+checkTypeExpr mid pos (TupleType texprs)
    = foldM' (checkTypeExpr mid pos) texprs
-checktypeExpr mid pos (ListType texpr)
+checkTypeExpr mid pos (ListType texpr)
    = checkTypeExpr mid pos texpr
-checktypeExpr mid pos (ArrowType texpr1 texpr2)
+checkTypeExpr mid pos (ArrowType texpr1 texpr2)
    = do checkTypeExpr mid pos texpr1
 	checkTypeExpr mid pos texpr2
 
