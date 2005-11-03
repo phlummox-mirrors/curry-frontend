@@ -22,6 +22,8 @@ import declarations are commented out
 > import SyntaxCheck(syntaxCheck,syntaxCheckGoal)
 > import PrecCheck(precCheck,precCheckGoal)
 > import TypeCheck(typeCheck,typeCheckGoal)
+> import WarnCheck
+> import Message
 > --import IntfCheck(intfCheck,fixInterface,intfEquiv)
 > import Arity
 > import Imports(importInterface,importInterfaceIntf,importUnifyData)
@@ -99,7 +101,8 @@ code are obsolete and commented out.
 >             let (tyEnv, tcEnv, aEnv, m', intf) = simpleCheckModule mEnv m
 >             genAbstract opts fn tyEnv tcEnv m'
 >        else
->          do let (tyEnv, tcEnv, aEnv, m', intf) = checkModule mEnv m
+>          do (tyEnv, tcEnv, aEnv, m', intf) <- checkModule mEnv m
+>             let --(tyEnv, tcEnv, aEnv, m', intf) = checkModule mEnv m
 >                 (il,aEnv',dumps) = transModule flat (debug opts) 
 >			                (trusted opts) mEnv tyEnv aEnv m'
 >                 --(ccode,dumps') = ccodeModule (splitCode opts) mEnv il
@@ -145,10 +148,12 @@ code are obsolete and commented out.
 >         intf = exportInterface modul pEnv' tcEnv'' tyEnv''
 
 > checkModule :: ModuleEnv -> Module 
->      -> (ValueEnv,TCEnv,ArityEnv,Module,Interface)
+>      -> IO (ValueEnv,TCEnv,ArityEnv,Module,Interface)
 > checkModule mEnv (Module m es ds) =
->   (tyEnv'', tcEnv', aEnv'', modul, intf)
->   where (impDs,topDs) = partition isImportDecl ds
+>   do when (not (null msgs)) (putStrLn (unlines (map (showMessage show) msgs)))
+>      return (tyEnv'', tcEnv', aEnv'', modul, intf)
+>   where msgs = warnCheck (Module m es ds)
+>         (impDs,topDs) = partition isImportDecl ds
 >         (pEnv,tcEnv,tyEnv,aEnv) = importModules mEnv impDs
 >         (pEnv',topDs') = precCheck m pEnv $ syntaxCheck m tyEnv
 >                                           $ kindCheck m tcEnv topDs
@@ -158,6 +163,21 @@ code are obsolete and commented out.
 >         (pEnv'',tcEnv'',tyEnv'',aEnv'') 
 >            = qualifyEnv mEnv pEnv' tcEnv' tyEnv' aEnv
 >         intf = exportInterface modul pEnv'' tcEnv'' tyEnv''
+
+> --checkModule :: ModuleEnv -> Module 
+> --     -> (ValueEnv,TCEnv,ArityEnv,Module,Interface)
+> --checkModule mEnv (Module m es ds) =
+> --  (tyEnv'', tcEnv', aEnv'', modul, intf)
+> --  where (impDs,topDs) = partition isImportDecl ds
+> --        (pEnv,tcEnv,tyEnv,aEnv) = importModules mEnv impDs
+> --        (pEnv',topDs') = precCheck m pEnv $ syntaxCheck m tyEnv
+> --                                          $ kindCheck m tcEnv topDs
+> --        (tcEnv',tyEnv') = typeCheck m tcEnv tyEnv topDs'
+> --        ds' = impDs ++ qual m tyEnv' topDs'
+> --        modul = expandInterface (Module m es ds') tcEnv' tyEnv'
+> --        (pEnv'',tcEnv'',tyEnv'',aEnv'') 
+> --           = qualifyEnv mEnv pEnv' tcEnv' tyEnv' aEnv
+> --        intf = exportInterface modul pEnv'' tcEnv'' tyEnv''
 
 > transModule :: Bool -> Bool -> Bool -> ModuleEnv -> ValueEnv -> ArityEnv
 >      -> Module -> (IL.Module,ArityEnv,[(Dump,Doc)])
