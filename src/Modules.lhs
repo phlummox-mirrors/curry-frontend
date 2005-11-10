@@ -153,9 +153,9 @@ code are obsolete and commented out.
 >   do unless (noWarn opts || null msgs)
 >	      (putStrLn (unlines (map (showMessage show) msgs)))
 >      return (tyEnv'', tcEnv', aEnv'', modul, intf)
->   where msgs = warnCheck (Module m es ds)
->         (impDs,topDs) = partition isImportDecl ds
+>   where (impDs,topDs) = partition isImportDecl ds
 >         (pEnv,tcEnv,tyEnv,aEnv) = importModules mEnv impDs
+>         msgs = warnCheck tyEnv (Module m es ds)   
 >         (pEnv',topDs') = precCheck m pEnv $ syntaxCheck m tyEnv
 >                                           $ kindCheck m tcEnv topDs
 >         (tcEnv',tyEnv') = typeCheck m tcEnv tyEnv topDs'
