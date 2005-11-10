@@ -317,7 +317,7 @@ checkOverlappingAlts mid (alt:alts)
     = equalConstrTerms cterm1 cterm2
  equalConstrTerms (LazyPattern cterm1) (LazyPattern cterm2)
     = equalConstrTerms cterm1 cterm2
- equalConstrTrems _ _ = return False
+ equalConstrTerms _ _ = return False
 
 
 -------------------------------------------------------------------------------
