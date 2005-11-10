@@ -277,6 +277,7 @@ checkIdleAlts mid alts
     = isVarId id
  isVarAlt (Alt _ (AsPattern _ (VariablePattern id)) _)
     = isVarId id
+ isVarAlt _ = return False
 
 --
 checkOverlappingAlts :: ModuleIdent -> [Alt] -> CheckState ()
