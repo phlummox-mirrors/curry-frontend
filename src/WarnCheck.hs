@@ -11,7 +11,7 @@ module WarnCheck (warnCheck) where
 import CurrySyntax
 import Ident
 import Position
-import Base (ValueEnv)
+import Base (ValueEnv, ValueInfo(..), qualLookupValue)
 import TopEnv
 import Message
 import Env
@@ -20,10 +20,10 @@ import Monad
 
 -------------------------------------------------------------------------------
 
-warnCheck :: ValueEnv -> Module -> [Message CompMessageType]
-warnCheck tyEnv (Module mid _ decls)
-   = run (addImports tyEnv >> checkDecls mid decls)
-
+warnCheck :: ModuleIdent -> ValueEnv -> [Decl] -> [Decl] 
+	     -> [Message CompMessageType]
+warnCheck mid vals imports decls
+   = run (addImportedValues vals >> checkDecls mid decls) --run (addImports tyEnv >> checkDecls mid decls)
 -- Die Importdecls getrennt betrachten.
 
 -------------------------------------------------------------------------------
@@ -40,8 +40,7 @@ checkDecls  mid decls
 --
 checkDecl :: ModuleIdent -> Decl -> CheckState ()
 checkDecl mid (DataDecl pos ident params cdecls)
-   = do visitTypeId ident
-	beginScope
+   = do beginScope
 	foldM' insertTypeVar params
 	foldM' (checkConstrDecl mid) cdecls
 	params' <- filterM isUnrefTypeVar params
@@ -49,8 +48,7 @@ checkDecl mid (DataDecl pos ident params cdecls)
 	     (foldM' (genWarning pos) (map unrefTypeVar params'))
 	endScope
 checkDecl mid (TypeDecl pos ident params texpr)
-   = do visitTypeId ident
-	beginScope
+   = do beginScope
 	foldM' insertTypeVar params
 	checkTypeExpr mid pos texpr
 	params' <- filterM isUnrefTypeVar params
@@ -58,39 +56,36 @@ checkDecl mid (TypeDecl pos ident params texpr)
 	     (foldM' (genWarning pos) (map unrefTypeVar params'))
 	endScope
 checkDecl mid (FunctionDecl pos ident equs)
-   = do visitId ident
-	beginScope
+   = do beginScope
 	foldM' (checkEquation mid) equs
+	idents' <- returnUnrefVars
+	when (not (null idents')) 
+             (foldM' (genWarning pos) (map unrefVar idents'))
 	endScope
-checkDecl mid (ExternalDecl _ _ _ ident _)
-   = visitId ident
-checkDecl mid (FlatExternalDecl _ idents)
-   = foldM' visitId idents
 checkDecl mid (PatternDecl pos cterm rhs)
    = do checkConstrTerm mid pos cterm
-	insertConstrTerm cterm
-	checkRhs mid rhs
+	checkRhs mid pos rhs
 checkDecl mid (ExtraVariables pos idents)
    = do idents' <- filterM isShadowingVar idents
 	when (not (null idents'))
 	     (foldM' (genWarning pos) (map shadowingVar idents'))
-	foldM' insertVar idents
 checkDecl _ _ = return ()
 
 --
 checkConstrDecl :: ModuleIdent -> ConstrDecl -> CheckState ()
 checkConstrDecl mid (ConstrDecl pos _ ident texprs)
-   = do visitTypeId ident
+   = do visitId ident
 	foldM' (checkTypeExpr mid pos) texprs
 checkConstrDecl mid (ConOpDecl pos _ texpr1 ident texpr2)
-   = do visitTypeId ident
+   = do visitId ident
 	checkTypeExpr mid pos texpr1
 	checkTypeExpr mid pos texpr2
 
---
+
 checkTypeExpr :: ModuleIdent -> Position -> TypeExpr -> CheckState ()
-checkTypeExpr mid pos (ConstructorType _ texprs)
-   = foldM' (checkTypeExpr mid pos) texprs
+checkTypeExpr mid pos (ConstructorType qid texprs)
+   = do maybe (return ()) visitTypeId (localIdent mid qid)
+	foldM' (checkTypeExpr mid pos) texprs
 checkTypeExpr mid pos (VariableType ident)
    = visitTypeId ident
 checkTypeExpr mid pos (TupleType texprs)
@@ -105,10 +100,7 @@ checkTypeExpr mid pos (ArrowType texpr1 texpr2)
 checkEquation :: ModuleIdent -> Equation -> CheckState ()
 checkEquation mid (Equation pos lhs rhs)
    = do checkLhs mid pos lhs
-	checkRhs mid rhs
-	idents' <- returnUnrefVars
-	when (not (null idents')) 
-             (foldM' (genWarning pos) (map unrefVar idents'))
+	checkRhs mid pos rhs
 
 --
 checkLhs :: ModuleIdent -> Position -> Lhs -> CheckState ()
@@ -124,15 +116,25 @@ checkLhs mid pos (ApLhs lhs cterms)
 	foldM' insertConstrTerm cterms
 
 --
-checkRhs :: ModuleIdent -> Rhs -> CheckState ()
-checkRhs mid (SimpleRhs pos expr decls)
-   = do foldM' insertDecl decls
+checkRhs :: ModuleIdent -> Position -> Rhs -> CheckState ()
+checkRhs mid _ (SimpleRhs pos expr decls)
+   = do beginScope
+	foldM' insertDecl decls
 	foldM' (checkDecl mid) decls
 	checkExpression mid pos expr
-checkRhs mid (GuardedRhs cexprs decls)
-   = do foldM' insertDecl decls
+	idents' <- returnUnrefVars
+	when (not (null idents'))
+	     (foldM' (genWarning pos) (map unrefVar idents'))
+	endScope
+checkRhs mid pos (GuardedRhs cexprs decls)
+   = do beginScope
+	foldM' insertDecl decls
 	foldM' (checkDecl mid) decls
 	foldM' (checkCondExpr mid) cexprs
+	idents' <- returnUnrefVars
+	when (not (null idents'))
+	     (foldM' (genWarning pos) (map unrefVar idents'))
+	endScope
 
 --
 checkCondExpr :: ModuleIdent -> CondExpr -> CheckState ()
@@ -255,7 +257,7 @@ checkAlt :: ModuleIdent -> Alt -> CheckState ()
 checkAlt mid (Alt pos cterm rhs)
    = do checkConstrTerm mid pos cterm
 	insertConstrTerm cterm
-	checkRhs mid rhs
+	checkRhs mid pos rhs
 
 -- Check for idle and overlapping case alternatives
 checkCaseAlternatives :: ModuleIdent -> [Alt] -> CheckState ()
@@ -294,7 +296,7 @@ checkOverlappingAlts mid (alt:alts)
  equalConstrTerms (NegativePattern id1 l1) (NegativePattern id2 l2) 
     = return (id1 == id2 && l1 == l2)
  equalConstrTerms (VariablePattern id1) (VariablePattern id2)
-    = do p <- isDeclId id1 
+    = do p <- isConsId id1 
 	 return (p && id1 == id2)
  equalConstrTerms (ConstructorPattern qid1 cs1)
 		  (ConstructorPattern qid2 cs2)
@@ -327,33 +329,33 @@ checkOverlappingAlts mid (alt:alts)
 --
 insertDecl :: Decl -> CheckState ()
 insertDecl (DataDecl _ ident _ cdecls)
-   = do insertTypeDeclId ident
+   = do insertTypeConsId ident
 	foldM' insertConstrDecl cdecls
 insertDecl (TypeDecl _ ident _ _)
-   = insertTypeDeclId ident
+   = insertTypeConsId ident
 insertDecl (FunctionDecl _ ident _)
    = insertVar ident
 insertDecl (ExternalDecl _ _ _ ident _)
    = insertVar ident
 insertDecl (FlatExternalDecl _ idents)
    = foldM' insertVar idents
- --insertDecl (PatternDecl _ cterm _)
- --   = insertConstrTerm cterm
- --insertDecl (ExtraVariables _ idents)
- --   = foldM' insertId idents
+insertDecl (PatternDecl _ cterm _)
+   = insertConstrTerm cterm
+insertDecl (ExtraVariables _ idents)
+   = foldM' insertVar idents
 insertDecl _ = return ()
 
 --
 insertConstrDecl :: ConstrDecl -> CheckState ()
 insertConstrDecl (ConstrDecl _ _ ident _)
-   = insertDeclId ident
+   = insertConsId ident
 insertConstrDecl (ConOpDecl _ _ _ ident _)
-   = insertDeclId ident
+   = insertConsId ident
 
 --
 insertConstrTerm :: ConstrTerm -> CheckState ()
 insertConstrTerm (VariablePattern ident)
-   = unless' (isDeclId ident) (insertVar ident)
+   = unless' (isConsId ident) (insertVar ident)
 insertConstrTerm (ConstructorPattern _ cterms)
    = foldM' insertConstrTerm cterms
 insertConstrTerm (InfixPattern cterm1 qident cterm2)
@@ -375,12 +377,11 @@ insertConstrTerm _ = return ()
 -------------------------------------------------------------------------------
 -------------------------------------------------------------------------------
 
--- Data type for distinguishing identifiers either as common declarations
--- (i.e. functions, constructors or type constructors) or (type) variables.
--- To mark all variables which are used within expressions the corresponding
--- constructor has a Boolean flag. 
--- T O D O !!!!!!!!!!!!!!!!!
-data IdInfo = DeclInfo | VarInfo Bool
+-- Data type for distinguishing identifiers as either (type) constructors or
+-- (type) variables (including functions).
+-- The Boolean flag in 'VarInfo' is used to mark variables when they are used 
+-- within expressions.
+data IdInfo = ConsInfo | VarInfo Bool
 
 --
 isVariable :: IdInfo -> Bool
@@ -388,9 +389,9 @@ isVariable (VarInfo _) = True
 isVariable _           = False
 
 --
-isDeclaration :: IdInfo -> Bool
-isDeclaration DeclInfo = True
-isDeclaration _        = False
+isConstructor :: IdInfo -> Bool
+isConstructor ConsInfo = True
+isConstructor _        = False
 
 --
 variableVisited :: IdInfo -> Bool
@@ -409,11 +410,29 @@ visitVariable info = case info of
 -- information of identifiers of the current scope.
 -- The monadic representation of the state allows the usage of monadic 
 -- operators. which makes it easier and safer to deal with the contents.
-data CheckState a 
-   = CheckState ([Message CompMessageType] -> ScopeEnv QualIdent IdInfo
-		 -> ([Message CompMessageType], 
-		     ScopeEnv QualIdent IdInfo, 
-		     a))
+data CheckState a = CheckState (CState () -> CState a)
+
+data CState a = CState {messages :: [Message CompMessageType],
+			scope    :: ScopeEnv QualIdent IdInfo,
+			values   :: ValueEnv,
+			moduleId :: ModuleIdent,
+			result   :: a
+		       }
+
+--
+emptyState :: CState ()
+emptyState = CState {messages = [],
+		     scope    = newSE,
+		     values   = emptyTopEnv,
+		     moduleId = mkMIdent [],
+		     result   = ()
+		    }
+
+--
+modifyScope :: (ScopeEnv QualIdent IdInfo -> ScopeEnv QualIdent IdInfo)
+	       -> CState a -> CState a
+modifyScope f state = state{ scope = f (scope state) }
+
 
 -- 'CheckState' is declared as an instance of 'Monad' to use its actions
 -- in 'do' expressions
@@ -421,193 +440,119 @@ instance Monad CheckState where
 
  -- (>>=) :: CheckState a -> (a -> CheckState b) -> CheckState b
  (CheckState f) >>= g 
-    = CheckState (\msgs senv -> let (msgs',senv',val') = f msgs senv
-		                    CheckState h       = g val'
-		                in  h msgs' senv')
+    = CheckState (\state -> let state'       = f state
+		                CheckState h = g (result state')
+		            in  h (state'{ result = () }))
 
  -- (>>) :: CheckState a -> CheckState b -> CheckState b
  a >> b = a >>= (\_ -> b)
 
  -- return :: a -> CheckState a
- return val = CheckState (\msgs senv -> (msgs,senv,val))
-
+ return val = CheckState (\state -> state{ result = val })
 
 
 --
 genWarning :: Position -> String -> CheckState ()
 genWarning pos msg
-   = CheckState (\msgs senv 
-		 -> ((message (Warning pos) msg):msgs,
-		     senv,
-		     ()))
+   = CheckState (\state -> state{ messages = warnMsg:(messages state) })
+ where warnMsg = message (Warning pos) msg
 
 --
 insertVar :: Ident -> CheckState ()
 insertVar id 
    | isAnnonId id = return ()
-   | otherwise    
-     = CheckState (\msgs senv
-		   -> (msgs,
-		       insertSE (commonId id) (VarInfo False) senv,
-		       ()))
+   | otherwise
+     = CheckState 
+         (\state -> modifyScope (insertSE (commonId id) (VarInfo False)) state)
 
 --
 insertTypeVar :: Ident -> CheckState ()
 insertTypeVar id
    | isAnnonId id = return ()
    | otherwise    
-     = CheckState (\msgs senv
-		   -> (msgs,
-		       insertSE (typeId id) (VarInfo False) senv,
-		       ()))
+     = CheckState 
+         (\state -> modifyScope (insertSE (typeId id) (VarInfo False)) state)
 
 --
-insertDeclId :: Ident -> CheckState ()
-insertDeclId id
-   | isAnnonId id = return ()
-   | otherwise    
-     = CheckState (\msgs senv
-		   -> (msgs,
-		       insertSE (commonId id) DeclInfo senv,
-		       ()))
+insertConsId :: Ident -> CheckState ()
+insertConsId id
+   = CheckState 
+       (\state -> modifyScope (insertSE (commonId id) ConsInfo) state)
 
 --
-insertTypeDeclId :: Ident -> CheckState ()
-insertTypeDeclId id
-   | isAnnonId id = return ()
-   | otherwise    
-     = CheckState (\msgs senv
-		   -> (msgs,
-		       insertSE (typeId id) DeclInfo senv,
-		       ()))
-
---
-insertQualId :: QualIdent -> CheckState ()
-insertQualId qid
-   = CheckState (\msgs senv
-		 -> (msgs,
-		     insertSE qid DeclInfo senv,
-		     ()))
+insertTypeConsId :: Ident -> CheckState ()
+insertTypeConsId id
+   = CheckState 
+       (\state -> modifyScope (insertSE (typeId id) ConsInfo) state)
 
 --
 isVarId :: Ident -> CheckState Bool
-isVarId id = CheckState (\msgs senv
-			  -> (msgs,
-			      senv,
-			      maybe (isAnnonId id) 
-			            isVariable 
-			            (lookupSE (commonId id) senv)))
---
-isDeclId :: Ident -> CheckState Bool
-isDeclId id = CheckState (\msgs senv
-			  -> (msgs,
-			      senv,
-			      maybe False 
-			            isDeclaration 
-			            (lookupSE (commonId id) senv)))
+isVarId id
+   = CheckState (\state -> state{ result = isVar state (commonId id) })
 
--- Sinnvoller waere hier eine Funktion, die nicht nur auf Existenz prueft,
--- sondern gleichzeiting auch noch die Level vergleicht.
---existsId :: Ident -> CheckState Bool
---existsId id = CheckState (\msgs senv
---			  -> (msgs,
---			      senv,
---			      existsSE (unRenameIdent id) senv))
+--
+isConsId :: Ident -> CheckState Bool
+isConsId id 
+   = CheckState (\state -> state{ result = isCons state (commonId id) })
 
 --
 isShadowingVar :: Ident -> CheckState Bool
 isShadowingVar id 
-   = CheckState (\msgs senv
-		 -> (msgs,
-		     senv,
-		     (maybe False isVariable (lookupSE id' senv)
-		      && levelSE id' senv < currentLevelSE senv)))
- where id' = commonId id
+   = CheckState 
+       (\state -> state{ result = isShadowing state (commonId id) })
 
 --
 isShadowingTypeVar :: Ident -> CheckState Bool
 isShadowingTypeVar id
-   = CheckState (\msgs senv
-		 -> (msgs,
-		     senv,
-		     (maybe False isVariable (lookupSE id' senv)
-		      && levelSE id' senv < currentLevelSE senv)))
- where id' = typeId id
-
---
---existsTypeId :: Ident -> CheckState Bool
---existsTypeId id = CheckState (\msgs senv
---			      -> (msgs,
---				  senv,
---				  existsSE (renameIdent id 1) senv))
+   = CheckState 
+       (\state -> state{ result = isShadowing state (typeId id) })
 
 --
 visitId :: Ident -> CheckState ()
-visitId id = CheckState (\msgs senv
-			 -> (msgs,
-			     modifySE visitVariable (commonId id) senv,
-			     ()))
+visitId id 
+   = CheckState 
+       (\state -> modifyScope (modifySE visitVariable (commonId id)) state)
 
 --
 visitTypeId :: Ident -> CheckState ()
-visitTypeId id = CheckState (\msgs senv
-			     -> (msgs,
-				 modifySE visitVariable (typeId id) senv,
-				 ()))
+visitTypeId id 
+   = CheckState 
+       (\state -> modifyScope (modifySE visitVariable (typeId id)) state)
 
 --
 isUnrefVar :: Ident -> CheckState Bool
 isUnrefVar id 
-   = CheckState (\msgs senv
-		 -> (msgs,
-		     senv,
-		     maybe True 
-		           (not . variableVisited)
-		           (lookupSE (commonId id) senv)))
-
+   = CheckState (\state -> state{ result = isUnref state (commonId id) })
 
 --
 isUnrefTypeVar :: Ident -> CheckState Bool
 isUnrefTypeVar id
-   = CheckState (\msgs senv
-		 -> (msgs,
-		     senv,
-		     maybe True
-		           (not . variableVisited)
-		           (lookupSE (commonId id) senv)))
+   = CheckState (\state -> state{ result = isUnref state (typeId id) })
 
 --
 returnUnrefVars :: CheckState [Ident]
 returnUnrefVars 
-   = CheckState (\msgs senv
-		 -> (msgs,
-		     senv,
-		     map (unqualify . fst)
-		         (filter (not . variableVisited . snd) 
-			         (toLevelListSE senv))))
+   = CheckState (\state -> let ids    = map fst (toLevelListSE (scope state))
+                               unrefs = filter (isUnref state) ids
+	                   in  state{ result = map unqualify unrefs })
 
 --
 beginScope :: CheckState ()
-beginScope = CheckState (\msgs senv
-			 -> (msgs,
-			     beginScopeSE senv,
-			     ()))
+beginScope = CheckState (\state -> modifyScope beginScopeSE state)
 
 --
 endScope :: CheckState ()
-endScope = CheckState (\msgs senv
-		       -> (msgs,
-			   endScopeSE senv,
-			   ()))
+endScope = CheckState (\state -> modifyScope endScopeSE state)
 
 
--- Adds the content of a value environment to the scope environment
-addImports :: ValueEnv -> CheckState ()
-addImports tyEnv = foldM' insertQualId (map fst (allImports tyEnv))
+-- Adds the content of a value environment to the state
+addImportedValues :: ValueEnv -> CheckState ()
+addImportedValues vals = CheckState (\state -> state{ values = vals })
 
 --
 foldM' :: (a -> CheckState ()) -> [a] -> CheckState ()
-foldM' f xs = foldM (\_ x -> f x) () xs
+foldM' f [] = return ()
+foldM' f (x:xs) = f x >> foldM' f xs
 
 --
 when' :: (CheckState Bool) -> CheckState () -> CheckState ()
@@ -645,8 +590,7 @@ all' mpred (x:xs)
 -- Runs a 'CheckState' action and returns the list of messages
 run ::  CheckState a -> [Message CompMessageType]
 run (CheckState f)
-   = case (f [] newSE) of
-       (m,_,_) -> reverse m
+   = reverse (messages (f emptyState))
 
 
 -------------------------------------------------------------------------------
@@ -684,9 +628,40 @@ overlappingCaseAlt = "redundant overlapping case alternative"
 -------------------------------------------------------------------------------
 
 --
+isShadowing :: CState a -> QualIdent -> Bool
+isShadowing state qid
+   = let sc = scope state
+     in  maybe False isVariable (lookupSE qid sc)
+	 && levelSE qid sc < currentLevelSE sc
+
+--
+isUnref :: CState a -> QualIdent -> Bool
+isUnref state qid = maybe False
+		          (not . variableVisited)
+			  (lookupSE qid (scope state))
+
+--
+isVar :: CState a -> QualIdent -> Bool
+isVar state qid = maybe (isAnnonId (unqualify qid)) 
+	           isVariable 
+		   (lookupSE qid (scope state))
+
+--
+isCons :: CState a -> QualIdent -> Bool
+isCons state qid = maybe (isImportedCons state qid)
+		         isConstructor
+			 (lookupSE qid (scope state))
+ where
+ isImportedCons state qid
+    = case (qualLookupValue qid (values state)) of
+        (DataConstructor _ _):_    -> True
+        (NewtypeConstructor _ _):_ -> True
+        _                          -> False
+
+
+--
 isAnnonId :: Ident -> Bool
 isAnnonId id = (name id) == "_"
-
 
 
 -- Since type identifiers and normal identifiers (e.g. functions, variables

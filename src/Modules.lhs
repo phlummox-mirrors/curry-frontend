@@ -155,7 +155,7 @@ code are obsolete and commented out.
 >      return (tyEnv'', tcEnv', aEnv'', modul, intf)
 >   where (impDs,topDs) = partition isImportDecl ds
 >         (pEnv,tcEnv,tyEnv,aEnv) = importModules mEnv impDs
->         msgs = warnCheck tyEnv (Module m es ds)   
+>         msgs = warnCheck m tyEnv impDs topDs
 >         (pEnv',topDs') = precCheck m pEnv $ syntaxCheck m tyEnv
 >                                           $ kindCheck m tcEnv topDs
 >         (tcEnv',tyEnv') = typeCheck m tcEnv tyEnv topDs'
