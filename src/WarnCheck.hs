@@ -11,7 +11,7 @@ module WarnCheck (warnCheck) where
 import CurrySyntax
 import Ident
 import Position
-import Base (ValueEnv, ValueInfo(..), qualLookupValue)
+import Base (ValueEnv, ValueInfo(..), qualLookupValue, lookupValue)
 import TopEnv
 import Message
 import Env
@@ -20,22 +20,27 @@ import Monad
 
 -------------------------------------------------------------------------------
 
+-- Find potentially incorrect code in a Curry program and generate
+-- the following warnings for:
+--    - unreferenced variables
+--    - shadowing variables
+--    - idle case alternatives
+--    - overlapping case alternatives
+--    - function rules which are not together
 warnCheck :: ModuleIdent -> ValueEnv -> [Decl] -> [Decl] 
 	     -> [Message CompMessageType]
-warnCheck mid vals imports decls
-   = run (addImportedValues vals >> checkDecls mid decls) --run (addImports tyEnv >> checkDecls mid decls)
--- Die Importdecls getrennt betrachten.
+warnCheck mid vals imports decls 
+   = run (do addImportedValues vals
+	     addModuleId mid
+	     checkImports imports
+	     foldM' insertDecl decls
+	     foldM' (checkDecl mid) decls
+             checkDeclOccurances decls
+	 )
+
 
 -------------------------------------------------------------------------------
 -------------------------------------------------------------------------------
--- The following functions check a curry program (in 'CurrySyntax' 
--- representation) for unreferenced and shadowing variables as well as
--- idle and overlapping case alternatives.
-
-checkDecls :: ModuleIdent -> [Decl] -> CheckState ()
-checkDecls  mid decls
-   = do foldM' insertDecl decls
-	foldM' (checkDecl mid) decls
 
 --
 checkDecl :: ModuleIdent -> Decl -> CheckState ()
@@ -58,8 +63,9 @@ checkDecl mid (TypeDecl pos ident params texpr)
 checkDecl mid (FunctionDecl pos ident equs)
    = do beginScope
 	foldM' (checkEquation mid) equs
+	c <- isConsId ident
 	idents' <- returnUnrefVars
-	when (not (null idents')) 
+	when (not (c || null idents')) 
              (foldM' (genWarning pos) (map unrefVar idents'))
 	endScope
 checkDecl mid (PatternDecl pos cterm rhs)
@@ -118,9 +124,10 @@ checkLhs mid pos (ApLhs lhs cterms)
 --
 checkRhs :: ModuleIdent -> Position -> Rhs -> CheckState ()
 checkRhs mid _ (SimpleRhs pos expr decls)
-   = do beginScope
+   = do beginScope  -- function arguments can be overwritten by local decls
 	foldM' insertDecl decls
 	foldM' (checkDecl mid) decls
+	checkDeclOccurances decls
 	checkExpression mid pos expr
 	idents' <- returnUnrefVars
 	when (not (null idents'))
@@ -130,6 +137,7 @@ checkRhs mid pos (GuardedRhs cexprs decls)
    = do beginScope
 	foldM' insertDecl decls
 	foldM' (checkDecl mid) decls
+	checkDeclOccurances decls
 	foldM' (checkCondExpr mid) cexprs
 	idents' <- returnUnrefVars
 	when (not (null idents'))
@@ -145,7 +153,8 @@ checkCondExpr mid (CondExpr pos cond expr)
 -- 
 checkConstrTerm :: ModuleIdent -> Position -> ConstrTerm -> CheckState ()
 checkConstrTerm mid pos (VariablePattern ident)
-   = when' (isShadowingVar ident) (genWarning pos (shadowingVar ident))
+   = do s <- isShadowingVar ident
+	when s (genWarning pos (shadowingVar ident))
 checkConstrTerm mid pos (ConstructorPattern _ cterms)
    = foldM' (checkConstrTerm mid pos) cterms
 checkConstrTerm mid pos (InfixPattern cterm1 qident cterm2)
@@ -157,7 +166,8 @@ checkConstrTerm mid pos (TuplePattern cterms)
 checkConstrTerm mid pos (ListPattern cterms)
    = foldM' (checkConstrTerm mid pos) cterms
 checkConstrTerm mid pos (AsPattern ident cterm)
-   = do when' (isShadowingVar ident) (genWarning pos (shadowingVar ident))
+   = do s <- isShadowingVar ident
+	when s (genWarning pos (shadowingVar ident))
 	checkConstrTerm mid pos cterm
 checkConstrTerm mid pos (LazyPattern cterm)
    = checkConstrTerm mid pos cterm
@@ -214,6 +224,7 @@ checkExpression mid pos (Let decls expr)
    = do beginScope
 	foldM' insertDecl decls
 	foldM' (checkDecl mid) decls
+	checkDeclOccurances decls
 	checkExpression mid pos expr
 	idents' <- returnUnrefVars
 	when (not (null idents'))
@@ -231,13 +242,8 @@ checkExpression mid pos (IfThenElse expr1 expr2 expr3)
    = foldM' (checkExpression mid pos) [expr1, expr2, expr3]
 checkExpression mid pos (Case expr alts)
    = do checkExpression mid pos expr
-	beginScope
 	foldM' (checkAlt mid) alts
-	idents' <-  returnUnrefVars
-	when (not (null idents'))
-	     (foldM' (genWarning pos) (map unrefVar idents'))
 	checkCaseAlternatives mid alts
-	endScope
 checkExpression _ _ _ = return ()
 
 --
@@ -247,6 +253,7 @@ checkStatement mid pos (StmtExpr expr)
 checkStatement mid pos (StmtDecl decls)
    = do foldM' insertDecl decls
 	foldM' (checkDecl mid) decls
+	checkDeclOccurances decls
 checkStatement mid pos (StmtBind cterm expr)
    = do checkConstrTerm mid pos cterm
 	insertConstrTerm cterm
@@ -255,9 +262,14 @@ checkStatement mid pos (StmtBind cterm expr)
 --
 checkAlt :: ModuleIdent -> Alt -> CheckState ()
 checkAlt mid (Alt pos cterm rhs)
-   = do checkConstrTerm mid pos cterm
+   = do beginScope 
+	checkConstrTerm mid pos cterm
 	insertConstrTerm cterm
 	checkRhs mid pos rhs
+	idents' <-  returnUnrefVars
+	when (not (null idents'))
+	     (foldM' (genWarning pos) (map unrefVar idents'))
+	endScope
 
 -- Check for idle and overlapping case alternatives
 checkCaseAlternatives :: ModuleIdent -> [Alt] -> CheckState ()
@@ -269,7 +281,7 @@ checkCaseAlternatives mid alts
 checkIdleAlts :: ModuleIdent -> [Alt] -> CheckState ()
 checkIdleAlts mid alts
    = do alts' <- dropUnless' isVarAlt alts
-	let idles = tail_ alts'
+	let idles = tail_ [] alts'
 	    (Alt pos _ _) = head idles
 	unless (null idles) (genWarning pos idleCaseAlts)
  where
@@ -313,13 +325,42 @@ checkOverlappingAlts mid (alt:alts)
     = equalConstrTerms (ConstructorPattern (qTupleId 2) cs1)
                        (ConstructorPattern (qTupleId 2) cs2)
  equalConstrTerms (ListPattern cs1) (ListPattern cs2)
-    = equalConstrTerms (ConstructorPattern qListId cs1)
-                       (ConstructorPattern qListId cs2)
+    = cmpListM equalConstrTerms cs1 cs2
  equalConstrTerms (AsPattern id1 cterm1) (AsPattern id2 cterm2)
     = equalConstrTerms cterm1 cterm2
  equalConstrTerms (LazyPattern cterm1) (LazyPattern cterm2)
     = equalConstrTerms cterm1 cterm2
  equalConstrTerms _ _ = return False
+
+
+-- Find function rules which are not together
+checkDeclOccurances :: [Decl] -> CheckState ()
+checkDeclOccurances decls = checkDO (mkIdent "") emptyEnv decls
+ where
+ checkDO prevId env [] = return ()
+ checkDO prevId env ((FunctionDecl pos ident _):decls)
+    = do c <- isConsId ident
+	 if not (c || prevId == ident)
+          then (maybe (checkDO ident (bindEnv ident pos env) decls)
+	              (\pos' -> genWarning pos (rulesNotTogether ident pos')
+		                >> checkDO ident env decls)
+	              (lookupEnv ident env))
+	  else checkDO ident env decls
+ checkDO _ env (_:decls) 
+    = checkDO (mkIdent "") env decls
+
+
+-- check import declarations for multiply imported modules
+checkImports :: [Decl] -> CheckState ()
+checkImports imps = checkImps emptyEnv imps
+ where
+ checkImps env [] = return ()
+ checkImps env ((ImportDecl pos mid _ _ _):imps)
+    = maybe (checkImps (bindEnv mid () env) imps)
+            (\_ -> genWarning pos (multipleImport mid)
+	           >> checkImps env imps)
+	    (lookupEnv mid env)
+ checkImps env (_:imps) = checkImps env imps
 
 
 -------------------------------------------------------------------------------
@@ -334,7 +375,8 @@ insertDecl (DataDecl _ ident _ cdecls)
 insertDecl (TypeDecl _ ident _ _)
    = insertTypeConsId ident
 insertDecl (FunctionDecl _ ident _)
-   = insertVar ident
+   = do c <- isConsId ident
+	unless c (insertVar ident)
 insertDecl (ExternalDecl _ _ _ ident _)
    = insertVar ident
 insertDecl (FlatExternalDecl _ idents)
@@ -355,7 +397,8 @@ insertConstrDecl (ConOpDecl _ _ _ ident _)
 --
 insertConstrTerm :: ConstrTerm -> CheckState ()
 insertConstrTerm (VariablePattern ident)
-   = unless' (isConsId ident) (insertVar ident)
+   = do c <- isConsId ident
+	unless c (insertVar ident)
 insertConstrTerm (ConstructorPattern _ cterms)
    = foldM' insertConstrTerm cterms
 insertConstrTerm (InfixPattern cterm1 qident cterm2)
@@ -381,7 +424,7 @@ insertConstrTerm _ = return ()
 -- (type) variables (including functions).
 -- The Boolean flag in 'VarInfo' is used to mark variables when they are used 
 -- within expressions.
-data IdInfo = ConsInfo | VarInfo Bool
+data IdInfo = ConsInfo | VarInfo Bool deriving Show
 
 --
 isVariable :: IdInfo -> Bool
@@ -406,26 +449,25 @@ visitVariable info = case info of
 
 
 -- Data type for representing the current state of generating warnings.
--- It contains a list of generated messages and an environment holding
--- information of identifiers of the current scope.
 -- The monadic representation of the state allows the usage of monadic 
--- operators. which makes it easier and safer to deal with the contents.
+-- syntax (do expression) for dealing easier and safer with its
+-- contents.
 data CheckState a = CheckState (CState () -> CState a)
 
-data CState a = CState {messages :: [Message CompMessageType],
-			scope    :: ScopeEnv QualIdent IdInfo,
-			values   :: ValueEnv,
-			moduleId :: ModuleIdent,
-			result   :: a
+data CState a = CState {messages  :: [Message CompMessageType],
+			scope     :: ScopeEnv QualIdent IdInfo,
+			values    :: ValueEnv,
+			moduleId  :: ModuleIdent,
+			result    :: a
 		       }
 
 --
 emptyState :: CState ()
-emptyState = CState {messages = [],
-		     scope    = newSE,
-		     values   = emptyTopEnv,
-		     moduleId = mkMIdent [],
-		     result   = ()
+emptyState = CState {messages  = [],
+		     scope     = newSE,
+		     values    = emptyTopEnv,
+		     moduleId  = mkMIdent [],
+		     result    = ()
 		    }
 
 --
@@ -493,7 +535,7 @@ isVarId id
 --
 isConsId :: Ident -> CheckState Bool
 isConsId id 
-   = CheckState (\state -> state{ result = isCons state (commonId id) })
+   = CheckState (\state -> state{ result = isCons state (qualify id) })
 
 --
 isShadowingVar :: Ident -> CheckState Bool
@@ -537,6 +579,14 @@ returnUnrefVars
 	                   in  state{ result = map unqualify unrefs })
 
 --
+addModuleId :: ModuleIdent -> CheckState ()
+addModuleId mid = CheckState (\state -> state{ moduleId = mid })
+
+--
+returnModuleId :: CheckState ModuleIdent
+returnModuleId = CheckState (\state -> state{ result = moduleId state })
+
+--
 beginScope :: CheckState ()
 beginScope = CheckState (\state -> modifyScope beginScopeSE state)
 
@@ -553,14 +603,6 @@ addImportedValues vals = CheckState (\state -> state{ values = vals })
 foldM' :: (a -> CheckState ()) -> [a] -> CheckState ()
 foldM' f [] = return ()
 foldM' f (x:xs) = f x >> foldM' f xs
-
---
-when' :: (CheckState Bool) -> CheckState () -> CheckState ()
-when' mcond action = mcond >>= (\cond -> when cond action)
-
---
-unless' :: (CheckState Bool) -> CheckState () -> CheckState ()
-unless' mcond action = mcond >>= (\cond -> unless cond action)
 
 --
 dropUnless' :: (a -> CheckState Bool) -> [a] -> CheckState [a]
@@ -595,38 +637,6 @@ run (CheckState f)
 
 -------------------------------------------------------------------------------
 
--- Message kinds for compiler messages
-data CompMessageType = Warning Position 
-		     | Error Position 
-		       deriving Eq
-
-
--- An instance of Show for converting the messages kinds to reasonable 
--- strings
-instance Show CompMessageType where
- show (Warning pos) = "Warning: " ++ show pos ++ ": "
- show (Error pos)   = "ERROR: " ++ show pos ++ ": "
-
-
--- The following function generates several warning strings
-
-unrefTypeVar :: Ident -> String
-unrefTypeVar id = "unreferenced type variable \"" ++ show id ++ "\""
-
-unrefVar :: Ident -> String
-unrefVar id = "unreferenced variable \"" ++ show id ++ "\""
-
-shadowingVar :: Ident -> String
-shadowingVar id = "shadowing symbol \"" ++ show id ++ "\""
-
-idleCaseAlts :: String
-idleCaseAlts = "idle case alternative(s)"
-
-overlappingCaseAlt :: String
-overlappingCaseAlt = "redundant overlapping case alternative"
-
--------------------------------------------------------------------------------
-
 --
 isShadowing :: CState a -> QualIdent -> Bool
 isShadowing state qid
@@ -636,9 +646,10 @@ isShadowing state qid
 
 --
 isUnref :: CState a -> QualIdent -> Bool
-isUnref state qid = maybe False
-		          (not . variableVisited)
-			  (lookupSE qid (scope state))
+isUnref state qid 
+   = let sc = scope state 
+     in  maybe False (not . variableVisited) (lookupSE qid (scope state))
+         && levelSE qid sc == currentLevelSE sc
 
 --
 isVar :: CState a -> QualIdent -> Bool
@@ -678,10 +689,70 @@ typeId :: Ident -> QualIdent
 typeId id = qualify (renameIdent id 1)
 
 
--- A safer version of 'tail'
-tail_ :: [a] -> [a]
-tail_ []     = []
-tail_ (_:xs) = xs
+-------------------------------------------------------------------------------
+-- Message definition
+
+-- Message kinds for compiler messages
+data CompMessageType = Warning Position 
+		     | Error Position 
+		       deriving Eq
+
+
+-- An instance of Show for converting the messages kinds to reasonable 
+-- strings
+instance Show CompMessageType where
+ show (Warning pos) = "Warning: " ++ show pos ++ ": "
+ show (Error pos)   = "ERROR: " ++ show pos ++ ": "
+
+
+-- The following function generates several warning strings
+
+unrefTypeVar :: Ident -> String
+unrefTypeVar id = "unreferenced type variable \"" ++ show id ++ "\""
+
+unrefVar :: Ident -> String
+unrefVar id = "unreferenced variable \"" ++ show id ++ "\""
+
+shadowingVar :: Ident -> String
+shadowingVar id = "shadowing symbol \"" ++ show id ++ "\""
+
+idleCaseAlts :: String
+idleCaseAlts = "idle case alternative(s)"
+
+overlappingCaseAlt :: String
+overlappingCaseAlt = "redundant overlapping case alternative"
+
+rulesNotTogether :: Ident -> Position -> String
+rulesNotTogether id pos
+   = "rules for function \"" ++ show id ++ "\" are not together "
+     ++ "(first occurance at " 
+     ++ show (line pos) ++ "." ++ show (column pos) ++ ")"
+
+multipleImport :: ModuleIdent -> String
+multipleImport mid = "module \"" ++ show mid 
+		     ++ "\" was imported more than once"
+
+
+-------------------------------------------------------------------------------
+-- Miscellaneous
+
+-- safer versions of 'tail' and 'head'
+tail_ :: [a] -> [a] -> [a]
+tail_ alt []     = alt
+tail_ _   (_:xs) = xs
+
+head_ :: a -> [a] -> a
+head_ alt []    = alt
+head_ _   (x:_) = x
+
+--
+cmpListM :: Monad m => (a -> a -> m Bool) -> [a] -> [a] -> m Bool
+cmpListM cmpM []     []     = return True
+cmpListM cmpM (x:xs) (y:ys) = do c <- cmpM x y
+				 if c then cmpListM cmpM xs ys 
+				      else return False
+cmpListM cmpM _      _      = return False
+
 
 -------------------------------------------------------------------------------
 -------------------------------------------------------------------------------

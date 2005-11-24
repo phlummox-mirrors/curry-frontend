@@ -188,8 +188,9 @@ top-level.
 >                 -> Int -> RenameEnv -> [Decl] 
 >                 -> RenameState (RenameEnv,[Decl])
 > checkDeclGroup bindVar m k env ds =
->   mapM (checkDeclLhs k m env) ds >>=
+>   mapM (checkDeclLhs k m env) ds' >>=
 >   checkDecls bindVar m env . joinEquations
+>  where ds' = sortFuncDecls ds
 
 > checkDeclLhs :: Int -> ModuleIdent -> RenameEnv -> Decl -> RenameState Decl
 > checkDeclLhs k _ _ (InfixDecl p fix pr ops) =
@@ -258,8 +259,7 @@ top-level.
 >   | isDataConstr v env = errorAt p (nonVariable what v)
 >   | otherwise = renameIdent v k
 
-> checkDecls :: (PIdent -> RenameEnv -> RenameEnv) -> ModuleIdent 
->            -> RenameEnv -> [Decl] -> RenameState (RenameEnv,[Decl])
+
 > checkDecls bindVar m env ds =
 >   case linear bvs of
 >     Linear ->
@@ -572,6 +572,50 @@ Auxiliary definitions.
 > renameLiteral :: Literal -> RenameState Literal
 > renameLiteral (Int v i) = liftM (flip Int i . renameIdent v) newId
 > renameLiteral l = return l
+
+
+Since the compiler expects all rules of the same function to be together,
+it is necessary to sort the list of declarations.
+
+> sortFuncDecls :: [Decl] -> [Decl]
+> sortFuncDecls decls = sortFD emptyEnv [] decls
+>  where
+>  sortFD env res [] = reverse res
+>  sortFD env res (decl:decls)
+>     = case decl of
+>	  FunctionDecl _ ident _
+>	     | isJust (lookupEnv ident env)
+>	       -> sortFD env (insertBy cmpFuncDecl decl res) decls
+>	     | otherwise
+>              -> sortFD (bindEnv ident () env) (decl:res) decls
+>	  _    -> sortFD env (decl:res) decls
+
+> cmpFuncDecl :: Decl -> Decl -> Ordering
+> cmpFuncDecl (FunctionDecl _ id1 _) (FunctionDecl _ id2 _)
+>    | id1 == id2 = EQ
+>    | otherwise  = GT
+> cmpFuncDecl decl1 decl2 = GT
+
+> cmpPos :: Position -> Position -> Ordering
+> cmpPos p1 p2 | lp1 < lp2  = LT
+>              | lp1 == lp2 = EQ
+>              | otherwise  = GT
+>  where lp1 = line p1
+>        lp2 = line p2
+
+> getDeclPos :: Decl -> Position
+> getDeclPos (ImportDecl pos _ _ _ _) = pos
+> getDeclPos (InfixDecl pos _ _ _) = pos
+> getDeclPos (DataDecl pos _ _ _) = pos
+> getDeclPos (NewtypeDecl pos _ _ _) = pos
+> getDeclPos (TypeDecl pos _ _ _) = pos
+> getDeclPos (TypeSig pos _ _) = pos
+> getDeclPos (EvalAnnot pos _ _) = pos
+> getDeclPos (FunctionDecl pos _ _) = pos
+> getDeclPos (ExternalDecl pos _ _ _ _) = pos
+> getDeclPos (FlatExternalDecl pos _) = pos
+> getDeclPos (PatternDecl pos _ _) = pos
+> getDeclPos (ExtraVariables pos _) = pos
 
 \end{verbatim}
 Due to the lack of a capitalization convention in Curry, it is

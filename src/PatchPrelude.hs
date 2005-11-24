@@ -35,7 +35,7 @@ preludePatchSource
       "data Float",
       "data Char",
       "data Success",
-      "data IO a",
+      "data IO _",
       "data Bool = True | False",
       "type String = [Char]"]
 

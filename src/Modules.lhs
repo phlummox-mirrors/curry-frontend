@@ -97,8 +97,7 @@ code are obsolete and commented out.
 >     mEnv <- loadInterfaces (importPaths opts) m
 >     if uacy 
 >        then 
->          do 
->             let (tyEnv, tcEnv, aEnv, m', intf) = simpleCheckModule opts mEnv m
+>          do (tyEnv, tcEnv, aEnv, m', intf) <- simpleCheckModule opts mEnv m
 >             genAbstract opts fn tyEnv tcEnv m'
 >        else
 >          do (tyEnv, tcEnv, aEnv, m', intf) <- checkModule opts mEnv m
@@ -134,11 +133,14 @@ code are obsolete and commented out.
 >         [(p,m) | ImportDecl p m _ _ _ <- ds]
 
 > simpleCheckModule :: Options -> ModuleEnv -> Module 
->	    -> (ValueEnv,TCEnv,ArityEnv,Module,Interface)
+>	    -> IO (ValueEnv,TCEnv,ArityEnv,Module,Interface)
 > simpleCheckModule opts mEnv (Module m es ds) =
->    (tyEnv'', tcEnv, aEnv'', modul, intf)
+>   do unless (noWarn opts || null msgs)
+>	      (putStrLn (unlines (map (showMessage show) msgs)))
+>      return (tyEnv'', tcEnv, aEnv'', modul, intf)
 >   where (impDs,topDs) = partition isImportDecl ds
 >         (pEnv,tcEnv,tyEnv,aEnv) = importModules mEnv impDs
+>         msgs = warnCheck m tyEnv impDs topDs
 >         (pEnv',topDs') = precCheck m pEnv $ syntaxCheck m tyEnv
 >                                           $ kindCheck m tcEnv topDs
 >         ds' = impDs ++ qual m tyEnv topDs'
