@@ -161,6 +161,8 @@ the identifier of the \texttt{Int} literal for maintaining its type.
 >   | ListPattern [ConstrTerm]
 >   | AsPattern Ident ConstrTerm
 >   | LazyPattern ConstrTerm
+>   | FunctionPattern QualIdent [ConstrTerm]
+>   | InfixFuncPattern ConstrTerm QualIdent ConstrTerm
 >   deriving (Eq,Show)
 
 \end{verbatim}

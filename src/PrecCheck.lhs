@@ -1,8 +1,10 @@
-% -*- LaTeX -*-
+
 % $Id: PrecCheck.lhs,v 1.21 2004/02/15 22:10:34 wlux Exp $
 %
 % Copyright (c) 2001-2004, Wolfgang Lux
 % See LICENSE for the full license.
+%
+% Modified by Martin Engelke (men@informatik.uni-kiel.de)
 %
 \nwfilename{PrecCheck.lhs}
 \section{Checking Precedences of Infix Operators}
@@ -106,7 +108,8 @@ interface.
 > checkConstrTerm p pEnv (ConstructorPattern c ts) =
 >   ConstructorPattern c (map (checkConstrTerm p pEnv) ts)
 > checkConstrTerm p pEnv (InfixPattern t1 op t2) =
->   fixPrecT p pEnv (checkConstrTerm p pEnv t1) op (checkConstrTerm p pEnv t2)
+>   fixPrecT p pEnv InfixPattern
+>	 (checkConstrTerm p pEnv t1) op (checkConstrTerm p pEnv t2)
 > checkConstrTerm p pEnv (ParenPattern t) =
 >   ParenPattern (checkConstrTerm p pEnv t)
 > checkConstrTerm p pEnv (TuplePattern ts) =
@@ -117,6 +120,11 @@ interface.
 >   AsPattern v (checkConstrTerm p pEnv t)
 > checkConstrTerm p pEnv (LazyPattern t) =
 >   LazyPattern (checkConstrTerm p pEnv t)
+> checkConstrTerm p pEnv (FunctionPattern f ts) =
+>   FunctionPattern f (map (checkConstrTerm p pEnv) ts)
+> checkConstrTerm p pEnv (InfixFuncPattern t1 op t2) =
+>   fixPrecT p pEnv InfixFuncPattern
+>	 (checkConstrTerm p pEnv t1) op (checkConstrTerm p pEnv t2)
 
 > checkRhs :: ModuleIdent -> PEnv -> Rhs -> Rhs
 > checkRhs m pEnv (SimpleRhs p e ds) = SimpleRhs p (checkExpr m p pEnv' e) ds'
@@ -295,15 +303,56 @@ this case, the negation must bind more tightly than the operator for
 the pattern to be accepted.
 \begin{verbatim}
 
-> fixPrecT :: Position -> PEnv -> ConstrTerm -> QualIdent -> ConstrTerm
+> fixPrecT :: Position -> PEnv 
+>             -> (ConstrTerm -> QualIdent -> ConstrTerm -> ConstrTerm)
+>	      -> ConstrTerm -> QualIdent -> ConstrTerm  
+>             -> ConstrTerm
+> fixPrecT p pEnv infixpatt t1@(NegativePattern uop l) op t2
+>   | pr < 6 || pr == 6 && fix == InfixL 
+>     = fixRPrecT p pEnv infixpatt t1 op t2
+>   | otherwise 
+>     = errorAt p $ invalidParse "unary" uop op
+>   where OpPrec fix pr = prec op pEnv
+> fixPrecT p pEnv infixpatt t1 op t2 
+>   = fixRPrecT p pEnv infixpatt t1 op t2
+
+> fixRPrecT :: Position -> PEnv 
+>              -> (ConstrTerm -> QualIdent -> ConstrTerm -> ConstrTerm)
+>              -> ConstrTerm  -> QualIdent -> ConstrTerm
+>              -> ConstrTerm
+> fixRPrecT p pEnv infixpatt t1 op t2@(NegativePattern uop l)
+>   | pr < 6    = infixpatt t1 op t2
+>   | otherwise = errorAt p $ invalidParse "unary" uop op
+>   where OpPrec _ pr = prec op pEnv
+> fixRPrecT p pEnv infixpatt t1 op1 (InfixPattern t2 op2 t3)
+>   | pr1 < pr2 || pr1 == pr2 && fix1 == InfixR && fix2 == InfixR
+>     = infixpatt t1 op1 (InfixPattern t2 op2 t3)
+>   | pr1 > pr2 || pr1 == pr2 && fix1 == InfixL && fix2 == InfixL
+>     = InfixPattern (fixPrecT p pEnv infixpatt t1 op1 t2) op2 t3
+>   | otherwise 
+>     = errorAt p $ ambiguousParse "operator" op1 op2
+>   where OpPrec fix1 pr1 = prec op1 pEnv
+>         OpPrec fix2 pr2 = prec op2 pEnv
+> fixRPrecT p pEnv infixpatt t1 op1 (InfixFuncPattern t2 op2 t3)
+>   | pr1 < pr2 || pr1 == pr2 && fix1 == InfixR && fix2 == InfixR
+>     = infixpatt t1 op1 (InfixFuncPattern t2 op2 t3)
+>   | pr1 > pr2 || pr1 == pr2 && fix1 == InfixL && fix2 == InfixL
+>     = InfixFuncPattern (fixPrecT p pEnv infixpatt t1 op1 t2) op2 t3
+>   | otherwise 
+>     = errorAt p $ ambiguousParse "operator" op1 op2
+>   where OpPrec fix1 pr1 = prec op1 pEnv
+>         OpPrec fix2 pr2 = prec op2 pEnv
+> fixRPrecT _ _ infixpatt t1 op t2 = infixpatt t1 op t2
+
+> {-fixPrecT :: Position -> PEnv -> ConstrTerm -> QualIdent -> ConstrTerm
 >          -> ConstrTerm
 > fixPrecT p pEnv t1@(NegativePattern uop l) op t2
 >   | pr < 6 || pr == 6 && fix == InfixL = fixRPrecT p pEnv t1 op t2
 >   | otherwise = errorAt p $ invalidParse "unary" uop op
 >   where OpPrec fix pr = prec op pEnv
-> fixPrecT p pEnv t1 op t2 = fixRPrecT p pEnv t1 op t2
+> fixPrecT p pEnv t1 op t2 = fixRPrecT p pEnv t1 op t2-}
 
-> fixRPrecT :: Position -> PEnv -> ConstrTerm -> QualIdent -> ConstrTerm
+> {-fixRPrecT :: Position -> PEnv -> ConstrTerm -> QualIdent -> ConstrTerm
 >           -> ConstrTerm
 > fixRPrecT p pEnv t1 op t2@(NegativePattern uop l)
 >   | pr < 6 = InfixPattern t1 op t2
@@ -317,7 +366,7 @@ the pattern to be accepted.
 >   | otherwise = errorAt p $ ambiguousParse "operator" op1 op2
 >   where OpPrec fix1 pr1 = prec op1 pEnv
 >         OpPrec fix2 pr2 = prec op2 pEnv
-> fixRPrecT _ _ t1 op t2 = InfixPattern t1 op t2
+> fixRPrecT _ _ t1 op t2 = InfixPattern t1 op t2-}
 
 \end{verbatim}
 The functions \texttt{checkOpL} and \texttt{checkOpR} check the left

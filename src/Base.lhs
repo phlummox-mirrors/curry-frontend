@@ -681,6 +681,8 @@ prelude.
 >   bv (ListPattern ts) = bv ts
 >   bv (AsPattern v t) = v : bv t
 >   bv (LazyPattern t) = bv t
+>   bv (FunctionPattern f ts) = bv ts
+>   bv (InfixFuncPattern t1 op t2) = bv t1 ++ bv t2
 
 > instance Expr TypeExpr where
 >   fv (ConstructorType _ tys) = fv tys

@@ -1,167 +1,175 @@
+-------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
+--
+-- ScopeEnv - provides functions and data types for dealing with nested
+--            scope environments to store data from nested scopes
+--
+-- This module should be imported using "import qualified" to avoid name
+-- clashes
+--
+-- November 2005,
+-- Martin Engelke (men@informatik.uni-kiel.de)
+--
 module ScopeEnv (ScopeEnv,
-		 newScopeEnv,
-		 insertIdent, getIdentLevel,
-		 isVisible, isDeclared,
-		 beginScope, endScope,
-		 getLevel,
-		 genIdent, genIdentList) where
+		 new, insert, update, modify, lookup, sureLookup,
+		 level, exists, beginScope, endScope, endScopeUp,
+		 toList, toLevelList, currentLevel) where
 
-import Ident
 import Env
-import Maybe
-
-
--------------------------------------------------------------------------------
-
--- Type for representing an environment containing identifiers in several
--- scope levels
-type ScopeEnv = (IdEnv, [IdEnv], Int)
+import Prelude hiding (lookup)
 
 -------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
 
--- Generates a new instance of a scope table
-newScopeEnv :: ScopeEnv
-newScopeEnv = (newIdEnv, [], 0)
-
-
--- Inserts an identifier into the current level of the scope environment
-insertIdent :: Ident -> ScopeEnv -> ScopeEnv
-insertIdent ident (topleveltab, leveltabs, level)
-   = case leveltabs of
-       (lt:lts) -> (topleveltab, (insertId level ident lt):lts, level)
-       []       -> ((insertId level ident topleveltab), [], 0)
+-- Returns an empty scope environment
+new :: Ord a => ScopeEnv a b
+new = ScopeEnv 0 emptyEnv []
 
 
--- Returns the declaration level of an identifier if it exists
-getIdentLevel :: Ident -> ScopeEnv -> Maybe Int
-getIdentLevel ident (topleveltab, leveltabs, _)
-   = case leveltabs of
-       (lt:_) -> maybe (getIdLevel ident topleveltab) Just (getIdLevel ident lt)
-       []     -> getIdLevel ident topleveltab
-
-
--- Checks whether the specified identifier is visible in the current scope
--- (i.e. checks whether the identifier occurs in the scope environment)
-isVisible :: Ident -> ScopeEnv -> Bool
-isVisible ident (topleveltab, leveltabs, _)
-   = case leveltabs of
-       (lt:_) -> idExists ident lt || idExists ident topleveltab
-       []     -> idExists ident topleveltab
-
-
--- Checks whether the specified identifier is declared in the
--- current scope (i.e. checks whether the identifier occurs in the
--- current level of the scope environment)
-isDeclared :: Ident -> ScopeEnv -> Bool
-isDeclared ident (topleveltab, leveltabs, level)
-   = case leveltabs of
-       (lt:_) -> maybe False ((==) level) (getIdLevel ident lt)
-       []     -> maybe False ((==) 0) (getIdLevel ident topleveltab)
-
-
--- Increases the level of the scope.
-beginScope :: ScopeEnv -> ScopeEnv
-beginScope (topleveltab, leveltabs, level)
-   = case leveltabs of
-       (lt:lts) -> (topleveltab, (lt:lt:lts), level + 1)
-       []       -> (topleveltab, [newIdEnv], 1)
-
-
--- Decreases the level of the scope. Identifier from higher levels
--- will be lost.
-endScope :: ScopeEnv -> ScopeEnv
-endScope (topleveltab, leveltabs, level)
-   = case leveltabs of
-       (_:lts) -> (topleveltab, lts, level - 1)
-       []      -> (topleveltab, [], 0)
-
-
--- Returns the level of the current scope. Top level is 0
-getLevel :: ScopeEnv -> Int
-getLevel (_, _, level) = level
-
-
--- Generates a new identifier for the specified name. The new identifier is 
--- unique within the current scope. If no identifier can be generated for 
--- 'name' then 'Nothing' will be returned
-genIdent :: String -> ScopeEnv -> Maybe Ident
-genIdent name (topleveltab, leveltabs, _)
-   = case leveltabs of
-       (lt:_) -> genId name lt
-       []     -> genId name topleveltab
-
-
--- Generates a list of new identifiers where each identifier has
--- the prefix 'name' followed by  an index (i.e. "var3" if 'name' was "var").
--- All returned identifiers are unique within the current scope.
-genIdentList :: Int -> String -> ScopeEnv -> [Ident]
-genIdentList size name scopeenv = p_genIdentList size name scopeenv 0
+-- Inserts a value under a key into the environment of the current scope
+insert :: Ord a => a -> b -> ScopeEnv a b -> ScopeEnv a b
+insert key val env = modifySE insertLev env
  where
-   p_genIdentList s n env i
-      | s == 0 
-	= []
-      | otherwise
-	= maybe (p_genIdentList s n env (i + 1))
-	        (\ident -> ident:(p_genIdentList (s - 1) 
-				                 n 
-				                 (insertIdent ident env) 
-				                 (i + 1)))
-		(genIdent (n ++ (show i)) env)
+ insertLev lev local = bindEnv key (val,lev) local
 
 
-
--------------------------------------------------------------------------------
--------------------------------------------------------------------------------
--- Private declarations...
-
-type IdEnv = Env IdRep Int
-
-data IdRep = Name String | Index Int deriving (Eq, Ord)
-
-
--------------------------------------------------------------------------------
-
---
-newIdEnv :: IdEnv
-newIdEnv = emptyEnv
-
-
---
-insertId :: Int -> Ident -> IdEnv -> IdEnv
-insertId level ident env
-   = bindEnv (Name (name ident)) 
-             level 
-	     (bindEnv (Index (uniqueId ident)) level env)
-
-
---
-idExists :: Ident -> IdEnv -> Bool
-idExists ident env = indexExists (uniqueId ident) env
-
-
---
-getIdLevel :: Ident -> IdEnv -> Maybe Int
-getIdLevel ident env = lookupEnv (Index (uniqueId ident)) env
-
-
---
-genId n env
-   | nameExists n env = Nothing
-   | otherwise        = Just (p_genId (mkIdent n) 0)
+-- Updates the value stored under an existing key in the environment of 
+-- the current scope
+update :: Ord a => a -> b -> ScopeEnv a b -> ScopeEnv a b
+update key val env = modifySE updateLev env
  where
-   p_genId ident index
-      | indexExists index env = p_genId ident (index + 1)
-      | otherwise             = renameIdent ident index
+ updateLev lev local = maybe local 
+		             (\ (_,lev') ->  bindEnv key (val,lev') local)
+			     (lookupEnv key local)
 
+-- Modifies the value of an existing key by applying the function 'fun'
+-- in the environment of the current scope
+modify :: Ord a => (b -> b) -> a -> ScopeEnv a b -> ScopeEnv a b
+modify fun key env = modifySE modifyLev env
+ where
+ modifyLev lev local 
+    = maybe local
+            (\ (val',lev') -> bindEnv key (fun val', lev') local)
+	    (lookupEnv key local)
+
+
+-- Looks up the value which is stored under a key from the environment of
+-- the current scope
+lookup :: Ord a => a -> ScopeEnv a b -> Maybe b
+lookup key env = selectSE lookupLev env
+ where
+ lookupLev lev local = maybe Nothing (Just . fst) (lookupEnv key local)
+
+
+-- Similar to 'lookup', but returns an alternative value, if the key
+-- doesn't exist in the environment of the current scope
+sureLookup :: Ord a => a -> b -> ScopeEnv a b -> b
+sureLookup key alt env = maybe alt id (lookup key env)
+
+
+-- Returns the level of the last insertion of a key
+level :: Ord a => a -> ScopeEnv a b -> Int
+level key env = selectSE levelLev env
+ where
+ levelLev lev local = maybe (-1) snd (lookupEnv key local)
+
+
+-- Checks, whether a key exists in the environment of the current scope
+exists :: Ord a => a -> ScopeEnv a b -> Bool
+exists key env = selectSE existsLev env
+ where
+ existsLev lev local = maybe False (const True) (lookupEnv key local)
+
+
+-- Switches to the next scope (i.e. pushes the environment of the current
+-- scope onto the top of an scope stack and increments the level counter)
+beginScope :: Ord a => ScopeEnv a b -> ScopeEnv a b
+beginScope (ScopeEnv lev top [])
+   = ScopeEnv (lev + 1) top [top]
+beginScope (ScopeEnv lev top (local:locals))
+   = ScopeEnv (lev + 1) top (local:local:locals)
+
+
+-- Switches to the previous scope (i.e. pops the environment from the top
+-- of the scope stack and decrements the level counter)
+endScope :: Ord a => ScopeEnv a b -> ScopeEnv a b
+endScope (ScopeEnv _ top [])
+   = ScopeEnv 0 top []
+endScope (ScopeEnv lev top (_:locals))
+   = ScopeEnv (lev - 1) top locals
+
+
+-- Behaves like 'endScope' but additionally updates the environment of
+-- the previous scope by updating all keys with the corresponding values
+-- from the poped environment
+endScopeUp :: Ord a => ScopeEnv a b -> ScopeEnv a b
+endScopeUp (ScopeEnv _ top [])
+   = ScopeEnv 0 top []
+endScopeUp (ScopeEnv lev top (local:[]))
+   = ScopeEnv 0 (foldr (updateSE local) top (envToList top)) []
+endScopeUp (ScopeEnv lev top (local:local':locals))
+   = ScopeEnv (lev - 1) 
+              top 
+	      ((foldr (updateSE local) local' (envToList local')):locals)
+
+
+-- Returns the environment of current scope as a (key,value) list
+toList :: Ord a => ScopeEnv a b -> [(a,b)]
+toList env = selectSE toListLev env
+ where
+ toListLev lev local = map (\ (key,(val,_)) -> (key,val)) (envToList local)
+
+
+-- Returns all (key,value) pairs from the environment of the current scope 
+-- which has been inserted in the current level
+toLevelList :: Ord a => ScopeEnv a b -> [(a,b)]
+toLevelList env = selectSE toLevelListLev env
+ where
+ toLevelListLev lev local
+    = map (\ (key,(val,_)) -> (key,val))
+          (filter (\ (_,(_,lev')) -> lev' == lev) (envToList local))
+
+
+-- Returns the current level
+currentLevel :: Ord a => ScopeEnv a b -> Int
+currentLevel env = selectSE const env
+
+
+-------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
+-- Privates...
 
 --
-nameExists :: String -> IdEnv -> Bool
-nameExists name env = isJust (lookupEnv (Name name) env)
-
+modifySE :: (Int -> Env a (b,Int) -> Env a (b,Int)) -> ScopeEnv a b 
+          -> ScopeEnv a b
+modifySE f (ScopeEnv _ top []) 
+   = ScopeEnv 0 (f 0 top) []
+modifySE f (ScopeEnv lev top (local:locals))
+   = ScopeEnv lev top ((f lev local):locals)
 
 --
-indexExists :: Int -> IdEnv -> Bool
-indexExists index env = isJust (lookupEnv (Index index) env)
+selectSE :: (Int -> Env a (b,Int) -> c) -> ScopeEnv a b -> c
+selectSE f (ScopeEnv _ top [])        = f 0 top
+selectSE f (ScopeEnv lev _ (local:_)) = f lev local
+
+--
+updateSE :: Ord a => Env a (b,Int) -> (a,(b,Int)) ->  Env a (b,Int) 
+          -> Env a (b,Int)
+updateSE local (key,(_,lev)) local'
+   = maybe local' 
+           (\ (val',lev') 
+	    -> if lev == lev' then bindEnv key (val',lev) local' 
+                              else local')
+	   (lookupEnv key local)
+
+
+
+-------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
+
+-- Data type for representing information in nested scopes.
+data ScopeEnv a b = ScopeEnv Int (Env a (b,Int)) [Env a (b,Int)]
+		    deriving Show
 
 
 -------------------------------------------------------------------------------

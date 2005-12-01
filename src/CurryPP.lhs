@@ -213,6 +213,13 @@ Patterns
 > ppConstrTerm _ (ListPattern ts) = bracketList (map (ppConstrTerm 0) ts)
 > ppConstrTerm _ (AsPattern v t) = ppIdent v <> char '@' <> ppConstrTerm 2 t
 > ppConstrTerm _ (LazyPattern t) = char '~' <> ppConstrTerm 2 t
+> ppConstrTerm p (FunctionPattern f ts) =
+>   parenExp (p > 1 && not (null ts))
+>            (ppQIdent f <+> fsep (map (ppConstrTerm 2) ts))
+> ppConstrTerm p (InfixFuncPattern t1 f t2) =
+>   parenExp (p > 0)
+>            (sep [ppConstrTerm 1 t1 <+> ppQInfixOp f,
+>                  indent (ppConstrTerm 0 t2)])
 
 \end{verbatim}
 Expressions

@@ -13,9 +13,12 @@ import Ident
 import Position
 import Base (ValueEnv, ValueInfo(..), qualLookupValue, lookupValue)
 import TopEnv
+import qualified ScopeEnv
+import ScopeEnv (ScopeEnv)
 import Message
 import Env
 import Monad
+import List
 
 
 -------------------------------------------------------------------------------
@@ -29,7 +32,7 @@ import Monad
 --    - function rules which are not together
 warnCheck :: ModuleIdent -> ValueEnv -> [Decl] -> [Decl] 
 	     -> [Message CompMessageType]
-warnCheck mid vals imports decls 
+warnCheck mid vals imports decls
    = run (do addImportedValues vals
 	     addModuleId mid
 	     checkImports imports
@@ -171,6 +174,10 @@ checkConstrTerm mid pos (AsPattern ident cterm)
 	checkConstrTerm mid pos cterm
 checkConstrTerm mid pos (LazyPattern cterm)
    = checkConstrTerm mid pos cterm
+checkConstrTerm mid pos (FunctionPattern _ cterms)
+   = foldM' (checkConstrTerm mid pos) cterms
+checkConstrTerm mid pos (InfixFuncPattern cterm1 qident cterm2)
+   = checkConstrTerm mid pos (FunctionPattern qident [cterm1, cterm2])
 checkConstrTerm _ _ _ = return ()
 
 --
@@ -205,8 +212,9 @@ checkExpression mid pos (UnaryMinus _ expr)
    = checkExpression mid pos expr
 checkExpression mid pos (Apply expr1 expr2)
    = foldM' (checkExpression mid pos) [expr1, expr2]
-checkExpression mid pos (InfixApply expr1 _ expr2)
-   = foldM' (checkExpression mid pos) [expr1, expr2]
+checkExpression mid pos (InfixApply expr1 op expr2)
+   = do maybe (return ()) (visitId) (localIdent mid (opName op))
+	foldM' (checkExpression mid pos) [expr1, expr2]
 checkExpression mid pos (LeftSection expr _)
    = checkExpression mid pos expr
 checkExpression mid pos (RightSection _ expr)
@@ -355,12 +363,49 @@ checkImports :: [Decl] -> CheckState ()
 checkImports imps = checkImps emptyEnv imps
  where
  checkImps env [] = return ()
- checkImps env ((ImportDecl pos mid _ _ _):imps)
-    = maybe (checkImps (bindEnv mid () env) imps)
-            (\_ -> genWarning pos (multipleImport mid)
-	           >> checkImps env imps)
-	    (lookupEnv mid env)
+ checkImps env ((ImportDecl pos mid _ _ spec):imps)
+    | mid /= preludeMIdent
+      = maybe (checkImps (bindEnv mid (fromImpSpec spec) env) imps)
+              (\ishs -> checkImpSpec env pos mid ishs spec
+	                >>= (\env' -> checkImps env' imps))
+	      (lookupEnv mid env)
+    | otherwise
+      = checkImps env imps
  checkImps env (_:imps) = checkImps env imps
+
+ checkImpSpec env pos mid (is,hs) Nothing
+    = genWarning pos (multiplyImportedModule mid) >> return env
+ checkImpSpec env pos mid (is,hs) (Just (Importing pos' is'))
+    | null is
+      = do genWarning pos (multiplyImportedModule mid)
+	   return (bindEnv mid (is',hs) env)
+    | null iis
+      = return (bindEnv mid (is' ++ is,hs) env)
+    | otherwise
+      = do foldM' (genWarning pos')
+		  (map ((multiplyImportedSymbol mid) . impName) iis)
+	   return (bindEnv mid (unionBy cmpImport is' is,hs) env)
+  where iis = intersectBy cmpImport is' is
+ checkImpSpec env pos mid (is,hs) (Just (Hiding pos' hs'))
+    | null ihs
+      = return (bindEnv mid (is,hs' ++ hs) env)
+    | otherwise
+      = do foldM' (genWarning pos)
+		  (map ((multiplyHiddenSymbol mid) . impName) ihs)
+	   return (bindEnv mid (is,unionBy cmpImport hs' hs) env)
+  where ihs = intersectBy cmpImport hs' hs
+
+ cmpImport (ImportTypeWith id1 cs1) (ImportTypeWith id2 cs2)
+    = id1 == id2 && null (intersect cs1 cs2)
+ cmpImport i1 i2 = (impName i1) == (impName i2)
+
+ impName (Import id)           = id
+ impName (ImportTypeAll id)    = id
+ impName (ImportTypeWith id _) = id
+
+ fromImpSpec Nothing                 = ([],[])
+ fromImpSpec (Just (Importing _ is)) = (is,[])
+ fromImpSpec (Just (Hiding _ hs))    = ([],hs)
 
 
 -------------------------------------------------------------------------------
@@ -414,6 +459,10 @@ insertConstrTerm (AsPattern ident cterm)
 	insertConstrTerm cterm
 insertConstrTerm (LazyPattern cterm)
    = insertConstrTerm cterm
+insertConstrTerm (FunctionPattern _ cterms)
+   = foldM' insertConstrTerm cterms
+insertConstrTerm (InfixFuncPattern cterm1 qident cterm2)
+   = insertConstrTerm (FunctionPattern qident [cterm1, cterm2])
 insertConstrTerm _ = return ()
 
 
@@ -464,7 +513,7 @@ data CState a = CState {messages  :: [Message CompMessageType],
 --
 emptyState :: CState ()
 emptyState = CState {messages  = [],
-		     scope     = newSE,
+		     scope     = ScopeEnv.new,
 		     values    = emptyTopEnv,
 		     moduleId  = mkMIdent [],
 		     result    = ()
@@ -505,7 +554,8 @@ insertVar id
    | isAnnonId id = return ()
    | otherwise
      = CheckState 
-         (\state -> modifyScope (insertSE (commonId id) (VarInfo False)) state)
+         (\state -> modifyScope 
+	              (ScopeEnv.insert (commonId id) (VarInfo False)) state)
 
 --
 insertTypeVar :: Ident -> CheckState ()
@@ -513,19 +563,20 @@ insertTypeVar id
    | isAnnonId id = return ()
    | otherwise    
      = CheckState 
-         (\state -> modifyScope (insertSE (typeId id) (VarInfo False)) state)
+         (\state -> modifyScope 
+	              (ScopeEnv.insert (typeId id) (VarInfo False)) state)
 
 --
 insertConsId :: Ident -> CheckState ()
 insertConsId id
    = CheckState 
-       (\state -> modifyScope (insertSE (commonId id) ConsInfo) state)
+       (\state -> modifyScope (ScopeEnv.insert (commonId id) ConsInfo) state)
 
 --
 insertTypeConsId :: Ident -> CheckState ()
 insertTypeConsId id
    = CheckState 
-       (\state -> modifyScope (insertSE (typeId id) ConsInfo) state)
+       (\state -> modifyScope (ScopeEnv.insert (typeId id) ConsInfo) state)
 
 --
 isVarId :: Ident -> CheckState Bool
@@ -553,13 +604,15 @@ isShadowingTypeVar id
 visitId :: Ident -> CheckState ()
 visitId id 
    = CheckState 
-       (\state -> modifyScope (modifySE visitVariable (commonId id)) state)
+       (\state -> modifyScope 
+	            (ScopeEnv.modify visitVariable (commonId id)) state)
 
 --
 visitTypeId :: Ident -> CheckState ()
 visitTypeId id 
    = CheckState 
-       (\state -> modifyScope (modifySE visitVariable (typeId id)) state)
+       (\state -> modifyScope 
+	            (ScopeEnv.modify visitVariable (typeId id)) state)
 
 --
 isUnrefVar :: Ident -> CheckState Bool
@@ -574,9 +627,10 @@ isUnrefTypeVar id
 --
 returnUnrefVars :: CheckState [Ident]
 returnUnrefVars 
-   = CheckState (\state -> let ids    = map fst (toLevelListSE (scope state))
-                               unrefs = filter (isUnref state) ids
-	                   in  state{ result = map unqualify unrefs })
+   = CheckState (\state -> 
+	   	    let ids    = map fst (ScopeEnv.toLevelList (scope state))
+                        unrefs = filter (isUnref state) ids
+	            in  state{ result = map unqualify unrefs })
 
 --
 addModuleId :: ModuleIdent -> CheckState ()
@@ -588,11 +642,11 @@ returnModuleId = CheckState (\state -> state{ result = moduleId state })
 
 --
 beginScope :: CheckState ()
-beginScope = CheckState (\state -> modifyScope beginScopeSE state)
+beginScope = CheckState (\state -> modifyScope ScopeEnv.beginScope state)
 
 --
 endScope :: CheckState ()
-endScope = CheckState (\state -> modifyScope endScopeSE state)
+endScope = CheckState (\state -> modifyScope ScopeEnv.endScopeUp state)
 
 
 -- Adds the content of a value environment to the state
@@ -641,27 +695,27 @@ run (CheckState f)
 isShadowing :: CState a -> QualIdent -> Bool
 isShadowing state qid
    = let sc = scope state
-     in  maybe False isVariable (lookupSE qid sc)
-	 && levelSE qid sc < currentLevelSE sc
+     in  maybe False isVariable (ScopeEnv.lookup qid sc)
+	 && ScopeEnv.level qid sc < ScopeEnv.currentLevel sc
 
 --
 isUnref :: CState a -> QualIdent -> Bool
 isUnref state qid 
-   = let sc = scope state 
-     in  maybe False (not . variableVisited) (lookupSE qid (scope state))
-         && levelSE qid sc == currentLevelSE sc
+   = let sc = scope state
+     in  maybe False (not . variableVisited) (ScopeEnv.lookup qid sc)
+         && ScopeEnv.level qid sc == ScopeEnv.currentLevel sc
 
 --
 isVar :: CState a -> QualIdent -> Bool
 isVar state qid = maybe (isAnnonId (unqualify qid)) 
 	           isVariable 
-		   (lookupSE qid (scope state))
+		   (ScopeEnv.lookup qid (scope state))
 
 --
 isCons :: CState a -> QualIdent -> Bool
 isCons state qid = maybe (isImportedCons state qid)
 		         isConstructor
-			 (lookupSE qid (scope state))
+			 (ScopeEnv.lookup qid (scope state))
  where
  isImportedCons state qid
     = case (qualLookupValue qid (values state)) of
@@ -728,9 +782,19 @@ rulesNotTogether id pos
      ++ "(first occurance at " 
      ++ show (line pos) ++ "." ++ show (column pos) ++ ")"
 
-multipleImport :: ModuleIdent -> String
-multipleImport mid = "module \"" ++ show mid 
-		     ++ "\" was imported more than once"
+multiplyImportedModule :: ModuleIdent -> String
+multiplyImportedModule mid 
+   = "module \"" ++ show mid ++ "\" was imported more than once"
+
+multiplyImportedSymbol :: ModuleIdent -> Ident -> String
+multiplyImportedSymbol mid ident
+   = "symbol \"" ++ show ident ++ "\" was imported from module \""
+     ++ show mid ++ "\" more than once"
+
+multiplyHiddenSymbol :: ModuleIdent -> Ident -> String
+multiplyHiddenSymbol mid ident
+   = "symbol \"" ++ show ident ++ "\" from module \"" ++ show mid
+     ++ "\" was hidden more than once"
 
 
 -------------------------------------------------------------------------------
@@ -756,7 +820,7 @@ cmpListM cmpM _      _      = return False
 
 -------------------------------------------------------------------------------
 -------------------------------------------------------------------------------
-
+{-
 -- Data type for representing a stack containing information from nested
 -- scope levels
 data ScopeEnv a b = ScopeEnv Int (Env a (b,Int)) [Env a (b,Int)]
@@ -888,6 +952,6 @@ update local (key,(_,lev)) local'
                               else local')
 	   (lookupEnv key local)
 
-
+-}
 -------------------------------------------------------------------------------
 -------------------------------------------------------------------------------

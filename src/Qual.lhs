@@ -1,4 +1,4 @@
-% -*- LaTeX -*-
+
 % $Id: Qual.lhs,v 1.18 2004/02/15 22:10:36 wlux Exp $
 %
 % Copyright (c) 2001-2004, Wolfgang Lux
@@ -64,6 +64,12 @@ declarations groups as well as function arguments remain unchanged.
 > qualTerm m tyEnv (ListPattern ts) = ListPattern (map (qualTerm m tyEnv) ts)
 > qualTerm m tyEnv (AsPattern v t) = AsPattern v (qualTerm m tyEnv t)
 > qualTerm m tyEnv (LazyPattern t) = LazyPattern (qualTerm m tyEnv t)
+> qualTerm m tyEnv (FunctionPattern f ts) =
+>   FunctionPattern (qualIdent m tyEnv f) (map (qualTerm m tyEnv) ts)
+> qualTerm m tyEnv (InfixFuncPattern t1 op t2) =
+>   InfixFuncPattern (qualTerm m tyEnv t1) 
+>		     (qualIdent m tyEnv op) 
+>	             (qualTerm m tyEnv t2)
 
 > qualRhs :: ModuleIdent -> ValueEnv -> Rhs -> Rhs
 > qualRhs m tyEnv (SimpleRhs p e ds) =

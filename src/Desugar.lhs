@@ -1,4 +1,4 @@
-% -*- LaTeX -*-
+
 % $Id: Desugar.lhs,v 1.42 2004/02/15 22:10:32 wlux Exp $
 %
 % Copyright (c) 2001-2004, Wolfgang Lux
@@ -89,7 +89,7 @@ as it allows value declarations at the top-level of a module.
 >   where (ds',tyEnv') = run (desugarModule m ds) tyEnv
 
 > desugarModule :: ModuleIdent -> [Decl] -> DesugarState ([Decl],ValueEnv)
-> desugarModule m ds =
+> desugarModule m ds = 
 >   do
 >     ds' <- desugarDeclGroup m ds
 >     tyEnv' <- fetchSt
@@ -294,6 +294,10 @@ with a local declaration for $v$.
 > desugarTerm m p ds (AsPattern v t) =
 >   liftM (desugarAs p v) (desugarTerm m p ds t)
 > desugarTerm m p ds (LazyPattern t) = desugarLazy m p ds t
+> desugarTerm m p ds (FunctionPattern f ts) =
+>   errorAt p "function patterns are not supported"
+> desugarTerm m p ds (InfixFuncPattern t1 f t2) =
+>   errorAt p "function patterns are not supported"
 
 > desugarAs :: Position -> Ident -> ([Decl],ConstrTerm) -> ([Decl],ConstrTerm)
 > desugarAs p v (ds,t) =
@@ -314,6 +318,7 @@ with a local declaration for $v$.
 >       do
 >         v' <- fetchSt >>= freshIdent m "_#lazy" . monoType . flip typeOf t
 >         return (patDecl p t (mkVar v') : ds,VariablePattern v')
+
 
 \end{verbatim}
 A list of boolean guards is expanded into a nested if-then-else

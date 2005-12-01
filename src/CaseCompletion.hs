@@ -18,7 +18,7 @@ import qualified CurrySyntax
 import Base (ModuleEnv, lookupModule)
 import IL
 import Ident
-import ScopeEnv
+import OldScopeEnv as ScopeEnv
 import ILScope
 import Maybe
 

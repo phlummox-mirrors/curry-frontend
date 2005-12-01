@@ -8,7 +8,7 @@ module ILScope (getModuleScope,
 
 import IL
 import Ident
-import ScopeEnv
+import OldScopeEnv as ScopeEnv
 
 
 -------------------------------------------------------------------------------

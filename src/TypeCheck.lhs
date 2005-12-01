@@ -1,3 +1,4 @@
+
 % $Id: TypeCheck.lhs,v 1.90 2004/11/06 18:34:07 wlux Exp $
 %
 % Copyright (c) 1999-2004, Wolfgang Lux
@@ -466,6 +467,30 @@ signature the declared type must be too general.
 >     unify p "pattern" (ppConstrTerm 0 t) m ty1 ty2
 >     return ty1
 > tcConstrTerm m tcEnv sigs p (LazyPattern t) = tcConstrTerm m tcEnv sigs p t
+> tcConstrTerm m tcEnv sigs p t@(FunctionPattern f ts) =
+>   do
+>     tyEnv <- fetchSt
+>     ty <- inst (funType m f tyEnv) --skol (constrType m c tyEnv)
+>     unifyArgs (ppConstrTerm 0 t) ts ty
+>   where unifyArgs _ [] ty = return ty
+>         unifyArgs doc (t:ts) (TypeArrow ty1 ty2) =
+>           tcConstrTerm m tcEnv sigs p t >>=
+>           unify p "pattern" (doc $-$ text "Term:" <+> ppConstrTerm 0 t)
+>                 m ty1 >>
+>           unifyArgs doc ts ty2
+>         unifyArgs _ _ _ = internalError "tcConstrTerm"
+> tcConstrTerm m tcEnv sigs p t@(InfixFuncPattern t1 op t2) =
+>   do
+>     tyEnv <- fetchSt
+>     ty <- inst (funType m op tyEnv) --skol (constrType m op tyEnv)
+>     unifyArgs (ppConstrTerm 0 t) [t1,t2] ty
+>   where unifyArgs _ [] ty = return ty
+>         unifyArgs doc (t:ts) (TypeArrow ty1 ty2) =
+>           tcConstrTerm m tcEnv sigs p t >>=
+>           unify p "pattern" (doc $-$ text "Term:" <+> ppConstrTerm 0 t)
+>                 m ty1 >>
+>           unifyArgs doc ts ty2
+>         unifyArgs _ _ _ = internalError "tcConstrTerm"
 
 > tcRhs :: ModuleIdent -> TCEnv -> ValueEnv -> SigEnv -> Rhs -> TcState Type
 > tcRhs m tcEnv tyEnv0 sigs (SimpleRhs p e ds) =

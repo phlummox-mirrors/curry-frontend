@@ -344,7 +344,8 @@ Auxiliary definitions
 \begin{verbatim}
 
 > noPos :: Position
-> noPos = undefined
+> noPos = Position{ file = "", line = 0, column = 0 }
+> --noPos = undefined
 
 > isDataType :: TypeInfo -> Bool
 > isDataType (DataType _ _ _) = True

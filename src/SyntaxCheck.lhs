@@ -381,9 +381,9 @@ top-level.
 >              _ -> errorAt p (ambiguousData c)
 >       | not (isQualified c) && null ts ->
 >           return (VariablePattern (renameIdent (unqualify c) k))
->       | otherwise -> errorAt p (undefinedData c)
+>       | otherwise -> errorAt p (undefinedData c) -- TODO
 > checkConstrTerm k p m env (InfixPattern t1 op t2) =
->   case qualLookupVar op env of
+>   case (qualLookupVar op env) of
 >     [Constr n]
 >       | n == 2 ->
 >           do
@@ -391,9 +391,28 @@ top-level.
 >             t2' <- checkConstrTerm k p m env t2
 >             return (InfixPattern t1' op t2')
 >       | otherwise -> errorAt p (wrongArity op n 2)
+>     [GlobalVar _]
+>       -> do t1' <- checkConstrTerm k p m env t1
+>	      t2' <- checkConstrTerm k p m env t2
+>             return (InfixFuncPattern t1' op t2')
+>     [LocalVar _]
+>       -> do t1' <- checkConstrTerm k p m env t1
+>	      t2' <- checkConstrTerm k p m env t2
+>             return (InfixFuncPattern t1' (qualQualify m op) t2')
 >     rs
->       | any isConstr rs -> errorAt p (ambiguousData op)
->       | otherwise -> errorAt p (undefinedData op)
+>       | any isConstr rs 
+>         -> errorAt p (ambiguousData op)
+>       | otherwise 
+>         -> case (qualLookupVar (qualQualify m op) env) of
+>              [GlobalVar _]
+>                -> do t1' <- checkConstrTerm k p m env t1
+>	               t2' <- checkConstrTerm k p m env t2
+>                      return (InfixFuncPattern t1' op t2')
+>	       [LocalVar _]
+>                -> do t1' <- checkConstrTerm k p m env t1
+>	               t2' <- checkConstrTerm k p m env t2
+>                      return (InfixFuncPattern t1' (qualQualify m op) t2')
+>	       _ -> errorAt p (undefinedData op)
 > checkConstrTerm k p m env (ParenPattern t) =
 >   liftM ParenPattern (checkConstrTerm k p m env t)
 > checkConstrTerm k p m env (TuplePattern ts) =
