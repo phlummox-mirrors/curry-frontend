@@ -33,15 +33,15 @@ import declarations are commented out
 > import Desugar(desugar,desugarGoal)
 > import Simplify(simplify)
 > import Lift(lift)
-> import CurryInfo
 > import qualified IL
 > import ILTrans(ilTrans,ilTransIntf)
 > import ILLift(liftProg)
 > import ILxml(xmlModule) -- check
 > import FlatCurry
-> import IL2FlatCurry
+> import GenFlatCurry --IL2FlatCurry
 > import AbstractCurry
 > import GenAbstractCurry
+> import CurryEnv
 > --import DTransform(dTransform,dAddMain)
 > --import ILCompile(camCompile,camCompileData,fun)
 > --import qualified CamPP(ppModule)
@@ -110,11 +110,12 @@ code are obsolete and commented out.
 >             mapM_ (doDump opts) dumps
 >             --unless (noInterface opts) (updateInterface fn intf)
 >             if fcy || xml || acy || uacy
->                then do when fcy  (genFlat opts fn mEnv tcEnv aEnv' m' il')
->                        when xml  (genFlat opts fn mEnv tcEnv aEnv' m' il')
->                        when acy  (genAbstract opts fn tyEnv tcEnv m')
->                        when uacy (return ())
->                else (genFlat opts fn mEnv tcEnv aEnv' m' il')
+>                then 
+>	           do when fcy  (genFlat opts fn mEnv tcEnv aEnv' intf m' il')
+>		      when xml  (genFlat opts fn mEnv tcEnv aEnv' intf m' il')
+>		      when acy  (genAbstract opts fn tyEnv tcEnv m')
+>                     when uacy (return ())
+>                else genFlat opts fn mEnv tcEnv aEnv' intf m' il'
 >   where acy      = abstract opts
 >         uacy     = untypedAbstract opts
 >         fcy      = flat opts
@@ -238,21 +239,21 @@ code are obsolete and commented out.
 >   concat [ilTransIntf (Interface m ds) | (m,ds) <- envToList mEnv,
 >                                          m `elem` is]
 
-> writeXML :: Maybe FilePath -> FilePath -> CurryInfo -> IL.Module -> IO ()
-> writeXML tfn sfn fi il = writeFile ofn (showln code)
+> writeXML :: Maybe FilePath -> FilePath -> CurryEnv -> IL.Module -> IO ()
+> writeXML tfn sfn cEnv il = writeFile ofn (showln code)
 >   where ofn  = fromMaybe (rootname sfn ++ xmlExt) tfn
->         code = (xmlModule fi il)
+>         code = (xmlModule cEnv il)
 
-> writeFlat :: Maybe FilePath -> FilePath -> CurryInfo -> ModuleEnv 
+> writeFlat :: Maybe FilePath -> FilePath -> CurryEnv -> ModuleEnv 
 >              -> ArityEnv -> IL.Module -> IO ()
-> writeFlat tfn sfn fi mEnv aEnv il
->    = writeFlatCurry fname (il2flatCurry fi mEnv aEnv il)
+> writeFlat tfn sfn cEnv mEnv aEnv il
+>    = writeFlatCurry fname (genFlatCurry cEnv mEnv aEnv il)
 >   where fname = fromMaybe (rootname sfn ++ flatExt) tfn
 
-> writeFInt :: Maybe FilePath -> FilePath -> CurryInfo -> ModuleEnv
+> writeFInt :: Maybe FilePath -> FilePath -> CurryEnv -> ModuleEnv
 >              -> ArityEnv -> IL.Module -> IO ()
-> writeFInt tfn sfn fi mEnv aEnv il 
->    = writeFlatCurry fname (il2flatInterface fi mEnv il)
+> writeFInt tfn sfn cEnv mEnv aEnv il 
+>    = writeFlatCurry fname (genFlatInterface cEnv mEnv aEnv il)
 >  where fname = fromMaybe (rootname sfn ++ fintExt) tfn
 
 > writeTypedAbs :: Maybe FilePath -> FilePath -> ValueEnv -> TCEnv -> Module
@@ -575,18 +576,18 @@ The functions \texttt{genFlat} and \texttt{genAbstract} generate
 flat and abstract curry representations depending on the specified option.
 \begin{verbatim}
 
-> genFlat :: Options -> FilePath -> ModuleEnv -> TCEnv -> ArityEnv -> Module
->            -> IL.Module -> IO ()
-> genFlat opts fname mEnv tcEnv aEnv mod il
+> genFlat :: Options -> FilePath -> ModuleEnv -> TCEnv -> ArityEnv 
+>            -> Interface -> Module -> IL.Module -> IO ()
+> genFlat opts fname mEnv tcEnv aEnv intf mod il
 >   | flat opts
->     = writeFlat Nothing fname info mEnv aEnv il
->       >> writeFInt Nothing fname info mEnv aEnv il
+>     = writeFlat Nothing fname cEnv mEnv aEnv il
+>       >> writeFInt Nothing fname cEnv mEnv aEnv il
 >   | flatXml opts
->     = writeXML (output opts) fname info il
+>     = writeXML (output opts) fname cEnv il
 >   | otherwise
 >     = internalError "@Modules.genFlat: illegal option"
 >  where
->    info = genCurryInfo mEnv tcEnv mod
+>    cEnv = curryEnv mEnv tcEnv intf mod
 
 
 > genAbstract :: Options -> FilePath  -> ValueEnv -> TCEnv -> Module -> IO ()

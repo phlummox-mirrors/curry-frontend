@@ -1,4 +1,4 @@
-% -*- LaTeX -*-
+
 % $Id: ILxml.lhs,v 1.0 2001/06/19 12:19:18 rafa Exp $
 %
 % $Log: ILxml.lhs,v $
@@ -22,20 +22,22 @@ similar to that of Flat-Curry XML representation.
 > import Ident
 > import IL
 > import ILTrans
-> import qualified CurrySyntax
-> import CurryInfo
+> import qualified CurrySyntax as CS
+> import CurryEnv
 > import Pretty
 > import Char(chr,ord,isAlphaNum)
+> import Maybe
 
 > -- identation level
 > level::Int
 > level = 3
 
-> xmlModule :: CurryInfo -> Module -> Doc
-> xmlModule info m = text "<prog>" $$ nest level (xmlBody info m) $$ text "</prog>"
+> xmlModule :: CurryEnv -> Module -> Doc
+> xmlModule cEnv m = text "<prog>" $$ nest level (xmlBody cEnv m) 
+>	                           $$ text "</prog>"
 
-> xmlBody :: CurryInfo -> Module -> Doc
-> xmlBody info (Module name imports decls) =
+> xmlBody :: CurryEnv -> Module -> Doc
+> xmlBody cEnv (Module name imports decls) =
 >                   xmlElement "module"      xmlModuleDecl      moduleDecl   $$
 >                   xmlElement "import"      xmlImportDecl      importDecl   $$
 >                   xmlElement "types"       xmlTypeDecl        typeDecl     $$
@@ -45,8 +47,10 @@ similar to that of Flat-Curry XML representation.
 >               where
 >                 moduleDecl      = [name]
 >                 importDecl      = imports
->                 operatorDecl    = getOpFixity info
->                 translationDecl = getPublicIds info
+>                 operatorDecl    = infixDecls cEnv
+>                 translationDecl = foldl (qualIDeclId (moduleId cEnv))
+>			                  [] 
+>				          (interface cEnv)
 >                 (functionDecl,typeDecl) = splitDecls decls
 
 > -- =========================================================================
@@ -436,17 +440,17 @@ similar to that of Flat-Curry XML representation.
 > xmlLit (Int n) = text "<intc>" <>  xmlInteger n <> text "</intc>"
 > xmlLit (Float n) = text "<floatc>" <>  xmlFloat n <> text "</floatc>"
 
-> xmlOperatorDecl :: CurrySyntax.IDecl -> Doc
-> xmlOperatorDecl (CurrySyntax.IInfixDecl _ fixity prec qident) =
+> xmlOperatorDecl :: CS.IDecl -> Doc
+> xmlOperatorDecl (CS.IInfixDecl _ fixity prec qident) =
 >     text "<op fixity=\"" <> xmlFixity fixity 
 >     <> text "\" prec=\"" <> xmlInteger prec <> text "\">"
 >     <> xmlIdent (unqualify qident)
 >     <> text "</op>"
 
-> xmlFixity :: CurrySyntax.Infix -> Doc
-> xmlFixity CurrySyntax.InfixL = text "InfixlOp"
-> xmlFixity CurrySyntax.InfixR = text "InfixrOp"
-> xmlFixity CurrySyntax.Infix  = text "InfixOp"
+> xmlFixity :: CS.Infix -> Doc
+> xmlFixity CS.InfixL = text "InfixlOp"
+> xmlFixity CS.InfixR = text "InfixrOp"
+> xmlFixity CS.Infix  = text "InfixOp"
 
 
 > xmlTranslationDecl :: QualIdent -> Doc
@@ -481,5 +485,31 @@ similar to that of Flat-Curry XML representation.
 > xmlFormat ('<':xs) = "&lt;"++xmlFormat xs
 > xmlFormat ('&':xs) = "&amp;"++xmlFormat xs
 > xmlFormat (x:xs)   = x:(xmlFormat xs)
+
+> -- =========================================================================
+
+> qualIDeclId :: ModuleIdent -> [QualIdent] -> CS.IDecl -> [QualIdent]
+> qualIDeclId mid qids (CS.IDataDecl _ qid _ mcdecls)
+>    = foldl (qualConstrDeclId mid) (qid:qids) (catMaybes mcdecls)
+> qualIDeclId mid qids (CS.INewtypeDecl _ qid _ ncdecl)
+>    = qualNewConstrDeclId mid (qid:qids) ncdecl
+> qualIDeclId mid qids (CS.ITypeDecl _ qid _ _)
+>    = qid:qids
+> qualIDeclId mid qids (CS.IFunctionDecl _ qid _ _)
+>    = qid:qids
+> qualIDeclId mid qids _ = qids
+
+> qualConstrDeclId :: ModuleIdent -> [QualIdent] -> CS.ConstrDecl 
+>	              -> [QualIdent]
+> qualConstrDeclId mid qids (CS.ConstrDecl _ _ id _)
+>    = (qualifyWith mid id):qids
+> qualConstrDeclId mid qids (CS.ConOpDecl _ _ _ id _)
+>    = (qualifyWith mid id):qids
+
+> qualNewConstrDeclId :: ModuleIdent -> [QualIdent] -> CS.NewConstrDecl 
+>	                 -> [QualIdent]
+> qualNewConstrDeclId mid qids (CS.NewConstrDecl _ _ id _)
+>    = (qualifyWith mid id):qids
+
 
 \end{verbatim}

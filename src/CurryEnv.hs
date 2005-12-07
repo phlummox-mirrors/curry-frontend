@@ -41,14 +41,18 @@ data CurryEnv = CurryEnv{ moduleId     :: ModuleIdent,
 -- Returns a Curry environment for the module 'mod' and its corresponding
 -- environments 'mEnv' (imported modules), 'tcEnv' (table of type
 -- constructors) and 'intf' (the interface of 'mod')
-curryEnv :: ModuleEnv -> TCEnv -> [IDecl] -> Module -> CurryEnv
-curryEnv mEnv tcEnv intf mod@(Module mid mExp decls)
-   = CurryEnv{ moduleId     = mid,
-	       exports      = maybe [] (\ (Exporting _ exps) -> exps) mExp,
-	       interface    = intf,
-	       infixDecls   = genInfixDecls mod,
-	       typeSynonyms = genTypeSyns tcEnv mod
-	     }
+curryEnv :: ModuleEnv -> TCEnv -> Interface -> Module -> CurryEnv
+curryEnv mEnv tcEnv (Interface iid idecls) mod@(Module mid mExp decls)
+   | iid == mid
+     = CurryEnv{ moduleId     = mid,
+		 exports      = maybe [] (\ (Exporting _ exps) -> exps) mExp,
+		 interface    = idecls,
+		 infixDecls   = genInfixDecls mod,
+		 typeSynonyms = genTypeSyns tcEnv mod
+	       }
+   | otherwise
+     = internalError ("CurryEnv: interface \"" ++ show iid 
+		      ++ "\" does not match module \"" ++ show mid ++ "\"")
 
 
 -------------------------------------------------------------------------------

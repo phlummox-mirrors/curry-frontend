@@ -67,7 +67,7 @@ visitModule (IL.Module mid imports decls)
 	   types   <- genTypeSynonyms
 	   fs      <- filterM isPublicFuncDecl decls
 	   funcs   <- mapM visitFuncDecl fs
-	   expimps <- getExportedImports -- TODO
+	   expimps <- getExportedImports
 	   itypes  <- mapM visitTypeIDecl (filter isTypeIDecl expimps)
 	   ifuncs  <- mapM visitFuncIDecl (filter isFuncIDecl expimps)
 	   iops    <- mapM visitOpIDecl (filter isOpIDecl expimps)
