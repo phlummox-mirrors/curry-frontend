@@ -283,16 +283,17 @@ Lexing functions
 > type FailP a = Position -> String -> P a
 
 > lexFile :: P [(Position,Token)]
-> lexFile = fullLexer tokens failP
+> lexFile = lexer tokens failP
 >   where tokens p t@(Token c _)
 >           | c == EOF = returnP [(p,t)]
 >           | otherwise = lexFile `thenP` returnP . ((p,t):)
 
-> lexer success = fullLexer commentFilter
+> lexer :: SuccessP a -> FailP a -> P a
+> lexer = fullLExer {-success fail = fullLexer commentFilter fail
 >   where
->     commentFilter p t@(Token NestedComment _) = returnP []
->     commentFilter p t@(Token LineComment _) = returnP []
->     commentFilter p t = success p t
+>     commentFilter p t@(Token NestedComment _) = returnP ()
+>     commentFilter p t@(Token LineComment _) = returnP ()
+>     commentFilter p t = success p t-}
 
 > fullLexer :: SuccessP a -> FailP a -> P a
 > fullLexer success fail = skipBlanks
