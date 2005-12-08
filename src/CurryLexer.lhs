@@ -11,7 +11,7 @@
 In this section a lexer for Curry is implemented.
 \begin{verbatim}
  
-> module CurryLexer where
+> module CurryLexer (lexFile,lexer, Token (..), Category(..), Attributes(..)) where
 > import LexComb
 > import Position
 > import Map
@@ -55,6 +55,8 @@ In this section a lexer for Curry is implemented.
 >   | Sym_Dot | Sym_Minus | Sym_MinusDot
 >   -- end-of-file token
 >   | EOF
+>   -- comments (only for full lexer) inserted by men & bbr
+>   | LineComment | NestedComment
 >   deriving (Eq,Ord)
 
 \end{verbatim}
@@ -114,6 +116,12 @@ specific attributes.
 
 > stringTok :: String -> Token
 > stringTok cs = Token StringTok StringAttributes{ sval = cs }
+
+> lineCommentTok :: String -> Token
+> lineCommentTok s = Token LineComment StringAttributes{ sval = s }
+
+> nestedCommentTok :: String -> Token
+> nestedCommentTok s = Token NestedComment StringAttributes{ sval = s }
 
 \end{verbatim}
 The \texttt{Show} instance of \texttt{Token} is designed to display
@@ -187,6 +195,8 @@ all tokens in their source representation.
 >   showsPrec _ (Token Id_primitive _) = showString "identifier `primitive'"
 >   showsPrec _ (Token Id_qualified _) = showString "identifier `qualified'"
 >   showsPrec _ (Token EOF _) = showString "<end-of-file>"
+>   showsPrec _ (Token LineComment a) = shows a
+>   showsPrec _ (Token NestedComment a) = shows a
 
 \end{verbatim}
 Tables for reserved operators and identifiers
@@ -256,6 +266,15 @@ Character classes
 > isOctit c = c >= '0' && c <= '7'
 > isHexit c = isDigit c || c >= 'A' && c <= 'F' || c >= 'a' && c <= 'f'
 
+inserted for full lexing (men&bbr)
+
+> isLineComment, isNestedComment :: String -> Bool
+> isLineComment ('-':'-':c:s) = not (isSym c)
+> isLineComment _ = False
+> isNestedComment ('{':'-':s) = True
+> isNestedComment _ = False
+
+
 \end{verbatim}
 Lexing functions
 \begin{verbatim}
@@ -264,21 +283,23 @@ Lexing functions
 > type FailP a = Position -> String -> P a
 
 > lexFile :: P [(Position,Token)]
-> lexFile = lexer tokens failP
+> lexFile = fullLexer tokens failP
 >   where tokens p t@(Token c _)
 >           | c == EOF = returnP [(p,t)]
 >           | otherwise = lexFile `thenP` returnP . ((p,t):)
 
-> lexer :: SuccessP a -> FailP a -> P a
-> lexer success fail = skipBlanks
+> lexer success = fullLexer commentFilter
+>   where
+>     commentFilter p t@(Token NestedComment _) = returnP []
+>     commentFilter p t@(Token LineComment _) = returnP []
+>     commentFilter p t = success p t
+
+> fullLexer :: SuccessP a -> FailP a -> P a
+> fullLexer success fail = skipBlanks
 >   where -- skipBlanks moves past whitespace and comments
 >         skipBlanks p [] bol = success p (tok EOF) p [] bol
 >         skipBlanks p ('\t':s) bol = skipBlanks (tab p) s bol
 >         skipBlanks p ('\n':s) bol = skipBlanks (nl p) s True
->         skipBlanks p ('-':'-':s) bol =
->           skipBlanks (nl p) (tail' (dropWhile (/= '\n') s)) True
->         skipBlanks p ('{':'-':s) bol =
->           nestedComment p skipBlanks fail (incr p 2) s bol
 >         skipBlanks p (c:s) bol
 >           | isSpace c = skipBlanks (next p) s bol
 >           | otherwise =
@@ -286,18 +307,26 @@ Lexing functions
 >         tail' [] = []
 >         tail' (_:tl) = tl
 
-> nestedComment :: Position -> P a -> FailP a -> P a
-> nestedComment p0 success fail p ('-':'}':s) = success (incr p 2) s
-> nestedComment p0 success fail p ('{':'-':s) =
->   nestedComment p (nestedComment p0 success fail) fail (incr p 2) s
-> nestedComment p0 success fail p ('\t':s) =
->   nestedComment p0 success fail (tab p) s
-> nestedComment p0 success fail p ('\n':s) =
->   nestedComment p0 success fail (nl p) s
-> nestedComment p0 success fail p (_:s) =
->   nestedComment p0 success fail (next p) s
-> nestedComment p0 success fail p [] =
->   fail p0 "Unterminated nested comment at end-of-file" p []
+> lexLineComment :: (Token -> P a) -> P a
+> lexLineComment cont p s = case break (=='\n') s of
+>       (comment,rest) -> cont (lineCommentTok comment) (incr p (length comment)) rest
+
+> lexNestedComment :: Int -> (String -> String) -> Position -> SuccessP a -> FailP a -> P a
+> lexNestedComment 1 comment p0 success fail p ('-':'}':s) =  
+>   success p0 (lineCommentTok (comment "-}")) (incr p 2) s 
+> lexNestedComment n comment p0 success fail p ('-':'}':s) = 
+>   lexNestedComment (n-1) (comment . ("-}"++)) p0 success fail (incr p 2) s
+> lexNestedComment n comment p0 success fail p ('{':'-':s) = 
+>   lexNestedComment (n+1) (comment . ("{-"++)) p0 success fail (incr p 2) s
+> lexNestedComment n comment p0 success fail p (c@'\t':s) = 
+>   lexNestedComment n (comment . (c:)) p0 success fail (tab p) s
+> lexNestedComment n comment p0 success fail p (c@'\n':s) = 
+>   lexNestedComment n (comment . (c:)) p0 success fail (nl p) s
+> lexNestedComment n comment p0 success fail p (c:s) = 
+>   lexNestedComment n (comment . (c:)) p0 success fail (next p) s
+> lexNestedComment n comment p0 success fail p "" = 
+>   fail p0 "Unterminated nested comment" p []
+
 
 > lexBOL :: SuccessP a -> FailP a -> P a
 > lexBOL success fail p s _ [] = lexToken success fail p s False []
@@ -318,10 +347,12 @@ Lexing functions
 >   | c == ']' = token RightBracket
 >   | c == '_' = token Underscore
 >   | c == '`' = token Backquote
+>   | isNestedComment (c:s) = lexNestedComment 0 id p success fail p (c:s)
 >   | c == '{' = token LeftBrace
 >   | c == '}' = \bol -> token RightBrace bol . drop 1
 >   | c == '\'' = lexChar p success fail (next p) s
 >   | c == '\"' = lexString p success fail (next p) s
+>   | isLineComment (c:s) = lexLineComment (success p) p (c:s)
 >   | isAlpha c = lexIdent (success p) p (c:s)
 >   | isSym c = lexSym (success p) p (c:s)
 >   | isDigit c = lexNumber (success p) p (c:s)
