@@ -289,7 +289,7 @@ Lexing functions
 >           | otherwise = lexFile `thenP` returnP . ((p,t):)
 
 > lexer :: SuccessP a -> FailP a -> P a
-> lexer = fullLExer {-success fail = fullLexer commentFilter fail
+> lexer = fullLexer {-success fail = fullLexer commentFilter fail
 >   where
 >     commentFilter p t@(Token NestedComment _) = returnP ()
 >     commentFilter p t@(Token LineComment _) = returnP ()
