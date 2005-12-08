@@ -11,9 +11,8 @@ module GenFlatCurry (genFlatCurry,
 		     genFlatInterface) where
 
 
-import Base (ModuleEnv, ArityEnv, ArityInfo(..), 
-	     PEnv, PrecInfo(..), OpPrec(..),
-	     qualLookupArity, lookupArity, internalError)
+import Base (ModuleEnv, PEnv, PrecInfo(..), OpPrec(..),
+	     internalError)
 
 import FlatCurry
 import qualified IL
@@ -25,6 +24,7 @@ import qualified CurryEnv
 import ScopeEnv (ScopeEnv)
 import qualified ScopeEnv
 
+import Arity
 import PatchPrelude
 import Ident
 import TopEnv
@@ -236,7 +236,8 @@ visitFuncIDecl :: CS.IDecl -> FlatState FuncDecl
 visitFuncIDecl (CS.IFunctionDecl _ qident arity typeexpr)
    = do texpr <- visitType (fst (cs2ilType [] typeexpr))
 	qname <- visitQualIdent qident
-	return (Func qname arity Public texpr (External (qualName qident)))
+	return (Func qname arity Public texpr (Rule [] (Var 0)))
+	--return (Func qname arity Public texpr (External (qualName qident)))
 visitFuncIDecl _ = internalError "GenFlatCurry: no function interface"
 
 --
@@ -783,12 +784,15 @@ lookupIdArity qid
    = FlatState (\env -> env{ result = lookupA qid (arityEnvE env) })
  where
  lookupA qid aEnv = case (qualLookupArity qid aEnv) of
+		      [ArityInfo _ a] -> Just a
+		      _               -> Nothing
+{-
 		      [ArityInfo _ a]
 		         -> Just a
 		      [] -> case (lookupArity (unqualify qid) aEnv) of
 			      [ArityInfo _ a] -> Just a
 			      _               -> Nothing
-		      _  -> Nothing
+		      _  -> Nothing -}
 
 -- Generates a new index for a variable
 newVarIndex :: Ident -> FlatState Int

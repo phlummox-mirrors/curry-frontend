@@ -389,54 +389,6 @@ allow the usage of the qualified list constructor \texttt{(prelude.:)}.
 >                           (ForAllExist (length tys) 0
 >                                        (foldr TypeArrow (tupleType tys) tys))
 
-\end{verbatim}
-\paragraph{Arity}
-In order to generate correct FlatCurry application it is necessary
-to define the number of arguments as the arity value (instead of
-using the arity computed from the type). For this reason the compiler
-needs a table containing the information for all known functions
-and constructors. 
-\begin{verbatim}
-
-> type ArityEnv = TopEnv ArityInfo
-
-> data ArityInfo = ArityInfo QualIdent Int deriving Show
-
-> instance Entity ArityInfo where
->   origName (ArityInfo origName _) = origName
-
-> bindArity :: ModuleIdent -> Ident -> Int -> ArityEnv -> ArityEnv
-> bindArity mid id arity aEnv
->    | uniqueId id == 0 
->      = bindTopEnv id arityInfo (qualBindTopEnv qid arityInfo aEnv)
->    | otherwise        
->      = bindTopEnv id arityInfo aEnv
->  where
->  qid = qualifyWith mid id
->  arityInfo = ArityInfo qid arity
-
-> lookupArity :: Ident -> ArityEnv -> [ArityInfo]
-> lookupArity id aEnv = lookupTopEnv id aEnv ++! lookupTupleArity id
-
-> qualLookupArity :: QualIdent -> ArityEnv -> [ArityInfo]
-> qualLookupArity qid aEnv = qualLookupTopEnv qid aEnv
->		             ++! qualLookupConsArity qid aEnv
->			     ++! lookupTupleArity (unqualify qid)
-
-> qualLookupConsArity :: QualIdent -> ArityEnv -> [ArityInfo]
-> qualLookupConsArity qid aEnv
->    | (maybe False ((==) preludeMIdent) mmid) && (id == consId)
->      = qualLookupTopEnv (qualify id) aEnv
->    | otherwise
->      = []
->  where (mmid, id) = splitQualIdent qid
-
-> lookupTupleArity :: Ident -> [ArityInfo]
-> lookupTupleArity id 
->    | isTupleId id 
->      = [ArityInfo (qualifyWith preludeMIdent id) (tupleArity id)]
->    | otherwise
->      = []
 
 \end{verbatim}
 \paragraph{Operator precedences}
@@ -546,13 +498,6 @@ identifiers.
 >         predefDC c ty = predefTopEnv c' (DataConstructor c' ty)
 >           where c' = qualify c
 >         constrType (ForAll n ty) n' = ForAllExist n n' . foldr TypeArrow ty
-
-> initAEnv :: ArityEnv
-> initAEnv
->    = foldr bindPredefArity emptyTopEnv (concatMap snd predefTypes)
->  where
->  bindPredefArity (Data id _ ts) aEnv
->     = bindArity preludeMIdent id (length ts) aEnv
 
 > predefTypes :: [(Type,[Data [Type]])]
 > predefTypes =

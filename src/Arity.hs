@@ -1,17 +1,27 @@
 -------------------------------------------------------------------------------
 -------------------------------------------------------------------------------
 --
--- Arity - provides functions for expanding the arity environment 'ArityEnv'
---         (see Module "Base")
+-- Arity - In order to generate correct FlatCurry applications it is necessary
+--         to define the arity of a function or a constructor as the number 
+--         of its arguments (instead of using the arity computed from the
+--         type). For this reason this module provides functions for
+--         dealing with arity environment.
 --
--- September 2005,
+-- December 2005,
 -- Martin Engelke (men@informatik.uni-kiel.de)
 --
-module Arity (bindArities) where
+module Arity (ArityEnv, ArityInfo(..),
+	      bindArities, bindImportArities,
+	      bindArity, qualLookupArity,
+	      initAEnv) where
 
 import Base
 import CurrySyntax
 import Ident
+import Env
+import Utils
+import Maybe
+import List
 
 
 -------------------------------------------------------------------------------
@@ -22,6 +32,63 @@ bindArities :: ArityEnv -> Module -> ArityEnv
 bindArities aEnv (Module mid _ decls)
    = foldl (visitDecl mid) aEnv decls
 
+--
+bindImportArities :: ModuleEnv -> ArityEnv -> Module -> ArityEnv
+bindImportArities mEnv aEnv (Module _ _ decls)
+   = foldl (bindImport mEnv) aEnv decls
+ where
+ bindImport mEnv aEnv (ImportDecl pos mid qual asMid ispec)
+    = maybe (internalError "Arity.bindImportArities")
+            (foldl (visitIDecl mid) aEnv)
+	    (lookupModule mid mEnv)
+ bindImport mEnv aEnv _ = aEnv
+
+--
+bindArity :: ModuleIdent -> Ident -> Int -> ArityEnv -> ArityEnv
+bindArity mid id a aEnv
+   = bindEnv id'
+             (insertArity arity idArities)
+	     (bindEnv qid (insertArity arity qidArities) aEnv)
+  -- | uniqueId id == 0
+  --   = bindEnv id' 
+  --             (insertArity arity idArities) 
+  --             (bindEnv qid (insertArity arity qidArities) aEnv)
+  -- | otherwise
+  --   = bindEnv id' (insertArity arity idArities) aEnv
+ where
+ id' = qualify id
+ qid = qualifyWith mid id
+ arity = ArityInfo qid a
+ idArities = fromMaybe [] (lookupEnv id' aEnv)
+ qidArities = fromMaybe [] (lookupEnv qid aEnv)
+
+--
+--lookupArity :: Ident -> ArityEnv -> [ArityInfo]
+--lookupArity id aEnv = qualLookupArity (qualify id) aEnv
+
+--
+qualLookupArity :: QualIdent -> ArityEnv -> [ArityInfo]
+qualLookupArity qid aEnv = fromMaybe [] (lookupEnv qid aEnv)
+			   ++! qualLookupConsArity qid aEnv
+			   ++! lookupTupleArity (unqualify qid)
+--
+initAEnv :: ArityEnv
+initAEnv
+   = foldr (\ (id,arity) -> bindArity preludeMIdent id arity) 
+           emptyEnv 
+	   predefArities
+ where
+ predefArities = [(unitId, 0),
+		  (nilId,  0),
+		  (consId, 2)
+		 ]
+
+-------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
+
+type ArityEnv = Env QualIdent [ArityInfo]
+
+data ArityInfo = ArityInfo QualIdent Int deriving Show
 
 -------------------------------------------------------------------------------
 
@@ -119,6 +186,15 @@ visitAlt mid aEnv (Alt _ _ rhs)
    = visitRhs mid aEnv rhs
 
 
+visitIDecl :: ModuleIdent -> ArityEnv -> IDecl -> ArityEnv
+visitIDecl mid aEnv (IDataDecl _ qid _ mcdecls)
+   = foldl (visitConstrDecl (fromMaybe mid mmid)) aEnv (catMaybes mcdecls)
+ where (mmid, _) = splitQualIdent qid
+visitIDecl mid aEnv (IFunctionDecl _ qid arity _)
+   = bindArity (fromMaybe mid mmid) id arity aEnv
+ where (mmid, id) = splitQualIdent qid
+visitIDecl _ aEnv _ = aEnv
+
 
 -------------------------------------------------------------------------------
 
@@ -126,6 +202,36 @@ visitAlt mid aEnv (Alt _ _ rhs)
 typeArity :: TypeExpr -> Int
 typeArity (ArrowType _ t2) = 1 + typeArity t2
 typeArity _                = 0
+
+--
+qualLookupConsArity :: QualIdent -> ArityEnv -> [ArityInfo]
+qualLookupConsArity qid aEnv
+   | maybe False ((==) consId) id'
+     = fromMaybe [] (lookupEnv (qualify id) aEnv)
+   | otherwise
+     = []
+   -- | (maybe False ((==) preludeMIdent) mmid) && (id == consId)
+   --   = fromMaybe [] (lookupEnv (qualify id) aEnv)
+   -- | otherwise
+   --   = []
+ where (mmid, id) = splitQualIdent qid
+       id' = localIdent preludeMIdent qid
+
+--
+lookupTupleArity :: Ident -> [ArityInfo]
+lookupTupleArity id
+   | isTupleId id = [ArityInfo (qualifyWith preludeMIdent id) (tupleArity id)]
+   | otherwise    = []
+
+
+--
+equArity :: ArityInfo -> ArityInfo -> Bool
+equArity (ArityInfo qid1 _) (ArityInfo qid2 _) = qid1 == qid2
+
+--
+insertArity :: ArityInfo -> [ArityInfo] -> [ArityInfo]
+insertArity arity as | any (equArity arity) as = as
+		     | otherwise               = arity:as
 
 
 -------------------------------------------------------------------------------

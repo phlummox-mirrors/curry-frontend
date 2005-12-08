@@ -348,6 +348,8 @@ genLocalDecls env decls
    genLocalPatternIndex env _
       = env
 
+   -- The association list 'fdecls' is necessary because function
+   -- rules may not be together in the declaration list
    genLocals :: AbstractEnv -> [(Ident,[Decl])] -> [Decl] 
 	        -> ([CLocalDecl], AbstractEnv)
    genLocals env _ [] = ([], env)
@@ -375,7 +377,7 @@ genLocalDecls env decls
 			                    (simplifyRhsLocals rhs)
 	    (expr, env3)    = genLocalPattRhs pos env2 (simplifyRhsExpr rhs)
 	    (locals, env4)  = genLocals (endScope env3) fdecls decls
-	in  ((CLocalPat patt expr locals):locals, env4)
+	in  ((CLocalPat patt expr plocals):locals, env4)
    genLocals env fdecls ((ExtraVariables pos idents):decls)
       | null idents  = genLocals env fdecls decls
       | otherwise

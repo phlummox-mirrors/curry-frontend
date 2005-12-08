@@ -1,8 +1,10 @@
-% -*- LaTeX -*-
+
 % $Id: TopEnv.lhs,v 1.20 2003/10/04 17:04:32 wlux Exp $
 %
 % Copyright (c) 1999-2003, Wolfgang Lux
 % See LICENSE for the full license.
+%
+% Modified by Martin Engelke (men@informatik.uni-kiel.de)
 %
 \nwfilename{TopEnv.lhs}
 \subsection{Top-Level Environments}\label{sec:toplevel-env}
@@ -93,8 +95,8 @@ imported.
 > qualBindTopEnv :: QualIdent -> a -> TopEnv a -> TopEnv a
 > qualBindTopEnv x y (TopEnv env) =
 >   TopEnv (bindEnv x (bindLocal y (entities x env)) env)
->   where bindLocal x xs
->           | null [x' | (Local,x') <- xs] = (Local,x) : xs
+>   where bindLocal y ys
+>           | null [y' | (Local,y') <- ys] = (Local,y) : ys
 >           | otherwise = error "internal error: qualBindTopEnv"
 
 > rebindTopEnv :: Ident -> a -> TopEnv a -> TopEnv a

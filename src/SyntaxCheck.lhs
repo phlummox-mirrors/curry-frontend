@@ -454,7 +454,7 @@ top-level.
 >     [GlobalVar _] -> return (Variable v)
 >     [LocalVar v'] -> return (Variable (qualify v'))
 >     rs -> case (qualLookupVar (qualQualify m v) env) of
->             [] -> errorAt p (undefinedVariable v) -- errorAt p (ambiguousIdent rs v)
+>             [] -> errorAt p (ambiguousIdent rs v)
 >             [Constr _] -> return (Constructor v)
 >             [GlobalVar _] -> return (Variable v)
 >             [LocalVar v'] -> return (Variable (qualify v'))
@@ -560,7 +560,7 @@ top-level.
 >     [GlobalVar _] -> InfixOp v
 >     [LocalVar v'] -> InfixOp (qualify v')
 >     rs -> case (qualLookupVar (qualQualify m v) env) of
->             [] -> errorAt p (undefinedVariable v) --errorAt p (ambiguousIdent rs v)
+>             [] -> errorAt p (ambiguousIdent rs v)
 >             [Constr _] -> InfixConstr v
 >             [GlobalVar _] -> InfixOp v
 >             [LocalVar v'] -> InfixOp (qualify v')
