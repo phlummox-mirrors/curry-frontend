@@ -269,7 +269,7 @@ Character classes
 inserted for full lexing (men&bbr)
 
 > isLineComment, isNestedComment :: String -> Bool
-> isLineComment ('-':'-':c:s) = not (isSym c)
+> isLineComment ('-':'-':_) = True
 > isLineComment _ = False
 > isNestedComment ('{':'-':s) = True
 > isNestedComment _ = False
