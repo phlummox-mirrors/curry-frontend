@@ -283,64 +283,90 @@ Lexing functions
 > type FailP a = Position -> String -> P a
 
 > lexFile :: P [(Position,Token)]
-> lexFile = fullLexer False tokens failP
+> lexFile = fullLexer tokens failP
 >   where tokens p t@(Token c _)
 >           | c == EOF = returnP [(p,t)]
 >           | otherwise = lexFile `thenP` returnP . ((p,t):)
 
 > lexer :: SuccessP a -> FailP a -> P a
-> lexer = fullLexer False
-
-> fullLexer :: Bool -> SuccessP a -> FailP a -> P a
-> fullLexer full success fail = skipBlanks
+> lexer success fail = skipBlanks
 >   where -- skipBlanks moves past whitespace and comments
 >         skipBlanks p [] bol = success p (tok EOF) p [] bol
 >         skipBlanks p ('\t':s) bol = skipBlanks (tab p) s bol
 >         skipBlanks p ('\n':s) bol = skipBlanks (nl p) s True
+>         skipBlanks p ('-':'-':s) bol =
+>           skipBlanks (nl p) (tail' (dropWhile (/= '\n') s)) True
+>         skipBlanks p ('{':'-':s) bol =
+>           nestedComment p skipBlanks fail (incr p 2) s bol
 >         skipBlanks p (c:s) bol
 >           | isSpace c = skipBlanks (next p) s bol
 >           | otherwise =
->               (if bol then lexBOL else lexToken) full success fail p (c:s) bol
+>               (if bol then lexBOL else lexToken) success fail p (c:s) bol
 >         tail' [] = []
 >         tail' (_:tl) = tl
 
-> lexLineComment :: Bool -> SuccessP a -> FailP a -> P a
-> lexLineComment full success fail p s = case break (=='\n') s of
->       (comment,rest) -> if full 
->           then success p (lineCommentTok comment) (incr p (length comment)) rest
->           else fullLexer full success fail (incr p (length comment)) rest
+> fullLexer :: SuccessP a -> FailP a -> P a
+> fullLexer success fail = skipBlanks
+>   where -- skipBlanks moves past whitespace and comments
+>         skipBlanks p [] bol = success p (tok EOF) p [] bol
+>         skipBlanks p ('\t':s) bol = skipBlanks (tab p) s bol
+>         skipBlanks p ('\n':s) bol = skipBlanks (nl p) s True
+>         skipBlanks p s@('-':'-':_) bol = lexLineComment success p s bol
+>         skipBlanks p s@('{':'-':_) bol =
+>           lexNestedComment 0 id p success fail p s bol
+>         skipBlanks p (c:s) bol
+>           | isSpace c = skipBlanks (next p) s bol
+>           | otherwise =
+>               (if bol then lexBOL else lexToken) success fail p (c:s) bol
+>         tail' [] = []
+>         tail' (_:tl) = tl
 
-> lexNestedComment :: Bool -> Int -> (String -> String) -> 
+> lexLineComment :: SuccessP a -> P a
+> lexLineComment success p s = case break (=='\n') s of
+>   (comment,rest) -> success p (lineCommentTok comment) (incr p (length comment)) rest
+ 
+> lexNestedComment :: Int -> (String -> String) -> 
 >                     Position -> SuccessP a -> FailP a -> P a
-> lexNestedComment True 1 comment p0 success fail p ('-':'}':s) =  
+> lexNestedComment 1 comment p0 success fail p ('-':'}':s) =  
 >   success p0 (lineCommentTok (comment "-}")) (incr p 2) s 
-> lexNestedComment False 1 comment p0 success fail p ('-':'}':s) =  
->   fullLexer False success fail (incr p 2) s
-> lexNestedComment full n comment p0 success fail p ('-':'}':s) = 
->   lexNestedComment full (n-1) (comment . ("-}"++)) p0 success fail (incr p 2) s
-> lexNestedComment full n comment p0 success fail p ('{':'-':s) = 
->   lexNestedComment full (n+1) (comment . ("{-"++)) p0 success fail (incr p 2) s
-> lexNestedComment full n comment p0 success fail p (c@'\t':s) = 
->   lexNestedComment full n (comment . (c:)) p0 success fail (tab p) s
-> lexNestedComment full n comment p0 success fail p (c@'\n':s) = 
->   lexNestedComment full n (comment . (c:)) p0 success fail (nl p) s
-> lexNestedComment full n comment p0 success fail p (c:s) = 
->   lexNestedComment full n (comment . (c:)) p0 success fail (next p) s
-> lexNestedComment full n comment p0 success fail p "" = 
+> lexNestedComment n comment p0 success fail p ('-':'}':s) = 
+>   lexNestedComment (n-1) (comment . ("-}"++)) p0 success fail (incr p 2) s
+> lexNestedComment n comment p0 success fail p ('{':'-':s) = 
+>   lexNestedComment (n+1) (comment . ("{-"++)) p0 success fail (incr p 2) s
+> lexNestedComment n comment p0 success fail p (c@'\t':s) = 
+>   lexNestedComment n (comment . (c:)) p0 success fail (tab p) s
+> lexNestedComment n comment p0 success fail p (c@'\n':s) = 
+>   lexNestedComment n (comment . (c:)) p0 success fail (nl p) s
+> lexNestedComment n comment p0 success fail p (c:s) = 
+>   lexNestedComment n (comment . (c:)) p0 success fail (next p) s
+> lexNestedComment n comment p0 success fail p "" = 
 >   fail p0 "Unterminated nested comment" p []
 
+> nestedComment :: Position -> P a -> FailP a -> P a
+> nestedComment p0 success fail p ('-':'}':s) = success (incr p 2) s
+> nestedComment p0 success fail p ('{':'-':s) =
+>   nestedComment p (nestedComment p0 success fail) fail (incr p 2) s
+> nestedComment p0 success fail p ('\t':s) =
+>   nestedComment p0 success fail (tab p) s
+> nestedComment p0 success fail p ('\n':s) =
+>   nestedComment p0 success fail (nl p) s
+> nestedComment p0 success fail p (_:s) =
+>   nestedComment p0 success fail (next p) s
+> nestedComment p0 success fail p [] =
+>   fail p0 "Unterminated nested comment at end-of-file" p []
 
-> lexBOL :: Bool -> SuccessP a -> FailP a -> P a
-> lexBOL full success fail p s _ [] = lexToken full success fail p s False []
-> lexBOL full success fail p s _ ctxt@(n:rest)
+
+> lexBOL :: SuccessP a -> FailP a -> P a
+> lexBOL success fail p s _ [] = lexToken success fail p s False []
+> lexBOL success fail p s _ ctxt@(n:rest)
 >   | col < n = success p (tok VRightBrace) p s True rest
 >   | col == n = success p (tok VSemicolon) p s False ctxt
->   | otherwise = lexToken full success fail p s False ctxt
+>   | otherwise = lexToken success fail p s False ctxt
 >   where col = column p
 
-> lexToken :: Bool -> SuccessP a -> FailP a -> P a
-> lexToken full success fail p [] = success p (tok EOF) p []
-> lexToken full success fail p (c:s)
+> lexToken :: SuccessP a -> FailP a -> P a
+> lexToken success fail p [] = success p (tok EOF) p []
+> lexToken success fail p (c:s)
 >   | c == '(' = token LeftParen
 >   | c == ')' = token RightParen
 >   | c == ',' = token Comma
@@ -349,12 +375,10 @@ Lexing functions
 >   | c == ']' = token RightBracket
 >   | c == '_' = token Underscore
 >   | c == '`' = token Backquote
->   | isNestedComment (c:s) = lexNestedComment full 0 id p success fail p (c:s)
 >   | c == '{' = token LeftBrace
 >   | c == '}' = \bol -> token RightBrace bol . drop 1
 >   | c == '\'' = lexChar p success fail (next p) s
 >   | c == '\"' = lexString p success fail (next p) s
->   | isLineComment (c:s) = lexLineComment full success fail p (c:s)
 >   | isAlpha c = lexIdent (success p) p (c:s)
 >   | isSym c = lexSym (success p) p (c:s)
 >   | isDigit c = lexNumber (success p) p (c:s)
