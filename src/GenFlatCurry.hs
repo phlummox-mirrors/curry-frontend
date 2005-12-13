@@ -11,8 +11,8 @@ module GenFlatCurry (genFlatCurry,
 		     genFlatInterface) where
 
 
-import Base (ModuleEnv, PEnv, PrecInfo(..), OpPrec(..),
-	     internalError)
+import Base (ArityEnv, ArityInfo(..), ModuleEnv, PEnv, PrecInfo(..), 
+	     OpPrec(..), qualLookupArity, lookupArity,  internalError)
 
 import FlatCurry
 import qualified IL
@@ -24,7 +24,6 @@ import qualified CurryEnv
 import ScopeEnv (ScopeEnv)
 import qualified ScopeEnv
 
-import Arity
 import PatchPrelude
 import Ident
 import TopEnv
@@ -52,15 +51,15 @@ genFlatInterface cEnv mEnv aEnv mod
 
 --
 visitModule :: IL.Module -> FlatState Prog
-visitModule (IL.Module mid imports decls)
+visitModule (IL.Module mid imps decls)
    = whenFlatCurry
        (do ops   <- genOpDecls
            datas <- mapM visitDataDecl (filter isDataDecl decls)
 	   types <- genTypeSynonyms
 	   funcs <- mapM visitFuncDecl (filter isFuncDecl decls)
 	   mod   <- visitModuleIdent mid
-	   imps  <- mapM visitModuleIdent imports
-           return (Prog mod imps (types ++ datas) funcs ops))
+	   is    <- mapM visitModuleIdent imps
+           return (Prog mod is (types ++ datas) funcs ops))
        (do ops     <- genOpDecls
 	   ds      <- filterM isPublicDataDecl decls
 	   datas   <- mapM visitDataDecl ds
@@ -72,9 +71,11 @@ visitModule (IL.Module mid imports decls)
 	   ifuncs  <- mapM visitFuncIDecl (filter isFuncIDecl expimps)
 	   iops    <- mapM visitOpIDecl (filter isOpIDecl expimps)
 	   mod     <- visitModuleIdent mid
-	   imps    <- mapM visitModuleIdent imports
+	   imps'   <- imports
+	   is      <- mapM visitModuleIdent 
+	                   (map (\ (CS.IImportDecl _ mid) -> mid) imps')
 	   return (Prog mod 
-		        imps 
+		        is 
 		        (itypes ++ types ++ datas)
 		        (ifuncs ++ funcs)
 		        (iops ++ ops)))
@@ -699,6 +700,7 @@ data FlatEnv a = FlatEnv{ moduleIdE     :: ModuleIdent,
 			  publicEnvE    :: Env Ident Bool,
 			  fixitiesE     :: [CS.IDecl],
 			  typeSynonymsE :: [CS.IDecl],
+			  importsE      :: [CS.IDecl],
 			  exportsE      :: [CS.Export],
 			  varIndexE     :: Int,
 			  varIdsE       :: ScopeEnv Ident Int,
@@ -738,6 +740,7 @@ run cEnv mEnv aEnv genIntf (FlatState f)
 			                           (CurryEnv.interface cEnv),
 			 fixitiesE     = CurryEnv.infixDecls cEnv,
 			 typeSynonymsE = CurryEnv.typeSynonyms cEnv,
+			 importsE      = CurryEnv.imports cEnv,
 			 exportsE      = CurryEnv.exports cEnv,
 			 varIndexE     = 0,
 			 varIdsE       = ScopeEnv.new,
@@ -755,6 +758,10 @@ moduleId = FlatState (\env -> env{ result = moduleIdE env })
 --
 exports :: FlatState [CS.Export]
 exports = FlatState (\env -> env{ result = exportsE env })
+
+--
+imports :: FlatState [CS.IDecl]
+imports = FlatState (\env -> env{ result = importsE env })
 
 --
 fixities :: FlatState [CS.IDecl]
@@ -784,15 +791,12 @@ lookupIdArity qid
    = FlatState (\env -> env{ result = lookupA qid (arityEnvE env) })
  where
  lookupA qid aEnv = case (qualLookupArity qid aEnv) of
-		      [ArityInfo _ a] -> Just a
-		      _               -> Nothing
-{-
 		      [ArityInfo _ a]
 		         -> Just a
 		      [] -> case (lookupArity (unqualify qid) aEnv) of
 			      [ArityInfo _ a] -> Just a
 			      _               -> Nothing
-		      _  -> Nothing -}
+		      _  -> Nothing
 
 -- Generates a new index for a variable
 newVarIndex :: Ident -> FlatState Int

@@ -8,8 +8,8 @@
 -- Martin Engelke (men@informatik.uni-kiel.de)
 --
 module CurryEnv (CurryEnv, 
-		 moduleId, exports, interface, infixDecls, typeSynonyms,
-		 curryEnv) where
+		 moduleId, exports, imports, interface, infixDecls,
+		 typeSynonyms, curryEnv) where
 
 import CurrySyntax
 import Ident
@@ -30,6 +30,7 @@ import Maybe
 --
 data CurryEnv = CurryEnv{ moduleId     :: ModuleIdent,
 			  exports      :: [Export],
+			  imports      :: [IDecl],
 			  interface    :: [IDecl],
 			  infixDecls   :: [IDecl],
 			  typeSynonyms :: [IDecl]
@@ -46,6 +47,7 @@ curryEnv mEnv tcEnv (Interface iid idecls) mod@(Module mid mExp decls)
    | iid == mid
      = CurryEnv{ moduleId     = mid,
 		 exports      = maybe [] (\ (Exporting _ exps) -> exps) mExp,
+		 imports      = genImportIntf decls,
 		 interface    = idecls,
 		 infixDecls   = genInfixDecls mod,
 		 typeSynonyms = genTypeSyns tcEnv mod
@@ -56,6 +58,18 @@ curryEnv mEnv tcEnv (Interface iid idecls) mod@(Module mid mExp decls)
 
 
 -------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
+
+-- Generate interfaces for import declarations
+genImportIntf :: [Decl] -> [IDecl]
+genImportIntf decls = reverse (map snd (foldl genImpIntf [] decls))
+
+--
+genImpIntf imps (ImportDecl pos mid _ _ _)
+   = maybe ((mid, IImportDecl pos mid):imps) (const imps) (lookup mid imps)
+genImpIntf imps _ = imps
+
+
 -------------------------------------------------------------------------------
 
 -- Generate interface declaration for all infix declarations in the module

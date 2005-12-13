@@ -4,8 +4,6 @@
 % Copyright (c) 2000-2003, Wolfgang Lux
 % See LICENSE for the full license.
 %
-% Modified by Martin Engelke (men@informatik.uni-kiel.de)
-%
 \nwfilename{Imports.lhs}
 \section{Importing interfaces}
 This module provides a few functions which can be used to import
@@ -23,8 +21,9 @@ interfaces into the current module.
 \end{verbatim}
 Four kinds of environments are computed from the interface, one
 containing the operator precedences, another for the type
-constructors, and the third containing the types of the data
-constructors and functions. Note that the original names of all
+constructors, the third containing the types of the data
+constructors and functions, and the last contains the arity for each
+function and constructor. Note that the original names of all
 entities defined in the imported module are qualified appropriately.
 The same is true for type expressions.
 \begin{verbatim}
@@ -32,6 +31,7 @@ The same is true for type expressions.
 > type ExpPEnv = Env Ident PrecInfo
 > type ExpTCEnv = Env Ident TypeInfo
 > type ExpValueEnv = Env Ident ValueInfo
+> type ExpArityEnv = Env Ident ArityInfo
 
 \end{verbatim}
 When an interface is imported, the compiler first transforms the
@@ -44,18 +44,21 @@ import.
 \begin{verbatim}
 
 > importInterface :: Position -> ModuleIdent -> Bool -> Maybe ImportSpec
->                 -> Interface -> PEnv -> TCEnv -> ValueEnv
->                 -> (PEnv,TCEnv,ValueEnv)
-> importInterface p m q is i pEnv tcEnv tyEnv =
+>                 -> Interface -> PEnv -> TCEnv -> ValueEnv -> ArityEnv
+>                 -> (PEnv,TCEnv,ValueEnv,ArityEnv)
+> importInterface p m q is i pEnv tcEnv tyEnv aEnv =
 >   (importEntities m q vs id mPEnv pEnv,
 >    importEntities m q ts (importData vs) mTCEnv tcEnv,
->    importEntities m q vs id mTyEnv tyEnv)
+>    importEntities m q vs id mTyEnv tyEnv,
+>    importEntities m q as id mAEnv aEnv)
 >   where mPEnv  = intfEnv bindPrec i
 >         mTCEnv = intfEnv bindTC i
 >         mTyEnv = intfEnv bindTy i
+>         mAEnv  = intfEnv bindA i
 >         is' = maybe [] (expandSpecs m mTCEnv mTyEnv) is
 >         ts  = isVisible is (fromListSet (foldr addType [] is'))
 >         vs  = isVisible is (fromListSet (foldr addValue [] is'))
+>         as  = isVisible is (fromListSet (foldr addArity [] is'))
 
 > isVisible :: Maybe ImportSpec -> Set Ident -> Ident -> Bool
 > isVisible (Just (Importing _ _)) xs = (`elemSet` xs)
@@ -89,12 +92,13 @@ are imported as well because they may be used in type expressions in
 an interface.
 \begin{verbatim}
 
-> importInterfaceIntf :: Interface -> PEnv -> TCEnv -> ValueEnv
->                     -> (PEnv,TCEnv,ValueEnv)
-> importInterfaceIntf i pEnv tcEnv tyEnv =
+> importInterfaceIntf :: Interface -> PEnv -> TCEnv -> ValueEnv -> ArityEnv
+>                     -> (PEnv,TCEnv,ValueEnv,ArityEnv)
+> importInterfaceIntf i pEnv tcEnv tyEnv aEnv =
 >   (importEntities m True (const True) id (intfEnv bindPrec i) pEnv,
 >    importEntities m True (const True) id (intfEnv bindTCHidden i) tcEnv,
->    importEntities m True (const True) id (intfEnv bindTy i) tyEnv)
+>    importEntities m True (const True) id (intfEnv bindTy i) tyEnv,
+>    importEntities m True (const True) id (intfEnv bindA i) aEnv)
 >   where Interface m _ = i
 
 \end{verbatim}
@@ -167,6 +171,19 @@ module name.
 > bindValue f m tc tvs c evs ty = bindEnv c (f (qualifyLike tc c) sigma)
 >   where sigma = ForAllExist (length tvs) (length evs) (toQualType m tvs ty)
 >         qualifyLike x = maybe qualify qualifyWith (fst (splitQualIdent x))
+
+> bindA :: ModuleIdent -> IDecl -> ExpArityEnv -> ExpArityEnv
+> bindA m (IDataDecl _ _ _ cs) expAEnv
+>    = foldr (bindConstrA m) expAEnv (catMaybes cs)
+> bindA m (IFunctionDecl _ f a _) expAEnv
+>    = bindEnv (unqualify f) (ArityInfo (qualQualify m f) a) expAEnv
+> bindA _ _ expAEnv = expAEnv
+
+> bindConstrA :: ModuleIdent -> ConstrDecl -> ExpArityEnv -> ExpArityEnv
+> bindConstrA m (ConstrDecl _ _ c tys) expAEnv
+>    = bindEnv c (ArityInfo (qualifyWith m c) (length tys)) expAEnv
+> bindConstrA m (ConOpDecl _ _ _ c _) expAEnv
+>    = bindEnv c (ArityInfo (qualifyWith m c) 2) expAEnv
 
 \end{verbatim}
 After the environments have been initialized, the optional import

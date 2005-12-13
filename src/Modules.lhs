@@ -94,23 +94,19 @@ code are obsolete and commented out.
 >     mod <- liftM (parseModule likeFlat fn) 
 >                  (readFile fn >>= return . (patchPreludeSource fn))
 >     let m = patchModuleId fn mod
->     checkModuleId fn m
 >     mEnv <- loadInterfaces (importPaths opts) m
 >     if uacy 
 >        then 
->          do (tyEnv, tcEnv, m', intf) <- simpleCheckModule opts mEnv m
+>          do (tyEnv, tcEnv, aEnv, m', intf) <- simpleCheckModule opts mEnv m
 >             genAbstract opts fn tyEnv tcEnv m'
 >        else
->          do (tyEnv, tcEnv, m', intf) <- checkModule opts mEnv m
->             let aEnv = bindImportArities mEnv initAEnv m'
+>          do (tyEnv, tcEnv, aEnv, m', intf) <- checkModule opts mEnv m
+>             let --(tyEnv, tcEnv, aEnv, m', intf) = checkModule mEnv m
 >                 (il,aEnv',dumps) = transModule fcy False False 
 >			                         mEnv tyEnv aEnv m'
 >                 --(ccode,dumps') = ccodeModule (splitCode opts) mEnv il
 >                 --ccode' = compileDefaultGoal (debug opts) mEnv intf
 >                 il' = completeCase mEnv il
->             --let (Module mid _ _) = m'
->             --when (moduleName mid == "test1")
->             --     (error (show (localBindings tyEnv)))
 >             mapM_ (doDump opts) dumps
 >             --unless (noInterface opts) (updateInterface fn intf)
 >             if fcy || xml || acy || uacy
@@ -135,48 +131,41 @@ code are obsolete and commented out.
 > loadInterfaces :: [FilePath] -> Module -> IO ModuleEnv
 > loadInterfaces paths (Module m _ ds) =
 >   foldM (loadInterface paths [m]) emptyEnv
->         [(p,m') | ImportDecl p m' _ _ _ <- ds]
-
-> checkModuleId :: FilePath -> Module -> IO ()
-> checkModuleId fn (Module mid _ _)
->    | last (moduleQualifiers mid) == basename (rootname fn)
->      = return ()
->    | otherwise
->      = error ("module \"" ++ moduleName mid 
->	        ++ "\" must be in a file \"" ++ moduleName mid
->	        ++ ".curry\"")
+>         [(p,m) | ImportDecl p m _ _ _ <- ds]
 
 > simpleCheckModule :: Options -> ModuleEnv -> Module 
->	    -> IO (ValueEnv,TCEnv,Module,Interface)
+>	    -> IO (ValueEnv,TCEnv,ArityEnv,Module,Interface)
 > simpleCheckModule opts mEnv (Module m es ds) =
 >   do unless (noWarn opts || null msgs)
 >	      (putStrLn (unlines (map (showMessage show) msgs)))
->      return (tyEnv'', tcEnv, modul, intf)
+>      return (tyEnv'', tcEnv, aEnv'', modul, intf)
 >   where (impDs,topDs) = partition isImportDecl ds
->         (pEnv,tcEnv,tyEnv) = importModules mEnv impDs
+>         (pEnv,tcEnv,tyEnv,aEnv) = importModules mEnv impDs
 >         msgs = warnCheck m tyEnv impDs topDs
 >         (pEnv',topDs') = precCheck m pEnv $ syntaxCheck m tyEnv
 >                                           $ kindCheck m tcEnv topDs
 >         ds' = impDs ++ qual m tyEnv topDs'
 >         modul = expandInterface (Module m es ds') tcEnv tyEnv
->         (pEnv'',tcEnv'',tyEnv'') = qualifyEnv mEnv pEnv' tcEnv tyEnv
+>         (pEnv'',tcEnv'',tyEnv'',aEnv'') 
+>            = qualifyEnv mEnv pEnv' tcEnv tyEnv aEnv
 >         intf = exportInterface modul pEnv' tcEnv'' tyEnv''
 
 > checkModule :: Options -> ModuleEnv -> Module 
->      -> IO (ValueEnv,TCEnv,Module,Interface)
+>      -> IO (ValueEnv,TCEnv,ArityEnv,Module,Interface)
 > checkModule opts mEnv (Module m es ds) =
 >   do unless (noWarn opts || null msgs)
 >	      (putStrLn (unlines (map (showMessage show) msgs)))
->      return (tyEnv'', tcEnv', modul, intf)
+>      return (tyEnv'', tcEnv', aEnv'', modul, intf)
 >   where (impDs,topDs) = partition isImportDecl ds
->         (pEnv,tcEnv,tyEnv) = importModules mEnv impDs
+>         (pEnv,tcEnv,tyEnv,aEnv) = importModules mEnv impDs
 >         msgs = warnCheck m tyEnv impDs topDs
 >         (pEnv',topDs') = precCheck m pEnv $ syntaxCheck m tyEnv
 >                                           $ kindCheck m tcEnv topDs
 >         (tcEnv',tyEnv') = typeCheck m tcEnv tyEnv topDs'
 >         ds' = impDs ++ qual m tyEnv' topDs'
 >         modul = expandInterface (Module m es ds') tcEnv' tyEnv'
->         (pEnv'',tcEnv'',tyEnv'') = qualifyEnv mEnv pEnv' tcEnv' tyEnv'
+>         (pEnv'',tcEnv'',tyEnv'',aEnv'') 
+>            = qualifyEnv mEnv pEnv' tcEnv' tyEnv' aEnv
 >         intf = exportInterface modul pEnv'' tcEnv'' tyEnv''
 
 > --checkModule :: ModuleEnv -> Module 
@@ -229,16 +218,17 @@ code are obsolete and commented out.
 > --            (DumpCam,CamPP.ppModule cam)
 > --          ]
 
-> qualifyEnv :: ModuleEnv -> PEnv -> TCEnv -> ValueEnv
->     -> (PEnv,TCEnv,ValueEnv)
-> qualifyEnv mEnv pEnv tcEnv tyEnv =
+> qualifyEnv :: ModuleEnv -> PEnv -> TCEnv -> ValueEnv -> ArityEnv
+>     -> (PEnv,TCEnv,ValueEnv,ArityEnv)
+> qualifyEnv mEnv pEnv tcEnv tyEnv aEnv =
 >   (foldr bindQual pEnv' (localBindings pEnv),
 >    foldr bindQual tcEnv' (localBindings tcEnv),
->    foldr bindGlobal tyEnv' (localBindings tyEnv))
->   where (pEnv',tcEnv',tyEnv') =
+>    foldr bindGlobal tyEnv' (localBindings tyEnv),
+>    foldr bindQual aEnv' (localBindings aEnv))
+>   where (pEnv',tcEnv',tyEnv',aEnv') =
 >           foldl importInterface initEnvs (envToList mEnv)
->         importInterface (pEnv,tcEnv,tyEnv) (m,ds) =
->           importInterfaceIntf (Interface m ds) pEnv tcEnv tyEnv
+>         importInterface (pEnv,tcEnv,tyEnv,aEnv) (m,ds) =
+>           importInterfaceIntf (Interface m ds) pEnv tcEnv tyEnv aEnv
 >         bindQual (_,y) = qualBindTopEnv (origName y) y
 >         bindGlobal (x,y)
 >           | uniqueId x == 0 = bindQual (x,y)
@@ -402,18 +392,18 @@ The function \texttt{importModules} brings the declarations of all
 imported modules into scope for the current module.
 \begin{verbatim}
 
-> importModules :: ModuleEnv -> [Decl] -> (PEnv,TCEnv,ValueEnv)
-> importModules mEnv ds = (pEnv,importUnifyData tcEnv,tyEnv)
->   where (pEnv,tcEnv,tyEnv) = foldl importModule initEnvs ds
->         importModule (pEnv,tcEnv,tyEnv) (ImportDecl p m q asM is) =
+> importModules :: ModuleEnv -> [Decl] -> (PEnv,TCEnv,ValueEnv,ArityEnv)
+> importModules mEnv ds = (pEnv,importUnifyData tcEnv,tyEnv,aEnv)
+>   where (pEnv,tcEnv,tyEnv,aEnv) = foldl importModule initEnvs ds
+>         importModule (pEnv,tcEnv,tyEnv,aEnv) (ImportDecl p m q asM is) =
 >           case lookupModule m mEnv of
 >             Just ds -> importInterface p (fromMaybe m asM) q is
->                                        (Interface m ds) pEnv tcEnv tyEnv
+>                                        (Interface m ds) pEnv tcEnv tyEnv aEnv
 >             Nothing -> internalError "importModule"
->         importModule (pEnv,tcEnv,tyEnv) _ = (pEnv,tcEnv,tyEnv)
+>         importModule (pEnv,tcEnv,tyEnv,aEnv) _ = (pEnv,tcEnv,tyEnv,aEnv)
 
-> initEnvs :: (PEnv,TCEnv,ValueEnv)
-> initEnvs = (initPEnv,initTCEnv,initDCEnv)
+> initEnvs :: (PEnv,TCEnv,ValueEnv,ArityEnv)
+> initEnvs = (initPEnv,initTCEnv,initDCEnv,initAEnv)
 
 \end{verbatim}
 An implicit import of the prelude is added to the declarations of
@@ -653,6 +643,7 @@ Haskell and original MCC where a module obtains \texttt{main}).
 >                ConstrDecl pos [] nilId []]
 >  pos = first fn
 >  a   = mkIdent "a"
+
 
 \end{verbatim}
 Various filename extensions
