@@ -94,6 +94,7 @@ code are obsolete and commented out.
 >     mod <- liftM (parseModule likeFlat fn) 
 >                  (readFile fn >>= return . (patchPreludeSource fn))
 >     let m = patchModuleId fn mod
+>     checkModuleId fn m
 >     mEnv <- loadInterfaces (importPaths opts) m
 >     if uacy 
 >        then 
@@ -132,6 +133,15 @@ code are obsolete and commented out.
 > loadInterfaces paths (Module m _ ds) =
 >   foldM (loadInterface paths [m]) emptyEnv
 >         [(p,m) | ImportDecl p m _ _ _ <- ds]
+
+> checkModuleId :: FilePath -> Module -> IO ()
+> checkModuleId fn (Module mid _ _)
+>    | last (moduleQualifiers mid) == basename (rootname fn)
+>      = return ()
+>    | otherwise
+>      = error ("module \"" ++ moduleName mid 
+>	        ++ "\" must be in a file \"" ++ moduleName mid
+>	        ++ ".curry\"")
 
 > simpleCheckModule :: Options -> ModuleEnv -> Module 
 >	    -> IO (ValueEnv,TCEnv,ArityEnv,Module,Interface)
