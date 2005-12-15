@@ -63,7 +63,6 @@ dist_src:
 	@cp $(MCC_SRC)/*.lhs $(MCC_DIST_SRC)/$(DISTROOT)/src
 	@cp $(MCC_SRC)/*.hs $(MCC_DIST_SRC)/$(DISTROOT)/src
 	@cp $(MCC_SRC)/Makefile $(MCC_DIST_SRC)/$(DISTROOT)/src
-	@cp $(MCC)/LIESMICH $(MCC_DIST_SRC)/$(DISTROOT)
 	@cp $(MCC)/LICENSE $(MCC_DIST_SRC)/$(DISTROOT)
 	@cp $(MCC)/Makefile $(MCC_DIST_SRC)/$(DISTROOT)
 
@@ -76,7 +75,6 @@ dist_src:
 dist_bin:
 	@mkdir -p $(MCC_DIST_BIN)/$(DISTROOT)/bin
 	@cp $(MCC_BIN)/cymake $(MCC_DIST_BIN)/$(DISTROOT)/bin
-	@cp $(MCC)/LIESMICH $(MCC_DIST_BIN)/$(DISTROOT)
 	@cp $(MCC)/LICENSE $(MCC_DIST_BIN)/$(DISTROOT)
 
 	@cd $(MCC_DIST_BIN)                               \
