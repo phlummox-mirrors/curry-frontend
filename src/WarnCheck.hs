@@ -74,11 +74,19 @@ checkDecl mid (FunctionDecl pos ident equs)
 checkDecl mid (PatternDecl pos cterm rhs)
    = do checkConstrTerm mid pos cterm
 	checkRhs mid pos rhs
-checkDecl mid (ExtraVariables pos idents)
+checkDecl _ _ = return ()
+
+-- Checks locally declared identifiers (i.e. functions and logic variables)
+-- for shadowing
+checkLocalDecl :: Decl -> CheckState ()
+checkLocalDecl (FunctionDecl pos ident _)
+   = do s <- isShadowingVar ident
+	when s (genWarning pos (shadowingVar ident))
+checkLocalDecl (ExtraVariables pos idents)
    = do idents' <- filterM isShadowingVar idents
 	when (not (null idents'))
 	     (foldM' (genWarning pos) (map shadowingVar idents'))
-checkDecl _ _ = return ()
+checkLocalDecl _ = return ()
 
 --
 checkConstrDecl :: ModuleIdent -> ConstrDecl -> CheckState ()
@@ -128,6 +136,7 @@ checkLhs mid pos (ApLhs lhs cterms)
 checkRhs :: ModuleIdent -> Position -> Rhs -> CheckState ()
 checkRhs mid _ (SimpleRhs pos expr decls)
    = do beginScope  -- function arguments can be overwritten by local decls
+	foldM' checkLocalDecl decls
 	foldM' insertDecl decls
 	foldM' (checkDecl mid) decls
 	checkDeclOccurances decls
@@ -138,6 +147,7 @@ checkRhs mid _ (SimpleRhs pos expr decls)
 	endScope
 checkRhs mid pos (GuardedRhs cexprs decls)
    = do beginScope
+	foldM' checkLocalDecl decls
 	foldM' insertDecl decls
 	foldM' (checkDecl mid) decls
 	checkDeclOccurances decls
@@ -230,6 +240,7 @@ checkExpression mid pos (Lambda cterms expr)
 	endScope
 checkExpression mid pos (Let decls expr)
    = do beginScope
+	foldM' checkLocalDecl decls
 	foldM' insertDecl decls
 	foldM' (checkDecl mid) decls
 	checkDeclOccurances decls
@@ -259,7 +270,8 @@ checkStatement :: ModuleIdent -> Position -> Statement -> CheckState ()
 checkStatement mid pos (StmtExpr expr)
    = checkExpression mid pos expr
 checkStatement mid pos (StmtDecl decls)
-   = do foldM' insertDecl decls
+   = do foldM' checkLocalDecl decls
+	foldM' insertDecl decls
 	foldM' (checkDecl mid) decls
 	checkDeclOccurances decls
 checkStatement mid pos (StmtBind cterm expr)

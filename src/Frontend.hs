@@ -195,7 +195,7 @@ patchModuleId fn (CS.Module mid mexports decls)
 importPrelude :: FilePath -> CS.Module -> CS.Module
 importPrelude fn (CS.Module m es ds)
    = CS.Module m es (if m == preludeMIdent then ds else ds')
- where ids = [decl | decl@(CS.ImportDecl _ _ _ _ _) <- ds] --filter isImportDecl ds
+ where ids = [decl | decl@(CS.ImportDecl _ _ _ _ _) <- ds]
        ds' = CS.ImportDecl (first fn) preludeMIdent
                         (preludeMIdent `elem` map importedModule ids)
                         Nothing Nothing : ds
