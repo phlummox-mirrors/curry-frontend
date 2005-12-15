@@ -16,8 +16,7 @@ import System
 
 -- Environment variables containing paths to standard imports
 importVars = ["CURRYPATH",
-	      "PAKCSLIBPATH",
-	      "PAKCS_LIB"]
+	      "PAKCSLIBPATH"]
 
 
 -------------------------------------------------------------------------------
