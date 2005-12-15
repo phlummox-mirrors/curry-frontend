@@ -14,7 +14,10 @@ Since this version is only used as a frontend for PAKCS, some of the following
 import declarations are commented out
 \begin{verbatim}
 
-> module Modules(compileModule) where
+> module Modules(compileModule, loadInterfaces, transModule,
+>	         simpleCheckModule, checkModule
+>	        ) where
+
 > import Base
 > import Unlit(unlit)
 > import CurryParser(parseSource,parseGoal)
@@ -638,21 +641,6 @@ Haskell and original MCC where a module obtains \texttt{main}).
 >      = Module (mkMIdent [basename (rootname fn)]) mexports decls
 >    | otherwise
 >      = Module mid mexports decls
-
-
-> patchPrelude :: FilePath -> Module -> Module
-> patchPrelude fn (Module mid mexps decls)
->   | (moduleName mid) == "prelude"
->     = Module mid mexps (listdecl:decls)
->   | otherwise
->     = (Module mid mexps decls)
->  where
->  listdecl = DataDecl pos listId [a]
->               [ConOpDecl pos [] (VariableType a) consId
->                  (ConstructorType qListId [VariableType a]),
->                ConstrDecl pos [] nilId []]
->  pos = first fn
->  a   = mkIdent "a"
 
 
 \end{verbatim}

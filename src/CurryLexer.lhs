@@ -1,4 +1,4 @@
-% -*- LaTeX -*-
+
 % $Id: CurryLexer.lhs,v 1.40 2004/03/04 22:39:12 wlux Exp $
 %
 % Copyright (c) 1999-2004, Wolfgang Lux
@@ -332,7 +332,7 @@ Lexing functions
 > lexNestedComment n comment p0 success fail p ('-':'}':s) = 
 >   lexNestedComment (n-1) (comment . ("-}"++)) p0 success fail (incr p 2) s
 > lexNestedComment n comment p0 success fail p ('{':'-':s) = 
->   lexNestedComment (n+1) (comment . ("{-"++)) p0 success fail (incr p 2) s
+>   lexNestedComment (n+1) (comment . (('{':"-")++)) p0 success fail (incr p 2) s
 > lexNestedComment n comment p0 success fail p (c@'\t':s) = 
 >   lexNestedComment n (comment . (c:)) p0 success fail (tab p) s
 > lexNestedComment n comment p0 success fail p (c@'\n':s) = 

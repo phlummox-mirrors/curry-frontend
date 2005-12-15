@@ -21,7 +21,7 @@ import IO
 compileCurry :: Options -> FilePath -> IO ()
 compileCurry options file
    = compileModule options file
- where
+
 
 -------------------------------------------------------------------------------
 -- Error handling

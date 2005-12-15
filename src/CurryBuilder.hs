@@ -7,7 +7,7 @@
 -- September 2005,
 -- Martin Engelke (men@informatik.uni-kiel.de)
 --
-module CurryBuilder (buildCurry) where
+module CurryBuilder (buildCurry, smake) where
 
 import CurryBuilderOpts
 import CurryCompiler
