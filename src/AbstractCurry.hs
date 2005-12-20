@@ -27,6 +27,7 @@ module AbstractCurry (CurryProg(..), QName, CVisibility(..), CTVarIName,
                       CPattern(..), CBranchExpr(..), CLiteral(..),
                       readCurry, writeCurry) where
 
+import List(intersperse)
 
 ------------------------------------------------------------------------------
 -- Definition of data types for representing abstract Curry programs:
@@ -244,7 +245,17 @@ readCurry filename
 -- Writes an AbstractCurry program term into a file
 writeCurry :: String -> CurryProg -> IO ()
 writeCurry filename prog 
-   = catch (writeFile filename (show prog)) (\e -> ioError e)
+   = catch (writeFile filename (showCurry prog)) (\e -> ioError e)
+
+-- Shows an AbstractCurry program in a more nicely way.
+showCurry :: CurryProg -> String
+showCurry (CurryProg mname imps types funcs ops) =
+  "CurryProg "++show mname++"\n "++
+  show imps ++"\n ["++
+  concat (intersperse ",\n  " (map (\t->show t) types)) ++"]\n ["++
+  concat (intersperse ",\n  " (map (\f->show f) funcs)) ++"]\n "++
+  show ops ++"\n"
+  
 
 ------------------------------------------------------------------------------
 ------------------------------------------------------------------------------

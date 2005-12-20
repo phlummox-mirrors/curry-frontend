@@ -24,7 +24,7 @@ module FlatCurry (Prog(..), QName, Visibility(..),
 		  writeFlatCurry) where
 
 import Directory
-
+import List(intersperse)
 
 ------------------------------------------------------------------------------
 -- Definition of data types for representing FlatCurry programs:
@@ -324,8 +324,17 @@ readFlat filename
 -- Writes a FlatCurry program term into a file.
 writeFlatCurry :: String -> Prog -> IO ()
 writeFlatCurry filename prog
-   = writeFile filename (show prog)
+   = writeFile filename (showFlatCurry prog)
 
+-- Shows FlatCurry program in a more nicely way.
+showFlatCurry :: Prog -> String
+showFlatCurry (Prog mname imps types funcs ops) =
+  "Prog "++show mname++"\n "++
+  show imps ++"\n ["++
+  concat (intersperse ",\n  " (map (\t->show t) types)) ++"]\n ["++
+  concat (intersperse ",\n  " (map (\f->show f) funcs)) ++"]\n "++
+  show ops ++"\n"
+  
 
 -- Add the extension 'ext' to the filename 'fn' if it doesn't
 -- already exist.
