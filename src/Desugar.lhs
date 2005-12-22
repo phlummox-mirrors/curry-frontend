@@ -13,8 +13,8 @@ particular, the output of the desugarer will have the following
 properties.
 \begin{itemize}
 \item All function definitions are $\eta$-expanded.\\
-  {\em Note:} The $\eta$-expansion is disabled in the version
-  for PAKCS
+  {\em Note:} Since this version is used as a frontend for PAKCS, the 
+  $\eta$-expansion had been disabled.
 \item No guarded right hand sides occur in equations, pattern
   declarations, and case alternatives. In addition, the declaration
   lists of the right hand sides are empty; local declarations are
@@ -230,18 +230,81 @@ is disabled in the version for PAKCS).
 > desugarEquation :: ModuleIdent -> [Type] -> Equation -> DesugarState Equation
 > desugarEquation m tys (Equation p lhs rhs) =
 >   do
->     vs <- mapM (freshIdent m "_#eta" . monoType) (drop (length ts) tys)
 >     (ds',ts') <- mapAccumM (desugarTerm m p) [] ts
 >     rhs' <- desugarRhs m p (addDecls ds' rhs)
->     return (Equation p (FunLhs f ts') rhs')
->     -------------------------------------------------
->     -- Original MCC-code:
->     --
->     --return (Equation p (FunLhs f (ts' ++ map VariablePattern vs))
->     --                 (applyRhs rhs' (map mkVar vs)))
->     -------------------------------------------------
+>     (ts'', rhs'') <- desugarFunctionPatterns m p ts' rhs'
+>     return (Equation p (FunLhs f ts'') rhs'')
 >   where (f,ts) = flatLhs lhs
->         applyRhs (SimpleRhs p e _) vs = SimpleRhs p (apply e vs) []
+
+
+
+> desugarFunctionPatterns :: ModuleIdent -> Position -> [ConstrTerm] -> Rhs
+>	                     -> DesugarState ([ConstrTerm], Rhs)
+> desugarFunctionPatterns m p ts rhs =
+>   do
+>     (ts', its) <- elimFunctionPattern m p ts
+>     rhs' <- genFunctionPatternExpr m p its rhs
+>     return (ts', rhs')
+
+> elimFunctionPattern :: ModuleIdent -> Position -> [ConstrTerm]
+>		         -> DesugarState ([ConstrTerm], [(Ident,ConstrTerm)])
+> elimFunctionPattern m p [] = return ([],[])
+> elimFunctionPattern m p (t@(FunctionPattern qident cts):ts) =
+>   do
+>     tyEnv <- fetchSt
+>     ident <- freshIdent m "_#funpatt" (monoType (typeOf tyEnv t))
+>     (ts', its') <- elimFunctionPattern m p ts
+>     return ((VariablePattern ident):ts', (ident,t):its')
+> elimFunctionPattern m p (t:ts) =
+>   do
+>     (ts', its') <- elimFunctionPattern m p ts
+>     return (t:ts', its')
+
+> genFunctionPatternExpr :: ModuleIdent -> Position -> [(Ident, ConstrTerm)]
+>		            -> Rhs -> DesugarState Rhs
+> genFunctionPatternExpr m _ its rhs@(SimpleRhs p expr decls)
+>    | null its = return rhs
+>    | otherwise
+>      = let ies = map (\ (i,t) -> (i, constrTerm2Expr t)) its
+>	     fpexprs = map (\ (ident, expr) 
+>		            -> Apply (Apply prelFuncPattEqu expr) 
+>		                     (Variable (qualify ident)))
+>	                   ies
+>	     fpexpr =  foldl (\e1 e2 -> Apply (Apply prelConstrConj e1) e2)
+>	                     (head fpexprs) 
+>		             (tail fpexprs)
+>	     freevars = foldl getConstrTermVars [] (map snd its)
+>            rhsexpr = Let [ExtraVariables p freevars]
+>		           (Apply (Apply prelCond fpexpr) expr)
+>        in  return (SimpleRhs p rhsexpr decls)  
+> genFunctionPatternExpr _ _ _ rhs
+>    = internalError "unexpected right-hand-side"
+
+> constrTerm2Expr :: ConstrTerm -> Expression
+> constrTerm2Expr (LiteralPattern lit)
+>    = Literal lit
+> constrTerm2Expr (VariablePattern ident)
+>    = Variable (qualify ident)
+> constrTerm2Expr (ConstructorPattern qident cts)
+>    = foldl (\e1 e2 -> Apply e1 e2) 
+>            (Constructor qident) 
+>            (map constrTerm2Expr cts)
+> constrTerm2Expr (FunctionPattern qident cts)
+>    = foldl (\e1 e2 -> Apply e1 e2) 
+>            (Variable qident) 
+>            (map constrTerm2Expr cts)
+> constrTerm2Expr _
+>    = internalError "constrTerm2Expr: unexpected constructor term"
+
+> getConstrTermVars :: [Ident] -> ConstrTerm -> [Ident]
+> getConstrTermVars ids (VariablePattern ident) = ident:ids
+> getConstrTermVars ids (ConstructorPattern _ cts)
+>    = foldl getConstrTermVars ids cts
+> getConstrTermVars ids (FunctionPattern _ cts)
+>    = foldl getConstrTermVars ids cts
+> getConstrTermVars _ _
+>    = internalError "getConstrTermVars: unexpected constructor term"
+
 
 \end{verbatim}
 The transformation of patterns is straight forward except for lazy
@@ -295,9 +358,9 @@ with a local declaration for $v$.
 >   liftM (desugarAs p v) (desugarTerm m p ds t)
 > desugarTerm m p ds (LazyPattern t) = desugarLazy m p ds t
 > desugarTerm m p ds (FunctionPattern f ts) =
->   errorAt p "function patterns are not supported"
+>   liftM (apSnd (FunctionPattern f)) (mapAccumM (desugarTerm m p) ds ts)
 > desugarTerm m p ds (InfixFuncPattern t1 f t2) =
->   errorAt p "function patterns are not supported"
+>   desugarTerm m p ds (FunctionPattern f [t1,t2])
 
 > desugarAs :: Position -> Ident -> ([Decl],ConstrTerm) -> ([Decl],ConstrTerm)
 > desugarAs p v (ds,t) =
@@ -346,9 +409,7 @@ type \texttt{Bool} of the guard because the guard's type defaults to
 >   | booleanGuards tyEnv es = foldr mkIfThenElse e0 es
 >   | otherwise = mkCond es
 >   where mkIfThenElse (CondExpr _ g e) = IfThenElse g e
->         mkCond [CondExpr p g e] = Apply (Apply (Variable qCondId) g) e
->         qCondId = qualifyWith preludeMIdent (mkIdent "cond")
->         -- mkCase [CondExpr p g e] = Case g [caseAlt p successPattern e]
+>         mkCond [CondExpr p g e] = Apply (Apply prelCond g) e
 
 > booleanGuards :: ValueEnv -> [CondExpr] -> Bool
 > booleanGuards _ [] = False
@@ -568,6 +629,9 @@ Prelude entities
 > prelConcatMap = Variable $ preludeIdent "concatMap"
 > prelNegate = Variable $ preludeIdent "negate"
 > prelNegateFloat = Variable $ preludeIdent "negateFloat"
+> prelCond = Variable $ preludeIdent "cond"
+> prelFuncPattEqu = Variable $ preludeIdent "=:<="
+> prelConstrConj = Variable $ preludeIdent "&"
 
 > truePattern = ConstructorPattern qTrueId []
 > falsePattern = ConstructorPattern qFalseId []
