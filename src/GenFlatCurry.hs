@@ -183,9 +183,7 @@ visitExpression (IL.Let binding expression)
 	  Let binds expr' -> return (Let (bind:binds) expr')
 	  _               -> return (Let [bind] expr)
 visitExpression (IL.Letrec bindings expression)
-   = do binds <- mapM visitBinding bindings
-	expr  <- visitExpression expression
-	return (Let binds expr)
+   = genLetrec bindings expression
 
 --
 visitLiteral :: IL.Literal -> FlatState Literal
@@ -211,7 +209,8 @@ visitConstrTerm (IL.ConstructorPattern qident args)
 	return (Pattern qname is)
 visitConstrTerm (IL.VariablePattern ident)
    = do mid <- moduleId
-	error ("\"" ++ moduleName mid ++ "\": variable patterns are not supported")
+	error ("\"" ++ moduleName mid 
+	       ++ "\": variable patterns are not supported")
 
 --
 visitEval :: IL.Eval -> FlatState CaseType
@@ -238,7 +237,6 @@ visitFuncIDecl (CS.IFunctionDecl _ qident arity typeexpr)
    = do texpr <- visitType (fst (cs2ilType [] typeexpr))
 	qname <- visitQualIdent qident
 	return (Func qname arity Public texpr (Rule [] (Var 0)))
-	--return (Func qname arity Public texpr (External (qualName qident)))
 visitFuncIDecl _ = internalError "GenFlatCurry: no function interface"
 
 --
@@ -316,7 +314,7 @@ getVisibility qident
 getExportedImports :: FlatState [CS.IDecl]
 getExportedImports
    = do mid  <- moduleId
-	exps <- exports   -- vielleicht noch bearbeiten/filtern? s.u.
+	exps <- exports
 	genExportedIDecls (envToList (getExpImports mid emptyEnv exps))
 
 --
@@ -516,6 +514,29 @@ genTypeSynonym (CS.ITypeDecl _ qident params typeexpr)
 	vis   <- getVisibility qident
 	return (TypeSyn qname vis is texpr)
 genTypeSynonym _ = internalError "GenFlatCurry: no type synonym interface"
+
+
+--
+genLetrec :: [IL.Binding] -> IL.Expression -> FlatState Expr
+genLetrec bindings expression
+   = do is <- mapM newVarIndex (map bindingIdent bindings)
+	letrecs <- genLetrecExpr expression bindings
+	return (Free is letrecs)
+ where
+ genLetrecExpr expression []
+    = visitExpression expression
+ genLetrecExpr expression ((IL.Binding ident expression'):bindings)
+    = do index_ <- lookupVarIndex ident
+	 index  <- maybe (internalError (missingVarIndex ident))
+		         return
+			 index_
+	 expr'  <- visitExpression expression'
+	 next   <- genLetrecExpr expression bindings
+	 let var    = Var index
+	     letrec = Comb FuncCall ("prelude","letrec") [var, expr']
+	 return (Comb FuncCall ("prelude","&>") [letrec, next])
+ 
+ bindingIdent (IL.Binding ident _) = ident
 
 
 -------------------------------------------------------------------------------
