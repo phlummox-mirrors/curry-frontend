@@ -310,7 +310,7 @@ Lexing functions
 
 > fullLexer :: SuccessP a -> FailP a -> P a
 > fullLexer success fail = skipBlanks
->   where -- skipBlanks moves past whitespace and comments
+>   where -- skipBlanks moves past whitespace 
 >         skipBlanks p [] bol = success p (tok EOF) p [] bol
 >         skipBlanks p ('\t':s) bol = skipBlanks (tab p) s bol
 >         skipBlanks p ('\n':s) bol = skipBlanks (nl p) s True
@@ -534,7 +534,7 @@ read numbers must be converted to Haskell type \texttt{Integer}.
 > lexStringEscape p0 success fail s0 so p (c:s)
 >   | c == '&' = success s0 (so . ("\\&"++)) (next p) s
 >   | isSpace c = lexStringGap (success s0) fail so p (c:s)
->   | otherwise = lexEscape p0 (\ c' s' -> success (c:s0) (so . (s'++))) fail p (c:s)
+>   | otherwise = lexEscape p0 (\ c' s' -> success (c':s0) (so . (s'++))) fail p (c:s)
 
 > lexStringGap :: ((String -> String) -> P a) -> FailP a -> (String -> String) -> P a
 > lexStringGap success fail so p [] = fail p "End of file in string gap" p []
