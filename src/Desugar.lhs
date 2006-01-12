@@ -237,75 +237,6 @@ is disabled in the version for PAKCS).
 >   where (f,ts) = flatLhs lhs
 
 
-
-> desugarFunctionPatterns :: ModuleIdent -> Position -> [ConstrTerm] -> Rhs
->	                     -> DesugarState ([ConstrTerm], Rhs)
-> desugarFunctionPatterns m p ts rhs =
->   do
->     (ts', its) <- elimFunctionPattern m p ts
->     rhs' <- genFunctionPatternExpr m p its rhs
->     return (ts', rhs')
-
-> elimFunctionPattern :: ModuleIdent -> Position -> [ConstrTerm]
->		         -> DesugarState ([ConstrTerm], [(Ident,ConstrTerm)])
-> elimFunctionPattern m p [] = return ([],[])
-> elimFunctionPattern m p (t@(FunctionPattern qident cts):ts) =
->   do
->     tyEnv <- fetchSt
->     ident <- freshIdent m "_#funpatt" (monoType (typeOf tyEnv t))
->     (ts', its') <- elimFunctionPattern m p ts
->     return ((VariablePattern ident):ts', (ident,t):its')
-> elimFunctionPattern m p (t:ts) =
->   do
->     (ts', its') <- elimFunctionPattern m p ts
->     return (t:ts', its')
-
-> genFunctionPatternExpr :: ModuleIdent -> Position -> [(Ident, ConstrTerm)]
->		            -> Rhs -> DesugarState Rhs
-> genFunctionPatternExpr m _ its rhs@(SimpleRhs p expr decls)
->    | null its = return rhs
->    | otherwise
->      = let ies = map (\ (i,t) -> (i, constrTerm2Expr t)) its
->	     fpexprs = map (\ (ident, expr) 
->		            -> Apply (Apply prelFuncPattEqu expr) 
->		                     (Variable (qualify ident)))
->	                   ies
->	     fpexpr =  foldl (\e1 e2 -> Apply (Apply prelConstrConj e1) e2)
->	                     (head fpexprs) 
->		             (tail fpexprs)
->	     freevars = foldl getConstrTermVars [] (map snd its)
->            rhsexpr = Let [ExtraVariables p freevars]
->		           (Apply (Apply prelCond fpexpr) expr)
->        in  return (SimpleRhs p rhsexpr decls)  
-> genFunctionPatternExpr _ _ _ rhs
->    = internalError "unexpected right-hand-side"
-
-> constrTerm2Expr :: ConstrTerm -> Expression
-> constrTerm2Expr (LiteralPattern lit)
->    = Literal lit
-> constrTerm2Expr (VariablePattern ident)
->    = Variable (qualify ident)
-> constrTerm2Expr (ConstructorPattern qident cts)
->    = foldl (\e1 e2 -> Apply e1 e2) 
->            (Constructor qident) 
->            (map constrTerm2Expr cts)
-> constrTerm2Expr (FunctionPattern qident cts)
->    = foldl (\e1 e2 -> Apply e1 e2) 
->            (Variable qident) 
->            (map constrTerm2Expr cts)
-> constrTerm2Expr _
->    = internalError "constrTerm2Expr: unexpected constructor term"
-
-> getConstrTermVars :: [Ident] -> ConstrTerm -> [Ident]
-> getConstrTermVars ids (VariablePattern ident) = ident:ids
-> getConstrTermVars ids (ConstructorPattern _ cts)
->    = foldl getConstrTermVars ids cts
-> getConstrTermVars ids (FunctionPattern _ cts)
->    = foldl getConstrTermVars ids cts
-> getConstrTermVars _ _
->    = internalError "getConstrTermVars: unexpected constructor term"
-
-
 \end{verbatim}
 The transformation of patterns is straight forward except for lazy
 patterns. A lazy pattern \texttt{\~}$t$ is replaced by a fresh
@@ -547,6 +478,80 @@ are compatible with the matched pattern when the guards fail.
 >         canon l = l
 
 \end{verbatim}
+The frontend provides several extensions of the Curry functionality. This part
+desugars the following extensions:
+\begin{itemize}
+\item function patterns
+\end{itemize}
+\begin{verbatim}
+
+> desugarFunctionPatterns :: ModuleIdent -> Position -> [ConstrTerm] -> Rhs
+>	                     -> DesugarState ([ConstrTerm], Rhs)
+> desugarFunctionPatterns m p ts rhs = 
+>   do (ts', its) <- elimFunctionPattern m p ts
+>      rhs' <- genFunctionPatternExpr m p its rhs
+>      return (ts', rhs')
+
+> elimFunctionPattern :: ModuleIdent -> Position -> [ConstrTerm]
+>		         -> DesugarState ([ConstrTerm], [(Ident,ConstrTerm)])
+> elimFunctionPattern m p [] = return ([],[])
+> elimFunctionPattern m p (t@(FunctionPattern qident cts):ts) =
+>   do
+>     tyEnv <- fetchSt
+>     ident <- freshIdent m "_#funpatt" (monoType (typeOf tyEnv t))
+>     (ts', its') <- elimFunctionPattern m p ts
+>     return ((VariablePattern ident):ts', (ident,t):its')
+> elimFunctionPattern m p (t:ts) =
+>   do
+>     (ts', its') <- elimFunctionPattern m p ts
+>     return (t:ts', its')
+
+> genFunctionPatternExpr :: ModuleIdent -> Position -> [(Ident, ConstrTerm)]
+>		            -> Rhs -> DesugarState Rhs
+> genFunctionPatternExpr m _ its rhs@(SimpleRhs p expr decls)
+>    | null its = return rhs
+>    | otherwise
+>      = let ies = map (\ (i,t) -> (i, constrTerm2Expr t)) its
+>	     fpexprs = map (\ (ident, expr) 
+>		            -> Apply (Apply prelFuncPattEqu expr) 
+>		                     (Variable (qualify ident)))
+>	                   ies
+>	     fpexpr =  foldl (\e1 e2 -> Apply (Apply prelConstrConj e1) e2)
+>	                     (head fpexprs) 
+>		             (tail fpexprs)
+>	     freevars = foldl getConstrTermVars [] (map snd its)
+>            rhsexpr = Let [ExtraVariables p freevars]
+>		           (Apply (Apply prelCond fpexpr) expr)
+>        in  return (SimpleRhs p rhsexpr decls)  
+> genFunctionPatternExpr _ _ _ rhs
+>    = internalError "unexpected right-hand-side"
+
+> constrTerm2Expr :: ConstrTerm -> Expression
+> constrTerm2Expr (LiteralPattern lit)
+>    = Literal lit
+> constrTerm2Expr (VariablePattern ident)
+>    = Variable (qualify ident)
+> constrTerm2Expr (ConstructorPattern qident cts)
+>    = foldl (\e1 e2 -> Apply e1 e2) 
+>            (Constructor qident) 
+>            (map constrTerm2Expr cts)
+> constrTerm2Expr (FunctionPattern qident cts)
+>    = foldl (\e1 e2 -> Apply e1 e2) 
+>            (Variable qident) 
+>            (map constrTerm2Expr cts)
+> constrTerm2Expr _
+>    = internalError "constrTerm2Expr: unexpected constructor term"
+
+> getConstrTermVars :: [Ident] -> ConstrTerm -> [Ident]
+> getConstrTermVars ids (VariablePattern ident) = ident:ids
+> getConstrTermVars ids (ConstructorPattern _ cts)
+>    = foldl getConstrTermVars ids cts
+> getConstrTermVars ids (FunctionPattern _ cts)
+>    = foldl getConstrTermVars ids cts
+> getConstrTermVars _ _
+>    = internalError "getConstrTermVars: unexpected constructor term"
+
+\end{verbatim}
 In general, a list comprehension of the form
 \texttt{[}$e$~\texttt{|}~$t$~\texttt{<-}~$l$\texttt{,}~\emph{qs}\texttt{]}
 is transformed into an expression \texttt{foldr}~$f$~\texttt{[]}~$l$ where $f$
@@ -573,11 +578,11 @@ remaining list comprehension in the body of the auxiliary function has
 no qualifiers -- i.e., if it is equivalent to \texttt{[$e$]} -- we
 avoid the construction of the singleton list by calling \texttt{(:)}
 instead of \texttt{(++)} and \texttt{map} in place of
-\texttt{concatMap}, respectively.
+\texttt{concatMap}, respectively. -}
 \begin{verbatim}
 
 > desugarQual :: ModuleIdent -> Position -> Statement -> Expression
->             -> DesugarState Expression
+>      -> DesugarState Expression
 > desugarQual m p (StmtExpr b) e = desugarExpr m p (IfThenElse b e (List []))
 > desugarQual m p (StmtBind t l) e
 >   | isVarPattern t = desugarExpr m p (qualExpr t e l)

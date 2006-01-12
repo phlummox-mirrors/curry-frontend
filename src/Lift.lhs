@@ -292,7 +292,8 @@ to the top-level.
 > apply = foldl Apply
 
 > qualBindFun :: ModuleIdent -> Ident -> Type -> ValueEnv -> ValueEnv
-> qualBindFun m f ty = qualBindTopEnv f' (Value f' (polyType ty))
+> qualBindFun m f ty 
+>   = qualBindTopEnv "Lift.qualBindFun" f' (Value f' (polyType ty))
 >   where f' = qualifyWith m f
 
 > unbindFun :: Ident -> ValueEnv -> ValueEnv

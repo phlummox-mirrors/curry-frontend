@@ -177,13 +177,20 @@ visitExpression (IL.Exist ident expression)
 	  Free is expr' -> return (Free (index:is) expr')
 	  _             -> return (Free [index] expr)
 visitExpression (IL.Let binding expression)
-   = do bind <- visitBinding binding
+   = do beginScope
+	newVarIndex (bindingIdent binding)
+        bind <- visitBinding binding
 	expr <- visitExpression expression
 	case expr of
 	  Let binds expr' -> return (Let (bind:binds) expr')
 	  _               -> return (Let [bind] expr)
 visitExpression (IL.Letrec bindings expression)
-   = genLetrec bindings expression
+   = do beginScope
+	mapM_ newVarIndex (map bindingIdent bindings)
+	binds <- mapM visitBinding bindings
+	expr  <- visitExpression expression
+	endScope
+	return (Let binds expr)
 
 --
 visitLiteral :: IL.Literal -> FlatState Literal
@@ -214,19 +221,18 @@ visitConstrTerm (IL.VariablePattern ident)
 
 --
 visitEval :: IL.Eval -> FlatState CaseType
-visitEval IL.Rigid = return (FlatCurry.Rigid)
-visitEval IL.Flex  = return (FlatCurry.Flex)
+visitEval IL.Rigid = return (Rigid)
+visitEval IL.Flex  = return (Flex)
 
 --
 visitBinding :: IL.Binding -> FlatState (VarIndex, Expr)
 visitBinding (IL.Binding ident expression)
    = do index_ <- lookupVarIndex ident
-	let exists = isJust index_
-	when exists beginScope
-	index  <- newVarIndex ident
+	index  <- maybe (internalError (missingVarIndex ident))
+		  return
+		  index_
 	expr   <- visitExpression expression
-	when exists endScope
-	return (index,expr)
+	return (index, expr)
 
 
 -------------------------------------------------------------------------------
@@ -516,29 +522,6 @@ genTypeSynonym (CS.ITypeDecl _ qident params typeexpr)
 genTypeSynonym _ = internalError "GenFlatCurry: no type synonym interface"
 
 
---
-genLetrec :: [IL.Binding] -> IL.Expression -> FlatState Expr
-genLetrec bindings expression
-   = do is <- mapM newVarIndex (map bindingIdent bindings)
-	letrecs <- genLetrecExpr expression bindings
-	return (Free is letrecs)
- where
- genLetrecExpr expression []
-    = visitExpression expression
- genLetrecExpr expression ((IL.Binding ident expression'):bindings)
-    = do index_ <- lookupVarIndex ident
-	 index  <- maybe (internalError (missingVarIndex ident))
-		         return
-			 index_
-	 expr'  <- visitExpression expression'
-	 next   <- genLetrecExpr expression bindings
-	 let var    = Var index
-	     letrec = Comb FuncCall ("prelude","letrec") [var, expr']
-	 return (Comb FuncCall ("prelude","&>") [letrec, next])
- 
- bindingIdent (IL.Binding ident _) = ident
-
-
 -------------------------------------------------------------------------------
 
 -- 
@@ -695,6 +678,10 @@ isOpIDecl :: CS.IDecl -> Bool
 isOpIDecl (CS.IInfixDecl _ _ _ _) = True
 isOpIDecl _                       = False 
 
+
+--
+bindingIdent :: IL.Binding -> Ident
+bindingIdent (IL.Binding ident _) = ident
 
 -------------------------------------------------------------------------------
 -------------------------------------------------------------------------------

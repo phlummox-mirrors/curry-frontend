@@ -39,17 +39,17 @@ declarations are checked within the resulting environment. In
 addition, this process will also rename the local variables.
 \begin{verbatim}
 
-> syntaxCheck :: ModuleIdent -> ValueEnv -> [Decl] -> [Decl]
-> syntaxCheck m tyEnv ds =
+> syntaxCheck :: Bool -> ModuleIdent -> ValueEnv -> [Decl] -> [Decl]
+> syntaxCheck withExt m tyEnv ds =
 >   case linear (concatMap constrs tds) of
->     Linear -> tds ++ run (checkModule m env vds)
+>     Linear -> tds ++ run (checkModule withExt m env vds)
 >     NonLinear (PIdent p c) -> errorAt p (duplicateData c)
 >   where (tds,vds) = partition isTypeDecl ds
 >         env = foldr (bindConstrs m) (globalEnv (fmap renameInfo tyEnv)) tds
 
-> syntaxCheckGoal :: ValueEnv -> Goal -> Goal
-> syntaxCheckGoal tyEnv g =
->   run (checkGoal (mkMIdent []) (globalEnv (fmap renameInfo tyEnv)) g)
+> syntaxCheckGoal :: Bool -> ValueEnv -> Goal -> Goal
+> syntaxCheckGoal withExt tyEnv g =
+>   run (checkGoal withExt (mkMIdent []) (globalEnv (fmap renameInfo tyEnv)) g)
 
 \end{verbatim}
 A global state transformer is used for generating fresh integer keys
@@ -148,18 +148,19 @@ a goal. Note that all declarations in the goal must be considered as
 local declarations.
 \begin{verbatim}
 
-> checkModule :: ModuleIdent -> RenameEnv -> [Decl] -> RenameState [Decl]
-> checkModule m env ds = liftM snd (checkTopDecls m env ds)
+> checkModule :: Bool -> ModuleIdent -> RenameEnv -> [Decl] -> RenameState [Decl]
+> checkModule withExt m env ds = liftM snd (checkTopDecls withExt m env ds)
 
-> checkTopDecls :: ModuleIdent -> RenameEnv -> [Decl]
+> checkTopDecls :: Bool -> ModuleIdent -> RenameEnv -> [Decl]
 >               -> RenameState (RenameEnv,[Decl])
-> checkTopDecls m env ds = checkDeclGroup (bindFunc m) m globalKey env ds
+> checkTopDecls withExt m env ds = 
+>   checkDeclGroup (bindFunc m) withExt m globalKey env ds
 
-> checkGoal :: ModuleIdent -> RenameEnv -> Goal -> RenameState Goal
-> checkGoal m env (Goal p e ds) =
+> checkGoal :: Bool -> ModuleIdent -> RenameEnv -> Goal -> RenameState Goal
+> checkGoal withExt m env (Goal p e ds) =
 >   do
->     (env',ds') <- checkLocalDecls m env ds
->     e' <- checkExpr p m env' e
+>     (env',ds') <- checkLocalDecls withExt m env ds
+>     e' <- checkExpr withExt p m env' e
 >     return (Goal p e' ds')
 
 \end{verbatim}
@@ -179,51 +180,52 @@ functions. Note that pattern declarations are not allowed on the
 top-level.
 \begin{verbatim}
 
-> checkLocalDecls :: ModuleIdent -> RenameEnv -> [Decl] 
+> checkLocalDecls :: Bool -> ModuleIdent -> RenameEnv -> [Decl] 
 >                  -> RenameState (RenameEnv,[Decl])
-> checkLocalDecls m env ds =
->   newId >>= \k -> checkDeclGroup bindVar m k (nestEnv env) ds
+> checkLocalDecls withExt m env ds =
+>   newId >>= \k -> checkDeclGroup bindVar withExt m k (nestEnv env) ds
 
-> checkDeclGroup :: (PIdent -> RenameEnv -> RenameEnv) -> ModuleIdent
+> checkDeclGroup :: (PIdent -> RenameEnv -> RenameEnv) -> Bool -> ModuleIdent
 >                 -> Int -> RenameEnv -> [Decl] 
 >                 -> RenameState (RenameEnv,[Decl])
-> checkDeclGroup bindVar m k env ds =
->   mapM (checkDeclLhs k m env) ds' >>=
->   checkDecls bindVar m env . joinEquations
+> checkDeclGroup bindVar withExt m k env ds =
+>   mapM (checkDeclLhs withExt k m env) ds' >>=
+>   checkDecls bindVar withExt m env . joinEquations
 >  where ds' = sortFuncDecls ds
 
-> checkDeclLhs :: Int -> ModuleIdent -> RenameEnv -> Decl -> RenameState Decl
-> checkDeclLhs k _ _ (InfixDecl p fix pr ops) =
+> checkDeclLhs :: Bool -> Int -> ModuleIdent -> RenameEnv -> Decl -> RenameState Decl
+> checkDeclLhs withExt k _ _ (InfixDecl p fix pr ops) =
 >   return (InfixDecl p fix pr (map (flip renameIdent k) ops))
-> checkDeclLhs k _ env (TypeSig p vs ty) =
+> checkDeclLhs withExt k _ env (TypeSig p vs ty) =
 >   return (TypeSig p (map (checkVar "type signature" k p env) vs) ty)
-> checkDeclLhs k _ env (EvalAnnot p fs ev) =
+> checkDeclLhs withExt k _ env (EvalAnnot p fs ev) =
 >   return (EvalAnnot p (map (checkVar "evaluation annotation" k p env) fs) ev)
-> checkDeclLhs k m env (FunctionDecl p _ eqs) = checkEquationLhs k m env p eqs
-> checkDeclLhs k _ env (ExternalDecl p cc ie f ty) =
+> checkDeclLhs withExt k m env (FunctionDecl p _ eqs) = 
+>   checkEquationLhs withExt k m env p eqs
+> checkDeclLhs withExt k _ env (ExternalDecl p cc ie f ty) =
 >   return (ExternalDecl p cc ie (checkVar "external declaration" k p env f) ty)
-> checkDeclLhs k _ env (FlatExternalDecl p fs) =
+> checkDeclLhs withExt k _ env (FlatExternalDecl p fs) =
 >   return (FlatExternalDecl p
 >             (map (checkVar "external declaration" k p env) fs))
-> checkDeclLhs k m env (PatternDecl p t rhs) =
+> checkDeclLhs withExt k m env (PatternDecl p t rhs) =
 >   do
->     t' <- checkConstrTerm k p m env t
+>     t' <- checkConstrTerm withExt k p m env t
 >     return (PatternDecl p t' rhs)
-> checkDeclLhs k _ env (ExtraVariables p vs) =
+> checkDeclLhs withExt k _ env (ExtraVariables p vs) =
 >   return (ExtraVariables p
 >             (map (checkVar "free variables declaration" k p env) vs))
-> checkDeclLhs _ _ _ d = return d
+> checkDeclLhs _ _ _ _ d = return d
 
-> checkEquationLhs :: Int -> ModuleIdent -> RenameEnv -> Position -> [Equation]
->                  -> RenameState Decl
-> checkEquationLhs k m env p [Equation p' lhs rhs] =
->   either (return . funDecl) (checkDeclLhs k m env . patDecl)
+> checkEquationLhs :: Bool -> Int -> ModuleIdent -> RenameEnv -> Position 
+>	           -> [Equation] -> RenameState Decl
+> checkEquationLhs withExt k m env p [Equation p' lhs rhs] =
+>   either (return . funDecl) (checkDeclLhs withExt k m env . patDecl)
 >          (checkEqLhs k env p' lhs)
 >   where funDecl (f,lhs) = FunctionDecl p f [Equation p' lhs rhs]
 >         patDecl t
 >           | k == globalKey = errorAt p noToplevelPattern
 >           | otherwise = PatternDecl p' t rhs
-> checkEquationLhs _ _ _ _ _ = internalError "checkEquationLhs"
+> checkEquationLhs _ _ _ _ _ _ = internalError "checkEquationLhs"
 
 > checkEqLhs :: Int -> RenameEnv -> Position -> Lhs
 >            -> Either (Ident,Lhs) ConstrTerm
@@ -260,7 +262,7 @@ top-level.
 >   | otherwise = renameIdent v k
 
 
-> checkDecls bindVar m env ds =
+> checkDecls bindVar withExt m env ds =
 >   case linear bvs of
 >     Linear ->
 >       case linear tys of
@@ -268,7 +270,8 @@ top-level.
 >           case linear evs of
 >             Linear ->
 >               case filter (`notElem` tys) fs' of
->                 [] -> liftM ((,) env') (mapM (checkDeclRhs bvs m env') ds)
+>                 [] -> liftM ((,) env') 
+>		              (mapM (checkDeclRhs withExt bvs m env') ds)
 >                 PIdent p f : _ -> errorAt p (noTypeSig f)
 >             NonLinear (PIdent p v) -> errorAt p (duplicateEvalAnnot v)
 >         NonLinear (PIdent p v) -> errorAt p (duplicateTypeSig v)
@@ -279,17 +282,17 @@ top-level.
 >         fs' = [PIdent p f | FlatExternalDecl p fs <- ds, f <- fs]
 >         env' = foldr bindVar env bvs
 
-> checkDeclRhs :: [PIdent] -> ModuleIdent -> RenameEnv -> Decl 
+> checkDeclRhs :: Bool -> [PIdent] -> ModuleIdent -> RenameEnv -> Decl 
 >              -> RenameState Decl
-> checkDeclRhs bvs _ _ (TypeSig p vs ty) =
+> checkDeclRhs withExt bvs _ _ (TypeSig p vs ty) =
 >   return (TypeSig p (map (checkLocalVar bvs p) vs) ty)
-> checkDeclRhs bvs _ _ (EvalAnnot p vs ev) =
+> checkDeclRhs withExt bvs _ _ (EvalAnnot p vs ev) =
 >   return (EvalAnnot p (map (checkLocalVar bvs p) vs) ev)
-> checkDeclRhs _ m env (FunctionDecl p f eqs) =
->   liftM (FunctionDecl p f) (mapM (checkEquation m env) eqs)
-> checkDeclRhs _ m env (PatternDecl p t rhs) =
->   liftM (PatternDecl p t) (checkRhs m env rhs)
-> checkDeclRhs _ _ _ d = return d
+> checkDeclRhs withExt _ m env (FunctionDecl p f eqs) =
+>   liftM (FunctionDecl p f) (mapM (checkEquation withExt m env) eqs)
+> checkDeclRhs withExt _ m env (PatternDecl p t rhs) =
+>   liftM (PatternDecl p t) (checkRhs withExt m env rhs)
+> checkDeclRhs _ _ _ _ d = return d
 
 > checkLocalVar :: [PIdent] -> Position -> Ident -> Ident
 > checkLocalVar bvs p v
@@ -307,147 +310,247 @@ top-level.
 >   where arity (Equation _ lhs _) = length $ snd $ flatLhs lhs
 > joinEquations (d : ds) = d : joinEquations ds
 
-> checkEquation :: ModuleIdent -> RenameEnv -> Equation -> RenameState Equation
-> checkEquation m env (Equation p lhs rhs) =
+> checkEquation :: Bool -> ModuleIdent -> RenameEnv -> Equation -> RenameState Equation
+> checkEquation withExt m env (Equation p lhs rhs) =
 >   do
->     (env',lhs') <- checkLhs p m env lhs
->     rhs' <- checkRhs m env' rhs
+>     (env',lhs') <- checkLhs withExt p m env lhs
+>     rhs' <- checkRhs withExt m env' rhs
 >     return (Equation p lhs' rhs')
 
-> checkLhs :: Position -> ModuleIdent -> RenameEnv -> Lhs 
+> checkLhs :: Bool -> Position -> ModuleIdent -> RenameEnv -> Lhs 
 >             -> RenameState (RenameEnv,Lhs)
-> checkLhs p m env lhs =
+> checkLhs withExt p m env lhs =
 >   newId >>= \k ->
->   checkLhsTerm k p m env lhs >>=
->   return . checkConstrTerms p (nestEnv env)
+>   checkLhsTerm withExt k p m env lhs >>=
+>   return . checkConstrTerms withExt p (nestEnv env)
 
-> checkLhsTerm :: Int -> Position -> ModuleIdent -> RenameEnv -> Lhs 
+> checkLhsTerm :: Bool -> Int -> Position -> ModuleIdent -> RenameEnv -> Lhs 
 >                 -> RenameState Lhs
-> checkLhsTerm k p m env (FunLhs f ts) =
+> checkLhsTerm withExt k p m env (FunLhs f ts) =
 >   do
->     ts' <- mapM (checkConstrTerm k p m env) ts
+>     ts' <- mapM (checkConstrTerm withExt k p m env) ts
 >     return (FunLhs f ts')
-> checkLhsTerm k p m env (OpLhs t1 op t2) =
+> checkLhsTerm withExt k p m env (OpLhs t1 op t2) =
 >   do
->     t1' <- checkConstrTerm k p m env t1
->     t2' <- checkConstrTerm k p m env t2
+>     t1' <- checkConstrTerm withExt k p m env t1
+>     t2' <- checkConstrTerm withExt k p m env t2
 >     return (OpLhs t1' op t2')
-> checkLhsTerm k p m env (ApLhs lhs ts) =
+> checkLhsTerm withExt k p m env (ApLhs lhs ts) =
 >   do
->     lhs' <- checkLhsTerm k p m env lhs
->     ts' <- mapM (checkConstrTerm k p m env) ts
+>     lhs' <- checkLhsTerm withExt k p m env lhs
+>     ts' <- mapM (checkConstrTerm withExt k p m env) ts
 >     return (ApLhs lhs' ts')
 
-> checkArgs :: Position -> ModuleIdent -> RenameEnv -> [ConstrTerm]
+> checkArgs :: Bool -> Position -> ModuleIdent -> RenameEnv -> [ConstrTerm]
 >           -> RenameState (RenameEnv,[ConstrTerm])
-> checkArgs p m env ts =
+> checkArgs withExt p m env ts =
 >   newId >>= \k ->
->   mapM (checkConstrTerm k p m env) ts >>=
->   return . checkConstrTerms p (nestEnv env)
+>   mapM (checkConstrTerm withExt k p m env) ts >>=
+>   return . checkConstrTerms withExt p (nestEnv env)
 
-> checkConstrTerms :: QuantExpr t => Position -> RenameEnv -> t
+> checkConstrTerms :: QuantExpr t => Bool -> Position -> RenameEnv -> t
 >                  -> (RenameEnv,t)
-> checkConstrTerms p env ts =
+> checkConstrTerms withExt p env ts =
 >   case linear bvs of
 >     Linear -> (foldr (bindVar . PIdent p) env bvs,ts)
 >     NonLinear v -> errorAt p (duplicateVariable v)
 >   where bvs = bv ts
 
-> checkConstrTerm :: Int -> Position -> ModuleIdent -> RenameEnv -> ConstrTerm
->                 -> RenameState ConstrTerm
-> checkConstrTerm _ _ _ _ (LiteralPattern l) =
+> checkConstrTerm :: Bool -> Int -> Position -> ModuleIdent -> RenameEnv
+>	             -> ConstrTerm -> RenameState ConstrTerm
+> checkConstrTerm _ _ _ _ _ (LiteralPattern l) =
 >   liftM LiteralPattern (renameLiteral l)
-> checkConstrTerm _ _ _ _ (NegativePattern op l) =
+> checkConstrTerm _ _ _ _ _ (NegativePattern op l) =
 >   liftM (NegativePattern op) (renameLiteral l)
-> checkConstrTerm k p m env (VariablePattern v)
->   | v == anonId = liftM (VariablePattern . renameIdent anonId) newId
->   | otherwise = checkConstrTerm k p m env (ConstructorPattern (qualify v) [])
-> checkConstrTerm k p m env (ConstructorPattern c ts) =
+> checkConstrTerm withExt k p m env (VariablePattern v)
+>   | v == anonId 
+>     = liftM (VariablePattern . renameIdent anonId) newId
+>   | otherwise 
+>     = checkConstrTerm withExt k p m env (ConstructorPattern (qualify v) [])
+> checkConstrTerm withExt k p m env (ConstructorPattern c ts) -- =
+>  | name (unqualify c) == "..." 
+>    = error (show p ++ ": " ++ show c ++ "\n" ++ show (qualLookupVar c env))
+>  | otherwise =
 >   case qualLookupVar c env of
 >     [Constr n]
 >       | n == n' ->
->           liftM (ConstructorPattern c) (mapM (checkConstrTerm k p m env) ts)
+>           liftM (ConstructorPattern c) 
+>	          (mapM (checkConstrTerm withExt k p m env) ts)
 >       | otherwise -> errorAt p (wrongArity c n n')
 >       where n' = length ts
+>     [r]
+>       | null ts && not (isQualified c) ->
+>	    return (VariablePattern (renameIdent (varIdent r) k))
+>       | withExt ->
+>           do ts' <- mapM (checkConstrTerm withExt k p m env) ts
+>              return (FunctionPattern (qualVarIdent r) ts')
+>       | otherwise -> errorAt p noFuncPattern    
+>     rs -> case (qualLookupVar (qualQualify m c) env) of
+>             []
+>               | null ts && not (isQualified c) ->
+>	            return (VariablePattern (renameIdent (unqualify c) k))
+>		| otherwise -> errorAt p (undefinedData c)
+>             [Constr n]
+>               | n == n' ->
+>                   liftM (ConstructorPattern (qualQualify m c)) 
+>                         (mapM (checkConstrTerm withExt k p m env) ts)
+>               | otherwise -> errorAt p (wrongArity c n n')
+>               where n' = length ts
+>	      [r]
+>	        | null ts && not (isQualified c) ->
+>                   return (VariablePattern (renameIdent (varIdent r) k))
+>               | withExt ->
+>	            do ts' <- mapM (checkConstrTerm withExt k p m env) ts
+>		       return (FunctionPattern (qualVarIdent r) ts')
+>	        | otherwise -> errorAt p noFuncPattern
+>             _ -> errorAt p (ambiguousData c)
+>   {-
+>     [Constr n] -- c is a n-ary constructor (n >= 0)
+>       | n == n' ->
+>           liftM (ConstructorPattern c) 
+>	          (mapM (checkConstrTerm withExt k p m env) ts)
+>       | otherwise -> errorAt p (wrongArity c n n')
+>       where n' = length ts
+>     [GlobalVar _] -- c is a globaly visible function
+>       | withExt ->
+>           do ts' <- mapM (checkConstrTerm withExt k p m env) ts
+>              return (FunctionPattern c ts')
+>       | otherwise -> error "P1" --errorAt p noFuncPattern
+>     [LocalVar _]
+>       | withExt ->
+>           do ts' <- mapM (checkConstrTerm withExt k p m env) ts
+>              return (FunctionPattern (qualQualify m c) ts')
+>       | otherwise -> error "P2" --errorAt p noFuncPattern
 >     rs
->       | any isConstr rs 
->         -> case (qualLookupVar (qualQualify m c) env) of
->              [Constr n]
->                | n == n' ->
->                    liftM (ConstructorPattern c) 
->                          (mapM (checkConstrTerm k p m env) ts)
->                | otherwise -> errorAt p (wrongArity c n n')
->                where n' = length ts
->              _ -> errorAt p (ambiguousData c)
+>       | any isConstr rs ->
+>           case (qualLookupVar (qualQualify m c) env) of
+>             [] -> errorAt p (undefinedData c)
+>             [Constr n]
+>               | n == n' ->
+>                   liftM (ConstructorPattern c) 
+>                         (mapM (checkConstrTerm withExt k p m env) ts)
+>               | otherwise -> errorAt p (wrongArity c n n')
+>               where n' = length ts
+>	      [GlobalVar _]
+>               | withExt ->
+>	            do ts' <- mapM (checkConstrTerm withExt k p m env) ts
+>		       return (FunctionPattern c ts')
+>		| otherwise -> error "P3" --errorAt p noFuncPattern
+>	      [LocalVar _]
+>	        | withExt ->
+>                   do ts' <- mapM (checkConstrTerm withExt k p m env) ts
+>                      return (FunctionPattern (qualQualify m c) ts')
+>               | otherwise -> error "P4" --errorAt p noFuncPattern
+>             _ -> errorAt p (ambiguousData c)
 >       | not (isQualified c) && null ts ->
 >           return (VariablePattern (renameIdent (unqualify c) k))
->       | otherwise -> errorAt p (undefinedData c) -- TODO
-> checkConstrTerm k p m env (InfixPattern t1 op t2) =
+>	| otherwise -> errorAt p (undefinedData c)
+>    -}
+> checkConstrTerm withExt k p m env (InfixPattern t1 op t2) =
 >   case (qualLookupVar op env) of
 >     [Constr n]
 >       | n == 2 ->
->           do
->             t1' <- checkConstrTerm k p m env t1
->             t2' <- checkConstrTerm k p m env t2
->             return (InfixPattern t1' op t2')
+>           do t1' <- checkConstrTerm withExt k p m env t1
+>	       t2' <- checkConstrTerm withExt k p m env t2
+>              return (InfixPattern t1' op t2') 
+>       | otherwise -> errorAt p (wrongArity op n 2)
+>     [r]
+>       | withExt ->
+>           do t1' <- checkConstrTerm withExt k p m env t1
+>	       t2' <- checkConstrTerm withExt k p m env t2
+>              return (InfixFuncPattern t1' op t2')
+>       | otherwise -> errorAt p noFuncPattern    
+>     rs -> case (qualLookupVar (qualQualify m op) env) of
+>             [] -> errorAt p (undefinedData op)
+>             [Constr n]
+>               | n == 2 ->
+>                   do t1' <- checkConstrTerm withExt k p m env t1
+>	               t2' <- checkConstrTerm withExt k p m env t2
+>                      return (InfixPattern t1' (qualQualify m op) t2') 
+>               | otherwise -> errorAt p (wrongArity op n 2)
+>	      [r]
+>               | withExt ->
+>	            do t1' <- checkConstrTerm withExt k p m env t1
+>	               t2' <- checkConstrTerm withExt k p m env t2
+>		       return (InfixFuncPattern t1' (qualQualify m op) t2')
+>	        | otherwise -> errorAt p noFuncPattern
+>             _ -> errorAt p (ambiguousData op)
+>   {-
+>     [Constr n]
+>       | n == 2 ->
+>           do t1' <- checkConstrTerm withExt k p m env t1
+>              t2' <- checkConstrTerm withExt k p m env t2
+>              return (InfixPattern t1' op t2')
 >       | otherwise -> errorAt p (wrongArity op n 2)
 >     [GlobalVar _]
->       -> do t1' <- checkConstrTerm k p m env t1
->	      t2' <- checkConstrTerm k p m env t2
->             return (InfixFuncPattern t1' op t2')
+>       | withExt ->
+>           do t1' <- checkConstrTerm withExt k p m env t1
+>	       t2' <- checkConstrTerm withExt k p m env t2
+>              return (InfixFuncPattern t1' op t2')
+>       | otherwise -> errorAt p noFuncPattern
 >     [LocalVar _]
->       -> do t1' <- checkConstrTerm k p m env t1
->	      t2' <- checkConstrTerm k p m env t2
->             return (InfixFuncPattern t1' (qualQualify m op) t2')
->     rs
->       | any isConstr rs 
->         -> errorAt p (ambiguousData op)
->       | otherwise 
->         -> case (qualLookupVar (qualQualify m op) env) of
->              [GlobalVar _]
->                -> do t1' <- checkConstrTerm k p m env t1
->	               t2' <- checkConstrTerm k p m env t2
+>       | withExt ->
+>           do t1' <- checkConstrTerm withExt k p m env t1
+>	       t2' <- checkConstrTerm withExt k p m env t2
+>              return (InfixFuncPattern t1' (qualQualify m op) t2')
+>       | otherwise -> errorAt p noFuncPattern
+>     rs -> case (qualLookupVar (qualQualify m op) env) of
+>             [] -> errorAt p (undefinedData op)
+>	      [Constr n]
+>               | n == 2 ->
+>	            do t1' <- checkConstrTerm withExt k p m env t1
+>                      t2' <- checkConstrTerm withExt k p m env t2
+>                      return (InfixPattern t1' op t2')
+>               | otherwise -> errorAt p (wrongArity op n 2)
+>             [GlobalVar _]
+>               | withExt ->
+>                   do t1' <- checkConstrTerm withExt k p m env t1
+>	               t2' <- checkConstrTerm withExt k p m env t2
 >                      return (InfixFuncPattern t1' op t2')
->	       [LocalVar _]
->                -> do t1' <- checkConstrTerm k p m env t1
->	               t2' <- checkConstrTerm k p m env t2
+>               | otherwise -> errorAt p noFuncPattern
+>             [LocalVar _]
+>               | withExt ->
+>                   do t1' <- checkConstrTerm withExt k p m env t1
+>	               t2' <- checkConstrTerm withExt k p m env t2
 >                      return (InfixFuncPattern t1' (qualQualify m op) t2')
->	       _ -> errorAt p (undefinedData op)
-> checkConstrTerm k p m env (ParenPattern t) =
->   liftM ParenPattern (checkConstrTerm k p m env t)
-> checkConstrTerm k p m env (TuplePattern ts) =
->   liftM TuplePattern (mapM (checkConstrTerm k p m env) ts)
-> checkConstrTerm k p m env (ListPattern ts) =
->   liftM ListPattern (mapM (checkConstrTerm k p m env) ts)
-> checkConstrTerm k p m env (AsPattern v t) =
+>               | otherwise -> errorAt p noFuncPattern
+>             _ -> errorAt p (ambiguousData op)
+>    -}
+> checkConstrTerm withExt k p m env (ParenPattern t) =
+>   liftM ParenPattern (checkConstrTerm withExt k p m env t)
+> checkConstrTerm withExt k p m env (TuplePattern ts) =
+>   liftM TuplePattern (mapM (checkConstrTerm withExt k p m env) ts)
+> checkConstrTerm withExt k p m env (ListPattern ts) =
+>   liftM ListPattern (mapM (checkConstrTerm withExt k p m env) ts)
+> checkConstrTerm withExt k p m env (AsPattern v t) =
 >   liftM (AsPattern (checkVar "@ pattern" k p env v))
->         (checkConstrTerm k p m env t)
-> checkConstrTerm k p m env (LazyPattern t) =
->   liftM LazyPattern (checkConstrTerm k p m env t)
+>         (checkConstrTerm withExt k p m env t)
+> checkConstrTerm withExt k p m env (LazyPattern t) =
+>   liftM LazyPattern (checkConstrTerm withExt k p m env t)
 
-> checkRhs :: ModuleIdent -> RenameEnv -> Rhs -> RenameState Rhs
-> checkRhs m env (SimpleRhs p e ds) =
+> checkRhs :: Bool -> ModuleIdent -> RenameEnv -> Rhs -> RenameState Rhs
+> checkRhs withExt m env (SimpleRhs p e ds) =
 >   do
->     (env',ds') <- checkLocalDecls m env ds
->     e' <- checkExpr p m env' e
+>     (env',ds') <- checkLocalDecls withExt m env ds
+>     e' <- checkExpr withExt p m env' e
 >     return (SimpleRhs p e' ds')
-> checkRhs m env (GuardedRhs es ds) =
+> checkRhs withExt m env (GuardedRhs es ds) =
 >   do
->     (env',ds') <- checkLocalDecls m env ds
->     es' <- mapM (checkCondExpr m env') es
+>     (env',ds') <- checkLocalDecls withExt m env ds
+>     es' <- mapM (checkCondExpr withExt m env') es
 >     return (GuardedRhs es' ds')
 
-> checkCondExpr :: ModuleIdent -> RenameEnv -> CondExpr -> RenameState CondExpr
-> checkCondExpr m env (CondExpr p g e) =
+> checkCondExpr :: Bool -> ModuleIdent -> RenameEnv -> CondExpr -> RenameState CondExpr
+> checkCondExpr withExt m env (CondExpr p g e) =
 >   do
->     g' <- checkExpr p m env g
->     e' <- checkExpr p m env e
+>     g' <- checkExpr withExt p m env g
+>     e' <- checkExpr withExt p m env e
 >     return (CondExpr p g' e')
 
-> checkExpr :: Position -> ModuleIdent -> RenameEnv -> Expression 
+> checkExpr :: Bool -> Position -> ModuleIdent -> RenameEnv -> Expression 
 >           -> RenameState Expression
-> checkExpr _ _ _ (Literal l) = liftM Literal (renameLiteral l)
-> checkExpr p m env (Variable v) =
+> checkExpr _ _ _ _ (Literal l) = liftM Literal (renameLiteral l)
+> checkExpr withExt p m env (Variable v) =
 >   case (qualLookupVar v env) of
 >     [] ->  errorAt p (undefinedVariable v)
 >     [Constr _] -> return (Constructor v)
@@ -459,97 +562,103 @@ top-level.
 >             [GlobalVar _] -> return (Variable v)
 >             [LocalVar v'] -> return (Variable (qualify v'))
 >             rs' -> errorAt p (ambiguousIdent rs' v)
-> checkExpr p m env (Constructor c) = checkExpr p m env (Variable c)
-> checkExpr p m env (Paren e) = liftM Paren (checkExpr p m env e)
-> checkExpr p m env (Typed e ty) = liftM (flip Typed ty) (checkExpr p m env e)
-> checkExpr p m env (Tuple es) = liftM Tuple (mapM (checkExpr p m env) es)
-> checkExpr p m env (List es) = liftM List (mapM (checkExpr p m env) es)
-> checkExpr p m env (ListCompr e qs) =
+> checkExpr withExt p m env (Constructor c) = 
+>   checkExpr withExt p m env (Variable c)
+> checkExpr withExt p m env (Paren e) = 
+>   liftM Paren (checkExpr withExt p m env e)
+> checkExpr withExt p m env (Typed e ty) = 
+>   liftM (flip Typed ty) (checkExpr withExt p m env e)
+> checkExpr withExt p m env (Tuple es) = 
+>   liftM Tuple (mapM (checkExpr withExt p m env) es)
+> checkExpr withExt p m env (List es) = 
+>   liftM List (mapM (checkExpr withExt p m env) es)
+> checkExpr withExt p m env (ListCompr e qs) =
 >   do
->     (env',qs') <- mapAccumM (checkStatement p m) env qs
->     e' <- checkExpr p m env' e
+>     (env',qs') <- mapAccumM (checkStatement withExt p m) env qs
+>     e' <- checkExpr withExt p m env' e
 >     return (ListCompr e' qs')
-> checkExpr p m env (EnumFrom e) = liftM EnumFrom (checkExpr p m env e)
-> checkExpr p m env (EnumFromThen e1 e2) =
+> checkExpr withExt p m env (EnumFrom e) = 
+>   liftM EnumFrom (checkExpr withExt p m env e)
+> checkExpr withExt p m env (EnumFromThen e1 e2) =
 >   do
->     e1' <- checkExpr p m env e1
->     e2' <- checkExpr p m env e2
+>     e1' <- checkExpr withExt p m env e1
+>     e2' <- checkExpr withExt p m env e2
 >     return (EnumFromThen e1' e2')
-> checkExpr p m env (EnumFromTo e1 e2) =
+> checkExpr withExt p m env (EnumFromTo e1 e2) =
 >   do
->     e1' <- checkExpr p m env e1
->     e2' <- checkExpr p m env e2
+>     e1' <- checkExpr withExt p m env e1
+>     e2' <- checkExpr withExt p m env e2
 >     return (EnumFromTo e1' e2')
-> checkExpr p m env (EnumFromThenTo e1 e2 e3) =
+> checkExpr withExt p m env (EnumFromThenTo e1 e2 e3) =
 >   do
->     e1' <- checkExpr p m env e1
->     e2' <- checkExpr p m env e2
->     e3' <- checkExpr p m env e3
+>     e1' <- checkExpr withExt p m env e1
+>     e2' <- checkExpr withExt p m env e2
+>     e3' <- checkExpr withExt p m env e3
 >     return (EnumFromThenTo e1' e2' e3')
-> checkExpr p m env (UnaryMinus op e) = liftM (UnaryMinus op) 
->                                             (checkExpr p m env e)
-> checkExpr p m env (Apply e1 e2) =
+> checkExpr withExt p m env (UnaryMinus op e) = 
+>   liftM (UnaryMinus op) (checkExpr withExt p m env e)
+> checkExpr withExt p m env (Apply e1 e2) =
 >   do
->     e1' <- checkExpr p m env e1
->     e2' <- checkExpr p m env e2
+>     e1' <- checkExpr withExt p m env e1
+>     e2' <- checkExpr withExt p m env e2
 >     return (Apply e1' e2')
-> checkExpr p m env (InfixApply e1 op e2) =
+> checkExpr withExt p m env (InfixApply e1 op e2) =
 >   do
->     e1' <- checkExpr p m env e1
->     e2' <- checkExpr p m env e2
+>     e1' <- checkExpr withExt p m env e1
+>     e2' <- checkExpr withExt p m env e2
 >     return (InfixApply e1' (checkOp p m env op) e2')
-> checkExpr p m env (LeftSection e op) =
->   liftM (flip LeftSection (checkOp p m env op)) (checkExpr p m env e)
-> checkExpr p m env (RightSection op e) =
->   liftM (RightSection (checkOp p m env op)) (checkExpr p m env e)
-> checkExpr p m env (Lambda ts e) =
+> checkExpr withExt p m env (LeftSection e op) =
+>   liftM (flip LeftSection (checkOp p m env op)) (checkExpr withExt p m env e)
+> checkExpr withExt p m env (RightSection op e) =
+>   liftM (RightSection (checkOp p m env op)) (checkExpr withExt p m env e)
+> checkExpr withExt p m env (Lambda ts e) =
 >   do
->     (env',ts') <- checkArgs p m env ts
->     e' <- checkExpr p m env' e
+>     (env',ts') <- checkArgs withExt p m env ts
+>     e' <- checkExpr withExt p m env' e
 >     return (Lambda ts' e')
-> checkExpr p m env (Let ds e) =
+> checkExpr withExt p m env (Let ds e) =
 >   do
->     (env',ds') <- checkLocalDecls m env ds
->     e' <- checkExpr p m env' e
+>     (env',ds') <- checkLocalDecls withExt m env ds
+>     e' <- checkExpr withExt p m env' e
 >     return (Let ds' e')
-> checkExpr p m env (Do sts e) =
+> checkExpr withExt p m env (Do sts e) =
 >   do
->     (env',sts') <- mapAccumM (checkStatement p m) env sts
->     e' <- checkExpr p m env' e
+>     (env',sts') <- mapAccumM (checkStatement withExt p m) env sts
+>     e' <- checkExpr withExt p m env' e
 >     return (Do sts' e')
-> checkExpr p m env (IfThenElse e1 e2 e3) =
+> checkExpr withExt p m env (IfThenElse e1 e2 e3) =
 >   do
->     e1' <- checkExpr p m env e1
->     e2' <- checkExpr p m env e2
->     e3' <- checkExpr p m env e3
+>     e1' <- checkExpr withExt p m env e1
+>     e2' <- checkExpr withExt p m env e2
+>     e3' <- checkExpr withExt p m env e3
 >     return (IfThenElse e1' e2' e3')
-> checkExpr p m env (Case e alts) =
+> checkExpr withExt p m env (Case e alts) =
 >   do
->     e' <- checkExpr p m env e
->     alts' <- mapM (checkAlt m env) alts
+>     e' <- checkExpr withExt p m env e
+>     alts' <- mapM (checkAlt withExt m env) alts
 >     return (Case e' alts')
 
-> checkStatement :: Position -> ModuleIdent -> RenameEnv -> Statement
+> checkStatement :: Bool -> Position -> ModuleIdent -> RenameEnv -> Statement
 >                -> RenameState (RenameEnv,Statement)
-> checkStatement p m env (StmtExpr e) =
+> checkStatement withExt p m env (StmtExpr e) =
 >   do
->     e' <- checkExpr p m env e
+>     e' <- checkExpr withExt p m env e
 >     return (env,StmtExpr e')
-> checkStatement p m env (StmtBind t e) =
+> checkStatement withExt p m env (StmtBind t e) =
 >   do
->     e' <- checkExpr p m env e
->     (env',[t']) <- checkArgs p m env [t]
+>     e' <- checkExpr withExt p m env e
+>     (env',[t']) <- checkArgs withExt p m env [t]
 >     return (env',StmtBind t' e')
-> checkStatement p m env (StmtDecl ds) =
+> checkStatement withExt p m env (StmtDecl ds) =
 >   do
->     (env',ds') <- checkLocalDecls m env ds
+>     (env',ds') <- checkLocalDecls withExt m env ds
 >     return (env',StmtDecl ds')
 
-> checkAlt :: ModuleIdent -> RenameEnv -> Alt -> RenameState Alt
-> checkAlt m env (Alt p t rhs) =
+> checkAlt :: Bool -> ModuleIdent -> RenameEnv -> Alt -> RenameState Alt
+> checkAlt withExt m env (Alt p t rhs) =
 >   do
->     (env',[t']) <- checkArgs p m env [t]
->     rhs' <- checkRhs m env' rhs
+>     (env',[t']) <- checkArgs withExt p m env [t]
+>     rhs' <- checkRhs withExt m env' rhs
 >     return (Alt p t' rhs')
 
 > checkOp :: Position -> ModuleIdent -> RenameEnv -> InfixOp -> InfixOp
@@ -663,6 +772,15 @@ the user about the fact that the identifier is ambiguous.
 > isConstr (GlobalVar _) = False
 > isConstr (LocalVar _) = False
 
+> varIdent :: RenameInfo -> Ident
+> varIdent (GlobalVar v) = unqualify v
+> varIdent (LocalVar v) =  v
+> varIdent _ = internalError "not a variable"
+
+> qualVarIdent :: RenameInfo -> QualIdent
+> qualVarIdent (GlobalVar v) = v
+> qualVarIdent (LocalVar v) = qualify v
+
 \end{verbatim}
 Error messages.
 \begin{verbatim}
@@ -702,6 +820,9 @@ Error messages.
 > nonVariable :: String -> Ident -> String
 > nonVariable what c =
 >   "Data constructor " ++ name c ++ " in left hand side of " ++ what
+
+> noFuncPattern :: String
+> noFuncPattern = "function pattern not supported"
 
 > noBody :: Ident -> String
 > noBody v = "No body for " ++ name v

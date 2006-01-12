@@ -89,15 +89,17 @@ imported.
 >     Just x'' -> (Import (m:ms),x'') : xs
 >     Nothing -> (Import ms,x') : mergeImport m x xs
 
-> bindTopEnv :: Ident -> a -> TopEnv a -> TopEnv a
-> bindTopEnv = qualBindTopEnv . qualify
+> bindTopEnv :: String -> Ident -> a -> TopEnv a -> TopEnv a
+> bindTopEnv fun x y env = qualBindTopEnv fun (qualify x) y env
 
-> qualBindTopEnv :: QualIdent -> a -> TopEnv a -> TopEnv a
-> qualBindTopEnv x y (TopEnv env) =
+> qualBindTopEnv :: String -> QualIdent -> a -> TopEnv a -> TopEnv a
+> qualBindTopEnv fun x y (TopEnv env) =
 >   TopEnv (bindEnv x (bindLocal y (entities x env)) env)
 >   where bindLocal y ys
 >           | null [y' | (Local,y') <- ys] = (Local,y) : ys
->           | otherwise = error "internal error: qualBindTopEnv"
+>           | otherwise = error ("internal error: \"qualBindTopEnv " 
+>		                 ++ show x ++ "\" failed in function \""
+>			         ++ fun ++ "\"")
 
 > rebindTopEnv :: Ident -> a -> TopEnv a -> TopEnv a
 > rebindTopEnv = qualRebindTopEnv . qualify

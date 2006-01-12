@@ -1,4 +1,4 @@
-% -*- LaTeX -*-
+
 % $Id: Simplify.lhs,v 1.10 2004/02/13 14:02:58 wlux Exp $
 %
 % Copyright (c) 2003, Wolfgang Lux

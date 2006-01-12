@@ -28,6 +28,7 @@ data Options
 	     flatXml :: Bool,            -- generate FlatXML code
 	     abstract :: Bool,           -- generate AbstractCurry code
 	     untypedAbstract :: Bool,    -- generate untyped AbstractCurry
+	     withExtensions :: Bool,     -- enable extended functionalities
 	     dump :: [Dump]              -- dumps
 	    }
 
@@ -41,6 +42,7 @@ defaultOpts = Options{importPaths     = [],
 		      flatXml         = False,
 		      abstract        = False,
 		      untypedAbstract = False,
+		      withExtensions  = False,
 		      dump            = []
 		     }
 
@@ -49,7 +51,9 @@ defaultOpts = Options{importPaths     = [],
 -- the options from the command line; see module "GetOpt")
 data Option = Help | ImportPath FilePath | LibPath FilePath | Output FilePath
 	    | NoVerb | NoWarn
-	    | Flat | FlatXML | Abstract | UntypedAbstract | Dump [Dump]
+	    | Flat | FlatXML | Abstract | UntypedAbstract 
+	    | WithExtensions
+	    | Dump [Dump]
 	    deriving Eq
 
 
@@ -72,6 +76,8 @@ options = [Option "i" ["import-dir"] (ReqArg ImportPath "DIR")
 	          "generate (type infered) AbstractCurry code",
 	   Option ""  ["uacy"] (NoArg UntypedAbstract)
 	          "generate untyped AbstractCurry code",
+	   Option ""  ["extended"] (NoArg WithExtensions)
+	          "enable extended Curry functionalities",
 	   Option ""  ["dump-all"] (NoArg (Dump [minBound..maxBound]))
                   "dump everything",
 	   Option "?h" ["help"] (NoArg Help)
@@ -92,6 +98,7 @@ selectOption Flat opts            = opts{ flat = True }
 selectOption FlatXML opts         = opts{ flatXml = True }
 selectOption Abstract opts        = opts{ abstract = True }
 selectOption UntypedAbstract opts = opts{ untypedAbstract = True }
+selectOption WithExtensions opts  = opts{ withExtensions = True }
 selectOption (Dump ds) opts       = opts{ dump = ds ++ dump opts }
 
 

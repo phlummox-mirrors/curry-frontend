@@ -1,4 +1,4 @@
-% -*- LaTeX -*-
+
 % $Id: NestEnv.lhs,v 1.11 2003/10/04 17:04:23 wlux Exp $
 %
 % Copyright (c) 1999-2003, Wolfgang Lux
@@ -30,14 +30,16 @@ imported.
 >   fmap f (LocalEnv genv env) = LocalEnv (fmap f genv) (fmap f env)
 
 > bindNestEnv :: Ident -> a -> NestEnv a -> NestEnv a
-> bindNestEnv x y (GlobalEnv env) = GlobalEnv (bindTopEnv x y env)
+> bindNestEnv x y (GlobalEnv env) 
+>   = GlobalEnv (bindTopEnv "NestEnv.bindNestEnv" x y env)
 > bindNestEnv x y (LocalEnv genv env) =
 >   case lookupEnv x env of
 >     Just _ -> error "internal error: bindNestEnv"
 >     Nothing -> LocalEnv genv (bindEnv x y env)
 
 > qualBindNestEnv :: QualIdent -> a -> NestEnv a -> NestEnv a
-> qualBindNestEnv x y (GlobalEnv env) = GlobalEnv (qualBindTopEnv x y env)
+> qualBindNestEnv x y (GlobalEnv env) 
+>   = GlobalEnv (qualBindTopEnv "NestEnv.qualBindNestEnv" x y env)
 > qualBindNestEnv x y (LocalEnv genv env)
 >   | isQualified x = error "internal error: qualBindNestEnv"
 >   | otherwise =

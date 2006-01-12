@@ -96,6 +96,7 @@ makeCurry options deps file
 	    COpts.flatXml = False,
 	    COpts.abstract = False,
 	    COpts.untypedAbstract = False,
+	    COpts.withExtensions = withExtensions options,
 	    COpts.dump = []
 	   }
     | otherwise
@@ -108,6 +109,7 @@ makeCurry options deps file
 	    COpts.flatXml = flatXml options,
 	    COpts.abstract = abstract options,
 	    COpts.untypedAbstract = untypedAbstract options,
+	    COpts.withExtensions = withExtensions options,
 	    COpts.dump = dump options
 	   }
 			 

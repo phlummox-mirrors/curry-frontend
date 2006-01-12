@@ -66,7 +66,9 @@ The kind environment only needs to record the arity of each type constructor.
 
 > bindArity' :: ModuleIdent -> Position -> Ident -> [Ident]
 >            -> KindEnv -> KindEnv
-> bindArity' m p tc tvs = bindTopEnv tc n . qualBindTopEnv (qualifyWith m tc) n
+> bindArity' m p tc tvs 
+>   = bindTopEnv "KindCheck.bindArity'" tc n 
+>                . qualBindTopEnv "KindCheck.bindArity'" (qualifyWith m tc) n
 >   where n = length tvs
 
 > lookupKind :: Ident -> KindEnv -> [Int]

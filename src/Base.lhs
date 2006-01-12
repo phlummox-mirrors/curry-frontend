@@ -281,7 +281,9 @@ impossible to insert them into the environment in advance.
 
 > bindTypeInfo :: (QualIdent -> Int -> a -> TypeInfo) -> ModuleIdent
 >              -> Ident -> [Ident] -> a -> TCEnv -> TCEnv
-> bindTypeInfo f m tc tvs x = bindTopEnv tc t . qualBindTopEnv tc' t
+> bindTypeInfo f m tc tvs x 
+>   = bindTopEnv "Base.bindTypeInfo" tc t 
+>     . qualBindTopEnv "Base.bindTypeInfo" tc' t
 >   where tc' = qualifyWith m tc
 >         t = f tc' (length tvs) x
 
@@ -343,14 +345,19 @@ allow the usage of the qualified list constructor \texttt{(prelude.:)}.
 
 > bindGlobalInfo :: (QualIdent -> a -> ValueInfo) -> ModuleIdent -> Ident -> a
 >                -> ValueEnv -> ValueEnv
-> bindGlobalInfo f m c ty = bindTopEnv c v . qualBindTopEnv c' v
+> bindGlobalInfo f m c ty 
+>   = bindTopEnv "Base.bindGlobalInfo" c v 
+>     . qualBindTopEnv "Base.bindGlobalInfo" c' v
 >   where c' = qualifyWith m c
 >         v = f c' ty
 
 > bindFun :: ModuleIdent -> Ident -> TypeScheme -> ValueEnv -> ValueEnv
-> bindFun m f ty
->   | uniqueId f == 0 = bindTopEnv f v . qualBindTopEnv f' v
->   | otherwise = bindTopEnv f v
+> bindFun m f ty tyEnv
+>   | uniqueId f == 0 
+>     = bindTopEnv "Base.bindFun" f v (qualBindTopEnv "Base.bindFun" f' v tyEnv)
+>   -- | not (null (lookupValue f tyEnv))
+>   --   = tyEnv --error ("internal error: bindFun " ++ show f)
+>   | otherwise = bindTopEnv "Base.bindFun" f v tyEnv
 >   where f' = qualifyWith m f
 >         v = Value f' ty
 
@@ -408,9 +415,10 @@ and constructors.
 > bindArity :: ModuleIdent -> Ident -> Int -> ArityEnv -> ArityEnv
 > bindArity mid id arity aEnv
 >    | uniqueId id == 0 
->      = bindTopEnv id arityInfo (qualBindTopEnv qid arityInfo aEnv)
+>      = bindTopEnv "Base.bindArity" id arityInfo 
+>                   (qualBindTopEnv "Base.bindArity" qid arityInfo aEnv)
 >    | otherwise        
->      = bindTopEnv id arityInfo aEnv
+>      = bindTopEnv "Base.bindArity" id arityInfo aEnv
 >  where
 >  qid = qualifyWith mid id
 >  arityInfo = ArityInfo qid arity
@@ -481,8 +489,9 @@ because they do not need to handle tuple constructors.
 
 > bindP :: ModuleIdent -> Ident -> OpPrec -> PEnv -> PEnv
 > bindP m op p
->   | uniqueId op == 0 = bindTopEnv op info . qualBindTopEnv op' info
->   | otherwise = bindTopEnv op info
+>   | uniqueId op == 0 
+>     = bindTopEnv "Base.bindP" op info . qualBindTopEnv "Base.bindP" op' info
+>   | otherwise = bindTopEnv "Base.bindP" op info
 >   where op' = qualifyWith m op
 >         info = PrecInfo op' p
 
@@ -614,10 +623,13 @@ prelude.
 >   bv _ = []
 
 > instance QualExpr Equation where
->   qfv m (Equation _ lhs rhs) = filterBv lhs (qfv m rhs)
+>   qfv m (Equation _ lhs rhs) = filterBv lhs (qfv m lhs ++ qfv m rhs)
 
 > instance QuantExpr Lhs where
 >   bv = bv . snd . flatLhs
+
+> instance QualExpr Lhs where
+>   qfv m lhs = qfv m (snd (flatLhs lhs))
 
 > instance QualExpr Rhs where
 >   qfv m (SimpleRhs _ e ds) = filterBv ds (qfv m e ++ qfv m ds)
@@ -681,8 +693,24 @@ prelude.
 >   bv (ListPattern ts) = bv ts
 >   bv (AsPattern v t) = v : bv t
 >   bv (LazyPattern t) = bv t
->   bv (FunctionPattern f ts) = bv ts
->   bv (InfixFuncPattern t1 op t2) = bv t1 ++ bv t2
+>   bv (FunctionPattern f ts) = bvFuncPatt (FunctionPattern f ts)
+>   bv (InfixFuncPattern t1 op t2) = bvFuncPatt (InfixFuncPattern t1 op t2)
+
+> instance QualExpr ConstrTerm where
+>   qfv _ (LiteralPattern _) = []
+>   qfv _ (NegativePattern _ _) = []
+>   qfv _ (VariablePattern _) = []
+>   qfv m (ConstructorPattern _ ts) = qfv m ts
+>   qfv m (InfixPattern t1 _ t2) = qfv m [t1,t2]
+>   qfv m (ParenPattern t) = qfv m t
+>   qfv m (TuplePattern ts) = qfv m ts
+>   qfv m (ListPattern ts) = qfv m ts
+>   qfv m (AsPattern _ ts) = qfv m ts
+>   qfv m (LazyPattern t) = qfv m t
+>   qfv m (FunctionPattern f ts) 
+>     = (maybe [] return (localIdent m f)) ++ qfv m ts
+>   qfv m (InfixFuncPattern t1 op t2) 
+>     = (maybe [] return (localIdent m op)) ++ qfv m [t1,t2]
 
 > instance Expr TypeExpr where
 >   fv (ConstructorType _ tys) = fv tys
@@ -695,6 +723,33 @@ prelude.
 
 > filterBv :: QuantExpr e => e -> [Ident] -> [Ident]
 > filterBv e = filter (`notElemSet` fromListSet (bv e))
+
+\end{verbatim}
+Since multiple variable occurances are allowed in function patterns,
+it is necessary to compute the list of bound variables in a different way:
+Each variable occuring in the function pattern will be unique in the result
+list.
+\begin{verbatim}
+
+> bvFuncPatt :: ConstrTerm -> [Ident]
+> bvFuncPatt = bvfp []
+>  where
+>  bvfp bvs (LiteralPattern _) = bvs
+>  bvfp bvs (NegativePattern _ _) = bvs
+>  bvfp bvs (VariablePattern v)
+>     | elem v bvs = bvs
+>     | otherwise  = v:bvs
+>  bvfp bvs (ConstructorPattern c ts) = foldl bvfp bvs ts
+>  bvfp bvs (InfixPattern t1 op t2) = foldl bvfp bvs [t1,t2]
+>  bvfp bvs (ParenPattern t) = bvfp bvs t
+>  bvfp bvs (TuplePattern ts) = foldl bvfp bvs ts
+>  bvfp bvs (ListPattern ts) = foldl bvfp bvs ts
+>  bvfp bvs (AsPattern v t)
+>     | elem v bvs = bvfp bvs t
+>     | otherwise  = bvfp (v:bvs) t
+>  bvfp bvs (LazyPattern t) = bvfp bvs t
+>  bvfp bvs (FunctionPattern f ts) = foldl bvfp bvs ts
+>  bvfp bvs (InfixFuncPattern t1 op t2) = foldl bvfp bvs [t1, t2]
 
 \end{verbatim}
 \paragraph{Miscellany}

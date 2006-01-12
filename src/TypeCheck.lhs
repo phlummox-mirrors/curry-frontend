@@ -270,7 +270,8 @@ either one of the basic types or \texttt{()}.
 > tcDeclGroup m tcEnv sigs ds =
 >   do
 >     tyEnv0 <- fetchSt
->     tysLhs <- mapM (tcDeclLhs m tcEnv sigs) ds
+>     tysLhs' <- mapM (tcDeclLhs m tcEnv sigs) ds
+>     tysLhs  <- return tysLhs' --mapM (tcDeclFuncPatt m tcEnv sigs) ds
 >     tysRhs <- mapM (tcDeclRhs m tcEnv tyEnv0 sigs) ds
 >     sequence_ (zipWith3 (unifyDecl m) ds tysLhs tysRhs)
 >     theta <- liftSt fetchSt
@@ -387,7 +388,7 @@ signature the declared type must be too general.
 >         tyEnv' = rebindFun m v sigma tyEnv
 >         sigma = genType poly (subst theta (varType v tyEnv))
 >         genType poly (ForAll n ty)
->           | n > 0 = internalError "genVar"
+>           | n > 0 = internalError ("genVar: " ++ show v ++ " :: " ++ show ty)
 >           | poly = gen lvs ty
 >           | otherwise = monoType ty
 >         cmpTypes (ForAll _ t1) (ForAll _ t2) = equTypes t1 t2
@@ -417,13 +418,17 @@ signature the declared type must be too general.
 > tcConstrTerm m tcEnv sigs p (LiteralPattern l) = tcLiteral m l
 > tcConstrTerm m tcEnv sigs p (NegativePattern _ l) = tcLiteral m l
 > tcConstrTerm m tcEnv sigs p (VariablePattern v) =
->   do
->     ty <-
->       case lookupTypeSig v sigs of
->         Just ty -> inst (expandPolyType m tcEnv ty)
->         Nothing -> freshTypeVar
+>   do 
+>     ty <- case lookupTypeSig v sigs of
+>             Just t -> inst (expandPolyType m tcEnv t)
+>             Nothing -> freshTypeVar
+>     --tyEnv <- fetchSt
+>     --ty' <- case sureVarType v tyEnv of
+>     --        Just _ -> return ty --error (show v ++ " :: " ++ show t) --return t
+>	 --     Nothing -> updateSt_ (bindFun m v (monoType ty)) >> return ty
 >     updateSt_ (bindFun m v (monoType ty))
 >     return ty
+>   
 > tcConstrTerm m tcEnv sigs p t@(ConstructorPattern c ts) =
 >   do
 >     tyEnv <- fetchSt
@@ -474,23 +479,91 @@ signature the declared type must be too general.
 >     unifyArgs (ppConstrTerm 0 t) ts ty
 >   where unifyArgs _ [] ty = return ty
 >         unifyArgs doc (t:ts) (TypeArrow ty1 ty2) =
->           tcConstrTerm m tcEnv sigs p t >>=
+>           tcConstrTermFP m tcEnv sigs p t >>=
 >           unify p "pattern" (doc $-$ text "Term:" <+> ppConstrTerm 0 t)
 >                 m ty1 >>
 >           unifyArgs doc ts ty2
 >         unifyArgs _ _ _ = internalError "tcConstrTerm"
 > tcConstrTerm m tcEnv sigs p t@(InfixFuncPattern t1 op t2) =
+>   tcConstrTerm m tcEnv sigs p (FunctionPattern op [t1,t2])
+
+\end{verbatim}
+In contrast to usual patterns, the type checking routine for arguments of 
+function patterns \texttt{tcConstrTermFP} differs from \texttt{tcConstrTerm}
+because of possible multiple occurances of variables.
+\begin{verbatim}
+
+> tcConstrTermFP :: ModuleIdent -> TCEnv -> SigEnv -> Position -> ConstrTerm
+>                   -> TcState Type
+> tcConstrTermFP m tcEnv sigs p (LiteralPattern l) = tcLiteral m l
+> tcConstrTermFP m tcEnv sigs p (NegativePattern _ l) = tcLiteral m l
+> tcConstrTermFP m tcEnv sigs p (VariablePattern v) =
+>   do
+>     ty <- maybe freshTypeVar 
+>                 (inst . expandPolyType m tcEnv) 
+>                 (lookupTypeSig v sigs)
+>     tyEnv <- fetchSt
+>     ty' <- maybe (updateSt_ (bindFun m v (monoType ty)) >> return ty)
+>                  (\ (ForAll _ t) -> return t)
+>	           (sureVarType v tyEnv)
+>     return ty' 
+> tcConstrTermFP m tcEnv sigs p t@(ConstructorPattern c ts) =
 >   do
 >     tyEnv <- fetchSt
->     ty <- inst (funType m op tyEnv) --skol (constrType m op tyEnv)
->     unifyArgs (ppConstrTerm 0 t) [t1,t2] ty
+>     ty <- skol (constrType m c tyEnv)
+>     unifyArgs (ppConstrTerm 0 t) ts ty
 >   where unifyArgs _ [] ty = return ty
 >         unifyArgs doc (t:ts) (TypeArrow ty1 ty2) =
->           tcConstrTerm m tcEnv sigs p t >>=
+>           tcConstrTermFP m tcEnv sigs p t >>=
 >           unify p "pattern" (doc $-$ text "Term:" <+> ppConstrTerm 0 t)
 >                 m ty1 >>
 >           unifyArgs doc ts ty2
->         unifyArgs _ _ _ = internalError "tcConstrTerm"
+>         unifyArgs _ _ _ = internalError "tcConstrTermFP"
+> tcConstrTermFP m tcEnv sigs p t@(InfixPattern t1 op t2) =
+>   do
+>     tyEnv <- fetchSt
+>     ty <- skol (constrType m op tyEnv)
+>     unifyArgs (ppConstrTerm 0 t) [t1,t2] ty
+>   where unifyArgs _ [] ty = return ty
+>         unifyArgs doc (t:ts) (TypeArrow ty1 ty2) =
+>           tcConstrTermFP m tcEnv sigs p t >>=
+>           unify p "pattern" (doc $-$ text "Term:" <+> ppConstrTerm 0 t)
+>                 m ty1 >>
+>           unifyArgs doc ts ty2
+>         unifyArgs _ _ _ = internalError "tcConstrTermFP"
+> tcConstrTermFP m tcEnv sigs p (ParenPattern t) = tcConstrTermFP m tcEnv sigs p t
+> tcConstrTermFP m tcEnv sigs p (TuplePattern ts)
+>  | null ts = return unitType
+>  | otherwise = liftM tupleType $ mapM (tcConstrTermFP m tcEnv sigs p) ts   -- $
+> tcConstrTermFP m tcEnv sigs p t@(ListPattern ts) =
+>   freshTypeVar >>= flip (tcElems (ppConstrTerm 0 t)) ts
+>   where tcElems _ ty [] = return (listType ty)
+>         tcElems doc ty (t:ts) =
+>           tcConstrTermFP m tcEnv sigs p t >>=
+>           unify p "pattern" (doc $-$ text "Term:" <+> ppConstrTerm 0 t)
+>                 m ty >>
+>           tcElems doc ty ts
+> tcConstrTermFP m tcEnv sigs p t@(AsPattern v t') =
+>   do
+>     ty1 <- tcConstrTermFP m tcEnv sigs p (VariablePattern v)
+>     ty2 <- tcConstrTermFP m tcEnv sigs p t'
+>     unify p "pattern" (ppConstrTerm 0 t) m ty1 ty2
+>     return ty1
+> tcConstrTermFP m tcEnv sigs p (LazyPattern t) = tcConstrTermFP m tcEnv sigs p t
+> tcConstrTermFP m tcEnv sigs p t@(FunctionPattern f ts) =
+>   do
+>     tyEnv <- fetchSt
+>     ty <- inst (funType m f tyEnv) --skol (constrType m c tyEnv)
+>     unifyArgs (ppConstrTerm 0 t) ts ty
+>   where unifyArgs _ [] ty = return ty
+>         unifyArgs doc (t:ts) (TypeArrow ty1 ty2) =
+>           tcConstrTermFP m tcEnv sigs p t >>=
+>           unify p "pattern" (doc $-$ text "Term:" <+> ppConstrTerm 0 t)
+>                 m ty1 >>
+>           unifyArgs doc ts ty2
+>         unifyArgs _ _ _ = internalError "tcConstrTermFP"
+> tcConstrTermFP m tcEnv sigs p t@(InfixFuncPattern t1 op t2) =
+>   tcConstrTermFP m tcEnv sigs p (FunctionPattern op [t1,t2])
 
 > tcRhs :: ModuleIdent -> TCEnv -> ValueEnv -> SigEnv -> Rhs -> TcState Type
 > tcRhs m tcEnv tyEnv0 sigs (SimpleRhs p e ds) =
@@ -917,6 +990,12 @@ unambiguously refers to the local definition.
 >     Value _ sigma : _ -> sigma
 >     _ -> internalError ("varType " ++ show v)
 
+> sureVarType :: Ident -> ValueEnv -> Maybe TypeScheme
+> sureVarType v tyEnv =
+>   case lookupValue v tyEnv of
+>     Value _ sigma : _ -> Just sigma
+>     _ -> Nothing
+
 > funType :: ModuleIdent -> QualIdent -> ValueEnv -> TypeScheme
 > funType m f tyEnv =
 >   case (qualLookupValue f tyEnv) of
@@ -924,6 +1003,15 @@ unambiguously refers to the local definition.
 >     vs -> case (qualLookupValue (qualQualify m f) tyEnv) of
 >             [Value _ sigma] -> sigma
 >             _ -> internalError ("funType " ++ show f)
+
+> sureFunType :: ModuleIdent -> QualIdent -> ValueEnv -> Maybe TypeScheme
+> sureFunType m f tyEnv =
+>   case (qualLookupValue f tyEnv) of
+>     [Value _ sigma] -> Just sigma
+>     vs -> case (qualLookupValue (qualQualify m f) tyEnv) of
+>             [Value _ sigma] -> Just sigma
+>             _ -> Nothing
+
 
 \end{verbatim}
 The function \texttt{expandType} expands all type synonyms in a type

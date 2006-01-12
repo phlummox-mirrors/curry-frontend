@@ -27,7 +27,6 @@ import declarations are commented out
 > import TypeCheck(typeCheck,typeCheckGoal)
 > import WarnCheck
 > import Message
-> --import IntfCheck(intfCheck,fixInterface,intfEquiv)
 > import Arity
 > import Imports(importInterface,importInterfaceIntf,importUnifyData)
 > import Exports(expandInterface,exportInterface)
@@ -41,19 +40,13 @@ import declarations are commented out
 > import ILLift(liftProg)
 > import ILxml(xmlModule) -- check
 > import FlatCurry
-> import GenFlatCurry --IL2FlatCurry
+> import GenFlatCurry
 > import AbstractCurry
 > import GenAbstractCurry
 > import CurryEnv
-> --import DTransform(dTransform,dAddMain)
-> --import ILCompile(camCompile,camCompileData,fun)
-> --import qualified CamPP(ppModule)
-> --import CGen(genMain,genEntry,genModule,genSplitModule)
-> --import CCode(CFile,mergeCFile)
-> --import CPretty(ppCFile) -- should be obsolete
 > import CurryPP(ppModule,ppInterface,ppIDecl,ppGoal)
 > import qualified ILPP(ppModule)
-> import CurryCompilerOpts(Options(..),Dump(..)) --Options(Options(..),Dump(..))
+> import CurryCompilerOpts(Options(..),Dump(..))
 > import CaseCompletion
 > import PatchPrelude
 > import PathUtils
@@ -105,14 +98,10 @@ code are obsolete and commented out.
 >             genAbstract opts fn tyEnv tcEnv m'
 >        else
 >          do (tyEnv, tcEnv, aEnv, m', intf) <- checkModule opts mEnv m
->             let --(tyEnv, tcEnv, aEnv, m', intf) = checkModule mEnv m
->                 (il,aEnv',dumps) = transModule fcy False False 
+>             let (il,aEnv',dumps) = transModule fcy False False 
 >			                         mEnv tyEnv aEnv m'
->                 --(ccode,dumps') = ccodeModule (splitCode opts) mEnv il
->                 --ccode' = compileDefaultGoal (debug opts) mEnv intf
 >                 il' = completeCase mEnv il
 >             mapM_ (doDump opts) dumps
->             --unless (noInterface opts) (updateInterface fn intf)
 >             if fcy || xml || acy || uacy
 >                then 
 >	           do when fcy  (genFlat opts fn mEnv tcEnv aEnv' intf m' il')
@@ -125,8 +114,6 @@ code are obsolete and commented out.
 >         fcy      = flat opts
 >         xml      = flatXml opts
 >         likeFlat = fcy || xml || acy || uacy
->         --merge (Left cf1) cf2 = Left (mergeCFile cf1 cf2)
->         --merge (Right cfs) cf = Right (cf : cfs)
 
 > parseModule :: Bool -> FilePath -> String -> Module
 > parseModule likeFlat fn =
@@ -155,7 +142,8 @@ code are obsolete and commented out.
 >   where (impDs,topDs) = partition isImportDecl ds
 >         (pEnv,tcEnv,tyEnv,aEnv) = importModules mEnv impDs
 >         msgs = warnCheck m tyEnv impDs topDs
->         (pEnv',topDs') = precCheck m pEnv $ syntaxCheck m tyEnv
+>	  withExt = withExtensions opts
+>         (pEnv',topDs') = precCheck m pEnv $ syntaxCheck withExt m tyEnv
 >                                           $ kindCheck m tcEnv topDs
 >         ds' = impDs ++ qual m tyEnv topDs'
 >         modul = expandInterface (Module m es ds') tcEnv tyEnv
@@ -172,7 +160,8 @@ code are obsolete and commented out.
 >   where (impDs,topDs) = partition isImportDecl ds
 >         (pEnv,tcEnv,tyEnv,aEnv) = importModules mEnv impDs
 >         msgs = warnCheck m tyEnv impDs topDs
->         (pEnv',topDs') = precCheck m pEnv $ syntaxCheck m tyEnv
+>	  withExt = withExtensions opts
+>         (pEnv',topDs') = precCheck m pEnv $ syntaxCheck withExt m tyEnv
 >                                           $ kindCheck m tcEnv topDs
 >         (tcEnv',tyEnv') = typeCheck m tcEnv tyEnv topDs'
 >         ds' = impDs ++ qual m tyEnv' topDs'
@@ -181,23 +170,8 @@ code are obsolete and commented out.
 >            = qualifyEnv mEnv pEnv' tcEnv' tyEnv' aEnv
 >         intf = exportInterface modul pEnv'' tcEnv'' tyEnv''
 
-> --checkModule :: ModuleEnv -> Module 
-> --     -> (ValueEnv,TCEnv,ArityEnv,Module,Interface)
-> --checkModule mEnv (Module m es ds) =
-> --  (tyEnv'', tcEnv', aEnv'', modul, intf)
-> --  where (impDs,topDs) = partition isImportDecl ds
-> --        (pEnv,tcEnv,tyEnv,aEnv) = importModules mEnv impDs
-> --        (pEnv',topDs') = precCheck m pEnv $ syntaxCheck m tyEnv
-> --                                          $ kindCheck m tcEnv topDs
-> --        (tcEnv',tyEnv') = typeCheck m tcEnv tyEnv topDs'
-> --        ds' = impDs ++ qual m tyEnv' topDs'
-> --        modul = expandInterface (Module m es ds') tcEnv' tyEnv'
-> --        (pEnv'',tcEnv'',tyEnv'',aEnv'') 
-> --           = qualifyEnv mEnv pEnv' tcEnv' tyEnv' aEnv
-> --        intf = exportInterface modul pEnv'' tcEnv'' tyEnv''
-
-> transModule :: Bool -> Bool -> Bool -> ModuleEnv -> ValueEnv -> ArityEnv
->      -> Module -> (IL.Module,ArityEnv,[(Dump,Doc)])
+> transModule :: Bool -> Bool -> Bool -> ModuleEnv -> ValueEnv 
+>      -> ArityEnv -> Module -> (IL.Module,ArityEnv,[(Dump,Doc)])
 > transModule flat debug trusted mEnv tyEnv aEnv (Module m es ds) = 
 >     (il,aEnv',dumps)
 >   where topDs = filter (not . isImportDecl) ds
@@ -207,29 +181,13 @@ code are obsolete and commented out.
 >         (lifted,tyEnv''',evEnv') = lift tyEnv'' evEnv simplified
 >         aEnv' = bindArities aEnv lifted
 >         il = ilTrans flat tyEnv''' evEnv' lifted
->         --ilDbg = if debug then dTransform trusted il else il
 >         dumps = [(DumpRenamed,ppModule (Module m es ds)),
 >	           (DumpTypes,ppTypes m (localBindings tyEnv)),
 >	           (DumpDesugared,ppModule desugared),
 >                  (DumpSimplified,ppModule simplified),
 >                  (DumpLifted,ppModule lifted),
 >                  (DumpIL,ILPP.ppModule il)
->                   --(DumpTransformed,ILPP.ppModule ilDbg)
 >	          ]
-
-> --ccodeModule :: Bool -> ModuleEnv -> IL.Module
-> --            -> (Either CFile [CFile],[(Dump,Doc)])
-> --ccodeModule split mEnv il = (ccode,dumps)
-> --  where ilNormal = liftProg il
-> --        cam = camCompile ilNormal
-> --        imports = camCompileData (ilImports mEnv il)
-> --        ccode
-> --          | split = Right (genSplitModule imports cam)
-> --          | otherwise = Left (genModule imports cam)
-> --        dumps = [
-> --            (DumpNormalized,ILPP.ppModule ilNormal),
-> --            (DumpCam,CamPP.ppModule cam)
-> --          ]
 
 > qualifyEnv :: ModuleEnv -> PEnv -> TCEnv -> ValueEnv -> ArityEnv
 >     -> (PEnv,TCEnv,ValueEnv,ArityEnv)
@@ -242,10 +200,10 @@ code are obsolete and commented out.
 >           foldl importInterface initEnvs (envToList mEnv)
 >         importInterface (pEnv,tcEnv,tyEnv,aEnv) (m,ds) =
 >           importInterfaceIntf (Interface m ds) pEnv tcEnv tyEnv aEnv
->         bindQual (_,y) = qualBindTopEnv (origName y) y
+>         bindQual (_,y) = qualBindTopEnv "Modules.qualifyEnv" (origName y) y
 >         bindGlobal (x,y)
 >           | uniqueId x == 0 = bindQual (x,y)
->           | otherwise = bindTopEnv x y
+>           | otherwise = bindTopEnv "Modules.qualifyEnv" x y
 
 > ilImports :: ModuleEnv -> IL.Module -> [IL.Decl]
 > ilImports mEnv (IL.Module _ is _) =

@@ -1,4 +1,4 @@
-% -*- LaTeX -*-
+
 % $Id: SCC.lhs,v 1.3 2003/04/30 21:29:06 wlux Exp $
 %
 % Copyright (c) 2000,2002-2003, Wolfgang Lux
