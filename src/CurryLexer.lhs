@@ -1,4 +1,4 @@
-
+% -*- LaTeX -*-
 % $Id: CurryLexer.lhs,v 1.40 2004/03/04 22:39:12 wlux Exp $
 %
 % Copyright (c) 1999-2004, Wolfgang Lux
@@ -15,7 +15,7 @@ In this section a lexer for Curry is implemented.
 > import LexComb
 > import Position
 > import Map
-> import Char
+> import Char 
 > import List
 
 \end{verbatim}
@@ -56,7 +56,7 @@ In this section a lexer for Curry is implemented.
 >   -- end-of-file token
 >   | EOF
 >   -- comments (only for full lexer) inserted by men & bbr
->   | LineComment | NestedComment
+>   | LineComment | NestedComment 
 >   deriving (Eq,Ord)
 
 \end{verbatim}
@@ -70,20 +70,20 @@ attribute values we make use of records.
 
 > data Attributes =
 >     NoAttributes
->   | CharAttributes{ cval :: Char }
->   | IntAttributes{ ival :: Int }
->   | FloatAttributes{ fval :: Double }
->   | IntegerAttributes{ intval :: Integer }
->   | StringAttributes{ sval :: String }
->   | IdentAttributes{ modul :: [String], sval :: String }
+>   | CharAttributes{ cval :: Char, original :: String}
+>   | IntAttributes{ ival :: Int , original :: String}
+>   | FloatAttributes{ fval :: Double, original :: String}
+>   | IntegerAttributes{ intval :: Integer, original :: String}
+>   | StringAttributes{ sval :: String, original :: String}
+>   | IdentAttributes{ modul :: [String], sval :: String}
 
 > instance Show Attributes where
 >   showsPrec _ NoAttributes = showChar '_'
->   showsPrec _ (CharAttributes cval) = shows cval
->   showsPrec _ (IntAttributes ival) = shows ival
->   showsPrec _ (FloatAttributes fval) = shows fval
->   showsPrec _ (IntegerAttributes intval) = shows intval
->   showsPrec _ (StringAttributes sval) = shows sval
+>   showsPrec _ (CharAttributes cval _) = shows cval
+>   showsPrec _ (IntAttributes ival _) = shows ival
+>   showsPrec _ (FloatAttributes fval _) = shows fval
+>   showsPrec _ (IntegerAttributes intval _) = shows intval
+>   showsPrec _ (StringAttributes sval _) = shows sval
 >   showsPrec _ (IdentAttributes mIdent ident) =
 >     showString ("`" ++ concat (intersperse "." (mIdent ++ [ident])) ++ "'")
 
@@ -98,30 +98,33 @@ specific attributes.
 > idTok :: Category -> [String] -> String -> Token
 > idTok t mIdent ident = Token t IdentAttributes{ modul = mIdent, sval = ident }
 
-> charTok :: Char -> Token
-> charTok c = Token CharTok CharAttributes{ cval = c }
+> charTok :: Char -> String -> Token
+> charTok c o = Token CharTok CharAttributes{ cval = c, original = o }
 
 > intTok :: Int -> String -> Token
 > intTok base digits =
->   Token IntTok IntAttributes{ ival = convertIntegral base digits }
+>   Token IntTok IntAttributes{ ival = convertIntegral base digits,
+>                               original = digits}
 
-> floatTok :: String -> String -> Int -> Token
-> floatTok mant frac exp =
->   Token FloatTok FloatAttributes{ fval = convertFloating mant frac exp }
-
+> floatTok :: String -> String -> Int -> String -> Token
+> floatTok mant frac exp rest =
+>   Token FloatTok FloatAttributes{ fval = convertFloating mant frac exp, 
+>                                   original = mant++"."++frac++rest}
+ 
 > integerTok :: Integer -> String -> Token
 > integerTok base digits =
 >   Token IntegerTok
->         IntegerAttributes{intval = (convertIntegral base digits) :: Integer}
+>         IntegerAttributes{intval = (convertIntegral base digits) :: Integer,
+>                           original = digits}
 
-> stringTok :: String -> Token
-> stringTok cs = Token StringTok StringAttributes{ sval = cs }
+> stringTok :: String -> String -> Token
+> stringTok cs o = Token StringTok StringAttributes{ sval = cs, original = o }
 
 > lineCommentTok :: String -> Token
-> lineCommentTok s = Token LineComment StringAttributes{ sval = s }
+> lineCommentTok s = Token LineComment StringAttributes{ sval = s, original = s}
 
 > nestedCommentTok :: String -> Token
-> nestedCommentTok s = Token NestedComment StringAttributes{ sval = s }
+> nestedCommentTok s = Token NestedComment StringAttributes{ sval = s, original = s }
 
 \end{verbatim}
 The \texttt{Show} instance of \texttt{Token} is designed to display
@@ -327,12 +330,12 @@ Lexing functions
  
 > lexNestedComment :: Int -> (String -> String) -> 
 >                     Position -> SuccessP a -> FailP a -> P a
-> lexNestedComment 1 comment p0 success fail p ('-':'}':s) =  
->   success p0 (lineCommentTok (comment "-}")) (incr p 2) s 
+> lexNestedComment 1 comment p0 success fail p ('-':'}':s) = 
+>   success p0 (nestedCommentTok (comment "-}") ) (incr p 2) s 
+> lexNestedComment n comment p0 success fail p ('{':'-':s) = 
+>   lexNestedComment (n+1) (comment . ("{-"++)) p0 success fail (incr p 2) s  
 > lexNestedComment n comment p0 success fail p ('-':'}':s) = 
 >   lexNestedComment (n-1) (comment . ("-}"++)) p0 success fail (incr p 2) s
-> lexNestedComment n comment p0 success fail p ('{':'-':s) = 
->   lexNestedComment (n+1) (comment . (('{':"-")++)) p0 success fail (incr p 2) s
 > lexNestedComment n comment p0 success fail p (c@'\t':s) = 
 >   lexNestedComment n (comment . (c:)) p0 success fail (tab p) s
 > lexNestedComment n comment p0 success fail p (c@'\n':s) = 
@@ -454,12 +457,6 @@ read numbers must be converted to Haskell type \texttt{Integer}.
 >                      (incr p (length digits)) rest
 >   where (digits,rest) = span isDigit s
 >         num           = (read digits) :: Integer
->         minInt        = toInteger (minBound :: Int)
->         maxInt        = toInteger (maxBound :: Int)
->
-> --lexNumber cont p s =
-> --  lexOptFraction cont (intTok 10 digits) digits (incr p (length digits)) rest
-> --  where (digits,rest) = span isDigit s
 
 > lexOctal :: (Token -> P a) -> P a -> P a
 > lexOctal cont nullCont p s
@@ -475,32 +472,32 @@ read numbers must be converted to Haskell type \texttt{Integer}.
 
 > lexOptFraction :: (Token -> P a) -> Token -> String -> P a
 > lexOptFraction cont _ mant p ('.':c:s)
->   | isDigit c = lexOptExponent cont (floatTok mant frac 0) mant frac
+>   | isDigit c = lexOptExponent cont (floatTok mant frac 0 "") mant frac
 >                                (incr p (length frac+1)) rest
 >   where (frac,rest) = span isDigit (c:s)
 > lexOptFraction cont token mant p (c:s)
->   | c `elem` "eE" = lexSignedExponent cont intCont mant "" (next p) s
+>   | c `elem` "eE" = lexSignedExponent cont intCont mant "" [c] (next p) s
 >   where intCont _ _ = cont token p (c:s)
 > lexOptFraction cont token _ p s = cont token p s
 
 > lexOptExponent :: (Token -> P a) -> Token -> String -> String -> P a
 > lexOptExponent cont token mant frac p (c:s)
->   | c `elem` "eE" = lexSignedExponent cont floatCont mant frac (next p) s
+>   | c `elem` "eE" = lexSignedExponent cont floatCont mant frac [c] (next p) s
 >   where floatCont _ _ = cont token p (c:s)
 > lexOptExponent cont token mant frac p s = cont token p s
 
-> lexSignedExponent :: (Token -> P a) -> P a -> String -> String -> P a
-> lexSignedExponent cont floatCont mant frac p ('+':c:s)
->   | isDigit c = lexExponent cont mant frac id (next p) (c:s)
-> lexSignedExponent cont floatCont mant frac p ('-':c:s)
->   | isDigit c = lexExponent cont mant frac negate (next p) (c:s)
-> lexSignedExponent cont floatCont mant frac p (c:s)
->   | isDigit c = lexExponent cont mant frac id p (c:s)
-> lexSignedExponent cont floatCont mant frac p s = floatCont p s
+> lexSignedExponent :: (Token -> P a) -> P a -> String -> String -> String -> P a
+> lexSignedExponent cont floatCont mant frac e p ('+':c:s)
+>   | isDigit c = lexExponent cont mant frac (e++"+") id (next p) (c:s)
+> lexSignedExponent cont floatCont mant frac e p ('-':c:s)
+>   | isDigit c = lexExponent cont mant frac (e++"-") negate (next p) (c:s)
+> lexSignedExponent cont floatCont mant frac e p (c:s)
+>   | isDigit c = lexExponent cont mant frac e id p (c:s)
+> lexSignedExponent cont floatCont mant frac e p s = floatCont p s
 
-> lexExponent :: (Token -> P a) -> String -> String -> (Int -> Int) -> P a
-> lexExponent cont mant frac expSign p s =
->   cont (floatTok mant frac exp) (incr p (length digits)) rest
+> lexExponent :: (Token -> P a) -> String -> String -> String -> (Int -> Int) -> P a
+> lexExponent cont mant frac e expSign p s =
+>   cont (floatTok mant frac exp (e++digits)) (incr p (length digits)) rest
 >   where (digits,rest) = span isDigit s
 >         exp = expSign (convertIntegral 10 digits)
 
@@ -509,107 +506,108 @@ read numbers must be converted to Haskell type \texttt{Integer}.
 > lexChar p0 success fail p (c:s)
 >   | c == '\\' = lexEscape p (lexCharEnd p0 success fail) fail (next p) s
 >   | c == '\n' = fail p0 "Illegal character constant" p (c:s)
->   | c == '\t' = lexCharEnd p0 success fail c (tab p) s
->   | otherwise = lexCharEnd p0 success fail c (next p) s
+>   | c == '\t' = lexCharEnd p0 success fail c "\t" (tab p) s
+>   | otherwise = lexCharEnd p0 success fail c [c] (next p) s
 
-> lexCharEnd :: Position -> SuccessP a -> FailP a -> Char -> P a
-> lexCharEnd p0 success fail c p ('\'':s) = success p0 (charTok c) (next p) s
-> lexCharEnd p0 success fail c p s =
+> lexCharEnd :: Position -> SuccessP a -> FailP a -> Char -> String -> P a
+> lexCharEnd p0 success fail c o p ('\'':s) = success p0 (charTok c o) (next p) s
+> lexCharEnd p0 success fail c o p s =
 >   fail p0 "Improperly terminated character constant" p s
 
 > lexString :: Position -> SuccessP a -> FailP a -> P a
-> lexString p0 success fail = lexStringRest p0 success fail ""
+> lexString p0 success fail = lexStringRest p0 success fail "" id
 
-> lexStringRest :: Position -> SuccessP a -> FailP a -> String -> P a
-> lexStringRest p0 success fail s0 p [] = 
+> lexStringRest :: Position -> SuccessP a -> FailP a -> String -> (String -> String) -> P a
+> lexStringRest p0 success fail s0 so p [] = 
 >   fail p0 "Improperly terminated string constant" p []
-> lexStringRest p0 success fail s0 p (c:s)
+> lexStringRest p0 success fail s0 so p (c:s)
 >   | c == '\\' =
->       lexStringEscape p (lexStringRest p0 success fail) fail s0 (next p) s
->   | c == '\"' = success p0 (stringTok (reverse s0)) (next p) s
+>       lexStringEscape p (lexStringRest p0 success fail) fail s0 so (next p) s
+>   | c == '\"' = success p0 (stringTok (reverse s0) (so "")) (next p) s
 >   | c == '\n' = fail p0 "Improperly terminated string constant" p []
->   | c == '\t' = lexStringRest p0 success fail (c:s0) (tab p) s
->   | otherwise = lexStringRest p0 success fail (c:s0) (next p) s
+>   | c == '\t' = lexStringRest p0 success fail (c:s0) (so . (c:)) (tab p) s
+>   | otherwise = lexStringRest p0 success fail (c:s0) (so . (c:)) (next p) s
 
-> lexStringEscape ::  Position -> (String -> P a) -> FailP a -> String -> P a
-> lexStringEscape p0 success fail s0 p [] = lexEscape p0 undefined fail p []
-> lexStringEscape p0 success fail s0 p (c:s)
->   | c == '&' = success s0 (next p) s
->   | isSpace c = lexStringGap (success s0) fail p (c:s)
->   | otherwise = lexEscape p0 (success . (:s0)) fail p (c:s)
+> lexStringEscape ::  Position -> (String -> (String -> String) -> P a) -> FailP a -> 
+>                                  String -> (String -> String) -> P a
+> lexStringEscape p0 success fail s0 so p [] = lexEscape p0 undefined fail p []
+> lexStringEscape p0 success fail s0 so p (c:s)
+>   | c == '&' = success s0 (so . ("\\&"++)) (next p) s
+>   | isSpace c = lexStringGap (success s0) fail so p (c:s)
+>   | otherwise = lexEscape p0 (\ c' s' -> success (c:s0) (so . (s'++))) fail p (c:s)
 
-> lexStringGap :: P a -> FailP a -> P a
-> lexStringGap success fail p [] = fail p "End of file in string gap" p []
-> lexStringGap success fail p (c:s)
->   | c == '\\' = success (next p) s
->   | c == '\t' = lexStringGap success fail (tab p) s
->   | c == '\n' = lexStringGap success fail (nl p) s
->   | isSpace c = lexStringGap success fail (next p) s
+> lexStringGap :: ((String -> String) -> P a) -> FailP a -> (String -> String) -> P a
+> lexStringGap success fail so p [] = fail p "End of file in string gap" p []
+> lexStringGap success fail so p (c:s)
+>   | c == '\\' = success (so . (c:)) (next p) s
+>   | c == '\t' = lexStringGap success fail (so . (c:)) (tab p) s
+>   | c == '\n' = lexStringGap success fail (so . (c:)) (nl p) s
+>   | isSpace c = lexStringGap success fail (so . (c:)) (next p) s
 >   | otherwise = fail p ("Illegal character in string gap " ++ show c) p s
 
-> lexEscape :: Position -> (Char -> P a) -> FailP a -> P a
-> lexEscape p0 success fail p ('a':s) = success '\a' (next p) s
-> lexEscape p0 success fail p ('b':s) = success '\b' (next p) s
-> lexEscape p0 success fail p ('f':s) = success '\f' (next p) s
-> lexEscape p0 success fail p ('n':s) = success '\n' (next p) s
-> lexEscape p0 success fail p ('r':s) = success '\r' (next p) s
-> lexEscape p0 success fail p ('t':s) = success '\t' (next p) s
-> lexEscape p0 success fail p ('v':s) = success '\v' (next p) s
-> lexEscape p0 success fail p ('\\':s) = success '\\' (next p) s
-> lexEscape p0 success fail p ('"':s) = success '\"' (next p) s
-> lexEscape p0 success fail p ('\'':s) = success '\'' (next p) s
+> lexEscape :: Position -> (Char -> String -> P a) -> FailP a -> P a
+> lexEscape p0 success fail p ('a':s) = success '\a' "\\a" (next p) s
+> lexEscape p0 success fail p ('b':s) = success '\b' "\\b" (next p) s
+> lexEscape p0 success fail p ('f':s) = success '\f' "\\f" (next p) s
+> lexEscape p0 success fail p ('n':s) = success '\n' "\\n" (next p) s
+> lexEscape p0 success fail p ('r':s) = success '\r' "\\r" (next p) s
+> lexEscape p0 success fail p ('t':s) = success '\t' "\\t" (next p) s
+> lexEscape p0 success fail p ('v':s) = success '\v' "\\v" (next p) s
+> lexEscape p0 success fail p ('\\':s) = success '\\' "\\\\" (next p) s
+> lexEscape p0 success fail p ('"':s) = success '\"' "\\\"" (next p) s
+> lexEscape p0 success fail p ('\'':s) = success '\'' "\\\'" (next p) s
 > lexEscape p0 success fail p ('^':c:s)
 >   | isUpper c || c `elem` "@[\\]^_" =
->       success (chr (ord c `mod` 32)) (incr p 2) s
+>       success (chr (ord c `mod` 32)) ("\\^"++[c]) (incr p 2) s
 > lexEscape p0 success fail p ('o':c:s)
->   | isOctit c = numEscape p0 success fail 8 isOctit (next p) (c:s)
+>   | isOctit c = numEscape p0 success fail 8 isOctit ("\\o"++) (next p) (c:s)
 > lexEscape p0 success fail p ('x':c:s)
->   | isHexit c = numEscape p0 success fail 16 isHexit (next p) (c:s)
+>   | isHexit c = numEscape p0 success fail 16 isHexit ("\\x"++) (next p) (c:s)
 > lexEscape p0 success fail p (c:s)
->   | isDigit c = numEscape p0 success fail 10 isDigit p (c:s)
+>   | isDigit c = numEscape p0 success fail 10 isDigit ("\\"++) p (c:s)
 > lexEscape p0 success fail p s = asciiEscape p0 success fail p s
 
-> asciiEscape :: Position -> (Char -> P a) -> FailP a -> P a
-> asciiEscape p0 success fail p ('N':'U':'L':s) = success '\NUL' (incr p 3) s
-> asciiEscape p0 success fail p ('S':'O':'H':s) = success '\SOH' (incr p 3) s
-> asciiEscape p0 success fail p ('S':'T':'X':s) = success '\STX' (incr p 3) s
-> asciiEscape p0 success fail p ('E':'T':'X':s) = success '\ETX' (incr p 3) s
-> asciiEscape p0 success fail p ('E':'O':'T':s) = success '\EOT' (incr p 3) s
-> asciiEscape p0 success fail p ('E':'N':'Q':s) = success '\ENQ' (incr p 3) s
-> asciiEscape p0 success fail p ('A':'C':'K':s) = success '\ACK' (incr p 3) s 
-> asciiEscape p0 success fail p ('B':'E':'L':s) = success '\BEL' (incr p 3) s
-> asciiEscape p0 success fail p ('B':'S':s) = success '\BS' (incr p 2) s
-> asciiEscape p0 success fail p ('H':'T':s) = success '\HT' (incr p 2) s
-> asciiEscape p0 success fail p ('L':'F':s) = success '\LF' (incr p 2) s
-> asciiEscape p0 success fail p ('V':'T':s) = success '\VT' (incr p 2) s
-> asciiEscape p0 success fail p ('F':'F':s) = success '\FF' (incr p 2) s
-> asciiEscape p0 success fail p ('C':'R':s) = success '\CR' (incr p 2) s
-> asciiEscape p0 success fail p ('S':'O':s) = success '\SO' (incr p 2) s
-> asciiEscape p0 success fail p ('S':'I':s) = success '\SI' (incr p 2) s
-> asciiEscape p0 success fail p ('D':'L':'E':s) = success '\DLE' (incr p 3) s 
-> asciiEscape p0 success fail p ('D':'C':'1':s) = success '\DC1' (incr p 3) s
-> asciiEscape p0 success fail p ('D':'C':'2':s) = success '\DC2' (incr p 3) s
-> asciiEscape p0 success fail p ('D':'C':'3':s) = success '\DC3' (incr p 3) s
-> asciiEscape p0 success fail p ('D':'C':'4':s) = success '\DC4' (incr p 3) s
-> asciiEscape p0 success fail p ('N':'A':'K':s) = success '\NAK' (incr p 3) s
-> asciiEscape p0 success fail p ('S':'Y':'N':s) = success '\SYN' (incr p 3) s
-> asciiEscape p0 success fail p ('E':'T':'B':s) = success '\ETB' (incr p 3) s
-> asciiEscape p0 success fail p ('C':'A':'N':s) = success '\CAN' (incr p 3) s 
-> asciiEscape p0 success fail p ('E':'M':s) = success '\EM' (incr p 2) s
-> asciiEscape p0 success fail p ('S':'U':'B':s) = success '\SUB' (incr p 3) s
-> asciiEscape p0 success fail p ('E':'S':'C':s) = success '\ESC' (incr p 3) s
-> asciiEscape p0 success fail p ('F':'S':s) = success '\FS' (incr p 2) s
-> asciiEscape p0 success fail p ('G':'S':s) = success '\GS' (incr p 2) s
-> asciiEscape p0 success fail p ('R':'S':s) = success '\RS' (incr p 2) s
-> asciiEscape p0 success fail p ('U':'S':s) = success '\US' (incr p 2) s
-> asciiEscape p0 success fail p ('S':'P':s) = success '\SP' (incr p 2) s
-> asciiEscape p0 success fail p ('D':'E':'L':s) = success '\DEL' (incr p 3) s
+> asciiEscape :: Position -> (Char -> String -> P a) -> FailP a -> P a
+> asciiEscape p0 success fail p ('N':'U':'L':s) = success '\NUL' "\\NUL" (incr p 3) s
+> asciiEscape p0 success fail p ('S':'O':'H':s) = success '\SOH' "\\SOH" (incr p 3) s
+> asciiEscape p0 success fail p ('S':'T':'X':s) = success '\STX' "\\STX" (incr p 3) s
+> asciiEscape p0 success fail p ('E':'T':'X':s) = success '\ETX' "\\ETX" (incr p 3) s
+> asciiEscape p0 success fail p ('E':'O':'T':s) = success '\EOT' "\\EOT" (incr p 3) s
+> asciiEscape p0 success fail p ('E':'N':'Q':s) = success '\ENQ' "\\ENQ" (incr p 3) s
+> asciiEscape p0 success fail p ('A':'C':'K':s) = success '\ACK' "\\ACK" (incr p 3) s 
+> asciiEscape p0 success fail p ('B':'E':'L':s) = success '\BEL' "\\BEL" (incr p 3) s
+> asciiEscape p0 success fail p ('B':'S':s) = success '\BS' "\\BS" (incr p 2) s
+> asciiEscape p0 success fail p ('H':'T':s) = success '\HT' "\\HT" (incr p 2) s
+> asciiEscape p0 success fail p ('L':'F':s) = success '\LF' "\\LF" (incr p 2) s
+> asciiEscape p0 success fail p ('V':'T':s) = success '\VT' "\\VT" (incr p 2) s
+> asciiEscape p0 success fail p ('F':'F':s) = success '\FF' "\\FF" (incr p 2) s
+> asciiEscape p0 success fail p ('C':'R':s) = success '\CR' "\\CR" (incr p 2) s
+> asciiEscape p0 success fail p ('S':'O':s) = success '\SO' "\\SO" (incr p 2) s
+> asciiEscape p0 success fail p ('S':'I':s) = success '\SI' "\\SI" (incr p 2) s
+> asciiEscape p0 success fail p ('D':'L':'E':s) = success '\DLE' "\\DLE" (incr p 3) s 
+> asciiEscape p0 success fail p ('D':'C':'1':s) = success '\DC1' "\\DC1" (incr p 3) s
+> asciiEscape p0 success fail p ('D':'C':'2':s) = success '\DC2' "\\DC2" (incr p 3) s
+> asciiEscape p0 success fail p ('D':'C':'3':s) = success '\DC3' "\\DC3" (incr p 3) s
+> asciiEscape p0 success fail p ('D':'C':'4':s) = success '\DC4' "\\DC4" (incr p 3) s
+> asciiEscape p0 success fail p ('N':'A':'K':s) = success '\NAK' "\\NAK" (incr p 3) s
+> asciiEscape p0 success fail p ('S':'Y':'N':s) = success '\SYN' "\\SYN" (incr p 3) s
+> asciiEscape p0 success fail p ('E':'T':'B':s) = success '\ETB' "\\ETB" (incr p 3) s
+> asciiEscape p0 success fail p ('C':'A':'N':s) = success '\CAN' "\\CAN" (incr p 3) s 
+> asciiEscape p0 success fail p ('E':'M':s) = success '\EM' "\\EM" (incr p 2) s
+> asciiEscape p0 success fail p ('S':'U':'B':s) = success '\SUB' "\\SUB" (incr p 3) s
+> asciiEscape p0 success fail p ('E':'S':'C':s) = success '\ESC' "\\ESC" (incr p 3) s
+> asciiEscape p0 success fail p ('F':'S':s) = success '\FS' "\\FS" (incr p 2) s
+> asciiEscape p0 success fail p ('G':'S':s) = success '\GS' "\\GS" (incr p 2) s
+> asciiEscape p0 success fail p ('R':'S':s) = success '\RS' "\\RS" (incr p 2) s
+> asciiEscape p0 success fail p ('U':'S':s) = success '\US' "\\US" (incr p 2) s
+> asciiEscape p0 success fail p ('S':'P':s) = success '\SP' "\\SP" (incr p 2) s
+> asciiEscape p0 success fail p ('D':'E':'L':s) = success '\DEL' "\\DEL" (incr p 3) s
 > asciiEscape p0 success fail p s = fail p0 "Illegal escape sequence" p s
 
-> numEscape :: Position -> (Char -> P a) -> FailP a -> Int
->           -> (Char -> Bool) -> P a
-> numEscape p0 success fail b isDigit p s
->   | n >= min && n <= max = success (chr n) (incr p (length digits)) rest
+> numEscape :: Position -> (Char -> String -> P a) -> FailP a -> Int
+>           -> (Char -> Bool) -> (String -> String) -> P a
+> numEscape p0 success fail b isDigit so p s
+>   | n >= min && n <= max = success (chr n) (so digits) (incr p (length digits)) rest
 >   | otherwise = fail p0 "Numeric escape out-of-range" p s
 >   where (digits,rest) = span isDigit s
 >         n = convertIntegral b digits
