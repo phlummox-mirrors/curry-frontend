@@ -590,7 +590,7 @@ instead of \texttt{(++)} and \texttt{map} in place of
 >       do
 >         tyEnv <- fetchSt
 >         v <- freshIdent m "_#var" (monoType (typeOf tyEnv t))
->         l' <- freshIdent m "_#var" (monoType (typeOf tyEnv e))
+>         l' <- freshIdent m "_#var" (polyType (typeOf tyEnv e))
 >         desugarExpr m p (apply prelFoldr [foldFunct v l' e,List [],l])
 >   where qualExpr v (ListCompr e []) l = apply prelMap [Lambda [v] e,l]
 >         qualExpr v e l = apply prelConcatMap [Lambda [v] e,l]
