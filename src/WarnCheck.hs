@@ -124,13 +124,13 @@ checkLhs :: ModuleIdent -> Position -> Lhs -> CheckState ()
 checkLhs mid pos (FunLhs ident cterms)
    = do visitId ident
 	foldM' (checkConstrTerm mid pos) cterms
-	foldM' insertConstrTerm cterms
+	foldM' (insertConstrTerm False) cterms
 checkLhs mid pos (OpLhs cterm1 ident cterm2)
    = checkLhs mid pos (FunLhs ident [cterm1, cterm2])
 checkLhs mid pos (ApLhs lhs cterms)
    = do checkLhs mid pos lhs
 	foldM' (checkConstrTerm mid pos) cterms
-	foldM' insertConstrTerm cterms
+	foldM' (insertConstrTerm False) cterms
 
 --
 checkRhs :: ModuleIdent -> Position -> Rhs -> CheckState ()
@@ -232,7 +232,7 @@ checkExpression mid pos (RightSection _ expr)
 checkExpression mid pos (Lambda cterms expr)
    = do beginScope
 	foldM' (checkConstrTerm mid pos) cterms
-	foldM' insertConstrTerm cterms
+	foldM' (insertConstrTerm False) cterms
 	checkExpression mid pos expr
 	idents' <- returnUnrefVars
 	when (not (null idents'))
@@ -276,7 +276,7 @@ checkStatement mid pos (StmtDecl decls)
 	checkDeclOccurances decls
 checkStatement mid pos (StmtBind cterm expr)
    = do checkConstrTerm mid pos cterm
-	insertConstrTerm cterm
+	insertConstrTerm False cterm
 	checkExpression mid pos expr
 
 --
@@ -284,7 +284,7 @@ checkAlt :: ModuleIdent -> Alt -> CheckState ()
 checkAlt mid (Alt pos cterm rhs)
    = do beginScope 
 	checkConstrTerm mid pos cterm
-	insertConstrTerm cterm
+	insertConstrTerm False cterm
 	checkRhs mid pos rhs
 	idents' <-  returnUnrefVars
 	when (not (null idents'))
@@ -421,8 +421,9 @@ checkImports imps = checkImps emptyEnv imps
 
 
 -------------------------------------------------------------------------------
--- The following actions updates the current state by adding identifiers
--- occuring in declaration left hand sides
+-- For detecting unreferenced variables, the following functions updates the 
+-- current check state by adding identifiers occuring in declaration left hand 
+-- sides.
 
 --
 insertDecl :: Decl -> CheckState ()
@@ -439,7 +440,7 @@ insertDecl (ExternalDecl _ _ _ ident _)
 insertDecl (FlatExternalDecl _ idents)
    = foldM' insertVar idents
 insertDecl (PatternDecl _ cterm _)
-   = insertConstrTerm cterm
+   = insertConstrTerm False cterm
 insertDecl (ExtraVariables _ idents)
    = foldM' insertVar idents
 insertDecl _ = return ()
@@ -451,31 +452,38 @@ insertConstrDecl (ConstrDecl _ _ ident _)
 insertConstrDecl (ConOpDecl _ _ _ ident _)
    = insertConsId ident
 
---
-insertConstrTerm :: ConstrTerm -> CheckState ()
-insertConstrTerm (VariablePattern ident)
+-- Notes: 
+--    - 'fp' indicates whether 'checkConstrTerm' deals with the arguments
+--      of a function pattern or not.
+--    - Since function patterns are not recognized before syntax check, it is
+--      necessary to determine, whether a constructor pattern represents a
+--      constructor or a function. 
+insertConstrTerm :: Bool -> ConstrTerm -> CheckState ()
+insertConstrTerm fp (VariablePattern ident)
    = do c <- isConsId ident
-	unless c (insertVar ident)
-insertConstrTerm (ConstructorPattern _ cterms)
-   = foldM' insertConstrTerm cterms
-insertConstrTerm (InfixPattern cterm1 qident cterm2)
-   = insertConstrTerm (ConstructorPattern qident [cterm1, cterm2])
-insertConstrTerm (ParenPattern cterm)
-   = insertConstrTerm cterm
-insertConstrTerm (TuplePattern cterms)
-   = foldM' insertConstrTerm cterms
-insertConstrTerm (ListPattern cterms)
-   = foldM' insertConstrTerm cterms
-insertConstrTerm (AsPattern ident cterm)
+	unless (fp || c) (insertVar ident)
+insertConstrTerm fp (ConstructorPattern qident cterms)
+   = do c <- isQualConsId qident
+	if c then foldM' (insertConstrTerm fp) cterms
+	     else foldM' (insertConstrTerm True) cterms
+insertConstrTerm fp (InfixPattern cterm1 qident cterm2)
+   = insertConstrTerm fp (ConstructorPattern qident [cterm1, cterm2])
+insertConstrTerm fp (ParenPattern cterm)
+   = insertConstrTerm fp cterm
+insertConstrTerm fp (TuplePattern cterms)
+   = foldM' (insertConstrTerm fp) cterms
+insertConstrTerm fp (ListPattern cterms)
+   = foldM' (insertConstrTerm fp) cterms
+insertConstrTerm fp (AsPattern ident cterm)
    = do insertVar ident
-	insertConstrTerm cterm
-insertConstrTerm (LazyPattern cterm)
-   = insertConstrTerm cterm
-insertConstrTerm (FunctionPattern _ cterms)
-   = foldM' insertConstrTerm cterms
-insertConstrTerm (InfixFuncPattern cterm1 qident cterm2)
-   = insertConstrTerm (FunctionPattern qident [cterm1, cterm2])
-insertConstrTerm _ = return ()
+	insertConstrTerm fp cterm
+insertConstrTerm fp (LazyPattern cterm)
+   = insertConstrTerm fp cterm
+insertConstrTerm _ (FunctionPattern _ cterms)
+   = foldM' (insertConstrTerm True) cterms
+insertConstrTerm _ (InfixFuncPattern cterm1 qident cterm2)
+   = insertConstrTerm True (FunctionPattern qident [cterm1, cterm2])
+insertConstrTerm _ _ = return ()
 
 
 -------------------------------------------------------------------------------
@@ -599,6 +607,11 @@ isVarId id
 isConsId :: Ident -> CheckState Bool
 isConsId id 
    = CheckState (\state -> state{ result = isCons state (qualify id) })
+
+--
+isQualConsId :: QualIdent -> CheckState Bool
+isQualConsId qid
+   = CheckState (\state -> state{ result = isCons state qid })
 
 --
 isShadowingVar :: Ident -> CheckState Bool

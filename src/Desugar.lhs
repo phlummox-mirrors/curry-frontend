@@ -543,7 +543,9 @@ desugars the following extensions:
 >    = internalError "constrTerm2Expr: unexpected constructor term"
 
 > getConstrTermVars :: [Ident] -> ConstrTerm -> [Ident]
-> getConstrTermVars ids (VariablePattern ident) = ident:ids
+> getConstrTermVars ids (VariablePattern ident)
+>    | elem ident ids = ids
+>    | otherwise      = ident:ids
 > getConstrTermVars ids (ConstructorPattern _ cts)
 >    = foldl getConstrTermVars ids cts
 > getConstrTermVars ids (FunctionPattern _ cts)
