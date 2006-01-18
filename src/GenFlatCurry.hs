@@ -24,7 +24,10 @@ import qualified CurryEnv
 import ScopeEnv (ScopeEnv)
 import qualified ScopeEnv
 
+import CurryCompilerOpts
+import Message
 import PatchPrelude
+import Position
 import Ident
 import TopEnv
 import Env
@@ -35,15 +38,19 @@ import Maybe
 -------------------------------------------------------------------------------
 
 -- transforms intermediate language code (IL) to FlatCurry code
-genFlatCurry :: CurryEnv -> ModuleEnv -> ArityEnv -> IL.Module -> Prog
-genFlatCurry cEnv mEnv aEnv mod 
-   = patchPreludeFCY (run cEnv mEnv aEnv False (visitModule mod))
+genFlatCurry :: Options -> CurryEnv -> ModuleEnv -> ArityEnv -> IL.Module 
+	        -> (Prog, [Message])
+genFlatCurry opts cEnv mEnv aEnv mod
+   = (patchPreludeFCY prog, messages)
+ where (prog, messages) = run opts cEnv mEnv aEnv False (visitModule mod)
 
 
 -- transforms intermediate language code (IL) to FlatCurry interfaces
-genFlatInterface :: CurryEnv -> ModuleEnv -> ArityEnv -> IL.Module -> Prog
-genFlatInterface cEnv mEnv aEnv mod
-   = patchPreludeFCY (run cEnv mEnv aEnv True (visitModule mod))
+genFlatInterface :: Options -> CurryEnv -> ModuleEnv -> ArityEnv -> IL.Module
+		    -> (Prog, [Message])
+genFlatInterface opts cEnv mEnv aEnv mod
+   = (patchPreludeFCY intf, messages)
+ where (intf, messages) = run opts cEnv mEnv aEnv True (visitModule mod)
 
 
 -------------------------------------------------------------------------------
@@ -116,19 +123,22 @@ visitType (IL.TypeArrow type1 type2)
 visitFuncDecl :: IL.Decl -> FlatState FuncDecl
 visitFuncDecl (IL.FunctionDecl qident params typeexpr expression)
    = whenFlatCurry
-       (do is    <- mapM newVarIndex params
+       (do setFunctionId qident
+	   is    <- mapM newVarIndex params
 	   texpr <- visitType typeexpr
 	   expr  <- visitExpression expression
 	   qname <- visitQualIdent qident
 	   vis   <- getVisibility qident
 	   clearVarIndices
 	   return (Func qname (length params) vis texpr (Rule is expr)))
-       (do texpr <- visitType typeexpr
+       (do setFunctionId qident
+	   texpr <- visitType typeexpr
 	   qname <- visitQualIdent qident
 	   clearVarIndices
 	   return (Func qname (length params) Public texpr (Rule [] (Var 0))))
 visitFuncDecl (IL.ExternalDecl qident _ name typeexpr)
-   = do texpr <- visitType typeexpr
+   = do setFunctionId qident
+	texpr <- visitType typeexpr
 	qname <- visitQualIdent qident
 	vis   <- getVisibility qident
 	xname <- visitExternalName name
@@ -169,6 +179,7 @@ visitExpression (IL.Case evalannot expression alts)
 visitExpression (IL.Or expression1 expression2)
    = do expr1 <- visitExpression expression1
 	expr2 <- visitExpression expression2
+	checkOverlapping expr1 expr2
 	return (Or expr1 expr2)
 visitExpression (IL.Exist ident expression)
    = do index <- newVarIndex ident
@@ -524,6 +535,24 @@ genTypeSynonym _ = internalError "GenFlatCurry: no type synonym interface"
 
 -------------------------------------------------------------------------------
 
+--
+checkOverlapping :: Expr -> Expr -> FlatState ()
+checkOverlapping expr1 expr2
+   = do opts <- compilerOpts
+	unless (noOverlapWarn opts)
+	       (checkOverlap expr1 expr2)
+ where
+ checkOverlap (Case _ _ _) _ 
+    = do qid <- functionId
+	 genWarning (first "") (overlappingRules qid)
+ checkOverlap _ (Case _ _ _)
+    = do qid <- functionId
+	 genWarning (first "") (overlappingRules qid)
+ checkOverlap _ _ = return ()
+
+
+-------------------------------------------------------------------------------
+
 -- 
 cs2ilType :: [(Ident,Int)] -> CS.TypeExpr -> (IL.Type, [(Ident,Int)])
 cs2ilType ids (CS.ConstructorType qident typeexprs)
@@ -553,7 +582,7 @@ cs2ilType ids (CS.TupleType typeexprs)
 
 
 -------------------------------------------------------------------------------
--- Messages for internal errors
+-- Messages for internal errors and warnings
 
 funcArity qid = "GenFlatCurry: missing arity for function \"" 
 		++ show qid ++ "\""
@@ -562,6 +591,12 @@ consArity qid = "GenFlatCurry: missing arity for constructor \""
 		++ show qid ++ "\""
 
 missingVarIndex id = "GenFlatCurry: missing index for \"" ++ show id ++ "\""
+
+
+overlappingRules qid = "function \""
+		       ++ show qid 
+		       ++ "\" is non-deterministic due to non-trivial "
+		       ++ "overlapping rules"
 
 
 -------------------------------------------------------------------------------
@@ -703,6 +738,8 @@ emap f env (x:xs) = let (x',env')    = f env x
 -- Data type for representing an environment which contains information needed
 -- for generating FlatCurry code.
 data FlatEnv a = FlatEnv{ moduleIdE     :: ModuleIdent,
+			  functionIdE   :: QualIdent,
+			  compilerOptsE :: Options,
 			  moduleEnvE    :: ModuleEnv,
 			  arityEnvE     :: ArityEnv,
 			  publicEnvE    :: Env Ident Bool,
@@ -714,6 +751,7 @@ data FlatEnv a = FlatEnv{ moduleIdE     :: ModuleIdent,
 			  varIdsE       :: ScopeEnv Ident Int,
 			  tvarIndexE    :: Int,
 			  tvarIdsE      :: ScopeEnv Ident Int,
+			  messagesE     :: [Message],
 			  genInterfaceE :: Bool,
 			  result        :: a
 			}
@@ -739,29 +777,47 @@ instance Monad FlatState where
 
 
 -- Runs a 'FlatState' action an returns the result
-run :: CurryEnv -> ModuleEnv -> ArityEnv -> Bool -> FlatState a -> a
-run cEnv mEnv aEnv genIntf (FlatState f)
-   = result (f (FlatEnv{ moduleIdE     = CurryEnv.moduleId cEnv,
-			 moduleEnvE    = mEnv,
-			 arityEnvE     = aEnv,
-			 publicEnvE    = genPubEnv (CurryEnv.moduleId cEnv)
-			                           (CurryEnv.interface cEnv),
-			 fixitiesE     = CurryEnv.infixDecls cEnv,
-			 typeSynonymsE = CurryEnv.typeSynonyms cEnv,
-			 importsE      = CurryEnv.imports cEnv,
-			 exportsE      = CurryEnv.exports cEnv,
-			 varIndexE     = 0,
-			 varIdsE       = ScopeEnv.new,
-			 tvarIndexE    = 0,
-			 tvarIdsE      = ScopeEnv.new,
-			 genInterfaceE = genIntf,
-			 result        = ()
-		       } ))
+run :: Options -> CurryEnv -> ModuleEnv -> ArityEnv -> Bool -> FlatState a 
+       -> (a, [Message])
+run opts cEnv mEnv aEnv genIntf (FlatState f)
+   = (result env, messagesE env)
+ where
+ env = f (FlatEnv{ moduleIdE     = CurryEnv.moduleId cEnv,
+		   functionIdE   = qualify (mkIdent ""),
+		   compilerOptsE = opts,
+		   moduleEnvE    = mEnv,
+		   arityEnvE     = aEnv,
+		   publicEnvE    = genPubEnv (CurryEnv.moduleId cEnv)
+		                             (CurryEnv.interface cEnv),
+		   fixitiesE     = CurryEnv.infixDecls cEnv,
+		   typeSynonymsE = CurryEnv.typeSynonyms cEnv,
+		   importsE      = CurryEnv.imports cEnv,
+		   exportsE      = CurryEnv.exports cEnv,
+		   varIndexE     = 0,
+		   varIdsE       = ScopeEnv.new,
+		   tvarIndexE    = 0,
+		   tvarIdsE      = ScopeEnv.new,
+		   messagesE      = [],
+		   genInterfaceE = genIntf,
+		   result        = ()
+		 } )
 
 
 --
 moduleId :: FlatState ModuleIdent
 moduleId = FlatState (\env -> env{ result = moduleIdE env })
+
+--
+functionId :: FlatState QualIdent
+functionId = FlatState (\env -> env{ result = functionIdE env })
+
+--
+setFunctionId :: QualIdent -> FlatState ()
+setFunctionId qid = FlatState (\env -> env{ functionIdE = qid })
+
+--
+compilerOpts :: FlatState Options
+compilerOpts = FlatState (\env -> env{ result = compilerOptsE env })
 
 --
 exports :: FlatState [CS.Export]
@@ -875,6 +931,12 @@ clearTVarIndices = FlatState (\env -> env{ tvarIndexE = 0,
 					 })
 
 --
+genWarning :: Position -> String -> FlatState ()
+genWarning pos msg
+   = FlatState (\env -> env{ messagesE = warnMsg:(messagesE env) })
+ where warnMsg = message Warning pos msg
+
+--
 genInterface :: FlatState Bool
 genInterface = FlatState (\env -> env{ result = genInterfaceE env })
 
@@ -934,23 +996,3 @@ bindEnvNewConstrDecl env (CS.NewConstrDecl _ _ id _) = bindEnv id True env
 
 -------------------------------------------------------------------------------
 -------------------------------------------------------------------------------
-{-
---
-genExports :: ModuleEnv -> Module -> [Export]
-genExports menv (Module mident (Just (Exporting pos exps)) decls) 
-   = filter (isExportedImport mident) exps
-genExports menv _
-   = []
-
-
---
-isExportedImport :: ModuleIdent -> Export -> Bool
-isExportedImport mident (Export qident) 
-   = isNothing (localIdent mident qident)
-isExportedImport mident (ExportTypeWith qident _)
-   = isNothing (localIdent mident qident)
-isExportedImport mident (ExportTypeAll qident)
-   = isNothing (localIdent mident qident)
-isExportedImport mident (ExportModule mident')
-   = mident /= mident'
--}

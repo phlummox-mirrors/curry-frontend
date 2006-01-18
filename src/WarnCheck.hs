@@ -30,8 +30,7 @@ import List
 --    - idle case alternatives
 --    - overlapping case alternatives
 --    - function rules which are not together
-warnCheck :: ModuleIdent -> ValueEnv -> [Decl] -> [Decl] 
-	     -> [Message CompMessageType]
+warnCheck :: ModuleIdent -> ValueEnv -> [Decl] -> [Decl] -> [Message]
 warnCheck mid vals imports decls
    = run (do addImportedValues vals
 	     addModuleId mid
@@ -523,7 +522,7 @@ visitVariable info = case info of
 -- contents.
 data CheckState a = CheckState (CState () -> CState a)
 
-data CState a = CState {messages  :: [Message CompMessageType],
+data CState a = CState {messages  :: [Message],
 			scope     :: ScopeEnv QualIdent IdInfo,
 			values    :: ValueEnv,
 			moduleId  :: ModuleIdent,
@@ -566,7 +565,7 @@ instance Monad CheckState where
 genWarning :: Position -> String -> CheckState ()
 genWarning pos msg
    = CheckState (\state -> state{ messages = warnMsg:(messages state) })
- where warnMsg = message (Warning pos) msg
+ where warnMsg = message Warning pos msg
 
 --
 insertVar :: Ident -> CheckState ()
@@ -709,7 +708,7 @@ all' mpred (x:xs)
 
 
 -- Runs a 'CheckState' action and returns the list of messages
-run ::  CheckState a -> [Message CompMessageType]
+run ::  CheckState a -> [Message]
 run (CheckState f)
    = reverse (messages (f emptyState))
 
@@ -769,22 +768,7 @@ typeId id = qualify (renameIdent id 1)
 
 
 -------------------------------------------------------------------------------
--- Message definition
-
--- Message kinds for compiler messages
-data CompMessageType = Warning Position 
-		     | Error Position 
-		       deriving Eq
-
-
--- An instance of Show for converting the messages kinds to reasonable 
--- strings
-instance Show CompMessageType where
- show (Warning pos) = "Warning: " ++ show pos ++ ": "
- show (Error pos)   = "ERROR: " ++ show pos ++ ": "
-
-
--- The following function generates several warning strings
+-- Warnings...
 
 unrefTypeVar :: Ident -> String
 unrefTypeVar id = "unreferenced type variable \"" ++ show id ++ "\""
@@ -843,140 +827,5 @@ cmpListM cmpM (x:xs) (y:ys) = do c <- cmpM x y
 cmpListM cmpM _      _      = return False
 
 
--------------------------------------------------------------------------------
--------------------------------------------------------------------------------
-{-
--- Data type for representing a stack containing information from nested
--- scope levels
-data ScopeEnv a b = ScopeEnv Int (Env a (b,Int)) [Env a (b,Int)]
-		    deriving Show
-
-
---
-newSE :: Ord a => ScopeEnv a b
-newSE = ScopeEnv 0 emptyEnv []
-
-
--- Inserts a value under a key into the environment of the current level
-insertSE :: Ord a => a -> b -> ScopeEnv a b -> ScopeEnv a b
-insertSE key val env = modify insertLev env
- where
- insertLev lev local = bindEnv key (val,lev) local
-
-
--- Updates the value of an existing key in the environment of the current level
-updateSE :: Ord a => a -> b -> ScopeEnv a b -> ScopeEnv a b
-updateSE key val env = modify updateLev env
- where
- updateLev lev local = maybe local 
-		             (\ (_,lev') ->  bindEnv key (val,lev') local)
-			     (lookupEnv key local)
-
---
-modifySE :: Ord a => (b -> b) -> a -> ScopeEnv a b -> ScopeEnv a b
-modifySE fun key env = modify modifyLev env
- where
- modifyLev lev local 
-    = maybe local
-            (\ (val',lev') -> bindEnv key (fun val', lev') local)
-	    (lookupEnv key local)
-
-
---
-lookupSE :: Ord a => a -> ScopeEnv a b -> Maybe b
-lookupSE key env = select lookupLev env
- where
- lookupLev lev local = maybe Nothing (Just . fst) (lookupEnv key local)
-
-
---
-sureLookupSE :: Ord a => a -> b -> ScopeEnv a b -> b
-sureLookupSE key alt env = maybe alt id (lookupSE key env)
-
-
---
-levelSE :: Ord a => a -> ScopeEnv a b -> Int
-levelSE key env = select levelLev env
- where
- levelLev lev local = maybe (-1) snd (lookupEnv key local)
-
-
---
-existsSE :: Ord a => a -> ScopeEnv a b -> Bool
-existsSE key env = select existsLev env
- where
- existsLev lev local = maybe False (const True) (lookupEnv key local)
-
-
--- Pushes the current scope onto the top of the stack and increments the
--- level counter
-beginScopeSE :: Ord a => ScopeEnv a b -> ScopeEnv a b
-beginScopeSE (ScopeEnv lev top [])
-   = ScopeEnv (lev + 1) top [top]
-beginScopeSE (ScopeEnv lev top (local:locals))
-   = ScopeEnv (lev + 1) top (local:local:locals)
-
-
--- Pops the current scope from the top of the stack, updates the subjacent
--- scope (i.e. maintains the values from the poped scope for all keys in
--- the subjacent scope) and decrements the level counter.
-endScopeSE :: Ord a => ScopeEnv a b -> ScopeEnv a b
-endScopeSE (ScopeEnv _ top [])
-   = ScopeEnv 0 top []
-endScopeSE (ScopeEnv lev top (local:[]))
-   = ScopeEnv 0 (foldr (update local) top (envToList top)) []
-endScopeSE (ScopeEnv lev top (local:local':locals))
-   = ScopeEnv (lev - 1) 
-              top 
-	      ((foldr (update local) local' (envToList local')):locals)
-
-
--- Returns the current scope as a list
-toListSE :: Ord a => ScopeEnv a b -> [(a,b)]
-toListSE env = select toListLev env
- where
- toListLev lev local = map (\ (key,(val,_)) -> (key,val)) (envToList local)
-
--- Returns all (key,value) pairs of the current scope which has been inserted
--- in the current level
-toLevelListSE :: Ord a => ScopeEnv a b -> [(a,b)]
-toLevelListSE env = select toLevelListLev env
- where
- toLevelListLev lev local
-    = map (\ (key,(val,_)) -> (key,val))
-          (filter (\ (_,(_,lev')) -> lev' == lev) (envToList local))
-
-
---
-currentLevelSE :: Ord a => ScopeEnv a b -> Int
-currentLevelSE env = select const env
-
-
--------------------------------------------------------------------------------
-
---
-modify :: (Int -> Env a (b,Int) -> Env a (b,Int)) -> ScopeEnv a b 
-          -> ScopeEnv a b
-modify f (ScopeEnv _ top []) 
-   = ScopeEnv 0 (f 0 top) []
-modify f (ScopeEnv lev top (local:locals))
-   = ScopeEnv lev top ((f lev local):locals)
-
---
-select :: (Int -> Env a (b,Int) -> c) -> ScopeEnv a b -> c
-select f (ScopeEnv _ top [])        = f 0 top
-select f (ScopeEnv lev _ (local:_)) = f lev local
-
---
-update :: Ord a => Env a (b,Int) -> (a,(b,Int)) ->  Env a (b,Int) 
-          -> Env a (b,Int)
-update local (key,(_,lev)) local'
-   = maybe local' 
-           (\ (val',lev') 
-	    -> if lev == lev' then bindEnv key (val',lev) local' 
-                              else local')
-	   (lookupEnv key local)
-
--}
 -------------------------------------------------------------------------------
 -------------------------------------------------------------------------------

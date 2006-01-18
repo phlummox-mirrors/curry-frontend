@@ -137,7 +137,7 @@ code are obsolete and commented out.
 >	    -> IO (ValueEnv,TCEnv,ArityEnv,Module,Interface)
 > simpleCheckModule opts mEnv (Module m es ds) =
 >   do unless (noWarn opts || null msgs)
->	      (putStrLn (unlines (map (showMessage show) msgs)))
+>	      (putStrLn (unlines (map show msgs)))
 >      return (tyEnv'', tcEnv, aEnv'', modul, intf)
 >   where (impDs,topDs) = partition isImportDecl ds
 >         (pEnv,tcEnv,tyEnv,aEnv) = importModules mEnv impDs
@@ -155,7 +155,7 @@ code are obsolete and commented out.
 >      -> IO (ValueEnv,TCEnv,ArityEnv,Module,Interface)
 > checkModule opts mEnv (Module m es ds) =
 >   do unless (noWarn opts || null msgs)
->	      (putStrLn (unlines (map (showMessage show) msgs)))
+>	      (putStrLn (unlines (map show msgs)))
 >      return (tyEnv'', tcEnv', aEnv'', modul, intf)
 >   where (impDs,topDs) = partition isImportDecl ds
 >         (pEnv,tcEnv,tyEnv,aEnv) = importModules mEnv impDs
@@ -215,16 +215,22 @@ code are obsolete and commented out.
 >   where ofn  = fromMaybe (rootname sfn ++ xmlExt) tfn
 >         code = (xmlModule cEnv il)
 
-> writeFlat :: Maybe FilePath -> FilePath -> CurryEnv -> ModuleEnv 
+> writeFlat :: Options -> Maybe FilePath -> FilePath -> CurryEnv -> ModuleEnv 
 >              -> ArityEnv -> IL.Module -> IO ()
-> writeFlat tfn sfn cEnv mEnv aEnv il
->    = writeFlatCurry fname (genFlatCurry cEnv mEnv aEnv il)
+> writeFlat opts tfn sfn cEnv mEnv aEnv il
+>    = do let (prog,msgs) = genFlatCurry opts cEnv mEnv aEnv il
+>         unless (noWarn opts || null msgs)
+>	         (putStrLn (unlines (map show msgs)))
+>	  writeFlatCurry fname prog
 >   where fname = fromMaybe (rootname sfn ++ flatExt) tfn
 
-> writeFInt :: Maybe FilePath -> FilePath -> CurryEnv -> ModuleEnv
+> writeFInt :: Options -> Maybe FilePath -> FilePath -> CurryEnv -> ModuleEnv
 >              -> ArityEnv -> IL.Module -> IO ()
-> writeFInt tfn sfn cEnv mEnv aEnv il 
->    = writeFlatCurry fname (genFlatInterface cEnv mEnv aEnv il)
+> writeFInt opts tfn sfn cEnv mEnv aEnv il 
+>    = do let (intf,msgs) = genFlatInterface opts cEnv mEnv aEnv il
+>         unless (noWarn opts || null msgs)
+>	         (putStrLn (unlines (map show msgs)))
+>	  writeFlatCurry fname intf
 >  where fname = fromMaybe (rootname sfn ++ fintExt) tfn
 
 > writeTypedAbs :: Maybe FilePath -> FilePath -> ValueEnv -> TCEnv -> Module
@@ -551,8 +557,8 @@ flat and abstract curry representations depending on the specified option.
 >            -> Interface -> Module -> IL.Module -> IO ()
 > genFlat opts fname mEnv tcEnv aEnv intf mod il
 >   | flat opts
->     = writeFlat Nothing fname cEnv mEnv aEnv il
->       >> writeFInt Nothing fname cEnv mEnv aEnv il
+>     = writeFlat opts Nothing fname cEnv mEnv aEnv il
+>       >> writeFInt opts Nothing fname cEnv mEnv aEnv il
 >   | flatXml opts
 >     = writeXML (output opts) fname cEnv il
 >   | otherwise

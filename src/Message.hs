@@ -1,9 +1,11 @@
 -------------------------------------------------------------------------------
 -------------------------------------------------------------------------------
 --
--- Message - A library for dealing with messages
+-- Message - A library for dealing with compiler messages
+--
+-- Note: This module overwrites the functions declared in "Message"
 --                
--- November 2005,
+-- January 2006,
 -- Martin Engelke (men@informatik.uni-kiel.de)
 --
 module Message where
@@ -13,34 +15,42 @@ import Position
 
 -------------------------------------------------------------------------------
 
--- Generates a new message
-message :: a -> String -> Message a
-message mtype msg = Message mtype msg
+-- Type for representing compiler messages (currently errors and warnings)
+data Message = Message MessageType Position String
 
--- Returns the number of messages which has the same type 
-countMessages :: Eq a => a -> [Message a] -> Int
-countMessages mtype msgs = length (filter (hasType mtype) msgs)
+-- Data type for representing available compiler message types
+data MessageType = Warning  | Error deriving Eq
 
--- Shows a message
-showMessage :: (a -> String) -> Message a -> String
-showMessage showType (Message mtype msg)
-   = showType mtype ++ msg
+
+-- An instance of Show for converting messages to readable strings
+instance Show Message where
+ show (Message Warning pos msg) = showMessage "Warning" pos msg
+ show (Message Error   pos msg) = showMessage "ERROR" pos msg
+
+
+-------------------------------------------------------------------------------
+
+--
+message :: MessageType -> Position -> String -> Message
+message = Message 
+
+--
+countMessages :: MessageType -> [Message] -> Int
+countMessages mtype msgs = length (filter (((==) mtype) . messageType) msgs)
+
+--
+messageType :: Message -> MessageType
+messageType (Message mtype _ _) = mtype
 
 
 -------------------------------------------------------------------------------
 -------------------------------------------------------------------------------
 
--- Data type for representing compiler messages of an arbitrary type
 --
---      Message <message type> <message>
---
-data Message a = Message a String
-
--------------------------------------------------------------------------------
-
---
-hasType :: Eq a => a -> Message a -> Bool
-hasType mtype (Message mtype' _) = mtype == mtype'
+showMessage :: String -> Position -> String -> String
+showMessage what pos msg
+   | pos == first "" = what ++ ": " ++ msg
+   | otherwise       = what ++ ": " ++ show pos ++ ": " ++ msg
 
 
 -------------------------------------------------------------------------------

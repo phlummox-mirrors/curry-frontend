@@ -24,6 +24,7 @@ data Options
 	     output :: Maybe FilePath,   -- output file paths
 	     noVerb :: Bool,             -- verbosity on/off
 	     noWarn :: Bool,             -- warnings on/off
+	     noOverlapWarn :: Bool,      -- "overlap" warnings on/off
 	     flat :: Bool,               -- generate FlatCurry code
 	     flatXml :: Bool,            -- generate FlatXML code
 	     abstract :: Bool,           -- generate AbstractCurry code
@@ -38,6 +39,7 @@ defaultOpts = Options{importPaths     = [],
 		      output          = Nothing,
 		      noVerb          = False,
 		      noWarn          = False,
+		      noOverlapWarn   = False,
 		      flat            = False,
 		      flatXml         = False,
 		      abstract        = False,
@@ -50,7 +52,7 @@ defaultOpts = Options{importPaths     = [],
 -- Data type for representing all available options (needed to read and parse
 -- the options from the command line; see module "GetOpt")
 data Option = Help | ImportPath FilePath | LibPath FilePath | Output FilePath
-	    | NoVerb | NoWarn
+	    | NoVerb | NoWarn | NoOverlapWarn
 	    | Flat | FlatXML | Abstract | UntypedAbstract 
 	    | WithExtensions
 	    | Dump [Dump]
@@ -67,7 +69,9 @@ options = [Option "i" ["import-dir"] (ReqArg ImportPath "DIR")
 	   Option "" ["no-verb"] (NoArg NoVerb)
 	          "do not print compiler messages",
 	   Option "" ["no-warn"] (NoArg NoWarn)
-	          "do not print warnings",
+	          "do not print any warning",
+	   Option "" ["no-overlap-warn"] (NoArg NoOverlapWarn)
+	          "do not print warnings for overlapping rules",
 	   Option ""  ["flat"] (NoArg Flat)
 	          "generate FlatCurry code",
 	   Option ""  ["xml"] (NoArg FlatXML)
@@ -92,8 +96,11 @@ selectOption (ImportPath dir) opts
 selectOption (LibPath dir) opts 
    = opts{ libPaths = dir:(libPaths opts) }
 selectOption (Output file) opts   = opts{ output = Just file }
-selectOption NoVerb opts          = opts{ noVerb = True, noWarn = True }
+selectOption NoVerb opts          = opts{ noVerb = True, 
+					  noWarn = True,
+					  noOverlapWarn = True }
 selectOption NoWarn opts          = opts{ noWarn = True }
+selectOption NoOverlapWarn opts   = opts{ noOverlapWarn = True }
 selectOption Flat opts            = opts{ flat = True }
 selectOption FlatXML opts         = opts{ flatXml = True }
 selectOption Abstract opts        = opts{ abstract = True }
