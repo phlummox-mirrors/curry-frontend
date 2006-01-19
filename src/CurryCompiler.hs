@@ -11,6 +11,7 @@
 module CurryCompiler (compileCurry) where
 
 import CurryCompilerOpts
+import CompilerResults
 import Modules
 import System
 import IO
@@ -18,9 +19,9 @@ import IO
 
 -------------------------------------------------------------------------------
 
-compileCurry :: Options -> FilePath -> IO ()
+compileCurry :: Options -> FilePath -> IO CompilerResults
 compileCurry options file
-   = compileModule options file
+   = compileModule_ options file
 
 
 -------------------------------------------------------------------------------

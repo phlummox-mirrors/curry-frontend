@@ -387,7 +387,7 @@ checkImports imps = checkImps emptyEnv imps
  checkImpSpec env pos mid (is,hs) Nothing
     = genWarning pos (multiplyImportedModule mid) >> return env
  checkImpSpec env pos mid (is,hs) (Just (Importing pos' is'))
-    | null is
+    | null is && any (\i' -> notElem i' hs) is'
       = do genWarning pos (multiplyImportedModule mid)
 	   return (bindEnv mid (is',hs) env)
     | null iis

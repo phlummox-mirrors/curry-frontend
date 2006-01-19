@@ -14,7 +14,8 @@ Since this version is only used as a frontend for PAKCS, some of the following
 import declarations are commented out
 \begin{verbatim}
 
-> module Modules(compileModule, loadInterfaces, transModule,
+> module Modules(compileModule, compileModule_,
+>	         loadInterfaces, transModule,
 >	         simpleCheckModule, checkModule
 >	        ) where
 
@@ -43,10 +44,12 @@ import declarations are commented out
 > import GenFlatCurry
 > import AbstractCurry
 > import GenAbstractCurry
+> import InterfaceCheck
 > import CurryEnv
 > import CurryPP(ppModule,ppInterface,ppIDecl,ppGoal)
 > import qualified ILPP(ppModule)
 > import CurryCompilerOpts(Options(..),Dump(..))
+> import CompilerResults
 > import CaseCompletion
 > import PatchPrelude
 > import PathUtils
@@ -85,14 +88,17 @@ code are obsolete and commented out.
 \begin{verbatim}
 
 > compileModule :: Options -> FilePath -> IO ()
-> compileModule opts fn =
+> compileModule opts fn = compileModule_ opts fn >> return ()
+
+> compileModule_ :: Options -> FilePath -> IO CompilerResults
+> compileModule_ opts fn =
 >   do
 >     mod <- liftM (parseModule likeFlat fn) 
 >                  (readFile fn >>= return . (patchPreludeSource fn))
 >     let m = patchModuleId fn mod
 >     checkModuleId fn m
 >     mEnv <- loadInterfaces (importPaths opts) m
->     if uacy 
+>     if uacy
 >        then 
 >          do (tyEnv, tcEnv, aEnv, m', intf) <- simpleCheckModule opts mEnv m
 >             genAbstract opts fn tyEnv tcEnv m'
@@ -102,18 +108,25 @@ code are obsolete and commented out.
 >			                         mEnv tyEnv aEnv m'
 >                 il' = completeCase mEnv il
 >             mapM_ (doDump opts) dumps
->             if fcy || xml || acy || uacy
->                then 
->	           do when fcy  (genFlat opts fn mEnv tcEnv aEnv' intf m' il')
->		      when xml  (genFlat opts fn mEnv tcEnv aEnv' intf m' il')
->		      when acy  (genAbstract opts fn tyEnv tcEnv m')
->                     when uacy (return ())
->                else genFlat opts fn mEnv tcEnv aEnv' intf m' il'
+>	      genCode opts fn mEnv tyEnv tcEnv aEnv' intf m' il'
+>             --if fcy || xml || acy || uacy
+>             --   then 
+>	      --     do when fcy  (genFlat opts fn mEnv tcEnv aEnv' intf m' il')
+>		--      when xml  (genFlat opts fn mEnv tcEnv aEnv' intf m' il')
+>		--      when acy  (genAbstract opts fn tyEnv tcEnv m')
+>               --      when uacy (return defaultResults)
+>               -- else genFlat opts fn mEnv tcEnv aEnv' intf m' il'
 >   where acy      = abstract opts
 >         uacy     = untypedAbstract opts
 >         fcy      = flat opts
 >         xml      = flatXml opts
 >         likeFlat = fcy || xml || acy || uacy
+>	  
+>         genCode opts fn mEnv tyEnv tcEnv aEnv intf m il
+>	     | fcy       = genFlat opts fn mEnv tcEnv aEnv intf m il
+>            | xml       = genFlat opts fn mEnv tcEnv aEnv intf m il
+>            | acy       = genAbstract opts fn tyEnv tcEnv m
+>            | otherwise = return defaultResults
 
 > parseModule :: Bool -> FilePath -> String -> Module
 > parseModule likeFlat fn =
@@ -216,21 +229,23 @@ code are obsolete and commented out.
 >         code = (xmlModule cEnv il)
 
 > writeFlat :: Options -> Maybe FilePath -> FilePath -> CurryEnv -> ModuleEnv 
->              -> ArityEnv -> IL.Module -> IO ()
+>              -> ArityEnv -> IL.Module -> IO Prog
 > writeFlat opts tfn sfn cEnv mEnv aEnv il
 >    = do let (prog,msgs) = genFlatCurry opts cEnv mEnv aEnv il
 >         unless (noWarn opts || null msgs)
 >	         (putStrLn (unlines (map show msgs)))
 >	  writeFlatCurry fname prog
+>         return prog
 >   where fname = fromMaybe (rootname sfn ++ flatExt) tfn
 
 > writeFInt :: Options -> Maybe FilePath -> FilePath -> CurryEnv -> ModuleEnv
->              -> ArityEnv -> IL.Module -> IO ()
+>              -> ArityEnv -> IL.Module -> IO Prog
 > writeFInt opts tfn sfn cEnv mEnv aEnv il 
 >    = do let (intf,msgs) = genFlatInterface opts cEnv mEnv aEnv il
 >         unless (noWarn opts || null msgs)
 >	         (putStrLn (unlines (map show msgs)))
 >	  writeFlatCurry fname intf
+>         return intf
 >  where fname = fromMaybe (rootname sfn ++ fintExt) tfn
 
 > writeTypedAbs :: Maybe FilePath -> FilePath -> ValueEnv -> TCEnv -> Module
@@ -551,28 +566,42 @@ standard output.
 \end{verbatim}
 The functions \texttt{genFlat} and \texttt{genAbstract} generate
 flat and abstract curry representations depending on the specified option.
+The result of \texttt{genFlat} is \texttt{True}, if the interface of
+\texttt{fname} has changed or did not exist.
 \begin{verbatim}
 
 > genFlat :: Options -> FilePath -> ModuleEnv -> TCEnv -> ArityEnv 
->            -> Interface -> Module -> IL.Module -> IO ()
+>            -> Interface -> Module -> IL.Module -> IO CompilerResults
 > genFlat opts fname mEnv tcEnv aEnv intf mod il
 >   | flat opts
->     = writeFlat opts Nothing fname cEnv mEnv aEnv il
->       >> writeFInt opts Nothing fname cEnv mEnv aEnv il
+>     {- = do let fintName = rootname fname ++ fintExt
+>          fcy   <- writeFlat opts Nothing fname cEnv mEnv aEnv il
+>          mfint <- readFlatInterface fintName
+>	   if (maybe False (interfaceCheck fcy) mfint)
+>             then writeFInt opts Nothing fname cEnv mEnv aEnv il
+>	           >> return (defaultResults{ unchangedIntf = Just fintName })
+>	      else writeFInt opts Nothing fname cEnv mEnv aEnv il
+>	           >> return defaultResults -}
+>     = do writeFlat opts Nothing fname cEnv mEnv aEnv il
+>	   writeFInt opts Nothing fname cEnv mEnv aEnv il
+>	   return defaultResults
 >   | flatXml opts
->     = writeXML (output opts) fname cEnv il
+>     = writeXML (output opts) fname cEnv il >> return defaultResults
 >   | otherwise
 >     = internalError "@Modules.genFlat: illegal option"
 >  where
 >    cEnv = curryEnv mEnv tcEnv intf mod
 
 
-> genAbstract :: Options -> FilePath  -> ValueEnv -> TCEnv -> Module -> IO ()
+> genAbstract :: Options -> FilePath  -> ValueEnv -> TCEnv -> Module 
+>                -> IO CompilerResults
 > genAbstract opts fname tyEnv tcEnv mod
 >    | abstract opts
->      = writeTypedAbs Nothing fname tyEnv tcEnv mod
+>      = do writeTypedAbs Nothing fname tyEnv tcEnv mod 
+>           return defaultResults
 >    | untypedAbstract opts
->      = writeUntypedAbs Nothing fname tyEnv tcEnv mod
+>      = do writeUntypedAbs Nothing fname tyEnv tcEnv mod
+>           return defaultResults
 >    | otherwise
 >      = internalError "@Modules.genAbstract: illegal option"
 

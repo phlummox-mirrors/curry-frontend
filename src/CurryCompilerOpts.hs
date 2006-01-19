@@ -33,7 +33,7 @@ data Options
 
 
 -- Default compiler options
-defaultOpts = Options{importPaths = [],
+defaultOpts = Options{importPaths     = [],
 		      output          = Nothing,
 		      noInterface     = False,
 		      noVerb          = False,

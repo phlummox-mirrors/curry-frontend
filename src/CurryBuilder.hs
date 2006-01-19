@@ -12,6 +12,7 @@ module CurryBuilder (buildCurry, smake) where
 import CurryBuilderOpts
 import CurryCompiler
 import qualified CurryCompilerOpts as COpts
+import CompilerResults
 import CurryDeps
 import Ident
 import PathUtils
@@ -45,33 +46,46 @@ buildCurry options file
 
 -------------------------------------------------------------------------------
 
-makeCurry :: Options -> [(ModuleIdent,Source)] -> FilePath -> IO ()
+makeCurry :: Options -> [(ModuleIdent,Source)] -> FilePath 
+	  -> IO ()
 makeCurry options deps file
-   = do mapM_ (compile . snd) deps
+   = foldM compile [] (map snd deps) >> return ()--do mapM_ (compile . snd) deps
  where
- compile (Source file' mods)
+ compile unchIntfs (Source file' mods)
     | rootname file == rootname file'
       = if (null (dump options))
 	then smake (targetNames file')
-                   (file':catMaybes (map flatInterface mods))
-		   (unless (noVerb options)
-		           (putStrLn ("generating " 
-				      ++ (head (targetNames file')) 
-				      ++ " ..."))
-		    >> compileCurry (compOpts False) file')
-	else unless (noVerb options)
-	            (putStrLn ("generating " 
-			       ++ (head (targetNames file')) 
-			       ++ " ..."))
-             >> compileCurry (compOpts False) file'
+                   (file':((catMaybes (map flatInterface mods)) \\ unchIntfs))
+		   (do unless (noVerb options)
+		              (putStrLn ("generating " 
+				         ++ (head (targetNames file')) 
+				         ++ " ..."))
+		       compileCurry (compOpts False) file'
+		       return unchIntfs)
+		   (do unless (noVerb options 
+			       || elem (dirname file') (libPaths options))
+		              (putStrLn ("skipping " ++ file' ++ " ..."))
+		       return unchIntfs)
+	else do unless (noVerb options)
+	               (putStrLn ("generating " 
+			          ++ (head (targetNames file')) 
+			          ++ " ..."))
+                compileCurry (compOpts False) file'
+	        return unchIntfs
     | otherwise
       = smake [flatName file', flatIntName file']
-	      (file':catMaybes (map flatInterface mods))
-	      (unless (noVerb options) 
-	              (putStrLn ("compiling " ++ file' ++ " ..."))
-	       >> compileCurry (compOpts True) file')
-	  
- compile _ = return ()
+	      (file':((catMaybes (map flatInterface mods)) \\ unchIntfs))
+	      (do unless (noVerb options) 
+	                 (putStrLn ("compiling " ++ file' ++ " ..."))
+	          res <- compileCurry (compOpts True) file'
+	          return (maybe unchIntfs 
+			        (\intf -> intf:unchIntfs)
+			        (unchangedIntf res)))
+	      (do unless (noVerb options
+		          || elem (dirname file') (libPaths options))
+	                 (putStrLn ("skipping " ++ file' ++ " ..."))
+		  return ((flatIntName file'):unchIntfs))
+ compile unchIntfs _ = return unchIntfs
 
  targetNames fn | flat options            = [flatName fn, flatIntName fn]
 		| flatXml options         = [xmlName fn]
@@ -138,9 +152,12 @@ genDeps paths file
 -------------------------------------------------------------------------------
 -- A simple make function
 
---
-smake :: [FilePath] -> [FilePath] -> IO () -> IO ()
-smake dests deps cmd
+-- smake <destination files>
+--       <dependencies> 
+--       <io action, if dependencies are newer than destination files>
+--       <io action, if destination files are newer than dependencies>
+smake :: [FilePath] -> [FilePath] -> IO a -> IO a -> IO a
+smake dests deps cmd alt
    = do destTimes <- getDestTimes dests
 	depTimes  <- getDepTimes deps
 	make destTimes depTimes
@@ -153,7 +170,7 @@ smake dests deps cmd
     | outOfDate destTimes depTimes
       = catch cmd (\err -> abortWith [show err])
     | otherwise
-      = return ()
+      = alt
 
 --
 getDestTimes :: [FilePath] -> IO [ClockTime]
