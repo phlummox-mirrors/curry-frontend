@@ -51,7 +51,6 @@ import declarations are commented out
 > import CurryCompilerOpts(Options(..),Dump(..))
 > import CompilerResults
 > import CaseCompletion
-> import PatchPrelude
 > import PathUtils
 > import List
 > import IO
@@ -94,7 +93,7 @@ code are obsolete and commented out.
 > compileModule_ opts fn =
 >   do
 >     mod <- liftM (parseModule likeFlat fn) 
->                  (readFile fn >>= return . (patchPreludeSource fn))
+>                  (readFile fn)
 >     let m = patchModuleId fn mod
 >     checkModuleId fn m
 >     mEnv <- loadInterfaces (importPaths opts) m

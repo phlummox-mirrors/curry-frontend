@@ -8,15 +8,7 @@ import Ident
 import PathUtils
 
 
--------------------------------------------------------------------------------
-
-patchPreludeSource :: FilePath -> String -> String
-patchPreludeSource fn src
-   | (basename (rootname fn)) == "prelude"
-     = src ++ "\n\n" ++ unlines preludePatchSource
-   | otherwise
-     = src
-
+-- the prelude has to be extended by data declarations for list and tuples
 
 patchPreludeFCY :: Prog -> Prog
 patchPreludeFCY (Prog name imports types funcs ops)
@@ -24,21 +16,6 @@ patchPreludeFCY (Prog name imports types funcs ops)
      = Prog name [] (prelude_types_fcy ++ types) funcs ops
    | otherwise
      = Prog name imports types funcs ops
-
-
--------------------------------------------------------------------------------
--------------------------------------------------------------------------------
-
-preludePatchSource :: [String]
-preludePatchSource
-   = ["data Int", 
-      "data Float",
-      "data Char",
-      "data Success",
-      "data IO _",
-      "data Bool = True | False",
-      "type String = [Char]"]
-
 
 prelude_types_fcy :: [TypeDecl]
 prelude_types_fcy = [(Type ("prelude","()") Public [] 
