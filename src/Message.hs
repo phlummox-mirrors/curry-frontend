@@ -16,7 +16,7 @@ import Position
 -------------------------------------------------------------------------------
 
 -- Type for representing compiler messages (currently errors and warnings)
-data Message = Message MessageType Position String
+data Message = Message MessageType (Maybe Position) String
 
 -- Data type for representing available compiler message types
 data MessageType = Warning  | Error deriving Eq
@@ -24,15 +24,19 @@ data MessageType = Warning  | Error deriving Eq
 
 -- An instance of Show for converting messages to readable strings
 instance Show Message where
- show (Message Warning pos msg) = showMessage "Warning" pos msg
- show (Message Error   pos msg) = showMessage "ERROR" pos msg
+ show (Message Warning mpos msg) = showMessage "Warning" mpos msg
+ show (Message Error   mpos msg) = showMessage "ERROR" mpos msg
 
 
 -------------------------------------------------------------------------------
 
 --
 message :: MessageType -> Position -> String -> Message
-message = Message 
+message mtype pos msg = Message mtype (Just pos) msg
+
+--
+message_ :: MessageType -> String -> Message
+message_ mtype msg = Message mtype Nothing msg
 
 --
 countMessages :: MessageType -> [Message] -> Int
@@ -47,10 +51,11 @@ messageType (Message mtype _ _) = mtype
 -------------------------------------------------------------------------------
 
 --
-showMessage :: String -> Position -> String -> String
-showMessage what pos msg
-   | pos == first "" = what ++ ": " ++ msg
-   | otherwise       = what ++ ": " ++ show pos ++ ": " ++ msg
+showMessage :: String -> (Maybe Position) -> String -> String
+showMessage what mpos msg
+   = what ++ ": " ++ pos ++ msg
+ where
+ pos = maybe "" (\p -> show p ++ ": ") mpos
 
 
 -------------------------------------------------------------------------------

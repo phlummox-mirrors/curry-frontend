@@ -544,10 +544,10 @@ checkOverlapping expr1 expr2
  where
  checkOverlap (Case _ _ _) _ 
     = do qid <- functionId
-	 genWarning (first "") (overlappingRules qid)
+	 genWarning (overlappingRules qid)
  checkOverlap _ (Case _ _ _)
     = do qid <- functionId
-	 genWarning (first "") (overlappingRules qid)
+	 genWarning (overlappingRules qid)
  checkOverlap _ _ = return ()
 
 
@@ -931,10 +931,10 @@ clearTVarIndices = FlatState (\env -> env{ tvarIndexE = 0,
 					 })
 
 --
-genWarning :: Position -> String -> FlatState ()
-genWarning pos msg
+genWarning :: String -> FlatState ()
+genWarning msg
    = FlatState (\env -> env{ messagesE = warnMsg:(messagesE env) })
- where warnMsg = message Warning pos msg
+ where warnMsg = message_ Warning msg
 
 --
 genInterface :: FlatState Bool

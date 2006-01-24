@@ -25,9 +25,10 @@ import qualified CurrySyntax as CS
 import qualified AbstractCurry as ACY
 import qualified FlatCurry as FCY
 import qualified Error as Err
+import CompilerResults
+import Message
 import CurryEnv
 import Unlit
-import PatchPrelude
 import Ident
 import Position
 import PathUtils
@@ -53,10 +54,9 @@ lex fn src = genToks (lexFile (first fn) src False [])
 -- "CurrySyntax").
 parse :: FilePath -> String -> Result CS.Module
 parse fn src = let (err, src') = unlitLiterate fn src
-		   src''       = patchPreludeSource fn src'
 	       in  if null err
-		   then genCurrySyntax fn (parseSource True fn src'')
-		   else Failure [Error Nothing err]
+		   then genCurrySyntax fn (parseSource True fn src')
+		   else Failure [message_ Error err]
 
 
 -- Compiles the source programm 'src' to an AbstractCurry program
@@ -80,9 +80,10 @@ flatIO paths fn src = genFlatIO paths fn (parse fn src)
 
 data Result a = Result [Message] a | Failure [Message] deriving Show
 
-data Message = Warning (Maybe Position) String
-	     | Error (Maybe Position) String
-	     deriving Show
+-- See module "Message":
+--data Message = Warning (Maybe Position) String
+--	     | Error (Maybe Position) String
+--	     deriving Show
 
 
 -------------------------------------------------------------------------------
@@ -92,7 +93,7 @@ data Message = Warning (Maybe Position) String
 --
 genToks :: Err.Error [(Position,Token)] -> Result [(Position,Token)]
 genToks (Err.Ok toks)   = Result [] toks
-genToks (Err.Error err) = Failure [Error Nothing err]
+genToks (Err.Error err) = Failure [message_ Error err]
 
 
 --
@@ -101,9 +102,9 @@ genCurrySyntax fn (Err.Ok mod)
    = let mod'@(CS.Module mid _ _) = patchModuleId fn (importPrelude fn mod)
      in  if isValidModuleId fn mid
 	 then Result [] mod'
-	 else Failure [Error Nothing (err_invalidModuleName mid)]
+	 else Failure [message_ Error (err_invalidModuleName mid)]
 genCurrySyntax _ (Err.Error err)
-   = Failure [Error Nothing err]
+   = Failure [message_ Error err]
 
 
 --
@@ -116,7 +117,7 @@ genAbstractIO paths fn (Result msgs mod)
 	       (tyEnv, tcEnv, _, mod', _) <- simpleCheckModule opts mEnv mod
 	       return (Result msgs (genTypedAbstract tyEnv tcEnv mod'))
 	   )
-	   else return (Failure (msgs ++ map (Error Nothing) errs))
+	   else return (Failure (msgs ++ map (message_ Error) errs))
  where opts = defaultOpts{ importPaths = paths,
 			   noVerb      = True,
 			   noWarn      = True,
@@ -136,9 +137,10 @@ genFlatIO paths fn (Result msgs mod)
 	              = transModule True False False mEnv tyEnv aEnv mod'
 	           il' = completeCase mEnv il
 	           cEnv = curryEnv mEnv tcEnv intf mod'
-               return (Result msgs (genFlatCurry cEnv mEnv aEnv' il'))
+	           (prog,msgs') = genFlatCurry opts cEnv mEnv aEnv' il'
+               return (Result (msgs' ++ msgs) prog)
 	   )
-	   else return (Failure (msgs ++ map (Error Nothing) errs))
+	   else return (Failure (msgs ++ map (message_ Error) errs))
  where opts = defaultOpts{ importPaths = paths,
 			   noVerb      = True,
 			   noWarn      = True,
@@ -161,9 +163,11 @@ makeInterfaces paths (CS.Module mid _ decls)
        return errs
  where
  compile deps (Source file' mods)
-    = smake [flatName file', flatIntName file']
-	    (file':catMaybes (map (flatInterface deps) mods))
-	    (compileCurry opts file')
+    = do smake [flatName file', flatIntName file']
+	       (file':catMaybes (map (flatInterface deps) mods))
+	       (compileCurry opts file')
+	       (return defaultResults)
+	 return ()
  compile _ _ = return ()
 
  flatInterface deps mod 
