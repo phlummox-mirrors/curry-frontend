@@ -19,39 +19,42 @@ import CurryCompilerOpts (Dump(..))
 
 -- Data type for recording builder options
 data Options 
-   = Options{importPaths :: [FilePath],  -- import paths
-	     libPaths :: [FilePath],     -- library paths
-	     output :: Maybe FilePath,   -- output file paths
-	     noVerb :: Bool,             -- verbosity on/off
-	     noWarn :: Bool,             -- warnings on/off
-	     noOverlapWarn :: Bool,      -- "overlap" warnings on/off
-	     flat :: Bool,               -- generate FlatCurry code
-	     flatXml :: Bool,            -- generate FlatXML code
-	     abstract :: Bool,           -- generate AbstractCurry code
-	     untypedAbstract :: Bool,    -- generate untyped AbstractCurry
-	     withExtensions :: Bool,     -- enable extended functionalities
-	     dump :: [Dump]              -- dumps
+   = Options{ force :: Bool,              -- force compilation
+	      importPaths :: [FilePath],  -- import paths
+	      libPaths :: [FilePath],     -- library paths
+	      output :: Maybe FilePath,   -- output file paths
+	      noVerb :: Bool,             -- verbosity on/off
+	      noWarn :: Bool,             -- warnings on/off
+	      noOverlapWarn :: Bool,      -- "overlap" warnings on/off
+	      flat :: Bool,               -- generate FlatCurry code
+	      flatXml :: Bool,            -- generate FlatXML code
+	      abstract :: Bool,           -- generate AbstractCurry code
+	      untypedAbstract :: Bool,    -- generate untyped AbstractCurry
+	      withExtensions :: Bool,     -- enable extended functionalities
+	      dump :: [Dump]              -- dumps
 	    }
 
 -- Default builder options
-defaultOpts = Options{importPaths     = [],
-		      libPaths        = [],
-		      output          = Nothing,
-		      noVerb          = False,
-		      noWarn          = False,
-		      noOverlapWarn   = False,
-		      flat            = False,
-		      flatXml         = False,
-		      abstract        = False,
-		      untypedAbstract = False,
-		      withExtensions  = False,
-		      dump            = []
+defaultOpts = Options{ force           = False,
+		       importPaths     = [],
+		       libPaths        = [],
+		       output          = Nothing,
+		       noVerb          = False,
+		       noWarn          = False,
+		       noOverlapWarn   = False,
+		       flat            = False,
+		       flatXml         = False,
+		       abstract        = False,
+		       untypedAbstract = False,
+		       withExtensions  = False,
+		       dump            = []
 		     }
 
 
 -- Data type for representing all available options (needed to read and parse
 -- the options from the command line; see module "GetOpt")
-data Option = Help | ImportPath FilePath | LibPath FilePath | Output FilePath
+data Option = Help | Force
+	    | ImportPath FilePath | LibPath FilePath | Output FilePath
 	    | NoVerb | NoWarn | NoOverlapWarn
 	    | Flat | FlatXML | Abstract | UntypedAbstract 
 	    | WithExtensions
@@ -60,7 +63,9 @@ data Option = Help | ImportPath FilePath | LibPath FilePath | Output FilePath
 
 
 -- All available builder options
-options = [Option "i" ["import-dir"] (ReqArg ImportPath "DIR")
+options = [Option "f" ["force"] (NoArg Force)
+	          "force compilation of dependent files",
+	   Option "i" ["import-dir"] (ReqArg ImportPath "DIR")
 	          "search for imported modules in DIR",
 	   Option "o" ["output"] (ReqArg Output "FILE")
 	          "output goes to FILE",
@@ -91,6 +96,7 @@ options = [Option "i" ["import-dir"] (ReqArg ImportPath "DIR")
 
 -- Inserts an option (type 'Option') into the options record (type 'Options')
 selectOption :: Option -> Options -> Options
+selectOption Force opts           = opts{ force = True }
 selectOption (ImportPath dir) opts 
    = opts{ importPaths = dir:(importPaths opts) }
 selectOption (LibPath dir) opts 

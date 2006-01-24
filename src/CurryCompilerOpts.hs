@@ -17,40 +17,43 @@ import GetOpt
 
 -- Data type for recording compiler options
 data Options
-   = Options{importPaths :: [FilePath], -- directories for searching imports
-	     output :: Maybe FilePath,  -- name of output file
-	     noInterface :: Bool,       -- do not create an interface file
-	     noVerb :: Bool,            -- verbosity on/off
-	     noWarn :: Bool,            -- warnings on/off
-	     noOverlapWarn :: Bool,     -- "overlap" warnings on/off
-	     flat :: Bool,              -- generate FlatCurry code
-	     flatXml :: Bool,           -- generate flat XML code
-	     abstract :: Bool,          -- generate typed AbstracCurry code
-	     untypedAbstract :: Bool,   -- generate untyped AbstractCurry code
-	     withExtensions :: Bool,    -- enable extended functionalities
-	     dump :: [Dump]             -- dumps
+   = Options{ force :: Bool,              -- force compilation
+	      importPaths :: [FilePath], -- directories for searching imports
+	      output :: Maybe FilePath,  -- name of output file
+	      noInterface :: Bool,       -- do not create an interface file
+	      noVerb :: Bool,            -- verbosity on/off
+	      noWarn :: Bool,            -- warnings on/off
+	      noOverlapWarn :: Bool,     -- "overlap" warnings on/off
+	      flat :: Bool,              -- generate FlatCurry code
+	      flatXml :: Bool,           -- generate flat XML code
+	      abstract :: Bool,          -- generate typed AbstracCurry code
+	      untypedAbstract :: Bool,   -- generate untyped AbstractCurry code
+	      withExtensions :: Bool,    -- enable extended functionalities
+	      dump :: [Dump]             -- dumps
 	    }
 
 
 -- Default compiler options
-defaultOpts = Options{importPaths     = [],
-		      output          = Nothing,
-		      noInterface     = False,
-		      noVerb          = False,
-		      noWarn          = False,
-		      noOverlapWarn   = False,
-		      flat            = False,
-		      flatXml         = False,
-		      abstract        = False,
-		      untypedAbstract = False,
-		      withExtensions  = False,
-		      dump            = []
+defaultOpts = Options{ force           = False,
+		       importPaths     = [],
+		       output          = Nothing,
+		       noInterface     = False,
+		       noVerb          = False,
+		       noWarn          = False,
+		       noOverlapWarn   = False,
+		       flat            = False,
+		       flatXml         = False,
+		       abstract        = False,
+		       untypedAbstract = False,
+		       withExtensions  = False,
+		       dump            = []
 		     }
 
 
 -- Data type for representing all available options (needed to read and parse
 -- the options from the command line; see module "GetOpt")
-data Option = Help | ImportPath FilePath | Output FilePath
+data Option = Help | Force
+	    | ImportPath FilePath | Output FilePath
 	    | NoInterface | NoVerb | NoWarn | NoOverlapWarn
 	    | FlatXML | Flat | Abstract | UntypedAbstract
 	    | WithExtensions
@@ -58,7 +61,9 @@ data Option = Help | ImportPath FilePath | Output FilePath
 
 
 -- All available compiler options
-options = [Option "i" ["import-dir"] (ReqArg ImportPath "DIR")
+options = [Option "f" ["force"] (NoArg Force)
+	          "force compilation of dependent files",
+	   Option "i" ["import-dir"] (ReqArg ImportPath "DIR")
                   "search for imports in DIR",
 	   Option "o" ["output"] (ReqArg Output "FILE")
                   "write code to FILE",
@@ -105,6 +110,7 @@ options = [Option "i" ["import-dir"] (ReqArg ImportPath "DIR")
 
 -- Inserts an option (type 'Option') into the options record (type 'Options')
 selectOption :: Option -> Options -> Options
+selectOption Force opts           = opts{ force = True }
 selectOption (ImportPath dir) opts 
    = opts{ importPaths = dir:(importPaths opts) }
 selectOption (Output file) opts   = opts{ output = Just file }

@@ -49,11 +49,11 @@ buildCurry options file
 makeCurry :: Options -> [(ModuleIdent,Source)] -> FilePath 
 	  -> IO ()
 makeCurry options deps file
-   = foldM compile [] (map snd deps) >> return ()--do mapM_ (compile . snd) deps
+   = foldM compile [] (map snd deps) >> return ()
  where
  compile unchIntfs (Source file' mods)
     | rootname file == rootname file'
-      = if (null (dump options))
+      = if not (force options) && null (dump options)
 	then smake (targetNames file')
                    (file':((catMaybes (map flatInterface mods)) \\ unchIntfs))
 		   (do unless (noVerb options)
@@ -73,18 +73,23 @@ makeCurry options deps file
                 compileCurry (compOpts False) file'
 	        return unchIntfs
     | otherwise
-      = smake [flatName file', flatIntName file']
-	      (file':((catMaybes (map flatInterface mods)) \\ unchIntfs))
-	      (do unless (noVerb options) 
-	                 (putStrLn ("compiling " ++ file' ++ " ..."))
-	          res <- compileCurry (compOpts True) file'
-	          return (maybe unchIntfs 
-			        (\intf -> intf:unchIntfs)
-			        (unchangedIntf res)))
-	      (do unless (noVerb options
-		          || elem (dirname file') (libPaths options))
-	                 (putStrLn ("skipping " ++ file' ++ " ..."))
-		  return ((flatIntName file'):unchIntfs))
+      = if True  -- will be extended later...
+        then  smake [flatName file', flatIntName file']
+	            (file':((catMaybes (map flatInterface mods)) \\ unchIntfs))
+	            (do unless (noVerb options) 
+	                       (putStrLn ("compiling " ++ file' ++ " ..."))
+	                res <- compileCurry (compOpts True) file'
+	                return (maybe unchIntfs 
+			              (\intf -> intf:unchIntfs)
+			              (unchangedIntf res)))
+		    (do unless (noVerb options
+				|| elem (dirname file') (libPaths options))
+	                       (putStrLn ("skipping " ++ file' ++ " ..."))
+		        return ((flatIntName file'):unchIntfs))
+	else do unless (noVerb options)
+		       (putStrLn ("compiling " ++ file' ++ " ..."))
+		compileCurry (compOpts True) file'
+		return unchIntfs
  compile unchIntfs _ = return unchIntfs
 
  targetNames fn | flat options            = [flatName fn, flatIntName fn]
@@ -102,31 +107,33 @@ makeCurry options deps file
  compOpts isImport
     | isImport 
       = COpts.defaultOpts 
-	   {COpts.importPaths = importPaths options ++ libPaths options,
-	    COpts.output = output options,
-	    COpts.noVerb = noVerb options,
-	    COpts.noWarn = noWarn options,
-	    COpts.noOverlapWarn = noOverlapWarn options,
-	    COpts.flat = True,
-	    COpts.flatXml = False,
-	    COpts.abstract = False,
-	    COpts.untypedAbstract = False,
-	    COpts.withExtensions = withExtensions options,
-	    COpts.dump = []
+	   { COpts.force = force options,
+	     COpts.importPaths = importPaths options ++ libPaths options,
+	     COpts.output = output options,
+	     COpts.noVerb = noVerb options,
+	     COpts.noWarn = noWarn options,
+	     COpts.noOverlapWarn = noOverlapWarn options,
+	     COpts.flat = True,
+	     COpts.flatXml = False,
+	     COpts.abstract = False,
+	     COpts.untypedAbstract = False,
+	     COpts.withExtensions = withExtensions options,
+	     COpts.dump = []
 	   }
     | otherwise
       = COpts.defaultOpts 
-	   {COpts.importPaths = importPaths options ++ libPaths options,
-	    COpts.output = output options,
-	    COpts.noVerb = noVerb options,
-	    COpts.noWarn = noWarn options,
-	    COpts.noOverlapWarn = noOverlapWarn options,
-	    COpts.flat = flat options,
-	    COpts.flatXml = flatXml options,
-	    COpts.abstract = abstract options,
-	    COpts.untypedAbstract = untypedAbstract options,
-	    COpts.withExtensions = withExtensions options,
-	    COpts.dump = dump options
+	   { COpts.force = force options,
+	     COpts.importPaths = importPaths options ++ libPaths options,
+	     COpts.output = output options,
+	     COpts.noVerb = noVerb options,
+	     COpts.noWarn = noWarn options,
+	     COpts.noOverlapWarn = noOverlapWarn options,
+	     COpts.flat = flat options,
+	     COpts.flatXml = flatXml options,
+	     COpts.abstract = abstract options,
+	     COpts.untypedAbstract = untypedAbstract options,
+	     COpts.withExtensions = withExtensions options,
+	     COpts.dump = dump options
 	   }
 			 
 

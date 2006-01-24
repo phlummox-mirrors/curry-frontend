@@ -108,13 +108,6 @@ code are obsolete and commented out.
 >                 il' = completeCase mEnv il
 >             mapM_ (doDump opts) dumps
 >	      genCode opts fn mEnv tyEnv tcEnv aEnv' intf m' il'
->             --if fcy || xml || acy || uacy
->             --   then 
->	      --     do when fcy  (genFlat opts fn mEnv tcEnv aEnv' intf m' il')
->		--      when xml  (genFlat opts fn mEnv tcEnv aEnv' intf m' il')
->		--      when acy  (genAbstract opts fn tyEnv tcEnv m')
->               --      when uacy (return defaultResults)
->               -- else genFlat opts fn mEnv tcEnv aEnv' intf m' il'
 >   where acy      = abstract opts
 >         uacy     = untypedAbstract opts
 >         fcy      = flat opts
@@ -565,25 +558,35 @@ standard output.
 \end{verbatim}
 The functions \texttt{genFlat} and \texttt{genAbstract} generate
 flat and abstract curry representations depending on the specified option.
-The result of \texttt{genFlat} is \texttt{True}, if the interface of
-\texttt{fname} has changed or did not exist.
+If the interface of a modified Curry module did not change, the corresponding 
+file name will be returned within the result of \texttt{genFlat} (depending
+on the compiler flag "force") and other modules importing this module won't
+be dependent on it any longer.
 \begin{verbatim}
 
 > genFlat :: Options -> FilePath -> ModuleEnv -> TCEnv -> ArityEnv 
 >            -> Interface -> Module -> IL.Module -> IO CompilerResults
 > genFlat opts fname mEnv tcEnv aEnv intf mod il
 >   | flat opts
->     {- = do let fintName = rootname fname ++ fintExt
->          fcy   <- writeFlat opts Nothing fname cEnv mEnv aEnv il
->          mfint <- readFlatInterface fintName
->	   if (maybe False (interfaceCheck fcy) mfint)
->             then writeFInt opts Nothing fname cEnv mEnv aEnv il
->	           >> return (defaultResults{ unchangedIntf = Just fintName })
->	      else writeFInt opts Nothing fname cEnv mEnv aEnv il
->	           >> return defaultResults -}
 >     = do writeFlat opts Nothing fname cEnv mEnv aEnv il
->	   writeFInt opts Nothing fname cEnv mEnv aEnv il
->	   return defaultResults
+>          let fintName = rootname fname ++ fintExt
+>          if not (force opts)
+>             then do mfint <- readFlatInterface fintName
+>		      if isJust mfint && mfint == mfint
+>		         then do fint <- writeFInt opts Nothing fname 
+>				                   cEnv mEnv aEnv il
+>		                 if interfaceCheck (fromJust mfint) fint
+>		                    then return (defaultResults
+>					           { unchangedIntf 
+>					             = Just fintName 
+>					           }
+>					        )
+>		                    else return defaultResults
+>	                 else do writeFInt opts Nothing fname 
+>				           cEnv mEnv aEnv il
+>		                 return defaultResults
+>	      else do writeFInt opts Nothing fname cEnv mEnv aEnv il
+>		      return defaultResults
 >   | flatXml opts
 >     = writeXML (output opts) fname cEnv il >> return defaultResults
 >   | otherwise
