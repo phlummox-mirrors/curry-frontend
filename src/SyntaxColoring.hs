@@ -188,10 +188,7 @@ exportSpec2codes (Exporting _ exports) = concatMap export2codes exports
 
 export2codes :: Export -> [Code]
 export2codes (Export qualIdent) =
-     let str = name (unqualify qualIdent) in
-     if isUpper (head str)
-        then qualIdent2codes ConstructorName qualIdent 
-        else qualIdent2codes Function qualIdent  
+     qualIdent2codes Function qualIdent  
 export2codes (ExportTypeWith qualIdent idents) = 
      qualIdent2codes ConstructorName qualIdent ++ map (Function . name) idents
 export2codes (ExportTypeAll  qualIdent) = 
@@ -202,9 +199,7 @@ export2codes (ExportModule moduleIdent) =
 decl2codes :: Decl -> [Code]            
 decl2codes (ImportDecl _ moduleIdent xQualified xModuleIdent importSpec) = 
      moduleIdent2codes moduleIdent ++
-     if isNothing importSpec
-       then []
-       else importSpec2codes (fromJust importSpec)
+     maybe [] importSpec2codes  importSpec
 decl2codes (InfixDecl _ _ _ idents) =
      (map (Function . name) idents)
 decl2codes (DataDecl _ ident idents constrDecls) =
@@ -353,10 +348,7 @@ importSpec2codes (Hiding _ imports) = concatMap import2codes imports
 
 import2codes :: Import -> [Code]
 import2codes (Import ident) =
-     let str = name ident in
-     if isUpper (head str)
-        then [ConstructorName $ name ident] 
-        else [Function $ name ident]  
+     [Function $ name ident]  
 import2codes (ImportTypeWith ident idents) = 
      [ConstructorName $ name ident] ++ map (Function . name) idents
 import2codes (ImportTypeAll  ident) = 
