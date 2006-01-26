@@ -205,24 +205,28 @@ decl2codes (ImportDecl _ moduleIdent xQualified xModuleIdent importSpec) =
      if isNothing importSpec
        then []
        else importSpec2codes (fromJust importSpec)
-decl2codes (InfixDecl xPosition xInfix xInteger [xIdent]) =
-     []
+decl2codes (InfixDecl _ _ _ idents) =
+     (map (Function . name) idents)
 decl2codes (DataDecl _ ident idents constrDecls) =
-     [ConstructorName (name ident)] ++ concatMap constrDecl2codes constrDecls
-decl2codes (NewtypeDecl xPosition xIdent [yIdent] xNewConstrDecl) =
+     [TypeConstructor (name ident)] ++ 
+     map (Identifier . name) idents ++
+     concatMap constrDecl2codes constrDecls
+decl2codes (NewtypeDecl xPosition xIdent yIdents xNewConstrDecl) =
      []
-decl2codes (TypeDecl xPosition xIdent xIdents xTypeExpr) =
-     []
+decl2codes (TypeDecl _ ident idents typeExpr) =
+     TypeConstructor (name ident) : 
+     map (Identifier . name) idents ++ 
+     typeExpr2codes typeExpr
 decl2codes (TypeSig _ idents typeExpr) =
-     [Function (name (head idents))] ++ typeExpr2codes typeExpr
-decl2codes (EvalAnnot xPosition [xIdent] xEvalAnnotation) =
+     map (Function . name) idents ++ typeExpr2codes typeExpr
+decl2codes (EvalAnnot xPosition xIdents xEvalAnnotation) =
      []
 decl2codes (FunctionDecl _ ident equations) =
      Function (name ident) : concatMap equation2codes equations
 decl2codes (ExternalDecl xPosition xCallConv xString xIdent xTypeExpr) =
      []
 decl2codes (FlatExternalDecl _ idents) =
-      map (Identifier . name) idents
+     map (Function . name) idents
 decl2codes (PatternDecl xPosition constrTerm rhs) =
      constrTerm2codes constrTerm ++ rhs2codes rhs
 decl2codes (ExtraVariables _ idents) =
@@ -360,9 +364,9 @@ import2codes (ImportTypeAll  ident) =
      
 typeExpr2codes :: TypeExpr -> [Code]     
 typeExpr2codes (ConstructorType qualIdent typeExprs) = 
-    qualIdent2codes ConstructorName qualIdent ++ concatMap typeExpr2codes typeExprs
+    qualIdent2codes TypeConstructor qualIdent ++ concatMap typeExpr2codes typeExprs
 typeExpr2codes (VariableType ident) = 
-    [ConstructorName $ name ident]
+    [TypeConstructor $ name ident]
 typeExpr2codes (TupleType typeExprs) = 
     concatMap typeExpr2codes typeExprs
 typeExpr2codes (ListType typeExpr) = 
@@ -513,13 +517,13 @@ tokenNcodes2codesLOG currLine currCol toks@((Position _ line col,token):ts) code
       newCol  = currCol + length tokenStr   
 
      
-{-     
+  
 --writeFile ("out/" ++ basename s) cont            
      
 test2 s =
      readFile s >>= \ cont ->
-     let (Ok (Module m e list)) = (parseString s cont)
-         (Ok ls) = (scan s cont) in
+     let (Result _ modul@(Module m e list)) = (parse s cont)
+         (Result _ ls) = (Frontend.lex s cont) in
      writeFile ("out/" ++ basename s ++ ".parse.txt") 
                (show m ++
                " " ++
@@ -530,7 +534,7 @@ test2 s =
      writeFile ("out/" ++ basename s ++ ".ids.txt") (unlines $ map show (concatMap decl2codes list)) >>  
      writeFile "out/log.txt" "" >>
      writeFile ("out/" ++ basename s) cont >>    
-     tokenNcodes2codesLOG 0 0 ls (concatMap decl2codes list) >>= writeFile ("out/" ++ basename s ++ ".codes.txt") . unlines . map show
+     tokenNcodes2codesLOG 0 0 ls (catIdentifiers modul) >>= writeFile ("out/" ++ basename s ++ ".codes.txt") . unlines . map show
 
-     -}
+     
 --writeFile ("out/" ++ basename s ++ ".codes.txt") (unlines $ map show (tokenNcodes2codes 1 1 ls (concatMap decl2codes list)))      
