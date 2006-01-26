@@ -21,7 +21,7 @@ cannot define generic state and environment monad classes.
 > import Error
 > import Monad
 > import IO
-> import IOExts
+> import Data.IORef
 
 \end{verbatim}
 \subsection{Identity monad}
