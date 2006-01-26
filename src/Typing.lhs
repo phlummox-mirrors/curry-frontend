@@ -1,7 +1,7 @@
 % -*- LaTeX -*-
 % $Id: Typing.lhs,v 1.7 2004/02/12 19:13:12 wlux Exp $
 %
-% Copyright (c) 2003-2004, Wolfgang Lux
+% Copyright (c) 2003-2006, Wolfgang Lux
 % See LICENSE for the full license.
 %
 \nwfilename{Typing.lhs}
@@ -13,23 +13,71 @@
 > import TypeSubst
 > import Combined
 > import Monad
+> import TopEnv
 > import Utils
 
 \end{verbatim}
-During the transformation of the Curry source code into the
-intermediate language, the compiler has to recompute the type of
-expressions. This is simpler than type checking because the types of
-all variables are known. Still the compiler must handle polymorphic
-types of variables and their instantiation. Fortunately, all
-monomorphic types entered into the type environment by the type
-inferencer have negative offsets. As all types computed by
-\texttt{typeOf} are also monomorphic, we can use positive offsets for
+During the transformation of Curry source code into the intermediate
+language, the compiler has to recompute the types of expressions. This
+is simpler than type checking because the types of all variables are
+known. Yet, the compiler still must handle functions and constructors
+with polymorphic types and instantiate their type schemes using fresh
+type variables. Since all types computed by \texttt{typeOf} are
+monomorphic, we can use type variables with non-negative offsets for
 the instantiation of type schemes here without risk of name conflicts.
+Using non-negative offsets also makes it easy to distinguish these
+fresh variables from free type variables introduce during type
+inference, which must be regarded as constants here.
+
+However, using non-negative offsets for fresh type variables gives
+rise to two problems when those types are entered back into the type
+environment, e.g., while introducing auxiliary variables during
+desugaring. The first is that those type variables now appear to be
+universally quantified variables, but with indices greater than the
+number of quantified type variables.\footnote{To be precise, this can
+  happen only for auxiliary variables, which have monomorphic types,
+  whereas auxiliary functions will be assigned polymorphic types and
+  these type variables will be properly quantified. However, in this
+  case the assigned types may be too general.} This results in an
+internal error (``Prelude.!!: index too large'') whenever such a type
+is instantiated. The second problem is that there may be inadvertent
+name captures because \texttt{computeType} always uses indices
+starting at 0 for the fresh type variables. In order to avoid these
+problems, \texttt{computeType} renames all type variables with
+non-negative offsets after the final type has been computed, using
+negative indices below the one with the smallest value occurring in
+the type environment. Computing the minimum index of all type
+variables in the type environment seems prohibitively inefficient.
+However, recall that, thanks to laziness, the minimum is computed only
+when the final type contains any type variables with non-negative
+indices. This happens, for instance, 36 times while compiling the
+prelude (for 159 evaluated applications of \texttt{typeOf}) and only
+twice while compiling the standard \texttt{IO} module (for 21
+applications of \texttt{typeOf}).\footnote{These numbers were obtained
+  for version 0.9.9.}
+
+A careful reader will note that inadvertent name captures are still
+possible if one computes the types of two or more auxiliary variables
+before actually entering their types into the environment. Therefore,
+make sure that you enter the types of these auxiliary variables
+immediately into the type environment, unless you are sure that those
+types cannot contain fresh type variables. One such case are the free
+variables of a goal.
+
+\ToDo{In the long run, this module should be made obsolete by adding
+attributes to the abstract syntax tree -- e.g., along the lines of
+Chap.~6 in~\cite{PeytonJonesLester92:Book} -- and returning an
+abstract syntax tree attributed with type information together with
+the type environment from type inference. This also would allow
+getting rid of the identifiers in the representation of integer
+literals, which are used in order to implement overloading of
+integer constants.}
 
 \ToDo{When computing the type of an expression with a type signature
 make use of the annotation instead of recomputing its type. In order
-to do this we must either ensure that the type is properly qualified
-or we need access to the type constructor environment.}
+to do this, we must either ensure that the types are properly
+qualified and expanded or we need access to the type constructor
+environment.}
 \begin{verbatim}
 
 > type TyState a = StateT TypeSubst (StateT Int Id) a
@@ -53,11 +101,18 @@ or we need access to the type constructor environment.}
 >   typeOf = computeType rhsType
 
 > computeType f tyEnv x = normalize (run doComputeType tyEnv)
->  where doComputeType =
->          do
->            ty <- f tyEnv x
->            theta <- fetchSt
->            return (subst theta ty)
+>   where doComputeType =
+>           do
+>             ty <- f tyEnv x
+>             theta <- fetchSt
+>             return (fixTypeVars tyEnv (subst theta ty))
+
+> fixTypeVars :: ValueEnv -> Type -> Type
+> fixTypeVars tyEnv ty = subst (foldr2 bindSubst idSubst tvs tvs') ty
+>   where tvs = filter (>= 0) (typeVars ty)
+>         tvs' = map TypeVariable [n - 1,n - 2 ..]
+>         n = minimum (0 : concatMap typeVars tys)
+>         tys = [ty | (_,Value _ (ForAll _ ty)) <- localBindings tyEnv]
 
 > identType :: ValueEnv -> Ident -> TyState Type
 > identType tyEnv x = instUniv (varType x tyEnv)
@@ -161,7 +216,7 @@ or we need access to the type constructor environment.}
 
 \end{verbatim}
 In order to avoid name conflicts with non-generalized type variables
-in a type we instantiate quantified type variables using positive
+in a type we instantiate quantified type variables using non-negative
 offsets here.
 \begin{verbatim}
 
