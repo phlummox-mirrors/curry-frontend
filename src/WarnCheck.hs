@@ -459,8 +459,13 @@ insertConstrDecl (ConOpDecl _ _ _ ident _)
 --      constructor or a function. 
 insertConstrTerm :: Bool -> ConstrTerm -> CheckState ()
 insertConstrTerm fp (VariablePattern ident)
-   = do c <- isConsId ident
-	unless (fp || c) (insertVar ident)
+   | fp        = do c <- isConsId ident
+		    v <- isVarId ident
+		    unless c (if (name ident) /= "_" && v
+			         then visitId ident
+			         else insertVar ident)
+   | otherwise = do c <- isConsId ident
+	            unless c (insertVar ident)
 insertConstrTerm fp (ConstructorPattern qident cterms)
    = do c <- isQualConsId qident
 	if c then foldM' (insertConstrTerm fp) cterms
