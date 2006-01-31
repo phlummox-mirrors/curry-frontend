@@ -15,12 +15,6 @@ import Maybe
 import List
 
 
-main = getArgs >>= test . head
-
-test s = filename2program s >>= writeFile ("out/" ++ basename s ++ ".html") . program2html      
-     
-
-
 data Program = Program [Code] String  deriving Show
 
 data Code =  Keyword String
@@ -31,7 +25,9 @@ data Code =  Keyword String
            | Function String
            | ModuleName String
            | Commentary String
-           | Literale String
+           | NumberCode String
+           | StringCode String
+           | CharCode String
            | Symbol String
            | Identifier String deriving Show
            
@@ -105,7 +101,9 @@ code2color (ConstructorName _) = Fuchsia
 code2color (Function _) = Purple
 code2color (ModuleName _) = Maroon
 code2color (Commentary _) = Green
-code2color (Literale _) = Black
+code2color (NumberCode _) = Black
+code2color (StringCode _) = Blue
+code2color (CharCode _) = Blue
 code2color (Symbol _) = Silver
 code2color (Identifier _) = Black
 code2color (TypeConstructor _) = Blue
@@ -117,11 +115,12 @@ code2string (ConstructorName str) = str
 code2string (Function str) = str
 code2string (ModuleName str) = str
 code2string (Commentary str) = str
-code2string (Literale str) = str
+code2string (NumberCode str) = str
 code2string (Symbol str) = str
 code2string (Identifier str) = str                      
-code2string (TypeConstructor str) = str                                  
-
+code2string (TypeConstructor str) = str
+code2string (StringCode str) = str                                 
+code2string (CharCode str) = str
 
 color2html Blue = "blue"
 color2html Green = "green"
@@ -136,15 +135,15 @@ color2html Silver = "#C0C0C0"
 
 token2code :: Token -> Code
 token2code tok@(Token cat _)
-    | elem cat [CharTok,IntTok,FloatTok,IntegerTok,StringTok]
-         = Literale (token2string tok)
+    | elem cat [IntTok,FloatTok,IntegerTok]
+         = NumberCode (token2string tok)
     | elem cat [KW_case,KW_choice,KW_data,KW_do,KW_else,KW_eval,KW_external,
                 KW_free,KW_if,KW_import,KW_in,KW_infix,KW_infixl,KW_infixr,
                 KW_let,KW_module,KW_newtype,KW_of,KW_rigid,KW_then,KW_type,
                 KW_where,Id_as,Id_ccall,Id_forall,Id_hiding,Id_interface,Id_primitive]
          =  Keyword (token2string tok)
     | elem cat [LeftParen,RightParen,Semicolon,LeftBrace,RightBrace,LeftBracket,
-                RightBracket,Comma,Underscore,Backquote,VSemicolon,VRightBrace,
+                RightBracket,Comma,Underscore,Backquote,
                 At,Colon,DotDot,DoubleColon,Equals,Backslash,Bar,LeftArrow,RightArrow,
                 Tilde,Sym_Dot,Sym_Minus,Sym_MinusDot]
          = Symbol (token2string tok)
@@ -152,7 +151,11 @@ token2code tok@(Token cat _)
          = Commentary (token2string tok)
     | elem cat [Id_qualified,Id,QId,Sym,QSym]
          = Identifier (token2string tok)
-    | cat == EOF = Space 0 
+    | cat == StringTok 
+         = StringCode (token2string tok)
+    | cat == CharTok
+         = CharCode (token2string tok)          
+    | elem cat [EOF,VSemicolon,VRightBrace] = Space 0 
     
 isTokenIdentifier :: Token -> Bool
 isTokenIdentifier (Token cat _) = elem cat [Id_qualified,Id,QId,Sym,QSym]
@@ -395,8 +398,8 @@ token2string (Token RightBracket _) = "]"
 token2string (Token Comma _) = ","
 token2string (Token Underscore _) = "_"
 token2string (Token Backquote _) = "`"
-token2string (Token VSemicolon _) = ";"
-token2string (Token VRightBrace _) = "}"
+token2string (Token VSemicolon _) = ""
+token2string (Token VRightBrace _) = ""
 token2string (Token At _) = "@"
 token2string (Token Colon _) = ":"
 token2string (Token DotDot _) = ".."
@@ -512,21 +515,7 @@ tokenNcodes2codesLOG currLine currCol toks@((Position _ line col,token):ts) code
   
 --writeFile ("out/" ++ basename s) cont            
      
-test2 s =
-     readFile s >>= \ cont ->
-     let (Result _ modul@(Module m e list)) = (parse s cont)
-         (Result _ ls) = (Frontend.lex s cont) in
-     writeFile ("out/" ++ basename s ++ ".parse.txt") 
-               (show m ++
-               " " ++
-               show e ++
-               "\n" ++
-               unlines (map show list)) >>
-     writeFile ("out/" ++ basename s ++ ".lex.txt") (unlines $ map show ls) >>
-     writeFile ("out/" ++ basename s ++ ".ids.txt") (unlines $ map show (concatMap decl2codes list)) >>  
-     writeFile "out/log.txt" "" >>
-     writeFile ("out/" ++ basename s) cont >>    
-     tokenNcodes2codesLOG 0 0 ls (catIdentifiers modul) >>= writeFile ("out/" ++ basename s ++ ".codes.txt") . unlines . map show
+
 
      
 --writeFile ("out/" ++ basename s ++ ".codes.txt") (unlines $ map show (tokenNcodes2codes 1 1 ls (concatMap decl2codes list)))      
