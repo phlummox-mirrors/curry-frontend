@@ -20,7 +20,7 @@ the same key.} Finally, all (adjacent) equations of a function are
 merged into a single definition.
 \begin{verbatim}
 
-> module SyntaxCheck(syntaxCheck,syntaxCheckGoal) where
+> module SyntaxCheck(syntaxCheck) where
 > import Base
 > import Env
 > import NestEnv
@@ -39,17 +39,20 @@ declarations are checked within the resulting environment. In
 addition, this process will also rename the local variables.
 \begin{verbatim}
 
-> syntaxCheck :: Bool -> ModuleIdent -> ValueEnv -> [Decl] -> [Decl]
-> syntaxCheck withExt m tyEnv ds =
+> syntaxCheck :: Bool -> ModuleIdent -> ImportEnv -> ArityEnv -> ValueEnv 
+>                -> [Decl] -> [Decl]
+> syntaxCheck withExt m iEnv aEnv tyEnv ds =
 >   case linear (concatMap constrs tds) of
 >     Linear -> tds ++ run (checkModule withExt m env vds)
 >     NonLinear (PIdent p c) -> errorAt p (duplicateData c)
 >   where (tds,vds) = partition isTypeDecl ds
->         env = foldr (bindConstrs m) (globalEnv (fmap renameInfo tyEnv)) tds
+>         env = foldr (bindConstrs m) 
+>	              (globalEnv (fmap (renameInfo iEnv aEnv) tyEnv)) 
+>	              tds
 
-> syntaxCheckGoal :: Bool -> ValueEnv -> Goal -> Goal
-> syntaxCheckGoal withExt tyEnv g =
->   run (checkGoal withExt (mkMIdent []) (globalEnv (fmap renameInfo tyEnv)) g)
+> --syntaxCheckGoal :: Bool -> ValueEnv -> Goal -> Goal
+> --syntaxCheckGoal withExt tyEnv g =
+> --  run (checkGoal withExt (mkMIdent []) (globalEnv (fmap renameInfo tyEnv)) g)
 
 \end{verbatim}
 A global state transformer is used for generating fresh integer keys
@@ -82,16 +85,27 @@ allow the usage of the qualified list constructor \texttt{(prelude.:)}.
 
 > type RenameEnv = NestEnv RenameInfo
 > data RenameInfo = Constr Int 
->                 | GlobalVar QualIdent 
->                 | LocalVar Ident deriving (Eq,Show)
+>                 | GlobalVar Int QualIdent 
+>                 | LocalVar Int Ident deriving (Eq,Show)
 
 > globalKey :: Int
 > globalKey = uniqueId (mkIdent "")
 
-> renameInfo :: ValueInfo -> RenameInfo
-> renameInfo (DataConstructor _ (ForAllExist _ _ ty)) = Constr (arrowArity ty)
-> renameInfo (NewtypeConstructor _ _) = Constr 1
-> renameInfo (Value qid _) = GlobalVar qid
+> renameInfo :: ImportEnv -> ArityEnv -> ValueInfo -> RenameInfo
+> renameInfo iEnv aEnv (DataConstructor _ (ForAllExist _ _ ty)) 
+>    = Constr (arrowArity ty)
+> renameInfo iEnv aEnv (NewtypeConstructor _ _) 
+>    = Constr 1
+> renameInfo iEnv aEnv (Value qid _)
+>    = let (mmid, id) = splitQualIdent qid
+>          qid' = maybe qid 
+>	                (\mid -> maybe qid 
+>		                       (\mid' -> qualifyWith mid' id)
+>				       (lookupAlias mid iEnv))
+>		        mmid
+>      in case (qualLookupArity qid' aEnv) of
+>           [ArityInfo _ arity] -> GlobalVar arity qid
+>           _ -> internalError "renameInfo: unexpected result"
 
 > bindConstrs :: ModuleIdent -> Decl -> RenameEnv -> RenameEnv
 > bindConstrs m (DataDecl _ tc _ cs) env = foldr (bindConstr m) env cs
@@ -105,13 +119,46 @@ allow the usage of the qualified list constructor \texttt{(prelude.:)}.
 > bindNewConstr :: ModuleIdent -> NewConstrDecl -> RenameEnv -> RenameEnv
 > bindNewConstr m (NewConstrDecl _ _ c _) = bindGlobal m c (Constr 1)
 
-> bindFunc :: ModuleIdent -> PIdent -> RenameEnv -> RenameEnv
-> bindFunc m (PIdent p f) = bindGlobal m f (GlobalVar (qualifyWith m f))
+> bindFuncDecl :: ModuleIdent -> Decl -> RenameEnv -> RenameEnv
+> bindFuncDecl m (FunctionDecl _ id equs) env
+>    | null equs = internalError "bindFuncDecl: missing equations"
+>    | otherwise = let (_,ts) = getFlatLhs (head equs)
+>		   in  bindGlobal m 
+>	                          id 
+>			          (GlobalVar (length ts) (qualifyWith m id))
+>	                          env
+> bindFuncDecl m (ExternalDecl _ _ _ id texpr) env
+>    = bindGlobal m id (GlobalVar (typeArity texpr) (qualifyWith m id)) env
+> bindFuncDecl m (TypeSig _ ids texpr) env
+>    = foldr bindTS env (map (qualifyWith m) ids)
+>  where
+>  bindTS qid env 
+>     | null (qualLookupVar qid env)
+>       = bindGlobal m (unqualify qid) (GlobalVar (typeArity texpr) qid) env
+>     | otherwise
+>       = env
+> bindFuncDecl _ _ env = env
+
+> bindVarDecl :: Decl -> RenameEnv -> RenameEnv
+> bindVarDecl (FunctionDecl _ id equs) env
+>    | null equs 
+>      = internalError "bindFuncDecl: missing equations"
+>    | otherwise 
+>      = let (_,ts) = getFlatLhs (head equs)
+>	 in  bindLocal (unRenameIdent id) (LocalVar (length ts) id) env
+> bindVarDecl (PatternDecl p t _) env
+>    = foldr bindVar env (map (PIdent p) (bv t))
+> bindVarDecl (ExtraVariables p vs) env
+>    = foldr bindVar env (map (PIdent p) vs) 
+> bindVarDecl _ env = env
+
+> --bindFunc :: ModuleIdent -> PIdent -> RenameEnv -> RenameEnv
+> --bindFunc m (PIdent p f) = bindGlobal m f (GlobalVar (qualifyWith m f))
 
 > bindVar :: PIdent -> RenameEnv -> RenameEnv
 > bindVar (PIdent p v) env
 >   | v' == anonId = env
->   | otherwise = bindLocal v' (LocalVar v) env
+>   | otherwise = bindLocal v' (LocalVar 0 v) env
 >   where v' = unRenameIdent v
 
 > bindGlobal :: ModuleIdent -> Ident -> RenameInfo -> RenameEnv -> RenameEnv
@@ -154,14 +201,14 @@ local declarations.
 > checkTopDecls :: Bool -> ModuleIdent -> RenameEnv -> [Decl]
 >               -> RenameState (RenameEnv,[Decl])
 > checkTopDecls withExt m env ds = 
->   checkDeclGroup (bindFunc m) withExt m globalKey env ds
+>   checkDeclGroup (bindFuncDecl m) withExt m globalKey env ds
 
-> checkGoal :: Bool -> ModuleIdent -> RenameEnv -> Goal -> RenameState Goal
-> checkGoal withExt m env (Goal p e ds) =
->   do
->     (env',ds') <- checkLocalDecls withExt m env ds
->     e' <- checkExpr withExt p m env' e
->     return (Goal p e' ds')
+> --checkGoal :: Bool -> ModuleIdent -> RenameEnv -> Goal -> RenameState Goal
+> --checkGoal withExt m env (Goal p e ds) =
+> --  do
+> --    (env',ds') <- checkLocalDecls withExt m env ds
+> --    e' <- checkExpr withExt p m env' e
+> --    return (Goal p e' ds')
 
 \end{verbatim}
 Each declaration group opens a new scope and uses a distinct key
@@ -183,14 +230,14 @@ top-level.
 > checkLocalDecls :: Bool -> ModuleIdent -> RenameEnv -> [Decl] 
 >                  -> RenameState (RenameEnv,[Decl])
 > checkLocalDecls withExt m env ds =
->   newId >>= \k -> checkDeclGroup bindVar withExt m k (nestEnv env) ds
+>   newId >>= \k -> checkDeclGroup bindVarDecl withExt m k (nestEnv env) ds
 
-> checkDeclGroup :: (PIdent -> RenameEnv -> RenameEnv) -> Bool -> ModuleIdent
+> checkDeclGroup :: (Decl -> RenameEnv -> RenameEnv) -> Bool -> ModuleIdent
 >                 -> Int -> RenameEnv -> [Decl] 
 >                 -> RenameState (RenameEnv,[Decl])
-> checkDeclGroup bindVar withExt m k env ds =
+> checkDeclGroup bindDecl withExt m k env ds =
 >   mapM (checkDeclLhs withExt k m env) ds' >>=
->   checkDecls bindVar withExt m env . joinEquations
+>   checkDecls bindDecl withExt m env . joinEquations
 >  where ds' = sortFuncDecls ds
 
 > checkDeclLhs :: Bool -> Int -> ModuleIdent -> RenameEnv -> Decl -> RenameState Decl
@@ -262,7 +309,9 @@ top-level.
 >   | otherwise = renameIdent v k
 
 
-> checkDecls bindVar withExt m env ds =
+> checkDecls :: (Decl -> RenameEnv -> RenameEnv) -> Bool -> ModuleIdent
+>	        -> RenameEnv -> [Decl] -> RenameState (RenameEnv,[Decl])
+> checkDecls bindDecl withExt m env ds = --bindVar withExt m env ds =
 >   case linear bvs of
 >     Linear ->
 >       case linear tys of
@@ -271,16 +320,19 @@ top-level.
 >             Linear ->
 >               case filter (`notElem` tys) fs' of
 >                 [] -> liftM ((,) env') 
->		              (mapM (checkDeclRhs withExt bvs m env') ds)
+>		              (mapM (checkDeclRhs withExt bvs m env'') ds)
 >                 PIdent p f : _ -> errorAt p (noTypeSig f)
 >             NonLinear (PIdent p v) -> errorAt p (duplicateEvalAnnot v)
 >         NonLinear (PIdent p v) -> errorAt p (duplicateTypeSig v)
 >     NonLinear (PIdent p v) -> errorAt p (duplicateDefinition v)
->   where bvs = concat (map vars (filter isValueDecl ds))
->         tys = concat (map vars (filter isTypeSig ds))
+>   where vds = filter isValueDecl ds
+>	  tds = filter isTypeSig ds
+>         bvs = concat (map vars vds)
+>         tys = concat (map vars tds)
 >         evs = concat (map vars (filter isEvalAnnot ds))
 >         fs' = [PIdent p f | FlatExternalDecl p fs <- ds, f <- fs]
->         env' = foldr bindVar env bvs
+>         env' = foldr bindDecl env vds --foldr bindVar env bvs
+>         env'' = foldr bindDecl env' tds
 
 > checkDeclRhs :: Bool -> [PIdent] -> ModuleIdent -> RenameEnv -> Decl 
 >              -> RenameState Decl
@@ -382,9 +434,13 @@ top-level.
 >       | null ts && not (isQualified c) ->
 >	    return (VariablePattern (renameIdent (varIdent r) k))
 >       | withExt ->
->           do ts' <- mapM (checkConstrTerm withExt k p m env) ts
->              return (FunctionPattern (qualVarIdent r) ts')
->       | otherwise -> errorAt p noFuncPattern    
+>           if n' >= n
+>              then do ts' <- mapM (checkConstrTerm withExt k p m env) ts
+>	               return (FunctionPattern (qualVarIdent r) ts')
+>	       else errorAt p (partialFuncPatt c n n')
+>       | otherwise -> errorAt p noFuncPattern  
+>	where n = arity r
+>	      n' = length ts
 >     rs -> case (qualLookupVar (qualQualify m c) env) of
 >             []
 >               | null ts && not (isQualified c) ->
@@ -400,52 +456,14 @@ top-level.
 >	        | null ts && not (isQualified c) ->
 >                   return (VariablePattern (renameIdent (varIdent r) k))
 >               | withExt ->
->	            do ts' <- mapM (checkConstrTerm withExt k p m env) ts
->		       return (FunctionPattern (qualVarIdent r) ts')
+>                   if n' >= n
+>	               then do ts' <- mapM (checkConstrTerm withExt k p m env) ts
+>			       return (FunctionPattern (qualVarIdent r) ts')
+>		       else errorAt p (partialFuncPatt c n n')
 >	        | otherwise -> errorAt p noFuncPattern
+>               where n = arity r
+>		      n' = length ts
 >             _ -> errorAt p (ambiguousData c)
->   {-
->     [Constr n] -- c is a n-ary constructor (n >= 0)
->       | n == n' ->
->           liftM (ConstructorPattern c) 
->	          (mapM (checkConstrTerm withExt k p m env) ts)
->       | otherwise -> errorAt p (wrongArity c n n')
->       where n' = length ts
->     [GlobalVar _] -- c is a globaly visible function
->       | withExt ->
->           do ts' <- mapM (checkConstrTerm withExt k p m env) ts
->              return (FunctionPattern c ts')
->       | otherwise -> error "P1" --errorAt p noFuncPattern
->     [LocalVar _]
->       | withExt ->
->           do ts' <- mapM (checkConstrTerm withExt k p m env) ts
->              return (FunctionPattern (qualQualify m c) ts')
->       | otherwise -> error "P2" --errorAt p noFuncPattern
->     rs
->       | any isConstr rs ->
->           case (qualLookupVar (qualQualify m c) env) of
->             [] -> errorAt p (undefinedData c)
->             [Constr n]
->               | n == n' ->
->                   liftM (ConstructorPattern c) 
->                         (mapM (checkConstrTerm withExt k p m env) ts)
->               | otherwise -> errorAt p (wrongArity c n n')
->               where n' = length ts
->	      [GlobalVar _]
->               | withExt ->
->	            do ts' <- mapM (checkConstrTerm withExt k p m env) ts
->		       return (FunctionPattern c ts')
->		| otherwise -> error "P3" --errorAt p noFuncPattern
->	      [LocalVar _]
->	        | withExt ->
->                   do ts' <- mapM (checkConstrTerm withExt k p m env) ts
->                      return (FunctionPattern (qualQualify m c) ts')
->               | otherwise -> error "P4" --errorAt p noFuncPattern
->             _ -> errorAt p (ambiguousData c)
->       | not (isQualified c) && null ts ->
->           return (VariablePattern (renameIdent (unqualify c) k))
->	| otherwise -> errorAt p (undefinedData c)
->    -}
 > checkConstrTerm withExt k p m env (InfixPattern t1 op t2) =
 >   case (qualLookupVar op env) of
 >     [Constr n]
@@ -475,47 +493,6 @@ top-level.
 >		       return (InfixFuncPattern t1' (qualQualify m op) t2')
 >	        | otherwise -> errorAt p noFuncPattern
 >             _ -> errorAt p (ambiguousData op)
->   {-
->     [Constr n]
->       | n == 2 ->
->           do t1' <- checkConstrTerm withExt k p m env t1
->              t2' <- checkConstrTerm withExt k p m env t2
->              return (InfixPattern t1' op t2')
->       | otherwise -> errorAt p (wrongArity op n 2)
->     [GlobalVar _]
->       | withExt ->
->           do t1' <- checkConstrTerm withExt k p m env t1
->	       t2' <- checkConstrTerm withExt k p m env t2
->              return (InfixFuncPattern t1' op t2')
->       | otherwise -> errorAt p noFuncPattern
->     [LocalVar _]
->       | withExt ->
->           do t1' <- checkConstrTerm withExt k p m env t1
->	       t2' <- checkConstrTerm withExt k p m env t2
->              return (InfixFuncPattern t1' (qualQualify m op) t2')
->       | otherwise -> errorAt p noFuncPattern
->     rs -> case (qualLookupVar (qualQualify m op) env) of
->             [] -> errorAt p (undefinedData op)
->	      [Constr n]
->               | n == 2 ->
->	            do t1' <- checkConstrTerm withExt k p m env t1
->                      t2' <- checkConstrTerm withExt k p m env t2
->                      return (InfixPattern t1' op t2')
->               | otherwise -> errorAt p (wrongArity op n 2)
->             [GlobalVar _]
->               | withExt ->
->                   do t1' <- checkConstrTerm withExt k p m env t1
->	               t2' <- checkConstrTerm withExt k p m env t2
->                      return (InfixFuncPattern t1' op t2')
->               | otherwise -> errorAt p noFuncPattern
->             [LocalVar _]
->               | withExt ->
->                   do t1' <- checkConstrTerm withExt k p m env t1
->	               t2' <- checkConstrTerm withExt k p m env t2
->                      return (InfixFuncPattern t1' (qualQualify m op) t2')
->               | otherwise -> errorAt p noFuncPattern
->             _ -> errorAt p (ambiguousData op)
->    -}
 > checkConstrTerm withExt k p m env (ParenPattern t) =
 >   liftM ParenPattern (checkConstrTerm withExt k p m env t)
 > checkConstrTerm withExt k p m env (TuplePattern ts) =
@@ -554,13 +531,13 @@ top-level.
 >   case (qualLookupVar v env) of
 >     [] ->  errorAt p (undefinedVariable v)
 >     [Constr _] -> return (Constructor v)
->     [GlobalVar _] -> return (Variable v)
->     [LocalVar v'] -> return (Variable (qualify v'))
+>     [GlobalVar _ _] -> return (Variable v)
+>     [LocalVar _ v'] -> return (Variable (qualify v'))
 >     rs -> case (qualLookupVar (qualQualify m v) env) of
 >             [] -> errorAt p (ambiguousIdent rs v)
 >             [Constr _] -> return (Constructor v)
->             [GlobalVar _] -> return (Variable v)
->             [LocalVar v'] -> return (Variable (qualify v'))
+>             [GlobalVar _ _] -> return (Variable v)
+>             [LocalVar _ v'] -> return (Variable (qualify v'))
 >             rs' -> errorAt p (ambiguousIdent rs' v)
 > checkExpr withExt p m env (Constructor c) = 
 >   checkExpr withExt p m env (Variable c)
@@ -666,13 +643,13 @@ top-level.
 >   case (qualLookupVar v env) of
 >     [] -> errorAt p (undefinedVariable v)
 >     [Constr _] -> InfixConstr v
->     [GlobalVar _] -> InfixOp v
->     [LocalVar v'] -> InfixOp (qualify v')
+>     [GlobalVar _ _] -> InfixOp v
+>     [LocalVar _ v'] -> InfixOp (qualify v')
 >     rs -> case (qualLookupVar (qualQualify m v) env) of
 >             [] -> errorAt p (ambiguousIdent rs v)
 >             [Constr _] -> InfixConstr v
->             [GlobalVar _] -> InfixOp v
->             [LocalVar v'] -> InfixOp (qualify v')
+>             [GlobalVar _ _] -> InfixOp v
+>             [LocalVar _ v'] -> InfixOp (qualify v')
 >             rs' -> errorAt p (ambiguousIdent rs' v)
 >   where v = opName op
 
@@ -769,17 +746,34 @@ the user about the fact that the identifier is ambiguous.
 
 > isConstr :: RenameInfo -> Bool
 > isConstr (Constr _) = True
-> isConstr (GlobalVar _) = False
-> isConstr (LocalVar _) = False
+> isConstr (GlobalVar _ _) = False
+> isConstr (LocalVar _ _) = False
 
 > varIdent :: RenameInfo -> Ident
-> varIdent (GlobalVar v) = unqualify v
-> varIdent (LocalVar v) =  v
+> varIdent (GlobalVar _ v) = unqualify v
+> varIdent (LocalVar _ v) =  v
 > varIdent _ = internalError "not a variable"
 
 > qualVarIdent :: RenameInfo -> QualIdent
-> qualVarIdent (GlobalVar v) = v
-> qualVarIdent (LocalVar v) = qualify v
+> qualVarIdent (GlobalVar _ v) = v
+> qualVarIdent (LocalVar _ v) = qualify v
+
+> arity :: RenameInfo -> Int
+> arity (Constr n) = n
+> arity (GlobalVar n _) = n
+> arity (LocalVar n _) = n
+
+
+\end{verbatim}
+Miscellaneous functions.
+\begin{verbatim}
+
+> typeArity :: TypeExpr -> Int
+> typeArity (ArrowType _ t2) = 1 + typeArity t2
+> typeArity _                = 0
+
+> getFlatLhs :: Equation -> (Ident,[ConstrTerm])
+> getFlatLhs (Equation  _ lhs _) = flatLhs lhs
 
 \end{verbatim}
 Error messages.
@@ -843,6 +837,14 @@ Error messages.
 >   where arguments 0 = "no arguments"
 >         arguments 1 = "1 argument"
 >         arguments n = show n ++ " arguments"
+
+> partialFuncPatt :: QualIdent -> Int -> Int -> String
+> partialFuncPatt f arity argc =
+>    "Function pattern " ++ qualName f ++ " expects at least " 
+>    ++ arguments arity ++ " but is applied to " ++ show argc
+>  where arguments 0 = "no arguments"
+>        arguments 1 = "1 argument"
+>        arguments n = show n ++ " arguments"
 
 > noExpressionStatement :: String
 > noExpressionStatement =

@@ -355,8 +355,6 @@ allow the usage of the qualified list constructor \texttt{(prelude.:)}.
 > bindFun m f ty tyEnv
 >   | uniqueId f == 0 
 >     = bindTopEnv "Base.bindFun" f v (qualBindTopEnv "Base.bindFun" f' v tyEnv)
->   -- | not (null (lookupValue f tyEnv))
->   --   = tyEnv --error ("internal error: bindFun " ++ show f)
 >   | otherwise = bindTopEnv "Base.bindFun" f v tyEnv
 >   where f' = qualifyWith m f
 >         v = Value f' ty
@@ -445,6 +443,23 @@ and constructors.
 >      = [ArityInfo (qualifyWith preludeMIdent id) (tupleArity id)]
 >    | otherwise
 >      = []
+
+\end{verbatim}
+\paragraph{Module alias}
+\begin{verbatim}
+
+> type ImportEnv = Env ModuleIdent ModuleIdent
+
+> bindAlias :: Decl -> ImportEnv -> ImportEnv
+> bindAlias (ImportDecl _ mid _ mmid _) iEnv
+>    = bindEnv mid (fromMaybe mid mmid) iEnv
+
+> lookupAlias :: ModuleIdent -> ImportEnv -> Maybe ModuleIdent
+> lookupAlias = lookupEnv
+
+> sureLookupAlias :: ModuleIdent -> ImportEnv -> ModuleIdent
+> sureLookupAlias m iEnv = fromMaybe m (lookupAlias m iEnv)
+
 
 \end{verbatim}
 \paragraph{Operator precedences}
@@ -562,6 +577,9 @@ identifiers.
 >  where
 >  bindPredefArity (Data id _ ts) aEnv
 >     = bindArity preludeMIdent id (length ts) aEnv
+
+> initIEnv :: ImportEnv
+> initIEnv = emptyEnv
 
 > predefTypes :: [(Type,[Data [Type]])]
 > predefTypes =

@@ -21,9 +21,9 @@ import declarations are commented out
 
 > import Base
 > import Unlit(unlit)
-> import CurryParser(parseSource,parseGoal)
+> import CurryParser(parseSource,parseGoal) -- xxxGoal entfernen
 > import KindCheck(kindCheck,kindCheckGoal)
-> import SyntaxCheck(syntaxCheck,syntaxCheckGoal)
+> import SyntaxCheck(syntaxCheck)
 > import PrecCheck(precCheck,precCheckGoal)
 > import TypeCheck(typeCheck,typeCheckGoal)
 > import WarnCheck
@@ -145,11 +145,13 @@ code are obsolete and commented out.
 >	      (putStrLn (unlines (map show msgs)))
 >      return (tyEnv'', tcEnv, aEnv'', modul, intf)
 >   where (impDs,topDs) = partition isImportDecl ds
+>         iEnv = foldr bindAlias initIEnv impDs
 >         (pEnv,tcEnv,tyEnv,aEnv) = importModules mEnv impDs
 >         msgs = warnCheck m tyEnv impDs topDs
 >	  withExt = withExtensions opts
->         (pEnv',topDs') = precCheck m pEnv $ syntaxCheck withExt m tyEnv
->                                           $ kindCheck m tcEnv topDs
+>         (pEnv',topDs') = precCheck m pEnv 
+>		           $ syntaxCheck withExt m iEnv aEnv tyEnv
+>			   $ kindCheck m tcEnv topDs
 >         ds' = impDs ++ qual m tyEnv topDs'
 >         modul = expandInterface (Module m es ds') tcEnv tyEnv
 >         (pEnv'',tcEnv'',tyEnv'',aEnv'') 
@@ -163,11 +165,13 @@ code are obsolete and commented out.
 >	      (putStrLn (unlines (map show msgs)))
 >      return (tyEnv'', tcEnv', aEnv'', modul, intf)
 >   where (impDs,topDs) = partition isImportDecl ds
+>         iEnv = foldr bindAlias initIEnv impDs
 >         (pEnv,tcEnv,tyEnv,aEnv) = importModules mEnv impDs
 >         msgs = warnCheck m tyEnv impDs topDs
 >	  withExt = withExtensions opts
->         (pEnv',topDs') = precCheck m pEnv $ syntaxCheck withExt m tyEnv
->                                           $ kindCheck m tcEnv topDs
+>         (pEnv',topDs') = precCheck m pEnv 
+>		           $ syntaxCheck withExt m iEnv aEnv tyEnv
+>			   $ kindCheck m tcEnv topDs
 >         (tcEnv',tyEnv') = typeCheck m tcEnv tyEnv topDs'
 >         ds' = impDs ++ qual m tyEnv' topDs'
 >         modul = expandInterface (Module m es ds') tcEnv' tyEnv'

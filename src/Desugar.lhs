@@ -548,10 +548,24 @@ desugars the following extensions:
 >    | otherwise      = ident:ids
 > getConstrTermVars ids (ConstructorPattern _ cts)
 >    = foldl getConstrTermVars ids cts
+> getConstrTermVars ids (InfixPattern c1 qid c2)
+>    = getConstrTermVars ids (ConstructorPattern qid [c1,c2])
+> getConstrTermVars ids (ParenPattern c)
+>    = getConstrTermVars ids c
+> getConstrTermVars ids (TuplePattern cts)
+>    = foldl getConstrTermVars ids cts
+> getConstrTermVars ids (ListPattern cts)
+>    = foldl getConstrTermVars ids cts
+> getConstrTermVars ids (AsPattern _ c)
+>    = getConstrTermVars ids c
+> getConstrTermVars ids (LazyPattern c)
+>    = getConstrTermVars ids c
 > getConstrTermVars ids (FunctionPattern _ cts)
 >    = foldl getConstrTermVars ids cts
-> getConstrTermVars _ _
->    = internalError "getConstrTermVars: unexpected constructor term"
+> getConstrTermVars ids (InfixFuncPattern c1 qid c2)
+>    = getConstrTermVars ids (FunctionPattern qid [c1,c2])
+> getConstrTermVars ids _
+>    = ids
 
 \end{verbatim}
 In general, a list comprehension of the form
