@@ -37,7 +37,7 @@ warnCheck mid vals imports decls
 	     checkImports imports
 	     foldM' insertDecl decls
 	     foldM' (checkDecl mid) decls
-             checkDeclOccurances decls
+             checkDeclOccurrences decls
 	 )
 
 
@@ -138,7 +138,7 @@ checkRhs mid _ (SimpleRhs pos expr decls)
 	foldM' checkLocalDecl decls
 	foldM' insertDecl decls
 	foldM' (checkDecl mid) decls
-	checkDeclOccurances decls
+	checkDeclOccurrences decls
 	checkExpression mid pos expr
 	idents' <- returnUnrefVars
 	when (not (null idents'))
@@ -149,7 +149,7 @@ checkRhs mid pos (GuardedRhs cexprs decls)
 	foldM' checkLocalDecl decls
 	foldM' insertDecl decls
 	foldM' (checkDecl mid) decls
-	checkDeclOccurances decls
+	checkDeclOccurrences decls
 	foldM' (checkCondExpr mid) cexprs
 	idents' <- returnUnrefVars
 	when (not (null idents'))
@@ -242,7 +242,7 @@ checkExpression mid pos (Let decls expr)
 	foldM' checkLocalDecl decls
 	foldM' insertDecl decls
 	foldM' (checkDecl mid) decls
-	checkDeclOccurances decls
+	checkDeclOccurrences decls
 	checkExpression mid pos expr
 	idents' <- returnUnrefVars
 	when (not (null idents'))
@@ -272,7 +272,7 @@ checkStatement mid pos (StmtDecl decls)
    = do foldM' checkLocalDecl decls
 	foldM' insertDecl decls
 	foldM' (checkDecl mid) decls
-	checkDeclOccurances decls
+	checkDeclOccurrences decls
 checkStatement mid pos (StmtBind cterm expr)
    = do checkConstrTerm mid pos cterm
 	insertConstrTerm False cterm
@@ -353,8 +353,8 @@ checkOverlappingAlts mid (alt:alts)
 
 
 -- Find function rules which are not together
-checkDeclOccurances :: [Decl] -> CheckState ()
-checkDeclOccurances decls = checkDO (mkIdent "") emptyEnv decls
+checkDeclOccurrences :: [Decl] -> CheckState ()
+checkDeclOccurrences decls = checkDO (mkIdent "") emptyEnv decls
  where
  checkDO prevId env [] = return ()
  checkDO prevId env ((FunctionDecl pos ident _):decls)
@@ -793,7 +793,7 @@ overlappingCaseAlt = "redundant overlapping case alternative"
 rulesNotTogether :: Ident -> Position -> String
 rulesNotTogether id pos
    = "rules for function \"" ++ show id ++ "\" are not together "
-     ++ "(first occurance at " 
+     ++ "(first occurrence at " 
      ++ show (line pos) ++ "." ++ show (column pos) ++ ")"
 
 multiplyImportedModule :: ModuleIdent -> String

@@ -743,7 +743,7 @@ prelude.
 > filterBv e = filter (`notElemSet` fromListSet (bv e))
 
 \end{verbatim}
-Since multiple variable occurances are allowed in function patterns,
+Since multiple variable occurrences are allowed in function patterns,
 it is necessary to compute the list of bound variables in a different way:
 Each variable occuring in the function pattern will be unique in the result
 list.

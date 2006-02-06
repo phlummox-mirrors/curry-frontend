@@ -303,7 +303,7 @@ removeIdleAlts msgs alts
 --      []     -> e3
 -- Here the last alternative occures multiply because its pattern is already
 -- used in the first alternative. All multiple alternatives will be
--- removed except for the first occurance.
+-- removed except for the first occurrence.
 removeMultipleAlts :: [Message] -> [Alt] -> ([Alt], [Message])
 removeMultipleAlts msgs alts
    = p_remove msgs [] alts

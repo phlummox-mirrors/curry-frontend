@@ -490,7 +490,7 @@ signature the declared type must be too general.
 \end{verbatim}
 In contrast to usual patterns, the type checking routine for arguments of 
 function patterns \texttt{tcConstrTermFP} differs from \texttt{tcConstrTerm}
-because of possible multiple occurances of variables.
+because of possible multiple occurrences of variables.
 \begin{verbatim}
 
 > tcConstrTermFP :: ModuleIdent -> TCEnv -> SigEnv -> Position -> ConstrTerm
