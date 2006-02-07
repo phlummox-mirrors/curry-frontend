@@ -53,33 +53,31 @@ makeCurry options deps file
  where
  compile (Source file' mods)
     | rootname file == rootname file'
-      = if not (force options) && null (dump options)
-	then smake (targetNames file')
-                   (file':(catMaybes (map flatInterface mods)))
-		   (generateFile file')
-		   (skipFile file')
-	else generateFile file'
+      = do flatIntfExists <- doesFileExist (flatIntName file')
+	   if flatIntfExists && not (force options) && null (dump options)
+	    then smake (targetNames file')
+                       (file':(catMaybes (map flatInterface mods)))
+		       (generateFile file')
+		       (skipFile file')
+	    else generateFile file'
     | otherwise
-      = if True  -- will be extended later...
-        then  smake [flatName file'] --[flatName file', flatIntName file']
-	            (file':(catMaybes (map flatInterface mods)))
-	            (compileFile file')
-		    (skipFile file')
-	else compileFile file'
+      = do flatIntfExists <- doesFileExist (flatIntName file')
+	   if flatIntfExists
+            then  smake [flatName file'] --[flatName file', flatIntName file']
+	                (file':(catMaybes (map flatInterface mods)))
+			(compileFile file')
+			(skipFile file')
+	    else compileFile file'
  compile _ = return ()
 
  compileFile file
     = do unless (noVerb options) (putStrLn ("compiling " ++ file ++ " ..."))
 	 compileCurry (compOpts True) file
 	 return ()
-	 --return (maybe unchIntfs 
-	 --	       (\intf -> intf:unchIntfs)
-	 --	       (unchangedIntf res))
 
  skipFile file
     = do unless (noVerb options || elem (dirname file) (libPaths options))
 		(putStrLn ("skipping " ++ file ++ " ..."))
-	 -- return ((flatIntName file'):unchIntfs)
 
  generateFile file
     = do unless (noVerb options) 
@@ -88,7 +86,6 @@ makeCurry options deps file
 			   ++ " ..."))
 	 compileCurry (compOpts False) file
 	 return ()
-	 -- return unchIntfs
 
  targetNames fn | flat options            = [flatName fn] -- , flatIntName fn]
 		| flatXml options         = [xmlName fn]
