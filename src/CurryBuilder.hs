@@ -49,54 +49,52 @@ buildCurry options file
 makeCurry :: Options -> [(ModuleIdent,Source)] -> FilePath 
 	  -> IO ()
 makeCurry options deps file
-   = foldM compile [] (map snd deps) >> return ()
+   = mapM compile (map snd deps) >> return ()
  where
- compile unchIntfs (Source file' mods)
+ compile (Source file' mods)
     | rootname file == rootname file'
       = if not (force options) && null (dump options)
 	then smake (targetNames file')
-                   (file':((catMaybes (map flatInterface mods)) \\ unchIntfs))
-		   (do unless (noVerb options)
-		              (putStrLn ("generating " 
-				         ++ (head (targetNames file')) 
-				         ++ " ..."))
-		       compileCurry (compOpts False) file'
-		       return unchIntfs)
-		   (do unless (noVerb options 
-			       || elem (dirname file') (libPaths options))
-		              (putStrLn ("skipping " ++ file' ++ " ..."))
-		       return unchIntfs)
-	else do unless (noVerb options)
-	               (putStrLn ("generating " 
-			          ++ (head (targetNames file')) 
-			          ++ " ..."))
-                compileCurry (compOpts False) file'
-	        return unchIntfs
+                   (file':(catMaybes (map flatInterface mods)))
+		   (generateFile file')
+		   (skipFile file')
+	else generateFile file'
     | otherwise
       = if True  -- will be extended later...
-        then  smake [flatName file', flatIntName file']
-	            (file':((catMaybes (map flatInterface mods)) \\ unchIntfs))
-	            (do unless (noVerb options) 
-	                       (putStrLn ("compiling " ++ file' ++ " ..."))
-	                res <- compileCurry (compOpts True) file'
-	                return (maybe unchIntfs 
-			              (\intf -> intf:unchIntfs)
-			              (unchangedIntf res)))
-		    (do unless (noVerb options
-				|| elem (dirname file') (libPaths options))
-	                       (putStrLn ("skipping " ++ file' ++ " ..."))
-		        return ((flatIntName file'):unchIntfs))
-	else do unless (noVerb options)
-		       (putStrLn ("compiling " ++ file' ++ " ..."))
-		compileCurry (compOpts True) file'
-		return unchIntfs
- compile unchIntfs _ = return unchIntfs
+        then  smake [flatName file'] --[flatName file', flatIntName file']
+	            (file':(catMaybes (map flatInterface mods)))
+	            (compileFile file')
+		    (skipFile file')
+	else compileFile file'
+ compile _ = return ()
 
- targetNames fn | flat options            = [flatName fn, flatIntName fn]
+ compileFile file
+    = do unless (noVerb options) (putStrLn ("compiling " ++ file ++ " ..."))
+	 compileCurry (compOpts True) file
+	 return ()
+	 --return (maybe unchIntfs 
+	 --	       (\intf -> intf:unchIntfs)
+	 --	       (unchangedIntf res))
+
+ skipFile file
+    = do unless (noVerb options || elem (dirname file) (libPaths options))
+		(putStrLn ("skipping " ++ file ++ " ..."))
+	 -- return ((flatIntName file'):unchIntfs)
+
+ generateFile file
+    = do unless (noVerb options) 
+		(putStrLn ("generating "  
+			   ++ (head (targetNames file)) 
+			   ++ " ..."))
+	 compileCurry (compOpts False) file
+	 return ()
+	 -- return unchIntfs
+
+ targetNames fn | flat options            = [flatName fn] -- , flatIntName fn]
 		| flatXml options         = [xmlName fn]
 		| abstract options        = [acyName fn]
 		| untypedAbstract options = [uacyName fn]
-		| otherwise               = [flatName fn, flatIntName fn]
+		| otherwise               = [flatName fn] -- , flatIntName fn]
 
  flatInterface mod 
     = case (lookup mod deps) of

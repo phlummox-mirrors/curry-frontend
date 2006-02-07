@@ -572,31 +572,28 @@ be dependent on it any longer.
 >            -> Interface -> Module -> IL.Module -> IO CompilerResults
 > genFlat opts fname mEnv tcEnv aEnv intf mod il
 >   | flat opts
->     = do writeFlat opts Nothing fname cEnv mEnv aEnv il
->          let fintName = rootname fname ++ fintExt
->          if not (force opts)
->             then do mfint <- readFlatInterface fintName
->		      if isJust mfint && mfint == mfint
->		         then do fint <- writeFInt opts Nothing fname 
->				                   cEnv mEnv aEnv il
->		                 if interfaceCheck (fromJust mfint) fint
->		                    then return (defaultResults
->					           { unchangedIntf 
->					             = Just fintName 
->					           }
->					        )
->		                    else return defaultResults
->	                 else do writeFInt opts Nothing fname 
->				           cEnv mEnv aEnv il
->		                 return defaultResults
->	      else do writeFInt opts Nothing fname cEnv mEnv aEnv il
->		      return defaultResults
+>     = do flatProg <- writeFlat opts Nothing fname cEnv mEnv aEnv il
+>	   let fintName = rootname fname ++ fintExt
+>	   if force opts
+>             then 
+>               do writeFInt opts Nothing fname cEnv mEnv aEnv il
+>		   return defaultResults
+>	      else 
+>               do mfint <- readFlatInterface fintName
+>		   let flatIntf = fromMaybe emptyIntf mfint
+>		   if mfint == mfint  -- necessary to close the file 'fintName'
+>	              && not (interfaceCheck flatIntf flatProg)
+>		      then 
+>	                do writeFInt opts Nothing fname cEnv mEnv aEnv il
+>			   return defaultResults
+>		      else return defaultResults
 >   | flatXml opts
 >     = writeXML (output opts) fname cEnv il >> return defaultResults
 >   | otherwise
 >     = internalError "@Modules.genFlat: illegal option"
 >  where
 >    cEnv = curryEnv mEnv tcEnv intf mod
+>    emptyIntf = Prog "" [] [] [] []
 
 
 > genAbstract :: Options -> FilePath  -> ValueEnv -> TCEnv -> Module 
