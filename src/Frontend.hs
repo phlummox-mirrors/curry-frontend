@@ -8,7 +8,7 @@
 -- Martin Engelke (men@informatik.uni-kiel.de)
 --
 module Frontend (lex, parse, abstractIO, flatIO,
-		 Result(..), Message(..)
+		 Result(..), Message(..),WarningType(..),
 		)where
 
 import Modules
