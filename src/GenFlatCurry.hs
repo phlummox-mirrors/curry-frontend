@@ -593,10 +593,11 @@ consArity qid = "GenFlatCurry: missing arity for constructor \""
 missingVarIndex id = "GenFlatCurry: missing index for \"" ++ show id ++ "\""
 
 
-overlappingRules qid = "function \""
-		       ++ show qid 
-		       ++ "\" is non-deterministic due to non-trivial "
-		       ++ "overlapping rules"
+overlappingRules qid = (OverlapRules,
+                           "function \""
+		        ++ show qid 
+		        ++ "\" is non-deterministic due to non-trivial "
+		        ++ "overlapping rules")
 
 
 -------------------------------------------------------------------------------
@@ -931,10 +932,10 @@ clearTVarIndices = FlatState (\env -> env{ tvarIndexE = 0,
 					 })
 
 --
-genWarning :: String -> FlatState ()
-genWarning msg
+genWarning :: (WarningType,String) -> FlatState ()
+genWarning (warnType,msg)
    = FlatState (\env -> env{ messagesE = warnMsg:(messagesE env) })
- where warnMsg = message_ Warning msg
+ where warnMsg = message_ (Warning warnType) msg
 
 --
 genInterface :: FlatState Bool

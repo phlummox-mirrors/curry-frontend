@@ -1,4 +1,4 @@
--------------------------------------------------------------------------------
+
 -------------------------------------------------------------------------------
 --
 -- WarnCheck - Generates the following warning messages: ...
@@ -567,10 +567,10 @@ instance Monad CheckState where
 
 
 --
-genWarning :: Position -> String -> CheckState ()
-genWarning pos msg
+genWarning :: Position -> (WarningType,String) -> CheckState ()
+genWarning pos (warnType,msg)
    = CheckState (\state -> state{ messages = warnMsg:(messages state) })
- where warnMsg = message Warning pos msg
+ where warnMsg = message (Warning warnType) pos msg
 
 --
 insertVar :: Ident -> CheckState ()
@@ -775,40 +775,47 @@ typeId id = qualify (renameIdent id 1)
 -------------------------------------------------------------------------------
 -- Warnings...
 
-unrefTypeVar :: Ident -> String
-unrefTypeVar id = "unreferenced type variable \"" ++ show id ++ "\""
+unrefTypeVar :: Ident -> (WarningType,String)
+unrefTypeVar id = 
+  (UnrefTypeVar,"unreferenced type variable \"" ++ show id ++ "\"")
 
-unrefVar :: Ident -> String
-unrefVar id = "unreferenced variable \"" ++ show id ++ "\""
+unrefVar :: Ident -> (WarningType,String)
+unrefVar id = 
+  (UnrefVar,"unreferenced variable \"" ++ show id ++ "\"")
 
-shadowingVar :: Ident -> String
-shadowingVar id = "shadowing symbol \"" ++ show id ++ "\""
+shadowingVar :: Ident -> (WarningType,String)
+shadowingVar id = 
+  (ShadowingVar,"shadowing symbol \"" ++ show id ++ "\"")
 
-idleCaseAlts :: String
-idleCaseAlts = "idle case alternative(s)"
+idleCaseAlts :: (WarningType,String)
+idleCaseAlts = (IdleCaseAlt,"idle case alternative(s)")
 
-overlappingCaseAlt :: String
-overlappingCaseAlt = "redundant overlapping case alternative"
+overlappingCaseAlt :: (WarningType,String)
+overlappingCaseAlt = (OverlapCase,"redundant overlapping case alternative")
 
-rulesNotTogether :: Ident -> Position -> String
+rulesNotTogether :: Ident -> Position -> (WarningType,String)
 rulesNotTogether id pos
-   = "rules for function \"" ++ show id ++ "\" are not together "
+  = (RulesNotTogether,
+     "rules for function \"" ++ show id ++ "\" are not together "
      ++ "(first occurrence at " 
-     ++ show (line pos) ++ "." ++ show (column pos) ++ ")"
+     ++ show (line pos) ++ "." ++ show (column pos) ++ ")")
 
-multiplyImportedModule :: ModuleIdent -> String
+multiplyImportedModule :: ModuleIdent -> (WarningType,String)
 multiplyImportedModule mid 
-   = "module \"" ++ show mid ++ "\" was imported more than once"
+  = (MultipleImportModule,
+     "module \"" ++ show mid ++ "\" was imported more than once")
 
-multiplyImportedSymbol :: ModuleIdent -> Ident -> String
+multiplyImportedSymbol :: ModuleIdent -> Ident -> (WarningType,String)
 multiplyImportedSymbol mid ident
-   = "symbol \"" ++ show ident ++ "\" was imported from module \""
-     ++ show mid ++ "\" more than once"
+  = (MultipleImportSymbol,
+     "symbol \"" ++ show ident ++ "\" was imported from module \""
+     ++ show mid ++ "\" more than once")
 
-multiplyHiddenSymbol :: ModuleIdent -> Ident -> String
+multiplyHiddenSymbol :: ModuleIdent -> Ident -> (WarningType,String)
 multiplyHiddenSymbol mid ident
-   = "symbol \"" ++ show ident ++ "\" from module \"" ++ show mid
-     ++ "\" was hidden more than once"
+  = (MultipleHiding,
+     "symbol \"" ++ show ident ++ "\" from module \"" ++ show mid
+     ++ "\" was hidden more than once")
 
 
 -------------------------------------------------------------------------------

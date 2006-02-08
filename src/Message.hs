@@ -19,12 +19,24 @@ import Position
 data Message = Message MessageType (Maybe Position) String
 
 -- Data type for representing available compiler message types
-data MessageType = Warning  | Error deriving Eq
+data MessageType = Warning WarningType | Error deriving Eq
 
+-- the different warnings are categorized by WarningType
+data WarningType = UnrefTypeVar
+                 | UnrefVar
+                 | ShadowingVar
+                 | IdleCaseAlt
+                 | OverlapCase
+                 | OverlapRules
+                 | RulesNotTogether
+                 | MultipleImportModule
+                 | MultipleImportSymbol
+                 | MultipleHiding 
+                 deriving Eq
 
 -- An instance of Show for converting messages to readable strings
 instance Show Message where
- show (Message Warning mpos msg) = showMessage "Warning" mpos msg
+ show (Message (Warning _) mpos msg) = showMessage "Warning" mpos msg
  show (Message Error   mpos msg) = showMessage "ERROR" mpos msg
 
 
