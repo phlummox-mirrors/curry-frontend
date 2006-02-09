@@ -103,9 +103,14 @@ allow the usage of the qualified list constructor \texttt{(prelude.:)}.
 >		                       (\mid' -> qualifyWith mid' id)
 >				       (lookupAlias mid iEnv))
 >		        mmid
->      in case (qualLookupArity qid' aEnv) of
->           [ArityInfo _ arity] -> GlobalVar arity qid
->           _ -> internalError "renameInfo: unexpected result"
+>      in case (lookupArity id aEnv) of
+>	    [ArityInfo _ arity] -> GlobalVar arity qid
+>           rs -> case (qualLookupArity qid' aEnv) of
+>	            [ArityInfo _ arity] -> GlobalVar arity qid
+>	            _ -> maybe (internalError "renameInfo: missing arity")
+>	                       (\ (ArityInfo _ arity) -> GlobalVar arity qid)
+>		               (find (\ (ArityInfo qid'' _) 
+>			              -> qid'' == qid) rs)
 
 > bindConstrs :: ModuleIdent -> Decl -> RenameEnv -> RenameEnv
 > bindConstrs m (DataDecl _ tc _ cs) env = foldr (bindConstr m) env cs
@@ -419,10 +424,7 @@ top-level.
 >     = liftM (VariablePattern . renameIdent anonId) newId
 >   | otherwise 
 >     = checkConstrTerm withExt k p m env (ConstructorPattern (qualify v) [])
-> checkConstrTerm withExt k p m env (ConstructorPattern c ts) -- =
->  | name (unqualify c) == "..." 
->    = error (show p ++ ": " ++ show c ++ "\n" ++ show (qualLookupVar c env))
->  | otherwise =
+> checkConstrTerm withExt k p m env (ConstructorPattern c ts) =
 >   case qualLookupVar c env of
 >     [Constr n]
 >       | n == n' ->
@@ -434,10 +436,14 @@ top-level.
 >       | null ts && not (isQualified c) ->
 >	    return (VariablePattern (renameIdent (varIdent r) k))
 >       | withExt ->
->           if n' >= n
->              then do ts' <- mapM (checkConstrTerm withExt k p m env) ts
->	               return (FunctionPattern (qualVarIdent r) ts')
->	       else errorAt p (partialFuncPatt c n n')
+>           do ts' <- mapM (checkConstrTerm withExt k p m env) ts
+>	       if n' > n
+>	          then let (ts1,ts2) = splitAt n ts'
+>	               in  return (genFuncPattAppl 
+>			             (FunctionPattern (qualVarIdent r) 
+>				                      ts1) 
+>	                             ts2)
+>	          else return (FunctionPattern (qualVarIdent r) ts')
 >       | otherwise -> errorAt p noFuncPattern  
 >	where n = arity r
 >	      n' = length ts
@@ -456,10 +462,14 @@ top-level.
 >	        | null ts && not (isQualified c) ->
 >                   return (VariablePattern (renameIdent (varIdent r) k))
 >               | withExt ->
->                   if n' >= n
->	               then do ts' <- mapM (checkConstrTerm withExt k p m env) ts
->			       return (FunctionPattern (qualVarIdent r) ts')
->		       else errorAt p (partialFuncPatt c n n')
+>	            do ts' <- mapM (checkConstrTerm withExt k p m env) ts
+>	               if n' > n
+>	                  then let (ts1,ts2) = splitAt n ts'
+>	                       in  return 
+>			             (genFuncPattAppl 
+>			                (FunctionPattern (qualVarIdent r) ts1) 
+>	                                ts2)
+>	                  else return (FunctionPattern (qualVarIdent r) ts')
 >	        | otherwise -> errorAt p noFuncPattern
 >               where n = arity r
 >		      n' = length ts
@@ -763,6 +773,21 @@ the user about the fact that the identifier is ambiguous.
 > arity (GlobalVar n _) = n
 > arity (LocalVar n _) = n
 
+\end{verbatim}
+Unlike expressions, constructor terms have no possibility to represent
+over-applications in function patterns. Therefore it is necessary to
+transform them to nested
+function patterns using the prelude function \texttt{apply}. E.g. the
+the function pattern \texttt{(id id 10)} is transformed to
+\texttt{(apply (id id) 10)}
+\begin{verbatim}
+
+> genFuncPattAppl :: ConstrTerm -> [ConstrTerm] -> ConstrTerm
+> genFuncPattAppl term [] = term
+> genFuncPattAppl term (t:ts) 
+>    = FunctionPattern qApplyId [genFuncPattAppl term ts, t]
+>  where
+>  qApplyId = qualifyWith preludeMIdent (mkIdent "apply")
 
 \end{verbatim}
 Miscellaneous functions.
@@ -838,13 +863,13 @@ Error messages.
 >         arguments 1 = "1 argument"
 >         arguments n = show n ++ " arguments"
 
-> partialFuncPatt :: QualIdent -> Int -> Int -> String
-> partialFuncPatt f arity argc =
->    "Function pattern " ++ qualName f ++ " expects at least " 
->    ++ arguments arity ++ " but is applied to " ++ show argc
->  where arguments 0 = "no arguments"
->        arguments 1 = "1 argument"
->        arguments n = show n ++ " arguments"
+> --partialFuncPatt :: QualIdent -> Int -> Int -> String
+> --partialFuncPatt f arity argc =
+> --   "Function pattern " ++ qualName f ++ " expects at least " 
+> --   ++ arguments arity ++ " but is applied to " ++ show argc
+> -- where arguments 0 = "no arguments"
+> --       arguments 1 = "1 argument"
+> --       arguments n = show n ++ " arguments"
 
 > noExpressionStatement :: String
 > noExpressionStatement =

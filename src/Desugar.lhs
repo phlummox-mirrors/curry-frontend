@@ -495,16 +495,34 @@ desugars the following extensions:
 > elimFunctionPattern :: ModuleIdent -> Position -> [ConstrTerm]
 >		         -> DesugarState ([ConstrTerm], [(Ident,ConstrTerm)])
 > elimFunctionPattern m p [] = return ([],[])
-> elimFunctionPattern m p (t@(FunctionPattern qident cts):ts) =
->   do
->     tyEnv <- fetchSt
->     ident <- freshIdent m "_#funpatt" (monoType (typeOf tyEnv t))
->     (ts', its') <- elimFunctionPattern m p ts
->     return ((VariablePattern ident):ts', (ident,t):its')
-> elimFunctionPattern m p (t:ts) =
->   do
->     (ts', its') <- elimFunctionPattern m p ts
->     return (t:ts', its')
+> elimFunctionPattern m p (t:ts)
+>    | containsFunctionPattern t
+>      = do tyEnv <- fetchSt
+>	    ident <- freshIdent m "_#funpatt" (monoType (typeOf tyEnv t))
+>	    (ts',its') <- elimFunctionPattern m p ts
+>           return ((VariablePattern ident):ts', (ident,t):its')
+>    | otherwise
+>      = do (ts', its') <- elimFunctionPattern m p ts
+>	    return (t:ts', its')
+
+> containsFunctionPattern :: ConstrTerm -> Bool
+> containsFunctionPattern (ConstructorPattern _ ts)
+>    = any containsFunctionPattern ts
+> containsFunctionPattern (InfixPattern t1 _ t2)
+>    = any containsFunctionPattern [t1,t2]
+> containsFunctionPattern (ParenPattern t)
+>    = containsFunctionPattern t
+> containsFunctionPattern (TuplePattern ts)
+>    = any containsFunctionPattern ts
+> containsFunctionPattern (ListPattern ts)
+>    = any containsFunctionPattern ts
+> containsFunctionPattern (AsPattern _ t)
+>    = containsFunctionPattern t
+> containsFunctionPattern (LazyPattern t)
+>    = containsFunctionPattern t
+> containsFunctionPattern (FunctionPattern _ _) = True
+> containsFunctionPattern (InfixFuncPattern _ _ _) = True
+> containsFunctionPattern _ = False
 
 > genFunctionPatternExpr :: ModuleIdent -> Position -> [(Ident, ConstrTerm)]
 >		            -> Rhs -> DesugarState Rhs

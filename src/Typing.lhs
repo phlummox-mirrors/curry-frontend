@@ -1,4 +1,4 @@
-% -*- LaTeX -*-
+
 % $Id: Typing.lhs,v 1.7 2004/02/12 19:13:12 wlux Exp $
 %
 % Copyright (c) 2003-2006, Wolfgang Lux
@@ -147,6 +147,16 @@ environment.}
 >           argType tyEnv t >>= unify ty >> elemType ty ts
 > argType tyEnv (AsPattern v _) = argType tyEnv (VariablePattern v)
 > argType tyEnv (LazyPattern t) = argType tyEnv t
+> argType tyEnv (FunctionPattern f ts) =
+>   do 
+>     ty <- instUniv (funType f tyEnv)
+>     tys <- mapM (argType tyEnv) ts
+>     unifyList (init (flatten ty)) tys
+>     return (last (flatten ty))
+>   where flatten (TypeArrow ty1 ty2) = ty1 : flatten ty2
+>         flatten ty = [ty]
+> argType tyEnv (InfixFuncPattern t1 op t2) =
+>   argType tyEnv (FunctionPattern op [t1,t2])
 
 > exprType :: ValueEnv -> Expression -> TyState Type
 > exprType tyEnv (Literal l) = litType tyEnv l

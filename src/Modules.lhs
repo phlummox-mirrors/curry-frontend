@@ -181,7 +181,7 @@ code are obsolete and commented out.
 
 > transModule :: Bool -> Bool -> Bool -> ModuleEnv -> ValueEnv 
 >      -> ArityEnv -> Module -> (IL.Module,ArityEnv,[(Dump,Doc)])
-> transModule flat debug trusted mEnv tyEnv aEnv (Module m es ds) = 
+> transModule flat debug trusted mEnv tyEnv aEnv (Module m es ds) =
 >     (il,aEnv',dumps)
 >   where topDs = filter (not . isImportDecl) ds
 >         evEnv = evalEnv topDs
