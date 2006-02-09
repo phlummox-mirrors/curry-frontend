@@ -7,8 +7,8 @@
 -- December 2005,
 -- Martin Engelke (men@informatik.uni-kiel.de)
 --
-module Frontend (lex, parse, abstractIO, flatIO,
-		 Result(..), Message(..),WarningType(..),
+module Frontend (lex, parse, fullParse, abstractIO, flatIO,
+		 Result(..), Message(..)
 		)where
 
 import Modules
@@ -57,6 +57,13 @@ parse fn src = let (err, src') = unlitLiterate fn src
 	       in  if null err
 		   then genCurrySyntax fn (parseSource True fn src')
 		   else Failure [message_ Error err]
+
+
+-- Returns the syntax tree of the source program 'src' (type 'Module'; see
+-- Module "CurrySyntax") after resolving the type (i.e. function,
+-- constructor or variable) of an identifier.
+fullParse :: [FilePath] -> FilePath -> String -> IO (Result CS.Module)
+fullParse paths fn src = genFullCurrySyntax paths fn (parse fn src)
 
 
 -- Compiles the source programm 'src' to an AbstractCurry program
@@ -108,21 +115,41 @@ genCurrySyntax _ (Err.Error err)
 
 
 --
+genFullCurrySyntax :: [FilePath] -> FilePath -> Result CS.Module 
+		      -> IO (Result CS.Module)
+genFullCurrySyntax paths fn (Result msgs mod)
+   = do errs <- makeInterfaces paths mod
+	if null errs
+	   then do mEnv <- loadInterfaces paths mod
+		   (_, _, _, mod', _) <- simpleCheckModule opts mEnv mod
+		   return (Result msgs mod')
+	   else return (Failure (msgs ++ map (message_ Error) errs))
+ where
+ opts = defaultOpts{ importPaths = paths,
+		     noVerb      = True,
+		     noWarn      = True,
+		     abstract    = True
+		   }
+genFullCurrySyntax _ _ (Failure msgs) = return (Failure msgs)
+
+
+--
 genAbstractIO :: [FilePath] -> FilePath -> Result CS.Module
 	      -> IO (Result ACY.CurryProg)
 genAbstractIO paths fn (Result msgs mod)
    = do errs <- makeInterfaces paths mod
-	if null errs then
-	   (do mEnv <- loadInterfaces paths mod
-	       (tyEnv, tcEnv, _, mod', _) <- simpleCheckModule opts mEnv mod
-	       return (Result msgs (genTypedAbstract tyEnv tcEnv mod'))
-	   )
+	if null errs
+	   then do mEnv <- loadInterfaces paths mod
+		   (tyEnv, tcEnv, _, mod', _)
+		       <- simpleCheckModule opts mEnv mod
+		   return (Result msgs (genTypedAbstract tyEnv tcEnv mod'))
 	   else return (Failure (msgs ++ map (message_ Error) errs))
- where opts = defaultOpts{ importPaths = paths,
-			   noVerb      = True,
-			   noWarn      = True,
-			   abstract    = True
-			 }
+ where 
+ opts = defaultOpts{ importPaths = paths,
+		     noVerb      = True,
+		     noWarn      = True,
+		     abstract    = True
+		   }
 genAbstractIO _ _ (Failure msgs) = return (Failure msgs)
 
 
