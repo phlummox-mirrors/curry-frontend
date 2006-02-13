@@ -272,28 +272,38 @@ top-level.
 >	           -> [Equation] -> RenameState Decl
 > checkEquationLhs withExt k m env p [Equation p' lhs rhs] =
 >   either (return . funDecl) (checkDeclLhs withExt k m env . patDecl)
->          (checkEqLhs k env p' lhs)
+>          (checkEqLhs m k env p' lhs)
 >   where funDecl (f,lhs) = FunctionDecl p f [Equation p' lhs rhs]
 >         patDecl t
 >           | k == globalKey = errorAt p noToplevelPattern
 >           | otherwise = PatternDecl p' t rhs
 > checkEquationLhs _ _ _ _ _ _ = internalError "checkEquationLhs"
 
-> checkEqLhs :: Int -> RenameEnv -> Position -> Lhs
+> checkEqLhs :: ModuleIdent -> Int -> RenameEnv -> Position -> Lhs
 >            -> Either (Ident,Lhs) ConstrTerm
-> checkEqLhs k env _ (FunLhs f ts)
->   | isDataConstr f env = Right (ConstructorPattern (qualify f) ts)
+> checkEqLhs m k env p (FunLhs f ts)
+>   | isDataConstr f env
+>     = if k /= globalKey
+>       then Right (ConstructorPattern (qualify f) ts)
+>       else if null (qualLookupVar (qualifyWith m f) env)
+>            then Left (f',FunLhs f' ts)
+>	     else errorAt p noToplevelPattern
 >   | otherwise = Left (f',FunLhs f' ts)
 >   where f' = renameIdent f k
-> checkEqLhs k env _ (OpLhs t1 op t2)
->   | isDataConstr op env = checkOpLhs k env (infixPattern t1 (qualify op)) t2
+> checkEqLhs m k env p (OpLhs t1 op t2)
+>   | isDataConstr op env 
+>     = if k /= globalKey
+>       then checkOpLhs k env (infixPattern t1 (qualify op)) t2
+>       else if null (qualLookupVar (qualifyWith m op) env)
+>            then Left (op',OpLhs t1 op' t2)
+>	     else errorAt p noToplevelPattern
 >   | otherwise = Left (op',OpLhs t1 op' t2)
 >   where op' = renameIdent op k
 >         infixPattern (InfixPattern t1 op1 t2) op2 t3 =
 >           InfixPattern t1 op1 (infixPattern t2 op2 t3)
 >         infixPattern t1 op t2 = InfixPattern t1 op t2
-> checkEqLhs k env p (ApLhs lhs ts) =
->   case checkEqLhs k env p lhs of
+> checkEqLhs m k env p (ApLhs lhs ts) =
+>   case checkEqLhs m k env p lhs of
 >     Left (f',lhs') -> Left (f',ApLhs lhs' ts)
 >     Right _ -> errorAt p $ nonVariable "curried definition" f
 >   where (f,_) = flatLhs lhs
