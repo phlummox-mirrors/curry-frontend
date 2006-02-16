@@ -157,7 +157,7 @@ Since this modified version of MCC uses FlatCurry interfaces instead of
 >              <|> leftParen <-*> parenDecl
 >              <|> type1 <\> conId <\> leftParen <**> opDecl
 >         identDecl = many type2 <**> (conType <$> opDecl `opt` conDecl)
->                 <|> fieldDecl <$> (braces' (labelDecls `sepBy1` comma))
+>                 <|> fieldDecl <$> (layoutOff <-*> braces (labelDecls `sepBy1` comma))
 >         parenDecl = conOpDeclPrefix <$> conSym <*-> rightParen <*> type2 <*> type2
 >                 <|> tupleType <*-> rightParen <**> opDecl
 >         opDecl = conOpDecl <$> conop <*> type1
@@ -166,7 +166,7 @@ Since this modified version of MCC uses FlatCurry interfaces instead of
 >         conOpDecl op ty2 ty1 tvs p = ConOpDecl p tvs ty1 op ty2
 >         conOpDeclPrefix op ty1 ty2 tvs p = ConOpDecl p tvs ty1 op ty2
 >         fieldDecl labs c tvs p = ConLabeledDecl p tvs c labs
->         braces' p = token DoubleColon <-*> p <*-> token DoubleColon
+>         braces' p = token DoubleColon <-*> p <*-> rightBrace
 
 
 > labelDecls = (,) <$> labId `sepBy1` comma <*-> token DoubleColon <*> type0
