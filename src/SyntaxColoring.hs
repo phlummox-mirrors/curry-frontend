@@ -20,36 +20,46 @@ data Program = Program [Code] String  deriving Show
 data Code =  Keyword String
            | Space Int
            | NewLine
-           | ConstructorName String
-           | TypeConstructor String
-           | Function String
-           | ModuleName String
+           | ConstructorName  ConstructorKind QualIdent
+           | TypeConstructor  QualIdent
+           | Function FunctionKind QualIdent
+           | ModuleName ModuleIdent
            | Commentary String
            | NumberCode String
            | StringCode String
            | CharCode String
            | Symbol String
-           | Identifier String deriving Show
-           
-data Color = Blue
-            |Green
-            |Black
-            |Red
-            |White
-            |Purple
-            |Aqua
-            |Maroon
-            |Fuchsia
-            |Silver
+           | Identifier IdentifierKind QualIdent deriving Show
 
+data ConstructorKind = ConstrPattern
+                     | ConstrCall
+                     | ConstrDecla
+                     | OtherConstrKind deriving Show
+                     
+data IdentifierKind = IdDecl
+                    | IdCall
+                    | UnknownId  deriving Show         
+                      
+data FunctionKind = InfixFunction
+                  | TypSig
+                  | FunDecl
+                  | FunctionCall
+                  | OtherFunctionKind deriving Show           
+           
+
+                  
+                  
+-- -------------------------------------------------                  
+                  
 catIdentifiers :: Module -> [Code]
 catIdentifiers  (Module  moduleIdent maybeExportSpec decls) =
-    (moduleIdent2codes moduleIdent ++
+     ([ModuleName moduleIdent] ++
      (if isJust maybeExportSpec 
            then exportSpec2codes (fromJust maybeExportSpec) 
            else []) ++
      (concatMap decl2codes decls))
      
+                
 genCode :: Module -> [(Position,Token)] -> [Code]
 genCode modul posNtokList =
     tokenNcodes2codes 1 1 posNtokList (catIdentifiers modul)
@@ -60,13 +70,52 @@ filename2program filename =
      let (Result _ m) = (parse filename cont)
          (Result _ ls) = (Frontend.lex filename cont) in    
      return (genProgram m ls)    
+        
                         
 genProgram :: Module -> [(Position,Token)] -> Program
 genProgram  modul posNtokList = 
       Program (genCode modul posNtokList)
-              ""      
-            
+              ""    
+
+-- Qualified---------------              
+                            
+filename2Qualifiedprogram :: [String] -> String -> IO Program
+filename2Qualifiedprogram paths filename=
+     readFile filename >>= \ cont ->
+     (typingParse paths filename  cont) >>= \ (Result _ m2) ->           
+     let (Result _ m) = (parse filename cont)         
+         (Result _ ls) = (Frontend.lex filename cont) in    
+     return (genQualifiedProgram m m2 ls)    
+                        
+genQualifiedProgram :: Module -> Module -> [(Position,Token)] -> Program
+genQualifiedProgram  modul typingModule posNtokList = 
+      Program (genQualifiedCode modul typingModule posNtokList)
+              ""                  
+--- @param parse-Module
+--- @param typingParse-Module              
+genQualifiedCode :: Module ->  Module -> [(Position,Token)] -> [Code]       
+genQualifiedCode parseModul typinParseModul posNtokList =
+    tokenNcodes2codes 1 1 posNtokList (catQualifiedIdentifiers parseModul typinParseModul)            
+    
+--- @param parse-Module
+--- @param typingParse-Module     
+catQualifiedIdentifiers :: Module -> Module -> [Code]
+catQualifiedIdentifiers (Module  moduleIdent maybeExportSpec decls)
+                        (Module  _ _ typingDecls) =
+     ([ModuleName moduleIdent] ++
+     (if isJust maybeExportSpec 
+           then exportSpec2codes (fromJust maybeExportSpec) 
+           else []) ++
+     (concatMap decl2codes (prepareDecls positions)))
+    where
+       lookupTable = map (\d -> (getPosition d,d)) typingDecls  
+       positions = map getPosition decls
+       prepareDecls [] = []
+       prepareDecls (p:ps) =           
+           maybe [] (:[]) (lookup p lookupTable) ++ prepareDecls ps
              
+-- ----------------------------------------
+
 
 tokenNcodes2codes :: Int -> Int -> [(Position,Token)] -> [Code] -> [Code]
 tokenNcodes2codes _ _ [] _ = []          
@@ -79,59 +128,93 @@ tokenNcodes2codes currLine currCol toks@((Position _ line col,token):ts) codes
            tokenNcodes2codes currLine col toks codes
     | isTokenIdentifier token && null codes =
            error ("empty Code-List, Token: " ++ show token)
-    | not (isTokenIdentifier token) =
-           token2code token : tokenNcodes2codes newLine newCol ts codes
+    | not (isTokenIdentifier token) = 
+           token2code token : tokenNcodes2codes newLine newCol ts codes 
     | tokenStr == code2string (head codes) =
-           (head codes) : tokenNcodes2codes newLine newCol ts (tail codes)       
+           (head codes) : tokenNcodes2codes newLine newCol ts (tail codes) 
+    | elem tokenStr (codeQualifiers (head codes)) =
+           (ModuleName (mkMIdent [tokenStr])) : tokenNcodes2codes newLine newCol ts codes                  
     | otherwise = 
            tokenNcodes2codes currLine currCol toks (tail codes)
   where
       tokenStr = token2string token            
-      newLine   = (currLine + length (lines tokenStr)) - 1 
-      newCol  = currCol + length tokenStr    
+      newLine  = (currLine + length (lines tokenStr)) - 1 
+      newCol   = currCol + length tokenStr    
            
+{-
+codeWithoutUniqueID ::  Code -> String
+codeWithoutUniqueID code = maybe (code2string code) (name . unqualify) $ getQualIdent code
+     
 
-            
+codeUnqualify :: Code -> Code
+codeUnqualify code = maybe code (setQualIdent code . qualify . unqualify)  $ getQualIdent code  
+-}  
+          
+codeQualifiers :: Code -> [String]
+codeQualifiers = maybe [] moduleQualifiers . getModuleIdent
 
-                
-code2color (Keyword _) = Blue
-code2color (Space _)= White
-code2color NewLine = White
-code2color (ConstructorName _) = Fuchsia
-code2color (Function _) = Purple
-code2color (ModuleName _) = Maroon
-code2color (Commentary _) = Green
-code2color (NumberCode _) = Black
-code2color (StringCode _) = Blue
-code2color (CharCode _) = Blue
-code2color (Symbol _) = Silver
-code2color (Identifier _) = Black
-code2color (TypeConstructor _) = Blue
+getModuleIdent :: Code -> Maybe ModuleIdent
+getModuleIdent (Keyword str) = Nothing
+getModuleIdent (Space i)= Nothing
+getModuleIdent NewLine = Nothing
+getModuleIdent (ConstructorName _ qualIdent) = fst $ splitQualIdent qualIdent
+getModuleIdent (Function _ qualIdent) = fst $ splitQualIdent qualIdent
+getModuleIdent (ModuleName moduleIdent) = Just moduleIdent
+getModuleIdent (Commentary str) = Nothing
+getModuleIdent (NumberCode str) = Nothing
+getModuleIdent (Symbol str) = Nothing
+getModuleIdent (Identifier _ qualIdent) = fst $ splitQualIdent qualIdent                     
+getModuleIdent (TypeConstructor qualIdent) = fst $ splitQualIdent qualIdent
+getModuleIdent (StringCode str) = Nothing                                 
+getModuleIdent (CharCode str) = Nothing  
+
+
+getQualIdent :: Code -> Maybe QualIdent
+getQualIdent (Keyword str) = Nothing
+getQualIdent (Space i)= Nothing
+getQualIdent NewLine = Nothing
+getQualIdent (ConstructorName _ qualIdent) = Just qualIdent
+getQualIdent (Function _ qualIdent) = Just qualIdent
+getQualIdent (ModuleName moduleIdent) = Nothing
+getQualIdent (Commentary str) = Nothing
+getQualIdent (NumberCode str) = Nothing
+getQualIdent (Symbol str) = Nothing
+getQualIdent (Identifier _ qualIdent) = Just qualIdent                      
+getQualIdent (TypeConstructor qualIdent) = Just qualIdent
+getQualIdent (StringCode str) = Nothing                                 
+getQualIdent (CharCode str) = Nothing   
+{-
+setQualIdent :: Code -> QualIdent -> Code
+setQualIdent (Keyword str) _ = (Keyword str)
+setQualIdent (Space i) _ = (Space i)
+setQualIdent NewLine _ = NewLine
+setQualIdent (ConstructorName kind _) qualIdent = (ConstructorName kind qualIdent)
+setQualIdent (Function kind _) qualIdent = (Function kind qualIdent)
+setQualIdent (ModuleName moduleIdent) _ = (ModuleName moduleIdent)
+setQualIdent (Commentary str) _ = (Commentary str)
+setQualIdent (NumberCode str) _ = (NumberCode str)
+setQualIdent (Symbol str) _ = (Symbol str)
+setQualIdent (Identifier kind _) qualIdent = (Identifier kind qualIdent)                      
+setQualIdent (TypeConstructor _) qualIdent = (TypeConstructor qualIdent)
+setQualIdent (StringCode str) _ = (StringCode str)                                 
+setQualIdent (CharCode str) _ = (CharCode str)             
+-}
                   
 code2string (Keyword str) = str
 code2string (Space i)= concat (replicate i " ")
 code2string NewLine = "\n"
-code2string (ConstructorName str) = str
-code2string (Function str) = str
-code2string (ModuleName str) = str
+code2string (ConstructorName _ qualIdent) = name $ unqualify qualIdent
+code2string (Function _ qualIdent) = name $ unqualify qualIdent
+code2string (ModuleName moduleIdent) = moduleName moduleIdent
 code2string (Commentary str) = str
 code2string (NumberCode str) = str
 code2string (Symbol str) = str
-code2string (Identifier str) = str                      
-code2string (TypeConstructor str) = str
+code2string (Identifier _ qualIdent) = name $ unqualify qualIdent                      
+code2string (TypeConstructor qualIdent) = name $ unqualify qualIdent
 code2string (StringCode str) = str                                 
 code2string (CharCode str) = str
 
-color2html Blue = "blue"
-color2html Green = "green"
-color2html Black = "black"
-color2html Red = "red"
-color2html White = "white"     
-color2html Purple = "#800080"
-color2html Aqua = "#00FFFF"
-color2html Maroon = "#800000"
-color2html Fuchsia = "#FF00FF"  
-color2html Silver = "#C0C0C0"
+
 
 token2code :: Token -> Code
 token2code tok@(Token cat _)
@@ -150,7 +233,7 @@ token2code tok@(Token cat _)
     | elem cat [LineComment, NestedComment]
          = Commentary (token2string tok)
     | elem cat [Id_qualified,Id,QId,Sym,QSym]
-         = Identifier (token2string tok)
+         = Identifier UnknownId $ qualify $ mkIdent $ token2string tok
     | cat == StringTok 
          = StringCode (token2string tok)
     | cat == CharTok
@@ -160,29 +243,22 @@ token2code tok@(Token cat _)
 isTokenIdentifier :: Token -> Bool
 isTokenIdentifier (Token cat _) = elem cat [Id_qualified,Id,QId,Sym,QSym]
     
-               
+-- DECL Position
 
-               
-program2html (Program codes unparsed) =
-    "<HTML><HEAD></HEAD><BODY style=\"font-family:'Courier New', Arial;\">" ++
-    concat (map code2html codes ++ [unparsed2html unparsed]) ++
-    "</BODY></HTML>"
- 
-
-code2html c = spanTag (color2html (code2color c)) 
-                      (replace ' ' 
-                               "&nbsp;" 
-                               (replace '\n' 
-                                        "<br>\n" 
-                                        (code2string c)))
-
-spanTag :: String -> String -> String
-spanTag color str = "<SPAN style=\"color:"++ color ++"\">" ++ str ++ "</SPAN>"
-
-unparsed2html str = spanTag "red" $ replace ' ' "&nbsp;" $ replace '\n' "<br>\n" str
-
-replace :: Char -> String -> String -> String
-replace old new = foldr (\ x -> if x == old then (new ++) else ([x]++)) ""
+getPosition :: Decl -> Position
+getPosition (ImportDecl pos _ _ _ _) = pos     
+getPosition (InfixDecl pos _ _ _) = pos     
+getPosition (DataDecl pos _ _ _) = pos     
+getPosition (NewtypeDecl pos _ _ _) = pos
+getPosition (TypeDecl pos _ _ _) = pos   
+getPosition (TypeSig pos _ _) = pos    
+getPosition (EvalAnnot pos _ _) = pos
+getPosition (FunctionDecl pos _ _) = pos    
+getPosition (ExternalDecl pos _ _ _ _) = pos
+getPosition (FlatExternalDecl pos _) = pos    
+getPosition (PatternDecl pos _ _) = pos    
+getPosition (ExtraVariables pos _) = pos
+             
 
 -- DECL TO CODE -------------------------------------------------------------------- 
 
@@ -191,44 +267,44 @@ exportSpec2codes (Exporting _ exports) = concatMap export2codes exports
 
 export2codes :: Export -> [Code]
 export2codes (Export qualIdent) =
-     qualIdent2codes Function qualIdent  
+     [Function OtherFunctionKind qualIdent]  
 export2codes (ExportTypeWith qualIdent idents) = 
-     qualIdent2codes ConstructorName qualIdent ++ map (Function . name) idents
+     [ConstructorName OtherConstrKind qualIdent] ++ map (Function OtherFunctionKind . qualify) idents
 export2codes (ExportTypeAll  qualIdent) = 
-     qualIdent2codes ConstructorName qualIdent  
+     [ConstructorName OtherConstrKind qualIdent]  
 export2codes (ExportModule moduleIdent) = 
-     moduleIdent2codes moduleIdent
+     [ModuleName moduleIdent]
 
 decl2codes :: Decl -> [Code]            
 decl2codes (ImportDecl _ moduleIdent xQualified xModuleIdent importSpec) = 
-     moduleIdent2codes moduleIdent ++
+     [ModuleName moduleIdent] ++
      maybe [] importSpec2codes  importSpec
 decl2codes (InfixDecl _ _ _ idents) =
-     (map (Function . name) idents)
+     (map (Function InfixFunction . qualify) idents) 
 decl2codes (DataDecl _ ident idents constrDecls) =
-     [TypeConstructor (name ident)] ++ 
-     map (Identifier . name) idents ++
+     [TypeConstructor (qualify ident)] ++ 
+     map (Identifier UnknownId . qualify) idents ++
      concatMap constrDecl2codes constrDecls
 decl2codes (NewtypeDecl xPosition xIdent yIdents xNewConstrDecl) =
      []
 decl2codes (TypeDecl _ ident idents typeExpr) =
-     TypeConstructor (name ident) : 
-     map (Identifier . name) idents ++ 
+     TypeConstructor (qualify ident) : 
+     map (Identifier UnknownId . qualify) idents ++ 
      typeExpr2codes typeExpr
 decl2codes (TypeSig _ idents typeExpr) =
-     map (Function . name) idents ++ typeExpr2codes typeExpr
+     map (Function TypSig . qualify) idents ++ typeExpr2codes typeExpr   
 decl2codes (EvalAnnot xPosition xIdents xEvalAnnotation) =
      []
-decl2codes (FunctionDecl _ ident equations) =
-     Function (name ident) : concatMap equation2codes equations
+decl2codes (FunctionDecl _ _ equations) =
+     concatMap equation2codes equations  
 decl2codes (ExternalDecl xPosition xCallConv xString xIdent xTypeExpr) =
      []
 decl2codes (FlatExternalDecl _ idents) =
-     map (Function . name) idents
+     map (Function FunDecl . qualify) idents   
 decl2codes (PatternDecl xPosition constrTerm rhs) =
      constrTerm2codes constrTerm ++ rhs2codes rhs
 decl2codes (ExtraVariables _ idents) =
-     map (Identifier . name) idents
+     map (Identifier IdDecl . qualify) idents
   
 equation2codes :: Equation -> [Code]
 equation2codes (Equation _ lhs rhs) =
@@ -236,9 +312,9 @@ equation2codes (Equation _ lhs rhs) =
      
 lhs2codes :: Lhs -> [Code]
 lhs2codes (FunLhs ident constrTerms) =
-    (Function $ name ident) : concatMap constrTerm2codes constrTerms
+    (Function FunDecl $ qualify ident) : concatMap constrTerm2codes constrTerms
 lhs2codes (OpLhs constrTerm1 ident constrTerm2) =
-    constrTerm2codes constrTerm1 ++ [Function $ name ident] ++ constrTerm2codes constrTerm2
+    constrTerm2codes constrTerm1 ++ [Function OtherFunctionKind $ qualify ident] ++ constrTerm2codes constrTerm2
 lhs2codes (ApLhs lhs constrTerms) =
     lhs2codes lhs ++ concatMap constrTerm2codes constrTerms     
 
@@ -255,28 +331,28 @@ condExpr2codes (CondExpr _ expression1 expression2) =
 constrTerm2codes :: ConstrTerm -> [Code]
 constrTerm2codes (LiteralPattern literal) = []
 constrTerm2codes (NegativePattern ident literal) = []
-constrTerm2codes (VariablePattern ident) = [Identifier (name ident)]
+constrTerm2codes (VariablePattern ident) = [Identifier IdDecl (qualify ident)]
 constrTerm2codes (ConstructorPattern qualIdent constrTerms) =
-    qualIdent2codes ConstructorName qualIdent ++ concatMap constrTerm2codes constrTerms
+    (ConstructorName ConstrPattern qualIdent) : concatMap constrTerm2codes constrTerms
 constrTerm2codes (InfixPattern constrTerm1 qualIdent constrTerm2) =
-    constrTerm2codes constrTerm1 ++ qualIdent2codes ConstructorName qualIdent ++ constrTerm2codes constrTerm2
+    constrTerm2codes constrTerm1 ++ [ConstructorName ConstrPattern qualIdent] ++ constrTerm2codes constrTerm2
 constrTerm2codes (ParenPattern constrTerm) = constrTerm2codes constrTerm
 constrTerm2codes (TuplePattern constrTerms) = concatMap constrTerm2codes constrTerms
 constrTerm2codes (ListPattern constrTerms) = concatMap constrTerm2codes constrTerms
 constrTerm2codes (AsPattern ident constrTerm) =
-    (Function $ name ident) : constrTerm2codes constrTerm
+    (Function OtherFunctionKind $ qualify ident) : constrTerm2codes constrTerm
 constrTerm2codes (LazyPattern constrTerm) = constrTerm2codes constrTerm
 constrTerm2codes (FunctionPattern qualIdent constrTerms) = 
-    qualIdent2codes Function qualIdent ++ concatMap constrTerm2codes constrTerms
+    (Function OtherFunctionKind qualIdent) : concatMap constrTerm2codes constrTerms
 constrTerm2codes (InfixFuncPattern constrTerm1 qualIdent constrTerm2) =
-    constrTerm2codes constrTerm1 ++ qualIdent2codes Function qualIdent ++ constrTerm2codes constrTerm2
+    constrTerm2codes constrTerm1 ++ [Function InfixFunction qualIdent] ++ constrTerm2codes constrTerm2
    
 expression2codes :: Expression -> [Code]
 expression2codes (Literal literal) = []
 expression2codes (Variable qualIdent) = 
-    qualIdent2codes Identifier   qualIdent
+    [Identifier IdCall qualIdent]
 expression2codes (Constructor qualIdent) = 
-    qualIdent2codes ConstructorName qualIdent
+    [ConstructorName ConstrCall qualIdent]
 expression2codes (Paren expression) = 
     expression2codes expression
 expression2codes (Typed expression typeExpr) = 
@@ -319,8 +395,8 @@ expression2codes (Case expression alts) =
     expression2codes expression ++ concatMap alt2codes alts
     
 infixOp2codes :: InfixOp -> [Code]
-infixOp2codes (InfixOp qualIdent) = qualIdent2codes Function qualIdent
-infixOp2codes (InfixConstr qualIdent) = qualIdent2codes ConstructorName qualIdent
+infixOp2codes (InfixOp qualIdent) = [Function InfixFunction qualIdent]
+infixOp2codes (InfixConstr qualIdent) = [ConstructorName OtherConstrKind qualIdent]
 
 
 statement2codes :: Statement -> [Code] 
@@ -338,44 +414,34 @@ alt2codes (Alt _ constrTerm rhs) =
          
 constrDecl2codes :: ConstrDecl -> [Code]
 constrDecl2codes (ConstrDecl _ idents ident typeExprs) =
-    (ConstructorName $ name ident) : concatMap typeExpr2codes typeExprs
+    (ConstructorName ConstrDecla $ qualify ident) : concatMap typeExpr2codes typeExprs
 constrDecl2codes (ConOpDecl _ idents typeExpr1 ident typeExpr2) =   
-    typeExpr2codes typeExpr1 ++ [ConstructorName $ name ident] ++ typeExpr2codes typeExpr2
+    typeExpr2codes typeExpr1 ++ [ConstructorName ConstrDecla $ qualify ident] ++ typeExpr2codes typeExpr2
 
-moduleIdent2codes :: ModuleIdent -> [Code]     
-moduleIdent2codes = map ModuleName . moduleQualifiers
-          
+         
 importSpec2codes :: ImportSpec -> [Code]
 importSpec2codes (Importing _ imports) = concatMap import2codes imports
 importSpec2codes (Hiding _ imports) = concatMap import2codes imports
 
 import2codes :: Import -> [Code]
 import2codes (Import ident) =
-     [Function $ name ident]  
+     [Function OtherFunctionKind $ qualify ident]  
 import2codes (ImportTypeWith ident idents) = 
-     [ConstructorName $ name ident] ++ map (Function . name) idents
+     [ConstructorName OtherConstrKind $ qualify ident] ++ map (Function OtherFunctionKind . qualify) idents
 import2codes (ImportTypeAll  ident) = 
-     [ConstructorName $ name ident]  
+     [ConstructorName OtherConstrKind $ qualify ident]  
      
 typeExpr2codes :: TypeExpr -> [Code]     
 typeExpr2codes (ConstructorType qualIdent typeExprs) = 
-    qualIdent2codes TypeConstructor qualIdent ++ concatMap typeExpr2codes typeExprs
+    (TypeConstructor qualIdent) : concatMap typeExpr2codes typeExprs
 typeExpr2codes (VariableType ident) = 
-    [TypeConstructor $ name ident]
+    [TypeConstructor $ qualify ident]
 typeExpr2codes (TupleType typeExprs) = 
     concatMap typeExpr2codes typeExprs
 typeExpr2codes (ListType typeExpr) = 
     typeExpr2codes typeExpr
 typeExpr2codes (ArrowType typeExpr1 typeExpr2) = 
     typeExpr2codes typeExpr1 ++ typeExpr2codes typeExpr2
-
-qualIdent2codes :: (String -> Code) -> QualIdent -> [Code]
-qualIdent2codes  toCode qualIdent = helper $ splitQualIdent qualIdent
-   where
-      helper (Nothing,ident) = [toCode $ name ident]
-      helper (Just moduleIdent,ident) = moduleIdent2codes moduleIdent ++ [toCode $ name ident]
-
-
 
 -- TOKEN TO STRING ------------------------------------------------------------
 
@@ -456,9 +522,6 @@ attributes2string (IdentAttributes mIdent ident) =concat (intersperse "." (mIden
 
 basename = reverse .  takeWhile (/='/')    . reverse
 
--- showCh c = toString $ toGoodChar c
---toString c = "'" ++ c ++ "'"
-
 showCh c    
    | c == '\\' = "'\\\\'"
    | elem c ('\127' : ['\001' .. '\031']) = show c
@@ -485,37 +548,38 @@ tokenNcodes2codesLOG :: Int -> Int -> [(Position,Token)] -> [Code] -> IO [Code]
 tokenNcodes2codesLOG _ _ [] _ = return []          
 tokenNcodes2codesLOG currLine currCol toks@((Position _ line col,token):ts) codes 
     | currLine < line =
-           appendFile "out/log.txt" ("Zeile: " ++ show currLine ++ "/" ++ show line ++ " Spalte: " ++ show currCol ++ "/" ++ show col  ++ " NewLines: " ++ show (line - currLine) ++ "\n") >>             
+           addLog (" NewLines: " ++ show (line - currLine) ++ "\n") >>             
            tokenNcodes2codesLOG line 1 toks codes >>= \ temp ->
            return ((replicate (line - currLine) NewLine) ++ temp)
     | currCol < col =  
-           appendFile "out/log.txt" ("Zeile: " ++ show currLine ++ "/" ++ show line ++ " Spalte: " ++ show currCol ++ "/" ++ show col  ++ " Space " ++ show (col - currCol)++ "\n") >>
+           addLog (" Space " ++ show (col - currCol)++ "\n") >>
            tokenNcodes2codesLOG currLine col toks codes >>= \ temp ->
            return (Space (col - currCol) : temp)           
     | isTokenIdentifier token && null codes =
-           appendFile "out/log.txt" ("Zeile: " ++ show currLine ++ "/" ++ show line ++ " Spalte: " ++ show currCol ++ "/" ++ show col  ++ " error: empty Code-List, Token: " ++ show token ++ "\n") >>
+           addLog (" error: empty Code-List, Token: " ++ show token ++ "\n") >>
            error ("empty Code-List, Token: " ++ show token)
     | not (isTokenIdentifier token) =
-           appendFile "out/log.txt" ("Zeile: " ++ show currLine ++ "/" ++ show line ++ " Spalte: " ++ show currCol ++ "/" ++ show col  ++ " Token ist kein Identifier: " ++ tokenStr ++ "\n") >>
+           addLog (" Token ist kein Identifier: " ++ tokenStr ++ "\n") >>
            tokenNcodes2codesLOG newLine newCol ts codes >>= \ temp ->
            return (token2code token : temp)                   
     | tokenStr == code2string (head codes) =
-           appendFile "out/log.txt" ("Zeile: " ++ show currLine ++ "/" ++ show line ++ " Spalte: " ++ show currCol ++ "/" ++ show col  ++ " Code wird genommen: " ++ show (head codes) ++ "\n") >>
+           addLog (" Code wird genommen: " ++ show (head codes) ++ "\n") >>
            tokenNcodes2codesLOG newLine newCol ts (tail codes)  >>= \ temp ->
-           return (head codes : temp)                 
+           return (head codes : temp) 
+    | elem tokenStr (codeQualifiers (head codes)) =
+           addLog (" Token: "++ tokenStr ++" ist Modulname von: " ++ show (head codes) ++ "\n") >>
+           tokenNcodes2codesLOG newLine newCol ts codes >>= \ temp ->
+           return ((ModuleName (mkMIdent [tokenStr])) : temp)                                 
     | otherwise = 
-           appendFile "out/log.txt" ("Zeile: " ++ show currLine ++ "/" ++ show line ++ " Spalte: " ++ show currCol ++ "/" ++ show col  ++ " Token: "++ tokenStr ++",Code fällt weg: " ++ show (head codes) ++ "\n") >>
+           addLog (" Token: "++ tokenStr ++",Code fällt weg: " ++ show (head codes) ++ "\n") >>
            tokenNcodes2codesLOG currLine currCol toks (tail codes)
   where
       tokenStr = token2string token            
       newLine   = (currLine + length (lines tokenStr)) - 1 
       newCol  = currCol + length tokenStr   
-
-     
+      addLog str = 
+            appendFile "out/log.txt" 
+                     ("Zeile: " ++ show currLine ++ "/" ++ show line ++ 
+                      "Spalte: " ++ show currCol ++ "/" ++ show col  ++ str)
+   
   
---writeFile ("out/" ++ basename s) cont            
-     
-
-
-     
---writeFile ("out/" ++ basename s ++ ".codes.txt") (unlines $ map show (tokenNcodes2codes 1 1 ls (concatMap decl2codes list)))      
