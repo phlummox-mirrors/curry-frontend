@@ -66,6 +66,7 @@ an unlimited range of integer constants in Curry programs.
 
 > data ConstrDecl =
 >     ConstrDecl Position [Ident] Ident [TypeExpr]
+>   | ConLabeledDecl Position [Ident] Ident [([Ident],TypeExpr)]
 >   | ConOpDecl Position [Ident] TypeExpr Ident TypeExpr
 >   deriving (Eq,Show)
 > data NewConstrDecl =

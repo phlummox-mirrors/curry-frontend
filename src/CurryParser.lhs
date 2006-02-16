@@ -43,7 +43,7 @@ combinators described in appendix~\ref{sec:ll-parsecomb}.
 > moduleHeader :: Parser Token ([Decl] -> Module) a
 > moduleHeader = Module <$-> token KW_module
 >                       <*> (mIdent <?> "module name expected")
->                       <*> (Just <$> exportSpec `opt` Nothing)
+>                       <*> ((Just <$> exportSpec) `opt` Nothing)
 >                       <*-> (token KW_where <?> "where expected")
 >          `opt` Module mainMIdent Nothing
 
@@ -152,29 +152,38 @@ Since this modified version of MCC uses FlatCurry interfaces instead of
 >   where typeVar = tyvar <|> anonId <$-> token Underscore
 
 > constrDecl :: Bool -> Parser Token ConstrDecl a
-> constrDecl flat = position <**> (existVars flat <**> constr)
+> constrDecl flat = position <**> (existVars <**> constr)
 >   where constr = conId <**> identDecl
 >              <|> leftParen <-*> parenDecl
 >              <|> type1 <\> conId <\> leftParen <**> opDecl
 >         identDecl = many type2 <**> (conType <$> opDecl `opt` conDecl)
->         parenDecl = flip conDecl <$> conSym <*-> rightParen <*> many type2
+>                 <|> fieldDecl <$> (braces' (labelDecls `sepBy1` comma))
+>         parenDecl = conOpDeclPrefix <$> conSym <*-> rightParen <*> type2 <*> type2
 >                 <|> tupleType <*-> rightParen <**> opDecl
 >         opDecl = conOpDecl <$> conop <*> type1
 >         conType f tys c = f (ConstructorType (qualify c) tys)
 >         conDecl tys c tvs p = ConstrDecl p tvs c tys
 >         conOpDecl op ty2 ty1 tvs p = ConOpDecl p tvs ty1 op ty2
+>         conOpDeclPrefix op ty1 ty2 tvs p = ConOpDecl p tvs ty1 op ty2
+>         fieldDecl labs c tvs p = ConLabeledDecl p tvs c labs
+>         braces' p = token DoubleColon <-*> p <*-> token DoubleColon
+
+
+> labelDecls = (,) <$> labId `sepBy1` comma <*-> token DoubleColon <*> type0
 
 > newConstrDecl :: Parser Token NewConstrDecl a
 > newConstrDecl =
->   NewConstrDecl <$> position <*> existVars False <*> con <*> type2
+>   NewConstrDecl <$> position <*> existVars <*> con <*> type2
 
-> existVars :: Bool -> Parser Token [Ident] a
+
+
+> existVars :: Parser Token [Ident] a
 > {-
 > existVars flat
 >   | flat = succeed []
 >   | otherwise = token Id_forall <-*> many1 tyvar <*-> dot `opt` []
 > -}
-> existVars _ = succeed []
+> existVars = succeed []
 
 > functionDecl :: Bool -> Parser Token Decl a
 > functionDecl flat = position <**> decl
@@ -623,10 +632,11 @@ prefix of a let expression.
 > qtycon :: Parser Token QualIdent a
 > qtycon = qConId
 
-> varId, funId, conId :: Parser Token Ident a
+> varId, funId, conId, labId :: Parser Token Ident a
 > varId = ident
 > funId = ident
 > conId = ident
+> labId = ident
 
 > funSym, conSym :: Parser Token Ident a
 > funSym = sym
