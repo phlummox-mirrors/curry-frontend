@@ -15,13 +15,13 @@ import Maybe
 import List
 
 
-data Program = Program [Code] String  deriving Show
+data Program = Program ModuleIdent [Code] String  deriving Show
 
 data Code =  Keyword String
            | Space Int
            | NewLine
            | ConstructorName  ConstructorKind QualIdent
-           | TypeConstructor  QualIdent
+           | TypeConstructor  TypeKind QualIdent
            | Function FunctionKind QualIdent
            | ModuleName ModuleIdent
            | Commentary String
@@ -30,6 +30,9 @@ data Code =  Keyword String
            | CharCode String
            | Symbol String
            | Identifier IdentifierKind QualIdent deriving Show
+           
+data TypeKind = TypeDecla
+              | TypeUse deriving Show          
 
 data ConstructorKind = ConstrPattern
                      | ConstrCall
@@ -73,8 +76,9 @@ filename2program filename =
         
                         
 genProgram :: Module -> [(Position,Token)] -> Program
-genProgram  modul posNtokList = 
-      Program (genCode modul posNtokList)
+genProgram  modul@(Module  moduleIdent _ _) posNtokList = 
+      Program moduleIdent
+              (genCode modul posNtokList)
               ""    
 
 -- Qualified---------------              
@@ -88,8 +92,9 @@ filename2Qualifiedprogram paths filename=
      return (genQualifiedProgram m m2 ls)    
                         
 genQualifiedProgram :: Module -> Module -> [(Position,Token)] -> Program
-genQualifiedProgram  modul typingModule posNtokList = 
-      Program (genQualifiedCode modul typingModule posNtokList)
+genQualifiedProgram  modul@(Module  moduleIdent _ _) typingModule posNtokList = 
+      Program moduleIdent
+              (genQualifiedCode modul typingModule posNtokList)
               ""                  
 --- @param parse-Module
 --- @param typingParse-Module              
@@ -115,6 +120,8 @@ catQualifiedIdentifiers (Module  moduleIdent maybeExportSpec decls)
            maybe [] (:[]) (lookup p lookupTable) ++ prepareDecls ps
              
 -- ----------------------------------------
+
+
 
 
 tokenNcodes2codes :: Int -> Int -> [(Position,Token)] -> [Code] -> [Code]
@@ -164,7 +171,7 @@ getModuleIdent (Commentary str) = Nothing
 getModuleIdent (NumberCode str) = Nothing
 getModuleIdent (Symbol str) = Nothing
 getModuleIdent (Identifier _ qualIdent) = fst $ splitQualIdent qualIdent                     
-getModuleIdent (TypeConstructor qualIdent) = fst $ splitQualIdent qualIdent
+getModuleIdent (TypeConstructor _ qualIdent) = fst $ splitQualIdent qualIdent
 getModuleIdent (StringCode str) = Nothing                                 
 getModuleIdent (CharCode str) = Nothing  
 
@@ -180,7 +187,7 @@ getQualIdent (Commentary str) = Nothing
 getQualIdent (NumberCode str) = Nothing
 getQualIdent (Symbol str) = Nothing
 getQualIdent (Identifier _ qualIdent) = Just qualIdent                      
-getQualIdent (TypeConstructor qualIdent) = Just qualIdent
+getQualIdent (TypeConstructor _ qualIdent) = Just qualIdent
 getQualIdent (StringCode str) = Nothing                                 
 getQualIdent (CharCode str) = Nothing   
 {-
@@ -195,7 +202,7 @@ setQualIdent (Commentary str) _ = (Commentary str)
 setQualIdent (NumberCode str) _ = (NumberCode str)
 setQualIdent (Symbol str) _ = (Symbol str)
 setQualIdent (Identifier kind _) qualIdent = (Identifier kind qualIdent)                      
-setQualIdent (TypeConstructor _) qualIdent = (TypeConstructor qualIdent)
+setQualIdent (TypeConstructor kind _) qualIdent = (TypeConstructor kind qualIdent)
 setQualIdent (StringCode str) _ = (StringCode str)                                 
 setQualIdent (CharCode str) _ = (CharCode str)             
 -}
@@ -210,7 +217,7 @@ code2string (Commentary str) = str
 code2string (NumberCode str) = str
 code2string (Symbol str) = str
 code2string (Identifier _ qualIdent) = name $ unqualify qualIdent                      
-code2string (TypeConstructor qualIdent) = name $ unqualify qualIdent
+code2string (TypeConstructor _ qualIdent) = name $ unqualify qualIdent
 code2string (StringCode str) = str                                 
 code2string (CharCode str) = str
 
@@ -282,13 +289,13 @@ decl2codes (ImportDecl _ moduleIdent xQualified xModuleIdent importSpec) =
 decl2codes (InfixDecl _ _ _ idents) =
      (map (Function InfixFunction . qualify) idents) 
 decl2codes (DataDecl _ ident idents constrDecls) =
-     [TypeConstructor (qualify ident)] ++ 
+     [TypeConstructor TypeDecla (qualify ident)] ++ 
      map (Identifier UnknownId . qualify) idents ++
      concatMap constrDecl2codes constrDecls
 decl2codes (NewtypeDecl xPosition xIdent yIdents xNewConstrDecl) =
      []
 decl2codes (TypeDecl _ ident idents typeExpr) =
-     TypeConstructor (qualify ident) : 
+     TypeConstructor TypeDecla (qualify ident) : 
      map (Identifier UnknownId . qualify) idents ++ 
      typeExpr2codes typeExpr
 decl2codes (TypeSig _ idents typeExpr) =
@@ -433,9 +440,9 @@ import2codes (ImportTypeAll  ident) =
      
 typeExpr2codes :: TypeExpr -> [Code]     
 typeExpr2codes (ConstructorType qualIdent typeExprs) = 
-    (TypeConstructor qualIdent) : concatMap typeExpr2codes typeExprs
+    (TypeConstructor TypeUse qualIdent) : concatMap typeExpr2codes typeExprs
 typeExpr2codes (VariableType ident) = 
-    [TypeConstructor $ qualify ident]
+    [TypeConstructor TypeUse $ qualify ident]
 typeExpr2codes (TupleType typeExprs) = 
     concatMap typeExpr2codes typeExprs
 typeExpr2codes (ListType typeExpr) = 

@@ -27,7 +27,7 @@ code2color (StringCode _) = Blue
 code2color (CharCode _) = Blue
 code2color (Symbol _) = Silver
 code2color (Identifier _ _) = Black
-code2color (TypeConstructor _) = Blue
+code2color (TypeConstructor _ _) = Blue
 
 
 color2html Blue = "blue"
@@ -41,14 +41,14 @@ color2html Maroon = "#800000"
 color2html Fuchsia = "#FF00FF"  
 color2html Silver = "#C0C0C0"
 
-program2html (Program codes unparsed) =
+program2html (Program moduleIdent codes unparsed) =
     "<HTML><HEAD></HEAD><BODY style=\"font-family:'Courier New', Arial;\">" ++
-    concat (map code2html codes ++ [unparsed2html unparsed]) ++
+    concat (map (code2html moduleIdent. addModuleIdent moduleIdent) codes ++ [unparsed2html unparsed]) ++
     "</BODY></HTML>"
  
 
-code2html c  
-      | isCall c = maybe tag (addHtmlLink tag) (getQualIdent c) 
+code2html moduleIdent c  
+      | isCall moduleIdent c = maybe tag (addHtmlLink tag) (getQualIdent c) 
       | isDecl c = maybe tag (addHtmlAnker tag) (getQualIdent c)
       | otherwise = tag
     where tag = spanTag (color2html (code2color c)) 
@@ -77,25 +77,32 @@ addHtmlLink html qualIdent =
    "<a href=\"#"++ show qualIdent ++"\">"++ html ++"</a>"
 
 
-isCall :: Code -> Bool
-isCall code = if isDecl code
+isCall :: ModuleIdent -> Code -> Bool
+isCall _ (TypeConstructor _ _) = False
+isCall moduleIdent code = if isDecl code
                 then False
-                else isCall_helper code
-  where
-     isCall_helper (ConstructorName _ _) = True
-     isCall_helper (Function _ _) = True
-     isCall_helper (Identifier _ _) = True
-     isCall_helper _ = False
+                else maybe False 
+                           (maybe True 
+                                  (== moduleIdent) . fst . splitQualIdent) 
+                           (getQualIdent code)
 
+     
 isDecl :: Code -> Bool
 isDecl (ConstructorName ConstrDecla _) = True
 isDecl (Function FunDecl _) = True
 isDecl (Identifier IdDecl _) = True
 isDecl _ = False 
 
+
+--isDecl (TypeConstructor TypeDecla _) = True
+
+
+
 addModuleIdent :: ModuleIdent -> Code -> Code
 addModuleIdent moduleIdent (Function FunDecl qualIdent) 
     | uniqueId (unqualify qualIdent) == 0 =
         (Function FunDecl (qualQualify moduleIdent qualIdent))
     | otherwise = (Function FunDecl qualIdent)
+addModuleIdent moduleIdent (ConstructorName ConstrDecla qualIdent) =
+    (ConstructorName ConstrDecla (qualQualify moduleIdent qualIdent))        
 addModuleIdent _ c = c
