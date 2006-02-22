@@ -90,6 +90,7 @@ isDecl :: Code -> Bool
 isDecl (ConstructorName ConstrDecla _) = True
 isDecl (Function FunDecl _) = True
 isDecl (Identifier IdDecl _) = True
+isDecl (TypeConstructor TypeDecla _) = True
 isDecl _ = False 
 
 
@@ -98,12 +99,18 @@ isDecl _ = False
 
 
 addModuleIdent :: ModuleIdent -> Code -> Code
-addModuleIdent moduleIdent (Function FunDecl qualIdent) 
+addModuleIdent moduleIdent (Function x qualIdent) 
     | uniqueId (unqualify qualIdent) == 0 =
-        (Function FunDecl (qualQualify moduleIdent qualIdent))
-    | otherwise = (Function FunDecl qualIdent)
-addModuleIdent moduleIdent (ConstructorName ConstrDecla qualIdent) =
-    (ConstructorName ConstrDecla (qualQualify moduleIdent qualIdent))        
+        (Function x (qualQualify moduleIdent qualIdent))
+    | otherwise = (Function x qualIdent)   
+addModuleIdent moduleIdent cn@(ConstructorName x qualIdent) 
+    | not $ isQualified qualIdent =
+        (ConstructorName x (qualQualify moduleIdent qualIdent)) 
+    | otherwise = cn       
+addModuleIdent moduleIdent tc@(TypeConstructor TypeDecla qualIdent) 
+    | not $ isQualified qualIdent =
+        (TypeConstructor TypeDecla (qualQualify moduleIdent qualIdent)) 
+    | otherwise = tc         
 addModuleIdent _ c = c
 
 genHtmlFile :: String -> IO ()

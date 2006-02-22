@@ -54,6 +54,12 @@ data FunctionKind = InfixFunction
                   | OtherFunctionKind deriving Show           
            
 
+getFunctionDecls :: [Code] -> [QualIdent]
+getFunctionDecls =  mapMaybe getQualIdent . filter isFunctionDecl                  
+
+isFunctionDecl :: Code -> Bool
+isFunctionDecl (Function FunDecl _)  = True
+isFunctionDecl _ = False  
                   
                   
 -- -------------------------------------------------                  
