@@ -13,7 +13,11 @@ import CurrySyntax
 import Char
 import Maybe
 import List
+import Debug.Trace
 
+debug = False
+
+trace' s x = if debug then trace s x else x
 
 data Program = Program ModuleIdent [Code] String  deriving Show
 
@@ -40,7 +44,7 @@ data ConstructorKind = ConstrPattern
                      | OtherConstrKind deriving Show
                      
 data IdentifierKind = IdDecl
-                    | IdCall
+                    | IdOccur
                     | UnknownId  deriving Show         
                       
 data FunctionKind = InfixFunction
@@ -57,9 +61,7 @@ data FunctionKind = InfixFunction
 catIdentifiers :: Module -> [Code]
 catIdentifiers  (Module  moduleIdent maybeExportSpec decls) =
      ([ModuleName moduleIdent] ++
-     (if isJust maybeExportSpec 
-           then exportSpec2codes (fromJust maybeExportSpec) 
-           else []) ++
+     (maybe [] exportSpec2codes maybeExportSpec) ++
      (concatMap decl2codes decls))
      
                 
@@ -99,7 +101,7 @@ genQualifiedProgram  modul@(Module  moduleIdent _ _) typingModule posNtokList =
 --- @param parse-Module
 --- @param typingParse-Module              
 genQualifiedCode :: Module ->  Module -> [(Position,Token)] -> [Code]       
-genQualifiedCode parseModul typinParseModul posNtokList =
+genQualifiedCode parseModul typinParseModul posNtokList = 
     tokenNcodes2codes 1 1 posNtokList (catQualifiedIdentifiers parseModul typinParseModul)            
     
 --- @param parse-Module
@@ -128,13 +130,14 @@ tokenNcodes2codes :: Int -> Int -> [(Position,Token)] -> [Code] -> [Code]
 tokenNcodes2codes _ _ [] _ = []          
 tokenNcodes2codes currLine currCol toks@((Position _ line col,token):ts) codes 
     | currLine < line = 
-           replicate (line - currLine) NewLine ++
-           tokenNcodes2codes line 1 toks codes
+           trace' (" NewLines: " ++ show (line - currLine) ++ "\n")
+           (replicate (line - currLine) NewLine ++
+           tokenNcodes2codes line 1 toks codes)
     | currCol < col =  
            Space (col - currCol) :         
            tokenNcodes2codes currLine col toks codes
     | isTokenIdentifier token && null codes =
-           error ("empty Code-List, Token: " ++ show token)
+           error ("empty Code-List, Token: " ++ show (line,col) ++ show token)
     | not (isTokenIdentifier token) = 
            token2code token : tokenNcodes2codes newLine newCol ts codes 
     | tokenStr == code2string (head codes) =
@@ -357,7 +360,7 @@ constrTerm2codes (InfixFuncPattern constrTerm1 qualIdent constrTerm2) =
 expression2codes :: Expression -> [Code]
 expression2codes (Literal literal) = []
 expression2codes (Variable qualIdent) = 
-    [Identifier IdCall qualIdent]
+    [Identifier IdOccur qualIdent]
 expression2codes (Constructor qualIdent) = 
     [ConstructorName ConstrCall qualIdent]
 expression2codes (Paren expression) = 
@@ -442,7 +445,7 @@ typeExpr2codes :: TypeExpr -> [Code]
 typeExpr2codes (ConstructorType qualIdent typeExprs) = 
     (TypeConstructor TypeUse qualIdent) : concatMap typeExpr2codes typeExprs
 typeExpr2codes (VariableType ident) = 
-    [TypeConstructor TypeUse $ qualify ident]
+    [Identifier IdOccur (qualify ident)]
 typeExpr2codes (TupleType typeExprs) = 
     concatMap typeExpr2codes typeExprs
 typeExpr2codes (ListType typeExpr) = 

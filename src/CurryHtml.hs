@@ -79,9 +79,8 @@ addHtmlLink html qualIdent =
 
 isCall :: ModuleIdent -> Code -> Bool
 isCall _ (TypeConstructor _ _) = False
-isCall moduleIdent code = if isDecl code
-                then False
-                else maybe False 
+isCall moduleIdent code = not (isDecl code) &&
+                maybe False 
                            (maybe True 
                                   (== moduleIdent) . fst . splitQualIdent) 
                            (getQualIdent code)
@@ -106,3 +105,11 @@ addModuleIdent moduleIdent (Function FunDecl qualIdent)
 addModuleIdent moduleIdent (ConstructorName ConstrDecla qualIdent) =
     (ConstructorName ConstrDecla (qualQualify moduleIdent qualIdent))        
 addModuleIdent _ c = c
+
+genHtmlFile :: String -> IO ()
+genHtmlFile moduleName = 
+  filename2Qualifiedprogram ["/home/pakcs/pakcs/lib"] 
+    (moduleName++".curry") >>= \ x -> seq x $
+  writeFile (fileName moduleName++".html") (program2html x) 
+
+fileName s = reverse (takeWhile (/='/') (reverse s))

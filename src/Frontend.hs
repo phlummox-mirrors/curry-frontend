@@ -62,6 +62,7 @@ parse fn src = let (err, src') = unlitLiterate fn src
 -- Returns the syntax tree of the source program 'src' (type 'Module'; see
 -- Module "CurrySyntax") after resolving the category (i.e. function,
 -- constructor or variable) of an identifier.
+-- Additional information needed: file paths to imported modules
 fullParse :: [FilePath] -> FilePath -> String -> IO (Result CS.Module)
 fullParse paths fn src = 
   genFullCurrySyntax simpleCheckModule paths fn (parse fn src)
