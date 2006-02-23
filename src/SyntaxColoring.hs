@@ -118,17 +118,21 @@ genQualifiedCode parseModul typinParseModul posNtokList =
 --- @param parse-Module
 --- @param typingParse-Module     
 catQualifiedIdentifiers :: Module -> Module -> [Code]
-catQualifiedIdentifiers (Module  moduleIdent maybeExportSpec decls)
+catQualifiedIdentifiers (Module  moduleIdent maybeExportSpec _)
                         (Module  _ _ typingDecls) =
      ([ModuleName moduleIdent] ++
      (maybe [] exportSpec2codes maybeExportSpec)  ++
-     (concatMap decl2codes (prepareDecls positions)))
-    where
-       lookupTable = map (\d -> (getPosition d,d)) typingDecls  
-       positions = map getPosition decls
-       prepareDecls [] = []
-       prepareDecls (p:ps) =           
-           maybe [] (:[]) (lookup p lookupTable) ++ prepareDecls ps
+     (concatMap decl2codes (qsort lessDecl typingDecls)))
+     
+     
+     
+--     (concatMap decl2codes (prepareDecls positions)))
+--    where
+--       lookupTable = map (\d -> (getPosition d,d)) typingDecls  
+--       positions = map getPosition decls
+--       prepareDecls [] = []
+--       prepareDecls (p:ps) =           
+--           maybe [] (:[]) (lookup p lookupTable) ++ prepareDecls ps
 
            
     
@@ -312,8 +316,11 @@ getPosition (PatternDecl pos _ _) = pos
 getPosition (ExtraVariables pos _) = pos
              
 
-leqDecl :: Decl -> Decl -> Bool
-leqDecl decl1 decl2 = getPosition decl1 <= getPosition decl2
+lessDecl :: Decl -> Decl -> Bool
+lessDecl decl1 decl2 = getPosition decl1 < getPosition decl2
+
+qsort _ []     = []
+qsort less (x:xs) = qsort less [y | y <- xs, less y x] ++ [x] ++ qsort less [y | y <- xs, not $ less y x]
 
 -- DECL TO CODE -------------------------------------------------------------------- 
 
