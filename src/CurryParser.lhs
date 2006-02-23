@@ -60,7 +60,7 @@ combinators described in appendix~\ref{sec:ll-parsecomb}.
 \end{verbatim}
 \paragraph{Interfaces}
 Since this modified version of MCC uses FlatCurry interfaces instead of
-.icurry files nothing has to be parsed.
+".icurry" files, a separate parser is not required any longer.
 \begin{verbatim}
 
 > --parseInterface :: FilePath -> String -> Error Interface
@@ -157,8 +157,10 @@ Since this modified version of MCC uses FlatCurry interfaces instead of
 >              <|> leftParen <-*> parenDecl
 >              <|> type1 <\> conId <\> leftParen <**> opDecl
 >         identDecl = many type2 <**> (conType <$> opDecl `opt` conDecl)
->                 <|> fieldDecl <$> (layoutOff <-*> braces (labelDecls `sepBy1` comma))
->         parenDecl = conOpDeclPrefix <$> conSym <*-> rightParen <*> type2 <*> type2
+>                 <|> fieldDecl 
+>		      <$> (layoutOff <-*> braces (labelDecls `sepBy1` comma))
+>         parenDecl = conOpDeclPrefix 
+>	              <$> conSym <*-> rightParen <*> type2 <*> type2
 >                 <|> tupleType <*-> rightParen <**> opDecl
 >         opDecl = conOpDecl <$> conop <*> type1
 >         conType f tys c = f (ConstructorType (qualify c) tys)
@@ -168,14 +170,11 @@ Since this modified version of MCC uses FlatCurry interfaces instead of
 >         fieldDecl labs c tvs p = ConLabeledDecl p tvs c labs
 >         braces' p = token DoubleColon <-*> p <*-> rightBrace
 
-
 > labelDecls = (,) <$> labId `sepBy1` comma <*-> token DoubleColon <*> type0
 
 > newConstrDecl :: Parser Token NewConstrDecl a
 > newConstrDecl =
 >   NewConstrDecl <$> position <*> existVars <*> con <*> type2
-
-
 
 > existVars :: Parser Token [Ident] a
 > {-
@@ -365,13 +364,14 @@ Since this modified version of MCC uses FlatCurry interfaces instead of
 
 > constrTerm1 :: Parser Token ConstrTerm a
 > constrTerm1 = varId <**> identPattern
->           <|> ConstructorPattern <$> qConId <\> varId <*> many constrTerm2
+>	    <|> ConstructorPattern <$> qConId <\> varId <*> many constrTerm2
 >           <|> minus <**> negNum
 >           <|> fminus <**> negFloat
 >           <|> leftParen <-*> parenPattern
 >           <|> constrTerm2 <\> qConId <\> leftParen
 >   where identPattern = optAsPattern
 >                    <|> conPattern <$> many1 constrTerm2
+>		     <|> fieldPattern <$-> layoutOff <*> braces fieldElements
 >         parenPattern = minus <**> minusPattern negNum
 >                    <|> fminus <**> minusPattern negFloat
 >                    <|> gconPattern
@@ -383,6 +383,9 @@ Since this modified version of MCC uses FlatCurry interfaces instead of
 >         gconPattern = ConstructorPattern <$> gconId <*-> rightParen
 >                                          <*> many constrTerm2
 >         conPattern ts = flip ConstructorPattern ts . qualify
+>         fieldPattern fs = flip FieldPattern fs . qualify
+>         fieldElements = field `sepBy` comma
+>         field = Field <$> position <*> qLabId <*-> equals <*> constrTerm0
 
 > constrTerm2 :: Parser Token ConstrTerm a
 > constrTerm2 = literalPattern <|> anonPattern <|> identPattern
@@ -475,7 +478,13 @@ the left-hand side of a declaration.
 >          <|> foldl1 Apply <$> many1 (expr3 flat)
 
 > expr3 :: Bool -> Parser Token Expression a
-> expr3 flat = constant <|> variable <|> parenExpr flat <|> listExpr flat
+> expr3 flat = expr3' <??> fieldExpr
+>   where
+>   expr3' = constant <|> variable <|> parenExpr flat <|> listExpr flat
+>   fieldExpr = flip FieldExpr 
+>	        <$-> layoutOff <*> braces fieldElements
+>   fieldElements = field `sepBy` comma
+>   field = Field <$> position <*> qLabId <*-> equals <*> expr flat
 
 > constant :: Parser Token Expression a
 > constant = Literal <$> literal
@@ -651,9 +660,10 @@ prefix of a let expression.
 > funop = funSym <|> backquotes (funId <?> "operator name expected")
 > conop = conSym <|> backquotes (conId <?> "operator name expected")
 
-> qFunId, qConId :: Parser Token QualIdent a
+> qFunId, qConId, qLabId :: Parser Token QualIdent a
 > qFunId = qIdent
 > qConId = qIdent
+> qLabId = qIdent
 
 > qFunSym, qConSym :: Parser Token QualIdent a
 > qFunSym = qSym

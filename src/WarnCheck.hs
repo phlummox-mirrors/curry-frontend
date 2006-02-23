@@ -1,9 +1,9 @@
-
 -------------------------------------------------------------------------------
 --
--- WarnCheck - Generates the following warning messages: ...
+-- WarnCheck - Searches for potentially irregular code and generates
+--             warning messages
 --                
--- November 2005,
+-- February 2006,
 -- Martin Engelke (men@informatik.uni-kiel.de)
 --
 module WarnCheck (warnCheck) where
@@ -91,6 +91,11 @@ checkLocalDecl _ = return ()
 checkConstrDecl :: ModuleIdent -> ConstrDecl -> CheckState ()
 checkConstrDecl mid (ConstrDecl pos _ ident texprs)
    = do visitId ident
+	foldM' (checkTypeExpr mid pos) texprs
+checkConstrDecl mid (ConLabeledDecl pos _ ident fields)
+   = do visitId ident
+	let (labels, texprs) = unzip fields
+	foldM' visitId (concat labels)
 	foldM' (checkTypeExpr mid pos) texprs
 checkConstrDecl mid (ConOpDecl pos _ texpr1 ident texpr2)
    = do visitId ident
@@ -187,6 +192,8 @@ checkConstrTerm mid pos (FunctionPattern _ cterms)
    = foldM' (checkConstrTerm mid pos) cterms
 checkConstrTerm mid pos (InfixFuncPattern cterm1 qident cterm2)
    = checkConstrTerm mid pos (FunctionPattern qident [cterm1, cterm2])
+checkConstrTerm mid pos (FieldPattern _ fields)
+   = foldM' (checkFieldPattern mid) fields
 checkConstrTerm _ _ _ = return ()
 
 --
@@ -262,6 +269,9 @@ checkExpression mid pos (Case expr alts)
    = do checkExpression mid pos expr
 	foldM' (checkAlt mid) alts
 	checkCaseAlternatives mid alts
+checkExpression mid pos (FieldExpr expr fields)
+   = do checkExpression mid pos expr
+	foldM' (checkFieldExpression mid) fields
 checkExpression _ _ _ = return ()
 
 --
@@ -289,6 +299,18 @@ checkAlt mid (Alt pos cterm rhs)
 	when (not (null idents'))
 	     (foldM' (genWarning pos) (map unrefVar idents'))
 	endScope
+
+--
+checkFieldExpression :: ModuleIdent -> Field Expression -> CheckState ()
+checkFieldExpression mid (Field pos qident expr)
+   = do checkExpression mid pos (Variable qident)
+	checkExpression mid pos expr
+
+--
+checkFieldPattern :: ModuleIdent -> Field ConstrTerm -> CheckState ()
+checkFieldPattern mid (Field pos qident cterm)
+   = do maybe (return ()) visitId (localIdent mid qident)
+	checkConstrTerm mid pos cterm
 
 -- Check for idle and overlapping case alternatives
 checkCaseAlternatives :: ModuleIdent -> [Alt] -> CheckState ()
@@ -448,6 +470,9 @@ insertDecl _ = return ()
 insertConstrDecl :: ConstrDecl -> CheckState ()
 insertConstrDecl (ConstrDecl _ _ ident _)
    = insertConsId ident
+insertConstrDecl (ConLabeledDecl _ _ ident fields)
+   = do insertConsId ident
+	foldM' insertVar (concatMap fst fields)
 insertConstrDecl (ConOpDecl _ _ _ ident _)
    = insertConsId ident
 
@@ -487,8 +512,16 @@ insertConstrTerm _ (FunctionPattern _ cterms)
    = foldM' (insertConstrTerm True) cterms
 insertConstrTerm _ (InfixFuncPattern cterm1 qident cterm2)
    = insertConstrTerm True (FunctionPattern qident [cterm1, cterm2])
+insertConstrTerm fp (FieldPattern qident fields)
+   = do c <- isQualConsId qident
+	if c then foldM' (insertFieldPattern fp) fields
+	     else foldM' (insertFieldPattern True) fields
 insertConstrTerm _ _ = return ()
 
+--
+insertFieldPattern :: Bool -> Field ConstrTerm -> CheckState ()
+insertFieldPattern fp (Field _ _ cterm)
+   = insertConstrTerm fp cterm
 
 -------------------------------------------------------------------------------
 -------------------------------------------------------------------------------

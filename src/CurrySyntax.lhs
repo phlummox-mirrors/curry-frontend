@@ -164,6 +164,7 @@ the identifier of the \texttt{Int} literal for maintaining its type.
 >   | LazyPattern ConstrTerm
 >   | FunctionPattern QualIdent [ConstrTerm]
 >   | InfixFuncPattern ConstrTerm QualIdent ConstrTerm
+>   | FieldPattern QualIdent [Field ConstrTerm]
 >   deriving (Eq,Show)
 
 \end{verbatim}
@@ -193,6 +194,7 @@ the identifier of the \texttt{Int} literal for maintaining its type.
 >   | Do [Statement] Expression
 >   | IfThenElse Expression Expression Expression
 >   | Case Expression [Alt]
+>   | FieldExpr Expression [Field Expression]
 >   deriving (Eq,Show)
 
 > data InfixOp = InfixOp QualIdent | InfixConstr QualIdent deriving (Eq,Show)
@@ -204,6 +206,8 @@ the identifier of the \texttt{Int} literal for maintaining its type.
 >   deriving (Eq,Show)
 
 > data Alt = Alt Position ConstrTerm Rhs deriving (Eq,Show)
+
+> data Field a = Field Position QualIdent a deriving (Eq, Show)
 
 > opName :: InfixOp -> QualIdent
 > opName (InfixOp op) = op
