@@ -14,7 +14,8 @@ data Color = Blue
             |Fuchsia
             |Silver 
 
-            
+
+code2color :: Code -> Color                          
 code2color (Keyword _) = Blue
 code2color (Space _)= White
 code2color NewLine = White
@@ -28,8 +29,10 @@ code2color (CharCode _) = Blue
 code2color (Symbol _) = Silver
 code2color (Identifier _ _) = Black
 code2color (TypeConstructor _ _) = Blue
+code2color (CodeError _ _) = Red
+code2color (CodeWarning _ _) = Red
 
-
+color2html :: Color -> String
 color2html Blue = "blue"
 color2html Green = "green"
 color2html Black = "black"
@@ -41,17 +44,25 @@ color2html Maroon = "#800000"
 color2html Fuchsia = "#FF00FF"  
 color2html Silver = "#C0C0C0"
 
+program2html :: Program -> String
 program2html (Program moduleIdent codes unparsed) =
     "<HTML><HEAD></HEAD><BODY style=\"font-family:'Courier New', Arial;\">" ++
-    concat (map (code2html moduleIdent. addModuleIdent moduleIdent) codes ++ [unparsed2html unparsed]) ++
+    concat (map (code2html moduleIdent True . addModuleIdent moduleIdent) codes ++ [unparsed2html unparsed]) ++
     "</BODY></HTML>"
  
 
-code2html moduleIdent c  
-      | isCall moduleIdent c = maybe tag (addHtmlLink tag) (getQualIdent c) 
-      | isDecl c = maybe tag (addHtmlAnker tag) (getQualIdent c)
+code2html :: ModuleIdent -> Bool -> Code -> String    
+code2html moduleIdent _ code@(CodeError _ codes) =
+      spanTag (color2html (code2color code)) 
+              (concatMap (code2html moduleIdent False) codes)
+code2html moduleIdent ownColor code@(CodeWarning _ codes) =
+     (if ownColor then spanTag (color2html (code2color code)) else id)
+              (concatMap (code2html moduleIdent False) codes)              
+code2html moduleIdent ownColor c
+      | isCall moduleIdent c && ownColor = maybe tag (addHtmlLink tag) (getQualIdent c) 
+      | isDecl c && ownColor= maybe tag (addHtmlAnker tag) (getQualIdent c)
       | otherwise = tag
-    where tag = spanTag (color2html (code2color c)) 
+    where tag = (if ownColor then spanTag (color2html (code2color c)) else id)
                       (replace ' ' 
                                "&nbsp;" 
                                (replace '\n' 
@@ -79,6 +90,7 @@ addHtmlLink html qualIdent =
 
 isCall :: ModuleIdent -> Code -> Bool
 isCall _ (TypeConstructor _ _) = False
+isCall _ (Identifier _ _) = False
 isCall moduleIdent code = not (isDecl code) &&
                 maybe False 
                            (maybe True 
@@ -89,7 +101,6 @@ isCall moduleIdent code = not (isDecl code) &&
 isDecl :: Code -> Bool
 isDecl (ConstructorName ConstrDecla _) = True
 isDecl (Function FunDecl _) = True
-isDecl (Identifier IdDecl _) = True
 isDecl (TypeConstructor TypeDecla _) = True
 isDecl _ = False 
 
@@ -98,20 +109,7 @@ isDecl _ = False
 
 
 
-addModuleIdent :: ModuleIdent -> Code -> Code
-addModuleIdent moduleIdent (Function x qualIdent) 
-    | uniqueId (unqualify qualIdent) == 0 =
-        (Function x (qualQualify moduleIdent qualIdent))
-    | otherwise = (Function x qualIdent)   
-addModuleIdent moduleIdent cn@(ConstructorName x qualIdent) 
-    | not $ isQualified qualIdent =
-        (ConstructorName x (qualQualify moduleIdent qualIdent)) 
-    | otherwise = cn       
-addModuleIdent moduleIdent tc@(TypeConstructor TypeDecla qualIdent) 
-    | not $ isQualified qualIdent =
-        (TypeConstructor TypeDecla (qualQualify moduleIdent qualIdent)) 
-    | otherwise = tc         
-addModuleIdent _ c = c
+
 
 genHtmlFile :: String -> IO ()
 genHtmlFile moduleName = 

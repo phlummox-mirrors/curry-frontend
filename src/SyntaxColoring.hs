@@ -14,6 +14,8 @@ import Char
 import Maybe
 import List
 import Debug.Trace
+import Message
+
 
 debug = False
 
@@ -33,7 +35,9 @@ data Code =  Keyword String
            | StringCode String
            | CharCode String
            | Symbol String
-           | Identifier IdentifierKind QualIdent deriving Show
+           | Identifier IdentifierKind QualIdent
+           | CodeWarning [Message] [Code]
+           | CodeError [Message] [Code] deriving Show
            
 data TypeKind = TypeDecla
               | TypeUse deriving Show          
@@ -52,16 +56,15 @@ data FunctionKind = InfixFunction
                   | FunDecl
                   | FunctionCall
                   | OtherFunctionKind deriving Show           
-           
-
-getFunctionDecls :: [Code] -> [QualIdent]
-getFunctionDecls =  mapMaybe getQualIdent . filter isFunctionDecl                  
-
-isFunctionDecl :: Code -> Bool
-isFunctionDecl (Function FunDecl _)  = True
-isFunctionDecl _ = False  
+ 
                   
-                  
+flatCode :: Code -> [Code]
+flatCode (CodeWarning _ codes) = concatMap flatCode codes
+flatCode (CodeError _ codes) = concatMap flatCode codes
+flatCode code = [code]
+             
+
+                 
 -- -------------------------------------------------                  
                   
 catIdentifiers :: Module -> [Code]
@@ -102,7 +105,9 @@ filename2Qualifiedprogram paths filename=
 genQualifiedProgram :: Module -> Module -> [(Position,Token)] -> Program
 genQualifiedProgram  modul@(Module  moduleIdent _ _) typingModule posNtokList = 
       Program moduleIdent
-              (genQualifiedCode modul typingModule posNtokList)
+              (replaceFunctionCalls 
+                    (map (addModuleIdent moduleIdent)                     
+                         (genQualifiedCode modul typingModule posNtokList)))
               ""                  
 --- @param parse-Module
 --- @param typingParse-Module              
@@ -116,9 +121,7 @@ catQualifiedIdentifiers :: Module -> Module -> [Code]
 catQualifiedIdentifiers (Module  moduleIdent maybeExportSpec decls)
                         (Module  _ _ typingDecls) =
      ([ModuleName moduleIdent] ++
-     (if isJust maybeExportSpec 
-           then exportSpec2codes (fromJust maybeExportSpec) 
-           else []) ++
+     (maybe [] exportSpec2codes maybeExportSpec)  ++
      (concatMap decl2codes (prepareDecls positions)))
     where
        lookupTable = map (\d -> (getPosition d,d)) typingDecls  
@@ -126,7 +129,54 @@ catQualifiedIdentifiers (Module  moduleIdent maybeExportSpec decls)
        prepareDecls [] = []
        prepareDecls (p:ps) =           
            maybe [] (:[]) (lookup p lookupTable) ++ prepareDecls ps
-             
+
+           
+    
+                      
+replaceFunctionCalls :: [Code] -> [Code]                  
+replaceFunctionCalls codes = map (idOccur2functionCall qualIdents) codes
+   where
+      qualIdents = findFunctionDecls codes
+                                              
+
+findFunctionDecls :: [Code] -> [QualIdent]
+findFunctionDecls  =  mapMaybe getQualIdent . filter isFunctionDecl . concatMap flatCode                   
+
+isFunctionDecl  :: Code -> Bool
+isFunctionDecl  (Function FunDecl _)  = True
+isFunctionDecl  _ = False  
+
+idOccur2functionCall :: [QualIdent] -> Code -> Code
+idOccur2functionCall qualIdents ide@(Identifier IdOccur qualIdent)  
+   | isQualified qualIdent = (Function FunctionCall qualIdent)
+   | elem qualIdent qualIdents = (Function FunctionCall qualIdent)
+   | otherwise = ide
+idOccur2functionCall qualIdents (CodeWarning mess codes) =
+       (CodeWarning mess (map (idOccur2functionCall qualIdents) codes))
+idOccur2functionCall qualIdents (CodeError mess codes) =
+       (CodeError mess (map (idOccur2functionCall qualIdents) codes))       
+idOccur2functionCall _ code = code
+  
+
+addModuleIdent :: ModuleIdent -> Code -> Code
+addModuleIdent moduleIdent (Function x qualIdent) 
+    | uniqueId (unqualify qualIdent) == 0 =
+        (Function x (qualQualify moduleIdent qualIdent))
+    | otherwise = (Function x qualIdent)   
+addModuleIdent moduleIdent cn@(ConstructorName x qualIdent) 
+    | not $ isQualified qualIdent =
+        (ConstructorName x (qualQualify moduleIdent qualIdent)) 
+    | otherwise = cn       
+addModuleIdent moduleIdent tc@(TypeConstructor TypeDecla qualIdent) 
+    | not $ isQualified qualIdent =
+        (TypeConstructor TypeDecla (qualQualify moduleIdent qualIdent)) 
+    | otherwise = tc         
+addModuleIdent moduleIdent (CodeWarning mess codes) =
+      (CodeWarning mess (map (addModuleIdent moduleIdent) codes))   
+addModuleIdent moduleIdent (CodeError mess codes) =
+      (CodeError mess (map (addModuleIdent moduleIdent) codes))       
+addModuleIdent _ c = c
+                        
 -- ----------------------------------------
 
 
@@ -170,35 +220,20 @@ codeQualifiers :: Code -> [String]
 codeQualifiers = maybe [] moduleQualifiers . getModuleIdent
 
 getModuleIdent :: Code -> Maybe ModuleIdent
-getModuleIdent (Keyword str) = Nothing
-getModuleIdent (Space i)= Nothing
-getModuleIdent NewLine = Nothing
 getModuleIdent (ConstructorName _ qualIdent) = fst $ splitQualIdent qualIdent
 getModuleIdent (Function _ qualIdent) = fst $ splitQualIdent qualIdent
 getModuleIdent (ModuleName moduleIdent) = Just moduleIdent
-getModuleIdent (Commentary str) = Nothing
-getModuleIdent (NumberCode str) = Nothing
-getModuleIdent (Symbol str) = Nothing
 getModuleIdent (Identifier _ qualIdent) = fst $ splitQualIdent qualIdent                     
 getModuleIdent (TypeConstructor _ qualIdent) = fst $ splitQualIdent qualIdent
-getModuleIdent (StringCode str) = Nothing                                 
-getModuleIdent (CharCode str) = Nothing  
-
+getModuleIdent _ = Nothing
 
 getQualIdent :: Code -> Maybe QualIdent
-getQualIdent (Keyword str) = Nothing
-getQualIdent (Space i)= Nothing
-getQualIdent NewLine = Nothing
 getQualIdent (ConstructorName _ qualIdent) = Just qualIdent
 getQualIdent (Function _ qualIdent) = Just qualIdent
-getQualIdent (ModuleName moduleIdent) = Nothing
-getQualIdent (Commentary str) = Nothing
-getQualIdent (NumberCode str) = Nothing
-getQualIdent (Symbol str) = Nothing
 getQualIdent (Identifier _ qualIdent) = Just qualIdent                      
 getQualIdent (TypeConstructor _ qualIdent) = Just qualIdent
-getQualIdent (StringCode str) = Nothing                                 
-getQualIdent (CharCode str) = Nothing   
+getQualIdent  _ = Nothing
+  
 {-
 setQualIdent :: Code -> QualIdent -> Code
 setQualIdent (Keyword str) _ = (Keyword str)
@@ -229,6 +264,7 @@ code2string (Identifier _ qualIdent) = name $ unqualify qualIdent
 code2string (TypeConstructor _ qualIdent) = name $ unqualify qualIdent
 code2string (StringCode str) = str                                 
 code2string (CharCode str) = str
+code2string _ = "" -- error / warning
 
 
 
@@ -275,6 +311,9 @@ getPosition (FlatExternalDecl pos _) = pos
 getPosition (PatternDecl pos _ _) = pos    
 getPosition (ExtraVariables pos _) = pos
              
+
+leqDecl :: Decl -> Decl -> Bool
+leqDecl decl1 decl2 = getPosition decl1 <= getPosition decl2
 
 -- DECL TO CODE -------------------------------------------------------------------- 
 
