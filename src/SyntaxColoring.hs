@@ -6,7 +6,6 @@ module SyntaxColoring where
 import System.Environment
 import CurryLexer
 import Position
-import Error
 import Frontend
 import Ident
 import CurrySyntax 
@@ -67,75 +66,86 @@ flatCode code = [code]
                  
 -- -------------------------------------------------                  
                   
-catIdentifiers :: Module -> [Code]
-catIdentifiers  (Module  moduleIdent maybeExportSpec decls) =
-     ([ModuleName moduleIdent] ++
-     (maybe [] exportSpec2codes maybeExportSpec) ++
-     (concatMap decl2codes decls))
-     
-                
-genCode :: Module -> [(Position,Token)] -> [Code]
-genCode modul posNtokList =
-    tokenNcodes2codes 1 1 posNtokList (catIdentifiers modul)
-            
+   
+        
+--- muss noch vereinfacht werden!!
 filename2program :: String -> IO Program
 filename2program filename =
      readFile filename >>= \ cont ->
-     let (Result _ m) = (parse filename cont)
-         (Result _ ls) = (Frontend.lex filename cont) in    
-     return (genProgram m ls)    
-        
-                        
-genProgram :: Module -> [(Position,Token)] -> Program
-genProgram  modul@(Module  moduleIdent _ _) posNtokList = 
-      Program moduleIdent
-              (genCode modul posNtokList)
-              ""    
+     let parseResult = (parse filename cont)
+         lexResult = (Frontend.lex filename cont) in    
+     return (genQualifiedProgram (Failure []) parseResult lexResult) 
 
--- Qualified---------------              
                             
 filename2Qualifiedprogram :: [String] -> String -> IO Program
 filename2Qualifiedprogram paths filename=
      readFile filename >>= \ cont ->
-     (typingParse paths filename  cont) >>= \ (Result _ m2) ->           
-     let (Result _ m) = (parse filename cont)         
-         (Result _ ls) = (Frontend.lex filename cont) in    
-     return (genQualifiedProgram m m2 ls)    
+     (typingParse paths filename  cont) >>= \ typingParseResult ->           
+     let parseResult = (parse filename cont)         
+         lexResult = (Frontend.lex filename cont) in    
+     return (genQualifiedProgram typingParseResult parseResult lexResult)    
                         
-genQualifiedProgram :: Module -> Module -> [(Position,Token)] -> Program
-genQualifiedProgram  modul@(Module  moduleIdent _ _) typingModule posNtokList = 
+
+genProgram :: Result Module -> Result [(Position,Token)] -> Program
+genProgram = genQualifiedProgram (Failure [])       
+          
+--- muss noch vereinfacht werden!!
+--- @param typingParse-Module 
+--- @param parse-Module
+--- @param lex-Result
+genQualifiedProgram :: Result Module -> Result Module -> Result [(Position,Token)] -> Program 
+genQualifiedProgram  typParseResult@(Result _ _) 
+                     parseResult@(Result _ (Module  moduleIdent _ _))                      
+                     lexResult = 
       Program moduleIdent
               (replaceFunctionCalls 
                     (map (addModuleIdent moduleIdent)                     
-                         (genQualifiedCode modul typingModule posNtokList)))
-              ""                  
---- @param parse-Module
---- @param typingParse-Module              
-genQualifiedCode :: Module ->  Module -> [(Position,Token)] -> [Code]       
-genQualifiedCode parseModul typinParseModul posNtokList = 
-    tokenNcodes2codes 1 1 posNtokList (catQualifiedIdentifiers parseModul typinParseModul)            
+                         (genQualifiedCode typParseResult parseResult  lexResult)))
+              ""    
+genQualifiedProgram  typParseResult@(Failure _)
+                     parseResult@(Result _ (Module  moduleIdent _ _))                      
+                     lexResult = 
+      trace' (show typParseResult)  $               
+      Program moduleIdent
+              (genQualifiedCode typParseResult parseResult  lexResult)
+              ""   
+genQualifiedProgram typParseResult parseResult lexResult =
+      trace' (show parseResult)  $
+      Program (mkMIdent [])
+              (genQualifiedCode typParseResult parseResult  lexResult)
+              ""
+              
+
+genCode :: Result Module -> Result [(Position,Token)] -> [Code]
+genCode = genQualifiedCode (Failure [])
+           
+           
+--- @param typingParse-Module                             
+--- @param parse-Module             
+genQualifiedCode :: Result Module ->  Result Module -> Result [(Position,Token)] -> [Code]       
+genQualifiedCode typParseResult parseResult (Result _ posNtokList) = 
+    tokenNcodes2codes 1 1 posNtokList (catQualifiedIdentifiers typParseResult parseResult)            
     
---- @param parse-Module
---- @param typingParse-Module     
-catQualifiedIdentifiers :: Module -> Module -> [Code]
-catQualifiedIdentifiers (Module  moduleIdent maybeExportSpec _)
-                        (Module  _ _ typingDecls) =
+    
+    
+catIdentifiers :: Result Module -> [Code]
+catIdentifiers  =  catQualifiedIdentifiers (Failure [])               
+
+--- @param typingParse-Module  
+--- @param parse-Module   
+catQualifiedIdentifiers :: Result Module -> Result Module -> [Code]
+catQualifiedIdentifiers (Failure _) (Failure _)  = []
+catQualifiedIdentifiers (Failure _) parseResult  =
+     catQualifiedIdentifiers parseResult parseResult   
+catQualifiedIdentifiers typParseResult (Failure _)  =
+     catQualifiedIdentifiers typParseResult typParseResult           
+catQualifiedIdentifiers (Result _ (Module  _ _ typingDecls))
+                        (Result _ (Module  moduleIdent maybeExportSpec _)) =
      ([ModuleName moduleIdent] ++
      (maybe [] exportSpec2codes maybeExportSpec)  ++
-     (concatMap decl2codes (qsort lessDecl typingDecls)))
-     
-     
-     
---     (concatMap decl2codes (prepareDecls positions)))
---    where
---       lookupTable = map (\d -> (getPosition d,d)) typingDecls  
---       positions = map getPosition decls
---       prepareDecls [] = []
---       prepareDecls (p:ps) =           
---           maybe [] (:[]) (lookup p lookupTable) ++ prepareDecls ps
+     (concatMap decl2codes (qsort lessDecl typingDecls)))     
+       
 
-           
-    
                       
 replaceFunctionCalls :: [Code] -> [Code]                  
 replaceFunctionCalls codes = map (idOccur2functionCall qualIdents) codes
@@ -188,24 +198,30 @@ addModuleIdent _ c = c
 
 tokenNcodes2codes :: Int -> Int -> [(Position,Token)] -> [Code] -> [Code]
 tokenNcodes2codes _ _ [] _ = []          
-tokenNcodes2codes currLine currCol toks@((Position _ line col,token):ts) codes 
+tokenNcodes2codes currLine currCol toks@((pos@(Position _ line col),token):ts) codes 
     | currLine < line = 
-           trace' (" NewLines: " ++ show (line - currLine) ++ "\n")
+           trace' (" NewLines: " ++ show (line - currLine))
            (replicate (line - currLine) NewLine ++
            tokenNcodes2codes line 1 toks codes)
     | currCol < col =  
-           Space (col - currCol) :         
-           tokenNcodes2codes currLine col toks codes
-    | isTokenIdentifier token && null codes =
-           error ("empty Code-List, Token: " ++ show (line,col) ++ show token)
+           trace' (" Space " ++ show (col - currCol))
+           (Space (col - currCol) :         
+           tokenNcodes2codes currLine col toks codes)
+    | isTokenIdentifier token && null codes =    
+           trace' ("empty Code-List, Token: " ++ show (line,col) ++ show token)
+           (token2code token : tokenNcodes2codes newLine newCol ts codes)
     | not (isTokenIdentifier token) = 
-           token2code token : tokenNcodes2codes newLine newCol ts codes 
+           trace' (" Token ist kein Identifier: " ++ tokenStr ) 
+           (token2code token : tokenNcodes2codes newLine newCol ts codes) 
     | tokenStr == code2string (head codes) =
-           (head codes) : tokenNcodes2codes newLine newCol ts (tail codes) 
+           trace' (" Code wird genommen: " ++ show (head codes) )
+           ((head codes) : tokenNcodes2codes newLine newCol ts (tail codes)) 
     | elem tokenStr (codeQualifiers (head codes)) =
-           (ModuleName (mkMIdent [tokenStr])) : tokenNcodes2codes newLine newCol ts codes                  
+           trace' (" Token: "++ tokenStr ++" ist Modulname von: " ++ show (head codes) )
+           ((ModuleName (mkMIdent [tokenStr])) : tokenNcodes2codes newLine newCol ts codes)                  
     | otherwise = 
-           tokenNcodes2codes currLine currCol toks (tail codes)
+           trace' (" Token: "++ tokenStr ++",Code fällt weg: " ++ show (head codes) )
+           (tokenNcodes2codes currLine currCol toks (tail codes))
   where
       tokenStr = token2string token            
       newLine  = (currLine + length (lines tokenStr)) - 1 
@@ -603,45 +619,3 @@ toGoodChar c
  where
      justShow = reverse . tail . reverse . tail . show  
 
-     
---  DEBUGGING
-
-tokenNcodes2codesLOG :: Int -> Int -> [(Position,Token)] -> [Code] -> IO [Code]
-tokenNcodes2codesLOG _ _ [] _ = return []          
-tokenNcodes2codesLOG currLine currCol toks@((Position _ line col,token):ts) codes 
-    | currLine < line =
-           addLog (" NewLines: " ++ show (line - currLine) ++ "\n") >>             
-           tokenNcodes2codesLOG line 1 toks codes >>= \ temp ->
-           return ((replicate (line - currLine) NewLine) ++ temp)
-    | currCol < col =  
-           addLog (" Space " ++ show (col - currCol)++ "\n") >>
-           tokenNcodes2codesLOG currLine col toks codes >>= \ temp ->
-           return (Space (col - currCol) : temp)           
-    | isTokenIdentifier token && null codes =
-           addLog (" error: empty Code-List, Token: " ++ show token ++ "\n") >>
-           error ("empty Code-List, Token: " ++ show token)
-    | not (isTokenIdentifier token) =
-           addLog (" Token ist kein Identifier: " ++ tokenStr ++ "\n") >>
-           tokenNcodes2codesLOG newLine newCol ts codes >>= \ temp ->
-           return (token2code token : temp)                   
-    | tokenStr == code2string (head codes) =
-           addLog (" Code wird genommen: " ++ show (head codes) ++ "\n") >>
-           tokenNcodes2codesLOG newLine newCol ts (tail codes)  >>= \ temp ->
-           return (head codes : temp) 
-    | elem tokenStr (codeQualifiers (head codes)) =
-           addLog (" Token: "++ tokenStr ++" ist Modulname von: " ++ show (head codes) ++ "\n") >>
-           tokenNcodes2codesLOG newLine newCol ts codes >>= \ temp ->
-           return ((ModuleName (mkMIdent [tokenStr])) : temp)                                 
-    | otherwise = 
-           addLog (" Token: "++ tokenStr ++",Code fällt weg: " ++ show (head codes) ++ "\n") >>
-           tokenNcodes2codesLOG currLine currCol toks (tail codes)
-  where
-      tokenStr = token2string token            
-      newLine   = (currLine + length (lines tokenStr)) - 1 
-      newCol  = currCol + length tokenStr   
-      addLog str = 
-            appendFile "out/log.txt" 
-                     ("Zeile: " ++ show currLine ++ "/" ++ show line ++ 
-                      "Spalte: " ++ show currCol ++ "/" ++ show col  ++ str)
-   
-  
