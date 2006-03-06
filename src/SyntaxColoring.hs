@@ -36,7 +36,8 @@ data Code =  Keyword String
            | Symbol String
            | Identifier IdentifierKind QualIdent
            | CodeWarning [Message] [Code]
-           | CodeError [Message] [Code] deriving Show
+           | CodeError [Message] [Code]
+           | NotParsed String deriving Show
            
 data TypeKind = TypeDecla
               | TypeUse deriving Show          
@@ -64,8 +65,15 @@ flatCode code = [code]
              
 
                  
--- -------------------------------------------------                  
+-- ----------Message---------------------------------------                  
                   
+getMessages :: Result a -> [Message]
+getMessages (Result mess _) = mess
+getMessages (Failure mess) = mess
+
+lessMessage :: Message -> Message -> Bool
+lessMessage (Message _ mPos1 _) (Message _ mPos2 _) = mPos1 < mPos2
+
    
         
 --- muss noch vereinfacht werden!!
@@ -123,8 +131,15 @@ genCode = genQualifiedCode (Failure [])
 --- @param typingParse-Module                             
 --- @param parse-Module             
 genQualifiedCode :: Result Module ->  Result Module -> Result [(Position,Token)] -> [Code]       
-genQualifiedCode typParseResult parseResult (Result _ posNtokList) = 
-    tokenNcodes2codes 1 1 posNtokList (catQualifiedIdentifiers typParseResult parseResult)            
+genQualifiedCode typParseResult parseResult (Result mess posNtokList) = 
+    tokenNcodes2codes 1 
+                      1
+                      (mergeMessages' (qsort lessMessage 
+                                             (getMessages typParseResult ++ 
+                                              getMessages parseResult ++ 
+                                              mess)) 
+                                      posNtokList) 
+                      (catQualifiedIdentifiers typParseResult parseResult)            
     
     
     
@@ -192,33 +207,40 @@ addModuleIdent moduleIdent (CodeError mess codes) =
 addModuleIdent _ c = c
                         
 -- ----------------------------------------
+mergeMessages :: [Message] -> [(Position,Token)] -> [([Message],Position,Token)]
+mergeMessages mess pos = mergeMessages' (qsort lessMessage mess) pos
 
+mergeMessages' :: [Message] -> [(Position,Token)] -> [([Message],Position,Token)]
+mergeMessages' [] [] = []
+mergeMessages' [] ((p,t):ps) = ([],p,t) : mergeMessages' [] ps
+mergeMessages' mss@(m@(Message _ mPos _):ms) ((p,t):ps)  
+    | mPos <= Just p =  ([m],p,t) : mergeMessages' ms ps 
+    | otherwise = ([],p,t) : mergeMessages' mss ps
 
-
-
-tokenNcodes2codes :: Int -> Int -> [(Position,Token)] -> [Code] -> [Code]
+tokenNcodes2codes :: Int -> Int -> [([Message],Position,Token)] -> [Code] -> [Code]
 tokenNcodes2codes _ _ [] _ = []          
-tokenNcodes2codes currLine currCol toks@((pos@(Position _ line col),token):ts) codes 
+tokenNcodes2codes currLine currCol toks@((messages,pos@(Position _ line col),token):ts) codes 
     | currLine < line = 
-           trace' (" NewLines: " ++ show (line - currLine))
-           (replicate (line - currLine) NewLine ++
-           tokenNcodes2codes line 1 toks codes)
+           trace' (" NewLine: ")
+           (NewLine :
+           tokenNcodes2codes (currLine + 1) 1 toks codes)
     | currCol < col =  
            trace' (" Space " ++ show (col - currCol))
            (Space (col - currCol) :         
            tokenNcodes2codes currLine col toks codes)
     | isTokenIdentifier token && null codes =    
            trace' ("empty Code-List, Token: " ++ show (line,col) ++ show token)
-           (token2code token : tokenNcodes2codes newLine newCol ts codes)
+           (addMessage (NotParsed tokenStr) : tokenNcodes2codes newLine newCol ts codes)
     | not (isTokenIdentifier token) = 
            trace' (" Token ist kein Identifier: " ++ tokenStr ) 
-           (token2code token : tokenNcodes2codes newLine newCol ts codes) 
+           (addMessage (token2code token) : tokenNcodes2codes newLine newCol ts codes) 
     | tokenStr == code2string (head codes) =
            trace' (" Code wird genommen: " ++ show (head codes) )
-           ((head codes) : tokenNcodes2codes newLine newCol ts (tail codes)) 
+           (addMessage (head codes) : tokenNcodes2codes newLine newCol ts (tail codes)) 
     | elem tokenStr (codeQualifiers (head codes)) =
            trace' (" Token: "++ tokenStr ++" ist Modulname von: " ++ show (head codes) )
-           ((ModuleName (mkMIdent [tokenStr])) : tokenNcodes2codes newLine newCol ts codes)                  
+           (addMessage (ModuleName (mkMIdent [tokenStr])) : 
+                    tokenNcodes2codes newLine newCol ts codes)                  
     | otherwise = 
            trace' (" Token: "++ tokenStr ++",Code fällt weg: " ++ show (head codes) )
            (tokenNcodes2codes currLine currCol toks (tail codes))
@@ -226,6 +248,14 @@ tokenNcodes2codes currLine currCol toks@((pos@(Position _ line col),token):ts) c
       tokenStr = token2string token            
       newLine  = (currLine + length (lines tokenStr)) - 1 
       newCol   = currCol + length tokenStr    
+      addMessage code
+         | null messages = code
+         | hasError messages = CodeError messages [code]
+         | otherwise = CodeWarning  messages [code]
+      hasError [] = False
+      hasError ((Message Error _ _):ms) = True
+      hasError (_:ms) = hasError ms
+      
            
 {-
 codeWithoutUniqueID ::  Code -> String
@@ -284,6 +314,7 @@ code2string (Identifier _ qualIdent) = name $ unqualify qualIdent
 code2string (TypeConstructor _ qualIdent) = name $ unqualify qualIdent
 code2string (StringCode str) = str                                 
 code2string (CharCode str) = str
+code2string (NotParsed str) = str
 code2string _ = "" -- error / warning
 
 

@@ -31,6 +31,7 @@ code2color (Identifier _ _) = Black
 code2color (TypeConstructor _ _) = Blue
 code2color (CodeError _ _) = Red
 code2color (CodeWarning _ _) = Red
+code2color (NotParsed _) = Black
 
 color2html :: Color -> String
 color2html Blue = "blue"
