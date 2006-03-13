@@ -13,6 +13,7 @@ data Color = Blue
             |Maroon
             |Fuchsia
             |Silver 
+            |RGB String
 
 
 code2color :: Code -> Color                          
@@ -23,15 +24,15 @@ code2color (ConstructorName _ _) = Fuchsia
 code2color (Function _ _) = Purple
 code2color (ModuleName _) = Maroon
 code2color (Commentary _) = Green
-code2color (NumberCode _) = Black
-code2color (StringCode _) = Blue
-code2color (CharCode _) = Blue
+code2color (NumberCode _) = RGB "#008080"
+code2color (StringCode _) = RGB "#800000"
+code2color (CharCode _) = RGB "#FFFF00"
 code2color (Symbol _) = Silver
 code2color (Identifier _ _) = Black
-code2color (TypeConstructor _ _) = Blue
-code2color (CodeError _ _) = Red
+code2color (TypeConstructor _ _) = RGB "#ff7f50"
+code2color (CodeError _ _) = RGB "#a52a2a"
 code2color (CodeWarning _ _) = Red
-code2color (NotParsed _) = Black
+code2color (NotParsed _) = RGB "#ffe4c4"
 
 color2html :: Color -> String
 color2html Blue = "blue"
@@ -44,6 +45,7 @@ color2html Aqua = "#00FFFF"
 color2html Maroon = "#800000"
 color2html Fuchsia = "#FF00FF"  
 color2html Silver = "#C0C0C0"
+color2html (RGB str) = str
 
 program2html :: Program -> String
 program2html (Program moduleIdent codes) =
@@ -100,11 +102,6 @@ isDecl (ConstructorName ConstrDecla _) = True
 isDecl (Function FunDecl _) = True
 isDecl (TypeConstructor TypeDecla _) = True
 isDecl _ = False 
-
-
---isDecl (TypeConstructor TypeDecla _) = True
-
-
 
 
 

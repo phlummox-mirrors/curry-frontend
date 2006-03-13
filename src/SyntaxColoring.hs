@@ -17,7 +17,7 @@ import Message
 
 
 
-debug = True
+debug = False
 
 trace' s x = if debug then trace s x else x
 
