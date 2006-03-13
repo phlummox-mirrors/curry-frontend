@@ -478,12 +478,20 @@ signature the declared type must be too general.
 >     ty <- inst (funType m f tyEnv) --skol (constrType m c tyEnv)
 >     unifyArgs (ppConstrTerm 0 t) ts ty
 >   where unifyArgs _ [] ty = return ty
+>         unifyArgs doc (t:ts) ty@(TypeVariable _) =
+>           do (alpha,beta) <- tcArrow p "function pattern" doc m ty
+>	       ty' <- tcConstrTermFP m tcEnv sigs p t
+>	       unify p "function pattern"
+>	             (doc $-$ text "Term:" <+> ppConstrTerm 0 t)
+>	             m ty' alpha
+>	       unifyArgs doc ts beta
 >         unifyArgs doc (t:ts) (TypeArrow ty1 ty2) =
 >           tcConstrTermFP m tcEnv sigs p t >>=
->           unify p "pattern" (doc $-$ text "Term:" <+> ppConstrTerm 0 t)
+>           unify p "function pattern" 
+>	          (doc $-$ text "Term:" <+> ppConstrTerm 0 t)
 >                 m ty1 >>
 >           unifyArgs doc ts ty2
->         unifyArgs _ _ _ = internalError "tcConstrTerm"
+>         unifyArgs _ _ ty = internalError ("tcConstrTerm: " ++ show ty)
 > tcConstrTerm m tcEnv sigs p t@(InfixFuncPattern t1 op t2) =
 >   tcConstrTerm m tcEnv sigs p (FunctionPattern op [t1,t2])
 
@@ -556,6 +564,13 @@ because of possible multiple occurrences of variables.
 >     ty <- inst (funType m f tyEnv) --skol (constrType m c tyEnv)
 >     unifyArgs (ppConstrTerm 0 t) ts ty
 >   where unifyArgs _ [] ty = return ty
+>         unifyArgs doc (t:ts) ty@(TypeVariable _) =
+>           do (alpha,beta) <- tcArrow p "function pattern" doc m ty
+>	       ty' <- tcConstrTermFP m tcEnv sigs p t
+>	       unify p "function pattern"
+>	             (doc $-$ text "Term:" <+> ppConstrTerm 0 t)
+>	             m ty' alpha
+>	       unifyArgs doc ts beta
 >         unifyArgs doc (t:ts) (TypeArrow ty1 ty2) =
 >           tcConstrTermFP m tcEnv sigs p t >>=
 >           unify p "pattern" (doc $-$ text "Term:" <+> ppConstrTerm 0 t)
