@@ -46,16 +46,16 @@ color2html Fuchsia = "#FF00FF"
 color2html Silver = "#C0C0C0"
 
 program2html :: Program -> String
-program2html (Program moduleIdent codes unparsed) =
+program2html (Program moduleIdent codes) =
     "<HTML><HEAD></HEAD><BODY style=\"font-family:'Courier New', Arial;\">" ++
-    concat (map (code2html moduleIdent True . addModuleIdent moduleIdent) codes ++ [unparsed2html unparsed]) ++
+    concat (map (code2html moduleIdent True . addModuleIdent moduleIdent) codes) ++
     "</BODY></HTML>"
  
 
 code2html :: ModuleIdent -> Bool -> Code -> String    
 code2html moduleIdent _ code@(CodeError _ codes) =
-      spanTag (color2html (code2color code)) 
-              (concatMap (code2html moduleIdent False) codes)
+      (spanTag (color2html (code2color code)) 
+              (concatMap (code2html moduleIdent False) codes))
 code2html moduleIdent ownColor code@(CodeWarning _ codes) =
      (if ownColor then spanTag (color2html (code2color code)) else id)
               (concatMap (code2html moduleIdent False) codes)              
@@ -73,10 +73,6 @@ code2html moduleIdent ownColor c
                                         
 spanTag :: String -> String -> String
 spanTag color str = "<SPAN style=\"color:"++ color ++"\">" ++ str ++ "</SPAN>"
-
-
-
-unparsed2html str = spanTag "red" $ replace ' ' "&nbsp;" $ replace '\n' "<br>" str
 
 replace :: Char -> String -> String -> String
 replace old new = foldr (\ x -> if x == old then (new ++) else ([x]++)) ""

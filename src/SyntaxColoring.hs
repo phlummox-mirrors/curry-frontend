@@ -16,11 +16,12 @@ import Debug.Trace
 import Message
 
 
-debug = False
+
+debug = True
 
 trace' s x = if debug then trace s x else x
 
-data Program = Program ModuleIdent [Code] String  deriving Show
+data Program = Program ModuleIdent [Code] deriving Show
 
 data Code =  Keyword String
            | Space Int
@@ -56,7 +57,35 @@ data FunctionKind = InfixFunction
                   | FunDecl
                   | FunctionCall
                   | OtherFunctionKind deriving Show           
- 
+                  
+-- DEBUGGING----------- wird bald nicht mehr gebraucht
+
+setMessagePosition :: Message -> Message
+setMessagePosition m@(Message _ (Just _) _) = m
+setMessagePosition (Message typ _ m) = (Message typ (getPositionFromString m) m)
+
+getPositionFromString :: String -> Maybe Position
+getPositionFromString message =
+     if line > 0 && col > 0 
+          then Just (Position file line col)
+          else Nothing 
+  where
+      file = takeWhile (/= '"') (tail message)
+      line = readNat (takeWhile (/= '.') (drop 7 (dropWhile (/= ',') message)))
+      col = readNat (takeWhile (/= ':') (tail (dropWhile (/= '.') (drop 7 (dropWhile (/= ',') message)))))
+      
+readNat :: String -> Int   -- result >= 0
+readNat l = readNatPrefix (dropWhile (\c->c==' ') l) 0
+ where
+  readNatPrefix [] n = n
+  readNatPrefix (c:cs) n =
+   let oc = ord c in
+     if oc>=ord '0' && oc<=ord '9' then readNatPrefix cs (n*10+oc-(ord '0'))
+                                   else n      
+
+-- -------------------------
+                  
+                                     
                   
 flatCode :: Code -> [Code]
 flatCode (CodeWarning _ codes) = concatMap flatCode codes
@@ -67,6 +96,7 @@ flatCode code = [code]
                  
 -- ----------Message---------------------------------------                  
                   
+
 getMessages :: Result a -> [Message]
 getMessages (Result mess _) = mess
 getMessages (Failure mess) = mess
@@ -74,15 +104,52 @@ getMessages (Failure mess) = mess
 lessMessage :: Message -> Message -> Bool
 lessMessage (Message _ mPos1 _) (Message _ mPos2 _) = mPos1 < mPos2
 
+nubMessages :: [Message] -> [Message] 
+nubMessages = nubBy eqMessage
+
+eqMessage :: Message -> Message -> Bool
+eqMessage (Message f1 p1 s1) (Message f2 p2 s2) = (f1 == f2) && (p1 == p2) && (s1 == s2)
+
+prepareMessages :: [Message] -> [Message]   
+prepareMessages = qsort lessMessage . map setMessagePosition . nubMessages
+
+hasError [] = False
+hasError ((Message Error _ _):ms) = True
+hasError (_:ms) = hasError ms
+
+buildMessagesIntoPlainText :: [Message] -> String -> [Code]
+buildMessagesIntoPlainText messages text = 
+    buildMessagesIntoPlainText' messages (lines text) [] 1
+ where
+    buildMessagesIntoPlainText' :: [Message] -> [String] -> [String] -> Int -> [Code]
+    buildMessagesIntoPlainText' _ [] [] _ = 
+          []
+    buildMessagesIntoPlainText' _ [] postStrs _ = 
+          [NotParsed (unlines postStrs)]    
+    buildMessagesIntoPlainText' [] preStrs postStrs _ = 
+          [NotParsed (unlines (preStrs ++ postStrs))]  
+            
+    buildMessagesIntoPlainText' messages (str:preStrs) postStrs line = 
+          let (pre,post) = partition isLeq messages in
+          if null pre 
+             then buildMessagesIntoPlainText' post preStrs (postStrs ++ [str]) (line + 1)
+             else (NotParsed (unlines postStrs)) : 
+                  (if hasError pre then (CodeError pre [NotParsed str,NewLine]) 
+                                   else (CodeWarning pre [NotParsed str,NewLine])) :
+                  (buildMessagesIntoPlainText' post preStrs [] (line + 1)) 
+      where 
+         isLeq (Message _ (Just (Position _ l _)) _) = l <= line 
+         isLeq _ = True
+                
+
    
-        
 --- muss noch vereinfacht werden!!
 filename2program :: String -> IO Program
 filename2program filename =
      readFile filename >>= \ cont ->
      let parseResult = (parse filename cont)
          lexResult = (Frontend.lex filename cont) in    
-     return (genQualifiedProgram (Failure []) parseResult lexResult) 
+     return (genQualifiedProgram cont (Failure []) parseResult lexResult) 
 
                             
 filename2Qualifiedprogram :: [String] -> String -> IO Program
@@ -91,57 +158,69 @@ filename2Qualifiedprogram paths filename=
      (typingParse paths filename  cont) >>= \ typingParseResult ->           
      let parseResult = (parse filename cont)         
          lexResult = (Frontend.lex filename cont) in    
-     return (genQualifiedProgram typingParseResult parseResult lexResult)    
+     return (genQualifiedProgram cont typingParseResult parseResult lexResult)    
                         
 
-genProgram :: Result Module -> Result [(Position,Token)] -> Program
-genProgram = genQualifiedProgram (Failure [])       
+genProgram :: String -> Result Module -> Result [(Position,Token)] -> Program
+genProgram plainText = genQualifiedProgram plainText (Failure [])       
           
 --- muss noch vereinfacht werden!!
 --- @param typingParse-Module 
 --- @param parse-Module
 --- @param lex-Result
-genQualifiedProgram :: Result Module -> Result Module -> Result [(Position,Token)] -> Program 
-genQualifiedProgram  typParseResult@(Result _ _) 
+genQualifiedProgram :: String -> Result Module -> Result Module -> Result [(Position,Token)] -> Program 
+genQualifiedProgram  plainText
+                     typParseResult@(Result _ _) 
                      parseResult@(Result _ (Module  moduleIdent _ _))                      
                      lexResult = 
       Program moduleIdent
               (replaceFunctionCalls 
                     (map (addModuleIdent moduleIdent)                     
-                         (genQualifiedCode typParseResult parseResult  lexResult)))
-              ""    
-genQualifiedProgram  typParseResult@(Failure _)
+                         (genQualifiedCode plainText typParseResult parseResult  lexResult)))
+                  
+genQualifiedProgram  plainText
+                     typParseResult@(Failure _)
                      parseResult@(Result _ (Module  moduleIdent _ _))                      
                      lexResult = 
       trace' (show typParseResult)  $               
       Program moduleIdent
-              (genQualifiedCode typParseResult parseResult  lexResult)
-              ""   
-genQualifiedProgram typParseResult parseResult lexResult =
+              (genQualifiedCode plainText typParseResult parseResult  lexResult)
+                 
+genQualifiedProgram plainText typParseResult parseResult lexResult =
       trace' (show parseResult)  $
       Program (mkMIdent [])
-              (genQualifiedCode typParseResult parseResult  lexResult)
-              ""
+              (genQualifiedCode plainText typParseResult parseResult  lexResult)
+              
               
 
-genCode :: Result Module -> Result [(Position,Token)] -> [Code]
-genCode = genQualifiedCode (Failure [])
+genCode :: String -> Result Module -> Result [(Position,Token)] -> [Code]
+genCode plainText = genQualifiedCode plainText (Failure [])
            
            
 --- @param typingParse-Module                             
 --- @param parse-Module             
-genQualifiedCode :: Result Module ->  Result Module -> Result [(Position,Token)] -> [Code]       
-genQualifiedCode typParseResult parseResult (Result mess posNtokList) = 
+
+genQualifiedCode :: String -> Result Module ->  Result Module -> Result [(Position,Token)] -> [Code]       
+genQualifiedCode _ typParseResult parseResult (Result mess posNtokList) = 
+    let messages = (prepareMessages 
+                      (getMessages typParseResult ++ 
+                       getMessages parseResult ++ 
+                       mess))
+        mergedMessages = (mergeMessages' (trace' ("Messages: " ++ show messages) messages) 
+                                      posNtokList) in
     tokenNcodes2codes 1 
                       1
-                      (mergeMessages' (qsort lessMessage 
-                                             (getMessages typParseResult ++ 
-                                              getMessages parseResult ++ 
-                                              mess)) 
-                                      posNtokList) 
+                      (trace' ("MergedMessages: " ++ show mergedMessages ++ "\n\n") mergedMessages) 
                       (catQualifiedIdentifiers typParseResult parseResult)            
+
     
-    
+genQualifiedCode plainText typParseResult parseResult (Failure messages3) =
+     trace' (unlines (map (\(Message _ _ str) -> str) allMessages)) (buildMessagesIntoPlainText allMessages plainText)    
+  where
+      allMessages = prepareMessages (getMessages typParseResult ++ 
+                                            getMessages parseResult ++ 
+                                            messages3)   
+     
     
 catIdentifiers :: Result Module -> [Code]
 catIdentifiers  =  catQualifiedIdentifiers (Failure [])               
@@ -207,15 +286,19 @@ addModuleIdent moduleIdent (CodeError mess codes) =
 addModuleIdent _ c = c
                         
 -- ----------------------------------------
+
 mergeMessages :: [Message] -> [(Position,Token)] -> [([Message],Position,Token)]
-mergeMessages mess pos = mergeMessages' (qsort lessMessage mess) pos
+mergeMessages mess pos = mergeMessages' (prepareMessages mess) pos
+
+
 
 mergeMessages' :: [Message] -> [(Position,Token)] -> [([Message],Position,Token)]
 mergeMessages' [] [] = []
 mergeMessages' [] ((p,t):ps) = ([],p,t) : mergeMessages' [] ps
-mergeMessages' mss@(m@(Message _ mPos _):ms) ((p,t):ps)  
-    | mPos <= Just p =  ([m],p,t) : mergeMessages' ms ps 
+mergeMessages' mss@(m@(Message _ mPos x):ms) ((p,t):ps)  
+    | mPos <= Just p = (trace' (show mPos ++ " <= " ++ show (Just p) ++ " Message: " ++ x) ([m],p,t)) : mergeMessages' ms ps 
     | otherwise = ([],p,t) : mergeMessages' mss ps
+
 
 tokenNcodes2codes :: Int -> Int -> [([Message],Position,Token)] -> [Code] -> [Code]
 tokenNcodes2codes _ _ [] _ = []          
@@ -248,14 +331,14 @@ tokenNcodes2codes currLine currCol toks@((messages,pos@(Position _ line col),tok
       tokenStr = token2string token            
       newLine  = (currLine + length (lines tokenStr)) - 1 
       newCol   = currCol + length tokenStr    
+
       addMessage code
          | null messages = code
-         | hasError messages = CodeError messages [code]
-         | otherwise = CodeWarning  messages [code]
-      hasError [] = False
-      hasError ((Message Error _ _):ms) = True
-      hasError (_:ms) = hasError ms
+         | hasError messages = trace' ("Error bei code: " ++ show code ++ ":" ++ show messages) (CodeError messages [code])
+         | otherwise = trace' ("Warning bei code: " ++ show code ++ ":" ++ show messages) (CodeWarning  messages [code])
       
+      
+
            
 {-
 codeWithoutUniqueID ::  Code -> String
