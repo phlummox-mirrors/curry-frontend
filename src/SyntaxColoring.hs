@@ -69,17 +69,13 @@ getPositionFromString message =
           else Nothing 
   where
       file = takeWhile (/= '"') (tail message)
-      line = readNat (takeWhile (/= '.') (drop 7 (dropWhile (/= ',') message)))
-      col = readNat (takeWhile (/= ':') (tail (dropWhile (/= '.') (drop 7 (dropWhile (/= ',') message)))))
+      line = readInt (takeWhile (/= '.') (drop 7 (dropWhile (/= ',') message)))
+      col = readInt (takeWhile (/= ':') (tail (dropWhile (/= '.') (drop 7 (dropWhile (/= ',') message)))))
       
-readNat :: String -> Int   -- result >= 0
-readNat l = readNatPrefix (dropWhile (\c->c==' ') l) 0
- where
-  readNatPrefix [] n = n
-  readNatPrefix (c:cs) n =
-   let oc = ord c in
-     if oc>=ord '0' && oc<=ord '9' then readNatPrefix cs (n*10+oc-(ord '0'))
-                                   else n      
+      
+      
+readInt :: String -> Int   
+readInt s = read s :: Int
 
 -- -------------------------
                   
@@ -226,9 +222,9 @@ catIdentifiers  =  catQualifiedIdentifiers (Failure [])
 --- @param typingParse-Module  
 --- @param parse-Module   
 catQualifiedIdentifiers :: Result Module -> Result Module -> [Code]
-catQualifiedIdentifiers (Failure _) parseResult  =
+catQualifiedIdentifiers (Failure _) parseResult@(Result _ _)  =
      catQualifiedIdentifiers parseResult parseResult   
-catQualifiedIdentifiers typParseResult (Failure _)  =
+catQualifiedIdentifiers typParseResult@(Result _ _) (Failure _)  =
      catQualifiedIdentifiers typParseResult typParseResult           
 catQualifiedIdentifiers (Failure _) (Failure _)  = []
 catQualifiedIdentifiers (Result _ (Module  _ _ typingDecls))
