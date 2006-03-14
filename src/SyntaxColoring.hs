@@ -78,9 +78,9 @@ readInt :: String -> Int
 readInt s = read s :: Int
 
 -- -------------------------
-                  
-                                     
-                  
+
+
+
 flatCode :: Code -> [Code]
 flatCode (CodeWarning _ codes) = concatMap flatCode codes
 flatCode (CodeError _ codes) = concatMap flatCode codes
