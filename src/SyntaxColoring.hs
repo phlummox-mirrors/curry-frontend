@@ -15,9 +15,7 @@ import List
 import Debug.Trace
 import Message
 
-
-
-debug = True
+debug = False --True
 
 trace' s x = if debug then trace s x else x
 
@@ -228,11 +226,11 @@ catIdentifiers  =  catQualifiedIdentifiers (Failure [])
 --- @param typingParse-Module  
 --- @param parse-Module   
 catQualifiedIdentifiers :: Result Module -> Result Module -> [Code]
-catQualifiedIdentifiers (Failure _) (Failure _)  = []
 catQualifiedIdentifiers (Failure _) parseResult  =
      catQualifiedIdentifiers parseResult parseResult   
 catQualifiedIdentifiers typParseResult (Failure _)  =
      catQualifiedIdentifiers typParseResult typParseResult           
+catQualifiedIdentifiers (Failure _) (Failure _)  = []
 catQualifiedIdentifiers (Result _ (Module  _ _ typingDecls))
                         (Result _ (Module  moduleIdent maybeExportSpec _)) =
      ([ModuleName moduleIdent] ++
@@ -429,11 +427,11 @@ token2code tok@(Token cat _)
     | elem cat [LeftParen,RightParen,Semicolon,LeftBrace,RightBrace,LeftBracket,
                 RightBracket,Comma,Underscore,Backquote,
                 At,Colon,DotDot,DoubleColon,Equals,Backslash,Bar,LeftArrow,RightArrow,
-                Tilde,Sym_Dot,Sym_Minus,Sym_MinusDot]
+                Tilde]
          = Symbol (token2string tok)
     | elem cat [LineComment, NestedComment]
          = Commentary (token2string tok)
-    | elem cat [Id_qualified,Id,QId,Sym,QSym]
+    | isTokenIdentifier tok
          = Identifier UnknownId $ qualify $ mkIdent $ token2string tok
     | cat == StringTok 
          = StringCode (token2string tok)
@@ -442,7 +440,8 @@ token2code tok@(Token cat _)
     | elem cat [EOF,VSemicolon,VRightBrace] = Space 0 
     
 isTokenIdentifier :: Token -> Bool
-isTokenIdentifier (Token cat _) = elem cat [Id_qualified,Id,QId,Sym,QSym]
+isTokenIdentifier (Token cat _) = 
+  elem cat [Id_qualified,Id,QId,Sym,QSym,Sym_Dot,Sym_Minus,Sym_MinusDot]
     
 -- DECL Position
 
@@ -500,8 +499,8 @@ decl2codes (TypeDecl _ ident idents typeExpr) =
      typeExpr2codes typeExpr
 decl2codes (TypeSig _ idents typeExpr) =
      map (Function TypSig . qualify) idents ++ typeExpr2codes typeExpr   
-decl2codes (EvalAnnot xPosition xIdents xEvalAnnotation) =
-     []
+decl2codes (EvalAnnot xPosition idents xEvalAnnotation) =
+     map (Function FunDecl . qualify) idents
 decl2codes (FunctionDecl _ _ equations) =
      concatMap equation2codes equations  
 decl2codes (ExternalDecl xPosition xCallConv xString xIdent xTypeExpr) =
