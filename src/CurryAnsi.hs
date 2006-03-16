@@ -18,7 +18,7 @@ code2color (CharCode _) = white
 code2color (Symbol _) = id
 code2color (Identifier _ _) = blue
 code2color (TypeConstructor _ _) = bold . magenta
-code2color (CodeError _ _) = bold . red
+code2color (CodeError _ _) = bgRed
 code2color (CodeWarning _ _) = red
 code2color (NotParsed _) = red
 

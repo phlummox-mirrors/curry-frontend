@@ -14,10 +14,17 @@ import Maybe
 import List
 import Debug.Trace
 import Message
+import Control.Exception
+
 
 debug = False --True
 
 trace' s x = if debug then trace s x else x
+
+
+debug' = True
+
+trace'' s x = if debug' then trace s x else x
 
 data Program = Program ModuleIdent [Code] deriving Show
 
@@ -59,8 +66,10 @@ data FunctionKind = InfixFunction
 -- DEBUGGING----------- wird bald nicht mehr gebraucht
 
 setMessagePosition :: Message -> Message
-setMessagePosition m@(Message _ (Just _) _) = m
-setMessagePosition (Message typ _ m) = (Message typ (getPositionFromString m) m)
+setMessagePosition m@(Message _ (Just p) _) = trace'' ("pos:" ++ show p ++ ":" ++ show m) m
+setMessagePosition (Message typ _ m) = 
+        let mes@(Message _ pos _) =  (Message typ (getPositionFromString m) m) in
+        trace'' ("pos:" ++ show pos ++ ":" ++ show mes) mes
 
 getPositionFromString :: String -> Maybe Position
 getPositionFromString message =
@@ -68,17 +77,28 @@ getPositionFromString message =
           then Just (Position file line col)
           else Nothing 
   where
-      file = takeWhile (/= '"') (tail message)
+      file = takeWhile (/= '"') (tail (dropWhile (/= '"') message))
       line = readInt (takeWhile (/= '.') (drop 7 (dropWhile (/= ',') message)))
       col = readInt (takeWhile (/= ':') (tail (dropWhile (/= '.') (drop 7 (dropWhile (/= ',') message)))))
       
-      
-      
+     
 readInt :: String -> Int   
 readInt s = read s :: Int
 
 -- -------------------------
 
+catchError :: IO (Result a) -> IO (Result a)
+catchError toDo = Control.Exception.catch toDo handler 
+  where
+      handler (ErrorCall str) = return (Failure [setMessagePosition (Message Error Nothing str)])
+      handler  e = return (Failure [Message Error Nothing (show e)])
+      file str = takeWhile (/= '"') (tail str)
+
+t :: IO (Result Char)      
+t = return (Result [] (head ""))
+      
+      
+-- -------------------------
 
 
 flatCode :: Code -> [Code]
@@ -141,17 +161,17 @@ buildMessagesIntoPlainText messages text =
 filename2program :: String -> IO Program
 filename2program filename =
      readFile filename >>= \ cont ->
-     let parseResult = (parse filename cont)
-         lexResult = (Frontend.lex filename cont) in    
+     (catchError (return (parse filename cont))) >>= \ parseResult ->
+     (catchError (return (Frontend.lex filename cont))) >>= \ lexResult ->  
      return (genQualifiedProgram cont (Failure []) parseResult lexResult) 
 
                             
 filename2Qualifiedprogram :: [String] -> String -> IO Program
 filename2Qualifiedprogram paths filename=
      readFile filename >>= \ cont ->
-     (typingParse paths filename  cont) >>= \ typingParseResult ->           
-     let parseResult = (parse filename cont)         
-         lexResult = (Frontend.lex filename cont) in    
+     (catchError (typingParse paths filename  cont)) >>= \ typingParseResult ->           
+     (catchError (return (parse filename cont))) >>= \ parseResult ->
+     (catchError (return (Frontend.lex filename cont))) >>= \ lexResult ->    
      return (genQualifiedProgram cont typingParseResult parseResult lexResult)    
                         
 

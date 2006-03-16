@@ -2,6 +2,7 @@ module CurryHtml where
 
 import SyntaxColoring
 import Ident
+import Maybe
 
 data Color = Blue
             |Green
@@ -62,7 +63,7 @@ code2html moduleIdent ownColor code@(CodeWarning _ codes) =
      (if ownColor then spanTag (color2html (code2color code)) else id)
               (concatMap (code2html moduleIdent False) codes)              
 code2html moduleIdent ownColor c
-      | isCall moduleIdent c && ownColor = maybe tag (addHtmlLink tag) (getQualIdent c) 
+      | isCall c && ownColor = maybe tag (addHtmlLink moduleIdent tag) (getQualIdent c) 
       | isDecl c && ownColor= maybe tag (addHtmlAnker tag) (getQualIdent c)
       | otherwise = tag
     where tag = (if ownColor then spanTag (color2html (code2color c)) else id)
@@ -80,21 +81,24 @@ replace :: Char -> String -> String -> String
 replace old new = foldr (\ x -> if x == old then (new ++) else ([x]++)) ""
 
 addHtmlAnker :: String -> QualIdent -> String
-addHtmlAnker html qualIdent = "<a name=\""++ show qualIdent ++"\"></a>" ++ html
+addHtmlAnker html qualIdent = "<a name=\""++ show (unqualify qualIdent) ++"\"></a>" ++ html
 
-addHtmlLink :: String -> QualIdent -> String
-addHtmlLink html qualIdent =
-   "<a href=\"#"++ show qualIdent ++"\">"++ html ++"</a>"
+addHtmlLink :: ModuleIdent -> String -> QualIdent -> String
+addHtmlLink moduleIdent html qualIdent =
+   let (maybeModuleIdent,ident) = splitQualIdent qualIdent in   
+   "<a href=\"" ++ prefix maybeModuleIdent ++ "#"++ show ident ++"\">"++ html ++"</a>"
+ where
+    prefix maybeModuleIdent = 
+          if maybe True (== moduleIdent) maybeModuleIdent
+                then ""
+                else show (fromJust maybeModuleIdent) ++ ".curry.html"   
 
 
-isCall :: ModuleIdent -> Code -> Bool
-isCall _ (TypeConstructor _ _) = False
-isCall _ (Identifier _ _) = False
-isCall moduleIdent code = not (isDecl code) &&
-                maybe False 
-                           (maybe True 
-                                  (== moduleIdent) . fst . splitQualIdent) 
-                           (getQualIdent code)
+isCall :: Code -> Bool
+isCall (TypeConstructor _ _) = False
+isCall (Identifier _ _) = False
+isCall code = not (isDecl code) &&
+                maybe False (const True) (getQualIdent code)
 
      
 isDecl :: Code -> Bool
