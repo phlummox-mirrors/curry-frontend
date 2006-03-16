@@ -3,6 +3,7 @@ module CurryHtml where
 import SyntaxColoring
 import Ident
 import Maybe
+import Char
 
 data Color = Blue
             |Green
@@ -81,12 +82,12 @@ replace :: Char -> String -> String -> String
 replace old new = foldr (\ x -> if x == old then (new ++) else ([x]++)) ""
 
 addHtmlAnker :: String -> QualIdent -> String
-addHtmlAnker html qualIdent = "<a name=\""++ show (unqualify qualIdent) ++"\"></a>" ++ html
+addHtmlAnker html qualIdent = "<a name=\""++ string2urlencoded (show (unqualify qualIdent)) ++"\"></a>" ++ html
 
 addHtmlLink :: ModuleIdent -> String -> QualIdent -> String
 addHtmlLink moduleIdent html qualIdent =
    let (maybeModuleIdent,ident) = splitQualIdent qualIdent in   
-   "<a href=\"" ++ prefix maybeModuleIdent ++ "#"++ show ident ++"\">"++ html ++"</a>"
+   "<a href=\"" ++ prefix maybeModuleIdent ++ "#"++ string2urlencoded (show ident) ++"\">"++ html ++"</a>"
  where
     prefix maybeModuleIdent = 
           if maybe True (== moduleIdent) maybeModuleIdent
@@ -116,3 +117,17 @@ genHtmlFile moduleName =
   writeFile (fileName moduleName++".html") (program2html x) 
 
 fileName s = reverse (takeWhile (/='/') (reverse s))
+
+
+
+--- Translates arbitrary strings into equivalent urlencoded string.
+string2urlencoded :: String -> String
+string2urlencoded [] = []
+string2urlencoded (c:cs)
+  | isAlphaNum c = c : string2urlencoded cs
+  | c == ' '     = '+' : string2urlencoded cs
+  | otherwise = let oc = ord c
+    in '%' : int2hex(oc `div` 16) : int2hex(oc `mod` 16) : string2urlencoded cs
+ where
+   int2hex i = if i<10 then chr (ord '0' + i)
+                       else chr (ord 'A' + i - 10)

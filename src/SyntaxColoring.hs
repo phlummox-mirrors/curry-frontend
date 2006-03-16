@@ -82,8 +82,12 @@ getPositionFromString message =
       col = readInt (takeWhile (/= ':') (tail (dropWhile (/= '.') (drop 7 (dropWhile (/= ',') message)))))
       
      
-readInt :: String -> Int   
-readInt s = read s :: Int
+readInt :: String -> Int 
+readInt s = 
+      let onlyNum = filter isDigit s in
+      if null onlyNum
+         then 0
+         else read onlyNum :: Int
 
 -- -------------------------
 
@@ -536,7 +540,7 @@ lhs2codes :: Lhs -> [Code]
 lhs2codes (FunLhs ident constrTerms) =
     (Function FunDecl $ qualify ident) : concatMap constrTerm2codes constrTerms
 lhs2codes (OpLhs constrTerm1 ident constrTerm2) =
-    constrTerm2codes constrTerm1 ++ [Function OtherFunctionKind $ qualify ident] ++ constrTerm2codes constrTerm2
+    constrTerm2codes constrTerm1 ++ [Function FunDecl $ qualify ident] ++ constrTerm2codes constrTerm2
 lhs2codes (ApLhs lhs constrTerms) =
     lhs2codes lhs ++ concatMap constrTerm2codes constrTerms     
 
