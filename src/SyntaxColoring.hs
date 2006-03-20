@@ -22,7 +22,7 @@ debug = False  --True
 trace' s x = if debug then trace s x else x
 
 
-debug' = False
+debug' = True
 
 trace'' s x = if debug' then trace s x else x
 
@@ -316,7 +316,7 @@ mergeMessages mess pos = mergeMessages' (prepareMessages mess) pos
 
 
 mergeMessages' :: [Message] -> [(Position,Token)] -> [([Message],Position,Token)]
-mergeMessages' [] [] = []
+mergeMessages' _ [] = []
 mergeMessages' [] ((p,t):ps) = ([],p,t) : mergeMessages' [] ps
 mergeMessages' mss@(m@(Message _ mPos x):ms) ((p,t):ps)  
     | mPos <= Just p = (trace' (show mPos ++ " <= " ++ show (Just p) ++ " Message: " ++ x) ([m],p,t)) : mergeMessages' ms ps 
