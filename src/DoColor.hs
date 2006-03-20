@@ -5,10 +5,10 @@ import CurrySyntax
 import CurryHtml
 import CurryAnsi
 
-main = getArgs >>= test2 
+main = getArgs >>= test
 
-test (s:paths) = filename2Qualifiedprogram paths s >>= \prog ->
-         writeFile (basename s ++ ".html") (program2html prog) 
+test (s:p:paths) = filename2Qualifiedprogram paths s >>= \prog ->
+         writeFile (p ++ basename s ++ ".html") (program2html prog) 
          
 
 test2 (s:paths) = filename2Qualifiedprogram paths s >>= \prog ->
