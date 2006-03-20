@@ -35,7 +35,7 @@ genTypedAbstract tyEnv tcEnv mod
 
 -- Generates untyped AbstractCurry code from a CurrySyntax module. The type
 -- signature takes place in every function type annotation, if it exists, 
--- otherwise the dummy type "prelude.untyped" is used.
+-- otherwise the dummy type "Prelude.untyped" is used.
 genUntypedAbstract :: ValueEnv -> TCEnv -> Module -> CurryProg
 genUntypedAbstract tyEnv tcEnv mod
    = genAbstract (genAbstractEnv UntypedAcy tyEnv tcEnv mod) mod
@@ -239,7 +239,7 @@ genFuncDecl isLocal env (ident, decls)
 				 (find isFunctionDecl decls)
            mexternal     = applyMaybe genExternal (find isExternal decls)
 	   arity         = compArity mtype rules
-           typeexpr      = fromMaybe (CTCons ("prelude","untyped") []) mtype
+           typeexpr      = fromMaybe (CTCons ("Prelude","untyped") []) mtype
            rule          = compRule evalannot rules mexternal
            env3          = if isLocal then env1 else resetScope env2
        in  (CFunc name arity visibility typeexpr rule, env3)

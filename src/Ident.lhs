@@ -141,7 +141,7 @@ A few identifiers a predefined here.
 > emptyMIdent, mainMIdent, preludeMIdent :: ModuleIdent
 > emptyMIdent   = ModuleIdent []
 > mainMIdent    = ModuleIdent ["main"]
-> preludeMIdent = ModuleIdent ["prelude"]
+> preludeMIdent = ModuleIdent ["Prelude"]
 
 > anonId :: Ident
 > anonId = Ident "_" 0

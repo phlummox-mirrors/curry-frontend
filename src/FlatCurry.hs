@@ -190,13 +190,13 @@ data CombType = FuncCall
 --- 1. if-then-else expressions are represented as function calls:
 ---      (if e1 then e2 else e3)
 ---    is represented as
----      (Comb FuncCall ("prelude","if_then_else") [e1,e2,e3])
+---      (Comb FuncCall ("Prelude","if_then_else") [e1,e2,e3])
 --- 
 --- 2. Higher order applications are represented as calls to the (external)
 ---    function "apply". For instance, the rule
 ---      app f x = f x
 ---    is represented as
----      (Rule  [0,1] (Comb FuncCall ("prelude","apply") [Var 0, Var 1]))
+---      (Rule  [0,1] (Comb FuncCall ("Prelude","apply") [Var 0, Var 1]))
 --- 
 --- 3. A conditional rule is represented as a call to an external function
 ---    "cond" where the first argument is the condition (a constraint).
@@ -204,13 +204,13 @@ data CombType = FuncCall
 ---      equal2 x | x=:=2 = success
 ---    is represented as
 ---      (Rule [0]
----            (Comb FuncCall ("prelude","cond")
----                  [Comb FuncCall ("prelude","=:=") [Var 0, Lit (Intc 2)],
----                   Comb FuncCall ("prelude","success") []]))
+---            (Comb FuncCall ("Prelude","cond")
+---                  [Comb FuncCall ("Prelude","=:=") [Var 0, Lit (Intc 2)],
+---                   Comb FuncCall ("Prelude","success") []]))
 --- 
 --- 4. Functions with evaluation annotation "choice" are represented
 ---    by a rule whose right-hand side is enclosed in a call to the
----    external function "prelude.commit".
+---    external function "Prelude.commit".
 ---    Furthermore, all rules of the original definition must be
 ---    represented by conditional expressions (i.e., (cond [c,e]))
 ---    after pattern matching.
@@ -224,21 +224,21 @@ data CombType = FuncCall
 ---    wrapped with Free declarations in general):
 --- 
 ---       Rule [0,1]
----            (Comb FuncCall ("prelude","commit")
+---            (Comb FuncCall ("Prelude","commit")
 ---              [Or (Case Rigid (Var 0)
----                     [(Pattern ("prelude","[]") []
----                         (Comb FuncCall ("prelude","cond")
----                               [Comb FuncCall ("prelude","success") [],
+---                     [(Pattern ("Prelude","[]") []
+---                         (Comb FuncCall ("Prelude","cond")
+---                               [Comb FuncCall ("Prelude","success") [],
 ---                                Var 1]))] )
 ---                  (Case Rigid (Var 1)
----                     [(Pattern ("prelude","[]") []
----                         (Comb FuncCall ("prelude","cond")
----                               [Comb FuncCall ("prelude","success") [],
+---                     [(Pattern ("Prelude","[]") []
+---                         (Comb FuncCall ("Prelude","cond")
+---                               [Comb FuncCall ("Prelude","success") [],
 ---                                Var 0]))] )])
 --- 
----    Operational meaning of (prelude.commit e):
+---    Operational meaning of (Prelude.commit e):
 ---    evaluate e with local search spaces and commit to the first
----    (Comb FuncCall ("prelude","cond") [c,ge]) in e whose constraint c
+---    (Comb FuncCall ("Prelude","cond") [c,ge]) in e whose constraint c
 ---    is satisfied
 --- </PRE>
 --- @cons Var - variable (represented by unique index)

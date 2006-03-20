@@ -200,7 +200,7 @@ for PAKCS.
 >
 >  isSpecialPreludeType :: TypeDecl -> Bool
 >  isSpecialPreludeType (Type (mod,name) _ _ _) 
->     = (name == "[]" || name == "()") && mod == "prelude"
+>     = (name == "[]" || name == "()") && mod == "Prelude"
 >  isSpecialPreludeType _ = False
 >
 >  pos = first m
@@ -338,7 +338,7 @@ because all identifiers are renamed by the compiler. Here we need
 special cases for handling tuple constructors.
 
 \em{Note:} the function \texttt{qualLookupValue} has been extended to
-allow the usage of the qualified list constructor \texttt{(prelude.:)}.
+allow the usage of the qualified list constructor \texttt{(Prelude.:)}.
 \begin{verbatim}
 
 > type ValueEnv = TopEnv ValueInfo
@@ -546,7 +546,7 @@ are available in the environments \texttt{initTCEnv} and
 constructor is available in the environment \texttt{initPEnv}.
 
 Note that only the unqualified names are predefined. This is correct,
-because neither \texttt{prelude.()} nor \texttt{prelude.[]} are valid
+because neither \texttt{Prelude.()} nor \texttt{Prelude.[]} are valid
 identifiers.
 \begin{verbatim}
 
