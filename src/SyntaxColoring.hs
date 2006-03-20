@@ -22,7 +22,7 @@ debug = False --True
 trace' s x = if debug then trace s x else x
 
 
-debug' = True
+debug' = False
 
 trace'' s x = if debug' then trace s x else x
 
@@ -253,9 +253,14 @@ catQualifiedIdentifiers typParseResult@(Result _ _) (Failure _)  =
 catQualifiedIdentifiers (Failure _) (Failure _)  = []
 catQualifiedIdentifiers (Result _ (Module  _ _ typingDecls))
                         (Result _ (Module  moduleIdent maybeExportSpec _)) =
+     let codes = concatMap decl2codes (qsort lessDecl typingDecls) in                   
      ([ModuleName moduleIdent] ++
-     (maybe [] exportSpec2codes maybeExportSpec)  ++
-     (concatMap decl2codes (qsort lessDecl typingDecls)))     
+     (maybe [] (exportSpec2codes (filterTypeDecla codes)) maybeExportSpec)  ++
+     codes)     
+  where
+     filterTypeDecla [] = []
+     filterTypeDecla ((TypeConstructor TypeDecla qualIdent):xs) = qualIdent : filterTypeDecla xs
+     filterTypeDecla (_:xs) =  filterTypeDecla xs
        
 
                       
@@ -488,17 +493,18 @@ qsort less (x:xs) = qsort less [y | y <- xs, less y x] ++ [x] ++ qsort less [y |
 
 -- DECL TO CODE -------------------------------------------------------------------- 
 
-exportSpec2codes :: ExportSpec -> [Code]
-exportSpec2codes (Exporting _ exports) = concatMap export2codes exports
+exportSpec2codes :: [QualIdent] -> ExportSpec -> [Code]
+exportSpec2codes qualIdents (Exporting _ exports) = concatMap (export2codes qualIdents) exports
 
-export2codes :: Export -> [Code]
-export2codes (Export qualIdent) =
-     [Function OtherFunctionKind qualIdent]  
-export2codes (ExportTypeWith qualIdent idents) = 
-     [ConstructorName OtherConstrKind qualIdent] ++ map (Function OtherFunctionKind . qualify) idents
-export2codes (ExportTypeAll  qualIdent) = 
-     [ConstructorName OtherConstrKind qualIdent]  
-export2codes (ExportModule moduleIdent) = 
+export2codes :: [QualIdent] -> Export -> [Code]
+export2codes qualIdents (Export qualIdent) 
+    | elem qualIdent qualIdents = [TypeConstructor TypeUse qualIdent]
+    | otherwise = [Function OtherFunctionKind qualIdent]  
+export2codes _ (ExportTypeWith qualIdent idents) = 
+     [TypeConstructor TypeUse qualIdent] ++ map (Function OtherFunctionKind . qualify) idents
+export2codes _ (ExportTypeAll  qualIdent) = 
+     [TypeConstructor TypeUse qualIdent]  
+export2codes _ (ExportModule moduleIdent) = 
      [ModuleName moduleIdent]
 
 decl2codes :: Decl -> [Code]            

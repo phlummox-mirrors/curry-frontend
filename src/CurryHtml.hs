@@ -126,8 +126,10 @@ string2urlencoded [] = []
 string2urlencoded (c:cs)
   | isAlphaNum c = c : string2urlencoded cs
   | c == ' '     = '+' : string2urlencoded cs
-  | otherwise = let oc = ord c
-    in '%' : int2hex(oc `div` 16) : int2hex(oc `mod` 16) : string2urlencoded cs
- where
-   int2hex i = if i<10 then chr (ord '0' + i)
-                       else chr (ord 'A' + i - 10)
+  | otherwise = show (ord c) ++ (if null cs then "" else ".") ++ string2urlencoded cs
+  
+--  | otherwise = let oc = ord c
+--    in '%' : int2hex(oc `div` 16) : int2hex(oc `mod` 16) : string2urlencoded cs
+-- where
+--   int2hex i = if i<10 then chr (ord '0' + i)
+--                       else chr (ord 'A' + i - 10)
