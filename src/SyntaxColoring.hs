@@ -22,7 +22,7 @@ debug = False  --True
 trace' s x = if debug then trace s x else x
 
 
-debug' = True
+debug' = False
 
 trace'' s x = if debug' then trace s x else x
 
@@ -91,17 +91,18 @@ readInt s =
 
 -- -------------------------
 
-catchError :: IO (Result a) -> IO (Result a)
-catchError toDo = Control.Exception.catch toDo handler 
-  where
+catchError :: (Result a -> String) -> IO (Result a) -> IO (Result a)
+catchError toString toDo = Control.Exception.catch (toDo >>= returnComplete toString) handler 
+  where     
       handler (ErrorCall str) = return (Failure [setMessagePosition (Message Error Nothing str)])
-      handler  e = return (Failure [Message Error Nothing (show e)])
-      file str = takeWhile (/= '"') (tail str)
+      handler  e = return (Failure [Message Error Nothing (show e)])       
+             
+returnComplete :: (a -> String) -> a -> IO a
+returnComplete toString a = f (toString a) (return a)
+   where
+       f [] r = r
+       f (_:xs) r = f xs r      
 
-t :: IO (Result Char)      
-t = return (Result [] (head ""))
-      
-      
 -- -------------------------
 
 
@@ -165,17 +166,17 @@ buildMessagesIntoPlainText messages text =
 filename2program :: String -> IO Program
 filename2program filename =
      readFile filename >>= \ cont ->
-     (catchError (return (parse filename cont))) >>= \ parseResult ->
-     (catchError (return (Frontend.lex filename cont))) >>= \ lexResult ->  
+     (catchError show (return (parse filename cont))) >>= \ parseResult ->
+     (catchError show (return (Frontend.lex filename cont))) >>= \ lexResult ->  
      return (genQualifiedProgram cont (Failure []) parseResult lexResult) 
 
                             
 filename2Qualifiedprogram :: [String] -> String -> IO Program
 filename2Qualifiedprogram paths filename=
      readFile filename >>= \ cont ->
-     (catchError (typingParse paths filename  cont)) >>= \ typingParseResult ->           
-     (catchError (return (parse filename cont))) >>= \ parseResult ->
-     (catchError (return (Frontend.lex filename cont))) >>= \ lexResult ->    
+     (catchError show (typingParse paths filename  cont)) >>= \ typingParseResult ->           
+     (catchError show (return (parse filename cont))) >>= \ parseResult ->
+     (catchError show (return (Frontend.lex filename cont))) >>= \ lexResult ->    
      return (genQualifiedProgram cont typingParseResult parseResult lexResult)    
                         
 
