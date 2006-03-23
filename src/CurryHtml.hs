@@ -50,21 +50,21 @@ color2html Silver = "#C0C0C0"
 color2html (RGB str) = str
 
 program2html :: Program -> String
-program2html (Program moduleIdent codes) =
+program2html (Program codes) =
     "<HTML><HEAD></HEAD><BODY style=\"font-family:'Courier New', Arial;\">" ++
-    concat (map (code2html moduleIdent True . addModuleIdent moduleIdent) codes) ++
+    concat (map (code2html True) codes) ++
     "</BODY></HTML>"
  
 
-code2html :: ModuleIdent -> Bool -> Code -> String    
-code2html moduleIdent _ code@(CodeError _ codes) =
+code2html :: Bool -> Code -> String    
+code2html _ code@(CodeError _ codes) =
       (spanTag (color2html (code2color code)) 
-              (concatMap (code2html moduleIdent False) codes))
-code2html moduleIdent ownColor code@(CodeWarning _ codes) =
+              (concatMap (code2html False) codes))
+code2html ownColor code@(CodeWarning _ codes) =
      (if ownColor then spanTag (color2html (code2color code)) else id)
-              (concatMap (code2html moduleIdent False) codes)              
-code2html moduleIdent ownColor c
-      | isCall c && ownColor = maybe tag (addHtmlLink moduleIdent tag) (getQualIdent c) 
+              (concatMap (code2html False) codes)              
+code2html ownColor c
+      | isCall c && ownColor = maybe tag (addHtmlLink tag) (getQualIdent c) 
       | isDecl c && ownColor= maybe tag (addHtmlAnker tag) (getQualIdent c)
       | otherwise = tag
     where tag = (if ownColor then spanTag (color2html (code2color c)) else id)
@@ -84,18 +84,19 @@ replace old new = foldr (\ x -> if x == old then (new ++) else ([x]++)) ""
 addHtmlAnker :: String -> QualIdent -> String
 addHtmlAnker html qualIdent = "<a name=\""++ string2urlencoded (show (unqualify qualIdent)) ++"\"></a>" ++ html
 
-addHtmlLink :: ModuleIdent -> String -> QualIdent -> String
-addHtmlLink moduleIdent html qualIdent =
+addHtmlLink :: String -> QualIdent -> String
+addHtmlLink html qualIdent =
    let (maybeModuleIdent,ident) = splitQualIdent qualIdent in   
-   "<a href=\"" ++ prefix maybeModuleIdent ++ "#"++ string2urlencoded (show ident) ++"\">"++ html ++"</a>"
- where
-    prefix maybeModuleIdent = 
-          if maybe True (== moduleIdent) maybeModuleIdent
-                then ""
-                else show (fromJust maybeModuleIdent) ++ ".curry.html"   
-
+   "<a href=\"" ++ 
+   (maybe "" (\x -> show x ++ ".curry.html") maybeModuleIdent) ++ 
+   "#"++ 
+   string2urlencoded (show ident) ++
+   "\">"++ 
+   html ++
+   "</a>"
 
 isCall :: Code -> Bool
+isCall (TypeConstructor TypeExport _) = True
 isCall (TypeConstructor _ _) = False
 isCall (Identifier _ _) = False
 isCall code = not (isDecl code) &&
@@ -128,8 +129,3 @@ string2urlencoded (c:cs)
   | c == ' '     = '+' : string2urlencoded cs
   | otherwise = show (ord c) ++ (if null cs then "" else ".") ++ string2urlencoded cs
   
---  | otherwise = let oc = ord c
---    in '%' : int2hex(oc `div` 16) : int2hex(oc `mod` 16) : string2urlencoded cs
--- where
---   int2hex i = if i<10 then chr (ord '0' + i)
---                       else chr (ord 'A' + i - 10)

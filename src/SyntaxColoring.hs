@@ -1,8 +1,6 @@
 module SyntaxColoring where
 
 
---(module SyntaxColoring, parseString,main) where
-
 import System.Environment
 import CurryLexer
 import Position
@@ -26,7 +24,7 @@ debug' = False
 
 trace'' s x = if debug' then trace s x else x
 
-data Program = Program ModuleIdent [Code] deriving Show
+data Program = Program [Code] deriving Show
 
 data Code =  Keyword String
            | Space Int
@@ -46,7 +44,8 @@ data Code =  Keyword String
            | NotParsed String deriving Show
            
 data TypeKind = TypeDecla
-              | TypeUse deriving Show          
+              | TypeUse
+              | TypeExport deriving Show          
 
 data ConstructorKind = ConstrPattern
                      | ConstrCall
@@ -160,15 +159,14 @@ buildMessagesIntoPlainText messages text =
          isLeq (Message _ (Just (Position _ l _)) _) = l <= line 
          isLeq _ = True
                 
-
-   
---- muss noch vereinfacht werden!!
+        
+         
 filename2program :: String -> IO Program
 filename2program filename =
      readFile filename >>= \ cont ->
      (catchError show (return (parse filename cont))) >>= \ parseResult ->
      (catchError show (return (Frontend.lex filename cont))) >>= \ lexResult ->  
-     return (genQualifiedProgram cont (Failure []) parseResult lexResult) 
+     return (genProgram cont [parseResult] lexResult) 
 
                             
 filename2Qualifiedprogram :: [String] -> String -> IO Program
@@ -177,93 +175,71 @@ filename2Qualifiedprogram paths filename=
      (catchError show (typingParse paths filename  cont)) >>= \ typingParseResult ->           
      (catchError show (return (parse filename cont))) >>= \ parseResult ->
      (catchError show (return (Frontend.lex filename cont))) >>= \ lexResult ->    
-     return (genQualifiedProgram cont typingParseResult parseResult lexResult)    
+     return (genProgram cont (typingParseResult : [parseResult]) lexResult)    
                         
 
-genProgram :: String -> Result Module -> Result [(Position,Token)] -> Program
-genProgram plainText = genQualifiedProgram plainText (Failure [])       
+     
           
---- muss noch vereinfacht werden!!
---- @param typingParse-Module 
---- @param parse-Module
+--- @param plaintext
+--- @param parse-Modules  [typingParse,fullParse,parse]  
 --- @param lex-Result
-genQualifiedProgram :: String -> Result Module -> Result Module -> Result [(Position,Token)] -> Program 
-genQualifiedProgram  plainText
-                     typParseResult@(Result _ _) 
-                     parseResult@(Result _ (Module  moduleIdent _ _))                      
-                     lexResult = 
-      Program moduleIdent
-              (replaceFunctionCalls 
-                    (map (addModuleIdent moduleIdent)                     
-                         (genQualifiedCode plainText typParseResult parseResult  lexResult)))
-                  
-genQualifiedProgram  plainText
-                     typParseResult@(Failure _)
-                     parseResult@(Result _ (Module  moduleIdent _ _))                      
-                     lexResult = 
-      trace' (show typParseResult)  $               
-      Program moduleIdent
-              (genQualifiedCode plainText typParseResult parseResult  lexResult)
-                 
-genQualifiedProgram plainText typParseResult parseResult lexResult =
-      trace' (show parseResult)  $
-      Program (mkMIdent [])
-              (genQualifiedCode plainText typParseResult parseResult  lexResult)
-              
-              
+genProgram :: String -> [Result Module] -> Result [(Position,Token)] -> Program       
+genProgram  t p l = Program $ genCode t p l               
 
-genCode :: String -> Result Module -> Result [(Position,Token)] -> [Code]
-genCode plainText = genQualifiedCode plainText (Failure [])
            
-           
---- @param typingParse-Module                             
---- @param parse-Module             
-
-genQualifiedCode :: String -> Result Module ->  Result Module -> Result [(Position,Token)] -> [Code]       
-genQualifiedCode _ typParseResult parseResult (Result mess posNtokList) = 
+--- @param plaintext
+--- @param parse-Modules  [typingParse,fullParse,parse]                                        
+--- @param lex-Result
+genCode :: String -> [Result Module] -> Result [(Position,Token)] -> [Code]       
+genCode _ parseResults (Result mess posNtokList) = 
     let messages = (prepareMessages 
-                      (getMessages typParseResult ++ 
-                       getMessages parseResult ++ 
+                      (concatMap getMessages parseResults ++                         
                        mess))
         mergedMessages = (mergeMessages' (trace' ("Messages: " ++ show messages) messages) 
                                       posNtokList) in
     tokenNcodes2codes 1 
                       1
                       mergedMessages 
-                      (catQualifiedIdentifiers typParseResult parseResult)            
+                      (catIdentifiers parseResults)            
 
     
-genQualifiedCode plainText typParseResult parseResult (Failure messages3) =
-     trace' (unlines (map (\(Message _ _ str) -> str) allMessages)) (buildMessagesIntoPlainText allMessages plainText)    
+genCode plainText parseResults (Failure messages) =
+     trace' (unlines (map (\(Message _ _ str) -> str) allMessages)) 
+            (buildMessagesIntoPlainText allMessages plainText)    
   where
-      allMessages = prepareMessages (getMessages typParseResult ++ 
-                                            getMessages parseResult ++ 
-                                            messages3)   
+      allMessages = prepareMessages (concatMap getMessages parseResults ++ 
+                                     messages)   
      
-    
-catIdentifiers :: Result Module -> [Code]
-catIdentifiers  =  catQualifiedIdentifiers (Failure [])               
 
---- @param typingParse-Module  
---- @param parse-Module   
-catQualifiedIdentifiers :: Result Module -> Result Module -> [Code]
-catQualifiedIdentifiers (Failure _) parseResult@(Result _ _)  =
-     catQualifiedIdentifiers parseResult parseResult   
-catQualifiedIdentifiers typParseResult@(Result _ _) (Failure _)  =
-     catQualifiedIdentifiers typParseResult typParseResult           
-catQualifiedIdentifiers (Failure _) (Failure _)  = []
-catQualifiedIdentifiers (Result _ (Module  _ _ typingDecls))
-                        (Result _ (Module  moduleIdent maybeExportSpec _)) =
-     let codes = concatMap decl2codes (qsort lessDecl typingDecls) in                   
+     
+     
+--- @param parse-Modules  [typingParse,fullParse,parse] 
+catIdentifiers :: [Result Module] -> [Code]
+catIdentifiers [] = []
+catIdentifiers [(Failure _)] = []
+catIdentifiers [(Result _ (Module moduleIdent maybeExportSpec decls))] =
+     let codes = (concatMap decl2codes (qsort lessDecl decls)) in                   
      ([ModuleName moduleIdent] ++
      (maybe [] (exportSpec2codes (filterTypeDecla codes)) maybeExportSpec)  ++
      codes)     
   where
      filterTypeDecla [] = []
      filterTypeDecla ((TypeConstructor TypeDecla qualIdent):xs) = qualIdent : filterTypeDecla xs
-     filterTypeDecla (_:xs) =  filterTypeDecla xs
-       
+     filterTypeDecla (_:xs) =  filterTypeDecla xs     
+catIdentifiers ((Failure _):y:ys) = 
+     catIdentifiers (y:ys) 
+catIdentifiers ((Result mess (Module i e decls)):y:ys) =          
+     let maybeIdentNexport = getIdentNexport (last (y:ys)) 
+         (ide,expo) = maybe (i,e) id maybeIdentNexport in
+     replaceFunctionCalls $ 
+        map (addModuleIdent ide) $
+        catIdentifiers [(Result mess (Module ide expo decls))]
+  where
+     getIdentNexport (Failure _) = Nothing
+     getIdentNexport (Result _ (Module i e _)) = Just (i,e)
+     
 
+   
                       
 replaceFunctionCalls :: [Code] -> [Code]                  
 replaceFunctionCalls codes = map (idOccur2functionCall qualIdents) codes
@@ -499,19 +475,19 @@ exportSpec2codes qualIdents (Exporting _ exports) = concatMap (export2codes qual
 
 export2codes :: [QualIdent] -> Export -> [Code]
 export2codes qualIdents (Export qualIdent) 
-    | elem qualIdent qualIdents = [TypeConstructor TypeUse qualIdent]
+    | elem qualIdent qualIdents = [TypeConstructor TypeExport qualIdent]
     | otherwise = [Function OtherFunctionKind qualIdent]  
 export2codes _ (ExportTypeWith qualIdent idents) = 
-     [TypeConstructor TypeUse qualIdent] ++ map (Function OtherFunctionKind . qualify) idents
+     [TypeConstructor TypeExport qualIdent] ++ map (Function OtherFunctionKind . qualify) idents
 export2codes _ (ExportTypeAll  qualIdent) = 
-     [TypeConstructor TypeUse qualIdent]  
+     [TypeConstructor TypeExport qualIdent]  
 export2codes _ (ExportModule moduleIdent) = 
      [ModuleName moduleIdent]
 
 decl2codes :: Decl -> [Code]            
 decl2codes (ImportDecl _ moduleIdent xQualified xModuleIdent importSpec) = 
      [ModuleName moduleIdent] ++
-     maybe [] importSpec2codes  importSpec
+     maybe [] (importSpec2codes moduleIdent)  importSpec
 decl2codes (InfixDecl _ _ _ idents) =
      (map (Function InfixFunction . qualify) idents) 
 decl2codes (DataDecl _ ident idents constrDecls) =
@@ -652,17 +628,18 @@ constrDecl2codes (ConOpDecl _ idents typeExpr1 ident typeExpr2) =
     typeExpr2codes typeExpr1 ++ [ConstructorName ConstrDecla $ qualify ident] ++ typeExpr2codes typeExpr2
 
          
-importSpec2codes :: ImportSpec -> [Code]
-importSpec2codes (Importing _ imports) = concatMap import2codes imports
-importSpec2codes (Hiding _ imports) = concatMap import2codes imports
+importSpec2codes :: ModuleIdent -> ImportSpec -> [Code]
+importSpec2codes moduleIdent (Importing _ imports) = concatMap (import2codes moduleIdent) imports
+importSpec2codes moduleIdent (Hiding _ imports) = concatMap (import2codes moduleIdent) imports
 
-import2codes :: Import -> [Code]
-import2codes (Import ident) =
-     [Function OtherFunctionKind $ qualify ident]  
-import2codes (ImportTypeWith ident idents) = 
-     [ConstructorName OtherConstrKind $ qualify ident] ++ map (Function OtherFunctionKind . qualify) idents
-import2codes (ImportTypeAll  ident) = 
-     [ConstructorName OtherConstrKind $ qualify ident]  
+import2codes :: ModuleIdent -> Import -> [Code]
+import2codes moduleIdent (Import ident) =
+     [Function OtherFunctionKind $ qualifyWith moduleIdent ident]  
+import2codes moduleIdent (ImportTypeWith ident idents) = 
+     [ConstructorName OtherConstrKind $ qualifyWith moduleIdent ident] ++ 
+     map (Function OtherFunctionKind . qualifyWith moduleIdent) idents
+import2codes moduleIdent (ImportTypeAll  ident) = 
+     [ConstructorName OtherConstrKind $ qualifyWith moduleIdent ident]  
      
 typeExpr2codes :: TypeExpr -> [Code]     
 typeExpr2codes (ConstructorType qualIdent typeExprs) = 

@@ -23,7 +23,7 @@ code2color (CodeWarning _ _) = red
 code2color (NotParsed _) = red
 
 program2ansi :: Program -> String
-program2ansi (Program _ codes) =  concatMap (code2ansi True) codes    
+program2ansi (Program codes) =  concatMap (code2ansi True) codes    
 
 code2ansi :: Bool -> Code -> String    
 code2ansi _ code@(CodeError _ codes) =
