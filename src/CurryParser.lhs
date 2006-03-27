@@ -158,7 +158,7 @@ Since this modified version of MCC uses FlatCurry interfaces instead of
 >              <|> type1 <\> conId <\> leftParen <**> opDecl
 >         identDecl = many type2 <**> (conType <$> opDecl `opt` conDecl)
 >                 <|> fieldDecl 
->		      <$> (layoutOff <-*> braces (labelDecls `sepBy1` comma))
+>		      <$> (braces (labelDecls `sepBy1` comma))
 >         parenDecl = conOpDeclPrefix 
 >	              <$> conSym <*-> rightParen <*> type2 <*> type2
 >                 <|> tupleType <*-> rightParen <**> opDecl
@@ -371,7 +371,7 @@ Since this modified version of MCC uses FlatCurry interfaces instead of
 >           <|> constrTerm2 <\> qConId <\> leftParen
 >   where identPattern = optAsPattern
 >                    <|> conPattern <$> many1 constrTerm2
->		     <|> fieldPattern <$-> layoutOff <*> braces fieldElements
+>		     <|> fieldPattern <$> braces fieldElements
 >         parenPattern = minus <**> minusPattern negNum
 >                    <|> fminus <**> minusPattern negFloat
 >                    <|> gconPattern
@@ -482,7 +482,7 @@ the left-hand side of a declaration.
 >   where
 >   expr3' = constant <|> variable <|> parenExpr flat <|> listExpr flat
 >   fieldExpr = flip FieldExpr 
->	        <$-> layoutOff <*> braces fieldElements
+>	        <$> braces fieldElements
 >   fieldElements = field `sepBy` comma
 >   field = Field <$> position <*> qLabId <*-> equals <*> expr flat
 
@@ -716,7 +716,7 @@ prefix of a let expression.
 \begin{verbatim}
 
 > layout :: Parser Token a b -> Parser Token a b
-> layout p = layoutOff <-*> braces p
+> layout p = layoutOff <-*> bracket leftBraceSemicolon p rightBrace
 >        <|> layoutOn <-*> p <*-> (token VRightBrace <|> layoutEnd)
 
 \end{verbatim}
@@ -762,8 +762,9 @@ prefix of a let expression.
 > leftBracket = token LeftBracket
 > rightBracket = token RightBracket
 
-> leftBrace, rightBrace :: Parser Token Attributes a
+> leftBrace, leftBraceSemicolon, rightBrace :: Parser Token Attributes a
 > leftBrace = token LeftBrace
+> leftBraceSemicolon = token LeftBraceSemicolon
 > rightBrace = token RightBrace
 
 > leftArrow :: Parser Token Attributes a
