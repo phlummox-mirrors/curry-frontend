@@ -38,6 +38,8 @@ In this section a lexer for Curry is implemented.
 >   -- punctuation symbols
 >   | LeftParen | RightParen | Semicolon | LeftBrace | RightBrace
 >   | LeftBracket | RightBracket | Comma | Underscore | Backquote
+>   -- turn off layout (inserted by bbr)
+>   | LeftBraceSemicolon
 >   -- virtual punctation (inserted by layout)
 >   | VSemicolon | VRightBrace
 >   -- reserved identifiers
@@ -378,7 +380,7 @@ Lexing functions
 >   | c == ']' = token RightBracket
 >   | c == '_' = token Underscore
 >   | c == '`' = token Backquote
->   | c == '{' = token LeftBrace
+>   | c == '{' = lexLeftBrace (token LeftBrace) (next p) (success p) s 
 >   | c == '}' = \bol -> token RightBrace bol . drop 1
 >   | c == '\'' = lexChar p success fail (next p) s
 >   | c == '\"' = lexString p success fail (next p) s
@@ -401,6 +403,11 @@ Lexing functions
 >   cont (idTok (maybe Sym id (lookupFM sym reserved_and_special_ops)) [] sym)
 >        (incr p (length sym)) rest
 >   where (sym,rest) = span isSym s
+
+> lexLeftBrace leftBrace _ _       []    = leftBrace
+> lexLeftBrace leftBrace p cont (c:s) 
+>   | c==';'    = cont (tok LeftBraceSemicolon) (next p) s
+>   | otherwise = leftBrace
 
 \end{verbatim}
 {\em Note:} the function \texttt{lexOptQual} has been extended to provide
