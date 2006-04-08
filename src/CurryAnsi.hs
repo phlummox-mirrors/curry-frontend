@@ -1,4 +1,4 @@
-module CurryAnsi where
+module CurryAnsi(program2ansi) where
 
 import SyntaxColoring
 import AnsiCodes
@@ -23,13 +23,13 @@ code2color (CodeWarning _ _) = red
 code2color (NotParsed _) = red
 
 program2ansi :: Program -> String
-program2ansi (Program codes) =  concatMap (code2ansi True) codes    
+program2ansi codes =  concatMap (code2ansi True . (\(_,_,c) -> c)) codes    
 
 code2ansi :: Bool -> Code -> String    
-code2ansi _ code@(CodeError _ codes) =
-      (code2color code) (concatMap (code2ansi False) codes)
-code2ansi ownColor code@(CodeWarning _ codes) =
-     (if ownColor then (code2color code) else id) (concatMap (code2ansi False) codes)              
+code2ansi _ code@(CodeError _ c) =
+      (code2color code) (code2ansi False c)
+code2ansi ownColor code@(CodeWarning _ c) =
+     (if ownColor then (code2color code) else id) (code2ansi False c)              
 code2ansi ownColor c =
      (if ownColor then (code2color c) else id) (code2string c) 
      

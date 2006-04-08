@@ -1,4 +1,4 @@
-module CurryHtml where
+module CurryHtml(program2html) where
 
 import SyntaxColoring
 import Ident
@@ -34,7 +34,7 @@ code2color (Identifier _ _) = Black
 code2color (TypeConstructor _ _) = RGB "#ff7f50"
 code2color (CodeError _ _) = RGB "#a52a2a"
 code2color (CodeWarning _ _) = Red
-code2color (NotParsed _) = Red
+code2color (NotParsed _) = Silver
 
 color2html :: Color -> String
 color2html Blue = "blue"
@@ -50,19 +50,19 @@ color2html Silver = "#C0C0C0"
 color2html (RGB str) = str
 
 program2html :: Program -> String
-program2html (Program codes) =
+program2html codes =
     "<HTML><HEAD></HEAD><BODY style=\"font-family:'Courier New', Arial;\">" ++
-    concat (map (code2html True) codes) ++
+    concat (map (code2html True . (\(_,_,c) -> c)) codes) ++
     "</BODY></HTML>"
  
 
 code2html :: Bool -> Code -> String    
-code2html _ code@(CodeError _ codes) =
+code2html _ code@(CodeError _ c) =
       (spanTag (color2html (code2color code)) 
-              (concatMap (code2html False) codes))
-code2html ownColor code@(CodeWarning _ codes) =
+              (code2html False c))
+code2html ownColor code@(CodeWarning _ c) =
      (if ownColor then spanTag (color2html (code2color code)) else id)
-              (concatMap (code2html False) codes)              
+              (code2html False c)              
 code2html ownColor c
       | isCall c && ownColor = maybe tag (addHtmlLink tag) (getQualIdent c) 
       | isDecl c && ownColor= maybe tag (addHtmlAnker tag) (getQualIdent c)
@@ -113,7 +113,7 @@ isDecl _ = False
 
 genHtmlFile :: String -> IO ()
 genHtmlFile moduleName = 
-  filename2Qualifiedprogram ["/home/pakcs/pakcs/lib"] 
+  filename2program ["/home/pakcs/pakcs/lib"] 
     (moduleName++".curry") >>= \ x -> seq x $
   writeFile (fileName moduleName++".html") (program2html x) 
 

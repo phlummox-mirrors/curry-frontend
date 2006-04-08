@@ -7,9 +7,11 @@ import CurryAnsi
 
 main = getArgs >>= test
 
-test (s:p:paths) = filename2Qualifiedprogram paths s >>= \prog ->
+test (s:p:paths) = filename2program paths s >>= \prog ->
          writeFile (p ++ basename s ++ ".html") (program2html prog) 
          
 
-test2 (s:paths) = filename2Qualifiedprogram paths s >>= \prog ->
-         putStr (program2ansi prog) 
+test2 (s:paths) = filename2program paths s >>= \prog ->
+         putStr (program2ansi prog)
+         
+basename = reverse .  takeWhile (/='/')    . reverse          
