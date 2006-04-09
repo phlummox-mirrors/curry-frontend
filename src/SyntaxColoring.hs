@@ -1,6 +1,6 @@
 module SyntaxColoring (Program,Code(..),TypeKind(..),ConstructorKind(..),
                        IdentifierKind(..),FunctionKind(..),filename2program,
-                       code2string,getQualIdent,catchError,genProgram) where
+                       code2string,getQualIdent,catchError,genProgram, position2code) where
 
 
 import System.Environment
