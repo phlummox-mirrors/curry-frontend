@@ -22,7 +22,7 @@ debug = False  --True
 trace' s x = if debug then trace s x else x
 
 
-debug' = True
+debug' = False
 
 trace'' s x = if debug' then trace s x else x
 
@@ -62,7 +62,51 @@ data FunctionKind = InfixFunction
                   | TypSig
                   | FunDecl
                   | FunctionCall
-                  | OtherFunctionKind deriving Show           
+                  | OtherFunctionKind deriving Show      
+                  
+                  
+                  
+--- @param list with file paths for imports e.g. ["/home/pakcs/pakcs/lib/"] 
+--- @param filename                  
+--- @param program
+filename2program :: [String] -> String -> IO Program
+filename2program paths filename=
+     readFile filename >>= \ cont ->
+     (catchError show (typingParse paths filename  cont)) >>= \ typingParseResult ->
+     (catchError show (fullParse paths filename  cont)) >>= \ fullParseResult ->             
+     (catchError show (return (parse filename cont))) >>= \ parseResult ->
+     (catchError show (return (Frontend.lex filename cont))) >>= \ lexResult ->    
+     return (genProgram cont (typingParseResult : fullParseResult : [parseResult]) lexResult)    
+                        
+
+     
+        
+--- @param plaintext
+--- @param list with parse-Results with descending quality  e.g. [typingParse,fullParse,parse]                                        
+--- @param lex-Result
+--- @return program
+genProgram :: String -> [Result Module] -> Result [(Position,Token)] -> Program       
+genProgram _ parseResults (Result mess posNtokList) = 
+    let messages = (prepareMessages 
+                      (concatMap getMessages parseResults ++                         
+                       mess))
+        mergedMessages = (mergeMessages' (trace' ("Messages: " ++ show messages) messages) 
+                                      posNtokList) in
+    tokenNcodes2codes 1 
+                      1
+                      mergedMessages 
+                      (catIdentifiers parseResults)            
+
+    
+genProgram plainText parseResults (Failure messages) =
+     trace' (unlines (map (\(Message _ _ str) -> str) allMessages)) 
+            (buildMessagesIntoPlainText allMessages plainText)    
+  where
+      allMessages = prepareMessages (concatMap getMessages parseResults ++ 
+                                     messages)   
+     
+
+                            
                 
 
 --- @param Program
@@ -79,13 +123,35 @@ position2code ((l,c,code):(l2,c2,code2):xs) line col
      | l2 > line = Just code
      | otherwise = position2code ((l2,c2,code2):xs) line col
                   
+
+--- this function intercepts errors and converts it to Messages      
+--- @param a show-function for (Result a)                    
+--- @param a function that generates a (Result a)
+--- @return (Result a) without runtimeerrors   
+catchError :: (Result a -> String) -> IO (Result a) -> IO (Result a)
+catchError toString toDo = Control.Exception.catch (toDo >>= returnComplete toString) handler 
+  where     
+      handler (ErrorCall str) = return (Failure [setMessagePosition (Message Error Nothing str)])
+      handler  e = return (Failure [Message Error Nothing (show e)])       
+             
+      returnComplete :: (a -> String) -> a -> IO a
+      returnComplete toString a = f (toString a) (return a)
+          where
+             f [] r = r
+             f (_:xs) r = f xs r                      
                   
-                  
-                  
-                  
-                  
+--- @param code
+--- @return qualIdent if available                   
+getQualIdent :: Code -> Maybe QualIdent
+getQualIdent (ConstructorName _ qualIdent) = Just qualIdent
+getQualIdent (Function _ qualIdent) = Just qualIdent
+getQualIdent (Identifier _ qualIdent) = Just qualIdent                      
+getQualIdent (TypeConstructor _ qualIdent) = Just qualIdent
+getQualIdent  _ = Nothing                  
                   
                     
+-- privates-----------------------------------------------------------------------------------
+
                   
 codeWithoutPos :: (Int,Int,Code) -> Code
 codeWithoutPos (_,_,c) = c                  
@@ -118,17 +184,7 @@ readInt s =
 
 -- -------------------------
 
-catchError :: (Result a -> String) -> IO (Result a) -> IO (Result a)
-catchError toString toDo = Control.Exception.catch (toDo >>= returnComplete toString) handler 
-  where     
-      handler (ErrorCall str) = return (Failure [setMessagePosition (Message Error Nothing str)])
-      handler  e = return (Failure [Message Error Nothing (show e)])       
-             
-returnComplete :: (a -> String) -> a -> IO a
-returnComplete toString a = f (toString a) (return a)
-   where
-       f [] r = r
-       f (_:xs) r = f xs r      
+  
 
 -- -------------------------
 
@@ -189,43 +245,7 @@ buildMessagesIntoPlainText messages text =
                 
         
         
-filename2program :: [String] -> String -> IO Program
-filename2program paths filename=
-     readFile filename >>= \ cont ->
-     (catchError show (typingParse paths filename  cont)) >>= \ typingParseResult ->
-     (catchError show (fullParse paths filename  cont)) >>= \ fullParseResult ->             
-     (catchError show (return (parse filename cont))) >>= \ parseResult ->
-     (catchError show (return (Frontend.lex filename cont))) >>= \ lexResult ->    
-     return (genProgram cont (typingParseResult : fullParseResult : [parseResult]) lexResult)    
-                        
 
-     
-        
---- @param plaintext
---- @param parse-Modules  [typingParse,fullParse,parse]                                        
---- @param lex-Result
-genProgram :: String -> [Result Module] -> Result [(Position,Token)] -> Program       
-genProgram _ parseResults (Result mess posNtokList) = 
-    let messages = (prepareMessages 
-                      (concatMap getMessages parseResults ++                         
-                       mess))
-        mergedMessages = (mergeMessages' (trace' ("Messages: " ++ show messages) messages) 
-                                      posNtokList) in
-    tokenNcodes2codes 1 
-                      1
-                      mergedMessages 
-                      (catIdentifiers parseResults)            
-
-    
-genProgram plainText parseResults (Failure messages) =
-     trace' (unlines (map (\(Message _ _ str) -> str) allMessages)) 
-            (buildMessagesIntoPlainText allMessages plainText)    
-  where
-      allMessages = prepareMessages (concatMap getMessages parseResults ++ 
-                                     messages)   
-     
-
-     
      
 --- @param parse-Modules  [typingParse,fullParse,parse] 
 catIdentifiers :: [Result Module] -> [Code]
@@ -408,12 +428,7 @@ getModuleIdent (Identifier _ qualIdent) = fst $ splitQualIdent qualIdent
 getModuleIdent (TypeConstructor _ qualIdent) = fst $ splitQualIdent qualIdent
 getModuleIdent _ = Nothing
 
-getQualIdent :: Code -> Maybe QualIdent
-getQualIdent (ConstructorName _ qualIdent) = Just qualIdent
-getQualIdent (Function _ qualIdent) = Just qualIdent
-getQualIdent (Identifier _ qualIdent) = Just qualIdent                      
-getQualIdent (TypeConstructor _ qualIdent) = Just qualIdent
-getQualIdent  _ = Nothing
+
   
 {-
 setQualIdent :: Code -> QualIdent -> Code

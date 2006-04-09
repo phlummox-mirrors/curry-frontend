@@ -16,8 +16,20 @@ data Color = Blue
             |Fuchsia
             |Silver 
             |RGB String
-
-
+            
+--- generates htmlcode with syntax highlighting            
+--- @param a program
+--- @return HTMLcode
+program2html :: Program -> String
+program2html codes =
+    "<HTML><HEAD></HEAD><BODY style=\"font-family:'Courier New', Arial;\">" ++
+    concat (map (code2html True . (\(_,_,c) -> c)) codes) ++
+    "</BODY></HTML>"            
+            
+            
+--- which code has which color 
+--- @param code
+--- @return color of the code  
 code2color :: Code -> Color                          
 code2color (Keyword _) = Blue
 code2color (Space _)= White
@@ -49,12 +61,7 @@ color2html Fuchsia = "#FF00FF"
 color2html Silver = "#C0C0C0"
 color2html (RGB str) = str
 
-program2html :: Program -> String
-program2html codes =
-    "<HTML><HEAD></HEAD><BODY style=\"font-family:'Courier New', Arial;\">" ++
-    concat (map (code2html True . (\(_,_,c) -> c)) codes) ++
-    "</BODY></HTML>"
- 
+
 
 code2html :: Bool -> Code -> String    
 code2html _ code@(CodeError _ c) =
