@@ -114,14 +114,12 @@ genProgram plainText parseResults (Failure messages) =
 --- @param col
 --- @return Code at this Position                  
 position2code :: Program -> Int -> Int -> Maybe Code                 
-position2code [] _ _ = Nothing
-position2code [(_,_,c)] _ _ = Just c
-position2code ((l,c,code):(l2,c2,code2):xs) line col
-     | l < line = position2code ((l2,c2,code2):xs) line col
-     | l > line = Just code
-     | col >= c && col < c2 = Just code
-     | l2 > line = Just code
-     | otherwise = position2code ((l2,c2,code2):xs) line col
+position2code []  _ _ = Nothing
+position2code [_] _ _ = Nothing
+position2code ((l,c,code):xs@((_,c2,_):_)) line col
+     | line == l && col >= c && col < c2 = Just code
+     | l > line = Nothing
+     | otherwise = position2code xs line col
                   
 
 --- this function intercepts errors and converts it to Messages      
@@ -835,5 +833,4 @@ toGoodChar c
    | c == '"' = "\\\""
    | otherwise = c : "" 
  where
-     justShow = reverse . tail . reverse . tail . show  
-
+     justShow = reverse . tail . reverse . tail . show
