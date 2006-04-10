@@ -1,6 +1,7 @@
 module SyntaxColoring (Program,Code(..),TypeKind(..),ConstructorKind(..),
                        IdentifierKind(..),FunctionKind(..),filename2program,
-                       code2string,getQualIdent,catchError,genProgram, position2code) where
+                       code2string,getQualIdent,catchError,genProgram, position2code,
+                       area2codes) where
 
 
 import System.Environment
@@ -120,6 +121,17 @@ position2code ((l,c,code):xs@((_,c2,_):_)) line col
      | line == l && col >= c && col < c2 = Just code
      | l > line = Nothing
      | otherwise = position2code xs line col
+     
+area2codes :: Program -> Position -> Position -> [Code]     
+area2codes [] _ _ = []
+area2codes xxs@((l,c,code):xs) p1@(Position file _ _) p2 
+     | p1 > p2 = area2codes xxs p2 p1
+     | posEnd >= p1 && posBegin <= p2  = code : area2codes xs p1 p2
+     | posBegin > p2 = []
+     | otherwise = area2codes xs p1 p2
+   where
+      posBegin = (Position file l c)
+      posEnd = (Position file l (c + (length (code2string code))))
                   
 
 --- this function intercepts errors and converts it to Messages      
