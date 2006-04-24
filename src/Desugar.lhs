@@ -42,6 +42,15 @@ properties.
   partial applications of newtype constructor by \texttt{prelude.id}.
   However, our solution yields a more accurate output when the result
   of a computation includes partial applications.}
+\item Function patterns are replaced by variables and are integrated
+  in a guarded right hand side using the \texttt{=:<=} operator
+\item Records, which currently must be declared using the keyword
+  \texttt{type}, are transformed into data types with one constructor.
+  Record construction and pattern matching are represented using the
+  record constructor. Selection and update are represented using selector
+  and update functions which are generated for each record declaration.
+  The record constructor must be entered into the type environment as well
+  as the selector functions and the update functions. 
 \end{itemize}
 
 \ToDo{Use a different representation for the restricted code instead
@@ -54,11 +63,13 @@ all names must be properly qualified before calling this module.}
 > module Desugar(desugar,desugarGoal) where
 > import Base
 > import Combined
+> import TopEnv (qualRebindTopEnv)
 > import List
 > import Monad
 > import Typing
 > import Utils
 > import Ident
+> import Maybe
 
 \end{verbatim}
 New identifiers may be introduced while desugaring pattern
@@ -84,16 +95,19 @@ Actually, the transformation is slightly more general than necessary
 as it allows value declarations at the top-level of a module.
 \begin{verbatim}
 
-> desugar :: ValueEnv -> Module -> (Module,ValueEnv)
-> desugar tyEnv (Module m es ds) = (Module m es ds',tyEnv')
->   where (ds',tyEnv') = run (desugarModule m ds) tyEnv
+> desugar :: ValueEnv -> TCEnv -> Module -> (Module,ValueEnv)
+> desugar tyEnv tcEnv (Module m es ds) = (Module m es ds',tyEnv')
+>   where (ds',tyEnv') = run (desugarModule m tcEnv ds) tyEnv
 
-> desugarModule :: ModuleIdent -> [Decl] -> DesugarState ([Decl],ValueEnv)
-> desugarModule m ds = 
+> desugarModule :: ModuleIdent -> TCEnv -> [Decl] 
+>	        -> DesugarState ([Decl],ValueEnv)
+> desugarModule m tcEnv ds = 
 >   do
->     ds' <- desugarDeclGroup m ds
+>     dss <- mapM (desugarRecordDecl m tcEnv) ds
+>     let ds' = concat dss
+>     ds'' <- desugarDeclGroup m tcEnv ds'
 >     tyEnv' <- fetchSt
->     return (filter isTypeDecl ds ++ ds',tyEnv')
+>     return (filter isTypeDecl ds' ++ ds'', tyEnv')
 
 \end{verbatim}
 While a goal of type \texttt{IO \_} is executed directly by the
@@ -127,33 +141,33 @@ if it really has a functional type.
 hack is no longer needed.}
 \begin{verbatim}
 
-> desugarGoal :: Bool -> ValueEnv -> ModuleIdent -> Ident -> Goal
+> desugarGoal :: Bool -> ValueEnv -> TCEnv -> ModuleIdent -> Ident -> Goal
 >             -> (Maybe [Ident],Module,ValueEnv)
-> desugarGoal debug tyEnv m g (Goal p e ds)
+> desugarGoal debug tyEnv tcEnv m g (Goal p e ds)
 >   | debug || isIO ty =
->       desugarGoalIO tyEnv p m g (Let ds e)
+>       desugarGoalIO tyEnv tcEnv p m g (Let ds e)
 >         (if debug && arrowArity ty > 0 then typeVar 0 else ty)
->   | otherwise = desugarGoal' tyEnv p m g vs e' ty
+>   | otherwise = desugarGoal' tyEnv tcEnv p m g vs e' ty
 >   where ty = typeOf tyEnv e
 >         (vs,e') = liftGoalVars (if null ds then e else Let ds e)
 >         isIO (TypeConstructor tc [_]) = tc == qIOId
 >         isIO _ = False
 
-> desugarGoalIO :: ValueEnv -> Position -> ModuleIdent -> Ident
+> desugarGoalIO :: ValueEnv -> TCEnv -> Position -> ModuleIdent -> Ident
 >               -> Expression -> Type -> (Maybe [Ident],Module,ValueEnv)
-> desugarGoalIO tyEnv p m g e ty =
+> desugarGoalIO tyEnv tcEnv p m g e ty =
 >   (Nothing,
 >    Module m Nothing [goalDecl p g [] e'],
 >    bindFun m g (polyType ty) tyEnv')
->   where (e',tyEnv') = run (desugarGoalExpr m e) tyEnv
+>   where (e',tyEnv') = run (desugarGoalExpr m tcEnv e) tyEnv
 
-> desugarGoal' :: ValueEnv -> Position -> ModuleIdent -> Ident -> [Ident]
+> desugarGoal' :: ValueEnv -> TCEnv -> Position -> ModuleIdent -> Ident -> [Ident]
 >              -> Expression -> Type -> (Maybe [Ident],Module,ValueEnv)
-> desugarGoal' tyEnv p m g vs e ty =
+> desugarGoal' tyEnv tcEnv p m g vs e ty =
 >   (Just vs',
 >    Module m Nothing [goalDecl p g (v0:vs') (apply prelUnif [mkVar v0,e'])],
 >    bindFun m v0 (monoType ty) (bindFun m g (polyType ty') tyEnv'))
->   where (e',tyEnv') = run (desugarGoalExpr m e) tyEnv
+>   where (e',tyEnv') = run (desugarGoalExpr m tcEnv e) tyEnv
 >         v0 = anonId
 >         vs' = filter (`elem` qfv m e') vs
 >         ty' = TypeArrow ty (foldr (TypeArrow . typeOf tyEnv) successType vs')
@@ -161,11 +175,11 @@ hack is no longer needed.}
 > goalDecl :: Position -> Ident -> [Ident] -> Expression -> Decl
 > goalDecl p g vs e = funDecl p g (map VariablePattern vs) e
 
-> desugarGoalExpr :: ModuleIdent -> Expression
+> desugarGoalExpr :: ModuleIdent -> TCEnv -> Expression
 >                 -> DesugarState (Expression,ValueEnv)
-> desugarGoalExpr m e =
+> desugarGoalExpr m tcEnv e =
 >   do
->     e' <- desugarExpr m (first "") e
+>     e' <- desugarExpr m tcEnv (first "") e
 >     tyEnv' <- fetchSt
 >     return (e',tyEnv')
 
@@ -182,19 +196,19 @@ hand sides are desugared. Due to lazy patterns this may add further
 declarations to the group that must be desugared as well.
 \begin{verbatim}
 
-> desugarDeclGroup :: ModuleIdent -> [Decl] -> DesugarState [Decl]
-> desugarDeclGroup m ds =
+> desugarDeclGroup :: ModuleIdent -> TCEnv -> [Decl] -> DesugarState [Decl]
+> desugarDeclGroup m tcEnv ds =
 >   do
->     dss' <- mapM (desugarDeclLhs m) (filter isValueDecl ds)
->     mapM (desugarDeclRhs m) (concat dss')
+>     dss' <- mapM (desugarDeclLhs m tcEnv) (filter isValueDecl ds)
+>     mapM (desugarDeclRhs m tcEnv) (concat dss')
 
-> desugarDeclLhs :: ModuleIdent -> Decl -> DesugarState [Decl]
-> desugarDeclLhs m (PatternDecl p t rhs) =
+> desugarDeclLhs :: ModuleIdent -> TCEnv -> Decl -> DesugarState [Decl]
+> desugarDeclLhs m tcEnv (PatternDecl p t rhs) =
 >   do
->     (ds',t') <- desugarTerm m p [] t
->     dss' <- mapM (desugarDeclLhs m) ds'
+>     (ds',t') <- desugarTerm m tcEnv p [] t
+>     dss' <- mapM (desugarDeclLhs m tcEnv) ds'
 >     return (PatternDecl p t' rhs : concat dss')
-> desugarDeclLhs m (FlatExternalDecl p fs) =
+> desugarDeclLhs m tcEnv (FlatExternalDecl p fs) =
 >   do
 >     tyEnv <- fetchSt
 >     return (map (externalDecl tyEnv p) fs)
@@ -204,34 +218,46 @@ declarations to the group that must be desugared as well.
 >         qual f
 >           | unRenameIdent f == f = qualifyWith m f
 >           | otherwise = qualify f
-> desugarDeclLhs _ d = return [d]
+> desugarDeclLhs _ _ d = return [d]
 
 \end{verbatim}
 After desugaring its right hand side, each equation is $\eta$-expanded
 by adding as many variables as necessary to the argument list and
 applying the right hand side to those variables ({\em Note:} $\eta$-expansion
 is disabled in the version for PAKCS).
+Furthermore every occurrence of a record type within the type of a function
+is simplified to the corresponding type constructor from the record
+declaration. This is possible because currently records must not be empty
+and a record label belongs to only one record declaration.
 \begin{verbatim}
 
-> desugarDeclRhs :: ModuleIdent -> Decl -> DesugarState Decl
-> desugarDeclRhs m (FunctionDecl p f eqs) =
+> desugarDeclRhs :: ModuleIdent -> TCEnv -> Decl -> DesugarState Decl
+> desugarDeclRhs m tcEnv (FunctionDecl p f eqs) =
 >   do
->     ty <- liftM (flip typeOf (Variable (qual f))) fetchSt
->     liftM (FunctionDecl p f) (mapM (desugarEquation m (arrowArgs ty)) eqs)
+>     tyEnv <- fetchSt
+>     let ty =  (flip typeOf (Variable (qual f))) tyEnv
+>         --ty' = desugarRecordType m tyEnv tcEnv ty
+>         --f' = qualifyWith m f
+>     --when (f == mkIdent "p") (error (show (qualLookupValue (qualifyWith m f) tyEnv)))
+>     --when (f == mkIdent "u") (error (show (lookupValue f tyEnv)))
+>     --updateSt_ (qualRebindTopEnv f' (Value f' (polyType ty'))) -- (rebindFun m f (polyType ty'))
+>     liftM (FunctionDecl p f) 
+>	    (mapM (desugarEquation m tcEnv (arrowArgs ty)) eqs)
 >   where qual f
 >           | unRenameIdent f == f = qualifyWith m f
 >           | otherwise = qualify f
-> desugarDeclRhs _ (ExternalDecl p cc ie f ty) =
+> desugarDeclRhs _ tcEnv (ExternalDecl p cc ie f ty) =
 >   return (ExternalDecl p cc (ie `mplus` Just (name f)) f ty)
-> desugarDeclRhs m (PatternDecl p t rhs) =
->   liftM (PatternDecl p t) (desugarRhs m p rhs)
-> desugarDeclRhs _ (ExtraVariables p vs) = return (ExtraVariables p vs)
+> desugarDeclRhs m tcEnv (PatternDecl p t rhs) =
+>   liftM (PatternDecl p t) (desugarRhs m tcEnv p rhs)
+> desugarDeclRhs _ tcEnv (ExtraVariables p vs) = return (ExtraVariables p vs)
 
-> desugarEquation :: ModuleIdent -> [Type] -> Equation -> DesugarState Equation
-> desugarEquation m tys (Equation p lhs rhs) =
+> desugarEquation :: ModuleIdent -> TCEnv -> [Type] -> Equation 
+>	          -> DesugarState Equation
+> desugarEquation m tcEnv tys (Equation p lhs rhs) =
 >   do
->     (ds',ts') <- mapAccumM (desugarTerm m p) [] ts
->     rhs' <- desugarRhs m p (addDecls ds' rhs)
+>     (ds',ts') <- mapAccumM (desugarTerm m tcEnv p) [] ts
+>     rhs' <- desugarRhs m tcEnv p (addDecls ds' rhs)
 >     (ts'', rhs'') <- desugarFunctionPatterns m p ts' rhs'
 >     return (Equation p (FunLhs f ts'') rhs'')
 >   where (f,ts) = flatLhs lhs
@@ -255,43 +281,51 @@ with a local declaration for $v$.
 > desugarLiteral (Float f) = return (Left (Float f))
 > desugarLiteral (String cs) = return (Right (map Char cs))
 
-> desugarTerm :: ModuleIdent -> Position -> [Decl] -> ConstrTerm
+> desugarTerm :: ModuleIdent -> TCEnv -> Position -> [Decl] -> ConstrTerm
 >             -> DesugarState ([Decl],ConstrTerm)
-> desugarTerm m p ds (LiteralPattern l) =
+> desugarTerm m tcEnv p ds (LiteralPattern l) =
 >   desugarLiteral l >>=
 >   either (return . (,) ds . LiteralPattern)
->          (desugarTerm m p ds . ListPattern . map LiteralPattern)
-> desugarTerm m p ds (NegativePattern _ l) =
->   desugarTerm m p ds (LiteralPattern (negateLiteral l))
+>          (desugarTerm m tcEnv p ds . ListPattern . map LiteralPattern)
+> desugarTerm m tcEnv p ds (NegativePattern _ l) =
+>   desugarTerm m tcEnv p ds (LiteralPattern (negateLiteral l))
 >   where negateLiteral (Int v i) = Int v (-i)
 >         negateLiteral (Float f) = Float (-f)
 >         negateLiteral _ = internalError "negateLiteral"
-> desugarTerm _ _ ds (VariablePattern v) = return (ds,VariablePattern v)
-> desugarTerm m p ds (ConstructorPattern c [t]) =
+> desugarTerm _ _ _ ds (VariablePattern v) = return (ds,VariablePattern v)
+> desugarTerm m tcEnv p ds (ConstructorPattern c [t]) =
 >   do
 >     tyEnv <- fetchSt
 >     liftM (if isNewtypeConstr tyEnv c then id else apSnd (constrPat c))
->           (desugarTerm m p ds t)
+>           (desugarTerm m tcEnv p ds t)
 >   where constrPat c t = ConstructorPattern c [t]
-> desugarTerm m p ds (ConstructorPattern c ts) =
->   liftM (apSnd (ConstructorPattern c)) (mapAccumM (desugarTerm m p) ds ts)
-> desugarTerm m p ds (InfixPattern t1 op t2) =
->   desugarTerm m p ds (ConstructorPattern op [t1,t2])
-> desugarTerm m p ds (ParenPattern t) = desugarTerm m p ds t
-> desugarTerm m p ds (TuplePattern ts) =
->   desugarTerm m p ds (ConstructorPattern (tupleConstr ts) ts)
+> desugarTerm m tcEnv p ds (ConstructorPattern c ts) =
+>   liftM (apSnd (ConstructorPattern c)) (mapAccumM (desugarTerm m tcEnv p) ds ts)
+> desugarTerm m tcEnv p ds (InfixPattern t1 op t2) =
+>   desugarTerm m tcEnv p ds (ConstructorPattern op [t1,t2])
+> desugarTerm m tcEnv p ds (ParenPattern t) = desugarTerm m tcEnv p ds t
+> desugarTerm m tcEnv p ds (TuplePattern ts) =
+>   desugarTerm m tcEnv p ds (ConstructorPattern (tupleConstr ts) ts)
 >   where tupleConstr ts = if null ts then qUnitId else qTupleId (length ts)
-> desugarTerm m p ds (ListPattern ts) =
->   liftM (apSnd (foldr cons nil)) (mapAccumM (desugarTerm m p) ds ts)
+> desugarTerm m tcEnv p ds (ListPattern ts) =
+>   liftM (apSnd (foldr cons nil)) (mapAccumM (desugarTerm m tcEnv p) ds ts)
 >   where nil = ConstructorPattern qNilId []
 >         cons t ts = ConstructorPattern qConsId [t,ts]
-> desugarTerm m p ds (AsPattern v t) =
->   liftM (desugarAs p v) (desugarTerm m p ds t)
-> desugarTerm m p ds (LazyPattern t) = desugarLazy m p ds t
-> desugarTerm m p ds (FunctionPattern f ts) =
->   liftM (apSnd (FunctionPattern f)) (mapAccumM (desugarTerm m p) ds ts)
-> desugarTerm m p ds (InfixFuncPattern t1 f t2) =
->   desugarTerm m p ds (FunctionPattern f [t1,t2])
+> desugarTerm m tcEnv p ds (AsPattern v t) =
+>   liftM (desugarAs p v) (desugarTerm m tcEnv p ds t)
+> desugarTerm m tcEnv p ds (LazyPattern t) = desugarLazy m p ds t
+> desugarTerm m tcEnv p ds (FunctionPattern f ts) =
+>   liftM (apSnd (FunctionPattern f)) (mapAccumM (desugarTerm m tcEnv p) ds ts)
+> desugarTerm m tcEnv p ds (InfixFuncPattern t1 f t2) =
+>   desugarTerm m tcEnv p ds (FunctionPattern f [t1,t2])
+> desugarTerm m tcEnv p ds (RecordPattern fs _)
+>   | null fs = internalError "desugarTerm: empty record"
+>   | otherwise =
+>     do tyEnv <- fetchSt 
+>	 case (qualLookupValue (qualifyWith m (fieldLabel (head fs))) tyEnv) of
+>          [Label _ r _] -> 
+>            desugarRecordPattern m tcEnv p ds (map field2Tuple fs) r
+>          _ -> internalError "desugarTerm: no label"
 
 > desugarAs :: Position -> Ident -> ([Decl],ConstrTerm) -> ([Decl],ConstrTerm)
 > desugarAs p v (ds,t) =
@@ -324,11 +358,11 @@ type \texttt{Bool} of the guard because the guard's type defaults to
 \texttt{Success} if it is not restricted by the guard expression.
 \begin{verbatim}
 
-> desugarRhs :: ModuleIdent -> Position -> Rhs -> DesugarState Rhs
-> desugarRhs m p rhs =
+> desugarRhs :: ModuleIdent -> TCEnv -> Position -> Rhs -> DesugarState Rhs
+> desugarRhs m tcEnv p rhs =
 >   do
 >     tyEnv <- fetchSt
->     e' <- desugarExpr m p (expandRhs tyEnv prelFailed rhs)
+>     e' <- desugarExpr m tcEnv p (expandRhs tyEnv prelFailed rhs)
 >     return (SimpleRhs p e' [])
 
 > expandRhs :: ValueEnv -> Expression -> Rhs -> Expression
@@ -347,100 +381,127 @@ type \texttt{Bool} of the guard because the guard's type defaults to
 > booleanGuards tyEnv (CondExpr _ g _ : es) =
 >   not (null es) || typeOf tyEnv g == boolType
 
-> desugarExpr :: ModuleIdent -> Position -> Expression
+> desugarExpr :: ModuleIdent -> TCEnv -> Position -> Expression
 >             -> DesugarState Expression
-> desugarExpr m p (Literal l) =
+> desugarExpr m tcEnv p (Literal l) =
 >   desugarLiteral l >>=
->   either (return . Literal) (desugarExpr m p . List . map Literal)
-> desugarExpr _ _ (Variable v) = return (Variable v)
-> desugarExpr _ _ (Constructor c) = return (Constructor c)
-> desugarExpr m p (Paren e) = desugarExpr m p e
-> desugarExpr m p (Typed e _) = desugarExpr m p e
-> desugarExpr m p (Tuple es) =
->   liftM (apply (Constructor (tupleConstr es))) (mapM (desugarExpr m p) es)
+>   either (return . Literal) (desugarExpr m tcEnv p . List . map Literal)
+> desugarExpr _ _ _ (Variable v) = return (Variable v)
+> desugarExpr _ _ _ (Constructor c) = return (Constructor c)
+> desugarExpr m tcEnv p (Paren e) = desugarExpr m tcEnv p e
+> desugarExpr m tcEnv p (Typed e _) = desugarExpr m tcEnv p e
+> desugarExpr m tcEnv p (Tuple es) =
+>   liftM (apply (Constructor (tupleConstr es))) 
+>         (mapM (desugarExpr m tcEnv p) es)
 >   where tupleConstr es = if null es then qUnitId else qTupleId (length es)
-> desugarExpr m p (List es) =
->   liftM (foldr cons nil) (mapM (desugarExpr m p) es)
+> desugarExpr m tcEnv p (List es) =
+>   liftM (foldr cons nil) (mapM (desugarExpr m tcEnv p) es)
 >   where nil = Constructor qNilId
 >         cons = Apply . Apply (Constructor qConsId)
-> desugarExpr m p (ListCompr e []) = desugarExpr m p (List [e])
-> desugarExpr m p (ListCompr e (q:qs)) = desugarQual m p q (ListCompr e qs)
-> desugarExpr m p (EnumFrom e) = liftM (Apply prelEnumFrom) (desugarExpr m p e)
-> desugarExpr m p (EnumFromThen e1 e2) =
->   liftM (apply prelEnumFromThen) (mapM (desugarExpr m p) [e1,e2])
-> desugarExpr m p (EnumFromTo e1 e2) =
->   liftM (apply prelEnumFromTo) (mapM (desugarExpr m p) [e1,e2])
-> desugarExpr m p (EnumFromThenTo e1 e2 e3) =
->   liftM (apply prelEnumFromThenTo) (mapM (desugarExpr m p) [e1,e2,e3])
-> desugarExpr m p (UnaryMinus op e) =
+> desugarExpr m tcEnv p (ListCompr e []) = desugarExpr m tcEnv p (List [e])
+> desugarExpr m tcEnv p (ListCompr e (q:qs)) = 
+>   desugarQual m tcEnv p q (ListCompr e qs)
+> desugarExpr m tcEnv p (EnumFrom e) = 
+>   liftM (Apply prelEnumFrom) (desugarExpr m tcEnv p e)
+> desugarExpr m tcEnv p (EnumFromThen e1 e2) =
+>   liftM (apply prelEnumFromThen) (mapM (desugarExpr m tcEnv p) [e1,e2])
+> desugarExpr m tcEnv p (EnumFromTo e1 e2) =
+>   liftM (apply prelEnumFromTo) (mapM (desugarExpr m tcEnv p) [e1,e2])
+> desugarExpr m tcEnv p (EnumFromThenTo e1 e2 e3) =
+>   liftM (apply prelEnumFromThenTo) (mapM (desugarExpr m tcEnv p) [e1,e2,e3])
+> desugarExpr m tcEnv p (UnaryMinus op e) =
 >   do
 >     tyEnv <- fetchSt
->     liftM (Apply (unaryMinus op (typeOf tyEnv e))) (desugarExpr m p e)
+>     liftM (Apply (unaryMinus op (typeOf tyEnv e))) (desugarExpr m tcEnv p e)
 >   where unaryMinus op ty
 >           | op == minusId =
 >               if ty == floatType then prelNegateFloat else prelNegate
 >           | op == fminusId = prelNegateFloat
 >           | otherwise = internalError "unaryMinus"
-> desugarExpr m p (Apply (Constructor c) e) =
+> desugarExpr m tcEnv p (Apply (Constructor c) e) =
 >   do
 >     tyEnv <- fetchSt
 >     liftM (if isNewtypeConstr tyEnv c then id else (Apply (Constructor c)))
->           (desugarExpr m p e)
-> desugarExpr m p (Apply e1 e2) =
+>           (desugarExpr m tcEnv p e)
+> desugarExpr m tcEnv p (Apply e1 e2) =
 >   do
->     e1' <- desugarExpr m p e1
->     e2' <- desugarExpr m p e2
+>     e1' <- desugarExpr m tcEnv p e1
+>     e2' <- desugarExpr m tcEnv p e2
 >     return (Apply e1' e2')
-> desugarExpr m p (InfixApply e1 op e2) =
+> desugarExpr m tcEnv p (InfixApply e1 op e2) =
 >   do
->     op' <- desugarExpr m p (infixOp op)
->     e1' <- desugarExpr m p e1
->     e2' <- desugarExpr m p e2
+>     op' <- desugarExpr m tcEnv p (infixOp op)
+>     e1' <- desugarExpr m tcEnv p e1
+>     e2' <- desugarExpr m tcEnv p e2
 >     return (Apply (Apply op' e1') e2')
-> desugarExpr m p (LeftSection e op) =
+> desugarExpr m tcEnv p (LeftSection e op) =
 >   do
->     op' <- desugarExpr m p (infixOp op)
->     e' <- desugarExpr m p e
+>     op' <- desugarExpr m tcEnv p (infixOp op)
+>     e' <- desugarExpr m tcEnv p e
 >     return (Apply op' e')
-> desugarExpr m p (RightSection op e) =
+> desugarExpr m tcEnv p (RightSection op e) =
 >   do
->     op' <- desugarExpr m p (infixOp op)
->     e' <- desugarExpr m p e
+>     op' <- desugarExpr m tcEnv p (infixOp op)
+>     e' <- desugarExpr m tcEnv p e
 >     return (Apply (Apply prelFlip op') e')
-> desugarExpr m p (Lambda ts e) =
+> desugarExpr m tcEnv p (Lambda ts e) =
 >   do
 >     f <- fetchSt >>=
 >          freshIdent m "_#lambda" . polyType . flip typeOf (Lambda ts e)
->     desugarExpr m p (Let [funDecl p f ts e] (mkVar f))
-> desugarExpr m p (Let ds e) =
+>     desugarExpr m tcEnv p (Let [funDecl p f ts e] (mkVar f))
+> desugarExpr m tcEnv p (Let ds e) =
 >   do
->     ds' <- desugarDeclGroup m ds
->     e' <- desugarExpr m p e
+>     ds' <- desugarDeclGroup m tcEnv ds
+>     e' <- desugarExpr m tcEnv p e
 >     return (if null ds' then e' else Let ds' e')
-> desugarExpr m p (Do sts e) = desugarExpr m p (foldr desugarStmt e sts)
+> desugarExpr m tcEnv p (Do sts e) = 
+>   desugarExpr m tcEnv p (foldr desugarStmt e sts)
 >   where desugarStmt (StmtExpr e) e' = apply prelBind_ [e,e']
 >         desugarStmt (StmtBind t e) e' = apply prelBind [e,Lambda [t] e']
 >         desugarStmt (StmtDecl ds) e' = Let ds e'
-> desugarExpr m p (IfThenElse e1 e2 e3) =
+> desugarExpr m tcEnv p (IfThenElse e1 e2 e3) =
 >   do
->     e1' <- desugarExpr m p e1
->     e2' <- desugarExpr m p e2
->     e3' <- desugarExpr m p e3
+>     e1' <- desugarExpr m tcEnv p e1
+>     e2' <- desugarExpr m tcEnv p e2
+>     e3' <- desugarExpr m tcEnv p e3
 >     return (Case e1' [caseAlt p truePattern e2',caseAlt p falsePattern e3'])
-> desugarExpr m p (Case e alts)
+> desugarExpr m tcEnv p (Case e alts)
 >   | null alts = return prelFailed
 >   | otherwise =
 >       do
->         e' <- desugarExpr m p e
+>         e' <- desugarExpr m tcEnv p e
 >         v <- fetchSt >>= freshIdent m "_#case" . monoType . flip typeOf e
->         alts' <- mapM (desugarAltLhs m) alts
+>         alts' <- mapM (desugarAltLhs m tcEnv) alts
 >         tyEnv <- fetchSt
->         alts'' <- mapM (desugarAltRhs m)
+>         alts'' <- mapM (desugarAltRhs m tcEnv)
 >                        (map (expandAlt tyEnv v) (init (tails alts')))
 >         return (mkCase m v e' alts'')
 >   where mkCase m v e alts
 >           | v `elem` qfv m alts = Let [varDecl p v e] (Case (mkVar v) alts)
 >           | otherwise = Case e alts
+> desugarExpr m tcEnv p (RecordConstr fs)
+>   | null fs = internalError "desugarExpr: empty record construction"
+>   | otherwise =
+>       do let l = qualifyWith m (fieldLabel (head fs))
+>	       fs' = map field2Tuple fs
+>          tyEnv <- fetchSt
+>	   case (qualLookupValue l tyEnv) of
+>            [Label _ r _] -> desugarRecordConstr m tcEnv p r fs'
+>            _  -> internalError "desugarExpr: illegal record construction"
+> desugarExpr m tcEnv p (RecordSelection e l) =
+>   do tyEnv <- fetchSt
+>      case (qualLookupValue (qualifyWith m l) tyEnv) of
+>        [Label _ r _] -> desugarRecordSelection m tcEnv p r l e
+>        _ -> internalError "desugarExpr: illegal record selection"
+> desugarExpr m tcEnv p (RecordUpdate fs rexpr)
+>   | null fs = internalError "desugarExpr: empty record update"
+>   | otherwise =
+>       do let l = qualifyWith m (fieldLabel (head fs))
+>	       fs' = map field2Tuple fs
+>          tyEnv <- fetchSt
+>	   case (qualLookupValue l tyEnv) of
+>            [Label _ r _] -> desugarRecordUpdate m tcEnv p r rexpr fs'
+>            _  -> internalError "desugarExpr: illegal record update"
 
 \end{verbatim}
 If an alternative in a case expression has boolean guards and all of
@@ -452,14 +513,15 @@ such that it evaluates a case expression with the remaining cases that
 are compatible with the matched pattern when the guards fail.
 \begin{verbatim}
 
-> desugarAltLhs :: ModuleIdent -> Alt -> DesugarState Alt
-> desugarAltLhs m (Alt p t rhs) =
+> desugarAltLhs :: ModuleIdent -> TCEnv -> Alt -> DesugarState Alt
+> desugarAltLhs m tcEnv (Alt p t rhs) =
 >   do
->     (ds',t') <- desugarTerm m p [] t
+>     (ds',t') <- desugarTerm m tcEnv p [] t
 >     return (Alt p t' (addDecls ds' rhs))
 
-> desugarAltRhs :: ModuleIdent -> Alt -> DesugarState Alt
-> desugarAltRhs m (Alt p t rhs) = liftM (Alt p t) (desugarRhs m p rhs)
+> desugarAltRhs :: ModuleIdent -> TCEnv -> Alt -> DesugarState Alt
+> desugarAltRhs m tcEnv (Alt p t rhs) = 
+>   liftM (Alt p t) (desugarRhs m tcEnv p rhs)
 
 > expandAlt :: ValueEnv -> Ident -> [Alt] -> Alt
 > expandAlt tyEnv v (Alt p t rhs : alts) = caseAlt p t (expandRhs tyEnv e0 rhs)
@@ -478,10 +540,11 @@ are compatible with the matched pattern when the guards fail.
 >         canon l = l
 
 \end{verbatim}
-The frontend provides several extensions of the Curry functionality. This part
-desugars the following extensions:
+The frontend provides several extensions of the Curry functionality, which
+have to be desugared as well. This part transforms the following extensions:
 \begin{itemize}
-\item function patterns
+\item runction patterns
+\item records
 \end{itemize}
 \begin{verbatim}
 
@@ -491,6 +554,78 @@ desugars the following extensions:
 >   do (ts', its) <- elimFunctionPattern m p ts
 >      rhs' <- genFunctionPatternExpr m p its rhs
 >      return (ts', rhs')
+
+> desugarRecordDecl :: ModuleIdent -> TCEnv -> Decl -> DesugarState [Decl]
+> desugarRecordDecl m tcEnv (TypeDecl p r vs (RecordType fss _)) =
+>   case (qualLookupTC r' tcEnv) of
+>     [AliasType _ n (TypeRecord fs' _)] ->
+>       do let tys = concatMap (\ (ls,ty) -> replicate (length ls) ty) fss
+>	       rdecl = DataDecl p r vs [ConstrDecl p [] r tys]
+>	       rty' = TypeConstructor r' (map TypeVariable [0 .. n-1])
+>              rcts' = ForAllExist 0 n (foldr TypeArrow rty' (map snd fs'))
+>	   rfuncs <- mapM (genRecordFuncs m tcEnv p r' rty' (map fst fs')) fs'
+>	   updateSt_ (bindGlobalInfo DataConstructor m r rcts')
+>          return (rdecl:(concat rfuncs))
+>     _ -> internalError "desugarRecordDecl: no record"
+>   where r' = qualifyWith m r
+> desugarRecordDecl _ _ decl = return [decl]
+
+> desugarRecordType :: ModuleIdent -> ValueEnv -> TCEnv -> Type -> Type
+> desugarRecordType m tyEnv tcEnv (TypeConstructor t tys) =
+>   TypeConstructor t (map (desugarRecordType m tyEnv tcEnv) tys)
+> desugarRecordType m tyEnv tcEnv (TypeConstrained tys v) =
+>   TypeConstrained (map (desugarRecordType m tyEnv tcEnv) tys) v
+> desugarRecordType m tyEnv tcEnv (TypeArrow t1 t2) =
+>   TypeArrow (desugarRecordType m tyEnv tcEnv t1) 
+>	      (desugarRecordType m tyEnv tcEnv t2)
+> desugarRecordType m tyEnv tcEnv (TypeRecord fs _)
+>   | null fs   = internalError "desugarRecordType: empty record"
+>   | otherwise = 
+>     case (qualLookupValue (qualifyWith m (fst (head fs))) tyEnv) of
+>	[Label _ r _] -> 
+>         case (qualLookupTC r tcEnv) of
+>	    [AliasType _ n _] ->
+>             TypeConstructor r (map TypeVariable [0 .. n-1])
+>           _ -> internalError "desugarRecordType: no record"
+>	_ -> internalError "desugarRecordType: no label"
+> desugarRecordType m tyEnv tcEnv ty = ty
+
+> desugarRecordPattern :: ModuleIdent -> TCEnv -> Position -> [Decl]
+>		       -> [(Ident,ConstrTerm)] -> QualIdent
+>		       -> DesugarState ([Decl],ConstrTerm)
+> desugarRecordPattern m tcEnv p ds fs r =
+>   case (qualLookupTC r tcEnv) of
+>     [AliasType _ _ (TypeRecord fs' _)] ->
+>       do let ts = map (\ (l,_) 
+>		         -> fromMaybe (VariablePattern anonId)
+>		                      (lookup l fs))
+>		        fs'
+>	   desugarTerm m tcEnv p ds (ConstructorPattern r ts)
+
+> desugarRecordConstr :: ModuleIdent -> TCEnv -> Position -> QualIdent 
+>	              -> [(Ident,Expression)] -> DesugarState Expression
+> desugarRecordConstr m tcEnv p r fs =
+>   case (qualLookupTC r tcEnv) of
+>     [AliasType _ _ (TypeRecord fs' _)] ->
+>       do let cts = map (\ (l,_) -> 
+>	                  fromMaybe (internalError "desugarRecordConstr")
+>		                    (lookup l fs)) fs'
+>	   desugarExpr m tcEnv p (foldl Apply (Constructor r) cts)
+>     _ -> internalError "desugarRecordConstr: wrong type"
+
+> desugarRecordSelection :: ModuleIdent -> TCEnv -> Position -> QualIdent 
+>		         -> Ident -> Expression -> DesugarState Expression
+> desugarRecordSelection m tcEnv p r l e =
+>   desugarExpr m tcEnv p (Apply (Variable (genQualSelectorId m r l)) e)
+
+> desugarRecordUpdate :: ModuleIdent -> TCEnv -> Position -> QualIdent
+>	              -> Expression -> [(Ident,Expression)] 
+>	              -> DesugarState Expression
+> desugarRecordUpdate m tcEnv p r rexpr fs =
+>   desugarExpr m tcEnv p (foldl (genRecordUpdate m r) rexpr fs)
+>   where
+>   genRecordUpdate m r rexpr (l,e) =
+>     Apply (Apply (Variable (genQualUpdateId m r l)) rexpr) e
 
 > elimFunctionPattern :: ModuleIdent -> Position -> [ConstrTerm]
 >		         -> DesugarState ([ConstrTerm], [(Ident,ConstrTerm)])
@@ -542,7 +677,7 @@ desugars the following extensions:
 >		           (Apply (Apply prelCond fpexpr) expr)
 >        in  return (SimpleRhs p rhsexpr decls)  
 > genFunctionPatternExpr _ _ _ rhs
->    = internalError "unexpected right-hand-side"
+>    = internalError "genFunctionPatternExpr: unexpected right-hand-side"
 
 > constrTerm2Expr :: ConstrTerm -> Expression
 > constrTerm2Expr (LiteralPattern lit)
@@ -585,6 +720,62 @@ desugars the following extensions:
 > getConstrTermVars ids _
 >    = ids
 
+> genRecordFuncs :: ModuleIdent -> TCEnv -> Position -> QualIdent -> Type 
+>	         -> [Ident] -> (Ident, Type) -> DesugarState [Decl]
+> genRecordFuncs m tcEnv p r rty ls (l,ty) =
+>   case (qualLookupTC r tcEnv) of
+>     [AliasType _ n (TypeRecord fs _)] ->
+>       do let (selId, selFunc) = genSelectorFunc m p r ls l
+>              (updId, updFunc) = genUpdateFunc m p r ls l
+>	       selType = polyType (TypeArrow rty ty)
+>	       updType = polyType (TypeArrow rty (TypeArrow ty rty))
+>	   updateSt_ (bindFun m selId selType . bindFun m updId updType)
+>	   return [selFunc,updFunc]
+>     _ -> internalError "genRecordFuncs: wrong type"
+
+> genSelectorFunc :: ModuleIdent -> Position -> QualIdent -> [Ident] -> Ident
+>	          -> (Ident, Decl)
+> genSelectorFunc m p r ls l =
+>   let selId = genSelectorId r l
+>       cpatt = ConstructorPattern r (map VariablePattern ls)
+>	selLhs = FunLhs selId [cpatt]
+>	selRhs = SimpleRhs p (Variable (qualify l)) []  -- oder "qualifyWith"?
+>   in  (selId, FunctionDecl p selId [Equation p selLhs selRhs])
+
+> genUpdateFunc :: ModuleIdent -> Position -> QualIdent -> [Ident] -> Ident
+>	        -> (Ident, Decl)
+> genUpdateFunc m p r ls l =
+>   let updId = genUpdateId r l
+>	ls' = replaceIdent l anonId ls
+>	cpatt1 = ConstructorPattern r (map VariablePattern ls')
+>       cpatt2 = VariablePattern l
+>	cexpr = foldl Apply 
+>	              (Constructor r)
+>	              (map (Variable . qualify) ls)  -- oder "qualifyWith"?
+>	updLhs = FunLhs updId [cpatt1, cpatt2]
+>	updRhs = SimpleRhs p cexpr []
+>   in  (updId, FunctionDecl p updId [Equation p updLhs updRhs])
+
+> replaceIdent :: Ident -> Ident -> [Ident] -> [Ident]
+> replaceIdent _ _ [] = []
+> replaceIdent what with (id:ids)
+>   | what == id = with:ids
+>   | otherwise  = id:(replaceIdent what with ids)
+
+> genSelectorId :: QualIdent -> Ident -> Ident
+> genSelectorId r l =
+>   mkIdent ("sel@" ++ name (unqualify r) ++ "." ++ name l)
+
+> genQualSelectorId :: ModuleIdent -> QualIdent -> Ident -> QualIdent
+> genQualSelectorId m r l = qualifyWith m (genSelectorId r l)
+
+> genUpdateId :: QualIdent -> Ident -> Ident
+> genUpdateId r l = 
+>   mkIdent ("upd@" ++ name (unqualify r) ++ "." ++ name l)
+
+> genQualUpdateId :: ModuleIdent -> QualIdent -> Ident -> QualIdent
+> genQualUpdateId m r l = qualifyWith m (genUpdateId r l)
+
 \end{verbatim}
 In general, a list comprehension of the form
 \texttt{[}$e$~\texttt{|}~$t$~\texttt{<-}~$l$\texttt{,}~\emph{qs}\texttt{]}
@@ -615,18 +806,19 @@ instead of \texttt{(++)} and \texttt{map} in place of
 \texttt{concatMap}, respectively. -}
 \begin{verbatim}
 
-> desugarQual :: ModuleIdent -> Position -> Statement -> Expression
+> desugarQual :: ModuleIdent -> TCEnv -> Position -> Statement -> Expression
 >      -> DesugarState Expression
-> desugarQual m p (StmtExpr b) e = desugarExpr m p (IfThenElse b e (List []))
-> desugarQual m p (StmtBind t l) e
->   | isVarPattern t = desugarExpr m p (qualExpr t e l)
+> desugarQual m tcEnv p (StmtExpr b) e = 
+>   desugarExpr m tcEnv p (IfThenElse b e (List []))
+> desugarQual m tcEnv p (StmtBind t l) e
+>   | isVarPattern t = desugarExpr m tcEnv p (qualExpr t e l)
 >   | otherwise =
 >       do
 >         tyEnv <- fetchSt
 >         v <- freshIdent m "_#var" (monoType (typeOf tyEnv t))
 >         l' <- freshIdent m "_#var" (monoType (typeOf tyEnv e))
 >         --l' <- freshIdent m "_#var" (polyType (typeOf tyEnv e)) -- Patch
->         desugarExpr m p (apply prelFoldr [foldFunct v l' e,List [],l])
+>         desugarExpr m tcEnv p (apply prelFoldr [foldFunct v l' e,List [],l])
 >   where qualExpr v (ListCompr e []) l = apply prelMap [Lambda [v] e,l]
 >         qualExpr v e l = apply prelConcatMap [Lambda [v] e,l]
 >         foldFunct v l e =
@@ -636,7 +828,7 @@ instead of \texttt{(++)} and \texttt{map} in place of
 >                    caseAlt p (VariablePattern v) (mkVar l)])
 >         append (ListCompr e []) l = apply (Constructor qConsId) [e,l]
 >         append e l = apply prelAppend [e,l]
-> desugarQual m p (StmtDecl ds) e = desugarExpr m p (Let ds e)
+> desugarQual m tcEnv p (StmtDecl ds) e = desugarExpr m tcEnv p (Let ds e)
 
 \end{verbatim}
 Generation of fresh names
@@ -689,7 +881,7 @@ Auxiliary definitions
 >   case qualLookupValue c tyEnv of
 >     [DataConstructor _ _] -> False
 >     [NewtypeConstructor _ _] -> True
->     _ -> internalError "isNewtypeConstr"
+>     _ -> internalError ("isNewtypeConstr " ++ show c) --internalError "isNewtypeConstr"
 
 > isVarPattern :: ConstrTerm -> Bool
 > isVarPattern (VariablePattern _) = True

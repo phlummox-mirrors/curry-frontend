@@ -38,48 +38,54 @@ these types are already fully expanded, i.e., they do not include any
 alias types.
 \begin{verbatim}
 
-> ilTrans :: Bool -> ValueEnv -> EvalEnv -> Module -> IL.Module
-> ilTrans flat tyEnv evEnv (Module m _ ds) = IL.Module m (imports m ds') ds'
->   where ds' = concatMap (translGlobalDecl flat m tyEnv evEnv) ds
+> ilTrans :: Bool -> ValueEnv -> TCEnv -> EvalEnv -> Module -> IL.Module
+> ilTrans flat tyEnv tcEnv evEnv (Module m _ ds) = 
+>   IL.Module m (imports m ds') ds'
+>   where ds' = concatMap (translGlobalDecl flat m tyEnv tcEnv evEnv) ds
 
-> translGlobalDecl :: Bool -> ModuleIdent -> ValueEnv -> EvalEnv -> Decl
->                  -> [IL.Decl]
-> translGlobalDecl _ m tyEnv _ (DataDecl _ tc tvs cs) =
->   [translData m tyEnv tc tvs cs]
-> translGlobalDecl _ m tyEnv _ (NewtypeDecl _ tc tvs nc) =
->   [translNewtype m tyEnv tc tvs nc]
-> translGlobalDecl flat m tyEnv evEnv (FunctionDecl _ f eqs) =
->   [translFunction flat m tyEnv evEnv f eqs]
-> translGlobalDecl _ m tyEnv _ (ExternalDecl _ cc ie f _) =
->   [translExternal m tyEnv f cc (fromJust ie)]
-> translGlobalDecl _ _ _ _ _ = []
+> translGlobalDecl :: Bool -> ModuleIdent -> ValueEnv -> TCEnv -> EvalEnv
+>                  -> Decl -> [IL.Decl]
+> translGlobalDecl _ m tyEnv tcEnv _ (DataDecl _ tc tvs cs) =
+>   [translData m tyEnv tcEnv tc tvs cs]
+> translGlobalDecl _ m tyEnv tcEnv _ (NewtypeDecl _ tc tvs nc) =
+>   [translNewtype m tyEnv tcEnv tc tvs nc]
+> translGlobalDecl flat m tyEnv tcEnv evEnv (FunctionDecl _ f eqs) =
+>   [translFunction flat m tyEnv tcEnv evEnv f eqs]
+> translGlobalDecl _ m tyEnv tcEnv _ (ExternalDecl _ cc ie f _) =
+>   [translExternal m tyEnv tcEnv f cc (fromJust ie)]
+> translGlobalDecl _ _ _ _ _ _ = []
 
-> translData :: ModuleIdent -> ValueEnv -> Ident -> [Ident] -> [ConstrDecl]
+> translData :: ModuleIdent -> ValueEnv -> TCEnv -> Ident -> [Ident] -> [ConstrDecl]
 >            -> IL.Decl
-> translData m tyEnv tc tvs cs =
+> translData m tyEnv tcEnv tc tvs cs =
 >   IL.DataDecl (qualifyWith m tc) (length tvs)
->               (map (translConstrDecl m tyEnv) cs)
+>               (map (translConstrDecl m tyEnv tcEnv) cs)
 
-> translNewtype :: ModuleIdent -> ValueEnv -> Ident -> [Ident] -> NewConstrDecl
->               -> IL.Decl
-> translNewtype m tyEnv tc tvs (NewConstrDecl _ _ c _) =
+> translNewtype :: ModuleIdent -> ValueEnv -> TCEnv -> Ident -> [Ident] 
+>	        -> NewConstrDecl -> IL.Decl
+> translNewtype m tyEnv tcEnv tc tvs (NewConstrDecl _ _ c _) =
 >   IL.NewtypeDecl (qualifyWith m tc) (length tvs)
->                  (IL.ConstrDecl c' (translType ty))
+>                  (IL.ConstrDecl c' (translType' m tyEnv tcEnv ty))
+>                  -- (IL.ConstrDecl c' (translType ty))
 >   where c' = qualifyWith m c
 >         TypeArrow ty _ = constrType tyEnv c'
 
-> translConstrDecl :: ModuleIdent -> ValueEnv -> ConstrDecl
+> translConstrDecl :: ModuleIdent -> ValueEnv -> TCEnv -> ConstrDecl
 >                  -> IL.ConstrDecl [IL.Type]
-> translConstrDecl m tyEnv d =
->   IL.ConstrDecl c' (map translType (arrowArgs (constrType tyEnv c')))
+> translConstrDecl m tyEnv tcEnv d =
+>   IL.ConstrDecl c' (map (translType' m tyEnv tcEnv)
+>	                  (arrowArgs (constrType tyEnv c')))
+>   -- IL.ConstrDecl c' (map translType (arrowArgs (constrType tyEnv c')))
 >   where c' = qualifyWith m (constr d)
 >         constr (ConstrDecl _ _ c _) = c
 >         constr (ConOpDecl _ _ _ op _) = op
 
-> translExternal :: ModuleIdent -> ValueEnv -> Ident -> CallConv -> String
->                -> IL.Decl
-> translExternal m tyEnv f cc ie =
->   IL.ExternalDecl f' (callConv cc) ie (translType (varType tyEnv f'))
+> translExternal :: ModuleIdent -> ValueEnv -> TCEnv -> Ident -> CallConv
+>                -> String -> IL.Decl
+> translExternal m tyEnv tcEnv f cc ie =
+>   IL.ExternalDecl f' (callConv cc) ie 
+>                   (translType' m tyEnv tcEnv (varType tyEnv f'))
+>   -- IL.ExternalDecl f' (callConv cc) ie (translType (varType tyEnv f'))
 >   where f' = qualifyWith m f
 >         callConv CallConvPrimitive = IL.Primitive
 >         callConv CallConvCCall = IL.CCall
@@ -95,29 +101,38 @@ already fully expanded. Note that we do not translate data types
 which are imported into the interface from some other module.
 \begin{verbatim}
 
-> ilTransIntf :: Interface -> [IL.Decl]
-> ilTransIntf (Interface m ds) = foldr (translIntfDecl m) [] ds
+> ilTransIntf :: ValueEnv -> TCEnv -> Interface -> [IL.Decl]
+> ilTransIntf tyEnv tcEnv (Interface m ds) = 
+>   foldr (translIntfDecl m tyEnv tcEnv) [] ds
 
-> translIntfDecl :: ModuleIdent -> IDecl -> [IL.Decl] -> [IL.Decl]
-> translIntfDecl m (IDataDecl _ tc tvs cs) ds
->   | not (isQualified tc) = translIntfData m (unqualify tc) tvs cs : ds
-> translIntfDecl _ _ ds = ds
+> translIntfDecl :: ModuleIdent -> ValueEnv -> TCEnv -> IDecl -> [IL.Decl] 
+>	         -> [IL.Decl]
+> translIntfDecl m tyEnv tcEnv (IDataDecl _ tc tvs cs) ds
+>   | not (isQualified tc) = 
+>     translIntfData m tyEnv tcEnv (unqualify tc) tvs cs : ds
+> translIntfDecl _ _ _ _ ds = ds
 
-> translIntfData :: ModuleIdent -> Ident -> [Ident] -> [Maybe ConstrDecl]
->                -> IL.Decl
-> translIntfData m tc tvs cs =
+> translIntfData :: ModuleIdent -> ValueEnv -> TCEnv -> Ident -> [Ident] 
+>	         -> [Maybe ConstrDecl] -> IL.Decl
+> translIntfData m tyEnv tcEnv tc tvs cs =
 >   IL.DataDecl (qualifyWith m tc) (length tvs)
->               (map (maybe hiddenConstr (translIntfConstrDecl m tvs)) cs)
+>               (map (maybe hiddenConstr 
+>	                    (translIntfConstrDecl m tyEnv tcEnv tvs)) cs)
 >   where hiddenConstr = IL.ConstrDecl qAnonId []
 >         qAnonId = qualify anonId
 
-> translIntfConstrDecl :: ModuleIdent -> [Ident] -> ConstrDecl
->                      -> IL.ConstrDecl [IL.Type]
-> translIntfConstrDecl m tvs (ConstrDecl _ _ c tys) =
->   IL.ConstrDecl (qualifyWith m c) (map translType (toQualTypes m tvs tys))
-> translIntfConstrDecl m tvs (ConOpDecl _ _ ty1 op ty2) =
+> translIntfConstrDecl :: ModuleIdent -> ValueEnv -> TCEnv -> [Ident] 
+>                      -> ConstrDecl -> IL.ConstrDecl [IL.Type]
+> translIntfConstrDecl m tyEnv tcEnv tvs (ConstrDecl _ _ c tys) =
+>   IL.ConstrDecl (qualifyWith m c) (map (translType' m tyEnv tcEnv)
+>			                 (toQualTypes m tvs tys))
+>   -- IL.ConstrDecl (qualifyWith m c) (map translType (toQualTypes m tvs tys))
+> translIntfConstrDecl m tyEnv tcEnv tvs (ConOpDecl _ _ ty1 op ty2) =
 >   IL.ConstrDecl (qualifyWith m op)
->                 (map translType (toQualTypes m tvs [ty1,ty2]))
+>                 (map (translType' m tyEnv tcEnv)
+>	               (toQualTypes m tvs [ty1,ty2]))
+>   -- IL.ConstrDecl (qualifyWith m op)
+>   --              (map translType (toQualTypes m tvs [ty1,ty2]))
 
 \end{verbatim}
 \paragraph{Types}
@@ -126,6 +141,10 @@ the internal representation except that it does not support
 constrained type variables and skolem types. The former are fixed and
 the later are replaced by fresh type constructors.
 \begin{verbatim}
+
+> translType' :: ModuleIdent -> ValueEnv -> TCEnv -> Type -> IL.Type
+> translType' m tyEnv tcEnv ty =
+>   translType (elimRecordTypes m tyEnv tcEnv (maximum (0:(typeVars ty))) ty)
 
 > translType :: Type -> IL.Type
 > translType (TypeConstructor tc tys) =
@@ -136,6 +155,29 @@ the later are replaced by fresh type constructors.
 >   IL.TypeArrow (translType ty1) (translType ty2)
 > translType (TypeSkolem k) =
 >   IL.TypeConstructor (qualify (mkIdent ("_" ++ show k))) []
+
+> elimRecordTypes :: ModuleIdent -> ValueEnv -> TCEnv -> Int -> Type -> Type
+> elimRecordTypes m tyEnv tcEnv n (TypeConstructor t tys) =
+>   TypeConstructor t (map (elimRecordTypes m tyEnv tcEnv n) tys)
+> elimRecordTypes m tyEnv tcEnv n (TypeVariable v) =
+>   TypeVariable v
+> elimRecordTypes m tyEnv tcEnv n (TypeConstrained tys v) =
+>   TypeConstrained (map (elimRecordTypes m tyEnv tcEnv n) tys) v
+> elimRecordTypes m tyEnv tcEnv n (TypeArrow t1 t2) =
+>   TypeArrow (elimRecordTypes m tyEnv tcEnv n t1)
+>             (elimRecordTypes m tyEnv tcEnv n t2)
+> elimRecordTypes m tyEnv tcEnv n (TypeSkolem v) =
+>   TypeSkolem v
+> elimRecordTypes m tyEnv tcEnv n ty@(TypeRecord fs _)
+>   | null fs = internalError "elimRecordType: empty record type"
+>   | otherwise =
+>     case (qualLookupValue (qualifyWith m (fst (head fs))) tyEnv) of
+>       [Label _ r _] ->
+>         case (qualLookupTC r tcEnv) of
+>           [AliasType _ n' (TypeRecord fs' _)] ->
+>	       TypeConstructor r (map TypeVariable [n+1 .. n+n'])
+>	    _ -> internalError "elimRecordType: no record type"
+>       _ -> internalError "elimRecordType: no label"
 
 \end{verbatim}
 \paragraph{Functions}
@@ -167,14 +209,15 @@ uses flexible matching.
 
 > type RenameEnv = Env Ident Ident
 
-> translFunction :: Bool -> ModuleIdent -> ValueEnv -> EvalEnv
+> translFunction :: Bool -> ModuleIdent -> ValueEnv -> TCEnv -> EvalEnv
 >                -> Ident -> [Equation] -> IL.Decl
-> translFunction flat m tyEnv evEnv f eqs
->    = IL.FunctionDecl f' vs (translType ty) expr
+> translFunction flat m tyEnv tcEnv evEnv f eqs
+>    = IL.FunctionDecl f' vs (translType' m tyEnv tcEnv ty) expr
 >    -- = IL.FunctionDecl f' vs (translType ty)
 >    --                  (match ev vs (map (translEquation tyEnv vs vs'') eqs))
 >   where f'  = qualifyWith m f
 >         ty  = varType tyEnv f'
+>         -- ty' = elimRecordType m tyEnv tcEnv (maximum (0:(typeVars ty))) ty
 >         ev' = lookupEval f evEnv
 >         ev  = maybe (defaultMode ty) evalMode ev'
 >         vs  = if not flat && isSelectorId f then translArgs eqs vs' else vs'

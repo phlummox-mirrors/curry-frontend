@@ -1,4 +1,4 @@
-% -*- LaTeX -*-
+
 % $Id: CurryLexer.lhs,v 1.40 2004/03/04 22:39:12 wlux Exp $
 %
 % Copyright (c) 1999-2004, Wolfgang Lux
@@ -49,7 +49,7 @@ In this section a lexer for Curry is implemented.
 >   | KW_where
 >   -- reserved operators
 >   | At | Colon | DotDot | DoubleColon | Equals | Backslash | Bar
->   | LeftArrow | RightArrow | Tilde
+>   | LeftArrow | RightArrow | Tilde | Binds
 >   -- special identifiers
 >   | Id_as | Id_ccall | Id_forall | Id_hiding | Id_interface | Id_primitive
 >   | Id_qualified
@@ -167,6 +167,7 @@ all tokens in their source representation.
 >   showsPrec _ (Token LeftArrow _) = showString "`<-'"
 >   showsPrec _ (Token RightArrow _) = showString "`->'"
 >   showsPrec _ (Token Tilde _) = showString "`~'"
+>   showsPrec _ (Token Binds _) = showString "`:='"
 >   showsPrec _ (Token Sym_Dot _) = showString "operator `.'"
 >   showsPrec _ (Token Sym_Minus _) = showString "operator `-'"
 >   showsPrec _ (Token Sym_MinusDot _) = showString "operator `-.'"
@@ -217,7 +218,8 @@ Tables for reserved operators and identifiers
 >     ("|",  Bar),
 >     ("<-", LeftArrow),
 >     ("->", RightArrow),
->     ("~",  Tilde)
+>     ("~",  Tilde),
+>     (":=", Binds)
 >   ]
 > reserved_and_special_ops = foldr (uncurry addToFM) reserved_ops [
 >     (":",  Colon),
@@ -335,7 +337,7 @@ Lexing functions
 > lexNestedComment 1 comment p0 success fail p ('-':'}':s) = 
 >   success p0 (nestedCommentTok (comment "-}") ) (incr p 2) s 
 > lexNestedComment n comment p0 success fail p ('{':'-':s) = 
->   lexNestedComment (n+1) (comment . ("{-"++)) p0 success fail (incr p 2) s  
+>   lexNestedComment (n+1) (comment . ("{-"++)) p0 success fail (incr p 2) s
 > lexNestedComment n comment p0 success fail p ('-':'}':s) = 
 >   lexNestedComment (n-1) (comment . ("-}"++)) p0 success fail (incr p 2) s
 > lexNestedComment n comment p0 success fail p (c@'\t':s) = 

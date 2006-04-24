@@ -144,12 +144,19 @@ Since this modified version of MCC uses FlatCurry interfaces instead of
 >   typeDeclLhs NewtypeDecl KW_newtype <*-> equals <*> newConstrDecl
 
 > typeDecl :: Parser Token Decl a
-> typeDecl = typeDeclLhs TypeDecl KW_type <*-> equals <*> type0
+> typeDecl = typeDeclLhs TypeDecl KW_type <*-> equals <*> typeDeclRhs --type0
 
 > typeDeclLhs :: (Position -> Ident -> [Ident] -> a) -> Category
 >             -> Parser Token a b
 > typeDeclLhs f kw = f <$> position <*-> token kw <*> tycon <*> many typeVar
 >   where typeVar = tyvar <|> anonId <$-> token Underscore
+
+> typeDeclRhs :: Parser Token TypeExpr a
+> typeDeclRhs = type0
+>	        <|> (flip RecordType) Nothing
+>		   <$> (layoutOff <-*> braces (labelDecls `sepBy` comma))
+
+> labelDecls = (,) <$> labId `sepBy1` comma <*-> token DoubleColon <*> type0
 
 > constrDecl :: Bool -> Parser Token ConstrDecl a
 > constrDecl flat = position <**> (existVars <**> constr)
@@ -157,8 +164,6 @@ Since this modified version of MCC uses FlatCurry interfaces instead of
 >              <|> leftParen <-*> parenDecl
 >              <|> type1 <\> conId <\> leftParen <**> opDecl
 >         identDecl = many type2 <**> (conType <$> opDecl `opt` conDecl)
->                 <|> fieldDecl 
->		      <$> (braces (labelDecls `sepBy1` comma))
 >         parenDecl = conOpDeclPrefix 
 >	              <$> conSym <*-> rightParen <*> type2 <*> type2
 >                 <|> tupleType <*-> rightParen <**> opDecl
@@ -167,10 +172,6 @@ Since this modified version of MCC uses FlatCurry interfaces instead of
 >         conDecl tys c tvs p = ConstrDecl p tvs c tys
 >         conOpDecl op ty2 ty1 tvs p = ConOpDecl p tvs ty1 op ty2
 >         conOpDeclPrefix op ty1 ty2 tvs p = ConOpDecl p tvs ty1 op ty2
->         fieldDecl labs c tvs p = ConLabeledDecl p tvs c labs
->         braces' p = token DoubleColon <-*> p <*-> rightBrace
-
-> labelDecls = (,) <$> labId `sepBy1` comma <*-> token DoubleColon <*> type0
 
 > newConstrDecl :: Parser Token NewConstrDecl a
 > newConstrDecl =
@@ -371,7 +372,6 @@ Since this modified version of MCC uses FlatCurry interfaces instead of
 >           <|> constrTerm2 <\> qConId <\> leftParen
 >   where identPattern = optAsPattern
 >                    <|> conPattern <$> many1 constrTerm2
->		     <|> fieldPattern <$> braces fieldElements
 >         parenPattern = minus <**> minusPattern negNum
 >                    <|> fminus <**> minusPattern negFloat
 >                    <|> gconPattern
@@ -383,13 +383,11 @@ Since this modified version of MCC uses FlatCurry interfaces instead of
 >         gconPattern = ConstructorPattern <$> gconId <*-> rightParen
 >                                          <*> many constrTerm2
 >         conPattern ts = flip ConstructorPattern ts . qualify
->         fieldPattern fs = flip FieldPattern fs . qualify
->         fieldElements = field `sepBy` comma
->         field = Field <$> position <*> qLabId <*-> equals <*> constrTerm0
 
 > constrTerm2 :: Parser Token ConstrTerm a
 > constrTerm2 = literalPattern <|> anonPattern <|> identPattern
 >           <|> parenPattern <|> listPattern <|> lazyPattern
+>	    <|> recordPattern
 
 > literalPattern :: Parser Token ConstrTerm a
 > literalPattern = LiteralPattern <$> literal
@@ -417,6 +415,14 @@ Since this modified version of MCC uses FlatCurry interfaces instead of
 
 > lazyPattern :: Parser Token ConstrTerm a
 > lazyPattern = LazyPattern <$-> token Tilde <*> constrTerm2
+
+> recordPattern :: Parser Token ConstrTerm a
+> recordPattern = layoutOff <-*> braces content
+>   where
+>   content = RecordPattern <$> fields <*> record
+>   fields = fieldPatt `sepBy` comma
+>   fieldPatt = Field <$> position <*> labId <*-> checkEquals <*> constrTerm0
+>   record = Just <$-> checkBar <*> constrTerm2 `opt` Nothing
 
 \end{verbatim}
 Partial patterns used in the combinators above, but also for parsing
@@ -475,16 +481,19 @@ the left-hand side of a declaration.
 > expr2 :: Bool -> Parser Token Expression a
 > expr2 flat = lambdaExpr flat <|> letExpr flat <|> doExpr flat
 >          <|> ifExpr flat <|> caseExpr flat
->          <|> foldl1 Apply <$> many1 (expr3 flat)
+>          <|> expr3 flat <**> applicOrSelect
+>   where
+>   applicOrSelect = flip RecordSelection 
+>	                  <$-> (token RightArrow <?> "-> expected")
+>			  <*> labId
+>		 <|?> (\es e -> foldl1 Apply (e:es))
+>		          <$> many (expr3 flat) 
 
 > expr3 :: Bool -> Parser Token Expression a
-> expr3 flat = expr3' <??> fieldExpr
+> expr3 flat = expr3' 
 >   where
->   expr3' = constant <|> variable <|> parenExpr flat <|> listExpr flat
->   fieldExpr = flip FieldExpr 
->	        <$> braces fieldElements
->   fieldElements = field `sepBy` comma
->   field = Field <$> position <*> qLabId <*-> equals <*> expr flat
+>   expr3' = constant <|> variable <|> parenExpr flat
+>        <|> listExpr flat <|> recordExpr flat
 
 > constant :: Parser Token Expression a
 > constant = Literal <$> literal
@@ -539,6 +548,16 @@ the left-hand side of a declaration.
 >           token DotDot <-*> (enumTo <$> expr flat `opt` enum)
 >         list es e2 e1 = List (e1:e2:es)
 >         flip3 f x y z = f z y x
+
+> recordExpr :: Bool -> Parser Token Expression a
+> recordExpr flat = layoutOff <-*> braces content
+>   where content = RecordConstr <$> fieldConstr `sepBy` comma
+>	            <|?> RecordUpdate <$> fieldUpdate `sepBy` comma
+>		                      <*-> checkBar <*> expr flat
+>	  fieldConstr = Field <$> position <*> labId 
+>		              <*-> checkEquals <*> expr flat
+>	  fieldUpdate = Field <$> position <*> labId 
+>		              <*-> checkBinds <*> expr flat
 
 > lambdaExpr :: Bool -> Parser Token Expression a
 > lambdaExpr flat =
@@ -743,12 +762,18 @@ prefix of a let expression.
 > tokenOps :: [(Category,a)] -> Parser Token a b
 > tokenOps cs = ops [(Token c NoAttributes,x) | (c,x) <- cs]
 
-> dot, comma, semicolon, bar, equals :: Parser Token Attributes a
+> dot, comma, semicolon, bar, equals, binds :: Parser Token Attributes a
 > dot = token Sym_Dot
 > comma = token Comma
 > semicolon = token Semicolon <|> token VSemicolon
 > bar = token Bar
 > equals = token Equals
+> binds = token Binds
+
+> checkBar, checkEquals, checkBinds :: Parser Token Attributes a
+> checkBar = bar <?> "| expected"
+> checkEquals = equals <?> "= expected"
+> checkBinds = binds <?> ":= expected"
 
 > backquote, checkBackquote :: Parser Token Attributes a
 > backquote = token Backquote

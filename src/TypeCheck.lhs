@@ -45,9 +45,10 @@ type annotation is present.
 \end{verbatim}
 Type checking proceeds as follows. First, the type constructor
 environment is initialized by adding all types defined in the current
-module. Next, the types of all data constructors are entered into the
-type environment and then a type inference for all function and value
-definitions is performed. The type checker returns the resulting type
+module. Next, the types of all data constructors and field labels
+are entered into the type environment and then a type inference 
+for all function and value definitions is performed. 
+The type checker returns the resulting type
 constructor and type environments.
 \begin{verbatim}
 
@@ -56,7 +57,7 @@ constructor and type environments.
 >   run (tcDecls m tcEnv' emptyEnv vds >>
 >        liftSt fetchSt >>= \theta -> fetchSt >>= \tyEnv' ->
 >        return (tcEnv',subst theta tyEnv'))
->       (bindConstrs m tcEnv' tyEnv)
+>       (bindLabels m tcEnv' (bindConstrs m tcEnv' tyEnv))
 >   where (tds,vds) = partition isTypeDecl ds
 >         tcEnv' = bindTypes m tds tcEnv
 
@@ -157,6 +158,8 @@ and \texttt{expandMonoTypes}, respectively.
 > ft m (TupleType tys) tcs = foldr (ft m) tcs tys
 > ft m (ListType ty) tcs = ft m ty tcs
 > ft m (ArrowType ty1 ty2) tcs = ft m ty1 $ ft m ty2 $ tcs
+> ft m (RecordType fs rty) tcs = 
+>   foldr (ft m) (maybe tcs (\ty -> ft m ty tcs) rty) (map snd fs)
 
 \end{verbatim}
 \paragraph{Defining Data Constructors}
@@ -180,6 +183,26 @@ have been properly renamed and all type synonyms are already expanded.
 >           bindGlobalInfo DataConstructor m c
 >                          (ForAllExist n n' (foldr TypeArrow ty tys))
 >         constrType tc n = TypeConstructor tc (map TypeVariable [0..n-1])
+
+\end{verbatim}
+\paragraph{Defining Field Labels}
+Records can only be declared as type aliases. So currently there is
+not more to do than entering all typed record fields (labels) 
+which occur in record types on the right-hand-side of type aliases 
+into the type environment. Since we use the type constructor environment
+again, we can be sure that all type variables
+have been properly renamed and all type synonyms are already expanded.
+\begin{verbatim}
+
+> bindLabels :: ModuleIdent -> TCEnv -> ValueEnv -> ValueEnv
+> bindLabels m tcEnv tyEnv =
+>   foldr (bindFieldLabels . snd) tyEnv (localBindings tcEnv)
+>   where bindFieldLabels (AliasType r _ (TypeRecord fs _)) tyEnv =
+>           foldr (bindField m r) tyEnv fs
+>	  bindFieldLabels _ tyEnv = tyEnv
+>	  
+>         bindField m r (l,ty) tyEnv =
+>           bindLabel m l (unqualify r) (monoType ty) tyEnv 
 
 \end{verbatim}
 \paragraph{Type Signatures}
@@ -228,6 +251,11 @@ inferred type is less general than the signature.
 > nameType (ArrowType ty1 ty2) tvs = (ArrowType ty1' ty2',tvs'')
 >   where (ty1',tvs') = nameType ty1 tvs
 >         (ty2',tvs'') = nameType ty2 tvs'
+> nameType (RecordType fs rty) tvs = 
+>   (RecordType (zip ls tys') (listToMaybe rty'), tvs)
+>   where (ls, tys) = unzip fs
+>         (tys', tvs') = nameTypes tys tvs
+>         (rty', tvs'') = nameTypes (maybeToList rty) tvs
         
 \end{verbatim}
 \paragraph{Type Inference}
@@ -422,10 +450,6 @@ signature the declared type must be too general.
 >     ty <- case lookupTypeSig v sigs of
 >             Just t -> inst (expandPolyType m tcEnv t)
 >             Nothing -> freshTypeVar
->     --tyEnv <- fetchSt
->     --ty' <- case sureVarType v tyEnv of
->     --        Just _ -> return ty --error (show v ++ " :: " ++ show t) --return t
->	 --     Nothing -> updateSt_ (bindFun m v (monoType ty)) >> return ty
 >     updateSt_ (bindFun m v (monoType ty))
 >     return ty
 >   
@@ -494,11 +518,24 @@ signature the declared type must be too general.
 >         unifyArgs _ _ ty = internalError ("tcConstrTerm: " ++ show ty)
 > tcConstrTerm m tcEnv sigs p t@(InfixFuncPattern t1 op t2) =
 >   tcConstrTerm m tcEnv sigs p (FunctionPattern op [t1,t2])
+> tcConstrTerm m tcEnv sigs p r@(RecordPattern fs rt)
+>   | isJust rt =
+>     do
+>       ty <- tcConstrTerm m tcEnv sigs p (fromJust rt)
+>       fts <- mapM (tcFieldPatt (tcConstrTerm m tcEnv sigs) m) fs
+>       alpha <- freshVar id
+>	let rty = TypeRecord fts (Just alpha)
+>	unify p "record pattern" (ppConstrTerm 0 r) m ty rty
+>       return rty
+>   | otherwise =
+>     do
+>       fts <- mapM (tcFieldPatt (tcConstrTerm m tcEnv sigs) m) fs
+>       return (TypeRecord fts Nothing)
 
 \end{verbatim}
 In contrast to usual patterns, the type checking routine for arguments of 
 function patterns \texttt{tcConstrTermFP} differs from \texttt{tcConstrTerm}
-because of possible multiple occurrences of variables.
+because of possibly multiple occurrences of variables.
 \begin{verbatim}
 
 > tcConstrTermFP :: ModuleIdent -> TCEnv -> SigEnv -> Position -> ConstrTerm
@@ -579,6 +616,35 @@ because of possible multiple occurrences of variables.
 >         unifyArgs _ _ _ = internalError "tcConstrTermFP"
 > tcConstrTermFP m tcEnv sigs p t@(InfixFuncPattern t1 op t2) =
 >   tcConstrTermFP m tcEnv sigs p (FunctionPattern op [t1,t2])
+> tcConstrTermFP m tcEnv sigs p r@(RecordPattern fs rt)
+>   | isJust rt =
+>     do
+>       ty <- tcConstrTermFP m tcEnv sigs p (fromJust rt)
+>       fts <- mapM (tcFieldPatt (tcConstrTermFP m tcEnv sigs) m) fs
+>       alpha <- freshVar id
+>	let rty = TypeRecord fts (Just alpha)
+>	unify p "record pattern" (ppConstrTerm 0 r) m ty rty
+>       return rty
+>   | otherwise =
+>     do
+>       fts <- mapM (tcFieldPatt (tcConstrTermFP m tcEnv sigs) m) fs
+>       return (TypeRecord fts Nothing)
+
+> tcFieldPatt :: (Position -> ConstrTerm -> TcState Type) -> ModuleIdent
+>             -> Field ConstrTerm -> TcState (Ident,Type)
+> tcFieldPatt tcPatt m f@(Field p l t) =
+>   do
+>     tyEnv <- fetchSt
+>     lty <- maybe (freshTypeVar
+>	             >>= (\lty' ->
+>		           updateSt_
+>		             (bindLabel m l (mkIdent "#Rec") (polyType lty'))
+>		           >> return lty'))
+>	           (\ (ForAll _ lty') -> return lty')
+>	           (sureLabelType l tyEnv)
+>     ty <- tcPatt p t
+>     unify p "record field" (text "Field:" <+> ppFieldPatt f) m lty ty
+>     return (l,ty)
 
 > tcRhs :: ModuleIdent -> TCEnv -> ValueEnv -> SigEnv -> Rhs -> TcState Type
 > tcRhs m tcEnv tyEnv0 sigs (SimpleRhs p e ds) =
@@ -785,6 +851,35 @@ because of possible multiple occurrences of variables.
 >                 m ty1 >>
 >           tcRhs m tcEnv tyEnv0 sigs rhs >>=
 >           unify p "case branch" doc m ty2
+> tcExpr m tcEnv sigs p (RecordConstr fs) =
+>   do 
+>     fts <- mapM (tcFieldExpr m tcEnv sigs equals) fs
+>     return (TypeRecord fts Nothing)
+> tcExpr m tcEnv sigs p r@(RecordSelection e l) =
+>   do
+>     ty <- tcExpr m tcEnv sigs p e
+>     tyEnv <- fetchSt
+>     --lty <- inst (labelType l tyEnv)
+>     lty <- maybe (freshTypeVar 
+>	             >>= (\lty' -> 
+>		           updateSt_ 
+>		             (bindLabel m l (mkIdent "#Rec") (monoType lty'))
+>	                   >> return lty'))
+>                  (\ (ForAll _ lty') -> return lty')
+>	           (sureLabelType l tyEnv)
+>     alpha <- freshVar id
+>     let rty = TypeRecord [(l,lty)] (Just alpha)
+>     unify p "record selection" (ppExpr 0 r) m ty rty
+>     --when True (error (show e ++ " :: " ++ show ty))
+>     return lty
+> tcExpr m tcEnv sigs p r@(RecordUpdate fs e) =
+>   do
+>     ty <- tcExpr m tcEnv sigs p e
+>     fts <- mapM (tcFieldExpr m tcEnv sigs (text ":=")) fs
+>     alpha <- freshVar id
+>     let rty = TypeRecord fts (Just alpha)
+>     unify p "record update" (ppExpr 0 r) m ty rty
+>     return rty
 
 > tcQual :: ModuleIdent -> TCEnv -> SigEnv -> Position -> Statement
 >        -> TcState ()
@@ -814,6 +909,23 @@ because of possible multiple occurrences of variables.
 >     unify p "statement" (ppStmt st $-$ text "Term:" <+> ppExpr 0 e)
 >           m (ioType ty1) ty2
 > tcStmt m tcEnv sigs p (StmtDecl ds) = tcDecls m tcEnv sigs ds
+
+> tcFieldExpr :: ModuleIdent -> TCEnv -> SigEnv -> Doc -> Field Expression
+>	      -> TcState (Ident,Type)
+> tcFieldExpr m tcEnv sigs comb f@(Field p l e) =
+>   do
+>     tyEnv <- fetchSt
+>     --lty <- inst (labelType l tyEnv)
+>     lty <- maybe (freshTypeVar 
+>	             >>= (\lty' -> 
+>		           updateSt_ 
+>		             (bindLabel m l (mkIdent "#Rec") (monoType lty'))
+>	                   >> return lty'))
+>                  (\ (ForAll _ lty') -> return lty')
+>	           (sureLabelType l tyEnv)
+>     ty <- tcExpr m tcEnv sigs p e
+>     unify p "record field" (text "Field:" <+> ppFieldExpr comb f) m lty ty
+>     return (l,ty)
 
 \end{verbatim}
 The function \texttt{tcArrow} checks that its argument can be used as
@@ -899,6 +1011,35 @@ of~\cite{PeytonJones87:Book}).
 >   unifyTypeLists m [ty11,ty12] [ty21,ty22]
 > unifyTypes _ (TypeSkolem k1) (TypeSkolem k2)
 >   | k1 == k2 = Right idSubst
+> unifyTypes m (TypeRecord fs Nothing) tr2@(TypeRecord fs' Nothing)
+>   | length fs == length fs' = unifyTypedLabels m fs tr2
+> unifyTypes m tr1@(TypeRecord fs Nothing) tr2@(TypeRecord fs' (Just b)) =
+>   either Left
+>          (\res -> either Left 
+>	                   (Right . compose res) 
+>                          (unifyTypes m (TypeVariable b) tr1))
+>          (unifyTypedLabels m fs' tr1)
+> unifyTypes m tr1@(TypeRecord _ (Just _)) tr2@(TypeRecord _ Nothing) =
+>   unifyTypes m tr2 tr1
+> unifyTypes m tr1@(TypeRecord fs1 (Just a)) tr2@(TypeRecord fs2 (Just b)) =
+>   let (fs1', rs1, rs2) = splitFields fs1 fs2
+>   in  either 
+>         Left
+>         (\res -> 
+>           either 
+>             Left 
+>	      (\res' -> Right (compose res res'))
+>	      (unifyTypeLists m [TypeVariable a, TypeVariable b]
+>	                        [TypeRecord (fs2 ++ rs1) Nothing,
+>			         TypeRecord (fs1 ++ rs2) Nothing]))
+>         (unifyTypedLabels m fs1' tr2)
+>   where
+>   splitFields fs1 fs2 = split' [] [] fs2 fs1
+>   split' fs1' rs1 rs2 [] = (fs1',rs1,rs2)
+>   split' fs1' rs1 rs2 ((l,ty):fs1) =
+>     maybe (split' fs1' ((l,ty):rs1) rs2 fs1)
+>           (const (split' ((l,ty):fs1') rs1 (remove l rs2) fs1))
+>           (lookup l rs2)
 > unifyTypes m ty1 ty2 = Left (incompatibleTypes m ty1 ty2)
 
 > unifyTypeLists :: ModuleIdent -> [Type] -> [Type] -> Either Doc TypeSubst
@@ -909,6 +1050,21 @@ of~\cite{PeytonJones87:Book}).
 >   where unifyTypesTheta m ty1 ty2 theta =
 >           either Left (Right . flip compose theta)
 >                  (unifyTypes m (subst theta ty1) (subst theta ty2))
+
+> unifyTypedLabels :: ModuleIdent -> [(Ident,Type)] -> Type 
+>	           -> Either Doc TypeSubst
+> unifyTypedLabels m [] (TypeRecord _ _) = Right idSubst
+> unifyTypedLabels m ((l,ty):fs1) tr@(TypeRecord fs2 _) =
+>   either Left
+>          (\r -> 
+>            maybe (Left (missingLabel m l tr))
+>                  (\ty' -> 
+>		     either (const (Left (incompatibleLabelTypes m l ty ty')))
+>	                    (Right . flip compose r)
+>	                    (unifyTypes m ty ty'))
+>                  (lookup l fs2))
+>          (unifyTypedLabels m fs1 tr)
+> unifyTypedLabels _ _ _ = internalError "unifyTypedLabels"
 
 \end{verbatim}
 For each declaration group, the type checker has to ensure that no
@@ -1027,6 +1183,18 @@ unambiguously refers to the local definition.
 >             [Value _ sigma] -> Just sigma
 >             _ -> Nothing
 
+> labelType :: Ident -> ValueEnv -> TypeScheme
+> labelType l tyEnv =
+>   case lookupValue l tyEnv of
+>     Label _ _ sigma : _ -> sigma
+>     _ -> internalError ("labelType " ++ show l)
+
+> sureLabelType :: Ident -> ValueEnv -> Maybe TypeScheme
+> sureLabelType l tyEnv =
+>   case lookupValue l tyEnv of
+>     Label _ _ sigma : _ -> Just sigma
+>     _ -> Nothing
+
 
 \end{verbatim}
 The function \texttt{expandType} expands all type synonyms in a type
@@ -1061,6 +1229,8 @@ in which the type was defined.
 > expandType m tcEnv (TypeArrow ty1 ty2) =
 >   TypeArrow (expandType m tcEnv ty1) (expandType m tcEnv ty2)
 > expandType _ tcEnv (TypeSkolem k) = TypeSkolem k
+> expandType m tcEnv (TypeRecord fs rv) =
+>   TypeRecord (map (\ (l,ty) -> (l, expandType m tcEnv ty)) fs) rv
 
 \end{verbatim}
 The functions \texttt{fvEnv} and \texttt{fsEnv} compute the set of
@@ -1078,6 +1248,15 @@ know that they are closed.
 
 > localTypes :: ValueEnv -> [Type]
 > localTypes tyEnv = [ty | (_,Value _ (ForAll _ ty)) <- localBindings tyEnv]
+
+\end{verbatim}
+Miscellaneous functions.
+\begin{verbatim}
+
+> remove :: Eq a => a -> [(a,b)] -> [(a,b)]
+> remove _ [] = []
+> remove k ((k',e):kes) | k == k'   = kes
+>		        | otherwise = (k',e):(remove k kes) 
 
 \end{verbatim}
 Error functions.
@@ -1132,10 +1311,21 @@ Error functions.
 > recursiveType :: ModuleIdent -> Int -> Type -> Doc
 > recursiveType m tv ty = incompatibleTypes m (TypeVariable tv) ty
 
+> missingLabel :: ModuleIdent -> Ident -> Type -> Doc
+> missingLabel m l rty =
+>   sep [text "Missing field for label" <+> ppIdent l,
+>        text "in the record type" <+> ppType m rty]
+
 > incompatibleTypes :: ModuleIdent -> Type -> Type -> Doc
 > incompatibleTypes m ty1 ty2 =
 >   sep [text "Types" <+> ppType m ty1,
 >        nest 2 (text "and" <+> ppType m ty2),
+>        text "are incompatible"]
+
+> incompatibleLabelTypes :: ModuleIdent -> Ident -> Type -> Type -> Doc
+> incompatibleLabelTypes m l ty1 ty2 =
+>   sep [text "Labeled types" <+> ppIdent l <> text "::" <> ppType m ty1,
+>        nest 2 (text "and" <+> ppIdent l <> text "::" <> ppType m ty2),
 >        text "are incompatible"]
 
 \end{verbatim}

@@ -176,6 +176,12 @@ Types
 >   where ppArrowType (ArrowType ty1 ty2) =
 >           ppTypeExpr 1 ty1 <+> rarrow : ppArrowType ty2
 >         ppArrowType ty = [ppTypeExpr 0 ty]
+> ppTypeExpr p (RecordType fs rty) = 
+>   braces (list (map ppTypedField fs) 
+>           <> maybe empty (\ty -> space <> char '|' <+> ppTypeExpr 0 ty) rty)
+>   where
+>   ppTypedField (ls,ty) = 
+>     list (map ppIdent ls) <> text "::" <> ppTypeExpr 0 ty
 
 \end{verbatim}
 Literals
@@ -220,6 +226,12 @@ Patterns
 >   parenExp (p > 0)
 >            (sep [ppConstrTerm 1 t1 <+> ppQInfixOp f,
 >                  indent (ppConstrTerm 0 t2)])
+> ppConstrTerm p (RecordPattern fs rt) =
+>   braces (list (map ppFieldPatt fs)
+>          <> (maybe empty (\t -> space <> char '|' <+> ppConstrTerm 0 t) rt))
+
+> ppFieldPatt :: Field ConstrTerm -> Doc
+> ppFieldPatt (Field _ l t) = ppIdent l <> equals <> ppConstrTerm 0 t
 
 \end{verbatim}
 Expressions
@@ -275,6 +287,14 @@ Expressions
 >   parenExp (p > 0)
 >            (text "case" <+> ppExpr 0 e <+> text "of" $$
 >             indent (vcat (map ppAlt alts)))
+> ppExpr p (RecordConstr fs) =
+>   braces (list (map (ppFieldExpr equals) fs))
+> ppExpr p (RecordSelection e l) =
+>   parenExp (p > 0)
+>            (ppExpr 1 e <+> text "->" <+> ppIdent l)
+> ppExpr p (RecordUpdate fs e) =
+>   braces (list (map (ppFieldExpr (text ":=")) fs)
+>          <+> char '|' <+> ppExpr 0 e)
 
 > ppStmt :: Statement -> Doc
 > ppStmt (StmtExpr e) = ppExpr 0 e
@@ -283,6 +303,9 @@ Expressions
 
 > ppAlt :: Alt -> Doc
 > ppAlt (Alt _ t rhs) = ppRule (ppConstrTerm 0 t) rarrow rhs
+
+> ppFieldExpr :: Doc -> Field Expression -> Doc
+> ppFieldExpr comb (Field _ l e) = ppIdent l <> comb <> ppExpr 0 e
 
 > ppOp :: InfixOp -> Doc
 > ppOp (InfixOp op) = ppQInfixOp op

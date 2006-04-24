@@ -83,7 +83,7 @@ options = [Option "f" ["force"] (NoArg Force)
                   "generate (type infered) AbstractCurry code",
 	   Option "" ["uacy"] (NoArg UntypedAbstract)
                   "generate untyped AbstractCurry code",
-	   Option ""  ["extended"] (NoArg WithExtensions)
+	   Option "e"  ["extended"] (NoArg WithExtensions)
 	          "enable extended Curry functionalities",
 	   Option "" ["dump-all"] (NoArg (Dump [minBound..maxBound]))
                   "dump everything",

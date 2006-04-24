@@ -89,19 +89,38 @@ collectIInfixDecls mident (_:decls) = collectIInfixDecls mident decls
 
 -------------------------------------------------------------------------------
 
--- Generate interface declarations for all type synonyms in the module
+-- Generate interface declarations for all type synonyms in the module.
+-- Since records are currently declared as type synonyms, it is necessary
+-- to convert them into interface data declarations.
 genTypeSyns :: TCEnv -> Module -> [IDecl]
 genTypeSyns tcEnv (Module mident _ decls)
-   = map (genTypeSynDecl mident tcEnv) 
-         [ident | ident@(TypeDecl _ _ _ _) <- decls]
+   = map (genTypeSynDecl mident tcEnv) (filter isTypeSyn decls)
 
 --
 genTypeSynDecl :: ModuleIdent -> TCEnv -> Decl -> IDecl
-genTypeSynDecl mid tcEnv (TypeDecl pos ident params typeexpr)
-   = ITypeDecl pos (qualifyWith mid ident) params 
-               (modifyTypeExpr tcEnv typeexpr)
+genTypeSynDecl mid tcEnv (TypeDecl pos ident params texpr)
+   = genTypeDecl pos mid ident params tcEnv texpr
 genTypeSynDecl _ _ _ 
    = internalError "@CurryInfo.genTypeSynDecl: illegal declaration"
+
+{--
+genRecordDecl :: Position -> ModuleIdent -> Ident -> [Ident] -> TCEnv
+	      -> [([Ident],TypeExpr)] -> IDecl
+genRecordDecl pos mid ident params tcEnv fields
+   = IDataDecl pos (qualifyWith mid ident) params
+               [Just (ConstrDecl pos [] ident types)]
+   where
+   types = concatMap (\ (ls,ty) 
+		        -> replicate (length ls) (modifyTypeExpr tcEnv ty))
+	             fields
+-}
+
+--
+genTypeDecl :: Position -> ModuleIdent -> Ident -> [Ident] -> TCEnv
+	    -> TypeExpr -> IDecl
+genTypeDecl pos mid ident params tcEnv texpr
+   = ITypeDecl pos (qualifyWith mid ident) params
+               (modifyTypeExpr tcEnv texpr)
 
 
 --
@@ -125,7 +144,11 @@ modifyTypeExpr tcEnv (TupleType typeexprs)
      = ConstructorType (qTupleId (length typeexprs)) 
                        (map (modifyTypeExpr tcEnv) typeexprs)
 modifyTypeExpr tcEnv (ListType typeexpr)
-   = (ConstructorType (qualify listId) [(modifyTypeExpr tcEnv typeexpr)])
+   = ConstructorType (qualify listId) [(modifyTypeExpr tcEnv typeexpr)]
+modifyTypeExpr tcEnv (RecordType fields rtype)
+   = RecordType (map (\ (labs, texpr) -> (labs, (modifyTypeExpr tcEnv texpr)))
+		     fields)
+                (maybe Nothing (Just . modifyTypeExpr tcEnv) rtype)
 
 --
 genTypeSynDeref :: [(Int,TypeExpr)] -> Type -> TypeExpr
@@ -143,6 +166,12 @@ genTypeSynDeref its (TypeArrow type1 type2)
 genTypeSynDeref its (TypeSkolem i)
    = internalError ("@CurryInfo.genTypeSynDeref: " ++
 		    "illegal skolem type occured")
+genTypeSynDeref its (TypeRecord fields ri)
+   = RecordType (map (\ (lab, texpr) -> ([lab], genTypeSynDeref its texpr))
+		     fields)
+                (maybe Nothing 
+		       (\i -> Just (genTypeSynDeref its (TypeVariable i)))
+		       ri)
 
 --
 lookupTCId :: QualIdent -> TCEnv -> Maybe QualIdent
@@ -152,6 +181,14 @@ lookupTCId qident tcEnv
        [RenamingType qident' _ _] -> Just qident'
        [AliasType qident' _ _]    -> Just qident'
        _                          -> Nothing
+
+--
+isTypeSyn :: Decl -> Bool
+isTypeSyn (TypeDecl _ _ _ texpr)
+   = case texpr of
+       RecordType _ _ -> False
+       _              -> True
+isTypeSyn _ = False
 
 
 -------------------------------------------------------------------------------

@@ -159,7 +159,7 @@ genFlatIO paths fn (Result msgs mod)
 	   (do mEnv <- loadInterfaces paths mod
 	       (tyEnv, tcEnv, aEnv, mod', intf) <- checkModule (opts paths) mEnv mod
 	       let (il, aEnv', _) 
-	              = transModule True False False mEnv tyEnv aEnv mod'
+	              = transModule True False False mEnv tyEnv tcEnv aEnv mod'
 	           il' = completeCase mEnv il
 	           cEnv = curryEnv mEnv tcEnv intf mod'
 	           (prog,msgs') = genFlatCurry (opts paths) cEnv mEnv aEnv' il'

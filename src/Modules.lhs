@@ -104,7 +104,7 @@ code are obsolete and commented out.
 >        else
 >          do (tyEnv, tcEnv, aEnv, m', intf) <- checkModule opts mEnv m
 >             let (il,aEnv',dumps) = transModule fcy False False 
->			                         mEnv tyEnv aEnv m'
+>			                         mEnv tyEnv tcEnv aEnv m'
 >                 il' = completeCase mEnv il
 >             mapM_ (doDump opts) dumps
 >	      genCode opts fn mEnv tyEnv tcEnv aEnv' intf m' il'
@@ -142,7 +142,7 @@ code are obsolete and commented out.
 >	    -> IO (ValueEnv,TCEnv,ArityEnv,Module,Interface)
 > simpleCheckModule opts mEnv (Module m es ds) =
 >   do unless (noWarn opts || null msgs)
->	      (putStrLn (unlines (map show msgs)))
+>	      (hPutStrLn stderr (unlines (map show msgs)))
 >      return (tyEnv'', tcEnv, aEnv'', modul, intf)
 >   where (impDs,topDs) = partition isImportDecl ds
 >         iEnv = foldr bindAlias initIEnv impDs
@@ -162,7 +162,7 @@ code are obsolete and commented out.
 >      -> IO (ValueEnv,TCEnv,ArityEnv,Module,Interface)
 > checkModule opts mEnv (Module m es ds) =
 >   do unless (noWarn opts || null msgs)
->	      (putStrLn (unlines (map show msgs)))
+>	      (hPutStrLn stderr (unlines (map show msgs)))
 >      return (tyEnv'', tcEnv', aEnv'', modul, intf)
 >   where (impDs,topDs) = partition isImportDecl ds
 >         iEnv = foldr bindAlias initIEnv impDs
@@ -179,17 +179,17 @@ code are obsolete and commented out.
 >            = qualifyEnv mEnv pEnv' tcEnv' tyEnv' aEnv
 >         intf = exportInterface modul pEnv'' tcEnv'' tyEnv''
 
-> transModule :: Bool -> Bool -> Bool -> ModuleEnv -> ValueEnv 
+> transModule :: Bool -> Bool -> Bool -> ModuleEnv -> ValueEnv -> TCEnv
 >      -> ArityEnv -> Module -> (IL.Module,ArityEnv,[(Dump,Doc)])
-> transModule flat debug trusted mEnv tyEnv aEnv (Module m es ds) =
+> transModule flat debug trusted mEnv tyEnv tcEnv aEnv (Module m es ds) =
 >     (il,aEnv',dumps)
 >   where topDs = filter (not . isImportDecl) ds
 >         evEnv = evalEnv topDs
->         (desugared,tyEnv') = desugar tyEnv (Module m es topDs)
+>         (desugared,tyEnv') = desugar tyEnv tcEnv (Module m es topDs)
 >         (simplified,tyEnv'') = simplify flat tyEnv' evEnv desugared
 >         (lifted,tyEnv''',evEnv') = lift tyEnv'' evEnv simplified
 >         aEnv' = bindArities aEnv lifted
->         il = ilTrans flat tyEnv''' evEnv' lifted
+>         il = ilTrans flat tyEnv''' tcEnv evEnv' lifted
 >         dumps = [(DumpRenamed,ppModule (Module m es ds)),
 >	           (DumpTypes,ppTypes m (localBindings tyEnv)),
 >	           (DumpDesugared,ppModule desugared),
@@ -214,10 +214,10 @@ code are obsolete and commented out.
 >           | uniqueId x == 0 = bindQual (x,y)
 >           | otherwise = bindTopEnv "Modules.qualifyEnv" x y
 
-> ilImports :: ModuleEnv -> IL.Module -> [IL.Decl]
-> ilImports mEnv (IL.Module _ is _) =
->   concat [ilTransIntf (Interface m ds) | (m,ds) <- envToList mEnv,
->                                          m `elem` is]
+> --ilImports :: ValueEnv -> TCEnv -> ModuleEnv -> IL.Module -> [IL.Decl]
+> --ilImports tyEnv tcEnv mEnv (IL.Module _ is _) =
+> --  concat [ilTransIntf tyEnv tcEnv (Interface m ds) 
+> --           | (m,ds) <- envToList mEnv, m `elem` is]
 
 > writeXML :: Maybe FilePath -> FilePath -> CurryEnv -> IL.Module -> IO ()
 > writeXML tfn sfn cEnv il = writeFile ofn (showln code)

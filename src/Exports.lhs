@@ -281,6 +281,8 @@ not module \texttt{B}.
 > identsType (TupleType tys) xs = foldr identsType xs tys
 > identsType (ListType ty) xs = identsType ty xs
 > identsType (ArrowType ty1 ty2) xs = identsType ty1 (identsType ty2 xs)
+> identsType (RecordType fs rty) xs =
+>   foldr identsType (maybe xs (\ty -> identsType ty xs) rty) (map snd fs)
 
 \end{verbatim}
 After the interface declarations have been computed, the compiler
@@ -329,6 +331,10 @@ distinguished from type variables.
 > usedTypesType (ListType ty) tcs = usedTypesType ty tcs
 > usedTypesType (ArrowType ty1 ty2) tcs =
 >   usedTypesType ty1 (usedTypesType ty2 tcs)
+> usedTypesType (RecordType fs rty) tcs =
+>   foldr usedTypesType 
+>         (maybe tcs (\ty -> usedTypesType ty tcs) rty) 
+>         (map snd fs)
 
 > definedTypes :: [IDecl] -> [QualIdent]
 > definedTypes ds = foldr definedType [] ds

@@ -187,6 +187,12 @@ declaration groups.
 >              (checkExpr m kEnv p e3)
 > checkExpr m kEnv p (Case e alts) =
 >   Case (checkExpr m kEnv p e) (map (checkAlt m kEnv) alts)
+> checkExpr m kEnv p (RecordConstr fs) =
+>   RecordConstr (map (checkFieldExpr m kEnv) fs)
+> checkExpr m kEnv p (RecordSelection e l) =
+>   RecordSelection (checkExpr m kEnv p e) l
+> checkExpr m kEnv p (RecordUpdate fs e) =
+>   RecordUpdate (map (checkFieldExpr m kEnv) fs) (checkExpr m kEnv p e)
 
 > checkStmt :: ModuleIdent -> KindEnv -> Position -> Statement -> Statement
 > checkStmt m kEnv p (StmtExpr e) = StmtExpr (checkExpr m kEnv p e)
@@ -195,6 +201,10 @@ declaration groups.
 
 > checkAlt :: ModuleIdent -> KindEnv -> Alt -> Alt
 > checkAlt m kEnv (Alt p t rhs) = Alt p t (checkRhs m kEnv rhs)
+
+> checkFieldExpr :: ModuleIdent -> KindEnv -> Field Expression
+>	            -> Field Expression
+> checkFieldExpr m kEnv (Field p l e) = Field p l (checkExpr m kEnv p e)
 
 \end{verbatim}
 The parser cannot distinguish unqualified nullary type constructors
@@ -231,6 +241,9 @@ interpret the identifier as such.
 >   ListType (checkType m kEnv p ty)
 > checkType m kEnv p (ArrowType ty1 ty2) =
 >   ArrowType (checkType m kEnv p ty1) (checkType m kEnv p ty2)
+> checkType m kEnv p (RecordType fs r) =
+>   RecordType (map (\ (ls,ty) -> (ls, checkType m kEnv p ty)) fs)
+>	       (maybe Nothing (Just . checkType m kEnv p) r)
 
 > checkClosed :: Position -> [Ident] -> TypeExpr -> TypeExpr
 > checkClosed p tvs (ConstructorType tc tys) =
@@ -244,6 +257,10 @@ interpret the identifier as such.
 >   ListType (checkClosed p tvs ty)
 > checkClosed p tvs (ArrowType ty1 ty2) =
 >   ArrowType (checkClosed p tvs ty1) (checkClosed p tvs ty2)
+> checkClosed p tvs (RecordType fs r) =
+>   RecordType (map (\ (ls,ty) -> (ls, checkClosed p tvs ty)) fs)
+>	       (maybe Nothing (Just . checkClosed p tvs) r)
+>       
 
 \end{verbatim}
 Auxiliary definitions

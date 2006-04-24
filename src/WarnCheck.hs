@@ -92,11 +92,11 @@ checkConstrDecl :: ModuleIdent -> ConstrDecl -> CheckState ()
 checkConstrDecl mid (ConstrDecl pos _ ident texprs)
    = do visitId ident
 	foldM' (checkTypeExpr mid pos) texprs
-checkConstrDecl mid (ConLabeledDecl pos _ ident fields)
+{- checkConstrDecl mid (ConLabeledDecl pos _ ident fields)
    = do visitId ident
 	let (labels, texprs) = unzip fields
 	foldM' visitId (concat labels)
-	foldM' (checkTypeExpr mid pos) texprs
+	foldM' (checkTypeExpr mid pos) texprs -}
 checkConstrDecl mid (ConOpDecl pos _ texpr1 ident texpr2)
    = do visitId ident
 	checkTypeExpr mid pos texpr1
@@ -116,6 +116,9 @@ checkTypeExpr mid pos (ListType texpr)
 checkTypeExpr mid pos (ArrowType texpr1 texpr2)
    = do checkTypeExpr mid pos texpr1
 	checkTypeExpr mid pos texpr2
+checkTypeExpr mid pos (RecordType fields restr)
+   = do foldM' (checkTypeExpr mid pos) (map snd fields)
+	maybe (return ()) (checkTypeExpr mid pos) restr
 
 --
 checkEquation :: ModuleIdent -> Equation -> CheckState ()
@@ -192,8 +195,9 @@ checkConstrTerm mid pos (FunctionPattern _ cterms)
    = foldM' (checkConstrTerm mid pos) cterms
 checkConstrTerm mid pos (InfixFuncPattern cterm1 qident cterm2)
    = checkConstrTerm mid pos (FunctionPattern qident [cterm1, cterm2])
-checkConstrTerm mid pos (FieldPattern _ fields)
-   = foldM' (checkFieldPattern mid) fields
+checkConstrTerm mid pos (RecordPattern fields restr)
+   = do foldM' (checkFieldPattern mid) fields
+	maybe (return ()) (checkConstrTerm mid pos) restr
 checkConstrTerm _ _ _ = return ()
 
 --
@@ -269,9 +273,13 @@ checkExpression mid pos (Case expr alts)
    = do checkExpression mid pos expr
 	foldM' (checkAlt mid) alts
 	checkCaseAlternatives mid alts
-checkExpression mid pos (FieldExpr expr fields)
-   = do checkExpression mid pos expr
-	foldM' (checkFieldExpression mid) fields
+checkExpression mid pos (RecordConstr fields)
+   = foldM' (checkFieldExpression mid) fields
+checkExpression mid pos (RecordSelection expr ident)
+   = checkExpression mid pos expr -- Hier auch "visitId ident" ?
+checkExpression mid pos (RecordUpdate fields expr)
+   = do foldM' (checkFieldExpression mid) fields
+	checkExpression mid pos expr
 checkExpression _ _ _ = return ()
 
 --
@@ -302,15 +310,13 @@ checkAlt mid (Alt pos cterm rhs)
 
 --
 checkFieldExpression :: ModuleIdent -> Field Expression -> CheckState ()
-checkFieldExpression mid (Field pos qident expr)
-   = do checkExpression mid pos (Variable qident)
-	checkExpression mid pos expr
+checkFieldExpression mid (Field pos ident expr)
+   = checkExpression mid pos expr -- Hier auch "visitId ident" ?
 
 --
 checkFieldPattern :: ModuleIdent -> Field ConstrTerm -> CheckState ()
-checkFieldPattern mid (Field pos qident cterm)
-   = do maybe (return ()) visitId (localIdent mid qident)
-	checkConstrTerm mid pos cterm
+checkFieldPattern mid (Field pos ident cterm)
+   = checkConstrTerm mid pos cterm
 
 -- Check for idle and overlapping case alternatives
 checkCaseAlternatives :: ModuleIdent -> [Alt] -> CheckState ()
@@ -451,8 +457,9 @@ insertDecl :: Decl -> CheckState ()
 insertDecl (DataDecl _ ident _ cdecls)
    = do insertTypeConsId ident
 	foldM' insertConstrDecl cdecls
-insertDecl (TypeDecl _ ident _ _)
-   = insertTypeConsId ident
+insertDecl (TypeDecl _ ident _ texpr)
+   = do insertTypeConsId ident
+	insertTypeExpr texpr
 insertDecl (FunctionDecl _ ident _)
    = do c <- isConsId ident
 	unless c (insertVar ident)
@@ -467,12 +474,24 @@ insertDecl (ExtraVariables _ idents)
 insertDecl _ = return ()
 
 --
+insertTypeExpr :: TypeExpr -> CheckState ()
+insertTypeExpr (VariableType _) = return ()
+insertTypeExpr (ConstructorType _ texprs)
+   = foldM' insertTypeExpr texprs
+insertTypeExpr (TupleType texprs)
+   = foldM' insertTypeExpr texprs
+insertTypeExpr (ListType texpr)
+   = insertTypeExpr texpr
+insertTypeExpr (ArrowType texpr1 texpr2)
+   = foldM' insertTypeExpr [texpr1,texpr2]
+insertTypeExpr (RecordType fields restr)
+   = do foldM' insertVar (concatMap fst fields)
+	maybe (return ()) insertTypeExpr restr
+
+--
 insertConstrDecl :: ConstrDecl -> CheckState ()
 insertConstrDecl (ConstrDecl _ _ ident _)
    = insertConsId ident
-insertConstrDecl (ConLabeledDecl _ _ ident fields)
-   = do insertConsId ident
-	foldM' insertVar (concatMap fst fields)
 insertConstrDecl (ConOpDecl _ _ _ ident _)
    = insertConsId ident
 
@@ -512,10 +531,9 @@ insertConstrTerm _ (FunctionPattern _ cterms)
    = foldM' (insertConstrTerm True) cterms
 insertConstrTerm _ (InfixFuncPattern cterm1 qident cterm2)
    = insertConstrTerm True (FunctionPattern qident [cterm1, cterm2])
-insertConstrTerm fp (FieldPattern qident fields)
-   = do c <- isQualConsId qident
-	if c then foldM' (insertFieldPattern fp) fields
-	     else foldM' (insertFieldPattern True) fields
+insertConstrTerm fp (RecordPattern fields restr)
+   = do foldM' (insertFieldPattern fp) fields
+	maybe (return ()) (insertConstrTerm fp) restr
 insertConstrTerm _ _ = return ()
 
 --

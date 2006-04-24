@@ -66,7 +66,6 @@ an unlimited range of integer constants in Curry programs.
 
 > data ConstrDecl =
 >     ConstrDecl Position [Ident] Ident [TypeExpr]
->   | ConLabeledDecl Position [Ident] Ident [([Ident],TypeExpr)]
 >   | ConOpDecl Position [Ident] TypeExpr Ident TypeExpr
 >   deriving (Eq,Show)
 > data NewConstrDecl =
@@ -108,6 +107,8 @@ correct FlatCurry function applications.
 >   | TupleType [TypeExpr]
 >   | ListType TypeExpr
 >   | ArrowType TypeExpr TypeExpr
+>   | RecordType [([Ident],TypeExpr)] (Maybe TypeExpr) 
+>     -- {l1 :: t1,...,ln :: tn | r}
 >   deriving (Eq,Show)
 
 \end{verbatim}
@@ -164,7 +165,8 @@ the identifier of the \texttt{Int} literal for maintaining its type.
 >   | LazyPattern ConstrTerm
 >   | FunctionPattern QualIdent [ConstrTerm]
 >   | InfixFuncPattern ConstrTerm QualIdent ConstrTerm
->   | FieldPattern QualIdent [Field ConstrTerm]
+>   | RecordPattern [Field ConstrTerm] (Maybe ConstrTerm)  
+>         -- {l1 = p1, ..., ln = pn}  oder {l1 = p1, ..., ln = pn | p}
 >   deriving (Eq,Show)
 
 \end{verbatim}
@@ -194,7 +196,9 @@ the identifier of the \texttt{Int} literal for maintaining its type.
 >   | Do [Statement] Expression
 >   | IfThenElse Expression Expression Expression
 >   | Case Expression [Alt]
->   | FieldExpr Expression [Field Expression]
+>   | RecordConstr [Field Expression]            -- {l1 = e1,...,ln = en}
+>   | RecordSelection Expression Ident           -- e -> l
+>   | RecordUpdate [Field Expression] Expression -- {l1 := e1,...,ln := en | e}
 >   deriving (Eq,Show)
 
 > data InfixOp = InfixOp QualIdent | InfixConstr QualIdent deriving (Eq,Show)
@@ -207,7 +211,16 @@ the identifier of the \texttt{Int} literal for maintaining its type.
 
 > data Alt = Alt Position ConstrTerm Rhs deriving (Eq,Show)
 
-> data Field a = Field Position QualIdent a deriving (Eq, Show)
+> data Field a = Field Position Ident a deriving (Eq, Show)
+
+> fieldLabel :: Field a -> Ident
+> fieldLabel (Field _ l _) = l
+
+> fieldTerm :: Field a -> a
+> fieldTerm (Field _ _ t) = t
+
+> field2Tuple :: Field a -> (Ident,a)
+> field2Tuple (Field _ l t) = (l,t)
 
 > opName :: InfixOp -> QualIdent
 > opName (InfixOp op) = op

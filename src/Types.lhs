@@ -14,6 +14,7 @@ representation of types in the compiler.
 > module Types where
 > import Ident
 > import List
+> import Maybe
 
 \end{verbatim}
 A type is either a type variable, an application of a type constructor
@@ -43,6 +44,7 @@ as well, these variables must never be quantified.
 >   | TypeConstrained [Type] Int
 >   | TypeArrow Type Type
 >   | TypeSkolem Int
+>   | TypeRecord [(Ident,Type)] (Maybe Int)
 >   deriving (Eq,Show)
 
 \end{verbatim}
@@ -83,6 +85,8 @@ type variables because they cannot be generalized.
 >         vars (TypeConstrained _ _) tvs = tvs
 >         vars (TypeArrow ty1 ty2) tvs = vars ty1 (vars ty2 tvs)
 >         vars (TypeSkolem _) tvs = tvs
+>         vars (TypeRecord fs rtv) tvs =
+>             foldr vars (maybe tvs (: tvs) rtv) (map snd fs)
 
 > typeConstrs :: Type -> [QualIdent]
 > typeConstrs ty = types ty []
@@ -91,6 +95,8 @@ type variables because they cannot be generalized.
 >         types (TypeConstrained _ _) tcs = tcs
 >         types (TypeArrow ty1 ty2) tcs = types ty1 (types ty2 tcs)
 >         types (TypeSkolem _) tcs = tcs
+>         types (TypeRecord fs _) tcs =
+>             foldr types tcs (map snd fs)
 
 > typeSkolems :: Type -> [Int]
 > typeSkolems ty = skolems ty []
@@ -99,6 +105,8 @@ type variables because they cannot be generalized.
 >         skolems (TypeConstrained _ _) sks = sks
 >         skolems (TypeArrow ty1 ty2) sks = skolems ty1 (skolems ty2 sks)
 >         skolems (TypeSkolem k) sks = k : sks
+>         skolems (TypeRecord fs _) sks =
+>             foldr skolems sks (map snd fs)
 
 > equTypes :: Type -> Type -> Bool
 > equTypes t1 t2 = fst (equ [] t1 t2)
@@ -123,7 +131,24 @@ type variables because they cannot be generalized.
 >     = maybe (True, (i1,i2):is)
 >             (\ i2' -> (i2 == i2', is))
 >             (lookup i1 is)
+>  equ is (TypeRecord fs1 r1) (TypeRecord fs2 r2)
+>     | isJust r1 && isJust r2
+>       = let (res1, is1) = equ is (TypeVariable (fromJust r1))
+>		                   (TypeVariable (fromJust r2))
+>             (res2, is2) = equRecords is1 fs1 fs2
+>         in  (res1 && res2, is2)
+>     | isNothing r1 && isNothing r2 = equRecords is fs1 fs2
+>     | otherwise = (False, is)
 >  equ is _ _ = (False, is)
+>	
+>  equRecords is fs1 fs2 | length fs1 == length fs2 = equrec is fs1 fs2
+>		         | otherwise = (False, is)
+>    where
+>    equrec is [] fs2 = (True, is)
+>    equrec is ((l,t):fs1) fs2
+>       = let (res1, is1) = maybe (False,is) (equ is t) (lookup l fs2)
+>             (res2, is2) = equrec is1 fs1 fs2
+>         in  (res1 && res2, is2)
 >
 >  equs is [] [] = (True, is)
 >  equs is (t1:ts1) (t2:ts2)

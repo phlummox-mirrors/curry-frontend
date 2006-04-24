@@ -70,6 +70,13 @@ declarations groups as well as function arguments remain unchanged.
 >   InfixFuncPattern (qualTerm m tyEnv t1) 
 >		     (qualIdent m tyEnv op) 
 >	             (qualTerm m tyEnv t2)
+> qualTerm m tyEnv (RecordPattern fs rt) =
+>   RecordPattern (map (qualFieldPattern m tyEnv) fs)
+>	          (maybe Nothing (Just . qualTerm m tyEnv) rt)
+
+> qualFieldPattern :: ModuleIdent -> ValueEnv -> Field ConstrTerm
+>	           -> Field ConstrTerm
+> qualFieldPattern m tyEnv (Field p l t) = Field p l (qualTerm m tyEnv t)
 
 > qualRhs :: ModuleIdent -> ValueEnv -> Rhs -> Rhs
 > qualRhs m tyEnv (SimpleRhs p e ds) =
@@ -121,6 +128,12 @@ declarations groups as well as function arguments remain unchanged.
 >              (qualExpr m tyEnv e3)
 > qualExpr m tyEnv (Case e alts) =
 >   Case (qualExpr m tyEnv e) (map (qualAlt m tyEnv) alts)
+> qualExpr m tyEnv (RecordConstr fs) =
+>   RecordConstr (map (qualFieldExpr m tyEnv) fs)
+> qualExpr m tyEnv (RecordSelection e l) =
+>   RecordSelection (qualExpr m tyEnv e) l
+> qualExpr m tyEnv (RecordUpdate fs e) =
+>   RecordUpdate (map (qualFieldExpr m tyEnv) fs) (qualExpr m tyEnv e)
 
 > qualStmt :: ModuleIdent -> ValueEnv -> Statement -> Statement
 > qualStmt m tyEnv (StmtExpr e) = StmtExpr (qualExpr m tyEnv e)
@@ -131,6 +144,10 @@ declarations groups as well as function arguments remain unchanged.
 > qualAlt :: ModuleIdent -> ValueEnv -> Alt -> Alt
 > qualAlt m tyEnv (Alt p t rhs) = 
 >   Alt p (qualTerm m tyEnv t) (qualRhs m tyEnv rhs)
+
+> qualFieldExpr :: ModuleIdent -> ValueEnv -> Field Expression
+>	        -> Field Expression
+> qualFieldExpr m tyEnv (Field p l e) = Field p l (qualExpr m tyEnv e)
 
 > qualOp :: ModuleIdent -> ValueEnv -> InfixOp -> InfixOp
 > qualOp m tyEnv (InfixOp op) = InfixOp (qualIdent m tyEnv op)

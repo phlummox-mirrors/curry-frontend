@@ -125,6 +125,13 @@ interface.
 > checkConstrTerm p pEnv (InfixFuncPattern t1 op t2) =
 >   fixPrecT p pEnv InfixFuncPattern
 >	 (checkConstrTerm p pEnv t1) op (checkConstrTerm p pEnv t2)
+> checkConstrTerm p pEnv (RecordPattern fs r) =
+>   RecordPattern (map (checkFieldPattern pEnv) fs)
+>	          (maybe Nothing (Just . checkConstrTerm p pEnv) r)
+
+> checkFieldPattern :: PEnv -> Field ConstrTerm -> Field ConstrTerm
+> checkFieldPattern pEnv (Field p label patt) =
+>     Field p label (checkConstrTerm p pEnv patt)
 
 > checkRhs :: ModuleIdent -> PEnv -> Rhs -> Rhs
 > checkRhs m pEnv (SimpleRhs p e ds) = SimpleRhs p (checkExpr m p pEnv' e) ds'
@@ -177,6 +184,16 @@ interface.
 >              (checkExpr m p pEnv e3)
 > checkExpr m p pEnv (Case e alts) =
 >   Case (checkExpr m p pEnv e) (map (checkAlt m pEnv) alts)
+> checkExpr m p pEnv (RecordConstr fs) =
+>   RecordConstr (map (checkFieldExpr m pEnv) fs)
+> checkExpr m p pEnv (RecordSelection e label) =
+>   RecordSelection (checkExpr m p pEnv e) label
+> checkExpr m p pEnv (RecordUpdate fs e) =
+>   RecordUpdate (map (checkFieldExpr m pEnv) fs) (checkExpr m p pEnv e)
+
+> checkFieldExpr :: ModuleIdent -> PEnv -> Field Expression -> Field Expression
+> checkFieldExpr m pEnv (Field p label e) =
+>   Field p label (checkExpr m p pEnv e)
 
 > checkStmt :: ModuleIdent -> Position -> PEnv -> Statement -> (PEnv,Statement)
 > checkStmt m p pEnv (StmtExpr e) = (pEnv,StmtExpr (checkExpr m p pEnv e))

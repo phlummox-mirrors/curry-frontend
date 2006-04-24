@@ -1,4 +1,4 @@
-% -*- LaTeX -*-
+
 % $Id: Eval.lhs,v 1.12 2004/02/08 15:35:12 wlux Exp $
 %
 % Copyright (c) 2001-2004, Wolfgang Lux
@@ -79,6 +79,11 @@ the module by traversing the syntax tree.
 >   collectAnnotsExpr e1 (collectAnnotsExpr e2 (collectAnnotsExpr e3 env))
 > collectAnnotsExpr (Case e alts) env =
 >   collectAnnotsExpr e (foldr collectAnnotsAlt env alts)
+> collectAnnotsExpr (RecordConstr fs) env =
+>   foldr collectAnnotsExpr env (map fieldTerm fs)
+> collectAnnotsExpr (RecordSelection e _) env = collectAnnotsExpr e env
+> collectAnnotsExpr (RecordUpdate fs e) env =
+>   foldr collectAnnotsExpr (collectAnnotsExpr e env) (map fieldTerm fs)
 
 > collectAnnotsStmt :: Statement -> EvalEnv -> EvalEnv
 > collectAnnotsStmt (StmtExpr e) env = collectAnnotsExpr e env

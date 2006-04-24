@@ -73,6 +73,13 @@ order of type variables in the left hand side of a type declaration.
 > toType' tvs (ListType ty) = TypeConstructor (qualify listId) [toType' tvs ty]
 > toType' tvs (ArrowType ty1 ty2) =
 >   TypeArrow (toType' tvs ty1) (toType' tvs ty2)
+> toType' tvs (RecordType fs rty) =
+>   TypeRecord (concatMap (\ (ls,ty) -> map (\l -> (l, toType' tvs ty)) ls) fs)
+>              (maybe Nothing 
+>	              (\ty -> case toType' tvs ty of
+>	                        TypeVariable tv -> Just tv 
+>	                        _ -> internalError ("toType " ++ show ty))
+>	              rty)
 
 > qualifyType :: ModuleIdent -> Type -> Type
 > qualifyType m (TypeConstructor tc tys)
@@ -89,6 +96,8 @@ order of type variables in the left hand side of a type declaration.
 > qualifyType m (TypeArrow ty1 ty2) =
 >   TypeArrow (qualifyType m ty1) (qualifyType m ty2)
 > qualifyType _ (TypeSkolem k) = TypeSkolem k
+> qualifyType m (TypeRecord fs rty) =
+>   TypeRecord (map (\ (l,ty) -> (l, qualifyType m ty)) fs) rty
 
 > fromQualType :: ModuleIdent -> Type -> TypeExpr
 > fromQualType m ty = fromType (unqualifyType m ty)
@@ -107,6 +116,9 @@ order of type variables in the left hand side of a type declaration.
 > fromType (TypeConstrained tys _) = fromType (head tys)
 > fromType (TypeArrow ty1 ty2) = ArrowType (fromType ty1) (fromType ty2)
 > fromType (TypeSkolem k) = VariableType (mkIdent ("_?" ++ show k))
+> fromType (TypeRecord fs rty) = 
+>   RecordType (map (\ (l,ty) -> ([l], fromType ty)) fs)
+>              (maybe Nothing (Just . fromType . TypeVariable) rty)
 
 > unqualifyType :: ModuleIdent -> Type -> Type
 > unqualifyType m (TypeConstructor tc tys) =
@@ -117,6 +129,8 @@ order of type variables in the left hand side of a type declaration.
 > unqualifyType m (TypeArrow ty1 ty2) =
 >   TypeArrow (unqualifyType m ty1) (unqualifyType m ty2)
 > unqualifyType m (TypeSkolem k) = TypeSkolem k
+> unqualifyType m (TypeRecord fs rty) =
+>   TypeRecord (map (\ (l,ty) -> (l, unqualifyType m ty)) fs) rty
 
 \end{verbatim}
 The following functions implement pretty-printing for types.
@@ -312,23 +326,28 @@ impossible to insert them into the environment in advance.
 \end{verbatim}
 \paragraph{Function and constructor types}
 In order to test the type correctness of a module, the compiler needs
-to determine the type of every data constructor, function, and
-variable in the module. For the purpose of type checking there is no
+to determine the type of every data constructor, function,
+variable, record and label in the module. 
+For the purpose of type checking there is no
 need for distinguishing between variables and functions. For all objects
 their original names and their types are saved. Functions also
-contains an arity information. On import two values
+contain arity information. Labels currently contain the name of their
+defining record. On import two values
 are considered equal if their original names match.
 \begin{verbatim}
 
 > data ValueInfo = DataConstructor QualIdent ExistTypeScheme
 >                | NewtypeConstructor QualIdent ExistTypeScheme
 >                | Value QualIdent TypeScheme
+>	         | Label QualIdent QualIdent TypeScheme
+>	           -- Label <label> <record name> <type>
 >                deriving Show
 
 > instance Entity ValueInfo where
 >   origName (DataConstructor origName _) = origName
 >   origName (NewtypeConstructor origName _) = origName
 >   origName (Value origName _) = origName
+>   origName (Label origName _ _) = origName
 
 
 \end{verbatim}
@@ -365,6 +384,12 @@ allow the usage of the qualified list constructor \texttt{(Prelude.:)}.
 >   | otherwise = rebindTopEnv f v
 >   where f' = qualifyWith m f
 >         v = Value f' ty
+
+> bindLabel :: ModuleIdent -> Ident -> Ident -> TypeScheme -> ValueEnv -> ValueEnv
+> bindLabel m l r ty tyEnv =
+>     bindTopEnv "Base.bindLabel" l v (qualBindTopEnv "Base.bindLabel" l' v tyEnv)
+>   where l' = qualifyWith m l
+>         v  = Label l' (qualifyWith m r) ty
 
 > lookupValue :: Ident -> ValueEnv -> [ValueInfo]
 > lookupValue x tyEnv = lookupTopEnv x tyEnv ++! lookupTuple x
@@ -679,6 +704,9 @@ prelude.
 >   qfv m (Do sts e) = foldr (qfvStmt m) (qfv m e) sts
 >   qfv m (IfThenElse e1 e2 e3) = qfv m e1 ++ qfv m e2 ++ qfv m e3
 >   qfv m (Case e alts) = qfv m e ++ qfv m alts
+>   qfv m (RecordConstr fs) = qfv m fs
+>   qfv m (RecordSelection e _) = qfv m e
+>   qfv m (RecordUpdate fs e) = qfv m e ++ qfv m fs
 
 > qfvStmt :: ModuleIdent -> Statement -> [Ident] -> [Ident]
 > qfvStmt m st fvs = qfv m st ++ filterBv st fvs
@@ -690,6 +718,12 @@ prelude.
 
 > instance QualExpr Alt where
 >   qfv m (Alt _ t rhs) = filterBv t (qfv m rhs)
+
+> instance QuantExpr a => QuantExpr (Field a) where
+>   bv (Field _ _ t) = bv t
+
+> instance QualExpr a => QualExpr (Field a) where
+>   qfv m (Field _ _ t) = qfv m t
 
 > instance QuantExpr Statement where
 >   bv (StmtExpr e) = []
@@ -713,6 +747,7 @@ prelude.
 >   bv (LazyPattern t) = bv t
 >   bv (FunctionPattern f ts) = bvFuncPatt (FunctionPattern f ts)
 >   bv (InfixFuncPattern t1 op t2) = bvFuncPatt (InfixFuncPattern t1 op t2)
+>   bv (RecordPattern fs r) = (maybe [] bv r) ++ bv fs
 
 > instance QualExpr ConstrTerm where
 >   qfv _ (LiteralPattern _) = []
@@ -729,6 +764,7 @@ prelude.
 >     = (maybe [] return (localIdent m f)) ++ qfv m ts
 >   qfv m (InfixFuncPattern t1 op t2) 
 >     = (maybe [] return (localIdent m op)) ++ qfv m [t1,t2]
+>   qfv m (RecordPattern fs r) = (maybe [] (qfv m) r) ++ qfv m fs
 
 > instance Expr TypeExpr where
 >   fv (ConstructorType _ tys) = fv tys
@@ -738,6 +774,7 @@ prelude.
 >   fv (TupleType tys) = fv tys
 >   fv (ListType ty) = fv ty
 >   fv (ArrowType ty1 ty2) = fv ty1 ++ fv ty2
+>   fv (RecordType fs rty) = (maybe [] fv rty) ++ fv (map snd fs)
 
 > filterBv :: QuantExpr e => e -> [Ident] -> [Ident]
 > filterBv e = filter (`notElemSet` fromListSet (bv e))
@@ -768,6 +805,8 @@ list.
 >  bvfp bvs (LazyPattern t) = bvfp bvs t
 >  bvfp bvs (FunctionPattern f ts) = foldl bvfp bvs ts
 >  bvfp bvs (InfixFuncPattern t1 op t2) = foldl bvfp bvs [t1, t2]
+>  bvfp bvs (RecordPattern fs r)
+>     = foldl bvfp (maybe bvs (bvfp bvs) r) (map fieldTerm fs)
 
 \end{verbatim}
 \paragraph{Miscellany}

@@ -579,6 +579,7 @@ cs2ilType ids (CS.TupleType typeexprs)
      = let (ilTypeexprs, ids') = emap cs2ilType ids typeexprs
        in  (IL.TypeConstructor (qTupleId ((length ilTypeexprs) - 1)) ilTypeexprs,
             ids')
+cs2ilType _ typeexpr = internalError ("cs2ilType: " ++ show typeexpr)
 
 
 -------------------------------------------------------------------------------

@@ -1,4 +1,4 @@
-% -*- LaTeX -*-
+
 % $Id: TypeSubst.lhs,v 1.2 2004/02/08 22:14:01 wlux Exp $
 %
 % Copyright (c) 2003, Wolfgang Lux
@@ -38,6 +38,13 @@ This module implements substitutions on types.
 >   subst sigma (TypeArrow ty1 ty2) =
 >     TypeArrow (subst sigma ty1) (subst sigma ty2)
 >   subst sigma (TypeSkolem k) = TypeSkolem k
+>   subst sigma (TypeRecord fs rv)
+>     | isJust rv =
+>       case substVar sigma (fromJust rv) of
+>         TypeVariable tv -> TypeRecord fs' (Just tv)
+>         ty -> ty
+>     | otherwise = TypeRecord fs' Nothing
+>    where fs' = map (\ (l,ty) -> (l, subst sigma ty)) fs
 
 > instance SubstType TypeScheme where
 >   subst sigma (ForAll n ty) =
@@ -51,6 +58,7 @@ This module implements substitutions on types.
 >   subst theta (DataConstructor c ty) = DataConstructor c ty
 >   subst theta (NewtypeConstructor c ty) = NewtypeConstructor c ty
 >   subst theta (Value v ty) = Value v (subst theta ty)
+>   subst theta (Label l r ty) = Label l r (subst theta ty)
 
 > instance SubstType a => SubstType (TopEnv a) where
 >   subst = fmap . subst
@@ -75,6 +83,13 @@ the order of their occurrence. This is handled by the function
 > expandAliasType tys (TypeArrow ty1 ty2) =
 >   TypeArrow (expandAliasType tys ty1) (expandAliasType tys ty2)
 > expandAliasType _ (TypeSkolem k) = TypeSkolem k
+> expandAliasType tys (TypeRecord fs rv)
+>   | isJust rv =
+>     let (TypeVariable tv) = expandAliasType tys (TypeVariable (fromJust rv))
+>     in  TypeRecord fs' (Just tv)
+>   | otherwise =
+>     TypeRecord fs' Nothing
+>  where fs' = map (\ (l,ty) -> (l, expandAliasType tys ty)) fs
 
 > normalize :: Type -> Type
 > normalize ty = expandAliasType [TypeVariable (occur tv) | tv <- [0..]] ty
