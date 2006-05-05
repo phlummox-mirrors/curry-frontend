@@ -99,10 +99,10 @@ code are obsolete and commented out.
 >     mEnv <- loadInterfaces (importPaths opts) m
 >     if uacy
 >        then 
->          do (tyEnv, tcEnv, aEnv, m', intf) <- simpleCheckModule opts mEnv m
+>          do (tyEnv, tcEnv, aEnv, m', intf, _) <- simpleCheckModule opts mEnv m
 >             genAbstract opts fn tyEnv tcEnv m'
 >        else
->          do (tyEnv, tcEnv, aEnv, m', intf) <- checkModule opts mEnv m
+>          do (tyEnv, tcEnv, aEnv, m', intf, _) <- checkModule opts mEnv m
 >             let (il,aEnv',dumps) = transModule fcy False False 
 >			                         mEnv tyEnv tcEnv aEnv m'
 >                 il' = completeCase mEnv il
@@ -139,15 +139,16 @@ code are obsolete and commented out.
 >	        ++ ".curry\"")
 
 > simpleCheckModule :: Options -> ModuleEnv -> Module 
->	    -> IO (ValueEnv,TCEnv,ArityEnv,Module,Interface)
+>	    -> IO (ValueEnv,TCEnv,ArityEnv,Module,Interface,[Message])
 > simpleCheckModule opts mEnv (Module m es ds) =
 >   do unless (noWarn opts || null msgs)
 >	      (hPutStrLn stderr (unlines (map show msgs)))
->      return (tyEnv'', tcEnv, aEnv'', modul, intf)
+>      return (tyEnv'', tcEnv, aEnv'', modul, intf, msgs)
 >   where (impDs,topDs) = partition isImportDecl ds
 >         iEnv = foldr bindAlias initIEnv impDs
 >         (pEnv,tcEnv,tyEnv,aEnv) = importModules mEnv impDs
 >         msgs = warnCheck m tyEnv impDs topDs
+>         -- (impDs,topDs,iEnv,pEnv,tcEnv,tyEnv,aEnv,msgs) = initCheck mEnv mod
 >	  withExt = withExtensions opts
 >         (pEnv',topDs') = precCheck m pEnv 
 >		           $ syntaxCheck withExt m iEnv aEnv tyEnv
@@ -159,15 +160,16 @@ code are obsolete and commented out.
 >         intf = exportInterface modul pEnv' tcEnv'' tyEnv''
 
 > checkModule :: Options -> ModuleEnv -> Module 
->      -> IO (ValueEnv,TCEnv,ArityEnv,Module,Interface)
+>      -> IO (ValueEnv,TCEnv,ArityEnv,Module,Interface,[Message])
 > checkModule opts mEnv (Module m es ds) =
 >   do unless (noWarn opts || null msgs)
 >	      (hPutStrLn stderr (unlines (map show msgs)))
->      return (tyEnv'', tcEnv', aEnv'', modul, intf)
+>      return (tyEnv'', tcEnv', aEnv'', modul, intf, msgs)
 >   where (impDs,topDs) = partition isImportDecl ds
 >         iEnv = foldr bindAlias initIEnv impDs
 >         (pEnv,tcEnv,tyEnv,aEnv) = importModules mEnv impDs
 >         msgs = warnCheck m tyEnv impDs topDs
+>         -- (impDs,topDs,iEnv,pEnv,tcEnv,tyEnv,aEnv,msgs) = initCheck mEnv mod
 >	  withExt = withExtensions opts
 >         (pEnv',topDs') = precCheck m pEnv 
 >		           $ syntaxCheck withExt m iEnv aEnv tyEnv
@@ -178,6 +180,15 @@ code are obsolete and commented out.
 >         (pEnv'',tcEnv'',tyEnv'',aEnv'') 
 >            = qualifyEnv mEnv pEnv' tcEnv' tyEnv' aEnv
 >         intf = exportInterface modul pEnv'' tcEnv'' tyEnv''
+
+> initCheck :: ModuleEnv -> Module 
+>    -> ([Decl],[Decl],ImportEnv,PEnv,TCEnv,ValueEnv,ArityEnv,[Message])
+> initCheck mEnv (Module m es ds) =
+>   (impDs,topDs,iEnv,pEnv,tcEnv,tyEnv,aEnv,msgs)
+>   where (impDs,topDs) = partition isImportDecl ds
+>         iEnv = foldr bindAlias initIEnv impDs
+>         (pEnv,tcEnv,tyEnv,aEnv) = importModules mEnv impDs
+>         msgs = warnCheck m tyEnv impDs topDs
 
 > transModule :: Bool -> Bool -> Bool -> ModuleEnv -> ValueEnv -> TCEnv
 >      -> ArityEnv -> Module -> (IL.Module,ArityEnv,[(Dump,Doc)])

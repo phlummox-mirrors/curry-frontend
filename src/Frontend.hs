@@ -36,6 +36,7 @@ import Env
 import List
 import Maybe
 import Monad
+import System
 import Prelude hiding (lex)
 
 
@@ -61,33 +62,47 @@ parse fn src = let (err, src') = unlitLiterate fn src
 
 -- Returns the syntax tree of the source program 'src' (type 'Module'; see
 -- Module "CurrySyntax") after resolving the category (i.e. function,
--- constructor or variable) of an identifier.
--- Additional information needed: file paths to imported modules
+-- constructor or variable) of an identifier. 'fullParse' always
+-- searches for standard Curry libraries in the path defined in the
+-- environment variable "PAKCSLIBPATH". Additional search paths can
+-- be defined using the argument 'paths'.
 fullParse :: [FilePath] -> FilePath -> String -> IO (Result CS.Module)
-fullParse paths fn src = 
-  genFullCurrySyntax simpleCheckModule paths fn (parse fn src)
+fullParse paths fn src =
+  do importPaths <- getCurryImports
+     genFullCurrySyntax simpleCheckModule (paths ++ importPaths)
+			fn (parse fn src)
 
--- Returns the syntax tree of the source program 'src' (type 'Module'; see
--- Module "CurrySyntax") after inferring the types of identifiers.
+-- Behaves like 'fullParse', but Returns the syntax tree of the source 
+-- program 'src' (type 'Module'; see Module "CurrySyntax") after inferring 
+-- the types of identifiers.
 typingParse :: [FilePath] -> FilePath -> String -> IO (Result CS.Module)
 typingParse paths fn src = 
-  genFullCurrySyntax checkModule paths fn (parse fn src)
+  do importPaths <- getCurryImports
+     genFullCurrySyntax checkModule (paths ++ importPaths)
+			fn (parse fn src)
 
-
--- Compiles the source programm 'src' to an AbstractCurry program
--- Notes: 
---    - Due to the lack of error handling in the current version of the
---      front end, this function may fail when an error occurs
---    - 
+-- Compiles the source programm 'src' to an AbstractCurry program.
+-- 'fullParse' always searches for standard Curry libraries in the path 
+-- defined in the environment variable "PAKCSLIBPATH". Additional search 
+-- paths can be defined using the argument 'paths'.
+-- Notes: Due to the lack of error handling in the current version of the
+-- front end, this function may fail when an error occurs
 abstractIO :: [FilePath] -> FilePath -> String -> IO (Result ACY.CurryProg)
-abstractIO paths fn src = genAbstractIO paths fn (parse fn src)
+abstractIO paths fn src = 
+  do importPaths <- getCurryImports
+     genAbstractIO (paths ++ importPaths) fn (parse fn src)
 
 
--- Compiles the source program 'src' to a FlatCurry program
+-- Compiles the source program 'src' to a FlatCurry program.
+-- 'fullParse' always searches for standard Curry libraries in the path 
+-- defined in the environment variable "PAKCSLIBPATH". Additional search 
+-- paths can be defined using the argument 'paths'.
 -- Note: Due to the lack of error handling in the current version of the
 -- front end, this function may fail when an error occurs
 flatIO :: [FilePath] -> FilePath -> String -> IO (Result FCY.Prog)
-flatIO paths fn src = genFlatIO paths fn (parse fn src)
+flatIO paths fn src = 
+  do importPaths <- getCurryImports
+     genFlatIO (paths ++ importPaths) fn (parse fn src)
 
 
 -------------------------------------------------------------------------------
@@ -127,12 +142,13 @@ genCurrySyntax _ (Err.Error err)
    = Failure [message_ Error err]
 
 
+--
 genFullCurrySyntax check paths fn (Result msgs mod)
    = do errs <- makeInterfaces paths mod
 	if null errs
 	   then do mEnv <- loadInterfaces paths mod
-		   (_, _, _, mod', _) <- check (opts paths) mEnv mod
-		   return (Result msgs mod')
+		   (_, _, _, mod', _, msgs') <- check (opts paths) mEnv mod
+		   return (Result (msgs ++ msgs') mod')
 	   else return (Failure (msgs ++ map (message_ Error) errs))
 genFullCurrySyntax _ _ _ (Failure msgs) = return (Failure msgs)
 
@@ -144,9 +160,10 @@ genAbstractIO paths fn (Result msgs mod)
    = do errs <- makeInterfaces paths mod
 	if null errs
 	   then do mEnv <- loadInterfaces paths mod
-		   (tyEnv, tcEnv, _, mod', _)
+		   (tyEnv, tcEnv, _, mod', _, msgs')
 		       <- simpleCheckModule (opts paths) mEnv mod
-		   return (Result msgs (genTypedAbstract tyEnv tcEnv mod'))
+		   return (Result (msgs ++ msgs') 
+			          (genTypedAbstract tyEnv tcEnv mod'))
 	   else return (Failure (msgs ++ map (message_ Error) errs))
 genAbstractIO _ _ (Failure msgs) = return (Failure msgs)
 
@@ -157,13 +174,14 @@ genFlatIO paths fn (Result msgs mod)
    = do errs <- makeInterfaces paths mod
 	if null errs then
 	   (do mEnv <- loadInterfaces paths mod
-	       (tyEnv, tcEnv, aEnv, mod', intf) <- checkModule (opts paths) mEnv mod
+	       (tyEnv, tcEnv, aEnv, mod', intf, msgs') <- 
+	           checkModule (opts paths) mEnv mod
 	       let (il, aEnv', _) 
 	              = transModule True False False mEnv tyEnv tcEnv aEnv mod'
 	           il' = completeCase mEnv il
 	           cEnv = curryEnv mEnv tcEnv intf mod'
-	           (prog,msgs') = genFlatCurry (opts paths) cEnv mEnv aEnv' il'
-               return (Result (msgs' ++ msgs) prog)
+	           (prog,msgs'') = genFlatCurry (opts paths) cEnv mEnv aEnv' il'
+               return (Result (msgs'' ++ msgs ++ msgs') prog)
 	   )
 	   else return (Failure (msgs ++ map (message_ Error) errs))
 genFlatIO _ _ (Failure msgs) = return (Failure msgs)
@@ -244,6 +262,26 @@ err_invalidModuleName :: ModuleIdent -> String
 err_invalidModuleName mid 
    = "module \"" ++ moduleName mid 
      ++ "\" must be in a file \"" ++ moduleName mid ++ ".curry\""
+
+
+-------------------------------------------------------------------------------
+-- Curry library paths
+
+-- Environment variables containing paths to Curry libraries
+importVars = ["PAKCSLIBPATH"]
+
+
+-- Returns a list of the paths to the Curry libraries
+getCurryImports :: IO [FilePath]
+getCurryImports
+   = do imps <- mapM sureGetEnv importVars
+	return (concatMap pathList imps)
+
+
+-- Returns the value of an environment variable, if it exists, otherwise an
+-- empty string.
+sureGetEnv :: String -> IO String
+sureGetEnv env = catch (getEnv env) (const (return ""))
 
 
 -------------------------------------------------------------------------------
