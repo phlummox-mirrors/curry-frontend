@@ -488,6 +488,7 @@ top-level.
 >     = checkConstrTerm withExt k p m env (ConstructorPattern (qualify v) [])
 > checkConstrTerm withExt k p m env (ConstructorPattern c ts) =
 >   case qualLookupVar c env of
+>     [] -> errorAt p (undefinedData c)
 >     [Constr n]
 >       | n == n' ->
 >           liftM (ConstructorPattern c) 
@@ -513,7 +514,7 @@ top-level.
 >             []
 >               | null ts && not (isQualified c) ->
 >	            return (VariablePattern (renameIdent (unqualify c) k))
->		| otherwise -> errorAt p (undefinedData c)
+>		| otherwise -> errorAt p (ambiguousData c)
 >             [Constr n]
 >               | n == n' ->
 >                   liftM (ConstructorPattern (qualQualify m c)) 
@@ -538,6 +539,7 @@ top-level.
 >             _ -> errorAt p (ambiguousData c)
 > checkConstrTerm withExt k p m env (InfixPattern t1 op t2) =
 >   case (qualLookupVar op env) of
+>     [] -> errorAt p (undefinedData op)
 >     [Constr n]
 >       | n == 2 ->
 >           do t1' <- checkConstrTerm withExt k p m env t1
@@ -551,7 +553,7 @@ top-level.
 >              return (InfixFuncPattern t1' op t2')
 >       | otherwise -> errorAt p funcPattExt    
 >     rs -> case (qualLookupVar (qualQualify m op) env) of
->             [] -> errorAt p (undefinedData op)
+>             [] -> errorAt p (ambiguousData op)
 >             [Constr n]
 >               | n == 2 ->
 >                   do t1' <- checkConstrTerm withExt k p m env t1
