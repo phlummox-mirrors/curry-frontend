@@ -1073,9 +1073,14 @@ Error messages.
 > illegalRecordPatt = "Record patterns can only be extended by `_` after `|`"
 
 > funcPattExt :: String
-> funcPattExt = "function pattern are not supported in standard curry"
+> funcPattExt = "function patterns are not supported in standard curry"
+>	        ++ extMessage
 
 > recordExt :: String
 > recordExt = "records are not supported in standard curry"
+>             ++ extMessage
+
+> extMessage :: String
+> extMessage = "\n(Use flag -e to enable extended curry)"
 
 \end{verbatim}
