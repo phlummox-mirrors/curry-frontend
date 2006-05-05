@@ -65,7 +65,9 @@ visitModule (IL.Module mid imps decls)
 	   types <- genTypeSynonyms
 	   funcs <- mapM visitFuncDecl (filter isFuncDecl decls)
 	   mod   <- visitModuleIdent mid
-	   is    <- mapM visitModuleIdent imps
+	   imps'   <- imports
+	   is      <- mapM visitModuleIdent 
+	                   (map (\ (CS.IImportDecl _ mid) -> mid) imps')
            return (Prog mod is (types ++ datas) funcs ops))
        (do ops     <- genOpDecls
 	   ds      <- filterM isPublicDataDecl decls
