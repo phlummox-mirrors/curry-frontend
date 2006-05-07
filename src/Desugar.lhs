@@ -236,11 +236,6 @@ and a record label belongs to only one record declaration.
 >   do
 >     tyEnv <- fetchSt
 >     let ty =  (flip typeOf (Variable (qual f))) tyEnv
->         --ty' = desugarRecordType m tyEnv tcEnv ty
->         --f' = qualifyWith m f
->     --when (f == mkIdent "p") (error (show (qualLookupValue (qualifyWith m f) tyEnv)))
->     --when (f == mkIdent "u") (error (show (lookupValue f tyEnv)))
->     --updateSt_ (qualRebindTopEnv f' (Value f' (polyType ty'))) -- (rebindFun m f (polyType ty'))
 >     liftM (FunctionDecl p f) 
 >	    (mapM (desugarEquation m tcEnv (arrowArgs ty)) eqs)
 >   where qual f
@@ -570,6 +565,7 @@ have to be desugared as well. This part transforms the following extensions:
 >   where r' = qualifyWith m r
 > desugarRecordDecl _ _ decl = return [decl]
 
+> {-
 > desugarRecordType :: ModuleIdent -> ValueEnv -> TCEnv -> Type -> Type
 > desugarRecordType m tyEnv tcEnv (TypeConstructor t tys) =
 >   TypeConstructor t (map (desugarRecordType m tyEnv tcEnv) tys)
@@ -579,16 +575,26 @@ have to be desugared as well. This part transforms the following extensions:
 >   TypeArrow (desugarRecordType m tyEnv tcEnv t1) 
 >	      (desugarRecordType m tyEnv tcEnv t2)
 > desugarRecordType m tyEnv tcEnv (TypeRecord fs _)
+>   | True = error (show fs)
 >   | null fs   = internalError "desugarRecordType: empty record"
 >   | otherwise = 
 >     case (qualLookupValue (qualifyWith m (fst (head fs))) tyEnv) of
 >	[Label _ r _] -> 
 >         case (qualLookupTC r tcEnv) of
->	    [AliasType _ n _] ->
->             TypeConstructor r (map TypeVariable [0 .. n-1])
+>	    [AliasType _ n (TypeRecord fs' _)] ->
+>	      let is = [0 .. n-1]
+>                 vs = foldl (matchTypeVars fs)
+>			     zeroFM
+>			     fs'
+>		  tys = map (\i -> fromMaybe (TypeVariable i)
+>		                             (lookupFM i vs))
+>		            is
+>	      in  TypeConstructor r tys
+>             --TypeConstructor r (map TypeVariable [0 .. n-1])
 >           _ -> internalError "desugarRecordType: no record"
 >	_ -> internalError "desugarRecordType: no label"
 > desugarRecordType m tyEnv tcEnv ty = ty
+> -}
 
 > desugarRecordPattern :: ModuleIdent -> TCEnv -> Position -> [Decl]
 >		       -> [(Ident,ConstrTerm)] -> QualIdent

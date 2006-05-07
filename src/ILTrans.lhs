@@ -25,6 +25,7 @@ data structures, we can use only a qualified import for the
 > import Utils
 > import Env
 > import Set
+> import Map
 > import Maybe
 > import List
 
@@ -168,16 +169,44 @@ the later are replaced by fresh type constructors.
 >             (elimRecordTypes m tyEnv tcEnv n t2)
 > elimRecordTypes m tyEnv tcEnv n (TypeSkolem v) =
 >   TypeSkolem v
-> elimRecordTypes m tyEnv tcEnv n ty@(TypeRecord fs _)
+> elimRecordTypes m tyEnv tcEnv n (TypeRecord fs _)
 >   | null fs = internalError "elimRecordType: empty record type"
 >   | otherwise =
 >     case (qualLookupValue (qualifyWith m (fst (head fs))) tyEnv) of
 >       [Label _ r _] ->
 >         case (qualLookupTC r tcEnv) of
 >           [AliasType _ n' (TypeRecord fs' _)] ->
->	       TypeConstructor r (map TypeVariable [n+1 .. n+n'])
+>	       let is = [0 .. n'-1]
+>                  vs = foldl (matchTypeVars fs)
+>		 	      zeroFM
+>			      fs'
+>		   tys = map (\i -> fromMaybe (TypeVariable (i+n))
+>		                              (lookupFM i vs))
+>		             is 
+>	       in  TypeConstructor r tys
 >	    _ -> internalError "elimRecordType: no record type"
 >       _ -> internalError "elimRecordType: no label"
+
+> matchTypeVars :: [(Ident,Type)] -> FM Int Type -> (Ident,Type) 
+>	           -> FM Int Type
+> matchTypeVars fs vs (l,ty) =
+>   maybe vs (match vs ty) (lookup l fs)
+>   where
+>   match vs (TypeVariable i) ty' = addToFM i ty' vs
+>   match vs (TypeConstructor _ tys) (TypeConstructor _ tys') =
+>     matchList vs tys tys'
+>   match vs (TypeConstrained tys _) (TypeConstrained tys' _) =
+>     matchList vs tys tys'
+>   match vs (TypeArrow ty1 ty2) (TypeArrow ty1' ty2') =
+>     matchList vs [ty1,ty2] [ty1',ty2']
+>   match vs (TypeSkolem _) (TypeSkolem _) = vs
+>   match vs (TypeRecord fs _) (TypeRecord fs' _) =
+>     foldl (matchTypeVars fs) vs fs'
+>   match vs ty ty' = 
+>     internalError ("matchTypeVars: " ++ show ty ++ "\n" ++ show ty')
+>
+>   matchList vs tys tys' = 
+>     foldl (\vs' (ty,ty') -> match vs' ty ty') vs (zip tys tys')
 
 \end{verbatim}
 \paragraph{Functions}
@@ -211,8 +240,10 @@ uses flexible matching.
 
 > translFunction :: Bool -> ModuleIdent -> ValueEnv -> TCEnv -> EvalEnv
 >                -> Ident -> [Equation] -> IL.Decl
-> translFunction flat m tyEnv tcEnv evEnv f eqs
->    = IL.FunctionDecl f' vs (translType' m tyEnv tcEnv ty) expr
+> translFunction flat m tyEnv tcEnv evEnv f eqs =
+>   -- | f == mkIdent "fun" = error (show (translType' m tyEnv tcEnv ty))
+>   -- | otherwise = 
+>     IL.FunctionDecl f' vs (translType' m tyEnv tcEnv ty) expr
 >    -- = IL.FunctionDecl f' vs (translType ty)
 >    --                  (match ev vs (map (translEquation tyEnv vs vs'') eqs))
 >   where f'  = qualifyWith m f
