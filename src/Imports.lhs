@@ -118,17 +118,26 @@ module name.
 > bindPrec _ _ = id
 
 > bindTC :: ModuleIdent -> IDecl -> ExpTCEnv -> ExpTCEnv
-> bindTC m (IDataDecl _ tc tvs cs) =
->   bindType DataType m tc tvs (map (fmap mkData) cs)
+> bindTC m (IDataDecl _ tc tvs cs) mTCEnv 
+>   | isJust (lookupEnv (unqualify tc) mTCEnv) =
+>     mTCEnv
+>   | otherwise =
+>     bindType DataType m tc tvs (map (fmap mkData) cs) mTCEnv
 >   where mkData (ConstrDecl _ evs c tys) =
 >           Data c (length evs) (toQualTypes m tvs tys)
 >         mkData (ConOpDecl _ evs ty1 c ty2) =
 >           Data c (length evs) (toQualTypes m tvs [ty1,ty2])
-> bindTC m (INewtypeDecl _ tc tvs (NewConstrDecl _ evs c ty)) =
->   bindType RenamingType m tc tvs (Data c (length evs) (toQualType m tvs ty))
-> bindTC m (ITypeDecl _ tc tvs ty) =
->   bindType AliasType m tc tvs (toQualType m tvs ty)
-> bindTC m _ = id
+> bindTC m (INewtypeDecl _ tc tvs (NewConstrDecl _ evs c ty)) mTCEnv =
+>   bindType RenamingType m tc tvs 
+>	 (Data c (length evs) (toQualType m tvs ty)) mTCEnv
+> bindTC m (ITypeDecl _ tc tvs ty) mTCEnv
+>   | isRecordExtId tc' = 
+>     bindType AliasType m (qualify (fromRecordExtId tc')) tvs 
+>	   (toQualType m tvs ty) mTCEnv
+>   | otherwise =
+>     bindType AliasType m tc tvs (toQualType m tvs ty) mTCEnv
+>   where tc' = unqualify tc
+> bindTC m _ mTCEnv = mTCEnv
 
 > bindTCHidden :: ModuleIdent -> IDecl -> ExpTCEnv -> ExpTCEnv
 > bindTCHidden m (HidingDataDecl _ tc tvs) =
@@ -147,6 +156,9 @@ module name.
 > bindTy m (INewtypeDecl _ tc tvs nc) =
 >   bindNewConstr m tc' tvs (constrType tc' tvs) nc
 >   where tc' = qualQualify m tc
+> --bindTy m (ITypeDecl _ r tvs (RecordType fs _)) =
+> --  flip (foldr (bindRecLabel m r')) fs
+> --  where r' = qualifyWith m (fromRecordExtId (unqualify r))
 > bindTy m (IFunctionDecl _ f _ ty) =
 >   bindEnv (unqualify f)
 >           (Value (qualQualify m f) (polyType (toQualType m [] ty)))
@@ -164,6 +176,11 @@ module name.
 >               -> NewConstrDecl -> ExpValueEnv -> ExpValueEnv
 > bindNewConstr m tc tvs ty0 (NewConstrDecl _ evs c ty1) =
 >   bindValue NewtypeConstructor m tc tvs c evs (ArrowType ty1 ty0)
+
+> --bindRecLabel :: ModuleIdent -> QualIdent -> ([Ident],TypeExpr)
+> --      -> ExpValueEnv -> ExpValueEnv
+> --bindRecLabel m r ([l],ty) =
+> --  bindEnv l (Label (qualify l) r (polyType (toQualType m [] ty)))
 
 > bindValue :: (QualIdent -> ExistTypeScheme -> ValueInfo) -> ModuleIdent
 >           -> QualIdent -> [Ident] -> Ident -> [Ident] -> TypeExpr

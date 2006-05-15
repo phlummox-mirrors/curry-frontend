@@ -41,8 +41,8 @@ addition, this process will also rename the local variables.
 \begin{verbatim}
 
 > syntaxCheck :: Bool -> ModuleIdent -> ImportEnv -> ArityEnv -> ValueEnv 
->                -> [Decl] -> [Decl]
-> syntaxCheck withExt m iEnv aEnv tyEnv ds =
+>                -> TCEnv -> [Decl] -> [Decl]
+> syntaxCheck withExt m iEnv aEnv tyEnv tcEnv ds =
 >   case linear (concatMap constrs tds) of
 >     --Linear -> tds ++ run (checkModule withExt m env vds)
 >     Linear -> map (checkTypeDecl withExt m) tds
@@ -50,7 +50,7 @@ addition, this process will also rename the local variables.
 >     NonLinear (PIdent p c) -> errorAt p (duplicateData c)
 >   where (tds,vds) = partition isTypeDecl ds
 >         env = foldr (bindTypes m) -- (bindConstrs m) 
->	              (globalEnv (fmap (renameInfo iEnv aEnv) tyEnv)) 
+>	              (globalEnv (fmap (renameInfo tcEnv iEnv aEnv) tyEnv)) 
 >	              tds
 
 > --syntaxCheckGoal :: Bool -> ValueEnv -> Goal -> Goal
@@ -101,12 +101,12 @@ allow the usage of the qualified list constructor \texttt{(prelude.:)}.
 > globalKey :: Int
 > globalKey = uniqueId (mkIdent "")
 
-> renameInfo :: ImportEnv -> ArityEnv -> ValueInfo -> RenameInfo
-> renameInfo iEnv aEnv (DataConstructor _ (ForAllExist _ _ ty)) 
+> renameInfo :: TCEnv -> ImportEnv -> ArityEnv -> ValueInfo -> RenameInfo
+> renameInfo tcEnv iEnv aEnv (DataConstructor _ (ForAllExist _ _ ty)) 
 >    = Constr (arrowArity ty)
-> renameInfo iEnv aEnv (NewtypeConstructor _ _) 
+> renameInfo tcEnv iEnv aEnv (NewtypeConstructor _ _) 
 >    = Constr 1
-> renameInfo iEnv aEnv (Value qid _)
+> renameInfo tcEnv iEnv aEnv (Value qid _)
 >    = let (mmid, id) = splitQualIdent qid
 >          qid' = maybe qid 
 >	                (\mid -> maybe qid 
@@ -121,11 +121,11 @@ allow the usage of the qualified list constructor \texttt{(prelude.:)}.
 >	                       (\ (ArityInfo _ arity) -> GlobalVar arity qid)
 >		               (find (\ (ArityInfo qid'' _) 
 >			              -> qid'' == qid) rs)
-> renameInfo iEnv aEnv (Label l r _)
->    = internalError "renameInfo: import of records not yet supported"
-> -- Wird spaeter mit Hilfe der TCEnv zusammengebastelt und zwar nach
-> -- folgendem Schema: lookup r TCEnv -> AliasType r n ty -> Record-Infos
-> -- sind in ty enthalten
+> renameInfo tcEnv iEnv aEnv (Label l r _)
+>    = case (qualLookupTC r tcEnv) of
+>        [AliasType _ _ (TypeRecord fs _)] ->
+>          RecordLabel r (map fst fs)
+>        _ -> internalError "renameInfo: no record"
 
 \end{verbatim}
 Since record types are currently translated into data types, it is
@@ -151,8 +151,9 @@ than once.
 > bindRecordLabel :: Position -> ModuleIdent -> Ident -> [Ident] 
 >	             -> ([Ident],TypeExpr) -> RenameEnv -> RenameEnv
 > bindRecordLabel p m t labels (ls,_) env = 
->     foldr (\l -> case (qualLookupVar (qualifyWith m l) env) of
->                    [] -> bindGlobal m l (RecordLabel (qualifyWith m t) labels)
+>     foldr (\l -> case (lookupVar l env) of
+>                    [] -> bindGlobal m l
+>                             (RecordLabel (qualifyWith m t) labels)
 >                    _  -> errorAt p (duplicateDefinition l)
 >	    ) env ls
 
@@ -261,10 +262,10 @@ local declarations.
 
 > checkTypeDecl :: Bool -> ModuleIdent -> Decl -> Decl
 > checkTypeDecl withExt m d@(TypeDecl p r tvs (RecordType fs rty))
->   | not withExt = errorAt p recordExt
+>   | not withExt = errorAt p noRecordExt
 >   | isJust rty = internalError "checkTypeDecl - illegal record type"
 >   | null fs = errorAt p emptyRecord
->   | otherwise = d
+>   | otherwise = TypeDecl p r tvs (RecordType fs Nothing)
 > checkTypeDecl _ _ d = d
 
 \end{verbatim}
@@ -378,7 +379,7 @@ top-level.
 
 > checkDecls :: (Decl -> RenameEnv -> RenameEnv) -> Bool -> ModuleIdent
 >	        -> RenameEnv -> [Decl] -> RenameState (RenameEnv,[Decl])
-> checkDecls bindDecl withExt m env ds = --bindVar withExt m env ds =
+> checkDecls bindDecl withExt m env ds = 
 >   case linear bvs of
 >     Linear ->
 >       case linear tys of
@@ -398,7 +399,7 @@ top-level.
 >         tys = concat (map vars tds)
 >         evs = concat (map vars (filter isEvalAnnot ds))
 >         fs' = [PIdent p f | FlatExternalDecl p fs <- ds, f <- fs]
->         env' = foldr bindDecl env vds --foldr bindVar env bvs
+>         env' = foldr bindDecl env vds
 >         env'' = foldr bindDecl env' tds
 
 > checkDeclRhs :: Bool -> [PIdent] -> ModuleIdent -> RenameEnv -> Decl 
@@ -506,7 +507,7 @@ top-level.
 >				                      ts1) 
 >	                             ts2)
 >	          else return (FunctionPattern (qualVarIdent r) ts')
->       | otherwise -> errorAt p funcPattExt  
+>       | otherwise -> errorAt p noFuncPattExt  
 >	where n = arity r
 >	      n' = length ts
 >     rs -> case (qualLookupVar (qualQualify m c) env) of
@@ -533,7 +534,7 @@ top-level.
 >			                (FunctionPattern (qualVarIdent r) ts1) 
 >	                                ts2)
 >	                  else return (FunctionPattern (qualVarIdent r) ts')
->	        | otherwise -> errorAt p funcPattExt
+>	        | otherwise -> errorAt p noFuncPattExt
 >               where n = arity r
 >		      n' = length ts
 >             _ -> errorAt p (ambiguousData c)
@@ -550,7 +551,7 @@ top-level.
 >           do t1' <- checkConstrTerm withExt k p m env t1
 >	       t2' <- checkConstrTerm withExt k p m env t2
 >              return (InfixFuncPattern t1' op t2')
->       | otherwise -> errorAt p funcPattExt    
+>       | otherwise -> errorAt p noFuncPattExt    
 >     rs -> case (qualLookupVar (qualQualify m op) env) of
 >             [] | null rs -> errorAt p (undefinedData op)
 >                | otherwise -> errorAt p (ambiguousData op)
@@ -565,7 +566,7 @@ top-level.
 >	            do t1' <- checkConstrTerm withExt k p m env t1
 >	               t2' <- checkConstrTerm withExt k p m env t2
 >		       return (InfixFuncPattern t1' (qualQualify m op) t2')
->	        | otherwise -> errorAt p funcPattExt
+>	        | otherwise -> errorAt p noFuncPattExt
 >             _ -> errorAt p (ambiguousData op)
 > checkConstrTerm withExt k p m env (ParenPattern t) =
 >   liftM ParenPattern (checkConstrTerm withExt k p m env t)
@@ -579,10 +580,10 @@ top-level.
 > checkConstrTerm withExt k p m env (LazyPattern t) =
 >   liftM LazyPattern (checkConstrTerm withExt k p m env t)
 > checkConstrTerm withExt k p m env (RecordPattern fs t)
->   | not withExt = errorAt p recordExt
+>   | not withExt = errorAt p noRecordExt
 >   | not (null fs) =
 >     let (Field p' label patt) = head fs
->     in  case (qualLookupVar (qualifyWith m label) env) of
+>     in  case (lookupVar label env) of
 >           [] -> errorAt p' (undefinedLabel label)
 >           [RecordLabel r ls]
 >             | not (null duplicates) ->
@@ -607,7 +608,7 @@ top-level.
 > checkFieldPatt :: Bool -> Int -> ModuleIdent -> QualIdent -> RenameEnv
 >	            -> Field ConstrTerm -> RenameState (Field ConstrTerm)
 > checkFieldPatt withExt k m r env (Field p l t)
->    = case (qualLookupVar (qualifyWith m l) env) of
+>    = case (lookupVar l env) of
 >        [] -> errorAt p (undefinedLabel l)
 >        [RecordLabel r' _]
 >          | r == r' -> do t' <- checkConstrTerm withExt k p m env t
@@ -726,10 +727,10 @@ top-level.
 >     alts' <- mapM (checkAlt withExt m env) alts
 >     return (Case e' alts')
 > checkExpr withExt p m env (RecordConstr fs)
->   | not withExt = errorAt p recordExt
->   | not (null fs) =
+>   | not withExt = errorAt p noRecordExt
+>   | not (null fs) = 
 >     let (Field p' label expr) = head fs
->     in  case (qualLookupVar (qualifyWith m label) env) of
+>     in  case (lookupVar label env) of
 >           [] -> errorAt p' (undefinedLabel label)
 >	    [RecordLabel r ls]
 >              | not (null duplicates) ->
@@ -746,9 +747,9 @@ top-level.
 >	    _ -> errorAt p' (duplicateDefinition label)
 >   | otherwise = errorAt p emptyRecord
 > checkExpr withExt p m env (RecordSelection e l)
->   | not withExt = errorAt p recordExt
+>   | not withExt = errorAt p noRecordExt
 >   | otherwise =
->     case (qualLookupVar (qualifyWith m l) env) of
+>     case (lookupVar l env) of
 >       [] -> errorAt p (undefinedLabel l)
 >       [RecordLabel r ls] ->
 >         do e' <- checkExpr withExt p m env e
@@ -756,10 +757,10 @@ top-level.
 >       [_] -> errorAt p (notALabel l)
 >       _ -> errorAt p (duplicateDefinition l)
 > checkExpr withExt p m env (RecordUpdate fs e)
->   | not withExt = errorAt p recordExt
+>   | not withExt = errorAt p noRecordExt
 >   | not (null fs) =
 >     let (Field p' label expr) = head fs
->     in  case (qualLookupVar (qualifyWith m label) env) of
+>     in  case (lookupVar label env) of
 >           [] -> errorAt p' (undefinedLabel label)
 >	    [RecordLabel r ls]
 >             | not (null duplicates) ->
@@ -799,7 +800,7 @@ top-level.
 > checkFieldExpr :: Bool -> ModuleIdent -> QualIdent -> RenameEnv 
 >	            -> Field Expression -> RenameState (Field Expression)
 > checkFieldExpr withExt m r env (Field p l e)
->    = case (qualLookupVar (qualifyWith m l) env) of
+>    = case (lookupVar l env) of
 >        [] -> errorAt p (undefinedLabel l)
 >        [RecordLabel r' _]
 >          | r == r' -> do e' <- checkExpr withExt p m env e
@@ -1070,14 +1071,14 @@ Error messages.
 >   "Last statement in a do expression must be an expression"
 
 > illegalRecordPatt :: String
-> illegalRecordPatt = "Record patterns can only be extended by `_` after `|`"
+> illegalRecordPatt = "Expexting `_` after `|` in the record pattern"
 
-> funcPattExt :: String
-> funcPattExt = "function patterns are not supported in standard curry"
+> noFuncPattExt :: String
+> noFuncPattExt = "function patterns are not supported in standard curry"
 >	        ++ extMessage
 
-> recordExt :: String
-> recordExt = "records are not supported in standard curry"
+> noRecordExt :: String
+> noRecordExt = "records are not supported in standard curry"
 >             ++ extMessage
 
 > extMessage :: String

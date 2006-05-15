@@ -180,7 +180,8 @@ genFlatIO paths fn (Result msgs mod)
 	              = transModule True False False mEnv tyEnv tcEnv aEnv mod'
 	           il' = completeCase mEnv il
 	           cEnv = curryEnv mEnv tcEnv intf mod'
-	           (prog,msgs'') = genFlatCurry (opts paths) cEnv mEnv aEnv' il'
+	           (prog,msgs'') = genFlatCurry (opts paths) cEnv mEnv 
+	                                        tyEnv tcEnv aEnv' il'
                return (Result (msgs'' ++ msgs ++ msgs') prog)
 	   )
 	   else return (Failure (msgs ++ map (message_ Error) errs))

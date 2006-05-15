@@ -198,11 +198,11 @@ have been properly renamed and all type synonyms are already expanded.
 > bindLabels m tcEnv tyEnv =
 >   foldr (bindFieldLabels . snd) tyEnv (localBindings tcEnv)
 >   where bindFieldLabels (AliasType r _ (TypeRecord fs _)) tyEnv =
->           foldr (bindField m r) tyEnv fs
+>           foldr (bindField r) tyEnv fs
 >	  bindFieldLabels _ tyEnv = tyEnv
 >	  
->         bindField m r (l,ty) tyEnv =
->           bindLabel m l (unqualify r) (monoType ty) tyEnv 
+>         bindField r (l,ty) tyEnv =
+>           bindLabel l r (polyType ty) tyEnv 
 
 \end{verbatim}
 \paragraph{Type Signatures}
@@ -638,12 +638,13 @@ because of possibly multiple occurrences of variables.
 >     lty <- maybe (freshTypeVar
 >	             >>= (\lty' ->
 >		           updateSt_
->		             (bindLabel m l (mkIdent "#Rec") (polyType lty'))
+>		             (bindLabel l (qualifyWith m (mkIdent "#Rec"))
+>		                        (polyType lty'))
 >		           >> return lty'))
 >	           (\ (ForAll _ lty') -> return lty')
 >	           (sureLabelType l tyEnv)
 >     ty <- tcPatt p t
->     unify p "record field" (text "Field:" <+> ppFieldPatt f) m lty ty
+>     unify p "record" (text "Field:" <+> ppFieldPatt f) m lty ty
 >     return (l,ty)
 
 > tcRhs :: ModuleIdent -> TCEnv -> ValueEnv -> SigEnv -> Rhs -> TcState Type
@@ -863,7 +864,8 @@ because of possibly multiple occurrences of variables.
 >     lty <- maybe (freshTypeVar 
 >	             >>= (\lty' -> 
 >		           updateSt_ 
->		             (bindLabel m l (mkIdent "#Rec") (monoType lty'))
+>		             (bindLabel l (qualifyWith m (mkIdent "#Rec"))
+>		                        (monoType lty'))
 >	                   >> return lty'))
 >                  (\ (ForAll _ lty') -> return lty')
 >	           (sureLabelType l tyEnv)
@@ -915,16 +917,16 @@ because of possibly multiple occurrences of variables.
 > tcFieldExpr m tcEnv sigs comb f@(Field p l e) =
 >   do
 >     tyEnv <- fetchSt
->     --lty <- inst (labelType l tyEnv)
 >     lty <- maybe (freshTypeVar 
 >	             >>= (\lty' -> 
 >		           updateSt_ 
->		             (bindLabel m l (mkIdent "#Rec") (monoType lty'))
+>		             (bindLabel l (qualifyWith m (mkIdent "#Rec"))
+>		                          (monoType lty'))
 >	                   >> return lty'))
->                  (\ (ForAll _ lty') -> return lty')
+>                  inst -- (\ (ForAll _ lty') -> return lty')
 >	           (sureLabelType l tyEnv)
 >     ty <- tcExpr m tcEnv sigs p e
->     unify p "record field" (text "Field:" <+> ppFieldExpr comb f) m lty ty
+>     unify p "record" (text "Field:" <+> ppFieldExpr comb f) m lty ty
 >     return (l,ty)
 
 \end{verbatim}

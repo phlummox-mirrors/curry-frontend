@@ -87,9 +87,14 @@ variables.
 
 \end{verbatim}
 The desugaring phase keeps only the type, function, and value
-declarations of the module. As type declarations are not desugared and
-cannot occur in local declaration groups they are filtered out
-separately.
+declarations of the module. In the current version record declarations
+are transformed into data types. The remaining type declarations are
+not desugared and cannot occur in local declaration groups.
+They are filtered out separately.
+
+In order to use records within other modules, the export specification
+of the module has to be extended with the selector and update functions of
+all exported labels.
 
 Actually, the transformation is slightly more general than necessary
 as it allows value declarations at the top-level of a module.
@@ -317,7 +322,7 @@ with a local declaration for $v$.
 >   | null fs = internalError "desugarTerm: empty record"
 >   | otherwise =
 >     do tyEnv <- fetchSt 
->	 case (qualLookupValue (qualifyWith m (fieldLabel (head fs))) tyEnv) of
+>	 case (lookupValue (fieldLabel (head fs)) tyEnv) of
 >          [Label _ r _] -> 
 >            desugarRecordPattern m tcEnv p ds (map field2Tuple fs) r
 >          _ -> internalError "desugarTerm: no label"
@@ -477,24 +482,24 @@ type \texttt{Bool} of the guard because the guard's type defaults to
 > desugarExpr m tcEnv p (RecordConstr fs)
 >   | null fs = internalError "desugarExpr: empty record construction"
 >   | otherwise =
->       do let l = qualifyWith m (fieldLabel (head fs))
+>       do let l = fieldLabel (head fs)
 >	       fs' = map field2Tuple fs
 >          tyEnv <- fetchSt
->	   case (qualLookupValue l tyEnv) of
->            [Label _ r _] -> desugarRecordConstr m tcEnv p r fs'
+>	   case (lookupValue l tyEnv) of
+>            [Label l' r _] -> desugarRecordConstr m tcEnv p r fs'
 >            _  -> internalError "desugarExpr: illegal record construction"
 > desugarExpr m tcEnv p (RecordSelection e l) =
 >   do tyEnv <- fetchSt
->      case (qualLookupValue (qualifyWith m l) tyEnv) of
+>      case (lookupValue l tyEnv) of
 >        [Label _ r _] -> desugarRecordSelection m tcEnv p r l e
 >        _ -> internalError "desugarExpr: illegal record selection"
 > desugarExpr m tcEnv p (RecordUpdate fs rexpr)
 >   | null fs = internalError "desugarExpr: empty record update"
 >   | otherwise =
->       do let l = qualifyWith m (fieldLabel (head fs))
+>       do let l = fieldLabel (head fs)
 >	       fs' = map field2Tuple fs
 >          tyEnv <- fetchSt
->	   case (qualLookupValue l tyEnv) of
+>	   case (lookupValue l tyEnv) of
 >            [Label _ r _] -> desugarRecordUpdate m tcEnv p r rexpr fs'
 >            _  -> internalError "desugarExpr: illegal record update"
 
@@ -554,7 +559,9 @@ have to be desugared as well. This part transforms the following extensions:
 > desugarRecordDecl m tcEnv (TypeDecl p r vs (RecordType fss _)) =
 >   case (qualLookupTC r' tcEnv) of
 >     [AliasType _ n (TypeRecord fs' _)] ->
->       do let tys = concatMap (\ (ls,ty) -> replicate (length ls) ty) fss
+>       do tyEnv <- fetchSt
+>	   let tys = concatMap (\ (ls,ty) -> replicate (length ls) ty) fss
+>	       --tys' = map (elimRecordTypes tyEnv) tys
 >	       rdecl = DataDecl p r vs [ConstrDecl p [] r tys]
 >	       rty' = TypeConstructor r' (map TypeVariable [0 .. n-1])
 >              rcts' = ForAllExist 0 n (foldr TypeArrow rty' (map snd fs'))
@@ -564,37 +571,6 @@ have to be desugared as well. This part transforms the following extensions:
 >     _ -> internalError "desugarRecordDecl: no record"
 >   where r' = qualifyWith m r
 > desugarRecordDecl _ _ decl = return [decl]
-
-> {-
-> desugarRecordType :: ModuleIdent -> ValueEnv -> TCEnv -> Type -> Type
-> desugarRecordType m tyEnv tcEnv (TypeConstructor t tys) =
->   TypeConstructor t (map (desugarRecordType m tyEnv tcEnv) tys)
-> desugarRecordType m tyEnv tcEnv (TypeConstrained tys v) =
->   TypeConstrained (map (desugarRecordType m tyEnv tcEnv) tys) v
-> desugarRecordType m tyEnv tcEnv (TypeArrow t1 t2) =
->   TypeArrow (desugarRecordType m tyEnv tcEnv t1) 
->	      (desugarRecordType m tyEnv tcEnv t2)
-> desugarRecordType m tyEnv tcEnv (TypeRecord fs _)
->   | True = error (show fs)
->   | null fs   = internalError "desugarRecordType: empty record"
->   | otherwise = 
->     case (qualLookupValue (qualifyWith m (fst (head fs))) tyEnv) of
->	[Label _ r _] -> 
->         case (qualLookupTC r tcEnv) of
->	    [AliasType _ n (TypeRecord fs' _)] ->
->	      let is = [0 .. n-1]
->                 vs = foldl (matchTypeVars fs)
->			     zeroFM
->			     fs'
->		  tys = map (\i -> fromMaybe (TypeVariable i)
->		                             (lookupFM i vs))
->		            is
->	      in  TypeConstructor r tys
->             --TypeConstructor r (map TypeVariable [0 .. n-1])
->           _ -> internalError "desugarRecordType: no record"
->	_ -> internalError "desugarRecordType: no label"
-> desugarRecordType m tyEnv tcEnv ty = ty
-> -}
 
 > desugarRecordPattern :: ModuleIdent -> TCEnv -> Position -> [Decl]
 >		       -> [(Ident,ConstrTerm)] -> QualIdent
@@ -622,7 +598,7 @@ have to be desugared as well. This part transforms the following extensions:
 > desugarRecordSelection :: ModuleIdent -> TCEnv -> Position -> QualIdent 
 >		         -> Ident -> Expression -> DesugarState Expression
 > desugarRecordSelection m tcEnv p r l e =
->   desugarExpr m tcEnv p (Apply (Variable (genQualSelectorId m r l)) e)
+>   desugarExpr m tcEnv p (Apply (Variable (qualRecSelectorId m r l)) e)
 
 > desugarRecordUpdate :: ModuleIdent -> TCEnv -> Position -> QualIdent
 >	              -> Expression -> [(Ident,Expression)] 
@@ -631,7 +607,7 @@ have to be desugared as well. This part transforms the following extensions:
 >   desugarExpr m tcEnv p (foldl (genRecordUpdate m r) rexpr fs)
 >   where
 >   genRecordUpdate m r rexpr (l,e) =
->     Apply (Apply (Variable (genQualUpdateId m r l)) rexpr) e
+>     Apply (Apply (Variable (qualRecUpdateId m r l)) rexpr) e
 
 > elimFunctionPattern :: ModuleIdent -> Position -> [ConstrTerm]
 >		         -> DesugarState ([ConstrTerm], [(Ident,ConstrTerm)])
@@ -742,22 +718,22 @@ have to be desugared as well. This part transforms the following extensions:
 > genSelectorFunc :: ModuleIdent -> Position -> QualIdent -> [Ident] -> Ident
 >	          -> (Ident, Decl)
 > genSelectorFunc m p r ls l =
->   let selId = genSelectorId r l
+>   let selId = recSelectorId r l
 >       cpatt = ConstructorPattern r (map VariablePattern ls)
 >	selLhs = FunLhs selId [cpatt]
->	selRhs = SimpleRhs p (Variable (qualify l)) []  -- oder "qualifyWith"?
+>	selRhs = SimpleRhs p (Variable (qualify l)) []
 >   in  (selId, FunctionDecl p selId [Equation p selLhs selRhs])
 
 > genUpdateFunc :: ModuleIdent -> Position -> QualIdent -> [Ident] -> Ident
 >	        -> (Ident, Decl)
 > genUpdateFunc m p r ls l =
->   let updId = genUpdateId r l
+>   let updId = recUpdateId r l
 >	ls' = replaceIdent l anonId ls
 >	cpatt1 = ConstructorPattern r (map VariablePattern ls')
 >       cpatt2 = VariablePattern l
 >	cexpr = foldl Apply 
 >	              (Constructor r)
->	              (map (Variable . qualify) ls)  -- oder "qualifyWith"?
+>	              (map (Variable . qualify) ls) 
 >	updLhs = FunLhs updId [cpatt1, cpatt2]
 >	updRhs = SimpleRhs p cexpr []
 >   in  (updId, FunctionDecl p updId [Equation p updLhs updRhs])
@@ -767,20 +743,6 @@ have to be desugared as well. This part transforms the following extensions:
 > replaceIdent what with (id:ids)
 >   | what == id = with:ids
 >   | otherwise  = id:(replaceIdent what with ids)
-
-> genSelectorId :: QualIdent -> Ident -> Ident
-> genSelectorId r l =
->   mkIdent ("sel@" ++ name (unqualify r) ++ "." ++ name l)
-
-> genQualSelectorId :: ModuleIdent -> QualIdent -> Ident -> QualIdent
-> genQualSelectorId m r l = qualifyWith m (genSelectorId r l)
-
-> genUpdateId :: QualIdent -> Ident -> Ident
-> genUpdateId r l = 
->   mkIdent ("upd@" ++ name (unqualify r) ++ "." ++ name l)
-
-> genQualUpdateId :: ModuleIdent -> QualIdent -> Ident -> QualIdent
-> genQualUpdateId m r l = qualifyWith m (genUpdateId r l)
 
 \end{verbatim}
 In general, a list comprehension of the form

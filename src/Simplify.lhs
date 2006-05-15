@@ -370,11 +370,11 @@ selector functions.
 >     _
 >       | flat ->
 >           do
->             fs <- mapM (freshIdent m selectorId . flatSelectorType ty) tys
+>             fs <- mapM (freshIdent m fpSelectorId . flatSelectorType ty) tys
 >             return (zipWith (flatProjectionDecl p t e) fs vs)
 >       | otherwise ->
 >           do
->             fs <- mapM (freshIdent m selectorId . selectorType ty)
+>             fs <- mapM (freshIdent m fpSelectorId . selectorType ty)
 >                        (shuffle tys)
 >             return (zipWith (projectionDecl p t e) fs (shuffle vs))
 >       where vs = filter (`elem` fvs) (bv t)

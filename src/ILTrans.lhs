@@ -172,7 +172,7 @@ the later are replaced by fresh type constructors.
 > elimRecordTypes m tyEnv tcEnv n (TypeRecord fs _)
 >   | null fs = internalError "elimRecordType: empty record type"
 >   | otherwise =
->     case (qualLookupValue (qualifyWith m (fst (head fs))) tyEnv) of
+>     case (lookupValue (fst (head fs)) tyEnv) of
 >       [Label _ r _] ->
 >         case (qualLookupTC r tcEnv) of
 >           [AliasType _ n' (TypeRecord fs' _)] ->
@@ -251,7 +251,7 @@ uses flexible matching.
 >         -- ty' = elimRecordType m tyEnv tcEnv (maximum (0:(typeVars ty))) ty
 >         ev' = lookupEval f evEnv
 >         ev  = maybe (defaultMode ty) evalMode ev'
->         vs  = if not flat && isSelectorId f then translArgs eqs vs' else vs'
+>         vs  = if not flat && isFpSelectorId f then translArgs eqs vs' else vs'
 >         (vs',vs'') = splitAt (equationArity (head eqs)) 
 >                              (argNames (mkIdent ""))
 >         expr | isJust ev' && (fromJust ev') == EvalChoice

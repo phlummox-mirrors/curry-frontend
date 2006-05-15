@@ -664,7 +664,7 @@ prefix of a let expression.
 > varId = ident
 > funId = ident
 > conId = ident
-> labId = ident
+> labId = renameLabel <$> ident
 
 > funSym, conSym :: Parser Token Ident a
 > funSym = sym

@@ -33,13 +33,20 @@ unqualified identifier.}
 >              emptyMIdent,mainMIdent,preludeMIdent,
 >              anonId,unitId,boolId,charId,intId,floatId,listId,ioId,
 >              successId,trueId,falseId,nilId,consId,mainId,
->              tupleId,isTupleId,tupleArity,selectorId,isSelectorId,
+>              tupleId,isTupleId,tupleArity,
 >              minusId,fminusId,
 >              qUnitId,qBoolId,qCharId,qIntId,qFloatId,qListId,qIOId,
 >              qSuccessId,qTrueId,qFalseId,qNilId,qConsId,
->              qTupleId,isQTupleId,qTupleArity,isQSelectorId) where
+>              qTupleId,isQTupleId,qTupleArity,
+>              fpSelectorId,isFpSelectorId,isQualFpSelectorId,
+>              recSelectorId,qualRecSelectorId,
+>              recUpdateId, qualRecUpdateId, recordExtId, labelExtId,
+>              isRecordExtId, isLabelExtId, fromRecordExtId, fromLabelExtId,
+>              renameLabel, isLabel, fpSelExt, recSelExt, recUpdExt,
+>              recordExt, labelExt) where
 > import Char
 > import List
+> import Maybe
 
 > data Ident = Ident String Int deriving (Eq,Ord)
 > data QualIdent = UnqualIdent Ident | QualIdent ModuleIdent Ident
@@ -177,12 +184,6 @@ A few identifiers a predefined here.
 >   | otherwise = error "internal error: tupleArity"
 >   where n = length (name x) - 1
 
-> selectorId :: Int -> Ident
-> selectorId n = Ident ("_#sel" ++ show n) 0
-
-> isSelectorId :: Ident -> Bool
-> isSelectorId x = any ("_#sel" `isPrefixOf`) (tails (name x))
-
 > mainId, minusId, fminusId :: Ident
 > mainId = Ident "main" 0
 > minusId = Ident "-" 0
@@ -215,7 +216,70 @@ A few identifiers a predefined here.
 > qTupleArity :: QualIdent -> Int
 > qTupleArity = tupleArity . unqualify
 
-> isQSelectorId :: QualIdent -> Bool
-> isQSelectorId = isSelectorId . unqualify
+\end{verbatim}
+Micellaneous function for generating and testing extended identifiers.
+\begin{verbatim}
+
+> fpSelectorId :: Int -> Ident
+> fpSelectorId n = Ident (fpSelExt ++ show n) 0
+
+> isFpSelectorId :: Ident -> Bool
+> isFpSelectorId f = any (fpSelExt `isPrefixOf`) (tails (name f))
+
+> isQualFpSelectorId :: QualIdent -> Bool
+> isQualFpSelectorId = isFpSelectorId . unqualify
+
+> recSelectorId :: QualIdent -> Ident -> Ident
+> recSelectorId r l =
+>   mkIdent (recSelExt ++ name (unqualify r) ++ "." ++ name l)
+
+> qualRecSelectorId :: ModuleIdent -> QualIdent -> Ident -> QualIdent
+> qualRecSelectorId m r l = qualifyWith m' (recSelectorId r l)
+>   where m' = (fromMaybe m (fst (splitQualIdent r)))
+
+> recUpdateId :: QualIdent -> Ident -> Ident
+> recUpdateId r l = 
+>   mkIdent (recUpdExt ++ name (unqualify r) ++ "." ++ name l)
+
+> qualRecUpdateId :: ModuleIdent -> QualIdent -> Ident -> QualIdent
+> qualRecUpdateId m r l = qualifyWith m' (recUpdateId r l)
+>   where m' = (fromMaybe m (fst (splitQualIdent r)))
+
+> recordExtId :: Ident -> Ident
+> recordExtId r = mkIdent (recordExt ++ name r)
+
+> labelExtId :: Ident -> Ident
+> labelExtId l = mkIdent (labelExt ++ name l)
+
+> fromRecordExtId :: Ident -> Ident
+> fromRecordExtId r 
+>   | p == recordExt = mkIdent r'
+>   | otherwise = r
+>  where (p,r') = splitAt (length recordExt) (name r)
+
+> fromLabelExtId :: Ident -> Ident
+> fromLabelExtId l 
+>   | p == labelExt = mkIdent l'
+>   | otherwise = l
+>  where (p,l') = splitAt (length labelExt) (name l)
+
+> isRecordExtId :: Ident -> Bool
+> isRecordExtId r = recordExt `isPrefixOf` name r
+
+> isLabelExtId :: Ident -> Bool
+> isLabelExtId l = labelExt `isPrefixOf` name l
+
+> renameLabel :: Ident -> Ident
+> renameLabel l = renameIdent l (-1)
+
+> isLabel :: Ident -> Bool
+> isLabel l = uniqueId l == (-1)
+
+
+> fpSelExt = "_#selFP"
+> recSelExt = "_#selR@"
+> recUpdExt = "_#updR@"
+> recordExt = "_#Rec:"
+> labelExt = "_#Lab:"
 
 \end{verbatim}

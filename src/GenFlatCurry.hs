@@ -12,7 +12,8 @@ module GenFlatCurry (genFlatCurry,
 
 
 import Base (ArityEnv, ArityInfo(..), ModuleEnv, PEnv, PrecInfo(..), 
-	     OpPrec(..), qualLookupArity, lookupArity,  internalError)
+	     OpPrec(..), TCEnv, TypeInfo(..), ValueEnv, ValueInfo(..),
+	     qualLookupArity, lookupArity,  internalError)
 
 import FlatCurry
 import qualified IL
@@ -38,17 +39,17 @@ import Maybe
 -------------------------------------------------------------------------------
 
 -- transforms intermediate language code (IL) to FlatCurry code
-genFlatCurry :: Options -> CurryEnv -> ModuleEnv -> ArityEnv -> IL.Module 
-	        -> (Prog, [Message])
-genFlatCurry opts cEnv mEnv aEnv mod
+genFlatCurry :: Options -> CurryEnv -> ModuleEnv -> ValueEnv -> TCEnv 
+		-> ArityEnv -> IL.Module -> (Prog, [Message])
+genFlatCurry opts cEnv mEnv tyEnv tcEnv aEnv mod
    = (patchPreludeFCY prog, messages)
  where (prog, messages) = run opts cEnv mEnv aEnv False (visitModule mod)
 
 
 -- transforms intermediate language code (IL) to FlatCurry interfaces
-genFlatInterface :: Options -> CurryEnv -> ModuleEnv -> ArityEnv -> IL.Module
-		    -> (Prog, [Message])
-genFlatInterface opts cEnv mEnv aEnv mod
+genFlatInterface :: Options -> CurryEnv -> ModuleEnv -> ValueEnv -> TCEnv
+		 -> ArityEnv -> IL.Module -> (Prog, [Message])
+genFlatInterface opts cEnv mEnv tyEnv tcEnv aEnv mod
    = (patchPreludeFCY intf, messages)
  where (intf, messages) = run opts cEnv mEnv aEnv True (visitModule mod)
 
@@ -60,19 +61,21 @@ genFlatInterface opts cEnv mEnv aEnv mod
 visitModule :: IL.Module -> FlatState Prog
 visitModule (IL.Module mid imps decls)
    = whenFlatCurry
-       (do ops   <- genOpDecls
-           datas <- mapM visitDataDecl (filter isDataDecl decls)
-	   types <- genTypeSynonyms
-	   funcs <- mapM visitFuncDecl (filter isFuncDecl decls)
-	   mod   <- visitModuleIdent mid
+       (do ops     <- genOpDecls
+           datas   <- mapM visitDataDecl (filter isDataDecl decls)
+	   types   <- genTypeSynonyms
+	   records <- genRecordTypes
+	   funcs   <- mapM visitFuncDecl (filter isFuncDecl decls)
+	   mod     <- visitModuleIdent mid
 	   imps'   <- imports
 	   is      <- mapM visitModuleIdent 
 	                   (map (\ (CS.IImportDecl _ mid) -> mid) imps')
-           return (Prog mod is (types ++ datas) funcs ops))
+           return (Prog mod is (records ++ types ++ datas) funcs ops))
        (do ops     <- genOpDecls
 	   ds      <- filterM isPublicDataDecl decls
 	   datas   <- mapM visitDataDecl ds
 	   types   <- genTypeSynonyms
+	   records <- genRecordTypes
 	   fs      <- filterM isPublicFuncDecl decls
 	   funcs   <- mapM visitFuncDecl fs
 	   expimps <- getExportedImports
@@ -85,7 +88,7 @@ visitModule (IL.Module mid imps decls)
 	                   (map (\ (CS.IImportDecl _ mid) -> mid) imps')
 	   return (Prog mod 
 		        is 
-		        (itypes ++ types ++ datas)
+		        (itypes ++ records ++ types ++ datas)
 		        (ifuncs ++ funcs)
 		        (iops ++ ops)))
 
@@ -522,7 +525,7 @@ genOpDecl _ = internalError "GenFlatCurry: no infix interface"
 
 --
 genTypeSynonyms ::  FlatState [TypeDecl]
-genTypeSynonyms = typeSynonyms >>= (\ts -> mapM genTypeSynonym ts)
+genTypeSynonyms = typeSynonyms >>= mapM genTypeSynonym
 
 --
 genTypeSynonym :: CS.IDecl -> FlatState TypeDecl
@@ -533,6 +536,34 @@ genTypeSynonym (CS.ITypeDecl _ qident params typeexpr)
 	vis   <- getVisibility qident
 	return (TypeSyn qname vis is texpr)
 genTypeSynonym _ = internalError "GenFlatCurry: no type synonym interface"
+
+
+-- In order to provide interfaces for record declarations, 'genRecordTypes'
+-- generates dummy data declarations representing records and together
+-- with their typed labels.
+-- Note: These dummies should occur in the FlatCurry interface as well as
+-- in the corresponding FlatCurry program.
+genRecordTypes :: FlatState [TypeDecl]
+genRecordTypes = records >>= mapM genRecordType
+
+--
+genRecordType :: CS.IDecl -> FlatState TypeDecl
+genRecordType (CS.ITypeDecl _ qident params (CS.RecordType fields _))
+   = do let is = [0 .. (length params) - 1]
+	    (mod,ident) = splitQualIdent qident
+	qname <- visitQualIdent ((maybe qualify qualifyWith mod) 
+				 (recordExtId ident))
+	labels <- mapM (genRecordLabel mod (zip params is)) fields
+	return (Type qname Public is labels)
+
+--
+genRecordLabel :: Maybe ModuleIdent -> [(Ident,Int)] -> ([Ident],CS.TypeExpr) 
+	       -> FlatState ConsDecl
+genRecordLabel mod vis ([ident],typeexpr)
+   = do texpr <- visitType (fst (cs2ilType vis typeexpr))
+	qname <- visitQualIdent ((maybe qualify qualifyWith mod) 
+				 (labelExtId ident))
+	return (Cons qname 1 Public [texpr])
 
 
 -------------------------------------------------------------------------------
@@ -708,6 +739,11 @@ isTypeIDecl (CS.ITypeDecl _ _ _ _) = True
 isTypeIDecl _                      = False
 
 --
+isRecordIDecl :: CS.IDecl -> Bool
+isRecordIDecl (CS.ITypeDecl _ _ _ (CS.RecordType _ _)) = True
+isRecordIDecl _                                        = False
+
+--
 isFuncIDecl :: CS.IDecl -> Bool
 isFuncIDecl (CS.IFunctionDecl _ _ _ _) = True
 isFuncIDecl _                          = False
@@ -751,6 +787,7 @@ data FlatEnv a = FlatEnv{ moduleIdE     :: ModuleIdent,
 			  typeSynonymsE :: [CS.IDecl],
 			  importsE      :: [CS.IDecl],
 			  exportsE      :: [CS.Export],
+			  interfaceE    :: [CS.IDecl],
 			  varIndexE     :: Int,
 			  varIdsE       :: ScopeEnv Ident Int,
 			  tvarIndexE    :: Int,
@@ -797,6 +834,7 @@ run opts cEnv mEnv aEnv genIntf (FlatState f)
 		   typeSynonymsE = CurryEnv.typeSynonyms cEnv,
 		   importsE      = CurryEnv.imports cEnv,
 		   exportsE      = CurryEnv.exports cEnv,
+		   interfaceE    = CurryEnv.interface cEnv,
 		   varIndexE     = 0,
 		   varIdsE       = ScopeEnv.new,
 		   tvarIndexE    = 0,
@@ -830,6 +868,12 @@ exports = FlatState (\env -> env{ result = exportsE env })
 --
 imports :: FlatState [CS.IDecl]
 imports = FlatState (\env -> env{ result = importsE env })
+
+--
+records:: FlatState [CS.IDecl]
+records 
+   = FlatState 
+       (\env -> env{ result = filter isRecordIDecl (interfaceE env) })
 
 --
 fixities :: FlatState [CS.IDecl]
@@ -967,6 +1011,9 @@ whenFlatCurry genFlat genIntf
 -------------------------------------------------------------------------------
 
 -- Generates an evironment containing all public identifiers from the module
+-- Note: Currently the record functions (selection and update) for all public 
+-- record labels are inserted into the environment, though they are not
+-- explicitly declared in the export specifications.
 genPubEnv :: ModuleIdent -> [CS.IDecl] -> Env Ident Bool
 genPubEnv mid idecls = foldl (bindEnvIDecl mid) emptyEnv idecls
 
@@ -982,11 +1029,19 @@ bindEnvIDecl mid env (CS.INewtypeDecl _ qid _ ncdecl)
    = maybe env 
            (\id -> bindEnvNewConstrDecl (bindEnv id True env) ncdecl)
 	   (localIdent mid qid)
-bindEnvIDecl mid env (CS.ITypeDecl _ qid _ _)
-   = maybe env (\id -> bindEnv id True env) (localIdent mid qid)
+bindEnvIDecl mid env (CS.ITypeDecl _ qid _ texpr)
+   = maybe env (\id -> bindEnvITypeDecl env id texpr) (localIdent mid qid)
 bindEnvIDecl mid env (CS.IFunctionDecl _ qid _ _)
    = maybe env (\id -> bindEnv id True env) (localIdent mid qid)
 bindEnvIDecl _ env _ = env
+
+--
+bindEnvITypeDecl :: Env Ident Bool -> Ident -> CS.TypeExpr
+		    -> Env Ident Bool
+bindEnvITypeDecl env id (CS.RecordType fs _)
+   = bindEnv id True (foldl (bindEnvRecordLabel id) env fs)
+bindEnvITypeDecl env id texpr
+   = bindEnv id True env
 
 --
 bindEnvConstrDecl :: Env Ident Bool -> CS.ConstrDecl -> Env Ident Bool
@@ -996,6 +1051,14 @@ bindEnvConstrDecl env (CS.ConOpDecl _ _ _ id _) = bindEnv id True env
 --
 bindEnvNewConstrDecl :: Env Ident Bool -> CS.NewConstrDecl -> Env Ident Bool
 bindEnvNewConstrDecl env (CS.NewConstrDecl _ _ id _) = bindEnv id True env
+
+--
+bindEnvRecordLabel :: Ident -> Env Ident Bool -> ([Ident],CS.TypeExpr) 
+		   -> Env Ident Bool
+bindEnvRecordLabel rec env ([lab],_)
+   = bindEnv (recSelectorId (qualify rec) lab)
+             True
+	     (bindEnv (recUpdateId (qualify rec) lab) True env)
 
 
 -------------------------------------------------------------------------------

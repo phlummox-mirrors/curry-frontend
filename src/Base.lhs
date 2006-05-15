@@ -172,10 +172,16 @@ for PAKCS.
 >
 >  genITypeDecl :: TypeDecl -> IDecl
 >  genITypeDecl (Type qn _ is cs)
->     = IDataDecl pos 
->                 (genQualIdent qn) 
->                 (map (genVarIndexIdent "a") is) 
->                 (map (Just . genConstrDecl) cs)
+>     | recordExt `isPrefixOf` snd qn
+>       = ITypeDecl pos
+>                   (genQualIdent qn)
+>	            (map (genVarIndexIdent "a") is)
+>	            (RecordType (map genLabeledType cs) Nothing)
+>     | otherwise
+>       = IDataDecl pos 
+>                   (genQualIdent qn) 
+>                   (map (genVarIndexIdent "a") is) 
+>                   (map (Just . genConstrDecl) cs)
 >  genITypeDecl (TypeSyn qn _ is t)
 >     = ITypeDecl pos
 >                 (genQualIdent qn)
@@ -192,6 +198,10 @@ for PAKCS.
 >  genConstrDecl :: ConsDecl -> ConstrDecl
 >  genConstrDecl (Cons qn _ _ ts)
 >     = ConstrDecl pos [] (mkIdent (snd qn)) (map genTypeExpr ts)
+>
+>  genLabeledType :: FlatCurry.ConsDecl -> ([Ident],CurrySyntax.TypeExpr)
+>  genLabeledType (Cons (q,n) _ _ [t])
+>     = ([renameLabel (fromLabelExtId (mkIdent n))], genTypeExpr t)
 >
 >  genTypeExpr :: FlatCurry.TypeExpr -> CurrySyntax.TypeExpr
 >  genTypeExpr (TVar i)
@@ -222,6 +232,32 @@ for PAKCS.
 
 > lookupModule :: ModuleIdent -> ModuleEnv -> Maybe [IDecl]
 > lookupModule = lookupEnv
+
+\end{verbatim}
+The label environment is used to store information of labels.
+Unlike unsual identifiers like in functions, types etc. identifiers
+of labels are always represented unqualified. Since the common type 
+environment (type \texttt{ValueEnv}) has some problems with handling 
+imported unqualified identifiers, it is necessary to process the type 
+information for labels seperately.
+\begin{verbatim}
+
+> data LabelInfo = LabelType Ident QualIdent Type deriving Show
+
+> type LabelEnv = Env Ident [LabelInfo]
+
+> bindLabelType :: Ident -> QualIdent -> Type -> LabelEnv -> LabelEnv
+> bindLabelType l r ty lEnv =
+>   maybe (bindEnv l [LabelType l r ty] lEnv)
+>         (\ls -> bindEnv l ((LabelType l r ty):ls) lEnv)
+>         (lookupEnv l lEnv)
+
+> lookupLabelType :: Ident -> LabelEnv -> [LabelInfo]
+> lookupLabelType l lEnv = fromMaybe [] (lookupEnv l lEnv)
+
+> initLabelEnv :: LabelEnv
+> initLabelEnv = emptyEnv
+
 
 \end{verbatim}
 \paragraph{Type constructors}
@@ -348,6 +384,13 @@ are considered equal if their original names match.
 >   origName (NewtypeConstructor origName _) = origName
 >   origName (Value origName _) = origName
 >   origName (Label origName _ _) = origName
+>   
+>   merge (Label l r ty) (Label l' r' ty')
+>     | l == l' && r == r' = Just (Label l r ty)
+>     | otherwise = Nothing
+>   merge x y
+>     | origName x == origName y = Just x
+>     | otherwise = Nothing
 
 
 \end{verbatim}
@@ -385,11 +428,9 @@ allow the usage of the qualified list constructor \texttt{(Prelude.:)}.
 >   where f' = qualifyWith m f
 >         v = Value f' ty
 
-> bindLabel :: ModuleIdent -> Ident -> Ident -> TypeScheme -> ValueEnv -> ValueEnv
-> bindLabel m l r ty tyEnv =
->     bindTopEnv "Base.bindLabel" l v (qualBindTopEnv "Base.bindLabel" l' v tyEnv)
->   where l' = qualifyWith m l
->         v  = Label l' (qualifyWith m r) ty
+> bindLabel :: Ident -> QualIdent -> TypeScheme -> ValueEnv -> ValueEnv
+> bindLabel l r ty tyEnv = bindTopEnv "Base.bindLabel" l v tyEnv
+>   where v  = Label (qualify l) r ty
 
 > lookupValue :: Ident -> ValueEnv -> [ValueInfo]
 > lookupValue x tyEnv = lookupTopEnv x tyEnv ++! lookupTuple x

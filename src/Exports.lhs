@@ -50,7 +50,8 @@ to the interface of the module.
 While checking all export specifications, the compiler expands
 specifications of the form \verb|T(..)| into
 \texttt{T($C_1,\dots,C_n$)}, where $C_1,\dots,C_n$ are the data
-constructors of type \texttt{T}, and replaces an export specification
+constructors or the record labels of type \texttt{T}, and replaces 
+an export specification
 \verb|module M| by specifications for all entities which are defined
 in module \texttt{M} and imported into the current module with their
 unqualified name. In order to distinguish exported type constructors
@@ -59,7 +60,7 @@ form \verb|T()|. Note that the export specification \texttt{x} may
 export a type constructor \texttt{x} \emph{and} a global function
 \texttt{x} at the same time.
 
-\em{Note:} This version allows redeclaration and export of imported
+\em{Note:} This frontend allows redeclaration and export of imported
 identifiers.
 \begin{verbatim}
 
@@ -71,9 +72,9 @@ identifiers.
 > expandExport :: Position -> Set ModuleIdent -> ModuleIdent -> TCEnv
 >              -> ValueEnv -> Export -> [Export]
 > expandExport p _ m tcEnv tyEnv (Export x) = expandThing p m tcEnv tyEnv x
-> expandExport p _ _ tcEnv _ (ExportTypeWith tc cs) =
->   [expandTypeWith p tcEnv tc cs]
-> expandExport p _ _ tcEnv _ (ExportTypeAll tc) = [expandTypeAll p tcEnv tc]
+> expandExport p _ m tcEnv _ (ExportTypeWith tc cs) =
+>   expandTypeWith m p tcEnv tc cs
+> expandExport p _ m tcEnv _ (ExportTypeAll tc) = expandTypeAll m p tcEnv tc
 > expandExport p ms m tcEnv tyEnv (ExportModule m')
 >   | m == m' = (if m `elemSet` ms then expandModule tcEnv tyEnv m else [])
 >               ++ expandLocalModule tcEnv tyEnv
@@ -101,25 +102,33 @@ identifiers.
 >             [_] -> fromMaybe (errorAt p (exportDataConstr f)) tcExport
 >             _   -> errorAt p (ambiguousName f)
 
-> expandTypeWith :: Position -> TCEnv -> QualIdent -> [Ident] -> Export
-> expandTypeWith p tcEnv tc cs =
+> expandTypeWith :: ModuleIdent -> Position -> TCEnv -> QualIdent -> [Ident] 
+>	 -> [Export]
+> expandTypeWith m p tcEnv tc cs =
 >   case qualLookupTC tc tcEnv of
 >     [] -> errorAt p (undefinedType tc)
 >     [t]
->       | isDataType t -> ExportTypeWith (origName t)
->                           (map (checkConstr (constrs t)) (nub cs))
+>       | isDataType t -> [ExportTypeWith (origName t)
+>                            (map (checkConstr (constrs t)) (nub cs))]
+>       | isRecordType t -> [ExportTypeWith (origName t)
+>                            (map (checkLabel (labels t)) (nub cs))]
 >       | otherwise -> errorAt p (nonDataType tc)
 >     _ -> errorAt p (ambiguousType tc)
 >   where checkConstr cs c
 >           | c `elem` cs = c
 >           | otherwise = errorAt p (undefinedDataConstr tc c)
+>         checkLabel ls l
+>	    | l' `elem` ls = l'
+>           | otherwise = errorAt p (undefinedLabel tc l)
+>	   where l' = renameLabel l
 
-> expandTypeAll :: Position -> TCEnv -> QualIdent -> Export
-> expandTypeAll p tcEnv tc =
+> expandTypeAll :: ModuleIdent -> Position -> TCEnv -> QualIdent -> [Export]
+> expandTypeAll m p tcEnv tc =
 >   case qualLookupTC tc tcEnv of
 >     [] -> errorAt p (undefinedType tc)
 >     [t]
->       | isDataType t -> exportType t 
+>       | isDataType t -> [exportType t]
+>       | isRecordType t -> exportRecord m t
 >       | otherwise -> errorAt p (nonDataType tc)
 >     _ -> errorAt p (ambiguousType tc)
 
@@ -134,7 +143,11 @@ identifiers.
 >   [Export f | (_,Value f _) <- moduleImports m tyEnv]
 
 > exportType :: TypeInfo -> Export
-> exportType t = ExportTypeWith (origName t) (constrs t)
+> exportType t | isRecordType t = ExportTypeWith (origName t) (labels t)
+>              | otherwise = ExportTypeWith (origName t) (constrs t)
+
+> exportRecord :: ModuleIdent -> TypeInfo -> [Export]
+> exportRecord m t = [ExportTypeWith (origName t) (labels t)]
 
 \end{verbatim}
 The expanded list of exported entities may contain duplicates. These
@@ -206,7 +219,11 @@ exported function.
 >       where tvs = take n' (drop n nameSupply)
 >             ty' = fromQualType m ty
 >     [AliasType tc n ty] ->
->       iTypeDecl ITypeDecl m tc n (fromQualType m ty) : ds
+>       case ty of 
+>	  TypeRecord fs _ ->
+>           let ty' = TypeRecord (filter (\ (l,_) -> elem l cs) fs) Nothing
+>           in  iTypeDecl ITypeDecl m tc n (fromQualType m ty') : ds
+>         _ -> iTypeDecl ITypeDecl m tc n (fromQualType m ty) : ds
 >     _ -> internalError "typeDecl"
 
 > iTypeDecl :: (Position -> QualIdent -> [Ident] -> a -> IDecl)
@@ -233,7 +250,7 @@ exported function.
 >     [Value _ (ForAll _ ty)] ->
 >       IFunctionDecl noPos (qualUnqualify m f) (arrowArity ty) 
 >		  (fromQualType m ty) : ds
->     _ -> internalError "funDecl"
+>     _ -> internalError ("funDecl: " ++ show f)
 > funDecl _ _ (ExportTypeWith _ _) ds = ds
 
 \end{verbatim}
@@ -358,10 +375,18 @@ Auxiliary definitions
 > isDataType (RenamingType _ _ _) = True
 > isDataType (AliasType _ _ _) = False
 
+> isRecordType :: TypeInfo -> Bool
+> isRecordType (AliasType _ _ (TypeRecord _ _)) = True
+> isRecordType _ = False
+
 > constrs :: TypeInfo -> [Ident]
 > constrs (DataType _ _ cs) = [c | Just (Data c _ _) <- cs]
 > constrs (RenamingType _ _ (Data c _ _)) = [c]
 > constrs (AliasType _ _ _) = []
+
+> labels :: TypeInfo -> [Ident]
+> labels (AliasType _ _ (TypeRecord fs _)) = map fst fs
+> labels _ = []
 
 \end{verbatim}
 Error messages
@@ -398,5 +423,9 @@ Error messages
 > undefinedDataConstr :: QualIdent -> Ident -> String
 > undefinedDataConstr tc c =
 >   name c ++ " is not a data constructor of type " ++ qualName tc
+
+> undefinedLabel :: QualIdent -> Ident -> String
+> undefinedLabel r l =
+>   name l ++ " is not a label of the record " ++ qualName r
 
 \end{verbatim}

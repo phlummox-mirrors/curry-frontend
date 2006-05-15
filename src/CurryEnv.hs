@@ -90,8 +90,6 @@ collectIInfixDecls mident (_:decls) = collectIInfixDecls mident decls
 -------------------------------------------------------------------------------
 
 -- Generate interface declarations for all type synonyms in the module.
--- Since records are currently declared as type synonyms, it is necessary
--- to convert them into interface data declarations.
 genTypeSyns :: TCEnv -> Module -> [IDecl]
 genTypeSyns tcEnv (Module mident _ decls)
    = map (genTypeSynDecl mident tcEnv) (filter isTypeSyn decls)
@@ -102,18 +100,6 @@ genTypeSynDecl mid tcEnv (TypeDecl pos ident params texpr)
    = genTypeDecl pos mid ident params tcEnv texpr
 genTypeSynDecl _ _ _ 
    = internalError "@CurryInfo.genTypeSynDecl: illegal declaration"
-
-{--
-genRecordDecl :: Position -> ModuleIdent -> Ident -> [Ident] -> TCEnv
-	      -> [([Ident],TypeExpr)] -> IDecl
-genRecordDecl pos mid ident params tcEnv fields
-   = IDataDecl pos (qualifyWith mid ident) params
-               [Just (ConstrDecl pos [] ident types)]
-   where
-   types = concatMap (\ (ls,ty) 
-		        -> replicate (length ls) (modifyTypeExpr tcEnv ty))
-	             fields
--}
 
 --
 genTypeDecl :: Position -> ModuleIdent -> Ident -> [Ident] -> TCEnv

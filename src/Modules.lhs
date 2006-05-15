@@ -115,8 +115,8 @@ code are obsolete and commented out.
 >         likeFlat = fcy || xml || acy || uacy
 >	  
 >         genCode opts fn mEnv tyEnv tcEnv aEnv intf m il
->	     | fcy       = genFlat opts fn mEnv tcEnv aEnv intf m il
->            | xml       = genFlat opts fn mEnv tcEnv aEnv intf m il
+>	     | fcy       = genFlat opts fn mEnv tyEnv tcEnv aEnv intf m il
+>            | xml       = genFlat opts fn mEnv tyEnv tcEnv aEnv intf m il
 >            | acy       = genAbstract opts fn tyEnv tcEnv m
 >            | otherwise = return defaultResults
 
@@ -148,10 +148,9 @@ code are obsolete and commented out.
 >         iEnv = foldr bindAlias initIEnv impDs
 >         (pEnv,tcEnv,tyEnv,aEnv) = importModules mEnv impDs
 >         msgs = warnCheck m tyEnv impDs topDs
->         -- (impDs,topDs,iEnv,pEnv,tcEnv,tyEnv,aEnv,msgs) = initCheck mEnv mod
 >	  withExt = withExtensions opts
 >         (pEnv',topDs') = precCheck m pEnv 
->		           $ syntaxCheck withExt m iEnv aEnv tyEnv
+>		           $ syntaxCheck withExt m iEnv aEnv tyEnv tcEnv
 >			   $ kindCheck m tcEnv topDs
 >         ds' = impDs ++ qual m tyEnv topDs'
 >         modul = expandInterface (Module m es ds') tcEnv tyEnv
@@ -164,31 +163,24 @@ code are obsolete and commented out.
 > checkModule opts mEnv (Module m es ds) =
 >   do unless (noWarn opts || null msgs)
 >	      (hPutStrLn stderr (unlines (map show msgs)))
->      return (tyEnv'', tcEnv', aEnv'', modul, intf, msgs)
+>      return (tyEnv''', tcEnv', aEnv'', modul, intf, msgs)
 >   where (impDs,topDs) = partition isImportDecl ds
 >         iEnv = foldr bindAlias initIEnv impDs
 >         (pEnv,tcEnv,tyEnv,aEnv) = importModules mEnv impDs
+>         lEnv = importLabels mEnv impDs
+>	  tyEnvL = addImportedLabels m lEnv tyEnv
 >         msgs = warnCheck m tyEnv impDs topDs
->         -- (impDs,topDs,iEnv,pEnv,tcEnv,tyEnv,aEnv,msgs) = initCheck mEnv mod
 >	  withExt = withExtensions opts
 >         (pEnv',topDs') = precCheck m pEnv 
->		           $ syntaxCheck withExt m iEnv aEnv tyEnv
+>		           $ syntaxCheck withExt m iEnv aEnv tyEnvL tcEnv
 >			   $ kindCheck m tcEnv topDs
->         (tcEnv',tyEnv') = typeCheck m tcEnv tyEnv topDs'
+>         (tcEnv',tyEnv') = typeCheck m tcEnv tyEnvL topDs'
 >         ds' = impDs ++ qual m tyEnv' topDs'
 >         modul = expandInterface (Module m es ds') tcEnv' tyEnv'
 >         (pEnv'',tcEnv'',tyEnv'',aEnv'') 
 >            = qualifyEnv mEnv pEnv' tcEnv' tyEnv' aEnv
->         intf = exportInterface modul pEnv'' tcEnv'' tyEnv''
-
-> initCheck :: ModuleEnv -> Module 
->    -> ([Decl],[Decl],ImportEnv,PEnv,TCEnv,ValueEnv,ArityEnv,[Message])
-> initCheck mEnv (Module m es ds) =
->   (impDs,topDs,iEnv,pEnv,tcEnv,tyEnv,aEnv,msgs)
->   where (impDs,topDs) = partition isImportDecl ds
->         iEnv = foldr bindAlias initIEnv impDs
->         (pEnv,tcEnv,tyEnv,aEnv) = importModules mEnv impDs
->         msgs = warnCheck m tyEnv impDs topDs
+>         tyEnv''' = addImportedLabels m lEnv tyEnv''
+>         intf = exportInterface modul pEnv'' tcEnv'' tyEnv'''
 
 > transModule :: Bool -> Bool -> Bool -> ModuleEnv -> ValueEnv -> TCEnv
 >      -> ArityEnv -> Module -> (IL.Module,ArityEnv,[(Dump,Doc)])
@@ -236,9 +228,9 @@ code are obsolete and commented out.
 >         code = (xmlModule cEnv il)
 
 > writeFlat :: Options -> Maybe FilePath -> FilePath -> CurryEnv -> ModuleEnv 
->              -> ArityEnv -> IL.Module -> IO Prog
-> writeFlat opts tfn sfn cEnv mEnv aEnv il
->    = do let (prog,msgs) = genFlatCurry opts cEnv mEnv aEnv il
+>              -> ValueEnv -> TCEnv -> ArityEnv -> IL.Module -> IO Prog
+> writeFlat opts tfn sfn cEnv mEnv tyEnv tcEnv aEnv il
+>    = do let (prog,msgs) = genFlatCurry opts cEnv mEnv tyEnv tcEnv aEnv il
 >         unless (noWarn opts || null msgs)
 >	         (putStrLn (unlines (map show msgs)))
 >	  writeFlatCurry fname prog
@@ -246,9 +238,9 @@ code are obsolete and commented out.
 >   where fname = fromMaybe (rootname sfn ++ flatExt) tfn
 
 > writeFInt :: Options -> Maybe FilePath -> FilePath -> CurryEnv -> ModuleEnv
->              -> ArityEnv -> IL.Module -> IO Prog
-> writeFInt opts tfn sfn cEnv mEnv aEnv il 
->    = do let (intf,msgs) = genFlatInterface opts cEnv mEnv aEnv il
+>              -> ValueEnv -> TCEnv -> ArityEnv -> IL.Module -> IO Prog
+> writeFInt opts tfn sfn cEnv mEnv tyEnv tcEnv aEnv il 
+>    = do let (intf,msgs) = genFlatInterface opts cEnv mEnv tyEnv tcEnv aEnv il
 >         unless (noWarn opts || null msgs)
 >	         (putStrLn (unlines (map show msgs)))
 >	  writeFlatCurry fname intf
@@ -403,6 +395,58 @@ imported modules into scope for the current module.
 
 > initEnvs :: (PEnv,TCEnv,ValueEnv,ArityEnv)
 > initEnvs = (initPEnv,initTCEnv,initDCEnv,initAEnv)
+
+\end{verbatim}
+Unlike unsual identifiers like in functions, types etc. identifiers
+of labels are always represented unqualified within the whole context
+of compilation. Since the common type environment (type \texttt{ValueEnv})
+has some problems with handling imported unqualified identifiers, it is 
+necessary to add the type information for labels seperately. For this reason
+the function \texttt{importLabels} generates an environment containing
+all imported labels and the function \texttt{addImportedLabels} adds this
+content to a type environment.
+\begin{verbatim}
+
+> importLabels :: ModuleEnv -> [Decl] -> LabelEnv
+> importLabels mEnv ds = foldl importLabelTypes initLabelEnv ds
+>   where
+>   importLabelTypes lEnv (ImportDecl p m _ asM is) =
+>     case (lookupModule m mEnv) of
+>       Just ds' -> foldl (importLabelType p (fromMaybe m asM) is) lEnv ds'
+>       Nothing -> internalError "importLabels"
+>   importLabelTypes lEnv _ = lEnv
+>		      
+>   importLabelType p m is lEnv (ITypeDecl _ r _ (RecordType fs _)) =
+>     foldl (insertLabelType p m r' (getImportSpec r' is)) lEnv fs
+>     where r' = qualifyWith m (fromRecordExtId (unqualify r))
+>   importLabelType _ _ _ lEnv _ = lEnv
+>			   
+>   insertLabelType p m r (Just (ImportTypeAll _)) lEnv ([l],ty) =
+>     bindLabelType l r (toType [] ty) lEnv
+>   insertLabelType p m r (Just (ImportTypeWith _ ls)) lEnv ([l],ty)
+>     | l `elem` ls = bindLabelType l r (toType [] ty) lEnv
+>     | otherwise   = lEnv
+>   insertLabelType _ _ _ _ lEnv _ = lEnv
+>			     
+>   getImportSpec r (Just (Importing _ is')) =
+>     find (isImported (unqualify r)) is'
+>   getImportSpec r Nothing = Just (ImportTypeAll (unqualify r))
+>   getImportSpec r _ = Nothing
+>		
+>   isImported r (Import r') = r == r'
+>   isImported r (ImportTypeWith r' _) = r == r'
+>   isImported r (ImportTypeAll r') = r == r'
+
+> addImportedLabels :: ModuleIdent -> LabelEnv -> ValueEnv -> ValueEnv
+> addImportedLabels m lEnv tyEnv = 
+>   foldr addLabelType tyEnv (concatMap snd (envToList lEnv))
+>   where
+>   addLabelType (LabelType l r ty) tyEnv = 
+>     let m' = fromMaybe m (fst (splitQualIdent r))
+>     in  importTopEnv m' l 
+>                      (Label (qualify l) (qualQualify m' r) (polyType ty)) 
+>	               tyEnv
+
 
 \end{verbatim}
 An implicit import of the prelude is added to the declarations of
@@ -579,15 +623,17 @@ on the compiler flag "force") and other modules importing this module won't
 be dependent on it any longer.
 \begin{verbatim}
 
-> genFlat :: Options -> FilePath -> ModuleEnv -> TCEnv -> ArityEnv 
+> genFlat :: Options -> FilePath -> ModuleEnv -> ValueEnv -> TCEnv -> ArityEnv 
 >            -> Interface -> Module -> IL.Module -> IO CompilerResults
-> genFlat opts fname mEnv tcEnv aEnv intf mod il
+> genFlat opts fname mEnv tyEnv tcEnv aEnv intf mod il
 >   | flat opts
->     = do flatProg <- writeFlat opts Nothing fname cEnv mEnv aEnv il
+>     = do flatProg <- writeFlat opts Nothing fname cEnv mEnv 
+>	                         tyEnv tcEnv aEnv il
 >	   let fintName = rootname fname ++ fintExt
 >	   if force opts
 >             then 
->               do writeFInt opts Nothing fname cEnv mEnv aEnv il
+>               do writeFInt opts Nothing fname cEnv mEnv 
+>		             tyEnv tcEnv aEnv il
 >		   return defaultResults
 >	      else 
 >               do mfint <- readFlatInterface fintName
@@ -595,7 +641,8 @@ be dependent on it any longer.
 >		   if mfint == mfint  -- necessary to close the file 'fintName'
 >	              && not (interfaceCheck flatIntf flatProg)
 >		      then 
->	                do writeFInt opts Nothing fname cEnv mEnv aEnv il
+>	                do writeFInt opts Nothing fname cEnv mEnv 
+>			             tyEnv tcEnv aEnv il
 >			   return defaultResults
 >		      else return defaultResults
 >   | flatXml opts
@@ -634,6 +681,7 @@ from the type environment.
 >         isValue (DataConstructor _ _) = False
 >         isValue (NewtypeConstructor _ _) = False
 >         isValue (Value _ _) = True
+>         isValue (Label _ _ _) = False
 
 
 \end{verbatim}
