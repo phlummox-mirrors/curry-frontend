@@ -13,6 +13,7 @@ module GenFlatCurry (genFlatCurry,
 
 import Base (ArityEnv, ArityInfo(..), ModuleEnv, PEnv, PrecInfo(..), 
 	     OpPrec(..), TCEnv, TypeInfo(..), ValueEnv, ValueInfo(..),
+	     lookupValue, qualLookupTC,
 	     qualLookupArity, lookupArity,  internalError)
 
 import FlatCurry
@@ -25,6 +26,7 @@ import qualified CurryEnv
 import ScopeEnv (ScopeEnv)
 import qualified ScopeEnv
 
+import Types
 import CurryCompilerOpts
 import Message
 import PatchPrelude
@@ -32,6 +34,7 @@ import Position
 import Ident
 import TopEnv
 import Env
+import Map
 import Monad
 import Maybe
 
@@ -43,7 +46,8 @@ genFlatCurry :: Options -> CurryEnv -> ModuleEnv -> ValueEnv -> TCEnv
 		-> ArityEnv -> IL.Module -> (Prog, [Message])
 genFlatCurry opts cEnv mEnv tyEnv tcEnv aEnv mod
    = (patchPreludeFCY prog, messages)
- where (prog, messages) = run opts cEnv mEnv aEnv False (visitModule mod)
+ where (prog, messages) 
+	   = run opts cEnv mEnv tyEnv tcEnv aEnv False (visitModule mod)
 
 
 -- transforms intermediate language code (IL) to FlatCurry interfaces
@@ -51,7 +55,8 @@ genFlatInterface :: Options -> CurryEnv -> ModuleEnv -> ValueEnv -> TCEnv
 		 -> ArityEnv -> IL.Module -> (Prog, [Message])
 genFlatInterface opts cEnv mEnv tyEnv tcEnv aEnv mod
    = (patchPreludeFCY intf, messages)
- where (intf, messages) = run opts cEnv mEnv aEnv True (visitModule mod)
+ where (intf, messages) 
+	   = run opts cEnv mEnv tyEnv tcEnv aEnv True (visitModule mod)
 
 
 -------------------------------------------------------------------------------
@@ -531,7 +536,9 @@ genTypeSynonyms = typeSynonyms >>= mapM genTypeSynonym
 genTypeSynonym :: CS.IDecl -> FlatState TypeDecl
 genTypeSynonym (CS.ITypeDecl _ qident params typeexpr)
    = do let is = [0 .. (length params) - 1]
-	texpr <- visitType (fst (cs2ilType (zip params is) typeexpr))
+        (tyEnv,tcEnv) <- environments
+	let typeexpr' = elimRecordTypes tyEnv tcEnv typeexpr
+	texpr <- visitType (fst (cs2ilType (zip params is) typeexpr'))
 	qname <- visitQualIdent qident
 	vis   <- getVisibility qident
 	return (TypeSyn qname vis is texpr)
@@ -560,11 +567,79 @@ genRecordType (CS.ITypeDecl _ qident params (CS.RecordType fields _))
 genRecordLabel :: Maybe ModuleIdent -> [(Ident,Int)] -> ([Ident],CS.TypeExpr) 
 	       -> FlatState ConsDecl
 genRecordLabel mod vis ([ident],typeexpr)
-   = do texpr <- visitType (fst (cs2ilType vis typeexpr))
+   = do (tyEnv,tcEnv) <- environments
+	let typeexpr' = elimRecordTypes tyEnv tcEnv typeexpr
+        texpr <- visitType (fst (cs2ilType vis typeexpr'))
 	qname <- visitQualIdent ((maybe qualify qualifyWith mod) 
 				 (labelExtId ident))
 	return (Cons qname 1 Public [texpr])
 
+
+-------------------------------------------------------------------------------
+
+--
+elimRecordTypes :: ValueEnv -> TCEnv -> CS.TypeExpr -> CS.TypeExpr
+elimRecordTypes tyEnv tcEnv (CS.ConstructorType qid typeexprs)
+   = CS.ConstructorType qid (map (elimRecordTypes tyEnv tcEnv) typeexprs)
+elimRecordTypes tyEnv tcEnv (CS.VariableType id)
+   = CS.VariableType id
+elimRecordTypes tyEnv tcEnv (CS.TupleType typeexprs)
+   = CS.TupleType (map (elimRecordTypes tyEnv tcEnv) typeexprs)
+elimRecordTypes tyEnv tcEnv (CS.ListType typeexpr)
+   = CS.ListType (elimRecordTypes tyEnv tcEnv typeexpr)
+elimRecordTypes tyEnv tcEnv (CS.ArrowType typeexpr1 typeexpr2)
+   = CS.ArrowType (elimRecordTypes tyEnv tcEnv typeexpr1)
+                  (elimRecordTypes tyEnv tcEnv typeexpr2)
+elimRecordTypes tyEnv tcEnv (CS.RecordType fss _)
+   = let fs = flattenRecordTypeFields fss
+     in  case (lookupValue (fst (head fs)) tyEnv) of
+  	   [Label _ record _] ->
+	     case (qualLookupTC record tcEnv) of
+	       [AliasType _ n (TypeRecord fs' _)] ->
+	         let ms = foldl (matchTypeVars fs) zeroFM fs'
+		     types = map (\i -> maybe 
+			 	          (CS.VariableType 
+					     (mkIdent ("#tvar" ++ show i)))
+				          (elimRecordTypes tyEnv tcEnv)
+				          (lookupFM i ms))
+			         [0 .. n-1]
+	         in  CS.ConstructorType record types
+	       _ -> internalError ("GenFlatCurry.elimRecordTypes: "
+		 		   ++ "no record type")
+	   _ -> internalError ("GenFlatCurry.elimRecordTypes: "
+			       ++ "no label")
+
+matchTypeVars :: [(Ident,CS.TypeExpr)] -> FM Int CS.TypeExpr
+	      -> (Ident, Type) -> FM Int CS.TypeExpr
+matchTypeVars fs ms (l,ty)
+   = maybe ms (match ms ty) (lookup l fs)
+  where
+  match ms (TypeVariable i) typeexpr = addToFM i typeexpr ms
+  match ms (TypeConstructor _ tys) (CS.ConstructorType _ typeexprs)
+     = matchList ms tys typeexprs
+  match ms (TypeConstructor _ tys) (CS.ListType typeexpr)
+     = matchList ms tys [typeexpr]
+  match ms (TypeConstructor _ tys) (CS.TupleType typeexprs)
+     = matchList ms tys typeexprs
+  match ms (TypeArrow ty1 ty2) (CS.ArrowType typeexpr1 typeexpr2)
+     = matchList ms [ty1,ty2] [typeexpr1,typeexpr2]
+  match ms (TypeRecord fs' _) (CS.RecordType fss _)
+     = foldl (matchTypeVars (flattenRecordTypeFields fss)) ms fs'
+  match ms ty typeexpr
+     = internalError ("GenFlatCurry.matchTypeVars: "
+		      ++ show ty ++ "\n" ++ show typeexpr)
+
+  matchList ms tys typeexprs
+     = foldl (\ms' (ty,typeexpr) -> match ms' ty typeexpr)
+             ms
+	     (zip tys typeexprs)
+
+
+flattenRecordTypeFields :: [([Ident],CS.TypeExpr)] -> [(Ident,CS.TypeExpr)]
+flattenRecordTypeFields fss
+   = concatMap (\ (labels, typeexpr)
+		-> map (\label -> (label,typeexpr)) labels)
+               fss
 
 -------------------------------------------------------------------------------
 
@@ -782,6 +857,8 @@ data FlatEnv a = FlatEnv{ moduleIdE     :: ModuleIdent,
 			  compilerOptsE :: Options,
 			  moduleEnvE    :: ModuleEnv,
 			  arityEnvE     :: ArityEnv,
+			  typeEnvE      :: ValueEnv,
+			  tConsEnvE     :: TCEnv,
 			  publicEnvE    :: Env Ident Bool,
 			  fixitiesE     :: [CS.IDecl],
 			  typeSynonymsE :: [CS.IDecl],
@@ -818,9 +895,9 @@ instance Monad FlatState where
 
 
 -- Runs a 'FlatState' action an returns the result
-run :: Options -> CurryEnv -> ModuleEnv -> ArityEnv -> Bool -> FlatState a 
-       -> (a, [Message])
-run opts cEnv mEnv aEnv genIntf (FlatState f)
+run :: Options -> CurryEnv -> ModuleEnv -> ValueEnv -> TCEnv -> ArityEnv 
+    -> Bool -> FlatState a -> (a, [Message])
+run opts cEnv mEnv tyEnv tcEnv aEnv genIntf (FlatState f)
    = (result env, messagesE env)
  where
  env = f (FlatEnv{ moduleIdE     = CurryEnv.moduleId cEnv,
@@ -828,6 +905,8 @@ run opts cEnv mEnv aEnv genIntf (FlatState f)
 		   compilerOptsE = opts,
 		   moduleEnvE    = mEnv,
 		   arityEnvE     = aEnv,
+		   typeEnvE      = tyEnv,
+		   tConsEnvE     = tcEnv,
 		   publicEnvE    = genPubEnv (CurryEnv.moduleId cEnv)
 		                             (CurryEnv.interface cEnv),
 		   fixitiesE     = CurryEnv.infixDecls cEnv,
@@ -870,7 +949,7 @@ imports :: FlatState [CS.IDecl]
 imports = FlatState (\env -> env{ result = importsE env })
 
 --
-records:: FlatState [CS.IDecl]
+records :: FlatState [CS.IDecl]
 records 
    = FlatState 
        (\env -> env{ result = filter isRecordIDecl (interfaceE env) })
@@ -882,6 +961,12 @@ fixities = FlatState (\env -> env{ result = fixitiesE env })
 --
 typeSynonyms :: FlatState [CS.IDecl]
 typeSynonyms = FlatState (\env -> env{ result = typeSynonymsE env })
+
+--
+environments :: FlatState (ValueEnv,TCEnv)
+environments 
+   = FlatState 
+       (\env -> env{ result = (typeEnvE env, tConsEnvE env) })
 
 --
 isPublic :: QualIdent -> FlatState Bool

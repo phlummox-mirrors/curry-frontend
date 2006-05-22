@@ -187,7 +187,7 @@ have been properly renamed and all type synonyms are already expanded.
 \end{verbatim}
 \paragraph{Defining Field Labels}
 Records can only be declared as type aliases. So currently there is
-not more to do than entering all typed record fields (labels) 
+nothing more to do than entering all typed record fields (labels) 
 which occur in record types on the right-hand-side of type aliases 
 into the type environment. Since we use the type constructor environment
 again, we can be sure that all type variables
@@ -1327,7 +1327,7 @@ Error functions.
 > incompatibleLabelTypes :: ModuleIdent -> Ident -> Type -> Type -> Doc
 > incompatibleLabelTypes m l ty1 ty2 =
 >   sep [text "Labeled types" <+> ppIdent l <> text "::" <> ppType m ty1,
->        nest 2 (text "and" <+> ppIdent l <> text "::" <> ppType m ty2),
+>        nest 10 (text "and" <+> ppIdent l <> text "::" <> ppType m ty2),
 >        text "are incompatible"]
 
 \end{verbatim}

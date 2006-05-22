@@ -52,6 +52,7 @@ import declarations are commented out
 > import CompilerResults
 > import CaseCompletion
 > import PathUtils
+> import TypeSubst
 > import List
 > import IO
 > import Maybe
@@ -163,18 +164,21 @@ code are obsolete and commented out.
 > checkModule opts mEnv (Module m es ds) =
 >   do unless (noWarn opts || null msgs)
 >	      (hPutStrLn stderr (unlines (map show msgs)))
+>      when (m == mkMIdent ["field2.."])
+>           (error (show (lookupTC (mkIdent "Person") tcEnv)))
 >      return (tyEnv''', tcEnv', aEnv'', modul, intf, msgs)
 >   where (impDs,topDs) = partition isImportDecl ds
 >         iEnv = foldr bindAlias initIEnv impDs
 >         (pEnv,tcEnv,tyEnv,aEnv) = importModules mEnv impDs
 >         lEnv = importLabels mEnv impDs
 >	  tyEnvL = addImportedLabels m lEnv tyEnv
->         msgs = warnCheck m tyEnv impDs topDs
+>	  tyEnvR = fmap (expandRecordTypes tcEnv) tyEnvL
+>         msgs = warnCheck m tyEnvR impDs topDs
 >	  withExt = withExtensions opts
 >         (pEnv',topDs') = precCheck m pEnv 
->		           $ syntaxCheck withExt m iEnv aEnv tyEnvL tcEnv
+>		           $ syntaxCheck withExt m iEnv aEnv tyEnvR tcEnv
 >			   $ kindCheck m tcEnv topDs
->         (tcEnv',tyEnv') = typeCheck m tcEnv tyEnvL topDs'
+>         (tcEnv',tyEnv') = typeCheck m tcEnv tyEnvR topDs'
 >         ds' = impDs ++ qual m tyEnv' topDs'
 >         modul = expandInterface (Module m es ds') tcEnv' tyEnv'
 >         (pEnv'',tcEnv'',tyEnv'',aEnv'') 
@@ -447,6 +451,33 @@ content to a type environment.
 >                      (Label (qualify l) (qualQualify m' r) (polyType ty)) 
 >	               tyEnv
 
+\end{verbatim}
+Expand record types within the type environment.
+\begin{verbatim}
+
+> expandRecordTypes :: TCEnv -> ValueInfo -> ValueInfo
+> expandRecordTypes tcEnv (DataConstructor qid (ForAllExist n m ty)) =
+>   DataConstructor qid (ForAllExist n m (expandRecords tcEnv ty))
+> expandRecordTypes tcEnv (NewtypeConstructor qid (ForAllExist n m ty)) =
+>   NewtypeConstructor qid (ForAllExist n m (expandRecords tcEnv ty))
+> expandRecordTypes tcEnv (Value qid (ForAll n ty)) =
+>   Value qid (ForAll n (expandRecords tcEnv ty))
+> expandRecordTypes tcEnv (Label qid r (ForAll n ty)) =
+>   Label qid r (ForAll n (expandRecords tcEnv ty))
+
+> expandRecords :: TCEnv -> Type -> Type
+> expandRecords tcEnv ty@(TypeConstructor qid tys) =
+>   case (qualLookupTC qid tcEnv) of
+>     [AliasType _ _ rty@(TypeRecord _ _)]
+>       -> expandAliasType (map (expandRecords tcEnv) tys) rty
+>     _ -> ty
+> expandRecords tcEnv (TypeConstrained tys v) =
+>   TypeConstrained (map (expandRecords tcEnv) tys) v
+> expandRecords tcEnv (TypeArrow ty1 ty2) =
+>   TypeArrow (expandRecords tcEnv ty1) (expandRecords tcEnv ty2)
+> expandRecords tcEnv (TypeRecord fs rv) =
+>   TypeRecord (map (\ (l,ty) -> (l,expandRecords tcEnv ty)) fs) rv
+> expandRecords _ ty = ty
 
 \end{verbatim}
 An implicit import of the prelude is added to the declarations of

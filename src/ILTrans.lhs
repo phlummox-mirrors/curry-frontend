@@ -141,6 +141,9 @@ The type representation in the intermediate language is the same as
 the internal representation except that it does not support
 constrained type variables and skolem types. The former are fixed and
 the later are replaced by fresh type constructors.
+
+Due to possible occurrence of record types, it is necessary to transform
+them back into their corresponding type constructors.
 \begin{verbatim}
 
 > translType' :: ModuleIdent -> ValueEnv -> TCEnv -> Type -> IL.Type
@@ -170,22 +173,23 @@ the later are replaced by fresh type constructors.
 > elimRecordTypes m tyEnv tcEnv n (TypeSkolem v) =
 >   TypeSkolem v
 > elimRecordTypes m tyEnv tcEnv n (TypeRecord fs _)
->   | null fs = internalError "elimRecordType: empty record type"
+>   | null fs = internalError "elimRecordTypes: empty record type"
 >   | otherwise =
 >     case (lookupValue (fst (head fs)) tyEnv) of
 >       [Label _ r _] ->
 >         case (qualLookupTC r tcEnv) of
 >           [AliasType _ n' (TypeRecord fs' _)] ->
->	       let is = [0 .. n'-1]
->                  vs = foldl (matchTypeVars fs)
->		 	      zeroFM
->			      fs'
->		   tys = map (\i -> fromMaybe (TypeVariable (i+n))
->		                              (lookupFM i vs))
->		             is 
->	       in  TypeConstructor r tys
->	    _ -> internalError "elimRecordType: no record type"
->       _ -> internalError "elimRecordType: no label"
+>	      let is = [0 .. n'-1]
+>                 vs = foldl (matchTypeVars fs)
+>			     zeroFM
+>			     fs'
+>		  tys = map (\i -> maybe (TypeVariable (i+n))
+>			                 (elimRecordTypes m tyEnv tcEnv n)
+>		                         (lookupFM i vs))
+>		            is 
+>	      in  TypeConstructor r tys
+>	    _ -> internalError "elimRecordTypes: no record type"
+>       _ -> internalError "elimRecordTypes: no label"
 
 > matchTypeVars :: [(Ident,Type)] -> FM Int Type -> (Ident,Type) 
 >	           -> FM Int Type
@@ -201,7 +205,7 @@ the later are replaced by fresh type constructors.
 >     matchList vs [ty1,ty2] [ty1',ty2']
 >   match vs (TypeSkolem _) (TypeSkolem _) = vs
 >   match vs (TypeRecord fs _) (TypeRecord fs' _) =
->     foldl (matchTypeVars fs) vs fs'
+>     foldl (matchTypeVars fs') vs fs
 >   match vs ty ty' = 
 >     internalError ("matchTypeVars: " ++ show ty ++ "\n" ++ show ty')
 >
