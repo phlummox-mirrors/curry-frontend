@@ -209,10 +209,14 @@ data CStatement = CSExpr CExpr         -- an expression (I/O action or boolean)
 --- Data type for representing pattern expressions.
 
 data CPattern =
-   CPVar CVarIName         -- pattern variable (unique index / name)
- | CPLit CLiteral          -- literal (Integer/Float/Char constant)
- | CPComb QName [CPattern] -- application (m.c e1 ... en) of n-ary
-   deriving (Read, Show)   -- constructor m.c (CPComb (m,c) [e1,...,en])
+   CPVar CVarIName             -- pattern variable (unique index / name)
+ | CPLit CLiteral              -- literal (Integer/Float/Char constant)
+ | CPComb QName [CPattern]     -- application (m.c e1 ... en) of n-ary
+                               -- constructor m.c (CPComb (m,c) [e1,...,en])
+ | CPAs CVarIName CPattern     -- as-pattern (extended Curry)
+ | CPFuncComb QName [CPattern] -- function pattern (extended Curry)
+ | CPLazy CPattern             -- lazy pattern (extended Curry) 
+   deriving (Read, Show)  
 
 --- Data type for representing branches in case expressions.
 

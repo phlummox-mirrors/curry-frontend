@@ -535,6 +535,12 @@ genExpr pos env (Case expr alts)
    = let (expr', env1) = genExpr pos env expr
 	 (alts', env2) = mapfoldl genBranchExpr env1 alts
      in  (CCase expr' alts', env2)
+genExpr pos _ (RecordConstr _)
+   = errorAt pos "records are not supported in AbstractCurry"
+genExpr pos _ (RecordSelection _ _)
+   = errorAt pos "records are not supported in AbstractCurry"
+genExpr pos _ (RecordUpdate _ _)
+   = errorAt pos "records are not supported in AbstractCurry"
 
 
 --
@@ -598,10 +604,20 @@ genPattern pos env (ListPattern args)
 		         args)
 genPattern pos _ (NegativePattern _ _)
    = errorAt pos "negative patterns are not supported in AbstractCurry"
-genPattern pos _ (AsPattern _ _)
-   = errorAt pos "'as' patterns are not supported in AbstractCurry"
-genPattern pos _ (LazyPattern _)
-   = errorAt pos "lazy patterns are not supported in AbstractCurry"
+genPattern pos env (AsPattern ident cterm)
+   = let (patt, env1) = genPattern pos env cterm
+	 (idx, env2) = genVarIndex env1 ident
+     in  (CPAs (idx, name ident) patt, env2)
+genPattern pos env (LazyPattern cterm)
+   = let (patt, env') = genPattern pos env cterm
+     in  (CPLazy patt, env')
+genPattern pos env (FunctionPattern qident cterms)
+   = let (patts, env') = mapfoldl (genPattern pos) env cterms
+     in  (CPFuncComb (genQName False env qident) patts, env')
+genPattern pos env (InfixFuncPattern cterm1 qident cterm2)
+   = genPattern pos env (FunctionPattern qident [cterm1, cterm2])
+genPattern pos _ (RecordPattern _ _)
+   = errorAt pos "records are not supported in AbstractCurry"
 
 
 --
