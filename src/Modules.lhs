@@ -164,8 +164,6 @@ code are obsolete and commented out.
 > checkModule opts mEnv (Module m es ds) =
 >   do unless (noWarn opts || null msgs)
 >	      (hPutStrLn stderr (unlines (map show msgs)))
->      when (m == mkMIdent ["field2.."])
->           (error (show (lookupTC (mkIdent "Person") tcEnv)))
 >      return (tyEnv''', tcEnv', aEnv'', modul, intf, msgs)
 >   where (impDs,topDs) = partition isImportDecl ds
 >         iEnv = foldr bindAlias initIEnv impDs
@@ -469,7 +467,8 @@ Expand record types within the type environment.
 > expandRecords tcEnv ty@(TypeConstructor qid tys) =
 >   case (qualLookupTC qid tcEnv) of
 >     [AliasType _ _ rty@(TypeRecord _ _)]
->       -> expandAliasType (map (expandRecords tcEnv) tys) rty
+>       -> expandAliasType (map (expandRecords tcEnv) tys) 
+>                          (expandRecords tcEnv rty)
 >     _ -> ty
 > expandRecords tcEnv (TypeConstrained tys v) =
 >   TypeConstrained (map (expandRecords tcEnv) tys) v
