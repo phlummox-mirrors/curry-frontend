@@ -37,6 +37,7 @@ import Env
 import Map
 import Monad
 import Maybe
+import List
 
 
 -------------------------------------------------------------------------------
@@ -74,7 +75,8 @@ visitModule (IL.Module mid imps decls)
 	   mod     <- visitModuleIdent mid
 	   imps'   <- imports
 	   is      <- mapM visitModuleIdent 
-	                   (map (\ (CS.IImportDecl _ mid) -> mid) imps')
+	                   (nub (imps ++ (map (\ (CS.IImportDecl _ mid) 
+					       -> mid) imps')))
            return (Prog mod is (records ++ types ++ datas) funcs ops))
        (do ops     <- genOpDecls
 	   ds      <- filterM isPublicDataDecl decls
@@ -90,7 +92,8 @@ visitModule (IL.Module mid imps decls)
 	   mod     <- visitModuleIdent mid
 	   imps'   <- imports
 	   is      <- mapM visitModuleIdent 
-	                   (map (\ (CS.IImportDecl _ mid) -> mid) imps')
+	                   (nub (imps ++ (map (\ (CS.IImportDecl _ mid) 
+					       -> mid) imps')))
 	   return (Prog mod 
 		        is 
 		        (itypes ++ records ++ types ++ datas)
