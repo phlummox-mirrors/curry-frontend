@@ -154,7 +154,7 @@ code are obsolete and commented out.
 >		           $ syntaxCheck withExt m iEnv aEnv tyEnv tcEnv
 >			   $ kindCheck m tcEnv topDs
 >         ds' = impDs ++ qual m tyEnv topDs'
->         modul = expandInterface (Module m es ds') tcEnv tyEnv
+>         modul = (Module m es ds') --expandInterface (Module m es ds') tcEnv tyEnv
 >         (pEnv'',tcEnv'',tyEnv'',aEnv'') 
 >            = qualifyEnv mEnv pEnv' tcEnv tyEnv aEnv
 >         intf = exportInterface modul pEnv' tcEnv'' tyEnv''
@@ -164,6 +164,8 @@ code are obsolete and commented out.
 > checkModule opts mEnv (Module m es ds) =
 >   do unless (noWarn opts || null msgs)
 >	      (hPutStrLn stderr (unlines (map show msgs)))
+>      when (m == mkMIdent ["field2.."])
+>           (error (show (lookupTC (mkIdent "Person") tcEnv)))
 >      return (tyEnv''', tcEnv', aEnv'', modul, intf, msgs)
 >   where (impDs,topDs) = partition isImportDecl ds
 >         iEnv = foldr bindAlias initIEnv impDs
@@ -467,8 +469,7 @@ Expand record types within the type environment.
 > expandRecords tcEnv ty@(TypeConstructor qid tys) =
 >   case (qualLookupTC qid tcEnv) of
 >     [AliasType _ _ rty@(TypeRecord _ _)]
->       -> expandAliasType (map (expandRecords tcEnv) tys) 
->                          (expandRecords tcEnv rty)
+>       -> expandAliasType (map (expandRecords tcEnv) tys) rty
 >     _ -> ty
 > expandRecords tcEnv (TypeConstrained tys v) =
 >   TypeConstrained (map (expandRecords tcEnv) tys) v
