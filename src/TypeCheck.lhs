@@ -298,8 +298,7 @@ either one of the basic types or \texttt{()}.
 > tcDeclGroup m tcEnv sigs ds =
 >   do
 >     tyEnv0 <- fetchSt
->     tysLhs' <- mapM (tcDeclLhs m tcEnv sigs) ds
->     tysLhs  <- return tysLhs' --mapM (tcDeclFuncPatt m tcEnv sigs) ds
+>     tysLhs <- mapM (tcDeclLhs m tcEnv sigs) ds
 >     tysRhs <- mapM (tcDeclRhs m tcEnv tyEnv0 sigs) ds
 >     sequence_ (zipWith3 (unifyDecl m) ds tysLhs tysRhs)
 >     theta <- liftSt fetchSt
@@ -860,7 +859,6 @@ because of possibly multiple occurrences of variables.
 >   do
 >     ty <- tcExpr m tcEnv sigs p e
 >     tyEnv <- fetchSt
->     --lty <- inst (labelType l tyEnv)
 >     lty <- maybe (freshTypeVar 
 >	             >>= (\lty' -> 
 >		           updateSt_ 
@@ -872,7 +870,6 @@ because of possibly multiple occurrences of variables.
 >     alpha <- freshVar id
 >     let rty = TypeRecord [(l,lty)] (Just alpha)
 >     unify p "record selection" (ppExpr 0 r) m ty rty
->     --when True (error (show e ++ " :: " ++ show ty))
 >     return lty
 > tcExpr m tcEnv sigs p r@(RecordUpdate fs e) =
 >   do
@@ -881,7 +878,7 @@ because of possibly multiple occurrences of variables.
 >     alpha <- freshVar id
 >     let rty = TypeRecord fts (Just alpha)
 >     unify p "record update" (ppExpr 0 r) m ty rty
->     return rty
+>     return ty
 
 > tcQual :: ModuleIdent -> TCEnv -> SigEnv -> Position -> Statement
 >        -> TcState ()
@@ -923,7 +920,7 @@ because of possibly multiple occurrences of variables.
 >		             (bindLabel l (qualifyWith m (mkIdent "#Rec"))
 >		                          (monoType lty'))
 >	                   >> return lty'))
->                  inst -- (\ (ForAll _ lty') -> return lty')
+>                  inst
 >	           (sureLabelType l tyEnv)
 >     ty <- tcExpr m tcEnv sigs p e
 >     unify p "record" (text "Field:" <+> ppFieldExpr comb f) m lty ty
@@ -1031,9 +1028,13 @@ of~\cite{PeytonJones87:Book}).
 >           either 
 >             Left 
 >	      (\res' -> Right (compose res res'))
+>	      (unifyTypeLists m [TypeVariable a,
+>			         TypeRecord (fs2 ++ rs1) Nothing]
+>	                        [TypeVariable b,
+>			         TypeRecord (fs1 ++ rs2) Nothing])) {-
 >	      (unifyTypeLists m [TypeVariable a, TypeVariable b]
 >	                        [TypeRecord (fs2 ++ rs1) Nothing,
->			         TypeRecord (fs1 ++ rs2) Nothing]))
+>			         TypeRecord (fs1 ++ rs2) Nothing])) -}
 >         (unifyTypedLabels m fs1' tr2)
 >   where
 >   splitFields fs1 fs2 = split' [] [] fs2 fs1
@@ -1082,6 +1083,7 @@ skolem type escapes its scope.
 >         fs = fsEnv (subst theta tyEnv)
 >     unless (all (`elemSet` fs) (typeSkolems ty'))
 >            (errorAt p (skolemEscapingScope m what ty'))
+>     --error (show ty ++ " ## " ++ show (subst theta ty))
 >     return ty'
 
 \end{verbatim}
