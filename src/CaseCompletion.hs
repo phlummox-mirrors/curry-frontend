@@ -94,7 +94,7 @@ visitExpr mod menv msgs senv (Apply expr1 expr2)
 visitExpr mod menv msgs senv (Case evalannot expr alts)
    | null altsR
      = intError "visitExpr" "empty alternative list"
-   | evalannot == Flex   -- a flexible case descends from pattern matching
+   | evalannot == Flex   -- pattern matching causes flexible case expressions
      = (Case evalannot expr' altsR, msgs)
    | isConstrAlt altR
      = (completeConsAlts mod menv senv evalannot expr' altsR, msgs3)
@@ -232,11 +232,16 @@ completeConsAlts mod menv senv evalannot expr alts
 completeLitAlts :: Eval -> Expression -> [Alt] -> Expression
 completeLitAlts evalannot expr [] = failedExpr
 completeLitAlts evalannot expr (alt:alts)
-   | isLitAlt alt = (Case evalannot 
-		          (eqExpr expr (p_makeLitExpr alt))
-		          [(Alt truePatt  (getAltExpr alt)),
-			   (Alt falsePatt (completeLitAlts evalannot expr alts))])
-   | otherwise    = getAltExpr alt
+   | isLitAlt alt 
+     = (Case evalannot 
+	     (eqExpr expr (p_makeLitExpr alt))
+	     [(Alt truePatt  (getAltExpr alt)),
+	      (Alt falsePatt (completeLitAlts evalannot expr alts))])
+   | otherwise
+     = case alt of
+         Alt (VariablePattern v) expr'
+	   -> replaceVar v expr expr'
+	 _ -> intError "completeLitAlts" "illegal alternative"
  where
    p_makeLitExpr alt
       = case (getAltPatt alt) of
