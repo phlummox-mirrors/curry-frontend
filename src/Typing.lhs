@@ -15,6 +15,7 @@
 > import Monad
 > import TopEnv
 > import Utils
+> import Maybe
 
 \end{verbatim}
 During the transformation of Curry source code into the intermediate
@@ -157,6 +158,26 @@ environment.}
 >         flatten ty = [ty]
 > argType tyEnv (InfixFuncPattern t1 op t2) =
 >   argType tyEnv (FunctionPattern op [t1,t2])
+> argType tyEnv (RecordPattern fs r)
+>   | isJust r =
+>     do
+>       tys <- mapM (fieldPattType tyEnv) fs
+>       rty <- argType tyEnv (fromJust r)
+>       (TypeVariable i) <- freshTypeVar
+>       unify rty (TypeRecord tys (Just i))
+>       return rty
+>   | otherwise =
+>     do
+>       tys <- mapM (fieldPattType tyEnv) fs
+>       return (TypeRecord tys Nothing)
+
+> fieldPattType :: ValueEnv -> Field ConstrTerm -> TyState (Ident,Type)
+> fieldPattType tyEnv (Field _ l t) =
+>   do
+>     lty <- instUniv (labelType l tyEnv)
+>     ty <- argType tyEnv t
+>     unify lty ty
+>     return (l,lty)
 
 > exprType :: ValueEnv -> Expression -> TyState Type
 > exprType tyEnv (Literal l) = litType tyEnv l
@@ -216,6 +237,24 @@ environment.}
 >   where altType ty [] = return ty
 >         altType ty (Alt _ _ rhs:alts) =
 >           rhsType tyEnv rhs >>= unify ty >> altType ty alts
+> exprType tyEnv (RecordConstr fs) =
+>   do 
+>     tys <- mapM (fieldExprType tyEnv) fs
+>     return (TypeRecord tys Nothing)
+> exprType tyEnv (RecordSelection r l) =
+>   do 
+>     lty <- instUniv (labelType l tyEnv)
+>     rty <- exprType tyEnv r
+>     (TypeVariable i) <- freshTypeVar
+>     unify rty (TypeRecord [(l,lty)] (Just i))
+>     return lty
+> exprType tyEnv (RecordUpdate fs r) =
+>   do
+>     tys <- mapM (fieldExprType tyEnv) fs
+>     rty <- exprType tyEnv r
+>     (TypeVariable i) <- freshTypeVar
+>     unify rty (TypeRecord tys (Just i))
+>     return rty
 
 > rhsType :: ValueEnv -> Rhs -> TyState Type
 > rhsType tyEnv (SimpleRhs _ e _) = exprType tyEnv e
@@ -223,6 +262,14 @@ environment.}
 >   where condExprType ty [] = return ty
 >         condExprType ty (CondExpr _ _ e:es) =
 >           exprType tyEnv e >>= unify ty >> condExprType ty es
+
+> fieldExprType :: ValueEnv -> Field Expression -> TyState (Ident,Type)
+> fieldExprType tyEnv (Field _ l e) =
+>   do
+>     lty <- instUniv (labelType l tyEnv)
+>     ty <- exprType tyEnv e
+>     unify lty ty
+>     return (l,lty)
 
 \end{verbatim}
 In order to avoid name conflicts with non-generalized type variables
@@ -296,8 +343,24 @@ checker.
 >   unifyTypes ty11 ty21 (unifyTypes ty12 ty22 theta)
 > unifyTypes (TypeSkolem k1) (TypeSkolem k2) theta
 >   | k1 == k2 = theta
+> unifyTypes (TypeRecord fs1 Nothing) (TypeRecord fs2 Nothing) theta
+>   | length fs1 == length fs2 = foldr (unifyTypedLabels fs1) theta fs2
+> unifyTypes tr1@(TypeRecord fs1 Nothing) (TypeRecord fs2 (Just a2)) theta =
+>   unifyTypes (TypeVariable a2)
+>              tr1
+>              (foldr (unifyTypedLabels fs1) theta fs2)
+> unifyTypes tr1@(TypeRecord _ (Just _)) tr2@(TypeRecord _ Nothing) theta =
+>   unifyTypes tr2 tr1 theta
+> unifyTypes (TypeRecord fs1 (Just a1)) (TypeRecord fs2 (Just a2)) theta =
+>   unifyTypes (TypeVariable a1)
+>              (TypeVariable a2)
+>              (foldr (unifyTypedLabels fs1) theta fs2)
 > unifyTypes ty1 ty2 _ =
 >   internalError ("unify: (" ++ show ty1 ++ ") (" ++ show ty2 ++ ")")
+
+> unifyTypedLabels :: [(Ident,Type)] -> (Ident,Type) -> TypeSubst -> TypeSubst
+> unifyTypedLabels fs1 (l,ty) theta =
+>   maybe theta (\ty1 -> unifyTypes ty1 ty theta) (lookup l fs1)
 
 \end{verbatim}
 The functions \texttt{constrType}, \texttt{varType}, and
@@ -325,5 +388,11 @@ pattern variables, and variables.
 >   case qualLookupValue f tyEnv of
 >     [Value _ sigma] -> sigma
 >     _ -> internalError ("funType " ++ show f)
+
+> labelType :: Ident -> ValueEnv -> TypeScheme
+> labelType l tyEnv =
+>   case lookupValue l tyEnv of
+>     [Label _ _ sigma] -> sigma
+>     _ -> internalError ("labelType " ++ show l)
 
 \end{verbatim}

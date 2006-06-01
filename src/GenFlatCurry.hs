@@ -684,12 +684,13 @@ cs2ilType ids (CS.ListType typeexpr)
    = let (ilTypeexpr, ids') = cs2ilType ids typeexpr
      in  (IL.TypeConstructor (qualify listId) [ilTypeexpr], ids')
 cs2ilType ids (CS.TupleType typeexprs)
-   | null typeexprs
-     = (IL.TypeConstructor qUnitId [], ids)
-   | otherwise
-     = let (ilTypeexprs, ids') = emap cs2ilType ids typeexprs
-       in  (IL.TypeConstructor (qTupleId ((length ilTypeexprs) - 1)) ilTypeexprs,
-            ids')
+   = case typeexprs of
+       []  -> (IL.TypeConstructor qUnitId [], ids)
+       [t] -> cs2ilType ids t
+       _   -> let (ilTypeexprs, ids') = emap cs2ilType ids typeexprs
+		  tuplen = length ilTypeexprs
+	      in  (IL.TypeConstructor (qTupleId tuplen) ilTypeexprs,
+		   ids')
 cs2ilType _ typeexpr = internalError ("cs2ilType: " ++ show typeexpr)
 
 

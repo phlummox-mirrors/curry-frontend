@@ -1010,17 +1010,17 @@ of~\cite{PeytonJones87:Book}).
 >   unifyTypeLists m [ty11,ty12] [ty21,ty22]
 > unifyTypes _ (TypeSkolem k1) (TypeSkolem k2)
 >   | k1 == k2 = Right idSubst
-> unifyTypes m (TypeRecord fs Nothing) tr2@(TypeRecord fs' Nothing)
->   | length fs == length fs' = unifyTypedLabels m fs tr2
-> unifyTypes m tr1@(TypeRecord fs Nothing) tr2@(TypeRecord fs' (Just b)) =
+> unifyTypes m (TypeRecord fs1 Nothing) tr2@(TypeRecord fs2 Nothing)
+>   | length fs1 == length fs2 = unifyTypedLabels m fs1 tr2
+> unifyTypes m tr1@(TypeRecord _ Nothing) tr2@(TypeRecord fs2 (Just a2)) =
 >   either Left
 >          (\res -> either Left 
 >	                   (Right . compose res) 
->                          (unifyTypes m (TypeVariable b) tr1))
->          (unifyTypedLabels m fs' tr1)
+>                          (unifyTypes m (TypeVariable a2) tr1))
+>          (unifyTypedLabels m fs2 tr1)
 > unifyTypes m tr1@(TypeRecord _ (Just _)) tr2@(TypeRecord _ Nothing) =
 >   unifyTypes m tr2 tr1
-> unifyTypes m tr1@(TypeRecord fs1 (Just a)) tr2@(TypeRecord fs2 (Just b)) =
+> unifyTypes m (TypeRecord fs1 (Just a1)) tr2@(TypeRecord fs2 (Just a2)) =
 >   let (fs1', rs1, rs2) = splitFields fs1 fs2
 >   in  either 
 >         Left
@@ -1028,13 +1028,10 @@ of~\cite{PeytonJones87:Book}).
 >           either 
 >             Left 
 >	      (\res' -> Right (compose res res'))
->	      (unifyTypeLists m [TypeVariable a,
+>	      (unifyTypeLists m [TypeVariable a1,
 >			         TypeRecord (fs2 ++ rs1) Nothing]
->	                        [TypeVariable b,
->			         TypeRecord (fs1 ++ rs2) Nothing])) {-
->	      (unifyTypeLists m [TypeVariable a, TypeVariable b]
->	                        [TypeRecord (fs2 ++ rs1) Nothing,
->			         TypeRecord (fs1 ++ rs2) Nothing])) -}
+>	                        [TypeVariable a2,
+>			         TypeRecord (fs1 ++ rs2) Nothing]))
 >         (unifyTypedLabels m fs1' tr2)
 >   where
 >   splitFields fs1 fs2 = split' [] [] fs2 fs1

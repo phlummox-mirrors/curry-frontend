@@ -106,9 +106,8 @@ code are obsolete and commented out.
 >          do (tyEnv, tcEnv, aEnv, m', intf, _) <- checkModule opts mEnv m
 >             let (il,aEnv',dumps) = transModule fcy False False 
 >			                         mEnv tyEnv tcEnv aEnv m'
->                 il' = completeCase mEnv il
 >             mapM_ (doDump opts) dumps
->	      genCode opts fn mEnv tyEnv tcEnv aEnv' intf m' il'
+>	      genCode opts fn mEnv tyEnv tcEnv aEnv' intf m' il
 >   where acy      = abstract opts
 >         uacy     = untypedAbstract opts
 >         fcy      = flat opts
@@ -189,7 +188,7 @@ code are obsolete and commented out.
 > transModule :: Bool -> Bool -> Bool -> ModuleEnv -> ValueEnv -> TCEnv
 >      -> ArityEnv -> Module -> (IL.Module,ArityEnv,[(Dump,Doc)])
 > transModule flat debug trusted mEnv tyEnv tcEnv aEnv (Module m es ds) =
->     (il,aEnv',dumps)
+>     (il',aEnv',dumps)
 >   where topDs = filter (not . isImportDecl) ds
 >         evEnv = evalEnv topDs
 >         (desugared,tyEnv') = desugar tyEnv tcEnv (Module m es topDs)
@@ -197,12 +196,14 @@ code are obsolete and commented out.
 >         (lifted,tyEnv''',evEnv') = lift tyEnv'' evEnv simplified
 >         aEnv' = bindArities aEnv lifted
 >         il = ilTrans flat tyEnv''' tcEnv evEnv' lifted
+>         il' = completeCase mEnv il
 >         dumps = [(DumpRenamed,ppModule (Module m es ds)),
 >	           (DumpTypes,ppTypes m (localBindings tyEnv)),
 >	           (DumpDesugared,ppModule desugared),
 >                  (DumpSimplified,ppModule simplified),
 >                  (DumpLifted,ppModule lifted),
->                  (DumpIL,ILPP.ppModule il)
+>                  (DumpIL,ILPP.ppModule il),
+>	           (DumpCase,ILPP.ppModule il')
 >	          ]
 
 > qualifyEnv :: ModuleEnv -> PEnv -> TCEnv -> ValueEnv -> ArityEnv
@@ -640,6 +641,7 @@ standard output.
 > dumpHeader DumpSimplified = "Source code after simplification"
 > dumpHeader DumpLifted = "Source code after lifting"
 > dumpHeader DumpIL = "Intermediate code"
+> dumpHeader DumpCase = "Intermediate code after case simplification"
 > --dumpHeader DumpTransformed = "Transformed code" 
 > --dumpHeader DumpNormalized = "Intermediate code after normalization"
 > --dumpHeader DumpCam = "Abstract machine code"
