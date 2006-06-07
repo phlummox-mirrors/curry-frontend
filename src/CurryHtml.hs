@@ -1,9 +1,10 @@
-module CurryHtml(program2html) where
+module CurryHtml(program2html,main) where
 
 import SyntaxColoring
 import Ident
 import Maybe
 import Char
+import System.Environment
 
 data Color = Blue
             |Green
@@ -17,6 +18,21 @@ data Color = Blue
             |Silver 
             |RGB String
             
+main :: IO()
+main = do
+    args <- getArgs
+    if length args < 3
+      then putStrLn ("usage: GenSourceFile <directoryOfFile> <modulname>"++
+                    " <outputDirectory> [<importDirectory>"++
+                    " <importDirectory> ...]") >>
+           putStrLn ("e.g. GenSourceFile /home/user/ Test"++
+                     " /home/user/ /home/user/lib/")
+      else do
+        let (dirOfFile:modulname:outputDir:importDirs) = args
+        program <- filename2program (dirOfFile:importDirs) 
+                                    (dirOfFile ++ modulname ++ ".curry")
+        writeFile (outputDir ++ modulname ++ "_curry.html")
+                  (program2html program)
        
 --- generates htmlcode with syntax highlighting            
 --- @param a program
