@@ -17,6 +17,7 @@ data Color = Blue
             |Silver 
             |RGB String
             
+       
 --- generates htmlcode with syntax highlighting            
 --- @param a program
 --- @return HTMLcode
@@ -95,7 +96,7 @@ addHtmlLink :: String -> QualIdent -> String
 addHtmlLink html qualIdent =
    let (maybeModuleIdent,ident) = splitQualIdent qualIdent in   
    "<a href=\"" ++ 
-   (maybe "" (\x -> show x ++ ".curry.html") maybeModuleIdent) ++ 
+   (maybe "" (\x -> show x ++ "_curry.html") maybeModuleIdent) ++ 
    "#"++ 
    string2urlencoded (show ident) ++
    "\">"++ 
