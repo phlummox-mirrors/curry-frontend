@@ -1,0 +1,23 @@
+/* Use monospace fonts for typewriter styles */
+pre, tt, code { font-family: monospace }
+
+/* Use always white background */
+body { background: white; color: black }
+
+/* Show hyperlinks without underscore */
+a:visited, a:link, a:active { text-decoration: none }
+
+.keyword { color:blue }
+.constructorName { color : #FF00FF }
+.typeConstructor  { color : #ff7f50 }
+.function  { color : #800080 }
+.moduleName  { color : #800000 }
+.commentary  { color : green }
+.numberCode  { color : #008080 }
+.stringCode  { color : #800000 }
+.charCode  { color : #FFFF00 }
+.symbol  { color : #C0C0C0 }
+.identifier   { color : black }
+.codeWarning  {font-weight: bold;font-style:italic; color : red }
+.codeError  { font-style:italic; color : #a52a2a }
+.notParsed  { font-style:italic; color : #C0C0C0 }

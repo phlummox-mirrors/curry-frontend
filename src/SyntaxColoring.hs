@@ -16,6 +16,7 @@ import List
 import Debug.Trace
 import Message
 import Control.Exception
+import Variables
 
 
 debug = False  --True
@@ -67,11 +68,12 @@ data FunctionKind = InfixFunction
                   
                   
                   
---- @param list with file paths for imports e.g. ["/home/pakcs/pakcs/lib/"] 
+
 --- @param filename                  
---- @param program
-filename2program :: [String] -> String -> IO Program
-filename2program paths filename=
+--- @return program
+filename2program :: String -> IO Program
+filename2program filename=
+     getCurryImports >>= \ paths ->
      readFile filename >>= \ cont ->
      (catchError show (typingParse paths filename  cont)) >>= \ typingParseResult ->
      (catchError show (fullParse paths filename  cont)) >>= \ fullParseResult ->             
