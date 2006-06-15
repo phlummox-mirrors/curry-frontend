@@ -163,16 +163,18 @@ code are obsolete and commented out.
 > checkModule opts mEnv (Module m es ds) =
 >   do unless (noWarn opts || null msgs)
 >	      (hPutStrLn stderr (unlines (map show msgs)))
->      --when (m == mkMIdent ["field8..."])
->      --     (error (show (qualLookupValue (qualifyWith (mkMIdent ["field7"]) 
->      --			   (mkIdent "records")) tyEnvR)))
+>      {-when (m == mkMIdent ["field11.."])
+>           (error (show (qualLookupValue (qualifyWith (mkMIdent ["field10"]) 
+>      			   (mkIdent "ls")) tyEnv'''))) -}
 >      return (tyEnv''', tcEnv', aEnv'', modul, intf, msgs)
 >   where (impDs,topDs) = partition isImportDecl ds
 >         iEnv = foldr bindAlias initIEnv impDs
 >         (pEnv,tcEnv,tyEnv,aEnv) = importModules mEnv impDs
 >         lEnv = importLabels mEnv impDs
 >	  tyEnvL = addImportedLabels m lEnv tyEnv
->	  tyEnvR = fmap (expandRecordTypes tcEnv) tyEnvL
+>	  tyEnvR = if withExtensions opts
+>	              then fmap (expandRecordTypes tcEnv) tyEnvL
+>		      else tyEnv
 >         msgs = warnCheck m tyEnvR impDs topDs
 >	  withExt = withExtensions opts
 >         (pEnv',topDs') = precCheck m pEnv 
@@ -183,7 +185,11 @@ code are obsolete and commented out.
 >         modul = expandInterface (Module m es ds') tcEnv' tyEnv'
 >         (pEnv'',tcEnv'',tyEnv'',aEnv'') 
 >            = qualifyEnv mEnv pEnv' tcEnv' tyEnv' aEnv
->         tyEnv''' = addImportedLabels m lEnv tyEnv''
+>         tyEnvL' = addImportedLabels m lEnv tyEnv''
+>	  tyEnv''' = if withExtensions opts
+>	                then fmap (expandRecordTypes tcEnv'') tyEnvL'
+>		        else tyEnv''
+>         --tyEnv''' = addImportedLabels m lEnv tyEnv''
 >         intf = exportInterface modul pEnv'' tcEnv'' tyEnv'''
 
 > transModule :: Bool -> Bool -> Bool -> ModuleEnv -> ValueEnv -> TCEnv
