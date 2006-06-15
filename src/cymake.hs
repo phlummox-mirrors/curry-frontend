@@ -18,6 +18,8 @@ import Variables
 import System
 import Maybe
 import IO
+import CurryHtml
+import List
 
 
 -------------------------------------------------------------------------------
@@ -37,7 +39,12 @@ cymake :: String -> [String] -> [FilePath] -> IO ()
 cymake prog args imports
    | elem Help opts = printUsage prog
    | null files     = badUsage prog ["no files"]
-   | null errs'     = mapM_ (buildCurry options') files
+   | null errs' && not (elem Html opts)    = mapM_ (buildCurry options') files
+   | null errs' = mapM_ (source2html 
+                              (nub (imports ++
+                                    importPaths opts'))
+                              (maybe "" id (output opts'))) files
+                              
    | otherwise      = badUsage prog errs'
  where
  (opts, files, errs) = getOpt Permute options args

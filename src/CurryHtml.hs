@@ -1,4 +1,4 @@
-module CurryHtml(program2html,htmlMain,source2html) where
+module CurryHtml(program2html,source2html) where
 
 import SyntaxColoring
 import Ident
@@ -7,26 +7,18 @@ import Char
 import System.Environment
 import Variables
 
-htmlMain :: IO()
-htmlMain = do
-    args <- getArgs    
-    if length args < 4
-      then putStrLn ("usage: source2html <directoryOfFile> <modulname>"++
-                    " <outputDirectory> ") >>
-           putStrLn ("e.g. source2html /home/user/ Test"++
-                     " /home/user/ ")
-      else do
-        let (_:dirOfFile:modulname:outputDir:_) = args
-        source2html dirOfFile modulname outputDir 
        
 --- translate source file into HTML file with syntaxcoloring
---- @param Directory of Module
---- @param Modulname
---- @param Directory of Outputfile
-source2html :: String -> String -> String -> IO ()
-source2html dirOfFile modulname outputDir = do
-        program <- filename2program (dirOfFile ++ modulname ++ ".curry")
-        writeFile (outputDir ++ modulname ++ "_curry.html")
+--- @param outputfilename
+--- @param sourcefilename
+source2html :: [String] -> String -> String -> IO ()
+source2html imports outputfilename sourcefilename = do
+        let output = if null outputfilename 
+                    then removeExtension sourcefilename ++ "_curry.html"
+                    else outputfilename 
+            modulname = fileName $ removeExtension sourcefilename 
+        program <- filename2program imports sourcefilename
+        writeFile output 
                   (program2html modulname program)
    
        
@@ -122,8 +114,9 @@ isDecl (TypeConstructor TypeDecla _) = True
 isDecl _ = False 
 
 
-fileName s = reverse (takeWhile (/='/') (reverse s))
+fileName = reverse . takeWhile (/='/') . reverse 
 
+removeExtension = reverse . drop 1 . dropWhile (/='.') . reverse 
 
 
 --- Translates arbitrary strings into equivalent urlencoded string.

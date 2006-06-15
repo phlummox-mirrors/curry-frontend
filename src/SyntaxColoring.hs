@@ -68,12 +68,11 @@ data FunctionKind = InfixFunction
                   
                   
                   
-
+--- @param importpaths
 --- @param filename                  
 --- @return program
-filename2program :: String -> IO Program
-filename2program filename=
-     getCurryImports >>= \ paths ->
+filename2program :: [String] -> String -> IO Program
+filename2program paths filename=
      readFile filename >>= \ cont ->
      (catchError show (typingParse paths filename  cont)) >>= \ typingParseResult ->
      (catchError show (fullParse paths filename  cont)) >>= \ fullParseResult ->             

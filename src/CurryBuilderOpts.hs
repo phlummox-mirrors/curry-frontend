@@ -20,6 +20,7 @@ import CurryCompilerOpts (Dump(..))
 -- Data type for recording builder options
 data Options 
    = Options{ force :: Bool,              -- force compilation
+             html :: Bool,               -- generate Html code  
 	      importPaths :: [FilePath],  -- import paths
 	      libPaths :: [FilePath],     -- library paths
 	      output :: Maybe FilePath,   -- output file paths
@@ -36,6 +37,7 @@ data Options
 
 -- Default builder options
 defaultOpts = Options{ force           = False,
+                     html            = False,
 		       importPaths     = [],
 		       libPaths        = [],
 		       output          = Nothing,
@@ -53,7 +55,7 @@ defaultOpts = Options{ force           = False,
 
 -- Data type for representing all available options (needed to read and parse
 -- the options from the command line; see module "GetOpt")
-data Option = Help | Force
+data Option = Help | Force | Html
 	    | ImportPath FilePath | LibPath FilePath | Output FilePath
 	    | NoVerb | NoWarn | NoOverlapWarn
 	    | Flat | FlatXML | Abstract | UntypedAbstract 
@@ -65,6 +67,8 @@ data Option = Help | Force
 -- All available builder options
 options = [Option "f" ["force"] (NoArg Force)
 	          "force compilation of dependent files",
+          Option "" ["html"] (NoArg Html)
+                 "generate html code",
 	   Option "i" ["import-dir"] (ReqArg ImportPath "DIR")
 	          "search for imported modules in DIR",
 	   Option "o" ["output"] (ReqArg Output "FILE")
@@ -108,6 +112,7 @@ selectOption NoVerb opts          = opts{ noVerb = True,
 selectOption NoWarn opts          = opts{ noWarn = True }
 selectOption NoOverlapWarn opts   = opts{ noOverlapWarn = True }
 selectOption Flat opts            = opts{ flat = True }
+selectOption Html opts            = opts{ html = True }
 selectOption FlatXML opts         = opts{ flatXml = True }
 selectOption Abstract opts        = opts{ abstract = True }
 selectOption UntypedAbstract opts = opts{ untypedAbstract = True }
