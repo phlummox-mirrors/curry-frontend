@@ -163,9 +163,6 @@ code are obsolete and commented out.
 > checkModule opts mEnv (Module m es ds) =
 >   do unless (noWarn opts || null msgs)
 >	      (hPutStrLn stderr (unlines (map show msgs)))
->      {-when (m == mkMIdent ["field11.."])
->           (error (show (qualLookupValue (qualifyWith (mkMIdent ["field10"]) 
->      			   (mkIdent "ls")) tyEnv'''))) -}
 >      return (tyEnv''', tcEnv', aEnv'', modul, intf, msgs)
 >   where (impDs,topDs) = partition isImportDecl ds
 >         iEnv = foldr bindAlias initIEnv impDs
@@ -244,7 +241,7 @@ code are obsolete and commented out.
 > writeFlat opts tfn sfn cEnv mEnv tyEnv tcEnv aEnv il
 >    = do let (prog,msgs) = genFlatCurry opts cEnv mEnv tyEnv tcEnv aEnv il
 >         unless (noWarn opts || null msgs)
->	         (putStrLn (unlines (map show msgs)))
+>	         (hPutStrLn stderr (unlines (map show msgs)))
 >	  writeFlatCurry fname prog
 >         return prog
 >   where fname = fromMaybe (rootname sfn ++ flatExt) tfn
@@ -254,7 +251,7 @@ code are obsolete and commented out.
 > writeFInt opts tfn sfn cEnv mEnv tyEnv tcEnv aEnv il 
 >    = do let (intf,msgs) = genFlatInterface opts cEnv mEnv tyEnv tcEnv aEnv il
 >         unless (noWarn opts || null msgs)
->	         (putStrLn (unlines (map show msgs)))
+>	         (hPutStrLn stderr (unlines (map show msgs)))
 >	  writeFlatCurry fname intf
 >         return intf
 >  where fname = fromMaybe (rootname sfn ++ fintExt) tfn
