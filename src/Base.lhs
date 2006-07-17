@@ -900,6 +900,8 @@ declarations.
 > isValueDecl (PatternDecl _ _ _) = True
 > isValueDecl (ExtraVariables _ _) = True
 > isValueDecl _ = False
+> isRecordDecl (TypeDecl _ _ _ (RecordType _ _)) = True
+> isRecordDecl _ = False
 
 > isIImportDecl :: IDecl -> Bool
 > isIImportDecl (IImportDecl _ _) = True

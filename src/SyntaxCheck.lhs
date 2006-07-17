@@ -34,8 +34,10 @@ merged into a single definition.
 The syntax checking proceeds as follows. First, the compiler extracts
 information about all imported values and data constructors from the
 imported (type) environments. Next, the data constructors defined in
-the current module are entered into this environment. Currently
-all record labels are entered into the environment too. Finally, all
+the current module are entered into this environment. After this
+all record labels are entered into the environment too. If a record
+identifier is already assigned to a constructor, then an error will be
+generated. Finally, all
 declarations are checked within the resulting environment. In
 addition, this process will also rename the local variables.
 \begin{verbatim}
@@ -46,12 +48,14 @@ addition, this process will also rename the local variables.
 >   case linear (concatMap constrs tds) of
 >     --Linear -> tds ++ run (checkModule withExt m env vds)
 >     Linear -> map (checkTypeDecl withExt m) tds
->	        ++ run (checkModule withExt m env vds)
+>	        ++ run (checkModule withExt m env2 vds)
 >     NonLinear (PIdent p c) -> errorAt p (duplicateData c)
 >   where (tds,vds) = partition isTypeDecl ds
->         env = foldr (bindTypes m) -- (bindConstrs m) 
->	              (globalEnv (fmap (renameInfo tcEnv iEnv aEnv) tyEnv)) 
->	              tds
+>	  (rs, tds') = partition isRecordDecl tds
+>         env1 = foldr (bindTypes m) -- (bindConstrs m) 
+>	               (globalEnv (fmap (renameInfo tcEnv iEnv aEnv) tyEnv)) 
+>	               tds'
+>	  env2 = foldr (bindTypes m) env1 rs
 
 > --syntaxCheckGoal :: Bool -> ValueEnv -> Goal -> Goal
 > --syntaxCheckGoal withExt tyEnv g =

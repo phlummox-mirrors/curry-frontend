@@ -92,11 +92,6 @@ checkConstrDecl :: ModuleIdent -> ConstrDecl -> CheckState ()
 checkConstrDecl mid (ConstrDecl pos _ ident texprs)
    = do visitId ident
 	foldM' (checkTypeExpr mid pos) texprs
-{- checkConstrDecl mid (ConLabeledDecl pos _ ident fields)
-   = do visitId ident
-	let (labels, texprs) = unzip fields
-	foldM' visitId (concat labels)
-	foldM' (checkTypeExpr mid pos) texprs -}
 checkConstrDecl mid (ConOpDecl pos _ texpr1 ident texpr2)
    = do visitId ident
 	checkTypeExpr mid pos texpr1
@@ -485,7 +480,7 @@ insertTypeExpr (ListType texpr)
 insertTypeExpr (ArrowType texpr1 texpr2)
    = foldM' insertTypeExpr [texpr1,texpr2]
 insertTypeExpr (RecordType fields restr)
-   = do foldM' insertVar (concatMap fst fields)
+   = do --foldM' insertVar (concatMap fst fields)
 	maybe (return ()) insertTypeExpr restr
 
 --
