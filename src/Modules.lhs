@@ -129,7 +129,7 @@ code are obsolete and commented out.
 >   foldM (loadInterface paths [m]) emptyEnv
 >         [(p,m) | ImportDecl p m _ _ _ <- ds]
 
-> checkModuleId :: FilePath -> Module -> IO ()
+> checkModuleId :: Monad m => FilePath -> Module -> m ()
 > checkModuleId fn (Module mid _ _)
 >    | last (moduleQualifiers mid) == basename (rootname fn)
 >      = return ()
