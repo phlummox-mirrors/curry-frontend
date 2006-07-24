@@ -163,21 +163,26 @@ code are obsolete and commented out.
 > checkModule opts mEnv (Module m es ds) =
 >   do unless (noWarn opts || null msgs)
 >	      (hPutStrLn stderr (unlines (map show msgs)))
+>      when (m == mkMIdent ["field114..."])
+>           (error (show es))
 >      return (tyEnv''', tcEnv', aEnv'', modul, intf, msgs)
 >   where (impDs,topDs) = partition isImportDecl ds
 >         iEnv = foldr bindAlias initIEnv impDs
->         (pEnv,tcEnv,tyEnv,aEnv) = importModules mEnv impDs
+>         (pEnv,tcEnvI,tyEnvI,aEnv) = importModules mEnv impDs
+>         tcEnv = if withExtensions opts
+>	             then fmap (expandRecordTC tcEnvI) tcEnvI
+>		     else tcEnvI
 >         lEnv = importLabels mEnv impDs
->	  tyEnvL = addImportedLabels m lEnv tyEnv
->	  tyEnvR = if withExtensions opts
->	              then fmap (expandRecordTypes tcEnv) tyEnvL
->		      else tyEnv
->         msgs = warnCheck m tyEnvR impDs topDs
+>	  tyEnvL = addImportedLabels m lEnv tyEnvI
+>	  tyEnv = if withExtensions opts
+>	             then fmap (expandRecordTypes tcEnv) tyEnvL
+>		     else tyEnvI
+>         msgs = warnCheck m tyEnv impDs topDs
 >	  withExt = withExtensions opts
 >         (pEnv',topDs') = precCheck m pEnv 
->		           $ syntaxCheck withExt m iEnv aEnv tyEnvR tcEnv
+>		           $ syntaxCheck withExt m iEnv aEnv tyEnv tcEnv
 >			   $ kindCheck m tcEnv topDs
->         (tcEnv',tyEnv') = typeCheck m tcEnv tyEnvR topDs'
+>         (tcEnv',tyEnv') = typeCheck m tcEnv tyEnv topDs'
 >         ds' = impDs ++ qual m tyEnv' topDs'
 >         modul = expandInterface (Module m es ds') tcEnv' tyEnv'
 >         (pEnv'',tcEnv'',tyEnv'',aEnv'') 
@@ -457,8 +462,23 @@ content to a type environment.
 >	               tyEnv
 
 \end{verbatim}
-Expand record types within the type environment.
+Fully expand all (imported) record types within the type constructor 
+environment and the type environment.
+Note: the record types for the current module are expanded within the
+type check.
 \begin{verbatim}
+
+> expandRecordTC :: TCEnv -> TypeInfo -> TypeInfo
+> expandRecordTC tcEnv (DataType qid n args) =
+>   DataType qid n (map (maybe Nothing (Just . (expandData tcEnv))) args)
+> expandRecordTC tcEnv (RenamingType qid n (Data id m ty)) =
+>   RenamingType qid n (Data id m (expandRecords tcEnv ty))
+> expandRecordTC tcEnv (AliasType qid n ty) =
+>   AliasType qid n (expandRecords tcEnv ty)
+
+> expandData :: TCEnv -> Data [Type] -> Data [Type]
+> expandData tcEnv (Data id n tys) =
+>   Data id n (map (expandRecords tcEnv) tys)
 
 > expandRecordTypes :: TCEnv -> ValueInfo -> ValueInfo
 > expandRecordTypes tcEnv (DataConstructor qid (ForAllExist n m ty)) =
@@ -474,7 +494,8 @@ Expand record types within the type environment.
 > expandRecords tcEnv (TypeConstructor qid tys) =
 >   case (qualLookupTC qid tcEnv) of
 >     [AliasType _ _ rty@(TypeRecord _ _)]
->       -> expandAliasType (map (expandRecords tcEnv) tys) rty
+>       -> expandRecords tcEnv 
+>            (expandAliasType (map (expandRecords tcEnv) tys) rty)
 >     _ -> TypeConstructor qid (map (expandRecords tcEnv) tys)
 > expandRecords tcEnv (TypeConstrained tys v) =
 >   TypeConstrained (map (expandRecords tcEnv) tys) v

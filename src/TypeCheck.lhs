@@ -202,7 +202,9 @@ have been properly renamed and all type synonyms are already expanded.
 >	  bindFieldLabels _ tyEnv = tyEnv
 >	  
 >         bindField r (l,ty) tyEnv =
->           bindLabel l r (polyType ty) tyEnv 
+>           case (lookupValue l tyEnv) of
+>             [] -> bindLabel l r (polyType ty) tyEnv 
+>             _  -> tyEnv
 
 \end{verbatim}
 \paragraph{Type Signatures}
@@ -854,6 +856,8 @@ because of possibly multiple occurrences of variables.
 > tcExpr m tcEnv sigs p (RecordConstr fs) =
 >   do 
 >     fts <- mapM (tcFieldExpr m tcEnv sigs equals) fs
+>     --when (1 == length fs)
+>     --     (error (show fs ++ "\n" ++ show fts))
 >     return (TypeRecord fts Nothing)
 > tcExpr m tcEnv sigs p r@(RecordSelection e l) =
 >   do
@@ -1012,7 +1016,7 @@ of~\cite{PeytonJones87:Book}).
 >   | k1 == k2 = Right idSubst
 > unifyTypes m (TypeRecord fs1 Nothing) tr2@(TypeRecord fs2 Nothing)
 >   | length fs1 == length fs2 = unifyTypedLabels m fs1 tr2
-> unifyTypes m tr1@(TypeRecord _ Nothing) tr2@(TypeRecord fs2 (Just a2)) =
+> unifyTypes m tr1@(TypeRecord fs1 Nothing) tr2@(TypeRecord fs2 (Just a2)) =
 >   either Left
 >          (\res -> either Left 
 >	                   (Right . compose res) 

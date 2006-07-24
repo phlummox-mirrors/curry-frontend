@@ -43,7 +43,7 @@ unqualified identifier.}
 >              recUpdateId, qualRecUpdateId, recordExtId, labelExtId,
 >              isRecordExtId, isLabelExtId, fromRecordExtId, fromLabelExtId,
 >              renameLabel, isLabel, fpSelExt, recSelExt, recUpdExt,
->              recordExt, labelExt) where
+>              recordExt, labelExt, mkLabelIdent) where
 > import Char
 > import List
 > import Maybe
@@ -268,6 +268,9 @@ Micellaneous function for generating and testing extended identifiers.
 
 > isLabelExtId :: Ident -> Bool
 > isLabelExtId l = labelExt `isPrefixOf` name l
+
+> mkLabelIdent :: String -> Ident
+> mkLabelIdent c = renameIdent (mkIdent c) (-1)
 
 > renameLabel :: Ident -> Ident
 > renameLabel l = renameIdent l (-1)
