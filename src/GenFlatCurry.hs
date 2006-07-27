@@ -531,7 +531,11 @@ genOpDecl (CS.IInfixDecl _ fixity prec qident)
 genOpDecl _ = internalError "GenFlatCurry: no infix interface"
 
 
---
+-- The intermediate language (IL) does not represent type synonyms
+-- (and also no record declarations). For this reason an interface
+-- representation of all type synonyms is generated (see "CurryEnv")
+-- from the abstract syntax representation of the Curry program.
+-- The function 'typeSynonyms' returns this list of type synonyms.
 genTypeSynonyms ::  FlatState [TypeDecl]
 genTypeSynonyms = typeSynonyms >>= mapM genTypeSynonym
 
@@ -548,11 +552,24 @@ genTypeSynonym (CS.ITypeDecl _ qident params typeexpr)
 genTypeSynonym _ = internalError "GenFlatCurry: no type synonym interface"
 
 
--- In order to provide interfaces for record declarations, 'genRecordTypes'
--- generates dummy data declarations representing records and together
--- with their typed labels.
--- Note: These dummies should occur in the FlatCurry interface as well as
--- in the corresponding FlatCurry program.
+-- In order to provide an interface for record declarations, 'genRecordTypes'
+-- generates dummy data declarations representing records together
+-- with their typed labels. For the record declaration
+--
+--      type Rec = {l_1 :: t_1,..., l_n :: t_n}
+--
+-- the following data declaration will be generated:
+--
+--      data Rec' = l_1' t_1 | ... | l_n' :: t_n
+--
+-- Rec' and l_i' are unique idenfifiers which encode the original names
+-- Rec and l_i.
+-- When reading an interface file containing such declarations, it is
+-- now possible to reconstruct the original record declaration. Since
+-- usual FlatCurry code is used, these declaration should not have any
+-- effects on the behaviour of the Curry program. But to ensure correctness,
+-- these dummies should be generated for the interface file as well as for
+-- the corresponding FlatCurry file.
 genRecordTypes :: FlatState [TypeDecl]
 genRecordTypes = records >>= mapM genRecordType
 
@@ -580,7 +597,13 @@ genRecordLabel mod vis ([ident],typeexpr)
 
 -------------------------------------------------------------------------------
 
---
+-- FlatCurry provides no possibility of representing record types like
+-- {l_1::t_1, l_2::t_2, ..., l_n::t_n}. So they have to be transformed to
+-- to the corresponding type constructors which are defined in the record 
+-- declarations. 
+-- Unlike data declarations or function type annotations, type synonyms and
+-- record declarations are not generated from the intermediate language.
+-- So the transformation has only to be performed in these cases.
 elimRecordTypes :: ValueEnv -> TCEnv -> CS.TypeExpr -> CS.TypeExpr
 elimRecordTypes tyEnv tcEnv (CS.ConstructorType qid typeexprs)
    = CS.ConstructorType qid (map (elimRecordTypes tyEnv tcEnv) typeexprs)
@@ -819,8 +842,8 @@ isTypeIDecl _                      = False
 
 --
 isRecordIDecl :: CS.IDecl -> Bool
-isRecordIDecl (CS.ITypeDecl _ _ _ (CS.RecordType _ _)) = True
-isRecordIDecl _                                        = False
+isRecordIDecl (CS.ITypeDecl _ _ _ (CS.RecordType (_:_) _)) = True
+isRecordIDecl _                                            = False
 
 --
 isFuncIDecl :: CS.IDecl -> Bool

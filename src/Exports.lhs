@@ -33,13 +33,14 @@ to the interface of the module.
 
 > expandInterface :: Module -> TCEnv -> ValueEnv -> Module
 > expandInterface (Module m es ds) tcEnv tyEnv =
+>     --error (show es')
 >   case linear [unqualify tc | ExportTypeWith tc _ <- es'] of
 >     Linear ->
 >       case linear ([c | ExportTypeWith _ cs <- es', c <- cs] ++
 >                    [unqualify f | Export f <- es']) of
 >         Linear -> Module m (Just (Exporting noPos es')) ds
 >         NonLinear v -> error (ambiguousExportValue v)
->     NonLinear tc -> error (ambiguousExportType tc)
+>     NonLinear tc -> error (ambiguousExportType tc) 
 >   where ms = fromListSet [fromMaybe m asM | ImportDecl _ m _ asM _ <- ds]
 >         es' = joinExports $                                              -- $
 >               maybe (expandLocalModule tcEnv tyEnv)
@@ -74,7 +75,8 @@ identifiers.
 > expandExport p _ m tcEnv tyEnv (Export x) = expandThing p m tcEnv tyEnv x
 > expandExport p _ m tcEnv _ (ExportTypeWith tc cs) =
 >   expandTypeWith m p tcEnv tc cs
-> expandExport p _ m tcEnv _ (ExportTypeAll tc) = expandTypeAll m p tcEnv tc
+> expandExport p _ m tcEnv tyEnv (ExportTypeAll tc) = 
+>   expandTypeAll m p tyEnv tcEnv tc
 > expandExport p ms m tcEnv tyEnv (ExportModule m')
 >   | m == m' = (if m `elemSet` ms then expandModule tcEnv tyEnv m else [])
 >               ++ expandLocalModule tcEnv tyEnv
@@ -122,29 +124,37 @@ identifiers.
 >           | otherwise = errorAt p (undefinedLabel tc l)
 >	   where l' = renameLabel l
 
-> expandTypeAll :: ModuleIdent -> Position -> TCEnv -> QualIdent -> [Export]
-> expandTypeAll m p tcEnv tc =
+> expandTypeAll :: ModuleIdent -> Position -> ValueEnv -> TCEnv -> QualIdent 
+>	-> [Export]
+> expandTypeAll m p tyEnv tcEnv tc =
 >   case qualLookupTC tc tcEnv of
 >     [] -> errorAt p (undefinedType tc)
 >     [t]
->       | isDataType t -> [exportType t]
+>       | isDataType t -> [exportType tyEnv t]
 >       | isRecordType t -> exportRecord m t
 >       | otherwise -> errorAt p (nonDataType tc)
 >     _ -> errorAt p (ambiguousType tc)
 
 > expandLocalModule :: TCEnv -> ValueEnv -> [Export]
 > expandLocalModule tcEnv tyEnv =
->   [exportType t | (_,t) <- localBindings tcEnv] ++
+>   [exportType tyEnv t | (_,t) <- localBindings tcEnv] ++
 >   [Export f' | (f,Value f' _) <- localBindings tyEnv, f == unRenameIdent f]
 
 > expandModule :: TCEnv -> ValueEnv -> ModuleIdent -> [Export]
 > expandModule tcEnv tyEnv m =
->   [exportType t | (_,t) <- moduleImports m tcEnv] ++
+>   [exportType tyEnv t | (_,t) <- moduleImports m tcEnv] ++
 >   [Export f | (_,Value f _) <- moduleImports m tyEnv]
 
-> exportType :: TypeInfo -> Export
-> exportType t | isRecordType t = ExportTypeWith (origName t) (labels t)
->              | otherwise = ExportTypeWith (origName t) (constrs t)
+> exportType :: ValueEnv -> TypeInfo -> Export
+> exportType tyEnv t 
+>   | isRecordType t -- = ExportTypeWith (origName t) (labels t)
+>     = let ls = labels t
+>           r  = origName t
+>       in  case (lookupValue (head ls) tyEnv) of
+>             [Label _ r' _] -> if r == r' then ExportTypeWith r ls
+>		                   else ExportTypeWith r []
+>             _ -> internalError "exportType"
+>   | otherwise = ExportTypeWith (origName t) (constrs t)
 
 > exportRecord :: ModuleIdent -> TypeInfo -> [Export]
 > exportRecord m t = [ExportTypeWith (origName t) (labels t)]
@@ -252,6 +262,7 @@ exported function.
 >		  (fromQualType m ty) : ds
 >     _ -> internalError ("funDecl: " ++ show f)
 > funDecl _ _ (ExportTypeWith _ _) ds = ds
+
 
 \end{verbatim}
 The compiler determines the list of imported modules from the set of
