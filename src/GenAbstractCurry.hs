@@ -197,6 +197,24 @@ genTypeExpr env (ArrowType texpr1 texpr2)
    = let (texpr1', env1) = genTypeExpr env texpr1
 	 (texpr2', env2) = genTypeExpr env1 texpr2
      in  (CFuncType texpr1' texpr2', env2)
+genTypeExpr env (RecordType fss mr)
+   = let fs = concatMap (\ (ls,typeexpr) -> map (\l -> (l,typeexpr)) ls) fss
+         (ls,ts) = unzip fs
+         (ts',env1) = mapfoldl genTypeExpr env ts
+         ls' = map name ls
+     in  case mr of
+           Nothing
+             -> (CRecordType (zip ls' ts') Nothing, env1)
+           Just tvar@(VariableType _)
+             -> let (CTVar iname, env2) = genTypeExpr env1 tvar
+                in  (CRecordType (zip ls' ts') (Just iname), env2)
+           Just rec@(RecordType _ _)
+             -> let (CRecordType fields rbase, env2) = genTypeExpr env1 rec
+		    fields' = foldr (\ (l,t) -> insertEntry l t) 
+				    fields
+			            (zip ls' ts')
+		in  (CRecordType fields' rbase, env2)
+           _ -> internalError "illegal record base"
 
 
 -- NOTE: every infix declaration must declare exactly one operator.
@@ -341,10 +359,13 @@ genLocalDecls env decls
       = foldl genLocalPatternIndex env args
    genLocalPatternIndex env (ListPattern args)
       = foldl genLocalPatternIndex env args
-   genLocalPatternIndex env (AsPattern _ c)
-      = env
+   genLocalPatternIndex env (AsPattern ident c)
+      = genLocalPatternIndex (snd (genVarIndex env ident)) c
    genLocalPatternIndex env (LazyPattern c)
-      = env
+      = genLocalPatternIndex env c
+   genLocalPatternIndex env (RecordPattern fields mc)
+      = let env' = foldl genLocalPatternIndex env (map fieldTerm fields)
+        in  maybe env' (genLocalPatternIndex env') mc
    genLocalPatternIndex env _
       = env
 
@@ -440,10 +461,24 @@ genLocalDecls env decls
 	   args)
    genLocalPattern pos _ (NegativePattern _ _)
       = errorAt pos "negative patterns are not supported in AbstractCurry"
-   genLocalPattern pos _ (AsPattern _ _)
-      = errorAt pos "'as' patterns are not supported in AbstractCurry"
-   genLocalPattern pos _ (LazyPattern _)
-      = errorAt pos "lazy patterns are not supported in AbstractCurry"
+   genLocalPattern pos env (AsPattern ident cterm)
+      = let (patt, env1) = genLocalPattern pos env cterm
+	    idx          = fromMaybe 
+			      (internalError ("cannot find index"
+					      ++ " for alias variable \""
+					      ++ show ident ++ "\""))
+			      (getVarIndex env1 ident)
+        in  (CPAs (idx, name ident) patt, env1)
+   genLocalPattern pos env (LazyPattern cterm)
+      = let (patt, env') = genLocalPattern pos env cterm
+        in  (CPLazy patt, env')
+   genLocalPattern pos env (RecordPattern fields mr)
+      = let (fields', env1) = mapfoldl (genField genLocalPattern) env fields
+	    (mr', env2)
+		= maybe (Nothing, env1)
+		        ((applyFst Just) . (genLocalPattern pos env1))
+			mr
+	in  (CPRecord fields' mr', env2)
 
    genLocalPattRhs pos env [(Variable qSuccessFunId, expr)]
       = genExpr pos env expr
@@ -535,12 +570,16 @@ genExpr pos env (Case expr alts)
    = let (expr', env1) = genExpr pos env expr
 	 (alts', env2) = mapfoldl genBranchExpr env1 alts
      in  (CCase expr' alts', env2)
-genExpr pos _ (RecordConstr _)
-   = errorAt pos "records are not supported in AbstractCurry"
-genExpr pos _ (RecordSelection _ _)
-   = errorAt pos "records are not supported in AbstractCurry"
-genExpr pos _ (RecordUpdate _ _)
-   = errorAt pos "records are not supported in AbstractCurry"
+genExpr pos env (RecordConstr fields)
+   = let (fields', env1) = mapfoldl (genField genExpr) env fields
+     in  (CRecConstr fields', env1)
+genExpr pos env (RecordSelection expr label)
+   = let (expr', env1) = genExpr pos env expr
+     in  (CRecSelect expr' (name label), env1)
+genExpr pos env (RecordUpdate fields expr)
+   = let (fields', env1) = mapfoldl (genField genExpr) env fields
+         (expr', env2)   = genExpr pos env1 expr
+     in  (CRecUpdate fields' expr', env2)
 
 
 --
@@ -616,16 +655,27 @@ genPattern pos env (FunctionPattern qident cterms)
      in  (CPFuncComb (genQName False env qident) patts, env')
 genPattern pos env (InfixFuncPattern cterm1 qident cterm2)
    = genPattern pos env (FunctionPattern qident [cterm1, cterm2])
-genPattern pos _ (RecordPattern _ _)
-   = errorAt pos "records are not supported in AbstractCurry"
+genPattern pos env (RecordPattern fields mr)
+   = let (fields', env1) = mapfoldl (genField genPattern) env fields
+         (mr', env2)     = maybe (Nothing, env1)
+                                 ((applyFst Just) . (genPattern pos env1))
+				 mr
+     in  (CPRecord fields' mr', env2)
 
+
+--
+genField :: (Position -> AbstractEnv -> a -> (b, AbstractEnv))
+	 -> AbstractEnv -> Field a -> (CField b, AbstractEnv)
+genField genTerm env (Field pos label term)
+   = let (term',env1) = genTerm pos env term
+     in  ((name label, term'), env1)
 
 --
 genLiteral :: Literal -> CLiteral
 genLiteral (Char c)  = CCharc c
 genLiteral (Int _ i) = CIntc i
 genLiteral (Float f) = CFloatc f
-genLiteral _         = internalError "non-supported literal occured"
+genLiteral _         = internalError "unsupported literal"
 
 
 -- Notes: 
@@ -950,6 +1000,8 @@ lookupType ident tyEnv
 -- Converts the internal representation of the types from the type
 -- envorinment to CurrySyntax representation
 toCSType :: Type -> TypeExpr
+toCSType = fromType 
+{-
 toCSType (TypeConstructor qident types)
    = ConstructorType qident (map toCSType types)
 toCSType (TypeVariable idx)
@@ -960,6 +1012,7 @@ toCSType (TypeArrow type1 type2)
    = ArrowType (toCSType type1) (toCSType type2)
 toCSType (TypeSkolem idx)
    = VariableType (mkVarIdent idx)
+-}
 
 {-
 --
@@ -1044,6 +1097,11 @@ sureTail (_:xs) = xs
 oneElement :: [a] -> Bool
 oneElement [_] = True
 oneElement _   = False
+
+
+-- Applies 'f' on the first value in a tuple
+applyFst :: (a -> c) -> (a,b) -> (c,b)
+applyFst f (x,y) = (f x, y)
 
 -------------------------------------------------------------------------------
 -------------------------------------------------------------------------------

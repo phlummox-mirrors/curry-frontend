@@ -19,12 +19,13 @@
 ---
 ------------------------------------------------------------------------------
 
-module AbstractCurry (CurryProg(..), QName, CVisibility(..), CTVarIName,
-                      CTypeDecl(..), CConsDecl(..), CTypeExpr(..),
+module AbstractCurry (CurryProg(..), QName, CLabel, CVisibility(..),
+		      CTVarIName, CTypeDecl(..), CConsDecl(..), CTypeExpr(..),
                       COpDecl(..), CFixity(..), CVarIName,
                       CFuncDecl(..), CRules(..), CEvalAnnot(..),
                       CRule(..), CLocalDecl(..), CExpr(..), CStatement(..),
                       CPattern(..), CBranchExpr(..), CLiteral(..),
+		      CField,
                       readCurry, writeCurry) where
 
 import List(intersperse)
@@ -51,6 +52,8 @@ data CurryProg = CurryProg String [String] [CTypeDecl] [CFuncDecl] [COpDecl]
 --- unqualified name as it occurs in the source program.
 type QName = (String,String)
 
+--- Type for representing label identifiers
+type CLabel = String
 
 -- Data type to specify the visibility of various entities.
 
@@ -109,7 +112,9 @@ data CTypeExpr =
     CTVar CTVarIName               -- type variable
   | CFuncType CTypeExpr CTypeExpr  -- function type t1->t2
   | CTCons QName [CTypeExpr]       -- type constructor application
-    deriving (Read, Show)          -- (CTCons (module,name) arguments)
+  | CRecordType [CField CTypeExpr] -- record type (extended Curry)
+                (Maybe CTVarIName)
+    deriving (Read, Show) 
 
 
 --- Data type for operator declarations.
@@ -187,15 +192,18 @@ data CLocalDecl =
 --- Data type for representing Curry expressions.
 
 data CExpr =
-   CVar      CVarIName              -- variable (unique index / name)
- | CLit      CLiteral               -- literal (Integer/Float/Char constant)
- | CSymbol   QName                  -- a defined symbol with module and name
- | CApply    CExpr CExpr            -- application (e1 e2)
- | CLambda   [CPattern] CExpr       -- lambda abstraction
- | CLetDecl  [CLocalDecl] CExpr     -- local let declarations
- | CDoExpr   [CStatement]           -- do expression
- | CListComp CExpr [CStatement]     -- list comprehension
- | CCase     CExpr [CBranchExpr]    -- case expression
+   CVar       CVarIName             -- variable (unique index / name)
+ | CLit       CLiteral              -- literal (Integer/Float/Char constant)
+ | CSymbol    QName                 -- a defined symbol with module and name
+ | CApply     CExpr CExpr           -- application (e1 e2)
+ | CLambda    [CPattern] CExpr      -- lambda abstraction
+ | CLetDecl   [CLocalDecl] CExpr    -- local let declarations
+ | CDoExpr    [CStatement]          -- do expression
+ | CListComp  CExpr [CStatement]    -- list comprehension
+ | CCase      CExpr [CBranchExpr]   -- case expression
+ | CRecConstr [CField CExpr]        -- record construction (extended Curry)
+ | CRecSelect CExpr CLabel          -- field selection (extended Curry)
+ | CRecUpdate [CField CExpr] CExpr  -- record update (extended Curry)
    deriving (Read, Show)
 
 --- Data type for representing statements in do expressions and
@@ -216,6 +224,8 @@ data CPattern =
  | CPAs CVarIName CPattern     -- as-pattern (extended Curry)
  | CPFuncComb QName [CPattern] -- function pattern (extended Curry)
  | CPLazy CPattern             -- lazy pattern (extended Curry) 
+ | CPRecord [CField CPattern]  -- record pattern (extended curry)
+            (Maybe CPattern)
    deriving (Read, Show)  
 
 --- Data type for representing branches in case expressions.
@@ -234,6 +244,10 @@ data CLiteral = CIntc   Integer
               | CFloatc Double
               | CCharc  Char
 		deriving (Read, Show, Eq)
+
+--- Type for representing labeled fields
+
+type CField a = (CLabel,a)
 
 ------------------------------------------------------------------------------
 ------------------------------------------------------------------------------
