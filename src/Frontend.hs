@@ -31,6 +31,7 @@ import CurryEnv
 import Unlit
 import Ident
 import Position
+import Variables
 import PathUtils
 import Env
 import List
@@ -263,26 +264,6 @@ err_invalidModuleName :: ModuleIdent -> String
 err_invalidModuleName mid 
    = "module \"" ++ moduleName mid 
      ++ "\" must be in a file \"" ++ moduleName mid ++ ".curry\""
-
-
--------------------------------------------------------------------------------
--- Curry library paths
-
--- Environment variables containing paths to Curry libraries
-importVars = ["PAKCSLIBPATH"]
-
-
--- Returns a list of the paths to the Curry libraries
-getCurryImports :: IO [FilePath]
-getCurryImports
-   = do imps <- mapM sureGetEnv importVars
-	return (concatMap pathList imps)
-
-
--- Returns the value of an environment variable, if it exists, otherwise an
--- empty string.
-sureGetEnv :: String -> IO String
-sureGetEnv env = catch (getEnv env) (const (return ""))
 
 
 -------------------------------------------------------------------------------

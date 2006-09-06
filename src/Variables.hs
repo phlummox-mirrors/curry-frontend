@@ -7,7 +7,7 @@
 --  September 2005,
 --  Martin Engelke (men@informatik.uni-kiel.de)
 --
-module Variables where
+module Variables(getCurryImports) where
 
 import PathUtils 
 import System
