@@ -19,14 +19,18 @@ import Control.Exception
 import Variables
 
 
-debug = False  --True
+debug = False -- mergen von Token und Codes
 
 trace' s x = if debug then trace s x else x
 
 
-debug' = False
+debug' = False -- messages
 
 trace'' s x = if debug' then trace s x else x
+
+debug'' = False -- parseResults und codes
+
+trace''' s x = if debug'' then trace s x else x
 
 type Program = [(Int,Int,Code)] 
 
@@ -93,11 +97,13 @@ genProgram _ parseResults (Result mess posNtokList) =
                       (concatMap getMessages parseResults ++                         
                        mess))
         mergedMessages = (mergeMessages' (trace' ("Messages: " ++ show messages) messages) 
-                                      posNtokList) in
-    tokenNcodes2codes 1 
+                                      posNtokList)
+        codes = catIdentifiers parseResults in
+    trace''' ("parseResults : " ++ show parseResults ++ "\n\nCodes: " ++ show codes ++ "\n\nToken: " ++ show mergedMessages)
+             (tokenNcodes2codes 1 
                       1
                       mergedMessages 
-                      (catIdentifiers parseResults)            
+                      codes)            
 
     
 genProgram plainText parseResults (Failure messages) =
@@ -680,7 +686,7 @@ expression2codes (EnumFromThenTo expression1 expression2 expression3) =
     expression2codes expression2 ++ 
     expression2codes expression3
 expression2codes (UnaryMinus ident expression) = 
-    [] ++ expression2codes expression
+    [Symbol (name ident)] ++ expression2codes expression 
 expression2codes (Apply expression1 expression2) = 
     expression2codes expression1 ++ expression2codes expression2
 expression2codes (InfixApply expression1 infixOp expression2) = 
