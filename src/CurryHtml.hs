@@ -85,8 +85,7 @@ code2html ownClass c
       | isDecl c && ownClass= maybe tag (addHtmlAnchor tag) (getQualIdent c)
       | otherwise = tag
     where tag = (if ownClass then spanTag (code2class c) else id)
-                      (code2string c)                                    
-                                        
+                      (htmlQuote (code2string c)) 
                                         
 spanTag :: String -> String -> String
 spanTag cl str
@@ -140,4 +139,19 @@ string2urlencoded (c:cs)
   | c == ' '     = '+' : string2urlencoded cs
   | otherwise = show (ord c) ++ (if null cs then "" else ".") ++ string2urlencoded cs
 -}
+
+htmlQuote :: String -> String
+htmlQuote [] = []
+htmlQuote (c:cs) | c=='<' = "&lt;"   ++ htmlQuote cs
+                 | c=='>' = "&gt;"   ++ htmlQuote cs
+                 | c=='&' = "&amp;"  ++ htmlQuote cs
+                 | c=='"' = "&quot;" ++ htmlQuote cs
+                 | c=='\228' = "&auml;" ++ htmlQuote cs
+                 | c=='\246' = "&ouml;" ++ htmlQuote cs
+                 | c=='\252' = "&uuml;" ++ htmlQuote cs
+                 | c=='\196' = "&Auml;" ++ htmlQuote cs
+                 | c=='\214' = "&Ouml;" ++ htmlQuote cs
+                 | c=='\220' = "&Uuml;" ++ htmlQuote cs
+                 | c=='\223' = "&szlig;"++ htmlQuote cs
+                 | otherwise = c : htmlQuote cs
   
