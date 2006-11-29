@@ -106,16 +106,19 @@ visitDataDecl (IL.DataDecl qident arity constrs)
    = do cdecls <- mapM visitConstrDecl constrs
 	qname  <- visitQualIdent qident
 	vis    <- getVisibility qident
-	return (Type qname vis [0 .. (arity - 1)] cdecls)
+	return (Type qname vis [0 .. (arity - 1)] (concat cdecls))
 visitDataDecl _ = internalError "GenFlatCurry: no data declaration"
 
 --
-visitConstrDecl :: IL.ConstrDecl [IL.Type] -> FlatState ConsDecl
+visitConstrDecl :: IL.ConstrDecl [IL.Type] -> FlatState [ConsDecl]
 visitConstrDecl (IL.ConstrDecl qident types)
    = do texprs <- mapM visitType types
 	qname  <- visitQualIdent qident
 	vis    <- getVisibility qident
-	return (Cons qname (length types) vis texprs)
+        genFint <- genInterface
+        if genFint && vis == Private 
+          then return []
+          else return [Cons qname (length types) vis texprs]
 
 --
 visitType :: IL.Type -> FlatState TypeExpr
