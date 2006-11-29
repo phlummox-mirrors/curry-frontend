@@ -7,7 +7,7 @@ FRONTEND_HS = Frontend.hs
 
 # the haskell compiler
 HC         = ghc
-HC_OPTS	   = -v1 -syslib lang --make
+HC_OPTS	   = -v1 -syslib lang --make -O2 -fvia-C 
 
 
 # MCC paths
