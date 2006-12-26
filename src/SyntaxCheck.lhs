@@ -376,8 +376,8 @@ top-level.
 > checkOpLhs _ _ f t = Right (f t)
 
 > checkVar :: String -> Int -> Position -> RenameEnv -> Ident -> Ident
-> checkVar what k p env v
->   | isDataConstr v env = errorAt p (nonVariable what v)
+> checkVar what k p env v 
+>   | False && isDataConstr v env = errorAt p (nonVariable what v)---------------
 >   | otherwise = renameIdent v k
 
 
@@ -455,10 +455,15 @@ top-level.
 >     ts' <- mapM (checkConstrTerm withExt k p m env) ts
 >     return (FunLhs f ts')
 > checkLhsTerm withExt k p m env (OpLhs t1 op t2) =
->   do
->     t1' <- checkConstrTerm withExt k p m env t1
->     t2' <- checkConstrTerm withExt k p m env t2
->     return (OpLhs t1' op t2')
+>   let wrongCalls = concatMap (checkParenConstrTerm (Just (qualify op)))
+>                               [t1,t2] in
+>   if not (null wrongCalls)
+>     then errorAt p (infixWithoutParens wrongCalls)
+>     else  do
+>       t1' <- checkConstrTerm withExt k p m env t1
+>       t2' <- checkConstrTerm withExt k p m env t2 
+>       return (OpLhs t1' op t2')
+>
 > checkLhsTerm withExt k p m env (ApLhs lhs ts) =
 >   do
 >     lhs' <- checkLhsTerm withExt k p m env lhs
@@ -1087,5 +1092,49 @@ Error messages.
 
 > extMessage :: String
 > extMessage = "\n(Use flag -e to enable extended curry)"
+
+> infixWithoutParens :: [(QualIdent,QualIdent)] -> String
+> infixWithoutParens calls =
+>     "Missing parens in infix patterns: " ++
+>     unlines (map (\(q1,q2) -> "\n" ++ show q1 ++ " calls " ++ show q2) calls)
+
+\end{verbatim}
+
+checkParen 
+@param Aufrufende InfixFunktion
+@param ConstrTerm
+@return Liste mit fehlerhaften Funktionsaufrufen
+\begin{verbatim}
+
+> checkParenConstrTerm :: (Maybe QualIdent) -> ConstrTerm -> [(QualIdent,QualIdent)]
+> checkParenConstrTerm _ (LiteralPattern _) = []
+> checkParenConstrTerm _ (NegativePattern _ _) = []
+> checkParenConstrTerm _ (VariablePattern _) = []
+> checkParenConstrTerm _ (ConstructorPattern qualIdent constrTerms) =
+>     concatMap (checkParenConstrTerm Nothing) constrTerms
+> checkParenConstrTerm mCaller (InfixPattern constrTerm1 qualIdent constrTerm2) =
+>     maybe [] (\c -> [(c,qualIdent)]) mCaller ++
+>     checkParenConstrTerm Nothing constrTerm1 ++
+>     checkParenConstrTerm Nothing constrTerm2
+> checkParenConstrTerm _ (ParenPattern constrTerm) =
+>     checkParenConstrTerm Nothing constrTerm
+> checkParenConstrTerm _ (TuplePattern constrTerms) =
+>     concatMap (checkParenConstrTerm Nothing) constrTerms
+> checkParenConstrTerm _ (ListPattern constrTerms) =
+>     concatMap (checkParenConstrTerm Nothing) constrTerms
+> checkParenConstrTerm mCaller (AsPattern _ constrTerm) =
+>     checkParenConstrTerm mCaller constrTerm
+> checkParenConstrTerm mCaller (LazyPattern constrTerm) =
+>     checkParenConstrTerm mCaller constrTerm
+> checkParenConstrTerm _ (FunctionPattern _ constrTerms) =
+>     concatMap (checkParenConstrTerm Nothing) constrTerms
+> checkParenConstrTerm mCaller (InfixFuncPattern constrTerm1 qualIdent constrTerm2) =
+>     maybe [] (\c -> [(c,qualIdent)]) mCaller ++
+>     checkParenConstrTerm Nothing constrTerm1 ++
+>     checkParenConstrTerm Nothing constrTerm2
+> checkParenConstrTerm _ (RecordPattern fieldConstrTerms mConstrTerm) =  
+>     maybe [] (checkParenConstrTerm Nothing) mConstrTerm ++
+>     concatMap (\(Field _ _ constrTerm) -> checkParenConstrTerm Nothing constrTerm) 
+>               fieldConstrTerms
 
 \end{verbatim}
