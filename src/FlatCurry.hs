@@ -318,8 +318,10 @@ readFlatInterface fn
 readFlat :: FilePath -> IO (Maybe Prog)
 readFlat filename
    = do fileExists <- doesFileExist filename
-	if fileExists then readFile filename >>= return . Just . read
-	              else return Nothing
+	if fileExists 
+          then readFile filename >>= return . Just . read 
+	  else return Nothing
+
 
 -- Writes a FlatCurry program term into a file.
 writeFlatCurry :: String -> Prog -> IO ()

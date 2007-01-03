@@ -64,7 +64,9 @@ Combinators that handle layout.
 
 > popContext :: P a -> P a
 > popContext cont pos s bol (_:ctxt) = cont pos s bol ctxt
-> popContext cont pos s bol [] = error "internal error: popContext"
+> popContext cont pos s bol [] = 
+>    error "parse error: popping layout from empty context stack. \
+>          \Perhaps you have inserted too many '}'?"
 
 \end{verbatim}
 Conversions from strings into numbers.
