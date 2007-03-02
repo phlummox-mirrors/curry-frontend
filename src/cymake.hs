@@ -50,7 +50,7 @@ cymake prog args imports
  (opts, files, errs) = getOpt Permute options args
  opts'    = foldr selectOption defaultOpts{ libPaths = imports } opts
  options' = if  flat opts' || flatXml opts' 
-	        || abstract opts' || untypedAbstract opts'
+	        || abstract opts' || untypedAbstract opts' || parseOnly opts'
 	        then  opts'
 	        else  opts'{ flat = True }
  errs'    = errs ++ check options' files

@@ -7,6 +7,7 @@
 --
 -- September 2005,
 -- Martin Engelke (men@informatik.uni-kiel.de)
+-- March 2007, extensions by Sebastian Fischer (sebf@informatik.uni-kiel.de)
 --
 module CurryBuilderOpts where
 
@@ -20,7 +21,7 @@ import CurryCompilerOpts (Dump(..))
 -- Data type for recording builder options
 data Options 
    = Options{ force :: Bool,              -- force compilation
-             html :: Bool,               -- generate Html code  
+              html :: Bool,               -- generate Html code  
 	      importPaths :: [FilePath],  -- import paths
 	      libPaths :: [FilePath],     -- library paths
 	      output :: Maybe FilePath,   -- output file paths
@@ -31,13 +32,14 @@ data Options
 	      flatXml :: Bool,            -- generate FlatXML code
 	      abstract :: Bool,           -- generate AbstractCurry code
 	      untypedAbstract :: Bool,    -- generate untyped AbstractCurry
+	      parseOnly :: Bool,          -- generate source representation
 	      withExtensions :: Bool,     -- enable extended functionalities
 	      dump :: [Dump]              -- dumps
 	    }
 
 -- Default builder options
 defaultOpts = Options{ force           = False,
-                     html            = False,
+                       html            = False,
 		       importPaths     = [],
 		       libPaths        = [],
 		       output          = Nothing,
@@ -48,6 +50,7 @@ defaultOpts = Options{ force           = False,
 		       flatXml         = False,
 		       abstract        = False,
 		       untypedAbstract = False,
+		       parseOnly       = False,
 		       withExtensions  = False,
 		       dump            = []
 		     }
@@ -58,7 +61,7 @@ defaultOpts = Options{ force           = False,
 data Option = Help | Force | Html
 	    | ImportPath FilePath | LibPath FilePath | Output FilePath
 	    | NoVerb | NoWarn | NoOverlapWarn
-	    | Flat | FlatXML | Abstract | UntypedAbstract 
+	    | Flat | FlatXML | Abstract | UntypedAbstract | ParseOnly
 	    | WithExtensions
 	    | Dump [Dump]
 	    deriving Eq
@@ -89,6 +92,8 @@ options = [Option "f" ["force"] (NoArg Force)
 	          "generate (type infered) AbstractCurry code",
 	   Option ""  ["uacy"] (NoArg UntypedAbstract)
 	          "generate untyped AbstractCurry code",
+	   Option ""  ["parse-only"] (NoArg ParseOnly)
+	          "generate source representation",
 	   Option "e"  ["extended"] (NoArg WithExtensions)
 	          "enable extended Curry functionalities",
 	   Option ""  ["dump-all"] (NoArg (Dump [minBound..maxBound]))
@@ -116,6 +121,7 @@ selectOption Html opts            = opts{ html = True }
 selectOption FlatXML opts         = opts{ flatXml = True }
 selectOption Abstract opts        = opts{ abstract = True }
 selectOption UntypedAbstract opts = opts{ untypedAbstract = True }
+selectOption ParseOnly opts       = opts{ parseOnly = True }
 selectOption WithExtensions opts  = opts{ withExtensions = True }
 selectOption (Dump ds) opts       = opts{ dump = ds ++ dump opts }
 

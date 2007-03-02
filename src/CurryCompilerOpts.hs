@@ -6,6 +6,7 @@
 --
 -- September 2005,
 -- Martin Engelke (men@informatik.uni-kiel.de)
+-- March 2007, extensions by Sebastian Fischer (sebf@informatik.uni-kiel.de)
 --
 module CurryCompilerOpts where
 
@@ -28,6 +29,7 @@ data Options
 	      flatXml :: Bool,           -- generate flat XML code
 	      abstract :: Bool,          -- generate typed AbstracCurry code
 	      untypedAbstract :: Bool,   -- generate untyped AbstractCurry code
+	      parseOnly :: Bool,         -- generate source representation
 	      withExtensions :: Bool,    -- enable extended functionalities
 	      dump :: [Dump]             -- dumps
 	    }
@@ -45,6 +47,7 @@ defaultOpts = Options{ force           = False,
 		       flatXml         = False,
 		       abstract        = False,
 		       untypedAbstract = False,
+                       parseOnly       = False,
 		       withExtensions  = False,
 		       dump            = []
 		     }
@@ -55,7 +58,7 @@ defaultOpts = Options{ force           = False,
 data Option = Help | Force
 	    | ImportPath FilePath | Output FilePath
 	    | NoInterface | NoVerb | NoWarn | NoOverlapWarn
-	    | FlatXML | Flat | Abstract | UntypedAbstract
+	    | FlatXML | Flat | Abstract | UntypedAbstract | ParseOnly
 	    | WithExtensions
 	    | Dump [Dump]
 
@@ -83,6 +86,8 @@ options = [Option "f" ["force"] (NoArg Force)
                   "generate (type infered) AbstractCurry code",
 	   Option "" ["uacy"] (NoArg UntypedAbstract)
                   "generate untyped AbstractCurry code",
+	   Option "" ["parse-only"] (NoArg ParseOnly)
+                  "generate source representation",
 	   Option "e"  ["extended"] (NoArg WithExtensions)
 	          "enable extended Curry functionalities",
 	   Option "" ["dump-all"] (NoArg (Dump [minBound..maxBound]))
@@ -126,6 +131,7 @@ selectOption Flat opts            = opts{ flat = True }
 selectOption FlatXML opts         = opts{ flatXml = True }
 selectOption Abstract opts        = opts{ abstract = True }
 selectOption UntypedAbstract opts = opts{ untypedAbstract = True }
+selectOption ParseOnly opts       = opts{ parseOnly = True }
 selectOption WithExtensions opts  = opts{ withExtensions = True }
 selectOption (Dump ds) opts       = opts{ dump = ds ++ dump opts }
 

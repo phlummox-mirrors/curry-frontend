@@ -6,6 +6,7 @@
 --
 -- September 2005,
 -- Martin Engelke (men@informatik.uni-kiel.de)
+-- March 2007, extensions by Sebastian Fischer (sebf@informatik.uni-kiel.de)
 --
 module CurryBuilder (buildCurry, smake) where
 
@@ -91,6 +92,7 @@ makeCurry options deps file
 		| flatXml options         = [xmlName fn]
 		| abstract options        = [acyName fn]
 		| untypedAbstract options = [uacyName fn]
+		| parseOnly options       = [sourceRepName fn]
 		| otherwise               = [flatName fn] -- , flatIntName fn]
 
  flatInterface mod 
@@ -112,6 +114,7 @@ makeCurry options deps file
 	     COpts.flatXml = False,
 	     COpts.abstract = False,
 	     COpts.untypedAbstract = False,
+	     COpts.parseOnly = False,
 	     COpts.withExtensions = withExtensions options,
 	     COpts.dump = []
 	   }
@@ -127,6 +130,7 @@ makeCurry options deps file
 	     COpts.flatXml = flatXml options,
 	     COpts.abstract = abstract options,
 	     COpts.untypedAbstract = untypedAbstract options,
+	     COpts.parseOnly = parseOnly options,
 	     COpts.withExtensions = withExtensions options,
 	     COpts.dump = dump options
 	   }

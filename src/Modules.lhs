@@ -5,6 +5,7 @@
 % See LICENSE for the full license.
 %
 % Modified by Martin Engelke (men@informatik.uni-kiel.de)
+% March 2007, extensions by Sebastian Fischer (sebf@informatik.uni-kiel.de)
 %
 \nwfilename{Modules.lhs}
 \section{Modules}
@@ -22,6 +23,7 @@ import declarations are commented out
 > import Base
 > import Unlit(unlit)
 > import CurryParser(parseSource,parseGoal) -- xxxGoal entfernen
+> import ShowCurrySyntax(showModule)
 > import KindCheck(kindCheck,kindCheckGoal)
 > import SyntaxCheck(syntaxCheck)
 > import PrecCheck(precCheck,precCheckGoal)
@@ -98,10 +100,13 @@ code are obsolete and commented out.
 >     let m = patchModuleId fn mod
 >     checkModuleId fn m
 >     mEnv <- loadInterfaces (importPaths opts) m
->     if uacy
+>     if uacy || src
 >        then 
 >          do (tyEnv, tcEnv, aEnv, m', intf, _) <- simpleCheckModule opts mEnv m
->             genAbstract opts fn tyEnv tcEnv m'
+>             if uacy then genAbstract opts fn tyEnv tcEnv m'
+>              else do
+>                writeFile (rootname fn ++ sourceRepExt) (showModule m')
+>                return defaultResults
 >        else
 >          do (tyEnv, tcEnv, aEnv, m', intf, _) <- checkModule opts mEnv m
 >             let (il,aEnv',dumps) = transModule fcy False False 
@@ -112,7 +117,8 @@ code are obsolete and commented out.
 >         uacy     = untypedAbstract opts
 >         fcy      = flat opts
 >         xml      = flatXml opts
->         likeFlat = fcy || xml || acy || uacy
+>         src      = parseOnly opts
+>         likeFlat = fcy || xml || acy || uacy || src
 >	  
 >         genCode opts fn mEnv tyEnv tcEnv aEnv intf m il
 >	     | fcy       = genFlat opts fn mEnv tyEnv tcEnv aEnv intf m il
@@ -766,6 +772,7 @@ Various filename extensions
 > fintExt = ".fint"
 > acyExt = ".acy"
 > uacyExt = ".uacy"
+> sourceRepExt = ".cy"
 > intfExt = ".icurry"
 > litExt = ".lcurry"
 

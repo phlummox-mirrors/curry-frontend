@@ -5,6 +5,7 @@
 % See LICENSE for the full license.
 %
 % Modified by Martin Engelke (men@informatik.uni-kiel.de)
+% Extended by Sebastian Fischer (sebf@informatik.uni-kiel.de)
 \nwfilename{CurryDeps.lhs}
 \section{Building Programs}
 This module implements the functions to compute the dependency
@@ -386,6 +387,9 @@ file.
 > uacyName :: FilePath -> FilePath
 > uacyName fn = rootname fn ++ uacyExt
 
+> sourceRepName :: FilePath -> FilePath
+> sourceRepName fn = rootname fn ++ sourceRepExt
+
 > objectName :: Bool -> FilePath -> FilePath
 > objectName debug = name (if debug then debugExt else oExt)
 >   where name ext fn = rootname fn ++ ext
@@ -399,6 +403,7 @@ file.
 > xmlExt = "_flat.xml"
 > acyExt = ".acy"
 > uacyExt = ".uacy"
+> sourceRepExt = ".cy"
 > oExt = ".o"
 > debugExt = ".d.o"
 

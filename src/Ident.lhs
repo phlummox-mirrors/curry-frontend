@@ -43,7 +43,8 @@ unqualified identifier.}
 >              recUpdateId, qualRecUpdateId, recordExtId, labelExtId,
 >              isRecordExtId, isLabelExtId, fromRecordExtId, fromLabelExtId,
 >              renameLabel, isLabel, fpSelExt, recSelExt, recUpdExt,
->              recordExt, labelExt, mkLabelIdent) where
+>              recordExt, labelExt, mkLabelIdent,
+>              showsIdent,showsQualIdent,showsModuleIdent) where
 > import Char
 > import List
 > import Maybe
@@ -284,5 +285,33 @@ Micellaneous function for generating and testing extended identifiers.
 > recUpdExt = "_#updR@"
 > recordExt = "_#Rec:"
 > labelExt = "_#Lab:"
+
+> showsString :: String -> ShowS
+> showsString = (++)
+
+> space :: ShowS
+> space = showsString " "
+
+> showsIdent :: Ident -> ShowS
+> showsIdent (Ident name n)
+>   = showsString "(Ident " . shows name . space . shows n . showsString ")"
+
+> showsQualIdent :: QualIdent -> ShowS
+> showsQualIdent (UnqualIdent ident)
+>   = showsString "(UnqualIdent " . showsIdent ident . showsString ")"
+> showsQualIdent (QualIdent mident ident)
+>   = showsString "(QualIdent "
+>   . showsModuleIdent mident . space
+>   . showsIdent ident
+>   . showsString ")"
+
+> showsModuleIdent :: ModuleIdent -> ShowS
+> showsModuleIdent = shows . moduleName
+
+showsModuleIdent (ModuleIdent []) = showsString "(ModuleIdent [])"
+showsModuleIdent (ModuleIdent (s:strs))
+  = showsString "(ModuleIdent ["
+  . foldl (\sys y -> sys . showsString "," . shows y) (shows s) strs
+  . showsString "])"
 
 \end{verbatim}
