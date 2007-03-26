@@ -63,6 +63,7 @@ dist_src:
 	@cp $(MCC_SRC)/*.lhs $(MCC_DIST_SRC)/$(DISTROOT)/src
 	@cp $(MCC_SRC)/*.hs $(MCC_DIST_SRC)/$(DISTROOT)/src
 	@cp $(MCC_SRC)/Makefile $(MCC_DIST_SRC)/$(DISTROOT)/src
+	@cp $(MCC_SRC)/testghc.sh $(MCC_DIST_SRC)/$(DISTROOT)/src
 	@cp $(MCC)/LICENSE $(MCC_DIST_SRC)/$(DISTROOT)
 	@cp $(MCC)/Makefile $(MCC_DIST_SRC)/$(DISTROOT)
 
