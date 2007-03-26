@@ -33,7 +33,7 @@ all: compile
 .PHONY: compile
 
 compile:
-	@cd $(MCC_SRC) && make
+	@cd $(MCC_SRC) && ./testghc.sh && make
 
 # Clean generated files
 .PHONY: clean

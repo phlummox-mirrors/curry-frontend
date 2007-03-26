@@ -403,7 +403,7 @@ tokenNcodes2codes currLine currCol toks@((messages,pos@(Position _ line col),tok
     | otherwise = 
            trace' (" Token: "++ 
                    tokenStr ++
-                   ",Code fällt weg:" ++ 
+                   ",Code faellt weg:" ++ 
                    code2string (head codes) ++ 
                    "|" ++ 
                    code2qualString (head codes))

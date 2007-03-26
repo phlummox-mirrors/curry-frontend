@@ -6,9 +6,9 @@ CYMAKE     = cymake
 FRONTEND_HS = Frontend.hs
 
 # the haskell compiler
-HC         = ghc
-HC_OPTS	   = -v1 -syslib lang --make -O2 -fvia-C 
-
+HC	=ghc
+HC_OPTS	= -v1 --make -O2 -fvia-C
+-include Makefile_support
 
 # MCC paths
 
