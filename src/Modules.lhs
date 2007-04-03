@@ -692,30 +692,33 @@ be dependent on it any longer.
 > genFlat opts fname mEnv tyEnv tcEnv aEnv intf mod il
 >   | flat opts
 >     = do flatProg <- writeFlat opts Nothing fname cEnv mEnv 
->	                         tyEnv tcEnv aEnv il
->	   let fintName = rootname fname ++ fintExt
->	   if force opts
->             then 
->               do writeFInt opts Nothing fname cEnv mEnv 
->		             tyEnv tcEnv aEnv il
->		   return defaultResults
->	      else 
+>                             tyEnv tcEnv aEnv il
+>          let (flatInterface,intMsgs) = genFlatInterface opts cEnv mEnv tyEnv tcEnv aEnv il
+>          if force opts
+>            then 
+>              do writeInterface flatInterface intMsgs
+>                 return defaultResults
+>            else 
 >               do mfint <- readFlatInterface fintName
->		   let flatIntf = fromMaybe emptyIntf mfint
->		   if mfint == mfint  -- necessary to close the file 'fintName'
->	              && not (interfaceCheck flatIntf flatProg)
->		      then 
->	                do writeFInt opts Nothing fname cEnv mEnv 
->			             tyEnv tcEnv aEnv il
->			   return defaultResults
->		      else return defaultResults
+>                  let flatIntf = fromMaybe emptyIntf mfint
+>                  if mfint == mfint  -- necessary to close the file 'fintName'
+>                        && not (interfaceCheck flatIntf flatInterface)
+>                     then 
+>                        do writeInterface flatInterface intMsgs
+>                           return defaultResults
+>                     else return defaultResults
 >   | flatXml opts
 >     = writeXML (output opts) fname cEnv il >> return defaultResults
 >   | otherwise
 >     = internalError "@Modules.genFlat: illegal option"
 >  where
+>    fintName = rootname fname ++ fintExt
 >    cEnv = curryEnv mEnv tcEnv intf mod
 >    emptyIntf = Prog "" [] [] [] []
+>    writeInterface intf msgs = do
+>          unless (noWarn opts || null msgs)
+>                 (hPutStrLn stderr (unlines (map show msgs)))
+>          writeFlatCurry fintName intf
 
 
 > genAbstract :: Options -> FilePath  -> ValueEnv -> TCEnv -> Module 
