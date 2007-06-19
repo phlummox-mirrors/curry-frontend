@@ -49,7 +49,7 @@ addition, this process will also rename the local variables.
 >     --Linear -> tds ++ run (checkModule withExt m env vds)
 >     Linear -> map (checkTypeDecl withExt m) tds
 >	        ++ run (checkModule withExt m env2 vds)
->     NonLinear (PIdent p c) -> errorAt p (duplicateData c)
+>     NonLinear c -> errorAt' (duplicateData c)
 >   where (tds,vds) = partition isTypeDecl ds
 >	  (rs, tds') = partition isRecordDecl tds
 >         env1 = foldr (bindTypes m) -- (bindConstrs m) 
@@ -141,24 +141,24 @@ than once.
 > bindTypes :: ModuleIdent -> Decl -> RenameEnv -> RenameEnv
 > bindTypes m (DataDecl _ tc _ cs) env = foldr (bindConstr m) env cs
 > bindTypes m (NewtypeDecl _ tc _ nc) env = bindNewConstr m nc env
-> bindTypes m (TypeDecl p t _ (RecordType fs r)) env =
+> bindTypes m (TypeDecl _ t _ (RecordType fs r)) env =
 >    -- | isJust r = internalError "bindTypes: illegal record declaration"
->    -- | null fs = errorAt p emptyRecord
+>    -- | null fs = errorAt (positionOfIdent t) emptyRecord
 >    -- | otherwise =
 >      case (qualLookupVar (qualifyWith m t) env) of
->        [] -> foldr (bindRecordLabel p m t (concatMap fst fs)) env fs
->        rs | any isConstr rs -> errorAt p (illegalRecordId t)
+>        [] -> foldr (bindRecordLabel m t (concatMap fst fs)) env fs
+>        rs | any isConstr rs -> errorAt' (illegalRecordId t)
 >           | otherwise
->             -> foldr (bindRecordLabel p m t (concatMap fst fs)) env fs
+>             -> foldr (bindRecordLabel m t (concatMap fst fs)) env fs
 > bindTypes _ _ env = env
 
-> bindRecordLabel :: Position -> ModuleIdent -> Ident -> [Ident] 
+> bindRecordLabel :: ModuleIdent -> Ident -> [Ident] 
 >	             -> ([Ident],TypeExpr) -> RenameEnv -> RenameEnv
-> bindRecordLabel p m t labels (ls,_) env = 
+> bindRecordLabel m t labels (ls,_) env = 
 >     foldr (\l -> case (lookupVar l env) of
 >                    [] -> bindGlobal m l
 >                             (RecordLabel (qualifyWith m t) labels)
->                    _  -> errorAt p (duplicateDefinition l)
+>                    _  -> errorAt' (duplicateDefinition l)
 >	    ) env ls
 
 > --bindConstrs :: ModuleIdent -> Decl -> RenameEnv -> RenameEnv
@@ -201,16 +201,13 @@ than once.
 >      = let (_,ts) = getFlatLhs (head equs)
 >	 in  bindLocal (unRenameIdent id) (LocalVar (length ts) id) env
 > bindVarDecl (PatternDecl p t _) env
->    = foldr bindVar env (map (PIdent p) (bv t))
+>    = foldr bindVar env (bv t)
 > bindVarDecl (ExtraVariables p vs) env
->    = foldr bindVar env (map (PIdent p) vs) 
+>    = foldr bindVar env vs 
 > bindVarDecl _ env = env
 
-> --bindFunc :: ModuleIdent -> PIdent -> RenameEnv -> RenameEnv
-> --bindFunc m (PIdent p f) = bindGlobal m f (GlobalVar (qualifyWith m f))
-
-> bindVar :: PIdent -> RenameEnv -> RenameEnv
-> bindVar (PIdent p v) env
+> bindVar :: Ident -> RenameEnv -> RenameEnv
+> bindVar v env
 >   | v' == anonId = env
 >   | otherwise = bindLocal v' (LocalVar 0 v) env
 >   where v' = unRenameIdent v
@@ -266,9 +263,9 @@ local declarations.
 
 > checkTypeDecl :: Bool -> ModuleIdent -> Decl -> Decl
 > checkTypeDecl withExt m d@(TypeDecl p r tvs (RecordType fs rty))
->   | not withExt = errorAt p noRecordExt
+>   | not withExt = errorAt (positionOfIdent r) noRecordExt
 >   | isJust rty = internalError "checkTypeDecl - illegal record type"
->   | null fs = errorAt p emptyRecord
+>   | null fs = errorAt (positionOfIdent r) emptyRecord
 >   | otherwise = TypeDecl p r tvs (RecordType fs Nothing)
 > checkTypeDecl _ _ d = d
 
@@ -306,23 +303,23 @@ top-level.
 > checkDeclLhs withExt k _ _ (InfixDecl p fix pr ops) =
 >   return (InfixDecl p fix pr (map (flip renameIdent k) ops))
 > checkDeclLhs withExt k _ env (TypeSig p vs ty) =
->   return (TypeSig p (map (checkVar "type signature" k p env) vs) ty)
+>   return (TypeSig p (map (checkVar "type signature" k env) vs) ty)
 > checkDeclLhs withExt k _ env (EvalAnnot p fs ev) =
->   return (EvalAnnot p (map (checkVar "evaluation annotation" k p env) fs) ev)
+>   return (EvalAnnot p (map (checkVar "evaluation annotation" k env) fs) ev)
 > checkDeclLhs withExt k m env (FunctionDecl p _ eqs) = 
 >   checkEquationLhs withExt k m env p eqs
 > checkDeclLhs withExt k _ env (ExternalDecl p cc ie f ty) =
->   return (ExternalDecl p cc ie (checkVar "external declaration" k p env f) ty)
+>   return (ExternalDecl p cc ie (checkVar "external declaration" k env f) ty)
 > checkDeclLhs withExt k _ env (FlatExternalDecl p fs) =
 >   return (FlatExternalDecl p
->             (map (checkVar "external declaration" k p env) fs))
+>             (map (checkVar "external declaration" k env) fs))
 > checkDeclLhs withExt k m env (PatternDecl p t rhs) =
 >   do
 >     t' <- checkConstrTerm withExt k p m env t
 >     return (PatternDecl p t' rhs)
 > checkDeclLhs withExt k _ env (ExtraVariables p vs) =
 >   return (ExtraVariables p
->             (map (checkVar "free variables declaration" k p env) vs))
+>             (map (checkVar "free variables declaration" k env) vs))
 > checkDeclLhs _ _ _ _ d = return d
 
 > checkEquationLhs :: Bool -> Int -> ModuleIdent -> RenameEnv -> Position 
@@ -338,13 +335,13 @@ top-level.
 
 > checkEqLhs :: ModuleIdent -> Int -> RenameEnv -> Position -> Lhs
 >            -> Either (Ident,Lhs) ConstrTerm
-> checkEqLhs m k env p (FunLhs f ts)
+> checkEqLhs m k env _ (FunLhs f ts)
 >   | isDataConstr f env
 >     = if k /= globalKey
 >       then Right (ConstructorPattern (qualify f) ts)
 >       else if null (qualLookupVar (qualifyWith m f) env)
 >            then Left (f',FunLhs f' ts)
->	     else errorAt p noToplevelPattern
+>	     else errorAt (positionOfIdent f) noToplevelPattern
 >   | otherwise = Left (f',FunLhs f' ts)
 >   where f' = renameIdent f k
 > checkEqLhs m k env p (OpLhs t1 op t2)
@@ -362,7 +359,7 @@ top-level.
 > checkEqLhs m k env p (ApLhs lhs ts) =
 >   case checkEqLhs m k env p lhs of
 >     Left (f',lhs') -> Left (f',ApLhs lhs' ts)
->     Right _ -> errorAt p $ nonVariable "curried definition" f
+>     Right _ -> errorAt' $ nonVariable "curried definition" f
 >   where (f,_) = flatLhs lhs
 
 > checkOpLhs :: Int -> RenameEnv -> (ConstrTerm -> ConstrTerm) -> ConstrTerm
@@ -375,9 +372,9 @@ top-level.
 >         op'' = renameIdent op' k
 > checkOpLhs _ _ f t = Right (f t)
 
-> checkVar :: String -> Int -> Position -> RenameEnv -> Ident -> Ident
-> checkVar what k p env v 
->   | False && isDataConstr v env = errorAt p (nonVariable what v)---------------
+> checkVar :: String -> Int -> RenameEnv -> Ident -> Ident
+> checkVar what k env v 
+>   | False && isDataConstr v env = errorAt' (nonVariable what v)---------------
 >   | otherwise = renameIdent v k
 
 
@@ -393,35 +390,35 @@ top-level.
 >               case filter (`notElem` tys) fs' of
 >                 [] -> liftM ((,) env') 
 >		              (mapM (checkDeclRhs withExt bvs m env'') ds)
->                 PIdent p f : _ -> errorAt p (noTypeSig f)
->             NonLinear (PIdent p v) -> errorAt p (duplicateEvalAnnot v)
->         NonLinear (PIdent p v) -> errorAt p (duplicateTypeSig v)
->     NonLinear (PIdent p v) -> errorAt p (duplicateDefinition v)
+>                 f : _ -> errorAt' (noTypeSig f)
+>             NonLinear v -> errorAt' (duplicateEvalAnnot v)
+>         NonLinear v -> errorAt' (duplicateTypeSig v)
+>     NonLinear v -> errorAt' (duplicateDefinition v)
 >   where vds = filter isValueDecl ds
 >	  tds = filter isTypeSig ds
 >         bvs = concat (map vars vds)
 >         tys = concat (map vars tds)
 >         evs = concat (map vars (filter isEvalAnnot ds))
->         fs' = [PIdent p f | FlatExternalDecl p fs <- ds, f <- fs]
+>         fs' = [f | FlatExternalDecl _ fs <- ds, f <- fs]
 >         env' = foldr bindDecl env vds
 >         env'' = foldr bindDecl env' tds
 
-> checkDeclRhs :: Bool -> [PIdent] -> ModuleIdent -> RenameEnv -> Decl 
+> checkDeclRhs :: Bool -> [Ident] -> ModuleIdent -> RenameEnv -> Decl 
 >              -> RenameState Decl
 > checkDeclRhs withExt bvs _ _ (TypeSig p vs ty) =
->   return (TypeSig p (map (checkLocalVar bvs p) vs) ty)
+>   return (TypeSig p (map (checkLocalVar bvs ) vs) ty)
 > checkDeclRhs withExt bvs _ _ (EvalAnnot p vs ev) =
->   return (EvalAnnot p (map (checkLocalVar bvs p) vs) ev)
+>   return (EvalAnnot p (map (checkLocalVar bvs ) vs) ev)
 > checkDeclRhs withExt _ m env (FunctionDecl p f eqs) =
 >   liftM (FunctionDecl p f) (mapM (checkEquation withExt m env) eqs)
 > checkDeclRhs withExt _ m env (PatternDecl p t rhs) =
 >   liftM (PatternDecl p t) (checkRhs withExt m env rhs)
 > checkDeclRhs _ _ _ _ d = return d
 
-> checkLocalVar :: [PIdent] -> Position -> Ident -> Ident
-> checkLocalVar bvs p v
->   | PIdent p v `elem` bvs = v
->   | otherwise = errorAt p (noBody v)
+> checkLocalVar :: [Ident] -> Ident -> Ident
+> checkLocalVar bvs v
+>   | v `elem` bvs = v
+>   | otherwise = errorAt' (noBody v)
 
 > joinEquations :: [Decl] -> [Decl]
 > joinEquations [] = []
@@ -430,7 +427,7 @@ top-level.
 >       if arity (head eqs) == arity eq then
 >         joinEquations (FunctionDecl p f (eqs ++ [eq]) : ds)
 >       else
->         errorAt p' (differentArity f)
+>         errorAt' (differentArity f)
 >   where arity (Equation _ lhs _) = length $ snd $ flatLhs lhs
 > joinEquations (d : ds) = d : joinEquations ds
 
@@ -446,7 +443,7 @@ top-level.
 > checkLhs withExt p m env lhs =
 >   newId >>= \k ->
 >   checkLhsTerm withExt k p m env lhs >>=
->   return . checkConstrTerms withExt p (nestEnv env)
+>   return . checkConstrTerms withExt (nestEnv env)
 
 > checkLhsTerm :: Bool -> Int -> Position -> ModuleIdent -> RenameEnv -> Lhs 
 >                 -> RenameState Lhs
@@ -458,7 +455,8 @@ top-level.
 >   let wrongCalls = concatMap (checkParenConstrTerm (Just (qualify op)))
 >                               [t1,t2] in
 >   if not (null wrongCalls)
->     then errorAt p (infixWithoutParens wrongCalls)
+>     then errorAt (positionOfIdent op) 
+>                  (infixWithoutParens wrongCalls)
 >     else  do
 >       t1' <- checkConstrTerm withExt k p m env t1
 >       t2' <- checkConstrTerm withExt k p m env t2 
@@ -475,14 +473,14 @@ top-level.
 > checkArgs withExt p m env ts =
 >   newId >>= \k ->
 >   mapM (checkConstrTerm withExt k p m env) ts >>=
->   return . checkConstrTerms withExt p (nestEnv env)
+>   return . checkConstrTerms withExt (nestEnv env)
 
-> checkConstrTerms :: QuantExpr t => Bool -> Position -> RenameEnv -> t
+> checkConstrTerms :: QuantExpr t => Bool -> RenameEnv -> t
 >                  -> (RenameEnv,t)
-> checkConstrTerms withExt p env ts =
+> checkConstrTerms withExt env ts =
 >   case linear bvs of
->     Linear -> (foldr (bindVar . PIdent p) env bvs,ts)
->     NonLinear v -> errorAt p (duplicateVariable v)
+>     Linear -> (foldr bindVar env bvs,ts)
+>     NonLinear v -> errorAt' (duplicateVariable v)
 >   where bvs = bv ts
 
 > checkConstrTerm :: Bool -> Int -> Position -> ModuleIdent -> RenameEnv
@@ -502,7 +500,7 @@ top-level.
 >       | n == n' ->
 >           liftM (ConstructorPattern c) 
 >	          (mapM (checkConstrTerm withExt k p m env) ts)
->       | otherwise -> errorAt p (wrongArity c n n')
+>       | otherwise -> errorAt' (wrongArity c n n')
 >       where n' = length ts
 >     [r]
 >       | null ts && not (isQualified c) ->
@@ -516,20 +514,20 @@ top-level.
 >				                      ts1) 
 >	                             ts2)
 >	          else return (FunctionPattern (qualVarIdent r) ts')
->       | otherwise -> errorAt p noFuncPattExt  
+>       | otherwise -> errorAt (positionOfQualIdent c) noFuncPattExt  
 >	where n = arity r
 >	      n' = length ts
 >     rs -> case (qualLookupVar (qualQualify m c) env) of
 >             []
 >               | null ts && not (isQualified c) ->
 >	            return (VariablePattern (renameIdent (unqualify c) k))
->	        | null rs -> errorAt p (undefinedData c)
->		| otherwise -> errorAt p (ambiguousData c)
+>	        | null rs -> errorAt' (undefinedData c)
+>		| otherwise -> errorAt' (ambiguousData c)
 >             [Constr n]
 >               | n == n' ->
 >                   liftM (ConstructorPattern (qualQualify m c)) 
 >                         (mapM (checkConstrTerm withExt k p m env) ts)
->               | otherwise -> errorAt p (wrongArity c n n')
+>               | otherwise -> errorAt' (wrongArity c n n')
 >               where n' = length ts
 >	      [r]
 >	        | null ts && not (isQualified c) ->
@@ -543,10 +541,10 @@ top-level.
 >			                (FunctionPattern (qualVarIdent r) ts1) 
 >	                                ts2)
 >	                  else return (FunctionPattern (qualVarIdent r) ts')
->	        | otherwise -> errorAt p noFuncPattExt
+>	        | otherwise -> errorAt (positionOfQualIdent c) noFuncPattExt
 >               where n = arity r
 >		      n' = length ts
->             _ -> errorAt p (ambiguousData c)
+>             _ -> errorAt' (ambiguousData c)
 > checkConstrTerm withExt k p m env (InfixPattern t1 op t2) =
 >   case (qualLookupVar op env) of
 >     [Constr n]
@@ -554,7 +552,7 @@ top-level.
 >           do t1' <- checkConstrTerm withExt k p m env t1
 >	       t2' <- checkConstrTerm withExt k p m env t2
 >              return (InfixPattern t1' op t2') 
->       | otherwise -> errorAt p (wrongArity op n 2)
+>       | otherwise -> errorAt' (wrongArity op n 2)
 >     [r]
 >       | withExt ->
 >           do t1' <- checkConstrTerm withExt k p m env t1
@@ -562,21 +560,21 @@ top-level.
 >              return (InfixFuncPattern t1' op t2')
 >       | otherwise -> errorAt p noFuncPattExt    
 >     rs -> case (qualLookupVar (qualQualify m op) env) of
->             [] | null rs -> errorAt p (undefinedData op)
->                | otherwise -> errorAt p (ambiguousData op)
+>             [] | null rs -> errorAt' (undefinedData op)
+>                | otherwise -> errorAt' (ambiguousData op)
 >             [Constr n]
 >               | n == 2 ->
 >                   do t1' <- checkConstrTerm withExt k p m env t1
 >	               t2' <- checkConstrTerm withExt k p m env t2
 >                      return (InfixPattern t1' (qualQualify m op) t2') 
->               | otherwise -> errorAt p (wrongArity op n 2)
+>               | otherwise -> errorAt' (wrongArity op n 2)
 >	      [r]
 >               | withExt ->
 >	            do t1' <- checkConstrTerm withExt k p m env t1
 >	               t2' <- checkConstrTerm withExt k p m env t2
 >		       return (InfixFuncPattern t1' (qualQualify m op) t2')
 >	        | otherwise -> errorAt p noFuncPattExt
->             _ -> errorAt p (ambiguousData op)
+>             _ -> errorAt' (ambiguousData op)
 > checkConstrTerm withExt k p m env (ParenPattern t) =
 >   liftM ParenPattern (checkConstrTerm withExt k p m env t)
 > checkConstrTerm withExt k p m env (TuplePattern ts) =
@@ -584,21 +582,23 @@ top-level.
 > checkConstrTerm withExt k p m env (ListPattern ts) =
 >   liftM ListPattern (mapM (checkConstrTerm withExt k p m env) ts)
 > checkConstrTerm withExt k p m env (AsPattern v t) =
->   liftM (AsPattern (checkVar "@ pattern" k p env v))
+>   liftM (AsPattern (checkVar "@ pattern" k env v))
 >         (checkConstrTerm withExt k p m env t)
 > checkConstrTerm withExt k p m env (LazyPattern t) =
 >   liftM LazyPattern (checkConstrTerm withExt k p m env t)
 > checkConstrTerm withExt k p m env (RecordPattern fs t)
 >   | not withExt = errorAt p noRecordExt
 >   | not (null fs) =
->     let (Field p' label patt) = head fs
+>     let (Field _ label patt) = head fs
+>         p' = positionOfIdent label
 >     in  case (lookupVar label env) of
->           [] -> errorAt p' (undefinedLabel label)
+>           [] -> errorAt' (undefinedLabel label)
 >           [RecordLabel r ls]
 >             | not (null duplicates) ->
->	        errorAt p' (duplicateLabel (head duplicates))
+>	        errorAt' (duplicateLabel (head duplicates))
 >	      | isNothing t && not (null missings) ->
->	        errorAt p' (missingLabel (head missings) r "record pattern")
+>	        errorAt (positionOfIdent label) 
+>                       (missingLabel (head missings) r "record pattern")
 >             | maybe True ((==) (VariablePattern anonId)) t ->
 >	        do fs' <- mapM (checkFieldPatt withExt k m r env) fs
 >	           t'  <- maybe (return Nothing)
@@ -610,21 +610,22 @@ top-level.
 >            where ls' = map fieldLabel fs
 >                  duplicates = maybeToList (dup ls')
 >		   missings = ls \\ ls'
->	    [_] -> errorAt p' (notALabel label)
->	    _ -> errorAt p' (duplicateDefinition label)
+>	    [_] -> errorAt' (notALabel label)
+>	    _ -> errorAt' (duplicateDefinition label)
 >   | otherwise = errorAt p emptyRecord
 
 > checkFieldPatt :: Bool -> Int -> ModuleIdent -> QualIdent -> RenameEnv
 >	            -> Field ConstrTerm -> RenameState (Field ConstrTerm)
 > checkFieldPatt withExt k m r env (Field p l t)
 >    = case (lookupVar l env) of
->        [] -> errorAt p (undefinedLabel l)
+>        [] -> errorAt' (undefinedLabel l)
 >        [RecordLabel r' _]
->          | r == r' -> do t' <- checkConstrTerm withExt k p m env t
+>          | r == r' -> do t' <- checkConstrTerm withExt k 
+>                                   (positionOfIdent l) m env t
 >		           return (Field p l t')
->          | otherwise -> errorAt p (illegalLabel l r)
->        [_] -> errorAt p (notALabel l)
->	 _ -> errorAt p (duplicateDefinition l)
+>          | otherwise -> errorAt' (illegalLabel l r)
+>        [_] -> errorAt' (notALabel l)
+>	 _ -> errorAt' (duplicateDefinition l)
 
 > checkRhs :: Bool -> ModuleIdent -> RenameEnv -> Rhs -> RenameState Rhs
 > checkRhs withExt m env (SimpleRhs p e ds) =
@@ -648,18 +649,18 @@ top-level.
 > checkExpr :: Bool -> Position -> ModuleIdent -> RenameEnv -> Expression 
 >           -> RenameState Expression
 > checkExpr _ _ _ _ (Literal l) = liftM Literal (renameLiteral l)
-> checkExpr withExt p m env (Variable v) =
+> checkExpr withExt _ m env (Variable v) =
 >   case (qualLookupVar v env) of
->     [] ->  errorAt p (undefinedVariable v)
+>     [] ->  errorAt' (undefinedVariable v)
 >     [Constr _] -> return (Constructor v)
 >     [GlobalVar _ _] -> return (Variable v)
 >     [LocalVar _ v'] -> return (Variable (qualify v'))
 >     rs -> case (qualLookupVar (qualQualify m v) env) of
->             [] -> errorAt p (ambiguousIdent rs v)
+>             [] -> errorAt' (ambiguousIdent rs v)
 >             [Constr _] -> return (Constructor v)
 >             [GlobalVar _ _] -> return (Variable v)
 >             [LocalVar _ v'] -> return (Variable (qualify v'))
->             rs' -> errorAt p (ambiguousIdent rs' v)
+>             rs' -> errorAt' (ambiguousIdent rs' v)
 > checkExpr withExt p m env (Constructor c) = 
 >   checkExpr withExt p m env (Variable c)
 > checkExpr withExt p m env (Paren e) = 
@@ -704,11 +705,11 @@ top-level.
 >   do
 >     e1' <- checkExpr withExt p m env e1
 >     e2' <- checkExpr withExt p m env e2
->     return (InfixApply e1' (checkOp p m env op) e2')
+>     return (InfixApply e1' (checkOp m env op) e2')
 > checkExpr withExt p m env (LeftSection e op) =
->   liftM (flip LeftSection (checkOp p m env op)) (checkExpr withExt p m env e)
+>   liftM (flip LeftSection (checkOp m env op)) (checkExpr withExt p m env e)
 > checkExpr withExt p m env (RightSection op e) =
->   liftM (RightSection (checkOp p m env op)) (checkExpr withExt p m env e)
+>   liftM (RightSection (checkOp m env op)) (checkExpr withExt p m env e)
 > checkExpr withExt p m env (Lambda ts e) =
 >   do
 >     (env',ts') <- checkArgs withExt p m env ts
@@ -738,49 +739,50 @@ top-level.
 > checkExpr withExt p m env (RecordConstr fs)
 >   | not withExt = errorAt p noRecordExt
 >   | not (null fs) = 
->     let (Field p' label expr) = head fs
+>     let (Field _ label expr) = head fs
 >     in  case (lookupVar label env) of
->           [] -> errorAt p' (undefinedLabel label)
+>           [] -> errorAt' (undefinedLabel label)
 >	    [RecordLabel r ls]
 >              | not (null duplicates) ->
->                errorAt p' (duplicateLabel (head duplicates))
+>                errorAt' (duplicateLabel (head duplicates))
 >              | not (null missings) ->
->	         errorAt p' (missingLabel (head missings) r "record construction")
+>	         errorAt (positionOfIdent label) 
+>                        (missingLabel (head missings) r "record construction")
 >	       | otherwise ->
 >	         do fs' <- mapM (checkFieldExpr withExt m r env) fs
 >	            return (RecordConstr fs')
 >	      where ls' = map fieldLabel fs
 >	            duplicates = maybeToList (dup ls')
 >		    missings = ls \\ ls'
->           [_] -> errorAt p' (notALabel label)
->	    _ -> errorAt p' (duplicateDefinition label)
+>           [_] -> errorAt' (notALabel label)
+>	    _ -> errorAt' (duplicateDefinition label)
 >   | otherwise = errorAt p emptyRecord
 > checkExpr withExt p m env (RecordSelection e l)
 >   | not withExt = errorAt p noRecordExt
 >   | otherwise =
 >     case (lookupVar l env) of
->       [] -> errorAt p (undefinedLabel l)
+>       [] -> errorAt' (undefinedLabel l)
 >       [RecordLabel r ls] ->
 >         do e' <- checkExpr withExt p m env e
 >            return (RecordSelection e' l)
->       [_] -> errorAt p (notALabel l)
->       _ -> errorAt p (duplicateDefinition l)
+>       [_] -> errorAt' (notALabel l)
+>       _ -> errorAt' (duplicateDefinition l)
 > checkExpr withExt p m env (RecordUpdate fs e)
 >   | not withExt = errorAt p noRecordExt
 >   | not (null fs) =
->     let (Field p' label expr) = head fs
+>     let (Field _ label expr) = head fs
 >     in  case (lookupVar label env) of
->           [] -> errorAt p' (undefinedLabel label)
+>           [] -> errorAt' (undefinedLabel label)
 >	    [RecordLabel r ls]
 >             | not (null duplicates) ->
->	        errorAt p' (duplicateLabel (head duplicates))
+>	        errorAt' (duplicateLabel (head duplicates))
 >	      | otherwise ->
 >	        do fs' <- mapM (checkFieldExpr withExt m r env) fs
->	           e' <- checkExpr withExt p' m env e
+>	           e' <- checkExpr withExt (positionOfIdent label) m env e
 >	           return (RecordUpdate fs' e')
 >	      where duplicates = maybeToList (dup (map fieldLabel fs))
->	    [_] -> errorAt p' (notALabel label)
->	    _ -> errorAt p' (duplicateDefinition label)
+>	    [_] -> errorAt' (notALabel label)
+>	    _ -> errorAt' (duplicateDefinition label)
 >   | otherwise = errorAt p emptyRecord
 
 > checkStatement :: Bool -> Position -> ModuleIdent -> RenameEnv -> Statement
@@ -794,7 +796,7 @@ top-level.
 >     e' <- checkExpr withExt p m env e
 >     (env',[t']) <- checkArgs withExt p m env [t]
 >     return (env',StmtBind t' e')
-> checkStatement withExt p m env (StmtDecl ds) =
+> checkStatement withExt _ m env (StmtDecl ds) =
 >   do
 >     (env',ds') <- checkLocalDecls withExt m env ds
 >     return (env',StmtDecl ds')
@@ -810,49 +812,49 @@ top-level.
 >	            -> Field Expression -> RenameState (Field Expression)
 > checkFieldExpr withExt m r env (Field p l e)
 >    = case (lookupVar l env) of
->        [] -> errorAt p (undefinedLabel l)
+>        [] -> errorAt' (undefinedLabel l)
 >        [RecordLabel r' _]
->          | r == r' -> do e' <- checkExpr withExt p m env e
+>          | r == r' -> do e' <- checkExpr withExt (positionOfIdent l) m env e
 >		           return (Field p l e')
->          | otherwise -> errorAt p (illegalLabel l r)
->        [_] -> errorAt p (notALabel l)
->	 _ -> errorAt p (duplicateDefinition l)
+>          | otherwise -> errorAt' (illegalLabel l r)
+>        [_] -> errorAt' (notALabel l)
+>	 _ -> errorAt' (duplicateDefinition l)
 
 
-> checkOp :: Position -> ModuleIdent -> RenameEnv -> InfixOp -> InfixOp
-> checkOp p m env op =
+> checkOp :: ModuleIdent -> RenameEnv -> InfixOp -> InfixOp
+> checkOp m env op =
 >   case (qualLookupVar v env) of
->     [] -> errorAt p (undefinedVariable v)
+>     [] -> errorAt' (undefinedVariable v)
 >     [Constr _] -> InfixConstr v
 >     [GlobalVar _ _] -> InfixOp v
 >     [LocalVar _ v'] -> InfixOp (qualify v')
 >     rs -> case (qualLookupVar (qualQualify m v) env) of
->             [] -> errorAt p (ambiguousIdent rs v)
+>             [] -> errorAt' (ambiguousIdent rs v)
 >             [Constr _] -> InfixConstr v
 >             [GlobalVar _ _] -> InfixOp v
 >             [LocalVar _ v'] -> InfixOp (qualify v')
->             rs' -> errorAt p (ambiguousIdent rs' v)
+>             rs' -> errorAt' (ambiguousIdent rs' v)
 >   where v = opName op
 
 \end{verbatim}
 Auxiliary definitions.
 \begin{verbatim}
 
-> constrs :: Decl -> [PIdent]
+> constrs :: Decl -> [Ident]
 > constrs (DataDecl _ _ _ cs) = map constr cs
->   where constr (ConstrDecl p _ c _) = PIdent p c
->         constr (ConOpDecl p _ _ op _) = PIdent p op
-> constrs (NewtypeDecl _ _ _ (NewConstrDecl p _ c _)) = [PIdent p c]
+>   where constr (ConstrDecl _ _ c _) = c
+>         constr (ConOpDecl _ _ _ op _) = op
+> constrs (NewtypeDecl _ _ _ (NewConstrDecl _ _ c _)) = [c]
 > constrs _ = []
 
-> vars :: Decl -> [PIdent]
-> vars (TypeSig p fs _) = map (PIdent p) fs
-> vars (EvalAnnot p fs _) = map (PIdent p) fs
-> vars (FunctionDecl p f _) = [PIdent p f]
-> vars (ExternalDecl p _ _ f _) = [PIdent p f]
-> vars (FlatExternalDecl p fs) = map (PIdent p) fs
-> vars (PatternDecl p t _) = map (PIdent p) (bv t)
-> vars (ExtraVariables p vs) = map (PIdent p) vs
+> vars :: Decl -> [Ident]
+> vars (TypeSig p fs _) = fs
+> vars (EvalAnnot p fs _) = fs
+> vars (FunctionDecl p f _) = [f]
+> vars (ExternalDecl p _ _ f _) = [f]
+> vars (FlatExternalDecl p fs) = fs
+> vars (PatternDecl p t _) = (bv t)
+> vars (ExtraVariables p vs) = vs
 > vars _ = []
 
 > renameLiteral :: Literal -> RenameState Literal
@@ -983,44 +985,66 @@ Miscellaneous functions.
 Error messages.
 \begin{verbatim}
 
-> undefinedVariable :: QualIdent -> String
-> undefinedVariable v = qualName v ++ " is undefined"
+> undefinedVariable :: QualIdent -> (Position,String)
+> undefinedVariable v = 
+>     (positionOfQualIdent v,
+>      qualName v ++ " is undefined")
 
-> undefinedData :: QualIdent -> String
-> undefinedData c = "Undefined data constructor " ++ qualName c
+> undefinedData :: QualIdent -> (Position,String)
+> undefinedData c =  
+>     (positionOfQualIdent c,
+>      "Undefined data constructor " ++ qualName c)
 
-> undefinedLabel :: Ident -> String
-> undefinedLabel l = "Undefined record label `" ++ name l ++ "`"
+> undefinedLabel :: Ident -> (Position,String)
+> undefinedLabel l =   
+>     (positionOfIdent l,
+>      "Undefined record label `" ++ name l ++ "`")
 
-> ambiguousIdent :: [RenameInfo] -> QualIdent -> String
+> ambiguousIdent :: [RenameInfo] -> QualIdent -> (Position,String)
 > ambiguousIdent rs
 >   | any isConstr rs = ambiguousData
 >   | otherwise = ambiguousVariable
 
-> ambiguousVariable :: QualIdent -> String
-> ambiguousVariable v = "Ambiguous variable " ++ qualName v
+> ambiguousVariable :: QualIdent -> (Position,String)
+> ambiguousVariable v =  
+>     (positionOfQualIdent v,
+>      "Ambiguous variable " ++ qualName v)
 
-> ambiguousData :: QualIdent -> String
-> ambiguousData c = "Ambiguous data constructor " ++ qualName c
+> ambiguousData :: QualIdent -> (Position,String)
+> ambiguousData c =  
+>     (positionOfQualIdent c,
+>      "Ambiguous data constructor " ++ qualName c)
 
-> duplicateDefinition :: Ident -> String
-> duplicateDefinition v = "More than one definition for `" ++ name v ++ "`"
+> duplicateDefinition :: Ident -> (Position,String)
+> duplicateDefinition v =
+>     (positionOfIdent v,
+>      "More than one definition for `" ++ name v ++ "`")
 
-> duplicateVariable :: Ident -> String
-> duplicateVariable v = name v ++ " occurs more than once in pattern"
+> duplicateVariable :: Ident -> (Position,String)
+> duplicateVariable v = 
+>     (positionOfIdent v,
+>      name v ++ " occurs more than once in pattern")
 
-> duplicateData :: Ident -> String
-> duplicateData c = "More than one definition for data constructor `"
->	            ++ name c ++ "`"
+> duplicateData :: Ident -> (Position,String)
+> duplicateData c = 
+>     (positionOfIdent c,
+>      "More than one definition for data constructor `"
+>	            ++ name c ++ "`")
 
-> duplicateTypeSig :: Ident -> String
-> duplicateTypeSig v = "More than one type signature for `" ++ name v ++ "`"
+> duplicateTypeSig :: Ident -> (Position,String)
+> duplicateTypeSig v =  
+>     (positionOfIdent v,
+>      "More than one type signature for `" ++ name v ++ "`")
 
-> duplicateEvalAnnot :: Ident -> String
-> duplicateEvalAnnot v = "More than one eval annotation for `" ++ name v ++ "`"
+> duplicateEvalAnnot :: Ident -> (Position,String)
+> duplicateEvalAnnot v =   
+>     (positionOfIdent v,
+>      "More than one eval annotation for `" ++ name v ++ "`")
 
-> duplicateLabel :: Ident -> String
-> duplicateLabel l = "Multiple occurrence of record label `" ++ name l ++ "`"
+> duplicateLabel :: Ident -> (Position,String)
+> duplicateLabel l =   
+>     (positionOfIdent l,
+>      "Multiple occurrence of record label `" ++ name l ++ "`")
 
 > missingLabel :: Ident -> QualIdent -> String -> String 
 > missingLabel l r what = 
@@ -1029,40 +1053,54 @@ Error messages.
 >     ++ name (unqualify r) ++ "`" --qualName r
 
 
-> illegalLabel :: Ident -> QualIdent -> String
-> illegalLabel l r = "Label `" ++ name l ++ "` is not defined in record `" 
->	     ++ name (unqualify r) ++ "`" --qualName r
+> illegalLabel :: Ident -> QualIdent -> (Position,String)
+> illegalLabel l r =   
+>     (positionOfIdent l,
+>      "Label `" ++ name l ++ "` is not defined in record `" 
+>	     ++ name (unqualify r) ++ "`") --qualName r
 
-> illegalRecordId :: Ident -> String
-> illegalRecordId r = "Record identifier `" ++ name r 
->	      ++ "` already assigned to a data constructor"
+> illegalRecordId :: Ident -> (Position,String)
+> illegalRecordId r = 
+>    (positionOfIdent r,
+>     "Record identifier `" ++ name r 
+>	      ++ "` already assigned to a data constructor")
 
-> nonVariable :: String -> Ident -> String
-> nonVariable what c =
->   "Data constructor `" ++ name c ++ "` in left hand side of " ++ what
+> nonVariable :: String -> Ident -> (Position,String)
+> nonVariable what c = 
+>  (positionOfIdent c,     
+>   "Data constructor `" ++ name c ++ "` in left hand side of " ++ what)
 
-> noBody :: Ident -> String
-> noBody v = "No body for `" ++ name v ++ "`"
+> noBody :: Ident -> (Position,String)
+> noBody v = 
+>  (positionOfIdent v,     
+>   "No body for `" ++ name v ++ "`")
 
-> noTypeSig :: Ident -> String
-> noTypeSig f = "No type signature for external function `" ++ name f ++ "`"
+> noTypeSig :: Ident -> (Position,String)
+> noTypeSig f = 
+>  (positionOfIdent f,     
+>   "No type signature for external function `" ++ name f ++ "`")
 
 > noToplevelPattern :: String
 > noToplevelPattern = "Pattern declaration not allowed at top-level"
 
-> notALabel :: Ident -> String
-> notALabel l = "`" ++ name l ++ "` is not a record label"
+> notALabel :: Ident -> (Position,String)
+> notALabel l =  
+>  (positionOfIdent l,     
+>   "`" ++ name l ++ "` is not a record label")
 
 > emptyRecord :: String
 > emptyRecord = "empty records are not allowed"
 
-> differentArity :: Ident -> String
-> differentArity f = "Equations for `" ++ name f ++ "` have different arities"
+> differentArity :: Ident -> (Position,String)
+> differentArity f =   
+>  (positionOfIdent f,     
+>   "Equations for `" ++ name f ++ "` have different arities")
 
-> wrongArity :: QualIdent -> Int -> Int -> String
-> wrongArity c arity argc =
+> wrongArity :: QualIdent -> Int -> Int -> (Position,String)
+> wrongArity c arity argc =  
+>  (positionOfQualIdent c,    
 >   "Data constructor " ++ qualName c ++ " expects " ++ arguments arity ++
->   " but is applied to " ++ show argc
+>   " but is applied to " ++ show argc)
 >   where arguments 0 = "no arguments"
 >         arguments 1 = "1 argument"
 >         arguments n = show n ++ " arguments"
@@ -1095,8 +1133,11 @@ Error messages.
 
 > infixWithoutParens :: [(QualIdent,QualIdent)] -> String
 > infixWithoutParens calls =
->     "Missing parens in infix patterns: " ++
->     unlines (map (\(q1,q2) -> "\n" ++ show q1 ++ " calls " ++ show q2) calls)
+>     "Missing parens in infix patterns: \n" ++
+>     unlines (map (\(q1,q2) -> show q1 ++ " " ++ 
+>                               showLine (positionOfQualIdent q1) ++ 
+>                               "calls " ++ show q2 ++ " " ++ 
+>                               showLine (positionOfQualIdent q2)) calls)
 
 \end{verbatim}
 

@@ -857,6 +857,9 @@ Error handling
 > errorAt :: Position -> String -> a
 > errorAt p msg = error ("\n" ++ show p ++ ": " ++ msg)
 
+> errorAt' :: (Position,String) -> a
+> errorAt' = uncurry errorAt
+
 > internalError :: String -> a
 > internalError what = error ("internal error: " ++ what)
 

@@ -699,36 +699,49 @@ prefix of a let expression.
 > gconop = gConSym <|> backquotes (qConId <?> "operator name expected")
 
 > ident :: Parser Token Ident a
-> ident = mkIdent . sval <$> tokens [Id,Id_as,Id_ccall,Id_forall,Id_hiding,
->                                    Id_interface,Id_primitive,Id_qualified]
+> ident = (\ pos t -> mkIdentPosition pos $ sval t) <$> position <*> 
+>        tokens [Id,Id_as,Id_ccall,Id_forall,Id_hiding,
+>                Id_interface,Id_primitive,Id_qualified]
 
 > qIdent :: Parser Token QualIdent a
-> qIdent = qualify <$> ident <|> mkQIdent <$> token QId
->   where mkQIdent a = qualifyWith (mkMIdent (modul a)) (mkIdent (sval a))
+> qIdent = qualify <$> ident <|> mkQIdent <$> position <*> token QId
+>   where mkQIdent p a = qualifyWith (mkMIdent (modul a)) 
+>                                    (mkIdentPosition p (sval a))
 
 > mIdent :: Parser Token ModuleIdent a
-> mIdent = mIdent <$> tokens [Id,QId,Id_as,Id_ccall,Id_forall,Id_hiding,
->                             Id_interface,Id_primitive,Id_qualified]
->   where mIdent a = mkMIdent (modul a ++ [sval a])
+> mIdent = mIdent <$> position <*> 
+>      tokens [Id,QId,Id_as,Id_ccall,Id_forall,Id_hiding,
+>              Id_interface,Id_primitive,Id_qualified]
+>   where mIdent p a = addPositionModuleIdent p $ 
+>                      mkMIdent (modul a ++ [sval a])
 
 > sym :: Parser Token Ident a
-> sym = mkIdent . sval <$> tokens [Sym,Sym_Dot,Sym_Minus,Sym_MinusDot]
+> sym = (\ pos t -> mkIdentPosition pos $ sval t) <$> position <*> 
+>       tokens [Sym,Sym_Dot,Sym_Minus,Sym_MinusDot]
 
 > qSym :: Parser Token QualIdent a
-> qSym = qualify <$> sym <|> mkQIdent <$> token QSym
->   where mkQIdent a = qualifyWith (mkMIdent (modul a)) (mkIdent (sval a))
+> qSym = qualify <$> sym <|> mkQIdent <$> position <*> token QSym
+>   where mkQIdent p a = qualifyWith (mkMIdent (modul a)) 
+>                                    (mkIdentPosition p (sval a))
 
 > colon :: Parser Token QualIdent a
-> colon = qConsId <$-> token Colon
+> colon = (\ p _ -> qualify $ addPositionIdent p consId) <$> 
+>         position <*> token Colon
 
 > minus :: Parser Token Ident a
-> minus = minusId <$-> token Sym_Minus
+> minus = (\ p _ -> addPositionIdent p minusId) <$> 
+>         position <*> token Sym_Minus
 
 > fminus :: Parser Token Ident a
-> fminus = fminusId <$-> token Sym_MinusDot
+> fminus = (\ p _ -> addPositionIdent p fminusId) <$> 
+>         position <*> token Sym_MinusDot
 
 > tupleCommas :: Parser Token QualIdent a
-> tupleCommas = qTupleId . (1 + ) . length <$> many1 comma
+> tupleCommas = (\ p str -> qualify $
+>                           addPositionIdent p (tupleId $ 
+>                                               (1 + ) $ 
+>                                               length str))
+>               <$> position <*> many1 comma
 
 \end{verbatim}
 \paragraph{Layout}
@@ -794,5 +807,12 @@ prefix of a let expression.
 
 > leftArrow :: Parser Token Attributes a
 > leftArrow = token LeftArrow
+
+\end{verbatim}
+\paragraph{Ident}
+\begin{verbatim}
+
+> mkIdentPosition :: Position -> String -> Ident
+> mkIdentPosition pos str = addPositionIdent pos $ mkIdent str
 
 \end{verbatim}

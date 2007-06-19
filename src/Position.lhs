@@ -46,4 +46,12 @@ column number. A tab stop is assumed at every eighth column.
 > nl :: Position -> Position
 > nl (Position fn l c) = Position fn (l + 1) 1
 
+> noPos :: Position
+> noPos = Position{ file = "", line = 0, column = 0 }
+
+> showLine :: Position -> String
+> showLine x@(Position _ l c) 
+>      | x == noPos = ""
+>      | otherwise = "(line " ++ show l ++ "." ++ show c ++ ") "
+
 \end{verbatim}

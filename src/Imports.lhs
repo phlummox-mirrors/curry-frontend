@@ -235,81 +235,81 @@ data constructors are added.
 
 > expandSpecs :: ModuleIdent -> ExpTCEnv -> ExpValueEnv -> ImportSpec
 >             -> [Import]
-> expandSpecs m tcEnv tyEnv (Importing p is) =
->   concat (map (expandImport p m tcEnv tyEnv) is)
-> expandSpecs m tcEnv tyEnv (Hiding p is) =
->   concat (map (expandHiding p m tcEnv tyEnv) is)
+> expandSpecs m tcEnv tyEnv (Importing _ is) =
+>   concat (map (expandImport m tcEnv tyEnv) is)
+> expandSpecs m tcEnv tyEnv (Hiding _ is) =
+>   concat (map (expandHiding m tcEnv tyEnv) is)
 
-> expandImport :: Position -> ModuleIdent -> ExpTCEnv -> ExpValueEnv -> Import
+> expandImport :: ModuleIdent -> ExpTCEnv -> ExpValueEnv -> Import
 >              -> [Import]
-> expandImport p m tcEnv tyEnv (Import x) = expandThing p m tcEnv tyEnv x
-> expandImport p m tcEnv tyEnv (ImportTypeWith tc cs) =
->   [expandTypeWith p m tcEnv tc cs]
-> expandImport p m tcEnv tyEnv (ImportTypeAll tc) =
->   [expandTypeAll p m tcEnv tc]
+> expandImport m tcEnv tyEnv (Import x) = expandThing m tcEnv tyEnv x
+> expandImport m tcEnv tyEnv (ImportTypeWith tc cs) =
+>   [expandTypeWith m tcEnv tc cs]
+> expandImport m tcEnv tyEnv (ImportTypeAll tc) =
+>   [expandTypeAll m tcEnv tc]
 
-> expandHiding :: Position -> ModuleIdent -> ExpTCEnv -> ExpValueEnv -> Import
+> expandHiding :: ModuleIdent -> ExpTCEnv -> ExpValueEnv -> Import
 >              -> [Import]
-> expandHiding p m tcEnv tyEnv (Import x) = expandHide p m tcEnv tyEnv x
-> expandHiding p m tcEnv tyEnv (ImportTypeWith tc cs) =
->   [expandTypeWith p m tcEnv tc cs]
-> expandHiding p m tcEnv tyEnv (ImportTypeAll tc) =
->   [expandTypeAll p m tcEnv tc]
+> expandHiding m tcEnv tyEnv (Import x) = expandHide m tcEnv tyEnv x
+> expandHiding m tcEnv tyEnv (ImportTypeWith tc cs) =
+>   [expandTypeWith m tcEnv tc cs]
+> expandHiding m tcEnv tyEnv (ImportTypeAll tc) =
+>   [expandTypeAll m tcEnv tc]
 
-> expandThing :: Position -> ModuleIdent -> ExpTCEnv -> ExpValueEnv -> Ident
+> expandThing :: ModuleIdent -> ExpTCEnv -> ExpValueEnv -> Ident
 >             -> [Import]
-> expandThing p m tcEnv tyEnv tc =
+> expandThing m tcEnv tyEnv tc =
 >   case lookupEnv tc tcEnv of
->     Just _ -> expandThing' p m tyEnv tc (Just [ImportTypeWith tc []])
->     Nothing -> expandThing' p m tyEnv tc Nothing
+>     Just _ -> expandThing' m tyEnv tc (Just [ImportTypeWith tc []])
+>     Nothing -> expandThing' m tyEnv tc Nothing
 
-> expandThing' :: Position -> ModuleIdent -> ExpValueEnv -> Ident
+> expandThing' :: ModuleIdent -> ExpValueEnv -> Ident
 >              -> Maybe [Import] -> [Import]
-> expandThing' p m tyEnv f tcImport =
+> expandThing' m tyEnv f tcImport =
 >   case lookupEnv f tyEnv of
 >     Just v
->       | isConstr v -> maybe (errorAt p (importDataConstr m f)) id tcImport
+>       | isConstr v -> maybe (errorAt' (importDataConstr m f)) id tcImport
 >       | otherwise -> Import f : maybe [] id tcImport
->     Nothing -> maybe (errorAt p (undefinedEntity m f)) id tcImport
+>     Nothing -> maybe (errorAt' (undefinedEntity m f)) id tcImport
 >   where isConstr (DataConstructor _ _) = True
 >         isConstr (NewtypeConstructor _ _) = True
 >         isConstr (Value _ _) = False
 
-> expandHide :: Position -> ModuleIdent -> ExpTCEnv -> ExpValueEnv -> Ident
+> expandHide :: ModuleIdent -> ExpTCEnv -> ExpValueEnv -> Ident
 >            -> [Import]
-> expandHide p m tcEnv tyEnv tc =
+> expandHide m tcEnv tyEnv tc =
 >   case lookupEnv tc tcEnv of
->     Just _ -> expandHide' p m tyEnv tc (Just [ImportTypeWith tc []])
->     Nothing -> expandHide' p m tyEnv tc Nothing
+>     Just _ -> expandHide' m tyEnv tc (Just [ImportTypeWith tc []])
+>     Nothing -> expandHide' m tyEnv tc Nothing
 
-> expandHide' :: Position -> ModuleIdent -> ExpValueEnv -> Ident
+> expandHide' :: ModuleIdent -> ExpValueEnv -> Ident
 >             -> Maybe [Import] -> [Import]
-> expandHide' p m tyEnv f tcImport =
+> expandHide' m tyEnv f tcImport =
 >   case lookupEnv f tyEnv of
 >     Just _ -> Import f : maybe [] id tcImport
->     Nothing -> maybe (errorAt p (undefinedEntity m f)) id tcImport
+>     Nothing -> maybe (errorAt' (undefinedEntity m f)) id tcImport
 
-> expandTypeWith :: Position -> ModuleIdent -> ExpTCEnv -> Ident -> [Ident]
+> expandTypeWith ::  ModuleIdent -> ExpTCEnv -> Ident -> [Ident]
 >                -> Import
-> expandTypeWith p m tcEnv tc cs =
+> expandTypeWith m tcEnv tc cs =
 >   case lookupEnv tc tcEnv of
 >     Just (DataType _ _ cs') ->
 >       ImportTypeWith tc (map (checkConstr [c | Just (Data c _ _) <- cs']) cs)
 >     Just (RenamingType _ _ (Data c _ _)) ->
 >       ImportTypeWith tc (map (checkConstr [c]) cs)
->     Just _ -> errorAt p (nonDataType m tc)
->     Nothing -> errorAt p (undefinedEntity m tc)
+>     Just _ -> errorAt' (nonDataType m tc)
+>     Nothing -> errorAt' (undefinedEntity m tc)
 >   where checkConstr cs c
 >           | c `elem` cs = c
->           | otherwise = errorAt p (undefinedDataConstr m tc c)
+>           | otherwise = errorAt' (undefinedDataConstr m tc c)
 
-> expandTypeAll :: Position -> ModuleIdent -> ExpTCEnv -> Ident -> Import
-> expandTypeAll p m tcEnv tc =
+> expandTypeAll :: ModuleIdent -> ExpTCEnv -> Ident -> Import
+> expandTypeAll m tcEnv tc =
 >   case lookupEnv tc tcEnv of
 >     Just (DataType _ _ cs) -> ImportTypeWith tc [c | Just (Data c _ _) <- cs]
 >     Just (RenamingType _ _ (Data c _ _)) -> ImportTypeWith tc [c]
->     Just _ -> errorAt p (nonDataType m tc)
->     Nothing -> errorAt p (undefinedEntity m tc)
+>     Just _ -> errorAt' (nonDataType m tc)
+>     Nothing -> errorAt' (undefinedEntity m tc)
 
 \end{verbatim}
 After all modules have been imported, the compiler has to ensure that
@@ -350,22 +350,29 @@ Auxiliary functions:
 Error messages:
 \begin{verbatim}
 
-> undefinedEntity :: ModuleIdent -> Ident -> String
+> undefinedEntity :: ModuleIdent -> Ident -> (Position,String)
 > undefinedEntity m x =
->   "Module " ++ moduleName m ++ " does not export " ++ name x
+>  (positionOfIdent x,
+>   "Module " ++ moduleName m ++ " does not export " ++ name x)
 
-> undefinedType :: ModuleIdent -> Ident -> String
+> undefinedType :: ModuleIdent -> Ident -> (Position,String)
 > undefinedType m tc =
->   "Module " ++ moduleName m ++ " does not export a type " ++ name tc
+>  (positionOfIdent tc,   
+>   "Module " ++ moduleName m ++ " does not export a type " ++ name tc)
 
-> undefinedDataConstr :: ModuleIdent -> Ident -> Ident -> String
+> undefinedDataConstr :: ModuleIdent -> Ident -> Ident -> (Position,String)
 > undefinedDataConstr m tc c =
->   name c ++ " is not a data constructor of type " ++ name tc
+>  (positionOfIdent c,   
+>   name c ++ " is not a data constructor of type " ++ name tc)
 
-> nonDataType :: ModuleIdent -> Ident -> String
-> nonDataType m tc = name tc ++ " is not a data type"
+> nonDataType :: ModuleIdent -> Ident -> (Position,String)
+> nonDataType m tc = 
+>  (positionOfIdent tc,
+>   name tc ++ " is not a data type")
 
-> importDataConstr :: ModuleIdent -> Ident -> String
-> importDataConstr m c = "Explicit import for data constructor " ++ name c
+> importDataConstr :: ModuleIdent -> Ident -> (Position,String)
+> importDataConstr m c = 
+>  (positionOfIdent c,
+>   "Explicit import for data constructor " ++ name c)
 
 \end{verbatim}

@@ -44,18 +44,42 @@ unqualified identifier.}
 >              isRecordExtId, isLabelExtId, fromRecordExtId, fromLabelExtId,
 >              renameLabel, isLabel, fpSelExt, recSelExt, recUpdExt,
 >              recordExt, labelExt, mkLabelIdent,
->              showsIdent,showsQualIdent,showsModuleIdent) where
+>              showsIdent,showsQualIdent,showsModuleIdent,
+>              addPositionIdent, removePositionIdent, positionOfIdent,
+>              addPositionModuleIdent, removePositionModuleIdent,
+>              positionOfModuleIdent,positionOfQualIdent ) where
 > import Char
 > import List
 > import Maybe
+> import Position
 
-> data Ident = Ident String Int deriving (Eq,Ord)
+> data Ident = Ident String Int 
+>             |IdentPosition Position String Int
 > data QualIdent = UnqualIdent Ident | QualIdent ModuleIdent Ident
 >                  deriving (Eq,Ord)
-> newtype ModuleIdent = ModuleIdent [String] deriving (Eq,Ord)
+> data ModuleIdent = ModuleIdent [String] 
+>                   |ModuleIdentPosition Position [String]
+
+> instance Eq Ident where
+>    ident1 == ident2 = name ident1 == name     ident2 && 
+>                   uniqueId ident1 == uniqueId ident2
+
+> instance Ord ModuleIdent where
+>    mident1 `compare` mident2 =
+>        moduleQualifiers mident1 `compare` moduleQualifiers mident2
+
+> instance Eq ModuleIdent where
+>    mident1 == mident2 = moduleQualifiers mident1 == moduleQualifiers mident2 
+
+> instance Ord Ident where
+>    ident1 `compare` ident2 =
+>        (name ident1,uniqueId ident1) `compare` (name ident2,uniqueId ident2)
 
 > instance Show Ident where
 >   showsPrec _ (Ident x n)
+>     | n == 0 = showString x
+>     | otherwise = showString x . showChar '.' . shows n
+>   showsPrec _ (IdentPosition _ x n)
 >     | n == 0 = showString x
 >     | otherwise = showString x . showChar '.' . shows n
 > instance Show QualIdent where
@@ -64,11 +88,39 @@ unqualified identifier.}
 > instance Show ModuleIdent where
 >   showsPrec _ m = showString (moduleName m)
 
+> addPositionIdent :: Position -> Ident -> Ident
+> addPositionIdent pos (Ident x n) = IdentPosition pos x n
+> addPositionIdent pos (IdentPosition _ x n) = IdentPosition pos x n
+
+> removePositionIdent :: Ident -> Ident
+> removePositionIdent (Ident x n) = (Ident x n)
+> removePositionIdent (IdentPosition _ x n) = (Ident x n)
+
+> positionOfIdent :: Ident -> Position
+> positionOfIdent (Ident _ _) = noPos
+> positionOfIdent (IdentPosition pos _ _) = pos
+
+> addPositionModuleIdent :: Position -> ModuleIdent -> ModuleIdent
+> addPositionModuleIdent pos (ModuleIdent x) = ModuleIdentPosition pos x 
+> addPositionModuleIdent pos (ModuleIdentPosition _ x) = ModuleIdentPosition pos x 
+
+> removePositionModuleIdent :: ModuleIdent -> ModuleIdent
+> removePositionModuleIdent (ModuleIdent x) = (ModuleIdent x)
+> removePositionModuleIdent (ModuleIdentPosition _ x) = (ModuleIdent x)
+
+> positionOfModuleIdent :: ModuleIdent -> Position
+> positionOfModuleIdent (ModuleIdent _) = noPos
+> positionOfModuleIdent (ModuleIdentPosition pos _) = pos
+
+> positionOfQualIdent :: QualIdent -> Position
+> positionOfQualIdent = positionOfIdent . snd . splitQualIdent
+
 > mkIdent :: String -> Ident
 > mkIdent x = Ident x 0
 
 > name :: Ident -> String
 > name (Ident x _) = x
+> name (IdentPosition _ x _) = x
 
 > qualName :: QualIdent -> String
 > qualName (UnqualIdent x) = name x
@@ -76,27 +128,33 @@ unqualified identifier.}
 
 > uniqueId :: Ident -> Int
 > uniqueId (Ident _ n) = n
+> uniqueId (IdentPosition _ _ n) = n
 
 > renameIdent :: Ident -> Int -> Ident
 > renameIdent (Ident x _) n = Ident x n
+> renameIdent (IdentPosition p x _) n = IdentPosition p x n
 
 > unRenameIdent :: Ident -> Ident
 > unRenameIdent (Ident x _) = Ident x 0
+> unRenameIdent (IdentPosition p x _) = IdentPosition p x 0
 
 > mkMIdent :: [String] -> ModuleIdent
 > mkMIdent = ModuleIdent
 
 > moduleName :: ModuleIdent -> String
 > moduleName (ModuleIdent xs) = concat (intersperse "." xs)
+> moduleName (ModuleIdentPosition _ xs) = concat (intersperse "." xs)
 
 > moduleQualifiers :: ModuleIdent -> [String]
 > moduleQualifiers (ModuleIdent xs) = xs
+> moduleQualifiers (ModuleIdentPosition _ xs) = xs
 
 > isInfixOp :: Ident -> Bool
 > isInfixOp (Ident ('<':c:cs) _)=
 >   last (c:cs) /= '>' || not (isAlphaNum c) && c `notElem` "_(["
 > isInfixOp (Ident (c:_) _) = not (isAlphaNum c) && c `notElem` "_(["
 > isInfixOp (Ident _ _) = False -- error "Zero-length identifier"
+> isInfixOp x@(IdentPosition _ _ _) = isInfixOp $ removePositionIdent x
 
 > isQInfixOp :: QualIdent -> Bool
 > isQInfixOp (UnqualIdent x) = isInfixOp x
@@ -293,6 +351,7 @@ Micellaneous function for generating and testing extended identifiers.
 > space = showsString " "
 
 > showsIdent :: Ident -> ShowS
+> showsIdent x@(IdentPosition _ _ _) = showsIdent $ removePositionIdent x
 > showsIdent (Ident name n)
 >   = showsString "(Ident " . shows name . space . shows n . showsString ")"
 
@@ -308,6 +367,8 @@ Micellaneous function for generating and testing extended identifiers.
 > showsModuleIdent :: ModuleIdent -> ShowS
 > showsModuleIdent = shows . moduleName
 
+showsModuleIdent x@(ModuleIdentPosition _ _) = 
+    showsModuleIdent $ removePositionModuleIdent x
 showsModuleIdent (ModuleIdent []) = showsString "(ModuleIdent [])"
 showsModuleIdent (ModuleIdent (s:strs))
   = showsString "(ModuleIdent ["

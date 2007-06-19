@@ -146,10 +146,10 @@ and \texttt{expandMonoTypes}, respectively.
 > typeDecl _ [d@(DataDecl _ _ _ _)] = d
 > typeDecl _ [d@(NewtypeDecl _ _ _ _)] = d
 > typeDecl m [d@(TypeDecl p tc _ ty)]
->   | tc `elem` ft m ty [] = errorAt p (recursiveTypes [tc])
+>   | tc `elem` ft m ty [] = errorAt' (recursiveTypes [tc])
 >   | otherwise = d
 > typeDecl _ (TypeDecl p tc _ _ : ds) =
->   errorAt p (recursiveTypes (tc : [tc' | TypeDecl _ tc' _ _ <- ds]))
+>   errorAt' (recursiveTypes (tc : [tc' | TypeDecl _ tc' _ _ <- ds]))
 
 > ft :: ModuleIdent -> TypeExpr -> [Ident] -> [Ident]
 > ft m (ConstructorType tc tys) tcs =
@@ -295,8 +295,8 @@ either one of the basic types or \texttt{()}.
 >   tcExternalFunct m tcEnv f ty
 > tcDeclGroup m tcEnv sigs [FlatExternalDecl _ fs] =
 >   mapM_ (tcFlatExternalFunct m tcEnv sigs) fs
-> tcDeclGroup m tcEnv sigs [ExtraVariables p vs] =
->   mapM_ (tcExtraVar m tcEnv sigs p) vs
+> tcDeclGroup m tcEnv sigs [ExtraVariables _ vs] =
+>   mapM_ (tcExtraVar m tcEnv sigs ) vs
 > tcDeclGroup m tcEnv sigs ds =
 >   do
 >     tyEnv0 <- fetchSt
@@ -339,15 +339,15 @@ either one of the basic types or \texttt{()}.
 >             Just ty -> return (expandPolyType m tcEnv ty)
 >             Nothing -> internalError "tcFlatExternalFunct"
 
-> tcExtraVar :: ModuleIdent -> TCEnv -> SigEnv -> Position -> Ident
+> tcExtraVar :: ModuleIdent -> TCEnv -> SigEnv -> Ident
 >            -> TcState ()
-> tcExtraVar m tcEnv sigs p v =
+> tcExtraVar m tcEnv sigs v =
 >   typeOf v tcEnv sigs >>= updateSt_ . bindFun m v . monoType
 >   where typeOf v tcEnv sigs =
 >           case lookupTypeSig v sigs of
 >             Just ty
 >               | n == 0 -> return ty'
->               | otherwise -> errorAt p (polymorphicFreeVar v)
+>               | otherwise -> errorAt' (polymorphicFreeVar v)
 >               where ForAll n ty' = expandPolyType m tcEnv ty
 >             Nothing -> freshTypeVar
 
@@ -400,24 +400,26 @@ signature the declared type must be too general.
 
 > genDecl :: ModuleIdent -> TCEnv -> SigEnv -> Set Int -> TypeSubst -> Decl
 >         -> TcState ()
-> genDecl m tcEnv sigs lvs theta (FunctionDecl p f _) =
->   updateSt_ (genVar True m tcEnv sigs lvs theta p f)
+> genDecl m tcEnv sigs lvs theta (FunctionDecl _ f _) =
+>   updateSt_ (genVar True m tcEnv sigs lvs theta f)
 > genDecl m tcEnv sigs lvs theta (PatternDecl p t _) =
->   mapM_ (updateSt_ . genVar False m tcEnv sigs lvs theta p) (bv t)
+>   mapM_ (updateSt_ . genVar False m tcEnv sigs lvs theta ) (bv t)
 
 > genVar :: Bool -> ModuleIdent -> TCEnv -> SigEnv -> Set Int -> TypeSubst
->        -> Position -> Ident -> ValueEnv -> ValueEnv
-> genVar poly m tcEnv sigs lvs theta p v tyEnv =
+>        -> Ident -> ValueEnv -> ValueEnv
+> genVar poly m tcEnv sigs lvs theta v tyEnv =
 >   case lookupTypeSig v sigs of
 >     Just sigTy
 >       | cmpTypes sigma (expandPolyType m tcEnv sigTy) -> tyEnv'
->       | otherwise -> errorAt p (typeSigTooGeneral m what sigTy sigma)
+>       | otherwise -> errorAt (positionOfIdent v) 
+>                              (typeSigTooGeneral m what sigTy sigma)
 >     Nothing -> tyEnv'
 >   where what = text (if poly then "Function:" else "Variable:") <+> ppIdent v
 >         tyEnv' = rebindFun m v sigma tyEnv
 >         sigma = genType poly (subst theta (varType v tyEnv))
 >         genType poly (ForAll n ty)
->           | n > 0 = internalError ("genVar: " ++ show v ++ " :: " ++ show ty)
+>           | n > 0 = internalError ("genVar: " ++ showLine (positionOfIdent v) ++ 
+>                                    show v ++ " :: " ++ show ty)
 >           | poly = gen lvs ty
 >           | otherwise = monoType ty
 >         cmpTypes (ForAll _ t1) (ForAll _ t2) = equTypes t1 t2
@@ -444,9 +446,9 @@ signature the declared type must be too general.
 
 > tcConstrTerm :: ModuleIdent -> TCEnv -> SigEnv -> Position -> ConstrTerm
 >              -> TcState Type
-> tcConstrTerm m tcEnv sigs p (LiteralPattern l) = tcLiteral m l
-> tcConstrTerm m tcEnv sigs p (NegativePattern _ l) = tcLiteral m l
-> tcConstrTerm m tcEnv sigs p (VariablePattern v) =
+> tcConstrTerm m tcEnv sigs _ (LiteralPattern l) = tcLiteral m l
+> tcConstrTerm m tcEnv sigs _ (NegativePattern _ l) = tcLiteral m l
+> tcConstrTerm m tcEnv sigs _ (VariablePattern v) =
 >   do 
 >     ty <- case lookupTypeSig v sigs of
 >             Just t -> inst (expandPolyType m tcEnv t)
@@ -633,9 +635,10 @@ because of possibly multiple occurrences of variables.
 
 > tcFieldPatt :: (Position -> ConstrTerm -> TcState Type) -> ModuleIdent
 >             -> Field ConstrTerm -> TcState (Ident,Type)
-> tcFieldPatt tcPatt m f@(Field p l t) =
+> tcFieldPatt tcPatt m f@(Field _ l t) =
 >   do
 >     tyEnv <- fetchSt
+>     let p = positionOfIdent l
 >     lty <- maybe (freshTypeVar
 >	             >>= (\lty' ->
 >		           updateSt_
@@ -915,9 +918,10 @@ because of possibly multiple occurrences of variables.
 
 > tcFieldExpr :: ModuleIdent -> TCEnv -> SigEnv -> Doc -> Field Expression
 >	      -> TcState (Ident,Type)
-> tcFieldExpr m tcEnv sigs comb f@(Field p l e) =
+> tcFieldExpr m tcEnv sigs comb f@(Field _ l e) =
 >   do
 >     tyEnv <- fetchSt
+>     let p = positionOfIdent l
 >     lty <- maybe (freshTypeVar 
 >	             >>= (\lty' -> 
 >		           updateSt_ 
@@ -1267,16 +1271,23 @@ Miscellaneous functions.
 Error functions.
 \begin{verbatim}
 
-> recursiveTypes :: [Ident] -> String
-> recursiveTypes [tc] = "Recursive synonym type " ++ name tc
+> recursiveTypes :: [Ident] -> (Position,String)
+> recursiveTypes [tc] = 
+>     (positionOfIdent tc,
+>      "Recursive synonym type " ++ name tc)
 > recursiveTypes (tc:tcs) =
->   "Recursive synonym types " ++ name tc ++ types "" tcs
->   where types comma [tc] = comma ++ " and " ++ name tc
->         types _ (tc:tcs) = ", " ++ name tc ++ types "," tcs
+>  (positionOfIdent tc,
+>   "Recursive synonym types " ++ name tc ++ types "" tcs)
+>   where types comma [tc] = comma ++ " and " ++ name tc ++
+>                            showLine (positionOfIdent tc) 
+>         types _ (tc:tcs) = ", " ++ name tc ++ 
+>                            showLine (positionOfIdent tc) ++ 
+>                            types "," tcs
 
-> polymorphicFreeVar :: Ident -> String
+> polymorphicFreeVar :: Ident -> (Position,String)
 > polymorphicFreeVar v =
->   "Free variable " ++ name v ++ " has a polymorphic type"
+>  (positionOfIdent v,
+>   "Free variable " ++ name v ++ " has a polymorphic type")
 
 > typeSigTooGeneral :: ModuleIdent -> Doc -> TypeExpr -> TypeScheme -> String
 > typeSigTooGeneral m what ty sigma = show $

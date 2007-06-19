@@ -39,8 +39,8 @@ to the interface of the module.
 >       case linear ([c | ExportTypeWith _ cs <- es', c <- cs] ++
 >                    [unqualify f | Export f <- es']) of
 >         Linear -> Module m (Just (Exporting noPos es')) ds
->         NonLinear v -> error (ambiguousExportValue v)
->     NonLinear tc -> error (ambiguousExportType tc) 
+>         NonLinear v -> errorAt' (ambiguousExportValue v)
+>     NonLinear tc -> errorAt' (ambiguousExportType tc) 
 >   where ms = fromListSet [fromMaybe m asM | ImportDecl _ m _ asM _ <- ds]
 >         es' = joinExports $                                              -- $
 >               maybe (expandLocalModule tcEnv tyEnv)
@@ -67,73 +67,73 @@ identifiers.
 
 > expandSpecs :: Set ModuleIdent -> ModuleIdent -> TCEnv -> ValueEnv
 >             -> ExportSpec -> [Export]
-> expandSpecs ms m tcEnv tyEnv (Exporting p es) =
->   concat (map (expandExport p ms m tcEnv tyEnv) es)
+> expandSpecs ms m tcEnv tyEnv (Exporting _ es) =
+>   concat (map (expandExport ms m tcEnv tyEnv) es)
 
-> expandExport :: Position -> Set ModuleIdent -> ModuleIdent -> TCEnv
+> expandExport :: Set ModuleIdent -> ModuleIdent -> TCEnv
 >              -> ValueEnv -> Export -> [Export]
-> expandExport p _ m tcEnv tyEnv (Export x) = expandThing p m tcEnv tyEnv x
-> expandExport p _ m tcEnv _ (ExportTypeWith tc cs) =
->   expandTypeWith m p tcEnv tc cs
-> expandExport p _ m tcEnv tyEnv (ExportTypeAll tc) = 
->   expandTypeAll m p tyEnv tcEnv tc
-> expandExport p ms m tcEnv tyEnv (ExportModule m')
+> expandExport _ m tcEnv tyEnv (Export x) = expandThing m tcEnv tyEnv x
+> expandExport _ m tcEnv _ (ExportTypeWith tc cs) =
+>   expandTypeWith m tcEnv tc cs
+> expandExport _ m tcEnv tyEnv (ExportTypeAll tc) = 
+>   expandTypeAll m tyEnv tcEnv tc
+> expandExport ms m tcEnv tyEnv (ExportModule m')
 >   | m == m' = (if m `elemSet` ms then expandModule tcEnv tyEnv m else [])
 >               ++ expandLocalModule tcEnv tyEnv
 >   | m' `elemSet` ms = expandModule tcEnv tyEnv m'
->   | otherwise = errorAt p (moduleNotImported m')
+>   | otherwise = errorAt' (moduleNotImported m')
 
-> expandThing :: Position -> ModuleIdent -> TCEnv -> ValueEnv -> QualIdent
+> expandThing :: ModuleIdent -> TCEnv -> ValueEnv -> QualIdent
 >                -> [Export]
-> expandThing p m tcEnv tyEnv tc =
+> expandThing m tcEnv tyEnv tc =
 >   case qualLookupTC tc tcEnv of
->     [] -> expandThing' p m tyEnv tc Nothing
->     [t] -> expandThing' p m tyEnv tc (Just [ExportTypeWith (origName t) []])
->     _ -> errorAt p (ambiguousType tc)
+>     [] -> expandThing' m tyEnv tc Nothing
+>     [t] -> expandThing' m tyEnv tc (Just [ExportTypeWith (origName t) []])
+>     _ -> errorAt' (ambiguousType tc)
 
-> expandThing' :: Position -> ModuleIdent -> ValueEnv -> QualIdent
+> expandThing' :: ModuleIdent -> ValueEnv -> QualIdent
 >              -> Maybe [Export] -> [Export]
-> expandThing' p m tyEnv f tcExport =
+> expandThing' m tyEnv f tcExport =
 >   case (qualLookupValue f tyEnv) of
->     [] -> fromMaybe (errorAt p (undefinedEntity f)) tcExport
+>     [] -> fromMaybe (errorAt' (undefinedEntity f)) tcExport
 >     [Value f' _] -> Export f' : fromMaybe [] tcExport
->     [_] -> fromMaybe (errorAt p (exportDataConstr f)) tcExport
+>     [_] -> fromMaybe (errorAt' (exportDataConstr f)) tcExport
 >     vs -> case (qualLookupValue (qualQualify m f) tyEnv) of
->             [] -> fromMaybe (errorAt p (undefinedEntity f)) tcExport
+>             [] -> fromMaybe (errorAt' (undefinedEntity f)) tcExport
 >             [Value f'' _] -> Export f'' : fromMaybe [] tcExport
->             [_] -> fromMaybe (errorAt p (exportDataConstr f)) tcExport
->             _   -> errorAt p (ambiguousName f)
+>             [_] -> fromMaybe (errorAt' (exportDataConstr f)) tcExport
+>             _   -> errorAt' (ambiguousName f)
 
-> expandTypeWith :: ModuleIdent -> Position -> TCEnv -> QualIdent -> [Ident] 
+> expandTypeWith :: ModuleIdent -> TCEnv -> QualIdent -> [Ident] 
 >	 -> [Export]
-> expandTypeWith m p tcEnv tc cs =
+> expandTypeWith m tcEnv tc cs =
 >   case qualLookupTC tc tcEnv of
->     [] -> errorAt p (undefinedType tc)
+>     [] -> errorAt' (undefinedType tc)
 >     [t]
 >       | isDataType t -> [ExportTypeWith (origName t)
 >                            (map (checkConstr (constrs t)) (nub cs))]
 >       | isRecordType t -> [ExportTypeWith (origName t)
 >                            (map (checkLabel (labels t)) (nub cs))]
->       | otherwise -> errorAt p (nonDataType tc)
->     _ -> errorAt p (ambiguousType tc)
+>       | otherwise -> errorAt' (nonDataType tc)
+>     _ -> errorAt' (ambiguousType tc)
 >   where checkConstr cs c
 >           | c `elem` cs = c
->           | otherwise = errorAt p (undefinedDataConstr tc c)
+>           | otherwise = errorAt' (undefinedDataConstr tc c)
 >         checkLabel ls l
 >	    | l' `elem` ls = l'
->           | otherwise = errorAt p (undefinedLabel tc l)
+>           | otherwise = errorAt' (undefinedLabel tc l)
 >	   where l' = renameLabel l
 
-> expandTypeAll :: ModuleIdent -> Position -> ValueEnv -> TCEnv -> QualIdent 
+> expandTypeAll :: ModuleIdent -> ValueEnv -> TCEnv -> QualIdent 
 >	-> [Export]
-> expandTypeAll m p tyEnv tcEnv tc =
+> expandTypeAll m tyEnv tcEnv tc =
 >   case qualLookupTC tc tcEnv of
->     [] -> errorAt p (undefinedType tc)
+>     [] -> errorAt' (undefinedType tc)
 >     [t]
 >       | isDataType t -> [exportType tyEnv t]
 >       | isRecordType t -> exportRecord m t
->       | otherwise -> errorAt p (nonDataType tc)
->     _ -> errorAt p (ambiguousType tc)
+>       | otherwise -> errorAt' (nonDataType tc)
+>     _ -> errorAt' (ambiguousType tc)
 
 > expandLocalModule :: TCEnv -> ValueEnv -> [Export]
 > expandLocalModule tcEnv tyEnv =
@@ -377,9 +377,6 @@ distinguished from type variables.
 Auxiliary definitions
 \begin{verbatim}
 
-> noPos :: Position
-> noPos = Position{ file = "", line = 0, column = 0 }
-> --noPos = undefined
 
 > isDataType :: TypeInfo -> Bool
 > isDataType (DataType _ _ _) = True
@@ -403,40 +400,59 @@ Auxiliary definitions
 Error messages
 \begin{verbatim}
 
-> undefinedEntity :: QualIdent -> String
+> undefinedEntity :: QualIdent -> (Position,String)
 > undefinedEntity x =
->   "Entity " ++ qualName x ++ " in export list is not defined"
+>   (positionOfQualIdent x,
+>    "Entity " ++ qualName x ++ " in export list is not defined")
 
-> undefinedType :: QualIdent -> String
-> undefinedType tc = "Type " ++ qualName tc ++ " in export list is not defined"
+> undefinedType :: QualIdent -> (Position,String)
+> undefinedType tc = 
+>   (positionOfQualIdent tc,
+>    "Type " ++ qualName tc ++ " in export list is not defined")
 
-> moduleNotImported :: ModuleIdent -> String
-> moduleNotImported m = "Module " ++ moduleName m ++ " not imported"
+> moduleNotImported :: ModuleIdent -> (Position,String)
+> moduleNotImported m = 
+>   (positionOfModuleIdent m,
+>    "Module " ++ moduleName m ++ " not imported")
 
-> ambiguousExportType :: Ident -> String
-> ambiguousExportType x = "Ambiguous export of type " ++ name x
+> ambiguousExportType :: Ident -> (Position,String)
+> ambiguousExportType x = 
+>   (positionOfIdent x,
+>    "Ambiguous export of type " ++ name x)
 
-> ambiguousExportValue :: Ident -> String
-> ambiguousExportValue x = "Ambiguous export of " ++ name x
+> ambiguousExportValue :: Ident -> (Position,String)
+> ambiguousExportValue x = 
+>   (positionOfIdent x,
+>    "Ambiguous export of " ++ name x)
 
-> ambiguousType :: QualIdent -> String
-> ambiguousType tc = "Ambiguous type " ++ qualName tc
+> ambiguousType :: QualIdent -> (Position,String)
+> ambiguousType tc = 
+>   (positionOfQualIdent tc,
+>    "Ambiguous type " ++ qualName tc)
 
-> ambiguousName :: QualIdent -> String
-> ambiguousName x = "Ambiguous name " ++ qualName x
+> ambiguousName :: QualIdent -> (Position,String)
+> ambiguousName x = 
+>   (positionOfQualIdent x,
+>    "Ambiguous name " ++ qualName x)
 
-> exportDataConstr :: QualIdent -> String
-> exportDataConstr c = "Data constructor " ++ qualName c ++ " in export list"
+> exportDataConstr :: QualIdent -> (Position,String)
+> exportDataConstr c = 
+>   (positionOfQualIdent c,
+>    "Data constructor " ++ qualName c ++ " in export list")
 
-> nonDataType :: QualIdent -> String
-> nonDataType tc = qualName tc ++ " is not a data type"
+> nonDataType :: QualIdent -> (Position,String)
+> nonDataType tc = 
+>   (positionOfQualIdent tc,
+>    qualName tc ++ " is not a data type")
 
-> undefinedDataConstr :: QualIdent -> Ident -> String
+> undefinedDataConstr :: QualIdent -> Ident -> (Position,String)
 > undefinedDataConstr tc c =
->   name c ++ " is not a data constructor of type " ++ qualName tc
+>   (positionOfIdent c,    
+>    name c ++ " is not a data constructor of type " ++ qualName tc)
 
-> undefinedLabel :: QualIdent -> Ident -> String
+> undefinedLabel :: QualIdent -> Ident -> (Position,String)
 > undefinedLabel r l =
->   name l ++ " is not a label of the record " ++ qualName r
+>   (positionOfIdent l,    
+>    name l ++ " is not a label of the record " ++ qualName r)
 
 \end{verbatim}
