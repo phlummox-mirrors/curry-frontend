@@ -85,6 +85,8 @@ checkLocalDecl (ExtraVariables pos idents)
    = do idents' <- filterM isShadowingVar idents
 	when (not (null idents'))
 	     (foldM' genWarning' (map shadowingVar idents'))
+checkLocalDecl (PatternDecl _ constrTerm _)
+   = checkConstrTerm (mkMIdent []) constrTerm
 checkLocalDecl _ = return ()
 
 --
