@@ -105,7 +105,7 @@ code are obsolete and commented out.
 >          do (tyEnv, tcEnv, aEnv, m', intf, _) <- simpleCheckModule opts mEnv m
 >             if uacy then genAbstract opts fn tyEnv tcEnv m'
 >              else do
->                writeFile (rootname fn ++ sourceRepExt) (showModule m')
+>                writeFile (maybe (rootname fn ++ sourceRepExt) id (output opts)) (showModule m')
 >                return defaultResults
 >        else
 >          do (tyEnv, tcEnv, aEnv, m', intf, _) <- checkModule opts mEnv m

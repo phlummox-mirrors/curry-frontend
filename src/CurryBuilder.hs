@@ -83,16 +83,17 @@ makeCurry options deps file
  generateFile file
     = do unless (noVerb options) 
 		(putStrLn ("generating "  
-			   ++ (head (targetNames file)) 
+			   ++ (head (targetNames file))               
 			   ++ " ..."))
 	 compileCurry (compOpts False) file
 	 return ()
 
- targetNames fn | flat options            = [flatName fn] -- , flatIntName fn]
+ targetNames fn         
+        | flat options            = [flatName fn] -- , flatIntName fn]
 		| flatXml options         = [xmlName fn]
 		| abstract options        = [acyName fn]
 		| untypedAbstract options = [uacyName fn]
-		| parseOnly options       = [sourceRepName fn]
+		| parseOnly options       = [maybe (sourceRepName fn) id (output options)]
 		| otherwise               = [flatName fn] -- , flatIntName fn]
 
  flatInterface mod 
