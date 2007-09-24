@@ -20,6 +20,7 @@ interfaceCheck :: Prog -> Prog -> Bool
 interfaceCheck (Prog m1 is1 ts1 fs1 os1) (Prog m2 is2 ts2 fs2 os2)
    = m1 == m2 
      && null (is1 \\ is2)
+     && length is1 == length is2
      && checkTypeDecls ts1 ts2
      && checkFuncDecls fs1 fs2
      && checkOpDecls os1 os2
