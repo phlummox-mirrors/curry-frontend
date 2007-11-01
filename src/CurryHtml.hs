@@ -5,7 +5,6 @@ import Ident
 import Maybe
 import Char
 import System.Environment
-import Variables
 
        
 --- translate source file into HTML file with syntaxcoloring

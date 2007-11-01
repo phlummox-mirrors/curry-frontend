@@ -31,7 +31,6 @@ import CurryEnv
 import Unlit
 import Ident
 import Position
-import Variables
 import PathUtils
 import Env
 import List
@@ -69,18 +68,14 @@ parse fn src = let (err, src') = unlitLiterate fn src
 -- be defined using the argument 'paths'.
 fullParse :: [FilePath] -> FilePath -> String -> IO (Result CS.Module)
 fullParse paths fn src =
-  do importPaths <- getCurryImports
-     genFullCurrySyntax simpleCheckModule (paths ++ importPaths)
-			fn (parse fn src)
+  genFullCurrySyntax simpleCheckModule paths	fn (parse fn src)
 
 -- Behaves like 'fullParse', but Returns the syntax tree of the source 
 -- program 'src' (type 'Module'; see Module "CurrySyntax") after inferring 
 -- the types of identifiers.
 typingParse :: [FilePath] -> FilePath -> String -> IO (Result CS.Module)
 typingParse paths fn src = 
-  do importPaths <- getCurryImports
-     genFullCurrySyntax checkModule (paths ++ importPaths)
-			fn (parse fn src)
+  genFullCurrySyntax checkModule paths fn (parse fn src)
 
 -- Compiles the source programm 'src' to an AbstractCurry program.
 -- 'fullParse' always searches for standard Curry libraries in the path 
@@ -90,9 +85,7 @@ typingParse paths fn src =
 -- front end, this function may fail when an error occurs
 abstractIO :: [FilePath] -> FilePath -> String -> IO (Result ACY.CurryProg)
 abstractIO paths fn src = 
-  do importPaths <- getCurryImports
-     genAbstractIO (paths ++ importPaths) fn (parse fn src)
-
+  genAbstractIO paths fn (parse fn src)
 
 -- Compiles the source program 'src' to a FlatCurry program.
 -- 'fullParse' always searches for standard Curry libraries in the path 
@@ -102,8 +95,7 @@ abstractIO paths fn src =
 -- front end, this function may fail when an error occurs
 flatIO :: [FilePath] -> FilePath -> String -> IO (Result FCY.Prog)
 flatIO paths fn src = 
-  do importPaths <- getCurryImports
-     genFlatIO (paths ++ importPaths) fn (parse fn src)
+  genFlatIO paths fn (parse fn src)
 
 
 -------------------------------------------------------------------------------

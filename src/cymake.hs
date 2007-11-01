@@ -14,7 +14,6 @@
 import GetOpt
 import CurryBuilder
 import CurryBuilderOpts
-import Variables
 import System
 import Maybe
 import IO
@@ -28,8 +27,7 @@ import List
 main :: IO ()
 main = do prog    <- getProgName
 	  args    <- getArgs
-	  imports <- getCurryImports
-	  cymake prog args imports
+	  cymake prog args []
 
 
 -------------------------------------------------------------------------------

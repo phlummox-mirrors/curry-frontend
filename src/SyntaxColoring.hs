@@ -16,7 +16,6 @@ import List
 import Debug.Trace
 import Message
 import Control.Exception
-import Variables
 
 
 debug = False -- mergen von Token und Codes
