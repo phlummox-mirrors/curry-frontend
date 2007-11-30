@@ -5,6 +5,7 @@ import Ident
 import Maybe
 import Char
 import System.Environment
+import CurryDeps(getCurryPath)
 
        
 --- translate source file into HTML file with syntaxcoloring
@@ -12,11 +13,13 @@ import System.Environment
 --- @param sourcefilename
 source2html :: [String] -> String -> String -> IO ()
 source2html imports outputfilename sourcefilename = do
-        let output = if null outputfilename 
-                    then removeExtension sourcefilename ++ "_curry.html"
-                    else outputfilename 
-            modulname = fileName $ removeExtension sourcefilename 
-        program <- filename2program imports sourcefilename
+        let sourceprogname = removeExtension sourcefilename
+            output = if null outputfilename 
+                     then sourceprogname ++ "_curry.html"
+                     else outputfilename 
+            modulname = fileName sourceprogname
+        fullfname <- getCurryPath imports [] sourcefilename
+        program <- filename2program imports (maybe sourcefilename id fullfname)
         writeFile output 
                   (program2html modulname program)
    
@@ -27,13 +30,13 @@ source2html imports outputfilename sourcefilename = do
 --- @return HTMLcode
 program2html :: String ->Program -> String
 program2html modulname codes =
-    "<HTML>\n<HEAD>\n<title>Module "++ 
+    "<html>\n<head>\n<title>Module "++ 
     modulname++
     "</title>\n" ++
     "<link rel=\"stylesheet\" type=\"text/css\" href=\"currydoc.css\">"++
-    "</link>\n</HEAD>\n<BODY style=\"font-family:'Courier New', Arial;\">\n<PRE>\n" ++
+    "</link>\n</head>\n<body style=\"font-family:'Courier New', Arial;\">\n<pre>\n" ++
     concat (map (code2html True . (\(_,_,c) -> c)) codes) ++
-    "<PRE>\n</BODY>\n</HTML>"            
+    "<pre>\n</body>\n</html>"            
             
             
 --- which code has which color 
@@ -89,7 +92,7 @@ code2html ownClass c
 spanTag :: String -> String -> String
 spanTag cl str
    |null cl = str
-   | otherwise = "<SPAN class=\""++ cl ++ "\">" ++ str ++ "</SPAN>"
+   | otherwise = "<span class=\""++ cl ++ "\">" ++ str ++ "</span>"
 
 replace :: Char -> String -> String -> String
 replace old new = foldr (\ x -> if x == old then (new ++) else ([x]++)) ""
