@@ -64,7 +64,7 @@ visitDecl mod menv msgs senv (NewtypeDecl qident arity cdecl)
 visitDecl mod menv msgs senv (FunctionDecl qident params typeexpr expr)
    = ((FunctionDecl qident params typeexpr expr'), msgs)
  where
-   (expr', msgs') = visitExpr mod menv msgs (insertExprScope senv expr) expr
+   (expr', msgs',_) = visitExpr mod menv msgs (insertExprScope senv expr) expr
 
 visitDecl mod menv msgs senv (ExternalDecl qident cconv name typeexpr)
    = ((ExternalDecl qident cconv name typeexpr), msgs)
@@ -72,88 +72,89 @@ visitDecl mod menv msgs senv (ExternalDecl qident cconv name typeexpr)
 
 --
 visitExpr :: Module -> ModuleEnv -> [Message] -> ScopeEnv -> Expression 
-	     -> (Expression, [Message])
+	     -> (Expression, [Message],ScopeEnv)
 visitExpr mod menv msgs senv (Literal lit) 
-   = ((Literal lit), msgs)
+   = ((Literal lit), msgs, senv)
 
 visitExpr mod menv msgs senv (Variable ident) 
-   = ((Variable ident), msgs)
+   = ((Variable ident), msgs, senv)
 
 visitExpr mod menv msgs senv (Function qident arity) 
-   = ((Function qident arity), msgs)
+   = ((Function qident arity), msgs, senv)
 
 visitExpr mod menv msgs senv (Constructor qident arity)
-   = ((Constructor qident arity), msgs)
+   = ((Constructor qident arity), msgs, senv)
 
 visitExpr mod menv msgs senv (Apply expr1 expr2)
-   = ((Apply expr1' expr2'), msgs2)
+   = ((Apply expr1' expr2'), msgs2, senv2)
  where
-   (expr1', msgs1) = visitExpr mod menv msgs (insertExprScope senv expr1) expr1
-   (expr2', msgs2) = visitExpr mod menv msgs1 (insertExprScope senv expr2) expr2
+   (expr1', msgs1, senv1) = visitExpr mod menv msgs (insertExprScope senv expr1) expr1
+   (expr2', msgs2, senv2) = visitExpr mod menv msgs1 (insertExprScope senv1 expr2) expr2
 
 visitExpr mod menv msgs senv (Case evalannot expr alts)
    | null altsR
      = intError "visitExpr" "empty alternative list"
    | evalannot == Flex   -- pattern matching causes flexible case expressions
-     = (Case evalannot expr' altsR, msgs)
+     = (Case evalannot expr' altsR, msgs, senv1)
    | isConstrAlt altR
-     = (completeConsAlts mod menv senv evalannot expr' altsR, msgs3)
+     = (expr2, msgs3, senv3)
    | isLitAlt altR
-     = (completeLitAlts evalannot expr' altsR, msgs3)
+     = (completeLitAlts evalannot expr' altsR, msgs3, senv2)
    | isVarAlt altR
-     = (completeVarAlts expr' altsR, msgs3)
+     = (completeVarAlts expr' altsR, msgs3, senv2)
    | otherwise 
      = intError "visitExpr" "illegal alternative list"
  where
    altR           = head altsR
-   (expr', msgs1) = visitExpr mod menv msgs (insertExprScope senv expr) expr
-   (alts', msgs2) = visitList (visitAlt mod menv) insertAltScope msgs senv alts
+   (expr', msgs1, senv1) = visitExpr mod menv msgs (insertExprScope senv expr) expr
+   (alts', msgs2, senv2) = visitListWithEnv (visitAlt mod menv) insertAltScope msgs senv1 alts
    (altsR, msgs3) = removeRedundantAlts msgs alts'
+   (expr2, senv3) = completeConsAlts mod menv senv2 evalannot expr' altsR
 
 visitExpr mod menv msgs senv (Or expr1 expr2)
-   = ((Or expr1' expr2'), msgs2)
+   = ((Or expr1' expr2'), msgs2, senv3)
  where
-   (expr1', msgs1) = visitExpr mod menv msgs (insertExprScope senv expr1) expr1
-   (expr2', msgs2) = visitExpr mod menv msgs1 (insertExprScope senv expr2) expr2
+   (expr1', msgs1, senv2) = visitExpr mod menv msgs (insertExprScope senv expr1) expr1
+   (expr2', msgs2, senv3) = visitExpr mod menv msgs1 (insertExprScope senv2 expr2) expr2
 
 visitExpr mod menv msgs senv (Exist ident expr)
-   = ((Exist ident expr'), msgs')
+   = ((Exist ident expr'), msgs', senv2)
  where
-   (expr', msgs') = visitExpr mod menv msgs (insertExprScope senv expr) expr
+   (expr', msgs', senv2) = visitExpr mod menv msgs (insertExprScope senv expr) expr
 
 visitExpr mod menv msgs senv (Let bind expr)
-   = ((Let bind' expr'), msgs2)
+   = ((Let bind' expr'), msgs2, senv3)
  where
-   (expr', msgs1) = visitExpr mod menv msgs (insertExprScope senv expr) expr
-   (bind', msgs2) = visitBinding mod menv msgs (insertBindingScope senv bind) bind
+   (expr', msgs1, senv2) = visitExpr mod menv msgs (insertExprScope senv expr) expr
+   (bind', msgs2, senv3) = visitBinding mod menv msgs (insertBindingScope senv2 bind) bind
 
 visitExpr mod menv msgs senv (Letrec binds expr)
-   = ((Letrec binds' expr'), msgs2)
+   = ((Letrec binds' expr'), msgs2, senv3)
  where
-   (expr', msgs1)  = visitExpr mod menv msgs (insertExprScope senv expr) expr
-   (binds', msgs2) = visitList (visitBinding mod menv)
+   (expr', msgs1, senv2)  = visitExpr mod menv msgs (insertExprScope senv expr) expr
+   (binds', msgs2, senv3) = visitListWithEnv (visitBinding mod menv)
 		               const
 			       msgs1
-			       (foldl insertBindingScope senv binds)
+			       (foldl insertBindingScope senv2 binds)
 			       binds
 
 
 --
 visitAlt :: Module -> ModuleEnv -> [Message] -> ScopeEnv -> Alt 
-	    -> (Alt, [Message])
+	    -> (Alt, [Message], ScopeEnv)
 visitAlt mod menv msgs senv (Alt pattern expr)
-   = ((Alt pattern expr'), msgs')
+   = ((Alt pattern expr'), msgs', senv2)
  where
-   (expr', msgs') = visitExpr mod menv msgs (insertExprScope senv expr) expr
+   (expr', msgs', senv2) = visitExpr mod menv msgs (insertExprScope senv expr) expr
 
 
 --
 visitBinding :: Module -> ModuleEnv -> [Message] -> ScopeEnv -> Binding 
-	        -> (Binding, [Message])
+	        -> (Binding, [Message], ScopeEnv)
 visitBinding mod menv msgs senv (Binding ident expr)
-   = ((Binding ident expr'), msgs')
+   = ((Binding ident expr'), msgs', senv2)
  where
-   (expr', msgs') = visitExpr mod menv msgs (insertExprScope senv expr) expr
+   (expr', msgs', senv2) = visitExpr mod menv msgs (insertExprScope senv expr) expr
 
 
 --
@@ -168,6 +169,18 @@ visitList visitTerm insertScope msgs senv (term:terms)
  where
    (term', msgs1)  = visitTerm msgs (insertScope senv term) term
    (terms', msgs2) = visitList visitTerm insertScope msgs1 senv terms
+
+visitListWithEnv :: ([Message] -> ScopeEnv -> a -> (a, [Message], ScopeEnv))
+	     -> (ScopeEnv -> a -> ScopeEnv)
+	     -> [Message] -> ScopeEnv -> [a]
+	     -> ([a], [Message], ScopeEnv)
+visitListWithEnv visitTerm insertScope msgs senv []
+   = ([], msgs, senv)
+visitListWithEnv visitTerm insertScope msgs senv (term:terms)
+   = ((term':terms'), msgs2, senv3)
+ where
+   (term', msgs1, senv2)  = visitTerm msgs (insertScope senv term) term
+   (terms', msgs2, senv3) = visitListWithEnv visitTerm insertScope msgs1 senv2 terms
 
 -------------------------------------------------------------------------------
 -------------------------------------------------------------------------------
@@ -188,16 +201,19 @@ visitList visitTerm insertScope msgs senv (term:terms)
 --
 completeConsAlts :: Module -> ModuleEnv -> ScopeEnv 
 		    -> Eval -> Expression -> [Alt]
-		    -> Expression
+		    -> (Expression, ScopeEnv)
 completeConsAlts mod menv senv evalannot expr alts
-   = (Case evalannot expr (alts1 ++ alts2))
+   = (Case evalannot expr (alts1 ++ alts2), senv2)
  where
    (Alt varpatt defaultexpr) = getDefaultAlt alts
    (VariablePattern varid)   = varpatt
    alts1       = filter isConstrAlt alts
    constrs     = (map p_getConsAltIdent alts1)
    cconsinfos  = getComplConstrs mod menv constrs
-   cconstrs    = map (p_genConstrTerm senv) cconsinfos
+   (cconstrs,senv2) = 
+                 foldr p_genConstrTerm
+                       ([],senv) 
+                       cconsinfos
    alts2       = map (\cconstr -> 
 		      (Alt cconstr 
 		        (replaceVar varid (cterm2expr cconstr) defaultexpr))) 
@@ -205,8 +221,10 @@ completeConsAlts mod menv senv evalannot expr alts
 
    p_getConsAltIdent (Alt (ConstructorPattern qident _) _) = qident
 
-   p_genConstrTerm senv (qident, arity)
-      = ConstructorPattern qident (ScopeEnv.genIdentList arity "x" senv)
+   p_genConstrTerm (qident, arity) (cconstrs,senv3) =
+       let args = ScopeEnv.genIdentList arity "x" senv3
+           senv4 = foldr ScopeEnv.insertIdent senv3 args
+       in (ConstructorPattern qident args : cconstrs, senv4)
 
 
 -- If the alternatives branches via literal pattern complementary

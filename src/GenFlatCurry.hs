@@ -105,7 +105,7 @@ visitDataDecl :: IL.Decl -> FlatState TypeDecl
 visitDataDecl (IL.DataDecl qident arity constrs)
    = do cdecls <- mapM visitConstrDecl constrs
 	qname  <- visitQualIdent qident
-	vis    <- getVisibility qident
+	vis    <- getVisibility False qident
 	return (Type qname vis [0 .. (arity - 1)] (concat cdecls))
 visitDataDecl _ = internalError "GenFlatCurry: no data declaration"
 
@@ -114,7 +114,7 @@ visitConstrDecl :: IL.ConstrDecl [IL.Type] -> FlatState [ConsDecl]
 visitConstrDecl (IL.ConstrDecl qident types)
    = do texprs <- mapM visitType types
 	qname  <- visitQualIdent qident
-	vis    <- getVisibility qident
+	vis    <- getVisibility True qident
         genFint <- genInterface
         if genFint && vis == Private 
           then return []
@@ -144,7 +144,7 @@ visitFuncDecl (IL.FunctionDecl qident params typeexpr expression)
 	   texpr <- visitType typeexpr
 	   expr  <- visitExpression expression
 	   qname <- visitQualIdent qident
-	   vis   <- getVisibility qident
+	   vis   <- getVisibility False qident
 	   clearVarIndices
 	   return (Func qname (length params) vis texpr (Rule is expr)))
        (do setFunctionId qident
@@ -156,7 +156,7 @@ visitFuncDecl (IL.ExternalDecl qident _ name typeexpr)
    = do setFunctionId qident
 	texpr <- visitType typeexpr
 	qname <- visitQualIdent qident
-	vis   <- getVisibility qident
+	vis   <- getVisibility False qident
 	xname <- visitExternalName name
 	return (Func qname (typeArity typeexpr) vis texpr (External xname))
 visitFuncDecl (IL.NewtypeDecl _ _ _)
@@ -337,9 +337,9 @@ visitExternalName name
 -------------------------------------------------------------------------------
 
 --
-getVisibility :: QualIdent -> FlatState Visibility
-getVisibility qident
-   = do public <- isPublic qident
+getVisibility :: Bool -> QualIdent -> FlatState Visibility
+getVisibility isConstr qident
+   = do public <- isPublic isConstr qident
 	if public then return Public else return Private
 
 
@@ -550,7 +550,7 @@ genTypeSynonym (CS.ITypeDecl _ qident params typeexpr)
 	let typeexpr' = elimRecordTypes tyEnv tcEnv typeexpr
 	texpr <- visitType (fst (cs2ilType (zip params is) typeexpr'))
 	qname <- visitQualIdent qident
-	vis   <- getVisibility qident
+	vis   <- getVisibility False qident
 	return (TypeSyn qname vis is texpr)
 genTypeSynonym _ = internalError "GenFlatCurry: no type synonym interface"
 
@@ -828,13 +828,13 @@ isFuncDecl _                         = False
 
 --
 isPublicDataDecl :: IL.Decl -> FlatState Bool
-isPublicDataDecl (IL.DataDecl qident _ _ ) = isPublic qident
+isPublicDataDecl (IL.DataDecl qident _ _ ) = isPublic False qident
 isPublicDataDecl _                         = return False
 
 --
 isPublicFuncDecl :: IL.Decl -> FlatState Bool
-isPublicFuncDecl (IL.FunctionDecl qident _ _ _) = isPublic qident
-isPublicFuncDecl (IL.ExternalDecl qident _ _ _) = isPublic qident
+isPublicFuncDecl (IL.FunctionDecl qident _ _ _) = isPublic False qident
+isPublicFuncDecl (IL.ExternalDecl qident _ _ _) = isPublic False qident
 isPublicFuncDecl _                              = return False
 
 --
@@ -889,7 +889,7 @@ data FlatEnv a = FlatEnv{ moduleIdE     :: ModuleIdent,
 			  arityEnvE     :: ArityEnv,
 			  typeEnvE      :: ValueEnv,
 			  tConsEnvE     :: TCEnv,
-			  publicEnvE    :: Env Ident Bool,
+			  publicEnvE    :: Env Ident IdentExport,
 			  fixitiesE     :: [CS.IDecl],
 			  typeSynonymsE :: [CS.IDecl],
 			  importsE      :: [CS.IDecl],
@@ -903,6 +903,10 @@ data FlatEnv a = FlatEnv{ moduleIdE     :: ModuleIdent,
 			  genInterfaceE :: Bool,
 			  result        :: a
 			}
+
+data IdentExport = NotConstr       -- function, type-constructor
+                 | OnlyConstr      -- constructor
+                 | NotOnlyConstr   -- constructor, function, type-constructor
 
 
 
@@ -999,13 +1003,18 @@ environments
        (\env -> env{ result = (typeEnvE env, tConsEnvE env) })
 
 --
-isPublic :: QualIdent -> FlatState Bool
-isPublic qid
+isPublic :: Bool -> QualIdent -> FlatState Bool
+isPublic isConstr qid
    = FlatState
-       (\env -> env{ result = fromMaybe False
-		                        (lookupEnv (unqualify qid) 
-					           (publicEnvE env))
-		   })
+       (\env -> env{ result = maybe False
+                                    isP
+                                    (lookupEnv (unqualify qid) 
+                                               (publicEnvE env))
+                   })
+  where
+    isP NotConstr = not isConstr
+    isP OnlyConstr = isConstr
+    isP NotOnlyConstr = True
 
 --
 lookupModuleIntf :: ModuleIdent -> FlatState (Maybe [CS.IDecl])
@@ -1129,51 +1138,64 @@ whenFlatCurry genFlat genIntf
 -- Note: Currently the record functions (selection and update) for all public 
 -- record labels are inserted into the environment, though they are not
 -- explicitly declared in the export specifications.
-genPubEnv :: ModuleIdent -> [CS.IDecl] -> Env Ident Bool
+genPubEnv :: ModuleIdent -> [CS.IDecl] -> Env Ident IdentExport
 genPubEnv mid idecls = foldl (bindEnvIDecl mid) emptyEnv idecls
 
+bindIdentExport :: Ident -> Bool -> Env Ident IdentExport -> Env Ident IdentExport
+bindIdentExport id isConstr env =
+    maybe (bindEnv id (if isConstr then OnlyConstr else NotConstr) env)
+          (\ ie -> bindEnv id (updateIdentExport ie isConstr) env)
+          (lookupEnv id env)
+  where
+    updateIdentExport OnlyConstr True  = OnlyConstr
+    updateIdentExport OnlyConstr False = NotOnlyConstr
+    updateIdentExport NotConstr True   = NotOnlyConstr
+    updateIdentExport NotConstr False  = NotConstr
+    updateIdentExport NotOnlyConstr _  = NotOnlyConstr
+
+
 --
-bindEnvIDecl :: ModuleIdent -> Env Ident Bool -> CS.IDecl -> Env Ident Bool
+bindEnvIDecl :: ModuleIdent -> Env Ident IdentExport -> CS.IDecl -> Env Ident IdentExport
 bindEnvIDecl mid env (CS.IDataDecl _ qid _ mcdecls)
    = maybe env 
            (\id -> foldl bindEnvConstrDecl
-	                 (bindEnv id True env)
+	                 (bindIdentExport id False env)
 	                 (catMaybes mcdecls))
 	   (localIdent mid qid)
 bindEnvIDecl mid env (CS.INewtypeDecl _ qid _ ncdecl)
    = maybe env 
-           (\id -> bindEnvNewConstrDecl (bindEnv id True env) ncdecl)
+           (\id -> bindEnvNewConstrDecl (bindIdentExport id False env) ncdecl)
 	   (localIdent mid qid)
 bindEnvIDecl mid env (CS.ITypeDecl _ qid _ texpr)
    = maybe env (\id -> bindEnvITypeDecl env id texpr) (localIdent mid qid)
 bindEnvIDecl mid env (CS.IFunctionDecl _ qid _ _)
-   = maybe env (\id -> bindEnv id True env) (localIdent mid qid)
+   = maybe env (\id -> bindIdentExport id False env) (localIdent mid qid)
 bindEnvIDecl _ env _ = env
 
 --
-bindEnvITypeDecl :: Env Ident Bool -> Ident -> CS.TypeExpr
-		    -> Env Ident Bool
+bindEnvITypeDecl :: Env Ident IdentExport -> Ident -> CS.TypeExpr
+		    -> Env Ident IdentExport
 bindEnvITypeDecl env id (CS.RecordType fs _)
-   = bindEnv id True (foldl (bindEnvRecordLabel id) env fs)
+   = bindIdentExport id False (foldl (bindEnvRecordLabel id) env fs)
 bindEnvITypeDecl env id texpr
-   = bindEnv id True env
+   = bindIdentExport id False env
 
 --
-bindEnvConstrDecl :: Env Ident Bool -> CS.ConstrDecl -> Env Ident Bool
-bindEnvConstrDecl env (CS.ConstrDecl _ _ id _)  = bindEnv id True env
-bindEnvConstrDecl env (CS.ConOpDecl _ _ _ id _) = bindEnv id True env
+bindEnvConstrDecl :: Env Ident IdentExport -> CS.ConstrDecl -> Env Ident IdentExport
+bindEnvConstrDecl env (CS.ConstrDecl _ _ id _)  = bindIdentExport id True env
+bindEnvConstrDecl env (CS.ConOpDecl _ _ _ id _) = bindIdentExport id True env
 
 --
-bindEnvNewConstrDecl :: Env Ident Bool -> CS.NewConstrDecl -> Env Ident Bool
-bindEnvNewConstrDecl env (CS.NewConstrDecl _ _ id _) = bindEnv id True env
+bindEnvNewConstrDecl :: Env Ident IdentExport -> CS.NewConstrDecl -> Env Ident IdentExport
+bindEnvNewConstrDecl env (CS.NewConstrDecl _ _ id _) = bindIdentExport id False env
 
 --
-bindEnvRecordLabel :: Ident -> Env Ident Bool -> ([Ident],CS.TypeExpr) 
-		   -> Env Ident Bool
+bindEnvRecordLabel :: Ident -> Env Ident IdentExport -> ([Ident],CS.TypeExpr) 
+		   -> Env Ident IdentExport
 bindEnvRecordLabel rec env ([lab],_)
-   = bindEnv (recSelectorId (qualify rec) lab)
-             True
-	     (bindEnv (recUpdateId (qualify rec) lab) True env)
+   = bindIdentExport (recSelectorId (qualify rec) lab)
+             False
+	     (bindIdentExport (recUpdateId (qualify rec) lab) False env)
 
 
 -------------------------------------------------------------------------------
