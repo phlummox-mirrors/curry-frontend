@@ -1037,9 +1037,9 @@ of~\cite{PeytonJones87:Book}).
 >             Left 
 >	      (\res' -> Right (compose res res'))
 >	      (unifyTypeLists m [TypeVariable a1,
->			         TypeRecord (fs2 ++ rs1) Nothing]
+>			         TypeRecord (fs1 ++ rs2) Nothing]
 >	                        [TypeVariable a2,
->			         TypeRecord (fs1 ++ rs2) Nothing]))
+>			         TypeRecord (fs2 ++ rs1) Nothing]))
 >         (unifyTypedLabels m fs1' tr2)
 >   where
 >   splitFields fs1 fs2 = split' [] [] fs2 fs1
