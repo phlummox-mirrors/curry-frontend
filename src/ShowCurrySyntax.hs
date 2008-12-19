@@ -49,7 +49,8 @@ showsExport (ExportTypeWith qident ids)
   . showsString ")"
 showsExport (ExportTypeAll qident)
   = showsString "(ExportTypeAll " . showsQualIdent qident . showsString ")"
-showsExport e@(ExportModule _) = shows e
+showsExport (ExportModule m) 
+  = showsString "(ExportModule " . showsModuleIdent m . showChar ')'
 
 showsImportSpec :: ImportSpec -> ShowS
 showsImportSpec (Importing pos imports)
