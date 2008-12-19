@@ -54,11 +54,11 @@ unqualified identifier.}
 > import Position
 
 > data Ident = Ident String Int 
->             |IdentPosition Position String Int
+>             |IdentPosition Position String Int deriving (Read)
 > data QualIdent = UnqualIdent Ident | QualIdent ModuleIdent Ident
->                  deriving (Eq,Ord)
+>                  deriving (Eq,Ord,Read)
 > data ModuleIdent = ModuleIdent [String] 
->                   |ModuleIdentPosition Position [String]
+>                   |ModuleIdentPosition Position [String] 
 
 > instance Eq Ident where
 >    ident1 == ident2 = name ident1 == name     ident2 && 
@@ -70,6 +70,9 @@ unqualified identifier.}
 
 > instance Eq ModuleIdent where
 >    mident1 == mident2 = moduleQualifiers mident1 == moduleQualifiers mident2 
+
+> instance Read ModuleIdent where
+>   readsPrec p s = [ (mkMIdent [m],s') | (m,s') <- readsPrec p s ]
 
 > instance Ord Ident where
 >    ident1 `compare` ident2 =

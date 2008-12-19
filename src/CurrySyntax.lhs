@@ -24,15 +24,15 @@ an unlimited range of integer constants in Curry programs.
 \paragraph{Modules}
 \begin{verbatim}
 
-> data Module = Module ModuleIdent (Maybe ExportSpec) [Decl] deriving (Eq,Show)
+> data Module = Module ModuleIdent (Maybe ExportSpec) [Decl] deriving (Eq,Show,Read)
 
-> data ExportSpec = Exporting Position [Export] deriving (Eq,Show)
+> data ExportSpec = Exporting Position [Export] deriving (Eq,Show,Read)
 > data Export =
 >     Export         QualIdent                  -- f/T
 >   | ExportTypeWith QualIdent [Ident]          -- T(C1,...,Cn)
 >   | ExportTypeAll  QualIdent                  -- T(..)
 >   | ExportModule   ModuleIdent
->   deriving (Eq,Show)
+>   deriving (Eq,Show,Read)
 
 \end{verbatim}
 \paragraph{Module declarations}
@@ -41,12 +41,12 @@ an unlimited range of integer constants in Curry programs.
 > data ImportSpec =
 >     Importing Position [Import]
 >   | Hiding Position [Import]
->   deriving (Eq,Show)
+>   deriving (Eq,Show,Read)
 > data Import =
 >     Import         Ident            -- f/T
 >   | ImportTypeWith Ident [Ident]    -- T(C1,...,Cn)
 >   | ImportTypeAll  Ident            -- T(..)
->   deriving (Eq,Show)
+>   deriving (Eq,Show,Read)
 
 > data Decl =
 >     ImportDecl Position ModuleIdent Qualified (Maybe ModuleIdent)
@@ -62,20 +62,20 @@ an unlimited range of integer constants in Curry programs.
 >   | FlatExternalDecl Position [Ident]
 >   | PatternDecl Position ConstrTerm Rhs
 >   | ExtraVariables Position [Ident]
->   deriving (Eq,Show)
+>   deriving (Eq,Show,Read)
 
 > data ConstrDecl =
 >     ConstrDecl Position [Ident] Ident [TypeExpr]
 >   | ConOpDecl Position [Ident] TypeExpr Ident TypeExpr
->   deriving (Eq,Show)
+>   deriving (Eq,Show,Read)
 > data NewConstrDecl =
 >   NewConstrDecl Position [Ident] Ident TypeExpr
->   deriving (Eq,Show)
+>   deriving (Eq,Show,Read)
 
 > type Qualified = Bool
-> data Infix = InfixL | InfixR | Infix deriving (Eq,Show)
-> data EvalAnnotation = EvalRigid | EvalChoice deriving (Eq,Show)
-> data CallConv = CallConvPrimitive | CallConvCCall deriving (Eq,Show)
+> data Infix = InfixL | InfixR | Infix deriving (Eq,Show,Read)
+> data EvalAnnotation = EvalRigid | EvalChoice deriving (Eq,Show,Read)
+> data CallConv = CallConvPrimitive | CallConvCCall deriving (Eq,Show,Read)
 
 \end{verbatim}
 \paragraph{Module interfaces}
@@ -85,7 +85,7 @@ function arity (= number of parameters) in order to generate
 correct FlatCurry function applications.
 \begin{verbatim}
 
-> data Interface = Interface ModuleIdent [IDecl] deriving (Eq,Show)
+> data Interface = Interface ModuleIdent [IDecl] deriving (Eq,Show,Read)
 
 > data IDecl =
 >     IImportDecl Position ModuleIdent
@@ -95,7 +95,7 @@ correct FlatCurry function applications.
 >   | INewtypeDecl Position QualIdent [Ident] NewConstrDecl
 >   | ITypeDecl Position QualIdent [Ident] TypeExpr
 >   | IFunctionDecl Position QualIdent Int TypeExpr
->   deriving (Eq,Show)
+>   deriving (Eq,Show,Read)
 
 \end{verbatim}
 \paragraph{Types}
@@ -109,23 +109,23 @@ correct FlatCurry function applications.
 >   | ArrowType TypeExpr TypeExpr
 >   | RecordType [([Ident],TypeExpr)] (Maybe TypeExpr) 
 >     -- {l1 :: t1,...,ln :: tn | r}
->   deriving (Eq,Show)
+>   deriving (Eq,Show,Read)
 
 \end{verbatim}
 \paragraph{Functions}
 \begin{verbatim}
 
-> data Equation = Equation Position Lhs Rhs deriving (Eq,Show)
+> data Equation = Equation Position Lhs Rhs deriving (Eq,Show,Read)
 > data Lhs =
 >     FunLhs Ident [ConstrTerm]
 >   | OpLhs ConstrTerm Ident ConstrTerm
 >   | ApLhs Lhs [ConstrTerm]
->   deriving (Eq,Show)
+>   deriving (Eq,Show,Read)
 > data Rhs =
 >     SimpleRhs Position Expression [Decl]
 >   | GuardedRhs [CondExpr] [Decl]
->   deriving (Eq,Show)
-> data CondExpr = CondExpr Position Expression Expression deriving (Eq,Show)
+>   deriving (Eq,Show,Read)
+> data CondExpr = CondExpr Position Expression Expression deriving (Eq,Show,Read)
 
 > flatLhs :: Lhs -> (Ident,[ConstrTerm])
 > flatLhs lhs = flat lhs []
@@ -146,7 +146,7 @@ the identifier of the \texttt{Int} literal for maintaining its type.
 >   | Int Ident Integer
 >   | Float Double
 >   | String String                     -- should be [Int] to handle Unicode
->   deriving (Eq,Show)
+>   deriving (Eq,Show,Read)
 
 \end{verbatim}
 \paragraph{Patterns}
@@ -167,7 +167,7 @@ the identifier of the \texttt{Int} literal for maintaining its type.
 >   | InfixFuncPattern ConstrTerm QualIdent ConstrTerm
 >   | RecordPattern [Field ConstrTerm] (Maybe ConstrTerm)  
 >         -- {l1 = p1, ..., ln = pn}  oder {l1 = p1, ..., ln = pn | p}
->   deriving (Eq,Show)
+>   deriving (Eq,Show,Read)
 
 \end{verbatim}
 \paragraph{Expressions}
@@ -199,19 +199,19 @@ the identifier of the \texttt{Int} literal for maintaining its type.
 >   | RecordConstr [Field Expression]            -- {l1 = e1,...,ln = en}
 >   | RecordSelection Expression Ident           -- e -> l
 >   | RecordUpdate [Field Expression] Expression -- {l1 := e1,...,ln := en | e}
->   deriving (Eq,Show)
+>   deriving (Eq,Show,Read)
 
-> data InfixOp = InfixOp QualIdent | InfixConstr QualIdent deriving (Eq,Show)
+> data InfixOp = InfixOp QualIdent | InfixConstr QualIdent deriving (Eq,Show,Read)
 
 > data Statement =
 >     StmtExpr Expression
 >   | StmtDecl [Decl]
 >   | StmtBind ConstrTerm Expression
->   deriving (Eq,Show)
+>   deriving (Eq,Show,Read)
 
-> data Alt = Alt Position ConstrTerm Rhs deriving (Eq,Show)
+> data Alt = Alt Position ConstrTerm Rhs deriving (Eq,Show,Read)
 
-> data Field a = Field Position Ident a deriving (Eq, Show)
+> data Field a = Field Position Ident a deriving (Eq, Show,Read)
 
 > fieldLabel :: Field a -> Ident
 > fieldLabel (Field _ l _) = l
@@ -231,6 +231,6 @@ the identifier of the \texttt{Int} literal for maintaining its type.
 A goal is equivalent to an unconditional right hand side of an equation.
 \begin{verbatim}
 
-> data Goal = Goal Position Expression [Decl] deriving (Eq,Show)
+> data Goal = Goal Position Expression [Decl] deriving (Eq,Show,Read)
 
 \end{verbatim}

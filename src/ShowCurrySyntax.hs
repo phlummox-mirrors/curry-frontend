@@ -3,8 +3,10 @@
 --- Behaves like a derived Show instance even on parts with a specific one.
 --- 
 --- @author Sebastian Fischer (sebf@informatik.uni-kiel.de)
---- @version March 2007
----
+--- @version December 2008
+--- bug fixed by bbr
+
+
 module ShowCurrySyntax ( showModule ) where
 
 import Ident
@@ -441,7 +443,7 @@ showsStatement (StmtExpr exp)
 showsStatement (StmtDecl decls)
   = showsString "(StmtDecl " . showsList showsDecl decls . showsString ")"
 showsStatement (StmtBind cons exp)
-  = showsString "(StmtExpr "
+  = showsString "(StmtBind "
   . showsConsTerm cons . space
   . showsExpression exp
   . showsString ")"

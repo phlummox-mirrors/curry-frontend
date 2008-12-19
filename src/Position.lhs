@@ -22,6 +22,10 @@ column number. A tab stop is assumed at every eighth column.
 >   Position{ file :: FilePath, line :: Int, column :: Int }
 >   deriving (Eq, Ord)
 
+> instance Read Position where
+>   readsPrec p s = 
+>     [ (Position{file="",line=i,column=j},s')  | ((i,j),s') <- readsPrec p s]
+
 > instance Show Position where
 >   showsPrec _ (Position fn l c) =
 >     (if null fn then id else shows fn . showString ", ") .
