@@ -25,6 +25,7 @@ data Options
 	      noVerb :: Bool,            -- verbosity on/off
 	      noWarn :: Bool,            -- warnings on/off
 	      noOverlapWarn :: Bool,     -- "overlap" warnings on/off
+              noSimplify :: Bool,        -- do not simplify code before lambda lifting
 	      flat :: Bool,              -- generate FlatCurry code
 	      flatXml :: Bool,           -- generate flat XML code
 	      abstract :: Bool,          -- generate typed AbstracCurry code
@@ -43,6 +44,7 @@ defaultOpts = Options{ force           = False,
 		       noVerb          = False,
 		       noWarn          = False,
 		       noOverlapWarn   = False,
+                       noSimplify      = False,
 		       flat            = False,
 		       flatXml         = False,
 		       abstract        = False,

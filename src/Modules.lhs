@@ -109,13 +109,14 @@ code are obsolete and commented out.
 >                return defaultResults
 >        else
 >          do (tyEnv, tcEnv, aEnv, m', intf, _) <- checkModule opts mEnv m
->             let (il,aEnv',dumps) = transModule fcy False False 
+>             let (il,aEnv',dumps) = transModule fcy nosimp False False 
 >			                         mEnv tyEnv tcEnv aEnv m'
 >             mapM_ (doDump opts) dumps
 >	      genCode opts fn mEnv tyEnv tcEnv aEnv' intf m' il
 >   where acy      = abstract opts
 >         uacy     = untypedAbstract opts
 >         fcy      = flat opts
+>         nosimp   = noSimplify opts
 >         xml      = flatXml opts
 >         src      = parseOnly opts
 >         likeFlat = fcy || xml || acy || uacy || src
@@ -200,14 +201,14 @@ code are obsolete and commented out.
 >         --tyEnv''' = addImportedLabels m lEnv tyEnv''
 >         intf = exportInterface modul pEnv'' tcEnv'' tyEnv'''
 
-> transModule :: Bool -> Bool -> Bool -> ModuleEnv -> ValueEnv -> TCEnv
+> transModule :: Bool -> Bool -> Bool -> Bool -> ModuleEnv -> ValueEnv -> TCEnv
 >      -> ArityEnv -> Module -> (IL.Module,ArityEnv,[(Dump,Doc)])
-> transModule flat debug trusted mEnv tyEnv tcEnv aEnv (Module m es ds) =
+> transModule flat nosimp debug trusted mEnv tyEnv tcEnv aEnv (Module m es ds) =
 >     (il',aEnv',dumps)
 >   where topDs = filter (not . isImportDecl) ds
 >         evEnv = evalEnv topDs
 >         (desugared,tyEnv') = desugar tyEnv tcEnv (Module m es topDs)
->         (simplified,tyEnv'') = simplify flat tyEnv' evEnv desugared
+>         (simplified,tyEnv'') = simplify (flat,nosimp) tyEnv' evEnv desugared
 >         (lifted,tyEnv''',evEnv') = lift tyEnv'' evEnv simplified
 >         aEnv' = bindArities aEnv lifted
 >         il = ilTrans flat tyEnv''' tcEnv evEnv' lifted

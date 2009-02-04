@@ -491,6 +491,7 @@ instance, if one of the alternatives contains an \texttt{@}-pattern.
 >         bvs = bv ds
 >         translBinding env (PatternDecl _ (VariablePattern v) rhs) =
 >           IL.Binding v (translRhs tyEnv vs env rhs)
+>         translBinding env p = error $ "unexpected binding: "++show p
 > translExpr tyEnv ~(v:vs) env (Case e alts) =
 >   case caseMatch id [v] (map (translAlt v) alts) of
 >     IL.Case mode (IL.Variable v') alts'
