@@ -30,6 +30,7 @@ Currently, the following optimizations are implemented:
 > import Monad
 > import SCC
 > import Typing
+> import List (partition)
 
 > type SimplifyState a = StateT ValueEnv (ReaderT EvalEnv (StateT Int Id)) a
 > type InlineEnv = Env Ident Expression
@@ -191,10 +192,8 @@ functions in later phases of the compiler.
 >                       (lookupEnv (unqualify v) env)
 > simplifyExpr _ _ _ (Constructor c) = return (Constructor c)
 > simplifyExpr flags m env (Apply (Let ds e1) e2) 
->   | not (noSimplify flags)
 >   = simplifyExpr flags m env (Let ds (Apply e1 e2))
 > simplifyExpr flags m env (Apply (Case e1 alts) e2) 
->   | not (noSimplify flags)
 >   = simplifyExpr flags m env (Case e1 (map (applyToAlt e2) alts))
 >   where applyToAlt e (Alt p t rhs) = Alt p t (applyRhs rhs e)
 >         applyRhs (SimpleRhs p e1 _) e2 = SimpleRhs p (Apply e1 e2) []
@@ -203,12 +202,13 @@ functions in later phases of the compiler.
 >     e1' <- simplifyExpr flat m env e1
 >     e2' <- simplifyExpr flat m env e2
 >     return (Apply e1' e2')
-> simplifyExpr flat m env (Let ds e) =
+> simplifyExpr flags m env (Let ds e) =
 >   do
 >     tyEnv <- fetchSt
 >     dss' <- mapM (sharePatternRhs m tyEnv) ds
->     simplifyLet flat m env
->                 (scc bv (qfv m) (foldr (hoistDecls flat) [] (concat dss'))) e
+>     simplifyLet flags m env
+>       (if noSimplify flags then [concat dss']
+>        else scc bv (qfv m) (foldr (hoistDecls flags) [] (concat dss'))) e
 > simplifyExpr flat m env (Case e alts) =
 >   do
 >     e' <- simplifyExpr flat m env e
@@ -258,7 +258,9 @@ functions to access the pattern variables.
 >     e' <- simplifyLet flags m (inlineVars flags m tyEnv ds' env) dss e
 >     dss'' <-
 >       mapM (expandPatternBindings flags m tyEnv (qfv m ds' ++ qfv m e')) ds'
->     return (foldr (mkLet flags m) e' (scc bv (qfv m) (concat dss'')))
+>     return (foldr (mkLet flags m) e' 
+>                   (if noSimplify flags then [concat dss'']
+>                    else scc bv (qfv m) (concat dss'')))
 
 > inlineVars :: SimplifyFlags -> ModuleIdent -> ValueEnv -> [Decl] -> InlineEnv -> InlineEnv
 > inlineVars flags m tyEnv [PatternDecl _ (VariablePattern v) (SimpleRhs _ e _)] env
@@ -281,6 +283,8 @@ functions to access the pattern variables.
 >   | v' == qualify v && v `notElem` qfv m e && not (noSimplify flags) = e
 > mkLet flags m ds e
 >   | null (filter (`elem` qfv m e) (bv ds)) && not (noSimplify flags) = e
+>   | noSimplify flags = let (eds,nds) = partition isExtraVariables ds
+>                         in foldr Let (Let nds e) (map (:[]) eds)
 >   | otherwise = Let ds e
 
 \end{verbatim}
