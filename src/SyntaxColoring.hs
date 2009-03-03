@@ -97,9 +97,11 @@ genProgram _ parseResults (Result mess posNtokList) =
                        mess))
         mergedMessages = (mergeMessages' (trace' ("Messages: " ++ show messages) messages) 
                                       posNtokList)
-        codes = catIdentifiers parseResults in
+        (nameList,codes) = catIdentifiers parseResults in
     trace''' ("parseResults : " ++ show parseResults ++ "\n\nCodes: " ++ show codes ++ "\n\nToken: " ++ show mergedMessages)
-             (tokenNcodes2codes 1 
+             (tokenNcodes2codes
+                      nameList
+                      1 
                       1
                       mergedMessages 
                       codes)            
@@ -113,9 +115,7 @@ genProgram plainText parseResults (Failure messages) =
                                      messages)   
      
 
-                            
-                
-
+    
 --- @param Program
 --- @param line
 --- @param col
@@ -264,9 +264,9 @@ buildMessagesIntoPlainText messages text =
 
      
 --- @param parse-Modules  [typingParse,fullParse,parse] 
-catIdentifiers :: [Result Module] -> [Code]
-catIdentifiers [] = []
-catIdentifiers [(Failure _)] = []
+catIdentifiers :: [Result Module] -> ([(ModuleIdent,ModuleIdent)],[Code])
+catIdentifiers [] = ([],[])
+catIdentifiers [(Failure _)] = ([],[])
 catIdentifiers [(Result _ m@(Module moduleIdent maybeExportSpec decls))] =
     catIdentifiers' m Nothing
 catIdentifiers ((Failure _):y:ys) = 
@@ -279,26 +279,32 @@ catIdentifiers rs@((Result _ m@(Module _ _ _)):y:ys) =
     
 --- @param parse-Module
 --- @param Maybe betterParse-Module    
-catIdentifiers' :: Module -> Maybe Module -> [Code]
+catIdentifiers' :: Module -> Maybe Module -> ([(ModuleIdent,ModuleIdent)],[Code])
 catIdentifiers' (Module moduleIdent maybeExportSpec decls)
                 Nothing =
-      let codes = (concatMap decl2codes (qsort lessDecl decls)) in      
+      let codes = (concatMap decl2codes (qsort lessDecl decls)) in
+      (concatMap renamedImports decls,      
       ([ModuleName moduleIdent] ++
        (maybe [] exportSpec2codes  maybeExportSpec)  ++
-       codes)     
+       codes))     
 catIdentifiers' (Module moduleIdent maybeExportSpec1 _)
                 (Just (Module _ maybeExportSpec2 decls)) =
-      let codes = (concatMap decl2codes (qsort lessDecl decls)) in      
+      let codes = (concatMap decl2codes (qsort lessDecl decls)) in
+      (concatMap renamedImports decls,
       replaceFunctionCalls $ 
         map (addModuleIdent moduleIdent) $
           ([ModuleName moduleIdent] ++
            (mergeExports2codes  
               (maybe [] (\(Exporting _ i) -> i)  maybeExportSpec1)
               (maybe [] (\(Exporting _ i) -> i)  maybeExportSpec2))  ++
-           codes)     
+           codes))     
   
      
-
+renamedImports :: Decl -> [(ModuleIdent,ModuleIdent)]
+renamedImports decl =
+    case decl of
+        (ImportDecl _ oldName _ (Just newName) _) -> [(oldName,newName)]
+        _ -> []
    
                       
 replaceFunctionCalls :: [Code] -> [Code]                  
@@ -362,28 +368,28 @@ mergeMessages' mss@(m@(Message _ mPos x):ms) ((p,t):ps)
     | otherwise = ([],p,t) : mergeMessages' mss ps
 
 
-tokenNcodes2codes :: Int -> Int -> [([Message],Position,Token)] -> [Code] -> [(Int,Int,Code)]
-tokenNcodes2codes _ _ [] _ = []          
-tokenNcodes2codes currLine currCol toks@((messages,pos@(Position _ line col),token):ts) codes 
+tokenNcodes2codes :: [(ModuleIdent,ModuleIdent)] -> Int -> Int -> [([Message],Position,Token)] -> [Code] -> [(Int,Int,Code)]
+tokenNcodes2codes _ _ _ [] _ = []          
+tokenNcodes2codes nameList currLine currCol toks@((messages,pos@(Position _ line col),token):ts) codes 
     | currLine < line = 
            trace' (" NewLine: ")
            ((currLine,currCol,NewLine) :
-           tokenNcodes2codes (currLine + 1) 1 toks codes)
+           tokenNcodes2codes nameList (currLine + 1) 1 toks codes)
     | currCol < col =  
            trace' (" Space " ++ show (col - currCol))
            ((currLine,currCol,Space (col - currCol)) :         
-           tokenNcodes2codes currLine col toks codes)
+           tokenNcodes2codes nameList currLine col toks codes)
     | isTokenIdentifier token && null codes =    
            trace' ("empty Code-List, Token: " ++ show (line,col) ++ show token)
-           (addMessage [(currLine,currCol,NotParsed tokenStr)] ++ tokenNcodes2codes newLine newCol ts codes)
+           (addMessage [(currLine,currCol,NotParsed tokenStr)] ++ tokenNcodes2codes nameList newLine newCol ts codes)
     | not (isTokenIdentifier token) = 
            trace' (" Token ist kein Identifier: " ++ tokenStr ) 
-           (addMessage [(currLine,currCol,token2code token)] ++ tokenNcodes2codes newLine newCol ts codes) 
+           (addMessage [(currLine,currCol,token2code token)] ++ tokenNcodes2codes nameList newLine newCol ts codes) 
     | tokenStr == code2string (head codes) =
            trace' (" Code wird genommen: " ++ show (head codes) )
-           (addMessage [(currLine,currCol,head codes)] ++ tokenNcodes2codes newLine newCol ts (tail codes)) 
-    | tokenStr == code2qualString (head codes) =
-           let mIdent = (getModuleIdent (head codes))
+           (addMessage [(currLine,currCol,head codes)] ++ tokenNcodes2codes nameList newLine newCol ts (tail codes)) 
+    | tokenStr == code2qualString (renameModuleIdents nameList (head codes)) =
+           let mIdent = maybe Nothing rename (getModuleIdent (head codes)) 
                lenMod = maybe 0 (length . moduleName) mIdent
                startPos = maybe currCol (const (currCol + lenMod + 1)) mIdent
                symbol = [(currLine,currCol + lenMod,Symbol ".")]               
@@ -394,11 +400,11 @@ tokenNcodes2codes currLine currCol toks@((messages,pos@(Position _ line col),tok
                                          ModuleName i))) 
                               mIdent in
            trace' (" Code wird genommen: " ++ show (head codes) )
-           (addMessage (prefix ++ [(currCol,startPos,head codes)]) ++ tokenNcodes2codes newLine newCol ts (tail codes))           
+           (addMessage (prefix ++ [(currCol,startPos,head codes)]) ++ tokenNcodes2codes nameList newLine newCol ts (tail codes))           
     | elem tokenStr (codeQualifiers (head codes)) =
            trace' (" Token: "++ tokenStr ++" ist Modulname von: " ++ show (head codes) )
            (addMessage [(currLine,currCol,ModuleName (mkMIdent [tokenStr]))] ++ 
-                    tokenNcodes2codes newLine newCol ts codes)                  
+                    tokenNcodes2codes nameList newLine newCol ts codes)                  
     | otherwise = 
            trace' (" Token: "++ 
                    tokenStr ++
@@ -406,11 +412,13 @@ tokenNcodes2codes currLine currCol toks@((messages,pos@(Position _ line col),tok
                    code2string (head codes) ++ 
                    "|" ++ 
                    code2qualString (head codes))
-           (tokenNcodes2codes currLine currCol toks (tail codes))
+           (tokenNcodes2codes nameList currLine currCol toks (tail codes))
   where
       tokenStr = token2string token            
       newLine  = (currLine + length (lines tokenStr)) - 1 
-      newCol   = currCol + length tokenStr    
+      newCol   = currCol + length tokenStr   
+
+      rename mid = Just $ maybe mid id (lookup mid nameList)
 
       addMessage [] = []
       addMessage ((l,c,code):cs)
@@ -422,7 +430,15 @@ tokenNcodes2codes currLine currCol toks@((messages,pos@(Position _ line col),tok
                               ((l,c,CodeWarning messages code): addMessage cs)
       
       
-
+renameModuleIdents :: [(ModuleIdent,ModuleIdent)] -> Code -> Code
+renameModuleIdents nameList c =
+    case c of
+        Function x qualIdent -> Function x (rename qualIdent (splitQualIdent qualIdent))
+        Identifier x qualIdent -> Identifier x (rename qualIdent (splitQualIdent qualIdent))
+        _ -> c
+  where
+    rename x (Nothing,_) = x
+    rename x (Just m,i) = maybe x (\ m' -> qualifyWith m' i) (lookup m nameList)
            
 {-
 codeWithoutUniqueID ::  Code -> String
@@ -494,7 +510,8 @@ token2code tok@(Token cat _)
     | elem cat [KW_case,KW_choice,KW_data,KW_do,KW_else,KW_eval,KW_external,
                 KW_free,KW_if,KW_import,KW_in,KW_infix,KW_infixl,KW_infixr,
                 KW_let,KW_module,KW_newtype,KW_of,KW_rigid,KW_then,KW_type,
-                KW_where,Id_as,Id_ccall,Id_forall,Id_hiding,Id_interface,Id_primitive]
+                KW_where,Id_as,Id_ccall,Id_forall,Id_hiding,Id_interface,Id_primitive,
+                Id_qualified]
          =  Keyword (token2string tok)
     | elem cat [LeftParen,RightParen,Semicolon,LeftBrace,RightBrace,LeftBracket,
                 RightBracket,Comma,Underscore,Backquote,
@@ -513,7 +530,7 @@ token2code tok@(Token cat _)
     
 isTokenIdentifier :: Token -> Bool
 isTokenIdentifier (Token cat _) = 
-  elem cat [Id_qualified,Id,QId,Sym,QSym,Sym_Dot,Sym_Minus,Sym_MinusDot]
+  elem cat [Id,QId,Sym,QSym,Sym_Dot,Sym_Minus,Sym_MinusDot]
     
 -- DECL Position
 
@@ -587,8 +604,9 @@ export2codes _ (ExportModule moduleIdent) =
      [ModuleName moduleIdent]
 
 decl2codes :: Decl -> [Code]            
-decl2codes (ImportDecl _ moduleIdent xQualified xModuleIdent importSpec) = 
+decl2codes (ImportDecl _ moduleIdent xQualified mModuleIdent importSpec) = 
      [ModuleName moduleIdent] ++
+     maybe [] ((:[]) . ModuleName) mModuleIdent ++
      maybe [] (importSpec2codes moduleIdent)  importSpec
 decl2codes (InfixDecl _ _ _ idents) =
      (map (Function InfixFunction . qualify) idents) 
