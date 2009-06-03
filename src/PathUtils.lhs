@@ -180,7 +180,7 @@ write a file to curry subdirectory
 
 > writeModule :: String -> String -> IO ()
 > writeModule fileName contents = do
->   --writeFile fileName contents
+>   writeFile fileName contents
 >   let subdir = dirname fileName++pathSep:currySubdir
 >   ex <- doesDirectoryExist subdir
 >   when (not ex) (createDirectory subdir)
