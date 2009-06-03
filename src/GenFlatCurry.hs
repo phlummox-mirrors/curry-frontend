@@ -16,7 +16,7 @@ import Base (ArityEnv, ArityInfo(..), ModuleEnv, PEnv, PrecInfo(..),
 	     lookupValue, qualLookupTC,
 	     qualLookupArity, lookupArity,  internalError)
 
-import FlatCurry
+import FlatWithSrcRefs
 import qualified IL
 import qualified CurrySyntax as CS
 
@@ -187,11 +187,11 @@ visitExpression (IL.Constructor qident arity)
 	      arity_
 visitExpression (IL.Apply expression1 expression2)
    = genFlatApplication (IL.Apply expression1 expression2)
-visitExpression (IL.Case evalannot expression alts)
+visitExpression (IL.Case (SrcRef r) evalannot expression alts)
    = do ea       <- visitEval evalannot
 	expr     <- visitExpression expression
 	branches <- mapM visitAlt alts
-	return (Case ea expr branches)
+	return (Case r ea expr branches)
 visitExpression (IL.Or expression1 expression2)
    = do expr1 <- visitExpression expression1
 	expr2 <- visitExpression expression2
@@ -221,9 +221,9 @@ visitExpression (IL.Letrec bindings expression)
 
 --
 visitLiteral :: IL.Literal -> FlatState Literal
-visitLiteral (IL.Char c)  = return (Charc c)
-visitLiteral (IL.Int i)   = return (Intc i)
-visitLiteral (IL.Float f) = return (Floatc f)
+visitLiteral (IL.Char (SrcRef rs) c)  = return (Charc rs c)
+visitLiteral (IL.Int (SrcRef rs) i)   = return (Intc rs i)
+visitLiteral (IL.Float (SrcRef rs) f) = return (Floatc rs f)
 
 --
 visitAlt :: IL.Alt -> FlatState BranchExpr
@@ -679,10 +679,10 @@ checkOverlapping expr1 expr2
 	unless (noOverlapWarn opts)
 	       (checkOverlap expr1 expr2)
  where
- checkOverlap (Case _ _ _) _ 
+ checkOverlap (Case _ _ _ _) _ 
     = do qid <- functionId
 	 genWarning (overlappingRules qid)
- checkOverlap _ (Case _ _ _)
+ checkOverlap _ (Case _ _ _ _)
     = do qid <- functionId
 	 genWarning (overlappingRules qid)
  checkOverlap _ _ = return ()

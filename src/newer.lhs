@@ -28,6 +28,7 @@ code 2.
 > import Directory
 > import System
 > import Time
+> import PathUtils (getModuleModTime)
 
 > main =
 >   do
@@ -43,11 +44,11 @@ code 2.
 
 > newer prog [] = badUsage prog
 > newer prog (file:deps) =
->   catch (do t <- getModificationTime file; allM (isNewer t) deps)
+>   catch (do t <- getModuleModTime file; allM (isNewer t) deps)
 >         (const (return False))
 
 > isNewer t file =
->   catch (do t' <-  getModificationTime file; return (t > t'))
+>   catch (do t' <-  getModuleModTime file; return (t > t'))
 >         (\ioe -> do print ioe; exitWith (ExitFailure 2))
 
 > allM :: Monad m => (a -> m Bool) -> [a] -> m Bool

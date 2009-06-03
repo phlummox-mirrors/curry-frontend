@@ -87,9 +87,9 @@ Marlow's pretty printer for Haskell.
 >   sep [ppConstrTerm pat <+> text "->",nest altIndent (ppExpr 0 exp)]
 
 > ppLiteral :: Literal -> Doc
-> ppLiteral (Char c) = text (show c)
-> ppLiteral (Int i) = integer i
-> ppLiteral (Float f) = double f
+> ppLiteral (Char _ c) = text (show c)
+> ppLiteral (Int _ i) = integer i
+> ppLiteral (Float _ f) = double f
 
 > ppConstrTerm :: ConstrTerm -> Doc
 > ppConstrTerm (LiteralPattern l) = ppLiteral l
@@ -111,7 +111,7 @@ Marlow's pretty printer for Haskell.
 >   | isQInfixOp c = ppInfixApp p e1 c e2
 > ppExpr p (Apply e1 e2) =
 >   ppParen (p > 2) (sep [ppExpr 2 e1,nest exprIndent (ppExpr 3 e2)])
-> ppExpr p (Case ev e alts) =
+> ppExpr p (Case _ ev e alts) =
 >   ppParen (p > 0)
 >           (text "case" <+> ppEval ev <+> ppExpr 0 e <+> text "of" $$
 >            nest caseIndent (vcat (map ppAlt alts)))

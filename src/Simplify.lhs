@@ -1,4 +1,3 @@
-
 % $Id: Simplify.lhs,v 1.10 2004/02/13 14:02:58 wlux Exp $
 %
 % Copyright (c) 2003, Wolfgang Lux
@@ -34,11 +33,10 @@ Currently, the following optimizations are implemented:
 
 > type SimplifyState a = StateT ValueEnv (ReaderT EvalEnv (StateT Int Id)) a
 > type InlineEnv = Env Ident Expression
-> type SimplifyFlags = (Bool,Bool)
+> type SimplifyFlags = Bool
  
-> flatFlag, noSimplify :: SimplifyFlags -> Bool
-> flatFlag   x = fst x
-> noSimplify x = snd x
+> flatFlag :: SimplifyFlags -> Bool
+> flatFlag   x = x
 
 > simplify :: SimplifyFlags -> ValueEnv -> EvalEnv -> Module -> (Module,ValueEnv)
 > simplify flags tyEnv evEnv m 
@@ -143,8 +141,7 @@ explicitly in a Curry expression.
 >           -> [Equation]
 > inlineFun flags m tyEnv evEnv p (FunLhs f ts)
 >           (SimpleRhs _ (Let [FunctionDecl _ f' eqs'] e) _)
->   | not (noSimplify flags) &&
->     f' `notElem` qfv m eqs' && e' == Variable (qualify f') &&
+>   | f' `notElem` qfv m eqs' && e' == Variable (qualify f') &&
 >     n == arrowArity (funType m tyEnv (qualify f')) &&
 >     (evMode evEnv f == evMode evEnv f' ||
 >      and [all isVarPattern ts | Equation _ (FunLhs _ ts) _ <- eqs']) =
@@ -193,8 +190,8 @@ functions in later phases of the compiler.
 > simplifyExpr _ _ _ (Constructor c) = return (Constructor c)
 > simplifyExpr flags m env (Apply (Let ds e1) e2) 
 >   = simplifyExpr flags m env (Let ds (Apply e1 e2))
-> simplifyExpr flags m env (Apply (Case e1 alts) e2) 
->   = simplifyExpr flags m env (Case e1 (map (applyToAlt e2) alts))
+> simplifyExpr flags m env (Apply (Case r e1 alts) e2) 
+>   = simplifyExpr flags m env (Case r e1 (map (applyToAlt e2) alts))
 >   where applyToAlt e (Alt p t rhs) = Alt p t (applyRhs rhs e)
 >         applyRhs (SimpleRhs p e1 _) e2 = SimpleRhs p (Apply e1 e2) []
 > simplifyExpr flat m env (Apply e1 e2) =
@@ -207,13 +204,12 @@ functions in later phases of the compiler.
 >     tyEnv <- fetchSt
 >     dss' <- mapM (sharePatternRhs m tyEnv) ds
 >     simplifyLet flags m env
->       (if noSimplify flags then [concat dss']
->        else scc bv (qfv m) (foldr (hoistDecls flags) [] (concat dss'))) e
-> simplifyExpr flat m env (Case e alts) =
+>       (scc bv (qfv m) (foldr (hoistDecls flags) [] (concat dss'))) e
+> simplifyExpr flat m env (Case r e alts) =
 >   do
 >     e' <- simplifyExpr flat m env e
 >     alts' <- mapM (simplifyAlt flat m env) alts
->     return (Case e' alts')
+>     return (Case r e' alts')
 > 
 
 > simplifyAlt :: SimplifyFlags -> ModuleIdent -> InlineEnv -> Alt -> SimplifyState Alt
@@ -222,7 +218,6 @@ functions in later phases of the compiler.
 
 > hoistDecls :: SimplifyFlags -> Decl -> [Decl] -> [Decl]
 > hoistDecls flags (PatternDecl p t (SimpleRhs p' (Let ds e) _)) ds' 
->  | not (noSimplify flags)
 >  = foldr (hoistDecls flags) ds' (PatternDecl p t (SimpleRhs p' e []) : ds)
 > hoistDecls _ d ds = d : ds
 
@@ -259,12 +254,11 @@ functions to access the pattern variables.
 >     dss'' <-
 >       mapM (expandPatternBindings flags m tyEnv (qfv m ds' ++ qfv m e')) ds'
 >     return (foldr (mkLet flags m) e' 
->                   (if noSimplify flags then [concat dss'']
->                    else scc bv (qfv m) (concat dss'')))
+>                   (scc bv (qfv m) (concat dss'')))
 
 > inlineVars :: SimplifyFlags -> ModuleIdent -> ValueEnv -> [Decl] -> InlineEnv -> InlineEnv
 > inlineVars flags m tyEnv [PatternDecl _ (VariablePattern v) (SimpleRhs _ e _)] env
->   | canInline e && not (noSimplify flags) = bindEnv v e env
+>   | canInline e = bindEnv v e env
 >   where canInline (Literal _) = True
 >         canInline (Constructor _) = True
 >         canInline (Variable v')
@@ -277,14 +271,11 @@ functions to access the pattern variables.
 > mkLet flags m [ExtraVariables p vs] e
 >   | null vs' = e
 >   | otherwise = Let [ExtraVariables p vs'] e
->   where vs' | noSimplify flags = vs
->             | otherwise        = filter (`elem` qfv m e) vs
+>   where vs' = filter (`elem` qfv m e) vs
 > mkLet flags m [PatternDecl _ (VariablePattern v) (SimpleRhs _ e _)] (Variable v')
->   | v' == qualify v && v `notElem` qfv m e && not (noSimplify flags) = e
+>   | v' == qualify v && v `notElem` qfv m e = e
 > mkLet flags m ds e
->   | null (filter (`elem` qfv m e) (bv ds)) && not (noSimplify flags) = e
->   | noSimplify flags = let (eds,nds) = partition isExtraVariables ds
->                         in foldr Let (Let nds e) (map (:[]) eds)
+>   | null (filter (`elem` qfv m e) (bv ds)) = e
 >   | otherwise = Let ds e
 
 \end{verbatim}
@@ -371,42 +362,52 @@ selector functions.
 >     VariablePattern _ -> return [PatternDecl p t rhs]
 >     _ -> 
 >       do
->         v <- freshIdent m patternId (monoType (typeOf tyEnv t))
+>         v0 <- freshIdent m patternId (monoType (typeOf tyEnv t))
+>         let v = addRefId (ast p) v0
 >         return [PatternDecl p t (SimpleRhs p (mkVar v) []),
 >                 PatternDecl p (VariablePattern v) rhs]
 >   where patternId n = mkIdent ("_#pat" ++ show n)
 > sharePatternRhs _ _ d = return [d]
 
-> expandPatternBindings :: SimplifyFlags -> ModuleIdent -> ValueEnv -> [Ident] -> Decl
->                       -> SimplifyState [Decl]
+> expandPatternBindings :: SimplifyFlags -> ModuleIdent -> ValueEnv -> [Ident] 
+>    -> Decl -> SimplifyState [Decl]
+>
 > expandPatternBindings flags m tyEnv fvs (PatternDecl p t (SimpleRhs p' e _)) =
 >   case t of
 >     VariablePattern _ -> return [PatternDecl p t (SimpleRhs p' e [])]
 >     _
 >       | flatFlag flags ->
 >           do
->             fs <- mapM (freshIdent m fpSelectorId . flatSelectorType ty) tys
+>             fs <- sequence (zipWith getId tys vs)
 >             return (zipWith (flatProjectionDecl p t e) fs vs)
 >       | otherwise ->
 >           do
 >             fs <- mapM (freshIdent m fpSelectorId . selectorType ty)
 >                        (shuffle tys)
 >             return (zipWith (projectionDecl p t e) fs (shuffle vs))
->       where vs = filter (`elem` fvs) (bv t)
+>
+>       where getId t v = freshIdent m 
+>                            (\ i -> updIdentName ( ++'#':name v) (fpSelectorId i))
+>                            (flatSelectorType ty t)
+>             
+>             vs = filter (`elem` fvs) (bv t)
 >             ty = typeOf tyEnv t
 >             tys = map (typeOf tyEnv) vs
 >             selectorType ty0 (ty:tys) =
 >               polyType (foldr TypeArrow (identityType ty) (ty0:tys))
+>
 >             selectorDecl p f t (v:vs) =
 >               funDecl p f (t:map VariablePattern vs) (mkVar v)
 >             projectionDecl p t e f (v:vs) =
 >               varDecl p v (Let [selectorDecl p f t (v:vs)]
 >                                (foldl applyVar (Apply (mkVar f) e) vs))
+>
 >             flatSelectorType ty0 ty =
 >               polyType (TypeArrow ty0 (identityType ty))
 >             flatSelectorDecl p f t v = funDecl p f [t] (mkVar v)
 >             flatProjectionDecl p t e f v =
 >               varDecl p v (Let [flatSelectorDecl p f t v] (Apply (mkVar f) e))
+>
 > expandPatternBindings _ _ _ _ d = return [d]
 
 \end{verbatim}

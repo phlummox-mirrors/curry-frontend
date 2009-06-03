@@ -9,7 +9,7 @@
 --
 module InterfaceCheck where
 
-import FlatCurry
+import FlatWithSrcRefs
 import List
 
 

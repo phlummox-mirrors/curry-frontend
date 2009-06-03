@@ -6,7 +6,7 @@ import Maybe
 import Char
 import System.Environment
 import CurryDeps(getCurryPath)
-
+import PathUtils (writeModule)
        
 --- translate source file into HTML file with syntaxcoloring
 --- @param outputfilename
@@ -20,7 +20,7 @@ source2html imports outputfilename sourcefilename = do
             modulname = fileName sourceprogname
         fullfname <- getCurryPath imports [] sourcefilename
         program <- filename2program imports (maybe sourcefilename id fullfname)
-        writeFile output 
+        writeModule output 
                   (program2html modulname program)
    
        

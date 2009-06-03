@@ -1,4 +1,3 @@
-
 % $Id: Base.lhs,v 1.77 2004/02/15 22:10:25 wlux Exp $
 %
 % Copyright (c) 1999-2004, Wolfgang Lux
@@ -20,7 +19,7 @@ phases of the compiler.
 > import CurrySyntax
 > import CurryPP
 > import Pretty
-> import FlatCurry hiding (Fixity(..), TypeExpr, Expr(..))
+> import FlatWithSrcRefs hiding (SrcRef, Fixity(..), TypeExpr, Expr(..))
 > import Env
 > import TopEnv
 > import List
@@ -30,7 +29,7 @@ phases of the compiler.
 > import Utils
 > import Maybe
 
-> import qualified FlatCurry(Fixity(..), TypeExpr)
+> import qualified FlatWithSrcRefs (Fixity(..), TypeExpr)
 
 \end{verbatim}
 \paragraph{Types}
@@ -199,11 +198,11 @@ for PAKCS.
 >  genConstrDecl (Cons qn _ _ ts)
 >     = ConstrDecl pos [] (mkIdent (snd qn)) (map genTypeExpr ts)
 >
->  genLabeledType :: FlatCurry.ConsDecl -> ([Ident],CurrySyntax.TypeExpr)
+>  genLabeledType :: FlatWithSrcRefs.ConsDecl -> ([Ident],CurrySyntax.TypeExpr)
 >  genLabeledType (Cons (q,n) _ _ [t])
 >     = ([renameLabel (fromLabelExtId (mkIdent n))], genTypeExpr t)
 >
->  genTypeExpr :: FlatCurry.TypeExpr -> CurrySyntax.TypeExpr
+>  genTypeExpr :: FlatWithSrcRefs.TypeExpr -> CurrySyntax.TypeExpr
 >  genTypeExpr (TVar i)
 >     = VariableType (genVarIndexIdent "a" i)
 >  genTypeExpr (FuncType t1 t2) 
@@ -211,10 +210,10 @@ for PAKCS.
 >  genTypeExpr (TCons qn ts) 
 >     = ConstructorType (genQualIdent qn) (map genTypeExpr ts)
 >
->  genInfix :: FlatCurry.Fixity -> Infix
->  genInfix FlatCurry.InfixOp  = Infix
->  genInfix FlatCurry.InfixlOp = InfixL
->  genInfix FlatCurry.InfixrOp = InfixR
+>  genInfix :: FlatWithSrcRefs.Fixity -> Infix
+>  genInfix FlatWithSrcRefs.InfixOp  = Infix
+>  genInfix FlatWithSrcRefs.InfixlOp = InfixL
+>  genInfix FlatWithSrcRefs.InfixrOp = InfixR
 >
 >  genQualIdent :: QName -> QualIdent
 >  genQualIdent (mod,name) = qualifyWith (mkMIdent [mod]) (mkIdent name)
@@ -728,9 +727,9 @@ prelude.
 >   qfv _ (Constructor _) = []
 >   qfv m (Paren e) = qfv m e
 >   qfv m (Typed e _) = qfv m e
->   qfv m (Tuple es) = qfv m es
->   qfv m (List es) = qfv m es
->   qfv m (ListCompr e qs) = foldr (qfvStmt m) (qfv m e) qs
+>   qfv m (Tuple _ es) = qfv m es
+>   qfv m (List _ es) = qfv m es
+>   qfv m (ListCompr _ e qs) = foldr (qfvStmt m) (qfv m e) qs
 >   qfv m (EnumFrom e) = qfv m e
 >   qfv m (EnumFromThen e1 e2) = qfv m e1 ++ qfv m e2
 >   qfv m (EnumFromTo e1 e2) = qfv m e1 ++ qfv m e2
@@ -740,11 +739,11 @@ prelude.
 >   qfv m (InfixApply e1 op e2) = qfv m op ++ qfv m e1 ++ qfv m e2
 >   qfv m (LeftSection e op) = qfv m op ++ qfv m e
 >   qfv m (RightSection op e) = qfv m op ++ qfv m e
->   qfv m (Lambda ts e) = filterBv ts (qfv m e)
+>   qfv m (Lambda _ ts e) = filterBv ts (qfv m e)
 >   qfv m (Let ds e) = filterBv ds (qfv m ds ++ qfv m e)
 >   qfv m (Do sts e) = foldr (qfvStmt m) (qfv m e) sts
->   qfv m (IfThenElse e1 e2 e3) = qfv m e1 ++ qfv m e2 ++ qfv m e3
->   qfv m (Case e alts) = qfv m e ++ qfv m alts
+>   qfv m (IfThenElse _ e1 e2 e3) = qfv m e1 ++ qfv m e2 ++ qfv m e3
+>   qfv m (Case _ e alts) = qfv m e ++ qfv m alts
 >   qfv m (RecordConstr fs) = qfv m fs
 >   qfv m (RecordSelection e _) = qfv m e
 >   qfv m (RecordUpdate fs e) = qfv m e ++ qfv m fs
@@ -753,9 +752,9 @@ prelude.
 > qfvStmt m st fvs = qfv m st ++ filterBv st fvs
 
 > instance QualExpr Statement where
->   qfv m (StmtExpr e) = qfv m e
+>   qfv m (StmtExpr _ e) = qfv m e
 >   qfv m (StmtDecl ds) = filterBv ds (qfv m ds)
->   qfv m (StmtBind t e) = qfv m e
+>   qfv m (StmtBind _ t e) = qfv m e
 
 > instance QualExpr Alt where
 >   qfv m (Alt _ t rhs) = filterBv t (qfv m rhs)
@@ -767,8 +766,8 @@ prelude.
 >   qfv m (Field _ _ t) = qfv m t
 
 > instance QuantExpr Statement where
->   bv (StmtExpr e) = []
->   bv (StmtBind t e) = bv t
+>   bv (StmtExpr _ e) = []
+>   bv (StmtBind _ t e) = bv t
 >   bv (StmtDecl ds) = bv ds
 
 > instance QualExpr InfixOp where
@@ -782,10 +781,10 @@ prelude.
 >   bv (ConstructorPattern c ts) = bv ts
 >   bv (InfixPattern t1 op t2) = bv t1 ++ bv t2
 >   bv (ParenPattern t) = bv t
->   bv (TuplePattern ts) = bv ts
->   bv (ListPattern ts) = bv ts
+>   bv (TuplePattern _ ts) = bv ts
+>   bv (ListPattern _ ts) = bv ts
 >   bv (AsPattern v t) = v : bv t
->   bv (LazyPattern t) = bv t
+>   bv (LazyPattern _ t) = bv t
 >   bv (FunctionPattern f ts) = bvFuncPatt (FunctionPattern f ts)
 >   bv (InfixFuncPattern t1 op t2) = bvFuncPatt (InfixFuncPattern t1 op t2)
 >   bv (RecordPattern fs r) = (maybe [] bv r) ++ bv fs
@@ -797,10 +796,10 @@ prelude.
 >   qfv m (ConstructorPattern _ ts) = qfv m ts
 >   qfv m (InfixPattern t1 _ t2) = qfv m [t1,t2]
 >   qfv m (ParenPattern t) = qfv m t
->   qfv m (TuplePattern ts) = qfv m ts
->   qfv m (ListPattern ts) = qfv m ts
+>   qfv m (TuplePattern _ ts) = qfv m ts
+>   qfv m (ListPattern _ ts) = qfv m ts
 >   qfv m (AsPattern _ ts) = qfv m ts
->   qfv m (LazyPattern t) = qfv m t
+>   qfv m (LazyPattern _ t) = qfv m t
 >   qfv m (FunctionPattern f ts) 
 >     = (maybe [] return (localIdent m f)) ++ qfv m ts
 >   qfv m (InfixFuncPattern t1 op t2) 
@@ -838,12 +837,12 @@ list.
 >  bvfp bvs (ConstructorPattern c ts) = foldl bvfp bvs ts
 >  bvfp bvs (InfixPattern t1 op t2) = foldl bvfp bvs [t1,t2]
 >  bvfp bvs (ParenPattern t) = bvfp bvs t
->  bvfp bvs (TuplePattern ts) = foldl bvfp bvs ts
->  bvfp bvs (ListPattern ts) = foldl bvfp bvs ts
+>  bvfp bvs (TuplePattern _ ts) = foldl bvfp bvs ts
+>  bvfp bvs (ListPattern _ ts) = foldl bvfp bvs ts
 >  bvfp bvs (AsPattern v t)
 >     | elem v bvs = bvfp bvs t
 >     | otherwise  = bvfp (v:bvs) t
->  bvfp bvs (LazyPattern t) = bvfp bvs t
+>  bvfp bvs (LazyPattern _ t) = bvfp bvs t
 >  bvfp bvs (FunctionPattern f ts) = foldl bvfp bvs ts
 >  bvfp bvs (InfixFuncPattern t1 op t2) = foldl bvfp bvs [t1, t2]
 >  bvfp bvs (RecordPattern fs r)
@@ -946,3 +945,33 @@ position must be ignored when comparing two such pairs.
 >   PIdent _ x == PIdent _ y = x == y
 
 \end{verbatim}
+
+
+> updIdentName :: (String -> String) -> Ident -> Ident
+> updIdentName f ident = let p=positionOfIdent ident
+>                            i=uniqueId ident
+>                            n=name ident in
+>   addPositionIdent p $ flip renameIdent i $ mkIdent (f n) 
+
+> instance SrcRefOf ConstrTerm where
+>   srcRefOf (LiteralPattern l) = srcRefOf l
+>   srcRefOf (NegativePattern i _) = srcRefOf i
+>   srcRefOf (VariablePattern i) = srcRefOf i
+>   srcRefOf (ConstructorPattern i _) = srcRefOf i
+>   srcRefOf (InfixPattern _ i _) = srcRefOf i
+>   srcRefOf (ParenPattern c) = srcRefOf c
+>   srcRefOf (TuplePattern s _) = s
+>   srcRefOf (ListPattern s _) = error "list pattern has several source refs"
+>   srcRefOf (AsPattern i _) = srcRefOf i
+>   srcRefOf (LazyPattern s _) = s
+>   srcRefOf (FunctionPattern i _) = srcRefOf i
+>   srcRefOf (InfixFuncPattern _ i _) = srcRefOf i
+
+> instance SrcRefOf CurrySyntax.Literal where
+>   srcRefOf (Char s _)   = s
+>   srcRefOf (Int i _)    = srcRefOf i
+>   srcRefOf (Float s _)  = s
+>   srcRefOf (String s _) = s
+
+
+

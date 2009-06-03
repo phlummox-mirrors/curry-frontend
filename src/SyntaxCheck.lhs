@@ -577,15 +577,15 @@ top-level.
 >             _ -> errorAt' (ambiguousData op)
 > checkConstrTerm withExt k p m env (ParenPattern t) =
 >   liftM ParenPattern (checkConstrTerm withExt k p m env t)
-> checkConstrTerm withExt k p m env (TuplePattern ts) =
->   liftM TuplePattern (mapM (checkConstrTerm withExt k p m env) ts)
-> checkConstrTerm withExt k p m env (ListPattern ts) =
->   liftM ListPattern (mapM (checkConstrTerm withExt k p m env) ts)
+> checkConstrTerm withExt k p m env (TuplePattern pos ts) =
+>   liftM (TuplePattern pos) (mapM (checkConstrTerm withExt k p m env) ts)
+> checkConstrTerm withExt k p m env (ListPattern pos ts) =
+>   liftM (ListPattern pos) (mapM (checkConstrTerm withExt k p m env) ts)
 > checkConstrTerm withExt k p m env (AsPattern v t) =
 >   liftM (AsPattern (checkVar "@ pattern" k env v))
 >         (checkConstrTerm withExt k p m env t)
-> checkConstrTerm withExt k p m env (LazyPattern t) =
->   liftM LazyPattern (checkConstrTerm withExt k p m env t)
+> checkConstrTerm withExt k p m env (LazyPattern pos t) =
+>   liftM (LazyPattern pos) (checkConstrTerm withExt k p m env t)
 > checkConstrTerm withExt k p m env (RecordPattern fs t)
 >   | not withExt = errorAt p noRecordExt
 >   | not (null fs) =
@@ -667,15 +667,15 @@ top-level.
 >   liftM Paren (checkExpr withExt p m env e)
 > checkExpr withExt p m env (Typed e ty) = 
 >   liftM (flip Typed ty) (checkExpr withExt p m env e)
-> checkExpr withExt p m env (Tuple es) = 
->   liftM Tuple (mapM (checkExpr withExt p m env) es)
-> checkExpr withExt p m env (List es) = 
->   liftM List (mapM (checkExpr withExt p m env) es)
-> checkExpr withExt p m env (ListCompr e qs) =
+> checkExpr withExt p m env (Tuple pos es) = 
+>   liftM (Tuple pos) (mapM (checkExpr withExt p m env) es)
+> checkExpr withExt p m env (List pos es) = 
+>   liftM (List pos) (mapM (checkExpr withExt p m env) es)
+> checkExpr withExt p m env (ListCompr pos e qs) =
 >   do
 >     (env',qs') <- mapAccumM (checkStatement withExt p m) env qs
 >     e' <- checkExpr withExt p m env' e
->     return (ListCompr e' qs')
+>     return (ListCompr pos e' qs')
 > checkExpr withExt p m env (EnumFrom e) = 
 >   liftM EnumFrom (checkExpr withExt p m env e)
 > checkExpr withExt p m env (EnumFromThen e1 e2) =
@@ -710,11 +710,11 @@ top-level.
 >   liftM (flip LeftSection (checkOp m env op)) (checkExpr withExt p m env e)
 > checkExpr withExt p m env (RightSection op e) =
 >   liftM (RightSection (checkOp m env op)) (checkExpr withExt p m env e)
-> checkExpr withExt p m env (Lambda ts e) =
+> checkExpr withExt p m env (Lambda r ts e) =
 >   do
 >     (env',ts') <- checkArgs withExt p m env ts
 >     e' <- checkExpr withExt p m env' e
->     return (Lambda ts' e')
+>     return (Lambda r ts' e')
 > checkExpr withExt p m env (Let ds e) =
 >   do
 >     (env',ds') <- checkLocalDecls withExt m env ds
@@ -725,17 +725,17 @@ top-level.
 >     (env',sts') <- mapAccumM (checkStatement withExt p m) env sts
 >     e' <- checkExpr withExt p m env' e
 >     return (Do sts' e')
-> checkExpr withExt p m env (IfThenElse e1 e2 e3) =
+> checkExpr withExt p m env (IfThenElse r e1 e2 e3) =
 >   do
 >     e1' <- checkExpr withExt p m env e1
 >     e2' <- checkExpr withExt p m env e2
 >     e3' <- checkExpr withExt p m env e3
->     return (IfThenElse e1' e2' e3')
-> checkExpr withExt p m env (Case e alts) =
+>     return (IfThenElse r e1' e2' e3')
+> checkExpr withExt p m env (Case r e alts) =
 >   do
 >     e' <- checkExpr withExt p m env e
 >     alts' <- mapM (checkAlt withExt m env) alts
->     return (Case e' alts')
+>     return (Case r e' alts')
 > checkExpr withExt p m env (RecordConstr fs)
 >   | not withExt = errorAt p noRecordExt
 >   | not (null fs) = 
@@ -787,15 +787,15 @@ top-level.
 
 > checkStatement :: Bool -> Position -> ModuleIdent -> RenameEnv -> Statement
 >                -> RenameState (RenameEnv,Statement)
-> checkStatement withExt p m env (StmtExpr e) =
+> checkStatement withExt p m env (StmtExpr pos e) =
 >   do
 >     e' <- checkExpr withExt p m env e
->     return (env,StmtExpr e')
-> checkStatement withExt p m env (StmtBind t e) =
+>     return (env,StmtExpr pos e')
+> checkStatement withExt p m env (StmtBind pos t e) =
 >   do
 >     e' <- checkExpr withExt p m env e
 >     (env',[t']) <- checkArgs withExt p m env [t]
->     return (env',StmtBind t' e')
+>     return (env',StmtBind pos t' e')
 > checkStatement withExt _ m env (StmtDecl ds) =
 >   do
 >     (env',ds') <- checkLocalDecls withExt m env ds
@@ -1159,13 +1159,13 @@ checkParen
 >     checkParenConstrTerm Nothing constrTerm2
 > checkParenConstrTerm _ (ParenPattern constrTerm) =
 >     checkParenConstrTerm Nothing constrTerm
-> checkParenConstrTerm _ (TuplePattern constrTerms) =
+> checkParenConstrTerm _ (TuplePattern _ constrTerms) =
 >     concatMap (checkParenConstrTerm Nothing) constrTerms
-> checkParenConstrTerm _ (ListPattern constrTerms) =
+> checkParenConstrTerm _ (ListPattern _ constrTerms) =
 >     concatMap (checkParenConstrTerm Nothing) constrTerms
 > checkParenConstrTerm mCaller (AsPattern _ constrTerm) =
 >     checkParenConstrTerm mCaller constrTerm
-> checkParenConstrTerm mCaller (LazyPattern constrTerm) =
+> checkParenConstrTerm mCaller (LazyPattern _ constrTerm) =
 >     checkParenConstrTerm mCaller constrTerm
 > checkParenConstrTerm _ (FunctionPattern _ constrTerms) =
 >     concatMap (checkParenConstrTerm Nothing) constrTerms

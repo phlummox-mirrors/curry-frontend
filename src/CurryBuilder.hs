@@ -47,14 +47,13 @@ buildCurry options file
 
 -------------------------------------------------------------------------------
 
-makeCurry :: Options -> [(ModuleIdent,Source)] -> FilePath 
-	  -> IO ()
+makeCurry :: Options -> [(ModuleIdent,Source)] -> FilePath -> IO ()
 makeCurry options deps file
    = mapM compile (map snd deps) >> return ()
  where
  compile (Source file' mods)
     | rootname file == rootname file'
-      = do flatIntfExists <- doesFileExist (flatIntName file')
+      = do flatIntfExists <- doesModuleExist (flatIntName file')
 	   if flatIntfExists && not (force options) && null (dump options)
 	    then smake (targetNames file')
                        (file':(catMaybes (map flatInterface mods)))
@@ -62,7 +61,7 @@ makeCurry options deps file
 		       (skipFile file')
 	    else generateFile file'
     | otherwise
-      = do flatIntfExists <- doesFileExist (flatIntName file')
+      = do flatIntfExists <- doesModuleExist (flatIntName file')
 	   if flatIntfExists
             then  smake [flatName file'] --[flatName file', flatIntName file']
 	                (file':(catMaybes (map flatInterface mods)))
@@ -112,7 +111,7 @@ makeCurry options deps file
 	     COpts.noWarn = noWarn options,
 	     COpts.noOverlapWarn = noOverlapWarn options,
 	     COpts.flat = True,
-             COpts.noSimplify = noSimplify options,
+             COpts.flatWithSrcRefs = flatWithSrcRefs options,
 	     COpts.flatXml = False,
 	     COpts.abstract = False,
 	     COpts.untypedAbstract = False,
@@ -128,7 +127,7 @@ makeCurry options deps file
 	     COpts.noVerb = noVerb options,
 	     COpts.noWarn = noWarn options,
 	     COpts.noOverlapWarn = noOverlapWarn options,
-             COpts.noSimplify = noSimplify options,
+             COpts.flatWithSrcRefs = flatWithSrcRefs options,
 	     COpts.flat = flat options,
 	     COpts.flatXml = flatXml options,
 	     COpts.abstract = abstract options,
@@ -185,7 +184,7 @@ smake dests deps cmd alt
 getDestTimes :: [FilePath] -> IO [ClockTime]
 getDestTimes [] = return []
 getDestTimes (file:files)
-   = catch (do time  <- getModificationTime file
+   = catch (do time  <- getModuleModTime file
 	       times <- getDestTimes files
 	       return (time:times))
            (const (getDestTimes files))
@@ -194,7 +193,7 @@ getDestTimes (file:files)
 getDepTimes :: [String] -> IO [ClockTime]
 getDepTimes [] = return []
 getDepTimes (file:files)
-   = catch (do time  <- getModificationTime file
+   = catch (do time  <- getModuleModTime file
 	       times <- getDepTimes files
 	       return (time:times))
            (\err -> abortWith [show err])

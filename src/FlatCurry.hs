@@ -23,8 +23,11 @@ module FlatCurry (Prog(..), QName, Visibility(..),
 		  readFlatCurry, readFlatInterface, readFlat, 
 		  writeFlatCurry) where
 
+import PathUtils (writeModule,maybeReadModule)
+import ReadWriteCurryFiles
 import Directory
 import List(intersperse)
+import Control.Monad (liftM)
 
 ------------------------------------------------------------------------------
 -- Definition of data types for representing FlatCurry programs:
@@ -316,17 +319,12 @@ readFlatInterface fn
 -- Reads a Flat file and returns the corresponding term (type 'Prog') as
 -- a value of type 'Maybe'.
 readFlat :: FilePath -> IO (Maybe Prog)
-readFlat filename
-   = do fileExists <- doesFileExist filename
-	if fileExists 
-          then readFile filename >>= return . Just . read 
-	  else return Nothing
-
+readFlat = liftM (fmap read) . maybeReadModule
 
 -- Writes a FlatCurry program term into a file.
 writeFlatCurry :: String -> Prog -> IO ()
 writeFlatCurry filename prog
-   = writeFile filename (showFlatCurry prog)
+   = writeModule filename (showFlatCurry prog)
 
 -- Shows FlatCurry program in a more nicely way.
 showFlatCurry :: Prog -> String

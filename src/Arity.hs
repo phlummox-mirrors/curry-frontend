@@ -68,11 +68,11 @@ visitExpression mid aEnv (Paren expr)
    = visitExpression mid aEnv expr
 visitExpression mid aEnv (Typed expr _)
    = visitExpression mid aEnv expr
-visitExpression mid aEnv (Tuple exprs)
+visitExpression mid aEnv (Tuple _ exprs)
    = foldl (visitExpression mid) aEnv exprs
-visitExpression mid aEnv (List exprs)
+visitExpression mid aEnv (List _ exprs)
    = foldl (visitExpression mid) aEnv exprs
-visitExpression mid aEnv (ListCompr expr stmts)
+visitExpression mid aEnv (ListCompr _ expr stmts)
    = foldl (visitStatement mid) (visitExpression mid aEnv expr) stmts
 visitExpression mid aEnv (EnumFrom expr)
    = visitExpression mid aEnv expr
@@ -92,25 +92,25 @@ visitExpression mid aEnv (LeftSection expr _)
    = visitExpression mid aEnv expr
 visitExpression mid aEnv (RightSection _ expr)
    = visitExpression mid aEnv expr
-visitExpression mid aEnv (Lambda _ expr)
+visitExpression mid aEnv (Lambda _ _ expr)
    = visitExpression mid aEnv expr
 visitExpression mid aEnv (Let decls expr)
    = foldl (visitDecl mid) (visitExpression mid aEnv expr) decls
 visitExpression mid aEnv (Do stmts expr)
    = foldl (visitStatement mid) (visitExpression mid aEnv expr) stmts
-visitExpression mid aEnv (IfThenElse expr1 expr2 expr3)
+visitExpression mid aEnv (IfThenElse _ expr1 expr2 expr3)
    = foldl (visitExpression mid) aEnv [expr1,expr2,expr3]
-visitExpression mid aEnv (Case expr alts)
+visitExpression mid aEnv (Case _ expr alts)
    = visitExpression mid (foldl (visitAlt mid) aEnv alts) expr
 visitExpression _ aEnv _ = aEnv
 
 
 visitStatement :: ModuleIdent -> ArityEnv -> Statement -> ArityEnv
-visitStatement mid aEnv (StmtExpr expr)
+visitStatement mid aEnv (StmtExpr _ expr)
    = visitExpression mid aEnv expr
 visitStatement mid aEnv (StmtDecl decls)
    = foldl (visitDecl mid) aEnv decls
-visitStatement mid aEnv (StmtBind _ expr)
+visitStatement mid aEnv (StmtBind _ _ expr)
    = visitExpression mid aEnv expr
 
 

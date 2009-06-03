@@ -60,10 +60,10 @@ declarations groups as well as function arguments remain unchanged.
 >                (qualIdent m tyEnv op) 
 >                (qualTerm m tyEnv t2)
 > qualTerm m tyEnv (ParenPattern t) = ParenPattern (qualTerm m tyEnv t)
-> qualTerm m tyEnv (TuplePattern ts) = TuplePattern (map (qualTerm m tyEnv) ts)
-> qualTerm m tyEnv (ListPattern ts) = ListPattern (map (qualTerm m tyEnv) ts)
+> qualTerm m tyEnv (TuplePattern p ts) = TuplePattern p (map (qualTerm m tyEnv) ts)
+> qualTerm m tyEnv (ListPattern p ts) = ListPattern p (map (qualTerm m tyEnv) ts)
 > qualTerm m tyEnv (AsPattern v t) = AsPattern v (qualTerm m tyEnv t)
-> qualTerm m tyEnv (LazyPattern t) = LazyPattern (qualTerm m tyEnv t)
+> qualTerm m tyEnv (LazyPattern p t) = LazyPattern p (qualTerm m tyEnv t)
 > qualTerm m tyEnv (FunctionPattern f ts) =
 >   FunctionPattern (qualIdent m tyEnv f) (map (qualTerm m tyEnv) ts)
 > qualTerm m tyEnv (InfixFuncPattern t1 op t2) =
@@ -94,10 +94,10 @@ declarations groups as well as function arguments remain unchanged.
 > qualExpr m tyEnv (Constructor c) = Constructor (qualIdent m tyEnv c)
 > qualExpr m tyEnv (Paren e) = Paren (qualExpr m tyEnv e)
 > qualExpr m tyEnv (Typed e ty) = Typed (qualExpr m tyEnv e) ty
-> qualExpr m tyEnv (Tuple es) = Tuple (map (qualExpr m tyEnv) es)
-> qualExpr m tyEnv (List es) = List (map (qualExpr m tyEnv) es)
-> qualExpr m tyEnv (ListCompr e qs) =
->   ListCompr (qualExpr m tyEnv e) (map (qualStmt m tyEnv) qs)
+> qualExpr m tyEnv (Tuple p es) = Tuple p (map (qualExpr m tyEnv) es)
+> qualExpr m tyEnv (List p es) = List p (map (qualExpr m tyEnv) es)
+> qualExpr m tyEnv (ListCompr p e qs) =
+>   ListCompr p (qualExpr m tyEnv e) (map (qualStmt m tyEnv) qs)
 > qualExpr m tyEnv (EnumFrom e) = EnumFrom (qualExpr m tyEnv e)
 > qualExpr m tyEnv (EnumFromThen e1 e2) =
 >   EnumFromThen (qualExpr m tyEnv e1) (qualExpr m tyEnv e2)
@@ -116,18 +116,18 @@ declarations groups as well as function arguments remain unchanged.
 >   LeftSection (qualExpr m tyEnv e) (qualOp m tyEnv op)
 > qualExpr m tyEnv (RightSection op e) =
 >   RightSection (qualOp m tyEnv op) (qualExpr m tyEnv e)
-> qualExpr m tyEnv (Lambda ts e) =
->   Lambda (map (qualTerm m tyEnv) ts) (qualExpr m tyEnv e)
+> qualExpr m tyEnv (Lambda r ts e) =
+>   Lambda r (map (qualTerm m tyEnv) ts) (qualExpr m tyEnv e)
 > qualExpr m tyEnv (Let ds e) = 
 >   Let (map (qualDecl m tyEnv) ds) (qualExpr m tyEnv e)
 > qualExpr m tyEnv (Do sts e) = 
 >   Do (map (qualStmt m tyEnv) sts) (qualExpr m tyEnv e)
-> qualExpr m tyEnv (IfThenElse e1 e2 e3) =
->   IfThenElse (qualExpr m tyEnv e1) 
+> qualExpr m tyEnv (IfThenElse r e1 e2 e3) =
+>   IfThenElse r (qualExpr m tyEnv e1) 
 >              (qualExpr m tyEnv e2) 
 >              (qualExpr m tyEnv e3)
-> qualExpr m tyEnv (Case e alts) =
->   Case (qualExpr m tyEnv e) (map (qualAlt m tyEnv) alts)
+> qualExpr m tyEnv (Case r e alts) =
+>   Case r (qualExpr m tyEnv e) (map (qualAlt m tyEnv) alts)
 > qualExpr m tyEnv (RecordConstr fs) =
 >   RecordConstr (map (qualFieldExpr m tyEnv) fs)
 > qualExpr m tyEnv (RecordSelection e l) =
@@ -136,9 +136,9 @@ declarations groups as well as function arguments remain unchanged.
 >   RecordUpdate (map (qualFieldExpr m tyEnv) fs) (qualExpr m tyEnv e)
 
 > qualStmt :: ModuleIdent -> ValueEnv -> Statement -> Statement
-> qualStmt m tyEnv (StmtExpr e) = StmtExpr (qualExpr m tyEnv e)
-> qualStmt m tyEnv (StmtBind t e) =
->   StmtBind (qualTerm m tyEnv t) (qualExpr m tyEnv e)
+> qualStmt m tyEnv (StmtExpr p e) = StmtExpr p (qualExpr m tyEnv e)
+> qualStmt m tyEnv (StmtBind p t e) =
+>   StmtBind p (qualTerm m tyEnv t) (qualExpr m tyEnv e)
 > qualStmt m tyEnv (StmtDecl ds) = StmtDecl (map (qualDecl m tyEnv) ds)
 
 > qualAlt :: ModuleIdent -> ValueEnv -> Alt -> Alt

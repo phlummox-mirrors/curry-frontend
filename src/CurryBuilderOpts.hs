@@ -29,7 +29,7 @@ data Options
 	      noWarn :: Bool,             -- warnings on/off
 	      noOverlapWarn :: Bool,      -- "overlap" warnings on/off
 	      flat :: Bool,               -- generate FlatCurry code
-              noSimplify :: Bool,         -- do not simplify code before lambda lifting
+              flatWithSrcRefs :: Bool,    -- generate code with src references
 	      flatXml :: Bool,            -- generate FlatXML code
 	      abstract :: Bool,           -- generate AbstractCurry code
 	      untypedAbstract :: Bool,    -- generate untyped AbstractCurry
@@ -48,7 +48,7 @@ defaultOpts = Options{ force           = False,
 		       noWarn          = False,
 		       noOverlapWarn   = False,
 		       flat            = False,
-                       noSimplify      = False,
+                       flatWithSrcRefs = False,
 		       flatXml         = False,
 		       abstract        = False,
 		       untypedAbstract = False,
@@ -64,7 +64,7 @@ data Option = Help | Force | Html
 	    | ImportPath FilePath | LibPath FilePath | Output FilePath
 	    | NoVerb | NoWarn | NoOverlapWarn
 	    | Flat | FlatXML | Abstract | UntypedAbstract | ParseOnly
-            | NoSimplify
+            | FlatWithSrcRefs
 	    | WithExtensions
 	    | Dump [Dump]
 	    deriving Eq
@@ -91,7 +91,7 @@ options = [Option "f" ["force"] (NoArg Force)
 	          "generate FlatCurry code",
 	   Option ""  ["xml"] (NoArg FlatXML)
 	          "generate flat xml code",
-           Option "" ["no-simp"] (NoArg NoSimplify)
+           Option "" ["no-simp"] (NoArg FlatWithSrcRefs)
                   "do not simplify code before lambda lifting",
 	   Option ""  ["acy"] (NoArg Abstract)
 	          "generate (type infered) AbstractCurry code",
@@ -123,7 +123,7 @@ selectOption NoVerb opts          = opts{ noVerb = True,
 selectOption NoWarn opts          = opts{ noWarn = True }
 selectOption NoOverlapWarn opts   = opts{ noOverlapWarn = True }
 selectOption Flat opts            = opts{ flat = True }
-selectOption NoSimplify opts      = opts{ noSimplify = True }
+selectOption FlatWithSrcRefs opts = opts{ flatWithSrcRefs = True }
 selectOption Html opts            = opts{ html = True }
 selectOption FlatXML opts         = opts{ flatXml = True }
 selectOption Abstract opts        = opts{ abstract = True }

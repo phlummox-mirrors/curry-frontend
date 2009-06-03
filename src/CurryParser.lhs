@@ -29,7 +29,8 @@ combinators described in appendix~\ref{sec:ll-parsecomb}.
 \begin{verbatim}
 
 > parseSource :: Bool -> FilePath -> String -> Error Module
-> parseSource flat = applyParser (parseModule flat) lexer
+> parseSource flat path mod = 
+>    fmap addSrcRefs (applyParser (parseModule flat) lexer path mod)
 
 > parseHeader :: FilePath -> String -> Error Module
 > parseHeader = prefixParser (moduleHeader <*->
@@ -351,10 +352,10 @@ Since this modified version of MCC uses FlatCurry interfaces instead of
 \begin{verbatim}
 
 > literal :: Parser Token Literal a
-> literal = Char <$> char
->       <|> Int anonId <$> integer
->       <|> Float <$> float
->       <|> String <$> string
+> literal = mk Char   <$> char
+>       <|> mkInt     <$> integer
+>       <|> mk Float  <$> float
+>       <|> mk String <$> string
 
 \end{verbatim}
 \paragraph{Patterns}
@@ -411,10 +412,10 @@ Since this modified version of MCC uses FlatCurry interfaces instead of
 >                      <|> parenMinusPattern p <*-> rightParen
 
 > listPattern :: Parser Token ConstrTerm a
-> listPattern = ListPattern <$> brackets (constrTerm0 `sepBy` comma)
+> listPattern = mk' ListPattern <$> brackets (constrTerm0 `sepBy` comma)
 
 > lazyPattern :: Parser Token ConstrTerm a
-> lazyPattern = LazyPattern <$-> token Tilde <*> constrTerm2
+> lazyPattern = mk LazyPattern <$-> token Tilde <*> constrTerm2
 
 > recordPattern :: Parser Token ConstrTerm a
 > recordPattern = layoutOff <-*> braces content
@@ -434,8 +435,8 @@ the left-hand side of a declaration.
 
 > negNum,negFloat :: Parser Token (Ident -> ConstrTerm) a
 > negNum = flip NegativePattern 
->          <$> (Int anonId <$> integer <|> Float <$> float)
-> negFloat = flip NegativePattern . Float 
+>          <$> (mkInt <$> integer <|> mk Float <$> float)
+> negFloat = flip NegativePattern . mk Float 
 >            <$> (fromIntegral <$> integer <|> float)
 
 > optAsPattern :: Parser Token (Ident -> ConstrTerm) a
@@ -450,7 +451,7 @@ the left-hand side of a declaration.
 > optTuplePattern :: Parser Token (ConstrTerm -> ConstrTerm) a
 > optTuplePattern = tuple <$> many1 (comma <-*> constrTerm0)
 >             `opt` ParenPattern
->   where tuple ts t = TuplePattern (t:ts)
+>   where tuple ts t = mk TuplePattern (t:ts)
 
 > parenMinusPattern :: Parser Token (Ident -> ConstrTerm) a
 >                   -> Parser Token (Ident -> ConstrTerm) a
@@ -458,7 +459,7 @@ the left-hand side of a declaration.
 
 > parenTuplePattern :: Parser Token ConstrTerm a
 > parenTuplePattern = constrTerm0 <**> optTuplePattern
->               `opt` TuplePattern []
+>               `opt` mk TuplePattern []
 
 \end{verbatim}
 \paragraph{Expressions}
@@ -507,7 +508,7 @@ the left-hand side of a declaration.
 >             <|> Constructor <$> tupleCommas
 >             <|> leftSectionOrTuple <\> minus <\> fminus
 >             <|> opOrRightSection <\> minus <\> fminus
->           `opt` Tuple []
+>           `opt` mk Tuple []
 >         minusOrTuple = flip UnaryMinus <$> expr1 flat <.> infixOrTuple
 >                  `opt` Variable . qualify
 >         leftSectionOrTuple = expr1 flat <**> infixOrTuple
@@ -528,25 +529,25 @@ the left-hand side of a declaration.
 >         rightSection = flip RightSection <$> expr0 flat
 >         infixApp f e2 op g e1 = f (g . InfixApply e1 op) e2
 >         leftSection op f e = LeftSection (f e) op
->         tuple es e = Tuple (e:es)
+>         tuple es e = mk Tuple (e:es)
 
 > infixOp :: Parser Token InfixOp a
 > infixOp = InfixOp <$> qfunop
 >       <|> InfixConstr <$> colon
 
 > listExpr :: Bool -> Parser Token Expression a
-> listExpr flat = brackets (elements `opt` List [])
+> listExpr flat = brackets (elements `opt` mk' List [])
 >   where elements = expr flat <**> rest
 >         rest = comprehension
 >            <|> enumeration (flip EnumFromTo) EnumFrom
 >            <|> comma <-*> expr flat <**>
 >                (enumeration (flip3 EnumFromThenTo) (flip EnumFromThen)
 >                <|> list <$> many (comma <-*> expr flat))
->          `opt` (\e -> List [e])
->         comprehension = flip ListCompr <$-> bar <*> quals flat
+>          `opt` (\e -> mk' List [e])
+>         comprehension = flip (mk ListCompr) <$-> bar <*> quals flat
 >         enumeration enumTo enum =
 >           token DotDot <-*> (enumTo <$> expr flat `opt` enum)
->         list es e2 e1 = List (e1:e2:es)
+>         list es e2 e1 = mk' List (e1:e2:es)
 >         flip3 f x y z = f z y x
 
 > recordExpr :: Bool -> Parser Token Expression a
@@ -561,7 +562,7 @@ the left-hand side of a declaration.
 
 > lambdaExpr :: Bool -> Parser Token Expression a
 > lambdaExpr flat =
->   Lambda <$-> token Backslash <*> many1 constrTerm2
+>   mk Lambda <$-> token Backslash <*> many1 constrTerm2
 >          <*-> (token RightArrow <?> "-> expected") <*> expr flat
 
 > letExpr :: Bool -> Parser Token Expression a
@@ -573,12 +574,12 @@ the left-hand side of a declaration.
 
 > ifExpr :: Bool -> Parser Token Expression a
 > ifExpr flat =
->   IfThenElse <$-> token KW_if <*> expr flat
+>   mk IfThenElse <$-> token KW_if <*> expr flat
 >              <*-> (token KW_then <?> "then expected") <*> expr flat
 >              <*-> (token KW_else <?> "else expected") <*> expr flat
 
 > caseExpr :: Bool -> Parser Token Expression a
-> caseExpr flat = Case <$-> token KW_case <*> expr flat
+> caseExpr flat = mk Case <$-> token KW_case <*> expr flat
 >                 <*-> (token KW_of <?> "of expected") <*> layout (alts flat)
 
 > alts :: Bool -> Parser Token [Alt] a
@@ -606,11 +607,11 @@ prefix of a let expression.
 > reqStmts flat = (\(sts,e) st -> (st : sts,e)) <$-> semicolon <*> stmts flat
 
 > optStmts :: Bool -> Parser Token (Expression -> ([Statement],Expression)) a
-> optStmts flat = succeed StmtExpr <.> reqStmts flat
+> optStmts flat = succeed (mk StmtExpr) <.> reqStmts flat
 >           `opt` (,) []
 
 > quals :: Bool -> Parser Token [Statement] a
-> quals flat = stmt flat (succeed id) (succeed StmtExpr) `sepBy1` comma
+> quals flat = stmt flat (succeed id) (succeed $ mk StmtExpr) `sepBy1` comma
 
 > stmt :: Bool -> Parser Token (Statement -> a) b
 >      -> Parser Token (Expression -> a) b -> Parser Token a b
@@ -628,7 +629,7 @@ prefix of a let expression.
 >                -> Parser Token (Expression -> a) b
 >                -> Parser Token a b
 > exprOrBindStmt flat stmtCont exprCont =
->        StmtBind <$> constrTerm0 <*-> leftArrow <*> expr flat <**> stmtCont
+>        mk StmtBind <$> constrTerm0 <*-> leftArrow <*> expr flat <**> stmtCont
 >   <|?> expr flat <\> token KW_let <**> exprCont
 
 \end{verbatim}

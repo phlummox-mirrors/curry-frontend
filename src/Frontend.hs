@@ -23,7 +23,7 @@ import CaseCompletion
 import CurryDeps hiding (unlitLiterate)
 import qualified CurrySyntax as CS
 import qualified AbstractCurry as ACY
-import qualified FlatCurry as FCY
+import qualified FlatWithSrcRefs as FCY
 import qualified Error as Err
 import CompilerResults
 import Message
@@ -170,7 +170,7 @@ genFlatIO paths fn (Result msgs mod)
 	       (tyEnv, tcEnv, aEnv, mod', intf, msgs') <- 
 	           checkModule (opts paths) mEnv mod
 	       let (il, aEnv', _) 
-	              = transModule True True False False mEnv tyEnv tcEnv aEnv mod'
+	              = transModule True True False mEnv tyEnv tcEnv aEnv mod'
 	           il' = completeCase mEnv il
 	           cEnv = curryEnv mEnv tcEnv intf mod'
 	           (prog,msgs'') = genFlatCurry (opts paths) cEnv mEnv 

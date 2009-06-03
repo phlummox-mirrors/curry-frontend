@@ -12,9 +12,13 @@ names and finding files.
 
 > module PathUtils(pathSep,curDirPath, isRelative,isAbsolute,
 >                  dirname,basename, rootname,extension, catPath,
->                  listSep, pathList, lookupFile) where
+>                  listSep, pathList, lookupFile,
+>                  currySubdir,writeModule,readModule,
+>                  doesModuleExist,maybeReadModule,getModuleModTime) where
 > -- import List
 > import Directory
+> import Control.Monad (when)
+> import System.Time (ClockTime)
 
 \end{verbatim}
 Within this module we assume Unix style path semantics, i.e.\ 
@@ -136,11 +140,13 @@ exists in the file system.
 \begin{verbatim}
 
 > lookupFile :: [FilePath] -> IO (Maybe FilePath)
-> lookupFile [] = return Nothing
-> lookupFile (fn:fns) =
->   do
->     so <- doesFileExist fn
->     if so then return (Just fn) else lookupFile fns
+> lookupFile fns = lookupFile' (concatMap (\ fn -> [addCurrySubdir fn,fn]) fns)
+>   where
+>     lookupFile' [] = return Nothing
+>     lookupFile' (fn:fns) =
+>      do
+>       so <- doesFileExist fn
+>       if so then return (Just fn) else lookupFile' fns
 
 \end{verbatim}
 The function \texttt{breakLast} is similar to the standard
@@ -158,3 +164,45 @@ the last position for which the predicate returns \texttt{True}.
 >       where (prefix',suffix') = breakLast p suffix
 
 \end{verbatim}
+
+
+The sub directory to hide files in:
+
+> currySubdir :: String 
+> currySubdir = ".curry"
+
+> addCurrySubdir :: String -> String
+> addCurrySubdir fn = dirname fn++pathSep:currySubdir
+>                               ++pathSep:basename fn
+
+
+write a file to curry subdirectory
+
+> writeModule :: String -> String -> IO ()
+> writeModule fileName contents = do
+>   --writeFile fileName contents
+>   let subdir = dirname fileName++pathSep:currySubdir
+>   ex <- doesDirectoryExist subdir
+>   when (not ex) (createDirectory subdir)
+>   writeFile (addCurrySubdir fileName) contents
+
+> onExistingFileDo :: (String -> IO a) -> String -> IO a
+> onExistingFileDo act filename = do
+>   ex <- doesFileExist filename
+>   if ex then act filename 
+>     else do
+>       let filename' = addCurrySubdir filename
+>       act filename'
+
+> readModule :: String -> IO String
+> readModule = onExistingFileDo readFile
+
+> maybeReadModule :: String -> IO (Maybe String)
+> maybeReadModule filename = 
+>   catch (readModule filename >>= return . Just) (\_ -> return Nothing)
+
+> doesModuleExist :: String -> IO Bool
+> doesModuleExist = onExistingFileDo doesFileExist
+
+> getModuleModTime :: String -> IO ClockTime
+> getModuleModTime = onExistingFileDo getModificationTime

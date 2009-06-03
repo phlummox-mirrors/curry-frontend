@@ -153,7 +153,7 @@ prelude itself. Any errors reported by the parser are ignored.
 >            -> FilePath -> IO SourceEnv
 > sourceDeps paths libPaths m mEnv fn =
 >   do
->     s <- readFile fn
+>     s <- readModule fn
 >     case parseHeader fn (unlitLiterate fn s) of
 >       Ok (Module m' _ ds) ->
 >         let ms = imports m' ds in

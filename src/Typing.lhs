@@ -119,10 +119,10 @@ environment.}
 > identType tyEnv x = instUniv (varType x tyEnv)
 
 > litType :: ValueEnv -> Literal -> TyState Type
-> litType _ (Char _) = return charType
+> litType _ (Char _ _)    = return charType
 > litType tyEnv (Int v _) = identType tyEnv v
-> litType _ (Float _) = return floatType
-> litType _ (String _) = return stringType
+> litType _ (Float _ _)   = return floatType
+> litType _ (String _ _)  = return stringType
 
 > argType :: ValueEnv -> ConstrTerm -> TyState Type
 > argType tyEnv (LiteralPattern l) = litType tyEnv l
@@ -139,15 +139,15 @@ environment.}
 > argType tyEnv (InfixPattern t1 op t2) =
 >   argType tyEnv (ConstructorPattern op [t1,t2])
 > argType tyEnv (ParenPattern t) = argType tyEnv t
-> argType tyEnv (TuplePattern ts)
+> argType tyEnv (TuplePattern _ ts)
 >   | null ts = return unitType
 >   | otherwise = liftM tupleType $ mapM (argType tyEnv) ts                -- $
-> argType tyEnv (ListPattern ts) = freshTypeVar >>= flip elemType ts
+> argType tyEnv (ListPattern _ ts) = freshTypeVar >>= flip elemType ts
 >   where elemType ty [] = return (listType ty)
 >         elemType ty (t:ts) =
 >           argType tyEnv t >>= unify ty >> elemType ty ts
 > argType tyEnv (AsPattern v _) = argType tyEnv (VariablePattern v)
-> argType tyEnv (LazyPattern t) = argType tyEnv t
+> argType tyEnv (LazyPattern _ t) = argType tyEnv t
 > argType tyEnv (FunctionPattern f ts) =
 >   do 
 >     ty <- instUniv (funType f tyEnv)
@@ -185,14 +185,14 @@ environment.}
 > exprType tyEnv (Constructor c) = instUnivExist (constrType c tyEnv)
 > exprType tyEnv (Typed e _) = exprType tyEnv e
 > exprType tyEnv (Paren e) = exprType tyEnv e
-> exprType tyEnv (Tuple es)
+> exprType tyEnv (Tuple _ es)
 >   | null es = return unitType
 >   | otherwise = liftM tupleType $ mapM (exprType tyEnv) es
-> exprType tyEnv (List es) = freshTypeVar >>= flip elemType es
+> exprType tyEnv (List _ es) = freshTypeVar >>= flip elemType es
 >   where elemType ty [] = return (listType ty)
 >         elemType ty (e:es) =
 >           exprType tyEnv e >>= unify ty >> elemType ty es
-> exprType tyEnv (ListCompr e _) = liftM listType $ exprType tyEnv e
+> exprType tyEnv (ListCompr _ e _) = liftM listType $ exprType tyEnv e
 > exprType tyEnv (EnumFrom _) = return (listType intType)
 > exprType tyEnv (EnumFromThen _ _) = return (listType intType)
 > exprType tyEnv (EnumFromTo _ _) = return (listType intType)
@@ -219,21 +219,21 @@ environment.}
 >     (ty1,ty2,ty3) <- exprType tyEnv (infixOp op) >>= unifyArrow2
 >     exprType tyEnv e >>= unify ty2
 >     return (TypeArrow ty1 ty3)
-> exprType tyEnv (Lambda args e) =
+> exprType tyEnv (Lambda _ args e) =
 >   do
 >     tys <- mapM (argType tyEnv) args
 >     ty <- exprType tyEnv e
 >     return (foldr TypeArrow ty tys)
 > exprType tyEnv (Let _ e) = exprType tyEnv e
 > exprType tyEnv (Do _ e) = exprType tyEnv e
-> exprType tyEnv (IfThenElse e1 e2 e3) =
+> exprType tyEnv (IfThenElse _ e1 e2 e3) =
 >   do
 >     exprType tyEnv e1 >>= unify boolType
 >     ty2 <- exprType tyEnv e2
 >     ty3 <- exprType tyEnv e3
 >     unify ty2 ty3
 >     return ty3
-> exprType tyEnv (Case _ alts) = freshTypeVar >>= flip altType alts
+> exprType tyEnv (Case _ _ alts) = freshTypeVar >>= flip altType alts
 >   where altType ty [] = return ty
 >         altType ty (Alt _ _ rhs:alts) =
 >           rhsType tyEnv rhs >>= unify ty >> altType ty alts

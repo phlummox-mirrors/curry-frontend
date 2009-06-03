@@ -24,7 +24,7 @@ showsModule (Module mident espec decls)
   . showsList (\d -> showsDecl d . newline) decls
 
 showsPosition :: Position -> ShowS
-showsPosition (Position _ row col) = showsPair shows shows (row,col)
+showsPosition Position{line=row,column=col} = showsPair shows shows (row,col)
 -- showsPosition (Position file row col)
 --   = showsString "(Position "
 --   . shows file . space
@@ -252,14 +252,14 @@ showsCondExpr (CondExpr pos exp1 exp2)
   . showsString ")"
 
 showsLiteral :: Literal -> ShowS
-showsLiteral (Char c) = showsString "(Char " . shows c . showsString ")"
+showsLiteral (Char _ c) = showsString "(Char " . shows c . showsString ")"
 showsLiteral (Int ident n)
   = showsString "(Int "
   . showsIdent ident . space
   . shows n
   . showsString ")"
-showsLiteral (Float x) = showsString "(Float " . shows x . showsString ")"
-showsLiteral (String s) = showsString "(String " . shows s . showsString ")"
+showsLiteral (Float _ x) = showsString "(Float " . shows x . showsString ")"
+showsLiteral (String _ s) = showsString "(String " . shows s . showsString ")"
 
 showsConsTerm :: ConstrTerm -> ShowS
 showsConsTerm (LiteralPattern lit)
@@ -290,11 +290,11 @@ showsConsTerm (ParenPattern cons)
   = showsString "(ParenPattern "
   . showsConsTerm cons
   . showsString ")"
-showsConsTerm (TuplePattern conss)
+showsConsTerm (TuplePattern _ conss)
   = showsString "(TuplePattern "
   . showsList showsConsTerm conss
   . showsString ")"
-showsConsTerm (ListPattern conss)
+showsConsTerm (ListPattern _ conss)
   = showsString "(ListPattern "
   . showsList showsConsTerm conss
   . showsString ")"
@@ -303,7 +303,7 @@ showsConsTerm (AsPattern ident cons)
   . showsIdent ident . space
   . showsConsTerm cons
   . showsString ")"
-showsConsTerm (LazyPattern cons)
+showsConsTerm (LazyPattern _ cons)
   = showsString "(LazyPattern "
   . showsConsTerm cons
   . showsString ")"
@@ -338,11 +338,11 @@ showsExpression (Typed exp typ)
   . showsExpression exp . space
   . showsTypeExpr typ
   . showsString ")"
-showsExpression (Tuple exps)
+showsExpression (Tuple _ exps)
   = showsString "(Tuple " . showsList showsExpression exps . showsString ")"
-showsExpression (List exps)
+showsExpression (List _ exps)
   = showsString "(List " . showsList showsExpression exps . showsString ")"
-showsExpression (ListCompr exp stmts)
+showsExpression (ListCompr _ exp stmts)
   = showsString "(ListCompr "
   . showsExpression exp . space
   . showsList showsStatement stmts
@@ -391,7 +391,7 @@ showsExpression (RightSection op exp)
   . showsInfixOp op . space
   . showsExpression exp
   . showsString ")"
-showsExpression (Lambda conss exp)
+showsExpression (Lambda _ conss exp)
   = showsString "(Lambda "
   . showsList showsConsTerm conss . space
   . showsExpression exp 
@@ -406,13 +406,13 @@ showsExpression (Do stmts exp)
   . showsList showsStatement stmts . space
   . showsExpression exp
   . showsString ")"
-showsExpression (IfThenElse exp1 exp2 exp3)
+showsExpression (IfThenElse _ exp1 exp2 exp3)
   = showsString "(IfThenElse "
   . showsExpression exp1 . space
   . showsExpression exp2 . space
   . showsExpression exp3
   . showsString ")"
-showsExpression (Case exp alts)
+showsExpression (Case _ exp alts)
   = showsString "(Case "
   . showsExpression exp . space
   . showsList showsAlt alts
@@ -439,11 +439,11 @@ showsInfixOp (InfixConstr qident)
   = showsString "(InfixConstr " . showsQualIdent qident . showsString ")"
 
 showsStatement :: Statement -> ShowS
-showsStatement (StmtExpr exp)
+showsStatement (StmtExpr _ exp)
   = showsString "(StmtExpr " . showsExpression exp . showsString ")"
 showsStatement (StmtDecl decls)
   = showsString "(StmtDecl " . showsList showsDecl decls . showsString ")"
-showsStatement (StmtBind cons exp)
+showsStatement (StmtBind _ cons exp)
   = showsString "(StmtBind "
   . showsConsTerm cons . space
   . showsExpression exp

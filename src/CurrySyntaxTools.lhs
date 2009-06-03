@@ -13,7 +13,7 @@
 
 
 > getOpInfixDecls :: Module -> [(Ident, (Infix, Int))]
-> getOpInfixDecls (Module mident expspec decls) = collectOpInfixDecls [] decls
+> getOpInfixDecls (Module mident expspec decls) = collectOpInfixDecls decls
 
 
 > isInfix :: Infix -> Bool
@@ -123,7 +123,7 @@
 > collectOpInfixDecls :: [Decl] -> [(Ident, (Infix, Int))]
 > collectOpInfixDecls [] = []
 > collectOpInfixDecls ((InfixDecl _ infixspec prec idents):decls)
->    = (map (\ident -> (ident, (infixspec, prec))) idents)
+>    = (map (\ident -> (ident, (infixspec, fromInteger prec))) idents)
 >      ++ (collectOpInfixDecls decls)
 > collectOpInfixDecls (_:decls) = collectOpInfixDecls decls
 

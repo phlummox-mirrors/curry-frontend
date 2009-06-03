@@ -18,6 +18,7 @@ import qualified CurrySyntax
 import Base (ModuleEnv, lookupModule)
 import IL
 import Ident
+import Position (SrcRef)
 import OldScopeEnv as ScopeEnv
 import ILScope
 import Maybe
@@ -91,15 +92,15 @@ visitExpr mod menv msgs senv (Apply expr1 expr2)
    (expr1', msgs1, senv1) = visitExpr mod menv msgs (insertExprScope senv expr1) expr1
    (expr2', msgs2, senv2) = visitExpr mod menv msgs1 (insertExprScope senv1 expr2) expr2
 
-visitExpr mod menv msgs senv (Case evalannot expr alts)
+visitExpr mod menv msgs senv (Case r evalannot expr alts)
    | null altsR
      = intError "visitExpr" "empty alternative list"
    | evalannot == Flex   -- pattern matching causes flexible case expressions
-     = (Case evalannot expr' altsR, msgs, senv1)
+     = (Case r evalannot expr' altsR, msgs, senv1)
    | isConstrAlt altR
      = (expr2, msgs3, senv3)
    | isLitAlt altR
-     = (completeLitAlts evalannot expr' altsR, msgs3, senv2)
+     = (completeLitAlts r evalannot expr' altsR, msgs3, senv2)
    | isVarAlt altR
      = (completeVarAlts expr' altsR, msgs3, senv2)
    | otherwise 
@@ -109,7 +110,7 @@ visitExpr mod menv msgs senv (Case evalannot expr alts)
    (expr', msgs1, senv1) = visitExpr mod menv msgs (insertExprScope senv expr) expr
    (alts', msgs2, senv2) = visitListWithEnv (visitAlt mod menv) insertAltScope msgs senv1 alts
    (altsR, msgs3) = removeRedundantAlts msgs alts'
-   (expr2, senv3) = completeConsAlts mod menv senv2 evalannot expr' altsR
+   (expr2, senv3) = completeConsAlts r mod menv senv2 evalannot expr' altsR
 
 visitExpr mod menv msgs senv (Or expr1 expr2)
    = ((Or expr1' expr2'), msgs2, senv3)
@@ -199,11 +200,11 @@ visitListWithEnv visitTerm insertScope msgs senv (term:terms)
 -- This funtions uses a scope environment ('ScopeEnv') to generate fresh
 -- variables for the arguments of the new constructors.
 --
-completeConsAlts :: Module -> ModuleEnv -> ScopeEnv 
+completeConsAlts :: SrcRef -> Module -> ModuleEnv -> ScopeEnv 
 		    -> Eval -> Expression -> [Alt]
 		    -> (Expression, ScopeEnv)
-completeConsAlts mod menv senv evalannot expr alts
-   = (Case evalannot expr (alts1 ++ alts2), senv2)
+completeConsAlts r mod menv senv evalannot expr alts
+   = (Case r evalannot expr (alts1 ++ alts2), senv2)
  where
    (Alt varpatt defaultexpr) = getDefaultAlt alts
    (VariablePattern varid)   = varpatt
@@ -247,14 +248,14 @@ completeConsAlts mod menv senv evalannot expr alts
 --                                    True  -> <expr_n>
 --                                    False -> <default_expr>
 --
-completeLitAlts :: Eval -> Expression -> [Alt] -> Expression
-completeLitAlts evalannot expr [] = failedExpr
-completeLitAlts evalannot expr (alt:alts)
+completeLitAlts :: SrcRef -> Eval -> Expression -> [Alt] -> Expression
+completeLitAlts r evalannot expr [] = failedExpr
+completeLitAlts r evalannot expr (alt:alts)
    | isLitAlt alt 
-     = (Case evalannot 
+     = (Case r evalannot 
 	     (eqExpr expr (p_makeLitExpr alt))
 	     [(Alt truePatt  (getAltExpr alt)),
-	      (Alt falsePatt (completeLitAlts evalannot expr alts))])
+	      (Alt falsePatt (completeLitAlts r evalannot expr alts))])
    | otherwise
      = case alt of
          Alt (VariablePattern v) expr'
@@ -412,8 +413,8 @@ replaceVar ident expr (Variable ident')
    | otherwise       = Variable ident'
 replaceVar ident expr (Apply expr1 expr2)
    = Apply (replaceVar ident expr expr1) (replaceVar ident expr expr2)
-replaceVar ident expr (Case eval expr' alts)
-   = Case eval 
+replaceVar ident expr (Case r eval expr' alts)
+   = Case r eval 
           (replaceVar ident expr expr') 
 	  (map (replaceVarInAlt ident expr) alts)
 replaceVar ident expr (Or expr1 expr2)

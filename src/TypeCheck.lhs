@@ -435,14 +435,14 @@ signature the declared type must be too general.
 >   where (f,ts) = flatLhs lhs
 
 > tcLiteral :: ModuleIdent -> Literal -> TcState Type
-> tcLiteral _ (Char _) = return charType
+> tcLiteral _ (Char _ _) = return charType
 > tcLiteral m (Int v _) =
 >   do
 >     ty <- freshConstrained [intType,floatType]
 >     updateSt_ (bindFun m v (monoType ty))
 >     return ty
-> tcLiteral _ (Float _) = return floatType
-> tcLiteral _ (String _) = return stringType
+> tcLiteral _ (Float _ _) = return floatType
+> tcLiteral _ (String _ _) = return stringType
 
 > tcConstrTerm :: ModuleIdent -> TCEnv -> SigEnv -> Position -> ConstrTerm
 >              -> TcState Type
@@ -481,10 +481,10 @@ signature the declared type must be too general.
 >           unifyArgs doc ts ty2
 >         unifyArgs _ _ _ = internalError "tcConstrTerm"
 > tcConstrTerm m tcEnv sigs p (ParenPattern t) = tcConstrTerm m tcEnv sigs p t
-> tcConstrTerm m tcEnv sigs p (TuplePattern ts)
+> tcConstrTerm m tcEnv sigs p (TuplePattern _ ts)
 >  | null ts = return unitType
 >  | otherwise = liftM tupleType $ mapM (tcConstrTerm m tcEnv sigs p) ts   -- $
-> tcConstrTerm m tcEnv sigs p t@(ListPattern ts) =
+> tcConstrTerm m tcEnv sigs p t@(ListPattern _ ts) =
 >   freshTypeVar >>= flip (tcElems (ppConstrTerm 0 t)) ts
 >   where tcElems _ ty [] = return (listType ty)
 >         tcElems doc ty (t:ts) =
@@ -498,7 +498,7 @@ signature the declared type must be too general.
 >     ty2 <- tcConstrTerm m tcEnv sigs p t'
 >     unify p "pattern" (ppConstrTerm 0 t) m ty1 ty2
 >     return ty1
-> tcConstrTerm m tcEnv sigs p (LazyPattern t) = tcConstrTerm m tcEnv sigs p t
+> tcConstrTerm m tcEnv sigs p (LazyPattern _ t) = tcConstrTerm m tcEnv sigs p t
 > tcConstrTerm m tcEnv sigs p t@(FunctionPattern f ts) =
 >   do
 >     tyEnv <- fetchSt
@@ -580,10 +580,10 @@ because of possibly multiple occurrences of variables.
 >           unifyArgs doc ts ty2
 >         unifyArgs _ _ _ = internalError "tcConstrTermFP"
 > tcConstrTermFP m tcEnv sigs p (ParenPattern t) = tcConstrTermFP m tcEnv sigs p t
-> tcConstrTermFP m tcEnv sigs p (TuplePattern ts)
+> tcConstrTermFP m tcEnv sigs p (TuplePattern _ ts)
 >  | null ts = return unitType
 >  | otherwise = liftM tupleType $ mapM (tcConstrTermFP m tcEnv sigs p) ts   -- $
-> tcConstrTermFP m tcEnv sigs p t@(ListPattern ts) =
+> tcConstrTermFP m tcEnv sigs p t@(ListPattern _ ts) =
 >   freshTypeVar >>= flip (tcElems (ppConstrTerm 0 t)) ts
 >   where tcElems _ ty [] = return (listType ty)
 >         tcElems doc ty (t:ts) =
@@ -597,7 +597,7 @@ because of possibly multiple occurrences of variables.
 >     ty2 <- tcConstrTermFP m tcEnv sigs p t'
 >     unify p "pattern" (ppConstrTerm 0 t) m ty1 ty2
 >     return ty1
-> tcConstrTermFP m tcEnv sigs p (LazyPattern t) = tcConstrTermFP m tcEnv sigs p t
+> tcConstrTermFP m tcEnv sigs p (LazyPattern _ t) = tcConstrTermFP m tcEnv sigs p t
 > tcConstrTermFP m tcEnv sigs p t@(FunctionPattern f ts) =
 >   do
 >     tyEnv <- fetchSt
@@ -703,17 +703,17 @@ because of possibly multiple occurrences of variables.
 >   where sig' = nameSigType sig
 >         sigma' = expandPolyType m tcEnv sig'
 > tcExpr m tcEnv sigs p (Paren e) = tcExpr m tcEnv sigs p e
-> tcExpr m tcEnv sigs p (Tuple es)
+> tcExpr m tcEnv sigs p (Tuple _ es)
 >   | null es = return unitType
 >   | otherwise = liftM tupleType $ mapM (tcExpr m tcEnv sigs p) es        -- $
-> tcExpr m tcEnv sigs p e@(List es) = freshTypeVar >>= tcElems (ppExpr 0 e) es
+> tcExpr m tcEnv sigs p e@(List _ es) = freshTypeVar >>= tcElems (ppExpr 0 e) es
 >   where tcElems _ [] ty = return (listType ty)
 >         tcElems doc (e:es) ty =
 >           tcExpr m tcEnv sigs p e >>=
 >           unify p "expression" (doc $-$ text "Term:" <+> ppExpr 0 e)
 >                 m ty >>
 >           tcElems doc es ty
-> tcExpr m tcEnv sigs p (ListCompr e qs) =
+> tcExpr m tcEnv sigs p (ListCompr _ e qs) =
 >   do
 >     tyEnv0 <- fetchSt
 >     mapM_ (tcQual m tcEnv sigs p) qs
@@ -809,12 +809,12 @@ because of possibly multiple occurrences of variables.
 >     unify p "right section" (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e1)
 >           m beta ty1
 >     return (TypeArrow alpha gamma)
-> tcExpr m tcEnv sigs p (Lambda ts e) =
+> tcExpr m tcEnv sigs p exp@(Lambda r ts e) =
 >   do
 >     tyEnv0 <- fetchSt
 >     tys <- mapM (tcConstrTerm m tcEnv sigs p) ts
 >     ty <- tcExpr m tcEnv sigs p e
->     checkSkolems p m (text "Expression:" <+> ppExpr 0 (Lambda ts e)) tyEnv0
+>     checkSkolems p m (text "Expression:" <+> ppExpr 0 exp) tyEnv0
 >                  (foldr TypeArrow ty tys)
 > tcExpr m tcEnv sigs p (Let ds e) =
 >   do
@@ -831,7 +831,7 @@ because of possibly multiple occurrences of variables.
 >     ty <- tcExpr m tcEnv sigs p e
 >     unify p "statement" (ppExpr 0 e) m (ioType alpha) ty
 >     checkSkolems p m (text "Expression:" <+> ppExpr 0 e) tyEnv0 ty
-> tcExpr m tcEnv sigs p e@(IfThenElse e1 e2 e3) =
+> tcExpr m tcEnv sigs p e@(IfThenElse _ e1 e2 e3) =
 >   do
 >     ty1 <- tcExpr m tcEnv sigs p e1
 >     unify p "expression" (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e1)
@@ -841,7 +841,7 @@ because of possibly multiple occurrences of variables.
 >     unify p "expression" (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e3)
 >           m ty2 ty3
 >     return ty3
-> tcExpr m tcEnv sigs p (Case e alts) =
+> tcExpr m tcEnv sigs p (Case _ e alts) =
 >   do
 >     tyEnv0 <- fetchSt
 >     ty <- tcExpr m tcEnv sigs p e
@@ -889,11 +889,11 @@ because of possibly multiple occurrences of variables.
 
 > tcQual :: ModuleIdent -> TCEnv -> SigEnv -> Position -> Statement
 >        -> TcState ()
-> tcQual m tcEnv sigs p (StmtExpr e) =
+> tcQual m tcEnv sigs p (StmtExpr _ e) =
 >   do
 >     ty <- tcExpr m tcEnv sigs p e
 >     unify p "guard" (ppExpr 0 e) m boolType ty
-> tcQual m tcEnv sigs p q@(StmtBind t e) =
+> tcQual m tcEnv sigs p q@(StmtBind _ t e) =
 >   do
 >     ty1 <- tcConstrTerm m tcEnv sigs p t
 >     ty2 <- tcExpr m tcEnv sigs p e
@@ -903,12 +903,12 @@ because of possibly multiple occurrences of variables.
 
 > tcStmt :: ModuleIdent -> TCEnv -> SigEnv -> Position -> Statement
 >        -> TcState ()
-> tcStmt m tcEnv sigs p (StmtExpr e) =
+> tcStmt m tcEnv sigs p (StmtExpr _ e) =
 >   do
 >     alpha <- freshTypeVar
 >     ty <- tcExpr m tcEnv sigs p e
 >     unify p "statement" (ppExpr 0 e) m (ioType alpha) ty
-> tcStmt m tcEnv sigs p st@(StmtBind t e) =
+> tcStmt m tcEnv sigs p st@(StmtBind _ t e) =
 >   do
 >     ty1 <- tcConstrTerm m tcEnv sigs p t
 >     ty2 <- tcExpr m tcEnv sigs p e

@@ -1,3 +1,4 @@
+> {-# LANGUAGE DeriveDataTypeable #-}
 
 % $Id: Ident.lhs,v 1.21 2004/10/29 13:08:09 wlux Exp $
 %
@@ -25,7 +26,7 @@ the fact that all qualified identifiers are greater than any
 unqualified identifier.}
 \begin{verbatim}
 
-> module Ident(Ident,QualIdent,ModuleIdent,
+> module Ident(Ident,QualIdent,ModuleIdent,SrcRefOf(..),
 >              mkIdent,name,qualName,uniqueId,renameIdent,unRenameIdent,
 >              mkMIdent,moduleName,moduleQualifiers,isInfixOp,isQInfixOp,
 >              qualify,qualifyWith,qualQualify,isQualified,
@@ -43,22 +44,23 @@ unqualified identifier.}
 >              recUpdateId, qualRecUpdateId, recordExtId, labelExtId,
 >              isRecordExtId, isLabelExtId, fromRecordExtId, fromLabelExtId,
 >              renameLabel, isLabel, fpSelExt, recSelExt, recUpdExt,
->              recordExt, labelExt, mkLabelIdent,
+>              recordExt, labelExt, mkLabelIdent,hasPositionIdent,
 >              showsIdent,showsQualIdent,showsModuleIdent,
 >              addPositionIdent, removePositionIdent, positionOfIdent,
->              addPositionModuleIdent, removePositionModuleIdent,
->              positionOfModuleIdent,positionOfQualIdent ) where
+>              addPositionModuleIdent, removePositionModuleIdent,addRef,addRefId,
+>              positionOfModuleIdent,positionOfQualIdent,updQualIdent ) where
 > import Char
 > import List
 > import Maybe
 > import Position
+> import Data.Generics
 
 > data Ident = Ident String Int 
->             |IdentPosition Position String Int deriving (Read)
+>            | IdentPosition Position String Int deriving (Read,Data,Typeable)
 > data QualIdent = UnqualIdent Ident | QualIdent ModuleIdent Ident
->                  deriving (Eq,Ord,Read)
+>                  deriving (Eq,Ord,Read,Data,Typeable)
 > data ModuleIdent = ModuleIdent [String] 
->                   |ModuleIdentPosition Position [String] 
+>                   |ModuleIdentPosition Position [String] deriving (Data,Typeable)
 
 > instance Eq Ident where
 >    ident1 == ident2 = name ident1 == name     ident2 && 
@@ -90,6 +92,10 @@ unqualified identifier.}
 >   showsPrec _ (QualIdent m x) = shows m . showChar '.' . shows x
 > instance Show ModuleIdent where
 >   showsPrec _ m = showString (moduleName m)
+
+> hasPositionIdent :: Ident -> Bool
+> hasPositionIdent (Ident _ _ ) = False
+> hasPositionIdent (IdentPosition _ _ _) = True
 
 > addPositionIdent :: Position -> Ident -> Ident
 > addPositionIdent pos (Ident x n) = IdentPosition pos x n
@@ -203,6 +209,16 @@ given module prefix, respectively).
 > splitQualIdent (UnqualIdent x) = (Nothing,x)
 > splitQualIdent (QualIdent m x) = (Just m,x)
 
+> updQualIdent :: (ModuleIdent -> ModuleIdent) -> (Ident -> Ident) -> QualIdent -> QualIdent
+> updQualIdent _ g (UnqualIdent x) = UnqualIdent (g x)
+> updQualIdent f g (QualIdent m x) = QualIdent (f m) (g x)
+
+> addRef :: SrcRef -> QualIdent -> QualIdent
+> addRef r = updQualIdent id (addRefId r)
+
+> addRefId :: SrcRef -> Ident -> Ident
+> addRefId r = addPositionIdent (AST r)
+
 \end{verbatim}
 A few identifiers a predefined here.
 \begin{verbatim}
@@ -214,6 +230,9 @@ A few identifiers a predefined here.
 
 > anonId :: Ident
 > anonId = Ident "_" 0
+
+> unitPId :: Position -> Ident
+> unitPId p = IdentPosition p "()" 0
 
 > unitId, boolId, charId, intId, floatId, listId, ioId, successId :: Ident
 > unitId    = Ident "()" 0
@@ -379,3 +398,6 @@ showsModuleIdent (ModuleIdent (s:strs))
   . showsString "])"
 
 \end{verbatim}
+
+> instance SrcRefOf Ident where srcRefOf = srcRefOf . positionOfIdent
+> instance SrcRefOf QualIdent where srcRefOf = srcRefOf . unqualify

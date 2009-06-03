@@ -2,7 +2,7 @@ module PatchPrelude where
 
 
 import Base (isImportDecl)
-import FlatCurry
+import FlatWithSrcRefs
 import Position
 import Ident
 import PathUtils

@@ -112,18 +112,18 @@ interface.
 >	 (checkConstrTerm pEnv t1) op (checkConstrTerm pEnv t2)
 > checkConstrTerm pEnv (ParenPattern t) =
 >   ParenPattern (checkConstrTerm pEnv t)
-> checkConstrTerm pEnv (TuplePattern ts) =
->   TuplePattern (map (checkConstrTerm pEnv) ts)
-> checkConstrTerm pEnv (ListPattern ts) =
->   ListPattern (map (checkConstrTerm pEnv) ts)
+> checkConstrTerm pEnv (TuplePattern p ts) =
+>   TuplePattern p (map (checkConstrTerm pEnv) ts)
+> checkConstrTerm pEnv (ListPattern p ts) =
+>   ListPattern p (map (checkConstrTerm pEnv) ts)
 > checkConstrTerm pEnv (AsPattern v t) =
 >   AsPattern v (checkConstrTerm pEnv t)
-> checkConstrTerm pEnv (LazyPattern t) =
->   LazyPattern (checkConstrTerm pEnv t)
+> checkConstrTerm pEnv (LazyPattern p t) =
+>   LazyPattern p (checkConstrTerm pEnv t)
 > checkConstrTerm pEnv (FunctionPattern f ts) =
 >   FunctionPattern f (map (checkConstrTerm pEnv) ts)
 > checkConstrTerm pEnv (InfixFuncPattern t1 op t2) =
->   fixPrecT pEnv InfixFuncPattern
+>   fixPrecT pEnv InfixFuncPattern 
 >	 (checkConstrTerm pEnv t1) op (checkConstrTerm pEnv t2)
 > checkConstrTerm pEnv (RecordPattern fs r) =
 >   RecordPattern (map (checkFieldPattern pEnv) fs)
@@ -150,9 +150,9 @@ interface.
 > checkExpr _ _ (Constructor c) = Constructor c
 > checkExpr m pEnv (Paren e) = Paren (checkExpr m  pEnv e)
 > checkExpr m pEnv (Typed e ty) = Typed (checkExpr m  pEnv e) ty
-> checkExpr m pEnv (Tuple es) = Tuple (map (checkExpr m  pEnv) es)
-> checkExpr m pEnv (List es) = List (map (checkExpr m  pEnv) es)
-> checkExpr m pEnv (ListCompr e qs) = ListCompr (checkExpr m  pEnv' e) qs'
+> checkExpr m pEnv (Tuple p es) = Tuple p (map (checkExpr m  pEnv) es)
+> checkExpr m pEnv (List p es) = List p (map (checkExpr m  pEnv) es)
+> checkExpr m pEnv (ListCompr p e qs) = ListCompr p (checkExpr m  pEnv' e) qs'
 >   where (pEnv',qs') = mapAccumL (checkStmt m ) pEnv qs
 > checkExpr m pEnv (EnumFrom e) = EnumFrom (checkExpr m pEnv e)
 > checkExpr m pEnv (EnumFromThen e1 e2) =
@@ -172,18 +172,18 @@ interface.
 >   checkLSection pEnv op (checkExpr m pEnv e)
 > checkExpr m pEnv (RightSection op e) =
 >   checkRSection pEnv op (checkExpr m pEnv e)
-> checkExpr m pEnv (Lambda ts e) =
->   Lambda (map (checkConstrTerm pEnv) ts) (checkExpr m pEnv e)
+> checkExpr m pEnv (Lambda r ts e) =
+>   Lambda r (map (checkConstrTerm pEnv) ts) (checkExpr m pEnv e)
 > checkExpr m pEnv (Let ds e) = Let ds' (checkExpr m pEnv' e)
 >   where (pEnv',ds') = checkDecls m pEnv ds
 > checkExpr m pEnv (Do sts e) = Do sts' (checkExpr m pEnv' e)
 >   where (pEnv',sts') = mapAccumL (checkStmt m ) pEnv sts
-> checkExpr m pEnv (IfThenElse e1 e2 e3) =
->   IfThenElse (checkExpr m pEnv e1)
+> checkExpr m pEnv (IfThenElse r e1 e2 e3) =
+>   IfThenElse r (checkExpr m pEnv e1)
 >              (checkExpr m pEnv e2)
 >              (checkExpr m pEnv e3)
-> checkExpr m pEnv (Case e alts) =
->   Case (checkExpr m pEnv e) (map (checkAlt m pEnv) alts)
+> checkExpr m pEnv (Case r e alts) =
+>   Case r (checkExpr m pEnv e) (map (checkAlt m pEnv) alts)
 > checkExpr m pEnv (RecordConstr fs) =
 >   RecordConstr (map (checkFieldExpr m pEnv) fs)
 > checkExpr m pEnv (RecordSelection e label) =
@@ -196,11 +196,11 @@ interface.
 >   Field p label (checkExpr m  pEnv e)
 
 > checkStmt :: ModuleIdent -> PEnv -> Statement -> (PEnv,Statement)
-> checkStmt m pEnv (StmtExpr e) = (pEnv,StmtExpr (checkExpr m pEnv e))
+> checkStmt m pEnv (StmtExpr p e) = (pEnv,StmtExpr p (checkExpr m pEnv e))
 > checkStmt m pEnv (StmtDecl ds) = pEnv' `seq` (pEnv',StmtDecl ds')
 >   where (pEnv',ds') = checkDecls m pEnv ds
-> checkStmt m pEnv (StmtBind t e) =
->   (pEnv,StmtBind (checkConstrTerm pEnv t) (checkExpr m pEnv e))
+> checkStmt m pEnv (StmtBind p t e) =
+>   (pEnv,StmtBind p (checkConstrTerm pEnv t) (checkExpr m pEnv e))
 
 > checkAlt :: ModuleIdent -> PEnv -> Alt -> Alt
 > checkAlt m pEnv (Alt p t rhs) =

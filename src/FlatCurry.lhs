@@ -23,6 +23,7 @@ import System
 import Directory
 import Char
 import ReadShowTerm
+import PathUtils (doesModuleExist)
 
 ------------------------------------------------------------------------------
 -- Definition of data types for representing FlatCurry programs:
@@ -291,8 +292,8 @@ readFlatCurry progfile = readFlatCurryWithParseOptions progfile "-quiet"
 
 readFlatCurryWithParseOptions :: String -> String -> IO Prog
 readFlatCurryWithParseOptions progname options = do
-  existsCurry <- doesFileExist (progname++".curry")
-  existsLCurry <- doesFileExist (progname++".lcurry")
+  existsCurry <- doesModuleExist (progname++".curry")
+  existsLCurry <- doesModuleExist (progname++".lcurry")
   if existsCurry || existsLCurry
    then do
      pakcshome <- getEnviron "PAKCSHOME"

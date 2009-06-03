@@ -158,10 +158,10 @@ declaration groups.
 > checkExpr m kEnv (Paren e) = Paren (checkExpr m kEnv e)
 > checkExpr m kEnv (Typed e ty) =
 >   Typed (checkExpr m kEnv e) (checkType m kEnv ty)
-> checkExpr m kEnv (Tuple es) = Tuple (map (checkExpr m kEnv ) es)
-> checkExpr m kEnv (List es) = List (map (checkExpr m kEnv ) es)
-> checkExpr m kEnv (ListCompr e qs) =
->   ListCompr (checkExpr m kEnv e) (map (checkStmt m kEnv ) qs)
+> checkExpr m kEnv (Tuple p es) = Tuple p (map (checkExpr m kEnv ) es)
+> checkExpr m kEnv (List p es) = List p (map (checkExpr m kEnv ) es)
+> checkExpr m kEnv (ListCompr p e qs) =
+>   ListCompr p (checkExpr m kEnv e) (map (checkStmt m kEnv ) qs)
 > checkExpr m kEnv  (EnumFrom e) = EnumFrom (checkExpr m kEnv  e)
 > checkExpr m kEnv  (EnumFromThen e1 e2) =
 >   EnumFromThen (checkExpr m kEnv  e1) (checkExpr m kEnv  e2)
@@ -177,16 +177,16 @@ declaration groups.
 >   InfixApply (checkExpr m kEnv  e1) op (checkExpr m kEnv  e2)
 > checkExpr m kEnv  (LeftSection e op) = LeftSection (checkExpr m kEnv  e) op
 > checkExpr m kEnv  (RightSection op e) = RightSection op (checkExpr m kEnv  e)
-> checkExpr m kEnv  (Lambda ts e) = Lambda ts (checkExpr m kEnv  e)
+> checkExpr m kEnv  (Lambda r ts e) = Lambda r ts (checkExpr m kEnv  e)
 > checkExpr m kEnv  (Let ds e) =
 >   Let (map (checkDecl m kEnv) ds) (checkExpr m kEnv  e)
 > checkExpr m kEnv  (Do sts e) =
 >   Do (map (checkStmt m kEnv ) sts) (checkExpr m kEnv  e)
-> checkExpr m kEnv  (IfThenElse e1 e2 e3) =
->   IfThenElse (checkExpr m kEnv  e1) (checkExpr m kEnv  e2)
+> checkExpr m kEnv  (IfThenElse r e1 e2 e3) =
+>   IfThenElse r (checkExpr m kEnv  e1) (checkExpr m kEnv  e2)
 >              (checkExpr m kEnv  e3)
-> checkExpr m kEnv  (Case e alts) =
->   Case (checkExpr m kEnv  e) (map (checkAlt m kEnv) alts)
+> checkExpr m kEnv  (Case r e alts) =
+>   Case r (checkExpr m kEnv  e) (map (checkAlt m kEnv) alts)
 > checkExpr m kEnv  (RecordConstr fs) =
 >   RecordConstr (map (checkFieldExpr m kEnv) fs)
 > checkExpr m kEnv  (RecordSelection e l) =
@@ -195,8 +195,8 @@ declaration groups.
 >   RecordUpdate (map (checkFieldExpr m kEnv) fs) (checkExpr m kEnv  e)
 
 > checkStmt :: ModuleIdent -> KindEnv -> Statement -> Statement
-> checkStmt m kEnv  (StmtExpr e) = StmtExpr (checkExpr m kEnv  e)
-> checkStmt m kEnv  (StmtBind t e) = StmtBind t (checkExpr m kEnv  e)
+> checkStmt m kEnv  (StmtExpr p e) = StmtExpr p (checkExpr m kEnv  e)
+> checkStmt m kEnv  (StmtBind p t e) = StmtBind p t (checkExpr m kEnv  e)
 > checkStmt m kEnv  (StmtDecl ds) = StmtDecl (map (checkDecl m kEnv) ds)
 
 > checkAlt :: ModuleIdent -> KindEnv -> Alt -> Alt

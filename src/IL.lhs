@@ -1,4 +1,3 @@
-
 % $Id: IL.lhs,v 1.18 2003/10/28 05:43:38 wlux Exp $
 %
 % Copyright (c) 1999-2003 Wolfgang Lux
@@ -41,6 +40,7 @@ an unlimited range of integer constants in Curry programs.
 
 > module IL where
 > import Ident
+> import Position (SrcRef(..))
 
 > data Module = Module ModuleIdent [ModuleIdent] [Decl] deriving (Eq,Show)
 
@@ -60,7 +60,7 @@ an unlimited range of integer constants in Curry programs.
 >   | TypeArrow Type Type
 >   deriving (Eq,Show)
 
-> data Literal = Char Char | Int Integer | Float Double deriving (Eq,Show)
+> data Literal = Char SrcRef Char | Int SrcRef Integer | Float SrcRef Double deriving (Eq,Show)
 
 > data ConstrTerm =
 >   -- literal patterns
@@ -79,7 +79,7 @@ an unlimited range of integer constants in Curry programs.
 >   -- applications
 >   | Apply Expression Expression
 >   -- case expressions
->   | Case Eval Expression [Alt]
+>   | Case SrcRef Eval Expression [Alt]
 >   -- non-determinisismic or
 >   | Or Expression Expression
 >   -- binding forms
@@ -93,3 +93,16 @@ an unlimited range of integer constants in Curry programs.
 > data Binding = Binding Ident Expression deriving (Eq,Show)
 
 \end{verbatim}
+
+> instance SrcRefOf ConstrTerm where
+>   srcRefOf (LiteralPattern l) = srcRefOf l
+>   srcRefOf (ConstructorPattern i _) = srcRefOf i
+>   srcRefOf (VariablePattern i) = srcRefOf i
+
+
+> instance SrcRefOf Literal where
+>   srcRefOf (Char s _)   = s
+>   srcRefOf (Int s _)    = s
+>   srcRefOf (Float s _)  = s  
+
+

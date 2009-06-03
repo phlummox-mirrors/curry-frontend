@@ -188,10 +188,10 @@ Literals
 \begin{verbatim}
 
 > ppLiteral :: Literal -> Doc
-> ppLiteral (Char c) = text (show c)
-> ppLiteral (Int _ i) = integer i
-> ppLiteral (Float f) = double f
-> ppLiteral (String s) = text (show s)
+> ppLiteral (Char _ c)   = text (show c)
+> ppLiteral (Int _ i)    = integer i
+> ppLiteral (Float _ f)  = double f
+> ppLiteral (String _ s) = text (show s)
 
 \end{verbatim}
 Patterns
@@ -200,10 +200,10 @@ Patterns
 > ppConstrTerm :: Int -> ConstrTerm -> Doc
 > ppConstrTerm p (LiteralPattern l) =
 >   parenExp (p > 1 && isNegative l) (ppLiteral l)
->   where isNegative (Char _) = False
->         isNegative (Int _ i) = i < 0
->         isNegative (Float f) = f < 0.0
->         isNegative (String _ ) = False
+>   where isNegative (Char _ _)   = False
+>         isNegative (Int _ i)    = i < 0
+>         isNegative (Float _ f)  = f < 0.0
+>         isNegative (String _ _) = False
 > ppConstrTerm p (NegativePattern op l) =
 >   parenExp (p > 1) (ppInfixOp op <> ppLiteral l)
 > ppConstrTerm _ (VariablePattern v) = ppIdent v
@@ -215,10 +215,10 @@ Patterns
 >            (sep [ppConstrTerm 1 t1 <+> ppQInfixOp c,
 >                  indent (ppConstrTerm 0 t2)])
 > ppConstrTerm _ (ParenPattern t) = parens (ppConstrTerm 0 t)
-> ppConstrTerm _ (TuplePattern ts) = parenList (map (ppConstrTerm 0) ts)
-> ppConstrTerm _ (ListPattern ts) = bracketList (map (ppConstrTerm 0) ts)
+> ppConstrTerm _ (TuplePattern _ ts) = parenList (map (ppConstrTerm 0) ts)
+> ppConstrTerm _ (ListPattern _ ts) = bracketList (map (ppConstrTerm 0) ts)
 > ppConstrTerm _ (AsPattern v t) = ppIdent v <> char '@' <> ppConstrTerm 2 t
-> ppConstrTerm _ (LazyPattern t) = char '~' <> ppConstrTerm 2 t
+> ppConstrTerm _ (LazyPattern _ t) = char '~' <> ppConstrTerm 2 t
 > ppConstrTerm p (FunctionPattern f ts) =
 >   parenExp (p > 1 && not (null ts))
 >            (ppQIdent f <+> fsep (map (ppConstrTerm 2) ts))
@@ -248,9 +248,9 @@ Expressions
 > ppExpr _ (Paren e) = parens (ppExpr 0 e)
 > ppExpr p (Typed e ty) =
 >   parenExp (p > 0) (ppExpr 0 e <+> text "::" <+> ppTypeExpr 0 ty)
-> ppExpr _ (Tuple es) = parenList (map (ppExpr 0) es)
-> ppExpr _ (List es) = bracketList (map (ppExpr 0) es)
-> ppExpr _ (ListCompr e qs) =
+> ppExpr _ (Tuple _ es) = parenList (map (ppExpr 0) es)
+> ppExpr _ (List _ es) = bracketList (map (ppExpr 0) es)
+> ppExpr _ (ListCompr _ e qs) =
 >   brackets (ppExpr 0 e <+> vbar <+> list (map ppStmt qs))
 > ppExpr _ (EnumFrom e) = brackets (ppExpr 0 e <+> text "..")
 > ppExpr _ (EnumFromThen e1 e2) =
@@ -268,7 +268,7 @@ Expressions
 >                          indent (ppExpr 1 e2)])
 > ppExpr _ (LeftSection e op) = parens (ppExpr 1 e <+> ppQInfixOp (opName op))
 > ppExpr _ (RightSection op e) = parens (ppQInfixOp (opName op) <+> ppExpr 1 e)
-> ppExpr p (Lambda t e) =
+> ppExpr p (Lambda _ t e) =
 >   parenExp (p > 0)
 >            (sep [backsl <> fsep (map (ppConstrTerm 2) t) <+> rarrow,
 >                  indent (ppExpr 0 e)])
@@ -277,13 +277,13 @@ Expressions
 >            (sep [text "let" <+> ppBlock ds <+> text "in",ppExpr 0 e])
 > ppExpr p (Do sts e) =
 >   parenExp (p > 0) (text "do" <+> (vcat (map ppStmt sts) $$ ppExpr 0 e))
-> ppExpr p (IfThenElse e1 e2 e3) =
+> ppExpr p (IfThenElse _ e1 e2 e3) =
 >   parenExp (p > 0)
 >            (text "if" <+>
 >             sep [ppExpr 0 e1,
 >                  text "then" <+> ppExpr 0 e2,
 >                  text "else" <+> ppExpr 0 e3])
-> ppExpr p (Case e alts) =
+> ppExpr p (Case _ e alts) =
 >   parenExp (p > 0)
 >            (text "case" <+> ppExpr 0 e <+> text "of" $$
 >             indent (vcat (map ppAlt alts)))
@@ -297,8 +297,8 @@ Expressions
 >          <+> char '|' <+> ppExpr 0 e)
 
 > ppStmt :: Statement -> Doc
-> ppStmt (StmtExpr e) = ppExpr 0 e
-> ppStmt (StmtBind t e) = sep [ppConstrTerm 0 t <+> larrow,indent (ppExpr 0 e)]
+> ppStmt (StmtExpr _ e) = ppExpr 0 e
+> ppStmt (StmtBind _ t e) = sep [ppConstrTerm 0 t <+> larrow,indent (ppExpr 0 e)]
 > ppStmt (StmtDecl ds) = text "let" <+> ppBlock ds
 
 > ppAlt :: Alt -> Doc

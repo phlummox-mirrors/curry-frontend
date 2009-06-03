@@ -28,6 +28,7 @@ module AbstractCurry (CurryProg(..), QName, CLabel, CVisibility(..),
 		      CField,
                       readCurry, writeCurry) where
 
+import PathUtils (writeModule,readModule)
 import List(intersperse)
 
 ------------------------------------------------------------------------------
@@ -256,14 +257,14 @@ type CField a = (CLabel,a)
 -- program term (type 'CurryProg')
 readCurry :: String -> IO CurryProg
 readCurry filename
-   = do file <- readFile filename
+   = do file <- readModule filename
 	let prog = (read file) :: CurryProg
 	return prog
 
 -- Writes an AbstractCurry program term into a file
 writeCurry :: String -> CurryProg -> IO ()
 writeCurry filename prog 
-   = catch (writeFile filename (showCurry prog)) (\e -> ioError e)
+   = catch (writeModule filename (showCurry prog)) (\e -> ioError e)
 
 -- Shows an AbstractCurry program in a more nicely way.
 showCurry :: CurryProg -> String

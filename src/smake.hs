@@ -27,6 +27,7 @@ import Directory
 import Time
 import Monad
 import Maybe
+import PathUtils (getModuleModTime)
 
 
 -------------------------------------------------------------------------------
@@ -71,7 +72,7 @@ smake opts
 getTargetTimes :: [String] -> IO [ClockTime]
 getTargetTimes [] = return []
 getTargetTimes (f:fs)
-   = catch (do t  <- getModificationTime f
+   = catch (do t  <- getModuleModTime f
 	       ts <- getTargetTimes fs
 	       return (t:ts))
            (const (getTargetTimes fs))
@@ -80,7 +81,7 @@ getTargetTimes (f:fs)
 getDepTimes :: [String] -> IO [ClockTime]
 getDepTimes [] = return []
 getDepTimes (f:fs)
-   = catch (do t  <- getModificationTime f
+   = catch (do t  <- getModuleModTime f
 	       ts <- getDepTimes fs
 	       return (t:ts))
            (\err -> putStrLn (show err) >> return [])

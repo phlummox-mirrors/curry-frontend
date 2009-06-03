@@ -1,3 +1,4 @@
+> {-# LANGUAGE DeriveDataTypeable #-}
 
 % $Id: CurrySyntax.lhs,v 1.43 2004/02/15 22:10:31 wlux Exp $
 %
@@ -19,20 +20,23 @@ an unlimited range of integer constants in Curry programs.
 > module CurrySyntax where
 > import Ident
 > import Position
+> import Data.Generics
+> import Control.Monad.State
 
 \end{verbatim}
 \paragraph{Modules}
 \begin{verbatim}
 
-> data Module = Module ModuleIdent (Maybe ExportSpec) [Decl] deriving (Eq,Show,Read)
+> data Module = Module ModuleIdent (Maybe ExportSpec) [Decl] 
+>  deriving (Eq,Show,Read,Typeable,Data)
 
-> data ExportSpec = Exporting Position [Export] deriving (Eq,Show,Read)
+> data ExportSpec = Exporting Position [Export] deriving (Eq,Show,Read,Typeable,Data)
 > data Export =
 >     Export         QualIdent                  -- f/T
 >   | ExportTypeWith QualIdent [Ident]          -- T(C1,...,Cn)
 >   | ExportTypeAll  QualIdent                  -- T(..)
 >   | ExportModule   ModuleIdent
->   deriving (Eq,Show,Read)
+>   deriving (Eq,Show,Read,Typeable,Data)
 
 \end{verbatim}
 \paragraph{Module declarations}
@@ -41,12 +45,12 @@ an unlimited range of integer constants in Curry programs.
 > data ImportSpec =
 >     Importing Position [Import]
 >   | Hiding Position [Import]
->   deriving (Eq,Show,Read)
+>   deriving (Eq,Show,Read,Typeable,Data)
 > data Import =
 >     Import         Ident            -- f/T
 >   | ImportTypeWith Ident [Ident]    -- T(C1,...,Cn)
 >   | ImportTypeAll  Ident            -- T(..)
->   deriving (Eq,Show,Read)
+>   deriving (Eq,Show,Read,Typeable,Data)
 
 > data Decl =
 >     ImportDecl Position ModuleIdent Qualified (Maybe ModuleIdent)
@@ -62,20 +66,20 @@ an unlimited range of integer constants in Curry programs.
 >   | FlatExternalDecl Position [Ident]
 >   | PatternDecl Position ConstrTerm Rhs
 >   | ExtraVariables Position [Ident]
->   deriving (Eq,Show,Read)
+>   deriving (Eq,Show,Read,Typeable,Data)
 
 > data ConstrDecl =
 >     ConstrDecl Position [Ident] Ident [TypeExpr]
 >   | ConOpDecl Position [Ident] TypeExpr Ident TypeExpr
->   deriving (Eq,Show,Read)
+>   deriving (Eq,Show,Read,Typeable,Data)
 > data NewConstrDecl =
 >   NewConstrDecl Position [Ident] Ident TypeExpr
->   deriving (Eq,Show,Read)
+>   deriving (Eq,Show,Read,Typeable,Data)
 
 > type Qualified = Bool
-> data Infix = InfixL | InfixR | Infix deriving (Eq,Show,Read)
-> data EvalAnnotation = EvalRigid | EvalChoice deriving (Eq,Show,Read)
-> data CallConv = CallConvPrimitive | CallConvCCall deriving (Eq,Show,Read)
+> data Infix = InfixL | InfixR | Infix deriving (Eq,Show,Read,Typeable,Data)
+> data EvalAnnotation = EvalRigid | EvalChoice deriving (Eq,Show,Read,Typeable,Data)
+> data CallConv = CallConvPrimitive | CallConvCCall deriving (Eq,Show,Read,Typeable,Data)
 
 \end{verbatim}
 \paragraph{Module interfaces}
@@ -85,7 +89,7 @@ function arity (= number of parameters) in order to generate
 correct FlatCurry function applications.
 \begin{verbatim}
 
-> data Interface = Interface ModuleIdent [IDecl] deriving (Eq,Show,Read)
+> data Interface = Interface ModuleIdent [IDecl] deriving (Eq,Show,Read,Typeable,Data)
 
 > data IDecl =
 >     IImportDecl Position ModuleIdent
@@ -95,7 +99,7 @@ correct FlatCurry function applications.
 >   | INewtypeDecl Position QualIdent [Ident] NewConstrDecl
 >   | ITypeDecl Position QualIdent [Ident] TypeExpr
 >   | IFunctionDecl Position QualIdent Int TypeExpr
->   deriving (Eq,Show,Read)
+>   deriving (Eq,Show,Read,Typeable,Data)
 
 \end{verbatim}
 \paragraph{Types}
@@ -109,23 +113,23 @@ correct FlatCurry function applications.
 >   | ArrowType TypeExpr TypeExpr
 >   | RecordType [([Ident],TypeExpr)] (Maybe TypeExpr) 
 >     -- {l1 :: t1,...,ln :: tn | r}
->   deriving (Eq,Show,Read)
+>   deriving (Eq,Show,Read,Typeable,Data)
 
 \end{verbatim}
 \paragraph{Functions}
 \begin{verbatim}
 
-> data Equation = Equation Position Lhs Rhs deriving (Eq,Show,Read)
+> data Equation = Equation Position Lhs Rhs deriving (Eq,Show,Read,Typeable,Data)
 > data Lhs =
 >     FunLhs Ident [ConstrTerm]
 >   | OpLhs ConstrTerm Ident ConstrTerm
 >   | ApLhs Lhs [ConstrTerm]
->   deriving (Eq,Show,Read)
+>   deriving (Eq,Show,Read,Typeable,Data)
 > data Rhs =
 >     SimpleRhs Position Expression [Decl]
 >   | GuardedRhs [CondExpr] [Decl]
->   deriving (Eq,Show,Read)
-> data CondExpr = CondExpr Position Expression Expression deriving (Eq,Show,Read)
+>   deriving (Eq,Show,Read,Typeable,Data)
+> data CondExpr = CondExpr Position Expression Expression deriving (Eq,Show,Read,Typeable,Data)
 
 > flatLhs :: Lhs -> (Ident,[ConstrTerm])
 > flatLhs lhs = flat lhs []
@@ -142,11 +146,20 @@ the identifier of the \texttt{Int} literal for maintaining its type.
 \begin{verbatim}
 
 > data Literal =
->     Char Char                         -- should be Int to handle Unicode
+>     Char SrcRef Char                         -- should be Int to handle Unicode
 >   | Int Ident Integer
->   | Float Double
->   | String String                     -- should be [Int] to handle Unicode
->   deriving (Eq,Show,Read)
+>   | Float SrcRef Double
+>   | String SrcRef String                     -- should be [Int] to handle Unicode
+>   deriving (Eq,Show,Read,Typeable,Data)
+
+> mk' :: ([SrcRef] -> a) -> a
+> mk' = ($[])
+
+> mk :: (SrcRef -> a) -> a
+> mk = ($noRef)
+
+> mkInt :: Integer -> Literal
+> mkInt i = mk (\r -> Int (addPositionIdent (AST  r) anonId) i) 
 
 \end{verbatim}
 \paragraph{Patterns}
@@ -159,15 +172,15 @@ the identifier of the \texttt{Int} literal for maintaining its type.
 >   | ConstructorPattern QualIdent [ConstrTerm]
 >   | InfixPattern ConstrTerm QualIdent ConstrTerm
 >   | ParenPattern ConstrTerm
->   | TuplePattern [ConstrTerm]
->   | ListPattern [ConstrTerm]
+>   | TuplePattern SrcRef [ConstrTerm]
+>   | ListPattern [SrcRef] [ConstrTerm]
 >   | AsPattern Ident ConstrTerm
->   | LazyPattern ConstrTerm
+>   | LazyPattern SrcRef ConstrTerm
 >   | FunctionPattern QualIdent [ConstrTerm]
 >   | InfixFuncPattern ConstrTerm QualIdent ConstrTerm
 >   | RecordPattern [Field ConstrTerm] (Maybe ConstrTerm)  
 >         -- {l1 = p1, ..., ln = pn}  oder {l1 = p1, ..., ln = pn | p}
->   deriving (Eq,Show,Read)
+>   deriving (Eq,Show,Read,Typeable,Data)
 
 \end{verbatim}
 \paragraph{Expressions}
@@ -179,9 +192,9 @@ the identifier of the \texttt{Int} literal for maintaining its type.
 >   | Constructor QualIdent
 >   | Paren Expression
 >   | Typed Expression TypeExpr
->   | Tuple [Expression]
->   | List [Expression]
->   | ListCompr Expression [Statement]
+>   | Tuple SrcRef [Expression]
+>   | List [SrcRef] [Expression]
+>   | ListCompr SrcRef Expression [Statement] -- the ref corresponds to the main list  
 >   | EnumFrom Expression
 >   | EnumFromThen Expression Expression
 >   | EnumFromTo Expression Expression
@@ -191,27 +204,27 @@ the identifier of the \texttt{Int} literal for maintaining its type.
 >   | InfixApply Expression InfixOp Expression
 >   | LeftSection Expression InfixOp
 >   | RightSection InfixOp Expression
->   | Lambda [ConstrTerm] Expression
+>   | Lambda SrcRef [ConstrTerm] Expression
 >   | Let [Decl] Expression
 >   | Do [Statement] Expression
->   | IfThenElse Expression Expression Expression
->   | Case Expression [Alt]
+>   | IfThenElse SrcRef Expression Expression Expression
+>   | Case SrcRef Expression [Alt]
 >   | RecordConstr [Field Expression]            -- {l1 = e1,...,ln = en}
 >   | RecordSelection Expression Ident           -- e -> l
 >   | RecordUpdate [Field Expression] Expression -- {l1 := e1,...,ln := en | e}
->   deriving (Eq,Show,Read)
+>   deriving (Eq,Show,Read,Typeable,Data)
 
-> data InfixOp = InfixOp QualIdent | InfixConstr QualIdent deriving (Eq,Show,Read)
+> data InfixOp = InfixOp QualIdent | InfixConstr QualIdent deriving (Eq,Show,Read,Typeable,Data)
 
 > data Statement =
->     StmtExpr Expression
+>     StmtExpr SrcRef Expression
 >   | StmtDecl [Decl]
->   | StmtBind ConstrTerm Expression
->   deriving (Eq,Show,Read)
+>   | StmtBind SrcRef ConstrTerm Expression
+>   deriving (Eq,Show,Read,Typeable,Data)
 
-> data Alt = Alt Position ConstrTerm Rhs deriving (Eq,Show,Read)
+> data Alt = Alt Position ConstrTerm Rhs deriving (Eq,Show,Read,Typeable,Data)
 
-> data Field a = Field Position Ident a deriving (Eq, Show,Read)
+> data Field a = Field Position Ident a deriving (Eq, Show,Read,Typeable,Data)
 
 > fieldLabel :: Field a -> Ident
 > fieldLabel (Field _ l _) = l
@@ -231,6 +244,60 @@ the identifier of the \texttt{Int} literal for maintaining its type.
 A goal is equivalent to an unconditional right hand side of an equation.
 \begin{verbatim}
 
-> data Goal = Goal Position Expression [Decl] deriving (Eq,Show,Read)
+> data Goal = Goal Position Expression [Decl] deriving (Eq,Show,Read,Typeable,Data)
 
 \end{verbatim}
+
+---------------------------
+-- add source references
+---------------------------
+
+> type M a = a -> State Int a
+> 
+> addSrcRefs :: Module -> Module
+> addSrcRefs x = evalState (addRef x) 0
+>   where 
+>     addRef :: Data a' => M a' 
+>     addRef = down `extM` addRefPos   
+>                   `extM` addRefSrc   
+>                   `extM` addRefIdent
+>                   `extM` addRefListPat
+>                   `extM` addRefListExp
+>       where
+>         down :: Data a' => M a'
+>         down = gmapM addRef
+> 
+>         addRefPos :: M [SrcRef]
+>         addRefPos _ = liftM (:[]) next
+> 
+>         addRefSrc :: M SrcRef
+>         addRefSrc _ = next
+> 
+>         addRefIdent :: M Ident
+>         addRefIdent ident = liftM (flip addRefId ident) next
+>
+>         addRefListPat :: M ConstrTerm
+>         addRefListPat (ListPattern _ ts) = do
+>           liftM (uncurry ListPattern) (addRefList ts)
+>         addRefListPat ct = gmapM addRef ct
+>   
+>         addRefListExp :: M Expression
+>         addRefListExp (List _ ts) = do
+>           liftM (uncurry List) (addRefList ts)
+>         addRefListExp ct = gmapM addRef ct
+>   
+>         addRefList :: Data a' => [a'] -> State Int ([SrcRef],[a'])
+>         addRefList ts = do
+>           i <- next
+>           let add t = do t' <- addRef t;j <- next; return (j,t')
+>           ists <- sequence (map add ts)
+>           let (is,ts') = unzip ists
+>           return (i:is,ts')
+>          
+>         current,next :: State Int SrcRef
+>         current = liftM (SrcRef . (:[])) get
+>
+>         next = do
+>           i <- get
+>           put $! i+1
+>           return (SrcRef [i])

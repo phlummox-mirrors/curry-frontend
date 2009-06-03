@@ -1,3 +1,5 @@
+> {-# LANGUAGE DeriveDataTypeable #-}
+
 % -*- LaTeX -*-
 % $Id: Position.lhs,v 1.2 2000/10/08 09:55:43 lux Exp $
 %
@@ -17,45 +19,77 @@ column number. A tab stop is assumed at every eighth column.
 \begin{verbatim}
 
 > module Position where
+> import Data.Generics
 
-> data Position =
->   Position{ file :: FilePath, line :: Int, column :: Int }
->   deriving (Eq, Ord)
+> newtype SrcRef = SrcRef [Int] deriving (Eq,Ord,Typeable,Data) -- a pointer to the origin
+
+> instance Show SrcRef where
+>   show _ = ""
+
+> instance Read SrcRef where
+>   readsPrec _ s = [(noRef,s)]
+
+>
+> noRef :: SrcRef
+> noRef = SrcRef []
+>
+> incSrcRef :: SrcRef -> Int -> SrcRef
+> incSrcRef (SrcRef [i]) j = SrcRef [i+j]
+> incSrcRef is  _ = error $ "internal error; increment source ref: " ++ show is
+
+> data Position 
+>   = Position{ file :: FilePath, line :: Int, column :: Int, ast :: SrcRef }
+>   | AST { ast :: SrcRef }
+>   deriving (Eq, Ord,Data,Typeable)
+>
+> incPosition :: Position -> Int -> Position
+> incPosition p j = p{ast=incSrcRef (ast p) j}
+
 
 > instance Read Position where
 >   readsPrec p s = 
->     [ (Position{file="",line=i,column=j},s')  | ((i,j),s') <- readsPrec p s]
+>     [ (Position{file="",line=i,column=j,ast=noRef},s')  | ((i,j),s') <- readsPrec p s]
 
 > instance Show Position where
->   showsPrec _ (Position fn l c) =
+>   showsPrec _ Position{file=fn,line=l,column=c} =
 >     (if null fn then id else shows fn . showString ", ") .
 >     showString "line " . shows l .
 >     (if c > 0 then showChar '.' . shows c else id)
+>   showsPrec _ AST{} = id
 
 > tabWidth :: Int
 > tabWidth = 8
 
 > first :: FilePath -> Position
-> first fn = Position fn 1 1
+> first fn = Position fn 1 1 noRef
 
 > incr :: Position -> Int -> Position
-> incr (Position fn l c) n = Position fn l (c + n)
+> incr p@Position{column=c} n = p{column=c + n}
 
 > next :: Position -> Position
 > next = flip incr 1
 
 > tab :: Position -> Position
-> tab (Position fn l c) = Position fn l (c + tabWidth - (c - 1) `mod` tabWidth)
+> tab p@Position{column=c} = p{column=c + tabWidth - (c - 1) `mod` tabWidth}
 
 > nl :: Position -> Position
-> nl (Position fn l c) = Position fn (l + 1) 1
+> nl p@Position{line=l} = p{line=l + 1, column=1}
 
-> noPos :: Position
-> noPos = Position{ file = "", line = 0, column = 0 }
+> noPos, noPos' :: Position
+> noPos  = Position{ file = "", line = 0, column = 0, ast = noRef }
+> noPos' = AST noRef
 
 > showLine :: Position -> String
-> showLine x@(Position _ l c) 
+> showLine x@Position{line=l,column=c} 
 >      | x == noPos = ""
 >      | otherwise = "(line " ++ show l ++ "." ++ show c ++ ") "
 
 \end{verbatim}
+
+> class SrcRefOf a where
+>   srcRefsOf :: a -> [SrcRef]
+>   srcRefsOf = (:[]) . srcRefOf
+>   srcRefOf :: a -> SrcRef
+>   srcRefOf = head . srcRefsOf
+
+> instance SrcRefOf Position where srcRefOf = ast

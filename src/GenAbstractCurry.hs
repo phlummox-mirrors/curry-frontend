@@ -355,13 +355,13 @@ genLocalDecls env decls
       = foldl genLocalPatternIndex env [c1,c2]
    genLocalPatternIndex env (ParenPattern c)
       = genLocalPatternIndex env c
-   genLocalPatternIndex env (TuplePattern args)
+   genLocalPatternIndex env (TuplePattern _ args)
       = foldl genLocalPatternIndex env args
-   genLocalPatternIndex env (ListPattern args)
+   genLocalPatternIndex env (ListPattern _ args)
       = foldl genLocalPatternIndex env args
    genLocalPatternIndex env (AsPattern ident c)
       = genLocalPatternIndex (snd (genVarIndex env ident)) c
-   genLocalPatternIndex env (LazyPattern c)
+   genLocalPatternIndex env (LazyPattern _ c)
       = genLocalPatternIndex env c
    genLocalPatternIndex env (RecordPattern fields mc)
       = let env' = foldl genLocalPatternIndex env (map fieldTerm fields)
@@ -429,8 +429,9 @@ genLocalDecls env decls
 
    genLocalPattern pos env (LiteralPattern lit)
       = case lit of
-       String cs 
-         -> genLocalPattern pos env (ListPattern (map (LiteralPattern . Char) cs))
+       String _ cs 
+         -> genLocalPattern pos env 
+                 (ListPattern [] (map (LiteralPattern . Char noRef) cs))
        _ -> (CPLit (genLiteral lit), env)
    genLocalPattern pos env (VariablePattern ident)
       = let idx = fromMaybe 
@@ -446,7 +447,7 @@ genLocalDecls env decls
       = genLocalPattern pos env (ConstructorPattern qident [larg, rarg])
    genLocalPattern pos env (ParenPattern patt)
       = genLocalPattern pos env patt
-   genLocalPattern pos env (TuplePattern args)
+   genLocalPattern pos env (TuplePattern _ args)
       | len > 1  
         = genLocalPattern pos env (ConstructorPattern (qTupleId len) args)
       | len == 1
@@ -454,7 +455,7 @@ genLocalDecls env decls
       | len == 0
 	= genLocalPattern pos env (ConstructorPattern qUnitId [])
     where len = length args
-   genLocalPattern pos env (ListPattern args)
+   genLocalPattern pos env (ListPattern _ args)
       = genLocalPattern pos env 
 	  (foldr (\p1 p2 -> ConstructorPattern qConsId [p1,p2])
 	   (ConstructorPattern qNilId [])
@@ -469,7 +470,7 @@ genLocalDecls env decls
 					      ++ show ident ++ "\""))
 			      (getVarIndex env1 ident)
         in  (CPAs (idx, name ident) patt, env1)
-   genLocalPattern pos env (LazyPattern cterm)
+   genLocalPattern pos env (LazyPattern _ cterm)
       = let (patt, env') = genLocalPattern pos env cterm
         in  (CPLazy patt, env')
    genLocalPattern pos env (RecordPattern fields mr)
@@ -491,8 +492,8 @@ genLocalDecls env decls
 genExpr :: Position -> AbstractEnv -> Expression -> (CExpr, AbstractEnv)
 genExpr pos env (Literal lit)
    = case lit of
-       String cs -> genExpr pos env (List (map (Literal . Char) cs))
-       _         -> (CLit (genLiteral lit), env)
+       String _ cs -> genExpr pos env (List [] (map (Literal . Char noRef) cs))
+       _           -> (CLit (genLiteral lit), env)
 genExpr _ env (Variable qident)
    | isJust midx          = (CVar (fromJust midx, name ident), env)
    | qident == qSuccessId = (CSymbol (genQName False env qSuccessFunId), env)
@@ -506,7 +507,7 @@ genExpr pos env (Paren expr)
    = genExpr pos env expr
 genExpr pos env (Typed expr _)
    = genExpr pos env expr
-genExpr pos env (Tuple args)
+genExpr pos env (Tuple _ args)
    | len > 1
      = genExpr pos env (foldl Apply (Variable (qTupleId (length args))) args)
    | len == 1
@@ -514,11 +515,11 @@ genExpr pos env (Tuple args)
    | len == 0
      = genExpr pos env (Variable qUnitId)
  where len = length args
-genExpr pos env (List args)
+genExpr pos env (List _ args)
    = let cons = Constructor qConsId
 	 nil  = Constructor qNilId
      in  genExpr pos env (foldr (\e1 e2 -> Apply (Apply cons e1) e2) nil args)
-genExpr pos env (ListCompr expr stmts)
+genExpr pos env (ListCompr _ expr stmts)
    = let (stmts', env1) = mapfoldl (genStatement pos) (beginScope env) stmts
 	 (expr', env2)  = genExpr pos env1 expr
      in  (CListComp expr' stmts', endScope env2)
@@ -544,14 +545,14 @@ genExpr pos env (LeftSection expr op)
 	 patt   = VariablePattern ident
 	 var    = Variable (qualify ident)
 	 applic = Apply (Apply (opToExpr op) expr) var 
-     in  genExpr pos env (Lambda [patt] applic)
+     in  genExpr pos env (Lambda noRef [patt] applic)
 genExpr pos env (RightSection op expr)
    = let ident  = freshVar env "x"
 	 patt   = VariablePattern ident
 	 var    = Variable (qualify ident)
 	 applic = Apply (Apply (opToExpr op) var) expr 
-     in  genExpr pos env (Lambda [patt] applic)
-genExpr pos env (Lambda params expr)
+     in  genExpr pos env (Lambda noRef [patt] applic)
+genExpr pos env (Lambda _ params expr)
    = let (params', env1) = mapfoldl (genPattern pos) (beginScope env) params
 	 (expr', env2)   = genExpr pos env1 expr
      in  (CLambda params' expr', endScope env2)
@@ -563,10 +564,10 @@ genExpr pos env (Do stmts expr)
    = let (stmts', env1) = mapfoldl (genStatement pos) (beginScope env) stmts
 	 (expr', env2)  = genExpr pos env1 expr
      in  (CDoExpr (stmts' ++ [CSExpr expr']), endScope env2)
-genExpr pos env (IfThenElse expr1 expr2 expr3)
+genExpr pos env (IfThenElse _ expr1 expr2 expr3)
    = genExpr pos env (Apply (Apply (Apply (Variable qIfThenElseId)
 				    expr1) expr2) expr3)
-genExpr pos env (Case expr alts)
+genExpr pos env (Case _ expr alts)
    = let (expr', env1) = genExpr pos env expr
 	 (alts', env2) = mapfoldl genBranchExpr env1 alts
      in  (CCase expr' alts', env2)
@@ -585,13 +586,13 @@ genExpr pos env (RecordUpdate fields expr)
 --
 genStatement :: Position -> AbstractEnv -> Statement 
 	        -> (CStatement, AbstractEnv)
-genStatement pos env (StmtExpr expr)
+genStatement pos env (StmtExpr _ expr)
    = let (expr', env') = genExpr pos env expr
      in  (CSExpr expr', env')
 genStatement _ env (StmtDecl decls)
    = let (decls', env') = genLocalDecls env decls
      in  (CSLet decls', env')
-genStatement pos env (StmtBind patt expr)
+genStatement pos env (StmtBind _ patt expr)
    = let (expr', env1) = genExpr pos env expr
 	 (patt', env2) = genPattern pos env1 patt
      in  (CSPat patt' expr', env2)
@@ -616,8 +617,8 @@ genBranchExpr env (Alt pos patt rhs)
 genPattern :: Position -> AbstractEnv -> ConstrTerm -> (CPattern, AbstractEnv)
 genPattern pos env (LiteralPattern lit)
    = case lit of
-       String cs 
-         -> genPattern pos env (ListPattern (map (LiteralPattern . Char) cs))
+       String _ cs 
+         -> genPattern pos env (ListPattern [] (map (LiteralPattern . Char noRef) cs))
        _ -> (CPLit (genLiteral lit), env)
 genPattern _ env (VariablePattern ident)
    = let (idx, env') = genVarIndex env ident
@@ -629,7 +630,7 @@ genPattern pos env (InfixPattern larg qident rarg)
    = genPattern pos env (ConstructorPattern qident [larg, rarg])
 genPattern pos env (ParenPattern patt)
    = genPattern pos env patt
-genPattern pos env (TuplePattern args)
+genPattern pos env (TuplePattern _ args)
    | len > 1
      = genPattern pos env (ConstructorPattern (qTupleId len) args)
    | len == 1
@@ -637,7 +638,7 @@ genPattern pos env (TuplePattern args)
    | len == 0
      = genPattern pos env (ConstructorPattern qUnitId [])
  where len = length args
-genPattern pos env (ListPattern args)
+genPattern pos env (ListPattern _ args)
    = genPattern pos env (foldr (\x1 x2 -> ConstructorPattern qConsId [x1, x2]) 
 		         (ConstructorPattern qNilId []) 
 		         args)
@@ -647,7 +648,7 @@ genPattern pos env (AsPattern ident cterm)
    = let (patt, env1) = genPattern pos env cterm
 	 (idx, env2) = genVarIndex env1 ident
      in  (CPAs (idx, name ident) patt, env2)
-genPattern pos env (LazyPattern cterm)
+genPattern pos env (LazyPattern _ cterm)
    = let (patt, env') = genPattern pos env cterm
      in  (CPLazy patt, env')
 genPattern pos env (FunctionPattern qident cterms)
@@ -672,10 +673,10 @@ genField genTerm env (Field pos label term)
 
 --
 genLiteral :: Literal -> CLiteral
-genLiteral (Char c)  = CCharc c
-genLiteral (Int _ i) = CIntc i
-genLiteral (Float f) = CFloatc f
-genLiteral _         = internalError "unsupported literal"
+genLiteral (Char _ c)  = CCharc c
+genLiteral (Int _ i)   = CIntc i
+genLiteral (Float _ f) = CFloatc f
+genLiteral _           = internalError "unsupported literal"
 
 
 -- Notes: 

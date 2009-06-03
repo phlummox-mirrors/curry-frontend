@@ -16,6 +16,7 @@ import List
 import Debug.Trace
 import Message
 import Control.Exception
+import PathUtils (readModule)
 
 
 debug = False -- mergen von Token und Codes
@@ -76,7 +77,7 @@ data FunctionKind = InfixFunction
 --- @return program
 filename2program :: [String] -> String -> IO Program
 filename2program paths filename=
-     readFile filename >>= \ cont ->
+     readModule filename >>= \ cont ->
      (catchError show (typingParse paths filename  cont)) >>= \ typingParseResult ->
      (catchError show (fullParse paths filename  cont)) >>= \ fullParseResult ->             
      (catchError show (return (parse filename cont))) >>= \ parseResult ->
@@ -130,14 +131,14 @@ position2code ((l,c,code):xs@((_,c2,_):_)) line col
      
 area2codes :: Program -> Position -> Position -> [Code]     
 area2codes [] _ _ = []
-area2codes xxs@((l,c,code):xs) p1@(Position file _ _) p2 
+area2codes xxs@((l,c,code):xs) p1@Position{file=file} p2 
      | p1 > p2 = area2codes xxs p2 p1
      | posEnd >= p1 && posBegin <= p2  = code : area2codes xs p1 p2
      | posBegin > p2 = []
      | otherwise = area2codes xs p1 p2
    where
-      posBegin = (Position file l c)
-      posEnd = (Position file l (c + (length (code2string code))))
+      posBegin = Position file l c noRef
+      posEnd   = Position file l (c + (length (code2string code))) noRef
                   
 
 --- this function intercepts errors and converts it to Messages      
@@ -183,8 +184,8 @@ setMessagePosition (Message typ _ m) =
 getPositionFromString :: String -> Maybe Position
 getPositionFromString message =
      if line > 0 && col > 0 
-          then Just (Position file line col)
-          else Nothing 
+          then Just Position{file=file,line=line,column=col,ast=noRef}
+          else Nothing
   where
       file = takeWhile (/= '"') (tail (dropWhile (/= '"') message))
       line = readInt (takeWhile (/= '.') (drop 7 (dropWhile (/= ',') message)))
@@ -247,16 +248,16 @@ buildMessagesIntoPlainText messages text =
     buildMessagesIntoPlainText' [] preStrs postStrs line = 
           [(line,1,NotParsed (unlines (preStrs ++ postStrs)))]  
             
-    buildMessagesIntoPlainText' messages (str:preStrs) postStrs line = 
+    buildMessagesIntoPlainText' messages (str:preStrs) postStrs ln = 
           let (pre,post) = partition isLeq messages in
           if null pre 
-             then buildMessagesIntoPlainText' post preStrs (postStrs ++ [str]) (line + 1)
-             else (line,1,NotParsed (unlines postStrs)) : 
-                  (if hasError pre then (line,1,CodeError pre (NotParsed str)) : [(line,1,NewLine)] 
-                                   else (line,1,CodeWarning pre (NotParsed str)) : [(line,1,NewLine)]) ++
-                  (buildMessagesIntoPlainText' post preStrs [] (line + 1)) 
+             then buildMessagesIntoPlainText' post preStrs (postStrs ++ [str]) (ln + 1)
+             else (ln,1,NotParsed (unlines postStrs)) : 
+                  (if hasError pre then (ln,1,CodeError pre (NotParsed str)) : [(ln,1,NewLine)] 
+                                   else (ln,1,CodeWarning pre (NotParsed str)) : [(ln,1,NewLine)]) ++
+                  (buildMessagesIntoPlainText' post preStrs [] (ln + 1)) 
       where 
-         isLeq (Message _ (Just (Position _ l _)) _) = l <= line 
+         isLeq (Message _ (Just p) _) = line p <= ln 
          isLeq _ = True
                 
         
@@ -370,7 +371,7 @@ mergeMessages' mss@(m@(Message _ mPos x):ms) ((p,t):ps)
 
 tokenNcodes2codes :: [(ModuleIdent,ModuleIdent)] -> Int -> Int -> [([Message],Position,Token)] -> [Code] -> [(Int,Int,Code)]
 tokenNcodes2codes _ _ _ [] _ = []          
-tokenNcodes2codes nameList currLine currCol toks@((messages,pos@(Position _ line col),token):ts) codes 
+tokenNcodes2codes nameList currLine currCol toks@((messages,pos@Position{line=line,column=col},token):ts) codes 
     | currLine < line = 
            trace' (" NewLine: ")
            ((currLine,currCol,NewLine) :
@@ -666,11 +667,11 @@ constrTerm2codes (ConstructorPattern qualIdent constrTerms) =
 constrTerm2codes (InfixPattern constrTerm1 qualIdent constrTerm2) =
     constrTerm2codes constrTerm1 ++ [ConstructorName ConstrPattern qualIdent] ++ constrTerm2codes constrTerm2
 constrTerm2codes (ParenPattern constrTerm) = constrTerm2codes constrTerm
-constrTerm2codes (TuplePattern constrTerms) = concatMap constrTerm2codes constrTerms
-constrTerm2codes (ListPattern constrTerms) = concatMap constrTerm2codes constrTerms
+constrTerm2codes (TuplePattern _ constrTerms) = concatMap constrTerm2codes constrTerms
+constrTerm2codes (ListPattern _ constrTerms) = concatMap constrTerm2codes constrTerms
 constrTerm2codes (AsPattern ident constrTerm) =
     (Function OtherFunctionKind $ qualify ident) : constrTerm2codes constrTerm
-constrTerm2codes (LazyPattern constrTerm) = constrTerm2codes constrTerm
+constrTerm2codes (LazyPattern _ constrTerm) = constrTerm2codes constrTerm
 constrTerm2codes (FunctionPattern qualIdent constrTerms) = 
     (Function OtherFunctionKind qualIdent) : concatMap constrTerm2codes constrTerms
 constrTerm2codes (InfixFuncPattern constrTerm1 qualIdent constrTerm2) =
@@ -686,11 +687,11 @@ expression2codes (Paren expression) =
     expression2codes expression
 expression2codes (Typed expression typeExpr) = 
     expression2codes expression ++ typeExpr2codes typeExpr
-expression2codes (Tuple expressions) = 
+expression2codes (Tuple _ expressions) = 
     concatMap expression2codes expressions
-expression2codes (List expressions) = 
+expression2codes (List _ expressions) = 
     concatMap expression2codes expressions
-expression2codes (ListCompr expression statements) = 
+expression2codes (ListCompr _ expression statements) = 
     expression2codes expression ++ concatMap statement2codes statements
 expression2codes (EnumFrom expression) = 
     expression2codes expression
@@ -712,15 +713,15 @@ expression2codes (LeftSection expression infixOp) =
     expression2codes expression ++ infixOp2codes infixOp
 expression2codes (RightSection infixOp expression) = 
     infixOp2codes infixOp ++ expression2codes expression
-expression2codes (Lambda constrTerms expression) = 
+expression2codes (Lambda _ constrTerms expression) = 
     concatMap constrTerm2codes constrTerms ++ expression2codes expression
 expression2codes (Let decls expression) = 
     concatMap decl2codes decls ++ expression2codes expression
 expression2codes (Do statements expression) = 
     concatMap statement2codes statements ++ expression2codes expression
-expression2codes (IfThenElse expression1 expression2 expression3) = 
+expression2codes (IfThenElse _ expression1 expression2 expression3) = 
     expression2codes expression1 ++ expression2codes expression2 ++ expression2codes expression3
-expression2codes (Case expression alts) = 
+expression2codes (Case _ expression alts) = 
     expression2codes expression ++ concatMap alt2codes alts
     
 infixOp2codes :: InfixOp -> [Code]
@@ -729,11 +730,11 @@ infixOp2codes (InfixConstr qualIdent) = [ConstructorName OtherConstrKind qualIde
 
 
 statement2codes :: Statement -> [Code] 
-statement2codes (StmtExpr expression) =
+statement2codes (StmtExpr _ expression) =
     expression2codes expression
 statement2codes (StmtDecl decls) =
     concatMap decl2codes decls
-statement2codes (StmtBind constrTerm expression) =
+statement2codes (StmtBind _ constrTerm expression) =
      constrTerm2codes constrTerm ++ expression2codes expression
 
 

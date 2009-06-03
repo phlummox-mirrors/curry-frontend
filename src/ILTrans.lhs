@@ -50,8 +50,8 @@ alias types.
 >   [translData m tyEnv tcEnv tc tvs cs]
 > translGlobalDecl _ m tyEnv tcEnv _ (NewtypeDecl _ tc tvs nc) =
 >   [translNewtype m tyEnv tcEnv tc tvs nc]
-> translGlobalDecl flat m tyEnv tcEnv evEnv (FunctionDecl _ f eqs) =
->   [translFunction flat m tyEnv tcEnv evEnv f eqs]
+> translGlobalDecl flat m tyEnv tcEnv evEnv (FunctionDecl pos f eqs) =
+>   [translFunction pos flat m tyEnv tcEnv evEnv f eqs]
 > translGlobalDecl _ m tyEnv tcEnv _ (ExternalDecl _ cc ie f _) =
 >   [translExternal m tyEnv tcEnv f cc (fromJust ie)]
 > translGlobalDecl _ _ _ _ _ _ = []
@@ -242,9 +242,9 @@ uses flexible matching.
 
 > type RenameEnv = Env Ident Ident
 
-> translFunction :: Bool -> ModuleIdent -> ValueEnv -> TCEnv -> EvalEnv
->                -> Ident -> [Equation] -> IL.Decl
-> translFunction flat m tyEnv tcEnv evEnv f eqs =
+> translFunction :: Position -> Bool -> ModuleIdent -> ValueEnv -> TCEnv
+>       -> EvalEnv -> Ident -> [Equation] -> IL.Decl
+> translFunction pos flat m tyEnv tcEnv evEnv f eqs =
 >   -- | f == mkIdent "fun" = error (show (translType' m tyEnv tcEnv ty))
 >   -- | otherwise = 
 >     IL.FunctionDecl f' vs (translType' m tyEnv tcEnv ty) expr
@@ -258,15 +258,15 @@ uses flexible matching.
 >         vs  = if not flat && isFpSelectorId f then translArgs eqs vs' else vs'
 >         (vs',vs'') = splitAt (equationArity (head eqs)) 
 >                              (argNames (mkIdent ""))
->         expr | isJust ev' && (fromJust ev') == EvalChoice
+>         expr | ev' == Just EvalChoice
 >                = IL.Apply 
 >                    (IL.Function 
 >                       (qualifyWith preludeMIdent (mkIdent "commit"))
 >                       1)
->                    (match IL.Rigid vs 
+>                    (match (ast pos) IL.Rigid vs 
 >                       (map (translEquation tyEnv vs vs'') eqs))
 >              | otherwise
->                =  match ev vs (map (translEquation tyEnv vs vs'') eqs)
+>                =  match (ast pos) ev vs (map (translEquation tyEnv vs vs'') eqs)
 >         ---
 >         -- (vs',vs'') = splitAt (arrowArity ty) (argNames (mkIdent ""))
 
@@ -341,9 +341,9 @@ position in the remaining arguments. If one is found,
 > arguments (NestedTerm _ ts) = ts
 
 > translLiteral :: Literal -> IL.Literal
-> translLiteral (Char c) = IL.Char c
-> translLiteral (Int _ i) = IL.Int i
-> translLiteral (Float f) = IL.Float f
+> translLiteral (Char p c) = IL.Char p c
+> translLiteral (Int id i) = IL.Int (ast (positionOfIdent id)) i
+> translLiteral (Float p f) = IL.Float p f
 > translLiteral _ = internalError "translLiteral"
 
 > translTerm :: Ident -> ConstrTerm -> NestedTerm
@@ -379,39 +379,40 @@ position in the remaining arguments. If one is found,
 > isDefaultMatch :: (IL.ConstrTerm,a) -> Bool
 > isDefaultMatch = isDefaultPattern . fst
 
-> match :: IL.Eval -> [Ident] -> [Match] -> IL.Expression
-> match ev [] alts = foldl1 IL.Or (map snd alts)
-> match ev (v:vs) alts
+> match :: SrcRef -> IL.Eval -> [Ident] -> [Match] -> IL.Expression
+> match _   ev [] alts = foldl1 IL.Or (map snd alts)
+> match pos ev (v:vs) alts
 >   | null vars = e1
 >   | null nonVars = e2
->   | otherwise = optMatch ev (IL.Or e1 e2) (v:) vs (map skipArg alts)
+>   | otherwise = optMatch pos ev (IL.Or e1 e2) (v:) vs (map skipArg alts)
 >   where (vars,nonVars) = partition isDefaultMatch (map tagAlt alts)
 >         (nonArgs,args) = partition (null.fst) alts
->         e1 = matchInductive ev id v vs nonVars
->         e2 = match ev vs (map snd vars)
+>         e1 = matchInductive pos ev id v vs nonVars
+>         e2 = match pos ev vs (map snd vars)
 >         tagAlt (t:ts,e) = (pattern t,(arguments t ++ ts,e))
 >         skipArg (t:ts,e) = ((t:),ts,e)
 
-> optMatch :: IL.Eval -> IL.Expression -> ([Ident] -> [Ident]) -> [Ident] ->
->     [Match'] -> IL.Expression
-> optMatch ev e prefix [] alts = e
-> optMatch ev e prefix (v:vs) alts
->   | null vars = matchInductive ev prefix v vs nonVars
->   | otherwise = optMatch ev e (prefix . (v:)) vs (map skipArg alts)
+> optMatch :: SrcRef -> IL.Eval -> IL.Expression -> ([Ident] -> [Ident]) 
+>    -> [Ident] ->[Match'] -> IL.Expression
+> optMatch _ ev e prefix [] alts = e
+> optMatch pos ev e prefix (v:vs) alts
+>   | null vars = matchInductive pos ev prefix v vs nonVars
+>   | otherwise = optMatch pos ev e (prefix . (v:)) vs (map skipArg alts)
 >   where (vars,nonVars) = partition isDefaultMatch (map tagAlt alts)
 >         tagAlt (prefix,t:ts,e) = (pattern t,(prefix (arguments t ++ ts),e))
 >         skipArg (prefix,t:ts,e) = (prefix . (t:),ts,e)
 
-> matchInductive :: IL.Eval -> ([Ident] -> [Ident]) -> Ident -> [Ident] ->
->     [(IL.ConstrTerm,Match)] -> IL.Expression
-> matchInductive ev prefix v vs alts =
->   IL.Case ev (IL.Variable v) (matchAlts ev prefix vs alts)
+> matchInductive :: SrcRef -> IL.Eval -> ([Ident] -> [Ident]) -> Ident 
+>    -> [Ident] ->[(IL.ConstrTerm,Match)] -> IL.Expression
+> matchInductive pos ev prefix v vs alts =
+>   IL.Case pos ev (IL.Variable v) (matchAlts ev prefix vs alts)
 
 > matchAlts :: IL.Eval -> ([Ident] -> [Ident]) -> [Ident] ->
 >     [(IL.ConstrTerm,Match)] -> [IL.Alt]
 > matchAlts ev prefix vs [] = []
 > matchAlts ev prefix vs ((t,alt):alts) =
->   IL.Alt t (match ev (prefix (vars t ++ vs)) (alt : map snd same)) :
+>   IL.Alt t (match (srcRefOf t) 
+>                   ev (prefix (vars t ++ vs)) (alt : map snd same)) :
 >   matchAlts ev prefix vs others
 >   where (same,others) = partition ((t ==) . fst) alts 
 >         vars (IL.ConstructorPattern _ vs) = vs
@@ -428,13 +429,14 @@ to detect total matches and immediately discard all alternatives which
 cannot be reached.}
 \begin{verbatim}
 
-> caseMatch :: ([Ident] -> [Ident]) -> [Ident] -> [Match'] -> IL.Expression
-> caseMatch prefix [] alts = thd3 (head alts)
-> caseMatch prefix (v:vs) alts
+> caseMatch :: SrcRef -> ([Ident] -> [Ident]) -> [Ident] -> [Match'] 
+>    -> IL.Expression
+> caseMatch _ prefix [] alts = thd3 (head alts)
+> caseMatch r prefix (v:vs) alts
 >   | isDefaultMatch (head alts') =
->       caseMatch (prefix . (v:)) vs (map skipArg alts)
+>       caseMatch r (prefix . (v:)) vs (map skipArg alts)
 >   | otherwise =
->       IL.Case IL.Rigid (IL.Variable v) (caseMatchAlts prefix vs alts')
+>       IL.Case r IL.Rigid (IL.Variable v) (caseMatchAlts prefix vs alts')
 >   where alts' = map tagAlt alts
 >         tagAlt (prefix,t:ts,e) = (pattern t,(prefix,arguments t ++ ts,e))
 >         skipArg (prefix,t:ts,e) = (prefix . (t:),ts,e)
@@ -444,7 +446,7 @@ cannot be reached.}
 > caseMatchAlts prefix vs alts = map caseAlt (ts ++ ts')
 >   where (ts',ts) = partition isDefaultPattern (nub (map fst alts))
 >         caseAlt t =
->           IL.Alt t (caseMatch id (prefix (vars t ++ vs))
+>           IL.Alt t (caseMatch (srcRefOf t) id (prefix (vars t ++ vs))
 >                               (matchingCases t alts))
 >         matchingCases t =
 >           map (joinArgs (vars t)) . filter (matches t . fst)
@@ -492,10 +494,10 @@ instance, if one of the alternatives contains an \texttt{@}-pattern.
 >         translBinding env (PatternDecl _ (VariablePattern v) rhs) =
 >           IL.Binding v (translRhs tyEnv vs env rhs)
 >         translBinding env p = error $ "unexpected binding: "++show p
-> translExpr tyEnv ~(v:vs) env (Case e alts) =
->   case caseMatch id [v] (map (translAlt v) alts) of
->     IL.Case mode (IL.Variable v') alts'
->       | v == v' && v `notElem` fv alts' -> IL.Case mode e' alts'
+> translExpr tyEnv ~(v:vs) env (Case r e alts) =
+>   case caseMatch r id [v] (map (translAlt v) alts) of
+>     IL.Case r mode (IL.Variable v') alts'
+>       | v == v' && v `notElem` fv alts' -> IL.Case r mode e' alts'
 >     e''
 >       | v `elem` fv e'' -> IL.Let (IL.Binding v e') e''
 >       | otherwise -> e''
@@ -509,7 +511,7 @@ instance, if one of the alternatives contains an \texttt{@}-pattern.
 > instance Expr IL.Expression where
 >   fv (IL.Variable v) = [v]
 >   fv (IL.Apply e1 e2) = fv e1 ++ fv e2
->   fv (IL.Case _ e alts) = fv e ++ fv alts
+>   fv (IL.Case _ _ e alts) = fv e ++ fv alts
 >   fv (IL.Or e1 e2) = fv e1 ++ fv e2
 >   fv (IL.Exist v e) = filter (/= v) (fv e)
 >   fv (IL.Let (IL.Binding v e1) e2) = fv e1 ++ filter (/= v) (fv e2)
@@ -568,7 +570,7 @@ module.
 > modulesExpr (IL.Function f _) ms = modules f ms
 > modulesExpr (IL.Constructor c _) ms = modules c ms
 > modulesExpr (IL.Apply e1 e2) ms = modulesExpr e1 (modulesExpr e2 ms)
-> modulesExpr (IL.Case _ e as) ms = modulesExpr e (foldr modulesAlt ms as)
+> modulesExpr (IL.Case _ _ e as) ms = modulesExpr e (foldr modulesAlt ms as)
 >   where modulesAlt (IL.Alt t e) ms = modulesConstrTerm t (modulesExpr e ms)
 >         modulesConstrTerm (IL.ConstructorPattern c _) ms = modules c ms
 >         modulesConstrTerm _ ms = ms
@@ -585,3 +587,4 @@ module.
 > modules x ms = maybe ms (: ms) (fst (splitQualIdent x))
 
 \end{verbatim}
+

@@ -178,15 +178,15 @@ checkConstrTerm mid (InfixPattern cterm1 qident cterm2)
    = checkConstrTerm mid (ConstructorPattern qident [cterm1, cterm2])
 checkConstrTerm mid (ParenPattern cterm)
    = checkConstrTerm mid cterm
-checkConstrTerm mid (TuplePattern cterms)
+checkConstrTerm mid (TuplePattern _ cterms)
    = foldM' (checkConstrTerm mid ) cterms
-checkConstrTerm mid (ListPattern cterms)
+checkConstrTerm mid (ListPattern _ cterms)
    = foldM' (checkConstrTerm mid ) cterms
 checkConstrTerm mid (AsPattern ident cterm)
    = do s <- isShadowingVar ident
 	when s (genWarning' (shadowingVar ident))
 	checkConstrTerm mid cterm
-checkConstrTerm mid (LazyPattern cterm)
+checkConstrTerm mid (LazyPattern _ cterm)
    = checkConstrTerm mid cterm
 checkConstrTerm mid (FunctionPattern _ cterms)
    = foldM' (checkConstrTerm mid ) cterms
@@ -205,11 +205,11 @@ checkExpression mid (Paren expr)
    = checkExpression mid expr
 checkExpression mid (Typed expr _)
    = checkExpression mid expr
-checkExpression mid (Tuple exprs)
+checkExpression mid (Tuple _ exprs)
    = foldM' (checkExpression mid ) exprs
-checkExpression mid (List exprs)
+checkExpression mid (List _ exprs)
    = foldM' (checkExpression mid ) exprs
-checkExpression mid (ListCompr expr stmts)
+checkExpression mid (ListCompr _ expr stmts)
    = do beginScope
 	foldM' (checkStatement mid ) stmts
 	checkExpression mid expr
@@ -236,7 +236,7 @@ checkExpression mid  (LeftSection expr _)
    = checkExpression mid  expr
 checkExpression mid  (RightSection _ expr)
    = checkExpression mid  expr
-checkExpression mid  (Lambda cterms expr)
+checkExpression mid  (Lambda _ cterms expr)
    = do beginScope
 	foldM' (checkConstrTerm mid ) cterms
 	foldM' (insertConstrTerm False) cterms
@@ -264,9 +264,9 @@ checkExpression mid  (Do stmts expr)
 	when (not (null idents'))
 	     (foldM' genWarning' (map unrefVar idents'))
 	endScope
-checkExpression mid  (IfThenElse expr1 expr2 expr3)
+checkExpression mid  (IfThenElse _ expr1 expr2 expr3)
    = foldM' (checkExpression mid ) [expr1, expr2, expr3]
-checkExpression mid  (Case expr alts)
+checkExpression mid  (Case _ expr alts)
    = do checkExpression mid  expr
 	foldM' (checkAlt mid) alts
 	checkCaseAlternatives mid alts
@@ -281,14 +281,14 @@ checkExpression _ _  = return ()
 
 --
 checkStatement :: ModuleIdent -> Statement -> CheckState ()
-checkStatement mid (StmtExpr expr)
+checkStatement mid (StmtExpr _ expr)
    = checkExpression mid expr
 checkStatement mid (StmtDecl decls)
    = do foldM' checkLocalDecl decls
 	foldM' insertDecl decls
 	foldM' (checkDecl mid) decls
 	checkDeclOccurrences decls
-checkStatement mid (StmtBind cterm expr)
+checkStatement mid (StmtBind _ cterm expr)
    = do checkConstrTerm mid cterm
 	insertConstrTerm False cterm
 	checkExpression mid expr
@@ -365,14 +365,14 @@ checkOverlappingAlts mid (alt:alts)
                        (ConstructorPattern qid2 [lcs2, rcs2])
  equalConstrTerms (ParenPattern cterm1) (ParenPattern cterm2)
     = equalConstrTerms cterm1 cterm2
- equalConstrTerms (TuplePattern cs1) (TuplePattern cs2)
+ equalConstrTerms (TuplePattern _ cs1) (TuplePattern _ cs2)
     = equalConstrTerms (ConstructorPattern (qTupleId 2) cs1)
                        (ConstructorPattern (qTupleId 2) cs2)
- equalConstrTerms (ListPattern cs1) (ListPattern cs2)
+ equalConstrTerms (ListPattern _ cs1) (ListPattern _ cs2)
     = cmpListM equalConstrTerms cs1 cs2
  equalConstrTerms (AsPattern id1 cterm1) (AsPattern id2 cterm2)
     = equalConstrTerms cterm1 cterm2
- equalConstrTerms (LazyPattern cterm1) (LazyPattern cterm2)
+ equalConstrTerms (LazyPattern _ cterm1) (LazyPattern _ cterm2)
     = equalConstrTerms cterm1 cterm2
  equalConstrTerms _ _ = return False
 
@@ -515,14 +515,14 @@ insertConstrTerm fp (InfixPattern cterm1 qident cterm2)
    = insertConstrTerm fp (ConstructorPattern qident [cterm1, cterm2])
 insertConstrTerm fp (ParenPattern cterm)
    = insertConstrTerm fp cterm
-insertConstrTerm fp (TuplePattern cterms)
+insertConstrTerm fp (TuplePattern _ cterms)
    = foldM' (insertConstrTerm fp) cterms
-insertConstrTerm fp (ListPattern cterms)
+insertConstrTerm fp (ListPattern _ cterms)
    = foldM' (insertConstrTerm fp) cterms
 insertConstrTerm fp (AsPattern ident cterm)
    = do insertVar ident
 	insertConstrTerm fp cterm
-insertConstrTerm fp (LazyPattern cterm)
+insertConstrTerm fp (LazyPattern _ cterm)
    = insertConstrTerm fp cterm
 insertConstrTerm _ (FunctionPattern _ cterms)
    = foldM' (insertConstrTerm True) cterms

@@ -59,7 +59,7 @@ insertExprScope env (Variable _) = env
 insertExprScope env (Function _ _) = env
 insertExprScope env (Constructor _ _) = env
 insertExprScope env (Apply _ _) = env
-insertExprScope env (Case _ _ _) = env
+insertExprScope env (Case _ _ _ _) = env
 insertExprScope env (Or _ _) = env
 insertExprScope env (Exist ident _)
    = ScopeEnv.insertIdent ident (ScopeEnv.beginScope env)

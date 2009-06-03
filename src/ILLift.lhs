@@ -69,11 +69,11 @@ partial applications of data constructors.
 >     (f',ds) <- liftExpr f
 >     (e',ds') <- liftArg e
 >     return (Apply f' e',ds ++ ds')
-> liftExpr (Case ev e alts) =
+> liftExpr (Case r ev e alts) =
 >   do
 >     (e',ds) <- liftExpr e
 >     (alts',ds') <- mapLift liftAlt alts
->     return (Case ev e' alts',ds ++ ds')
+>     return (Case r ev e' alts',ds ++ ds')
 > liftExpr (Or e1 e2) =
 >   do
 >     (e1',ds) <- liftExpr e1
@@ -147,7 +147,7 @@ compute the type of any expression in the module.}
 > fv (Function _ _) = []
 > fv (Constructor _ _) = []
 > fv (Apply f e) = fv f ++ fv e
-> fv (Case _ e alts) = fv e ++ concatMap fvAlt alts
+> fv (Case _ _ e alts) = fv e ++ concatMap fvAlt alts
 >   where fvAlt (Alt t e) = filter (`notElem` bv t) (fv e)
 >         bv (LiteralPattern _) = []
 >         bv (ConstructorPattern _ vs) = vs

@@ -199,7 +199,7 @@ similar to that of Flat-Curry XML representation.
 > xmlExpr d (Function ident arity)    = (xmlSingleApp ident arity True,d)
 > xmlExpr d (Constructor ident arity) = (xmlSingleApp ident arity False,d)
 > xmlExpr d exp@(Apply e1 e2)         = xmlApply  d exp (xmlAppArgs exp)
-> xmlExpr d (Case eval expr alt)      = xmlCase   d eval expr alt
+> xmlExpr d (Case _ eval expr alt)      = xmlCase   d eval expr alt
 > xmlExpr d (Or expr1 expr2)          = xmlOr     d expr1 expr2
 > xmlExpr d (Exist ident expr)        = xmlFree   d ident expr
 > xmlExpr d (Let binding expr)        = xmlLet    d binding expr
@@ -436,9 +436,9 @@ similar to that of Flat-Curry XML representation.
 
 
 > xmlLit :: Literal -> Doc
-> xmlLit (Char c) = text "<charc>" <>  xmlInt (ord c) <> text "</charc>"
-> xmlLit (Int n) = text "<intc>" <>  xmlInteger n <> text "</intc>"
-> xmlLit (Float n) = text "<floatc>" <>  xmlFloat n <> text "</floatc>"
+> xmlLit (Char _ c) = text "<charc>" <>  xmlInt (ord c) <> text "</charc>"
+> xmlLit (Int _ n) = text "<intc>" <>  xmlInteger n <> text "</intc>"
+> xmlLit (Float _ n) = text "<floatc>" <>  xmlFloat n <> text "</floatc>"
 
 > xmlOperatorDecl :: CS.IDecl -> Doc
 > xmlOperatorDecl (CS.IInfixDecl _ fixity prec qident) =

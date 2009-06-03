@@ -199,11 +199,11 @@ in the type environment.
 >     e2' <- abstractExpr m pre lvs env e2
 >     return (Apply e1' e2')
 > abstractExpr m pre lvs env (Let ds e) = abstractDeclGroup m pre lvs env ds e
-> abstractExpr m pre lvs env (Case e alts) =
+> abstractExpr m pre lvs env (Case r e alts) =
 >   do
 >     e' <- abstractExpr m pre lvs env e
 >     alts' <- mapM (abstractAlt m pre lvs env) alts
->     return (Case e' alts')
+>     return (Case r e' alts')
 > abstractExpr m _ _ _ _ = internalError "abstractExpr"
 
 > abstractAlt :: ModuleIdent -> String -> [Ident] -> AbstractEnv -> Alt
@@ -259,7 +259,7 @@ to the top-level.
 >   where (ds',ds'') = liftDeclGroup ds
 >         (e',ds''') = liftExpr e
 >         mkLet ds e = if null ds then e else Let ds e
-> liftExpr (Case e alts) = (Case e' alts',concat (ds':dss'))
+> liftExpr (Case r e alts) = (Case r e' alts',concat (ds':dss'))
 >   where (e',ds') = liftExpr e
 >         (alts',dss') = unzip (map liftAlt alts)
 > liftExpr _ = internalError "liftExpr"

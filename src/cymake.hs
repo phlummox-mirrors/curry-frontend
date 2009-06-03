@@ -19,6 +19,7 @@ import Maybe
 import IO
 import CurryHtml
 import List
+import Control.Monad (unless)
 
 
 -------------------------------------------------------------------------------
@@ -37,11 +38,13 @@ cymake :: String -> [String] -> [FilePath] -> IO ()
 cymake prog args imports
    | elem Help opts = printUsage prog
    | null files     = badUsage prog ["no files"]
-   | null errs' && not (elem Html opts)    = mapM_ (buildCurry options') files
-   | null errs' = mapM_ (source2html 
-                              (nub (imports ++
-                                    importPaths opts'))
-                              (maybe "" id (output opts'))) files
+   | null errs' && not (elem Html opts)    = do
+       unless (noVerb options') (putStrLn "This is cymake, version 1.1.312")
+       mapM_ (buildCurry options') files
+   | null errs' = do
+      let importFiles = nub $ imports ++ importPaths opts'
+          outputFile  = maybe "" id (output opts')
+      mapM_ (source2html importFiles outputFile) files
                               
    | otherwise      = badUsage prog errs'
  where
