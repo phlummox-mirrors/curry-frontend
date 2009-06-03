@@ -17,8 +17,7 @@ names and finding files.
 >                  doesModuleExist,maybeReadModule,getModuleModTime) where
 > -- import List
 > import Directory
-> import Control.Monad (when)
-> import System.Time (ClockTime)
+> import CurrySubdir
 
 \end{verbatim}
 Within this module we assume Unix style path semantics, i.e.\ 
@@ -27,11 +26,6 @@ components of a path name are separated by forward slash characters
 (\texttt{.}).
 \begin{verbatim}
 
-> pathSep :: Char
-> pathSep = '/'
-
-> curDirPath :: FilePath
-> curDirPath = "."
 
 \end{verbatim}
 Absolute path names start with a slash while relative paths don't.
@@ -74,31 +68,6 @@ expansion. Note that such a function will have type \texttt{FilePath
 cannot be implemented portably in Haskell 98.}
 \begin{verbatim}
 
-> canonPath :: FilePath -> FilePath
-> canonPath "" = ""
-> canonPath (c:cs) =
->   c : if c == pathSep then canon (dropWhile (pathSep ==) cs) else canon cs
->   where canon "" = ""
->         canon (c:cs)
->           | c == pathSep = if null cs' then "" else c : canon cs'
->           | otherwise = c : canon cs
->           where cs' = dropWhile (pathSep ==) cs
-
-\end{verbatim}
-When we split a path into its basename and directory we will make
-sure that the basename does not contain any path separators.
-\begin{verbatim}
- 
-> dirname, basename :: FilePath -> FilePath
-> dirname = fst . splitPath . canonPath
-> basename = snd . splitPath . canonPath
-
-> splitPath :: FilePath -> (FilePath,FilePath)
-> splitPath path =
->   case breakLast (pathSep ==) path of
->     (dirname,"") -> (".",path)
->     (dirname,_:basename) ->
->       (if null dirname then [pathSep] else dirname,basename)
 
 \end{verbatim}
 The extension of a filename is the component starting at the last dot
@@ -149,60 +118,7 @@ exists in the file system.
 >       if so then return (Just fn) else lookupFile' fns
 
 \end{verbatim}
-The function \texttt{breakLast} is similar to the standard
-\texttt{break} function, except that it splits the argument list at
-the last position for which the predicate returns \texttt{True}.
-\begin{verbatim}
-
-> breakLast :: (a -> Bool) -> [a] -> ([a],[a])
-> breakLast p xs =
->   case break p xs of
->     (prefix,[]) -> (prefix,[])
->     (prefix,x:suffix)
->       | null suffix' -> (prefix,x:suffix)
->       | otherwise -> (prefix ++ x:prefix',suffix')
->       where (prefix',suffix') = breakLast p suffix
-
-\end{verbatim}
 
 
-The sub directory to hide files in:
-
-> currySubdir :: String 
-> currySubdir = ".curry"
-
-> addCurrySubdir :: String -> String
-> addCurrySubdir fn = dirname fn++pathSep:currySubdir
->                               ++pathSep:basename fn
 
 
-write a file to curry subdirectory
-
-> writeModule :: String -> String -> IO ()
-> writeModule fileName contents = do
->   writeFile fileName contents
->   let subdir = dirname fileName++pathSep:currySubdir
->   ex <- doesDirectoryExist subdir
->   when (not ex) (createDirectory subdir)
->   writeFile (addCurrySubdir fileName) contents
-
-> onExistingFileDo :: (String -> IO a) -> String -> IO a
-> onExistingFileDo act filename = do
->   ex <- doesFileExist filename
->   if ex then act filename 
->     else do
->       let filename' = addCurrySubdir filename
->       act filename'
-
-> readModule :: String -> IO String
-> readModule = onExistingFileDo readFile
-
-> maybeReadModule :: String -> IO (Maybe String)
-> maybeReadModule filename = 
->   catch (readModule filename >>= return . Just) (\_ -> return Nothing)
-
-> doesModuleExist :: String -> IO Bool
-> doesModuleExist = onExistingFileDo doesFileExist
-
-> getModuleModTime :: String -> IO ClockTime
-> getModuleModTime = onExistingFileDo getModificationTime
