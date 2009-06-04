@@ -53,7 +53,8 @@ makeCurry options deps file
  where
  compile (Source file' mods)
     | rootname file == rootname file'
-      = do flatIntfExists <- doesModuleExist (flatIntName file')
+      = do 
+           flatIntfExists <- doesModuleExist (flatIntName file')
 	   if flatIntfExists && not (force options) && null (dump options)
 	    then smake (targetNames file')
                        (file':(catMaybes (map flatInterface mods)))
@@ -61,7 +62,8 @@ makeCurry options deps file
 		       (skipFile file')
 	    else generateFile file'
     | otherwise
-      = do flatIntfExists <- doesModuleExist (flatIntName file')
+      = do 
+           flatIntfExists <- doesModuleExist (flatIntName file')
 	   if flatIntfExists
             then  smake [flatName file'] --[flatName file', flatIntName file']
 	                (file':(catMaybes (map flatInterface mods)))

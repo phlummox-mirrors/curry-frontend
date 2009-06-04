@@ -60,7 +60,7 @@ defaultOpts = Options{ force           = False,
 data Option = Help | Force
 	    | ImportPath FilePath | Output FilePath
 	    | NoInterface | NoVerb | NoWarn | NoOverlapWarn
-	    | FlatXML | Flat | Abstract | UntypedAbstract | ParseOnly
+	    | FlatXML | Flat | FlatWithSrcRefs | Abstract | UntypedAbstract | ParseOnly
 	    | WithExtensions
 	    | Dump [Dump]
 
@@ -82,6 +82,8 @@ options = [Option "f" ["force"] (NoArg Force)
 	          "do not print warnings for overlapping rules",
 	   Option "" ["flat"] (NoArg Flat)
                   "generate FlatCurry code",
+	   Option "" ["withSrcRefs"] (NoArg FlatWithSrcRefs)
+                  "generate FlatCurry code with source references",
 	   Option "" ["xml"] (NoArg FlatXML)
                   "generate flat xml code",
 	   Option "" ["acy"] (NoArg Abstract)

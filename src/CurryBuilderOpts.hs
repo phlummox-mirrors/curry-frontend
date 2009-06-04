@@ -89,6 +89,8 @@ options = [Option "f" ["force"] (NoArg Force)
 	          "do not print warnings for overlapping rules",
 	   Option ""  ["flat"] (NoArg Flat)
 	          "generate FlatCurry code",
+	   Option "" ["withSrcRefs"] (NoArg FlatWithSrcRefs)
+                  "generate FlatCurry code with source references",
 	   Option ""  ["xml"] (NoArg FlatXML)
 	          "generate flat xml code",
            Option "" ["no-simp"] (NoArg FlatWithSrcRefs)

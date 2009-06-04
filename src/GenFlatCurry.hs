@@ -17,6 +17,8 @@ import Base (ArityEnv, ArityInfo(..), ModuleEnv, PEnv, PrecInfo(..),
 	     qualLookupArity, lookupArity,  internalError)
 
 import FlatWithSrcRefs
+--import FlatCurry
+
 import qualified IL
 import qualified CurrySyntax as CS
 
@@ -187,7 +189,7 @@ visitExpression (IL.Constructor qident arity)
 	      arity_
 visitExpression (IL.Apply expression1 expression2)
    = genFlatApplication (IL.Apply expression1 expression2)
-visitExpression (IL.Case (SrcRef r) evalannot expression alts)
+visitExpression (IL.Case r evalannot expression alts)
    = do ea       <- visitEval evalannot
 	expr     <- visitExpression expression
 	branches <- mapM visitAlt alts
@@ -221,9 +223,9 @@ visitExpression (IL.Letrec bindings expression)
 
 --
 visitLiteral :: IL.Literal -> FlatState Literal
-visitLiteral (IL.Char (SrcRef rs) c)  = return (Charc rs c)
-visitLiteral (IL.Int (SrcRef rs) i)   = return (Intc rs i)
-visitLiteral (IL.Float (SrcRef rs) f) = return (Floatc rs f)
+visitLiteral (IL.Char rs c)  = return (Charc rs c)
+visitLiteral (IL.Int rs i)   = return (Intc rs i)
+visitLiteral (IL.Float rs f) = return (Floatc rs f)
 
 --
 visitAlt :: IL.Alt -> FlatState BranchExpr

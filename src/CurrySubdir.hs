@@ -3,6 +3,7 @@ module CurrySubdir where
 import Directory
 import System.Time (ClockTime)
 import Control.Monad (when)
+import List(intersperse)
 
 -- some definitions from PathUtils
 
@@ -12,73 +13,70 @@ pathSep = '/'
 curDirPath :: FilePath
 curDirPath = "."
 
---The function breakLast is similar to the standard
---break function, except that it splits the argument list at
---the last position for which the predicate returns \texttt{True}.
+-- divide given puth names in directories
 
-breakLast :: (a -> Bool) -> [a] -> ([a],[a])
-breakLast p xs =
-  case break p xs of
-    (prefix,[]) -> (prefix,[])
-    (prefix,x:suffix)
-      | null suffix' -> (prefix,x:suffix)
-      | otherwise -> (prefix ++ x:prefix',suffix')
-      where (prefix',suffix') = breakLast p suffix
+path :: String -> [String]
+path = canonPath . separateBy (==pathSep) 
+  where
+    canonPath (c:cs) = c:filter (not . null) cs
 
-canonPath :: FilePath -> FilePath
-canonPath "" = ""
-canonPath (c:cs) =
-  c : if c == pathSep then canon (dropWhile (pathSep ==) cs) else canon cs
-  where canon "" = ""
-        canon (c:cs)
-          | c == pathSep = if null cs' then "" else c : canon cs'
-          | otherwise = c : canon cs
-          where cs' = dropWhile (pathSep ==) cs
+-- separate a list by separator predicate
+
+separateBy :: (a -> Bool) -> [a] -> [[a]]
+separateBy p = sep id 
+  where
+    sep xs [] = [xs []]
+    sep xs (c:cs) = if p c then xs [] : sep id cs
+                           else sep (xs . (c:)) cs
+
+-- make canonical path from list of directories
+
+unpath :: [String] -> String
+unpath = concat . intersperse [pathSep]
 
 --When we split a path into its basename and directory we will make
 --sure that the basename does not contain any path separators.
  
 dirname, basename :: FilePath -> FilePath
-dirname = fst . splitPath . canonPath
-basename = snd . splitPath . canonPath
+dirname  = unpath . init . path
+basename = last . path
 
-splitPath :: FilePath -> (FilePath,FilePath)
-splitPath path =
-  case breakLast (pathSep ==) path of
-    (dirname,"") -> (".",path)
-    (dirname,_:basename) ->
-      (if null dirname then [pathSep] else dirname,basename)
+-- add a subdirectory to a given filename 
+-- if it is not already present
 
+inSubdir :: String -> String -> String
+inSubdir sub fn = unpath $ add (path fn) 
+  where
+    add ps@[n] = sub:ps
+    add ps@[p,n] | p==sub = ps
+    add (p:ps) = p:add ps
 
 --The sub directory to hide files in:
 
 currySubdir :: String 
 currySubdir = ".curry"
 
-addCurrySubdir :: String -> String
-addCurrySubdir fn = dirname fn++pathSep:currySubdir
-                              ++pathSep:basename fn
-
+inCurrySubdir :: String -> String
+inCurrySubdir = inSubdir currySubdir
 
 --write a file to curry subdirectory
 
 writeModule :: String -> String -> IO ()
-writeModule fileName contents = do
-  --writeFile fileName contents
-  let subdir = dirname fileName++pathSep:currySubdir
+writeModule filename contents = do
+  --writeFile filename contents
+  let filename' = inCurrySubdir filename
+      subdir = dirname filename'
   ex <- doesDirectoryExist subdir
   when (not ex) (createDirectory subdir)
-  writeFile (addCurrySubdir fileName) contents
+  writeFile filename' contents
 
--- doe things with file in subdir
+-- do things with file in subdir
 
 onExistingFileDo :: (String -> IO a) -> String -> IO a
 onExistingFileDo act filename = do
   ex <- doesFileExist filename
   if ex then act filename 
-    else do
-      let filename' = addCurrySubdir filename
-      act filename'
+        else act $ inCurrySubdir filename
 
 readModule :: String -> IO String
 readModule = onExistingFileDo readFile

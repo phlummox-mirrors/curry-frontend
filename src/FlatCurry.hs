@@ -24,7 +24,6 @@ module FlatCurry (Prog(..), QName, Visibility(..),
 		  writeFlatCurry) where
 
 import PathUtils (writeModule,maybeReadModule)
-import ReadWriteCurryFiles
 import Directory
 import List(intersperse)
 import Control.Monad (liftM)

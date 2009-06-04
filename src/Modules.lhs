@@ -42,8 +42,8 @@ import declarations are commented out
 > import ILTrans(ilTrans,ilTransIntf)
 > import ILLift(liftProg)
 > import ILxml(xmlModule) -- check
-> import FlatWithSrcRefs
-> import GenFlatCurry
+> import FlatWithSrcRefs 
+> import GenFlatCurry (genFlatCurry,genFlatInterface)
 > import AbstractCurry
 > import GenAbstractCurry
 > import InterfaceCheck
@@ -693,8 +693,7 @@ be dependent on it any longer.
 >            -> Interface -> Module -> IL.Module -> IO CompilerResults
 > genFlat opts fname mEnv tyEnv tcEnv aEnv intf mod il
 >   | flat opts
->     = do flatProg <- writeFlat opts Nothing fname cEnv mEnv 
->                             tyEnv tcEnv aEnv il
+>     = do writeFlat opts Nothing fname cEnv mEnv tyEnv tcEnv aEnv il
 >          let (flatInterface,intMsgs) = genFlatInterface opts cEnv mEnv tyEnv tcEnv aEnv il
 >          if force opts
 >            then 

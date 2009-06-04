@@ -34,7 +34,7 @@ Absolute path names start with a slash while relative paths don't.
 > isRelative,isAbsolute :: FilePath -> Bool
 > isRelative = not . isAbsolute
 > isAbsolute "" = False
-> isAbsolute (c:cs) = c == '/'
+> isAbsolute (c:cs) = c == pathSep
 
 \end{verbatim}
 Path concatenation on Unix systems is trivial as an empty path also
@@ -76,15 +76,11 @@ considered. Also note that the extension will always start with a dot.
 \begin{verbatim}
 
 > rootname, extension :: FilePath -> FilePath
-> rootname = fst . splitExt . canonPath
-> extension = snd . splitExt . canonPath
+> rootname = fst . splitExt 
+> extension = snd . splitExt 
 
 > splitExt :: FilePath -> (FilePath,String)
-> splitExt path =
->   case breakLast ('.' ==) path of
->     (rootname,extension)
->       | pathSep `elem` extension -> (path,"")
->       | otherwise -> (rootname,extension)
+> splitExt path = break ('.'==) (basename path) 
 
 \end{verbatim}
 Conventionally the colon is used on Unix system to separate
@@ -97,10 +93,8 @@ into a list of strings.
 > listSep = ':'
 
 > pathList :: String -> [String]
-> pathList s =
->   case break (listSep ==) s of
->     (s',"") -> [s']
->     (s',_:s'') -> s' : pathList s''
+> pathList = separateBy (==listSep)
+
 
 \end{verbatim}
 The function \texttt{lookupFile} can be used to search for files. It
@@ -109,7 +103,7 @@ exists in the file system.
 \begin{verbatim}
 
 > lookupFile :: [FilePath] -> IO (Maybe FilePath)
-> lookupFile fns = lookupFile' (concatMap (\ fn -> [addCurrySubdir fn,fn]) fns)
+> lookupFile fns = lookupFile' (concatMap (\ fn -> [inCurrySubdir fn,fn]) fns)
 >   where
 >     lookupFile' [] = return Nothing
 >     lookupFile' (fn:fns) =
