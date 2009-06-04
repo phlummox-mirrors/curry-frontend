@@ -80,7 +80,9 @@ considered. Also note that the extension will always start with a dot.
 > extension = snd . splitExt 
 
 > splitExt :: FilePath -> (FilePath,String)
-> splitExt path = break ('.'==) (basename path) 
+> splitExt filename = let paths = path filename in
+>   case break ('.'==) (last paths) of
+>     (rootname,ext) -> (unpath (init paths++[rootname]),ext)
 
 \end{verbatim}
 Conventionally the colon is used on Unix system to separate
