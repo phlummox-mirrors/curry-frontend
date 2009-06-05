@@ -21,15 +21,15 @@ column number. A tab stop is assumed at every eighth column.
 > module Position where
 > import Data.Generics
 
-> newtype SrcRef = SrcRef [Int] deriving (Eq,Ord,Typeable,Data) -- a pointer to the origin
+> newtype SrcRef = SrcRef [Int] deriving (Typeable,Data) -- a pointer to the origin
 
-> instance Show SrcRef where
->   show _ = ""
+-- the instances for standard classes or such that SrcRefs are invisible
 
-> instance Read SrcRef where
->   readsPrec _ s = [(noRef,s)]
+> instance Show SrcRef where show _ = ""
+> instance Read SrcRef where readsPrec _ s = [(noRef,s)]
+> instance Eq SrcRef   where _ == _ = True
+> instance Ord SrcRef  where compare _ _ = EQ
 
->
 > noRef :: SrcRef
 > noRef = SrcRef []
 >
