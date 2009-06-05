@@ -35,7 +35,7 @@ unqualified identifier.}
 >              anonId,unitId,boolId,charId,intId,floatId,listId,ioId,
 >              successId,trueId,falseId,nilId,consId,mainId,
 >              tupleId,isTupleId,tupleArity,
->              minusId,fminusId,
+>              minusId,fminusId,updIdentName,
 >              qUnitId,qBoolId,qCharId,qIntId,qFloatId,qListId,qIOId,
 >              qSuccessId,qTrueId,qFalseId,qNilId,qConsId,
 >              qTupleId,isQTupleId,qTupleArity,
@@ -401,3 +401,9 @@ showsModuleIdent (ModuleIdent (s:strs))
 
 > instance SrcRefOf Ident where srcRefOf = srcRefOf . positionOfIdent
 > instance SrcRefOf QualIdent where srcRefOf = srcRefOf . unqualify
+
+> updIdentName :: (String -> String) -> Ident -> Ident
+> updIdentName f ident = let p=positionOfIdent ident
+>                            i=uniqueId ident
+>                            n=name ident in
+>   addPositionIdent p $ flip renameIdent i $ mkIdent (f n)
