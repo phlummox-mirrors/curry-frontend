@@ -7,7 +7,7 @@ FRONTEND_HS = Frontend.hs
 
 # the haskell compiler
 HC	=ghc
-HC_OPTS	= -v1 --make -O4 -fvia-C
+HC_OPTS	= -v1 --make -O2 -fvia-C
 -include Makefile_support
 
 # MCC paths
@@ -28,18 +28,17 @@ MCC_BIN  	= $(MCC)/bin
 
 all: src frontend install
 
-
 # Compile MCC components and generate "cymake"
 .PHONY: src
 
-src:
+src: 
 	$(HC) $(HC_OPTS) $(CYMAKE) -o $(CYMAKE)
 
 
 # Compile the frontend API
 .PHONY: frontend
 
-frontend:
+frontend: 
 	$(HC) -c $(FRONTEND_HS)
 
 
@@ -49,3 +48,4 @@ frontend:
 
 install: $(CYMAKE)
 	@mv ./$(CYMAKE) $(MCC_BIN)/
+
