@@ -24,7 +24,7 @@ module FlatWithSrcRefs (SrcRef,Prog(..), QName, Visibility(..),
                   CaseType(..), CombType(..), Expr(..), BranchExpr(..),
                   Pattern(..), Literal(..), 
 		  readFlatCurry, readFlatInterface, readFlat, 
-		  writeFlatCurry) where
+		  writeFlatCurry,gshowsPrec) where
 
 import PathUtils (writeModule,maybeReadModule)
 import Directory
