@@ -947,31 +947,6 @@ position must be ignored when comparing two such pairs.
 \end{verbatim}
 
 
-> updIdentName :: (String -> String) -> Ident -> Ident
-> updIdentName f ident = let p=positionOfIdent ident
->                            i=uniqueId ident
->                            n=name ident in
->   addPositionIdent p $ flip renameIdent i $ mkIdent (f n) 
-
-> instance SrcRefOf ConstrTerm where
->   srcRefOf (LiteralPattern l) = srcRefOf l
->   srcRefOf (NegativePattern i _) = srcRefOf i
->   srcRefOf (VariablePattern i) = srcRefOf i
->   srcRefOf (ConstructorPattern i _) = srcRefOf i
->   srcRefOf (InfixPattern _ i _) = srcRefOf i
->   srcRefOf (ParenPattern c) = srcRefOf c
->   srcRefOf (TuplePattern s _) = s
->   srcRefOf (ListPattern s _) = error "list pattern has several source refs"
->   srcRefOf (AsPattern i _) = srcRefOf i
->   srcRefOf (LazyPattern s _) = s
->   srcRefOf (FunctionPattern i _) = srcRefOf i
->   srcRefOf (InfixFuncPattern _ i _) = srcRefOf i
-
-> instance SrcRefOf CurrySyntax.Literal where
->   srcRefOf (Char s _)   = s
->   srcRefOf (Int i _)    = srcRefOf i
->   srcRefOf (Float s _)  = s
->   srcRefOf (String s _) = s
 
 
 
