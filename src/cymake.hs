@@ -20,6 +20,7 @@ import IO
 import CurryHtml
 import List
 import Control.Monad (unless)
+import Char (isDigit)
 
 
 -------------------------------------------------------------------------------
@@ -40,7 +41,8 @@ cymake prog args imports
    | null files     = badUsage prog ["no files"]
    | null errs' && not (elem Html opts)    = do
        unless (noVerb options') 
-              (putStrLn  $ "This is cymake, version 1.1." ++ drop 11 "$Revision$")
+              (putStrLn  $ "This is cymake, version 1.1." 
+                         ++ filter isDigit "$Revision$")
        mapM_ (buildCurry options') files
    | null errs' = do
       let importFiles = nub $ imports ++ importPaths opts'
