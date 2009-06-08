@@ -39,7 +39,8 @@ cymake prog args imports
    | elem Help opts = printUsage prog
    | null files     = badUsage prog ["no files"]
    | null errs' && not (elem Html opts)    = do
-       unless (noVerb options') (putStrLn "This is cymake, version 1.1.312")
+       unless (noVerb options') 
+              (putStrLn  $ "This is cymake, version 1.1." ++ drop 11 "$Revision$")
        mapM_ (buildCurry options') files
    | null errs' = do
       let importFiles = nub $ imports ++ importPaths opts'
