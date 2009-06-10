@@ -20,8 +20,9 @@ source2html imports outputfilename sourcefilename = do
             modulname = fileName sourceprogname
         fullfname <- getCurryPath imports [] sourcefilename
         program <- filename2program imports (maybe sourcefilename id fullfname)
-        writeModule output 
-                  (program2html modulname program)
+        (if null outputfilename then writeModule output 
+                                else writeFile   output)
+           (program2html modulname program)
    
        
 --- generates htmlcode with syntax highlighting            
