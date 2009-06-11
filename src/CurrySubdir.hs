@@ -63,7 +63,7 @@ inCurrySubdir = inSubdir currySubdir
 
 writeModule :: String -> String -> IO ()
 writeModule filename contents = do
-  writeFile filename contents
+  --writeFile filename contents
   let filename' = inCurrySubdir filename
       subdir = dirname filename'
   ex <- doesDirectoryExist subdir
