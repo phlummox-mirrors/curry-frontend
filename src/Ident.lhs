@@ -99,7 +99,10 @@ unqualified identifier.}
 
 > addPositionIdent :: Position -> Ident -> Ident
 > addPositionIdent pos (Ident x n) = IdentPosition pos x n
-> addPositionIdent pos (IdentPosition _ x n) = IdentPosition pos x n
+> addPositionIdent AST{ast=sr} (IdentPosition pos x n) = 
+>   IdentPosition pos{ast=sr} x n
+> addPositionIdent pos (IdentPosition _ x n) = 
+>   IdentPosition pos x n
 
 > removePositionIdent :: Ident -> Ident
 > removePositionIdent (Ident x n) = (Ident x n)
