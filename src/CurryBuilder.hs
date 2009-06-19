@@ -10,22 +10,20 @@
 --
 module CurryBuilder (buildCurry, smake) where
 
-import CurryBuilderOpts
-import CurryCompiler
-import qualified CurryCompilerOpts as COpts
+import Modules (compileModule_)
+import CurryCompilerOpts 
 import CompilerResults
 import CurryDeps
 import Ident
 import PathUtils
 import Env
 import System
-import Directory
+import Directory 
 import Time
 import Monad
 import Maybe
-import List
+import List 
 import IO
-
 
 -------------------------------------------------------------------------------
 
@@ -34,7 +32,7 @@ import IO
 -- list is empty, otherwise it contains error messages.
 buildCurry :: Options -> FilePath -> IO ()
 buildCurry options file
-   = do let paths = union (importPaths options) (libPaths options)
+   = do let paths = importPaths options
 	file'          <- getSourcePath paths file
 	(cfile, errs1) <- return (maybe ("", [missingModule file])
 			                (\f -> (f,[]))
@@ -78,7 +76,7 @@ makeCurry options deps file
 	 return ()
 
  skipFile file
-    = do unless (noVerb options || elem (dirname file) (libPaths options))
+    = do unless (noVerb options)
 		(putStrLn ("skipping " ++ file ++ " ..."))
 
  generateFile file
@@ -105,40 +103,15 @@ makeCurry options deps file
 
  compOpts isImport
     | isImport 
-      = COpts.defaultOpts 
-	   { COpts.force = force options,
-	     COpts.importPaths = importPaths options ++ libPaths options,
-	     COpts.output = output options,
-	     COpts.noVerb = noVerb options,
-	     COpts.noWarn = noWarn options,
-	     COpts.noOverlapWarn = noOverlapWarn options,
-	     COpts.flat = True,
-             COpts.flatWithSrcRefs = flatWithSrcRefs options,
-	     COpts.flatXml = False,
-	     COpts.abstract = False,
-	     COpts.untypedAbstract = False,
-	     COpts.parseOnly = False,
-	     COpts.withExtensions = withExtensions options,
-	     COpts.dump = []
+      = options 
+	   { flat = True,
+	     flatXml = False,
+	     abstract = False,
+	     untypedAbstract = False,
+	     parseOnly = False,
+	     dump = []
 	   }
-    | otherwise
-      = COpts.defaultOpts 
-	   { COpts.force = force options,
-	     COpts.importPaths = importPaths options ++ libPaths options,
-	     COpts.output = output options,
-	     COpts.noVerb = noVerb options,
-	     COpts.noWarn = noWarn options,
-	     COpts.noOverlapWarn = noOverlapWarn options,
-             COpts.flatWithSrcRefs = flatWithSrcRefs options,
-	     COpts.flat = flat options,
-	     COpts.flatXml = flatXml options,
-	     COpts.abstract = abstract options,
-	     COpts.untypedAbstract = untypedAbstract options,
-	     COpts.parseOnly = parseOnly options,
-	     COpts.withExtensions = withExtensions options,
-	     COpts.dump = dump options
-	   }
-			 
+    | otherwise = options
 
 -------------------------------------------------------------------------------
 
@@ -204,6 +177,8 @@ getDepTimes (file:files)
 outOfDate :: [ClockTime] -> [ClockTime] -> Bool
 outOfDate tgtimes dptimes = or (map (\t -> or (map ((<) t) dptimes)) tgtimes)
 
+
+compileCurry = compileModule_
 
 -------------------------------------------------------------------------------
 -- Error handling

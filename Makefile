@@ -28,7 +28,6 @@ MCC_BIN_NAME = mcc_for_pakcs_`uname -s`
 
 all: compile
 
-
 # Compile all necessary MCC components
 .PHONY: compile
 

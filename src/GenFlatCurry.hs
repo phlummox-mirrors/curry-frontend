@@ -16,8 +16,7 @@ import Base (ArityEnv, ArityInfo(..), ModuleEnv, PEnv, PrecInfo(..),
 	     lookupValue, qualLookupTC,
 	     qualLookupArity, lookupArity,  internalError)
 
-import FlatWithSrcRefs
---import FlatCurry
+import ExtendedFlat
 
 import qualified IL
 import qualified CurrySyntax as CS
@@ -327,7 +326,7 @@ visitQualIdent qident
 		  = moduleName preludeMIdent
 		| otherwise
 		  = maybe (moduleName mid) moduleName mmod
-	return (mod, name ident)
+	return (mkQName (mod, name ident))
 
 --
 visitExternalName :: String -> FlatState String
@@ -743,75 +742,20 @@ overlappingRules qid = (OverlapRules,
 
 -------------------------------------------------------------------------------
 
+mkPreludeName s = mkQName ("Prelude",s)
+
+tupType :: Int -> TypeDecl
+tupType n = let tup = mkPreludeName ('(':replicate (n-1) ',' ++  [')'])
+             in Type tup Public [1..n] 
+		  [Cons tup n Public (map TVar [1..n])]
+
+
 prelude_types :: [TypeDecl]
-prelude_types = [(Type ("Prelude","()") Public [] 
-		  [(Cons ("Prelude","()") 0 Public [])]),
-		 (Type ("Prelude","[]") Public [0] 
-		  [(Cons ("Prelude","[]") 0 Public []),
-		   (Cons ("Prelude",":") 2 Public 
-		    [(TVar 0),(TCons ("Prelude","[]") [(TVar 0)])])]),
-		 (Type ("Prelude","(,)") Public [0,1] 
-		  [(Cons ("Prelude","(,)") 2 Public [(TVar 0),(TVar 1)])]),
-		 (Type ("Prelude","(,,)") Public [0,1,2]
-		  [(Cons ("Prelude","(,,)") 3 Public 
-		    [(TVar 0),(TVar 1),(TVar 2)])]),
-		 (Type ("Prelude","(,,,)") Public [0,1,2,3] 
-		  [(Cons ("Prelude","(,,,)") 4 Public 
-		    [(TVar 0),(TVar 1),(TVar 2),(TVar 3)])]),
-		 (Type ("Prelude","(,,,,)") Public [0,1,2,3,4] 
-		  [(Cons ("Prelude","(,,,,)") 5 Public 
-		    [(TVar 0),(TVar 1),(TVar 2),(TVar 3),(TVar 4)])]),
-		 (Type ("Prelude","(,,,,,)") Public [0,1,2,3,4,5] 
-		  [(Cons ("Prelude","(,,,,,)") 6 Public 
-		    [(TVar 0),(TVar 1),(TVar 2),(TVar 3),(TVar 4),(TVar 5)])]),
-		 (Type ("Prelude","(,,,,,,)") Public [0,1,2,3,4,5,6] 
-		  [(Cons ("Prelude","(,,,,,,)") 7 Public 
-		    [(TVar 0),(TVar 1),(TVar 2),(TVar 3),
-		     (TVar 4),(TVar 5),(TVar 6)])]),
-		 (Type ("Prelude","(,,,,,,,)") Public [0,1,2,3,4,5,6,7] 
-		  [(Cons ("Prelude","(,,,,,,,)") 8 Public 
-		    [(TVar 0),(TVar 1),(TVar 2),(TVar 3),
-		     (TVar 4),(TVar 5),(TVar 6),(TVar 7)])]),
-		 (Type ("Prelude","(,,,,,,,,)") Public [0,1,2,3,4,5,6,7,8] 
-		  [(Cons ("Prelude","(,,,,,,,,)") 9 Public
-		    [(TVar 0),(TVar 1),(TVar 2),(TVar 3),
-		     (TVar 4),(TVar 5),(TVar 6),(TVar 7),(TVar 8)])]),
-		 (Type ("Prelude","(,,,,,,,,,)") Public [0,1,2,3,4,5,6,7,8,9] 
-		  [(Cons ("Prelude","(,,,,,,,,,)") 10 Public 
-		    [(TVar 0),(TVar 1),(TVar 2),(TVar 3),
-		     (TVar 4),(TVar 5),(TVar 6),(TVar 7),(TVar 8),(TVar 9)])]),
-		 (Type ("Prelude","(,,,,,,,,,,)") Public 
-		  [0,1,2,3,4,5,6,7,8,9,10] 
-		  [(Cons ("Prelude","(,,,,,,,,,,)") 11 Public 
-		    [(TVar 0),(TVar 1),(TVar 2),(TVar 3),
-		     (TVar 4),(TVar 5),(TVar 6),(TVar 7),(TVar 8),
-		     (TVar 9),(TVar 10)])]),
-		 (Type ("Prelude","(,,,,,,,,,,,)") Public 
-		  [0,1,2,3,4,5,6,7,8,9,10,11] 
-		  [(Cons ("Prelude","(,,,,,,,,,,,)") 12 Public 
-		    [(TVar 0),(TVar 1),(TVar 2),(TVar 3),
-		     (TVar 4),(TVar 5),(TVar 6),(TVar 7),(TVar 8),
-		     (TVar 9),(TVar 10),(TVar 11)])]),
-		 (Type ("Prelude","(,,,,,,,,,,,,)") Public 
-		  [0,1,2,3,4,5,6,7,8,9,10,11,12] 
-		  [(Cons ("Prelude","(,,,,,,,,,,,,)") 13 Public 
-		    [(TVar 0),(TVar 1),(TVar 2),(TVar 3),
-		     (TVar 4),(TVar 5),(TVar 6),(TVar 7),
-		     (TVar 8),(TVar 9),(TVar 10),(TVar 11),(TVar 12)])]),
-		 (Type ("Prelude","(,,,,,,,,,,,,,)") Public 
-		  [0,1,2,3,4,5,6,7,8,9,10,11,12,13] 
-		  [(Cons ("Prelude","(,,,,,,,,,,,,,)") 14 Public 
-		    [(TVar 0),(TVar 1),(TVar 2),(TVar 3),
-		     (TVar 4),(TVar 5),(TVar 6),(TVar 7),
-		     (TVar 8),(TVar 9),(TVar 10),(TVar 11),
-		     (TVar 12),(TVar 13)])]),
-		 (Type ("Prelude","(,,,,,,,,,,,,,,)") Public 
-		  [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14] 
-		  [(Cons ("Prelude","(,,,,,,,,,,,,,,)") 15 Public 
-		    [(TVar 0),(TVar 1),(TVar 2),(TVar 3),
-		     (TVar 4),(TVar 5),(TVar 6),(TVar 7),
-		     (TVar 8),(TVar 9),(TVar 10),(TVar 11),
-		     (TVar 12),(TVar 13),(TVar 14)])])]
+prelude_types = let nil  = mkPreludeName "[]"
+                    cons = mkPreludeName ":" in
+  Type nil Public [0] [Cons nil 0 Public [],
+		       Cons cons 2 Public [TVar 0,TCons nil [TVar 0]]]:
+  map tupType (0:[2..15])
 
 
 -------------------------------------------------------------------------------
@@ -1037,13 +981,13 @@ lookupIdArity qid
 		      _  -> Nothing
 
 -- Generates a new index for a variable
-newVarIndex :: Ident -> FlatState Int
+newVarIndex :: Ident -> FlatState VarIndex
 newVarIndex id
    = FlatState (\env -> let idx  = 1 + varIndexE env
 		            vids = varIdsE env
 		        in  env{ varIndexE = idx,
 				 varIdsE   = ScopeEnv.insert id idx vids,
-				 result    = idx
+				 result    = mkIdx idx
 			       })
 
 -- Looks up the index of an existing variable or generates a new index,
@@ -1060,9 +1004,9 @@ getVarIndex id
 	                  (ScopeEnv.lookup id vids))
 
 --
-lookupVarIndex :: Ident -> FlatState (Maybe Int)
+lookupVarIndex :: Ident -> FlatState (Maybe VarIndex)
 lookupVarIndex id
-   = FlatState (\env -> env{ result = ScopeEnv.lookup id (varIdsE env) })
+   = FlatState (\env -> env{result=fmap mkIdx $ ScopeEnv.lookup id (varIdsE env)})
 
 --
 clearVarIndices :: FlatState ()

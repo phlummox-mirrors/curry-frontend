@@ -13,7 +13,6 @@ module Frontend (lex, parse, fullParse, typingParse, abstractIO, flatIO,
 
 import Modules
 import CurryBuilder
-import CurryCompiler
 import CurryCompilerOpts
 import CurryParser
 import CurryLexer
@@ -23,7 +22,7 @@ import CaseCompletion
 import CurryDeps hiding (unlitLiterate)
 import qualified CurrySyntax as CS
 import qualified AbstractCurry as ACY
-import qualified FlatWithSrcRefs as FCY
+import qualified ExtendedFlat as FCY
 import qualified Error as Err
 import CompilerResults
 import Message
@@ -248,6 +247,7 @@ isLiterateSource fn = litExt `isSuffixOf` fn
 
 litExt = ".lcurry"
 
+compileCurry = compileModule_
 
 -------------------------------------------------------------------------------
 -- Messages

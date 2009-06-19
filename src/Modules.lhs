@@ -42,7 +42,7 @@ import declarations are commented out
 > import ILTrans(ilTrans,ilTransIntf)
 > import ILLift(liftProg)
 > import ILxml(xmlModule) -- check
-> import FlatWithSrcRefs 
+> import ExtendedFlat
 > import GenFlatCurry (genFlatCurry,genFlatInterface)
 > import AbstractCurry
 > import GenAbstractCurry
@@ -149,8 +149,7 @@ code are obsolete and commented out.
 > simpleCheckModule :: Options -> ModuleEnv -> Module 
 >	    -> IO (ValueEnv,TCEnv,ArityEnv,Module,Interface,[Message])
 > simpleCheckModule opts mEnv (Module m es ds) =
->   do unless (noWarn opts || null msgs)
->	      (hPutStrLn stderr (unlines (map show msgs)))
+>   do unless (noWarn opts) (printMessages msgs)
 >      return (tyEnv'', tcEnv, aEnv'', modul, intf, msgs)
 >   where (impDs,topDs) = partition isImportDecl ds
 >         iEnv = foldr bindAlias initIEnv impDs
@@ -169,8 +168,7 @@ code are obsolete and commented out.
 > checkModule :: Options -> ModuleEnv -> Module 
 >      -> IO (ValueEnv,TCEnv,ArityEnv,Module,Interface,[Message])
 > checkModule opts mEnv (Module m es ds) =
->   do unless (noWarn opts || null msgs)
->	      (hPutStrLn stderr (unlines (map show msgs)))
+>   do unless (noWarn opts) (printMessages msgs)
 >      when (m == mkMIdent ["field114..."])
 >           (error (show es))
 >      return (tyEnv''', tcEnv', aEnv'', modul, intf, msgs)
@@ -252,22 +250,21 @@ code are obsolete and commented out.
 > writeFlat :: Options -> Maybe FilePath -> FilePath -> CurryEnv -> ModuleEnv 
 >              -> ValueEnv -> TCEnv -> ArityEnv -> IL.Module -> IO Prog
 > writeFlat opts tfn sfn cEnv mEnv tyEnv tcEnv aEnv il
->    = do let (prog,msgs) = genFlatCurry opts cEnv mEnv tyEnv tcEnv aEnv il
->         unless (noWarn opts || null msgs)
->	         (hPutStrLn stderr (unlines (map show msgs)))
->	  writeFlatCurry fname prog
->         return prog
->   where fname = fromMaybe (rootname sfn ++ flatExt) tfn
+>   = writeFlatFile opts (genFlatCurry opts cEnv mEnv tyEnv tcEnv aEnv il)
+>                        (fromMaybe (rootname sfn ++ flatExt) tfn)
 
 > writeFInt :: Options -> Maybe FilePath -> FilePath -> CurryEnv -> ModuleEnv
 >              -> ValueEnv -> TCEnv -> ArityEnv -> IL.Module -> IO Prog
 > writeFInt opts tfn sfn cEnv mEnv tyEnv tcEnv aEnv il 
->    = do let (intf,msgs) = genFlatInterface opts cEnv mEnv tyEnv tcEnv aEnv il
->         unless (noWarn opts || null msgs)
->	         (hPutStrLn stderr (unlines (map show msgs)))
->	  writeFlatCurry fname intf
->         return intf
->  where fname = fromMaybe (rootname sfn ++ fintExt) tfn
+>   = writeFlatFile opts (genFlatInterface opts cEnv mEnv tyEnv tcEnv aEnv il)
+>                        (fromMaybe (rootname sfn ++ fintExt) tfn)
+
+> writeFlatFile :: (Show a) => Options -> (Prog, [a]) -> String -> IO Prog
+> writeFlatFile opts (res,msgs) fname = do
+>         unless (noWarn opts) (printMessages msgs)
+>	  writeFlatCurry fname res
+>         return res
+
 
 > writeTypedAbs :: Maybe FilePath -> FilePath -> ValueEnv -> TCEnv -> Module
 >	           -> IO ()
@@ -717,8 +714,7 @@ be dependent on it any longer.
 >    cEnv = curryEnv mEnv tcEnv intf mod
 >    emptyIntf = Prog "" [] [] [] []
 >    writeInterface intf msgs = do
->          unless (noWarn opts || null msgs)
->                 (hPutStrLn stderr (unlines (map show msgs)))
+>          unless (noWarn opts) (printMessages msgs)
 >          writeFlatCurry fintName intf
 
 
@@ -734,7 +730,9 @@ be dependent on it any longer.
 >    | otherwise
 >      = internalError "@Modules.genAbstract: illegal option"
 
-
+> printMessages :: Show a => [a] -> IO ()
+> printMessages []   = return ()
+> printMessages msgs = hPutStrLn stderr $ unlines $ map show msgs
 
 \end{verbatim}
 The function \texttt{ppTypes} is used for pretty-printing the types

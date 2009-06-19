@@ -18,15 +18,16 @@ import GetOpt
 
 -- Data type for recording compiler options
 data Options
-   = Options{ force :: Bool,              -- force compilation
+   = Options{ force :: Bool,             -- force compilation
+              html :: Bool,              -- generate Html code  
 	      importPaths :: [FilePath], -- directories for searching imports
 	      output :: Maybe FilePath,  -- name of output file
 	      noInterface :: Bool,       -- do not create an interface file
 	      noVerb :: Bool,            -- verbosity on/off
 	      noWarn :: Bool,            -- warnings on/off
 	      noOverlapWarn :: Bool,     -- "overlap" warnings on/off
-              flatWithSrcRefs :: Bool,   -- generate code with source references
 	      flat :: Bool,              -- generate FlatCurry code
+              extendedFlat :: Bool,      -- generate FlatCurry code with extensions
 	      flatXml :: Bool,           -- generate flat XML code
 	      abstract :: Bool,          -- generate typed AbstracCurry code
 	      untypedAbstract :: Bool,   -- generate untyped AbstractCurry code
@@ -38,13 +39,14 @@ data Options
 
 -- Default compiler options
 defaultOpts = Options{ force           = False,
+                       html            = False,
 		       importPaths     = [],
 		       output          = Nothing,
 		       noInterface     = False,
 		       noVerb          = False,
 		       noWarn          = False,
 		       noOverlapWarn   = False,
-                       flatWithSrcRefs = False,
+                       extendedFlat    = False,
 		       flat            = False,
 		       flatXml         = False,
 		       abstract        = False,
@@ -57,17 +59,21 @@ defaultOpts = Options{ force           = False,
 
 -- Data type for representing all available options (needed to read and parse
 -- the options from the command line; see module "GetOpt")
-data Option = Help | Force
+data Option = Help | Force | Html
 	    | ImportPath FilePath | Output FilePath
 	    | NoInterface | NoVerb | NoWarn | NoOverlapWarn
-	    | FlatXML | Flat | FlatWithSrcRefs | Abstract | UntypedAbstract | ParseOnly
+	    | FlatXML | Flat | ExtFlat
+            | Abstract | UntypedAbstract | ParseOnly
 	    | WithExtensions
 	    | Dump [Dump]
+   deriving Eq
 
 
 -- All available compiler options
 options = [Option "f" ["force"] (NoArg Force)
 	          "force compilation of dependent files",
+           Option "" ["html"] (NoArg Html)
+                  "generate html code",
 	   Option "i" ["import-dir"] (ReqArg ImportPath "DIR")
                   "search for imports in DIR",
 	   Option "o" ["output"] (ReqArg Output "FILE")
@@ -82,7 +88,7 @@ options = [Option "f" ["force"] (NoArg Force)
 	          "do not print warnings for overlapping rules",
 	   Option "" ["flat"] (NoArg Flat)
                   "generate FlatCurry code",
-	   Option "" ["withSrcRefs"] (NoArg FlatWithSrcRefs)
+	   Option "" ["extended-flat"] (NoArg ExtFlat)
                   "generate FlatCurry code with source references",
 	   Option "" ["xml"] (NoArg FlatXML)
                   "generate flat xml code",
@@ -126,12 +132,12 @@ selectOption (ImportPath dir) opts
    = opts{ importPaths = dir:(importPaths opts) }
 selectOption (Output file) opts   = opts{ output = Just file }
 selectOption NoInterface opts     = opts{ noInterface = True }
-selectOption NoVerb opts          = opts{ noVerb = True, 
-					  noWarn = True,
-					  noOverlapWarn = True }
+selectOption NoVerb opts          = opts{ noVerb = True } 
 selectOption NoWarn opts          = opts{ noWarn = True }
 selectOption NoOverlapWarn opts   = opts{ noOverlapWarn = True }
 selectOption Flat opts            = opts{ flat = True }
+selectOption ExtFlat opts         = opts{ extendedFlat = True }
+selectOption Html opts            = opts{ html = True }
 selectOption FlatXML opts         = opts{ flatXml = True }
 selectOption Abstract opts        = opts{ abstract = True }
 selectOption UntypedAbstract opts = opts{ untypedAbstract = True }

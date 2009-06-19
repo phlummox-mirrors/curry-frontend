@@ -9,7 +9,7 @@
 --
 module InterfaceCheck where
 
-import FlatWithSrcRefs
+import ExtendedFlat
 import List
 
 

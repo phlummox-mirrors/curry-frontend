@@ -16,15 +16,17 @@
 
 {-# LANGUAGE DeriveDataTypeable, RankNTypes #-}
 
-module FlatWithSrcRefs (SrcRef,Prog(..), QName, Visibility(..),
+module ExtendedFlat (SrcRef,Prog(..), QName(..), Visibility(..),
                   TVarIndex, TypeDecl(..), ConsDecl(..), TypeExpr(..),
                   OpDecl(..), Fixity(..),
-                  VarIndex, 
+                  VarIndex(..), 
                   FuncDecl(..), Rule(..), 
                   CaseType(..), CombType(..), Expr(..), BranchExpr(..),
                   Pattern(..), Literal(..), 
 		  readFlatCurry, readFlatInterface, readFlat, 
-		  writeFlatCurry,gshowsPrec) where
+		  writeFlatCurry,gshowsPrec,
+                  qnOf,mkQName,
+                  mkIdx,idxOf) where
 
 import PathUtils (writeModule,maybeReadModule)
 import Directory
@@ -52,14 +54,115 @@ data Prog = Prog String [String] [TypeDecl] [FuncDecl] [OpDecl]
 	    deriving (Read, Show, Eq,Data,Typeable)
 
 
+-------------------------------------------------------------------------
 --- The data type for representing qualified names.
 --- In FlatCurry all names are qualified to avoid name clashes.
 --- The first component is the module name and the second component the
 --- unqualified name as it occurs in the source program.
+--- The additional information about source references and types should
+--- be invisible for the normal usage of QName.
+-------------------------------------------------------------------------
 
-type QName = (String,String)
+data QName = QName {srcRef      :: Maybe SrcRef,
+                    typeofQName :: Maybe TypeExpr,
+                    modName     :: String,
+                    localName   :: String} deriving (Data,Typeable)
 
+
+app_prec = 10
+hi_prec  = app_prec+1
+
+instance Read QName where
+  readsPrec d r = 
+       [ (mkQName nm,s) | (nm,s) <- readsPrec d r ]
+    ++ readParen (d > app_prec) 
+                 (\r' -> [ (QName ref typ n m,res) 
+                               | ("QName",s0) <- lex r',
+                                 (ref,s1) <- readsPrec hi_prec s0,
+                                 (typ,s2) <- readsPrec hi_prec s1,
+                                 (n,s3)   <- readsPrec hi_prec s2,
+                                 (m,res)  <- readsPrec hi_prec s3 ]) r
+    
+
+instance Show QName where
+  showsPrec d (QName r t m n)= 
+    showParen (d > app_prec) $ showString "QName " .
+                     showsPrec hi_prec r . showChar ' ' .
+                     showsPrec hi_prec t . showChar ' ' .
+                     showsPrec hi_prec m . showChar ' ' .
+                     showsPrec hi_prec n
+
+instance Eq QName where (==) = onName (==)
+instance Ord QName where compare = onName compare
+
+mkQName :: (String,String) -> QName
+mkQName = uncurry (QName Nothing Nothing)
+
+qnOf :: QName -> (String,String) 
+qnOf QName{modName=m,localName=n} = (m,n)
+
+onName :: ((String,String) -> (String,String) -> a) -> QName -> QName -> a
+onName f QName{modName=m,localName=l} QName{modName=m',localName=l'} =
+  f (m,l) (m',l')
+
+
+-------------------------------------------------------------------------
+--- The data type for representing variable names.
+--- The additional information should
+--- be invisible for the normal usage of VarIndex.
+-------------------------------------------------------------------------
+
+data VarIndex = VarIndex {
+                    typeofVar :: Maybe TypeExpr,
+                    index     :: Int
+                } deriving (Data,Typeable)
+
+onIndex :: (Int -> a) -> VarIndex -> a
+onIndex f VarIndex{index=i} = f i
+
+(.:) :: (c -> d) -> (a -> b -> c) -> a -> b -> d
+f .: g = \x -> f . g x
+
+onIndexes :: (Int -> Int -> a) -> VarIndex -> VarIndex -> a
+onIndexes = onIndex .: onIndex
+
+mkIdx :: Int -> VarIndex
+mkIdx = VarIndex Nothing
+
+idxOf :: VarIndex -> Int
+idxOf VarIndex{index=i}= i
+
+instance Read VarIndex where
+  readsPrec d r = 
+       [ (mkIdx i,s) | (i,s) <- readsPrec d r ]
+    ++ readParen (d > app_prec) 
+                 (\r' -> [ (VarIndex typ i,res) 
+                         | ("VarIndex",s0) <- lex r',
+                           (typ,s1) <- readsPrec hi_prec s0,
+                           (i,res)  <- readsPrec hi_prec s1]) r
+    
+
+instance Show VarIndex where
+  showsPrec d (VarIndex t i)= 
+    showParen (d > app_prec) $ showString "VarIndex " .
+                     showsPrec hi_prec t . showChar ' ' .
+                     showsPrec hi_prec i
+
+
+instance Eq VarIndex where (==) = onIndexes (==)
+instance Ord VarIndex where compare = onIndexes compare
+
+instance Num VarIndex where
+  (+) = mkIdx .: onIndexes (+)
+  (*) = mkIdx .: onIndexes (*)
+  (-) = mkIdx .: onIndexes (-)
+  abs = mkIdx .  onIndex abs
+  signum = mkIdx .  onIndex signum
+  fromInteger = mkIdx . fromInteger
+
+------------------------------------------------------------
 --- Data type to specify the visibility of various entities.
+------------------------------------------------------------
 
 data Visibility = Public    -- public (exported) entity
                 | Private   -- private entity
@@ -132,9 +235,6 @@ data Fixity = InfixOp | InfixlOp | InfixrOp deriving (Read, Show, Eq,Data,Typeab
 --- Data type for representing object variables.
 --- Object variables occurring in expressions are represented by (Var i)
 --- where i is a variable index.
-
-type VarIndex = Int
-
 
 --- Data type for representing function declarations.
 --- <PRE>
@@ -326,12 +426,15 @@ readFlatInterface fn
 readFlat :: FilePath -> IO (Maybe Prog)
 readFlat = liftM (fmap read) . maybeReadModule
   
-
-
 -- Writes a FlatCurry program term into a file.
 writeFlatCurry :: String -> Prog -> IO ()
 writeFlatCurry filename prog
    = writeModule filename (showFlatCurry' prog)
+
+-- Writes a FlatCurry program term with source references into a file.
+writeFlatWithSrcRefs :: String -> Prog -> IO ()
+writeFlatWithSrcRefs filename prog
+   = writeModule filename (showFlatCurry prog)
 
 -- Shows FlatCurry program in a more nicely way.
 showFlatCurry :: Prog -> String
@@ -357,18 +460,26 @@ showFlatCurry' x = gshowsPrec False x ""
 
 
 gshowsPrec :: Data a => Bool -> a -> ShowS
-gshowsPrec d = genericShowsPrec d `ext1Q` showsList
-                                      `ext2Q` showsTuple
-                                      `extQ`  (const id :: SrcRef -> ShowS)
-                                      `extQ`  (const id :: [SrcRef] -> ShowS)
-                                      `extQ`  (shows :: String -> ShowS)
-                                      `extQ`  (shows :: Char -> ShowS)
+gshowsPrec d = 
+  genericShowsPrec d `ext1Q` showsList
+                     `ext2Q` showsTuple
+                     `extQ`  (const id :: SrcRef -> ShowS)
+                     `extQ`  (const id :: [SrcRef] -> ShowS)
+                     `extQ`  (shows :: String -> ShowS)
+                     `extQ`  (shows :: Char -> ShowS)
+                     `extQ`  showsQName
+                     `extQ`  showsVarIndex
                                       
       where
+        showsQName :: QName -> ShowS
+        showsQName QName{modName=m,localName=n} = shows (m,n)
+
+        showsVarIndex :: VarIndex -> ShowS
+        showsVarIndex VarIndex{index=i} = shows i
+
         genericShowsPrec :: Data a => Bool -> a -> ShowS
         genericShowsPrec d t = let args = intersperse (showChar ' ') $
                                           gmapQ (gshowsPrec True) t in
-                               
                                showParen (d && not (null args)) $
                                showString (showConstr (toConstr t)) .
                                (if null args then id else showChar ' ') .

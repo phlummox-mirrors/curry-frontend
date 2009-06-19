@@ -44,15 +44,15 @@ Makefile.
 >             -> [FilePath] -> [FilePath] -> Maybe FilePath -> FilePath 
 >             -> IO [String]
 > buildScript clean debug linkAlways flat xml acy uacy
->             paths libPaths ofn fn =
+>             paths libraryPaths ofn fn =
 >   do
->     mfn'      <- getCurryPath paths libPaths fn
+>     mfn'      <- getCurryPath paths libraryPaths fn
 >     (fn',es1) <- return (maybe ("",["Error: missing module \"" ++ fn ++ "\""])
 >                                (\x -> (x,[]))
 >                                mfn')
 >     (ms,es2)  <- fmap 
 >                   (flattenDeps . sortDeps)
->                   (deps paths (filter (`notElem` paths) libPaths) emptyEnv fn')
+>                   (deps paths (filter (`notElem` paths) libraryPaths) emptyEnv fn')
 >     es        <- return (es1 ++ es2)
 >     when (null es)
 >          (putStr 
@@ -66,29 +66,29 @@ Makefile.
 
 > makeDepend :: [FilePath] -> [FilePath] -> Maybe FilePath -> [FilePath]
 >            -> IO ()
-> makeDepend paths libPaths ofn ms =
+> makeDepend paths libraryPaths ofn ms =
 >   do
 >     flatDeps <- liftM (makeDeps True) (allDeps flat)
 >     objectDeps <- liftM (makeDeps False) (allDeps nonFlat)
 >     maybe putStr writeFile ofn (flatDeps ++ objectDeps)
 >   where (flat,nonFlat) = partition (flatExt `isSuffixOf`) ms
->         allDeps = foldM (deps paths libPaths') emptyEnv
->         libPaths' = filter (`notElem` paths) libPaths
+>         allDeps = foldM (deps paths libraryPaths') emptyEnv
+>         libraryPaths' = filter (`notElem` paths) libraryPaths
 
 > deps :: [FilePath] -> [FilePath] -> SourceEnv -> FilePath -> IO SourceEnv
-> deps paths libPaths mEnv fn
->   | e `elem` sourceExts = sourceDeps paths libPaths (mkMIdent [r]) mEnv fn
+> deps paths libraryPaths mEnv fn
+>   | e `elem` sourceExts = sourceDeps paths libraryPaths (mkMIdent [r]) mEnv fn
 >   | e == icurryExt = return emptyEnv
->   | e `elem` objectExts = targetDeps paths libPaths mEnv r
->   | otherwise = targetDeps paths libPaths mEnv fn
+>   | e `elem` objectExts = targetDeps paths libraryPaths mEnv r
+>   | otherwise = targetDeps paths libraryPaths mEnv fn
 >   where r = rootname fn
 >         e = extension fn
 
 > targetDeps :: [FilePath] -> [FilePath] -> SourceEnv -> FilePath
 >            -> IO SourceEnv
-> targetDeps paths libPaths mEnv fn =
+> targetDeps paths libraryPaths mEnv fn =
 >   lookupFile [fn ++ e | e <- sourceExts] >>=
->   maybe (return (bindEnv m Unknown mEnv)) (sourceDeps paths libPaths m mEnv)
+>   maybe (return (bindEnv m Unknown mEnv)) (sourceDeps paths libraryPaths m mEnv)
 >   where m = mkMIdent [fn]
 
 \end{verbatim}
@@ -109,19 +109,19 @@ directories more than twice.
 
 > lookupModule :: [FilePath] -> [FilePath] -> ModuleIdent
 >              -> IO (Maybe FilePath)
-> lookupModule paths libPaths m =
+> lookupModule paths libraryPaths m =
 >   lookupFile [p `catPath` fn ++ e | p <- "" : paths, e <- moduleExts] >>=
 >   maybe (lookupFile [p `catPath` fn ++ e 
->                      | p <- libPaths, e <- moduleExts])
+>                      | p <- libraryPaths, e <- moduleExts])
 >         (return . Just)
 >   where fn = foldr1 catPath (moduleQualifiers m)
->                      -- | p <- libPaths, e <- [icurryExt, curryExt, lcurryExt]])
+>                      -- | p <- libraryPaths, e <- [icurryExt, curryExt, lcurryExt]])
 
 > --lookupModule :: [FilePath] -> [FilePath] -> ModuleIdent
 > --             -> IO (Maybe FilePath)
-> --lookupModule paths libPaths m =
+> --lookupModule paths libraryPaths m =
 > --  lookupFile [p `catPath` fn ++ e | p <- "" : paths, e <- moduleExts] >>=
-> --  maybe (lookupFile [p `catPath` fn ++ icurryExt | p <- libPaths])
+> --  maybe (lookupFile [p `catPath` fn ++ icurryExt | p <- libraryPaths])
 > --        (return . Just)
 > --  where fn = foldr1 catPath (moduleQualifiers m)
 
@@ -136,28 +136,28 @@ prelude itself. Any errors reported by the parser are ignored.
 
 > moduleDeps :: [FilePath] -> [FilePath] -> SourceEnv -> ModuleIdent
 >            -> IO SourceEnv
-> moduleDeps paths libPaths mEnv m =
+> moduleDeps paths libraryPaths mEnv m =
 >   case lookupEnv m mEnv of
 >     Just _ -> return mEnv
 >     Nothing ->
 >       do
->         mbFn <- lookupModule paths libPaths m
+>         mbFn <- lookupModule paths libraryPaths m
 >         case mbFn of
 >           Just fn
 >             | icurryExt `isSuffixOf` fn ->
 >                 return (bindEnv m (Interface fn) mEnv)
->             | otherwise -> sourceDeps paths libPaths m mEnv fn
+>             | otherwise -> sourceDeps paths libraryPaths m mEnv fn
 >           Nothing -> return (bindEnv m Unknown mEnv)
 
 > sourceDeps :: [FilePath] -> [FilePath] -> ModuleIdent -> SourceEnv
 >            -> FilePath -> IO SourceEnv
-> sourceDeps paths libPaths m mEnv fn =
+> sourceDeps paths libraryPaths m mEnv fn =
 >   do
 >     s <- readModule fn
 >     case parseHeader fn (unlitLiterate fn s) of
 >       Ok (Module m' _ ds) ->
 >         let ms = imports m' ds in
->         foldM (moduleDeps paths libPaths) (bindEnv m (Source fn ms) mEnv) ms
+>         foldM (moduleDeps paths libraryPaths) (bindEnv m (Source fn ms) mEnv) ms
 >       Error _ -> return (bindEnv m (Source fn []) mEnv)
 
 > imports :: ModuleIdent -> [Decl] -> [ModuleIdent]
@@ -344,10 +344,10 @@ if the given file name has no extension.
 \begin{verbatim}
 
 > getCurryPath :: [FilePath] -> [FilePath] -> FilePath -> IO (Maybe FilePath)
-> getCurryPath paths libPaths fn
+> getCurryPath paths libraryPaths fn
 >   = lookupFile filepaths
 >  where
->  filepaths = [p `catPath` fn' | p   <- "":(paths ++ libPaths),
+>  filepaths = [p `catPath` fn' | p   <- "":(paths ++ libraryPaths),
 >                                 fn' <- fns']
 >  fns' | null (extension fn) = [fn ++ ext' | ext' <- sourceExts]
 >       | otherwise           = [fn]

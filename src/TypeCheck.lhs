@@ -436,7 +436,7 @@ signature the declared type must be too general.
 
 > tcLiteral :: ModuleIdent -> Literal -> TcState Type
 > tcLiteral _ (Char _ _) = return charType
-> tcLiteral m (Int v _) =
+> tcLiteral m (Int v _)  = --return intType
 >   do
 >     ty <- freshConstrained [intType,floatType]
 >     updateSt_ (bindFun m v (monoType ty))

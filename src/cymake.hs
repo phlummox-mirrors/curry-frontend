@@ -13,7 +13,7 @@
 
 import GetOpt
 import CurryBuilder
-import CurryBuilderOpts
+import CurryCompilerOpts
 import System
 import Maybe
 import IO
@@ -29,14 +29,14 @@ import Char (isDigit)
 main :: IO ()
 main = do prog    <- getProgName
 	  args    <- getArgs
-	  cymake prog args []
+	  cymake prog args 
 
 
 -------------------------------------------------------------------------------
 
 -- Checks the command line arguments and invokes the builder.
-cymake :: String -> [String] -> [FilePath] -> IO ()
-cymake prog args imports
+cymake :: String -> [String] -> IO ()
+cymake prog args 
    | elem Help opts = printUsage prog
    | null files     = badUsage prog ["no files"]
    | null errs' && not (elem Html opts)    = do
@@ -45,14 +45,14 @@ cymake prog args imports
                          ++ filter isDigit "$Revision$")
        mapM_ (buildCurry options') files
    | null errs' = do
-      let importFiles = nub $ imports ++ importPaths opts'
+      let importFiles = nub $ importPaths opts'
           outputFile  = maybe "" id (output opts')
       mapM_ (source2html importFiles outputFile) files
                               
    | otherwise      = badUsage prog errs'
  where
  (opts, files, errs) = getOpt Permute options args
- opts'    = foldr selectOption defaultOpts{ libPaths = imports } opts
+ opts'    = foldr selectOption defaultOpts opts
  options' = if  flat opts' || flatXml opts' 
 	        || abstract opts' || untypedAbstract opts' || parseOnly opts'
 	        then  opts'

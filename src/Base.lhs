@@ -13,13 +13,13 @@ phases of the compiler.
 
 > module Base(module Base,module Ident,module Position,module Types,
 >             module CurrySyntax) where
-> import Ident
+> import Ident 
 > import Position
 > import Types
 > import CurrySyntax
 > import CurryPP
 > import Pretty
-> import FlatWithSrcRefs hiding (SrcRef, Fixity(..), TypeExpr, Expr(..))
+> import ExtendedFlat hiding (SrcRef, Fixity(..), TypeExpr, Expr(..))
 > import Env
 > import TopEnv
 > import List
@@ -29,7 +29,7 @@ phases of the compiler.
 > import Utils
 > import Maybe
 
-> import qualified FlatWithSrcRefs (Fixity(..), TypeExpr)
+> import qualified ExtendedFlat as EF 
 
 \end{verbatim}
 \paragraph{Types}
@@ -171,7 +171,7 @@ for PAKCS.
 >
 >  genITypeDecl :: TypeDecl -> IDecl
 >  genITypeDecl (Type qn _ is cs)
->     | recordExt `isPrefixOf` snd qn
+>     | recordExt `isPrefixOf` localName qn
 >       = ITypeDecl pos
 >                   (genQualIdent qn)
 >	            (map (genVarIndexIdent "a") is)
@@ -196,13 +196,13 @@ for PAKCS.
 >
 >  genConstrDecl :: ConsDecl -> ConstrDecl
 >  genConstrDecl (Cons qn _ _ ts)
->     = ConstrDecl pos [] (mkIdent (snd qn)) (map genTypeExpr ts)
+>     = ConstrDecl pos [] (mkIdent (localName qn)) (map genTypeExpr ts)
 >
->  genLabeledType :: FlatWithSrcRefs.ConsDecl -> ([Ident],CurrySyntax.TypeExpr)
->  genLabeledType (Cons (q,n) _ _ [t])
->     = ([renameLabel (fromLabelExtId (mkIdent n))], genTypeExpr t)
+>  genLabeledType :: EF.ConsDecl -> ([Ident],CurrySyntax.TypeExpr)
+>  genLabeledType (Cons qn _ _ [t])
+>     = ([renameLabel (fromLabelExtId (mkIdent $ localName qn))], genTypeExpr t)
 >
->  genTypeExpr :: FlatWithSrcRefs.TypeExpr -> CurrySyntax.TypeExpr
+>  genTypeExpr :: EF.TypeExpr -> CurrySyntax.TypeExpr
 >  genTypeExpr (TVar i)
 >     = VariableType (genVarIndexIdent "a" i)
 >  genTypeExpr (FuncType t1 t2) 
@@ -210,19 +210,20 @@ for PAKCS.
 >  genTypeExpr (TCons qn ts) 
 >     = ConstructorType (genQualIdent qn) (map genTypeExpr ts)
 >
->  genInfix :: FlatWithSrcRefs.Fixity -> Infix
->  genInfix FlatWithSrcRefs.InfixOp  = Infix
->  genInfix FlatWithSrcRefs.InfixlOp = InfixL
->  genInfix FlatWithSrcRefs.InfixrOp = InfixR
+>  genInfix :: EF.Fixity -> Infix
+>  genInfix EF.InfixOp  = Infix
+>  genInfix EF.InfixlOp = InfixL
+>  genInfix EF.InfixrOp = InfixR
 >
 >  genQualIdent :: QName -> QualIdent
->  genQualIdent (mod,name) = qualifyWith (mkMIdent [mod]) (mkIdent name)
+>  genQualIdent QName{modName=mod,localName=name} = 
+>    qualifyWith (mkMIdent [mod]) (mkIdent name)
 >
 >  genVarIndexIdent :: String -> Int -> Ident
 >  genVarIndexIdent v i = mkIdent (v ++ show i)
 >
 >  isSpecialPreludeType :: TypeDecl -> Bool
->  isSpecialPreludeType (Type (mod,name) _ _ _) 
+>  isSpecialPreludeType (Type QName{modName=mod,localName=name} _ _ _) 
 >     = (name == "[]" || name == "()") && mod == "Prelude"
 >  isSpecialPreludeType _ = False
 >
