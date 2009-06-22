@@ -10,7 +10,7 @@ MCC	 = $(CURDIR)
 
 MCC_SRC  = $(MCC)/src
 MCC_BIN  = $(MCC)/bin
-MCC_DIST = $(MCC)/dist
+MCC_DIST = $(MCC)/distribution
 
 MCC_DIST_BIN = $(MCC_DIST)/binary
 MCC_DIST_SRC = $(MCC_DIST)/source
