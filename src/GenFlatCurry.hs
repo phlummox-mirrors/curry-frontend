@@ -10,12 +10,13 @@
 module GenFlatCurry (genFlatCurry,
 		     genFlatInterface) where
 
-
+import Debug.Trace
 import Base (ArityEnv, ArityInfo(..), ModuleEnv, PEnv, PrecInfo(..), 
 	     OpPrec(..), TCEnv, TypeInfo(..), ValueEnv, ValueInfo(..),
 	     lookupValue, qualLookupTC,
 	     qualLookupArity, lookupArity,  internalError)
 
+--import FlatWithSrcRefs
 import ExtendedFlat
 
 import qualified IL
@@ -27,12 +28,13 @@ import qualified CurryEnv
 import ScopeEnv (ScopeEnv)
 import qualified ScopeEnv
 
+import Control.Monad.State
 import Types
 import CurryCompilerOpts
 import Message
 import PatchPrelude
 import Position
-import Ident
+import Ident as Id
 import TopEnv
 import Env
 import Map
@@ -152,7 +154,7 @@ visitFuncDecl (IL.FunctionDecl qident params typeexpr expression)
 	   texpr <- visitType typeexpr
 	   qname <- visitQualIdent qident
 	   clearVarIndices
-	   return (Func qname (length params) Public texpr (Rule [] (Var 0))))
+	   return (Func qname (length params) Public texpr (Rule [] (Var $ mkIdx 0))))
 visitFuncDecl (IL.ExternalDecl qident _ name typeexpr)
    = do setFunctionId qident
 	texpr <- visitType typeexpr
@@ -162,20 +164,16 @@ visitFuncDecl (IL.ExternalDecl qident _ name typeexpr)
 	return (Func qname (typeArity typeexpr) vis texpr (External xname))
 visitFuncDecl (IL.NewtypeDecl _ _ _)
    = do mid <- moduleId 
-	error ("\"" ++ moduleName mid 
+	error ("\"" ++ Id.moduleName mid 
 	       ++ "\": newtype declarations are not supported")
 visitFuncDecl _ = internalError "GenFlatCurry: no function declaration"
 
 --
 visitExpression :: IL.Expression -> FlatState Expr
 visitExpression (IL.Literal literal)
-   = do lit <- visitLiteral literal
-	return (Lit lit)
+   = liftM Lit (visitLiteral literal)
 visitExpression (IL.Variable ident)
-   = do index_ <- lookupVarIndex ident
-	maybe (internalError (missingVarIndex ident))
-	      (return . Var)
-	      index_
+   = liftM Var (lookupVarIndex ident)
 visitExpression (IL.Function qident _)
    = do arity_ <- lookupIdArity qident
 	maybe (internalError (funcArity qident))
@@ -220,6 +218,33 @@ visitExpression (IL.Letrec bindings expression)
 	endScope
 	return (Let binds expr)
 
+
+getTypeOf :: Ident -> FlatState (Maybe TypeExpr)
+getTypeOf ident = do
+    (valEnv, _) <- environments
+    case lookupValue ident valEnv of 
+      Value _ (ForAll _ t) : _ 
+          -> do t <- visitType (ttrans t)
+                trace ("getTypeOf(" ++ show ident ++ ") = " ++ show t)$
+                      return (Just t)
+      v   -> trace ("lookupValue did not return a value for index " ++ show ident ++ ", instead " ++ show v)
+             (return Nothing)
+    where ttrans :: Type -> IL.Type 
+          ttrans (TypeConstructor i ts)
+              = IL.TypeConstructor i (map ttrans ts)
+          ttrans (TypeVariable v)
+              = IL.TypeVariable v
+          ttrans (TypeConstrained [] v)
+              = trace (msg1 v) $ IL.TypeVariable v
+          ttrans (TypeConstrained (v:_) i)
+              = trace (msg2 i ilt) ilt
+              where ilt = ttrans v
+          ttrans (TypeArrow f x) = IL.TypeArrow (ttrans f) (ttrans x)
+          ttrans s@(TypeSkolem _) = error $ "in ttrans: " ++ show s
+          ttrans s@(TypeRecord _ _) = error $ "in ttrans: " ++ show s
+          msg1 i = "in ttrans: empty TypeConstrained, coerced to type var #" ++ show i
+          msg2 i t = "in ttrans: TypeConstrained with index " ++ show i ++ ", coerced to " ++ show t
+
 --
 visitLiteral :: IL.Literal -> FlatState Literal
 visitLiteral (IL.Char rs c)  = return (Charc rs c)
@@ -244,7 +269,7 @@ visitConstrTerm (IL.ConstructorPattern qident args)
 	return (Pattern qname is)
 visitConstrTerm (IL.VariablePattern ident)
    = do mid <- moduleId
-	error ("\"" ++ moduleName mid 
+	error ("\"" ++ Id.moduleName mid 
 	       ++ "\": variable patterns are not supported")
 
 --
@@ -255,11 +280,8 @@ visitEval IL.Flex  = return (Flex)
 --
 visitBinding :: IL.Binding -> FlatState (VarIndex, Expr)
 visitBinding (IL.Binding ident expression)
-   = do index_ <- lookupVarIndex ident
-	index  <- maybe (internalError (missingVarIndex ident))
-		  return
-		  index_
-	expr   <- visitExpression expression
+   = do index <- lookupVarIndex ident
+	expr  <- visitExpression expression
 	return (index, expr)
 
 
@@ -270,7 +292,7 @@ visitFuncIDecl :: CS.IDecl -> FlatState FuncDecl
 visitFuncIDecl (CS.IFunctionDecl _ qident arity typeexpr)
    = do texpr <- visitType (fst (cs2ilType [] typeexpr))
 	qname <- visitQualIdent qident
-	return (Func qname arity Public texpr (Rule [] (Var 0)))
+	return (Func qname arity Public texpr (Rule [] (Var $ mkIdx 0)))
 visitFuncIDecl _ = internalError "GenFlatCurry: no function interface"
 
 --
@@ -315,7 +337,7 @@ visitOpIDecl (CS.IInfixDecl _ fixity prec qident)
 
 --
 visitModuleIdent :: ModuleIdent -> FlatState String
-visitModuleIdent mident = return (moduleName mident)
+visitModuleIdent mident = return (Id.moduleName mident)
 
 --
 visitQualIdent :: QualIdent -> FlatState QName
@@ -323,15 +345,15 @@ visitQualIdent qident
    = do mid <- moduleId
 	let (mmod, ident) = splitQualIdent qident
 	    mod | elem ident [listId, consId, nilId, unitId] || isTupleId ident
-		  = moduleName preludeMIdent
+		  = Id.moduleName preludeMIdent
 		| otherwise
-		  = maybe (moduleName mid) moduleName mmod
-	return (mkQName (mod, name ident))
+		  = maybe (Id.moduleName mid) Id.moduleName mmod
+	return (curry mkQName mod $ name ident)
 
 --
 visitExternalName :: String -> FlatState String
 visitExternalName name 
-   = moduleId >>= (\mid -> return ((moduleName mid) ++ "." ++ name))
+   = moduleId >>= (\mid -> return ((Id.moduleName mid) ++ "." ++ name))
 
 
 -------------------------------------------------------------------------------
@@ -741,21 +763,21 @@ overlappingRules qid = (OverlapRules,
 
 
 -------------------------------------------------------------------------------
-
-mkPreludeName s = mkQName ("Prelude",s)
-
-tupType :: Int -> TypeDecl
-tupType n = let tup = mkPreludeName ('(':replicate (n-1) ',' ++  [')'])
-             in Type tup Public [1..n] 
-		  [Cons tup n Public (map TVar [1..n])]
-
-
 prelude_types :: [TypeDecl]
-prelude_types = let nil  = mkPreludeName "[]"
-                    cons = mkPreludeName ":" in
-  Type nil Public [0] [Cons nil 0 Public [],
-		       Cons cons 2 Public [TVar 0,TCons nil [TVar 0]]]:
-  map tupType (0:[2..15])
+prelude_types = [(Type (preludeName "()") Public [] 
+		  [(Cons (preludeName "()") 0 Public [])]),
+		 (Type (preludeName "[]") Public [0] 
+		  [(Cons (preludeName "[]") 0 Public []),
+		   (Cons (preludeName ":") 2 Public 
+		    [(TVar 0),(TCons (preludeName "[]") [(TVar 0)])])])]
+                ++ map mkTupleType [2..15]
+    where
+      preludeName = curry mkQName "Prelude"
+      mkTupleType n = let last  = n-1
+                          name = preludeName("(" ++ replicate last ',' ++ ")")
+                          idxs  = [0..last]
+                          vars  = map TVar idxs
+                      in Type name Public idxs [Cons name n Public vars]
 
 
 -------------------------------------------------------------------------------
@@ -813,8 +835,7 @@ bindingIdent (IL.Binding ident _) = ident
 -------------------------------------------------------------------------------
 
 int2num :: Int -> Int
-int2num i | i < 0     = (-1) * i
-	  | otherwise = i
+int2num = abs
 
 
 emap :: (e -> a -> (b,e)) -> e -> [a] -> ([b], e)
@@ -828,7 +849,7 @@ emap f env (x:xs) = let (x',env')    = f env x
 
 -- Data type for representing an environment which contains information needed
 -- for generating FlatCurry code.
-data FlatEnv a = FlatEnv{ moduleIdE     :: ModuleIdent,
+data FlatEnv = FlatEnv{ moduleIdE     :: ModuleIdent,
 			  functionIdE   :: QualIdent,
 			  compilerOptsE :: Options,
 			  moduleEnvE    :: ModuleEnv,
@@ -842,12 +863,11 @@ data FlatEnv a = FlatEnv{ moduleIdE     :: ModuleIdent,
 			  exportsE      :: [CS.Export],
 			  interfaceE    :: [CS.IDecl],
 			  varIndexE     :: Int,
-			  varIdsE       :: ScopeEnv Ident Int,
+			  varIdsE       :: ScopeEnv Ident VarIndex,
 			  tvarIndexE    :: Int,
-			  tvarIdsE      :: ScopeEnv Ident Int,
+			  tvarIdsE      :: ScopeEnv Ident TVarIndex,
 			  messagesE     :: [Message],
-			  genInterfaceE :: Bool,
-			  result        :: a
+			  genInterfaceE :: Bool
 			}
 
 data IdentExport = NotConstr       -- function, type-constructor
@@ -858,105 +878,84 @@ data IdentExport = NotConstr       -- function, type-constructor
 
 -- The environment 'FlatEnv' is embedded in the monadic representation
 -- 'FlatState' which allows the usage of 'do' expressions.
-data FlatState a = FlatState (FlatEnv () -> FlatEnv a)
-
-instance Monad FlatState where
-
-   -- (>>=)
-   (FlatState f) >>= g = FlatState (\env -> let env'        = f env
-				                FlatState h = g (result env')
-				            in  h (env'{ result = () }))
-
-   -- (>>)
-   a >> b = a >>= (\_ -> b)
-
-   -- return
-   return v = FlatState (\env -> env{ result = v })
+type FlatState a = State FlatEnv a
 
 
--- Runs a 'FlatState' action an returns the result
+-- Runs a 'FlatState' action and returns the result
 run :: Options -> CurryEnv -> ModuleEnv -> ValueEnv -> TCEnv -> ArityEnv 
     -> Bool -> FlatState a -> (a, [Message])
-run opts cEnv mEnv tyEnv tcEnv aEnv genIntf (FlatState f)
-   = (result env, messagesE env)
+run opts cEnv mEnv tyEnv tcEnv aEnv genIntf f
+   = (result, messagesE env)
  where
- env = f (FlatEnv{ moduleIdE     = CurryEnv.moduleId cEnv,
-		   functionIdE   = qualify (mkIdent ""),
-		   compilerOptsE = opts,
-		   moduleEnvE    = mEnv,
-		   arityEnvE     = aEnv,
-		   typeEnvE      = tyEnv,
-		   tConsEnvE     = tcEnv,
-		   publicEnvE    = genPubEnv (CurryEnv.moduleId cEnv)
-		                             (CurryEnv.interface cEnv),
-		   fixitiesE     = CurryEnv.infixDecls cEnv,
-		   typeSynonymsE = CurryEnv.typeSynonyms cEnv,
-		   importsE      = CurryEnv.imports cEnv,
-		   exportsE      = CurryEnv.exports cEnv,
-		   interfaceE    = CurryEnv.interface cEnv,
-		   varIndexE     = 0,
-		   varIdsE       = ScopeEnv.new,
-		   tvarIndexE    = 0,
-		   tvarIdsE      = ScopeEnv.new,
-		   messagesE      = [],
-		   genInterfaceE = genIntf,
-		   result        = ()
-		 } )
+ (result, env) = runState f env0
+ env0 = FlatEnv{ moduleIdE     = CurryEnv.moduleId cEnv,
+		 functionIdE   = qualify (mkIdent ""),
+		 compilerOptsE = opts,
+		 moduleEnvE    = mEnv,
+		 arityEnvE     = aEnv,
+		 typeEnvE      = tyEnv,
+		 tConsEnvE     = tcEnv,
+		 publicEnvE    = genPubEnv (CurryEnv.moduleId cEnv)
+		                 (CurryEnv.interface cEnv),
+		 fixitiesE     = CurryEnv.infixDecls cEnv,
+		 typeSynonymsE = CurryEnv.typeSynonyms cEnv,
+		 importsE      = CurryEnv.imports cEnv,
+		 exportsE      = CurryEnv.exports cEnv,
+		 interfaceE    = CurryEnv.interface cEnv,
+		 varIndexE     = 0,
+		 varIdsE       = ScopeEnv.new,
+		 tvarIndexE    = 0,
+		 tvarIdsE      = ScopeEnv.new,
+		 messagesE      = [],
+		 genInterfaceE = genIntf
+	       }
 
 
 --
 moduleId :: FlatState ModuleIdent
-moduleId = FlatState (\env -> env{ result = moduleIdE env })
+moduleId = gets moduleIdE
 
 --
 functionId :: FlatState QualIdent
-functionId = FlatState (\env -> env{ result = functionIdE env })
+functionId = gets functionIdE
 
 --
 setFunctionId :: QualIdent -> FlatState ()
-setFunctionId qid = FlatState (\env -> env{ functionIdE = qid })
+setFunctionId qid = modify (\env -> env{ functionIdE = qid })
 
 --
 compilerOpts :: FlatState Options
-compilerOpts = FlatState (\env -> env{ result = compilerOptsE env })
+compilerOpts = gets compilerOptsE
 
 --
 exports :: FlatState [CS.Export]
-exports = FlatState (\env -> env{ result = exportsE env })
+exports = gets exportsE
 
 --
 imports :: FlatState [CS.IDecl]
-imports = FlatState (\env -> env{ result = importsE env })
+imports = gets importsE
 
 --
 records :: FlatState [CS.IDecl]
-records 
-   = FlatState 
-       (\env -> env{ result = filter isRecordIDecl (interfaceE env) })
+records = gets (filter isRecordIDecl . interfaceE)
 
 --
 fixities :: FlatState [CS.IDecl]
-fixities = FlatState (\env -> env{ result = fixitiesE env })
+fixities = gets fixitiesE
 
 --
 typeSynonyms :: FlatState [CS.IDecl]
-typeSynonyms = FlatState (\env -> env{ result = typeSynonymsE env })
+typeSynonyms = gets typeSynonymsE
 
 --
 environments :: FlatState (ValueEnv,TCEnv)
-environments 
-   = FlatState 
-       (\env -> env{ result = (typeEnvE env, tConsEnvE env) })
+environments = gets (\env -> (typeEnvE env, tConsEnvE env))
 
 --
 isPublic :: Bool -> QualIdent -> FlatState Bool
-isPublic isConstr qid
-   = FlatState
-       (\env -> env{ result = maybe False
-                                    isP
-                                    (lookupEnv (unqualify qid) 
-                                               (publicEnvE env))
-                   })
+isPublic isConstr qid = gets (\env -> maybe False isP
+                                      (lookupEnv (unqualify qid) 
+                                       (publicEnvE env)))
   where
     isP NotConstr = not isConstr
     isP OnlyConstr = isConstr
@@ -965,12 +964,12 @@ isPublic isConstr qid
 --
 lookupModuleIntf :: ModuleIdent -> FlatState (Maybe [CS.IDecl])
 lookupModuleIntf mid
-   = FlatState (\env -> env{ result = lookupEnv mid (moduleEnvE env) })
+   = gets (lookupEnv mid . moduleEnvE)
 
 --
 lookupIdArity :: QualIdent -> FlatState (Maybe Int)
 lookupIdArity qid
-   = FlatState (\env -> env{ result = lookupA qid (arityEnvE env) })
+   = gets (lookupA qid . arityEnvE)
  where
  lookupA qid aEnv = case (qualLookupArity qid aEnv) of
 		      [ArityInfo _ a]
@@ -983,94 +982,86 @@ lookupIdArity qid
 -- Generates a new index for a variable
 newVarIndex :: Ident -> FlatState VarIndex
 newVarIndex id
-   = FlatState (\env -> let idx  = 1 + varIndexE env
-		            vids = varIdsE env
-		        in  env{ varIndexE = idx,
-				 varIdsE   = ScopeEnv.insert id idx vids,
-				 result    = mkIdx idx
-			       })
-
--- Looks up the index of an existing variable or generates a new index,
--- if the variable doesn't exist
-getVarIndex :: Ident -> FlatState Int
-getVarIndex id
-   = FlatState 
-       (\env -> let idx   = 1 + varIndexE env
-	            vids  = varIdsE env    
-	        in  maybe (env{ varIndexE = idx,
-				varIdsE   = ScopeEnv.insert id idx vids,
-				result    = idx})
-	                  (\idx' -> env{ result = idx' })
-	                  (ScopeEnv.lookup id vids))
+   = do idx0 <- gets varIndexE
+        ty <- getTypeOf id
+        let idx = idx0 + 1
+            vid = VarIndex ty idx
+        vids <- gets varIdsE
+        modify (\env -> env{ varIndexE = idx,
+			     varIdsE   = ScopeEnv.insert id vid vids
+			   })
+        return vid
 
 --
-lookupVarIndex :: Ident -> FlatState (Maybe VarIndex)
+lookupVarIndex :: Ident -> FlatState VarIndex
 lookupVarIndex id
-   = FlatState (\env -> env{result=fmap mkIdx $ ScopeEnv.lookup id (varIdsE env)})
+   = do index_ <- gets (ScopeEnv.lookup id . varIdsE)
+        maybe (internalError (missingVarIndex id)) return index_
 
 --
 clearVarIndices :: FlatState ()
-clearVarIndices = FlatState (\env -> env{ varIndexE = 0,
-					  varIdsE = ScopeEnv.new 
-					})
+clearVarIndices = modify (\env -> env { varIndexE = 0,
+				        varIdsE = ScopeEnv.new 
+				      })
 
 -- Generates a new index for a type variable
 newTVarIndex :: Ident -> FlatState Int
 newTVarIndex id
-   = FlatState (\env -> let idx  = 1 + tvarIndexE env
-		            vids = tvarIdsE env
-		        in  env{ tvarIndexE = idx,
-				 tvarIdsE   = ScopeEnv.insert id idx vids,
-				 result     = idx
-			       })
+   = do idx0 <- gets tvarIndexE
+        let idx = 1 + idx0
+        vids <- gets tvarIdsE
+        modify (\env -> env{ tvarIndexE = idx,
+			     tvarIdsE   = ScopeEnv.insert id idx vids
+			   })
+        return idx
 
 -- Looks up the index of an existing type variable or generates a new index,
 -- if the type variable doesn't exist
 getTVarIndex :: Ident -> FlatState Int
 getTVarIndex id
-   = FlatState 
-       (\env -> let idx   = 1 + tvarIndexE env
-	            vids  = tvarIdsE env    
-	        in  maybe (env{ tvarIndexE = idx,
-				tvarIdsE   = ScopeEnv.insert id idx vids,
-				result     = idx})
-	                  (\idx' -> env{ result = idx' })
-	                  (ScopeEnv.lookup id vids))
+   = do idx0 <- gets tvarIndexE
+        let idx = idx0 + 1
+        vids <- gets tvarIdsE    
+        maybe (do modify (\env -> env{ tvarIndexE = idx,
+		                       tvarIdsE   = ScopeEnv.insert id idx vids })
+                  return idx)
+              return
+              (ScopeEnv.lookup id vids)
 
 --
 lookupTVarIndex :: Ident -> FlatState (Maybe Int)
 lookupTVarIndex id
-   = FlatState (\env -> env{ result = ScopeEnv.lookup id (tvarIdsE env) })
+   = gets (ScopeEnv.lookup id . tvarIdsE)
 
 --
 clearTVarIndices :: FlatState ()
-clearTVarIndices = FlatState (\env -> env{ tvarIndexE = 0,
-					   tvarIdsE = ScopeEnv.new 
-					 })
+clearTVarIndices = modify (\env -> env { tvarIndexE = 0,
+					 tvarIdsE = ScopeEnv.new 
+				       })
 
 --
 genWarning :: (WarningType,String) -> FlatState ()
 genWarning (warnType,msg)
-   = FlatState (\env -> env{ messagesE = warnMsg:(messagesE env) })
- where warnMsg = message_ (Warning warnType) msg
+   = modify (\env -> env{ messagesE = warnMsg:(messagesE env) })
+    where warnMsg = message_ (Warning warnType) msg
 
 --
 genInterface :: FlatState Bool
-genInterface = FlatState (\env -> env{ result = genInterfaceE env })
+genInterface = gets genInterfaceE
 
 --
 beginScope :: FlatState ()
-beginScope = FlatState 
-	       (\env -> env{ varIdsE  = ScopeEnv.beginScope (varIdsE env),
-			     tvarIdsE = ScopeEnv.beginScope (tvarIdsE env)
-			   })
+beginScope = modify
+	       (\env -> env { varIdsE  = ScopeEnv.beginScope (varIdsE env),
+			      tvarIdsE = ScopeEnv.beginScope (tvarIdsE env)
+			    })
 
 --
 endScope :: FlatState ()
-endScope = FlatState 
-	     (\env -> env{ varIdsE  = ScopeEnv.endScope (varIdsE env),
-			   tvarIdsE = ScopeEnv.endScope (tvarIdsE env)
-			 })
+endScope = modify
+	     (\env -> env { varIdsE  = ScopeEnv.endScope (varIdsE env),
+			    tvarIdsE = ScopeEnv.endScope (tvarIdsE env)
+			  })
 
 --
 whenFlatCurry :: FlatState a -> FlatState a -> FlatState a
