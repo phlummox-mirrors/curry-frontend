@@ -1,5 +1,6 @@
 module CurrySubdir where
 
+import System.FilePath
 import System.Directory
 import System.Time (ClockTime)
 import Control.Monad (when)
@@ -7,16 +8,13 @@ import Data.List(intersperse)
 
 -- some definitions from PathUtils
 
-pathSep :: Char
-pathSep = '/'
-
 curDirPath :: FilePath
 curDirPath = "."
 
 -- divide given puth names in directories
 
 path :: String -> [String]
-path = canonPath . separateBy (==pathSep) 
+path = canonPath . separateBy (==pathSeparator) 
   where
     canonPath (c:cs) = c:filter (not . null) cs
 
@@ -32,7 +30,7 @@ separateBy p = sep id
 -- make canonical path from list of directories
 
 unpath :: [String] -> String
-unpath = concat . intersperse [pathSep]
+unpath = concat . intersperse [pathSeparator]
 
 --When we split a path into its basename and directory we will make
 --sure that the basename does not contain any path separators.

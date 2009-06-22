@@ -45,7 +45,6 @@ import declarations are commented out
 > import Lift(lift)
 > import qualified IL
 > import ILTrans(ilTrans,ilTransIntf)
-> import ILLift(liftProg)
 > import ILxml(xmlModule) -- check
 > import ExtendedFlat
 > import GenFlatCurry (genFlatCurry,genFlatInterface)
@@ -64,7 +63,6 @@ import declarations are commented out
 > import Error
 > import Env
 > import TopEnv
-> import Typing
 
 \end{verbatim}
 The function \texttt{compileModule} is the main entry-point of this

@@ -13,10 +13,7 @@ module CurryEnv (CurryEnv,
 
 import Data.Maybe
 
-import CurrySyntax
-import Ident
 import Base
-import Env
 
 
 ------------------------------------------------------------------------------

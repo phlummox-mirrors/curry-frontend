@@ -14,7 +14,6 @@ import Data.Maybe
 import Data.List
 import Data.Char
 
-import CurrySyntax
 import AbstractCurry
 import Base
 import Types

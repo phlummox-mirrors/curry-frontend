@@ -11,7 +11,6 @@
 module CurryBuilder (buildCurry, smake) where
 
 import System.Exit
-import System.Directory 
 import System.Time
 import Control.Monad
 import Data.Maybe
@@ -20,7 +19,6 @@ import System.IO
 
 import Modules (compileModule_)
 import CurryCompilerOpts 
-import CompilerResults
 import CurryDeps
 import Ident
 import PathUtils

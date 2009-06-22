@@ -2,9 +2,7 @@ module CurryHtml(program2html,source2html) where
 
 import SyntaxColoring
 import Ident
--- import Maybe
 import Data.Char hiding(Space)
-import System.Environment
 import CurryDeps(getCurryPath)
 import PathUtils (writeModule)
        

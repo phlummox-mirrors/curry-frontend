@@ -68,7 +68,6 @@ all names must be properly qualified before calling this module.}
 
 > import Base
 > import Combined
-> import TopEnv (qualRebindTopEnv)
 > import Typing
 > import Utils
 > import Ident

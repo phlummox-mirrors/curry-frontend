@@ -16,7 +16,6 @@ combinators described in appendix~\ref{sec:ll-parsecomb}.
 > import Ident
 > import Position
 > import Error
-> import LexComb
 > import LLParseComb
 > import CurrySyntax
 > import CurryLexer

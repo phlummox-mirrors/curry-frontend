@@ -39,9 +39,7 @@ import Types
 import CurryCompilerOpts
 import Message
 import PatchPrelude
-import Position
 import Ident as Id
-import TopEnv
 import Env
 import Map
 

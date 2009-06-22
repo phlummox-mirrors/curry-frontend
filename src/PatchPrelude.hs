@@ -1,11 +1,7 @@
 module PatchPrelude where
 
 
-import Base (isImportDecl)
 import ExtendedFlat
-import Position
-import Ident
-import PathUtils
 
 
 -- the prelude has to be extended by data declarations for list and tuples

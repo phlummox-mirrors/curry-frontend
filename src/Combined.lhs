@@ -20,7 +20,6 @@ cannot define generic state and environment monad classes.
 > module Combined where
 
 > import Control.Monad
-> -- import System.IO
 > import Data.IORef
 
 > import Error

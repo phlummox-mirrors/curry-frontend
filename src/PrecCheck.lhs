@@ -21,8 +21,6 @@ of the operators involved.
 > import Data.List
 
 > import Base
-> import Env
-> import TopEnv
 
 \end{verbatim}
 For each declaration group, including the module-level, the compiler

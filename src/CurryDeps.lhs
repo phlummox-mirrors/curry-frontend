@@ -18,7 +18,6 @@ dependencies and to update programs composed of multiple modules.
 > import Data.List
 > import Data.Maybe
 > import Control.Monad
-> -- import IO
 
 > import Error
 > import Ident

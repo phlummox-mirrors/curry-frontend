@@ -8,7 +8,6 @@ import Debug.Trace
 import Data.Maybe
 import Data.List
 
-import System.Environment
 import CurryLexer
 import Position
 import Frontend

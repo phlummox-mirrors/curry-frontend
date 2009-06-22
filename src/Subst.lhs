@@ -16,8 +16,8 @@ substitutions are marked with a boolean flag (see below).
 \begin{verbatim}
 
 > module Subst where
+
 > import Map
-> import Utils
 
 > data Subst a b = Subst Bool (FM a b) deriving Show
 

@@ -25,7 +25,6 @@ Currently, the following optimizations are implemented:
 > module Simplify(simplify) where
 
 > import Control.Monad
-> import Data.List (partition)
 
 > import Base
 > import Combined
