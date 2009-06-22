@@ -19,7 +19,7 @@
 >                   CaseType(..), CombType(..), Expr(..), BranchExpr(..),
 >                   Pattern(..), Literal(..)) where
 
-import System
+import System 
 import Directory
 import Char
 import ReadShowTerm
