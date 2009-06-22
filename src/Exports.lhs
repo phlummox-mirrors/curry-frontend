@@ -13,10 +13,12 @@ is computed.
 \begin{verbatim}
 
 > module Exports(expandInterface,exportInterface) where
+
+> import Data.List
+> import Data.Maybe
+
 > import Base
-> import List
 > import Map
-> import Maybe
 > import Set
 > import TopEnv
 

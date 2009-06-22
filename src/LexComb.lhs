@@ -19,7 +19,7 @@ nested layout groups.
 > module LexComb where
 > import Position
 > import Error
-> import Char
+> import Data.Char
 
 > infixl 1 `thenP`, `thenP_`
 

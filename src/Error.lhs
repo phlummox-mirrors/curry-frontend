@@ -13,7 +13,7 @@ describes the failure.
 \begin{verbatim}
 
 > module Error where
-> import Monad
+> import Control.Monad
 
 > data Error a = Ok a | Error String deriving (Eq,Ord,Show)
 

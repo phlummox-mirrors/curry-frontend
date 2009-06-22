@@ -11,17 +11,20 @@
 -- Martin Engelke (men@informatik.uni-kiel.de)
 --
 
+module Main(main) where
+
+import Data.List
+import Data.Maybe
+import System.IO
+import System.Environment
+import System.Exit
+import Control.Monad (unless)
+import Data.Char (isDigit)
+
 import GetOpt
 import CurryBuilder
 import CurryCompilerOpts
-import System
-import Maybe
-import IO
 import CurryHtml
-import List
-import Control.Monad (unless)
-import Char (isDigit)
-
 
 -------------------------------------------------------------------------------
 

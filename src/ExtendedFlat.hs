@@ -29,8 +29,8 @@ module ExtendedFlat (SrcRef,Prog(..), QName(..), Visibility(..),
                   mkIdx,idxOf) where
 
 import PathUtils (writeModule,maybeReadModule)
-import Directory
-import List(intersperse)
+import System.Directory
+import Data.List(intersperse)
 import Control.Monad (liftM)
 import Data.Generics hiding (Fixity)
 import Position (SrcRef)

@@ -11,10 +11,12 @@ interfaces into the current module.
 \begin{verbatim}
 
 > module Imports(importInterface,importInterfaceIntf,importUnifyData) where
+
+> import Data.Maybe
+
 > import Base
 > import Env
 > import TopEnv
-> import Maybe
 > import Map
 > import Set
 

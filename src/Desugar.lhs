@@ -61,15 +61,18 @@ all names must be properly qualified before calling this module.}
 \begin{verbatim}
 
 > module Desugar(desugar,desugarGoal) where
+
+> import Data.Maybe
+> import Control.Monad
+> import Data.List
+
 > import Base
 > import Combined
 > import TopEnv (qualRebindTopEnv)
-> import List
-> import Monad
 > import Typing
 > import Utils
 > import Ident
-> import Maybe
+
 
 posE = undefined
 

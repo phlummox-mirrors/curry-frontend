@@ -11,11 +11,13 @@ module CurryEnv (CurryEnv,
 		 moduleId, exports, imports, interface, infixDecls,
 		 typeSynonyms, curryEnv) where
 
+import Data.Maybe
+
 import CurrySyntax
 import Ident
 import Base
 import Env
-import Maybe
+
 
 ------------------------------------------------------------------------------
 

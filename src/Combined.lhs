@@ -18,10 +18,12 @@ cannot define generic state and environment monad classes.
 \begin{verbatim}
 
 > module Combined where
+
+> import Control.Monad
+> -- import System.IO
+> import Data.IORef
+
 > import Error
-> import Monad
-> import IO
-> import IORefCompat
 
 \end{verbatim}
 \subsection{Identity monad}

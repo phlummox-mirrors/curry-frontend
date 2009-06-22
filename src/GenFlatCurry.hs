@@ -11,6 +11,12 @@ module GenFlatCurry (genFlatCurry,
 		     genFlatInterface) where
 
 import Debug.Trace
+
+import Control.Monad.State
+import Control.Monad
+import Data.Maybe
+import Data.List
+
 import Base (ArityEnv, ArityInfo(..), ModuleEnv, PEnv, PrecInfo(..), 
 	     OpPrec(..), TCEnv, TypeInfo(..), ValueEnv, ValueInfo(..),
 	     lookupValue, qualLookupTC,
@@ -28,7 +34,7 @@ import qualified CurryEnv
 import ScopeEnv (ScopeEnv)
 import qualified ScopeEnv
 
-import Control.Monad.State
+
 import Types
 import CurryCompilerOpts
 import Message
@@ -38,9 +44,6 @@ import Ident as Id
 import TopEnv
 import Env
 import Map
-import Monad
-import Maybe
-import List
 
 
 -------------------------------------------------------------------------------

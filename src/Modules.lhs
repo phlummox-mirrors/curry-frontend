@@ -20,6 +20,11 @@ import declarations are commented out
 >	         simpleCheckModule, checkModule
 >	        ) where
 
+> import Data.List
+> import System.IO
+> import Data.Maybe
+> import Control.Monad
+
 > import Base
 > import Unlit(unlit)
 > import CurryParser(parseSource,parseGoal) -- xxxGoal entfernen
@@ -55,10 +60,6 @@ import declarations are commented out
 > import CaseCompletion
 > import PathUtils
 > import TypeSubst
-> import List
-> import IO
-> import Maybe
-> import Monad
 > import Pretty
 > import Error
 > import Env

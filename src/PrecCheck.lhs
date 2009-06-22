@@ -17,8 +17,10 @@ of the operators involved.
 \begin{verbatim}
 
 > module PrecCheck(precCheck,precCheckGoal) where
+
+> import Data.List
+
 > import Base
-> import List
 > import Env
 > import TopEnv
 

@@ -23,13 +23,16 @@ Currently, the following optimizations are implemented:
 \begin{verbatim}
 
 > module Simplify(simplify) where
+
+> import Control.Monad
+> import Data.List (partition)
+
 > import Base
 > import Combined
 > import Env
-> import Monad
 > import SCC
 > import Typing
-> import List (partition)
+
 
 > type SimplifyState a = StateT ValueEnv (ReaderT EvalEnv (StateT Int Id)) a
 > type InlineEnv = Env Ident Expression

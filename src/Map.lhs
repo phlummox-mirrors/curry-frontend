@@ -11,7 +11,7 @@ The module \texttt{Map} implements finite maps using 2-3 trees.
 
 > module Map(FM, nullFM, zeroFM, unitFM, addToFM, deleteFromFM,
 >            lookupFM, fromListFM, toListFM) where
-> import List
+> import Data.List
 
 \end{verbatim}
 A 2-3 tree is either empty or a node with either two or three children

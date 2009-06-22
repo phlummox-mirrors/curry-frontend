@@ -11,6 +11,11 @@ module Frontend (lex, parse, fullParse, typingParse, abstractIO, flatIO,
 		 Result(..), Message(..)
 		)where
 
+import Data.List
+import Data.Maybe
+import Control.Monad
+import Prelude hiding (lex)
+
 import Modules
 import CurryBuilder
 import CurryCompilerOpts
@@ -32,11 +37,6 @@ import Ident
 import Position
 import PathUtils
 import Env
-import List
-import Maybe
-import Monad
-import System
-import Prelude hiding (lex)
 
 
 -------------------------------------------------------------------------------

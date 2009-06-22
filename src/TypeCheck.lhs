@@ -22,6 +22,11 @@ type annotation is present.
 \begin{verbatim}
 
 > module TypeCheck(typeCheck,typeCheckGoal) where
+
+> import Control.Monad
+> import Data.List
+> import Data.Maybe
+
 > import Base
 > import Pretty
 > import Ident
@@ -33,9 +38,6 @@ type annotation is present.
 > import SCC
 > import TypeSubst
 > import Utils
-> import List
-> import Monad
-> import Maybe
 
 > infixl 5 $-$
 
@@ -1135,9 +1137,6 @@ We use negative offsets for fresh type variables.
 >   ForAll (length tvs) (subst (foldr2 bindSubst idSubst tvs tvs') ty)
 >   where tvs = [tv | tv <- nub (typeVars ty), tv `notElemSet` gvs]
 >         tvs' = map TypeVariable [0..]
-
-> replicateM :: Monad m => Int -> m a -> m [a]
-> replicateM n = sequence . replicate n
 
 \end{verbatim}
 \paragraph{Auxiliary Functions}

@@ -13,6 +13,11 @@ phases of the compiler.
 
 > module Base(module Base,module Ident,module Position,module Types,
 >             module CurrySyntax) where
+
+> import Data.List
+> import Control.Monad
+> import Data.Maybe
+
 > import Ident 
 > import Position
 > import Types
@@ -22,12 +27,10 @@ phases of the compiler.
 > import ExtendedFlat hiding (SrcRef, Fixity(..), TypeExpr, Expr(..))
 > import Env
 > import TopEnv
-> import List
 > import Map
-> import Monad
 > import Set
 > import Utils
-> import Maybe
+
 
 > import qualified ExtendedFlat as EF 
 

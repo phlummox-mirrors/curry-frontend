@@ -9,13 +9,16 @@
 \begin{verbatim}
 
 > module Typing(Typeable(..)) where
+
+> import Data.Maybe
+> import Control.Monad
+
 > import Base
 > import TypeSubst
 > import Combined
-> import Monad
 > import TopEnv
 > import Utils
-> import Maybe
+
 
 \end{verbatim}
 During the transformation of Curry source code into the intermediate

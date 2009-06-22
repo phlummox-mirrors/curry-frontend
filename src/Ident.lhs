@@ -49,11 +49,14 @@ unqualified identifier.}
 >              addPositionIdent, removePositionIdent, positionOfIdent,
 >              addPositionModuleIdent, removePositionModuleIdent,addRef,addRefId,
 >              positionOfModuleIdent,positionOfQualIdent,updQualIdent ) where
-> import Char
-> import List
-> import Maybe
-> import Position
+
+> import Data.Char
+> import Data.List
+> import Data.Maybe
 > import Data.Generics
+
+> import Position
+
 
 > data Ident = Ident String Int 
 >            | IdentPosition Position String Int deriving (Read,Data,Typeable)

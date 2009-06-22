@@ -13,6 +13,7 @@
 -- 
 module CaseCompletion (completeCase) where
 
+import Data.Maybe
 
 import qualified CurrySyntax
 import Base (ModuleEnv, lookupModule)
@@ -21,7 +22,7 @@ import Ident
 import Position (SrcRef)
 import OldScopeEnv as ScopeEnv
 import ILScope
-import Maybe
+
 
 
 -------------------------------------------------------------------------------

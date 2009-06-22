@@ -180,7 +180,7 @@ module Pretty (
 
 -- Don't import Util( assertPanic ) because it makes a loop in the module structure
 
-import Ratio
+import Data.Ratio
 infixl 6 <> 
 infixl 6 <+>
 infixl 5 $$, $+$

@@ -14,17 +14,20 @@ dependencies and to update programs composed of multiple modules.
 \begin{verbatim}
 
 > module CurryDeps where
+
+> import Data.List
+> import Data.Maybe
+> import Control.Monad
+> -- import IO
+
+> import Error
 > import Ident
 > import Unlit
 > import CurrySyntax hiding(Interface(..))
 > import CurryParser(parseHeader)
 > import SCC
 > import Env
-> import List
-> import Maybe
-> import Monad
-> import Error
-> import IO
+
 > import PathUtils
 
 > data Source = Source FilePath [ModuleIdent]

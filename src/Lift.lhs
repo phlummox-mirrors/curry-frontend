@@ -18,12 +18,16 @@ lifted to the top-level.
 \begin{verbatim}
 
 > module Lift(lift) where
+
+> import Control.Monad
+> import Data.List
+
 > import Base
 > import Env
 > import TopEnv
 > import Set
-> import List
-> import Monad
+
+
 > import Combined
 > import SCC
 

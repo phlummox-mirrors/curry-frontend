@@ -11,9 +11,11 @@ maps.
 \begin{verbatim}
 
 > module Set where
-> import List
+
+> import Data.List
+> import Data.Maybe
+
 > import Map
-> import Maybe
 
 > infixl 8 `addToSet`, `deleteFromSet`
 > infixl 7 `unionSet`, `intersectionSet`

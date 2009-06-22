@@ -21,12 +21,14 @@ merged into a single definition.
 \begin{verbatim}
 
 > module SyntaxCheck(syntaxCheck) where
+
+> import Data.Maybe
+> import Data.List
+> import Control.Monad
+
 > import Base
 > import Env
 > import NestEnv
-> import List
-> import Maybe
-> import Monad
 > import Combined
 > import Utils
 

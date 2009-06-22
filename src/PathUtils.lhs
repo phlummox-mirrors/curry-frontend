@@ -16,7 +16,7 @@ names and finding files.
 >                  currySubdir,writeModule,readModule,
 >                  doesModuleExist,maybeReadModule,getModuleModTime) where
 > -- import List
-> import Directory
+> import System.Directory
 > import CurrySubdir
 
 \end{verbatim}

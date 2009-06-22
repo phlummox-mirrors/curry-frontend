@@ -19,14 +19,18 @@ similar to that of Flat-Curry XML representation.
 \begin{verbatim}
 
 > module ILxml(module ILxml, Doc) where
+
+> import Data.Maybe
+> import Data.Char(chr,ord,isAlphaNum)
+
 > import Ident
 > import IL
 > import ILTrans
 > import qualified CurrySyntax as CS
 > import CurryEnv
 > import Pretty
-> import Char(chr,ord,isAlphaNum)
-> import Maybe
+
+
 
 > -- identation level
 > level::Int

@@ -17,11 +17,13 @@ partial applications of data constructors.
 \begin{verbatim}
 
 > module ILLift where
+
+> import Data.List
+> import Control.Monad
+
 > import IL
 > import Ident
 > import Combined
-> import List
-> import Monad
 > import Utils
 
 > type LiftState a = St [QualIdent] a

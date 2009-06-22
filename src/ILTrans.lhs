@@ -20,14 +20,18 @@ data structures, we can use only a qualified import for the
 \begin{verbatim}
 
 > module ILTrans(ilTrans,ilTransIntf) where
+
+> import Data.Maybe
+> import Data.List
+
 > import Base
 > import qualified IL
 > import Utils
 > import Env
 > import Set
 > import Map
-> import Maybe
-> import List
+
+
 
 \end{verbatim}
 \paragraph{Modules}

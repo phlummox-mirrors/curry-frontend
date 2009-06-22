@@ -24,8 +24,10 @@ is defined more than once.
 \begin{verbatim}
 
 > module KindCheck(kindCheck,kindCheckGoal) where
+
+> import Data.Maybe
+
 > import Base hiding (bindArity)
-> import Maybe
 > import TopEnv
 
 \end{verbatim}

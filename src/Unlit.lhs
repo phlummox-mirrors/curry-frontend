@@ -27,7 +27,7 @@ derived from appendix D in the Haskell 1.2 report.
 \begin{verbatim}
 
 > module Unlit(unlit) where
-> import Char
+> import Data.Char
 > import Position
 
 \end{verbatim}

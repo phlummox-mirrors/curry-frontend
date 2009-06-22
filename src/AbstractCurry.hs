@@ -28,8 +28,10 @@ module AbstractCurry (CurryProg(..), QName, CLabel, CVisibility(..),
 		      CField,
                       readCurry, writeCurry) where
 
+import Data.List(intersperse)
+
 import PathUtils (writeModule,readModule)
-import List(intersperse)
+
 
 ------------------------------------------------------------------------------
 -- Definition of data types for representing abstract Curry programs:

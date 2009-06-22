@@ -26,11 +26,13 @@ string in this case.
 >                    opt,(<$>),(<$->),(<*->),(<-*>),(<**>),(<??>),(<.>),
 >                    many,many1, sepBy,sepBy1, chainr,chainr1,chainl,chainl1,
 >                    bracket,ops, layoutOn,layoutOff,layoutEnd) where
+
+> import Data.Maybe
+> import Control.Monad
+
 > import Position
 > import Set
 > import Map
-> import Maybe
-> import Monad
 > import Error
 > import LexComb
 

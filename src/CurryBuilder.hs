@@ -10,6 +10,14 @@
 --
 module CurryBuilder (buildCurry, smake) where
 
+import System.Exit
+import System.Directory 
+import System.Time
+import Control.Monad
+import Data.Maybe
+import Data.List 
+import System.IO
+
 import Modules (compileModule_)
 import CurryCompilerOpts 
 import CompilerResults
@@ -17,13 +25,6 @@ import CurryDeps
 import Ident
 import PathUtils
 import Env
-import System
-import Directory 
-import Time
-import Monad
-import Maybe
-import List 
-import IO
 
 -------------------------------------------------------------------------------
 

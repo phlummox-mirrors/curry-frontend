@@ -39,9 +39,11 @@ imported.
 >               bindTopEnv,qualBindTopEnv,rebindTopEnv,qualRebindTopEnv,
 >               unbindTopEnv,lookupTopEnv,qualLookupTopEnv,
 >               allImports,moduleImports,localBindings) where
+
+> import Data.Maybe
+
 > import Env
 > import Ident
-> import Maybe
 > import Utils
 
 > data Source = Local | Import [ModuleIdent] deriving (Eq,Show)

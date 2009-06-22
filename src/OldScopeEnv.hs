@@ -6,9 +6,11 @@ module OldScopeEnv (ScopeEnv,
 		    getLevel,
 		    genIdent, genIdentList) where
 
+import Data.Maybe
+
 import Ident
 import Env
-import Maybe
+
 
 
 -------------------------------------------------------------------------------

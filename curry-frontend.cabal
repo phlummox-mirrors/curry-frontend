@@ -1,28 +1,44 @@
 Name:          curry-frontend
 Version:       0.1
 Cabal-Version: >= 1.6
-Synopsis:      A compiler for the functional logic language Curry to 
-               several intermediate language formats.
+Synopsis:      A compiler for the functional logic language Curry to several intermediate language formats.
 Description:   The Curry Frontend consists of the executable program "cymake".
                It is used by various backends to compile Curry programs to 
                an internal representation. 
                The code is a stripped-down version of an early version of
 	       the Muenster Curry Compiler 
-               (http://danae.uni-muenster.de/~lux/curry/)
+               (<http://danae.uni-muenster.de/~lux/curry/>)
 Category:      Development
--- License:       BSD3
+License:       OtherLicense
 License-File:  LICENSE
-Author:        Wolfgang Lux, Martin Engelke, Bernd Braßel, Holger Siegel
--- Maintainer:    Michael Hanus
+Author:        Wolfgang Lux, Martin Engelke, Bernd Brassel, Holger Siegel
+Maintainer:    Michael Hanus
 -- Bug-Reports:   mailto:mh@informatik.uni-kiel.de
--- Homepage:      http://curry-language.org
+Homepage:      http://curry-language.org
 Build-Type:    Simple
 Stability:     experimental
 
-Extra-Source-Files: LIESMICH
+Extra-Source-Files: LIESMICH, Makefile, src/cyxml.hs-pattern, src/currydoc.css, src/smake.hs,
+		    src/testghc.sh, src/config.hs, src/Makefile, src/newer.lhs
 
 Executable cymake
-  Main-is:          cymake.hs
   hs-source-dirs:   src
-  Build-Depends:    base, mtl, haskell98, old-time
-  Ghc-Options:      -Wall -fvia-C -O2
+  Main-is:          cymake.hs
+  Build-Depends:    base >= 3 && < 4, mtl, old-time, directory
+  Ghc-Options:      -Wall
+  Other-Modules:    AbstractCurry, CurryBuilder, Env, IL, Message, AnsiCodes
+                    CurryCompilerOpts, Error, ILLift, Modules, Subst, Arity
+                    CurryDeps, Eval, ILPP, NestEnv, SyntaxCheck, Base
+                    Exports, ILScope, SyntaxColoring, Cam, CurryEnv
+                    ExtendedFlat, ILTrans, OldScopeEnv, CamPP, CurryHtml
+                    FlatCurry, ILxml, PatchPrelude, TopEnv, CaseCompletion
+                    CurryLexer, FlatCurry, Imports, PathUtils, TypeCheck
+                    CCode, CurryParser, FlatInfo, InterfaceCheck, Position
+                    Types, CElim, CurryPP, Frontend, IntfCheck, PrecCheck
+                    TypeSubst, CGen, CurrySubdir, GenAbstractCurry
+                    Pretty, Typing, Combined, CurrySyntax
+                    GenFlatCurry, KindCheck, Qual, Unlit, CompilerResults
+                    CurrySyntaxTools, LexComb, SCC, Utils, GetOpt
+                    Lift, ScopeEnv, WarnCheck, CPretty, HeaderTable
+                    LLParseComb, Set, CPS, Desugar, Ident, ShowCurrySyntax
+                    CurryAnsi, DTransform, ILCompile, Map, Simplify

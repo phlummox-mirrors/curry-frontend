@@ -8,6 +8,9 @@
 --
 module WarnCheck (warnCheck) where
 
+import Control.Monad
+import Data.List
+
 import CurrySyntax
 import Ident
 import Position
@@ -17,8 +20,8 @@ import qualified ScopeEnv
 import ScopeEnv (ScopeEnv)
 import Message
 import Env
-import Monad
-import List
+
+
 
 
 -------------------------------------------------------------------------------

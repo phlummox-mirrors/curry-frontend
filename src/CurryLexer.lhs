@@ -12,11 +12,14 @@ In this section a lexer for Curry is implemented.
 \begin{verbatim}
  
 > module CurryLexer (lexFile,lexer, Token (..), Category(..), Attributes(..)) where
+
+> import Data.Char 
+> import Data.List
+
 > import LexComb
 > import Position
 > import Map
-> import Char 
-> import List
+
 
 \end{verbatim}
 \paragraph{Tokens} Note that the equality and ordering instances of

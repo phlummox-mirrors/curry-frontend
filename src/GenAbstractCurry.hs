@@ -10,6 +10,10 @@
 module GenAbstractCurry (genTypedAbstract, 
 			 genUntypedAbstract) where
 
+import Data.Maybe
+import Data.List
+import Data.Char
+
 import CurrySyntax
 import AbstractCurry
 import Base
@@ -18,9 +22,6 @@ import Ident
 import Position
 import TopEnv
 import Env
-import Maybe
-import List
-import Char
 
 
 -------------------------------------------------------------------------------

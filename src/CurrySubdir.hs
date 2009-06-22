@@ -1,9 +1,9 @@
 module CurrySubdir where
 
-import Directory
+import System.Directory
 import System.Time (ClockTime)
 import Control.Monad (when)
-import List(intersperse)
+import Data.List(intersperse)
 
 -- some definitions from PathUtils
 

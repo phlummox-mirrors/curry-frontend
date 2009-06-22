@@ -9,8 +9,10 @@
 --
 module InterfaceCheck where
 
+import Data.List
+
 import ExtendedFlat
-import List
+
 
 
 -------------------------------------------------------------------------------

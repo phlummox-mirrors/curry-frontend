@@ -12,9 +12,11 @@ representation of types in the compiler.
 \begin{verbatim}
 
 > module Types where
+
+> import Data.List
+> import Data.Maybe
+
 > import Ident
-> import List
-> import Maybe
 
 \end{verbatim}
 A type is either a type variable, an application of a type constructor
