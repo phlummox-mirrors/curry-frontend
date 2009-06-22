@@ -1,17 +1,21 @@
 Name:          curry-frontend
 Version:       0.1
 Cabal-Version: >= 1.6
-Synopsis:      The Curry frontend formerly known as the Muenster Curry Compiler
-Description:   The Curry Frontend consists of the executable program cymake.
-               It is a stripped-down version of the Muenster Curry Compiler, which
-	       is used by various backends to compile Curry programs to an internal representation.
+Synopsis:      A compiler for the functional logic language Curry to 
+               several intermediate language formats.
+Description:   The Curry Frontend consists of the executable program "cymake".
+               It is used by various backends to compile Curry programs to 
+               an internal representation. 
+               The code is a stripped-down version of an early version of
+	       the Muenster Curry Compiler 
+               (http://danae.uni-muenster.de/~lux/curry/)
 Category:      Development
 -- License:       BSD3
 License-File:  LICENSE
-Author:        .....
--- Maintainer:    ...@.
--- Bug-Reports:   mailto:...@...
--- Homepage:      
+Author:        Wolfgang Lux, Martin Engelke, Bernd Braﬂel, Holger Siegel
+-- Maintainer:    Michael Hanus
+-- Bug-Reports:   mailto:mh@informatik.uni-kiel.de
+-- Homepage:      http://curry-language.org
 Build-Type:    Simple
 Stability:     experimental
 
