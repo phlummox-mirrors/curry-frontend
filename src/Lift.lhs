@@ -21,11 +21,12 @@ lifted to the top-level.
 
 > import Control.Monad
 > import Data.List
+> import qualified Data.Set as Set
 
 > import Base
 > import Env
 > import TopEnv
-> import Set
+
 
 
 > import Combined
@@ -156,10 +157,10 @@ in the type environment.
 >     e' <- abstractFunDecls m pre lvs env' fdss vds e
 >     return (Let fds' e')
 >   where fs = bv fds
->         fvs = filter (`elem` lvs) (toListSet fvsRhs)
+>         fvs = filter (`elem` lvs) (Set.toList fvsRhs)
 >         env' = foldr (bindF (map mkVar fvs)) env fs
->         fvsRhs = unionSets
->           [fromListSet (maybe [v] (qfv m) (lookupEnv v env)) | v <- qfv m fds]
+>         fvsRhs = Set.unions
+>           [Set.fromList (maybe [v] (qfv m) (lookupEnv v env)) | v <- qfv m fds]
 >         bindF fvs f = bindEnv f (apply (mkFun m pre f) fvs)
 >         isLifted tyEnv f = null (lookupValue f tyEnv)
 

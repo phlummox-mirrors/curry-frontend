@@ -27,11 +27,13 @@ string in this case.
 >                    many,many1, sepBy,sepBy1, chainr,chainr1,chainl,chainl1,
 >                    bracket,ops, layoutOn,layoutOff,layoutEnd) where
 
-> import Data.Maybe
 > import Control.Monad
+> import Data.Maybe
+> import qualified Data.Set as Set
+
 
 > import Position
-> import Set
+
 > import Map
 > import Error
 > import LexComb
@@ -61,7 +63,7 @@ string in this case.
 > instance Symbol s => Show (Parser s a b) where
 >   showsPrec p (Parser e ps) = showParen (p >= 10) $                      -- $
 >     showString "Parser " . shows (isJust e) .
->     showChar ' ' . shows (domainFM ps)
+>     showChar ' ' . shows (Set.fromList $ toKeyListFM ps)
 
 > applyParser :: Symbol s => Parser s a a -> Lexer s a -> FilePath -> String
 >             -> Error a
@@ -112,9 +114,9 @@ string in this case.
 > (<|>) :: Symbol s => Parser s a b -> Parser s a b -> Parser s a b
 > Parser e1 ps1 <|> Parser e2 ps2
 >   | isJust e1 && isJust e2 = error "Ambiguous parser for empty word"
->   | not (nullSet common) = error ("Ambiguous parser for " ++ show common)
+>   | not (Set.null common) = error ("Ambiguous parser for " ++ show common)
 >   | otherwise = Parser (e1 `mplus` e2) (insertIntoFM ps1 ps2)
->   where common = domainFM ps1 `intersectionSet` domainFM ps2
+>   where common = Set.fromList (toKeyListFM ps1) `Set.intersection` Set.fromList (toKeyListFM ps2)
 
 \end{verbatim}
 The parsing combinators presented so far require that the grammar

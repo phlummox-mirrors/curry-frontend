@@ -22,7 +22,8 @@ so that the declarations can be used as set elements.
 \begin{verbatim}
 
 > module SCC(scc) where
-> import Set
+
+> import qualified Data.Set as Set
 
 > data Node a b = Node{ key::Int, bvs::[b], fvs::[b], node::a }
 
@@ -39,21 +40,21 @@ so that the declarations can be used as set elements.
 >   where wrap i n = Node i (bvs n) (fvs n) n
 
 > tsort :: Eq b => [Node a b] -> [Node a b]
-> tsort xs = snd (dfs xs zeroSet [])
+> tsort xs = snd (dfs xs Set.empty [])
 >   where dfs [] marks stack = (marks,stack)
 >         dfs (x:xs) marks stack
->           | x `elemSet` marks = dfs xs marks stack
+>           | x `Set.member` marks = dfs xs marks stack
 >           | otherwise = dfs xs marks' (x:stack')
->           where (marks',stack') = dfs (defs x) (x `addToSet` marks) stack
+>           where (marks',stack') = dfs (defs x) (x `Set.insert` marks) stack
 >         defs x = filter (any (`elem` fvs x) . bvs) xs
 
 > tsort' :: Eq b => [Node a b] -> [[Node a b]]
-> tsort' xs = snd (dfs xs zeroSet [])
+> tsort' xs = snd (dfs xs Set.empty [])
 >   where dfs [] marks stack = (marks,stack)
 >         dfs (x:xs) marks stack
->           | x `elemSet` marks = dfs xs marks stack
+>           | x `Set.member` marks = dfs xs marks stack
 >           | otherwise = dfs xs marks' ((x:concat stack'):stack)
->           where (marks',stack') = dfs (uses x) (x `addToSet` marks) []
+>           where (marks',stack') = dfs (uses x) (x `Set.insert` marks) []
 >         uses x = filter (any (`elem` bvs x) . fvs) xs
 
 \end{verbatim}

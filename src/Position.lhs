@@ -45,7 +45,6 @@ column number. A tab stop is assumed at every eighth column.
 > incPosition :: Position -> Int -> Position
 > incPosition p j = p{ast=incSrcRef (ast p) j}
 
-
 > instance Read Position where
 >   readsPrec p s = 
 >     [ (Position{file="",line=i,column=j,ast=noRef},s')  | ((i,j),s') <- readsPrec p s]

@@ -17,6 +17,7 @@ phases of the compiler.
 > import Data.List
 > import Control.Monad
 > import Data.Maybe
+> import qualified Data.Set as Set
 
 > import Ident 
 > import Position
@@ -28,7 +29,7 @@ phases of the compiler.
 > import Env
 > import TopEnv
 > import Map
-> import Set
+
 > import Utils
 
 
@@ -821,7 +822,7 @@ prelude.
 >   fv (RecordType fs rty) = (maybe [] fv rty) ++ fv (map snd fs)
 
 > filterBv :: QuantExpr e => e -> [Ident] -> [Ident]
-> filterBv e = filter (`notElemSet` fromListSet (bv e))
+> filterBv e = filter (`Set.notMember` Set.fromList (bv e))
 
 \end{verbatim}
 Since multiple variable occurrences are allowed in function patterns,

@@ -10,7 +10,7 @@ The module \texttt{Map} implements finite maps using 2-3 trees.
 \begin{verbatim}
 
 > module Map(FM, nullFM, zeroFM, unitFM, addToFM, deleteFromFM,
->            lookupFM, fromListFM, toListFM) where
+>            lookupFM, fromListFM, toListFM, toKeyListFM) where
 > import Data.List
 
 \end{verbatim}
@@ -176,6 +176,21 @@ linear in the number of elements in the finite map.
 >         elems (Node3 a x b y c) xs = elems a (x : elems b (y : elems c xs))
 
 \end{verbatim}
+
+The function \texttt{toKeyListFM} returns a list of all
+keys in the map. We use a functional difference list approach
+similar to \texttt{show} in order to achieve an efficiency which is
+linear in the number of elements in the finite map.
+\begin{verbatim}
+
+> toKeyListFM :: Ord a => FM a b -> [a]
+> toKeyListFM = flip elems []
+>   where elems Empty xs = xs
+>         elems (Node2 a x b) xs = elems a (fst x : elems b xs)
+>         elems (Node3 a x b y c) xs = elems a (fst x : elems b (fst y : elems c xs))
+
+\end{verbatim}
+
 Two finite maps are considered equal if they contain the same
 elements. Note that the representation trees of the two maps may be
 different. Therefore we must use the list of elements in order to

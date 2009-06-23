@@ -8,7 +8,7 @@ Description:   The Curry Frontend consists of the executable program "cymake".
                The code is a stripped-down version of an early version of
 	       the Muenster Curry Compiler 
                (<http://danae.uni-muenster.de/~lux/curry/>)
-Category:      Development
+Category:      Language
 License:       OtherLicense
 License-File:  LICENSE
 Author:        Wolfgang Lux, Martin Engelke, Bernd Brassel, Holger Siegel
@@ -18,14 +18,14 @@ Homepage:      http://curry-language.org
 Build-Type:    Simple
 Stability:     experimental
 
-Extra-Source-Files: LIESMICH, src/currydoc.css
+Extra-Source-Files: LIESMICH
+Data-Files:    src/currydoc.css
 		    
 
 Executable cymake
   hs-source-dirs:   src
   Main-is:          cymake.hs
-  Build-Depends:    base >= 3 && < 4, mtl, old-time, directory, filepath
-  Ghc-Options:      -Wall -fno-warn-incomplete-patterns -fno-warn-name-shadowing
+  Build-Depends:    base >= 3 && < 5, mtl, old-time, directory, filepath, containers
   Other-Modules:    AbstractCurry, CurryBuilder, Env, IL, Message
                     CurryCompilerOpts, Error, Modules, Subst, Arity
                     CurryDeps, Eval, ILPP, NestEnv, SyntaxCheck, Base
@@ -40,28 +40,6 @@ Executable cymake
                     GenFlatCurry, KindCheck, Qual, Unlit, CompilerResults
                     LexComb, SCC, Utils, GetOpt
                     Lift, ScopeEnv, WarnCheck
-                    LLParseComb, Set, Desugar, Ident, ShowCurrySyntax
+                    LLParseComb, Desugar, Ident, ShowCurrySyntax
                     Map, Simplify
 
-
-Library
-  hs-source-dirs:   src
-  Exposed-Modules:  AbstractCurry, Frontend
-  Build-Depends:    base >= 3 && < 4, mtl, old-time, directory, filepath
-  Ghc-Options:      -Wall -fno-warn-incomplete-patterns  -fno-warn-name-shadowing
-  Other-Modules:    CurryBuilder, Env, IL, Message
-                    CurryCompilerOpts, Error, Modules, Subst, Arity
-                    CurryDeps, Eval, ILPP, NestEnv, SyntaxCheck, Base
-                    Exports, ILScope, SyntaxColoring, CurryEnv
-                    ExtendedFlat, ILTrans, OldScopeEnv, CurryHtml
-                    ILxml, PatchPrelude, TopEnv, CaseCompletion
-                    CurryLexer, Imports, PathUtils, TypeCheck
-                    CurryParser, InterfaceCheck, Position
-                    Types, CurryPP, PrecCheck
-                    TypeSubst, CurrySubdir, GenAbstractCurry
-                    Pretty, Typing, Combined, CurrySyntax
-                    GenFlatCurry, KindCheck, Qual, Unlit, CompilerResults
-                    LexComb, SCC, Utils, GetOpt
-                    Lift, ScopeEnv, WarnCheck
-                    LLParseComb, Set, Desugar, Ident, ShowCurrySyntax
-                    Map, Simplify

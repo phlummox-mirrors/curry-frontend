@@ -23,12 +23,13 @@ data structures, we can use only a qualified import for the
 
 > import Data.Maybe
 > import Data.List
+> import qualified Data.Set as Set
 
 > import Base
 > import qualified IL
 > import Utils
 > import Env
-> import Set
+
 > import Map
 
 
@@ -555,7 +556,7 @@ module.
 \begin{verbatim}
 
 > imports :: ModuleIdent -> [IL.Decl] -> [ModuleIdent]
-> imports m = toListSet . deleteFromSet m . fromListSet . foldr modulesDecl []
+> imports m = Set.toList . Set.delete m . Set.fromList . foldr modulesDecl []
 
 > modulesDecl :: IL.Decl -> [ModuleIdent] -> [ModuleIdent]
 > modulesDecl (IL.DataDecl _ _ cs) ms = foldr modulesConstrDecl ms cs

@@ -16,10 +16,11 @@ is computed.
 
 > import Data.List
 > import Data.Maybe
+> import qualified Data.Set as Set
 
 > import Base
 > import Map
-> import Set
+
 > import TopEnv
 
 \end{verbatim}
@@ -43,7 +44,7 @@ to the interface of the module.
 >         Linear -> Module m (Just (Exporting noPos es')) ds
 >         NonLinear v -> errorAt' (ambiguousExportValue v)
 >     NonLinear tc -> errorAt' (ambiguousExportType tc) 
->   where ms = fromListSet [fromMaybe m asM | ImportDecl _ m _ asM _ <- ds]
+>   where ms = Set.fromList [fromMaybe m asM | ImportDecl _ m _ asM _ <- ds]
 >         es' = joinExports $                                              -- $
 >               maybe (expandLocalModule tcEnv tyEnv)
 >                     (expandSpecs ms m tcEnv tyEnv)
@@ -67,12 +68,12 @@ export a type constructor \texttt{x} \emph{and} a global function
 identifiers.
 \begin{verbatim}
 
-> expandSpecs :: Set ModuleIdent -> ModuleIdent -> TCEnv -> ValueEnv
+> expandSpecs :: Set.Set ModuleIdent -> ModuleIdent -> TCEnv -> ValueEnv
 >             -> ExportSpec -> [Export]
 > expandSpecs ms m tcEnv tyEnv (Exporting _ es) =
 >   concat (map (expandExport ms m tcEnv tyEnv) es)
 
-> expandExport :: Set ModuleIdent -> ModuleIdent -> TCEnv
+> expandExport :: Set.Set ModuleIdent -> ModuleIdent -> TCEnv
 >              -> ValueEnv -> Export -> [Export]
 > expandExport _ m tcEnv tyEnv (Export x) = expandThing m tcEnv tyEnv x
 > expandExport _ m tcEnv _ (ExportTypeWith tc cs) =
@@ -80,9 +81,9 @@ identifiers.
 > expandExport _ m tcEnv tyEnv (ExportTypeAll tc) = 
 >   expandTypeAll m tyEnv tcEnv tc
 > expandExport ms m tcEnv tyEnv (ExportModule m')
->   | m == m' = (if m `elemSet` ms then expandModule tcEnv tyEnv m else [])
+>   | m == m' = (if m `Set.member` ms then expandModule tcEnv tyEnv m else [])
 >               ++ expandLocalModule tcEnv tyEnv
->   | m' `elemSet` ms = expandModule tcEnv tyEnv m'
+>   | m' `Set.member` ms = expandModule tcEnv tyEnv m'
 >   | otherwise = errorAt' (moduleNotImported m')
 
 > expandThing :: ModuleIdent -> TCEnv -> ValueEnv -> QualIdent
@@ -169,15 +170,15 @@ are removed by the function \texttt{joinExports}.
 > joinExports :: [Export] -> [Export]
 > joinExports es =
 >   [ExportTypeWith tc cs | (tc,cs) <- toListFM (foldr joinType zeroFM es)] ++
->   [Export f | f <- toListSet (foldr joinFun zeroSet es)]
+>   [Export f | f <- Set.toList (foldr joinFun Set.empty es)]
 
 > joinType :: Export -> FM QualIdent [Ident] -> FM QualIdent [Ident]
 > joinType (Export _) tcs = tcs
 > joinType (ExportTypeWith tc cs) tcs =
 >   addToFM tc (cs `union` fromMaybe [] (lookupFM tc tcs)) tcs
 
-> joinFun :: Export -> Set QualIdent -> Set QualIdent
-> joinFun (Export f) fs = f `addToSet` fs
+> joinFun :: Export -> Set.Set QualIdent -> Set.Set QualIdent
+> joinFun (Export f) fs = f `Set.insert` fs
 > joinFun (ExportTypeWith _ _) fs = fs
 
 \end{verbatim}
@@ -287,7 +288,7 @@ not module \texttt{B}.
 
 > usedModules :: [IDecl] -> [ModuleIdent]
 > usedModules ds = nub (catMaybes (map modul (foldr identsDecl [] ds)))
->   where nub = toListSet . fromListSet
+>   where nub = Set.toList . Set.fromList
 >         modul = fst . splitQualIdent
 
 > identsDecl :: IDecl -> [QualIdent] -> [QualIdent]
@@ -332,8 +333,8 @@ distinguished from type variables.
 >           HidingDataDecl noPos (unqualify tc) (take n nameSupply)
 
 > hiddenTypes :: [IDecl] -> [QualIdent]
-> hiddenTypes ds = [tc | tc <- toListSet tcs, not (isQualified tc)]
->   where tcs = foldr deleteFromSet (fromListSet (usedTypes ds))
+> hiddenTypes ds = [tc | tc <- Set.toList tcs, not (isQualified tc)]
+>   where tcs = foldr Set.delete (Set.fromList (usedTypes ds))
 >                     (definedTypes ds)
 
 > usedTypes :: [IDecl] -> [QualIdent]

@@ -13,12 +13,13 @@ interfaces into the current module.
 > module Imports(importInterface,importInterfaceIntf,importUnifyData) where
 
 > import Data.Maybe
+> import qualified Data.Set as Set
 
 > import Base
 > import Env
 > import TopEnv
 > import Map
-> import Set
+
 
 \end{verbatim}
 Four kinds of environments are computed from the interface, one
@@ -58,13 +59,13 @@ import.
 >         mTyEnv = intfEnv bindTy i
 >         mAEnv  = intfEnv bindA i
 >         is' = maybe [] (expandSpecs m mTCEnv mTyEnv) is
->         ts  = isVisible is (fromListSet (foldr addType [] is'))
->         vs  = isVisible is (fromListSet (foldr addValue [] is'))
->         as  = isVisible is (fromListSet (foldr addArity [] is'))
+>         ts  = isVisible is (Set.fromList (foldr addType [] is'))
+>         vs  = isVisible is (Set.fromList (foldr addValue [] is'))
+>         as  = isVisible is (Set.fromList (foldr addArity [] is'))
 
-> isVisible :: Maybe ImportSpec -> Set Ident -> Ident -> Bool
-> isVisible (Just (Importing _ _)) xs = (`elemSet` xs)
-> isVisible (Just (Hiding _ _)) xs = (`notElemSet` xs)
+> isVisible :: Maybe ImportSpec -> Set.Set Ident -> Ident -> Bool
+> isVisible (Just (Importing _ _)) xs = (`Set.member` xs)
+> isVisible (Just (Hiding _ _)) xs = (`Set.notMember` xs)
 > isVisible _ _ = const True
 
 > importEntities :: Entity a => ModuleIdent -> Bool -> (Ident -> Bool)

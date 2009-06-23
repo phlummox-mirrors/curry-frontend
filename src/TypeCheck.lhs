@@ -26,6 +26,7 @@ type annotation is present.
 > import Control.Monad
 > import Data.List
 > import Data.Maybe
+> import qualified Data.Set as Set
 
 > import Base
 > import Pretty
@@ -33,7 +34,7 @@ type annotation is present.
 > import CurryPP
 > import Env
 > import TopEnv
-> import Set
+
 > import Combined
 > import SCC
 > import TypeSubst
@@ -400,14 +401,14 @@ specific. Therefore, if the inferred type does not match the type
 signature the declared type must be too general.
 \begin{verbatim}
 
-> genDecl :: ModuleIdent -> TCEnv -> SigEnv -> Set Int -> TypeSubst -> Decl
+> genDecl :: ModuleIdent -> TCEnv -> SigEnv -> Set.Set Int -> TypeSubst -> Decl
 >         -> TcState ()
 > genDecl m tcEnv sigs lvs theta (FunctionDecl _ f _) =
 >   updateSt_ (genVar True m tcEnv sigs lvs theta f)
 > genDecl m tcEnv sigs lvs theta (PatternDecl p t _) =
 >   mapM_ (updateSt_ . genVar False m tcEnv sigs lvs theta ) (bv t)
 
-> genVar :: Bool -> ModuleIdent -> TCEnv -> SigEnv -> Set Int -> TypeSubst
+> genVar :: Bool -> ModuleIdent -> TCEnv -> SigEnv -> Set.Set Int -> TypeSubst
 >        -> Ident -> ValueEnv -> ValueEnv
 > genVar poly m tcEnv sigs lvs theta v tyEnv =
 >   case lookupTypeSig v sigs of
@@ -1088,7 +1089,7 @@ skolem type escapes its scope.
 >     theta <- liftSt fetchSt
 >     let ty' = subst theta ty
 >         fs = fsEnv (subst theta tyEnv)
->     unless (all (`elemSet` fs) (typeSkolems ty'))
+>     unless (all (`Set.member` fs) (typeSkolems ty'))
 >            (errorAt p (skolemEscapingScope m what ty'))
 >     --error (show ty ++ " ## " ++ show (subst theta ty))
 >     return ty'
@@ -1132,10 +1133,10 @@ We use negative offsets for fresh type variables.
 >     tys' <- replicateM n' freshSkolem
 >     return (expandAliasType (tys ++ tys') ty)
 
-> gen :: Set Int -> Type -> TypeScheme
+> gen :: Set.Set Int -> Type -> TypeScheme
 > gen gvs ty =
 >   ForAll (length tvs) (subst (foldr2 bindSubst idSubst tvs tvs') ty)
->   where tvs = [tv | tv <- nub (typeVars ty), tv `notElemSet` gvs]
+>   where tvs = [tv | tv <- nub (typeVars ty), tv `Set.notMember` gvs]
 >         tvs' = map TypeVariable [0..]
 
 \end{verbatim}
@@ -1247,12 +1248,12 @@ respectively. We ignore the types of data constructors here because we
 know that they are closed.
 \begin{verbatim}
 
-> fvEnv :: ValueEnv -> Set Int
+> fvEnv :: ValueEnv -> Set.Set Int
 > fvEnv tyEnv =
->   fromListSet [tv | ty <- localTypes tyEnv, tv <- typeVars ty, tv < 0]
+>   Set.fromList [tv | ty <- localTypes tyEnv, tv <- typeVars ty, tv < 0]
 
-> fsEnv :: ValueEnv -> Set Int
-> fsEnv tyEnv = unionSets (map (fromListSet . typeSkolems) (localTypes tyEnv))
+> fsEnv :: ValueEnv -> Set.Set Int
+> fsEnv tyEnv = Set.unions (map (Set.fromList . typeSkolems) (localTypes tyEnv))
 
 > localTypes :: ValueEnv -> [Type]
 > localTypes tyEnv = [ty | (_,Value _ (ForAll _ ty)) <- localBindings tyEnv]
