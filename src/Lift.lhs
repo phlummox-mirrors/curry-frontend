@@ -49,7 +49,7 @@ each local function declaration onto its replacement expression,
 i.e. the function applied to its free variables.
 \begin{verbatim}
 
-> type AbstractState a = StateT ValueEnv (StateT EvalEnv Id) a
+> type AbstractState a = StateT ValueEnv (St EvalEnv) a
 > type AbstractEnv = Env Ident Expression
 
 > abstractModule :: ModuleIdent -> [Decl]

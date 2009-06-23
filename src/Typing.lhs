@@ -84,7 +84,7 @@ qualified and expanded or we need access to the type constructor
 environment.}
 \begin{verbatim}
 
-> type TyState a = StateT TypeSubst (StateT Int Id) a
+> type TyState a = StateT TypeSubst (St Int) a
 
 > run :: TyState a -> ValueEnv -> a
 > run m tyEnv = runSt (callSt m idSubst) 0

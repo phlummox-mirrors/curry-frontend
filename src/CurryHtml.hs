@@ -16,7 +16,7 @@ source2html imports outputfilename sourcefilename = do
                      then sourceprogname ++ "_curry.html"
                      else outputfilename 
             modulname = fileName sourceprogname
-        fullfname <- getCurryPath imports [] sourcefilename
+        fullfname <- getCurryPath imports sourcefilename
         program <- filename2program imports (maybe sourcefilename id fullfname)
         (if null outputfilename then writeModule output 
                                 else writeFile   output)

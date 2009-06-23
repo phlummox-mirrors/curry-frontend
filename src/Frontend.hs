@@ -203,8 +203,8 @@ makeInterfaces paths (CS.Module mid _ decls)
 
  flatInterface deps mod 
     = case (lookup mod deps) of
-        Just (Source file _)  -> Just (flatIntName (rootname file))
-	Just (Interface file) -> Just (flatIntName (rootname file))
+        Just (Source file _)  -> Just (flatIntName (dropExtension file))
+	Just (Interface file) -> Just (flatIntName (dropExtension file))
 	_                     -> Nothing
 
 -- Declares the filename as module name, if the module name is not
@@ -212,7 +212,7 @@ makeInterfaces paths (CS.Module mid _ decls)
 patchModuleId :: FilePath -> CS.Module -> CS.Module
 patchModuleId fn (CS.Module mid mexports decls)
    | (moduleName mid) == "main"
-     = CS.Module (mkMIdent [basename (rootname fn)]) mexports decls
+     = CS.Module (mkMIdent [takeBaseName fn]) mexports decls
    | otherwise
      = CS.Module mid mexports decls
 
@@ -233,7 +233,7 @@ importPrelude fn (CS.Module m es ds)
 -- Returns 'True', if file name and module name are equal.
 isValidModuleId :: FilePath -> ModuleIdent -> Bool
 isValidModuleId fn mid
-   = last (moduleQualifiers mid) == basename (rootname fn)
+   = last (moduleQualifiers mid) == takeBaseName fn
 
 
 -- Converts a literate source program to a non-literate source program

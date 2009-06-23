@@ -103,7 +103,7 @@ code are obsolete and commented out.
 >          do (tyEnv, tcEnv, aEnv, m', intf, _) <- simpleCheckModule opts mEnv m
 >             if uacy then genAbstract opts fn tyEnv tcEnv m'
 >                     else do
->                       let outputFile = maybe (rootname fn ++ sourceRepExt) 
+>                       let outputFile = maybe (replaceExtension fn sourceRepExt) 
 >                                              id 
 >                                              (output opts)
 >                           outputMod = showModule m'
@@ -138,7 +138,7 @@ code are obsolete and commented out.
 
 > checkModuleId :: Monad m => FilePath -> Module -> m ()
 > checkModuleId fn (Module mid _ _)
->    | last (moduleQualifiers mid) == basename (rootname fn)
+>    | last (moduleQualifiers mid) == takeBaseName fn
 >      = return ()
 >    | otherwise
 >      = error ("module \"" ++ moduleName mid 
@@ -243,21 +243,21 @@ code are obsolete and commented out.
 
 > writeXML :: Maybe FilePath -> FilePath -> CurryEnv -> IL.Module -> IO ()
 > writeXML tfn sfn cEnv il = writeModule ofn (showln code)
->   where ofn  = fromMaybe (rootname sfn ++ xmlExt) tfn
+>   where ofn  = fromMaybe (replaceExtension sfn xmlExt) tfn
 >         code = (xmlModule cEnv il)
 
 > writeFlat :: Options -> Maybe FilePath -> FilePath -> CurryEnv -> ModuleEnv 
 >              -> ValueEnv -> TCEnv -> ArityEnv -> IL.Module -> IO Prog
 > writeFlat opts tfn sfn cEnv mEnv tyEnv tcEnv aEnv il
 >   = writeFlatFile opts (genFlatCurry opts cEnv mEnv tyEnv tcEnv aEnv il)
->                        (fromMaybe (rootname sfn ++ flatExt) tfn)
+>                        (fromMaybe (replaceExtension sfn flatExt) tfn)
 
 > writeFInt :: Options -> Maybe FilePath -> FilePath -> CurryEnv -> ModuleEnv
 >              -> ValueEnv -> TCEnv -> ArityEnv -> IL.Module -> IO Prog
 > writeFInt opts tfn sfn cEnv mEnv tyEnv tcEnv aEnv il 
 >   = writeFlatFile opts{extendedFlat=False}
 >                  (genFlatInterface opts cEnv mEnv tyEnv tcEnv aEnv il)
->                  (fromMaybe (rootname sfn ++ fintExt) tfn)
+>                  (fromMaybe (takeBaseName sfn ++ fintExt) tfn)
 
 > writeFlatFile :: (Show a) => Options -> (Prog, [a]) -> String -> IO Prog
 > writeFlatFile opts@Options{extendedFlat=ext} (res,msgs) fname = do
@@ -271,23 +271,13 @@ code are obsolete and commented out.
 >	           -> IO ()
 > writeTypedAbs tfn sfn tyEnv tcEnv mod
 >    = writeCurry fname (genTypedAbstract tyEnv tcEnv mod)
->  where fname = fromMaybe (rootname sfn ++ acyExt) tfn
+>  where fname = fromMaybe (replaceExtension sfn acyExt) tfn
 
 > writeUntypedAbs :: Maybe FilePath -> FilePath -> ValueEnv -> TCEnv  
 >	             -> Module -> IO ()
 > writeUntypedAbs tfn sfn tyEnv tcEnv mod
 >    = writeCurry fname (genUntypedAbstract tyEnv tcEnv mod)
->  where fname = fromMaybe (rootname sfn ++ uacyExt) tfn
-
-> --writeCode :: Maybe FilePath -> FilePath -> Either CFile [CFile] -> IO ()
-> --writeCode tfn sfn (Left cfile) = writeCCode ofn cfile
-> --  where ofn = fromMaybe (rootname sfn ++ cExt) tfn
-> --writeCode tfn sfn (Right cfiles) = zipWithM_ (writeCCode . mkFn) [1..] cfiles
-> --  where prefix = fromMaybe (rootname sfn) tfn
-> --        mkFn i = prefix ++ show i ++ cExt
-
-> --writeCCode :: FilePath -> CFile -> IO ()
-> --writeCCode fn = writeFile fn . showln . ppCFile
+>  where fname = fromMaybe (replaceExtension sfn uacyExt) tfn
 
 > showln :: Show a => a -> String
 > showln x = shows x "\n"
@@ -616,7 +606,7 @@ the file is closed.
 > --  do
 > --    eq <- catch (matchInterface ifn i) (const (return False))
 > --    unless eq (writeInterface ifn i)
-> --  where ifn = rootname sfn ++ intfExt
+> --  where ifn = dropExtension sfn ++ intfExt
 
 > --matchInterface :: FilePath -> Interface -> IO Bool
 > --matchInterface ifn i =
@@ -637,8 +627,8 @@ directory is always searched first.
 \begin{verbatim}
 
 > lookupInterface :: [FilePath] -> ModuleIdent -> IO (Maybe FilePath)
-> lookupInterface paths m = lookupFile (ifn : [catPath p ifn | p <- paths])
->   where ifn = foldr1 catPath (moduleQualifiers m) ++ fintExt
+> lookupInterface paths m = lookupFile ("":paths) [fintExt] ifn
+>   where ifn = foldr1 catPath (moduleQualifiers m)
 
 \end{verbatim}
 Literate source files use the extension \texttt{".lcurry"}.
@@ -711,7 +701,7 @@ be dependent on it any longer.
 >   | otherwise
 >     = internalError "@Modules.genFlat: illegal option"
 >  where
->    fintName = rootname fname ++ fintExt
+>    fintName = replaceExtension fname fintExt
 >    cEnv = curryEnv mEnv tcEnv intf mod
 >    emptyIntf = Prog "" [] [] [] []
 >    writeInterface intf msgs = do
@@ -760,7 +750,7 @@ Haskell and original MCC where a module obtains \texttt{main}).
 > patchModuleId :: FilePath -> Module -> Module
 > patchModuleId fn (Module mid mexports decls)
 >    | (moduleName mid) == "main"
->      = Module (mkMIdent [basename (rootname fn)]) mexports decls
+>      = Module (mkMIdent [takeBaseName fn]) mexports decls
 >    | otherwise
 >      = Module mid mexports decls
 

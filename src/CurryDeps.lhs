@@ -48,7 +48,7 @@ Makefile.
 > buildScript clean debug linkAlways flat xml acy uacy
 >             paths libraryPaths ofn fn =
 >   do
->     mfn'      <- getCurryPath paths libraryPaths fn
+>     mfn'      <- getCurryPath (paths ++ libraryPaths) fn
 >     (fn',es1) <- return (maybe ("",["Error: missing module \"" ++ fn ++ "\""])
 >                                (\x -> (x,[]))
 >                                mfn')
@@ -62,7 +62,7 @@ Makefile.
 >                        (outputFile fn') fn ms))
 >     return es
 >   where outputFile fn
->           | extension fn `elem` moduleExts ++ objectExts = Nothing
+>           | takeExtension fn `elem` moduleExts ++ objectExts = Nothing
 >           | otherwise = ofn `mplus` Just fn
 >         makeScript clean = if clean then makeCleanScript else makeBuildScript
 
@@ -83,13 +83,13 @@ Makefile.
 >   | e == icurryExt = return emptyEnv
 >   | e `elem` objectExts = targetDeps paths libraryPaths mEnv r
 >   | otherwise = targetDeps paths libraryPaths mEnv fn
->   where r = rootname fn
->         e = extension fn
+>   where r = dropExtension fn
+>         e = takeExtension fn
 
 > targetDeps :: [FilePath] -> [FilePath] -> SourceEnv -> FilePath
 >            -> IO SourceEnv
 > targetDeps paths libraryPaths mEnv fn =
->   lookupFile [fn ++ e | e <- sourceExts] >>=
+>   lookupFile [""] sourceExts fn >>=
 >   maybe (return (bindEnv m Unknown mEnv)) (sourceDeps paths libraryPaths m mEnv)
 >   where m = mkMIdent [fn]
 
@@ -108,24 +108,11 @@ paths from the library paths in order to avoid scanning such
 directories more than twice.
 \begin{verbatim}
 
-
 > lookupModule :: [FilePath] -> [FilePath] -> ModuleIdent
 >              -> IO (Maybe FilePath)
-> lookupModule paths libraryPaths m =
->   lookupFile [p `catPath` fn ++ e | p <- "" : paths, e <- moduleExts] >>=
->   maybe (lookupFile [p `catPath` fn ++ e 
->                      | p <- libraryPaths, e <- moduleExts])
->         (return . Just)
->   where fn = foldr1 catPath (moduleQualifiers m)
->                      -- | p <- libraryPaths, e <- [icurryExt, curryExt, lcurryExt]])
-
-> --lookupModule :: [FilePath] -> [FilePath] -> ModuleIdent
-> --             -> IO (Maybe FilePath)
-> --lookupModule paths libraryPaths m =
-> --  lookupFile [p `catPath` fn ++ e | p <- "" : paths, e <- moduleExts] >>=
-> --  maybe (lookupFile [p `catPath` fn ++ icurryExt | p <- libraryPaths])
-> --        (return . Just)
-> --  where fn = foldr1 catPath (moduleQualifiers m)
+> lookupModule paths libraryPaths m
+>     = lookupFile ("" : paths ++ libraryPaths) moduleExts fn
+>     where fn = foldr1 catPath (moduleQualifiers m)
 
 \end{verbatim}
 In order to compute the dependency graph, source files for each module
@@ -252,7 +239,7 @@ of dependend program files.
 >                       ++ (maybe [] linkCommands ofn))
 >   where 
 >         compCommands (Source fn' ms)
->            | (acy || uacy) && rootname fn /= rootname fn'
+>            | (acy || uacy) && dropExtension fn /= dropExtension fn'
 >              = (smake ([flatName fn', flatIntName fn'])
 >                       (fn' : catMaybes (map flatInt ms))
 >                       "")
@@ -299,7 +286,7 @@ of dependend program files.
 >             Just (Source fn' _) 
 >	        -> Just (flatIntName fn')
 >             Just (Interface fn') 
->	        -> Just (flatIntName (basename (rootname fn')))
+>	        -> Just (flatIntName (takeBaseName fn'))
 >             Just Unknown 
 >	        -> Nothing
 >             _ -> Nothing
@@ -345,22 +332,16 @@ for the corresponding \texttt{.curry} or \texttt{.lcurry} file,
 if the given file name has no extension.
 \begin{verbatim}
 
-> getCurryPath :: [FilePath] -> [FilePath] -> FilePath -> IO (Maybe FilePath)
-> getCurryPath paths libraryPaths fn
->   = lookupFile filepaths
+> getCurryPath :: [FilePath] -> FilePath -> IO (Maybe FilePath)
+> getCurryPath paths fn
+>   = lookupFile filepaths exts fn
 >  where
->  filepaths = [p `catPath` fn' | p   <- "":(paths ++ libraryPaths),
->                                 fn' <- fns']
->  fns' | null (extension fn) = [fn ++ ext' | ext' <- sourceExts]
->       | otherwise           = [fn]
-
-> --getSourceName :: FilePath -> IO FilePath
-> --getSourceName fn
-> --   | null (extension fn)
-> --      = do mfn <- lookupFile [fn ++ ext' | ext' <- sourceExts]
-> --           return (fromMaybe fn mfn)
-> --   | otherwise 
-> --     = return fn
+>  filepaths = "":paths'
+>  fnext = takeExtension fn
+>  exts | null fnext = sourceExts
+>       | otherwise  = [fnext]
+>  paths' | pathSeparator `elem` fn = []
+>         | otherwise               = paths
 
 
 \end{verbatim}
@@ -372,29 +353,29 @@ file.
 \begin{verbatim}
 
 > interfName :: FilePath -> FilePath
-> interfName sfn = rootname sfn ++ icurryExt
+> interfName sfn = replaceExtension sfn icurryExt
 
 > flatName :: FilePath -> FilePath
-> flatName fn = rootname fn ++ flatExt
+> flatName fn = replaceExtension fn flatExt
 
 > flatIntName :: FilePath -> FilePath
-> flatIntName fn = rootname fn ++ flatIntExt
+> flatIntName fn = replaceExtension fn flatIntExt
 
 > xmlName :: FilePath -> FilePath
-> xmlName fn = rootname fn ++ xmlExt
+> xmlName fn = replaceExtension fn xmlExt
 
 > acyName :: FilePath -> FilePath
-> acyName fn = rootname fn ++ acyExt
+> acyName fn = replaceExtension fn acyExt
 
 > uacyName :: FilePath -> FilePath
-> uacyName fn = rootname fn ++ uacyExt
+> uacyName fn = replaceExtension fn uacyExt
 
 > sourceRepName :: FilePath -> FilePath
-> sourceRepName fn = rootname fn ++ sourceRepExt
+> sourceRepName fn = replaceExtension fn sourceRepExt
 
 > objectName :: Bool -> FilePath -> FilePath
 > objectName debug = name (if debug then debugExt else oExt)
->   where name ext fn = rootname fn ++ ext
+>   where name ext fn = replaceExtension fn ext
 
 > curryExt, lcurryExt, icurryExt, oExt :: String
 > curryExt = ".curry"

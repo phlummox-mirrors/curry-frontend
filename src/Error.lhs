@@ -31,12 +31,5 @@ describes the failure.
 > ok (Ok x) = x
 > ok (Error e) = error e
 
-> okM :: Monad m => Error a -> m a
-> okM (Ok x) = return x
-> okM (Error e) = fail e
-
-> emap :: (String -> String) -> Error a -> Error a
-> emap _ (Ok x) = Ok x
-> emap f (Error e) = Error (f e)
 
 \end{verbatim}

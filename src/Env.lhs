@@ -34,9 +34,6 @@ because of a bug in the nhc compiler.
 > emptyEnv :: Ord a => Env a b
 > emptyEnv = Env Map.empty
 
-> environment :: Ord a => [(a,b)] -> Env a b
-> environment l = Env (Map.fromList l)
-
 > envToList :: Ord v => Env v e -> [(v,e)]
 > envToList (Env rho) = Map.toList rho
 

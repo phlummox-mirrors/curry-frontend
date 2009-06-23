@@ -84,7 +84,7 @@ type environment, which must be augmented with the types of these new
 variables.
 \begin{verbatim}
 
-> type DesugarState a = StateT ValueEnv (StateT Int Id) a
+> type DesugarState a = StateT ValueEnv (St Int) a
 
 > run :: DesugarState a -> ValueEnv -> a
 > run m tyEnv = runSt (callSt m tyEnv) 1

@@ -68,7 +68,7 @@ A global state transformer is used for generating fresh integer keys
 by which the variables get renamed.
 \begin{verbatim}
 
-> type RenameState a = StateT Int Id a
+> type RenameState a = St Int a
 
 > run :: RenameState a -> a
 > run m = runSt m (globalKey + 1)

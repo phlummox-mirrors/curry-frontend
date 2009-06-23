@@ -83,7 +83,7 @@ maintain the type environment, the current substitution, and a counter
 which is used for generating fresh type variables.
 \begin{verbatim}
 
-> type TcState a = StateT ValueEnv (StateT TypeSubst (StateT Int Id)) a
+> type TcState a = StateT ValueEnv (StateT TypeSubst (St Int)) a
 
 > run :: TcState a -> ValueEnv -> a
 > run m tyEnv = runSt (callSt (callSt m tyEnv) idSubst) 0

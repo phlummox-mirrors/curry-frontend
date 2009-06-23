@@ -33,7 +33,7 @@ Currently, the following optimizations are implemented:
 > import Typing
 
 
-> type SimplifyState a = StateT ValueEnv (ReaderT EvalEnv (StateT Int Id)) a
+> type SimplifyState a = StateT ValueEnv (ReaderT EvalEnv (St Int)) a
 > type InlineEnv = Env Ident Expression
 > type SimplifyFlags = Bool
  

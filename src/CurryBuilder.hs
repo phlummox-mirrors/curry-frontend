@@ -32,7 +32,7 @@ import Env
 buildCurry :: Options -> FilePath -> IO ()
 buildCurry options file
    = do let paths = importPaths options
-	file'          <- getSourcePath paths file
+	file'          <- getCurryPath paths file
 	(cfile, errs1) <- return (maybe ("", [missingModule file])
 			                (\f -> (f,[]))
 				        file')
@@ -49,7 +49,7 @@ makeCurry options deps file
    = mapM compile (map snd deps) >> return ()
  where
  compile (Source file' mods)
-    | rootname file == rootname file'
+    | dropExtension file == dropExtension file'
       = do 
            flatIntfExists <- doesModuleExist (flatIntName file')
 	   if flatIntfExists && not (force options) && null (dump options)
@@ -96,8 +96,8 @@ makeCurry options deps file
 
  flatInterface mod 
     = case (lookup mod deps) of
-        Just (Source file _)  -> Just (flatIntName (rootname file))
-	Just (Interface file) -> Just (flatIntName (rootname file))
+        Just (Source file _)  -> Just (flatIntName (dropExtension file))
+	Just (Interface file) -> Just (flatIntName (dropExtension file))
 	_                     -> Nothing
 
  compOpts isImport
@@ -113,13 +113,6 @@ makeCurry options deps file
     | otherwise = options
 
 -------------------------------------------------------------------------------
-
--- Searches in 'paths' for the corresponding Curry file of 'fn' and returns
--- the complete path if it exist. The filename 'fn' doesn't need one of the 
--- Curry file extensions ".curry" or ".lcurry"
-getSourcePath :: [FilePath] -> FilePath -> IO (Maybe FilePath)
-getSourcePath paths file = getCurryPath paths [] file
-
 
 -- Computes a dependency list for the Curry file 'file' (such a list
 -- usualy starts with the prelude and ends with 'file'). The result 
