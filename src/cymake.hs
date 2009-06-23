@@ -44,7 +44,7 @@ cymake prog args
    | null files     = badUsage prog ["no files"]
    | null errs' && not (elem Html opts)    = do
        unless (noVerb options') 
-              (putStrLn  $ "This is cymake, version 1.1." 
+              (putStrLn  $ "This is cymake, version 0.1." 
                          ++ filter isDigit "$Revision$")
        mapM_ (buildCurry options') files
    | null errs' = do
