@@ -10,8 +10,6 @@
 module GenFlatCurry (genFlatCurry,
 		     genFlatInterface) where
 
-import Debug.Trace
-
 import Control.Monad.State
 import Control.Monad
 import Data.Maybe
@@ -42,7 +40,9 @@ import PatchPrelude
 import Ident as Id
 import Env
 
+--import Debug.Trace
 
+trace _ x = x
 
 -------------------------------------------------------------------------------
 

@@ -255,13 +255,15 @@ code are obsolete and commented out.
 > writeFInt :: Options -> Maybe FilePath -> FilePath -> CurryEnv -> ModuleEnv
 >              -> ValueEnv -> TCEnv -> ArityEnv -> IL.Module -> IO Prog
 > writeFInt opts tfn sfn cEnv mEnv tyEnv tcEnv aEnv il 
->   = writeFlatFile opts (genFlatInterface opts cEnv mEnv tyEnv tcEnv aEnv il)
->                        (fromMaybe (rootname sfn ++ fintExt) tfn)
+>   = writeFlatFile opts{extendedFlat=False}
+>                  (genFlatInterface opts cEnv mEnv tyEnv tcEnv aEnv il)
+>                  (fromMaybe (rootname sfn ++ fintExt) tfn)
 
 > writeFlatFile :: (Show a) => Options -> (Prog, [a]) -> String -> IO Prog
-> writeFlatFile opts (res,msgs) fname = do
+> writeFlatFile opts@Options{extendedFlat=ext} (res,msgs) fname = do
 >         unless (noWarn opts) (printMessages msgs)
->	  writeFlatCurry fname res
+>	  if ext then writeExtendedFlat fname res
+>                else writeFlatCurry fname res
 >         return res
 
 

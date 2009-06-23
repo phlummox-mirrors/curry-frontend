@@ -24,7 +24,7 @@ module ExtendedFlat (SrcRef,Prog(..), QName(..), Visibility(..),
                   CaseType(..), CombType(..), Expr(..), BranchExpr(..),
                   Pattern(..), Literal(..), 
 		  readFlatCurry, readFlatInterface, readFlat, 
-		  writeFlatCurry,gshowsPrec,
+		  writeFlatCurry,writeExtendedFlat,gshowsPrec,
                   qnOf,mkQName,
                   mkIdx,idxOf) where
 
@@ -33,6 +33,7 @@ import Data.List(intersperse)
 import Control.Monad (liftM)
 import Data.Generics hiding (Fixity)
 import Position (SrcRef)
+import System.FilePath
 
 
 ------------------------------------------------------------------------------
@@ -428,12 +429,12 @@ readFlat = liftM (fmap read) . maybeReadModule
 -- Writes a FlatCurry program term into a file.
 writeFlatCurry :: String -> Prog -> IO ()
 writeFlatCurry filename prog
-   = writeModule filename (showFlatCurry' prog)
+   = writeModule filename (showFlatCurry' False prog)
 
 -- Writes a FlatCurry program term with source references into a file.
-writeFlatWithSrcRefs :: String -> Prog -> IO ()
-writeFlatWithSrcRefs filename prog
-   = writeModule filename (showFlatCurry prog)
+writeExtendedFlat :: String -> Prog -> IO ()
+writeExtendedFlat filename prog =
+  writeModule (replaceExtension filename ".efc") (showFlatCurry' True prog)
 
 -- Shows FlatCurry program in a more nicely way.
 showFlatCurry :: Prog -> String
@@ -454,31 +455,34 @@ genFlatFilename ext fn
    | otherwise
      = fn ++ ext
 
-showFlatCurry' :: Prog -> String
-showFlatCurry' x = gshowsPrec False x ""
+showFlatCurry' :: Bool -> Prog -> String
+showFlatCurry' b x = gshowsPrec b False x ""
 
-
-gshowsPrec :: Data a => Bool -> a -> ShowS
-gshowsPrec d = 
+gshowsPrec :: Data a => Bool -> Bool -> a -> ShowS
+gshowsPrec showType d = 
   genericShowsPrec d `ext1Q` showsList
                      `ext2Q` showsTuple
                      `extQ`  (const id :: SrcRef -> ShowS)
                      `extQ`  (const id :: [SrcRef] -> ShowS)
                      `extQ`  (shows :: String -> ShowS)
                      `extQ`  (shows :: Char -> ShowS)
-                     `extQ`  showsQName
-                     `extQ`  showsVarIndex
+                     `extQ`  showsQName d
+                     `extQ`  showsVarIndex d
                                       
       where
-        showsQName :: QName -> ShowS
-        showsQName QName{modName=m,localName=n} = shows (m,n)
+        showsQName :: Bool -> QName -> ShowS
+        showsQName d qn@QName{modName=m,localName=n,typeofQName=t} = 
+          if showType then showParen d (shows qn{srcRef=Nothing})
+                      else shows (m,n)
 
-        showsVarIndex :: VarIndex -> ShowS
-        showsVarIndex VarIndex{index=i} = shows i
+        showsVarIndex :: Bool -> VarIndex -> ShowS
+        showsVarIndex d v@VarIndex{index=i} = 
+          if showType then showParen d (shows v)
+                      else shows i
 
         genericShowsPrec :: Data a => Bool -> a -> ShowS
         genericShowsPrec d t = let args = intersperse (showChar ' ') $
-                                          gmapQ (gshowsPrec True) t in
+                                          gmapQ (gshowsPrec showType True) t in
                                showParen (d && not (null args)) $
                                showString (showConstr (toConstr t)) .
                                (if null args then id else showChar ' ') .
@@ -488,14 +492,14 @@ gshowsPrec d =
         showsList xs = showChar '[' . 
                        foldr (.) (showChar ']') 
                              (intersperse (showChar ',') $ 
-                              map (gshowsPrec False) xs)
+                              map (gshowsPrec showType False) xs)
                        
 
         showsTuple :: (Data a,Data b) => (a,b) -> ShowS
         showsTuple (x,y) = showChar '(' . 
-                           gshowsPrec False x . 
+                           gshowsPrec showType False x . 
                            showChar ',' .
-                           gshowsPrec False y .
+                           gshowsPrec showType False y .
                            showChar ')' 
 
 
