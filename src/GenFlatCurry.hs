@@ -16,7 +16,7 @@ import Control.Monad.State
 import Control.Monad
 import Data.Maybe
 import Data.List
-
+import qualified Data.Map as Map
 import Base (ArityEnv, ArityInfo(..), ModuleEnv, PEnv, PrecInfo(..), 
 	     OpPrec(..), TCEnv, TypeInfo(..), ValueEnv, ValueInfo(..),
 	     lookupValue, qualLookupTC,
@@ -41,7 +41,7 @@ import Message
 import PatchPrelude
 import Ident as Id
 import Env
-import Map
+
 
 
 -------------------------------------------------------------------------------
@@ -649,12 +649,12 @@ elimRecordTypes tyEnv tcEnv (CS.RecordType fss _)
   	   [Label _ record _] ->
 	     case (qualLookupTC record tcEnv) of
 	       [AliasType _ n (TypeRecord fs' _)] ->
-	         let ms = foldl (matchTypeVars fs) zeroFM fs'
+	         let ms = foldl (matchTypeVars fs) Map.empty fs'
 		     types = map (\i -> maybe 
 			 	          (CS.VariableType 
 					     (mkIdent ("#tvar" ++ show i)))
 				          (elimRecordTypes tyEnv tcEnv)
-				          (lookupFM i ms))
+				          (Map.lookup i ms))
 			         [0 .. n-1]
 	         in  CS.ConstructorType record types
 	       _ -> internalError ("GenFlatCurry.elimRecordTypes: "
@@ -662,12 +662,12 @@ elimRecordTypes tyEnv tcEnv (CS.RecordType fss _)
 	   _ -> internalError ("GenFlatCurry.elimRecordTypes: "
 			       ++ "no label")
 
-matchTypeVars :: [(Ident,CS.TypeExpr)] -> FM Int CS.TypeExpr
-	      -> (Ident, Type) -> FM Int CS.TypeExpr
+matchTypeVars :: [(Ident,CS.TypeExpr)] -> Map.Map Int CS.TypeExpr
+	      -> (Ident, Type) -> Map.Map Int CS.TypeExpr
 matchTypeVars fs ms (l,ty)
    = maybe ms (match ms ty) (lookup l fs)
   where
-  match ms (TypeVariable i) typeexpr = addToFM i typeexpr ms
+  match ms (TypeVariable i) typeexpr = Map.insert i typeexpr ms
   match ms (TypeConstructor _ tys) (CS.ConstructorType _ typeexprs)
      = matchList ms tys typeexprs
   match ms (TypeConstructor _ tys) (CS.ListType typeexpr)

@@ -41,5 +41,5 @@ Executable cymake
                     LexComb, SCC, Utils, GetOpt
                     Lift, ScopeEnv, WarnCheck
                     LLParseComb, Desugar, Ident, ShowCurrySyntax
-                    Map, Simplify
+                    Simplify
 

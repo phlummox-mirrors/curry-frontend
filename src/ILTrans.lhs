@@ -24,13 +24,13 @@ data structures, we can use only a qualified import for the
 > import Data.Maybe
 > import Data.List
 > import qualified Data.Set as Set
+> import qualified Data.Map as Map
 
 > import Base
 > import qualified IL
 > import Utils
 > import Env
 
-> import Map
 
 
 
@@ -186,22 +186,22 @@ them back into their corresponding type constructors.
 >           [AliasType _ n' (TypeRecord fs' _)] ->
 >	      let is = [0 .. n'-1]
 >                 vs = foldl (matchTypeVars fs)
->			     zeroFM
+>			     Map.empty
 >			     fs'
 >		  tys = map (\i -> maybe (TypeVariable (i+n))
 >			                 (elimRecordTypes m tyEnv tcEnv n)
->		                         (lookupFM i vs))
+>		                         (Map.lookup i vs))
 >		            is 
 >	      in  TypeConstructor r tys
 >	    _ -> internalError "elimRecordTypes: no record type"
 >       _ -> internalError "elimRecordTypes: no label"
 
-> matchTypeVars :: [(Ident,Type)] -> FM Int Type -> (Ident,Type) 
->	           -> FM Int Type
+> matchTypeVars :: [(Ident,Type)] -> Map.Map Int Type -> (Ident,Type) 
+>	           -> Map.Map Int Type
 > matchTypeVars fs vs (l,ty) =
 >   maybe vs (match vs ty) (lookup l fs)
 >   where
->   match vs (TypeVariable i) ty' = addToFM i ty' vs
+>   match vs (TypeVariable i) ty' = Map.insert i ty' vs
 >   match vs (TypeConstructor _ tys) (TypeConstructor _ tys') =
 >     matchList vs tys tys'
 >   match vs (TypeConstrained tys _) (TypeConstrained tys' _) =

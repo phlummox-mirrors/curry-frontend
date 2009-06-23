@@ -17,21 +17,21 @@ substitutions are marked with a boolean flag (see below).
 
 > module Subst where
 
-> import Map
+> import qualified Data.Map as Map
 
-> data Subst a b = Subst Bool (FM a b) deriving Show
+> data Subst a b = Subst Bool (Map.Map a b) deriving Show
 
 > idSubst :: Ord a => Subst a b
-> idSubst = Subst False zeroFM
+> idSubst = Subst False Map.empty
 
 > substToList :: Ord v => Subst v e -> [(v,e)]
-> substToList (Subst _ sigma) = toListFM sigma
+> substToList (Subst _ sigma) = Map.toList sigma
 
 > bindSubst :: Ord v => v -> e -> Subst v e -> Subst v e
-> bindSubst v e (Subst comp sigma) = Subst comp (addToFM v e sigma)
+> bindSubst v e (Subst comp sigma) = Subst comp (Map.insert v e sigma)
 
 > unbindSubst :: Ord v => v -> Subst v e -> Subst v e
-> unbindSubst v (Subst comp sigma) = Subst comp (deleteFromFM v sigma)
+> unbindSubst v (Subst comp sigma) = Subst comp (Map.delete v sigma)
 
 \end{verbatim}
 For any substitution we have the following definitions:
@@ -80,7 +80,7 @@ only in case of a substitution which was returned from \texttt{compose}.
 \begin{verbatim}
 
 substVar :: Subst v e => Subst v e -> v -> e
-substVar (Subst comp sigma) v = maybe (var v) subst' (lookupFM v sigma)
+substVar (Subst comp sigma) v = maybe (var v) subst' (Map.lookup v sigma)
   where subst' = if comp then subst (Subst comp sigma) else id
 
 > compose :: (Show v,Ord v,Show e) => Subst v e -> Subst v e -> Subst v e
@@ -104,7 +104,7 @@ domain are integer numbers.
 > substVar' :: Ord v => (v -> e) -> (Subst v e -> e -> e)
 >           -> Subst v e -> v -> e
 > substVar' var subst (Subst comp sigma) v =
->   maybe (var v) subst' (lookupFM v sigma)
+>   maybe (var v) subst' (Map.lookup v sigma)
 >   where subst' = if comp then subst (Subst comp sigma) else id
 
 > class IntSubst e where
@@ -121,7 +121,7 @@ substitution to a given subset of its domain.
 
 > restrictSubstTo :: Ord v => [v] -> Subst v e -> Subst v e
 > restrictSubstTo vs (Subst comp sigma) =
->   foldr (uncurry bindSubst) (Subst comp zeroFM)
->         (filter ((`elem` vs) . fst) (toListFM sigma))
+>   foldr (uncurry bindSubst) (Subst comp Map.empty)
+>         (filter ((`elem` vs) . fst) (Map.toList sigma))
 
 \end{verbatim}

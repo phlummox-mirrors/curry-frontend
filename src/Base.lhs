@@ -18,6 +18,7 @@ phases of the compiler.
 > import Control.Monad
 > import Data.Maybe
 > import qualified Data.Set as Set
+> import qualified Data.Map as Map
 
 > import Ident 
 > import Position
@@ -28,7 +29,7 @@ phases of the compiler.
 > import ExtendedFlat hiding (SrcRef, Fixity(..), TypeExpr, Expr(..))
 > import Env
 > import TopEnv
-> import Map
+
 
 > import Utils
 
@@ -57,18 +58,18 @@ order of type variables in the left hand side of a type declaration.
 > toQualTypes m tvs tys = map (qualifyType m) (toTypes tvs tys)
 
 > toType :: [Ident] -> TypeExpr -> Type
-> toType tvs ty = toType' (fromListFM (zip (tvs ++ tvs') [0..])) ty
+> toType tvs ty = toType' (Map.fromList (zip (tvs ++ tvs') [0..])) ty
 >   where tvs' = [tv | tv <- nub (fv ty), tv `notElem` tvs]
 
 > toTypes :: [Ident] -> [TypeExpr] -> [Type]
-> toTypes tvs tys = map (toType' (fromListFM (zip (tvs ++ tvs') [0..]))) tys
+> toTypes tvs tys = map (toType' (Map.fromList (zip (tvs ++ tvs') [0..]))) tys
 >   where tvs' = [tv | tv <- nub (concatMap fv tys), tv `notElem` tvs]
 
-> toType' :: FM Ident Int -> TypeExpr -> Type
+> toType' :: Map.Map Ident Int -> TypeExpr -> Type
 > toType' tvs (ConstructorType tc tys) =
 >   TypeConstructor tc (map (toType' tvs) tys)
 > toType' tvs (VariableType tv) =
->   maybe (internalError ("toType " ++ show tv)) TypeVariable (lookupFM tv tvs)
+>   maybe (internalError ("toType " ++ show tv)) TypeVariable (Map.lookup tv tvs)
 > toType' tvs (TupleType tys)
 >   | null tys = TypeConstructor (qualify unitId) []
 >   | otherwise = TypeConstructor (qualify (tupleId (length tys'))) tys'

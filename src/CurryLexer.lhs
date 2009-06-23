@@ -15,10 +15,11 @@ In this section a lexer for Curry is implemented.
 
 > import Data.Char 
 > import Data.List
+> import qualified Data.Map as Map
 
 > import LexComb
 > import Position
-> import Map
+
 
 
 \end{verbatim}
@@ -211,8 +212,8 @@ all tokens in their source representation.
 Tables for reserved operators and identifiers
 \begin{verbatim}
 
-> reserved_ops, reserved_and_special_ops :: FM String Category
-> reserved_ops = fromListFM [
+> reserved_ops, reserved_and_special_ops :: Map.Map String Category
+> reserved_ops = Map.fromList [
 >     ("@",  At),
 >     ("::", DoubleColon),
 >     ("..", DotDot),
@@ -224,15 +225,15 @@ Tables for reserved operators and identifiers
 >     ("~",  Tilde),
 >     (":=", Binds)
 >   ]
-> reserved_and_special_ops = foldr (uncurry addToFM) reserved_ops [
+> reserved_and_special_ops = foldr (uncurry Map.insert) reserved_ops [
 >     (":",  Colon),
 >     (".",  Sym_Dot),
 >     ("-",  Sym_Minus),
 >     ("-.", Sym_MinusDot)
 >   ]
 
-> reserved_ids, reserved_and_special_ids :: FM String Category
-> reserved_ids = fromListFM [
+> reserved_ids, reserved_and_special_ids :: Map.Map String Category
+> reserved_ids = Map.fromList [
 >     ("case",     KW_case),
 >     ("choice",   KW_choice),
 >     ("data",     KW_data),
@@ -256,7 +257,7 @@ Tables for reserved operators and identifiers
 >     ("type",     KW_type),
 >     ("where",    KW_where)
 >   ]
-> reserved_and_special_ids = foldr (uncurry addToFM) reserved_ids [
+> reserved_and_special_ids = foldr (uncurry Map.insert) reserved_ids [
 >     ("as",        Id_as),
 >     ("ccall",     Id_ccall),
 >     ("forall",    Id_forall),
@@ -398,14 +399,14 @@ Lexing functions
 > lexIdent :: (Token -> P a) -> P a
 > lexIdent cont p s =
 >   maybe (lexOptQual cont (token Id) [ident]) (cont . token)
->         (lookupFM ident reserved_and_special_ids)
+>         (Map.lookup ident reserved_and_special_ids)
 >         (incr p (length ident)) rest
 >   where (ident,rest) = span isIdent s
 >         token t = idTok t [] ident
 
 > lexSym :: (Token -> P a) -> P a
 > lexSym cont p s =
->   cont (idTok (maybe Sym id (lookupFM sym reserved_and_special_ops)) [] sym)
+>   cont (idTok (maybe Sym id (Map.lookup sym reserved_and_special_ops)) [] sym)
 >        (incr p (length sym)) rest
 >   where (sym,rest) = span isSym s
 
@@ -432,14 +433,14 @@ the qualified use of the Prelude list operators and tuples.
 > lexQualIdent cont identCont mIdent p s =
 >   maybe (lexOptQual cont (idTok QId mIdent ident) (mIdent ++ [ident]))
 >         (const identCont)
->         (lookupFM ident reserved_ids)
+>         (Map.lookup ident reserved_ids)
 >         (incr p (length ident)) rest
 >   where (ident,rest) = span isIdent s
 
 > lexQualSym :: (Token -> P a) -> P a -> [String] -> P a
 > lexQualSym cont identCont mIdent p s =
 >   maybe (cont (idTok QSym mIdent sym)) (const identCont)
->         (lookupFM sym reserved_ops)
+>         (Map.lookup sym reserved_ops)
 >         (incr p (length sym)) rest
 >   where (sym,rest) = span isSym s
 

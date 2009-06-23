@@ -14,11 +14,11 @@ interfaces into the current module.
 
 > import Data.Maybe
 > import qualified Data.Set as Set
+> import qualified Data.Map as Map
 
 > import Base
 > import Env
 > import TopEnv
-> import Map
 
 
 \end{verbatim}
@@ -321,10 +321,10 @@ all references to a data type use the same list of constructors.
 
 > importUnifyData :: TCEnv -> TCEnv
 > importUnifyData tcEnv =
->   fmap (setInfo (foldr (mergeData . snd) zeroFM (allImports tcEnv))) tcEnv
->   where setInfo tcs t = fromJust (lookupFM (origName t) tcs)
+>   fmap (setInfo (foldr (mergeData . snd) Map.empty (allImports tcEnv))) tcEnv
+>   where setInfo tcs t = fromJust (Map.lookup (origName t) tcs)
 >         mergeData t tcs =
->           addToFM tc (maybe t (fromJust . merge t) (lookupFM tc tcs)) tcs
+>           Map.insert tc (maybe t (fromJust . merge t) (Map.lookup tc tcs)) tcs
 >           where tc = origName t
 
 \end{verbatim}

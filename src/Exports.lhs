@@ -17,10 +17,9 @@ is computed.
 > import Data.List
 > import Data.Maybe
 > import qualified Data.Set as Set
+> import qualified Data.Map as Map
 
 > import Base
-> import Map
-
 > import TopEnv
 
 \end{verbatim}
@@ -169,13 +168,13 @@ are removed by the function \texttt{joinExports}.
 
 > joinExports :: [Export] -> [Export]
 > joinExports es =
->   [ExportTypeWith tc cs | (tc,cs) <- toListFM (foldr joinType zeroFM es)] ++
+>   [ExportTypeWith tc cs | (tc,cs) <- Map.toList (foldr joinType Map.empty es)] ++
 >   [Export f | f <- Set.toList (foldr joinFun Set.empty es)]
 
-> joinType :: Export -> FM QualIdent [Ident] -> FM QualIdent [Ident]
+> joinType :: Export -> Map.Map QualIdent [Ident] -> Map.Map QualIdent [Ident]
 > joinType (Export _) tcs = tcs
 > joinType (ExportTypeWith tc cs) tcs =
->   addToFM tc (cs `union` fromMaybe [] (lookupFM tc tcs)) tcs
+>   Map.insertWith union tc cs tcs
 
 > joinFun :: Export -> Set.Set QualIdent -> Set.Set QualIdent
 > joinFun (Export f) fs = f `Set.insert` fs

@@ -26,30 +26,31 @@ because of a bug in the nhc compiler.
 \begin{verbatim}
 
 > module Env where
-> import Map
 
-> newtype Env a b = Env (FM a b) deriving Show
+> import qualified Data.Map as Map
+
+> newtype Env a b = Env (Map.Map a b) deriving Show
 
 > emptyEnv :: Ord a => Env a b
-> emptyEnv = Env zeroFM
+> emptyEnv = Env Map.empty
 
 > environment :: Ord a => [(a,b)] -> Env a b
-> environment = foldr (uncurry bindEnv) emptyEnv
+> environment l = Env (Map.fromList l)
 
 > envToList :: Ord v => Env v e -> [(v,e)]
-> envToList (Env rho) = toListFM rho
+> envToList (Env rho) = Map.toList rho
 
 > bindEnv :: Ord v => v -> e -> Env v e -> Env v e
-> bindEnv v e (Env rho) = Env (addToFM v e rho)
+> bindEnv v e (Env rho) = Env (Map.insert v e rho)
 
 > unbindEnv :: Ord v => v -> Env v e -> Env v e
-> unbindEnv v (Env rho) = Env (deleteFromFM v rho)
+> unbindEnv v (Env rho) = Env (Map.delete v rho)
 
 > lookupEnv :: Ord v => v -> Env v e -> Maybe e
-> lookupEnv v (Env rho) = lookupFM v rho
+> lookupEnv v (Env rho) = Map.lookup v rho
 
 > envSize :: Ord v => Env v e -> Int
-> envSize (Env rho) = length (toListFM rho)
+> envSize (Env rho) = Map.size rho
 
 > instance Ord a => Functor (Env a) where
 >   fmap f (Env rho) = Env (fmap f rho)

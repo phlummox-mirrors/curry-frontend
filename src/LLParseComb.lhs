@@ -30,11 +30,12 @@ string in this case.
 > import Control.Monad
 > import Data.Maybe
 > import qualified Data.Set as Set
+> import qualified Data.Map as Map
 
 
 > import Position
 
-> import Map
+
 > import Error
 > import LexComb
 
@@ -58,12 +59,12 @@ string in this case.
 >                     -> SuccessCont s b
 
 > data Parser s a b = Parser (Maybe (ParseFun s a b))
->                            (FM s (Lexer s b -> ParseFun s a b))
+>                            (Map.Map s (Lexer s b -> ParseFun s a b))
 
 > instance Symbol s => Show (Parser s a b) where
 >   showsPrec p (Parser e ps) = showParen (p >= 10) $                      -- $
 >     showString "Parser " . shows (isJust e) .
->     showChar ' ' . shows (Set.fromList $ toKeyListFM ps)
+>     showChar ' ' . shows (Map.keysSet ps)
 
 > applyParser :: Symbol s => Parser s a a -> Lexer s a -> FilePath -> String
 >             -> Error a
@@ -79,7 +80,7 @@ string in this case.
 
 > choose :: Symbol s => Parser s a b -> Lexer s b -> ParseFun s a b
 > choose (Parser e ps) lexer success fail pos s =
->   case lookupFM s ps of
+>   case Map.lookup s ps of
 >     Just p -> p lexer success fail pos s
 >     Nothing ->
 >       case e of
@@ -96,27 +97,27 @@ string in this case.
 \begin{verbatim}
 
 > position :: Symbol s => Parser s Position b
-> position = Parser (Just p) zeroFM
+> position = Parser (Just p) Map.empty
 >   where p success _ pos = success pos pos
 
 > succeed :: Symbol s => a -> Parser s a b
-> succeed x = Parser (Just p) zeroFM
+> succeed x = Parser (Just p) Map.empty
 >   where p success _ = success x
 
 > symbol :: Symbol s => s -> Parser s s a
-> symbol s = Parser Nothing (addToFM s p zeroFM)
+> symbol s = Parser Nothing (Map.singleton s p)
 >   where p lexer success fail pos s = lexer (success s) fail
 
 > (<?>) :: Symbol s => Parser s a b -> String -> Parser s a b
-> p <?> msg = p <|> Parser (Just pfail) zeroFM
+> p <?> msg = p <|> Parser (Just pfail) Map.empty
 >   where pfail _ fail pos _ = fail pos msg
 
 > (<|>) :: Symbol s => Parser s a b -> Parser s a b -> Parser s a b
 > Parser e1 ps1 <|> Parser e2 ps2
 >   | isJust e1 && isJust e2 = error "Ambiguous parser for empty word"
 >   | not (Set.null common) = error ("Ambiguous parser for " ++ show common)
->   | otherwise = Parser (e1 `mplus` e2) (insertIntoFM ps1 ps2)
->   where common = Set.fromList (toKeyListFM ps1) `Set.intersection` Set.fromList (toKeyListFM ps2)
+>   | otherwise = Parser (e1 `mplus` e2) (Map.union ps1 ps2)
+>   where common = Map.keysSet ps1 `Set.intersection` Map.keysSet ps2
 
 \end{verbatim}
 The parsing combinators presented so far require that the grammar
@@ -135,9 +136,9 @@ and report an ambiguous parse error if both succeed.
 > (<|?>) :: Symbol s => Parser s a b -> Parser s a b -> Parser s a b
 > Parser e1 ps1 <|?> Parser e2 ps2
 >   | isJust e1 && isJust e2 = error "Ambiguous parser for empty word"
->   | otherwise = Parser (e1 `mplus` e2) (insertIntoFM ps1' ps2)
->   where ps1' = fromListFM [(s,maybe p (try p) (lookupFM s ps2))
->                           | (s,p) <- toListFM ps1]
+>   | otherwise = Parser (e1 `mplus` e2) (Map.union ps1' ps2)
+>   where ps1' = Map.fromList [(s,maybe p (try p) (Map.lookup s ps2))
+>                           | (s,p) <- Map.toList ps1]
 >         try p1 p2 lexer success fail pos s =
 >           closeP1 p2s `thenP` \p2s' ->
 >           closeP1 p2f `thenP` \p2f' ->
@@ -160,7 +161,7 @@ and report an ambiguous parse error if both succeed.
 > (<*>) :: Symbol s => Parser s (a -> b) c -> Parser s a c -> Parser s b c
 > Parser (Just p1) ps1 <*> ~p2@(Parser e2 ps2) =
 >   Parser (fmap (seqEE p1) e2)
->          (insertIntoFM (fmap (flip seqPP p2) ps1) (fmap (seqEP p1) ps2))
+>          (Map.union (fmap (flip seqPP p2) ps1) (fmap (seqEP p1) ps2))
 > Parser Nothing ps1 <*> p2 = Parser Nothing (fmap (flip seqPP p2) ps1)
 
 > seqEE :: Symbol s => ParseFun s (a -> b) c -> ParseFun s a c
@@ -176,9 +177,6 @@ and report an ambiguous parse error if both succeed.
 > seqPP p1 p2 lexer success fail =
 >   p1 lexer (\f -> choose p2 lexer (success . f) fail) fail
 
-> insertIntoFM :: Ord a => FM a b -> FM a b -> FM a b
-> insertIntoFM map1 map2 = foldr (uncurry addToFM) map2 (toListFM map1)
-
 \end{verbatim}
 The combinators \verb|<\\>| and \verb|<\>| can be used to restrict
 the first set of a parser. This is useful for combining two parsers
@@ -186,10 +184,10 @@ with an overlapping first set with the deterministic combinator <|>.
 \begin{verbatim}
 
 > (<\>) :: Symbol s => Parser s a c -> Parser s b c -> Parser s a c
-> p <\> Parser _ ps = p <\\> map fst (toListFM ps)
+> p <\> Parser _ ps = p <\\> Map.keys ps
 
 > (<\\>) :: Symbol s => Parser s a b -> [s] -> Parser s a b
-> Parser e ps <\\> xs = Parser e (foldr deleteFromFM ps xs)
+> Parser e ps <\\> xs = Parser e (foldr Map.delete ps xs)
 
 \end{verbatim}
 \paragraph{Other combinators.}
@@ -280,15 +278,15 @@ the same token and an undefined result.
 \begin{verbatim}
 
 > layoutOn :: Symbol s => Parser s a b
-> layoutOn = Parser (Just on) zeroFM
+> layoutOn = Parser (Just on) Map.empty
 >   where on success _ pos = pushContext (column pos) . success undefined pos
 
 > layoutOff :: Symbol s => Parser s a b
-> layoutOff = Parser (Just off) zeroFM
+> layoutOff = Parser (Just off) Map.empty
 >   where off success _ pos = pushContext (-1) . success undefined pos
 
 > layoutEnd :: Symbol s => Parser s a b
-> layoutEnd = Parser (Just end) zeroFM
+> layoutEnd = Parser (Just end) Map.empty
 >   where end success _ pos = popContext . success undefined pos
 
 \end{verbatim}
