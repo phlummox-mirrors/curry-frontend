@@ -11,7 +11,7 @@ module WarnCheck (warnCheck) where
 import Control.Monad
 import Data.List
 
-import CurrySyntax
+import Curry.Syntax
 import Ident
 import Position
 import Base (ValueEnv, ValueInfo(..), qualLookupValue, lookupValue)

@@ -12,6 +12,8 @@ happens already while checking the definitions of the module.
 \begin{verbatim}
 
 > module Eval(evalEnv,evalEnvGoal) where
+
+> import Curry.Syntax
 > import Base
 > import Env
 

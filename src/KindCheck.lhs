@@ -27,6 +27,7 @@ is defined more than once.
 
 > import Data.Maybe
 
+> import Curry.Syntax
 > import Base hiding (bindArity)
 > import TopEnv
 

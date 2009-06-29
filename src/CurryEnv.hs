@@ -7,12 +7,12 @@
 -- November 2005,
 -- Martin Engelke (men@informatik.uni-kiel.de)
 --
-module CurryEnv (CurryEnv, 
-		 moduleId, exports, imports, interface, infixDecls,
-		 typeSynonyms, curryEnv) where
+module CurryEnv (CurryEnv(..), curryEnv) where
 
 import Data.Maybe
 
+import Curry.Syntax
+import Types
 import Base
 
 

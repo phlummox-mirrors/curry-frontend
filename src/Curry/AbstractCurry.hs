@@ -19,7 +19,7 @@
 ---
 ------------------------------------------------------------------------------
 
-module AbstractCurry (CurryProg(..), QName, CLabel, CVisibility(..),
+module Curry.AbstractCurry (CurryProg(..), QName, CLabel, CVisibility(..),
 		      CTVarIName, CTypeDecl(..), CConsDecl(..), CTypeExpr(..),
                       COpDecl(..), CFixity(..), CVarIName,
                       CFuncDecl(..), CRules(..), CEvalAnnot(..),

@@ -13,6 +13,8 @@
 > import Data.Maybe
 > import Control.Monad
 
+> import Curry.Syntax
+> import Types
 > import Base
 > import TypeSubst
 > import Combined

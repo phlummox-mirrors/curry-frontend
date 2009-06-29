@@ -13,10 +13,10 @@ derived from the Haskell pretty printer provided in Simon Marlow's
 Haskell parser.
 \begin{verbatim}
 
-> module CurryPP(module CurryPP, Doc) where
+> module Curry.Syntax.Pretty where
 > import Ident
-> import CurrySyntax
-> import Pretty
+> import Curry.Syntax
+> import PrettyCombinators
 
 \end{verbatim}
 Pretty print a module

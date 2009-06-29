@@ -28,7 +28,7 @@ derived from appendix D in the Haskell 1.2 report.
 
 > module Unlit(unlit) where
 > import Data.Char
-> import Position
+
 
 \end{verbatim}
 Each of the lines in a literate script is a program line, a blank
@@ -79,7 +79,7 @@ there is at least one program line.
 
 > errors :: FilePath -> [Classified] -> [String]
 > errors fn cs =
->   concat (zipWith3 adjacent (iterate nl (first fn)) cs (tail cs)) ++
+>   concat (zipWith3 (adjacent fn) [1..] cs (tail cs)) ++
 >   empty fn (filter isProgram cs)
 
 \end{verbatim}
@@ -87,12 +87,15 @@ Given a line number and a pair of adjacent lines, generate a list of
 error messages, which will contain either one entry or none.
 \begin{verbatim}
 
-> adjacent :: Position -> Classified -> Classified -> [String]
-> adjacent p (Program _) Comment     = [message (nl p) "after"]
-> adjacent p Comment     (Program _) = [message p "before"]
-> adjacent p _           _           = []
+> adjacent :: FilePath -> Int -> Classified -> Classified -> [String]
+> adjacent f p (Program _) Comment     = [message f (p+1) "after"]
+> adjacent f p Comment     (Program _) = [message f p "before"]
+> adjacent _ _ _           _           = []
 
-> message p w = show p ++ ": comment line " ++ w ++ " program line."
+> message :: String -> Int -> String -> String
+> message file p w = showPos file p ++ ": comment line " ++ w ++ " program line."
+>   where showPos "" l = "line "++show l
+>         showPos f l = f++", line "++show l
 
 \end{verbatim}
 Given the list of program lines generate an error if this list is
@@ -100,8 +103,8 @@ empty.
 \begin{verbatim}
 
 > empty :: FilePath -> [Classified] -> [String]
-> empty fn [] = [show (first fn) ++ ": no code in literate script"]
-> empty fn _ = []
+> empty fn [] = [show fn ++ ": no code in literate script"]
+> empty _ _ = []
 
 > isProgram :: Classified -> Bool
 > isProgram (Program _) = True

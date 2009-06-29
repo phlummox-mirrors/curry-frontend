@@ -8,11 +8,11 @@ import Debug.Trace
 import Data.Maybe
 import Data.List
 
-import CurryLexer
+import Curry.Syntax.Lexer
 import Position
 import Frontend
 import Ident
-import CurrySyntax 
+import Curry.Syntax 
 import Data.Char hiding(Space)
 import Message
 import Control.Exception

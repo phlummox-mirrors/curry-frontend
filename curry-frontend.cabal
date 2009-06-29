@@ -26,20 +26,26 @@ Executable cymake
   hs-source-dirs:   src
   Main-is:          cymake.hs
   Build-Depends:    base >= 3 && < 4, mtl, old-time, directory, filepath, containers
-  Other-Modules:    AbstractCurry, CurryBuilder, Env, IL, Message
-                    CurryCompilerOpts, Error, Modules, Subst, Arity
+  ghc-options:       -Wall 
+  Other-Modules:    Curry.AbstractCurry, CurryBuilder, Env, IL, Message
+                    CurryCompilerOpts, Modules, Subst, Arity
                     CurryDeps, Eval, ILPP, NestEnv, SyntaxCheck, Base
                     Exports, ILScope, SyntaxColoring, CurryEnv
                     ExtendedFlat, ILTrans, OldScopeEnv, CurryHtml
                     ILxml, PatchPrelude, TopEnv, CaseCompletion
-                    CurryLexer, Imports, PathUtils, TypeCheck
-                    CurryParser, InterfaceCheck, Position
-                    Types, CurryPP, Frontend, PrecCheck
+                    Curry.Syntax.ParseResult, Curry.Syntax.Lexer, Imports, PathUtils, TypeCheck
+                    Curry.Syntax.Parser, InterfaceCheck, Position
+                    Types, Curry.Syntax.Pretty, Frontend, PrecCheck
                     TypeSubst, GenAbstractCurry
-                    Pretty, Typing, Combined, CurrySyntax
+                    PrettyCombinators, Typing, Combined, Curry.Syntax
                     GenFlatCurry, KindCheck, Qual, Unlit, CompilerResults
-                    LexComb, SCC, Utils, GetOpt
+                    Curry.Syntax.LexComb, SCC, Utils, GetOpt
                     Lift, ScopeEnv, WarnCheck
-                    LLParseComb, Desugar, Ident, ShowCurrySyntax
+                    Curry.Syntax.LLParseComb, Desugar, Ident, Curry.Syntax.ShowModule
                     Simplify
+
+-- Executable pretty-ecy
+--   hs-source-dirs:   src
+--   Main-is:          pretty-ecy.hs
+--   Build-Depends:    base >= 3 && < 4
 

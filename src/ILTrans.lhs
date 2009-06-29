@@ -26,6 +26,9 @@ data structures, we can use only a qualified import for the
 > import qualified Data.Set as Set
 > import qualified Data.Map as Map
 
+
+> import Curry.Syntax
+> import Types
 > import Base
 > import qualified IL
 > import Utils

@@ -23,6 +23,8 @@ lifted to the top-level.
 > import Data.List
 > import qualified Data.Set as Set
 
+> import Curry.Syntax
+> import Types
 > import Base
 > import Env
 > import TopEnv

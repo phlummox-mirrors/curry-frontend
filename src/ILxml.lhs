@@ -25,9 +25,9 @@ similar to that of Flat-Curry XML representation.
 
 > import Ident
 > import IL
-> import qualified CurrySyntax as CS
+> import qualified Curry.Syntax as CS
 > import CurryEnv
-> import Pretty
+> import PrettyCombinators
 
 
 

@@ -26,6 +26,8 @@ Currently, the following optimizations are implemented:
 
 > import Control.Monad
 
+> import Curry.Syntax
+> import Types
 > import Base
 > import Combined
 > import Env

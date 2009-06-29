@@ -28,7 +28,7 @@ module ExtendedFlat (SrcRef,Prog(..), QName(..), Visibility(..),
                   qnOf,mkQName,
                   mkIdx,idxOf) where
 
-import PathUtils (writeModule,maybeReadModule)
+import PathUtils (writeModule, maybeReadModule, replaceExtension)
 import Data.List(intersperse)
 import Control.Monad (liftM)
 import Data.Generics hiding (Fixity)
@@ -411,14 +411,14 @@ data Literal = Intc   SrcRef Integer
 -- FlatCurry program term (type 'Prog') as a value of type 'Maybe'.
 readFlatCurry :: FilePath -> IO (Maybe Prog)
 readFlatCurry fn 
-   = do let filename = genFlatFilename ".fcy" fn
+   = do let filename = replaceExtension fn ".fcy"
         readFlat filename
 
 -- Reads a FlatInterface file (extension ".fint") and returns the
 -- corresponding term (type 'Prog') as a value of type 'Maybe'.
 readFlatInterface :: String -> IO (Maybe Prog)
 readFlatInterface fn
-   = do let filename = genFlatFilename ".fint" fn
+   = do let filename = replaceExtension fn ".fint"
         readFlat filename
 
 -- Reads a Flat file and returns the corresponding term (type 'Prog') as
@@ -445,15 +445,6 @@ showFlatCurry (Prog mname imps types funcs ops) =
   concat (intersperse ",\n  " (map (\f->show f) funcs)) ++"]\n "++
   show ops ++"\n"
   
-
--- Add the extension 'ext' to the filename 'fn' if it doesn't
--- already exist.
-genFlatFilename :: String -> FilePath -> FilePath
-genFlatFilename ext fn
-   | drop (length fn - length ext) fn == ext
-     = fn
-   | otherwise
-     = fn ++ ext
 
 showFlatCurry' :: Bool -> Prog -> String
 showFlatCurry' b x = gshowsPrec b False x ""

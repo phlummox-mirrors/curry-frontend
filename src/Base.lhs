@@ -11,8 +11,9 @@ The module \texttt{Base} provides common definitions for the various
 phases of the compiler.
 \begin{verbatim}
 
-> module Base(module Base,module Ident,module Position,module Types,
->             module CurrySyntax) where
+> module Base(module Base,module Ident,module Position -- ,module Types
+>             -- module Curry.Syntax
+>             ) where
 
 > import Data.List
 > import Control.Monad
@@ -23,9 +24,9 @@ phases of the compiler.
 > import Ident 
 > import Position
 > import Types
-> import CurrySyntax
-> import CurryPP
-> import Pretty
+> import Curry.Syntax
+> import Curry.Syntax.Pretty
+> import PrettyCombinators
 > import ExtendedFlat hiding (SrcRef, Fixity(..), TypeExpr, Expr(..))
 > import Env
 > import TopEnv
@@ -203,11 +204,11 @@ for PAKCS.
 >  genConstrDecl (Cons qn _ _ ts)
 >     = ConstrDecl pos [] (mkIdent (localName qn)) (map genTypeExpr ts)
 >
->  genLabeledType :: EF.ConsDecl -> ([Ident],CurrySyntax.TypeExpr)
+>  genLabeledType :: EF.ConsDecl -> ([Ident],Curry.Syntax.TypeExpr)
 >  genLabeledType (Cons qn _ _ [t])
 >     = ([renameLabel (fromLabelExtId (mkIdent $ localName qn))], genTypeExpr t)
 >
->  genTypeExpr :: EF.TypeExpr -> CurrySyntax.TypeExpr
+>  genTypeExpr :: EF.TypeExpr -> Curry.Syntax.TypeExpr
 >  genTypeExpr (TVar i)
 >     = VariableType (genVarIndexIdent "a" i)
 >  genTypeExpr (FuncType t1 t2) 

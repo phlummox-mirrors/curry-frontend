@@ -15,7 +15,7 @@ module CaseCompletion (completeCase) where
 
 import Data.Maybe
 
-import qualified CurrySyntax
+import qualified Curry.Syntax
 import Base (ModuleEnv, lookupModule)
 import IL
 import Ident
@@ -570,7 +570,7 @@ getCCFromDecls _ constrs decls
 
 
 -- Find complementary constructors within the module environment
-getCCFromIDecls :: ModuleIdent -> [QualIdent] -> [CurrySyntax.IDecl] 
+getCCFromIDecls :: ModuleIdent -> [QualIdent] -> [Curry.Syntax.IDecl] 
 		   -> [(QualIdent, Int)]
 getCCFromIDecls mident constrs idecls
    = let
@@ -583,30 +583,30 @@ getCCFromIDecls mident constrs idecls
  where
    p_declaresIConstr qident idecl
       = case idecl of
-	  CurrySyntax.IDataDecl _ _ _ cdecls
+	  Curry.Syntax.IDataDecl _ _ _ cdecls
 	      -> any (p_isIConstrDecl qident) 
 		     (map fromJust (filter isJust cdecls))
-	  CurrySyntax.INewtypeDecl _ _ _ ncdecl 
+	  Curry.Syntax.INewtypeDecl _ _ _ ncdecl 
 	      -> p_isINewConstrDecl qident ncdecl
 	  _   -> False
 
-   p_isIConstrDecl qident (CurrySyntax.ConstrDecl _ _ ident _)
+   p_isIConstrDecl qident (Curry.Syntax.ConstrDecl _ _ ident _)
       = (unqualify qident) == ident
-   p_isIConstrDecl qident (CurrySyntax.ConOpDecl _ _ _ ident _)
+   p_isIConstrDecl qident (Curry.Syntax.ConOpDecl _ _ _ ident _)
       = (unqualify qident) == ident
 
-   p_isINewConstrDecl qident (CurrySyntax.NewConstrDecl _ _ ident _)
+   p_isINewConstrDecl qident (Curry.Syntax.NewConstrDecl _ _ ident _)
       = (unqualify qident) == ident
 
    p_extractIConstrDecls idecl
       = case idecl of
-	  CurrySyntax.IDataDecl _ _ _ cdecls 
+	  Curry.Syntax.IDataDecl _ _ _ cdecls 
 	      -> map fromJust (filter isJust cdecls)
 	  _   -> []
 
-   p_getIConstrDeclInfo mid (CurrySyntax.ConstrDecl _ _ ident types)
+   p_getIConstrDeclInfo mid (Curry.Syntax.ConstrDecl _ _ ident types)
       = (qualifyWith mid ident, length types)
-   p_getIConstrDeclInfo mid (CurrySyntax.ConOpDecl _ _ _ ident _)
+   p_getIConstrDeclInfo mid (Curry.Syntax.ConOpDecl _ _ _ ident _)
       = (qualifyWith mid ident, 2)
 
 

@@ -10,7 +10,7 @@
 module Arity (bindArities) where
 
 import Base
-import CurrySyntax
+import Curry.Syntax
 import Ident
 
 

@@ -11,13 +11,13 @@
 In this section a lexer for Curry is implemented.
 \begin{verbatim}
  
-> module CurryLexer (lexFile,lexer, Token (..), Category(..), Attributes(..)) where
+> module Curry.Syntax.Lexer (lexFile,lexer, Token (..), Category(..), Attributes(..)) where
 
 > import Data.Char 
 > import Data.List
 > import qualified Data.Map as Map
 
-> import LexComb
+> import Curry.Syntax.LexComb
 > import Position
 
 

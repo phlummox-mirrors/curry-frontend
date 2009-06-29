@@ -20,6 +20,7 @@ of the operators involved.
 
 > import Data.List
 
+> import Curry.Syntax
 > import Base
 
 \end{verbatim}

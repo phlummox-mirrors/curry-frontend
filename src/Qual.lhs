@@ -20,6 +20,8 @@ declarations groups as well as function arguments remain unchanged.
 \begin{verbatim}
 
 > module Qual(qual,qualGoal) where
+
+> import Curry.Syntax
 > import Base
 > import TopEnv
 

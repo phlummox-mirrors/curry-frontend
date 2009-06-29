@@ -15,6 +15,8 @@ This module implements substitutions on types.
 > import Data.Maybe
 > import Data.List
 
+> import Types
+
 > import Subst
 > import Base
 > import TopEnv

@@ -17,7 +17,7 @@ instead of \texttt{Int} for representing integer values. This allows
 an unlimited range of integer constants in Curry programs.
 \begin{verbatim}
 
-> module CurrySyntax where
+> module Curry.Syntax where
 > import Ident
 > import Position
 > import Data.Generics
@@ -262,7 +262,7 @@ A goal is equivalent to an unconditional right hand side of an equation.
 >   srcRefOf (FunctionPattern i _) = srcRefOf i
 >   srcRefOf (InfixFuncPattern _ i _) = srcRefOf i
 
-> instance SrcRefOf CurrySyntax.Literal where
+> instance SrcRefOf Literal where
 >   srcRefOf (Char s _)   = s
 >   srcRefOf (Int i _)    = srcRefOf i
 >   srcRefOf (Float s _)  = s

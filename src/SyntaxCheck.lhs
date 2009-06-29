@@ -26,6 +26,8 @@ merged into a single definition.
 > import Data.List
 > import Control.Monad
 
+> import Curry.Syntax
+> import Types
 > import Base
 > import Env
 > import NestEnv

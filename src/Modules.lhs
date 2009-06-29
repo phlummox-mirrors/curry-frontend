@@ -25,10 +25,15 @@ import declarations are commented out
 > import Data.Maybe
 > import Control.Monad
 
+> import Curry.Syntax
+> import Curry.Syntax.Pretty(ppModule,ppInterface,ppIDecl,ppGoal)
+> import Curry.Syntax.ParseResult
+
 > import Base
+> import Types
 > import Unlit(unlit)
-> import CurryParser(parseSource,parseGoal) -- xxxGoal entfernen
-> import ShowCurrySyntax(showModule)
+> import Curry.Syntax.Parser(parseSource,parseGoal) -- xxxGoal entfernen
+> import Curry.Syntax.ShowModule(showModule)
 > import KindCheck(kindCheck,kindCheckGoal)
 > import SyntaxCheck(syntaxCheck)
 > import PrecCheck(precCheck,precCheckGoal)
@@ -48,19 +53,17 @@ import declarations are commented out
 > import ILxml(xmlModule) -- check
 > import ExtendedFlat
 > import GenFlatCurry (genFlatCurry,genFlatInterface)
-> import AbstractCurry
+> import Curry.AbstractCurry
 > import GenAbstractCurry
 > import InterfaceCheck
 > import CurryEnv
-> import CurryPP(ppModule,ppInterface,ppIDecl,ppGoal)
 > import qualified ILPP(ppModule)
 > import CurryCompilerOpts(Options(..),Dump(..))
 > import CompilerResults
 > import CaseCompletion
 > import PathUtils
 > import TypeSubst
-> import Pretty
-> import Error
+> import PrettyCombinators
 > import Env
 > import TopEnv
 

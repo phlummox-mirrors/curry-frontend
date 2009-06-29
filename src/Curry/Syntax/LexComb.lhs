@@ -16,10 +16,12 @@ fourth argument is a stack of indentations that is used to handle
 nested layout groups.
 \begin{verbatim}
 
-> module LexComb where
-> import Position
-> import Error
+> module Curry.Syntax.LexComb where
+
 > import Data.Char
+
+> import Curry.Syntax.ParseResult
+> import Position
 
 > infixl 1 `thenP`, `thenP_`
 

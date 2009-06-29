@@ -7,11 +7,11 @@
 --- bug fixed by bbr
 
 
-module ShowCurrySyntax ( showModule ) where
+module Curry.Syntax.ShowModule ( showModule ) where
 
 import Ident
 import Position
-import CurrySyntax
+import Curry.Syntax
 
 showModule :: Module -> String
 showModule m = showsModule m "\n"

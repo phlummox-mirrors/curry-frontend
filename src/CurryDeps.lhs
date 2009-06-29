@@ -19,11 +19,11 @@ dependencies and to update programs composed of multiple modules.
 > import Data.Maybe
 > import Control.Monad
 
-> import Error
+> import Curry.Syntax.ParseResult
 > import Ident
 > import Unlit
-> import CurrySyntax hiding(Interface(..))
-> import CurryParser(parseHeader)
+> import Curry.Syntax hiding(Interface(..))
+> import Curry.Syntax.Parser(parseHeader)
 > import SCC
 > import Env
 

@@ -20,7 +20,7 @@ string, whereas \texttt{prefixParser} discards the rest of the input
 string in this case.
 \begin{verbatim}
 
-> module LLParseComb(Symbol(..),Parser,
+> module Curry.Syntax.LLParseComb(Symbol(..),Parser,
 >                    applyParser,prefixParser, position,succeed,symbol,
 >                    (<?>),(<|>),(<|?>),(<*>),(<\>),(<\\>),
 >                    opt,(<$>),(<$->),(<*->),(<-*>),(<**>),(<??>),(<.>),
@@ -32,12 +32,11 @@ string in this case.
 > import qualified Data.Set as Set
 > import qualified Data.Map as Map
 
+> import Curry.Syntax.LexComb
+> import Curry.Syntax.ParseResult
 
 > import Position
 
-
-> import Error
-> import LexComb
 
 > infixl 5 <\>, <\\>
 > infixl 4 <*>, <$>, <$->, <*->, <-*>, <**>, <??>, <.>

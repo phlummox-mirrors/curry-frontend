@@ -12,13 +12,13 @@ The Curry parser is implemented using the (mostly) LL(1) parsing
 combinators described in appendix~\ref{sec:ll-parsecomb}.
 \begin{verbatim}
 
-> module CurryParser where
+> module Curry.Syntax.Parser where
 > import Ident
 > import Position
-> import Error
-> import LLParseComb
-> import CurrySyntax
-> import CurryLexer
+> import Curry.Syntax.ParseResult
+> import Curry.Syntax.LLParseComb
+> import Curry.Syntax
+> import Curry.Syntax.Lexer
 
 > instance Symbol Token where
 >   isEOF (Token c _) = c == EOF

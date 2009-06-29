@@ -1,4 +1,3 @@
-
 % $Id: Desugar.lhs,v 1.42 2004/02/15 22:10:32 wlux Exp $
 %
 % Copyright (c) 2001-2004, Wolfgang Lux
@@ -66,6 +65,8 @@ all names must be properly qualified before calling this module.}
 > import Control.Monad
 > import Data.List
 
+> import Curry.Syntax
+> import Types
 > import Base
 > import Combined
 > import Typing

@@ -14,7 +14,9 @@ import Data.Maybe
 import Data.List
 import Data.Char
 
-import AbstractCurry
+import Curry.Syntax
+import Curry.AbstractCurry
+
 import Base
 import Types
 import Ident

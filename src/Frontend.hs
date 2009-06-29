@@ -19,16 +19,17 @@ import Prelude hiding (lex)
 import Modules
 import CurryBuilder
 import CurryCompilerOpts
-import CurryParser
-import CurryLexer
+import Curry.Syntax.Parser
+import Curry.Syntax.Lexer
+import qualified Curry.Syntax.ParseResult as Err
+
 import GenAbstractCurry
 import GenFlatCurry
 import CaseCompletion
 import CurryDeps hiding (unlitLiterate)
-import qualified CurrySyntax as CS
-import qualified AbstractCurry as ACY
+import qualified Curry.Syntax as CS
+import qualified Curry.AbstractCurry as ACY
 import qualified ExtendedFlat as FCY
-import qualified Error as Err
 import CompilerResults
 import Message
 import CurryEnv

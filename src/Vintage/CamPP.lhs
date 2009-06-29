@@ -10,7 +10,7 @@
 > module CamPP where
 > import Cam
 > import Char
-> import Pretty
+> import PrettyCombinators
 
 > default(Int)
 

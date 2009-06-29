@@ -24,7 +24,7 @@ import Base (ArityEnv, ArityInfo(..), ModuleEnv, PEnv, PrecInfo(..),
 import ExtendedFlat
 
 import qualified IL
-import qualified CurrySyntax as CS
+import qualified Curry.Syntax as CS
 
 import CurryEnv (CurryEnv)
 import qualified CurryEnv

@@ -17,7 +17,7 @@ program formatter.\footnote{For instance, on Unix systems
 > module CPretty where
 
 > import CCode
-> import Pretty
+> import PrettyCombinators
 > import List
 
 > ppCFile :: CFile -> Doc

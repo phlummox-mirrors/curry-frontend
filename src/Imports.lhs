@@ -16,6 +16,8 @@ interfaces into the current module.
 > import qualified Data.Set as Set
 > import qualified Data.Map as Map
 
+> import Curry.Syntax
+> import Types
 > import Base
 > import Env
 > import TopEnv

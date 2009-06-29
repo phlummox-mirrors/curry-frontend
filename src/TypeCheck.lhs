@@ -28,10 +28,13 @@ type annotation is present.
 > import Data.Maybe
 > import qualified Data.Set as Set
 
+> import Curry.Syntax
+> import Curry.Syntax.Pretty
+
 > import Base
-> import Pretty
+> import Types
+> import PrettyCombinators
 > import Ident
-> import CurryPP
 > import Env
 > import TopEnv
 

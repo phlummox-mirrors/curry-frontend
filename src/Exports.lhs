@@ -19,6 +19,8 @@ is computed.
 > import qualified Data.Set as Set
 > import qualified Data.Map as Map
 
+> import Curry.Syntax
+> import Types
 > import Base
 > import TopEnv
 

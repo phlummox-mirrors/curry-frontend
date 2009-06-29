@@ -12,7 +12,7 @@ type, its \texttt{Error} case provides for an error message that
 describes the failure.
 \begin{verbatim}
 
-> module Error where
+> module Curry.Syntax.ParseResult where
 > import Control.Monad
 
 > data Error a = Ok a | Error String deriving (Eq,Ord,Show)

@@ -17,7 +17,7 @@ Marlow's pretty printer for Haskell.
 > module ILPP(module ILPP, Doc) where
 > import Ident
 > import IL
-> import Pretty
+> import PrettyCombinators
 
 > default(Int,Double)
 
