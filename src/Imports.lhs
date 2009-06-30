@@ -18,8 +18,9 @@ interfaces into the current module.
 
 > import Curry.Syntax
 > import Types
+> import Curry.Base.Position
+> import Curry.Base.Ident
 > import Base
-> import Env
 > import TopEnv
 
 
@@ -33,10 +34,10 @@ entities defined in the imported module are qualified appropriately.
 The same is true for type expressions.
 \begin{verbatim}
 
-> type ExpPEnv = Env Ident PrecInfo
-> type ExpTCEnv = Env Ident TypeInfo
-> type ExpValueEnv = Env Ident ValueInfo
-> type ExpArityEnv = Env Ident ArityInfo
+> type ExpPEnv = Map.Map Ident PrecInfo
+> type ExpTCEnv = Map.Map Ident TypeInfo
+> type ExpValueEnv = Map.Map Ident ValueInfo
+> type ExpArityEnv = Map.Map Ident ArityInfo
 
 \end{verbatim}
 When an interface is imported, the compiler first transforms the
@@ -71,10 +72,10 @@ import.
 > isVisible _ _ = const True
 
 > importEntities :: Entity a => ModuleIdent -> Bool -> (Ident -> Bool)
->                -> (a -> a) -> Env Ident a -> TopEnv a -> TopEnv a
+>                -> (a -> a) -> Map.Map Ident a -> TopEnv a -> TopEnv a
 > importEntities m q isVisible f mEnv env =
 >   foldr (uncurry (if q then qualImportTopEnv m else importUnqual m)) env
->         [(x,f y) | (x,y) <- envToList mEnv, isVisible x]
+>         [(x,f y) | (x,y) <- Map.toList mEnv, isVisible x]
 >   where importUnqual m x y = importTopEnv m x y . qualImportTopEnv m x y
 
 > importData :: (Ident -> Bool) -> TypeInfo -> TypeInfo
@@ -113,18 +114,18 @@ all entities defined in (but not imported into) the interface with its
 module name.  
 \begin{verbatim}
 
-> intfEnv :: (ModuleIdent -> IDecl -> Env Ident a -> Env Ident a)
->         -> Interface -> Env Ident a
-> intfEnv bind (Interface m ds) = foldr (bind m) emptyEnv ds
+> intfEnv :: (ModuleIdent -> IDecl -> Map.Map Ident a -> Map.Map Ident a)
+>         -> Interface -> Map.Map Ident a
+> intfEnv bind (Interface m ds) = foldr (bind m) Map.empty ds
 
 > bindPrec :: ModuleIdent -> IDecl -> ExpPEnv -> ExpPEnv
 > bindPrec m (IInfixDecl _ fix p op) =
->   bindEnv (unqualify op) (PrecInfo (qualQualify m op) (OpPrec fix p))
+>   Map.insert (unqualify op) (PrecInfo (qualQualify m op) (OpPrec fix p))
 > bindPrec _ _ = id
 
 > bindTC :: ModuleIdent -> IDecl -> ExpTCEnv -> ExpTCEnv
 > bindTC m (IDataDecl _ tc tvs cs) mTCEnv 
->   | isJust (lookupEnv (unqualify tc) mTCEnv) =
+>   | isJust (Map.lookup (unqualify tc) mTCEnv) =
 >     mTCEnv
 >   | otherwise =
 >     bindType DataType m tc tvs (map (fmap mkData) cs) mTCEnv
@@ -152,7 +153,7 @@ module name.
 > bindType :: (QualIdent -> Int -> a -> TypeInfo) -> ModuleIdent -> QualIdent
 >          -> [Ident] -> a -> ExpTCEnv -> ExpTCEnv
 > bindType f m tc tvs =
->   bindEnv (unqualify tc) . f (qualQualify m tc) (length tvs) 
+>   Map.insert (unqualify tc) . f (qualQualify m tc) (length tvs) 
 
 > bindTy :: ModuleIdent -> IDecl -> ExpValueEnv -> ExpValueEnv
 > bindTy m (IDataDecl _ tc tvs cs) =
@@ -165,7 +166,7 @@ module name.
 > --  flip (foldr (bindRecLabel m r')) fs
 > --  where r' = qualifyWith m (fromRecordExtId (unqualify r))
 > bindTy m (IFunctionDecl _ f _ ty) =
->   bindEnv (unqualify f)
+>   Map.insert (unqualify f)
 >           (Value (qualQualify m f) (polyType (toQualType m [] ty)))
 > bindTy m _ = id
 
@@ -185,12 +186,12 @@ module name.
 > --bindRecLabel :: ModuleIdent -> QualIdent -> ([Ident],TypeExpr)
 > --      -> ExpValueEnv -> ExpValueEnv
 > --bindRecLabel m r ([l],ty) =
-> --  bindEnv l (Label (qualify l) r (polyType (toQualType m [] ty)))
+> --  Map.insert l (Label (qualify l) r (polyType (toQualType m [] ty)))
 
 > bindValue :: (QualIdent -> ExistTypeScheme -> ValueInfo) -> ModuleIdent
 >           -> QualIdent -> [Ident] -> Ident -> [Ident] -> TypeExpr
 >           -> ExpValueEnv -> ExpValueEnv
-> bindValue f m tc tvs c evs ty = bindEnv c (f (qualifyLike tc c) sigma)
+> bindValue f m tc tvs c evs ty = Map.insert c (f (qualifyLike tc c) sigma)
 >   where sigma = ForAllExist (length tvs) (length evs) (toQualType m tvs ty)
 >         qualifyLike x = maybe qualify qualifyWith (fst (splitQualIdent x))
 
@@ -198,14 +199,14 @@ module name.
 > bindA m (IDataDecl _ _ _ cs) expAEnv
 >    = foldr (bindConstrA m) expAEnv (catMaybes cs)
 > bindA m (IFunctionDecl _ f a _) expAEnv
->    = bindEnv (unqualify f) (ArityInfo (qualQualify m f) a) expAEnv
+>    = Map.insert (unqualify f) (ArityInfo (qualQualify m f) a) expAEnv
 > bindA _ _ expAEnv = expAEnv
 
 > bindConstrA :: ModuleIdent -> ConstrDecl -> ExpArityEnv -> ExpArityEnv
 > bindConstrA m (ConstrDecl _ _ c tys) expAEnv
->    = bindEnv c (ArityInfo (qualifyWith m c) (length tys)) expAEnv
+>    = Map.insert c (ArityInfo (qualifyWith m c) (length tys)) expAEnv
 > bindConstrA m (ConOpDecl _ _ _ c _) expAEnv
->    = bindEnv c (ArityInfo (qualifyWith m c) 2) expAEnv
+>    = Map.insert c (ArityInfo (qualifyWith m c) 2) expAEnv
 
 \end{verbatim}
 After the environments have been initialized, the optional import
@@ -264,14 +265,14 @@ data constructors are added.
 > expandThing :: ModuleIdent -> ExpTCEnv -> ExpValueEnv -> Ident
 >             -> [Import]
 > expandThing m tcEnv tyEnv tc =
->   case lookupEnv tc tcEnv of
+>   case Map.lookup tc tcEnv of
 >     Just _ -> expandThing' m tyEnv tc (Just [ImportTypeWith tc []])
 >     Nothing -> expandThing' m tyEnv tc Nothing
 
 > expandThing' :: ModuleIdent -> ExpValueEnv -> Ident
 >              -> Maybe [Import] -> [Import]
 > expandThing' m tyEnv f tcImport =
->   case lookupEnv f tyEnv of
+>   case Map.lookup f tyEnv of
 >     Just v
 >       | isConstr v -> maybe (errorAt' (importDataConstr m f)) id tcImport
 >       | otherwise -> Import f : maybe [] id tcImport
@@ -283,21 +284,21 @@ data constructors are added.
 > expandHide :: ModuleIdent -> ExpTCEnv -> ExpValueEnv -> Ident
 >            -> [Import]
 > expandHide m tcEnv tyEnv tc =
->   case lookupEnv tc tcEnv of
+>   case Map.lookup tc tcEnv of
 >     Just _ -> expandHide' m tyEnv tc (Just [ImportTypeWith tc []])
 >     Nothing -> expandHide' m tyEnv tc Nothing
 
 > expandHide' :: ModuleIdent -> ExpValueEnv -> Ident
 >             -> Maybe [Import] -> [Import]
 > expandHide' m tyEnv f tcImport =
->   case lookupEnv f tyEnv of
+>   case Map.lookup f tyEnv of
 >     Just _ -> Import f : maybe [] id tcImport
 >     Nothing -> maybe (errorAt' (undefinedEntity m f)) id tcImport
 
 > expandTypeWith ::  ModuleIdent -> ExpTCEnv -> Ident -> [Ident]
 >                -> Import
 > expandTypeWith m tcEnv tc cs =
->   case lookupEnv tc tcEnv of
+>   case Map.lookup tc tcEnv of
 >     Just (DataType _ _ cs') ->
 >       ImportTypeWith tc (map (checkConstr [c | Just (Data c _ _) <- cs']) cs)
 >     Just (RenamingType _ _ (Data c _ _)) ->
@@ -310,7 +311,7 @@ data constructors are added.
 
 > expandTypeAll :: ModuleIdent -> ExpTCEnv -> Ident -> Import
 > expandTypeAll m tcEnv tc =
->   case lookupEnv tc tcEnv of
+>   case Map.lookup tc tcEnv of
 >     Just (DataType _ _ cs) -> ImportTypeWith tc [c | Just (Data c _ _) <- cs]
 >     Just (RenamingType _ _ (Data c _ _)) -> ImportTypeWith tc [c]
 >     Just _ -> errorAt' (nonDataType m tc)
@@ -359,11 +360,6 @@ Error messages:
 > undefinedEntity m x =
 >  (positionOfIdent x,
 >   "Module " ++ moduleName m ++ " does not export " ++ name x)
-
-> undefinedType :: ModuleIdent -> Ident -> (Position,String)
-> undefinedType m tc =
->  (positionOfIdent tc,   
->   "Module " ++ moduleName m ++ " does not export a type " ++ name tc)
 
 > undefinedDataConstr :: ModuleIdent -> Ident -> Ident -> (Position,String)
 > undefinedDataConstr m tc c =

@@ -15,12 +15,13 @@ module CaseCompletion (completeCase) where
 
 import Data.Maybe
 
+import Curry.Base.Position (SrcRef)
+import Curry.Base.Ident
 import qualified Curry.Syntax
+
 import Base (ModuleEnv, lookupModule)
 import IL
-import Ident
-import Position (SrcRef)
-import OldScopeEnv as ScopeEnv
+import OldScopeEnv -- as ScopeEnv
 import ILScope
 
 
@@ -224,8 +225,8 @@ completeConsAlts r mod menv senv evalannot expr alts
    p_getConsAltIdent (Alt (ConstructorPattern qident _) _) = qident
 
    p_genConstrTerm (qident, arity) (cconstrs,senv3) =
-       let args = ScopeEnv.genIdentList arity "x" senv3
-           senv4 = foldr ScopeEnv.insertIdent senv3 args
+       let args = OldScopeEnv.genIdentList arity "x" senv3
+           senv4 = foldr OldScopeEnv.insertIdent senv3 args
        in (ConstructorPattern qident args : cconstrs, senv4)
 
 

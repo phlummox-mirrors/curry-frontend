@@ -1,7 +1,8 @@
 module CurryHtml(program2html,source2html) where
 
+import Curry.Base.Ident
+
 import SyntaxColoring
-import Ident
 import Data.Char hiding(Space)
 import CurryDeps(getCurryPath)
 import PathUtils (writeModule)

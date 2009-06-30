@@ -11,11 +11,13 @@ environment. There is no need to check the annotations because this
 happens already while checking the definitions of the module.
 \begin{verbatim}
 
-> module Eval(evalEnv,evalEnvGoal) where
+> module Eval(evalEnv) where
+
+> import qualified Data.Map as Map
 
 > import Curry.Syntax
 > import Base
-> import Env
+
 
 \end{verbatim}
 The function \texttt{evalEnv} collects all evaluation annotations of
@@ -23,14 +25,10 @@ the module by traversing the syntax tree.
 \begin{verbatim}
 
 > evalEnv :: [Decl] -> EvalEnv
-> evalEnv = foldr collectAnnotsDecl emptyEnv
-
-> evalEnvGoal :: Goal -> EvalEnv
-> evalEnvGoal (Goal _ e ds) =
->   collectAnnotsExpr e (foldr collectAnnotsDecl emptyEnv ds)
+> evalEnv = foldr collectAnnotsDecl Map.empty
 
 > collectAnnotsDecl :: Decl -> EvalEnv -> EvalEnv
-> collectAnnotsDecl (EvalAnnot _ fs ev) env = foldr (flip bindEval ev) env fs
+> collectAnnotsDecl (EvalAnnot _ fs ev) env = foldr (flip Map.insert ev) env fs
 > collectAnnotsDecl (FunctionDecl _ _ eqs) env = foldr collectAnnotsEqn env eqs
 > collectAnnotsDecl (PatternDecl _ _ rhs) env = collectAnnotsRhs rhs env
 > collectAnnotsDecl _ env = env

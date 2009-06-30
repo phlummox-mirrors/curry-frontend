@@ -37,10 +37,7 @@ import Types
 import CurryCompilerOpts
 import Message
 import PatchPrelude
-import Ident as Id
-import Env
-
---import Debug.Trace
+import Curry.Base.Ident as Id
 
 trace _ x = x
 
@@ -372,11 +369,11 @@ getExportedImports :: FlatState [CS.IDecl]
 getExportedImports
    = do mid  <- moduleId
 	exps <- exports
-	genExportedIDecls (envToList (getExpImports mid emptyEnv exps))
+	genExportedIDecls (Map.toList (getExpImports mid Map.empty exps))
 
 --
-getExpImports :: ModuleIdent -> Env ModuleIdent [CS.Export] -> [CS.Export]
-		 -> Env ModuleIdent [CS.Export]
+getExpImports :: ModuleIdent -> Map.Map ModuleIdent [CS.Export] -> [CS.Export]
+		 -> Map.Map ModuleIdent [CS.Export]
 getExpImports mident expenv [] = expenv
 getExpImports mident expenv ((CS.Export qident):exps)
    = getExpImports mident 
@@ -394,20 +391,20 @@ getExpImports mident expenv ((CS.ExportTypeAll qident):exps)
 	 	   (bindExpImport mident qident (CS.ExportTypeAll qident) expenv) 
 		   exps
 getExpImports mident expenv ((CS.ExportModule mident'):exps)
-   = getExpImports mident (bindEnv mident' [] expenv) exps
+   = getExpImports mident (Map.insert mident' [] expenv) exps
 
 --
 bindExpImport :: ModuleIdent -> QualIdent -> CS.Export 
-	         -> Env ModuleIdent [CS.Export] -> Env ModuleIdent [CS.Export]
+	         -> Map.Map ModuleIdent [CS.Export] -> Map.Map ModuleIdent [CS.Export]
 bindExpImport mident qident export expenv
    | isJust (localIdent mident qident)
      = expenv
    | otherwise
      = let (mmod, _) = splitQualIdent qident
 	   mod       = fromJust mmod
-       in  maybe (bindEnv mod [export] expenv)
-	         (\es -> bindEnv mod (export:es) expenv) 
-		 (lookupEnv mod expenv)
+       in  maybe (Map.insert mod [export] expenv)
+	         (\es -> Map.insert mod (export:es) expenv) 
+		 (Map.lookup mod expenv)
 
 --
 genExportedIDecls :: [(ModuleIdent,[CS.Export])] -> FlatState [CS.IDecl]
@@ -857,7 +854,7 @@ data FlatEnv = FlatEnv{ moduleIdE     :: ModuleIdent,
 			  arityEnvE     :: ArityEnv,
 			  typeEnvE      :: ValueEnv,
 			  tConsEnvE     :: TCEnv,
-			  publicEnvE    :: Env Ident IdentExport,
+			  publicEnvE    :: Map.Map Ident IdentExport,
 			  fixitiesE     :: [CS.IDecl],
 			  typeSynonymsE :: [CS.IDecl],
 			  importsE      :: [CS.IDecl],
@@ -955,7 +952,7 @@ environments = gets (\env -> (typeEnvE env, tConsEnvE env))
 --
 isPublic :: Bool -> QualIdent -> FlatState Bool
 isPublic isConstr qid = gets (\env -> maybe False isP
-                                      (lookupEnv (unqualify qid) 
+                                      (Map.lookup (unqualify qid) 
                                        (publicEnvE env)))
   where
     isP NotConstr = not isConstr
@@ -965,7 +962,7 @@ isPublic isConstr qid = gets (\env -> maybe False isP
 --
 lookupModuleIntf :: ModuleIdent -> FlatState (Maybe [CS.IDecl])
 lookupModuleIntf mid
-   = gets (lookupEnv mid . moduleEnvE)
+   = gets (Map.lookup mid . moduleEnvE)
 
 --
 lookupIdArity :: QualIdent -> FlatState (Maybe Int)
@@ -1076,14 +1073,14 @@ whenFlatCurry genFlat genIntf
 -- Note: Currently the record functions (selection and update) for all public 
 -- record labels are inserted into the environment, though they are not
 -- explicitly declared in the export specifications.
-genPubEnv :: ModuleIdent -> [CS.IDecl] -> Env Ident IdentExport
-genPubEnv mid idecls = foldl (bindEnvIDecl mid) emptyEnv idecls
+genPubEnv :: ModuleIdent -> [CS.IDecl] -> Map.Map Ident IdentExport
+genPubEnv mid idecls = foldl (bindEnvIDecl mid) Map.empty idecls
 
-bindIdentExport :: Ident -> Bool -> Env Ident IdentExport -> Env Ident IdentExport
+bindIdentExport :: Ident -> Bool -> Map.Map Ident IdentExport -> Map.Map Ident IdentExport
 bindIdentExport id isConstr env =
-    maybe (bindEnv id (if isConstr then OnlyConstr else NotConstr) env)
-          (\ ie -> bindEnv id (updateIdentExport ie isConstr) env)
-          (lookupEnv id env)
+    maybe (Map.insert id (if isConstr then OnlyConstr else NotConstr) env)
+          (\ ie -> Map.insert id (updateIdentExport ie isConstr) env)
+          (Map.lookup id env)
   where
     updateIdentExport OnlyConstr True  = OnlyConstr
     updateIdentExport OnlyConstr False = NotOnlyConstr
@@ -1093,7 +1090,7 @@ bindIdentExport id isConstr env =
 
 
 --
-bindEnvIDecl :: ModuleIdent -> Env Ident IdentExport -> CS.IDecl -> Env Ident IdentExport
+bindEnvIDecl :: ModuleIdent -> Map.Map Ident IdentExport -> CS.IDecl -> Map.Map Ident IdentExport
 bindEnvIDecl mid env (CS.IDataDecl _ qid _ mcdecls)
    = maybe env 
            (\id -> foldl bindEnvConstrDecl
@@ -1111,25 +1108,25 @@ bindEnvIDecl mid env (CS.IFunctionDecl _ qid _ _)
 bindEnvIDecl _ env _ = env
 
 --
-bindEnvITypeDecl :: Env Ident IdentExport -> Ident -> CS.TypeExpr
-		    -> Env Ident IdentExport
+bindEnvITypeDecl :: Map.Map Ident IdentExport -> Ident -> CS.TypeExpr
+		    -> Map.Map Ident IdentExport
 bindEnvITypeDecl env id (CS.RecordType fs _)
    = bindIdentExport id False (foldl (bindEnvRecordLabel id) env fs)
 bindEnvITypeDecl env id texpr
    = bindIdentExport id False env
 
 --
-bindEnvConstrDecl :: Env Ident IdentExport -> CS.ConstrDecl -> Env Ident IdentExport
+bindEnvConstrDecl :: Map.Map Ident IdentExport -> CS.ConstrDecl -> Map.Map Ident IdentExport
 bindEnvConstrDecl env (CS.ConstrDecl _ _ id _)  = bindIdentExport id True env
 bindEnvConstrDecl env (CS.ConOpDecl _ _ _ id _) = bindIdentExport id True env
 
 --
-bindEnvNewConstrDecl :: Env Ident IdentExport -> CS.NewConstrDecl -> Env Ident IdentExport
+bindEnvNewConstrDecl :: Map.Map Ident IdentExport -> CS.NewConstrDecl -> Map.Map Ident IdentExport
 bindEnvNewConstrDecl env (CS.NewConstrDecl _ _ id _) = bindIdentExport id False env
 
 --
-bindEnvRecordLabel :: Ident -> Env Ident IdentExport -> ([Ident],CS.TypeExpr) 
-		   -> Env Ident IdentExport
+bindEnvRecordLabel :: Ident -> Map.Map Ident IdentExport -> ([Ident],CS.TypeExpr) 
+		   -> Map.Map Ident IdentExport
 bindEnvRecordLabel rec env ([lab],_)
    = bindIdentExport (recSelectorId (qualify rec) lab)
              False

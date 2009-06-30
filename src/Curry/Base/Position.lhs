@@ -18,7 +18,7 @@ A source file position consists of a filename, a line number, and a
 column number. A tab stop is assumed at every eighth column.
 \begin{verbatim}
 
-> module Position where
+> module Curry.Base.Position where
 > import Data.Generics
 
 > newtype SrcRef = SrcRef [Int] deriving (Typeable,Data) -- a pointer to the origin

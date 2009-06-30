@@ -24,14 +24,15 @@ merged into a single definition.
 
 > import Data.Maybe
 > import Data.List
-> import Control.Monad
+> import qualified Data.Map as Map
+> import Control.Monad.State as S
 
 > import Curry.Syntax
 > import Types
+> import Curry.Base.Position
+> import Curry.Base.Ident
 > import Base
-> import Env
 > import NestEnv
-> import Combined
 > import Utils
 
 \end{verbatim}
@@ -61,22 +62,18 @@ addition, this process will also rename the local variables.
 >	               tds'
 >	  env2 = foldr (bindTypes m) env1 rs
 
-> --syntaxCheckGoal :: Bool -> ValueEnv -> Goal -> Goal
-> --syntaxCheckGoal withExt tyEnv g =
-> --  run (checkGoal withExt (mkMIdent []) (globalEnv (fmap renameInfo tyEnv)) g)
-
 \end{verbatim}
 A global state transformer is used for generating fresh integer keys
 by which the variables get renamed.
 \begin{verbatim}
 
-> type RenameState a = St Int a
+> type RenameState a = S.State Int a
 
 > run :: RenameState a -> a
-> run m = runSt m (globalKey + 1)
+> run m = S.evalState m (globalKey + 1)
 
 > newId :: RenameState Int
-> newId = updateSt (1 +)
+> newId = S.modify succ >> S.get
 
 \end{verbatim}
 \ToDo{Probably the state transformer should use an \texttt{Integer} 
@@ -257,13 +254,6 @@ local declarations.
 >               -> RenameState (RenameEnv,[Decl])
 > checkTopDecls withExt m env ds = 
 >   checkDeclGroup (bindFuncDecl m) withExt m globalKey env ds
-
-> --checkGoal :: Bool -> ModuleIdent -> RenameEnv -> Goal -> RenameState Goal
-> --checkGoal withExt m env (Goal p e ds) =
-> --  do
-> --    (env',ds') <- checkLocalDecls withExt m env ds
-> --    e' <- checkExpr withExt p m env' e
-> --    return (Goal p e' ds')
 
 > checkTypeDecl :: Bool -> ModuleIdent -> Decl -> Decl
 > checkTypeDecl withExt m d@(TypeDecl p r tvs (RecordType fs rty))
@@ -870,16 +860,16 @@ Since the compiler expects all rules of the same function to be together,
 it is necessary to sort the list of declarations.
 
 > sortFuncDecls :: [Decl] -> [Decl]
-> sortFuncDecls decls = sortFD emptyEnv [] decls
+> sortFuncDecls decls = sortFD Map.empty [] decls
 >  where
 >  sortFD env res [] = reverse res
 >  sortFD env res (decl:decls)
 >     = case decl of
 >	  FunctionDecl _ ident _
->	     | isJust (lookupEnv ident env)
+>	     | isJust (Map.lookup ident env)
 >	       -> sortFD env (insertBy cmpFuncDecl decl res) decls
 >	     | otherwise
->              -> sortFD (bindEnv ident () env) (decl:res) decls
+>              -> sortFD (Map.insert ident () env) (decl:res) decls
 >	  _    -> sortFD env (decl:res) decls
 
 > cmpFuncDecl :: Decl -> Decl -> Ordering
@@ -895,19 +885,6 @@ it is necessary to sort the list of declarations.
 >  where lp1 = line p1
 >        lp2 = line p2
 
-> getDeclPos :: Decl -> Position
-> getDeclPos (ImportDecl pos _ _ _ _) = pos
-> getDeclPos (InfixDecl pos _ _ _) = pos
-> getDeclPos (DataDecl pos _ _ _) = pos
-> getDeclPos (NewtypeDecl pos _ _ _) = pos
-> getDeclPos (TypeDecl pos _ _ _) = pos
-> getDeclPos (TypeSig pos _ _) = pos
-> getDeclPos (EvalAnnot pos _ _) = pos
-> getDeclPos (FunctionDecl pos _ _) = pos
-> getDeclPos (ExternalDecl pos _ _ _ _) = pos
-> getDeclPos (FlatExternalDecl pos _) = pos
-> getDeclPos (PatternDecl pos _ _) = pos
-> getDeclPos (ExtraVariables pos _) = pos
 
 \end{verbatim}
 Due to the lack of a capitalization convention in Curry, it is
@@ -1108,18 +1085,6 @@ Error messages.
 >   where arguments 0 = "no arguments"
 >         arguments 1 = "1 argument"
 >         arguments n = show n ++ " arguments"
-
-> --partialFuncPatt :: QualIdent -> Int -> Int -> String
-> --partialFuncPatt f arity argc =
-> --   "Function pattern " ++ qualName f ++ " expects at least " 
-> --   ++ arguments arity ++ " but is applied to " ++ show argc
-> -- where arguments 0 = "no arguments"
-> --       arguments 1 = "1 argument"
-> --       arguments n = show n ++ " arguments"
-
-> noExpressionStatement :: String
-> noExpressionStatement =
->   "Last statement in a do expression must be an expression"
 
 > illegalRecordPatt :: String
 > illegalRecordPatt = "Expexting `_` after `|` in the record pattern"

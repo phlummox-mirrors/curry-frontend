@@ -26,14 +26,14 @@ data structures, we can use only a qualified import for the
 > import qualified Data.Set as Set
 > import qualified Data.Map as Map
 
-
+> import Curry.Base.Position
+> import Curry.Base.Ident
 > import Curry.Syntax
+
 > import Types
 > import Base
 > import qualified IL
 > import Utils
-> import Env
-
 
 
 
@@ -248,7 +248,7 @@ the evaluation mode of the case expression. Otherwise, the function
 uses flexible matching.
 \begin{verbatim}
 
-> type RenameEnv = Env Ident Ident
+> type RenameEnv = Map.Map Ident Ident
 
 > translFunction :: Position -> Bool -> ModuleIdent -> ValueEnv -> TCEnv
 >       -> EvalEnv -> Ident -> [Equation] -> IL.Decl
@@ -261,7 +261,7 @@ uses flexible matching.
 >   where f'  = qualifyWith m f
 >         ty  = varType tyEnv f'
 >         -- ty' = elimRecordType m tyEnv tcEnv (maximum (0:(typeVars ty))) ty
->         ev' = lookupEval f evEnv
+>         ev' = Map.lookup f evEnv
 >         ev  = maybe (defaultMode ty) evalMode ev'
 >         vs  = if not flat && isFpSelectorId f then translArgs eqs vs' else vs'
 >         (vs',vs'') = splitAt (equationArity (head eqs)) 
@@ -292,14 +292,14 @@ uses flexible matching.
 
 > translArgs :: [Equation] -> [Ident] -> [Ident]
 > translArgs [Equation _ (FunLhs _ (t:ts)) _] (v:_) =
->   v : map (translArg (bindRenameEnv v t emptyEnv)) ts
->   where translArg env (VariablePattern v) = fromJust (lookupEnv v env)
+>   v : map (translArg (bindRenameEnv v t Map.empty)) ts
+>   where translArg env (VariablePattern v) = fromJust (Map.lookup v env)
 
 > translEquation :: ValueEnv -> [Ident] -> [Ident] -> Equation
 >                -> ([NestedTerm],IL.Expression)
 > translEquation tyEnv vs vs' (Equation _ (FunLhs _ ts) rhs) =
 >   (zipWith translTerm vs ts,
->    translRhs tyEnv vs' (foldr2 bindRenameEnv emptyEnv vs ts) rhs)
+>    translRhs tyEnv vs' (foldr2 bindRenameEnv Map.empty vs ts) rhs)
 
 > translRhs :: ValueEnv -> [Ident] -> RenameEnv -> Rhs -> IL.Expression
 > translRhs tyEnv vs env (SimpleRhs _ e _) = translExpr tyEnv vs env e
@@ -367,10 +367,10 @@ position in the remaining arguments. If one is found,
 
 > bindRenameEnv :: Ident -> ConstrTerm -> RenameEnv -> RenameEnv
 > bindRenameEnv _ (LiteralPattern _) env = env
-> bindRenameEnv v (VariablePattern v') env = bindEnv v' v env
+> bindRenameEnv v (VariablePattern v') env = Map.insert v' v env
 > bindRenameEnv v (ConstructorPattern _ ts) env =
 >   foldr2 bindRenameEnv env (argNames v) ts
-> bindRenameEnv v (AsPattern v' t) env = bindEnv v' v (bindRenameEnv v t env)
+> bindRenameEnv v (AsPattern v' t) env = Map.insert v' v (bindRenameEnv v t env)
 > bindRenameEnv _ _ env = internalError "bindRenameEnv"
 
 > argNames :: Ident -> [Ident]
@@ -485,7 +485,7 @@ instance, if one of the alternatives contains an \texttt{@}-pattern.
 >     Nothing -> IL.Function v (arrowArity (varType tyEnv v))
 >   where lookupVar v env
 >           | isQualified v = Nothing
->           | otherwise = lookupEnv (unqualify v) env
+>           | otherwise = Map.lookup (unqualify v) env
 > translExpr tyEnv _ _ (Constructor c) =
 >   IL.Constructor c (arrowArity (constrType tyEnv c))
 > translExpr tyEnv vs env (Apply e1 e2) =
@@ -497,7 +497,7 @@ instance, if one of the alternatives contains an \texttt{@}-pattern.
 >       IL.Let (translBinding env' d) e'
 >     _ -> IL.Letrec (map (translBinding env') ds) e'
 >   where e' = translExpr tyEnv vs env' e
->         env' = foldr2 bindEnv env bvs bvs
+>         env' = foldr2 Map.insert env bvs bvs
 >         bvs = bv ds
 >         translBinding env (PatternDecl _ (VariablePattern v) rhs) =
 >           IL.Binding v (translRhs tyEnv vs env rhs)

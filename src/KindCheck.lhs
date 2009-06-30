@@ -23,11 +23,13 @@ hand side of a type declaration are actually defined and no identifier
 is defined more than once.
 \begin{verbatim}
 
-> module KindCheck(kindCheck,kindCheckGoal) where
+> module KindCheck(kindCheck) where
 
 > import Data.Maybe
 
 > import Curry.Syntax
+> import Curry.Base.Position
+> import Curry.Base.Ident
 > import Base hiding (bindArity)
 > import TopEnv
 
@@ -45,15 +47,9 @@ finally, the declarations are checked within this environment.
 > kindCheck m tcEnv ds =
 >   case linear (map tconstr ds') of
 >     Linear -> map (checkDecl m kEnv) ds
->     NonLinear (PIdent p tc) -> errorAt' (duplicateType tc)
+>     NonLinear (PIdent _ tc) -> errorAt' (duplicateType tc)
 >   where ds' = filter isTypeDecl ds
 >         kEnv = foldr (bindArity m) (fmap tcArity tcEnv) ds'
-
-> kindCheckGoal :: TCEnv -> Goal -> Goal
-> kindCheckGoal tcEnv (Goal p e ds) =
->   Goal p (checkExpr m kEnv e) (map (checkDecl m kEnv) ds)
->   where kEnv = fmap tcArity tcEnv
->	  m = mkMIdent []
 
 \end{verbatim}
 The kind environment only needs to record the arity of each type constructor.
@@ -114,7 +110,7 @@ traversed because they can contain local type signatures.
 >   | tv `elem` tvs = errorAt' (nonLinear tv)
 >   | otherwise = tv : checkTypeLhs kEnv tvs
 >   where isTypeConstr tv = not (null (lookupKind tv kEnv))
-> checkTypeLhs kEnv [] = []
+> checkTypeLhs _ [] = []
 
 > checkConstrDecl :: ModuleIdent -> KindEnv -> [Ident] -> ConstrDecl -> ConstrDecl
 > checkConstrDecl m kEnv tvs (ConstrDecl p evs c tys) =

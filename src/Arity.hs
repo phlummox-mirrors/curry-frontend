@@ -9,9 +9,10 @@
 --
 module Arity (bindArities) where
 
-import Base
+import Curry.Base.Ident
 import Curry.Syntax
-import Ident
+
+import Base(ArityEnv, bindArity)
 
 
 -------------------------------------------------------------------------------

@@ -21,24 +21,24 @@ unannotated declarations, but allows for polymorphic recursion when a
 type annotation is present.
 \begin{verbatim}
 
-> module TypeCheck(typeCheck,typeCheckGoal) where
+> module TypeCheck(typeCheck) where
 
-> import Control.Monad
+> import Control.Monad.State as S
 > import Data.List
 > import Data.Maybe
+> import qualified Data.Map as Map
 > import qualified Data.Set as Set
 
+> import Curry.Base.Position
+> import Curry.Base.Ident
 > import Curry.Syntax
 > import Curry.Syntax.Pretty
+
 
 > import Base
 > import Types
 > import PrettyCombinators
-> import Ident
-> import Env
 > import TopEnv
-
-> import Combined
 > import SCC
 > import TypeSubst
 > import Utils
@@ -60,36 +60,24 @@ constructor and type environments.
 
 > typeCheck :: ModuleIdent -> TCEnv -> ValueEnv -> [Decl] -> (TCEnv,ValueEnv)
 > typeCheck m tcEnv tyEnv ds =
->   run (tcDecls m tcEnv' emptyEnv vds >>
->        liftSt fetchSt >>= \theta -> fetchSt >>= \tyEnv' ->
+>   run (tcDecls m tcEnv' Map.empty vds >>
+>        S.lift S.get >>= \theta -> S.get >>= \tyEnv' ->
 >        return (tcEnv',subst theta tyEnv'))
 >       (bindLabels m tcEnv' (bindConstrs m tcEnv' tyEnv))
 >   where (tds,vds) = partition isTypeDecl ds
 >         tcEnv' = bindTypes m tds tcEnv
 
 \end{verbatim}
-Type checking of a goal expression is simpler because the type
-constructor environment is fixed already and there are no
-type declarations in a goal.
-\begin{verbatim}
 
-> typeCheckGoal :: TCEnv -> ValueEnv -> Goal -> ValueEnv
-> typeCheckGoal tcEnv tyEnv (Goal p e ds) =
->    run (tcRhs m0 tcEnv tyEnv emptyEnv (SimpleRhs p e ds) >>
->         liftSt fetchSt >>= \theta -> fetchSt >>= \tyEnv' ->
->         return (subst theta tyEnv')) tyEnv
->   where m0 = mkMIdent []
-
-\end{verbatim}
 The type checker makes use of nested state monads in order to
 maintain the type environment, the current substitution, and a counter
 which is used for generating fresh type variables.
 \begin{verbatim}
 
-> type TcState a = StateT ValueEnv (StateT TypeSubst (St Int)) a
+> type TcState a = S.StateT ValueEnv (S.StateT TypeSubst (S.State Int)) a
 
 > run :: TcState a -> ValueEnv -> a
-> run m tyEnv = runSt (callSt (callSt m tyEnv) idSubst) 0
+> run m tyEnv = S.evalState (S.evalStateT (S.evalStateT m tyEnv) idSubst) 0
 
 \end{verbatim}
 \paragraph{Defining Types}
@@ -221,10 +209,10 @@ available for use in the error message that is printed when the
 inferred type is less general than the signature.
 \begin{verbatim}
 
-> type SigEnv = Env Ident TypeExpr
+> type SigEnv = Map.Map Ident TypeExpr
 
 > bindTypeSig :: Ident -> TypeExpr -> SigEnv -> SigEnv
-> bindTypeSig = bindEnv
+> bindTypeSig = Map.insert
 
 > bindTypeSigs :: Decl -> SigEnv -> SigEnv
 > bindTypeSigs (TypeSig _ vs ty) env =
@@ -232,7 +220,7 @@ inferred type is less general than the signature.
 > bindTypeSigs _ env = env
 
 > lookupTypeSig :: Ident -> SigEnv -> Maybe TypeExpr
-> lookupTypeSig = lookupEnv
+> lookupTypeSig = Map.lookup
 
 > qualLookupTypeSig :: ModuleIdent -> QualIdent -> SigEnv -> Maybe TypeExpr
 > qualLookupTypeSig m f sigs = localIdent m f >>= flip lookupTypeSig sigs
@@ -305,17 +293,17 @@ either one of the basic types or \texttt{()}.
 >   mapM_ (tcExtraVar m tcEnv sigs ) vs
 > tcDeclGroup m tcEnv sigs ds =
 >   do
->     tyEnv0 <- fetchSt
+>     tyEnv0 <- S.get
 >     tysLhs <- mapM (tcDeclLhs m tcEnv sigs) ds
 >     tysRhs <- mapM (tcDeclRhs m tcEnv tyEnv0 sigs) ds
 >     sequence_ (zipWith3 (unifyDecl m) ds tysLhs tysRhs)
->     theta <- liftSt fetchSt
+>     theta <- S.lift S.get
 >     mapM_ (genDecl m tcEnv sigs (fvEnv (subst theta tyEnv0)) theta) ds
 
 > --tcForeignFunct :: ModuleIdent -> TCEnv -> Position -> CallConv -> Ident
 > --               -> TypeExpr -> TcState ()
 > --tcForeignFunct m tcEnv p cc f ty =
-> --  updateSt_ (bindFun m f (checkForeignType cc (expandPolyType tcEnv ty)))
+> --  S.modify (bindFun m f (checkForeignType cc (expandPolyType tcEnv ty)))
 > --  where checkForeignType CallConvPrimitive ty = ty
 > --        checkForeignType CallConvCCall (ForAll n ty) =
 > --          ForAll n (checkCCallType ty)
@@ -335,11 +323,11 @@ either one of the basic types or \texttt{()}.
 
 > tcExternalFunct :: ModuleIdent -> TCEnv -> Ident -> TypeExpr -> TcState ()
 > tcExternalFunct m tcEnv  f ty =
->   updateSt_ (bindFun m f (expandPolyType m tcEnv ty))
+>   S.modify (bindFun m f (expandPolyType m tcEnv ty))
 
 > tcFlatExternalFunct :: ModuleIdent -> TCEnv -> SigEnv -> Ident -> TcState ()
 > tcFlatExternalFunct m tcEnv sigs f =
->   typeOf f tcEnv sigs >>= updateSt_ . bindFun m f
+>   typeOf f tcEnv sigs >>= S.modify . bindFun m f
 >   where typeOf f tcEnv sigs =
 >           case lookupTypeSig f sigs of
 >             Just ty -> return (expandPolyType m tcEnv ty)
@@ -348,7 +336,7 @@ either one of the basic types or \texttt{()}.
 > tcExtraVar :: ModuleIdent -> TCEnv -> SigEnv -> Ident
 >            -> TcState ()
 > tcExtraVar m tcEnv sigs v =
->   typeOf v tcEnv sigs >>= updateSt_ . bindFun m v . monoType
+>   typeOf v tcEnv sigs >>= S.modify . bindFun m v . monoType
 >   where typeOf v tcEnv sigs =
 >           case lookupTypeSig v sigs of
 >             Just ty
@@ -407,9 +395,9 @@ signature the declared type must be too general.
 > genDecl :: ModuleIdent -> TCEnv -> SigEnv -> Set.Set Int -> TypeSubst -> Decl
 >         -> TcState ()
 > genDecl m tcEnv sigs lvs theta (FunctionDecl _ f _) =
->   updateSt_ (genVar True m tcEnv sigs lvs theta f)
+>   S.modify (genVar True m tcEnv sigs lvs theta f)
 > genDecl m tcEnv sigs lvs theta (PatternDecl p t _) =
->   mapM_ (updateSt_ . genVar False m tcEnv sigs lvs theta ) (bv t)
+>   mapM_ (S.modify . genVar False m tcEnv sigs lvs theta ) (bv t)
 
 > genVar :: Bool -> ModuleIdent -> TCEnv -> SigEnv -> Set.Set Int -> TypeSubst
 >        -> Ident -> ValueEnv -> ValueEnv
@@ -445,7 +433,7 @@ signature the declared type must be too general.
 > tcLiteral m (Int v _)  = --return intType
 >   do
 >     ty <- freshConstrained [intType,floatType]
->     updateSt_ (bindFun m v (monoType ty))
+>     S.modify (bindFun m v (monoType ty))
 >     return ty
 > tcLiteral _ (Float _ _) = return floatType
 > tcLiteral _ (String _ _) = return stringType
@@ -459,12 +447,12 @@ signature the declared type must be too general.
 >     ty <- case lookupTypeSig v sigs of
 >             Just t -> inst (expandPolyType m tcEnv t)
 >             Nothing -> freshTypeVar
->     updateSt_ (bindFun m v (monoType ty))
+>     S.modify (bindFun m v (monoType ty))
 >     return ty
 >   
 > tcConstrTerm m tcEnv sigs p t@(ConstructorPattern c ts) =
 >   do
->     tyEnv <- fetchSt
+>     tyEnv <- S.get
 >     ty <- skol (constrType m c tyEnv)
 >     unifyArgs (ppConstrTerm 0 t) ts ty
 >   where unifyArgs _ [] ty = return ty
@@ -476,7 +464,7 @@ signature the declared type must be too general.
 >         unifyArgs _ _ _ = internalError "tcConstrTerm"
 > tcConstrTerm m tcEnv sigs p t@(InfixPattern t1 op t2) =
 >   do
->     tyEnv <- fetchSt
+>     tyEnv <- S.get
 >     ty <- skol (constrType m op tyEnv)
 >     unifyArgs (ppConstrTerm 0 t) [t1,t2] ty
 >   where unifyArgs _ [] ty = return ty
@@ -507,7 +495,7 @@ signature the declared type must be too general.
 > tcConstrTerm m tcEnv sigs p (LazyPattern _ t) = tcConstrTerm m tcEnv sigs p t
 > tcConstrTerm m tcEnv sigs p t@(FunctionPattern f ts) =
 >   do
->     tyEnv <- fetchSt
+>     tyEnv <- S.get
 >     ty <- inst (funType m f tyEnv) --skol (constrType m c tyEnv)
 >     unifyArgs (ppConstrTerm 0 t) ts ty
 >   where unifyArgs _ [] ty = return ty
@@ -556,14 +544,14 @@ because of possibly multiple occurrences of variables.
 >     ty <- maybe freshTypeVar 
 >                 (inst . expandPolyType m tcEnv) 
 >                 (lookupTypeSig v sigs)
->     tyEnv <- fetchSt
->     ty' <- maybe (updateSt_ (bindFun m v (monoType ty)) >> return ty)
+>     tyEnv <- S.get
+>     ty' <- maybe (S.modify (bindFun m v (monoType ty)) >> return ty)
 >                  (\ (ForAll _ t) -> return t)
 >	           (sureVarType v tyEnv)
 >     return ty' 
 > tcConstrTermFP m tcEnv sigs p t@(ConstructorPattern c ts) =
 >   do
->     tyEnv <- fetchSt
+>     tyEnv <- S.get
 >     ty <- skol (constrType m c tyEnv)
 >     unifyArgs (ppConstrTerm 0 t) ts ty
 >   where unifyArgs _ [] ty = return ty
@@ -575,7 +563,7 @@ because of possibly multiple occurrences of variables.
 >         unifyArgs _ _ _ = internalError "tcConstrTermFP"
 > tcConstrTermFP m tcEnv sigs p t@(InfixPattern t1 op t2) =
 >   do
->     tyEnv <- fetchSt
+>     tyEnv <- S.get
 >     ty <- skol (constrType m op tyEnv)
 >     unifyArgs (ppConstrTerm 0 t) [t1,t2] ty
 >   where unifyArgs _ [] ty = return ty
@@ -606,7 +594,7 @@ because of possibly multiple occurrences of variables.
 > tcConstrTermFP m tcEnv sigs p (LazyPattern _ t) = tcConstrTermFP m tcEnv sigs p t
 > tcConstrTermFP m tcEnv sigs p t@(FunctionPattern f ts) =
 >   do
->     tyEnv <- fetchSt
+>     tyEnv <- S.get
 >     ty <- inst (funType m f tyEnv) --skol (constrType m c tyEnv)
 >     unifyArgs (ppConstrTerm 0 t) ts ty
 >   where unifyArgs _ [] ty = return ty
@@ -643,11 +631,11 @@ because of possibly multiple occurrences of variables.
 >             -> Field ConstrTerm -> TcState (Ident,Type)
 > tcFieldPatt tcPatt m f@(Field _ l t) =
 >   do
->     tyEnv <- fetchSt
+>     tyEnv <- S.get
 >     let p = positionOfIdent l
 >     lty <- maybe (freshTypeVar
 >	             >>= (\lty' ->
->		           updateSt_
+>		           S.modify
 >		             (bindLabel l (qualifyWith m (mkIdent "#Rec"))
 >		                        (polyType lty'))
 >		           >> return lty'))
@@ -692,15 +680,15 @@ because of possibly multiple occurrences of variables.
 > tcExpr m tcEnv sigs p (Variable v) =
 >   case qualLookupTypeSig m v sigs of
 >     Just ty -> inst (expandPolyType m tcEnv ty)
->     Nothing -> fetchSt >>= inst . funType m v
-> tcExpr m tcEnv sigs p (Constructor c) = fetchSt >>= instExist . constrType m c
+>     Nothing -> S.get >>= inst . funType m v
+> tcExpr m tcEnv sigs p (Constructor c) = S.get >>= instExist . constrType m c
 > tcExpr m tcEnv sigs p (Typed e sig) =
 >   do
->     tyEnv0 <- fetchSt
+>     tyEnv0 <- S.get
 >     ty <- tcExpr m tcEnv sigs p e
 >     inst sigma' >>=
 >       flip (unify p "explicitly typed expression" (ppExpr 0 e) m) ty
->     theta <- liftSt fetchSt
+>     theta <- S.lift S.get
 >     let sigma = gen (fvEnv (subst theta tyEnv0)) (subst theta ty)
 >     unless (sigma == sigma')
 >       (errorAt p (typeSigTooGeneral m (text "Expression:" <+> ppExpr 0 e)
@@ -721,7 +709,7 @@ because of possibly multiple occurrences of variables.
 >           tcElems doc es ty
 > tcExpr m tcEnv sigs p (ListCompr _ e qs) =
 >   do
->     tyEnv0 <- fetchSt
+>     tyEnv0 <- S.get
 >     mapM_ (tcQual m tcEnv sigs p) qs
 >     ty <- tcExpr m tcEnv sigs p e
 >     checkSkolems p m (text "Expression:" <+> ppExpr 0 e) tyEnv0 (listType ty)
@@ -817,21 +805,21 @@ because of possibly multiple occurrences of variables.
 >     return (TypeArrow alpha gamma)
 > tcExpr m tcEnv sigs p exp@(Lambda r ts e) =
 >   do
->     tyEnv0 <- fetchSt
+>     tyEnv0 <- S.get
 >     tys <- mapM (tcConstrTerm m tcEnv sigs p) ts
 >     ty <- tcExpr m tcEnv sigs p e
 >     checkSkolems p m (text "Expression:" <+> ppExpr 0 exp) tyEnv0
 >                  (foldr TypeArrow ty tys)
 > tcExpr m tcEnv sigs p (Let ds e) =
 >   do
->     tyEnv0 <- fetchSt
->     theta <- liftSt fetchSt
+>     tyEnv0 <- S.get
+>     theta <- S.lift S.get
 >     tcDecls m tcEnv sigs ds
 >     ty <- tcExpr m tcEnv sigs p e
 >     checkSkolems p m (text "Expression:" <+> ppExpr 0 e) tyEnv0 ty
 > tcExpr m tcEnv sigs p (Do sts e) =
 >   do
->     tyEnv0 <- fetchSt
+>     tyEnv0 <- S.get
 >     mapM_ (tcStmt m tcEnv sigs p) sts
 >     alpha <- freshTypeVar
 >     ty <- tcExpr m tcEnv sigs p e
@@ -849,7 +837,7 @@ because of possibly multiple occurrences of variables.
 >     return ty3
 > tcExpr m tcEnv sigs p (Case _ e alts) =
 >   do
->     tyEnv0 <- fetchSt
+>     tyEnv0 <- S.get
 >     ty <- tcExpr m tcEnv sigs p e
 >     alpha <- freshTypeVar
 >     tcAlts tyEnv0 ty alpha alts
@@ -871,10 +859,10 @@ because of possibly multiple occurrences of variables.
 > tcExpr m tcEnv sigs p r@(RecordSelection e l) =
 >   do
 >     ty <- tcExpr m tcEnv sigs p e
->     tyEnv <- fetchSt
+>     tyEnv <- S.get
 >     lty <- maybe (freshTypeVar 
 >	             >>= (\lty' -> 
->		           updateSt_ 
+>		           S.modify 
 >		             (bindLabel l (qualifyWith m (mkIdent "#Rec"))
 >		                        (monoType lty'))
 >	                   >> return lty'))
@@ -926,11 +914,11 @@ because of possibly multiple occurrences of variables.
 >	      -> TcState (Ident,Type)
 > tcFieldExpr m tcEnv sigs comb f@(Field _ l e) =
 >   do
->     tyEnv <- fetchSt
+>     tyEnv <- S.get
 >     let p = positionOfIdent l
 >     lty <- maybe (freshTypeVar 
 >	             >>= (\lty' -> 
->		           updateSt_ 
+>		           S.modify 
 >		             (bindLabel l (qualifyWith m (mkIdent "#Rec"))
 >		                          (monoType lty'))
 >	                   >> return lty'))
@@ -953,14 +941,14 @@ $(\alpha,\beta,\gamma)$.
 >         -> TcState (Type,Type)
 > tcArrow p what doc m ty =
 >   do
->     theta <- liftSt fetchSt
+>     theta <- S.lift S.get
 >     unaryArrow (subst theta ty)
 >   where unaryArrow (TypeArrow ty1 ty2) = return (ty1,ty2)
 >         unaryArrow (TypeVariable tv) =
 >           do
 >             alpha <- freshTypeVar
 >             beta <- freshTypeVar
->             liftSt (updateSt_ (bindVar tv (TypeArrow alpha beta)))
+>             S.lift (S.modify (bindVar tv (TypeArrow alpha beta)))
 >             return (alpha,beta)
 >         unaryArrow ty = errorAt p (nonFunctionType what doc m ty)
 
@@ -972,7 +960,7 @@ $(\alpha,\beta,\gamma)$.
 >           do
 >             beta <- freshTypeVar
 >             gamma <- freshTypeVar
->             liftSt (updateSt_ (bindVar tv (TypeArrow beta gamma)))
+>             S.lift (S.modify (bindVar tv (TypeArrow beta gamma)))
 >             return (ty1,beta,gamma)
 >         binaryArrow ty1 ty2 =
 >           errorAt p (nonBinaryOp what doc m (TypeArrow ty1 ty2))
@@ -986,13 +974,13 @@ of~\cite{PeytonJones87:Book}).
 > unify :: Position -> String -> Doc -> ModuleIdent -> Type -> Type
 >       -> TcState ()
 > unify p what doc m ty1 ty2 =
->   liftSt $ {-$-}
+>   S.lift $ {-$-}
 >   do
->     theta <- fetchSt
+>     theta <- S.get
 >     let ty1' = subst theta ty1
 >     let ty2' = subst theta ty2
 >     either (errorAt p . typeMismatch what doc m ty1' ty2')
->            (updateSt_ . compose)
+>            (S.modify . compose)
 >            (unifyTypes m ty1' ty2')
 
 > unifyTypes :: ModuleIdent -> Type -> Type -> Either Doc TypeSubst
@@ -1089,7 +1077,7 @@ skolem type escapes its scope.
 >              -> TcState Type
 > checkSkolems p m what tyEnv ty =
 >   do
->     theta <- liftSt fetchSt
+>     theta <- S.lift S.get
 >     let ty' = subst theta ty
 >         fs = fsEnv (subst theta tyEnv)
 >     unless (all (`Set.member` fs) (typeSkolems ty'))
@@ -1103,7 +1091,7 @@ We use negative offsets for fresh type variables.
 \begin{verbatim}
 
 > fresh :: (Int -> a) -> TcState a
-> fresh f = liftM f (liftSt (liftSt (updateSt (1 +))))
+> fresh f = liftM f (S.lift (S.lift (S.modify succ >> S.get)))
 
 > freshVar :: (Int -> a) -> TcState a
 > freshVar f = fresh (\n -> f (- n - 1))
@@ -1186,20 +1174,6 @@ unambiguously refers to the local definition.
 >     vs -> case (qualLookupValue (qualQualify m f) tyEnv) of
 >             [Value _ sigma] -> sigma
 >             _ -> internalError ("funType " ++ show f)
-
-> sureFunType :: ModuleIdent -> QualIdent -> ValueEnv -> Maybe TypeScheme
-> sureFunType m f tyEnv =
->   case (qualLookupValue f tyEnv) of
->     [Value _ sigma] -> Just sigma
->     vs -> case (qualLookupValue (qualQualify m f) tyEnv) of
->             [Value _ sigma] -> Just sigma
->             _ -> Nothing
-
-> labelType :: Ident -> ValueEnv -> TypeScheme
-> labelType l tyEnv =
->   case lookupValue l tyEnv of
->     Label _ _ sigma : _ -> sigma
->     _ -> internalError ("labelType " ++ show l)
 
 > sureLabelType :: Ident -> ValueEnv -> Maybe TypeScheme
 > sureLabelType l tyEnv =
@@ -1321,11 +1295,6 @@ Error functions.
 > skolemEscapingScope m what ty = show $
 >   vcat [text "Existential type escapes out of its scope", what,
 >         text "Type:" <+> ppType m ty]
-
-> invalidCType :: String -> ModuleIdent -> Type -> String
-> invalidCType what m ty = show $
->   vcat [text ("Invalid " ++ what ++ " type in foreign declaration"),
->         ppType m ty]
 
 > recursiveType :: ModuleIdent -> Int -> Type -> Doc
 > recursiveType m tv ty = incompatibleTypes m (TypeVariable tv) ty

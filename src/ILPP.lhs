@@ -15,7 +15,9 @@ Marlow's pretty printer for Haskell.
 \begin{verbatim}
 
 > module ILPP(module ILPP, Doc) where
-> import Ident
+> 
+> import Curry.Base.Ident
+> 
 > import IL
 > import PrettyCombinators
 

@@ -20,16 +20,16 @@ nested layout groups.
 
 > import Data.Char
 
-> import Curry.Syntax.ParseResult
-> import Position
+> import Curry.Base.MessageMonad
+> import Curry.Base.Position
 
 > infixl 1 `thenP`, `thenP_`
 
 > type Indent = Int
 > type Context = [Indent]
-> type P a = Position -> String -> Bool -> Context -> Error a
+> type P a = Position -> String -> Bool -> Context -> MsgMonad a
 
-> parse :: P a -> FilePath -> String -> Error a
+> parse :: P a -> FilePath -> String -> MsgMonad a
 > parse p fn s = p (first fn) s False []
 
 \end{verbatim}
@@ -37,7 +37,7 @@ Monad functions for the lexer.
 \begin{verbatim}
 
 > returnP :: a -> P a
-> returnP x _ _ _ _ = Ok x
+> returnP x _ _ _ _ = return x
 
 > thenP :: P a -> (a -> P b) -> P b
 > thenP lex k pos s bol ctxt = lex pos s bol ctxt >>= \x -> k x pos s bol ctxt
@@ -46,13 +46,13 @@ Monad functions for the lexer.
 > p1 `thenP_` p2 = p1 `thenP` \_ -> p2
 
 > failP :: Position -> String -> P a
-> failP pos msg _ _ _ _ = Error (parseError pos msg)
+> failP pos msg _ _ _ _ = failWith (parseError pos msg)
 
 > closeP0 :: P a -> P (P a)
-> closeP0 lex pos s bol ctxt = Ok (\_ _ _ _ -> lex pos s bol ctxt)
+> closeP0 lex pos s bol ctxt = return (\_ _ _ _ -> lex pos s bol ctxt)
 
 > closeP1 :: (a -> P b) -> P (a -> P b)
-> closeP1 f pos s bol ctxt = Ok (\x _ _ _ _ -> f x pos s bol ctxt)
+> closeP1 f pos s bol ctxt = return (\x _ _ _ _ -> f x pos s bol ctxt)
 
 > parseError :: Position -> String -> String
 > parseError p what = "\n" ++ show p ++ ": " ++ what

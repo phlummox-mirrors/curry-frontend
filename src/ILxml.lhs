@@ -23,9 +23,10 @@ similar to that of Flat-Curry XML representation.
 > import Data.Maybe
 > import Data.Char(chr,ord,isAlphaNum)
 
-> import Ident
-> import IL
+> import Curry.Base.Ident
 > import qualified Curry.Syntax as CS
+
+> import IL
 > import CurryEnv
 > import PrettyCombinators
 

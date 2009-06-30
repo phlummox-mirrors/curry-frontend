@@ -28,13 +28,13 @@ module ExtendedFlat (SrcRef,Prog(..), QName(..), Visibility(..),
                   qnOf,mkQName,
                   mkIdx,idxOf) where
 
-import PathUtils (writeModule, maybeReadModule, replaceExtension)
 import Data.List(intersperse)
 import Control.Monad (liftM)
 import Data.Generics hiding (Fixity)
-import Position (SrcRef)
 import System.FilePath
 
+import PathUtils (writeModule, maybeReadModule, replaceExtension)
+import Curry.Base.Position (SrcRef)
 
 ------------------------------------------------------------------------------
 -- Definition of data types for representing FlatCurry programs:

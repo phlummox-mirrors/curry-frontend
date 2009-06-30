@@ -24,19 +24,22 @@ Currently, the following optimizations are implemented:
 
 > module Simplify(simplify) where
 
-> import Control.Monad
+> import Control.Monad.Reader as R
+> import Control.Monad.State as S
+> import qualified Data.Map as Map
 
+> import Curry.Base.Position
+> import Curry.Base.Ident
 > import Curry.Syntax
+
 > import Types
 > import Base
-> import Combined
-> import Env
 > import SCC
 > import Typing
 
 
-> type SimplifyState a = StateT ValueEnv (ReaderT EvalEnv (St Int)) a
-> type InlineEnv = Env Ident Expression
+> type SimplifyState a = S.StateT ValueEnv (ReaderT EvalEnv (S.State Int)) a
+> type InlineEnv = Map.Map Ident Expression
 > type SimplifyFlags = Bool
  
 > flatFlag :: SimplifyFlags -> Bool
@@ -44,13 +47,13 @@ Currently, the following optimizations are implemented:
 
 > simplify :: SimplifyFlags -> ValueEnv -> EvalEnv -> Module -> (Module,ValueEnv)
 > simplify flags tyEnv evEnv m 
->   = runSt (callRt (callSt (simplifyModule flags m) tyEnv) evEnv) 1
+>   = S.evalState (R.runReaderT (S.evalStateT (simplifyModule flags m) tyEnv) evEnv) 1
 
 > simplifyModule :: SimplifyFlags -> Module -> SimplifyState (Module,ValueEnv)
 > simplifyModule flat (Module m es ds) =
 >   do
->     ds' <- mapM (simplifyDecl flat m emptyEnv) ds
->     tyEnv <- fetchSt
+>     ds' <- mapM (simplifyDecl flat m Map.empty) ds
+>     tyEnv <- S.get
 >     return (Module m es ds',tyEnv)
 
 > simplifyDecl :: SimplifyFlags -> ModuleIdent -> InlineEnv -> Decl -> SimplifyState Decl
@@ -137,8 +140,8 @@ explicitly in a Curry expression.
 > simplifyEquation flat m env (Equation p lhs rhs) =
 >   do
 >     rhs' <- simplifyRhs flat m env rhs
->     tyEnv <- fetchSt
->     evEnv <- liftSt envRt
+>     tyEnv <- S.get
+>     evEnv <- S.lift R.ask
 >     return (inlineFun flat m tyEnv evEnv p lhs rhs')
 
 > inlineFun :: SimplifyFlags -> ModuleIdent -> ValueEnv -> EvalEnv -> Position -> Lhs -> Rhs
@@ -190,7 +193,7 @@ functions in later phases of the compiler.
 > simplifyExpr flat m env (Variable v)
 >   | isQualified v = return (Variable v)
 >   | otherwise = maybe (return (Variable v)) (simplifyExpr flat m env)
->                       (lookupEnv (unqualify v) env)
+>                       (Map.lookup (unqualify v) env)
 > simplifyExpr _ _ _ (Constructor c) = return (Constructor c)
 > simplifyExpr flags m env (Apply (Let ds e1) e2) 
 >   = simplifyExpr flags m env (Let ds (Apply e1 e2))
@@ -205,7 +208,7 @@ functions in later phases of the compiler.
 >     return (Apply e1' e2')
 > simplifyExpr flags m env (Let ds e) =
 >   do
->     tyEnv <- fetchSt
+>     tyEnv <- S.get
 >     dss' <- mapM (sharePatternRhs m tyEnv) ds
 >     simplifyLet flags m env
 >       (scc bv (qfv m) (foldr (hoistDecls flags) [] (concat dss'))) e
@@ -253,7 +256,7 @@ functions to access the pattern variables.
 > simplifyLet flags m env (ds:dss) e =
 >   do
 >     ds' <- mapM (simplifyDecl flags m env) ds
->     tyEnv <- fetchSt
+>     tyEnv <- S.get
 >     e' <- simplifyLet flags m (inlineVars flags m tyEnv ds' env) dss e
 >     dss'' <-
 >       mapM (expandPatternBindings flags m tyEnv (qfv m ds' ++ qfv m e')) ds'
@@ -262,7 +265,7 @@ functions to access the pattern variables.
 
 > inlineVars :: SimplifyFlags -> ModuleIdent -> ValueEnv -> [Decl] -> InlineEnv -> InlineEnv
 > inlineVars flags m tyEnv [PatternDecl _ (VariablePattern v) (SimpleRhs _ e _)] env
->   | canInline e = bindEnv v e env
+>   | canInline e = Map.insert v e env
 >   where canInline (Literal _) = True
 >         canInline (Constructor _) = True
 >         canInline (Variable v')
@@ -433,14 +436,14 @@ Auxiliary functions
 >             _ -> internalError ("funType " ++ show f)
 
 > evMode :: EvalEnv -> Ident -> Maybe EvalAnnotation
-> evMode evEnv f = lookupEnv f evEnv
+> evMode evEnv f = Map.lookup f evEnv
 
 > freshIdent :: ModuleIdent -> (Int -> Ident) -> TypeScheme
 >            -> SimplifyState Ident
 > freshIdent m f ty =
 >   do
->     x <- liftM f (liftSt (liftRt (updateSt (1 +))))
->     updateSt_ (bindFun m x ty)
+>     x <- liftM f (S.lift (R.lift ( S.modify succ >> S.get)))
+>     S.modify (bindFun m x ty)
 >     return x
 
 > shuffle :: [a] -> [[a]]

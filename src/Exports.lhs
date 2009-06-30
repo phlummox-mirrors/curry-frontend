@@ -21,6 +21,8 @@ is computed.
 
 > import Curry.Syntax
 > import Types
+> import Curry.Base.Position
+> import Curry.Base.Ident
 > import Base
 > import TopEnv
 

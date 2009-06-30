@@ -21,35 +21,38 @@ import declarations are commented out
 >	        ) where
 
 > import Data.List
+> import qualified Data.Map as Map
 > import System.IO
 > import Data.Maybe
 > import Control.Monad
 
+> import Curry.Base.MessageMonad
+> import Curry.Base.Position
+> import Curry.Base.Ident
 > import Curry.Syntax
-> import Curry.Syntax.Pretty(ppModule,ppInterface,ppIDecl,ppGoal)
-> import Curry.Syntax.ParseResult
+> import Curry.Syntax.Parser(parseSource)
+> import Curry.Syntax.Pretty(ppModule,ppIDecl)
+> import Curry.Syntax.ShowModule(showModule)
 
 > import Base
 > import Types
 > import Unlit(unlit)
-> import Curry.Syntax.Parser(parseSource,parseGoal) -- xxxGoal entfernen
-> import Curry.Syntax.ShowModule(showModule)
-> import KindCheck(kindCheck,kindCheckGoal)
+> import KindCheck(kindCheck)
 > import SyntaxCheck(syntaxCheck)
-> import PrecCheck(precCheck,precCheckGoal)
-> import TypeCheck(typeCheck,typeCheckGoal)
-> import WarnCheck
+> import PrecCheck(precCheck)
+> import TypeCheck(typeCheck)
+> import WarnCheck(warnCheck)
 > import Message
 > import Arity
 > import Imports(importInterface,importInterfaceIntf,importUnifyData)
 > import Exports(expandInterface,exportInterface)
-> import Eval(evalEnv,evalEnvGoal)
-> import Qual(qual,qualGoal)
-> import Desugar(desugar,desugarGoal)
+> import Eval(evalEnv)
+> import Qual(qual)
+> import Desugar(desugar)
 > import Simplify(simplify)
 > import Lift(lift)
 > import qualified IL
-> import ILTrans(ilTrans,ilTransIntf)
+> import ILTrans(ilTrans)
 > import ILxml(xmlModule) -- check
 > import ExtendedFlat
 > import GenFlatCurry (genFlatCurry,genFlatInterface)
@@ -59,12 +62,10 @@ import declarations are commented out
 > import CurryEnv
 > import qualified ILPP(ppModule)
 > import CurryCompilerOpts(Options(..),Dump(..))
-> import CompilerResults
 > import CaseCompletion
 > import PathUtils
 > import TypeSubst
 > import PrettyCombinators
-> import Env
 > import TopEnv
 
 \end{verbatim}
@@ -94,7 +95,7 @@ code are obsolete and commented out.
 > compileModule :: Options -> FilePath -> IO ()
 > compileModule opts fn = compileModule_ opts fn >> return ()
 
-> compileModule_ :: Options -> FilePath -> IO CompilerResults
+> compileModule_ :: Options -> FilePath -> IO (Maybe FilePath)
 > compileModule_ opts fn =
 >   do
 >     mod <- liftM (parseModule likeFlat fn) (readModule fn)
@@ -111,7 +112,7 @@ code are obsolete and commented out.
 >                                              (output opts)
 >                           outputMod = showModule m'
 >                       writeModule outputFile outputMod
->                       return defaultResults
+>                       return Nothing
 >        else
 >          do (tyEnv, tcEnv, aEnv, m', intf, _) <- checkModule opts mEnv m
 >             let (il,aEnv',dumps) = transModule fcy False False 
@@ -128,7 +129,7 @@ code are obsolete and commented out.
 >         genCode opts fn mEnv tyEnv tcEnv aEnv intf m il
 >            | fcy || xml = genFlat opts fn mEnv tyEnv tcEnv aEnv intf m il
 >            | acy        = genAbstract opts fn tyEnv tcEnv m
->            | otherwise  = return defaultResults
+>            | otherwise  = return Nothing
 
 > parseModule :: Bool -> FilePath -> String -> Module
 > parseModule likeFlat fn =
@@ -136,7 +137,7 @@ code are obsolete and commented out.
 
 > loadInterfaces :: [FilePath] -> Module -> IO ModuleEnv
 > loadInterfaces paths (Module m _ ds) =
->   foldM (loadInterface paths [m]) emptyEnv
+>   foldM (loadInterface paths [m]) Map.empty
 >         [(p,m) | ImportDecl p m _ _ _ <- ds]
 
 > checkModuleId :: Monad m => FilePath -> Module -> m ()
@@ -231,18 +232,13 @@ code are obsolete and commented out.
 >    foldr bindGlobal tyEnv' (localBindings tyEnv),
 >    foldr bindQual aEnv' (localBindings aEnv))
 >   where (pEnv',tcEnv',tyEnv',aEnv') =
->           foldl importInterface initEnvs (envToList mEnv)
+>           foldl importInterface initEnvs (Map.toList mEnv)
 >         importInterface (pEnv,tcEnv,tyEnv,aEnv) (m,ds) =
 >           importInterfaceIntf (Interface m ds) pEnv tcEnv tyEnv aEnv
 >         bindQual (_,y) = qualBindTopEnv "Modules.qualifyEnv" (origName y) y
 >         bindGlobal (x,y)
 >           | uniqueId x == 0 = bindQual (x,y)
 >           | otherwise = bindTopEnv "Modules.qualifyEnv" x y
-
-> --ilImports :: ValueEnv -> TCEnv -> ModuleEnv -> IL.Module -> [IL.Decl]
-> --ilImports tyEnv tcEnv mEnv (IL.Module _ is _) =
-> --  concat [ilTransIntf tyEnv tcEnv (Interface m ds) 
-> --           | (m,ds) <- envToList mEnv, m `elem` is]
 
 > writeXML :: Maybe FilePath -> FilePath -> CurryEnv -> IL.Module -> IO ()
 > writeXML tfn sfn cEnv il = writeModule ofn (showln code)
@@ -286,112 +282,7 @@ code are obsolete and commented out.
 > showln x = shows x "\n"
 
 \end{verbatim}
-A goal is compiled with respect to a given module. If no module is
-specified the Curry prelude is used. The source module has to be
-parsed and type checked before the goal can be compiled.  Otherwise
-compilation of a goal is similar to that of a module.
 
-\em{Note:} These functions are obsolete when using the MCC as frontend
-for PAKCS.
-\begin{verbatim}
-
-> --compileGoal :: Options -> Maybe String -> Maybe FilePath -> IO ()
-> --compileGoal opts g fn =
-> --  do
-> --    (ccode,dumps) <- maybe (return startupCode) goalCode g
-> --    mapM_ (doDump opts) dumps
-> --    writeCCode ofn ccode
-> --  where ofn = fromMaybe (internalError "No filename for startup code")
-> --                        (output opts)
-> --        startupCode = (genMain "curry_run",[])
-> --        goalCode = doCompileGoal (debug opts) (importPath opts) fn
-
-> --doCompileGoal :: Bool -> [FilePath] -> Maybe FilePath -> String
-> --              -> IO (CFile,[(Dump,Doc)])
-> --doCompileGoal debug paths fn g =
-> --  do
-> --    (mEnv,_,ds) <- loadGoalModule paths fn
-> --    let (tyEnv,g') = checkGoal mEnv ds (ok (parseGoal g))
-> --        (ccode,dumps) =
-> --          transGoal debug runGoal mEnv tyEnv (mkIdent "goal") g'
-> --        ccode' = genMain runGoal
-> --    return (mergeCFile ccode ccode',dumps)
-> --  where runGoal = "curry_runGoal"
-
-> --typeGoal :: Options -> String -> Maybe FilePath -> IO ()
-> --typeGoal opts g fn =
-> --  do
-> --    (mEnv,m,ds) <- loadGoalModule (importPath opts) fn
-> --    let (tyEnv,Goal _ e _) = checkGoal mEnv ds (ok (parseGoal g))
-> --    print (ppType m (typeOf tyEnv e))
-
-> --loadGoalModule :: [FilePath] -> Maybe FilePath
-> --               -> IO (ModuleEnv,ModuleIdent,[Decl])
-> --loadGoalModule paths fn =
-> --  do
-> --    Module m _ ds <- maybe (return emptyModule) parseGoalModule fn
-> --    mEnv <- loadInterfaces paths (Module m Nothing ds)
-> --    let (_,_,_,_,intf) = checkModule mEnv (Module m Nothing ds)
-> --    return (bindModule intf mEnv,m,filter isImportDecl ds ++ [importMain m])
-> --  where emptyModule = importPrelude "" (Module emptyMIdent Nothing [])
-> --        parseGoalModule fn = liftM (parseModule False fn) (readFile fn)
-> --        importMain m = ImportDecl (first "") m False Nothing Nothing
-
-> --checkGoal :: ModuleEnv -> [Decl] -> Goal -> (ValueEnv,Goal)
-> --checkGoal mEnv impDs g = (tyEnv'',qualGoal tyEnv' g')
-> --  where (pEnv,tcEnv,tyEnv,aEnv) = importModules mEnv impDs
-> --        g' = precCheckGoal pEnv $ syntaxCheckGoal tyEnv
-> --                                $ kindCheckGoal tcEnv g
-> --        tyEnv' = typeCheckGoal tcEnv tyEnv g'
-> --        (_,_,tyEnv'',_) = qualifyEnv mEnv pEnv tcEnv tyEnv' emptyTopEnv
-
-> --transGoal :: Bool -> String -> ModuleEnv -> ValueEnv -> Ident -> Goal
-> --          -> (CFile,[(Dump,Doc)])
-> --transGoal debug run mEnv tyEnv goalId g = (ccode,dumps)
-> --  where qGoalId = qualifyWith emptyMIdent goalId
-> --        evEnv = evalEnvGoal g
-> --        (vs,desugared,tyEnv') = desugarGoal debug tyEnv emptyMIdent goalId g
-> --        (simplified,tyEnv'') = simplify False tyEnv' evEnv desugared
-> --        (lifted,tyEnv''',evEnv') = lift tyEnv'' evEnv simplified
-> --        il = ilTrans False tyEnv''' evEnv' lifted
-> --        ilDbg = if debug then dAddMain goalId (dTransform False il) else il
-> --        ilNormal = liftProg ilDbg
-> --        cam = camCompile ilNormal
-> --        imports = camCompileData (ilImports mEnv ilDbg)
-> --        ccode =
-> --          genModule imports cam ++
-> --          genEntry run (fun qGoalId) (fmap (map name) vs)
-> --        dumps = [
-> --            (DumpRenamed,ppGoal g),
-> --            (DumpTypes,ppTypes emptyMIdent (localBindings tyEnv)),
-> --            (DumpDesugared,ppModule desugared),
-> --            (DumpSimplified,ppModule simplified),
-> --            (DumpLifted,ppModule lifted),
-> --            (DumpIL,ILPP.ppModule il),
-> --            (DumpTransformed,ILPP.ppModule ilDbg),
-> --            (DumpNormalized,ILPP.ppModule ilNormal),
-> --            (DumpCam,CamPP.ppModule cam)
-> --          ]
-
-\end{verbatim}
-The compiler adds a startup function for the default goal
-\texttt{main.main} to the \texttt{main} module. Thus, there is no need
-to determine the type of the goal when linking the program.
-\begin{verbatim}
-
-> --compileDefaultGoal :: Bool -> ModuleEnv -> Interface -> Maybe CFile
-> --compileDefaultGoal debug mEnv (Interface m ds)
-> --  | m == mainMIdent && any (qMainId ==) [f | IFunctionDecl _ f _ _ <- ds] =
-> --      Just ccode
-> --  | otherwise = Nothing
-> --  where qMainId = qualify mainId
-> --        mEnv' = bindModule (Interface m ds) mEnv
-> --        (tyEnv,g) =
-> --          checkGoal mEnv' [ImportDecl (first "") m False Nothing Nothing]
-> --                    (Goal (first "") (Variable qMainId) [])
-> --        (ccode,_) = transGoal debug "curry_run" mEnv' tyEnv mainId g
-
-\end{verbatim}
 The function \texttt{importModules} brings the declarations of all
 imported modules into scope for the current module.
 \begin{verbatim}
@@ -452,7 +343,7 @@ content to a type environment.
 
 > addImportedLabels :: ModuleIdent -> LabelEnv -> ValueEnv -> ValueEnv
 > addImportedLabels m lEnv tyEnv = 
->   foldr addLabelType tyEnv (concatMap snd (envToList lEnv))
+>   foldr addLabelType tyEnv (concatMap snd (Map.toList lEnv))
 >   where
 >   addLabelType (LabelType l r ty) tyEnv = 
 >     let m' = fromMaybe m (fst (splitQualIdent r))
@@ -681,7 +572,7 @@ be dependent on it any longer.
 \begin{verbatim}
 
 > genFlat :: Options -> FilePath -> ModuleEnv -> ValueEnv -> TCEnv -> ArityEnv 
->            -> Interface -> Module -> IL.Module -> IO CompilerResults
+>            -> Interface -> Module -> IL.Module -> IO (Maybe FilePath)
 > genFlat opts fname mEnv tyEnv tcEnv aEnv intf mod il
 >   | flat opts
 >     = do writeFlat opts Nothing fname cEnv mEnv tyEnv tcEnv aEnv il
@@ -689,7 +580,7 @@ be dependent on it any longer.
 >          if force opts
 >            then 
 >              do writeInterface flatInterface intMsgs
->                 return defaultResults
+>                 return Nothing
 >            else 
 >               do mfint <- readFlatInterface fintName
 >                  let flatIntf = fromMaybe emptyIntf mfint
@@ -697,10 +588,10 @@ be dependent on it any longer.
 >                        && not (interfaceCheck flatIntf flatInterface)
 >                     then 
 >                        do writeInterface flatInterface intMsgs
->                           return defaultResults
->                     else return defaultResults
+>                           return Nothing
+>                     else return Nothing
 >   | flatXml opts
->     = writeXML (output opts) fname cEnv il >> return defaultResults
+>     = writeXML (output opts) fname cEnv il >> return Nothing
 >   | otherwise
 >     = internalError "@Modules.genFlat: illegal option"
 >  where
@@ -713,14 +604,14 @@ be dependent on it any longer.
 
 
 > genAbstract :: Options -> FilePath  -> ValueEnv -> TCEnv -> Module 
->                -> IO CompilerResults
+>                -> IO (Maybe FilePath)
 > genAbstract opts fname tyEnv tcEnv mod
 >    | abstract opts
 >      = do writeTypedAbs Nothing fname tyEnv tcEnv mod 
->           return defaultResults
+>           return Nothing
 >    | untypedAbstract opts
 >      = do writeUntypedAbs Nothing fname tyEnv tcEnv mod
->           return defaultResults
+>           return Nothing
 >    | otherwise
 >      = internalError "@Modules.genAbstract: illegal option"
 

@@ -10,6 +10,8 @@
 module GenAbstractCurry (genTypedAbstract, 
 			 genUntypedAbstract) where
 
+import qualified Data.Map as Map
+import qualified Data.Set as Set
 import Data.Maybe
 import Data.List
 import Data.Char
@@ -19,10 +21,9 @@ import Curry.AbstractCurry
 
 import Base
 import Types
-import Ident
-import Position
+import Curry.Base.Ident
+import Curry.Base.Position
 import TopEnv
-import Env
 
 
 -------------------------------------------------------------------------------
@@ -695,12 +696,10 @@ genQName isTypeCons env qident
    | otherwise
      = genQualName qident
  where
-  ident = unqualify qident
-
   genQualName qid
      = let (mmid, id) = splitQualIdent qid
 	   mid = maybe (moduleId env)
-		       (\mid' -> fromMaybe mid' (lookupEnv mid' (imports env)))
+		       (\mid' -> fromMaybe mid' (Map.lookup mid' (imports env)))
 		       mmid
        in  (moduleName mid, name id)
 
@@ -751,12 +750,12 @@ genEvalAnnot EvalChoice = CChoice
 data AbstractEnv = AbstractEnv {moduleId   :: ModuleIdent,
 				typeEnv    :: ValueEnv,
 				tconsEnv   :: TCEnv,
-				exports    :: Env Ident (),
-				imports    :: Env ModuleIdent ModuleIdent,
+				exports    :: Set.Set Ident,
+				imports    :: Map.Map ModuleIdent ModuleIdent,
 				varIndex   :: Int,
 				tvarIndex  :: Int,
-				varScope   :: [Env Ident Int],
-				tvarScope  :: [Env Ident Int],
+				varScope   :: [Map.Map Ident Int],
+				tvarScope  :: [Map.Map Ident Int],
                                 acyType    :: AbstractType
 			       } deriving Show
 
@@ -772,12 +771,12 @@ genAbstractEnv absType tyEnv tcEnv (Module mid exps decls)
        {moduleId     = mid,
 	typeEnv      = tyEnv,
 	tconsEnv     = tcEnv,
-	exports      = foldl (buildExportTable mid decls) emptyEnv exps',
-	imports      = foldl buildImportTable emptyEnv decls,
+	exports      = foldl (buildExportTable mid decls) Set.empty exps',
+	imports      = foldl buildImportTable Map.empty decls,
 	varIndex     = 0,
 	tvarIndex    = 0,
-	varScope     = [emptyEnv],
-	tvarScope    = [emptyEnv],
+	varScope     = [Map.empty],
+	tvarScope    = [Map.empty],
         acyType      = absType
        }
  where
@@ -804,8 +803,8 @@ buildExports mid (_:ds) = buildExports mid ds
 
 -- Builds a table containing all exported (i.e. public) identifiers
 -- from a module.
-buildExportTable :: ModuleIdent -> [Decl] -> Env Ident () -> Export 
-                    -> Env Ident ()
+buildExportTable :: ModuleIdent -> [Decl] -> Set.Set Ident -> Export 
+                 -> Set.Set Ident
 buildExportTable mid _ exptab (Export qident)
    | isJust (localIdent mid qident)
      = insertExportedIdent exptab (unqualify qident)
@@ -828,8 +827,8 @@ buildExportTable mid decls exptab (ExportTypeAll qident)
 buildExportTable _ _ exptab (ExportModule _) = exptab
 
 --
-insertExportedIdent :: Env Ident () -> Ident -> Env Ident ()
-insertExportedIdent env ident = bindEnv ident () env
+insertExportedIdent :: Set.Set Ident -> Ident -> Set.Set Ident
+insertExportedIdent env ident = Set.insert ident env
 
 --
 getConstrIdents :: Decl -> [Ident]
@@ -841,16 +840,16 @@ getConstrIdents (DataDecl _ _ _ constrs)
 
 
 -- Builds a table for dereferencing import aliases
-buildImportTable :: Env ModuleIdent ModuleIdent -> Decl
-		    -> Env ModuleIdent ModuleIdent
+buildImportTable :: Map.Map ModuleIdent ModuleIdent -> Decl
+		    -> Map.Map ModuleIdent ModuleIdent
 buildImportTable env (ImportDecl _ mid _ malias _)
-   = bindEnv (fromMaybe mid malias) mid env
+   = Map.insert (fromMaybe mid malias) mid env
 buildImportTable env _ = env
 
 
 -- Checks whether an identifier is exported or not.
 isExported :: AbstractEnv -> Ident -> Bool
-isExported env ident = isJust (lookupEnv ident (exports env))
+isExported env ident = Set.member ident (exports env)
 
 
 -- Generates an unique index for the  variable 'ident' and inserts it
@@ -859,9 +858,9 @@ genVarIndex :: AbstractEnv -> Ident -> (Int, AbstractEnv)
 genVarIndex env ident 
    = let idx   = varIndex env
          vtabs = varScope env
-	 vtab  = head vtabs --if null vtabs then emptyEnv else head vtabs
+	 vtab  = head vtabs --if null vtabs then Map.empty else head vtabs
      in  (idx, env {varIndex = idx + 1,
-		    varScope = (bindEnv ident idx vtab):(sureTail vtabs)})
+		    varScope = (Map.insert ident idx vtab):(sureTail vtabs)})
 
 -- Generates an unique index for the type variable 'ident' and inserts it
 -- into the type variable table of the current scope.
@@ -869,20 +868,20 @@ genTVarIndex :: AbstractEnv -> Ident -> (Int, AbstractEnv)
 genTVarIndex env ident
    = let idx   = tvarIndex env
          vtabs = tvarScope env
-	 vtab  = head vtabs --if null vtabs then emptyEnv else head vtabs
+	 vtab  = head vtabs --if null vtabs then Map.empty else head vtabs
      in  (idx, env {tvarIndex = idx + 1,
-		    tvarScope = (bindEnv ident idx vtab):(sureTail vtabs)})
+		    tvarScope = (Map.insert ident idx vtab):(sureTail vtabs)})
 
 
 -- Looks up the unique index for the variable 'ident' in the
 -- variable table of the current scope.
 getVarIndex :: AbstractEnv -> Ident -> Maybe Int
-getVarIndex env ident = lookupEnv ident (head (varScope env))
+getVarIndex env ident = Map.lookup ident (head (varScope env))
 
 -- Looks up the unique index for the type variable 'ident' in the type
 -- variable table of the current scope.
 getTVarIndex :: AbstractEnv -> Ident -> Maybe Int
-getTVarIndex env ident = lookupEnv ident (head (tvarScope env))
+getTVarIndex env ident = Map.lookup ident (head (tvarScope env))
 
 
 -- Generates an indentifier which doesn't occur in the variable table
@@ -897,25 +896,12 @@ freshVar env name = genFreshVar env name 0
          = ident
     where ident = mkIdent (name ++ show idx)
 
--- Generates an indentifier which doesn't occur in the type variable table
--- of the current scope.
-freshTVar :: AbstractEnv -> String -> Ident
-freshTVar env name = genFreshTVar env name 0
- where
-   genFreshTVar env name idx
-      | isJust (getTVarIndex env ident)
-         = genFreshTVar env name (idx + 1)
-      | otherwise 
-         = ident
-    where ident = mkIdent (name ++ show idx)
-
-
 -- Sets the index counter back to zero and deletes all stack entries.
 resetScope :: AbstractEnv -> AbstractEnv
 resetScope env = env {varIndex  = 0,
 		      tvarIndex = 0,
-		      varScope  = [emptyEnv],
-		      tvarScope = [emptyEnv]}
+		      varScope  = [Map.empty],
+		      tvarScope = [Map.empty]}
 
 -- Starts a new scope, i.e. copies and pushes the variable table of the current 
 -- scope onto the top of the stack
@@ -988,7 +974,7 @@ opToExpr (InfixConstr qident) = Constructor qident
 qualLookupType :: QualIdent -> ValueEnv -> Maybe TypeExpr
 qualLookupType qident tyEnv
    = case (qualLookupValue qident tyEnv) of
-       [Value _ ts] -> (\ (ForAll _ ty) -> Just (toCSType ty)) ts
+       [Value _ ts] -> (\ (ForAll _ ty) -> Just (fromType ty)) ts
        _            -> Nothing
 
 -- Looks up the type of a symbol in the type environment and
@@ -996,60 +982,8 @@ qualLookupType qident tyEnv
 lookupType :: Ident -> ValueEnv -> Maybe TypeExpr
 lookupType ident tyEnv
    = case (lookupValue ident tyEnv) of
-       [Value _ ts] -> (\ (ForAll _ ty) -> Just (toCSType ty)) ts
+       [Value _ ts] -> (\ (ForAll _ ty) -> Just (fromType ty)) ts
        _            -> Nothing
-
-
--- Converts the internal representation of the types from the type
--- envorinment to CurrySyntax representation
-toCSType :: Type -> TypeExpr
-toCSType = fromType 
-{-
-toCSType (TypeConstructor qident types)
-   = ConstructorType qident (map toCSType types)
-toCSType (TypeVariable idx)
-   = VariableType (mkVarIdent idx)
-toCSType (TypeConstrained types _)
-   = toCSType (head types)
-toCSType (TypeArrow type1 type2)
-   = ArrowType (toCSType type1) (toCSType type2)
-toCSType (TypeSkolem idx)
-   = VariableType (mkVarIdent idx)
--}
-
-{-
---
-solveTypeSyn :: TCEnv -> QualIdent -> [TypeExpr] -> Maybe TypeExpr
-solveTypeSyn tcEnv qident args
-   = case (qualLookupTC qident tcEnv) of
-       [AliasType _ _ t] -> Just (adaptType args t)
-       _ -> case (lookupTC (unqualify qident) tcEnv) of
-	       [AliasType _ _ t] -> Just (adaptType args t)
-	       _ -> Nothing
-
---
-adaptType :: [TypeExpr] -> Type -> TypeExpr
-adaptType args texpr = adapt (zip [0 .. ((length args) - 1)] args) texpr
- where
- adapt its (TypeConstructor qident types)
-    = ConstructorType qident (map (adapt its) types)
- adapt its (TypeVariable idx)
-    = fromMaybe (internalError "cannot adapt type variable")
-	        (lookup idx its)
- adapt its (TypeConstrained types _)
-    = adapt its (head types)
- adapt its (TypeArrow type1 type2)
-    = ArrowType (adapt its type1) (adapt its type2)
- adapt its (TypeSkolem idx)
-    = adapt its (TypeVariable idx)
--}
-
--- Generates a variable name from an index.
-mkVarIdent :: Int -> Ident
-mkVarIdent i | i < 0     = mkIdent ('b':(show (i * (-1)))) 
-             | i < 26    = mkIdent [chr (i + ord 'a')]
-	     | otherwise = mkIdent ('a':(show i))
-       
 
 
 -- The following functions transform left-hand-side and right-hand-side terms

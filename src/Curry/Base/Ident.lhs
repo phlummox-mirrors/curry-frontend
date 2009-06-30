@@ -26,7 +26,7 @@ the fact that all qualified identifiers are greater than any
 unqualified identifier.}
 \begin{verbatim}
 
-> module Ident(Ident,QualIdent,ModuleIdent,SrcRefOf(..),
+> module Curry.Base.Ident(Ident,QualIdent,ModuleIdent,SrcRefOf(..),
 >              mkIdent,name,qualName,uniqueId,renameIdent,unRenameIdent,
 >              mkMIdent,moduleName,moduleQualifiers,isInfixOp,isQInfixOp,
 >              qualify,qualifyWith,qualQualify,isQualified,
@@ -55,7 +55,7 @@ unqualified identifier.}
 > import Data.Maybe
 > import Data.Generics
 
-> import Position
+> import Curry.Base.Position
 
 
 > data Ident = Ident String Int 

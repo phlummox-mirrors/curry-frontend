@@ -16,7 +16,7 @@ representation of types in the compiler.
 > import Data.List
 > import Data.Maybe
 
-> import Ident
+> import Curry.Base.Ident
 
 \end{verbatim}
 A type is either a type variable, an application of a type constructor

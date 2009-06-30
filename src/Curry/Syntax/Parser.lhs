@@ -13,9 +13,9 @@ combinators described in appendix~\ref{sec:ll-parsecomb}.
 \begin{verbatim}
 
 > module Curry.Syntax.Parser where
-> import Ident
-> import Position
-> import Curry.Syntax.ParseResult
+> import Curry.Base.Ident
+> import Curry.Base.Position
+> import Curry.Base.MessageMonad
 > import Curry.Syntax.LLParseComb
 > import Curry.Syntax
 > import Curry.Syntax.Lexer
@@ -27,11 +27,11 @@ combinators described in appendix~\ref{sec:ll-parsecomb}.
 \paragraph{Modules}
 \begin{verbatim}
 
-> parseSource :: Bool -> FilePath -> String -> Error Module
+> parseSource :: Bool -> FilePath -> String -> MsgMonad Module
 > parseSource flat path mod = 
 >    fmap addSrcRefs (applyParser (parseModule flat) lexer path mod)
 
-> parseHeader :: FilePath -> String -> Error Module
+> parseHeader :: FilePath -> String -> MsgMonad Module
 > parseHeader = prefixParser (moduleHeader <*->
 >                             (leftBrace `opt` undefined) <*>
 >                             many (importDecl <*-> many semicolon))
@@ -73,16 +73,9 @@ Since this modified version of MCC uses FlatCurry interfaces instead of
 > --                       <*> braces intfDecls
 
 \end{verbatim}
-\paragraph{Goals}
-\begin{verbatim}
 
-> parseGoal :: String -> Error Goal
-> parseGoal s = applyParser goal lexer "" s
 
-> goal :: Parser Token Goal a
-> goal = Goal <$> position <*> expr False <*> localDefs False
 
-\end{verbatim}
 \paragraph{Declarations}
 \begin{verbatim}
 

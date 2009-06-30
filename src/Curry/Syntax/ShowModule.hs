@@ -9,8 +9,8 @@
 
 module Curry.Syntax.ShowModule ( showModule ) where
 
-import Ident
-import Position
+import Curry.Base.Ident
+import Curry.Base.Position
 import Curry.Syntax
 
 showModule :: Module -> String

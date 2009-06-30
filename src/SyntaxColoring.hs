@@ -7,15 +7,16 @@ import Debug.Trace
 
 import Data.Maybe
 import Data.List
-
-import Curry.Syntax.Lexer
-import Position
-import Frontend
-import Ident
-import Curry.Syntax 
 import Data.Char hiding(Space)
-import Message
 import Control.Exception
+
+import Curry.Base.Position
+import Curry.Base.Ident
+import Curry.Syntax 
+import Curry.Syntax.Lexer
+
+import Frontend
+import Message
 import PathUtils (readModule)
 
 

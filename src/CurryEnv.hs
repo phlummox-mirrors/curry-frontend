@@ -11,7 +11,11 @@ module CurryEnv (CurryEnv(..), curryEnv) where
 
 import Data.Maybe
 
+import Curry.Base.Position
+import Curry.Base.Ident
+
 import Curry.Syntax
+
 import Types
 import Base
 

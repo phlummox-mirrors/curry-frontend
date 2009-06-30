@@ -16,13 +16,13 @@ module Main(main) where
 import Data.List
 import Data.Maybe
 import System.IO
-import System.Environment
-import System.Exit
+import System.Environment(getArgs, getProgName)
+import System.Exit(ExitCode(..), exitWith)
 import Control.Monad (unless)
 import Data.Char (isDigit)
 
 import GetOpt
-import CurryBuilder
+import CurryBuilder(buildCurry)
 import CurryCompilerOpts
 import CurryHtml
 

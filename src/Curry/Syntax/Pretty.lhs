@@ -14,8 +14,10 @@ Haskell parser.
 \begin{verbatim}
 
 > module Curry.Syntax.Pretty where
-> import Ident
+
+> import Curry.Base.Ident
 > import Curry.Syntax
+
 > import PrettyCombinators
 
 \end{verbatim}
@@ -312,13 +314,7 @@ Expressions
 > ppOp (InfixConstr op) = ppQInfixOp op
 
 \end{verbatim}
-Goals
-\begin{verbatim}
 
-> ppGoal :: Goal -> Doc
-> ppGoal (Goal _ e ds) = sep [ppExpr 0 e,indent (ppLocalDefs ds)]
-
-\end{verbatim}
 Names
 \begin{verbatim}
 

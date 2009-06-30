@@ -5,9 +5,9 @@ module ILScope (getModuleScope,
 		insertExprScope, insertAltScope,
 		insertBindingScope) where
 
+import Curry.Base.Ident
 
 import IL
-import Ident
 import OldScopeEnv as ScopeEnv
 
 

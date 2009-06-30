@@ -19,19 +19,16 @@ declarations groups as well as function arguments remain unchanged.
 \em{Note:} The modified version also qualifies type constructors
 \begin{verbatim}
 
-> module Qual(qual,qualGoal) where
+> module Qual(qual) where
 
+> import Curry.Base.Ident
 > import Curry.Syntax
+
 > import Base
 > import TopEnv
 
 > qual :: ModuleIdent -> ValueEnv -> [Decl] -> [Decl]
 > qual m tyEnv ds = map (qualDecl m tyEnv) ds
-
-> qualGoal :: ValueEnv -> Goal -> Goal
-> qualGoal tyEnv (Goal p e ds) =
->   Goal p (qualExpr (mkMIdent []) tyEnv e) 
->          (map (qualDecl (mkMIdent []) tyEnv) ds)
 
 > qualDecl :: ModuleIdent -> ValueEnv -> Decl -> Decl
 > qualDecl m tyEnv (FunctionDecl p f eqs) =

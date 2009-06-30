@@ -18,7 +18,7 @@ In this section a lexer for Curry is implemented.
 > import qualified Data.Map as Map
 
 > import Curry.Syntax.LexComb
-> import Position
+> import Curry.Base.Position
 
 
 

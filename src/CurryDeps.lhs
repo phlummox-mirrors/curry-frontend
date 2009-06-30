@@ -16,24 +16,27 @@ dependencies and to update programs composed of multiple modules.
 > module CurryDeps where
 
 > import Data.List
+> import qualified Data.Map as Map
 > import Data.Maybe
 > import Control.Monad
 
-> import Curry.Syntax.ParseResult
-> import Ident
+ import Control.Monad.Error
+ import Control.Monad.Writer
+
+> import Curry.Base.Ident
+> import Curry.Base.MessageMonad
+
 > import Unlit
 > import Curry.Syntax hiding(Interface(..))
 > import Curry.Syntax.Parser(parseHeader)
 > import SCC
-> import Env
-
 > import PathUtils
 
 > data Source = Source FilePath [ModuleIdent]
 >             | Interface FilePath
 >             | Unknown
 >             deriving (Eq,Ord,Show)
-> type SourceEnv = Env ModuleIdent Source
+> type SourceEnv = Map.Map ModuleIdent Source
 
 \end{verbatim}
 The module has two entry points. The function \texttt{buildScript}
@@ -54,7 +57,7 @@ Makefile.
 >                                mfn')
 >     (ms,es2)  <- fmap 
 >                   (flattenDeps . sortDeps)
->                   (deps paths (filter (`notElem` paths) libraryPaths) emptyEnv fn')
+>                   (deps paths (filter (`notElem` paths) libraryPaths) Map.empty fn')
 >     es        <- return (es1 ++ es2)
 >     when (null es)
 >          (putStr 
@@ -74,13 +77,13 @@ Makefile.
 >     objectDeps <- liftM (makeDeps False) (allDeps nonFlat)
 >     maybe putStr writeFile ofn (flatDeps ++ objectDeps)
 >   where (flat,nonFlat) = partition (flatExt `isSuffixOf`) ms
->         allDeps = foldM (deps paths libraryPaths') emptyEnv
+>         allDeps = foldM (deps paths libraryPaths') Map.empty
 >         libraryPaths' = filter (`notElem` paths) libraryPaths
 
 > deps :: [FilePath] -> [FilePath] -> SourceEnv -> FilePath -> IO SourceEnv
 > deps paths libraryPaths mEnv fn
 >   | e `elem` sourceExts = sourceDeps paths libraryPaths (mkMIdent [r]) mEnv fn
->   | e == icurryExt = return emptyEnv
+>   | e == icurryExt = return Map.empty
 >   | e `elem` objectExts = targetDeps paths libraryPaths mEnv r
 >   | otherwise = targetDeps paths libraryPaths mEnv fn
 >   where r = dropExtension fn
@@ -90,7 +93,7 @@ Makefile.
 >            -> IO SourceEnv
 > targetDeps paths libraryPaths mEnv fn =
 >   lookupFile [""] sourceExts fn >>=
->   maybe (return (bindEnv m Unknown mEnv)) (sourceDeps paths libraryPaths m mEnv)
+>   maybe (return (Map.insert m Unknown mEnv)) (sourceDeps paths libraryPaths m mEnv)
 >   where m = mkMIdent [fn]
 
 \end{verbatim}
@@ -126,7 +129,7 @@ prelude itself. Any errors reported by the parser are ignored.
 > moduleDeps :: [FilePath] -> [FilePath] -> SourceEnv -> ModuleIdent
 >            -> IO SourceEnv
 > moduleDeps paths libraryPaths mEnv m =
->   case lookupEnv m mEnv of
+>   case Map.lookup m mEnv of
 >     Just _ -> return mEnv
 >     Nothing ->
 >       do
@@ -134,20 +137,20 @@ prelude itself. Any errors reported by the parser are ignored.
 >         case mbFn of
 >           Just fn
 >             | icurryExt `isSuffixOf` fn ->
->                 return (bindEnv m (Interface fn) mEnv)
+>                 return (Map.insert m (Interface fn) mEnv)
 >             | otherwise -> sourceDeps paths libraryPaths m mEnv fn
->           Nothing -> return (bindEnv m Unknown mEnv)
+>           Nothing -> return (Map.insert m Unknown mEnv)
 
 > sourceDeps :: [FilePath] -> [FilePath] -> ModuleIdent -> SourceEnv
 >            -> FilePath -> IO SourceEnv
 > sourceDeps paths libraryPaths m mEnv fn =
 >   do
 >     s <- readModule fn
->     case parseHeader fn (unlitLiterate fn s) of
->       Ok (Module m' _ ds) ->
+>     case ignoreWarnings $ parseHeader fn (unlitLiterate fn s) of
+>       Right (Module m' _ ds) ->
 >         let ms = imports m' ds in
->         foldM (moduleDeps paths libraryPaths) (bindEnv m (Source fn ms) mEnv) ms
->       Error _ -> return (bindEnv m (Source fn []) mEnv)
+>         foldM (moduleDeps paths libraryPaths) (Map.insert m (Source fn ms) mEnv) ms
+>       Left _ -> return (Map.insert m (Source fn []) mEnv)
 
 > imports :: ModuleIdent -> [Decl] -> [ModuleIdent]
 > imports m ds = nub $
@@ -175,13 +178,13 @@ object code.
 
 > makeDeps :: Bool -> SourceEnv -> String
 > makeDeps flat mEnv =
->   unlines (filter (not . null) (map (depsLine . snd) (envToList mEnv)))
+>   unlines (filter (not . null) (map (depsLine . snd) (Map.toList mEnv)))
 >   where depsLine (Source fn ms) =
 >           targetName fn ++ ": " ++ fn ++ " " ++
 >           unwords (filter (not . null) (map interf ms))
 >         depsLine (Interface _) = []
 >         depsLine Unknown = []
->         interf m = maybe [] interfFile (lookupEnv m mEnv)
+>         interf m = maybe [] interfFile (Map.lookup m mEnv)
 >         interfFile (Source fn _) = interfName fn
 >         interfFile (Interface fn) = fn
 >         interfFile Unknown = ""
@@ -194,7 +197,7 @@ that the dependency graph should not contain any cycles.
 \begin{verbatim}
 
 > sortDeps :: SourceEnv -> [[(ModuleIdent,Source)]]
-> sortDeps = scc (modules . fst) (imports . snd) . envToList
+> sortDeps = scc (modules . fst) (imports . snd) . Map.toList
 >   where modules m = [m]
 >         imports (Source _ ms) = ms
 >         imports (Interface _) = []

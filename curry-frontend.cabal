@@ -26,22 +26,27 @@ Executable cymake
   hs-source-dirs:   src
   Main-is:          cymake.hs
   Build-Depends:    base >= 3 && < 4, mtl, old-time, directory, filepath, containers
-  ghc-options:       -Wall 
-  Other-Modules:    Curry.AbstractCurry, CurryBuilder, Env, IL, Message
+  ghc-options:      -fwarn-unused-binds -fwarn-unused-imports
+  Other-Modules:    Curry.Base.Position, Curry.Base.Ident, Curry.Base.MessageMonad
+                    Curry.Syntax.Lexer, Curry.Syntax.LexComb
+                    Curry.Syntax.Parser, Curry.Syntax.LLParseComb
+                    Curry.Syntax.ShowModule, Curry.Syntax.Pretty
+                    Curry.Syntax
+                    Curry.AbstractCurry, CurryBuilder, IL, Message
                     CurryCompilerOpts, Modules, Subst, Arity
                     CurryDeps, Eval, ILPP, NestEnv, SyntaxCheck, Base
                     Exports, ILScope, SyntaxColoring, CurryEnv
                     ExtendedFlat, ILTrans, OldScopeEnv, CurryHtml
                     ILxml, PatchPrelude, TopEnv, CaseCompletion
-                    Curry.Syntax.ParseResult, Curry.Syntax.Lexer, Imports, PathUtils, TypeCheck
-                    Curry.Syntax.Parser, InterfaceCheck, Position
-                    Types, Curry.Syntax.Pretty, Frontend, PrecCheck
+                    Imports, PathUtils, TypeCheck
+                    InterfaceCheck, 
+                    Types, Frontend, PrecCheck
                     TypeSubst, GenAbstractCurry
-                    PrettyCombinators, Typing, Combined, Curry.Syntax
-                    GenFlatCurry, KindCheck, Qual, Unlit, CompilerResults
-                    Curry.Syntax.LexComb, SCC, Utils, GetOpt
+                    PrettyCombinators, Typing
+                    GenFlatCurry, KindCheck, Qual, Unlit
+                    SCC, Utils, GetOpt
                     Lift, ScopeEnv, WarnCheck
-                    Curry.Syntax.LLParseComb, Desugar, Ident, Curry.Syntax.ShowModule
+                    Desugar, Curry.Base.Ident, 
                     Simplify
 
 -- Executable pretty-ecy

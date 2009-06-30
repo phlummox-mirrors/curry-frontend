@@ -18,11 +18,15 @@ imported.
 > module NestEnv(module TopEnv, NestEnv, bindNestEnv,qualBindNestEnv,
 >                lookupNestEnv,qualLookupNestEnv,
 >                toplevelEnv,globalEnv,nestEnv) where
-> import Env
-> import TopEnv
-> import Ident
 
-> data NestEnv a = GlobalEnv (TopEnv a) | LocalEnv (NestEnv a) (Env Ident a)
+> import qualified Data.Map as Map
+
+> import Curry.Base.Ident
+
+> import TopEnv
+
+
+> data NestEnv a = GlobalEnv (TopEnv a) | LocalEnv (NestEnv a) (Map.Map Ident a)
 >                  deriving Show
 
 > instance Functor NestEnv where
@@ -33,9 +37,9 @@ imported.
 > bindNestEnv x y (GlobalEnv env) 
 >   = GlobalEnv (bindTopEnv "NestEnv.bindNestEnv" x y env)
 > bindNestEnv x y (LocalEnv genv env) =
->   case lookupEnv x env of
+>   case Map.lookup x env of
 >     Just _ -> error "internal error: bindNestEnv"
->     Nothing -> LocalEnv genv (bindEnv x y env)
+>     Nothing -> LocalEnv genv (Map.insert x y env)
 
 > qualBindNestEnv :: QualIdent -> a -> NestEnv a -> NestEnv a
 > qualBindNestEnv x y (GlobalEnv env) 
@@ -43,15 +47,15 @@ imported.
 > qualBindNestEnv x y (LocalEnv genv env)
 >   | isQualified x = error "internal error: qualBindNestEnv"
 >   | otherwise =
->       case lookupEnv x' env of
+>       case Map.lookup x' env of
 >         Just _ -> error "internal error: qualBindNestEnv"
->         Nothing -> LocalEnv genv (bindEnv x' y env)
+>         Nothing -> LocalEnv genv (Map.insert x' y env)
 >   where x' = unqualify x
 
 > lookupNestEnv :: Ident -> NestEnv a -> [a]
 > lookupNestEnv x (GlobalEnv env) = lookupTopEnv x env
 > lookupNestEnv x (LocalEnv genv env) =
->   case lookupEnv x env of
+>   case Map.lookup x env of
 >     Just y -> [y]
 >     Nothing -> lookupNestEnv x genv
 
@@ -68,6 +72,6 @@ imported.
 > globalEnv = GlobalEnv
 
 > nestEnv :: NestEnv a -> NestEnv a
-> nestEnv env = LocalEnv env emptyEnv
+> nestEnv env = LocalEnv env Map.empty
 
 \end{verbatim}

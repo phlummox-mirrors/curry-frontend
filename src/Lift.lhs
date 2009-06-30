@@ -20,25 +20,23 @@ lifted to the top-level.
 > module Lift(lift) where
 
 > import Control.Monad
+> import qualified Control.Monad.State as S
 > import Data.List
+> import qualified Data.Map as Map
 > import qualified Data.Set as Set
 
 > import Curry.Syntax
 > import Types
+> import Curry.Base.Ident
 > import Base
-> import Env
 > import TopEnv
-
-
-
-> import Combined
 > import SCC
 
 > lift :: ValueEnv -> EvalEnv -> Module -> (Module,ValueEnv,EvalEnv)
 > lift tyEnv evEnv (Module m es ds) =
 >   (Module m es (concatMap liftFunDecl ds'),tyEnv',evEnv')
 >   where (ds',tyEnv',evEnv') =
->           runSt (callSt (abstractModule m ds) tyEnv) evEnv
+>           S.evalState (S.evalStateT (abstractModule m ds) tyEnv) evEnv
 
 \end{verbatim}
 \paragraph{Abstraction}
@@ -51,16 +49,16 @@ each local function declaration onto its replacement expression,
 i.e. the function applied to its free variables.
 \begin{verbatim}
 
-> type AbstractState a = StateT ValueEnv (St EvalEnv) a
-> type AbstractEnv = Env Ident Expression
+> type AbstractState a = S.StateT ValueEnv (S.State EvalEnv) a
+> type AbstractEnv = Map.Map Ident Expression
 
 > abstractModule :: ModuleIdent -> [Decl]
 >                -> AbstractState ([Decl],ValueEnv,EvalEnv)
 > abstractModule m ds =
 >   do
->     ds' <- mapM (abstractDecl m "" [] emptyEnv) ds
->     tyEnv' <- fetchSt
->     evEnv' <- liftSt fetchSt
+>     ds' <- mapM (abstractDecl m "" [] Map.empty) ds
+>     tyEnv' <- S.get
+>     evEnv' <- S.lift S.get
 >     return (ds',tyEnv',evEnv')
 
 > abstractDecl :: ModuleIdent -> String -> [Ident] -> AbstractEnv -> Decl
@@ -151,9 +149,9 @@ in the type environment.
 >     return (Let vds' e')
 > abstractFunDecls m pre lvs env (fds:fdss) vds e =
 >   do
->     fs' <- liftM (\tyEnv -> filter (not . isLifted tyEnv) fs) fetchSt
->     updateSt_ (abstractFunTypes m pre fvs fs')
->     liftSt (updateSt_ (abstractFunAnnots m pre fs'))
+>     fs' <- liftM (\tyEnv -> filter (not . isLifted tyEnv) fs) S.get
+>     S.modify (abstractFunTypes m pre fvs fs')
+>     S.lift (S.modify (abstractFunAnnots m pre fs'))
 >     fds' <- mapM (abstractFunDecl m pre fvs lvs env')
 >                  [d | d <- fds, any (`elem` fs') (bv d)]
 >     e' <- abstractFunDecls m pre lvs env' fdss vds e
@@ -162,8 +160,8 @@ in the type environment.
 >         fvs = filter (`elem` lvs) (Set.toList fvsRhs)
 >         env' = foldr (bindF (map mkVar fvs)) env fs
 >         fvsRhs = Set.unions
->           [Set.fromList (maybe [v] (qfv m) (lookupEnv v env)) | v <- qfv m fds]
->         bindF fvs f = bindEnv f (apply (mkFun m pre f) fvs)
+>           [Set.fromList (maybe [v] (qfv m) (Map.lookup v env)) | v <- qfv m fds]
+>         bindF fvs f = Map.insert f (apply (mkFun m pre f) fvs)
 >         isLifted tyEnv f = null (lookupValue f tyEnv)
 
 > abstractFunTypes :: ModuleIdent -> String -> [Ident] -> [Ident]
@@ -178,8 +176,8 @@ in the type environment.
 > abstractFunAnnots :: ModuleIdent -> String -> [Ident] -> EvalEnv -> EvalEnv
 > abstractFunAnnots m pre fs evEnv = foldr abstractFunAnnot evEnv fs
 >   where abstractFunAnnot f evEnv =
->           case lookupEnv f evEnv of
->             Just ev -> bindEnv (liftIdent pre f) ev (unbindEnv f evEnv)
+>           case Map.lookup f evEnv of
+>             Just ev -> Map.insert (liftIdent pre f) ev (Map.delete f evEnv)
 >             Nothing -> evEnv
 
 > abstractFunDecl :: ModuleIdent -> String -> [Ident] -> [Ident]
@@ -198,7 +196,7 @@ in the type environment.
 > abstractExpr m pre lvs env (Variable v)
 >   | isQualified v = return (Variable v)
 >   | otherwise = maybe (return (Variable v)) (abstractExpr m pre lvs env)
->                       (lookupEnv (unqualify v) env)
+>                       (Map.lookup (unqualify v) env)
 > abstractExpr _ _ _ _ (Constructor c) = return (Constructor c)
 > abstractExpr m pre lvs env (Apply e1 e2) =
 >   do
@@ -217,14 +215,6 @@ in the type environment.
 >             -> AbstractState Alt
 > abstractAlt m pre lvs env (Alt p t rhs) =
 >   liftM (Alt p t) (abstractRhs m pre (lvs ++ bv t) env rhs)
-
-> abstractCondExpr :: ModuleIdent -> String -> [Ident] -> AbstractEnv
->                  -> CondExpr -> AbstractState CondExpr
-> abstractCondExpr m pre lvs env (CondExpr p g e) =
->   do
->     g' <- abstractExpr m pre lvs env g
->     e' <- abstractExpr m pre lvs env e
->     return (CondExpr p g' e')
 
 \end{verbatim}
 \paragraph{Lifting}
@@ -275,10 +265,6 @@ to the top-level.
 > liftAlt (Alt p t rhs) = (Alt p t rhs',ds')
 >   where (rhs',ds') = liftRhs rhs
 
-> liftCondExpr :: CondExpr -> (CondExpr,[Decl])
-> liftCondExpr (CondExpr p g e) = (CondExpr p g' e',ds' ++ ds'')
->   where (g',ds') = liftExpr g
->         (e',ds'') = liftExpr e
 
 \end{verbatim}
 \paragraph{Auxiliary definitions}

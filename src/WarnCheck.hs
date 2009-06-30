@@ -9,17 +9,18 @@
 module WarnCheck (warnCheck) where
 
 import Control.Monad
+import qualified Data.Map as Map
 import Data.List
 
+import Curry.Base.Ident
+import Curry.Base.Position
 import Curry.Syntax
-import Ident
-import Position
+
 import Base (ValueEnv, ValueInfo(..), qualLookupValue, lookupValue)
 import TopEnv
 import qualified ScopeEnv
 import ScopeEnv (ScopeEnv)
 import Message
-import Env
 
 
 
@@ -163,6 +164,7 @@ checkRhs mid (GuardedRhs cexprs decls)
 	when (not (null idents'))
 	     (foldM' genWarning' (map unrefVar idents'))
 	endScope
+
 
 --
 checkCondExpr :: ModuleIdent -> CondExpr -> CheckState ()
@@ -382,16 +384,16 @@ checkOverlappingAlts mid (alt:alts)
 
 -- Find function rules which are not together
 checkDeclOccurrences :: [Decl] -> CheckState ()
-checkDeclOccurrences decls = checkDO (mkIdent "") emptyEnv decls
+checkDeclOccurrences decls = checkDO (mkIdent "") Map.empty decls
  where
  checkDO prevId env [] = return ()
  checkDO prevId env ((FunctionDecl pos ident _):decls)
     = do c <- isConsId ident
 	 if not (c || prevId == ident)
-          then (maybe (checkDO ident (bindEnv ident pos env) decls)
+          then (maybe (checkDO ident (Map.insert ident pos env) decls)
 	              (\pos' -> genWarning' (rulesNotTogether ident pos')
 		                >> checkDO ident env decls)
-	              (lookupEnv ident env))
+	              (Map.lookup ident env))
 	  else checkDO ident env decls
  checkDO _ env (_:decls) 
     = checkDO (mkIdent "") env decls
@@ -399,15 +401,15 @@ checkDeclOccurrences decls = checkDO (mkIdent "") emptyEnv decls
 
 -- check import declarations for multiply imported modules
 checkImports :: [Decl] -> CheckState ()
-checkImports imps = checkImps emptyEnv imps
+checkImports imps = checkImps Map.empty imps
  where
  checkImps env [] = return ()
  checkImps env ((ImportDecl pos mid _ _ spec):imps)
     | mid /= preludeMIdent
-      = maybe (checkImps (bindEnv mid (fromImpSpec spec) env) imps)
+      = maybe (checkImps (Map.insert mid (fromImpSpec spec) env) imps)
               (\ishs -> checkImpSpec env pos mid ishs spec
 	                >>= (\env' -> checkImps env' imps))
-	      (lookupEnv mid env)
+	      (Map.lookup mid env)
     | otherwise
       = checkImps env imps
  checkImps env (_:imps) = checkImps env imps
@@ -417,21 +419,21 @@ checkImports imps = checkImps emptyEnv imps
  checkImpSpec env pos mid (is,hs) (Just (Importing _ is'))
     | null is && any (\i' -> notElem i' hs) is'
       = do genWarning' (multiplyImportedModule mid)
-	   return (bindEnv mid (is',hs) env)
+	   return (Map.insert mid (is',hs) env)
     | null iis
-      = return (bindEnv mid (is' ++ is,hs) env)
+      = return (Map.insert mid (is' ++ is,hs) env)
     | otherwise
       = do foldM' genWarning'
 		  (map ((multiplyImportedSymbol mid) . impName) iis)
-	   return (bindEnv mid (unionBy cmpImport is' is,hs) env)
+	   return (Map.insert mid (unionBy cmpImport is' is,hs) env)
   where iis = intersectBy cmpImport is' is
  checkImpSpec env pos mid (is,hs) (Just (Hiding _ hs'))
     | null ihs
-      = return (bindEnv mid (is,hs' ++ hs) env)
+      = return (Map.insert mid (is,hs' ++ hs) env)
     | otherwise
       = do foldM' genWarning' 
 		  (map ((multiplyHiddenSymbol mid) . impName) ihs)
-	   return (bindEnv mid (is,unionBy cmpImport hs' hs) env)
+	   return (Map.insert mid (is,unionBy cmpImport hs' hs) env)
   where ihs = intersectBy cmpImport hs' hs
 
  cmpImport (ImportTypeWith id1 cs1) (ImportTypeWith id2 cs2)

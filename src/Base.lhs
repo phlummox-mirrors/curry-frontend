@@ -11,8 +11,7 @@ The module \texttt{Base} provides common definitions for the various
 phases of the compiler.
 \begin{verbatim}
 
-> module Base(module Base,module Ident,module Position -- ,module Types
->             -- module Curry.Syntax
+> module Base(module Base
 >             ) where
 
 > import Data.List
@@ -21,14 +20,14 @@ phases of the compiler.
 > import qualified Data.Set as Set
 > import qualified Data.Map as Map
 
-> import Ident 
-> import Position
+> import Curry.Base.Ident 
+> import Curry.Base.Position
 > import Types
 > import Curry.Syntax
 > import Curry.Syntax.Pretty
 > import PrettyCombinators
 > import ExtendedFlat hiding (SrcRef, Fixity(..), TypeExpr, Expr(..))
-> import Env
+
 > import TopEnv
 
 
@@ -159,18 +158,18 @@ FlatInterfaces instead of ".icurry" files when using MCC as frontend
 for PAKCS.
 \begin{verbatim}
 
-> type ModuleEnv = Env ModuleIdent [IDecl]
+> type ModuleEnv = Map.Map ModuleIdent [IDecl]
 
-> bindModule :: Interface -> ModuleEnv -> ModuleEnv
-> bindModule (Interface m ds) = bindEnv m ds
+ bindModule :: Interface -> ModuleEnv -> ModuleEnv
+ bindModule (Interface m ds) = Map.insert m ds
 
 > bindFlatInterface :: Prog -> ModuleEnv -> ModuleEnv
 > bindFlatInterface (Prog m imps ts fs os)
->    = bindModule (Interface (mkMIdent [m])
->	                     ((map genIImportDecl imps)
->		              ++ (map genITypeDecl ts')
->		              ++ (map genIFuncDecl fs)
->		              ++ (map genIOpDecl os)))
+>    = Map.insert (mkMIdent [m])
+>      ((map genIImportDecl imps)
+>       ++ (map genITypeDecl ts')
+>       ++ (map genIFuncDecl fs)
+>       ++ (map genIOpDecl os))
 >  where
 >  genIImportDecl :: String -> IDecl
 >  genIImportDecl imp = IImportDecl pos (mkMIdent [imp])
@@ -237,7 +236,7 @@ for PAKCS.
 >  ts' = filter (not . isSpecialPreludeType) ts
 
 > lookupModule :: ModuleIdent -> ModuleEnv -> Maybe [IDecl]
-> lookupModule = lookupEnv
+> lookupModule = Map.lookup
 
 \end{verbatim}
 The label environment is used to store information of labels.
@@ -250,19 +249,19 @@ information for labels seperately.
 
 > data LabelInfo = LabelType Ident QualIdent Type deriving Show
 
-> type LabelEnv = Env Ident [LabelInfo]
+> type LabelEnv = Map.Map Ident [LabelInfo]
 
 > bindLabelType :: Ident -> QualIdent -> Type -> LabelEnv -> LabelEnv
 > bindLabelType l r ty lEnv =
->   maybe (bindEnv l [LabelType l r ty] lEnv)
->         (\ls -> bindEnv l ((LabelType l r ty):ls) lEnv)
->         (lookupEnv l lEnv)
+>   maybe (Map.insert l [LabelType l r ty] lEnv)
+>         (\ls -> Map.insert l ((LabelType l r ty):ls) lEnv)
+>         (Map.lookup l lEnv)
 
 > lookupLabelType :: Ident -> LabelEnv -> [LabelInfo]
-> lookupLabelType l lEnv = fromMaybe [] (lookupEnv l lEnv)
+> lookupLabelType l lEnv = fromMaybe [] (Map.lookup l lEnv)
 
 > initLabelEnv :: LabelEnv
-> initLabelEnv = emptyEnv
+> initLabelEnv = Map.empty
 
 
 \end{verbatim}
@@ -520,14 +519,14 @@ and constructors.
 \paragraph{Module alias}
 \begin{verbatim}
 
-> type ImportEnv = Env ModuleIdent ModuleIdent
+> type ImportEnv = Map.Map ModuleIdent ModuleIdent
 
 > bindAlias :: Decl -> ImportEnv -> ImportEnv
 > bindAlias (ImportDecl _ mid _ mmid _) iEnv
->    = bindEnv mid (fromMaybe mid mmid) iEnv
+>    = Map.insert mid (fromMaybe mid mmid) iEnv
 
 > lookupAlias :: ModuleIdent -> ImportEnv -> Maybe ModuleIdent
-> lookupAlias = lookupEnv
+> lookupAlias = Map.lookup
 
 > sureLookupAlias :: ModuleIdent -> ImportEnv -> ModuleIdent
 > sureLookupAlias m iEnv = fromMaybe m (lookupAlias m iEnv)
@@ -596,13 +595,8 @@ a flat environment mapping unqualified names onto annotations is
 sufficient.
 \begin{verbatim}
 
-> type EvalEnv = Env Ident EvalAnnotation
+> type EvalEnv = Map.Map Ident EvalAnnotation
 
-> bindEval :: Ident -> EvalAnnotation -> EvalEnv -> EvalEnv
-> bindEval = bindEnv
-
-> lookupEval :: Ident -> EvalEnv -> Maybe EvalAnnotation
-> lookupEval f evEnv = lookupEnv f evEnv
 
 \end{verbatim}
 \paragraph{Predefined types}
@@ -628,8 +622,7 @@ identifiers.
 
 > initTCEnv :: TCEnv
 > initTCEnv = foldr (uncurry predefTC) emptyTopEnv predefTypes
->   where a = typeVar 0
->         predefTC (TypeConstructor tc tys) cs =
+>   where predefTC (TypeConstructor tc tys) cs =
 >           predefTopEnv (qualify (unqualify tc))
 >                        (DataType tc (length tys) (map Just cs))
 
@@ -638,8 +631,7 @@ identifiers.
 >   foldr (uncurry predefDC) emptyTopEnv
 >         [(c,constrType (polyType ty) n' tys)
 >         | (ty,cs) <- predefTypes, Data c n' tys <- cs]
->   where primTypes = map snd (moduleImports preludeMIdent initTCEnv)
->         predefDC c ty = predefTopEnv c' (DataConstructor c' ty)
+>   where predefDC c ty = predefTopEnv c' (DataConstructor c' ty)
 >           where c' = qualify c
 >         constrType (ForAll n ty) n' = ForAllExist n n' . foldr TypeArrow ty
 
@@ -651,7 +643,7 @@ identifiers.
 >     = bindArity preludeMIdent id (length ts) aEnv
 
 > initIEnv :: ImportEnv
-> initIEnv = emptyEnv
+> initIEnv = Map.empty
 
 > predefTypes :: [(Type,[Data [Type]])]
 > predefTypes =

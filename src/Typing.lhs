@@ -12,12 +12,14 @@
 
 > import Data.Maybe
 > import Control.Monad
+> import Control.Monad.State as S
 
+> import Curry.Base.Ident
 > import Curry.Syntax
+
 > import Types
 > import Base
 > import TypeSubst
-> import Combined
 > import TopEnv
 > import Utils
 
@@ -86,10 +88,10 @@ qualified and expanded or we need access to the type constructor
 environment.}
 \begin{verbatim}
 
-> type TyState a = StateT TypeSubst (St Int) a
+> type TyState a = S.StateT TypeSubst (S.State Int) a
 
 > run :: TyState a -> ValueEnv -> a
-> run m tyEnv = runSt (callSt m idSubst) 0
+> run m tyEnv = S.evalState (S.evalStateT m idSubst) 0
 
 > class Typeable a where
 >   typeOf :: ValueEnv -> a -> Type
@@ -110,7 +112,7 @@ environment.}
 >   where doComputeType =
 >           do
 >             ty <- f tyEnv x
->             theta <- fetchSt
+>             theta <- S.get
 >             return (fixTypeVars tyEnv (subst theta ty))
 
 > fixTypeVars :: ValueEnv -> Type -> Type
@@ -283,7 +285,7 @@ offsets here.
 \begin{verbatim}
 
 > freshTypeVar :: TyState Type
-> freshTypeVar = liftM TypeVariable $ liftSt $ updateSt (1 +)
+> freshTypeVar = liftM TypeVariable $ S.lift (S.modify succ >> S.get)
 
 > instType :: Int -> Type -> TyState Type
 > instType n ty =
@@ -306,7 +308,7 @@ checker.
 
 > unify :: Type -> Type -> TyState ()
 > unify ty1 ty2 =
->   updateSt_ (\theta -> unifyTypes (subst theta ty1) (subst theta ty2) theta)
+>   S.modify (\theta -> unifyTypes (subst theta ty1) (subst theta ty2) theta)
 
 > unifyList :: [Type] -> [Type] -> TyState ()
 > unifyList tys1 tys2 = sequence_ (zipWith unify tys1 tys2)
@@ -314,14 +316,14 @@ checker.
 > unifyArrow :: Type -> TyState (Type,Type)
 > unifyArrow ty =
 >   do
->     theta <- fetchSt
+>     theta <- S.get
 >     case subst theta ty of
 >       TypeVariable tv
 >         | tv >= 0 ->
 >             do
 >               ty1 <- freshTypeVar
 >               ty2 <- freshTypeVar
->               updateSt_ (bindVar tv (TypeArrow ty1 ty2))
+>               S.modify (bindVar tv (TypeArrow ty1 ty2))
 >               return (ty1,ty2)
 >       TypeArrow ty1 ty2 -> return (ty1,ty2)
 >       ty' -> internalError ("unifyArrow (" ++ show ty' ++ ")")

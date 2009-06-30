@@ -33,9 +33,9 @@ string in this case.
 > import qualified Data.Map as Map
 
 > import Curry.Syntax.LexComb
-> import Curry.Syntax.ParseResult
+> import Curry.Base.MessageMonad
 
-> import Position
+> import Curry.Base.Position
 
 
 > infixl 5 <\>, <\\>
@@ -66,14 +66,14 @@ string in this case.
 >     showChar ' ' . shows (Map.keysSet ps)
 
 > applyParser :: Symbol s => Parser s a a -> Lexer s a -> FilePath -> String
->             -> Error a
+>             -> MsgMonad a
 > applyParser p lexer = parse (lexer (choose p lexer done failP) failP)
 >   where done x pos s
 >           | isEOF s = returnP x
 >           | otherwise = failP pos (unexpected s)
 
 > prefixParser :: Symbol s => Parser s a a -> Lexer s a -> FilePath -> String
->              -> Error a
+>              -> MsgMonad a
 > prefixParser p lexer = parse (lexer (choose p lexer discard failP) failP)
 >   where discard x _ _ = returnP x
 

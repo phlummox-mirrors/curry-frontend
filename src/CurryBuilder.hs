@@ -13,16 +13,17 @@ module CurryBuilder (buildCurry, smake) where
 import System.Exit
 import System.Time
 import Control.Monad
+import qualified Data.Map as Map
 import Data.Maybe
 import Data.List 
 import System.IO
 
+import Curry.Base.Ident
+
 import Modules (compileModule_)
 import CurryCompilerOpts 
 import CurryDeps
-import Ident
 import PathUtils
-import Env
 
 -------------------------------------------------------------------------------
 
@@ -121,7 +122,7 @@ makeCurry options deps file
 genDeps :: [FilePath] -> FilePath
 	   -> IO ([(ModuleIdent,Source)], [String])
 genDeps paths file
-   = fmap (flattenDeps . sortDeps) (deps paths [] emptyEnv file)
+   = fmap (flattenDeps . sortDeps) (deps paths [] Map.empty file)
 
 
 -------------------------------------------------------------------------------

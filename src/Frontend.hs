@@ -13,15 +13,17 @@ module Frontend (lex, parse, fullParse, typingParse, abstractIO, flatIO,
 
 import Data.List
 import Data.Maybe
+import qualified Data.Map as Map
 import Control.Monad
 import Prelude hiding (lex)
 
 import Modules
 import CurryBuilder
 import CurryCompilerOpts
+import Curry.Base.MessageMonad
 import Curry.Syntax.Parser
 import Curry.Syntax.Lexer
-import qualified Curry.Syntax.ParseResult as Err
+import qualified Curry.Base.MessageMonad as Err
 
 import GenAbstractCurry
 import GenFlatCurry
@@ -30,14 +32,12 @@ import CurryDeps hiding (unlitLiterate)
 import qualified Curry.Syntax as CS
 import qualified Curry.AbstractCurry as ACY
 import qualified ExtendedFlat as FCY
-import CompilerResults
 import Message
 import CurryEnv
 import Unlit
-import Ident
-import Position
+import Curry.Base.Ident
+import Curry.Base.Position
 import PathUtils
-import Env
 
 
 -------------------------------------------------------------------------------
@@ -118,21 +118,22 @@ opts paths = defaultOpts{
 		   }
 
 
---
-genToks :: Err.Error [(Position,Token)] -> Result [(Position,Token)]
-genToks (Err.Ok toks)   = Result [] toks
-genToks (Err.Error err) = Failure [message_ Error err]
+-- FIXME : replace Result by MsgMonad
+genToks :: Err.MsgMonad [(Position,Token)] -> Result [(Position,Token)]
+genToks m = case ignoreWarnings m of
+              (Right toks) -> Result [] toks
+              (Left err) -> Failure [message_ Error $ showError err]
 
 
 --
-genCurrySyntax :: FilePath -> Err.Error CS.Module -> Result (CS.Module)
-genCurrySyntax fn (Err.Ok mod)
-   = let mod'@(CS.Module mid _ _) = patchModuleId fn (importPrelude fn mod)
-     in  if isValidModuleId fn mid
-	 then Result [] mod'
-	 else Failure [message_ Error (err_invalidModuleName mid)]
-genCurrySyntax _ (Err.Error err)
-   = Failure [message_ Error err]
+genCurrySyntax :: FilePath -> Err.MsgMonad CS.Module -> Result (CS.Module)
+genCurrySyntax fn m
+    = case ignoreWarnings m of
+        (Right mod) -> let mod'@(CS.Module mid _ _) = patchModuleId fn (importPrelude fn mod)
+                       in  if isValidModuleId fn mid
+	                   then Result [] mod'
+	                   else Failure [message_ Error (err_invalidModuleName mid)]
+        (Left err) -> Failure [message_ Error $ showError err]
 
 
 --
@@ -190,7 +191,7 @@ makeInterfaces paths (CS.Module mid _ decls)
   = do let imports = [preludeMIdent | mid /= preludeMIdent] 
 		      ++ [imp | CS.ImportDecl _ imp _ _ _ <- decls]
        (deps, errs) <- fmap (flattenDeps . sortDeps)
-		            (foldM (moduleDeps paths []) emptyEnv imports)
+		            (foldM (moduleDeps paths []) Map.empty imports)
        when (null errs) (mapM_ (compile deps . snd) deps)
        return errs
  where
@@ -198,7 +199,7 @@ makeInterfaces paths (CS.Module mid _ decls)
     = do smake [flatName file', flatIntName file']
 	       (file':catMaybes (map (flatInterface deps) mods))
 	       (compileCurry (opts paths) file')
-	       (return defaultResults)
+	       (return Nothing)
 	 return ()
  compile _ _ = return ()
 

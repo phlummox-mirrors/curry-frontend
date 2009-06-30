@@ -10,7 +10,15 @@
 --
 module Message where
 
-import Position
+import Curry.Base.Position
+
+--import Control.Monad.Error
+--import Control.Monad.Writer
+
+--type MsgMonad = ErrorT String (Writer [Message])
+
+--emitWarning :: Position -> WarningType -> MsgMonad ()
+--emitWarning p w = tell (Message (Warning w) (Just p) (warnMsg w))
 
 
 -------------------------------------------------------------------------------

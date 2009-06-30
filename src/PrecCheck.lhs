@@ -16,11 +16,14 @@ and rearrange infix applications according to the relative precedences
 of the operators involved.
 \begin{verbatim}
 
-> module PrecCheck(precCheck,precCheckGoal) where
+> module PrecCheck(precCheck) where
 
 > import Data.List
 
+> import Curry.Base.Position
+> import Curry.Base.Ident
 > import Curry.Syntax
+
 > import Base
 
 \end{verbatim}
@@ -72,11 +75,6 @@ interface.
 
 > precCheck :: ModuleIdent -> PEnv -> [Decl] -> (PEnv,[Decl])
 > precCheck = checkDecls
-
-> precCheckGoal :: PEnv -> Goal -> Goal
-> precCheckGoal pEnv (Goal p e ds) = Goal p (checkExpr m pEnv' e) ds'
->   where (pEnv',ds') = checkDecls m pEnv ds
->         m = emptyMIdent
 
 > checkDecls :: ModuleIdent -> PEnv -> [Decl] -> (PEnv,[Decl])
 > checkDecls m pEnv ds = pEnv' `seq` (pEnv',ds')

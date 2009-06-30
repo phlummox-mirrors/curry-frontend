@@ -18,8 +18,8 @@ an unlimited range of integer constants in Curry programs.
 \begin{verbatim}
 
 > module Curry.Syntax where
-> import Ident
-> import Position
+> import Curry.Base.Ident
+> import Curry.Base.Position
 > import Data.Generics
 > import Control.Monad.State
 
@@ -240,13 +240,6 @@ the identifier of the \texttt{Int} literal for maintaining its type.
 > opName (InfixConstr c) = c
 
 \end{verbatim}
-\paragraph{Goals}
-A goal is equivalent to an unconditional right hand side of an equation.
-\begin{verbatim}
-
-> data Goal = Goal Position Expression [Decl] deriving (Eq,Show,Read,Typeable,Data)
-
-\end{verbatim}
 
 > instance SrcRefOf ConstrTerm where
 >   srcRefOf (LiteralPattern l) = srcRefOf l
@@ -313,10 +306,8 @@ A goal is equivalent to an unconditional right hand side of an equation.
 >           ists <- sequence (map add ts)
 >           let (is,ts') = unzip ists
 >           return (i:is,ts')
->          
->         current,next :: State Int SrcRef
->         current = liftM (SrcRef . (:[])) get
->
+>         
+>         next :: State Int SrcRef
 >         next = do
 >           i <- get
 >           put $! i+1

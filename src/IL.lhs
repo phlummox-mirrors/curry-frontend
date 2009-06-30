@@ -39,8 +39,9 @@ an unlimited range of integer constants in Curry programs.
 \begin{verbatim}
 
 > module IL where
-> import Ident
-> import Position (SrcRef(..))
+
+> import Curry.Base.Ident
+> import Curry.Base.Position (SrcRef(..))
 
 > data Module = Module ModuleIdent [ModuleIdent] [Decl] deriving (Eq,Show)
 
