@@ -8,7 +8,7 @@
 -- Martin Engelke (men@informatik.uni-kiel.de)
 --
 module Frontend (lex, parse, fullParse, typingParse, abstractIO, flatIO,
-		 Result(..), Message(..)
+		 Result(..) --, WarnMsg(..)
 		)where
 
 import Data.List
@@ -23,7 +23,7 @@ import CurryCompilerOpts
 import Curry.Base.MessageMonad
 import Curry.Syntax.Parser
 import Curry.Syntax.Lexer
-import qualified Curry.Base.MessageMonad as Err
+-- import qualified Curry.Base.MessageMonad as Err
 
 import GenAbstractCurry
 import GenFlatCurry
@@ -32,7 +32,6 @@ import CurryDeps hiding (unlitLiterate)
 import qualified Curry.Syntax as CS
 import qualified Curry.AbstractCurry as ACY
 import qualified ExtendedFlat as FCY
-import Message
 import CurryEnv
 import Unlit
 import Curry.Base.Ident
@@ -57,7 +56,7 @@ parse :: FilePath -> String -> Result CS.Module
 parse fn src = let (err, src') = unlitLiterate fn src
 	       in  if null err
 		   then genCurrySyntax fn (parseSource True fn src')
-		   else Failure [message_ Error err]
+		   else Failure [WarnMsg Nothing err]
 
 
 -- Returns the syntax tree of the source program 'src' (type 'Module'; see
@@ -101,7 +100,7 @@ flatIO paths fn src =
 -------------------------------------------------------------------------------
 -- Result handling
 
-data Result a = Result [Message] a | Failure [Message] deriving Show
+data Result a = Result [WarnMsg] a | Failure [WarnMsg] deriving Show
 
 -- See module "Message":
 
@@ -119,21 +118,21 @@ opts paths = defaultOpts{
 
 
 -- FIXME : replace Result by MsgMonad
-genToks :: Err.MsgMonad [(Position,Token)] -> Result [(Position,Token)]
+genToks :: MsgMonad [(Position,Token)] -> Result [(Position,Token)]
 genToks m = case ignoreWarnings m of
               (Right toks) -> Result [] toks
-              (Left err) -> Failure [message_ Error $ showError err]
+              (Left err) -> Failure [WarnMsg Nothing $ showError err]
 
 
 --
-genCurrySyntax :: FilePath -> Err.MsgMonad CS.Module -> Result (CS.Module)
+genCurrySyntax :: FilePath -> MsgMonad CS.Module -> Result (CS.Module)
 genCurrySyntax fn m
     = case ignoreWarnings m of
         (Right mod) -> let mod'@(CS.Module mid _ _) = patchModuleId fn (importPrelude fn mod)
                        in  if isValidModuleId fn mid
 	                   then Result [] mod'
-	                   else Failure [message_ Error (err_invalidModuleName mid)]
-        (Left err) -> Failure [message_ Error $ showError err]
+	                   else Failure [WarnMsg Nothing $ err_invalidModuleName mid]
+        (Left err) -> Failure [WarnMsg Nothing $ showError err]
 
 
 --
@@ -143,7 +142,7 @@ genFullCurrySyntax check paths fn (Result msgs mod)
 	   then do mEnv <- loadInterfaces paths mod
 		   (_, _, _, mod', _, msgs') <- check (opts paths) mEnv mod
 		   return (Result (msgs ++ msgs') mod')
-	   else return (Failure (msgs ++ map (message_ Error) errs))
+	   else return (Failure (msgs ++ map (WarnMsg Nothing) errs))
 genFullCurrySyntax _ _ _ (Failure msgs) = return (Failure msgs)
 
 
@@ -158,7 +157,7 @@ genAbstractIO paths fn (Result msgs mod)
 		       <- simpleCheckModule (opts paths) mEnv mod
 		   return (Result (msgs ++ msgs') 
 			          (genTypedAbstract tyEnv tcEnv mod'))
-	   else return (Failure (msgs ++ map (message_ Error) errs))
+	   else return (Failure (msgs ++ map (WarnMsg Nothing) errs))
 genAbstractIO _ _ (Failure msgs) = return (Failure msgs)
 
 
@@ -178,7 +177,7 @@ genFlatIO paths fn (Result msgs mod)
 	                                        tyEnv tcEnv aEnv' il'
                return (Result (msgs'' ++ msgs ++ msgs') prog)
 	   )
-	   else return (Failure (msgs ++ map (message_ Error) errs))
+	   else return (Failure (msgs ++ map (WarnMsg Nothing) errs))
 genFlatIO _ _ (Failure msgs) = return (Failure msgs)
 
 

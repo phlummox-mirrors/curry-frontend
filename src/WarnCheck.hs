@@ -8,21 +8,19 @@
 --
 module WarnCheck (warnCheck) where
 
-import Control.Monad
+import Control.Monad.State
 import qualified Data.Map as Map
 import Data.List
 
 import Curry.Base.Ident
 import Curry.Base.Position
+import Curry.Base.MessageMonad
 import Curry.Syntax
 
-import Base (ValueEnv, ValueInfo(..), qualLookupValue, lookupValue)
+import Base (ValueEnv, ValueInfo(..), qualLookupValue)
 import TopEnv
 import qualified ScopeEnv
 import ScopeEnv (ScopeEnv)
-import Message
-
-
 
 
 -------------------------------------------------------------------------------
@@ -34,7 +32,7 @@ import Message
 --    - idle case alternatives
 --    - overlapping case alternatives
 --    - function rules which are not together
-warnCheck :: ModuleIdent -> ValueEnv -> [Decl] -> [Decl] -> [Message]
+warnCheck :: ModuleIdent -> ValueEnv -> [Decl] -> [Decl] -> [WarnMsg]
 warnCheck mid vals imports decls
    = run (do addImportedValues vals
 	     addModuleId mid
@@ -578,64 +576,49 @@ visitVariable info = case info of
 -- The monadic representation of the state allows the usage of monadic 
 -- syntax (do expression) for dealing easier and safer with its
 -- contents.
-data CheckState a = CheckState (CState () -> CState a)
 
-data CState a = CState {messages  :: [Message],
-			scope     :: ScopeEnv QualIdent IdInfo,
-			values    :: ValueEnv,
-			moduleId  :: ModuleIdent,
-			result    :: a
-		       }
+type CheckState = State CState
 
---
-emptyState :: CState ()
+data CState = CState {messages  :: [WarnMsg],
+		      scope     :: ScopeEnv QualIdent IdInfo,
+		      values    :: ValueEnv,
+		      moduleId  :: ModuleIdent }
+
+-- Runs a 'CheckState' action and returns the list of messages
+run ::  CheckState a -> [WarnMsg]
+run f
+   = reverse (messages (execState f emptyState))
+
+emptyState :: CState
 emptyState = CState {messages  = [],
 		     scope     = ScopeEnv.new,
 		     values    = emptyTopEnv,
-		     moduleId  = mkMIdent [],
-		     result    = ()
+		     moduleId  = mkMIdent []
 		    }
 
 --
 modifyScope :: (ScopeEnv QualIdent IdInfo -> ScopeEnv QualIdent IdInfo)
-	       -> CState a -> CState a
+	       -> CState -> CState
 modifyScope f state = state{ scope = f (scope state) }
 
 
--- 'CheckState' is declared as an instance of 'Monad' to use its actions
--- in 'do' expressions
-instance Monad CheckState where
-
- -- (>>=) :: CheckState a -> (a -> CheckState b) -> CheckState b
- (CheckState f) >>= g 
-    = CheckState (\state -> let state'       = f state
-		                CheckState h = g (result state')
-		            in  h (state'{ result = () }))
-
- -- (>>) :: CheckState a -> CheckState b -> CheckState b
- a >> b = a >>= (\_ -> b)
-
- -- return :: a -> CheckState a
- return val = CheckState (\state -> state{ result = val })
-
-
 --
-genWarning :: Position -> (WarningType,String) -> CheckState ()
-genWarning pos (warnType,msg)
-   = CheckState (\state -> state{ messages = warnMsg:(messages state) })
- where warnMsg = message (Warning warnType) pos msg
+genWarning :: Position -> String -> CheckState ()
+genWarning pos msg
+   = modify (\state -> state{ messages = warnMsg:(messages state) })
+ where warnMsg = WarnMsg (Just pos) msg
  
-genWarning' :: (Position,WarningType,String) -> CheckState ()
-genWarning' (pos,warnType,msg)
-   = CheckState (\state -> state{ messages = warnMsg:(messages state) })
- where warnMsg = message (Warning warnType) pos msg 
+genWarning' :: (Position, String) -> CheckState ()
+genWarning' (pos, msg)
+   = modify (\state -> state{ messages = warnMsg:(messages state) })
+    where warnMsg = WarnMsg (Just pos) msg 
 
 --
 insertVar :: Ident -> CheckState ()
 insertVar id 
    | isAnnonId id = return ()
    | otherwise
-     = CheckState 
+     = modify 
          (\state -> modifyScope 
 	              (ScopeEnv.insert (commonId id) (VarInfo False)) state)
 
@@ -644,101 +627,85 @@ insertTypeVar :: Ident -> CheckState ()
 insertTypeVar id
    | isAnnonId id = return ()
    | otherwise    
-     = CheckState 
+     = modify 
          (\state -> modifyScope 
 	              (ScopeEnv.insert (typeId id) (VarInfo False)) state)
 
 --
 insertConsId :: Ident -> CheckState ()
 insertConsId id
-   = CheckState 
+   = modify 
        (\state -> modifyScope (ScopeEnv.insert (commonId id) ConsInfo) state)
 
 --
 insertTypeConsId :: Ident -> CheckState ()
 insertTypeConsId id
-   = CheckState 
+   = modify 
        (\state -> modifyScope (ScopeEnv.insert (typeId id) ConsInfo) state)
 
 --
 isVarId :: Ident -> CheckState Bool
 isVarId id
-   = CheckState (\state -> state{ result = isVar state (commonId id) })
+   = gets (\state -> isVar state (commonId id))
 
 --
 isConsId :: Ident -> CheckState Bool
 isConsId id 
-   = CheckState (\state -> state{ result = isCons state (qualify id) })
+   = gets (\state -> isCons state (qualify id))
 
 --
 isQualConsId :: QualIdent -> CheckState Bool
 isQualConsId qid
-   = CheckState (\state -> state{ result = isCons state qid })
+   = gets (\state -> isCons state qid)
 
 --
 isShadowingVar :: Ident -> CheckState Bool
 isShadowingVar id 
-   = CheckState 
-       (\state -> state{ result = isShadowing state (commonId id) })
-
---
-isShadowingTypeVar :: Ident -> CheckState Bool
-isShadowingTypeVar id
-   = CheckState 
-       (\state -> state{ result = isShadowing state (typeId id) })
+   = gets (\state -> isShadowing state (commonId id))
 
 --
 visitId :: Ident -> CheckState ()
 visitId id 
-   = CheckState 
+   = modify 
        (\state -> modifyScope 
 	            (ScopeEnv.modify visitVariable (commonId id)) state)
 
 --
 visitTypeId :: Ident -> CheckState ()
 visitTypeId id 
-   = CheckState 
+   = modify 
        (\state -> modifyScope 
 	            (ScopeEnv.modify visitVariable (typeId id)) state)
 
 --
-isUnrefVar :: Ident -> CheckState Bool
-isUnrefVar id 
-   = CheckState (\state -> state{ result = isUnref state (commonId id) })
-
---
 isUnrefTypeVar :: Ident -> CheckState Bool
 isUnrefTypeVar id
-   = CheckState (\state -> state{ result = isUnref state (typeId id) })
+   = gets (\state -> isUnref state (typeId id))
 
 --
 returnUnrefVars :: CheckState [Ident]
 returnUnrefVars 
-   = CheckState (\state -> 
+   = gets (\state -> 
 	   	    let ids    = map fst (ScopeEnv.toLevelList (scope state))
                         unrefs = filter (isUnref state) ids
-	            in  state{ result = map unqualify unrefs })
+	            in  map unqualify unrefs )
 
 --
 addModuleId :: ModuleIdent -> CheckState ()
-addModuleId mid = CheckState (\state -> state{ moduleId = mid })
-
---
-returnModuleId :: CheckState ModuleIdent
-returnModuleId = CheckState (\state -> state{ result = moduleId state })
+addModuleId mid = modify (\state -> state{ moduleId = mid })
 
 --
 beginScope :: CheckState ()
-beginScope = CheckState (\state -> modifyScope ScopeEnv.beginScope state)
+beginScope = modify (\state -> modifyScope ScopeEnv.beginScope state)
 
 --
 endScope :: CheckState ()
-endScope = CheckState (\state -> modifyScope ScopeEnv.endScopeUp state)
+endScope = modify (\state -> modifyScope ScopeEnv.endScopeUp state)
 
 
 -- Adds the content of a value environment to the state
 addImportedValues :: ValueEnv -> CheckState ()
-addImportedValues vals = CheckState (\state -> state{ values = vals })
+addImportedValues vals = modify (\state -> state{ values = vals })
 
 --
 foldM' :: (a -> CheckState ()) -> [a] -> CheckState ()
@@ -770,36 +737,31 @@ all' mpred (x:xs)
 	if p then all' mpred xs else return False
 
 
--- Runs a 'CheckState' action and returns the list of messages
-run ::  CheckState a -> [Message]
-run (CheckState f)
-   = reverse (messages (f emptyState))
-
 
 -------------------------------------------------------------------------------
 
 --
-isShadowing :: CState a -> QualIdent -> Bool
+isShadowing :: CState -> QualIdent -> Bool
 isShadowing state qid
    = let sc = scope state
      in  maybe False isVariable (ScopeEnv.lookup qid sc)
 	 && ScopeEnv.level qid sc < ScopeEnv.currentLevel sc
 
 --
-isUnref :: CState a -> QualIdent -> Bool
+isUnref :: CState -> QualIdent -> Bool
 isUnref state qid 
    = let sc = scope state
      in  maybe False (not . variableVisited) (ScopeEnv.lookup qid sc)
          && ScopeEnv.level qid sc == ScopeEnv.currentLevel sc
 
 --
-isVar :: CState a -> QualIdent -> Bool
+isVar :: CState -> QualIdent -> Bool
 isVar state qid = maybe (isAnnonId (unqualify qid)) 
 	           isVariable 
 		   (ScopeEnv.lookup qid (scope state))
 
 --
-isCons :: CState a -> QualIdent -> Bool
+isCons :: CState -> QualIdent -> Bool
 isCons state qid = maybe (isImportedCons state qid)
 		         isConstructor
 			 (ScopeEnv.lookup qid (scope state))
@@ -833,56 +795,49 @@ typeId id = qualify (renameIdent id 1)
 -------------------------------------------------------------------------------
 -- Warnings...
 
-unrefTypeVar :: Ident -> (Position,WarningType,String)
+unrefTypeVar :: Ident -> (Position, String)
 unrefTypeVar id = 
   (positionOfIdent id,
-   UnrefTypeVar,
    "unreferenced type variable \"" ++ show id ++ "\"")
 
-unrefVar :: Ident -> (Position,WarningType,String)
+unrefVar :: Ident -> (Position, String)
 unrefVar id = 
   (positionOfIdent id,
-   UnrefVar,
    "unreferenced variable \"" ++ show id ++ "\"")
 
-shadowingVar :: Ident -> (Position,WarningType,String)
+shadowingVar :: Ident -> (Position, String)
 shadowingVar id = 
   (positionOfIdent id,
-   ShadowingVar,
    "shadowing symbol \"" ++ show id ++ "\"")
 
-idleCaseAlts :: (WarningType,String)
-idleCaseAlts = (IdleCaseAlt,"idle case alternative(s)")
+idleCaseAlts :: String
+idleCaseAlts = "idle case alternative(s)"
 
-overlappingCaseAlt :: (WarningType,String)
-overlappingCaseAlt = (OverlapCase,"redundant overlapping case alternative")
+overlappingCaseAlt :: String
+overlappingCaseAlt = "redundant overlapping case alternative"
 
-rulesNotTogether :: Ident -> Position -> (Position,WarningType,String)
+rulesNotTogether :: Ident -> Position -> (Position, String)
 rulesNotTogether id pos
   = (positionOfIdent id,
-     RulesNotTogether,
      "rules for function \"" ++ show id ++ "\" "    
      ++ "are not together "
      ++ "(first occurrence at " 
      ++ show (line pos) ++ "." ++ show (column pos) ++ ")")
 
-multiplyImportedModule :: ModuleIdent -> (Position,WarningType,String)
+multiplyImportedModule :: ModuleIdent -> (Position, String)
 multiplyImportedModule mid 
   = (positionOfModuleIdent mid,
-     MultipleImportModule,
      "module \"" ++ show mid ++ "\" was imported more than once")
 
-multiplyImportedSymbol :: ModuleIdent -> Ident -> (Position,WarningType,String)
+multiplyImportedSymbol :: ModuleIdent -> Ident -> (Position, String)
 multiplyImportedSymbol mid ident
   = (positionOfIdent ident,
-     MultipleImportSymbol,
      "symbol \"" ++ show ident ++ "\" was imported from module \""
      ++ show mid ++ "\" more than once")
 
-multiplyHiddenSymbol :: ModuleIdent -> Ident -> (Position,WarningType,String)
+multiplyHiddenSymbol :: ModuleIdent -> Ident -> (Position, String)
 multiplyHiddenSymbol mid ident
   = (positionOfIdent ident,
-     MultipleHiding,
      "symbol \"" ++ show ident ++ "\" from module \"" ++ show mid
      ++ "\" was hidden more than once")
 
@@ -895,9 +850,6 @@ tail_ :: [a] -> [a] -> [a]
 tail_ alt []     = alt
 tail_ _   (_:xs) = xs
 
-head_ :: a -> [a] -> a
-head_ alt []    = alt
-head_ _   (x:_) = x
 
 --
 cmpListM :: Monad m => (a -> a -> m Bool) -> [a] -> [a] -> m Bool

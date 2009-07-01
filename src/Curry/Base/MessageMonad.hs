@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-
   The \texttt{MsgMonad} type is used for describing the result of a
   computation that can fail. In contrast to the standard \texttt{Maybe}
@@ -9,26 +10,61 @@ module Curry.Base.MessageMonad where
 
 import Control.Monad.Error
 import Control.Monad.Writer
+import Control.Monad.Identity
 
 import Curry.Base.Position
 
-type MsgMonad = ErrorT WarnMsg (Writer [WarnMsg])
 
-data WarnMsg = WarnMsg { warnPos :: Position,
+type MsgMonadT m = ErrorT WarnMsg (WriterT [WarnMsg] m)
+
+type MsgMonad = MsgMonadT Identity
+
+type MsgMonadIO = MsgMonadT IO
+
+data WarnMsg = WarnMsg { warnPos :: Maybe Position,
                          warnTxt :: String
                        }
 instance Error WarnMsg where
-    noMsg = WarnMsg (AST noRef) "Failure"
+    noMsg = WarnMsg Nothing "Failure!"
+    strMsg = WarnMsg Nothing
 
+instance Show WarnMsg where
+    show = showWarning
 
-showError w = "Error: " ++ show (warnPos w) ++ warnTxt w
+-- tell w = Control.Monad.Writer.tell w
+
+showWarning w = "Warning: " ++ pos ++ warnTxt w
+    where pos = case warnPos w of
+                  Nothing -> ""
+                  Just p -> show p ++": "
+
+showError w = "Error: " ++ pos ++ warnTxt w
+    where pos = case warnPos w of
+                  Nothing -> ""
+                  Just p -> show p ++": "
 
 ok :: MsgMonad a -> a
 ok = either (error . showError) id . ignoreWarnings
 
 
-failWith :: String -> MsgMonad a
+failWith :: (MonadError a m, Error a) => String -> m a1
 failWith = throwError . strMsg
 
 
-ignoreWarnings = fst . runWriter . runErrorT
+failWithAt :: (MonadError WarnMsg m) => Position -> String -> m a
+failWithAt p s  = throwError (WarnMsg (Just p) s)
+
+
+warnMessage :: (MonadWriter [WarnMsg] m) => String -> m ()
+warnMessage s = tell [WarnMsg Nothing s]
+
+
+warnMessageAt :: (MonadWriter [WarnMsg] m) => Position -> String -> m ()
+warnMessageAt p s  = tell [WarnMsg (Just p) s]
+
+ignoreWarnings :: MsgMonad a -> Either WarnMsg a
+ignoreWarnings = fst . runIdentity . runWriterT . runErrorT
+
+-- returnIO :: MsgMonad a -> MsgMonadIO a
+-- returnIO x = return$ (runIdentity . runWriterT . runErrorT) x
+

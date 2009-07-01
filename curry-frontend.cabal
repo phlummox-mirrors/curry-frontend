@@ -32,7 +32,7 @@ Executable cymake
                     Curry.Syntax.Parser, Curry.Syntax.LLParseComb
                     Curry.Syntax.ShowModule, Curry.Syntax.Pretty
                     Curry.Syntax
-                    Curry.AbstractCurry, CurryBuilder, IL, Message
+                    Curry.AbstractCurry, CurryBuilder, IL 
                     CurryCompilerOpts, Modules, Subst, Arity
                     CurryDeps, Eval, ILPP, NestEnv, SyntaxCheck, Base
                     Exports, ILScope, SyntaxColoring, CurryEnv

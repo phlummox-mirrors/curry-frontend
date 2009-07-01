@@ -42,7 +42,6 @@ import declarations are commented out
 > import PrecCheck(precCheck)
 > import TypeCheck(typeCheck)
 > import WarnCheck(warnCheck)
-> import Message
 > import Arity
 > import Imports(importInterface,importInterfaceIntf,importUnifyData)
 > import Exports(expandInterface,exportInterface)
@@ -150,7 +149,7 @@ code are obsolete and commented out.
 >	        ++ ".curry\"")
 
 > simpleCheckModule :: Options -> ModuleEnv -> Module 
->	    -> IO (ValueEnv,TCEnv,ArityEnv,Module,Interface,[Message])
+>	    -> IO (ValueEnv,TCEnv,ArityEnv,Module,Interface,[WarnMsg])
 > simpleCheckModule opts mEnv (Module m es ds) =
 >   do unless (noWarn opts) (printMessages msgs)
 >      return (tyEnv'', tcEnv, aEnv'', modul, intf, msgs)
@@ -164,12 +163,12 @@ code are obsolete and commented out.
 >			   $ kindCheck m tcEnv topDs
 >         ds' = impDs ++ qual m tyEnv topDs'
 >         modul = (Module m es ds') --expandInterface (Module m es ds') tcEnv tyEnv
->         (pEnv'',tcEnv'',tyEnv'',aEnv'') 
+>         (_,tcEnv'',tyEnv'',aEnv'') 
 >            = qualifyEnv mEnv pEnv' tcEnv tyEnv aEnv
 >         intf = exportInterface modul pEnv' tcEnv'' tyEnv''
 
 > checkModule :: Options -> ModuleEnv -> Module 
->      -> IO (ValueEnv,TCEnv,ArityEnv,Module,Interface,[Message])
+>      -> IO (ValueEnv,TCEnv,ArityEnv,Module,Interface,[WarnMsg])
 > checkModule opts mEnv (Module m es ds) =
 >   do unless (noWarn opts) (printMessages msgs)
 >      when (m == mkMIdent ["field114..."])
@@ -251,14 +250,7 @@ code are obsolete and commented out.
 >   = writeFlatFile opts (genFlatCurry opts cEnv mEnv tyEnv tcEnv aEnv il)
 >                        (fromMaybe (replaceExtension sfn flatExt) tfn)
 
-> writeFInt :: Options -> Maybe FilePath -> FilePath -> CurryEnv -> ModuleEnv
->              -> ValueEnv -> TCEnv -> ArityEnv -> IL.Module -> IO Prog
-> writeFInt opts tfn sfn cEnv mEnv tyEnv tcEnv aEnv il 
->   = writeFlatFile opts{extendedFlat=False}
->                  (genFlatInterface opts cEnv mEnv tyEnv tcEnv aEnv il)
->                  (fromMaybe (takeBaseName sfn ++ fintExt) tfn)
-
-> writeFlatFile :: (Show a) => Options -> (Prog, [a]) -> String -> IO Prog
+> writeFlatFile :: Options -> (Prog, [WarnMsg]) -> String -> IO Prog
 > writeFlatFile opts@Options{extendedFlat=ext} (res,msgs) fname = do
 >         unless (noWarn opts) (printMessages msgs)
 >	  if ext then writeExtendedFlat fname res
@@ -615,9 +607,9 @@ be dependent on it any longer.
 >    | otherwise
 >      = internalError "@Modules.genAbstract: illegal option"
 
-> printMessages :: Show a => [a] -> IO ()
+> printMessages :: [WarnMsg] -> IO ()
 > printMessages []   = return ()
-> printMessages msgs = hPutStrLn stderr $ unlines $ map show msgs
+> printMessages msgs = hPutStrLn stderr $ unlines $ map showWarning msgs
 
 \end{verbatim}
 The function \texttt{ppTypes} is used for pretty-printing the types
@@ -653,14 +645,12 @@ Haskell and original MCC where a module obtains \texttt{main}).
 Various filename extensions
 \begin{verbatim}
 
-> cExt = ".c"
 > xmlExt = "_flat.xml"
 > flatExt = ".fcy"
 > fintExt = ".fint"
 > acyExt = ".acy"
 > uacyExt = ".uacy"
 > sourceRepExt = ".cy"
-> intfExt = ".icurry"
 > litExt = ".lcurry"
 
 \end{verbatim}

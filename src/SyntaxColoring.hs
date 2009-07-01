@@ -12,11 +12,11 @@ import Control.Exception
 
 import Curry.Base.Position
 import Curry.Base.Ident
+import Curry.Base.MessageMonad
 import Curry.Syntax 
 import Curry.Syntax.Lexer
 
 import Frontend
-import Message
 import PathUtils (readModule)
 
 
@@ -48,9 +48,10 @@ data Code =  Keyword String
            | CharCode String
            | Symbol String
            | Identifier IdentifierKind QualIdent
-           | CodeWarning [Message] Code
-           | CodeError [Message] Code
-           | NotParsed String deriving Show
+           | CodeWarning [WarnMsg] Code
+           | CodeError [WarnMsg] Code
+           | NotParsed String
+             deriving Show
            
 data TypeKind = TypeDecla
               | TypeUse
@@ -110,7 +111,7 @@ genProgram _ parseResults (Result mess posNtokList) =
 
     
 genProgram plainText parseResults (Failure messages) =
-     trace' (unlines (map (\(Message _ _ str) -> str) allMessages)) 
+     trace' (unlines (map (\(WarnMsg _ str) -> str) allMessages)) 
             (buildMessagesIntoPlainText allMessages plainText)    
   where
       allMessages = prepareMessages (concatMap getMessages parseResults ++ 
@@ -149,8 +150,8 @@ area2codes xxs@((l,c,code):xs) p1@Position{file=file} p2
 catchError :: (Result a -> String) -> IO (Result a) -> IO (Result a)
 catchError toString toDo = Control.Exception.catch (toDo >>= returnComplete toString) handler 
   where     
-      handler (ErrorCall str) = return (Failure [setMessagePosition (Message Error Nothing str)])
-      handler  e = return (Failure [Message Error Nothing (show e)])       
+      handler (ErrorCall str) = return (Failure [setMessagePosition (WarnMsg Nothing str)])
+      handler  e = return (Failure [WarnMsg Nothing (show e)])       
              
       returnComplete :: (a -> String) -> a -> IO a
       returnComplete toString a = f (toString a) (return a)
@@ -168,18 +169,12 @@ getQualIdent (TypeConstructor _ qualIdent) = Just qualIdent
 getQualIdent  _ = Nothing                  
                   
                     
--- privates-----------------------------------------------------------------------------------
-
-                  
-codeWithoutPos :: (Int,Int,Code) -> Code
-codeWithoutPos (_,_,c) = c                  
-                  
 -- DEBUGGING----------- wird bald nicht mehr gebraucht
 
-setMessagePosition :: Message -> Message
-setMessagePosition m@(Message _ (Just p) _) = trace'' ("pos:" ++ show p ++ ":" ++ show m) m
-setMessagePosition (Message typ _ m) = 
-        let mes@(Message _ pos _) =  (Message typ (getPositionFromString m) m) in
+setMessagePosition :: WarnMsg -> WarnMsg
+setMessagePosition m@(WarnMsg (Just p) _) = trace'' ("pos:" ++ show p ++ ":" ++ show m) m
+setMessagePosition (WarnMsg _ m) = 
+        let mes@(WarnMsg pos _) =  (WarnMsg (getPositionFromString m) m) in
         trace'' ("pos:" ++ show pos ++ ":" ++ show mes) mes
 
 getPositionFromString :: String -> Maybe Position
@@ -217,31 +212,32 @@ flatCode code = code
 -- ----------Message---------------------------------------                  
                   
 
-getMessages :: Result a -> [Message]
+getMessages :: Result a -> [WarnMsg]
 getMessages (Result mess _) = mess
 getMessages (Failure mess) = mess
 
-lessMessage :: Message -> Message -> Bool
-lessMessage (Message _ mPos1 _) (Message _ mPos2 _) = mPos1 < mPos2
+lessMessage :: WarnMsg -> WarnMsg -> Bool
+lessMessage (WarnMsg mPos1 _) (WarnMsg mPos2 _) = mPos1 < mPos2
 
-nubMessages :: [Message] -> [Message] 
+nubMessages :: [WarnMsg] -> [WarnMsg] 
 nubMessages = nubBy eqMessage
 
-eqMessage :: Message -> Message -> Bool
-eqMessage (Message f1 p1 s1) (Message f2 p2 s2) = (f1 == f2) && (p1 == p2) && (s1 == s2)
+eqMessage :: WarnMsg -> WarnMsg -> Bool
+eqMessage (WarnMsg p1 s1) (WarnMsg p2 s2) = (p1 == p2) && (s1 == s2)
 
-prepareMessages :: [Message] -> [Message]   
+prepareMessages :: [WarnMsg] -> [WarnMsg]   
 prepareMessages = qsort lessMessage . map setMessagePosition . nubMessages
 
+-- FIXME funktioniert nicht mehr
 hasError [] = False
-hasError ((Message Error _ _):ms) = True
+hasError ((WarnMsg _ _):ms) = True
 hasError (_:ms) = hasError ms
 
-buildMessagesIntoPlainText :: [Message] -> String -> Program
+buildMessagesIntoPlainText :: [WarnMsg] -> String -> Program
 buildMessagesIntoPlainText messages text = 
     buildMessagesIntoPlainText' messages (lines text) [] 1
  where
-    buildMessagesIntoPlainText' :: [Message] -> [String] -> [String] -> Int -> Program
+    buildMessagesIntoPlainText' :: [WarnMsg] -> [String] -> [String] -> Int -> Program
     buildMessagesIntoPlainText' _ [] [] _ = 
           []
     buildMessagesIntoPlainText' _ [] postStrs line = 
@@ -258,7 +254,7 @@ buildMessagesIntoPlainText messages text =
                                    else (ln,1,CodeWarning pre (NotParsed str)) : [(ln,1,NewLine)]) ++
                   (buildMessagesIntoPlainText' post preStrs [] (ln + 1)) 
       where 
-         isLeq (Message _ (Just p) _) = line p <= ln 
+         isLeq (WarnMsg (Just p) _) = line p <= ln 
          isLeq _ = True
                 
         
@@ -357,20 +353,15 @@ addModuleIdent _ c = c
                         
 -- ----------------------------------------
 
-mergeMessages :: [Message] -> [(Position,Token)] -> [([Message],Position,Token)]
-mergeMessages mess pos = mergeMessages' (prepareMessages mess) pos
-
-
-
-mergeMessages' :: [Message] -> [(Position,Token)] -> [([Message],Position,Token)]
+mergeMessages' :: [WarnMsg] -> [(Position,Token)] -> [([WarnMsg],Position,Token)]
 mergeMessages' _ [] = []
 mergeMessages' [] ((p,t):ps) = ([],p,t) : mergeMessages' [] ps
-mergeMessages' mss@(m@(Message _ mPos x):ms) ((p,t):ps)  
+mergeMessages' mss@(m@(WarnMsg mPos x):ms) ((p,t):ps)  
     | mPos <= Just p = (trace' (show mPos ++ " <= " ++ show (Just p) ++ " Message: " ++ x) ([m],p,t)) : mergeMessages' ms ps 
     | otherwise = ([],p,t) : mergeMessages' mss ps
 
 
-tokenNcodes2codes :: [(ModuleIdent,ModuleIdent)] -> Int -> Int -> [([Message],Position,Token)] -> [Code] -> [(Int,Int,Code)]
+tokenNcodes2codes :: [(ModuleIdent,ModuleIdent)] -> Int -> Int -> [([WarnMsg],Position,Token)] -> [Code] -> [(Int,Int,Code)]
 tokenNcodes2codes _ _ _ [] _ = []          
 tokenNcodes2codes nameList currLine currCol toks@((messages,pos@Position{line=line,column=col},token):ts) codes 
     | currLine < line = 
@@ -852,7 +843,6 @@ attributes2string (IntegerAttributes intval _) = show intval
 attributes2string (StringAttributes sval _) = showSt sval 
 attributes2string (IdentAttributes mIdent ident) =concat (intersperse "." (mIdent ++ [ident])) 
 
-basename = reverse .  takeWhile (/='/')    . reverse
 
 showCh c    
    | c == '\\' = "'\\\\'"

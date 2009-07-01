@@ -15,29 +15,26 @@ import Control.Monad
 import Data.Maybe
 import Data.List
 import qualified Data.Map as Map
-import Base (ArityEnv, ArityInfo(..), ModuleEnv, PEnv, PrecInfo(..), 
-	     OpPrec(..), TCEnv, TypeInfo(..), ValueEnv, ValueInfo(..),
+
+import Curry.Base.MessageMonad
+import Curry.Base.Ident as Id
+
+import Base (ArityEnv, ArityInfo(..), ModuleEnv,  
+	     TCEnv, TypeInfo(..), ValueEnv, ValueInfo(..),
 	     lookupValue, qualLookupTC,
 	     qualLookupArity, lookupArity,  internalError)
-
---import FlatWithSrcRefs
 import ExtendedFlat
-
 import qualified IL
 import qualified Curry.Syntax as CS
-
 import CurryEnv (CurryEnv)
 import qualified CurryEnv
-
 import ScopeEnv (ScopeEnv)
 import qualified ScopeEnv
-
-
 import Types
 import CurryCompilerOpts
-import Message
+-- import Message
 import PatchPrelude
-import Curry.Base.Ident as Id
+
 
 trace _ x = x
 
@@ -45,7 +42,7 @@ trace _ x = x
 
 -- transforms intermediate language code (IL) to FlatCurry code
 genFlatCurry :: Options -> CurryEnv -> ModuleEnv -> ValueEnv -> TCEnv 
-		-> ArityEnv -> IL.Module -> (Prog, [Message])
+		-> ArityEnv -> IL.Module -> (Prog, [WarnMsg])
 genFlatCurry opts cEnv mEnv tyEnv tcEnv aEnv mod
    = (patchPreludeFCY prog, messages)
  where (prog, messages) 
@@ -54,7 +51,7 @@ genFlatCurry opts cEnv mEnv tyEnv tcEnv aEnv mod
 
 -- transforms intermediate language code (IL) to FlatCurry interfaces
 genFlatInterface :: Options -> CurryEnv -> ModuleEnv -> ValueEnv -> TCEnv
-		 -> ArityEnv -> IL.Module -> (Prog, [Message])
+		 -> ArityEnv -> IL.Module -> (Prog, [WarnMsg])
 genFlatInterface opts cEnv mEnv tyEnv tcEnv aEnv mod
    = (patchPreludeFCY intf, messages)
  where (intf, messages) 
@@ -753,29 +750,10 @@ consArity qid = "GenFlatCurry: missing arity for constructor \""
 missingVarIndex id = "GenFlatCurry: missing index for \"" ++ show id ++ "\""
 
 
-overlappingRules qid = (OverlapRules,
-                           "function \""
+overlappingRules qid =  "function \""
 		        ++ show qid 
 		        ++ "\" is non-deterministic due to non-trivial "
-		        ++ "overlapping rules")
-
-
--------------------------------------------------------------------------------
-prelude_types :: [TypeDecl]
-prelude_types = [(Type (preludeName "()") Public [] 
-		  [(Cons (preludeName "()") 0 Public [])]),
-		 (Type (preludeName "[]") Public [0] 
-		  [(Cons (preludeName "[]") 0 Public []),
-		   (Cons (preludeName ":") 2 Public 
-		    [(TVar 0),(TCons (preludeName "[]") [(TVar 0)])])])]
-                ++ map mkTupleType [2..15]
-    where
-      preludeName = curry mkQName "Prelude"
-      mkTupleType n = let last  = n-1
-                          name = preludeName("(" ++ replicate last ',' ++ ")")
-                          idxs  = [0..last]
-                          vars  = map TVar idxs
-                      in Type name Public idxs [Cons name n Public vars]
+		        ++ "overlapping rules"
 
 
 -------------------------------------------------------------------------------
@@ -864,7 +842,7 @@ data FlatEnv = FlatEnv{ moduleIdE     :: ModuleIdent,
 			  varIdsE       :: ScopeEnv Ident VarIndex,
 			  tvarIndexE    :: Int,
 			  tvarIdsE      :: ScopeEnv Ident TVarIndex,
-			  messagesE     :: [Message],
+			  messagesE     :: [WarnMsg],
 			  genInterfaceE :: Bool
 			}
 
@@ -881,7 +859,7 @@ type FlatState a = State FlatEnv a
 
 -- Runs a 'FlatState' action and returns the result
 run :: Options -> CurryEnv -> ModuleEnv -> ValueEnv -> TCEnv -> ArityEnv 
-    -> Bool -> FlatState a -> (a, [Message])
+    -> Bool -> FlatState a -> (a, [WarnMsg])
 run opts cEnv mEnv tyEnv tcEnv aEnv genIntf f
    = (result, messagesE env)
  where
@@ -1002,46 +980,11 @@ clearVarIndices = modify (\env -> env { varIndexE = 0,
 				        varIdsE = ScopeEnv.new 
 				      })
 
--- Generates a new index for a type variable
-newTVarIndex :: Ident -> FlatState Int
-newTVarIndex id
-   = do idx0 <- gets tvarIndexE
-        let idx = 1 + idx0
-        vids <- gets tvarIdsE
-        modify (\env -> env{ tvarIndexE = idx,
-			     tvarIdsE   = ScopeEnv.insert id idx vids
-			   })
-        return idx
-
--- Looks up the index of an existing type variable or generates a new index,
--- if the type variable doesn't exist
-getTVarIndex :: Ident -> FlatState Int
-getTVarIndex id
-   = do idx0 <- gets tvarIndexE
-        let idx = idx0 + 1
-        vids <- gets tvarIdsE    
-        maybe (do modify (\env -> env{ tvarIndexE = idx,
-		                       tvarIdsE   = ScopeEnv.insert id idx vids })
-                  return idx)
-              return
-              (ScopeEnv.lookup id vids)
-
 --
-lookupTVarIndex :: Ident -> FlatState (Maybe Int)
-lookupTVarIndex id
-   = gets (ScopeEnv.lookup id . tvarIdsE)
-
---
-clearTVarIndices :: FlatState ()
-clearTVarIndices = modify (\env -> env { tvarIndexE = 0,
-					 tvarIdsE = ScopeEnv.new 
-				       })
-
---
-genWarning :: (WarningType,String) -> FlatState ()
-genWarning (warnType,msg)
+genWarning :: String -> FlatState ()
+genWarning msg
    = modify (\env -> env{ messagesE = warnMsg:(messagesE env) })
-    where warnMsg = message_ (Warning warnType) msg
+    where warnMsg = WarnMsg Nothing msg
 
 --
 genInterface :: FlatState Bool
