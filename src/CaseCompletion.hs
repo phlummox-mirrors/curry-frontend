@@ -20,9 +20,9 @@ import Curry.Base.Ident
 import qualified Curry.Syntax
 
 import Base (ModuleEnv, lookupModule)
-import IL
+import IL.Type
 import OldScopeEnv -- as ScopeEnv
-import ILScope
+import IL.Scope
 
 
 

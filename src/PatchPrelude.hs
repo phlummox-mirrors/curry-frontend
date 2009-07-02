@@ -1,7 +1,7 @@
 module PatchPrelude where
 
 
-import ExtendedFlat
+import Curry.ExtendedFlat
 
 
 -- the prelude has to be extended by data declarations for list and tuples

@@ -31,13 +31,14 @@ Executable cymake
                     Curry.Syntax.Lexer, Curry.Syntax.LexComb
                     Curry.Syntax.Parser, Curry.Syntax.LLParseComb
                     Curry.Syntax.ShowModule, Curry.Syntax.Pretty
-                    Curry.Syntax
-                    Curry.AbstractCurry, CurryBuilder, IL 
+                    Curry.Syntax, Curry.Syntax.Type
+                    Curry.AbstractCurry, Curry.ExtendedFlat
+                    CurryBuilder, IL.Type 
                     CurryCompilerOpts, Modules, Subst, Arity
-                    CurryDeps, Eval, ILPP, NestEnv, SyntaxCheck, Base
-                    Exports, ILScope, SyntaxColoring, CurryEnv
-                    ExtendedFlat, ILTrans, OldScopeEnv, CurryHtml
-                    ILxml, PatchPrelude, TopEnv, CaseCompletion
+                    CurryDeps, Eval, IL.Pretty, NestEnv, SyntaxCheck, Base
+                    Exports, IL.Scope, SyntaxColoring, CurryEnv
+                    IL.CurryToIL, OldScopeEnv, CurryHtml
+                    IL.XML, PatchPrelude, TopEnv, CaseCompletion
                     Imports, PathUtils, TypeCheck
                     InterfaceCheck, 
                     Types, Frontend, PrecCheck

@@ -38,7 +38,7 @@ instead of \texttt{Int} for representing integer values. This provides
 an unlimited range of integer constants in Curry programs.
 \begin{verbatim}
 
-> module IL where
+> module IL.Type where
 
 > import Curry.Base.Ident
 > import Curry.Base.Position (SrcRef(..))

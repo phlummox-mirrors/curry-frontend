@@ -34,7 +34,6 @@ string in this case.
 
 > import Curry.Syntax.LexComb
 > import Curry.Base.MessageMonad
-
 > import Curry.Base.Position
 
 

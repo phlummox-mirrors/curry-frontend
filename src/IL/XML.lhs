@@ -18,7 +18,8 @@ Marlow's pretty printer for Haskell. The format of the output intends to be
 similar to that of Flat-Curry XML representation.
 \begin{verbatim}
 
-> module ILxml(module ILxml, Doc) where
+> -- FIXME Doc nicth exportieren
+> module IL.XML(module IL.XML, Doc) where
 
 > import Data.Maybe
 > import Data.Char(chr,ord,isAlphaNum)
@@ -26,7 +27,7 @@ similar to that of Flat-Curry XML representation.
 > import Curry.Base.Ident
 > import qualified Curry.Syntax as CS
 
-> import IL
+> import IL.Type
 > import CurryEnv
 > import PrettyCombinators
 

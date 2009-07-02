@@ -14,11 +14,13 @@ printer (see sect.~\ref{sec:CurryPP}) which, in turn, is based on Simon
 Marlow's pretty printer for Haskell.
 \begin{verbatim}
 
-> module ILPP(module ILPP, Doc) where
+> -- FIXME: Doc nicht exportieren
+
+> module IL.Pretty(module IL.Pretty, Doc) where
 > 
 > import Curry.Base.Ident
 > 
-> import IL
+> import IL.Type
 > import PrettyCombinators
 
 > default(Int,Double)

@@ -17,7 +17,8 @@ instead of \texttt{Int} for representing integer values. This allows
 an unlimited range of integer constants in Curry programs.
 \begin{verbatim}
 
-> module Curry.Syntax where
+> module Curry.Syntax.Type where
+
 > import Curry.Base.Ident
 > import Curry.Base.Position
 > import Data.Generics

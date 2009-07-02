@@ -49,3 +49,5 @@ frontend:
 install: $(CYMAKE)
 	@mv ./$(CYMAKE) $(MCC_BIN)/
 
+clean:
+	rm *.o *.hi */*.o */*.hi */*/*.o */*/*.hi

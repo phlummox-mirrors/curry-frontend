@@ -11,8 +11,7 @@ The module \texttt{Base} provides common definitions for the various
 phases of the compiler.
 \begin{verbatim}
 
-> module Base(module Base
->             ) where
+> module Base where
 
 > import Data.List
 > import Control.Monad
@@ -26,15 +25,11 @@ phases of the compiler.
 > import Curry.Syntax
 > import Curry.Syntax.Pretty
 > import PrettyCombinators
-> import ExtendedFlat hiding (SrcRef, Fixity(..), TypeExpr, Expr(..))
-
+> import Curry.ExtendedFlat hiding (SrcRef, Fixity(..), TypeExpr, Expr(..))
 > import TopEnv
-
-
 > import Utils
 
-
-> import qualified ExtendedFlat as EF 
+> import qualified Curry.ExtendedFlat as EF 
 
 \end{verbatim}
 \paragraph{Types}

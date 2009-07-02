@@ -16,7 +16,7 @@ Haskell parser.
 > module Curry.Syntax.Pretty where
 
 > import Curry.Base.Ident
-> import Curry.Syntax
+> import Curry.Syntax.Type
 
 > import PrettyCombinators
 

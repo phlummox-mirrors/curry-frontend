@@ -23,8 +23,8 @@ import Base (ArityEnv, ArityInfo(..), ModuleEnv,
 	     TCEnv, TypeInfo(..), ValueEnv, ValueInfo(..),
 	     lookupValue, qualLookupTC,
 	     qualLookupArity, lookupArity,  internalError)
-import ExtendedFlat
-import qualified IL
+import Curry.ExtendedFlat
+import qualified IL.Type as IL
 import qualified Curry.Syntax as CS
 import CurryEnv (CurryEnv)
 import qualified CurryEnv

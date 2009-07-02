@@ -11,7 +11,7 @@ module Curry.Syntax.ShowModule ( showModule ) where
 
 import Curry.Base.Ident
 import Curry.Base.Position
-import Curry.Syntax
+import Curry.Syntax.Type
 
 showModule :: Module -> String
 showModule m = showsModule m "\n"

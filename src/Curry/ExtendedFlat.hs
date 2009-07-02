@@ -16,7 +16,7 @@
 
 {-# LANGUAGE DeriveDataTypeable, RankNTypes #-}
 
-module ExtendedFlat (SrcRef,Prog(..), QName(..), Visibility(..),
+module Curry.ExtendedFlat (SrcRef,Prog(..), QName(..), Visibility(..),
                   TVarIndex, TypeDecl(..), ConsDecl(..), TypeExpr(..),
                   OpDecl(..), Fixity(..),
                   VarIndex(..), 
@@ -75,24 +75,28 @@ hi_prec  = app_prec+1
 instance Read QName where
   readsPrec d r = 
        [ (mkQName nm,s) | (nm,s) <- readsPrec d r ]
-    ++ readParen (d > app_prec) 
+    ++ [ (QName r t m n, s) | ((r, t, m, n),s) <- readsPrec d r ]
+{- readParen (d > app_prec) 
                  (\r' -> [ (QName ref typ n m,res) 
                                | ("QName",s0) <- lex r',
                                  (ref,s1) <- readsPrec hi_prec s0,
                                  (typ,s2) <- readsPrec hi_prec s1,
                                  (n,s3)   <- readsPrec hi_prec s2,
                                  (m,res)  <- readsPrec hi_prec s3 ]) r
-    
+-}    
 
 instance Show QName where
-  showsPrec d (QName r t m n)= 
-    showParen (d > app_prec) $ showString "QName " .
+  showsPrec d (QName r t m n)
+      = showsPrec d (r,t,m,n)
+{-    showParen (d > app_prec) $ showString "QName " .
                      showsPrec hi_prec r . showChar ' ' .
                      showsPrec hi_prec t . showChar ' ' .
                      showsPrec hi_prec m . showChar ' ' .
                      showsPrec hi_prec n
+-}
 
 instance Eq QName where (==) = onName (==)
+
 instance Ord QName where compare = onName compare
 
 mkQName :: (String,String) -> QName
@@ -135,19 +139,20 @@ idxOf VarIndex{index=i}= i
 instance Read VarIndex where
   readsPrec d r = 
        [ (mkIdx i,s) | (i,s) <- readsPrec d r ]
-    ++ readParen (d > app_prec) 
+    ++ [ (VarIndex t i,s) | ((t,i),s) <- readsPrec d r ]
+{-readParen (d > app_prec) 
                  (\r' -> [ (VarIndex typ i,res) 
                          | ("VarIndex",s0) <- lex r',
                            (typ,s1) <- readsPrec hi_prec s0,
                            (i,res)  <- readsPrec hi_prec s1]) r
-    
+  -}  
 
 instance Show VarIndex where
-  showsPrec d (VarIndex t i)= 
-    showParen (d > app_prec) $ showString "VarIndex " .
+  showsPrec d (VarIndex t i)= showsPrec d (t,i)
+{-    showParen (d > app_prec) $ showString "VarIndex " .
                      showsPrec hi_prec t . showChar ' ' .
                      showsPrec hi_prec i
-
+-}
 
 instance Eq VarIndex where (==) = onIndexes (==)
 instance Ord VarIndex where compare = onIndexes compare

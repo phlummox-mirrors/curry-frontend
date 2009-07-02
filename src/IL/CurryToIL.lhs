@@ -19,7 +19,7 @@ data structures, we can use only a qualified import for the
 \texttt{IL} module.
 \begin{verbatim}
 
-> module ILTrans(ilTrans,ilTransIntf) where
+> module IL.CurryToIL(ilTrans,ilTransIntf) where
 
 > import Data.Maybe
 > import Data.List
@@ -32,7 +32,7 @@ data structures, we can use only a qualified import for the
 
 > import Types
 > import Base
-> import qualified IL
+> import qualified IL.Type as IL
 > import Utils
 
 

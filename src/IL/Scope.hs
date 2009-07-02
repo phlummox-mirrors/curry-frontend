@@ -1,4 +1,4 @@
-module ILScope (getModuleScope,
+module IL.Scope (getModuleScope,
 		insertDeclScope, insertConstrDeclScope,
 		insertCallConvScope, insertTypeScope,
 		insertLiteralScope, insertConstrTermScope,
@@ -7,7 +7,7 @@ module ILScope (getModuleScope,
 
 import Curry.Base.Ident
 
-import IL
+import IL.Type
 import OldScopeEnv as ScopeEnv
 
 

@@ -17,7 +17,7 @@ combinators described in appendix~\ref{sec:ll-parsecomb}.
 > import Curry.Base.Position
 > import Curry.Base.MessageMonad
 > import Curry.Syntax.LLParseComb
-> import Curry.Syntax
+> import Curry.Syntax.Type
 > import Curry.Syntax.Lexer
 
 > instance Symbol Token where

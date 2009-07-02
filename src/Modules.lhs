@@ -50,16 +50,16 @@ import declarations are commented out
 > import Desugar(desugar)
 > import Simplify(simplify)
 > import Lift(lift)
-> import qualified IL
-> import ILTrans(ilTrans)
-> import ILxml(xmlModule) -- check
-> import ExtendedFlat
+> import qualified IL.Type as IL
+> import IL.CurryToIL(ilTrans)
+> import IL.XML(xmlModule)
+> import Curry.ExtendedFlat
 > import GenFlatCurry (genFlatCurry,genFlatInterface)
 > import Curry.AbstractCurry
 > import GenAbstractCurry
 > import InterfaceCheck
 > import CurryEnv
-> import qualified ILPP(ppModule)
+> import qualified IL.Pretty(ppModule)
 > import CurryCompilerOpts(Options(..),Dump(..))
 > import CaseCompletion
 > import PathUtils
@@ -219,8 +219,8 @@ code are obsolete and commented out.
 >	           (DumpDesugared,ppModule desugared),
 >                  (DumpSimplified,ppModule simplified),
 >                  (DumpLifted,ppModule lifted),
->                  (DumpIL,ILPP.ppModule il),
->	           (DumpCase,ILPP.ppModule il')
+>                  (DumpIL,IL.Pretty.ppModule il),
+>	           (DumpCase,IL.Pretty.ppModule il')
 >	          ]
 
 > qualifyEnv :: ModuleEnv -> PEnv -> TCEnv -> ValueEnv -> ArityEnv

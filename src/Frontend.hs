@@ -31,7 +31,7 @@ import CaseCompletion
 import CurryDeps hiding (unlitLiterate)
 import qualified Curry.Syntax as CS
 import qualified Curry.AbstractCurry as ACY
-import qualified ExtendedFlat as FCY
+import qualified Curry.ExtendedFlat as FCY
 import CurryEnv
 import Unlit
 import Curry.Base.Ident
