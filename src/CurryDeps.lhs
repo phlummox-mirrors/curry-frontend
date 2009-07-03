@@ -26,9 +26,8 @@ dependencies and to update programs composed of multiple modules.
 > import Curry.Base.Ident
 > import Curry.Base.MessageMonad
 
-> import Unlit
 > import Curry.Syntax hiding(Interface(..))
-> import Curry.Syntax.Parser(parseHeader)
+
 > import SCC
 > import PathUtils
 
@@ -146,7 +145,7 @@ prelude itself. Any errors reported by the parser are ignored.
 > sourceDeps paths libraryPaths m mEnv fn =
 >   do
 >     s <- readModule fn
->     case ignoreWarnings $ parseHeader fn (unlitLiterate fn s) of
+>     case fst $ runMsg $ parseHeader fn s of
 >       Right (Module m' _ ds) ->
 >         let ms = imports m' ds in
 >         foldM (moduleDeps paths libraryPaths) (Map.insert m (Source fn ms) mEnv) ms
@@ -156,10 +155,10 @@ prelude itself. Any errors reported by the parser are ignored.
 > imports m ds = nub $
 >   [preludeMIdent | m /= preludeMIdent] ++ [m | ImportDecl _ m _ _ _ <- ds]
 
-> unlitLiterate :: FilePath -> String -> String
-> unlitLiterate fn
->   | lcurryExt `isSuffixOf` fn = snd . unlit fn
->   | otherwise = id
+unlitLiterate :: FilePath -> String -> String
+unlitLiterate fn
+  | lcurryExt `isSuffixOf` fn = snd . unlit fn
+  | otherwise = id
 
 \end{verbatim}
 It is quite straight forward to generate Makefile dependencies from
@@ -279,9 +278,6 @@ of dependend program files.
 >               | uacy      = "--uacy"
 >               | otherwise = "-c"
 >
->         oGen fn' | flat || xml || acy || uacy = []
->                  | otherwise   = ["-o", head (targetNames fn')]
->
 >         link fn' os = unwords ("link" : "-o" : fn' : os)
 >
 >         flatInt m =
@@ -382,6 +378,7 @@ file.
 
 > curryExt, lcurryExt, icurryExt, oExt :: String
 > curryExt = ".curry"
+
 > lcurryExt = ".lcurry"
 > icurryExt = ".icurry"
 > flatExt = ".fcy"

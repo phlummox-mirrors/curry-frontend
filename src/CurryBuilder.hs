@@ -20,7 +20,7 @@ import System.IO
 
 import Curry.Base.Ident
 
-import Modules (compileModule_)
+import Modules (compileModule)
 import CurryCompilerOpts 
 import CurryDeps
 import PathUtils
@@ -72,7 +72,7 @@ makeCurry options deps file
 
  compileFile file
     = do unless (noVerb options) (putStrLn ("compiling " ++ file ++ " ..."))
-	 compileCurry (compOpts True) file
+	 compileModule (compOpts True) file
 	 return ()
 
  skipFile file
@@ -84,7 +84,7 @@ makeCurry options deps file
 		(putStrLn ("generating "  
 			   ++ (head (targetNames file))               
 			   ++ " ..."))
-	 compileCurry (compOpts False) file
+	 compileModule (compOpts False) file
 	 return ()
 
  targetNames fn         
@@ -169,9 +169,6 @@ getDepTimes (file:files)
 --
 outOfDate :: [ClockTime] -> [ClockTime] -> Bool
 outOfDate tgtimes dptimes = or (map (\t -> or (map ((<) t) dptimes)) tgtimes)
-
-
-compileCurry = compileModule_
 
 -------------------------------------------------------------------------------
 -- Error handling

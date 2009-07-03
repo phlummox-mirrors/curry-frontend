@@ -44,7 +44,7 @@ showError w = "Error: " ++ pos ++ warnTxt w
                   Just p -> show p ++": "
 
 ok :: MsgMonad a -> a
-ok = either (error . showError) id . ignoreWarnings
+ok = either (error . showError) id . fst . runMsg
 
 
 failWith :: (MonadError a m, Error a) => String -> m a1
@@ -62,9 +62,22 @@ warnMessage s = tell [WarnMsg Nothing s]
 warnMessageAt :: (MonadWriter [WarnMsg] m) => Position -> String -> m ()
 warnMessageAt p s  = tell [WarnMsg (Just p) s]
 
-ignoreWarnings :: MsgMonad a -> Either WarnMsg a
-ignoreWarnings = fst . runIdentity . runWriterT . runErrorT
+runMsg :: MsgMonad a -> (Either WarnMsg a, [WarnMsg])
+runMsg = runIdentity . runWriterT . runErrorT
 
 -- returnIO :: MsgMonad a -> MsgMonadIO a
 -- returnIO x = return$ (runIdentity . runWriterT . runErrorT) x
 
+runMsgIO :: MsgMonad a -> (a -> IO (MsgMonad b)) -> IO (MsgMonad b)
+runMsgIO m f
+    = case runMsg m of
+        (Left e, msgs) -> return (tell msgs >> throwError e)
+        (Right x, msgs) -> do m' <- f x
+                              case runMsg m' of
+                                (Left _,_) -> return m'
+                                (Right x', msgs') -> return (tell (msgs ++ msgs') >> return x')
+
+dropIO :: MsgMonad a -> MsgMonadIO a
+dropIO x = case runMsg x of
+             (Left e, m) -> tell m >> throwError e
+             (Right x, m) -> tell m >> return x

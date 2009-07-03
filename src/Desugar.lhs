@@ -62,7 +62,7 @@ all names must be properly qualified before calling this module.}
 > module Desugar(desugar) where
 
 > import Data.Maybe
-> import Control.Monad
+> import Control.Arrow(second)
 > import Control.Monad.State as S
 > import Data.List
 
@@ -239,11 +239,11 @@ with a local declaration for $v$.
 > desugarTerm m tcEnv p ds (ConstructorPattern c [t]) =
 >   do
 >     tyEnv <- S.get
->     liftM (if isNewtypeConstr tyEnv c then id else apSnd (constrPat c))
+>     liftM (if isNewtypeConstr tyEnv c then id else second (constrPat c))
 >           (desugarTerm m tcEnv p ds t)
 >   where constrPat c t = ConstructorPattern c [t]
 > desugarTerm m tcEnv p ds (ConstructorPattern c ts) =
->   liftM (apSnd (ConstructorPattern c)) (mapAccumM (desugarTerm m tcEnv p) ds ts)
+>   liftM (second (ConstructorPattern c)) (mapAccumM (desugarTerm m tcEnv p) ds ts)
 > desugarTerm m tcEnv p ds (InfixPattern t1 op t2) =
 >   desugarTerm m tcEnv p ds (ConstructorPattern op [t1,t2])
 > desugarTerm m tcEnv p ds (ParenPattern t) = desugarTerm m tcEnv p ds t
@@ -252,7 +252,7 @@ with a local declaration for $v$.
 >   where tupleConstr ts = addRef pos $ 
 >                          if null ts then qUnitId else qTupleId (length ts)
 > desugarTerm m tcEnv p ds (ListPattern pos ts) =
->   liftM (apSnd (desugarList pos cons nil)) (mapAccumM (desugarTerm m tcEnv p) ds ts)
+>   liftM (second (desugarList pos cons nil)) (mapAccumM (desugarTerm m tcEnv p) ds ts)
 >   where nil  p' = ConstructorPattern (addRef p' qNilId) []
 >         cons p' t ts = ConstructorPattern (addRef p' qConsId) [t,ts]
 
@@ -260,7 +260,7 @@ with a local declaration for $v$.
 >   liftM (desugarAs p v) (desugarTerm m tcEnv p ds t)
 > desugarTerm m tcEnv p ds (LazyPattern pos t) = desugarLazy pos m p ds t
 > desugarTerm m tcEnv p ds (FunctionPattern f ts) =
->   liftM (apSnd (FunctionPattern f)) (mapAccumM (desugarTerm m tcEnv p) ds ts)
+>   liftM (second (FunctionPattern f)) (mapAccumM (desugarTerm m tcEnv p) ds ts)
 > desugarTerm m tcEnv p ds (InfixFuncPattern t1 f t2) =
 >   desugarTerm m tcEnv p ds (FunctionPattern f [t1,t2])
 > desugarTerm m tcEnv p ds (RecordPattern fs _)

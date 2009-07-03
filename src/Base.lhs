@@ -23,7 +23,7 @@ phases of the compiler.
 > import Curry.Base.Position
 > import Types
 > import Curry.Syntax
-> import Curry.Syntax.Pretty
+> import Curry.Syntax.Pretty(ppTypeExpr)
 > import PrettyCombinators
 > import Curry.ExtendedFlat hiding (SrcRef, Fixity(..), TypeExpr, Expr(..))
 > import TopEnv

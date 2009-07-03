@@ -13,6 +13,7 @@ combinators described in appendix~\ref{sec:ll-parsecomb}.
 \begin{verbatim}
 
 > module Curry.Syntax.Parser where
+
 > import Curry.Base.Ident
 > import Curry.Base.Position
 > import Curry.Base.MessageMonad
@@ -28,17 +29,14 @@ combinators described in appendix~\ref{sec:ll-parsecomb}.
 \begin{verbatim}
 
 > parseSource :: Bool -> FilePath -> String -> MsgMonad Module
-> parseSource flat path mod = 
->    fmap addSrcRefs (applyParser (parseModule flat) lexer path mod)
+> parseSource flat path = 
+>    fmap addSrcRefs . applyParser ( moduleHeader <*> decls flat) lexer path
 
 > parseHeader :: FilePath -> String -> MsgMonad Module
 > parseHeader = prefixParser (moduleHeader <*->
 >                             (leftBrace `opt` undefined) <*>
 >                             many (importDecl <*-> many semicolon))
 >                            lexer
-
-> parseModule :: Bool -> Parser Token Module a
-> parseModule flat = moduleHeader <*> decls flat
 
 > moduleHeader :: Parser Token ([Decl] -> Module) a
 > moduleHeader = Module <$-> token KW_module
@@ -80,7 +78,7 @@ Since this modified version of MCC uses FlatCurry interfaces instead of
 \begin{verbatim}
 
 > decls :: Bool -> Parser Token [Decl] a
-> decls flat = layout (globalDecls flat)
+> decls = layout . globalDecls
 
 > globalDecls :: Bool -> Parser Token [Decl] a
 > globalDecls flat =
@@ -146,7 +144,7 @@ Since this modified version of MCC uses FlatCurry interfaces instead of
 
 > typeDeclRhs :: Parser Token TypeExpr a
 > typeDeclRhs = type0
->	        <|> (flip RecordType) Nothing
+>	        <|> flip RecordType Nothing
 >		   <$> (layoutOff <-*> braces (labelDecls `sepBy` comma))
 
 > labelDecls = (,) <$> labId `sepBy1` comma <*-> token DoubleColon <*> type0
@@ -692,7 +690,7 @@ prefix of a let expression.
 > gconop = gConSym <|> backquotes (qConId <?> "operator name expected")
 
 > ident :: Parser Token Ident a
-> ident = (\ pos t -> mkIdentPosition pos $ sval t) <$> position <*> 
+> ident = (\ pos -> mkIdentPosition pos . sval) <$> position <*> 
 >        tokens [Id,Id_as,Id_ccall,Id_forall,Id_hiding,
 >                Id_interface,Id_primitive,Id_qualified]
 
@@ -709,7 +707,7 @@ prefix of a let expression.
 >                      mkMIdent (modul a ++ [sval a])
 
 > sym :: Parser Token Ident a
-> sym = (\ pos t -> mkIdentPosition pos $ sval t) <$> position <*> 
+> sym = (\ pos -> mkIdentPosition pos . sval) <$> position <*> 
 >       tokens [Sym,Sym_Dot,Sym_Minus,Sym_MinusDot]
 
 > qSym :: Parser Token QualIdent a
@@ -730,10 +728,7 @@ prefix of a let expression.
 >         position <*> token Sym_MinusDot
 
 > tupleCommas :: Parser Token QualIdent a
-> tupleCommas = (\ p str -> qualify $
->                           addPositionIdent p (tupleId $ 
->                                               (1 + ) $ 
->                                               length str))
+> tupleCommas = (\ p -> qualify . addPositionIdent p . tupleId . succ . length )
 >               <$> position <*> many1 comma
 
 \end{verbatim}
@@ -763,7 +758,7 @@ prefix of a let expression.
 >   where attr (Token _ a) = a
 
 > tokens :: [Category] -> Parser Token Attributes a
-> tokens cs = foldr1 (<|>) (map token cs)
+> tokens = foldr1 (<|>) . map token
 
 > tokenOps :: [(Category,a)] -> Parser Token a b
 > tokenOps cs = ops [(Token c NoAttributes,x) | (c,x) <- cs]
@@ -806,6 +801,6 @@ prefix of a let expression.
 \begin{verbatim}
 
 > mkIdentPosition :: Position -> String -> Ident
-> mkIdentPosition pos str = addPositionIdent pos $ mkIdent str
+> mkIdentPosition pos = addPositionIdent pos . mkIdent
 
 \end{verbatim}

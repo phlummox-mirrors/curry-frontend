@@ -29,10 +29,6 @@ debug' = False -- messages
 
 trace'' s x = if debug' then trace s x else x
 
-debug'' = False -- parseResults und codes
-
-trace''' s x = if debug'' then trace s x else x
-
 type Program = [(Int,Int,Code)] 
 
 data Code =  Keyword String
@@ -78,14 +74,14 @@ data FunctionKind = InfixFunction
 --- @param filename                  
 --- @return program
 filename2program :: [String] -> String -> IO Program
-filename2program paths filename=
-     readModule filename >>= \ cont ->
-     (catchError show (typingParse paths filename  cont)) >>= \ typingParseResult ->
-     (catchError show (fullParse paths filename  cont)) >>= \ fullParseResult ->             
-     (catchError show (return (parse filename cont))) >>= \ parseResult ->
-     (catchError show (return (Frontend.lex filename cont))) >>= \ lexResult ->    
-     return (genProgram cont (typingParseResult : fullParseResult : [parseResult]) lexResult)    
-                        
+filename2program paths filename
+    = do cont <- readModule filename
+         typingParseResult <- (catchError showm (typingParse paths filename  cont))
+         fullParseResult <- (catchError showm (fullParse paths filename  cont))
+         parseResult <- (catchError showm (return (parse filename cont)))
+         lexResult <- (catchError showm (return (Frontend.lex filename cont)))
+         return (genProgram cont (typingParseResult : fullParseResult : [parseResult]) lexResult)    
+    where showm x = show (runMsg x)
 
      
         
@@ -93,30 +89,15 @@ filename2program paths filename=
 --- @param list with parse-Results with descending quality  e.g. [typingParse,fullParse,parse]                                        
 --- @param lex-Result
 --- @return program
-genProgram :: String -> [Result Module] -> Result [(Position,Token)] -> Program       
-genProgram _ parseResults (Result mess posNtokList) = 
-    let messages = (prepareMessages 
-                      (concatMap getMessages parseResults ++                         
-                       mess))
-        mergedMessages = (mergeMessages' (trace' ("Messages: " ++ show messages) messages) 
-                                      posNtokList)
-        (nameList,codes) = catIdentifiers parseResults in
-    trace''' ("parseResults : " ++ show parseResults ++ "\n\nCodes: " ++ show codes ++ "\n\nToken: " ++ show mergedMessages)
-             (tokenNcodes2codes
-                      nameList
-                      1 
-                      1
-                      mergedMessages 
-                      codes)            
-
-    
-genProgram plainText parseResults (Failure messages) =
-     trace' (unlines (map (\(WarnMsg _ str) -> str) allMessages)) 
-            (buildMessagesIntoPlainText allMessages plainText)    
-  where
-      allMessages = prepareMessages (concatMap getMessages parseResults ++ 
-                                     messages)   
-     
+genProgram :: String -> [MsgMonad Module] -> MsgMonad [(Position,Token)] -> Program       
+genProgram plainText parseResults m
+    = case runMsg m of
+        (Left e, msgs) -> buildMessagesIntoPlainText ([e]) plainText
+        (Right posNtokList, mess) 
+            -> let messages = (prepareMessages (concatMap getMessages parseResults ++ mess))
+                   mergedMessages = (mergeMessages' (trace' ("Messages: " ++ show messages) messages) posNtokList)
+                   (nameList,codes) = catIdentifiers parseResults
+               in tokenNcodes2codes nameList 1 1 mergedMessages codes
 
     
 --- @param Program
@@ -147,11 +128,11 @@ area2codes xxs@((l,c,code):xs) p1@Position{file=file} p2
 --- @param a show-function for (Result a)                    
 --- @param a function that generates a (Result a)
 --- @return (Result a) without runtimeerrors   
-catchError :: (Result a -> String) -> IO (Result a) -> IO (Result a)
+catchError :: (MsgMonad a -> String) -> IO (MsgMonad a) -> IO (MsgMonad a)
 catchError toString toDo = Control.Exception.catch (toDo >>= returnComplete toString) handler 
   where     
-      handler (ErrorCall str) = return (Failure [setMessagePosition (WarnMsg Nothing str)])
-      handler  e = return (Failure [WarnMsg Nothing (show e)])       
+      handler (ErrorCall str) = return (failWith str)
+      handler  e = return (failWith (show e))  
              
       returnComplete :: (a -> String) -> a -> IO a
       returnComplete toString a = f (toString a) (return a)
@@ -212,9 +193,9 @@ flatCode code = code
 -- ----------Message---------------------------------------                  
                   
 
-getMessages :: Result a -> [WarnMsg]
-getMessages (Result mess _) = mess
-getMessages (Failure mess) = mess
+getMessages :: MsgMonad a -> [WarnMsg]
+getMessages = snd . runMsg --(Result mess _) = mess
+-- getMessages (Failure mess) = mess
 
 lessMessage :: WarnMsg -> WarnMsg -> Bool
 lessMessage (WarnMsg mPos1 _) (WarnMsg mPos2 _) = mPos1 < mPos2
@@ -228,10 +209,6 @@ eqMessage (WarnMsg p1 s1) (WarnMsg p2 s2) = (p1 == p2) && (s1 == s2)
 prepareMessages :: [WarnMsg] -> [WarnMsg]   
 prepareMessages = qsort lessMessage . map setMessagePosition . nubMessages
 
--- FIXME funktioniert nicht mehr
-hasError [] = False
-hasError ((WarnMsg _ _):ms) = True
-hasError (_:ms) = hasError ms
 
 buildMessagesIntoPlainText :: [WarnMsg] -> String -> Program
 buildMessagesIntoPlainText messages text = 
@@ -250,8 +227,7 @@ buildMessagesIntoPlainText messages text =
           if null pre 
              then buildMessagesIntoPlainText' post preStrs (postStrs ++ [str]) (ln + 1)
              else (ln,1,NotParsed (unlines postStrs)) : 
-                  (if hasError pre then (ln,1,CodeError pre (NotParsed str)) : [(ln,1,NewLine)] 
-                                   else (ln,1,CodeWarning pre (NotParsed str)) : [(ln,1,NewLine)]) ++
+                  ((ln,1,CodeWarning pre (NotParsed str)) : [(ln,1,NewLine)]) ++
                   (buildMessagesIntoPlainText' post preStrs [] (ln + 1)) 
       where 
          isLeq (WarnMsg (Just p) _) = line p <= ln 
@@ -262,18 +238,17 @@ buildMessagesIntoPlainText messages text =
 
      
 --- @param parse-Modules  [typingParse,fullParse,parse] 
-catIdentifiers :: [Result Module] -> ([(ModuleIdent,ModuleIdent)],[Code])
-catIdentifiers [] = ([],[])
-catIdentifiers [(Failure _)] = ([],[])
-catIdentifiers [(Result _ m@(Module moduleIdent maybeExportSpec decls))] =
-    catIdentifiers' m Nothing
-catIdentifiers ((Failure _):y:ys) = 
-    catIdentifiers (y:ys)     
-catIdentifiers rs@((Result _ m@(Module _ _ _)):y:ys) =  
-    catIdentifiers' (getLastModule (reverse rs)) (Just m)
-  where
-    getLastModule ((Failure _):xs) = getLastModule xs
-    getLastModule ((Result _ m@(Module _ _ _)):_) = m
+catIdentifiers :: [MsgMonad Module] -> ([(ModuleIdent,ModuleIdent)],[Code])
+catIdentifiers = catIds . map fst . map runMsg
+    where 
+      catIds [] = ([],[])
+      catIds ((Left _):ys) = catIds ys
+      catIds [(Right m@(Module moduleIdent maybeExportSpec decls))] =
+          catIdentifiers' m Nothing
+      catIds rs@(Right m:y:ys) =  
+          catIdentifiers' (getLastModule (reverse rs)) (Just m)
+      getLastModule (Left _:xs) = getLastModule xs
+      getLastModule (Right m:_) = m
     
 --- @param parse-Module
 --- @param Maybe betterParse-Module    
@@ -416,9 +391,6 @@ tokenNcodes2codes nameList currLine currCol toks@((messages,pos@Position{line=li
       addMessage [] = []
       addMessage ((l,c,code):cs)
          | null messages = ((l,c,code):cs)
-         | hasError messages = 
-               trace' ("Error bei code: " ++ show codes ++ ":" ++ show messages) 
-                      ((l,c,CodeError messages code): addMessage cs)
          | otherwise = trace' ("Warning bei code: " ++ show codes ++ ":" ++ show messages) 
                               ((l,c,CodeWarning messages code): addMessage cs)
       

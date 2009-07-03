@@ -90,16 +90,16 @@ partitionDecl partitions (ExternalDecl pos conv name id typeexpr)
 partitionDecl partitions (FlatExternalDecl pos ids)
    = partitionFuncDecls (\id -> FlatExternalDecl pos [id]) partitions ids
 partitionDecl partitions (InfixDecl pos fix prec idents)
-   = partitions {opDecls = (map (\id -> (InfixDecl pos fix prec [id])) idents)
-		          ++ (opDecls partitions)}
+   = partitions {opDecls = map (\id -> (InfixDecl pos fix prec [id])) idents
+		           ++ opDecls partitions }
 partitionDecl partitions decl
    = case decl of
        ImportDecl _ _ _ _ _ 
-         -> partitions {importDecls = decl:(importDecls partitions)}
+         -> partitions {importDecls = decl: importDecls partitions }
        DataDecl _ _ _ _     
-         -> partitions {typeDecls = decl:(typeDecls partitions)}
+         -> partitions {typeDecls = decl : typeDecls partitions }
        TypeDecl _ _ _ _     
-         -> partitions {typeDecls = decl:(typeDecls partitions)}
+         -> partitions {typeDecls = decl : typeDecls partitions }
        _ -> partitions
 
 
@@ -109,7 +109,7 @@ partitionFuncDecls genDecl partitions ids
    = partitions {funcDecls = foldl partitionFuncDecl (funcDecls partitions) ids}
  where
    partitionFuncDecl funcs' id
-      = insertEntry id ((genDecl id):(fromMaybe [] (lookup id funcs'))) funcs'
+      = insertEntry id (genDecl id : fromMaybe [] (lookup id funcs')) funcs'
 
 
 -- Data type for representing partitions of CurrySyntax declarations
@@ -205,15 +205,15 @@ genTypeExpr env (RecordType fss mr)
          (ls,ts) = unzip fs
          (ts',env1) = mapfoldl genTypeExpr env ts
          ls' = map name ls
-     in  case mr of
+     in case mr of
            Nothing
              -> (CRecordType (zip ls' ts') Nothing, env1)
            Just tvar@(VariableType _)
              -> let (CTVar iname, env2) = genTypeExpr env1 tvar
                 in  (CRecordType (zip ls' ts') (Just iname), env2)
-           Just rec@(RecordType _ _)
-             -> let (CRecordType fields rbase, env2) = genTypeExpr env1 rec
-		    fields' = foldr (\ (l,t) -> insertEntry l t) 
+           (Just r@(RecordType _ _))
+             -> let (CRecordType fields rbase, env2) = genTypeExpr env1 r
+		    fields' = foldr (uncurry insertEntry) 
 				    fields
 			            (zip ls' ts')
 		in  (CRecordType fields' rbase, env2)
@@ -303,7 +303,7 @@ genFuncDecl isLocal env (ident, decls)
 		mtypeexpr
 
    compArityFromType (CTVar _)        = 0
-   compArityFromType (CFuncType _ t2) = 1 + (compArityFromType t2)
+   compArityFromType (CFuncType _ t2) = 1 + compArityFromType t2
    compArityFromType (CTCons _ _)     = 0
 
    compRule evalannot rules mexternal
@@ -393,15 +393,15 @@ genLocalDecls env decls
 	      (locals, env2) 
 		= genLocals (endScope env1)
 		            fdecls 
-			    ((FlatExternalDecl pos (tail idents)):decls)
+			    (FlatExternalDecl pos (tail idents):decls)
           in  (funcdecl:locals, env2)
-   genLocals env fdecls ((PatternDecl pos constr rhs):decls)
+   genLocals env fdecls (PatternDecl pos constr rhs : decls)
       = let (patt, env1)    = genLocalPattern pos env constr
 	    (plocals, env2) = genLocalDecls (beginScope env1) 
 			                    (simplifyRhsLocals rhs)
 	    (expr, env3)    = genLocalPattRhs pos env2 (simplifyRhsExpr rhs)
 	    (locals, env4)  = genLocals (endScope env3) fdecls decls
-	in  ((CLocalPat patt expr plocals):locals, env4)
+	in  (CLocalPat patt expr plocals:locals, env4)
    genLocals env fdecls ((ExtraVariables pos idents):decls)
       | null idents  = genLocals env fdecls decls
       | otherwise
@@ -411,9 +411,9 @@ genLocalDecls env decls
 					 ++ " for free variable \""
 					 ++ show ident ++ "\""))
 		         (getVarIndex env ident)
-	      decls' = (ExtraVariables pos (tail idents)):decls
+	      decls' = ExtraVariables pos (tail idents) : decls
 	      (locals, env') = genLocals env fdecls decls'
-          in  ((CLocalVar (idx, name ident)):locals, env')
+          in (CLocalVar (idx, name ident) : locals, env')
    genLocals env fdecls ((TypeSig _ _ _):decls)
       = genLocals env fdecls decls
    genLocals _ _ decl = internalError ("unexpected local declaration: \n"
@@ -480,7 +480,7 @@ genLocalDecls env decls
       = let (fields', env1) = mapfoldl (genField genLocalPattern) env fields
 	    (mr', env2)
 		= maybe (Nothing, env1)
-		        ((applyFst Just) . (genLocalPattern pos env1))
+		        (applyFst Just . genLocalPattern pos env1)
 			mr
 	in  (CPRecord fields' mr', env2)
 
@@ -521,7 +521,7 @@ genExpr pos env (Tuple _ args)
 genExpr pos env (List _ args)
    = let cons = Constructor qConsId
 	 nil  = Constructor qNilId
-     in  genExpr pos env (foldr (\e1 e2 -> Apply (Apply cons e1) e2) nil args)
+     in  genExpr pos env (foldr (Apply . Apply cons) nil args)
 genExpr pos env (ListCompr _ expr stmts)
    = let (stmts', env1) = mapfoldl (genStatement pos) (beginScope env) stmts
 	 (expr', env2)  = genExpr pos env1 expr
@@ -662,7 +662,7 @@ genPattern pos env (InfixFuncPattern cterm1 qident cterm2)
 genPattern pos env (RecordPattern fields mr)
    = let (fields', env1) = mapfoldl (genField genPattern) env fields
          (mr', env2)     = maybe (Nothing, env1)
-                                 ((applyFst Just) . (genPattern pos env1))
+                                 (applyFst Just . genPattern pos env1)
 				 mr
      in  (CPRecord fields' mr', env2)
 
@@ -786,18 +786,18 @@ genAbstractEnv absType tyEnv tcEnv (Module mid exps decls)
 -- Generates a list of exports for all specified top level declarations
 buildExports :: ModuleIdent -> [Decl] -> [Export]
 buildExports _ [] = []
-buildExports mid ((DataDecl _ ident _ _):ds) 
-   = (ExportTypeAll (qualifyWith mid ident)):(buildExports mid ds)
+buildExports mid (DataDecl _ ident _ _:ds) 
+   = ExportTypeAll (qualifyWith mid ident) : buildExports mid ds
 buildExports mid ((NewtypeDecl _ ident _ _):ds)
-   = (ExportTypeAll (qualifyWith mid ident)):(buildExports mid ds)
+   = ExportTypeAll (qualifyWith mid ident) : buildExports mid ds
 buildExports mid ((TypeDecl _ ident _ _):ds)
-   = (Export (qualifyWith mid ident)):(buildExports mid ds)
+   = Export (qualifyWith mid ident) : buildExports mid ds
 buildExports mid ((FunctionDecl _ ident _):ds)
-   = (Export (qualifyWith mid ident)):(buildExports mid ds)
-buildExports mid ((ExternalDecl _ _ _ ident _):ds)
-   = (Export (qualifyWith mid ident)):(buildExports mid ds)
-buildExports mid ((FlatExternalDecl _ idents):ds)
-   = (map (Export . (qualifyWith mid)) idents) ++ (buildExports mid ds)
+   = Export (qualifyWith mid ident) : buildExports mid ds
+buildExports mid (ExternalDecl _ _ _ ident _ : ds)
+   = Export (qualifyWith mid ident) : buildExports mid ds
+buildExports mid (FlatExternalDecl _ idents : ds)
+   = map (Export . qualifyWith mid) idents ++ buildExports mid ds
 buildExports mid (_:ds) = buildExports mid ds
 
 
@@ -860,7 +860,7 @@ genVarIndex env ident
          vtabs = varScope env
 	 vtab  = head vtabs --if null vtabs then Map.empty else head vtabs
      in  (idx, env {varIndex = idx + 1,
-		    varScope = (Map.insert ident idx vtab):(sureTail vtabs)})
+		    varScope = Map.insert ident idx vtab : sureTail vtabs})
 
 -- Generates an unique index for the type variable 'ident' and inserts it
 -- into the type variable table of the current scope.
@@ -870,7 +870,7 @@ genTVarIndex env ident
          vtabs = tvarScope env
 	 vtab  = head vtabs --if null vtabs then Map.empty else head vtabs
      in  (idx, env {tvarIndex = idx + 1,
-		    tvarScope = (Map.insert ident idx vtab):(sureTail vtabs)})
+		    tvarScope = Map.insert ident idx vtab : sureTail vtabs })
 
 
 -- Looks up the unique index for the variable 'ident' in the
@@ -906,8 +906,8 @@ resetScope env = env {varIndex  = 0,
 -- Starts a new scope, i.e. copies and pushes the variable table of the current 
 -- scope onto the top of the stack
 beginScope :: AbstractEnv -> AbstractEnv
-beginScope env = env {varScope  = (head vs):vs,
-		      tvarScope = (head tvs):tvs}
+beginScope env = env {varScope  = head vs :vs,
+		      tvarScope = head tvs :tvs }
  where
  vs  = varScope env
  tvs = tvarScope env
@@ -989,7 +989,7 @@ lookupType ident tyEnv
 -- The following functions transform left-hand-side and right-hand-side terms
 -- for a better handling
 simplifyLhs :: Lhs -> [ConstrTerm]
-simplifyLhs lhs = snd (flatLhs lhs)
+simplifyLhs = snd . flatLhs
 
 simplifyRhsExpr :: Rhs -> [(Expression, Expression)]
 simplifyRhsExpr (SimpleRhs _ expr _) 
@@ -1020,7 +1020,7 @@ insertEntry :: Eq a => a -> b -> [(a,b)] -> [(a,b)]
 insertEntry k e [] = [(k,e)]
 insertEntry k e ((x,y):xys)
    | k == x    = (k,e):xys
-   | otherwise = (x,y):(insertEntry k e xys)
+   | otherwise = (x,y) : insertEntry k e xys
 
 
 -- Returns the list without the first element. If the list is empty, an

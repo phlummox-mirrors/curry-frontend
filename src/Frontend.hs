@@ -7,37 +7,26 @@
 -- December 2005,
 -- Martin Engelke (men@informatik.uni-kiel.de)
 --
-module Frontend (lex, parse, fullParse, typingParse, abstractIO, flatIO,
-		 Result(..) --, WarnMsg(..)
-		)where
+module Frontend (lex, parse, fullParse, typingParse)where
 
-import Data.List
 import Data.Maybe
 import qualified Data.Map as Map
-import Control.Monad
+import Control.Monad.Writer
+import Control.Monad.Error
 import Prelude hiding (lex)
 
 import Modules
 import CurryBuilder
 import CurryCompilerOpts
 import Curry.Base.MessageMonad
-import Curry.Syntax.Parser
-import Curry.Syntax.Lexer
--- import qualified Curry.Base.MessageMonad as Err
-
-import GenAbstractCurry
-import GenFlatCurry
-import CaseCompletion
-import CurryDeps hiding (unlitLiterate)
 import qualified Curry.Syntax as CS
-import qualified Curry.AbstractCurry as ACY
-import qualified Curry.ExtendedFlat as FCY
-import CurryEnv
-import Unlit
+import Curry.Syntax.Lexer
+
+import CurryDeps
 import Curry.Base.Ident
 import Curry.Base.Position
 import PathUtils
-
+import Base(ModuleEnv)
 
 -------------------------------------------------------------------------------
 -------------------------------------------------------------------------------
@@ -45,18 +34,15 @@ import PathUtils
 -- Returns the result of a lexical analysis of the source program 'src'.
 -- The result is a list of tuples consisting of a position and a token
 -- (see Modules "Position" and "CurryLexer")
-lex :: FilePath -> String -> Result [(Position,Token)]
-lex fn src = genToks (lexFile (first fn) src False [])
+lex :: FilePath -> String -> MsgMonad [(Position,Token)]
+lex fn src = lexFile (first fn) src False []
 
 
 -- Returns the result of a syntactical analysis of the source program 'src'.
 -- The result is the syntax tree of the program (type 'Module'; see Module
 -- "CurrySyntax").
-parse :: FilePath -> String -> Result CS.Module
-parse fn src = let (err, src') = unlitLiterate fn src
-	       in  if null err
-		   then genCurrySyntax fn (parseSource True fn src')
-		   else Failure [WarnMsg Nothing err]
+parse :: FilePath -> String -> MsgMonad CS.Module
+parse fn src = CS.parseModule True fn src >>= genCurrySyntax fn
 
 
 -- Returns the syntax tree of the source program 'src' (type 'Module'; see
@@ -65,26 +51,25 @@ parse fn src = let (err, src') = unlitLiterate fn src
 -- searches for standard Curry libraries in the path defined in the
 -- environment variable "PAKCSLIBPATH". Additional search paths can
 -- be defined using the argument 'paths'.
-fullParse :: [FilePath] -> FilePath -> String -> IO (Result CS.Module)
-fullParse paths fn src =
-  genFullCurrySyntax simpleCheckModule paths	fn (parse fn src)
+fullParse :: [FilePath] -> FilePath -> String -> IO (MsgMonad CS.Module)
+fullParse paths fn src = -- liftM msgmonad2result $
+                         genFullCurrySyntax simpleCheckModule paths fn (parse fn src)
 
 -- Behaves like 'fullParse', but Returns the syntax tree of the source 
 -- program 'src' (type 'Module'; see Module "CurrySyntax") after inferring 
 -- the types of identifiers.
-typingParse :: [FilePath] -> FilePath -> String -> IO (Result CS.Module)
-typingParse paths fn src = 
-  genFullCurrySyntax checkModule paths fn (parse fn src)
+typingParse :: [FilePath] -> FilePath -> String -> IO (MsgMonad CS.Module)
+typingParse paths fn src = genFullCurrySyntax checkModule paths fn (parse fn src)
 
+{-
 -- Compiles the source programm 'src' to an AbstractCurry program.
 -- 'fullParse' always searches for standard Curry libraries in the path 
 -- defined in the environment variable "PAKCSLIBPATH". Additional search 
 -- paths can be defined using the argument 'paths'.
 -- Notes: Due to the lack of error handling in the current version of the
 -- front end, this function may fail when an error occurs
-abstractIO :: [FilePath] -> FilePath -> String -> IO (Result ACY.CurryProg)
-abstractIO paths fn src = 
-  genAbstractIO paths fn (parse fn src)
+abstractIO :: [FilePath] -> FilePath -> String -> IO (MsgMonad ACY.CurryProg)
+abstractIO paths fn src = genAbstractIO paths fn (parse fn src)
 
 -- Compiles the source program 'src' to a FlatCurry program.
 -- 'fullParse' always searches for standard Curry libraries in the path 
@@ -92,17 +77,9 @@ abstractIO paths fn src =
 -- paths can be defined using the argument 'paths'.
 -- Note: Due to the lack of error handling in the current version of the
 -- front end, this function may fail when an error occurs
-flatIO :: [FilePath] -> FilePath -> String -> IO (Result FCY.Prog)
-flatIO paths fn src = 
-  genFlatIO paths fn (parse fn src)
-
-
--------------------------------------------------------------------------------
--- Result handling
-
-data Result a = Result [WarnMsg] a | Failure [WarnMsg] deriving Show
-
--- See module "Message":
+flatIO :: [FilePath] -> FilePath -> String -> IO (MsgMonad FCY.Prog)
+flatIO paths fn src = genFlatIO paths fn (parse fn src)
+-}
 
 -------------------------------------------------------------------------------
 -------------------------------------------------------------------------------
@@ -117,54 +94,46 @@ opts paths = defaultOpts{
 		   }
 
 
--- FIXME : replace Result by MsgMonad
-genToks :: MsgMonad [(Position,Token)] -> Result [(Position,Token)]
-genToks m = case ignoreWarnings m of
-              (Right toks) -> Result [] toks
-              (Left err) -> Failure [WarnMsg Nothing $ showError err]
+--
+genCurrySyntax :: FilePath -> CS.Module -> MsgMonad (CS.Module)
+genCurrySyntax fn mod
+    = let mod'@(CS.Module mid _ _) = patchModuleId fn (importPrelude fn mod)
+      in if isValidModuleId fn mid
+	 then return mod'
+	 else failWith $ err_invalidModuleName mid
 
 
 --
-genCurrySyntax :: FilePath -> MsgMonad CS.Module -> Result (CS.Module)
-genCurrySyntax fn m
-    = case ignoreWarnings m of
-        (Right mod) -> let mod'@(CS.Module mid _ _) = patchModuleId fn (importPrelude fn mod)
-                       in  if isValidModuleId fn mid
-	                   then Result [] mod'
-	                   else Failure [WarnMsg Nothing $ err_invalidModuleName mid]
-        (Left err) -> Failure [WarnMsg Nothing $ showError err]
+genFullCurrySyntax :: (Options -> Base.ModuleEnv -> CS.Module -> IO (t1, t2, t3, CS.Module, t4, [WarnMsg]))
+                   -> [FilePath] -> t -> MsgMonad CS.Module -> IO (MsgMonad CS.Module)
+genFullCurrySyntax check paths fn m
+   = runMsgIO m $ \mod -> do errs <- makeInterfaces paths mod
+	                     if null errs
+	                       then do mEnv <- loadInterfaces paths mod
+		                       (_, _, _, mod', _, msgs') <- check (opts paths) mEnv mod
+		                       return (tell msgs' >> return  mod')
+	                       else return (failWith (head errs))
 
 
---
-genFullCurrySyntax check paths fn (Result msgs mod)
-   = do errs <- makeInterfaces paths mod
-	if null errs
-	   then do mEnv <- loadInterfaces paths mod
-		   (_, _, _, mod', _, msgs') <- check (opts paths) mEnv mod
-		   return (Result (msgs ++ msgs') mod')
-	   else return (Failure (msgs ++ map (WarnMsg Nothing) errs))
-genFullCurrySyntax _ _ _ (Failure msgs) = return (Failure msgs)
-
-
---
-genAbstractIO :: [FilePath] -> FilePath -> Result CS.Module
-	      -> IO (Result ACY.CurryProg)
-genAbstractIO paths fn (Result msgs mod)
-   = do errs <- makeInterfaces paths mod
+{-
+genAbstractIO :: [FilePath] -> FilePath -> MsgMonad CS.Module
+	      -> IO (MsgMonad ACY.CurryProg)
+genAbstractIO paths fn m
+   = runMsgIO m $ \mod ->
+     do errs <- makeInterfaces paths mod
 	if null errs
 	   then do mEnv <- loadInterfaces paths mod
 		   (tyEnv, tcEnv, _, mod', _, msgs')
 		       <- simpleCheckModule (opts paths) mEnv mod
-		   return (Result (msgs ++ msgs') 
-			          (genTypedAbstract tyEnv tcEnv mod'))
-	   else return (Failure (msgs ++ map (WarnMsg Nothing) errs))
-genAbstractIO _ _ (Failure msgs) = return (Failure msgs)
+		   return (tell msgs' >> return (genTypedAbstract tyEnv tcEnv mod'))
+	   else return (failWith $ head errs)
 
 
 --
-genFlatIO :: [FilePath] -> FilePath -> Result CS.Module -> IO (Result FCY.Prog)
-genFlatIO paths fn (Result msgs mod)
-   = do errs <- makeInterfaces paths mod
+genFlatIO :: [FilePath] -> FilePath -> MsgMonad CS.Module -> IO (MsgMonad FCY.Prog)
+genFlatIO paths fn m
+   = runMsgIO m $ \ mod -> 
+     do errs <- makeInterfaces paths mod
 	if null errs then
 	   (do mEnv <- loadInterfaces paths mod
 	       (tyEnv, tcEnv, aEnv, mod', intf, msgs') <- 
@@ -175,10 +144,10 @@ genFlatIO paths fn (Result msgs mod)
 	           cEnv = curryEnv mEnv tcEnv intf mod'
 	           (prog,msgs'') = genFlatCurry (opts paths) cEnv mEnv 
 	                                        tyEnv tcEnv aEnv' il'
-               return (Result (msgs'' ++ msgs ++ msgs') prog)
+               return (tell msgs'' >> tell msgs' >> return prog)
 	   )
-	   else return (Failure (msgs ++ map (WarnMsg Nothing) errs))
-genFlatIO _ _ (Failure msgs) = return (Failure msgs)
+	   else return (failWith $ head errs)
+-}
 
 
 -------------------------------------------------------------------------------
@@ -196,8 +165,8 @@ makeInterfaces paths (CS.Module mid _ decls)
  where
  compile deps (Source file' mods)
     = do smake [flatName file', flatIntName file']
-	       (file':catMaybes (map (flatInterface deps) mods))
-	       (compileCurry (opts paths) file')
+	       (file':mapMaybe (flatInterface deps) mods)
+	       (compileModule (opts paths) file')
 	       (return Nothing)
 	 return ()
  compile _ _ = return ()
@@ -212,7 +181,7 @@ makeInterfaces paths (CS.Module mid _ decls)
 -- explicitly declared in the module.
 patchModuleId :: FilePath -> CS.Module -> CS.Module
 patchModuleId fn (CS.Module mid mexports decls)
-   | (moduleName mid) == "main"
+   | moduleName mid == "main"
      = CS.Module (mkMIdent [takeBaseName fn]) mexports decls
    | otherwise
      = CS.Module mid mexports decls
@@ -236,19 +205,6 @@ isValidModuleId :: FilePath -> ModuleIdent -> Bool
 isValidModuleId fn mid
    = last (moduleQualifiers mid) == takeBaseName fn
 
-
--- Converts a literate source program to a non-literate source program
-unlitLiterate :: FilePath -> String -> (String,String)
-unlitLiterate fn src
-  | isLiterateSource fn = unlit fn src
-  | otherwise           = ("",src)
-
-isLiterateSource :: FilePath -> Bool
-isLiterateSource fn = litExt `isSuffixOf` fn
-
-litExt = ".lcurry"
-
-compileCurry = compileModule_
 
 -------------------------------------------------------------------------------
 -- Messages

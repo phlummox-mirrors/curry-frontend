@@ -25,6 +25,32 @@ import ScopeEnv (ScopeEnv)
 
 -------------------------------------------------------------------------------
 
+-- Data type for representing the current state of generating warnings.
+-- The monadic representation of the state allows the usage of monadic 
+-- syntax (do expression) for dealing easier and safer with its
+-- contents.
+
+type CheckState = State CState
+
+data CState = CState {messages  :: [WarnMsg],
+		      scope     :: ScopeEnv QualIdent IdInfo,
+		      values    :: ValueEnv,
+		      moduleId  :: ModuleIdent }
+
+-- Runs a 'CheckState' action and returns the list of messages
+run ::  CheckState a -> [WarnMsg]
+run f
+   = reverse (messages (execState f emptyState))
+
+emptyState :: CState
+emptyState = CState {messages  = [],
+		     scope     = ScopeEnv.new,
+		     values    = emptyTopEnv,
+		     moduleId  = mkMIdent []
+		    }
+
+-------------------------------------------------------------------------------
+
 -- Find potentially incorrect code in a Curry program and generate
 -- the following warnings for:
 --    - unreferenced variables
@@ -325,6 +351,7 @@ checkCaseAlternatives mid alts
 	checkOverlappingAlts mid alts
 
 --
+-- FIXME this looks buggy: is alts' required to be non-null or not? (hsi)
 checkIdleAlts :: ModuleIdent -> [Alt] -> CheckState ()
 checkIdleAlts mid alts
    = do alts' <- dropUnless' isVarAlt alts
@@ -572,30 +599,6 @@ visitVariable info = case info of
 		       _         -> info
 
 
--- Data type for representing the current state of generating warnings.
--- The monadic representation of the state allows the usage of monadic 
--- syntax (do expression) for dealing easier and safer with its
--- contents.
-
-type CheckState = State CState
-
-data CState = CState {messages  :: [WarnMsg],
-		      scope     :: ScopeEnv QualIdent IdInfo,
-		      values    :: ValueEnv,
-		      moduleId  :: ModuleIdent }
-
--- Runs a 'CheckState' action and returns the list of messages
-run ::  CheckState a -> [WarnMsg]
-run f
-   = reverse (messages (execState f emptyState))
-
-emptyState :: CState
-emptyState = CState {messages  = [],
-		     scope     = ScopeEnv.new,
-		     values    = emptyTopEnv,
-		     moduleId  = mkMIdent []
-		    }
-
 --
 modifyScope :: (ScopeEnv QualIdent IdInfo -> ScopeEnv QualIdent IdInfo)
 	       -> CState -> CState
@@ -693,6 +696,11 @@ returnUnrefVars
 --
 addModuleId :: ModuleIdent -> CheckState ()
 addModuleId mid = modify (\state -> state{ moduleId = mid })
+
+--
+
+withScope :: CheckState a -> CheckState ()
+withScope m = beginScope >> m >> endScope
 
 --
 beginScope :: CheckState ()

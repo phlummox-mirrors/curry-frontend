@@ -32,6 +32,7 @@ Executable cymake
                     Curry.Syntax.Parser, Curry.Syntax.LLParseComb
                     Curry.Syntax.ShowModule, Curry.Syntax.Pretty
                     Curry.Syntax, Curry.Syntax.Type
+                    Curry.Syntax.Unlit
                     Curry.AbstractCurry, Curry.ExtendedFlat
                     CurryBuilder, IL.Type 
                     CurryCompilerOpts, Modules, Subst, Arity
@@ -44,7 +45,7 @@ Executable cymake
                     Types, Frontend, PrecCheck
                     TypeSubst, GenAbstractCurry
                     PrettyCombinators, Typing
-                    GenFlatCurry, KindCheck, Qual, Unlit
+                    GenFlatCurry, KindCheck, Qual
                     SCC, Utils, GetOpt
                     Lift, ScopeEnv, WarnCheck
                     Desugar, Curry.Base.Ident, 

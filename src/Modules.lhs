@@ -15,10 +15,11 @@ Since this version is only used as a frontend for PAKCS, some of the following
 import declarations are commented out
 \begin{verbatim}
 
-> module Modules(compileModule, compileModule_,
+> module Modules(compileModule,
 >	         loadInterfaces, transModule,
 >	         simpleCheckModule, checkModule
 >	        ) where
+
 
 > import Data.List
 > import qualified Data.Map as Map
@@ -30,13 +31,11 @@ import declarations are commented out
 > import Curry.Base.Position
 > import Curry.Base.Ident
 > import Curry.Syntax
-> import Curry.Syntax.Parser(parseSource)
 > import Curry.Syntax.Pretty(ppModule,ppIDecl)
 > import Curry.Syntax.ShowModule(showModule)
 
 > import Base
 > import Types
-> import Unlit(unlit)
 > import KindCheck(kindCheck)
 > import SyntaxCheck(syntaxCheck)
 > import PrecCheck(precCheck)
@@ -91,13 +90,10 @@ as a frontend for PAKCS, all functions for evaluating goals and generating C
 code are obsolete and commented out.
 \begin{verbatim}
 
-> compileModule :: Options -> FilePath -> IO ()
-> compileModule opts fn = compileModule_ opts fn >> return ()
-
-> compileModule_ :: Options -> FilePath -> IO (Maybe FilePath)
-> compileModule_ opts fn =
+> compileModule :: Options -> FilePath -> IO (Maybe FilePath)
+> compileModule opts fn =
 >   do
->     mod <- liftM (parseModule likeFlat fn) (readModule fn)
+>     mod <- liftM (importPrelude fn . ok . parseModule likeFlat fn) (readModule fn)
 >     let m = patchModuleId fn mod
 >     checkModuleId fn m
 >     mEnv <- loadInterfaces (importPaths opts) m
@@ -129,10 +125,6 @@ code are obsolete and commented out.
 >            | fcy || xml = genFlat opts fn mEnv tyEnv tcEnv aEnv intf m il
 >            | acy        = genAbstract opts fn tyEnv tcEnv m
 >            | otherwise  = return Nothing
-
-> parseModule :: Bool -> FilePath -> String -> Module
-> parseModule likeFlat fn =
->   importPrelude fn . ok . parseSource likeFlat fn . unlitLiterate fn
 
 > loadInterfaces :: [FilePath] -> Module -> IO ModuleEnv
 > loadInterfaces paths (Module m _ ds) =
@@ -517,20 +509,6 @@ directory is always searched first.
 >   where ifn = foldr1 catPath (moduleQualifiers m)
 
 \end{verbatim}
-Literate source files use the extension \texttt{".lcurry"}.
-\begin{verbatim}
-
-> unlitLiterate :: FilePath -> String -> String
-> unlitLiterate fn s
->   | not (isLiterateSource fn) = s
->   | null es = s'
->   | otherwise = error es
->   where (es,s') = unlit fn s
-
-> isLiterateSource :: FilePath -> Bool
-> isLiterateSource fn = litExt `isSuffixOf` fn
-
-\end{verbatim}
 The \texttt{doDump} function writes the selected information to the
 standard output.
 \begin{verbatim}
@@ -651,7 +629,6 @@ Various filename extensions
 > acyExt = ".acy"
 > uacyExt = ".uacy"
 > sourceRepExt = ".cy"
-> litExt = ".lcurry"
 
 \end{verbatim}
 Error functions.

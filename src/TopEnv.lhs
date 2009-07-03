@@ -42,10 +42,9 @@ imported.
 
 > import Data.Maybe
 > import qualified Data.Map as Map
-
+> import Control.Arrow(second)
 > import Curry.Base.Ident
 
-> import Utils
 
 > data Source = Local | Import [ModuleIdent] deriving (Eq,Show)
 
@@ -59,7 +58,7 @@ imported.
 > newtype TopEnv a = TopEnv (Map.Map QualIdent [(Source,a)]) deriving Show
 
 > instance Functor TopEnv where
->   fmap f (TopEnv env) = TopEnv (fmap (map (apSnd f)) env)
+>   fmap f (TopEnv env) = TopEnv (fmap (map (second f)) env)
 
 > entities :: QualIdent -> Map.Map QualIdent [(Source,a)] -> [(Source,a)]
 > entities x env = fromMaybe [] (Map.lookup x env)

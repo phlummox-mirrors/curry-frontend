@@ -12,16 +12,10 @@ commonly used in the compiler, but not implemented in the Haskell
 \begin{verbatim}
 
 > module Utils where
+
+> import Data.List(foldl')
+
 > infixr 5 ++!
-
-\end{verbatim}
-\paragraph{Pairs}
-The functions \texttt{apFst} and \texttt{apSnd} apply a function to
-the first and second components of a pair, resp.
-\begin{verbatim}
-
-> apFst f (x,y) = (f x,y)
-> apSnd f (x,y) = (x,f y)
 
 \end{verbatim}
 \paragraph{Triples}
@@ -62,9 +56,9 @@ not construct a large application which is then evaluated in the base
 case of the recursion.
 \begin{verbatim}
 
-> foldl_strict :: (a -> b -> a) -> a -> [b] -> a
-> foldl_strict f z []     = z
-> foldl_strict f z (x:xs) = let z' = f z x in  z' `seq` foldl_strict f z' xs
+foldl_strict :: (a -> b -> a) -> a -> [b] -> a
+foldl_strict = foldl'
+
 
 \end{verbatim}
 \paragraph{Folding with two lists}
