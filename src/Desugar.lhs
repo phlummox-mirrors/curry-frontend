@@ -68,6 +68,7 @@ all names must be properly qualified before calling this module.}
 
 > import Curry.Base.Position
 > import Curry.Base.Ident
+> import Curry.Syntax.Utils
 > import Curry.Syntax
 
 > import Types

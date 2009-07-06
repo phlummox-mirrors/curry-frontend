@@ -28,6 +28,7 @@ merged into a single definition.
 > import Control.Monad.State as S
 
 > import Curry.Syntax
+> import Curry.Syntax.Utils
 > import Types
 > import Curry.Base.Position
 > import Curry.Base.Ident
@@ -583,8 +584,7 @@ top-level.
 > checkConstrTerm withExt k p m env (RecordPattern fs t)
 >   | not withExt = errorAt p noRecordExt
 >   | not (null fs) =
->     let (Field _ label patt) = head fs
->         p' = positionOfIdent label
+>     let (Field _ label _) = head fs
 >     in  case (lookupVar label env) of
 >           [] -> errorAt' (undefinedLabel label)
 >           [RecordLabel r ls]
@@ -733,7 +733,7 @@ top-level.
 > checkExpr withExt p m env (RecordConstr fs)
 >   | not withExt = errorAt p noRecordExt
 >   | not (null fs) = 
->     let (Field _ label expr) = head fs
+>     let (Field _ label _) = head fs
 >     in  case (lookupVar label env) of
 >           [] -> errorAt' (undefinedLabel label)
 >	    [RecordLabel r ls]
@@ -764,7 +764,7 @@ top-level.
 > checkExpr withExt p m env (RecordUpdate fs e)
 >   | not withExt = errorAt p noRecordExt
 >   | not (null fs) =
->     let (Field _ label expr) = head fs
+>     let (Field _ label _) = head fs
 >     in  case (lookupVar label env) of
 >           [] -> errorAt' (undefinedLabel label)
 >	    [RecordLabel r ls]
@@ -878,12 +878,12 @@ it is necessary to sort the list of declarations.
 >    | otherwise  = GT
 > cmpFuncDecl decl1 decl2 = GT
 
-> cmpPos :: Position -> Position -> Ordering
-> cmpPos p1 p2 | lp1 < lp2  = LT
->              | lp1 == lp2 = EQ
->              | otherwise  = GT
->  where lp1 = line p1
->        lp2 = line p2
+cmpPos :: Position -> Position -> Ordering
+cmpPos p1 p2 | lp1 < lp2  = LT
+             | lp1 == lp2 = EQ
+             | otherwise  = GT
+ where lp1 = line p1
+       lp2 = line p2
 
 
 \end{verbatim}

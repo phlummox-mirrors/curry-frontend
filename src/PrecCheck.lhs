@@ -23,6 +23,7 @@ of the operators involved.
 > import Curry.Base.Position
 > import Curry.Base.Ident
 > import Curry.Syntax
+> import Curry.Syntax.Utils
 
 > import Base
 
@@ -246,8 +247,7 @@ argument. Note that both arguments already have been checked before
 >       InfixApply (fixUPrec pEnv uop e1 op1 e2) op2 e3
 >   | pr2 > 6 = UnaryMinus uop (fixRPrec pEnv e1 op1 (InfixApply e2 op2 e3))
 >   | otherwise = errorAt' $ ambiguousParse "unary" (qualify uop) (opName op2)
->   where OpPrec fix1 pr1 = opPrec op1 pEnv
->         OpPrec fix2 pr2 = opPrec op2 pEnv
+>   where OpPrec fix2 pr2 = opPrec op2 pEnv
 > fixUPrec _ uop e1 op e2 = UnaryMinus uop (InfixApply e1 op e2)
 
 > fixRPrec :: PEnv -> Expression -> InfixOp -> Expression

@@ -26,6 +26,7 @@ lifted to the top-level.
 > import qualified Data.Set as Set
 
 > import Curry.Syntax
+> import Curry.Syntax.Utils
 > import Types
 > import Curry.Base.Ident
 > import Base

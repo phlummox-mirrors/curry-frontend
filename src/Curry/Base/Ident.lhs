@@ -26,29 +26,34 @@ the fact that all qualified identifiers are greater than any
 unqualified identifier.}
 \begin{verbatim}
 
-> module Curry.Base.Ident(Ident,QualIdent,ModuleIdent,SrcRefOf(..),
->              mkIdent,name,qualName,uniqueId,renameIdent,unRenameIdent,
->              mkMIdent,moduleName,moduleQualifiers,isInfixOp,isQInfixOp,
->              qualify,qualifyWith,qualQualify,isQualified,
->              unqualify,qualUnqualify,localIdent,splitQualIdent,
->              emptyMIdent,mainMIdent,preludeMIdent,
->              anonId,unitId,boolId,charId,intId,floatId,listId,ioId,
->              successId,trueId,falseId,nilId,consId,mainId,
->              tupleId,isTupleId,tupleArity,
->              minusId,fminusId,updIdentName,
->              qUnitId,qBoolId,qCharId,qIntId,qFloatId,qListId,qIOId,
->              qSuccessId,qTrueId,qFalseId,qNilId,qConsId,
->              qTupleId,isQTupleId,qTupleArity,
->              fpSelectorId,isFpSelectorId,isQualFpSelectorId,
->              recSelectorId,qualRecSelectorId,
->              recUpdateId, qualRecUpdateId, recordExtId, labelExtId,
->              isRecordExtId, isLabelExtId, fromRecordExtId, fromLabelExtId,
->              renameLabel, isLabel, fpSelExt, recSelExt, recUpdExt,
->              recordExt, labelExt, mkLabelIdent,hasPositionIdent,
->              showsIdent,showsQualIdent,showsModuleIdent,
->              addPositionIdent, removePositionIdent, positionOfIdent,
->              addPositionModuleIdent, removePositionModuleIdent,addRef,addRefId,
->              positionOfModuleIdent,positionOfQualIdent,updQualIdent ) where
+> module Curry.Base.Ident(Ident(..),QualIdent(..),ModuleIdent,SrcRefOf(..),
+>                         mkIdent, name, qualName, uniqueId,
+>                         renameIdent, unRenameIdent,
+>                         mkMIdent, moduleName, moduleQualifiers,
+>                         isInfixOp, isQInfixOp,
+>                         qualify, qualifyWith, qualQualify,
+>                         isQualified, unqualify, qualUnqualify,
+>                         localIdent, splitQualIdent,
+>                         emptyMIdent, mainMIdent,preludeMIdent,
+>                         anonId,unitId,boolId,charId,intId,floatId,listId,ioId,
+>                         successId,trueId,falseId,nilId,consId,mainId,
+>                         tupleId,isTupleId,tupleArity,
+>                         minusId,fminusId,updIdentName,
+>                         qUnitId,qBoolId,qCharId,qIntId,qFloatId,qListId,qIOId,
+>                         qSuccessId,qTrueId,qFalseId,qNilId,qConsId,
+>                         qTupleId,isQTupleId,qTupleArity,
+>                         fpSelectorId,isFpSelectorId,isQualFpSelectorId,
+>                         recSelectorId,qualRecSelectorId,
+>                         recUpdateId, qualRecUpdateId, recordExtId, labelExtId,
+>                         isRecordExtId, isLabelExtId, fromRecordExtId, fromLabelExtId,
+>                         renameLabel,
+>                         recordExt, labelExt, mkLabelIdent,hasPositionIdent,
+
+                         showsIdent,showsQualIdent,showsModuleIdent,
+
+>                         addPositionIdent, removePositionIdent, positionOfIdent,
+>                         addPositionModuleIdent, removePositionModuleIdent,addRef,addRefId,
+>                         positionOfModuleIdent,positionOfQualIdent,updQualIdent ) where
 
 > import Data.Char
 > import Data.List
@@ -59,8 +64,11 @@ unqualified identifier.}
 
 
 > data Ident = Ident String Int 
->            | IdentPosition Position String Int deriving (Read,Data,Typeable)
-> data QualIdent = UnqualIdent Ident | QualIdent ModuleIdent Ident
+>            | IdentPosition Position String Int
+>            deriving (Read,Data,Typeable)
+>
+> data QualIdent = UnqualIdent Ident
+>                | QualIdent ModuleIdent Ident
 >                  deriving (Eq,Ord,Read,Data,Typeable)
 > data ModuleIdent = ModuleIdent [String] 
 >                   |ModuleIdentPosition Position [String] deriving (Data,Typeable)
@@ -90,11 +98,14 @@ unqualified identifier.}
 >   showsPrec _ (IdentPosition _ x n)
 >     | n == 0 = showString x
 >     | otherwise = showString x . showChar '.' . shows n
+
 > instance Show QualIdent where
 >   showsPrec _ (UnqualIdent x) = shows x
 >   showsPrec _ (QualIdent m x) = shows m . showChar '.' . shows x
+
 > instance Show ModuleIdent where
 >   showsPrec _ m = showString (moduleName m)
+
 
 > hasPositionIdent :: Ident -> Bool
 > hasPositionIdent (Ident _ _ ) = False
@@ -237,9 +248,6 @@ A few identifiers a predefined here.
 > anonId :: Ident
 > anonId = Ident "_" 0
 
-> unitPId :: Position -> Ident
-> unitPId p = IdentPosition p "()" 0
-
 > unitId, boolId, charId, intId, floatId, listId, ioId, successId :: Ident
 > unitId    = Ident "()" 0
 > boolId    = Ident "Bool" 0
@@ -362,9 +370,6 @@ Micellaneous function for generating and testing extended identifiers.
 > renameLabel :: Ident -> Ident
 > renameLabel l = renameIdent l (-1)
 
-> isLabel :: Ident -> Bool
-> isLabel l = uniqueId l == (-1)
-
 
 > fpSelExt = "_#selFP"
 > recSelExt = "_#selR@"
@@ -372,41 +377,12 @@ Micellaneous function for generating and testing extended identifiers.
 > recordExt = "_#Rec:"
 > labelExt = "_#Lab:"
 
-> showsString :: String -> ShowS
-> showsString = (++)
 
-> space :: ShowS
-> space = showsString " "
+> instance SrcRefOf Ident where
+>     srcRefOf = srcRefOf . positionOfIdent
 
-> showsIdent :: Ident -> ShowS
-> showsIdent x@(IdentPosition _ _ _) = showsIdent $ removePositionIdent x
-> showsIdent (Ident name n)
->   = showsString "(Ident " . shows name . space . shows n . showsString ")"
-
-> showsQualIdent :: QualIdent -> ShowS
-> showsQualIdent (UnqualIdent ident)
->   = showsString "(UnqualIdent " . showsIdent ident . showsString ")"
-> showsQualIdent (QualIdent mident ident)
->   = showsString "(QualIdent "
->   . showsModuleIdent mident . space
->   . showsIdent ident
->   . showsString ")"
-
-> showsModuleIdent :: ModuleIdent -> ShowS
-> showsModuleIdent = shows . moduleName
-
-showsModuleIdent x@(ModuleIdentPosition _ _) = 
-    showsModuleIdent $ removePositionModuleIdent x
-showsModuleIdent (ModuleIdent []) = showsString "(ModuleIdent [])"
-showsModuleIdent (ModuleIdent (s:strs))
-  = showsString "(ModuleIdent ["
-  . foldl (\sys y -> sys . showsString "," . shows y) (shows s) strs
-  . showsString "])"
-
-\end{verbatim}
-
-> instance SrcRefOf Ident where srcRefOf = srcRefOf . positionOfIdent
-> instance SrcRefOf QualIdent where srcRefOf = srcRefOf . unqualify
+> instance SrcRefOf QualIdent where
+>     srcRefOf = srcRefOf . unqualify
 
 > updIdentName :: (String -> String) -> Ident -> Ident
 > updIdentName f ident = let p=positionOfIdent ident

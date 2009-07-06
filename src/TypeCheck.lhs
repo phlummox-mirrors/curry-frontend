@@ -33,6 +33,7 @@ type annotation is present.
 > import Curry.Base.Ident
 > import Curry.Syntax
 > import Curry.Syntax.Pretty
+> import Curry.Syntax.Utils
 
 
 > import Base
@@ -250,8 +251,8 @@ inferred type is less general than the signature.
 > nameType (RecordType fs rty) tvs = 
 >   (RecordType (zip ls tys') (listToMaybe rty'), tvs)
 >   where (ls, tys) = unzip fs
->         (tys', tvs') = nameTypes tys tvs
->         (rty', tvs'') = nameTypes (maybeToList rty) tvs
+>         (tys', _) = nameTypes tys tvs
+>         (rty', _) = nameTypes (maybeToList rty) tvs
         
 \end{verbatim}
 \paragraph{Type Inference}

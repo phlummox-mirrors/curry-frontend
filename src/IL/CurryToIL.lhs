@@ -29,6 +29,7 @@ data structures, we can use only a qualified import for the
 > import Curry.Base.Position
 > import Curry.Base.Ident
 > import Curry.Syntax
+> import Curry.Syntax.Utils
 
 > import Types
 > import Base

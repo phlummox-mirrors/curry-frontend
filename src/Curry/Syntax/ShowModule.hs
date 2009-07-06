@@ -491,3 +491,20 @@ showsPair sa sb (a,b)
   = showsString "(" . sa a . showsString "," . sb b . showsString ")"
 
 
+showsIdent :: Ident -> ShowS
+showsIdent x@(IdentPosition _ _ _) = showsIdent $ removePositionIdent x
+showsIdent (Ident name n)
+  = showsString "(Ident " . shows name . space . shows n . showsString ")"
+
+showsQualIdent :: QualIdent -> ShowS
+showsQualIdent (UnqualIdent ident)
+    = showsString "(UnqualIdent " . showsIdent ident . showsString ")"
+showsQualIdent (QualIdent mident ident)
+    = showsString "(QualIdent "
+      . showsModuleIdent mident 
+      . space
+      . showsIdent ident
+      . showsString ")"
+
+showsModuleIdent :: ModuleIdent -> ShowS
+showsModuleIdent = shows . moduleName

@@ -31,6 +31,7 @@ Currently, the following optimizations are implemented:
 > import Curry.Base.Position
 > import Curry.Base.Ident
 > import Curry.Syntax
+> import Curry.Syntax.Utils
 
 > import Types
 > import Base
