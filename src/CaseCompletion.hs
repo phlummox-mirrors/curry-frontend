@@ -67,7 +67,7 @@ visitDecl mod menv msgs senv (NewtypeDecl qident arity cdecl)
 visitDecl mod menv msgs senv (FunctionDecl qident params typeexpr expr)
    = ((FunctionDecl qident params typeexpr expr'), msgs)
  where
-   (expr', msgs',_) = visitExpr mod menv msgs (insertExprScope senv expr) expr
+   (expr', _, _) = visitExpr mod menv msgs (insertExprScope senv expr) expr
 
 visitDecl mod menv msgs senv (ExternalDecl qident cconv name typeexpr)
    = ((ExternalDecl qident cconv name typeexpr), msgs)
@@ -109,8 +109,8 @@ visitExpr mod menv msgs senv (Case r evalannot expr alts)
      = intError "visitExpr" "illegal alternative list"
  where
    altR           = head altsR
-   (expr', msgs1, senv1) = visitExpr mod menv msgs (insertExprScope senv expr) expr
-   (alts', msgs2, senv2) = visitListWithEnv (visitAlt mod menv) insertAltScope msgs senv1 alts
+   (expr', _, senv1) = visitExpr mod menv msgs (insertExprScope senv expr) expr
+   (alts', _, senv2) = visitListWithEnv (visitAlt mod menv) insertAltScope msgs senv1 alts
    (altsR, msgs3) = removeRedundantAlts msgs alts'
    (expr2, senv3) = completeConsAlts r mod menv senv2 evalannot expr' altsR
 
@@ -128,7 +128,7 @@ visitExpr mod menv msgs senv (Exist ident expr)
 visitExpr mod menv msgs senv (Let bind expr)
    = ((Let bind' expr'), msgs2, senv3)
  where
-   (expr', msgs1, senv2) = visitExpr mod menv msgs (insertExprScope senv expr) expr
+   (expr', _, senv2) = visitExpr mod menv msgs (insertExprScope senv expr) expr
    (bind', msgs2, senv3) = visitBinding mod menv msgs (insertBindingScope senv2 bind) bind
 
 visitExpr mod menv msgs senv (Letrec binds expr)

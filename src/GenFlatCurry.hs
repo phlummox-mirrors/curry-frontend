@@ -32,7 +32,6 @@ import ScopeEnv (ScopeEnv)
 import qualified ScopeEnv
 import Types
 import CurryCompilerOpts
--- import Message
 import PatchPrelude
 
 
@@ -202,12 +201,10 @@ visitExpression (IL.Let binding expression)
 	newVarIndex (bindingIdent binding)
         bind <- visitBinding binding
 	expr <- visitExpression expression
-	case expr of
-	  Let binds expr' -> return (Let (bind:binds) expr')
-	  _               -> return (Let [bind] expr)
+        return (Let [bind] expr)
 visitExpression (IL.Letrec bindings expression)
    = do beginScope
-	mapM_ newVarIndex (map bindingIdent bindings)
+	mapM_ (newVarIndex . bindingIdent) bindings
 	binds <- mapM visitBinding bindings
 	expr  <- visitExpression expression
 	endScope
@@ -269,8 +266,8 @@ visitConstrTerm (IL.VariablePattern ident)
 
 --
 visitEval :: IL.Eval -> FlatState CaseType
-visitEval IL.Rigid = return (Rigid)
-visitEval IL.Flex  = return (Flex)
+visitEval IL.Rigid = return Rigid
+visitEval IL.Flex  = return Flex
 
 --
 visitBinding :: IL.Binding -> FlatState (VarIndex, Expr)
@@ -295,7 +292,7 @@ visitTypeIDecl :: CS.IDecl -> FlatState TypeDecl
 visitTypeIDecl (CS.IDataDecl _ qident params constrs_)
    = do let mid = fromMaybe (internalError "GenFlatCurry: no module name")
 		            (fst (splitQualIdent qident))
-	    is  = [0 .. (length params) - 1]
+	    is  = [0 .. length params - 1]
 	cdecls <- mapM (visitConstrIDecl mid (zip params is)) 
 		       (catMaybes constrs_)
 	qname  <- visitQualIdent qident
@@ -311,7 +308,7 @@ visitTypeIDecl _ = internalError "GenFlatCurry: no type interface"
 visitConstrIDecl :: ModuleIdent -> [(Ident, Int)] -> CS.ConstrDecl 
 		    -> FlatState ConsDecl
 visitConstrIDecl mid tis (CS.ConstrDecl _ _ ident typeexprs)
-   = do texprs <- mapM visitType (map (fst . cs2ilType tis) typeexprs)
+   = do texprs <- mapM (visitType . (fst . cs2ilType tis)) typeexprs
 	qname  <- visitQualIdent (qualifyWith mid ident)
 	return (Cons qname (length typeexprs) Public texprs)
 visitConstrIDecl mid tis (CS.ConOpDecl pos ids type1 ident type2)
@@ -332,7 +329,7 @@ visitOpIDecl (CS.IInfixDecl _ fixity prec qident)
 
 --
 visitModuleIdent :: ModuleIdent -> FlatState String
-visitModuleIdent mident = return (Id.moduleName mident)
+visitModuleIdent = return . Id.moduleName
 
 --
 visitQualIdent :: QualIdent -> FlatState QName
@@ -348,7 +345,7 @@ visitQualIdent qident
 --
 visitExternalName :: String -> FlatState String
 visitExternalName name 
-   = moduleId >>= (\mid -> return ((Id.moduleName mid) ++ "." ++ name))
+   = moduleId >>= \mid -> return (Id.moduleName mid ++ "." ++ name)
 
 
 -------------------------------------------------------------------------------
@@ -538,7 +535,7 @@ genApplicComb expr (e1:es)
 
 --
 genOpDecls :: FlatState [OpDecl]
-genOpDecls = fixities >>= (\fix -> mapM genOpDecl fix)
+genOpDecls = fixities >>= mapM genOpDecl
 
 --
 genOpDecl :: CS.IDecl -> FlatState OpDecl
@@ -676,17 +673,14 @@ matchTypeVars fs ms (l,ty)
      = internalError ("GenFlatCurry.matchTypeVars: "
 		      ++ show ty ++ "\n" ++ show typeexpr)
 
-  matchList ms tys typeexprs
-     = foldl (\ms' (ty,typeexpr) -> match ms' ty typeexpr)
-             ms
-	     (zip tys typeexprs)
+  matchList ms tys
+     = foldl (\ms' (ty,typeexpr) -> match ms' ty typeexpr) ms . zip tys
 
 
 flattenRecordTypeFields :: [([Ident],CS.TypeExpr)] -> [(Ident,CS.TypeExpr)]
-flattenRecordTypeFields fss
+flattenRecordTypeFields
    = concatMap (\ (labels, typeexpr)
 		-> map (\label -> (label,typeexpr)) labels)
-               fss
 
 -------------------------------------------------------------------------------
 
@@ -826,7 +820,7 @@ emap f env (x:xs) = let (x',env')    = f env x
 -- Data type for representing an environment which contains information needed
 -- for generating FlatCurry code.
 data FlatEnv = FlatEnv{ moduleIdE     :: ModuleIdent,
-			  functionIdE   :: QualIdent,
+			  functionIdE   :: QualIdent,    -- function name for error messages
 			  compilerOptsE :: Options,
 			  moduleEnvE    :: ModuleEnv,
 			  arityEnvE     :: ArityEnv,
@@ -1068,13 +1062,7 @@ bindEnvNewConstrDecl :: Map.Map Ident IdentExport -> CS.NewConstrDecl -> Map.Map
 bindEnvNewConstrDecl env (CS.NewConstrDecl _ _ id _) = bindIdentExport id False env
 
 --
-bindEnvRecordLabel :: Ident -> Map.Map Ident IdentExport -> ([Ident],CS.TypeExpr) 
-		   -> Map.Map Ident IdentExport
-bindEnvRecordLabel rec env ([lab],_)
-   = bindIdentExport (recSelectorId (qualify rec) lab)
-             False
-	     (bindIdentExport (recUpdateId (qualify rec) lab) False env)
-
-
--------------------------------------------------------------------------------
--------------------------------------------------------------------------------
+bindEnvRecordLabel :: Ident -> Map.Map Ident IdentExport -> ([Ident],CS.TypeExpr) -> Map.Map Ident IdentExport
+bindEnvRecordLabel r env ([lab], _) = bindIdentExport (recSelectorId (qualify r) lab) False expo
+    where 
+      expo = (bindIdentExport (recUpdateId (qualify r) lab) False env)

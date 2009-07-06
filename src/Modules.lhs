@@ -16,6 +16,7 @@ import declarations are commented out
 \begin{verbatim}
 
 > module Modules(compileModule,
+>                importPrelude, patchModuleId,
 >	         loadInterfaces, transModule,
 >	         simpleCheckModule, checkModule
 >	        ) where
@@ -62,6 +63,7 @@ import declarations are commented out
 > import CurryCompilerOpts(Options(..),Dump(..))
 > import CaseCompletion
 > import PathUtils
+> import Filenames
 > import TypeSubst
 > import PrettyCombinators
 > import TopEnv
@@ -102,7 +104,7 @@ code are obsolete and commented out.
 >          do (tyEnv, tcEnv, aEnv, m', intf, _) <- simpleCheckModule opts mEnv m
 >             if uacy then genAbstract opts fn tyEnv tcEnv m'
 >                     else do
->                       let outputFile = maybe (replaceExtension fn sourceRepExt) 
+>                       let outputFile = maybe (sourceRepName fn)
 >                                              id 
 >                                              (output opts)
 >                           outputMod = showModule m'
@@ -233,14 +235,14 @@ code are obsolete and commented out.
 
 > writeXML :: Maybe FilePath -> FilePath -> CurryEnv -> IL.Module -> IO ()
 > writeXML tfn sfn cEnv il = writeModule ofn (showln code)
->   where ofn  = fromMaybe (replaceExtension sfn xmlExt) tfn
+>   where ofn  = fromMaybe (xmlName sfn) tfn
 >         code = (xmlModule cEnv il)
 
 > writeFlat :: Options -> Maybe FilePath -> FilePath -> CurryEnv -> ModuleEnv 
 >              -> ValueEnv -> TCEnv -> ArityEnv -> IL.Module -> IO Prog
 > writeFlat opts tfn sfn cEnv mEnv tyEnv tcEnv aEnv il
 >   = writeFlatFile opts (genFlatCurry opts cEnv mEnv tyEnv tcEnv aEnv il)
->                        (fromMaybe (replaceExtension sfn flatExt) tfn)
+>                        (fromMaybe (flatName sfn) tfn)
 
 > writeFlatFile :: Options -> (Prog, [WarnMsg]) -> String -> IO Prog
 > writeFlatFile opts@Options{extendedFlat=ext} (res,msgs) fname = do
@@ -254,13 +256,13 @@ code are obsolete and commented out.
 >	           -> IO ()
 > writeTypedAbs tfn sfn tyEnv tcEnv mod
 >    = writeCurry fname (genTypedAbstract tyEnv tcEnv mod)
->  where fname = fromMaybe (replaceExtension sfn acyExt) tfn
+>  where fname = fromMaybe (acyName sfn) tfn
 
 > writeUntypedAbs :: Maybe FilePath -> FilePath -> ValueEnv -> TCEnv  
 >	             -> Module -> IO ()
 > writeUntypedAbs tfn sfn tyEnv tcEnv mod
 >    = writeCurry fname (genUntypedAbstract tyEnv tcEnv mod)
->  where fname = fromMaybe (replaceExtension sfn uacyExt) tfn
+>  where fname = fromMaybe (uacyName sfn) tfn
 
 > showln :: Show a => a -> String
 > showln x = shows x "\n"
@@ -389,7 +391,7 @@ only a qualified import is added.
 > importPrelude :: FilePath -> Module -> Module
 > importPrelude fn (Module m es ds) =
 >   Module m es (if m == preludeMIdent then ds else ds')
->   where ids = filter isImportDecl ds
+>   where ids = [decl | decl@(ImportDecl _ _ _ _ _) <- ds]
 >         ds' = ImportDecl (first fn) preludeMIdent
 >                          (preludeMIdent `elem` map importedModule ids)
 >                          Nothing Nothing : ds
@@ -505,7 +507,7 @@ directory is always searched first.
 \begin{verbatim}
 
 > lookupInterface :: [FilePath] -> ModuleIdent -> IO (Maybe FilePath)
-> lookupInterface paths m = lookupFile ("":paths) [fintExt] ifn
+> lookupInterface paths m = lookupFile ("":paths) [flatIntExt] ifn
 >   where ifn = foldr1 catPath (moduleQualifiers m)
 
 \end{verbatim}
@@ -565,7 +567,7 @@ be dependent on it any longer.
 >   | otherwise
 >     = internalError "@Modules.genFlat: illegal option"
 >  where
->    fintName = replaceExtension fname fintExt
+>    fintName = flatIntName fname
 >    cEnv = curryEnv mEnv tcEnv intf mod
 >    emptyIntf = Prog "" [] [] [] []
 >    writeInterface intf msgs = do
@@ -618,17 +620,6 @@ Haskell and original MCC where a module obtains \texttt{main}).
 >    | otherwise
 >      = Module mid mexports decls
 
-
-\end{verbatim}
-Various filename extensions
-\begin{verbatim}
-
-> xmlExt = "_flat.xml"
-> flatExt = ".fcy"
-> fintExt = ".fint"
-> acyExt = ".acy"
-> uacyExt = ".uacy"
-> sourceRepExt = ".cy"
 
 \end{verbatim}
 Error functions.

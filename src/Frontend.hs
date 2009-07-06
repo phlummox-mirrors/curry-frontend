@@ -25,6 +25,7 @@ import Curry.Syntax.Lexer
 import CurryDeps
 import Curry.Base.Ident
 import Curry.Base.Position
+import Filenames
 import PathUtils
 import Base(ModuleEnv)
 
@@ -158,8 +159,7 @@ makeInterfaces ::  [FilePath] -> CS.Module -> IO [String]
 makeInterfaces paths (CS.Module mid _ decls)
   = do let imports = [preludeMIdent | mid /= preludeMIdent] 
 		      ++ [imp | CS.ImportDecl _ imp _ _ _ <- decls]
-       (deps, errs) <- fmap (flattenDeps . sortDeps)
-		            (foldM (moduleDeps paths []) Map.empty imports)
+       (deps, errs) <- fmap flattenDeps (foldM (moduleDeps paths []) Map.empty imports)
        when (null errs) (mapM_ (compile deps . snd) deps)
        return errs
  where
@@ -176,28 +176,6 @@ makeInterfaces paths (CS.Module mid _ decls)
         Just (Source file _)  -> Just (flatIntName (dropExtension file))
 	Just (Interface file) -> Just (flatIntName (dropExtension file))
 	_                     -> Nothing
-
--- Declares the filename as module name, if the module name is not
--- explicitly declared in the module.
-patchModuleId :: FilePath -> CS.Module -> CS.Module
-patchModuleId fn (CS.Module mid mexports decls)
-   | moduleName mid == "main"
-     = CS.Module (mkMIdent [takeBaseName fn]) mexports decls
-   | otherwise
-     = CS.Module mid mexports decls
-
-
--- Adds an import declaration for the prelude to the module, if
--- it is not the prelude itself. If the module already has an explicit
--- import for the prelude, then a qualified import is added.
-importPrelude :: FilePath -> CS.Module -> CS.Module
-importPrelude fn (CS.Module m es ds)
-   = CS.Module m es (if m == preludeMIdent then ds else ds')
- where ids = [decl | decl@(CS.ImportDecl _ _ _ _ _) <- ds]
-       ds' = CS.ImportDecl (first fn) preludeMIdent
-                        (preludeMIdent `elem` map importedModule ids)
-                        Nothing Nothing : ds
-       importedModule (CS.ImportDecl _ m q asM is) = fromMaybe m asM
 
 
 -- Returns 'True', if file name and module name are equal.

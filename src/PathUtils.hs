@@ -6,12 +6,13 @@
 -}
 
 module PathUtils(-- re-exports from System.FilePath:
-                 takeBaseName, replaceExtension, dropExtension,
+                 takeBaseName, -- replaceExtension,
+                 dropExtension,
                  takeDirectory, takeExtension, 
                  pathSeparator,
                  catPath,
 
-                 lookupFile,
+                 lookupFile, getCurryPath,
                  writeModule,readModule,
                  doesModuleExist,maybeReadModule,getModuleModTime) where
 
@@ -20,6 +21,8 @@ import System.Directory
 import System.Time (ClockTime)
 
 import Control.Monad (unless)
+
+import Filenames
 
 
 catPath :: FilePath -> FilePath -> FilePath
@@ -65,7 +68,7 @@ writeModule :: FilePath -> String -> IO ()
 writeModule filename contents = do
   let filename' = inCurrySubdir filename
       subdir = takeDirectory filename'
-  ensureDirectoryExists (takeDirectory filename')
+  ensureDirectoryExists subdir
   writeFile filename' contents
 
 ensureDirectoryExists :: FilePath -> IO ()
@@ -93,3 +96,20 @@ doesModuleExist = onExistingFileDo doesFileExist
 
 getModuleModTime :: FilePath -> IO ClockTime
 getModuleModTime = onExistingFileDo getModificationTime
+
+
+{-
+  The function \verb|getCurryPath| searches in predefined paths
+  for the corresponding \texttt{.curry} or \texttt{.lcurry} file, 
+  if the given file name has no extension.
+-}
+getCurryPath :: [FilePath] -> FilePath -> IO (Maybe FilePath)
+getCurryPath paths fn = lookupFile filepaths exts fn
+    where
+      filepaths = "":paths'
+      fnext = takeExtension fn
+      exts | null fnext = sourceExts
+           | otherwise  = [fnext]
+      paths' | pathSeparator `elem` fn = []
+             | otherwise               = paths
+

@@ -23,6 +23,7 @@ import Curry.Base.Ident
 import Modules (compileModule)
 import CurryCompilerOpts 
 import CurryDeps
+import Filenames
 import PathUtils
 
 -------------------------------------------------------------------------------
@@ -122,7 +123,7 @@ makeCurry options deps file
 genDeps :: [FilePath] -> FilePath
 	   -> IO ([(ModuleIdent,Source)], [String])
 genDeps paths file
-   = fmap (flattenDeps . sortDeps) (deps paths [] Map.empty file)
+   = fmap flattenDeps (deps paths [] Map.empty file)
 
 
 -------------------------------------------------------------------------------

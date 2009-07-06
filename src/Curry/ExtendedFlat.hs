@@ -16,24 +16,27 @@
 
 {-# LANGUAGE DeriveDataTypeable, RankNTypes #-}
 
-module Curry.ExtendedFlat (SrcRef,Prog(..), QName(..), Visibility(..),
-                  TVarIndex, TypeDecl(..), ConsDecl(..), TypeExpr(..),
-                  OpDecl(..), Fixity(..),
-                  VarIndex(..), 
-                  FuncDecl(..), Rule(..), 
-                  CaseType(..), CombType(..), Expr(..), BranchExpr(..),
-                  Pattern(..), Literal(..), 
-		  readFlatCurry, readFlatInterface, readFlat, 
-		  writeFlatCurry,writeExtendedFlat,gshowsPrec,
-                  qnOf,mkQName,
-                  mkIdx,idxOf) where
+module Curry.ExtendedFlat (SrcRef,Prog(..),
+                           QName(..), qnOf,mkQName,
+                           Visibility(..),
+                           TVarIndex, TypeDecl(..), ConsDecl(..), TypeExpr(..),
+                           OpDecl(..), Fixity(..),
+                           VarIndex(..), mkIdx,
+                           FuncDecl(..), Rule(..), 
+                           CaseType(..), CombType(..), Expr(..), BranchExpr(..),
+                           Pattern(..), Literal(..), 
+		           readFlatCurry, readFlatInterface, readFlat, 
+		           writeFlatCurry,writeExtendedFlat,gshowsPrec
+                          ) where
 
 import Data.List(intersperse)
 import Control.Monad (liftM)
 import Data.Generics hiding (Fixity)
+import Data.Function(on)
 import System.FilePath
 
-import PathUtils (writeModule, maybeReadModule, replaceExtension)
+import PathUtils (writeModule, maybeReadModule)
+import Filenames(flatName)
 import Curry.Base.Position (SrcRef)
 
 ------------------------------------------------------------------------------
@@ -69,45 +72,24 @@ data QName = QName {srcRef      :: Maybe SrcRef,
                     localName   :: String} deriving (Data,Typeable)
 
 
-app_prec = 10
-hi_prec  = app_prec+1
-
 instance Read QName where
   readsPrec d r = 
        [ (mkQName nm,s) | (nm,s) <- readsPrec d r ]
     ++ [ (QName r t m n, s) | ((r, t, m, n),s) <- readsPrec d r ]
-{- readParen (d > app_prec) 
-                 (\r' -> [ (QName ref typ n m,res) 
-                               | ("QName",s0) <- lex r',
-                                 (ref,s1) <- readsPrec hi_prec s0,
-                                 (typ,s2) <- readsPrec hi_prec s1,
-                                 (n,s3)   <- readsPrec hi_prec s2,
-                                 (m,res)  <- readsPrec hi_prec s3 ]) r
--}    
 
 instance Show QName where
   showsPrec d (QName r t m n)
       = showsPrec d (r,t,m,n)
-{-    showParen (d > app_prec) $ showString "QName " .
-                     showsPrec hi_prec r . showChar ' ' .
-                     showsPrec hi_prec t . showChar ' ' .
-                     showsPrec hi_prec m . showChar ' ' .
-                     showsPrec hi_prec n
--}
 
-instance Eq QName where (==) = onName (==)
+instance Eq QName where (==) = (==) `on` qnOf
 
-instance Ord QName where compare = onName compare
+instance Ord QName where compare = compare `on` qnOf
 
 mkQName :: (String,String) -> QName
 mkQName = uncurry (QName Nothing Nothing)
 
 qnOf :: QName -> (String,String) 
 qnOf QName{modName=m,localName=n} = (m,n)
-
-onName :: ((String,String) -> (String,String) -> a) -> QName -> QName -> a
-onName f QName{modName=m,localName=l} QName{modName=m',localName=l'} =
-  f (m,l) (m',l')
 
 
 -------------------------------------------------------------------------
@@ -118,51 +100,40 @@ onName f QName{modName=m,localName=l} QName{modName=m',localName=l'} =
 
 data VarIndex = VarIndex {
                     typeofVar :: Maybe TypeExpr,
-                    index     :: Int
+                    idxOf     :: Int
                 } deriving (Data,Typeable)
 
-onIndex :: (Int -> a) -> VarIndex -> a
-onIndex f VarIndex{index=i} = f i
+onIndex :: (Int -> Int) -> VarIndex -> VarIndex
+onIndex f (VarIndex{ typeofVar = t, idxOf = x})
+    = VarIndex t (f x)
 
-(.:) :: (c -> d) -> (a -> b -> c) -> a -> b -> d
-f .: g = \x -> f . g x
-
-onIndexes :: (Int -> Int -> a) -> VarIndex -> VarIndex -> a
-onIndexes = onIndex .: onIndex
+onIndexes :: (Int ->Int -> Int) -> VarIndex -> VarIndex -> VarIndex
+onIndexes g x = VarIndex (typeofVar x) . (g `on` idxOf) x
 
 mkIdx :: Int -> VarIndex
 mkIdx = VarIndex Nothing
 
-idxOf :: VarIndex -> Int
-idxOf VarIndex{index=i}= i
 
 instance Read VarIndex where
   readsPrec d r = 
        [ (mkIdx i,s) | (i,s) <- readsPrec d r ]
     ++ [ (VarIndex t i,s) | ((t,i),s) <- readsPrec d r ]
-{-readParen (d > app_prec) 
-                 (\r' -> [ (VarIndex typ i,res) 
-                         | ("VarIndex",s0) <- lex r',
-                           (typ,s1) <- readsPrec hi_prec s0,
-                           (i,res)  <- readsPrec hi_prec s1]) r
-  -}  
 
 instance Show VarIndex where
   showsPrec d (VarIndex t i)= showsPrec d (t,i)
-{-    showParen (d > app_prec) $ showString "VarIndex " .
-                     showsPrec hi_prec t . showChar ' ' .
-                     showsPrec hi_prec i
--}
 
-instance Eq VarIndex where (==) = onIndexes (==)
-instance Ord VarIndex where compare = onIndexes compare
+instance Eq VarIndex where
+    (==) = (==) `on` idxOf
+
+instance Ord VarIndex where
+    compare = compare `on` idxOf
 
 instance Num VarIndex where
-  (+) = mkIdx .: onIndexes (+)
-  (*) = mkIdx .: onIndexes (*)
-  (-) = mkIdx .: onIndexes (-)
-  abs = mkIdx .  onIndex abs
-  signum = mkIdx .  onIndex signum
+  (+) = onIndexes  (+)
+  (*) = onIndexes  (*)
+  (-) = onIndexes  (-)
+  abs = onIndex abs
+  signum = onIndex signum
   fromInteger = mkIdx . fromInteger
 
 ------------------------------------------------------------
@@ -416,7 +387,7 @@ data Literal = Intc   SrcRef Integer
 -- FlatCurry program term (type 'Prog') as a value of type 'Maybe'.
 readFlatCurry :: FilePath -> IO (Maybe Prog)
 readFlatCurry fn 
-   = do let filename = replaceExtension fn ".fcy"
+   = do let filename = flatName fn
         readFlat filename
 
 -- Reads a FlatInterface file (extension ".fint") and returns the
@@ -441,15 +412,6 @@ writeExtendedFlat :: String -> Prog -> IO ()
 writeExtendedFlat filename prog =
   writeModule (replaceExtension filename ".efc") (showFlatCurry' True prog)
 
--- Shows FlatCurry program in a more nicely way.
-showFlatCurry :: Prog -> String
-showFlatCurry (Prog mname imps types funcs ops) =
-  "Prog "++show mname++"\n "++
-  show imps ++"\n ["++
-  concat (intersperse ",\n  " (map (\t->show t) types)) ++"]\n ["++
-  concat (intersperse ",\n  " (map (\f->show f) funcs)) ++"]\n "++
-  show ops ++"\n"
-  
 
 showFlatCurry' :: Bool -> Prog -> String
 showFlatCurry' b x = gshowsPrec b False x ""
@@ -472,9 +434,9 @@ gshowsPrec showType d =
                       else shows (m,n)
 
         showsVarIndex :: Bool -> VarIndex -> ShowS
-        showsVarIndex d v@VarIndex{index=i} = 
-          if showType then showParen d (shows v)
-                      else shows i
+        showsVarIndex d
+            | showType  = showParen d . shows
+            | otherwise = shows . idxOf
 
         genericShowsPrec :: Data a => Bool -> a -> ShowS
         genericShowsPrec d t = let args = intersperse (showChar ' ') $

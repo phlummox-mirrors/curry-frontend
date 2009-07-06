@@ -1,4 +1,3 @@
-% -*- LaTeX -*-
 % $Id: ILPP.lhs,v 1.22 2003/10/28 05:43:43 wlux Exp $
 %
 % Copyright (c) 1999-2003 Wolfgang Lux
@@ -14,9 +13,7 @@ printer (see sect.~\ref{sec:CurryPP}) which, in turn, is based on Simon
 Marlow's pretty printer for Haskell.
 \begin{verbatim}
 
-> -- FIXME: Doc nicht exportieren
-
-> module IL.Pretty(module IL.Pretty, Doc) where
+> module IL.Pretty(ppModule)  where
 > 
 > import Curry.Base.Ident
 > 

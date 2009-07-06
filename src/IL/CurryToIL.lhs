@@ -394,7 +394,6 @@ position in the remaining arguments. If one is found,
 >   | null nonVars = e2
 >   | otherwise = optMatch pos ev (IL.Or e1 e2) (v:) vs (map skipArg alts)
 >   where (vars,nonVars) = partition isDefaultMatch (map tagAlt alts)
->         (nonArgs,args) = partition (null.fst) alts
 >         e1 = matchInductive pos ev id v vs nonVars
 >         e2 = match pos ev vs (map snd vars)
 >         tagAlt (t:ts,e) = (pattern t,(arguments t ++ ts,e))

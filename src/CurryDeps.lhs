@@ -13,7 +13,9 @@ information between Curry modules. This is used to create Makefile
 dependencies and to update programs composed of multiple modules.
 \begin{verbatim}
 
-> module CurryDeps where
+> module CurryDeps(Source(..),
+>                  deps, flattenDeps, sourceDeps, moduleDeps
+>                 ) where
 
 > import Data.List
 > import qualified Data.Map as Map
@@ -29,6 +31,7 @@ dependencies and to update programs composed of multiple modules.
 > import Curry.Syntax hiding(Interface(..))
 
 > import SCC
+> import Filenames
 > import PathUtils
 
 > data Source = Source FilePath [ModuleIdent]
@@ -44,6 +47,7 @@ computes either a build or clean script for a module while
 Makefile.
 \begin{verbatim}
 
+> {-
 > buildScript :: Bool -> Bool -> Bool -> Bool -> Bool -> Bool -> Bool
 >             -> [FilePath] -> [FilePath] -> Maybe FilePath -> FilePath 
 >             -> IO [String]
@@ -67,7 +71,8 @@ Makefile.
 >           | takeExtension fn `elem` moduleExts ++ objectExts = Nothing
 >           | otherwise = ofn `mplus` Just fn
 >         makeScript clean = if clean then makeCleanScript else makeBuildScript
-
+>
+>
 > makeDepend :: [FilePath] -> [FilePath] -> Maybe FilePath -> [FilePath]
 >            -> IO ()
 > makeDepend paths libraryPaths ofn ms =
@@ -78,6 +83,7 @@ Makefile.
 >   where (flat,nonFlat) = partition (flatExt `isSuffixOf`) ms
 >         allDeps = foldM (deps paths libraryPaths') Map.empty
 >         libraryPaths' = filter (`notElem` paths) libraryPaths
+> -}
 
 > deps :: [FilePath] -> [FilePath] -> SourceEnv -> FilePath -> IO SourceEnv
 > deps paths libraryPaths mEnv fn
@@ -155,10 +161,6 @@ prelude itself. Any errors reported by the parser are ignored.
 > imports m ds = nub $
 >   [preludeMIdent | m /= preludeMIdent] ++ [m | ImportDecl _ m _ _ _ <- ds]
 
-unlitLiterate :: FilePath -> String -> String
-unlitLiterate fn
-  | lcurryExt `isSuffixOf` fn = snd . unlit fn
-  | otherwise = id
 
 \end{verbatim}
 It is quite straight forward to generate Makefile dependencies from
@@ -175,6 +177,7 @@ it does not matter if the interface is out-of-date with respect to the
 object code.
 \begin{verbatim}
 
+> {-
 > makeDeps :: Bool -> SourceEnv -> String
 > makeDeps flat mEnv =
 >   unlines (filter (not . null) (map (depsLine . snd) (Map.toList mEnv)))
@@ -189,35 +192,43 @@ object code.
 >         interfFile Unknown = ""
 >         targetName = if flat then flatName else objectName False
 
+> -}
+
 \end{verbatim}
 If we want to compile the program instead of generating Makefile
 dependencies the environment has to be sorted topologically. Note
 that the dependency graph should not contain any cycles.
 \begin{verbatim}
 
-> sortDeps :: SourceEnv -> [[(ModuleIdent,Source)]]
-> sortDeps = scc (modules . fst) (imports . snd) . Map.toList
->   where modules m = [m]
->         imports (Source _ ms) = ms
->         imports (Interface _) = []
->         imports Unknown = []
-
-> flattenDeps :: [[(ModuleIdent,Source)]] -> ([(ModuleIdent,Source)],[String])
-> flattenDeps [] = ([],[])
-> flattenDeps (dep:deps) =
->   case dep of
->     [] -> (ms',es')
->     [m] -> (m:ms',es')
->     _ -> (ms',cyclicError (map fst dep) : es')
->   where (ms',es') = flattenDeps deps
-
-> cyclicError :: [ModuleIdent] -> String
-> cyclicError (m:ms) =
->   "Cylic import dependency between modules " ++ show m ++ rest ms
->   where rest [m] = " and " ++ show m
->         rest (m:ms) = ", " ++ show m ++ rest' ms
->         rest' [m] = ", and " ++ show m
->         rest' (m:ms) = ", " ++ show m ++ rest' ms
+> flattenDeps :: SourceEnv -> ([(ModuleIdent,Source)],[String])
+> flattenDeps = fdeps . sortDeps
+>     where
+>     sortDeps :: SourceEnv -> [[(ModuleIdent,Source)]]
+>     sortDeps = scc (modules) (imports . snd) . Map.toList
+>
+>     modules (m, _) = [m]
+>
+>     imports (Source _ ms) = ms
+>     imports (Interface _) = []
+>     imports Unknown = []
+>
+>     fdeps :: [[(ModuleIdent,Source)]] -> ([(ModuleIdent,Source)],[String])
+>     fdeps [] = ([],[])
+>     fdeps (dep:deps) = let (ms',es') = fdeps deps
+>                        in case dep of
+>                               [] -> (ms',es')
+>                               [m] -> (m:ms',es')
+>                               _ -> (ms',cyclicError (map fst dep) : es')
+>
+>     cyclicError :: [ModuleIdent] -> String
+>     cyclicError (m:ms) =
+>         "Cylic import dependency between modules " ++ show m ++ rest ms
+>
+>     rest [m] = " and " ++ show m
+>     rest (m:ms) = ", " ++ show m ++ rest' ms
+>
+>     rest' [m] = ", and " ++ show m
+>     rest' (m:ms) = ", " ++ show m ++ rest' ms
 
 \end{verbatim}
 The function \texttt{makeBuildScript} returns a shell script that
@@ -233,6 +244,7 @@ modification uses the command "smake" to check the out-of-dateness
 of dependend program files.
 \begin{verbatim}
 
+> {-
 > makeBuildScript :: Bool -> Bool -> Bool -> Bool -> Bool -> Bool 
 >                 -> Maybe FilePath -> FilePath -> [(ModuleIdent,Source)] 
 >                 -> String
@@ -324,75 +336,6 @@ reasonable value in the environment where the script is executed.
 >           fs
 >         nonFlatFiles (Interface _) fs = fs
 >         nonFlatFiles Unknown fs = fs
-
-\end{verbatim}
-The function \verb|getCurryPath| searches in predefined paths
-for the corresponding \texttt{.curry} or \texttt{.lcurry} file, 
-if the given file name has no extension.
-\begin{verbatim}
-
-> getCurryPath :: [FilePath] -> FilePath -> IO (Maybe FilePath)
-> getCurryPath paths fn
->   = lookupFile filepaths exts fn
->  where
->  filepaths = "":paths'
->  fnext = takeExtension fn
->  exts | null fnext = sourceExts
->       | otherwise  = [fnext]
->  paths' | pathSeparator `elem` fn = []
->         | otherwise               = paths
-
-
-\end{verbatim}
-The following functions compute the name of the target file (e.g.
-interface file, flat curry file etc.)
-for a source module. Note that
-output files are always created in the same directory as the source
-file.
-\begin{verbatim}
-
-> interfName :: FilePath -> FilePath
-> interfName sfn = replaceExtension sfn icurryExt
-
-> flatName :: FilePath -> FilePath
-> flatName fn = replaceExtension fn flatExt
-
-> flatIntName :: FilePath -> FilePath
-> flatIntName fn = replaceExtension fn flatIntExt
-
-> xmlName :: FilePath -> FilePath
-> xmlName fn = replaceExtension fn xmlExt
-
-> acyName :: FilePath -> FilePath
-> acyName fn = replaceExtension fn acyExt
-
-> uacyName :: FilePath -> FilePath
-> uacyName fn = replaceExtension fn uacyExt
-
-> sourceRepName :: FilePath -> FilePath
-> sourceRepName fn = replaceExtension fn sourceRepExt
-
-> objectName :: Bool -> FilePath -> FilePath
-> objectName debug = name (if debug then debugExt else oExt)
->   where name ext fn = replaceExtension fn ext
-
-> curryExt, lcurryExt, icurryExt, oExt :: String
-> curryExt = ".curry"
-
-> lcurryExt = ".lcurry"
-> icurryExt = ".icurry"
-> flatExt = ".fcy"
-> flatIntExt = ".fint"
-> xmlExt = "_flat.xml"
-> acyExt = ".acy"
-> uacyExt = ".uacy"
-> sourceRepExt = ".cy"
-> oExt = ".o"
-> debugExt = ".d.o"
-
-> sourceExts, moduleExts, objectExts :: [String]
-> sourceExts = [curryExt,lcurryExt]
-> moduleExts = sourceExts ++ [icurryExt]
-> objectExts = [oExt]
+> -}
 
 \end{verbatim}

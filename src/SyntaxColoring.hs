@@ -1,14 +1,15 @@
 module SyntaxColoring (Program,Code(..),TypeKind(..),ConstructorKind(..),
-                       IdentifierKind(..),FunctionKind(..),filename2program,
+                       IdentifierKind(..),FunctionKind(..), genProgram,
                        code2string,getQualIdent, position2code,
                        area2codes) where
 
 import Debug.Trace
+import Data.Function(on)
 
 import Data.Maybe
+import Data.Either
 import Data.List
 import Data.Char hiding(Space)
-import Control.Exception
 
 import Curry.Base.Position
 import Curry.Base.Ident
@@ -16,8 +17,6 @@ import Curry.Base.MessageMonad
 import Curry.Syntax 
 import Curry.Syntax.Lexer
 
-import Frontend
-import PathUtils (readModule)
 
 
 debug = False -- mergen von Token und Codes
@@ -69,20 +68,6 @@ data FunctionKind = InfixFunction
                   | OtherFunctionKind deriving Show      
                   
                   
-                  
---- @param importpaths
---- @param filename                  
---- @return program
-filename2program :: [String] -> String -> IO Program
-filename2program paths filename
-    = do cont <- readModule filename
-         typingParseResult <- (catchError showm (typingParse paths filename  cont))
-         fullParseResult <- (catchError showm (fullParse paths filename  cont))
-         parseResult <- (catchError showm (return (parse filename cont)))
-         lexResult <- (catchError showm (return (Frontend.lex filename cont)))
-         return (genProgram cont (typingParseResult : fullParseResult : [parseResult]) lexResult)    
-    where showm x = show (runMsg x)
-
      
         
 --- @param plaintext
@@ -92,7 +77,7 @@ filename2program paths filename
 genProgram :: String -> [MsgMonad Module] -> MsgMonad [(Position,Token)] -> Program       
 genProgram plainText parseResults m
     = case runMsg m of
-        (Left e, msgs) -> buildMessagesIntoPlainText ([e]) plainText
+        (Left e, msgs) -> buildMessagesIntoPlainText (e : msgs) plainText
         (Right posNtokList, mess) 
             -> let messages = (prepareMessages (concatMap getMessages parseResults ++ mess))
                    mergedMessages = (mergeMessages' (trace' ("Messages: " ++ show messages) messages) posNtokList)
@@ -121,25 +106,9 @@ area2codes xxs@((l,c,code):xs) p1@Position{file=file} p2
      | otherwise = area2codes xs p1 p2
    where
       posBegin = Position file l c noRef
-      posEnd   = Position file l (c + (length (code2string code))) noRef
+      posEnd   = Position file l (c + length (code2string code)) noRef
                   
-
---- this function intercepts errors and converts it to Messages      
---- @param a show-function for (Result a)                    
---- @param a function that generates a (Result a)
---- @return (Result a) without runtimeerrors   
-catchError :: (MsgMonad a -> String) -> IO (MsgMonad a) -> IO (MsgMonad a)
-catchError toString toDo = Control.Exception.catch (toDo >>= returnComplete toString) handler 
-  where     
-      handler (ErrorCall str) = return (failWith str)
-      handler  e = return (failWith (show e))  
-             
-      returnComplete :: (a -> String) -> a -> IO a
-      returnComplete toString a = f (toString a) (return a)
-          where
-             f [] r = r
-             f (_:xs) r = f xs r                      
-                  
+  
 --- @param code
 --- @return qualIdent if available                   
 getQualIdent :: Code -> Maybe QualIdent
@@ -227,8 +196,9 @@ buildMessagesIntoPlainText messages text =
           if null pre 
              then buildMessagesIntoPlainText' post preStrs (postStrs ++ [str]) (ln + 1)
              else (ln,1,NotParsed (unlines postStrs)) : 
-                  ((ln,1,CodeWarning pre (NotParsed str)) : [(ln,1,NewLine)]) ++
-                  (buildMessagesIntoPlainText' post preStrs [] (ln + 1)) 
+                  (ln,1,CodeWarning pre (NotParsed str)) :
+                  (ln,1,NewLine) :
+                  buildMessagesIntoPlainText' post preStrs [] (ln + 1)
       where 
          isLeq (WarnMsg (Just p) _) = line p <= ln 
          isLeq _ = True
@@ -239,17 +209,18 @@ buildMessagesIntoPlainText messages text =
      
 --- @param parse-Modules  [typingParse,fullParse,parse] 
 catIdentifiers :: [MsgMonad Module] -> ([(ModuleIdent,ModuleIdent)],[Code])
-catIdentifiers = catIds . map fst . map runMsg
+catIdentifiers = catIds . rights . map (fst . runMsg)
     where 
       catIds [] = ([],[])
-      catIds ((Left _):ys) = catIds ys
-      catIds [(Right m@(Module moduleIdent maybeExportSpec decls))] =
+      catIds [m] =
           catIdentifiers' m Nothing
-      catIds rs@(Right m:y:ys) =  
-          catIdentifiers' (getLastModule (reverse rs)) (Just m)
-      getLastModule (Left _:xs) = getLastModule xs
-      getLastModule (Right m:_) = m
+      catIds rs@(m:y:ys) =  
+          catIdentifiers' (last rs) (Just m)
     
+-- not in base befoer base4
+
+rights  xs = [ x | Right x <- xs]
+
 --- @param parse-Module
 --- @param Maybe betterParse-Module    
 catIdentifiers' :: Module -> Maybe Module -> ([(ModuleIdent,ModuleIdent)],[Code])
@@ -257,19 +228,18 @@ catIdentifiers' (Module moduleIdent maybeExportSpec decls)
                 Nothing =
       let codes = (concatMap decl2codes (qsort lessDecl decls)) in
       (concatMap renamedImports decls,      
-      ([ModuleName moduleIdent] ++
-       (maybe [] exportSpec2codes  maybeExportSpec)  ++
-       codes))     
+      ModuleName moduleIdent :
+       maybe [] exportSpec2codes maybeExportSpec ++ codes)
 catIdentifiers' (Module moduleIdent maybeExportSpec1 _)
                 (Just (Module _ maybeExportSpec2 decls)) =
       let codes = (concatMap decl2codes (qsort lessDecl decls)) in
       (concatMap renamedImports decls,
       replaceFunctionCalls $ 
-        map (addModuleIdent moduleIdent) $
+        map (addModuleIdent moduleIdent)
           ([ModuleName moduleIdent] ++
-           (mergeExports2codes  
+           mergeExports2codes  
               (maybe [] (\(Exporting _ i) -> i)  maybeExportSpec1)
-              (maybe [] (\(Exporting _ i) -> i)  maybeExportSpec2))  ++
+              (maybe [] (\(Exporting _ i) -> i)  maybeExportSpec2) ++
            codes))     
   
      
@@ -297,33 +267,33 @@ isFunctionDecl  _ = False
 
 idOccur2functionCall :: [QualIdent] -> Code -> Code
 idOccur2functionCall qualIdents ide@(Identifier IdOccur qualIdent)  
-   | isQualified qualIdent = (Function FunctionCall qualIdent)
-   | elem qualIdent qualIdents = (Function FunctionCall qualIdent)
+   | isQualified qualIdent = Function FunctionCall qualIdent
+   | elem qualIdent qualIdents = Function FunctionCall qualIdent
    | otherwise = ide
 idOccur2functionCall qualIdents (CodeWarning mess code) =
-       (CodeWarning mess (idOccur2functionCall qualIdents code))
+       CodeWarning mess (idOccur2functionCall qualIdents code)
 idOccur2functionCall qualIdents (CodeError mess code) =
-       (CodeError mess (idOccur2functionCall qualIdents code))       
+       CodeError mess (idOccur2functionCall qualIdents code)
 idOccur2functionCall _ code = code
   
 
 addModuleIdent :: ModuleIdent -> Code -> Code
-addModuleIdent moduleIdent (Function x qualIdent) 
+addModuleIdent moduleIdent c@(Function x qualIdent) 
     | uniqueId (unqualify qualIdent) == 0 =
-        (Function x (qualQualify moduleIdent qualIdent))
-    | otherwise = (Function x qualIdent)   
+        Function x (qualQualify moduleIdent qualIdent)
+    | otherwise = c
 addModuleIdent moduleIdent cn@(ConstructorName x qualIdent) 
     | not $ isQualified qualIdent =
-        (ConstructorName x (qualQualify moduleIdent qualIdent)) 
+        ConstructorName x (qualQualify moduleIdent qualIdent)
     | otherwise = cn       
 addModuleIdent moduleIdent tc@(TypeConstructor TypeDecla qualIdent) 
     | not $ isQualified qualIdent =
-        (TypeConstructor TypeDecla (qualQualify moduleIdent qualIdent)) 
+        TypeConstructor TypeDecla (qualQualify moduleIdent qualIdent)
     | otherwise = tc         
 addModuleIdent moduleIdent (CodeWarning mess code) =
-      (CodeWarning mess (addModuleIdent moduleIdent code))   
+    CodeWarning mess (addModuleIdent moduleIdent code)
 addModuleIdent moduleIdent (CodeError mess code) =
-      (CodeError mess (addModuleIdent moduleIdent code))       
+    CodeError mess (addModuleIdent moduleIdent code)
 addModuleIdent _ c = c
                         
 -- ----------------------------------------
@@ -332,7 +302,7 @@ mergeMessages' :: [WarnMsg] -> [(Position,Token)] -> [([WarnMsg],Position,Token)
 mergeMessages' _ [] = []
 mergeMessages' [] ((p,t):ps) = ([],p,t) : mergeMessages' [] ps
 mergeMessages' mss@(m@(WarnMsg mPos x):ms) ((p,t):ps)  
-    | mPos <= Just p = (trace' (show mPos ++ " <= " ++ show (Just p) ++ " Message: " ++ x) ([m],p,t)) : mergeMessages' ms ps 
+    | mPos <= Just p = trace' (show mPos ++ " <= " ++ show (Just p) ++ " Message: " ++ x) ([m],p,t) : mergeMessages' ms ps 
     | otherwise = ([],p,t) : mergeMessages' mss ps
 
 
@@ -340,7 +310,7 @@ tokenNcodes2codes :: [(ModuleIdent,ModuleIdent)] -> Int -> Int -> [([WarnMsg],Po
 tokenNcodes2codes _ _ _ [] _ = []          
 tokenNcodes2codes nameList currLine currCol toks@((messages,pos@Position{line=line,column=col},token):ts) codes 
     | currLine < line = 
-           trace' (" NewLine: ")
+           trace' " NewLine: "
            ((currLine,currCol,NewLine) :
            tokenNcodes2codes nameList (currLine + 1) 1 toks codes)
     | currCol < col =  
@@ -386,11 +356,11 @@ tokenNcodes2codes nameList currLine currCol toks@((messages,pos@Position{line=li
       newLine  = (currLine + length (lines tokenStr)) - 1 
       newCol   = currCol + length tokenStr   
 
-      rename mid = Just $ maybe mid id (lookup mid nameList)
+      rename mid = Just $ fromMaybe mid (lookup mid nameList)
 
       addMessage [] = []
       addMessage ((l,c,code):cs)
-         | null messages = ((l,c,code):cs)
+         | null messages = (l,c,code):cs
          | otherwise = trace' ("Warning bei code: " ++ show codes ++ ":" ++ show messages) 
                               ((l,c,CodeWarning messages code): addMessage cs)
       
@@ -515,7 +485,7 @@ getPosition (ExtraVariables pos _) = pos
              
 
 lessDecl :: Decl -> Decl -> Bool
-lessDecl decl1 decl2 = getPosition decl1 < getPosition decl2
+lessDecl = (<) `on` getPosition
 
 qsort _ []     = []
 qsort less (x:xs) = qsort less [y | y <- xs, less y x] ++ [x] ++ qsort less [y | y <- xs, not $ less y x]
@@ -562,7 +532,7 @@ export2codes exports e@(Export qualIdent)
     
        
 export2codes _ (ExportTypeWith qualIdent idents) = 
-     [TypeConstructor TypeExport qualIdent] ++ map (Function OtherFunctionKind . qualify) idents
+     TypeConstructor TypeExport qualIdent : map (Function OtherFunctionKind . qualify) idents
 export2codes _ (ExportTypeAll  qualIdent) = 
      [TypeConstructor TypeExport qualIdent]  
 export2codes _ (ExportModule moduleIdent) = 
@@ -574,9 +544,9 @@ decl2codes (ImportDecl _ moduleIdent xQualified mModuleIdent importSpec) =
      maybe [] ((:[]) . ModuleName) mModuleIdent ++
      maybe [] (importSpec2codes moduleIdent)  importSpec
 decl2codes (InfixDecl _ _ _ idents) =
-     (map (Function InfixFunction . qualify) idents) 
+     map (Function InfixFunction . qualify) idents
 decl2codes (DataDecl _ ident idents constrDecls) =
-     [TypeConstructor TypeDecla (qualify ident)] ++ 
+     TypeConstructor TypeDecla (qualify ident) : 
      map (Identifier UnknownId . qualify) idents ++
      concatMap constrDecl2codes constrDecls
 decl2codes (NewtypeDecl xPosition xIdent yIdents xNewConstrDecl) =
@@ -606,7 +576,7 @@ equation2codes (Equation _ lhs rhs) =
      
 lhs2codes :: Lhs -> [Code]
 lhs2codes (FunLhs ident constrTerms) =
-    (Function FunDecl $ qualify ident) : concatMap constrTerm2codes constrTerms
+    Function FunDecl (qualify ident) : concatMap constrTerm2codes constrTerms
 lhs2codes (OpLhs constrTerm1 ident constrTerm2) =
     constrTerm2codes constrTerm1 ++ [Function FunDecl $ qualify ident] ++ constrTerm2codes constrTerm2
 lhs2codes (ApLhs lhs constrTerms) =
@@ -627,17 +597,17 @@ constrTerm2codes (LiteralPattern literal) = []
 constrTerm2codes (NegativePattern ident literal) = []
 constrTerm2codes (VariablePattern ident) = [Identifier IdDecl (qualify ident)]
 constrTerm2codes (ConstructorPattern qualIdent constrTerms) =
-    (ConstructorName ConstrPattern qualIdent) : concatMap constrTerm2codes constrTerms
+    ConstructorName ConstrPattern qualIdent : concatMap constrTerm2codes constrTerms
 constrTerm2codes (InfixPattern constrTerm1 qualIdent constrTerm2) =
     constrTerm2codes constrTerm1 ++ [ConstructorName ConstrPattern qualIdent] ++ constrTerm2codes constrTerm2
 constrTerm2codes (ParenPattern constrTerm) = constrTerm2codes constrTerm
 constrTerm2codes (TuplePattern _ constrTerms) = concatMap constrTerm2codes constrTerms
 constrTerm2codes (ListPattern _ constrTerms) = concatMap constrTerm2codes constrTerms
 constrTerm2codes (AsPattern ident constrTerm) =
-    (Function OtherFunctionKind $ qualify ident) : constrTerm2codes constrTerm
+    Function OtherFunctionKind (qualify ident) : constrTerm2codes constrTerm
 constrTerm2codes (LazyPattern _ constrTerm) = constrTerm2codes constrTerm
 constrTerm2codes (FunctionPattern qualIdent constrTerms) = 
-    (Function OtherFunctionKind qualIdent) : concatMap constrTerm2codes constrTerms
+    Function OtherFunctionKind qualIdent : concatMap constrTerm2codes constrTerms
 constrTerm2codes (InfixFuncPattern constrTerm1 qualIdent constrTerm2) =
     constrTerm2codes constrTerm1 ++ [Function InfixFunction qualIdent] ++ constrTerm2codes constrTerm2
    
@@ -668,7 +638,7 @@ expression2codes (EnumFromThenTo expression1 expression2 expression3) =
     expression2codes expression2 ++ 
     expression2codes expression3
 expression2codes (UnaryMinus ident expression) = 
-    [Symbol (name ident)] ++ expression2codes expression 
+    Symbol (name ident) : expression2codes expression 
 expression2codes (Apply expression1 expression2) = 
     expression2codes expression1 ++ expression2codes expression2
 expression2codes (InfixApply expression1 infixOp expression2) = 
@@ -708,7 +678,7 @@ alt2codes (Alt _ constrTerm rhs) =
          
 constrDecl2codes :: ConstrDecl -> [Code]
 constrDecl2codes (ConstrDecl _ idents ident typeExprs) =
-    (ConstructorName ConstrDecla $ qualify ident) : concatMap typeExpr2codes typeExprs
+    ConstructorName ConstrDecla (qualify ident) : concatMap typeExpr2codes typeExprs
 constrDecl2codes (ConOpDecl _ idents typeExpr1 ident typeExpr2) =   
     typeExpr2codes typeExpr1 ++ [ConstructorName ConstrDecla $ qualify ident] ++ typeExpr2codes typeExpr2
 
@@ -721,14 +691,14 @@ import2codes :: ModuleIdent -> Import -> [Code]
 import2codes moduleIdent (Import ident) =
      [Function OtherFunctionKind $ qualifyWith moduleIdent ident]  
 import2codes moduleIdent (ImportTypeWith ident idents) = 
-     [ConstructorName OtherConstrKind $ qualifyWith moduleIdent ident] ++ 
+     ConstructorName OtherConstrKind (qualifyWith moduleIdent ident) :
      map (Function OtherFunctionKind . qualifyWith moduleIdent) idents
 import2codes moduleIdent (ImportTypeAll  ident) = 
      [ConstructorName OtherConstrKind $ qualifyWith moduleIdent ident]  
      
 typeExpr2codes :: TypeExpr -> [Code]     
 typeExpr2codes (ConstructorType qualIdent typeExprs) = 
-    (TypeConstructor TypeUse qualIdent) : concatMap typeExpr2codes typeExprs
+    TypeConstructor TypeUse qualIdent : concatMap typeExpr2codes typeExprs
 typeExpr2codes (VariableType ident) = 
     [Identifier IdOccur (qualify ident)]
 typeExpr2codes (TupleType typeExprs) = 
@@ -821,7 +791,7 @@ showCh c
    | elem c ('\127' : ['\001' .. '\031']) = show c
    | otherwise = toString c
   where
-    toString c = "'" ++ c : "'"
+    toString c = '\'' : c : "'"
 
 showSt = addQuotes . concatMap toGoodChar 
    where
@@ -833,4 +803,4 @@ toGoodChar c
    | c == '"' = "\\\""
    | otherwise = c : "" 
  where
-     justShow = reverse . tail . reverse . tail . show
+     justShow = init . tail . show

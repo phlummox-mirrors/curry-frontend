@@ -18,11 +18,9 @@ Marlow's pretty printer for Haskell. The format of the output intends to be
 similar to that of Flat-Curry XML representation.
 \begin{verbatim}
 
-> -- FIXME Doc nicth exportieren
-> module IL.XML(module IL.XML, Doc) where
+> module IL.XML(module IL.XML) where
 
 > import Data.Maybe
-> import Data.Char(chr,ord,isAlphaNum)
 
 > import Curry.Base.Ident
 > import qualified Curry.Syntax as CS
@@ -190,7 +188,7 @@ similar to that of Flat-Curry XML representation.
 > xmlRhs l e = text "<rhs>"  $$ nest level rhs $$ text "</rhs>"
 >              where
 >                varDicc    = xmlBuildDicc l
->                (rhs,dicc) = xmlExpr varDicc e
+>                (rhs, _) = xmlExpr varDicc e
 
 > -- =========================================================================
 
@@ -301,7 +299,7 @@ similar to that of Flat-Curry XML representation.
 >     sEval      = if eval==Rigid then "\"Rigid\"" else "\"Flex\""
 >     heading    = text "<case type=" <> text sEval <> text ">"
 >     end        = text "</case>"
->     (e1,d1)    = xmlExpr d expr
+>     (e1,_)    = xmlExpr d expr
 >     (lDocs,d2) = xmlMapDicc d xmlBranch  lAlt
 
 > xmlOr :: [(Int,Ident)] -> Expression -> Expression -> (Doc,[(Int,Ident)])
@@ -359,7 +357,7 @@ similar to that of Flat-Curry XML representation.
 > xmlBinding d  (Binding ident exp) =
 >    (text "<binding>" $$ nest level v $$ nest level e $$ text "</binding>",d2)
 >    where
->       (v,d1) = xmlExprVar d ident
+>       (v,_)  = xmlExprVar d ident
 >       (e,d2) = xmlExpr d exp
 
 > -- =========================================================================
@@ -441,7 +439,7 @@ similar to that of Flat-Curry XML representation.
 
 
 > xmlLit :: Literal -> Doc
-> xmlLit (Char _ c) = text "<charc>" <>  xmlInt (ord c) <> text "</charc>"
+> xmlLit (Char _ c) = text "<charc>" <>  xmlInt (fromEnum c) <> text "</charc>"
 > xmlLit (Int _ n) = text "<intc>" <>  xmlInteger n <> text "</intc>"
 > xmlLit (Float _ n) = text "<floatc>" <>  xmlFloat n <> text "</floatc>"
 

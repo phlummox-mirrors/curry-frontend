@@ -1,12 +1,17 @@
-module CurryHtml(program2html,source2html) where
+module CurryHtml(source2html) where
+
+import Data.Char hiding(Space)
+import Control.Exception
 
 import Curry.Base.Ident
+import Curry.Base.MessageMonad
 
 import SyntaxColoring
-import Data.Char hiding(Space)
-import CurryDeps(getCurryPath)
-import PathUtils (writeModule)
-       
+import PathUtils (readModule, writeModule, getCurryPath)
+import Frontend
+
+
+
 --- translate source file into HTML file with syntaxcoloring
 --- @param outputfilename
 --- @param sourcefilename
@@ -22,8 +27,38 @@ source2html imports outputfilename sourcefilename = do
         (if null outputfilename then writeModule output 
                                 else writeFile   output)
            (program2html modulname program)
-   
+             
+--- @param importpaths
+--- @param filename                  
+--- @return program
+filename2program :: [String] -> String -> IO Program
+filename2program paths filename
+    = do cont <- readModule filename
+         typingParseResult <- (catchError (typingParse paths filename  cont))
+         fullParseResult <- (catchError (fullParse paths filename  cont))
+         parseResult <- (catchError (return (parse filename cont)))
+         lexResult <- (catchError (return (Frontend.lex filename cont)))
+         return (genProgram cont (typingParseResult : fullParseResult : [parseResult]) lexResult)
+
+
+--- this function intercepts errors and converts it to Messages      
+--- @param a show-function for (Result a)                    
+--- @param a function that generates a (Result a)
+--- @return (Result a) without runtimeerrors   
+
+-- FIXME This is ugly. Avoid exceptions and report failure via MsgMonad instead! (hsi)
+catchError :: Show a =>IO (MsgMonad a) -> IO (MsgMonad a)
+catchError toDo = Control.Exception.catch (toDo >>= returnNF) handler 
+  where     
+    -- This refers to base3
+    handler (ErrorCall str) = return (failWith str)
+    handler  e = return (failWith (show e))  
+             
+    returnNF a = normalform a `seq` return a
+    normalform = length . show . runMsg
+                
        
+
 --- generates htmlcode with syntax highlighting            
 --- @param modulname
 --- @param a program
@@ -67,15 +102,11 @@ code2class (Identifier UnknownId _) = "identifier_unknownid"
 code2class (TypeConstructor TypeDecla _) = "typeconstructor_typedecla"
 code2class (TypeConstructor TypeUse _) = "typeconstructor_typeuse"
 code2class (TypeConstructor TypeExport _) = "typeconstructor_typeexport"
-code2class (CodeError _ _) = "codeerror"
 code2class (CodeWarning _ _) = "codewarning"
 code2class (NotParsed _) = "notparsed"
 
 
 code2html :: Bool -> Code -> String    
-code2html _ code@(CodeError _ c) =
-      (spanTag (code2class code) 
-              (code2html False c))
 code2html ownClass code@(CodeWarning _ c) =
      (if ownClass then spanTag (code2class code) else id)
               (code2html False c)       
@@ -90,9 +121,8 @@ code2html ownClass c
                       (htmlQuote (code2string c)) 
                                         
 spanTag :: String -> String -> String
-spanTag cl str
-   |null cl = str
-   | otherwise = "<span class=\""++ cl ++ "\">" ++ str ++ "</span>"
+spanTag [] str = str
+spanTag cl str = "<span class=\""++ cl ++ "\">" ++ str ++ "</span>"
 
 replace :: Char -> String -> String -> String
 replace old new = foldr (\ x -> if x == old then (new ++) else ([x]++)) ""
