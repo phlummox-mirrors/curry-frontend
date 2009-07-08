@@ -174,7 +174,7 @@ visitExpression (IL.Function qident _)
    = do arity_ <- lookupIdArity qident
         qname <- visitQualIdent qident
    --     ftype <- lookupIdType qident
-        let qident' = qname{ typeofQName = ftype }
+   --     let qident' = qname{ typeofQName = ftype }
 	maybe (internalError (funcArity qident))
 	      (\arity -> genFuncCall qname arity [])
 	      arity_
