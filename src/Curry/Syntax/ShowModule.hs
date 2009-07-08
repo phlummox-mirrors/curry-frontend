@@ -163,14 +163,6 @@ showsConsDecl (ConstrDecl pos idents ident types)
   . showsIdent ident . space
   . showsList showsTypeExpr types
   . showsString ")"
-showsConstrDecl (ConOpDecl pos idents rtyp ident ltyp)
-  = showsString "(ConOpDecl "
-  . showsPosition pos . space
-  . showsList showsIdent idents . space
-  . showsTypeExpr rtyp . space
-  . showsIdent ident . space
-  . showsTypeExpr ltyp
-  . showsString ")"
 
 showsNewConsDecl :: NewConstrDecl -> ShowS
 showsNewConsDecl (NewConstrDecl pos idents ident typ)
@@ -492,16 +484,13 @@ showsPair sa sb (a,b)
 
 
 showsIdent :: Ident -> ShowS
-showsIdent x@(IdentPosition _ _ _) = showsIdent $ removePositionIdent x
-showsIdent (Ident name n)
+showsIdent (Ident _ name n)
   = showsString "(Ident " . shows name . space . shows n . showsString ")"
 
 showsQualIdent :: QualIdent -> ShowS
-showsQualIdent (UnqualIdent ident)
-    = showsString "(UnqualIdent " . showsIdent ident . showsString ")"
 showsQualIdent (QualIdent mident ident)
     = showsString "(QualIdent "
-      . showsModuleIdent mident 
+      . showsMaybe showsModuleIdent mident 
       . space
       . showsIdent ident
       . showsString ")"

@@ -39,13 +39,13 @@ imported precedence environment.
 > bindPrecs m ds pEnv =
 >   case linear ops of
 >     Linear ->
->       case [PIdent p op | PIdent p op <- ops, op `notElem` bvs] of
+>       case [ op | op <- ops, op `notElem` bvs] of
 >         [] -> foldr bindPrec pEnv fixDs
->         PIdent p op : _ -> errorAt' (undefinedOperator op)
->     NonLinear (PIdent p op) -> errorAt' (duplicatePrecedence op)
+>         op : _ -> errorAt' (undefinedOperator op)
+>     NonLinear op -> errorAt' (duplicatePrecedence op)
 >   where (fixDs,nonFixDs) = partition isInfixDecl ds
 >         bvs = concatMap boundValues nonFixDs
->         ops = [PIdent p op | InfixDecl p _ _ ops <- fixDs, op <- ops]
+>         ops = [ op | InfixDecl p _ _ ops <- fixDs, op <- ops]
 >         bindPrec (InfixDecl _ fix pr ops) pEnv
 >           | p == defaultP = pEnv
 >           | otherwise = foldr (flip (bindP m) p) pEnv ops

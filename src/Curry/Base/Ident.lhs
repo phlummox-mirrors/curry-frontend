@@ -26,14 +26,15 @@ the fact that all qualified identifiers are greater than any
 unqualified identifier.}
 \begin{verbatim}
 
-> module Curry.Base.Ident(Ident(..),QualIdent(..),ModuleIdent,SrcRefOf(..),
->                         mkIdent, name, qualName, uniqueId,
+> module Curry.Base.Ident(Ident(..), showIdent,
+>                         QualIdent(..),ModuleIdent(..),SrcRefOf(..),
+>                         mkIdent, qualName,
 >                         renameIdent, unRenameIdent,
->                         mkMIdent, moduleName, moduleQualifiers,
+>                         mkMIdent, moduleName,
 >                         isInfixOp, isQInfixOp,
 >                         qualify, qualifyWith, qualQualify,
 >                         isQualified, unqualify, qualUnqualify,
->                         localIdent, splitQualIdent,
+>                         localIdent, -- splitQualIdent,
 >                         emptyMIdent, mainMIdent,preludeMIdent,
 >                         anonId,unitId,boolId,charId,intId,floatId,listId,ioId,
 >                         successId,trueId,falseId,nilId,consId,mainId,
@@ -47,143 +48,100 @@ unqualified identifier.}
 >                         recUpdateId, qualRecUpdateId, recordExtId, labelExtId,
 >                         isRecordExtId, isLabelExtId, fromRecordExtId, fromLabelExtId,
 >                         renameLabel,
->                         recordExt, labelExt, mkLabelIdent,hasPositionIdent,
+>                         recordExt, labelExt, mkLabelIdent,-- hasPositionIdent,
+>                         addPositionIdent, 
+>                         addPositionModuleIdent,addRef,addRefId,
+>                         positionOfQualIdent,updQualIdent ) where
 
-                         showsIdent,showsQualIdent,showsModuleIdent,
-
->                         addPositionIdent, removePositionIdent, positionOfIdent,
->                         addPositionModuleIdent, removePositionModuleIdent,addRef,addRefId,
->                         positionOfModuleIdent,positionOfQualIdent,updQualIdent ) where
-
+> import Control.Monad(liftM)
 > import Data.Char
 > import Data.List
 > import Data.Maybe
 > import Data.Generics
+> import Data.Function(on)
 
 > import Curry.Base.Position
 
 
-> data Ident = Ident String Int 
->            | IdentPosition Position String Int
->            deriving (Read,Data,Typeable)
+Simple identifiers
+
+> data Ident = Ident { positionOfIdent :: Position,
+>                      name :: String,
+>                      uniqueId :: Int }
+>              deriving (Read, Show, Data, Typeable)
 >
-> data QualIdent = UnqualIdent Ident
->                | QualIdent ModuleIdent Ident
->                  deriving (Eq,Ord,Read,Data,Typeable)
-> data ModuleIdent = ModuleIdent [String] 
->                   |ModuleIdentPosition Position [String] deriving (Data,Typeable)
-
 > instance Eq Ident where
->    ident1 == ident2 = name ident1 == name     ident2 && 
->                   uniqueId ident1 == uniqueId ident2
-
-> instance Ord ModuleIdent where
->    mident1 `compare` mident2 =
->        moduleQualifiers mident1 `compare` moduleQualifiers mident2
-
-> instance Eq ModuleIdent where
->    mident1 == mident2 = moduleQualifiers mident1 == moduleQualifiers mident2 
-
-> instance Read ModuleIdent where
->   readsPrec p s = [ (mkMIdent [m],s') | (m,s') <- readsPrec p s ]
-
+>     Ident _ m i == Ident _ n j = (m,i) == (n, j)
+>
 > instance Ord Ident where
->    ident1 `compare` ident2 =
->        (name ident1,uniqueId ident1) `compare` (name ident2,uniqueId ident2)
-
-> instance Show Ident where
->   showsPrec _ (Ident x n)
->     | n == 0 = showString x
->     | otherwise = showString x . showChar '.' . shows n
->   showsPrec _ (IdentPosition _ x n)
->     | n == 0 = showString x
->     | otherwise = showString x . showChar '.' . shows n
-
-> instance Show QualIdent where
->   showsPrec _ (UnqualIdent x) = shows x
->   showsPrec _ (QualIdent m x) = shows m . showChar '.' . shows x
-
-> instance Show ModuleIdent where
->   showsPrec _ m = showString (moduleName m)
+>     Ident _ m i `compare` Ident _ n j = (m,i) `compare` (n, j)
+>
+> showIdent :: Ident -> String
+> showIdent  (Ident _ x 0) = x
+> showIdent  (Ident _ x n) = x ++ '.' : show n
 
 
-> hasPositionIdent :: Ident -> Bool
-> hasPositionIdent (Ident _ _ ) = False
-> hasPositionIdent (IdentPosition _ _ _) = True
+Qualified identifiers
 
-> addPositionIdent :: Position -> Ident -> Ident
-> addPositionIdent pos (Ident x n) = IdentPosition pos x n
-> addPositionIdent AST{ast=sr} (IdentPosition pos x n) = 
->   IdentPosition pos{ast=sr} x n
-> addPositionIdent pos (IdentPosition _ x n) = 
->   IdentPosition pos x n
-
-> removePositionIdent :: Ident -> Ident
-> removePositionIdent (Ident x n) = (Ident x n)
-> removePositionIdent (IdentPosition _ x n) = (Ident x n)
-
-> positionOfIdent :: Ident -> Position
-> positionOfIdent (Ident _ _) = noPos
-> positionOfIdent (IdentPosition pos _ _) = pos
-
-> addPositionModuleIdent :: Position -> ModuleIdent -> ModuleIdent
-> addPositionModuleIdent pos (ModuleIdent x) = ModuleIdentPosition pos x 
-> addPositionModuleIdent pos (ModuleIdentPosition _ x) = ModuleIdentPosition pos x 
-
-> removePositionModuleIdent :: ModuleIdent -> ModuleIdent
-> removePositionModuleIdent (ModuleIdent x) = (ModuleIdent x)
-> removePositionModuleIdent (ModuleIdentPosition _ x) = (ModuleIdent x)
-
-> positionOfModuleIdent :: ModuleIdent -> Position
-> positionOfModuleIdent (ModuleIdent _) = noPos
-> positionOfModuleIdent (ModuleIdentPosition pos _) = pos
-
-> positionOfQualIdent :: QualIdent -> Position
-> positionOfQualIdent = positionOfIdent . snd . splitQualIdent
-
-> mkIdent :: String -> Ident
-> mkIdent x = Ident x 0
-
-> name :: Ident -> String
-> name (Ident x _) = x
-> name (IdentPosition _ x _) = x
+> data QualIdent = QualIdent { qualidMod :: Maybe ModuleIdent,
+>                              qualidId:: Ident }
+>                  deriving (Eq, Ord, Read, Show, Data,Typeable)
 
 > qualName :: QualIdent -> String
-> qualName (UnqualIdent x) = name x
-> qualName (QualIdent m x) = moduleName m ++ "." ++ name x
+> qualName (QualIdent Nothing x) = name x
+> qualName (QualIdent (Just m) x) = moduleName m ++ "." ++ name x
 
-> uniqueId :: Ident -> Int
-> uniqueId (Ident _ n) = n
-> uniqueId (IdentPosition _ _ n) = n
 
-> renameIdent :: Ident -> Int -> Ident
-> renameIdent (Ident x _) n = Ident x n
-> renameIdent (IdentPosition p x _) n = IdentPosition p x n
+Module names
 
-> unRenameIdent :: Ident -> Ident
-> unRenameIdent (Ident x _) = Ident x 0
-> unRenameIdent (IdentPosition p x _) = IdentPosition p x 0
+> data ModuleIdent = ModuleIdent { positionOfModuleIdent :: Position,
+>                                  moduleQualifiers :: [String] }
+>                    deriving (Read, Show, Data,Typeable)
 
-> mkMIdent :: [String] -> ModuleIdent
-> mkMIdent = ModuleIdent
+> instance Eq ModuleIdent where
+>    (==) = (==) `on` moduleQualifiers
+
+> instance Ord ModuleIdent where
+>    compare = compare `on` moduleQualifiers
 
 > moduleName :: ModuleIdent -> String
-> moduleName (ModuleIdent xs) = concat (intersperse "." xs)
-> moduleName (ModuleIdentPosition _ xs) = concat (intersperse "." xs)
+> moduleName = concat . intersperse "." . moduleQualifiers
 
-> moduleQualifiers :: ModuleIdent -> [String]
-> moduleQualifiers (ModuleIdent xs) = xs
-> moduleQualifiers (ModuleIdentPosition _ xs) = xs
+
+-- -----------------------------------------
+
+> addPositionIdent :: Position -> Ident -> Ident
+> addPositionIdent pos (Ident NoPos x n) = Ident pos x n
+> addPositionIdent AST{ast=sr} (Ident pos x n)
+>     =  Ident pos{ast=sr} x n
+> addPositionIdent pos (Ident _ x n) = Ident pos x n
+
+> addPositionModuleIdent :: Position -> ModuleIdent -> ModuleIdent
+> addPositionModuleIdent pos (ModuleIdent _ x) = ModuleIdent pos x 
+
+> positionOfQualIdent :: QualIdent -> Position
+> positionOfQualIdent = positionOfIdent . qualidId
+
+> mkIdent :: String -> Ident
+> mkIdent x = Ident NoPos x 0
+
+> renameIdent :: Ident -> Int -> Ident
+> renameIdent (Ident p x _) n = Ident p x n
+
+
+> unRenameIdent :: Ident -> Ident
+> unRenameIdent (Ident p x _) = Ident p x 0
+
+> mkMIdent :: [String] -> ModuleIdent
+> mkMIdent = ModuleIdent NoPos
 
 > isInfixOp :: Ident -> Bool
-> isInfixOp (Ident ('<':c:cs) _)=
+> isInfixOp (Ident _ ('<':c:cs) _)=
 >   last (c:cs) /= '>' || not (isAlphaNum c) && c `notElem` "_(["
-> isInfixOp (Ident (c:_) _) = not (isAlphaNum c) && c `notElem` "_(["
-> isInfixOp (Ident _ _) = False -- error "Zero-length identifier"
-> isInfixOp x@(IdentPosition _ _ _) = isInfixOp $ removePositionIdent x
+> isInfixOp (Ident _ (c:_) _) = not (isAlphaNum c) && c `notElem` "_(["
+> isInfixOp (Ident _ _ _) = False -- error "Zero-length identifier"
 
 > isQInfixOp :: QualIdent -> Bool
-> isQInfixOp (UnqualIdent x) = isInfixOp x
 > isQInfixOp (QualIdent _ x) = isInfixOp x
 
 \end{verbatim}
@@ -193,80 +151,76 @@ given module prefix, respectively).
 \begin{verbatim}
 
 > qualify :: Ident -> QualIdent
-> qualify = UnqualIdent
+> qualify = QualIdent Nothing
 
 > qualifyWith :: ModuleIdent -> Ident -> QualIdent
-> qualifyWith = QualIdent
+> qualifyWith = QualIdent . Just
 
 > qualQualify :: ModuleIdent -> QualIdent -> QualIdent
-> qualQualify m (UnqualIdent x) = QualIdent m x
+> qualQualify m (QualIdent Nothing x) = QualIdent (Just m) x
 > qualQualify _ x = x
 
 > isQualified :: QualIdent -> Bool
-> isQualified (UnqualIdent _) = False
-> isQualified (QualIdent _ _) = True
+> isQualified (QualIdent m _) = isJust m
 
 > unqualify :: QualIdent -> Ident
-> unqualify (UnqualIdent x) = x
 > unqualify (QualIdent _ x) = x
 
 > qualUnqualify :: ModuleIdent -> QualIdent -> QualIdent
-> qualUnqualify m (UnqualIdent x) = UnqualIdent x
-> qualUnqualify m (QualIdent m' x)
->   | m == m' = UnqualIdent x
->   | otherwise = QualIdent m' x
+> qualUnqualify m qid@(QualIdent Nothing x) = qid
+> qualUnqualify m (QualIdent (Just m') x) = QualIdent m'' x
+>     where m'' | m == m' = Nothing
+>               | otherwise    = Just m'
 
 > localIdent :: ModuleIdent -> QualIdent -> Maybe Ident
-> localIdent _ (UnqualIdent x) = Just x
-> localIdent m (QualIdent m' x)
+> localIdent _ (QualIdent Nothing x) = Just x
+> localIdent m (QualIdent (Just m') x)
 >   | m == m' = Just x
 >   | otherwise = Nothing
 
 > splitQualIdent :: QualIdent -> (Maybe ModuleIdent,Ident)
-> splitQualIdent (UnqualIdent x) = (Nothing,x)
-> splitQualIdent (QualIdent m x) = (Just m,x)
+> splitQualIdent (QualIdent m x) = (m,x)
 
 > updQualIdent :: (ModuleIdent -> ModuleIdent) -> (Ident -> Ident) -> QualIdent -> QualIdent
-> updQualIdent _ g (UnqualIdent x) = UnqualIdent (g x)
-> updQualIdent f g (QualIdent m x) = QualIdent (f m) (g x)
+> updQualIdent f g (QualIdent m x) = QualIdent (liftM f m) (g x)
 
 > addRef :: SrcRef -> QualIdent -> QualIdent
 > addRef r = updQualIdent id (addRefId r)
 
 > addRefId :: SrcRef -> Ident -> Ident
-> addRefId r = addPositionIdent (AST r)
+> addRefId = addPositionIdent . AST
 
 \end{verbatim}
 A few identifiers a predefined here.
 \begin{verbatim}
 
 > emptyMIdent, mainMIdent, preludeMIdent :: ModuleIdent
-> emptyMIdent   = ModuleIdent []
-> mainMIdent    = ModuleIdent ["main"]
-> preludeMIdent = ModuleIdent ["Prelude"]
+> emptyMIdent   = ModuleIdent NoPos []
+> mainMIdent    = ModuleIdent NoPos ["main"]
+> preludeMIdent = ModuleIdent NoPos ["Prelude"]
 
 > anonId :: Ident
-> anonId = Ident "_" 0
+> anonId = Ident NoPos "_" 0
 
 > unitId, boolId, charId, intId, floatId, listId, ioId, successId :: Ident
-> unitId    = Ident "()" 0
-> boolId    = Ident "Bool" 0
-> charId    = Ident "Char" 0
-> intId     = Ident "Int" 0
-> floatId   = Ident "Float" 0
-> listId    = Ident "[]" 0
-> ioId      = Ident "IO" 0
-> successId = Ident "Success" 0
+> unitId    = Ident NoPos "()" 0
+> boolId    = Ident NoPos "Bool" 0
+> charId    = Ident NoPos "Char" 0
+> intId     = Ident NoPos "Int" 0
+> floatId   = Ident NoPos "Float" 0
+> listId    = Ident NoPos "[]" 0
+> ioId      = Ident NoPos "IO" 0
+> successId = Ident NoPos "Success" 0
 
 > trueId, falseId, nilId, consId :: Ident
-> trueId  = Ident "True" 0
-> falseId = Ident "False" 0
-> nilId   = Ident "[]" 0
-> consId  = Ident ":" 0
+> trueId  = Ident NoPos "True" 0
+> falseId = Ident NoPos "False" 0
+> nilId   = Ident NoPos "[]" 0
+> consId  = Ident NoPos ":" 0
 
 > tupleId :: Int -> Ident
 > tupleId n
->   | n >= 2 = Ident ("(" ++ replicate (n - 1) ',' ++ ")") 0
+>   | n >= 2 = Ident NoPos ("(" ++ replicate (n - 1) ',' ++ ")") 0
 >   | otherwise = error "internal error: tupleId"
 
 > isTupleId :: Ident -> Bool
@@ -280,30 +234,30 @@ A few identifiers a predefined here.
 >   where n = length (name x) - 1
 
 > mainId, minusId, fminusId :: Ident
-> mainId = Ident "main" 0
-> minusId = Ident "-" 0
-> fminusId = Ident "-." 0
+> mainId = Ident NoPos "main" 0
+> minusId = Ident NoPos "-" 0
+> fminusId = Ident NoPos "-." 0
 
 > qUnitId, qNilId, qConsId, qListId :: QualIdent
-> qUnitId = UnqualIdent unitId
-> qListId = UnqualIdent listId
-> qNilId  = UnqualIdent nilId
-> qConsId = UnqualIdent consId
+> qUnitId = QualIdent Nothing unitId
+> qListId = QualIdent Nothing listId
+> qNilId  = QualIdent Nothing nilId
+> qConsId = QualIdent Nothing consId
 
 > qBoolId, qCharId, qIntId, qFloatId, qSuccessId, qIOId :: QualIdent
-> qBoolId = QualIdent preludeMIdent boolId
-> qCharId = QualIdent preludeMIdent charId
-> qIntId = QualIdent preludeMIdent intId
-> qFloatId = QualIdent preludeMIdent floatId
-> qSuccessId = QualIdent preludeMIdent successId
-> qIOId = QualIdent preludeMIdent ioId
+> qBoolId = QualIdent (Just preludeMIdent) boolId
+> qCharId = QualIdent (Just preludeMIdent) charId
+> qIntId = QualIdent (Just preludeMIdent) intId
+> qFloatId = QualIdent (Just preludeMIdent) floatId
+> qSuccessId = QualIdent (Just preludeMIdent) successId
+> qIOId = QualIdent (Just preludeMIdent) ioId
 
 > qTrueId, qFalseId :: QualIdent
-> qTrueId = QualIdent preludeMIdent trueId
-> qFalseId = QualIdent preludeMIdent falseId
+> qTrueId = QualIdent (Just preludeMIdent) trueId
+> qFalseId = QualIdent (Just preludeMIdent) falseId
 
 > qTupleId :: Int -> QualIdent
-> qTupleId = UnqualIdent . tupleId
+> qTupleId = QualIdent Nothing . tupleId
 
 > isQTupleId :: QualIdent -> Bool
 > isQTupleId = isTupleId . unqualify
@@ -316,7 +270,7 @@ Micellaneous function for generating and testing extended identifiers.
 \begin{verbatim}
 
 > fpSelectorId :: Int -> Ident
-> fpSelectorId n = Ident (fpSelExt ++ show n) 0
+> fpSelectorId n = Ident NoPos (fpSelExt ++ show n) 0
 
 > isFpSelectorId :: Ident -> Bool
 > isFpSelectorId f = any (fpSelExt `isPrefixOf`) (tails (name f))

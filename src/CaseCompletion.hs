@@ -538,8 +538,8 @@ getComplConstrs (Module mid _ decls) menv constrs
 	     (lookupModule mid' menv)
  where
    cons = head constrs
-   (mmid', _) = splitQualIdent cons
-   mid' = maybe mid id mmid'
+
+   mid' = fromMaybe mid (qualidMod cons)
 
 
 -- Find complementary constructors within the declarations of the

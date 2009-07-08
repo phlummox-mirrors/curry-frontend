@@ -1318,3 +1318,14 @@ Error functions.
 >        text "are incompatible"]
 
 \end{verbatim}
+
+
+\end{verbatim}
+The following functions implement pretty-printing for types.
+\begin{verbatim}
+
+> ppType :: ModuleIdent -> Type -> Doc
+> ppType m = ppTypeExpr 0 . fromQualType m
+
+> ppTypeScheme :: ModuleIdent -> TypeScheme -> Doc
+> ppTypeScheme m (ForAll _ ty) = ppType m ty

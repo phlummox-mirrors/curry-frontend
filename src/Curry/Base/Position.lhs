@@ -40,8 +40,9 @@ column number. A tab stop is assumed at every eighth column.
 > data Position 
 >   = Position{ file :: FilePath, line :: Int, column :: Int, ast :: SrcRef }
 >   | AST { ast :: SrcRef }
->   deriving (Eq, Ord,Data,Typeable)
->
+>   | NoPos
+>     deriving (Eq, Ord,Data,Typeable)
+
 > incPosition :: Position -> Int -> Position
 > incPosition p j = p{ast=incSrcRef (ast p) j}
 
@@ -55,6 +56,7 @@ column number. A tab stop is assumed at every eighth column.
 >     showString "line " . shows l .
 >     (if c > 0 then showChar '.' . shows c else id)
 >   showsPrec _ AST{} = id
+>   showsPrec _ NoPos = id
 
 > tabWidth :: Int
 > tabWidth = 8
@@ -64,24 +66,24 @@ column number. A tab stop is assumed at every eighth column.
 
 > incr :: Position -> Int -> Position
 > incr p@Position{column=c} n = p{column=c + n}
+> incr p _ = p
 
 > next :: Position -> Position
 > next = flip incr 1
 
 > tab :: Position -> Position
 > tab p@Position{column=c} = p{column=c + tabWidth - (c - 1) `mod` tabWidth}
+> tab p = p
 
 > nl :: Position -> Position
 > nl p@Position{line=l} = p{line=l + 1, column=1}
-
-> noPos, noPos' :: Position
-> noPos  = Position{ file = "", line = 0, column = 0, ast = noRef }
-> noPos' = AST noRef
+> nl p = p
 
 > showLine :: Position -> String
-> showLine x@Position{line=l,column=c} 
->      | x == noPos = ""
->      | otherwise = "(line " ++ show l ++ "." ++ show c ++ ") "
+> showLine NoPos = ""
+> showLine AST{} = ""
+> showLine Position{line=l,column=c} 
+>     = "(line " ++ show l ++ "." ++ show c ++ ") "
 
 \end{verbatim}
 

@@ -47,7 +47,7 @@ finally, the declarations are checked within this environment.
 > kindCheck m tcEnv ds =
 >   case linear (map tconstr ds') of
 >     Linear -> map (checkDecl m kEnv) ds
->     NonLinear (PIdent _ tc) -> errorAt' (duplicateType tc)
+>     NonLinear tc -> errorAt' (duplicateType tc)
 >   where ds' = filter isTypeDecl ds
 >         kEnv = foldr (bindArity m) (fmap tcArity tcEnv) ds'
 
@@ -265,10 +265,10 @@ interpret the identifier as such.
 Auxiliary definitions
 \begin{verbatim}
 
-> tconstr :: Decl -> PIdent
-> tconstr (DataDecl p tc _ _) = PIdent p tc
-> tconstr (NewtypeDecl p tc _ _) = PIdent p tc
-> tconstr (TypeDecl p tc _ _) = PIdent p tc
+> tconstr :: Decl -> Ident
+> tconstr (DataDecl p tc _ _) = tc
+> tconstr (NewtypeDecl p tc _ _) = tc
+> tconstr (TypeDecl p tc _ _) = tc
 > tconstr _ = internalError "tconstr"
 
 \end{verbatim}

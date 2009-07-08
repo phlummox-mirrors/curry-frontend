@@ -95,14 +95,14 @@ collectIInfixDecls mident (_:decls) = collectIInfixDecls mident decls
 -- Generate interface declarations for all type synonyms in the module.
 genTypeSyns :: TCEnv -> Module -> [IDecl]
 genTypeSyns tcEnv (Module mident _ decls)
-   = map (genTypeSynDecl mident tcEnv) (filter isTypeSyn decls)
+   = concatMap (genTypeSynDecl mident tcEnv) decls
 
 --
-genTypeSynDecl :: ModuleIdent -> TCEnv -> Decl -> IDecl
+genTypeSynDecl :: ModuleIdent -> TCEnv -> Decl -> [IDecl]
 genTypeSynDecl mid tcEnv (TypeDecl pos ident params texpr)
-   = genTypeDecl pos mid ident params tcEnv texpr
+   = [genTypeDecl pos mid ident params tcEnv texpr]
 genTypeSynDecl _ _ _ 
-   = internalError "@CurryInfo.genTypeSynDecl: illegal declaration"
+   = []
 
 --
 genTypeDecl :: Position -> ModuleIdent -> Ident -> [Ident] -> TCEnv
@@ -170,17 +170,3 @@ lookupTCId qident tcEnv
        [RenamingType qident' _ _] -> Just qident'
        [AliasType qident' _ _]    -> Just qident'
        _                          -> Nothing
-
---
-isTypeSyn :: Decl -> Bool
-isTypeSyn (TypeDecl _ _ _ texpr)
-   = case texpr of
-       RecordType _ _ -> False
-       _              -> True
-isTypeSyn _ = False
-
-
--------------------------------------------------------------------------------
--------------------------------------------------------------------------------
-
-

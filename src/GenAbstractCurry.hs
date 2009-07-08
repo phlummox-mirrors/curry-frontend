@@ -57,13 +57,13 @@ genAbstract env (Module mid exp decls)
 	     = mapfoldl genImportDecl env (reverse (importDecls partitions))
 	 (types, _) 
 	     = mapfoldl genTypeDecl env (reverse (typeDecls partitions))
-	 (funcs, _) 
-	     = mapfoldl (genFuncDecl False) 
+	 (_, funcs) 
+	     = Map.mapAccumWithKey (genFuncDecl False) 
 	                env 
 			(funcDecls partitions)
 	 (ops, _)   
 	     = mapfoldl genOpDecl env (reverse (opDecls partitions))
-     in  CurryProg modname imps types funcs ops
+     in  CurryProg modname imps types (Map.elems funcs) ops
 
 
 -------------------------------------------------------------------------------
@@ -109,7 +109,7 @@ partitionFuncDecls genDecl partitions ids
    = partitions {funcDecls = foldl partitionFuncDecl (funcDecls partitions) ids}
  where
    partitionFuncDecl funcs' id
-      = insertEntry id (genDecl id : fromMaybe [] (lookup id funcs')) funcs'
+      = Map.insert id (genDecl id : fromMaybe [] (Map.lookup id funcs')) funcs'
 
 
 -- Data type for representing partitions of CurrySyntax declarations
@@ -120,14 +120,14 @@ partitionFuncDecls genDecl partitions ids
 -- to collect them within an association list
 data Partitions = Partitions {importDecls :: [Decl],
 			      typeDecls   :: [Decl],
-			      funcDecls   :: [(Ident,[Decl])],
+			      funcDecls   :: Map.Map Ident [Decl],
 			      opDecls     :: [Decl]
 			     } deriving Show
 
 -- Generates initial partitions.
 emptyPartitions = Partitions {importDecls = [],
 			      typeDecls   = [],
-			      funcDecls   = [],
+			      funcDecls   = Map.empty,
 			      opDecls     = []
 			     } 
 
@@ -243,8 +243,8 @@ genFixity Infix  = CInfixOp
 --   - since infered types are internally represented in flat style,
 --     all type variables are renamed with generated symbols when
 --     generating typed AbstractCurry.
-genFuncDecl :: Bool -> AbstractEnv -> (Ident, [Decl]) -> (CFuncDecl, AbstractEnv)
-genFuncDecl isLocal env (ident, decls)
+genFuncDecl :: Bool -> AbstractEnv -> Ident -> [Decl] -> (AbstractEnv, CFuncDecl)
+genFuncDecl isLocal env ident decls
    | not (null decls)
      = let name          = genQName False env (qualify ident)
 	   visibility    = genVisibility env ident
@@ -258,21 +258,21 @@ genFuncDecl isLocal env (ident, decls)
 			         (\ (FunctionDecl _ _ equs)
 				  -> mapfoldl genRule env1 equs)
 				 (find isFunctionDecl decls)
-           mexternal     = applyMaybe genExternal (find isExternal decls)
+           mexternal     = fmap genExternal (find isExternal decls)
 	   arity         = compArity mtype rules
            typeexpr      = fromMaybe (CTCons ("Prelude","untyped") []) mtype
            rule          = compRule evalannot rules mexternal
            env3          = if isLocal then env1 else resetScope env2
-       in  (CFunc name arity visibility typeexpr rule, env3)
+       in  (env3, CFunc name arity visibility typeexpr rule)
    | otherwise
      = internalError ("missing declaration for function \""
 		      ++ show ident ++ "\"")
  where
    genFuncType env decls
       | acytype == UntypedAcy
-	= applyMaybe (genTypeSig env) (find isTypeSig decls)
+	= fmap (genTypeSig env) (find isTypeSig decls)
       | acytype == TypedAcy
-	= applyMaybe (genTypeExpr env) mftype
+	= fmap (genTypeExpr env) mftype
       | otherwise 
 	= Nothing
     where 
@@ -374,7 +374,7 @@ genLocalDecls env decls
 
    -- The association list 'fdecls' is necessary because function
    -- rules may not be together in the declaration list
-   genLocals :: AbstractEnv -> [(Ident,[Decl])] -> [Decl] 
+   genLocals :: AbstractEnv -> Map.Map Ident [Decl] -> [Decl] 
 	        -> ([CLocalDecl], AbstractEnv)
    genLocals env _ [] = ([], env)
    genLocals env fdecls ((FunctionDecl _ ident _):decls)
@@ -419,15 +419,15 @@ genLocalDecls env decls
    genLocals _ _ decl = internalError ("unexpected local declaration: \n"
 				       ++ show (head decl))
 
-   genLocalFuncDecl :: AbstractEnv -> [(Ident,[Decl])] -> Ident 
+   genLocalFuncDecl :: AbstractEnv -> Map.Map Ident [Decl] -> Ident 
 		       -> (CLocalDecl, AbstractEnv)
    genLocalFuncDecl env fdecls ident
       = let fdecl = fromMaybe 
 		      (internalError ("missing declaration" 
 				      ++ " for local function \""
 				      ++ show ident ++ "\""))
-		      (lookup ident fdecls)
-	    (funcdecl, _) = genFuncDecl True env (ident,fdecl)
+		      (Map.lookup ident fdecls)
+	    (_, funcdecl) = genFuncDecl True env ident fdecl
         in  (CLocalFunc funcdecl, env)
 
    genLocalPattern pos env (LiteralPattern lit)
@@ -697,7 +697,7 @@ genQName isTypeCons env qident
      = genQualName qident
  where
   genQualName qid
-     = let (mmid, id) = splitQualIdent qid
+     = let (mmid, id) = (qualidMod qid, qualidId qid)
 	   mid = maybe (moduleId env)
 		       (\mid' -> fromMaybe mid' (Map.lookup mid' (imports env)))
 		       mmid
@@ -957,7 +957,7 @@ isDataDeclOf _ _
 -- Checks, whether a symbol is defined in the Prelude.
 isPreludeSymbol :: QualIdent -> Bool
 isPreludeSymbol qident
-   = let (mmid, ident) = splitQualIdent qident
+   = let (mmid, ident) = (qualidMod qident, qualidId qident)
      in  (isJust mmid && preludeMIdent == fromJust mmid)
          || elem ident [unitId, listId, nilId, consId]
 	 || isTupleId ident
@@ -1002,11 +1002,7 @@ simplifyRhsLocals (SimpleRhs _ _ locals) = locals
 simplifyRhsLocals (GuardedRhs _ locals)  = locals
 
 
--- Applies the function 'f' on the value which is wrapped in 'Just'.
-applyMaybe :: (a -> b) -> Maybe a -> Maybe b
-applyMaybe f (Just x) = Just (f x)
-applyMaybe _ Nothing  = Nothing
-
+-- FIXME This mapfold is a twisted mapAccumL
 -- A combination of 'map' and 'foldl'. It maps a function to a list
 -- from left to right while updating the argument 'e' continously.
 mapfoldl :: (a -> b -> (c,a)) -> a -> [b] -> ([c], a)

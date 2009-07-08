@@ -55,7 +55,7 @@ import declarations are commented out
 > import IL.XML(xmlModule)
 > import Curry.ExtendedFlat
 > import GenFlatCurry (genFlatCurry,genFlatInterface)
-> import Curry.AbstractCurry
+> import qualified Curry.AbstractCurry as AC
 > import GenAbstractCurry
 > import InterfaceCheck
 > import CurryEnv
@@ -67,6 +67,7 @@ import declarations are commented out
 > import TypeSubst
 > import PrettyCombinators
 > import TopEnv
+> import qualified Curry.ExtendedFlat as EF 
 
 \end{verbatim}
 The function \texttt{compileModule} is the main entry-point of this
@@ -255,13 +256,13 @@ code are obsolete and commented out.
 > writeTypedAbs :: Maybe FilePath -> FilePath -> ValueEnv -> TCEnv -> Module
 >	           -> IO ()
 > writeTypedAbs tfn sfn tyEnv tcEnv mod
->    = writeCurry fname (genTypedAbstract tyEnv tcEnv mod)
+>    = AC.writeCurry fname (genTypedAbstract tyEnv tcEnv mod)
 >  where fname = fromMaybe (acyName sfn) tfn
 
 > writeUntypedAbs :: Maybe FilePath -> FilePath -> ValueEnv -> TCEnv  
 >	             -> Module -> IO ()
 > writeUntypedAbs tfn sfn tyEnv tcEnv mod
->    = writeCurry fname (genUntypedAbstract tyEnv tcEnv mod)
+>    = AC.writeCurry fname (genUntypedAbstract tyEnv tcEnv mod)
 >  where fname = fromMaybe (uacyName sfn) tfn
 
 > showln :: Show a => a -> String
@@ -277,7 +278,7 @@ imported modules into scope for the current module.
 > importModules mEnv ds = (pEnv,importUnifyData tcEnv,tyEnv,aEnv)
 >   where (pEnv,tcEnv,tyEnv,aEnv) = foldl importModule initEnvs ds
 >         importModule (pEnv,tcEnv,tyEnv,aEnv) (ImportDecl p m q asM is) =
->           case lookupModule m mEnv of
+>           case Map.lookup m mEnv of
 >             Just ds -> importInterface p (fromMaybe m asM) q is
 >                                        (Interface m ds) pEnv tcEnv tyEnv aEnv
 >             Nothing -> internalError "importModule"
@@ -301,7 +302,7 @@ content to a type environment.
 > importLabels mEnv ds = foldl importLabelTypes initLabelEnv ds
 >   where
 >   importLabelTypes lEnv (ImportDecl p m _ asM is) =
->     case (lookupModule m mEnv) of
+>     case (Map.lookup m mEnv) of
 >       Just ds' -> foldl (importLabelType p (fromMaybe m asM) is) lEnv ds'
 >       Nothing -> internalError "importLabels"
 >   importLabelTypes lEnv _ = lEnv
@@ -332,7 +333,7 @@ content to a type environment.
 >   foldr addLabelType tyEnv (concatMap snd (Map.toList lEnv))
 >   where
 >   addLabelType (LabelType l r ty) tyEnv = 
->     let m' = fromMaybe m (fst (splitQualIdent r))
+>     let m' = fromMaybe m (qualidMod r)
 >     in  importTopEnv m' l 
 >                      (Label (qualify l) (qualQualify m' r) (polyType ty)) 
 >	               tyEnv
@@ -416,7 +417,7 @@ and compiled.
 >       lookupInterface paths m >>=
 >       maybe (errorAt p (interfaceNotFound m))
 >             (compileInterface paths ctxt mEnv m)
->   where isLoaded m mEnv = maybe False (const True) (lookupModule m mEnv)
+>   where isLoaded m mEnv = maybe False (const True) (Map.lookup m mEnv)
 
 \end{verbatim}
 After reading an interface, all imported interfaces are recursively
@@ -451,18 +452,7 @@ generated FlatCurry terms (type \texttt{Prog}).
 >         (map (\i -> (p, mkMIdent [i])) is)
 >  where p = first m
 
-> --checkInterface :: ModuleEnv -> Interface -> Interface
-> --checkInterface mEnv (Interface m ds) =
-> --  intfCheck pEnv tcEnv tyEnv (Interface m ds)
-> --  where (pEnv,tcEnv,tyEnv) = foldl importInterface initEnvs ds
-> --        importInterface (pEnv,tcEnv,tyEnv) (IImportDecl p m) =
-> --          case lookupModule m mEnv of
-> --            Just ds -> importInterfaceIntf (Interface m ds) pEnv tcEnv tyEnv
-> --            Nothing -> internalError "importInterface"
-> --        importInterface (pEnv,tcEnv,tyEnv) _ = (pEnv,tcEnv,tyEnv)
 
-
-\end{verbatim}
 Interface files are updated by the Curry builder when necessary.
 (see module \texttt{CurryBuilder}).
 
@@ -480,25 +470,6 @@ file must have been read in this case. In addition, we do not update
 the interface file in this case and therefore it doesn't matter when
 the file is closed.
 \begin{verbatim}
-
-> --updateInterface :: FilePath -> Interface -> IO ()
-> --updateInterface sfn i =
-> --  do
-> --    eq <- catch (matchInterface ifn i) (const (return False))
-> --    unless eq (writeInterface ifn i)
-> --  where ifn = dropExtension sfn ++ intfExt
-
-> --matchInterface :: FilePath -> Interface -> IO Bool
-> --matchInterface ifn i =
-> --  do
-> --    h <- openFile ifn ReadMode
-> --    s <- hGetContents h
-> --    case parseInterface ifn s of
-> --      Ok i' | i `intfEquiv` fixInterface i' -> return True
-> --      _ -> hClose h >> return False
-
-> --writeInterface :: FilePath -> Interface -> IO ()
-> --writeInterface ifn = writeFile ifn . showln . ppInterface
 
 \end{verbatim}
 The compiler searches for interface files in the import search path
@@ -641,3 +612,78 @@ Error functions.
 >   "Expected interface for " ++ show m ++ " but found " ++ show m'
 
 \end{verbatim}
+
+
+
+
+> bindFlatInterface :: Prog -> ModuleEnv -> ModuleEnv
+> bindFlatInterface (Prog m imps ts fs os)
+>    = Map.insert (mkMIdent [m])
+>      ((map genIImportDecl imps)
+>       ++ (map genITypeDecl ts')
+>       ++ (map genIFuncDecl fs)
+>       ++ (map genIOpDecl os))
+>  where
+>  genIImportDecl :: String -> IDecl
+>  genIImportDecl imp = IImportDecl pos (mkMIdent [imp])
+>
+>  genITypeDecl :: TypeDecl -> IDecl
+>  genITypeDecl (Type qn _ is cs)
+>     | recordExt `isPrefixOf` localName qn
+>       = ITypeDecl pos
+>                   (genQualIdent qn)
+>	            (map (genVarIndexIdent "a") is)
+>	            (RecordType (map genLabeledType cs) Nothing)
+>     | otherwise
+>       = IDataDecl pos 
+>                   (genQualIdent qn) 
+>                   (map (genVarIndexIdent "a") is) 
+>                   (map (Just . genConstrDecl) cs)
+>  genITypeDecl (TypeSyn qn _ is t)
+>     = ITypeDecl pos
+>                 (genQualIdent qn)
+>                 (map (genVarIndexIdent "a") is)
+>                 (genTypeExpr t)
+>
+>  genIFuncDecl :: FuncDecl -> IDecl
+>  genIFuncDecl (Func qn a _ t _) 
+>     = IFunctionDecl pos (genQualIdent qn) a (genTypeExpr t)
+>
+>  genIOpDecl :: OpDecl -> IDecl
+>  genIOpDecl (Op qn f p) = IInfixDecl pos (genInfix f) p  (genQualIdent qn)
+>
+>  genConstrDecl :: ConsDecl -> ConstrDecl
+>  genConstrDecl (Cons qn _ _ ts)
+>     = ConstrDecl pos [] (mkIdent (localName qn)) (map genTypeExpr ts)
+>
+>  genLabeledType :: EF.ConsDecl -> ([Ident],Curry.Syntax.TypeExpr)
+>  genLabeledType (Cons qn _ _ [t])
+>     = ([renameLabel (fromLabelExtId (mkIdent $ localName qn))], genTypeExpr t)
+>
+>  genTypeExpr :: EF.TypeExpr -> Curry.Syntax.TypeExpr
+>  genTypeExpr (TVar i)
+>     = VariableType (genVarIndexIdent "a" i)
+>  genTypeExpr (FuncType t1 t2) 
+>     = ArrowType (genTypeExpr t1) (genTypeExpr t2)
+>  genTypeExpr (TCons qn ts) 
+>     = ConstructorType (genQualIdent qn) (map genTypeExpr ts)
+>
+>  genInfix :: EF.Fixity -> Infix
+>  genInfix EF.InfixOp  = Infix
+>  genInfix EF.InfixlOp = InfixL
+>  genInfix EF.InfixrOp = InfixR
+>
+>  genQualIdent :: EF.QName -> QualIdent
+>  genQualIdent EF.QName{modName=mod,localName=name} = 
+>    qualifyWith (mkMIdent [mod]) (mkIdent name)
+>
+>  genVarIndexIdent :: String -> Int -> Ident
+>  genVarIndexIdent v i = mkIdent (v ++ show i)
+>
+>  isSpecialPreludeType :: TypeDecl -> Bool
+>  isSpecialPreludeType (Type EF.QName{modName=mod,localName=name} _ _ _) 
+>     = (name == "[]" || name == "()") && mod == "Prelude"
+>  isSpecialPreludeType _ = False
+>
+>  pos = first m
+>  ts' = filter (not . isSpecialPreludeType) ts

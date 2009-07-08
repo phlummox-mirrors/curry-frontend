@@ -178,8 +178,8 @@ visitExpression (IL.Constructor qident arity)
 	maybe (internalError (consArity qident))
 	      (\arity -> genConsCall qident arity [])
 	      arity_
-visitExpression (IL.Apply expression1 expression2)
-   = genFlatApplication (IL.Apply expression1 expression2)
+visitExpression (IL.Apply e1 e2)
+   = genFlatApplication e1 e2
 visitExpression (IL.Case r evalannot expression alts)
    = do ea       <- visitEval evalannot
 	expr     <- visitExpression expression
@@ -291,7 +291,7 @@ visitFuncIDecl _ = internalError "GenFlatCurry: no function interface"
 visitTypeIDecl :: CS.IDecl -> FlatState TypeDecl
 visitTypeIDecl (CS.IDataDecl _ qident params constrs_)
    = do let mid = fromMaybe (internalError "GenFlatCurry: no module name")
-		            (fst (splitQualIdent qident))
+		            (qualidMod qident)
 	    is  = [0 .. length params - 1]
 	cdecls <- mapM (visitConstrIDecl mid (zip params is)) 
 		       (catMaybes constrs_)
@@ -335,7 +335,7 @@ visitModuleIdent = return . Id.moduleName
 visitQualIdent :: QualIdent -> FlatState QName
 visitQualIdent qident
    = do mid <- moduleId
-	let (mmod, ident) = splitQualIdent qident
+	let (mmod, ident) = (qualidMod qident, qualidId qident)
 	    mod | elem ident [listId, consId, nilId, unitId] || isTupleId ident
 		  = Id.moduleName preludeMIdent
 		| otherwise
@@ -394,8 +394,7 @@ bindExpImport mident qident export expenv
    | isJust (localIdent mident qident)
      = expenv
    | otherwise
-     = let (mmod, _) = splitQualIdent qident
-	   mod       = fromJust mmod
+     = let (Just mod) = qualidMod qident
        in  maybe (Map.insert mod [export] expenv)
 	         (\es -> Map.insert mod (export:es) expenv) 
 		 (Map.lookup mod expenv)
@@ -468,9 +467,9 @@ typeArity (IL.TypeVariable _)      = 0
 -------------------------------------------------------------------------------
 
 --
-genFlatApplication :: IL.Expression -> FlatState Expr
-genFlatApplication applicexpr
-   = genFlatApplic [] applicexpr
+genFlatApplication :: IL.Expression -> IL.Expression -> FlatState Expr
+genFlatApplication e1 e2
+   = genFlatApplic [e2] e1
  where
    genFlatApplic args expression 
       = case expression of
@@ -595,7 +594,7 @@ genRecordTypes = records >>= mapM genRecordType
 genRecordType :: CS.IDecl -> FlatState TypeDecl
 genRecordType (CS.ITypeDecl _ qident params (CS.RecordType fields _))
    = do let is = [0 .. (length params) - 1]
-	    (mod,ident) = splitQualIdent qident
+	    (mod,ident) = (qualidMod qident, qualidId qident)
 	qname <- visitQualIdent ((maybe qualify qualifyWith mod) 
 				 (recordExtId ident))
 	labels <- mapM (genRecordLabel mod (zip params is)) fields

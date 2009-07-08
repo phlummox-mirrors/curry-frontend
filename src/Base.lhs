@@ -26,14 +26,11 @@ compiler, it irrevocably turns the module structure into spaghetti.
 > import Curry.Base.Position
 > import Types
 > import Curry.Syntax
-> import Curry.Syntax.Pretty(ppTypeExpr)
 > import Curry.Syntax.Utils
-> import PrettyCombinators
-> import Curry.ExtendedFlat hiding (SrcRef, Fixity(..), TypeExpr, Expr(..))
 > import TopEnv
 > import Utils
 
-> import qualified Curry.ExtendedFlat as EF 
+
 
 \end{verbatim}
 \paragraph{Types}
@@ -51,10 +48,10 @@ order of type variables in the left hand side of a type declaration.
 \begin{verbatim}
 
 > toQualType :: ModuleIdent -> [Ident] -> TypeExpr -> Type
-> toQualType m tvs ty = qualifyType m (toType tvs ty)
+> toQualType m tvs = qualifyType m . toType tvs
 
 > toQualTypes :: ModuleIdent -> [Ident] -> [TypeExpr] -> [Type]
-> toQualTypes m tvs tys = map (qualifyType m) (toTypes tvs tys)
+> toQualTypes m tvs = map (qualifyType m) . toTypes tvs
 
 > toType :: [Ident] -> TypeExpr -> Type
 > toType tvs ty = toType' (Map.fromList (zip (tvs ++ tvs') [0..])) ty
@@ -84,26 +81,8 @@ order of type variables in the left hand side of a type declaration.
 >	                        _ -> internalError ("toType " ++ show ty))
 >	              rty)
 
-> qualifyType :: ModuleIdent -> Type -> Type
-> qualifyType m (TypeConstructor tc tys)
->   | isTupleId tc' = tupleType tys'
->   | tc' == unitId && n == 0 = unitType
->   | tc' == listId && n == 1 = listType (head tys')
->   | otherwise = TypeConstructor (qualQualify m tc) tys'
->   where n = length tys'
->         tc' = unqualify tc
->         tys' = map (qualifyType m) tys
-> qualifyType _ (TypeVariable tv) = TypeVariable tv
-> qualifyType m (TypeConstrained tys tv) =
->   TypeConstrained (map (qualifyType m) tys) tv
-> qualifyType m (TypeArrow ty1 ty2) =
->   TypeArrow (qualifyType m ty1) (qualifyType m ty2)
-> qualifyType _ (TypeSkolem k) = TypeSkolem k
-> qualifyType m (TypeRecord fs rty) =
->   TypeRecord (map (\ (l,ty) -> (l, qualifyType m ty)) fs) rty
-
 > fromQualType :: ModuleIdent -> Type -> TypeExpr
-> fromQualType m ty = fromType (unqualifyType m ty)
+> fromQualType m = fromType . unqualifyType m
 
 > fromType :: Type -> TypeExpr
 > fromType (TypeConstructor tc tys)
@@ -112,7 +91,7 @@ order of type variables in the left hand side of a type declaration.
 >   | c == unitId && null tys = TupleType []
 >   | otherwise = ConstructorType tc tys'
 >   where c = unqualify tc
->         tys' = map (fromType) tys
+>         tys' = map fromType tys
 > fromType (TypeVariable tv) =
 >   VariableType (if tv >= 0 then nameSupply !! tv
 >                            else mkIdent ('_' : show (-tv)))
@@ -123,30 +102,7 @@ order of type variables in the left hand side of a type declaration.
 >   RecordType (map (\ (l,ty) -> ([l], fromType ty)) fs)
 >              (maybe Nothing (Just . fromType . TypeVariable) rty)
 
-> unqualifyType :: ModuleIdent -> Type -> Type
-> unqualifyType m (TypeConstructor tc tys) =
->   TypeConstructor (qualUnqualify m tc) (map (unqualifyType m) tys)
-> unqualifyType _ (TypeVariable tv) = TypeVariable tv
-> unqualifyType m (TypeConstrained tys tv) =
->   TypeConstrained (map (unqualifyType m) tys) tv
-> unqualifyType m (TypeArrow ty1 ty2) =
->   TypeArrow (unqualifyType m ty1) (unqualifyType m ty2)
-> unqualifyType m (TypeSkolem k) = TypeSkolem k
-> unqualifyType m (TypeRecord fs rty) =
->   TypeRecord (map (\ (l,ty) -> (l, unqualifyType m ty)) fs) rty
 
-
-
-
-\end{verbatim}
-The following functions implement pretty-printing for types.
-\begin{verbatim}
-
-> ppType :: ModuleIdent -> Type -> Doc
-> ppType m = ppTypeExpr 0 . fromQualType m
-
-> ppTypeScheme :: ModuleIdent -> TypeScheme -> Doc
-> ppTypeScheme m (ForAll _ ty) = ppType m ty
 
 \end{verbatim}
 \paragraph{Interfaces}
@@ -161,81 +117,6 @@ for PAKCS.
 \begin{verbatim}
 
 > type ModuleEnv = Map.Map ModuleIdent [IDecl]
-
- bindModule :: Interface -> ModuleEnv -> ModuleEnv
- bindModule (Interface m ds) = Map.insert m ds
-
-> bindFlatInterface :: Prog -> ModuleEnv -> ModuleEnv
-> bindFlatInterface (Prog m imps ts fs os)
->    = Map.insert (mkMIdent [m])
->      ((map genIImportDecl imps)
->       ++ (map genITypeDecl ts')
->       ++ (map genIFuncDecl fs)
->       ++ (map genIOpDecl os))
->  where
->  genIImportDecl :: String -> IDecl
->  genIImportDecl imp = IImportDecl pos (mkMIdent [imp])
->
->  genITypeDecl :: TypeDecl -> IDecl
->  genITypeDecl (Type qn _ is cs)
->     | recordExt `isPrefixOf` localName qn
->       = ITypeDecl pos
->                   (genQualIdent qn)
->	            (map (genVarIndexIdent "a") is)
->	            (RecordType (map genLabeledType cs) Nothing)
->     | otherwise
->       = IDataDecl pos 
->                   (genQualIdent qn) 
->                   (map (genVarIndexIdent "a") is) 
->                   (map (Just . genConstrDecl) cs)
->  genITypeDecl (TypeSyn qn _ is t)
->     = ITypeDecl pos
->                 (genQualIdent qn)
->                 (map (genVarIndexIdent "a") is)
->                 (genTypeExpr t)
->
->  genIFuncDecl :: FuncDecl -> IDecl
->  genIFuncDecl (Func qn a _ t _) 
->     = IFunctionDecl pos (genQualIdent qn) a (genTypeExpr t)
->
->  genIOpDecl :: OpDecl -> IDecl
->  genIOpDecl (Op qn f p) = IInfixDecl pos (genInfix f) p  (genQualIdent qn)
->
->  genConstrDecl :: ConsDecl -> ConstrDecl
->  genConstrDecl (Cons qn _ _ ts)
->     = ConstrDecl pos [] (mkIdent (localName qn)) (map genTypeExpr ts)
->
->  genLabeledType :: EF.ConsDecl -> ([Ident],Curry.Syntax.TypeExpr)
->  genLabeledType (Cons qn _ _ [t])
->     = ([renameLabel (fromLabelExtId (mkIdent $ localName qn))], genTypeExpr t)
->
->  genTypeExpr :: EF.TypeExpr -> Curry.Syntax.TypeExpr
->  genTypeExpr (TVar i)
->     = VariableType (genVarIndexIdent "a" i)
->  genTypeExpr (FuncType t1 t2) 
->     = ArrowType (genTypeExpr t1) (genTypeExpr t2)
->  genTypeExpr (TCons qn ts) 
->     = ConstructorType (genQualIdent qn) (map genTypeExpr ts)
->
->  genInfix :: EF.Fixity -> Infix
->  genInfix EF.InfixOp  = Infix
->  genInfix EF.InfixlOp = InfixL
->  genInfix EF.InfixrOp = InfixR
->
->  genQualIdent :: QName -> QualIdent
->  genQualIdent QName{modName=mod,localName=name} = 
->    qualifyWith (mkMIdent [mod]) (mkIdent name)
->
->  genVarIndexIdent :: String -> Int -> Ident
->  genVarIndexIdent v i = mkIdent (v ++ show i)
->
->  isSpecialPreludeType :: TypeDecl -> Bool
->  isSpecialPreludeType (Type QName{modName=mod,localName=name} _ _ _) 
->     = (name == "[]" || name == "()") && mod == "Prelude"
->  isSpecialPreludeType _ = False
->
->  pos = first m
->  ts' = filter (not . isSpecialPreludeType) ts
 
 > lookupModule :: ModuleIdent -> ModuleEnv -> Maybe [IDecl]
 > lookupModule = Map.lookup
@@ -256,11 +137,11 @@ information for labels seperately.
 > bindLabelType :: Ident -> QualIdent -> Type -> LabelEnv -> LabelEnv
 > bindLabelType l r ty lEnv =
 >   maybe (Map.insert l [LabelType l r ty] lEnv)
->         (\ls -> Map.insert l ((LabelType l r ty):ls) lEnv)
+>         (\ls -> Map.insert l (LabelType l r ty:ls) lEnv)
 >         (Map.lookup l lEnv)
 
 > lookupLabelType :: Ident -> LabelEnv -> [LabelInfo]
-> lookupLabelType l lEnv = fromMaybe [] (Map.lookup l lEnv)
+> lookupLabelType = Map.findWithDefault []
 
 > initLabelEnv :: LabelEnv
 > initLabelEnv = Map.empty
@@ -450,10 +331,10 @@ allow the usage of the qualified list constructor \texttt{(Prelude.:)}.
 
 > qualLookupCons :: QualIdent -> ValueEnv -> [ValueInfo]
 > qualLookupCons x tyEnv
->    | (maybe False ((==) preludeMIdent) mmid) && (id == consId)
+>    | maybe False ((==) preludeMIdent) mmid && id == consId
 >       = qualLookupTopEnv (qualify id) tyEnv
 >    | otherwise = []
->  where (mmid, id) = splitQualIdent x
+>  where (mmid, id) = (qualidMod x, qualidId x)
 
 > lookupTuple :: Ident -> [ValueInfo]
 > lookupTuple c
@@ -504,11 +385,11 @@ and constructors.
 
 > qualLookupConsArity :: QualIdent -> ArityEnv -> [ArityInfo]
 > qualLookupConsArity qid aEnv
->    | (maybe False ((==) preludeMIdent) mmid) && (id == consId)
+>    | maybe False ((==) preludeMIdent) mmid && id == consId
 >      = qualLookupTopEnv (qualify id) aEnv
 >    | otherwise
 >      = []
->  where (mmid, id) = splitQualIdent qid
+>  where (mmid, id) = (qualidMod qid, qualidId qid)
 
 > lookupTupleArity :: Ident -> [ArityInfo]
 > lookupTupleArity id 
@@ -524,14 +405,14 @@ and constructors.
 > type ImportEnv = Map.Map ModuleIdent ModuleIdent
 
 > bindAlias :: Decl -> ImportEnv -> ImportEnv
-> bindAlias (ImportDecl _ mid _ mmid _) iEnv
->    = Map.insert mid (fromMaybe mid mmid) iEnv
+> bindAlias (ImportDecl _ mid _ mmid _)
+>    = Map.insert mid (fromMaybe mid mmid)
 
 > lookupAlias :: ModuleIdent -> ImportEnv -> Maybe ModuleIdent
 > lookupAlias = Map.lookup
 
 > sureLookupAlias :: ModuleIdent -> ImportEnv -> ModuleIdent
-> sureLookupAlias m iEnv = fromMaybe m (lookupAlias m iEnv)
+> sureLookupAlias m = fromMaybe m . lookupAlias m
 
 
 \end{verbatim}
@@ -624,9 +505,9 @@ identifiers.
 
 > initTCEnv :: TCEnv
 > initTCEnv = foldr (uncurry predefTC) emptyTopEnv predefTypes
->   where predefTC (TypeConstructor tc tys) cs =
->           predefTopEnv (qualify (unqualify tc))
->                        (DataType tc (length tys) (map Just cs))
+>   where predefTC (TypeConstructor tc tys) =
+>           predefTopEnv (qualify (unqualify tc)) .
+>             DataType tc (length tys) . map Just
 
 > initDCEnv :: ValueEnv
 > initDCEnv =
@@ -641,8 +522,8 @@ identifiers.
 > initAEnv
 >    = foldr bindPredefArity emptyTopEnv (concatMap snd predefTypes)
 >  where
->  bindPredefArity (Data id _ ts) aEnv
->     = bindArity preludeMIdent id (length ts) aEnv
+>  bindPredefArity (Data id _ ts)
+>     = bindArity preludeMIdent id (length ts)
 
 > initIEnv :: ImportEnv
 > initIEnv = Map.empty
@@ -739,18 +620,6 @@ non-linear, the first offending object is returned.
 >   | x `elem` xs = NonLinear x
 >   | otherwise = linear xs
 > linear [] = Linear
-
-\end{verbatim}
-In order to give precise error messages on duplicate definitions of
-identifiers, the compiler pairs identifiers with their position in the
-source file when passing them to the function above. However, the
-position must be ignored when comparing two such pairs.
-\begin{verbatim}
-
-> data PIdent = PIdent Position Ident
-
-> instance Eq PIdent where
->   PIdent _ x == PIdent _ y = x == y
 
 \end{verbatim}
 

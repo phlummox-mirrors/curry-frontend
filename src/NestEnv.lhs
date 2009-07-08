@@ -27,7 +27,7 @@ imported.
 
 
 > data NestEnv a = GlobalEnv (TopEnv a) | LocalEnv (NestEnv a) (Map.Map Ident a)
->                  deriving Show
+> --                 deriving Show
 
 > instance Functor NestEnv where
 >   fmap f (GlobalEnv env) = GlobalEnv (fmap f env)

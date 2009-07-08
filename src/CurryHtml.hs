@@ -132,7 +132,7 @@ addHtmlAnchor html qualIdent = "<a name=\""++ string2urlencoded (show (unqualify
 
 addHtmlLink :: String -> QualIdent -> String
 addHtmlLink html qualIdent =
-   let (maybeModuleIdent,ident) = splitQualIdent qualIdent in   
+   let (maybeModuleIdent,ident) = (qualidMod qualIdent, qualidId qualIdent) in
    "<a href=\"" ++ 
    (maybe "" (\x -> show x ++ "_curry.html") maybeModuleIdent) ++ 
    "#"++ 

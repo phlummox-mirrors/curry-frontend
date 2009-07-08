@@ -22,9 +22,6 @@ dependencies and to update programs composed of multiple modules.
 > import Data.Maybe
 > import Control.Monad
 
- import Control.Monad.Error
- import Control.Monad.Writer
-
 > import Curry.Base.Ident
 > import Curry.Base.MessageMonad
 
@@ -39,51 +36,6 @@ dependencies and to update programs composed of multiple modules.
 >             | Unknown
 >             deriving (Eq,Ord,Show)
 > type SourceEnv = Map.Map ModuleIdent Source
-
-\end{verbatim}
-The module has two entry points. The function \texttt{buildScript}
-computes either a build or clean script for a module while
-\texttt{makeDepend} computes dependency rules for inclusion into a
-Makefile.
-\begin{verbatim}
-
-> {-
-> buildScript :: Bool -> Bool -> Bool -> Bool -> Bool -> Bool -> Bool
->             -> [FilePath] -> [FilePath] -> Maybe FilePath -> FilePath 
->             -> IO [String]
-> buildScript clean debug linkAlways flat xml acy uacy
->             paths libraryPaths ofn fn =
->   do
->     mfn'      <- getCurryPath (paths ++ libraryPaths) fn
->     (fn',es1) <- return (maybe ("",["Error: missing module \"" ++ fn ++ "\""])
->                                (\x -> (x,[]))
->                                mfn')
->     (ms,es2)  <- fmap 
->                   (flattenDeps . sortDeps)
->                   (deps paths (filter (`notElem` paths) libraryPaths) Map.empty fn')
->     es        <- return (es1 ++ es2)
->     when (null es)
->          (putStr 
->            (makeScript clean debug flat xml acy uacy linkAlways 
->                        (outputFile fn') fn ms))
->     return es
->   where outputFile fn
->           | takeExtension fn `elem` moduleExts ++ objectExts = Nothing
->           | otherwise = ofn `mplus` Just fn
->         makeScript clean = if clean then makeCleanScript else makeBuildScript
->
->
-> makeDepend :: [FilePath] -> [FilePath] -> Maybe FilePath -> [FilePath]
->            -> IO ()
-> makeDepend paths libraryPaths ofn ms =
->   do
->     flatDeps <- liftM (makeDeps True) (allDeps flat)
->     objectDeps <- liftM (makeDeps False) (allDeps nonFlat)
->     maybe putStr writeFile ofn (flatDeps ++ objectDeps)
->   where (flat,nonFlat) = partition (flatExt `isSuffixOf`) ms
->         allDeps = foldM (deps paths libraryPaths') Map.empty
->         libraryPaths' = filter (`notElem` paths) libraryPaths
-> -}
 
 > deps :: [FilePath] -> [FilePath] -> SourceEnv -> FilePath -> IO SourceEnv
 > deps paths libraryPaths mEnv fn
@@ -115,12 +67,6 @@ already remove all directories that are included in the both search
 paths from the library paths in order to avoid scanning such
 directories more than twice.
 \begin{verbatim}
-
-> lookupModule :: [FilePath] -> [FilePath] -> ModuleIdent
->              -> IO (Maybe FilePath)
-> lookupModule paths libraryPaths m
->     = lookupFile ("" : paths ++ libraryPaths) moduleExts fn
->     where fn = foldr1 catPath (moduleQualifiers m)
 
 \end{verbatim}
 In order to compute the dependency graph, source files for each module
@@ -162,180 +108,35 @@ prelude itself. Any errors reported by the parser are ignored.
 >   [preludeMIdent | m /= preludeMIdent] ++ [m | ImportDecl _ m _ _ _ <- ds]
 
 
-\end{verbatim}
-It is quite straight forward to generate Makefile dependencies from
-the dependency environment. In order for these dependencies to work,
-the Makefile must include a rule
-\begin{verbatim}
-.SUFFIXES: .lcurry .curry .icurry
-.o.icurry: @echo interface $@ not found, remove $< and recompile; exit 1
-\end{verbatim}
-This dependency rule introduces an indirect dependency between a
-module and its interface. In particular, the interface may be updated
-when the module is recompiled and a new object file is generated but
-it does not matter if the interface is out-of-date with respect to the
-object code.
-\begin{verbatim}
 
-> {-
-> makeDeps :: Bool -> SourceEnv -> String
-> makeDeps flat mEnv =
->   unlines (filter (not . null) (map (depsLine . snd) (Map.toList mEnv)))
->   where depsLine (Source fn ms) =
->           targetName fn ++ ": " ++ fn ++ " " ++
->           unwords (filter (not . null) (map interf ms))
->         depsLine (Interface _) = []
->         depsLine Unknown = []
->         interf m = maybe [] interfFile (Map.lookup m mEnv)
->         interfFile (Source fn _) = interfName fn
->         interfFile (Interface fn) = fn
->         interfFile Unknown = ""
->         targetName = if flat then flatName else objectName False
-
-> -}
-
-\end{verbatim}
 If we want to compile the program instead of generating Makefile
 dependencies the environment has to be sorted topologically. Note
 that the dependency graph should not contain any cycles.
-\begin{verbatim}
 
 > flattenDeps :: SourceEnv -> ([(ModuleIdent,Source)],[String])
 > flattenDeps = fdeps . sortDeps
 >     where
 >     sortDeps :: SourceEnv -> [[(ModuleIdent,Source)]]
->     sortDeps = scc (modules) (imports . snd) . Map.toList
+>     sortDeps = scc modules imports . Map.toList
 >
 >     modules (m, _) = [m]
 >
->     imports (Source _ ms) = ms
->     imports (Interface _) = []
->     imports Unknown = []
+>     imports (_,Source _ ms) = ms
+>     imports (_,Interface _) = []
+>     imports (_,Unknown) = []
 >
 >     fdeps :: [[(ModuleIdent,Source)]] -> ([(ModuleIdent,Source)],[String])
->     fdeps [] = ([],[])
->     fdeps (dep:deps) = let (ms',es') = fdeps deps
->                        in case dep of
->                               [] -> (ms',es')
->                               [m] -> (m:ms',es')
->                               _ -> (ms',cyclicError (map fst dep) : es')
+>     fdeps = foldr checkdep ([], [])
+>     
+>     checkdep [] (ms', es')  = (ms',es')
+>     checkdep [m] (ms', es') = (m:ms',es')
+>     checkdep dep (ms', es') = (ms',cyclicError (map fst dep) : es')
 >
 >     cyclicError :: [ModuleIdent] -> String
 >     cyclicError (m:ms) =
 >         "Cylic import dependency between modules " ++ show m ++ rest ms
 >
 >     rest [m] = " and " ++ show m
->     rest (m:ms) = ", " ++ show m ++ rest' ms
->
+>     rest ms  = rest' ms
 >     rest' [m] = ", and " ++ show m
 >     rest' (m:ms) = ", " ++ show m ++ rest' ms
-
-\end{verbatim}
-The function \texttt{makeBuildScript} returns a shell script that
-rebuilds several program representations (e.g. interfaces, FlatCurry etc.)
-given a sorted list of module informations. The
-script uses the command \verb|compile| and \verb|link| to build
-programs and representations. They should be defined to reasonable values in the
-environment where the script is executed (e.g. compile=cyc
-The script deliberately uses
-the \verb|-e| shell option so that the script is terminated upon the
-first error. Unlike the original function \texttt{makeBuildScript} this
-modification uses the command "smake" to check the out-of-dateness
-of dependend program files.
-\begin{verbatim}
-
-> {-
-> makeBuildScript :: Bool -> Bool -> Bool -> Bool -> Bool -> Bool 
->                 -> Maybe FilePath -> FilePath -> [(ModuleIdent,Source)] 
->                 -> String
-> makeBuildScript debug flat xml acy uacy linkAlways ofn fn mEnv =
->   unlines ("set -e" : (map (compCommands . snd) mEnv)
->                       ++ (maybe [] linkCommands ofn))
->   where 
->         compCommands (Source fn' ms)
->            | (acy || uacy) && dropExtension fn /= dropExtension fn'
->              = (smake ([flatName fn', flatIntName fn'])
->                       (fn' : catMaybes (map flatInt ms))
->                       "")
->                ++ " || (\\" --rm -f " ++ (interfName fn') ++ " && \\"
->                ++ unwords ["compile", "--flat", fn', "-o",
->                            flatName fn']
->                ++ ")"
->            | otherwise
->              = (smake (targetNames fn')
->                       (fn' : catMaybes (map flatInt ms))
->                       "")
->                ++ " || (\\" --rm -f " ++ (interfName fn')
->                ++ (compile fn') ++ ")"
->         compCommands (Interface _) = []
->         compCommands Unknown = []
->
->         linkCommands fn'
->           | linkAlways = [link fn' os]
->           | otherwise  = [smake [fn'] os "", " || \\", (link fn' os)]
->           where os = reverse (catMaybes (map (object . snd) mEnv))
->
->         smake ts ds rule
->            = "$CURRY_PATH/smake " 
->              ++ (unwords ts) ++ " : " 
->              ++ (unwords ds)
->              ++ (if null rule then "" else " : " ++ rule)
->
->         compile fn' = unwords ["compile", cFlag, fn', "-o", 
->                                head (targetNames fn')] 
->
->         cFlag | flat      = "--flat"
->               | xml       = "--xml"
->               | acy       = "--acy"
->               | uacy      = "--uacy"
->               | otherwise = "-c"
->
->         link fn' os = unwords ("link" : "-o" : fn' : os)
->
->         flatInt m =
->           case lookup m mEnv of
->             Just (Source fn' _) 
->	        -> Just (flatIntName fn')
->             Just (Interface fn') 
->	        -> Just (flatIntName (takeBaseName fn'))
->             Just Unknown 
->	        -> Nothing
->             _ -> Nothing
->
->         object (Source fn' _) = Just (head (targetNames fn'))
->         object (Interface _) = Nothing
->         object Unknown = Nothing
->
->         targetNames fn' | flat      = [flatName fn', flatIntName fn']
->                         | xml       = [xmlName fn']
->                         | acy       = [acyName fn']
->                         | uacy      = [uacyName fn']
->                         | otherwise = [objectName debug fn']
-
-
-\end{verbatim}
-The function \texttt{makeCleanScript} returns a shell script that
-removes all compiled files for a module. The script uses the command
-\verb|remove| to delete the files. It should be defined to a
-reasonable value in the environment where the script is executed.
-\begin{verbatim}
-
-> makeCleanScript :: Bool -> Bool -> Bool -> Bool -> Bool -> Bool 
->                 -> Maybe FilePath -> FilePath -> [(ModuleIdent,Source)] 
->                 -> String
-> makeCleanScript debug flat xml acy uacy _ ofn _ mEnv =
->   unwords ("remove" : foldr files (maybe [] return ofn) (map snd mEnv))
->   where d = if debug then 2 else 0
->         files = if flat then flatFiles else nonFlatFiles
->         flatFiles (Source fn _) fs =
->           drop d [interfName fn,flatName fn] ++ fs
->         flatFiles (Interface _) fs = fs
->         flatFiles Unknown fs = fs
->         nonFlatFiles (Source fn _) fs =
->           drop d [interfName fn,objectName False fn,objectName True fn] ++
->           fs
->         nonFlatFiles (Interface _) fs = fs
->         nonFlatFiles Unknown fs = fs
-> -}
-
-\end{verbatim}

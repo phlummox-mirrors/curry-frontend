@@ -193,7 +193,7 @@ module name.
 >           -> ExpValueEnv -> ExpValueEnv
 > bindValue f m tc tvs c evs ty = Map.insert c (f (qualifyLike tc c) sigma)
 >   where sigma = ForAllExist (length tvs) (length evs) (toQualType m tvs ty)
->         qualifyLike x = maybe qualify qualifyWith (fst (splitQualIdent x))
+>         qualifyLike x = maybe qualify qualifyWith (qualidMod x)
 
 > bindA :: ModuleIdent -> IDecl -> ExpArityEnv -> ExpArityEnv
 > bindA m (IDataDecl _ _ _ cs) expAEnv

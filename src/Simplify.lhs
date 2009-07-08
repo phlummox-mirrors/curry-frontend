@@ -153,10 +153,10 @@ explicitly in a Curry expression.
 >     n == arrowArity (funType m tyEnv (qualify f')) &&
 >     (evMode evEnv f == evMode evEnv f' ||
 >      and [all isVarPattern ts | Equation _ (FunLhs _ ts) _ <- eqs']) =
->     map (merge p f ts' vs') eqs'
+>     map (mergeEqns p f ts' vs') eqs'
 >   where n :: Int                      -- type signature necessary for nhc
 >         (n,vs',ts',e') = etaReduce 0 [] (reverse ts) e
->         merge p f ts vs (Equation _ (FunLhs _ ts') rhs) =
+>         mergeEqns p f ts vs (Equation _ (FunLhs _ ts') rhs) =
 >           Equation p (FunLhs f (ts ++ zipWith AsPattern vs ts')) rhs
 >         etaReduce n vs (VariablePattern v : ts) (Apply e (Variable v'))
 >           | qualify v == v' = etaReduce (n+1) (v:vs) ts e

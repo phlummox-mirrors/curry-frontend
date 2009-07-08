@@ -48,8 +48,7 @@ declarations are checked within the resulting environment. In
 addition, this process will also rename the local variables.
 \begin{verbatim}
 
-> syntaxCheck :: Bool -> ModuleIdent -> ImportEnv -> ArityEnv -> ValueEnv 
->                -> TCEnv -> [Decl] -> [Decl]
+> syntaxCheck :: Bool -> ModuleIdent -> ImportEnv -> ArityEnv -> ValueEnv -> TCEnv -> [Decl] -> [Decl]
 > syntaxCheck withExt m iEnv aEnv tyEnv tcEnv ds =
 >   case linear (concatMap constrs tds) of
 >     --Linear -> tds ++ run (checkModule withExt m env vds)
@@ -113,7 +112,7 @@ allow the usage of the qualified list constructor \texttt{(prelude.:)}.
 > renameInfo tcEnv iEnv aEnv (NewtypeConstructor _ _) 
 >    = Constr 1
 > renameInfo tcEnv iEnv aEnv (Value qid _)
->    = let (mmid, id) = splitQualIdent qid
+>    = let (mmid, id) = (qualidMod qid, qualidId qid)
 >          qid' = maybe qid 
 >	                (\mid -> maybe qid 
 >		                       (\mid' -> qualifyWith mid' id)
@@ -234,7 +233,7 @@ than once.
 >    | (isJust mmid) && ((fromJust mmid) == preludeMIdent) && (ident == consId)
 >       = qualLookupNestEnv (qualify ident) env
 >    | otherwise = []
->  where (mmid, ident) = splitQualIdent v
+>  where (mmid, ident) = (qualidMod v, qualidId v)
 
 > lookupTupleConstr :: Ident -> [RenameInfo]
 > lookupTupleConstr v
@@ -363,7 +362,7 @@ top-level.
 >   | isJust m || isDataConstr op' env =
 >       checkOpLhs k env (f . InfixPattern t1 op) t2
 >   | otherwise = Left (op'',OpLhs (f t1) op'' t2)
->   where (m,op') = splitQualIdent op
+>   where (m,op') = (qualidMod op, qualidId op)
 >         op'' = renameIdent op' k
 > checkOpLhs _ _ f t = Right (f t)
 

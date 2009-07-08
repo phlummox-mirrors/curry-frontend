@@ -12,7 +12,7 @@ module PathUtils(-- re-exports from System.FilePath:
                  pathSeparator,
                  catPath,
 
-                 lookupFile, getCurryPath,
+                 lookupModule, lookupFile, getCurryPath,
                  writeModule,readModule,
                  doesModuleExist,maybeReadModule,getModuleModTime) where
 
@@ -22,8 +22,15 @@ import System.Time (ClockTime)
 
 import Control.Monad (unless)
 
+import Curry.Base.Ident
 import Filenames
 
+
+lookupModule :: [FilePath] -> [FilePath] -> ModuleIdent
+             -> IO (Maybe FilePath)
+lookupModule paths libraryPaths m
+    = lookupFile ("" : paths ++ libraryPaths) moduleExts fn
+      where fn = foldr1 catPath (moduleQualifiers m)
 
 catPath :: FilePath -> FilePath -> FilePath
 catPath = combine

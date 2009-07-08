@@ -592,7 +592,7 @@ module.
 > modulesBinding (IL.Binding _ e) = modulesExpr e
 
 > modules :: QualIdent -> [ModuleIdent] -> [ModuleIdent]
-> modules x ms = maybe ms (: ms) (fst (splitQualIdent x))
+> modules x ms = maybe ms (: ms) (qualidMod x)
 
 \end{verbatim}
 

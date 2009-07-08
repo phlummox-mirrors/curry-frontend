@@ -44,7 +44,6 @@ data Code =  Keyword String
            | Symbol String
            | Identifier IdentifierKind QualIdent
            | CodeWarning [WarnMsg] Code
-           | CodeError [WarnMsg] Code
            | NotParsed String
              deriving Show
            
@@ -154,7 +153,6 @@ readInt s =
 
 flatCode :: Code -> Code
 flatCode (CodeWarning _ code) = code
-flatCode (CodeError _ code) = code
 flatCode code = code
              
 
@@ -272,8 +270,6 @@ idOccur2functionCall qualIdents ide@(Identifier IdOccur qualIdent)
    | otherwise = ide
 idOccur2functionCall qualIdents (CodeWarning mess code) =
        CodeWarning mess (idOccur2functionCall qualIdents code)
-idOccur2functionCall qualIdents (CodeError mess code) =
-       CodeError mess (idOccur2functionCall qualIdents code)
 idOccur2functionCall _ code = code
   
 
@@ -292,8 +288,6 @@ addModuleIdent moduleIdent tc@(TypeConstructor TypeDecla qualIdent)
     | otherwise = tc         
 addModuleIdent moduleIdent (CodeWarning mess code) =
     CodeWarning mess (addModuleIdent moduleIdent code)
-addModuleIdent moduleIdent (CodeError mess code) =
-    CodeError mess (addModuleIdent moduleIdent code)
 addModuleIdent _ c = c
                         
 -- ----------------------------------------
@@ -368,12 +362,12 @@ tokenNcodes2codes nameList currLine currCol toks@((messages,pos@Position{line=li
 renameModuleIdents :: [(ModuleIdent,ModuleIdent)] -> Code -> Code
 renameModuleIdents nameList c =
     case c of
-        Function x qualIdent -> Function x (rename qualIdent (splitQualIdent qualIdent))
-        Identifier x qualIdent -> Identifier x (rename qualIdent (splitQualIdent qualIdent))
+        Function x qualIdent -> Function x (rename qualIdent (qualidMod qualIdent))
+        Identifier x qualIdent -> Identifier x (rename qualIdent (qualidMod qualIdent))
         _ -> c
   where
-    rename x (Nothing,_) = x
-    rename x (Just m,i) = maybe x (\ m' -> qualifyWith m' i) (lookup m nameList)
+    rename x (Nothing) = x
+    rename x (Just m) = maybe x (\ m' -> qualifyWith m' (qualidId x)) (lookup m nameList)
            
 {-
 codeWithoutUniqueID ::  Code -> String
@@ -388,11 +382,11 @@ codeQualifiers :: Code -> [String]
 codeQualifiers = maybe [] moduleQualifiers . getModuleIdent
 
 getModuleIdent :: Code -> Maybe ModuleIdent
-getModuleIdent (ConstructorName _ qualIdent) = fst $ splitQualIdent qualIdent
-getModuleIdent (Function _ qualIdent) = fst $ splitQualIdent qualIdent
+getModuleIdent (ConstructorName _ qualIdent) = qualidMod qualIdent
+getModuleIdent (Function _ qualIdent) = qualidMod qualIdent
 getModuleIdent (ModuleName moduleIdent) = Just moduleIdent
-getModuleIdent (Identifier _ qualIdent) = fst $ splitQualIdent qualIdent                     
-getModuleIdent (TypeConstructor _ qualIdent) = fst $ splitQualIdent qualIdent
+getModuleIdent (Identifier _ qualIdent) = qualidMod qualIdent                     
+getModuleIdent (TypeConstructor _ qualIdent) = qualidMod qualIdent
 getModuleIdent _ = Nothing
 
 

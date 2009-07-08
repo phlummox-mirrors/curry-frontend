@@ -47,7 +47,7 @@ as well, these variables must never be quantified.
 >   | TypeArrow Type Type
 >   | TypeSkolem Int
 >   | TypeRecord [(Ident,Type)] (Maybe Int)
->   deriving (Eq,Show)
+>   deriving (Show, Eq)
 
 \end{verbatim}
 The function \texttt{isArrowType} checks whether a type is a function
@@ -172,8 +172,8 @@ quantified variables and the second the number of existentially
 quantified variables.
 \begin{verbatim}
 
-> data TypeScheme = ForAll Int Type deriving (Eq,Show)
-> data ExistTypeScheme = ForAllExist Int Int Type deriving (Eq,Show)
+> data TypeScheme = ForAll Int Type deriving (Show, Eq)
+> data ExistTypeScheme = ForAllExist Int Int Type deriving (Show, Eq)
 
 \end{verbatim}
 The functions \texttt{monoType} and \texttt{polyType} translate a type
@@ -215,3 +215,37 @@ There are a few predefined types:
 > typeVar = TypeVariable
 
 \end{verbatim}
+
+
+
+> qualifyType :: ModuleIdent -> Type -> Type
+> qualifyType m (TypeConstructor tc tys)
+>   | isTupleId tc' = tupleType tys'
+>   | tc' == unitId && n == 0 = unitType
+>   | tc' == listId && n == 1 = listType (head tys')
+>   | otherwise = TypeConstructor (qualQualify m tc) tys'
+>   where n = length tys'
+>         tc' = unqualify tc
+>         tys' = map (qualifyType m) tys
+> qualifyType _ (TypeVariable tv) = TypeVariable tv
+> qualifyType m (TypeConstrained tys tv) =
+>   TypeConstrained (map (qualifyType m) tys) tv
+> qualifyType m (TypeArrow ty1 ty2) =
+>   TypeArrow (qualifyType m ty1) (qualifyType m ty2)
+> qualifyType _ (TypeSkolem k) = TypeSkolem k
+> qualifyType m (TypeRecord fs rty) =
+>   TypeRecord (map (\ (l,ty) -> (l, qualifyType m ty)) fs) rty
+
+
+> unqualifyType :: ModuleIdent -> Type -> Type
+> unqualifyType m (TypeConstructor tc tys) =
+>   TypeConstructor (qualUnqualify m tc) (map (unqualifyType m) tys)
+> unqualifyType _ (TypeVariable tv) = TypeVariable tv
+> unqualifyType m (TypeConstrained tys tv) =
+>   TypeConstrained (map (unqualifyType m) tys) tv
+> unqualifyType m (TypeArrow ty1 ty2) =
+>   TypeArrow (unqualifyType m ty1) (unqualifyType m ty2)
+> unqualifyType m (TypeSkolem k) = TypeSkolem k
+> unqualifyType m (TypeRecord fs rty) =
+>   TypeRecord (map (\ (l,ty) -> (l, unqualifyType m ty)) fs) rty
+

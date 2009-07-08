@@ -44,7 +44,7 @@ to the interface of the module.
 >     Linear ->
 >       case linear ([c | ExportTypeWith _ cs <- es', c <- cs] ++
 >                    [unqualify f | Export f <- es']) of
->         Linear -> Module m (Just (Exporting noPos es')) ds
+>         Linear -> Module m (Just (Exporting NoPos es')) ds
 >         NonLinear v -> errorAt' (ambiguousExportValue v)
 >     NonLinear tc -> errorAt' (ambiguousExportType tc) 
 >   where ms = Set.fromList [fromMaybe m asM | ImportDecl _ m _ asM _ <- ds]
@@ -201,7 +201,7 @@ exported function.
 > exportInterface :: Module -> PEnv -> TCEnv -> ValueEnv -> Interface
 > exportInterface (Module m (Just (Exporting _ es)) _) pEnv tcEnv tyEnv =
 >   Interface m (imports ++ precs ++ hidden ++ ds)
->   where imports = map (IImportDecl noPos) (usedModules ds)
+>   where imports = map (IImportDecl NoPos) (usedModules ds)
 >         precs = foldr (infixDecl m pEnv) [] es
 >         hidden = map (hiddenTypeDecl m tcEnv) (hiddenTypes ds)
 >         ds = foldr (typeDecl m tcEnv) (foldr (funDecl m tyEnv) [] es) es
@@ -210,7 +210,7 @@ exported function.
 > infixDecl :: ModuleIdent -> PEnv -> Export -> [IDecl] -> [IDecl]
 > infixDecl m pEnv (Export f) ds = iInfixDecl m pEnv f ds
 > infixDecl m pEnv (ExportTypeWith tc cs) ds =
->   foldr (iInfixDecl m pEnv . qualifyLike (fst (splitQualIdent tc))) ds cs
+>   foldr (iInfixDecl m pEnv . qualifyLike (qualidMod tc)) ds cs
 >   where qualifyLike = maybe qualify qualifyWith
 
 > iInfixDecl :: ModuleIdent -> PEnv -> QualIdent -> [IDecl] -> [IDecl]
@@ -218,7 +218,7 @@ exported function.
 >   case qualLookupP op pEnv of
 >     [] -> ds
 >     [PrecInfo _ (OpPrec fix pr)] ->
->       IInfixDecl noPos fix pr (qualUnqualify m op) : ds
+>       IInfixDecl NoPos fix pr (qualUnqualify m op) : ds
 >     _ -> internalError "infixDecl"
 
 > typeDecl :: ModuleIdent -> TCEnv -> Export -> [IDecl] -> [IDecl]
@@ -230,7 +230,7 @@ exported function.
 >          (constrDecls m (drop n nameSupply) cs cs') : ds
 >     [RenamingType tc n (Data c n' ty)]
 >       | c `elem` cs ->
->           iTypeDecl INewtypeDecl m tc n (NewConstrDecl noPos tvs c ty') : ds
+>           iTypeDecl INewtypeDecl m tc n (NewConstrDecl NoPos tvs c ty') : ds
 >       | otherwise -> iTypeDecl IDataDecl m tc n [] : ds
 >       where tvs = take n' (drop n nameSupply)
 >             ty' = fromQualType m ty
@@ -244,7 +244,7 @@ exported function.
 
 > iTypeDecl :: (Position -> QualIdent -> [Ident] -> a -> IDecl)
 >            -> ModuleIdent -> QualIdent -> Int -> a -> IDecl
-> iTypeDecl f m tc n = f noPos (qualUnqualify m tc) (take n nameSupply)
+> iTypeDecl f m tc n = f NoPos (qualUnqualify m tc) (take n nameSupply)
 
 > constrDecls :: ModuleIdent -> [Ident] -> [Ident] -> [Maybe (Data [Type])]
 >             -> [Maybe ConstrDecl]
@@ -257,14 +257,14 @@ exported function.
 
 > iConstrDecl :: [Ident] -> Ident -> [TypeExpr] -> ConstrDecl
 > iConstrDecl tvs op [ty1,ty2]
->   | isInfixOp op = ConOpDecl noPos tvs ty1 op ty2
-> iConstrDecl tvs c tys = ConstrDecl noPos tvs c tys
+>   | isInfixOp op = ConOpDecl NoPos tvs ty1 op ty2
+> iConstrDecl tvs c tys = ConstrDecl NoPos tvs c tys
 
 > funDecl :: ModuleIdent -> ValueEnv -> Export -> [IDecl] -> [IDecl]
 > funDecl m tyEnv (Export f) ds =
 >   case qualLookupValue f tyEnv of
 >     [Value _ (ForAll _ ty)] ->
->       IFunctionDecl noPos (qualUnqualify m f) (arrowArity ty) 
+>       IFunctionDecl NoPos (qualUnqualify m f) (arrowArity ty) 
 >		  (fromQualType m ty) : ds
 >     _ -> internalError ("funDecl: " ++ show f)
 > funDecl _ _ (ExportTypeWith _ _) ds = ds
@@ -290,9 +290,8 @@ not module \texttt{B}.
 \begin{verbatim}
 
 > usedModules :: [IDecl] -> [ModuleIdent]
-> usedModules ds = nub (catMaybes (map modul (foldr identsDecl [] ds)))
+> usedModules ds = nub (catMaybes (map qualidMod (foldr identsDecl [] ds)))
 >   where nub = Set.toList . Set.fromList
->         modul = fst . splitQualIdent
 
 > identsDecl :: IDecl -> [QualIdent] -> [QualIdent]
 > identsDecl (IDataDecl _ tc _ cs) xs =
@@ -333,7 +332,7 @@ distinguished from type variables.
 >     [RenamingType _ n _] -> hidingDataDecl tc n
 >     _ ->  internalError "hiddenTypeDecl"
 >   where hidingDataDecl tc n =
->           HidingDataDecl noPos (unqualify tc) (take n nameSupply)
+>           HidingDataDecl NoPos (unqualify tc) (take n nameSupply)
 
 > hiddenTypes :: [IDecl] -> [QualIdent]
 > hiddenTypes ds = [tc | tc <- Set.toList tcs, not (isQualified tc)]
