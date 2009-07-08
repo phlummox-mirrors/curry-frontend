@@ -811,7 +811,7 @@ unrefTypeVar id =
 unrefVar :: Ident -> (Position, String)
 unrefVar id = 
   (positionOfIdent id,
-   "unreferenced variable \"" ++ show id ++ "\"")
+   "unused declaration of variable \"" ++ show id ++ "\"")
 
 shadowingVar :: Ident -> (Position, String)
 shadowingVar id = 

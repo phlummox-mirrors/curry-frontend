@@ -68,13 +68,16 @@ Simple identifiers
 > data Ident = Ident { positionOfIdent :: Position,
 >                      name :: String,
 >                      uniqueId :: Int }
->              deriving (Read, Show, Data, Typeable)
+>              deriving (Read, Data, Typeable)
 >
 > instance Eq Ident where
 >     Ident _ m i == Ident _ n j = (m,i) == (n, j)
 >
 > instance Ord Ident where
 >     Ident _ m i `compare` Ident _ n j = (m,i) `compare` (n, j)
+>
+> instance Show Ident where
+>     show = showIdent
 >
 > showIdent :: Ident -> String
 > showIdent  (Ident _ x 0) = x
@@ -85,18 +88,20 @@ Qualified identifiers
 
 > data QualIdent = QualIdent { qualidMod :: Maybe ModuleIdent,
 >                              qualidId:: Ident }
->                  deriving (Eq, Ord, Read, Show, Data,Typeable)
+>                  deriving (Eq, Ord, Read, Data,Typeable)
 
 > qualName :: QualIdent -> String
 > qualName (QualIdent Nothing x) = name x
 > qualName (QualIdent (Just m) x) = moduleName m ++ "." ++ name x
 
+> instance Show QualIdent where
+>     show = qualName
 
 Module names
 
 > data ModuleIdent = ModuleIdent { positionOfModuleIdent :: Position,
 >                                  moduleQualifiers :: [String] }
->                    deriving (Read, Show, Data,Typeable)
+>                    deriving (Read, Data,Typeable)
 
 > instance Eq ModuleIdent where
 >    (==) = (==) `on` moduleQualifiers
@@ -107,6 +112,8 @@ Module names
 > moduleName :: ModuleIdent -> String
 > moduleName = concat . intersperse "." . moduleQualifiers
 
+> instance Show ModuleIdent where
+>     show = moduleName
 
 -- -----------------------------------------
 

@@ -19,12 +19,14 @@ import qualified Data.Map as Map
 import Curry.Base.MessageMonad
 import Curry.Base.Ident as Id
 
-import Base (ArityEnv, ArityInfo(..), ModuleEnv,  
+import Base {-(ArityEnv, ArityInfo(..), ModuleEnv,  
 	     TCEnv, TypeInfo(..), ValueEnv, ValueInfo(..),
 	     lookupValue, qualLookupTC,
-	     qualLookupArity, lookupArity,  internalError)
+	     qualLookupArity, lookupArity,  internalError,
+             qualLookupValue)-}
 import Curry.ExtendedFlat
 import qualified IL.Type as IL
+import qualified IL.CurryToIL as IL
 import qualified Curry.Syntax as CS
 import CurryEnv (CurryEnv)
 import qualified CurryEnv
@@ -170,8 +172,11 @@ visitExpression (IL.Variable ident)
    = liftM Var (lookupVarIndex ident)
 visitExpression (IL.Function qident _)
    = do arity_ <- lookupIdArity qident
+        qname <- visitQualIdent qident
+   --     ftype <- lookupIdType qident
+        let qident' = qname{ typeofQName = ftype }
 	maybe (internalError (funcArity qident))
-	      (\arity -> genFuncCall qident arity [])
+	      (\arity -> genFuncCall qname arity [])
 	      arity_
 visitExpression (IL.Constructor qident arity)
    = do arity_ <- lookupIdArity qident
@@ -477,8 +482,9 @@ genFlatApplication e1 e2
 	      -> genFlatApplic (expr2:args) expr1
 	  (IL.Function qident _)
 	      -> do arity_ <- lookupIdArity qident
+                    qname <- visitQualIdent qident
 		    maybe (internalError (funcArity qident))
-			  (\arity -> genFuncCall qident arity args)
+			  (\arity -> genFuncCall qname arity args)
 			  arity_
 	  (IL.Constructor qident _)
 	      -> do arity_ <- lookupIdArity qident
@@ -489,36 +495,39 @@ genFlatApplication e1 e2
 		    genApplicComb expr args
 
 --
-genFuncCall :: QualIdent -> Int -> [IL.Expression] -> FlatState Expr
-genFuncCall qident arity args
+genFuncCall :: QName -> Int -> [IL.Expression] -> FlatState Expr
+genFuncCall qname arity args
    | arity > cnt 
-     = genComb qident args (FuncPartCall (arity - cnt))
+     = genComb qname args (FuncPartCall (arity - cnt))
    | arity < cnt 
      = do let (funcargs, applicargs) = splitAt arity args
-	  funccall <- genComb qident funcargs FuncCall
+	  funccall <- genComb qname funcargs FuncCall
 	  genApplicComb funccall applicargs
    | otherwise   
-     = genComb qident args FuncCall
+     = genComb qname args FuncCall
  where cnt = length args
 
 --
 genConsCall :: QualIdent -> Int -> [IL.Expression] -> FlatState Expr
 genConsCall qident arity args
    | arity > cnt 
-     = genComb qident args (ConsPartCall (arity - cnt))
+     = do qname <- visitQualIdent qident
+          genComb qname args (ConsPartCall (arity - cnt))
    | arity < cnt
      = do let (funcargs, applicargs) = splitAt arity args
-	  conscall <- genComb qident funcargs ConsCall
+          qname <- visitQualIdent qident
+	  conscall <- genComb qname funcargs ConsCall
 	  genApplicComb conscall applicargs
    | otherwise 
-     = genComb qident args ConsCall 
+     = do qname <- visitQualIdent qident
+          genComb qname args ConsCall 
  where cnt = length args
 
 --
-genComb :: QualIdent -> [IL.Expression] -> CombType -> FlatState Expr
-genComb qident args combtype
+genComb :: QName -> [IL.Expression] -> CombType -> FlatState Expr
+genComb qname args combtype
    = do exprs <- mapM visitExpression args
-	qname <- visitQualIdent qident
+--	qname <- visitQualIdent qident
 	return (Comb combtype qname exprs)
 	 
 --
@@ -744,7 +753,7 @@ missingVarIndex id = "GenFlatCurry: missing index for \"" ++ show id ++ "\""
 
 
 overlappingRules qid =  "function \""
-		        ++ show qid 
+		        ++ qualName qid 
 		        ++ "\" is non-deterministic due to non-trivial "
 		        ++ "overlapping rules"
 
@@ -947,6 +956,20 @@ lookupIdArity qid
 			      [ArityInfo _ a] -> Just a
 			      _               -> Nothing
 		      _  -> Nothing
+
+--
+lookupIdType :: QualIdent -> FlatState (Maybe TypeExpr)
+lookupIdType qid
+   = do aEnv <- gets typeEnvE
+        lookupT qid aEnv
+    where
+      lookupT qid aEnv = let vals = qualLookupValue qid aEnv 
+                             ts = [ t | Value _ (ForAll _ t) <- vals]
+                         in case ts of 
+                              t : _ -> do t' <- visitType (IL.translType t)
+                                          return (Just t')
+                              [] -> error ("no type for " ++ show qid ++ show vals ++ show aEnv) -- return Nothing
+
 
 -- Generates a new index for a variable
 newVarIndex :: Ident -> FlatState VarIndex

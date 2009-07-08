@@ -149,7 +149,8 @@ explicitly in a Curry expression.
 >           -> [Equation]
 > inlineFun flags m tyEnv evEnv p (FunLhs f ts)
 >           (SimpleRhs _ (Let [FunctionDecl _ f' eqs'] e) _)
->   | f' `notElem` qfv m eqs' && e' == Variable (qualify f') &&
+>   | True -- False -- inlining of functions is deactivated (hsi)
+>    && f' `notElem` qfv m eqs' && e' == Variable (qualify f') &&
 >     n == arrowArity (funType m tyEnv (qualify f')) &&
 >     (evMode evEnv f == evMode evEnv f' ||
 >      and [all isVarPattern ts | Equation _ (FunLhs _ ts) _ <- eqs']) =
@@ -267,12 +268,14 @@ functions to access the pattern variables.
 > inlineVars :: SimplifyFlags -> ModuleIdent -> ValueEnv -> [Decl] -> InlineEnv -> InlineEnv
 > inlineVars flags m tyEnv [PatternDecl _ (VariablePattern v) (SimpleRhs _ e _)] env
 >   | canInline e = Map.insert v e env
->   where canInline (Literal _) = True
->         canInline (Constructor _) = True
->         canInline (Variable v')
->           | isQualified v' = arrowArity (funType m tyEnv v') > 0
->           | otherwise = v /= unqualify v'
->         canInline _ = False
+>   where
+>   canInline (Literal _) = True
+>   canInline (Constructor _) = True
+>   canInline _ = False -- inlining of variables is deactivated (hsi)
+>   canInline (Variable v')
+>       | isQualified v' = arrowArity (funType m tyEnv v') > 0
+>       | otherwise = v /= unqualify v'
+>   canInline _ = False
 > inlineVars _ _ _ _ env = env
 
 > mkLet :: SimplifyFlags -> ModuleIdent -> [Decl] -> Expression -> Expression
