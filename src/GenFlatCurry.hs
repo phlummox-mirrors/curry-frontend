@@ -72,11 +72,11 @@ type FlatState a = State FlatEnv a
 -- Data type for representing an environment which contains information needed
 -- for generating FlatCurry code.
 data FlatEnv = FlatEnv{ moduleIdE     :: ModuleIdent,
-			  functionIdE   :: QualIdent,    -- function name for error messages
+			  functionIdE   :: (QualIdent, [(Ident, IL.Type)]),
 			  compilerOptsE :: Options,
 			  moduleEnvE    :: ModuleEnv,
 			  arityEnvE     :: ArityEnv,
-			  typeEnvE      :: ValueEnv,
+			  typeEnvE      :: ValueEnv,     -- types of defined values
 			  tConsEnvE     :: TCEnv,
 			  publicEnvE    :: Map.Map Ident IdentExport,
 			  fixitiesE     :: [CS.IDecl],
@@ -108,7 +108,7 @@ run opts cEnv mEnv tyEnv tcEnv aEnv genIntf f
  where
  (result, env) = runState f env0
  env0 = FlatEnv{ moduleIdE     = CurryEnv.moduleId cEnv,
-		 functionIdE   = qualify (mkIdent ""),
+		 functionIdE   = (qualify (mkIdent ""), []),
 		 compilerOptsE = opts,
 		 moduleEnvE    = mEnv,
 		 arityEnvE     = aEnv,
@@ -209,22 +209,21 @@ visitType (IL.TypeArrow type1 type2)
 --
 visitFuncDecl :: IL.Decl -> FlatState FuncDecl
 visitFuncDecl (IL.FunctionDecl qident params typeexpr expression)
-   = whenFlatCurry
-       (do setFunctionId qident
-	   is    <- mapM newVarIndex params
-	   texpr <- visitType typeexpr
-	   expr  <- visitExpression expression
-	   qname <- visitQualIdent qident
-	   vis   <- getVisibility False qident
-	   clearVarIndices
-	   return (Func qname (length params) vis texpr (Rule is expr)))
-       (do setFunctionId qident
-	   texpr <- visitType typeexpr
-	   qname <- visitQualIdent qident
-	   clearVarIndices
-	   return (Func qname (length params) Public texpr (Rule [] (Var $ mkIdx 0))))
+   = let argtypes = splitoffArgTypes typeexpr params 
+     in trace ("!!!!!!!!!"++show argtypes) $ do
+           setFunctionId (qident, argtypes)
+           qname <- visitQualIdent qident
+           whenFlatCurry (do is    <- mapM newVarIndex params
+	                     texpr <- visitType typeexpr
+	                     expr  <- visitExpression expression
+	                     vis   <- getVisibility False qident
+	                     clearVarIndices
+	                     return (Func qname (length params) vis texpr (Rule is expr)))
+                         (do texpr <- visitType typeexpr
+	                     clearVarIndices
+	                     return (Func qname (length params) Public texpr (Rule [] (Var $ mkIdx 0))))
 visitFuncDecl (IL.ExternalDecl qident _ name typeexpr)
-   = do setFunctionId qident
+   = do setFunctionId (qident, [])
 	texpr <- visitType typeexpr
 	qname <- visitQualIdent qident
 	vis   <- getVisibility False qident
@@ -245,15 +244,14 @@ visitExpression (IL.Variable ident)
 visitExpression (IL.Function qident _)
    = do arity_ <- lookupIdArity qident
         qname <- visitQualIdent qident
-        ftype <- lookupIdType qident
-        let qident' = qname{ typeofQName = ftype }
-	maybe (internalError (funcArity qident'))
-	      (\arity -> genFuncCall qident' arity [])
+	maybe (internalError (funcArity qname))
+	      (\arity -> genFuncCall qname arity [])
 	      arity_
 visitExpression (IL.Constructor qident arity)
    = do arity_ <- lookupIdArity qident
+        qname <- visitQualIdent qident
 	maybe (internalError (consArity qident))
-	      (\arity -> genConsCall qident arity [])
+	      (\arity -> genConsCall qname arity [])
 	      arity_
 visitExpression (IL.Apply e1 e2)
    = genFlatApplication e1 e2
@@ -290,29 +288,33 @@ visitExpression (IL.Letrec bindings expression)
 
 getTypeOf :: Ident -> FlatState (Maybe TypeExpr)
 getTypeOf ident = do
-    (valEnv, _) <- environments
+    valEnv <- gets typeEnvE 
     case lookupValue ident valEnv of 
       Value _ (ForAll _ t) : _ 
           -> do t <- visitType (ttrans t)
                 trace' ("getTypeOf(" ++ show ident ++ ") = " ++ show t)$
                        return (Just t)
-      v   -> trace' ("lookupValue did not return a value for index " ++ show ident ++ ", instead " ++ show v)
-             (return Nothing)
+      DataConstructor _ (ForAllExist _ _ t):_ 
+          -> do t <- visitType (ttrans t)
+                trace' ("getTypeOfDatan(" ++ show ident ++ ") = " ++ show t)$
+                       return (Just t)
+      _   -> do (_,ats) <- gets functionIdE
+                case lookup ident ats of
+                  Just t -> liftM Just (visitType t)
+                  Nothing -> trace ("lookupValue did not return a value for index " ++ show ident)
+                             (return Nothing)
     where ttrans :: Type -> IL.Type 
           ttrans (TypeConstructor i ts)
               = IL.TypeConstructor i (map ttrans ts)
           ttrans (TypeVariable v)
               = IL.TypeVariable v
           ttrans (TypeConstrained [] v)
-              = trace' (msg1 v) $ IL.TypeVariable v
+              = IL.TypeVariable v
           ttrans (TypeConstrained (v:_) i)
-              = trace' (msg2 i ilt) ilt
-              where ilt = ttrans v
+              = ttrans v
           ttrans (TypeArrow f x) = IL.TypeArrow (ttrans f) (ttrans x)
           ttrans s@(TypeSkolem _) = error $ "in ttrans: " ++ show s
           ttrans s@(TypeRecord _ _) = error $ "in ttrans: " ++ show s
-          msg1 i = "in ttrans: empty TypeConstrained, coerced to type var #" ++ show i
-          msg2 i t = "in ttrans: TypeConstrained with index " ++ show i ++ ", coerced to " ++ show t
 
 --
 visitLiteral :: IL.Literal -> FlatState Literal
@@ -417,7 +419,8 @@ visitQualIdent qident
 		  = Id.moduleName preludeMIdent
 		| otherwise
 		  = maybe (Id.moduleName mid) Id.moduleName mmod
-	return (curry mkQName mod $ name ident)
+        ftype <- lookupIdType qident
+	return (QName Nothing ftype mod $ name ident)
 
 --
 visitExternalName :: String -> FlatState String
@@ -560,8 +563,9 @@ genFlatApplication e1 e2
 			  arity_
 	  (IL.Constructor qident _)
 	      -> do arity_ <- lookupIdArity qident
+                    qname <- visitQualIdent qident
 		    maybe (internalError (consArity qident))
-			  (\arity -> genConsCall qident arity args)
+			  (\arity -> genConsCall qname arity args)
 			  arity_
 	  _   -> do expr <- visitExpression expression
 		    genApplicComb expr args
@@ -580,26 +584,22 @@ genFuncCall qname arity args
  where cnt = length args
 
 --
-genConsCall :: QualIdent -> Int -> [IL.Expression] -> FlatState Expr
-genConsCall qident arity args
+genConsCall :: QName -> Int -> [IL.Expression] -> FlatState Expr
+genConsCall qname arity args
    | arity > cnt 
-     = do qname <- visitQualIdent qident
-          genComb qname args (ConsPartCall (arity - cnt))
+     = genComb qname args (ConsPartCall (arity - cnt))
    | arity < cnt
      = do let (funcargs, applicargs) = splitAt arity args
-          qname <- visitQualIdent qident
 	  conscall <- genComb qname funcargs ConsCall
 	  genApplicComb conscall applicargs
    | otherwise 
-     = do qname <- visitQualIdent qident
-          genComb qname args ConsCall 
+     = genComb qname args ConsCall 
  where cnt = length args
 
 --
 genComb :: QName -> [IL.Expression] -> CombType -> FlatState Expr
 genComb qname args combtype
    = do exprs <- mapM visitExpression args
---	qname <- visitQualIdent qident
 	return (Comb combtype qname exprs)
 	 
 --
@@ -641,7 +641,8 @@ genTypeSynonyms = typeSynonyms >>= mapM genTypeSynonym
 genTypeSynonym :: CS.IDecl -> FlatState TypeDecl
 genTypeSynonym (CS.ITypeDecl _ qident params typeexpr)
    = do let is = [0 .. (length params) - 1]
-        (tyEnv,tcEnv) <- environments
+        tyEnv <- gets typeEnvE
+        tcEnv <- gets tConsEnvE
 	let typeexpr' = elimRecordTypes tyEnv tcEnv typeexpr
 	texpr <- visitType (fst (cs2ilType (zip params is) typeexpr'))
 	qname <- visitQualIdent qident
@@ -685,7 +686,8 @@ genRecordType (CS.ITypeDecl _ qident params (CS.RecordType fields _))
 genRecordLabel :: Maybe ModuleIdent -> [(Ident,Int)] -> ([Ident],CS.TypeExpr) 
 	       -> FlatState ConsDecl
 genRecordLabel mod vis ([ident],typeexpr)
-   = do (tyEnv,tcEnv) <- environments
+   = do tyEnv <- gets typeEnvE
+        tcEnv <- gets tConsEnvE
 	let typeexpr' = elimRecordTypes tyEnv tcEnv typeexpr
         texpr <- visitType (fst (cs2ilType vis typeexpr'))
 	qname <- visitQualIdent ((maybe qualify qualifyWith mod) 
@@ -903,10 +905,10 @@ moduleId = gets moduleIdE
 
 --
 functionId :: FlatState QualIdent
-functionId = gets functionIdE
+functionId = gets (fst . functionIdE)
 
 --
-setFunctionId :: QualIdent -> FlatState ()
+setFunctionId :: (QualIdent, [(Ident, IL.Type)]) -> FlatState ()
 setFunctionId qid = modify (\env -> env{ functionIdE = qid })
 
 --
@@ -932,10 +934,6 @@ fixities = gets fixitiesE
 --
 typeSynonyms :: FlatState [CS.IDecl]
 typeSynonyms = gets typeSynonymsE
-
---
-environments :: FlatState (ValueEnv,TCEnv)
-environments = gets (\env -> (typeEnvE env, tConsEnvE env))
 
 --
 isPublic :: Bool -> QualIdent -> FlatState Bool
@@ -971,25 +969,29 @@ lookupIdType qid
    = do aEnv <- gets typeEnvE
         lt <- gets localTypes
         case Map.lookup qid lt of
-          Just t -> liftM Just (visitType t)
+          Just t -> liftM Just (visitType t)  -- local name
           Nothing -> case [ t | Value _ (ForAll _ t) <- qualLookupValue qid aEnv ] of 
-                       t : _ -> liftM Just (visitType (IL.translType t))
-                       []    -> trace ("no type for " ++ show qid) $
-                                return Nothing
+                       t : _ -> liftM Just (visitType (IL.translType t))  -- imported name
+                       []    -> trace ("no type for "  ++ show qid) $ return Nothing  -- no known type
 
 -- Generates a new index for a variable
 newVarIndex :: Ident -> FlatState VarIndex
-newVarIndex id
+newVarIndex ident
    = do idx0 <- gets varIndexE
-        ty <- getTypeOf id
+        ty <- getTypeOf ident
         let idx = idx0 + 1
             vid = VarIndex ty idx
         vids <- gets varIdsE
         modify (\env -> env{ varIndexE = idx,
-			     varIdsE   = ScopeEnv.insert id vid vids
+			     varIdsE   = ScopeEnv.insert ident vid vids
 			   })
         return vid
 
+{-registerVarIndex :: Ident -> (Maybe TypeExpr) -> FlatState ()
+registerVarIndex ident ty
+    = do  vids <- gets typeEnvE
+          modify (\env -> env{ typeEnvE = Map.insertScopeEnv.insert ident (VarIndex ty $ uniqueId ident) vids })
+=-}
 --
 lookupVarIndex :: Ident -> FlatState VarIndex
 lookupVarIndex id
@@ -1094,3 +1096,9 @@ bindEnvRecordLabel :: Ident -> Map.Map Ident IdentExport -> ([Ident],CS.TypeExpr
 bindEnvRecordLabel r env ([lab], _) = bindIdentExport (recSelectorId (qualify r) lab) False expo
     where 
       expo = (bindIdentExport (recUpdateId (qualify r) lab) False env)
+
+
+splitoffArgTypes :: IL.Type -> [Ident] -> [(Ident, IL.Type)]
+splitoffArgTypes (IL.TypeArrow l r) (i:is) = (i, l):splitoffArgTypes r is
+splitoffArgTypes _ [] = []
+splitoffArgTypes _ _  = error "internal error in splitoffArgTypes"
