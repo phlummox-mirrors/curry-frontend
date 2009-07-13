@@ -210,8 +210,7 @@ visitType (IL.TypeArrow type1 type2)
 visitFuncDecl :: IL.Decl -> FlatState FuncDecl
 visitFuncDecl (IL.FunctionDecl qident params typeexpr expression)
    = let argtypes = splitoffArgTypes typeexpr params 
-     in trace ("!!!!!!!!!"++show argtypes) $ do
-           setFunctionId (qident, argtypes)
+     in do setFunctionId (qident, argtypes)
            qname <- visitQualIdent qident
            whenFlatCurry (do is    <- mapM newVarIndex params
 	                     texpr <- visitType typeexpr
@@ -296,12 +295,12 @@ getTypeOf ident = do
                        return (Just t)
       DataConstructor _ (ForAllExist _ _ t):_ 
           -> do t <- visitType (ttrans t)
-                trace' ("getTypeOfDatan(" ++ show ident ++ ") = " ++ show t)$
+                trace' ("getTypeOfDataCon(" ++ show ident ++ ") = " ++ show t)$
                        return (Just t)
       _   -> do (_,ats) <- gets functionIdE
                 case lookup ident ats of
                   Just t -> liftM Just (visitType t)
-                  Nothing -> trace ("lookupValue did not return a value for index " ++ show ident)
+                  Nothing -> trace' ("lookupValue did not return a value for index " ++ show ident)
                              (return Nothing)
     where ttrans :: Type -> IL.Type 
           ttrans (TypeConstructor i ts)
@@ -972,7 +971,7 @@ lookupIdType qid
           Just t -> liftM Just (visitType t)  -- local name
           Nothing -> case [ t | Value _ (ForAll _ t) <- qualLookupValue qid aEnv ] of 
                        t : _ -> liftM Just (visitType (IL.translType t))  -- imported name
-                       []    -> trace ("no type for "  ++ show qid) $ return Nothing  -- no known type
+                       []    -> trace' ("no type for "  ++ show qid) $ return Nothing  -- no known type
 
 -- Generates a new index for a variable
 newVarIndex :: Ident -> FlatState VarIndex
