@@ -112,7 +112,10 @@ code are obsolete and commented out.
 >                       writeModule outputFile outputMod
 >                       return Nothing
 >        else
->          do (tyEnv, tcEnv, aEnv, m', intf, _) <- checkModule opts mEnv m
+>          do -- checkModule checks types, and then transModule introduces new
+>             -- functions (by lambda lifting in 'desugar'). Consequence: The
+>             -- type of the newly introduced functions are not inferred (hsi)
+>             (tyEnv, tcEnv, aEnv, m', intf, _) <- checkModule opts mEnv m
 >             let (il,aEnv',dumps) = transModule fcy False False 
 >			                         mEnv tyEnv tcEnv aEnv m'
 >             mapM_ (doDump opts) dumps

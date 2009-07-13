@@ -13,6 +13,8 @@
 
 module Main(main) where
 
+import Curry.ExtendedFlatGoodies
+
 import Data.List
 import Data.Maybe
 import System.IO

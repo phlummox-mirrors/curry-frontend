@@ -207,7 +207,7 @@ buildMessagesIntoPlainText messages text =
      
 --- @param parse-Modules  [typingParse,fullParse,parse] 
 catIdentifiers :: [MsgMonad Module] -> ([(ModuleIdent,ModuleIdent)],[Code])
-catIdentifiers = catIds . rights . map (fst . runMsg)
+catIdentifiers = catIds . rights_sc . map (fst . runMsg)
     where 
       catIds [] = ([],[])
       catIds [m] =
@@ -217,7 +217,7 @@ catIdentifiers = catIds . rights . map (fst . runMsg)
     
 -- not in base befoer base4
 
-rights  xs = [ x | Right x <- xs]
+rights_sc  xs = [ x | Right x <- xs]
 
 --- @param parse-Module
 --- @param Maybe betterParse-Module    

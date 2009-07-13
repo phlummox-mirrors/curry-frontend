@@ -37,7 +37,8 @@ import CurryCompilerOpts
 import PatchPrelude
 
 
-trace _ x = x
+import Debug.Trace
+trace' _ x = x
 
 -------------------------------------------------------------------------------
 
@@ -173,10 +174,10 @@ visitExpression (IL.Variable ident)
 visitExpression (IL.Function qident _)
    = do arity_ <- lookupIdArity qident
         qname <- visitQualIdent qident
-   --     ftype <- lookupIdType qident
-   --     let qident' = qname{ typeofQName = ftype }
-	maybe (internalError (funcArity qident))
-	      (\arity -> genFuncCall qname arity [])
+        ftype <- lookupIdType qident
+        let qident' = qname{ typeofQName = ftype }
+	maybe (internalError (funcArity qident'))
+	      (\arity -> genFuncCall qident' arity [])
 	      arity_
 visitExpression (IL.Constructor qident arity)
    = do arity_ <- lookupIdArity qident
@@ -222,9 +223,9 @@ getTypeOf ident = do
     case lookupValue ident valEnv of 
       Value _ (ForAll _ t) : _ 
           -> do t <- visitType (ttrans t)
-                trace ("getTypeOf(" ++ show ident ++ ") = " ++ show t)$
-                      return (Just t)
-      v   -> trace ("lookupValue did not return a value for index " ++ show ident ++ ", instead " ++ show v)
+                trace' ("getTypeOf(" ++ show ident ++ ") = " ++ show t)$
+                       return (Just t)
+      v   -> trace' ("lookupValue did not return a value for index " ++ show ident ++ ", instead " ++ show v)
              (return Nothing)
     where ttrans :: Type -> IL.Type 
           ttrans (TypeConstructor i ts)
@@ -232,9 +233,9 @@ getTypeOf ident = do
           ttrans (TypeVariable v)
               = IL.TypeVariable v
           ttrans (TypeConstrained [] v)
-              = trace (msg1 v) $ IL.TypeVariable v
+              = trace' (msg1 v) $ IL.TypeVariable v
           ttrans (TypeConstrained (v:_) i)
-              = trace (msg2 i ilt) ilt
+              = trace' (msg2 i ilt) ilt
               where ilt = ttrans v
           ttrans (TypeArrow f x) = IL.TypeArrow (ttrans f) (ttrans x)
           ttrans s@(TypeSkolem _) = error $ "in ttrans: " ++ show s
@@ -963,12 +964,14 @@ lookupIdType qid
    = do aEnv <- gets typeEnvE
         lookupT qid aEnv
     where
-      lookupT qid aEnv = let vals = qualLookupValue qid aEnv 
-                             ts = [ t | Value _ (ForAll _ t) <- vals]
-                         in case ts of 
-                              t : _ -> do t' <- visitType (IL.translType t)
-                                          return (Just t')
-                              [] -> error ("no type for " ++ show qid ++ show vals ++ show aEnv) -- return Nothing
+      lookupT qid aEnv
+          = let vals = qualLookupValue qid aEnv 
+                ts = [ t | Value _ (ForAll _ t) <- vals]
+            in case ts of 
+                 t : _ -> do t' <- visitType (IL.translType t)
+                             return (Just t')
+                 [] -> trace ("no type for " ++ show qid ++ show vals) $
+                       return Nothing
 
 
 -- Generates a new index for a variable
