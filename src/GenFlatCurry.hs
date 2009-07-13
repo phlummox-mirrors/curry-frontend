@@ -63,10 +63,81 @@ genFlatInterface opts cEnv mEnv tyEnv tcEnv aEnv mod
 -------------------------------------------------------------------------------
 -------------------------------------------------------------------------------
 
+
+-- The environment 'FlatEnv' is embedded in the monadic representation
+-- 'FlatState' which allows the usage of 'do' expressions.
+
+type FlatState a = State FlatEnv a
+
+-- Data type for representing an environment which contains information needed
+-- for generating FlatCurry code.
+data FlatEnv = FlatEnv{ moduleIdE     :: ModuleIdent,
+			  functionIdE   :: QualIdent,    -- function name for error messages
+			  compilerOptsE :: Options,
+			  moduleEnvE    :: ModuleEnv,
+			  arityEnvE     :: ArityEnv,
+			  typeEnvE      :: ValueEnv,
+			  tConsEnvE     :: TCEnv,
+			  publicEnvE    :: Map.Map Ident IdentExport,
+			  fixitiesE     :: [CS.IDecl],
+			  typeSynonymsE :: [CS.IDecl],
+			  importsE      :: [CS.IDecl],
+			  exportsE      :: [CS.Export],
+			  interfaceE    :: [CS.IDecl],
+			  varIndexE     :: Int,
+			  varIdsE       :: ScopeEnv Ident VarIndex,
+			  tvarIndexE    :: Int,
+			  tvarIdsE      :: ScopeEnv Ident TVarIndex,
+			  messagesE     :: [WarnMsg],
+			  genInterfaceE :: Bool,
+                          localTypes    :: Map.Map QualIdent IL.Type
+			}
+
+data IdentExport = NotConstr       -- function, type-constructor
+                 | OnlyConstr      -- constructor
+                 | NotOnlyConstr   -- constructor, function, type-constructor
+
+
+
+
+-- Runs a 'FlatState' action and returns the result
+run :: Options -> CurryEnv -> ModuleEnv -> ValueEnv -> TCEnv -> ArityEnv 
+    -> Bool -> FlatState a -> (a, [WarnMsg])
+run opts cEnv mEnv tyEnv tcEnv aEnv genIntf f
+   = (result, messagesE env)
+ where
+ (result, env) = runState f env0
+ env0 = FlatEnv{ moduleIdE     = CurryEnv.moduleId cEnv,
+		 functionIdE   = qualify (mkIdent ""),
+		 compilerOptsE = opts,
+		 moduleEnvE    = mEnv,
+		 arityEnvE     = aEnv,
+		 typeEnvE      = tyEnv,
+		 tConsEnvE     = tcEnv,
+		 publicEnvE    = genPubEnv (CurryEnv.moduleId cEnv)
+		                 (CurryEnv.interface cEnv),
+		 fixitiesE     = CurryEnv.infixDecls cEnv,
+		 typeSynonymsE = CurryEnv.typeSynonyms cEnv,
+		 importsE      = CurryEnv.imports cEnv,
+		 exportsE      = CurryEnv.exports cEnv,
+		 interfaceE    = CurryEnv.interface cEnv,
+		 varIndexE     = 0,
+		 varIdsE       = ScopeEnv.new,
+		 tvarIndexE    = 0,
+		 tvarIdsE      = ScopeEnv.new,
+		 messagesE      = [],
+		 genInterfaceE = genIntf,
+                 localTypes    = Map.empty
+	       }
+
+
 --
 visitModule :: IL.Module -> FlatState Prog
-visitModule (IL.Module mid imps decls)
-   = whenFlatCurry
+visitModule (IL.Module mid imps decls) = do
+  -- insert local decls into localDecls
+  let ts = [ (qn, t) | IL.FunctionDecl qn _ t _ <- decls ]
+  modify (\ s -> s {localTypes = Map.fromList ts})
+  whenFlatCurry
        (do ops     <- genOpDecls
            datas   <- mapM visitDataDecl (filter isDataDecl decls)
 	   types   <- genTypeSynonyms
@@ -826,70 +897,6 @@ emap f env (x:xs) = let (x',env')    = f env x
 -------------------------------------------------------------------------------
 -------------------------------------------------------------------------------
 
--- Data type for representing an environment which contains information needed
--- for generating FlatCurry code.
-data FlatEnv = FlatEnv{ moduleIdE     :: ModuleIdent,
-			  functionIdE   :: QualIdent,    -- function name for error messages
-			  compilerOptsE :: Options,
-			  moduleEnvE    :: ModuleEnv,
-			  arityEnvE     :: ArityEnv,
-			  typeEnvE      :: ValueEnv,
-			  tConsEnvE     :: TCEnv,
-			  publicEnvE    :: Map.Map Ident IdentExport,
-			  fixitiesE     :: [CS.IDecl],
-			  typeSynonymsE :: [CS.IDecl],
-			  importsE      :: [CS.IDecl],
-			  exportsE      :: [CS.Export],
-			  interfaceE    :: [CS.IDecl],
-			  varIndexE     :: Int,
-			  varIdsE       :: ScopeEnv Ident VarIndex,
-			  tvarIndexE    :: Int,
-			  tvarIdsE      :: ScopeEnv Ident TVarIndex,
-			  messagesE     :: [WarnMsg],
-			  genInterfaceE :: Bool
-			}
-
-data IdentExport = NotConstr       -- function, type-constructor
-                 | OnlyConstr      -- constructor
-                 | NotOnlyConstr   -- constructor, function, type-constructor
-
-
-
--- The environment 'FlatEnv' is embedded in the monadic representation
--- 'FlatState' which allows the usage of 'do' expressions.
-type FlatState a = State FlatEnv a
-
-
--- Runs a 'FlatState' action and returns the result
-run :: Options -> CurryEnv -> ModuleEnv -> ValueEnv -> TCEnv -> ArityEnv 
-    -> Bool -> FlatState a -> (a, [WarnMsg])
-run opts cEnv mEnv tyEnv tcEnv aEnv genIntf f
-   = (result, messagesE env)
- where
- (result, env) = runState f env0
- env0 = FlatEnv{ moduleIdE     = CurryEnv.moduleId cEnv,
-		 functionIdE   = qualify (mkIdent ""),
-		 compilerOptsE = opts,
-		 moduleEnvE    = mEnv,
-		 arityEnvE     = aEnv,
-		 typeEnvE      = tyEnv,
-		 tConsEnvE     = tcEnv,
-		 publicEnvE    = genPubEnv (CurryEnv.moduleId cEnv)
-		                 (CurryEnv.interface cEnv),
-		 fixitiesE     = CurryEnv.infixDecls cEnv,
-		 typeSynonymsE = CurryEnv.typeSynonyms cEnv,
-		 importsE      = CurryEnv.imports cEnv,
-		 exportsE      = CurryEnv.exports cEnv,
-		 interfaceE    = CurryEnv.interface cEnv,
-		 varIndexE     = 0,
-		 varIdsE       = ScopeEnv.new,
-		 tvarIndexE    = 0,
-		 tvarIdsE      = ScopeEnv.new,
-		 messagesE      = [],
-		 genInterfaceE = genIntf
-	       }
-
-
 --
 moduleId :: FlatState ModuleIdent
 moduleId = gets moduleIdE
@@ -962,17 +969,13 @@ lookupIdArity qid
 lookupIdType :: QualIdent -> FlatState (Maybe TypeExpr)
 lookupIdType qid
    = do aEnv <- gets typeEnvE
-        lookupT qid aEnv
-    where
-      lookupT qid aEnv
-          = let vals = qualLookupValue qid aEnv 
-                ts = [ t | Value _ (ForAll _ t) <- vals]
-            in case ts of 
-                 t : _ -> do t' <- visitType (IL.translType t)
-                             return (Just t')
-                 [] -> trace ("no type for " ++ show qid ++ show vals) $
-                       return Nothing
-
+        lt <- gets localTypes
+        case Map.lookup qid lt of
+          Just t -> liftM Just (visitType t)
+          Nothing -> case [ t | Value _ (ForAll _ t) <- qualLookupValue qid aEnv ] of 
+                       t : _ -> liftM Just (visitType (IL.translType t))
+                       []    -> trace ("no type for " ++ show qid) $
+                                return Nothing
 
 -- Generates a new index for a variable
 newVarIndex :: Ident -> FlatState VarIndex
