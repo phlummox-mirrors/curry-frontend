@@ -34,11 +34,12 @@ with an imported entity identify the modules from which the entity was
 imported.
 \begin{verbatim}
 
-> module TopEnv(TopEnv, Entity(..), emptyTopEnv,
+> module TopEnv(TopEnv(..), Entity(..), emptyTopEnv,
 >               predefTopEnv,qualImportTopEnv,importTopEnv,
 >               bindTopEnv,qualBindTopEnv,rebindTopEnv,qualRebindTopEnv,
 >               unbindTopEnv,lookupTopEnv,qualLookupTopEnv,
->               allImports,moduleImports,localBindings) where
+>               allImports,moduleImports,localBindings
+>              ) where
 
 > import Data.Maybe
 > import qualified Data.Map as Map
@@ -55,7 +56,8 @@ imported.
 >    | origName x == origName y = Just x
 >    | otherwise = Nothing
 
-> newtype TopEnv a = TopEnv (Map.Map QualIdent [(Source,a)]) deriving Show
+> newtype TopEnv a = TopEnv { topEnvMap :: Map.Map QualIdent [(Source,a)] 
+>                           } deriving Show
 
 > instance Functor TopEnv where
 >   fmap f (TopEnv env) = TopEnv (fmap (map (second f)) env)
