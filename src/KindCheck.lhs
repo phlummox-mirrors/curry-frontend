@@ -28,6 +28,7 @@ is defined more than once.
 > import Data.Maybe
 
 > import Curry.Syntax
+> import Curry.Syntax.Utils(isTypeDecl)
 > import Curry.Base.Position
 > import Curry.Base.Ident
 > import Base hiding (bindArity)
@@ -45,9 +46,9 @@ finally, the declarations are checked within this environment.
 
 > kindCheck :: ModuleIdent -> TCEnv -> [Decl] -> [Decl]
 > kindCheck m tcEnv ds =
->   case linear (map tconstr ds') of
->     Linear -> map (checkDecl m kEnv) ds
->     NonLinear tc -> errorAt' (duplicateType tc)
+>   case findDouble (map tconstr ds') of
+>     Nothing -> map (checkDecl m kEnv) ds
+>     Just tc -> errorAt' (duplicateType tc)
 >   where ds' = filter isTypeDecl ds
 >         kEnv = foldr (bindArity m) (fmap tcArity tcEnv) ds'
 

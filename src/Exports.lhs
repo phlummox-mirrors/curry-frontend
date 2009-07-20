@@ -40,13 +40,13 @@ to the interface of the module.
 > expandInterface :: Module -> TCEnv -> ValueEnv -> Module
 > expandInterface (Module m es ds) tcEnv tyEnv =
 >     --error (show es')
->   case linear [unqualify tc | ExportTypeWith tc _ <- es'] of
->     Linear ->
->       case linear ([c | ExportTypeWith _ cs <- es', c <- cs] ++
+>   case findDouble [unqualify tc | ExportTypeWith tc _ <- es'] of
+>     Nothing ->
+>       case findDouble ([c | ExportTypeWith _ cs <- es', c <- cs] ++
 >                    [unqualify f | Export f <- es']) of
->         Linear -> Module m (Just (Exporting NoPos es')) ds
->         NonLinear v -> errorAt' (ambiguousExportValue v)
->     NonLinear tc -> errorAt' (ambiguousExportType tc) 
+>         Nothing -> Module m (Just (Exporting NoPos es')) ds
+>         Just v -> errorAt' (ambiguousExportValue v)
+>     Just tc -> errorAt' (ambiguousExportType tc) 
 >   where ms = Set.fromList [fromMaybe m asM | ImportDecl _ m _ asM _ <- ds]
 >         es' = joinExports $                                              -- $
 >               maybe (expandLocalModule tcEnv tyEnv)

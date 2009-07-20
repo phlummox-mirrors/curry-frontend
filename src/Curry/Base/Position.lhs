@@ -38,17 +38,18 @@ column number. A tab stop is assumed at every eighth column.
 > incSrcRef is  _ = error $ "internal error; increment source ref: " ++ show is
 
 > data Position 
->   = Position{ file :: FilePath, line :: Int, column :: Int, ast :: SrcRef }
->   | AST { ast :: SrcRef }
+>   = Position{ file :: FilePath, line :: Int, column :: Int, astRef :: SrcRef }
+>   | AST { astRef :: SrcRef }
 >   | NoPos
 >     deriving (Eq, Ord,Data,Typeable)
 
 > incPosition :: Position -> Int -> Position
-> incPosition p j = p{ast=incSrcRef (ast p) j}
+> incPosition NoPos _ = NoPos
+> incPosition p j = p{astRef=incSrcRef (astRef p) j}
 
 > instance Read Position where
 >   readsPrec p s = 
->     [ (Position{file="",line=i,column=j,ast=noRef},s')  | ((i,j),s') <- readsPrec p s]
+>     [ (Position{file="",line=i,column=j,astRef=noRef},s')  | ((i,j),s') <- readsPrec p s]
 
 > instance Show Position where
 >   showsPrec _ Position{file=fn,line=l,column=c} =
@@ -93,4 +94,6 @@ column number. A tab stop is assumed at every eighth column.
 >   srcRefOf :: a -> SrcRef
 >   srcRefOf = head . srcRefsOf
 
-> instance SrcRefOf Position where srcRefOf = ast
+> instance SrcRefOf Position where
+>     srcRefOf NoPos = noRef
+>     srcRefOf x = astRef x

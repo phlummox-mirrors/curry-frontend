@@ -898,15 +898,3 @@ patExpr :: Pattern -> Expr
 patExpr = trPattern (\ name -> Comb ConsCall name . map Var) Lit
 
 
-
-
-inferType :: Expr -> Maybe TypeExpr
-inferType e = case e of
-                Var vi ->  Nothing
-                Lit l -> (litType l)
-                Comb ct qn args -> Nothing
-                Free vis e -> Nothing
-                Let bs e -> Nothing
-                Or l r -> Nothing
-                Case _ _  e bs -> Nothing
-    where litType _ = Nothing

@@ -116,10 +116,6 @@ options = [Option "f" ["force"] (NoArg Force)
                   "dump intermediate language before lifting",
 	   Option "" ["dump-case"] (NoArg (Dump [DumpCase]))
 	          "dump intermediate language after case simplification",
-	   Option "" ["dump-transformed"] (NoArg (Dump [DumpTransformed]))
-                  "dump IL code after debugging transformation",
-	   Option "" ["dump-normalized"] (NoArg (Dump [DumpNormalized]))
-                  "dump IL code after normalization",
 	   Option "?h" ["help"] (NoArg Help)
                   "display this help and exit"
 	  ]
@@ -158,8 +154,6 @@ data Dump = DumpRenamed      -- dump source after renaming
 	  | DumpLifted       -- dump source after lambda-lifting
 	  | DumpIL           -- dump IL code after translation
 	  | DumpCase         -- dump IL code after case elimination
-	  | DumpTransformed  -- dump transformed code
-	  | DumpNormalized   -- dump IL code after normalization
 	    deriving (Eq,Bounded,Enum,Show)
 
 

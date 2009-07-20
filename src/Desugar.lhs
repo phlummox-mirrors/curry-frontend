@@ -209,7 +209,7 @@ with a local declaration for $v$.
 >   where 
 >    fixType tyEnv
 >      | typeOf tyEnv v == floatType 
->          = Float (ast $ positionOfIdent v) (fromIntegral i)
+>          = Float (srcRefOf $ positionOfIdent v) (fromIntegral i)
 >      | otherwise = Int v i
 > desugarLiteral (Float p f) = return (Left (Float p f))
 > desugarLiteral (String (SrcRef [i]) cs) 
@@ -292,7 +292,7 @@ with a local declaration for $v$.
 >       do
 >         v0 <- S.get >>= freshIdent m "_#lazy" . monoType . flip typeOf t
 >         let v' = addPositionIdent (AST pos) v0
->         return (patDecl p{ast=pos} t (mkVar v') : ds,VariablePattern v')
+>         return (patDecl p{astRef=pos} t (mkVar v') : ds,VariablePattern v')
 
 
 \end{verbatim}

@@ -50,11 +50,11 @@ addition, this process will also rename the local variables.
 
 > syntaxCheck :: Bool -> ModuleIdent -> ImportEnv -> ArityEnv -> ValueEnv -> TCEnv -> [Decl] -> [Decl]
 > syntaxCheck withExt m iEnv aEnv tyEnv tcEnv ds =
->   case linear (concatMap constrs tds) of
->     --Linear -> tds ++ run (checkModule withExt m env vds)
->     Linear -> map (checkTypeDecl withExt m) tds
+>   case findDouble (concatMap constrs tds) of
+>     --Nothing -> tds ++ run (checkModule withExt m env vds)
+>     Nothing -> map (checkTypeDecl withExt m) tds
 >	        ++ run (checkModule withExt m env2 vds)
->     NonLinear c -> errorAt' (duplicateData c)
+>     Just c -> errorAt' (duplicateData c)
 >   where (tds,vds) = partition isTypeDecl ds
 >	  (rs, tds') = partition isRecordDecl tds
 >         env1 = foldr (bindTypes m) -- (bindConstrs m) 
@@ -375,19 +375,19 @@ top-level.
 > checkDecls :: (Decl -> RenameEnv -> RenameEnv) -> Bool -> ModuleIdent
 >	        -> RenameEnv -> [Decl] -> RenameState (RenameEnv,[Decl])
 > checkDecls bindDecl withExt m env ds = 
->   case linear bvs of
->     Linear ->
->       case linear tys of
->         Linear ->
->           case linear evs of
->             Linear ->
+>   case findDouble bvs of
+>     Nothing ->
+>       case findDouble tys of
+>         Nothing ->
+>           case findDouble evs of
+>             Nothing ->
 >               case filter (`notElem` tys) fs' of
 >                 [] -> liftM ((,) env') 
 >		              (mapM (checkDeclRhs withExt bvs m env'') ds)
 >                 f : _ -> errorAt' (noTypeSig f)
->             NonLinear v -> errorAt' (duplicateEvalAnnot v)
->         NonLinear v -> errorAt' (duplicateTypeSig v)
->     NonLinear v -> errorAt' (duplicateDefinition v)
+>             Just v -> errorAt' (duplicateEvalAnnot v)
+>         Just v -> errorAt' (duplicateTypeSig v)
+>     Just v -> errorAt' (duplicateDefinition v)
 >   where vds = filter isValueDecl ds
 >	  tds = filter isTypeSig ds
 >         bvs = concat (map vars vds)
@@ -472,9 +472,9 @@ top-level.
 > checkConstrTerms :: QuantExpr t => Bool -> RenameEnv -> t
 >                  -> (RenameEnv,t)
 > checkConstrTerms withExt env ts =
->   case linear bvs of
->     Linear -> (foldr bindVar env bvs,ts)
->     NonLinear v -> errorAt' (duplicateVariable v)
+>   case findDouble bvs of
+>     Nothing -> (foldr bindVar env bvs,ts)
+>     Just v -> errorAt' (duplicateVariable v)
 >   where bvs = bv ts
 
 > checkConstrTerm :: Bool -> Int -> Position -> ModuleIdent -> RenameEnv

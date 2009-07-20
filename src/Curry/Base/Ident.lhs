@@ -119,8 +119,8 @@ Module names
 
 > addPositionIdent :: Position -> Ident -> Ident
 > addPositionIdent pos (Ident NoPos x n) = Ident pos x n
-> addPositionIdent AST{ast=sr} (Ident pos x n)
->     =  Ident pos{ast=sr} x n
+> addPositionIdent AST{astRef=sr} (Ident pos x n)
+>     =  Ident pos{astRef=sr} x n
 > addPositionIdent pos (Ident _ x n) = Ident pos x n
 
 > addPositionModuleIdent :: Position -> ModuleIdent -> ModuleIdent

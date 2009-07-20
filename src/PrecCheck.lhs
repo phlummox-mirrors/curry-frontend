@@ -37,12 +37,12 @@ imported precedence environment.
 
 > bindPrecs :: ModuleIdent -> [Decl] -> PEnv -> PEnv
 > bindPrecs m ds pEnv =
->   case linear ops of
->     Linear ->
+>   case findDouble ops of
+>     Nothing ->
 >       case [ op | op <- ops, op `notElem` bvs] of
 >         [] -> foldr bindPrec pEnv fixDs
 >         op : _ -> errorAt' (undefinedOperator op)
->     NonLinear op -> errorAt' (duplicatePrecedence op)
+>     Just op -> errorAt' (duplicatePrecedence op)
 >   where (fixDs,nonFixDs) = partition isInfixDecl ds
 >         bvs = concatMap boundValues nonFixDs
 >         ops = [ op | InfixDecl p _ _ ops <- fixDs, op <- ops]

@@ -272,10 +272,10 @@ uses flexible matching.
 >                    (IL.Function 
 >                       (qualifyWith preludeMIdent (mkIdent "commit"))
 >                       1)
->                    (match (ast pos) IL.Rigid vs 
+>                    (match (srcRefOf pos) IL.Rigid vs 
 >                       (map (translEquation tyEnv vs vs'') eqs))
 >              | otherwise
->                =  match (ast pos) ev vs (map (translEquation tyEnv vs vs'') eqs)
+>                =  match (srcRefOf pos) ev vs (map (translEquation tyEnv vs vs'') eqs)
 >         ---
 >         -- (vs',vs'') = splitAt (arrowArity ty) (argNames (mkIdent ""))
 
@@ -351,7 +351,7 @@ position in the remaining arguments. If one is found,
 
 > translLiteral :: Literal -> IL.Literal
 > translLiteral (Char p c) = IL.Char p c
-> translLiteral (Int id i) = IL.Int (ast (positionOfIdent id)) i
+> translLiteral (Int id i) = IL.Int (srcRefOf (positionOfIdent id)) i
 > translLiteral (Float p f) = IL.Float p f
 > translLiteral _ = internalError "translLiteral"
 

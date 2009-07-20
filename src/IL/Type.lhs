@@ -1,3 +1,5 @@
+> {-# LANGUAGE DeriveDataTypeable #-}
+
 % $Id: IL.lhs,v 1.18 2003/10/28 05:43:38 wlux Exp $
 %
 % Copyright (c) 1999-2003 Wolfgang Lux
@@ -40,6 +42,7 @@ an unlimited range of integer constants in Curry programs.
 
 > module IL.Type where
 
+> import Data.Generics
 > import Curry.Base.Ident
 > import Curry.Base.Position (SrcRef(..))
 
@@ -59,7 +62,7 @@ an unlimited range of integer constants in Curry programs.
 >     TypeConstructor QualIdent [Type]
 >   | TypeVariable Int
 >   | TypeArrow Type Type
->   deriving (Eq,Show)
+>   deriving (Eq,Show, Typeable, Data)
 
 > data Literal = Char SrcRef Char | Int SrcRef Integer | Float SrcRef Double deriving (Eq,Show)
 

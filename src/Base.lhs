@@ -25,7 +25,7 @@ compiler, it irrevocably turns the module structure into spaghetti.
 > import Curry.Base.Ident 
 > import Curry.Base.Position
 > import Types
-> import Curry.Syntax
+> import qualified Curry.Syntax as CS
 > import Curry.Syntax.Utils
 > import TopEnv
 > import Utils
@@ -47,33 +47,33 @@ those variables occurring in the type. This allows preserving the
 order of type variables in the left hand side of a type declaration.
 \begin{verbatim}
 
-> toQualType :: ModuleIdent -> [Ident] -> TypeExpr -> Type
+> toQualType :: ModuleIdent -> [Ident] -> CS.TypeExpr -> Type
 > toQualType m tvs = qualifyType m . toType tvs
 
-> toQualTypes :: ModuleIdent -> [Ident] -> [TypeExpr] -> [Type]
+> toQualTypes :: ModuleIdent -> [Ident] -> [CS.TypeExpr] -> [Type]
 > toQualTypes m tvs = map (qualifyType m) . toTypes tvs
 
-> toType :: [Ident] -> TypeExpr -> Type
+> toType :: [Ident] -> CS.TypeExpr -> Type
 > toType tvs ty = toType' (Map.fromList (zip (tvs ++ tvs') [0..])) ty
 >   where tvs' = [tv | tv <- nub (fv ty), tv `notElem` tvs]
 
-> toTypes :: [Ident] -> [TypeExpr] -> [Type]
+> toTypes :: [Ident] -> [CS.TypeExpr] -> [Type]
 > toTypes tvs tys = map (toType' (Map.fromList (zip (tvs ++ tvs') [0..]))) tys
 >   where tvs' = [tv | tv <- nub (concatMap fv tys), tv `notElem` tvs]
 
-> toType' :: Map.Map Ident Int -> TypeExpr -> Type
-> toType' tvs (ConstructorType tc tys) =
+> toType' :: Map.Map Ident Int -> CS.TypeExpr -> Type
+> toType' tvs (CS.ConstructorType tc tys) =
 >   TypeConstructor tc (map (toType' tvs) tys)
-> toType' tvs (VariableType tv) =
+> toType' tvs (CS.VariableType tv) =
 >   maybe (internalError ("toType " ++ show tv)) TypeVariable (Map.lookup tv tvs)
-> toType' tvs (TupleType tys)
+> toType' tvs (CS.TupleType tys)
 >   | null tys = TypeConstructor (qualify unitId) []
 >   | otherwise = TypeConstructor (qualify (tupleId (length tys'))) tys'
 >   where tys' = map (toType' tvs) tys
-> toType' tvs (ListType ty) = TypeConstructor (qualify listId) [toType' tvs ty]
-> toType' tvs (ArrowType ty1 ty2) =
+> toType' tvs (CS.ListType ty) = TypeConstructor (qualify listId) [toType' tvs ty]
+> toType' tvs (CS.ArrowType ty1 ty2) =
 >   TypeArrow (toType' tvs ty1) (toType' tvs ty2)
-> toType' tvs (RecordType fs rty) =
+> toType' tvs (CS.RecordType fs rty) =
 >   TypeRecord (concatMap (\ (ls,ty) -> map (\l -> (l, toType' tvs ty)) ls) fs)
 >              (maybe Nothing 
 >	              (\ty -> case toType' tvs ty of
@@ -81,25 +81,25 @@ order of type variables in the left hand side of a type declaration.
 >	                        _ -> internalError ("toType " ++ show ty))
 >	              rty)
 
-> fromQualType :: ModuleIdent -> Type -> TypeExpr
+> fromQualType :: ModuleIdent -> Type -> CS.TypeExpr
 > fromQualType m = fromType . unqualifyType m
 
-> fromType :: Type -> TypeExpr
+> fromType :: Type -> CS.TypeExpr
 > fromType (TypeConstructor tc tys)
->   | isTupleId c = TupleType tys'
->   | c == listId && length tys == 1 = ListType (head tys')
->   | c == unitId && null tys = TupleType []
->   | otherwise = ConstructorType tc tys'
+>   | isTupleId c = CS.TupleType tys'
+>   | c == listId && length tys == 1 = CS.ListType (head tys')
+>   | c == unitId && null tys = CS.TupleType []
+>   | otherwise = CS.ConstructorType tc tys'
 >   where c = unqualify tc
 >         tys' = map fromType tys
 > fromType (TypeVariable tv) =
->   VariableType (if tv >= 0 then nameSupply !! tv
+>   CS.VariableType (if tv >= 0 then nameSupply !! tv
 >                            else mkIdent ('_' : show (-tv)))
 > fromType (TypeConstrained tys _) = fromType (head tys)
-> fromType (TypeArrow ty1 ty2) = ArrowType (fromType ty1) (fromType ty2)
-> fromType (TypeSkolem k) = VariableType (mkIdent ("_?" ++ show k))
+> fromType (TypeArrow ty1 ty2) = CS.ArrowType (fromType ty1) (fromType ty2)
+> fromType (TypeSkolem k) = CS.VariableType (mkIdent ("_?" ++ show k))
 > fromType (TypeRecord fs rty) = 
->   RecordType (map (\ (l,ty) -> ([l], fromType ty)) fs)
+>   CS.RecordType (map (\ (l,ty) -> ([l], fromType ty)) fs)
 >              (maybe Nothing (Just . fromType . TypeVariable) rty)
 
 
@@ -109,42 +109,17 @@ order of type variables in the left hand side of a type declaration.
 The compiler maintains a global environment holding all (directly or
 indirectly) imported interfaces.
 
-The function \texttt{bindFlatInterfac} transforms FlatInterface
+The function \texttt{bindFlatInterface} transforms FlatInterface
 information (type \texttt{FlatCurry.Prog} to MCC interface declarations
 (type \texttt{CurrySyntax.IDecl}. This is necessary to process
 FlatInterfaces instead of ".icurry" files when using MCC as frontend
 for PAKCS.
 \begin{verbatim}
 
-> type ModuleEnv = Map.Map ModuleIdent [IDecl]
+> type ModuleEnv = Map.Map ModuleIdent [CS.IDecl]
 
-> lookupModule :: ModuleIdent -> ModuleEnv -> Maybe [IDecl]
+> lookupModule :: ModuleIdent -> ModuleEnv -> Maybe [CS.IDecl]
 > lookupModule = Map.lookup
-
-\end{verbatim}
-The label environment is used to store information of labels.
-Unlike unsual identifiers like in functions, types etc. identifiers
-of labels are always represented unqualified. Since the common type 
-environment (type \texttt{ValueEnv}) has some problems with handling 
-imported unqualified identifiers, it is necessary to process the type 
-information for labels seperately.
-\begin{verbatim}
-
-> data LabelInfo = LabelType Ident QualIdent Type deriving Show
-
-> type LabelEnv = Map.Map Ident [LabelInfo]
-
-> bindLabelType :: Ident -> QualIdent -> Type -> LabelEnv -> LabelEnv
-> bindLabelType l r ty lEnv =
->   maybe (Map.insert l [LabelType l r ty] lEnv)
->         (\ls -> Map.insert l (LabelType l r ty:ls) lEnv)
->         (Map.lookup l lEnv)
-
-> lookupLabelType :: Ident -> LabelEnv -> [LabelInfo]
-> lookupLabelType = Map.findWithDefault []
-
-> initLabelEnv :: LabelEnv
-> initLabelEnv = Map.empty
 
 
 \end{verbatim}
@@ -404,8 +379,8 @@ and constructors.
 
 > type ImportEnv = Map.Map ModuleIdent ModuleIdent
 
-> bindAlias :: Decl -> ImportEnv -> ImportEnv
-> bindAlias (ImportDecl _ mid _ mmid _)
+> bindAlias :: CS.Decl -> ImportEnv -> ImportEnv
+> bindAlias (CS.ImportDecl _ mid _ mmid _)
 >    = Map.insert mid (fromMaybe mid mmid)
 
 > lookupAlias :: ModuleIdent -> ImportEnv -> Maybe ModuleIdent
@@ -432,16 +407,16 @@ for representing the precedence. This change had to be done due to the
 introduction of unlimited integer constants in the parser / lexer.
 \begin{verbatim}
 
-> data OpPrec = OpPrec Infix Integer deriving Eq
+> data OpPrec = OpPrec CS.Infix Integer deriving Eq
 
 > instance Show OpPrec where
 >   showsPrec _ (OpPrec fix p) = showString (assoc fix) . shows p
->     where assoc InfixL = "left "
->           assoc InfixR = "right "
->           assoc Infix  = "non-assoc "
+>     where assoc CS.InfixL = "left "
+>           assoc CS.InfixR = "right "
+>           assoc CS.Infix  = "non-assoc "
 
 > defaultP :: OpPrec
-> defaultP = OpPrec InfixL 9
+> defaultP = OpPrec CS.InfixL 9
 
 \end{verbatim}
 The lookup functions for the environment which maintains the operator
@@ -478,7 +453,7 @@ a flat environment mapping unqualified names onto annotations is
 sufficient.
 \begin{verbatim}
 
-> type EvalEnv = Map.Map Ident EvalAnnotation
+> type EvalEnv = Map.Map Ident CS.EvalAnnotation
 
 
 \end{verbatim}
@@ -501,7 +476,7 @@ identifiers.
 
 > initPEnv :: PEnv
 > initPEnv =
->   predefTopEnv qConsId (PrecInfo qConsId (OpPrec InfixR 5)) emptyTopEnv
+>   predefTopEnv qConsId (PrecInfo qConsId (OpPrec CS.InfixR 5)) emptyTopEnv
 
 > initTCEnv :: TCEnv
 > initTCEnv = foldr (uncurry predefTC) emptyTopEnv predefTypes
@@ -564,66 +539,19 @@ Name supply for the generation of (type) variable names.
 \ToDo{The \texttt{nameSupply} should respect the current case mode, 
 i.e., use upper case for variables in Prolog mode.}
 
-Here is a list of predicates identifying various kinds of
-declarations.
-\begin{verbatim}
-
-> isImportDecl, isInfixDecl, isTypeDecl :: Decl -> Bool
-> isTypeSig, isEvalAnnot, isExtraVariables, isValueDecl :: Decl -> Bool
-> isImportDecl (ImportDecl _ _ _ _ _) = True
-> isImportDecl _ = False
-> isInfixDecl (InfixDecl _ _ _ _) = True
-> isInfixDecl _ = False
-> isTypeDecl (DataDecl _ _ _ _) = True
-> isTypeDecl (NewtypeDecl _ _ _ _) = True
-> isTypeDecl (TypeDecl _ _ _ _) = True
-> isTypeDecl _ = False
-> isTypeSig (TypeSig _ _ _) = True
-> isTypeSig (ExternalDecl _ _ _ _ _) = True
-> isTypeSig _ = False
-> isEvalAnnot (EvalAnnot _ _ _) = True
-> isEvalAnnot _ = False
-> isExtraVariables (ExtraVariables _ _) = True
-> isExtraVariables _ = False
-> isValueDecl (FunctionDecl _ _ _) = True
-> isValueDecl (ExternalDecl _ _ _ _ _) = True
-> isValueDecl (FlatExternalDecl _ _) = True
-> isValueDecl (PatternDecl _ _ _) = True
-> isValueDecl (ExtraVariables _ _) = True
-> isValueDecl _ = False
-> isRecordDecl (TypeDecl _ _ _ (RecordType _ _)) = True
-> isRecordDecl _ = False
-
-> isIImportDecl :: IDecl -> Bool
-> isIImportDecl (IImportDecl _ _) = True
-> isIImportDecl _ = False
-
 \end{verbatim}
-The function \texttt{infixOp} converts an infix operator into an
-expression.
-\begin{verbatim}
-
-> infixOp :: InfixOp -> Expression
-> infixOp (InfixOp op) = Variable op
-> infixOp (InfixConstr op) = Constructor op
-
-\end{verbatim}
-The function \texttt{linear} checks whether a list of entities is
+The function \texttt{findDouble} checks whether a list of entities is
 linear, i.e., if every entity in the list occurs only once. If it is
 non-linear, the first offending object is returned.
 \begin{verbatim}
 
-> data Linear a = Linear | NonLinear a
-
-> linear :: Eq a => [a] -> Linear a
-> linear (x:xs)
->   | x `elem` xs = NonLinear x
->   | otherwise = linear xs
-> linear [] = Linear
+> findDouble :: Eq a => [a] -> Maybe a
+> findDouble (x:xs)
+>   | x `elem` xs = Just x
+>   | otherwise = findDouble xs
+> findDouble [] = Nothing
 
 \end{verbatim}
-
-
 
 
 

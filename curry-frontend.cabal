@@ -25,8 +25,8 @@ Data-Files:    src/currydoc.css
 Executable cymake
   hs-source-dirs:   src
   Main-is:          cymake.hs
-  Build-Depends:    base >= 3 && < 4, mtl, old-time, directory, filepath, containers
-  ghc-options:      -fwarn-unused-binds -fwarn-unused-imports
+  Build-Depends:    base >= 3 && < 4, mtl, old-time, directory, filepath, containers, pretty
+  ghc-options:      -fwarn-unused-binds -fwarn-unused-imports  -auto-all  -fwarn-incomplete-patterns
 -- -fwarn-incomplete-patterns
   Other-Modules:    Curry.Base.Position, Curry.Base.Ident, Curry.Base.MessageMonad
                     Curry.Syntax.Lexer, Curry.Syntax.LexComb
@@ -35,7 +35,7 @@ Executable cymake
                     Curry.Syntax, Curry.Syntax.Type
                     Curry.Syntax.Unlit, Curry.Syntax.Utils
                     Curry.AbstractCurry,
-                    Curry.ExtendedFlat, Curry.ExtendedFlatGoodies
+                    Curry.ExtendedFlat, Curry.ExtendedFlatGoodies, Curry.ExtendedFlatTyping
                     CurryBuilder, IL.Type 
                     CurryCompilerOpts, Modules, Subst, Arity
                     CurryDeps, Eval, IL.Pretty, NestEnv, SyntaxCheck, Base

@@ -21,6 +21,13 @@ import Prelude hiding (lookup)
 -------------------------------------------------------------------------------
 -------------------------------------------------------------------------------
 
+-- Data type for representing information in nested scopes.
+data ScopeEnv a b = ScopeEnv Int (Map.Map a (b,Int)) [Map.Map a (b,Int)]
+		    deriving Show
+
+
+-------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
 -- Returns an empty scope environment
 new :: Ord a => ScopeEnv a b
 new = ScopeEnv 0 Map.empty []
@@ -162,14 +169,6 @@ updateSE local (key,(_,lev)) local'
                               else local')
 	   (Map.lookup key local)
 
-
-
--------------------------------------------------------------------------------
--------------------------------------------------------------------------------
-
--- Data type for representing information in nested scopes.
-data ScopeEnv a b = ScopeEnv Int (Map.Map a (b,Int)) [Map.Map a (b,Int)]
-		    deriving Show
 
 
 -------------------------------------------------------------------------------

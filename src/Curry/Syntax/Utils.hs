@@ -1,7 +1,14 @@
 module Curry.Syntax.Utils(Expr, fv, qfv,
-                          QuantExpr, bv) where
+                          QuantExpr, bv,
+
+                          isEvalAnnot, isTypeSig,
+                          infixOp,
+                          isTypeDecl, isValueDecl,
+                          isInfixDecl,
+                          isRecordDecl, isImportDecl) where
 
 import qualified Data.Set as Set
+
 
 import Curry.Base.Ident 
 import Curry.Syntax.Type
@@ -200,3 +207,51 @@ bvFuncPatt = bvfp []
  bvfp bvs (InfixFuncPattern t1 op t2) = foldl bvfp bvs [t1, t2]
  bvfp bvs (RecordPattern fs r)
     = foldl bvfp (maybe bvs (bvfp bvs) r) (map fieldTerm fs)
+
+
+
+{-
+  Here is a list of predicates identifying various kinds of
+  declarations.
+-}
+
+isImportDecl, isInfixDecl, isTypeDecl :: Decl -> Bool
+isTypeSig, isEvalAnnot, isValueDecl :: Decl -> Bool
+
+isImportDecl (ImportDecl _ _ _ _ _) = True
+isImportDecl _ = False
+
+isInfixDecl (InfixDecl _ _ _ _) = True
+isInfixDecl _ = False
+
+isTypeDecl (DataDecl _ _ _ _) = True
+isTypeDecl (NewtypeDecl _ _ _ _) = True
+isTypeDecl (TypeDecl _ _ _ _) = True
+isTypeDecl _ = False
+
+isTypeSig (TypeSig _ _ _) = True
+isTypeSig (ExternalDecl _ _ _ _ _) = True
+isTypeSig _ = False
+
+isEvalAnnot (EvalAnnot _ _ _) = True
+isEvalAnnot _ = False
+
+isValueDecl (FunctionDecl _ _ _) = True
+isValueDecl (ExternalDecl _ _ _ _ _) = True
+isValueDecl (FlatExternalDecl _ _) = True
+isValueDecl (PatternDecl _ _ _) = True
+isValueDecl (ExtraVariables _ _) = True
+isValueDecl _ = False
+
+isRecordDecl (TypeDecl _ _ _ (RecordType _ _)) = True
+isRecordDecl _ = False
+
+
+{-
+  The function \texttt{infixOp} converts an infix operator into an
+  expression.
+-}
+
+infixOp :: InfixOp -> Expression
+infixOp (InfixOp op) = Variable op
+infixOp (InfixConstr op) = Constructor op

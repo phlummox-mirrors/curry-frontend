@@ -31,9 +31,19 @@ import declarations are commented out
 > import Curry.Base.MessageMonad
 > import Curry.Base.Position
 > import Curry.Base.Ident
+
 > import Curry.Syntax
+> import Curry.Syntax.Utils(isImportDecl)
 > import Curry.Syntax.Pretty(ppModule,ppIDecl)
 > import Curry.Syntax.ShowModule(showModule)
+
+> import Curry.ExtendedFlat
+> import qualified Curry.ExtendedFlat as EF 
+
+> import qualified IL.Type as IL
+> import IL.CurryToIL(ilTrans)
+> import qualified IL.Pretty(ppModule)
+> import IL.XML(xmlModule)
 
 > import Base
 > import Types
@@ -50,16 +60,13 @@ import declarations are commented out
 > import Desugar(desugar)
 > import Simplify(simplify)
 > import Lift(lift)
-> import qualified IL.Type as IL
-> import IL.CurryToIL(ilTrans)
-> import IL.XML(xmlModule)
-> import Curry.ExtendedFlat
+
 > import GenFlatCurry (genFlatCurry,genFlatInterface)
 > import qualified Curry.AbstractCurry as AC
 > import GenAbstractCurry
 > import InterfaceCheck
 > import CurryEnv
-> import qualified IL.Pretty(ppModule)
+
 > import CurryCompilerOpts(Options(..),Dump(..))
 > import CaseCompletion
 > import PathUtils
@@ -67,7 +74,7 @@ import declarations are commented out
 > import TypeSubst
 > import PrettyCombinators
 > import TopEnv
-> import qualified Curry.ExtendedFlat as EF 
+
 
 \end{verbatim}
 The function \texttt{compileModule} is the main entry-point of this
@@ -302,7 +309,7 @@ content to a type environment.
 \begin{verbatim}
 
 > importLabels :: ModuleEnv -> [Decl] -> LabelEnv
-> importLabels mEnv ds = foldl importLabelTypes initLabelEnv ds
+> importLabels mEnv ds = foldl importLabelTypes Map.empty ds
 >   where
 >   importLabelTypes lEnv (ImportDecl p m _ asM is) =
 >     case (Map.lookup m mEnv) of
@@ -503,9 +510,6 @@ standard output.
 > dumpHeader DumpLifted = "Source code after lifting"
 > dumpHeader DumpIL = "Intermediate code"
 > dumpHeader DumpCase = "Intermediate code after case simplification"
-> --dumpHeader DumpTransformed = "Transformed code" 
-> --dumpHeader DumpNormalized = "Intermediate code after normalization"
-> --dumpHeader DumpCam = "Abstract machine code"
 
 
 \end{verbatim}
@@ -690,3 +694,23 @@ Error functions.
 >
 >  pos = first m
 >  ts' = filter (not . isSpecialPreludeType) ts
+
+
+
+
+\end{verbatim}
+The label environment is used to store information of labels.
+Unlike unsual identifiers like in functions, types etc. identifiers
+of labels are always represented unqualified. Since the common type 
+environment (type \texttt{ValueEnv}) has some problems with handling 
+imported unqualified identifiers, it is necessary to process the type 
+information for labels seperately.
+\begin{verbatim}
+
+> data LabelInfo = LabelType Ident QualIdent Type deriving Show
+
+> type LabelEnv = Map.Map Ident [LabelInfo]
+
+> bindLabelType :: Ident -> QualIdent -> Type -> LabelEnv -> LabelEnv
+> bindLabelType l r ty = Map.insertWith (++) l [LabelType l r ty]
+

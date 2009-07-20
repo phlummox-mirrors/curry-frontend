@@ -1,4 +1,3 @@
-% -*- LaTeX -*-
 % $Id: LLParseComb.lhs,v 1.26 2004/02/15 23:11:30 wlux Exp $
 %
 % Copyright (c) 1999-2004, Wolfgang Lux
@@ -49,7 +48,6 @@ string in this case.
 > class (Ord s,Show s) => Symbol s where
 >   isEOF :: s -> Bool
 
-> type Empty = Bool
 > type SuccessCont s a = Position -> s -> P a
 > type FailureCont a = Position -> String -> P a
 > type Lexer s a = SuccessCont s a -> FailureCont a -> P a

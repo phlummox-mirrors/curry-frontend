@@ -374,7 +374,7 @@ selector functions.
 >     _ -> 
 >       do
 >         v0 <- freshIdent m patternId (monoType (typeOf tyEnv t))
->         let v = addRefId (ast p) v0
+>         let v = addRefId (srcRefOf p) v0
 >         return [PatternDecl p t (SimpleRhs p (mkVar v) []),
 >                 PatternDecl p (VariablePattern v) rhs]
 >   where patternId n = mkIdent ("_#pat" ++ show n)

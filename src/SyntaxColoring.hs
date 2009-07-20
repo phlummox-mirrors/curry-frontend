@@ -129,7 +129,7 @@ setMessagePosition (WarnMsg _ m) =
 getPositionFromString :: String -> Maybe Position
 getPositionFromString message =
      if line > 0 && col > 0 
-          then Just Position{file=file,line=line,column=col,ast=noRef}
+          then Just Position{file=file,line=line,column=col,astRef=noRef}
           else Nothing
   where
       file = takeWhile (/= '"') (tail (dropWhile (/= '"') message))

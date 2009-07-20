@@ -10,6 +10,7 @@
 module GenFlatCurry (genFlatCurry,
 		     genFlatInterface) where
 
+import qualified Data.Generics
 import Control.Monad.State
 import Control.Monad
 import Data.Maybe
@@ -36,7 +37,7 @@ import qualified ScopeEnv
 import Types
 import CurryCompilerOpts
 import PatchPrelude
-
+import Curry.ExtendedFlatTyping(uniqueTypeIndices, genEquations)
 
 import Debug.Trace
 trace' _ x = x
@@ -47,9 +48,11 @@ trace' _ x = x
 genFlatCurry :: Options -> CurryEnv -> ModuleEnv -> ValueEnv -> TCEnv 
 		-> ArityEnv -> IL.Module -> (Prog, [WarnMsg])
 genFlatCurry opts cEnv mEnv tyEnv tcEnv aEnv mod
-   = (patchPreludeFCY prog, messages)
+   = (prog', messages)
  where (prog, messages) 
-	   = run opts cEnv mEnv tyEnv tcEnv aEnv False (visitModule mod)
+           = run opts cEnv mEnv tyEnv tcEnv aEnv False (visitModule mod)
+       prog' = uniqueTypeIndices $ patchPreludeFCY prog
+       prog'' = genEquations prog'
 
 
 -- transforms intermediate language code (IL) to FlatCurry interfaces
@@ -88,7 +91,6 @@ data FlatEnv = FlatEnv{ moduleIdE     :: ModuleIdent,
 			  varIndexE     :: Int,
 			  varIdsE       :: ScopeEnv Ident VarIndex,
 			  tvarIndexE    :: Int,
-			  tvarIdsE      :: ScopeEnv Ident TVarIndex,
 			  messagesE     :: [WarnMsg],
 			  genInterfaceE :: Bool,
                           localTypes    :: Map.Map QualIdent IL.Type,
@@ -125,8 +127,7 @@ run opts cEnv mEnv tyEnv tcEnv aEnv genIntf f
 		 interfaceE    = CurryEnv.interface cEnv,
 		 varIndexE     = 0,
 		 varIdsE       = ScopeEnv.new,
-		 tvarIndexE    = 0,
-		 tvarIdsE      = ScopeEnv.new,
+		 tvarIndexE    =0,
 		 messagesE      = [],
 		 genInterfaceE = genIntf,
                  localTypes    = Map.empty,
@@ -215,7 +216,7 @@ visitType (IL.TypeConstructor qident types)
 	   then return (head texprs)
 	   else return (TCons qname texprs)
 visitType (IL.TypeVariable index)
-   = return (TVar (int2num index))
+   = return (TVar (abs index))
 visitType (IL.TypeArrow type1 type2)
    = do texpr1 <- visitType type1
 	texpr2 <- visitType type2
@@ -290,6 +291,7 @@ visitExpression (IL.Let binding expression)
 	newVarIndex (bindingIdent binding)
         bind <- visitBinding binding
 	expr <- visitExpression expression
+        -- is it correct that there is no endScope? (hsi)
         return (Let [bind] expr)
 visitExpression (IL.Letrec bindings expression)
    = do beginScope
@@ -300,6 +302,7 @@ visitExpression (IL.Letrec bindings expression)
 	return (Let binds expr)
 
 
+-- FIXME return new type variable if no type is known
 getTypeOf :: Ident -> FlatState (Maybe TypeExpr)
 getTypeOf ident = do
     valEnv <- gets typeEnvE 
@@ -913,10 +916,6 @@ bindingIdent (IL.Binding ident _) = ident
 -------------------------------------------------------------------------------
 -------------------------------------------------------------------------------
 
-int2num :: Int -> Int
-int2num = abs
-
-
 emap :: (e -> a -> (b,e)) -> e -> [a] -> ([b], e)
 emap _ env []     = ([], env)
 emap f env (x:xs) = let (x',env')    = f env x
@@ -1015,11 +1014,6 @@ newVarIndex ident
 			   })
         return vid
 
-{-registerVarIndex :: Ident -> (Maybe TypeExpr) -> FlatState ()
-registerVarIndex ident ty
-    = do  vids <- gets typeEnvE
-          modify (\env -> env{ typeEnvE = Map.insertScopeEnv.insert ident (VarIndex ty $ uniqueId ident) vids })
-=-}
 --
 lookupVarIndex :: Ident -> FlatState VarIndex
 lookupVarIndex id
@@ -1045,15 +1039,13 @@ genInterface = gets genInterfaceE
 --
 beginScope :: FlatState ()
 beginScope = modify
-	       (\env -> env { varIdsE  = ScopeEnv.beginScope (varIdsE env),
-			      tvarIdsE = ScopeEnv.beginScope (tvarIdsE env)
+	       (\env -> env { varIdsE  = ScopeEnv.beginScope (varIdsE env)
 			    })
 
 --
 endScope :: FlatState ()
 endScope = modify
-	     (\env -> env { varIdsE  = ScopeEnv.endScope (varIdsE env),
-			    tvarIdsE = ScopeEnv.endScope (tvarIdsE env)
+	     (\env -> env { varIdsE  = ScopeEnv.endScope (varIdsE env)
 			  })
 
 --
@@ -1130,3 +1122,22 @@ splitoffArgTypes :: IL.Type -> [Ident] -> [(Ident, IL.Type)]
 splitoffArgTypes (IL.TypeArrow l r) (i:is) = (i, l):splitoffArgTypes r is
 splitoffArgTypes _ [] = []
 splitoffArgTypes _ _  = error "internal error in splitoffArgTypes"
+
+
+maxTVIndex :: Data.Generics.Data a => a -> Int
+maxTVIndex a =  maximum (-1: map getIdx (universeExp a))
+    where 
+      getIdx (IL.TypeVariable i) = i
+      getIdx _ = -1
+
+      children1Exp :: Data.Generics.Data a => a -> [IL.Type]
+      children1Exp x = concat $ Data.Generics.gmapQ children0Exp x
+
+      children0Exp :: Data.Generics.Data a => a -> [IL.Type]
+      children0Exp x | Just y <- Data.Generics.cast x = [y]
+                     | otherwise = children1Exp x
+
+      universeExp :: Data.Generics.Data a => a -> [IL.Type]
+      universeExp x = concatMap f (children0Exp x)
+      f x = x : concatMap f (children1Exp x)
+

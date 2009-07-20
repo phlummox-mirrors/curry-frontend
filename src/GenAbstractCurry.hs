@@ -17,6 +17,7 @@ import Data.List
 import Data.Char
 
 import Curry.Syntax
+import Curry.Syntax.Utils
 import Curry.AbstractCurry
 
 import Base
