@@ -188,7 +188,7 @@ data ConsDecl = Cons QName Int Visibility [TypeExpr]
 ---       "()" (unit type), "(,...,)" (tuple types), "[]" (list type)
 
 data TypeExpr =
-     TVar TVarIndex                 -- type variable
+     TVar !TVarIndex                 -- type variable
    | FuncType TypeExpr TypeExpr     -- function type t1->t2
    | TCons QName [TypeExpr]         -- type constructor application
    deriving (Read, Show, Eq,Data,Typeable)            --    TCons module name typeargs

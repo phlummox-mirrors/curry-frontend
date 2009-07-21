@@ -26,8 +26,7 @@ Executable cymake
   hs-source-dirs:   src
   Main-is:          cymake.hs
   Build-Depends:    base >= 3 && < 4, mtl, old-time, directory, filepath, containers, pretty
-  ghc-options:      -fwarn-unused-binds -fwarn-unused-imports  -auto-all  -fwarn-incomplete-patterns
--- -fwarn-incomplete-patterns
+  ghc-options:      -fwarn-unused-binds -fwarn-unused-imports  -auto-all 
   Other-Modules:    Curry.Base.Position, Curry.Base.Ident, Curry.Base.MessageMonad
                     Curry.Syntax.Lexer, Curry.Syntax.LexComb
                     Curry.Syntax.Parser, Curry.Syntax.LLParseComb
@@ -53,9 +52,4 @@ Executable cymake
                     Lift, ScopeEnv, WarnCheck
                     Desugar, Curry.Base.Ident, 
                     Simplify
-
--- Executable pretty-ecy
---   hs-source-dirs:   src
---   Main-is:          pretty-ecy.hs
---   Build-Depends:    base >= 3 && < 4
 

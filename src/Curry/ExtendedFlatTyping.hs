@@ -18,7 +18,7 @@ trace' msg x = x -- trace msg x
 
 prettyType :: TypeExpr -> Doc
 prettyType (TVar i) = text ('t':show i)
-prettyType (FuncType f x) = prettyType f <+> text "->" <+> parens (prettyType x)
+prettyType (FuncType f x) = parens (prettyType f) <+> text "->" <+> prettyType x
 prettyType (TCons qn ts) = let  n = let (m,l) = qnOf qn in m ++ '.' : l
                            in text n <+> hsep (map (parens . prettyType) ts)
 
@@ -71,8 +71,6 @@ visitTVars f = postOrderType f'
           f' t = return t
 
 
-
-
 uniqueTypeIndices :: Prog -> Prog
 uniqueTypeIndices = updProgFuncs (map updateFunc)
     where
@@ -92,6 +90,15 @@ relabelTypes (Var v)
     | typeofVar v == Nothing
     = do t <- freshTVar
          return (Var v{typeofVar = Just t})
+relabelTypes (Case p t e bs)
+    = do bs' <- mapM relabelPatType bs
+         return (Case p t e bs')
+    where relabelPatType (Branch (Pattern qn vis) e)
+              = do t' <- case typeofQName qn of
+                           Just lt -> relabelType lt
+                           Nothing -> freshTVar
+                   return (Branch (Pattern qn {typeofQName = Just t'} vis) e)
+          relabelPatType be = return be
 relabelTypes t = return t
 
 relabelType :: TypeExpr -> State TVarIndex TypeExpr
