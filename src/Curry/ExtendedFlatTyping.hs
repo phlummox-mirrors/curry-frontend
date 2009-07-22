@@ -1,10 +1,13 @@
 {-# LANGUAGE FlexibleContexts, BangPatterns, PatternGuards #-}
 
-module Curry.ExtendedFlatTyping(uniqueTypeIndices, genEquations) where
+module Curry.ExtendedFlatTyping(dispType, labelVarsWithTypes, uniqueTypeIndices, genEquations) where
 
 import Text.PrettyPrint.HughesPJ
 
 import Control.Monad.State
+import Control.Monad.Reader
+
+import Data.Maybe
 
 import Debug.Trace
 
@@ -15,6 +18,9 @@ import Curry.ExtendedFlat
 import Curry.ExtendedFlatGoodies
 
 trace' msg x = x -- trace msg x 
+
+dispType :: TypeExpr -> String
+dispType = render . prettyType
 
 prettyType :: TypeExpr -> Doc
 prettyType (TVar i) = text ('t':show i)
@@ -71,6 +77,73 @@ visitTVars f = postOrderType f'
           f' t = return t
 
 
+-- ----------------------------------------------------------------------
+-- ----------------------------------------------------------------------
+
+labelVarsWithTypes :: Prog -> Prog
+labelVarsWithTypes = updProgFuncs updateFunc
+    where 
+      updateFunc = map (\func -> let maxtvi = maxFuncTV func + 1 
+                                 in trFunc (foo maxtvi) func)
+      foo maxtv qn arity visty te r@(External _) = Func qn arity visty te r
+      foo maxtv qn arity visty te r@(Rule vs expr) 
+          = let expr' = evalState (runReaderT (withVS vs (po expr)) IntMap.empty) maxtv -- FIXME Argumente in Map
+            in Func qn arity visty te (Rule vs expr')
+
+      po :: Expr -> ReaderT TypeMap (State Int) Expr
+      -- type information from vi is superseded by type information
+      -- from the map. This is okay in the current ciontext, but for
+      -- general type inference this would result in loss of information.
+      -- (Fix by unifying both types in a later version)
+      po e@(Var vi)
+          = do vt <- asks (IntMap.lookup $ idxOf vi)
+               case vt of
+                 Just t -> return (Var vi { typeofVar = Just t })
+                 Nothing -> liftM Var (poVarIndex vi)
+      po e@(Lit _)
+          = return e
+      po (Comb t n es)
+          = do es' <- mapM po es
+               n' <- poQName n
+               return (Comb t n' es')
+      po (Free vs e) 
+          = do vs' <- mapM poVarIndex vs
+               e' <- po e
+               return (Free vs' e')
+      po (Let bs e)
+          = do let (vs, es) = unzip bs
+               vs' <- mapM poVarIndex vs
+               withVS vs' (do es' <- mapM po es
+                              e'  <- po e
+                              return (Let (zip vs' es') e'))
+      po (Or l r)
+          = liftM2 Or (po l) (po r)
+      po (Case p t e bs)
+          = do e' <- po e
+               bs' <- mapM poBranch bs
+               return (Case p t e' bs')
+      poBranch (Branch (Pattern qn vs) rhs) 
+          = do qn' <- poQName qn
+               vs' <- mapM poVarIndex vs
+               withVS vs' (do rhs' <- po rhs
+                              return (Branch (Pattern qn' vs') rhs'))
+      poBranch (Branch (LPattern l) e) 
+          = do rhs' <- po e
+               return (Branch (LPattern l) e)
+      poVarIndex vi
+          = do t <- maybe (lift$freshTVar) return . typeofVar $ vi
+               return vi{typeofVar = Just t }
+
+      poQName qn
+          = do t <- maybe (lift$freshTVar) 
+                        return . typeofQName $ qn
+               return qn{typeofQName = Just t }
+
+      withVS :: MonadReader TypeMap m => [VarIndex] -> m a -> m a
+      withVS vs action = local (\ m -> foldr (\ v -> IntMap.insert (idxOf v) (fromJust $ typeofVar v)) m vs) action
+
+-- ----------------------------------------------------------------------
+-- ----------------------------------------------------------------------
 uniqueTypeIndices :: Prog -> Prog
 uniqueTypeIndices = updProgFuncs (map updateFunc)
     where
@@ -109,7 +182,10 @@ relabelType t = evalStateT (visitTVars typeFoo t) IntMap.empty
                            Nothing -> do v <- lift freshTVar 
                                          modify (IntMap.insert i v)
                                          return v
-                                
+
+
+-- ----------------------------------------------------------------------
+-- ----------------------------------------------------------------------                                
 
 type TypeMap =  IntMap.IntMap TypeExpr
 

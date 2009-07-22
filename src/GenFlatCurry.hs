@@ -37,7 +37,7 @@ import qualified ScopeEnv
 import Types
 import CurryCompilerOpts
 import PatchPrelude
-import Curry.ExtendedFlatTyping(uniqueTypeIndices, genEquations)
+import Curry.ExtendedFlatTyping
 
 import Debug.Trace
 trace' _ x = x
@@ -51,7 +51,7 @@ genFlatCurry opts cEnv mEnv tyEnv tcEnv aEnv mod
    = (prog'', messages)
  where (prog, messages) 
            = run opts cEnv mEnv tyEnv tcEnv aEnv False (visitModule mod)
-       prog' = uniqueTypeIndices $ patchPreludeFCY prog
+       prog' = uniqueTypeIndices . labelVarsWithTypes $ patchPreludeFCY prog
        prog'' = genEquations prog'
 
 
@@ -301,37 +301,6 @@ visitExpression (IL.Letrec bindings expression)
 	endScope
 	return (Let binds expr)
 
-
--- FIXME return new type variable if no type is known
-getTypeOf :: Ident -> FlatState (Maybe TypeExpr)
-getTypeOf ident = do
-    valEnv <- gets typeEnvE 
-    case lookupValue ident valEnv of 
-      Value _ (ForAll _ t) : _ 
-          -> do t <- visitType (ttrans t)
-                trace' ("getTypeOf(" ++ show ident ++ ") = " ++ show t)$
-                       return (Just t)
-      DataConstructor _ (ForAllExist _ _ t):_ 
-          -> do t <- visitType (ttrans t)
-                trace' ("getTypeOfDataCon(" ++ show ident ++ ") = " ++ show t)$
-                       return (Just t)
-      _   -> do (_,ats) <- gets functionIdE
-                case lookup ident ats of
-                  Just t -> liftM Just (visitType t)
-                  Nothing -> trace' ("lookupValue did not return a value for index " ++ show ident)
-                             (return Nothing)
-ttrans :: Type -> IL.Type 
-ttrans (TypeConstructor i ts)
-    = IL.TypeConstructor i (map ttrans ts)
-ttrans (TypeVariable v)
-    = IL.TypeVariable v
-ttrans (TypeConstrained [] v)
-    = IL.TypeVariable v
-ttrans (TypeConstrained (v:_) i)
-    = ttrans v
-ttrans (TypeArrow f x) = IL.TypeArrow (ttrans f) (ttrans x)
-ttrans s@(TypeSkolem _) = error $ "in ttrans: " ++ show s
-ttrans s@(TypeRecord _ _) = error $ "in ttrans: " ++ show s
 
 --
 visitLiteral :: IL.Literal -> FlatState Literal
@@ -989,6 +958,39 @@ lookupIdArity qid
 			      _               -> Nothing
 		      _  -> Nothing
 
+
+
+-- FIXME return new type variable if no type is known
+getTypeOf :: Ident -> FlatState (Maybe TypeExpr)
+getTypeOf ident = do
+    valEnv <- gets typeEnvE 
+    case lookupValue ident valEnv of 
+      Value _ (ForAll _ t) : _ 
+          -> do t <- visitType (ttrans t)
+                trace' ("getTypeOf(" ++ show ident ++ ") = " ++ show t)$
+                       return (Just t)
+      DataConstructor _ (ForAllExist _ _ t):_ 
+          -> do t <- visitType (ttrans t)
+                trace' ("getTypeOfDataCon(" ++ show ident ++ ") = " ++ show t)$
+                       return (Just t)
+      _   -> do (_,ats) <- gets functionIdE
+                case lookup ident ats of
+                  Just t -> liftM Just (visitType t)
+                  Nothing -> trace' ("lookupValue did not return a value for index " ++ show ident)
+                             (return Nothing)
+ttrans :: Type -> IL.Type 
+ttrans (TypeConstructor i ts)
+    = IL.TypeConstructor i (map ttrans ts)
+ttrans (TypeVariable v)
+    = IL.TypeVariable v
+ttrans (TypeConstrained [] v)
+    = IL.TypeVariable v
+ttrans (TypeConstrained (v:_) i)
+    = ttrans v
+ttrans (TypeArrow f x) = IL.TypeArrow (ttrans f) (ttrans x)
+ttrans s@(TypeSkolem _) = error $ "in ttrans: " ++ show s
+ttrans s@(TypeRecord _ _) = error $ "in ttrans: " ++ show s
+
 --
 lookupIdType :: QualIdent -> FlatState (Maybe TypeExpr)
 lookupIdType qid
@@ -1123,21 +1125,4 @@ splitoffArgTypes (IL.TypeArrow l r) (i:is) = (i, l):splitoffArgTypes r is
 splitoffArgTypes _ [] = []
 splitoffArgTypes _ _  = error "internal error in splitoffArgTypes"
 
-
-maxTVIndex :: Data.Generics.Data a => a -> Int
-maxTVIndex a =  maximum (-1: map getIdx (universeExp a))
-    where 
-      getIdx (IL.TypeVariable i) = i
-      getIdx _ = -1
-
-      children1Exp :: Data.Generics.Data a => a -> [IL.Type]
-      children1Exp x = concat $ Data.Generics.gmapQ children0Exp x
-
-      children0Exp :: Data.Generics.Data a => a -> [IL.Type]
-      children0Exp x | Just y <- Data.Generics.cast x = [y]
-                     | otherwise = children1Exp x
-
-      universeExp :: Data.Generics.Data a => a -> [IL.Type]
-      universeExp x = concatMap f (children0Exp x)
-      f x = x : concatMap f (children1Exp x)
 
