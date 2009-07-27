@@ -46,7 +46,7 @@ Executable cymake
                     InterfaceCheck, 
                     Types, Frontend, PrecCheck
                     TypeSubst, GenAbstractCurry
-                    PrettyCombinators, Typing
+                    Typing
                     GenFlatCurry, KindCheck, Qual
                     SCC, Utils, GetOpt
                     Lift, ScopeEnv, WarnCheck

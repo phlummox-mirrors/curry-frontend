@@ -48,11 +48,10 @@ trace' _ x = x
 genFlatCurry :: Options -> CurryEnv -> ModuleEnv -> ValueEnv -> TCEnv 
 		-> ArityEnv -> IL.Module -> (Prog, [WarnMsg])
 genFlatCurry opts cEnv mEnv tyEnv tcEnv aEnv mod
-   = (prog'', messages)
+   = (prog', messages)
  where (prog, messages) 
            = run opts cEnv mEnv tyEnv tcEnv aEnv False (visitModule mod)
-       prog' = uniqueTypeIndices . labelVarsWithTypes $ patchPreludeFCY prog
-       prog'' = genEquations prog'
+       prog' = adjustTypeInfo $ patchPreludeFCY prog
 
 
 -- transforms intermediate language code (IL) to FlatCurry interfaces

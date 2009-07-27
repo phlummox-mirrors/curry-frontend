@@ -1,6 +1,12 @@
 {-# LANGUAGE FlexibleContexts, BangPatterns, PatternGuards #-}
 
-module Curry.ExtendedFlatTyping(dispType, labelVarsWithTypes, uniqueTypeIndices, genEquations) where
+module Curry.ExtendedFlatTyping(dispType,
+                                adjustTypeInfo,
+                                labelVarsWithTypes,
+                                uniqueTypeIndices,
+                                genEquations,
+                                elimFreeTypes
+                               ) where
 
 import Text.PrettyPrint.HughesPJ
 
@@ -18,6 +24,11 @@ import Curry.ExtendedFlat
 import Curry.ExtendedFlatGoodies
 
 trace' msg x = x -- trace msg x 
+
+
+adjustTypeInfo :: Prog -> Prog
+adjustTypeInfo = elimFreeTypes . genEquations . uniqueTypeIndices . labelVarsWithTypes
+
 
 dispType :: TypeExpr -> String
 dispType = render . prettyType
@@ -301,6 +312,25 @@ freshTVar = do nextIdx <- get
                modify succ
                return (TVar nextIdx)
 
+---------------------------------------------------------------------
+
+
+elimFreeTypes :: Prog -> Prog
+elimFreeTypes = updProgFuncs updateFunc
+    where 
+      updateFunc = map (trFunc foo)
+      foo qn arity visty te r@(External _) = Func qn arity visty te r
+      foo qn arity visty te r@(Rule vs expr) 
+          = let tvs = tvars te
+                tvars (TVar vi) = [vi]
+                tvars (FuncType t1 t2) = tvars t1 ++ tvars t2
+                tvars (TCons _ ts) = concatMap tvars ts
+                tfoo t@(TVar vi)
+                    | vi `elem` tvs = t
+                    | otherwise = TCons (mkQName ("Prelude", "()")) []
+                tfoo (FuncType t1 t2) = FuncType (tfoo t1) (tfoo t2)
+                tfoo (TCons qn ts) = TCons qn (map tfoo ts)
+            in Func qn arity visty te (modifyType tfoo (Rule vs expr))
 
 
 ---------------------------------------------------------------------
@@ -341,7 +371,13 @@ specialiseType m t = trTypeExpr (foo m) TCons FuncType t
 
 -- boilerplate
 specInRule :: TypeMap -> Rule -> Rule
-specInRule tm = updRule (map specInVarIndex) specInExpr id
+specInRule tm = modifyType (specialiseType tm)
+
+
+
+-- boilerplate
+modifyType :: (TypeExpr -> TypeExpr) -> Rule -> Rule
+modifyType f = updRule (map specInVarIndex) specInExpr id
     where specInExpr
               = trExpr var Lit comb letexp free Or Case alt
           var vi
@@ -363,8 +399,10 @@ specInRule tm = updRule (map specInVarIndex) specInExpr id
           specInPattern p = p
 
           specInVarIndex vi
-              = vi { typeofVar = fmap (specialiseType tm) (typeofVar vi)}
+              = vi { typeofVar = fmap f (typeofVar vi)}
 
           specInQName qn
-              = qn { typeofQName = fmap (specialiseType tm) (typeofQName qn)}
+              = qn { typeofQName = fmap f (typeofQName qn)}
+
+
 
