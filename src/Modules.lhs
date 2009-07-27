@@ -21,7 +21,7 @@ import declarations are commented out
 >	         simpleCheckModule, checkModule
 >	        ) where
 
-
+> import Text.PrettyPrint.HughesPJ
 > import Data.List
 > import qualified Data.Map as Map
 > import System.IO
@@ -72,7 +72,6 @@ import declarations are commented out
 > import PathUtils
 > import Filenames
 > import TypeSubst
-> import PrettyCombinators
 > import TopEnv
 
 

@@ -15,10 +15,11 @@ Haskell parser.
 
 > module Curry.Syntax.Pretty where
 
+> import Text.PrettyPrint.HughesPJ
+
 > import Curry.Base.Ident
 > import Curry.Syntax.Type
 
-> import PrettyCombinators
 
 \end{verbatim}
 Pretty print a module

@@ -87,19 +87,23 @@ labelVarsWithTypes = updProgFuncs updateFunc
                                  in trFunc (foo maxtvi) func)
       foo maxtv qn arity visty te r@(External _) = Func qn arity visty te r
       foo maxtv qn arity visty te r@(Rule vs expr) 
-          = let expr' = evalState (runReaderT (withVS vs (po expr)) IntMap.empty) maxtv -- FIXME Argumente in Map
+          = let expr' = evalState (runReaderT (withVS vs (po expr)) typeMap) maxtv
+                typeMap = trace' (show argTypes) $ IntMap.fromList argTypes
+                argTypes = [ (vi, t) | VarIndex (Just t) vi <- vs ]
             in Func qn arity visty te (Rule vs expr')
 
       po :: Expr -> ReaderT TypeMap (State Int) Expr
       -- type information from vi is superseded by type information
-      -- from the map. This is okay in the current ciontext, but for
+      -- from the map. This is okay in the current context, but for
       -- general type inference this would result in loss of information.
       -- (Fix by unifying both types in a later version)
       po e@(Var vi)
           = do vt <- asks (IntMap.lookup $ idxOf vi)
                case vt of
                  Just t -> return (Var vi { typeofVar = Just t })
-                 Nothing -> liftM Var (poVarIndex vi)
+                 Nothing -> case typeofVar vi of
+                              Nothing -> error $ "no type for var " ++ show e
+                              _ -> liftM Var (poVarIndex vi)
       po e@(Lit _)
           = return e
       po (Comb t n es)

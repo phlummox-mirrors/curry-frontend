@@ -10,7 +10,7 @@
 module GenFlatCurry (genFlatCurry,
 		     genFlatInterface) where
 
-import qualified Data.Generics
+
 import Control.Monad.State
 import Control.Monad
 import Data.Maybe
@@ -135,7 +135,7 @@ run opts cEnv mEnv tyEnv tcEnv aEnv genIntf f
 	       }
 
 getConstrTypes :: TCEnv -> [(QualIdent, IL.Type)]
-getConstrTypes tcEnv = tinfos
+getConstrTypes tcEnv = trace' (show tinfos) tinfos
     where tcList = Map.toList $ topEnvMap tcEnv
           tinfos = [ foo tqid conid argtypes targnum
                    | (_, (_, DataType tqid targnum dts):_) <- tcList
@@ -960,7 +960,6 @@ lookupIdArity qid
 
 
 
--- FIXME return new type variable if no type is known
 getTypeOf :: Ident -> FlatState (Maybe TypeExpr)
 getTypeOf ident = do
     valEnv <- gets typeEnvE 
@@ -991,17 +990,27 @@ ttrans (TypeArrow f x) = IL.TypeArrow (ttrans f) (ttrans x)
 ttrans s@(TypeSkolem _) = error $ "in ttrans: " ++ show s
 ttrans s@(TypeRecord _ _) = error $ "in ttrans: " ++ show s
 
---
+
+
+-- Constructor (:) receives special treatment throughout the
+-- whole implementation. We won't depart from that for mere
+-- aesthetic reasons. (hsi)
 lookupIdType :: QualIdent -> FlatState (Maybe TypeExpr)
+lookupIdType (QualIdent Nothing (Ident _ ":" _))
+    = return (Just (FuncType (TVar 0) (FuncType (l0) (l0))))
+      where l0 = TCons (mkQName ("Prelude", "[]")) [TVar 0]
 lookupIdType qid
    = do aEnv <- gets typeEnvE
         lt <- gets localTypes
         ct <- gets constrTypes
         case Map.lookup qid lt `mplus` Map.lookup qid ct of
-          Just t -> liftM Just (visitType t)  -- local name
+          Just t -> trace' ("lookupIdType local " ++ show (qid, t)) $ liftM Just (visitType t)  -- local name or constructor
           Nothing -> case [ t | Value _ (ForAll _ t) <- qualLookupValue qid aEnv ] of 
                        t : _ -> liftM Just (visitType (IL.translType t))  -- imported name
-                       []    -> trace' ("no type for "  ++ show qid) $ return Nothing  -- no known type
+                       []    -> case qualidMod qid of
+                                  Nothing -> trace' ("no type for "  ++ show qid) $ return Nothing  -- no known type
+                                  Just _ -> lookupIdType qid {qualidMod = Nothing}
+-- 
 
 -- Generates a new index for a variable
 newVarIndex :: Ident -> FlatState VarIndex

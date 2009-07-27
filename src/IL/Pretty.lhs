@@ -15,10 +15,10 @@ Marlow's pretty printer for Haskell.
 
 > module IL.Pretty(ppModule)  where
 > 
+> import Text.PrettyPrint.HughesPJ
+
 > import Curry.Base.Ident
-> 
 > import IL.Type
-> import PrettyCombinators
 
 > default(Int,Double)
 

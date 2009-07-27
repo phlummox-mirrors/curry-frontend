@@ -20,6 +20,7 @@ similar to that of Flat-Curry XML representation.
 
 > module IL.XML(module IL.XML) where
 
+> import Text.PrettyPrint.HughesPJ
 > import Data.Maybe
 
 > import Curry.Base.Ident
@@ -27,7 +28,6 @@ similar to that of Flat-Curry XML representation.
 
 > import IL.Type
 > import CurryEnv
-> import PrettyCombinators
 
 
 

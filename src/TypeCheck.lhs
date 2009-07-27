@@ -23,6 +23,7 @@ type annotation is present.
 
 > module TypeCheck(typeCheck) where
 
+> import Text.PrettyPrint.HughesPJ
 > import Control.Monad.State as S
 > import Data.List
 > import Data.Maybe
@@ -38,7 +39,6 @@ type annotation is present.
 
 > import Base
 > import Types
-> import PrettyCombinators
 > import TopEnv
 > import SCC
 > import TypeSubst
