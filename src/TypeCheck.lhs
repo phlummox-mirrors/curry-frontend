@@ -478,7 +478,7 @@ signature the declared type must be too general.
 > tcConstrTerm m tcEnv sigs p (ParenPattern t) = tcConstrTerm m tcEnv sigs p t
 > tcConstrTerm m tcEnv sigs p (TuplePattern _ ts)
 >  | null ts = return unitType
->  | otherwise = liftM tupleType $ mapM (tcConstrTerm m tcEnv sigs p) ts   -- $
+>  | otherwise = liftM tupleType $ mapM (tcConstrTerm m tcEnv sigs p) ts
 > tcConstrTerm m tcEnv sigs p t@(ListPattern _ ts) =
 >   freshTypeVar >>= flip (tcElems (ppConstrTerm 0 t)) ts
 >   where tcElems _ ty [] = return (listType ty)
@@ -577,7 +577,7 @@ because of possibly multiple occurrences of variables.
 > tcConstrTermFP m tcEnv sigs p (ParenPattern t) = tcConstrTermFP m tcEnv sigs p t
 > tcConstrTermFP m tcEnv sigs p (TuplePattern _ ts)
 >  | null ts = return unitType
->  | otherwise = liftM tupleType $ mapM (tcConstrTermFP m tcEnv sigs p) ts   -- $
+>  | otherwise = liftM tupleType $ mapM (tcConstrTermFP m tcEnv sigs p) ts
 > tcConstrTermFP m tcEnv sigs p t@(ListPattern _ ts) =
 >   freshTypeVar >>= flip (tcElems (ppConstrTerm 0 t)) ts
 >   where tcElems _ ty [] = return (listType ty)
@@ -700,7 +700,7 @@ because of possibly multiple occurrences of variables.
 > tcExpr m tcEnv sigs p (Paren e) = tcExpr m tcEnv sigs p e
 > tcExpr m tcEnv sigs p (Tuple _ es)
 >   | null es = return unitType
->   | otherwise = liftM tupleType $ mapM (tcExpr m tcEnv sigs p) es        -- $
+>   | otherwise = liftM tupleType $ mapM (tcExpr m tcEnv sigs p) es
 > tcExpr m tcEnv sigs p e@(List _ es) = freshTypeVar >>= tcElems (ppExpr 0 e) es
 >   where tcElems _ [] ty = return (listType ty)
 >         tcElems doc (e:es) ty =
@@ -975,7 +975,7 @@ of~\cite{PeytonJones87:Book}).
 > unify :: Position -> String -> Doc -> ModuleIdent -> Type -> Type
 >       -> TcState ()
 > unify p what doc m ty1 ty2 =
->   S.lift $ {-$-}
+>   S.lift $
 >   do
 >     theta <- S.get
 >     let ty1' = subst theta ty1

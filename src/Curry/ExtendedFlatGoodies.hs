@@ -17,6 +17,7 @@
 
 module Curry.ExtendedFlatGoodies where
 
+import Control.Monad(mplus, msum)
 import Curry.ExtendedFlat
 
 --------------------------------
@@ -898,3 +899,31 @@ patExpr :: Pattern -> Expr
 patExpr = trPattern (\ name -> Comb ConsCall name . map Var) Lit
 
 
+-- get the type of an expression
+-- (Will only succeed if all VarIndices and QNames contain the
+-- required type information.)
+typeofExpr :: Expr -> Maybe TypeExpr
+typeofExpr e = case e of
+                 Var vi        -> typeofVar vi
+                 Lit l         -> Just (typeofLiteral l)
+                 Comb _  qn as -> fmap (combType as) (typeofQName qn)
+                 Free _ e      -> typeofExpr e
+                 Let _ e       -> typeofExpr e
+                 Or e1 e2      -> typeofExpr e1 `mplus` typeofExpr e2
+                 Case _ _ _ bs -> msum (map (typeofExpr . branchExpr) bs)
+    where 
+      combType []     t              = t
+      combType (_:as) (FuncType _ t) = combType as t
+      combType (_:_)  (TVar _)       = ierr
+      combType (_:_)  (TCons _ _)    = ierr
+      ierr = error $ "internal error in typeofExpr: FuncType expected"
+
+
+typeofLiteral :: Literal -> TypeExpr
+typeofLiteral l
+    = case l of
+        Intc _ _   -> preludeType "Int"
+        Floatc _ _ -> preludeType "Float"
+        Charc _ _  -> preludeType "Char"
+    where
+      preludeType s = TCons (mkQName ("Prelude", s)) []

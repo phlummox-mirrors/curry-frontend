@@ -58,7 +58,7 @@ string in this case.
 >                            (Map.Map s (Lexer s b -> ParseFun s a b))
 
 > instance Symbol s => Show (Parser s a b) where
->   showsPrec p (Parser e ps) = showParen (p >= 10) $                      -- $
+>   showsPrec p (Parser e ps) = showParen (p >= 10) $
 >     showString "Parser " . shows (isJust e) .
 >     showChar ' ' . shows (Map.keysSet ps)
 
@@ -198,13 +198,13 @@ paper, but were taken from the implementation found on the web.
 > f <$> p = succeed f <*> p
 
 > (<$->) :: Symbol s => a -> Parser s b c -> Parser s a c
-> f <$-> p = const f <$> p {-$-}
+> f <$-> p = const f <$> p
 
 > (<*->) :: Symbol s => Parser s a c -> Parser s b c -> Parser s a c
-> p <*-> q = const <$> p <*> q {-$-}
+> p <*-> q = const <$> p <*> q
 
 > (<-*>) :: Symbol s => Parser s a c -> Parser s b c -> Parser s b c
-> p <-*> q = const id <$> p <*> q {-$-}
+> p <-*> q = const id <$> p <*> q
 
 > (<**>) :: Symbol s => Parser s a c -> Parser s (a -> b) c -> Parser s b c
 > p <**> q = flip ($) <$> p <*> q
@@ -236,7 +236,7 @@ involved is a numeric type.
 > p `sepBy` q = p `sepBy1` q `opt` []
 
 > sepBy1 :: Symbol s => Parser s a c -> Parser s b c -> Parser s [a] c
-> p `sepBy1` q = (:) <$> p <*> many (q <-*> p) {-$-}
+> p `sepBy1` q = (:) <$> p <*> many (q <-*> p)
 
 > chainr :: Symbol s => Parser s a b -> Parser s (a -> a -> a) b -> a
 >        -> Parser s a b
@@ -245,7 +245,7 @@ involved is a numeric type.
 > chainr1 :: Symbol s => Parser s a b -> Parser s (a -> a -> a) b
 >         -> Parser s a b
 > chainr1 p op = r
->   where r = p <**> (flip <$> op <*> r `opt` id) {-$-}
+>   where r = p <**> (flip <$> op <*> r `opt` id)
 
 > chainl :: Symbol s => Parser s a b -> Parser s (a -> a -> a) b -> a
 >        -> Parser s a b

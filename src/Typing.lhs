@@ -149,7 +149,7 @@ environment.}
 > argType tyEnv (ParenPattern t) = argType tyEnv t
 > argType tyEnv (TuplePattern _ ts)
 >   | null ts = return unitType
->   | otherwise = liftM tupleType $ mapM (argType tyEnv) ts                -- $
+>   | otherwise = liftM tupleType $ mapM (argType tyEnv) ts
 > argType tyEnv (ListPattern _ ts) = freshTypeVar >>= flip elemType ts
 >   where elemType ty [] = return (listType ty)
 >         elemType ty (t:ts) =

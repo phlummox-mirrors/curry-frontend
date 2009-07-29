@@ -1,12 +1,13 @@
-{-# LANGUAGE FlexibleContexts, BangPatterns, PatternGuards #-}
+{-# LANGUAGE FlexibleContexts, PatternGuards #-}
 
-module Curry.ExtendedFlatTyping(dispType,
-                                adjustTypeInfo,
-                                labelVarsWithTypes,
-                                uniqueTypeIndices,
-                                genEquations,
-                                elimFreeTypes
-                               ) where
+module Curry.ExtendedFlatTyping
+    ( dispType,
+      adjustTypeInfo,
+      labelVarsWithTypes,
+      uniqueTypeIndices,
+      genEquations,
+      elimFreeTypes
+    ) where
 
 import Text.PrettyPrint.HughesPJ
 
@@ -25,11 +26,16 @@ import Curry.ExtendedFlatGoodies
 
 trace' msg x = x -- trace msg x 
 
-
+-- | For every identifier that occurs in the right hand side
+--   of a declaration, the polymorphic type variables in its
+--   type label are replaced by concrete types.
 adjustTypeInfo :: Prog -> Prog
-adjustTypeInfo = elimFreeTypes . genEquations . uniqueTypeIndices . labelVarsWithTypes
+adjustTypeInfo = -- elimFreeTypes .
+                 genEquations . 
+                 uniqueTypeIndices .
+                 labelVarsWithTypes
 
-
+-- | Displays a TypeExpr as a string
 dispType :: TypeExpr -> String
 dispType = render . prettyType
 
@@ -91,6 +97,8 @@ visitTVars f = postOrderType f'
 -- ----------------------------------------------------------------------
 -- ----------------------------------------------------------------------
 
+-- | All identifiers that do not have type annotations are
+--   labelled with new type variables
 labelVarsWithTypes :: Prog -> Prog
 labelVarsWithTypes = updProgFuncs updateFunc
     where 
@@ -159,6 +167,10 @@ labelVarsWithTypes = updProgFuncs updateFunc
 
 -- ----------------------------------------------------------------------
 -- ----------------------------------------------------------------------
+
+-- | Type variables that occur in the type annotations of QNames
+--   are replaced by newly introduced type variables, so that further
+--   unification steps will not interfere with parametric polymorphism
 uniqueTypeIndices :: Prog -> Prog
 uniqueTypeIndices = updProgFuncs (map updateFunc)
     where
@@ -207,6 +219,7 @@ type TypeMap =  IntMap.IntMap TypeExpr
 type EqnMonad = StateT TypeMap (State TVarIndex)
 
 
+-- | Specialises all type variables (part of adjustTypeInfo)
 genEquations  :: Prog -> Prog
 genEquations = updProgFuncs updateFunc
     where 
@@ -224,13 +237,8 @@ genEquations = updProgFuncs updateFunc
           
 
 equations :: Expr -> EqnMonad TypeExpr
-equations = trExpr varIndexType litType combEqn letEqn frEqn orEqn casEqn branchEqn
+equations = trExpr varIndexType (return . typeofLiteral) combEqn letEqn frEqn orEqn casEqn branchEqn
     where
-      litType (Intc _ _)   = preludeType "Int"
-      litType (Floatc _ _) = preludeType "Float"
-      litType (Charc _ _)  = preludeType "Char"
-      preludeType s = return (TCons (mkQName ("Prelude", s)) [])
-
       combEqn :: (CombType -> QName -> [EqnMonad TypeExpr] -> EqnMonad TypeExpr)
       combEqn _ qn args
           = do resultType <- lift$freshTVar
@@ -257,7 +265,7 @@ equations = trExpr varIndexType litType combEqn letEqn frEqn orEqn casEqn branch
                              foldM (=:=) p ps'
 
       unifLhs scrt (LPattern lit, _)
-          = litType lit >>= (=:= scrt)
+          = typeofLiteral lit =:= scrt
       unifLhs scrt (Pattern qn vs, _)
           = do qnt <- qnType qn
                argTypes <- mapM varIndexType vs
@@ -314,6 +322,10 @@ freshTVar = do nextIdx <- get
 
 ---------------------------------------------------------------------
 
+-- | Type variables that occur in the right hand side of a declaration
+--   but not in its type signature are replaced by the unit type ().
+--   This function requires that proper type information has been made
+--   available by function @adjustTypeInfo@
 
 elimFreeTypes :: Prog -> Prog
 elimFreeTypes = updProgFuncs updateFunc

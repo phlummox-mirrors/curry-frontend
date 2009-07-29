@@ -254,8 +254,8 @@ uses flexible matching.
 > translFunction :: Position -> Bool -> ModuleIdent -> ValueEnv -> TCEnv
 >       -> EvalEnv -> Ident -> [Equation] -> IL.Decl
 > translFunction pos flat m tyEnv tcEnv evEnv f eqs =
->   -- | f == mkIdent "fun" = error (show (translType' m tyEnv tcEnv ty))
->   -- | otherwise = 
+>   -- - | f == mkIdent "fun" = error (show (translType' m tyEnv tcEnv ty))
+>   -- - | otherwise = 
 >     IL.FunctionDecl f' vs (translType' m tyEnv tcEnv ty) expr
 >    -- = IL.FunctionDecl f' vs (translType ty)
 >    --                  (match ev vs (map (translEquation tyEnv vs vs'') eqs))

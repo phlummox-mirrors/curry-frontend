@@ -143,9 +143,9 @@ than once.
 > bindTypes m (DataDecl _ tc _ cs) env = foldr (bindConstr m) env cs
 > bindTypes m (NewtypeDecl _ tc _ nc) env = bindNewConstr m nc env
 > bindTypes m (TypeDecl _ t _ (RecordType fs r)) env =
->    -- | isJust r = internalError "bindTypes: illegal record declaration"
->    -- | null fs = errorAt (positionOfIdent t) emptyRecord
->    -- | otherwise =
+>    -- - | isJust r = internalError "bindTypes: illegal record declaration"
+>    -- - | null fs = errorAt (positionOfIdent t) emptyRecord
+>    -- - | otherwise =
 >      case (qualLookupVar (qualifyWith m t) env) of
 >        [] -> foldr (bindRecordLabel m t (concatMap fst fs)) env fs
 >        rs | any isConstr rs -> errorAt' (illegalRecordId t)

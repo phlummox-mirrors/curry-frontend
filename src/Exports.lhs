@@ -48,7 +48,7 @@ to the interface of the module.
 >         Just v -> errorAt' (ambiguousExportValue v)
 >     Just tc -> errorAt' (ambiguousExportType tc) 
 >   where ms = Set.fromList [fromMaybe m asM | ImportDecl _ m _ asM _ <- ds]
->         es' = joinExports $                                              -- $
+>         es' = joinExports $
 >               maybe (expandLocalModule tcEnv tyEnv)
 >                     (expandSpecs ms m tcEnv tyEnv)
 >                     es

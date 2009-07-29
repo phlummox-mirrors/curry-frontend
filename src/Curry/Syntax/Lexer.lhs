@@ -273,7 +273,7 @@ Character classes
 
 > isIdent, isSym, isOctit, isHexit :: Char -> Bool
 > isIdent c = isAlphaNum c || c `elem` "'_"
-> isSym c = c `elem` "~!@#$%^&*+-=<>:?./|\\" {-$-}
+> isSym c = c `elem` "~!@#$%^&*+-=<>:?./|\\"
 > isOctit c = c >= '0' && c <= '7'
 > isHexit c = isDigit c || c >= 'A' && c <= 'F' || c >= 'a' && c <= 'f'
 
