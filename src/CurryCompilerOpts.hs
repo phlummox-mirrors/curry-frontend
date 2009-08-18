@@ -34,7 +34,7 @@ data Options
 	      parseOnly :: Bool,         -- generate source representation
 	      withExtensions :: Bool,    -- enable extended functionalities
 	      dump :: [Dump]             -- dumps
-	    }
+	    } deriving Show
 
 
 -- Default compiler options

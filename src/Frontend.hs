@@ -15,18 +15,23 @@ import Control.Monad.Writer
 import Control.Monad.Error
 import Prelude hiding (lex)
 
-import Modules
-import CurryBuilder
-import CurryCompilerOpts
+
 import Curry.Base.MessageMonad
+import Curry.Base.Ident
+import Curry.Base.Position
+
+import Curry.Files.Filenames
+import Curry.Files.PathUtils
+
 import qualified Curry.Syntax as CS
 import Curry.Syntax.Lexer
 
+import Modules
+import CurryBuilder
+import CurryCompilerOpts
+
 import CurryDeps
-import Curry.Base.Ident
-import Curry.Base.Position
-import Filenames
-import PathUtils
+
 import Base(ModuleEnv)
 
 -------------------------------------------------------------------------------

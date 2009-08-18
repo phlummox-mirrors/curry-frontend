@@ -30,7 +30,7 @@ module Curry.AbstractCurry (CurryProg(..), QName, CLabel, CVisibility(..),
 
 import Data.List(intersperse)
 
-import PathUtils (writeModule,readModule)
+import Curry.Files.PathUtils (writeModule,readModule)
 
 
 ------------------------------------------------------------------------------

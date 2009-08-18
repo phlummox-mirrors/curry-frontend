@@ -32,13 +32,16 @@ import declarations are commented out
 > import Curry.Base.Position
 > import Curry.Base.Ident
 
+> import Curry.Files.Filenames
+> import Curry.Files.PathUtils
+
 > import Curry.Syntax
 > import Curry.Syntax.Utils(isImportDecl)
 > import Curry.Syntax.Pretty(ppModule,ppIDecl)
 > import Curry.Syntax.ShowModule(showModule)
 
-> import Curry.ExtendedFlat
-> import qualified Curry.ExtendedFlat as EF 
+> import Curry.ExtendedFlat.Type
+> import qualified Curry.ExtendedFlat.Type as EF 
 
 > import qualified IL.Type as IL
 > import IL.CurryToIL(ilTrans)
@@ -69,8 +72,8 @@ import declarations are commented out
 
 > import CurryCompilerOpts(Options(..),Dump(..))
 > import CaseCompletion
-> import PathUtils
-> import Filenames
+
+
 > import TypeSubst
 > import TopEnv
 
@@ -464,31 +467,6 @@ generated FlatCurry terms (type \texttt{Prog}).
 
 Interface files are updated by the Curry builder when necessary.
 (see module \texttt{CurryBuilder}).
-
-Description of the following obsolete functions:
-After checking the module successfully, the compiler may need to
-update the module's interface file. The file will be updated only if
-the interface has been changed or the file did not exist before.
-
-The code is a little bit tricky because we must make sure that the
-interface file is closed before rewriting the interface, even if it
-has not been read completely. On the other hand, we must not apply
-\texttt{hClose} too early. Note that there is no need to close the
-interface explicitly if the interface check succeeds because the whole
-file must have been read in this case. In addition, we do not update
-the interface file in this case and therefore it doesn't matter when
-the file is closed.
-\begin{verbatim}
-
-\end{verbatim}
-The compiler searches for interface files in the import search path
-using the extension \texttt{".fint"}. Note that the current
-directory is always searched first.
-\begin{verbatim}
-
-> lookupInterface :: [FilePath] -> ModuleIdent -> IO (Maybe FilePath)
-> lookupInterface paths m = lookupFile ("":paths) [flatIntExt] ifn
->   where ifn = foldr1 catPath (moduleQualifiers m)
 
 \end{verbatim}
 The \texttt{doDump} function writes the selected information to the

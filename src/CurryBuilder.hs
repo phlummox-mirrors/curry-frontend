@@ -23,8 +23,8 @@ import Curry.Base.Ident
 import Modules (compileModule)
 import CurryCompilerOpts 
 import CurryDeps
-import Filenames
-import PathUtils
+import Curry.Files.Filenames
+import Curry.Files.PathUtils
 
 -------------------------------------------------------------------------------
 

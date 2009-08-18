@@ -11,7 +11,7 @@ module InterfaceCheck where
 
 import Data.List
 
-import Curry.ExtendedFlat
+import Curry.ExtendedFlat.Type
 
 
 

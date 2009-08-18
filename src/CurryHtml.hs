@@ -6,8 +6,9 @@ import Control.Exception
 import Curry.Base.Ident
 import Curry.Base.MessageMonad
 
+import Curry.Files.PathUtils (readModule, writeModule, getCurryPath)
+
 import SyntaxColoring
-import PathUtils (readModule, writeModule, getCurryPath)
 import Frontend
 
 

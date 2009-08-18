@@ -17,18 +17,24 @@ import Data.Maybe
 import Data.List
 import qualified Data.Map as Map
 
+
 import Curry.Base.MessageMonad
 import Curry.Base.Ident as Id
+
+import qualified Curry.Syntax as CS
+
+import Curry.ExtendedFlat.Type
+import Curry.ExtendedFlat.TypeInference
 
 import Base {-(ArityEnv, ArityInfo(..), ModuleEnv,  
 	     TCEnv, TypeInfo(..), ValueEnv, ValueInfo(..),
 	     lookupValue, qualLookupTC,
 	     qualLookupArity, lookupArity,  internalError,
              qualLookupValue)-}
-import Curry.ExtendedFlat
+
 import qualified IL.Type as IL
 import qualified IL.CurryToIL as IL
-import qualified Curry.Syntax as CS
+
 import TopEnv(topEnvMap)
 import CurryEnv (CurryEnv)
 import qualified CurryEnv
@@ -37,7 +43,7 @@ import qualified ScopeEnv
 import Types
 import CurryCompilerOpts
 import PatchPrelude
-import Curry.ExtendedFlatTyping
+
 
 import Debug.Trace
 trace' _ x = x

@@ -25,11 +25,13 @@ dependencies and to update programs composed of multiple modules.
 > import Curry.Base.Ident
 > import Curry.Base.MessageMonad
 
+> import Curry.Files.Filenames
+> import Curry.Files.PathUtils
+
 > import Curry.Syntax hiding(Interface(..))
 
 > import SCC
-> import Filenames
-> import PathUtils
+
 
 > data Source = Source FilePath [ModuleIdent]
 >             | Interface FilePath

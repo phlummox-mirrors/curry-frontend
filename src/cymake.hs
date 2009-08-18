@@ -13,7 +13,7 @@
 
 module Main(main) where
 
-import Curry.ExtendedFlatGoodies
+
 
 import Data.List
 import Data.Maybe
@@ -22,6 +22,7 @@ import System.Environment(getArgs, getProgName)
 import System.Exit(ExitCode(..), exitWith)
 import Control.Monad (unless)
 import Data.Char (isDigit)
+
 
 import GetOpt
 import CurryBuilder(buildCurry)
