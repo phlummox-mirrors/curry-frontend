@@ -26,6 +26,12 @@ import CurryDeps
 import Curry.Files.Filenames
 import Curry.Files.PathUtils
 
+
+flatName' :: Options -> FilePath -> FilePath
+flatName' o
+    | extendedFlat o = extFlatName
+    | otherwise      = flatName
+
 -------------------------------------------------------------------------------
 
 -- Compiles the Curry program 'file' including all imported modules, depending
@@ -64,7 +70,7 @@ makeCurry options deps file
       = do 
            flatIntfExists <- doesModuleExist (flatIntName file')
 	   if flatIntfExists
-            then  smake [flatName file'] --[flatName file', flatIntName file']
+            then  smake [flatName' options file'] --[flatName file', flatIntName file']
 	                (file':(catMaybes (map flatInterface mods)))
 			(compileFile file')
 			(skipFile file')
@@ -89,12 +95,12 @@ makeCurry options deps file
 	 return ()
 
  targetNames fn         
-        | flat options            = [flatName fn] -- , flatIntName fn]
+        | flat options            = [flatName' options fn] -- , flatIntName fn]
 		| flatXml options         = [xmlName fn]
 		| abstract options        = [acyName fn]
 		| untypedAbstract options = [uacyName fn]
 		| parseOnly options       = [maybe (sourceRepName fn) id (output options)]
-		| otherwise               = [flatName fn] -- , flatIntName fn]
+		| otherwise               = [flatName' options fn] -- , flatIntName fn]
 
  flatInterface mod 
     = case (lookup mod deps) of
