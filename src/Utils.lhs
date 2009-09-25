@@ -1,4 +1,3 @@
-% -*- LaTeX -*-
 % $Id: Utils.lhs,v 1.4 2003/10/04 17:04:38 wlux Exp $
 %
 % Copyright (c) 2001-2003, Wolfgang Lux
@@ -12,8 +11,6 @@ commonly used in the compiler, but not implemented in the Haskell
 \begin{verbatim}
 
 > module Utils where
-
-> import Data.List(foldl')
 
 > infixr 5 ++!
 

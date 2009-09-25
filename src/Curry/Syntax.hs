@@ -1,3 +1,10 @@
+{-
+  A simple interface for reading and manipulating Curry
+  source code.
+
+  (c) 2009, Holger Siegel.
+-}
+
 module Curry.Syntax(module Curry.Syntax.Type,
                    parseModule, parseHeader
                    ) where

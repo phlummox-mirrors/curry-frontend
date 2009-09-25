@@ -6,6 +6,10 @@
   literate programs, Curry requires at least one program line to be
   present in the file. In addition, every block of program code must be
   preceded by a blank line and followed by a blank line.
+
+  This module has been rewritten by Holger Siegel in 2009.
+
+  (c) Holger Siegel, 2009.
 -}
 
 

@@ -8,10 +8,10 @@
 \nwfilename{Base.lhs}
 \section{Common Definitions for the Compiler}
 
-The module \texttt{Base} implements the anti-pattern 'God-object'.
-By providing common definitions for the various phases of the
+The module Base implements the anti-pattern 'God-object'.
+By providing definitions for various unrelated phases of the
 compiler, it irrevocably turns the module structure into spaghetti.
-(hsi)
+(hsi, 2009)
 
 \begin{verbatim}
 

@@ -1,6 +1,3 @@
-% -*- LaTeX -*-
-% $Id: Subst.lhs,v 1.7 2002/12/20 13:12:51 lux Exp $
-%
 % Copyright (c) 2002, Wolfgang Lux
 % See LICENSE for the full license.
 %
