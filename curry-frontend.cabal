@@ -1,5 +1,5 @@
 Name:          curry-frontend
-Version:       0.2.4
+Version:       0.2.5
 Cabal-Version: >= 1.6
 Synopsis:      Compile the functional logic language Curry to several intermediate formats
 Description:   The Curry Frontend consists of the executable program "cymake".
@@ -42,7 +42,7 @@ Executable cymake
                     Imports,
                     TypeCheck,
                     InterfaceCheck, 
-                    Types, Frontend, PrecCheck
+                    Types, PrecCheck
                     TypeSubst, GenAbstractCurry
                     Typing
                     GenFlatCurry, KindCheck, Qual
@@ -51,3 +51,6 @@ Executable cymake
                     Desugar,  
                     Simplify
 
+Library
+  hs-source-dirs:  src
+  Exposed-Modules: Curry.Syntax.Frontend

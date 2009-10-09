@@ -9,7 +9,7 @@ import Curry.Base.MessageMonad
 import Curry.Files.PathUtils (readModule, writeModule, getCurryPath)
 
 import SyntaxColoring
-import Frontend
+import Curry.Syntax.Frontend as Frontend
 
 
 

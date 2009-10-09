@@ -7,7 +7,7 @@
 -- December 2005,
 -- Martin Engelke (men@informatik.uni-kiel.de)
 --
-module Frontend (lex, parse, fullParse, typingParse)where
+module Curry.Syntax.Frontend (lex, parse, fullParse, typingParse)where
 
 import Data.Maybe
 import qualified Data.Map as Map
