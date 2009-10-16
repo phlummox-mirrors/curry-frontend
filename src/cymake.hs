@@ -21,13 +21,12 @@ import System.IO
 import System.Environment(getArgs, getProgName)
 import System.Exit(ExitCode(..), exitWith)
 import Control.Monad (unless)
-import Data.Char (isDigit)
-
 
 import GetOpt
 import CurryBuilder(buildCurry)
 import CurryCompilerOpts
 import CurryHtml
+import Curry.Files.CymakePath (cymakeVersion)
 
 -------------------------------------------------------------------------------
 
@@ -47,8 +46,7 @@ cymake prog args
    | null files     = badUsage prog ["no files"]
    | null errs' && not (elem Html opts)    = do
        unless (noVerb options') 
-              (putStrLn  $ "This is cymake, version 0.1." 
-                         ++ filter isDigit "$Revision$")
+              (putStrLn  $ "This is cymake, version " ++ cymakeVersion)
        mapM_ (buildCurry options') files
    | null errs' = do
       let importFiles = nub $ importPaths opts'
