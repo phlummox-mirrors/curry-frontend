@@ -226,7 +226,7 @@ genOpDecl :: AbstractEnv -> Decl -> (COpDecl, AbstractEnv)
 genOpDecl env (InfixDecl _ fix prec [ident])
    = (COp (genQName False env (qualifyWith (moduleId env) ident))
           (genFixity fix)
-          prec,
+          (fromInteger prec),
       env)
 
 
