@@ -26,11 +26,7 @@ import qualified Curry.Syntax as CS
 import Curry.ExtendedFlat.Type
 import Curry.ExtendedFlat.TypeInference
 
-import Base {-(ArityEnv, ArityInfo(..), ModuleEnv,  
-	     TCEnv, TypeInfo(..), ValueEnv, ValueInfo(..),
-	     lookupValue, qualLookupTC,
-	     qualLookupArity, lookupArity,  internalError,
-             qualLookupValue)-}
+import Base
 
 import qualified IL.Type as IL
 import qualified IL.CurryToIL as IL
@@ -1001,9 +997,19 @@ ttrans s@(TypeRecord _ _) = error $ "in ttrans: " ++ show s
 -- whole implementation. We won't depart from that for mere
 -- aesthetic reasons. (hsi)
 lookupIdType :: QualIdent -> FlatState (Maybe TypeExpr)
+lookupIdType (QualIdent Nothing (Ident _ "[]" _))
+    = return (Just l0)
+      where l0 = TCons (mkQName ("Prelude", "[]")) [TVar 0]
 lookupIdType (QualIdent Nothing (Ident _ ":" _))
     = return (Just (FuncType (TVar 0) (FuncType (l0) (l0))))
       where l0 = TCons (mkQName ("Prelude", "[]")) [TVar 0]
+lookupIdType (QualIdent Nothing (Ident _ t@('(':',':r) _))
+    = return (Just funtype)
+      where tupleArity = length r + 1
+            argTypes   = map TVar [1..tupleArity]
+            contype    = TCons (mkQName ("Prelude", t)) argTypes
+            funtype    = foldr FuncType contype argTypes
+
 lookupIdType qid
    = do aEnv <- gets typeEnvE
         lt <- gets localTypes

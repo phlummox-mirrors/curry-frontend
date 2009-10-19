@@ -20,7 +20,7 @@ Stability:     experimental
 
 Extra-Source-Files: LIESMICH
 Data-Files:    src/currydoc.css
-		    
+
 
 Executable cymake
   hs-source-dirs:   src
