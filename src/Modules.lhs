@@ -118,7 +118,7 @@ code are obsolete and commented out.
 >                                              id 
 >                                              (output opts)
 >                           outputMod = showModule m'
->                       writeModule outputFile outputMod
+>                       writeModule (writeToSubdir opts) outputFile outputMod
 >                       return Nothing
 >        else
 >          do -- checkModule checks types, and then transModule introduces new
@@ -246,8 +246,8 @@ code are obsolete and commented out.
 >           | uniqueId x == 0 = bindQual (x,y)
 >           | otherwise = bindTopEnv "Modules.qualifyEnv" x y
 
-> writeXML :: Maybe FilePath -> FilePath -> CurryEnv -> IL.Module -> IO ()
-> writeXML tfn sfn cEnv il = writeModule ofn (showln code)
+> writeXML :: Bool -> Maybe FilePath -> FilePath -> CurryEnv -> IL.Module -> IO ()
+> writeXML sub tfn sfn cEnv il = writeModule sub ofn (showln code)
 >   where ofn  = fromMaybe (xmlName sfn) tfn
 >         code = (xmlModule cEnv il)
 
@@ -258,23 +258,23 @@ code are obsolete and commented out.
 >                        (fromMaybe (flatName sfn) tfn)
 
 > writeFlatFile :: Options -> (Prog, [WarnMsg]) -> String -> IO Prog
-> writeFlatFile opts@Options{extendedFlat=ext} (res,msgs) fname = do
+> writeFlatFile opts@Options{extendedFlat=ext,writeToSubdir=sub} (res,msgs) fname = do
 >         unless (noWarn opts) (printMessages msgs)
->	  if ext then writeExtendedFlat fname res
->                else writeFlatCurry fname res
+>	  if ext then writeExtendedFlat sub fname res
+>                else writeFlatCurry sub fname res
 >         return res
 
 
-> writeTypedAbs :: Maybe FilePath -> FilePath -> ValueEnv -> TCEnv -> Module
+> writeTypedAbs :: Bool -> Maybe FilePath -> FilePath -> ValueEnv -> TCEnv -> Module
 >	           -> IO ()
-> writeTypedAbs tfn sfn tyEnv tcEnv mod
->    = AC.writeCurry fname (genTypedAbstract tyEnv tcEnv mod)
+> writeTypedAbs sub tfn sfn tyEnv tcEnv mod
+>    = AC.writeCurry sub fname (genTypedAbstract tyEnv tcEnv mod)
 >  where fname = fromMaybe (acyName sfn) tfn
 
-> writeUntypedAbs :: Maybe FilePath -> FilePath -> ValueEnv -> TCEnv  
+> writeUntypedAbs :: Bool -> Maybe FilePath -> FilePath -> ValueEnv -> TCEnv  
 >	             -> Module -> IO ()
-> writeUntypedAbs tfn sfn tyEnv tcEnv mod
->    = AC.writeCurry fname (genUntypedAbstract tyEnv tcEnv mod)
+> writeUntypedAbs sub tfn sfn tyEnv tcEnv mod
+>    = AC.writeCurry sub fname (genUntypedAbstract tyEnv tcEnv mod)
 >  where fname = fromMaybe (uacyName sfn) tfn
 
 > showln :: Show a => a -> String
@@ -518,7 +518,8 @@ be dependent on it any longer.
 >                           return Nothing
 >                     else return Nothing
 >   | flatXml opts
->     = writeXML (output opts) fname cEnv il >> return Nothing
+>     = writeXML (writeToSubdir opts) (output opts) fname cEnv il >> 
+>       return Nothing
 >   | otherwise
 >     = internalError "@Modules.genFlat: illegal option"
 >  where
@@ -527,17 +528,17 @@ be dependent on it any longer.
 >    emptyIntf = Prog "" [] [] [] []
 >    writeInterface intf msgs = do
 >          unless (noWarn opts) (printMessages msgs)
->          writeFlatCurry fintName intf
+>          writeFlatCurry (writeToSubdir opts) fintName intf
 
 
 > genAbstract :: Options -> FilePath  -> ValueEnv -> TCEnv -> Module 
 >                -> IO (Maybe FilePath)
-> genAbstract opts fname tyEnv tcEnv mod
+> genAbstract opts@Options{writeToSubdir=sub} fname tyEnv tcEnv mod
 >    | abstract opts
->      = do writeTypedAbs Nothing fname tyEnv tcEnv mod 
+>      = do writeTypedAbs sub Nothing fname tyEnv tcEnv mod 
 >           return Nothing
 >    | untypedAbstract opts
->      = do writeUntypedAbs Nothing fname tyEnv tcEnv mod
+>      = do writeUntypedAbs sub Nothing fname tyEnv tcEnv mod
 >           return Nothing
 >    | otherwise
 >      = internalError "@Modules.genAbstract: illegal option"

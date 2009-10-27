@@ -33,7 +33,8 @@ data Options
 	      untypedAbstract :: Bool,   -- generate untyped AbstractCurry code
 	      parseOnly :: Bool,         -- generate source representation
 	      withExtensions :: Bool,    -- enable extended functionalities
-	      dump :: [Dump]             -- dumps
+	      dump :: [Dump],            -- dumps
+              writeToSubdir :: Bool      -- should output be written to subdir?
 	    } deriving Show
 
 
@@ -53,7 +54,8 @@ defaultOpts = Options{ force           = False,
 		       untypedAbstract = False,
                        parseOnly       = False,
 		       withExtensions  = False,
-		       dump            = []
+		       dump            = [],
+                       writeToSubdir   = True
 		     }
 
 
@@ -66,6 +68,7 @@ data Option = Help | Force | Html
             | Abstract | UntypedAbstract | ParseOnly
 	    | WithExtensions
 	    | Dump [Dump]
+            | WriteToSubdir
    deriving Eq
 
 
@@ -117,7 +120,9 @@ options = [Option "f" ["force"] (NoArg Force)
 	   Option "" ["dump-case"] (NoArg (Dump [DumpCase]))
 	          "dump intermediate language after case simplification",
 	   Option "?h" ["help"] (NoArg Help)
-                  "display this help and exit"
+                  "display this help and exit",
+           Option "" ["no-hidden-subdir"] (NoArg WriteToSubdir)
+	          "write all output to hidden .curry subdirectory"
 	  ]
 
 
@@ -140,6 +145,7 @@ selectOption UntypedAbstract opts = opts{ untypedAbstract = True }
 selectOption ParseOnly opts       = opts{ parseOnly = True }
 selectOption WithExtensions opts  = opts{ withExtensions = True }
 selectOption (Dump ds) opts       = opts{ dump = ds ++ dump opts }
+selectOption WriteToSubdir opts   = opts{ writeToSubdir = False }
 
 
 -------------------------------------------------------------------------------
