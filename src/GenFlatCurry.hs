@@ -26,6 +26,8 @@ import qualified Curry.Syntax as CS
 import Curry.ExtendedFlat.Type
 import Curry.ExtendedFlat.TypeInference
 
+import Curry.ExtendedFlat.EraseTypes
+
 import Base
 
 import qualified IL.Type as IL
@@ -53,7 +55,8 @@ genFlatCurry opts cEnv mEnv tyEnv tcEnv aEnv mod
    = (prog', messages)
  where (prog, messages) 
            = run opts cEnv mEnv tyEnv tcEnv aEnv False (visitModule mod)
-       prog' = adjustTypeInfo $ patchPreludeFCY prog
+       prog' = -- eraseTypes $ 
+               adjustTypeInfo $ adjustTypeInfo $ patchPreludeFCY prog
 
 
 -- transforms intermediate language code (IL) to FlatCurry interfaces
@@ -192,7 +195,7 @@ visitModule (IL.Module mid imps decls) = do
 visitDataDecl :: IL.Decl -> FlatState TypeDecl
 visitDataDecl (IL.DataDecl qident arity constrs)
    = do cdecls <- mapM visitConstrDecl constrs
-	qname  <- visitQualIdent qident
+	qname  <- visitQualTypeIdent qident
 	vis    <- getVisibility False qident
 	return (Type qname vis [0 .. (arity - 1)] (concat cdecls))
 visitDataDecl _ = internalError "GenFlatCurry: no data declaration"
@@ -361,12 +364,12 @@ visitTypeIDecl (CS.IDataDecl _ qident params constrs_)
 	    is  = [0 .. length params - 1]
 	cdecls <- mapM (visitConstrIDecl mid (zip params is)) 
 		       (catMaybes constrs_)
-	qname  <- visitQualIdent qident
+	qname  <- visitQualTypeIdent qident
 	return (Type qname Public is cdecls)
 visitTypeIDecl (CS.ITypeDecl _ qident params typeexpr)
    = do let is = [0 .. (length params) - 1]
 	texpr <- visitType (fst (cs2ilType (zip params is) typeexpr))
-	qname <- visitQualIdent qident
+	qname <- visitQualTypeIdent qident
 	return (TypeSyn qname Public is texpr)
 visitTypeIDecl _ = internalError "GenFlatCurry: no type interface"
 
@@ -645,7 +648,7 @@ genTypeSynonym (CS.ITypeDecl _ qident params typeexpr)
         tcEnv <- gets tConsEnvE
 	let typeexpr' = elimRecordTypes tyEnv tcEnv typeexpr
 	texpr <- visitType (fst (cs2ilType (zip params is) typeexpr'))
-	qname <- visitQualIdent qident
+	qname <- visitQualTypeIdent qident
 	vis   <- getVisibility False qident
 	return (TypeSyn qname vis is texpr)
 genTypeSynonym _ = internalError "GenFlatCurry: no type synonym interface"
@@ -1003,13 +1006,15 @@ lookupIdType (QualIdent Nothing (Ident _ "[]" _))
 lookupIdType (QualIdent Nothing (Ident _ ":" _))
     = return (Just (FuncType (TVar 0) (FuncType (l0) (l0))))
       where l0 = TCons (mkQName ("Prelude", "[]")) [TVar 0]
+lookupIdType (QualIdent Nothing (Ident _ "()" _))
+    = return (Just l0)
+      where l0 = TCons (mkQName ("Prelude", "()")) []
 lookupIdType (QualIdent Nothing (Ident _ t@('(':',':r) _))
     = return (Just funtype)
       where tupleArity = length r + 1
             argTypes   = map TVar [1..tupleArity]
             contype    = TCons (mkQName ("Prelude", t)) argTypes
             funtype    = foldr FuncType contype argTypes
-
 lookupIdType qid
    = do aEnv <- gets typeEnvE
         lt <- gets localTypes
