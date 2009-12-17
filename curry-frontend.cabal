@@ -26,7 +26,7 @@ Executable cymake
   hs-source-dirs:   src
   Main-is:          cymake.hs
   Build-Depends:    base >= 3 && < 4, 
-                    curry-base >= 0.2.6, 
+                    curry-base >= 0.2.7, 
                     mtl, old-time, containers, pretty
   ghc-options:      -fwarn-unused-binds -fwarn-unused-imports  -auto-all 
   Other-Modules:    Curry.Syntax.Lexer, Curry.Syntax.LexComb
