@@ -194,8 +194,15 @@ code are obsolete and commented out.
 >		     else tyEnvI
 >         msgs = warnCheck m tyEnv impDs topDs
 >	  withExt = withExtensions opts
+>         -- fre: replaced the argument aEnv by aEnv'' in the
+>         --      expression below. This fixed a bug that occured
+>         --      when one imported a module qualified that
+>         --      exported a function from another module.
+>         --      However, there is now a cyclic dependecy and
+>         --      the implications of this change are not well
+>         --      understood
 >         (pEnv',topDs') = precCheck m pEnv 
->		           $ syntaxCheck withExt m iEnv aEnv tyEnv tcEnv
+>		           $ syntaxCheck withExt m iEnv aEnv'' tyEnv tcEnv
 >			   $ kindCheck m tcEnv topDs
 >         (tcEnv',tyEnv') = typeCheck m tcEnv tyEnv topDs'
 >         ds' = impDs ++ qual m tyEnv' topDs'
