@@ -198,9 +198,8 @@ code are obsolete and commented out.
 >         --      expression below. This fixed a bug that occured
 >         --      when one imported a module qualified that
 >         --      exported a function from another module.
->         --      However, there is now a cyclic dependecy and
->         --      the implications of this change are not well
->         --      understood
+>         --      However, there is now a cyclic dependecy 
+>         --      but tests didn't show any problems.
 >         (pEnv',topDs') = precCheck m pEnv 
 >		           $ syntaxCheck withExt m iEnv aEnv'' tyEnv tcEnv
 >			   $ kindCheck m tcEnv topDs
