@@ -9,8 +9,8 @@
 The module \texttt{LexComb} provides the basic types and combinators
 to implement the lexers. The combinators use continuation passing code
 in a monadic style. The first argument of the continuation function is
-the string to be parsed, the second is the current position, and the
-third is a flag which signals the lexer that it is lexing the
+the current position, and the second is the string to be parsed. The third
+argument is a flag which signals the lexer that it is lexing the
 beginning of a line and therefore has to check for layout tokens. The
 fourth argument is a stack of indentations that is used to handle
 nested layout groups.
@@ -66,7 +66,7 @@ Combinators that handle layout.
 
 > popContext :: P a -> P a
 > popContext cont pos s bol (_:ctxt) = cont pos s bol ctxt
-> popContext cont pos s bol [] = 
+> popContext cont pos s bol [] =
 >    error "parse error: popping layout from empty context stack. \
 >          \Perhaps you have inserted too many '}'?"
 
