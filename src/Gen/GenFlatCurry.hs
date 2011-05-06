@@ -191,8 +191,7 @@ visitModule (IL.Module mid imps decls) = do
 	   modid   <- visitModuleIdent mid
 	   imps'   <- imports
 	   is      <- mapM visitModuleIdent
-	                   (nub (imps ++ (map (\ (CS.IImportDecl _ mid1)
-					       -> mid1) imps')))
+	                   (nub (imps ++ (map extractMid imps')))
            return (Prog modid is (recrds ++ types ++ datas) funcs ops))
        (do ops     <- genOpDecls
 	   ds      <- filterM isPublicDataDecl decls
@@ -208,13 +207,16 @@ visitModule (IL.Module mid imps decls) = do
 	   modid   <- visitModuleIdent mid
 	   imps'   <- imports
 	   is      <- mapM visitModuleIdent
-	                   (nub (imps ++ (map (\ (CS.IImportDecl _ mid1)
-					       -> mid1) imps')))
+	                   (nub (imps ++ (map extractMid imps')))
 	   return (Prog modid
 		        is
 		        (itypes ++ recrds ++ types ++ datas)
 		        (ifuncs ++ funcs)
 		        (iops ++ ops)))
+	where
+		extractMid d = case d of
+			(CS.IImportDecl _ mid1) -> mid1
+			_                       -> error "Gen.GenFlatCurry.visitModule: no IImportDecl"
 
 --
 visitDataDecl :: IL.Decl -> FlatState TypeDecl

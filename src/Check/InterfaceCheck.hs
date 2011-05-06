@@ -22,21 +22,25 @@ checkTypeDecls ts1 [] = null ts1
 checkTypeDecls ts1 ((Type qname vis2 is2 cs2):ts2') =
   let (mt,ts1') = extract (isDataType qname) ts1
   in  maybe False
-            (\ (Type _ vis1 is1 cs1)
-                -> vis1 == vis2
+            (\ t -> case t of
+              (Type _ vis1 is1 cs1) ->
+                   vis1 == vis2
                 && is1 == is2
                 && checkConsDecls cs1 cs2
                 && checkTypeDecls ts1' ts2'
+              _ -> error "Check.InterfaceCheck.checkTypeDecls: no Type"
             )
             mt
 checkTypeDecls ts1 ((TypeSyn qname vis2 is2 texpr2):ts2') =
   let (mt,ts1') = extract (isTypeSyn qname) ts1
   in  maybe False
-            (\ (TypeSyn _ vis1 is1 texpr1)
-                -> vis1 == vis2
+            (\ t -> case t of
+              (TypeSyn _ vis1 is1 texpr1) ->
+                   vis1 == vis2
                 && is1 == is2
                 && texpr1 == texpr2
                 && checkTypeDecls ts1' ts2'
+              _ -> error "Check.InterfaceCheck.checkTypeDecls: no TypeSyn"
             )
             mt
 

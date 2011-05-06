@@ -247,14 +247,17 @@ genFuncDecl isLocal env ident decls
      = let qname          = genQName False env (qualify ident)
 	   visibility    = genVisibility env ident
            evalannot     = maybe CFlex
-	                         (\ (EvalAnnot _ _ ea) -> genEvalAnnot ea)
+	                         (\ x -> case x of
+															(EvalAnnot _ _ ea) -> genEvalAnnot ea
+															_                  -> error "Gen.GenAbstractCurry.genFuncDecl: no Eval Annotation")
 				 (find isEvalAnnot decls)
            (mtype, env1) = maybe (Nothing, env)
                                  (\ (t, env') -> (Just t, env'))
 				 (genFuncType env decls)
 	   (rules, env2) = maybe ([], env1)
-			         (\ (FunctionDecl _ _ equs)
-				  -> mapfoldl genRule env1 equs)
+			         (\ d -> case d of
+							   (FunctionDecl _ _ equs) -> mapfoldl genRule env1 equs
+							   _                       -> error "Gen.GenAbstractCurry.genFuncDecl: no FunctionDecl")
 				 (find isFunctionDecl decls)
            mexternal     = fmap genExternal (find isExternal decls)
 	   arity         = compArity mtype rules

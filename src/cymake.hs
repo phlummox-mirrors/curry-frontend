@@ -4,7 +4,7 @@
     AbstractCurry) for a Curry source file including all imported modules.
 
     September 2005, Martin Engelke (men@informatik.uni-kiel.de)
-    February 2011, Björn Peemöller (bjp@informatik.uni-kiel.de)
+    May 2011, Björn Peemöller (bjp@informatik.uni-kiel.de)
 -}
 module Main (main) where
 
@@ -29,6 +29,7 @@ cymake :: String -> (Options, [String], [String]) -> IO ()
 cymake prog (opts, files, errs)
   | help opts         = printUsage prog
   | version opts      = printVersion
+	| null files        = printUsage prog
   | not (null errs')  = badUsage prog errs'
   | html opts         = mapM_ (source2html opts) files
   | otherwise         = info opts cymakeGreeting
@@ -49,8 +50,6 @@ badUsage prog errs = do
 -- |Check options and files and return a list of error messages
 check :: Options -> [String] -> [String]
 check opts files
-  | null files
-    = ["no files"]
   | isJust (output opts) && length files > 1
     = ["cannot specify -o with multiple targets"]
   | otherwise
