@@ -1,0 +1,102 @@
+Name:          curry-frontend
+Version:       0.3.0
+Cabal-Version: >= 1.6
+Synopsis:      Compile the functional logic language Curry to several
+               intermediate formats
+Description:   The Curry Frontend consists of the executable program "cymake".
+               It is used by various backends to compile Curry programs to
+               an internal representation.
+               The code is a stripped-down version of an early version of
+               the Muenster Curry Compiler
+               (<http://danae.uni-muenster.de/~lux/curry/>)
+Category:      Language
+License:       OtherLicense
+License-File:  LICENSE
+Author:        Wolfgang Lux, Martin Engelke, Bernd Brassel, Holger Siegel
+Maintainer:    Holger Siegel
+Bug-Reports:   mailto:hsi@informatik.uni-kiel.de
+Homepage:      http://curry-language.org
+Build-Type:    Simple
+Stability:     experimental
+
+Extra-Source-Files: LIESMICH
+Data-Files:         src/Html/currydoc.css
+
+Flag split-syb
+  Description: Has the syb functionality been split into the package syb?
+  Default:     True
+
+Executable cymake
+  hs-source-dirs: src
+  Main-is:        cymake.hs
+  if flag(split-syb)
+    Build-Depends: base == 4.*, syb
+  else
+    Build-Depends: base == 3.*
+  Build-Depends:
+    curry-base >= 0.3.0
+    , mtl, old-time, containers, pretty
+  ghc-options: -Wall
+  Other-Modules:
+      Base
+    , Base.Arity
+    , Base.Import
+    , Base.Module
+    , Base.OpPrec
+    , Base.TypeConstructors
+    , Base.Types
+    , Base.Value
+    , Check.InterfaceCheck
+    , Check.KindCheck
+    , Check.PrecCheck
+    , Check.SyntaxCheck
+    , Check.TypeCheck
+    , Check.WarnCheck
+    , Curry.IL
+    , Curry.IL.Pretty
+    , Curry.IL.Type
+    , Curry.IL.XML
+    , Curry.Syntax
+    , Curry.Syntax.Lexer
+    , Curry.Syntax.Parser
+    , Curry.Syntax.Pretty
+    , Curry.Syntax.ShowModule
+    , Curry.Syntax.Type
+    , Curry.Syntax.Utils
+    , Env.CurryEnv
+    , Env.NestEnv
+    , Env.OldScopeEnv
+    , Env.ScopeEnv
+    , Env.TopEnv
+    , Gen.GenAbstractCurry
+    , Gen.GenFlatCurry
+    , Html.CurryHtml
+    , Html.SyntaxColoring
+    , CurryBuilder
+    , CurryCompilerOpts
+    , CurryDeps
+    , CurryToIL
+    , Eval
+    , Exports
+    , Frontend
+    , Imports
+    , Messages
+    , Modules
+    , SCC
+    , Subst
+    , Transform.CaseCompletion
+    , Transform.Desugar
+    , Transform.Lift
+    , Transform.Qual
+    , Transform.Simplify
+    , Types
+    , TypeSubst
+    , Typing
+    , Utils
+Library
+  hs-source-dirs:  src
+  Build-Depends:   filepath
+  Exposed-Modules:
+    Files.CymakePath
+  Other-Modules:
+    Paths_curry_frontend

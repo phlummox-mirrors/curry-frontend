@@ -1,0 +1,13 @@
+Records: Es ist kein qualifizierter Import von Records möglich, da die
+  Feldbezeichnungen nicht mit importiert werden können.
+  Beispiel:
+  import CompilerOpts -- okay
+  import CompilerOpts (Options) -- okay, aber Feldbezeichner nicht importiert
+  import CompilerOpts (Options (..)) Fehler: Options is not a data type
+
+NoImplicitPrelude
+Typklassen
+Hierarchische Module
+Nondeterminism by overlapping abschaltbar?
+QName wird als Typvariable angesehen
+DHO als Variable
