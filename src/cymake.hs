@@ -8,7 +8,7 @@
 -}
 module Main (main) where
 
-import Data.Maybe (fromMaybe, isJust)
+import Data.Maybe (isJust)
 import System.Environment (getArgs, getProgName)
 
 import CurryBuilder (buildCurry)

@@ -9,6 +9,7 @@ import Curry.Files.PathUtils
   (readModule, writeModule, getCurryPath, dropExtension, takeFileName)
 import Curry.Syntax (lexFile)
 
+import CurryCompilerOpts (Options(..))
 import Frontend (parse, typingParse, fullParse)
 import Html.SyntaxColoring
 
@@ -16,7 +17,7 @@ import Html.SyntaxColoring
 --- @param outputfilename
 --- @param sourcefilename
 source2html :: Options -> String -> IO ()
-source2html imports outputfilename sourcefilename = do
+source2html opts sourcefilename = do
   let imports = importPaths opts
       outputfilename = fromMaybe "" $ output opts
       sourceprogname = dropExtension sourcefilename
@@ -125,19 +126,19 @@ replace :: Char -> String -> String -> String
 replace old new = foldr (\ x -> if x == old then (new ++) else ([x] ++)) ""
 
 addHtmlAnchor :: String -> QualIdent -> String
-addHtmlAnchor html qualIdent = "<a name=\"" ++
+addHtmlAnchor str qualIdent = "<a name=\"" ++
   string2urlencoded (show (unqualify qualIdent)) ++
-  "\"></a>" ++ html
+  "\"></a>" ++ str
 
 addHtmlLink :: String -> QualIdent -> String
-addHtmlLink html qualIdent =
+addHtmlLink str qualIdent =
    let (maybeModIdent, ident) = (qualidMod qualIdent, qualidId qualIdent) in
    "<a href=\"" ++
    maybe "" (\ x -> show x ++ "_curry.html") maybeModIdent ++
    "#" ++
    string2urlencoded (show ident) ++
    "\">" ++
-   html ++
+   str ++
    "</a>"
 
 isCall :: Code -> Bool

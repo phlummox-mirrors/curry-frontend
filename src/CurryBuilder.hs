@@ -43,13 +43,13 @@ makeCurry opts deps1 targetFile = mapM_ (compile . snd) deps1 where
 
   compile (Interface _) = return ()
   compile Unknown       = return ()
-  compile (Source file mods) =
+  compile (Source file mods)
       -- target file
     | dropExtension targetFile == dropExtension file = do
         flatIntfExists <- doesModuleExist (flatIntName file)
         if flatIntfExists && not (force opts) && null (dump opts)
           then smake (targetNames file)
-                      (file': (catMaybes (map flatInterface mods)))
+                      (targetFile: (catMaybes (map flatInterface mods)))
                       (generateFile file)
                       (skipFile file)
           else generateFile file
