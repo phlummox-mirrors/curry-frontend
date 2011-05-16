@@ -130,7 +130,7 @@ code are obsolete and commented out.
 > loadInterfaces :: [FilePath] -> Module -> IO ModuleEnv
 > loadInterfaces paths (Module m _ ds) =
 >   foldM (loadInterface paths [m]) Map.empty
->         [(p,m') | ImportDecl p m' _ _ _ <- ds]
+>         [(p, m') | ImportDecl p m' _ _ _ <- ds]
 
 > checkModuleId :: Monad m => FilePath -> Module -> m ()
 > checkModuleId fn (Module mid _ _)
