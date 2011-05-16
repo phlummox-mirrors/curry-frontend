@@ -146,6 +146,11 @@ Haskell and original MCC where a module obtains \texttt{main}).
 >   | otherwise
 >     = m
 
+> loadInterfaces :: [FilePath] -> Module -> IO ModuleEnv
+> loadInterfaces paths (Module m _ ds) =
+>   foldM (loadInterface paths [m]) Map.empty
+>         [(p, m') | ImportDecl p m' _ _ _ <- ds]
+
 > checkModuleId :: Monad m => FilePath -> Module -> m ()
 > checkModuleId fn (Module mid _ _)
 >   | last (moduleQualifiers mid) == takeBaseName fn
