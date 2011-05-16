@@ -3,7 +3,7 @@
 
     September 2005, Martin Engelke (men@informatik.uni-kiel.de)
     March 2007    , extensions by Sebastian Fischer (sebf@informatik.uni-kiel.de)
-    February 2011 , refinements by Björn Peemöller (bjp@informatik.uni-kiel.de)
+    May 2011      , refinements by Björn Peemöller (bjp@informatik.uni-kiel.de)
 -}
 module CurryCompilerOpts
   (Options (..), Dump (..), parseOpts, printUsage, printVersion, defaultOptions) where
@@ -16,26 +16,26 @@ import Files.CymakePath (cymakeGreeting)
 
 -- |Data type for recording compiler options
 data Options = Options
-  { help            :: Bool           -- ^ show help
-  , version         :: Bool           -- ^ show the version
-  , force           :: Bool           -- ^ force compilation
-  , html            :: Bool           -- ^ generate Html code
-  , importPaths     :: [FilePath]     -- ^ directories for imports
-  , output          :: Maybe FilePath -- ^ name of output file
-  , noInterface     :: Bool   -- ^ do not create an interface file
-  , noVerb          :: Bool   -- ^ verbosity on/off
-  , noWarn          :: Bool   -- ^ warnings on/off
-  , noOverlapWarn   :: Bool   -- ^ "overlap" warnings on/off
-  , flat            :: Bool   -- ^ generate FlatCurry code
-  , extendedFlat    :: Bool   -- ^ generate FlatCurry code with extensions
-  , flatXml         :: Bool   -- ^ generate flat XML code
-  , abstract        :: Bool   -- ^ generate typed AbstracCurry code
-  , untypedAbstract :: Bool   -- ^ generate untyped AbstractCurry code
-  , parseOnly       :: Bool   -- ^ generate source representation
-  , withExtensions  :: Bool   -- ^ enable extended functionalities
-  , dump            :: [Dump] -- ^ dumps
-  , writeToSubdir   :: Bool   -- ^ should the output be written to the subdir?
-  , xNoImplicitPrelude :: Bool -- ^ extension: no implicit import Prelude
+  { help               :: Bool           -- ^ show help
+  , version            :: Bool           -- ^ show the version
+  , force              :: Bool           -- ^ force compilation
+  , html               :: Bool           -- ^ generate Html code
+  , importPaths        :: [FilePath]     -- ^ directories for imports
+  , output             :: Maybe FilePath -- ^ name of output file
+  , noInterface        :: Bool   -- ^ do not create an interface file
+  , noVerb             :: Bool   -- ^ verbosity on/off
+  , noWarn             :: Bool   -- ^ warnings on/off
+  , noOverlapWarn      :: Bool   -- ^ "overlap" warnings on/off
+  , flat               :: Bool   -- ^ generate FlatCurry code
+  , extendedFlat       :: Bool   -- ^ generate FlatCurry code with extensions
+  , flatXml            :: Bool   -- ^ generate flat XML code
+  , abstract           :: Bool   -- ^ generate typed AbstracCurry code
+  , untypedAbstract    :: Bool   -- ^ generate untyped AbstractCurry code
+  , parseOnly          :: Bool   -- ^ generate source representation
+  , withExtensions     :: Bool   -- ^ enable extended functionalities
+  , dump               :: [Dump] -- ^ dumps
+  , writeToSubdir      :: Bool   -- ^ should the output be written to the subdir?
+  , xNoImplicitPrelude :: Bool   -- ^ extension: no implicit import Prelude
   } deriving Show
 
 -- TODO: dump FlatCurry code, dump AbstractCurry code, dump after 'case'
@@ -80,10 +80,10 @@ defaultOptions = Options
 -- | All available compiler options
 options :: [OptDescr (Options -> Options)]
 options =
-  [ Option "?h" ["help"]
+  [ Option "h?" ["help"]
       (NoArg (\opts -> opts { help = True }))
       "display this help and exit"
-  , Option "v"  ["version"]
+  , Option "V"  ["version"]
       (NoArg (\opts -> opts { version = True }))
       "show the version number"
   , Option "f"  ["force"]
@@ -157,7 +157,7 @@ options =
       "dump intermediate language after case simplification"
   , Option ""   ["no-hidden-subdir"]
       (NoArg (\opts -> opts { writeToSubdir = False }))
-      ("disable writing to hidden " ++ currySubdir ++ " subdirectory")
+      ("disable writing to hidden '" ++ currySubdir ++ "' subdirectory")
   , Option ""   ["x-no-implicit-prelude"]
         (NoArg (\opts -> opts { xNoImplicitPrelude = True }))
         ("do not implicitly 'import Prelude'")
@@ -172,5 +172,7 @@ printUsage :: String -> IO ()
 printUsage prog = putStrLn $ usageInfo header options
   where header = "usage: " ++ prog ++ " [OPTION] ... MODULE ..."
 
+-- |Print the program greeting
 printVersion :: IO ()
 printVersion = putStrLn cymakeGreeting
+
