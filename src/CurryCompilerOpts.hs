@@ -6,13 +6,14 @@
     May 2011      , refinements by Björn Peemöller (bjp@informatik.uni-kiel.de)
 -}
 module CurryCompilerOpts
-  (Options (..), Dump (..), parseOpts, printUsage, printVersion, defaultOptions) where
+(Options (..), Dump (..), defaultOptions, compilerOpts, usage) where
 
 import Data.List (nub)
+import Data.Maybe (isJust)
 import System.Console.GetOpt
+import System.Environment (getArgs, getProgName)
 
 import Curry.Files.Filenames (currySubdir)
-import Files.CymakePath (cymakeGreeting)
 
 -- |Data type for recording compiler options
 data Options = Options
@@ -167,12 +168,22 @@ parseOpts :: [String] -> (Options, [String], [String])
 parseOpts args = (foldl (flip ($)) defaultOptions opts, files, errs) where
   (opts, files, errs) = getOpt Permute options args
 
+-- |Check options and files and return a list of error messages
+checkOpts :: Options -> [String] -> [String]
+checkOpts opts files
+  | isJust (output opts) && length files > 1
+    = ["cannot specify -o with multiple targets"]
+  | otherwise
+    = []
+    
 -- |Print the usage information of the command line tool.
-printUsage :: String -> IO ()
-printUsage prog = putStrLn $ usageInfo header options
+usage :: String -> String
+usage prog = usageInfo header options
   where header = "usage: " ++ prog ++ " [OPTION] ... MODULE ..."
 
--- |Print the program greeting
-printVersion :: IO ()
-printVersion = putStrLn cymakeGreeting
-
+compilerOpts :: IO (String, Options, [String], [String])
+compilerOpts = do
+  args <- getArgs
+  prog <- getProgName
+  let (opts, files, errs) = parseOpts args
+  return (prog, opts, files, errs ++ checkOpts opts files)

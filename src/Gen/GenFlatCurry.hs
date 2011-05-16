@@ -25,7 +25,7 @@ import Base  (ModuleEnv, TCEnv, ValueEnv, TypeInfo (..), ValueInfo (..)
   , lookupValue, qualLookupTC, qualLookupValue, ArityEnv, ArityInfo (..)
   , lookupArity, qualLookupArity)
 
-import CurryCompilerOpts
+import CurryCompilerOpts (Options (..))
 import qualified CurryToIL as IL
 import Env.TopEnv (topEnvMap)
 import Env.CurryEnv (CurryEnv)

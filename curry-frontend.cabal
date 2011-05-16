@@ -12,9 +12,10 @@ Description:   The Curry Frontend consists of the executable program "cymake".
 Category:      Language
 License:       OtherLicense
 License-File:  LICENSE
-Author:        Wolfgang Lux, Martin Engelke, Bernd Brassel, Holger Siegel
-Maintainer:    Holger Siegel
-Bug-Reports:   mailto:hsi@informatik.uni-kiel.de
+Author:        Wolfgang Lux, Martin Engelke, Bernd Brassel, Holger Siegel,
+               Bjoern Peemoeller
+Maintainer:    Bjoern Peemoeller
+Bug-Reports:   mailto:bjp@informatik.uni-kiel.de
 Homepage:      http://curry-language.org
 Build-Type:    Simple
 Stability:     experimental

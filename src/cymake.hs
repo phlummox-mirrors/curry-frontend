@@ -8,49 +8,43 @@
 -}
 module Main (main) where
 
-import Data.Maybe (isJust)
-import System.Environment (getArgs, getProgName)
-
 import CurryBuilder (buildCurry)
-import CurryCompilerOpts (Options (..), parseOpts, printUsage, printVersion)
+import CurryCompilerOpts (Options (..), compilerOpts, usage)
 import Files.CymakePath (cymakeGreeting)
 import Html.CurryHtml (source2html)
-import Messages (info, putErrsLn, abortWith)
+import Messages (putErrsLn, abortWith)
 
 -- |The command line tool cymake
 main :: IO ()
-main = do
-  prog <- getProgName
-  args <- getArgs
-  cymake prog (parseOpts args)
+main = compilerOpts >>= cymake
 
 -- |Check the command line arguments and invoke the curry builder
-cymake :: String -> (Options, [String], [String]) -> IO ()
-cymake prog (opts, files, errs)
-  | help opts         = printUsage prog
-  | version opts      = printVersion
-	| null files        = printUsage prog
-  | not (null errs')  = badUsage prog errs'
-  | html opts         = mapM_ (source2html opts) files
-  | otherwise         = info opts cymakeGreeting
-                        >> mapM_ (buildCurry opts') files
+cymake :: (String, Options, [String], [String]) -> IO ()
+cymake (prog, opts, files, errs)
+  | help opts       = printUsage prog
+  | version opts    = printVersion
+  | null files      = printUsage prog
+  | not (null errs) = badUsage prog errs
+  | html opts       = mapM_ (source2html opts) files
+  | otherwise       = mapM_ (buildCurry opts') files
   where
-  opts' = if or [ flat opts, flatXml opts, abstract opts
-                , untypedAbstract opts, parseOnly opts]
-              then  opts
-              else  opts { flat = True }
-  errs' = errs ++ check opts' files
+    opts' = if or [ flat opts, flatXml opts, abstract opts
+                  , untypedAbstract opts, parseOnly opts]
+                then  opts
+                else  opts { flat = True }
 
--- |Print errors
+-- ---------------------------------------------------------------------------
+
+-- |Print the program greeting
+printVersion :: IO ()
+printVersion = putStrLn cymakeGreeting
+
+-- |Print the usage information of the command line tool.
+printUsage :: String -> IO ()
+printUsage prog = putStrLn $ usage prog
+
+-- |Print errors and abort execution
 badUsage :: String -> [String] -> IO ()
 badUsage prog errs = do
   putErrsLn $ map (\ err -> prog ++ ": " ++ err) errs
   abortWith ["Try '" ++ prog ++ " --help' for more information"]
-
--- |Check options and files and return a list of error messages
-check :: Options -> [String] -> [String]
-check opts files
-  | isJust (output opts) && length files > 1
-    = ["cannot specify -o with multiple targets"]
-  | otherwise
-    = []
