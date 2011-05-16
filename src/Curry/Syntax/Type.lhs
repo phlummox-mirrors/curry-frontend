@@ -43,8 +43,10 @@ an unlimited range of integer constants in Curry programs.
 \paragraph{Modules}
 \begin{verbatim}
 
-> data Module = Module ModuleIdent (Maybe ExportSpec) [Decl]
+> data Module = Module [Pragma] ModuleIdent (Maybe ExportSpec) [Decl]
 >               deriving (Eq,Show,Read,Typeable,Data)
+
+> data Pragma = Pragma String String
 
 > data ExportSpec = Exporting Position [Export]
 >                   deriving (Eq,Show,Read,Typeable,Data)

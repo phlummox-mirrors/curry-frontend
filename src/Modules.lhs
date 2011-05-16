@@ -92,15 +92,21 @@ code are obsolete and commented out.
 
 > compileModule :: Options -> FilePath -> IO (Maybe FilePath)
 > compileModule opts fn = do
->   modul <- liftM (importPrelude fn . ok . parseModule likeFlat fn) (readModule fn)
+>   -- read, parse and eventually add Prelude import
+>   modul <- liftM (importPrelude opts fn . ok . parseModule likeFlat fn) (readModule fn)
+>   -- generate module identifier from file name if missing
 >   let m = patchModuleId fn modul
+>   -- check whether module identifier and file name fit together
 >   checkModuleId fn m
+>   -- load the imported interfaces into a 'ModuleEnv'
 >   mEnv <- loadInterfaces (importPaths opts) m
 >   if uacy || src
 >      then do
 >        (tyEnv, tcEnv, _, m', _, _) <- simpleCheckModule opts mEnv m
 >        if uacy
+>           -- generate untyped AbstractCurry
 >           then genAbstract opts fn tyEnv tcEnv m'
+>           -- just output the parsed source
 >           else do
 >             let outputFile = fromMaybe (sourceRepName fn) (output opts)
 >                 outputMod = showModule m'
@@ -109,7 +115,7 @@ code are obsolete and commented out.
 >      else do
 >        -- checkModule checks types, and then transModule introduces new
 >        -- functions (by lambda lifting in 'desugar'). Consequence: The
->        -- type of the newly introduced functions are not inferred (hsi)
+>        -- types of the newly introduced functions are not inferred (hsi)
 >        (tyEnv, tcEnv, aEnv, m', intf, _) <- checkModule opts mEnv m
 >        let (il,aEnv',dumps) = transModule fcy False False
 >                                 mEnv tyEnv tcEnv aEnv m'
@@ -127,22 +133,56 @@ code are obsolete and commented out.
 >            | acy        = genAbstract opts' fn' tyEnv tcEnv m'
 >            | otherwise  = return Nothing
 
-> loadInterfaces :: [FilePath] -> Module -> IO ModuleEnv
-> loadInterfaces paths (Module m _ ds) =
->   foldM (loadInterface paths [m]) Map.empty
->         [(p,m') | ImportDecl p m' _ _ _ <- ds]
+\end{verbatim}
+A module which doesn't contain a \texttt{module ... where} declaration
+obtains its filename as module identifier (unlike the definition in
+Haskell and original MCC where a module obtains \texttt{main}).
+\begin{verbatim}
+
+> patchModuleId :: FilePath -> Module -> Module
+> patchModuleId fn m@(Module mid mexports decls)
+>   | moduleName mid == "main"
+>     = Module (mkMIdent [takeBaseName fn]) mexports decls
+>   | otherwise
+>     = m
 
 > checkModuleId :: Monad m => FilePath -> Module -> m ()
 > checkModuleId fn (Module mid _ _)
->    | last (moduleQualifiers mid) == takeBaseName fn
->      = return ()
->    | otherwise
->      = error ("module \"" ++ moduleName mid
->	        ++ "\" must be in a file \"" ++ moduleName mid
->	        ++ ".curry\"")
+>   | last (moduleQualifiers mid) == takeBaseName fn
+>     = return ()
+>   | otherwise
+>     = error $ "module \"" ++ moduleName mid
+>               ++ "\" must be in a file \"" ++ moduleName mid
+>               ++ ".curry\""
+
+\end{verbatim}
+An implicit import of the prelude is added to the declarations of
+every module, except for the prelude itself, or when the import is disabled
+by a compiler option. If no explicit import for the prelude is present,
+the prelude is imported unqualified, otherwise
+only a qualified import is added.
+\begin{verbatim}
+
+> importPrelude :: Options -> FilePath -> Module -> Module
+> importPrelude opts fn (Module m es ds)
+>   | m == preludeMIdent = Module m es ds
+>   | xNoImplicitPrelude = Module m es ds
+>   | otherwise          = Module m es ds'
+>   where ids = [decl | decl@(ImportDecl _ _ _ _ _) <- ds]
+>         ds' = ImportDecl (first fn) preludeMIdent
+>                          (preludeMIdent `elem` map importedModule ids)
+>                          Nothing Nothing : ds
+>         importedModule (ImportDecl _ m' _ asM _) = fromMaybe m' asM
+>         importedModule _ = error "Modules.importPrelude.importedModule: no pattern match"
+
+> -- |Load the interface files into the 'ModuleEnv'
+> loadInterfaces :: [FilePath] -> Module -> IO ModuleEnv
+> loadInterfaces paths (Module m _ ds) =
+>   foldM (loadInterface paths [m]) Map.empty
+>         [(p, m') | ImportDecl p m' _ _ _ <- ds]
 
 > simpleCheckModule :: Options -> ModuleEnv -> Module
->                   -> IO (ValueEnv,TCEnv,ArityEnv,Module,Interface,[WarnMsg])
+>   -> IO (ValueEnv, TCEnv, ArityEnv, Module, Interface, [WarnMsg])
 > simpleCheckModule opts mEnv (Module m es ds) =
 >   do unless (noWarn opts) (printMessages msgs)
 >      return (tyEnv'', tcEnv, aEnv'', modul, intf, msgs)
@@ -237,40 +277,6 @@ code are obsolete and commented out.
 >         bindGlobal (x,y)
 >           | uniqueId x == 0 = bindQual (x,y)
 >           | otherwise = bindTopEnv "Modules.qualifyEnv" x y
-
-> writeXML :: Bool -> Maybe FilePath -> FilePath -> CurryEnv -> IL.Module -> IO ()
-> writeXML sub tfn sfn cEnv il = writeModule sub ofn (showln code)
->   where ofn  = fromMaybe (xmlName sfn) tfn
->         code = (IL.xmlModule cEnv il)
-
-> writeFlat :: Options -> Maybe FilePath -> FilePath -> CurryEnv -> ModuleEnv
->              -> ValueEnv -> TCEnv -> ArityEnv -> IL.Module -> IO Prog
-> writeFlat opts tfn sfn cEnv mEnv tyEnv tcEnv aEnv il
->   = writeFlatFile opts (genFlatCurry opts cEnv mEnv tyEnv tcEnv aEnv il)
->                        (fromMaybe (flatName sfn) tfn)
-
-> writeFlatFile :: Options -> (Prog, [WarnMsg]) -> String -> IO Prog
-> writeFlatFile opts@Options{extendedFlat=ext,writeToSubdir=sub} (res,msgs) fname = do
->         unless (noWarn opts) (printMessages msgs)
->	  if ext then writeExtendedFlat sub fname res
->                else writeFlatCurry sub fname res
->         return res
-
-
-> writeTypedAbs :: Bool -> Maybe FilePath -> FilePath -> ValueEnv -> TCEnv -> Module
->	           -> IO ()
-> writeTypedAbs sub tfn sfn tyEnv tcEnv modul
->    = AC.writeCurry sub fname (genTypedAbstract tyEnv tcEnv modul)
->  where fname = fromMaybe (acyName sfn) tfn
-
-> writeUntypedAbs :: Bool -> Maybe FilePath -> FilePath -> ValueEnv -> TCEnv
->	             -> Module -> IO ()
-> writeUntypedAbs sub tfn sfn tyEnv tcEnv modul
->    = AC.writeCurry sub fname (genUntypedAbstract tyEnv tcEnv modul)
->  where fname = fromMaybe (uacyName sfn) tfn
-
-> showln :: Show a => a -> String
-> showln x = shows x "\n"
 
 \end{verbatim}
 
@@ -387,23 +393,6 @@ type check.
 > expandRecords _ ty = ty
 
 \end{verbatim}
-An implicit import of the prelude is added to the declarations of
-every module, except for the prelude itself. If no explicit import for
-the prelude is present, the prelude is imported unqualified, otherwise
-only a qualified import is added.
-\begin{verbatim}
-
-> importPrelude :: FilePath -> Module -> Module
-> importPrelude fn (Module m es ds) =
->   Module m es (if m == preludeMIdent then ds else ds')
->   where ids = [decl | decl@(ImportDecl _ _ _ _ _) <- ds]
->         ds' = ImportDecl (first fn) preludeMIdent
->                          (preludeMIdent `elem` map importedModule ids)
->                          Nothing Nothing : ds
->         importedModule (ImportDecl _ m' _ asM _) = fromMaybe m' asM
->         importedModule _ = error "Modules.importPrelude.importedModule: no pattern match"
-
-\end{verbatim}
 If an import declaration for a module is found, the compiler first
 checks whether an import for the module is already pending. In this
 case the module imports are cyclic which is not allowed in Curry. The
@@ -414,7 +403,7 @@ and compiled.
 \begin{verbatim}
 
 > loadInterface :: [FilePath] -> [ModuleIdent] -> ModuleEnv ->
->     (Position,ModuleIdent) -> IO ModuleEnv
+>     (Position, ModuleIdent) -> IO ModuleEnv
 > loadInterface paths ctxt mEnv (p,m)
 >   | m `elem` ctxt = errorAt p (cyclicImport m (takeWhile (/= m) ctxt))
 >   | isLoaded m mEnv = return mEnv
@@ -461,13 +450,49 @@ generated FlatCurry terms (type \texttt{Prog}).
 Interface files are updated by the Curry builder when necessary.
 (see module \texttt{CurryBuilder}).
 
+-- ---------------------------------------------------------------------------
+-- File Output
+-- ---------------------------------------------------------------------------
+
+> writeXML :: Bool -> Maybe FilePath -> FilePath -> CurryEnv -> IL.Module -> IO ()
+> writeXML sub tfn sfn cEnv il = writeModule sub ofn (showln code)
+>   where ofn  = fromMaybe (xmlName sfn) tfn
+>         code = (IL.xmlModule cEnv il)
+
+> writeFlat :: Options -> Maybe FilePath -> FilePath -> CurryEnv -> ModuleEnv
+>              -> ValueEnv -> TCEnv -> ArityEnv -> IL.Module -> IO Prog
+> writeFlat opts tfn sfn cEnv mEnv tyEnv tcEnv aEnv il
+>   = writeFlatFile opts (genFlatCurry opts cEnv mEnv tyEnv tcEnv aEnv il)
+>                        (fromMaybe (flatName sfn) tfn)
+
+> writeFlatFile :: Options -> (Prog, [WarnMsg]) -> String -> IO Prog
+> writeFlatFile opts (res, msgs) fname = do
+>   unless (noWarn opts) (printMessages msgs)
+>   if extendedFlat opts then writeExtendedFlat sub fname res
+>                        else writeFlatCurry    sub fname res
+>   return res
+>   where sub = writeToSubdir opts
+
+> writeTypedAbs :: Bool -> Maybe FilePath -> FilePath -> ValueEnv -> TCEnv -> Module -> IO ()
+> writeTypedAbs sub tfn sfn tyEnv tcEnv modul
+>   = AC.writeCurry sub fname (genTypedAbstract tyEnv tcEnv modul)
+>   where fname = fromMaybe (acyName sfn) tfn
+
+> writeUntypedAbs :: Bool -> Maybe FilePath -> FilePath -> ValueEnv -> TCEnv -> Module -> IO ()
+> writeUntypedAbs sub tfn sfn tyEnv tcEnv modul
+>   = AC.writeCurry sub fname (genUntypedAbstract tyEnv tcEnv modul)
+>   where fname = fromMaybe (uacyName sfn) tfn
+
+> showln :: Show a => a -> String
+> showln x = shows x "\n"
+
 \end{verbatim}
 The \texttt{doDump} function writes the selected information to the
 standard output.
 \begin{verbatim}
 
 > doDump :: Options -> (Dump,Doc) -> IO ()
-> doDump opts (d,x) =
+> doDump opts (d, x) =
 >   when (d `elem` dump opts)
 >        (print (text hd $$ text (replicate (length hd) '=') $$ x))
 >   where hd = dumpHeader d
@@ -520,21 +545,20 @@ be dependent on it any longer.
 >    cEnv = curryEnv mEnv tcEnv intf modul
 >    emptyIntf = Prog "" [] [] [] []
 >    writeInterface intf' msgs = do
->          unless (noWarn opts) (printMessages msgs)
->          writeFlatCurry (writeToSubdir opts) fintName intf'
+>      unless (noWarn opts) (printMessages msgs)
+>      writeFlatCurry (writeToSubdir opts) fintName intf'
 
 
-> genAbstract :: Options -> FilePath  -> ValueEnv -> TCEnv -> Module
->                -> IO (Maybe FilePath)
+> genAbstract :: Options -> FilePath  -> ValueEnv -> TCEnv -> Module -> IO (Maybe FilePath)
 > genAbstract opts@Options{writeToSubdir=sub} fname tyEnv tcEnv modul
->    | abstract opts
->      = do writeTypedAbs sub Nothing fname tyEnv tcEnv modul
->           return Nothing
->    | untypedAbstract opts
->      = do writeUntypedAbs sub Nothing fname tyEnv tcEnv modul
->           return Nothing
->    | otherwise
->      = internalError "@Modules.genAbstract: illegal option"
+>   | abstract opts
+>   = do writeTypedAbs sub Nothing fname tyEnv tcEnv modul
+>        return Nothing
+>   | untypedAbstract opts
+>   = do writeUntypedAbs sub Nothing fname tyEnv tcEnv modul
+>        return Nothing
+>   | otherwise
+>   = internalError "@Modules.genAbstract: illegal option"
 
 > printMessages :: [WarnMsg] -> IO ()
 > printMessages []   = return ()
@@ -555,21 +579,6 @@ from the type environment.
 >         isValue (NewtypeConstructor _ _) = False
 >         isValue (Value _ _) = True
 >         isValue (Label _ _ _) = False
-
-
-\end{verbatim}
-A module which doesn't contain a \texttt{module ... where} declaration
-obtains its filename as module identifier (unlike the definition in
-Haskell and original MCC where a module obtains \texttt{main}).
-\begin{verbatim}
-
-> patchModuleId :: FilePath -> Module -> Module
-> patchModuleId fn (Module mid mexports decls)
->    | (moduleName mid) == "main"
->      = Module (mkMIdent [takeBaseName fn]) mexports decls
->    | otherwise
->      = Module mid mexports decls
-
 
 \end{verbatim}
 Error functions.

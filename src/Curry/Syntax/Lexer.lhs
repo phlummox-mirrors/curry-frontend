@@ -44,9 +44,9 @@ In this section a lexer for Curry is implemented.
 >   isEOF (Token cat _) = cat == EOF
 
 > -- |Category of curry tokens
-> data Category =
+> data Category
 >   -- literals
->     CharTok | IntTok | FloatTok | IntegerTok | StringTok
+>   = CharTok | IntTok | FloatTok | IntegerTok | StringTok
 >   -- identifiers
 >   | Id | QId | Sym | QSym
 >   -- punctuation symbols
@@ -71,6 +71,8 @@ In this section a lexer for Curry is implemented.
 >   | Sym_Dot | Sym_Minus | Sym_MinusDot
 >   -- end-of-file token
 >   | EOF
+>   -- compiler pragma (bjp)
+>   | Pragma
 >   -- comments (only for full lexer) inserted by men & bbr
 >   | LineComment | NestedComment
 >   deriving (Eq,Ord)
@@ -87,22 +89,22 @@ attribute values, we make use of records.
 > -- |Attributes associated to a token
 > data Attributes
 >   = NoAttributes
->   | CharAttributes { cval :: Char, original :: String}
->   | IntAttributes { ival :: Int , original :: String}
->   | FloatAttributes { fval :: Double, original :: String}
->   | IntegerAttributes { intval :: Integer, original :: String}
->   | StringAttributes { sval :: String, original :: String}
->   | IdentAttributes { modul :: [String], sval :: String}
+>   | CharAttributes    { cval   :: Char    , original :: String}
+>   | IntAttributes     { ival   :: Int     , original :: String}
+>   | FloatAttributes   { fval   :: Double  , original :: String}
+>   | IntegerAttributes { intval :: Integer , original :: String}
+>   | StringAttributes  { sval   :: String  , original :: String}
+>   | IdentAttributes   { modul  :: [String], sval     :: String}
 
 > instance Show Attributes where
->   showsPrec _ NoAttributes = showChar '_'
->   showsPrec _ (CharAttributes cv _) = shows cv
->   showsPrec _ (IntAttributes iv _) = shows iv
->   showsPrec _ (FloatAttributes fv _) = shows fv
+>   showsPrec _ NoAttributes             = showChar '_'
+>   showsPrec _ (CharAttributes    cv _) = shows cv
+>   showsPrec _ (IntAttributes     iv _) = shows iv
+>   showsPrec _ (FloatAttributes   fv _) = shows fv
 >   showsPrec _ (IntegerAttributes iv _) = shows iv
->   showsPrec _ (StringAttributes sv _) = shows sv
+>   showsPrec _ (StringAttributes  sv _) = shows sv
 >   showsPrec _ (IdentAttributes mIdent ident) =
->     showString ("`" ++ concat (intersperse "." (mIdent ++ [ident])) ++ "'")
+>     showString ("`" ++ intercalate "." (mIdent ++ [ident]) ++ "'")
 
 \end{verbatim}
 The following functions can be used to construct tokens with
@@ -154,6 +156,10 @@ specific attributes.
 > nestedCommentTok :: String -> Token
 > nestedCommentTok s = Token NestedComment
 >   StringAttributes { sval = s, original = s }
+
+> -- |Construct a 'Token' for a compiler pragma
+> pragmaTok :: String -> Token
+> pragmaTok s = Token Pragma StringAttributes { sval = s, original = s }
 
 \end{verbatim}
 The \texttt{Show} instance of \texttt{Token} is designed to display
@@ -232,9 +238,10 @@ all tokens in their source representation.
 >   showsPrec _ (Token EOF _) = showString "<end-of-file>"
 >   showsPrec _ (Token LineComment a) = shows a
 >   showsPrec _ (Token NestedComment a) = shows a
+>   showsPrec _ (Token Pragma a) = showString "pragma " . shows a
 
 \end{verbatim}
-Tables for reserved operators and identifiers
+Maps for reserved operators and identifiers
 \begin{verbatim}
 
 > -- |Map of reserved operators
@@ -326,8 +333,8 @@ Lexing functions
 > lexFile :: P [(Position,Token)]
 > lexFile = fullLexer tokens failP
 >   where tokens p t@(Token c _)
->           | c == EOF = returnP [(p,t)]
->           | otherwise = lexFile `thenP` returnP . ((p,t):)
+>           | c == EOF = returnP [(p, t)]
+>           | otherwise = lexFile `thenP` returnP . ((p, t) :)
 
 > lexer :: SuccessP a -> FailP a -> P a
 > lexer success fail = skipBlanks
@@ -335,8 +342,8 @@ Lexing functions
 >     skipBlanks p [] bol = success p (tok EOF) p [] bol
 >     skipBlanks p ('\t':s) bol  = skipBlanks (tab p) s bol
 >     skipBlanks p ('\n':s) _bol = skipBlanks (nl p) s True
->     skipBlanks p ('-':'-':s) _bol =
->       skipBlanks (nl p) (tail' (dropWhile (/= '\n') s)) True
+>     skipBlanks p ('-':'-':s) _bol    = skipBlanks (nl p) (tail' (dropWhile (/= '\n') s)) True
+>     skipBlanks p ('{':'-':'#':s) bol = lexPragma id p success fail (incr p 3) s bol
 >     skipBlanks p ('{':'-':s) bol =
 >       nestedComment p skipBlanks fail (incr p 2) s bol
 >     skipBlanks p (c:s) bol
@@ -353,8 +360,8 @@ Lexing functions
 >     skipBlanks p ('\t':s) bol = skipBlanks (tab p) s bol
 >     skipBlanks p ('\n':s) _bol = skipBlanks (nl p) s True
 >     skipBlanks p s@('-':'-':_) bol = lexLineComment success p s bol
->     skipBlanks p s@('{':'-':_) bol =
->       lexNestedComment 0 id p success fail p s bol
+>     skipBlanks p ('{':'-':'#':s) bol = lexPragma id p success fail (incr p 3) s bol
+>     skipBlanks p s@('{':'-':_) bol = lexNestedComment 0 id p success fail p s bol
 >     skipBlanks p (c:s) bol
 >       | isSpace c = skipBlanks (next p) s bol
 >       | otherwise =
@@ -363,6 +370,18 @@ Lexing functions
 > lexLineComment :: SuccessP a -> P a
 > lexLineComment success p s = case break (=='\n') s of
 >   (comment,rest) -> success p (lineCommentTok comment) (incr p (length comment)) rest
+
+> lexPragma :: (String -> String) -> Position -> SuccessP a -> FailP a -> P a
+> lexPragma prag p0 success _ p ('#':'-':'}':s)
+>   = success p (pragmaTok (prag "")) (incr p 3) s
+> lexPragma prag p0 success fail p (c@'\t':s)
+>   = lexPragma (prag . (c:)) p0 success fail (tab p) s
+> lexPragma prag p0 success fail p (c@'\n':s)
+>   = lexPragma (prag . (c:)) p0 success fail (nl p) s
+> lexPragma prag p0 success fail p (c:s)
+>   = lexPragma (prag . (c:)) p0 success fail (next p) s
+> lexPragma prag p0 success fail p ""
+>   = fail p0 "Unterminated pragma" p []
 
 > lexNestedComment :: Int -> (String -> String) ->
 >                     Position -> SuccessP a -> FailP a -> P a
