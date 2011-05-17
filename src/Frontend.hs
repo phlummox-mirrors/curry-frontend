@@ -16,10 +16,10 @@ import Curry.Files.Filenames
 import Curry.Files.PathUtils
 import qualified Curry.Syntax as CS (Module (..), Decl (..), parseModule)
 
+import CompilerOpts (Options (..), Verbosity (..), TargetType (..), defaultOptions)
 import Modules (checkModule, simpleCheckModule, compileModule, importPrelude
   , patchModuleId, loadInterfaces)
 import CurryBuilder (smake)
-import CurryCompilerOpts (Options (..), defaultOptions)
 import CurryDeps (flattenDeps, moduleDeps, Source (..))
 import Base.Module (ModuleEnv)
 
@@ -102,8 +102,8 @@ makeInterfaces paths (CS.Module mid _ decls) = do
 
 opts :: [FilePath] -> Options
 opts paths = defaultOptions
-  { importPaths = paths
-  , noVerb      = True
-  , noWarn      = True
-  , abstract    = True
+  { optImportPaths = paths
+  , optVerbosity   = Quiet
+  , optWarn        = False
+  , optTargetTypes = [AbstractCurry]
   }

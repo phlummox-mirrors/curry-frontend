@@ -9,7 +9,7 @@ import Curry.Files.PathUtils
   (readModule, writeModule, getCurryPath, dropExtension, takeFileName)
 import Curry.Syntax (lexFile)
 
-import CurryCompilerOpts (Options(..))
+import CompilerOpts (Options(..))
 import Frontend (parse, typingParse, fullParse)
 import Html.SyntaxColoring
 
@@ -18,8 +18,8 @@ import Html.SyntaxColoring
 --- @param sourcefilename
 source2html :: Options -> String -> IO ()
 source2html opts sourcefilename = do
-  let imports = importPaths opts
-      outputfilename = fromMaybe "" $ output opts
+  let imports = optImportPaths opts
+      outputfilename = fromMaybe "" $ optOutput opts
       sourceprogname = dropExtension sourcefilename
       output' = if null outputfilename
                  then sourceprogname ++ "_curry.html"

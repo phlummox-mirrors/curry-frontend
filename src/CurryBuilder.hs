@@ -3,6 +3,7 @@
 
     September 2005, Martin Engelke (men@informatik.uni-kiel.de)
     March 2007, extensions by Sebastian Fischer (sebf@informatik.uni-kiel.de)
+    May 2011, refinements b Bjoern Peemoeller  (bjp@informatik.uni-kiel.de)
 -}
 module CurryBuilder (buildCurry, smake) where
 
@@ -15,7 +16,7 @@ import Curry.Files.Filenames
 import Curry.Files.PathUtils ( dropExtension, doesModuleExist, getCurryPath
   , getModuleModTime, tryGetModuleModTime)
 
-import CurryCompilerOpts (Options (..))
+import CompilerOpts (Options (..), Extension (..), TargetType (..))
 import CurryDeps (Source (..), flatDeps)
 import Messages (status, abortWith)
 import Modules (compileModule)
@@ -32,11 +33,14 @@ buildCurry opts file = do
     Just f  -> do
       (deps, errs) <- flatDeps implicitPrelude paths [] f
       unless (null errs) (abortWith errs)
-      makeCurry opts deps f
+      makeCurry (defaultToFlatCurry opts) deps f
   where
-    paths = importPaths opts
-    implicitPrelude = not $ xNoImplicitPrelude opts
+    paths = optImportPaths opts
+    implicitPrelude = NoImplicitPrelude `notElem` optExtensions opts
     missingModule f = "Error: missing module \"" ++ f ++ "\""
+    defaultToFlatCurry opt
+      | null $ optTargetTypes opt = opt { optTargetTypes = [FlatCurry] }
+      | otherwise                 = opt
 
 makeCurry :: Options -> [(ModuleIdent, Source)] -> FilePath -> IO ()
 makeCurry opts deps1 targetFile = mapM_ (compile . snd) deps1 where
@@ -47,7 +51,7 @@ makeCurry opts deps1 targetFile = mapM_ (compile . snd) deps1 where
       -- target file
     | dropExtension targetFile == dropExtension file = do
         flatIntfExists <- doesModuleExist (flatIntName file)
-        if flatIntfExists && not (force opts) && null (dump opts)
+        if flatIntfExists && not (optForce opts) && null (optDumps opts)
           then smake (targetNames file)
                       (targetFile: (catMaybes (map flatInterface mods)))
                       (generateFile file)
@@ -73,11 +77,12 @@ makeCurry opts deps1 targetFile = mapM_ (compile . snd) deps1 where
     compileModule (compOpts False) f >> return ()
 
   targetNames fn
-    | flat opts            = [flatName' opts fn] -- , flatIntName fn]
-    | flatXml opts         = [xmlName fn]
-    | abstract opts        = [acyName fn]
-    | untypedAbstract opts = [uacyName fn]
-    | parseOnly opts       = [fromMaybe (sourceRepName fn) (output opts)]
+    | FlatCurry            `elem` optTargetTypes opts = [flatName' opts fn] -- , flatIntName fn]
+    | FlatXml              `elem` optTargetTypes opts = [xmlName        fn]
+    | AbstractCurry        `elem` optTargetTypes opts = [acyName        fn]
+    | UntypedAbstractCurry `elem` optTargetTypes opts = [uacyName       fn]
+    | Parsed               `elem` optTargetTypes opts
+      = [fromMaybe (sourceRepName fn) (optOutput opts)]
     | otherwise            = [flatName' opts fn] -- , flatIntName fn]
 
   flatInterface mod1 = case (lookup mod1 deps1) of
@@ -86,18 +91,13 @@ makeCurry opts deps1 targetFile = mapM_ (compile . snd) deps1 where
     _                     -> Nothing
 
   compOpts isImport
-    | isImport = opts
-        { flat = True
-        , flatXml = False
-        , abstract = False
-        , untypedAbstract = False
-        , parseOnly = False
-        , dump = []
-        }
+    | isImport  = opts { optTargetTypes = [FlatCurry], optDumps = [] }
     | otherwise = opts
 
 flatName' :: Options -> FilePath -> FilePath
-flatName' opts = if extendedFlat opts then extFlatName else flatName
+flatName' opts
+  | ExtendedFlatCurry `elem` optTargetTypes opts  = extFlatName
+  | otherwise                                     = flatName
 
 {- |A simple make function
 
@@ -118,30 +118,18 @@ smake dests deps cmd alt = do
     | outOfDate destTimes depTimes        = cmd
     | otherwise                           = alt
 
-abortOnError :: IO a -> IO a
-abortOnError act = catch act (\err -> abortWith [show err])
-
 --
 getDestTimes :: [FilePath] -> IO [ClockTime]
 getDestTimes = liftM catMaybes . mapM tryGetModuleModTime
--- getDestTimes [] = return []
--- getDestTimes (file:files) = catch
---   (do time  <- getModuleModTime file
---       times <- getDestTimes files
---       return (time:times))
---   (const (getDestTimes files))
 
 --
 getDepTimes :: [String] -> IO [ClockTime]
 getDepTimes = mapM (abortOnError . getModuleModTime)
--- getDepTimes [] = return []
--- getDepTimes (file:files) = catch
---   (do time  <- getModuleModTime file
---       times <- getDepTimes files
---       return (time:times))
---   (\err -> abortWith [show err])
 
 --
 outOfDate :: [ClockTime] -> [ClockTime] -> Bool
 outOfDate tgtimes dptimes = or [ tg < dp | tg <- tgtimes, dp <- dptimes]
--- outOfDate tgtimes dptimes = or (map (\t -> or (map ((<) t) dptimes)) tgtimes)
+
+
+abortOnError :: IO a -> IO a
+abortOnError act = catch act (\err -> abortWith [show err])

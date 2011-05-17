@@ -10,10 +10,10 @@ import System.Exit (ExitCode (..), exitWith)
 
 import Curry.Base.Position (Position)
 
-import CurryCompilerOpts (Options (noVerb))
+import CompilerOpts (Options (optVerbosity), Verbosity (..))
 
 info :: Options -> String -> IO ()
-info opts msg = unless (noVerb opts) (putStrLn msg)
+info opts msg = unless (optVerbosity opts == Quiet) (putStrLn msg)
 
 status :: Options -> String -> IO ()
 status opts msg = info opts (msg ++ " ...")

@@ -10,7 +10,7 @@
 module Gen.GenFlatCurry (genFlatCurry, genFlatInterface) where
 
 -- Haskell libraries
-import Control.Monad (filterM, liftM, mplus, unless)
+import Control.Monad (filterM, liftM, mplus, when)
 import Control.Monad.State (State, runState, gets, modify)
 import Data.List (nub)
 import qualified Data.Map as Map (Map, empty, insert, lookup, fromList, toList)
@@ -29,7 +29,7 @@ import Base.Module (ModuleEnv)
 import Base.TypeConstructors (TCEnv, TypeInfo (..), qualLookupTC)
 import Base.Value (ValueEnv, ValueInfo (..), lookupValue, qualLookupValue)
 
-import CurryCompilerOpts (Options (..))
+import CompilerOpts (Options (..))
 import qualified CurryToIL as IL
 import Env.TopEnv (topEnvMap)
 import Env.CurryEnv (CurryEnv)
@@ -804,18 +804,17 @@ flattenRecordTypeFields
 
 --
 checkOverlapping :: Expr -> Expr -> FlatState ()
-checkOverlapping expr1 expr2
-   = do opts <- compilerOpts
-	unless (noOverlapWarn opts)
-	       (checkOverlap expr1 expr2)
- where
- checkOverlap (Case _ _ _ _) _
-    = do qid <- functionId
-	 genWarning (overlappingRules qid)
- checkOverlap _ (Case _ _ _ _)
-    = do qid <- functionId
-	 genWarning (overlappingRules qid)
- checkOverlap _ _ = return ()
+checkOverlapping expr1 expr2 = do
+  opts <- compilerOpts
+  when (optOverlapWarn opts) $ checkOverlap expr1 expr2
+  where
+    checkOverlap (Case _ _ _ _) _ = do
+      qid <- functionId
+      genWarning (overlappingRules qid)
+    checkOverlap _ (Case _ _ _ _) = do
+      qid <- functionId
+      genWarning (overlappingRules qid)
+    checkOverlap _ _              = return ()
 
 
 -------------------------------------------------------------------------------

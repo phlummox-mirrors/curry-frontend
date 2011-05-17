@@ -1,0 +1,222 @@
+{- |CompilerOpts - Defines data structures containing options for
+    compiling Curry programs (see module "CurryCompiler")
+
+    September 2005, Martin Engelke (men@informatik.uni-kiel.de)
+    March 2007    , extensions by Sebastian Fischer (sebf@informatik.uni-kiel.de)
+    May 2011      , refinements by Bjoern Peemoeller (bjp@informatik.uni-kiel.de)
+-}
+module CompilerOpts
+  ( Options (..), Verbosity (..), TargetType (..), Extension (..)
+  , DumpLevel (..), defaultOptions, compilerOpts, usage
+  ) where
+
+import Data.List (nub)
+import Data.Maybe (isJust)
+import System.Console.GetOpt
+import System.Environment (getArgs, getProgName)
+
+import Curry.Files.Filenames (currySubdir)
+
+-- |Data type for recording compiler options
+data Options = Options
+  -- general
+  { optHelp        :: Bool           -- ^ show help
+  , optVersion     :: Bool           -- ^ show the version
+  , optHtml        :: Bool           -- ^ generate Html code
+  , optVerbosity   :: Verbosity      -- ^ verbosity level
+  -- compilation
+  , optForce       :: Bool           -- ^ force compilation
+  , optImportPaths :: [FilePath]     -- ^ directories for imports
+  , optOutput      :: Maybe FilePath -- ^ name of output file
+  , optUseSubdir   :: Bool           -- use subdir for output?
+  , optInterface   :: Bool           -- ^ do not create an interface file
+  , optWarn        :: Bool           -- ^ warnings on/off
+  , optOverlapWarn :: Bool           -- ^ "overlap" warnings on/off
+  , optTargetTypes :: [TargetType]   -- ^ what to generate
+  , optExtensions  :: [Extension]    -- ^ language extensions
+  , optDumps       :: [DumpLevel]    -- ^ dumps
+  } -- deriving Show
+
+-- | Default compiler options
+defaultOptions :: Options
+defaultOptions = Options
+  { optHelp        = False
+  , optVersion     = False
+  , optHtml        = False
+  , optVerbosity   = Verbose
+  , optForce       = False
+  , optImportPaths = []
+  , optOutput      = Nothing
+  , optUseSubdir   = True
+  , optInterface   = True
+  , optWarn        = True
+  , optOverlapWarn = True
+  , optTargetTypes = []
+  , optExtensions  = []
+  , optDumps       = []
+  }
+
+data TargetType
+  = Parsed
+  | FlatCurry
+  | ExtendedFlatCurry
+  | FlatXml
+  | AbstractCurry
+  | UntypedAbstractCurry
+    deriving Eq
+
+data Verbosity
+  = Quiet
+  | Verbose
+    deriving Eq
+
+classifyVerbosity :: String -> Verbosity
+classifyVerbosity "0" = Quiet
+classifyVerbosity _   = Verbose
+
+-- TODO: dump FlatCurry code, dump AbstractCurry code, dump after 'case'
+-- expansion
+
+-- |Data type for representing code dumps
+data DumpLevel
+  = DumpRenamed      -- ^ dump source after renaming
+  | DumpTypes        -- ^ dump types after typechecking
+  | DumpDesugared    -- ^ dump source after desugaring
+  | DumpSimplified   -- ^ dump source after simplification
+  | DumpLifted       -- ^ dump source after lambda-lifting
+  | DumpIL           -- ^ dump IL code after translation
+  | DumpCase         -- ^ dump IL code after case elimination
+    deriving (Eq, Bounded, Enum, Show)
+
+dumpAll :: [DumpLevel]
+dumpAll = [minBound .. maxBound]
+
+-- |Data type representing language extensions
+data Extension
+  = BerndExtension -- TODO: Give it a more concise name
+  | NoImplicitPrelude
+  | AnonymousFreeVariables
+  | UnknownExtension String
+    deriving (Eq, Read, Show)
+
+classifyExtension :: String -> Extension
+classifyExtension str = case readsPrec 0 str of
+  [(e, "")] -> e
+  _         -> UnknownExtension str
+
+-- | All available compiler options
+options :: [OptDescr (Options -> Options)]
+options =
+  -- general
+  [ Option "h?" ["help"]
+      (NoArg (\opts -> opts { optHelp = True }))
+      "display this help and exit"
+  , Option "V"  ["version"]
+      (NoArg (\opts -> opts { optVersion = True }))
+      "show the version number"
+  , Option ""   ["html"]
+      (NoArg (\opts -> opts { optHtml = True }))
+      "generate html code"
+  , Option "v"  ["verbosity"]
+      (ReqArg (\arg opts -> opts { optVerbosity = classifyVerbosity arg }) "<n>")
+      "set verbosity level to <n>"
+  -- compilation
+  , Option "f"  ["force"]
+      (NoArg (\opts -> opts { optForce = True }))
+      "force compilation of dependent files"
+  , Option "i"  ["import-dir"]
+      (ReqArg (\arg opts -> opts { optImportPaths = nub $ arg : optImportPaths opts }) "DIR")
+      "search for imports in DIR"
+  , Option "o"  ["output"]
+      (ReqArg (\arg opts -> opts { optOutput = Just arg }) "FILE")
+      "write code to FILE"
+  , Option ""   ["no-subdir"]
+      (NoArg (\opts -> opts { optUseSubdir = False }))
+      ("disable writing to '" ++ currySubdir ++ "' subdirectory")
+  , Option ""   ["no-intf"]
+      (NoArg (\opts -> opts { optInterface = False }))
+      "do not create an interface file"
+  , Option ""   ["no-warn"]
+      (NoArg (\opts -> opts { optWarn = False }))
+      "do not print warnings"
+  , Option ""   ["no-overlap-warn"]
+      (NoArg (\opts -> opts { optOverlapWarn = False }))
+      "do not print warnings for overlapping rules"
+  -- target types
+  , Option ""   ["parse-only"]
+      (NoArg (\opts -> opts { optTargetTypes = nub $ Parsed : optTargetTypes opts }))
+      "generate source representation"
+  , Option ""   ["flat"]
+      (NoArg (\opts -> opts { optTargetTypes = nub $ FlatCurry : optTargetTypes opts }))
+      "generate FlatCurry code"
+  , Option ""   ["extended-flat"]
+      (NoArg (\opts -> opts { optTargetTypes = nub $ ExtendedFlatCurry : optTargetTypes opts }))
+      "generate FlatCurry code with source references"
+  , Option ""   ["xml"]
+      (NoArg (\opts -> opts { optTargetTypes = nub $ FlatXml : optTargetTypes opts }))
+      "generate flat xml code"
+  , Option ""   ["acy"]
+      (NoArg (\opts -> opts { optTargetTypes = nub $ AbstractCurry : optTargetTypes opts }))
+      "generate (type infered) AbstractCurry code"
+  , Option ""   ["uacy"]
+      (NoArg (\opts -> opts { optTargetTypes = nub $ UntypedAbstractCurry : optTargetTypes opts }))
+      "generate untyped AbstractCurry code"
+  -- extensions
+  , Option "e"  ["extended"]
+      (NoArg (\opts -> opts { optExtensions = nub $ BerndExtension : optExtensions opts }))
+      "enable extended Curry functionalities"
+  , Option "X"   []
+      (ReqArg (\arg opts -> opts { optExtensions = nub $ classifyExtension arg : optExtensions opts }) "EXT")
+      ("enable language extension EXT")
+  -- dump
+  , Option ""   ["dump-all"]
+      (NoArg (\opts -> opts { optDumps = dumpAll }))
+      "dump everything"
+  , Option ""   ["dump-renamed"]
+      (NoArg (\opts -> opts { optDumps = nub $ DumpRenamed : optDumps opts }))
+      "dump source code after renaming"
+  , Option ""   ["dump-types"]
+      (NoArg (\opts -> opts { optDumps = nub $ DumpTypes : optDumps opts }))
+      "dump types after type-checking"
+  , Option ""   ["dump-desugared"]
+      (NoArg (\opts -> opts { optDumps = nub $ DumpDesugared : optDumps opts }))
+      "dump source code after desugaring"
+  , Option ""   ["dump-simplified"]
+      (NoArg (\opts -> opts { optDumps = nub $ DumpSimplified : optDumps opts }))
+      "dump source code after simplification"
+  , Option ""   ["dump-lifted"]
+      (NoArg (\opts -> opts { optDumps = nub $ DumpLifted : optDumps opts }))
+      "dump source code after lambda-lifting"
+  , Option ""   ["dump-il"]
+      (NoArg (\opts -> opts { optDumps = nub $ DumpIL : optDumps opts }))
+      "dump intermediate language before lifting"
+  , Option ""   ["dump-case"]
+      (NoArg (\opts -> opts { optDumps = nub $ DumpCase : optDumps opts }))
+      "dump intermediate language after case simplification"
+  ]
+
+-- |Parse the command line arguments
+parseOpts :: [String] -> (Options, [String], [String])
+parseOpts args = (foldl (flip ($)) defaultOptions opts, files, errs) where
+  (opts, files, errs) = getOpt Permute options args
+
+-- |Check options and files and return a list of error messages
+checkOpts :: Options -> [String] -> [String]
+checkOpts opts files
+  | isJust (optOutput opts) && length files > 1
+    = ["cannot specify -o with multiple targets"]
+  | otherwise
+    = []
+
+-- |Print the usage information of the command line tool.
+usage :: String -> String
+usage prog = usageInfo header options
+  where header = "usage: " ++ prog ++ " [OPTION] ... MODULE ..."
+
+-- |Retrieve the compiler 'Options'
+compilerOpts :: IO (String, Options, [String], [String])
+compilerOpts = do
+  args <- getArgs
+  prog <- getProgName
+  let (opts, files, errs) = parseOpts args
+  return (prog, opts, files, errs ++ checkOpts opts files)

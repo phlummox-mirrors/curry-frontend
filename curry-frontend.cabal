@@ -74,7 +74,7 @@ Executable cymake
     , Html.CurryHtml
     , Html.SyntaxColoring
     , CurryBuilder
-    , CurryCompilerOpts
+    , CompilerOpts
     , CurryDeps
     , CurryToIL
     , Exports

@@ -61,7 +61,8 @@ This module controls the compilation of modules.
 > import Transform.Qual (qual)
 > import Transform.Simplify (simplify)
 
-> import CurryCompilerOpts (Options (..), Dump (..))
+> import CompilerOpts (Options (..), TargetType (..), Extension (..)
+>   , DumpLevel (..))
 > import CurryToIL (ilTrans)
 > import Exports (expandInterface, exportInterface)
 > import Imports (importInterface, importInterfaceIntf, importUnifyData)
@@ -102,7 +103,7 @@ code are obsolete and commented out.
 >   -- check whether module identifier and file name fit together
 >   checkModuleId fn m
 >   -- load the imported interfaces into a 'ModuleEnv'
->   mEnv <- loadInterfaces (importPaths opts) m
+>   mEnv <- loadInterfaces (optImportPaths opts) m
 >   if uacy || src
 >      then do
 >        (tyEnv, tcEnv, _, m', _, _) <- simpleCheckModule opts mEnv m
@@ -111,9 +112,9 @@ code are obsolete and commented out.
 >           then genAbstract opts fn tyEnv tcEnv m'
 >           -- just output the parsed source
 >           else do
->             let outputFile = fromMaybe (sourceRepName fn) (output opts)
+>             let outputFile = fromMaybe (sourceRepName fn) (optOutput opts)
 >                 outputMod = showModule m'
->             writeModule (writeToSubdir opts) outputFile outputMod
+>             writeModule (optUseSubdir opts) outputFile outputMod
 >             return Nothing
 >      else do
 >        -- checkModule checks types, and then transModule introduces new
@@ -124,12 +125,12 @@ code are obsolete and commented out.
 >                                 mEnv tyEnv tcEnv aEnv m'
 >        mapM_ (doDump opts) dumps
 >        genCode opts fn mEnv tyEnv tcEnv aEnv' intf m' il
->   where acy      = abstract opts
->         uacy     = untypedAbstract opts
->         fcy      = flat opts
->         xml      = flatXml opts
->         src      = parseOnly opts
->         likeFlat = fcy || xml || acy || uacy || src
+>   where acy      = AbstractCurry        `elem` optTargetTypes opts
+>         uacy     = UntypedAbstractCurry `elem` optTargetTypes opts
+>         fcy      = FlatCurry            `elem` optTargetTypes opts
+>         xml      = FlatXml              `elem` optTargetTypes opts
+>         src      = Parsed               `elem` optTargetTypes opts
+>         likeFlat = acy || uacy || fcy || xml || src
 >
 >         genCode opts' fn' mEnv tyEnv tcEnv aEnv intf m' il
 >            | fcy || xml = genFlat opts' fn' mEnv tyEnv tcEnv aEnv intf m' il
@@ -168,15 +169,17 @@ only a qualified import is added.
 
 > importPrelude :: Options -> FilePath -> Module -> Module
 > importPrelude opts fn (Module m es ds)
->   | m == preludeMIdent      = Module m es ds
->   | xNoImplicitPrelude opts = Module m es ds
->   | otherwise               = Module m es ds'
->   where ids = [decl | decl@(ImportDecl _ _ _ _ _) <- ds]
->         ds' = ImportDecl (first fn) preludeMIdent
->                          (preludeMIdent `elem` map importedModule ids)
->                          Nothing Nothing : ds
->         importedModule (ImportDecl _ m' _ asM _) = fromMaybe m' asM
->         importedModule _ = error "Modules.importPrelude.importedModule: no pattern match"
+>   | m == preludeMIdent = Module m es ds
+>   | noImpPrelude       = Module m es ds
+>   | otherwise          = Module m es ds'
+>   where
+>     noImpPrelude = NoImplicitPrelude `elem` optExtensions opts
+>     ids = [decl | decl@(ImportDecl _ _ _ _ _) <- ds]
+>     ds' = ImportDecl (first fn) preludeMIdent
+>                      (preludeMIdent `elem` map importedModule ids)
+>                      Nothing Nothing : ds
+>     importedModule (ImportDecl _ m' _ asM _) = fromMaybe m' asM
+>     importedModule _ = error "Modules.importPrelude.importedModule: no pattern match"
 
 > -- |Load the interface files into the 'ModuleEnv'
 > loadInterfaces :: [FilePath] -> Module -> IO ModuleEnv
@@ -187,13 +190,13 @@ only a qualified import is added.
 > simpleCheckModule :: Options -> ModuleEnv -> Module
 >   -> IO (ValueEnv, TCEnv, ArityEnv, Module, Interface, [WarnMsg])
 > simpleCheckModule opts mEnv (Module m es ds) =
->   do unless (noWarn opts) (printMessages msgs)
+>   do when (optWarn opts) (printMessages msgs)
 >      return (tyEnv'', tcEnv, aEnv'', modul, intf, msgs)
 >   where (impDs,topDs) = partition isImportDecl ds
 >         iEnv = foldr bindAlias initIEnv impDs
 >         (pEnv,tcEnv,tyEnv,aEnv) = importModules mEnv impDs
 >         msgs = warnCheck m tyEnv impDs topDs
->         withExt = withExtensions opts
+>         withExt = BerndExtension `elem` optExtensions opts
 >         (pEnv',topDs') = precCheck m pEnv
 >                        $ syntaxCheck withExt m iEnv aEnv tyEnv tcEnv
 >                        $ kindCheck m tcEnv topDs
@@ -206,23 +209,23 @@ only a qualified import is added.
 > checkModule :: Options -> ModuleEnv -> Module
 >      -> IO (ValueEnv,TCEnv,ArityEnv,Module,Interface,[WarnMsg])
 > checkModule opts mEnv (Module m es ds) =
->   do unless (noWarn opts) (printMessages msgs)
+>   do when (optWarn opts) (printMessages msgs)
 >      when (m == mkMIdent ["field114..."])
 >           (error (show es))
 >      return (tyEnv''', tcEnv', aEnv'', modul, intf, msgs)
 >   where (impDs,topDs) = partition isImportDecl ds
 >         iEnv = foldr bindAlias initIEnv impDs
 >         (pEnv,tcEnvI,tyEnvI,aEnv) = importModules mEnv impDs
->         tcEnv = if withExtensions opts
+>         tcEnv = if withExt
 >	             then fmap (expandRecordTC tcEnvI) tcEnvI
 >		     else tcEnvI
 >         lEnv = importLabels mEnv impDs
 >	  tyEnvL = addImportedLabels m lEnv tyEnvI
->	  tyEnv = if withExtensions opts
+>	  tyEnv = if withExt
 >	             then fmap (expandRecordTypes tcEnv) tyEnvL
 >		     else tyEnvI
 >         msgs = warnCheck m tyEnv impDs topDs
->	  withExt = withExtensions opts
+>	  withExt = BerndExtension `elem` optExtensions opts
 >         -- fre: replaced the argument aEnv by aEnv'' in the
 >         --      expression below. This fixed a bug that occured
 >         --      when one imported a module qualified that
@@ -238,14 +241,14 @@ only a qualified import is added.
 >         (pEnv'',tcEnv'',tyEnv'',aEnv'')
 >            = qualifyEnv mEnv pEnv' tcEnv' tyEnv' aEnv
 >         tyEnvL' = addImportedLabels m lEnv tyEnv''
->	  tyEnv''' = if withExtensions opts
+>	  tyEnv''' = if withExt
 >	                then fmap (expandRecordTypes tcEnv'') tyEnvL'
 >		        else tyEnv''
 >         --tyEnv''' = addImportedLabels m lEnv tyEnv''
 >         intf = exportInterface modul pEnv'' tcEnv'' tyEnv'''
 
 > transModule :: Bool -> Bool -> Bool -> ModuleEnv -> ValueEnv -> TCEnv
->      -> ArityEnv -> Module -> (IL.Module,ArityEnv,[(Dump,Doc)])
+>      -> ArityEnv -> Module -> (IL.Module,ArityEnv,[(DumpLevel,Doc)])
 > transModule flat' _debug _trusted mEnv tyEnv tcEnv aEnv (Module m es ds) =
 >     (il',aEnv',dumps)
 >   where topDs = filter (not . isImportDecl) ds
@@ -470,11 +473,12 @@ Interface files are updated by the Curry builder when necessary.
 
 > writeFlatFile :: Options -> (Prog, [WarnMsg]) -> String -> IO Prog
 > writeFlatFile opts (res, msgs) fname = do
->   unless (noWarn opts) (printMessages msgs)
->   if extendedFlat opts then writeExtendedFlat sub fname res
->                        else writeFlatCurry    sub fname res
+>   when (optWarn opts) (printMessages msgs)
+>   if ExtendedFlatCurry `elem` optTargetTypes opts
+>      then writeExtendedFlat sub fname res
+>      else writeFlatCurry    sub fname res
 >   return res
->   where sub = writeToSubdir opts
+>   where sub = optUseSubdir opts
 
 > writeTypedAbs :: Bool -> Maybe FilePath -> FilePath -> ValueEnv -> TCEnv -> Module -> IO ()
 > writeTypedAbs sub tfn sfn tyEnv tcEnv modul
@@ -494,21 +498,19 @@ The \texttt{doDump} function writes the selected information to the
 standard output.
 \begin{verbatim}
 
-> doDump :: Options -> (Dump,Doc) -> IO ()
-> doDump opts (d, x) =
->   when (d `elem` dump opts)
->        (print (text hd $$ text (replicate (length hd) '=') $$ x))
->   where hd = dumpHeader d
+> doDump :: Options -> (DumpLevel, Doc) -> IO ()
+> doDump opts (dl, x) = when (dl `elem` optDumps opts) $ print
+>   (text hd $$ text (replicate (length hd) '=') $$ x)
+>   where hd = dumpHeader dl
 
-> dumpHeader :: Dump -> String
-> dumpHeader DumpRenamed = "Module after renaming"
-> dumpHeader DumpTypes = "Types"
-> dumpHeader DumpDesugared = "Source code after desugaring"
+> dumpHeader :: DumpLevel -> String
+> dumpHeader DumpRenamed    = "Module after renaming"
+> dumpHeader DumpTypes      = "Types"
+> dumpHeader DumpDesugared  = "Source code after desugaring"
 > dumpHeader DumpSimplified = "Source code after simplification"
-> dumpHeader DumpLifted = "Source code after lifting"
-> dumpHeader DumpIL = "Intermediate code"
-> dumpHeader DumpCase = "Intermediate code after case simplification"
-
+> dumpHeader DumpLifted     = "Source code after lifting"
+> dumpHeader DumpIL         = "Intermediate code"
+> dumpHeader DumpCase       = "Intermediate code after case simplification"
 
 \end{verbatim}
 The functions \texttt{genFlat} and \texttt{genAbstract} generate
@@ -522,10 +524,10 @@ be dependent on it any longer.
 > genFlat :: Options -> FilePath -> ModuleEnv -> ValueEnv -> TCEnv -> ArityEnv
 >            -> Interface -> Module -> IL.Module -> IO (Maybe FilePath)
 > genFlat opts fname mEnv tyEnv tcEnv aEnv intf modul il
->   | flat opts
+>   | FlatCurry `elem` optTargetTypes opts
 >     = do _ <- writeFlat opts Nothing fname cEnv mEnv tyEnv tcEnv aEnv il
 >          let (flatInterface,intMsgs) = genFlatInterface opts cEnv mEnv tyEnv tcEnv aEnv il
->          if force opts
+>          if optForce opts
 >            then
 >              do writeInterface flatInterface intMsgs
 >                 return Nothing
@@ -538,8 +540,8 @@ be dependent on it any longer.
 >                        do writeInterface flatInterface intMsgs
 >                           return Nothing
 >                     else return Nothing
->   | flatXml opts
->     = writeXML (writeToSubdir opts) (output opts) fname cEnv il >>
+>   | FlatXml `elem` optTargetTypes opts
+>     = writeXML (optUseSubdir opts) (optOutput opts) fname cEnv il >>
 >       return Nothing
 >   | otherwise
 >     = internalError "@Modules.genFlat: illegal option"
@@ -548,16 +550,16 @@ be dependent on it any longer.
 >    cEnv = curryEnv mEnv tcEnv intf modul
 >    emptyIntf = Prog "" [] [] [] []
 >    writeInterface intf' msgs = do
->      unless (noWarn opts) (printMessages msgs)
->      writeFlatCurry (writeToSubdir opts) fintName intf'
+>      when (optWarn opts) (printMessages msgs)
+>      writeFlatCurry (optUseSubdir opts) fintName intf'
 
 
 > genAbstract :: Options -> FilePath  -> ValueEnv -> TCEnv -> Module -> IO (Maybe FilePath)
-> genAbstract opts@Options{writeToSubdir=sub} fname tyEnv tcEnv modul
->   | abstract opts
+> genAbstract opts@Options{optUseSubdir=sub} fname tyEnv tcEnv modul
+>   | AbstractCurry `elem` optTargetTypes opts
 >   = do writeTypedAbs sub Nothing fname tyEnv tcEnv modul
 >        return Nothing
->   | untypedAbstract opts
+>   | UntypedAbstractCurry `elem` optTargetTypes opts
 >   = do writeUntypedAbs sub Nothing fname tyEnv tcEnv modul
 >        return Nothing
 >   | otherwise
