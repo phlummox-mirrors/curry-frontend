@@ -373,14 +373,14 @@ Lexing functions
 
 > lexPragma :: (String -> String) -> Position -> SuccessP a -> FailP a -> P a
 > lexPragma prag p0 success _ p ('#':'-':'}':s)
->   = success p (pragmaTok (prag "")) (incr p 3) s
+>   = success p0 (pragmaTok (prag "")) (incr p 3) s
 > lexPragma prag p0 success fail p (c@'\t':s)
 >   = lexPragma (prag . (c:)) p0 success fail (tab p) s
 > lexPragma prag p0 success fail p (c@'\n':s)
 >   = lexPragma (prag . (c:)) p0 success fail (nl p) s
 > lexPragma prag p0 success fail p (c:s)
 >   = lexPragma (prag . (c:)) p0 success fail (next p) s
-> lexPragma prag p0 success fail p ""
+> lexPragma _ p0 _ fail p ""
 >   = fail p0 "Unterminated pragma" p []
 
 > lexNestedComment :: Int -> (String -> String) ->
