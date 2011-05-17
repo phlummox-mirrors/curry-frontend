@@ -28,9 +28,9 @@ lifted to the top-level.
 > import Curry.Base.Ident
 > import Curry.Syntax
 
+> import Base.Eval (EvalEnv)
 > import Base.Value (ValueEnv, ValueInfo (..), lookupValue)
 > import Env.TopEnv
-> import Eval (EvalEnv)
 > import Messages (internalError)
 > import SCC
 > import Types

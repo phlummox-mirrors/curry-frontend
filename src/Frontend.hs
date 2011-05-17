@@ -21,7 +21,7 @@ import Modules (checkModule, simpleCheckModule, compileModule, importPrelude
 import CurryBuilder (smake)
 import CurryCompilerOpts (Options (..), defaultOptions)
 import CurryDeps (flattenDeps, moduleDeps, Source (..))
-import Base (ModuleEnv)
+import Base.Module (ModuleEnv)
 
 {- |Return the result of a syntactical analysis of the source program 'src'.
     The result is the syntax tree of the program (type 'Module'; see Module
@@ -54,7 +54,7 @@ genCurrySyntax fn mod1
   | isValidModuleId fn mid = return mod'
   | otherwise              = failWith $ err_invalidModuleName mid
   where
-  mod'@(CS.Module mid _ _) = patchModuleId fn (importPrelude fn mod1)
+  mod'@(CS.Module mid _ _) = patchModuleId fn (importPrelude defaultOptions fn mod1)
 
   err_invalidModuleName :: ModuleIdent -> String
   err_invalidModuleName m = "module \"" ++ moduleName m
@@ -66,7 +66,7 @@ genCurrySyntax fn mod1
 
 --
 genFullCurrySyntax ::
-  (Options -> Base.ModuleEnv -> CS.Module -> IO (a, b, c, CS.Module, d, [WarnMsg]))
+  (Options -> ModuleEnv -> CS.Module -> IO (a, b, c, CS.Module, d, [WarnMsg]))
   -> [FilePath] -> MsgMonad CS.Module -> IO (MsgMonad CS.Module)
 genFullCurrySyntax check paths m = runMsgIO m $ \mod1 -> do
   errs <- makeInterfaces paths mod1

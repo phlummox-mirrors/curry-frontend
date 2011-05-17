@@ -11,7 +11,7 @@ environment. There is no need to check the annotations because this
 happens already while checking the definitions of the module.
 \begin{verbatim}
 
-> module Eval (EvalEnv, evalEnv) where
+> module Base.Eval (EvalEnv, evalEnv) where
 
 > import qualified Data.Map as Map
 

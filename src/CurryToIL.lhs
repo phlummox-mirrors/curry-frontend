@@ -31,8 +31,10 @@ data structures, we can use only a qualified import for the
 > import qualified Curry.IL as IL
 > import Curry.Syntax
 
-> import Base
-> import Eval (EvalEnv)
+> import Base.Eval (EvalEnv)
+> import Base.TypeConstructors (TCEnv, TypeInfo (..), qualLookupTC)
+> import Base.Types (toQualTypes)
+> import Base.Value (ValueEnv, ValueInfo (..), lookupValue, qualLookupValue)
 > import Messages (internalError)
 > import Utils (foldr2, thd3)
 > import Types

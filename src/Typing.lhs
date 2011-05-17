@@ -17,7 +17,7 @@
 > import Curry.Syntax
 
 > import Types
-> import Base (ValueEnv, ValueInfo (..), lookupValue, qualLookupValue)
+> import Base.Value (ValueEnv, ValueInfo (..), lookupValue, qualLookupValue)
 > import TypeSubst
 > import Env.TopEnv
 > import Utils

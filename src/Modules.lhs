@@ -34,10 +34,14 @@ This module controls the compilation of modules.
 > import qualified Curry.IL as IL
 > import Curry.Syntax
 
-> import Base (ModuleEnv, PEnv, TCEnv, ValueEnv, TypeInfo (..), ValueInfo (..)
->   , bindAlias, initDCEnv, initIEnv, initPEnv, initTCEnv, qualLookupTC
->   , toType, fromQualType, ArityEnv, bindArities, initAEnv)
-
+> import Base.Eval (evalEnv)
+> import Base.Module (ModuleEnv)
+> import Base.OpPrec (PEnv, initPEnv)
+> import Base.TypeConstructors (TCEnv, TypeInfo (..), initTCEnv, qualLookupTC)
+> import Base.Types (toType, fromQualType)
+> import Base.Value (ValueEnv, ValueInfo (..), initDCEnv)
+> import Base.Arity (ArityEnv, initAEnv, bindArities)
+> import Base.Import (bindAlias, initIEnv)
 > import Check.InterfaceCheck (interfaceCheck)
 > import Check.KindCheck (kindCheck)
 > import Check.SyntaxCheck (syntaxCheck)
@@ -59,7 +63,6 @@ This module controls the compilation of modules.
 
 > import CurryCompilerOpts (Options (..), Dump (..))
 > import CurryToIL (ilTrans)
-> import Eval (evalEnv)
 > import Exports (expandInterface, exportInterface)
 > import Imports (importInterface, importInterfaceIntf, importUnifyData)
 > import Messages (errorAt, internalError)
@@ -146,11 +149,6 @@ Haskell and original MCC where a module obtains \texttt{main}).
 >   | otherwise
 >     = m
 
-> loadInterfaces :: [FilePath] -> Module -> IO ModuleEnv
-> loadInterfaces paths (Module m _ ds) =
->   foldM (loadInterface paths [m]) Map.empty
->         [(p, m') | ImportDecl p m' _ _ _ <- ds]
-
 > checkModuleId :: Monad m => FilePath -> Module -> m ()
 > checkModuleId fn (Module mid _ _)
 >   | last (moduleQualifiers mid) == takeBaseName fn
@@ -170,9 +168,9 @@ only a qualified import is added.
 
 > importPrelude :: Options -> FilePath -> Module -> Module
 > importPrelude opts fn (Module m es ds)
->   | m == preludeMIdent = Module m es ds
->   | xNoImplicitPrelude = Module m es ds
->   | otherwise          = Module m es ds'
+>   | m == preludeMIdent      = Module m es ds
+>   | xNoImplicitPrelude opts = Module m es ds
+>   | otherwise               = Module m es ds'
 >   where ids = [decl | decl@(ImportDecl _ _ _ _ _) <- ds]
 >         ds' = ImportDecl (first fn) preludeMIdent
 >                          (preludeMIdent `elem` map importedModule ids)

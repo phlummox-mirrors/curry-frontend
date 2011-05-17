@@ -39,8 +39,8 @@ Executable cymake
     , mtl, old-time, containers, pretty
   ghc-options: -Wall
   Other-Modules:
-      Base
-    , Base.Arity
+      Base.Arity
+    , Base.Eval
     , Base.Import
     , Base.Module
     , Base.OpPrec
@@ -77,7 +77,6 @@ Executable cymake
     , CurryCompilerOpts
     , CurryDeps
     , CurryToIL
-    , Eval
     , Exports
     , Frontend
     , Imports

@@ -8,7 +8,8 @@ module Env.CurryEnv (CurryEnv (..), curryEnv) where
 import Data.Maybe
 
 import Types
-import Base (ModuleEnv, TCEnv, TypeInfo (..), qualLookupTC)
+import Base.Module (ModuleEnv)
+import Base.TypeConstructors(TCEnv, TypeInfo (..), qualLookupTC)
 import Messages (internalError)
 
 import Curry.Base.Position

@@ -33,8 +33,8 @@ Currently, the following optimizations are implemented:
 > import Curry.Base.Ident
 > import Curry.Syntax
 
+> import Base.Eval (EvalEnv)
 > import Base.Value (ValueEnv, ValueInfo (..), bindFun, qualLookupValue)
-> import Eval (EvalEnv)
 > import Messages (internalError)
 > import SCC
 > import Types

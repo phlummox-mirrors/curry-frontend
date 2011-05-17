@@ -22,9 +22,10 @@ is computed.
 > import Curry.Base.Ident
 > import Curry.Syntax
 > import Types
-> import Base (PEnv, TCEnv, ValueEnv, PrecInfo (..), TypeInfo (..)
->   , OpPrec (..), ValueInfo (..), fromQualType, lookupValue
->   , qualLookupP, qualLookupTC, qualLookupValue)
+> import Base.OpPrec (PEnv, PrecInfo (..), OpPrec (..), qualLookupP)
+> import Base.TypeConstructors (TCEnv, TypeInfo (..), qualLookupTC)
+> import Base.Types (fromQualType)
+> import Base.Value (ValueEnv, ValueInfo (..), lookupValue, qualLookupValue)
 > import Env.TopEnv
 > import Messages (errorAt', internalError)
 > import Utils (findDouble)

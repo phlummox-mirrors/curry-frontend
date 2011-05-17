@@ -9,11 +9,14 @@
 --
 module Gen.GenFlatCurry (genFlatCurry, genFlatInterface) where
 
-import Control.Monad.State
-import Data.List
-import qualified Data.Map as Map
-import Data.Maybe
+-- Haskell libraries
+import Control.Monad (filterM, liftM, mplus, unless)
+import Control.Monad.State (State, runState, gets, modify)
+import Data.List (nub)
+import qualified Data.Map as Map (Map, empty, insert, lookup, fromList, toList)
+import Data.Maybe (catMaybes, fromJust, fromMaybe, isJust)
 
+-- curry-base
 import Curry.Base.MessageMonad
 import Curry.Base.Ident as Id
 import Curry.ExtendedFlat.Type
@@ -21,9 +24,10 @@ import Curry.ExtendedFlat.TypeInference
 import qualified Curry.IL as IL
 import qualified Curry.Syntax as CS
 
-import Base  (ModuleEnv, TCEnv, ValueEnv, TypeInfo (..), ValueInfo (..)
-  , lookupValue, qualLookupTC, qualLookupValue, ArityEnv, ArityInfo (..)
-  , lookupArity, qualLookupArity)
+import Base.Arity (ArityEnv, ArityInfo (..), lookupArity, qualLookupArity)
+import Base.Module (ModuleEnv)
+import Base.TypeConstructors (TCEnv, TypeInfo (..), qualLookupTC)
+import Base.Value (ValueEnv, ValueInfo (..), lookupValue, qualLookupValue)
 
 import CurryCompilerOpts (Options (..))
 import qualified CurryToIL as IL
