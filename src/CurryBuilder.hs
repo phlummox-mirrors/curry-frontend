@@ -13,7 +13,7 @@ import System.Time (ClockTime)
 
 import Curry.Base.Ident
 import Curry.Files.Filenames
-import Curry.Files.PathUtils ( dropExtension, doesModuleExist, getCurryPath
+import Curry.Files.PathUtils ( dropExtension, doesModuleExist, lookupCurryFile
   , getModuleModTime, tryGetModuleModTime)
 
 import CompilerOpts (Options (..), Extension (..), TargetType (..))
@@ -27,17 +27,17 @@ import Modules (compileModule)
 -}
 buildCurry :: Options -> FilePath -> IO ()
 buildCurry opts file = do
-  file' <- getCurryPath paths file
+  file' <- lookupCurryFile importPaths file
   case file' of
     Nothing -> abortWith [missingModule file]
     Just f  -> do
-      (deps, errs) <- flatDeps implicitPrelude paths [] f
-      unless (null errs) (abortWith errs)
+      (deps, errs) <- flatDeps implicitlyAddPrelude importPaths [] f
+      unless (null errs) $ abortWith errs
       makeCurry (defaultToFlatCurry opts) deps f
   where
-    paths = optImportPaths opts
-    implicitPrelude = NoImplicitPrelude `notElem` optExtensions opts
-    missingModule f = "Error: missing module \"" ++ f ++ "\""
+    importPaths          = optImportPaths opts
+    implicitlyAddPrelude = NoImplicitPrelude `notElem` optExtensions opts
+    missingModule f      = "Error: missing module \"" ++ f ++ "\""
     defaultToFlatCurry opt
       | null $ optTargetTypes opt = opt { optTargetTypes = [FlatCurry] }
       | otherwise                 = opt
@@ -53,17 +53,17 @@ makeCurry opts deps1 targetFile = mapM_ (compile . snd) deps1 where
         flatIntfExists <- doesModuleExist (flatIntName file)
         if flatIntfExists && not (optForce opts) && null (optDumps opts)
           then smake (targetNames file)
-                      (targetFile: (catMaybes (map flatInterface mods)))
-                      (generateFile file)
-                      (skipFile file)
+                     (targetFile: (catMaybes (map flatInterface mods)))
+                     (generateFile file)
+                     (skipFile file)
           else generateFile file
     | otherwise = do
         flatIntfExists <- doesModuleExist (flatIntName file)
         if flatIntfExists
-          then smake [flatName' opts file] --[flatName file', flatIntName file']
-                      (file : (catMaybes (map flatInterface mods)))
-                      (compileFile file)
-                      (skipFile file)
+          then smake [flatName' opts file]
+                     (file : (catMaybes (map flatInterface mods)))
+                     (compileFile file)
+                     (skipFile file)
           else compileFile file
 
   compileFile f = do
@@ -76,14 +76,19 @@ makeCurry opts deps1 targetFile = mapM_ (compile . snd) deps1 where
     status opts $ "generating " ++ head (targetNames f)
     compileModule (compOpts False) f >> return ()
 
-  targetNames fn
-    | FlatCurry            `elem` optTargetTypes opts = [flatName' opts fn] -- , flatIntName fn]
-    | FlatXml              `elem` optTargetTypes opts = [xmlName        fn]
-    | AbstractCurry        `elem` optTargetTypes opts = [acyName        fn]
-    | UntypedAbstractCurry `elem` optTargetTypes opts = [uacyName       fn]
-    | Parsed               `elem` optTargetTypes opts
-      = [fromMaybe (sourceRepName fn) (optOutput opts)]
-    | otherwise            = [flatName' opts fn] -- , flatIntName fn]
+  targetNames fn = map (($fn) . snd)
+                 $ filter ((`elem` optTargetTypes opts) . fst)
+                 $ nameGens
+    where nameGens =
+            [ (FlatCurry            , flatName   )
+            , (ExtendedFlatCurry    , extFlatName)
+            , (FlatXml              , xmlName    )
+            , (AbstractCurry        , acyName    )
+            , (UntypedAbstractCurry , uacyName   )
+            , (Parsed               , \f -> fromMaybe (sourceRepName f)
+                                                      (optOutput opts))
+            , (FlatXml              , xmlName    )
+            ]
 
   flatInterface mod1 = case (lookup mod1 deps1) of
     Just (Source file _)  -> Just $ flatIntName file

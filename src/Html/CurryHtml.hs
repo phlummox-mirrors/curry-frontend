@@ -6,7 +6,7 @@ import Data.Maybe (fromMaybe, isJust)
 import Curry.Base.Ident (QualIdent (..), unqualify)
 import Curry.Base.MessageMonad (MsgMonad, failWith, runMsg)
 import Curry.Files.PathUtils
-  (readModule, writeModule, getCurryPath, dropExtension, takeFileName)
+  (readModule, writeModule, lookupCurryFile, dropExtension, takeFileName)
 import Curry.Syntax (lexFile)
 
 import CompilerOpts (Options(..))
@@ -25,7 +25,7 @@ source2html opts sourcefilename = do
                  then sourceprogname ++ "_curry.html"
                  else outputfilename
       modulname = takeFileName sourceprogname
-  fullfname <- getCurryPath imports sourcefilename
+  fullfname <- lookupCurryFile imports sourcefilename
   program <- filename2program imports (fromMaybe sourcefilename fullfname)
   (if null outputfilename then writeModule True output'
                           else writeFile   output')
