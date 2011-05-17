@@ -6,15 +6,15 @@ module Html.SyntaxColoring
 
 import Data.Char hiding (Space)
 import Data.Function (on)
-import Data.Maybe ()
-import Data.List ()
-import Debug.Trace ()
+import Data.Maybe (fromMaybe, mapMaybe)
+import Data.List (intersperse, nubBy, partition)
+import Debug.Trace (trace)
 
 import Curry.Base.Ident
 import Curry.Base.Position
 import Curry.Base.MessageMonad
 import Curry.Syntax hiding (infixOp)
-import Curry.Syntax.Lexer ()
+import Curry.Syntax.Lexer
 
 debug :: Bool
 debug = False -- mergen von Token und Codes
@@ -762,6 +762,7 @@ token2string (Token NestedComment (StringAttributes sv _)) = sv
 token2string (Token NestedComment a) = attributes2string a
 token2string (Token LeftBraceSemicolon _) = "{;"
 token2string (Token Binds _) = ":="
+token2string (Token Pragma a) = "{-#" ++ attributes2string a ++ "#-}"
 
 attributes2string :: Attributes -> [Char]
 attributes2string NoAttributes = ""
