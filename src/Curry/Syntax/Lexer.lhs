@@ -21,7 +21,7 @@ In this section a lexer for Curry is implemented.
 
 > import Prelude hiding (fail)
 > import Data.Char (chr, ord, isAlpha, isAlphaNum, isDigit, isSpace, isUpper)
-> import Data.List (intersperse)
+> import Data.List (intercalate)
 > import qualified Data.Map as Map (Map, union, lookup, fromList)
 
 > import Curry.Base.LexComb
