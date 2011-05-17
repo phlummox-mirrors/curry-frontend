@@ -20,7 +20,7 @@ isTypeDecl (TypeDecl    _ _ _ _) = True
 isTypeDecl _                     = False
 
 isTypeSig :: Decl -> Bool
-isTypeSig (TypeSig _ _ _)          = True
+isTypeSig (TypeSig      _ _ _    ) = True
 isTypeSig (ExternalDecl _ _ _ _ _) = True
 isTypeSig _                        = False
 
@@ -29,11 +29,11 @@ isEvalAnnot (EvalAnnot _ _ _) = True
 isEvalAnnot _ = False
 
 isValueDecl :: Decl -> Bool
-isValueDecl (FunctionDecl _ _ _) = True
-isValueDecl (ExternalDecl _ _ _ _ _) = True
-isValueDecl (FlatExternalDecl _ _) = True
-isValueDecl (PatternDecl _ _ _) = True
-isValueDecl (ExtraVariables _ _) = True
+isValueDecl (FunctionDecl     _ _ _    ) = True
+isValueDecl (ExternalDecl     _ _ _ _ _) = True
+isValueDecl (FlatExternalDecl _ _      ) = True
+isValueDecl (PatternDecl      _ _ _    ) = True
+isValueDecl (ExtraVariables    _ _     ) = True
 isValueDecl _ = False
 
 isRecordDecl :: Decl -> Bool
@@ -42,5 +42,5 @@ isRecordDecl _ = False
 
 -- |Convert an infix operator into an expression
 infixOp :: InfixOp -> Expression
-infixOp (InfixOp op) = Variable op
+infixOp (InfixOp     op) = Variable op
 infixOp (InfixConstr op) = Constructor op
