@@ -22,112 +22,105 @@ import Env.TopEnv
 import Messages (internalError, errorAt)
 import Types
 
--------------------------------------------------------------------------------
+-- ---------------------------------------------------------------------------
+-- Interface
+-- ---------------------------------------------------------------------------
 
--- Generates standard (type infered) AbstractCurry code from a CurrySyntax
--- module. The function needs the type environment 'tyEnv' to determin the
--- infered function types.
+-- |Generates standard (type infered) AbstractCurry code from a CurrySyntax
+--  module. The function needs the type environment 'tyEnv' to determin the
+--  infered function types.
 genTypedAbstract :: ValueEnv -> TCEnv -> Module -> CurryProg
 genTypedAbstract tyEnv tcEnv modul
    = genAbstract (genAbstractEnv TypedAcy tyEnv tcEnv modul) modul
 
-
--- Generates untyped AbstractCurry code from a CurrySyntax module. The type
--- signature takes place in every function type annotation, if it exists,
--- otherwise the dummy type "Prelude.untyped" is used.
+-- |Generates untyped AbstractCurry code from a CurrySyntax module. The type
+--  signature takes place in every function type annotation, if it exists,
+--  otherwise the dummy type "Prelude.untyped" is used.
 genUntypedAbstract :: ValueEnv -> TCEnv -> Module -> CurryProg
 genUntypedAbstract tyEnv tcEnv modul
    = genAbstract (genAbstractEnv UntypedAcy tyEnv tcEnv modul) modul
 
-
--------------------------------------------------------------------------------
--------------------------------------------------------------------------------
--- Private...
-
--- Generates an AbstractCurry program term from the syntax tree
+-- |Generate an AbstractCurry program term from the syntax tree
 genAbstract :: AbstractEnv -> Module -> CurryProg
 genAbstract env (Module mid _ decls)
-   = let partitions = foldl partitionDecl emptyPartitions decls
-         modname    = moduleName mid
-	 (imps, _)
-	     = mapfoldl genImportDecl env (reverse (importDecls partitions))
-	 (types, _)
-	     = mapfoldl genTypeDecl env (reverse (typeDecls partitions))
-	 (_, funcs)
-	     = Map.mapAccumWithKey (genFuncDecl False)
-	                env
-			(funcDecls partitions)
-	 (ops, _)
-	     = mapfoldl genOpDecl env (reverse (opDecls partitions))
-     in  CurryProg modname imps types (Map.elems funcs) ops
+  = CurryProg modname imps types (Map.elems funcs) ops
+  where
+    modname    = moduleName mid
+    partitions = foldl partitionDecl emptyPartitions decls
+    (imps, _)  = mapfoldl genImportDecl env (reverse (importDecls partitions))
+    (types, _) = mapfoldl genTypeDecl env (reverse (typeDecls partitions))
+    (_, funcs) = Map.mapAccumWithKey (genFuncDecl False) env
+                                     (funcDecls partitions)
+    (ops, _)   = mapfoldl genOpDecl env (reverse (opDecls partitions))
 
+-- ---------------------------------------------------------------------------
+-- Partitions
+-- ---------------------------------------------------------------------------
 
--------------------------------------------------------------------------------
--------------------------------------------------------------------------------
 -- The following types and functions can be used to spread a list of
 -- CurrySyntax declarations into four parts: a list of imports, a list of
 -- type declarations (data types and type synonyms), a table of function
 -- declarations and a list of fixity declarations.
 
+{- |Data type for representing partitions of CurrySyntax declarations
+    (according to the definition of the AbstractCurry program
+    representation; type 'CurryProg').
+    Since a complete function declaration usually consist of more than one
+    declaration (e.g. rules, type signature etc.), it is necessary
+    to collect them within an association list
+-}
+data Partitions = Partitions
+  { importDecls :: [Decl]
+  , typeDecls   :: [Decl]
+  , funcDecls   :: Map.Map Ident [Decl]
+  , opDecls     :: [Decl]
+  } deriving Show
+
+-- |Generate initial partitions
+emptyPartitions :: Partitions
+emptyPartitions = Partitions
+  { importDecls = []
+  , typeDecls   = []
+  , funcDecls   = Map.empty
+  , opDecls     = []
+  }
 
 -- Inserts a CurrySyntax top level declaration into a partition.
 -- Note: declarations are collected in reverse order.
 partitionDecl :: Partitions -> Decl -> Partitions
-partitionDecl partitions (TypeSig pos ids typeexpr)
-   = partitionFuncDecls (\ident -> TypeSig pos [ident] typeexpr) partitions ids
-partitionDecl partitions (EvalAnnot pos ids annot)
-   = partitionFuncDecls (\ident -> EvalAnnot pos [ident] annot) partitions ids
-partitionDecl partitions (FunctionDecl pos ident equs)
-   = partitionFuncDecls (const (FunctionDecl pos ident equs)) partitions [ident]
-partitionDecl partitions (ExternalDecl pos conv dname ident typeexpr)
-   = partitionFuncDecls (const (ExternalDecl pos conv dname ident typeexpr))
-                     partitions
-		     [ident]
-partitionDecl partitions (FlatExternalDecl pos ids)
-   = partitionFuncDecls (\ident -> FlatExternalDecl pos [ident]) partitions ids
-partitionDecl partitions (InfixDecl pos fix prec idents)
-   = partitions {opDecls = map (\ident -> (InfixDecl pos fix prec [ident])) idents
-		           ++ opDecls partitions }
-partitionDecl partitions decl
-   = case decl of
-       ImportDecl _ _ _ _ _
-         -> partitions {importDecls = decl: importDecls partitions }
-       DataDecl _ _ _ _
-         -> partitions {typeDecls = decl : typeDecls partitions }
-       TypeDecl _ _ _ _
-         -> partitions {typeDecls = decl : typeDecls partitions }
-       _ -> partitions
-
+-- import decls
+partitionDecl parts decl@(ImportDecl _ _ _ _ _)
+  = parts {importDecls = decl : importDecls parts }
+-- type decls
+partitionDecl parts decl@(DataDecl _ _ _ _)
+  = parts {importDecls = decl : typeDecls parts }
+partitionDecl parts decl@(TypeDecl _ _ _ _)
+  = parts {importDecls = decl : typeDecls parts }
+-- func decls
+partitionDecl parts (TypeSig pos ids tyexpr)
+  = partitionFuncDecls (\ident -> TypeSig pos [ident] tyexpr) parts ids
+partitionDecl parts (EvalAnnot pos ids annot)
+  = partitionFuncDecls (\ident -> EvalAnnot pos [ident] annot) parts ids
+partitionDecl parts (FunctionDecl pos ident equs)
+  = partitionFuncDecls (const (FunctionDecl pos ident equs)) parts [ident]
+partitionDecl parts (ExternalDecl pos conv dname ident tyexpr)
+  = partitionFuncDecls (const (ExternalDecl pos conv dname ident tyexpr)) parts [ident]
+partitionDecl parts (FlatExternalDecl pos ids)
+   = partitionFuncDecls (\ident -> FlatExternalDecl pos [ident]) parts ids
+-- op decls
+partitionDecl parts (InfixDecl pos fix prec idents)
+   = partitions {opDecls = map (\ident -> (InfixDecl pos fix prec [ident])) idents ++ opDecls parts }
+-- default
+partitionDecl parts _ = parts
 
 --
 partitionFuncDecls :: (Ident -> Decl) -> Partitions -> [Ident] -> Partitions
-partitionFuncDecls genDecl partitions ids
-   = partitions {funcDecls = foldl partitionFuncDecl (funcDecls partitions) ids}
- where
-   partitionFuncDecl funcs' ident
-      = Map.insert ident (genDecl ident : fromMaybe [] (Map.lookup ident funcs')) funcs'
-
-
--- Data type for representing partitions of CurrySyntax declarations
--- (according to the definition of the AbstractCurry program
--- representation; type 'CurryProg').
--- Since a complete function declaration usually consist of more than one
--- declaration (e.g. rules, type signature etc.), it is necessary
--- to collect them within an association list
-data Partitions = Partitions {importDecls :: [Decl],
-			      typeDecls   :: [Decl],
-			      funcDecls   :: Map.Map Ident [Decl],
-			      opDecls     :: [Decl]
-			     } deriving Show
-
--- Generates initial partitions
-emptyPartitions :: Partitions
-emptyPartitions = Partitions {importDecls = [],
-			      typeDecls   = [],
-			      funcDecls   = Map.empty,
-			      opDecls     = []
-			     }
-
+partitionFuncDecls genDecl parts ids
+  = parts { funcDecls = foldl partitionFuncDecl (funcDecls parts) ids }
+  where
+    partitionFuncDecl funcs' ident
+      = Map.insert ident
+          (genDecl ident : fromMaybe [] (Map.lookup ident funcs')) funcs'
 
 -------------------------------------------------------------------------------
 -- The following functions convert CurrySyntax terms to AbstractCurry

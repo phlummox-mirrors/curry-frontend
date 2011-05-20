@@ -96,46 +96,45 @@ code are obsolete and commented out.
 
 > compileModule :: Options -> FilePath -> IO (Maybe FilePath)
 > compileModule opts fn = do
->   -- read, parse and eventually add Prelude import
->   modul <- liftM (importPrelude opts fn . ok . parseModule likeFlat fn) (readModule fn)
+>   -- read and parse module
+>   parsed <- (ok . parseModule likeFlat fn) `liftM` readModule fn
+>   -- add Prelude import
+>   let withPrelude = importPrelude opts fn parsed
 >   -- generate module identifier from file name if missing
->   let m = patchModuleId fn modul
+>   let m = patchModuleId fn withPrelude
 >   -- check whether module identifier and file name fit together
 >   checkModuleId fn m
 >   -- load the imported interfaces into a 'ModuleEnv'
 >   mEnv <- loadInterfaces (optImportPaths opts) m
->   if uacy || src
+>   if not withFlat
 >      then do
 >        (tyEnv, tcEnv, _, m', _, _) <- simpleCheckModule opts mEnv m
->        if uacy
->           -- generate untyped AbstractCurry
->           then genAbstract opts fn tyEnv tcEnv m'
->           -- just output the parsed source
->           else do
->             let outputFile = fromMaybe (sourceRepName fn) (optOutput opts)
->                 outputMod = showModule m'
->             writeModule (optUseSubdir opts) outputFile outputMod
->             return Nothing
+>        -- generate untyped AbstractCurry
+>        when uacy $ genAbstract opts fn tyEnv tcEnv m' >> return ()
+>        -- output the parsed source
+>        when src  $ genParsed   opts fn m'
 >      else do
 >        -- checkModule checks types, and then transModule introduces new
 >        -- functions (by lambda lifting in 'desugar'). Consequence: The
 >        -- types of the newly introduced functions are not inferred (hsi)
 >        (tyEnv, tcEnv, aEnv, m', intf, _) <- checkModule opts mEnv m
->        let (il,aEnv',dumps) = transModule fcy False False
+>        let (il, aEnv', dumps) = transModule fcy False False
 >                                 mEnv tyEnv tcEnv aEnv m'
+>        -- dump intermediate results
 >        mapM_ (doDump opts) dumps
->        genCode opts fn mEnv tyEnv tcEnv aEnv' intf m' il
->   where acy      = AbstractCurry        `elem` optTargetTypes opts
->         uacy     = UntypedAbstractCurry `elem` optTargetTypes opts
->         fcy      = FlatCurry            `elem` optTargetTypes opts
->         xml      = FlatXml              `elem` optTargetTypes opts
->         src      = Parsed               `elem` optTargetTypes opts
->         likeFlat = acy || uacy || fcy || xml || src
->
->         genCode opts' fn' mEnv tyEnv tcEnv aEnv intf m' il
->            | fcy || xml = genFlat opts' fn' mEnv tyEnv tcEnv aEnv intf m' il
->            | acy        = genAbstract opts' fn' tyEnv tcEnv m'
->            | otherwise  = return Nothing
+>        -- generate target code
+>        when (acy || uacy) $ genAbstract opts fn tyEnv tcEnv m' >> return ()
+>        when (fcy ||  xml) $ genFlat opts fn mEnv tyEnv tcEnv aEnv' intf m' il >> return ()
+>        when src           $ genParsed opts fn m'
+>   where
+>     acy      = AbstractCurry        `elem` optTargetTypes opts
+>     uacy     = UntypedAbstractCurry `elem` optTargetTypes opts
+>     fcy      = FlatCurry            `elem` optTargetTypes opts
+>     xml      = FlatXml              `elem` optTargetTypes opts
+>     src      = Parsed               `elem` optTargetTypes opts
+>     extended = ExtendedFlatCurry    `elem` optTargetTypes opts
+>     withFlat = or [fcy, xml]
+>     likeFlat = not extended
 
 \end{verbatim}
 A module which doesn't contain a \texttt{module ... where} declaration
@@ -150,6 +149,7 @@ Haskell and original MCC where a module obtains \texttt{main}).
 >   | otherwise
 >     = m
 
+> -- |Check whether the 'ModuleIdent' and the 'FilePath' fit together
 > checkModuleId :: Monad m => FilePath -> Module -> m ()
 > checkModuleId fn (Module mid _ _)
 >   | last (moduleQualifiers mid) == takeBaseName fn
@@ -168,121 +168,130 @@ only a qualified import is added.
 \begin{verbatim}
 
 > importPrelude :: Options -> FilePath -> Module -> Module
-> importPrelude opts fn (Module m es ds)
->   | m == preludeMIdent = Module m es ds
->   | noImpPrelude       = Module m es ds
->   | otherwise          = Module m es ds'
+> importPrelude opts fn m(Module mid es ds)
+>     -- the Prelude itself
+>   | mid == preludeMIdent          = m
+>     -- disabled by option
+>   | noImpPrelude                  = m
+>     -- already imported
+>   | preludeMIdent `elem` imported = m
+>     -- let's add it!
+>   | otherwise                     = Module mid es (preludeImp : ds)
 >   where
 >     noImpPrelude = NoImplicitPrelude `elem` optExtensions opts
->     ids = [decl | decl@(ImportDecl _ _ _ _ _) <- ds]
->     ds' = ImportDecl (first fn) preludeMIdent
->                      (preludeMIdent `elem` map importedModule ids)
->                      Nothing Nothing : ds
->     importedModule (ImportDecl _ m' _ asM _) = fromMaybe m' asM
->     importedModule _ = error "Modules.importPrelude.importedModule: no pattern match"
+>     preludeImp   = ImportDecl (first fn) preludeMIdent
+>                    False   -- qualified
+>                    Nothing -- no alias
+>                    Nothing -- no selection of types, functions, etc.
+>     imported     = [imp | decl@(ImportDecl _ imp _ _ _) <- ds]
 
-> -- |Load the interface files into the 'ModuleEnv'
-> loadInterfaces :: [FilePath] -> Module -> IO ModuleEnv
-> loadInterfaces paths (Module m _ ds) =
->   foldM (loadInterface paths [m]) Map.empty
->         [(p, m') | ImportDecl p m' _ _ _ <- ds]
 
+> -- |
 > simpleCheckModule :: Options -> ModuleEnv -> Module
 >   -> IO (ValueEnv, TCEnv, ArityEnv, Module, Interface, [WarnMsg])
-> simpleCheckModule opts mEnv (Module m es ds) =
->   do when (optWarn opts) (printMessages msgs)
->      return (tyEnv'', tcEnv, aEnv'', modul, intf, msgs)
->   where (impDs,topDs) = partition isImportDecl ds
->         iEnv = foldr bindAlias initIEnv impDs
->         (pEnv,tcEnv,tyEnv,aEnv) = importModules mEnv impDs
->         msgs = warnCheck m tyEnv impDs topDs
->         withExt = BerndExtension `elem` optExtensions opts
->         (pEnv',topDs') = precCheck m pEnv
->                        $ syntaxCheck withExt m iEnv aEnv tyEnv tcEnv
->                        $ kindCheck m tcEnv topDs
->         ds' = impDs ++ qual m tyEnv topDs'
->         modul = (Module m es ds') --expandInterface (Module m es ds') tcEnv tyEnv
->         (_,tcEnv'',tyEnv'',aEnv'')
->            = qualifyEnv mEnv pEnv' tcEnv tyEnv aEnv
->         intf = exportInterface modul pEnv' tcEnv'' tyEnv''
+> simpleCheckModule opts mEnv (Module m es ds) = do
+>   showWarnings warnMsgs
+>   return (tyEnv'', tcEnv, aEnv'', modul, intf, msgs)
+>   where
+>     -- split import declarations
+>     (impDs, topDs) = partition isImportDecl ds
+>     -- build import environment
+>     importEnv = fromDeclList impDs
+>     -- ?
+>     (pEnv, tcEnv, tyEnv, aEnv) = importModules mEnv impDs
+>     -- check for warnings
+>     warnMsgs = warnCheck m tyEnv impDs topDs
+>     -- check kinds, syntax, precedence
+>     (pEnv', topDs') = precCheck m pEnv
+>                     $ syntaxCheck withExt m importEnv aEnv tyEnv tcEnv
+>                     $ kindCheck m tcEnv topDs
+>     withExt = BerndExtension `elem` optExtensions opts
+>     ds' = impDs ++ qual m tyEnv topDs'
+>     modul = (Module m es ds') --expandInterface (Module m es ds') tcEnv tyEnv
+>     (_, tcEnv'', tyEnv'', aEnv'')
+>        = qualifyEnv mEnv pEnv' tcEnv tyEnv aEnv
+>     intf = exportInterface modul pEnv' tcEnv'' tyEnv''
 
 > checkModule :: Options -> ModuleEnv -> Module
->      -> IO (ValueEnv,TCEnv,ArityEnv,Module,Interface,[WarnMsg])
-> checkModule opts mEnv (Module m es ds) =
->   do when (optWarn opts) (printMessages msgs)
->      when (m == mkMIdent ["field114..."])
->           (error (show es))
->      return (tyEnv''', tcEnv', aEnv'', modul, intf, msgs)
->   where (impDs,topDs) = partition isImportDecl ds
->         iEnv = foldr bindAlias initIEnv impDs
->         (pEnv,tcEnvI,tyEnvI,aEnv) = importModules mEnv impDs
->         tcEnv = if withExt
->	             then fmap (expandRecordTC tcEnvI) tcEnvI
->		     else tcEnvI
->         lEnv = importLabels mEnv impDs
->	  tyEnvL = addImportedLabels m lEnv tyEnvI
->	  tyEnv = if withExt
->	             then fmap (expandRecordTypes tcEnv) tyEnvL
->		     else tyEnvI
->         msgs = warnCheck m tyEnv impDs topDs
->	  withExt = BerndExtension `elem` optExtensions opts
+>   -> IO (ValueEnv, TCEnv, ArityEnv, Module, Interface, [WarnMsg])
+> checkModule opts mEnv (Module m es ds) = do
+>   showWarnings warnMsgs
+>   when (m == mkMIdent ["field114..."]) (error (show es))
+>   return (tyEnv''', tcEnv', aEnv'', modul, intf, msgs)
+>   where
+>     (impDs, topDs) = partition isImportDecl ds
+>     iEnv = foldr bindAlias initIEnv impDs
+>     (pEnv, tcEnvI, tyEnvI, aEnv) = importModules mEnv impDs
+>     tcEnv = if withExt
+>               then fmap (expandRecordTC tcEnvI) tcEnvI
+>               else tcEnvI
+>     lEnv = importLabels mEnv impDs
+>     tyEnvL = addImportedLabels m lEnv tyEnvI
+>     tyEnv = if withExt
+>               then fmap (expandRecordTypes tcEnv) tyEnvL
+>               else tyEnvI
+>     warnMsgs = warnCheck m tyEnv impDs topDs
+>     withExt = BerndExtension `elem` optExtensions opts
 >         -- fre: replaced the argument aEnv by aEnv'' in the
 >         --      expression below. This fixed a bug that occured
 >         --      when one imported a module qualified that
 >         --      exported a function from another module.
 >         --      However, there is now a cyclic dependecy
 >         --      but tests didn't show any problems.
->         (pEnv',topDs') = precCheck m pEnv
->		           $ syntaxCheck withExt m iEnv aEnv'' tyEnv tcEnv
->			   $ kindCheck m tcEnv topDs
->         (tcEnv',tyEnv') = typeCheck m tcEnv tyEnv topDs'
->         ds' = impDs ++ qual m tyEnv' topDs'
->         modul = expandInterface (Module m es ds') tcEnv' tyEnv'
->         (pEnv'',tcEnv'',tyEnv'',aEnv'')
->            = qualifyEnv mEnv pEnv' tcEnv' tyEnv' aEnv
->         tyEnvL' = addImportedLabels m lEnv tyEnv''
->	  tyEnv''' = if withExt
->	                then fmap (expandRecordTypes tcEnv'') tyEnvL'
->		        else tyEnv''
->         --tyEnv''' = addImportedLabels m lEnv tyEnv''
->         intf = exportInterface modul pEnv'' tcEnv'' tyEnv'''
+>     (pEnv', topDs') = precCheck m pEnv
+>                     $ syntaxCheck withExt m iEnv aEnv'' tyEnv tcEnv
+>                     $ kindCheck m tcEnv topDs
+>     (tcEnv', tyEnv') = typeCheck m tcEnv tyEnv topDs'
+>     ds' = impDs ++ qual m tyEnv' topDs'
+>     modul = expandInterface (Module m es ds') tcEnv' tyEnv'
+>     (pEnv'', tcEnv'', tyEnv'', aEnv'')
+>        = qualifyEnv mEnv pEnv' tcEnv' tyEnv' aEnv
+>     tyEnvL' = addImportedLabels m lEnv tyEnv''
+>     tyEnv''' = if withExt
+>                 then fmap (expandRecordTypes tcEnv'') tyEnvL'
+>                 else tyEnv''
+>     --tyEnv''' = addImportedLabels m lEnv tyEnv''
+>     intf = exportInterface modul pEnv'' tcEnv'' tyEnv'''
 
 > transModule :: Bool -> Bool -> Bool -> ModuleEnv -> ValueEnv -> TCEnv
 >      -> ArityEnv -> Module -> (IL.Module,ArityEnv,[(DumpLevel,Doc)])
 > transModule flat' _debug _trusted mEnv tyEnv tcEnv aEnv (Module m es ds) =
->     (il',aEnv',dumps)
->   where topDs = filter (not . isImportDecl) ds
->         evEnv = evalEnv topDs
->         (desugared,tyEnv') = desugar tyEnv tcEnv (Module m es topDs)
->         (simplified,tyEnv'') = simplify flat' tyEnv' evEnv desugared
->         (lifted,tyEnv''',evEnv') = lift tyEnv'' evEnv simplified
->         aEnv' = bindArities aEnv lifted
->         il = ilTrans flat' tyEnv''' tcEnv evEnv' lifted
->         il' = completeCase mEnv il
->         dumps = [(DumpRenamed,ppModule (Module m es ds)),
->	           (DumpTypes,ppTypes m (localBindings tyEnv)),
->	           (DumpDesugared,ppModule desugared),
->                  (DumpSimplified,ppModule simplified),
->                  (DumpLifted,ppModule lifted),
->                  (DumpIL,IL.ppModule il),
->	           (DumpCase,IL.ppModule il')
->	          ]
+>   (il',aEnv',dumps)
+>   where
+>     topDs = filter (not . isImportDecl) ds
+>     evEnv = evalEnv topDs
+>     (desugared, tyEnv') = desugar tyEnv tcEnv (Module m es topDs)
+>     (simplified, tyEnv'') = simplify flat' tyEnv' evEnv desugared
+>     (lifted, tyEnv''', evEnv') = lift tyEnv'' evEnv simplified
+>     aEnv' = bindArities aEnv lifted
+>     il = ilTrans flat' tyEnv''' tcEnv evEnv' lifted
+>     il' = completeCase mEnv il
+>     dumps = [ (DumpRenamed   , ppModule (Module m es ds)      )
+>             , (DumpTypes     , ppTypes m (localBindings tyEnv))
+>             , (DumpDesugared , ppModule desugared             )
+>             , (DumpSimplified, ppModule simplified            )
+>             , (DumpLifted    , ppModule lifted                )
+>             , (DumpIL        , IL.ppModule il                 )
+>             , (DumpCase      , IL.ppModule il'                )
+>             ]
 
 > qualifyEnv :: ModuleEnv -> PEnv -> TCEnv -> ValueEnv -> ArityEnv
 >     -> (PEnv,TCEnv,ValueEnv,ArityEnv)
 > qualifyEnv mEnv pEnv tcEnv tyEnv aEnv =
->   (foldr bindQual pEnv' (localBindings pEnv),
->    foldr bindQual tcEnv' (localBindings tcEnv),
->    foldr bindGlobal tyEnv' (localBindings tyEnv),
->    foldr bindQual aEnv' (localBindings aEnv))
->   where (pEnv',tcEnv',tyEnv',aEnv') =
->           foldl importInterface' initEnvs (Map.toList mEnv)
->         importInterface' (pEnv1,tcEnv1,tyEnv1,aEnv1) (m,ds) =
->           importInterfaceIntf (Interface m ds) pEnv1 tcEnv1 tyEnv1 aEnv1
->         bindQual (_,y) = qualBindTopEnv "Modules.qualifyEnv" (origName y) y
->         bindGlobal (x,y)
->           | uniqueId x == 0 = bindQual (x,y)
->           | otherwise = bindTopEnv "Modules.qualifyEnv" x y
+>   ( foldr bindQual   pEnv'  (localBindings pEnv )
+>   , foldr bindQual   tcEnv' (localBindings tcEnv)
+>   , foldr bindGlobal tyEnv' (localBindings tyEnv)
+>   , foldr bindQual   aEnv'  (localBindings aEnv )
+>   )
+>   where
+>     (pEnv', tcEnv', tyEnv', aEnv') =
+>       foldl importInterface' initEnvs (Map.toList mEnv)
+>     importInterface' (pEnv1,tcEnv1,tyEnv1,aEnv1) (m,ds) =
+>       importInterfaceIntf (Interface m ds) pEnv1 tcEnv1 tyEnv1 aEnv1
+>     bindQual (_, y) = qualBindTopEnv "Modules.qualifyEnv" (origName y) y
+>     bindGlobal (x, y)
+>       | uniqueId x == 0 = bindQual (x, y)
+>       | otherwise = bindTopEnv "Modules.qualifyEnv" x y
 
 \end{verbatim}
 
@@ -291,17 +300,18 @@ imported modules into scope for the current module.
 \begin{verbatim}
 
 > importModules :: ModuleEnv -> [Decl] -> (PEnv,TCEnv,ValueEnv,ArityEnv)
-> importModules mEnv ds = (pEnv,importUnifyData tcEnv,tyEnv,aEnv)
->   where (pEnv,tcEnv,tyEnv,aEnv) = foldl importModule initEnvs ds
->         importModule (pEnv',tcEnv',tyEnv',aEnv') (ImportDecl p m q asM is) =
->           case Map.lookup m mEnv of
->             Just ds1 -> importInterface p (fromMaybe m asM) q is
->                                        (Interface m ds1) pEnv' tcEnv' tyEnv' aEnv'
->             Nothing -> internalError "importModule"
->         importModule t _ = t
+> importModules mEnv ds = (pEnv, importUnifyData tcEnv, tyEnv, aEnv)
+>   where
+>     (pEnv,tcEnv,tyEnv,aEnv) = foldl importModule initEnvs ds
+>     importModule (pEnv',tcEnv',tyEnv',aEnv') (ImportDecl p m q asM is) =
+>       case Map.lookup m mEnv of
+>         Just ds1 -> importInterface p (fromMaybe m asM) q is
+>                       (Interface m ds1) pEnv' tcEnv' tyEnv' aEnv'
+>         Nothing  -> internalError "importModule"
+>     importModule t _ = t
 
-> initEnvs :: (PEnv,TCEnv,ValueEnv,ArityEnv)
-> initEnvs = (initPEnv,initTCEnv,initDCEnv,initAEnv)
+> initEnvs :: (PEnv, TCEnv, ValueEnv, ArityEnv)
+> initEnvs = (initPEnv, initTCEnv, initDCEnv, initAEnv)
 
 \end{verbatim}
 Unlike unsual identifiers like in functions, types etc. identifiers
@@ -317,16 +327,16 @@ content to a type environment.
 > importLabels :: ModuleEnv -> [Decl] -> LabelEnv
 > importLabels mEnv ds = foldl importLabelTypes Map.empty ds
 >   where
->   importLabelTypes lEnv (ImportDecl p m _ asM is) =
->     case (Map.lookup m mEnv) of
->       Just ds' -> foldl (importLabelType p (fromMaybe m asM) is) lEnv ds'
->       Nothing -> internalError "importLabels"
->   importLabelTypes lEnv _ = lEnv
+>     importLabelTypes lEnv (ImportDecl p m _ asM is) =
+>       case Map.lookup m mEnv of
+>         Just ds' -> foldl (importLabelType p (fromMaybe m asM) is) lEnv ds'
+>         Nothing  -> internalError "importLabels"
+>     importLabelTypes lEnv _ = lEnv
 >
->   importLabelType p m is lEnv (ITypeDecl _ r _ (RecordType fs _)) =
->     foldl (insertLabelType p m r' (getImportSpec r' is)) lEnv fs
->     where r' = qualifyWith m (fromRecordExtId (unqualify r))
->   importLabelType _ _ _ lEnv _ = lEnv
+>     importLabelType p m is lEnv (ITypeDecl _ r _ (RecordType fs _)) =
+>      foldl (insertLabelType p m r' (getImportSpec r' is)) lEnv fs
+>      where r' = qualifyWith m (fromRecordExtId (unqualify r))
+>     importLabelType _ _ _  lEnv _ = lEnv
 >
 >   insertLabelType _ _ r (Just (ImportTypeAll _)) lEnv ([l],ty) =
 >     bindLabelType l r (toType [] ty) lEnv
@@ -438,11 +448,11 @@ generated FlatCurry terms (type \texttt{Prog}).
 >     mEnv' <- loadFlatInterfaces paths ctxt mEnv intf
 >     return (bindFlatInterface intf mEnv')
 
-> --loadIntfInterfaces :: [FilePath] -> [ModuleIdent] -> ModuleEnv -> Interface
-> --                   -> IO ModuleEnv
-> --loadIntfInterfaces paths ctxt mEnv (Interface m ds) =
-> --  foldM (loadInterface paths (m:ctxt)) mEnv [(p,m) | IImportDecl p m <- ds]
-
+> -- |Load the interface files into the 'ModuleEnv'
+> loadInterfaces :: [FilePath] -> Module -> IO ModuleEnv
+> loadInterfaces paths (Module m _ ds) =
+>   foldM (loadInterface paths [m]) Map.empty
+>         [(p, m') | ImportDecl p m' _ _ _ <- ds]
 
 > loadFlatInterfaces :: [FilePath] -> [ModuleIdent] -> ModuleEnv -> Prog
 >                    -> IO ModuleEnv
@@ -452,7 +462,6 @@ generated FlatCurry terms (type \texttt{Prog}).
 >         (map (\i -> (p, mkMIdent [i])) is)
 >  where p = first m
 
-
 Interface files are updated by the Curry builder when necessary.
 (see module \texttt{CurryBuilder}).
 
@@ -460,11 +469,13 @@ Interface files are updated by the Curry builder when necessary.
 -- File Output
 -- ---------------------------------------------------------------------------
 
+> -- |Export an 'IL.Module' into an XML file
 > writeXML :: Bool -> Maybe FilePath -> FilePath -> CurryEnv -> IL.Module -> IO ()
 > writeXML sub tfn sfn cEnv il = writeModule sub ofn (showln code)
 >   where ofn  = fromMaybe (xmlName sfn) tfn
 >         code = (IL.xmlModule cEnv il)
 
+> -- |Export an 'IL.Module' into a FlatCurry file
 > writeFlat :: Options -> Maybe FilePath -> FilePath -> CurryEnv -> ModuleEnv
 >              -> ValueEnv -> TCEnv -> ArityEnv -> IL.Module -> IO Prog
 > writeFlat opts tfn sfn cEnv mEnv tyEnv tcEnv aEnv il
@@ -473,12 +484,14 @@ Interface files are updated by the Curry builder when necessary.
 
 > writeFlatFile :: Options -> (Prog, [WarnMsg]) -> String -> IO Prog
 > writeFlatFile opts (res, msgs) fname = do
->   when (optWarn opts) (printMessages msgs)
->   if ExtendedFlatCurry `elem` optTargetTypes opts
->      then writeExtendedFlat sub fname res
->      else writeFlatCurry    sub fname res
+>   showWarnings msgs
+>   when extended $ writeExtendedFlat sub fname res
+>   when flat     $ writeFlatCurry    sub fname res
 >   return res
->   where sub = optUseSubdir opts
+>   where
+>     sub      = optUseSubdir opts
+>     extended = ExtendedFlatCurry `elem` optTargetTypes opts
+>     flat     = FlatCurry         `elem` optTargetTypes opts
 
 > writeTypedAbs :: Bool -> Maybe FilePath -> FilePath -> ValueEnv -> TCEnv -> Module -> IO ()
 > writeTypedAbs sub tfn sfn tyEnv tcEnv modul
@@ -565,9 +578,16 @@ be dependent on it any longer.
 >   | otherwise
 >   = internalError "@Modules.genAbstract: illegal option"
 
-> printMessages :: [WarnMsg] -> IO ()
-> printMessages []   = return ()
-> printMessages msgs = hPutStrLn stderr $ unlines $ map showWarning msgs
+> genParsed :: Options -> FilePath -> Module -> IO ()
+> getParsed opts fn modul = writeModule intoSubdir outputFile modString
+>   where
+>     intoSubdir = optUseSubdir opts
+>     outputFile = fromMaybe (sourceRepName fn) (optOutput opts)
+>     modString  = showModule modul
+
+> showWarnings :: Options -> [WarnMsg] -> IO ()
+> showWarnings opts msgs = when (optWarn opts)
+>                        $ putErrsLn $ map showWarning msgs
 
 \end{verbatim}
 The function \texttt{ppTypes} is used for pretty-printing the types

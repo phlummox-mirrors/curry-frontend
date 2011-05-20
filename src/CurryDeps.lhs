@@ -5,7 +5,7 @@
 %
 % Modified by Martin Engelke    (men@informatik.uni-kiel.de)
 % Extended by Sebastian Fischer (sebf@informatik.uni-kiel.de)
-% Modified by Björn Peemöller   (bjp@informatik.uni-kiel.de)
+% Modified by Bjoern Peemoeller (bjp@informatik.uni-kiel.de)
 %
 \nwfilename{CurryDeps.lhs}
 \section{Building Programs}
@@ -26,21 +26,27 @@ dependencies and to update programs composed of multiple modules.
 > import Curry.Files.Filenames
 > import Curry.Files.PathUtils
 > import Curry.Syntax hiding (Interface (..))
+> import CompilerOpts (Options (..), Extension (..))
 > import SCC (scc)
 
-> data Source = Source FilePath [ModuleIdent]
->             | Interface FilePath
->             | Unknown
->             deriving (Eq,Ord,Show)
+> data Source
+>   = Source FilePath [ModuleIdent]
+>   | Interface FilePath
+>   | Unknown
+>   deriving (Eq, Ord, Show)
+
 > type SourceEnv = Map.Map ModuleIdent Source
 
-> flatDeps :: Bool -> [FilePath] -> [FilePath] -> FilePath
->          -> IO ([(ModuleIdent, Source)], [String])
-> flatDeps implicitPrelude paths libPaths fn = do
->   mEnv <- deps implicitPrelude paths libPaths Map.empty fn
+> flatDeps :: Options -> FilePath -> IO ([(ModuleIdent, Source)], [String])
+> flatDeps opts fn = do
+>   mEnv <- deps implicitPrelude [] libPaths Map.empty fn
 >   return $ flattenDeps mEnv
+>   where
+>     implicitPrelude = NoImplicitPrelude `notElem` optExtensions otps
+>     libPaths = optImportPaths opts
 
-> deps :: Bool -> [FilePath] -> [FilePath] -> SourceEnv -> FilePath -> IO SourceEnv
+> deps :: Bool -> [FilePath] -> [FilePath] -> SourceEnv -> FilePath
+>      -> IO SourceEnv
 > deps implicitPrelude paths libPaths mEnv fn
 >   | e `elem` sourceExts
 >     = sourceDeps implicitPrelude paths libPaths (mkMIdent [r]) mEnv fn
@@ -53,7 +59,8 @@ dependencies and to update programs composed of multiple modules.
 >   where r = dropExtension fn
 >         e = takeExtension fn
 
-> targetDeps :: Bool -> [FilePath] -> [FilePath] -> SourceEnv -> FilePath -> IO SourceEnv
+> targetDeps :: Bool -> [FilePath] -> [FilePath] -> SourceEnv -> FilePath
+>            -> IO SourceEnv
 > targetDeps implicitPrelude paths libraryPaths mEnv fn =
 >   lookupFile [""] sourceExts fn >>=
 >   maybe (return (Map.insert m Unknown mEnv))
@@ -84,7 +91,8 @@ is added implicitly to the list of imported modules except for the
 prelude itself. Any errors reported by the parser are ignored.
 \begin{verbatim}
 
-> moduleDeps :: Bool -> [FilePath] -> [FilePath] -> SourceEnv -> ModuleIdent -> IO SourceEnv
+> moduleDeps :: Bool -> [FilePath] -> [FilePath] -> SourceEnv -> ModuleIdent
+>            -> IO SourceEnv
 > moduleDeps implicitPrelude paths libraryPaths mEnv m =
 >   case Map.lookup m mEnv of
 >     Just _  -> return mEnv
@@ -109,6 +117,8 @@ prelude itself. Any errors reported by the parser are ignored.
 >               (Map.insert m (Source fn ms) mEnv) ms
 >       Left _ -> return (Map.insert m (Source fn []) mEnv)
 
+> -- |Retrieve the imported modules and add the import of the Prelude
+> --  according to the flag.
 > imports :: Bool -> ModuleIdent -> [Decl] -> [ModuleIdent]
 > imports implicitPrelude m ds = nub $
 >      [preludeMIdent | m /= preludeMIdent && implicitPrelude]
@@ -125,21 +135,22 @@ that the dependency graph should not contain any cycles.
 >
 >   modules (m, _) = [m]
 >
->   imports' (_,Source _ ms) = ms
->   imports' (_,Interface _) = []
->   imports' (_,Unknown) = []
+>   imports' (_, Source _ ms) = ms
+>   imports' (_, Interface _) = []
+>   imports' (_, Unknown    ) = []
 >
 >   fdeps :: [[(ModuleIdent, Source)]] -> ([(ModuleIdent, Source)], [String])
 >   fdeps = foldr checkdep ([], [])
 >
->   checkdep []  (ms', es') = (ms'  ,es')
->   checkdep [m] (ms', es') = (m:ms',es')
->   checkdep dep (ms', es') = (ms'  ,cyclicError (map fst dep) : es')
+>   checkdep []  (ms', es') = (ms'    , es')
+>   checkdep [m] (ms', es') = (m : ms', es')
+>   checkdep dep (ms', es') = (ms'    , cyclicError (map fst dep) : es')
 
 >   cyclicError :: [ModuleIdent] -> String
 >   cyclicError ms = "Cylic import dependency between modules " ++
 >                    intercalate ", " inits ++ " and " ++ lastm where
->     (inits, lastm)     = splitLast $ map moduleName ms
->     splitLast []       = error "CurryDeps.splitLast: empty list"
->     splitLast (x:[])   = ([]  , x)
->     splitLast (x:y:ys) = (x:xs, z) where (xs, z) = splitLast (y:ys)
+>     (inits, lastm)         = splitLast $ map moduleName ms
+>     splitLast []           = error "CurryDeps.splitLast: empty list"
+>     splitLast (x : [])     = ([]  , x)
+>     splitLast (x : y : ys) = (x : xs, z)
+>        where (xs, z) = splitLast (y : ys)

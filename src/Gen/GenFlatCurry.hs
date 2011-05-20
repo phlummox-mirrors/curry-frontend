@@ -1,5 +1,4 @@
--------------------------------------------------------------------------------
--------------------------------------------------------------------------------
+-- ---------------------------------------------------------------------------
 --
 -- GenFlatCurry - Generates FlatCurry program terms and FlatCurry interfaces
 --                (type 'FlatCurry.Prog')
@@ -7,6 +6,7 @@
 -- November 2005,
 -- Martin Engelke (men@informatik.uni-kiel.de)
 --
+-- ---------------------------------------------------------------------------
 module Gen.GenFlatCurry (genFlatCurry, genFlatInterface) where
 
 -- Haskell libraries
@@ -55,6 +55,13 @@ genFlatCurry opts cEnv mEnv tyEnv tcEnv aEnv modul
        prog' = -- eraseTypes $
                adjustTypeInfo $ adjustTypeInfo $ patchPreludeFCY prog
 
+-- transforms intermediate language code (IL) to FlatCurry interfaces
+genFlatInterface :: Options -> CurryEnv -> ModuleEnv -> ValueEnv -> TCEnv
+         -> ArityEnv -> IL.Module -> (Prog, [WarnMsg])
+genFlatInterface opts cEnv mEnv tyEnv tcEnv aEnv modul
+   = (patchPreludeFCY intf, messages)
+ where (intf, messages)
+       = run opts cEnv mEnv tyEnv tcEnv aEnv True (visitModule modul)
 
 patchPreludeFCY :: Prog -> Prog
 patchPreludeFCY p@(Prog n _ types funcs ops)
@@ -87,55 +94,41 @@ prelude = "Prelude"
 maxTupleArity :: Int
 maxTupleArity = 15
 
-
--- transforms intermediate language code (IL) to FlatCurry interfaces
-genFlatInterface :: Options -> CurryEnv -> ModuleEnv -> ValueEnv -> TCEnv
-		 -> ArityEnv -> IL.Module -> (Prog, [WarnMsg])
-genFlatInterface opts cEnv mEnv tyEnv tcEnv aEnv modul
-   = (patchPreludeFCY intf, messages)
- where (intf, messages)
-	   = run opts cEnv mEnv tyEnv tcEnv aEnv True (visitModule modul)
-
-
--------------------------------------------------------------------------------
--------------------------------------------------------------------------------
-
+-- ---------------------------------------------------------------------------
+-- ---------------------------------------------------------------------------
 
 -- The environment 'FlatEnv' is embedded in the monadic representation
 -- 'FlatState' which allows the usage of 'do' expressions.
-
 type FlatState a = State FlatEnv a
 
 -- Data type for representing an environment which contains information needed
 -- for generating FlatCurry code.
-data FlatEnv = FlatEnv{ moduleIdE     :: ModuleIdent,
-			  functionIdE   :: (QualIdent, [(Ident, IL.Type)]),
-			  compilerOptsE :: Options,
-			  moduleEnvE    :: ModuleEnv,
-			  arityEnvE     :: ArityEnv,
-			  typeEnvE      :: ValueEnv,     -- types of defined values
-			  tConsEnvE     :: TCEnv,
-			  publicEnvE    :: Map.Map Ident IdentExport,
-			  fixitiesE     :: [CS.IDecl],
-			  typeSynonymsE :: [CS.IDecl],
-			  importsE      :: [CS.IDecl],
-			  exportsE      :: [CS.Export],
-			  interfaceE    :: [CS.IDecl],
-			  varIndexE     :: Int,
-			  varIdsE       :: ScopeEnv Ident VarIndex,
-			  tvarIndexE    :: Int,
-			  messagesE     :: [WarnMsg],
-			  genInterfaceE :: Bool,
-                          localTypes    :: Map.Map QualIdent IL.Type,
-                          constrTypes   :: Map.Map QualIdent IL.Type
-			}
+data FlatEnv = FlatEnv
+  { moduleIdE     :: ModuleIdent
+  , functionIdE   :: (QualIdent, [(Ident, IL.Type)])
+  , compilerOptsE :: Options
+  , moduleEnvE    :: ModuleEnv
+  , arityEnvE     :: ArityEnv
+  , typeEnvE      :: ValueEnv     -- types of defined values
+  , tConsEnvE     :: TCEnv
+  , publicEnvE    :: Map.Map Ident IdentExport
+  , fixitiesE     :: [CS.IDecl]
+  , typeSynonymsE :: [CS.IDecl]
+  , importsE      :: [CS.IDecl]
+  , exportsE      :: [CS.Export]
+  , interfaceE    :: [CS.IDecl]
+  , varIndexE     :: Int
+  , varIdsE       :: ScopeEnv Ident VarIndex
+  , tvarIndexE    :: Int
+  , messagesE     :: [WarnMsg]
+  , genInterfaceE :: Bool
+  , localTypes    :: Map.Map QualIdent IL.Type
+  , constrTypes   :: Map.Map QualIdent IL.Type
+  }
 
 data IdentExport = NotConstr       -- function, type-constructor
                  | OnlyConstr      -- constructor
                  | NotOnlyConstr   -- constructor, function, type-constructor
-
-
-
 
 -- Runs a 'FlatState' action and returns the result
 run :: Options -> CurryEnv -> ModuleEnv -> ValueEnv -> TCEnv -> ArityEnv

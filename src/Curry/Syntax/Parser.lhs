@@ -83,9 +83,8 @@ parseIface = Interface <$-> token Id_interface
 
 > topDecl :: Bool -> Parser Token Decl a
 > topDecl flat
->   | flat = infixDecl <|> dataDecl flat <|> typeDecl <|> functionDecl flat
->   | otherwise = infixDecl
->             <|> dataDecl flat <|> newtypeDecl <|> typeDecl
+>   | flat      = infixDecl <|> dataDecl flat <|> typeDecl <|> functionDecl flat
+>   | otherwise = infixDecl <|> dataDecl flat <|> newtypeDecl <|> typeDecl
 >             <|> functionDecl flat <|> externalDecl
 
 > localDefs :: Bool -> Parser Token [Decl] a
