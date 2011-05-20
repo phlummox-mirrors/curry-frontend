@@ -51,9 +51,9 @@ changes which are private to the module.
 >   origName (AliasType tc _ _) = tc
 >   merge (DataType tc n cs) (DataType tc' _ cs')
 >     | tc == tc' = Just (DataType tc n (mergeData cs cs'))
->     where mergeData ds [] = ds
->           mergeData [] ds = ds
->           mergeData (d:ds) (d':ds') = d `mplus` d' : mergeData ds ds'
+>     where mergeData ds       []         = ds
+>           mergeData []       ds         = ds
+>           mergeData (d : ds) (d' : ds') = d `mplus` d' : mergeData ds ds'
 >   merge (DataType tc n _) (RenamingType tc' _ nc)
 >     | tc == tc' = Just (RenamingType tc n nc)
 >   merge (RenamingType tc n nc) (DataType tc' _ _)

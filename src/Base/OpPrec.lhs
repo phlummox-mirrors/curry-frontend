@@ -39,7 +39,7 @@ precedences are simpler than for the type and value environments
 because they do not need to handle tuple constructors.
 \begin{verbatim}
 
-> data PrecInfo = PrecInfo QualIdent OpPrec deriving (Eq,Show)
+> data PrecInfo = PrecInfo QualIdent OpPrec deriving (Eq, Show)
 
 > instance Entity PrecInfo where
 >   origName (PrecInfo op _) = op

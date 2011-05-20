@@ -33,11 +33,11 @@ order of type variables in the left hand side of a type declaration.
 > toQualTypes m tvs = map (qualifyType m) . toTypes tvs
 
 > toType :: [Ident] -> CS.TypeExpr -> Type
-> toType tvs ty = toType' (Map.fromList (zip (tvs ++ tvs') [0..])) ty
+> toType tvs ty = toType' (Map.fromList (zip (tvs ++ tvs') [0 ..])) ty
 >   where tvs' = [tv | tv <- nub (fv ty), tv `notElem` tvs]
 
 > toTypes :: [Ident] -> [CS.TypeExpr] -> [Type]
-> toTypes tvs tys = map (toType' (Map.fromList (zip (tvs ++ tvs') [0..]))) tys
+> toTypes tvs tys = map (toType' (Map.fromList (zip (tvs ++ tvs') [0 ..]))) tys
 >   where tvs' = [tv | tv <- nub (concatMap fv tys), tv `notElem` tvs]
 
 > toType' :: Map.Map Ident Int -> CS.TypeExpr -> Type
@@ -53,9 +53,9 @@ order of type variables in the left hand side of a type declaration.
 > toType' tvs (CS.ArrowType ty1 ty2) =
 >   TypeArrow (toType' tvs ty1) (toType' tvs ty2)
 > toType' tvs (CS.RecordType fs rty) =
->   TypeRecord (concatMap (\ (ls,ty) -> map (\l -> (l, toType' tvs ty)) ls) fs)
+>   TypeRecord (concatMap (\ (ls, ty) -> map (\ l -> (l, toType' tvs ty)) ls) fs)
 >              (maybe Nothing
->                 (\ty -> case toType' tvs ty of
+>                 (\ ty -> case toType' tvs ty of
 >                           TypeVariable tv -> Just tv
 >                           _ -> internalError ("toType " ++ show ty))
 >                 rty)
@@ -78,5 +78,5 @@ order of type variables in the left hand side of a type declaration.
 > fromType (TypeArrow ty1 ty2) = CS.ArrowType (fromType ty1) (fromType ty2)
 > fromType (TypeSkolem k) = CS.VariableType (mkIdent ("_?" ++ show k))
 > fromType (TypeRecord fs rty) =
->   CS.RecordType (map (\ (l,ty) -> ([l], fromType ty)) fs)
+>   CS.RecordType (map (\ (l, ty) -> ([l], fromType ty)) fs)
 >              (maybe Nothing (Just . fromType . TypeVariable) rty)

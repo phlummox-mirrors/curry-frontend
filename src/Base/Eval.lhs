@@ -1,4 +1,3 @@
-
 % $Id: Eval.lhs,v 1.12 2004/02/08 15:35:12 wlux Exp $
 %
 % Copyright (c) 2001-2004, Wolfgang Lux
@@ -29,13 +28,13 @@ the module by traversing the syntax tree.
 > evalEnv = foldr collectAnnotsDecl Map.empty
 
 > collectAnnotsDecl :: Decl -> EvalEnv -> EvalEnv
-> collectAnnotsDecl (EvalAnnot _ fs ev) env = foldr (flip Map.insert ev) env fs
+> collectAnnotsDecl (EvalAnnot _ fs ev   ) env = foldr (`Map.insert` ev) env fs
 > collectAnnotsDecl (FunctionDecl _ _ eqs) env = foldr collectAnnotsEqn env eqs
-> collectAnnotsDecl (PatternDecl _ _ rhs) env = collectAnnotsRhs rhs env
+> collectAnnotsDecl (PatternDecl _ _ rhs ) env = collectAnnotsRhs rhs env
 > collectAnnotsDecl _ env = env
 
 > collectAnnotsEqn :: Equation -> EvalEnv -> EvalEnv
-> collectAnnotsEqn (Equation _ _ rhs) env = collectAnnotsRhs rhs env
+> collectAnnotsEqn (Equation _ _ rhs) = collectAnnotsRhs rhs
 
 > collectAnnotsRhs :: Rhs -> EvalEnv -> EvalEnv
 > collectAnnotsRhs (SimpleRhs _ e ds) env =
@@ -81,17 +80,17 @@ the module by traversing the syntax tree.
 > collectAnnotsExpr (Case _ e alts) env =
 >   collectAnnotsExpr e (foldr collectAnnotsAlt env alts)
 > collectAnnotsExpr (RecordConstr fs) env =
->   foldr collectAnnotsExpr env (map fieldTerm fs)
+>   foldr (collectAnnotsExpr . fieldTerm) env fs
 > collectAnnotsExpr (RecordSelection e _) env = collectAnnotsExpr e env
 > collectAnnotsExpr (RecordUpdate fs e) env =
->   foldr collectAnnotsExpr (collectAnnotsExpr e env) (map fieldTerm fs)
+>   foldr (collectAnnotsExpr . fieldTerm) (collectAnnotsExpr e env) fs
 
 > collectAnnotsStmt :: Statement -> EvalEnv -> EvalEnv
-> collectAnnotsStmt (StmtExpr _ e) env = collectAnnotsExpr e env
-> collectAnnotsStmt (StmtDecl ds) env = foldr collectAnnotsDecl env ds
+> collectAnnotsStmt (StmtExpr _ e  ) env = collectAnnotsExpr e env
+> collectAnnotsStmt (StmtDecl ds   ) env = foldr collectAnnotsDecl env ds
 > collectAnnotsStmt (StmtBind _ _ e) env = collectAnnotsExpr e env
 
 > collectAnnotsAlt :: Alt -> EvalEnv -> EvalEnv
-> collectAnnotsAlt (Alt _ _ rhs) env = collectAnnotsRhs rhs env
+> collectAnnotsAlt (Alt _ _ rhs) = collectAnnotsRhs rhs
 
 \end{verbatim}

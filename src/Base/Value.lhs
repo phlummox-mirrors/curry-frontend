@@ -93,7 +93,7 @@ allow the usage of the qualified list constructor \texttt{(Prelude.:)}.
 
 > qualLookupCons :: QualIdent -> ValueEnv -> [ValueInfo]
 > qualLookupCons x tyEnv
->    | maybe False ((==) preludeMIdent) mmid && qid == consId
+>    | maybe False (preludeMIdent ==) mmid && qid == consId
 >       = qualLookupTopEnv (qualify qid) tyEnv
 >    | otherwise = []
 >  where (mmid, qid) = (qualidMod x, qualidId x)
@@ -116,8 +116,8 @@ TODO: Match other patterns?
 > initDCEnv :: ValueEnv
 > initDCEnv =
 >   foldr (uncurry predefDC) emptyTopEnv
->         [(c,constrType (polyType ty) n' tys)
->         | (ty,cs) <- predefTypes, Data c n' tys <- cs]
+>         [ (c, constrType (polyType ty) n' tys)
+>         | (ty, cs) <- predefTypes, Data c n' tys <- cs]
 >   where predefDC c ty = predefTopEnv c' (DataConstructor c' ty)
 >           where c' = qualify c
 >         constrType (ForAll n ty) n' = ForAllExist n n' . foldr TypeArrow ty

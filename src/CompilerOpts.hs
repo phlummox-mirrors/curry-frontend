@@ -2,12 +2,13 @@
     compiling Curry programs (see module "CurryCompiler")
 
     September 2005, Martin Engelke (men@informatik.uni-kiel.de)
-    March 2007    , extensions by Sebastian Fischer (sebf@informatik.uni-kiel.de)
-    May 2011      , refinements by Bjoern Peemoeller (bjp@informatik.uni-kiel.de)
+    March 2007, extensions by Sebastian Fischer (sebf@informatik.uni-kiel.de)
+    May 2011, refinements by Bjoern Peemoeller (bjp@informatik.uni-kiel.de)
 -}
 module CompilerOpts
   ( Options (..), Verbosity (..), TargetType (..), Extension (..)
   , DumpLevel (..), defaultOptions, compilerOpts, usage
+  , implicitPrelude
   ) where
 
 import Data.List (nub)
@@ -56,6 +57,7 @@ defaultOptions = Options
   , optDumps       = []
   }
 
+-- |Data type representing the type of the target file
 data TargetType
   = Parsed
   | FlatCurry
@@ -65,11 +67,13 @@ data TargetType
   | UntypedAbstractCurry
     deriving Eq
 
+-- |Data type representing the verbosity level
 data Verbosity
   = Quiet
   | Verbose
     deriving Eq
 
+-- |Classifies a number as a 'Verbosity'
 classifyVerbosity :: String -> Verbosity
 classifyVerbosity "0" = Quiet
 classifyVerbosity _   = Verbose
@@ -88,19 +92,23 @@ data DumpLevel
   | DumpCase         -- ^ dump IL code after case elimination
     deriving (Eq, Bounded, Enum, Show)
 
+-- |All available 'DumpLevel's
 dumpAll :: [DumpLevel]
 dumpAll = [minBound .. maxBound]
 
 -- |Data type representing language extensions
 data Extension
   = BerndExtension -- TODO: Give it a more concise name
-  | NoImplicitPrelude
+  | Records
+  | FunctionPatterns
   | AnonymousFreeVariables
+  | NoImplicitPrelude
   | UnknownExtension String
     deriving (Eq, Read, Show)
 
+-- |Classifies a 'String' as an 'Extension'
 classifyExtension :: String -> Extension
-classifyExtension str = case readsPrec 0 str of
+classifyExtension str = case reads str of
   [(e, "")] -> e
   _         -> UnknownExtension str
 
@@ -109,89 +117,102 @@ options :: [OptDescr (Options -> Options)]
 options =
   -- general
   [ Option "h?" ["help"]
-      (NoArg (\opts -> opts { optHelp = True }))
+      (NoArg (\ opts -> opts { optHelp = True }))
       "display this help and exit"
   , Option "V"  ["version"]
-      (NoArg (\opts -> opts { optVersion = True }))
+      (NoArg (\ opts -> opts { optVersion = True }))
       "show the version number"
   , Option ""   ["html"]
-      (NoArg (\opts -> opts { optHtml = True }))
+      (NoArg (\ opts -> opts { optHtml = True }))
       "generate html code"
   , Option "v"  ["verbosity"]
-      (ReqArg (\arg opts -> opts { optVerbosity = classifyVerbosity arg }) "<n>")
+      (ReqArg (\ arg opts -> opts { optVerbosity =
+        classifyVerbosity arg }) "<n>")
       "set verbosity level to <n>"
   -- compilation
   , Option "f"  ["force"]
-      (NoArg (\opts -> opts { optForce = True }))
+      (NoArg (\ opts -> opts { optForce = True }))
       "force compilation of dependent files"
   , Option "i"  ["import-dir"]
-      (ReqArg (\arg opts -> opts { optImportPaths = nub $ arg : optImportPaths opts }) "DIR")
+      (ReqArg (\ arg opts -> opts { optImportPaths =
+        nub $ arg : optImportPaths opts }) "DIR")
       "search for imports in DIR"
   , Option "o"  ["output"]
-      (ReqArg (\arg opts -> opts { optOutput = Just arg }) "FILE")
+      (ReqArg (\ arg opts -> opts { optOutput = Just arg }) "FILE")
       "write code to FILE"
   , Option ""   ["no-subdir"]
-      (NoArg (\opts -> opts { optUseSubdir = False }))
+      (NoArg (\ opts -> opts { optUseSubdir = False }))
       ("disable writing to '" ++ currySubdir ++ "' subdirectory")
   , Option ""   ["no-intf"]
-      (NoArg (\opts -> opts { optInterface = False }))
+      (NoArg (\ opts -> opts { optInterface = False }))
       "do not create an interface file"
   , Option ""   ["no-warn"]
-      (NoArg (\opts -> opts { optWarn = False }))
+      (NoArg (\ opts -> opts { optWarn = False }))
       "do not print warnings"
   , Option ""   ["no-overlap-warn"]
-      (NoArg (\opts -> opts { optOverlapWarn = False }))
+      (NoArg (\ opts -> opts { optOverlapWarn = False }))
       "do not print warnings for overlapping rules"
   -- target types
   , Option ""   ["parse-only"]
-      (NoArg (\opts -> opts { optTargetTypes = nub $ Parsed : optTargetTypes opts }))
+      (NoArg (\ opts -> opts { optTargetTypes =
+        nub $ Parsed : optTargetTypes opts }))
       "generate source representation"
   , Option ""   ["flat"]
-      (NoArg (\opts -> opts { optTargetTypes = nub $ FlatCurry : optTargetTypes opts }))
+      (NoArg (\ opts -> opts { optTargetTypes =
+        nub $ FlatCurry : optTargetTypes opts }))
       "generate FlatCurry code"
   , Option ""   ["extended-flat"]
-      (NoArg (\opts -> opts { optTargetTypes = nub $ ExtendedFlatCurry : optTargetTypes opts }))
+      (NoArg (\ opts -> opts { optTargetTypes =
+        nub $ ExtendedFlatCurry : optTargetTypes opts }))
       "generate FlatCurry code with source references"
   , Option ""   ["xml"]
-      (NoArg (\opts -> opts { optTargetTypes = nub $ FlatXml : optTargetTypes opts }))
+      (NoArg (\ opts -> opts { optTargetTypes =
+        nub $ FlatXml : optTargetTypes opts }))
       "generate flat xml code"
   , Option ""   ["acy"]
-      (NoArg (\opts -> opts { optTargetTypes = nub $ AbstractCurry : optTargetTypes opts }))
+      (NoArg (\ opts -> opts { optTargetTypes =
+        nub $ AbstractCurry : optTargetTypes opts }))
       "generate (type infered) AbstractCurry code"
   , Option ""   ["uacy"]
-      (NoArg (\opts -> opts { optTargetTypes = nub $ UntypedAbstractCurry : optTargetTypes opts }))
+      (NoArg (\ opts -> opts { optTargetTypes =
+        nub $ UntypedAbstractCurry : optTargetTypes opts }))
       "generate untyped AbstractCurry code"
   -- extensions
   , Option "e"  ["extended"]
-      (NoArg (\opts -> opts { optExtensions = nub $ BerndExtension : optExtensions opts }))
+      (NoArg (\ opts -> opts { optExtensions =
+        nub $ BerndExtension : optExtensions opts }))
       "enable extended Curry functionalities"
   , Option "X"   []
-      (ReqArg (\arg opts -> opts { optExtensions = nub $ classifyExtension arg : optExtensions opts }) "EXT")
-      ("enable language extension EXT")
+      (ReqArg (\ arg opts -> opts { optExtensions =
+        nub $ classifyExtension arg : optExtensions opts }) "EXT")
+      "enable language extension EXT"
   -- dump
   , Option ""   ["dump-all"]
-      (NoArg (\opts -> opts { optDumps = dumpAll }))
+      (NoArg (\ opts -> opts { optDumps = dumpAll }))
       "dump everything"
   , Option ""   ["dump-renamed"]
-      (NoArg (\opts -> opts { optDumps = nub $ DumpRenamed : optDumps opts }))
+      (NoArg (\ opts -> opts { optDumps =
+        nub $ DumpRenamed : optDumps opts }))
       "dump source code after renaming"
   , Option ""   ["dump-types"]
-      (NoArg (\opts -> opts { optDumps = nub $ DumpTypes : optDumps opts }))
+      (NoArg (\ opts -> opts { optDumps = nub $ DumpTypes : optDumps opts }))
       "dump types after type-checking"
   , Option ""   ["dump-desugared"]
-      (NoArg (\opts -> opts { optDumps = nub $ DumpDesugared : optDumps opts }))
+      (NoArg (\ opts -> opts { optDumps =
+        nub $ DumpDesugared : optDumps opts }))
       "dump source code after desugaring"
   , Option ""   ["dump-simplified"]
-      (NoArg (\opts -> opts { optDumps = nub $ DumpSimplified : optDumps opts }))
+      (NoArg (\ opts -> opts { optDumps = nub $
+        DumpSimplified : optDumps opts }))
       "dump source code after simplification"
   , Option ""   ["dump-lifted"]
-      (NoArg (\opts -> opts { optDumps = nub $ DumpLifted : optDumps opts }))
+      (NoArg (\ opts -> opts { optDumps = nub $ DumpLifted : optDumps opts }))
       "dump source code after lambda-lifting"
   , Option ""   ["dump-il"]
-      (NoArg (\opts -> opts { optDumps = nub $ DumpIL : optDumps opts }))
+      (NoArg (\ opts -> opts { optDumps = nub $ DumpIL : optDumps opts }))
       "dump intermediate language before lifting"
   , Option ""   ["dump-case"]
-      (NoArg (\opts -> opts { optDumps = nub $ DumpCase : optDumps opts }))
+      (NoArg (\ opts -> opts { optDumps = nub $ DumpCase : optDumps opts }))
       "dump intermediate language after case simplification"
   ]
 

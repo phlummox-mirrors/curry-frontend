@@ -13,8 +13,8 @@ for PAKCS.
 
 > import qualified Data.Map as Map
 
-> import Curry.Base.Ident
-> import qualified Curry.Syntax as CS
+> import Curry.Base.Ident (ModuleIdent)
+> import qualified Curry.Syntax as CS (IDecl)
 
 > type ModuleEnv = Map.Map ModuleIdent [CS.IDecl]
 

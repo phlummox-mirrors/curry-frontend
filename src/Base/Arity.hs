@@ -1,5 +1,10 @@
 {- |Arity - provides functions for expanding the arity environment 'ArityEnv'
-            (see Module "Base")
+
+    In order to generate correct FlatCurry applications it is necessary
+    to define the number of arguments as the arity value (instead of
+    using the arity computed from the type). For this reason the compiler
+    needs a table containing the information for all known functions
+    and constructors.
 
     September 2005, Martin Engelke (men@informatik.uni-kiel.de)
 -}
@@ -15,13 +20,6 @@ import Env.TopEnv
 import Utils ((++!))
 import Types (Data (..), predefTypes)
 
-{-
-In order to generate correct FlatCurry application it is necessary
-to define the number of arguments as the arity value (instead of
-using the arity computed from the type). For this reason the compiler
-needs a table containing the information for all known functions
-and constructors.
--}
 type ArityEnv = TopEnv ArityInfo
 
 data ArityInfo = ArityInfo QualIdent Int deriving Show
@@ -55,7 +53,7 @@ qualLookupArity qid aEnv = qualLookupTopEnv qid aEnv
 
 qualLookupConsArity :: QualIdent -> ArityEnv -> [ArityInfo]
 qualLookupConsArity qid aEnv
-   | maybe False ((==) preludeMIdent) mmid && ident == consId
+   | maybe False (== preludeMIdent) mmid && ident == consId
      = qualLookupTopEnv (qualify ident) aEnv
    | otherwise
      = []
@@ -100,54 +98,54 @@ visitLhs _ _ aEnv _ = aEnv
 
 visitRhs :: ModuleIdent -> ArityEnv -> Rhs -> ArityEnv
 visitRhs mid aEnv (SimpleRhs _ expr decls)
-   = foldl (visitDecl mid) (visitExpression mid aEnv expr) decls
+   = foldl (visitDecl mid) (visitExpr mid aEnv expr) decls
 visitRhs mid aEnv (GuardedRhs cexprs decls)
    = foldl (visitDecl mid) (foldl (visitCondExpr mid) aEnv cexprs) decls
 
 visitCondExpr :: ModuleIdent -> ArityEnv -> CondExpr -> ArityEnv
 visitCondExpr mid aEnv (CondExpr _ cond expr)
-   = visitExpression mid (visitExpression mid aEnv expr) cond
+   = visitExpr mid (visitExpr mid aEnv expr) cond
 
-visitExpression :: ModuleIdent -> ArityEnv -> Expression -> ArityEnv
-visitExpression mid aEnv (Paren expr)
-   = visitExpression mid aEnv expr
-visitExpression mid aEnv (Typed expr _)
-   = visitExpression mid aEnv expr
-visitExpression mid aEnv (Tuple _ exprs)
-   = foldl (visitExpression mid) aEnv exprs
-visitExpression mid aEnv (List _ exprs)
-   = foldl (visitExpression mid) aEnv exprs
-visitExpression mid aEnv (ListCompr _ expr stmts)
-   = foldl (visitStatement mid) (visitExpression mid aEnv expr) stmts
-visitExpression mid aEnv (EnumFrom expr)
-   = visitExpression mid aEnv expr
-visitExpression mid aEnv (EnumFromThen expr1 expr2)
-   = foldl (visitExpression mid) aEnv [expr1,expr2]
-visitExpression mid aEnv (EnumFromTo expr1 expr2)
-   = foldl (visitExpression mid) aEnv [expr1,expr2]
-visitExpression mid aEnv (EnumFromThenTo expr1 expr2 expr3)
-   = foldl (visitExpression mid) aEnv [expr1,expr2,expr3]
-visitExpression mid aEnv (UnaryMinus _ expr)
-   = visitExpression mid aEnv expr
-visitExpression mid aEnv (Apply expr1 expr2)
-   = foldl (visitExpression mid) aEnv [expr1,expr2]
-visitExpression mid aEnv (InfixApply expr1 _ expr2)
-   = foldl (visitExpression mid) aEnv [expr1,expr2]
-visitExpression mid aEnv (LeftSection expr _)
-   = visitExpression mid aEnv expr
-visitExpression mid aEnv (RightSection _ expr)
-   = visitExpression mid aEnv expr
-visitExpression mid aEnv (Lambda _ _ expr)
-   = visitExpression mid aEnv expr
-visitExpression mid aEnv (Let decls expr)
-   = foldl (visitDecl mid) (visitExpression mid aEnv expr) decls
-visitExpression mid aEnv (Do stmts expr)
-   = foldl (visitStatement mid) (visitExpression mid aEnv expr) stmts
-visitExpression mid aEnv (IfThenElse _ expr1 expr2 expr3)
-   = foldl (visitExpression mid) aEnv [expr1,expr2,expr3]
-visitExpression mid aEnv (Case _ expr alts)
-   = visitExpression mid (foldl (visitAlt mid) aEnv alts) expr
-visitExpression _ aEnv _ = aEnv
+visitExpr :: ModuleIdent -> ArityEnv -> Expression -> ArityEnv
+visitExpr mid aEnv (Paren expr)
+   = visitExpr mid aEnv expr
+visitExpr mid aEnv (Typed expr _)
+   = visitExpr mid aEnv expr
+visitExpr mid aEnv (Tuple _ exprs)
+   = foldl (visitExpr mid) aEnv exprs
+visitExpr mid aEnv (List _ exprs)
+   = foldl (visitExpr mid) aEnv exprs
+visitExpr mid aEnv (ListCompr _ expr stmts)
+   = foldl (visitStatement mid) (visitExpr mid aEnv expr) stmts
+visitExpr mid aEnv (EnumFrom expr)
+   = visitExpr mid aEnv expr
+visitExpr mid aEnv (EnumFromThen expr1 expr2)
+   = foldl (visitExpr mid) aEnv [expr1, expr2]
+visitExpr mid aEnv (EnumFromTo expr1 expr2)
+   = foldl (visitExpr mid) aEnv [expr1, expr2]
+visitExpr mid aEnv (EnumFromThenTo expr1 expr2 expr3)
+   = foldl (visitExpr mid) aEnv [expr1, expr2, expr3]
+visitExpr mid aEnv (UnaryMinus _ expr)
+   = visitExpr mid aEnv expr
+visitExpr mid aEnv (Apply expr1 expr2)
+   = foldl (visitExpr mid) aEnv [expr1, expr2]
+visitExpr mid aEnv (InfixApply expr1 _ expr2)
+   = foldl (visitExpr mid) aEnv [expr1, expr2]
+visitExpr mid aEnv (LeftSection expr _)
+   = visitExpr mid aEnv expr
+visitExpr mid aEnv (RightSection _ expr)
+   = visitExpr mid aEnv expr
+visitExpr mid aEnv (Lambda _ _ expr)
+   = visitExpr mid aEnv expr
+visitExpr mid aEnv (Let decls expr)
+   = foldl (visitDecl mid) (visitExpr mid aEnv expr) decls
+visitExpr mid aEnv (Do stmts expr)
+   = foldl (visitStatement mid) (visitExpr mid aEnv expr) stmts
+visitExpr mid aEnv (IfThenElse _ expr1 expr2 expr3)
+   = foldl (visitExpr mid) aEnv [expr1, expr2, expr3]
+visitExpr mid aEnv (Case _ expr alts)
+   = visitExpr mid (foldl (visitAlt mid) aEnv alts) expr
+visitExpr _ aEnv _ = aEnv
 
 visitStatement :: ModuleIdent -> ArityEnv -> Statement -> ArityEnv
 visitStatement mid aEnv (StmtExpr _ expr)
