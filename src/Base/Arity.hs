@@ -149,11 +149,11 @@ visitExpr _ aEnv _ = aEnv
 
 visitStatement :: ModuleIdent -> ArityEnv -> Statement -> ArityEnv
 visitStatement mid aEnv (StmtExpr _ expr)
-   = visitExpression mid aEnv expr
+   = visitExpr mid aEnv expr
 visitStatement mid aEnv (StmtDecl decls)
    = foldl (visitDecl mid) aEnv decls
 visitStatement mid aEnv (StmtBind _ _ expr)
-   = visitExpression mid aEnv expr
+   = visitExpr mid aEnv expr
 
 visitAlt :: ModuleIdent -> ArityEnv -> Alt -> ArityEnv
 visitAlt mid aEnv (Alt _ _ rhs) = visitRhs mid aEnv rhs

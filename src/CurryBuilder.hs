@@ -16,7 +16,7 @@ import Curry.Files.Filenames
 import Curry.Files.PathUtils ( dropExtension, doesModuleExist, lookupCurryFile
   , getModuleModTime, tryGetModuleModTime)
 
-import CompilerOpts (Options (..), Extension (..), TargetType (..))
+import CompilerOpts (Options (..), TargetType (..))
 import CurryDeps (Source (..), flatDeps)
 import Messages (status, abortWith)
 import Modules (compileModule)
@@ -27,7 +27,7 @@ import Modules (compileModule)
 -}
 buildCurry :: Options -> FilePath -> IO ()
 buildCurry opts file = do
-  mbFile <- lookupCurryFile importPaths file
+  mbFile <- lookupCurryFile (optImportPaths opts) file
   case mbFile of
     Nothing -> abortWith [missingModule file]
     Just f  -> do
@@ -85,13 +85,13 @@ makeCurry opts deps1 targetFile = mapM_ (compile . snd) deps1 where
 
   compileFile f = do
     status opts $ "compiling " ++ f
-    compileModule (compOpts True) f >> return ()
+    compileModule (compOpts True) f
 
   skipFile f = status opts $ "skipping " ++ f
 
   generateFile f = do
     status opts $ "generating " ++ head (targetNames f)
-    compileModule (compOpts False) f >> return ()
+    compileModule (compOpts False) f
 
   compOpts isImport
     | isImport  = opts { optTargetTypes = [FlatCurry], optDumps = [] }

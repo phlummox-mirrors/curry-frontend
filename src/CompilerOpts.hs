@@ -8,7 +8,6 @@
 module CompilerOpts
   ( Options (..), Verbosity (..), TargetType (..), Extension (..)
   , DumpLevel (..), defaultOptions, compilerOpts, usage
-  , implicitPrelude
   ) where
 
 import Data.List (nub)
@@ -29,7 +28,7 @@ data Options = Options
   , optForce       :: Bool           -- ^ force compilation
   , optImportPaths :: [FilePath]     -- ^ directories for imports
   , optOutput      :: Maybe FilePath -- ^ name of output file
-  , optUseSubdir   :: Bool           -- use subdir for output?
+  , optUseSubdir   :: Bool           -- ^ use subdir for output?
   , optInterface   :: Bool           -- ^ do not create an interface file
   , optWarn        :: Bool           -- ^ warnings on/off
   , optOverlapWarn :: Bool           -- ^ "overlap" warnings on/off

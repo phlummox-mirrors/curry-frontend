@@ -23,9 +23,7 @@ In this section a lexer for Curry is implemented.
 > import Data.Char (chr, ord, isAlpha, isAlphaNum, isSpace, isUpper
 >   , isDigit, isOctDigit, isHexDigit)
 > import Data.List (intercalate)
-> import qualified Data.Map as Map (Map, union, lookup, fromList
->   , findWithDefault)
-> import Data.Maybe (fromMaybe)
+> import qualified Data.Map as Map (Map, union, lookup, fromList)
 
 > import Curry.Base.LexComb
 > import Curry.Base.LLParseComb (Symbol (..))
@@ -50,9 +48,9 @@ In this section a lexer for Curry is implemented.
 > data Category
 >   -- literals
 >   = CharTok
->   | IntTok 
->   | FloatTok 
->   | IntegerTok 
+>   | IntTok
+>   | FloatTok
+>   | IntegerTok
 >   | StringTok
 
 >   -- identifiers
@@ -62,7 +60,7 @@ In this section a lexer for Curry is implemented.
 >   | QSym -- qualified symbol
 
 >   -- punctuation symbols
->   | LeftParen     -- ( 
+>   | LeftParen     -- (
 >   | RightParen    -- )
 >   | Semicolon     -- ;
 >   | LeftBrace     -- {
@@ -84,24 +82,24 @@ In this section a lexer for Curry is implemented.
 >   | KW_choice -- deprecated
 >   | KW_data
 > --  | KW_deriving -- not supported yet
->   | KW_do 
->   | KW_else 
+>   | KW_do
+>   | KW_else
 >   | KW_eval -- deprecated
 >   | KW_external
->   | KW_free 
->   | KW_if 
->   | KW_import 
->   | KW_in 
->   | KW_infix 
->   | KW_infixl 
+>   | KW_free
+>   | KW_if
+>   | KW_import
+>   | KW_in
+>   | KW_infix
+>   | KW_infixl
 >   | KW_infixr
 > --  | KW_instance -- not supported yet
->   | KW_let 
->   | KW_module 
->   | KW_newtype 
->   | KW_of 
+>   | KW_let
+>   | KW_module
+>   | KW_newtype
+>   | KW_of
 >   | KW_rigid -- deprecated
->   | KW_then 
+>   | KW_then
 >   | KW_type
 >   | KW_where
 
@@ -119,11 +117,11 @@ In this section a lexer for Curry is implemented.
 > --  | Context      -- => -- not supported yet
 
 >   -- special identifiers
->   | Id_as 
->   | Id_ccall 
->   | Id_forall 
->   | Id_hiding 
->   | Id_interface 
+>   | Id_as
+>   | Id_ccall
+>   | Id_forall
+>   | Id_hiding
+>   | Id_interface
 >   | Id_primitive
 >   | Id_qualified
 
@@ -137,7 +135,7 @@ In this section a lexer for Curry is implemented.
 >   | Pragma
 
 >   -- comments (only for full lexer) inserted by men & bbr
->   | LineComment 
+>   | LineComment
 >   | NestedComment
 
 >   -- end-of-file token
@@ -170,7 +168,7 @@ attribute values, we make use of records.
 >   showsPrec _ (FloatAttributes   fv _) = shows fv
 >   showsPrec _ (IntegerAttributes iv _) = shows iv
 >   showsPrec _ (StringAttributes  sv _) = shows sv
->   showsPrec _ (IdentAttributes mIdent ident) = showsEscaped 
+>   showsPrec _ (IdentAttributes mIdent ident) = showsEscaped
 >                                              $ intercalate "."
 >                                              $ mIdent ++ [ident]
 
@@ -236,9 +234,6 @@ all tokens in their source representation.
 
 -- Helper for showing
 
-> showsQualified :: [String] -> String -> ShowS
-> showsQualified modul ident = showsEscaped $ intercalate "." $ modul ++ [ident]
-
 > showsEscaped :: String -> ShowS
 > showsEscaped s = showChar '`' . showString s . showChar '\''
 
@@ -256,10 +251,10 @@ all tokens in their source representation.
 
 > instance Show Token where
 >   showsPrec _ (Token Id         a) = showsIdentifier a
->   showsPrec _ (Token QId        a) = showString "qualified " 
+>   showsPrec _ (Token QId        a) = showString "qualified "
 >                                    . showsIdentifier a
 >   showsPrec _ (Token Sym        a) = showsOperator a
->   showsPrec _ (Token QSym       a) = showString "qualified " 
+>   showsPrec _ (Token QSym       a) = showString "qualified "
 >                                    . showsOperator a
 >   showsPrec _ (Token IntTok     a) = showString "integer "   . shows a
 >   showsPrec _ (Token FloatTok   a) = showString "float "     . shows a
@@ -276,11 +271,11 @@ all tokens in their source representation.
 >   showsPrec _ (Token Comma              _) = showsEscaped ","
 >   showsPrec _ (Token Underscore         _) = showsEscaped "_"
 >   showsPrec _ (Token Backquote          _) = showsEscaped "`"
->   showsPrec _ (Token LeftBraceSemicolon _) = showsEscaped "{;" 
+>   showsPrec _ (Token LeftBraceSemicolon _) = showsEscaped "{;"
 >                                            . showString " (turn off layout)"
->   showsPrec _ (Token VSemicolon         _) = showsEscaped ";"  
+>   showsPrec _ (Token VSemicolon         _) = showsEscaped ";"
 >                                            . showString " (inserted due to layout)"
->   showsPrec _ (Token VRightBrace        _) = showsEscaped "}"  
+>   showsPrec _ (Token VRightBrace        _) = showsEscaped "}"
 >                                            . showString " (inserted due to layout)"
 >   showsPrec _ (Token At                 _) = showsEscaped "@"
 >   showsPrec _ (Token DotDot             _) = showsEscaped ".."
@@ -342,7 +337,7 @@ Maps for reserved operators and identifiers
 >   , ("..", DotDot     )
 >   , ("=" , Equals     )
 >   , ("\\", Backslash  )
->   , ("|" , Bar        ) 
+>   , ("|" , Bar        )
 >   , ("<-", LeftArrow  )
 >   , ("->", RightArrow )
 >   , ("~" , Tilde      )
@@ -370,7 +365,7 @@ Maps for reserved operators and identifiers
 >   , ("external", KW_external)
 >   , ("free"    , KW_free    )
 >   , ("if"      , KW_if      )
->   , ("import"  , KW_import  )  
+>   , ("import"  , KW_import  )
 >   , ("in"      , KW_in      )
 >   , ("infix"   , KW_infix   )
 >   , ("infixl"  , KW_infixl  )
@@ -540,7 +535,7 @@ Lexing functions
 
 > lexSymbol :: (Token -> P a) -> P a
 > lexSymbol cont p s =
->   cont (idTok (maybe Sym id (Map.lookup sym keywordsSpecialIds)) [] sym)
+>   cont (idTok (maybe Sym id (Map.lookup sym reservedSpecialOps)) [] sym)
 >        (incr p (length sym)) rest
 >   where (sym,rest) = span isSymbol s
 

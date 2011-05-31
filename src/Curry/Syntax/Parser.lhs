@@ -726,7 +726,7 @@ qconop = qConSym <|> backquotes (qConId <?> "operator name expected")
 
 > sym :: Parser Token Ident a
 > sym = (\ pos -> mkIdentPosition pos . sval) <$> position <*>
->       tokens [Sym,Sym_Dot,Sym_Minus,Sym_MinusDot]
+>       tokens [Sym, SymColon, SymDot, SymMinus, SymMinusDot]
 
 > qSym :: Parser Token QualIdent a
 > qSym = qualify <$> sym <|> mkQIdent <$> position <*> token QSym
@@ -735,15 +735,15 @@ qconop = qConSym <|> backquotes (qConId <?> "operator name expected")
 
 > colon :: Parser Token QualIdent a
 > colon = (\ p _ -> qualify $ addPositionIdent p consId) <$>
->         position <*> token Colon
+>         position <*> token SymColon
 
 > minus :: Parser Token Ident a
 > minus = (\ p _ -> addPositionIdent p minusId) <$>
->         position <*> token Sym_Minus
+>         position <*> token SymMinus
 
 > fminus :: Parser Token Ident a
 > fminus = (\ p _ -> addPositionIdent p fminusId) <$>
->         position <*> token Sym_MinusDot
+>         position <*> token SymMinusDot
 
 > tupleCommas :: Parser Token QualIdent a
 > tupleCommas = (\ p -> qualify . addPositionIdent p . tupleId . succ . length )

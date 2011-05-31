@@ -42,7 +42,7 @@ dependencies and to update programs composed of multiple modules.
 >   mEnv <- deps implicitPrelude [] libPaths Map.empty fn
 >   return $ flattenDeps mEnv
 >   where
->     implicitPrelude = NoImplicitPrelude `notElem` optExtensions otps
+>     implicitPrelude = NoImplicitPrelude `notElem` optExtensions opts
 >     libPaths = optImportPaths opts
 
 > deps :: Bool -> [FilePath] -> [FilePath] -> SourceEnv -> FilePath

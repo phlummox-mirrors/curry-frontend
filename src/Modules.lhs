@@ -20,7 +20,6 @@ This module controls the compilation of modules.
 > import Data.List (find, isPrefixOf, partition)
 > import qualified Data.Map as Map (Map, empty, insert, insertWith, lookup, toList)
 > import Data.Maybe (fromMaybe)
-> import System.IO (stderr, hPutStrLn)
 > import Text.PrettyPrint.HughesPJ (Doc, ($$), text, vcat)
 
 > import qualified Curry.AbstractCurry as AC
@@ -34,14 +33,14 @@ This module controls the compilation of modules.
 > import qualified Curry.IL as IL
 > import Curry.Syntax
 
+> import Base.Arity (ArityEnv, initAEnv, bindArities)
 > import Base.Eval (evalEnv)
+> import Base.Import (bindAlias, initIEnv, fromDeclList)
 > import Base.Module (ModuleEnv)
 > import Base.OpPrec (PEnv, initPEnv)
 > import Base.TypeConstructors (TCEnv, TypeInfo (..), initTCEnv, qualLookupTC)
 > import Base.Types (toType, fromQualType)
 > import Base.Value (ValueEnv, ValueInfo (..), initDCEnv)
-> import Base.Arity (ArityEnv, initAEnv, bindArities)
-> import Base.Import (bindAlias, initIEnv)
 > import Check.InterfaceCheck (interfaceCheck)
 > import Check.KindCheck (kindCheck)
 > import Check.SyntaxCheck (syntaxCheck)
@@ -66,7 +65,7 @@ This module controls the compilation of modules.
 > import CurryToIL (ilTrans)
 > import Exports (expandInterface, exportInterface)
 > import Imports (importInterface, importInterfaceIntf, importUnifyData)
-> import Messages (errorAt, internalError)
+> import Messages (errorAt, internalError, putErrsLn)
 > import Types
 > import TypeSubst
 
@@ -94,7 +93,7 @@ as a frontend for PAKCS, all functions for evaluating goals and generating C
 code are obsolete and commented out.
 \begin{verbatim}
 
-> compileModule :: Options -> FilePath -> IO (Maybe FilePath)
+> compileModule :: Options -> FilePath -> IO ()
 > compileModule opts fn = do
 >   -- read and parse module
 >   parsed <- (ok . parseModule likeFlat fn) `liftM` readModule fn
@@ -110,7 +109,7 @@ code are obsolete and commented out.
 >      then do
 >        (tyEnv, tcEnv, _, m', _, _) <- simpleCheckModule opts mEnv m
 >        -- generate untyped AbstractCurry
->        when uacy $ genAbstract opts fn tyEnv tcEnv m' >> return ()
+>        when uacy $ genAbstract opts fn tyEnv tcEnv m'
 >        -- output the parsed source
 >        when src  $ genParsed   opts fn m'
 >      else do
@@ -123,8 +122,8 @@ code are obsolete and commented out.
 >        -- dump intermediate results
 >        mapM_ (doDump opts) dumps
 >        -- generate target code
->        when (acy || uacy) $ genAbstract opts fn tyEnv tcEnv m' >> return ()
->        when (fcy ||  xml) $ genFlat opts fn mEnv tyEnv tcEnv aEnv' intf m' il >> return ()
+>        when (acy || uacy) $ genAbstract opts fn tyEnv tcEnv m'
+>        when (fcy ||  xml) $ genFlat opts fn mEnv tyEnv tcEnv aEnv' intf m' il
 >        when src           $ genParsed opts fn m'
 >   where
 >     acy      = AbstractCurry        `elem` optTargetTypes opts
@@ -168,7 +167,7 @@ only a qualified import is added.
 \begin{verbatim}
 
 > importPrelude :: Options -> FilePath -> Module -> Module
-> importPrelude opts fn m(Module mid es ds)
+> importPrelude opts fn m@(Module mid es ds)
 >     -- the Prelude itself
 >   | mid == preludeMIdent          = m
 >     -- disabled by option
@@ -183,15 +182,15 @@ only a qualified import is added.
 >                    False   -- qualified
 >                    Nothing -- no alias
 >                    Nothing -- no selection of types, functions, etc.
->     imported     = [imp | decl@(ImportDecl _ imp _ _ _) <- ds]
+>     imported     = [imp | (ImportDecl _ imp _ _ _) <- ds]
 
 
 > -- |
 > simpleCheckModule :: Options -> ModuleEnv -> Module
 >   -> IO (ValueEnv, TCEnv, ArityEnv, Module, Interface, [WarnMsg])
 > simpleCheckModule opts mEnv (Module m es ds) = do
->   showWarnings warnMsgs
->   return (tyEnv'', tcEnv, aEnv'', modul, intf, msgs)
+>   showWarnings opts warnMsgs
+>   return (tyEnv'', tcEnv, aEnv'', modul, intf, warnMsgs)
 >   where
 >     -- split import declarations
 >     (impDs, topDs) = partition isImportDecl ds
@@ -215,9 +214,9 @@ only a qualified import is added.
 > checkModule :: Options -> ModuleEnv -> Module
 >   -> IO (ValueEnv, TCEnv, ArityEnv, Module, Interface, [WarnMsg])
 > checkModule opts mEnv (Module m es ds) = do
->   showWarnings warnMsgs
+>   showWarnings opts warnMsgs
 >   when (m == mkMIdent ["field114..."]) (error (show es))
->   return (tyEnv''', tcEnv', aEnv'', modul, intf, msgs)
+>   return (tyEnv''', tcEnv', aEnv'', modul, intf, warnMsgs)
 >   where
 >     (impDs, topDs) = partition isImportDecl ds
 >     iEnv = foldr bindAlias initIEnv impDs
@@ -338,21 +337,21 @@ content to a type environment.
 >      where r' = qualifyWith m (fromRecordExtId (unqualify r))
 >     importLabelType _ _ _  lEnv _ = lEnv
 >
->   insertLabelType _ _ r (Just (ImportTypeAll _)) lEnv ([l],ty) =
->     bindLabelType l r (toType [] ty) lEnv
->   insertLabelType _ _ r (Just (ImportTypeWith _ ls)) lEnv ([l],ty)
->     | l `elem` ls = bindLabelType l r (toType [] ty) lEnv
->     | otherwise   = lEnv
->   insertLabelType _ _ _ _ lEnv _ = lEnv
+>     insertLabelType _ _ r (Just (ImportTypeAll _)) lEnv ([l],ty) =
+>       bindLabelType l r (toType [] ty) lEnv
+>     insertLabelType _ _ r (Just (ImportTypeWith _ ls)) lEnv ([l],ty)
+>       | l `elem` ls = bindLabelType l r (toType [] ty) lEnv
+>       | otherwise   = lEnv
+>     insertLabelType _ _ _ _ lEnv _ = lEnv
 >
->   getImportSpec r (Just (Importing _ is')) =
->     find (isImported (unqualify r)) is'
->   getImportSpec r Nothing = Just (ImportTypeAll (unqualify r))
->   getImportSpec _ _ = Nothing
+>     getImportSpec r (Just (Importing _ is')) =
+>       find (isImported (unqualify r)) is'
+>     getImportSpec r Nothing = Just (ImportTypeAll (unqualify r))
+>     getImportSpec _ _ = Nothing
 >
->   isImported r (Import r') = r == r'
->   isImported r (ImportTypeWith r' _) = r == r'
->   isImported r (ImportTypeAll r') = r == r'
+>     isImported r (Import r') = r == r'
+>     isImported r (ImportTypeWith r' _) = r == r'
+>     isImported r (ImportTypeAll r') = r == r'
 
 > addImportedLabels :: ModuleIdent -> LabelEnv -> ValueEnv -> ValueEnv
 > addImportedLabels m lEnv tyEnv =
@@ -484,7 +483,7 @@ Interface files are updated by the Curry builder when necessary.
 
 > writeFlatFile :: Options -> (Prog, [WarnMsg]) -> String -> IO Prog
 > writeFlatFile opts (res, msgs) fname = do
->   showWarnings msgs
+>   showWarnings opts msgs
 >   when extended $ writeExtendedFlat sub fname res
 >   when flat     $ writeFlatCurry    sub fname res
 >   return res
@@ -535,51 +534,43 @@ be dependent on it any longer.
 \begin{verbatim}
 
 > genFlat :: Options -> FilePath -> ModuleEnv -> ValueEnv -> TCEnv -> ArityEnv
->            -> Interface -> Module -> IL.Module -> IO (Maybe FilePath)
-> genFlat opts fname mEnv tyEnv tcEnv aEnv intf modul il
->   | FlatCurry `elem` optTargetTypes opts
->     = do _ <- writeFlat opts Nothing fname cEnv mEnv tyEnv tcEnv aEnv il
->          let (flatInterface,intMsgs) = genFlatInterface opts cEnv mEnv tyEnv tcEnv aEnv il
->          if optForce opts
->            then
->              do writeInterface flatInterface intMsgs
->                 return Nothing
->            else
->               do mfint <- readFlatInterface fintName
->                  let flatIntf = fromMaybe emptyIntf mfint
->                  if mfint == mfint  -- necessary to close the file 'fintName'
->                        && not (interfaceCheck flatIntf flatInterface)
->                     then
->                        do writeInterface flatInterface intMsgs
->                           return Nothing
->                     else return Nothing
->   | FlatXml `elem` optTargetTypes opts
->     = writeXML (optUseSubdir opts) (optOutput opts) fname cEnv il >>
->       return Nothing
->   | otherwise
->     = internalError "@Modules.genFlat: illegal option"
->  where
->    fintName = flatIntName fname
->    cEnv = curryEnv mEnv tcEnv intf modul
->    emptyIntf = Prog "" [] [] [] []
->    writeInterface intf' msgs = do
->      when (optWarn opts) (printMessages msgs)
->      writeFlatCurry (optUseSubdir opts) fintName intf'
+>            -> Interface -> Module -> IL.Module -> IO ()
+> genFlat opts fname mEnv tyEnv tcEnv aEnv intf modul il = do
+>   when fcy $ do
+>     _ <- writeFlat opts Nothing fname cEnv mEnv tyEnv tcEnv aEnv il
+>     let (flatInterface,intMsgs) = genFlatInterface opts cEnv mEnv tyEnv tcEnv aEnv il
+>     if optForce opts
+>       then writeInterface flatInterface intMsgs
+>       else do
+>         mfint <- readFlatInterface fintName
+>         let flatIntf = fromMaybe emptyIntf mfint
+>         when (mfint == mfint  -- necessary to close the file 'fintName'
+>               && not (interfaceCheck flatIntf flatInterface)) $
+>            writeInterface flatInterface intMsgs
+>   when xml $ writeXML (optUseSubdir opts) (optOutput opts) fname cEnv il
+>   where
+>     fcy = FlatCurry `elem` optTargetTypes opts
+>     xml = FlatXml `elem` optTargetTypes opts
+>     fintName = flatIntName fname
+>     cEnv = curryEnv mEnv tcEnv intf modul
+>     emptyIntf = Prog "" [] [] [] []
+>     writeInterface intf' msgs = do
+>       showWarnings opts msgs
+>       writeFlatCurry (optUseSubdir opts) fintName intf'
 
 
-> genAbstract :: Options -> FilePath  -> ValueEnv -> TCEnv -> Module -> IO (Maybe FilePath)
-> genAbstract opts@Options{optUseSubdir=sub} fname tyEnv tcEnv modul
->   | AbstractCurry `elem` optTargetTypes opts
->   = do writeTypedAbs sub Nothing fname tyEnv tcEnv modul
->        return Nothing
->   | UntypedAbstractCurry `elem` optTargetTypes opts
->   = do writeUntypedAbs sub Nothing fname tyEnv tcEnv modul
->        return Nothing
->   | otherwise
->   = internalError "@Modules.genAbstract: illegal option"
+> genAbstract :: Options -> FilePath  -> ValueEnv -> TCEnv -> Module -> IO ()
+> genAbstract opts fname tyEnv tcEnv modul = do
+>   when  acy $ writeTypedAbs subdir Nothing fname tyEnv tcEnv modul
+>   when uacy $ writeUntypedAbs subdir Nothing fname tyEnv tcEnv modul
+>   where
+>     subdir = optUseSubdir opts
+>     acy    = AbstractCurry `elem` optTargetTypes opts
+>     uacy   = UntypedAbstractCurry `elem` optTargetTypes opts
+
 
 > genParsed :: Options -> FilePath -> Module -> IO ()
-> getParsed opts fn modul = writeModule intoSubdir outputFile modString
+> genParsed opts fn modul = writeModule intoSubdir outputFile modString
 >   where
 >     intoSubdir = optUseSubdir opts
 >     outputFile = fromMaybe (sourceRepName fn) (optOutput opts)

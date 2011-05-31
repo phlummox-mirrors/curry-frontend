@@ -109,7 +109,7 @@ partitionDecl parts (FlatExternalDecl pos ids)
    = partitionFuncDecls (\ident -> FlatExternalDecl pos [ident]) parts ids
 -- op decls
 partitionDecl parts (InfixDecl pos fix prec idents)
-   = partitions {opDecls = map (\ident -> (InfixDecl pos fix prec [ident])) idents ++ opDecls parts }
+   = parts {opDecls = map (\ident -> (InfixDecl pos fix prec [ident])) idents ++ opDecls parts }
 -- default
 partitionDecl parts _ = parts
 

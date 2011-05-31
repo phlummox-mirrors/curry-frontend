@@ -58,10 +58,10 @@ genFlatCurry opts cEnv mEnv tyEnv tcEnv aEnv modul
 -- transforms intermediate language code (IL) to FlatCurry interfaces
 genFlatInterface :: Options -> CurryEnv -> ModuleEnv -> ValueEnv -> TCEnv
          -> ArityEnv -> IL.Module -> (Prog, [WarnMsg])
-genFlatInterface opts cEnv mEnv tyEnv tcEnv aEnv modul
-   = (patchPreludeFCY intf, messages)
- where (intf, messages)
-       = run opts cEnv mEnv tyEnv tcEnv aEnv True (visitModule modul)
+genFlatInterface opts cEnv mEnv tyEnv tcEnv aEnv modul =
+  (patchPreludeFCY intf, messages)
+  where (intf, messages)
+          = run opts cEnv mEnv tyEnv tcEnv aEnv True (visitModule modul)
 
 patchPreludeFCY :: Prog -> Prog
 patchPreludeFCY p@(Prog n _ types funcs ops)

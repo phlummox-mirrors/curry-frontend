@@ -87,12 +87,11 @@ makeInterfaces paths (CS.Module mid _ decls) = do
   when (null errs) (mapM_ (compile deps1 . snd) deps1)
   return errs
   where
-    compile deps' (Source file' mods) = do
-      _ <- smake [flatName file', flatIntName file']
-                 (file':mapMaybe (flatInterface deps') mods)
-                 (compileModule (opts paths) file')
-                 (return Nothing)
-      return ()
+    compile deps' (Source file' mods) = smake
+      [flatName file', flatIntName file']
+      (file':mapMaybe (flatInterface deps') mods)
+      (compileModule (opts paths) file')
+      (return ())
     compile _ _ = return ()
 
     flatInterface deps' mod1 = case (lookup mod1 deps') of
