@@ -1,10 +1,10 @@
-
 % $Id: CurryLexer.lhs,v 1.40 2004/03/04 22:39:12 wlux Exp $
 %
 % Copyright (c) 1999-2004, Wolfgang Lux
 % See LICENSE for the full license.
 %
 % Modified by Martin Engelke (men@informatik.uni-kiel.de)
+% Modified by Bjoern Peemoeller (bjp@informatik.uni-kiel.de)
 %
 \nwfilename{CurryLexer.lhs}
 \section{A Lexer for Curry}
@@ -20,9 +20,12 @@ In this section a lexer for Curry is implemented.
 >   ) where
 
 > import Prelude hiding (fail)
-> import Data.Char (chr, ord, isAlpha, isAlphaNum, isDigit, isSpace, isUpper)
+> import Data.Char (chr, ord, isAlpha, isAlphaNum, isSpace, isUpper
+>   , isDigit, isOctDigit, isHexDigit)
 > import Data.List (intercalate)
-> import qualified Data.Map as Map (Map, union, lookup, fromList)
+> import qualified Data.Map as Map (Map, union, lookup, fromList
+>   , findWithDefault)
+> import Data.Maybe (fromMaybe)
 
 > import Curry.Base.LexComb
 > import Curry.Base.LLParseComb (Symbol (..))
@@ -37,44 +40,108 @@ In this section a lexer for Curry is implemented.
 > data Token = Token Category Attributes
 
 > instance Eq Token where
->   Token t1 _ == Token t2 _ = t1 == t2
+>   Token c1 _ == Token c2 _ = c1 == c2
 > instance Ord Token where
->   Token t1 _ `compare` Token t2 _ = t1 `compare` t2
+>   Token c1 _ `compare` Token c2 _ = c1 `compare` c2
 > instance Symbol Token where
->   isEOF (Token cat _) = cat == EOF
+>   isEOF (Token c _) = c == EOF
 
 > -- |Category of curry tokens
 > data Category
 >   -- literals
->   = CharTok | IntTok | FloatTok | IntegerTok | StringTok
+>   = CharTok
+>   | IntTok 
+>   | FloatTok 
+>   | IntegerTok 
+>   | StringTok
+
 >   -- identifiers
->   | Id | QId | Sym | QSym
+>   | Id   -- identifier
+>   | QId  -- qualified identifier
+>   | Sym  -- symbol
+>   | QSym -- qualified symbol
+
 >   -- punctuation symbols
->   | LeftParen | RightParen | Semicolon | LeftBrace | RightBrace
->   | LeftBracket | RightBracket | Comma | Underscore | Backquote
->   -- turn off layout (inserted by bbr)
->   | LeftBraceSemicolon
->   -- virtual punctation (inserted by layout)
->   | VSemicolon | VRightBrace
->   -- reserved identifiers
->   | KW_case | KW_choice | KW_data | KW_do | KW_else | KW_eval | KW_external
->   | KW_free | KW_if | KW_import | KW_in | KW_infix | KW_infixl | KW_infixr
->   | KW_let | KW_module | KW_newtype | KW_of | KW_rigid | KW_then | KW_type
+>   | LeftParen     -- ( 
+>   | RightParen    -- )
+>   | Semicolon     -- ;
+>   | LeftBrace     -- {
+>   | RightBrace    -- }
+>   | LeftBracket   -- [
+>   | RightBracket  -- ]
+>   | Comma         -- ,
+>   | Underscore    -- _
+>   | Backquote     -- `
+
+>   -- layout (inserted by bbr)
+>   | LeftBraceSemicolon -- {; (turn off layout)
+>   | VSemicolon         -- virtual ;
+>   | VRightBrace        -- virtual }
+
+>   -- reserved keywords
+>   | KW_case
+> --  | KW_class -- not supported yet
+>   | KW_choice -- deprecated
+>   | KW_data
+> --  | KW_deriving -- not supported yet
+>   | KW_do 
+>   | KW_else 
+>   | KW_eval -- deprecated
+>   | KW_external
+>   | KW_free 
+>   | KW_if 
+>   | KW_import 
+>   | KW_in 
+>   | KW_infix 
+>   | KW_infixl 
+>   | KW_infixr
+> --  | KW_instance -- not supported yet
+>   | KW_let 
+>   | KW_module 
+>   | KW_newtype 
+>   | KW_of 
+>   | KW_rigid -- deprecated
+>   | KW_then 
+>   | KW_type
 >   | KW_where
+
 >   -- reserved operators
->   | At | Colon | DotDot | DoubleColon | Equals | Backslash | Bar
->   | LeftArrow | RightArrow | Tilde | Binds
+>   | At           -- @
+>   | DotDot       -- ..
+>   | DoubleColon  -- ::
+>   | Equals       -- =
+>   | Backslash    -- \
+>   | Bar          -- |
+>   | LeftArrow    -- <-
+>   | RightArrow   -- ->
+>   | Tilde        -- ~
+>   | Binds        -- :=
+> --  | Context      -- => -- not supported yet
+
 >   -- special identifiers
->   | Id_as | Id_ccall | Id_forall | Id_hiding | Id_interface | Id_primitive
+>   | Id_as 
+>   | Id_ccall 
+>   | Id_forall 
+>   | Id_hiding 
+>   | Id_interface 
+>   | Id_primitive
 >   | Id_qualified
+
 >   -- special operators
->   | Sym_Dot | Sym_Minus | Sym_MinusDot
->   -- end-of-file token
->   | EOF
+>   | SymColon    -- :
+>   | SymDot      -- .
+>   | SymMinus    -- -
+>   | SymMinusDot -- -.
+
 >   -- compiler pragma (bjp)
 >   | Pragma
+
 >   -- comments (only for full lexer) inserted by men & bbr
->   | LineComment | NestedComment
+>   | LineComment 
+>   | NestedComment
+
+>   -- end-of-file token
+>   | EOF
 >   deriving (Eq,Ord)
 
 \end{verbatim}
@@ -89,12 +156,12 @@ attribute values, we make use of records.
 > -- |Attributes associated to a token
 > data Attributes
 >   = NoAttributes
->   | CharAttributes    { cval   :: Char    , original :: String}
->   | IntAttributes     { ival   :: Int     , original :: String}
->   | FloatAttributes   { fval   :: Double  , original :: String}
->   | IntegerAttributes { intval :: Integer , original :: String}
->   | StringAttributes  { sval   :: String  , original :: String}
->   | IdentAttributes   { modul  :: [String], sval     :: String}
+>   | CharAttributes    { cval    :: Char    , original :: String}
+>   | IntAttributes     { ival    :: Int     , original :: String}
+>   | FloatAttributes   { fval    :: Double  , original :: String}
+>   | IntegerAttributes { intval  :: Integer , original :: String}
+>   | StringAttributes  { sval    :: String  , original :: String}
+>   | IdentAttributes   { modul   :: [String], sval     :: String}
 
 > instance Show Attributes where
 >   showsPrec _ NoAttributes             = showChar '_'
@@ -103,8 +170,9 @@ attribute values, we make use of records.
 >   showsPrec _ (FloatAttributes   fv _) = shows fv
 >   showsPrec _ (IntegerAttributes iv _) = shows iv
 >   showsPrec _ (StringAttributes  sv _) = shows sv
->   showsPrec _ (IdentAttributes mIdent ident) =
->     showString ("`" ++ intercalate "." (mIdent ++ [ident]) ++ "'")
+>   showsPrec _ (IdentAttributes mIdent ident) = showsEscaped 
+>                                              $ intercalate "."
+>                                              $ mIdent ++ [ident]
 
 \end{verbatim}
 The following functions can be used to construct tokens with
@@ -166,142 +234,164 @@ The \texttt{Show} instance of \texttt{Token} is designed to display
 all tokens in their source representation.
 \begin{verbatim}
 
+-- Helper for showing
+
+> showsQualified :: [String] -> String -> ShowS
+> showsQualified modul ident = showsEscaped $ intercalate "." $ modul ++ [ident]
+
+> showsEscaped :: String -> ShowS
+> showsEscaped s = showChar '`' . showString s . showChar '\''
+
+> showsIdentifier :: Attributes -> ShowS
+> showsIdentifier a = showString "identifier " . shows a
+
+> showsSpecialIdentifier :: String -> ShowS
+> showsSpecialIdentifier s = showString "identifier " . showsEscaped s
+
+> showsOperator :: Attributes -> ShowS
+> showsOperator a = showString "operator " . shows a
+
+> showsSpecialOperator :: String -> ShowS
+> showsSpecialOperator s = showString "operator " . showsEscaped s
+
 > instance Show Token where
->   showsPrec _ (Token Id a) = showString "identifier " . shows a
->   showsPrec _ (Token QId a) = showString "qualified identifier " . shows a
->   showsPrec _ (Token Sym a) = showString "operator " . shows a
->   showsPrec _ (Token QSym a) = showString "qualified operator " . shows a
->   showsPrec _ (Token IntTok a) = showString "integer " . shows a
->   showsPrec _ (Token FloatTok a) = showString "float " . shows a
->   showsPrec _ (Token CharTok a) = showString "character " . shows a
->   showsPrec _ (Token IntegerTok a) = showString "integer " . shows a
->   showsPrec _ (Token StringTok a) = showString "string " . shows a
->   showsPrec _ (Token LeftParen _) = showString "`('"
->   showsPrec _ (Token RightParen _) = showString "`)'"
->   showsPrec _ (Token Semicolon _) = showString "`;'"
->   showsPrec _ (Token LeftBrace _) = showString "`{'"
->   showsPrec _ (Token RightBrace _) = showString "`}'"
->   showsPrec _ (Token LeftBracket _) = showString "`['"
->   showsPrec _ (Token RightBracket _) = showString "`]'"
->   showsPrec _ (Token Comma _) = showString "`,'"
->   showsPrec _ (Token Underscore _) = showString "`_'"
->   showsPrec _ (Token Backquote _) = showString "``'"
->   showsPrec _ (Token LeftBraceSemicolon _) =
->     showString "`{;' (turn off layout)"
->   showsPrec _ (Token VSemicolon _) =
->     showString "`;' (inserted due to layout)"
->   showsPrec _ (Token VRightBrace _) =
->     showString "`}' (inserted due to layout)"
->   showsPrec _ (Token At _) = showString "`@'"
->   showsPrec _ (Token Colon _) = showString "`:'"
->   showsPrec _ (Token DotDot _) = showString "`..'"
->   showsPrec _ (Token DoubleColon _) = showString "`::'"
->   showsPrec _ (Token Equals _) = showString "`='"
->   showsPrec _ (Token Backslash _) = showString "`\\'"
->   showsPrec _ (Token Bar _) = showString "`|'"
->   showsPrec _ (Token LeftArrow _) = showString "`<-'"
->   showsPrec _ (Token RightArrow _) = showString "`->'"
->   showsPrec _ (Token Tilde _) = showString "`~'"
->   showsPrec _ (Token Binds _) = showString "`:='"
->   showsPrec _ (Token Sym_Dot _) = showString "operator `.'"
->   showsPrec _ (Token Sym_Minus _) = showString "operator `-'"
->   showsPrec _ (Token Sym_MinusDot _) = showString "operator `-.'"
->   showsPrec _ (Token KW_case _) = showString "`case'"
->   showsPrec _ (Token KW_choice _) = showString "`choice'"
->   showsPrec _ (Token KW_data _) = showString "`data'"
->   showsPrec _ (Token KW_do _) = showString "`do'"
->   showsPrec _ (Token KW_else _) = showString "`else'"
->   showsPrec _ (Token KW_eval _) = showString "`eval'"
->   showsPrec _ (Token KW_external _) = showString "`external'"
->   showsPrec _ (Token KW_free _) = showString "`free'"
->   showsPrec _ (Token KW_if _) = showString "`if'"
->   showsPrec _ (Token KW_import _) = showString "`import'"
->   showsPrec _ (Token KW_in _) = showString "`in'"
->   showsPrec _ (Token KW_infix _) = showString "`infix'"
->   showsPrec _ (Token KW_infixl _) = showString "`infixl'"
->   showsPrec _ (Token KW_infixr _) = showString "`infixr'"
->   showsPrec _ (Token KW_let _) = showString "`let'"
->   showsPrec _ (Token KW_module _) = showString "`module'"
->   showsPrec _ (Token KW_newtype _) = showString "`newtype'"
->   showsPrec _ (Token KW_of _) = showString "`of'"
->   showsPrec _ (Token KW_rigid _) = showString "`rigid'"
->   showsPrec _ (Token KW_then _) = showString "`then'"
->   showsPrec _ (Token KW_type _) = showString "`type'"
->   showsPrec _ (Token KW_where _) = showString "`where'"
->   showsPrec _ (Token Id_as _) = showString "identifier `as'"
->   showsPrec _ (Token Id_ccall _) = showString "identifier `ccall'"
->   showsPrec _ (Token Id_forall _) = showString "identifier `forall'"
->   showsPrec _ (Token Id_hiding _) = showString "identifier `hiding'"
->   showsPrec _ (Token Id_interface _) = showString "identifier `interface'"
->   showsPrec _ (Token Id_primitive _) = showString "identifier `primitive'"
->   showsPrec _ (Token Id_qualified _) = showString "identifier `qualified'"
->   showsPrec _ (Token EOF _) = showString "<end-of-file>"
->   showsPrec _ (Token LineComment a) = shows a
+>   showsPrec _ (Token Id         a) = showsIdentifier a
+>   showsPrec _ (Token QId        a) = showString "qualified " 
+>                                    . showsIdentifier a
+>   showsPrec _ (Token Sym        a) = showsOperator a
+>   showsPrec _ (Token QSym       a) = showString "qualified " 
+>                                    . showsOperator a
+>   showsPrec _ (Token IntTok     a) = showString "integer "   . shows a
+>   showsPrec _ (Token FloatTok   a) = showString "float "     . shows a
+>   showsPrec _ (Token CharTok    a) = showString "character " . shows a
+>   showsPrec _ (Token IntegerTok a) = showString "integer "   . shows a
+>   showsPrec _ (Token StringTok  a) = showString "string "    . shows a
+>   showsPrec _ (Token LeftParen          _) = showsEscaped "("
+>   showsPrec _ (Token RightParen         _) = showsEscaped ")"
+>   showsPrec _ (Token Semicolon          _) = showsEscaped ";"
+>   showsPrec _ (Token LeftBrace          _) = showsEscaped "{"
+>   showsPrec _ (Token RightBrace         _) = showsEscaped "}"
+>   showsPrec _ (Token LeftBracket        _) = showsEscaped "["
+>   showsPrec _ (Token RightBracket       _) = showsEscaped "]"
+>   showsPrec _ (Token Comma              _) = showsEscaped ","
+>   showsPrec _ (Token Underscore         _) = showsEscaped "_"
+>   showsPrec _ (Token Backquote          _) = showsEscaped "`"
+>   showsPrec _ (Token LeftBraceSemicolon _) = showsEscaped "{;" 
+>                                            . showString " (turn off layout)"
+>   showsPrec _ (Token VSemicolon         _) = showsEscaped ";"  
+>                                            . showString " (inserted due to layout)"
+>   showsPrec _ (Token VRightBrace        _) = showsEscaped "}"  
+>                                            . showString " (inserted due to layout)"
+>   showsPrec _ (Token At                 _) = showsEscaped "@"
+>   showsPrec _ (Token DotDot             _) = showsEscaped ".."
+>   showsPrec _ (Token DoubleColon        _) = showsEscaped "::"
+>   showsPrec _ (Token Equals             _) = showsEscaped "="
+>   showsPrec _ (Token Backslash          _) = showsEscaped "\\"
+>   showsPrec _ (Token Bar                _) = showsEscaped "|"
+>   showsPrec _ (Token LeftArrow          _) = showsEscaped "<-"
+>   showsPrec _ (Token RightArrow         _) = showsEscaped "->"
+>   showsPrec _ (Token Tilde              _) = showsEscaped "~"
+>   showsPrec _ (Token Binds              _) = showsEscaped ":="
+>   showsPrec _ (Token SymColon    _) = showsSpecialOperator ":"
+>   showsPrec _ (Token SymDot      _) = showsSpecialOperator "."
+>   showsPrec _ (Token SymMinus    _) = showsSpecialOperator "-"
+>   showsPrec _ (Token SymMinusDot _) = showsSpecialOperator "-."
+>   showsPrec _ (Token KW_case      _) = showsEscaped "case"
+>   showsPrec _ (Token KW_choice    _) = showsEscaped "choice"
+>   showsPrec _ (Token KW_data      _) = showsEscaped "data"
+>   showsPrec _ (Token KW_do        _) = showsEscaped "do"
+>   showsPrec _ (Token KW_else      _) = showsEscaped "else"
+>   showsPrec _ (Token KW_eval      _) = showsEscaped "eval"
+>   showsPrec _ (Token KW_external  _) = showsEscaped "external"
+>   showsPrec _ (Token KW_free      _) = showsEscaped "free"
+>   showsPrec _ (Token KW_if        _) = showsEscaped "if"
+>   showsPrec _ (Token KW_import    _) = showsEscaped "import"
+>   showsPrec _ (Token KW_in        _) = showsEscaped "in"
+>   showsPrec _ (Token KW_infix     _) = showsEscaped "infix"
+>   showsPrec _ (Token KW_infixl    _) = showsEscaped "infixl"
+>   showsPrec _ (Token KW_infixr    _) = showsEscaped "infixr"
+>   showsPrec _ (Token KW_let       _) = showsEscaped "let"
+>   showsPrec _ (Token KW_module    _) = showsEscaped "module"
+>   showsPrec _ (Token KW_newtype   _) = showsEscaped "newtype"
+>   showsPrec _ (Token KW_of        _) = showsEscaped "of"
+>   showsPrec _ (Token KW_rigid     _) = showsEscaped "rigid"
+>   showsPrec _ (Token KW_then      _) = showsEscaped "then"
+>   showsPrec _ (Token KW_type      _) = showsEscaped "type"
+>   showsPrec _ (Token KW_where     _) = showsEscaped "where"
+>   showsPrec _ (Token Id_as        _) = showsSpecialIdentifier "as"
+>   showsPrec _ (Token Id_ccall     _) = showsSpecialIdentifier "ccall"
+>   showsPrec _ (Token Id_forall    _) = showsSpecialIdentifier "forall"
+>   showsPrec _ (Token Id_hiding    _) = showsSpecialIdentifier "hiding"
+>   showsPrec _ (Token Id_interface _) = showsSpecialIdentifier "interface"
+>   showsPrec _ (Token Id_primitive _) = showsSpecialIdentifier "primitive"
+>   showsPrec _ (Token Id_qualified _) = showsSpecialIdentifier "qualified"
+>   showsPrec _ (Token Pragma        a) = shows a
+>   showsPrec _ (Token LineComment   a) = shows a
 >   showsPrec _ (Token NestedComment a) = shows a
->   showsPrec _ (Token Pragma a) = showString "pragma " . shows a
+>   showsPrec _ (Token EOF          _) = showString "<end-of-file>"
 
 \end{verbatim}
 Maps for reserved operators and identifiers
 \begin{verbatim}
 
 > -- |Map of reserved operators
-> reserved_ops:: Map.Map String Category
-> reserved_ops = Map.fromList
->   [ ("@",  At)
+> reservedOps:: Map.Map String Category
+> reservedOps = Map.fromList
+>   [ ("@",  At         )
 >   , ("::", DoubleColon)
->   , ("..", DotDot)
->   , ("=",  Equals)
->   , ("\\", Backslash)
->   , ("|",  Bar)
->   , ("<-", LeftArrow)
->   , ("->", RightArrow)
->   , ("~",  Tilde)
->   , (":=", Binds)
+>   , ("..", DotDot     )
+>   , ("=" , Equals     )
+>   , ("\\", Backslash  )
+>   , ("|" , Bar        ) 
+>   , ("<-", LeftArrow  )
+>   , ("->", RightArrow )
+>   , ("~" , Tilde      )
+>   , (":=", Binds      )
 >   ]
 
 > -- |Map of reserved and special operators
-> reserved_and_special_ops :: Map.Map String Category
-> reserved_and_special_ops = Map.union reserved_ops $ Map.fromList
->   [ (":",  Colon)
->   , (".",  Sym_Dot)
->   , ("-",  Sym_Minus)
->   , ("-.", Sym_MinusDot)
+> reservedSpecialOps :: Map.Map String Category
+> reservedSpecialOps = Map.union reservedOps $ Map.fromList
+>   [ (":" , SymColon   )
+>   , ("." , SymDot     )
+>   , ("-" , SymMinus   )
+>   , ("-.", SymMinusDot)
 >   ]
 
-> -- |Map of reserved identifiers
-> reserved_ids :: Map.Map String Category
-> reserved_ids = Map.fromList
->   [ ("case",     KW_case)
->   , ("choice",   KW_choice)
->   , ("data",     KW_data)
->   , ("do",       KW_do)
->   , ("else",     KW_else)
->   , ("eval",     KW_eval)
+> -- |Map of keywords
+> keywords :: Map.Map String Category
+> keywords = Map.fromList
+>   [ ("case"    , KW_case    )
+>   , ("choice"  , KW_choice  )
+>   , ("data"    , KW_data    )
+>   , ("do"      , KW_do      )
+>   , ("else"    , KW_else    )
+>   , ("eval"    , KW_eval    )
 >   , ("external", KW_external)
->   , ("free",     KW_free)
->   , ("if",       KW_if)
->   , ("import",   KW_import)
->   , ("in",       KW_in)
->   , ("infix",    KW_infix)
->   , ("infixl",   KW_infixl)
->   , ("infixr",   KW_infixr)
->   , ("let",      KW_let)
->   , ("module",   KW_module)
->   , ("newtype",  KW_newtype)
->   , ("of",       KW_of)
->   , ("rigid",    KW_rigid)
->   , ("then",     KW_then)
->   , ("type",     KW_type)
->   , ("where",    KW_where)
+>   , ("free"    , KW_free    )
+>   , ("if"      , KW_if      )
+>   , ("import"  , KW_import  )  
+>   , ("in"      , KW_in      )
+>   , ("infix"   , KW_infix   )
+>   , ("infixl"  , KW_infixl  )
+>   , ("infixr"  , KW_infixr  )
+>   , ("let"     , KW_let     )
+>   , ("module"  , KW_module  )
+>   , ("newtype" , KW_newtype )
+>   , ("of"      , KW_of      )
+>   , ("rigid"   , KW_rigid   )
+>   , ("then"    , KW_then    )
+>   , ("type"    , KW_type    )
+>   , ("where"   , KW_where   )
 >   ]
 
 > -- |Map of reserved and special identifiers
-> reserved_and_special_ids :: Map.Map String Category
-> reserved_and_special_ids = Map.union reserved_ids $ Map.fromList
->   [ ("as",        Id_as)
->   , ("ccall",     Id_ccall)
->   , ("forall",    Id_forall)
->   , ("hiding",    Id_hiding)
+> keywordsSpecialIds :: Map.Map String Category
+> keywordsSpecialIds = Map.union keywords $ Map.fromList
+>   [ ("as"       , Id_as       )
+>   , ("ccall"    , Id_ccall    )
+>   , ("forall"   , Id_forall   )
+>   , ("hiding"   , Id_hiding   )
 >   , ("interface", Id_interface)
 >   , ("primitive", Id_primitive)
 >   , ("qualified", Id_qualified)
@@ -314,14 +404,8 @@ Character classes
 > isIdent :: Char -> Bool
 > isIdent c = isAlphaNum c || c `elem` "'_"
 
-> isSym :: Char -> Bool
-> isSym c = c `elem` "~!@#$%^&*+-=<>:?./|\\"
-
-> isOctit :: Char -> Bool
-> isOctit c = c >= '0' && c <= '7'
-
-> isHexit :: Char -> Bool
-> isHexit c = isDigit c || c >= 'A' && c <= 'F' || c >= 'a' && c <= 'f'
+> isSymbol :: Char -> Bool
+> isSymbol c = c `elem` "~!@#$%^&*+-=<>:?./|\\"
 
 \end{verbatim}
 Lexing functions
@@ -345,7 +429,7 @@ Lexing functions
 >     skipBlanks p ('-':'-':s) _bol    = skipBlanks (nl p) (tail' (dropWhile (/= '\n') s)) True
 >     skipBlanks p ('{':'-':'#':s) bol = lexPragma id p success fail (incr p 3) s bol
 >     skipBlanks p ('{':'-':s) bol =
->       nestedComment p skipBlanks fail (incr p 2) s bol
+>       skipNestedComment p skipBlanks fail (incr p 2) s bol
 >     skipBlanks p (c:s) bol
 >       | isSpace c = skipBlanks (next p) s bol
 >       | otherwise =
@@ -360,8 +444,8 @@ Lexing functions
 >     skipBlanks p ('\t':s) bol = skipBlanks (tab p) s bol
 >     skipBlanks p ('\n':s) _bol = skipBlanks (nl p) s True
 >     skipBlanks p s@('-':'-':_) bol = lexLineComment success p s bol
->     skipBlanks p ('{':'-':'#':s) bol = lexPragma id p success fail (incr p 3) s bol
->     skipBlanks p s@('{':'-':_) bol = lexNestedComment 0 id p success fail p s bol
+>     skipBlanks p s@('{':'-':'#':_) bol = lexPragma id p success fail p s bol
+>     skipBlanks p s@('{':'-':_) bol     = lexNestedComment 0 id p success fail p s bol
 >     skipBlanks p (c:s) bol
 >       | isSpace c = skipBlanks (next p) s bol
 >       | otherwise =
@@ -373,7 +457,7 @@ Lexing functions
 
 > lexPragma :: (String -> String) -> Position -> SuccessP a -> FailP a -> P a
 > lexPragma prag p0 success _ p ('#':'-':'}':s)
->   = success p0 (pragmaTok (prag "")) (incr p 3) s
+>   = success p0 (pragmaTok (prag "#-}")) (incr p 3) s
 > lexPragma prag p0 success fail p (c@'\t':s)
 >   = lexPragma (prag . (c:)) p0 success fail (tab p) s
 > lexPragma prag p0 success fail p (c@'\n':s)
@@ -400,19 +484,18 @@ Lexing functions
 > lexNestedComment _ _       p0 _       fail p "" =
 >   fail p0 "Unterminated nested comment" p []
 
-> nestedComment :: Position -> P a -> FailP a -> P a
-> nestedComment _  success _    p ('-':'}':s) = success (incr p 2) s
-> nestedComment p0 success fail p ('{':'-':s) =
->   nestedComment p (nestedComment p0 success fail) fail (incr p 2) s
-> nestedComment p0 success fail p ('\t':s) =
->   nestedComment p0 success fail (tab p) s
-> nestedComment p0 success fail p ('\n':s) =
->   nestedComment p0 success fail (nl p) s
-> nestedComment p0 success fail p (_:s) =
->   nestedComment p0 success fail (next p) s
-> nestedComment p0 _         fail p [] =
+> skipNestedComment :: Position -> P a -> FailP a -> P a
+> skipNestedComment _  success _    p ('-':'}':s) = success (incr p 2) s
+> skipNestedComment p0 success fail p ('{':'-':s) =
+>   skipNestedComment p (skipNestedComment p0 success fail) fail (incr p 2) s
+> skipNestedComment p0 success fail p ('\t':s) =
+>   skipNestedComment p0 success fail (tab p) s
+> skipNestedComment p0 success fail p ('\n':s) =
+>   skipNestedComment p0 success fail (nl p) s
+> skipNestedComment p0 success fail p (_:s) =
+>   skipNestedComment p0 success fail (next p) s
+> skipNestedComment p0 _         fail p [] =
 >   fail p0 "Unterminated nested comment at end-of-file" p []
-
 
 > lexBOL :: SuccessP a -> FailP a -> P a
 > lexBOL success fail p s _ [] = lexToken success fail p s False []
@@ -433,35 +516,33 @@ Lexing functions
 >   | c == ']' = token RightBracket
 >   | c == '_' = token Underscore
 >   | c == '`' = token Backquote
->   | c == '{' = lexLeftBrace (token LeftBrace) (next p) (success p) s
+>   | c == '{' = lexLeftBrace (success p) (next p) s
 >   | c == '}' = \bol -> token RightBrace bol . drop 1
->   | c == '\'' = lexChar p success fail (next p) s
+>   | c == '\'' = lexChar   p success fail (next p) s
 >   | c == '\"' = lexString p success fail (next p) s
->   | isAlpha c = lexIdent (success p) p (c:s)
->   | isSym c = lexSym (success p) p (c:s)
->   | isDigit c = lexNumber (success p) p (c:s)
->   | otherwise = fail p ("Illegal character " ++ show c) p s
+>   | isAlpha  c = lexIdent  (success p) p (c:s)
+>   | isSymbol c = lexSymbol (success p) p (c:s)
+>   | isDigit  c = lexNumber (success p) p (c:s)
+>   | otherwise  = fail p ("Illegal character " ++ show c) p s
 >   where token t = success p (tok t) (next p) s
+
+> lexLeftBrace :: (Token -> P a) -> P a
+> lexLeftBrace cont p (';':s) = cont (tok LeftBraceSemicolon) (next p) s
+> lexLeftBrace cont p s       = cont (tok LeftBrace) p s
 
 > lexIdent :: (Token -> P a) -> P a
 > lexIdent cont p s =
 >   maybe (lexOptQual cont (token Id) [ident]) (cont . token)
->         (Map.lookup ident reserved_and_special_ids)
+>         (Map.lookup ident keywordsSpecialIds)
 >         (incr p (length ident)) rest
 >   where (ident,rest) = span isIdent s
 >         token t = idTok t [] ident
 
-> lexSym :: (Token -> P a) -> P a
-> lexSym cont p s =
->   cont (idTok (maybe Sym id (Map.lookup sym reserved_and_special_ops)) [] sym)
+> lexSymbol :: (Token -> P a) -> P a
+> lexSymbol cont p s =
+>   cont (idTok (maybe Sym id (Map.lookup sym keywordsSpecialIds)) [] sym)
 >        (incr p (length sym)) rest
->   where (sym,rest) = span isSym s
-
-> lexLeftBrace :: a -> Position -> (Token -> Position -> String -> a) -> String -> a
-> lexLeftBrace leftBrace _ _       []    = leftBrace
-> lexLeftBrace leftBrace p cont (c:s)
->   | c==';'    = cont (tok LeftBraceSemicolon) (next p) s
->   | otherwise = leftBrace
+>   where (sym,rest) = span isSymbol s
 
 \end{verbatim}
 {\em Note:} the function \texttt{lexOptQual} has been extended to provide
@@ -470,10 +551,10 @@ the qualified use of the Prelude list operators and tuples.
 
 > lexOptQual :: (Token -> P a) -> Token -> [String] -> P a
 > lexOptQual cont token mIdent p ('.':c:s)
->   | isAlpha c = lexQualIdent cont identCont mIdent (next p) (c:s)
->   | isSym c = lexQualSym cont identCont mIdent (next p) (c:s)
+>   | isAlpha  c = lexQualIdent cont identCont mIdent (next p) (c:s)
+>   | isSymbol c = lexQualSymbol cont identCont mIdent (next p) (c:s)
 >   | c=='(' || c=='['
->     = lexQualPreludeSym cont token identCont mIdent (next p) (c:s)
+>     = lexQualPreludeSymbol cont token identCont mIdent (next p) (c:s)
 >  where identCont _ _ = cont token p ('.':c:s)
 > lexOptQual cont token _      p s = cont token p s
 
@@ -481,27 +562,26 @@ the qualified use of the Prelude list operators and tuples.
 > lexQualIdent cont identCont mIdent p s =
 >   maybe (lexOptQual cont (idTok QId mIdent ident) (mIdent ++ [ident]))
 >         (const identCont)
->         (Map.lookup ident reserved_ids)
+>         (Map.lookup ident keywords)
 >         (incr p (length ident)) rest
 >   where (ident,rest) = span isIdent s
 
-> lexQualSym :: (Token -> P a) -> P a -> [String] -> P a
-> lexQualSym cont identCont mIdent p s =
+> lexQualSymbol :: (Token -> P a) -> P a -> [String] -> P a
+> lexQualSymbol cont identCont mIdent p s =
 >   maybe (cont (idTok QSym mIdent sym)) (const identCont)
->         (Map.lookup sym reserved_ops)
+>         (Map.lookup sym reservedOps)
 >         (incr p (length sym)) rest
->   where (sym,rest) = span isSym s
+>   where (sym,rest) = span isSymbol s
 
 
-> lexQualPreludeSym :: (Token -> P a) -> Token -> P a -> [String] -> P a
-> lexQualPreludeSym cont _ _ mIdent p ('[':']':rest) =
+> lexQualPreludeSymbol :: (Token -> P a) -> Token -> P a -> [String] -> P a
+> lexQualPreludeSymbol cont _ _ mIdent p ('[':']':rest) =
 >   cont (idTok QId mIdent "[]") (incr p 2) rest
-> lexQualPreludeSym cont _ _ mIdent p ('(':rest)
+> lexQualPreludeSymbol cont _ _ mIdent p ('(':rest)
 >   | not (null rest') && head rest'==')'
 >   = cont (idTok QId mIdent ('(':tup++")")) (incr p (length tup+2)) (tail rest')
 >   where (tup,rest') = span (==',') rest
-> lexQualPreludeSym cont token _ _ p s =  cont token p s
-
+> lexQualPreludeSymbol cont token _ _ p s =  cont token p s
 
 \end{verbatim}
 {\em Note:} since Curry allows an unlimited range of integer numbers,
@@ -522,13 +602,13 @@ read numbers must be converted to Haskell type \texttt{Integer}.
 > lexOctal cont nullCont p s
 >   | null digits = nullCont undefined undefined
 >   | otherwise = cont (integerTok 8 digits) (incr p (length digits)) rest
->   where (digits,rest) = span isOctit s
+>   where (digits,rest) = span isOctDigit s
 
 > lexHexadecimal :: (Token -> P a) -> P a -> P a
 > lexHexadecimal cont nullCont p s
 >   | null digits = nullCont undefined undefined
 >   | otherwise = cont (integerTok 16 digits) (incr p (length digits)) rest
->   where (digits,rest) = span isHexit s
+>   where (digits,rest) = span isHexDigit s
 
 > lexOptFraction :: (Token -> P a) -> Token -> String -> P a
 > lexOptFraction cont _ mant p ('.':c:s)
@@ -620,11 +700,11 @@ read numbers must be converted to Haskell type \texttt{Integer}.
 >   | isUpper c || c `elem` "@[\\]^_" =
 >       success (chr (ord c `mod` 32)) ("\\^"++[c]) (incr p 2) s
 > lexEscape p0 success fail p ('o':c:s)
->   | isOctit c = numEscape p0 success fail 8 isOctit ("\\o"++) (next p) (c:s)
+>   | isOctDigit c = numEscape p0 success fail 8 isOctDigit ("\\o"++) (next p) (c:s)
 > lexEscape p0 success fail p ('x':c:s)
->   | isHexit c = numEscape p0 success fail 16 isHexit ("\\x"++) (next p) (c:s)
+>   | isHexDigit c = numEscape p0 success fail 16 isHexDigit ("\\x"++) (next p) (c:s)
 > lexEscape p0 success fail p (c:s)
->   | isDigit c = numEscape p0 success fail 10 isDigit ("\\"++) p (c:s)
+>   | isDigit    c = numEscape p0 success fail 10 isDigit ("\\"++) p (c:s)
 > lexEscape p0 success fail p s = asciiEscape p0 success fail p s
 
 > asciiEscape :: Position -> (Char -> String -> P a) -> FailP a -> P a
