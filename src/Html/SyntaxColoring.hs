@@ -427,7 +427,7 @@ token2code tok@(Token cat _)
          =  Keyword (token2string tok)
     | elem cat [LeftParen,RightParen,Semicolon,LeftBrace,RightBrace,LeftBracket,
                 RightBracket,Comma,Underscore,Backquote,
-                At,DotDot,DoubleColon,Equals,Backslash,Bar,LeftArrow,RightArrow,
+                At,Colon,DotDot,DoubleColon,Equals,Backslash,Bar,LeftArrow,RightArrow,
                 Tilde]
          = Symbol (token2string tok)
     | elem cat [LineComment, NestedComment]
@@ -443,7 +443,7 @@ token2code tok@(Token cat _)
 
 isTokenIdentifier :: Token -> Bool
 isTokenIdentifier (Token cat _) =
-  elem cat [Id, QId, Sym, QSym, SymColon, SymDot, SymMinus, SymMinusDot]
+  elem cat [Id, QId, Sym, QSym, SymDot, SymMinus, SymMinusDot]
 
 -- DECL Position
 
@@ -714,6 +714,7 @@ token2string (Token Backquote _) = "`"
 token2string (Token VSemicolon _) = ""
 token2string (Token VRightBrace _) = ""
 token2string (Token At _) = "@"
+token2string (Token Colon _) = ":"
 token2string (Token DotDot _) = ".."
 token2string (Token DoubleColon _) = "::"
 token2string (Token Equals _) = "="
@@ -722,7 +723,6 @@ token2string (Token Bar _) = "|"
 token2string (Token LeftArrow _) = "<-"
 token2string (Token RightArrow _) = "->"
 token2string (Token Tilde _) = "~"
-token2string (Token SymColon _) = ":"
 token2string (Token SymDot _) = "."
 token2string (Token SymMinus _) = "-"
 token2string (Token SymMinusDot _) = "-."

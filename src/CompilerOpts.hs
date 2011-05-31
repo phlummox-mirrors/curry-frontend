@@ -128,6 +128,9 @@ options =
       (ReqArg (\ arg opts -> opts { optVerbosity =
         classifyVerbosity arg }) "<n>")
       "set verbosity level to <n>"
+  , Option "" ["no-verb"]
+      (NoArg (\ opts -> opts { optVerbosity = Quiet } ))
+      "set verbosity level to quiet"
   -- compilation
   , Option "f"  ["force"]
       (NoArg (\ opts -> opts { optForce = True }))

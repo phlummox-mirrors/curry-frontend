@@ -105,6 +105,7 @@ In this section a lexer for Curry is implemented.
 
 >   -- reserved operators
 >   | At           -- @
+>   | Colon        -- :
 >   | DotDot       -- ..
 >   | DoubleColon  -- ::
 >   | Equals       -- =
@@ -126,7 +127,6 @@ In this section a lexer for Curry is implemented.
 >   | Id_qualified
 
 >   -- special operators
->   | SymColon    -- :
 >   | SymDot      -- .
 >   | SymMinus    -- -
 >   | SymMinusDot -- -.
@@ -278,6 +278,7 @@ all tokens in their source representation.
 >   showsPrec _ (Token VRightBrace        _) = showsEscaped "}"
 >                                            . showString " (inserted due to layout)"
 >   showsPrec _ (Token At                 _) = showsEscaped "@"
+>   showsPrec _ (Token Colon              _) = showsEscaped ":"
 >   showsPrec _ (Token DotDot             _) = showsEscaped ".."
 >   showsPrec _ (Token DoubleColon        _) = showsEscaped "::"
 >   showsPrec _ (Token Equals             _) = showsEscaped "="
@@ -287,7 +288,6 @@ all tokens in their source representation.
 >   showsPrec _ (Token RightArrow         _) = showsEscaped "->"
 >   showsPrec _ (Token Tilde              _) = showsEscaped "~"
 >   showsPrec _ (Token Binds              _) = showsEscaped ":="
->   showsPrec _ (Token SymColon    _) = showsSpecialOperator ":"
 >   showsPrec _ (Token SymDot      _) = showsSpecialOperator "."
 >   showsPrec _ (Token SymMinus    _) = showsSpecialOperator "-"
 >   showsPrec _ (Token SymMinusDot _) = showsSpecialOperator "-."
@@ -332,7 +332,8 @@ Maps for reserved operators and identifiers
 > -- |Map of reserved operators
 > reservedOps:: Map.Map String Category
 > reservedOps = Map.fromList
->   [ ("@",  At         )
+>   [ ("@" , At         )
+>   , (":" , Colon      )
 >   , ("::", DoubleColon)
 >   , ("..", DotDot     )
 >   , ("=" , Equals     )
@@ -347,8 +348,7 @@ Maps for reserved operators and identifiers
 > -- |Map of reserved and special operators
 > reservedSpecialOps :: Map.Map String Category
 > reservedSpecialOps = Map.union reservedOps $ Map.fromList
->   [ (":" , SymColon   )
->   , ("." , SymDot     )
+>   [ ("." , SymDot     )
 >   , ("-" , SymMinus   )
 >   , ("-.", SymMinusDot)
 >   ]
