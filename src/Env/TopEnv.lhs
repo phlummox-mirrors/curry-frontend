@@ -1,4 +1,3 @@
-
 % $Id: TopEnv.lhs,v 1.20 2003/10/04 17:04:32 wlux Exp $
 %
 % Copyright (c) 1999-2003, Wolfgang Lux

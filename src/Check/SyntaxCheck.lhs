@@ -104,8 +104,8 @@ allow the usage of the qualified list constructor \texttt{(prelude.:)}.
 > data RenameInfo = Constr Int
 >                 | GlobalVar Int QualIdent
 >                 | LocalVar Int Ident
->	          | RecordLabel QualIdent [Ident]
->	    deriving (Eq,Show)
+>                 | RecordLabel QualIdent [Ident]
+>                   deriving (Eq,Show)
 
 > globalKey :: Int
 > globalKey = uniqueId (mkIdent "")
@@ -118,23 +118,20 @@ allow the usage of the qualified list constructor \texttt{(prelude.:)}.
 > renameInfo _     iEnv aEnv (Value qid _)
 >    = let (mmid, ident) = (qualidMod qid, qualidId qid)
 >          qid' = maybe qid
->	                (\mid -> maybe qid
->		                       (\mid' -> qualifyWith mid' ident)
->				       (lookupAlias mid iEnv))
->		        mmid
->      in case (lookupArity ident aEnv) of
->	    [ArityInfo _ arity'] -> GlobalVar arity' qid
->           rs -> case (qualLookupArity qid' aEnv) of
->	            [ArityInfo _ arity''] -> GlobalVar arity'' qid
->	            _ -> maybe (internalError "renameInfo: missing arity")
->	                       (\ (ArityInfo _ arity'') -> GlobalVar arity'' qid)
->		               (find (\ (ArityInfo qid'' _)
->			              -> qid'' == qid) rs)
-> renameInfo tcEnv _    _    (Label _ r _)
->    = case (qualLookupTC r tcEnv) of
->        [AliasType _ _ (TypeRecord fs _)] ->
->          RecordLabel r (map fst fs)
->        _ -> internalError "renameInfo: no record"
+>                 (\mid -> maybe qid
+>                     (\mid' -> qualifyWith mid' ident)
+>                     (lookupAlias mid iEnv))
+>                 mmid
+>      in case lookupArity ident aEnv of
+>        [ArityInfo _ arity'] -> GlobalVar arity' qid
+>        rs                   -> case qualLookupArity qid' aEnv of
+>          [ArityInfo _ arity''] -> GlobalVar arity'' qid
+>          _                     -> maybe (internalError $ "renameInfo: missing arity for " ++ show qid)
+>                                         (\ (ArityInfo _ arity'') -> GlobalVar arity'' qid)
+>                                         (find (\ (ArityInfo qid'' _) -> qid'' == qid) rs)
+> renameInfo tcEnv _    _    (Label _ r _) = case (qualLookupTC r tcEnv) of
+>   [AliasType _ _ (TypeRecord fs _)] -> RecordLabel r (map fst fs)
+>   _                                 -> internalError "renameInfo: no record"
 
 \end{verbatim}
 Since record types are currently translated into data types, it is

@@ -3,7 +3,7 @@
 
     September 2005, Martin Engelke (men@informatik.uni-kiel.de)
     March 2007, extensions by Sebastian Fischer (sebf@informatik.uni-kiel.de)
-    May 2011, refinements by Bjoern Peemoeller (bjp@informatik.uni-kiel.de)
+    June 2011, refinements by Bjoern Peemoeller (bjp@informatik.uni-kiel.de)
 -}
 module CompilerOpts
   ( Options (..), Verbosity (..), TargetType (..), Extension (..)

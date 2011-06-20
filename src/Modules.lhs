@@ -18,7 +18,7 @@ This module controls the compilation of modules.
 
 > import Control.Monad (foldM, liftM, unless, when)
 > import Data.List (find, isPrefixOf, partition)
-> import qualified Data.Map as Map (Map, empty, insert, insertWith, lookup, toList)
+> import qualified Data.Map as Map (Map, empty, insert, insertWith, lookup, toList, member)
 > import Data.Maybe (fromMaybe)
 > import Text.PrettyPrint.HughesPJ (Doc, ($$), text, vcat)
 
@@ -108,10 +108,10 @@ code are obsolete and commented out.
 >   if not withFlat
 >      then do
 >        (tyEnv, tcEnv, _, m', _, _) <- simpleCheckModule opts mEnv m
->        -- generate untyped AbstractCurry
->        when uacy $ genAbstract opts fn tyEnv tcEnv m'
+>        -- generate AbstractCurry
+>        genAbstract opts fn tyEnv tcEnv m'
 >        -- output the parsed source
->        when src  $ genParsed   opts fn m'
+>        genParsed   opts fn m'
 >      else do
 >        -- checkModule checks types, and then transModule introduces new
 >        -- functions (by lambda lifting in 'desugar'). Consequence: The
@@ -122,18 +122,39 @@ code are obsolete and commented out.
 >        -- dump intermediate results
 >        mapM_ (doDump opts) dumps
 >        -- generate target code
->        when (acy || uacy) $ genAbstract opts fn tyEnv tcEnv m'
->        when (fcy ||  xml) $ genFlat opts fn mEnv tyEnv tcEnv aEnv' intf m' il
->        when src           $ genParsed opts fn m'
+>        genAbstract opts fn tyEnv tcEnv m'
+>        genFlat     opts fn mEnv tyEnv tcEnv aEnv' intf m' il
+>        genParsed   opts fn m'
 >   where
->     acy      = AbstractCurry        `elem` optTargetTypes opts
->     uacy     = UntypedAbstractCurry `elem` optTargetTypes opts
 >     fcy      = FlatCurry            `elem` optTargetTypes opts
 >     xml      = FlatXml              `elem` optTargetTypes opts
->     src      = Parsed               `elem` optTargetTypes opts
->     extended = ExtendedFlatCurry    `elem` optTargetTypes opts
 >     withFlat = or [fcy, xml]
->     likeFlat = not extended
+>     likeFlat = ExtendedFlatCurry `notElem` optTargetTypes opts
+
+\end{verbatim}
+An implicit import of the prelude is added to the declarations of
+every module, except for the prelude itself, or when the import is disabled
+by a compiler option. If no explicit import for the prelude is present,
+the prelude is imported unqualified, otherwise a qualified import is added.
+\begin{verbatim}
+
+> importPrelude :: Options -> FilePath -> Module -> Module
+> importPrelude opts fn m@(Module mid es ds)
+>     -- the Prelude itself
+>   | mid == preludeMIdent          = m
+>     -- disabled by compiler option
+>   | noImpPrelude                  = m
+>     -- already imported
+>   | preludeMIdent `elem` imported = m
+>     -- let's add it!
+>   | otherwise                     = Module mid es (preludeImp : ds)
+>   where
+>     noImpPrelude = NoImplicitPrelude `elem` optExtensions opts
+>     preludeImp   = ImportDecl (first fn) preludeMIdent
+>                    False   -- qualified?
+>                    Nothing -- no alias
+>                    Nothing -- no selection of types, functions, etc.
+>     imported     = [imp | (ImportDecl _ imp _ _ _) <- ds]
 
 \end{verbatim}
 A module which doesn't contain a \texttt{module ... where} declaration
@@ -159,31 +180,58 @@ Haskell and original MCC where a module obtains \texttt{main}).
 >               ++ ".curry\""
 
 \end{verbatim}
-An implicit import of the prelude is added to the declarations of
-every module, except for the prelude itself, or when the import is disabled
-by a compiler option. If no explicit import for the prelude is present,
-the prelude is imported unqualified, otherwise
-only a qualified import is added.
+If an import declaration for a module is found, the compiler first
+checks whether an import for the module is already pending. In this
+case the module imports are cyclic which is not allowed in Curry. The
+compilation will therefore be aborted. Next, the compiler checks
+whether the module has been imported already. If so, nothing needs to
+be done, otherwise the interface will be searched for in the import paths
+and compiled.
 \begin{verbatim}
 
-> importPrelude :: Options -> FilePath -> Module -> Module
-> importPrelude opts fn m@(Module mid es ds)
->     -- the Prelude itself
->   | mid == preludeMIdent          = m
->     -- disabled by option
->   | noImpPrelude                  = m
->     -- already imported
->   | preludeMIdent `elem` imported = m
->     -- let's add it!
->   | otherwise                     = Module mid es (preludeImp : ds)
->   where
->     noImpPrelude = NoImplicitPrelude `elem` optExtensions opts
->     preludeImp   = ImportDecl (first fn) preludeMIdent
->                    False   -- qualified
->                    Nothing -- no alias
->                    Nothing -- no selection of types, functions, etc.
->     imported     = [imp | (ImportDecl _ imp _ _ _) <- ds]
+> -- |Load the interface files into the 'ModuleEnv'
+> loadInterfaces :: [FilePath] -> Module -> IO ModuleEnv
+> loadInterfaces paths (Module m _ ds) =
+>   foldM (loadInterface paths [m]) Map.empty
+>         [(p, m') | ImportDecl p m' _ _ _ <- ds]
 
+> loadInterface :: [FilePath] -> [ModuleIdent] -> ModuleEnv ->
+>     (Position, ModuleIdent) -> IO ModuleEnv
+> loadInterface paths ctxt mEnv (p, m)
+>   | m `elem` ctxt       = errorAt p (cyclicImport m (takeWhile (/= m) ctxt))
+>   | m `Map.member` mEnv = return mEnv
+>   | otherwise           = lookupInterface paths m >>=
+>       maybe (errorAt p (interfaceNotFound m))
+>             (compileInterface paths ctxt mEnv m)
+
+\end{verbatim}
+After reading an interface, all imported interfaces are recursively
+loaded and entered into the interface's environment. There is no need
+to check FlatCurry-Interfaces, since these files contain automatically
+generated FlatCurry terms (type \texttt{Prog}).
+\begin{verbatim}
+
+> compileInterface :: [FilePath] -> [ModuleIdent] -> ModuleEnv -> ModuleIdent
+>                  -> FilePath -> IO ModuleEnv
+> compileInterface paths ctxt mEnv m fn = do
+>   mintf <- readFlatInterface fn
+>   let intf = fromMaybe (errorAt (first fn) (interfaceNotFound m)) mintf
+>       (Prog modul _ _ _ _) = intf
+>       m' = mkMIdent [modul]
+>   unless (m' == m) (errorAt (first fn) (wrongInterface m m'))
+>   mEnv' <- loadFlatInterfaces paths ctxt mEnv intf
+>   return $ bindFlatInterface intf mEnv'
+
+> loadFlatInterfaces :: [FilePath] -> [ModuleIdent] -> ModuleEnv -> Prog
+>                    -> IO ModuleEnv
+> loadFlatInterfaces paths ctxt mEnv (Prog m is _ _ _) =
+>   foldM (loadInterface paths ((mkMIdent [m]):ctxt))
+>         mEnv
+>         (map (\i -> (p, mkMIdent [i])) is)
+>  where p = first m
+
+Interface files are updated by the Curry builder when necessary.
+(see module \texttt{CurryBuilder}).
 
 > -- |
 > simpleCheckModule :: Options -> ModuleEnv -> Module
@@ -192,11 +240,11 @@ only a qualified import is added.
 >   showWarnings opts warnMsgs
 >   return (tyEnv'', tcEnv, aEnv'', modul, intf, warnMsgs)
 >   where
->     -- split import declarations
+>     -- split import/other declarations
 >     (impDs, topDs) = partition isImportDecl ds
 >     -- build import environment
 >     importEnv = fromDeclList impDs
->     -- ?
+>     -- add information of imported modules
 >     (pEnv, tcEnv, tyEnv, aEnv) = importModules mEnv impDs
 >     -- check for warnings
 >     warnMsgs = warnCheck m tyEnv impDs topDs
@@ -207,15 +255,14 @@ only a qualified import is added.
 >     withExt = BerndExtension `elem` optExtensions opts
 >     ds' = impDs ++ qual m tyEnv topDs'
 >     modul = (Module m es ds') --expandInterface (Module m es ds') tcEnv tyEnv
->     (_, tcEnv'', tyEnv'', aEnv'')
->        = qualifyEnv mEnv pEnv' tcEnv tyEnv aEnv
+>     (_, tcEnv'', tyEnv'', aEnv'') = qualifyEnv mEnv pEnv' tcEnv tyEnv aEnv
 >     intf = exportInterface modul pEnv' tcEnv'' tyEnv''
 
 > checkModule :: Options -> ModuleEnv -> Module
 >   -> IO (ValueEnv, TCEnv, ArityEnv, Module, Interface, [WarnMsg])
 > checkModule opts mEnv (Module m es ds) = do
 >   showWarnings opts warnMsgs
->   when (m == mkMIdent ["field114..."]) (error (show es))
+>   when (m == mkMIdent ["field114..."]) (error (show es)) -- TODO hack?
 >   return (tyEnv''', tcEnv', aEnv'', modul, intf, warnMsgs)
 >   where
 >     (impDs, topDs) = partition isImportDecl ds
@@ -237,8 +284,10 @@ only a qualified import is added.
 >         --      exported a function from another module.
 >         --      However, there is now a cyclic dependecy
 >         --      but tests didn't show any problems.
+>         -- bjp: Removed the fix of fre because it introduced
+>         --      missing arities
 >     (pEnv', topDs') = precCheck m pEnv
->                     $ syntaxCheck withExt m iEnv aEnv'' tyEnv tcEnv
+>                     $ syntaxCheck withExt m iEnv aEnv tyEnv tcEnv
 >                     $ kindCheck m tcEnv topDs
 >     (tcEnv', tyEnv') = typeCheck m tcEnv tyEnv topDs'
 >     ds' = impDs ++ qual m tyEnv' topDs'
@@ -298,13 +347,13 @@ The function \texttt{importModules} brings the declarations of all
 imported modules into scope for the current module.
 \begin{verbatim}
 
-> importModules :: ModuleEnv -> [Decl] -> (PEnv,TCEnv,ValueEnv,ArityEnv)
+> importModules :: ModuleEnv -> [Decl] -> (PEnv, TCEnv, ValueEnv, ArityEnv)
 > importModules mEnv ds = (pEnv, importUnifyData tcEnv, tyEnv, aEnv)
 >   where
 >     (pEnv,tcEnv,tyEnv,aEnv) = foldl importModule initEnvs ds
->     importModule (pEnv',tcEnv',tyEnv',aEnv') (ImportDecl p m q asM is) =
+>     importModule (pEnv', tcEnv', tyEnv', aEnv') (ImportDecl _ m q asM is) =
 >       case Map.lookup m mEnv of
->         Just ds1 -> importInterface p (fromMaybe m asM) q is
+>         Just ds1 -> importInterface (fromMaybe m asM) q is
 >                       (Interface m ds1) pEnv' tcEnv' tyEnv' aEnv'
 >         Nothing  -> internalError "importModule"
 >     importModule t _ = t
@@ -407,62 +456,7 @@ type check.
 >   TypeRecord (map (\ (l,ty) -> (l,expandRecords tcEnv ty)) fs) rv
 > expandRecords _ ty = ty
 
-\end{verbatim}
-If an import declaration for a module is found, the compiler first
-checks whether an import for the module is already pending. In this
-case the module imports are cyclic which is not allowed in Curry. The
-compilation will therefore be aborted. Next, the compiler checks
-whether the module has been imported already. If so, nothing needs to
-be done, otherwise the interface will be searched in the import paths
-and compiled.
-\begin{verbatim}
 
-> loadInterface :: [FilePath] -> [ModuleIdent] -> ModuleEnv ->
->     (Position, ModuleIdent) -> IO ModuleEnv
-> loadInterface paths ctxt mEnv (p,m)
->   | m `elem` ctxt = errorAt p (cyclicImport m (takeWhile (/= m) ctxt))
->   | isLoaded m mEnv = return mEnv
->   | otherwise =
->       lookupInterface paths m >>=
->       maybe (errorAt p (interfaceNotFound m))
->             (compileInterface paths ctxt mEnv m)
->   where isLoaded m' mEnv' = maybe False (const True) (Map.lookup m' mEnv')
-
-\end{verbatim}
-After reading an interface, all imported interfaces are recursively
-loaded and entered into the interface's environment. There is no need
-to check FlatCurry-Interfaces, since these files contain automaticaly
-generated FlatCurry terms (type \texttt{Prog}).
-\begin{verbatim}
-
-> compileInterface :: [FilePath] -> [ModuleIdent] -> ModuleEnv -> ModuleIdent
->                  -> FilePath -> IO ModuleEnv
-> compileInterface paths ctxt mEnv m fn =
->   do
->     mintf <- readFlatInterface fn
->     let intf = fromMaybe (errorAt (first fn) (interfaceNotFound m)) mintf
->         (Prog modul _ _ _ _) = intf
->         m' = mkMIdent [modul]
->     unless (m' == m) (errorAt (first fn) (wrongInterface m m'))
->     mEnv' <- loadFlatInterfaces paths ctxt mEnv intf
->     return (bindFlatInterface intf mEnv')
-
-> -- |Load the interface files into the 'ModuleEnv'
-> loadInterfaces :: [FilePath] -> Module -> IO ModuleEnv
-> loadInterfaces paths (Module m _ ds) =
->   foldM (loadInterface paths [m]) Map.empty
->         [(p, m') | ImportDecl p m' _ _ _ <- ds]
-
-> loadFlatInterfaces :: [FilePath] -> [ModuleIdent] -> ModuleEnv -> Prog
->                    -> IO ModuleEnv
-> loadFlatInterfaces paths ctxt mEnv (Prog m is _ _ _) =
->   foldM (loadInterface paths ((mkMIdent [m]):ctxt))
->         mEnv
->         (map (\i -> (p, mkMIdent [i])) is)
->  where p = first m
-
-Interface files are updated by the Curry builder when necessary.
-(see module \texttt{CurryBuilder}).
 
 -- ---------------------------------------------------------------------------
 -- File Output
@@ -570,9 +564,10 @@ be dependent on it any longer.
 
 
 > genParsed :: Options -> FilePath -> Module -> IO ()
-> genParsed opts fn modul = writeModule intoSubdir outputFile modString
+> genParsed opts fn modul = when src $ writeModule subdir outputFile modString
 >   where
->     intoSubdir = optUseSubdir opts
+>     src        = Parsed `elem` optTargetTypes opts
+>     subdir     = optUseSubdir opts
 >     outputFile = fromMaybe (sourceRepName fn) (optOutput opts)
 >     modString  = showModule modul
 

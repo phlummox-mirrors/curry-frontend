@@ -93,9 +93,9 @@ partitionDecl parts decl@(ImportDecl _ _ _ _ _)
   = parts {importDecls = decl : importDecls parts }
 -- type decls
 partitionDecl parts decl@(DataDecl _ _ _ _)
-  = parts {importDecls = decl : typeDecls parts }
+  = parts {typeDecls = decl : typeDecls parts }
 partitionDecl parts decl@(TypeDecl _ _ _ _)
-  = parts {importDecls = decl : typeDecls parts }
+  = parts {typeDecls = decl : typeDecls parts }
 -- func decls
 partitionDecl parts (TypeSig pos ids tyexpr)
   = partitionFuncDecls (\ident -> TypeSig pos [ident] tyexpr) parts ids

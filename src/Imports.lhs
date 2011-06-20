@@ -1,4 +1,3 @@
-
 % $Id: Imports.lhs,v 1.25 2004/02/13 19:24:00 wlux Exp $
 %
 % Copyright (c) 2000-2003, Wolfgang Lux
@@ -39,8 +38,8 @@ entities defined in the imported module are qualified appropriately.
 The same is true for type expressions.
 \begin{verbatim}
 
-> type ExpPEnv = Map.Map Ident PrecInfo
-> type ExpTCEnv = Map.Map Ident TypeInfo
+> type ExpPEnv     = Map.Map Ident PrecInfo
+> type ExpTCEnv    = Map.Map Ident TypeInfo
 > type ExpValueEnv = Map.Map Ident ValueInfo
 > type ExpArityEnv = Map.Map Ident ArityInfo
 
@@ -54,27 +53,28 @@ using either a qualified import or both a qualified and an unqualified
 import.
 \begin{verbatim}
 
-> importInterface :: Position -> ModuleIdent -> Bool -> Maybe ImportSpec
+> importInterface :: ModuleIdent -> Bool -> Maybe ImportSpec
 >                 -> Interface -> PEnv -> TCEnv -> ValueEnv -> ArityEnv
->                 -> (PEnv,TCEnv,ValueEnv,ArityEnv)
-> importInterface _ m q is i pEnv tcEnv tyEnv aEnv =
->   (importEntities m q vs id mPEnv pEnv,
->    importEntities m q ts (importData vs) mTCEnv tcEnv,
->    importEntities m q vs id mTyEnv tyEnv,
->    importEntities m q as id mAEnv aEnv)
+>                 -> (PEnv, TCEnv, ValueEnv, ArityEnv)
+> importInterface m q is i pEnv tcEnv tyEnv aEnv =
+>   ( importEntities m q vs id mPEnv pEnv
+>   , importEntities m q ts (importData vs) mTCEnv tcEnv
+>   , importEntities m q vs id mTyEnv tyEnv
+>   , importEntities m q as id mAEnv aEnv
+>   )
 >   where mPEnv  = intfEnv bindPrec i
 >         mTCEnv = intfEnv bindTC i
 >         mTyEnv = intfEnv bindTy i
 >         mAEnv  = intfEnv bindA i
 >         is' = maybe [] (expandSpecs m mTCEnv mTyEnv) is
->         ts  = isVisible is (Set.fromList (foldr addType [] is'))
+>         ts  = isVisible is (Set.fromList (foldr addType  [] is'))
 >         vs  = isVisible is (Set.fromList (foldr addValue [] is'))
 >         as  = isVisible is (Set.fromList (foldr addArity [] is'))
 
 > isVisible :: Maybe ImportSpec -> Set.Set Ident -> Ident -> Bool
-> isVisible (Just (Importing _ _)) xs = (`Set.member` xs)
-> isVisible (Just (Hiding _ _)) xs = (`Set.notMember` xs)
-> isVisible _ _ = const True
+> isVisible (Just (Importing _ _)) xs = (`Set.member`    xs)
+> isVisible (Just (Hiding    _ _)) xs = (`Set.notMember` xs)
+> isVisible _                      _  = const True
 
 > importEntities :: Entity a => ModuleIdent -> Bool -> (Ident -> Bool)
 >                -> (a -> a) -> Map.Map Ident a -> TopEnv a -> TopEnv a
