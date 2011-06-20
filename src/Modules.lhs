@@ -301,10 +301,11 @@ Interface files are updated by the Curry builder when necessary.
 >     --tyEnv''' = addImportedLabels m lEnv tyEnv''
 >     intf = exportInterface modul pEnv'' tcEnv'' tyEnv'''
 
+> -- |Translate FlatCurry into the intermediate language 'IL'
 > transModule :: Bool -> Bool -> Bool -> ModuleEnv -> ValueEnv -> TCEnv
->      -> ArityEnv -> Module -> (IL.Module,ArityEnv,[(DumpLevel,Doc)])
+>      -> ArityEnv -> Module -> (IL.Module, ArityEnv, [(DumpLevel, Doc)])
 > transModule flat' _debug _trusted mEnv tyEnv tcEnv aEnv (Module m es ds) =
->   (il',aEnv',dumps)
+>   (il', aEnv', dumps)
 >   where
 >     topDs = filter (not . isImportDecl) ds
 >     evEnv = evalEnv topDs

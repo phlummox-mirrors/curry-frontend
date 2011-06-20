@@ -30,7 +30,7 @@ import Base.TypeConstructors (TCEnv, TypeInfo (..), qualLookupTC)
 import Base.Value (ValueEnv, ValueInfo (..), lookupValue, qualLookupValue)
 
 import CompilerOpts (Options (..))
-import qualified CurryToIL as IL
+import qualified CurryToIL as CTIL
 import Env.TopEnv (topEnvMap)
 import Env.CurryEnv (CurryEnv)
 import qualified Env.CurryEnv as CurryEnv
@@ -1049,7 +1049,7 @@ lookupIdType qid
         case Map.lookup qid lt `mplus` Map.lookup qid ct of
           Just t -> trace' ("lookupIdType local " ++ show (qid, t)) $ liftM Just (visitType t)  -- local name or constructor
           Nothing -> case [ t | Value _ (ForAll _ t) <- qualLookupValue qid aEnv ] of
-                       t : _ -> liftM Just (visitType (IL.translType t))  -- imported name
+                       t : _ -> liftM Just (visitType (CTIL.translType t))  -- imported name
                        []    -> case qualidMod qid of
                                   Nothing -> trace' ("no type for "  ++ show qid) $ return Nothing  -- no known type
                                   Just _ -> lookupIdType qid {qualidMod = Nothing}
