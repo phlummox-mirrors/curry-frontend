@@ -53,17 +53,6 @@ Executable cymake
     , Check.SyntaxCheck
     , Check.TypeCheck
     , Check.WarnCheck
-    , Curry.IL
-    , Curry.IL.Pretty
-    , Curry.IL.Type
-    , Curry.IL.XML
-    , Curry.Syntax
-    , Curry.Syntax.Lexer
-    , Curry.Syntax.Parser
-    , Curry.Syntax.Pretty
-    , Curry.Syntax.ShowModule
-    , Curry.Syntax.Type
-    , Curry.Syntax.Utils
     , Env.CurryEnv
     , Env.NestEnv
     , Env.OldScopeEnv
@@ -73,6 +62,10 @@ Executable cymake
     , Gen.GenFlatCurry
     , Html.CurryHtml
     , Html.SyntaxColoring
+    , IL
+    , IL.Pretty
+    , IL.Type
+    , IL.XML
     , CurryBuilder
     , CompilerOpts
     , CurryDeps

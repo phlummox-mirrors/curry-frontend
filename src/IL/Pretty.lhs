@@ -13,12 +13,12 @@ printer (see sect.~\ref{sec:CurryPP}) which, in turn, is based on Simon
 Marlow's pretty printer for Haskell.
 \begin{verbatim}
 
-> module Curry.IL.Pretty (ppModule) where
+> module IL.Pretty (ppModule) where
 >
 > import Text.PrettyPrint.HughesPJ
 
 > import Curry.Base.Ident
-> import Curry.IL.Type
+> import IL.Type
 
 > default(Int, Double)
 

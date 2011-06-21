@@ -16,13 +16,13 @@ Marlow's pretty printer for Haskell. The format of the output intends to be
 similar to that of Flat-Curry XML representation.
 \begin{verbatim}
 
-> module Curry.IL.XML (xmlModule) where
+> module IL.XML (xmlModule) where
 
 > import Data.Maybe
 > import Text.PrettyPrint.HughesPJ
 
 > import Curry.Base.Ident
-> import Curry.IL.Type
+> import IL.Type
 
 TODO: The following two imports should be avoided if possible as they make
   the program structure less clear.

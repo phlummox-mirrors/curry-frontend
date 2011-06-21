@@ -14,7 +14,7 @@ import Data.Maybe (fromJust, fromMaybe, isJust)
 
 import Curry.Base.Position (SrcRef)
 import Curry.Base.Ident
-import Curry.IL
+import IL
 import qualified Curry.Syntax
 
 import Base.Module (ModuleEnv, lookupModule)
