@@ -28,7 +28,7 @@ data structures, we can use only a qualified import for the
 > import Curry.Base.Expr
 > import Curry.Base.Position
 > import Curry.Base.Ident
-> import qualified Curry.IL as IL
+> import qualified IL as IL
 > import Curry.Syntax
 
 > import Base.Eval (EvalEnv)

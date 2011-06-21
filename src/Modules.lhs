@@ -30,7 +30,7 @@ This module controls the compilation of modules.
 > import qualified Curry.ExtendedFlat.Type as EF
 > import Curry.Files.Filenames
 > import Curry.Files.PathUtils
-> import qualified Curry.IL as IL
+> import qualified IL as IL
 > import Curry.Syntax
 
 > import Base.Arity (ArityEnv, initAEnv, bindArities)

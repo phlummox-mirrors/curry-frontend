@@ -39,7 +39,7 @@ an unlimited range of integer constants in Curry programs.
 \begin{verbatim}
 
 > {-# LANGUAGE DeriveDataTypeable #-}
-> module Curry.IL.Type
+> module IL.Type
 >   ( -- * Data types
 >     Module (..), Decl (..), ConstrDecl (..), CallConv (..), Type (..)
 >   , Literal (..), ConstrTerm (..), Expression (..), Eval (..), Alt (..)

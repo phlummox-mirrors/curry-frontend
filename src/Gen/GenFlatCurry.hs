@@ -21,7 +21,7 @@ import Curry.Base.MessageMonad
 import Curry.Base.Ident as Id
 import Curry.ExtendedFlat.Type
 import Curry.ExtendedFlat.TypeInference
-import qualified Curry.IL as IL
+import qualified IL as IL
 import qualified Curry.Syntax as CS
 
 import Base.Arity (ArityEnv, ArityInfo (..), lookupArity, qualLookupArity)
