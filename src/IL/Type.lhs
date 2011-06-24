@@ -48,33 +48,32 @@ an unlimited range of integer constants in Curry programs.
 
 > import Data.Generics
 
-> import Curry.Base.Expr
 > import Curry.Base.Ident
 > import Curry.Base.Position (SrcRef(..))
 
 > data Module = Module ModuleIdent [ModuleIdent] [Decl] deriving (Eq,Show)
 
 > data Decl
->   = DataDecl QualIdent Int [ConstrDecl [Type]]
->   | NewtypeDecl QualIdent Int (ConstrDecl Type)
+>   = DataDecl     QualIdent Int [ConstrDecl [Type]]
+>   | NewtypeDecl  QualIdent Int (ConstrDecl Type)
 >   | FunctionDecl QualIdent [Ident] Type Expression
 >   | ExternalDecl QualIdent CallConv String Type
->     deriving (Eq,Show)
+>     deriving (Eq, Show)
 
-> data ConstrDecl a = ConstrDecl QualIdent a deriving (Eq,Show)
-> data CallConv = Primitive | CCall deriving (Eq,Show)
+> data ConstrDecl a = ConstrDecl QualIdent a deriving (Eq, Show)
+> data CallConv = Primitive | CCall deriving (Eq, Show)
 
 > data Type
 >   = TypeConstructor QualIdent [Type]
->   | TypeVariable Int
->   | TypeArrow Type Type
->     deriving (Eq,Show, Typeable, Data)
+>   | TypeVariable    Int
+>   | TypeArrow       Type Type
+>     deriving (Eq, Show, Typeable, Data)
 
 > data Literal
->   = Char SrcRef Char
->   | Int SrcRef Integer
+>   = Char  SrcRef Char
+>   | Int   SrcRef Integer
 >   | Float SrcRef Double
->     deriving (Eq,Show)
+>     deriving (Eq, Show)
 
 > data ConstrTerm
 >     -- |literal patterns
@@ -108,11 +107,9 @@ an unlimited range of integer constants in Curry programs.
 >   | Letrec [Binding] Expression
 >   deriving (Eq,Show)
 
-> data Eval = Rigid | Flex deriving (Eq,Show)
-> data Alt = Alt ConstrTerm Expression deriving (Eq,Show)
+> data Eval    = Rigid | Flex deriving (Eq,Show)
+> data Alt     = Alt ConstrTerm Expression deriving (Eq,Show)
 > data Binding = Binding Ident Expression deriving (Eq,Show)
-
-\end{verbatim}
 
 > instance SrcRefOf ConstrTerm where
 >   srcRefOf (LiteralPattern l) = srcRefOf l
@@ -124,18 +121,4 @@ an unlimited range of integer constants in Curry programs.
 >   srcRefOf (Int s _)    = s
 >   srcRefOf (Float s _)  = s
 
-> instance Expr Expression where
->   fv (Variable v) = [v]
->   fv (Apply e1 e2) = fv e1 ++ fv e2
->   fv (Case _ _ e alts) = fv e ++ fv alts
->   fv (Or e1 e2) = fv e1 ++ fv e2
->   fv (Exist v e) = filter (/= v) (fv e)
->   fv (Let (Binding v e1) e2) = fv e1 ++ filter (/= v) (fv e2)
->   fv (Letrec bds e) = filter (`notElem` vs) (fv es ++ fv e)
->     where (vs,es) = unzip [(v,e') | Binding v e' <- bds]
->   fv _ = []
-
-> instance Expr Alt where
->   fv (Alt (ConstructorPattern _ vs) e) = filter (`notElem` vs) (fv e)
->   fv (Alt (VariablePattern v) e) = filter (v /=) (fv e)
->   fv (Alt _ e) = fv e
+\end{verbatim}

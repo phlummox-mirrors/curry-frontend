@@ -28,12 +28,12 @@ Currently, the following optimizations are implemented:
 > import Control.Monad.State as S
 > import qualified Data.Map as Map
 
-> import Curry.Base.Expr
 > import Curry.Base.Position
 > import Curry.Base.Ident
 > import Curry.Syntax
 
 > import Base.Eval (EvalEnv)
+> import Base.Expr
 > import Base.Value (ValueEnv, ValueInfo (..), bindFun, qualLookupValue)
 > import Messages (internalError)
 > import SCC

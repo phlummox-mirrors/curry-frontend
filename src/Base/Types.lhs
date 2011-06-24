@@ -19,10 +19,10 @@ order of type variables in the left hand side of a type declaration.
 > import Data.List (nub)
 > import qualified Data.Map as Map (Map, fromList, lookup)
 
-> import Curry.Base.Expr
 > import Curry.Base.Ident
 > import qualified Curry.Syntax as CS
 
+> import Base.Expr
 > import Messages (internalError)
 > import Types
 

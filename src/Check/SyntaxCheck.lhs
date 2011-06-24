@@ -26,12 +26,12 @@ merged into a single definition.
 > import qualified Data.Map as Map (empty, insert, lookup)
 > import Control.Monad.State as S (State, evalState, get, liftM, modify)
 
-> import Curry.Base.Expr
 > import Curry.Base.Position
 > import Curry.Base.Ident
 > import Curry.Syntax
 
 > import Base.Arity (ArityEnv, ArityInfo (..), lookupArity, qualLookupArity)
+> import Base.Expr
 > import Base.Import (ImportEnv, lookupAlias)
 > import Base.TypeConstructors (TCEnv, TypeInfo (..), qualLookupTC)
 > import Base.Value (ValueEnv, ValueInfo (..))

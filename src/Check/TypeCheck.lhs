@@ -30,12 +30,12 @@ type annotation is present.
 > import qualified Data.Set as Set (Set, fromList, member, notMember, unions)
 > import Text.PrettyPrint.HughesPJ
 
-> import Curry.Base.Expr
 > import Curry.Base.Position
 > import Curry.Base.Ident
 > import Curry.Syntax
 > import Curry.Syntax.Pretty
 
+> import Base.Expr
 > import Base.Types (fromQualType, toType, toTypes)
 > import Base.TypeConstructors (TCEnv, TypeInfo (..), bindTypeInfo, qualLookupTC)
 > import Base.Value ( ValueEnv, ValueInfo (..), bindFun, rebindFun

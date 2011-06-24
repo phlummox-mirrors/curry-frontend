@@ -41,6 +41,7 @@ Executable cymake
   Other-Modules:
       Base.Arity
     , Base.Eval
+    , Base.Expr
     , Base.Import
     , Base.Module
     , Base.OpPrec

@@ -25,13 +25,13 @@ data structures, we can use only a qualified import for the
 > import qualified Data.Set as Set (delete, fromList, toList)
 > import qualified Data.Map as Map (Map, empty, insert, lookup)
 
-> import Curry.Base.Expr
 > import Curry.Base.Position
 > import Curry.Base.Ident
 > import qualified IL as IL
 > import Curry.Syntax
 
 > import Base.Eval (EvalEnv)
+> import Base.Expr
 > import Base.TypeConstructors (TCEnv, TypeInfo (..), qualLookupTC)
 > import Base.Types (toQualTypes)
 > import Base.Value (ValueEnv, ValueInfo (..), lookupValue, qualLookupValue)

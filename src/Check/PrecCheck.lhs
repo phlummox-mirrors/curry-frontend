@@ -19,11 +19,11 @@ of the operators involved.
 
 > import Data.List (partition, mapAccumL)
 
-> import Curry.Base.Expr
 > import Curry.Base.Position
 > import Curry.Base.Ident
 > import Curry.Syntax
 
+> import Base.Expr
 > import Base.OpPrec (PEnv, OpPrec (..), PrecInfo (..), defaultP, bindP, qualLookupP)
 > import Messages (errorAt')
 > import Utils (findDouble)
