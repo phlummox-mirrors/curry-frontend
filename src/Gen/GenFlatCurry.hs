@@ -47,7 +47,7 @@ trace' _ x = x
 
 -- transforms intermediate language code (IL) to FlatCurry code
 genFlatCurry :: Options -> CurryEnv -> ModuleEnv -> ValueEnv -> TCEnv
-		-> ArityEnv -> IL.Module -> (Prog, [WarnMsg])
+		-> ArityEnv -> IL.Module -> (Prog, [Message])
 genFlatCurry opts cEnv mEnv tyEnv tcEnv aEnv modul
    = (prog', messages)
  where (prog, messages)
@@ -57,7 +57,7 @@ genFlatCurry opts cEnv mEnv tyEnv tcEnv aEnv modul
 
 -- transforms intermediate language code (IL) to FlatCurry interfaces
 genFlatInterface :: Options -> CurryEnv -> ModuleEnv -> ValueEnv -> TCEnv
-         -> ArityEnv -> IL.Module -> (Prog, [WarnMsg])
+         -> ArityEnv -> IL.Module -> (Prog, [Message])
 genFlatInterface opts cEnv mEnv tyEnv tcEnv aEnv modul =
   (patchPreludeFCY intf, messages)
   where (intf, messages)
@@ -120,7 +120,7 @@ data FlatEnv = FlatEnv
   , varIndexE     :: Int
   , varIdsE       :: ScopeEnv Ident VarIndex
   , tvarIndexE    :: Int
-  , messagesE     :: [WarnMsg]
+  , messagesE     :: [Message]
   , genInterfaceE :: Bool
   , localTypes    :: Map.Map QualIdent IL.Type
   , constrTypes   :: Map.Map QualIdent IL.Type
@@ -132,7 +132,7 @@ data IdentExport = NotConstr       -- function, type-constructor
 
 -- Runs a 'FlatState' action and returns the result
 run :: Options -> CurryEnv -> ModuleEnv -> ValueEnv -> TCEnv -> ArityEnv
-    -> Bool -> FlatState a -> (a, [WarnMsg])
+    -> Bool -> FlatState a -> (a, [Message])
 run opts cEnv mEnv tyEnv tcEnv aEnv genIntf f
    = (result, messagesE env)
  where
@@ -1084,7 +1084,7 @@ clearVarIndices = modify (\env -> env { varIndexE = 0,
 genWarning :: String -> FlatState ()
 genWarning msg
    = modify (\env -> env{ messagesE = warnMsg:(messagesE env) })
-    where warnMsg = WarnMsg Nothing msg
+    where warnMsg = Message Nothing msg
 
 --
 genInterface :: FlatState Bool

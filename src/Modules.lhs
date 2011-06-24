@@ -217,7 +217,7 @@ generated FlatCurry terms (type \texttt{Prog}).
 >   mintf <- readFlatInterface fn
 >   let intf = fromMaybe (errorAt (first fn) (interfaceNotFound m)) mintf
 >       (Prog modul _ _ _ _) = intf
->       m' = mkMIdent [modul]
+>       m' = fromModuleName modul
 >   unless (m' == m) (errorAt (first fn) (wrongInterface m m'))
 >   mEnv' <- loadFlatInterfaces paths ctxt mEnv intf
 >   return $ bindFlatInterface intf mEnv'
@@ -225,9 +225,9 @@ generated FlatCurry terms (type \texttt{Prog}).
 > loadFlatInterfaces :: [FilePath] -> [ModuleIdent] -> ModuleEnv -> Prog
 >                    -> IO ModuleEnv
 > loadFlatInterfaces paths ctxt mEnv (Prog m is _ _ _) =
->   foldM (loadInterface paths ((mkMIdent [m]):ctxt))
+>   foldM (loadInterface paths (fromModuleName m:ctxt))
 >         mEnv
->         (map (\i -> (p, mkMIdent [i])) is)
+>         (map (\i -> (p, fromModuleName i)) is)
 >  where p = first m
 
 Interface files are updated by the Curry builder when necessary.
@@ -235,7 +235,7 @@ Interface files are updated by the Curry builder when necessary.
 
 > -- |
 > simpleCheckModule :: Options -> ModuleEnv -> Module
->   -> IO (ValueEnv, TCEnv, ArityEnv, Module, Interface, [WarnMsg])
+>   -> IO (ValueEnv, TCEnv, ArityEnv, Module, Interface, [Message])
 > simpleCheckModule opts mEnv (Module m es ds) = do
 >   showWarnings opts warnMsgs
 >   return (tyEnv'', tcEnv, aEnv'', modul, intf, warnMsgs)
@@ -259,7 +259,7 @@ Interface files are updated by the Curry builder when necessary.
 >     intf = exportInterface modul pEnv' tcEnv'' tyEnv''
 
 > checkModule :: Options -> ModuleEnv -> Module
->   -> IO (ValueEnv, TCEnv, ArityEnv, Module, Interface, [WarnMsg])
+>   -> IO (ValueEnv, TCEnv, ArityEnv, Module, Interface, [Message])
 > checkModule opts mEnv (Module m es ds) = do
 >   showWarnings opts warnMsgs
 >   when (m == mkMIdent ["field114..."]) (error (show es)) -- TODO hack?
@@ -356,7 +356,7 @@ imported modules into scope for the current module.
 >       case Map.lookup m mEnv of
 >         Just ds1 -> importInterface (fromMaybe m asM) q is
 >                       (Interface m ds1) pEnv' tcEnv' tyEnv' aEnv'
->         Nothing  -> internalError "importModule"
+>         Nothing  -> internalError $ "importModule: Map.lookup " ++ show m ++ " " ++ show mEnv
 >     importModule t _ = t
 
 > initEnvs :: (PEnv, TCEnv, ValueEnv, ArityEnv)
@@ -476,7 +476,7 @@ type check.
 >   = writeFlatFile opts (genFlatCurry opts cEnv mEnv tyEnv tcEnv aEnv il)
 >                        (fromMaybe (flatName sfn) tfn)
 
-> writeFlatFile :: Options -> (Prog, [WarnMsg]) -> String -> IO Prog
+> writeFlatFile :: Options -> (Prog, [Message]) -> String -> IO Prog
 > writeFlatFile opts (res, msgs) fname = do
 >   showWarnings opts msgs
 >   when extended $ writeExtendedFlat sub fname res
@@ -572,7 +572,7 @@ be dependent on it any longer.
 >     outputFile = fromMaybe (sourceRepName fn) (optOutput opts)
 >     modString  = showModule modul
 
-> showWarnings :: Options -> [WarnMsg] -> IO ()
+> showWarnings :: Options -> [Message] -> IO ()
 > showWarnings opts msgs = when (optWarn opts)
 >                        $ putErrsLn $ map showWarning msgs
 
@@ -611,19 +611,20 @@ Error functions.
 > wrongInterface :: ModuleIdent -> ModuleIdent -> String
 > wrongInterface m m' =
 >   "Expected interface for " ++ show m ++ " but found " ++ show m'
+>   ++ show (moduleQualifiers m, moduleQualifiers m')
 
 \end{verbatim}
 
 > bindFlatInterface :: Prog -> ModuleEnv -> ModuleEnv
 > bindFlatInterface (Prog m imps ts fs os)
->    = Map.insert (mkMIdent [m])
+>    = Map.insert (fromModuleName m)
 >      ((map genIImportDecl imps)
 >       ++ (map genITypeDecl ts')
 >       ++ (map genIFuncDecl fs)
 >       ++ (map genIOpDecl os))
 >  where
 >  genIImportDecl :: String -> IDecl
->  genIImportDecl imp = IImportDecl pos (mkMIdent [imp])
+>  genIImportDecl = IImportDecl pos . fromModuleName
 >
 >  genITypeDecl :: TypeDecl -> IDecl
 >  genITypeDecl (Type qn _ is cs)
@@ -674,7 +675,7 @@ Error functions.
 >
 >  genQualIdent :: EF.QName -> QualIdent
 >  genQualIdent EF.QName { modName = modul, localName = lname } =
->    qualifyWith (mkMIdent [modul]) (mkIdent lname)
+>    qualifyWith (fromModuleName modul) (mkIdent lname)
 >
 >  genVarIndexIdent :: String -> Int -> Ident
 >  genVarIndexIdent v i = mkIdent (v ++ show i)
