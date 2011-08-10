@@ -28,7 +28,7 @@ import Env.ScopeEnv (ScopeEnv)
 type CheckState = State CState
 
 data CState = CState
-  { messages  :: [WarnMsg]
+  { messages  :: [Message]
   , scope     :: ScopeEnv QualIdent IdInfo
   , values    :: ValueEnv
   , moduleId  :: ModuleIdent
@@ -38,7 +38,7 @@ emptyState :: CState
 emptyState = CState [] ScopeEnv.new emptyTopEnv (mkMIdent [])
 
 -- |Run a 'CheckState' action and return the list of messages
-run ::  CheckState a -> [WarnMsg]
+run ::  CheckState a -> [Message]
 run f = reverse (messages (execState f emptyState))
 
 -- Find potentially incorrect code in a Curry program and generate
@@ -48,7 +48,7 @@ run f = reverse (messages (execState f emptyState))
 --    - idle case alternatives
 --    - overlapping case alternatives
 --    - function rules which are not together
-warnCheck :: ModuleIdent -> ValueEnv -> [Decl] -> [Decl] -> [WarnMsg]
+warnCheck :: ModuleIdent -> ValueEnv -> [Decl] -> [Decl] -> [Message]
 warnCheck mid vals imports decls = run $ do
   addImportedValues vals
   addModuleId mid
@@ -596,12 +596,12 @@ modifyScope f state = state{ scope = f (scope state) }
 genWarning :: Position -> String -> CheckState ()
 genWarning pos msg
    = modify (\state -> state{ messages = warnMsg:(messages state) })
- where warnMsg = WarnMsg (Just pos) msg
+ where warnMsg = Message (Just pos) msg
 
 genWarning' :: (Position, String) -> CheckState ()
 genWarning' (pos, msg)
    = modify (\state -> state{ messages = warnMsg:(messages state) })
-    where warnMsg = WarnMsg (Just pos) msg
+    where warnMsg = Message (Just pos) msg
 
 --
 insertVar :: Ident -> CheckState ()

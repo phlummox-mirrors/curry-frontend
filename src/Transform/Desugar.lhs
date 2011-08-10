@@ -66,11 +66,11 @@ all names must be properly qualified before calling this module.}
 > import Data.List
 > import Data.Maybe
 
-> import Curry.Base.Expr
-> import Curry.Base.Position
 > import Curry.Base.Ident
+> import Curry.Base.Position
 > import Curry.Syntax
 
+> import Base.Expr
 > import Base.TypeConstructors (TCEnv, TypeInfo (..), qualLookupTC)
 > import Base.Types (fromType)
 > import Base.Value (ValueEnv, ValueInfo (..), bindFun, bindGlobalInfo

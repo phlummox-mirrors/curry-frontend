@@ -66,7 +66,7 @@ genCurrySyntax fn mod1
 
 --
 genFullCurrySyntax ::
-  (Options -> ModuleEnv -> CS.Module -> IO (a, b, c, CS.Module, d, [WarnMsg]))
+  (Options -> ModuleEnv -> CS.Module -> IO (a, b, c, CS.Module, d, [Message]))
   -> [FilePath] -> MsgMonad CS.Module -> IO (MsgMonad CS.Module)
 genFullCurrySyntax check paths m = runMsgIO m $ \mod1 -> do
   errs <- makeInterfaces paths mod1

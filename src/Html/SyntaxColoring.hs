@@ -43,7 +43,7 @@ data Code =  Keyword String
            | CharCode String
            | Symbol String
            | Identifier IdentifierKind QualIdent
-           | CodeWarning [WarnMsg] Code
+           | CodeWarning [Message] Code
            | NotParsed String
              deriving Show
 
@@ -114,10 +114,10 @@ getQualIdent  _ = Nothing
 
 -- DEBUGGING----------- wird bald nicht mehr gebraucht
 
-setMessagePosition :: WarnMsg -> WarnMsg
-setMessagePosition m@(WarnMsg (Just p) _) = trace'' ("pos:" ++ show p ++ ":" ++ show m) m
-setMessagePosition (WarnMsg _ m) =
-        let mes@(WarnMsg pos _) =  (WarnMsg (getPositionFromString m) m) in
+setMessagePosition :: Message -> Message
+setMessagePosition m@(Message (Just p) _) = trace'' ("pos:" ++ show p ++ ":" ++ show m) m
+setMessagePosition (Message _ m) =
+        let mes@(Message pos _) =  (Message (getPositionFromString m) m) in
         trace'' ("pos:" ++ show pos ++ ":" ++ show mes) mes
 
 getPositionFromString :: String -> Maybe Position
@@ -144,28 +144,28 @@ flatCode code = code
 
 -- ----------Message---------------------------------------
 
-getMessages :: MsgMonad a -> [WarnMsg]
+getMessages :: MsgMonad a -> [Message]
 getMessages = snd . runMsg --(Result mess _) = mess
 -- getMessages (Failure mess) = mess
 
-lessMessage :: WarnMsg -> WarnMsg -> Bool
-lessMessage (WarnMsg mPos1 _) (WarnMsg mPos2 _) = mPos1 < mPos2
+lessMessage :: Message -> Message -> Bool
+lessMessage (Message mPos1 _) (Message mPos2 _) = mPos1 < mPos2
 
-nubMessages :: [WarnMsg] -> [WarnMsg]
+nubMessages :: [Message] -> [Message]
 nubMessages = nubBy eqMessage
 
-eqMessage :: WarnMsg -> WarnMsg -> Bool
-eqMessage (WarnMsg p1 s1) (WarnMsg p2 s2) = (p1 == p2) && (s1 == s2)
+eqMessage :: Message -> Message -> Bool
+eqMessage (Message p1 s1) (Message p2 s2) = (p1 == p2) && (s1 == s2)
 
-prepareMessages :: [WarnMsg] -> [WarnMsg]
+prepareMessages :: [Message] -> [Message]
 prepareMessages = qsort lessMessage . map setMessagePosition . nubMessages
 
 
-buildMessagesIntoPlainText :: [WarnMsg] -> String -> Program
+buildMessagesIntoPlainText :: [Message] -> String -> Program
 buildMessagesIntoPlainText messages text =
     buildMessagesIntoPlainText' messages (lines text) [] 1
  where
-    buildMessagesIntoPlainText' :: [WarnMsg] -> [String] -> [String] -> Int -> Program
+    buildMessagesIntoPlainText' :: [Message] -> [String] -> [String] -> Int -> Program
     buildMessagesIntoPlainText' _ [] [] _ =
           []
     buildMessagesIntoPlainText' _ [] postStrs ln =
@@ -182,7 +182,7 @@ buildMessagesIntoPlainText messages text =
                   (ln,1,NewLine) :
                   buildMessagesIntoPlainText' post preStrs [] (ln + 1)
       where
-         isLeq (WarnMsg (Just p) _) = line p <= ln
+         isLeq (Message (Just p) _) = line p <= ln
          isLeq _ = True
 
 --- @param parse-Modules  [typingParse,fullParse,parse]
@@ -272,15 +272,15 @@ addModuleIdent _ c = c
 
 -- ----------------------------------------
 
-mergeMessages' :: [WarnMsg] -> [(Position,Token)] -> [([WarnMsg],Position,Token)]
+mergeMessages' :: [Message] -> [(Position,Token)] -> [([Message],Position,Token)]
 mergeMessages' _ [] = []
 mergeMessages' [] ((p,t):ps) = ([],p,t) : mergeMessages' [] ps
-mergeMessages' mss@(m@(WarnMsg mPos x):ms) ((p,t):ps)
+mergeMessages' mss@(m@(Message mPos x):ms) ((p,t):ps)
     | mPos <= Just p = trace' (show mPos ++ " <= " ++ show (Just p) ++ " Message: " ++ x) ([m],p,t) : mergeMessages' ms ps
     | otherwise = ([],p,t) : mergeMessages' mss ps
 
 
-tokenNcodes2codes :: [(ModuleIdent,ModuleIdent)] -> Int -> Int -> [([WarnMsg],Position,Token)] -> [Code] -> [(Int,Int,Code)]
+tokenNcodes2codes :: [(ModuleIdent,ModuleIdent)] -> Int -> Int -> [([Message],Position,Token)] -> [Code] -> [(Int,Int,Code)]
 tokenNcodes2codes _ _ _ [] _ = []
 tokenNcodes2codes nameList currLine currCol toks@((messages,Position{line=row,column=col},token):ts) codes
     | currLine < row =

@@ -24,11 +24,11 @@ lifted to the top-level.
 > import qualified Data.Map as Map
 > import qualified Data.Set as Set
 
-> import Curry.Base.Expr
 > import Curry.Base.Ident
 > import Curry.Syntax
 
 > import Base.Eval (EvalEnv)
+> import Base.Expr
 > import Base.Value (ValueEnv, ValueInfo (..), lookupValue)
 > import Env.TopEnv
 > import Messages (internalError)
