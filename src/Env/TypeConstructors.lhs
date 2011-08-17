@@ -27,7 +27,7 @@ exported at all in order to make the interface more stable against
 changes which are private to the module.
 \begin{verbatim}
 
-> module Base.TypeConstructors
+> module Env.TypeConstructors
 >   ( TCEnv, TypeInfo (..), tcArity, bindTypeInfo, lookupTC, qualLookupTC
 >   , lookupTupleTC, tupleTCs, tupleData, initTCEnv
 >   ) where
@@ -36,19 +36,21 @@ changes which are private to the module.
 
 > import Curry.Base.Ident
 
-> import Env.TopEnv
-> import Utils ((++!))
-> import Types
+> import Base.Types
+> import Base.Utils ((++!))
 
-> data TypeInfo = DataType QualIdent Int [Maybe (Data [Type])]
->               | RenamingType QualIdent Int (Data Type)
+> import Env.TopEnv
+
+> data TypeInfo = DataType QualIdent Int [Maybe DataConstr]
+>               | RenamingType QualIdent Int DataConstr
 >               | AliasType QualIdent Int Type
 >               deriving Show
 
 > instance Entity TypeInfo where
->   origName (DataType tc _ _) = tc
+>   origName (DataType     tc _ _) = tc
 >   origName (RenamingType tc _ _) = tc
->   origName (AliasType tc _ _) = tc
+>   origName (AliasType    tc _ _) = tc
+>
 >   merge (DataType tc n cs) (DataType tc' _ cs')
 >     | tc == tc' = Just (DataType tc n (mergeData cs cs'))
 >     where mergeData ds       []         = ds
@@ -65,9 +67,9 @@ changes which are private to the module.
 >   merge _ _ = Nothing
 
 > tcArity :: TypeInfo -> Int
-> tcArity (DataType _ n _) = n
+> tcArity (DataType     _ n _) = n
 > tcArity (RenamingType _ n _) = n
-> tcArity (AliasType _ n _) = n
+> tcArity (AliasType    _ n _) = n
 
 \end{verbatim}
 Types can only be defined on the top-level; no nested environments are
@@ -100,12 +102,12 @@ impossible to insert them into the environment in advance.
 
 > tupleTCs :: [TypeInfo]
 > tupleTCs = map typeInfo tupleData
->   where typeInfo (Data c _ tys) =
+>   where typeInfo (DataConstr c _ tys) =
 >           DataType (qualifyWith preludeMIdent c) (length tys)
->                    [Just (Data c 0 tys)]
+>                    [Just (DataConstr c 0 tys)]
 
-> tupleData :: [Data [Type]]
-> tupleData = [Data (tupleId n) 0 (take n tvs) | n <- [2 ..]]
+> tupleData :: [DataConstr]
+> tupleData = [DataConstr (tupleId n) 0 (take n tvs) | n <- [2 ..]]
 >   where tvs = map typeVar [0 ..]
 
 > initTCEnv :: TCEnv

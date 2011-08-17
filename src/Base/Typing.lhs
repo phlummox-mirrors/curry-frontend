@@ -7,22 +7,22 @@
 \section{Computing the Type of Curry Expressions}
 \begin{verbatim}
 
-> module Typing (Typeable (..)) where
+> module Base.Typing (Typeable (..)) where
 
-> import Data.Maybe
 > import Control.Monad
 > import Control.Monad.State as S
+> import Data.Maybe
 
 > import Curry.Base.Ident
 > import Curry.Syntax
 
-> import Types
-> import Base.Value (ValueEnv, ValueInfo (..), lookupValue, qualLookupValue)
-> import TypeSubst
-> import Env.TopEnv
-> import Utils
-> import Messages (internalError)
+> import Base.Messages (internalError)
+> import Base.Types
+> import Base.TypeSubst
+> import Base.Utils
 
+> import Env.TopEnv
+> import Env.Value (ValueEnv, ValueInfo (..), lookupValue, qualLookupValue)
 
 \end{verbatim}
 During the transformation of Curry source code into the intermediate

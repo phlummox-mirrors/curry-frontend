@@ -14,13 +14,12 @@ import Data.Maybe (fromJust, fromMaybe, isJust)
 
 import Curry.Base.Position (SrcRef)
 import Curry.Base.Ident
-import IL
 import qualified Curry.Syntax
 
-import Base.Module (ModuleEnv, lookupModule)
+import Env.Module (ModuleEnv, lookupModule)
 import Env.OldScopeEnv as ScopeEnv
   (ScopeEnv, beginScope, genIdentList, insertIdent, newScopeEnv)
-
+import IL
 
 type Message = String
 

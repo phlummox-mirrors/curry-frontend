@@ -39,54 +39,60 @@ Executable cymake
     , mtl, old-time, containers, pretty
   ghc-options: -Wall
   Other-Modules:
-      Base.Arity
-    , Base.Eval
+      Checks
+    , CompilerEnv
+    , CompilerOpts
+    , CurryBuilder
+    , CurryDeps
+    , Exports
+    , Frontend
+    , Generators
+    , IL
+    , Imports
+    , Interfaces
+    , Modules
+    , ModuleSummary
+    , Records
+    , Transformations
+    , Base.CurryTypes
     , Base.Expr
-    , Base.Import
-    , Base.Module
-    , Base.OpPrec
-    , Base.TypeConstructors
+    , Base.Messages
+    , Base.SCC
+    , Base.Subst
     , Base.Types
-    , Base.Value
-    , Check.InterfaceCheck
+    , Base.TypeSubst
+    , Base.Typing
+    , Base.Utils
     , Check.KindCheck
     , Check.PrecCheck
     , Check.SyntaxCheck
     , Check.TypeCheck
     , Check.WarnCheck
-    , Env.CurryEnv
+    , Env.Arity
+    , Env.Eval
+    , Env.Import
+    , Env.Label
+    , Env.Module
     , Env.NestEnv
     , Env.OldScopeEnv
+    , Env.OpPrec
     , Env.ScopeEnv
     , Env.TopEnv
+    , Env.TypeConstructors
+    , Env.Value
     , Gen.GenAbstractCurry
     , Gen.GenFlatCurry
     , Html.CurryHtml
     , Html.SyntaxColoring
-    , IL
     , IL.Pretty
     , IL.Type
     , IL.XML
-    , CurryBuilder
-    , CompilerOpts
-    , CurryDeps
-    , CurryToIL
-    , Exports
-    , Frontend
-    , Imports
-    , Messages
-    , Modules
-    , SCC
-    , Subst
     , Transform.CaseCompletion
+    , Transform.CurryToIL
     , Transform.Desugar
     , Transform.Lift
     , Transform.Qual
     , Transform.Simplify
-    , Types
-    , TypeSubst
-    , Typing
-    , Utils
 Library
   hs-source-dirs:  src
   Build-Depends:   filepath

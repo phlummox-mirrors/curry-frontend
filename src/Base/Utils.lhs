@@ -10,7 +10,7 @@ commonly used in the compiler, but not implemented in the Haskell
 \texttt{Prelude} or standard library.
 \begin{verbatim}
 
-> module Utils
+> module Base.Utils
 >   ( fst3, snd3, thd3, apFst3, apSnd3, apThd3, curry3, uncurry3
 >   , (++!), foldl2, foldr2, mapAccumM, findDouble
 >   ) where

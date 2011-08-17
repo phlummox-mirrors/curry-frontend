@@ -1,4 +1,4 @@
-module Messages
+module Base.Messages
   ( info, status
   , putErrLn, putErrsLn, abortWith
   , internalError, errorAt, errorAt'

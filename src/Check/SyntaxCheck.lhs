@@ -21,30 +21,31 @@ merged into a single definition.
 
 > module Check.SyntaxCheck (syntaxCheck) where
 
-> import Data.Maybe (fromJust, isJust, isNothing, maybeToList)
+> import Control.Monad.State as S (State, evalState, get, liftM, modify)
 > import Data.List ((\\), find, insertBy, partition)
 > import qualified Data.Map as Map (empty, insert, lookup)
-> import Control.Monad.State as S (State, evalState, get, liftM, modify)
+> import Data.Maybe (fromJust, isJust, isNothing, maybeToList)
 
 > import Curry.Base.Position
 > import Curry.Base.Ident
 > import Curry.Syntax
 
-> import Base.Arity (ArityEnv, ArityInfo (..), lookupArity, qualLookupArity)
 > import Base.Expr
-> import Base.Import (ImportEnv, lookupAlias)
-> import Base.TypeConstructors (TCEnv, TypeInfo (..), qualLookupTC)
-> import Base.Value (ValueEnv, ValueInfo (..))
+> import Base.Messages (errorAt, errorAt', internalError)
+> import Base.Types
+> import Base.Utils ((++!), findDouble, mapAccumM)
+
+> import Env.Arity (ArityEnv, ArityInfo (..), lookupArity, qualLookupArity)
+> import Env.Import (ImportEnv, lookupAlias)
 > import Env.NestEnv
-> import Messages (errorAt, errorAt', internalError)
-> import Utils ((++!), findDouble, mapAccumM)
-> import Types
+> import Env.TypeConstructors (TCEnv, TypeInfo (..), qualLookupTC)
+> import Env.Value (ValueEnv, ValueInfo (..))
 
 \end{verbatim}
 The syntax checking proceeds as follows. First, the compiler extracts
 information about all imported values and data constructors from the
 imported (type) environments. Next, the data constructors defined in
-the current module are entered into this environment. After this
+the current module are entered into this environment. After this,
 all record labels are entered into the environment too. If a record
 identifier is already assigned to a constructor, then an error will be
 generated. Finally, all

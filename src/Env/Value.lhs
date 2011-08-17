@@ -10,24 +10,25 @@ defining record. On import two values
 are considered equal if their original names match.
 \begin{verbatim}
 
-> module Base.Value
+> module Env.Value
 >   ( ValueEnv, ValueInfo (..), bindGlobalInfo, bindFun, rebindFun, bindLabel
 >   , lookupValue, qualLookupValue, qualLookupCons, lookupTuple, tupleDCs
 >   , initDCEnv ) where
 
 > import Curry.Base.Ident
 
-> import Base.TypeConstructors (TypeInfo (..), tupleTCs)
-> import Env.TopEnv
-> import Utils ((++!))
-> import Types
+> import Base.Types
+> import Base.Utils ((++!))
 
-> data ValueInfo = DataConstructor QualIdent ExistTypeScheme
->                | NewtypeConstructor QualIdent ExistTypeScheme
->                | Value QualIdent TypeScheme
->                | Label QualIdent QualIdent TypeScheme
->              -- Label <label> <record name> <type>
->                deriving Show
+> import Env.TypeConstructors (TypeInfo (..), tupleTCs)
+> import Env.TopEnv
+
+> data ValueInfo
+>   = DataConstructor QualIdent ExistTypeScheme
+>   | NewtypeConstructor QualIdent ExistTypeScheme
+>   | Value QualIdent TypeScheme
+>   | Label QualIdent QualIdent TypeScheme -- Label <label name> <record name> <type>
+>     deriving Show
 
 > instance Entity ValueInfo where
 >   origName (DataConstructor orgName _) = orgName
@@ -107,7 +108,7 @@ TODO: Match other patterns?
 
 > tupleDCs :: [ValueInfo]
 > tupleDCs = map dataInfo tupleTCs
->   where dataInfo (DataType tc _ [Just (Data _ _ tys)]) =
+>   where dataInfo (DataType tc _ [Just (DataConstr _ _ tys)]) =
 >           DataConstructor (qualUnqualify preludeMIdent tc)
 >                           (ForAllExist (length tys) 0
 >                                        (foldr TypeArrow (tupleType tys) tys))
@@ -117,7 +118,7 @@ TODO: Match other patterns?
 > initDCEnv =
 >   foldr (uncurry predefDC) emptyTopEnv
 >         [ (c, constrType (polyType ty) n' tys)
->         | (ty, cs) <- predefTypes, Data c n' tys <- cs]
+>         | (ty, cs) <- predefTypes, DataConstr c n' tys <- cs]
 >   where predefDC c ty = predefTopEnv c' (DataConstructor c' ty)
 >           where c' = qualify c
 >         constrType (ForAll n ty) n' = ForAllExist n n' . foldr TypeArrow ty

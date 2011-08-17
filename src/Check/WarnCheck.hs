@@ -15,31 +15,33 @@ import Curry.Base.Position
 import Curry.Base.MessageMonad
 import Curry.Syntax
 
-import Base.Value (ValueEnv, ValueInfo (..), qualLookupValue)
-import Env.TopEnv
 import qualified Env.ScopeEnv as ScopeEnv
-import Env.ScopeEnv (ScopeEnv)
+import Env.TopEnv
+import Env.Value (ValueEnv, ValueInfo (..), qualLookupValue)
 
 
--- Data type for representing the current state of generating warnings.
--- The monadic representation of the state allows the usage of monadic
--- syntax (do expression) for dealing easier and safer with its
--- contents.
-type CheckState = State CState
-
+-- Current state of generating warnings
 data CState = CState
   { messages  :: [Message]
-  , scope     :: ScopeEnv QualIdent IdInfo
+  , scope     :: ScopeEnv.ScopeEnv QualIdent IdInfo
   , values    :: ValueEnv
   , moduleId  :: ModuleIdent
   }
 
+-- The monadic representation of the state allows the usage of monadic
+-- syntax (do expression) for dealing easier and safer with its
+-- contents.
+type CheckM = State CState
+
 emptyState :: CState
 emptyState = CState [] ScopeEnv.new emptyTopEnv (mkMIdent [])
 
--- |Run a 'CheckState' action and return the list of messages
-run ::  CheckState a -> [Message]
-run f = reverse (messages (execState f emptyState))
+checked :: CheckM ()
+checked = return ()
+
+-- |Run a 'CheckM' action and return the list of messages
+run ::  CheckM a -> [Message]
+run f = reverse $ messages $ execState f emptyState
 
 -- Find potentially incorrect code in a Curry program and generate
 -- the following warnings for:
@@ -60,405 +62,365 @@ warnCheck mid vals imports decls = run $ do
 -------------------------------------------------------------------------------
 
 --
-checkDecl :: ModuleIdent -> Decl -> CheckState ()
-checkDecl mid (DataDecl _ _ params cdecls)
-   = do beginScope
-	foldM' insertTypeVar params
-	foldM' (checkConstrDecl mid) cdecls
-	params' <- filterM isUnrefTypeVar params
-	when (not (null params'))
-	     (foldM' genWarning' (map unrefTypeVar params'))
-	endScope
-checkDecl mid (TypeDecl _ _ params texpr)
-   = do beginScope
-	foldM' insertTypeVar params
-	checkTypeExpr mid texpr
-	params' <- filterM isUnrefTypeVar params
-	when (not (null params'))
-	     (foldM' genWarning'  (map unrefTypeVar params'))
-	endScope
-checkDecl mid (FunctionDecl _ ident equs)
-   = do beginScope
-	foldM' (checkEquation mid) equs
-	c <- isConsId ident
-	idents' <- returnUnrefVars
-	when (not (c || null idents'))
-             (foldM' genWarning' (map unrefVar idents'))
-	endScope
-checkDecl mid (PatternDecl _ cterm rhs)
-   = do checkConstrTerm mid cterm
-	checkRhs mid rhs
-checkDecl _ _ = return ()
+checkDecl :: ModuleIdent -> Decl -> CheckM ()
+checkDecl mid (DataDecl _ _ params cdecls) = withScope $ do
+  foldM' insertTypeVar params
+  foldM' (checkConstrDecl mid) cdecls
+  params' <- filterM isUnrefTypeVar params
+  when (not $ null params') $ foldM' genWarning' $ map unrefTypeVar params'
+checkDecl mid (TypeDecl _ _ params texpr) = withScope $ do
+  foldM' insertTypeVar params
+  checkTypeExpr mid texpr
+  params' <- filterM isUnrefTypeVar params
+  when (not $ null params') $ foldM' genWarning' $ map unrefTypeVar params'
+checkDecl mid (FunctionDecl _ ident equs) = withScope $ do
+  foldM' (checkEquation mid) equs
+  c <- isConsId ident
+  idents' <- returnUnrefVars
+  when (not $ c || null idents') $ foldM' genWarning' $ map unrefVar idents'
+checkDecl mid (PatternDecl _ cterm rhs) = do
+  checkConstrTerm mid cterm
+  checkRhs mid rhs
+checkDecl _ _ = checked
 
 -- Checks locally declared identifiers (i.e. functions and logic variables)
 -- for shadowing
-checkLocalDecl :: Decl -> CheckState ()
-checkLocalDecl (FunctionDecl _ ident _)
-   = do s <- isShadowingVar ident
-	when s (genWarning' (shadowingVar ident))
-checkLocalDecl (ExtraVariables _ idents)
-   = do idents' <- filterM isShadowingVar idents
-	when (not (null idents'))
-	     (foldM' genWarning' (map shadowingVar idents'))
+checkLocalDecl :: Decl -> CheckM ()
+checkLocalDecl (FunctionDecl _ ident _) = do
+  s <- isShadowingVar ident
+  when s $ genWarning' $ shadowingVar ident
+checkLocalDecl (ExtraVariables _ idents) = do
+  idents' <- filterM isShadowingVar idents
+  when (not $ null idents') $ foldM' genWarning' $ map shadowingVar idents'
 checkLocalDecl (PatternDecl _ constrTerm _)
-   = checkConstrTerm (mkMIdent []) constrTerm
-checkLocalDecl _ = return ()
+  = checkConstrTerm (mkMIdent []) constrTerm
+checkLocalDecl _ = checked
 
 --
-checkConstrDecl :: ModuleIdent -> ConstrDecl -> CheckState ()
-checkConstrDecl mid (ConstrDecl _ _ ident texprs)
-   = do visitId ident
-	foldM' (checkTypeExpr mid) texprs
-checkConstrDecl mid (ConOpDecl _ _ texpr1 ident texpr2)
-   = do visitId ident
-	checkTypeExpr mid texpr1
-	checkTypeExpr mid texpr2
+checkConstrDecl :: ModuleIdent -> ConstrDecl -> CheckM ()
+checkConstrDecl mid (ConstrDecl _ _ ident texprs) = do
+  visitId ident
+  foldM' (checkTypeExpr mid) texprs
+checkConstrDecl mid (ConOpDecl _ _ texpr1 ident texpr2) = do
+  visitId ident
+  checkTypeExpr mid texpr1
+  checkTypeExpr mid texpr2
 
 
-checkTypeExpr :: ModuleIdent -> TypeExpr -> CheckState ()
-checkTypeExpr mid (ConstructorType qid texprs)
-   = do maybe (return ()) visitTypeId (localIdent mid qid)
-	foldM' (checkTypeExpr mid ) texprs
-checkTypeExpr _  (VariableType ident)
-   = visitTypeId ident
-checkTypeExpr mid  (TupleType texprs)
-   = foldM' (checkTypeExpr mid ) texprs
-checkTypeExpr mid  (ListType texpr)
-   = checkTypeExpr mid  texpr
-checkTypeExpr mid  (ArrowType texpr1 texpr2)
-   = do checkTypeExpr mid  texpr1
-	checkTypeExpr mid  texpr2
-checkTypeExpr mid  (RecordType fields restr)
-   = do foldM' (checkTypeExpr mid ) (map snd fields)
-	maybe (return ()) (checkTypeExpr mid ) restr
-
---
-checkEquation :: ModuleIdent -> Equation -> CheckState ()
-checkEquation mid (Equation _ lhs rhs)
-   = do checkLhs mid lhs
-	checkRhs mid rhs
+checkTypeExpr :: ModuleIdent -> TypeExpr -> CheckM ()
+checkTypeExpr mid (ConstructorType qid texprs) = do
+  maybe checked visitTypeId (localIdent mid qid)
+  foldM' (checkTypeExpr mid) texprs
+checkTypeExpr _   (VariableType ident)
+  = visitTypeId ident
+checkTypeExpr mid (TupleType texprs)
+  = foldM' (checkTypeExpr mid) texprs
+checkTypeExpr mid (ListType texpr)
+  = checkTypeExpr mid texpr
+checkTypeExpr mid (ArrowType texpr1 texpr2) = do
+  checkTypeExpr mid texpr1
+  checkTypeExpr mid texpr2
+checkTypeExpr mid (RecordType fields restr) = do
+  foldM' (checkTypeExpr mid ) (map snd fields)
+  maybe checked (checkTypeExpr mid) restr
 
 --
-checkLhs :: ModuleIdent -> Lhs -> CheckState ()
-checkLhs mid (FunLhs ident cterms)
-   = do visitId ident
-	foldM' (checkConstrTerm mid) cterms
-	foldM' (insertConstrTerm False) cterms
+checkEquation :: ModuleIdent -> Equation -> CheckM ()
+checkEquation mid (Equation _ lhs rhs) = do
+  checkLhs mid lhs
+  checkRhs mid rhs
+
+--
+checkLhs :: ModuleIdent -> Lhs -> CheckM ()
+checkLhs mid (FunLhs ident cterms) = do
+  visitId ident
+  foldM' (checkConstrTerm mid) cterms
+  foldM' (insertConstrTerm False) cterms
 checkLhs mid (OpLhs cterm1 ident cterm2)
-   = checkLhs mid (FunLhs ident [cterm1, cterm2])
-checkLhs mid (ApLhs lhs cterms)
-   = do checkLhs mid lhs
-	foldM' (checkConstrTerm mid ) cterms
-	foldM' (insertConstrTerm False) cterms
+  = checkLhs mid (FunLhs ident [cterm1, cterm2])
+checkLhs mid (ApLhs lhs cterms) = do
+  checkLhs mid lhs
+  foldM' (checkConstrTerm mid ) cterms
+  foldM' (insertConstrTerm False) cterms
 
 --
-checkRhs :: ModuleIdent -> Rhs -> CheckState ()
-checkRhs mid (SimpleRhs _ expr decls)
-   = do beginScope  -- function arguments can be overwritten by local decls
-	foldM' checkLocalDecl decls
-	foldM' insertDecl decls
-	foldM' (checkDecl mid) decls
-	checkDeclOccurrences decls
-	checkExpression mid expr
-	idents' <- returnUnrefVars
-	when (not (null idents'))
-	     (foldM' genWarning' (map unrefVar idents'))
-	endScope
-checkRhs mid (GuardedRhs cexprs decls)
-   = do beginScope
-	foldM' checkLocalDecl decls
-	foldM' insertDecl decls
-	foldM' (checkDecl mid) decls
-	checkDeclOccurrences decls
-	foldM' (checkCondExpr mid) cexprs
-	idents' <- returnUnrefVars
-	when (not (null idents'))
-	     (foldM' genWarning' (map unrefVar idents'))
-	endScope
-
+checkRhs :: ModuleIdent -> Rhs -> CheckM ()
+checkRhs mid (SimpleRhs _ expr decls) = withScope $ do -- function arguments can be overwritten by local decls
+  foldM' checkLocalDecl decls
+  foldM' insertDecl decls
+  foldM' (checkDecl mid) decls
+  checkDeclOccurrences decls
+  checkExpression mid expr
+  idents' <- returnUnrefVars
+  when (not $ null idents') $ foldM' genWarning' $ map unrefVar idents'
+checkRhs mid (GuardedRhs cexprs decls) = withScope $ do
+  foldM' checkLocalDecl decls
+  foldM' insertDecl decls
+  foldM' (checkDecl mid) decls
+  checkDeclOccurrences decls
+  foldM' (checkCondExpr mid) cexprs
+  idents' <- returnUnrefVars
+  when (not $ null idents') $  foldM' genWarning' $ map unrefVar idents'
 
 --
-checkCondExpr :: ModuleIdent -> CondExpr -> CheckState ()
-checkCondExpr mid (CondExpr _ cond expr)
-   = do checkExpression mid cond
-	checkExpression mid expr
+checkCondExpr :: ModuleIdent -> CondExpr -> CheckM ()
+checkCondExpr mid (CondExpr _ cond expr) = do
+  checkExpression mid cond
+  checkExpression mid expr
 
 --
-checkConstrTerm :: ModuleIdent -> ConstrTerm -> CheckState ()
-checkConstrTerm _ (VariablePattern ident)
-   = do s <- isShadowingVar ident
-	when s (genWarning' (shadowingVar ident))
+checkConstrTerm :: ModuleIdent -> ConstrTerm -> CheckM ()
+checkConstrTerm _ (VariablePattern ident) = do
+  s <- isShadowingVar ident
+  when s $ genWarning' $ shadowingVar ident
 checkConstrTerm mid (ConstructorPattern _ cterms)
-   = foldM' (checkConstrTerm mid ) cterms
+  = foldM' (checkConstrTerm mid ) cterms
 checkConstrTerm mid (InfixPattern cterm1 qident cterm2)
-   = checkConstrTerm mid (ConstructorPattern qident [cterm1, cterm2])
+  = checkConstrTerm mid (ConstructorPattern qident [cterm1, cterm2])
 checkConstrTerm mid (ParenPattern cterm)
-   = checkConstrTerm mid cterm
+  = checkConstrTerm mid cterm
 checkConstrTerm mid (TuplePattern _ cterms)
-   = foldM' (checkConstrTerm mid ) cterms
+  = foldM' (checkConstrTerm mid ) cterms
 checkConstrTerm mid (ListPattern _ cterms)
-   = foldM' (checkConstrTerm mid ) cterms
-checkConstrTerm mid (AsPattern ident cterm)
-   = do s <- isShadowingVar ident
-	when s (genWarning' (shadowingVar ident))
-	checkConstrTerm mid cterm
+  = foldM' (checkConstrTerm mid ) cterms
+checkConstrTerm mid (AsPattern ident cterm) = do
+  s <- isShadowingVar ident
+  when s $ genWarning' $ shadowingVar ident
+  checkConstrTerm mid cterm
 checkConstrTerm mid (LazyPattern _ cterm)
-   = checkConstrTerm mid cterm
+  = checkConstrTerm mid cterm
 checkConstrTerm mid (FunctionPattern _ cterms)
-   = foldM' (checkConstrTerm mid ) cterms
+  = foldM' (checkConstrTerm mid ) cterms
 checkConstrTerm mid  (InfixFuncPattern cterm1 qident cterm2)
-   = checkConstrTerm mid  (FunctionPattern qident [cterm1, cterm2])
-checkConstrTerm mid  (RecordPattern fields restr)
-   = do foldM' (checkFieldPattern mid) fields
-	maybe (return ()) (checkConstrTerm mid ) restr
+  = checkConstrTerm mid  (FunctionPattern qident [cterm1, cterm2])
+checkConstrTerm mid  (RecordPattern fields restr) = do
+  foldM' (checkFieldPattern mid) fields
+  maybe checked (checkConstrTerm mid) restr
 checkConstrTerm _ _ = return ()
 
 --
-checkExpression :: ModuleIdent -> Expression -> CheckState ()
+checkExpression :: ModuleIdent -> Expression -> CheckM ()
 checkExpression mid (Variable qident)
-   = maybe (return ()) visitId (localIdent mid qident)
+  = maybe (return ()) visitId (localIdent mid qident)
 checkExpression mid (Paren expr)
-   = checkExpression mid expr
+  = checkExpression mid expr
 checkExpression mid (Typed expr _)
-   = checkExpression mid expr
+  = checkExpression mid expr
 checkExpression mid (Tuple _ exprs)
-   = foldM' (checkExpression mid ) exprs
+  = foldM' (checkExpression mid ) exprs
 checkExpression mid (List _ exprs)
-   = foldM' (checkExpression mid ) exprs
-checkExpression mid (ListCompr _ expr stmts)
-   = do beginScope
-	foldM' (checkStatement mid ) stmts
-	checkExpression mid expr
-	idents' <- returnUnrefVars
-	when (not (null idents'))
-	     (foldM' genWarning' (map unrefVar idents'))
-	endScope
+  = foldM' (checkExpression mid ) exprs
+checkExpression mid (ListCompr _ expr stmts) = withScope $ do
+  foldM' (CheckMment mid ) stmts
+  checkExpression mid expr
+  idents' <- returnUnrefVars
+  when (not $ null idents') $ foldM' genWarning' $ map unrefVar idents'
 checkExpression mid  (EnumFrom expr)
-   = checkExpression mid  expr
+  = checkExpression mid  expr
 checkExpression mid  (EnumFromThen expr1 expr2)
-   = foldM' (checkExpression mid ) [expr1, expr2]
+  = foldM' (checkExpression mid ) [expr1, expr2]
 checkExpression mid  (EnumFromTo expr1 expr2)
-   = foldM' (checkExpression mid ) [expr1, expr2]
+  = foldM' (checkExpression mid ) [expr1, expr2]
 checkExpression mid  (EnumFromThenTo expr1 expr2 expr3)
-   = foldM' (checkExpression mid ) [expr1, expr2, expr3]
+  = foldM' (checkExpression mid ) [expr1, expr2, expr3]
 checkExpression mid  (UnaryMinus _ expr)
-   = checkExpression mid  expr
+  = checkExpression mid  expr
 checkExpression mid  (Apply expr1 expr2)
-   = foldM' (checkExpression mid ) [expr1, expr2]
-checkExpression mid  (InfixApply expr1 op expr2)
-   = do maybe (return ()) (visitId) (localIdent mid (opName op))
-	foldM' (checkExpression mid ) [expr1, expr2]
+  = foldM' (checkExpression mid ) [expr1, expr2]
+checkExpression mid  (InfixApply expr1 op expr2) = do
+  maybe checked (visitId) (localIdent mid (opName op))
+  foldM' (checkExpression mid ) [expr1, expr2]
 checkExpression mid  (LeftSection expr _)
-   = checkExpression mid  expr
+  = checkExpression mid  expr
 checkExpression mid  (RightSection _ expr)
-   = checkExpression mid  expr
-checkExpression mid  (Lambda _ cterms expr)
-   = do beginScope
-	foldM' (checkConstrTerm mid ) cterms
-	foldM' (insertConstrTerm False) cterms
-	checkExpression mid expr
-	idents' <- returnUnrefVars
-	when (not (null idents'))
-	     (foldM' genWarning' (map unrefVar idents'))
-	endScope
-checkExpression mid  (Let decls expr)
-   = do beginScope
-	foldM' checkLocalDecl decls
-	foldM' insertDecl decls
-	foldM' (checkDecl mid) decls
-	checkDeclOccurrences decls
-	checkExpression mid  expr
-	idents' <- returnUnrefVars
-	when (not (null idents'))
-	     (foldM' genWarning' (map unrefVar idents'))
-	endScope
-checkExpression mid  (Do stmts expr)
-   = do beginScope
-	foldM' (checkStatement mid ) stmts
-	checkExpression mid  expr
-	idents' <- returnUnrefVars
-	when (not (null idents'))
-	     (foldM' genWarning' (map unrefVar idents'))
-	endScope
+  = checkExpression mid  expr
+checkExpression mid  (Lambda _ cterms expr) = withScope $ do
+  foldM' (checkConstrTerm mid ) cterms
+  foldM' (insertConstrTerm False) cterms
+  checkExpression mid expr
+  idents' <- returnUnrefVars
+  when (not $ null idents') $ foldM' genWarning' $ map unrefVar idents'
+checkExpression mid  (Let decls expr) = withScope $ do
+  foldM' checkLocalDecl decls
+  foldM' insertDecl decls
+  foldM' (checkDecl mid) decls
+  checkDeclOccurrences decls
+  checkExpression mid  expr
+  idents' <- returnUnrefVars
+  when (not $ null idents') $ foldM' genWarning' $ map unrefVar idents'
+checkExpression mid  (Do stmts expr) = withScope $ do
+  foldM' (CheckMment mid ) stmts
+  checkExpression mid  expr
+  idents' <- returnUnrefVars
+  when (not $ null idents') $ foldM' genWarning' $ map unrefVar idents'
 checkExpression mid  (IfThenElse _ expr1 expr2 expr3)
-   = foldM' (checkExpression mid ) [expr1, expr2, expr3]
-checkExpression mid  (Case _ expr alts)
-   = do checkExpression mid  expr
-	foldM' (checkAlt mid) alts
-	checkCaseAlternatives mid alts
+  = foldM' (checkExpression mid ) [expr1, expr2, expr3]
+checkExpression mid  (Case _ expr alts) = do
+  checkExpression mid  expr
+  foldM' (checkAlt mid) alts
+  checkCaseAlternatives mid alts
 checkExpression mid (RecordConstr fields)
-   = foldM' (checkFieldExpression mid) fields
+  = foldM' (checkFieldExpression mid) fields
 checkExpression mid (RecordSelection expr _)
-   = checkExpression mid expr -- Hier auch "visitId ident" ?
-checkExpression mid (RecordUpdate fields expr)
-   = do foldM' (checkFieldExpression mid) fields
-	checkExpression mid expr
-checkExpression _ _  = return ()
+  = checkExpression mid expr -- Hier auch "visitId ident" ?
+checkExpression mid (RecordUpdate fields expr) = do
+  foldM' (checkFieldExpression mid) fields
+  checkExpression mid expr
+checkExpression _ _  = checked
 
 --
-checkStatement :: ModuleIdent -> Statement -> CheckState ()
-checkStatement mid (StmtExpr _ expr)
+CheckMment :: ModuleIdent -> Statement -> CheckM ()
+CheckMment mid (StmtExpr _ expr)
    = checkExpression mid expr
-checkStatement mid (StmtDecl decls)
-   = do foldM' checkLocalDecl decls
-	foldM' insertDecl decls
-	foldM' (checkDecl mid) decls
-	checkDeclOccurrences decls
-checkStatement mid (StmtBind _ cterm expr)
-   = do checkConstrTerm mid cterm
-	insertConstrTerm False cterm
-	checkExpression mid expr
+CheckMment mid (StmtDecl decls) = do
+  foldM' checkLocalDecl decls
+  foldM' insertDecl decls
+  foldM' (checkDecl mid) decls
+  checkDeclOccurrences decls
+CheckMment mid (StmtBind _ cterm expr) = do
+  checkConstrTerm mid cterm
+  insertConstrTerm False cterm
+  checkExpression mid expr
 
 --
-checkAlt :: ModuleIdent -> Alt -> CheckState ()
-checkAlt mid (Alt _ cterm rhs)
-   = do beginScope
-	checkConstrTerm mid  cterm
-	insertConstrTerm False cterm
-	checkRhs mid rhs
-	idents' <-  returnUnrefVars
-	when (not (null idents'))
-	     (foldM' genWarning' (map unrefVar idents'))
-	endScope
+checkAlt :: ModuleIdent -> Alt -> CheckM ()
+checkAlt mid (Alt _ cterm rhs) = withScope $ do
+  checkConstrTerm mid  cterm
+  insertConstrTerm False cterm
+  checkRhs mid rhs
+  idents' <-  returnUnrefVars
+  when (not $ null idents') $ foldM' genWarning' $ map unrefVar idents'
 
 --
-checkFieldExpression :: ModuleIdent -> Field Expression -> CheckState ()
-checkFieldExpression mid (Field _ _ expr)
-   = checkExpression mid expr -- Hier auch "visitId ident" ?
+checkFieldExpression :: ModuleIdent -> Field Expression -> CheckM ()
+checkFieldExpression mid (Field _ _ expr) = checkExpression mid expr -- Hier auch "visitId ident" ?
 
 --
-checkFieldPattern :: ModuleIdent -> Field ConstrTerm -> CheckState ()
-checkFieldPattern mid (Field _ _ cterm)
-   = checkConstrTerm mid  cterm
+checkFieldPattern :: ModuleIdent -> Field ConstrTerm -> CheckM ()
+checkFieldPattern mid (Field _ _ cterm) = checkConstrTerm mid  cterm
 
 -- Check for idle and overlapping case alternatives
-checkCaseAlternatives :: ModuleIdent -> [Alt] -> CheckState ()
-checkCaseAlternatives mid alts
-   = do checkIdleAlts mid alts
-	checkOverlappingAlts mid alts
+checkCaseAlternatives :: ModuleIdent -> [Alt] -> CheckM ()
+checkCaseAlternatives mid alts = do
+  checkIdleAlts mid alts
+  checkOverlappingAlts mid alts
 
 --
 -- FIXME this looks buggy: is alts' required to be non-null or not? (hsi)
-checkIdleAlts :: ModuleIdent -> [Alt] -> CheckState ()
-checkIdleAlts _ alts
-   = do alts' <- dropUnless' isVarAlt alts
-	let idles = tail_ [] alts'
-	    (Alt pos _ _) = head idles
-	unless (null idles) (genWarning pos idleCaseAlts)
+checkIdleAlts :: ModuleIdent -> [Alt] -> CheckM ()
+checkIdleAlts _ alts = do
+  alts' <- dropUnless' isVarAlt alts
+  let idles         = tail_ [] alts'
+      (Alt pos _ _) = head idles
+  unless (null idles) $ genWarning pos idleCaseAlts
  where
- isVarAlt (Alt _ (VariablePattern ident) _)
-    = isVarId ident
- isVarAlt (Alt _ (ParenPattern (VariablePattern ident)) _)
-    = isVarId ident
- isVarAlt (Alt _ (AsPattern _ (VariablePattern ident)) _)
-    = isVarId ident
- isVarAlt _ = return False
+  isVarAlt (Alt _ (VariablePattern ident) _)                = isVarId ident
+  isVarAlt (Alt _ (ParenPattern (VariablePattern ident)) _) = isVarId ident
+  isVarAlt (Alt _ (AsPattern _ (VariablePattern ident)) _)  = isVarId ident
+  isVarAlt _ = return False
 
 --
-checkOverlappingAlts :: ModuleIdent -> [Alt] -> CheckState ()
+checkOverlappingAlts :: ModuleIdent -> [Alt] -> CheckM ()
 checkOverlappingAlts _ [] = return ()
-checkOverlappingAlts mid (alt:alts)
-   = do (altsr, alts') <- partition' (equalAlts alt) alts
-        mapM_ (\ (Alt pos _ _) -> genWarning pos overlappingCaseAlt) altsr
-	checkOverlappingAlts mid alts'
- where
- equalAlts (Alt _ cterm1 _) (Alt _ cterm2 _) = equalConstrTerms cterm1 cterm2
+checkOverlappingAlts mid (alt : alts) = do
+  (altsr, alts') <- partition' (equalAlts alt) alts
+  mapM_ (\ (Alt pos _ _) -> genWarning pos overlappingCaseAlt) altsr
+  checkOverlappingAlts mid alts'
+  where
+  equalAlts (Alt _ cterm1 _) (Alt _ cterm2 _) = equalConstrTerms cterm1 cterm2
 
- equalConstrTerms (LiteralPattern l1) (LiteralPattern l2)
-    = return (l1 == l2)
- equalConstrTerms (NegativePattern id1 l1) (NegativePattern id2 l2)
-    = return (id1 == id2 && l1 == l2)
- equalConstrTerms (VariablePattern id1) (VariablePattern id2)
-    = do p <- isConsId id1
-	 return (p && id1 == id2)
- equalConstrTerms (ConstructorPattern qid1 cs1)
-		  (ConstructorPattern qid2 cs2)
+  equalConstrTerms (LiteralPattern l1) (LiteralPattern l2)
+    = return $ l1 == l2
+  equalConstrTerms (NegativePattern id1 l1) (NegativePattern id2 l2)
+    = return $ id1 == id2 && l1 == l2
+  equalConstrTerms (VariablePattern id1) (VariablePattern id2) = do
+    p <- isConsId id1
+    return $ p && id1 == id2
+  equalConstrTerms (ConstructorPattern qid1 cs1)
+                   (ConstructorPattern qid2 cs2)
     = if qid1 == qid2
-      then all' (\ (c1,c2) -> equalConstrTerms c1 c2) (zip cs1 cs2)
-      else return False
- equalConstrTerms (InfixPattern lcs1 qid1 rcs1)
-		  (InfixPattern lcs2 qid2 rcs2)
+        then all' (\ (c1,c2) -> equalConstrTerms c1 c2) (zip cs1 cs2)
+        else return False
+  equalConstrTerms (InfixPattern lcs1 qid1 rcs1)
+                   (InfixPattern lcs2 qid2 rcs2)
     = equalConstrTerms (ConstructorPattern qid1 [lcs1, rcs1])
                        (ConstructorPattern qid2 [lcs2, rcs2])
- equalConstrTerms (ParenPattern cterm1) (ParenPattern cterm2)
+  equalConstrTerms (ParenPattern cterm1) (ParenPattern cterm2)
     = equalConstrTerms cterm1 cterm2
- equalConstrTerms (TuplePattern _ cs1) (TuplePattern _ cs2)
+  equalConstrTerms (TuplePattern _ cs1) (TuplePattern _ cs2)
     = equalConstrTerms (ConstructorPattern (qTupleId 2) cs1)
                        (ConstructorPattern (qTupleId 2) cs2)
- equalConstrTerms (ListPattern _ cs1) (ListPattern _ cs2)
+  equalConstrTerms (ListPattern _ cs1) (ListPattern _ cs2)
     = cmpListM equalConstrTerms cs1 cs2
- equalConstrTerms (AsPattern _ cterm1) (AsPattern _ cterm2)
+  equalConstrTerms (AsPattern _ cterm1) (AsPattern _ cterm2)
     = equalConstrTerms cterm1 cterm2
- equalConstrTerms (LazyPattern _ cterm1) (LazyPattern _ cterm2)
+  equalConstrTerms (LazyPattern _ cterm1) (LazyPattern _ cterm2)
     = equalConstrTerms cterm1 cterm2
- equalConstrTerms _ _ = return False
+  equalConstrTerms _ _ = return False
 
 
 -- Find function rules which are not together
-checkDeclOccurrences :: [Decl] -> CheckState ()
+checkDeclOccurrences :: [Decl] -> CheckM ()
 checkDeclOccurrences decls = checkDO (mkIdent "") Map.empty decls
- where
- checkDO _ _ [] = return ()
- checkDO prevId env ((FunctionDecl pos ident _):decls')
-    = do c <- isConsId ident
-	 if not (c || prevId == ident)
-          then (maybe (checkDO ident (Map.insert ident pos env) decls')
-	              (\pos' -> genWarning' (rulesNotTogether ident pos')
-		                >> checkDO ident env decls')
-	              (Map.lookup ident env))
-	  else checkDO ident env decls'
- checkDO _ env (_:decls')
-    = checkDO (mkIdent "") env decls'
+  where
+  checkDO _ _ [] = return ()
+  checkDO prevId env ((FunctionDecl pos ident _) : decls') = do
+    c <- isConsId ident
+    if not (c || prevId == ident)
+      then (maybe (checkDO ident (Map.insert ident pos env) decls')
+                  (\pos' -> genWarning' (rulesNotTogether ident pos')
+                            >> checkDO ident env decls')
+                  (Map.lookup ident env))
+      else checkDO ident env decls'
+ checkDO _ env (_ : decls') = checkDO (mkIdent "") env decls'
 
 
 -- check import declarations for multiply imported modules
-checkImports :: [Decl] -> CheckState ()
+checkImports :: [Decl] -> CheckM ()
 checkImports imps = checkImps Map.empty imps
- where
- checkImps _ [] = return ()
- checkImps env ((ImportDecl pos mid _ _ spec):imps')
+  where
+  checkImps _ [] = return ()
+  checkImps env ((ImportDecl pos mid _ _ spec) : imps')
     | mid /= preludeMIdent
-      = maybe (checkImps (Map.insert mid (fromImpSpec spec) env) imps')
-              (\ishs -> checkImpSpec env pos mid ishs spec
-	                >>= (\env' -> checkImps env' imps'))
-	      (Map.lookup mid env)
+    = maybe (checkImps (Map.insert mid (fromImpSpec spec) env) imps')
+            (\ishs -> checkImpSpec env pos mid ishs spec
+                  >>= (\env' -> checkImps env' imps'))
+        (Map.lookup mid env)
     | otherwise
-      = checkImps env imps'
- checkImps env (_:imps') = checkImps env imps'
+    = checkImps env imps'
+  checkImps env (_ : imps') = checkImps env imps'
 
- checkImpSpec env _ mid (_,_) Nothing
+  checkImpSpec env _ mid (_,_) Nothing
     = genWarning' (multiplyImportedModule mid) >> return env
- checkImpSpec env _ mid (is,hs) (Just (Importing _ is'))
-    | null is && any (\i' -> notElem i' hs) is'
-      = do genWarning' (multiplyImportedModule mid)
-	   return (Map.insert mid (is',hs) env)
+  checkImpSpec env _ mid (is,hs) (Just (Importing _ is'))
+    | null is && any (\i' -> notElem i' hs) is' = do
+      genWarning' (multiplyImportedModule mid)
+      return (Map.insert mid (is',hs) env)
     | null iis
       = return (Map.insert mid (is' ++ is,hs) env)
-    | otherwise
-      = do foldM' genWarning'
-		  (map ((multiplyImportedSymbol mid) . impName) iis)
-	   return (Map.insert mid (unionBy cmpImport is' is,hs) env)
-  where iis = intersectBy cmpImport is' is
- checkImpSpec env _ mid (is,hs) (Just (Hiding _ hs'))
+    | otherwise = do
+      foldM' genWarning' (map ((multiplyImportedSymbol mid) . impName) iis)
+      return (Map.insert mid (unionBy cmpImport is' is,hs) env)
+    where iis = intersectBy cmpImport is' is
+  checkImpSpec env _ mid (is,hs) (Just (Hiding _ hs'))
     | null ihs
       = return (Map.insert mid (is,hs' ++ hs) env)
-    | otherwise
-      = do foldM' genWarning'
-		  (map ((multiplyHiddenSymbol mid) . impName) ihs)
-	   return (Map.insert mid (is,unionBy cmpImport hs' hs) env)
-  where ihs = intersectBy cmpImport hs' hs
+    | otherwise = do
+      foldM' genWarning' (map ((multiplyHiddenSymbol mid) . impName) ihs)
+      return (Map.insert mid (is,unionBy cmpImport hs' hs) env)
+    where ihs = intersectBy cmpImport hs' hs
 
- cmpImport (ImportTypeWith id1 cs1) (ImportTypeWith id2 cs2)
+  cmpImport (ImportTypeWith id1 cs1) (ImportTypeWith id2 cs2)
     = id1 == id2 && null (intersect cs1 cs2)
- cmpImport i1 i2 = (impName i1) == (impName i2)
+  cmpImport i1 i2 = (impName i1) == (impName i2)
 
- impName (Import ident)           = ident
- impName (ImportTypeAll ident)    = ident
- impName (ImportTypeWith ident _) = ident
+  impName (Import ident)           = ident
+  impName (ImportTypeAll ident)    = ident
+  impName (ImportTypeWith ident _) = ident
 
- fromImpSpec Nothing                 = ([],[])
- fromImpSpec (Just (Importing _ is)) = (is,[])
- fromImpSpec (Just (Hiding _ hs))    = ([],hs)
+  fromImpSpec Nothing                 = ([], [])
+  fromImpSpec (Just (Importing _ is)) = (is, [])
+  fromImpSpec (Just (Hiding _ hs))    = ([], hs)
 
 
 -------------------------------------------------------------------------------
@@ -467,47 +429,45 @@ checkImports imps = checkImps Map.empty imps
 -- sides.
 
 --
-insertDecl :: Decl -> CheckState ()
-insertDecl (DataDecl _ ident _ cdecls)
-   = do insertTypeConsId ident
-	foldM' insertConstrDecl cdecls
-insertDecl (TypeDecl _ ident _ texpr)
-   = do insertTypeConsId ident
-	insertTypeExpr texpr
-insertDecl (FunctionDecl _ ident _)
-   = do c <- isConsId ident
-	unless c (insertVar ident)
+insertDecl :: Decl -> CheckM ()
+insertDecl (DataDecl _ ident _ cdecls) = do
+  insertTypeConsId ident
+  foldM' insertConstrDecl cdecls
+insertDecl (TypeDecl _ ident _ texpr) = do
+  insertTypeConsId ident
+  insertTypeExpr texpr
+insertDecl (FunctionDecl _ ident _) = do
+  c <- isConsId ident
+  unless c $ insertVar ident
 insertDecl (ExternalDecl _ _ _ ident _)
-   = insertVar ident
+  = insertVar ident
 insertDecl (FlatExternalDecl _ idents)
-   = foldM' insertVar idents
+  = foldM' insertVar idents
 insertDecl (PatternDecl _ cterm _)
-   = insertConstrTerm False cterm
+  = insertConstrTerm False cterm
 insertDecl (ExtraVariables _ idents)
-   = foldM' insertVar idents
-insertDecl _ = return ()
+  = foldM' insertVar idents
+insertDecl _ = checked
 
 --
-insertTypeExpr :: TypeExpr -> CheckState ()
-insertTypeExpr (VariableType _) = return ()
+insertTypeExpr :: TypeExpr -> CheckM ()
+insertTypeExpr (VariableType _) = checked
 insertTypeExpr (ConstructorType _ texprs)
-   = foldM' insertTypeExpr texprs
+  = foldM' insertTypeExpr texprs
 insertTypeExpr (TupleType texprs)
-   = foldM' insertTypeExpr texprs
+  = foldM' insertTypeExpr texprs
 insertTypeExpr (ListType texpr)
-   = insertTypeExpr texpr
+  = insertTypeExpr texpr
 insertTypeExpr (ArrowType texpr1 texpr2)
-   = foldM' insertTypeExpr [texpr1,texpr2]
-insertTypeExpr (RecordType _ restr)
-   = do --foldM' insertVar (concatMap fst fields)
-	maybe (return ()) insertTypeExpr restr
+  = foldM' insertTypeExpr [texpr1,texpr2]
+insertTypeExpr (RecordType _ restr) = do
+  --foldM' insertVar (concatMap fst fields)
+  maybe (return ()) insertTypeExpr restr
 
 --
-insertConstrDecl :: ConstrDecl -> CheckState ()
-insertConstrDecl (ConstrDecl _ _ ident _)
-   = insertConsId ident
-insertConstrDecl (ConOpDecl _ _ _ ident _)
-   = insertConsId ident
+insertConstrDecl :: ConstrDecl -> CheckM ()
+insertConstrDecl (ConstrDecl _ _   ident _) = insertConsId ident
+insertConstrDecl (ConOpDecl  _ _ _ ident _) = insertConsId ident
 
 -- Notes:
 --    - 'fp' indicates whether 'checkConstrTerm' deals with the arguments
@@ -515,45 +475,44 @@ insertConstrDecl (ConOpDecl _ _ _ ident _)
 --    - Since function patterns are not recognized before syntax check, it is
 --      necessary to determine, whether a constructor pattern represents a
 --      constructor or a function.
-insertConstrTerm :: Bool -> ConstrTerm -> CheckState ()
+insertConstrTerm :: Bool -> ConstrTerm -> CheckM ()
 insertConstrTerm fp (VariablePattern ident)
-   | fp        = do c <- isConsId ident
-		    v <- isVarId ident
-		    unless c (if (name ident) /= "_" && v
-			         then visitId ident
-			         else insertVar ident)
-   | otherwise = do c <- isConsId ident
-	            unless c (insertVar ident)
-insertConstrTerm fp (ConstructorPattern qident cterms)
-   = do c <- isQualConsId qident
-	if c then foldM' (insertConstrTerm fp) cterms
-	     else foldM' (insertConstrTerm True) cterms
+  | fp        = do
+    c <- isConsId ident
+    v <- isVarId ident
+    unless c $ if name ident /= "_" && v then visitId ident else insertVar ident
+  | otherwise = do
+    c <- isConsId ident
+    unless c $ insertVar ident
+insertConstrTerm fp (ConstructorPattern qident cterms) = do
+  c <- isQualConsId qident
+  if c then foldM' (insertConstrTerm fp) cterms
+       else foldM' (insertConstrTerm True) cterms
 insertConstrTerm fp (InfixPattern cterm1 qident cterm2)
-   = insertConstrTerm fp (ConstructorPattern qident [cterm1, cterm2])
+  = insertConstrTerm fp (ConstructorPattern qident [cterm1, cterm2])
 insertConstrTerm fp (ParenPattern cterm)
-   = insertConstrTerm fp cterm
+  = insertConstrTerm fp cterm
 insertConstrTerm fp (TuplePattern _ cterms)
-   = foldM' (insertConstrTerm fp) cterms
+  = foldM' (insertConstrTerm fp) cterms
 insertConstrTerm fp (ListPattern _ cterms)
-   = foldM' (insertConstrTerm fp) cterms
-insertConstrTerm fp (AsPattern ident cterm)
-   = do insertVar ident
-	insertConstrTerm fp cterm
+  = foldM' (insertConstrTerm fp) cterms
+insertConstrTerm fp (AsPattern ident cterm) = do
+  insertVar ident
+  insertConstrTerm fp cterm
 insertConstrTerm fp (LazyPattern _ cterm)
-   = insertConstrTerm fp cterm
+  = insertConstrTerm fp cterm
 insertConstrTerm _ (FunctionPattern _ cterms)
-   = foldM' (insertConstrTerm True) cterms
+  = foldM' (insertConstrTerm True) cterms
 insertConstrTerm _ (InfixFuncPattern cterm1 qident cterm2)
-   = insertConstrTerm True (FunctionPattern qident [cterm1, cterm2])
-insertConstrTerm fp (RecordPattern fields restr)
-   = do foldM' (insertFieldPattern fp) fields
-	maybe (return ()) (insertConstrTerm fp) restr
-insertConstrTerm _ _ = return ()
+  = insertConstrTerm True (FunctionPattern qident [cterm1, cterm2])
+insertConstrTerm fp (RecordPattern fields restr) = do
+  foldM' (insertFieldPattern fp) fields
+  maybe (return ()) (insertConstrTerm fp) restr
+insertConstrTerm _ _ = checked
 
 --
-insertFieldPattern :: Bool -> Field ConstrTerm -> CheckState ()
-insertFieldPattern fp (Field _ _ cterm)
-   = insertConstrTerm fp cterm
+insertFieldPattern :: Bool -> Field ConstrTerm -> CheckM ()
+insertFieldPattern fp (Field _ _ cterm) = insertConstrTerm fp cterm
 
 -------------------------------------------------------------------------------
 -------------------------------------------------------------------------------
@@ -582,140 +541,123 @@ variableVisited _           = True
 --
 visitVariable :: IdInfo -> IdInfo
 visitVariable info = case info of
-		       VarInfo _ -> VarInfo True
-		       _         -> info
-
+  VarInfo _ -> VarInfo True
+  _         -> info
 
 --
-modifyScope :: (ScopeEnv QualIdent IdInfo -> ScopeEnv QualIdent IdInfo)
+modifyScope :: (ScopeEnv.ScopeEnv QualIdent IdInfo -> ScopeEnv.ScopeEnv QualIdent IdInfo)
 	       -> CState -> CState
-modifyScope f state = state{ scope = f (scope state) }
-
+modifyScope f state = state { scope = f $ scope state }
 
 --
-genWarning :: Position -> String -> CheckState ()
+genWarning :: Position -> String -> CheckM ()
 genWarning pos msg
-   = modify (\state -> state{ messages = warnMsg:(messages state) })
+  = modify (\state -> state{ messages = warnMsg:(messages state) })
  where warnMsg = Message (Just pos) msg
 
-genWarning' :: (Position, String) -> CheckState ()
-genWarning' (pos, msg)
-   = modify (\state -> state{ messages = warnMsg:(messages state) })
-    where warnMsg = Message (Just pos) msg
+genWarning' :: (Position, String) -> CheckM ()
+genWarning' = uncury genWarning
 
 --
-insertVar :: Ident -> CheckState ()
+insertVar :: Ident -> CheckM ()
 insertVar ident
-   | isAnnonId ident = return ()
-   | otherwise
-     = modify
-         (\state -> modifyScope
-	              (ScopeEnv.insert (commonId ident) (VarInfo False)) state)
+  | isAnnonId ident
+  = return ()
+  | otherwise
+  = modify (modifyScope (ScopeEnv.insert (commonId ident) (VarInfo False)))
 
 --
-insertTypeVar :: Ident -> CheckState ()
+insertTypeVar :: Ident -> CheckM ()
 insertTypeVar ident
-   | isAnnonId ident = return ()
-   | otherwise
-     = modify
-         (\state -> modifyScope
-	              (ScopeEnv.insert (typeId ident) (VarInfo False)) state)
+  | isAnnonId ident
+  = return ()
+  | otherwise
+  = modify (modifyScope (ScopeEnv.insert (typeId ident) (VarInfo False)))
 
 --
-insertConsId :: Ident -> CheckState ()
+insertConsId :: Ident -> CheckM ()
 insertConsId ident
    = modify
        (\state -> modifyScope (ScopeEnv.insert (commonId ident) ConsInfo) state)
 
 --
-insertTypeConsId :: Ident -> CheckState ()
+insertTypeConsId :: Ident -> CheckM ()
 insertTypeConsId ident
    = modify
        (\state -> modifyScope (ScopeEnv.insert (typeId ident) ConsInfo) state)
 
 --
-isVarId :: Ident -> CheckState Bool
-isVarId ident
-   = gets (\state -> isVar state (commonId ident))
+isVarId :: Ident -> CheckM Bool
+isVarId ident = gets (\state -> isVar state (commonId ident))
 
 --
-isConsId :: Ident -> CheckState Bool
-isConsId ident
-   = gets (\state -> isCons state (qualify ident))
+isConsId :: Ident -> CheckM Bool
+isConsId ident = gets (\state -> isCons state (qualify ident))
 
 --
-isQualConsId :: QualIdent -> CheckState Bool
-isQualConsId qid
-   = gets (\state -> isCons state qid)
+isQualConsId :: QualIdent -> CheckM Bool
+isQualConsId qid = gets (\state -> isCons state qid)
 
 --
-isShadowingVar :: Ident -> CheckState Bool
-isShadowingVar ident
-   = gets (\state -> isShadowing state (commonId ident))
+isShadowingVar :: Ident -> CheckM Bool
+isShadowingVar ident = gets (\state -> isShadowing state (commonId ident))
 
 --
-visitId :: Ident -> CheckState ()
-visitId ident
-   = modify
-       (\state -> modifyScope
-	            (ScopeEnv.modify visitVariable (commonId ident)) state)
+visitId :: Ident -> CheckM ()
+visitId ident = modify
+  (modifyScope (ScopeEnv.modify visitVariable (commonId ident)))
 
 --
-visitTypeId :: Ident -> CheckState ()
-visitTypeId ident
-   = modify
-       (\state -> modifyScope
-	            (ScopeEnv.modify visitVariable (typeId ident)) state)
+visitTypeId :: Ident -> CheckM ()
+visitTypeId ident = modify
+  (modifyScope (ScopeEnv.modify visitVariable (typeId ident)))
 
 --
-isUnrefTypeVar :: Ident -> CheckState Bool
-isUnrefTypeVar ident
-   = gets (\state -> isUnref state (typeId ident))
+isUnrefTypeVar :: Ident -> CheckM Bool
+isUnrefTypeVar ident = gets (\state -> isUnref state (typeId ident))
 
 --
-returnUnrefVars :: CheckState [Ident]
-returnUnrefVars
-   = gets (\state ->
+returnUnrefVars :: CheckM [Ident]
+returnUnrefVars = gets (\state ->
 	   	    let ids    = map fst (ScopeEnv.toLevelList (scope state))
                         unrefs = filter (isUnref state) ids
 	            in  map unqualify unrefs )
 
 --
-addModuleId :: ModuleIdent -> CheckState ()
-addModuleId mid = modify (\state -> state{ moduleId = mid })
+addModuleId :: ModuleIdent -> CheckM ()
+addModuleId mid = modify (\state -> state { moduleId = mid })
 
 --
-
--- withScope :: CheckState a -> CheckState ()
--- withScope m = beginScope >> m >> endScope
-
---
-beginScope :: CheckState ()
-beginScope = modify (\state -> modifyScope ScopeEnv.beginScope state)
+withScope :: CheckM a -> CheckM ()
+withScope m = beginScope >> m >> endScope
 
 --
-endScope :: CheckState ()
-endScope = modify (\state -> modifyScope ScopeEnv.endScopeUp state)
+beginScope :: CheckM ()
+beginScope = modify (modifyScope ScopeEnv.beginScope)
+
+--
+endScope :: CheckM ()
+endScope = modify (modifyScope ScopeEnv.endScopeUp)
 
 
 -- Adds the content of a value environment to the state
-addImportedValues :: ValueEnv -> CheckState ()
-addImportedValues vals = modify (\state -> state{ values = vals })
+addImportedValues :: ValueEnv -> CheckM ()
+addImportedValues vals = modify (\state -> state { values = vals })
 
 --
-foldM' :: (a -> CheckState ()) -> [a] -> CheckState ()
+foldM' :: (a -> CheckM ()) -> [a] -> CheckM ()
 foldM' _ [] = return ()
 foldM' f (x:xs) = f x >> foldM' f xs
 
 --
-dropUnless' :: (a -> CheckState Bool) -> [a] -> CheckState [a]
+dropUnless' :: (a -> CheckM Bool) -> [a] -> CheckM [a]
 dropUnless' _ [] = return []
 dropUnless' mpred (x:xs)
    = do p <- mpred x
 	if p then return (x:xs) else dropUnless' mpred xs
 
 --
-partition' :: (a -> CheckState Bool) -> [a] -> CheckState ([a],[a])
+partition' :: (a -> CheckM Bool) -> [a] -> CheckM ([a],[a])
 partition' mpred xs' = part mpred [] [] xs'
  where
  part _ ts fs [] = return (reverse ts, reverse fs)
@@ -725,7 +667,7 @@ partition' mpred xs' = part mpred [] [] xs'
 	     else part mpred' ts (x:fs) xs
 
 --
-all' :: (a -> CheckState Bool) -> [a] -> CheckState Bool
+all' :: (a -> CheckM Bool) -> [a] -> CheckM Bool
 all' _ [] = return True
 all' mpred (x:xs)
    = do p <- mpred x
@@ -844,7 +786,6 @@ multiplyHiddenSymbol mid ident
 tail_ :: [a] -> [a] -> [a]
 tail_ alt []     = alt
 tail_ _   (_:xs) = xs
-
 
 --
 cmpListM :: Monad m => (a -> a -> m Bool) -> [a] -> [a] -> m Bool

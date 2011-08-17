@@ -27,14 +27,14 @@ lifted to the top-level.
 > import Curry.Base.Ident
 > import Curry.Syntax
 
-> import Base.Eval (EvalEnv)
 > import Base.Expr
-> import Base.Value (ValueEnv, ValueInfo (..), lookupValue)
-> import Env.TopEnv
-> import Messages (internalError)
-> import SCC
-> import Types
+> import Base.Messages (internalError)
+> import Base.SCC
+> import Base.Types
 
+> import Env.Eval (EvalEnv)
+> import Env.TopEnv
+> import Env.Value (ValueEnv, ValueInfo (..), lookupValue)
 
 > lift :: ValueEnv -> EvalEnv -> Module -> (Module, ValueEnv, EvalEnv)
 > lift tyEnv evEnv (Module m es ds) =

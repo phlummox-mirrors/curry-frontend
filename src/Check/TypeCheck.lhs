@@ -28,24 +28,25 @@ type annotation is present.
 > import Data.Maybe (catMaybes, fromJust, isJust, listToMaybe, maybeToList)
 > import qualified Data.Map as Map (Map, empty, insert, lookup)
 > import qualified Data.Set as Set (Set, fromList, member, notMember, unions)
-> import Text.PrettyPrint.HughesPJ
+> import Text.PrettyPrint
 
 > import Curry.Base.Position
 > import Curry.Base.Ident
 > import Curry.Syntax
 > import Curry.Syntax.Pretty
 
+> import Base.CurryTypes (fromQualType, toType, toTypes)
 > import Base.Expr
-> import Base.Types (fromQualType, toType, toTypes)
-> import Base.TypeConstructors (TCEnv, TypeInfo (..), bindTypeInfo, qualLookupTC)
-> import Base.Value ( ValueEnv, ValueInfo (..), bindFun, rebindFun
->   , bindGlobalInfo, bindLabel, lookupValue, qualLookupValue )
+> import Base.Messages (errorAt, errorAt', internalError)
+> import Base.SCC
+> import Base.Types
+> import Base.TypeSubst
+> import Base.Utils
+
 > import Env.TopEnv
-> import Messages (errorAt, errorAt', internalError)
-> import SCC
-> import Types
-> import TypeSubst
-> import Utils
+> import Env.TypeConstructors (TCEnv, TypeInfo (..), bindTypeInfo, qualLookupTC)
+> import Env.Value ( ValueEnv, ValueInfo (..), bindFun, rebindFun
+>   , bindGlobalInfo, bindLabel, lookupValue, qualLookupValue )
 
 > infixl 5 $-$
 
@@ -116,12 +117,12 @@ and \texttt{expandMonoTypes}, respectively.
 > bindTC :: ModuleIdent -> TCEnv -> Decl -> TCEnv -> TCEnv
 > bindTC m tcEnv (DataDecl _ tc tvs cs) =
 >   bindTypeInfo DataType m tc tvs (map (Just . mkData) cs)
->   where mkData (ConstrDecl _ evs c tys) = Data c (length evs) tys'
+>   where mkData (ConstrDecl _ evs c tys) = DataConstr c (length evs) tys'
 >           where tys' = expandMonoTypes m tcEnv (cleanTVars tvs evs) tys
->         mkData (ConOpDecl _ evs ty1 op ty2) = Data op (length evs) tys'
+>         mkData (ConOpDecl _ evs ty1 op ty2) = DataConstr op (length evs) tys'
 >           where tys' = expandMonoTypes m tcEnv (cleanTVars tvs evs) [ty1,ty2]
 > bindTC m tcEnv (NewtypeDecl _ tc tvs (NewConstrDecl _ evs c ty)) =
->   bindTypeInfo RenamingType m tc tvs (Data c (length evs) ty')
+>   bindTypeInfo RenamingType m tc tvs (DataConstr c (length evs) [ty'])
 >   where ty' = expandMonoType m tcEnv (cleanTVars tvs evs) ty
 > bindTC m tcEnv (TypeDecl _ tc tvs ty) =
 >   bindTypeInfo AliasType m tc tvs (expandMonoType m tcEnv tvs ty)
@@ -175,12 +176,12 @@ have been properly renamed and all type synonyms are already expanded.
 >   foldr (bindData . snd) tyEnv (localBindings tcEnv)
 >   where bindData (DataType tc n cs) tyEnv' =
 >           foldr (bindConstr m n (constrType' tc n)) tyEnv' (catMaybes cs)
->         bindData (RenamingType tc n (Data c n' ty)) tyEnv' =
+>         bindData (RenamingType tc n (DataConstr c n' [ty])) tyEnv' =
 >           bindGlobalInfo NewtypeConstructor m c
 >                          (ForAllExist n n' (TypeArrow ty (constrType' tc n)))
 >                          tyEnv'
 >         bindData (AliasType _ _ _) tyEnv' = tyEnv'
->         bindConstr m' n ty (Data c n' tys) =
+>         bindConstr m' n ty (DataConstr c n' tys) =
 >           bindGlobalInfo DataConstructor m' c
 >                          (ForAllExist n n' (foldr TypeArrow ty tys))
 >         constrType' tc n = TypeConstructor tc (map TypeVariable [0..n-1])

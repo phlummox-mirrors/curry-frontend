@@ -45,7 +45,7 @@ imported.
 > import Data.Maybe
 
 > import Curry.Base.Ident
-> import Messages (internalError)
+> import Base.Messages (internalError)
 
 > data Source = Local | Import [ModuleIdent] deriving (Eq, Show)
 

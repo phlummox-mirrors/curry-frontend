@@ -20,7 +20,7 @@ unique number. The latter is only used to provide a trivial ordering
 so that the declarations can be used as set elements.
 \begin{verbatim}
 
-> module SCC (scc) where
+> module Base.SCC (scc) where
 
 > import qualified Data.Set as Set (empty, member, insert)
 

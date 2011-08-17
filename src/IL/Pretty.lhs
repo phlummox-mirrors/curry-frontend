@@ -15,7 +15,7 @@ Marlow's pretty printer for Haskell.
 
 > module IL.Pretty (ppModule) where
 >
-> import Text.PrettyPrint.HughesPJ
+> import Text.PrettyPrint
 
 > import Curry.Base.Ident
 > import IL.Type

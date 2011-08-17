@@ -14,14 +14,16 @@ import Curry.Base.MessageMonad
 import Curry.Base.Ident
 import Curry.Files.Filenames
 import Curry.Files.PathUtils
-import qualified Curry.Syntax as CS (Module (..), Decl (..), parseModule)
+import Curry.Syntax as CS (Module (..), Interface, Decl (..), parseModule)
 
+import Env.Module
+
+import CompilerEnv
 import CompilerOpts (Options (..), Verbosity (..), TargetType (..), defaultOptions)
-import Modules (checkModule, simpleCheckModule, compileModule, importPrelude
-  , patchModuleId, loadInterfaces)
+import Modules (checkModuleHeader, checkModule, simpleCheckModule, compileModule)
 import CurryBuilder (smake)
 import CurryDeps (flattenDeps, moduleDeps, Source (..))
-import Base.Module (ModuleEnv)
+import Interfaces (loadInterfaces)
 
 {- |Return the result of a syntactical analysis of the source program 'src'.
     The result is the syntax tree of the program (type 'Module'; see Module
@@ -51,29 +53,20 @@ typingParse paths fn src = genFullCurrySyntax checkModule paths $ parse fn src
 --
 genCurrySyntax :: FilePath -> CS.Module -> MsgMonad (CS.Module)
 genCurrySyntax fn mod1
-  | isValidModuleId fn mid = return mod'
-  | otherwise              = failWith $ err_invalidModuleName mid
-  where
-  mod'@(CS.Module mid _ _) = patchModuleId fn (importPrelude defaultOptions fn mod1)
-
-  err_invalidModuleName :: ModuleIdent -> String
-  err_invalidModuleName m = "module \"" ++ moduleName m
-    ++ "\" must be in a file \"" ++ moduleName m ++ ".curry\""
-
-  -- Return 'True', if file name and module name are equal.
-  isValidModuleId :: FilePath -> ModuleIdent -> Bool
-  isValidModuleId f m = last (moduleQualifiers m) == takeBaseName f
+  | null hdrErrs = return mdl
+  | otherwise    = failWith $ head hdrErrs
+  where (mdl, hdrErrs) = checkModuleHeader defaultOptions fn mod1
 
 --
 genFullCurrySyntax ::
-  (Options -> ModuleEnv -> CS.Module -> IO (a, b, c, CS.Module, d, [Message]))
+  (Options -> ModuleEnv -> CS.Module -> (CompilerEnv, CS.Module, CS.Interface, [Message]))
   -> [FilePath] -> MsgMonad CS.Module -> IO (MsgMonad CS.Module)
 genFullCurrySyntax check paths m = runMsgIO m $ \mod1 -> do
   errs <- makeInterfaces paths mod1
   if null errs
     then do
       mEnv <- loadInterfaces paths mod1
-      (_, _, _, mod', _, msgs') <- check (opts paths) mEnv mod1
+      let (_, mod', _, msgs') = check (opts paths) mEnv mod1
       return (tell msgs' >> return  mod')
     else return (failWith (head errs))
 

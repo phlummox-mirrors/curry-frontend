@@ -24,9 +24,10 @@ of the operators involved.
 > import Curry.Syntax
 
 > import Base.Expr
-> import Base.OpPrec (PEnv, OpPrec (..), PrecInfo (..), defaultP, bindP, qualLookupP)
-> import Messages (errorAt')
-> import Utils (findDouble)
+> import Base.Messages (errorAt')
+> import Base.Utils (findDouble)
+
+> import Env.OpPrec (PEnv, OpPrec (..), PrecInfo (..), defaultP, bindP, qualLookupP)
 
 \end{verbatim}
 For each declaration group, including the module-level, the compiler

@@ -23,8 +23,8 @@ declarations groups as well as function arguments remain unchanged.
 > import Curry.Base.Ident
 > import Curry.Syntax
 
-> import Base.Value (ValueEnv, qualLookupValue)
 > import Env.TopEnv
+> import Env.Value (ValueEnv, qualLookupValue)
 
 > qual :: ModuleIdent -> ValueEnv -> [Decl] -> [Decl]
 > qual m tyEnv ds = map (qualDecl m tyEnv) ds

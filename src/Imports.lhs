@@ -11,22 +11,25 @@ interfaces into the current module.
 
 > module Imports (importInterface, importInterfaceIntf, importUnifyData) where
 
+> import qualified Data.Map as Map
 > import Data.Maybe
 > import qualified Data.Set as Set
-> import qualified Data.Map as Map
 
 > import Curry.Base.Position
 > import Curry.Base.Ident
 > import Curry.Syntax
-> import Types
-> import Env.TopEnv
-> import Base.Arity (ArityInfo (..), ArityEnv)
-> import Base.OpPrec (PEnv, PrecInfo (..), OpPrec (..))
-> import Base.TypeConstructors (TCEnv, TypeInfo (..))
-> import Base.Types (toQualType, toQualTypes)
-> import Base.Value (ValueEnv,ValueInfo (..))
-> import Messages (internalError, errorAt')
 
+> import Base.CurryTypes (toQualType, toQualTypes)
+> import Base.Messages (internalError, errorAt')
+> import Base.Types
+
+> import Env.Arity
+> import Env.OpPrec
+> import Env.TopEnv
+> import Env.TypeConstructors
+> import Env.Value
+
+> import CompilerEnv
 
 \end{verbatim}
 Four kinds of environments are computed from the interface, one
@@ -53,15 +56,13 @@ using either a qualified import or both a qualified and an unqualified
 import.
 \begin{verbatim}
 
-> importInterface :: ModuleIdent -> Bool -> Maybe ImportSpec
->                 -> Interface -> PEnv -> TCEnv -> ValueEnv -> ArityEnv
->                 -> (PEnv, TCEnv, ValueEnv, ArityEnv)
-> importInterface m q is i pEnv tcEnv tyEnv aEnv =
->   ( importEntities m q vs id mPEnv pEnv
->   , importEntities m q ts (importData vs) mTCEnv tcEnv
->   , importEntities m q vs id mTyEnv tyEnv
->   , importEntities m q as id mAEnv aEnv
->   )
+> importInterface :: ModuleIdent -> Bool -> Maybe ImportSpec -> Interface -> CompilerEnv -> CompilerEnv
+> importInterface m q is i env = env
+>   { opPrecEnv = importEntities m q vs id mPEnv (opPrecEnv env)
+>   , tyConsEnv = importEntities m q ts (importData vs) mTCEnv (tyConsEnv env)
+>   , valueEnv  = importEntities m q vs id mTyEnv (valueEnv env)
+>   , arityEnv  = importEntities m q as id mAEnv (arityEnv env)
+>   }
 >   where mPEnv  = intfEnv bindPrec i
 >         mTCEnv = intfEnv bindTC i
 >         mTyEnv = intfEnv bindTy i
@@ -90,9 +91,9 @@ import.
 >   maybe (DataType tc n []) (RenamingType tc n) (importConstr isVisible' nc)
 > importData _ (AliasType tc  n ty) = AliasType tc n ty
 
-> importConstr :: (Ident -> Bool) -> Data a -> Maybe (Data a)
-> importConstr isVisible' (Data c n tys)
->   | isVisible' c = Just (Data c n tys)
+> importConstr :: (Ident -> Bool) -> DataConstr -> Maybe DataConstr
+> importConstr isVisible' (DataConstr c n tys)
+>   | isVisible' c = Just (DataConstr c n tys)
 >   | otherwise = Nothing
 
 \end{verbatim}
@@ -103,14 +104,13 @@ are imported as well because they may be used in type expressions in
 an interface.
 \begin{verbatim}
 
-> importInterfaceIntf :: Interface -> PEnv -> TCEnv -> ValueEnv -> ArityEnv
->                     -> (PEnv,TCEnv,ValueEnv,ArityEnv)
-> importInterfaceIntf i pEnv tcEnv tyEnv aEnv =
->   (importEntities m True (const True) id (intfEnv bindPrec i) pEnv,
->    importEntities m True (const True) id (intfEnv bindTCHidden i) tcEnv,
->    importEntities m True (const True) id (intfEnv bindTy i) tyEnv,
->    importEntities m True (const True) id (intfEnv bindA i) aEnv)
->   where Interface m _ = i
+> importInterfaceIntf :: Interface -> CompilerEnv -> CompilerEnv
+> importInterfaceIntf i@(Interface m _) env = env
+>   { opPrecEnv = importEntities m True (const True) id (intfEnv bindPrec     i) (opPrecEnv env)
+>   , tyConsEnv = importEntities m True (const True) id (intfEnv bindTCHidden i) (tyConsEnv env)
+>   , valueEnv  = importEntities m True (const True) id (intfEnv bindTy       i) (valueEnv  env)
+>   , arityEnv  = importEntities m True (const True) id (intfEnv bindA        i) (arityEnv  env)
+>   }
 
 \end{verbatim}
 In a first step, the three export environments are initialized from
@@ -135,12 +135,12 @@ module name.
 >   | otherwise =
 >     bindType DataType m tc tvs (map (fmap mkData) cs) mTCEnv
 >   where mkData (ConstrDecl _ evs c tys) =
->           Data c (length evs) (toQualTypes m tvs tys)
+>           DataConstr c (length evs) (toQualTypes m tvs tys)
 >         mkData (ConOpDecl _ evs ty1 c ty2) =
->           Data c (length evs) (toQualTypes m tvs [ty1,ty2])
+>           DataConstr c (length evs) (toQualTypes m tvs [ty1,ty2])
 > bindTC m (INewtypeDecl _ tc tvs (NewConstrDecl _ evs c ty)) mTCEnv =
 >   bindType RenamingType m tc tvs
->	 (Data c (length evs) (toQualType m tvs ty)) mTCEnv
+>	 (DataConstr c (length evs) [toQualType m tvs ty]) mTCEnv
 > bindTC m (ITypeDecl _ tc tvs ty) mTCEnv
 >   | isRecordExtId tc' =
 >     bindType AliasType m (qualify (fromRecordExtId tc')) tvs
@@ -306,8 +306,8 @@ data constructors are added.
 > expandTypeWith m tcEnv tc cs =
 >   case Map.lookup tc tcEnv of
 >     Just (DataType _ _ cs') ->
->       ImportTypeWith tc (map (checkConstr [c | Just (Data c _ _) <- cs']) cs)
->     Just (RenamingType _ _ (Data c _ _)) ->
+>       ImportTypeWith tc (map (checkConstr [c | Just (DataConstr c _ _) <- cs']) cs)
+>     Just (RenamingType _ _ (DataConstr c _ _)) ->
 >       ImportTypeWith tc (map (checkConstr [c]) cs)
 >     Just _ -> errorAt' (nonDataType m tc)
 >     Nothing -> errorAt' (undefinedEntity m tc)
@@ -318,8 +318,8 @@ data constructors are added.
 > expandTypeAll :: ModuleIdent -> ExpTCEnv -> Ident -> Import
 > expandTypeAll m tcEnv tc =
 >   case Map.lookup tc tcEnv of
->     Just (DataType _ _ cs) -> ImportTypeWith tc [c | Just (Data c _ _) <- cs]
->     Just (RenamingType _ _ (Data c _ _)) -> ImportTypeWith tc [c]
+>     Just (DataType _ _ cs) -> ImportTypeWith tc [c | Just (DataConstr c _ _) <- cs]
+>     Just (RenamingType _ _ (DataConstr c _ _)) -> ImportTypeWith tc [c]
 >     Just _ -> errorAt' (nonDataType m tc)
 >     Nothing -> errorAt' (undefinedEntity m tc)
 

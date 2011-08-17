@@ -8,11 +8,12 @@
 -}
 module Main (main) where
 
-import CurryBuilder (buildCurry)
-import CompilerOpts (Options (..), compilerOpts, usage)
+import Base.Messages (putErrsLn, abortWith)
 import Files.CymakePath (cymakeGreeting)
 import Html.CurryHtml (source2html)
-import Messages (putErrsLn, abortWith)
+
+import CurryBuilder (buildCurry)
+import CompilerOpts (Options (..), compilerOpts, usage)
 
 -- |The command line tool cymake
 main :: IO ()

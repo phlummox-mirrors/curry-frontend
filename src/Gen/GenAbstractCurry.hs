@@ -15,12 +15,14 @@ import Curry.Base.Ident
 import Curry.Base.Position
 import Curry.Syntax
 
-import Base.TypeConstructors (TCEnv, lookupTC)
-import Base.Types (fromType)
-import Base.Value (ValueEnv, ValueInfo (..), lookupValue, qualLookupValue)
+import Base.CurryTypes (fromType)
+import Base.Messages (internalError, errorAt)
+import Base.Types
+
+import Env.TypeConstructors (TCEnv, lookupTC)
 import Env.TopEnv
-import Messages (internalError, errorAt)
-import Types
+import Env.Value (ValueEnv, ValueInfo (..), lookupValue, qualLookupValue)
+
 
 -- ---------------------------------------------------------------------------
 -- Interface
@@ -729,6 +731,7 @@ genEvalAnnot EvalChoice = CChoice
 --
 --    moduleName  - name of the module
 --    typeEnv     - table of all known types
+--    typeEnv     - table of all known type constructors
 --    exports     - table of all exported symbols from the module
 --    imports     - table of import aliases
 --    varIndex    - index counter for generating variable indices
@@ -736,57 +739,59 @@ genEvalAnnot EvalChoice = CChoice
 --    varScope    - stack of variable tables
 --    tvarScope   - stack of type variable tables
 --    acyType     - type of AbstractCurry code to be generated
-data AbstractEnv = AbstractEnv {moduleId   :: ModuleIdent,
-				typeEnv    :: ValueEnv,
-				tconsEnv   :: TCEnv,
-				exports    :: Set.Set Ident,
-				imports    :: Map.Map ModuleIdent ModuleIdent,
-				varIndex   :: Int,
-				tvarIndex  :: Int,
-				varScope   :: [Map.Map Ident Int],
-				tvarScope  :: [Map.Map Ident Int],
-                                acyType    :: AbstractType
-			       } deriving Show
+data AbstractEnv = AbstractEnv
+  { moduleId   :: ModuleIdent
+  , typeEnv    :: ValueEnv
+  , tconsEnv   :: TCEnv
+  , exports    :: Set.Set Ident
+  , imports    :: Map.Map ModuleIdent ModuleIdent
+  , varIndex   :: Int
+  , tvarIndex  :: Int
+  , varScope   :: [Map.Map Ident Int]
+  , tvarScope  :: [Map.Map Ident Int]
+  , acyType    :: AbstractType
+  } deriving Show
 
 -- Data type representing the type of AbstractCurry code to be generated
 -- (typed infered or untyped (i.e. type signated))
-data AbstractType = TypedAcy | UntypedAcy deriving (Eq, Show)
+data AbstractType
+  = TypedAcy
+  | UntypedAcy
+    deriving (Eq, Show)
 
 
 -- Initializes the AbstractCurry generator environment.
 genAbstractEnv :: AbstractType -> ValueEnv -> TCEnv -> Module -> AbstractEnv
-genAbstractEnv absType tyEnv tcEnv (Module mid exps decls)
-   = AbstractEnv
-       {moduleId     = mid,
-	typeEnv      = tyEnv,
-	tconsEnv     = tcEnv,
-	exports      = foldl (buildExportTable mid decls) Set.empty exps',
-	imports      = foldl buildImportTable Map.empty decls,
-	varIndex     = 0,
-	tvarIndex    = 0,
-	varScope     = [Map.empty],
-	tvarScope    = [Map.empty],
-        acyType      = absType
-       }
- where
-   exps' = maybe (buildExports mid decls) (\ (Exporting _ es) -> es) exps
+genAbstractEnv absType tyEnv tcEnv (Module mid exps decls) = AbstractEnv
+  { moduleId  = mid
+  , typeEnv   = tyEnv
+  , tconsEnv  = tcEnv
+  , exports   = foldl (buildExportTable mid decls) Set.empty exps'
+  , imports   = foldl buildImportTable Map.empty decls
+  , varIndex  = 0
+  , tvarIndex = 0
+  , varScope  = [Map.empty]
+  , tvarScope = [Map.empty]
+  , acyType   = absType
+  }
+ where exps' = maybe (buildExports mid decls) (\ (Exporting _ es) -> es) exps
 
 
 -- Generates a list of exports for all specified top level declarations
 buildExports :: ModuleIdent -> [Decl] -> [Export]
 buildExports _ [] = []
 buildExports mid (DataDecl _ ident _ _:ds)
-   = ExportTypeAll (qualifyWith mid ident) : buildExports mid ds
+  = ExportTypeAll (qualifyWith mid ident) : buildExports mid ds
 buildExports mid ((NewtypeDecl _ ident _ _):ds)
-   = ExportTypeAll (qualifyWith mid ident) : buildExports mid ds
+  = ExportTypeAll (qualifyWith mid ident) : buildExports mid ds
 buildExports mid ((TypeDecl _ ident _ _):ds)
-   = Export (qualifyWith mid ident) : buildExports mid ds
+  = Export (qualifyWith mid ident) : buildExports mid ds
 buildExports mid ((FunctionDecl _ ident _):ds)
-   = Export (qualifyWith mid ident) : buildExports mid ds
+  = Export (qualifyWith mid ident) : buildExports mid ds
 buildExports mid (ExternalDecl _ _ _ ident _ : ds)
-   = Export (qualifyWith mid ident) : buildExports mid ds
+  = Export (qualifyWith mid ident) : buildExports mid ds
 buildExports mid (FlatExternalDecl _ idents : ds)
-   = map (Export . qualifyWith mid) idents ++ buildExports mid ds
+  = map (Export . qualifyWith mid) idents ++ buildExports mid ds
 buildExports mid (_:ds) = buildExports mid ds
 
 
@@ -795,21 +800,21 @@ buildExports mid (_:ds) = buildExports mid ds
 buildExportTable :: ModuleIdent -> [Decl] -> Set.Set Ident -> Export
                  -> Set.Set Ident
 buildExportTable mid _ exptab (Export qident)
-   | isJust (localIdent mid qident)
-     = insertExportedIdent exptab (unqualify qident)
-   | otherwise = exptab
+  | isJust (localIdent mid qident)
+  = insertExportedIdent exptab (unqualify qident)
+  | otherwise = exptab
 buildExportTable mid _ exptab (ExportTypeWith qident ids)
-   | isJust (localIdent mid qident)
-     = foldl insertExportedIdent
-             (insertExportedIdent exptab (unqualify qident))
-             ids
-   | otherwise  = exptab
+  | isJust (localIdent mid qident)
+  = foldl insertExportedIdent
+          (insertExportedIdent exptab (unqualify qident))
+          ids
+  | otherwise  = exptab
 buildExportTable mid decls exptab (ExportTypeAll qident)
-   | isJust ident'
-     = foldl insertExportedIdent
-             (insertExportedIdent exptab ident)
-             (maybe [] getConstrIdents (find (isDataDeclOf ident) decls))
-   | otherwise = exptab
+  | isJust ident'
+  = foldl insertExportedIdent
+          (insertExportedIdent exptab ident)
+          (maybe [] getConstrIdents (find (isDataDeclOf ident) decls))
+  | otherwise = exptab
  where
    ident' = localIdent mid qident
    ident  = fromJust ident'
@@ -822,10 +827,10 @@ insertExportedIdent env ident = Set.insert ident env
 --
 getConstrIdents :: Decl -> [Ident]
 getConstrIdents (DataDecl _ _ _ constrs)
-   = map getConstrIdent constrs
+  = map getConstrIdent constrs
  where
-   getConstrIdent (ConstrDecl _ _ ident _)  = ident
-   getConstrIdent (ConOpDecl _ _ _ ident _) = ident
+    getConstrIdent (ConstrDecl _ _ ident _)  = ident
+    getConstrIdent (ConOpDecl _ _ _ ident _) = ident
 getConstrIdents _ = error "GenAbstractCurry.getConstrIdents: no pattern match"
 
 
@@ -833,7 +838,7 @@ getConstrIdents _ = error "GenAbstractCurry.getConstrIdents: no pattern match"
 buildImportTable :: Map.Map ModuleIdent ModuleIdent -> Decl
 		    -> Map.Map ModuleIdent ModuleIdent
 buildImportTable env (ImportDecl _ mid _ malias _)
-   = Map.insert (fromMaybe mid malias) mid env
+  = Map.insert (fromMaybe mid malias) mid env
 buildImportTable env _ = env
 
 
@@ -846,11 +851,11 @@ isExported env ident = Set.member ident (exports env)
 -- into the  variable table of the current scope.
 genVarIndex :: AbstractEnv -> Ident -> (Int, AbstractEnv)
 genVarIndex env ident
-   = let idx   = varIndex env
-         vtabs = varScope env
-	 vtab  = head vtabs --if null vtabs then Map.empty else head vtabs
-     in  (idx, env {varIndex = idx + 1,
-		    varScope = Map.insert ident idx vtab : sureTail vtabs})
+  = let idx   = varIndex env
+        vtabs = varScope env
+        vtab  = head vtabs --if null vtabs then Map.empty else head vtabs
+    in (idx, env {varIndex = idx + 1,
+             varScope = Map.insert ident idx vtab : sureTail vtabs})
 
 -- Generates an unique index for the type variable 'ident' and inserts it
 -- into the type variable table of the current scope.
@@ -888,28 +893,30 @@ freshVar env vname = genFreshVar env vname (0 :: Integer)
 
 -- Sets the index counter back to zero and deletes all stack entries.
 resetScope :: AbstractEnv -> AbstractEnv
-resetScope env = env {varIndex  = 0,
-		      tvarIndex = 0,
-		      varScope  = [Map.empty],
-		      tvarScope = [Map.empty]}
+resetScope env = env
+  { varIndex  = 0
+  , tvarIndex = 0
+  , varScope  = [Map.empty]
+  , tvarScope = [Map.empty]
+  }
 
 -- Starts a new scope, i.e. copies and pushes the variable table of the current
 -- scope onto the top of the stack
 beginScope :: AbstractEnv -> AbstractEnv
-beginScope env = env {varScope  = head vs :vs,
-		      tvarScope = head tvs :tvs }
- where
- vs  = varScope env
- tvs = tvarScope env
+beginScope env = env { varScope  = head vs : vs, tvarScope = head tvs : tvs }
+  where
+    vs  = varScope env
+    tvs = tvarScope env
 
 -- End the current scope, i.e. pops and deletes the variable table of the
 -- current scope from the top of the stack.
 endScope :: AbstractEnv -> AbstractEnv
-endScope env = env {varScope  = if oneElement vs then vs else tail vs,
-		    tvarScope = if oneElement tvs then tvs else tail tvs}
- where
- vs  = varScope env
- tvs = tvarScope env
+endScope env = env { varScope  = newVarScope, tvarScope = newTVarScope }
+  where
+    newVarScope  = if oneElement  vs then  vs else tail  vs
+    newTVarScope = if oneElement tvs then tvs else tail tvs
+    vs  = varScope env
+    tvs = tvarScope env
 
 
 -------------------------------------------------------------------------------

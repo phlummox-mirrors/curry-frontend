@@ -28,10 +28,11 @@ is defined more than once.
 > import Curry.Base.Ident
 > import Curry.Syntax
 
-> import Base.TypeConstructors (TCEnv, tcArity)
+> import Base.Messages (errorAt', internalError)
+> import Base.Utils (findDouble)
+
 > import Env.TopEnv
-> import Messages (errorAt', internalError)
-> import Utils (findDouble)
+> import Env.TypeConstructors (TCEnv, tcArity)
 
 \end{verbatim}
 In order to check type constructor applications, the compiler

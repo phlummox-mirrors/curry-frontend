@@ -18,26 +18,27 @@ data structures, we can use only a qualified import for the
 \texttt{IL} module.
 \begin{verbatim}
 
-> module CurryToIL (ilTrans, ilTransIntf, translType) where
+> module Transform.CurryToIL (ilTrans, translType) where
 
-> import Data.Maybe (fromJust)
 > import Data.List (nub, partition)
-> import qualified Data.Set as Set (delete, fromList, toList)
 > import qualified Data.Map as Map (Map, empty, insert, lookup)
+> import Data.Maybe (fromJust)
+> import qualified Data.Set as Set (delete, fromList, toList)
 
 > import Curry.Base.Position
 > import Curry.Base.Ident
-> import qualified IL as IL
 > import Curry.Syntax
 
-> import Base.Eval (EvalEnv)
 > import Base.Expr
-> import Base.TypeConstructors (TCEnv, TypeInfo (..), qualLookupTC)
-> import Base.Types (toQualTypes)
-> import Base.Value (ValueEnv, ValueInfo (..), lookupValue, qualLookupValue)
-> import Messages (internalError)
-> import Utils (foldr2, thd3)
-> import Types
+> import Base.Messages (internalError)
+> import Base.Types
+> import Base.Utils (foldr2, thd3)
+
+> import Env.Eval (EvalEnv)
+> import Env.TypeConstructors (TCEnv, TypeInfo (..), qualLookupTC)
+> import Env.Value (ValueEnv, ValueInfo (..), lookupValue, qualLookupValue)
+
+> import qualified IL as IL
 
 \end{verbatim}
 \paragraph{Modules}
@@ -112,38 +113,38 @@ already fully expanded. Note that we do not translate data types
 which are imported into the interface from some other module.
 \begin{verbatim}
 
-> ilTransIntf :: ValueEnv -> TCEnv -> Interface -> [IL.Decl]
-> ilTransIntf tyEnv tcEnv (Interface m ds) =
->   foldr (translIntfDecl m tyEnv tcEnv) [] ds
+ilTransIntf :: ValueEnv -> TCEnv -> Interface -> [IL.Decl]
+ilTransIntf tyEnv tcEnv (Interface m ds) =
+  foldr (translIntfDecl m tyEnv tcEnv) [] ds
 
-> translIntfDecl :: ModuleIdent -> ValueEnv -> TCEnv -> IDecl -> [IL.Decl]
->	         -> [IL.Decl]
-> translIntfDecl m tyEnv tcEnv (IDataDecl _ tc tvs cs) ds
->   | not (isQualified tc) =
->     translIntfData m tyEnv tcEnv (unqualify tc) tvs cs : ds
-> translIntfDecl _ _ _ _ ds = ds
+translIntfDecl :: ModuleIdent -> ValueEnv -> TCEnv -> IDecl -> [IL.Decl]
+         -> [IL.Decl]
+translIntfDecl m tyEnv tcEnv (IDataDecl _ tc tvs cs) ds
+  | not (isQualified tc) =
+    translIntfData m tyEnv tcEnv (unqualify tc) tvs cs : ds
+translIntfDecl _ _ _ _ ds = ds
 
-> translIntfData :: ModuleIdent -> ValueEnv -> TCEnv -> Ident -> [Ident]
->	         -> [Maybe ConstrDecl] -> IL.Decl
-> translIntfData m tyEnv tcEnv tc tvs cs =
->   IL.DataDecl (qualifyWith m tc) (length tvs)
->               (map (maybe hiddenConstr
->	                    (translIntfConstrDecl m tyEnv tcEnv tvs)) cs)
->   where hiddenConstr = IL.ConstrDecl qAnonId []
->         qAnonId = qualify anonId
+translIntfData :: ModuleIdent -> ValueEnv -> TCEnv -> Ident -> [Ident]
+         -> [Maybe ConstrDecl] -> IL.Decl
+translIntfData m tyEnv tcEnv tc tvs cs =
+  IL.DataDecl (qualifyWith m tc) (length tvs)
+              (map (maybe hiddenConstr
+                    (translIntfConstrDecl m tyEnv tcEnv tvs)) cs)
+  where hiddenConstr = IL.ConstrDecl qAnonId []
+        qAnonId = qualify anonId
 
-> translIntfConstrDecl :: ModuleIdent -> ValueEnv -> TCEnv -> [Ident]
->                      -> ConstrDecl -> IL.ConstrDecl [IL.Type]
-> translIntfConstrDecl m tyEnv tcEnv tvs (ConstrDecl _ _ c tys) =
->   IL.ConstrDecl (qualifyWith m c) (map (translType' m tyEnv tcEnv)
->			                 (toQualTypes m tvs tys))
->   -- IL.ConstrDecl (qualifyWith m c) (map translType (toQualTypes m tvs tys))
-> translIntfConstrDecl m tyEnv tcEnv tvs (ConOpDecl _ _ ty1 op ty2) =
->   IL.ConstrDecl (qualifyWith m op)
->                 (map (translType' m tyEnv tcEnv)
->	               (toQualTypes m tvs [ty1,ty2]))
->   -- IL.ConstrDecl (qualifyWith m op)
->   --              (map translType (toQualTypes m tvs [ty1,ty2]))
+translIntfConstrDecl :: ModuleIdent -> ValueEnv -> TCEnv -> [Ident]
+                     -> ConstrDecl -> IL.ConstrDecl [IL.Type]
+translIntfConstrDecl m tyEnv tcEnv tvs (ConstrDecl _ _ c tys) =
+  IL.ConstrDecl (qualifyWith m c) (map (translType' m tyEnv tcEnv)
+		                 (toQualTypes m tvs tys))
+  -- IL.ConstrDecl (qualifyWith m c) (map translType (toQualTypes m tvs tys))
+translIntfConstrDecl m tyEnv tcEnv tvs (ConOpDecl _ _ ty1 op ty2) =
+  IL.ConstrDecl (qualifyWith m op)
+                (map (translType' m tyEnv tcEnv)
+               (toQualTypes m tvs [ty1,ty2]))
+  -- IL.ConstrDecl (qualifyWith m op)
+  --              (map translType (toQualTypes m tvs [ty1,ty2]))
 
 \end{verbatim}
 \paragraph{Types}

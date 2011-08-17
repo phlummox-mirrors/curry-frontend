@@ -9,15 +9,17 @@
 This module implements substitutions on types.
 \begin{verbatim}
 
-> module TypeSubst (module TypeSubst, idSubst, bindSubst, compose) where
+> module Base.TypeSubst (module Base.TypeSubst, idSubst, bindSubst, compose) where
 
-> import Data.Maybe
-> import Data.List
+> import Data.List (nub)
+> import Data.Maybe (fromJust, isJust)
 
-> import Base.Value (ValueInfo (..))
-> import Subst
-> import Types
 > import Env.TopEnv
+> import Env.Value (ValueInfo (..))
+
+> import Base.Subst
+> import Base.Types
+
 
 > type TypeSubst = Subst Int Type
 

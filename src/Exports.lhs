@@ -11,24 +11,29 @@ This section describes how the exported interface of a compiled module
 is computed.
 \begin{verbatim}
 
-> module Exports (expandInterface, exportInterface) where
+> module Exports (expandInterface, exportInterface, expandInterface', exportInterface') where
 
 > import Data.List
+> import qualified Data.Map as Map
 > import Data.Maybe
 > import qualified Data.Set as Set
-> import qualified Data.Map as Map
+
 
 > import Curry.Base.Position
 > import Curry.Base.Ident
 > import Curry.Syntax
-> import Types
-> import Base.OpPrec (PEnv, PrecInfo (..), OpPrec (..), qualLookupP)
-> import Base.TypeConstructors (TCEnv, TypeInfo (..), qualLookupTC)
-> import Base.Types (fromQualType)
-> import Base.Value (ValueEnv, ValueInfo (..), lookupValue, qualLookupValue)
+
+> import Base.CurryTypes (fromQualType)
+> import Base.Messages (errorAt', internalError)
+> import Base.Types
+> import Base.Utils (findDouble)
+
+> import Env.OpPrec (PEnv, PrecInfo (..), OpPrec (..), qualLookupP)
+> import Env.TypeConstructors (TCEnv, TypeInfo (..), qualLookupTC)
+> import Env.Value (ValueEnv, ValueInfo (..), lookupValue, qualLookupValue)
 > import Env.TopEnv
-> import Messages (errorAt', internalError)
-> import Utils (findDouble)
+
+> import CompilerEnv
 
 \end{verbatim}
 The interface of a module is computed in two steps. The function
@@ -38,12 +43,14 @@ functions, combining multiple exports for the same entity. The
 expanded export specifications refer to the original names of all
 entities. The function \texttt{exportInterface} uses the expanded
 specifications and the corresponding environments in order to compute
-to the interface of the module.
+the interface of the module.
 \begin{verbatim}
+
+> expandInterface' :: CompilerEnv -> Module -> Module
+> expandInterface' env mdl = expandInterface mdl (tyConsEnv env) (valueEnv env)
 
 > expandInterface :: Module -> TCEnv -> ValueEnv -> Module
 > expandInterface (Module m es ds) tcEnv tyEnv =
->     --error (show es')
 >   case findDouble [unqualify tc | ExportTypeWith tc _ <- es'] of
 >     Nothing ->
 >       case findDouble ([c | ExportTypeWith _ cs <- es', c <- cs] ++
@@ -204,6 +211,10 @@ the name of the module where it is defined. The same applies to an
 exported function.
 \begin{verbatim}
 
+> exportInterface' :: CompilerEnv -> Module -> Interface
+> exportInterface' env mdl = exportInterface mdl
+>   (opPrecEnv env) (tyConsEnv env) (valueEnv env)
+
 > exportInterface :: Module -> PEnv -> TCEnv -> ValueEnv -> Interface
 > exportInterface (Module m (Just (Exporting _ es)) _) pEnv tcEnv tyEnv =
 >   Interface m (imports ++ precs ++ hidden ++ ds)
@@ -235,7 +246,7 @@ exported function.
 >     [DataType tc' n cs'] ->
 >       iTypeDecl IDataDecl m tc' n
 >          (constrDecls m (drop n identSupply) cs cs') : ds
->     [RenamingType tc' n (Data c n' ty)]
+>     [RenamingType tc' n (DataConstr c n' [ty])]
 >       | c `elem` cs ->
 >           iTypeDecl INewtypeDecl m tc' n (NewConstrDecl NoPos tvs c ty') : ds
 >       | otherwise -> iTypeDecl IDataDecl m tc' n [] : ds
@@ -254,11 +265,11 @@ exported function.
 >            -> ModuleIdent -> QualIdent -> Int -> a -> IDecl
 > iTypeDecl f m tc n = f NoPos (qualUnqualify m tc) (take n identSupply)
 
-> constrDecls :: ModuleIdent -> [Ident] -> [Ident] -> [Maybe (Data [Type])]
+> constrDecls :: ModuleIdent -> [Ident] -> [Ident] -> [Maybe DataConstr]
 >             -> [Maybe ConstrDecl]
 > constrDecls m tvs cs = clean . map (>>= constrDecl m tvs)
 >   where clean = reverse . dropWhile isNothing . reverse
->         constrDecl m' tvs' (Data c n tys)
+>         constrDecl m' tvs' (DataConstr c n tys)
 >           | c `elem` cs =
 >               Just (iConstrDecl (take n tvs') c (map (fromQualType m') tys))
 >           | otherwise = Nothing
@@ -384,28 +395,28 @@ distinguished from type variables.
 > definedTypes ds = foldr definedType [] ds
 
 > definedType :: IDecl -> [QualIdent] -> [QualIdent]
-> definedType (IDataDecl _ tc _ _) tcs = tc : tcs
+> definedType (IDataDecl    _ tc _ _) tcs = tc : tcs
 > definedType (INewtypeDecl _ tc _ _) tcs = tc : tcs
-> definedType (ITypeDecl _ tc _ _) tcs = tc : tcs
-> definedType (IFunctionDecl _ _ _ _)  tcs = tcs
-> definedType _ _ = error "Exports.definedType: no pattern match"
+> definedType (ITypeDecl    _ tc _ _) tcs = tc : tcs
+> definedType (IFunctionDecl _ _ _ _) tcs = tcs
+> definedType _                       tcs = tcs
 
 \end{verbatim}
 Auxiliary definitions
 \begin{verbatim}
 
 > isDataType :: TypeInfo -> Bool
-> isDataType (DataType _ _ _) = True
+> isDataType (DataType     _ _ _) = True
 > isDataType (RenamingType _ _ _) = True
-> isDataType (AliasType _ _ _) = False
+> isDataType (AliasType    _ _ _) = False
 
 > isRecordType :: TypeInfo -> Bool
 > isRecordType (AliasType _ _ (TypeRecord _ _)) = True
 > isRecordType _ = False
 
 > constrs :: TypeInfo -> [Ident]
-> constrs (DataType _ _ cs) = [c | Just (Data c _ _) <- cs]
-> constrs (RenamingType _ _ (Data c _ _)) = [c]
+> constrs (DataType _ _ cs) = [c | Just (DataConstr c _ _) <- cs]
+> constrs (RenamingType _ _ (DataConstr c _ _)) = [c]
 > constrs (AliasType _ _ _) = []
 
 > labels :: TypeInfo -> [Ident]

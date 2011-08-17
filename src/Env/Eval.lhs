@@ -10,7 +10,7 @@ environment. There is no need to check the annotations because this
 happens already while checking the definitions of the module.
 \begin{verbatim}
 
-> module Base.Eval (EvalEnv, evalEnv) where
+> module Env.Eval (EvalEnv, initEEnv, evalEnv) where
 
 > import qualified Data.Map as Map
 
@@ -27,10 +27,13 @@ the module by traversing the syntax tree.
 > evalEnv :: [Decl] -> EvalEnv
 > evalEnv = foldr collectAnnotsDecl Map.empty
 
+> initEEnv :: EvalEnv
+> initEEnv = Map.empty
+
 > collectAnnotsDecl :: Decl -> EvalEnv -> EvalEnv
-> collectAnnotsDecl (EvalAnnot _ fs ev   ) env = foldr (`Map.insert` ev) env fs
+> collectAnnotsDecl (EvalAnnot _  fs ev  ) env = foldr (`Map.insert` ev) env fs
 > collectAnnotsDecl (FunctionDecl _ _ eqs) env = foldr collectAnnotsEqn env eqs
-> collectAnnotsDecl (PatternDecl _ _ rhs ) env = collectAnnotsRhs rhs env
+> collectAnnotsDecl (PatternDecl  _ _ rhs) env = collectAnnotsRhs rhs env
 > collectAnnotsDecl _ env = env
 
 > collectAnnotsEqn :: Equation -> EvalEnv -> EvalEnv
@@ -47,42 +50,42 @@ the module by traversing the syntax tree.
 >   collectAnnotsExpr g (collectAnnotsExpr e env)
 
 > collectAnnotsExpr :: Expression -> EvalEnv -> EvalEnv
-> collectAnnotsExpr (Literal _) env = env
-> collectAnnotsExpr (Variable _) env = env
-> collectAnnotsExpr (Constructor _) env = env
-> collectAnnotsExpr (Paren e) env = collectAnnotsExpr e env
-> collectAnnotsExpr (Typed e _) env = collectAnnotsExpr e env
-> collectAnnotsExpr (Tuple _ es) env = foldr collectAnnotsExpr env es
-> collectAnnotsExpr (List _ es) env = foldr collectAnnotsExpr env es
+> collectAnnotsExpr (Literal _)        env = env
+> collectAnnotsExpr (Variable _)       env = env
+> collectAnnotsExpr (Constructor _)    env = env
+> collectAnnotsExpr (Paren e)          env = collectAnnotsExpr e env
+> collectAnnotsExpr (Typed e _)        env = collectAnnotsExpr e env
+> collectAnnotsExpr (Tuple _ es)       env = foldr collectAnnotsExpr env es
+> collectAnnotsExpr (List  _ es)       env = foldr collectAnnotsExpr env es
 > collectAnnotsExpr (ListCompr _ e qs) env =
 >   collectAnnotsExpr e (foldr collectAnnotsStmt env qs)
-> collectAnnotsExpr (EnumFrom e) env = collectAnnotsExpr e env
-> collectAnnotsExpr (EnumFromThen e1 e2) env =
+> collectAnnotsExpr (EnumFrom e)              env = collectAnnotsExpr e env
+> collectAnnotsExpr (EnumFromThen e1 e2)      env =
 >   collectAnnotsExpr e1 (collectAnnotsExpr e2 env)
-> collectAnnotsExpr (EnumFromTo e1 e2) env =
+> collectAnnotsExpr (EnumFromTo e1 e2)        env =
 >   collectAnnotsExpr e1 (collectAnnotsExpr e2 env)
 > collectAnnotsExpr (EnumFromThenTo e1 e2 e3) env =
 >   collectAnnotsExpr e1 (collectAnnotsExpr e2 (collectAnnotsExpr e3 env))
-> collectAnnotsExpr (UnaryMinus _ e) env = collectAnnotsExpr e env
-> collectAnnotsExpr (Apply e1 e2) env =
+> collectAnnotsExpr (UnaryMinus _ e)     env = collectAnnotsExpr e env
+> collectAnnotsExpr (Apply e1 e2)        env =
 >   collectAnnotsExpr e1 (collectAnnotsExpr e2 env)
 > collectAnnotsExpr (InfixApply e1 _ e2) env =
 >   collectAnnotsExpr e1 (collectAnnotsExpr e2 env)
-> collectAnnotsExpr (LeftSection e _) env = collectAnnotsExpr e env
-> collectAnnotsExpr (RightSection _ e) env = collectAnnotsExpr e env
-> collectAnnotsExpr (Lambda _ _ e) env = collectAnnotsExpr e env
-> collectAnnotsExpr (Let ds e) env =
+> collectAnnotsExpr (LeftSection e _)    env = collectAnnotsExpr e env
+> collectAnnotsExpr (RightSection _ e)   env = collectAnnotsExpr e env
+> collectAnnotsExpr (Lambda _ _ e)       env = collectAnnotsExpr e env
+> collectAnnotsExpr (Let ds e)           env =
 >   foldr collectAnnotsDecl (collectAnnotsExpr e env) ds
-> collectAnnotsExpr (Do sts e) env =
+> collectAnnotsExpr (Do sts e)           env =
 >   foldr collectAnnotsStmt (collectAnnotsExpr e env) sts
 > collectAnnotsExpr (IfThenElse _ e1 e2 e3) env =
 >   collectAnnotsExpr e1 (collectAnnotsExpr e2 (collectAnnotsExpr e3 env))
-> collectAnnotsExpr (Case _ e alts) env =
+> collectAnnotsExpr (Case _ e alts)         env =
 >   collectAnnotsExpr e (foldr collectAnnotsAlt env alts)
-> collectAnnotsExpr (RecordConstr fs) env =
+> collectAnnotsExpr (RecordConstr fs)       env =
 >   foldr (collectAnnotsExpr . fieldTerm) env fs
-> collectAnnotsExpr (RecordSelection e _) env = collectAnnotsExpr e env
-> collectAnnotsExpr (RecordUpdate fs e) env =
+> collectAnnotsExpr (RecordSelection e _)   env = collectAnnotsExpr e env
+> collectAnnotsExpr (RecordUpdate fs e)     env =
 >   foldr (collectAnnotsExpr . fieldTerm) (collectAnnotsExpr e env) fs
 
 > collectAnnotsStmt :: Statement -> EvalEnv -> EvalEnv

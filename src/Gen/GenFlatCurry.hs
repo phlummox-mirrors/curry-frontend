@@ -21,23 +21,26 @@ import Curry.Base.MessageMonad
 import Curry.Base.Ident as Id
 import Curry.ExtendedFlat.Type
 import Curry.ExtendedFlat.TypeInference
-import qualified IL as IL
 import qualified Curry.Syntax as CS
 
-import Base.Arity (ArityEnv, ArityInfo (..), lookupArity, qualLookupArity)
-import Base.Module (ModuleEnv)
-import Base.TypeConstructors (TCEnv, TypeInfo (..), qualLookupTC)
-import Base.Value (ValueEnv, ValueInfo (..), lookupValue, qualLookupValue)
+-- Base
+import Base.Messages (internalError)
+import Base.Types
 
-import CompilerOpts (Options (..))
-import qualified CurryToIL as CTIL
-import Env.TopEnv (topEnvMap)
-import Env.CurryEnv (CurryEnv)
-import qualified Env.CurryEnv as CurryEnv
+ -- environments
+import Env.Arity (ArityEnv, ArityInfo (..), lookupArity, qualLookupArity)
+import Env.Module
 import Env.ScopeEnv (ScopeEnv)
 import qualified Env.ScopeEnv as ScopeEnv
-import Messages (internalError)
-import Types
+import Env.TopEnv (topEnvMap)
+import Env.TypeConstructors (TCEnv, TypeInfo (..), qualLookupTC)
+import Env.Value (ValueEnv, ValueInfo (..), lookupValue, qualLookupValue)
+
+-- other
+import CompilerOpts (Options (..))
+import qualified IL as IL
+import qualified ModuleSummary
+import Transformations (translType)
 
 -- import Debug.Trace
 trace' :: String -> a -> a
@@ -46,22 +49,22 @@ trace' _ x = x
 -------------------------------------------------------------------------------
 
 -- transforms intermediate language code (IL) to FlatCurry code
-genFlatCurry :: Options -> CurryEnv -> ModuleEnv -> ValueEnv -> TCEnv
+genFlatCurry :: Options -> ModuleSummary.ModuleSummary -> ModuleEnv -> ValueEnv -> TCEnv
 		-> ArityEnv -> IL.Module -> (Prog, [Message])
-genFlatCurry opts cEnv mEnv tyEnv tcEnv aEnv modul
+genFlatCurry opts modSum mEnv tyEnv tcEnv aEnv modul
    = (prog', messages)
  where (prog, messages)
-           = run opts cEnv mEnv tyEnv tcEnv aEnv False (visitModule modul)
+           = run opts modSum mEnv tyEnv tcEnv aEnv False (visitModule modul)
        prog' = -- eraseTypes $
                adjustTypeInfo $ adjustTypeInfo $ patchPreludeFCY prog
 
 -- transforms intermediate language code (IL) to FlatCurry interfaces
-genFlatInterface :: Options -> CurryEnv -> ModuleEnv -> ValueEnv -> TCEnv
+genFlatInterface :: Options -> ModuleSummary.ModuleSummary -> ModuleEnv -> ValueEnv -> TCEnv
          -> ArityEnv -> IL.Module -> (Prog, [Message])
-genFlatInterface opts cEnv mEnv tyEnv tcEnv aEnv modul =
+genFlatInterface opts modSum mEnv tyEnv tcEnv aEnv modul =
   (patchPreludeFCY intf, messages)
   where (intf, messages)
-          = run opts cEnv mEnv tyEnv tcEnv aEnv True (visitModule modul)
+          = run opts modSum mEnv tyEnv tcEnv aEnv True (visitModule modul)
 
 patchPreludeFCY :: Prog -> Prog
 patchPreludeFCY p@(Prog n _ types funcs ops)
@@ -131,26 +134,26 @@ data IdentExport = NotConstr       -- function, type-constructor
                  | NotOnlyConstr   -- constructor, function, type-constructor
 
 -- Runs a 'FlatState' action and returns the result
-run :: Options -> CurryEnv -> ModuleEnv -> ValueEnv -> TCEnv -> ArityEnv
+run :: Options -> ModuleSummary.ModuleSummary -> ModuleEnv -> ValueEnv -> TCEnv -> ArityEnv
     -> Bool -> FlatState a -> (a, [Message])
 run opts cEnv mEnv tyEnv tcEnv aEnv genIntf f
    = (result, messagesE env)
  where
  (result, env) = runState f env0
- env0 = FlatEnv{ moduleIdE     = CurryEnv.moduleId cEnv,
+ env0 = FlatEnv{ moduleIdE     = ModuleSummary.moduleId cEnv,
 		 functionIdE   = (qualify (mkIdent ""), []),
 		 compilerOptsE = opts,
 		 moduleEnvE    = mEnv,
 		 arityEnvE     = aEnv,
 		 typeEnvE      = tyEnv,
 		 tConsEnvE     = tcEnv,
-		 publicEnvE    = genPubEnv (CurryEnv.moduleId cEnv)
-		                 (CurryEnv.interface cEnv),
-		 fixitiesE     = CurryEnv.infixDecls cEnv,
-		 typeSynonymsE = CurryEnv.typeSynonyms cEnv,
-		 importsE      = CurryEnv.imports cEnv,
-		 exportsE      = CurryEnv.exports cEnv,
-		 interfaceE    = CurryEnv.interface cEnv,
+		 publicEnvE    = genPubEnv (ModuleSummary.moduleId cEnv)
+		                 (ModuleSummary.interface cEnv),
+		 fixitiesE     = ModuleSummary.infixDecls cEnv,
+		 typeSynonymsE = ModuleSummary.typeSynonyms cEnv,
+		 importsE      = ModuleSummary.imports cEnv,
+		 exportsE      = ModuleSummary.exports cEnv,
+		 interfaceE    = ModuleSummary.interface cEnv,
 		 varIndexE     = 0,
 		 varIdsE       = ScopeEnv.new,
 		 tvarIndexE    =0,
@@ -165,7 +168,7 @@ getConstrTypes tcEnv = trace' (show tinfos) tinfos
     where tcList = Map.toList $ topEnvMap tcEnv
           tinfos = [ foo tqid conid argtypes targnum
                    | (_, (_, DataType tqid targnum dts):_) <- tcList
-                   , Just (Data conid _ argtypes) <- dts]
+                   , Just (DataConstr conid _ argtypes) <- dts]
           foo tqid conid argtypes targnum
               = let conname = QualIdent (qualidMod tqid) conid
                     resulttype = IL.TypeConstructor tqid (map IL.TypeVariable [0..targnum-1])
@@ -658,7 +661,7 @@ genOpDecl _ = internalError "GenFlatCurry: no infix interface"
 
 -- The intermediate language (IL) does not represent type synonyms
 -- (and also no record declarations). For this reason an interface
--- representation of all type synonyms is generated (see "CurryEnv")
+-- representation of all type synonyms is generated (see "ModuleSummary")
 -- from the abstract syntax representation of the Curry program.
 -- The function 'typeSynonyms' returns this list of type synonyms.
 genTypeSynonyms ::  FlatState [TypeDecl]
@@ -1049,7 +1052,7 @@ lookupIdType qid
         case Map.lookup qid lt `mplus` Map.lookup qid ct of
           Just t -> trace' ("lookupIdType local " ++ show (qid, t)) $ liftM Just (visitType t)  -- local name or constructor
           Nothing -> case [ t | Value _ (ForAll _ t) <- qualLookupValue qid aEnv ] of
-                       t : _ -> liftM Just (visitType (CTIL.translType t))  -- imported name
+                       t : _ -> liftM Just (visitType (translType t))  -- imported name
                        []    -> case qualidMod qid of
                                   Nothing -> trace' ("no type for "  ++ show qid) $ return Nothing  -- no known type
                                   Just _ -> lookupIdType qid {qualidMod = Nothing}

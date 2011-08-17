@@ -39,6 +39,7 @@ an unlimited range of integer constants in Curry programs.
 \begin{verbatim}
 
 > {-# LANGUAGE DeriveDataTypeable #-}
+
 > module IL.Type
 >   ( -- * Data types
 >     Module (..), Decl (..), ConstrDecl (..), CallConv (..), Type (..)
@@ -46,12 +47,13 @@ an unlimited range of integer constants in Curry programs.
 >   , Binding (..)
 >   ) where
 
-> import Data.Generics
+> import Data.Generics (Data(..), Typeable(..))
 
 > import Curry.Base.Ident
 > import Curry.Base.Position (SrcRef(..))
 
-> data Module = Module ModuleIdent [ModuleIdent] [Decl] deriving (Eq,Show)
+> data Module = Module ModuleIdent [ModuleIdent] [Decl]
+>     deriving (Eq,Show)
 
 > data Decl
 >   = DataDecl     QualIdent Int [ConstrDecl [Type]]
@@ -60,14 +62,19 @@ an unlimited range of integer constants in Curry programs.
 >   | ExternalDecl QualIdent CallConv String Type
 >     deriving (Eq, Show)
 
-> data ConstrDecl a = ConstrDecl QualIdent a deriving (Eq, Show)
-> data CallConv = Primitive | CCall deriving (Eq, Show)
+> data ConstrDecl a = ConstrDecl QualIdent a
+>     deriving (Eq, Show)
+
+> data CallConv
+>   = Primitive
+>   | CCall
+>     deriving (Eq, Show)
 
 > data Type
 >   = TypeConstructor QualIdent [Type]
 >   | TypeVariable    Int
 >   | TypeArrow       Type Type
->     deriving (Eq, Show, Typeable, Data)
+>     deriving (Eq, Show, Data, Typeable)
 
 > data Literal
 >   = Char  SrcRef Char
@@ -82,7 +89,7 @@ an unlimited range of integer constants in Curry programs.
 >   | ConstructorPattern QualIdent [Ident]
 >     -- |default
 >   | VariablePattern Ident
->   deriving (Eq,Show)
+>   deriving (Eq, Show)
 
 > data Expression
 >     -- |literal constants
@@ -99,17 +106,24 @@ an unlimited range of integer constants in Curry programs.
 >   | Case SrcRef Eval Expression [Alt]
 >     -- |non-determinisismic or
 >   | Or Expression Expression
->     -- |exist binding
+>     -- |exist binding (introduction of a free variable)
 >   | Exist Ident Expression
 >     -- |let binding
 >   | Let Binding Expression
 >     -- |letrec binding
 >   | Letrec [Binding] Expression
->   deriving (Eq,Show)
+>   deriving (Eq, Show)
 
-> data Eval    = Rigid | Flex deriving (Eq,Show)
-> data Alt     = Alt ConstrTerm Expression deriving (Eq,Show)
-> data Binding = Binding Ident Expression deriving (Eq,Show)
+> data Eval
+>   = Rigid
+>   | Flex
+>     deriving (Eq, Show)
+
+> data Alt = Alt ConstrTerm Expression
+>     deriving (Eq, Show)
+
+> data Binding = Binding Ident Expression
+>     deriving (Eq, Show)
 
 > instance SrcRefOf ConstrTerm where
 >   srcRefOf (LiteralPattern l) = srcRefOf l

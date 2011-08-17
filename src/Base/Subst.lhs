@@ -12,7 +12,7 @@ In order to implement substitutions efficiently, composed substitutions are
 marked with a boolean flag (see below).
 \begin{verbatim}
 
-> module Subst
+> module Base.Subst
 >   ( Subst (..), IntSubst (..), idSubst, substToList, bindSubst, unbindSubst
 >   , compose,  substVar', isubstVar, restrictSubstTo
 >   )where

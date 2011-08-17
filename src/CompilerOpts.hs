@@ -1,9 +1,17 @@
-{- |CompilerOpts - Defines data structures containing options for
-    compiling Curry programs (see module "CurryCompiler")
+{- |
+    Module      :  $Header$
+    Description :  Compiler options
+    Copyright   :  (c) 2005, Martin Engelke (men@informatik.uni-kiel.de)
+                       2007, Sebastian Fischer (sebf@informatik.uni-kiel.de)
+                       2011, Björn Peemöller (bjp@informatik.uni-kiel.de)
+    License     :  OtherLicense
 
-    September 2005, Martin Engelke (men@informatik.uni-kiel.de)
-    March 2007, extensions by Sebastian Fischer (sebf@informatik.uni-kiel.de)
-    June 2011, refinements by Bjoern Peemoeller (bjp@informatik.uni-kiel.de)
+    Maintainer  :  bjp@informatik.uni-kiel.de
+    Stability   :  experimental
+    Portability :  portable
+
+    This module defines data structures containing options for the
+    compilation of Curry programs.
 -}
 module CompilerOpts
   ( Options (..), Verbosity (..), TargetType (..), Extension (..)

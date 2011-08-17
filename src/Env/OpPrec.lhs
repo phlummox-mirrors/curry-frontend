@@ -14,12 +14,13 @@ for representing the precedence. This change had to be done due to the
 introduction of unlimited integer constants in the parser / lexer.
 \begin{verbatim}
 
-> module Base.OpPrec
+> module Env.OpPrec
 >   ( PEnv, PrecInfo (..), OpPrec (..), defaultP, bindP, lookupP, qualLookupP
 >   , initPEnv ) where
 
 > import Curry.Base.Ident
 > import qualified Curry.Syntax as CS
+
 > import Env.TopEnv
 
 > data OpPrec = OpPrec CS.Infix Integer deriving Eq

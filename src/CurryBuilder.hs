@@ -7,7 +7,7 @@
 -}
 module CurryBuilder (buildCurry, smake) where
 
-import Control.Monad (liftM, unless)
+import Control.Monad (liftM)
 import Data.Maybe (catMaybes, fromMaybe, mapMaybe)
 import System.Time (ClockTime)
 
@@ -16,9 +16,10 @@ import Curry.Files.Filenames
 import Curry.Files.PathUtils ( dropExtension, doesModuleExist, lookupCurryFile
   , getModuleModTime, tryGetModuleModTime)
 
+import Base.Messages (status, abortWith)
+
 import CompilerOpts (Options (..), TargetType (..))
 import CurryDeps (Source (..), flatDeps)
-import Messages (status, abortWith)
 import Modules (compileModule)
 
 {- |Compile the Curry program 'file' including all imported modules,
@@ -31,9 +32,10 @@ buildCurry opts file = do
   case mbFile of
     Nothing -> abortWith [missingModule file]
     Just f  -> do
-      (deps, errs) <- flatDeps opts f
-      unless (null errs) $ abortWith errs
-      makeCurry (defaultToFlatCurry opts) deps f
+      (mods, errs) <- flatDeps opts f
+      if null errs
+        then makeCurry (defaultToFlatCurry opts) mods f
+        else abortWith errs
   where
     missingModule f      = "Error: missing module \"" ++ f ++ "\""
     defaultToFlatCurry opt
@@ -41,32 +43,26 @@ buildCurry opts file = do
       | otherwise                 = opt
 
 makeCurry :: Options -> [(ModuleIdent, Source)] -> FilePath -> IO ()
-makeCurry opts deps1 targetFile = mapM_ (compile . snd) deps1 where
-
+makeCurry opts mods targetFile = mapM_ (compile . snd) mods where
   compile (Interface _) = return ()
   compile Unknown       = return ()
-  compile (Source file mods)
-      -- target file
-    | dropExtension targetFile == dropExtension file = do
-        flatIntfExists <- doesModuleExist (flatIntName file)
-        if flatIntfExists && not (optForce opts) && null (optDumps opts)
-          then smake (targetNames file)
-                     (targetFile : mapMaybe flatInterface mods)
-                     (generateFile file)
-                     (skipFile file)
-          else generateFile file
-    | otherwise = do
-        flatIntfExists <- doesModuleExist (flatIntName file)
-        if flatIntfExists
-          then smake [flatName' opts file]
-                     (file : mapMaybe flatInterface mods)
-                     (compileFile file)
-                     (skipFile file)
-          else compileFile file
+  compile (Source file deps) = do
+    flatIntfExists <- doesModuleExist $ flatIntName file
+    if dropExtension targetFile == dropExtension file
+      then if flatIntfExists && not (optForce opts) && null (optDumps opts)
+              then smake (targetNames file)
+                          (targetFile : mapMaybe flatInterface deps)
+                          (generateFile file)
+                          (skipFile file)
+              else generateFile file
+      else if flatIntfExists
+              then smake [flatName' opts file]
+                        (file : mapMaybe flatInterface deps)
+                        (compileFile file)
+                        (skipFile file)
+              else compileFile file
 
-  targetNames fn = map (($ fn) . snd)
-                 $ filter ((`elem` optTargetTypes opts) . fst)
-                   nameGens
+  targetNames fn = [ gen fn | (tgt, gen) <- nameGens, tgt `elem` optTargetTypes opts]
     where nameGens =
             [ (FlatCurry            , flatName   )
             , (ExtendedFlatCurry    , extFlatName)
@@ -78,7 +74,7 @@ makeCurry opts deps1 targetFile = mapM_ (compile . snd) deps1 where
             , (FlatXml              , xmlName    )
             ]
 
-  flatInterface mod1 = case lookup mod1 deps1 of
+  flatInterface mod1 = case lookup mod1 mods of
     Just (Source file _)  -> Just $ flatIntName file
     Just (Interface file) -> Just $ flatIntName file
     _                     -> Nothing

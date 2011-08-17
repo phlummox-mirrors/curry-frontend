@@ -32,13 +32,14 @@ Currently, the following optimizations are implemented:
 > import Curry.Base.Ident
 > import Curry.Syntax
 
-> import Base.Eval (EvalEnv)
 > import Base.Expr
-> import Base.Value (ValueEnv, ValueInfo (..), bindFun, qualLookupValue)
-> import Messages (internalError)
-> import SCC
-> import Types
-> import Typing
+> import Base.Messages (internalError)
+> import Base.SCC
+> import Base.Types
+> import Base.Typing
+
+> import Env.Eval (EvalEnv)
+> import Env.Value (ValueEnv, ValueInfo (..), bindFun, qualLookupValue)
 
 > type SimplifyState a = S.StateT ValueEnv (ReaderT EvalEnv (S.State Int)) a
 > type InlineEnv = Map.Map Ident Expression

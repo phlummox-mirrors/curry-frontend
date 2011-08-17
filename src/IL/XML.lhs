@@ -19,7 +19,7 @@ similar to that of Flat-Curry XML representation.
 > module IL.XML (xmlModule) where
 
 > import Data.Maybe
-> import Text.PrettyPrint.HughesPJ
+> import Text.PrettyPrint
 
 > import Curry.Base.Ident
 > import IL.Type
@@ -28,30 +28,31 @@ TODO: The following two imports should be avoided if possible as they make
   the program structure less clear.
 
 > import qualified Curry.Syntax as CS
-> import Env.CurryEnv
+> import ModuleSummary
 
 > -- identation level
 > level::Int
 > level = 3
 
-> xmlModule :: CurryEnv -> Module -> Doc
-> xmlModule cEnv m
->   = text "<prog>" $$ nest level (xmlBody cEnv m) $$ text "</prog>"
+> xmlModule :: ModuleSummary -> Module -> Doc
+> xmlModule modSum m
+>   = text "<prog>" $$ nest level (xmlBody modSum m) $$ text "</prog>"
 
-> xmlBody :: CurryEnv -> Module -> Doc
-> xmlBody cEnv (Module mname mimports decls) =
+> xmlBody :: ModuleSummary -> Module -> Doc
+> xmlBody modSum (Module mname mimports decls) =
 >   xmlElement "module"      xmlModuleDecl      moduleDecl   $$
 >   xmlElement "import"      xmlImportDecl      importDecl   $$
 >   xmlElement "types"       xmlTypeDecl        typeDecl     $$
->   xmlElement "functions"   xmlFunctionDecl    functionDecl $$
+>   xmlElement "functions"   xmlFunctionDecl    funcDecl     $$
 >   xmlElement "operators"   xmlOperatorDecl    operatorDecl $$
 >   xmlElement "translation" xmlTranslationDecl translationDecl
 >   where
->     moduleDecl      = [mname]
->     importDecl      = mimports
->     operatorDecl    = infixDecls cEnv
->     translationDecl = foldl (qualIDeclId (moduleId cEnv)) [] (interface cEnv)
->     (functionDecl,typeDecl) = splitDecls decls
+>     moduleDecl          = [mname]
+>     importDecl          = mimports
+>     (funcDecl,typeDecl) = splitDecls decls
+>     operatorDecl    = infixDecls modSum
+>     translationDecl = foldl (qualIDeclId (moduleId modSum)) [] (interface modSum)
+
 
 > xmlModuleDecl :: ModuleIdent -> Doc
 > xmlModuleDecl = xmlModuleIdent
@@ -380,29 +381,21 @@ TODO: The following two imports should be avoided if possible as they make
 > -- generates a integer corresponding to a new var
 > xmlNewVar :: [(Int, Ident)] -> Int
 > xmlNewVar []        = 0
-> xmlNewVar ((n,_):_) = n+1
+> xmlNewVar ((n,_):_) = n + 1
 
 > xmlVar :: Int -> Doc
 > xmlVar n = text "<var>" <> xmlInt n <> text "</var>"
 
 > xmlLiteral :: Doc -> Doc
-> xmlLiteral d =   text "<lit>" $$ nest level d $$ text "</lit>"
+> xmlLiteral d = text "<lit>" $$ nest level d $$ text "</lit>"
 
 > xmlLitPattern :: Doc -> Doc
-> xmlLitPattern d =   text "<lpattern>" $$ nest level d $$ text "</lpattern>"
+> xmlLitPattern d = text "<lpattern>" $$ nest level d $$ text "</lpattern>"
 
 > xmlLit :: Literal -> Doc
-> xmlLit (Char _ c) = text "<charc>" <>  xmlInt (fromEnum c) <> text "</charc>"
-> xmlLit (Int _ n) = text "<intc>" <>  xmlInteger n <> text "</intc>"
-> xmlLit (Float _ n) = text "<floatc>" <>  xmlFloat n <> text "</floatc>"
-
-> xmlOperatorDecl :: CS.IDecl -> Doc
-> xmlOperatorDecl (CS.IInfixDecl _ fixity prec qident) =
->     text "<op fixity=\"" <> xmlFixity fixity
->     <> text "\" prec=\"" <> xmlInteger prec <> text "\">"
->     <> xmlIdent (unqualify qident)
->     <> text "</op>"
-> xmlOperatorDecl _ = error "IL.XML.xmlOperatorDecl: no pattern match"
+> xmlLit (Char  _ c) = text "<charc>"  <> xmlInt (fromEnum c) <> text "</charc>"
+> xmlLit (Int   _ n) = text "<intc>"   <> xmlInteger n        <> text "</intc>"
+> xmlLit (Float _ n) = text "<floatc>" <> xmlFloat n          <> text "</floatc>"
 
 > xmlFixity :: CS.Infix -> Doc
 > xmlFixity CS.InfixL = text "InfixlOp"
@@ -417,29 +410,37 @@ TODO: The following two imports should be avoided if possible as they make
 >    $$ text "</trans>"
 
 > xmlIdent :: Ident -> Doc
-> xmlIdent ident = text (xmlFormat (name ident))
+> xmlIdent = text .  xmlFormat . name
 
 > xmlInt :: Int -> Doc
-> xmlInt n = text (show n)
+> xmlInt = text . show
 
 > xmlInteger :: Integer -> Doc
-> xmlInteger n = text (show n)
+> xmlInteger = text . show
 
 > xmlFloat :: Double -> Doc
-> xmlFloat n = text (show n)
+> xmlFloat = text . show
 
 > xmlQualIdent :: QualIdent -> Doc
-> xmlQualIdent ident = text (xmlFormat (qualName ident))
+> xmlQualIdent = text . xmlFormat . qualName
 
 > xmlModuleIdent:: ModuleIdent -> Doc
-> xmlModuleIdent n = text (xmlFormat (moduleName n))
+> xmlModuleIdent = text . xmlFormat . moduleName
 
 > xmlFormat :: String -> String
 > xmlFormat []       = []
-> xmlFormat ('>':xs) = "&gt;"++xmlFormat xs
-> xmlFormat ('<':xs) = "&lt;"++xmlFormat xs
-> xmlFormat ('&':xs) = "&amp;"++xmlFormat xs
-> xmlFormat (x:xs)   = x:(xmlFormat xs)
+> xmlFormat ('>':xs) = "&gt;"  ++ xmlFormat xs
+> xmlFormat ('<':xs) = "&lt;"  ++ xmlFormat xs
+> xmlFormat ('&':xs) = "&amp;" ++ xmlFormat xs
+> xmlFormat (x  :xs) = x : (xmlFormat xs)
+
+> xmlOperatorDecl :: CS.IDecl -> Doc
+> xmlOperatorDecl (CS.IInfixDecl _ fixity prec qident) =
+>     text "<op fixity=\"" <> xmlFixity fixity
+>     <> text "\" prec=\"" <> xmlInteger prec <> text "\">"
+>     <> xmlIdent (unqualify qident)
+>     <> text "</op>"
+> xmlOperatorDecl _ = empty
 
 > qualIDeclId :: ModuleIdent -> [QualIdent] -> CS.IDecl -> [QualIdent]
 > qualIDeclId mid qids (CS.IDataDecl _ qid _ mcdecls)

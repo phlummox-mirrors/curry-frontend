@@ -17,23 +17,24 @@ dependencies and to update programs composed of multiple modules.
 > module CurryDeps
 >   ( Source (..), deps, flatDeps, flattenDeps, sourceDeps, moduleDeps ) where
 
+> import Control.Monad (foldM)
 > import Data.List (intercalate, isSuffixOf, nub)
 > import qualified Data.Map as Map (Map, empty, insert, lookup, toList)
-> import Control.Monad (foldM)
 
 > import Curry.Base.Ident
 > import Curry.Base.MessageMonad
 > import Curry.Files.Filenames
 > import Curry.Files.PathUtils
 > import Curry.Syntax hiding (Interface (..))
+
+> import Base.SCC (scc)
 > import CompilerOpts (Options (..), Extension (..))
-> import SCC (scc)
 
 > data Source
 >   = Source FilePath [ModuleIdent]
 >   | Interface FilePath
 >   | Unknown
->   deriving (Eq, Ord, Show)
+>     deriving (Eq, Ord, Show)
 
 > type SourceEnv = Map.Map ModuleIdent Source
 
@@ -107,15 +108,14 @@ prelude itself. Any errors reported by the parser are ignored.
 
 > sourceDeps :: Bool -> [FilePath] -> [FilePath] -> ModuleIdent -> SourceEnv
 >            -> FilePath -> IO SourceEnv
-> sourceDeps implicitPrelude paths libraryPaths m mEnv fn =
->   do
->     s <- readModule fn
->     case fst $ runMsg $ parseHeader fn s of
->       Right (Module m' _ ds) ->
->         let ms = imports implicitPrelude m' ds in
->         foldM (moduleDeps implicitPrelude paths libraryPaths)
->               (Map.insert m (Source fn ms) mEnv) ms
->       Left _ -> return (Map.insert m (Source fn []) mEnv)
+> sourceDeps implicitPrelude paths libraryPaths m mEnv fn = do
+>   s <- readModule fn
+>   case fst $ runMsg $ parseHeader fn s of
+>     Right (Module m' _ ds) ->
+>       let ms = imports implicitPrelude m' ds in
+>       foldM (moduleDeps implicitPrelude paths libraryPaths)
+>             (Map.insert m (Source fn ms) mEnv) ms
+>     Left _ -> return (Map.insert m (Source fn []) mEnv)
 
 > -- |Retrieve the imported modules and add the import of the Prelude
 > --  according to the flag.
@@ -142,9 +142,10 @@ that the dependency graph should not contain any cycles.
 >   fdeps :: [[(ModuleIdent, Source)]] -> ([(ModuleIdent, Source)], [String])
 >   fdeps = foldr checkdep ([], [])
 >
->   checkdep []  (ms', es') = (ms'    , es')
->   checkdep [m] (ms', es') = (m : ms', es')
->   checkdep dep (ms', es') = (ms'    , cyclicError (map fst dep) : es')
+>   checkdep []    (srcs, errs) = (srcs      , errs      )
+>   checkdep [src] (srcs, errs) = (src : srcs, errs      )
+>   checkdep dep   (srcs, errs) = (srcs      , err : errs)
+>     where err = cyclicError (map fst dep)
 
 >   cyclicError :: [ModuleIdent] -> String
 >   cyclicError ms = "Cylic import dependency between modules " ++

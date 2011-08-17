@@ -61,7 +61,7 @@ all names must be properly qualified before calling this module.}
 
 > module Transform.Desugar (desugar) where
 
-> import Control.Arrow(second)
+> import Control.Arrow (second)
 > import Control.Monad.State as S
 > import Data.List
 > import Data.Maybe
@@ -71,15 +71,17 @@ all names must be properly qualified before calling this module.}
 > import Curry.Syntax
 
 > import Base.Expr
-> import Base.TypeConstructors (TCEnv, TypeInfo (..), qualLookupTC)
-> import Base.Types (fromType)
-> import Base.Value (ValueEnv, ValueInfo (..), bindFun, bindGlobalInfo
+> import Base.CurryTypes (fromType)
+> import Base.Messages (internalError)
+> import Base.Types
+> import Base.Typing
+> import Base.Utils
+
+> import Env.TypeConstructors (TCEnv, TypeInfo (..), qualLookupTC)
+> import Env.Value (ValueEnv, ValueInfo (..), bindFun, bindGlobalInfo
 >   , lookupValue, qualLookupValue)
 
-> import Types
-> import Typing
-> import Utils
-> import Messages (internalError)
+
 
 posE = undefined
 

@@ -23,8 +23,10 @@ imported.
 
 > import qualified Data.Map as Map
 > import Curry.Base.Ident
+
+> import Base.Messages (internalError)
+
 > import Env.TopEnv
-> import Messages (internalError)
 
 > data NestEnv a = GlobalEnv (TopEnv a)
 >                | LocalEnv (NestEnv a) (Map.Map Ident a)
