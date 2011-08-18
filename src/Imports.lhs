@@ -10,8 +10,7 @@ interfaces into the current module.
 \begin{verbatim}
 
 > module Imports
->   ( importInterface, importInterfaceIntf, importUnifyData
->   , importModules, importModulesExt, qualifyEnv, qualifyEnvExt
+>   ( importModules, importModulesExt, qualifyEnv, qualifyEnvExt
 >   ) where
 
 > import qualified Data.Map as Map
@@ -27,8 +26,8 @@ interfaces into the current module.
 > import Base.Types
 
 > import Env.Arity
-> import Env.Import
 > import Env.Interfaces
+> import Env.ModuleAliases
 > import Env.OpPrec
 > import Env.TopEnv
 > import Env.TypeConstructors
@@ -45,44 +44,21 @@ imported interfaces into scope for the current module.
 
 > importModulesExt :: Options -> ModuleIdent -> InterfaceEnv -> [Decl] -> CompilerEnv
 > importModulesExt opts mid iEnv decls = recordExpansion1 opts
->                                       $ importModules mid iEnv decls
-
-> qualifyEnvExt :: Options -> InterfaceEnv -> CompilerEnv -> CompilerEnv
-> qualifyEnvExt opts iEnv cEnv = recordExpansion2 opts
->                              $ qualifyEnv iEnv cEnv
+>                                      $ importModules mid iEnv decls
 
 > importModules :: ModuleIdent -> InterfaceEnv -> [Decl] -> CompilerEnv
-> importModules mid mEnv decls = env { tyConsEnv = importUnifyData $ tyConsEnv env }
+> importModules mid iEnv decls = env { tyConsEnv = importUnifyData $ tyConsEnv env }
 >   where
 >     env = foldl importModule initEnv decls
 >     initEnv = (initCompilerEnv mid)
->       { importEnv    = fromDeclList decls
->       , labelEnv     = importLabels mEnv decls
->       , interfaceEnv = mEnv
+>       { aliasEnv     = fromImportDecls decls   -- module aliases
+>       , labelEnv     = importLabels iEnv decls -- record labels
+>       , interfaceEnv = iEnv                    -- imported interfaces
 >       }
->     importModule env' (ImportDecl _ m q asM is) =
->       case Map.lookup m mEnv of
->         Just ds1 -> importInterface (fromMaybe m asM) q is
->                                     (Interface m ds1) env'
->         Nothing  -> internalError $ "importModule: Map.lookup " ++ show m ++ " " ++ show mEnv
+>     importModule env' (ImportDecl _ m q asM is) = case Map.lookup m iEnv of
+>       Just ds -> importInterface (fromMaybe m asM) q is (Interface m ds) env'
+>       Nothing -> internalError $ "Imports.importModules: no interface for " ++ show m
 >     importModule env' _ = env'
-
-> qualifyEnv :: InterfaceEnv -> CompilerEnv -> CompilerEnv
-> qualifyEnv mEnv env = env
->   { opPrecEnv = foldr bindQual   pEnv'  (localBindings $ opPrecEnv env)
->   , tyConsEnv = foldr bindQual   tcEnv' (localBindings $ tyConsEnv env)
->   , valueEnv  = foldr bindGlobal tyEnv' (localBindings $ valueEnv  env)
->   , arityEnv  = foldr bindQual   aEnv'  (localBindings $ arityEnv  env)
->   }
->   where
->     CompilerEnv { opPrecEnv = pEnv', tyConsEnv = tcEnv', valueEnv = tyEnv', arityEnv = aEnv'} =
->       foldl importInterface' (initCompilerEnv $ moduleIdent env) (Map.toList mEnv)
->     importInterface' cEnv1 (m,ds) = importInterfaceIntf (Interface m ds) cEnv1
->     bindQual (_, y) = qualBindTopEnv "Modules.qualifyEnv" (origName y) y
->     bindGlobal (x, y)
->       | uniqueId x == 0 = bindQual (x, y)
->       | otherwise = bindTopEnv "Modules.qualifyEnv" x y
-
 
 \end{verbatim}
 Four kinds of environments are computed from the interface, one
@@ -111,10 +87,10 @@ import.
 
 > importInterface :: ModuleIdent -> Bool -> Maybe ImportSpec -> Interface -> CompilerEnv -> CompilerEnv
 > importInterface m q is i env = env
->   { opPrecEnv = importEntities m q vs id mPEnv (opPrecEnv env)
+>   { opPrecEnv = importEntities m q vs id              mPEnv  (opPrecEnv env)
 >   , tyConsEnv = importEntities m q ts (importData vs) mTCEnv (tyConsEnv env)
->   , valueEnv  = importEntities m q vs id mTyEnv (valueEnv env)
->   , arityEnv  = importEntities m q as id mAEnv (arityEnv env)
+>   , valueEnv  = importEntities m q vs id              mTyEnv (valueEnv env)
+>   , arityEnv  = importEntities m q as id              mAEnv  (arityEnv env)
 >   }
 >   where mPEnv  = intfEnv bindPrec i
 >         mTCEnv = intfEnv bindTC i
@@ -436,3 +412,23 @@ Error messages:
 >   "Explicit import for data constructor " ++ name c)
 
 \end{verbatim}
+
+> qualifyEnvExt :: Options -> InterfaceEnv -> CompilerEnv -> CompilerEnv
+> qualifyEnvExt opts iEnv cEnv = recordExpansion2 opts
+>                              $ qualifyEnv iEnv cEnv
+
+> qualifyEnv :: InterfaceEnv -> CompilerEnv -> CompilerEnv
+> qualifyEnv mEnv env = env
+>   { opPrecEnv = foldr bindQual   pEnv'  (localBindings $ opPrecEnv env)
+>   , tyConsEnv = foldr bindQual   tcEnv' (localBindings $ tyConsEnv env)
+>   , valueEnv  = foldr bindGlobal tyEnv' (localBindings $ valueEnv  env)
+>   , arityEnv  = foldr bindQual   aEnv'  (localBindings $ arityEnv  env)
+>   }
+>   where
+>     CompilerEnv { opPrecEnv = pEnv', tyConsEnv = tcEnv', valueEnv = tyEnv', arityEnv = aEnv'} =
+>       foldl importInterface' (initCompilerEnv $ moduleIdent env) (Map.toList mEnv)
+>     importInterface' cEnv1 (m,ds) = importInterfaceIntf (Interface m ds) cEnv1
+>     bindQual (_, y) = qualBindTopEnv "Modules.qualifyEnv" (origName y) y
+>     bindGlobal (x, y)
+>       | uniqueId x == 0 = bindQual (x, y)
+>       | otherwise = bindTopEnv "Modules.qualifyEnv" x y

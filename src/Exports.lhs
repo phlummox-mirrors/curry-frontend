@@ -11,7 +11,7 @@ This section describes how the exported interface of a compiled module
 is computed.
 \begin{verbatim}
 
-> module Exports (expandInterface, exportInterface, expandInterface', exportInterface') where
+> module Exports (expandInterface, exportInterface) where
 
 > import Data.List
 > import qualified Data.Map as Map
@@ -46,11 +46,11 @@ specifications and the corresponding environments in order to compute
 the interface of the module.
 \begin{verbatim}
 
-> expandInterface' :: CompilerEnv -> Module -> Module
-> expandInterface' env mdl = expandInterface mdl (tyConsEnv env) (valueEnv env)
+> expandInterface :: CompilerEnv -> Module -> Module
+> expandInterface env mdl = expandInterface' mdl (tyConsEnv env) (valueEnv env)
 
-> expandInterface :: Module -> TCEnv -> ValueEnv -> Module
-> expandInterface (Module m es ds) tcEnv tyEnv =
+> expandInterface' :: Module -> TCEnv -> ValueEnv -> Module
+> expandInterface' (Module m es ds) tcEnv tyEnv =
 >   case findDouble [unqualify tc | ExportTypeWith tc _ <- es'] of
 >     Nothing ->
 >       case findDouble ([c | ExportTypeWith _ cs <- es', c <- cs] ++
@@ -211,18 +211,18 @@ the name of the module where it is defined. The same applies to an
 exported function.
 \begin{verbatim}
 
-> exportInterface' :: CompilerEnv -> Module -> Interface
-> exportInterface' env mdl = exportInterface mdl
+> exportInterface :: CompilerEnv -> Module -> Interface
+> exportInterface env mdl = exportInterface' mdl
 >   (opPrecEnv env) (tyConsEnv env) (valueEnv env)
 
-> exportInterface :: Module -> PEnv -> TCEnv -> ValueEnv -> Interface
-> exportInterface (Module m (Just (Exporting _ es)) _) pEnv tcEnv tyEnv =
+> exportInterface' :: Module -> PEnv -> TCEnv -> ValueEnv -> Interface
+> exportInterface' (Module m (Just (Exporting _ es)) _) pEnv tcEnv tyEnv =
 >   Interface m (imports ++ precs ++ hidden ++ ds)
 >   where imports = map (IImportDecl NoPos) (usedModules ds)
 >         precs = foldr (infixDecl m pEnv) [] es
 >         hidden = map (hiddenTypeDecl m tcEnv) (hiddenTypes ds)
 >         ds = foldr (typeDecl m tcEnv) (foldr (funDecl m tyEnv) [] es) es
-> exportInterface (Module _ Nothing _) _ _ _ = internalError "exportInterface"
+> exportInterface' (Module _ Nothing _) _ _ _ = internalError "exportInterface"
 
 > infixDecl :: ModuleIdent -> PEnv -> Export -> [IDecl] -> [IDecl]
 > infixDecl m pEnv (Export f) ds = iInfixDecl m pEnv f ds

@@ -70,9 +70,9 @@ Executable cymake
     , Check.WarnCheck
     , Env.Arity
     , Env.Eval
-    , Env.Import
     , Env.Interfaces
     , Env.Label
+    , Env.ModuleAliases
     , Env.NestEnv
     , Env.OldScopeEnv
     , Env.OpPrec

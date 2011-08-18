@@ -22,7 +22,7 @@ precCheck decls env = (decls', env { opPrecEnv = pEnv' })
 
 syntaxCheck :: Options -> [Decl] -> CompilerEnv -> ([Decl], CompilerEnv)
 syntaxCheck opts decls env = (decls', env)
-  where decls' = SC.syntaxCheck withExt (moduleIdent env) (importEnv env)
+  where decls' = SC.syntaxCheck withExt (moduleIdent env) (aliasEnv env)
                    (arityEnv env) (valueEnv env) (tyConsEnv env) decls
         withExt = BerndExtension `elem` optExtensions opts
 

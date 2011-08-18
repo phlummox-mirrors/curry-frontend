@@ -36,7 +36,7 @@ merged into a single definition.
 > import Base.Utils ((++!), findDouble, mapAccumM)
 
 > import Env.Arity (ArityEnv, ArityInfo (..), lookupArity, qualLookupArity)
-> import Env.Import (ImportEnv, lookupAlias)
+> import Env.ModuleAliases (AliasEnv, lookupAlias)
 > import Env.NestEnv
 > import Env.TypeConstructors (TCEnv, TypeInfo (..), qualLookupTC)
 > import Env.Value (ValueEnv, ValueInfo (..))
@@ -53,7 +53,7 @@ declarations are checked within the resulting environment. In
 addition, this process will also rename the local variables.
 \begin{verbatim}
 
-> syntaxCheck :: Bool -> ModuleIdent -> ImportEnv -> ArityEnv -> ValueEnv -> TCEnv -> [Decl] -> [Decl]
+> syntaxCheck :: Bool -> ModuleIdent -> AliasEnv -> ArityEnv -> ValueEnv -> TCEnv -> [Decl] -> [Decl]
 > syntaxCheck withExt m iEnv aEnv tyEnv tcEnv ds =
 >   case findDouble (concatMap constrs tds) of
 >     --Nothing -> tds ++ run (checkModule withExt m env vds)
@@ -106,12 +106,12 @@ allow the usage of the qualified list constructor \texttt{(prelude.:)}.
 >                 | GlobalVar Int QualIdent
 >                 | LocalVar Int Ident
 >                 | RecordLabel QualIdent [Ident]
->                   deriving (Eq,Show)
+>                   deriving (Eq, Show)
 
 > globalKey :: Int
 > globalKey = uniqueId (mkIdent "")
 
-> renameInfo :: TCEnv -> ImportEnv -> ArityEnv -> ValueInfo -> RenameInfo
+> renameInfo :: TCEnv -> AliasEnv -> ArityEnv -> ValueInfo -> RenameInfo
 > renameInfo _     _    _    (DataConstructor _ (ForAllExist _ _ ty))
 >    = Constr (arrowArity ty)
 > renameInfo _     _    _    (NewtypeConstructor _ _)

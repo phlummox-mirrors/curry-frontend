@@ -43,7 +43,7 @@ This module controls the compilation of modules.
 > import Checks
 > import CompilerEnv
 > import CompilerOpts
-> import Exports (expandInterface', exportInterface')
+> import Exports (expandInterface, exportInterface)
 > import qualified Generators as Gen
 > import qualified IL as IL
 > import Imports (importModules, importModulesExt, qualifyEnv, qualifyEnvExt)
@@ -181,9 +181,9 @@ Haskell and original MCC where a module obtains \texttt{main}).
 >                    $ uncurry (syntaxCheck opts)
 >                    $ uncurry kindCheck
 >                      (topDs, env)
->     modul = Module m es (impDs ++ topDs') -- expandInterface' env2 (Module m es (impDs ++ topDs'))
+>     modul = Module m es (impDs ++ topDs') -- expandInterface env2 (Module m es (impDs ++ topDs'))
 >     cEnv  = qualifyEnv mEnv env2
->     intf  = exportInterface' cEnv modul
+>     intf  = exportInterface cEnv modul
 
 > checkModule :: Options -> InterfaceEnv -> Module
 >   -> (CompilerEnv, Module, Interface, [Message])
@@ -202,9 +202,9 @@ Haskell and original MCC where a module obtains \texttt{main}).
 >                    $ uncurry (syntaxCheck opts)
 >                    $ uncurry kindCheck
 >                      (topDs, env)
->     modul  = expandInterface' env2 (Module m es (impDs ++ topDs'))
+>     modul  = expandInterface env2 (Module m es (impDs ++ topDs'))
 >     cEnv   = qualifyEnvExt opts mEnv env2
->     intf   = exportInterface' cEnv modul
+>     intf   = exportInterface cEnv modul
 
 > -- |Translate FlatCurry into the intermediate language 'IL'
 > transModule :: Bool -> CompilerEnv -> Module
