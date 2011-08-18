@@ -9,7 +9,9 @@
 This module implements substitutions on types.
 \begin{verbatim}
 
-> module Base.TypeSubst (module Base.TypeSubst, idSubst, bindSubst, compose) where
+> module Base.TypeSubst
+>   ( module Base.TypeSubst, idSubst, bindSubst, compose
+>   ) where
 
 > import Data.List (nub)
 > import Data.Maybe (fromJust, isJust)

@@ -14,8 +14,8 @@ marked with a boolean flag (see below).
 
 > module Base.Subst
 >   ( Subst (..), IntSubst (..), idSubst, substToList, bindSubst, unbindSubst
->   , compose,  substVar', isubstVar, restrictSubstTo
->   )where
+>   , compose, substVar', isubstVar, restrictSubstTo
+>   ) where
 
 > import qualified Data.Map as Map
 

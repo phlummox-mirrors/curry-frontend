@@ -15,7 +15,7 @@ import CompilerEnv
 import qualified IL
 
 completeCase :: IL.Module -> CompilerEnv -> (IL.Module, CompilerEnv)
-completeCase mdl env = (CC.completeCase (moduleEnv env) mdl, env)
+completeCase mdl env = (CC.completeCase (interfaceEnv env) mdl, env)
 
 ilTrans :: Bool -> Module -> CompilerEnv -> (IL.Module, CompilerEnv)
 ilTrans flat mdl env = (il, env)
@@ -29,8 +29,9 @@ desugar mdl env = (mdl', env { valueEnv = tyEnv' })
   where (mdl', tyEnv') = DS.desugar (valueEnv env) (tyConsEnv env) mdl
 
 lift :: Module -> CompilerEnv -> (Module, CompilerEnv)
-lift mdl env = (mdl', env { valueEnv = tyEnv', evalAnnotEnv = eEnv' })
-  where (mdl', tyEnv', eEnv') = L.lift (valueEnv env) (evalAnnotEnv env) mdl
+lift mdl env = (mdl', env { valueEnv = tyEnv', evalAnnotEnv = eEnv', arityEnv = aEnv' })
+  where (mdl', tyEnv', eEnv', aEnv')
+           = L.lift (valueEnv env) (evalAnnotEnv env) (arityEnv env) mdl
 
 qual :: [Decl] -> CompilerEnv -> ([Decl], CompilerEnv)
 qual decls env = (decls', env)

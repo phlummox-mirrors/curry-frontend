@@ -29,7 +29,7 @@ import Base.Types
 
  -- environments
 import Env.Arity (ArityEnv, ArityInfo (..), lookupArity, qualLookupArity)
-import Env.Module
+import Env.Interfaces
 import Env.ScopeEnv (ScopeEnv)
 import qualified Env.ScopeEnv as ScopeEnv
 import Env.TopEnv (topEnvMap)
@@ -49,7 +49,7 @@ trace' _ x = x
 -------------------------------------------------------------------------------
 
 -- transforms intermediate language code (IL) to FlatCurry code
-genFlatCurry :: Options -> ModuleSummary.ModuleSummary -> ModuleEnv -> ValueEnv -> TCEnv
+genFlatCurry :: Options -> ModuleSummary.ModuleSummary -> InterfaceEnv -> ValueEnv -> TCEnv
 		-> ArityEnv -> IL.Module -> (Prog, [Message])
 genFlatCurry opts modSum mEnv tyEnv tcEnv aEnv modul
    = (prog', messages)
@@ -59,7 +59,7 @@ genFlatCurry opts modSum mEnv tyEnv tcEnv aEnv modul
                adjustTypeInfo $ adjustTypeInfo $ patchPreludeFCY prog
 
 -- transforms intermediate language code (IL) to FlatCurry interfaces
-genFlatInterface :: Options -> ModuleSummary.ModuleSummary -> ModuleEnv -> ValueEnv -> TCEnv
+genFlatInterface :: Options -> ModuleSummary.ModuleSummary -> InterfaceEnv -> ValueEnv -> TCEnv
          -> ArityEnv -> IL.Module -> (Prog, [Message])
 genFlatInterface opts modSum mEnv tyEnv tcEnv aEnv modul =
   (patchPreludeFCY intf, messages)
@@ -110,7 +110,7 @@ data FlatEnv = FlatEnv
   { moduleIdE     :: ModuleIdent
   , functionIdE   :: (QualIdent, [(Ident, IL.Type)])
   , compilerOptsE :: Options
-  , moduleEnvE    :: ModuleEnv
+  , interfaceEnvE :: InterfaceEnv
   , arityEnvE     :: ArityEnv
   , typeEnvE      :: ValueEnv     -- types of defined values
   , tConsEnvE     :: TCEnv
@@ -134,7 +134,7 @@ data IdentExport = NotConstr       -- function, type-constructor
                  | NotOnlyConstr   -- constructor, function, type-constructor
 
 -- Runs a 'FlatState' action and returns the result
-run :: Options -> ModuleSummary.ModuleSummary -> ModuleEnv -> ValueEnv -> TCEnv -> ArityEnv
+run :: Options -> ModuleSummary.ModuleSummary -> InterfaceEnv -> ValueEnv -> TCEnv -> ArityEnv
     -> Bool -> FlatState a -> (a, [Message])
 run opts cEnv mEnv tyEnv tcEnv aEnv genIntf f
    = (result, messagesE env)
@@ -143,7 +143,7 @@ run opts cEnv mEnv tyEnv tcEnv aEnv genIntf f
  env0 = FlatEnv{ moduleIdE     = ModuleSummary.moduleId cEnv,
 		 functionIdE   = (qualify (mkIdent ""), []),
 		 compilerOptsE = opts,
-		 moduleEnvE    = mEnv,
+		 interfaceEnvE = mEnv,
 		 arityEnvE     = aEnv,
 		 typeEnvE      = tyEnv,
 		 tConsEnvE     = tcEnv,
@@ -977,7 +977,7 @@ isPublic isConstr qid = gets (\env -> maybe False isP
 --
 lookupModuleIntf :: ModuleIdent -> FlatState (Maybe [CS.IDecl])
 lookupModuleIntf mid
-   = gets (Map.lookup mid . moduleEnvE)
+   = gets (Map.lookup mid . interfaceEnvE)
 
 --
 lookupIdArity :: QualIdent -> FlatState (Maybe Int)

@@ -32,15 +32,20 @@ lifted to the top-level.
 > import Base.SCC
 > import Base.Types
 
-> import Env.Eval (EvalEnv)
+> import Env.Arity
+> import Env.Eval
 > import Env.TopEnv
-> import Env.Value (ValueEnv, ValueInfo (..), lookupValue)
+> import Env.Value
 
-> lift :: ValueEnv -> EvalEnv -> Module -> (Module, ValueEnv, EvalEnv)
-> lift tyEnv evEnv (Module m es ds) =
->   (Module m es (concatMap liftFunDecl ds'),tyEnv',evEnv')
->   where (ds',tyEnv',evEnv') =
->           S.evalState (S.evalStateT (abstractModule m ds) tyEnv) evEnv
+> lift :: ValueEnv -> EvalEnv -> ArityEnv -> Module
+>      -> (Module, ValueEnv, EvalEnv, ArityEnv)
+> lift tyEnv evEnv aEnv (Module m es ds) =
+>   (lifted, tyEnv', evEnv', aEnv')
+>   where
+>     lifted = Module m es $ concatMap liftFunDecl ds'
+>     (ds',tyEnv',evEnv')
+>       = S.evalState (S.evalStateT (abstractModule m ds) tyEnv) evEnv
+>     aEnv' = bindArities aEnv lifted
 
 \end{verbatim}
 \paragraph{Abstraction}

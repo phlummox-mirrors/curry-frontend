@@ -11,6 +11,7 @@ import Curry.Base.Position
 import Curry.Base.Ident
 import Curry.Syntax
 
+import Base.ErrorMessages (errInterfaceModuleMismatch)
 import Base.Messages (internalError)
 import Base.Types
 
@@ -41,9 +42,7 @@ summarizeModule tcEnv (Interface iid idecls) mdl@(Module mid mExp decls)
       , infixDecls   = genInfixDecls mdl
       , typeSynonyms = genTypeSyns tcEnv mdl
       }
-  | otherwise
-    = internalError $  "ModuleSummary: interface \"" ++ show iid
-                    ++ "\" does not match module \"" ++ show mid ++ "\""
+  | otherwise = internalError $ errInterfaceModuleMismatch iid mid
 
 -- ---------------------------------------------------------------------------
 
@@ -61,12 +60,12 @@ genImports = map snd . foldr addImport []
 
 -- |Generate interface infix declarations in the module
 genInfixDecls :: Module -> [IDecl]
-genInfixDecls (Module mident _ decls) = mapMaybe genInfixDecl decls
+genInfixDecls (Module mident _ decls) = concatMap genInfixDecl decls
   where
-  genInfixDecl :: Decl -> Maybe IDecl
+  genInfixDecl :: Decl -> [IDecl]
   genInfixDecl (InfixDecl pos spec prec idents)
-    = Just $ map (IInfixDecl pos spec prec . qualifyWith mident) idents
-  genInfixDecl _ = Nothing
+    = map (IInfixDecl pos spec prec . qualifyWith mident) idents
+  genInfixDecl _ = []
 
 --   collectIInfixDecls mident decls
 --   collectIInfixDecls :: ModuleIdent -> [Decl] -> [IDecl]
@@ -117,10 +116,10 @@ modifyTypeExpr tcEnv (ArrowType type1 type2)
   = ArrowType (modifyTypeExpr tcEnv type1) (modifyTypeExpr tcEnv type2)
 modifyTypeExpr tcEnv (TupleType typeexprs)
   | null typeexprs
-    = ConstructorType qUnitId []
+  = ConstructorType qUnitId []
   | otherwise
-    = ConstructorType (qTupleId (length typeexprs))
-                      (map (modifyTypeExpr tcEnv) typeexprs)
+  = ConstructorType (qTupleId $ length typeexprs)
+                    (map (modifyTypeExpr tcEnv) typeexprs)
 modifyTypeExpr tcEnv (ListType typeexpr)
   = ConstructorType (qualify listId) [(modifyTypeExpr tcEnv typeexpr)]
 modifyTypeExpr tcEnv (RecordType fields rtype)
@@ -131,7 +130,7 @@ modifyTypeExpr tcEnv (RecordType fields rtype)
 --
 genTypeSynDeref :: [(Int, TypeExpr)] -> Type -> TypeExpr
 genTypeSynDeref its (TypeVariable i) = case lookup i its of
-  Nothing -> internalError "@CurryInfo.genTypeSynDeref: unkown type var index"
+  Nothing -> internalError "ModuleSummary.genTypeSynDeref: unkown type var index"
   Just te -> te
 genTypeSynDeref its (TypeConstructor qid tyexps)
   = ConstructorType qid $ map (genTypeSynDeref its) tyexps
@@ -140,12 +139,11 @@ genTypeSynDeref its (TypeArrow type1 type2)
 genTypeSynDeref its (TypeRecord fields ri)
   = RecordType
     (map (\ (lab, texpr) -> ([lab], genTypeSynDeref its texpr)) fields)
-    (fmap (Just . genTypeSynDeref its . TypeVariable) ri)
+    (fmap (genTypeSynDeref its . TypeVariable) ri)
 genTypeSynDeref _ (TypeConstrained _ _) = internalError
-  "@CurryInfo.genTypeSynDeref: illegal constrained type occured"
+  "ModuleSummary.genTypeSynDeref: illegal constrained type occured"
 genTypeSynDeref _ (TypeSkolem _) = internalError
-  "@CurryInfo.genTypeSynDeref: illegal skolem type occured"
-
+  "ModuleSummary.genTypeSynDeref: illegal skolem type occured"
 
 --
 lookupTCId :: QualIdent -> TCEnv -> Maybe QualIdent

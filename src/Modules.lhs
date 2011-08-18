@@ -17,7 +17,6 @@ This module controls the compilation of modules.
 
 > import Control.Monad (liftM, unless, when)
 > import Data.List (partition)
-> import qualified Data.Map as Map (lookup, toList)
 > import Data.Maybe (fromMaybe)
 > import Text.PrettyPrint (Doc, ($$), text, vcat)
 
@@ -32,13 +31,12 @@ This module controls the compilation of modules.
 > import Curry.Syntax as CS
 
 > import Base.CurryTypes (fromQualType)
-> import Base.Messages (abortWith, internalError, putErrsLn)
+> import Base.ErrorMessages (errModuleFileMismatch)
+> import Base.Messages (abortWith, putErrsLn)
 > import Base.Types
 
-> import Env.Arity (bindArities)
 > import Env.Eval (evalEnv)
-> import Env.Import (fromDeclList)
-> import Env.Module
+> import Env.Interfaces
 > import Env.TopEnv
 > import Env.Value
 
@@ -48,10 +46,9 @@ This module controls the compilation of modules.
 > import Exports (expandInterface', exportInterface')
 > import qualified Generators as Gen
 > import qualified IL as IL
-> import Imports (importInterface, importInterfaceIntf, importUnifyData)
+> import Imports (importModules, importModulesExt, qualifyEnv, qualifyEnvExt)
 > import Interfaces (loadInterfaces)
 > import ModuleSummary
-> import Records
 > import Transformations
 
 \end{verbatim}
@@ -81,15 +78,15 @@ code are obsolete and commented out.
 > compileModule :: Options -> FilePath -> IO ()
 > compileModule opts fn = do
 >   -- read and parse module
->   parsed <- (ok . CS.parseModule likeFlat fn) `liftM` readModule fn
+>   parsed <- (ok . CS.parseModule (not extTarget) fn) `liftM` readModule fn
 >   -- check module header
 >   let (m, hdrErrs) = checkModuleHeader opts fn parsed
 >   unless (null hdrErrs) $ abortWith hdrErrs
->   -- load the imported interfaces into a ModuleEnv
->   mEnv <- loadInterfaces (optImportPaths opts) m
+>   -- load the imported interfaces into a InterfaceEnv
+>   iEnv <- loadInterfaces (optImportPaths opts) m
 >   if not withFlat
 >      then do
->        let (cEnv, modul, _, warnMsgs) = simpleCheckModule opts mEnv m
+>        let (cEnv, modul, _, warnMsgs) = simpleCheckModule opts iEnv m
 >        showWarnings opts warnMsgs
 >        -- output the parsed source
 >        writeParsed        opts fn modul
@@ -99,21 +96,21 @@ code are obsolete and commented out.
 >        -- checkModule checks types, and then transModule introduces new
 >        -- functions (by lambda lifting in 'desugar'). Consequence: The
 >        -- types of the newly introduced functions are not inferred (hsi)
->        let (cEnv, modul, intf, warnMsgs) = checkModule opts mEnv m
+>        let (cEnv, modul, intf, warnMsgs) = checkModule opts iEnv m
 >        showWarnings opts warnMsgs
 >        writeParsed        opts fn modul
 >        writeAbstractCurry opts fn cEnv modul
->        let (cEnv', il, dumps) = transModule fcy cEnv modul
+>        let (cEnv', il, dumps) = transModule fcyTarget cEnv modul
 >        -- dump intermediate results
 >        mapM_ (doDump opts) dumps
->        let modSum = summarizeModule (tyConsEnv cEnv') intf modul
 >        -- generate target code
+>        let modSum = summarizeModule (tyConsEnv cEnv') intf modul
 >        writeFlat opts fn cEnv' modSum il
 >   where
->     fcy      = FlatCurry            `elem` optTargetTypes opts
->     xml      = FlatXml              `elem` optTargetTypes opts
->     withFlat = or [fcy, xml]
->     likeFlat = ExtendedFlatCurry `notElem` optTargetTypes opts
+>     fcyTarget = FlatCurry         `elem` optTargetTypes opts
+>     xmlTarget = FlatXml           `elem` optTargetTypes opts
+>     extTarget = ExtendedFlatCurry `elem` optTargetTypes opts
+>     withFlat  = or [fcyTarget, xmlTarget, extTarget]
 
 
 > checkModuleHeader :: Options -> FilePath -> Module -> (Module, [String])
@@ -127,7 +124,7 @@ code are obsolete and commented out.
 >   | last (moduleQualifiers mid) == takeBaseName fn
 >   = (m, [])
 >   | otherwise
->   = (m, [moduleFileMismatch mid])
+>   = (m, [errModuleFileMismatch mid])
 
 \end{verbatim}
 An implicit import of the prelude is added to the declarations of
@@ -168,7 +165,7 @@ Haskell and original MCC where a module obtains \texttt{main}).
 >     = m
 
 > -- |
-> simpleCheckModule :: Options -> ModuleEnv -> Module
+> simpleCheckModule :: Options -> InterfaceEnv -> Module
 >   -> (CompilerEnv, Module, Interface, [Message])
 > simpleCheckModule opts mEnv (Module m es ds) = (cEnv, modul, intf, warnMsgs)
 >   where
@@ -182,20 +179,20 @@ Haskell and original MCC where a module obtains \texttt{main}).
 >     (topDs', env2) = uncurry qual
 >                    $ uncurry precCheck
 >                    $ uncurry (syntaxCheck opts)
->                    $ uncurry kindCheck (topDs, env)
->     ds'   = impDs ++ topDs'
->     modul = (Module m es ds') --expandInterface (Module m es ds') tcEnv tyEnv
+>                    $ uncurry kindCheck
+>                      (topDs, env)
+>     modul = Module m es (impDs ++ topDs') -- expandInterface' env2 (Module m es (impDs ++ topDs'))
 >     cEnv  = qualifyEnv mEnv env2
 >     intf  = exportInterface' cEnv modul
 
-> checkModule :: Options -> ModuleEnv -> Module
+> checkModule :: Options -> InterfaceEnv -> Module
 >   -> (CompilerEnv, Module, Interface, [Message])
 > checkModule opts mEnv (Module m es ds) = (cEnv, modul, intf, warnMsgs)
 >   where
 >     -- split import/other declarations
 >     splitDs@(impDs, topDs) = partition isImportDecl ds
 >     -- add information of imported modules
->     env = recordExpansion1 opts $ importModules m mEnv impDs
+>     env = importModulesExt opts m mEnv impDs
 >     -- check for warnings
 >     warnMsgs = warnCheck env splitDs
 >     -- check kinds, syntax, precedence, types
@@ -203,99 +200,32 @@ Haskell and original MCC where a module obtains \texttt{main}).
 >                    $ uncurry typeCheck
 >                    $ uncurry precCheck
 >                    $ uncurry (syntaxCheck opts)
->                    $ uncurry kindCheck (topDs, env)
->     ds'    = impDs ++ topDs'
->     modul  = expandInterface' env2 (Module m es ds')
->     cEnv   = recordExpansion2 opts $ qualifyEnv mEnv env2
+>                    $ uncurry kindCheck
+>                      (topDs, env)
+>     modul  = expandInterface' env2 (Module m es (impDs ++ topDs'))
+>     cEnv   = qualifyEnvExt opts mEnv env2
 >     intf   = exportInterface' cEnv modul
-
-> recordExpansion1 :: Options -> CompilerEnv -> CompilerEnv
-> recordExpansion1 opts env
->   | withExt   = env { tyConsEnv = tcEnv', valueEnv = tyEnv' }
->   | otherwise = env
->   where
->     withExt  = BerndExtension `elem` optExtensions opts
->     tcEnv'   = fmap (expandRecordTC tcEnv) tcEnv
->     tyEnv'   = fmap (expandRecordTypes tcEnv) tyEnvLbl
->     tyEnvLbl = addImportedLabels m lEnv tyEnv
->     m        = moduleIdent env
->     lEnv     = labelEnv env
->     tcEnv    = tyConsEnv env
->     tyEnv    = valueEnv env
-
-> recordExpansion2 :: Options -> CompilerEnv -> CompilerEnv
-> recordExpansion2 opts env
->   | withExt   = env { valueEnv = tyEnv' }
->   | otherwise = env
->   where
->     withExt  = BerndExtension `elem` optExtensions opts
->     tyEnv'   = fmap (expandRecordTypes tcEnv) tyEnvLbl
->     tyEnvLbl = addImportedLabels m lEnv tyEnv
->     m        = moduleIdent env
->     lEnv     = labelEnv env
->     tcEnv    = tyConsEnv env
->     tyEnv    = valueEnv env
 
 > -- |Translate FlatCurry into the intermediate language 'IL'
 > transModule :: Bool -> CompilerEnv -> Module
 >             -> (CompilerEnv, IL.Module, [(DumpLevel, Doc)])
-> transModule flat' env mdl@(Module m es ds) = (env6, ilCaseComp, dumps)
+> transModule flat' env mdl@(Module m es ds) = (env5, ilCaseComp, dumps)
 >   where
 >     topDs = filter (not . isImportDecl) ds
 >     env0 = env { evalAnnotEnv = evalEnv topDs }
 >     (desugared , env1) = desugar (Module m es topDs) env0
 >     (simplified, env2) = simplify flat' desugared env1
 >     (lifted    , env3) = lift simplified env2
->     env4               = env3 { arityEnv = bindArities (arityEnv env3) lifted }
->     (il        , env5) = ilTrans flat' lifted env4
->     (ilCaseComp, env6) = completeCase il env5
->     dumps = [ (DumpRenamed   , ppModule mdl          )
->             , (DumpTypes     , ppTypes env           )
->             , (DumpDesugared , ppModule desugared    )
->             , (DumpSimplified, ppModule simplified   )
->             , (DumpLifted    , ppModule lifted       )
+>     (il        , env4) = ilTrans flat' lifted env3
+>     (ilCaseComp, env5) = completeCase il env4
+>     dumps = [ (DumpRenamed   , ppModule    mdl       )
+>             , (DumpTypes     , ppTypes     env       )
+>             , (DumpDesugared , ppModule    desugared )
+>             , (DumpSimplified, ppModule    simplified)
+>             , (DumpLifted    , ppModule    lifted    )
 >             , (DumpIL        , IL.ppModule il        )
 >             , (DumpCase      , IL.ppModule ilCaseComp)
 >             ]
-
-> qualifyEnv :: ModuleEnv -> CompilerEnv -> CompilerEnv
-> qualifyEnv mEnv env = env
->   { opPrecEnv = foldr bindQual   pEnv'  (localBindings $ opPrecEnv env)
->   , tyConsEnv = foldr bindQual   tcEnv' (localBindings $ tyConsEnv env)
->   , valueEnv  = foldr bindGlobal tyEnv' (localBindings $ valueEnv  env)
->   , arityEnv  = foldr bindQual   aEnv'  (localBindings $ arityEnv  env)
->   }
->   where
->     CompilerEnv { opPrecEnv = pEnv', tyConsEnv = tcEnv', valueEnv = tyEnv', arityEnv = aEnv'} =
->       foldl importInterface' (initCompilerEnv $ moduleIdent env) (Map.toList mEnv)
->     importInterface' cEnv1 (m,ds) =
->       importInterfaceIntf (Interface m ds) cEnv1
->     bindQual (_, y) = qualBindTopEnv "Modules.qualifyEnv" (origName y) y
->     bindGlobal (x, y)
->       | uniqueId x == 0 = bindQual (x, y)
->       | otherwise = bindTopEnv "Modules.qualifyEnv" x y
-
-\end{verbatim}
-
-The function \texttt{importModules} brings the declarations of all
-imported modules into scope for the current module.
-\begin{verbatim}
-
-> importModules :: ModuleIdent -> ModuleEnv -> [Decl] -> CompilerEnv
-> importModules mid mEnv decls = env { tyConsEnv = importUnifyData $ tyConsEnv env }
->   where
->     env = foldl importModule initEnv decls
->     initEnv = (initCompilerEnv mid)
->       { importEnv = fromDeclList decls
->       , labelEnv  = importLabels mEnv decls
->       , moduleEnv = mEnv
->       }
->     importModule env (ImportDecl _ m q asM is) =
->       case Map.lookup m mEnv of
->         Just ds1 -> importInterface (fromMaybe m asM) q is
->                                     (Interface m ds1) env
->         Nothing  -> internalError $ "importModule: Map.lookup " ++ show m ++ " " ++ show mEnv
->     importModule env _ = env
 
 \end{verbatim}
 The functions \texttt{genFlat} and \texttt{genAbstract} generate
@@ -316,25 +246,28 @@ be dependent on it any longer.
 >     targetFile = fromMaybe (sourceRepName fn) (optOutput opts)
 >     source     = CS.showModule modul
 
-> writeFlat :: Options -> FilePath -> CompilerEnv -> ModuleSummary -> IL.Module -> IO ()
+> writeFlat :: Options -> FilePath -> CompilerEnv -> ModuleSummary
+>           -> IL.Module -> IO ()
 > writeFlat opts fn env modSum il = do
 >   writeFlatCurry opts fn env modSum il
 >   writeInterface opts fn env modSum il
 >   writeXML       opts fn     modSum il
 
 > -- |Export an 'IL.Module' into a FlatCurry file
-> writeFlatCurry :: Options -> FilePath -> CompilerEnv -> ModuleSummary -> IL.Module -> IO ()
+> writeFlatCurry :: Options -> FilePath -> CompilerEnv -> ModuleSummary
+>                -> IL.Module -> IO ()
 > writeFlatCurry opts fn env modSum il = do
 >   when (extTarget || fcyTarget) $ showWarnings opts msgs
->   when extTarget                $ EF.writeExtendedFlat useSubDir (extFlatName fn) prog
->   when fcyTarget                $ EF.writeFlatCurry    useSubDir (flatName fn)    prog
+>   when extTarget $ EF.writeExtendedFlat useSubDir (extFlatName fn) prog
+>   when fcyTarget $ EF.writeFlatCurry    useSubDir (flatName fn)    prog
 >   where
 >     extTarget    = ExtendedFlatCurry `elem` optTargetTypes opts
 >     fcyTarget    = FlatCurry         `elem` optTargetTypes opts
 >     useSubDir    = optUseSubdir opts
 >     (prog, msgs) = Gen.genFlatCurry opts modSum env il
 
-> writeInterface :: Options -> FilePath -> CompilerEnv -> ModuleSummary -> IL.Module -> IO ()
+> writeInterface :: Options -> FilePath -> CompilerEnv -> ModuleSummary
+>                -> IL.Module -> IO ()
 > writeInterface opts fn env modSum il
 >   | optForce opts = outputInterface
 >   | otherwise     = do
@@ -362,12 +295,18 @@ be dependent on it any longer.
 
 > writeAbstractCurry :: Options -> FilePath -> CompilerEnv -> Module -> IO ()
 > writeAbstractCurry opts fname env modul = do
->   when  acyTarget $ AC.writeCurry useSubDir ( acyName fname) $ Gen.genTypedAbstractCurry env modul
->   when uacyTarget $ AC.writeCurry useSubDir (uacyName fname) $ Gen.genUntypedAbstractCurry env modul
+>   when  acyTarget $ AC.writeCurry useSubDir (acyName fname)
+>                   $ Gen.genTypedAbstractCurry env modul
+>   when uacyTarget $ AC.writeCurry useSubDir (uacyName fname)
+>                   $ Gen.genUntypedAbstractCurry env modul
 >   where
 >     acyTarget  = AbstractCurry        `elem` optTargetTypes opts
 >     uacyTarget = UntypedAbstractCurry `elem` optTargetTypes opts
 >     useSubDir  = optUseSubdir opts
+
+> showWarnings :: Options -> [Message] -> IO ()
+> showWarnings opts msgs = when (optWarn opts)
+>                        $ putErrsLn $ map showWarning msgs
 
 \end{verbatim}
 The \texttt{doDump} function writes the selected information to the
@@ -387,10 +326,6 @@ standard output.
 > dumpHeader DumpLifted     = "Source code after lifting"
 > dumpHeader DumpIL         = "Intermediate code"
 > dumpHeader DumpCase       = "Intermediate code after case simplification"
-
-> showWarnings :: Options -> [Message] -> IO ()
-> showWarnings opts msgs = when (optWarn opts)
->                        $ putErrsLn $ map showWarning msgs
 
 \end{verbatim}
 The function \texttt{ppTypes} is used for pretty-printing the types
@@ -412,7 +347,3 @@ from the type environment.
 >           isValue (Label _ _ _) = False
 
 \end{verbatim}
-
-> moduleFileMismatch :: ModuleIdent -> String
-> moduleFileMismatch mid = "module \"" ++ moduleName mid
->   ++ "\" must be in a file \"" ++ moduleName mid ++ ".(l)curry\""

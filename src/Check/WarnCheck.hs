@@ -211,7 +211,7 @@ checkExpression mid (Tuple _ exprs)
 checkExpression mid (List _ exprs)
   = foldM' (checkExpression mid ) exprs
 checkExpression mid (ListCompr _ expr stmts) = withScope $ do
-  foldM' (CheckMment mid ) stmts
+  foldM' (checkStatement mid) stmts
   checkExpression mid expr
   idents' <- returnUnrefVars
   when (not $ null idents') $ foldM' genWarning' $ map unrefVar idents'
@@ -249,7 +249,7 @@ checkExpression mid  (Let decls expr) = withScope $ do
   idents' <- returnUnrefVars
   when (not $ null idents') $ foldM' genWarning' $ map unrefVar idents'
 checkExpression mid  (Do stmts expr) = withScope $ do
-  foldM' (CheckMment mid ) stmts
+  foldM' (checkStatement mid ) stmts
   checkExpression mid  expr
   idents' <- returnUnrefVars
   when (not $ null idents') $ foldM' genWarning' $ map unrefVar idents'
@@ -269,15 +269,15 @@ checkExpression mid (RecordUpdate fields expr) = do
 checkExpression _ _  = checked
 
 --
-CheckMment :: ModuleIdent -> Statement -> CheckM ()
-CheckMment mid (StmtExpr _ expr)
+checkStatement :: ModuleIdent -> Statement -> CheckM ()
+checkStatement mid (StmtExpr _ expr)
    = checkExpression mid expr
-CheckMment mid (StmtDecl decls) = do
+checkStatement mid (StmtDecl decls) = do
   foldM' checkLocalDecl decls
   foldM' insertDecl decls
   foldM' (checkDecl mid) decls
   checkDeclOccurrences decls
-CheckMment mid (StmtBind _ cterm expr) = do
+checkStatement mid (StmtBind _ cterm expr) = do
   checkConstrTerm mid cterm
   insertConstrTerm False cterm
   checkExpression mid expr
@@ -372,7 +372,7 @@ checkDeclOccurrences decls = checkDO (mkIdent "") Map.empty decls
                             >> checkDO ident env decls')
                   (Map.lookup ident env))
       else checkDO ident env decls'
- checkDO _ env (_ : decls') = checkDO (mkIdent "") env decls'
+  checkDO _ env (_ : decls') = checkDO (mkIdent "") env decls'
 
 
 -- check import declarations for multiply imported modules
@@ -556,7 +556,7 @@ genWarning pos msg
  where warnMsg = Message (Just pos) msg
 
 genWarning' :: (Position, String) -> CheckM ()
-genWarning' = uncury genWarning
+genWarning' = uncurry genWarning
 
 --
 insertVar :: Ident -> CheckM ()

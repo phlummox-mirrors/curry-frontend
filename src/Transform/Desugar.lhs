@@ -75,7 +75,7 @@ all names must be properly qualified before calling this module.}
 > import Base.Messages (internalError)
 > import Base.Types
 > import Base.Typing
-> import Base.Utils
+> import Base.Utils (mapAccumM)
 
 > import Env.TypeConstructors (TCEnv, TypeInfo (..), qualLookupTC)
 > import Env.Value (ValueEnv, ValueInfo (..), bindFun, bindGlobalInfo
@@ -129,8 +129,6 @@ as it allows value declarations at the top-level of a module.
 >     return (filter isTypeDecl ds' ++ ds'', tyEnv')
 
 \end{verbatim}
-
-
 Within a declaration group, all type signatures and evaluation
 annotations are discarded. First, the patterns occurring in the left
 hand sides are desugared. Due to lazy patterns this may add further
@@ -198,7 +196,6 @@ and a record label belongs to only one record declaration.
 >     (ts'', rhs'') <- desugarFunctionPatterns m p ts' rhs'
 >     return (Equation p (FunLhs f ts'') rhs'')
 >   where (f,ts) = flatLhs lhs
-
 
 \end{verbatim}
 The transformation of patterns is straight forward except for lazy
@@ -300,7 +297,6 @@ with a local declaration for $v$.
 >         v0 <- S.get >>= freshIdent m "_#lazy" . monoType . flip typeOf t
 >         let v' = addPositionIdent (AST pos) v0
 >         return (patDecl p{astRef=pos} t (mkVar v') : ds,VariablePattern v')
-
 
 \end{verbatim}
 A list of boolean guards is expanded into a nested if-then-else
@@ -842,7 +838,6 @@ Prelude entities
 > falsePattern :: ConstrTerm
 > falsePattern = ConstructorPattern qFalseId []
 
-
 > preludeIdent :: String -> QualIdent
 > preludeIdent = qualifyWith preludeMIdent . mkIdent
 
@@ -855,13 +850,13 @@ Auxiliary definitions
 >   case qualLookupValue c tyEnv of
 >     [DataConstructor _ _] -> False
 >     [NewtypeConstructor _ _] -> True
->     _ -> internalError ("isNewtypeConstr " ++ show c) --internalError "isNewtypeConstr"
+>     _ -> internalError $ "isNewtypeConstr " ++ show c
 
 > isVarPattern :: ConstrTerm -> Bool
 > isVarPattern (VariablePattern _) = True
-> isVarPattern (ParenPattern t) = isVarPattern t
-> isVarPattern (AsPattern _ t) = isVarPattern t
-> isVarPattern (LazyPattern _ _) = True
+> isVarPattern (ParenPattern    t) = isVarPattern t
+> isVarPattern (AsPattern     _ t) = isVarPattern t
+> isVarPattern (LazyPattern   _ _) = True
 > isVarPattern _ = False
 
 > funDecl :: Position -> Ident -> [ConstrTerm] -> Expression -> Decl
@@ -886,6 +881,5 @@ Auxiliary definitions
 
 > mkVar :: Ident -> Expression
 > mkVar = Variable . qualify
-
 
 \end{verbatim}

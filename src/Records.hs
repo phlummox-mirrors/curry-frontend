@@ -17,11 +17,41 @@ import Base.Messages
 import Base.Types
 import Base.TypeSubst
 
+import Env.Interfaces
 import Env.Label
-import Env.Module
 import Env.TopEnv
 import Env.TypeConstructors
 import Env.Value
+
+import CompilerEnv
+import CompilerOpts
+
+recordExpansion1 :: Options -> CompilerEnv -> CompilerEnv
+recordExpansion1 opts env
+  | withExt   = env { tyConsEnv = tcEnv', valueEnv = tyEnv' }
+  | otherwise = env
+  where
+    withExt  = BerndExtension `elem` optExtensions opts
+    tcEnv'   = fmap (expandRecordTC tcEnv) tcEnv
+    tyEnv'   = fmap (expandRecordTypes tcEnv) tyEnvLbl
+    tyEnvLbl = addImportedLabels m lEnv tyEnv
+    m        = moduleIdent env
+    lEnv     = labelEnv env
+    tcEnv    = tyConsEnv env
+    tyEnv    = valueEnv env
+
+recordExpansion2 :: Options -> CompilerEnv -> CompilerEnv
+recordExpansion2 opts env
+  | withExt   = env { valueEnv = tyEnv' }
+  | otherwise = env
+  where
+    withExt  = BerndExtension `elem` optExtensions opts
+    tyEnv'   = fmap (expandRecordTypes tcEnv) tyEnvLbl
+    tyEnvLbl = addImportedLabels m lEnv tyEnv
+    m        = moduleIdent env
+    lEnv     = labelEnv env
+    tcEnv    = tyConsEnv env
+    tyEnv    = valueEnv env
 
 -- Unlike usual identifiers like in functions, types etc., identifiers
 -- of labels are always represented unqualified within the whole context
@@ -32,7 +62,7 @@ import Env.Value
 -- all imported labels and the function \texttt{addImportedLabels} adds this
 -- content to a type environment.
 
-importLabels :: ModuleEnv -> [Decl] -> LabelEnv
+importLabels :: InterfaceEnv -> [Decl] -> LabelEnv
 importLabels mEnv ds = foldl importLabelTypes initLEnv ds
   where
     importLabelTypes :: LabelEnv -> Decl -> LabelEnv
@@ -73,7 +103,6 @@ addImportedLabels m lEnv tyEnv =
                      (Label (qualify l) (qualQualify m' r) (polyType ty))
                tyEnv'
 
-
 expandRecordTC :: TCEnv -> TypeInfo -> TypeInfo
 expandRecordTC tcEnv (DataType qid n args) =
   DataType qid n (map (maybe Nothing (Just . (expandData tcEnv))) args)
@@ -110,4 +139,3 @@ expandRecords tcEnv (TypeArrow ty1 ty2) =
 expandRecords tcEnv (TypeRecord fs rv) =
   TypeRecord (map (\ (l,ty) -> (l,expandRecords tcEnv ty)) fs) rv
 expandRecords _ ty = ty
-

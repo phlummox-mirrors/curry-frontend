@@ -11,8 +11,7 @@ commonly used in the compiler, but not implemented in the Haskell
 \begin{verbatim}
 
 > module Base.Utils
->   ( fst3, snd3, thd3, apFst3, apSnd3, apThd3, curry3, uncurry3
->   , (++!), foldl2, foldr2, mapAccumM, findDouble
+>   ( thd3, (++!), foldr2, mapAccumM, findDouble
 >   ) where
 
 > infixr 5 ++!
@@ -24,29 +23,29 @@ triples. We provide projection, (un-)currying, and mapping for triples
 here.
 \begin{verbatim}
 
-> fst3 :: (a, b, c) -> a
-> fst3 (x, _, _) = x
+fst3 :: (a, b, c) -> a
+fst3 (x, _, _) = x
 
-> snd3 :: (a, b, c) -> b
-> snd3 (_, y, _) = y
+snd3 :: (a, b, c) -> b
+snd3 (_, y, _) = y
 
 > thd3 :: (a, b, c) -> c
 > thd3 (_, _, z) = z
 
-> apFst3 :: (a -> d) -> (a, b, c) -> (d, b, c)
-> apFst3 f (x, y, z) = (f x, y, z)
+apFst3 :: (a -> d) -> (a, b, c) -> (d, b, c)
+apFst3 f (x, y, z) = (f x, y, z)
 
-> apSnd3 :: (b -> d) -> (a, b, c) -> (a, d, c)
-> apSnd3 f (x, y, z) = (x, f y, z)
+apSnd3 :: (b -> d) -> (a, b, c) -> (a, d, c)
+apSnd3 f (x, y, z) = (x, f y, z)
 
-> apThd3 :: (c -> d) -> (a, b, c) -> (a, b, d)
-> apThd3 f (x, y, z) = (x, y, f z)
+apThd3 :: (c -> d) -> (a, b, c) -> (a, b, d)
+apThd3 f (x, y, z) = (x, y, f z)
 
-> curry3 :: ((a, b, c) -> d) -> a -> b -> c -> d
-> curry3 f x y z = f (x, y, z)
+curry3 :: ((a, b, c) -> d) -> a -> b -> c -> d
+curry3 f x y z = f (x, y, z)
 
-> uncurry3 :: (a -> b -> c -> d) -> (a, b, c) -> d
-> uncurry3 f (x, y, z) = f x y z
+uncurry3 :: (a -> b -> c -> d) -> (a, b, c) -> d
+uncurry3 f (x, y, z) = f x y z
 
 \end{verbatim}
 \paragraph{Lists}
@@ -79,10 +78,10 @@ Fold operations with two arguments lists can be defined using
 definitions are unfolded for efficiency reasons.
 \begin{verbatim}
 
-> foldl2 :: (a -> b -> c -> a) -> a -> [b] -> [c] -> a
-> foldl2 _ z []       _        = z
-> foldl2 _ z _        []       = z
-> foldl2 f z (x : xs) (y : ys) = foldl2 f (f z x y) xs ys
+foldl2 :: (a -> b -> c -> a) -> a -> [b] -> [c] -> a
+foldl2 _ z []       _        = z
+foldl2 _ z _        []       = z
+foldl2 f z (x : xs) (y : ys) = foldl2 f (f z x y) xs ys
 
 > foldr2 :: (a -> b -> c -> c) -> c -> [a] -> [b] -> c
 > foldr2 _ z []       _        = z

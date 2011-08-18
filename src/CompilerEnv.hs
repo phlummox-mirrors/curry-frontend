@@ -5,8 +5,8 @@ import Curry.Base.Ident (ModuleIdent)
 import Env.Arity
 import Env.Eval
 import Env.Import
+import Env.Interfaces
 import Env.Label
-import Env.Module
 import Env.OpPrec
 import Env.TypeConstructors
 import Env.Value
@@ -17,8 +17,8 @@ data CompilerEnv = CompilerEnv
   , arityEnv     :: ArityEnv
   , evalAnnotEnv :: EvalEnv
   , importEnv    :: ImportEnv
+  , interfaceEnv :: InterfaceEnv
   , labelEnv     :: LabelEnv
-  , moduleEnv    :: ModuleEnv
   , opPrecEnv    :: PEnv
   , tyConsEnv    :: TCEnv
   , valueEnv     :: ValueEnv
@@ -30,8 +30,8 @@ initCompilerEnv mid = CompilerEnv
   , arityEnv     = initAEnv
   , evalAnnotEnv = initEEnv
   , importEnv    = initIEnv
+  , interfaceEnv = initInterfaceEnv
   , labelEnv     = initLEnv
-  , moduleEnv    = initMEnv
   , opPrecEnv    = initPEnv
   , tyConsEnv    = initTCEnv
   , valueEnv     = initDCEnv

@@ -41,7 +41,7 @@ type annotation is present.
 > import Base.SCC
 > import Base.Types
 > import Base.TypeSubst
-> import Base.Utils
+> import Base.Utils (foldr2)
 
 > import Env.TopEnv
 > import Env.TypeConstructors (TCEnv, TypeInfo (..), bindTypeInfo, qualLookupTC)

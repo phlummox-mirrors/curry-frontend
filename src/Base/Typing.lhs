@@ -19,7 +19,7 @@
 > import Base.Messages (internalError)
 > import Base.Types
 > import Base.TypeSubst
-> import Base.Utils
+> import Base.Utils (foldr2)
 
 > import Env.TopEnv
 > import Env.Value (ValueEnv, ValueInfo (..), lookupValue, qualLookupValue)

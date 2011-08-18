@@ -25,9 +25,9 @@ genUntypedAbstractCurry env
 genFlatCurry :: Options -> ModuleSummary -> CompilerEnv -> IL.Module
              -> (EF.Prog, [Message])
 genFlatCurry opts ms env
-  = GFC.genFlatCurry opts ms (moduleEnv env) (valueEnv env) (tyConsEnv env) (arityEnv env)
+  = GFC.genFlatCurry opts ms (interfaceEnv env) (valueEnv env) (tyConsEnv env) (arityEnv env)
 
 genFlatInterface :: Options -> ModuleSummary -> CompilerEnv -> IL.Module
                  -> (EF.Prog, [Message])
 genFlatInterface opts ms env
-  = GFC.genFlatInterface opts ms (moduleEnv env) (valueEnv env) (tyConsEnv env) (arityEnv env)
+  = GFC.genFlatInterface opts ms (interfaceEnv env) (valueEnv env) (tyConsEnv env) (arityEnv env)

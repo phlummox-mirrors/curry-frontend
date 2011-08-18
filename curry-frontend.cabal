@@ -71,8 +71,8 @@ Executable cymake
     , Env.Arity
     , Env.Eval
     , Env.Import
+    , Env.Interfaces
     , Env.Label
-    , Env.Module
     , Env.NestEnv
     , Env.OldScopeEnv
     , Env.OpPrec

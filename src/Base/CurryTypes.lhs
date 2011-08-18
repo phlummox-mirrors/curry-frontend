@@ -44,7 +44,7 @@ order of type variables in the left hand side of a type declaration.
 > toType' tvs (CS.ConstructorType tc tys) =
 >   TypeConstructor tc (map (toType' tvs) tys)
 > toType' tvs (CS.VariableType tv) =
->   maybe (internalError ("toType " ++ show tv)) TypeVariable (Map.lookup tv tvs)
+>   maybe (internalError $ "toType " ++ show tv) TypeVariable (Map.lookup tv tvs)
 > toType' tvs (CS.TupleType tys)
 >   | null tys = TypeConstructor (qualify unitId) []
 >   | otherwise = TypeConstructor (qualify (tupleId (length tys'))) tys'

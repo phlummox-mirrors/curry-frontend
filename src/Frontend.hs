@@ -8,29 +8,27 @@ module Frontend (parse, fullParse, typingParse) where
 import Data.Maybe (mapMaybe)
 import qualified Data.Map as Map (empty)
 import Control.Monad.Writer
-import Prelude hiding (lex)
 
 import Curry.Base.MessageMonad
-import Curry.Base.Ident
 import Curry.Files.Filenames
 import Curry.Files.PathUtils
-import Curry.Syntax as CS (Module (..), Interface, Decl (..), parseModule)
+import Curry.Syntax (Module (..), Interface, parseModule)
 
-import Env.Module
+import Env.Interfaces
 
 import CompilerEnv
 import CompilerOpts (Options (..), Verbosity (..), TargetType (..), defaultOptions)
-import Modules (checkModuleHeader, checkModule, simpleCheckModule, compileModule)
 import CurryBuilder (smake)
-import CurryDeps (flattenDeps, moduleDeps, Source (..))
+import CurryDeps (Source (..), flattenDeps, moduleDeps)
 import Interfaces (loadInterfaces)
+import Modules (checkModuleHeader, checkModule, simpleCheckModule, compileModule)
 
 {- |Return the result of a syntactical analysis of the source program 'src'.
     The result is the syntax tree of the program (type 'Module'; see Module
     "CurrySyntax").
 -}
-parse :: FilePath -> String -> MsgMonad CS.Module
-parse fn src = CS.parseModule True fn src >>= genCurrySyntax fn
+parse :: FilePath -> String -> MsgMonad Module
+parse fn src = parseModule True fn src >>= genCurrySyntax fn
 
 {- |Return the syntax tree of the source program 'src' (type 'Module'; see
     Module "CurrySyntax") after resolving the category (i.e. function,
@@ -39,19 +37,19 @@ parse fn src = CS.parseModule True fn src >>= genCurrySyntax fn
     environment variable "PAKCSLIBPATH". Additional search paths can
     be defined using the argument 'paths'.
 -}
-fullParse :: [FilePath] -> FilePath -> String -> IO (MsgMonad CS.Module)
+fullParse :: [FilePath] -> FilePath -> String -> IO (MsgMonad Module)
 fullParse paths fn src =
-  genFullCurrySyntax simpleCheckModule paths $ parse fn src
+  genFullCurrySyntax simpleCheckModule paths fn $ parse fn src
 
 {- |Behaves like 'fullParse', but returns the syntax tree of the source
     program 'src' (type 'Module'; see Module "CurrySyntax") after inferring
     the types of identifiers.
 -}
-typingParse :: [FilePath] -> FilePath -> String -> IO (MsgMonad CS.Module)
-typingParse paths fn src = genFullCurrySyntax checkModule paths $ parse fn src
+typingParse :: [FilePath] -> FilePath -> String -> IO (MsgMonad Module)
+typingParse paths fn src = genFullCurrySyntax checkModule paths fn $ parse fn src
 
 --
-genCurrySyntax :: FilePath -> CS.Module -> MsgMonad (CS.Module)
+genCurrySyntax :: FilePath -> Module -> MsgMonad Module
 genCurrySyntax fn mod1
   | null hdrErrs = return mdl
   | otherwise    = failWith $ head hdrErrs
@@ -59,25 +57,25 @@ genCurrySyntax fn mod1
 
 --
 genFullCurrySyntax ::
-  (Options -> ModuleEnv -> CS.Module -> (CompilerEnv, CS.Module, CS.Interface, [Message]))
-  -> [FilePath] -> MsgMonad CS.Module -> IO (MsgMonad CS.Module)
-genFullCurrySyntax check paths m = runMsgIO m $ \mod1 -> do
-  errs <- makeInterfaces paths mod1
+  (Options -> InterfaceEnv -> Module -> (CompilerEnv, Module, Interface, [Message]))
+  -> [FilePath] -> FilePath -> MsgMonad Module -> IO (MsgMonad Module)
+genFullCurrySyntax check paths fn m = runMsgIO m $ \mod1 -> do
+  errs <- makeInterfaces paths fn mod1
   if null errs
     then do
-      mEnv <- loadInterfaces paths mod1
-      let (_, mod', _, msgs') = check (opts paths) mEnv mod1
+      iEnv <- loadInterfaces paths mod1
+      let (_, mod', _, msgs') = check (opts paths) iEnv mod1
       return (tell msgs' >> return  mod')
-    else return (failWith (head errs))
+    else return $ failWith $ head errs
+
+-- TODO: Resembles CurryBuilder
 
 -- Generates interface files for importes modules, if they don't exist or
 -- if they are not up-to-date.
-makeInterfaces ::  [FilePath] -> CS.Module -> IO [String]
-makeInterfaces paths (CS.Module mid _ decls) = do
-  let imports = [preludeMIdent | mid /= preludeMIdent]
-              ++ [imp | CS.ImportDecl _ imp _ _ _ <- decls]
-  (deps1, errs) <- fmap flattenDeps (foldM (moduleDeps True paths []) Map.empty imports)
-  when (null errs) (mapM_ (compile deps1 . snd) deps1)
+makeInterfaces ::  [FilePath] -> FilePath -> Module -> IO [String]
+makeInterfaces paths fn mdl = do
+  (deps1, errs) <- fmap flattenDeps $ moduleDeps defaultOptions paths Map.empty fn mdl
+  when (null errs) $ mapM_ (compile deps1 . snd) deps1
   return errs
   where
     compile deps' (Source file' mods) = smake
@@ -87,10 +85,10 @@ makeInterfaces paths (CS.Module mid _ decls) = do
       (return ())
     compile _ _ = return ()
 
-    flatInterface deps' mod1 = case (lookup mod1 deps') of
-      Just (Source file' _)  -> Just (flatIntName (dropExtension file'))
-      Just (Interface file') -> Just (flatIntName (dropExtension file'))
-      _                      -> Nothing
+    flatInterface deps' mod1 = case lookup mod1 deps' of
+      Just (Source f  _) -> Just $ flatIntName $ dropExtension f
+      Just (Interface f) -> Just $ flatIntName $ dropExtension f
+      _                  -> Nothing
 
 opts :: [FilePath] -> Options
 opts paths = defaultOptions

@@ -16,7 +16,7 @@ import Curry.Base.Position (SrcRef)
 import Curry.Base.Ident
 import qualified Curry.Syntax
 
-import Env.Module (ModuleEnv, lookupModule)
+import Env.Interfaces (InterfaceEnv, lookupInterface)
 import Env.OldScopeEnv as ScopeEnv
   (ScopeEnv, beginScope, genIdentList, insertIdent, newScopeEnv)
 import IL
@@ -32,7 +32,7 @@ type Message = String
 --      completeCase <module environment>
 --                   <IL module>
 --
-completeCase :: ModuleEnv -> Module -> Module
+completeCase :: InterfaceEnv -> Module -> Module
 completeCase menv mod1 = let (mod', _) = visitModule menv mod1 in mod'
 
 
@@ -41,7 +41,7 @@ completeCase menv mod1 = let (mod', _) = visitModule menv mod1 in mod'
 -- case expressions
 
 --
-visitModule :: ModuleEnv -> Module -> (Module, [Message])
+visitModule :: InterfaceEnv -> Module -> (Module, [Message])
 visitModule menv (Module mident imports decls)
    = ((Module mident (insertUnique preludeMIdent imports) decls'), msgs')
  where
@@ -53,7 +53,7 @@ visitModule menv (Module mident imports decls)
 
 
 --
-visitDecl :: Module -> ModuleEnv -> [Message] -> ScopeEnv -> Decl
+visitDecl :: Module -> InterfaceEnv -> [Message] -> ScopeEnv -> Decl
 	     -> (Decl, [Message])
 visitDecl _ _ msgs _ (DataDecl qident arity cdecls)
    = ((DataDecl qident arity cdecls), msgs)
@@ -71,7 +71,7 @@ visitDecl _ _ msgs _ (ExternalDecl qident cconv dname typeexpr)
 
 
 --
-visitExpr :: Module -> ModuleEnv -> [Message] -> ScopeEnv -> Expression
+visitExpr :: Module -> InterfaceEnv -> [Message] -> ScopeEnv -> Expression
 	     -> (Expression, [Message],ScopeEnv)
 visitExpr _ _ msgs senv (Literal lit)
    = ((Literal lit), msgs, senv)
@@ -140,7 +140,7 @@ visitExpr mod menv msgs senv (Letrec binds expr)
 
 
 --
-visitAlt :: Module -> ModuleEnv -> [Message] -> ScopeEnv -> Alt
+visitAlt :: Module -> InterfaceEnv -> [Message] -> ScopeEnv -> Alt
 	    -> (Alt, [Message], ScopeEnv)
 visitAlt mod menv msgs senv (Alt pattern expr)
    = ((Alt pattern expr'), msgs', senv2)
@@ -149,7 +149,7 @@ visitAlt mod menv msgs senv (Alt pattern expr)
 
 
 --
-visitBinding :: Module -> ModuleEnv -> [Message] -> ScopeEnv -> Binding
+visitBinding :: Module -> InterfaceEnv -> [Message] -> ScopeEnv -> Binding
 	        -> (Binding, [Message], ScopeEnv)
 visitBinding mod menv msgs senv (Binding ident expr)
    = ((Binding ident expr'), msgs', senv2)
@@ -199,7 +199,7 @@ visitListWithEnv visitTerm insertScope msgs senv (term:terms)
 -- This funtions uses a scope environment ('ScopeEnv') to generate fresh
 -- variables for the arguments of the new constructors.
 --
-completeConsAlts :: SrcRef -> Module -> ModuleEnv -> ScopeEnv
+completeConsAlts :: SrcRef -> Module -> InterfaceEnv -> ScopeEnv
 		    -> Eval -> Expression -> [Alt]
 		    -> (Expression, ScopeEnv)
 completeConsAlts r mod menv senv evalannot expr alts
@@ -522,7 +522,7 @@ cterm2expr (VariablePattern ident) = Variable ident
 --                     <module environment>
 --                     <list of (qualified) constructor ids>
 --
-getComplConstrs :: Module -> ModuleEnv -> [QualIdent] -> [(QualIdent, Int)]
+getComplConstrs :: Module -> InterfaceEnv -> [QualIdent] -> [(QualIdent, Int)]
 getComplConstrs (Module mid _ decls) menv constrs
    | null constrs
      = intError "getComplConstrs" "empty constructor list"
@@ -533,7 +533,7 @@ getComplConstrs (Module mid _ decls) menv constrs
    | otherwise
      = maybe [] -- error ...
              (getCCFromIDecls mid' constrs)
-	     (lookupModule mid' menv)
+	     (lookupInterface mid' menv)
  where
    cons = head constrs
 
