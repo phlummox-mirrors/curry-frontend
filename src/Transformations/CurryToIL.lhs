@@ -51,7 +51,7 @@ alias types.
 \begin{verbatim}
 
 > ilTrans :: Bool -> ValueEnv -> TCEnv -> EvalEnv -> Module -> IL.Module
-> ilTrans flat tyEnv tcEnv evEnv (Module m _ ds) =
+> ilTrans flat tyEnv tcEnv evEnv (Module m _ _ ds) =
 >   IL.Module m (imports m ds') ds'
 >   where ds' = concatMap (translGlobalDecl flat m tyEnv tcEnv evEnv) ds
 

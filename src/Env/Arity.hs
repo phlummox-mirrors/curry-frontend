@@ -68,7 +68,7 @@ lookupTupleArity ident
     constructor arities.
 -}
 bindArities :: ArityEnv -> Module -> ArityEnv
-bindArities aEnv (Module mid _ decls)
+bindArities aEnv (Module mid _ _ decls)
   = foldl (visitDecl mid) aEnv decls
 
 visitDecl :: ModuleIdent -> ArityEnv -> Decl -> ArityEnv

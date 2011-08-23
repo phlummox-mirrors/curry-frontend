@@ -26,7 +26,7 @@ import qualified Data.Map as Map (Map, empty, findWithDefault, insert, lookup)
 import Data.Maybe (fromMaybe)
 
 import Curry.Base.Ident (ModuleIdent)
-import Curry.Syntax (Decl (..))
+import Curry.Syntax (ImportDecl (..))
 
 type AliasEnv = Map.Map ModuleIdent ModuleIdent
 
@@ -35,13 +35,12 @@ initAliasEnv :: AliasEnv
 initAliasEnv = Map.empty
 
 -- |Create an alias environment from a list of import declarations
-importAliases :: [Decl] -> AliasEnv
+importAliases :: [ImportDecl] -> AliasEnv
 importAliases = foldr bindAlias initAliasEnv
 
 -- |Bind an alias for a module from a single import declaration
-bindAlias :: Decl -> AliasEnv -> AliasEnv
+bindAlias :: ImportDecl -> AliasEnv -> AliasEnv
 bindAlias (ImportDecl _ mid _ alias _) = Map.insert mid $ fromMaybe mid alias
-bindAlias _ = id
 
 -- |Lookup the alias for a module, if existent
 lookupAlias :: ModuleIdent -> AliasEnv -> Maybe ModuleIdent

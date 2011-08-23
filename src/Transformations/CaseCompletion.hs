@@ -569,9 +569,9 @@ getCCFromDecls _ constrs decls
 
 
 -- Find complementary constructors within the module environment
-getCCFromIDecls :: ModuleIdent -> [QualIdent] -> [Curry.Syntax.IDecl]
+getCCFromIDecls :: ModuleIdent -> [QualIdent] -> Curry.Syntax.Interface
 		   -> [(QualIdent, Int)]
-getCCFromIDecls mident constrs idecls
+getCCFromIDecls mident constrs (Curry.Syntax.Interface _ _ idecls)
    = let
          cdecls = maybe [] -- error ...
 		        p_extractIConstrDecls

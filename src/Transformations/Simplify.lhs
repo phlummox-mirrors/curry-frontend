@@ -53,11 +53,11 @@ Currently, the following optimizations are implemented:
 >   = S.evalState (R.runReaderT (S.evalStateT (simplifyModule flags m) tyEnv) evEnv) 1
 
 > simplifyModule :: SimplifyFlags -> Module -> SimplifyState (Module,ValueEnv)
-> simplifyModule flat (Module m es ds) =
+> simplifyModule flat (Module m es is ds) =
 >   do
 >     ds' <- mapM (simplifyDecl flat m Map.empty) ds
 >     tyEnv <- S.get
->     return (Module m es ds',tyEnv)
+>     return (Module m es is ds', tyEnv)
 
 > simplifyDecl :: SimplifyFlags -> ModuleIdent -> InlineEnv -> Decl -> SimplifyState Decl
 > simplifyDecl flat m env (FunctionDecl p f eqs) =

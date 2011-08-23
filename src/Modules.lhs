@@ -25,7 +25,6 @@ This module controls the compilation of modules.
 >   ) where
 
 > import Control.Monad (liftM, unless, when)
-> import Data.List (partition)
 > import Data.Maybe (fromMaybe)
 > import Text.PrettyPrint (Doc, ($$), text, vcat)
 
@@ -128,7 +127,7 @@ code are obsolete and commented out.
 
 > -- |Check whether the 'ModuleIdent' and the 'FilePath' fit together
 > checkModuleId :: FilePath -> Module -> (Module, [String])
-> checkModuleId fn m@(Module mid _ _)
+> checkModuleId fn m@(Module mid _ _ _)
 >   | last (moduleQualifiers mid) == takeBaseName fn
 >   = (m, [])
 >   | otherwise
@@ -142,7 +141,7 @@ the prelude is imported unqualified, otherwise a qualified import is added.
 \begin{verbatim}
 
 > importPrelude :: Options -> Module -> Module
-> importPrelude opts m@(Module mid es ds)
+> importPrelude opts m@(Module mid es is ds)
 >     -- the Prelude itself
 >   | mid == preludeMIdent          = m
 >     -- disabled by compiler option
@@ -150,14 +149,14 @@ the prelude is imported unqualified, otherwise a qualified import is added.
 >     -- already imported
 >   | preludeMIdent `elem` imported = m
 >     -- let's add it!
->   | otherwise                     = Module mid es (preludeImp : ds)
+>   | otherwise                     = Module mid es (preludeImp : is) ds
 >   where
 >     noImpPrelude = NoImplicitPrelude `elem` optExtensions opts
 >     preludeImp   = ImportDecl NoPos preludeMIdent
 >                    False   -- qualified?
 >                    Nothing -- no alias
 >                    Nothing -- no selection of types, functions, etc.
->     imported     = [imp | (ImportDecl _ imp _ _ _) <- ds]
+>     imported     = [imp | (ImportDecl _ imp _ _ _) <- is]
 
 \end{verbatim}
 A module which doesn't contain a \texttt{module ... where} declaration
@@ -166,62 +165,58 @@ Haskell and original MCC where a module obtains \texttt{main}).
 \begin{verbatim}
 
 > patchModuleId :: FilePath -> Module -> Module
-> patchModuleId fn m@(Module mid mexports decls)
->   | moduleName mid == "main"
->     = Module (mkMIdent [takeBaseName fn]) mexports decls
+> patchModuleId fn m@(Module mid es is ds)
+>   | mid == mainMIdent
+>     = Module (mkMIdent [takeBaseName fn]) es is ds
 >   | otherwise
 >     = m
 
 > -- |
 > simpleCheckModule :: Options -> InterfaceEnv -> Module
 >   -> (CompilerEnv, Module, Interface, [Message])
-> simpleCheckModule opts mEnv (Module m es ds) = (cEnv, modul, intf, warnMsgs)
+> simpleCheckModule opts mEnv (Module m es is ds)
+>   = (cEnv, modul, intf, warnMsgs)
 >   where
->     -- split import/other declarations
->     splitDs@(impDs, topDs) = partition isImportDecl ds
 >     -- add information of imported modules
->     env = importModules opts m mEnv impDs
+>     env = importModules opts m mEnv is
 >     -- check for warnings
->     warnMsgs = warnCheck env splitDs
+>     warnMsgs = warnCheck env is ds
 >     -- check kinds, syntax, precedence
->     (topDs', env2) = uncurry qual
+>     (ds', env2) = uncurry qual
 >                    $ uncurry precCheck
 >                    $ uncurry (syntaxCheck opts)
 >                    $ uncurry kindCheck
->                      (topDs, env)
->     modul = Module m es (impDs ++ topDs') -- expandInterface env2 (Module m es (impDs ++ topDs'))
+>                      (ds, env)
+>     modul = Module m es is ds' -- expandInterface env2 $ Module m es is ds'
 >     cEnv  = qualifyEnv opts mEnv env2
 >     intf  = exportInterface cEnv modul
 
 > checkModule :: Options -> InterfaceEnv -> Module
 >   -> (CompilerEnv, Module, Interface, [Message])
-> checkModule opts mEnv (Module m es ds) = (cEnv, modul, intf, warnMsgs)
+> checkModule opts mEnv (Module m es is ds) = (cEnv, modul, intf, warnMsgs)
 >   where
->     -- split import/other declarations
->     splitDs@(impDs, topDs) = partition isImportDecl ds
 >     -- add information of imported modules
->     env = importModules opts m mEnv impDs
+>     env = importModules opts m mEnv is
 >     -- check for warnings
->     warnMsgs = warnCheck env splitDs
+>     warnMsgs = warnCheck env is ds
 >     -- check kinds, syntax, precedence, types
->     (topDs', env2) = uncurry qual
+>     (ds', env2) = uncurry qual
 >                    $ uncurry typeCheck
 >                    $ uncurry precCheck
 >                    $ uncurry (syntaxCheck opts)
 >                    $ uncurry kindCheck
->                      (topDs, env)
->     modul  = expandInterface env2 (Module m es (impDs ++ topDs'))
+>                      (ds, env)
+>     modul  = expandInterface env2 $ Module m es is ds'
 >     cEnv   = qualifyEnv opts mEnv env2
 >     intf   = exportInterface cEnv modul
 
 > -- |Translate FlatCurry into the intermediate language 'IL'
 > transModule :: Bool -> CompilerEnv -> Module
 >             -> (CompilerEnv, IL.Module, [(DumpLevel, Doc)])
-> transModule flat' env mdl@(Module m es ds) = (env5, ilCaseComp, dumps)
+> transModule flat' env mdl@(Module m es is ds) = (env5, ilCaseComp, dumps)
 >   where
->     topDs = filter (not . isImportDecl) ds
->     env0 = env { evalAnnotEnv = evalEnv topDs }
->     (desugared , env1) = desugar (Module m es topDs) env0
+>     env0 = env { evalAnnotEnv = evalEnv ds }
+>     (desugared , env1) = desugar (Module m es is ds) env0
 >     (simplified, env2) = simplify flat' desugared env1
 >     (lifted    , env3) = lift simplified env2
 >     (il        , env4) = ilTrans flat' lifted env3

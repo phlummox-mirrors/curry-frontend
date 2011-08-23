@@ -115,7 +115,7 @@ as it allows value declarations at the top-level of a module.
 \begin{verbatim}
 
 > desugar :: ValueEnv -> TCEnv -> Module -> (Module,ValueEnv)
-> desugar tyEnv tcEnv (Module m es ds) = (Module m es ds',tyEnv')
+> desugar tyEnv tcEnv (Module m es is ds) = (Module m es is ds',tyEnv')
 >   where (ds',tyEnv') = run (desugarModule m tcEnv ds) tyEnv
 
 > desugarModule :: ModuleIdent -> TCEnv -> [Decl]

@@ -49,15 +49,14 @@ import CompilerOpts
 -- all imported labels and the function \texttt{addImportedLabels} adds this
 -- content to a value environment.
 
-importLabels :: InterfaceEnv -> [Decl] -> LabelEnv
+importLabels :: InterfaceEnv -> [ImportDecl] -> LabelEnv
 importLabels mEnv ds = foldl importLabelTypes initLabelEnv ds
   where
-    importLabelTypes :: LabelEnv -> Decl -> LabelEnv
+    importLabelTypes :: LabelEnv -> ImportDecl -> LabelEnv
     importLabelTypes lEnv (ImportDecl p m _ asM is) =
       case Map.lookup m mEnv of
-        Just ds' -> foldl (importLabelType p (fromMaybe m asM) is) lEnv ds'
+        Just (Interface _ _ ds') -> foldl (importLabelType p (fromMaybe m asM) is) lEnv ds'
         Nothing  -> internalError "importLabels"
-    importLabelTypes lEnv _ = lEnv
 
     importLabelType p m is lEnv (ITypeDecl _ r _ (RecordType fs _)) =
      foldl (insertLabelType p m r' (getImportSpec r' is)) lEnv fs

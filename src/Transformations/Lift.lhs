@@ -39,10 +39,10 @@ lifted to the top-level.
 
 > lift :: ValueEnv -> EvalEnv -> ArityEnv -> Module
 >      -> (Module, ValueEnv, EvalEnv, ArityEnv)
-> lift tyEnv evEnv aEnv (Module m es ds) =
+> lift tyEnv evEnv aEnv (Module m es is ds) =
 >   (lifted, tyEnv', evEnv', aEnv')
 >   where
->     lifted = Module m es $ concatMap liftFunDecl ds'
+>     lifted = Module m es is $ concatMap liftFunDecl ds'
 >     (ds',tyEnv',evEnv')
 >       = S.evalState (S.evalStateT (abstractModule m ds) tyEnv) evEnv
 >     aEnv' = bindArities aEnv lifted

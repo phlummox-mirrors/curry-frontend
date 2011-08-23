@@ -27,13 +27,13 @@ import Env.TypeConstructors (TCEnv, TypeInfo (..), qualLookupTC)
 
 -- |A record containing data for a module 'm'
 data ModuleSummary = ModuleSummary
-  { moduleId     :: ModuleIdent -- ^The name of 'm'
-  , interface    :: [IDecl]     -- ^all exported declarations in 'm'
-                                --  (including exported imports)
-  , exports      :: [Export]    -- ^The export list extracted from 'm'
-  , imports      :: [IDecl]     -- ^imports
-  , infixDecls   :: [IDecl]     -- ^Interfaces of all infix declarations in 'm'
-  , typeSynonyms :: [IDecl]     -- ^Interfaces of all type synonyms in 'm'
+  { moduleId     :: ModuleIdent   -- ^The name of 'm'
+  , interface    :: [IDecl]       -- ^all exported declarations in 'm'
+                                  --  (including exported imports)
+  , exports      :: [Export]      -- ^The export list extracted from 'm'
+  , imports      :: [IImportDecl] -- ^imports
+  , infixDecls   :: [IDecl]       -- ^Interfaces of all infix declarations in 'm'
+  , typeSynonyms :: [IDecl]       -- ^Interfaces of all type synonyms in 'm'
   } deriving Show
 
 
@@ -41,12 +41,12 @@ data ModuleSummary = ModuleSummary
     table of type constructors and its interface
 -}
 summarizeModule :: TCEnv -> Interface -> Module -> ModuleSummary
-summarizeModule tcEnv (Interface iid idecls) mdl@(Module mid mExp decls)
+summarizeModule tcEnv (Interface iid _ idecls) mdl@(Module mid mExp imps _)
   | iid == mid = ModuleSummary
       { moduleId     = mid
       , interface    = idecls
       , exports      = maybe [] (\ (Exporting _ exps) -> exps) mExp
-      , imports      = genImports decls
+      , imports      = genImports imps
       , infixDecls   = genInfixDecls mdl
       , typeSynonyms = genTypeSyns tcEnv mdl
       }
@@ -55,20 +55,19 @@ summarizeModule tcEnv (Interface iid idecls) mdl@(Module mid mExp decls)
 -- ---------------------------------------------------------------------------
 
 -- |Generate interface import declarations
-genImports :: [Decl] -> [IDecl]
+genImports :: [ImportDecl] -> [IImportDecl]
 genImports = map snd . foldr addImport []
   where
-  addImport :: Decl -> [(ModuleIdent, IDecl)] -> [(ModuleIdent, IDecl)]
+  addImport :: ImportDecl -> [(ModuleIdent, IImportDecl)] -> [(ModuleIdent, IImportDecl)]
   addImport (ImportDecl pos mid _ _ _) imps = case lookup mid imps of
     Nothing -> (mid, IImportDecl pos mid) : imps
     Just _  -> imps
-  addImport _ imps = imps
 
 -- ---------------------------------------------------------------------------
 
 -- |Generate interface infix declarations in the module
 genInfixDecls :: Module -> [IDecl]
-genInfixDecls (Module mident _ decls) = concatMap genInfixDecl decls
+genInfixDecls (Module mident _ _ decls) = concatMap genInfixDecl decls
   where
   genInfixDecl :: Decl -> [IDecl]
   genInfixDecl (InfixDecl pos spec prec idents)
@@ -87,7 +86,7 @@ genInfixDecls (Module mident _ decls) = concatMap genInfixDecl decls
 
 -- |Generate interface declarations for all type synonyms in the module.
 genTypeSyns :: TCEnv -> Module -> [IDecl]
-genTypeSyns tcEnv (Module mident _ decls)
+genTypeSyns tcEnv (Module mident _ _ decls)
   = concatMap (genTypeSynDecl mident tcEnv) $ filter isTypeSyn decls
 
 isTypeSyn :: Decl -> Bool

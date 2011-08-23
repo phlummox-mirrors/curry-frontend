@@ -16,11 +16,11 @@ module Env.Interface where
 import qualified Data.Map as Map (Map, empty, lookup)
 
 import Curry.Base.Ident (ModuleIdent)
-import Curry.Syntax (IDecl)
+import Curry.Syntax (Interface)
 
-type InterfaceEnv = Map.Map ModuleIdent [IDecl]
+type InterfaceEnv = Map.Map ModuleIdent Interface
 
-lookupInterface :: ModuleIdent -> InterfaceEnv -> Maybe [IDecl]
+lookupInterface :: ModuleIdent -> InterfaceEnv -> Maybe Interface
 lookupInterface = Map.lookup
 
 initInterfaceEnv :: InterfaceEnv

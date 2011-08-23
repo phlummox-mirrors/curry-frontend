@@ -201,30 +201,29 @@ rights_sc  xs = [ x | Right x <- xs]
 --- @param parse-Module
 --- @param Maybe betterParse-Module
 catIdentifiers' :: Module -> Maybe Module -> ([(ModuleIdent,ModuleIdent)],[Code])
-catIdentifiers' (Module moduleIdent maybeExportSpec decls)
+catIdentifiers' (Module moduleIdent maybeExportSpec imports decls)
                 Nothing =
-      let codes = (concatMap decl2codes (qsort lessDecl decls)) in
-      (concatMap renamedImports decls,
+      let impCodes = concatMap importDecl2codes (qsort lessImportDecl imports)
+          codes = (concatMap decl2codes (qsort lessDecl decls))
+      in (concatMap renamedImports imports,
       ModuleName moduleIdent :
-       maybe [] exportSpec2codes maybeExportSpec ++ codes)
-catIdentifiers' (Module moduleIdent maybeExportSpec1 _)
-                (Just (Module _ maybeExportSpec2 decls)) =
-      let codes = (concatMap decl2codes (qsort lessDecl decls)) in
-      (concatMap renamedImports decls,
+       maybe [] exportSpec2codes maybeExportSpec ++ impCodes ++ codes)
+catIdentifiers' (Module moduleIdent maybeExportSpec1 _ _)
+                (Just (Module _ maybeExportSpec2 imports decls)) =
+      let impCodes = concatMap importDecl2codes (qsort lessImportDecl imports)
+          codes = (concatMap decl2codes (qsort lessDecl decls))
+      in (concatMap renamedImports imports,
       replaceFunctionCalls $
         map (addModuleIdent moduleIdent)
           ([ModuleName moduleIdent] ++
            mergeExports2codes
               (maybe [] (\(Exporting _ i) -> i)  maybeExportSpec1)
               (maybe [] (\(Exporting _ i) -> i)  maybeExportSpec2) ++
-           codes))
+           impCodes ++ codes))
 
-
-renamedImports :: Decl -> [(ModuleIdent,ModuleIdent)]
-renamedImports decl =
-    case decl of
-        (ImportDecl _ oldName _ (Just newName) _) -> [(oldName,newName)]
-        _ -> []
+renamedImports :: ImportDecl -> [(ModuleIdent,ModuleIdent)]
+renamedImports (ImportDecl _ oldName _ (Just newName) _) = [(oldName,newName)]
+renamedImports _ = []
 
 
 replaceFunctionCalls :: [Code] -> [Code]
@@ -447,7 +446,6 @@ isTokenIdentifier (Token cat _) =
 -- DECL Position
 
 getPosition :: Decl -> Position
-getPosition (ImportDecl pos _ _ _ _) = pos
 getPosition (InfixDecl pos _ _ _) = pos
 getPosition (DataDecl pos _ _ _) = pos
 getPosition (NewtypeDecl pos _ _ _) = pos
@@ -464,6 +462,9 @@ getPosition (ExtraVariables pos _) = pos
 lessDecl :: Decl -> Decl -> Bool
 lessDecl = (<) `on` getPosition
 
+lessImportDecl :: ImportDecl -> ImportDecl -> Bool
+lessImportDecl = (<) `on` (\ (ImportDecl p _ _ _ _) -> p)
+
 qsort :: (a -> a -> Bool) -> [a] -> [a]
 qsort _ []     = []
 qsort less (x:xs) = qsort less [y | y <- xs, less y x] ++ [x] ++ qsort less [y | y <- xs, not $ less y x]
@@ -471,10 +472,8 @@ qsort less (x:xs) = qsort less [y | y <- xs, less y x] ++ [x] ++ qsort less [y |
 
 -- DECL TO CODE --------------------------------------------------------------------
 
-
-
 exportSpec2codes ::  ExportSpec -> [Code]
-exportSpec2codes (Exporting _ exports) = concatMap (export2codes [])  exports
+exportSpec2codes (Exporting _ exports) = concatMap (export2codes []) exports
 
 --- @param parse-Exports
 --- @param betterParse-Exports
@@ -505,9 +504,6 @@ export2codes exports (Export qualIdent)
     export2c _ =
          [TypeConstructor TypeExport qualIdent]
 
-
-
-
 export2codes _ (ExportTypeWith qualIdent idents) =
      TypeConstructor TypeExport qualIdent : map (Function OtherFunctionKind . qualify) idents
 export2codes _ (ExportTypeAll  qualIdent) =
@@ -515,11 +511,13 @@ export2codes _ (ExportTypeAll  qualIdent) =
 export2codes _ (ExportModule moduleIdent) =
      [ModuleName moduleIdent]
 
-decl2codes :: Decl -> [Code]
-decl2codes (ImportDecl _ moduleIdent _ mModuleIdent importSpec) =
+importDecl2codes :: ImportDecl -> [Code]
+importDecl2codes (ImportDecl _ moduleIdent _ mModuleIdent importSpec) =
      [ModuleName moduleIdent] ++
      maybe [] ((:[]) . ModuleName) mModuleIdent ++
      maybe [] (importSpec2codes moduleIdent)  importSpec
+
+decl2codes :: Decl -> [Code]
 decl2codes (InfixDecl _ _ _ idents) =
      map (Function InfixFunction . qualify) idents
 decl2codes (DataDecl _ ident idents constrDecls) =

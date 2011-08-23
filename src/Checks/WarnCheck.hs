@@ -50,7 +50,7 @@ run f = reverse $ messages $ execState f emptyState
 --    - idle case alternatives
 --    - overlapping case alternatives
 --    - function rules which are not together
-warnCheck :: ModuleIdent -> ValueEnv -> [Decl] -> [Decl] -> [Message]
+warnCheck :: ModuleIdent -> ValueEnv -> [ImportDecl] -> [Decl] -> [Message]
 warnCheck mid vals imports decls = run $ do
   addImportedValues vals
   addModuleId mid
@@ -376,7 +376,7 @@ checkDeclOccurrences decls = checkDO (mkIdent "") Map.empty decls
 
 
 -- check import declarations for multiply imported modules
-checkImports :: [Decl] -> CheckM ()
+checkImports :: [ImportDecl] -> CheckM ()
 checkImports imps = checkImps Map.empty imps
   where
   checkImps _ [] = return ()
@@ -388,7 +388,6 @@ checkImports imps = checkImps Map.empty imps
         (Map.lookup mid env)
     | otherwise
     = checkImps env imps'
-  checkImps env (_ : imps') = checkImps env imps'
 
   checkImpSpec env _ mid (_,_) Nothing
     = genWarning' (multiplyImportedModule mid) >> return env

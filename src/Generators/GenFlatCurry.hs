@@ -117,7 +117,7 @@ data FlatEnv = FlatEnv
   , publicEnvE    :: Map.Map Ident IdentExport
   , fixitiesE     :: [CS.IDecl]
   , typeSynonymsE :: [CS.IDecl]
-  , importsE      :: [CS.IDecl]
+  , importsE      :: [CS.IImportDecl]
   , exportsE      :: [CS.Export]
   , interfaceE    :: [CS.IDecl]
   , varIndexE     :: Int
@@ -214,9 +214,7 @@ visitModule (IL.Module mid imps decls) = do
 		        (ifuncs ++ funcs)
 		        (iops ++ ops)))
 	where
-		extractMid d = case d of
-			(CS.IImportDecl _ mid1) -> mid1
-			_                       -> error "Gen.GenFlatCurry.visitModule: no IImportDecl"
+		extractMid (CS.IImportDecl _ mid1) = mid1
 
 --
 visitDataDecl :: IL.Decl -> FlatState TypeDecl
@@ -522,10 +520,10 @@ genExpIDecls idecls ((mid,exps):mes)
 	let idecls' = maybe idecls (p_genExpIDecls mid idecls exps) intf_
 	genExpIDecls idecls' mes
  where
-   p_genExpIDecls mid1 idecls1 exps1 intf
-      | null exps1 = (map (qualifyIDecl mid1) intf) ++ idecls1
+   p_genExpIDecls mid1 idecls1 exps1 (CS.Interface _ _ ds)
+      | null exps1 = (map (qualifyIDecl mid1) ds) ++ idecls1
       | otherwise = (filter (isExportedIDecl exps1)
-		            (map (qualifyIDecl mid1) intf))
+		            (map (qualifyIDecl mid1) ds))
 		    ++ idecls1
 
 --
@@ -949,7 +947,7 @@ exports :: FlatState [CS.Export]
 exports = gets exportsE
 
 --
-imports :: FlatState [CS.IDecl]
+imports :: FlatState [CS.IImportDecl]
 imports = gets importsE
 
 --
@@ -975,9 +973,8 @@ isPublic isConstr qid = gets (\env -> maybe False isP
     isP NotOnlyConstr = True
 
 --
-lookupModuleIntf :: ModuleIdent -> FlatState (Maybe [CS.IDecl])
-lookupModuleIntf mid
-   = gets (Map.lookup mid . interfaceEnvE)
+lookupModuleIntf :: ModuleIdent -> FlatState (Maybe CS.Interface)
+lookupModuleIntf mid = gets (Map.lookup mid . interfaceEnvE)
 
 --
 lookupIdArity :: QualIdent -> FlatState (Maybe Int)

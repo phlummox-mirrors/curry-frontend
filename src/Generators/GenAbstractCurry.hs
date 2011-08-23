@@ -45,12 +45,12 @@ genUntypedAbstract tyEnv tcEnv modul
 
 -- |Generate an AbstractCurry program term from the syntax tree
 genAbstract :: AbstractEnv -> Module -> CurryProg
-genAbstract env (Module mid _ decls)
-  = CurryProg modname imps types (Map.elems funcs) ops
+genAbstract env (Module mid _ imps decls)
+  = CurryProg modname imprts types (Map.elems funcs) ops
   where
     modname    = moduleName mid
     partitions = foldl partitionDecl emptyPartitions decls
-    (imps, _)  = mapfoldl genImportDecl env (reverse (importDecls partitions))
+    (imprts,_) = mapfoldl genImportDecl env imps
     (types, _) = mapfoldl genTypeDecl env (reverse (typeDecls partitions))
     (_, funcs) = Map.mapAccumWithKey (genFuncDecl False) env
                                      (funcDecls partitions)
@@ -73,8 +73,7 @@ genAbstract env (Module mid _ decls)
     to collect them within an association list
 -}
 data Partitions = Partitions
-  { importDecls :: [Decl]
-  , typeDecls   :: [Decl]
+  { typeDecls   :: [Decl]
   , funcDecls   :: Map.Map Ident [Decl]
   , opDecls     :: [Decl]
   } deriving Show
@@ -82,8 +81,7 @@ data Partitions = Partitions
 -- |Generate initial partitions
 emptyPartitions :: Partitions
 emptyPartitions = Partitions
-  { importDecls = []
-  , typeDecls   = []
+  { typeDecls   = []
   , funcDecls   = Map.empty
   , opDecls     = []
   }
@@ -91,9 +89,6 @@ emptyPartitions = Partitions
 -- Inserts a CurrySyntax top level declaration into a partition.
 -- Note: declarations are collected in reverse order.
 partitionDecl :: Partitions -> Decl -> Partitions
--- import decls
-partitionDecl parts decl@(ImportDecl _ _ _ _ _)
-  = parts {importDecls = decl : importDecls parts }
 -- type decls
 partitionDecl parts decl@(DataDecl _ _ _ _)
   = parts {typeDecls = decl : typeDecls parts }
@@ -130,9 +125,8 @@ partitionFuncDecls genDecl parts ids
 -- terms.
 
 --
-genImportDecl :: AbstractEnv -> Decl -> (String, AbstractEnv)
+genImportDecl :: AbstractEnv -> ImportDecl -> (String, AbstractEnv)
 genImportDecl env (ImportDecl _ mid _ _ _) = (moduleName mid, env)
-genImportDecl _ _ = error "GenAbstractCurry.genImportDecl: no import declaration"
 
 --
 genTypeDecl :: AbstractEnv -> Decl -> (CTypeDecl, AbstractEnv)
@@ -763,12 +757,12 @@ data AbstractType
 
 -- Initializes the AbstractCurry generator environment.
 genAbstractEnv :: AbstractType -> ValueEnv -> TCEnv -> Module -> AbstractEnv
-genAbstractEnv absType tyEnv tcEnv (Module mid exps decls) = AbstractEnv
+genAbstractEnv absType tyEnv tcEnv (Module mid exps imps decls) = AbstractEnv
   { moduleId  = mid
   , typeEnv   = tyEnv
   , tconsEnv  = tcEnv
   , exports   = foldl (buildExportTable mid decls) Set.empty exps'
-  , imports   = foldl buildImportTable Map.empty decls
+  , imports   = foldl buildImportTable Map.empty imps
   , varIndex  = 0
   , tvarIndex = 0
   , varScope  = [Map.empty]
@@ -836,12 +830,10 @@ getConstrIdents _ = error "GenAbstractCurry.getConstrIdents: no pattern match"
 
 
 -- Builds a table for dereferencing import aliases
-buildImportTable :: Map.Map ModuleIdent ModuleIdent -> Decl
-		    -> Map.Map ModuleIdent ModuleIdent
+buildImportTable :: Map.Map ModuleIdent ModuleIdent -> ImportDecl
+                 -> Map.Map ModuleIdent ModuleIdent
 buildImportTable env (ImportDecl _ mid _ malias _)
   = Map.insert (fromMaybe mid malias) mid env
-buildImportTable env _ = env
-
 
 -- Checks whether an identifier is exported or not.
 isExported :: AbstractEnv -> Ident -> Bool

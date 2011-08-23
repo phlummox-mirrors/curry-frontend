@@ -52,8 +52,8 @@ typeCheck decls env = (decls, env { tyConsEnv = tcEnv', valueEnv = tyEnv' })
   where (tcEnv', tyEnv') = TC.typeCheck (moduleIdent env)
                               (tyConsEnv env) (valueEnv env) decls
 
--- TODO: Which one?
+-- TODO: Which kind of warnings?
 
 -- |Check for warnings.
-warnCheck :: CompilerEnv -> ([Decl], [Decl]) -> [Message]
-warnCheck env = uncurry $ WC.warnCheck (moduleIdent env) (valueEnv env)
+warnCheck :: CompilerEnv -> [ImportDecl] -> [Decl] -> [Message]
+warnCheck env = WC.warnCheck (moduleIdent env) (valueEnv env)

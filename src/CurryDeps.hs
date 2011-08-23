@@ -32,7 +32,7 @@ import Curry.Base.Ident
 import Curry.Base.MessageMonad
 import Curry.Files.Filenames
 import Curry.Files.PathUtils
-import Curry.Syntax (Module (..),  Decl (..), parseHeader)
+import Curry.Syntax (Module (..),  ImportDecl (..), parseHeader)
 
 import Base.ErrorMessages (errCyclicImport, errWrongModule)
 import Base.SCC (scc)
@@ -91,16 +91,16 @@ sourceDeps opts paths sEnv fn = do
 
 -- |Retrieve the dependencies of a given module
 moduleDeps :: Options -> [FilePath] -> SourceEnv -> FilePath -> Module -> IO SourceEnv
-moduleDeps opts paths sEnv fn (Module m _ ds) = case Map.lookup m sEnv of
+moduleDeps opts paths sEnv fn (Module m _ is _) = case Map.lookup m sEnv of
     Just  _ -> return sEnv
     Nothing -> do
-      let imps  = imports opts m ds
+      let imps  = imports opts m is
           sEnv' = Map.insert m (Source fn imps) sEnv
       foldM (moduleIdentDeps opts paths) sEnv' imps
 
 -- |Retrieve the imported modules and add the import of the Prelude
 --  according to the compiler options.
-imports :: Options -> ModuleIdent -> [Decl] -> [ModuleIdent]
+imports :: Options -> ModuleIdent -> [ImportDecl] -> [ModuleIdent]
 imports opts m ds = nub $
      [preludeMIdent | m /= preludeMIdent && implicitPrelude]
   ++ [m' | ImportDecl _ m' _ _ _ <- ds]
@@ -120,7 +120,7 @@ moduleIdentDeps opts paths sEnv m = case Map.lookup m sEnv of
   where
     libraryPaths = optImportPaths opts
     checkModuleHeader fn = do
-      hdr@(Module m' _ _) <- (ok . parseHeader fn) `liftM` readModule fn
+      hdr@(Module m' _ _ _) <- (ok . parseHeader fn) `liftM` readModule fn
       unless (m == m') $ error $ errWrongModule m m'
       moduleDeps opts paths sEnv fn hdr
 

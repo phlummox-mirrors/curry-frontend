@@ -44,9 +44,9 @@ import Env.Interface
 
 -- |Load the interface files into the 'InterfaceEnv'
 loadInterfaces :: [FilePath] -> Module -> IO InterfaceEnv
-loadInterfaces paths (Module m _ ds) =
+loadInterfaces paths (Module m _ is _) =
   foldM (loadInterface paths [m]) initInterfaceEnv
-        [(p, m') | ImportDecl p m' _ _ _ <- ds]
+        [(p, m') | ImportDecl p m' _ _ _ <- is]
 
 -- If an import declaration for a module is found, the compiler first
 -- checks whether an import for the module is already pending. In this
@@ -76,12 +76,12 @@ compileInterface :: [FilePath] -> [ModuleIdent] -> InterfaceEnv
 compileInterface paths ctxt mEnv m fn = do
   mintf <- (fmap flatToCurryInterface) `liftM` EF.readFlatInterface fn
   case mintf of
-    Nothing                -> errorAt (first fn) $ errInterfaceNotFound m
-    Just (Interface m' ds) -> do
+    Nothing -> errorAt (first fn) $ errInterfaceNotFound m
+    Just intf@(Interface m' is _) -> do
       unless (m' == m) $ errorAt (first fn) $ errWrongInterface m m'
-      let importDecls = [ (pos, imp) | IImportDecl pos imp <- ds ]
+      let importDecls = [ (pos, imp) | IImportDecl pos imp <- is ]
       mEnv' <- foldM (loadInterface paths (m : ctxt)) mEnv importDecls
-      return $ Map.insert m ds mEnv'
+      return $ Map.insert m intf mEnv'
 
 -- The function \texttt{flatToCurryInterface} transforms FlatInterface
 -- information (type \texttt{FlatCurry.Prog} to MCC interface declarations
@@ -91,16 +91,15 @@ compileInterface paths ctxt mEnv m fn = do
 
 flatToCurryInterface :: EF.Prog -> Interface
 flatToCurryInterface (EF.Prog m imps ts fs os)
-  = Interface (fromModuleName m) $ concat
-    [ map genIImportDecl imps
-    , map genITypeDecl $ filter (not . isSpecialPreludeType) ts
+  = Interface (fromModuleName m) (map genIImportDecl imps) $ concat
+    [ map genITypeDecl $ filter (not . isSpecialPreludeType) ts
     , map genIFuncDecl fs
     , map genIOpDecl os
     ]
   where
   pos = first m
 
-  genIImportDecl :: String -> IDecl
+  genIImportDecl :: String -> IImportDecl
   genIImportDecl = IImportDecl pos . fromModuleName
 
   genITypeDecl :: EF.TypeDecl -> IDecl

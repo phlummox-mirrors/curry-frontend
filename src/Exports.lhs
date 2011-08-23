@@ -58,21 +58,22 @@ the interface of the module.
 > expandInterface env mdl = expandInterface' mdl (tyConsEnv env) (valueEnv env)
 
 > expandInterface' :: Module -> TCEnv -> ValueEnv -> Module
-> expandInterface' (Module m es ds) tcEnv tyEnv =
+> expandInterface' (Module m es is ds) tcEnv tyEnv =
 >   case findDouble exportedTypes of
 >     Just tc -> errorAt' $ ambiguousExportType tc
 >     Nothing -> case findDouble exportedValues of
 >       Just v  -> errorAt' $ ambiguousExportValue v
->       Nothing -> Module m (Just (Exporting NoPos exports)) ds
+>       Nothing -> Module m (Just (Exporting NoPos expandedExports)) is ds
 >   where
->     exports = joinExports $ maybe (expandLocalModule          tcEnv tyEnv)
->                                   (expandSpecs importedMods m tcEnv tyEnv)
->                                   es
+>     expandedExports = joinExports
+>                     $ maybe (expandLocalModule          tcEnv tyEnv)
+>                             (expandSpecs importedMods m tcEnv tyEnv)
+>                             es
 >     importedMods   = Set.fromList
->                      [fromMaybe m' asM | ImportDecl _ m' _ asM _ <- ds]
->     exportedTypes  = [unqualify tc | ExportTypeWith tc _ <- exports]
->     exportedValues = [c | ExportTypeWith _ cs <- exports, c <- cs]
->                   ++ [unqualify f | Export f <- exports]
+>                      [fromMaybe m' asM | ImportDecl _ m' _ asM _ <- is]
+>     exportedTypes  = [unqualify tc | ExportTypeWith tc _ <- expandedExports]
+>     exportedValues = [c | ExportTypeWith _ cs <- expandedExports, c <- cs]
+>                   ++ [unqualify f | Export f <- expandedExports]
 
 \end{verbatim}
 While checking all export specifications, the compiler expands
@@ -226,13 +227,13 @@ exported function.
 >   (opPrecEnv env) (tyConsEnv env) (valueEnv env)
 
 > exportInterface' :: Module -> PEnv -> TCEnv -> ValueEnv -> Interface
-> exportInterface' (Module m (Just (Exporting _ es)) _) pEnv tcEnv tyEnv
->   = Interface m $ imports ++ precs ++ hidden ++ decls
+> exportInterface' (Module m (Just (Exporting _ es)) _ _) pEnv tcEnv tyEnv
+>   = Interface m imports $ precs ++ hidden ++ decls
 >   where imports = map   (IImportDecl NoPos) $ usedModules decls
 >         precs   = foldr (infixDecl m pEnv) [] es
 >         hidden  = map   (hiddenTypeDecl m tcEnv) $ hiddenTypes decls
 >         decls   = foldr (typeDecl m tcEnv) (foldr (funDecl m tyEnv) [] es) es
-> exportInterface' (Module _ Nothing _) _ _ _
+> exportInterface' (Module _ Nothing _ _) _ _ _
 >   = internalError "Exports.exportInterface: no export specification"
 
 > infixDecl :: ModuleIdent -> PEnv -> Export -> [IDecl] -> [IDecl]

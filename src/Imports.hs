@@ -45,7 +45,8 @@ import Records (importLabels, recordExpansion1, recordExpansion2)
 
 -- |The function 'importModules' brings the declarations of all
 -- imported interfaces into scope for the current module.
-importModules :: Options -> ModuleIdent -> InterfaceEnv -> [Decl] -> CompilerEnv
+importModules :: Options -> ModuleIdent -> InterfaceEnv
+              -> [ImportDecl] -> CompilerEnv
 importModules opts mid iEnv decls = recordExpansion1 opts
                                   $ importUnifyData
                                   $ foldl importModule initEnv decls
@@ -56,20 +57,17 @@ importModules opts mid iEnv decls = recordExpansion1 opts
       , interfaceEnv = iEnv                    -- imported interfaces
       }
     importModule env (ImportDecl _ m q asM is) = case Map.lookup m iEnv of
-      Just ds -> importInterface (fromMaybe m asM) q is (Interface m ds) env
-      Nothing -> internalError $ "Imports.importModules: no interface for "
-                                 ++ show m
-    importModule env' _ = env'
+      Just intf -> importInterface (fromMaybe m asM) q is intf env
+      Nothing   -> internalError $ "Imports.importModules: no interface for "
+                                   ++ show m
 
 -- |
 qualifyEnv :: Options -> InterfaceEnv -> CompilerEnv -> CompilerEnv
 qualifyEnv opts iEnv env = recordExpansion2 opts
                          $ qualifyLocal env
-                         $ foldl import' initEnv
-                         $ Map.toList iEnv
-  where
-    initEnv = initCompilerEnv $ moduleIdent env
-    import' cEnv1 (m, ds) = importInterfaceIntf (Interface m ds) cEnv1
+                         $ foldl (flip importInterfaceIntf) initEnv
+                         $ Map.elems iEnv
+  where initEnv = initCompilerEnv $ moduleIdent env
 
 -- ---------------------------------------------------------------------------
 -- Importing an interface into the module
@@ -152,7 +150,7 @@ importConstr isVisible' dc@(DataConstr c _ _)
 
 intfEnv :: (ModuleIdent -> IDecl -> IdentMap a -> IdentMap a)
         -> Interface -> IdentMap a
-intfEnv bind (Interface m ds) = foldr (bind m) Map.empty ds
+intfEnv bind (Interface m _ ds) = foldr (bind m) Map.empty ds
 
 -- operator precedences
 bindPrec :: ModuleIdent -> IDecl -> ExpPEnv -> ExpPEnv
@@ -415,7 +413,7 @@ qualifyLocal currentEnv initEnv = currentEnv
 -- an interface.
 
 importInterfaceIntf :: Interface -> CompilerEnv -> CompilerEnv
-importInterfaceIntf i@(Interface m _) env = env
+importInterfaceIntf i@(Interface m _ _) env = env
   { opPrecEnv = importEntities m True (const True) id mPEnv  $ opPrecEnv env
   , tyConsEnv = importEntities m True (const True) id mTCEnv $ tyConsEnv env
   , valueEnv  = importEntities m True (const True) id mTyEnv $ valueEnv  env
