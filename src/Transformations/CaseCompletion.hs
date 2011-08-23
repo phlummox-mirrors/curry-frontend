@@ -7,7 +7,7 @@
 
     May 2005, Martin Engelke, (men@informatik.uni-kiel.de)
 -}
-module Transform.CaseCompletion (completeCase) where
+module Transformations.CaseCompletion (completeCase) where
 
 import Prelude hiding (mod)
 import Data.Maybe (fromJust, fromMaybe, isJust)
@@ -16,7 +16,7 @@ import Curry.Base.Position (SrcRef)
 import Curry.Base.Ident
 import qualified Curry.Syntax
 
-import Env.Interfaces (InterfaceEnv, lookupInterface)
+import Env.Interface (InterfaceEnv, lookupInterface)
 import Env.OldScopeEnv as ScopeEnv
   (ScopeEnv, beginScope, genIdentList, insertIdent, newScopeEnv)
 import IL

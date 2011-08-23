@@ -37,13 +37,13 @@ data Options = Options
   , optImportPaths :: [FilePath]     -- ^ directories for imports
   , optOutput      :: Maybe FilePath -- ^ name of output file
   , optUseSubdir   :: Bool           -- ^ use subdir for output?
-  , optInterface   :: Bool           -- ^ do not create an interface file
-  , optWarn        :: Bool           -- ^ warnings on/off
-  , optOverlapWarn :: Bool           -- ^ "overlap" warnings on/off
+  , optInterface   :: Bool           -- ^ create an interface file
+  , optWarn        :: Bool           -- ^ show warnings
+  , optOverlapWarn :: Bool           -- ^ show "overlap" warnings
   , optTargetTypes :: [TargetType]   -- ^ what to generate
-  , optExtensions  :: [Extension]    -- ^ language extensions
+  , optExtensions  :: [Extension]    -- ^ enabled language extensions
   , optDumps       :: [DumpLevel]    -- ^ dumps
-  } -- deriving Show
+  }
 
 -- | Default compiler options
 defaultOptions :: Options
@@ -64,14 +64,14 @@ defaultOptions = Options
   , optDumps       = []
   }
 
--- |Data type representing the type of the target file
+-- |Type of the target file
 data TargetType
-  = Parsed
-  | FlatCurry
-  | ExtendedFlatCurry
-  | FlatXml
-  | AbstractCurry
-  | UntypedAbstractCurry
+  = Parsed                -- ^ Parsed source code
+  | FlatCurry             -- ^ FlatCurry
+  | ExtendedFlatCurry     -- ^ Extended FlatCurry
+  | FlatXml               -- ^ FlatCurry as XML
+  | AbstractCurry         -- ^ AbstractCurry
+  | UntypedAbstractCurry  -- ^ UntypedAbstractCurry
     deriving Eq
 
 -- |Data type representing the verbosity level
@@ -90,11 +90,11 @@ classifyVerbosity _   = Verbose
 
 -- |Data type for representing code dumps
 data DumpLevel
-  = DumpRenamed      -- ^ dump source after renaming
-  | DumpTypes        -- ^ dump types after typechecking
-  | DumpDesugared    -- ^ dump source after desugaring
-  | DumpSimplified   -- ^ dump source after simplification
-  | DumpLifted       -- ^ dump source after lambda-lifting
+  = DumpRenamed      -- ^ dump source  after renaming
+  | DumpTypes        -- ^ dump types   after typechecking
+  | DumpDesugared    -- ^ dump source  after desugaring
+  | DumpSimplified   -- ^ dump source  after simplification
+  | DumpLifted       -- ^ dump source  after lambda-lifting
   | DumpIL           -- ^ dump IL code after translation
   | DumpCase         -- ^ dump IL code after case elimination
     deriving (Eq, Bounded, Enum, Show)

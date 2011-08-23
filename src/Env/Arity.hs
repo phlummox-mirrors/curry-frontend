@@ -1,6 +1,4 @@
-{- |Arity - provides functions for expanding the arity environment 'ArityEnv'
-
-    In order to generate correct FlatCurry applications it is necessary
+{- |In order to generate correct FlatCurry applications it is necessary
     to define the number of arguments as the arity value (instead of
     using the arity computed from the type). For this reason the compiler
     needs a table containing the information for all known functions
@@ -30,17 +28,15 @@ instance Entity ArityInfo where
   origName (ArityInfo orgName _) = orgName
 
 initAEnv :: ArityEnv
-initAEnv = foldr bindPredefArity emptyTopEnv (concatMap snd predefTypes)
- where bindPredefArity (DataConstr ident _ ts) =
-         bindArity preludeMIdent ident (length ts)
+initAEnv = foldr bindPredefArity emptyTopEnv $ concatMap snd predefTypes
+  where bindPredefArity (DataConstr ident _ ts) =
+          bindArity preludeMIdent ident (length ts)
 
 bindArity :: ModuleIdent -> Ident -> Int -> ArityEnv -> ArityEnv
 bindArity mid ident arity aEnv
-  | uniqueId ident == 0
-    = bindTopEnv "Base.bindArity" ident arityInfo
-                (qualBindTopEnv "Base.bindArity" qid arityInfo aEnv)
-  | otherwise
-    = bindTopEnv "Base.bindArity" ident arityInfo aEnv
+  | uniqueId ident == 0 = bindTopEnv "Base.bindArity" ident arityInfo
+                        $ qualBindTopEnv "Base.bindArity" qid arityInfo aEnv
+  | otherwise           = bindTopEnv "Base.bindArity" ident arityInfo aEnv
  where
   qid       = qualifyWith mid ident
   arityInfo = ArityInfo qid arity

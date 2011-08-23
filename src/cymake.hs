@@ -1,10 +1,16 @@
-{- |cymake - The Curry builder
+{- |
+    Module      :  $Header$
+    Description :  Main module
+    Copyright   :  (c) 2005, Martin Engelke (men@informatik.uni-kiel.de)
+                       2011, Björn Peemöller (bjp@informatik.uni-kiel.de)
+    License     :  OtherLicense
+
+    Maintainer  :  bjp@informatik.uni-kiel.de
+    Stability   :  experimental
+    Portability :  portable
 
     Command line tool for generating Curry representations (e.g. FlatCurry,
     AbstractCurry) for a Curry source file including all imported modules.
-
-    September 2005, Martin Engelke (men@informatik.uni-kiel.de)
-    May 2011, Bjoern Peemoeller (bjp@informatik.uni-kiel.de)
 -}
 module Main (main) where
 
@@ -19,13 +25,13 @@ import CompilerOpts (Options (..), compilerOpts, usage)
 main :: IO ()
 main = compilerOpts >>= cymake
 
--- |Check the command line arguments and invoke the curry builder
+-- |Invoke the curry builder w.r.t the command line arguments
 cymake :: (String, Options, [String], [String]) -> IO ()
 cymake (prog, opts, files, errs)
   | optHelp opts    = printUsage prog
   | optVersion opts = printVersion
   | null files      = printUsage prog
-  | not (null errs) = badUsage prog errs
+  | not $ null errs = badUsage prog errs
   | optHtml opts    = mapM_ (source2html opts) files
   | otherwise       = mapM_ (buildCurry  opts) files
 
@@ -33,11 +39,11 @@ cymake (prog, opts, files, errs)
 printVersion :: IO ()
 printVersion = putStrLn cymakeGreeting
 
--- |Print the usage information of the command line tool.
+-- |Print the usage information of the command line tool
 printUsage :: String -> IO ()
 printUsage prog = putStrLn $ usage prog
 
--- |Print errors and abort execution
+-- |Print errors and abort execution on bad parameters
 badUsage :: String -> [String] -> IO ()
 badUsage prog errs = do
   putErrsLn $ map (\ err -> prog ++ ": " ++ err) errs

@@ -16,7 +16,6 @@ import qualified Data.Set as Set (fromList, notMember)
 
 import Curry.Base.Ident
 import Curry.Syntax
-import qualified IL
 
 class Expr e where
   fv :: e -> [Ident]
@@ -200,21 +199,3 @@ bvFuncPatt = bvfp []
  bvfp bvs (InfixFuncPattern t1 _ t2) = foldl bvfp bvs [t1, t2]
  bvfp bvs (RecordPattern fs r)
     = foldl bvfp (maybe bvs (bvfp bvs) r) (map fieldTerm fs)
-    
--- intermediate language
-
-instance Expr IL.Expression where
-  fv (IL.Variable v) = [v]
-  fv (IL.Apply e1 e2) = fv e1 ++ fv e2
-  fv (IL.Case _ _ e alts) = fv e ++ fv alts
-  fv (IL.Or e1 e2) = fv e1 ++ fv e2
-  fv (IL.Exist v e) = filter (/= v) (fv e)
-  fv (IL.Let (IL.Binding v e1) e2) = fv e1 ++ filter (/= v) (fv e2)
-  fv (IL.Letrec bds e) = filter (`notElem` vs) (fv es ++ fv e)
-    where (vs,es) = unzip [(v,e') | IL.Binding v e' <- bds]
-  fv _ = []
-
-instance Expr IL.Alt where
-  fv (IL.Alt (IL.ConstructorPattern _ vs) e) = filter (`notElem` vs) (fv e)
-  fv (IL.Alt (IL.VariablePattern v) e) = filter (v /=) (fv e)
-  fv (IL.Alt _ e) = fv e

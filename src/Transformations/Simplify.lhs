@@ -22,7 +22,7 @@ Currently, the following optimizations are implemented:
 \end{itemize}
 \begin{verbatim}
 
-> module Transform.Simplify (simplify) where
+> module Transformations.Simplify (simplify) where
 
 > import Control.Monad.Reader as R
 > import Control.Monad.State as S

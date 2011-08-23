@@ -3,7 +3,8 @@
 
     July 2005, Martin Engelke (men@informatik.uni-kiel.de)
 -}
-module Gen.GenAbstractCurry (genTypedAbstract, genUntypedAbstract) where
+module Generators.GenAbstractCurry
+  ( genTypedAbstract, genUntypedAbstract ) where
 
 import Data.List (find)
 import qualified Data.Map as Map

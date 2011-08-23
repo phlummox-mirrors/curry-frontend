@@ -16,12 +16,11 @@ This module implements substitutions on types.
 > import Data.List (nub)
 > import Data.Maybe (fromJust, isJust)
 
-> import Env.TopEnv
-> import Env.Value (ValueInfo (..))
-
 > import Base.Subst
 > import Base.Types
 
+> import Env.TopEnv
+> import Env.Value (ValueInfo (..))
 
 > type TypeSubst = Subst Int Type
 

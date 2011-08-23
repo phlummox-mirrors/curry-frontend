@@ -63,16 +63,16 @@ Executable cymake
     , Base.TypeSubst
     , Base.Typing
     , Base.Utils
-    , Check.KindCheck
-    , Check.PrecCheck
-    , Check.SyntaxCheck
-    , Check.TypeCheck
-    , Check.WarnCheck
+    , Checks.KindCheck
+    , Checks.PrecCheck
+    , Checks.SyntaxCheck
+    , Checks.TypeCheck
+    , Checks.WarnCheck
     , Env.Arity
     , Env.Eval
-    , Env.Interfaces
+    , Env.Interface
     , Env.Label
-    , Env.ModuleAliases
+    , Env.ModuleAlias
     , Env.NestEnv
     , Env.OldScopeEnv
     , Env.OpPrec
@@ -80,19 +80,19 @@ Executable cymake
     , Env.TopEnv
     , Env.TypeConstructors
     , Env.Value
-    , Gen.GenAbstractCurry
-    , Gen.GenFlatCurry
+    , Generators.GenAbstractCurry
+    , Generators.GenFlatCurry
     , Html.CurryHtml
     , Html.SyntaxColoring
     , IL.Pretty
     , IL.Type
     , IL.XML
-    , Transform.CaseCompletion
-    , Transform.CurryToIL
-    , Transform.Desugar
-    , Transform.Lift
-    , Transform.Qual
-    , Transform.Simplify
+    , Transformations.CaseCompletion
+    , Transformations.CurryToIL
+    , Transformations.Desugar
+    , Transformations.Lift
+    , Transformations.Qual
+    , Transformations.Simplify
 Library
   hs-source-dirs:  src
   Build-Depends:   filepath

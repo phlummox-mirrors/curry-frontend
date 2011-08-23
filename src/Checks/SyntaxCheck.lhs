@@ -19,7 +19,7 @@ the same key.} Finally, all (adjacent) equations of a function are
 merged into a single definition.
 \begin{verbatim}
 
-> module Check.SyntaxCheck (syntaxCheck) where
+> module Checks.SyntaxCheck (syntaxCheck) where
 
 > import Control.Monad.State as S (State, evalState, get, liftM, modify)
 > import Data.List ((\\), find, insertBy, partition)
@@ -36,7 +36,7 @@ merged into a single definition.
 > import Base.Utils ((++!), findDouble, mapAccumM)
 
 > import Env.Arity (ArityEnv, ArityInfo (..), lookupArity, qualLookupArity)
-> import Env.ModuleAliases (AliasEnv, lookupAlias)
+> import Env.ModuleAlias (AliasEnv, lookupAlias)
 > import Env.NestEnv
 > import Env.TypeConstructors (TCEnv, TypeInfo (..), qualLookupTC)
 > import Env.Value (ValueEnv, ValueInfo (..))
@@ -72,12 +72,12 @@ A global state transformer is used for generating fresh integer keys
 by which the variables get renamed.
 \begin{verbatim}
 
-> type RenameState a = S.State Int a
+> type RenameState a = S.State Integer a
 
 > run :: RenameState a -> a
 > run m = S.evalState m (globalKey + 1)
 
-> newId :: RenameState Int
+> newId :: RenameState Integer
 > newId = S.modify succ >> S.get
 
 \end{verbatim}
@@ -108,7 +108,7 @@ allow the usage of the qualified list constructor \texttt{(prelude.:)}.
 >                 | RecordLabel QualIdent [Ident]
 >                   deriving (Eq, Show)
 
-> globalKey :: Int
+> globalKey :: Integer
 > globalKey = uniqueId (mkIdent "")
 
 > renameInfo :: TCEnv -> AliasEnv -> ArityEnv -> ValueInfo -> RenameInfo
@@ -253,7 +253,7 @@ local declarations.
 > checkModule withExt m env ds = liftM snd (checkTopDecls withExt m env ds)
 
 > checkTopDecls :: Bool -> ModuleIdent -> RenameEnv -> [Decl]
->               -> RenameState (RenameEnv,[Decl])
+>               -> RenameState (RenameEnv, [Decl])
 > checkTopDecls withExt m env ds =
 >   checkDeclGroup (bindFuncDecl m) withExt m globalKey env ds
 
@@ -288,14 +288,14 @@ top-level.
 >   newId >>= \k -> checkDeclGroup bindVarDecl withExt m k (nestEnv env) ds
 
 > checkDeclGroup :: (Decl -> RenameEnv -> RenameEnv) -> Bool -> ModuleIdent
->                 -> Int -> RenameEnv -> [Decl]
+>                 -> Integer -> RenameEnv -> [Decl]
 >                 -> RenameState (RenameEnv,[Decl])
 > checkDeclGroup bindDecl withExt m k env ds =
 >   mapM (checkDeclLhs withExt k m env) ds' >>=
 >   checkDecls bindDecl withExt m env . joinEquations
 >  where ds' = sortFuncDecls ds
 
-> checkDeclLhs :: Bool -> Int -> ModuleIdent -> RenameEnv -> Decl -> RenameState Decl
+> checkDeclLhs :: Bool -> Integer -> ModuleIdent -> RenameEnv -> Decl -> RenameState Decl
 > checkDeclLhs _       k _ _ (InfixDecl p fix' pr ops) =
 >   return (InfixDecl p fix' pr (map (flip renameIdent k) ops))
 > checkDeclLhs _       k _ env (TypeSig p vs ty) =
@@ -318,7 +318,7 @@ top-level.
 >             (map (checkVar "free variables declaration" k env) vs))
 > checkDeclLhs _ _ _ _ d = return d
 
-> checkEquationLhs :: Bool -> Int -> ModuleIdent -> RenameEnv -> Position
+> checkEquationLhs :: Bool -> Integer -> ModuleIdent -> RenameEnv -> Position
 >	           -> [Equation] -> RenameState Decl
 > checkEquationLhs withExt k m env p [Equation p' lhs rhs] =
 >   either (return . funDecl) (checkDeclLhs withExt k m env . patDecl)
@@ -329,7 +329,7 @@ top-level.
 >           | otherwise = PatternDecl p' t rhs
 > checkEquationLhs _ _ _ _ _ _ = internalError "checkEquationLhs"
 
-> checkEqLhs :: ModuleIdent -> Int -> RenameEnv -> Position -> Lhs
+> checkEqLhs :: ModuleIdent -> Integer -> RenameEnv -> Position -> Lhs
 >            -> Either (Ident,Lhs) ConstrTerm
 > checkEqLhs m k env _ (FunLhs f ts)
 >   | isDataConstr f env
@@ -358,7 +358,7 @@ top-level.
 >     Right _ -> errorAt' $ nonVariable "curried definition" f
 >   where (f,_) = flatLhs lhs
 
-> checkOpLhs :: Int -> RenameEnv -> (ConstrTerm -> ConstrTerm) -> ConstrTerm
+> checkOpLhs :: Integer -> RenameEnv -> (ConstrTerm -> ConstrTerm) -> ConstrTerm
 >            -> Either (Ident,Lhs) ConstrTerm
 > checkOpLhs k env f (InfixPattern t1 op t2)
 >   | isJust m || isDataConstr op' env =
@@ -368,14 +368,14 @@ top-level.
 >         op'' = renameIdent op' k
 > checkOpLhs _ _ f t = Right (f t)
 
-> checkVar :: String -> Int -> RenameEnv -> Ident -> Ident
+> checkVar :: String -> Integer -> RenameEnv -> Ident -> Ident
 > checkVar what k env v
 >   | False && isDataConstr v env = errorAt' (nonVariable what v)---------------
 >   | otherwise = renameIdent v k
 
 
 > checkDecls :: (Decl -> RenameEnv -> RenameEnv) -> Bool -> ModuleIdent
->	        -> RenameEnv -> [Decl] -> RenameState (RenameEnv,[Decl])
+>	        -> RenameEnv -> [Decl] -> RenameState (RenameEnv, [Decl])
 > checkDecls bindDecl withExt m env ds =
 >   case findDouble bvs of
 >     Nothing ->
@@ -441,7 +441,7 @@ top-level.
 >   checkLhsTerm withExt k p m env lhs >>=
 >   return . checkConstrTerms withExt (nestEnv env)
 
-> checkLhsTerm :: Bool -> Int -> Position -> ModuleIdent -> RenameEnv -> Lhs
+> checkLhsTerm :: Bool -> Integer -> Position -> ModuleIdent -> RenameEnv -> Lhs
 >                 -> RenameState Lhs
 > checkLhsTerm withExt k p m env (FunLhs f ts) =
 >   do
@@ -479,7 +479,7 @@ top-level.
 >     Just v -> errorAt' (duplicateVariable v)
 >   where bvs = bv ts
 
-> checkConstrTerm :: Bool -> Int -> Position -> ModuleIdent -> RenameEnv
+> checkConstrTerm :: Bool -> Integer -> Position -> ModuleIdent -> RenameEnv
 >	             -> ConstrTerm -> RenameState ConstrTerm
 > checkConstrTerm _ _ _ _ _ (LiteralPattern l) =
 >   liftM LiteralPattern (renameLiteral l)
@@ -613,7 +613,7 @@ top-level.
 > checkConstrTerm _ _ _ _ _ (InfixFuncPattern _ _ _) = error $
 >   "SyntaxCheck.checkConstrTerm: infix function pattern not defined"
 
-> checkFieldPatt :: Bool -> Int -> ModuleIdent -> QualIdent -> RenameEnv
+> checkFieldPatt :: Bool -> Integer -> ModuleIdent -> QualIdent -> RenameEnv
 >	            -> Field ConstrTerm -> RenameState (Field ConstrTerm)
 > checkFieldPatt withExt k m r env (Field p l t)
 >    = case (lookupVar l env) of

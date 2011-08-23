@@ -10,7 +10,7 @@
 After desugaring and lifting have been performed, the source code is
 translated into the intermediate language. Besides translating from
 source terms and expressions into intermediate language terms and
-expressions this phase in particular has to implement the pattern
+expressions, this phase in particular has to implement the pattern
 matching algorithm for equations and case expressions.
 
 Because of name conflicts between the source and intermediate language
@@ -18,7 +18,7 @@ data structures, we can use only a qualified import for the
 \texttt{IL} module.
 \begin{verbatim}
 
-> module Transform.CurryToIL (ilTrans, translType) where
+> module Transformations.CurryToIL (ilTrans, translType) where
 
 > import Data.List (nub, partition)
 > import qualified Data.Map as Map (Map, empty, insert, lookup)

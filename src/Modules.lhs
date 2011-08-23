@@ -1,11 +1,20 @@
-% $Id: Modules.lhs,v 1.84 2004/02/10 17:46:07 wlux Exp $
-%
-% Copyright (c) 1999-2004, Wolfgang Lux
-% See LICENSE for the full license.
-%
-% Modified by Martin Engelke (men@informatik.uni-kiel.de)
-% March 2007, extensions by Sebastian Fischer (sebf@informatik.uni-kiel.de)
-%
+> {- |
+>     Module      :  $Header$
+>     Description :  Cumputation of export interface
+>     Copyright   :  (c) 1999-2004, Wolfgang Lux
+>                        2005, Martin Engelke (men@informatik.uni-kiel.de)
+>                        2007, Sebastian Fischer (sebf@informatik.uni-kiel.de)
+>                        2011, Björn Peemöller (bjp@informatik.uni-kiel.de)
+>     License     :  OtherLicense
+>
+>     Maintainer  :  bjp@informatik.uni-kiel.de
+>     Stability   :  experimental
+>     Portability :  portable
+>
+>     This module provides the computation of the exported interface of a
+>     compiled module.
+> -}
+
 \nwfilename{Modules.lhs}
 \section{Modules}
 This module controls the compilation of modules.
@@ -36,7 +45,7 @@ This module controls the compilation of modules.
 > import Base.Types
 
 > import Env.Eval (evalEnv)
-> import Env.Interfaces
+> import Env.Interface
 > import Env.TopEnv
 > import Env.Value
 
@@ -46,7 +55,7 @@ This module controls the compilation of modules.
 > import Exports (expandInterface, exportInterface)
 > import qualified Generators as Gen
 > import qualified IL as IL
-> import Imports (importModules, importModulesExt, qualifyEnv, qualifyEnvExt)
+> import Imports (importModules, qualifyEnv)
 > import Interfaces (loadInterfaces)
 > import ModuleSummary
 > import Transformations
@@ -112,7 +121,6 @@ code are obsolete and commented out.
 >     extTarget = ExtendedFlatCurry `elem` optTargetTypes opts
 >     withFlat  = or [fcyTarget, xmlTarget, extTarget]
 
-
 > checkModuleHeader :: Options -> FilePath -> Module -> (Module, [String])
 > checkModuleHeader opts fn = checkModuleId fn
 >                           . importPrelude opts
@@ -172,7 +180,7 @@ Haskell and original MCC where a module obtains \texttt{main}).
 >     -- split import/other declarations
 >     splitDs@(impDs, topDs) = partition isImportDecl ds
 >     -- add information of imported modules
->     env = importModules m mEnv impDs
+>     env = importModules opts m mEnv impDs
 >     -- check for warnings
 >     warnMsgs = warnCheck env splitDs
 >     -- check kinds, syntax, precedence
@@ -182,7 +190,7 @@ Haskell and original MCC where a module obtains \texttt{main}).
 >                    $ uncurry kindCheck
 >                      (topDs, env)
 >     modul = Module m es (impDs ++ topDs') -- expandInterface env2 (Module m es (impDs ++ topDs'))
->     cEnv  = qualifyEnv mEnv env2
+>     cEnv  = qualifyEnv opts mEnv env2
 >     intf  = exportInterface cEnv modul
 
 > checkModule :: Options -> InterfaceEnv -> Module
@@ -192,7 +200,7 @@ Haskell and original MCC where a module obtains \texttt{main}).
 >     -- split import/other declarations
 >     splitDs@(impDs, topDs) = partition isImportDecl ds
 >     -- add information of imported modules
->     env = importModulesExt opts m mEnv impDs
+>     env = importModules opts m mEnv impDs
 >     -- check for warnings
 >     warnMsgs = warnCheck env splitDs
 >     -- check kinds, syntax, precedence, types
@@ -203,7 +211,7 @@ Haskell and original MCC where a module obtains \texttt{main}).
 >                    $ uncurry kindCheck
 >                      (topDs, env)
 >     modul  = expandInterface env2 (Module m es (impDs ++ topDs'))
->     cEnv   = qualifyEnvExt opts mEnv env2
+>     cEnv   = qualifyEnv opts mEnv env2
 >     intf   = exportInterface cEnv modul
 
 > -- |Translate FlatCurry into the intermediate language 'IL'

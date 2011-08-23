@@ -16,7 +16,7 @@ into account. Then all local function declarations are collected and
 lifted to the top-level.
 \begin{verbatim}
 
-> module Transform.Lift (lift) where
+> module Transformations.Lift (lift) where
 
 > import Control.Monad
 > import qualified Control.Monad.State as S

@@ -1,3 +1,16 @@
+{- |
+    Module      :  $Header$
+    Description :  Generating HTML documentation
+    Copyright   :  (c) 2011, Björn Peemöller (bjp@informatik.uni-kiel.de)
+    License     :  OtherLicense
+
+    Maintainer  :  bjp@informatik.uni-kiel.de
+    Stability   :  experimental
+    Portability :  portable
+
+    This module defines a function for generating HTML documentation pages
+    for Curry source modules.
+-}
 module Html.CurryHtml (source2html) where
 
 import Control.Exception (SomeException (..), catch)
@@ -5,13 +18,15 @@ import Data.Maybe (fromMaybe, isJust)
 
 import Curry.Base.Ident (QualIdent (..), unqualify)
 import Curry.Base.MessageMonad (MsgMonad, failWith, runMsg)
-import Curry.Files.PathUtils
-  (readModule, writeModule, lookupCurryFile, dropExtension, takeFileName)
+import Curry.Files.PathUtils (readModule, writeModule, lookupCurryFile
+  , dropExtension, takeFileName)
 import Curry.Syntax (lexFile)
+
+import Html.SyntaxColoring
 
 import CompilerOpts (Options(..))
 import Frontend (parse, typingParse, fullParse)
-import Html.SyntaxColoring
+
 
 --- translate source file into HTML file with syntaxcoloring
 --- @param outputfilename

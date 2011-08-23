@@ -1,9 +1,15 @@
-{- |IL - Intermediate language
+{- |
+    Module      :  $Header$
+    Description :  Intermediate language
+    Copyright   :  (c) 2011, Björn Peemöller (bjp@informatik.uni-kiel.de)
+    License     :  OtherLicense
+
+    Maintainer  :  bjp@informatik.uni-kiel.de
+    Stability   :  experimental
+    Portability :  portable
 
     This module is a simple re-export of the definition of the AST of IL
-    and the pretty-printing/xml-priting functions.
-
-    February 2011, Björn Peemöller (bjp@informatik.uni-kiel.de)
+    and the pretty-printing/xml-printing functions.
 -}
 module IL
   ( module IL.Type

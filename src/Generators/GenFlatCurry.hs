@@ -7,7 +7,7 @@
 -- Martin Engelke (men@informatik.uni-kiel.de)
 --
 -- ---------------------------------------------------------------------------
-module Gen.GenFlatCurry (genFlatCurry, genFlatInterface) where
+module Generators.GenFlatCurry (genFlatCurry, genFlatInterface) where
 
 -- Haskell libraries
 import Control.Monad (filterM, liftM, mplus, when)
@@ -29,7 +29,7 @@ import Base.Types
 
  -- environments
 import Env.Arity (ArityEnv, ArityInfo (..), lookupArity, qualLookupArity)
-import Env.Interfaces
+import Env.Interface
 import Env.ScopeEnv (ScopeEnv)
 import qualified Env.ScopeEnv as ScopeEnv
 import Env.TopEnv (topEnvMap)

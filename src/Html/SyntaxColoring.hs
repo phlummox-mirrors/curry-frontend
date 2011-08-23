@@ -6,15 +6,14 @@ module Html.SyntaxColoring
 
 import Data.Char hiding (Space)
 import Data.Function (on)
-import Data.Maybe (fromMaybe, mapMaybe)
 import Data.List (intersperse, nubBy, partition)
+import Data.Maybe (fromMaybe, mapMaybe)
 import Debug.Trace (trace)
 
 import Curry.Base.Ident
 import Curry.Base.Position
 import Curry.Base.MessageMonad
 import Curry.Syntax hiding (infixOp)
-import Curry.Syntax.Lexer
 
 debug :: Bool
 debug = False -- mergen von Token und Codes

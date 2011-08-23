@@ -18,7 +18,7 @@ declarations groups as well as function arguments remain unchanged.
 \em{Note:} The modified version also qualifies type constructors
 \begin{verbatim}
 
-> module Transform.Qual (qual) where
+> module Transformations.Qual (qual) where
 
 > import Curry.Base.Ident
 > import Curry.Syntax

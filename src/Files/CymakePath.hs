@@ -1,3 +1,16 @@
+{- |
+    Module      :  $Header$
+    Description :  File pathes
+    Copyright   :  (c) 2011, Björn Peemöller (bjp@informatik.uni-kiel.de)
+    License     :  OtherLicense
+
+    Maintainer  :  bjp@informatik.uni-kiel.de
+    Stability   :  experimental
+    Portability :  portable
+
+    This module contains functions to obtain the version number and path
+    of the cymake binary.
+-}
 module Files.CymakePath (getCymake, cymakeGreeting, cymakeVersion) where
 
 import Data.Version (showVersion)
@@ -16,4 +29,4 @@ cymakeVersion = showVersion version
 getCymake :: IO String
 getCymake = do
   cymakeDir <- getBinDir
-  return (cymakeDir </> "cymake")
+  return $ cymakeDir </> "cymake"

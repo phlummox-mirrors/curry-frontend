@@ -50,10 +50,12 @@ an unlimited range of integer constants in Curry programs.
 > import Data.Generics (Data(..), Typeable(..))
 
 > import Curry.Base.Ident
-> import Curry.Base.Position (SrcRef(..))
+> import Curry.Base.Position (SrcRef(..), SrcRefOf (..))
+
+> import Base.Expr
 
 > data Module = Module ModuleIdent [ModuleIdent] [Decl]
->     deriving (Eq,Show)
+>     deriving (Eq, Show)
 
 > data Decl
 >   = DataDecl     QualIdent Int [ConstrDecl [Type]]
@@ -125,14 +127,34 @@ an unlimited range of integer constants in Curry programs.
 > data Binding = Binding Ident Expression
 >     deriving (Eq, Show)
 
+% instance for Expr
+
+> instance Expr Expression where
+>   fv (Variable            v) = [v]
+>   fv (Apply           e1 e2) = fv e1 ++ fv e2
+>   fv (Case       _ _ e alts) = fv e ++ fv alts
+>   fv (Or              e1 e2) = fv e1 ++ fv e2
+>   fv (Exist             v e) = filter (/= v) (fv e)
+>   fv (Let (Binding v e1) e2) = fv e1 ++ filter (/= v) (fv e2)
+>   fv (Letrec          bds e) = filter (`notElem` vs) (fv es ++ fv e)
+>     where (vs, es) = unzip [(v, e') | Binding v e' <- bds]
+>   fv _ = []
+
+> instance Expr Alt where
+>   fv (Alt (ConstructorPattern _ vs) e) = filter (`notElem` vs) (fv e)
+>   fv (Alt (VariablePattern       v) e) = filter (v /=) (fv e)
+>   fv (Alt _                         e) = fv e
+
+% instance for SrcRefOf
+
 > instance SrcRefOf ConstrTerm where
->   srcRefOf (LiteralPattern l) = srcRefOf l
+>   srcRefOf (LiteralPattern       l) = srcRefOf l
 >   srcRefOf (ConstructorPattern i _) = srcRefOf i
->   srcRefOf (VariablePattern i) = srcRefOf i
+>   srcRefOf (VariablePattern      i) = srcRefOf i
 
 > instance SrcRefOf Literal where
->   srcRefOf (Char s _)   = s
->   srcRefOf (Int s _)    = s
->   srcRefOf (Float s _)  = s
+>   srcRefOf (Char  s _) = s
+>   srcRefOf (Int   s _) = s
+>   srcRefOf (Float s _) = s
 
 \end{verbatim}

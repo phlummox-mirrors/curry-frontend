@@ -31,7 +31,7 @@ the module by traversing the syntax tree.
 > initEEnv = Map.empty
 
 > collectAnnotsDecl :: Decl -> EvalEnv -> EvalEnv
-> collectAnnotsDecl (EvalAnnot _  fs ev  ) env = foldr (`Map.insert` ev) env fs
+> collectAnnotsDecl (EvalAnnot    _ fs ev) env = foldr (`Map.insert` ev) env fs
 > collectAnnotsDecl (FunctionDecl _ _ eqs) env = foldr collectAnnotsEqn env eqs
 > collectAnnotsDecl (PatternDecl  _ _ rhs) env = collectAnnotsRhs rhs env
 > collectAnnotsDecl _ env = env

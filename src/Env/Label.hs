@@ -21,5 +21,5 @@ type LabelEnv = Map.Map Ident [LabelInfo]
 bindLabelType :: Ident -> QualIdent -> Type -> LabelEnv -> LabelEnv
 bindLabelType l r ty = Map.insertWith (++) l [LabelType l r ty]
 
-initLEnv :: LabelEnv
-initLEnv = Map.empty
+initLabelEnv :: LabelEnv
+initLabelEnv = Map.empty

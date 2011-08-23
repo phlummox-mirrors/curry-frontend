@@ -15,7 +15,7 @@ and rearrange infix applications according to the relative precedences
 of the operators involved.
 \begin{verbatim}
 
-> module Check.PrecCheck (precCheck) where
+> module Checks.PrecCheck (precCheck) where
 
 > import Data.List (partition, mapAccumL)
 

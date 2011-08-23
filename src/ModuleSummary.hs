@@ -1,7 +1,15 @@
-{- |ModuleSummary - Generates a record containing extracted and prepared data
-              from a 'Curry.Syntax.Module'
+{- |
+    Module      :  $Header$
+    Description :  Summarized information of a module
+    Copyright   :  (c) 2005, Martin Engelke (men@informatik.uni-kiel.de)
+    License     :  OtherLicense
 
-    November 2005, Martin Engelke (men@informatik.uni-kiel.de)
+    Maintainer  :  bjp@informatik.uni-kiel.de
+    Stability   :  experimental
+    Portability :  portable
+
+    Generates a record containing extracted and prepared data from a
+    'Curry.Syntax.Module'.
 -}
 module ModuleSummary (ModuleSummary (..), summarizeModule) where
 

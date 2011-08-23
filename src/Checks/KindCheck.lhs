@@ -22,7 +22,7 @@ hand side of a type declaration are actually defined and no identifier
 is defined more than once.
 \begin{verbatim}
 
-> module Check.KindCheck (kindCheck) where
+> module Checks.KindCheck (kindCheck) where
 
 > import Curry.Base.Position
 > import Curry.Base.Ident

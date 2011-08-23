@@ -10,7 +10,8 @@ import Curry.Base.Ident
 
 {- Type for representing an environment containing identifiers in several
    scope levels -}
-type ScopeEnv = (IdEnv, [IdEnv], Int)
+type ScopeLevel = Integer
+type ScopeEnv = (IdEnv, [IdEnv], ScopeLevel)
 
 -- Generates a new instance of a scope table
 newScopeEnv :: ScopeEnv
@@ -24,7 +25,7 @@ insertIdent ident (topleveltab, leveltabs, level)
        []       -> ((insertId level ident topleveltab), [], 0)
 
 -- Returns the declaration level of an identifier if it exists
-getIdentLevel :: Ident -> ScopeEnv -> Maybe Int
+getIdentLevel :: Ident -> ScopeEnv -> Maybe Integer
 getIdentLevel ident (topleveltab, leveltabs, _)
    = case leveltabs of
        (lt:_) -> maybe (getIdLevel ident topleveltab) Just (getIdLevel ident lt)
@@ -63,7 +64,7 @@ endScope (topleveltab, leveltabs, level)
        []      -> (topleveltab, [], 0)
 
 -- Returns the level of the current scope. Top level is 0
-getLevel :: ScopeEnv -> Int
+getLevel :: ScopeEnv -> ScopeLevel
 getLevel (_, _, level) = level
 
 -- Generates a new identifier for the specified name. The new identifier is
@@ -95,12 +96,12 @@ genIdentList size idName scopeenv = p_genIdentList size idName scopeenv 0
   Private declarations...
 --------------------------------------------------------------------------- -}
 
-type IdEnv = Map.Map IdRep Int
+type IdEnv = Map.Map IdRep Integer
 
-data IdRep = Name String | Index Int deriving (Eq, Ord)
+data IdRep = Name String | Index Integer deriving (Eq, Ord)
 
 --
-insertId :: Int -> Ident -> IdEnv -> IdEnv
+insertId :: Integer -> Ident -> IdEnv -> IdEnv
 insertId level ident env
    = Map.insert (Name (name ident))
              level
@@ -111,7 +112,7 @@ idExists :: Ident -> IdEnv -> Bool
 idExists ident env = indexExists (uniqueId ident) env
 
 --
-getIdLevel :: Ident -> IdEnv -> Maybe Int
+getIdLevel :: Ident -> IdEnv -> Maybe Integer
 getIdLevel ident env = Map.lookup (Index (uniqueId ident)) env
 
 --
@@ -129,5 +130,5 @@ nameExists :: String -> IdEnv -> Bool
 nameExists idName env = isJust (Map.lookup (Name idName) env)
 
 --
-indexExists :: Int -> IdEnv -> Bool
+indexExists :: Integer -> IdEnv -> Bool
 indexExists index env = isJust (Map.lookup (Index index) env)

@@ -4,7 +4,7 @@
     February 2006,
     Martin Engelke (men@informatik.uni-kiel.de)
 -}
-module Check.WarnCheck (warnCheck) where
+module Checks.WarnCheck (warnCheck) where
 
 import Control.Monad.State (State, execState, filterM, gets, modify, unless, when)
 import qualified Data.Map as Map (empty, insert, lookup)

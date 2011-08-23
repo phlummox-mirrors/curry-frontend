@@ -59,7 +59,7 @@ of using the syntax tree from \texttt{CurrySyntax}.}
 all names must be properly qualified before calling this module.}
 \begin{verbatim}
 
-> module Transform.Desugar (desugar) where
+> module Transformations.Desugar (desugar) where
 
 > import Control.Arrow (second)
 > import Control.Monad.State as S

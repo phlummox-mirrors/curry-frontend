@@ -1,8 +1,18 @@
--- Fully expand all (imported) record types within the type constructor
--- environment and the type environment.
--- Note: the record types for the current module are expanded within the
--- type check.
+{- |
+    Module      :  $Header$
+    Description :  Handling of record syntax
+    Copyright   :  (c) 2011, Björn Peemöller (bjp@informatik.uni-kiel.de)
+    License     :  OtherLicense
 
+    Maintainer  :  bjp@informatik.uni-kiel.de
+    Stability   :  experimental
+    Portability :  portable
+
+    Fully expand all (imported) record types within the type constructor
+    environment and the type environment.
+    /Note:/ the record types for the current module are expanded within the
+    type check.
+-}
 module Records where
 
 import Data.List (find)
@@ -17,7 +27,7 @@ import Base.Messages
 import Base.Types
 import Base.TypeSubst
 
-import Env.Interfaces
+import Env.Interface
 import Env.Label
 import Env.TopEnv
 import Env.TypeConstructors
@@ -26,32 +36,9 @@ import Env.Value
 import CompilerEnv
 import CompilerOpts
 
-recordExpansion1 :: Options -> CompilerEnv -> CompilerEnv
-recordExpansion1 opts env
-  | withExt   = env { tyConsEnv = tcEnv', valueEnv = tyEnv' }
-  | otherwise = env
-  where
-    withExt  = BerndExtension `elem` optExtensions opts
-    tcEnv'   = fmap (expandRecordTC tcEnv) tcEnv
-    tyEnv'   = fmap (expandRecordTypes tcEnv) tyEnvLbl
-    tyEnvLbl = addImportedLabels m lEnv tyEnv
-    m        = moduleIdent env
-    lEnv     = labelEnv env
-    tcEnv    = tyConsEnv env
-    tyEnv    = valueEnv env
-
-recordExpansion2 :: Options -> CompilerEnv -> CompilerEnv
-recordExpansion2 opts env
-  | withExt   = env { valueEnv = tyEnv' }
-  | otherwise = env
-  where
-    withExt  = BerndExtension `elem` optExtensions opts
-    tyEnv'   = fmap (expandRecordTypes tcEnv) tyEnvLbl
-    tyEnvLbl = addImportedLabels m lEnv tyEnv
-    m        = moduleIdent env
-    lEnv     = labelEnv env
-    tcEnv    = tyConsEnv env
-    tyEnv    = valueEnv env
+-- ---------------------------------------------------------------------------
+-- Import defined record labels
+-- ---------------------------------------------------------------------------
 
 -- Unlike usual identifiers like in functions, types etc., identifiers
 -- of labels are always represented unqualified within the whole context
@@ -60,10 +47,10 @@ recordExpansion2 opts env
 -- necessary to add the type information for labels seperately. For this reason
 -- the function \texttt{importLabels} generates an environment containing
 -- all imported labels and the function \texttt{addImportedLabels} adds this
--- content to a type environment.
+-- content to a value environment.
 
 importLabels :: InterfaceEnv -> [Decl] -> LabelEnv
-importLabels mEnv ds = foldl importLabelTypes initLEnv ds
+importLabels mEnv ds = foldl importLabelTypes initLabelEnv ds
   where
     importLabelTypes :: LabelEnv -> Decl -> LabelEnv
     importLabelTypes lEnv (ImportDecl p m _ asM is) =
@@ -95,13 +82,47 @@ importLabels mEnv ds = foldl importLabelTypes initLEnv ds
 
 addImportedLabels :: ModuleIdent -> LabelEnv -> ValueEnv -> ValueEnv
 addImportedLabels m lEnv tyEnv =
-  foldr addLabelType tyEnv (concatMap snd (Map.toList lEnv))
+  foldr addLabelType tyEnv $ concat $ Map.elems lEnv
   where
   addLabelType (LabelType l r ty) tyEnv' =
     let m' = fromMaybe m (qualidMod r)
     in  importTopEnv m' l
                      (Label (qualify l) (qualQualify m' r) (polyType ty))
                tyEnv'
+
+
+
+
+recordExpansion1 :: Options -> CompilerEnv -> CompilerEnv
+recordExpansion1 opts env
+  | withExt   = env { tyConsEnv = tcEnv', valueEnv = tyEnv' }
+  | otherwise = env
+  where
+    withExt  = BerndExtension `elem` optExtensions opts
+    tcEnv'   = fmap (expandRecordTC    tcEnv) tcEnv
+    tyEnv'   = fmap (expandRecordTypes tcEnv) tyEnvLbl
+    tyEnvLbl = addImportedLabels m lEnv tyEnv
+    m        = moduleIdent env
+    lEnv     = labelEnv env
+    tcEnv    = tyConsEnv env
+    tyEnv    = valueEnv env
+
+recordExpansion2 :: Options -> CompilerEnv -> CompilerEnv
+recordExpansion2 opts env
+  | withExt   = env { valueEnv = tyEnv' }
+  | otherwise = env
+  where
+    withExt  = BerndExtension `elem` optExtensions opts
+    tyEnv'   = fmap (expandRecordTypes tcEnv) tyEnvLbl
+    tyEnvLbl = addImportedLabels m lEnv tyEnv
+    m        = moduleIdent env
+    lEnv     = labelEnv env
+    tcEnv    = tyConsEnv env
+    tyEnv    = valueEnv env
+
+
+
+
 
 expandRecordTC :: TCEnv -> TypeInfo -> TypeInfo
 expandRecordTC tcEnv (DataType qid n args) =

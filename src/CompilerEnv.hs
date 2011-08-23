@@ -1,27 +1,45 @@
+{- |
+    Module      :  $Header$
+    Description :  Environment containing the module's information
+    Copyright   :  (c) 2011, Björn Peemöller (bjp@informatik.uni-kiel.de)
+    License     :  OtherLicense
+
+    Maintainer  :  bjp@informatik.uni-kiel.de
+    Stability   :  experimental
+    Portability :  portable
+
+    This module defines an environment for a module containing the information
+    needed throughout the compilation of the module.
+-}
+
+-- TODO: rename to Base.ModuleEnv ?
+
 module CompilerEnv where
 
 import Curry.Base.Ident (ModuleIdent)
 
 import Env.Arity
 import Env.Eval
-import Env.Interfaces
+import Env.Interface
 import Env.Label
-import Env.ModuleAliases
+import Env.ModuleAlias
 import Env.OpPrec
 import Env.TypeConstructors
 import Env.Value
 
--- |A compiler environment
+-- |A compiler environment contains information about the module currently
+--  compiled. The information is updated during the different stages of
+--  compilation.
 data CompilerEnv = CompilerEnv
-  { moduleIdent  :: ModuleIdent
-  , aliasEnv     :: AliasEnv
-  , arityEnv     :: ArityEnv
-  , evalAnnotEnv :: EvalEnv
-  , interfaceEnv :: InterfaceEnv
-  , labelEnv     :: LabelEnv
-  , opPrecEnv    :: PEnv
-  , tyConsEnv    :: TCEnv
-  , valueEnv     :: ValueEnv
+  { moduleIdent  :: ModuleIdent  -- ^ identifier of the module
+  , aliasEnv     :: AliasEnv     -- ^ aliases for imported modules
+  , arityEnv     :: ArityEnv     -- ^ arity of functions and data constructors
+  , evalAnnotEnv :: EvalEnv      -- ^ evaluation annotations
+  , interfaceEnv :: InterfaceEnv -- ^ declarations of imported interfaces
+  , labelEnv     :: LabelEnv     -- ^ record labels
+  , opPrecEnv    :: PEnv         -- ^ operator precedences
+  , tyConsEnv    :: TCEnv        -- ^ type constructors
+  , valueEnv     :: ValueEnv     -- ^ functions, ...
   }
 
 initCompilerEnv :: ModuleIdent -> CompilerEnv
@@ -31,7 +49,7 @@ initCompilerEnv mid = CompilerEnv
   , arityEnv     = initAEnv
   , evalAnnotEnv = initEEnv
   , interfaceEnv = initInterfaceEnv
-  , labelEnv     = initLEnv
+  , labelEnv     = initLabelEnv
   , opPrecEnv    = initPEnv
   , tyConsEnv    = initTCEnv
   , valueEnv     = initDCEnv

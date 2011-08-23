@@ -1,8 +1,20 @@
-{- |Frontend - Provides an API for dealing with several kinds of Curry
-    program representations
+{- |
+    Module      :  $Header$
+    Description :  API to access cymake as a library
+    Copyright   :  (c) 2005, Martin Engelke (men@informatik.uni-kiel.de)
+                       2011, Björn Peemöller (bjp@informatik.uni-kiel.de)
+    License     :  OtherLicense
 
-    December 2005, Martin Engelke (men@informatik.uni-kiel.de)
+    Maintainer  :  bjp@informatik.uni-kiel.de
+    Stability   :  experimental
+    Portability :  portable
+
+    This module provides an API for dealing with several kinds of Curry
+    program representations.
 -}
+
+-- TODO: Should be updated/refactored
+
 module Frontend (parse, fullParse, typingParse) where
 
 import Data.Maybe (mapMaybe)
@@ -14,7 +26,7 @@ import Curry.Files.Filenames
 import Curry.Files.PathUtils
 import Curry.Syntax (Module (..), Interface, parseModule)
 
-import Env.Interfaces
+import Env.Interface
 
 import CompilerEnv
 import CompilerOpts (Options (..), Verbosity (..), TargetType (..), defaultOptions)
