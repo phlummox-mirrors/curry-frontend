@@ -441,12 +441,11 @@ Auxiliary functions
 > isVarPattern _ = error "Simplify.isVarPattern: no pattern match"
 
 > funType :: ModuleIdent -> ValueEnv -> QualIdent -> Type
-> funType m tyEnv f =
->   case (qualLookupValue f tyEnv) of
+> funType m tyEnv f = case qualLookupValue f tyEnv of
 >     [Value _ (ForAll _ ty)] -> ty
->     _ -> case (qualLookupValue (qualQualify m f) tyEnv) of
->             [Value _ (ForAll _ ty)] -> ty
->             _ -> internalError ("funType " ++ show f)
+>     _ -> case qualLookupValue (qualQualify m f) tyEnv of
+>            [Value _ (ForAll _ ty)] -> ty
+>            _ -> internalError $ "Simplify.funType " ++ show f
 
 > evMode :: EvalEnv -> Ident -> Maybe EvalAnnotation
 > evMode evEnv f = Map.lookup f evEnv

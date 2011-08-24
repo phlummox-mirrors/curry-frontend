@@ -21,41 +21,39 @@ This module controls the compilation of modules.
 \begin{verbatim}
 
 > module Modules
->   ( compileModule, checkModuleHeader, simpleCheckModule, checkModule
+>   ( compileModule, loadModule, checkModuleHeader, simpleCheckModule, checkModule
 >   ) where
 
 > import Control.Monad (liftM, unless, when)
 > import Data.Maybe (fromMaybe)
-> import Text.PrettyPrint (Doc, ($$), text, vcat)
+> import Text.PrettyPrint (Doc)
 
-> import qualified Curry.AbstractCurry as AC
 > import Curry.Base.MessageMonad
 > import Curry.Base.Position
 > import Curry.Base.Ident
-> import qualified Curry.ExtendedFlat.Type as EF
 > import Curry.ExtendedFlat.InterfaceEquality (eqInterface)
 > import Curry.Files.Filenames
 > import Curry.Files.PathUtils
-> import Curry.Syntax as CS
 
-> import Base.CurryTypes (fromQualType)
 > import Base.ErrorMessages (errModuleFileMismatch)
 > import Base.Messages (abortWith, putErrsLn)
-> import Base.Types
 
 > import Env.Eval (evalEnv)
-> import Env.Interface
-> import Env.TopEnv
-> import Env.Value
+> import Env.Value (ppTypes)
+
+> -- source representations
+> import qualified Curry.AbstractCurry as AC
+> import qualified Curry.ExtendedFlat.Type as EF
+> import qualified Curry.Syntax as CS
+> import qualified IL as IL
 
 > import Checks
 > import CompilerEnv
 > import CompilerOpts
-> import Exports (expandInterface, exportInterface)
-> import qualified Generators as Gen
-> import qualified IL as IL
-> import Imports (importModules, qualifyEnv)
-> import Interfaces (loadInterfaces)
+> import Exports
+> import Generators
+> import Imports
+> import Interfaces
 > import ModuleSummary
 > import Transformations
 
@@ -85,49 +83,61 @@ code are obsolete and commented out.
 
 > compileModule :: Options -> FilePath -> IO ()
 > compileModule opts fn = do
->   -- read and parse module
->   parsed <- (ok . CS.parseModule (not extTarget) fn) `liftM` readModule fn
->   -- check module header
->   let (m, hdrErrs) = checkModuleHeader opts fn parsed
->   unless (null hdrErrs) $ abortWith hdrErrs
->   -- load the imported interfaces into a InterfaceEnv
->   iEnv <- loadInterfaces (optImportPaths opts) m
+>   (env, mdl) <- loadModule opts fn
 >   if not withFlat
 >      then do
->        let (cEnv, modul, _, warnMsgs) = simpleCheckModule opts iEnv m
+>        let (env2, modul, _intf, warnMsgs) = simpleCheckModule opts env mdl
 >        showWarnings opts warnMsgs
 >        -- output the parsed source
 >        writeParsed        opts fn modul
 >        -- output AbstractCurry
->        writeAbstractCurry opts fn cEnv modul
+>        writeAbstractCurry opts fn env2 modul
 >      else do
 >        -- checkModule checks types, and then transModule introduces new
 >        -- functions (by lambda lifting in 'desugar'). Consequence: The
 >        -- types of the newly introduced functions are not inferred (hsi)
->        let (cEnv, modul, intf, warnMsgs) = checkModule opts iEnv m
+>        let (env2, modul, intf, warnMsgs) = checkModule opts env mdl
 >        showWarnings opts warnMsgs
 >        writeParsed        opts fn modul
->        writeAbstractCurry opts fn cEnv modul
->        let (cEnv', il, dumps) = transModule fcyTarget cEnv modul
+>        writeAbstractCurry opts fn env2 modul
+>        let (env3, il, dumps) = transModule opts env2 modul
 >        -- dump intermediate results
 >        mapM_ (doDump opts) dumps
 >        -- generate target code
->        let modSum = summarizeModule (tyConsEnv cEnv') intf modul
->        writeFlat opts fn cEnv' modSum il
+>        let modSum = summarizeModule (tyConsEnv env3) intf modul
+>        writeFlat opts fn env3 modSum il
 >   where
 >     fcyTarget = FlatCurry         `elem` optTargetTypes opts
 >     xmlTarget = FlatXml           `elem` optTargetTypes opts
 >     extTarget = ExtendedFlatCurry `elem` optTargetTypes opts
 >     withFlat  = or [fcyTarget, xmlTarget, extTarget]
 
-> checkModuleHeader :: Options -> FilePath -> Module -> (Module, [String])
+-- ---------------------------------------------------------------------------
+-- Loading a module
+-- ---------------------------------------------------------------------------
+
+> loadModule :: Options -> FilePath -> IO (CompilerEnv, CS.Module)
+> loadModule opts fn = do
+>   -- read and parse module
+>   parsed <- (ok . CS.parseModule (not extTarget) fn) `liftM` readModule fn
+>   -- check module header
+>   let (mdl, hdrErrs) = checkModuleHeader opts fn parsed
+>   unless (null hdrErrs) $ abortWith hdrErrs
+>   -- load the imported interfaces into an InterfaceEnv
+>   iEnv <- loadInterfaces (optImportPaths opts) mdl
+>   -- add information of imported modules
+>   let env = importModules opts mdl iEnv
+>   return (env, mdl)
+>   where extTarget = ExtendedFlatCurry `elem` optTargetTypes opts
+
+> checkModuleHeader :: Options -> FilePath -> CS.Module -> (CS.Module, [String])
 > checkModuleHeader opts fn = checkModuleId fn
 >                           . importPrelude opts
 >                           . patchModuleId fn
 
 > -- |Check whether the 'ModuleIdent' and the 'FilePath' fit together
-> checkModuleId :: FilePath -> Module -> (Module, [String])
-> checkModuleId fn m@(Module mid _ _ _)
+> checkModuleId :: FilePath -> CS.Module -> (CS.Module, [String])
+> checkModuleId fn m@(CS.Module mid _ _ _)
 >   | last (moduleQualifiers mid) == takeBaseName fn
 >   = (m, [])
 >   | otherwise
@@ -140,8 +150,8 @@ by a compiler option. If no explicit import for the prelude is present,
 the prelude is imported unqualified, otherwise a qualified import is added.
 \begin{verbatim}
 
-> importPrelude :: Options -> Module -> Module
-> importPrelude opts m@(Module mid es is ds)
+> importPrelude :: Options -> CS.Module -> CS.Module
+> importPrelude opts m@(CS.Module mid es is ds)
 >     -- the Prelude itself
 >   | mid == preludeMIdent          = m
 >     -- disabled by compiler option
@@ -149,14 +159,14 @@ the prelude is imported unqualified, otherwise a qualified import is added.
 >     -- already imported
 >   | preludeMIdent `elem` imported = m
 >     -- let's add it!
->   | otherwise                     = Module mid es (preludeImp : is) ds
+>   | otherwise                     = CS.Module mid es (preludeImp : is) ds
 >   where
 >     noImpPrelude = NoImplicitPrelude `elem` optExtensions opts
->     preludeImp   = ImportDecl NoPos preludeMIdent
+>     preludeImp   = CS.ImportDecl NoPos preludeMIdent
 >                    False   -- qualified?
 >                    Nothing -- no alias
 >                    Nothing -- no selection of types, functions, etc.
->     imported     = [imp | (ImportDecl _ imp _ _ _) <- is]
+>     imported     = [imp | (CS.ImportDecl _ imp _ _ _) <- is]
 
 \end{verbatim}
 A module which doesn't contain a \texttt{module ... where} declaration
@@ -164,71 +174,78 @@ obtains its filename as module identifier (unlike the definition in
 Haskell and original MCC where a module obtains \texttt{main}).
 \begin{verbatim}
 
-> patchModuleId :: FilePath -> Module -> Module
-> patchModuleId fn m@(Module mid es is ds)
+> patchModuleId :: FilePath -> CS.Module -> CS.Module
+> patchModuleId fn m@(CS.Module mid es is ds)
 >   | mid == mainMIdent
->     = Module (mkMIdent [takeBaseName fn]) es is ds
+>     = CS.Module (mkMIdent [takeBaseName fn]) es is ds
 >   | otherwise
 >     = m
 
-> -- |
-> simpleCheckModule :: Options -> InterfaceEnv -> Module
->   -> (CompilerEnv, Module, Interface, [Message])
-> simpleCheckModule opts mEnv (Module m es is ds)
->   = (cEnv, modul, intf, warnMsgs)
->   where
->     -- add information of imported modules
->     env = importModules opts m mEnv is
->     -- check for warnings
->     warnMsgs = warnCheck env is ds
->     -- check kinds, syntax, precedence
->     (ds', env2) = uncurry qual
->                    $ uncurry precCheck
->                    $ uncurry (syntaxCheck opts)
->                    $ uncurry kindCheck
->                      (ds, env)
->     modul = Module m es is ds' -- expandInterface env2 $ Module m es is ds'
->     cEnv  = qualifyEnv opts mEnv env2
->     intf  = exportInterface cEnv modul
+-- ---------------------------------------------------------------------------
+-- Checking a module
+-- ---------------------------------------------------------------------------
 
-> checkModule :: Options -> InterfaceEnv -> Module
->   -> (CompilerEnv, Module, Interface, [Message])
-> checkModule opts mEnv (Module m es is ds) = (cEnv, modul, intf, warnMsgs)
+> -- |
+> simpleCheckModule :: Options -> CompilerEnv -> CS.Module
+>                   -> (CompilerEnv, CS.Module, CS.Interface, [Message])
+> simpleCheckModule opts env mdl = (env3, mdl2, intf, warnMsgs)
 >   where
->     -- add information of imported modules
->     env = importModules opts m mEnv is
 >     -- check for warnings
->     warnMsgs = warnCheck env is ds
+>     warnMsgs = warnCheck mdl env
+>     -- check kinds, syntax, precedence
+>     (mdl2, env2) = uncurry qual
+>                  $ uncurry precCheck
+>                  $ uncurry (syntaxCheck opts)
+>                  $ uncurry kindCheck
+>                    (mdl, env)
+>     env3  = qualifyEnv opts env2
+>     intf  = exportInterface env3 mdl2
+
+> checkModule :: Options -> CompilerEnv -> CS.Module
+>             -> (CompilerEnv, CS.Module, CS.Interface, [Message])
+> checkModule opts env mdl = (env3, mdl3, intf, warnMsgs)
+>   where
+>     -- check for warnings
+>     warnMsgs = warnCheck mdl env
 >     -- check kinds, syntax, precedence, types
->     (ds', env2) = uncurry qual
->                    $ uncurry typeCheck
->                    $ uncurry precCheck
->                    $ uncurry (syntaxCheck opts)
->                    $ uncurry kindCheck
->                      (ds, env)
->     modul  = expandInterface env2 $ Module m es is ds'
->     cEnv   = qualifyEnv opts mEnv env2
->     intf   = exportInterface cEnv modul
+>     (mdl2, env2) = uncurry qual
+>                  $ uncurry typeCheck
+>                  $ uncurry precCheck
+>                  $ uncurry (syntaxCheck opts)
+>                  $ uncurry kindCheck
+>                    (mdl, env)
+>     mdl3 = expandInterface env2 $ mdl2
+>     env3 = qualifyEnv opts env2
+>     intf = exportInterface env3 mdl3
+
+-- ---------------------------------------------------------------------------
+-- Translating a module
+-- ---------------------------------------------------------------------------
 
 > -- |Translate FlatCurry into the intermediate language 'IL'
-> transModule :: Bool -> CompilerEnv -> Module
+> transModule :: Options -> CompilerEnv -> CS.Module
 >             -> (CompilerEnv, IL.Module, [(DumpLevel, Doc)])
-> transModule flat' env mdl@(Module m es is ds) = (env5, ilCaseComp, dumps)
+> transModule opts env mdl = (env5, ilCaseComp, dumps)
 >   where
->     env0 = env { evalAnnotEnv = evalEnv ds }
->     (desugared , env1) = desugar (Module m es is ds) env0
->     (simplified, env2) = simplify flat' desugared env1
->     (lifted    , env3) = lift simplified env2
->     (il        , env4) = ilTrans flat' lifted env3
->     (ilCaseComp, env5) = completeCase il env4
->     dumps = [ (DumpRenamed   , ppModule    mdl       )
->             , (DumpTypes     , ppTypes     env       )
->             , (DumpDesugared , ppModule    desugared )
->             , (DumpSimplified, ppModule    simplified)
->             , (DumpLifted    , ppModule    lifted    )
+>     flat' = FlatCurry `elem` optTargetTypes opts
+>     env0 = env { evalAnnotEnv = evalEnv mdl }
+>     (desugared , env1) = desugar        mdl        env0
+>     (simplified, env2) = simplify flat' desugared  env1
+>     (lifted    , env3) = lift           simplified env2
+>     (il        , env4) = ilTrans flat'  lifted     env3
+>     (ilCaseComp, env5) = completeCase   il         env4
+>     dumps = [ (DumpRenamed   , CS.ppModule    mdl         )
+>             , (DumpTypes     , ppTypes     (moduleIdent env) (valueEnv env))
+>             , (DumpDesugared , CS.ppModule    desugared   )
+>             , (DumpSimplified, CS.ppModule    simplified  )
+>             , (DumpLifted    , CS.ppModule    lifted    )
 >             , (DumpIL        , IL.ppModule il        )
 >             , (DumpCase      , IL.ppModule ilCaseComp)
 >             ]
+
+-- ---------------------------------------------------------------------------
+-- Writing output
+-- ---------------------------------------------------------------------------
 
 \end{verbatim}
 The functions \texttt{genFlat} and \texttt{genAbstract} generate
@@ -267,7 +284,7 @@ be dependent on it any longer.
 >     extTarget    = ExtendedFlatCurry `elem` optTargetTypes opts
 >     fcyTarget    = FlatCurry         `elem` optTargetTypes opts
 >     useSubDir    = optUseSubdir opts
->     (prog, msgs) = Gen.genFlatCurry opts modSum env il
+>     (prog, msgs) = genFlatCurry opts modSum env il
 
 > writeInterface :: Options -> FilePath -> CompilerEnv -> ModuleSummary
 >                -> IL.Module -> IO ()
@@ -281,7 +298,7 @@ be dependent on it any longer.
 >   where
 >     targetFile = flatIntName fn
 >     emptyIntf = EF.Prog "" [] [] [] []
->     (newInterface, intMsgs) = Gen.genFlatInterface opts modSum env il
+>     (newInterface, intMsgs) = genFlatInterface opts modSum env il
 >     outputInterface = do
 >       showWarnings opts intMsgs
 >       EF.writeFlatCurry (optUseSubdir opts) targetFile newInterface
@@ -296,12 +313,12 @@ be dependent on it any longer.
 >     targetFile = fromMaybe (xmlName fn) (optOutput opts)
 >     curryXml   = shows (IL.xmlModule modSum il) "\n"
 
-> writeAbstractCurry :: Options -> FilePath -> CompilerEnv -> Module -> IO ()
+> writeAbstractCurry :: Options -> FilePath -> CompilerEnv -> CS.Module -> IO ()
 > writeAbstractCurry opts fname env modul = do
 >   when  acyTarget $ AC.writeCurry useSubDir (acyName fname)
->                   $ Gen.genTypedAbstractCurry env modul
+>                   $ genTypedAbstractCurry env modul
 >   when uacyTarget $ AC.writeCurry useSubDir (uacyName fname)
->                   $ Gen.genUntypedAbstractCurry env modul
+>                   $ genUntypedAbstractCurry env modul
 >   where
 >     acyTarget  = AbstractCurry        `elem` optTargetTypes opts
 >     uacyTarget = UntypedAbstractCurry `elem` optTargetTypes opts
@@ -317,9 +334,9 @@ standard output.
 \begin{verbatim}
 
 > doDump :: Options -> (DumpLevel, Doc) -> IO ()
-> doDump opts (dl, x) = when (dl `elem` optDumps opts) $ print
->   (text hd $$ text (replicate (length hd) '=') $$ x)
->   where hd = dumpHeader dl
+> doDump opts (level, dump) = when (level `elem` optDumps opts) $ putStrLn $
+>   unlines [header, replicate (length header) '=', show dump]
+>   where header = dumpHeader level
 
 > dumpHeader :: DumpLevel -> String
 > dumpHeader DumpRenamed    = "Module after renaming"
@@ -329,24 +346,5 @@ standard output.
 > dumpHeader DumpLifted     = "Source code after lifting"
 > dumpHeader DumpIL         = "Intermediate code"
 > dumpHeader DumpCase       = "Intermediate code after case simplification"
-
-\end{verbatim}
-The function \texttt{ppTypes} is used for pretty-printing the types
-from the type environment.
-\begin{verbatim}
-
-> ppTypes :: CompilerEnv -> Doc
-> ppTypes env = ppTypes' (moduleIdent env) (localBindings $ valueEnv env)
->   where
->   ppTypes' :: ModuleIdent -> [(Ident, ValueInfo)] -> Doc
->   ppTypes' m = vcat . map (ppIDecl . mkDecl) . filter (isValue . snd)
->     where mkDecl (v, Value _ (ForAll _ ty)) =
->             IFunctionDecl undefined (qualify v) (arrowArity ty)
->                          (fromQualType m ty)
->           mkDecl _ = error "Modules.ppTypes.mkDecl: no pattern match"
->           isValue (DataConstructor _ _) = False
->           isValue (NewtypeConstructor _ _) = False
->           isValue (Value _ _) = True
->           isValue (Label _ _ _) = False
 
 \end{verbatim}

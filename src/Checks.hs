@@ -29,31 +29,32 @@ import CompilerOpts
 
 -- |Check the kinds of type definitions and signatures.
 -- In addition, nullary type constructors and type variables are dinstiguished
-kindCheck :: [Decl] -> CompilerEnv -> ([Decl], CompilerEnv)
-kindCheck decls env = (decls', env)
-  where decls' = KC.kindCheck (moduleIdent env) (tyConsEnv env) decls
+kindCheck :: Module -> CompilerEnv -> (Module, CompilerEnv)
+kindCheck (Module m es is ds) env = (Module m es is ds', env)
+  where ds' = KC.kindCheck (moduleIdent env) (tyConsEnv env) ds
 
 -- |Apply the precendences of infix operators.
 -- This function reanrranges the AST.
-precCheck :: [Decl] -> CompilerEnv -> ([Decl], CompilerEnv)
-precCheck decls env = (decls', env { opPrecEnv = pEnv' })
-  where (pEnv', decls') = PC.precCheck (moduleIdent env) (opPrecEnv env) decls
+precCheck :: Module -> CompilerEnv -> (Module, CompilerEnv)
+precCheck (Module m es is ds) env = (Module m es is ds', env { opPrecEnv = pEnv' })
+  where (pEnv', ds') = PC.precCheck (moduleIdent env) (opPrecEnv env) ds
 
 -- |Apply the syntax check.
-syntaxCheck :: Options -> [Decl] -> CompilerEnv -> ([Decl], CompilerEnv)
-syntaxCheck opts decls env = (decls', env)
-  where decls' = SC.syntaxCheck withExt (moduleIdent env) (aliasEnv env)
-                   (arityEnv env) (valueEnv env) (tyConsEnv env) decls
+syntaxCheck :: Options -> Module -> CompilerEnv -> (Module, CompilerEnv)
+syntaxCheck opts (Module m es is ds) env = (Module m es is ds', env)
+  where ds'     = SC.syntaxCheck withExt (moduleIdent env) (aliasEnv env)
+                   (arityEnv env) (valueEnv env) (tyConsEnv env) ds
         withExt = BerndExtension `elem` optExtensions opts
 
 -- |Apply the type check.
-typeCheck :: [Decl] -> CompilerEnv -> ([Decl], CompilerEnv)
-typeCheck decls env = (decls, env { tyConsEnv = tcEnv', valueEnv = tyEnv' })
+typeCheck :: Module -> CompilerEnv -> (Module, CompilerEnv)
+typeCheck mdl@(Module _ _ _ ds) env = (mdl, env { tyConsEnv = tcEnv', valueEnv = tyEnv' })
   where (tcEnv', tyEnv') = TC.typeCheck (moduleIdent env)
-                              (tyConsEnv env) (valueEnv env) decls
+                              (tyConsEnv env) (valueEnv env) ds
 
 -- TODO: Which kind of warnings?
 
 -- |Check for warnings.
-warnCheck :: CompilerEnv -> [ImportDecl] -> [Decl] -> [Message]
-warnCheck env = WC.warnCheck (moduleIdent env) (valueEnv env)
+warnCheck :: Module -> CompilerEnv -> [Message]
+warnCheck (Module _ _ is ds) env
+  = WC.warnCheck (moduleIdent env) (valueEnv env) is ds

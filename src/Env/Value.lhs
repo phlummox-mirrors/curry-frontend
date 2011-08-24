@@ -13,10 +13,14 @@ are considered equal if their original names match.
 > module Env.Value
 >   ( ValueEnv, ValueInfo (..), bindGlobalInfo, bindFun, rebindFun, bindLabel
 >   , lookupValue, qualLookupValue, qualLookupCons, lookupTuple, tupleDCs
->   , initDCEnv ) where
+>   , initDCEnv, ppTypes ) where
+
+> import Text.PrettyPrint (Doc, vcat)
 
 > import Curry.Base.Ident
+> import Curry.Syntax
 
+> import Base.CurryTypes (fromQualType)
 > import Base.Types
 > import Base.Utils ((++!))
 
@@ -122,5 +126,24 @@ TODO: Match other patterns?
 >   where predefDC c ty = predefTopEnv c' (DataConstructor c' ty)
 >           where c' = qualify c
 >         constrType (ForAll n ty) n' = ForAllExist n n' . foldr TypeArrow ty
+
+\end{verbatim}
+The function \texttt{ppTypes} is used for pretty-printing the types
+from the type environment.
+\begin{verbatim}
+
+> ppTypes :: ModuleIdent -> ValueEnv -> Doc
+> ppTypes mid valueEnv = ppTypes' mid (localBindings valueEnv)
+>   where
+>   ppTypes' :: ModuleIdent -> [(Ident, ValueInfo)] -> Doc
+>   ppTypes' m = vcat . map (ppIDecl . mkDecl) . filter (isValue . snd)
+>     where mkDecl (v, Value _ (ForAll _ ty)) =
+>             IFunctionDecl undefined (qualify v) (arrowArity ty)
+>                          (fromQualType m ty)
+>           mkDecl _ = error "Modules.ppTypes.mkDecl: no pattern match"
+>           isValue (DataConstructor _ _) = False
+>           isValue (NewtypeConstructor _ _) = False
+>           isValue (Value _ _) = True
+>           isValue (Label _ _ _) = False
 
 \end{verbatim}

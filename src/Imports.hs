@@ -45,16 +45,16 @@ import Records (importLabels, recordExpansion1, recordExpansion2)
 
 -- |The function 'importModules' brings the declarations of all
 -- imported interfaces into scope for the current module.
-importModules :: Options -> ModuleIdent -> InterfaceEnv
-              -> [ImportDecl] -> CompilerEnv
-importModules opts mid iEnv decls = recordExpansion1 opts
-                                  $ importUnifyData
-                                  $ foldl importModule initEnv decls
+importModules :: Options -> Module -> InterfaceEnv -> CompilerEnv
+importModules opts (Module mid _ imps _) iEnv
+  = recordExpansion1 opts
+  $ importUnifyData
+  $ foldl importModule initEnv imps
   where
     initEnv = (initCompilerEnv mid)
-      { aliasEnv     = importAliases     decls -- import module aliases
-      , labelEnv     = importLabels iEnv decls -- import record labels
-      , interfaceEnv = iEnv                    -- imported interfaces
+      { aliasEnv     = importAliases     imps -- import module aliases
+      , labelEnv     = importLabels iEnv imps -- import record labels
+      , interfaceEnv = iEnv                   -- imported interfaces
       }
     importModule env (ImportDecl _ m q asM is) = case Map.lookup m iEnv of
       Just intf -> importInterface (fromMaybe m asM) q is intf env
@@ -62,11 +62,12 @@ importModules opts mid iEnv decls = recordExpansion1 opts
                                    ++ show m
 
 -- |
-qualifyEnv :: Options -> InterfaceEnv -> CompilerEnv -> CompilerEnv
-qualifyEnv opts iEnv env = recordExpansion2 opts
-                         $ qualifyLocal env
-                         $ foldl (flip importInterfaceIntf) initEnv
-                         $ Map.elems iEnv
+qualifyEnv :: Options -> CompilerEnv -> CompilerEnv
+qualifyEnv opts env = recordExpansion2 opts
+                    $ qualifyLocal env
+                    $ foldl (flip importInterfaceIntf) initEnv
+                    $ Map.elems
+                    $ interfaceEnv env
   where initEnv = initCompilerEnv $ moduleIdent env
 
 -- ---------------------------------------------------------------------------

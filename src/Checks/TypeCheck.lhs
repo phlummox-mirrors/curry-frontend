@@ -63,7 +63,7 @@ The type checker returns the resulting type
 constructor and type environments.
 \begin{verbatim}
 
-> typeCheck :: ModuleIdent -> TCEnv -> ValueEnv -> [Decl] -> (TCEnv,ValueEnv)
+> typeCheck :: ModuleIdent -> TCEnv -> ValueEnv -> [Decl] -> (TCEnv, ValueEnv)
 > typeCheck m tcEnv tyEnv ds =
 >   run (tcDecls m tcEnv' Map.empty vds >>
 >        S.lift S.get >>= \theta -> S.get >>= \tyEnv' ->
@@ -143,7 +143,7 @@ and \texttt{expandMonoTypes}, respectively.
 >         free _ = error "TypeCheck.sortTypeDecls.free: no pattern match"
 
 > typeDecl :: ModuleIdent -> [Decl] -> Decl
-> typeDecl _ [] = internalError "typeDecl"
+> typeDecl _ [] = internalError "TypeCheck.typeDecl"
 > typeDecl _ [d@(DataDecl _ _ _ _)] = d
 > typeDecl _ [d@(NewtypeDecl _ _ _ _)] = d
 > typeDecl m [d@(TypeDecl _ tc _ ty)]
@@ -340,7 +340,7 @@ either one of the basic types or \texttt{()}.
 >   where typeOf f' tcEnv' sigs' =
 >           case lookupTypeSig f' sigs' of
 >             Just ty -> return (expandPolyType m tcEnv' ty)
->             Nothing -> internalError "tcFlatExternalFunct"
+>             Nothing -> internalError "TypeCheck.tcFlatExternalFunct"
 
 > tcExtraVar :: ModuleIdent -> TCEnv -> SigEnv -> Ident
 >            -> TcState ()
@@ -425,8 +425,7 @@ signature the declared type must be too general.
 >         tyEnv' = rebindFun m v sigma tyEnv
 >         sigma = genType poly (subst theta (varType v tyEnv))
 >         genType poly' (ForAll n ty)
->           | n > 0 = internalError ("genVar: " ++ showLine (positionOfIdent v) ++
->                                    show v ++ " :: " ++ show ty)
+>           | n > 0 = internalError $ "TypeCheck.genVar: " ++ showLine (positionOfIdent v) ++ show v ++ " :: " ++ show ty
 >           | poly' = gen lvs ty
 >           | otherwise = monoType ty
 >         cmpTypes (ForAll _ t1) (ForAll _ t2) = equTypes t1 t2
@@ -474,7 +473,7 @@ signature the declared type must be too general.
 >           unify p "pattern" (doc $-$ text "Term:" <+> ppConstrTerm 0 t1)
 >                 m ty1 >>
 >           unifyArgs doc ts1 ty2
->         unifyArgs _ _ _ = internalError "tcConstrTerm"
+>         unifyArgs _ _ _ = internalError "TypeCheck.tcConstrTerm"
 > tcConstrTerm m tcEnv sigs p t@(InfixPattern t1 op t2) =
 >   do
 >     tyEnv <- S.get
@@ -486,7 +485,7 @@ signature the declared type must be too general.
 >           unify p "pattern" (doc $-$ text "Term:" <+> ppConstrTerm 0 t')
 >                 m ty1 >>
 >           unifyArgs doc ts' ty2
->         unifyArgs _ _ _ = internalError "tcConstrTerm"
+>         unifyArgs _ _ _ = internalError "TypeCheck.tcConstrTerm"
 > tcConstrTerm m tcEnv sigs p (ParenPattern t) = tcConstrTerm m tcEnv sigs p t
 > tcConstrTerm m tcEnv sigs p (TuplePattern _ ts)
 >  | null ts = return unitType
@@ -525,7 +524,7 @@ signature the declared type must be too general.
 >	          (doc $-$ text "Term:" <+> ppConstrTerm 0 t1)
 >                 m ty1 >>
 >           unifyArgs doc ts1 ty2
->         unifyArgs _ _ ty = internalError ("tcConstrTerm: " ++ show ty)
+>         unifyArgs _ _ ty = internalError $ "TypeCheck.tcConstrTerm: " ++ show ty
 > tcConstrTerm m tcEnv sigs p (InfixFuncPattern t1 op t2) =
 >   tcConstrTerm m tcEnv sigs p (FunctionPattern op [t1,t2])
 > tcConstrTerm m tcEnv sigs p r@(RecordPattern fs rt)
@@ -573,7 +572,7 @@ because of possibly multiple occurrences of variables.
 >           unify p "pattern" (doc $-$ text "Term:" <+> ppConstrTerm 0 t1)
 >                 m ty1 >>
 >           unifyArgs doc ts1 ty2
->         unifyArgs _ _ _ = internalError "tcConstrTermFP"
+>         unifyArgs _ _ _ = internalError "TypeCheck.tcConstrTermFP"
 > tcConstrTermFP m tcEnv sigs p t@(InfixPattern t1 op t2) =
 >   do
 >     tyEnv <- S.get
@@ -585,7 +584,7 @@ because of possibly multiple occurrences of variables.
 >           unify p "pattern" (doc $-$ text "Term:" <+> ppConstrTerm 0 t')
 >                 m ty1 >>
 >           unifyArgs doc ts' ty2
->         unifyArgs _ _ _ = internalError "tcConstrTermFP"
+>         unifyArgs _ _ _ = internalError "TypeCheck.tcConstrTermFP"
 > tcConstrTermFP m tcEnv sigs p (ParenPattern t) = tcConstrTermFP m tcEnv sigs p t
 > tcConstrTermFP m tcEnv sigs p (TuplePattern _ ts)
 >  | null ts = return unitType
@@ -623,7 +622,7 @@ because of possibly multiple occurrences of variables.
 >           unify p "pattern" (doc $-$ text "Term:" <+> ppConstrTerm 0 t1)
 >                 m ty1 >>
 >           unifyArgs doc ts1 ty2
->         unifyArgs _ _ _ = internalError "tcConstrTermFP"
+>         unifyArgs _ _ _ = internalError "TypeCheck.tcConstrTermFP"
 > tcConstrTermFP m tcEnv sigs p (InfixFuncPattern t1 op t2) =
 >   tcConstrTermFP m tcEnv sigs p (FunctionPattern op [t1,t2])
 > tcConstrTermFP m tcEnv sigs p r@(RecordPattern fs rt)
@@ -689,7 +688,7 @@ because of possibly multiple occurrences of variables.
 
 > tcExpr :: ModuleIdent -> TCEnv -> SigEnv -> Position -> Expression
 >        -> TcState Type
-> tcExpr m _ _ _ (Literal l) = tcLiteral m l
+> tcExpr m _     _    _ (Literal  l) = tcLiteral m l
 > tcExpr m tcEnv sigs _ (Variable v) =
 >   case qualLookupTypeSig m v sigs of
 >     Just ty -> inst (expandPolyType m tcEnv ty)
@@ -772,7 +771,7 @@ because of possibly multiple occurrences of variables.
 >   where opType op'
 >           | op' == minusId = freshConstrained [intType,floatType]
 >           | op' == fminusId = return floatType
->           | otherwise = internalError ("tcExpr unary " ++ name op')
+>           | otherwise = internalError $ "TypeCheck.tcExpr unary " ++ name op'
 > tcExpr m tcEnv sigs p e@(Apply e1 e2) =
 >   do
 >     ty1 <- tcExpr m tcEnv sigs p e1
@@ -1079,7 +1078,7 @@ of~\cite{PeytonJones87:Book}).
 >	                    (unifyTypes m ty ty'))
 >                  (lookup l fs2))
 >          (unifyTypedLabels m fs1 tr)
-> unifyTypedLabels _ _ _ = internalError "unifyTypedLabels"
+> unifyTypedLabels _ _ _ = internalError "TypeCheck.unifyTypedLabels"
 
 \end{verbatim}
 For each declaration group, the type checker has to ensure that no
@@ -1159,40 +1158,35 @@ unambiguously refers to the local definition.
 \begin{verbatim}
 
 > constrType :: ModuleIdent -> QualIdent -> ValueEnv -> ExistTypeScheme
-> constrType m c tyEnv =
->   case qualLookupValue c tyEnv of
->     [DataConstructor _ sigma] -> sigma
->     [NewtypeConstructor _ sigma] -> sigma
->     _ -> case (qualLookupValue (qualQualify m c) tyEnv) of
->            [DataConstructor _ sigma] -> sigma
->            [NewtypeConstructor _ sigma] -> sigma
->            _ -> internalError ("constrType " ++ show c)
+> constrType m c tyEnv = case qualLookupValue c tyEnv of
+>   [DataConstructor    _ sigma] -> sigma
+>   [NewtypeConstructor _ sigma] -> sigma
+>   _ -> case qualLookupValue (qualQualify m c) tyEnv of
+>          [DataConstructor    _ sigma] -> sigma
+>          [NewtypeConstructor _ sigma] -> sigma
+>          _ -> internalError $ "TypeCheck.constrType " ++ show c
 
 > varType :: Ident -> ValueEnv -> TypeScheme
-> varType v tyEnv =
->   case lookupValue v tyEnv of
->     Value _ sigma : _ -> sigma
->     _ -> internalError ("varType " ++ show v)
+> varType v tyEnv = case lookupValue v tyEnv of
+>   Value _ sigma : _ -> sigma
+>   _ -> internalError $ "TypeCheck.varType " ++ show v
 
 > sureVarType :: Ident -> ValueEnv -> Maybe TypeScheme
-> sureVarType v tyEnv =
->   case lookupValue v tyEnv of
->     Value _ sigma : _ -> Just sigma
->     _ -> Nothing
+> sureVarType v tyEnv = case lookupValue v tyEnv of
+>   Value _ sigma : _ -> Just sigma
+>   _ -> Nothing
 
 > funType :: ModuleIdent -> QualIdent -> ValueEnv -> TypeScheme
-> funType m f tyEnv =
->   case (qualLookupValue f tyEnv) of
->     [Value _ sigma] -> sigma
->     _ -> case (qualLookupValue (qualQualify m f) tyEnv) of
->             [Value _ sigma] -> sigma
->             _ -> internalError ("funType " ++ show f)
+> funType m f tyEnv = case qualLookupValue f tyEnv of
+>   [Value _ sigma] -> sigma
+>   _ -> case qualLookupValue (qualQualify m f) tyEnv of
+>          [Value _ sigma] -> sigma
+>          _ -> internalError $ "TypeCheck.funType " ++ show f
 
 > sureLabelType :: Ident -> ValueEnv -> Maybe TypeScheme
-> sureLabelType l tyEnv =
->   case lookupValue l tyEnv of
->     Label _ _ sigma : _ -> Just sigma
->     _ -> Nothing
+> sureLabelType l tyEnv = case lookupValue l tyEnv of
+>   Label _ _ sigma : _ -> Just sigma
+>   _ -> Nothing
 
 
 \end{verbatim}
@@ -1221,7 +1215,7 @@ in which the type was defined.
 >            [DataType tc' _ _] -> TypeConstructor tc' tys'
 >            [RenamingType tc' _ _] -> TypeConstructor tc' tys'
 >            [AliasType _ _ ty] -> expandAliasType tys' ty
->            _ -> internalError ("expandType " ++ show tc)
+>            _ -> internalError $ "TypeCheck.expandType " ++ show tc
 >   where tys' = map (expandType m tcEnv) tys
 > expandType _ _ (TypeVariable tv) = TypeVariable tv
 > expandType _ _ (TypeConstrained tys tv) = TypeConstrained tys tv

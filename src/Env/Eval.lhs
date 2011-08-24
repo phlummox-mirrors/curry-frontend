@@ -24,8 +24,8 @@ The function \texttt{evalEnv} collects all evaluation annotations of
 the module by traversing the syntax tree.
 \begin{verbatim}
 
-> evalEnv :: [Decl] -> EvalEnv
-> evalEnv = foldr collectAnnotsDecl Map.empty
+> evalEnv :: Module -> EvalEnv
+> evalEnv (Module _ _ _ ds) = foldr collectAnnotsDecl Map.empty ds
 
 > initEEnv :: EvalEnv
 > initEEnv = Map.empty

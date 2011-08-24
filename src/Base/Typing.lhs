@@ -330,7 +330,7 @@ checker.
 >               S.modify (bindVar tv (TypeArrow ty1 ty2))
 >               return (ty1,ty2)
 >       TypeArrow ty1 ty2 -> return (ty1,ty2)
->       ty' -> internalError ("unifyArrow (" ++ show ty' ++ ")")
+>       ty' -> internalError ("Base.Typing.unifyArrow (" ++ show ty' ++ ")")
 
 > unifyArrow2 :: Type -> TyState (Type,Type,Type)
 > unifyArrow2 ty =
@@ -367,7 +367,7 @@ checker.
 >              (TypeVariable a2)
 >              (foldr (unifyTypedLabels fs1) theta fs2)
 > unifyTypes ty1 ty2 _ =
->   internalError ("unify: (" ++ show ty1 ++ ") (" ++ show ty2 ++ ")")
+>   internalError ("Base.Typing.unify: (" ++ show ty1 ++ ") (" ++ show ty2 ++ ")")
 
 > unifyTypedLabels :: [(Ident,Type)] -> (Ident,Type) -> TypeSubst -> TypeSubst
 > unifyTypedLabels fs1 (l,ty) theta =
@@ -382,28 +382,24 @@ pattern variables, and variables.
 \begin{verbatim}
 
 > constrType :: QualIdent -> ValueEnv -> ExistTypeScheme
-> constrType c tyEnv =
->   case qualLookupValue c tyEnv of
+> constrType c tyEnv = case qualLookupValue c tyEnv of
 >     [DataConstructor _ sigma] -> sigma
 >     [NewtypeConstructor _ sigma] -> sigma
->     _ -> internalError ("constrType " ++ show c)
+>     _ -> internalError $ "Base.Typing.constrType: " ++ show c
 
 > varType :: Ident -> ValueEnv -> TypeScheme
-> varType v tyEnv =
->   case lookupValue v tyEnv of
+> varType v tyEnv = case lookupValue v tyEnv of
 >     [Value _ sigma] -> sigma
->     _ -> internalError ("varType " ++ show v)
+>     _ -> internalError $ "Base.Typing.varType: " ++ show v
 
 > funType :: QualIdent -> ValueEnv -> TypeScheme
-> funType f tyEnv =
->   case qualLookupValue f tyEnv of
+> funType f tyEnv = case qualLookupValue f tyEnv of
 >     [Value _ sigma] -> sigma
->     _ -> internalError ("funType " ++ show f)
+>     _ -> internalError $ "Base.Typing.funType: " ++ show f
 
 > labelType :: Ident -> ValueEnv -> TypeScheme
-> labelType l tyEnv =
->   case lookupValue l tyEnv of
+> labelType l tyEnv = case lookupValue l tyEnv of
 >     [Label _ _ sigma] -> sigma
->     _ -> internalError ("labelType " ++ show l)
+>     _ -> internalError $ "Base.Typing.labelType: " ++ show l
 
 \end{verbatim}

@@ -127,12 +127,12 @@ allow the usage of the qualified list constructor \texttt{(prelude.:)}.
 >        [ArityInfo _ arity'] -> GlobalVar arity' qid
 >        rs                   -> case qualLookupArity qid' aEnv of
 >          [ArityInfo _ arity''] -> GlobalVar arity'' qid
->          _                     -> maybe (internalError $ "renameInfo: missing arity for " ++ show qid)
+>          _                     -> maybe (internalError $ "SyntaxCheck.renameInfo: missing arity for " ++ show qid)
 >                                         (\ (ArityInfo _ arity'') -> GlobalVar arity'' qid)
 >                                         (find (\ (ArityInfo qid'' _) -> qid'' == qid) rs)
 > renameInfo tcEnv _    _    (Label _ r _) = case (qualLookupTC r tcEnv) of
 >   [AliasType _ _ (TypeRecord fs _)] -> RecordLabel r (map fst fs)
->   _                                 -> internalError "renameInfo: no record"
+>   _                                 -> internalError "SyntaxCheck.renameInfo: no record"
 
 \end{verbatim}
 Since record types are currently translated into data types, it is
@@ -178,7 +178,7 @@ than once.
 
 > bindFuncDecl :: ModuleIdent -> Decl -> RenameEnv -> RenameEnv
 > bindFuncDecl m (FunctionDecl _ ident equs) env
->    | null equs = internalError "bindFuncDecl: missing equations"
+>    | null equs = internalError "SyntaxCheck.bindFuncDecl: missing equations"
 >    | otherwise = let (_,ts) = getFlatLhs (head equs)
 >		   in  bindGlobal m
 >	                          ident
@@ -199,7 +199,7 @@ than once.
 > bindVarDecl :: Decl -> RenameEnv -> RenameEnv
 > bindVarDecl (FunctionDecl _ ident equs) env
 >    | null equs
->      = internalError "bindFuncDecl: missing equations"
+>      = internalError "SyntaxCheck.bindFuncDecl: missing equations"
 >    | otherwise
 >      = let (_,ts) = getFlatLhs (head equs)
 >	 in  bindLocal (unRenameIdent ident) (LocalVar (length ts) ident) env
@@ -260,7 +260,7 @@ local declarations.
 > checkTypeDecl :: Bool -> ModuleIdent -> Decl -> Decl
 > checkTypeDecl withExt _ (TypeDecl p r tvs (RecordType fs rty))
 >   | not withExt = errorAt (positionOfIdent r) noRecordExt
->   | isJust rty = internalError "checkTypeDecl - illegal record type"
+>   | isJust rty = internalError "SyntaxCheck.checkTypeDecl - illegal record type"
 >   | null fs = errorAt (positionOfIdent r) emptyRecord
 >   | otherwise = TypeDecl p r tvs (RecordType fs Nothing)
 > checkTypeDecl _ _ d = d
@@ -327,7 +327,7 @@ top-level.
 >         patDecl t
 >           | k == globalKey = errorAt p noToplevelPattern
 >           | otherwise = PatternDecl p' t rhs
-> checkEquationLhs _ _ _ _ _ _ = internalError "checkEquationLhs"
+> checkEquationLhs _ _ _ _ _ _ = internalError "SyntaxCheck.checkEquationLhs"
 
 > checkEqLhs :: ModuleIdent -> Integer -> RenameEnv -> Position -> Lhs
 >            -> Either (Ident,Lhs) ConstrTerm
@@ -648,13 +648,14 @@ top-level.
 > checkExpr :: Bool -> Position -> ModuleIdent -> RenameEnv -> Expression
 >           -> RenameState Expression
 > checkExpr _ _ _ _ (Literal l) = liftM Literal (renameLiteral l)
-> checkExpr _ _ m env (Variable v) =
->   case (qualLookupVar v env) of
->     [] ->  errorAt' (undefinedVariable v)
->     [Constr _] -> return (Constructor v)
->     [GlobalVar _ _] -> return (Variable v)
->     [LocalVar _ v'] -> return (Variable (qualify v'))
->     rs -> case (qualLookupVar (qualQualify m v) env) of
+> checkExpr _ _ m env var@(Variable v)
+>    | unqualify v == anonId = return var
+>    | otherwise             = case qualLookupVar v env of
+>      [] ->  errorAt' (undefinedVariable v)
+>      [Constr _] -> return (Constructor v)
+>      [GlobalVar _ _] -> return (Variable v)
+>      [LocalVar _ v'] -> return (Variable (qualify v'))
+>      rs -> case qualLookupVar (qualQualify m v) env of
 >             [] -> errorAt' (ambiguousIdent rs v)
 >             [Constr _] -> return (Constructor v)
 >             [GlobalVar _ _] -> return (Variable v)
@@ -922,12 +923,12 @@ the user about the fact that the identifier is ambiguous.
 > varIdent :: RenameInfo -> Ident
 > varIdent (GlobalVar _ v) = unqualify v
 > varIdent (LocalVar _ v) =  v
-> varIdent _ = internalError "not a variable"
+> varIdent _ = internalError "SyntaxCheck.varIdent: not a variable"
 
 > qualVarIdent :: RenameInfo -> QualIdent
 > qualVarIdent (GlobalVar _ v) = v
 > qualVarIdent (LocalVar _ v) = qualify v
-> qualVarIdent _ = internalError "not a qualified variable"
+> qualVarIdent _ = internalError "SyntaxCheck.qualVarIdent: not a qualified variable"
 
 > arity :: RenameInfo -> Int
 > arity (Constr n) = n

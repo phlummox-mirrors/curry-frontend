@@ -840,7 +840,7 @@ cs2ilType ids (CS.TupleType typeexprs)
 		  tuplen = length ilTypeexprs
 	      in  (IL.TypeConstructor (qTupleId tuplen) ilTypeexprs,
 		   ids')
-cs2ilType _ typeexpr = internalError ("cs2ilType: " ++ show typeexpr)
+cs2ilType _ typeexpr = internalError ("GenFlatCurry.cs2ilType: " ++ show typeexpr)
 
 
 -------------------------------------------------------------------------------

@@ -24,7 +24,6 @@ import Env.TypeConstructors (TCEnv, lookupTC)
 import Env.TopEnv
 import Env.Value (ValueEnv, ValueInfo (..), lookupValue, qualLookupValue)
 
-
 -- ---------------------------------------------------------------------------
 -- Interface
 -- ---------------------------------------------------------------------------
@@ -149,7 +148,7 @@ genTypeDecl env (TypeDecl _ ident params typeexpr)
 genTypeDecl _ (NewtypeDecl pos _ _ _)
    = errorAt pos "'newtype' declarations are not supported in AbstractCurry"
 genTypeDecl _ _
-   = internalError "unexpected declaration"
+   = internalError "GenAbstractCurry.genTypeDecl: unexpected declaration"
 
 
 --
@@ -204,7 +203,7 @@ genTypeExpr env (RecordType fss mr)
 				    fields
 			            (zip ls' ts')
 		in  (CRecordType fields' rbase, env2)
-           _ -> internalError "illegal record base"
+           _ -> internalError "GenAbstractCurry.gegnTypeExpr: illegal record base"
 
 
 -- NOTE: every infix declaration must declare exactly one operator.
@@ -256,7 +255,7 @@ genFuncDecl isLocal env ident decls
            env3          = if isLocal then env1 else resetScope env2
        in  (env3, CFunc qname arity visibility typeexpr rule)
    | otherwise
-     = internalError ("missing declaration for function \""
+     = internalError ("GenAbstractCurry.genFuncDecl: missing declaration for function \""
 		      ++ show ident ++ "\"")
  where
    genFuncType env' decls'
@@ -283,13 +282,13 @@ genFuncDecl isLocal env ident decls
    genExternal (FlatExternalDecl _ [ident'])
       = CExternal (name ident')
    genExternal _
-      = internalError "illegal external declaration occured"
+      = internalError "GenAbstractCurry.genExternal: illegal external declaration occured"
 
    compArity mtypeexpr rules
       | not (null rules)
         = let (CRule patts _ _) = head rules in length patts
       | otherwise
-        = maybe (internalError ("unable to compute arity for function \""
+        = maybe (internalError ("GenAbstractCurry.compArity: unable to compute arity for function \""
 				++ show ident ++ "\""))
 	        compArityFromType
 		mtypeexpr
@@ -303,7 +302,7 @@ genFuncDecl isLocal env ident decls
    compRule evalannot rules mexternal
       | not (null rules) = CRules evalannot rules
       | otherwise
-	= fromMaybe (internalError ("missing rule for function \""
+	= fromMaybe (internalError ("GenAbstractCurry.compRule: missing rule for function \""
 				    ++ show ident ++ "\""))
 	            mexternal
 
@@ -401,7 +400,7 @@ genLocalDecls env decls
       | otherwise
         = let ident  = head idents
 	      idx    = fromMaybe
-		         (internalError ("cannot find index"
+		         (internalError ("GenAbstractCurry.genLocals: cannot find index"
 					 ++ " for free variable \""
 					 ++ show ident ++ "\""))
 		         (getVarIndex env' ident)
@@ -410,14 +409,14 @@ genLocalDecls env decls
           in (CLocalVar (idx, name ident) : locals, env'')
    genLocals env' fdecls ((TypeSig _ _ _):decls1)
       = genLocals env' fdecls decls1
-   genLocals _ _ decl = internalError ("unexpected local declaration: \n"
+   genLocals _ _ decl = internalError ("GenAbstractCurry.genLocals: unexpected local declaration: \n"
 				       ++ show (head decl))
 
    genLocalFuncDecl :: AbstractEnv -> Map.Map Ident [Decl] -> Ident
 		       -> (CLocalDecl, AbstractEnv)
    genLocalFuncDecl env' fdecls ident
       = let fdecl = fromMaybe
-		      (internalError ("missing declaration"
+		      (internalError ("GenAbstractCurry.genLocalFuncDecl: missing declaration"
 				      ++ " for local function \""
 				      ++ show ident ++ "\""))
 		      (Map.lookup ident fdecls)
@@ -432,7 +431,7 @@ genLocalDecls env decls
        _ -> (CPLit (genLiteral lit), env')
    genLocalPattern _ env' (VariablePattern ident)
       = let idx = fromMaybe
-		     (internalError ("cannot find index"
+		     (internalError ("GenAbstractCurry.genLocalPattern: cannot find index"
 				    ++ " for pattern variable \""
 				    ++ show ident ++ "\""))
 		     (getVarIndex env' ident)
@@ -459,7 +458,7 @@ genLocalDecls env decls
    genLocalPattern pos env' (AsPattern ident cterm)
       = let (patt, env1) = genLocalPattern pos env' cterm
 	    idx          = fromMaybe
-			      (internalError ("cannot find index"
+			      (internalError ("GenAbstractCurry.genLocalPattern: cannot find index"
 					      ++ " for alias variable \""
 					      ++ show ident ++ "\""))
 			      (getVarIndex env1 ident)
@@ -665,7 +664,7 @@ genLiteral :: Literal -> CLiteral
 genLiteral (Char _ c)  = CCharc c
 genLiteral (Int _ i)   = CIntc i
 genLiteral (Float _ f) = CFloatc f
-genLiteral _           = internalError "unsupported literal"
+genLiteral _           = internalError "GenAbstractCurry.genLiteral: unsupported literal"
 
 
 -- Notes:

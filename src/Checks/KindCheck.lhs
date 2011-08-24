@@ -24,8 +24,11 @@ is defined more than once.
 
 > module Checks.KindCheck (kindCheck) where
 
+> import Control.Monad.State
+
 > import Curry.Base.Position
 > import Curry.Base.Ident
+> import Curry.Base.MessageMonad (Message (..), showError)
 > import Curry.Syntax
 
 > import Base.Messages (errorAt', internalError)
@@ -44,13 +47,32 @@ defined type constructors are inserted into the environment, and,
 finally, the declarations are checked within this environment.
 \begin{verbatim}
 
+TODO: Propagate errors
+
 > kindCheck :: ModuleIdent -> TCEnv -> [Decl] -> [Decl]
-> kindCheck m tcEnv ds =
->   case findDouble (map tconstr ds') of
->     Nothing -> map (checkDecl m kEnv) ds
->     Just tc -> errorAt' (duplicateType tc)
->   where ds' = filter isTypeDecl ds
->         kEnv = foldr (bindArity m) (fmap tcArity tcEnv) ds'
+> kindCheck m tcEnv decls = case findDouble $ map typeConstr typeDecls of
+>   Just tc -> errorAt' $ errDuplicateType tc
+>   Nothing -> case errors s' of
+>     []   -> decls'
+>     errs -> errorAt' $ last errs
+>   where typeDecls = filter isTypeDecl decls
+>         kEnv      = foldr (bindKind m) (fmap tcArity tcEnv) typeDecls
+>         initState = CheckState m kEnv []
+>         (decls',s') = runKcM (mapM checkDecl decls) initState
+
+> data CheckState = CheckState
+>   { moduleIdent :: ModuleIdent
+>   , kindEnv     :: KindEnv
+>   , errors      :: [(Position, String)]
+>   }
+
+> type KcM = State CheckState
+
+> runKcM :: KcM a -> CheckState -> (a, CheckState)
+> runKcM = runState
+
+> reportError :: (Position, String) -> KcM ()
+> reportError err = modify (\ s -> s { errors = err : errors s })
 
 \end{verbatim}
 The kind environment only needs to record the arity of each type constructor.
@@ -58,18 +80,17 @@ The kind environment only needs to record the arity of each type constructor.
 
 > type KindEnv = TopEnv Int
 
-> bindArity :: ModuleIdent -> Decl -> KindEnv -> KindEnv
-> bindArity m (DataDecl _ tc tvs _) = bindArity' m  tc tvs
-> bindArity m (NewtypeDecl _ tc tvs _) = bindArity' m  tc tvs
-> bindArity m (TypeDecl _ tc tvs _) = bindArity' m  tc tvs
-> bindArity _ _ = id
+> bindKind :: ModuleIdent -> Decl -> KindEnv -> KindEnv
+> bindKind m (DataDecl    _ tc tvs _) = bindKind' m tc tvs
+> bindKind m (NewtypeDecl _ tc tvs _) = bindKind' m tc tvs
+> bindKind m (TypeDecl    _ tc tvs _) = bindKind' m tc tvs
+> bindKind _ _                        = id
 
-> bindArity' :: ModuleIdent -> Ident -> [Ident]
->            -> KindEnv -> KindEnv
-> bindArity' m tc tvs
->   = bindTopEnv "KindCheck.bindArity'" tc n
->                . qualBindTopEnv "KindCheck.bindArity'" (qualifyWith m tc) n
->   where n = length tvs
+> bindKind' :: ModuleIdent -> Ident -> [Ident] -> KindEnv -> KindEnv
+> bindKind' m tc tvs = bindTopEnv     "KindCheck.bindKind'"  tc n
+>                    . qualBindTopEnv "KindCheck.bindKind'" qtc n
+>   where n   = length tvs
+>         qtc = qualifyWith m tc
 
 > lookupKind :: Ident -> KindEnv -> [Int]
 > lookupKind = lookupTopEnv
@@ -84,52 +105,64 @@ the right hand side. Function and pattern declarations must be
 traversed because they can contain local type signatures.
 \begin{verbatim}
 
-> checkDecl :: ModuleIdent -> KindEnv -> Decl -> Decl
-> checkDecl m kEnv (DataDecl p tc tvs cs) =
->   DataDecl p tc tvs' (map (checkConstrDecl m kEnv tvs') cs)
->   where tvs' = checkTypeLhs kEnv tvs
-> checkDecl m kEnv (NewtypeDecl p tc tvs nc) =
->   NewtypeDecl p tc tvs' (checkNewConstrDecl m kEnv tvs' nc)
->   where tvs' = checkTypeLhs kEnv tvs
-> checkDecl m kEnv (TypeDecl p tc tvs ty) =
->   TypeDecl p tc tvs' (checkClosedType m kEnv tvs' ty)
->   where tvs' = checkTypeLhs kEnv tvs
-> checkDecl m kEnv (TypeSig p vs ty) =
->   TypeSig p vs (checkType m kEnv ty)
-> checkDecl m kEnv (FunctionDecl p f eqs) =
->   FunctionDecl p f (map (checkEquation m kEnv) eqs)
-> checkDecl m kEnv (PatternDecl p t rhs) =
->   PatternDecl p t (checkRhs m kEnv rhs)
-> checkDecl m kEnv (ExternalDecl p cc ie f ty) =
->   ExternalDecl p cc ie f (checkType m kEnv ty)
-> checkDecl _ _ d = d
+> checkDecl :: Decl -> KcM Decl
+> checkDecl (DataDecl      p tc tvs cs) = do
+>   tvs' <- checkTypeLhs tvs
+>   cs'  <- mapM (checkConstrDecl tvs') cs
+>   return $ DataDecl p tc tvs' cs'
+> checkDecl (NewtypeDecl   p tc tvs nc) = do
+>   tvs' <- checkTypeLhs tvs
+>   nc'  <- checkNewConstrDecl tvs' nc
+>   return $ NewtypeDecl p tc tvs' nc'
+> checkDecl (TypeDecl      p tc tvs ty) = do
+>   tvs' <- checkTypeLhs tvs
+>   ty'  <- checkClosedType tvs' ty
+>   return $ TypeDecl p tc tvs' ty'
+> checkDecl (TypeSig           p vs ty) = do
+>   ty' <- checkType ty
+>   return $ TypeSig p vs ty'
+> checkDecl (FunctionDecl      p f eqs) = do
+>   eqs' <- mapM checkEquation eqs
+>   return $ FunctionDecl p f eqs'
+> checkDecl (PatternDecl       p t rhs) = do
+>   rhs' <- checkRhs rhs
+>   return $ PatternDecl p t rhs'
+> checkDecl (ExternalDecl p cc ie f ty) = do
+>   ty' <- checkType ty
+>   return $ ExternalDecl p cc ie f ty'
+> checkDecl d                           = return d
 
-> checkTypeLhs :: KindEnv -> [Ident] -> [Ident]
-> checkTypeLhs kEnv (tv:tvs)
->   | tv == anonId = tv : checkTypeLhs kEnv tvs
->   | isTypeConstr tv = errorAt' (noVariable tv)
->   | tv `elem` tvs = errorAt' (nonLinear tv)
->   | otherwise = tv : checkTypeLhs kEnv tvs
->   where isTypeConstr tv' = not (null (lookupKind tv' kEnv))
-> checkTypeLhs _ [] = []
+> checkConstrDecl :: [Ident] -> ConstrDecl -> KcM ConstrDecl
+> checkConstrDecl tvs (ConstrDecl p evs c tys) = do
+>   evs' <- checkTypeLhs evs
+>   tys' <- mapM (checkClosedType (evs' ++ tvs)) tys
+>   return $ ConstrDecl p evs' c tys'
+> checkConstrDecl tvs (ConOpDecl p evs ty1 op ty2) = do
+>   evs' <- checkTypeLhs evs
+>   let tvs' = evs' ++ tvs
+>   ty1' <- checkClosedType tvs' ty1
+>   ty2' <- checkClosedType tvs' ty2
+>   return $ ConOpDecl p evs' ty1' op ty2'
 
-> checkConstrDecl :: ModuleIdent -> KindEnv -> [Ident] -> ConstrDecl -> ConstrDecl
-> checkConstrDecl m kEnv tvs (ConstrDecl p evs c tys) =
->   ConstrDecl p evs' c (map (checkClosedType m kEnv tvs') tys)
->   where evs' = checkTypeLhs kEnv evs
->         tvs' = evs' ++ tvs
-> checkConstrDecl m kEnv tvs (ConOpDecl p evs ty1 op ty2) =
->   ConOpDecl p evs' (checkClosedType m kEnv tvs' ty1) op
->             (checkClosedType m kEnv tvs' ty2)
->   where evs' = checkTypeLhs kEnv evs
->         tvs' = evs' ++ tvs
+> checkNewConstrDecl :: [Ident] -> NewConstrDecl -> KcM NewConstrDecl
+> checkNewConstrDecl tvs (NewConstrDecl p evs c ty) = do
+>   evs' <- checkTypeLhs evs
+>   ty'  <- checkClosedType (evs' ++ tvs) ty
+>   return $ NewConstrDecl p evs' c ty'
 
-> checkNewConstrDecl :: ModuleIdent -> KindEnv -> [Ident] -> NewConstrDecl
->	     -> NewConstrDecl
-> checkNewConstrDecl m kEnv tvs (NewConstrDecl p evs c ty) =
->   NewConstrDecl p evs' c (checkClosedType m kEnv tvs' ty)
->   where evs' = checkTypeLhs kEnv evs
->         tvs' = evs' ++ tvs
+> -- |Check the left-hand-side of a type declaration for
+> -- * Anonymous type variables are allowed
+> -- * only type variables (no type constructors)
+> -- * linearity
+> checkTypeLhs :: [Ident] -> KcM [Ident]
+> checkTypeLhs []         = return []
+> checkTypeLhs (tv : tvs) = do
+>   when (tv /= anonId) $ do
+>     isTyCons <- gets (not . null . lookupKind tv . kindEnv)
+>     when isTyCons        $ reportError $ errNoVariable tv
+>     when (tv `elem` tvs) $ reportError $ errNonLinear  tv
+>   tvs' <- checkTypeLhs tvs
+>   return $ tv : tvs'
 
 \end{verbatim}
 Checking expressions is rather straight forward. The compiler must
@@ -137,74 +170,132 @@ only traverse the structure of expressions in order to find local
 declaration groups.
 \begin{verbatim}
 
-> checkEquation :: ModuleIdent -> KindEnv -> Equation -> Equation
-> checkEquation m kEnv (Equation p lhs rhs) =
->     Equation p lhs (checkRhs m kEnv rhs)
+> checkEquation :: Equation -> KcM Equation
+> checkEquation (Equation p lhs rhs) = do
+>   rhs' <- checkRhs rhs
+>   return $ Equation p lhs rhs'
 
-> checkRhs :: ModuleIdent -> KindEnv -> Rhs -> Rhs
-> checkRhs m kEnv (SimpleRhs p e ds) =
->   SimpleRhs p (checkExpr m kEnv e) (map (checkDecl m kEnv) ds)
-> checkRhs m kEnv (GuardedRhs es ds) =
->   GuardedRhs (map (checkCondExpr m kEnv) es) (map (checkDecl m kEnv) ds)
+> checkRhs :: Rhs -> KcM Rhs
+> checkRhs (SimpleRhs p e ds) = do
+>   e'  <- checkExpr e
+>   ds' <- mapM checkDecl ds
+>   return $ SimpleRhs p e' ds'
+> checkRhs (GuardedRhs es ds) = do
+>   es' <- mapM checkCondExpr es
+>   ds' <- mapM checkDecl ds
+>   return $ GuardedRhs es' ds'
 
-> checkCondExpr :: ModuleIdent -> KindEnv -> CondExpr -> CondExpr
-> checkCondExpr m kEnv (CondExpr p g e) =
->   CondExpr p (checkExpr m kEnv g) (checkExpr m kEnv e)
+> checkCondExpr :: CondExpr -> KcM CondExpr
+> checkCondExpr (CondExpr p g e) = do
+>   g' <- checkExpr g
+>   e' <- checkExpr e
+>   return $ CondExpr p g' e'
 
-> checkExpr :: ModuleIdent -> KindEnv -> Expression -> Expression
-> checkExpr _ _ (Literal l) = Literal l
-> checkExpr _ _ (Variable v) = Variable v
-> checkExpr _ _ (Constructor c) = Constructor c
-> checkExpr m kEnv (Paren e) = Paren (checkExpr m kEnv e)
-> checkExpr m kEnv (Typed e ty) =
->   Typed (checkExpr m kEnv e) (checkType m kEnv ty)
-> checkExpr m kEnv (Tuple p es) = Tuple p (map (checkExpr m kEnv ) es)
-> checkExpr m kEnv (List p es) = List p (map (checkExpr m kEnv ) es)
-> checkExpr m kEnv (ListCompr p e qs) =
->   ListCompr p (checkExpr m kEnv e) (map (checkStmt m kEnv ) qs)
-> checkExpr m kEnv  (EnumFrom e) = EnumFrom (checkExpr m kEnv  e)
-> checkExpr m kEnv  (EnumFromThen e1 e2) =
->   EnumFromThen (checkExpr m kEnv  e1) (checkExpr m kEnv  e2)
-> checkExpr m kEnv  (EnumFromTo e1 e2) =
->   EnumFromTo (checkExpr m kEnv  e1) (checkExpr m kEnv  e2)
-> checkExpr m kEnv  (EnumFromThenTo e1 e2 e3) =
->   EnumFromThenTo (checkExpr m kEnv  e1) (checkExpr m kEnv  e2)
->                  (checkExpr m kEnv  e3)
-> checkExpr m kEnv  (UnaryMinus op e) = UnaryMinus op (checkExpr m kEnv  e)
-> checkExpr m kEnv  (Apply e1 e2) =
->   Apply (checkExpr m kEnv  e1) (checkExpr m kEnv  e2)
-> checkExpr m kEnv  (InfixApply e1 op e2) =
->   InfixApply (checkExpr m kEnv  e1) op (checkExpr m kEnv  e2)
-> checkExpr m kEnv  (LeftSection e op) = LeftSection (checkExpr m kEnv  e) op
-> checkExpr m kEnv  (RightSection op e) = RightSection op (checkExpr m kEnv  e)
-> checkExpr m kEnv  (Lambda r ts e) = Lambda r ts (checkExpr m kEnv  e)
-> checkExpr m kEnv  (Let ds e) =
->   Let (map (checkDecl m kEnv) ds) (checkExpr m kEnv  e)
-> checkExpr m kEnv  (Do sts e) =
->   Do (map (checkStmt m kEnv ) sts) (checkExpr m kEnv  e)
-> checkExpr m kEnv  (IfThenElse r e1 e2 e3) =
->   IfThenElse r (checkExpr m kEnv  e1) (checkExpr m kEnv  e2)
->              (checkExpr m kEnv  e3)
-> checkExpr m kEnv  (Case r e alts) =
->   Case r (checkExpr m kEnv  e) (map (checkAlt m kEnv) alts)
-> checkExpr m kEnv  (RecordConstr fs) =
->   RecordConstr (map (checkFieldExpr m kEnv) fs)
-> checkExpr m kEnv  (RecordSelection e l) =
->   RecordSelection (checkExpr m kEnv  e) l
-> checkExpr m kEnv  (RecordUpdate fs e) =
->   RecordUpdate (map (checkFieldExpr m kEnv) fs) (checkExpr m kEnv  e)
+> checkExpr :: Expression -> KcM Expression
+> checkExpr (Literal     l) = return $ Literal l
+> checkExpr (Variable    v) = return $ Variable v
+> checkExpr (Constructor c) = return $ Constructor c
+> checkExpr (Paren       e) = do
+>   e' <- checkExpr e
+>   return $ Paren e'
+> checkExpr (Typed    e ty) = do
+>   e'  <- checkExpr e
+>   ty' <- checkType ty
+>   return $ Typed e' ty'
+> checkExpr (Tuple    p es) = do
+>   es' <- mapM checkExpr es
+>   return $ Tuple p es'
+> checkExpr (List     p es) = do
+>   es' <- mapM checkExpr es
+>   return $ List p es'
+> checkExpr (ListCompr p e qs) = do
+>   e'  <- checkExpr e
+>   qs' <- mapM checkStmt qs
+>   return $ ListCompr p e' qs'
+> checkExpr (EnumFrom e) = do
+>   e' <- checkExpr e
+>   return $ EnumFrom e'
+> checkExpr (EnumFromThen e1 e2) = do
+>   e1' <- checkExpr e1
+>   e2' <- checkExpr e2
+>   return $ EnumFromThen e1' e2'
+> checkExpr (EnumFromTo e1 e2) = do
+>   e1' <- checkExpr e1
+>   e2' <- checkExpr e2
+>   return $ EnumFromTo e1' e2'
+> checkExpr (EnumFromThenTo e1 e2 e3) = do
+>   e1' <- checkExpr e1
+>   e2' <- checkExpr e2
+>   e3' <- checkExpr e3
+>   return $ EnumFromThenTo e1' e2' e3'
+> checkExpr (UnaryMinus op e) = do
+>   e' <- checkExpr e
+>   return $ UnaryMinus op e'
+> checkExpr (Apply e1 e2) = do
+>   e1' <- checkExpr e1
+>   e2' <- checkExpr e2
+>   return $ Apply e1' e2'
+> checkExpr (InfixApply e1 op e2) = do
+>   e1' <- checkExpr e1
+>   e2' <- checkExpr e2
+>   return $ InfixApply e1' op e2'
+> checkExpr (LeftSection e op) = do
+>   e' <- checkExpr e
+>   return $ LeftSection e' op
+> checkExpr (RightSection op e) = do
+>   e' <- checkExpr e
+>   return $ RightSection op e'
+> checkExpr (Lambda r ts e) = do
+>   e' <- checkExpr e
+>   return $ Lambda r ts e'
+> checkExpr (Let ds e) = do
+>   ds' <- mapM checkDecl ds
+>   e'  <- checkExpr e
+>   return $ Let ds' e'
+> checkExpr (Do sts e) = do
+>   sts' <- mapM checkStmt sts
+>   e'   <- checkExpr e
+>   return $ Do sts' e'
+> checkExpr (IfThenElse r e1 e2 e3) = do
+>   e1' <- checkExpr e1
+>   e2' <- checkExpr e2
+>   e3' <- checkExpr e3
+>   return $ IfThenElse r e1' e2' e3'
+> checkExpr (Case r e alts) = do
+>   e'    <- checkExpr e
+>   alts' <- mapM checkAlt alts
+>   return $ Case r e' alts'
+> checkExpr (RecordConstr fs) = do
+>   fs' <- mapM checkFieldExpr fs
+>   return $ RecordConstr fs'
+> checkExpr (RecordSelection e l) = do
+>   e' <- checkExpr e
+>   return $ RecordSelection e' l
+> checkExpr (RecordUpdate fs e) = do
+>   fs' <- mapM checkFieldExpr fs
+>   e' <- checkExpr e
+>   return $ RecordUpdate fs' e'
 
-> checkStmt :: ModuleIdent -> KindEnv -> Statement -> Statement
-> checkStmt m kEnv  (StmtExpr p e) = StmtExpr p (checkExpr m kEnv  e)
-> checkStmt m kEnv  (StmtBind p t e) = StmtBind p t (checkExpr m kEnv  e)
-> checkStmt m kEnv  (StmtDecl ds) = StmtDecl (map (checkDecl m kEnv) ds)
+> checkStmt :: Statement -> KcM Statement
+> checkStmt (StmtExpr   p e) = do
+>   e' <- checkExpr e
+>   return $ StmtExpr p e'
+> checkStmt (StmtBind p t e) = do
+>   e' <- checkExpr e
+>   return $ StmtBind p t e'
+> checkStmt (StmtDecl    ds) = do
+>   ds' <- mapM checkDecl ds
+>   return $ StmtDecl ds'
 
-> checkAlt :: ModuleIdent -> KindEnv -> Alt -> Alt
-> checkAlt m kEnv (Alt p t rhs) = Alt p t (checkRhs m kEnv rhs)
+> checkAlt :: Alt -> KcM Alt
+> checkAlt (Alt p t rhs) = do
+>   rhs' <- checkRhs rhs
+>   return $ Alt p t rhs'
 
-> checkFieldExpr :: ModuleIdent -> KindEnv -> Field Expression
->	            -> Field Expression
-> checkFieldExpr m kEnv (Field p l e) = Field p l (checkExpr m kEnv e)
+> checkFieldExpr :: Field Expression -> KcM (Field Expression)
+> checkFieldExpr (Field p l e) = do
+>   e' <-  checkExpr e
+>   return $ Field p l e'
 
 \end{verbatim}
 The parser cannot distinguish unqualified nullary type constructors
@@ -213,108 +304,121 @@ identifier in a position where a type variable is admissible, it will
 interpret the identifier as such.
 \begin{verbatim}
 
-> checkClosedType :: ModuleIdent -> KindEnv -> [Ident] -> TypeExpr
->	  -> TypeExpr
-> checkClosedType m kEnv tvs ty = checkClosed tvs (checkType m kEnv  ty)
+> checkClosedType :: [Ident] -> TypeExpr -> KcM TypeExpr
+> checkClosedType tvs ty = checkType ty >>= checkClosed tvs
 
-> checkType :: ModuleIdent -> KindEnv -> TypeExpr -> TypeExpr
-> checkType m kEnv (ConstructorType tc tys) =
+> checkType :: TypeExpr -> KcM TypeExpr
+> checkType c@(ConstructorType tc tys) = do
+>   m <- gets moduleIdent
+>   kEnv <- gets kindEnv
 >   case qualLookupKind tc kEnv of
 >     []
->       | not (isQualified tc) && null tys -> VariableType (unqualify tc)
->       | otherwise -> errorAt' (undefinedType tc)
+>       | not (isQualified tc) && null tys -> return $ VariableType $ unqualify tc
+>       | otherwise -> reportError (errUndefinedType tc) >> return c
 >     [n]
->       | n == n' -> ConstructorType tc (map (checkType m kEnv ) tys)
->       | otherwise -> errorAt' (wrongArity tc n n')
->     _ -> case (qualLookupKind (qualQualify m tc) kEnv) of
->            [n]
->               | n == n' -> ConstructorType tc (map (checkType m kEnv ) tys)
->               | otherwise -> errorAt' (wrongArity tc n n')
->            _ -> errorAt' (ambiguousType tc)
+>       | n  ==  n' -> do
+>           tys' <- mapM checkType tys
+>           return $ ConstructorType tc tys'
+>       | otherwise -> reportError (errWrongArity tc n n') >> return c
+>     _ -> case qualLookupKind (qualQualify m tc) kEnv of
+>          [n]
+>             | n  ==  n' -> do
+>                 tys' <- mapM checkType tys
+>                 return $ ConstructorType tc tys'
+>             | otherwise -> reportError (errWrongArity tc n n') >> return c
+>          _ -> reportError (errAmbiguousType tc) >> return c
 >  where n' = length tys
-> checkType m kEnv  (VariableType tv)
->   | tv == anonId = VariableType tv
->   | otherwise = checkType m kEnv  (ConstructorType (qualify tv) [])
-> checkType m kEnv  (TupleType tys) =
->   TupleType (map (checkType m kEnv ) tys)
-> checkType m kEnv  (ListType ty) =
->   ListType (checkType m kEnv  ty)
-> checkType m kEnv  (ArrowType ty1 ty2) =
->   ArrowType (checkType m kEnv  ty1) (checkType m kEnv  ty2)
-> checkType m kEnv  (RecordType fs r) =
->   RecordType (map (\ (ls,ty) -> (ls, checkType m kEnv  ty)) fs)
->	       (maybe Nothing (Just . checkType m kEnv ) r)
+> checkType (VariableType tv)
+>   | tv == anonId = return $ VariableType tv
+>   | otherwise    = checkType (ConstructorType (qualify tv) [])
+> checkType (TupleType tys) = do
+>   tys' <- mapM checkType tys
+>   return $ TupleType tys'
+> checkType (ListType ty) = do
+>   ty' <- checkType ty
+>   return $ ListType ty'
+> checkType (ArrowType ty1 ty2) = do
+>   ty1' <- checkType ty1
+>   ty2' <- checkType ty2
+>   return $ ArrowType ty1' ty2'
+> checkType (RecordType fs r) = do
+>   fs' <- mapM (\ (l, ty) -> do { ty' <- checkType ty; return (l, ty') }) fs
+>   r'  <- case r of
+>     Nothing -> return Nothing
+>     Just ar -> Just `liftM` checkType ar
+>   return $ RecordType fs' r'
 
-> checkClosed :: [Ident] -> TypeExpr -> TypeExpr
-> checkClosed tvs (ConstructorType tc tys) =
->   ConstructorType tc (map (checkClosed tvs) tys)
-> checkClosed tvs (VariableType tv)
->   | tv == anonId || tv `notElem` tvs = errorAt' (unboundVariable tv)
->   | otherwise = VariableType tv
-> checkClosed tvs (TupleType tys) =
->   TupleType (map (checkClosed tvs) tys)
-> checkClosed tvs (ListType ty) =
->   ListType (checkClosed tvs ty)
-> checkClosed tvs (ArrowType ty1 ty2) =
->   ArrowType (checkClosed tvs ty1) (checkClosed tvs ty2)
-> checkClosed tvs (RecordType fs r) =
->   RecordType (map (\ (ls,ty) -> (ls, checkClosed tvs ty)) fs)
->	       (maybe Nothing (Just . checkClosed tvs) r)
->
+> checkClosed :: [Ident] -> TypeExpr -> KcM TypeExpr
+> checkClosed tvs (ConstructorType tc tys) = do
+>   tys' <- mapM (checkClosed tvs) tys
+>   return $ ConstructorType tc tys'
+> checkClosed tvs (VariableType   tv) = do
+>   when (tv == anonId || tv `notElem` tvs) $ reportError $ errUnboundVariable tv
+>   return $ VariableType tv
+> checkClosed tvs (TupleType     tys) = do
+>   tys' <- mapM (checkClosed tvs) tys
+>   return $ TupleType $ tys'
+> checkClosed tvs (ListType       ty) = do
+>   ty' <- checkClosed tvs ty
+>   return $ ListType ty'
+> checkClosed tvs (ArrowType ty1 ty2) = do
+>   ty1' <- checkClosed tvs ty1
+>   ty2' <- checkClosed tvs ty2
+>   return $ ArrowType ty1' ty2'
+> checkClosed tvs (RecordType   fs r) = do
+>   fs' <- mapM (\ (l, ty) -> do { ty' <- checkClosed tvs ty; return (l, ty') }) fs
+>   r'  <- case r of
+>     Nothing -> return Nothing
+>     Just ar -> Just `liftM` checkClosed tvs ar
+>   return $ RecordType fs' r'
 
 \end{verbatim}
 Auxiliary definitions
 \begin{verbatim}
 
-> tconstr :: Decl -> Ident
-> tconstr (DataDecl _ tc _ _) = tc
-> tconstr (NewtypeDecl _ tc _ _) = tc
-> tconstr (TypeDecl _ tc _ _) = tc
-> tconstr _ = internalError "tconstr"
+> typeConstr :: Decl -> Ident
+> typeConstr (DataDecl    _ tc _ _) = tc
+> typeConstr (NewtypeDecl _ tc _ _) = tc
+> typeConstr (TypeDecl    _ tc _ _) = tc
+> typeConstr _ = internalError "KindCheck.typeConstr: no type declaration"
 
 \end{verbatim}
 Error messages:
 \begin{verbatim}
 
-> undefinedType :: QualIdent -> (Position,String)
-> undefinedType tc =
->     (positionOfQualIdent tc,
->      "Undefined type " ++ qualName tc)
+> errUndefinedType :: QualIdent -> (Position, String)
+> errUndefinedType tc = qposErr tc $ "Undefined type " ++ qualName tc
 
-> ambiguousType :: QualIdent -> (Position,String)
-> ambiguousType tc =
->     (positionOfQualIdent tc,
->      "Ambiguous type " ++ qualName tc)
+> errAmbiguousType :: QualIdent -> (Position, String)
+> errAmbiguousType tc = qposErr tc $ "Ambiguous type " ++ qualName tc
 
-> duplicateType :: Ident -> (Position,String)
-> duplicateType tc =
->     (positionOfIdent tc,
->      "More than one definition for type " ++ name tc)
+> errDuplicateType :: Ident -> (Position, String)
+> errDuplicateType tc = posErr tc
+>                     $ "More than one definition for type " ++ name tc
 
-> nonLinear :: Ident -> (Position,String)
-> nonLinear tv =
->  (positionOfIdent tv,
->   "Type variable " ++ name tv ++
->   " occurs more than once on left hand side of type declaration")
+> errNonLinear :: Ident -> (Position, String)
+> errNonLinear tv = posErr tv $ "Type variable " ++ name tv ++
+>   " occurs more than once on left hand side of type declaration"
 
-> noVariable :: Ident -> (Position,String)
-> noVariable tv =
->  (positionOfIdent tv,
->   "Type constructor " ++ name tv ++
->   " used in left hand side of type declaration")
+> errNoVariable :: Ident -> (Position,String)
+> errNoVariable tv = posErr tv $ "Type constructor " ++ name tv ++
+>   " used in left hand side of type declaration"
 
-> wrongArity :: QualIdent -> Int -> Int -> (Position,String)
-> wrongArity tc arity argc =
->  (positionOfQualIdent tc,
+> errWrongArity :: QualIdent -> Int -> Int -> (Position, String)
+> errWrongArity tc arity argc = qposErr tc $
 >   "Type constructor " ++ qualName tc ++ " expects " ++ arguments arity ++
->   " but is applied to " ++ show argc)
+>   " but is applied to " ++ show argc
 >   where arguments 0 = "no arguments"
 >         arguments 1 = "1 argument"
 >         arguments n = show n ++ " arguments"
 
-> unboundVariable :: Ident -> (Position,String)
-> unboundVariable tv =
->     (positionOfIdent tv,
->      "Unbound type variable " ++ name tv)
+> errUnboundVariable :: Ident -> (Position, String)
+> errUnboundVariable tv = posErr tv $ "Unbound type variable " ++ name tv
+
+> posErr :: Ident -> String -> (Position, String)
+> posErr i errMsg = (positionOfIdent i, errMsg)
+
+> qposErr :: QualIdent -> String -> (Position, String)
+> qposErr i errMsg = (positionOfQualIdent i, errMsg)
 
 \end{verbatim}

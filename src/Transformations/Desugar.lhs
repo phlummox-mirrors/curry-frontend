@@ -239,7 +239,7 @@ with a local declaration for $v$.
 >   desugarTerm m tcEnv p ds (LiteralPattern (negateLiteral l))
 >   where negateLiteral (Int v i) = Int v (-i)
 >         negateLiteral (Float p' f) = Float p' (-f)
->         negateLiteral _ = internalError "negateLiteral"
+>         negateLiteral _ = internalError "Desugar.negateLiteral"
 > desugarTerm _ _ _ ds (VariablePattern v) = return (ds,VariablePattern v)
 > desugarTerm m tcEnv p ds (ConstructorPattern c [t]) =
 >   do
@@ -269,13 +269,13 @@ with a local declaration for $v$.
 > desugarTerm m tcEnv p ds (InfixFuncPattern t1 f t2) =
 >   desugarTerm m tcEnv p ds (FunctionPattern f [t1,t2])
 > desugarTerm m tcEnv p ds (RecordPattern fs _)
->   | null fs = internalError "desugarTerm: empty record"
+>   | null fs = internalError "Desugar.desugarTerm: empty record"
 >   | otherwise =
 >     do tyEnv <- S.get
 >	 case (lookupValue (fieldLabel (head fs)) tyEnv) of
 >          [Label _ r _] ->
 >            desugarRecordPattern m tcEnv p ds (map field2Tuple fs) r
->          _ -> internalError "desugarTerm: no label"
+>          _ -> internalError "Desugar.desugarTerm: no label"
 
 > desugarAs :: Position -> Ident -> ([Decl],ConstrTerm) -> ([Decl],ConstrTerm)
 > desugarAs p v (ds,t) =
@@ -337,7 +337,9 @@ type \texttt{Bool} of the guard because the guard's type defaults to
 > desugarExpr m tcEnv p (Literal l) =
 >   desugarLiteral l >>=
 >   either (return . Literal) (\ (pos,ls) -> desugarExpr m tcEnv p $ List pos $ map Literal ls)
-> desugarExpr _ _ _ (Variable v) = return (Variable v)
+> desugarExpr _ _ _ var@(Variable v)
+>   | unqualify v == anonId = return prelUnknown
+>   | otherwise             = return var
 > desugarExpr _ _ _ (Constructor c) = return (Constructor c)
 > desugarExpr m tcEnv p (Paren e) = desugarExpr m tcEnv p e
 > desugarExpr m tcEnv p (Typed e _) = desugarExpr m tcEnv p e
@@ -368,7 +370,7 @@ type \texttt{Bool} of the guard because the guard's type defaults to
 >           | op1 == minusId =
 >               if ty == floatType then prelNegateFloat else prelNegate
 >           | op1 == fminusId = prelNegateFloat
->           | otherwise = internalError "unaryMinus"
+>           | otherwise = internalError "Desugar.unaryMinus"
 > desugarExpr m tcEnv p (Apply (Constructor c) e) =
 >   do
 >     tyEnv <- S.get
@@ -431,30 +433,28 @@ type \texttt{Bool} of the guard because the guard's type defaults to
 >           | v `elem` qfv m1 alts1 = Let [varDecl p v e1] (Case r (mkVar v) alts1)
 >           | otherwise = Case r e1 alts1
 > desugarExpr m tcEnv p (RecordConstr fs)
->   | null fs = internalError "desugarExpr: empty record construction"
+>   | null fs = internalError "Desugar.desugarExpr: empty record construction"
 >   | otherwise =
 >       do let l = fieldLabel (head fs)
 >	       fs' = map field2Tuple fs
 >          tyEnv <- S.get
 >	   case (lookupValue l tyEnv) of
 >            [Label _ r _] -> desugarRecordConstr m tcEnv p r fs'
->            _  -> internalError "desugarExpr: illegal record construction"
+>            _  -> internalError "Desugar.desugarExpr: illegal record construction"
 > desugarExpr m tcEnv p (RecordSelection e l) =
 >   do tyEnv <- S.get
 >      case (lookupValue l tyEnv) of
 >        [Label _ r _] -> desugarRecordSelection m tcEnv p r l e
->        _ -> internalError "desugarExpr: illegal record selection"
+>        _ -> internalError "Desugar.desugarExpr: illegal record selection"
 > desugarExpr m tcEnv p (RecordUpdate fs rexpr)
->   | null fs = internalError "desugarExpr: empty record update"
+>   | null fs = internalError "Desugar.desugarExpr: empty record update"
 >   | otherwise =
 >       do let l = fieldLabel (head fs)
 >	       fs' = map field2Tuple fs
 >          tyEnv <- S.get
 >	   case (lookupValue l tyEnv) of
 >            [Label _ r _] -> desugarRecordUpdate m tcEnv p r rexpr fs'
->            _  -> internalError "desugarExpr: illegal record update"
-
-desugarExpr _ _ _ x = internalError $ "desugarExpr: unexpected expression " ++ show x
+>            _  -> internalError "Desugar.desugarExpr: illegal record update"
 
 \end{verbatim}
 If an alternative in a case expression has boolean guards and all of
@@ -524,7 +524,7 @@ have to be desugared as well. This part transforms the following extensions:
 >	   rfuncs <- mapM (genRecordFuncs m tcEnv p r' rty' (map fst fs')) fs'
 >	   S.modify (bindGlobalInfo DataConstructor m r rcts')
 >          return (rdecl:(concat rfuncs))
->     _ -> internalError "desugarRecordDecl: no record"
+>     _ -> internalError "Desugar.desugarRecordDecl: no record"
 >   where r' = qualifyWith m r
 > desugarRecordDecl _ _ decl = return [decl]
 
@@ -547,10 +547,10 @@ have to be desugared as well. This part transforms the following extensions:
 >   case (qualLookupTC r tcEnv) of
 >     [AliasType _ _ (TypeRecord fs' _)] ->
 >       do let cts = map (\ (l,_) ->
->	                  fromMaybe (internalError "desugarRecordConstr")
+>	                  fromMaybe (internalError "Desugar.desugarRecordConstr")
 >		                    (lookup l fs)) fs'
 >	   desugarExpr m tcEnv p (foldl Apply (Constructor r) cts)
->     _ -> internalError "desugarRecordConstr: wrong type"
+>     _ -> internalError "Desugar.desugarRecordConstr: wrong type"
 
 > desugarRecordSelection :: ModuleIdent -> TCEnv -> Position -> QualIdent
 >		         -> Ident -> Expression -> DesugarState Expression
@@ -616,7 +616,7 @@ have to be desugared as well. This part transforms the following extensions:
 >		           (Apply (Apply prelCond fpexpr) expr)
 >        in  return (SimpleRhs p rhsexpr decls)
 > genFunctionPatternExpr _ _ _ _
->    = internalError "genFunctionPatternExpr: unexpected right-hand-side"
+>    = internalError "Desugar.genFunctionPatternExpr: unexpected right-hand-side"
 
 > constrTerm2Expr :: ConstrTerm -> Expression
 > constrTerm2Expr (LiteralPattern lit)
@@ -632,7 +632,7 @@ have to be desugared as well. This part transforms the following extensions:
 >            (Variable qident)
 >            (map constrTerm2Expr cts)
 > constrTerm2Expr _
->    = internalError "constrTerm2Expr: unexpected constructor term"
+>    = internalError "Desugar.constrTerm2Expr: unexpected constructor term"
 
 > getConstrTermVars :: [Ident] -> ConstrTerm -> [Ident]
 > getConstrTermVars ids (VariablePattern ident)
@@ -670,7 +670,7 @@ have to be desugared as well. This part transforms the following extensions:
 >	       updType = polyType (TypeArrow rty (TypeArrow ty rty))
 >	   S.modify (bindFun m selId selType . bindFun m updId updType)
 >	   return [selFunc,updFunc]
->     _ -> internalError "genRecordFuncs: wrong type"
+>     _ -> internalError "Desugar.genRecordFuncs: wrong type"
 
 > genSelectorFunc :: ModuleIdent -> Position -> QualIdent -> [Ident] -> Ident
 >	          -> (Ident, Decl)
@@ -802,6 +802,9 @@ Prelude entities
 > prelFailed :: Expression
 > prelFailed = Variable $ preludeIdent "failed"
 
+> prelUnknown :: Expression
+> prelUnknown = Variable $ preludeIdent "unknown"
+
 > prelMap :: SrcRef -> Expression
 > prelMap r = Variable $ addRef r $ preludeIdent "map"
 
@@ -846,11 +849,10 @@ Auxiliary definitions
 \begin{verbatim}
 
 > isNewtypeConstr :: ValueEnv -> QualIdent -> Bool
-> isNewtypeConstr tyEnv c =
->   case qualLookupValue c tyEnv of
->     [DataConstructor _ _] -> False
->     [NewtypeConstructor _ _] -> True
->     _ -> internalError $ "isNewtypeConstr " ++ show c
+> isNewtypeConstr tyEnv c = case qualLookupValue c tyEnv of
+>   [DataConstructor _ _] -> False
+>   [NewtypeConstructor _ _] -> True
+>   _ -> internalError $ "Desugar.isNewtypeConstr " ++ show c
 
 > isVarPattern :: ConstrTerm -> Bool
 > isVarPattern (VariablePattern _) = True

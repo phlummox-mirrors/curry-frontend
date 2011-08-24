@@ -71,7 +71,7 @@ imported.
 > predefTopEnv :: Entity a => QualIdent -> a -> TopEnv a -> TopEnv a
 > predefTopEnv x y (TopEnv env) =
 >   case Map.lookup x env of
->     Just _ -> internalError "predefTopEnv"
+>     Just _ -> internalError "TopEnv.predefTopEnv"
 >     Nothing -> TopEnv (Map.insert x [(Import [],y)] env)
 
 > importTopEnv :: Entity a => ModuleIdent -> Ident -> a -> TopEnv a -> TopEnv a
@@ -101,8 +101,8 @@ imported.
 >   TopEnv (Map.insert x (bindLocal y (entities x env)) env)
 >   where bindLocal y' ys
 >           | null [y'' | (Local,y'') <- ys] = (Local,y') : ys
->           | otherwise = internalError ("\"qualBindTopEnv " ++ show x
->                       ++ "\" failed in function \"" ++ fun ++ "\"")
+>           | otherwise = internalError $ "\"qualBindTopEnv " ++ show x
+>                       ++ "\" failed in function \"" ++ fun ++ "\""
 
 > rebindTopEnv :: Ident -> a -> TopEnv a -> TopEnv a
 > rebindTopEnv = qualRebindTopEnv . qualify
@@ -110,7 +110,7 @@ imported.
 > qualRebindTopEnv :: QualIdent -> a -> TopEnv a -> TopEnv a
 > qualRebindTopEnv x y (TopEnv env) =
 >   TopEnv (Map.insert x (rebindLocal (entities x env)) env)
->   where rebindLocal [] = internalError "qualRebindTopEnv"
+>   where rebindLocal [] = internalError "TopEnv.qualRebindTopEnv"
 >         rebindLocal ((Local,_) : ys) = (Local,y) : ys
 >         rebindLocal ((Import ms,y') : ys) = (Import ms,y') : rebindLocal ys
 
@@ -118,7 +118,7 @@ imported.
 > unbindTopEnv x (TopEnv env) =
 >   TopEnv (Map.insert x' (unbindLocal (entities x' env)) env)
 >   where x' = qualify x
->         unbindLocal [] = internalError "unbindTopEnv"
+>         unbindLocal [] = internalError "TopEnv.unbindTopEnv"
 >         unbindLocal ((Local,_) : ys) = ys
 >         unbindLocal ((Import ms,y) : ys) = (Import ms,y) : unbindLocal ys
 

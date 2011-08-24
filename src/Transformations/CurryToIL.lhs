@@ -185,7 +185,7 @@ them back into their corresponding type constructors.
 > elimRecordTypes _ _ _ _ (TypeSkolem v) =
 >   TypeSkolem v
 > elimRecordTypes m tyEnv tcEnv n (TypeRecord fs _)
->   | null fs = internalError "elimRecordTypes: empty record type"
+>   | null fs = internalError "CurryToIL.elimRecordTypes: empty record type"
 >   | otherwise =
 >     case (lookupValue (fst (head fs)) tyEnv) of
 >       [Label _ r _] ->
@@ -200,8 +200,8 @@ them back into their corresponding type constructors.
 >		                         (Map.lookup i vs))
 >		            is
 >	      in  TypeConstructor r tys
->	    _ -> internalError "elimRecordTypes: no record type"
->       _ -> internalError "elimRecordTypes: no label"
+>	    _ -> internalError "CurryToIL.elimRecordTypes: no record type"
+>       _ -> internalError "CurryToIL.elimRecordTypes: no label"
 
 > matchTypeVars :: [(Ident,Type)] -> Map.Map Int Type -> (Ident,Type)
 >	           -> Map.Map Int Type
@@ -219,7 +219,7 @@ them back into their corresponding type constructors.
 >   match' vs' (TypeRecord fs1 _) (TypeRecord fs2 _) =
 >     foldl (matchTypeVars fs2) vs' fs1
 >   match' _ ty1 ty2 =
->     internalError ("matchTypeVars: " ++ show ty1 ++ "\n" ++ show ty2)
+>     internalError ("CurryToIL.matchTypeVars: " ++ show ty1 ++ "\n" ++ show ty2)
 >
 >   matchList vs1 tys tys' =
 >     foldl (\vs' (ty1,ty2) -> match' vs' ty1 ty2) vs1 (zip tys tys')
@@ -364,7 +364,7 @@ position in the remaining arguments. If one is found,
 > translLiteral (Char p c) = IL.Char p c
 > translLiteral (Int ident i) = IL.Int (srcRefOf (positionOfIdent ident)) i
 > translLiteral (Float p f) = IL.Float p f
-> translLiteral _ = internalError "translLiteral"
+> translLiteral _ = internalError "CurryToIL.translLiteral"
 
 > translTerm :: Ident -> ConstrTerm -> NestedTerm
 > translTerm _ (LiteralPattern l) =
@@ -375,7 +375,7 @@ position in the remaining arguments. If one is found,
 >              (zipWith translTerm vs ts)
 >   where vs = argNames v
 > translTerm v (AsPattern _ t) = translTerm v t
-> translTerm _ _ = internalError "translTerm"
+> translTerm _ _ = internalError "CurryToIL.translTerm"
 
 > bindRenameEnv :: Ident -> ConstrTerm -> RenameEnv -> RenameEnv
 > bindRenameEnv _ (LiteralPattern _) env = env
@@ -383,7 +383,7 @@ position in the remaining arguments. If one is found,
 > bindRenameEnv v (ConstructorPattern _ ts) env =
 >   foldr2 bindRenameEnv env (argNames v) ts
 > bindRenameEnv v (AsPattern v' t) env = Map.insert v' v (bindRenameEnv v t env)
-> bindRenameEnv _ _ _ = internalError "bindRenameEnv"
+> bindRenameEnv _ _ _ = internalError "CurryToIL.bindRenameEnv"
 
 > argNames :: Ident -> [Ident]
 > argNames v = [mkIdent (prefix ++ show i) | i <- [1 ..] :: [Int]]
@@ -531,7 +531,7 @@ instance, if one of the alternatives contains an \texttt{@}-pattern.
 >           (id,
 >            [translTerm v' t],
 >            translRhs tyEnv vs (bindRenameEnv v' t env) rhs)
-> translExpr _ _ _ _ = internalError "translExpr"
+> translExpr _ _ _ _ = internalError "CurryToIL.translExpr"
 
 \end{verbatim}
 \paragraph{Auxiliary Definitions}
@@ -544,14 +544,14 @@ stripped from the types.
 > varType tyEnv f =
 >   case qualLookupValue f tyEnv of
 >     [Value _ (ForAll _ ty)] -> ty
->     _ -> internalError ("varType: " ++ show f)
+>     _ -> internalError $ "CurryToIL.varType: " ++ show f
 
 > constrType :: ValueEnv -> QualIdent -> Type
 > constrType tyEnv c =
 >   case qualLookupValue c tyEnv of
 >     [DataConstructor _ (ForAllExist _ _ ty)] -> ty
 >     [NewtypeConstructor _ (ForAllExist _ _ ty)] -> ty
->     _ -> internalError ("constrType: " ++ show c)
+>     _ -> internalError $ "CurryToIL.constrType: " ++ show c
 
 \end{verbatim}
 The list of import declarations in the intermediate language code is

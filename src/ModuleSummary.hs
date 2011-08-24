@@ -13,7 +13,7 @@
 -}
 module ModuleSummary (ModuleSummary (..), summarizeModule) where
 
-import Data.Maybe
+import Data.Maybe (fromMaybe)
 
 import Curry.Base.Position
 import Curry.Base.Ident
@@ -41,14 +41,14 @@ data ModuleSummary = ModuleSummary
     table of type constructors and its interface
 -}
 summarizeModule :: TCEnv -> Interface -> Module -> ModuleSummary
-summarizeModule tcEnv (Interface iid _ idecls) mdl@(Module mid mExp imps _)
+summarizeModule tcEnv (Interface iid _ idecls) (Module mid mExp imps decls)
   | iid == mid = ModuleSummary
       { moduleId     = mid
       , interface    = idecls
       , exports      = maybe [] (\ (Exporting _ exps) -> exps) mExp
       , imports      = genImports imps
-      , infixDecls   = genInfixDecls mdl
-      , typeSynonyms = genTypeSyns tcEnv mdl
+      , infixDecls   = genInfixDecls mid decls
+      , typeSynonyms = genTypeSyns tcEnv mid decls
       }
   | otherwise = internalError $ errInterfaceModuleMismatch iid mid
 
@@ -66,8 +66,8 @@ genImports = map snd . foldr addImport []
 -- ---------------------------------------------------------------------------
 
 -- |Generate interface infix declarations in the module
-genInfixDecls :: Module -> [IDecl]
-genInfixDecls (Module mident _ _ decls) = concatMap genInfixDecl decls
+genInfixDecls :: ModuleIdent -> [Decl] -> [IDecl]
+genInfixDecls mident decls = concatMap genInfixDecl decls
   where
   genInfixDecl :: Decl -> [IDecl]
   genInfixDecl (InfixDecl pos spec prec idents)
@@ -85,8 +85,8 @@ genInfixDecls (Module mident _ _ decls) = concatMap genInfixDecl decls
 -- ---------------------------------------------------------------------------
 
 -- |Generate interface declarations for all type synonyms in the module.
-genTypeSyns :: TCEnv -> Module -> [IDecl]
-genTypeSyns tcEnv (Module mident _ _ decls)
+genTypeSyns :: TCEnv -> ModuleIdent -> [Decl] -> [IDecl]
+genTypeSyns tcEnv mident decls
   = concatMap (genTypeSynDecl mident tcEnv) $ filter isTypeSyn decls
 
 isTypeSyn :: Decl -> Bool

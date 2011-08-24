@@ -48,6 +48,8 @@ loadInterfaces paths (Module m _ is _) =
   foldM (loadInterface paths [m]) initInterfaceEnv
         [(p, m') | ImportDecl p m' _ _ _ <- is]
 
+-- |Load an interface into the environment
+--
 -- If an import declaration for a module is found, the compiler first
 -- checks whether an import for the module is already pending. In this
 -- case the module imports are cyclic which is not allowed in Curry. The
@@ -55,7 +57,6 @@ loadInterfaces paths (Module m _ is _) =
 -- whether the module has already been imported. If so, nothing needs to
 -- be done, otherwise the interface will be searched for in the import paths
 -- and compiled.
-
 loadInterface :: [FilePath] -> [ModuleIdent] -> InterfaceEnv
               -> (Position, ModuleIdent) -> IO InterfaceEnv
 loadInterface paths ctxt mEnv (p, m)
@@ -66,11 +67,12 @@ loadInterface paths ctxt mEnv (p, m)
       maybe (errorAt p $ errInterfaceNotFound m)
             (compileInterface paths ctxt mEnv m)
 
+-- |Compile an interface by recursively loading its dependencies
+--
 -- After reading an interface, all imported interfaces are recursively
 -- loaded and entered into the interface's environment. There is no need
 -- to check FlatCurry-Interfaces, since these files contain automatically
 -- generated FlatCurry terms (type \texttt{Prog}).
-
 compileInterface :: [FilePath] -> [ModuleIdent] -> InterfaceEnv
                  -> ModuleIdent -> FilePath -> IO InterfaceEnv
 compileInterface paths ctxt mEnv m fn = do
@@ -83,12 +85,10 @@ compileInterface paths ctxt mEnv m fn = do
       mEnv' <- foldM (loadInterface paths (m : ctxt)) mEnv importDecls
       return $ Map.insert m intf mEnv'
 
--- The function \texttt{flatToCurryInterface} transforms FlatInterface
--- information (type \texttt{FlatCurry.Prog} to MCC interface declarations
--- (type \texttt{CurrySyntax.IDecl}. This is necessary to process
--- FlatInterfaces instead of ".icurry" files when using MCC as frontend
+-- |Transforms an interface of type 'FlatCurry.Prog' to a Curry interface
+-- of type 'CurrySyntax.Interface'. This is necessary to process
+-- FlatInterfaces instead of ".icurry" files when using cymake as a frontend
 -- for PAKCS.
-
 flatToCurryInterface :: EF.Prog -> Interface
 flatToCurryInterface (EF.Prog m imps ts fs os)
   = Interface (fromModuleName m) (map genIImportDecl imps) $ concat
@@ -107,24 +107,24 @@ flatToCurryInterface (EF.Prog m imps ts fs os)
     | recordExt `isPrefixOf` EF.localName qn
     = ITypeDecl pos
         (genQualIdent qn)
-        (map (genVarIndexIdent "a") is)
+        (map genVarIndexIdent is)
         (RecordType (map genLabeledType cs) Nothing)
     | otherwise
     = IDataDecl pos
         (genQualIdent qn)
-        (map (genVarIndexIdent "a") is)
+        (map genVarIndexIdent is)
         (map (Just . genConstrDecl) cs)
   genITypeDecl (EF.TypeSyn qn _ is t)
     = ITypeDecl pos
         (genQualIdent qn)
-        (map (genVarIndexIdent "a") is)
+        (map genVarIndexIdent is)
         (genTypeExpr t)
 
   genLabeledType :: EF.ConsDecl -> ([Ident], TypeExpr)
   genLabeledType (EF.Cons qn _ _ [t])
     = ( [renameLabel $ fromLabelExtId $ mkIdent $ EF.localName qn]
       , genTypeExpr t)
-  genLabeledType _ = error "Interfaces.genLabeledType: no pattern match" -- TODO
+  genLabeledType _ = error "Interfaces.genLabeledType: not exactly one type expression"
 
   genConstrDecl :: EF.ConsDecl -> ConstrDecl
   genConstrDecl (EF.Cons qn _ _ ts1)
@@ -139,7 +139,7 @@ flatToCurryInterface (EF.Prog m imps ts fs os)
 
   genTypeExpr :: EF.TypeExpr -> TypeExpr
   genTypeExpr (EF.TVar i)
-    = VariableType (genVarIndexIdent "a" i)
+    = VariableType (genVarIndexIdent i)
   genTypeExpr (EF.FuncType t1 t2)
     = ArrowType (genTypeExpr t1) (genTypeExpr t2)
   genTypeExpr (EF.TCons qn ts1)
@@ -154,8 +154,8 @@ flatToCurryInterface (EF.Prog m imps ts fs os)
   genQualIdent EF.QName { EF.modName = mdl, EF.localName = lname } =
     qualifyWith (fromModuleName mdl) (mkIdent lname)
 
-  genVarIndexIdent :: String -> Int -> Ident
-  genVarIndexIdent v i = mkIdent $ v ++ show i
+  genVarIndexIdent :: Int -> Ident
+  genVarIndexIdent i = mkIdent $ 'a' : show i
 
   isSpecialPreludeType :: EF.TypeDecl -> Bool
   isSpecialPreludeType (EF.Type qn _ _ _)

@@ -26,14 +26,13 @@ import Curry.Files.Filenames
 import Curry.Files.PathUtils
 import Curry.Syntax (Module (..), Interface, parseModule)
 
-import Env.Interface
-
 import CompilerEnv
 import CompilerOpts (Options (..), Verbosity (..), TargetType (..), defaultOptions)
 import CurryBuilder (smake)
 import CurryDeps (Source (..), flattenDeps, moduleDeps)
+import Imports (importModules)
 import Interfaces (loadInterfaces)
-import Modules (checkModuleHeader, checkModule, simpleCheckModule, compileModule)
+import Modules
 
 {- |Return the result of a syntactical analysis of the source program 'src'.
     The result is the syntax tree of the program (type 'Module'; see Module
@@ -69,16 +68,18 @@ genCurrySyntax fn mod1
 
 --
 genFullCurrySyntax ::
-  (Options -> InterfaceEnv -> Module -> (CompilerEnv, Module, Interface, [Message]))
+  (Options -> CompilerEnv -> Module -> (CompilerEnv, Module, Interface, [Message]))
   -> [FilePath] -> FilePath -> MsgMonad Module -> IO (MsgMonad Module)
 genFullCurrySyntax check paths fn m = runMsgIO m $ \mod1 -> do
   errs <- makeInterfaces paths fn mod1
   if null errs
     then do
       iEnv <- loadInterfaces paths mod1
-      let (_, mod', _, msgs') = check (opts paths) iEnv mod1
+      let env = importModules opts mod1 iEnv
+          (_, mod', _, msgs') = check opts env mod1
       return (tell msgs' >> return  mod')
     else return $ failWith $ head errs
+  where opts = mkOpts paths
 
 -- TODO: Resembles CurryBuilder
 
@@ -93,7 +94,7 @@ makeInterfaces paths fn mdl = do
     compile deps' (Source file' mods) = smake
       [flatName file', flatIntName file']
       (file':mapMaybe (flatInterface deps') mods)
-      (compileModule (opts paths) file')
+      (compileModule (mkOpts paths) file')
       (return ())
     compile _ _ = return ()
 
@@ -102,8 +103,8 @@ makeInterfaces paths fn mdl = do
       Just (Interface f) -> Just $ flatIntName $ dropExtension f
       _                  -> Nothing
 
-opts :: [FilePath] -> Options
-opts paths = defaultOptions
+mkOpts :: [FilePath] -> Options
+mkOpts paths = defaultOptions
   { optImportPaths = paths
   , optVerbosity   = Quiet
   , optWarn        = False

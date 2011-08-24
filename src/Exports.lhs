@@ -181,7 +181,7 @@ identifiers.
 >     in case lookupValue (head ls) tyEnv of
 >       [Label _ r' _] -> if r == r' then ExportTypeWith r ls
 >                                    else ExportTypeWith r []
->       _              -> internalError "exportType"
+>       _              -> internalError "Exports.exportType"
 >   | otherwise = ExportTypeWith (origName t) (constrs t)
 
 > exportRecord :: TypeInfo -> [Export]
@@ -247,7 +247,7 @@ exported function.
 > iInfixDecl m pEnv op ds = case qualLookupP op pEnv of
 >   []                           -> ds
 >   [PrecInfo _ (OpPrec fix pr)] -> IInfixDecl NoPos fix pr (qualUnqualify m op) : ds
->   _                            -> internalError "infixDecl"
+>   _                            -> internalError "Exports.infixDecl"
 
 > typeDecl :: ModuleIdent -> TCEnv -> Export -> [IDecl] -> [IDecl]
 > typeDecl _ _     (Export             _) ds = ds
@@ -266,7 +266,7 @@ exported function.
 >         let ty' = TypeRecord (filter (\ (l,_) -> elem l cs) fs) Nothing
 >         in  iTypeDecl ITypeDecl m tc' n (fromQualType m ty') : ds
 >     _ -> iTypeDecl ITypeDecl m tc' n (fromQualType m ty) : ds
->   _ -> internalError "typeDecl"
+>   _ -> internalError "Exports.typeDecl"
 > typeDecl _ _ _ _ = error "Exports.typeDecl: no pattern match"
 
 > iTypeDecl :: (Position -> QualIdent -> [Ident] -> a -> IDecl)
@@ -292,7 +292,7 @@ exported function.
 >   [Value _ (ForAll _ ty)] ->
 >     IFunctionDecl NoPos (qualUnqualify m f) (arrowArity ty)
 >                         (fromQualType m ty) : ds
->   _ -> internalError $ "funDecl: " ++ show f
+>   _ -> internalError $ "Exports.funDecl: " ++ show f
 > funDecl _ _ (ExportTypeWith _ _) ds = ds
 > funDecl _ _ _ _ = error "Exports.funDecl: no pattern match"
 
@@ -358,7 +358,7 @@ distinguished from type variables.
 >   case qualLookupTC (qualQualify m tc) tcEnv of
 >     [DataType _ n _] -> hidingDataDecl tc n
 >     [RenamingType _ n _] -> hidingDataDecl tc n
->     _ ->  internalError "hiddenTypeDecl"
+>     _ ->  internalError "Exports.hiddenTypeDecl"
 >   where hidingDataDecl tc1 n =
 >           HidingDataDecl NoPos (unqualify tc1) (take n identSupply)
 

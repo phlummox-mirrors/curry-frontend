@@ -38,13 +38,11 @@ imported precedence environment.
 \begin{verbatim}
 
 > bindPrecs :: ModuleIdent -> [Decl] -> PEnv -> PEnv
-> bindPrecs m ds pEnv =
->   case findDouble ops of
->     Nothing ->
->       case [ op | op <- ops, op `notElem` bvs] of
->         [] -> foldr bindPrec pEnv fixDs
->         op : _ -> errorAt' (undefinedOperator op)
->     Just op -> errorAt' (duplicatePrecedence op)
+> bindPrecs m ds pEnv = case findDouble ops of
+>   Nothing -> case [ op | op <- ops, op `notElem` bvs] of
+>     [] -> foldr bindPrec pEnv fixDs
+>     op : _ -> errorAt' (undefinedOperator op)
+>   Just op -> errorAt' (duplicatePrecedence op)
 >   where (fixDs,nonFixDs) = partition isInfixDecl ds
 >         bvs = concatMap boundValues nonFixDs
 >         ops = [ op | InfixDecl _ _ _ ops' <- fixDs, op <- ops']
@@ -56,8 +54,8 @@ imported precedence environment.
 
 > boundValues :: Decl -> [Ident]
 > boundValues (DataDecl _ _ _ cs) = map constr cs
->   where constr (ConstrDecl _ _ c _) = c
->         constr (ConOpDecl _ _ _ op _) = op
+>   where constr (ConstrDecl _ _   c  _) = c
+>         constr (ConOpDecl  _ _ _ op _) = op
 > boundValues (NewtypeDecl _ _ _ (NewConstrDecl _ _ c _)) = [c]
 > boundValues (FunctionDecl _ f _) = [f]
 > boundValues (ExternalDecl _ _ _ f _) = [f]
@@ -77,13 +75,13 @@ be returned because it is needed for constructing the module's
 interface.
 \begin{verbatim}
 
-> precCheck :: ModuleIdent -> PEnv -> [Decl] -> (PEnv,[Decl])
+> precCheck :: ModuleIdent -> PEnv -> [Decl] -> (PEnv, [Decl])
 > precCheck = checkDecls
 
-> checkDecls :: ModuleIdent -> PEnv -> [Decl] -> (PEnv,[Decl])
-> checkDecls m pEnv ds = pEnv' `seq` (pEnv',ds')
+> checkDecls :: ModuleIdent -> PEnv -> [Decl] -> (PEnv, [Decl])
+> checkDecls m pEnv ds = pEnv' `seq` (pEnv', ds')
 >   where pEnv' = bindPrecs m ds pEnv
->         ds' = map (checkDecl m pEnv') ds
+>         ds'   = map (checkDecl m pEnv') ds
 
 > checkDecl :: ModuleIdent -> PEnv -> Decl -> Decl
 > checkDecl m pEnv (FunctionDecl p f eqs) =
@@ -430,10 +428,9 @@ an operator definition that shadows an imported definition.
 > opPrec op = prec (opName op)
 
 > prec :: QualIdent -> PEnv -> OpPrec
-> prec op env =
->   case qualLookupP op env of
->     [] -> defaultP
->     PrecInfo _ p : _ -> p
+> prec op env = case qualLookupP op env of
+>   [] -> defaultP
+>   PrecInfo _ p : _ -> p
 
 \end{verbatim}
 Error messages.

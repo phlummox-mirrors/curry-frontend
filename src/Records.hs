@@ -56,7 +56,7 @@ importLabels mEnv ds = foldl importLabelTypes initLabelEnv ds
     importLabelTypes lEnv (ImportDecl p m _ asM is) =
       case Map.lookup m mEnv of
         Just (Interface _ _ ds') -> foldl (importLabelType p (fromMaybe m asM) is) lEnv ds'
-        Nothing  -> internalError "importLabels"
+        Nothing  -> internalError "Records.importLabels"
 
     importLabelType p m is lEnv (ITypeDecl _ r _ (RecordType fs _)) =
      foldl (insertLabelType p m r' (getImportSpec r' is)) lEnv fs

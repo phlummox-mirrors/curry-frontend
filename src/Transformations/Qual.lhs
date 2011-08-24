@@ -159,6 +159,6 @@ declarations groups as well as function arguments remain unchanged.
 >         [y] -> origName y
 >         _   -> case (qualLookupValue (qualQualify m x) tyEnv) of
 >                  [y] -> origName y
->                  _ -> qualQualify m x -- internalError ("qualIdent: " ++ show x)
+>                  _ -> qualQualify m x
 
 \end{verbatim}

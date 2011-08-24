@@ -41,17 +41,17 @@ imported.
 >   = GlobalEnv (bindTopEnv "NestEnv.bindNestEnv" x y env)
 > bindNestEnv x y (LocalEnv genv env) =
 >   case Map.lookup x env of
->     Just _ -> internalError "bindNestEnv"
+>     Just _ -> internalError "NestEnv.bindNestEnv"
 >     Nothing -> LocalEnv genv (Map.insert x y env)
 
 > qualBindNestEnv :: QualIdent -> a -> NestEnv a -> NestEnv a
 > qualBindNestEnv x y (GlobalEnv env)
 >   = GlobalEnv (qualBindTopEnv "NestEnv.qualBindNestEnv" x y env)
 > qualBindNestEnv x y (LocalEnv genv env)
->   | isQualified x = internalError "qualBindNestEnv"
+>   | isQualified x = internalError "NestEnv.qualBindNestEnv"
 >   | otherwise =
 >       case Map.lookup x' env of
->         Just _ -> internalError "qualBindNestEnv"
+>         Just _ -> internalError "NestEnv.qualBindNestEnv"
 >         Nothing -> LocalEnv genv (Map.insert x' y env)
 >   where x' = unqualify x
 

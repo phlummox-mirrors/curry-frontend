@@ -222,7 +222,7 @@ in the type environment.
 >     e' <- abstractExpr m pre lvs env e
 >     alts' <- mapM (abstractAlt m pre lvs env) alts
 >     return (Case r e' alts')
-> abstractExpr _ _ _ _ _ = internalError "abstractExpr"
+> abstractExpr _ _ _ _ _ = internalError "Lift.abstractExpr"
 
 > abstractAlt :: ModuleIdent -> String -> [Ident] -> AbstractEnv -> Alt
 >             -> AbstractState Alt
@@ -274,7 +274,7 @@ to the top-level.
 > liftExpr (Case r e alts) = (Case r e' alts',concat (ds':dss'))
 >   where (e',ds') = liftExpr e
 >         (alts',dss') = unzip (map liftAlt alts)
-> liftExpr _ = internalError "liftExpr"
+> liftExpr _ = internalError "Lift.liftExpr"
 
 > liftAlt :: Alt -> (Alt,[Decl])
 > liftAlt (Alt p t rhs) = (Alt p t rhs',ds')
@@ -311,7 +311,7 @@ to the top-level.
 > varType tyEnv v =
 >   case lookupValue v tyEnv of
 >     [Value _ (ForAll _ ty)] -> ty
->     _ -> internalError ("varType " ++ show v)
+>     _ -> internalError $ "Lift.varType " ++ show v
 
 > liftIdent :: String -> Ident -> Ident
 > liftIdent prefix x =
