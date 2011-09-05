@@ -39,11 +39,11 @@ type annotation is present.
 > import Base.Expr
 > import Base.Messages (errorAt, errorAt', internalError)
 > import Base.SCC
+> import Base.TopEnv
 > import Base.Types
 > import Base.TypeSubst
 > import Base.Utils (foldr2)
 
-> import Env.TopEnv
 > import Env.TypeConstructors (TCEnv, TypeInfo (..), bindTypeInfo, qualLookupTC)
 > import Env.Value ( ValueEnv, ValueInfo (..), bindFun, rebindFun
 >   , bindGlobalInfo, bindLabel, lookupValue, qualLookupValue )
@@ -1246,17 +1246,18 @@ know that they are closed.
 Miscellaneous functions.
 \begin{verbatim}
 
-> remove :: Eq a => a -> [(a,b)] -> [(a,b)]
-> remove _ [] = []
-> remove k ((k',e):kes) | k == k'   = kes
->		        | otherwise = (k',e):(remove k kes)
+> remove :: Eq a => a -> [(a, b)] -> [(a, b)]
+> remove _ []              = []
+> remove k (kv : kvs)
+>   | k == fst kv = kvs
+>   | otherwise   = kv : remove k kvs
 
 \end{verbatim}
 Error functions.
 \begin{verbatim}
 
 > recursiveTypes :: [Ident] -> (Position,String)
-> recursiveTypes [] = error "TypeCheck.recursiveTypes: empty list"
+> recursiveTypes []   = error "TypeCheck.recursiveTypes: empty list"
 > recursiveTypes [tc] =
 >     (positionOfIdent tc,
 >      "Recursive synonym type " ++ name tc)

@@ -13,8 +13,9 @@
 -}
 module Checks where
 
-import Curry.Base.MessageMonad (Message)
-import Curry.Syntax
+import Curry.Syntax (Module (..))
+
+import Base.Messages
 
 import qualified Checks.KindCheck   as KC (kindCheck)
 import qualified Checks.PrecCheck   as PC (precCheck)
@@ -25,36 +26,51 @@ import qualified Checks.WarnCheck   as WC (warnCheck)
 import CompilerEnv
 import CompilerOpts
 
+data CheckStatus a
+  = CheckFailed [Message]
+  | CheckSuccess a
+
+instance Monad CheckStatus where
+  return  = CheckSuccess
+  m >>= f = case m of
+    CheckFailed  errs -> CheckFailed  errs
+    CheckSuccess    a -> f a
+
 -- TODO: More documentation
 
 -- |Check the kinds of type definitions and signatures.
 -- In addition, nullary type constructors and type variables are dinstiguished
-kindCheck :: Module -> CompilerEnv -> (Module, CompilerEnv)
-kindCheck (Module m es is ds) env = (Module m es is ds', env)
-  where ds' = KC.kindCheck (moduleIdent env) (tyConsEnv env) ds
+kindCheck :: CompilerEnv -> Module -> (CompilerEnv, Module)
+kindCheck env (Module m es is ds)
+  | null msgs = (env, Module m es is ds')
+  | otherwise = errorMessages msgs
+  where (ds', msgs) = KC.kindCheck (moduleIdent env) (tyConsEnv env) ds
 
 -- |Apply the precendences of infix operators.
 -- This function reanrranges the AST.
-precCheck :: Module -> CompilerEnv -> (Module, CompilerEnv)
-precCheck (Module m es is ds) env = (Module m es is ds', env { opPrecEnv = pEnv' })
-  where (pEnv', ds') = PC.precCheck (moduleIdent env) (opPrecEnv env) ds
+precCheck :: CompilerEnv -> Module -> (CompilerEnv, Module)
+precCheck env (Module m es is ds)
+  | null msgs = (env { opPrecEnv = pEnv' }, Module m es is ds')
+  | otherwise = errorMessages msgs
+  where (ds', pEnv', msgs) = PC.precCheck (moduleIdent env) (opPrecEnv env) ds
 
 -- |Apply the syntax check.
-syntaxCheck :: Options -> Module -> CompilerEnv -> (Module, CompilerEnv)
-syntaxCheck opts (Module m es is ds) env = (Module m es is ds', env)
-  where ds'     = SC.syntaxCheck withExt (moduleIdent env) (aliasEnv env)
+syntaxCheck :: Options -> CompilerEnv -> Module -> (CompilerEnv, Module)
+syntaxCheck opts env (Module m es is ds)
+  | null msgs = (env, Module m es is ds')
+  | otherwise = errorMessages msgs
+  where (ds', msgs) = SC.syntaxCheck opts (moduleIdent env) (aliasEnv env)
                    (arityEnv env) (valueEnv env) (tyConsEnv env) ds
-        withExt = BerndExtension `elem` optExtensions opts
 
 -- |Apply the type check.
-typeCheck :: Module -> CompilerEnv -> (Module, CompilerEnv)
-typeCheck mdl@(Module _ _ _ ds) env = (mdl, env { tyConsEnv = tcEnv', valueEnv = tyEnv' })
+typeCheck :: CompilerEnv -> Module -> (CompilerEnv, Module)
+typeCheck env mdl@(Module _ _ _ ds) = (env { tyConsEnv = tcEnv', valueEnv = tyEnv' }, mdl)
   where (tcEnv', tyEnv') = TC.typeCheck (moduleIdent env)
                               (tyConsEnv env) (valueEnv env) ds
 
 -- TODO: Which kind of warnings?
 
 -- |Check for warnings.
-warnCheck :: Module -> CompilerEnv -> [Message]
-warnCheck (Module _ _ is ds) env
+warnCheck :: CompilerEnv -> Module -> [Message]
+warnCheck env (Module _ _ is ds)
   = WC.warnCheck (moduleIdent env) (valueEnv env) is ds

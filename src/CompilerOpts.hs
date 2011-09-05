@@ -42,7 +42,7 @@ data Options = Options
   , optOverlapWarn :: Bool           -- ^ show "overlap" warnings
   , optTargetTypes :: [TargetType]   -- ^ what to generate
   , optExtensions  :: [Extension]    -- ^ enabled language extensions
-  , optDumps       :: [DumpLevel]    -- ^ dumps
+  , optDumps       :: [DumpLevel]    -- ^ dump levels
   }
 
 -- | Default compiler options
@@ -85,9 +85,6 @@ classifyVerbosity :: String -> Verbosity
 classifyVerbosity "0" = Quiet
 classifyVerbosity _   = Verbose
 
--- TODO: dump FlatCurry code, dump AbstractCurry code, dump after 'case'
--- expansion
-
 -- |Data type for representing code dumps
 data DumpLevel
   = DumpRenamed      -- ^ dump source  after renaming
@@ -96,7 +93,7 @@ data DumpLevel
   | DumpSimplified   -- ^ dump source  after simplification
   | DumpLifted       -- ^ dump source  after lambda-lifting
   | DumpIL           -- ^ dump IL code after translation
-  | DumpCase         -- ^ dump IL code after case elimination
+  | DumpCase         -- ^ dump IL code after case completion
     deriving (Eq, Bounded, Enum, Show)
 
 -- |All available 'DumpLevel's
@@ -105,13 +102,16 @@ dumpAll = [minBound .. maxBound]
 
 -- |Data type representing language extensions
 data Extension
-  = BerndExtension -- TODO: Give it a more concise name
-  | Records
-  | FunctionPatterns
+  = Records
+  | FunctionalPatterns
   | AnonymousFreeVariables
   | NoImplicitPrelude
   | UnknownExtension String
     deriving (Eq, Read, Show)
+
+-- |'Extension's available by @-e@ flag
+pakcsExtensions :: [Extension]
+pakcsExtensions = [Records, FunctionalPatterns]
 
 -- |Classifies a 'String' as an 'Extension'
 classifyExtension :: String -> Extension
@@ -190,7 +190,7 @@ options =
   -- extensions
   , Option "e"  ["extended"]
       (NoArg (\ opts -> opts { optExtensions =
-        nub $ BerndExtension : optExtensions opts }))
+        nub $ pakcsExtensions ++ optExtensions opts }))
       "enable extended Curry functionalities"
   , Option "X"   []
       (ReqArg (\ arg opts -> opts { optExtensions =

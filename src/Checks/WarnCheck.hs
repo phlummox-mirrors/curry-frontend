@@ -23,7 +23,8 @@ import Curry.Base.Position
 import Curry.Base.MessageMonad
 import Curry.Syntax
 
-import qualified Env.ScopeEnv as ScopeEnv
+import qualified Base.ScopeEnv as ScopeEnv
+
 import Env.Value (ValueEnv, ValueInfo (..), qualLookupValue)
 
 

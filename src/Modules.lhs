@@ -21,7 +21,7 @@ This module controls the compilation of modules.
 \begin{verbatim}
 
 > module Modules
->   ( compileModule, loadModule, checkModuleHeader, simpleCheckModule, checkModule
+>   ( compileModule, loadModule, checkModuleHeader, checkModule
 >   ) where
 
 > import Control.Monad (liftM, unless, when)
@@ -83,34 +83,23 @@ code are obsolete and commented out.
 
 > compileModule :: Options -> FilePath -> IO ()
 > compileModule opts fn = do
->   (env, mdl) <- loadModule opts fn
->   if not withFlat
->      then do
->        let (env2, modul, _intf, warnMsgs) = simpleCheckModule opts env mdl
->        showWarnings opts warnMsgs
->        -- output the parsed source
->        writeParsed        opts fn modul
->        -- output AbstractCurry
->        writeAbstractCurry opts fn env2 modul
->      else do
->        -- checkModule checks types, and then transModule introduces new
->        -- functions (by lambda lifting in 'desugar'). Consequence: The
->        -- types of the newly introduced functions are not inferred (hsi)
->        let (env2, modul, intf, warnMsgs) = checkModule opts env mdl
->        showWarnings opts warnMsgs
->        writeParsed        opts fn modul
->        writeAbstractCurry opts fn env2 modul
->        let (env3, il, dumps) = transModule opts env2 modul
->        -- dump intermediate results
->        mapM_ (doDump opts) dumps
->        -- generate target code
->        let modSum = summarizeModule (tyConsEnv env3) intf modul
->        writeFlat opts fn env3 modSum il
+>   (env, modul, intf, warnings) <- uncurry (checkModule opts) `liftM` loadModule opts fn
+>   showWarnings opts $ warnings
+>   writeParsed        opts fn     modul
+>   writeAbstractCurry opts fn env modul
+>   when withFlat $ do
+>     -- checkModule checks types, and then transModule introduces new
+>     -- functions (by lambda lifting in 'desugar'). Consequence: The
+>     -- types of the newly introduced functions are not inferred (hsi)
+>     let (env2, il, dumps) = transModule opts env modul
+>     -- dump intermediate results
+>     mapM_ (doDump opts) dumps
+>     -- generate target code
+>     let modSum = summarizeModule (tyConsEnv env2) intf modul
+>     writeFlat opts fn env2 modSum il
 >   where
->     fcyTarget = FlatCurry         `elem` optTargetTypes opts
->     xmlTarget = FlatXml           `elem` optTargetTypes opts
->     extTarget = ExtendedFlatCurry `elem` optTargetTypes opts
->     withFlat  = or [fcyTarget, xmlTarget, extTarget]
+>     withFlat = any (`elem` optTargetTypes opts)
+>                    [FlatCurry, FlatXml, ExtendedFlatCurry]
 
 -- ---------------------------------------------------------------------------
 -- Loading a module
@@ -185,38 +174,22 @@ Haskell and original MCC where a module obtains \texttt{main}).
 -- Checking a module
 -- ---------------------------------------------------------------------------
 
-> -- |
-> simpleCheckModule :: Options -> CompilerEnv -> CS.Module
->                   -> (CompilerEnv, CS.Module, CS.Interface, [Message])
-> simpleCheckModule opts env mdl = (env3, mdl2, intf, warnMsgs)
->   where
->     -- check for warnings
->     warnMsgs = warnCheck mdl env
->     -- check kinds, syntax, precedence
->     (mdl2, env2) = uncurry qual
->                  $ uncurry precCheck
->                  $ uncurry (syntaxCheck opts)
->                  $ uncurry kindCheck
->                    (mdl, env)
->     env3  = qualifyEnv opts env2
->     intf  = exportInterface env3 mdl2
-
 > checkModule :: Options -> CompilerEnv -> CS.Module
 >             -> (CompilerEnv, CS.Module, CS.Interface, [Message])
-> checkModule opts env mdl = (env3, mdl3, intf, warnMsgs)
+> checkModule opts env mdl = (env', mdl', intf, warnings)
 >   where
->     -- check for warnings
->     warnMsgs = warnCheck mdl env
->     -- check kinds, syntax, precedence, types
->     (mdl2, env2) = uncurry qual
->                  $ uncurry typeCheck
+>     warnings = warnCheck env mdl
+>     intf = exportInterface env' mdl'
+>     (env', mdl') = qualifyE $ expand $ uncurry qual
+>                  $ (if withFlat then uncurry typeCheck else id)
 >                  $ uncurry precCheck
 >                  $ uncurry (syntaxCheck opts)
 >                  $ uncurry kindCheck
->                    (mdl, env)
->     mdl3 = expandInterface env2 $ mdl2
->     env3 = qualifyEnv opts env2
->     intf = exportInterface env3 mdl3
+>                    (env, mdl)
+>     expand   (e, m) = if withFlat then (e, expandInterface e m) else (e, m)
+>     qualifyE (e, m) = (qualifyEnv opts e, m)
+>     withFlat = any (`elem` optTargetTypes opts)
+>                [FlatCurry, FlatXml, ExtendedFlatCurry]
 
 -- ---------------------------------------------------------------------------
 -- Translating a module
@@ -266,8 +239,7 @@ be dependent on it any longer.
 >     targetFile = fromMaybe (sourceRepName fn) (optOutput opts)
 >     source     = CS.showModule modul
 
-> writeFlat :: Options -> FilePath -> CompilerEnv -> ModuleSummary
->           -> IL.Module -> IO ()
+> writeFlat :: Options -> FilePath -> CompilerEnv -> ModuleSummary -> IL.Module -> IO ()
 > writeFlat opts fn env modSum il = do
 >   writeFlatCurry opts fn env modSum il
 >   writeInterface opts fn env modSum il
@@ -289,8 +261,9 @@ be dependent on it any longer.
 > writeInterface :: Options -> FilePath -> CompilerEnv -> ModuleSummary
 >                -> IL.Module -> IO ()
 > writeInterface opts fn env modSum il
->   | optForce opts = outputInterface
->   | otherwise     = do
+>   | not (optInterface opts) = return ()
+>   | optForce opts           = outputInterface
+>   | otherwise               = do
 >       mfint <- EF.readFlatInterface targetFile
 >       let oldInterface = fromMaybe emptyIntf mfint
 >       when (mfint == mfint) $ return () -- necessary to close file -- TODO
@@ -345,6 +318,6 @@ standard output.
 > dumpHeader DumpSimplified = "Source code after simplification"
 > dumpHeader DumpLifted     = "Source code after lifting"
 > dumpHeader DumpIL         = "Intermediate code"
-> dumpHeader DumpCase       = "Intermediate code after case simplification"
+> dumpHeader DumpCase       = "Intermediate code after case completion"
 
 \end{verbatim}
