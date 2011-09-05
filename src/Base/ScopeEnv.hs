@@ -7,7 +7,7 @@
     November 2005,
     Martin Engelke (men@informatik.uni-kiel.de)
 -}
-module Env.ScopeEnv
+module Base.ScopeEnv
   ( ScopeEnv
   , new, insert, update, modify, lookup, sureLookup, level, exists, beginScope
   , endScope, endScopeUp, toList, toLevelList, currentLevel

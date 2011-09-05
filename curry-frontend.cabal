@@ -57,8 +57,12 @@ Executable cymake
     , Base.CurryTypes
     , Base.Expr
     , Base.Messages
+    , Base.NestEnv
+    , Base.OldScopeEnv
     , Base.SCC
+    , Base.ScopeEnv
     , Base.Subst
+    , Base.TopEnv
     , Base.Types
     , Base.TypeSubst
     , Base.Typing
@@ -73,11 +77,7 @@ Executable cymake
     , Env.Interface
     , Env.Label
     , Env.ModuleAlias
-    , Env.NestEnv
-    , Env.OldScopeEnv
     , Env.OpPrec
-    , Env.ScopeEnv
-    , Env.TopEnv
     , Env.TypeConstructors
     , Env.Value
     , Generators.GenAbstractCurry
