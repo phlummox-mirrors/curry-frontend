@@ -24,17 +24,17 @@ The function \texttt{evalEnv} collects all evaluation annotations of
 the module by traversing the syntax tree.
 \begin{verbatim}
 
-> evalEnv :: Module -> EvalEnv
-> evalEnv (Module _ _ _ ds) = foldr collectAnnotsDecl Map.empty ds
-
 > initEEnv :: EvalEnv
 > initEEnv = Map.empty
+
+> evalEnv :: Module -> EvalEnv
+> evalEnv (Module _ _ _ ds) = foldr collectAnnotsDecl initEEnv ds
 
 > collectAnnotsDecl :: Decl -> EvalEnv -> EvalEnv
 > collectAnnotsDecl (EvalAnnot    _ fs ev) env = foldr (`Map.insert` ev) env fs
 > collectAnnotsDecl (FunctionDecl _ _ eqs) env = foldr collectAnnotsEqn env eqs
 > collectAnnotsDecl (PatternDecl  _ _ rhs) env = collectAnnotsRhs rhs env
-> collectAnnotsDecl _ env = env
+> collectAnnotsDecl _                      env = env
 
 > collectAnnotsEqn :: Equation -> EvalEnv -> EvalEnv
 > collectAnnotsEqn (Equation _ _ rhs) = collectAnnotsRhs rhs
@@ -89,8 +89,8 @@ the module by traversing the syntax tree.
 >   foldr (collectAnnotsExpr . fieldTerm) (collectAnnotsExpr e env) fs
 
 > collectAnnotsStmt :: Statement -> EvalEnv -> EvalEnv
-> collectAnnotsStmt (StmtExpr _ e  ) env = collectAnnotsExpr e env
-> collectAnnotsStmt (StmtDecl ds   ) env = foldr collectAnnotsDecl env ds
+> collectAnnotsStmt (StmtExpr   _ e) env = collectAnnotsExpr e env
+> collectAnnotsStmt (StmtDecl    ds) env = foldr collectAnnotsDecl env ds
 > collectAnnotsStmt (StmtBind _ _ e) env = collectAnnotsExpr e env
 
 > collectAnnotsAlt :: Alt -> EvalEnv -> EvalEnv

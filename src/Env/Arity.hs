@@ -15,10 +15,9 @@ module Env.Arity
 import Curry.Base.Ident
 import Curry.Syntax
 
+import Base.TopEnv
 import Base.Types (DataConstr (..), predefTypes)
 import Base.Utils ((++!))
-
-import Env.TopEnv
 
 type ArityEnv = TopEnv ArityInfo
 

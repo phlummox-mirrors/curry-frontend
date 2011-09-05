@@ -36,10 +36,9 @@ changes which are private to the module.
 
 > import Curry.Base.Ident
 
+> import Base.TopEnv
 > import Base.Types
 > import Base.Utils ((++!))
-
-> import Env.TopEnv
 
 > data TypeInfo = DataType QualIdent Int [Maybe DataConstr]
 >               | RenamingType QualIdent Int DataConstr

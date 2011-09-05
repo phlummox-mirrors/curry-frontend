@@ -21,11 +21,11 @@ are considered equal if their original names match.
 > import Curry.Syntax
 
 > import Base.CurryTypes (fromQualType)
+> import Base.TopEnv
 > import Base.Types
 > import Base.Utils ((++!))
 
 > import Env.TypeConstructors (TypeInfo (..), tupleTCs)
-> import Env.TopEnv
 
 > data ValueInfo
 >   = DataConstructor QualIdent ExistTypeScheme
@@ -35,17 +35,17 @@ are considered equal if their original names match.
 >     deriving Show
 
 > instance Entity ValueInfo where
->   origName (DataConstructor orgName _) = orgName
+>   origName (DataConstructor    orgName _) = orgName
 >   origName (NewtypeConstructor orgName _) = orgName
->   origName (Value orgName _) = orgName
->   origName (Label orgName _ _) = orgName
+>   origName (Value              orgName _) = orgName
+>   origName (Label            orgName _ _) = orgName
 >
 >   merge (Label l r ty) (Label l' r' _)
 >     | l == l' && r == r' = Just (Label l r ty)
->     | otherwise = Nothing
+>     | otherwise          = Nothing
 >   merge x y
 >     | origName x == origName y = Just x
->     | otherwise = Nothing
+>     | otherwise                = Nothing
 
 
 \end{verbatim}

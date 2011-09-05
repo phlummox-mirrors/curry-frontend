@@ -19,20 +19,20 @@ introduction of unlimited integer constants in the parser / lexer.
 >   , initPEnv ) where
 
 > import Curry.Base.Ident
-> import qualified Curry.Syntax as CS
+> import Curry.Syntax (Infix (..))
 
-> import Env.TopEnv
+> import Base.TopEnv
 
-> data OpPrec = OpPrec CS.Infix Integer deriving Eq
+> data OpPrec = OpPrec Infix Integer deriving Eq
 
 > instance Show OpPrec where
 >   showsPrec _ (OpPrec fix p) = showString (assoc fix) . shows p
->     where assoc CS.InfixL = "left "
->           assoc CS.InfixR = "right "
->           assoc CS.Infix  = "non-assoc "
+>     where assoc InfixL = "left "
+>           assoc InfixR = "right "
+>           assoc Infix  = "non-assoc "
 
 > defaultP :: OpPrec
-> defaultP = OpPrec CS.InfixL 9
+> defaultP = OpPrec InfixL 9
 
 \end{verbatim}
 The lookup functions for the environment which maintains the operator
@@ -49,11 +49,11 @@ because they do not need to handle tuple constructors.
 
 > bindP :: ModuleIdent -> Ident -> OpPrec -> PEnv -> PEnv
 > bindP m op p
->   | uniqueId op == 0
->     = bindTopEnv "Base.bindP" op info . qualBindTopEnv "Base.bindP" op' info
->   | otherwise = bindTopEnv "Base.bindP" op info
->   where op' = qualifyWith m op
->         info = PrecInfo op' p
+>   | uniqueId op == 0 = bindTopEnv     "Base.bindP" op  info
+>                      . qualBindTopEnv "Base.bindP" qop info
+>   | otherwise        = bindTopEnv     "Base.bindP" op  info
+>   where qop  = qualifyWith m op
+>         info = PrecInfo qop p
 
 > lookupP :: Ident -> PEnv -> [PrecInfo]
 > lookupP = lookupTopEnv
@@ -63,6 +63,6 @@ because they do not need to handle tuple constructors.
 
 > initPEnv :: PEnv
 > initPEnv =
->   predefTopEnv qConsId (PrecInfo qConsId (OpPrec CS.InfixR 5)) emptyTopEnv
+>   predefTopEnv qConsId (PrecInfo qConsId (OpPrec InfixR 5)) emptyTopEnv
 
 \end{verbatim}
