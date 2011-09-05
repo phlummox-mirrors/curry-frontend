@@ -10,15 +10,17 @@
 module Transformations.CaseCompletion (completeCase) where
 
 import Prelude hiding (mod)
-import Data.Maybe (fromJust, fromMaybe, isJust)
+import Data.Maybe (catMaybes, fromMaybe)
 
 import Curry.Base.Position (SrcRef)
 import Curry.Base.Ident
 import qualified Curry.Syntax
 
+import Base.OldScopeEnv as ScopeEnv
+  (ScopeEnv, newScopeEnv, beginScope, insertIdent, genIdentList)
+
 import Env.Interface (InterfaceEnv, lookupInterface)
-import Env.OldScopeEnv as ScopeEnv
-  (ScopeEnv, beginScope, genIdentList, insertIdent, newScopeEnv)
+
 import IL
 
 type Message = String
@@ -583,8 +585,7 @@ getCCFromIDecls mident constrs (Curry.Syntax.Interface _ _ idecls)
    p_declaresIConstr qident idecl
       = case idecl of
 	  Curry.Syntax.IDataDecl _ _ _ cdecls
-	      -> any (p_isIConstrDecl qident)
-		     (map fromJust (filter isJust cdecls))
+	      -> any (p_isIConstrDecl qident) $ catMaybes cdecls
 	  Curry.Syntax.INewtypeDecl _ _ _ ncdecl
 	      -> p_isINewConstrDecl qident ncdecl
 	  _   -> False
@@ -600,7 +601,7 @@ getCCFromIDecls mident constrs (Curry.Syntax.Interface _ _ idecls)
    p_extractIConstrDecls idecl
       = case idecl of
         Curry.Syntax.IDataDecl _ _ _ cdecls
-            -> map fromJust (filter isJust cdecls)
+            -> catMaybes cdecls
         _   -> []
 
    p_getIConstrDeclInfo mid (Curry.Syntax.ConstrDecl _ _ ident types)

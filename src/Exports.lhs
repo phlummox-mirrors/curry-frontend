@@ -33,11 +33,11 @@ is computed.
 
 > import Base.CurryTypes (fromQualType)
 > import Base.Messages (errorAt', internalError)
+> import Base.TopEnv
 > import Base.Types
 > import Base.Utils (findDouble)
 
 > import Env.OpPrec (PEnv, PrecInfo (..), OpPrec (..), qualLookupP)
-> import Env.TopEnv
 > import Env.TypeConstructors (TCEnv, TypeInfo (..), qualLookupTC)
 > import Env.Value (ValueEnv, ValueInfo (..), lookupValue, qualLookupValue)
 

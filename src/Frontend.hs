@@ -50,7 +50,7 @@ parse fn src = parseModule True fn src >>= genCurrySyntax fn
 -}
 fullParse :: [FilePath] -> FilePath -> String -> IO (MsgMonad Module)
 fullParse paths fn src =
-  genFullCurrySyntax simpleCheckModule paths fn $ parse fn src
+  genFullCurrySyntax checkModule paths fn $ parse fn src
 
 {- |Behaves like 'fullParse', but returns the syntax tree of the source
     program 'src' (type 'Module'; see Module "CurrySyntax") after inferring
@@ -76,8 +76,8 @@ genFullCurrySyntax check paths fn m = runMsgIO m $ \mod1 -> do
     then do
       iEnv <- loadInterfaces paths mod1
       let env = importModules opts mod1 iEnv
-          (_, mod', _, msgs') = check opts env mod1
-      return (tell msgs' >> return  mod')
+          (_, mod', _, msgs) = check opts env mod1
+      return (tell msgs >> return  mod')
     else return $ failWith $ head errs
   where opts = mkOpts paths
 

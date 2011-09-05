@@ -18,10 +18,10 @@ import Curry.Syntax
 
 import Base.CurryTypes (fromType)
 import Base.Messages (internalError, errorAt)
+import Base.TopEnv
 import Base.Types
 
 import Env.TypeConstructors (TCEnv, lookupTC)
-import Env.TopEnv
 import Env.Value (ValueEnv, ValueInfo (..), lookupValue, qualLookupValue)
 
 -- ---------------------------------------------------------------------------

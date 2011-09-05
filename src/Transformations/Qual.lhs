@@ -4,18 +4,17 @@
 % See LICENSE for the full license.
 %
 % Modified by Martin Engelke (men@informatik.uni-kiel.de)
+% Modified by Björn Peemöller (bjp@informatik.uni-kiel.de)
 %
 \nwfilename{Qual.lhs}
 \section{Proper Qualification}
 After checking the module and before starting the translation into the
-intermediate language, the compiler properly qualifies all
-constructors and (global) functions occurring in a pattern or
+intermediate language, the compiler properly qualifies all type constructors,
+data constructors and (global) functions occurring in a pattern or
 expression such that their module prefix matches the module of their
 definition. This is done also for functions and constructors declared
 in the current module. Only functions and variables declared in local
 declarations groups as well as function arguments remain unchanged.
-
-\em{Note:} The modified version also qualifies type constructors
 \begin{verbatim}
 
 > module Transformations.Qual (qual) where
@@ -23,7 +22,8 @@ declarations groups as well as function arguments remain unchanged.
 > import Curry.Base.Ident
 > import Curry.Syntax
 
-> import Env.TopEnv
+> import Base.TopEnv
+
 > import Env.Value (ValueEnv, qualLookupValue)
 
 > qual :: ModuleIdent -> ValueEnv -> [Decl] -> [Decl]
@@ -31,46 +31,41 @@ declarations groups as well as function arguments remain unchanged.
 
 > qualDecl :: ModuleIdent -> ValueEnv -> Decl -> Decl
 > qualDecl m tyEnv (FunctionDecl p f eqs) =
->   FunctionDecl p f (map (qualEqn m tyEnv) eqs)
-> qualDecl m tyEnv (PatternDecl p t rhs) =
+>   FunctionDecl p f $ map (qualEqn m tyEnv) eqs
+> qualDecl m tyEnv (PatternDecl  p t rhs) =
 >   PatternDecl p (qualTerm m tyEnv t) (qualRhs m tyEnv rhs)
-> qualDecl _ _ d = d
+> qualDecl _ _     d                      = d
 
 > qualEqn :: ModuleIdent -> ValueEnv -> Equation -> Equation
 > qualEqn m tyEnv (Equation p lhs rhs) =
 >   Equation p (qualLhs m tyEnv lhs) (qualRhs m tyEnv rhs)
 
 > qualLhs :: ModuleIdent -> ValueEnv -> Lhs -> Lhs
-> qualLhs m tyEnv (FunLhs f ts) = FunLhs f (map (qualTerm m tyEnv) ts)
+> qualLhs m tyEnv (FunLhs    f ts) = FunLhs f $ map (qualTerm m tyEnv) ts
 > qualLhs m tyEnv (OpLhs t1 op t2) =
 >   OpLhs (qualTerm m tyEnv t1) op (qualTerm m tyEnv t2)
-> qualLhs m tyEnv (ApLhs lhs ts) =
+> qualLhs m tyEnv (ApLhs   lhs ts) =
 >   ApLhs (qualLhs m tyEnv lhs) (map (qualTerm m tyEnv) ts)
 
 > qualTerm :: ModuleIdent -> ValueEnv -> ConstrTerm -> ConstrTerm
-> qualTerm _ _ (LiteralPattern l) = LiteralPattern l
-> qualTerm _ _ (NegativePattern op l) = NegativePattern op l
-> qualTerm _ _ (VariablePattern v) = VariablePattern v
+> qualTerm _ _     (LiteralPattern        l) = LiteralPattern l
+> qualTerm _ _     (NegativePattern    op l) = NegativePattern op l
+> qualTerm _ _     (VariablePattern       v) = VariablePattern v
 > qualTerm m tyEnv (ConstructorPattern c ts) =
 >   ConstructorPattern (qualIdent m tyEnv c) (map (qualTerm m tyEnv) ts)
-> qualTerm m tyEnv (InfixPattern t1 op t2) =
->   InfixPattern (qualTerm m tyEnv t1)
->                (qualIdent m tyEnv op)
->                (qualTerm m tyEnv t2)
-> qualTerm m tyEnv (ParenPattern t) = ParenPattern (qualTerm m tyEnv t)
-> qualTerm m tyEnv (TuplePattern p ts) = TuplePattern p (map (qualTerm m tyEnv) ts)
-> qualTerm m tyEnv (ListPattern p ts) = ListPattern p (map (qualTerm m tyEnv) ts)
-> qualTerm m tyEnv (AsPattern v t) = AsPattern v (qualTerm m tyEnv t)
-> qualTerm m tyEnv (LazyPattern p t) = LazyPattern p (qualTerm m tyEnv t)
-> qualTerm m tyEnv (FunctionPattern f ts) =
+> qualTerm m tyEnv (InfixPattern   t1 op t2) =
+>   InfixPattern (qualTerm m tyEnv t1) (qualIdent m tyEnv op) (qualTerm m tyEnv t2)
+> qualTerm m tyEnv (ParenPattern          t) = ParenPattern   (qualTerm m tyEnv t)
+> qualTerm m tyEnv (TuplePattern       p ts) = TuplePattern p (map (qualTerm m tyEnv) ts)
+> qualTerm m tyEnv (ListPattern        p ts) = ListPattern  p (map (qualTerm m tyEnv) ts)
+> qualTerm m tyEnv (AsPattern           v t) = AsPattern    v (qualTerm m tyEnv t)
+> qualTerm m tyEnv (LazyPattern         p t) = LazyPattern  p (qualTerm m tyEnv t)
+> qualTerm m tyEnv (FunctionPattern    f ts) =
 >   FunctionPattern (qualIdent m tyEnv f) (map (qualTerm m tyEnv) ts)
 > qualTerm m tyEnv (InfixFuncPattern t1 op t2) =
->   InfixFuncPattern (qualTerm m tyEnv t1)
->		     (qualIdent m tyEnv op)
->	             (qualTerm m tyEnv t2)
-> qualTerm m tyEnv (RecordPattern fs rt) =
->   RecordPattern (map (qualFieldPattern m tyEnv) fs)
->	          (maybe Nothing (Just . qualTerm m tyEnv) rt)
+>   InfixFuncPattern (qualTerm m tyEnv t1) (qualIdent m tyEnv op) (qualTerm m tyEnv t2)
+> qualTerm m tyEnv (RecordPattern     fs rt) =
+>   RecordPattern (map (qualFieldPattern m tyEnv) fs) ((qualTerm m tyEnv) `fmap` rt)
 
 > qualFieldPattern :: ModuleIdent -> ValueEnv -> Field ConstrTerm
 >	           -> Field ConstrTerm
@@ -148,17 +143,16 @@ declarations groups as well as function arguments remain unchanged.
 > qualFieldExpr m tyEnv (Field p l e) = Field p l (qualExpr m tyEnv e)
 
 > qualOp :: ModuleIdent -> ValueEnv -> InfixOp -> InfixOp
-> qualOp m tyEnv (InfixOp op) = InfixOp (qualIdent m tyEnv op)
+> qualOp m tyEnv (InfixOp     op) = InfixOp     (qualIdent m tyEnv op)
 > qualOp m tyEnv (InfixConstr op) = InfixConstr (qualIdent m tyEnv op)
 
 > qualIdent :: ModuleIdent -> ValueEnv -> QualIdent -> QualIdent
 > qualIdent m tyEnv x
 >   | not (isQualified x) && uniqueId (unqualify x) /= 0 = x
->   | otherwise =
->       case (qualLookupValue x tyEnv) of
->         [y] -> origName y
->         _   -> case (qualLookupValue (qualQualify m x) tyEnv) of
->                  [y] -> origName y
->                  _ -> qualQualify m x
+>   | otherwise = case qualLookupValue x tyEnv of
+>       [y] -> origName y
+>       _   -> case qualLookupValue (qualQualify m x) tyEnv of
+>              [y] -> origName y
+>              _   -> qualQualify m x
 
 \end{verbatim}

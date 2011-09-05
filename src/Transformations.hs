@@ -51,8 +51,8 @@ lift mdl env = (mdl', env { valueEnv = tyEnv', evalAnnotEnv = eEnv', arityEnv = 
            = L.lift (valueEnv env) (evalAnnotEnv env) (arityEnv env) mdl
 
 -- |Fully qualify used constructors and functions
-qual :: Module -> CompilerEnv -> (Module, CompilerEnv)
-qual (Module m es is ds) env = (Module m es is ds', env)
+qual :: CompilerEnv -> Module -> (CompilerEnv, Module)
+qual env (Module m es is ds) = (env, Module m es is ds')
   where ds' = Q.qual (moduleIdent env) (valueEnv env) ds
 
 -- |Simplify the source code

@@ -25,13 +25,13 @@ import Curry.Syntax
 
 import Base.CurryTypes (toQualType, toQualTypes)
 import Base.Messages (internalError, errorAt')
+import Base.TopEnv
 import Base.Types
 
 import Env.Arity
 import Env.Interface
 import Env.ModuleAlias
 import Env.OpPrec
-import Env.TopEnv
 import Env.TypeConstructors
 import Env.Value
 

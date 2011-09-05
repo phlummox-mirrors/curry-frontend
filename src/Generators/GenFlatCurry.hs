@@ -25,14 +25,14 @@ import qualified Curry.Syntax as CS
 
 -- Base
 import Base.Messages (internalError)
+import Base.ScopeEnv (ScopeEnv)
+import qualified Base.ScopeEnv as ScopeEnv
+import Base.TopEnv (topEnvMap)
 import Base.Types
 
  -- environments
 import Env.Arity (ArityEnv, ArityInfo (..), lookupArity, qualLookupArity)
 import Env.Interface
-import Env.ScopeEnv (ScopeEnv)
-import qualified Env.ScopeEnv as ScopeEnv
-import Env.TopEnv (topEnvMap)
 import Env.TypeConstructors (TCEnv, TypeInfo (..), qualLookupTC)
 import Env.Value (ValueEnv, ValueInfo (..), lookupValue, qualLookupValue)
 

@@ -30,11 +30,11 @@ lifted to the top-level.
 > import Base.Expr
 > import Base.Messages (internalError)
 > import Base.SCC
+> import Base.TopEnv
 > import Base.Types
 
 > import Env.Arity
 > import Env.Eval
-> import Env.TopEnv
 > import Env.Value
 
 > lift :: ValueEnv -> EvalEnv -> ArityEnv -> Module

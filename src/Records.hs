@@ -24,12 +24,12 @@ import Curry.Syntax
 
 import Base.CurryTypes (toType)
 import Base.Messages
+import Base.TopEnv
 import Base.Types
 import Base.TypeSubst
 
 import Env.Interface
 import Env.Label
-import Env.TopEnv
 import Env.TypeConstructors
 import Env.Value
 
@@ -94,10 +94,10 @@ addImportedLabels m lEnv tyEnv =
 
 recordExpansion1 :: Options -> CompilerEnv -> CompilerEnv
 recordExpansion1 opts env
-  | withExt   = env { tyConsEnv = tcEnv', valueEnv = tyEnv' }
+  | enabled   = env { tyConsEnv = tcEnv', valueEnv = tyEnv' }
   | otherwise = env
   where
-    withExt  = BerndExtension `elem` optExtensions opts
+    enabled  = Records `elem` optExtensions opts
     tcEnv'   = fmap (expandRecordTC    tcEnv) tcEnv
     tyEnv'   = fmap (expandRecordTypes tcEnv) tyEnvLbl
     tyEnvLbl = addImportedLabels m lEnv tyEnv
@@ -108,10 +108,10 @@ recordExpansion1 opts env
 
 recordExpansion2 :: Options -> CompilerEnv -> CompilerEnv
 recordExpansion2 opts env
-  | withExt   = env { valueEnv = tyEnv' }
+  | enabled  = env { valueEnv = tyEnv' }
   | otherwise = env
   where
-    withExt  = BerndExtension `elem` optExtensions opts
+    enabled  = Records `elem` optExtensions opts
     tyEnv'   = fmap (expandRecordTypes tcEnv) tyEnvLbl
     tyEnvLbl = addImportedLabels m lEnv tyEnv
     m        = moduleIdent env
@@ -128,6 +128,8 @@ expandRecordTC tcEnv (DataType qid n args) =
   DataType qid n (map (maybe Nothing (Just . (expandData tcEnv))) args)
 expandRecordTC tcEnv (RenamingType qid n (DataConstr ident m [ty])) =
   RenamingType qid n (DataConstr ident m [expandRecords tcEnv ty])
+expandRecordTC _     (RenamingType _   _ (DataConstr _     _  _)) =
+  internalError "Records.expandRecordTC"
 expandRecordTC tcEnv (AliasType qid n ty) =
   AliasType qid n (expandRecords tcEnv ty)
 
