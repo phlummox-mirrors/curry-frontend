@@ -1,6 +1,6 @@
 % $Id: Types.lhs,v 1.11 2004/02/08 22:14:02 wlux Exp $
 %
-% Copyright (c) 2002, Wolfgang Lux
+% Copyright (c) 2002-2004, Wolfgang Lux
 % See LICENSE for the full license.
 %
 % Modified by Martin Engelke (men@informatik.uni-kiel.de)
@@ -11,16 +11,21 @@ This module modules provides the definitions for the internal
 representation of types in the compiler.
 \begin{verbatim}
 
+TODO: Use MultiParamTypeClasses ?
+
 > module Base.Types
->   ( Type (..), DataConstr (..), isArrowType, arrowArity, arrowArgs, arrowBase
->   , typeVars, typeConstrs, typeSkolems, equTypes, TypeScheme (..)
->   , ExistTypeScheme (..), monoType, polyType
+>   ( -- * Representation of Types
+>     Type (..), isArrowType, arrowArity, arrowArgs, arrowBase, typeVars
+>   , typeConstrs, typeSkolems, equTypes, qualifyType, unqualifyType
+>     -- * Representation of Data Constructors
+>   , DataConstr (..)
+>     -- * Representation of Quantification
+>   , TypeScheme (..), ExistTypeScheme (..), monoType, polyType
+>     -- * Predefined types
 >   , unitType, boolType, charType, intType, floatType, stringType
 >   , successType, listType, ioType, tupleType, primType
->   , typeVar, predefTypes, qualifyType, unqualifyType
+>   , typeVar, predefTypes
 >   ) where
-
-> import Data.Maybe (fromJust, isJust, isNothing)
 
 > import Curry.Base.Ident
 
@@ -53,16 +58,8 @@ as well, these variables must never be quantified.
 >   | TypeArrow Type Type
 >   | TypeConstrained [Type] Int
 >   | TypeSkolem Int
->   | TypeRecord [(Ident,Type)] (Maybe Int)
+>   | TypeRecord [(Ident, Type)] (Maybe Int)
 >   deriving (Eq, Show)
-
-\end{verbatim}
-The type \texttt{Data} is used to represent value constructors introduced
-by data or newtype declarations.
-\begin{verbatim}
-
-> data DataConstr = DataConstr Ident Int [Type]
->     deriving (Eq, Show)
 
 \end{verbatim}
 The function \texttt{isArrowType} checks whether a type is a function
@@ -74,19 +71,19 @@ and \texttt{arrowBase} returns the type $t_n$.
 
 > isArrowType :: Type -> Bool
 > isArrowType (TypeArrow _ _) = True
-> isArrowType _ = False
+> isArrowType _               = False
 
 > arrowArity :: Type -> Int
 > arrowArity (TypeArrow _ ty) = 1 + arrowArity ty
-> arrowArity _ = 0
+> arrowArity _                = 0
 
 > arrowArgs :: Type -> [Type]
 > arrowArgs (TypeArrow ty1 ty2) = ty1 : arrowArgs ty2
-> arrowArgs _ = []
+> arrowArgs _                   = []
 
 > arrowBase :: Type -> Type
 > arrowBase (TypeArrow _ ty) = arrowBase ty
-> arrowBase ty = ty
+> arrowBase ty               = ty
 
 \end{verbatim}
 The functions \texttt{typeVars}, \texttt{typeConstrs},
@@ -99,80 +96,126 @@ type variables because they cannot be generalized.
 > typeVars :: Type -> [Int]
 > typeVars ty = vars ty [] where
 >   vars (TypeConstructor _ tys) tvs = foldr vars tvs tys
->   vars (TypeVariable tv)       tvs = tv : tvs
->   vars (TypeConstrained _ _)   tvs = tvs
->   vars (TypeArrow ty1 ty2)     tvs = vars ty1 (vars ty2 tvs)
->   vars (TypeSkolem _)          tvs = tvs
->   vars (TypeRecord fs rtv)     tvs =
->     foldr vars (maybe tvs (: tvs) rtv) (map snd fs)
+>   vars (TypeVariable       tv) tvs = tv : tvs
+>   vars (TypeConstrained   _ _) tvs = tvs
+>   vars (TypeArrow     ty1 ty2) tvs = vars ty1 (vars ty2 tvs)
+>   vars (TypeSkolem          _) tvs = tvs
+>   vars (TypeRecord     fs rtv) tvs =
+>     foldr vars (maybe tvs (:tvs) rtv) (map snd fs)
 
 > typeConstrs :: Type -> [QualIdent]
 > typeConstrs ty = constrs ty [] where
 >   constrs (TypeConstructor tc tys) tcs = tc : foldr constrs tcs tys
->   constrs (TypeVariable _)         tcs = tcs
->   constrs (TypeConstrained _ _)    tcs = tcs
->   constrs (TypeArrow ty1 ty2)      tcs = constrs ty1 (constrs ty2 tcs)
->   constrs (TypeSkolem _)           tcs = tcs
->   constrs (TypeRecord fs _)        tcs = foldr constrs tcs (map snd fs)
+>   constrs (TypeVariable         _) tcs = tcs
+>   constrs (TypeConstrained    _ _) tcs = tcs
+>   constrs (TypeArrow      ty1 ty2) tcs = constrs ty1 (constrs ty2 tcs)
+>   constrs (TypeSkolem           _) tcs = tcs
+>   constrs (TypeRecord        fs _) tcs = foldr constrs tcs (map snd fs)
 
 > typeSkolems :: Type -> [Int]
 > typeSkolems ty = skolems ty [] where
 >   skolems (TypeConstructor _ tys) sks = foldr skolems sks tys
->   skolems (TypeVariable _)        sks = sks
->   skolems (TypeConstrained _ _)   sks = sks
->   skolems (TypeArrow ty1 ty2)     sks = skolems ty1 (skolems ty2 sks)
->   skolems (TypeSkolem k)          sks = k : sks
->   skolems (TypeRecord fs _)       sks = foldr skolems sks (map snd fs)
+>   skolems (TypeVariable        _) sks = sks
+>   skolems (TypeConstrained   _ _) sks = sks
+>   skolems (TypeArrow     ty1 ty2) sks = skolems ty1 (skolems ty2 sks)
+>   skolems (TypeSkolem          k) sks = k : sks
+>   skolems (TypeRecord       fs _) sks = foldr skolems sks (map snd fs)
+
+\end{verbatim}
+The function \texttt{equTypes} computes whether two types are equal modulo
+renaming of type variables.
+\begin{verbatim}
 
 > equTypes :: Type -> Type -> Bool
 > equTypes t1 t2 = fst (equ [] t1 t2)
 >  where
+>  -- @is@ is an AssocList of type variable indices
 >  equ is (TypeConstructor qid1 ts1) (TypeConstructor qid2 ts2)
->     | qid1 == qid2 = equs is ts1 ts2
->     | otherwise    = (False, is)
->  equ is (TypeVariable i1) (TypeVariable i2)
->     = maybe (True, (i1,i2):is)
->             (\ i2' -> (i2 == i2', is))
->             (lookup i1 is)
->  equ is (TypeConstrained ts1 i1) (TypeConstrained ts2 i2)
->     = let (res, is') = equs is ts1 ts2
->       in  maybe (res, (i1,i2):is')
->                 (\ i2' -> (res && i2 == i2', is'))
->                 (lookup i1 is')
->  equ is (TypeArrow tf1 tt1) (TypeArrow tf2 tt2)
->     = let (res1, is1) = equ is tf1 tf2
->           (res2, is2) = equ is1 tt1 tt2
->       in  (res1 && res2, is2)
->  equ is (TypeSkolem i1) (TypeSkolem i2)
->     = maybe (True, (i1,i2):is)
->             (\ i2' -> (i2 == i2', is))
->             (lookup i1 is)
->  equ is (TypeRecord fs1 r1) (TypeRecord fs2 r2)
->     | isJust r1 && isJust r2
->       = let (res1, is1) = equ is (TypeVariable (fromJust r1))
->		                   (TypeVariable (fromJust r2))
->             (res2, is2) = equRecords is1 fs1 fs2
->         in  (res1 && res2, is2)
->     | isNothing r1 && isNothing r2 = equRecords is fs1 fs2
->     | otherwise = (False, is)
->  equ is _ _ = (False, is)
+>    | qid1 == qid2 = equs is ts1 ts2
+>    | otherwise    = (False, is)
+>  equ is (TypeVariable          i1) (TypeVariable          i2)
+>    = equVar is i1 i2
+>  equ is (TypeConstrained   ts1 i1) (TypeConstrained   ts2 i2)
+>    = let (res , is1) = equs   is  ts1 ts2
+>          (res2, is2) = equVar is1 i1  i2
+>      in  (res && res2, is2)
+>  equ is (TypeArrow        tf1 tt1) (TypeArrow        tf2 tt2)
+>    = let (res1, is1) = equ is  tf1 tf2
+>          (res2, is2) = equ is1 tt1 tt2
+>      in  (res1 && res2, is2)
+>  equ is (TypeSkolem            i1) (TypeSkolem            i2)
+>   = equVar is i1 i2
+>  equ is (TypeRecord fs1 (Just r1)) (TypeRecord fs2 (Just r2))
+>    = let (res1, is1) = equVar     is  r1  r2
+>          (res2, is2) = equRecords is1 fs1 fs2
+>      in  (res1 && res2, is2)
+>  equ is (TypeRecord fs1   Nothing) (TypeRecord fs2   Nothing)
+>    = equRecords is fs1 fs2
+>  equ is _                         _
+>    = (False, is)
+>
+>  equVar is i1 i2 = case lookup i1 is of
+>    Nothing  -> (True, (i1, i2) : is)
+>    Just i2' -> (i2 == i2', is)
 >
 >  equRecords is fs1 fs2 | length fs1 == length fs2 = equrec is fs1 fs2
->		         | otherwise = (False, is)
->    where
->    equrec is' [] _ = (True, is')
->    equrec is' ((l,t):fs1') fs2'
->       = let (res1, is1) = maybe (False,is') (equ is' t) (lookup l fs2')
->             (res2, is2) = equrec is1 fs1' fs2'
->         in  (res1 && res2, is2)
+>                        | otherwise                = (False, is)
 >
->  equs is [] [] = (True, is)
->  equs _  [] _  = error "pattern not defined" -- TODO
->  equs _  _  [] = error "pattern not defined" -- TODO
+>  equrec is []               _   = (True, is)
+>  equrec is ((l1, ty1) : fs1) fs2
+>    = let (res1, is1) = maybe (False, is) (equ is ty1) (lookup l1 fs2)
+>          (res2, is2) = equrec is1 fs1 fs2
+>      in  (res1 && res2, is2)
+>
+>  equs is []        []        = (True , is)
 >  equs is (t1':ts1) (t2':ts2)
->     = let (res1, is1) = equ is t1' t2'
+>     = let (res1, is1) = equ  is t1'  t2'
 >           (res2, is2) = equs is1 ts1 ts2
 >       in  (res1 && res2, is2)
+>  equs is _         _         = (False, is)
+
+\end{verbatim}
+The functions \texttt{qualifyType} and \texttt{unqualifyType} add/remove the
+qualification with a module identifier for type constructors.
+\begin{verbatim}
+
+> qualifyType :: ModuleIdent -> Type -> Type
+> qualifyType m (TypeConstructor tc tys)
+>   | isTupleId tc'           = tupleType tys'
+>   | tc' == unitId && n == 0 = unitType
+>   | tc' == listId && n == 1 = listType (head tys')
+>   | otherwise = TypeConstructor (qualQualify m tc) tys'
+>   where n    = length tys'
+>         tc'  = unqualify tc
+>         tys' = map (qualifyType m) tys
+> qualifyType _ var@(TypeVariable     _) = var
+> qualifyType m (TypeConstrained tys tv) =
+>   TypeConstrained (map (qualifyType m) tys) tv
+> qualifyType m (TypeArrow      ty1 ty2) =
+>   TypeArrow (qualifyType m ty1) (qualifyType m ty2)
+> qualifyType _ skol@(TypeSkolem      _) = skol
+> qualifyType m (TypeRecord      fs rty) =
+>   TypeRecord (map (\ (l, ty) -> (l, qualifyType m ty)) fs) rty
+
+> unqualifyType :: ModuleIdent -> Type -> Type
+> unqualifyType m (TypeConstructor tc tys) =
+>   TypeConstructor (qualUnqualify m tc) (map (unqualifyType m) tys)
+> unqualifyType _ var@(TypeVariable     _) = var
+> unqualifyType m (TypeConstrained tys tv) =
+>   TypeConstrained (map (unqualifyType m) tys) tv
+> unqualifyType m (TypeArrow      ty1 ty2) =
+>   TypeArrow (unqualifyType m ty1) (unqualifyType m ty2)
+> unqualifyType _ skol@(TypeSkolem      _) = skol
+> unqualifyType m (TypeRecord      fs rty) =
+>   TypeRecord (map (\ (l, ty) -> (l, unqualifyType m ty)) fs) rty
+
+\end{verbatim}
+The type \texttt{Data} is used to represent value constructors introduced
+by data or newtype declarations.
+\begin{verbatim}
+
+> data DataConstr = DataConstr Ident Int [Type]
+>     deriving (Eq, Show)
 
 \end{verbatim}
 We support two kinds of quantifications of types here, universally
@@ -188,8 +231,8 @@ quantified variables and the second the number of existentially
 quantified variables.
 \begin{verbatim}
 
-> data TypeScheme = ForAll Int Type deriving (Show, Eq)
-> data ExistTypeScheme = ForAllExist Int Int Type deriving (Show, Eq)
+> data TypeScheme = ForAll Int Type deriving (Eq, Show)
+> data ExistTypeScheme = ForAllExist Int Int Type deriving (Eq, Show)
 
 \end{verbatim}
 The functions \texttt{monoType} and \texttt{polyType} translate a type
@@ -250,37 +293,8 @@ There are a few predefined types:
 > predefTypes = let a = typeVar 0 in
 >   [ (unitType  , [ DataConstr unitId 0 [] ])
 >   , (listType a, [ DataConstr nilId  0 []
->                  , DataConstr consId 0 [a, listType a]])
+>                  , DataConstr consId 0 [a, listType a]
+>                  ])
 >   ]
-
-> qualifyType :: ModuleIdent -> Type -> Type
-> qualifyType m (TypeConstructor tc tys)
->   | isTupleId tc' = tupleType tys'
->   | tc' == unitId && n == 0 = unitType
->   | tc' == listId && n == 1 = listType (head tys')
->   | otherwise = TypeConstructor (qualQualify m tc) tys'
->   where n = length tys'
->         tc' = unqualify tc
->         tys' = map (qualifyType m) tys
-> qualifyType _ (TypeVariable tv) = TypeVariable tv
-> qualifyType m (TypeConstrained tys tv) =
->   TypeConstrained (map (qualifyType m) tys) tv
-> qualifyType m (TypeArrow ty1 ty2) =
->   TypeArrow (qualifyType m ty1) (qualifyType m ty2)
-> qualifyType _ (TypeSkolem k) = TypeSkolem k
-> qualifyType m (TypeRecord fs rty) =
->   TypeRecord (map (\ (l,ty) -> (l, qualifyType m ty)) fs) rty
-
-> unqualifyType :: ModuleIdent -> Type -> Type
-> unqualifyType m (TypeConstructor tc tys) =
->   TypeConstructor (qualUnqualify m tc) (map (unqualifyType m) tys)
-> unqualifyType _ (TypeVariable tv) = TypeVariable tv
-> unqualifyType m (TypeConstrained tys tv) =
->   TypeConstrained (map (unqualifyType m) tys) tv
-> unqualifyType m (TypeArrow ty1 ty2) =
->   TypeArrow (unqualifyType m ty1) (unqualifyType m ty2)
-> unqualifyType _ (TypeSkolem k) = TypeSkolem k
-> unqualifyType m (TypeRecord fs rty) =
->   TypeRecord (map (\ (l,ty) -> (l, unqualifyType m ty)) fs) rty
 
 \end{verbatim}

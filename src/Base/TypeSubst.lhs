@@ -17,9 +17,9 @@ This module implements substitutions on types.
 > import Data.Maybe (fromJust, isJust)
 
 > import Base.Subst
+> import Base.TopEnv
 > import Base.Types
 
-> import Env.TopEnv
 > import Env.Value (ValueInfo (..))
 
 > type TypeSubst = Subst Int Type

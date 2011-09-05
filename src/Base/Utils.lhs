@@ -11,8 +11,10 @@ commonly used in the compiler, but not implemented in the Haskell
 \begin{verbatim}
 
 > module Base.Utils
->   ( thd3, (++!), foldr2, mapAccumM, findDouble
+>   ( thd3, (++!), foldr2, mapAccumM, findDouble, findMultiples
 >   ) where
+
+> import Data.List (partition)
 
 > infixr 5 ++!
 
@@ -113,5 +115,13 @@ non-linear, the first offending object is returned.
 > findDouble (x : xs)
 >   | x `elem` xs = Just x
 >   | otherwise   = findDouble xs
+
+> findMultiples :: Eq a => [a] -> [[a]]
+> findMultiples []       = []
+> findMultiples (x : xs)
+>   | null same = multiples
+>   | otherwise = (x : same) : multiples
+>   where (same, other) = partition (==x) xs
+>         multiples     = findMultiples other
 
 \end{verbatim}

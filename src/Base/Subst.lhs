@@ -24,14 +24,14 @@ marked with a boolean flag (see below).
 > idSubst :: Ord a => Subst a b
 > idSubst = Subst False Map.empty
 
-> substToList :: Ord v => Subst v e -> [(v,e)]
+> substToList :: Ord v => Subst v e -> [(v, e)]
 > substToList (Subst _ sigma) = Map.toList sigma
 
 > bindSubst :: Ord v => v -> e -> Subst v e -> Subst v e
-> bindSubst v e (Subst comp sigma) = Subst comp (Map.insert v e sigma)
+> bindSubst v e (Subst comp sigma) = Subst comp $ Map.insert v e sigma
 
 > unbindSubst :: Ord v => v -> Subst v e -> Subst v e
-> unbindSubst v (Subst comp sigma) = Subst comp (Map.delete v sigma)
+> unbindSubst v (Subst comp sigma) = Subst comp $ Map.delete v sigma
 
 \end{verbatim}
 For any substitution we have the following definitions:
@@ -83,7 +83,7 @@ substVar :: Subst v e => Subst v e -> v -> e
 substVar (Subst comp sigma) v = maybe (var v) subst' (Map.lookup v sigma)
   where subst' = if comp then subst (Subst comp sigma) else id
 
-> compose :: (Show v,Ord v,Show e) => Subst v e -> Subst v e -> Subst v e
+> compose :: (Ord v, Show v ,Show e) => Subst v e -> Subst v e -> Subst v e
 > compose sigma sigma' =
 >   composed (foldr (uncurry bindSubst) sigma' (substToList sigma))
 >   where composed (Subst _ sigma'') = Subst True sigma''

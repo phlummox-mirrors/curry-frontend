@@ -17,11 +17,11 @@
 > import Curry.Syntax
 
 > import Base.Messages (internalError)
+> import Base.TopEnv
 > import Base.Types
 > import Base.TypeSubst
 > import Base.Utils (foldr2)
 
-> import Env.TopEnv
 > import Env.Value (ValueEnv, ValueInfo (..), lookupValue, qualLookupValue)
 
 \end{verbatim}
