@@ -39,7 +39,7 @@ data CompilerEnv = CompilerEnv
   , labelEnv     :: LabelEnv     -- ^ record labels
   , opPrecEnv    :: PEnv         -- ^ operator precedences
   , tyConsEnv    :: TCEnv        -- ^ type constructors
-  , valueEnv     :: ValueEnv     -- ^ functions, ...
+  , valueEnv     :: ValueEnv     -- ^ functions and data constructors
   }
 
 initCompilerEnv :: ModuleIdent -> CompilerEnv

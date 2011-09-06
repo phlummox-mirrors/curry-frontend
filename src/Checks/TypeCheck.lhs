@@ -64,13 +64,13 @@ constructor and type environments.
 \begin{verbatim}
 
 > typeCheck :: ModuleIdent -> TCEnv -> ValueEnv -> [Decl] -> (TCEnv, ValueEnv)
-> typeCheck m tcEnv tyEnv ds =
->   run (tcDecls m tcEnv' Map.empty vds >>
+> typeCheck m tcEnv tyEnv decls =
+>   run (tcDecls m tcEnv' Map.empty valueDecls >>
 >        S.lift S.get >>= \theta -> S.get >>= \tyEnv' ->
->        return (tcEnv',subst theta tyEnv'))
->       (bindLabels m tcEnv' (bindConstrs m tcEnv' tyEnv))
->   where (tds,vds) = partition isTypeDecl ds
->         tcEnv' = bindTypes m tds tcEnv
+>        return (tcEnv', subst theta tyEnv'))
+>       (bindLabels m tcEnv' (bindConstrs m tcEnv' tyEnv)) -- initEnv
+>   where (typeDecls, valueDecls) = partition isTypeDecl decls
+>         tcEnv'                  = bindTypes m typeDecls tcEnv
 
 \end{verbatim}
 
@@ -172,19 +172,19 @@ have been properly renamed and all type synonyms are already expanded.
 \begin{verbatim}
 
 > bindConstrs :: ModuleIdent -> TCEnv -> ValueEnv -> ValueEnv
-> bindConstrs m tcEnv tyEnv =
->   foldr (bindData . snd) tyEnv (localBindings tcEnv)
->   where bindData (DataType tc n cs) tyEnv' =
->           foldr (bindConstr m n (constrType' tc n)) tyEnv' (catMaybes cs)
->         bindData (RenamingType tc n (DataConstr c n' [ty])) tyEnv' =
->           bindGlobalInfo NewtypeConstructor m c
->                          (ForAllExist n n' (TypeArrow ty (constrType' tc n)))
->                          tyEnv'
->         bindData (AliasType _ _ _) tyEnv' = tyEnv'
->         bindConstr m' n ty (DataConstr c n' tys) =
->           bindGlobalInfo DataConstructor m' c
->                          (ForAllExist n n' (foldr TypeArrow ty tys))
->         constrType' tc n = TypeConstructor tc (map TypeVariable [0..n-1])
+> bindConstrs m tcEnv tyEnv = foldr (bindData . snd) tyEnv (localBindings tcEnv)
+>   where
+>     bindData (DataType tc n cs) tyEnv' =
+>       foldr (bindConstr m n (constrType' tc n)) tyEnv' (catMaybes cs)
+>     bindData (RenamingType tc n (DataConstr c n' [ty])) tyEnv' =
+>       bindGlobalInfo NewtypeConstructor m c
+>                      (ForAllExist n n' (TypeArrow ty (constrType' tc n)))
+>                      tyEnv'
+>     bindData (AliasType _ _ _) tyEnv' = tyEnv'
+>     bindConstr m' n ty (DataConstr c n' tys) =
+>       bindGlobalInfo DataConstructor m' c
+>                      (ForAllExist n n' (foldr TypeArrow ty tys))
+>     constrType' tc n = TypeConstructor tc (map TypeVariable [0..n-1])
 
 \end{verbatim}
 \paragraph{Defining Field Labels}

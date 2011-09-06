@@ -30,7 +30,8 @@ of the operators involved.
 > import Base.Messages (Message, toMessage)
 > import Base.Utils (findDouble)
 
-> import Env.OpPrec (PEnv, OpPrec (..), PrecInfo (..), defaultP, bindP, qualLookupP)
+> import Env.OpPrec (PEnv, OpPrec (..), PrecInfo (..), defaultP, bindP
+>   , qualLookupP)
 
 > precCheck :: ModuleIdent -> PEnv -> [Decl] -> ([Decl], PEnv, [Message])
 > precCheck m pEnv decls = runPCM (checkDecls decls) initState
@@ -58,14 +59,14 @@ The Prec check monad.
 > getPrecEnv :: PCM PEnv
 > getPrecEnv = S.gets precEnv
 
-> withPrecEnv :: (PEnv -> PEnv) -> PCM ()
-> withPrecEnv f = S.modify $ \ s -> s { precEnv = f $ precEnv s }
+> modifyPrecEnv :: (PEnv -> PEnv) -> PCM ()
+> modifyPrecEnv f = S.modify $ \ s -> s { precEnv = f $ precEnv s }
 
 > withLocalPrecEnv :: PCM a -> PCM a
 > withLocalPrecEnv act = do
 >   oldEnv <- getPrecEnv
 >   res <- act
->   withPrecEnv $ const oldEnv
+>   modifyPrecEnv $ const oldEnv
 >   return res
 
 > report :: Message -> PCM ()
@@ -83,10 +84,10 @@ imported precedence environment.
 > bindPrecs ds = case findDouble opFixDecls of
 >   Just op -> report $ errDuplicatePrecedence op
 >   Nothing -> case filter (`notElem` bvs) opFixDecls of
->     op : _ -> report $  errUndefinedOperator op
+>     op : _ -> report $ errUndefinedOperator op
 >     []     -> do
 >       m <- getModuleIdent
->       withPrecEnv $ \ env -> foldr (bindPrec m) env fixDs
+>       modifyPrecEnv $ \ env -> foldr (bindPrec m) env fixDs
 >   where
 >     (fixDs, nonFixDs) = partition isInfixDecl ds
 >     opFixDecls        = [ op | InfixDecl _ _ _ ops <- fixDs, op <- ops]
@@ -137,12 +138,11 @@ interface.
 >   liftM2 (Equation p) (checkLhs lhs) (checkRhs rhs)
 
 > checkLhs :: Lhs -> PCM Lhs
-> checkLhs (FunLhs f ts) = FunLhs f `liftM` mapM checkConstrTerm ts
+> checkLhs (FunLhs    f ts) = FunLhs f `liftM` mapM checkConstrTerm ts
 > checkLhs (OpLhs t1 op t2) =
->   liftM2 (\u1 u2 -> OpLhs u1 op u2) t1' t2'
->   where t1' = (checkConstrTerm t1 >>= checkOpL op)
->         t2' = (checkConstrTerm t2 >>= checkOpR op)
-> checkLhs (ApLhs lhs ts) =
+>   liftM2 (flip OpLhs op) (checkConstrTerm t1 >>= checkOpL op)
+>                          (checkConstrTerm t2 >>= checkOpR op)
+> checkLhs (ApLhs   lhs ts) =
 >   liftM2 ApLhs (checkLhs lhs) (mapM checkConstrTerm ts)
 
 > checkConstrTerm :: ConstrTerm -> PCM ConstrTerm

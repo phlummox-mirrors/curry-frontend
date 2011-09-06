@@ -39,22 +39,17 @@ instance Monad CheckStatus where
 -- TODO: More documentation
 
 -- |Check the kinds of type definitions and signatures.
--- In addition, nullary type constructors and type variables are dinstiguished
+-- In addition, nullary type constructors and type variables are
+-- disambiguated in the declarations; the environment remains unchanged.
 kindCheck :: CompilerEnv -> Module -> (CompilerEnv, Module)
 kindCheck env (Module m es is ds)
   | null msgs = (env, Module m es is ds')
   | otherwise = errorMessages msgs
   where (ds', msgs) = KC.kindCheck (moduleIdent env) (tyConsEnv env) ds
 
--- |Apply the precendences of infix operators.
--- This function reanrranges the AST.
-precCheck :: CompilerEnv -> Module -> (CompilerEnv, Module)
-precCheck env (Module m es is ds)
-  | null msgs = (env { opPrecEnv = pEnv' }, Module m es is ds')
-  | otherwise = errorMessages msgs
-  where (ds', pEnv', msgs) = PC.precCheck (moduleIdent env) (opPrecEnv env) ds
-
--- |Apply the syntax check.
+-- |Check for a correct syntax.
+-- In addition, nullary data constructors and variables are
+-- disambiguated in the declarations; the environment remains unchanged.
 syntaxCheck :: Options -> CompilerEnv -> Module -> (CompilerEnv, Module)
 syntaxCheck opts env (Module m es is ds)
   | null msgs = (env, Module m es is ds')
@@ -62,7 +57,18 @@ syntaxCheck opts env (Module m es is ds)
   where (ds', msgs) = SC.syntaxCheck opts (moduleIdent env) (aliasEnv env)
                    (arityEnv env) (valueEnv env) (tyConsEnv env) ds
 
--- |Apply the type check.
+-- |Check the precedences of infix operators.
+-- In addition, the abstract syntax tree is rearranged to reflect the
+-- relative precedences; the operator precedence environment is updated.
+precCheck :: CompilerEnv -> Module -> (CompilerEnv, Module)
+precCheck env (Module m es is ds)
+  | null msgs = (env { opPrecEnv = pEnv' }, Module m es is ds')
+  | otherwise = errorMessages msgs
+  where (ds', pEnv', msgs) = PC.precCheck (moduleIdent env) (opPrecEnv env) ds
+
+-- |Apply the correct typing of the module.
+-- The declarations remain unchanged; the type constructor and value
+-- environments are updated.
 typeCheck :: CompilerEnv -> Module -> (CompilerEnv, Module)
 typeCheck env mdl@(Module _ _ _ ds) = (env { tyConsEnv = tcEnv', valueEnv = tyEnv' }, mdl)
   where (tcEnv', tyEnv') = TC.typeCheck (moduleIdent env)
@@ -72,5 +78,4 @@ typeCheck env mdl@(Module _ _ _ ds) = (env { tyConsEnv = tcEnv', valueEnv = tyEn
 
 -- |Check for warnings.
 warnCheck :: CompilerEnv -> Module -> [Message]
-warnCheck env (Module _ _ is ds)
-  = WC.warnCheck (moduleIdent env) (valueEnv env) is ds
+warnCheck env mdl = WC.warnCheck (valueEnv env) mdl

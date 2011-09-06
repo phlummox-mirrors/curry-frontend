@@ -83,8 +83,9 @@ code are obsolete and commented out.
 
 > compileModule :: Options -> FilePath -> IO ()
 > compileModule opts fn = do
->   (env, modul, intf, warnings) <- uncurry (checkModule opts) `liftM` loadModule opts fn
->   showWarnings opts $ warnings
+>   loaded <- loadModule opts fn
+>   let (env, modul) = uncurry (checkModule opts) loaded
+>   showWarnings opts $ uncurry warnCheck loaded
 >   writeParsed        opts fn     modul
 >   writeAbstractCurry opts fn env modul
 >   when withFlat $ do
@@ -95,6 +96,7 @@ code are obsolete and commented out.
 >     -- dump intermediate results
 >     mapM_ (doDump opts) dumps
 >     -- generate target code
+>     let intf = exportInterface env modul
 >     let modSum = summarizeModule (tyConsEnv env2) intf modul
 >     writeFlat opts fn env2 modSum il
 >   where
@@ -174,22 +176,19 @@ Haskell and original MCC where a module obtains \texttt{main}).
 -- Checking a module
 -- ---------------------------------------------------------------------------
 
-> checkModule :: Options -> CompilerEnv -> CS.Module
->             -> (CompilerEnv, CS.Module, CS.Interface, [Message])
-> checkModule opts env mdl = (env', mdl', intf, warnings)
+> checkModule :: Options -> CompilerEnv -> CS.Module -> (CompilerEnv, CS.Module)
+> checkModule opts env mdl = qualifyEnvs
+>                          $ expand
+>                          $ uncurry qual
+>                          $ (if withFlat then uncurry typeCheck else id)
+>                          $ uncurry precCheck
+>                          $ uncurry (syntaxCheck opts)
+>                          $ kindCheck env mdl
 >   where
->     warnings = warnCheck env mdl
->     intf = exportInterface env' mdl'
->     (env', mdl') = qualifyE $ expand $ uncurry qual
->                  $ (if withFlat then uncurry typeCheck else id)
->                  $ uncurry precCheck
->                  $ uncurry (syntaxCheck opts)
->                  $ uncurry kindCheck
->                    (env, mdl)
->     expand   (e, m) = if withFlat then (e, expandInterface e m) else (e, m)
->     qualifyE (e, m) = (qualifyEnv opts e, m)
->     withFlat = any (`elem` optTargetTypes opts)
->                [FlatCurry, FlatXml, ExtendedFlatCurry]
+>   expand      (e, m) = if withFlat then (e, expandInterface e m) else (e, m)
+>   qualifyEnvs (e, m) = (qualifyEnv opts e, m)
+>   withFlat           = any (`elem` optTargetTypes opts)
+>                            [FlatCurry, FlatXml, ExtendedFlatCurry]
 
 -- ---------------------------------------------------------------------------
 -- Translating a module

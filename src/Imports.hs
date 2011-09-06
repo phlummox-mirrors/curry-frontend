@@ -39,10 +39,6 @@ import CompilerEnv
 import CompilerOpts
 import Records (importLabels, recordExpansion1, recordExpansion2)
 
--- ---------------------------------------------------------------------------
--- Interface
--- ---------------------------------------------------------------------------
-
 -- |The function 'importModules' brings the declarations of all
 -- imported interfaces into scope for the current module.
 importModules :: Options -> Module -> InterfaceEnv -> CompilerEnv
@@ -60,15 +56,6 @@ importModules opts (Module mid _ imps _) iEnv
       Just intf -> importInterface (fromMaybe m asM) q is intf env
       Nothing   -> internalError $ "Imports.importModules: no interface for "
                                    ++ show m
-
--- |
-qualifyEnv :: Options -> CompilerEnv -> CompilerEnv
-qualifyEnv opts env = recordExpansion2 opts
-                    $ qualifyLocal env
-                    $ foldl (flip importInterfaceIntf) initEnv
-                    $ Map.elems
-                    $ interfaceEnv env
-  where initEnv = initCompilerEnv $ moduleIdent env
 
 -- ---------------------------------------------------------------------------
 -- Importing an interface into the module
@@ -389,6 +376,15 @@ importUnifyData' tcEnv = fmap (setInfo allTyCons) tcEnv
           where tc = origName t
 
 -- ---------------------------------------------------------------------------
+
+-- |
+qualifyEnv :: Options -> CompilerEnv -> CompilerEnv
+qualifyEnv opts env = recordExpansion2 opts
+                    $ qualifyLocal env
+                    $ foldl (flip importInterfaceIntf) initEnv
+                    $ Map.elems
+                    $ interfaceEnv env
+  where initEnv = initCompilerEnv $ moduleIdent env
 
 qualifyLocal :: CompilerEnv -> CompilerEnv -> CompilerEnv
 qualifyLocal currentEnv initEnv = currentEnv

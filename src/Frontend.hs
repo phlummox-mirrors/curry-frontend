@@ -24,7 +24,7 @@ import Control.Monad.Writer
 import Curry.Base.MessageMonad
 import Curry.Files.Filenames
 import Curry.Files.PathUtils
-import Curry.Syntax (Module (..), Interface, parseModule)
+import Curry.Syntax (Module (..), parseModule)
 
 import CompilerEnv
 import CompilerOpts (Options (..), Verbosity (..), TargetType (..), defaultOptions)
@@ -68,7 +68,7 @@ genCurrySyntax fn mod1
 
 --
 genFullCurrySyntax ::
-  (Options -> CompilerEnv -> Module -> (CompilerEnv, Module, Interface, [Message]))
+  (Options -> CompilerEnv -> Module -> (CompilerEnv, Module))
   -> [FilePath] -> FilePath -> MsgMonad Module -> IO (MsgMonad Module)
 genFullCurrySyntax check paths fn m = runMsgIO m $ \mod1 -> do
   errs <- makeInterfaces paths fn mod1
@@ -76,8 +76,8 @@ genFullCurrySyntax check paths fn m = runMsgIO m $ \mod1 -> do
     then do
       iEnv <- loadInterfaces paths mod1
       let env = importModules opts mod1 iEnv
-          (_, mod', _, msgs) = check opts env mod1
-      return (tell msgs >> return  mod')
+          (_, mod') = check opts env mod1
+      return (return  mod')
     else return $ failWith $ head errs
   where opts = mkOpts paths
 
