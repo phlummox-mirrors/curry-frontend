@@ -25,7 +25,7 @@
 module Interfaces (loadInterfaces) where
 
 import Control.Monad (foldM, liftM, unless)
-import Data.List (isPrefixOf)
+import Data.List (intercalate, isPrefixOf)
 import qualified Data.Map as Map
 
 import Curry.Base.Ident
@@ -34,9 +34,7 @@ import qualified Curry.ExtendedFlat.Type as EF
 import Curry.Files.PathUtils as PU
 import Curry.Syntax
 
-import Base.ErrorMessages (errCyclicImport, errInterfaceNotFound
-  , errWrongInterface)
-import Base.Messages (errorAt)
+import Base.Messages (Message, toMessage, errorMessage, internalError)
 
 import Env.Interface
 
@@ -60,11 +58,11 @@ loadInterfaces paths (Module m _ is _) =
 loadInterface :: [FilePath] -> [ModuleIdent] -> InterfaceEnv
               -> (Position, ModuleIdent) -> IO InterfaceEnv
 loadInterface paths ctxt mEnv (p, m)
-  | m `elem` ctxt       = errorAt p
-                        $ errCyclicImport $ m : takeWhile (/= m) ctxt
+  | m `elem` ctxt       = errorMessage $ errCyclicImport p
+                        $ m : takeWhile (/= m) ctxt
   | m `Map.member` mEnv = return mEnv
   | otherwise           = PU.lookupInterface paths m >>=
-      maybe (errorAt p $ errInterfaceNotFound m)
+      maybe (errorMessage $ errInterfaceNotFound p m)
             (compileInterface paths ctxt mEnv m)
 
 -- |Compile an interface by recursively loading its dependencies
@@ -78,9 +76,9 @@ compileInterface :: [FilePath] -> [ModuleIdent] -> InterfaceEnv
 compileInterface paths ctxt mEnv m fn = do
   mintf <- (fmap flatToCurryInterface) `liftM` EF.readFlatInterface fn
   case mintf of
-    Nothing -> errorAt (first fn) $ errInterfaceNotFound m
+    Nothing -> errorMessage $ errInterfaceNotFound (first fn) m
     Just intf@(Interface m' is _) -> do
-      unless (m' == m) $ errorAt (first fn) $ errWrongInterface m m'
+      unless (m' == m) $ errorMessage $ errWrongInterface (first fn) m m'
       let importDecls = [ (pos, imp) | IImportDecl pos imp <- is ]
       mEnv' <- foldM (loadInterface paths (m : ctxt)) mEnv importDecls
       return $ Map.insert m intf mEnv'
@@ -124,7 +122,8 @@ flatToCurryInterface (EF.Prog m imps ts fs os)
   genLabeledType (EF.Cons qn _ _ [t])
     = ( [renameLabel $ fromLabelExtId $ mkIdent $ EF.localName qn]
       , genTypeExpr t)
-  genLabeledType _ = error "Interfaces.genLabeledType: not exactly one type expression"
+  genLabeledType _ = internalError
+    "Interfaces.genLabeledType: not exactly one type expression"
 
   genConstrDecl :: EF.ConsDecl -> ConstrDecl
   genConstrDecl (EF.Cons qn _ _ ts1)
@@ -162,3 +161,25 @@ flatToCurryInterface (EF.Prog m imps ts fs os)
     = (lname == "[]" || lname == "()") && mdl == "Prelude"
       where EF.QName { EF.modName = mdl, EF.localName = lname} = qn
   isSpecialPreludeType _ = False
+
+errInterfaceNotFound :: Position -> ModuleIdent -> Message
+errInterfaceNotFound p m = toMessage p $
+  "Interface for module " ++ moduleName m ++ " not found"
+
+errWrongInterface :: Position -> ModuleIdent -> ModuleIdent -> Message
+errWrongInterface p m m' = toMessage p $
+  "Expected interface for " ++ show m ++ " but found " ++ show m'
+  ++ show (moduleQualifiers m, moduleQualifiers m')
+
+errCyclicImport :: Position -> [ModuleIdent] -> Message
+errCyclicImport _ []  = internalError "Interfaces.errCyclicImport: empty list"
+errCyclicImport p [m] = toMessage p $
+  "Recursive import for module " ++ moduleName m
+errCyclicImport p ms  = toMessage p $
+  "Cylic import dependency between modules "
+  ++ intercalate ", " inits ++ " and " ++ lastm
+  where
+  (inits, lastm)         = splitLast $ map moduleName ms
+  splitLast []           = internalError "Interfaces.splitLast: empty list"
+  splitLast (x : [])     = ([]  , x)
+  splitLast (x : y : ys) = (x : xs, z) where (xs, z) = splitLast (y : ys)

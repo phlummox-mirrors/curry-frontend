@@ -35,7 +35,6 @@ This module controls the compilation of modules.
 > import Curry.Files.Filenames
 > import Curry.Files.PathUtils
 
-> import Base.ErrorMessages (errModuleFileMismatch)
 > import Base.Messages (abortWith, putErrsLn)
 
 > import Env.Eval (evalEnv)
@@ -318,5 +317,9 @@ standard output.
 > dumpHeader DumpLifted     = "Source code after lifting"
 > dumpHeader DumpIL         = "Intermediate code"
 > dumpHeader DumpCase       = "Intermediate code after case completion"
+
+> errModuleFileMismatch :: ModuleIdent -> String
+> errModuleFileMismatch mid = "module \"" ++ moduleName mid
+>   ++ "\" must be in a file \"" ++ moduleName mid ++ ".(l)curry\""
 
 \end{verbatim}

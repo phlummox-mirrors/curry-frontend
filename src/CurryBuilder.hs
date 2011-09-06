@@ -24,7 +24,6 @@ import Curry.Files.Filenames
 import Curry.Files.PathUtils ( dropExtension, doesModuleExist, lookupCurryFile
   , getModuleModTime, tryGetModuleModTime)
 
-import Base.ErrorMessages (errMissingFile)
 import Base.Messages (status, abortWith)
 
 import CompilerOpts (Options (..), TargetType (..))
@@ -123,3 +122,6 @@ smake dests deps actOutdated actUpToDate = do
 
     abortOnError :: IO a -> IO a
     abortOnError act = catch act (\ err -> abortWith [show err])
+
+errMissingFile :: FilePath -> String
+errMissingFile f = "Missing file \"" ++ f ++ "\""

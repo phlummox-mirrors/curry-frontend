@@ -19,7 +19,6 @@ import Curry.Base.Position
 import Curry.Base.Ident
 import Curry.Syntax
 
-import Base.ErrorMessages (errInterfaceModuleMismatch)
 import Base.Messages (internalError)
 import Base.Types
 
@@ -159,3 +158,7 @@ lookupTCId qident tcEnv = case qualLookupTC qident tcEnv of
   [RenamingType qid _ _] -> Just qid
   [AliasType    qid _ _] -> Just qid
   _                      -> Nothing
+
+errInterfaceModuleMismatch :: ModuleIdent -> ModuleIdent -> String
+errInterfaceModuleMismatch mi mm =
+  "Interface " ++ show mi ++ " does not match module " ++ show mm

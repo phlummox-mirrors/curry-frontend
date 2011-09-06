@@ -1,7 +1,7 @@
 module Base.Messages
   ( info, status
   , putErrLn, putErrsLn, abortWith
-  , internalError, errorAt, errorAt', errorMessages
+  , internalError, errorAt, errorAt', errorMessage, errorMessages
   , Message, toMessage, posErr, qposErr
   ) where
 
@@ -9,7 +9,8 @@ import Control.Monad (unless)
 import System.IO (hPutStrLn, stderr)
 import System.Exit (ExitCode (..), exitWith)
 
-import Curry.Base.Ident (Ident, QualIdent, positionOfIdent, positionOfQualIdent)
+import Curry.Base.Ident (Ident, QualIdent, positionOfIdent
+  , positionOfQualIdent)
 import Curry.Base.MessageMonad (Message, toMessage)
 import Curry.Base.Position (Position)
 
@@ -44,6 +45,9 @@ errorAt p msg = error ('\n' : (show $ toMessage p msg))
 -- |Raise an error for a given position, uncurried
 errorAt' :: (Position, String) -> a
 errorAt' = uncurry errorAt
+
+errorMessage :: Message -> a
+errorMessage = error . show
 
 errorMessages :: [Message] -> a
 errorMessages = error . unlines . map show

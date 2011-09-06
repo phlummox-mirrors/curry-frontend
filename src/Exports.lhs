@@ -32,7 +32,7 @@ is computed.
 > import Curry.Syntax
 
 > import Base.CurryTypes (fromQualType)
-> import Base.Messages (errorAt', internalError)
+> import Base.Messages
 > import Base.TopEnv
 > import Base.Types
 > import Base.Utils (findDouble)
@@ -55,25 +55,26 @@ the interface of the module.
 \begin{verbatim}
 
 > expandInterface :: CompilerEnv -> Module -> Module
-> expandInterface env mdl = expandInterface' mdl (tyConsEnv env) (valueEnv env)
+> expandInterface env mdl = expandInterface' mdl (tyConsEnv env)
+>                                                (valueEnv env)
 
 > expandInterface' :: Module -> TCEnv -> ValueEnv -> Module
 > expandInterface' (Module m es is ds) tcEnv tyEnv =
 >   case findDouble exportedTypes of
->     Just tc -> errorAt' $ ambiguousExportType tc
+>     Just tc -> errorMessage $ ambiguousExportType tc
 >     Nothing -> case findDouble exportedValues of
->       Just v  -> errorAt' $ ambiguousExportValue v
+>       Just v  -> errorMessage $ ambiguousExportValue v
 >       Nothing -> Module m (Just (Exporting NoPos expandedExports)) is ds
 >   where
->     expandedExports = joinExports
->                     $ maybe (expandLocalModule          tcEnv tyEnv)
->                             (expandSpecs importedMods m tcEnv tyEnv)
->                             es
->     importedMods   = Set.fromList
->                      [fromMaybe m' asM | ImportDecl _ m' _ asM _ <- is]
->     exportedTypes  = [unqualify tc | ExportTypeWith tc _ <- expandedExports]
->     exportedValues = [c | ExportTypeWith _ cs <- expandedExports, c <- cs]
->                   ++ [unqualify f | Export f <- expandedExports]
+>   expandedExports = joinExports
+>                   $ maybe (expandLocalModule          tcEnv tyEnv)
+>                           (expandSpecs importedMods m tcEnv tyEnv)
+>                           es
+>   importedMods   = Set.fromList
+>                    [fromMaybe m' asM | ImportDecl _ m' _ asM _ <- is]
+>   exportedTypes  = [unqualify tc | ExportTypeWith tc _ <- expandedExports]
+>   exportedValues = [c | ExportTypeWith _ cs <- expandedExports, c <- cs]
+>                 ++ [unqualify f | Export f <- expandedExports]
 
 \end{verbatim}
 While checking all export specifications, the compiler expands
@@ -115,52 +116,55 @@ identifiers.
 >   | m' `Set.member` ms
 >   = expandModule tcEnv tyEnv m'
 >   | otherwise
->   = errorAt' $ moduleNotImported m'
+>   = errorMessage $ moduleNotImported m'
 
 > -- |Expand export of type cons / data cons / function
 > expandThing :: ModuleIdent -> TCEnv -> ValueEnv -> QualIdent -> [Export]
 > expandThing m tcEnv tyEnv tc = case qualLookupTC tc tcEnv of
 >   []  -> expandThing' m tyEnv tc Nothing
 >   [t] -> expandThing' m tyEnv tc (Just [ExportTypeWith (origName t) []])
->   _   -> errorAt' $ ambiguousType tc
+>   _   -> errorMessage $ ambiguousType tc
 
 > -- |Expand export of data cons / function
-> expandThing' :: ModuleIdent -> ValueEnv -> QualIdent -> Maybe [Export] -> [Export]
+> expandThing' :: ModuleIdent -> ValueEnv -> QualIdent -> Maybe [Export]
+>              -> [Export]
 > expandThing' m tyEnv f tcExport = case qualLookupValue f tyEnv of
->   []           -> fromMaybe (errorAt' $ undefinedEntity f) tcExport
+>   []           -> fromMaybe (errorMessage $ undefinedEntity f) tcExport
 >   [Value f' _] -> Export f' : fromMaybe [] tcExport
->   [_]          -> fromMaybe (errorAt' $ exportDataConstr f) tcExport
+>   [_]          -> fromMaybe (errorMessage $ exportDataConstr f) tcExport
 >   _            -> case qualLookupValue (qualQualify m f) tyEnv of
->     []            -> fromMaybe (errorAt' $ undefinedEntity f) tcExport
->     [Value f'' _] -> Export f'' : fromMaybe [] tcExport
->     [_]           -> fromMaybe (errorAt' $ exportDataConstr f) tcExport
->     _             -> errorAt' $ ambiguousName f
+>     []           -> fromMaybe (errorMessage $ undefinedEntity f) tcExport
+>     [Value f' _] -> Export f' : fromMaybe [] tcExport
+>     [_]          -> fromMaybe (errorMessage $ exportDataConstr f) tcExport
+>     _            -> errorMessage $ ambiguousName f
 
 > -- |Expand type constructor with explicit data constructors
 > expandTypeWith :: ModuleIdent -> TCEnv -> QualIdent -> [Ident] -> [Export]
 > expandTypeWith _ tcEnv tc cs = case qualLookupTC tc tcEnv of
->   [] -> errorAt' $ undefinedType tc
->   [t] | isDataType t   -> [ExportTypeWith (origName t) $ map (checkConstr $ constrs t) $ nub cs]
->       | isRecordType t -> [ExportTypeWith (origName t) $ map (checkLabel  $ labels  t) $ nub cs]
->       | otherwise      -> errorAt' $ nonDataType tc
->   _  -> errorAt' $ ambiguousType tc
+>   [] -> errorMessage $ undefinedType tc
+>   [t] | isDataType t   -> [ ExportTypeWith (origName t)
+>                           $ map (checkConstr $ constrs t) $ nub cs]
+>       | isRecordType t -> [ ExportTypeWith (origName t)
+>                           $ map (checkLabel  $ labels  t) $ nub cs]
+>       | otherwise      -> errorMessage $ nonDataType tc
+>   _  -> errorMessage $ ambiguousType tc
 >   where
 >     checkConstr cs' c
 >       | c `elem` cs' = c
->       | otherwise    = errorAt' $ undefinedDataConstr tc c
+>       | otherwise    = errorMessage $ undefinedDataConstr tc c
 >     checkLabel ls l
 >       | l' `elem` ls = l'
->       | otherwise = errorAt' $ undefinedLabel tc l
+>       | otherwise    = errorMessage $ undefinedLabel tc l
 >       where l' = renameLabel l
 
 > -- |Expand type constructor with all data constructors
 > expandTypeAll :: ModuleIdent -> ValueEnv -> TCEnv -> QualIdent -> [Export]
 > expandTypeAll _ tyEnv tcEnv tc = case qualLookupTC tc tcEnv of
->   [] -> errorAt' $ undefinedType tc
+>   [] -> errorMessage $ undefinedType tc
 >   [t] | isDataType t   -> [exportType tyEnv t]
 >       | isRecordType t -> exportRecord t
->       | otherwise      -> errorAt' $ nonDataType tc
->   _ -> errorAt' $ ambiguousType tc
+>       | otherwise      -> errorMessage $ nonDataType tc
+>   _ -> errorMessage $ ambiguousType tc
 
 > expandLocalModule :: TCEnv -> ValueEnv -> [Export]
 > expandLocalModule tcEnv tyEnv =
@@ -201,12 +205,14 @@ are removed by the function \texttt{joinExports}.
 > joinType :: Export -> Map.Map QualIdent [Ident] -> Map.Map QualIdent [Ident]
 > joinType (Export             _) tcs = tcs
 > joinType (ExportTypeWith tc cs) tcs = Map.insertWith union tc cs tcs
-> joinType _                        _ = error "Exports.joinType: no pattern match" -- TODO
+> joinType _                        _ = internalError
+>   "Exports.joinType: no pattern match" -- TODO
 
 > joinFun :: Export -> Set.Set QualIdent -> Set.Set QualIdent
 > joinFun (Export           f) fs = f `Set.insert` fs
 > joinFun (ExportTypeWith _ _) fs = fs
-> joinFun _                     _ = error "Exports.joinFun: no pattern match" -- TODO
+> joinFun _                     _ = internalError
+>   "Exports.joinFun: no pattern match" -- TODO
 
 \end{verbatim}
 After checking that the interface is not ambiguous, the compiler
@@ -229,10 +235,11 @@ exported function.
 > exportInterface' :: Module -> PEnv -> TCEnv -> ValueEnv -> Interface
 > exportInterface' (Module m (Just (Exporting _ es)) _ _) pEnv tcEnv tyEnv
 >   = Interface m imports $ precs ++ hidden ++ decls
->   where imports = map   (IImportDecl NoPos) $ usedModules decls
->         precs   = foldr (infixDecl m pEnv) [] es
->         hidden  = map   (hiddenTypeDecl m tcEnv) $ hiddenTypes decls
->         decls   = foldr (typeDecl m tcEnv) (foldr (funDecl m tyEnv) [] es) es
+>   where
+>   imports = map   (IImportDecl NoPos) $ usedModules decls
+>   precs   = foldr (infixDecl m pEnv) [] es
+>   hidden  = map   (hiddenTypeDecl m tcEnv) $ hiddenTypes decls
+>   decls   = foldr (typeDecl m tcEnv) (foldr (funDecl m tyEnv) [] es) es
 > exportInterface' (Module _ Nothing _ _) _ _ _
 >   = internalError "Exports.exportInterface: no export specification"
 
@@ -246,7 +253,8 @@ exported function.
 > iInfixDecl :: ModuleIdent -> PEnv -> QualIdent -> [IDecl] -> [IDecl]
 > iInfixDecl m pEnv op ds = case qualLookupP op pEnv of
 >   []                           -> ds
->   [PrecInfo _ (OpPrec fix pr)] -> IInfixDecl NoPos fix pr (qualUnqualify m op) : ds
+>   [PrecInfo _ (OpPrec fix pr)] ->
+>     IInfixDecl NoPos fix pr (qualUnqualify m op) : ds
 >   _                            -> internalError "Exports.infixDecl"
 
 > typeDecl :: ModuleIdent -> TCEnv -> Export -> [IDecl] -> [IDecl]
@@ -294,7 +302,7 @@ exported function.
 >                         (fromQualType m ty) : ds
 >   _ -> internalError $ "Exports.funDecl: " ++ show f
 > funDecl _ _ (ExportTypeWith _ _) ds = ds
-> funDecl _ _ _ _ = error "Exports.funDecl: no pattern match"
+> funDecl _ _ _ _ = internalError "Exports.funDecl: no pattern match"
 
 
 \end{verbatim}
@@ -326,7 +334,7 @@ not module \texttt{B}.
 > identsDecl (INewtypeDecl _ tc _ nc) xs = tc : identsNewConstrDecl nc xs
 > identsDecl (ITypeDecl    _ tc _ ty) xs = tc : identsType ty xs
 > identsDecl (IFunctionDecl _ f _ ty) xs = f  : identsType ty xs
-> identsDecl _ _ = error "Exports.identsDecl: no pattern match"
+> identsDecl _ _ = internalError "Exports.identsDecl: no pattern match"
 
 > identsConstrDecl :: ConstrDecl -> [QualIdent] -> [QualIdent]
 > identsConstrDecl (ConstrDecl    _ _ _ tys) xs = foldr identsType xs tys
@@ -354,13 +362,12 @@ distinguished from type variables.
 \begin{verbatim}
 
 > hiddenTypeDecl :: ModuleIdent -> TCEnv -> QualIdent -> IDecl
-> hiddenTypeDecl m tcEnv tc =
->   case qualLookupTC (qualQualify m tc) tcEnv of
->     [DataType _ n _] -> hidingDataDecl tc n
->     [RenamingType _ n _] -> hidingDataDecl tc n
->     _ ->  internalError "Exports.hiddenTypeDecl"
->   where hidingDataDecl tc1 n =
->           HidingDataDecl NoPos (unqualify tc1) (take n identSupply)
+> hiddenTypeDecl m tcEnv tc = case qualLookupTC (qualQualify m tc) tcEnv of
+>   [DataType     _ n _] -> hidingDataDecl tc n
+>   [RenamingType _ n _] -> hidingDataDecl tc n
+>   _                    -> internalError "Exports.hiddenTypeDecl"
+>   where hidingDataDecl tc1 n = HidingDataDecl NoPos (unqualify tc1)
+>                              $ take n identSupply
 
 > hiddenTypes :: [IDecl] -> [QualIdent]
 > hiddenTypes ds = [tc | tc <- Set.toList tcs, not (isQualified tc)]
@@ -376,10 +383,12 @@ distinguished from type variables.
 > usedTypesDecl (INewtypeDecl  _ _ _ nc) tcs = usedTypesNewConstrDecl nc tcs
 > usedTypesDecl (ITypeDecl     _ _ _ ty) tcs = usedTypesType ty tcs
 > usedTypesDecl (IFunctionDecl _ _ _ ty) tcs = usedTypesType ty tcs
-> usedTypesDecl _                        _   = error "Exports.usedTypesDecl: no pattern match" -- TODO
+> usedTypesDecl _                        _   = internalError
+>   "Exports.usedTypesDecl: no pattern match" -- TODO
 
 > usedTypesConstrDecl :: ConstrDecl -> [QualIdent] -> [QualIdent]
-> usedTypesConstrDecl (ConstrDecl _ _ _ tys) tcs = foldr usedTypesType tcs tys
+> usedTypesConstrDecl (ConstrDecl    _ _ _ tys) tcs =
+>   foldr usedTypesType tcs tys
 > usedTypesConstrDecl (ConOpDecl _ _ ty1 _ ty2) tcs =
 >   usedTypesType ty1 (usedTypesType ty2 tcs)
 
@@ -387,15 +396,15 @@ distinguished from type variables.
 > usedTypesNewConstrDecl (NewConstrDecl _ _ _ ty) tcs = usedTypesType ty tcs
 
 > usedTypesType :: TypeExpr -> [QualIdent] -> [QualIdent]
-> usedTypesType (ConstructorType tc tys) tcs = tc : foldr usedTypesType tcs tys
+> usedTypesType (ConstructorType tc tys) tcs =
+>   tc : foldr usedTypesType tcs tys
 > usedTypesType (VariableType         _) tcs = tcs
 > usedTypesType (TupleType          tys) tcs = foldr usedTypesType tcs tys
 > usedTypesType (ListType            ty) tcs = usedTypesType ty tcs
 > usedTypesType (ArrowType      ty1 ty2) tcs =
 >   usedTypesType ty1 (usedTypesType ty2 tcs)
 > usedTypesType (RecordType      fs rty) tcs =
->   foldr usedTypesType
->         (maybe tcs (\ty -> usedTypesType ty tcs) rty)
+>   foldr usedTypesType (maybe tcs (\ty -> usedTypesType ty tcs) rty)
 >         (map snd fs)
 
 > definedTypes :: [IDecl] -> [QualIdent]
@@ -419,10 +428,11 @@ Auxiliary definitions
 
 > isRecordType :: TypeInfo -> Bool
 > isRecordType (AliasType _ _ (TypeRecord _ _)) = True
-> isRecordType _                               = False
+> isRecordType _                                = False
 
 > constrs :: TypeInfo -> [Ident]
-> constrs (DataType _ _ cs)                     = [c | Just (DataConstr c _ _) <- cs]
+> constrs (DataType _ _ cs)                     =
+>   [c | Just (DataConstr c _ _) <- cs]
 > constrs (RenamingType _ _ (DataConstr c _ _)) = [c]
 > constrs (AliasType _ _ _)                     = []
 
@@ -434,59 +444,43 @@ Auxiliary definitions
 Error messages
 \begin{verbatim}
 
-> undefinedEntity :: QualIdent -> (Position,String)
-> undefinedEntity x =
->   (positionOfQualIdent x,
->    "Entity " ++ qualName x ++ " in export list is not defined")
+> undefinedEntity :: QualIdent -> Message
+> undefinedEntity x = qposErr x $
+>   "Entity " ++ qualName x ++ " in export list is not defined"
 
-> undefinedType :: QualIdent -> (Position,String)
-> undefinedType tc =
->   (positionOfQualIdent tc,
->    "Type " ++ qualName tc ++ " in export list is not defined")
+> undefinedType :: QualIdent -> Message
+> undefinedType tc = qposErr tc $
+>   "Type " ++ qualName tc ++ " in export list is not defined"
 
-> moduleNotImported :: ModuleIdent -> (Position,String)
-> moduleNotImported m =
->   (positionOfModuleIdent m,
->    "Module " ++ moduleName m ++ " not imported")
+> moduleNotImported :: ModuleIdent -> Message
+> moduleNotImported m = toMessage (positionOfModuleIdent m) $
+>   "Module " ++ moduleName m ++ " not imported"
 
-> ambiguousExportType :: Ident -> (Position,String)
-> ambiguousExportType x =
->   (positionOfIdent x,
->    "Ambiguous export of type " ++ name x)
+> ambiguousExportType :: Ident -> Message
+> ambiguousExportType x = posErr x $ "Ambiguous export of type " ++ name x
 
-> ambiguousExportValue :: Ident -> (Position,String)
-> ambiguousExportValue x =
->   (positionOfIdent x,
->    "Ambiguous export of " ++ name x)
+> ambiguousExportValue :: Ident -> Message
+> ambiguousExportValue x = posErr x $ "Ambiguous export of " ++ name x
 
-> ambiguousType :: QualIdent -> (Position,String)
-> ambiguousType tc =
->   (positionOfQualIdent tc,
->    "Ambiguous type " ++ qualName tc)
+> ambiguousType :: QualIdent -> Message
+> ambiguousType tc = qposErr tc $ "Ambiguous type " ++ qualName tc
 
-> ambiguousName :: QualIdent -> (Position,String)
-> ambiguousName x =
->   (positionOfQualIdent x,
->    "Ambiguous name " ++ qualName x)
+> ambiguousName :: QualIdent -> Message
+> ambiguousName x = qposErr x $ "Ambiguous name " ++ qualName x
 
-> exportDataConstr :: QualIdent -> (Position,String)
-> exportDataConstr c =
->   (positionOfQualIdent c,
->    "Data constructor " ++ qualName c ++ " in export list")
+> exportDataConstr :: QualIdent -> Message
+> exportDataConstr c = qposErr c $
+>   "Data constructor " ++ qualName c ++ " in export list"
 
-> nonDataType :: QualIdent -> (Position,String)
-> nonDataType tc =
->   (positionOfQualIdent tc,
->    qualName tc ++ " is not a data type")
+> nonDataType :: QualIdent -> Message
+> nonDataType tc = qposErr tc $ qualName tc ++ " is not a data type"
 
-> undefinedDataConstr :: QualIdent -> Ident -> (Position,String)
-> undefinedDataConstr tc c =
->   (positionOfIdent c,
->    name c ++ " is not a data constructor of type " ++ qualName tc)
+> undefinedDataConstr :: QualIdent -> Ident -> Message
+> undefinedDataConstr tc c = posErr c $
+>   name c ++ " is not a data constructor of type " ++ qualName tc
 
-> undefinedLabel :: QualIdent -> Ident -> (Position,String)
-> undefinedLabel r l =
->   (positionOfIdent l,
->    name l ++ " is not a label of the record " ++ qualName r)
+> undefinedLabel :: QualIdent -> Ident -> Message
+> undefinedLabel r l = posErr l $
+>   name l ++ " is not a label of the record " ++ qualName r
 
 \end{verbatim}

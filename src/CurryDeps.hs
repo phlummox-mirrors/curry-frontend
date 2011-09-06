@@ -25,7 +25,7 @@ module CurryDeps
   ( Source (..), flatDeps, deps, flattenDeps, sourceDeps, moduleDeps ) where
 
 import Control.Monad (foldM, liftM, unless)
-import Data.List (isSuffixOf, nub)
+import Data.List (intercalate, isSuffixOf, nub)
 import qualified Data.Map as Map (Map, empty, insert, lookup, toList)
 
 import Curry.Base.Ident
@@ -34,7 +34,7 @@ import Curry.Files.Filenames
 import Curry.Files.PathUtils
 import Curry.Syntax (Module (..),  ImportDecl (..), parseHeader)
 
-import Base.ErrorMessages (errCyclicImport, errWrongModule)
+import Base.Messages (internalError)
 import Base.SCC (scc)
 import CompilerOpts (Options (..), Extension (..))
 
@@ -145,3 +145,19 @@ flattenDeps = fdeps . sortDeps
   checkdep [src] (srcs, errs) = (src : srcs, errs      )
   checkdep dep   (srcs, errs) = (srcs      , err : errs)
     where err = errCyclicImport $ map fst dep
+
+errWrongModule :: ModuleIdent -> ModuleIdent -> String
+errWrongModule m m' =
+  "Expected module for " ++ show m ++ " but found " ++ show m'
+  ++ show (moduleQualifiers m, moduleQualifiers m')
+
+errCyclicImport :: [ModuleIdent] -> String
+errCyclicImport []  = internalError "CurryDeps.errCyclicImport: empty list"
+errCyclicImport [m] = "Recursive import for module " ++ moduleName m
+errCyclicImport ms  = "Cylic import dependency between modules "
+                      ++ intercalate ", " inits ++ " and " ++ lastm
+  where
+  (inits, lastm)         = splitLast $ map moduleName ms
+  splitLast []           = internalError "CurryDeps.splitLast: empty list"
+  splitLast (x : [])     = ([]  , x)
+  splitLast (x : y : ys) = (x : xs, z) where (xs, z) = splitLast (y : ys)
