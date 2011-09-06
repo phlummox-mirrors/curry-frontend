@@ -22,7 +22,7 @@ merged into a single definition.
 
 > module Checks.SyntaxCheck (syntaxCheck) where
 
-> import Control.Monad (liftM, liftM2, liftM3, when)
+> import Control.Monad (liftM, liftM2, liftM3, unless, when)
 > import qualified Control.Monad.State as S (State, runState, gets, modify)
 > import Data.List ((\\), find, insertBy, partition)
 > import Data.Maybe (fromJust, isJust, isNothing, maybeToList)
@@ -756,7 +756,9 @@ checkParen
 
 > checkVariable :: QualIdent -> SCM Expression
 > checkVariable v
->   | unqualify v == anonId = return $ Variable v
+>   | unqualify v == anonId = do
+>     checkAnonFreeVarsExtension $ positionOfQualIdent v
+>     return $ Variable v
 >   | otherwise             = do
 >     env <- getRenameEnv
 >     case qualLookupVar v env of
@@ -940,12 +942,20 @@ Miscellaneous functions.
 > checkFuncPatsExtension :: Position -> SCM ()
 > checkFuncPatsExtension p = do
 >   funcPats <- hasExtension FunctionalPatterns
->   when (not funcPats) $ report $ errNoFuncPatsExtension p
+>   unless funcPats $ report $ errMissingLanguageExtension p
+>     "Functional Patterns" FunctionalPatterns
 
 > checkRecordExtension :: Position -> SCM ()
 > checkRecordExtension p = do
 >   records <- hasExtension Records
->   when (not records) $ report $ errNoRecordExtension p
+>   unless records $ report $ errMissingLanguageExtension p
+>     "Records" Records
+
+> checkAnonFreeVarsExtension :: Position -> SCM ()
+> checkAnonFreeVarsExtension p = do
+>   anonFreeVars <- hasExtension AnonFreeVars
+>   unless anonFreeVars $ report $ errMissingLanguageExtension p
+>     "Anonymous free variables" AnonFreeVars
 
 > typeArity :: TypeExpr -> Int
 > typeArity (ArrowType _ t2) = 1 + typeArity t2
@@ -1054,19 +1064,13 @@ Error messages.
 > errIllegalRecordPattern p = toMessage p
 >   "Expexting `_` after `|` in the record pattern"
 
-> errNoFuncPatsExtension :: Position -> Message
-> errNoFuncPatsExtension p = toMessage p $
->  "functional patterns are not supported in standard curry" ++ extMessage
-
-> errNoRecordExtension :: Position -> Message
-> errNoRecordExtension p = toMessage p $
->  "records are not supported in standard curry" ++ extMessage
+> errMissingLanguageExtension :: Position -> String -> Extension -> Message
+> errMissingLanguageExtension p what ext = toMessage p $
+>   what ++ " are not supported in standard Curry."
+>   ++ "\n  Use flag -e or -X" ++ show ext ++ " to enable this extension."
 
 > errEmptyRecord :: Position -> Message
 > errEmptyRecord p = toMessage p "empty records are not allowed"
-
-> extMessage :: String
-> extMessage = "\n(Use flag -e to enable extended curry)"
 
 > errInfixWithoutParens :: Position -> [(QualIdent, QualIdent)] -> Message
 > errInfixWithoutParens p calls = toMessage p $
@@ -1076,9 +1080,9 @@ Error messages.
 >           ++ "calls " ++ show q2 ++ " " ++ showLine (positionOfQualIdent q2)
 
 > qposErr :: QualIdent -> String -> Message
-> qposErr i msg = toMessage (positionOfQualIdent i) msg
+> qposErr i = toMessage (positionOfQualIdent i)
 
 > posErr :: Ident -> String -> Message
-> posErr i msg = toMessage (positionOfIdent i) msg
+> posErr i = toMessage (positionOfIdent i)
 
 \end{verbatim}

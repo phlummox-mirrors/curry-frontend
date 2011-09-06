@@ -104,14 +104,14 @@ dumpAll = [minBound .. maxBound]
 data Extension
   = Records
   | FunctionalPatterns
-  | AnonymousFreeVariables
+  | AnonFreeVars
   | NoImplicitPrelude
   | UnknownExtension String
     deriving (Eq, Read, Show)
 
 -- |'Extension's available by @-e@ flag
-pakcsExtensions :: [Extension]
-pakcsExtensions = [Records, FunctionalPatterns]
+curryExtensions :: [Extension]
+curryExtensions = [Records, FunctionalPatterns, AnonFreeVars]
 
 -- |Classifies a 'String' as an 'Extension'
 classifyExtension :: String -> Extension
@@ -190,7 +190,7 @@ options =
   -- extensions
   , Option "e"  ["extended"]
       (NoArg (\ opts -> opts { optExtensions =
-        nub $ pakcsExtensions ++ optExtensions opts }))
+        nub $ curryExtensions ++ optExtensions opts }))
       "enable extended Curry functionalities"
   , Option "X"   []
       (ReqArg (\ arg opts -> opts { optExtensions =
