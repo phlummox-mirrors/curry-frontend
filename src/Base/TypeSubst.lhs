@@ -91,7 +91,7 @@ the order of their occurrence. This is handled by the function
 > expandAliasType _ (TypeSkolem k) = TypeSkolem k
 > expandAliasType tys (TypeRecord fs rv)
 >   | isJust rv =
->     let (TypeVariable tv) = expandAliasType tys (TypeVariable (fromJust rv))
+>     let (TypeVariable tv) = expandAliasType tys $ TypeVariable $ fromJust rv
 >     in  TypeRecord fs' (Just tv)
 >   | otherwise =
 >     TypeRecord fs' Nothing

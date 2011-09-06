@@ -40,10 +40,11 @@ changes which are private to the module.
 > import Base.Types
 > import Base.Utils ((++!))
 
-> data TypeInfo = DataType QualIdent Int [Maybe DataConstr]
->               | RenamingType QualIdent Int DataConstr
->               | AliasType QualIdent Int Type
->               deriving Show
+> data TypeInfo
+>   = DataType     QualIdent Int [Maybe DataConstr]
+>   | RenamingType QualIdent Int DataConstr
+>   | AliasType    QualIdent Int Type
+>     deriving Show
 
 > instance Entity TypeInfo where
 >   origName (DataType     tc _ _) = tc
@@ -51,7 +52,7 @@ changes which are private to the module.
 >   origName (AliasType    tc _ _) = tc
 >
 >   merge (DataType tc n cs) (DataType tc' _ cs')
->     | tc == tc' = Just (DataType tc n (mergeData cs cs'))
+>     | tc == tc' = Just $ DataType tc n $ mergeData cs cs'
 >     where mergeData ds       []         = ds
 >           mergeData []       ds         = ds
 >           mergeData (d : ds) (d' : ds') = d `mplus` d' : mergeData ds ds'
@@ -81,11 +82,10 @@ impossible to insert them into the environment in advance.
 
 > bindTypeInfo :: (QualIdent -> Int -> a -> TypeInfo) -> ModuleIdent
 >              -> Ident -> [Ident] -> a -> TCEnv -> TCEnv
-> bindTypeInfo f m tc tvs x
->   = bindTopEnv "Base.bindTypeInfo" tc t
->     . qualBindTopEnv "Base.bindTypeInfo" tc' t
->   where tc' = qualifyWith m tc
->         t = f tc' (length tvs) x
+> bindTypeInfo f m tc tvs x = bindTopEnv     "Base.bindTypeInfo" tc  tyInfo
+>                           . qualBindTopEnv "Base.bindTypeInfo" qtc tyInfo
+>   where qtc    = qualifyWith m tc
+>         tyInfo = f qtc (length tvs) x
 
 > lookupTC :: Ident -> TCEnv -> [TypeInfo]
 > lookupTC tc tcEnv = lookupTopEnv tc tcEnv ++! lookupTupleTC tc
