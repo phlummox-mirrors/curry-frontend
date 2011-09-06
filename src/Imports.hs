@@ -94,14 +94,16 @@ importInterface m q is i env = env
   , valueEnv  = importEntities m q vs id              mTyEnv $ valueEnv  env
   , arityEnv  = importEntities m q as id              mAEnv  $ arityEnv  env
   }
-  where mPEnv  = intfEnv bindPrec i -- all operator precedences
-        mTCEnv = intfEnv bindTC   i -- all type constructors
-        mTyEnv = intfEnv bindTy   i -- all values
-        mAEnv  = intfEnv bindA    i -- all arities
-        expandedSpec = maybe [] (expandSpecs m mTCEnv mTyEnv) is -- all imported type constructors / values
-        ts = isVisible is (Set.fromList $ foldr addType  [] expandedSpec)
-        vs = isVisible is (Set.fromList $ foldr addValue [] expandedSpec)
-        as = isVisible is (Set.fromList $ foldr addArity [] expandedSpec)
+  where
+  mPEnv  = intfEnv bindPrec i -- all operator precedences
+  mTCEnv = intfEnv bindTC   i -- all type constructors
+  mTyEnv = intfEnv bindTy   i -- all values
+  mAEnv  = intfEnv bindA    i -- all arities
+  -- all imported type constructors / values
+  expandedSpec = maybe [] (expandSpecs m mTCEnv mTyEnv) is
+  ts = isVisible is (Set.fromList $ foldr addType  [] expandedSpec)
+  vs = isVisible is (Set.fromList $ foldr addValue [] expandedSpec)
+  as = isVisible is (Set.fromList $ foldr addArity [] expandedSpec)
 
 isVisible :: Maybe ImportSpec -> Set.Set Ident -> Ident -> Bool
 isVisible (Just (Importing _ _)) xs = (`Set.member`    xs)
@@ -278,14 +280,19 @@ expandSpecs m tcEnv tyEnv (Hiding _ is) =
   concatMap (expandHiding m tcEnv tyEnv) is
 
 expandImport :: ModuleIdent -> ExpTCEnv -> ExpValueEnv -> Import -> [Import]
-expandImport m tcEnv tyEnv (Import             x) = expandThing m tcEnv tyEnv x
-expandImport m tcEnv _     (ImportTypeWith tc cs) = [expandTypeWith m tcEnv tc cs]
-expandImport m tcEnv _     (ImportTypeAll     tc) = [expandTypeAll  m tcEnv tc   ]
+expandImport m tcEnv tyEnv (Import             x) =
+  expandThing m tcEnv tyEnv x
+expandImport m tcEnv _     (ImportTypeWith tc cs) =
+  [expandTypeWith m tcEnv tc cs]
+expandImport m tcEnv _     (ImportTypeAll     tc) =
+  [expandTypeAll  m tcEnv tc   ]
 
 expandHiding :: ModuleIdent -> ExpTCEnv -> ExpValueEnv -> Import -> [Import]
 expandHiding m tcEnv tyEnv (Import             x) = expandHide m tcEnv tyEnv x
-expandHiding m tcEnv _     (ImportTypeWith tc cs) = [expandTypeWith m tcEnv tc cs]
-expandHiding m tcEnv _     (ImportTypeAll     tc) = [expandTypeAll  m tcEnv tc   ]
+expandHiding m tcEnv _     (ImportTypeWith tc cs) =
+  [expandTypeWith m tcEnv tc cs]
+expandHiding m tcEnv _     (ImportTypeAll     tc) =
+  [expandTypeAll  m tcEnv tc   ]
 
 -- try to expand as type constructor
 expandThing :: ModuleIdent -> ExpTCEnv -> ExpValueEnv -> Ident -> [Import]
@@ -294,7 +301,8 @@ expandThing m tcEnv tyEnv tc = case Map.lookup tc tcEnv of
   Nothing -> expandThing' m tyEnv tc Nothing
 
 -- try to expand as function / data constructor
-expandThing' :: ModuleIdent -> ExpValueEnv -> Ident -> Maybe [Import] -> [Import]
+expandThing' :: ModuleIdent -> ExpValueEnv -> Ident -> Maybe [Import]
+             -> [Import]
 expandThing' m tyEnv f tcImport = case Map.lookup f tyEnv of
   Just v
     | isConstr v -> fromMaybe (errorAt' $ importDataConstr m f) tcImport
@@ -312,15 +320,16 @@ expandHide m tcEnv tyEnv tc = case Map.lookup tc tcEnv of
   Nothing -> expandHide' m tyEnv tc Nothing
 
 -- try to hide as function / data constructor
-expandHide' :: ModuleIdent -> ExpValueEnv -> Ident -> Maybe [Import] -> [Import]
+expandHide' :: ModuleIdent -> ExpValueEnv -> Ident -> Maybe [Import]
+            -> [Import]
 expandHide' m tyEnv f tcImport = case Map.lookup f tyEnv of
   Just _  -> Import f : fromMaybe [] tcImport
   Nothing -> fromMaybe (errorAt' $ undefinedEntity m f) tcImport
 
 expandTypeWith ::  ModuleIdent -> ExpTCEnv -> Ident -> [Ident] -> Import
 expandTypeWith m tcEnv tc cs = case Map.lookup tc tcEnv of
-  Just (DataType _ _ cs') ->
-    ImportTypeWith tc (map (checkConstr [c | Just (DataConstr c _ _) <- cs']) cs)
+  Just (DataType _ _ cs') -> ImportTypeWith tc
+    (map (checkConstr [c | Just (DataConstr c _ _) <- cs']) cs)
   Just (RenamingType _ _ (DataConstr c _ _)) ->
     ImportTypeWith tc (map (checkConstr [c]) cs)
   Just _  -> errorAt' $ nonDataType tc
@@ -369,11 +378,12 @@ importUnifyData cEnv = cEnv { tyConsEnv = importUnifyData' $ tyConsEnv cEnv }
 
 importUnifyData' :: TCEnv -> TCEnv
 importUnifyData' tcEnv = fmap (setInfo allTyCons) tcEnv
-  where setInfo tcs t   = fromJust $ Map.lookup (origName t) tcs
-        allTyCons       = foldr (mergeData . snd) Map.empty $ allImports tcEnv
-        mergeData t tcs =
-          Map.insert tc (maybe t (fromJust . merge t) $ Map.lookup tc tcs) tcs
-          where tc = origName t
+  where
+  setInfo tcs t   = fromJust $ Map.lookup (origName t) tcs
+  allTyCons       = foldr (mergeData . snd) Map.empty $ allImports tcEnv
+  mergeData t tcs =
+    Map.insert tc (maybe t (fromJust . merge t) $ Map.lookup tc tcs) tcs
+    where tc = origName t
 
 -- ---------------------------------------------------------------------------
 
@@ -416,11 +426,11 @@ importInterfaceIntf i@(Interface m _ _) env = env
   , valueEnv  = importEntities m True (const True) id mTyEnv $ valueEnv  env
   , arityEnv  = importEntities m True (const True) id mAEnv  $ arityEnv  env
   }
-  where mPEnv  = intfEnv bindPrec       i -- all operator precedences
-        mTCEnv = intfEnv bindTCHidden   i -- all type constructors
-        mTyEnv = intfEnv bindTy         i -- all values
-        mAEnv  = intfEnv bindA          i -- all arities
-
+  where
+  mPEnv  = intfEnv bindPrec       i -- all operator precedences
+  mTCEnv = intfEnv bindTCHidden   i -- all type constructors
+  mTyEnv = intfEnv bindTy         i -- all values
+  mAEnv  = intfEnv bindA          i -- all arities
 
 -- Error messages:
 

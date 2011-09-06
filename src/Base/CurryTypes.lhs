@@ -37,7 +37,8 @@ order of type variables in the left hand side of a type declaration.
 >   where newInTy = [tv | tv <- nub (fv ty), tv `notElem` tvs]
 
 > toTypes :: [Ident] -> [CS.TypeExpr] -> [Type]
-> toTypes tvs tys = map (toType' (Map.fromList $ zip (tvs ++ newInTys) [0 ..])) tys
+> toTypes tvs tys = map
+>    (toType' (Map.fromList $ zip (tvs ++ newInTys) [0 ..])) tys
 >   where newInTys = [tv | tv <- nub (concatMap fv tys), tv `notElem` tvs]
 
 > toType' :: Map.Map Ident Int -> CS.TypeExpr -> Type
@@ -78,8 +79,10 @@ order of type variables in the left hand side of a type declaration.
 > fromType (TypeVariable tv)         = CS.VariableType
 >    (if tv >= 0 then identSupply !! tv else mkIdent ('_' : show (-tv)))
 > fromType (TypeConstrained tys _)   = fromType (head tys)
-> fromType (TypeArrow     ty1 ty2)   = CS.ArrowType (fromType ty1) (fromType ty2)
-> fromType (TypeSkolem          k)   = CS.VariableType $ mkIdent $ "_?" ++ show k
+> fromType (TypeArrow     ty1 ty2)   =
+>   CS.ArrowType (fromType ty1) (fromType ty2)
+> fromType (TypeSkolem          k)   =
+>   CS.VariableType $ mkIdent $ "_?" ++ show k
 > fromType (TypeRecord     fs rty)   = CS.RecordType
 >   (map (\ (l, ty) -> ([l], fromType ty)) fs)
 >   ((fromType . TypeVariable) `fmap` rty)

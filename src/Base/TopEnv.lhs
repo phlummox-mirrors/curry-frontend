@@ -73,17 +73,20 @@ imported.
 >   Just  _ -> internalError "TopEnv.predefTopEnv"
 >   Nothing -> TopEnv $ Map.insert x [(Import [], y)] env
 
-> importTopEnv :: Entity a => ModuleIdent -> Ident -> a -> TopEnv a -> TopEnv a
+> importTopEnv :: Entity a => ModuleIdent -> Ident -> a -> TopEnv a
+>              -> TopEnv a
 > importTopEnv m x y (TopEnv env) =
 >   TopEnv $ Map.insert x' (mergeImport m y (entities x' env)) env
 >   where x' = qualify x
 
-> qualImportTopEnv :: Entity a => ModuleIdent -> Ident -> a -> TopEnv a -> TopEnv a
+> qualImportTopEnv :: Entity a => ModuleIdent -> Ident -> a -> TopEnv a
+>                  -> TopEnv a
 > qualImportTopEnv m x y (TopEnv env) =
 >   TopEnv $ Map.insert x' (mergeImport m y (entities x' env)) env
 >   where x' = qualifyWith m x
 
-> mergeImport :: Entity a => ModuleIdent -> a -> [(Source, a)] -> [(Source, a)]
+> mergeImport :: Entity a => ModuleIdent -> a -> [(Source, a)]
+>             -> [(Source, a)]
 > mergeImport m x []                         = [(Import [m], x)]
 > mergeImport m x (loc@(Local    ,  _) : xs) = loc : mergeImport m x xs
 > mergeImport m x (imp@(Import ms, x') : xs) = case merge x x' of
@@ -107,9 +110,10 @@ imported.
 > qualRebindTopEnv :: QualIdent -> a -> TopEnv a -> TopEnv a
 > qualRebindTopEnv x y (TopEnv env) =
 >   TopEnv $ Map.insert x (rebindLocal (entities x env)) env
->   where rebindLocal []                = internalError "TopEnv.qualRebindTopEnv"
->         rebindLocal ((Local, _) : ys) = (Local, y) : ys
->         rebindLocal (imported   : ys) = imported   : rebindLocal ys
+>   where
+>   rebindLocal []                = internalError "TopEnv.qualRebindTopEnv"
+>   rebindLocal ((Local, _) : ys) = (Local, y) : ys
+>   rebindLocal (imported   : ys) = imported   : rebindLocal ys
 
 > unbindTopEnv :: Ident -> TopEnv a -> TopEnv a
 > unbindTopEnv x (TopEnv env) =

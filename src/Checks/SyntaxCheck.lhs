@@ -1024,7 +1024,7 @@ Error messages.
 > errIllegalLabel :: Ident -> QualIdent -> Message
 > errIllegalLabel l r = posErr l $
 >   "Label `" ++ name l ++ "` is not defined in record `"
->	++ name (unqualify r) ++ "`"
+>   ++ name (unqualify r) ++ "`"
 
 > errIllegalRecordId :: Ident -> Message
 > errIllegalRecordId r = posErr r $ "Record identifier `" ++ name r

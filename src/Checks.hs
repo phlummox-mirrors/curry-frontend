@@ -70,7 +70,8 @@ precCheck env (Module m es is ds)
 -- The declarations remain unchanged; the type constructor and value
 -- environments are updated.
 typeCheck :: CompilerEnv -> Module -> (CompilerEnv, Module)
-typeCheck env mdl@(Module _ _ _ ds) = (env { tyConsEnv = tcEnv', valueEnv = tyEnv' }, mdl)
+typeCheck env mdl@(Module _ _ _ ds) =
+  (env { tyConsEnv = tcEnv', valueEnv = tyEnv' }, mdl)
   where (tcEnv', tyEnv') = TC.typeCheck (moduleIdent env)
                               (tyConsEnv env) (valueEnv env) ds
 

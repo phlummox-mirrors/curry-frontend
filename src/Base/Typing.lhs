@@ -366,8 +366,8 @@ checker.
 >   unifyTypes (TypeVariable a1)
 >              (TypeVariable a2)
 >              (foldr (unifyTypedLabels fs1) theta fs2)
-> unifyTypes ty1 ty2 _ =
->   internalError ("Base.Typing.unify: (" ++ show ty1 ++ ") (" ++ show ty2 ++ ")")
+> unifyTypes ty1 ty2 _ = internalError $
+>   "Base.Typing.unify: (" ++ show ty1 ++ ") (" ++ show ty2 ++ ")"
 
 > unifyTypedLabels :: [(Ident,Type)] -> (Ident,Type) -> TypeSubst -> TypeSubst
 > unifyTypedLabels fs1 (l,ty) theta =
