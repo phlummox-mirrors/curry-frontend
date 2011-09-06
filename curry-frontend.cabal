@@ -39,22 +39,7 @@ Executable cymake
     , mtl, old-time, containers, pretty
   ghc-options: -Wall
   Other-Modules:
-      Checks
-    , CompilerEnv
-    , CompilerOpts
-    , CurryBuilder
-    , CurryDeps
-    , Exports
-    , Frontend
-    , Generators
-    , IL
-    , Imports
-    , Interfaces
-    , Modules
-    , ModuleSummary
-    , Records
-    , Transformations
-    , Base.CurryTypes
+      Base.CurryTypes
     , Base.Expr
     , Base.Messages
     , Base.NestEnv
@@ -67,11 +52,16 @@ Executable cymake
     , Base.TypeSubst
     , Base.Typing
     , Base.Utils
+    , Checks
     , Checks.KindCheck
     , Checks.PrecCheck
     , Checks.SyntaxCheck
     , Checks.TypeCheck
     , Checks.WarnCheck
+    , CompilerEnv
+    , CompilerOpts
+    , CurryBuilder
+    , CurryDeps
     , Env.Arity
     , Env.Eval
     , Env.Interface
@@ -80,13 +70,23 @@ Executable cymake
     , Env.OpPrec
     , Env.TypeConstructors
     , Env.Value
+    , Exports
+    , Frontend
+    , Generators
     , Generators.GenAbstractCurry
     , Generators.GenFlatCurry
     , Html.CurryHtml
     , Html.SyntaxColoring
+    , IL
     , IL.Pretty
     , IL.Type
     , IL.XML
+    , Imports
+    , Interfaces
+    , Modules
+    , ModuleSummary
+    , Records
+    , Transformations
     , Transformations.CaseCompletion
     , Transformations.CurryToIL
     , Transformations.Desugar

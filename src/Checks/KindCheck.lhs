@@ -28,8 +28,8 @@ is defined more than once.
 > import Control.Monad (forM, liftM, liftM2, liftM3, when)
 > import qualified Control.Monad.State as S (State, runState, gets, modify)
 
-> import Curry.Base.Position
 > import Curry.Base.Ident
+> import Curry.Base.Position
 > import Curry.Syntax
 
 > import Base.Messages (Message, posErr, qposErr, internalError)

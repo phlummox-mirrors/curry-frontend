@@ -28,12 +28,12 @@ merged into a single definition.
 > import Data.Maybe (fromJust, isJust, isNothing, maybeToList)
 > import qualified Data.Set as Set (empty, insert, member)
 
-> import Curry.Base.Position
 > import Curry.Base.Ident
+> import Curry.Base.Position
 > import Curry.Syntax
 
 > import Base.Expr
-> import Base.Messages (Message, toMessage, errorMessages, internalError)
+> import Base.Messages (Message, toMessage, internalError, posErr, qposErr)
 > import Base.NestEnv
 > import Base.Types
 > import Base.Utils ((++!), findDouble, findMultiples)
@@ -65,10 +65,7 @@ addition, this process will also rename the local variables.
 >     css -> (decls, map errMultipleDataConstructor css)
 >   where
 >     tds        = filter isTypeDecl decls
->     (rds, dds) = partition isRecordDecl tds
->     rEnv       = foldr (bindTypeDecl m)
->                  (globalEnv $ fmap (renameInfo tcEnv iEnv aEnv) tyEnv)
->                  (dds ++ rds)
+>     rEnv       = globalEnv $ fmap (renameInfo tcEnv iEnv aEnv) tyEnv
 >     initState  = SCState (optExtensions opts) m rEnv globalKey []
 
 \end{verbatim}
@@ -189,28 +186,36 @@ than once.
 ------------------------------------------------------------------------------
 
 > -- Binding type constructor information
-> bindTypeDecl :: ModuleIdent -> Decl -> RenameEnv -> RenameEnv
-> bindTypeDecl m (DataDecl    _ _ _ cs) env = foldr (bindConstr m) env cs
-> bindTypeDecl m (NewtypeDecl _ _ _ nc) env = bindNewConstr m nc env
-> bindTypeDecl m (TypeDecl _ t _ (RecordType fs _)) env
->   | any isConstr other = errorMessages [errIllegalRecordId t]
->   | otherwise          = foldr (bindRecordLabel m t allLabels) env allLabels
->   where other     = qualLookupVar (qualifyWith m t) env
->         allLabels = concatMap fst fs
-> bindTypeDecl _ _ env = env
+> bindTypeDecl :: Decl -> SCM ()
+> bindTypeDecl (DataDecl    _ _ _ cs) = mapM_ bindConstr cs
+> bindTypeDecl (NewtypeDecl _ _ _ nc) = bindNewConstr nc
+> bindTypeDecl (TypeDecl _ t _ (RecordType fs _)) = do
+>   m <- getModuleIdent
+>   others <- qualLookupVar (qualifyWith m t) `liftM` getRenameEnv
+>   when (any isConstr others) $ report $ errIllegalRecordId t
+>   mapM_ (bindRecordLabel t allLabels) allLabels
+>   where allLabels = concatMap fst fs
+> bindTypeDecl _ = return ()
 
-> bindConstr :: ModuleIdent -> ConstrDecl -> RenameEnv -> RenameEnv
-> bindConstr m (ConstrDecl _ _ c tys) = bindGlobal m c  (Constr $ length tys)
-> bindConstr m (ConOpDecl _ _ _ op _) = bindGlobal m op (Constr 2)
+> bindConstr :: ConstrDecl -> SCM ()
+> bindConstr (ConstrDecl _ _ c tys) = do
+>   m <- getModuleIdent
+>   modifyRenameEnv $ bindGlobal m c (Constr $ length tys)
+> bindConstr (ConOpDecl _ _ _ op _) = do
+>   m <- getModuleIdent
+>   modifyRenameEnv $ bindGlobal m op (Constr 2)
 
-> bindNewConstr :: ModuleIdent -> NewConstrDecl -> RenameEnv -> RenameEnv
-> bindNewConstr m (NewConstrDecl _ _ c _) = bindGlobal m c (Constr 1)
+> bindNewConstr :: NewConstrDecl -> SCM ()
+> bindNewConstr (NewConstrDecl _ _ c _) = do
+>   m <- getModuleIdent
+>   modifyRenameEnv $ bindGlobal m c (Constr 1)
 
-> bindRecordLabel :: ModuleIdent -> Ident -> [Ident] -> Ident -> RenameEnv
->                 -> RenameEnv
-> bindRecordLabel m t allLabels l env = case lookupVar l env of
->   [] -> bindGlobal m l (RecordLabel (qualifyWith m t) allLabels) env
->   _  -> errorMessages [errDuplicateDefinition l]
+> bindRecordLabel :: Ident -> [Ident] -> Ident -> SCM ()
+> bindRecordLabel t allLabels l = do
+>   m <- getModuleIdent
+>   new <- (null . lookupVar l) `liftM` getRenameEnv
+>   unless new $ report $ errDuplicateDefinition l
+>   modifyRenameEnv $ bindGlobal m l (RecordLabel (qualifyWith m t) allLabels)
 
 ------------------------------------------------------------------------------
 
@@ -281,8 +286,11 @@ local declarations.
 \begin{verbatim}
 
 > checkModule :: [Decl] -> SCM [Decl]
-> checkModule decls = liftM2 (++) (mapM checkTypeDecl tds) (checkTopDecls vds)
+> checkModule decls = do
+>   mapM_ bindTypeDecl (rds ++ dds)
+>   liftM2 (++) (mapM checkTypeDecl tds) (checkTopDecls vds)
 >   where (tds, vds) = partition isTypeDecl decls
+>         (rds, dds) = partition isRecordDecl tds
 
 > checkTypeDecl :: Decl -> SCM Decl
 > checkTypeDecl rec@(TypeDecl _ r _ (RecordType fs rty)) = do
@@ -1078,11 +1086,5 @@ Error messages.
 >   where showCall (q1, q2) =
 >           show q1 ++ " " ++ showLine (positionOfQualIdent q1)
 >           ++ "calls " ++ show q2 ++ " " ++ showLine (positionOfQualIdent q2)
-
-> qposErr :: QualIdent -> String -> Message
-> qposErr i = toMessage (positionOfQualIdent i)
-
-> posErr :: Ident -> String -> Message
-> posErr i = toMessage (positionOfIdent i)
 
 \end{verbatim}

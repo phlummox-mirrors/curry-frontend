@@ -18,7 +18,7 @@ module CompilerOpts
   , DumpLevel (..), defaultOptions, compilerOpts, usage
   ) where
 
-import Data.List (nub)
+import Data.List (intercalate, nub)
 import Data.Maybe (isJust)
 import System.Console.GetOpt
 import System.Environment (getArgs, getProgName)
@@ -109,6 +109,9 @@ data Extension
   | UnknownExtension String
     deriving (Eq, Read, Show)
 
+allExtensions :: [Extension]
+allExtensions = [Records, FunctionalPatterns, AnonFreeVars, NoImplicitPrelude]
+
 -- |'Extension's available by @-e@ flag
 curryExtensions :: [Extension]
 curryExtensions = [Records, FunctionalPatterns, AnonFreeVars]
@@ -195,7 +198,7 @@ options =
   , Option "X"   []
       (ReqArg (\ arg opts -> opts { optExtensions =
         nub $ classifyExtension arg : optExtensions opts }) "EXT")
-      "enable language extension EXT"
+      ("enable language extension EXT, one of " ++ show allExtensions)
   -- dump
   , Option ""   ["dump-all"]
       (NoArg (\ opts -> opts { optDumps = dumpAll }))
@@ -235,9 +238,12 @@ parseOpts args = (foldl (flip ($)) defaultOptions opts, files, errs) where
 checkOpts :: Options -> [String] -> [String]
 checkOpts opts files
   | isJust (optOutput opts) && length files > 1
-    = ["cannot specify -o with multiple targets"]
+  = ["cannot specify -o with multiple targets"]
+  | not $ null unknownExtensions
+  = ["Unknown language extension(s): " ++ intercalate ", " unknownExtensions]
   | otherwise
-    = []
+  = []
+  where unknownExtensions = [ e | UnknownExtension e <- optExtensions opts ]
 
 -- |Print the usage information of the command line tool.
 usage :: String -> String

@@ -1,10 +1,19 @@
-{- |In order to generate correct FlatCurry applications it is necessary
+{- |
+    Module      :  $Header$
+    Description :  Environment of function and constructor arities
+    Copyright   :  (c) 2005, Martin Engelke  (men@informatik.uni-kiel.de)
+                       2011, Björn Peemöller (bjp@informatik.uni-kiel.de)
+    License     :  OtherLicense
+
+    Maintainer  :  bjp@informatik.uni-kiel.de
+    Stability   :  experimental
+    Portability :  portable
+
+    In order to generate correct FlatCurry applications it is necessary
     to define the number of arguments as the arity value (instead of
     using the arity computed from the type). For this reason the compiler
     needs a table containing the information for all known functions
     and constructors.
-
-    September 2005, Martin Engelke (men@informatik.uni-kiel.de)
 -}
 
 module Env.Arity
@@ -19,12 +28,12 @@ import Base.TopEnv
 import Base.Types (DataConstr (..), predefTypes)
 import Base.Utils ((++!))
 
-type ArityEnv = TopEnv ArityInfo
-
 data ArityInfo = ArityInfo QualIdent Int deriving Show
 
 instance Entity ArityInfo where
   origName (ArityInfo orgName _) = orgName
+
+type ArityEnv = TopEnv ArityInfo
 
 initAEnv :: ArityEnv
 initAEnv = foldr bindPredefArity emptyTopEnv $ concatMap snd predefTypes
@@ -67,8 +76,7 @@ lookupTupleArity ident
     constructor arities.
 -}
 bindArities :: ArityEnv -> Module -> ArityEnv
-bindArities aEnv (Module mid _ _ decls)
-  = foldl (visitDecl mid) aEnv decls
+bindArities aEnv (Module mid _ _ decls) = foldl (visitDecl mid) aEnv decls
 
 visitDecl :: ModuleIdent -> ArityEnv -> Decl -> ArityEnv
 visitDecl mid aEnv (DataDecl _ _ _ cdecls)

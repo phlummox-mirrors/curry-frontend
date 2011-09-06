@@ -22,8 +22,8 @@ of the operators involved.
 > import qualified Control.Monad.State as S (State, runState, gets, modify)
 > import Data.List (partition)
 
-> import Curry.Base.Position
 > import Curry.Base.Ident
+> import Curry.Base.Position
 > import Curry.Syntax
 
 > import Base.Expr

@@ -41,8 +41,8 @@ imported.
 >   ) where
 
 > import Control.Arrow (second)
-> import qualified Data.Map as Map (Map, empty, insert, lookup, toList)
-> import Data.Maybe (fromMaybe)
+> import qualified Data.Map as Map
+>   (Map, empty, insert, findWithDefault, lookup, toList)
 
 > import Curry.Base.Ident
 > import Base.Messages (internalError)
@@ -63,7 +63,7 @@ imported.
 >   fmap f (TopEnv env) = TopEnv (fmap (map (second f)) env)
 
 > entities :: QualIdent -> Map.Map QualIdent [(Source, a)] -> [(Source, a)]
-> entities x env = fromMaybe [] $ Map.lookup x env
+> entities = Map.findWithDefault []
 
 > emptyTopEnv :: TopEnv a
 > emptyTopEnv = TopEnv Map.empty
