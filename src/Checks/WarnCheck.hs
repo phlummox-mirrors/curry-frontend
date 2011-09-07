@@ -717,9 +717,9 @@ isCons state qid = maybe (isImportedCons state qid)
  where
  isImportedCons state' qid'
     = case (qualLookupValue qid' (valueEnv state')) of
-        (DataConstructor _ _):_    -> True
-        (NewtypeConstructor _ _):_ -> True
-        _                          -> False
+        (DataConstructor  _ _ _) : _ -> True
+        (NewtypeConstructor _ _) : _ -> True
+        _                            -> False
 
 --
 isAnnonId :: Ident -> Bool

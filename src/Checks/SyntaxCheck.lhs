@@ -24,7 +24,7 @@ merged into a single definition.
 
 > import Control.Monad (liftM, liftM2, liftM3, unless, when)
 > import qualified Control.Monad.State as S (State, runState, gets, modify)
-> import Data.List ((\\), find, insertBy, partition)
+> import Data.List ((\\), insertBy, partition)
 > import Data.Maybe (fromJust, isJust, isNothing, maybeToList)
 > import qualified Data.Set as Set (empty, insert, member)
 
@@ -38,8 +38,6 @@ merged into a single definition.
 > import Base.Types
 > import Base.Utils ((++!), findDouble, findMultiples)
 
-> import Env.Arity (ArityEnv, ArityInfo (..), lookupArity, qualLookupArity)
-> import Env.ModuleAlias (AliasEnv, lookupAlias)
 > import Env.TypeConstructors (TCEnv, TypeInfo (..), qualLookupTC)
 > import Env.Value (ValueEnv, ValueInfo (..))
 
@@ -57,15 +55,15 @@ declarations are checked within the resulting environment. In
 addition, this process will also rename the local variables.
 \begin{verbatim}
 
-> syntaxCheck :: Options -> ModuleIdent -> AliasEnv -> ArityEnv -> ValueEnv
->             -> TCEnv -> [Decl] -> ([Decl], [Message])
-> syntaxCheck opts m iEnv aEnv tyEnv tcEnv decls =
+> syntaxCheck :: Options -> ModuleIdent -> ValueEnv -> TCEnv -> [Decl]
+>             -> ([Decl], [Message])
+> syntaxCheck opts m tyEnv tcEnv decls =
 >   case findMultiples $ concatMap constrs tds of
 >     []  -> runSC (checkModule decls) initState
 >     css -> (decls, map errMultipleDataConstructor css)
 >   where
 >     tds        = filter isTypeDecl decls
->     rEnv       = globalEnv $ fmap (renameInfo tcEnv iEnv aEnv) tyEnv
+>     rEnv       = globalEnv $ fmap (renameInfo tcEnv) tyEnv
 >     initState  = SCState (optExtensions opts) m rEnv globalKey []
 
 \end{verbatim}
@@ -148,27 +146,13 @@ allow the usage of the qualified list constructor \texttt{(prelude.:)}.
 >   | LocalVar Int Ident            -- arity of local function
 >     deriving (Eq, Show)
 
-> renameInfo :: TCEnv -> AliasEnv -> ArityEnv -> ValueInfo -> RenameInfo
-> renameInfo _ _ _ (DataConstructor _ (ForAllExist _ _ ty))
->   = Constr $ arrowArity ty
-> renameInfo _ _ _ (NewtypeConstructor _ _)
->   = Constr 1
-> renameInfo tcEnv _ _ (Label _ r _) = case qualLookupTC r tcEnv of
+> renameInfo :: TCEnv -> ValueInfo -> RenameInfo
+> renameInfo _     (DataConstructor  _ a _) = Constr $ a
+> renameInfo _     (NewtypeConstructor _ _) = Constr 1
+> renameInfo _     (Value          qid a _) = GlobalVar a qid
+> renameInfo tcEnv (Label            _ r _) = case qualLookupTC r tcEnv of
 >   [AliasType _ _ (TypeRecord fs _)] -> RecordLabel r $ map fst fs
 >   _ -> internalError "SyntaxCheck.renameInfo: no unambiguous record"
-> renameInfo _ iEnv aEnv (Value qid _) = case lookupArity ident aEnv of
->   [ArityInfo _ arty] -> GlobalVar arty qid
->   rs                 -> case qualLookupArity aliasedQid aEnv of
->     [ArityInfo _ arty] -> GlobalVar arty qid
->     _                  -> case find (\ (ArityInfo qid2 _) -> qid2 == qid) rs of
->       Just (ArityInfo _ arty) -> GlobalVar arty qid
->       Nothing ->  internalError $
->         "SyntaxCheck.renameInfo: missing arity for " ++ show qid
->   where ident = qualidId qid
->         -- apply module alias
->         aliasedQid = case qualidMod qid >>= flip lookupAlias iEnv of
->           Nothing   -> qid
->           Just mid' -> qualifyWith mid' ident
 
 \end{verbatim}
 Since record types are currently translated into data types, it is

@@ -18,7 +18,6 @@ module CompilerEnv where
 
 import Curry.Base.Ident (ModuleIdent)
 
-import Env.Arity
 import Env.Eval
 import Env.Interface
 import Env.Label
@@ -33,7 +32,6 @@ import Env.Value
 data CompilerEnv = CompilerEnv
   { moduleIdent  :: ModuleIdent  -- ^ identifier of the module
   , aliasEnv     :: AliasEnv     -- ^ aliases for imported modules
-  , arityEnv     :: ArityEnv     -- ^ arity of functions and data constructors
   , evalAnnotEnv :: EvalEnv      -- ^ evaluation annotations
   , interfaceEnv :: InterfaceEnv -- ^ declarations of imported interfaces
   , labelEnv     :: LabelEnv     -- ^ record labels
@@ -46,7 +44,6 @@ initCompilerEnv :: ModuleIdent -> CompilerEnv
 initCompilerEnv mid = CompilerEnv
   { moduleIdent  = mid
   , aliasEnv     = initAliasEnv
-  , arityEnv     = initAEnv
   , evalAnnotEnv = initEEnv
   , interfaceEnv = initInterfaceEnv
   , labelEnv     = initLabelEnv

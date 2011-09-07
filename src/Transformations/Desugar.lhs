@@ -286,17 +286,15 @@ with a local declaration for $v$.
 
 > desugarLazy :: SrcRef -> ModuleIdent -> Position -> [Decl] -> ConstrTerm
 >             -> DesugarState ([Decl],ConstrTerm)
-> desugarLazy pos m p ds t =
->   case t of
->     VariablePattern _ -> return (ds,t)
->     ParenPattern t' -> desugarLazy pos m p ds t'
->     AsPattern v t' -> liftM (desugarAs p v) (desugarLazy pos m p ds t')
->     LazyPattern pos' t' -> desugarLazy pos' m p ds t'
->     _ ->
->       do
->         v0 <- S.get >>= freshIdent m "_#lazy" . monoType . flip typeOf t
->         let v' = addPositionIdent (AST pos) v0
->         return (patDecl p{astRef=pos} t (mkVar v') : ds,VariablePattern v')
+> desugarLazy pos m p ds t = case t of
+>   VariablePattern   _ -> return (ds,t)
+>   ParenPattern     t' -> desugarLazy pos m p ds t'
+>   AsPattern      v t' -> liftM (desugarAs p v) (desugarLazy pos m p ds t')
+>   LazyPattern pos' t' -> desugarLazy pos' m p ds t'
+>   _ -> do
+>    v0 <- S.get >>= freshIdent m "_#lazy" . monoType . flip typeOf t
+>    let v' = addPositionIdent (AST pos) v0
+>    return (patDecl p{astRef=pos} t (mkVar v') : ds, VariablePattern v')
 
 \end{verbatim}
 A list of boolean guards is expanded into a nested if-then-else
@@ -397,13 +395,11 @@ type \texttt{Bool} of the guard because the guard's type defaults to
 >     op' <- desugarExpr m tcEnv p (infixOp op)
 >     e' <- desugarExpr m tcEnv p e
 >     return (Apply (Apply prelFlip op') e')
-> desugarExpr m tcEnv p expr@(Lambda r ts e) =
->   do
+> desugarExpr m tcEnv p expr@(Lambda r ts e) = do
 >     f <- S.get >>=
 >          freshIdent m "_#lambda" . polyType . flip typeOf expr
 >     desugarExpr m tcEnv p (Let [funDecl (AST r) f ts e] (mkVar f))
-> desugarExpr m tcEnv p (Let ds e) =
->   do
+> desugarExpr m tcEnv p (Let ds e) = do
 >     ds' <- desugarDeclGroup m tcEnv ds
 >     e' <- desugarExpr m tcEnv p e
 >     return (if null ds' then e' else Let ds' e')
@@ -522,7 +518,7 @@ have to be desugared as well. This part transforms the following extensions:
 >	       rty' = TypeConstructor r' (map TypeVariable [0 .. n-1])
 >              rcts' = ForAllExist 0 n (foldr TypeArrow rty' (map snd fs'))
 >	   rfuncs <- mapM (genRecordFuncs m tcEnv p r' rty' (map fst fs')) fs'
->	   S.modify (bindGlobalInfo DataConstructor m r rcts')
+>	   S.modify (bindGlobalInfo (flip DataConstructor (length tys)) m r rcts')
 >          return (rdecl:(concat rfuncs))
 >     _ -> internalError "Desugar.desugarRecordDecl: no record"
 >   where r' = qualifyWith m r
@@ -668,8 +664,8 @@ have to be desugared as well. This part transforms the following extensions:
 >              (updId, updFunc) = genUpdateFunc m p r ls l
 >	       selType = polyType (TypeArrow rty ty)
 >	       updType = polyType (TypeArrow rty (TypeArrow ty rty))
->	   S.modify (bindFun m selId selType . bindFun m updId updType)
->	   return [selFunc,updFunc]
+>	   S.modify (bindFun m selId 1 selType . bindFun m updId 2 updType)
+>	   return [selFunc, updFunc]
 >     _ -> internalError "Desugar.genRecordFuncs: wrong type"
 
 > genSelectorFunc :: ModuleIdent -> Position -> QualIdent -> [Ident] -> Ident
@@ -737,8 +733,7 @@ instead of \texttt{(++)} and \texttt{map} in place of
 >   desugarExpr m tcEnv p (IfThenElse pos b e (List [pos] []))
 > desugarQual m tcEnv p (StmtBind refBind t l) e
 >   | isVarPattern t = desugarExpr m tcEnv p (qualExpr t e l)
->   | otherwise =
->       do
+>   | otherwise = do
 >         tyEnv <- S.get
 >         v0 <- freshIdent m "_#var" (monoType (typeOf tyEnv t))
 >         l0 <- freshIdent m "_#var" (monoType (typeOf tyEnv e))
@@ -770,9 +765,10 @@ Generation of fresh names
 > freshIdent m prefix ty =
 >   do
 >     x <- liftM (mkName prefix) (S.lift (S.modify succ >> S.get))
->     S.modify (bindFun m x ty)
+>     S.modify (bindFun m x (arrowArity $ unscheme ty) ty)
 >     return x
 >   where mkName pre n = mkIdent (pre ++ show n)
+>         unscheme (ForAll _ t) = t
 
 \end{verbatim}
 Prelude entities
@@ -850,8 +846,8 @@ Auxiliary definitions
 
 > isNewtypeConstr :: ValueEnv -> QualIdent -> Bool
 > isNewtypeConstr tyEnv c = case qualLookupValue c tyEnv of
->   [DataConstructor _ _] -> False
 >   [NewtypeConstructor _ _] -> True
+>   [DataConstructor  _ _ _] -> False
 >   _ -> internalError $ "Desugar.isNewtypeConstr " ++ show c
 
 > isVarPattern :: ConstrTerm -> Bool

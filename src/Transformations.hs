@@ -46,9 +46,8 @@ desugar mdl env = (mdl', env { valueEnv = tyEnv' })
 
 -- |Lift local declarations
 lift :: Module -> CompilerEnv -> (Module, CompilerEnv)
-lift mdl env = (mdl', env { valueEnv = tyEnv', evalAnnotEnv = eEnv', arityEnv = aEnv' })
-  where (mdl', tyEnv', eEnv', aEnv')
-           = L.lift (valueEnv env) (evalAnnotEnv env) (arityEnv env) mdl
+lift mdl env = (mdl', env { valueEnv = tyEnv', evalAnnotEnv = eEnv' })
+  where (mdl', tyEnv', eEnv') = L.lift (valueEnv env) (evalAnnotEnv env) mdl
 
 -- |Fully qualify used constructors and functions
 qual :: CompilerEnv -> Module -> (CompilerEnv, Module)

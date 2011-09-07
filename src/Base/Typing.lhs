@@ -124,7 +124,7 @@ environment.}
 >   where tvs = filter (>= 0) (typeVars ty)
 >         tvs' = map TypeVariable [n - 1,n - 2 ..]
 >         n = minimum (0 : concatMap typeVars tys)
->         tys = [ty1 | (_,Value _ (ForAll _ ty1)) <- localBindings tyEnv]
+>         tys = [ty1 | (_,Value _ _ (ForAll _ ty1)) <- localBindings tyEnv]
 
 > identType :: ValueEnv -> Ident -> TyState Type
 > identType tyEnv x = instUniv (varType x tyEnv)
@@ -383,23 +383,23 @@ pattern variables, and variables.
 
 > constrType :: QualIdent -> ValueEnv -> ExistTypeScheme
 > constrType c tyEnv = case qualLookupValue c tyEnv of
->     [DataConstructor _ sigma] -> sigma
->     [NewtypeConstructor _ sigma] -> sigma
->     _ -> internalError $ "Base.Typing.constrType: " ++ show c
+>   [DataConstructor  _ _ sigma] -> sigma
+>   [NewtypeConstructor _ sigma] -> sigma
+>   _ -> internalError $ "Base.Typing.constrType: " ++ show c
 
 > varType :: Ident -> ValueEnv -> TypeScheme
 > varType v tyEnv = case lookupValue v tyEnv of
->     [Value _ sigma] -> sigma
->     _ -> internalError $ "Base.Typing.varType: " ++ show v
+>   [Value _ _ sigma] -> sigma
+>   _ -> internalError $ "Base.Typing.varType: " ++ show v
 
 > funType :: QualIdent -> ValueEnv -> TypeScheme
 > funType f tyEnv = case qualLookupValue f tyEnv of
->     [Value _ sigma] -> sigma
->     _ -> internalError $ "Base.Typing.funType: " ++ show f
+>   [Value _ _ sigma] -> sigma
+>   _ -> internalError $ "Base.Typing.funType: " ++ show f
 
 > labelType :: Ident -> ValueEnv -> TypeScheme
 > labelType l tyEnv = case lookupValue l tyEnv of
->     [Label _ _ sigma] -> sigma
->     _ -> internalError $ "Base.Typing.labelType: " ++ show l
+>   [Label _ _ sigma] -> sigma
+>   _ -> internalError $ "Base.Typing.labelType: " ++ show l
 
 \end{verbatim}

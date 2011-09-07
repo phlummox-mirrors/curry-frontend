@@ -442,9 +442,9 @@ Auxiliary functions
 
 > funType :: ModuleIdent -> ValueEnv -> QualIdent -> Type
 > funType m tyEnv f = case qualLookupValue f tyEnv of
->     [Value _ (ForAll _ ty)] -> ty
+>     [Value _ _ (ForAll _ ty)] -> ty
 >     _ -> case qualLookupValue (qualQualify m f) tyEnv of
->            [Value _ (ForAll _ ty)] -> ty
+>            [Value _ _ (ForAll _ ty)] -> ty
 >            _ -> internalError $ "Simplify.funType " ++ show f
 
 > evMode :: EvalEnv -> Ident -> Maybe EvalAnnotation
@@ -452,11 +452,11 @@ Auxiliary functions
 
 > freshIdent :: ModuleIdent -> (Int -> Ident) -> TypeScheme
 >            -> SimplifyState Ident
-> freshIdent m f ty =
->   do
->     x <- liftM f (S.lift (R.lift ( S.modify succ >> S.get)))
->     S.modify (bindFun m x ty)
->     return x
+> freshIdent m f ty@(ForAll _ t) = do
+>   x <- liftM f (S.lift (R.lift ( S.modify succ >> S.get)))
+>   S.modify (bindFun m x arity ty)
+>   return x
+>   where arity = arrowArity t
 
 > shuffle :: [a] -> [[a]]
 > shuffle xs = shuffle' id xs

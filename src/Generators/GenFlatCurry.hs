@@ -31,7 +31,6 @@ import Base.TopEnv (topEnvMap)
 import Base.Types
 
  -- environments
-import Env.Arity (ArityEnv, ArityInfo (..), lookupArity, qualLookupArity)
 import Env.Interface
 import Env.TypeConstructors (TCEnv, TypeInfo (..), qualLookupTC)
 import Env.Value (ValueEnv, ValueInfo (..), lookupValue, qualLookupValue)
@@ -49,22 +48,22 @@ trace' _ x = x
 -------------------------------------------------------------------------------
 
 -- transforms intermediate language code (IL) to FlatCurry code
-genFlatCurry :: Options -> ModuleSummary.ModuleSummary -> InterfaceEnv -> ValueEnv -> TCEnv
-		-> ArityEnv -> IL.Module -> (Prog, [Message])
-genFlatCurry opts modSum mEnv tyEnv tcEnv aEnv modul
+genFlatCurry :: Options -> ModuleSummary.ModuleSummary -> InterfaceEnv
+             -> ValueEnv -> TCEnv -> IL.Module -> (Prog, [Message])
+genFlatCurry opts modSum mEnv tyEnv tcEnv modul
    = (prog', messages)
  where (prog, messages)
-           = run opts modSum mEnv tyEnv tcEnv aEnv False (visitModule modul)
+           = run opts modSum mEnv tyEnv tcEnv False (visitModule modul)
        prog' = -- eraseTypes $
                adjustTypeInfo $ adjustTypeInfo $ patchPreludeFCY prog
 
 -- transforms intermediate language code (IL) to FlatCurry interfaces
 genFlatInterface :: Options -> ModuleSummary.ModuleSummary -> InterfaceEnv -> ValueEnv -> TCEnv
-         -> ArityEnv -> IL.Module -> (Prog, [Message])
-genFlatInterface opts modSum mEnv tyEnv tcEnv aEnv modul =
+        -> IL.Module -> (Prog, [Message])
+genFlatInterface opts modSum mEnv tyEnv tcEnv modul =
   (patchPreludeFCY intf, messages)
   where (intf, messages)
-          = run opts modSum mEnv tyEnv tcEnv aEnv True (visitModule modul)
+          = run opts modSum mEnv tyEnv tcEnv True (visitModule modul)
 
 patchPreludeFCY :: Prog -> Prog
 patchPreludeFCY p@(Prog n _ types funcs ops)
@@ -111,7 +110,6 @@ data FlatEnv = FlatEnv
   , functionIdE   :: (QualIdent, [(Ident, IL.Type)])
   , compilerOptsE :: Options
   , interfaceEnvE :: InterfaceEnv
-  , arityEnvE     :: ArityEnv
   , typeEnvE      :: ValueEnv     -- types of defined values
   , tConsEnvE     :: TCEnv
   , publicEnvE    :: Map.Map Ident IdentExport
@@ -134,9 +132,9 @@ data IdentExport = NotConstr       -- function, type-constructor
                  | NotOnlyConstr   -- constructor, function, type-constructor
 
 -- Runs a 'FlatState' action and returns the result
-run :: Options -> ModuleSummary.ModuleSummary -> InterfaceEnv -> ValueEnv -> TCEnv -> ArityEnv
+run :: Options -> ModuleSummary.ModuleSummary -> InterfaceEnv -> ValueEnv -> TCEnv
     -> Bool -> FlatState a -> (a, [Message])
-run opts cEnv mEnv tyEnv tcEnv aEnv genIntf f
+run opts cEnv mEnv tyEnv tcEnv genIntf f
    = (result, messagesE env)
  where
  (result, env) = runState f env0
@@ -144,7 +142,6 @@ run opts cEnv mEnv tyEnv tcEnv aEnv genIntf f
 		 functionIdE   = (qualify (mkIdent ""), []),
 		 compilerOptsE = opts,
 		 interfaceEnvE = mEnv,
-		 arityEnvE     = aEnv,
 		 typeEnvE      = tyEnv,
 		 tConsEnvE     = tcEnv,
 		 publicEnvE    = genPubEnv (ModuleSummary.moduleId cEnv)
@@ -978,36 +975,40 @@ lookupModuleIntf mid = gets (Map.lookup mid . interfaceEnvE)
 
 --
 lookupIdArity :: QualIdent -> FlatState (Maybe Int)
-lookupIdArity qid
-   = gets (lookupA qid . arityEnvE)
- where
- lookupA qid1 aEnv = case (qualLookupArity qid1 aEnv) of
-		      [ArityInfo _ a]
-		         -> Just a
-		      [] -> case (lookupArity (unqualify qid1) aEnv) of
-			      [ArityInfo _ a] -> Just a
-			      _               -> Nothing
-		      _  -> Nothing
+lookupIdArity qid = gets (lookupA qid . typeEnvE)
+  where
+  lookupA qid1 tyEnv = case qualLookupValue qid1 tyEnv of
+    [DataConstructor  _ a _] -> Just a
+    [NewtypeConstructor _ _] -> Just 1
+    [Value            _ a _] -> Just a
+    []                       -> case lookupValue (unqualify qid1) tyEnv of
+      [DataConstructor  _ a _] -> Just a
+      [NewtypeConstructor _ _] -> Just 1
+      [Value            _ a _] -> Just a
+      _                        -> Nothing
+    _                        -> Nothing
 
 
 
 getTypeOf :: Ident -> FlatState (Maybe TypeExpr)
 getTypeOf ident = do
-    valEnv <- gets typeEnvE
-    case lookupValue ident valEnv of
-      Value _ (ForAll _ t) : _
-          -> do t1 <- visitType (ttrans t)
-                trace' ("getTypeOf(" ++ show ident ++ ") = " ++ show t1)$
-                       return (Just t1)
-      DataConstructor _ (ForAllExist _ _ t):_
-          -> do t1 <- visitType (ttrans t)
-                trace' ("getTypeOfDataCon(" ++ show ident ++ ") = " ++ show t1)$
-                       return (Just t1)
-      _   -> do (_,ats) <- gets functionIdE
-                case lookup ident ats of
-                  Just t -> liftM Just (visitType t)
-                  Nothing -> trace' ("lookupValue did not return a value for index " ++ show ident)
-                             (return Nothing)
+  valEnv <- gets typeEnvE
+  case lookupValue ident valEnv of
+    Value _ _ (ForAll _ t) : _ -> do
+      t1 <- visitType (ttrans t)
+      trace' ("getTypeOf(" ++ show ident ++ ") = " ++ show t1) $
+        return (Just t1)
+    DataConstructor _ _ (ForAllExist _ _ t) : _ -> do
+      t1 <- visitType (ttrans t)
+      trace' ("getTypeOfDataCon(" ++ show ident ++ ") = " ++ show t1) $
+        return (Just t1)
+    _ -> do
+    (_,ats) <- gets functionIdE
+    case lookup ident ats of
+      Just t -> liftM Just (visitType t)
+      Nothing -> trace' ("lookupValue did not return a value for index " ++ show ident)
+                 (return Nothing)
+
 ttrans :: Type -> IL.Type
 ttrans (TypeConstructor i ts)
     = IL.TypeConstructor i (map ttrans ts)
@@ -1042,17 +1043,17 @@ lookupIdType (QualIdent Nothing (Ident _ t@('(':',':r) _))
             argTypes   = map TVar [1 .. tupArity]
             contype    = TCons (mkQName ("Prelude", t)) argTypes
             funtype    = foldr FuncType contype argTypes
-lookupIdType qid
-   = do aEnv <- gets typeEnvE
-        lt <- gets localTypes
-        ct <- gets constrTypes
-        case Map.lookup qid lt `mplus` Map.lookup qid ct of
-          Just t -> trace' ("lookupIdType local " ++ show (qid, t)) $ liftM Just (visitType t)  -- local name or constructor
-          Nothing -> case [ t | Value _ (ForAll _ t) <- qualLookupValue qid aEnv ] of
-                       t : _ -> liftM Just (visitType (translType t))  -- imported name
-                       []    -> case qualidMod qid of
-                                  Nothing -> trace' ("no type for "  ++ show qid) $ return Nothing  -- no known type
-                                  Just _ -> lookupIdType qid {qualidMod = Nothing}
+lookupIdType qid = do
+  aEnv <- gets typeEnvE
+  lt <- gets localTypes
+  ct <- gets constrTypes
+  case Map.lookup qid lt `mplus` Map.lookup qid ct of
+    Just t -> trace' ("lookupIdType local " ++ show (qid, t)) $ liftM Just (visitType t)  -- local name or constructor
+    Nothing -> case [ t | Value _ _ (ForAll _ t) <- qualLookupValue qid aEnv ] of
+                  t : _ -> liftM Just (visitType (translType t))  -- imported name
+                  []    -> case qualidMod qid of
+                            Nothing -> trace' ("no type for "  ++ show qid) $ return Nothing  -- no known type
+                            Just _ -> lookupIdType qid {qualidMod = Nothing}
 --
 
 -- Generates a new index for a variable

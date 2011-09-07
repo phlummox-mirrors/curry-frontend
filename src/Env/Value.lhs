@@ -18,9 +18,11 @@ are considered equal if their original names match.
 > import Text.PrettyPrint (Doc, vcat)
 
 > import Curry.Base.Ident
+> import Curry.Base.Position
 > import Curry.Syntax
 
 > import Base.CurryTypes (fromQualType)
+> import Base.Messages (internalError)
 > import Base.TopEnv
 > import Base.Types
 > import Base.Utils ((++!))
@@ -28,25 +30,28 @@ are considered equal if their original names match.
 > import Env.TypeConstructors (TypeInfo (..), tupleTCs)
 
 > data ValueInfo
->   = DataConstructor QualIdent ExistTypeScheme
->   | NewtypeConstructor QualIdent ExistTypeScheme
->   | Value QualIdent TypeScheme
->   | Label QualIdent QualIdent TypeScheme -- Label <label name> <record name> <type>
+>   -- |Data constructor with original name, arity and type
+>   = DataConstructor    QualIdent Int       ExistTypeScheme
+>   -- |Newtype constructor with original name and type (arity is always 1)
+>   | NewtypeConstructor QualIdent           ExistTypeScheme
+>   -- |Value with original name, arity and type
+>   | Value              QualIdent Int       TypeScheme
+>   -- |Record label with original name, record name and type
+>   | Label              QualIdent QualIdent TypeScheme
 >     deriving Show
 
 > instance Entity ValueInfo where
->   origName (DataConstructor    orgName _) = orgName
->   origName (NewtypeConstructor orgName _) = orgName
->   origName (Value              orgName _) = orgName
->   origName (Label            orgName _ _) = orgName
+>   origName (DataConstructor    orgName _ _) = orgName
+>   origName (NewtypeConstructor orgName   _) = orgName
+>   origName (Value              orgName _ _) = orgName
+>   origName (Label              orgName _ _) = orgName
 >
 >   merge (Label l r ty) (Label l' r' _)
->     | l == l' && r == r' = Just (Label l r ty)
+>     | l == l' && r == r' = Just $ Label l r ty
 >     | otherwise          = Nothing
 >   merge x y
 >     | origName x == origName y = Just x
 >     | otherwise                = Nothing
-
 
 \end{verbatim}
 Even though value declarations may be nested, the compiler uses only
@@ -62,26 +67,26 @@ allow the usage of the qualified list constructor \texttt{(Prelude.:)}.
 
 > bindGlobalInfo :: (QualIdent -> a -> ValueInfo) -> ModuleIdent -> Ident -> a
 >                -> ValueEnv -> ValueEnv
-> bindGlobalInfo f m c ty
->   = bindTopEnv "Base.bindGlobalInfo" c v
->     . qualBindTopEnv "Base.bindGlobalInfo" c' v
->   where c' = qualifyWith m c
->         v = f c' ty
+> bindGlobalInfo f m c ty = bindTopEnv fun c  v . qualBindTopEnv fun qc v
+>   where qc  = qualifyWith m c
+>         v   = f qc ty
+>         fun = "Base.bindGlobalInfo"
 
-> bindFun :: ModuleIdent -> Ident -> TypeScheme -> ValueEnv -> ValueEnv
-> bindFun m f ty tyEnv
->   | uniqueId f == 0
->     = bindTopEnv "Base.bindFun" f v (qualBindTopEnv "Base.bindFun" f' v tyEnv)
->   | otherwise = bindTopEnv "Base.bindFun" f v tyEnv
->   where f' = qualifyWith m f
->         v = Value f' ty
+> bindFun :: ModuleIdent -> Ident -> Int -> TypeScheme -> ValueEnv -> ValueEnv
+> bindFun m f a ty
+>   | uniqueId f == 0 = bindTopEnv fun f  v . qualBindTopEnv fun qf v
+>   | otherwise       = bindTopEnv fun f  v
+>   where qf  = qualifyWith m f
+>         v   = Value qf a ty
+>         fun = "Base.bindFun"
 
-> rebindFun :: ModuleIdent -> Ident -> TypeScheme -> ValueEnv -> ValueEnv
-> rebindFun m f ty
->   | uniqueId f == 0 = rebindTopEnv f v . qualRebindTopEnv f' v
->   | otherwise = rebindTopEnv f v
->   where f' = qualifyWith m f
->         v = Value f' ty
+> rebindFun :: ModuleIdent -> Ident -> Int -> TypeScheme -> ValueEnv
+>           -> ValueEnv
+> rebindFun m f a ty
+>   | uniqueId f == 0 = rebindTopEnv f v . qualRebindTopEnv qf v
+>   | otherwise       = rebindTopEnv f v
+>   where qf = qualifyWith m f
+>         v = Value qf a ty
 
 > bindLabel :: Ident -> QualIdent -> TypeScheme -> ValueEnv -> ValueEnv
 > bindLabel l r ty tyEnv = bindTopEnv "Base.bindLabel" l v tyEnv
@@ -91,16 +96,15 @@ allow the usage of the qualified list constructor \texttt{(Prelude.:)}.
 > lookupValue x tyEnv = lookupTopEnv x tyEnv ++! lookupTuple x
 
 > qualLookupValue :: QualIdent -> ValueEnv -> [ValueInfo]
-> qualLookupValue x tyEnv =
->   qualLookupTopEnv x tyEnv
->   ++! qualLookupCons x tyEnv
->   ++! lookupTuple (unqualify x)
+> qualLookupValue x tyEnv = qualLookupTopEnv x tyEnv
+>                           ++! qualLookupCons x tyEnv
+>                           ++! lookupTuple (unqualify x)
 
 > qualLookupCons :: QualIdent -> ValueEnv -> [ValueInfo]
 > qualLookupCons x tyEnv
->    | maybe False (preludeMIdent ==) mmid && qid == consId
->       = qualLookupTopEnv (qualify qid) tyEnv
->    | otherwise = []
+>   | mmid == Just preludeMIdent && qid == consId
+>   = qualLookupTopEnv (qualify qid) tyEnv
+>   | otherwise = []
 >  where (mmid, qid) = (qualidMod x, qualidId x)
 
 > lookupTuple :: Ident -> [ValueInfo]
@@ -108,22 +112,19 @@ allow the usage of the qualified list constructor \texttt{(Prelude.:)}.
 >   | isTupleId c = [tupleDCs !! (tupleArity c - 2)]
 >   | otherwise = []
 
-TODO: Match other patterns?
-
 > tupleDCs :: [ValueInfo]
 > tupleDCs = map dataInfo tupleTCs
->   where dataInfo (DataType tc _ [Just (DataConstr _ _ tys)]) =
->           DataConstructor (qualUnqualify preludeMIdent tc)
->                           (ForAllExist (length tys) 0
->                                        (foldr TypeArrow (tupleType tys) tys))
->         dataInfo _ = error "Base.tupleDCs.dataInfo: no pattern match"
+>   where
+>   dataInfo (DataType tc _ [Just (DataConstr _ _ tys)]) =
+>     DataConstructor (qualUnqualify preludeMIdent tc) (length tys)
+>       (ForAllExist (length tys) 0 $ foldr TypeArrow (tupleType tys) tys)
+>   dataInfo _ = error "Env.Value.tupleDCs: no data constructor"
 
 > initDCEnv :: ValueEnv
-> initDCEnv =
->   foldr (uncurry predefDC) emptyTopEnv
->         [ (c, constrType (polyType ty) n' tys)
->         | (ty, cs) <- predefTypes, DataConstr c n' tys <- cs]
->   where predefDC c ty = predefTopEnv c' (DataConstructor c' ty)
+> initDCEnv = foldr predefDC emptyTopEnv
+>   [ (c, length tys, constrType (polyType ty) n' tys)
+>   | (ty, cs) <- predefTypes, DataConstr c n' tys <- cs]
+>   where predefDC (c, a, ty) = predefTopEnv c' (DataConstructor c' a ty)
 >           where c' = qualify c
 >         constrType (ForAll n ty) n' = ForAllExist n n' . foldr TypeArrow ty
 
@@ -133,17 +134,15 @@ from the type environment.
 \begin{verbatim}
 
 > ppTypes :: ModuleIdent -> ValueEnv -> Doc
-> ppTypes mid valueEnv = ppTypes' mid (localBindings valueEnv)
+> ppTypes mid valueEnv = ppTypes' mid $ localBindings valueEnv
 >   where
 >   ppTypes' :: ModuleIdent -> [(Ident, ValueInfo)] -> Doc
 >   ppTypes' m = vcat . map (ppIDecl . mkDecl) . filter (isValue . snd)
->     where mkDecl (v, Value _ (ForAll _ ty)) =
->             IFunctionDecl undefined (qualify v) (arrowArity ty)
->                          (fromQualType m ty)
->           mkDecl _ = error "Modules.ppTypes.mkDecl: no pattern match"
->           isValue (DataConstructor _ _) = False
->           isValue (NewtypeConstructor _ _) = False
->           isValue (Value _ _) = True
->           isValue (Label _ _ _) = False
+>     where
+>     mkDecl (v, Value _ a (ForAll _ ty)) =
+>       IFunctionDecl NoPos (qualify v) a (fromQualType m ty)
+>     mkDecl _ = internalError "Env.Value.ppTypes: no value"
+>     isValue (Value _ _ _) = True
+>     isValue _             = False
 
 \end{verbatim}

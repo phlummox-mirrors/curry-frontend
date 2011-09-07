@@ -89,9 +89,6 @@ addImportedLabels m lEnv tyEnv =
                      (Label (qualify l) (qualQualify m' r) (polyType ty))
                tyEnv'
 
-
-
-
 recordExpansion1 :: Options -> CompilerEnv -> CompilerEnv
 recordExpansion1 opts env
   | enabled   = env { tyConsEnv = tcEnv', valueEnv = tyEnv' }
@@ -138,12 +135,12 @@ expandData tcEnv (DataConstr ident n tys) =
   DataConstr ident n (map (expandRecords tcEnv) tys)
 
 expandRecordTypes :: TCEnv -> ValueInfo -> ValueInfo
-expandRecordTypes tcEnv (DataConstructor qid (ForAllExist n m ty)) =
-  DataConstructor qid (ForAllExist n m (expandRecords tcEnv ty))
+expandRecordTypes tcEnv (DataConstructor qid arty (ForAllExist n m ty)) =
+  DataConstructor qid arty (ForAllExist n m (expandRecords tcEnv ty))
 expandRecordTypes tcEnv (NewtypeConstructor qid (ForAllExist n m ty)) =
   NewtypeConstructor qid (ForAllExist n m (expandRecords tcEnv ty))
-expandRecordTypes tcEnv (Value qid (ForAll n ty)) =
-  Value qid (ForAll n (expandRecords tcEnv ty))
+expandRecordTypes tcEnv (Value qid arty (ForAll n ty)) =
+  Value qid arty (ForAll n (expandRecords tcEnv ty))
 expandRecordTypes tcEnv (Label qid r (ForAll n ty)) =
   Label qid r (ForAll n (expandRecords tcEnv ty))
 

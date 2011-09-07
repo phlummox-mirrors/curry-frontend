@@ -541,17 +541,15 @@ stripped from the types.
 \begin{verbatim}
 
 > varType :: ValueEnv -> QualIdent -> Type
-> varType tyEnv f =
->   case qualLookupValue f tyEnv of
->     [Value _ (ForAll _ ty)] -> ty
->     _ -> internalError $ "CurryToIL.varType: " ++ show f
+> varType tyEnv f = case qualLookupValue f tyEnv of
+>   [Value _ _ (ForAll _ ty)] -> ty
+>   _ -> internalError $ "CurryToIL.varType: " ++ show f
 
 > constrType :: ValueEnv -> QualIdent -> Type
-> constrType tyEnv c =
->   case qualLookupValue c tyEnv of
->     [DataConstructor _ (ForAllExist _ _ ty)] -> ty
->     [NewtypeConstructor _ (ForAllExist _ _ ty)] -> ty
->     _ -> internalError $ "CurryToIL.constrType: " ++ show c
+> constrType tyEnv c = case qualLookupValue c tyEnv of
+>   [DataConstructor  _ _ (ForAllExist _ _ ty)] -> ty
+>   [NewtypeConstructor _ (ForAllExist _ _ ty)] -> ty
+>   _ -> internalError $ "CurryToIL.constrType: " ++ show c
 
 \end{verbatim}
 The list of import declarations in the intermediate language code is

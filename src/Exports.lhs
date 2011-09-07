@@ -129,14 +129,14 @@ identifiers.
 > expandThing' :: ModuleIdent -> ValueEnv -> QualIdent -> Maybe [Export]
 >              -> [Export]
 > expandThing' m tyEnv f tcExport = case qualLookupValue f tyEnv of
->   []           -> fromMaybe (errorMessage $ undefinedEntity f) tcExport
->   [Value f' _] -> Export f' : fromMaybe [] tcExport
->   [_]          -> fromMaybe (errorMessage $ exportDataConstr f) tcExport
->   _            -> case qualLookupValue (qualQualify m f) tyEnv of
->     []           -> fromMaybe (errorMessage $ undefinedEntity f) tcExport
->     [Value f' _] -> Export f' : fromMaybe [] tcExport
->     [_]          -> fromMaybe (errorMessage $ exportDataConstr f) tcExport
->     _            -> errorMessage $ ambiguousName f
+>   []             -> fromMaybe (errorMessage $ undefinedEntity f) tcExport
+>   [Value f' _ _] -> Export f' : fromMaybe [] tcExport
+>   [_]            -> fromMaybe (errorMessage $ exportDataConstr f) tcExport
+>   _              -> case qualLookupValue (qualQualify m f) tyEnv of
+>     []             -> fromMaybe (errorMessage $ undefinedEntity f) tcExport
+>     [Value f' _ _] -> Export f' : fromMaybe [] tcExport
+>     [_]            -> fromMaybe (errorMessage $ exportDataConstr f) tcExport
+>     _              -> errorMessage $ ambiguousName f
 
 > -- |Expand type constructor with explicit data constructors
 > expandTypeWith :: ModuleIdent -> TCEnv -> QualIdent -> [Ident] -> [Export]
@@ -169,13 +169,13 @@ identifiers.
 > expandLocalModule :: TCEnv -> ValueEnv -> [Export]
 > expandLocalModule tcEnv tyEnv =
 >   [exportType tyEnv t | (_,t) <- localBindings tcEnv] ++
->   [Export f' | (f,Value f' _) <- localBindings tyEnv, f == unRenameIdent f]
+>   [Export f' | (f,Value f' _ _) <- localBindings tyEnv, f == unRenameIdent f]
 
 > -- |Expand a module export
 > expandModule :: TCEnv -> ValueEnv -> ModuleIdent -> [Export]
 > expandModule tcEnv tyEnv m =
 >   [exportType tyEnv t | (_,t) <- moduleImports m tcEnv] ++
->   [Export f | (_,Value f _) <- moduleImports m tyEnv]
+>   [Export f | (_,Value f _ _) <- moduleImports m tyEnv]
 
 > exportType :: ValueEnv -> TypeInfo -> Export
 > exportType tyEnv t
@@ -297,11 +297,10 @@ exported function.
 
 > funDecl :: ModuleIdent -> ValueEnv -> Export -> [IDecl] -> [IDecl]
 > funDecl m tyEnv (Export f) ds = case qualLookupValue f tyEnv of
->   [Value _ (ForAll _ ty)] ->
->     IFunctionDecl NoPos (qualUnqualify m f) (arrowArity ty)
->                         (fromQualType m ty) : ds
+>   [Value _ a (ForAll _ ty)] ->
+>     IFunctionDecl NoPos (qualUnqualify m f) a (fromQualType m ty) : ds
 >   _ -> internalError $ "Exports.funDecl: " ++ show f
-> funDecl _ _ (ExportTypeWith _ _) ds = ds
+> funDecl _ _     (ExportTypeWith _ _) ds = ds
 > funDecl _ _ _ _ = internalError "Exports.funDecl: no pattern match"
 
 

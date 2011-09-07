@@ -970,18 +970,16 @@ opToExpr (InfixConstr qident) = Constructor qident
 -- Looks up the type of a qualified symbol in the type environment and
 -- converts it to a CurrySyntax type term.
 qualLookupType :: QualIdent -> ValueEnv -> Maybe TypeExpr
-qualLookupType qident tyEnv
-   = case (qualLookupValue qident tyEnv) of
-       [Value _ ts] -> (\ (ForAll _ ty) -> Just (fromType ty)) ts
-       _            -> Nothing
+qualLookupType qident tyEnv = case qualLookupValue qident tyEnv of
+  [Value _ _ ts] -> (\ (ForAll _ ty) -> Just (fromType ty)) ts
+  _              -> Nothing
 
 -- Looks up the type of a symbol in the type environment and
 -- converts it to a CurrySyntax type term.
 lookupType :: Ident -> ValueEnv -> Maybe TypeExpr
-lookupType ident tyEnv
-   = case (lookupValue ident tyEnv) of
-       [Value _ ts] -> (\ (ForAll _ ty) -> Just (fromType ty)) ts
-       _            -> Nothing
+lookupType ident tyEnv = case lookupValue ident tyEnv of
+  [Value _ _ ts] -> (\ (ForAll _ ty) -> Just (fromType ty)) ts
+  _              -> Nothing
 
 
 -- The following functions transform left-hand-side and right-hand-side terms

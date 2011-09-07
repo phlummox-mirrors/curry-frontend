@@ -54,8 +54,8 @@ syntaxCheck :: Options -> CompilerEnv -> Module -> (CompilerEnv, Module)
 syntaxCheck opts env (Module m es is ds)
   | null msgs = (env, Module m es is ds')
   | otherwise = errorMessages msgs
-  where (ds', msgs) = SC.syntaxCheck opts (moduleIdent env) (aliasEnv env)
-                   (arityEnv env) (valueEnv env) (tyConsEnv env) ds
+  where (ds', msgs) = SC.syntaxCheck opts (moduleIdent env)
+                      (valueEnv env) (tyConsEnv env) ds
 
 -- |Check the precedences of infix operators.
 -- In addition, the abstract syntax tree is rearranged to reflect the

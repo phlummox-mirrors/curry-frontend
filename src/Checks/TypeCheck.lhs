@@ -212,7 +212,7 @@ have been properly renamed and all type synonyms are already expanded.
 >     internalError "TypeCheck.bindConstrs: newtype with illegal constructors"
 >   bindData (AliasType _ _ _) tyEnv' = tyEnv'
 >   bindConstr m' n ty (DataConstr c n' tys) =
->     bindGlobalInfo DataConstructor m' c
+>     bindGlobalInfo (flip DataConstructor (length tys)) m' c
 >                    (ForAllExist n n' (foldr TypeArrow ty tys))
 >   constrType' tc n = TypeConstructor tc $ map TypeVariable [0 .. n - 1]
 
@@ -364,19 +364,23 @@ either one of the basic types or \texttt{()}.
 > --        basicTypeId = [qBoolId,qCharId,qIntId,qFloatId]
 
 > tcExternal :: ModuleIdent -> TCEnv -> Ident -> TypeExpr -> TCM ()
-> tcExternal m tcEnv f ty = modifyValueEnv $ bindFun m f
->                         $ expandPolyType m tcEnv ty
+> tcExternal m tcEnv f ty = modifyValueEnv $ bindFun m f (arrowArity ty') tySc
+>   where tySc@(ForAll _ ty') = expandPolyType m tcEnv ty
 
 > tcFlatExternal :: ModuleIdent -> TCEnv -> SigEnv -> Ident -> TCM ()
 > tcFlatExternal m tcEnv sigs f = case lookupTypeSig f sigs of
 >   Nothing -> internalError "TypeCheck.tcFlatExternal"
->   Just ty -> modifyValueEnv $ bindFun m f $ expandPolyType m tcEnv ty
+>   Just ty -> do
+>    let tySc@(ForAll _ ty') = expandPolyType m tcEnv ty
+>    modifyValueEnv $ bindFun m f (arrowArity ty') tySc
 
 > tcExtraVar :: ModuleIdent -> TCEnv -> SigEnv -> Ident -> TCM ()
 > tcExtraVar m tcEnv sigs v = case lookupTypeSig v sigs of
->   Nothing -> freshTypeVar >>= modifyValueEnv . bindFun m v . monoType
+>   Nothing -> do
+>     ty <- freshTypeVar
+>     modifyValueEnv $ bindFun m v (arrowArity ty) $ monoType ty
 >   Just ty
->     | n == 0    -> modifyValueEnv $ bindFun m v $ monoType ty'
+>     | n == 0    -> modifyValueEnv $ bindFun m v (arrowArity ty') $ monoType ty'
 >     | otherwise -> errorAt' $ errPolymorphicFreeVar v
 >     where ForAll n ty' = expandPolyType m tcEnv ty
 
@@ -446,7 +450,7 @@ signature the declared type must be too general.
 >                            (errTypeSigTooGeneral m what sigTy sigma)
 >   Nothing -> tyEnv'
 >   where what = text (if poly then "Function:" else "Variable:") <+> ppIdent v
->         tyEnv' = rebindFun m v sigma tyEnv
+>         tyEnv' = rebindFun m v (varArity v tyEnv) sigma tyEnv
 >         sigma = genType poly (subst theta (varType v tyEnv))
 >         genType poly' (ForAll n ty)
 >           | n > 0 = internalError $ "TypeCheck.genVar: " ++ showLine (positionOfIdent v) ++ show v ++ " :: " ++ show ty
@@ -467,7 +471,7 @@ signature the declared type must be too general.
 > tcLiteral _ (Char   _ _) = return charType
 > tcLiteral m (Int    v _)  = do --return intType
 >   ty <- freshConstrained [intType, floatType]
->   modifyValueEnv $ bindFun m v $ monoType ty
+>   modifyValueEnv $ bindFun m v (arrowArity ty) $ monoType ty
 >   return ty
 > tcLiteral _ (Float  _ _) = return floatType
 > tcLiteral _ (String _ _) = return stringType
@@ -480,7 +484,7 @@ signature the declared type must be too general.
 >   ty <- case lookupTypeSig v sigs of
 >     Just t  -> inst $ expandPolyType m tcEnv t
 >     Nothing -> freshTypeVar
->   modifyValueEnv $ bindFun m v $ monoType ty
+>   modifyValueEnv $ bindFun m v (arrowArity ty) $ monoType ty
 >   return ty
 > tcConstrTerm m tcEnv sigs p t@(ConstructorPattern c ts) = do
 >   tyEnv <- getValueEnv
@@ -570,7 +574,7 @@ because of possibly multiple occurrences of variables.
 >                 (inst . expandPolyType m tcEnv)
 >                 (lookupTypeSig v sigs)
 >     tyEnv <- getValueEnv
->     ty' <- maybe (modifyValueEnv (bindFun m v (monoType ty)) >> return ty)
+>     ty' <- maybe (modifyValueEnv (bindFun m v (arrowArity ty) (monoType ty)) >> return ty)
 >                  (\ (ForAll _ t) -> return t)
 >	           (sureVarType v tyEnv)
 >     return ty'
@@ -696,7 +700,7 @@ because of possibly multiple occurrences of variables.
 > tcExpr m tcEnv sigs _ (Variable    v)
 >   | v' == anonId = do
 >     ty <- freshTypeVar
->     modifyValueEnv $ bindFun m v' $ monoType ty
+>     modifyValueEnv $ bindFun m v' (arrowArity ty) $ monoType ty
 >     return ty
 >   | otherwise            = case qualLookupTypeSig m v sigs of
 >       Just ty -> inst $ expandPolyType m tcEnv ty
@@ -1139,28 +1143,33 @@ unambiguously refers to the local definition.
 
 > constrType :: ModuleIdent -> QualIdent -> ValueEnv -> ExistTypeScheme
 > constrType m c tyEnv = case qualLookupValue c tyEnv of
->   [DataConstructor    _ sigma] -> sigma
+>   [DataConstructor  _ _ sigma] -> sigma
 >   [NewtypeConstructor _ sigma] -> sigma
 >   _ -> case qualLookupValue (qualQualify m c) tyEnv of
->     [DataConstructor    _ sigma] -> sigma
+>     [DataConstructor  _ _ sigma] -> sigma
 >     [NewtypeConstructor _ sigma] -> sigma
 >     _ -> internalError $ "TypeCheck.constrType " ++ show c
 
+> varArity :: Ident -> ValueEnv -> Int
+> varArity v tyEnv = case lookupValue v tyEnv of
+>   Value _ a _ : _ -> a
+>   _ -> internalError $ "TypeCheck.varArity " ++ show v
+
 > varType :: Ident -> ValueEnv -> TypeScheme
 > varType v tyEnv = case lookupValue v tyEnv of
->   Value _ sigma : _ -> sigma
+>   Value _ _ sigma : _ -> sigma
 >   _ -> internalError $ "TypeCheck.varType " ++ show v
 
 > sureVarType :: Ident -> ValueEnv -> Maybe TypeScheme
 > sureVarType v tyEnv = case lookupValue v tyEnv of
->   Value _ sigma : _ -> Just sigma
+>   Value _ _ sigma : _ -> Just sigma
 >   _ -> Nothing
 
 > funType :: ModuleIdent -> QualIdent -> ValueEnv -> TypeScheme
 > funType m f tyEnv = case qualLookupValue f tyEnv of
->   [Value _ sigma] -> sigma
+>   [Value _ _ sigma] -> sigma
 >   _ -> case qualLookupValue (qualQualify m f) tyEnv of
->     [Value _ sigma] -> sigma
+>     [Value _ _ sigma] -> sigma
 >     _ -> internalError $ "TypeCheck.funType " ++ show f
 
 > sureLabelType :: Ident -> ValueEnv -> Maybe TypeScheme
@@ -1219,7 +1228,7 @@ know that they are closed.
 > fsEnv = Set.unions . map (Set.fromList . typeSkolems) . localTypes
 
 > localTypes :: ValueEnv -> [Type]
-> localTypes tyEnv = [ty | (_, Value _ (ForAll _ ty)) <- localBindings tyEnv]
+> localTypes tyEnv = [ty | (_, Value _ _ (ForAll _ ty)) <- localBindings tyEnv]
 
 \end{verbatim}
 Miscellaneous functions.

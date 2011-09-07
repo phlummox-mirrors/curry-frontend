@@ -36,19 +36,17 @@ This module implements substitutions on types.
 > instance SubstType Type where
 >   subst sigma (TypeConstructor tc tys) =
 >     TypeConstructor tc (map (subst sigma) tys)
->   subst sigma (TypeVariable tv) = substVar sigma tv
->   subst sigma (TypeConstrained tys tv) =
->     case substVar sigma tv of
->       TypeVariable tv' -> TypeConstrained tys tv'
->       ty -> ty
->   subst sigma (TypeArrow ty1 ty2) =
+>   subst sigma (TypeVariable        tv) = substVar sigma tv
+>   subst sigma (TypeConstrained tys tv) = case substVar sigma tv of
+>     TypeVariable tv' -> TypeConstrained tys tv'
+>     ty -> ty
+>   subst sigma (TypeArrow      ty1 ty2) =
 >     TypeArrow (subst sigma ty1) (subst sigma ty2)
->   subst _ (TypeSkolem k) = TypeSkolem k
->   subst sigma (TypeRecord fs rv)
->     | isJust rv =
->       case substVar sigma (fromJust rv) of
+>   subst _     ts@(TypeSkolem        _) = ts
+>   subst sigma (TypeRecord       fs rv)
+>     | isJust rv = case substVar sigma (fromJust rv) of
 >         TypeVariable tv -> TypeRecord fs' (Just tv)
->         ty -> ty
+>         ty              -> ty
 >     | otherwise = TypeRecord fs' Nothing
 >    where fs' = map (\ (l,ty) -> (l, subst sigma ty)) fs
 
@@ -61,10 +59,10 @@ This module implements substitutions on types.
 >     ForAllExist n n' (subst (foldr unbindSubst sigma [0..n+n'-1]) ty)
 
 > instance SubstType ValueInfo where
->   subst _ (DataConstructor c ty) = DataConstructor c ty
->   subst _ (NewtypeConstructor c ty) = NewtypeConstructor c ty
->   subst theta (Value v ty) = Value v (subst theta ty)
->   subst theta (Label l r ty) = Label l r (subst theta ty)
+>   subst _     dc@(DataConstructor  _ _ _) = dc
+>   subst _     nc@(NewtypeConstructor _ _) = nc
+>   subst theta (Value              v a ty) = Value v a (subst theta ty)
+>   subst theta (Label              l r ty) = Label l r (subst theta ty)
 
 > instance SubstType a => SubstType (TopEnv a) where
 >   subst = fmap . subst

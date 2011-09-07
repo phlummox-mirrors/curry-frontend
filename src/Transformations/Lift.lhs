@@ -33,19 +33,16 @@ lifted to the top-level.
 > import Base.TopEnv
 > import Base.Types
 
-> import Env.Arity
 > import Env.Eval
 > import Env.Value
 
-> lift :: ValueEnv -> EvalEnv -> ArityEnv -> Module
->      -> (Module, ValueEnv, EvalEnv, ArityEnv)
-> lift tyEnv evEnv aEnv (Module m es is ds) =
->   (lifted, tyEnv', evEnv', aEnv')
+> lift :: ValueEnv -> EvalEnv -> Module -> (Module, ValueEnv, EvalEnv)
+> lift tyEnv evEnv (Module m es is ds) =
+>   (lifted, tyEnv', evEnv')
 >   where
 >     lifted = Module m es is $ concatMap liftFunDecl ds'
 >     (ds',tyEnv',evEnv')
 >       = S.evalState (S.evalStateT (abstractModule m ds) tyEnv) evEnv
->     aEnv' = bindArities aEnv lifted
 
 \end{verbatim}
 \paragraph{Abstraction}
@@ -153,13 +150,11 @@ in the type environment.
 > abstractFunDecls :: ModuleIdent -> String -> [Ident] -> AbstractEnv
 >                  -> [[Decl]] -> [Decl] -> Expression
 >                  -> AbstractState Expression
-> abstractFunDecls m pre lvs env [] vds e =
->   do
+> abstractFunDecls m pre lvs env [] vds e = do
 >     vds' <- mapM (abstractDecl m pre lvs env) vds
 >     e' <- abstractExpr m pre lvs env e
 >     return (Let vds' e')
-> abstractFunDecls m pre lvs env (fds:fdss) vds e =
->   do
+> abstractFunDecls m pre lvs env (fds:fdss) vds e = do
 >     fs' <- liftM (\tyEnv -> filter (not . isLifted tyEnv) fs) S.get
 >     S.modify (abstractFunTypes m pre fvs fs')
 >     S.lift (S.modify (abstractFunAnnots m pre fs'))
@@ -181,6 +176,7 @@ in the type environment.
 >   where tys = map (varType tyEnv) fvs
 >         abstractFunType f tyEnv' =
 >           qualBindFun m (liftIdent pre f)
+>                         (length tys)
 >                         (foldr TypeArrow (varType tyEnv' f) tys)
 >                         (unbindFun f tyEnv')
 
@@ -299,18 +295,17 @@ to the top-level.
 > apply :: Expression -> [Expression] -> Expression
 > apply = foldl Apply
 
-> qualBindFun :: ModuleIdent -> Ident -> Type -> ValueEnv -> ValueEnv
-> qualBindFun m f ty
->   = qualBindTopEnv "Lift.qualBindFun" f' (Value f' (polyType ty))
->   where f' = qualifyWith m f
+> qualBindFun :: ModuleIdent -> Ident -> Int -> Type -> ValueEnv -> ValueEnv
+> qualBindFun m f a ty = qualBindTopEnv "Lift.qualBindFun" qf $
+>   Value qf a (polyType ty)
+>   where qf = qualifyWith m f
 
 > unbindFun :: Ident -> ValueEnv -> ValueEnv
 > unbindFun = unbindTopEnv
 
 > varType :: ValueEnv -> Ident -> Type
-> varType tyEnv v =
->   case lookupValue v tyEnv of
->     [Value _ (ForAll _ ty)] -> ty
+> varType tyEnv v = case lookupValue v tyEnv of
+>     [Value _ _ (ForAll _ ty)] -> ty
 >     _ -> internalError $ "Lift.varType " ++ show v
 
 > liftIdent :: String -> Ident -> Ident
