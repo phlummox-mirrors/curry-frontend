@@ -38,7 +38,7 @@ data CompilerEnv = CompilerEnv
   , opPrecEnv    :: PEnv         -- ^ operator precedences
   , tyConsEnv    :: TCEnv        -- ^ type constructors
   , valueEnv     :: ValueEnv     -- ^ functions and data constructors
-  }
+  } deriving Show
 
 initCompilerEnv :: ModuleIdent -> CompilerEnv
 initCompilerEnv mid = CompilerEnv
