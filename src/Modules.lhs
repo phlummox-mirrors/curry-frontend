@@ -95,7 +95,7 @@ code are obsolete and commented out.
 >     -- dump intermediate results
 >     mapM_ (doDump opts) dumps
 >     -- generate target code
->     let intf = exportInterface env modul
+>     let intf = exportInterface env2 modul
 >     let modSum = summarizeModule (tyConsEnv env2) intf modul
 >     writeFlat opts fn (qualifyEnv opts env2) modSum il
 >   where
