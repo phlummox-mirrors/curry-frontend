@@ -91,11 +91,11 @@ code are obsolete and commented out.
 >     -- checkModule checks types, and then transModule introduces new
 >     -- functions (by lambda lifting in 'desugar'). Consequence: The
 >     -- types of the newly introduced functions are not inferred (hsi)
->     let (env2, il, dumps) = transModule opts env modul
+>     let (env2, il, dumps) = transModule opts (qualifyEnv opts env) modul
 >     -- dump intermediate results
 >     mapM_ (doDump opts) dumps
 >     -- generate target code
->     let intf = exportInterface env modul
+>     let intf = exportInterface env2 modul
 >     let modSum = summarizeModule (tyConsEnv env2) intf modul
 >     writeFlat opts fn env2 modSum il
 >   where
@@ -176,18 +176,16 @@ Haskell and original MCC where a module obtains \texttt{main}).
 -- ---------------------------------------------------------------------------
 
 > checkModule :: Options -> CompilerEnv -> CS.Module -> (CompilerEnv, CS.Module)
-> checkModule opts env mdl = qualifyEnvs
->                          $ expand
+> checkModule opts env mdl = expand
 >                          $ uncurry qual
 >                          $ (if withFlat then uncurry typeCheck else id)
 >                          $ uncurry precCheck
 >                          $ uncurry (syntaxCheck opts)
 >                          $ kindCheck env mdl
 >   where
->   expand      (e, m) = if withFlat then (e, expandInterface e m) else (e, m)
->   qualifyEnvs (e, m) = (qualifyEnv opts e, m)
->   withFlat           = any (`elem` optTargetTypes opts)
->                            [FlatCurry, FlatXml, ExtendedFlatCurry]
+>   expand (e, m) = if withFlat then (e, expandInterface e m) else (e, m)
+>   withFlat      = any (`elem` optTargetTypes opts)
+>                       [FlatCurry, FlatXml, ExtendedFlatCurry]
 
 -- ---------------------------------------------------------------------------
 -- Translating a module
