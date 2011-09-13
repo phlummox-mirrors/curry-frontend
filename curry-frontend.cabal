@@ -53,6 +53,7 @@ Executable cymake
     , Base.Typing
     , Base.Utils
     , Checks
+    , Checks.ExportCheck
     , Checks.KindCheck
     , Checks.PrecCheck
     , Checks.SyntaxCheck

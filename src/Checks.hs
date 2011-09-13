@@ -17,6 +17,7 @@ import Curry.Syntax (Module (..))
 
 import Base.Messages
 
+import qualified Checks.ExportCheck as EC (exportCheck)
 import qualified Checks.KindCheck   as KC (kindCheck)
 import qualified Checks.PrecCheck   as PC (precCheck)
 import qualified Checks.SyntaxCheck as SC (syntaxCheck)
@@ -26,21 +27,13 @@ import qualified Checks.WarnCheck   as WC (warnCheck)
 import CompilerEnv
 import CompilerOpts
 
-data CheckStatus a
-  = CheckFailed [Message]
-  | CheckSuccess a
-
-instance Monad CheckStatus where
-  return  = CheckSuccess
-  m >>= f = case m of
-    CheckFailed  errs -> CheckFailed  errs
-    CheckSuccess    a -> f a
-
 -- TODO: More documentation
 
 -- |Check the kinds of type definitions and signatures.
--- In addition, nullary type constructors and type variables are
--- disambiguated in the declarations; the environment remains unchanged.
+--
+-- * Declarations: Nullary type constructors and type variables are
+--                 disambiguated
+-- * Environment:  remains unchanged
 kindCheck :: CompilerEnv -> Module -> (CompilerEnv, Module)
 kindCheck env (Module m es is ds)
   | null msgs = (env, Module m es is ds')
@@ -48,8 +41,10 @@ kindCheck env (Module m es is ds)
   where (ds', msgs) = KC.kindCheck (moduleIdent env) (tyConsEnv env) ds
 
 -- |Check for a correct syntax.
--- In addition, nullary data constructors and variables are
--- disambiguated in the declarations; the environment remains unchanged.
+--
+-- * Declarations: Nullary data constructors and variables are
+--                 disambiguated
+-- * Environment:  remains unchanged
 syntaxCheck :: Options -> CompilerEnv -> Module -> (CompilerEnv, Module)
 syntaxCheck opts env (Module m es is ds)
   | null msgs = (env, Module m es is ds')
@@ -74,6 +69,10 @@ typeCheck env mdl@(Module _ _ _ ds) =
   (env { tyConsEnv = tcEnv', valueEnv = tyEnv' }, mdl)
   where (tcEnv', tyEnv') = TC.typeCheck (moduleIdent env)
                               (tyConsEnv env) (valueEnv env) ds
+
+-- |Check the export specification
+exportCheck :: CompilerEnv -> Module -> (CompilerEnv, Module)
+exportCheck env mdl = (env, EC.exportCheck env mdl)
 
 -- TODO: Which kind of warnings?
 

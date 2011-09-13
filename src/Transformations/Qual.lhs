@@ -24,7 +24,7 @@ declarations groups as well as function arguments remain unchanged.
 
 > import Base.TopEnv
 
-> import Env.Value (ValueEnv, qualLookupValue)
+> import Env.Value (ValueEnv, qualLookupValue)s
 
 > qual :: ModuleIdent -> ValueEnv -> [Decl] -> [Decl]
 > qual m tyEnv ds = map (qualDecl m tyEnv) ds
