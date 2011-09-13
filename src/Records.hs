@@ -16,7 +16,7 @@
 module Records where
 
 import Data.List (find)
-import qualified Data.Map as Map
+import qualified Data.Map as Map (lookup, elems)
 import Data.Maybe (fromMaybe)
 
 import Curry.Base.Ident
@@ -52,32 +52,33 @@ import CompilerOpts
 importLabels :: InterfaceEnv -> [ImportDecl] -> LabelEnv
 importLabels mEnv ds = foldl importLabelTypes initLabelEnv ds
   where
-    importLabelTypes :: LabelEnv -> ImportDecl -> LabelEnv
-    importLabelTypes lEnv (ImportDecl p m _ asM is) =
-      case Map.lookup m mEnv of
-        Just (Interface _ _ ds') -> foldl (importLabelType p (fromMaybe m asM) is) lEnv ds'
-        Nothing  -> internalError "Records.importLabels"
+  importLabelTypes :: LabelEnv -> ImportDecl -> LabelEnv
+  importLabelTypes lEnv (ImportDecl p m _ asM is) = case Map.lookup m mEnv of
+    Just (Interface _ _ ds') -> 
+      foldl (importLabelType p (fromMaybe m asM) is) lEnv ds'
+    Nothing  -> 
+      internalError "Records.importLabels"
 
-    importLabelType p m is lEnv (ITypeDecl _ r _ (RecordType fs _)) =
-     foldl (insertLabelType p m r' (getImportSpec r' is)) lEnv fs
-     where r' = qualifyWith m (fromRecordExtId (unqualify r))
-    importLabelType _ _ _  lEnv _ = lEnv
+  importLabelType p m is lEnv (ITypeDecl _ r _ (RecordType fs _)) =
+    foldl (insertLabelType p m r' (getImportSpec r' is)) lEnv fs
+    where r' = qualifyWith m (fromRecordExtId (unqualify r))
+  importLabelType _ _ _  lEnv _ = lEnv
 
-    insertLabelType _ _ r (Just (ImportTypeAll _)) lEnv ([l],ty) =
-      bindLabelType l r (toType [] ty) lEnv
-    insertLabelType _ _ r (Just (ImportTypeWith _ ls)) lEnv ([l],ty)
-      | l `elem` ls = bindLabelType l r (toType [] ty) lEnv
-      | otherwise   = lEnv
-    insertLabelType _ _ _ _ lEnv _ = lEnv
+  insertLabelType _ _ r (Just (ImportTypeAll _)) lEnv ([l],ty) =
+    bindLabelType l r (toType [] ty) lEnv
+  insertLabelType _ _ r (Just (ImportTypeWith _ ls)) lEnv ([l],ty)
+    | l `elem` ls = bindLabelType l r (toType [] ty) lEnv
+    | otherwise   = lEnv
+  insertLabelType _ _ _ _ lEnv _ = lEnv
 
-    getImportSpec r (Just (Importing _ is')) =
-      find (isImported (unqualify r)) is'
-    getImportSpec r Nothing = Just (ImportTypeAll (unqualify r))
-    getImportSpec _ _ = Nothing
+  getImportSpec r (Just (Importing _ is')) =
+    find (isImported (unqualify r)) is'
+  getImportSpec r Nothing = Just (ImportTypeAll (unqualify r))
+  getImportSpec _ _ = Nothing
 
-    isImported r (Import         r'  ) = r == r'
-    isImported r (ImportTypeWith r' _) = r == r'
-    isImported r (ImportTypeAll  r'  ) = r == r'
+  isImported r (Import         r'  ) = r == r'
+  isImported r (ImportTypeWith r' _) = r == r'
+  isImported r (ImportTypeAll  r'  ) = r == r'
 
 addImportedLabels :: ModuleIdent -> LabelEnv -> ValueEnv -> ValueEnv
 addImportedLabels m lEnv tyEnv =
@@ -116,10 +117,6 @@ recordExpansion2 opts env
     tcEnv    = tyConsEnv env
     tyEnv    = valueEnv env
 
-
-
-
-
 expandRecordTC :: TCEnv -> TypeInfo -> TypeInfo
 expandRecordTC tcEnv (DataType qid n args) =
   DataType qid n (map (maybe Nothing (Just . (expandData tcEnv))) args)
@@ -146,7 +143,7 @@ expandRecordTypes tcEnv (Label qid r (ForAll n ty)) =
 
 expandRecords :: TCEnv -> Type -> Type
 expandRecords tcEnv (TypeConstructor qid tys) =
-  case (qualLookupTC qid tcEnv) of
+  case qualLookupTC qid tcEnv of
     [AliasType _ _ rty@(TypeRecord _ _)]
       -> expandRecords tcEnv
            (expandAliasType (map (expandRecords tcEnv) tys) rty)

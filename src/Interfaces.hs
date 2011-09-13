@@ -17,7 +17,7 @@
     whether they are included by the import specification or not.
 
     The declarations are later brought into the scope of the module via the
-    function importModules (see module @Imports@).
+    function 'importModules' (see module @Imports@).
 
     Interface files are updated by the Curry builder when necessary
     (see module @CurryBuilder@).
