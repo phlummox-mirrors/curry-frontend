@@ -19,140 +19,202 @@ declarations groups as well as function arguments remain unchanged.
 
 > module Transformations.Qual (qual) where
 
+> import Control.Monad (liftM, liftM2, liftM3)
+> import qualified Control.Monad.Reader as R
+
 > import Curry.Base.Ident
 > import Curry.Syntax
 
 > import Base.TopEnv
 
+> import Env.TypeConstructors (TCEnv, qualLookupTC)
 > import Env.Value (ValueEnv, qualLookupValue)
 
-> qual :: ModuleIdent -> ValueEnv -> [Decl] -> [Decl]
-> qual m tyEnv ds = map (qualDecl m tyEnv) ds
+> data QualEnv = QualEnv
+>   { moduleIdent :: ModuleIdent
+>   , tyConsEnv   :: TCEnv
+>   , valueEnv    :: ValueEnv
+>   }
 
-> qualDecl :: ModuleIdent -> ValueEnv -> Decl -> Decl
-> qualDecl m tyEnv (FunctionDecl p f eqs) =
->   FunctionDecl p f $ map (qualEqn m tyEnv) eqs
-> qualDecl m tyEnv (PatternDecl  p t rhs) =
->   PatternDecl p (qualTerm m tyEnv t) (qualRhs m tyEnv rhs)
-> qualDecl _ _     d                      = d
+> type Qual a = a -> R.Reader QualEnv a
 
-> qualEqn :: ModuleIdent -> ValueEnv -> Equation -> Equation
-> qualEqn m tyEnv (Equation p lhs rhs) =
->   Equation p (qualLhs m tyEnv lhs) (qualRhs m tyEnv rhs)
+> qual :: ModuleIdent -> TCEnv -> ValueEnv -> [Decl] -> [Decl]
+> qual m tcEnv tyEnv ds = R.runReader (mapM qualDecl ds) 
+>                                     (QualEnv m tcEnv tyEnv)
 
-> qualLhs :: ModuleIdent -> ValueEnv -> Lhs -> Lhs
-> qualLhs m tyEnv (FunLhs    f ts) = FunLhs f $ map (qualTerm m tyEnv) ts
-> qualLhs m tyEnv (OpLhs t1 op t2) =
->   OpLhs (qualTerm m tyEnv t1) op (qualTerm m tyEnv t2)
-> qualLhs m tyEnv (ApLhs   lhs ts) =
->   ApLhs (qualLhs m tyEnv lhs) (map (qualTerm m tyEnv) ts)
+> qualDecl :: Qual Decl
+> qualDecl i@(InfixDecl     _ _ _ _) = return i
+> qualDecl (DataDecl      p n vs cs) = 
+>   DataDecl p n vs `liftM` mapM qualConstr cs
+> qualDecl (NewtypeDecl   p n vs nc) = 
+>   NewtypeDecl p n vs `liftM` qualNewConstr nc
+> qualDecl (TypeDecl      p n vs ty) = TypeDecl p n vs `liftM` qualTypeExpr ty
+> qualDecl (TypeSig         p fs ty) = TypeSig p fs    `liftM` qualTypeExpr ty
+> qualDecl e@(EvalAnnot       _ _ _) = return e
+> qualDecl (FunctionDecl    p f eqs) =
+>   FunctionDecl p f `liftM` mapM qualEqn eqs
+> qualDecl (ExternalDecl p c x n ty) = 
+>   ExternalDecl p c x n `liftM` qualTypeExpr ty
+> qualDecl fe@(FlatExternalDecl _ _) = return fe
+> qualDecl (PatternDecl     p t rhs) =
+>   liftM2 (PatternDecl p) (qualTerm t) (qualRhs rhs)
+> qualDecl vs@(ExtraVariables   _ _) = return vs
 
-> qualTerm :: ModuleIdent -> ValueEnv -> ConstrTerm -> ConstrTerm
-> qualTerm _ _     (LiteralPattern        l) = LiteralPattern l
-> qualTerm _ _     (NegativePattern    op l) = NegativePattern op l
-> qualTerm _ _     (VariablePattern       v) = VariablePattern v
-> qualTerm m tyEnv (ConstructorPattern c ts) =
->   ConstructorPattern (qualIdent m tyEnv c) (map (qualTerm m tyEnv) ts)
-> qualTerm m tyEnv (InfixPattern   t1 op t2) =
->   InfixPattern (qualTerm m tyEnv t1) (qualIdent m tyEnv op) (qualTerm m tyEnv t2)
-> qualTerm m tyEnv (ParenPattern          t) = ParenPattern   (qualTerm m tyEnv t)
-> qualTerm m tyEnv (TuplePattern       p ts) = TuplePattern p (map (qualTerm m tyEnv) ts)
-> qualTerm m tyEnv (ListPattern        p ts) = ListPattern  p (map (qualTerm m tyEnv) ts)
-> qualTerm m tyEnv (AsPattern           v t) = AsPattern    v (qualTerm m tyEnv t)
-> qualTerm m tyEnv (LazyPattern         p t) = LazyPattern  p (qualTerm m tyEnv t)
-> qualTerm m tyEnv (FunctionPattern    f ts) =
->   FunctionPattern (qualIdent m tyEnv f) (map (qualTerm m tyEnv) ts)
-> qualTerm m tyEnv (InfixFuncPattern t1 op t2) =
->   InfixFuncPattern (qualTerm m tyEnv t1) (qualIdent m tyEnv op) (qualTerm m tyEnv t2)
-> qualTerm m tyEnv (RecordPattern     fs rt) =
->   RecordPattern (map (qualFieldPattern m tyEnv) fs) ((qualTerm m tyEnv) `fmap` rt)
+> qualConstr :: Qual ConstrDecl
+> qualConstr (ConstrDecl     p vs n tys) = 
+>   ConstrDecl p vs n `liftM` mapM qualTypeExpr tys
+> qualConstr (ConOpDecl p vs ty1 op ty2) =
+>   liftM2 (flip (ConOpDecl p vs) op) (qualTypeExpr ty1) (qualTypeExpr ty2)
 
-> qualFieldPattern :: ModuleIdent -> ValueEnv -> Field ConstrTerm
->	           -> Field ConstrTerm
-> qualFieldPattern m tyEnv (Field p l t) = Field p l (qualTerm m tyEnv t)
+> qualNewConstr :: Qual NewConstrDecl
+> qualNewConstr (NewConstrDecl p vs n ty) = 
+>   NewConstrDecl p vs n `liftM` qualTypeExpr ty
 
-> qualRhs :: ModuleIdent -> ValueEnv -> Rhs -> Rhs
-> qualRhs m tyEnv (SimpleRhs p e ds) =
->   SimpleRhs p (qualExpr m tyEnv e) (map (qualDecl m tyEnv) ds)
-> qualRhs m tyEnv (GuardedRhs es ds) =
->   GuardedRhs (map (qualCondExpr m tyEnv) es) (map (qualDecl m tyEnv) ds)
+> qualTypeExpr :: Qual TypeExpr
+> qualTypeExpr (ConstructorType q tys) =
+>   liftM2 ConstructorType (qualConstructor q) (mapM qualTypeExpr tys)
+> qualTypeExpr v@(VariableType      _) = return v
+> qualTypeExpr (TupleType         tys) = 
+>   TupleType `liftM` mapM qualTypeExpr tys
+> qualTypeExpr (ListType           ty) = ListType `liftM` qualTypeExpr ty
+> qualTypeExpr (ArrowType     ty1 ty2) = 
+>   liftM2 ArrowType (qualTypeExpr ty1) (qualTypeExpr ty2)
+> qualTypeExpr (RecordType     fs rty) =
+>   liftM2 RecordType (mapM qualFieldType fs) (qualRecordType rty)
+>   where qualFieldType (ls, ty) = do
+>           ty' <- qualTypeExpr ty
+>           return (ls, ty')
+>         qualRecordType Nothing  = return Nothing
+>         qualRecordType (Just v) = Just `liftM` qualTypeExpr v
 
-> qualCondExpr :: ModuleIdent -> ValueEnv -> CondExpr -> CondExpr
-> qualCondExpr m tyEnv (CondExpr p g e) =
->   CondExpr p (qualExpr m tyEnv g) (qualExpr m tyEnv e)
+> qualEqn :: Qual Equation
+> qualEqn (Equation p lhs rhs) =
+>   liftM2 (Equation p) (qualLhs lhs) (qualRhs rhs)
 
-> qualExpr :: ModuleIdent -> ValueEnv -> Expression -> Expression
-> qualExpr _ _ (Literal l) = Literal l
-> qualExpr m tyEnv (Variable v) = Variable (qualIdent m tyEnv v)
-> qualExpr m tyEnv (Constructor c) = Constructor (qualIdent m tyEnv c)
-> qualExpr m tyEnv (Paren e) = Paren (qualExpr m tyEnv e)
-> qualExpr m tyEnv (Typed e ty) = Typed (qualExpr m tyEnv e) ty
-> qualExpr m tyEnv (Tuple p es) = Tuple p (map (qualExpr m tyEnv) es)
-> qualExpr m tyEnv (List p es) = List p (map (qualExpr m tyEnv) es)
-> qualExpr m tyEnv (ListCompr p e qs) =
->   ListCompr p (qualExpr m tyEnv e) (map (qualStmt m tyEnv) qs)
-> qualExpr m tyEnv (EnumFrom e) = EnumFrom (qualExpr m tyEnv e)
-> qualExpr m tyEnv (EnumFromThen e1 e2) =
->   EnumFromThen (qualExpr m tyEnv e1) (qualExpr m tyEnv e2)
-> qualExpr m tyEnv (EnumFromTo e1 e2) =
->   EnumFromTo (qualExpr m tyEnv e1) (qualExpr m tyEnv e2)
-> qualExpr m tyEnv (EnumFromThenTo e1 e2 e3) =
->   EnumFromThenTo (qualExpr m tyEnv e1)
->                  (qualExpr m tyEnv e2)
->                  (qualExpr m tyEnv e3)
-> qualExpr m tyEnv (UnaryMinus op e) = UnaryMinus op (qualExpr m tyEnv e)
-> qualExpr m tyEnv (Apply e1 e2) =
->   Apply (qualExpr m tyEnv e1) (qualExpr m tyEnv e2)
-> qualExpr m tyEnv (InfixApply e1 op e2) =
->   InfixApply (qualExpr m tyEnv e1) (qualOp m tyEnv op) (qualExpr m tyEnv e2)
-> qualExpr m tyEnv (LeftSection e op) =
->   LeftSection (qualExpr m tyEnv e) (qualOp m tyEnv op)
-> qualExpr m tyEnv (RightSection op e) =
->   RightSection (qualOp m tyEnv op) (qualExpr m tyEnv e)
-> qualExpr m tyEnv (Lambda r ts e) =
->   Lambda r (map (qualTerm m tyEnv) ts) (qualExpr m tyEnv e)
-> qualExpr m tyEnv (Let ds e) =
->   Let (map (qualDecl m tyEnv) ds) (qualExpr m tyEnv e)
-> qualExpr m tyEnv (Do sts e) =
->   Do (map (qualStmt m tyEnv) sts) (qualExpr m tyEnv e)
-> qualExpr m tyEnv (IfThenElse r e1 e2 e3) =
->   IfThenElse r (qualExpr m tyEnv e1)
->              (qualExpr m tyEnv e2)
->              (qualExpr m tyEnv e3)
-> qualExpr m tyEnv (Case r e alts) =
->   Case r (qualExpr m tyEnv e) (map (qualAlt m tyEnv) alts)
-> qualExpr m tyEnv (RecordConstr fs) =
->   RecordConstr (map (qualFieldExpr m tyEnv) fs)
-> qualExpr m tyEnv (RecordSelection e l) =
->   RecordSelection (qualExpr m tyEnv e) l
-> qualExpr m tyEnv (RecordUpdate fs e) =
->   RecordUpdate (map (qualFieldExpr m tyEnv) fs) (qualExpr m tyEnv e)
+> qualLhs :: Qual Lhs
+> qualLhs (FunLhs    f ts) = FunLhs f `liftM` mapM qualTerm ts
+> qualLhs (OpLhs t1 op t2) =
+>   liftM2 (flip OpLhs op) (qualTerm t1) (qualTerm t2)
+> qualLhs (ApLhs   lhs ts) =
+>   liftM2 ApLhs (qualLhs lhs) (mapM qualTerm ts)
 
-> qualStmt :: ModuleIdent -> ValueEnv -> Statement -> Statement
-> qualStmt m tyEnv (StmtExpr p e) = StmtExpr p (qualExpr m tyEnv e)
-> qualStmt m tyEnv (StmtBind p t e) =
->   StmtBind p (qualTerm m tyEnv t) (qualExpr m tyEnv e)
-> qualStmt m tyEnv (StmtDecl ds) = StmtDecl (map (qualDecl m tyEnv) ds)
+> qualTerm :: Qual ConstrTerm
+> qualTerm l@(LiteralPattern      _) = return l
+> qualTerm n@(NegativePattern   _ _) = return n
+> qualTerm v@(VariablePattern     _) = return v
+> qualTerm (ConstructorPattern c ts) =
+>   liftM2 ConstructorPattern (qualIdent c) (mapM qualTerm ts)
+> qualTerm (InfixPattern   t1 op t2) =
+>   liftM3 InfixPattern (qualTerm t1) (qualIdent op) (qualTerm t2)
+> qualTerm (ParenPattern          t) = ParenPattern `liftM` qualTerm t
+> qualTerm (TuplePattern       p ts) = TuplePattern p `liftM` mapM qualTerm ts
+> qualTerm (ListPattern        p ts) = ListPattern  p `liftM` mapM qualTerm ts
+> qualTerm (AsPattern           v t) = AsPattern    v `liftM` qualTerm t
+> qualTerm (LazyPattern         p t) = LazyPattern  p `liftM` qualTerm t
+> qualTerm (FunctionPattern    f ts) =
+>   liftM2 FunctionPattern (qualIdent f) (mapM qualTerm ts)
+> qualTerm (InfixFuncPattern t1 op t2) =
+>   liftM3 InfixFuncPattern (qualTerm t1) (qualIdent op) (qualTerm t2)
+> qualTerm (RecordPattern     fs rt) =
+>   liftM2 RecordPattern (mapM qualFieldPattern fs) (qualRecordTerm rt)
+>   where qualRecordTerm Nothing  = return Nothing
+>         qualRecordTerm (Just v) = Just `liftM` qualTerm v
 
-> qualAlt :: ModuleIdent -> ValueEnv -> Alt -> Alt
-> qualAlt m tyEnv (Alt p t rhs) =
->   Alt p (qualTerm m tyEnv t) (qualRhs m tyEnv rhs)
+> qualFieldPattern :: Qual (Field ConstrTerm)
+> qualFieldPattern (Field p l t) = Field p l `liftM` qualTerm t
 
-> qualFieldExpr :: ModuleIdent -> ValueEnv -> Field Expression
->	        -> Field Expression
-> qualFieldExpr m tyEnv (Field p l e) = Field p l (qualExpr m tyEnv e)
+> qualRhs :: Qual Rhs
+> qualRhs (SimpleRhs p e ds) =
+>   liftM2 (SimpleRhs p) (qualExpr e) (mapM qualDecl ds)
+> qualRhs (GuardedRhs es ds) =
+>   liftM2 GuardedRhs (mapM qualCondExpr es) (mapM qualDecl ds)
 
-> qualOp :: ModuleIdent -> ValueEnv -> InfixOp -> InfixOp
-> qualOp m tyEnv (InfixOp     op) = InfixOp     (qualIdent m tyEnv op)
-> qualOp m tyEnv (InfixConstr op) = InfixConstr (qualIdent m tyEnv op)
+> qualCondExpr :: Qual CondExpr
+> qualCondExpr (CondExpr p g e) =
+>   liftM2 (CondExpr p) (qualExpr g) (qualExpr e)
 
-> qualIdent :: ModuleIdent -> ValueEnv -> QualIdent -> QualIdent
-> qualIdent m tyEnv x
->   | not (isQualified x) && uniqueId (unqualify x) /= 0 = x
->   | otherwise = case qualLookupValue x tyEnv of
+> qualExpr :: Qual Expression
+> qualExpr l@(Literal             _) = return l
+> qualExpr (Variable              v) = Variable `liftM` qualIdent v
+> qualExpr (Constructor           c) = Constructor `liftM` qualIdent c
+> qualExpr (Paren                 e) = Paren `liftM` qualExpr e
+> qualExpr (Typed              e ty) =
+>   liftM2 Typed (qualExpr e) (qualTypeExpr ty)
+> qualExpr (Tuple              p es) = Tuple p `liftM` mapM qualExpr es
+> qualExpr (List               p es) = List p `liftM` mapM qualExpr es
+> qualExpr (ListCompr        p e qs) =
+>   liftM2 (ListCompr p) (qualExpr e) (mapM qualStmt qs)
+> qualExpr (EnumFrom              e) = EnumFrom `liftM` qualExpr e
+> qualExpr (EnumFromThen      e1 e2) =
+>   liftM2 EnumFromThen (qualExpr e1) (qualExpr e2)
+> qualExpr (EnumFromTo        e1 e2) =
+>   liftM2 EnumFromTo (qualExpr e1) (qualExpr e2)
+> qualExpr (EnumFromThenTo e1 e2 e3) =
+>   liftM3 EnumFromThenTo (qualExpr e1) (qualExpr e2) (qualExpr e3)
+> qualExpr (UnaryMinus         op e) = UnaryMinus op `liftM` qualExpr e
+> qualExpr (Apply             e1 e2) =
+>   liftM2 Apply (qualExpr e1) (qualExpr e2)
+> qualExpr (InfixApply     e1 op e2) =
+>   liftM3 InfixApply (qualExpr e1) (qualOp op) (qualExpr e2)
+> qualExpr (LeftSection        e op) =
+>   liftM2 LeftSection (qualExpr e) (qualOp op)
+> qualExpr (RightSection       op e) =
+>   liftM2 RightSection (qualOp op) (qualExpr e)
+> qualExpr (Lambda           r ts e) =
+>   liftM2 (Lambda r) (mapM qualTerm ts) (qualExpr e)
+> qualExpr (Let                ds e) =
+>   liftM2 Let (mapM qualDecl ds) (qualExpr e)
+> qualExpr (Do                sts e) =
+>   liftM2 Do (mapM qualStmt sts) (qualExpr e)
+> qualExpr (IfThenElse   r e1 e2 e3) =
+>   liftM3 (IfThenElse r) (qualExpr e1) (qualExpr e2) (qualExpr e3)
+> qualExpr (Case           r e alts) =
+>   liftM2 (Case r) (qualExpr e) (mapM qualAlt alts)
+> qualExpr (RecordConstr         fs) =
+>   RecordConstr `liftM` mapM qualFieldExpr fs
+> qualExpr (RecordSelection     e l) =
+>   flip RecordSelection l `liftM` qualExpr e
+> qualExpr (RecordUpdate       fs e) =
+>   liftM2 RecordUpdate (mapM qualFieldExpr fs) (qualExpr e)
+
+> qualStmt :: Qual Statement
+> qualStmt (StmtExpr p   e) = StmtExpr p `liftM` qualExpr e
+> qualStmt (StmtBind p t e) = liftM2 (StmtBind p) (qualTerm t) (qualExpr e)
+> qualStmt (StmtDecl    ds) = StmtDecl `liftM` mapM qualDecl ds
+
+> qualAlt :: Qual Alt
+> qualAlt (Alt p t rhs) = liftM2 (Alt p) (qualTerm t) (qualRhs rhs)
+
+> qualFieldExpr :: Qual (Field Expression)
+> qualFieldExpr (Field p l e) = Field p l `liftM` qualExpr e
+
+> qualOp :: Qual InfixOp
+> qualOp (InfixOp     op) = InfixOp     `liftM` qualIdent op
+> qualOp (InfixConstr op) = InfixConstr `liftM` qualIdent op
+
+> qualIdent :: Qual QualIdent
+> qualIdent x = do
+>   m <- R.asks moduleIdent
+>   tyEnv <- R.asks valueEnv
+>   return $ case isQualified x || isGlobal x of
+>     False -> x
+>     True  -> case qualLookupValue x tyEnv of
 >       [y] -> origName y
->       _   -> case qualLookupValue (qualQualify m x) tyEnv of
->              [y] -> origName y
->              _   -> qualQualify m x
+>       _   -> case qualLookupValue qmx tyEnv of
+>         [y] -> origName y
+>         _   -> qmx
+>       where qmx        = qualQualify m x
+>   where isGlobal = (== 0) . uniqueId . unqualify
+
+> qualConstructor :: Qual QualIdent
+> qualConstructor x = do
+>   m <- R.asks moduleIdent
+>   tcEnv <- R.asks tyConsEnv
+>   return $ case qualLookupTC x tcEnv of
+>     [y] -> origName y
+>     _   -> case qualLookupTC qmx tcEnv of
+>       [y] -> origName y
+>       _   -> qmx
+>       where qmx        = qualQualify m x
 
 \end{verbatim}

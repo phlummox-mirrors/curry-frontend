@@ -52,7 +52,7 @@ lift mdl env = (mdl', env { valueEnv = tyEnv', evalAnnotEnv = eEnv' })
 -- |Fully qualify used constructors and functions
 qual :: CompilerEnv -> Module -> (CompilerEnv, Module)
 qual env (Module m es is ds) = (env, Module m es is ds')
-  where ds' = Q.qual (moduleIdent env) (valueEnv env) ds
+  where ds' = Q.qual (moduleIdent env) (tyConsEnv env) (valueEnv env) ds
 
 -- |Simplify the source code
 simplify :: Bool -> Module -> CompilerEnv -> (Module, CompilerEnv)
