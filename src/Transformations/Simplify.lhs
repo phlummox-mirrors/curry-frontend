@@ -45,6 +45,12 @@ Currently, the following optimizations are implemented:
 > type InlineEnv = Map.Map Ident Expression
 > type SimplifyFlags = Bool
 
+> getNextId :: SimplifyState Int
+> getNextId = S.lift $ R.lift $ do
+>   nid <- S.get
+>   S.modify succ
+>   return nid
+
 > flatFlag :: SimplifyFlags -> Bool
 > flatFlag   x = x
 
@@ -453,7 +459,7 @@ Auxiliary functions
 > freshIdent :: ModuleIdent -> (Int -> Ident) -> TypeScheme
 >            -> SimplifyState Ident
 > freshIdent m f ty@(ForAll _ t) = do
->   x <- liftM f (S.lift (R.lift ( S.modify succ >> S.get)))
+>   x <- f `liftM` getNextId
 >   S.modify (bindFun m x arity ty)
 >   return x
 >   where arity = arrowArity t

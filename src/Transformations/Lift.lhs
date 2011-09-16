@@ -37,12 +37,10 @@ lifted to the top-level.
 > import Env.Value
 
 > lift :: ValueEnv -> EvalEnv -> Module -> (Module, ValueEnv, EvalEnv)
-> lift tyEnv evEnv (Module m es is ds) =
->   (lifted, tyEnv', evEnv')
+> lift tyEnv evEnv (Module m es is ds) = (lifted, tyEnv', evEnv')
 >   where
->     lifted = Module m es is $ concatMap liftFunDecl ds'
->     (ds',tyEnv',evEnv')
->       = S.evalState (S.evalStateT (abstractModule m ds) tyEnv) evEnv
+>   lifted = Module m es is $ concatMap liftFunDecl ds'
+>   (ds', tyEnv', evEnv') = evalAbstract (abstractModule m ds) tyEnv evEnv
 
 \end{verbatim}
 \paragraph{Abstraction}
@@ -58,14 +56,28 @@ i.e. the function applied to its free variables.
 > type AbstractState a = S.StateT ValueEnv (S.State EvalEnv) a
 > type AbstractEnv = Map.Map Ident Expression
 
+> evalAbstract :: AbstractState a -> ValueEnv -> EvalEnv -> a
+> evalAbstract st tyEnv evEnv = S.evalState (S.evalStateT st tyEnv) evEnv
+
+> getValueEnv :: AbstractState ValueEnv
+> getValueEnv = S.get
+
+> modifyValueEnv :: (ValueEnv -> ValueEnv) -> AbstractState ()
+> modifyValueEnv = S.modify
+
+> getEvalEnv :: AbstractState EvalEnv
+> getEvalEnv = S.lift S.get
+
+> modifyEvalEnv :: (EvalEnv -> EvalEnv) -> AbstractState ()
+> modifyEvalEnv = S.lift . S.modify
+
 > abstractModule :: ModuleIdent -> [Decl]
 >                -> AbstractState ([Decl], ValueEnv, EvalEnv)
-> abstractModule m ds =
->   do
->     ds' <- mapM (abstractDecl m "" [] Map.empty) ds
->     tyEnv' <- S.get
->     evEnv' <- S.lift S.get
->     return (ds',tyEnv',evEnv')
+> abstractModule m ds = do
+>   ds' <- mapM (abstractDecl m "" [] Map.empty) ds
+>   tyEnv' <- getValueEnv
+>   evEnv' <- getEvalEnv
+>   return (ds',tyEnv',evEnv')
 
 > abstractDecl :: ModuleIdent -> String -> [Ident] -> AbstractEnv -> Decl
 >              -> AbstractState Decl
@@ -151,24 +163,25 @@ in the type environment.
 >                  -> [[Decl]] -> [Decl] -> Expression
 >                  -> AbstractState Expression
 > abstractFunDecls m pre lvs env [] vds e = do
->     vds' <- mapM (abstractDecl m pre lvs env) vds
->     e' <- abstractExpr m pre lvs env e
->     return (Let vds' e')
+>   vds' <- mapM (abstractDecl m pre lvs env) vds
+>   e' <- abstractExpr m pre lvs env e
+>   return (Let vds' e')
 > abstractFunDecls m pre lvs env (fds:fdss) vds e = do
->     fs' <- liftM (\tyEnv -> filter (not . isLifted tyEnv) fs) S.get
->     S.modify (abstractFunTypes m pre fvs fs')
->     S.lift (S.modify (abstractFunAnnots m pre fs'))
->     fds' <- mapM (abstractFunDecl m pre fvs lvs env')
->                  [d | d <- fds, any (`elem` fs') (bv d)]
->     e' <- abstractFunDecls m pre lvs env' fdss vds e
->     return (Let fds' e')
->   where fs = bv fds
->         fvs = filter (`elem` lvs) (Set.toList fvsRhs)
->         env' = foldr (bindF (map mkVar fvs)) env fs
->         fvsRhs = Set.unions
->           [Set.fromList (maybe [v] (qfv m) (Map.lookup v env)) | v <- qfv m fds]
->         bindF fvs' f = Map.insert f (apply (mkFun m pre f) fvs')
->         isLifted tyEnv f = null (lookupValue f tyEnv)
+>   fs' <- liftM (\tyEnv -> filter (not . isLifted tyEnv) fs) getValueEnv
+>   modifyValueEnv $ abstractFunTypes m pre fvs fs'
+>   modifyEvalEnv $ abstractFunAnnots m pre fs'
+>   fds' <- mapM (abstractFunDecl m pre fvs lvs env')
+>                [d | d <- fds, any (`elem` fs') (bv d)]
+>   e' <- abstractFunDecls m pre lvs env' fdss vds e
+>   return (Let fds' e')
+>   where 
+>   fs = bv fds
+>   fvs = filter (`elem` lvs) (Set.toList fvsRhs)
+>   env' = foldr (bindF (map mkVar fvs)) env fs
+>   fvsRhs = Set.unions
+>     [Set.fromList (maybe [v] (qfv m) (Map.lookup v env)) | v <- qfv m fds]
+>   bindF fvs' f = Map.insert f (apply (mkFun m pre f) fvs')
+>   isLifted tyEnv f = null (lookupValue f tyEnv)
 
 > abstractFunTypes :: ModuleIdent -> String -> [Ident] -> [Ident]
 >                  -> ValueEnv -> ValueEnv
@@ -176,7 +189,6 @@ in the type environment.
 >   where tys = map (varType tyEnv) fvs
 >         abstractFunType f tyEnv' =
 >           qualBindFun m (liftIdent pre f)
->                         (length tys)
 >                         (foldr TypeArrow (varType tyEnv' f) tys)
 >                         (unbindFun f tyEnv')
 
@@ -201,23 +213,21 @@ in the type environment.
 
 > abstractExpr :: ModuleIdent -> String -> [Ident] -> AbstractEnv
 >              -> Expression -> AbstractState Expression
-> abstractExpr _ _ _ _ (Literal l) = return (Literal l)
-> abstractExpr m pre lvs env (Variable v)
->   | isQualified v = return (Variable v)
->   | otherwise = maybe (return (Variable v)) (abstractExpr m pre lvs env)
->                       (Map.lookup (unqualify v) env)
-> abstractExpr _ _ _ _ (Constructor c) = return (Constructor c)
-> abstractExpr m pre lvs env (Apply e1 e2) =
->   do
->     e1' <- abstractExpr m pre lvs env e1
->     e2' <- abstractExpr m pre lvs env e2
->     return (Apply e1' e2')
+> abstractExpr _ _ _ _ l@(Literal _) = return l
+> abstractExpr m pre lvs env var@(Variable v)
+>   | isQualified v = return var
+>   | otherwise     = maybe (return var) (abstractExpr m pre lvs env)
+>                           (Map.lookup (unqualify v) env)
+> abstractExpr _ _ _ _ c@(Constructor _) = return c
+> abstractExpr m pre lvs env (Apply e1 e2) = do
+>   e1' <- abstractExpr m pre lvs env e1
+>   e2' <- abstractExpr m pre lvs env e2
+>   return (Apply e1' e2')
 > abstractExpr m pre lvs env (Let ds e) = abstractDeclGroup m pre lvs env ds e
-> abstractExpr m pre lvs env (Case r e alts) =
->   do
->     e' <- abstractExpr m pre lvs env e
->     alts' <- mapM (abstractAlt m pre lvs env) alts
->     return (Case r e' alts')
+> abstractExpr m pre lvs env (Case r e alts) = do
+>   e' <- abstractExpr m pre lvs env e
+>   alts' <- mapM (abstractAlt m pre lvs env) alts
+>   return (Case r e' alts')
 > abstractExpr _ _ _ _ _ = internalError "Lift.abstractExpr"
 
 > abstractAlt :: ModuleIdent -> String -> [Ident] -> AbstractEnv -> Alt
@@ -256,35 +266,34 @@ to the top-level.
 >   where (fds,vds) = partition isFunDecl ds
 >         (vds',dss') = unzip (map liftVarDecl vds)
 
-> liftExpr :: Expression -> (Expression,[Decl])
-> liftExpr (Literal l) = (Literal l,[])
-> liftExpr (Variable v) = (Variable v,[])
-> liftExpr (Constructor c) = (Constructor c,[])
-> liftExpr (Apply e1 e2) = (Apply e1' e2',ds' ++ ds'')
->   where (e1',ds') = liftExpr e1
->         (e2',ds'') = liftExpr e2
-> liftExpr (Let ds e) = (mkLet ds' e',ds'' ++ ds''')
->   where (ds',ds'') = liftDeclGroup ds
->         (e',ds''') = liftExpr e
+> liftExpr :: Expression -> (Expression, [Decl])
+> liftExpr l@(Literal     _) = (l, [])
+> liftExpr v@(Variable    _) = (v, [])
+> liftExpr c@(Constructor _) = (c, [])
+> liftExpr (Apply     e1 e2) = (Apply e1' e2', ds' ++ ds'')
+>   where (e1', ds' ) = liftExpr e1
+>         (e2', ds'') = liftExpr e2
+> liftExpr (Let        ds e) = (mkLet ds' e', ds'' ++ ds''')
+>   where (ds', ds'' ) = liftDeclGroup ds
+>         (e' , ds''') = liftExpr e
 >         mkLet ds1 e1 = if null ds1 then e1 else Let ds1 e1
-> liftExpr (Case r e alts) = (Case r e' alts',concat (ds':dss'))
->   where (e',ds') = liftExpr e
->         (alts',dss') = unzip (map liftAlt alts)
+> liftExpr (Case r e alts) = (Case r e' alts', concat $ ds':dss')
+>   where (e'   ,ds' ) = liftExpr e
+>         (alts',dss') = unzip $ map liftAlt alts
 > liftExpr _ = internalError "Lift.liftExpr"
 
 > liftAlt :: Alt -> (Alt,[Decl])
-> liftAlt (Alt p t rhs) = (Alt p t rhs',ds')
->   where (rhs',ds') = liftRhs rhs
-
+> liftAlt (Alt p t rhs) = (Alt p t rhs', ds')
+>   where (rhs', ds') = liftRhs rhs
 
 \end{verbatim}
 \paragraph{Auxiliary definitions}
 \begin{verbatim}
 
 > isFunDecl :: Decl -> Bool
-> isFunDecl (FunctionDecl _ _ _) = True
+> isFunDecl (FunctionDecl     _ _ _) = True
 > isFunDecl (ExternalDecl _ _ _ _ _) = True
-> isFunDecl _ = False
+> isFunDecl _                        = False
 
 > mkFun :: ModuleIdent -> String -> Ident -> Expression
 > mkFun m pre f = Variable (qualifyWith m (liftIdent pre f))
@@ -295,9 +304,9 @@ to the top-level.
 > apply :: Expression -> [Expression] -> Expression
 > apply = foldl Apply
 
-> qualBindFun :: ModuleIdent -> Ident -> Int -> Type -> ValueEnv -> ValueEnv
-> qualBindFun m f a ty = qualBindTopEnv "Lift.qualBindFun" qf $
->   Value qf a (polyType ty)
+> qualBindFun :: ModuleIdent -> Ident -> Type -> ValueEnv -> ValueEnv
+> qualBindFun m f ty = qualBindTopEnv "Lift.qualBindFun" qf $
+>   Value qf (arrowArity ty) (polyType ty)
 >   where qf = qualifyWith m f
 
 > unbindFun :: Ident -> ValueEnv -> ValueEnv
@@ -305,12 +314,11 @@ to the top-level.
 
 > varType :: ValueEnv -> Ident -> Type
 > varType tyEnv v = case lookupValue v tyEnv of
->     [Value _ _ (ForAll _ ty)] -> ty
->     _ -> internalError $ "Lift.varType " ++ show v
+>   [Value _ _ (ForAll _ ty)] -> ty
+>   _ -> internalError $ "Lift.varType " ++ show v
 
 > liftIdent :: String -> Ident -> Ident
-> liftIdent prefix x =
->     renameIdent (mkIdent (prefix ++ (show x))) (uniqueId x)
->    --renameIdent (mkIdent (prefix ++ name x ++ show (uniqueId x))) (uniqueId x)
+> liftIdent prefix x = renameIdent (mkIdent $ prefix ++ show x) $ uniqueId x
+> --renameIdent (mkIdent (prefix ++ name x ++ show (uniqueId x))) (uniqueId x)
 
 \end{verbatim}
