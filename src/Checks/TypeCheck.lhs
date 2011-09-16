@@ -91,8 +91,9 @@ generating fresh type variables.
 
 > getNextId :: TCM Int
 > getNextId = do
->  S.modify $ \ s -> s { nextId = succ $ nextId s }
->  S.gets nextId
+>  nid <- S.gets nextId
+>  S.modify $ \ s -> s { nextId = succ nid }
+>  return nid
 
 > modifyTypeSubst :: (TypeSubst -> TypeSubst) -> TCM ()
 > modifyTypeSubst f = S.modify $ \ s -> s { typeSubst = f $ typeSubst s }
