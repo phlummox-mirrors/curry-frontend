@@ -41,7 +41,6 @@ import qualified IL as IL
 import qualified ModuleSummary
 import Transformations (translType)
 
--- import Debug.Trace
 trace' :: String -> a -> a
 trace' _ x = x
 
@@ -50,12 +49,11 @@ trace' _ x = x
 -- transforms intermediate language code (IL) to FlatCurry code
 genFlatCurry :: Options -> ModuleSummary.ModuleSummary -> InterfaceEnv
              -> ValueEnv -> TCEnv -> IL.Module -> (Prog, [Message])
-genFlatCurry opts modSum mEnv tyEnv tcEnv modul
-   = (prog', messages)
- where (prog, messages)
-           = run opts modSum mEnv tyEnv tcEnv False (visitModule modul)
-       prog' = -- eraseTypes $
-               adjustTypeInfo $ adjustTypeInfo $ patchPreludeFCY prog
+genFlatCurry opts modSum mEnv tyEnv tcEnv mdl = (prog', messages)
+  where 
+  (prog, messages) = run opts modSum mEnv tyEnv tcEnv False (visitModule mdl)
+  prog' = -- eraseTypes $ 
+          adjustTypeInfo $ adjustTypeInfo $ patchPreludeFCY prog
 
 -- transforms intermediate language code (IL) to FlatCurry interfaces
 genFlatInterface :: Options -> ModuleSummary.ModuleSummary -> InterfaceEnv -> ValueEnv -> TCEnv

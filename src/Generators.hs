@@ -28,13 +28,11 @@ import ModuleSummary
 
 -- |Generate AbstractCurry
 genTypedAbstractCurry :: CompilerEnv -> CS.Module -> AC.CurryProg
-genTypedAbstractCurry env
-   = GAC.genTypedAbstract (valueEnv env) (tyConsEnv env)
+genTypedAbstractCurry = GAC.genTypedAbstract
 
 -- |Generate untyped AbstractCurry
 genUntypedAbstractCurry :: CompilerEnv -> CS.Module -> AC.CurryProg
-genUntypedAbstractCurry env
-   = GAC.genUntypedAbstract (valueEnv env) (tyConsEnv env)
+genUntypedAbstractCurry = GAC.genUntypedAbstract
 
 -- |Generate FlatCurry
 genFlatCurry :: Options -> ModuleSummary -> CompilerEnv -> IL.Module
