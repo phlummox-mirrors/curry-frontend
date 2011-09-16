@@ -167,14 +167,14 @@ checkModule :: Options -> CompilerEnv -> CS.Module -> (CompilerEnv, CS.Module)
 checkModule opts env mdl = qualEnv
                          $ uncurry exportCheck
                          $ uncurry qual
-                         $ (if withFlat then uncurry typeCheck else id)
+                         $ (if withTypeCheck then uncurry typeCheck else id)
                          $ uncurry precCheck
                          $ uncurry (syntaxCheck opts)
                          $ kindCheck env mdl
   where
   qualEnv (e, m) = (qualifyEnv opts e, m)
-  withFlat       = any (`elem` optTargetTypes opts)
-                       [FlatCurry, FlatXml, ExtendedFlatCurry]
+  withTypeCheck  = any (`elem` optTargetTypes opts)
+                       [FlatCurry, ExtendedFlatCurry, FlatXml, AbstractCurry]
 
 -- ---------------------------------------------------------------------------
 -- Translating a module
