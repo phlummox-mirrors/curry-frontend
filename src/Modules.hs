@@ -20,7 +20,6 @@ module Modules
 
 import Control.Monad (liftM, unless, when)
 import Data.Maybe (fromMaybe)
-import Text.PrettyPrint (Doc)
 
 import Curry.Base.MessageMonad
 import Curry.Base.Position
@@ -182,7 +181,7 @@ checkModule opts env mdl = qualEnv
 
 -- |Translate FlatCurry into the intermediate language 'IL'
 transModule :: Options -> CompilerEnv -> CS.Module
-            -> (CompilerEnv, IL.Module, [(DumpLevel, Doc)])
+            -> (CompilerEnv, IL.Module, [(DumpLevel, String)])
 transModule opts env mdl = (env5, ilCaseComp, dumps)
   where
     flat' = FlatCurry `elem` optTargetTypes opts
@@ -192,13 +191,13 @@ transModule opts env mdl = (env5, ilCaseComp, dumps)
     (lifted    , env3) = lift           simplified env2
     (il        , env4) = ilTrans flat'  lifted     env3
     (ilCaseComp, env5) = completeCase   il         env4
-    dumps = [ (DumpRenamed   , CS.ppModule    mdl         )
-            , (DumpTypes     , ppTypes     (moduleIdent env) (valueEnv env))
-            , (DumpDesugared , CS.ppModule    desugared   )
-            , (DumpSimplified, CS.ppModule    simplified  )
-            , (DumpLifted    , CS.ppModule    lifted    )
-            , (DumpIL        , IL.ppModule il        )
-            , (DumpCase      , IL.ppModule ilCaseComp)
+    dumps = [ (DumpRenamed   , show $ CS.ppModule    mdl         )
+            , (DumpTypes     , show $ ppTypes     (moduleIdent env) (valueEnv env))
+            , (DumpDesugared , show $ CS.ppModule    desugared   )
+            , (DumpSimplified, show $ CS.ppModule    simplified  )
+            , (DumpLifted    , show $ CS.ppModule    lifted    )
+            , (DumpIL        , show $ IL.ppModule il        )
+            , (DumpCase      , show $ IL.ppModule ilCaseComp)
             ]
 
 -- ---------------------------------------------------------------------------
@@ -287,9 +286,9 @@ showWarnings opts msgs = when (optWarn opts)
 
 -- |The 'doDump' function writes the selected information to the
 -- standard output.
-doDump :: Options -> (DumpLevel, Doc) -> IO ()
+doDump :: Options -> (DumpLevel, String) -> IO ()
 doDump opts (level, dump) = when (level `elem` optDumps opts) $ putStrLn $
-  unlines [header, replicate (length header) '=', show dump]
+  unlines [header, replicate (length header) '=', dump]
   where header = dumpHeader level
 
 dumpHeader :: DumpLevel -> String

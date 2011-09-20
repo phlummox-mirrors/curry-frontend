@@ -128,13 +128,12 @@ as it allows value declarations at the top-level of a module.
 
 > desugarModule :: ModuleIdent -> TCEnv -> [Decl]
 >	        -> DesugarState ([Decl],ValueEnv)
-> desugarModule m tcEnv ds =
->   do
->     dss <- mapM (desugarRecordDecl m tcEnv) ds
->     let ds' = concat dss
->     ds'' <- desugarDeclGroup m tcEnv ds'
->     tyEnv' <- getValueEnv
->     return (filter isTypeDecl ds' ++ ds'', tyEnv')
+> desugarModule m tcEnv ds = do
+>   dss <- mapM (desugarRecordDecl m tcEnv) ds
+>   let ds' = concat dss
+>   ds'' <- desugarDeclGroup m tcEnv ds'
+>   tyEnv' <- getValueEnv
+>   return (filter isTypeDecl ds' ++ ds'', tyEnv')
 
 \end{verbatim}
 Within a declaration group, all type signatures and evaluation
@@ -144,27 +143,25 @@ declarations to the group that must be desugared as well.
 \begin{verbatim}
 
 > desugarDeclGroup :: ModuleIdent -> TCEnv -> [Decl] -> DesugarState [Decl]
-> desugarDeclGroup m tcEnv ds =
->   do
->     dss' <- mapM (desugarDeclLhs m tcEnv) (filter isValueDecl ds)
->     mapM (desugarDeclRhs m tcEnv) (concat dss')
+> desugarDeclGroup m tcEnv ds = do
+>   dss' <- mapM (desugarDeclLhs m tcEnv) (filter isValueDecl ds)
+>   mapM (desugarDeclRhs m tcEnv) (concat dss')
 
 > desugarDeclLhs :: ModuleIdent -> TCEnv -> Decl -> DesugarState [Decl]
-> desugarDeclLhs m tcEnv (PatternDecl p t rhs) =
->   do
->     (ds',t') <- desugarTerm m tcEnv p [] t
->     dss' <- mapM (desugarDeclLhs m tcEnv) ds'
->     return (PatternDecl p t' rhs : concat dss')
-> desugarDeclLhs m _ (FlatExternalDecl p fs) =
->   do
->     tyEnv <- getValueEnv
->     return (map (externalDecl tyEnv p) fs)
->   where externalDecl tyEnv p' f =
+> desugarDeclLhs m tcEnv (PatternDecl p t rhs) = do
+>   (ds',t') <- desugarTerm m tcEnv p [] t
+>   dss' <- mapM (desugarDeclLhs m tcEnv) ds'
+>   return (PatternDecl p t' rhs : concat dss')
+> desugarDeclLhs m _ (FlatExternalDecl p fs) = do
+>   tyEnv <- getValueEnv
+>   return (map (externalDecl tyEnv p) fs)
+>   where 
+>   externalDecl tyEnv p' f =
 >           ExternalDecl p' CallConvPrimitive (Just (name f)) f
 >                        (fromType (typeOf tyEnv (Variable (qual f))))
->         qual f
->           | unRenameIdent f == f = qualifyWith m f
->           | otherwise = qualify f
+>   qual f
+>     | unRenameIdent f == f = qualifyWith m f
+>     | otherwise            = qualify f
 > desugarDeclLhs _ _ d = return [d]
 
 \end{verbatim}
@@ -179,15 +176,14 @@ and a record label belongs to only one record declaration.
 \begin{verbatim}
 
 > desugarDeclRhs :: ModuleIdent -> TCEnv -> Decl -> DesugarState Decl
-> desugarDeclRhs m tcEnv (FunctionDecl p f eqs) =
->   do
->     tyEnv <- getValueEnv
->     let ty =  (flip typeOf (Variable (qual f))) tyEnv
->     liftM (FunctionDecl p f)
->	    (mapM (desugarEquation m tcEnv (arrowArgs ty)) eqs)
+> desugarDeclRhs m tcEnv (FunctionDecl p f eqs) = do
+>   tyEnv <- getValueEnv
+>   let ty =  (flip typeOf (Variable (qual f))) tyEnv
+>   liftM (FunctionDecl p f)
+>	  (mapM (desugarEquation m tcEnv (arrowArgs ty)) eqs)
 >   where qual f1
 >           | unRenameIdent f1 == f1 = qualifyWith m f1
->           | otherwise = qualify f1
+>           | otherwise              = qualify f1
 > desugarDeclRhs _ _ (ExternalDecl p cc ie f ty) =
 >   return (ExternalDecl p cc (ie `mplus` Just (name f)) f ty)
 > desugarDeclRhs m tcEnv (PatternDecl p t rhs) =

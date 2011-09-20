@@ -570,22 +570,22 @@ module.
 > modulesType :: IL.Type -> [ModuleIdent] -> [ModuleIdent]
 > modulesType (IL.TypeConstructor tc tys) ms =
 >   modules tc (foldr modulesType ms tys)
-> modulesType (IL.TypeVariable _) ms = ms
-> modulesType (IL.TypeArrow ty1 ty2) ms = modulesType ty1 (modulesType ty2 ms)
+> modulesType (IL.TypeVariable         _) ms = ms
+> modulesType (IL.TypeArrow      ty1 ty2) ms = modulesType ty1 (modulesType ty2 ms)
 
 > modulesExpr :: IL.Expression -> [ModuleIdent] -> [ModuleIdent]
-> modulesExpr (IL.Function f _) ms = modules f ms
+> modulesExpr (IL.Function    f _) ms = modules f ms
 > modulesExpr (IL.Constructor c _) ms = modules c ms
-> modulesExpr (IL.Apply e1 e2) ms = modulesExpr e1 (modulesExpr e2 ms)
-> modulesExpr (IL.Case _ _ e as) ms = modulesExpr e (foldr modulesAlt ms as)
+> modulesExpr (IL.Apply     e1 e2) ms = modulesExpr e1 (modulesExpr e2 ms)
+> modulesExpr (IL.Case   _ _ e as) ms = modulesExpr e (foldr modulesAlt ms as)
 >   where modulesAlt (IL.Alt t e') ms' = modulesConstrTerm t (modulesExpr e' ms')
 >         modulesConstrTerm (IL.ConstructorPattern c _) ms' = modules c ms'
 >         modulesConstrTerm _ ms' = ms'
-> modulesExpr (IL.Or e1 e2) ms = modulesExpr e1 (modulesExpr e2 ms)
-> modulesExpr (IL.Exist _ e) ms = modulesExpr e ms
-> modulesExpr (IL.Let b e) ms = modulesBinding b (modulesExpr e ms)
-> modulesExpr (IL.Letrec bs e) ms = foldr modulesBinding (modulesExpr e ms) bs
-> modulesExpr _ ms = ms
+> modulesExpr (IL.Or        e1 e2) ms = modulesExpr e1 (modulesExpr e2 ms)
+> modulesExpr (IL.Exist       _ e) ms = modulesExpr e ms
+> modulesExpr (IL.Let         b e) ms = modulesBinding b (modulesExpr e ms)
+> modulesExpr (IL.Letrec     bs e) ms = foldr modulesBinding (modulesExpr e ms) bs
+> modulesExpr _                    ms = ms
 
 > modulesBinding :: IL.Binding -> [ModuleIdent] -> [ModuleIdent]
 > modulesBinding (IL.Binding _ e) = modulesExpr e
