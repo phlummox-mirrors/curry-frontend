@@ -1,13 +1,16 @@
-Records: Es ist kein qualifizierter Import von Records möglich, da die
-  Feldbezeichnungen nicht mit importiert werden können.
-  Beispiel:
-  import CompilerOpts -- okay
-  import CompilerOpts (Options) -- okay, aber Feldbezeichner nicht importiert
-  import CompilerOpts (Options (..)) Fehler: Options is not a data type
+Completed
+=========
+- Anonymous free variables implemented
+- hierarchically structured modules
 
-NoImplicitPrelude
-Typklassen
-Hierarchische Module
-Nondeterminism by overlapping abschaltbar?
-QName wird als Typvariable angesehen
-DHO als Variable
+Still to do
+===========
+- !!! Check correctness of created FlatCurry files by comparison with the old frontend !!!
+- Records: There is no way to explicitly import a record with its fields:
+    import CompilerOpts                -- okay, works
+    import CompilerOpts (Options)      -- okay, but no field labels imported
+    import CompilerOpts (Options (..)) -- fails: Options is not a data type
+- Module pragmas
+- type classes
+- option to disable nondeterminism by overlapping
+- option / check for case mode
