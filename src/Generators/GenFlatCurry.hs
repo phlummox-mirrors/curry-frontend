@@ -10,9 +10,9 @@
 module Generators.GenFlatCurry (genFlatCurry, genFlatInterface) where
 
 -- Haskell libraries
-import Control.Monad (filterM, liftM, mplus, when)
+import Control.Monad (filterM, liftM, liftM2, liftM3, mplus, when)
 import Control.Monad.State (State, runState, gets, modify)
-import Data.List (nub)
+import Data.List (mapAccumL, nub)
 import qualified Data.Map as Map (Map, empty, insert, lookup, fromList, toList)
 import Data.Maybe (catMaybes, fromJust, fromMaybe, isJust)
 
@@ -56,33 +56,34 @@ genFlatCurry opts modSum mEnv tyEnv tcEnv mdl = (prog', messages)
           adjustTypeInfo $ adjustTypeInfo $ patchPreludeFCY prog
 
 -- transforms intermediate language code (IL) to FlatCurry interfaces
-genFlatInterface :: Options -> ModuleSummary.ModuleSummary -> InterfaceEnv -> ValueEnv -> TCEnv
-        -> IL.Module -> (Prog, [Message])
-genFlatInterface opts modSum mEnv tyEnv tcEnv modul =
-  (patchPreludeFCY intf, messages)
-  where (intf, messages)
-          = run opts modSum mEnv tyEnv tcEnv True (visitModule modul)
+genFlatInterface :: Options -> ModuleSummary.ModuleSummary -> InterfaceEnv 
+                 -> ValueEnv -> TCEnv -> IL.Module -> (Prog, [Message])
+genFlatInterface opts modSum mEnv tyEnv tcEnv mdl = (intf' , messages)
+  where 
+  (intf, messages) = run opts modSum mEnv tyEnv tcEnv True (visitModule mdl)
+  intf'            = patchPreludeFCY intf
 
 patchPreludeFCY :: Prog -> Prog
 patchPreludeFCY p@(Prog n _ types funcs ops)
-   | n == prelude = Prog n [] (prelude_types_fcy ++ types) funcs ops
-   | otherwise    = p
+  | n == prelude = Prog n [] (prelude_types_fcy ++ types) funcs ops
+  | otherwise    = p
 
 prelude_types_fcy :: [TypeDecl]
 prelude_types_fcy =
   [ Type unit Public [] [(Cons unit 0 Public [])]
   , Type nil Public [0]
-    [ Cons nil 0 Public []
-    , Cons (mkPreludeQName ":") 2 Public [TVar 0, TCons nil [TVar 0]]
+    [ Cons nil  0 Public []
+    , Cons cons 2 Public [TVar 0, TCons nil [TVar 0]]
     ]
   ] ++ map tupleTypeFCY [2 .. maxTupleArity]
   where unit = mkPreludeQName "()"
         nil  = mkPreludeQName "[]"
+        cons = mkPreludeQName ":"
 
 tupleTypeFCY :: Int -> TypeDecl
-tupleTypeFCY arity = Type tuplecons Public [0 .. arity - 1]
-    [Cons tuplecons arity Public (map TVar [0 .. arity - 1])]
-  where tuplecons = mkPreludeQName $ '(' : replicate (arity - 1) ',' ++ ")"
+tupleTypeFCY arity = Type tuple Public [0 .. arity - 1]
+  [Cons tuple arity Public (map TVar [0 .. arity - 1])]
+  where tuple = mkPreludeQName $ '(' : replicate (arity - 1) ',' ++ ")"
 
 mkPreludeQName :: String -> QName
 mkPreludeQName n = mkQName (prelude, n)
@@ -125,233 +126,216 @@ data FlatEnv = FlatEnv
   , constrTypes   :: Map.Map QualIdent IL.Type
   }
 
-data IdentExport = NotConstr       -- function, type-constructor
-                 | OnlyConstr      -- constructor
-                 | NotOnlyConstr   -- constructor, function, type-constructor
+data IdentExport 
+  = NotConstr     -- function, type-constructor
+  | OnlyConstr    -- constructor
+  | NotOnlyConstr -- constructor, function, type-constructor
 
 -- Runs a 'FlatState' action and returns the result
 run :: Options -> ModuleSummary.ModuleSummary -> InterfaceEnv -> ValueEnv -> TCEnv
     -> Bool -> FlatState a -> (a, [Message])
-run opts cEnv mEnv tyEnv tcEnv genIntf f
-   = (result, messagesE env)
- where
- (result, env) = runState f env0
- env0 = FlatEnv{ moduleIdE     = ModuleSummary.moduleId cEnv,
-		 functionIdE   = (qualify (mkIdent ""), []),
-		 compilerOptsE = opts,
-		 interfaceEnvE = mEnv,
-		 typeEnvE      = tyEnv,
-		 tConsEnvE     = tcEnv,
-		 publicEnvE    = genPubEnv (ModuleSummary.moduleId cEnv)
-		                 (ModuleSummary.interface cEnv),
-		 fixitiesE     = ModuleSummary.infixDecls cEnv,
-		 typeSynonymsE = ModuleSummary.typeSynonyms cEnv,
-		 importsE      = ModuleSummary.imports cEnv,
-		 exportsE      = ModuleSummary.exports cEnv,
-		 interfaceE    = ModuleSummary.interface cEnv,
-		 varIndexE     = 0,
-		 varIdsE       = ScopeEnv.new,
-		 tvarIndexE    =0,
-		 messagesE      = [],
-		 genInterfaceE = genIntf,
-                 localTypes    = Map.empty,
-                 constrTypes   = Map.fromList (getConstrTypes tcEnv)
-	       }
+run opts cEnv mEnv tyEnv tcEnv genIntf f = (result, messagesE env)
+  where
+  (result, env) = runState f env0
+  env0 = FlatEnv
+    { moduleIdE     = ModuleSummary.moduleId cEnv
+    , functionIdE   = (qualify (mkIdent ""), [])
+    , compilerOptsE = opts
+    , interfaceEnvE = mEnv
+    , typeEnvE      = tyEnv
+    , tConsEnvE     = tcEnv
+    , publicEnvE    = genPubEnv (ModuleSummary.moduleId  cEnv)
+                                (ModuleSummary.interface cEnv)
+    , fixitiesE     = ModuleSummary.infixDecls   cEnv
+    , typeSynonymsE = ModuleSummary.typeSynonyms cEnv
+    , importsE      = ModuleSummary.imports      cEnv
+    , exportsE      = ModuleSummary.exports      cEnv
+    , interfaceE    = ModuleSummary.interface    cEnv
+    , varIndexE     = 0
+    , varIdsE       = ScopeEnv.new
+    , tvarIndexE    = 0
+    , messagesE     = []
+    , genInterfaceE = genIntf
+    , localTypes    = Map.empty
+    , constrTypes   = Map.fromList $ getConstrTypes tcEnv
+    }
 
 getConstrTypes :: TCEnv -> [(QualIdent, IL.Type)]
-getConstrTypes tcEnv = trace' (show tinfos) tinfos
-    where tcList = Map.toList $ topEnvMap tcEnv
-          tinfos = [ foo tqid conid argtypes targnum
-                   | (_, (_, DataType tqid targnum dts):_) <- tcList
-                   , Just (DataConstr conid _ argtypes) <- dts]
-          foo tqid conid argtypes targnum
-              = let conname = QualIdent (qualidMod tqid) conid
-                    resulttype = IL.TypeConstructor tqid (map IL.TypeVariable [0..targnum-1])
-                    contype = foldr IL.TypeArrow resulttype (map ttrans argtypes)
-                in (conname, contype)
-
+getConstrTypes tcEnv = 
+  [ foo tqid conid argtys argc
+  | (_, (_, DataType tqid argc dts):_) <- Map.toList $ topEnvMap tcEnv
+  , Just (DataConstr conid _ argtys) <- dts
+  ]
+  where 
+  foo tqid conid argtypes targnum = (conname, contype)
+    where
+    conname    = QualIdent (qualidMod tqid) conid
+    resulttype = IL.TypeConstructor tqid (map IL.TypeVariable [0 .. targnum - 1])
+    contype    = foldr IL.TypeArrow resulttype $ map ttrans argtypes
 
 --
 visitModule :: IL.Module -> FlatState Prog
 visitModule (IL.Module mid imps decls) = do
   -- insert local decls into localDecls
   let ts = [ (qn, t) | IL.FunctionDecl qn _ t _ <- decls ]
-  modify (\ s -> s {localTypes = Map.fromList ts})
-  whenFlatCurry
-       (do ops     <- genOpDecls
-           datas   <- mapM visitDataDecl (filter isDataDecl decls)
-	   types   <- genTypeSynonyms
-	   recrds  <- genRecordTypes
-	   funcs   <- mapM visitFuncDecl (filter isFuncDecl decls)
-	   modid   <- visitModuleIdent mid
-	   imps'   <- imports
-	   is      <- mapM visitModuleIdent
-	                   (nub (imps ++ (map extractMid imps')))
-           return (Prog modid is (recrds ++ types ++ datas) funcs ops))
-       (do ops     <- genOpDecls
-	   ds      <- filterM isPublicDataDecl decls
-	   datas   <- mapM visitDataDecl ds
-	   types   <- genTypeSynonyms
-	   recrds  <- genRecordTypes
-	   fs      <- filterM isPublicFuncDecl decls
-	   funcs   <- mapM visitFuncDecl fs
-	   expimps <- getExportedImports
-	   itypes  <- mapM visitTypeIDecl (filter isTypeIDecl expimps)
-	   ifuncs  <- mapM visitFuncIDecl (filter isFuncIDecl expimps)
-	   iops    <- mapM visitOpIDecl (filter isOpIDecl expimps)
-	   modid   <- visitModuleIdent mid
-	   imps'   <- imports
-	   is      <- mapM visitModuleIdent
-	                   (nub (imps ++ (map extractMid imps')))
-	   return (Prog modid
-		        is
-		        (itypes ++ recrds ++ types ++ datas)
-		        (ifuncs ++ funcs)
-		        (iops ++ ops)))
-	where
-		extractMid (CS.IImportDecl _ mid1) = mid1
+  modify $ \ s -> s { localTypes = Map.fromList ts }
+  ops     <- genOpDecls
+  whenFlatCurry 
+    ( do
+      datas   <- mapM visitDataDecl (filter isDataDecl decls)
+      types   <- genTypeSynonyms
+      recrds  <- genRecordTypes
+      funcs   <- mapM visitFuncDecl (filter isFuncDecl decls)
+      modid   <- visitModuleIdent mid
+      imps'   <- imports
+      is      <- mapM visitModuleIdent $ nub $ imps ++ (map extractMid imps')
+      return $ Prog modid is (recrds ++ types ++ datas) funcs ops
+    )
+    ( do
+      ds      <- filterM isPublicDataDecl decls
+      datas   <- mapM visitDataDecl ds
+      types   <- genTypeSynonyms
+      recrds  <- genRecordTypes
+      fs      <- filterM isPublicFuncDecl decls
+      funcs   <- mapM visitFuncDecl fs
+      expimps <- getExportedImports
+      itypes  <- mapM visitTypeIDecl (filter isTypeIDecl expimps)
+      ifuncs  <- mapM visitFuncIDecl (filter isFuncIDecl expimps)
+      iops    <- mapM visitOpIDecl (filter isOpIDecl expimps)
+      modid   <- visitModuleIdent mid
+      imps'   <- imports
+      is      <- mapM visitModuleIdent $ nub $ imps ++ (map extractMid imps')
+      return $ Prog modid is (itypes ++ recrds ++ types ++ datas) (ifuncs ++ funcs) (iops ++ ops)
+    )
+  where extractMid (CS.IImportDecl _ mid1) = mid1
 
 --
 visitDataDecl :: IL.Decl -> FlatState TypeDecl
-visitDataDecl (IL.DataDecl qident arity constrs)
-   = do cdecls <- mapM visitConstrDecl constrs
-	qname  <- visitQualTypeIdent qident
-	vis    <- getVisibility False qident
-	return (Type qname vis [0 .. (arity - 1)] (concat cdecls))
+visitDataDecl (IL.DataDecl qident arity constrs) = do 
+  cdecls <- mapM visitConstrDecl constrs
+  qname  <- visitQualTypeIdent qident
+  vis    <- getVisibility False qident
+  return $ Type qname vis [0 .. arity - 1] (concat cdecls)
 visitDataDecl _ = internalError "GenFlatCurry: no data declaration"
 
 --
 visitConstrDecl :: IL.ConstrDecl [IL.Type] -> FlatState [ConsDecl]
-visitConstrDecl (IL.ConstrDecl qident types)
-   = do texprs <- mapM visitType types
-	qname  <- visitQualIdent qident
-	vis    <- getVisibility True qident
-        genFint <- genInterface
-        if genFint && vis == Private
-          then return []
-          else return [Cons qname (length types) vis texprs]
+visitConstrDecl (IL.ConstrDecl qident types) = do 
+  texprs  <- mapM visitType types
+  qname   <- visitQualIdent qident
+  vis     <- getVisibility True qident
+  genFint <- genInterface
+  return $ if genFint && vis == Private
+    then []
+    else [Cons qname (length types) vis texprs]
 
 --
 visitType :: IL.Type -> FlatState TypeExpr
-visitType (IL.TypeConstructor qident types)
-   = do texprs <- mapM visitType types
-	qname  <- visitQualTypeIdent qident
-	if (qualName qident) == "Identity"
-	   then return (head texprs)
-	   else return (TCons qname texprs)
-visitType (IL.TypeVariable index)
-   = return (TVar (abs index))
-visitType (IL.TypeArrow type1 type2)
-   = do texpr1 <- visitType type1
-	texpr2 <- visitType type2
-	return (FuncType texpr1 texpr2)
+visitType (IL.TypeConstructor qid tys) = do 
+  tys' <- mapM visitType tys
+  qn   <- visitQualTypeIdent qid
+  return $ if qualName qid == "Identity"
+    then head tys'
+    else TCons qn tys'
+visitType (IL.TypeVariable        idx) = return $ TVar $ abs idx
+visitType (IL.TypeArrow       ty1 ty2) = do 
+  ty1' <- visitType ty1
+  ty2' <- visitType ty2
+  return $ FuncType ty1' ty2'
 
 --
 visitFuncDecl :: IL.Decl -> FlatState FuncDecl
-visitFuncDecl (IL.FunctionDecl qident params typeexpr expression)
-   = let argtypes = splitoffArgTypes typeexpr params
-     in do setFunctionId (qident, argtypes)
-           qname <- visitQualIdent qident
-           whenFlatCurry (do is    <- mapM newVarIndex params
-	                     texpr <- visitType typeexpr
-	                     expr  <- visitExpression expression
-	                     vis   <- getVisibility False qident
-	                     clearVarIndices
-	                     return (Func qname (length params) vis texpr (Rule is expr)))
-                         (do texpr <- visitType typeexpr
-	                     clearVarIndices
-	                     return (Func qname (length params) Public texpr (Rule [] (Var $ mkIdx 0))))
-visitFuncDecl (IL.ExternalDecl qident _ extname typeexpr)
-   = do setFunctionId (qident, [])
-	texpr <- visitType typeexpr
-	qname <- visitQualIdent qident
-	vis   <- getVisibility False qident
-	xname <- visitExternalName extname
-	return (Func qname (typeArity typeexpr) vis texpr (External xname))
-visitFuncDecl (IL.NewtypeDecl _ _ _)
-   = do mid <- moduleId
-	error ("\"" ++ Id.moduleName mid
-	       ++ "\": newtype declarations are not supported")
+visitFuncDecl (IL.FunctionDecl qident params typeexpr expression) = do
+  let argtypes = splitoffArgTypes typeexpr params
+  setFunctionId (qident, argtypes)
+  qname <- visitQualIdent qident
+  whenFlatCurry
+    (do is    <- mapM newVarIndex params
+        texpr <- visitType typeexpr
+        expr  <- visitExpression expression
+        vis   <- getVisibility False qident
+        clearVarIndices
+        return (Func qname (length params) vis texpr (Rule is expr))
+    )
+    (do texpr <- visitType typeexpr
+        clearVarIndices
+        return (Func qname (length params) Public texpr (Rule [] (Var $ mkIdx 0)))
+    )
+visitFuncDecl (IL.ExternalDecl qident _ extname typeexpr) = do
+  setFunctionId (qident, [])
+  texpr <- visitType typeexpr
+  qname <- visitQualIdent qident
+  vis   <- getVisibility False qident
+  xname <- visitExternalName extname
+  return $ Func qname (typeArity typeexpr) vis texpr (External xname)
+visitFuncDecl (IL.NewtypeDecl _ _ _) = do
+  mid <- moduleId
+  internalError $ "\"" ++ Id.moduleName mid
+    ++ "\": newtype declarations are not supported"
 visitFuncDecl _ = internalError "GenFlatCurry: no function declaration"
 
 --
 visitExpression :: IL.Expression -> FlatState Expr
-visitExpression (IL.Literal literal)
-   = liftM Lit (visitLiteral literal)
-visitExpression (IL.Variable ident)
-   = liftM Var (lookupVarIndex ident)
-visitExpression (IL.Function qident _)
-   = do arity_ <- lookupIdArity qident
-        qname <- visitQualIdent qident
-	maybe (internalError (funcArity qname))
-	      (\arity -> genFuncCall qname arity [])
-	      arity_
-visitExpression (IL.Constructor qident _)
-   = do arity_ <- lookupIdArity qident
-        qname <- visitQualIdent qident
-	maybe (internalError (consArity qident))
-	      (\arty -> genConsCall qname arty [])
-	      arity_
-visitExpression (IL.Apply e1 e2)
-   = genFlatApplication e1 e2
-visitExpression (IL.Case r evalannot expression alts)
-   = do ea       <- visitEval evalannot
-	expr     <- visitExpression expression
-	branches <- mapM visitAlt alts
-	return (Case r ea expr branches)
-visitExpression (IL.Or expression1 expression2)
-   = do expr1 <- visitExpression expression1
-	expr2 <- visitExpression expression2
-	checkOverlapping expr1 expr2
-	return (Or expr1 expr2)
-visitExpression (IL.Exist ident expression)
-   = do index <- newVarIndex ident
-	expr  <- visitExpression expression
-	case expr of
-	  Free is expr' -> return (Free (index:is) expr')
-	  _             -> return (Free [index] expr)
-visitExpression (IL.Let binding expression)
-   = do beginScope
-	_ <- newVarIndex (bindingIdent binding)
-        bind <- visitBinding binding
-	expr <- visitExpression expression
-        -- is it correct that there is no endScope? (hsi)
-        return (Let [bind] expr)
-visitExpression (IL.Letrec bindings expression)
-   = do beginScope
-	mapM_ (newVarIndex . bindingIdent) bindings
-	binds <- mapM visitBinding bindings
-	expr  <- visitExpression expression
-	endScope
-	return (Let binds expr)
-
+visitExpression (IL.Literal       l) = Lit `liftM` visitLiteral l
+visitExpression (IL.Variable      v) = Var `liftM` lookupVarIndex v
+visitExpression (IL.Function    f _) = do
+  arity_ <- lookupIdArity f
+  qname <- visitQualIdent f
+  case arity_ of
+    Nothing -> internalError $ funcArity qname
+    Just a  -> genFuncCall qname a []
+visitExpression (IL.Constructor c _) = do
+  arity_ <- lookupIdArity c
+  qname <- visitQualIdent c
+  case arity_ of
+    Nothing -> internalError $ consArity qname
+    Just a  -> genConsCall qname a []
+visitExpression (IL.Apply     e1 e2) = genFlatApplication e1 e2
+visitExpression (IL.Case  r ea e bs) =
+  liftM3 (Case r) (visitEval ea) (visitExpression e) (mapM visitAlt bs)
+visitExpression (IL.Or        e1 e2) = do
+  e1' <- visitExpression e1
+  e2' <- visitExpression e2
+  checkOverlapping e1' e2'
+  return $ Or e1' e2'
+visitExpression (IL.Exist       v e) = do
+  idx <- newVarIndex v
+  e'  <- visitExpression e
+  return $ case e' of
+    Free is e'' -> Free (idx : is) e''
+    _           -> Free [idx] e'
+visitExpression (IL.Let        bd e) = inNewScope $ do
+  _ <- newVarIndex $ bindingIdent bd
+  bind <- visitBinding bd
+  e' <- visitExpression e
+  return $ case e' of -- TODO bjp(2011-09-21): maybe remove again
+    (Let binds e'') -> Let (bind:binds) e''
+    _               -> Let [bind] e'
+  -- is it correct that there is no endScope? (hsi): bjp: Just added, but no reasoning about
+visitExpression (IL.Letrec    bds e) = inNewScope $ do
+  mapM_ (newVarIndex . bindingIdent) bds
+  bds' <- mapM visitBinding bds
+  e' <- visitExpression e
+  return $ Let bds' e'
 
 --
 visitLiteral :: IL.Literal -> FlatState Literal
-visitLiteral (IL.Char rs c)  = return (Charc rs c)
-visitLiteral (IL.Int rs i)   = return (Intc rs i)
-visitLiteral (IL.Float rs f) = return (Floatc rs f)
+visitLiteral (IL.Char  rs c) = return $ Charc  rs c
+visitLiteral (IL.Int   rs i) = return $ Intc   rs i
+visitLiteral (IL.Float rs f) = return $ Floatc rs f
 
 --
 visitAlt :: IL.Alt -> FlatState BranchExpr
-visitAlt (IL.Alt cterm expression)
-   = do patt <- visitConstrTerm cterm
-	expr <- visitExpression expression
-	return (Branch patt expr)
+visitAlt (IL.Alt p e) = liftM2 Branch (visitConstrTerm p) (visitExpression e)
 
 --
 visitConstrTerm :: IL.ConstrTerm -> FlatState Pattern
-visitConstrTerm (IL.LiteralPattern literal)
-   = do lit <- visitLiteral literal
-	return (LPattern lit)
-visitConstrTerm (IL.ConstructorPattern qident args)
-   = do is    <- mapM newVarIndex args
-	qname <- visitQualIdent qident
-	return (Pattern qname is)
-visitConstrTerm (IL.VariablePattern _)
-   = do mid <- moduleId
-	error ("\"" ++ Id.moduleName mid
-	       ++ "\": variable patterns are not supported")
+visitConstrTerm (IL.LiteralPattern        l) = LPattern `liftM` visitLiteral l
+visitConstrTerm (IL.ConstructorPattern c vs) =
+  liftM2 (flip Pattern) (mapM newVarIndex vs) (visitQualIdent c) -- TODO: is this flip needed?
+visitConstrTerm (IL.VariablePattern       _) = do
+  mid <- moduleId
+  internalError $ "\"" ++ Id.moduleName mid ++ "\": variable patterns are not supported"
 
 --
 visitEval :: IL.Eval -> FlatState CaseType
@@ -360,60 +344,49 @@ visitEval IL.Flex  = return Flex
 
 --
 visitBinding :: IL.Binding -> FlatState (VarIndex, Expr)
-visitBinding (IL.Binding ident expression)
-   = do index <- lookupVarIndex ident
-	expr  <- visitExpression expression
-	return (index, expr)
-
+visitBinding (IL.Binding v e) = liftM2 (,) (lookupVarIndex v) (visitExpression e)
 
 -------------------------------------------------------------------------------
 
 --
 visitFuncIDecl :: CS.IDecl -> FlatState FuncDecl
-visitFuncIDecl (CS.IFunctionDecl _ qident arity typeexpr)
-   = do texpr <- visitType (fst (cs2ilType [] typeexpr))
-	qname <- visitQualIdent qident
-	return (Func qname arity Public texpr (Rule [] (Var $ mkIdx 0)))
+visitFuncIDecl (CS.IFunctionDecl _ f a ty) = do
+  texpr <- visitType $ snd $ cs2ilType [] ty
+  qname <- visitQualIdent f
+  return $ Func qname a Public texpr (Rule [] (Var $ mkIdx 0))
 visitFuncIDecl _ = internalError "GenFlatCurry: no function interface"
 
 --
 visitTypeIDecl :: CS.IDecl -> FlatState TypeDecl
-visitTypeIDecl (CS.IDataDecl _ qident params constrs_)
-   = do let mid = fromMaybe (internalError "GenFlatCurry: no module name")
-		            (qualidMod qident)
-	    is  = [0 .. length params - 1]
-	cdecls <- mapM (visitConstrIDecl mid (zip params is))
-		       (catMaybes constrs_)
-	qname  <- visitQualTypeIdent qident
-	return (Type qname Public is cdecls)
-visitTypeIDecl (CS.ITypeDecl _ qident params typeexpr)
-   = do let is = [0 .. (length params) - 1]
-	texpr <- visitType (fst (cs2ilType (zip params is) typeexpr))
-	qname <- visitQualTypeIdent qident
-	return (TypeSyn qname Public is texpr)
+visitTypeIDecl (CS.IDataDecl _ t vs cs) = do
+  let mid = fromMaybe (internalError "GenFlatCurry: no module name") (qualidMod t)
+      is  = [0 .. length vs - 1]
+  cdecls <- mapM (visitConstrIDecl mid $ zip vs is) $ catMaybes cs
+  qname  <- visitQualTypeIdent t
+  return $ Type qname Public is cdecls
+visitTypeIDecl (CS.ITypeDecl _ t vs ty) = do
+  let is = [0 .. length vs - 1]
+  ty'   <- visitType $ snd $ cs2ilType (zip vs is) ty
+  qname <- visitQualTypeIdent t
+  return $ TypeSyn qname Public is ty'
 visitTypeIDecl _ = internalError "GenFlatCurry: no type interface"
 
 --
 visitConstrIDecl :: ModuleIdent -> [(Ident, Int)] -> CS.ConstrDecl
-		    -> FlatState ConsDecl
-visitConstrIDecl mid tis (CS.ConstrDecl _ _ ident typeexprs)
-   = do texprs <- mapM (visitType . (fst . cs2ilType tis)) typeexprs
-	qname  <- visitQualIdent (qualifyWith mid ident)
-	return (Cons qname (length typeexprs) Public texprs)
+                 -> FlatState ConsDecl
+visitConstrIDecl mid tis (CS.ConstrDecl _ _ ident typeexprs) = do
+  texprs <- mapM (visitType . (snd . cs2ilType tis)) typeexprs
+  qname  <- visitQualIdent (qualifyWith mid ident)
+  return (Cons qname (length typeexprs) Public texprs)
 visitConstrIDecl mid tis (CS.ConOpDecl pos ids type1 ident type2)
-   = visitConstrIDecl mid tis (CS.ConstrDecl pos ids ident [type1,type2])
+  = visitConstrIDecl mid tis (CS.ConstrDecl pos ids ident [type1,type2])
 
 --
 visitOpIDecl :: CS.IDecl -> FlatState OpDecl
-visitOpIDecl (CS.IInfixDecl _ fixity prec qident)
-   = do let fixi = case fixity of
-	            CS.InfixL -> InfixlOp
-		    CS.InfixR -> InfixrOp
-		    _         -> InfixOp
-        qname <- visitQualIdent qident
-	return (Op qname fixi prec)
+visitOpIDecl (CS.IInfixDecl _ fixi prec op) = do
+  op' <- visitQualIdent op
+  return $ Op op' (genFixity fixi) prec
 visitOpIDecl _ = error "GenFlatCurry.visitOpIDecl: no pattern match"
-
 
 -------------------------------------------------------------------------------
 
@@ -423,85 +396,80 @@ visitModuleIdent = return . Id.moduleName
 
 --
 visitQualIdent :: QualIdent -> FlatState QName
-visitQualIdent qident
-   = do mid <- moduleId
-	let (mmod, ident) = (qualidMod qident, qualidId qident)
-	    modid | elem ident [listId, consId, nilId, unitId] || isTupleId ident
-		  = Id.moduleName preludeMIdent
-		| otherwise
-		  = maybe (Id.moduleName mid) Id.moduleName mmod
-        ftype <- lookupIdType qident
-	return (QName Nothing ftype modid $ name ident)
+visitQualIdent qident = do
+  mid <- moduleId
+  let (mmod, ident) = (qualidMod qident, qualidId qident)
+      modid | elem ident [listId, consId, nilId, unitId] || isTupleId ident
+            = Id.moduleName preludeMIdent
+            | otherwise
+            = maybe (Id.moduleName mid) Id.moduleName mmod
+  ftype <- lookupIdType qident
+  return (QName Nothing ftype modid $ name ident)
 
 -- This variant of visitQualIdent does not look up the type of the identifier,
 -- which is wise when the identifier is bound to a type, because looking up
 -- the type of a type via lookupIdType will get stuck in an endless loop. (hsi)
 visitQualTypeIdent :: QualIdent -> FlatState QName
-visitQualTypeIdent qident
-   = do mid <- moduleId
-	let (mmod, ident) = (qualidMod qident, qualidId qident)
-	    modid | elem ident [listId, consId, nilId, unitId] || isTupleId ident
-		  = Id.moduleName preludeMIdent
-		| otherwise
-		  = maybe (Id.moduleName mid) Id.moduleName mmod
-	return (QName Nothing Nothing modid $ name ident)
+visitQualTypeIdent qident = do
+  mid <- moduleId
+  let (mmod, ident) = (qualidMod qident, qualidId qident)
+      modid | elem ident [listId, consId, nilId, unitId] || isTupleId ident
+            = Id.moduleName preludeMIdent
+            | otherwise
+            = maybe (Id.moduleName mid) Id.moduleName mmod
+  return (QName Nothing Nothing modid $ name ident)
 
 --
 visitExternalName :: String -> FlatState String
 visitExternalName extname
-   = moduleId >>= \mid -> return (Id.moduleName mid ++ "." ++ extname)
+  = moduleId >>= \mid -> return (Id.moduleName mid ++ "." ++ extname)
 
 
--------------------------------------------------------------------------------
 -------------------------------------------------------------------------------
 
 --
 getVisibility :: Bool -> QualIdent -> FlatState Visibility
-getVisibility isConstr qident
-   = do public <- isPublic isConstr qident
-	if public then return Public else return Private
-
+getVisibility isConstr qident = do
+  public <- isPublic isConstr qident
+  return $ if public then Public else Private
 
 --
 getExportedImports :: FlatState [CS.IDecl]
-getExportedImports
-   = do mid  <- moduleId
-	exps <- exports
-	genExportedIDecls (Map.toList (getExpImports mid Map.empty exps))
+getExportedImports = do
+  mid  <- moduleId
+  exps <- exports
+  genExportedIDecls $ Map.toList $ getExpImports mid Map.empty exps
 
 --
 getExpImports :: ModuleIdent -> Map.Map ModuleIdent [CS.Export] -> [CS.Export]
 		 -> Map.Map ModuleIdent [CS.Export]
-getExpImports _ expenv [] = expenv
+getExpImports _      expenv [] = expenv
 getExpImports mident expenv ((CS.Export qident):exps)
-   = getExpImports mident
-	           (bindExpImport mident qident (CS.Export qident) expenv)
-		   exps
+  = getExpImports mident
+    (bindExpImport mident qident (CS.Export qident) expenv)
+    exps
 getExpImports mident expenv ((CS.ExportTypeWith qident idents):exps)
-   = getExpImports mident
-		   (bindExpImport mident
-		                  qident
-		                  (CS.ExportTypeWith qident idents)
-		                  expenv)
-		   exps
+  = getExpImports mident
+    (bindExpImport mident qident (CS.ExportTypeWith qident idents) expenv)
+    exps
 getExpImports mident expenv ((CS.ExportTypeAll qident):exps)
-   = getExpImports mident
-	 	   (bindExpImport mident qident (CS.ExportTypeAll qident) expenv)
-		   exps
+  = getExpImports mident
+    (bindExpImport mident qident (CS.ExportTypeAll qident) expenv)
+    exps
 getExpImports mident expenv ((CS.ExportModule mident'):exps)
-   = getExpImports mident (Map.insert mident' [] expenv) exps
+  = getExpImports mident (Map.insert mident' [] expenv) exps
 
 --
 bindExpImport :: ModuleIdent -> QualIdent -> CS.Export
 	         -> Map.Map ModuleIdent [CS.Export] -> Map.Map ModuleIdent [CS.Export]
 bindExpImport mident qident export expenv
-   | isJust (localIdent mident qident)
-     = expenv
-   | otherwise
-     = let (Just modid) = qualidMod qident
-       in  maybe (Map.insert modid [export] expenv)
-	         (\es -> Map.insert modid (export:es) expenv)
-		 (Map.lookup modid expenv)
+  | isJust (localIdent mident qident)
+  = expenv
+  | otherwise
+  = let (Just modid) = qualidMod qident
+    in  maybe (Map.insert modid [export] expenv)
+              (\es -> Map.insert modid (export:es) expenv)
+              (Map.lookup modid expenv)
 
 --
 genExportedIDecls :: [(ModuleIdent,[CS.Export])] -> FlatState [CS.IDecl]
@@ -510,53 +478,52 @@ genExportedIDecls mes = genExpIDecls [] mes
 --
 genExpIDecls :: [CS.IDecl] -> [(ModuleIdent,[CS.Export])] -> FlatState [CS.IDecl]
 genExpIDecls idecls [] = return idecls
-genExpIDecls idecls ((mid,exps):mes)
-   = do intf_ <- lookupModuleIntf mid
-	let idecls' = maybe idecls (p_genExpIDecls mid idecls exps) intf_
-	genExpIDecls idecls' mes
+genExpIDecls idecls ((mid,exps):mes) = do
+  intf_ <- lookupModuleIntf mid
+  let idecls' = maybe idecls (p_genExpIDecls mid idecls exps) intf_
+  genExpIDecls idecls' mes
  where
-   p_genExpIDecls mid1 idecls1 exps1 (CS.Interface _ _ ds)
-      | null exps1 = (map (qualifyIDecl mid1) ds) ++ idecls1
-      | otherwise = (filter (isExportedIDecl exps1)
-		            (map (qualifyIDecl mid1) ds))
-		    ++ idecls1
+  p_genExpIDecls mid1 idecls1 exps1 (CS.Interface _ _ ds)
+    | null exps1 = (map (qualifyIDecl mid1) ds) ++ idecls1
+    | otherwise = filter (isExportedIDecl exps1) (map (qualifyIDecl mid1) ds)
+                  ++ idecls1
 
 --
 isExportedIDecl :: [CS.Export] -> CS.IDecl -> Bool
 isExportedIDecl exprts (CS.IInfixDecl _ _ _ qident)
-   = isExportedQualIdent qident exprts
+  = isExportedQualIdent qident exprts
 isExportedIDecl exprts (CS.IDataDecl _ qident _ _)
-   = isExportedQualIdent qident exprts
+  = isExportedQualIdent qident exprts
 isExportedIDecl exprts (CS.ITypeDecl _ qident _ _)
-   = isExportedQualIdent qident exprts
+  = isExportedQualIdent qident exprts
 isExportedIDecl exprts (CS.IFunctionDecl _ qident _ _)
-   = isExportedQualIdent qident exprts
+  = isExportedQualIdent qident exprts
 isExportedIDecl _ _ = False
 
 --
 isExportedQualIdent :: QualIdent -> [CS.Export] -> Bool
 isExportedQualIdent _ [] = False
 isExportedQualIdent qident ((CS.Export qident'):exps)
-   = qident == qident' || isExportedQualIdent qident exps
+  = qident == qident' || isExportedQualIdent qident exps
 isExportedQualIdent qident ((CS.ExportTypeWith qident' _):exps)
-   = qident == qident' || isExportedQualIdent qident exps
+  = qident == qident' || isExportedQualIdent qident exps
 isExportedQualIdent qident ((CS.ExportTypeAll qident'):exps)
-   = qident == qident' || isExportedQualIdent qident exps
+  = qident == qident' || isExportedQualIdent qident exps
 isExportedQualIdent qident ((CS.ExportModule _):exps)
-   = isExportedQualIdent qident exps
+  = isExportedQualIdent qident exps
 
 --
 qualifyIDecl :: ModuleIdent -> CS.IDecl -> CS.IDecl
 qualifyIDecl mident (CS.IInfixDecl pos fixi prec qident)
-   = (CS.IInfixDecl pos fixi prec (qualQualify mident qident))
+  = (CS.IInfixDecl pos fixi prec (qualQualify mident qident))
 qualifyIDecl mident (CS.IDataDecl pos qident idents cdecls)
-   = (CS.IDataDecl pos (qualQualify mident qident) idents cdecls)
+  = (CS.IDataDecl pos (qualQualify mident qident) idents cdecls)
 qualifyIDecl mident (CS.INewtypeDecl pos qident idents ncdecl)
-   = (CS.INewtypeDecl pos (qualQualify mident qident) idents ncdecl)
+  = (CS.INewtypeDecl pos (qualQualify mident qident) idents ncdecl)
 qualifyIDecl mident (CS.ITypeDecl pos qident idents texpr)
-   = (CS.ITypeDecl pos (qualQualify mident qident) idents texpr)
+  = (CS.ITypeDecl pos (qualQualify mident qident) idents texpr)
 qualifyIDecl mident (CS.IFunctionDecl pos qident arity texpr)
-   = (CS.IFunctionDecl pos (qualQualify mident qident) arity texpr)
+  = (CS.IFunctionDecl pos (qualQualify mident qident) arity texpr)
 qualifyIDecl _ idecl = idecl
 
 
@@ -571,39 +538,35 @@ typeArity (IL.TypeVariable _)      = 0
 
 --
 genFlatApplication :: IL.Expression -> IL.Expression -> FlatState Expr
-genFlatApplication e1 e2
-   = genFlatApplic [e2] e1
- where
-   genFlatApplic args expression
-      = case expression of
-	  (IL.Apply expr1 expr2)
-	      -> genFlatApplic (expr2:args) expr1
-	  (IL.Function qident _)
-	      -> do arity_ <- lookupIdArity qident
-                    qname <- visitQualIdent qident
-		    maybe (internalError (funcArity qident))
-			  (\arity -> genFuncCall qname arity args)
-			  arity_
-	  (IL.Constructor qident _)
-	      -> do arity_ <- lookupIdArity qident
-                    qname <- visitQualIdent qident
-		    maybe (internalError (consArity qident))
-			  (\arity -> genConsCall qname arity args)
-			  arity_
-	  _   -> do expr <- visitExpression expression
-		    genApplicComb expr args
+genFlatApplication e1 e2 = genFlatApplic [e2] e1
+  where
+  genFlatApplic args expression = case expression of
+    (IL.Apply expr1 expr2) -> genFlatApplic (expr2:args) expr1
+    (IL.Function qident _) -> do 
+      arity_ <- lookupIdArity qident
+      qname <- visitQualIdent qident
+      maybe (internalError (funcArity qident))
+            (\arity -> genFuncCall qname arity args)
+            arity_
+    (IL.Constructor qident _) -> do
+      arity_ <- lookupIdArity qident
+      qname <- visitQualIdent qident
+      maybe (internalError (consArity qident))
+            (\arity -> genConsCall qname arity args)
+            arity_
+    _ -> do
+      expr <- visitExpression expression
+      genApplicComb expr args
 
 --
 genFuncCall :: QName -> Int -> [IL.Expression] -> FlatState Expr
 genFuncCall qname arity args
-   | arity > cnt
-     = genComb qname args (FuncPartCall (arity - cnt))
-   | arity < cnt
-     = do let (funcargs, applicargs) = splitAt arity args
-	  funccall <- genComb qname funcargs FuncCall
-	  genApplicComb funccall applicargs
-   | otherwise
-     = genComb qname args FuncCall
+  | arity > cnt = genComb qname args $ FuncPartCall $ arity - cnt
+  | arity < cnt = do 
+      let (funcargs, applicargs) = splitAt arity args
+      funccall <- genComb qname funcargs FuncCall
+      genApplicComb funccall applicargs
+   | otherwise  = genComb qname args FuncCall
  where cnt = length args
 
 --
@@ -628,13 +591,12 @@ genComb qname args combtype
 --
 genApplicComb :: Expr -> [IL.Expression] -> FlatState Expr
 genApplicComb expr [] = return expr
-genApplicComb expr (e1:es)
-   = do expr1 <- visitExpression e1
-	qname <- visitQualIdent qidApply
-	genApplicComb (Comb FuncCall qname [expr, expr1]) es
- where
- qidApply = qualifyWith preludeMIdent (mkIdent "apply")
-
+genApplicComb expr (e1:es) = do
+  expr1 <- visitExpression e1
+  qname <- visitQualIdent qidApply
+  genApplicComb (Comb FuncCall qname [expr, expr1]) es
+  where
+  qidApply = qualifyWith preludeMIdent (mkIdent "apply")
 
 --
 genOpDecls :: FlatState [OpDecl]
@@ -642,15 +604,15 @@ genOpDecls = fixities >>= mapM genOpDecl
 
 --
 genOpDecl :: CS.IDecl -> FlatState OpDecl
-genOpDecl (CS.IInfixDecl _ fixity prec qident)
-   = do qname <- visitQualIdent qident
-	return (Op qname (p_genOpFixity fixity) prec)
- where
-   p_genOpFixity CS.InfixL = InfixlOp
-   p_genOpFixity CS.InfixR = InfixrOp
-   p_genOpFixity CS.Infix  = InfixOp
+genOpDecl (CS.IInfixDecl _ fixity prec qident) = do
+  qname <- visitQualIdent qident
+  return $ Op qname (genFixity fixity) prec
 genOpDecl _ = internalError "GenFlatCurry: no infix interface"
 
+genFixity :: CS.Infix -> Fixity
+genFixity CS.InfixL = InfixlOp
+genFixity CS.InfixR = InfixrOp
+genFixity CS.Infix  = InfixOp
 
 -- The intermediate language (IL) does not represent type synonyms
 -- (and also no record declarations). For this reason an interface
@@ -662,17 +624,16 @@ genTypeSynonyms = typeSynonyms >>= mapM genTypeSynonym
 
 --
 genTypeSynonym :: CS.IDecl -> FlatState TypeDecl
-genTypeSynonym (CS.ITypeDecl _ qident params typeexpr)
-   = do let is = [0 .. (length params) - 1]
-        tyEnv <- gets typeEnvE
-        tcEnv <- gets tConsEnvE
-	let typeexpr' = elimRecordTypes tyEnv tcEnv typeexpr
-	texpr <- visitType (fst (cs2ilType (zip params is) typeexpr'))
-	qname <- visitQualTypeIdent qident
-	vis   <- getVisibility False qident
-	return (TypeSyn qname vis is texpr)
+genTypeSynonym (CS.ITypeDecl _ qident params ty) = do
+  let is = [0 .. (length params) - 1]
+  tyEnv <- gets typeEnvE
+  tcEnv <- gets tConsEnvE
+  let ty' = elimRecordTypes tyEnv tcEnv ty
+  texpr <- visitType $ snd $ cs2ilType (zip params is) ty'
+  qname <- visitQualTypeIdent qident
+  vis   <- getVisibility False qident
+  return $ TypeSyn qname vis is texpr
 genTypeSynonym _ = internalError "GenFlatCurry: no type synonym interface"
-
 
 -- In order to provide an interface for record declarations, 'genRecordTypes'
 -- generates dummy data declarations representing records together
@@ -713,7 +674,7 @@ genRecordLabel modid vis ([ident],typeexpr)
    = do tyEnv <- gets typeEnvE
         tcEnv <- gets tConsEnvE
 	let typeexpr' = elimRecordTypes tyEnv tcEnv typeexpr
-        texpr <- visitType (fst (cs2ilType vis typeexpr'))
+        texpr <- visitType (snd (cs2ilType vis typeexpr'))
 	qname <- visitQualIdent ((maybe qualify qualifyWith modid)
 				 (labelExtId ident))
 	return (Cons qname 1 Public [texpr])
@@ -762,8 +723,7 @@ elimRecordTypes tyEnv tcEnv (CS.RecordType fss _)
 
 matchTypeVars :: [(Ident,CS.TypeExpr)] -> Map.Map Int CS.TypeExpr
 	      -> (Ident, Type) -> Map.Map Int CS.TypeExpr
-matchTypeVars fs ms (l,ty)
-   = maybe ms (match ms ty) (lookup l fs)
+matchTypeVars fs ms (l,ty) = maybe ms (match ms ty) (lookup l fs)
   where
   match ms1 (TypeVariable i) typeexpr = Map.insert i typeexpr ms1
   match ms1 (TypeConstructor _ tys) (CS.ConstructorType _ typeexprs)
@@ -783,11 +743,8 @@ matchTypeVars fs ms (l,ty)
   matchList ms1 tys
      = foldl (\ms' (ty',typeexpr) -> match ms' ty' typeexpr) ms1 . zip tys
 
-
-flattenRecordTypeFields :: [([Ident],CS.TypeExpr)] -> [(Ident,CS.TypeExpr)]
-flattenRecordTypeFields
-   = concatMap (\ (labels, typeexpr)
-		-> map (\label -> (label,typeexpr)) labels)
+flattenRecordTypeFields :: [([Ident], CS.TypeExpr)] -> [(Ident, CS.TypeExpr)]
+flattenRecordTypeFields = concatMap (\ (ls, ty) -> map (\l -> (l, ty)) ls)
 
 -------------------------------------------------------------------------------
 
@@ -797,74 +754,62 @@ checkOverlapping expr1 expr2 = do
   opts <- compilerOpts
   when (optOverlapWarn opts) $ checkOverlap expr1 expr2
   where
-    checkOverlap (Case _ _ _ _) _ = do
-      qid <- functionId
-      genWarning (overlappingRules qid)
-    checkOverlap _ (Case _ _ _ _) = do
-      qid <- functionId
-      genWarning (overlappingRules qid)
-    checkOverlap _ _              = return ()
-
+  checkOverlap (Case _ _ _ _) _ = functionId >>= genWarning . overlappingRules
+  checkOverlap _ (Case _ _ _ _) = functionId >>= genWarning . overlappingRules
+  checkOverlap _ _              = return ()
 
 -------------------------------------------------------------------------------
 
 --
-cs2ilType :: [(Ident,Int)] -> CS.TypeExpr -> (IL.Type, [(Ident,Int)])
+cs2ilType :: [(Ident,Int)] -> CS.TypeExpr -> ([(Ident,Int)], IL.Type)
 cs2ilType ids (CS.ConstructorType qident typeexprs)
-   = let (ilTypeexprs, ids') = emap cs2ilType ids typeexprs
-     in  (IL.TypeConstructor qident ilTypeexprs, ids')
+  = let (ids', ilTypeexprs) = mapAccumL cs2ilType ids typeexprs
+    in  (ids', IL.TypeConstructor qident ilTypeexprs)
 cs2ilType ids (CS.VariableType ident)
-   = let mid        = lookup ident ids
-	 nid        | null ids  = 0
-		    | otherwise = 1 + snd (head ids)
-	 (ident1, ids') | isJust mid = (fromJust mid, ids)
-		    | otherwise  = (nid, (ident, nid):ids)
-     in  (IL.TypeVariable ident1, ids')
+  = let mid        = lookup ident ids
+        nid        | null ids  = 0
+                   | otherwise = 1 + snd (head ids)
+        (ident1, ids') | isJust mid = (fromJust mid, ids)
+                       | otherwise  = (nid, (ident, nid):ids)
+    in  (ids', IL.TypeVariable ident1)
 cs2ilType ids (CS.ArrowType type1 type2)
-   = let (ilType1, ids')  = cs2ilType ids type1
-	 (ilType2, ids'') = cs2ilType ids' type2
-     in  (IL.TypeArrow ilType1 ilType2, ids'')
+  = let (ids',  ilType1) = cs2ilType ids type1
+        (ids'', ilType2) = cs2ilType ids' type2
+    in  (ids'', IL.TypeArrow ilType1 ilType2)
 cs2ilType ids (CS.ListType typeexpr)
-   = let (ilTypeexpr, ids') = cs2ilType ids typeexpr
-     in  (IL.TypeConstructor (qualify listId) [ilTypeexpr], ids')
+  = let (ids', ilTypeexpr) = cs2ilType ids typeexpr
+    in  (ids', IL.TypeConstructor (qualify listId) [ilTypeexpr])
 cs2ilType ids (CS.TupleType typeexprs)
-   = case typeexprs of
-       []  -> (IL.TypeConstructor qUnitId [], ids)
-       [t] -> cs2ilType ids t
-       _   -> let (ilTypeexprs, ids') = emap cs2ilType ids typeexprs
-		  tuplen = length ilTypeexprs
-	      in  (IL.TypeConstructor (qTupleId tuplen) ilTypeexprs,
-		   ids')
-cs2ilType _ typeexpr = internalError ("GenFlatCurry.cs2ilType: " ++ show typeexpr)
-
+  = case typeexprs of
+    []  -> (ids, IL.TypeConstructor qUnitId [])
+    [t] -> cs2ilType ids t
+    _   -> let (ids', ilTypeexprs) = mapAccumL cs2ilType ids typeexprs
+               tuplen = length ilTypeexprs
+           in  (ids', IL.TypeConstructor (qTupleId tuplen) ilTypeexprs)
+cs2ilType _ typeexpr = internalError $ "GenFlatCurry.cs2ilType: " ++ show typeexpr
 
 -------------------------------------------------------------------------------
 -- Messages for internal errors and warnings
-funcArity :: (Show a) => a -> [Char]
-funcArity qid = "GenFlatCurry: missing arity for function \""
-		++ show qid ++ "\""
+funcArity :: Show a => a -> [Char]
+funcArity qid = "GenFlatCurry: missing arity for function \"" ++ show qid ++ "\""
 
-consArity :: (Show a) => a -> [Char]
+consArity :: Show a => a -> [Char]
 consArity qid = "GenFlatCurry: missing arity for constructor \""
-		++ show qid ++ "\""
+  ++ show qid ++ "\""
 
-missingVarIndex :: (Show a) => a -> [Char]
+missingVarIndex :: Show a => a -> [Char]
 missingVarIndex ident = "GenFlatCurry: missing index for \"" ++ show ident ++ "\""
 
 overlappingRules :: QualIdent -> [Char]
-overlappingRules qid =  "function \""
-		        ++ qualName qid
-		        ++ "\" is non-deterministic due to non-trivial "
-		        ++ "overlapping rules"
+overlappingRules qid = "function \"" ++ qualName qid
+  ++ "\" is non-deterministic due to non-trivial overlapping rules"
 
-
--------------------------------------------------------------------------------
 -------------------------------------------------------------------------------
 
 --
 isDataDecl :: IL.Decl -> Bool
 isDataDecl (IL.DataDecl _ _ _) = True
-isDataDecl _                = False
+isDataDecl _                   = False
 
 --
 isFuncDecl :: IL.Decl -> Bool
@@ -874,8 +819,8 @@ isFuncDecl _                         = False
 
 --
 isPublicDataDecl :: IL.Decl -> FlatState Bool
-isPublicDataDecl (IL.DataDecl qident _ _ ) = isPublic False qident
-isPublicDataDecl _                         = return False
+isPublicDataDecl (IL.DataDecl qident _ _) = isPublic False qident
+isPublicDataDecl _                        = return False
 
 --
 isPublicFuncDecl :: IL.Decl -> FlatState Bool
@@ -904,22 +849,11 @@ isOpIDecl :: CS.IDecl -> Bool
 isOpIDecl (CS.IInfixDecl _ _ _ _) = True
 isOpIDecl _                       = False
 
-
 --
 bindingIdent :: IL.Binding -> Ident
 bindingIdent (IL.Binding ident _) = ident
 
--------------------------------------------------------------------------------
--------------------------------------------------------------------------------
-
-emap :: (e -> a -> (b,e)) -> e -> [a] -> ([b], e)
-emap _ env []     = ([], env)
-emap f env (x:xs) = let (x',env')    = f env x
-			(xs', env'') = emap f env' xs
-		    in  ((x':xs'), env'')
-
--------------------------------------------------------------------------------
--------------------------------------------------------------------------------
+-- ---------------------------------------------------------------------------
 
 --
 moduleId :: FlatState ModuleIdent
@@ -931,7 +865,7 @@ functionId = gets (fst . functionIdE)
 
 --
 setFunctionId :: (QualIdent, [(Ident, IL.Type)]) -> FlatState ()
-setFunctionId qid = modify (\env -> env{ functionIdE = qid })
+setFunctionId qid = modify $ \ s -> s { functionIdE = qid }
 
 --
 compilerOpts :: FlatState Options
@@ -959,13 +893,12 @@ typeSynonyms = gets typeSynonymsE
 
 --
 isPublic :: Bool -> QualIdent -> FlatState Bool
-isPublic isConstr qid = gets (\env -> maybe False isP
-                                      (Map.lookup (unqualify qid)
-                                       (publicEnvE env)))
+isPublic isConstr qid = gets $ \ s -> maybe False isP
+  (Map.lookup (unqualify qid) $ publicEnvE s)
   where
-    isP NotConstr = not isConstr
-    isP OnlyConstr = isConstr
-    isP NotOnlyConstr = True
+  isP NotConstr     = not isConstr
+  isP OnlyConstr    = isConstr
+  isP NotOnlyConstr = True
 
 --
 lookupModuleIntf :: ModuleIdent -> FlatState (Maybe CS.Interface)
@@ -973,19 +906,18 @@ lookupModuleIntf mid = gets (Map.lookup mid . interfaceEnvE)
 
 --
 lookupIdArity :: QualIdent -> FlatState (Maybe Int)
-lookupIdArity qid = gets (lookupA qid . typeEnvE)
+lookupIdArity qid = gets (lookupA . typeEnvE)
   where
-  lookupA qid1 tyEnv = case qualLookupValue qid1 tyEnv of
+  lookupA tyEnv = case qualLookupValue qid tyEnv of
     [DataConstructor  _ a _] -> Just a
     [NewtypeConstructor _ _] -> Just 1
     [Value            _ a _] -> Just a
-    []                       -> case lookupValue (unqualify qid1) tyEnv of
+    []                       -> case lookupValue (unqualify qid) tyEnv of
       [DataConstructor  _ a _] -> Just a
       [NewtypeConstructor _ _] -> Just 1
       [Value            _ a _] -> Just a
       _                        -> Nothing
     _                        -> Nothing
-
 
 
 getTypeOf :: Ident -> FlatState (Maybe TypeExpr)
@@ -1001,111 +933,91 @@ getTypeOf ident = do
       trace' ("getTypeOfDataCon(" ++ show ident ++ ") = " ++ show t1) $
         return (Just t1)
     _ -> do
-    (_,ats) <- gets functionIdE
+    (_, ats) <- gets functionIdE
     case lookup ident ats of
       Just t -> liftM Just (visitType t)
       Nothing -> trace' ("lookupValue did not return a value for index " ++ show ident)
                  (return Nothing)
 
 ttrans :: Type -> IL.Type
-ttrans (TypeConstructor i ts)
-    = IL.TypeConstructor i (map ttrans ts)
-ttrans (TypeVariable v)
-    = IL.TypeVariable v
-ttrans (TypeConstrained [] v)
-    = IL.TypeVariable v
-ttrans (TypeConstrained (v:_) _)
-    = ttrans v
-ttrans (TypeArrow f x) = IL.TypeArrow (ttrans f) (ttrans x)
-ttrans s@(TypeSkolem _) = error $ "in ttrans: " ++ show s
-ttrans s@(TypeRecord _ _) = error $ "in ttrans: " ++ show s
-
-
+ttrans (TypeConstructor    i ts) = IL.TypeConstructor i (map ttrans ts)
+ttrans (TypeVariable          v) = IL.TypeVariable v
+ttrans (TypeConstrained    [] v) = IL.TypeVariable v
+ttrans (TypeConstrained (v:_) _) = ttrans v
+ttrans (TypeArrow           f x) = IL.TypeArrow (ttrans f) (ttrans x)
+ttrans s                         = internalError $ "in ttrans: " ++ show s
 
 -- Constructor (:) receives special treatment throughout the
 -- whole implementation. We won't depart from that for mere
 -- aesthetic reasons. (hsi)
 lookupIdType :: QualIdent -> FlatState (Maybe TypeExpr)
 lookupIdType (QualIdent Nothing (Ident _ "[]" _))
-    = return (Just l0)
-      where l0 = TCons (mkQName ("Prelude", "[]")) [TVar 0]
+  = return (Just l0)
+  where l0 = TCons (mkQName ("Prelude", "[]")) [TVar 0]
 lookupIdType (QualIdent Nothing (Ident _ ":" _))
-    = return (Just (FuncType (TVar 0) (FuncType (l0) (l0))))
-      where l0 = TCons (mkQName ("Prelude", "[]")) [TVar 0]
+  = return (Just (FuncType (TVar 0) (FuncType (l0) (l0))))
+  where l0 = TCons (mkQName ("Prelude", "[]")) [TVar 0]
 lookupIdType (QualIdent Nothing (Ident _ "()" _))
-    = return (Just l0)
-      where l0 = TCons (mkQName ("Prelude", "()")) []
+  = return (Just l0)
+  where l0 = TCons (mkQName ("Prelude", "()")) []
 lookupIdType (QualIdent Nothing (Ident _ t@('(':',':r) _))
-    = return (Just funtype)
-      where tupArity   = length r + 1
-            argTypes   = map TVar [1 .. tupArity]
-            contype    = TCons (mkQName ("Prelude", t)) argTypes
-            funtype    = foldr FuncType contype argTypes
+  = return $ Just funtype
+  where tupArity   = length r + 1
+        argTypes   = map TVar [1 .. tupArity]
+        contype    = TCons (mkQName ("Prelude", t)) argTypes
+        funtype    = foldr FuncType contype argTypes
 lookupIdType qid = do
   aEnv <- gets typeEnvE
   lt <- gets localTypes
   ct <- gets constrTypes
   case Map.lookup qid lt `mplus` Map.lookup qid ct of
-    Just t -> trace' ("lookupIdType local " ++ show (qid, t)) $ liftM Just (visitType t)  -- local name or constructor
+    Just t  -> trace' ("lookupIdType local " ++ show (qid, t)) $ liftM Just (visitType t)  -- local name or constructor
     Nothing -> case [ t | Value _ _ (ForAll _ t) <- qualLookupValue qid aEnv ] of
-                  t : _ -> liftM Just (visitType (translType t))  -- imported name
-                  []    -> case qualidMod qid of
-                            Nothing -> trace' ("no type for "  ++ show qid) $ return Nothing  -- no known type
-                            Just _ -> lookupIdType qid {qualidMod = Nothing}
+      t : _ -> liftM Just (visitType (translType t))  -- imported name
+      []    -> case qualidMod qid of
+        Nothing -> trace' ("no type for "  ++ show qid) $ return Nothing  -- no known type
+        Just _ -> lookupIdType qid {qualidMod = Nothing}
 --
 
 -- Generates a new index for a variable
 newVarIndex :: Ident -> FlatState VarIndex
-newVarIndex ident
-   = do idx0 <- gets varIndexE
-        ty <- getTypeOf ident
-        let idx = idx0 + 1
-            vid = VarIndex ty idx
-        vids <- gets varIdsE
-        modify (\env -> env{ varIndexE = idx,
-			     varIdsE   = ScopeEnv.insert ident vid vids
-			   })
-        return vid
+newVarIndex ident = do
+  idx <- (+1) `liftM` gets varIndexE
+  ty  <- getTypeOf ident
+  let vid = VarIndex ty idx
+  modify $ \ s -> s { varIndexE = idx, varIdsE = ScopeEnv.insert ident vid (varIdsE s) }
+  return vid
 
 --
 lookupVarIndex :: Ident -> FlatState VarIndex
-lookupVarIndex ident
-   = do index_ <- gets (ScopeEnv.lookup ident . varIdsE)
-        maybe (internalError (missingVarIndex ident)) return index_
+lookupVarIndex ident = do
+  index_ <- gets (ScopeEnv.lookup ident . varIdsE)
+  maybe (internalError $ missingVarIndex ident) return index_
 
 --
 clearVarIndices :: FlatState ()
-clearVarIndices = modify (\env -> env { varIndexE = 0,
-				        varIdsE = ScopeEnv.new
-				      })
+clearVarIndices = modify $ \ s -> s { varIndexE = 0, varIdsE = ScopeEnv.new }
 
 --
 genWarning :: String -> FlatState ()
-genWarning msg
-   = modify (\env -> env{ messagesE = warnMsg:(messagesE env) })
-    where warnMsg = Message Nothing msg
+genWarning msg = modify $ \ s -> s { messagesE = warnMsg : messagesE s }
+  where warnMsg = Message Nothing msg
 
 --
 genInterface :: FlatState Bool
 genInterface = gets genInterfaceE
 
---
-beginScope :: FlatState ()
-beginScope = modify
-	       (\env -> env { varIdsE  = ScopeEnv.beginScope (varIdsE env)
-			    })
-
---
-endScope :: FlatState ()
-endScope = modify
-	     (\env -> env { varIdsE  = ScopeEnv.endScope (varIdsE env)
-			  })
+inNewScope :: FlatState a -> FlatState a
+inNewScope act = do
+  modify $ \ s -> s { varIdsE  = ScopeEnv.beginScope $ varIdsE s }
+  res <- act
+  modify $ \ s -> s { varIdsE  = ScopeEnv.endScope $ varIdsE s }
+  return res
 
 --
 whenFlatCurry :: FlatState a -> FlatState a -> FlatState a
 whenFlatCurry genFlat genIntf
-   = genInterface >>= (\intf -> if intf then genIntf else genFlat)
-
+  = genInterface >>= (\intf -> if intf then genIntf else genFlat)
 
 -------------------------------------------------------------------------------
 
@@ -1118,46 +1030,43 @@ genPubEnv mid idecls = foldl (bindEnvIDecl mid) Map.empty idecls
 
 bindIdentExport :: Ident -> Bool -> Map.Map Ident IdentExport -> Map.Map Ident IdentExport
 bindIdentExport ident isConstr env =
-    maybe (Map.insert ident (if isConstr then OnlyConstr else NotConstr) env)
-          (\ ie -> Map.insert ident (updateIdentExport ie isConstr) env)
-          (Map.lookup ident env)
+  maybe (Map.insert ident (if isConstr then OnlyConstr else NotConstr) env)
+        (\ ie -> Map.insert ident (updateIdentExport ie isConstr) env)
+        (Map.lookup ident env)
   where
-    updateIdentExport OnlyConstr True  = OnlyConstr
-    updateIdentExport OnlyConstr False = NotOnlyConstr
-    updateIdentExport NotConstr True   = NotOnlyConstr
-    updateIdentExport NotConstr False  = NotConstr
-    updateIdentExport NotOnlyConstr _  = NotOnlyConstr
-
+  updateIdentExport OnlyConstr    True   = OnlyConstr
+  updateIdentExport OnlyConstr    False  = NotOnlyConstr
+  updateIdentExport NotConstr     True   = NotOnlyConstr
+  updateIdentExport NotConstr     False  = NotConstr
+  updateIdentExport NotOnlyConstr _      = NotOnlyConstr
 
 --
 bindEnvIDecl :: ModuleIdent -> Map.Map Ident IdentExport -> CS.IDecl -> Map.Map Ident IdentExport
 bindEnvIDecl mid env (CS.IDataDecl _ qid _ mcdecls)
-   = maybe env
-           (\ident -> foldl bindEnvConstrDecl
-	                 (bindIdentExport ident False env)
-	                 (catMaybes mcdecls))
-	   (localIdent mid qid)
+  = maybe env
+    (\ident -> foldl bindEnvConstrDecl (bindIdentExport ident False env)
+            (catMaybes mcdecls))
+    (localIdent mid qid)
 bindEnvIDecl mid env (CS.INewtypeDecl _ qid _ ncdecl)
-   = maybe env
-           (\ident -> bindEnvNewConstrDecl (bindIdentExport ident False env) ncdecl)
-	   (localIdent mid qid)
+  = maybe env
+    (\ident -> bindEnvNewConstrDecl (bindIdentExport ident False env) ncdecl)
+    (localIdent mid qid)
 bindEnvIDecl mid env (CS.ITypeDecl _ qid _ texpr)
-   = maybe env (\ident -> bindEnvITypeDecl env ident texpr) (localIdent mid qid)
+  = maybe env (\ident -> bindEnvITypeDecl env ident texpr) (localIdent mid qid)
 bindEnvIDecl mid env (CS.IFunctionDecl _ qid _ _)
-   = maybe env (\ident -> bindIdentExport ident False env) (localIdent mid qid)
+  = maybe env (\ident -> bindIdentExport ident False env) (localIdent mid qid)
 bindEnvIDecl _ env _ = env
 
 --
 bindEnvITypeDecl :: Map.Map Ident IdentExport -> Ident -> CS.TypeExpr
-		    -> Map.Map Ident IdentExport
+                 -> Map.Map Ident IdentExport
 bindEnvITypeDecl env ident (CS.RecordType fs _)
-   = bindIdentExport ident False (foldl (bindEnvRecordLabel ident) env fs)
-bindEnvITypeDecl env ident _
-   = bindIdentExport ident False env
+  = bindIdentExport ident False (foldl (bindEnvRecordLabel ident) env fs)
+bindEnvITypeDecl env ident _ = bindIdentExport ident False env
 
 --
 bindEnvConstrDecl :: Map.Map Ident IdentExport -> CS.ConstrDecl -> Map.Map Ident IdentExport
-bindEnvConstrDecl env (CS.ConstrDecl _ _ ident _)  = bindIdentExport ident True env
+bindEnvConstrDecl env (CS.ConstrDecl  _ _ ident _) = bindIdentExport ident True env
 bindEnvConstrDecl env (CS.ConOpDecl _ _ _ ident _) = bindIdentExport ident True env
 
 --
@@ -1167,14 +1076,10 @@ bindEnvNewConstrDecl env (CS.NewConstrDecl _ _ ident _) = bindIdentExport ident 
 --
 bindEnvRecordLabel :: Ident -> Map.Map Ident IdentExport -> ([Ident],CS.TypeExpr) -> Map.Map Ident IdentExport
 bindEnvRecordLabel r env ([lab], _) = bindIdentExport (recSelectorId (qualify r) lab) False expo
-    where
-      expo = (bindIdentExport (recUpdateId (qualify r) lab) False env)
+  where expo = (bindIdentExport (recUpdateId (qualify r) lab) False env)
 bindEnvRecordLabel _ _ _ = error "GenFlatCurry.bindEnvRecordLabel: no pattern match"
-
 
 splitoffArgTypes :: IL.Type -> [Ident] -> [(Ident, IL.Type)]
 splitoffArgTypes (IL.TypeArrow l r) (i:is) = (i, l):splitoffArgTypes r is
 splitoffArgTypes _ [] = []
 splitoffArgTypes _ _  = error "internal error in splitoffArgTypes"
-
-

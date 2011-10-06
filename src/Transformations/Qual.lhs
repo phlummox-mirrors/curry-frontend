@@ -203,7 +203,7 @@ declarations groups as well as function arguments remain unchanged.
 >       _   -> case qualLookupValue qmx tyEnv of
 >         [y] -> origName y
 >         _   -> qmx
->       where qmx        = qualQualify m x
+>       where qmx = qualQualify m x
 >   where isGlobal = (== 0) . uniqueId . unqualify
 
 > qualConstructor :: Qual QualIdent
@@ -215,6 +215,6 @@ declarations groups as well as function arguments remain unchanged.
 >     _   -> case qualLookupTC qmx tcEnv of
 >       [y] -> origName y
 >       _   -> qmx
->       where qmx        = qualQualify m x
+>       where qmx = qualQualify m x
 
 \end{verbatim}
