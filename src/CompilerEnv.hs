@@ -11,16 +11,12 @@
     This module defines an environment for a module containing the information
     needed throughout the compilation of the module.
 -}
-
--- TODO: rename to Base.ModuleEnv ?
-
 module CompilerEnv where
 
 import Curry.Base.Ident (ModuleIdent)
 
 import Env.Eval
 import Env.Interface
-import Env.Label
 import Env.ModuleAlias
 import Env.OpPrec
 import Env.TypeConstructors
@@ -34,7 +30,6 @@ data CompilerEnv = CompilerEnv
   , aliasEnv     :: AliasEnv     -- ^ aliases for imported modules
   , evalAnnotEnv :: EvalEnv      -- ^ evaluation annotations
   , interfaceEnv :: InterfaceEnv -- ^ declarations of imported interfaces
-  , labelEnv     :: LabelEnv     -- ^ record labels
   , opPrecEnv    :: PEnv         -- ^ operator precedences
   , tyConsEnv    :: TCEnv        -- ^ type constructors
   , valueEnv     :: ValueEnv     -- ^ functions and data constructors
@@ -46,7 +41,6 @@ initCompilerEnv mid = CompilerEnv
   , aliasEnv     = initAliasEnv
   , evalAnnotEnv = initEEnv
   , interfaceEnv = initInterfaceEnv
-  , labelEnv     = initLabelEnv
   , opPrecEnv    = initPEnv
   , tyConsEnv    = initTCEnv
   , valueEnv     = initDCEnv

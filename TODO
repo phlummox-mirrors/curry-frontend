@@ -2,14 +2,15 @@ Completed
 =========
 - Anonymous free variables implemented
 - hierarchically structured modules
-
-Still to do
-===========
-- !!! Check correctness of created FlatCurry files by comparison with the old frontend !!!
 - Records: There is no way to explicitly import a record with its fields:
     import CompilerOpts                -- okay, works
     import CompilerOpts (Options)      -- okay, but no field labels imported
     import CompilerOpts (Options (..)) -- fails: Options is not a data type
+
+Still to do
+===========
+- !!! Check correctness of created FlatCurry files by comparison
+  !!! with the old frontend
 - Module pragmas
 - type classes
 - option to disable nondeterminism by overlapping
