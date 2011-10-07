@@ -99,22 +99,23 @@ by which the variables get renamed.
 > modifyRenameEnv :: (RenameEnv -> RenameEnv) -> SCM ()
 > modifyRenameEnv f = S.modify $ \ s -> s { renameEnv = f $ renameEnv s }
 
+> incId :: SCM ()
+> incId = S.modify $ \ s -> s { currentId = succ $ currentId s }
+
+> getCurrentId :: SCM Integer
+> getCurrentId = S.gets currentId
+
+> newId :: SCM Integer
+> newId = incId >> getCurrentId
+
 > inNestedEnv :: SCM a -> SCM a
 > inNestedEnv act = do
 >   oldEnv <- getRenameEnv
 >   modifyRenameEnv nestEnv
->   S.modify $ \ s -> s { currentId = succ $ currentId s }
+>   incId
 >   res <- act
 >   modifyRenameEnv $ const oldEnv
 >   return res
-
-> newId :: SCM Integer
-> newId = do
->   S.modify $ \ s -> s { currentId = succ $ currentId s }
->   getCurrentId
-
-> getCurrentId :: SCM Integer
-> getCurrentId = S.gets currentId
 
 > report :: Message -> SCM ()
 > report msg = S.modify $ \ s -> s { errors = msg : errors s }

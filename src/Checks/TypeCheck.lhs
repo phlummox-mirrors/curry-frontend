@@ -27,7 +27,7 @@ type annotation is present.
 > import qualified Control.Monad.State as S (State, runState, gets, modify)
 > import Data.List (nub, partition)
 > import qualified Data.Map as Map (Map, empty, insert, lookup)
-> import Data.Maybe (catMaybes, fromJust, isJust, listToMaybe, maybeToList)
+> import Data.Maybe (catMaybes, fromJust, fromMaybe, isJust, listToMaybe, maybeToList)
 > import qualified Data.Set as Set (Set, fromList, member, notMember, unions)
 > import Text.PrettyPrint
 
@@ -436,22 +436,24 @@ signature the declared type must be too general.
 
 > genDecl :: ModuleIdent -> TCEnv -> SigEnv -> Set.Set Int -> TypeSubst -> Decl
 >         -> TCM ()
-> genDecl m tcEnv sigs lvs theta (FunctionDecl _ f _) =
->   modifyValueEnv (genVar True m tcEnv sigs lvs theta f)
-> genDecl m tcEnv sigs lvs theta (PatternDecl  _ t _) =
->   mapM_ (modifyValueEnv . genVar False m tcEnv sigs lvs theta ) (bv t)
+> genDecl m tcEnv sigs lvs theta (FunctionDecl _ f (Equation _ lhs _ : _)) =
+>   modifyValueEnv (genVar True m tcEnv sigs lvs theta arity f)
+>   where arity = Just $ length $ snd $ flatLhs lhs
+> genDecl m tcEnv sigs lvs theta (PatternDecl  _ t   _) =
+>   mapM_ (modifyValueEnv . genVar False m tcEnv sigs lvs theta Nothing) (bv t)
 > genDecl _ _ _ _ _ _ = internalError "TypeCheck.genDecl: no pattern match"
 
 > genVar :: Bool -> ModuleIdent -> TCEnv -> SigEnv -> Set.Set Int -> TypeSubst
->        -> Ident -> ValueEnv -> ValueEnv
-> genVar poly m tcEnv sigs lvs theta v tyEnv = case lookupTypeSig v sigs of
+>        -> Maybe Int -> Ident -> ValueEnv -> ValueEnv
+> genVar poly m tcEnv sigs lvs theta ma v tyEnv = case lookupTypeSig v sigs of
 >   Just sigTy
 >     | cmpTypes sigma (expandPolyType m tcEnv sigTy) -> tyEnv'
 >     | otherwise -> errorAt (positionOfIdent v)
 >                            (errTypeSigTooGeneral m what sigTy sigma)
 >   Nothing -> tyEnv'
 >   where what = text (if poly then "Function:" else "Variable:") <+> ppIdent v
->         tyEnv' = rebindFun m v (varArity v tyEnv) sigma tyEnv
+>         tyEnv' = rebindFun m v arity sigma tyEnv
+>         arity  = fromMaybe (varArity v tyEnv) ma
 >         sigma = genType poly (subst theta (varType v tyEnv))
 >         genType poly' (ForAll n ty)
 >           | n > 0 = internalError $ "TypeCheck.genVar: " ++ showLine (positionOfIdent v) ++ show v ++ " :: " ++ show ty

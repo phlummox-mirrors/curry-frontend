@@ -30,7 +30,6 @@ lifted to the top-level.
 > import Base.Expr
 > import Base.Messages (internalError)
 > import Base.SCC
-> import Base.TopEnv
 > import Base.Types
 
 > import Env.Eval (EvalEnv)
@@ -195,15 +194,17 @@ in the type environment.
 >   where tys = map (varType tyEnv) fvs
 >         abstractFunType f tyEnv' =
 >           qualBindFun m (liftIdent pre f)
->                         (foldr TypeArrow (varType tyEnv' f) tys)
+>                         (length fvs + varArity tyEnv' f) -- (arrowArity ty)
+>                         (polyType ty)
 >                         (unbindFun f tyEnv')
+>           where ty = foldr TypeArrow (varType tyEnv' f) tys
 
 > abstractFunAnnots :: ModuleIdent -> String -> [Ident] -> EvalEnv -> EvalEnv
 > abstractFunAnnots _ pre fs evEnv = foldr abstractFunAnnot evEnv fs
->   where abstractFunAnnot f evEnv' =
->           case Map.lookup f evEnv' of
->             Just ev -> Map.insert (liftIdent pre f) ev (Map.delete f evEnv')
->             Nothing -> evEnv'
+>   where 
+>   abstractFunAnnot f evEnv' = case Map.lookup f evEnv' of
+>     Just ev -> Map.insert (liftIdent pre f) ev (Map.delete f evEnv')
+>     Nothing -> evEnv'
 
 > abstractFunDecl :: String -> [Ident] -> [Ident]
 >                 -> AbstractEnv -> Decl -> LiftM Decl
@@ -305,18 +306,15 @@ to the top-level.
 > apply :: Expression -> [Expression] -> Expression
 > apply = foldl Apply
 
-> qualBindFun :: ModuleIdent -> Ident -> Type -> ValueEnv -> ValueEnv
-> qualBindFun m f ty = qualBindTopEnv "Lift.qualBindFun" qf $
->   Value qf (arrowArity ty) (polyType ty)
->   where qf = qualifyWith m f
-
-> unbindFun :: Ident -> ValueEnv -> ValueEnv
-> unbindFun = unbindTopEnv
+> varArity :: ValueEnv -> Ident -> Int
+> varArity tyEnv v = case lookupValue v tyEnv of
+>   [Value _ a _] -> a
+>   _ -> internalError $ "Lift.varArity: " ++ show v
 
 > varType :: ValueEnv -> Ident -> Type
 > varType tyEnv v = case lookupValue v tyEnv of
 >   [Value _ _ (ForAll _ ty)] -> ty
->   _ -> internalError $ "Lift.varType " ++ show v
+>   _ -> internalError $ "Lift.varType: " ++ show v
 
 > liftIdent :: String -> Ident -> Ident
 > liftIdent prefix x = renameIdent (mkIdent $ prefix ++ show x) $ uniqueId x

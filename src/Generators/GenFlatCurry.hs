@@ -249,25 +249,27 @@ visitFuncDecl (IL.FunctionDecl qident params typeexpr expression) = do
   let argtypes = splitoffArgTypes typeexpr params
   setFunctionId (qident, argtypes)
   qname <- visitQualIdent qident
+  arity <- fromMaybe (length params) `liftM` lookupIdArity qident
   whenFlatCurry
     (do is    <- mapM newVarIndex params
         texpr <- visitType typeexpr
         expr  <- visitExpression expression
         vis   <- getVisibility False qident
         clearVarIndices
-        return (Func qname (length params) vis texpr (Rule is expr))
+        return (Func qname arity vis texpr (Rule is expr))
     )
     (do texpr <- visitType typeexpr
         clearVarIndices
-        return (Func qname (length params) Public texpr (Rule [] (Var $ mkIdx 0)))
+        return (Func qname arity Public texpr (Rule [] (Var $ mkIdx 0)))
     )
 visitFuncDecl (IL.ExternalDecl qident _ extname typeexpr) = do
   setFunctionId (qident, [])
   texpr <- visitType typeexpr
   qname <- visitQualIdent qident
+  arity <- fromMaybe (typeArity typeexpr) `liftM` lookupIdArity qident
   vis   <- getVisibility False qident
   xname <- visitExternalName extname
-  return $ Func qname (typeArity typeexpr) vis texpr (External xname)
+  return $ Func qname arity vis texpr (External xname)
 visitFuncDecl (IL.NewtypeDecl _ _ _) = do
   mid <- moduleId
   internalError $ "\"" ++ Id.moduleName mid

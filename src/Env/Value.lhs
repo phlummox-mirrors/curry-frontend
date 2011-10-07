@@ -11,7 +11,8 @@ are considered equal if their original names match.
 \begin{verbatim}
 
 > module Env.Value
->   ( ValueEnv, ValueInfo (..), bindGlobalInfo, bindFun, rebindFun, bindLabel
+>   ( ValueEnv, ValueInfo (..)
+>   , bindGlobalInfo, bindFun, qualBindFun, rebindFun, unbindFun, bindLabel
 >   , lookupValue, qualLookupValue, qualLookupCons, lookupTuple, tupleDCs
 >   , initDCEnv, ppTypes ) where
 
@@ -80,6 +81,11 @@ allow the usage of the qualified list constructor \texttt{(Prelude.:)}.
 >         v   = Value qf a ty
 >         fun = "Base.bindFun"
 
+> qualBindFun :: ModuleIdent -> Ident -> Int -> TypeScheme -> ValueEnv -> ValueEnv
+> qualBindFun m f a ty = qualBindTopEnv "Base.qualBindFun" qf $
+>   Value qf a ty
+>   where qf = qualifyWith m f
+
 > rebindFun :: ModuleIdent -> Ident -> Int -> TypeScheme -> ValueEnv
 >           -> ValueEnv
 > rebindFun m f a ty
@@ -87,6 +93,9 @@ allow the usage of the qualified list constructor \texttt{(Prelude.:)}.
 >   | otherwise       = rebindTopEnv f v
 >   where qf = qualifyWith m f
 >         v = Value qf a ty
+
+> unbindFun :: Ident -> ValueEnv -> ValueEnv
+> unbindFun = unbindTopEnv
 
 > bindLabel :: Ident -> QualIdent -> TypeScheme -> ValueEnv -> ValueEnv
 > bindLabel l r ty tyEnv = bindTopEnv "Base.bindLabel" l v tyEnv
