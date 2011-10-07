@@ -15,6 +15,5 @@ Still to do
 - option to disable nondeterminism by overlapping
 - option/check for case mode
 - FFI for C (Haskell?)
-- Extend error messages of the type checker (and maybe others, too) 
+- Extend error messages of the type checker (and maybe others, too)
   with the origin of the inferred types in case of a type conflict
-- Split Renaming and TypeChecking into two modules?
