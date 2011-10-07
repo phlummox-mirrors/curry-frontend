@@ -35,19 +35,18 @@ import Env.Value
 
 import CompilerEnv
 import CompilerOpts
-import Records (importLabels, recordExpansion1, recordExpansion2)
+import Records (expandTCValueEnv, expandValueEnv)
 
 -- |The function 'importModules' brings the declarations of all
 -- imported interfaces into scope for the current module.
 importModules :: Options -> Module -> InterfaceEnv -> CompilerEnv
 importModules opts (Module mid _ imps _) iEnv
-  = recordExpansion1 opts
+  = expandTCValueEnv opts
   $ importUnifyData
   $ foldl importModule initEnv imps
   where
     initEnv = (initCompilerEnv mid)
       { aliasEnv     = importAliases     imps -- import module aliases
-      , labelEnv     = importLabels iEnv imps -- import record labels
       , interfaceEnv = iEnv                   -- imported interfaces
       }
     importModule env (ImportDecl _ m q asM is) = case Map.lookup m iEnv of
@@ -97,6 +96,16 @@ importInterface m q is i env = env
   expandedSpec = maybe [] (expandSpecs m mTCEnv mTyEnv) is
   ts = isVisible is (Set.fromList $ foldr addType  [] expandedSpec)
   vs = isVisible is (Set.fromList $ foldr addValue [] expandedSpec)
+
+addType :: Import -> [Ident] -> [Ident]
+addType (Import            _) tcs = tcs
+addType (ImportTypeWith tc _) tcs = tc : tcs
+addType (ImportTypeAll     _) _   = internalError "Imports.addType"
+
+addValue :: Import -> [Ident] -> [Ident]
+addValue (Import            f) fs = f : fs
+addValue (ImportTypeWith _ cs) fs = cs ++ fs
+addValue (ImportTypeAll     _) _  = internalError "Imports.addValue"
 
 isVisible :: Maybe ImportSpec -> Set.Set Ident -> Ident -> Bool
 isVisible (Just (Importing _ _)) xs = (`Set.member`    xs)
@@ -185,7 +194,7 @@ bindTy m (INewtypeDecl _ tc tvs nc) env =
   bindNewConstr m tc' tvs (constrType tc' tvs) nc env
   where tc' = qualQualify m tc
 bindTy m (ITypeDecl _ r _ (RecordType fs _)) env =
-  foldr (bindRecLabel m r') env fs
+  foldr (bindRecordLabels m r') env fs
   where r' = qualifyWith m $ fromRecordExtId $ unqualify r
 bindTy m (IFunctionDecl _ f a ty) env = Map.insert (unqualify f)
   (Value (qualQualify m f) a (polyType (toQualType m [] ty))) env
@@ -213,11 +222,15 @@ constrType' m tvs evs ty = ForAllExist (length tvs) (length evs)
 qualifyLike :: QualIdent -> Ident -> QualIdent
 qualifyLike x = maybe qualify qualifyWith (qualidMod x)
 
-bindRecLabel :: ModuleIdent -> QualIdent -> ([Ident], TypeExpr) -> ExpValueEnv
-             -> ExpValueEnv
-bindRecLabel m r (ls, ty) env = foldr bindL env ls
+bindRecordLabels :: ModuleIdent -> QualIdent -> ([Ident], TypeExpr)
+                 -> ExpValueEnv -> ExpValueEnv
+bindRecordLabels m r (ls, ty) env = foldr bindLbl env ls
   where
-  bindL l = Map.insert l $ Label (qualify l) r $ polyType $ toQualType m [] ty
+  bindLbl l = Map.insert l (lblInfo l)
+  lblInfo l = Label (qualify l) r (polyType $ toQualType m [] ty)
+
+constrType :: QualIdent -> [Ident] -> TypeExpr
+constrType tc tvs = ConstructorType tc $ map VariableType tvs
 
 -- ---------------------------------------------------------------------------
 -- Expansion of the import specification
@@ -307,40 +320,33 @@ expandHide' m tyEnv f tcImport = case Map.lookup f tyEnv of
 
 expandTypeWith ::  ModuleIdent -> ExpTCEnv -> Ident -> [Ident] -> Import
 expandTypeWith m tcEnv tc cs = case Map.lookup tc tcEnv of
-  Just (DataType _ _ cs') -> ImportTypeWith tc
-    (map (checkConstr [c | Just (DataConstr c _ _) <- cs']) cs)
-  Just (RenamingType _ _ (DataConstr c _ _)) ->
-    ImportTypeWith tc (map (checkConstr [c]) cs)
-  Just _  -> errorMessage $ errNonDataType tc
-  Nothing -> errorMessage $ errUndefinedEntity m tc
+  Just (DataType     _ _                cs') -> ImportTypeWith tc $
+    map (checkConstr [c | Just (DataConstr c _ _) <- cs']) cs
+  Just (RenamingType _ _ (DataConstr c _ _)) -> ImportTypeWith tc $
+    map (checkConstr [c]) cs
+  Just (AliasType    _ _ (TypeRecord  fs _)) -> ImportTypeWith tc $
+    map (checkLabel [l | (l, _) <- fs] . renameLabel) cs
+  Just (AliasType _ _ _) -> errorMessage $ errNonDataType tc
+  Nothing                -> errorMessage $ errUndefinedEntity m tc
   where
-    checkConstr cs' c
-      | c `elem` cs' = c
-      | otherwise    = errorMessage $ errUndefinedDataConstr tc c
+  checkConstr cs' c
+    | c `elem` cs' = c
+    | otherwise    = errorMessage $ errUndefinedDataConstr tc c
+  checkLabel ls' l
+    | l `elem` ls' = l
+    | otherwise    = errorMessage $ errUndefinedLabel tc l
+
 
 expandTypeAll :: ModuleIdent -> ExpTCEnv -> Ident -> Import
 expandTypeAll m tcEnv tc = case Map.lookup tc tcEnv of
-  Just (DataType _ _ cs) ->
-    ImportTypeWith tc [c | Just (DataConstr c _ _) <- cs]
-  Just (RenamingType _ _ (DataConstr c _ _)) ->
-    ImportTypeWith tc [c]
-  Just _  -> errorMessage $ errNonDataType tc
-  Nothing -> errorMessage $ errUndefinedEntity m tc
-
--- Auxiliary functions:
-
-addType :: Import -> [Ident] -> [Ident]
-addType (Import            _) tcs = tcs
-addType (ImportTypeWith tc _) tcs = tc : tcs
-addType (ImportTypeAll     _) _   = internalError "Imports.addType"
-
-addValue :: Import -> [Ident] -> [Ident]
-addValue (Import            f) fs = f : fs
-addValue (ImportTypeWith _ cs) fs = cs ++ fs
-addValue (ImportTypeAll     _) _  = internalError "Imports.addValue"
-
-constrType :: QualIdent -> [Ident] -> TypeExpr
-constrType tc tvs = ConstructorType tc $ map VariableType tvs
+  Just (DataType     _ _                 cs) -> ImportTypeWith tc
+    [c | Just (DataConstr c _ _) <- cs]
+  Just (RenamingType _ _ (DataConstr c _ _)) -> ImportTypeWith tc
+    [c]
+  Just (AliasType    _ _ (TypeRecord  fs _)) -> ImportTypeWith tc
+    [l | (l, _) <- fs]
+  Just (AliasType _ _ _) -> errorMessage $ errNonDataType tc
+  Nothing                -> errorMessage $ errUndefinedEntity m tc
 
 -- ---------------------------------------------------------------------------
 
@@ -363,7 +369,7 @@ importUnifyData' tcEnv = fmap (setInfo allTyCons) tcEnv
 
 -- |
 qualifyEnv :: Options -> CompilerEnv -> CompilerEnv
-qualifyEnv opts env = recordExpansion2 opts
+qualifyEnv opts env = expandValueEnv opts
                     $ qualifyLocal env
                     $ foldl (flip importInterfaceIntf) initEnv
                     $ Map.elems
@@ -411,6 +417,10 @@ errUndefinedEntity m x = posErr x $
 errUndefinedDataConstr :: Ident -> Ident -> Message
 errUndefinedDataConstr tc c = posErr c $
   name c ++ " is not a data constructor of type " ++ name tc
+
+errUndefinedLabel :: Ident -> Ident -> Message
+errUndefinedLabel tc c = posErr c $
+  name c ++ " is not a label of record type " ++ name tc
 
 errNonDataType :: Ident -> Message
 errNonDataType tc = posErr tc $ name tc ++ " is not a data type"
