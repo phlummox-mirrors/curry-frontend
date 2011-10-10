@@ -15,6 +15,7 @@
 -}
 module CurryBuilder (buildCurry, smake) where
 
+import qualified Control.Exception as C (SomeException (..), catch)
 import Control.Monad (liftM)
 import Data.Maybe (catMaybes, mapMaybe)
 import System.Time (ClockTime)
@@ -121,7 +122,8 @@ smake dests deps actOutdated actUpToDate = do
     outOfDate tgtimes dptimes = or [ tg < dp | tg <- tgtimes, dp <- dptimes]
 
     abortOnError :: IO a -> IO a
-    abortOnError act = catch act (\ err -> abortWith [show err])
+    abortOnError act = C.catch act handler
+      where handler (C.SomeException e) = abortWith [show e]
 
 errMissingFile :: FilePath -> String
 errMissingFile f = "Missing file \"" ++ f ++ "\""
