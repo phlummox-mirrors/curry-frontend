@@ -32,7 +32,7 @@ import Curry.Base.Ident
 import Curry.Base.MessageMonad
 import Curry.Files.Filenames
 import Curry.Files.PathUtils
-import Curry.Syntax (Module (..),  ImportDecl (..), parseHeader)
+import Curry.Syntax (Module (..),  ImportDecl (..), parseHeader, patchModuleId)
 
 import Base.Messages (internalError)
 import Base.SCC (scc)
@@ -86,7 +86,7 @@ targetDeps opts paths sEnv fn = do
 -- |Retrieve the dependencies of a given source file
 sourceDeps :: Options -> [FilePath] -> SourceEnv -> FilePath -> IO SourceEnv
 sourceDeps opts paths sEnv fn = do
-  hdr <- (ok . parseHeader fn) `liftM` readModule fn
+  hdr <- patchModuleId fn `liftM` (ok . parseHeader fn) `liftM` readModule fn
   moduleDeps opts paths sEnv fn hdr
 
 -- |Retrieve the dependencies of a given module
@@ -120,7 +120,8 @@ moduleIdentDeps opts paths sEnv m = case Map.lookup m sEnv of
   where
     libraryPaths = optImportPaths opts
     checkModuleHeader fn = do
-      hdr@(Module m' _ _ _) <- (ok . parseHeader fn) `liftM` readModule fn
+      hdr@(Module m' _ _ _) <- patchModuleId fn `liftM` (ok . parseHeader fn) 
+                               `liftM` readModule fn
       unless (m == m') $ error $ errWrongModule m m'
       moduleDeps opts paths sEnv fn hdr
 
@@ -149,7 +150,6 @@ flattenDeps = fdeps . sortDeps
 errWrongModule :: ModuleIdent -> ModuleIdent -> String
 errWrongModule m m' =
   "Expected module for " ++ show m ++ " but found " ++ show m'
-  ++ show (moduleQualifiers m, moduleQualifiers m')
 
 errCyclicImport :: [ModuleIdent] -> String
 errCyclicImport []  = internalError "CurryDeps.errCyclicImport: empty list"

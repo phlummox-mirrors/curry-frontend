@@ -114,7 +114,7 @@ loadModule opts fn = do
 checkModuleHeader :: Options -> FilePath -> CS.Module -> (CS.Module, [String])
 checkModuleHeader opts fn = checkModuleId fn
                           . importPrelude opts
-                          . patchModuleId fn
+                          . CS.patchModuleId fn
 
 -- |Check whether the 'ModuleIdent' and the 'FilePath' fit together
 checkModuleId :: FilePath -> CS.Module -> (CS.Module, [String])
@@ -146,17 +146,6 @@ importPrelude opts m@(CS.Module mid es is ds)
                    Nothing -- no alias
                    Nothing -- no selection of types, functions, etc.
     imported     = [imp | (CS.ImportDecl _ imp _ _ _) <- is]
-
--- A module which doesn't contain a \texttt{module ... where} declaration
--- obtains its filename as module identifier (unlike the definition in
--- Haskell and original MCC where a module obtains \texttt{main}).
-
-patchModuleId :: FilePath -> CS.Module -> CS.Module
-patchModuleId fn m@(CS.Module mid es is ds)
-  | mid == mainMIdent
-    = CS.Module (mkMIdent [takeBaseName fn]) es is ds
-  | otherwise
-    = m
 
 -- ---------------------------------------------------------------------------
 -- Checking a module
