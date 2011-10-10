@@ -28,7 +28,7 @@ import Base.TopEnv
 import Base.Types
 
 import Env.Interface
-import Env.ModuleAlias
+import Env.ModuleAlias (importAliases)
 import Env.OpPrec
 import Env.TypeConstructors
 import Env.Value

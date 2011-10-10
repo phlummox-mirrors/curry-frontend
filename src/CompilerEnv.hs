@@ -27,21 +27,21 @@ import Env.Value
 --  compilation.
 data CompilerEnv = CompilerEnv
   { moduleIdent  :: ModuleIdent  -- ^ identifier of the module
-  , aliasEnv     :: AliasEnv     -- ^ aliases for imported modules
-  , evalAnnotEnv :: EvalEnv      -- ^ evaluation annotations
   , interfaceEnv :: InterfaceEnv -- ^ declarations of imported interfaces
-  , opPrecEnv    :: PEnv         -- ^ operator precedences
+  , aliasEnv     :: AliasEnv     -- ^ aliases for imported modules
   , tyConsEnv    :: TCEnv        -- ^ type constructors
   , valueEnv     :: ValueEnv     -- ^ functions and data constructors
+  , opPrecEnv    :: PEnv         -- ^ operator precedences
+  , evalAnnotEnv :: EvalEnv      -- ^ evaluation annotations
   } deriving Show
 
 initCompilerEnv :: ModuleIdent -> CompilerEnv
 initCompilerEnv mid = CompilerEnv
   { moduleIdent  = mid
-  , aliasEnv     = initAliasEnv
-  , evalAnnotEnv = initEEnv
   , interfaceEnv = initInterfaceEnv
-  , opPrecEnv    = initPEnv
+  , aliasEnv     = initAliasEnv
   , tyConsEnv    = initTCEnv
   , valueEnv     = initDCEnv
+  , opPrecEnv    = initPEnv
+  , evalAnnotEnv = initEEnv
   }
