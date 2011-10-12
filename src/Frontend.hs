@@ -106,7 +106,7 @@ makeInterfaces paths fn mdl = do
 mkOpts :: [FilePath] -> Options
 mkOpts paths = defaultOptions
   { optImportPaths = paths
-  , optVerbosity   = Quiet
+  , optVerbosity   = VerbQuiet
   , optWarn        = False
   , optTargetTypes = [AbstractCurry]
   }

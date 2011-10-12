@@ -51,7 +51,7 @@ defaultOptions = Options
   { optHelp        = False
   , optVersion     = False
   , optHtml        = False
-  , optVerbosity   = Verbose
+  , optVerbosity   = VerbStatus
   , optForce       = False
   , optImportPaths = []
   , optOutput      = Nothing
@@ -76,14 +76,17 @@ data TargetType
 
 -- |Data type representing the verbosity level
 data Verbosity
-  = Quiet
-  | Verbose
-    deriving Eq
+  = VerbQuiet  -- ^ be queit
+  | VerbStatus -- ^ show status of compilation
+  | VerbInfo   -- ^ show also additional info
+    deriving (Eq, Ord)
 
 -- |Classifies a number as a 'Verbosity'
-classifyVerbosity :: String -> Verbosity
-classifyVerbosity "0" = Quiet
-classifyVerbosity _   = Verbose
+classifyVerbosity :: String -> Verbosity -> Verbosity
+classifyVerbosity "0" _ = VerbQuiet
+classifyVerbosity "1" _ = VerbStatus
+classifyVerbosity "2" _ = VerbInfo
+classifyVerbosity _   v = v
 
 -- |Data type for representing code dumps
 data DumpLevel
@@ -137,10 +140,10 @@ options =
       "generate html code"
   , Option "v"  ["verbosity"]
       (ReqArg (\ arg opts -> opts { optVerbosity =
-        classifyVerbosity arg }) "<n>")
+        classifyVerbosity arg $ optVerbosity opts}) "<n>")
       "set verbosity level to <n>"
   , Option "" ["no-verb"]
-      (NoArg (\ opts -> opts { optVerbosity = Quiet } ))
+      (NoArg (\ opts -> opts { optVerbosity = VerbQuiet } ))
       "set verbosity level to quiet"
   -- compilation
   , Option "f"  ["force"]

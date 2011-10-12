@@ -17,10 +17,12 @@ import Curry.Base.Position (Position)
 import CompilerOpts (Options (optVerbosity), Verbosity (..))
 
 info :: Options -> String -> IO ()
-info opts msg = unless (optVerbosity opts == Quiet) (putStrLn msg)
+info opts msg = unless (optVerbosity opts < VerbInfo)
+                       (putStrLn $ msg ++ " ...")
 
 status :: Options -> String -> IO ()
-status opts msg = info opts (msg ++ " ...")
+status opts msg = unless (optVerbosity opts < VerbStatus)
+                         (putStrLn $ msg ++ " ...")
 
 -- |Print an error message on 'stderr'
 putErrLn :: String -> IO ()

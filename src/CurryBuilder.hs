@@ -25,7 +25,7 @@ import Curry.Files.Filenames
 import Curry.Files.PathUtils ( dropExtension, doesModuleExist, lookupCurryFile
   , getModuleModTime, tryGetModuleModTime)
 
-import Base.Messages (status, abortWith)
+import Base.Messages (info, status, abortWith)
 
 import CompilerOpts (Options (..), TargetType (..))
 import CurryDeps (Source (..), flatDeps)
@@ -70,7 +70,7 @@ makeCurry opts srcs targetFile = mapM_ (compile . snd) srcs where
     status opts $ "compiling " ++ f
     compileModule (opts { optTargetTypes = [FlatCurry], optDumps = [] }) f
 
-  skipFile f = status opts $ "skipping " ++ f
+  skipFile f = info opts $ "skipping " ++ f
 
   generateFile f = do
     status opts $ "generating " ++ head (destNames f)
