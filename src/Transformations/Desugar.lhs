@@ -296,7 +296,8 @@ with a local declaration for $v$.
 >   AsPattern      v t' -> desugarAs p v `liftM` desugarLazy pos p ds t'
 >   LazyPattern pos' t' -> desugarLazy pos' p ds t'
 >   _                   -> do
->    v0 <- getValueEnv >>= freshIdent "_#lazy" . monoType . flip typeOf t
+>    ty <- getTypeOf t
+>    v0 <- freshIdent "_#lazy" (arrowArity ty) (monoType ty) -- TODO (2011-10-12, bjp): Is this arity computation correct?
 >    let v' = addPositionIdent (AST pos) v0
 >    return (patDecl p{astRef=pos} t (mkVar v') : ds, VariablePattern v')
 
@@ -388,7 +389,8 @@ type \texttt{Bool} of the guard because the guard's type defaults to
 >     e' <- desugarExpr p e
 >     return (Apply (Apply prelFlip op') e')
 > desugarExpr p expr@(Lambda r ts e) = do
->   f <- getValueEnv >>= freshIdent "_#lambda" . polyType . flip typeOf expr
+>   ty <- getTypeOf expr
+>   f  <- freshIdent "_#lambda" (length ts) (polyType ty)
 >   desugarExpr p $ Let [funDecl (AST r) f ts e] $ mkVar f
 > desugarExpr p (Let ds e) = do
 >     ds' <- desugarDeclGroup ds
@@ -407,9 +409,10 @@ type \texttt{Bool} of the guard because the guard's type defaults to
 > desugarExpr p (Case r e alts)
 >   | null alts = return prelFailed
 >   | otherwise = do
->         m <- getModuleIdent
+>         m  <- getModuleIdent
 >         e' <- desugarExpr p e
->         v <- getValueEnv >>= freshIdent "_#case" . monoType . flip typeOf e
+>         ty <- getTypeOf e
+>         v  <- freshIdent "_#case" (arrowArity ty) (monoType ty) -- TODO (2011-10-12, bjp): Is this arity computation correct?
 >         alts' <- mapM desugarAltLhs alts
 >         tyEnv <- getValueEnv
 >         alts'' <- mapM desugarAltRhs
@@ -550,8 +553,8 @@ have to be desugared as well. This part transforms the following extensions:
 > elimFunctionPattern _ [] = return ([],[])
 > elimFunctionPattern p (t:ts)
 >   | containsFuncPat t = do
->       tyEnv <- getValueEnv
->       ident <- freshIdent "_#funpatt" (monoType (typeOf tyEnv t))
+>       ty <- getTypeOf t
+>       ident <- freshIdent "_#funpatt" (arrowArity ty) (monoType ty) -- TODO (2011-10-12, bjp): Is this arity computation correct?
 >       (ts',its') <- elimFunctionPattern p ts
 >       return ((VariablePattern ident):ts', (ident,t):its')
 >   | otherwise = do
@@ -704,9 +707,10 @@ instead of \texttt{(++)} and \texttt{map} in place of
 > desugarQual p (StmtBind refBind t l) e
 >   | isVarPattern t = desugarExpr p (qualExpr t e l)
 >   | otherwise      = do
->       tyEnv <- getValueEnv
->       v0 <- freshIdent "_#var" (monoType (typeOf tyEnv t))
->       l0 <- freshIdent "_#var" (monoType (typeOf tyEnv e))
+>       tty <- getTypeOf t
+>       v0  <- freshIdent "_#var" (arrowArity tty) (monoType tty) -- TODO (2011-10-12, bjp): Is this arity computation correct?
+>       ety <- getTypeOf e
+>       l0  <- freshIdent "_#var" (arrowArity ety) (monoType ety) -- TODO (2011-10-12, bjp): Is this arity computation correct?
 >       let v  = addRefId refBind v0
 >           l' = addRefId refBind l0
 >       desugarExpr p (apply (prelFoldr refBind)
@@ -729,14 +733,16 @@ instead of \texttt{(++)} and \texttt{map} in place of
 Generation of fresh names
 \begin{verbatim}
 
-> freshIdent :: String -> TypeScheme -> DsM Ident
-> freshIdent prefix ty = do
+> getTypeOf :: Typeable t => t -> DsM Type
+> getTypeOf t = getValueEnv >>= \ tyEnv -> return (typeOf tyEnv t)
+
+> freshIdent :: String -> Int -> TypeScheme -> DsM Ident
+> freshIdent prefix arity ty = do
 >   m <- getModuleIdent
 >   x <- mkName prefix `liftM` getNextId
->   modifyValueEnv $ bindFun m x (arrowArity $ unscheme ty) ty
+>   modifyValueEnv $ bindFun m x arity ty
 >   return x
 >   where mkName pre n = mkIdent $ pre ++ show n
->         unscheme (ForAll _ t) = t
 
 \end{verbatim}
 Prelude entities
