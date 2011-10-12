@@ -40,25 +40,24 @@ TODO: The following two imports should be avoided if possible as they make
 
 > xmlBody :: ModuleSummary -> Module -> Doc
 > xmlBody modSum (Module mname mimports decls) =
->   xmlElement "module"      xmlModuleDecl      moduleDecl   $$
->   xmlElement "import"      xmlImportDecl      importDecl   $$
->   xmlElement "types"       xmlTypeDecl        typeDecl     $$
->   xmlElement "functions"   xmlFunctionDecl    funcDecl     $$
->   xmlElement "operators"   xmlOperatorDecl    operatorDecl $$
+>   xmlElement "module"      xmlModuleDecl      moduleDecl      $$
+>   xmlElement "import"      xmlImportDecl      importDecl      $$
+>   xmlElement "types"       xmlTypeDecl        typeDecl        $$
+>   xmlElement "functions"   xmlFunctionDecl    funcDecl        $$
+>   xmlElement "operators"   xmlOperatorDecl    operatorDecl    $$
 >   xmlElement "translation" xmlTranslationDecl translationDecl
 >   where
->     moduleDecl          = [mname]
->     importDecl          = mimports
->     (funcDecl,typeDecl) = splitDecls decls
->     operatorDecl    = infixDecls modSum
->     translationDecl = foldl (qualIDeclId (moduleId modSum)) [] (interface modSum)
-
+>   moduleDecl          = [mname]
+>   importDecl          = mimports
+>   (funcDecl,typeDecl) = splitDecls decls
+>   operatorDecl        = infixDecls modSum
+>   translationDecl     = foldl (qualIDeclId (moduleId modSum)) [] (interface modSum)
 
 > xmlModuleDecl :: ModuleIdent -> Doc
 > xmlModuleDecl = xmlModuleIdent
 
 > xmlImportDecl :: ModuleIdent -> Doc
-> xmlImportDecl mname = xmlElement "module" xmlModuleDecl  [mname]
+> xmlImportDecl mname = xmlElement "module" xmlModuleDecl [mname]
 
 =========================================================================
            T Y P E S

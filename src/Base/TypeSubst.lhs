@@ -81,23 +81,23 @@ the order of their occurrence. This is handled by the function
 > expandAliasType tys (TypeConstructor tc tys') =
 >   TypeConstructor tc (map (expandAliasType tys) tys')
 > expandAliasType tys (TypeVariable n)
->   | n >= 0 = tys !! n
+>   | n >= 0    = tys !! n
 >   | otherwise = TypeVariable n
-> expandAliasType _ (TypeConstrained tys n) = TypeConstrained tys n
-> expandAliasType tys (TypeArrow ty1 ty2) =
+> expandAliasType _   (TypeConstrained   tys n) = TypeConstrained tys n
+> expandAliasType tys (TypeArrow       ty1 ty2) =
 >   TypeArrow (expandAliasType tys ty1) (expandAliasType tys ty2)
-> expandAliasType _ (TypeSkolem k) = TypeSkolem k
-> expandAliasType tys (TypeRecord fs rv)
+> expandAliasType _   tsk@(TypeSkolem        _) = tsk
+> expandAliasType tys (TypeRecord        fs rv)
 >   | isJust rv =
 >     let (TypeVariable tv) = expandAliasType tys $ TypeVariable $ fromJust rv
 >     in  TypeRecord fs' (Just tv)
 >   | otherwise =
 >     TypeRecord fs' Nothing
->  where fs' = map (\ (l,ty) -> (l, expandAliasType tys ty)) fs
+>  where fs' = map (\ (l, ty) -> (l, expandAliasType tys ty)) fs
 
 > normalize :: Type -> Type
-> normalize ty = expandAliasType [TypeVariable (occur tv) | tv <- [0..]] ty
->   where tvs = zip (nub (filter (>= 0) (typeVars ty))) [0..]
+> normalize ty = expandAliasType [TypeVariable (occur tv) | tv <- [0 ..]] ty
+>   where tvs = zip (nub (filter (>= 0) (typeVars ty))) [0 ..]
 >         occur tv = fromJust (lookup tv tvs)
 
 \end{verbatim}

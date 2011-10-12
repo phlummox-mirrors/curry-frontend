@@ -201,7 +201,7 @@ in the type environment.
 
 > abstractFunAnnots :: ModuleIdent -> String -> [Ident] -> EvalEnv -> EvalEnv
 > abstractFunAnnots _ pre fs evEnv = foldr abstractFunAnnot evEnv fs
->   where 
+>   where
 >   abstractFunAnnot f evEnv' = case Map.lookup f evEnv' of
 >     Just ev -> Map.insert (liftIdent pre f) ev (Map.delete f evEnv')
 >     Nothing -> evEnv'
@@ -285,7 +285,7 @@ to the top-level.
 >         (alts',dss') = unzip $ map liftAlt alts
 > liftExpr _ = internalError "Lift.liftExpr"
 
-> liftAlt :: Alt -> (Alt,[Decl])
+> liftAlt :: Alt -> (Alt, [Decl])
 > liftAlt (Alt p t rhs) = (Alt p t rhs', ds') where (rhs', ds') = liftRhs rhs
 
 \end{verbatim}

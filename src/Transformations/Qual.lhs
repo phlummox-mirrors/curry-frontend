@@ -20,7 +20,7 @@ declarations groups as well as function arguments remain unchanged.
 > module Transformations.Qual (qual) where
 
 > import Control.Monad (liftM, liftM2, liftM3)
-> import qualified Control.Monad.Reader as R
+> import qualified Control.Monad.Reader as R (Reader, asks, runReader)
 
 > import Curry.Base.Ident
 > import Curry.Syntax
@@ -39,21 +39,21 @@ declarations groups as well as function arguments remain unchanged.
 > type Qual a = a -> R.Reader QualEnv a
 
 > qual :: ModuleIdent -> TCEnv -> ValueEnv -> [Decl] -> [Decl]
-> qual m tcEnv tyEnv ds = R.runReader (mapM qualDecl ds) 
+> qual m tcEnv tyEnv ds = R.runReader (mapM qualDecl ds)
 >                                     (QualEnv m tcEnv tyEnv)
 
 > qualDecl :: Qual Decl
 > qualDecl i@(InfixDecl     _ _ _ _) = return i
-> qualDecl (DataDecl      p n vs cs) = 
+> qualDecl (DataDecl      p n vs cs) =
 >   DataDecl p n vs `liftM` mapM qualConstr cs
-> qualDecl (NewtypeDecl   p n vs nc) = 
+> qualDecl (NewtypeDecl   p n vs nc) =
 >   NewtypeDecl p n vs `liftM` qualNewConstr nc
 > qualDecl (TypeDecl      p n vs ty) = TypeDecl p n vs `liftM` qualTypeExpr ty
 > qualDecl (TypeSig         p fs ty) = TypeSig p fs    `liftM` qualTypeExpr ty
 > qualDecl e@(EvalAnnot       _ _ _) = return e
 > qualDecl (FunctionDecl    p f eqs) =
 >   FunctionDecl p f `liftM` mapM qualEqn eqs
-> qualDecl (ExternalDecl p c x n ty) = 
+> qualDecl (ExternalDecl p c x n ty) =
 >   ExternalDecl p c x n `liftM` qualTypeExpr ty
 > qualDecl fe@(FlatExternalDecl _ _) = return fe
 > qualDecl (PatternDecl     p t rhs) =
@@ -61,31 +61,32 @@ declarations groups as well as function arguments remain unchanged.
 > qualDecl vs@(ExtraVariables   _ _) = return vs
 
 > qualConstr :: Qual ConstrDecl
-> qualConstr (ConstrDecl     p vs n tys) = 
+> qualConstr (ConstrDecl     p vs n tys) =
 >   ConstrDecl p vs n `liftM` mapM qualTypeExpr tys
 > qualConstr (ConOpDecl p vs ty1 op ty2) =
 >   liftM2 (flip (ConOpDecl p vs) op) (qualTypeExpr ty1) (qualTypeExpr ty2)
 
 > qualNewConstr :: Qual NewConstrDecl
-> qualNewConstr (NewConstrDecl p vs n ty) = 
+> qualNewConstr (NewConstrDecl p vs n ty) =
 >   NewConstrDecl p vs n `liftM` qualTypeExpr ty
 
 > qualTypeExpr :: Qual TypeExpr
 > qualTypeExpr (ConstructorType q tys) =
 >   liftM2 ConstructorType (qualConstructor q) (mapM qualTypeExpr tys)
 > qualTypeExpr v@(VariableType      _) = return v
-> qualTypeExpr (TupleType         tys) = 
+> qualTypeExpr (TupleType         tys) =
 >   TupleType `liftM` mapM qualTypeExpr tys
 > qualTypeExpr (ListType           ty) = ListType `liftM` qualTypeExpr ty
-> qualTypeExpr (ArrowType     ty1 ty2) = 
+> qualTypeExpr (ArrowType     ty1 ty2) =
 >   liftM2 ArrowType (qualTypeExpr ty1) (qualTypeExpr ty2)
 > qualTypeExpr (RecordType     fs rty) =
 >   liftM2 RecordType (mapM qualFieldType fs) (qualRecordType rty)
->   where qualFieldType (ls, ty) = do
->           ty' <- qualTypeExpr ty
->           return (ls, ty')
->         qualRecordType Nothing  = return Nothing
->         qualRecordType (Just v) = Just `liftM` qualTypeExpr v
+>   where
+>   qualFieldType (ls, ty) = do
+>     ty' <- qualTypeExpr ty
+>     return (ls, ty')
+>   qualRecordType Nothing  = return Nothing
+>   qualRecordType (Just v) = Just `liftM` qualTypeExpr v
 
 > qualEqn :: Qual Equation
 > qualEqn (Equation p lhs rhs) =
@@ -99,23 +100,25 @@ declarations groups as well as function arguments remain unchanged.
 >   liftM2 ApLhs (qualLhs lhs) (mapM qualTerm ts)
 
 > qualTerm :: Qual ConstrTerm
-> qualTerm l@(LiteralPattern      _) = return l
-> qualTerm n@(NegativePattern   _ _) = return n
-> qualTerm v@(VariablePattern     _) = return v
-> qualTerm (ConstructorPattern c ts) =
+> qualTerm l@(LiteralPattern        _) = return l
+> qualTerm n@(NegativePattern     _ _) = return n
+> qualTerm v@(VariablePattern       _) = return v
+> qualTerm (ConstructorPattern   c ts) =
 >   liftM2 ConstructorPattern (qualIdent c) (mapM qualTerm ts)
-> qualTerm (InfixPattern   t1 op t2) =
+> qualTerm (InfixPattern     t1 op t2) =
 >   liftM3 InfixPattern (qualTerm t1) (qualIdent op) (qualTerm t2)
-> qualTerm (ParenPattern          t) = ParenPattern `liftM` qualTerm t
-> qualTerm (TuplePattern       p ts) = TuplePattern p `liftM` mapM qualTerm ts
-> qualTerm (ListPattern        p ts) = ListPattern  p `liftM` mapM qualTerm ts
-> qualTerm (AsPattern           v t) = AsPattern    v `liftM` qualTerm t
-> qualTerm (LazyPattern         p t) = LazyPattern  p `liftM` qualTerm t
-> qualTerm (FunctionPattern    f ts) =
+> qualTerm (ParenPattern            t) = ParenPattern `liftM` qualTerm t
+> qualTerm (TuplePattern         p ts) =
+>   TuplePattern p `liftM` mapM qualTerm ts
+> qualTerm (ListPattern          p ts) =
+>   ListPattern  p `liftM` mapM qualTerm ts
+> qualTerm (AsPattern             v t) = AsPattern    v `liftM` qualTerm t
+> qualTerm (LazyPattern           p t) = LazyPattern  p `liftM` qualTerm t
+> qualTerm (FunctionPattern      f ts) =
 >   liftM2 FunctionPattern (qualIdent f) (mapM qualTerm ts)
 > qualTerm (InfixFuncPattern t1 op t2) =
 >   liftM3 InfixFuncPattern (qualTerm t1) (qualIdent op) (qualTerm t2)
-> qualTerm (RecordPattern     fs rt) =
+> qualTerm (RecordPattern       fs rt) =
 >   liftM2 RecordPattern (mapM qualFieldPattern fs) (qualRecordTerm rt)
 >   where qualRecordTerm Nothing  = return Nothing
 >         qualRecordTerm (Just v) = Just `liftM` qualTerm v
@@ -194,7 +197,7 @@ declarations groups as well as function arguments remain unchanged.
 
 > qualIdent :: Qual QualIdent
 > qualIdent x = do
->   m <- R.asks moduleIdent
+>   m     <- R.asks moduleIdent
 >   tyEnv <- R.asks valueEnv
 >   return $ case isQualified x || isGlobal x of
 >     False -> x
@@ -208,7 +211,7 @@ declarations groups as well as function arguments remain unchanged.
 
 > qualConstructor :: Qual QualIdent
 > qualConstructor x = do
->   m <- R.asks moduleIdent
+>   m     <- R.asks moduleIdent
 >   tcEnv <- R.asks tyConsEnv
 >   return $ case qualLookupTC x tcEnv of
 >     [y] -> origName y
