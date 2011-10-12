@@ -84,7 +84,6 @@ Executable cymake
     , Interfaces
     , Modules
     , ModuleSummary
-    , Records
     , Transformations
     , Transformations.CaseCompletion
     , Transformations.CurryToIL
