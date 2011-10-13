@@ -1,15 +1,19 @@
 module Base.Messages
-  ( info, status
-  , putErrLn, putErrsLn, abortWith
-  , internalError, errorAt, errorAt', errorMessage, errorMessages
-  , Message, toMessage, posErr, qposErr
+  ( -- * Output of user information
+    info, status
+    -- * Error messages
+  , putErrLn, putErrsLn
+    -- * program abortion
+  , abortWith, internalError, errorAt, errorAt', errorMessage, errorMessages
+    -- * creating messages
+  , Message, toMessage, posErr, qposErr, mposErr
   ) where
 
 import Control.Monad (unless)
 import System.IO (hPutStrLn, stderr)
 import System.Exit (ExitCode (..), exitWith)
 
-import Curry.Base.Ident (Ident, QualIdent, positionOfIdent
+import Curry.Base.Ident (ModuleIdent (..), Ident (..), QualIdent
   , positionOfQualIdent)
 import Curry.Base.MessageMonad (Message, toMessage)
 import Curry.Base.Position (Position)
@@ -59,3 +63,6 @@ posErr i errMsg = toMessage (positionOfIdent i) errMsg
 
 qposErr :: QualIdent -> String -> Message
 qposErr i errMsg = toMessage (positionOfQualIdent i) errMsg
+
+mposErr :: ModuleIdent -> String -> Message
+mposErr m errMsg = toMessage (positionOfModuleIdent m) errMsg

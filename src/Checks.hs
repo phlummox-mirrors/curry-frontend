@@ -72,7 +72,11 @@ typeCheck env mdl@(Module _ _ _ ds) =
 
 -- |Check the export specification
 exportCheck :: CompilerEnv -> Module -> (CompilerEnv, Module)
-exportCheck env mdl = (env, EC.exportCheck env mdl)
+exportCheck env (Module m es is ds)
+  | null msgs = (env, Module m es' is ds)
+  | otherwise = errorMessages msgs
+  where (es', msgs) = EC.exportCheck (moduleIdent env) (aliasEnv env)
+                                     (tyConsEnv env) (valueEnv env) es
 
 -- TODO: Which kind of warnings?
 
