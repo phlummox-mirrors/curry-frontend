@@ -13,8 +13,8 @@ marked with a boolean flag (see below).
 \begin{verbatim}
 
 > module Base.Subst
->   ( Subst (..), IntSubst (..), idSubst, substToList, bindSubst, unbindSubst
->   , compose, substVar', isubstVar, restrictSubstTo
+>   ( Subst (..), IntSubst (..), idSubst, singleSubst, bindSubst, unbindSubst
+>   , substToList, compose, substVar', isubstVar, restrictSubstTo
 >   ) where
 
 > import qualified Data.Map as Map
@@ -26,6 +26,9 @@ marked with a boolean flag (see below).
 
 > substToList :: Ord v => Subst v e -> [(v, e)]
 > substToList (Subst _ sigma) = Map.toList sigma
+
+> singleSubst :: Ord v => v -> e -> Subst v e
+> singleSubst v e = bindSubst v e idSubst
 
 > bindSubst :: Ord v => v -> e -> Subst v e -> Subst v e
 > bindSubst v e (Subst comp sigma) = Subst comp $ Map.insert v e sigma

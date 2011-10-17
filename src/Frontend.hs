@@ -26,6 +26,7 @@ import Curry.Files.Filenames
 import Curry.Files.PathUtils
 import Curry.Syntax (Module (..), parseModule)
 
+import Checks
 import CompilerEnv
 import CompilerOpts (Options (..), Verbosity (..), TargetType (..), defaultOptions)
 import CurryBuilder (smake)
@@ -49,8 +50,7 @@ parse fn src = parseModule True fn src >>= genCurrySyntax fn
     be defined using the argument 'paths'.
 -}
 fullParse :: [FilePath] -> FilePath -> String -> IO (MsgMonad Module)
-fullParse paths fn src =
-  genFullCurrySyntax checkModule paths fn $ parse fn src
+fullParse paths fn src = genFullCurrySyntax checkModule paths fn $ parse fn src
 
 {- |Behaves like 'fullParse', but returns the syntax tree of the source
     program 'src' (type 'Module'; see Module "CurrySyntax") after inferring
@@ -68,7 +68,7 @@ genCurrySyntax fn mod1
 
 --
 genFullCurrySyntax ::
-  (Options -> CompilerEnv -> Module -> (CompilerEnv, Module))
+  (Options -> CompilerEnv -> Module -> CheckResult (CompilerEnv, Module))
   -> [FilePath] -> FilePath -> MsgMonad Module -> IO (MsgMonad Module)
 genFullCurrySyntax check paths fn m = runMsgIO m $ \mod1 -> do
   errs <- makeInterfaces paths fn mod1
@@ -76,8 +76,9 @@ genFullCurrySyntax check paths fn m = runMsgIO m $ \mod1 -> do
     then do
       iEnv <- loadInterfaces paths mod1
       let env = importModules opts mod1 iEnv
-          (_, mod') = check opts env mod1
-      return (return  mod')
+      case check opts env mod1 of
+        CheckSuccess (_, mod') -> return (return  mod')
+        CheckFailed errs'      -> return $ failWith $ msgTxt $ head errs'
     else return $ failWith $ head errs
   where opts = mkOpts paths
 

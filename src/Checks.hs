@@ -27,6 +27,19 @@ import qualified Checks.WarnCheck   as WC (warnCheck)
 import CompilerEnv
 import CompilerOpts
 
+data CheckResult a
+  = CheckSuccess a
+  | CheckFailed [Message]
+
+instance Monad CheckResult where
+  return = CheckSuccess
+  (>>=)  = thenCheck
+
+thenCheck :: CheckResult a -> (a -> CheckResult b) -> CheckResult b
+thenCheck chk cont = case chk of
+  CheckSuccess   a -> cont a
+  CheckFailed errs -> CheckFailed errs
+
 -- TODO: More documentation
 
 -- |Check the kinds of type definitions and signatures.
@@ -34,10 +47,10 @@ import CompilerOpts
 -- * Declarations: Nullary type constructors and type variables are
 --                 disambiguated
 -- * Environment:  remains unchanged
-kindCheck :: CompilerEnv -> Module -> (CompilerEnv, Module)
+kindCheck :: CompilerEnv -> Module -> CheckResult (CompilerEnv, Module)
 kindCheck env (Module m es is ds)
-  | null msgs = (env, Module m es is ds')
-  | otherwise = errorMessages msgs
+  | null msgs = CheckSuccess (env, Module m es is ds')
+  | otherwise = CheckFailed msgs
   where (ds', msgs) = KC.kindCheck (moduleIdent env) (tyConsEnv env) ds
 
 -- |Check for a correct syntax.
@@ -45,36 +58,37 @@ kindCheck env (Module m es is ds)
 -- * Declarations: Nullary data constructors and variables are
 --                 disambiguated
 -- * Environment:  remains unchanged
-syntaxCheck :: Options -> CompilerEnv -> Module -> (CompilerEnv, Module)
+syntaxCheck :: Options -> CompilerEnv -> Module -> CheckResult (CompilerEnv, Module)
 syntaxCheck opts env (Module m es is ds)
-  | null msgs = (env, Module m es is ds')
-  | otherwise = errorMessages msgs
+  | null msgs = CheckSuccess (env, Module m es is ds')
+  | otherwise = CheckFailed msgs
   where (ds', msgs) = SC.syntaxCheck opts (moduleIdent env)
                       (valueEnv env) (tyConsEnv env) ds
 
 -- |Check the precedences of infix operators.
 -- In addition, the abstract syntax tree is rearranged to reflect the
 -- relative precedences; the operator precedence environment is updated.
-precCheck :: CompilerEnv -> Module -> (CompilerEnv, Module)
+precCheck :: CompilerEnv -> Module -> CheckResult (CompilerEnv, Module)
 precCheck env (Module m es is ds)
-  | null msgs = (env { opPrecEnv = pEnv' }, Module m es is ds')
-  | otherwise = errorMessages msgs
+  | null msgs = CheckSuccess (env { opPrecEnv = pEnv' }, Module m es is ds')
+  | otherwise = CheckFailed msgs
   where (ds', pEnv', msgs) = PC.precCheck (moduleIdent env) (opPrecEnv env) ds
 
 -- |Apply the correct typing of the module.
 -- The declarations remain unchanged; the type constructor and value
 -- environments are updated.
-typeCheck :: CompilerEnv -> Module -> (CompilerEnv, Module)
-typeCheck env mdl@(Module _ _ _ ds) =
-  (env { tyConsEnv = tcEnv', valueEnv = tyEnv' }, mdl)
-  where (tcEnv', tyEnv') = TC.typeCheck (moduleIdent env)
-                              (tyConsEnv env) (valueEnv env) ds
+typeCheck :: CompilerEnv -> Module -> CheckResult (CompilerEnv, Module)
+typeCheck env mdl@(Module _ _ _ ds)
+  | null msgs = CheckSuccess (env { tyConsEnv = tcEnv', valueEnv = tyEnv' }, mdl)
+  | otherwise = CheckFailed msgs
+  where (tcEnv', tyEnv', msgs) = TC.typeCheck (moduleIdent env)
+                                 (tyConsEnv env) (valueEnv env) ds
 
 -- |Check the export specification
-exportCheck :: CompilerEnv -> Module -> (CompilerEnv, Module)
+exportCheck :: CompilerEnv -> Module -> CheckResult (CompilerEnv, Module)
 exportCheck env (Module m es is ds)
-  | null msgs = (env, Module m es' is ds)
-  | otherwise = errorMessages msgs
+  | null msgs = CheckSuccess (env, Module m es' is ds)
+  | otherwise = CheckFailed msgs
   where (es', msgs) = EC.exportCheck (moduleIdent env) (aliasEnv env)
                                      (tyConsEnv env) (valueEnv env) es
 

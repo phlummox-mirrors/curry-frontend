@@ -28,7 +28,7 @@ import Curry.ExtendedFlat.InterfaceEquality (eqInterface)
 import Curry.Files.Filenames
 import Curry.Files.PathUtils
 
-import Base.Messages (abortWith, putErrsLn)
+import Base.Messages (abortWith, errorMessages, putErrsLn)
 
 import Env.Eval (evalEnv)
 import Env.Value (ppTypes)
@@ -62,11 +62,11 @@ import Transformations
 -- The untyped  AbstractCurry representation is written
 -- out directly after parsing and simple checking the source file.
 -- The typed AbstractCurry code is written out after checking the module.
--- 
+--
 -- The compiler automatically loads the prelude when compiling any
 -- module, except for the prelude itself, by adding an appropriate import
 -- declaration to the module.
--- 
+--
 -- Since this modified version of the Muenster Curry Compiler is used
 -- as a frontend for PAKCS, all functions for evaluating goals and generating
 -- C code are obsolete and commented out.
@@ -74,24 +74,26 @@ import Transformations
 compileModule :: Options -> FilePath -> IO ()
 compileModule opts fn = do
   loaded <- loadModule opts fn
-  let (env, modul) = uncurry (checkModule opts) loaded
-  showWarnings opts $ uncurry warnCheck loaded
-  writeParsed        opts fn     modul
-  writeAbstractCurry opts fn env modul
-  when withFlat $ do
-    -- checkModule checks types, and then transModule introduces new
-    -- functions (by lambda lifting in 'desugar'). Consequence: The
-    -- types of the newly introduced functions are not inferred (hsi)
-    let (env2, il, dumps) = transModule opts env modul
-    -- dump intermediate results
-    mapM_ (doDump opts) dumps
-    -- generate target code
-    let intf = exportInterface env2 modul
-    let modSum = summarizeModule (tyConsEnv env2) intf modul
-    writeFlat opts fn env2 modSum il
-  where
-    withFlat = any (`elem` optTargetTypes opts)
-                   [FlatCurry, FlatXml, ExtendedFlatCurry]
+  case uncurry (checkModule opts) loaded of
+    CheckFailed errs -> errorMessages errs
+    CheckSuccess (env, modul) -> do
+      showWarnings opts $ uncurry warnCheck loaded
+      writeParsed        opts fn     modul
+      writeAbstractCurry opts fn env modul
+      when withFlat $ do
+        -- checkModule checks types, and then transModule introduces new
+        -- functions (by lambda lifting in 'desugar'). Consequence: The
+        -- types of the newly introduced functions are not inferred (hsi)
+        let (env2, il, dumps) = transModule opts env modul
+        -- dump intermediate results
+        mapM_ (doDump opts) dumps
+        -- generate target code
+        let intf = exportInterface env2 modul
+        let modSum = summarizeModule (tyConsEnv env2) intf modul
+        writeFlat opts fn env2 modSum il
+      where
+        withFlat = any (`elem` optTargetTypes opts)
+                      [FlatCurry, FlatXml, ExtendedFlatCurry]
 
 -- ---------------------------------------------------------------------------
 -- Loading a module
@@ -151,14 +153,16 @@ importPrelude opts m@(CS.Module mid es is ds)
 -- Checking a module
 -- ---------------------------------------------------------------------------
 
-checkModule :: Options -> CompilerEnv -> CS.Module -> (CompilerEnv, CS.Module)
-checkModule opts env mdl = qualEnv
-                         $ uncurry exportCheck
-                         $ uncurry qual
-                         $ (if withTypeCheck then uncurry typeCheck else id)
-                         $ uncurry precCheck
-                         $ uncurry (syntaxCheck opts)
-                         $ kindCheck env mdl
+-- TODO: The order of the checks should be improved!
+checkModule :: Options -> CompilerEnv -> CS.Module
+            -> CheckResult (CompilerEnv, CS.Module)
+checkModule opts env mdl = kindCheck env mdl -- should be only syntax checking ?
+                       >>= uncurry (syntaxCheck opts)
+                       >>= uncurry precCheck
+                       >>= (if withTypeCheck then uncurry typeCheck else return)
+                       >>= return . (uncurry qual)
+                       >>= uncurry exportCheck
+                       >>= return .  qualEnv
   where
   qualEnv (e, m) = (qualifyEnv opts e, m)
   withTypeCheck  = any (`elem` optTargetTypes opts)
@@ -181,7 +185,7 @@ transModule opts env mdl = (env5, ilCaseComp, dumps)
     (il        , env4) = ilTrans flat'  lifted     env3
     (ilCaseComp, env5) = completeCase   il         env4
     dumps = [ (DumpRenamed   , show $ CS.ppModule    mdl         )
-            , (DumpTypes     , show $ ppTypes     (moduleIdent env) (valueEnv env))
+            , (DumpTypes     , show $ ppTypes (moduleIdent env) (valueEnv env))
             , (DumpDesugared , show $ CS.ppModule    desugared   )
             , (DumpSimplified, show $ CS.ppModule    simplified  )
             , (DumpLifted    , show $ CS.ppModule    lifted    )
@@ -197,7 +201,7 @@ transModule opts env mdl = (env5, ilCaseComp, dumps)
 -- flat and abstract curry representations depending on the specified option.
 -- If the interface of a modified Curry module did not change, the
 -- corresponding file name will be returned within the result of 'genFlat'
--- (depending on the compiler flag "force") and other modules importing this 
+-- (depending on the compiler flag "force") and other modules importing this
 -- module won't be dependent on it any longer.
 
 -- |Output the parsed 'Module' on request
@@ -210,7 +214,7 @@ writeParsed opts fn modul = when srcTarget $
     targetFile = fromMaybe (sourceRepName fn) (optOutput opts)
     source     = CS.showModule modul
 
-writeFlat :: Options -> FilePath -> CompilerEnv -> ModuleSummary -> IL.Module 
+writeFlat :: Options -> FilePath -> CompilerEnv -> ModuleSummary -> IL.Module
           -> IO ()
 writeFlat opts fn env modSum il = do
   writeFlatCurry opts fn env modSum il
