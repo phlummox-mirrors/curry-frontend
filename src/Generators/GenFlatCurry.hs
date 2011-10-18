@@ -52,8 +52,7 @@ genFlatCurry :: Options -> ModuleSummary.ModuleSummary -> InterfaceEnv
 genFlatCurry opts modSum mEnv tyEnv tcEnv mdl = (prog', messages)
   where
   (prog, messages) = run opts modSum mEnv tyEnv tcEnv False (visitModule mdl)
-  prog' = -- eraseTypes $
-          adjustTypeInfo $ adjustTypeInfo $ patchPreludeFCY prog
+  prog' = {- eraseTypes $ -} adjustTypeInfo $ patchPrelude prog
 
 -- transforms intermediate language code (IL) to FlatCurry interfaces
 genFlatInterface :: Options -> ModuleSummary.ModuleSummary -> InterfaceEnv
@@ -61,27 +60,27 @@ genFlatInterface :: Options -> ModuleSummary.ModuleSummary -> InterfaceEnv
 genFlatInterface opts modSum mEnv tyEnv tcEnv mdl = (intf' , messages)
   where
   (intf, messages) = run opts modSum mEnv tyEnv tcEnv True (visitModule mdl)
-  intf'            = patchPreludeFCY intf
+  intf'            = patchPrelude intf
 
-patchPreludeFCY :: Prog -> Prog
-patchPreludeFCY p@(Prog n _ types funcs ops)
-  | n == prelude = Prog n [] (prelude_types_fcy ++ types) funcs ops
+patchPrelude :: Prog -> Prog
+patchPrelude p@(Prog n _ types funcs ops)
+  | n == prelude = Prog n [] (preludeTypes ++ types) funcs ops
   | otherwise    = p
 
-prelude_types_fcy :: [TypeDecl]
-prelude_types_fcy =
+preludeTypes :: [TypeDecl]
+preludeTypes =
   [ Type unit Public [] [(Cons unit 0 Public [])]
   , Type nil Public [0]
     [ Cons nil  0 Public []
     , Cons cons 2 Public [TVar 0, TCons nil [TVar 0]]
     ]
-  ] ++ map tupleTypeFCY [2 .. maxTupleArity]
+  ] ++ map mkTupleType [2 .. maxTupleArity]
   where unit = mkPreludeQName "()"
         nil  = mkPreludeQName "[]"
         cons = mkPreludeQName ":"
 
-tupleTypeFCY :: Int -> TypeDecl
-tupleTypeFCY arity = Type tuple Public [0 .. arity - 1]
+mkTupleType :: Int -> TypeDecl
+mkTupleType arity = Type tuple Public [0 .. arity - 1]
   [Cons tuple arity Public (map TVar [0 .. arity - 1])]
   where tuple = mkPreludeQName $ '(' : replicate (arity - 1) ',' ++ ")"
 
@@ -95,7 +94,6 @@ prelude = "Prelude"
 maxTupleArity :: Int
 maxTupleArity = 15
 
--- ---------------------------------------------------------------------------
 -- ---------------------------------------------------------------------------
 
 -- The environment 'FlatEnv' is embedded in the monadic representation
@@ -162,12 +160,12 @@ run opts cEnv mEnv tyEnv tcEnv genIntf f = (result, messagesE env)
 
 getConstrTypes :: TCEnv -> [(QualIdent, IL.Type)]
 getConstrTypes tcEnv =
-  [ foo tqid conid argtys argc
+  [ mkConstrType tqid conid argtys argc
   | (_, (_, DataType tqid argc dts):_) <- Map.toList $ topEnvMap tcEnv
   , Just (DataConstr conid _ argtys) <- dts
   ]
   where
-  foo tqid conid argtypes targnum = (conname, contype)
+  mkConstrType tqid conid argtypes targnum = (conname, contype)
     where
     conname    = QualIdent (qualidMod tqid) conid
     resulttype = IL.TypeConstructor tqid (map IL.TypeVariable [0 .. targnum - 1])
@@ -923,23 +921,24 @@ lookupIdArity qid = gets (lookupA . typeEnvE)
 
 
 getTypeOf :: Ident -> FlatState (Maybe TypeExpr)
-getTypeOf ident = do
-  valEnv <- gets typeEnvE
-  case lookupValue ident valEnv of
-    Value _ _ (ForAll _ t) : _ -> do
-      t1 <- visitType (ttrans t)
-      trace' ("getTypeOf(" ++ show ident ++ ") = " ++ show t1) $
-        return (Just t1)
-    DataConstructor _ _ (ForAllExist _ _ t) : _ -> do
-      t1 <- visitType (ttrans t)
-      trace' ("getTypeOfDataCon(" ++ show ident ++ ") = " ++ show t1) $
-        return (Just t1)
-    _ -> do
-    (_, ats) <- gets functionIdE
-    case lookup ident ats of
-      Just t -> liftM Just (visitType t)
-      Nothing -> trace' ("lookupValue did not return a value for index " ++ show ident)
-                 (return Nothing)
+getTypeOf ident = return Nothing -- TODO 2011-10-18 (bjp): reactivate!
+--   do
+--   valEnv <- gets typeEnvE
+--   case lookupValue ident valEnv of
+--     Value _ _ (ForAll _ t) : _ -> do
+--       t1 <- visitType (ttrans t)
+--       trace' ("getTypeOf(" ++ show ident ++ ") = " ++ show t1) $
+--         return (Just t1)
+--     DataConstructor _ _ (ForAllExist _ _ t) : _ -> do
+--       t1 <- visitType (ttrans t)
+--       trace' ("getTypeOfDataCon(" ++ show ident ++ ") = " ++ show t1) $
+--         return (Just t1)
+--     _ -> do
+--     (_, ats) <- gets functionIdE
+--     case lookup ident ats of
+--       Just t -> liftM Just (visitType t)
+--       Nothing -> trace' ("lookupValue did not return a value for index " ++ show ident)
+--                  (return Nothing)
 
 ttrans :: Type -> IL.Type
 ttrans (TypeConstructor    i ts) = IL.TypeConstructor i (map ttrans ts)
