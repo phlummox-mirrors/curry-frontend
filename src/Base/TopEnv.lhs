@@ -37,7 +37,7 @@ imported.
 >   ( TopEnv (..), Entity (..), emptyTopEnv, predefTopEnv, importTopEnv
 >   , qualImportTopEnv, bindTopEnv, qualBindTopEnv, rebindTopEnv
 >   , qualRebindTopEnv, unbindTopEnv, lookupTopEnv, qualLookupTopEnv
->   , allImports, moduleImports, localBindings
+>   , allImports, moduleImports, localBindings, allLocalBindings
 >   ) where
 
 > import Control.Arrow (second)
@@ -135,14 +135,18 @@ imported.
 
 > unqualBindings :: TopEnv a -> [(Ident, (Source, a))]
 > unqualBindings (TopEnv env) =
->   [(x', y) | (x, ys) <- takeWhile (not . isQualified . fst) (Map.toList env)
->            , let x' = unqualify x, y <- ys]
+>   [ (x', y) | (x, ys) <- filter (not . isQualified . fst) (Map.toList env)
+>             , let x' = unqualify x, y <- ys]
 
-> moduleImports :: ModuleIdent -> TopEnv a -> [(Ident,a)]
+> moduleImports :: ModuleIdent -> TopEnv a -> [(Ident, a)]
 > moduleImports m env =
 >   [(x, y) | (x, (Import ms, y)) <- unqualBindings env, m `elem` ms]
 
-> localBindings :: TopEnv a -> [(Ident,a)]
+> localBindings :: TopEnv a -> [(Ident, a)]
 > localBindings env = [ (x, y) | (x, (Local, y)) <- unqualBindings env ]
+
+> allLocalBindings :: TopEnv a -> [(QualIdent, a)]
+> allLocalBindings (TopEnv env) = [ (x, y) | (x, ys)    <- Map.toList env
+>                                          , (Local, y) <- ys ]
 
 \end{verbatim}

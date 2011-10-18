@@ -17,7 +17,7 @@ import qualified Data.Map as Map (keys)
 
 import Curry.Base.Ident (ModuleIdent)
 
-import Base.TopEnv (localBindings)
+import Base.TopEnv (allLocalBindings)
 
 import Env.Eval
 import Env.Interface
@@ -55,9 +55,9 @@ showCompilerEnv env = unlines $ concat
   [ header "ModuleIdent"      $ show $ moduleIdent  env
   , header "Interfaces"       $ show $ Map.keys      $ interfaceEnv env
   , header "ModuleAliases"    $ show $ aliasEnv     env
-  , header "TypeConstructors" $ show $ localBindings $ tyConsEnv env
-  , header "Values"           $ show $ localBindings $ valueEnv  env
-  , header "Precedences"      $ show $ localBindings $ opPrecEnv env
+  , header "TypeConstructors" $ show $ allLocalBindings $ tyConsEnv    env
+  , header "Values"           $ show $ allLocalBindings $ valueEnv     env
+  , header "Precedences"      $ show $ allLocalBindings $ opPrecEnv    env
   , header "Eval Annotations" $ show $ evalAnnotEnv env
   ]
   where header hdr content = [hdr, replicate (length hdr) '=', content]

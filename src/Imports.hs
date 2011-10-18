@@ -386,10 +386,10 @@ qualifyLocal currentEnv initEnv = currentEnv
     pEnv  = opPrecEnv initEnv
     tcEnv = tyConsEnv initEnv
     tyEnv = valueEnv  initEnv
-    bindQual   (_, y) = qualBindTopEnv "Modules.qualifyEnv" (origName y) y
+    bindQual   (_, y) = qualBindTopEnv "Imports.qualifyEnv" (origName y) y
     bindGlobal (x, y)
       | uniqueId x == 0 = bindQual (x, y)
-      | otherwise       = bindTopEnv "Modules.qualifyEnv" x y
+      | otherwise       = bindTopEnv "Imports.qualifyEnv" x y
 
 -- Importing an interface into another interface is somewhat simpler
 -- because all entities are imported into the environment. In addition,
