@@ -29,7 +29,7 @@ import Base.Messages
 import Base.Types
 
 import Env.OpPrec (PEnv, PrecInfo (..), OpPrec (..), qualLookupP)
-import Env.TypeConstructors (TCEnv, TypeInfo (..), qualLookupTC)
+import Env.TypeConstructor (TCEnv, TypeInfo (..), qualLookupTC)
 import Env.Value (ValueEnv, ValueInfo (..), qualLookupValue)
 
 import CompilerEnv
@@ -45,7 +45,7 @@ import CompilerEnv
 -- constructors of a data type in the interface when they occur
 -- right-most in the declaration. In addition, newtypes whose constructor
 -- is not exported are transformed into (abstract) data types.
--- 
+--
 -- If a type is imported from another module, its name is qualified with
 -- the name of the module where it is defined. The same applies to an
 -- exported function.
@@ -134,13 +134,13 @@ funDecl _ _ _ _ = internalError "Exports.funDecl: no pattern match"
 -- were imported into the current module. This will happen when an
 -- imported module re-exports entities from another module. E.g., given
 -- the three modules
--- 
+--
 -- @
 -- module A where { data A = A; }
 -- module B(A(..)) where { import A; }
 -- module C where { import B; x = A; }
 -- @
--- 
+--
 -- the interface for module @C@ will import module @A@ but not module @B@.
 
 usedModules :: [IDecl] -> [ModuleIdent]
@@ -217,9 +217,9 @@ usedTypesType (ConstructorType tc tys) tcs = tc : foldr usedTypesType tcs tys
 usedTypesType (VariableType         _) tcs = tcs
 usedTypesType (TupleType          tys) tcs = foldr usedTypesType tcs tys
 usedTypesType (ListType            ty) tcs = usedTypesType ty tcs
-usedTypesType (ArrowType      ty1 ty2) tcs = 
+usedTypesType (ArrowType      ty1 ty2) tcs =
   usedTypesType ty1 (usedTypesType ty2 tcs)
-usedTypesType (RecordType      fs rty) tcs = foldr usedTypesType 
+usedTypesType (RecordType      fs rty) tcs = foldr usedTypesType
   (maybe tcs (\ty -> usedTypesType ty tcs) rty) (map snd fs)
 
 definedTypes :: [IDecl] -> [QualIdent]

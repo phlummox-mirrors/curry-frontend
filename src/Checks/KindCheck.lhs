@@ -36,7 +36,7 @@ is defined more than once.
 > import Base.TopEnv
 > import Base.Utils (findMultiples)
 
-> import Env.TypeConstructors (TCEnv, tcArity)
+> import Env.TypeConstructor (TCEnv, tcArity)
 
 \end{verbatim}
 In order to check type constructor applications, the compiler

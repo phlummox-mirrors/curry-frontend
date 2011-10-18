@@ -1,7 +1,7 @@
 {- |
     Module      :  $Header$
     Description :  Main module
-    Copyright   :  (c) 2005, Martin Engelke (men@informatik.uni-kiel.de)
+    Copyright   :  (c) 2005, Martin Engelke  (men@informatik.uni-kiel.de)
                        2011, Björn Peemöller (bjp@informatik.uni-kiel.de)
     License     :  OtherLicense
 

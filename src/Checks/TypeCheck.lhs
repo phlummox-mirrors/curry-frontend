@@ -45,7 +45,7 @@ type annotation is present.
 > import Base.TypeSubst
 > import Base.Utils (foldr2)
 
-> import Env.TypeConstructors (TCEnv, TypeInfo (..), bindTypeInfo
+> import Env.TypeConstructor (TCEnv, TypeInfo (..), bindTypeInfo
 >   , qualLookupTC)
 > import Env.Value ( ValueEnv, ValueInfo (..), bindFun, rebindFun
 >   , bindGlobalInfo, bindLabel, lookupValue, qualLookupValue )

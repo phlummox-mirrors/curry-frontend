@@ -32,7 +32,7 @@ import Base.Types
 
  -- environments
 import Env.Interface
-import Env.TypeConstructors (TCEnv, TypeInfo (..), qualLookupTC)
+import Env.TypeConstructor (TCEnv, TypeInfo (..), qualLookupTC)
 import Env.Value (ValueEnv, ValueInfo (..), lookupValue, qualLookupValue)
 
 -- other
@@ -50,16 +50,16 @@ trace' _ x = x
 genFlatCurry :: Options -> ModuleSummary.ModuleSummary -> InterfaceEnv
              -> ValueEnv -> TCEnv -> IL.Module -> (Prog, [Message])
 genFlatCurry opts modSum mEnv tyEnv tcEnv mdl = (prog', messages)
-  where 
+  where
   (prog, messages) = run opts modSum mEnv tyEnv tcEnv False (visitModule mdl)
-  prog' = -- eraseTypes $ 
+  prog' = -- eraseTypes $
           adjustTypeInfo $ adjustTypeInfo $ patchPreludeFCY prog
 
 -- transforms intermediate language code (IL) to FlatCurry interfaces
-genFlatInterface :: Options -> ModuleSummary.ModuleSummary -> InterfaceEnv 
+genFlatInterface :: Options -> ModuleSummary.ModuleSummary -> InterfaceEnv
                  -> ValueEnv -> TCEnv -> IL.Module -> (Prog, [Message])
 genFlatInterface opts modSum mEnv tyEnv tcEnv mdl = (intf' , messages)
-  where 
+  where
   (intf, messages) = run opts modSum mEnv tyEnv tcEnv True (visitModule mdl)
   intf'            = patchPreludeFCY intf
 
@@ -126,7 +126,7 @@ data FlatEnv = FlatEnv
   , constrTypes   :: Map.Map QualIdent IL.Type
   }
 
-data IdentExport 
+data IdentExport
   = NotConstr     -- function, type-constructor
   | OnlyConstr    -- constructor
   | NotOnlyConstr -- constructor, function, type-constructor
@@ -161,12 +161,12 @@ run opts cEnv mEnv tyEnv tcEnv genIntf f = (result, messagesE env)
     }
 
 getConstrTypes :: TCEnv -> [(QualIdent, IL.Type)]
-getConstrTypes tcEnv = 
+getConstrTypes tcEnv =
   [ foo tqid conid argtys argc
   | (_, (_, DataType tqid argc dts):_) <- Map.toList $ topEnvMap tcEnv
   , Just (DataConstr conid _ argtys) <- dts
   ]
-  where 
+  where
   foo tqid conid argtypes targnum = (conname, contype)
     where
     conname    = QualIdent (qualidMod tqid) conid
@@ -180,7 +180,7 @@ visitModule (IL.Module mid imps decls) = do
   let ts = [ (qn, t) | IL.FunctionDecl qn _ t _ <- decls ]
   modify $ \ s -> s { localTypes = Map.fromList ts }
   ops     <- genOpDecls
-  whenFlatCurry 
+  whenFlatCurry
     ( do
       datas   <- mapM visitDataDecl (filter isDataDecl decls)
       types   <- genTypeSynonyms
@@ -211,7 +211,7 @@ visitModule (IL.Module mid imps decls) = do
 
 --
 visitDataDecl :: IL.Decl -> FlatState TypeDecl
-visitDataDecl (IL.DataDecl qident arity constrs) = do 
+visitDataDecl (IL.DataDecl qident arity constrs) = do
   cdecls <- mapM visitConstrDecl constrs
   qname  <- visitQualTypeIdent qident
   vis    <- getVisibility False qident
@@ -220,7 +220,7 @@ visitDataDecl _ = internalError "GenFlatCurry: no data declaration"
 
 --
 visitConstrDecl :: IL.ConstrDecl [IL.Type] -> FlatState [ConsDecl]
-visitConstrDecl (IL.ConstrDecl qident types) = do 
+visitConstrDecl (IL.ConstrDecl qident types) = do
   texprs  <- mapM visitType types
   qname   <- visitQualIdent qident
   vis     <- getVisibility True qident
@@ -231,14 +231,14 @@ visitConstrDecl (IL.ConstrDecl qident types) = do
 
 --
 visitType :: IL.Type -> FlatState TypeExpr
-visitType (IL.TypeConstructor qid tys) = do 
+visitType (IL.TypeConstructor qid tys) = do
   tys' <- mapM visitType tys
   qn   <- visitQualTypeIdent qid
   return $ if qualName qid == "Identity"
     then head tys'
     else TCons qn tys'
 visitType (IL.TypeVariable        idx) = return $ TVar $ abs idx
-visitType (IL.TypeArrow       ty1 ty2) = do 
+visitType (IL.TypeArrow       ty1 ty2) = do
   ty1' <- visitType ty1
   ty2' <- visitType ty2
   return $ FuncType ty1' ty2'
@@ -544,7 +544,7 @@ genFlatApplication e1 e2 = genFlatApplic [e2] e1
   where
   genFlatApplic args expression = case expression of
     (IL.Apply expr1 expr2) -> genFlatApplic (expr2:args) expr1
-    (IL.Function qident _) -> do 
+    (IL.Function qident _) -> do
       arity_ <- lookupIdArity qident
       qname <- visitQualIdent qident
       maybe (internalError (funcArity qident))
@@ -564,7 +564,7 @@ genFlatApplication e1 e2 = genFlatApplic [e2] e1
 genFuncCall :: QName -> Int -> [IL.Expression] -> FlatState Expr
 genFuncCall qname arity args
   | arity > cnt = genComb qname args $ FuncPartCall $ arity - cnt
-  | arity < cnt = do 
+  | arity < cnt = do
       let (funcargs, applicargs) = splitAt arity args
       funccall <- genComb qname funcargs FuncCall
       genApplicComb funccall applicargs

@@ -31,7 +31,7 @@ import Base.TopEnv
 import Base.Types
 
 import Env.ModuleAlias (AliasEnv, sureLookupAlias)
-import Env.TypeConstructors (TCEnv, lookupTC)
+import Env.TypeConstructor (TCEnv, lookupTC)
 import Env.Value (ValueEnv, ValueInfo (..), lookupValue, qualLookupValue)
 
 import CompilerEnv
@@ -50,7 +50,7 @@ genTypedAbstract env mdl = genAbstract (genAbstractEnv TypedAcy env mdl) mdl
 --  signature takes place in every function type annotation, if it exists,
 --  otherwise the dummy type "Prelude.untyped" is used.
 genUntypedAbstract :: CompilerEnv -> Module -> CurryProg
-genUntypedAbstract env mdl 
+genUntypedAbstract env mdl
   = genAbstract (genAbstractEnv UntypedAcy env mdl) mdl
 
 -- |Generate an AbstractCurry program term from the syntax tree
@@ -71,8 +71,8 @@ genAbstract env (Module mid _ imps decls)
 -- ---------------------------------------------------------------------------
 
 -- The following type and functions are used to split a list of Curry
--- declarations into three parts: a list of type declarations (data types and 
--- type synonyms), a table of function declarations and a list of fixity 
+-- declarations into three parts: a list of type declarations (data types and
+-- type synonyms), a table of function declarations and a list of fixity
 -- declarations for infix operators.
 
 -- |Data type for representing partitions of Curry declarations
@@ -198,7 +198,7 @@ genTypeExpr env (RecordType fss mr) = case mr of
         fields' = foldr (uncurry insertEntry) fields (zip ls' ts')
     in  (env2, CRecordType fields' rbase)
   _ -> internalError "GenAbstractCurry.gegnTypeExpr: illegal record base"
-  where 
+  where
   (ls  , ts ) = unzip $ concatMap (\ (ls1,ty) -> map (\l -> (l,ty)) ls1) fss
   (env1, ts') = mapAccumL genTypeExpr env ts
   ls'        = map name ls
@@ -259,7 +259,7 @@ genFuncDecl isLocal env ident decls
 
   genTypeSig env' (TypeSig          _ _ ts) = genTypeExpr env' ts
   genTypeSig env' (ExternalDecl _ _ _ _ ts) = genTypeExpr env' ts
-  genTypeSig _    _ = 
+  genTypeSig _    _ =
     error "GenAbstractCurry.genFuncDecl.genTypeSig: no pattern match"
 
   genExternal (ExternalDecl _ _ mname ident' _)
@@ -267,7 +267,7 @@ genFuncDecl isLocal env ident decls
   genExternal (FlatExternalDecl _ [ident'])
     = CExternal (name ident')
   genExternal _
-    = internalError $ "GenAbstractCurry.genExternal: " 
+    = internalError $ "GenAbstractCurry.genExternal: "
       ++ "illegal external declaration occured"
 
   compArity Nothing   [] = internalError $ "GenAbstractCurry.compArity: "
@@ -618,7 +618,7 @@ genLiteral (Float _ f) = CFloatc f
 genLiteral _           = internalError "GenAbstractCurry.genLiteral: unsupported literal"
 
 -- |Create a qualified AbstractCurry identifier from a Curry 'QualIdent'.
--- 
+--
 -- * Some prelude identifiers are not qualified. The first check ensures
 --   that they get a correct qualifier.
 -- * The test for unqualified identifiers is necessary to qualify
@@ -633,7 +633,7 @@ genQName isTypeCons env qident
     where (mmid, ident) = (qualidMod qid, qualidId qid)
           mid           = maybe (moduleId env)
                           (flip sureLookupAlias (aliases env))
-                          mmid 
+                          mmid
 
   getQualIdent ident
     | isTypeCons = case lookupTC ident $ tconsEnv env of

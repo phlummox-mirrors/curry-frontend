@@ -22,7 +22,7 @@ import Curry.Syntax
 import Base.Messages (internalError)
 import Base.Types
 
-import Env.TypeConstructors (TCEnv, TypeInfo (..), qualLookupTC)
+import Env.TypeConstructor (TCEnv, TypeInfo (..), qualLookupTC)
 
 -- |A record containing data for a module 'm'
 data ModuleSummary = ModuleSummary

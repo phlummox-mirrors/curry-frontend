@@ -31,7 +31,7 @@ import Base.TypeSubst (expandAliasType)
 import Env.Interface
 import Env.ModuleAlias (importAliases)
 import Env.OpPrec
-import Env.TypeConstructors
+import Env.TypeConstructor
 import Env.Value
 
 import CompilerEnv

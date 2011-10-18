@@ -13,13 +13,17 @@
 -}
 module CompilerEnv where
 
+import qualified Data.Map as Map (keys)
+
 import Curry.Base.Ident (ModuleIdent)
+
+import Base.TopEnv (localBindings)
 
 import Env.Eval
 import Env.Interface
 import Env.ModuleAlias
 import Env.OpPrec
-import Env.TypeConstructors
+import Env.TypeConstructor
 import Env.Value
 
 -- |A compiler environment contains information about the module currently
@@ -33,7 +37,7 @@ data CompilerEnv = CompilerEnv
   , valueEnv     :: ValueEnv     -- ^ functions and data constructors
   , opPrecEnv    :: PEnv         -- ^ operator precedences
   , evalAnnotEnv :: EvalEnv      -- ^ evaluation annotations
-  } deriving Show
+  }
 
 initCompilerEnv :: ModuleIdent -> CompilerEnv
 initCompilerEnv mid = CompilerEnv
@@ -45,3 +49,15 @@ initCompilerEnv mid = CompilerEnv
   , opPrecEnv    = initPEnv
   , evalAnnotEnv = initEEnv
   }
+
+showCompilerEnv :: CompilerEnv -> String
+showCompilerEnv env = unlines $ concat
+  [ header "ModuleIdent"      $ show $ moduleIdent  env
+  , header "Interfaces"       $ show $ Map.keys      $ interfaceEnv env
+  , header "ModuleAliases"    $ show $ aliasEnv     env
+  , header "TypeConstructors" $ show $ localBindings $ tyConsEnv env
+  , header "Values"           $ show $ localBindings $ valueEnv  env
+  , header "Precedences"      $ show $ localBindings $ opPrecEnv env
+  , header "Eval Annotations" $ show $ evalAnnotEnv env
+  ]
+  where header hdr content = [hdr, replicate (length hdr) '=', content]

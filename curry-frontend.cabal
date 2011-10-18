@@ -67,7 +67,7 @@ Executable cymake
     , Env.Interface
     , Env.ModuleAlias
     , Env.OpPrec
-    , Env.TypeConstructors
+    , Env.TypeConstructor
     , Env.Value
     , Exports
     , Frontend

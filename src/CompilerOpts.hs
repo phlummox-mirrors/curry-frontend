@@ -91,7 +91,6 @@ classifyVerbosity _   v = v
 -- |Data type for representing code dumps
 data DumpLevel
   = DumpRenamed      -- ^ dump source  after renaming
-  | DumpTypes        -- ^ dump types   after typechecking
   | DumpDesugared    -- ^ dump source  after desugaring
   | DumpSimplified   -- ^ dump source  after simplification
   | DumpLifted       -- ^ dump source  after lambda-lifting
@@ -210,9 +209,6 @@ options =
       (NoArg (\ opts -> opts { optDumps =
         nub $ DumpRenamed : optDumps opts }))
       "dump source code after renaming"
-  , Option ""   ["dump-types"]
-      (NoArg (\ opts -> opts { optDumps = nub $ DumpTypes : optDumps opts }))
-      "dump types after type-checking"
   , Option ""   ["dump-desugared"]
       (NoArg (\ opts -> opts { optDumps =
         nub $ DumpDesugared : optDumps opts }))

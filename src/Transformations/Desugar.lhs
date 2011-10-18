@@ -78,7 +78,7 @@ all names must be properly qualified before calling this module.}
 > import Base.Typing
 > import Base.Utils (mapAccumM)
 
-> import Env.TypeConstructors (TCEnv, TypeInfo (..), qualLookupTC)
+> import Env.TypeConstructor (TCEnv, TypeInfo (..), qualLookupTC)
 > import Env.Value (ValueEnv, ValueInfo (..), bindFun, bindGlobalInfo
 >   , lookupValue, qualLookupValue)
 

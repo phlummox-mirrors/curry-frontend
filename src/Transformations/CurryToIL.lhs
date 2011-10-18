@@ -35,7 +35,7 @@ data structures, we can use only a qualified import for the
 > import Base.Utils (foldr2, thd3)
 
 > import Env.Eval (EvalEnv)
-> import Env.TypeConstructors (TCEnv, TypeInfo (..), qualLookupTC)
+> import Env.TypeConstructor (TCEnv, TypeInfo (..), qualLookupTC)
 > import Env.Value (ValueEnv, ValueInfo (..), lookupValue, qualLookupValue)
 
 > import qualified IL as IL

@@ -38,7 +38,7 @@ merged into a single definition.
 > import Base.Types
 > import Base.Utils ((++!), findDouble, findMultiples)
 
-> import Env.TypeConstructors (TCEnv, TypeInfo (..), qualLookupTC)
+> import Env.TypeConstructor (TCEnv, TypeInfo (..), qualLookupTC)
 > import Env.Value (ValueEnv, ValueInfo (..))
 
 > import CompilerOpts

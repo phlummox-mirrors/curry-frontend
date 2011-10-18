@@ -31,7 +31,6 @@ import Curry.Files.PathUtils
 import Base.Messages (abortWith, errorMessages, putErrsLn)
 
 import Env.Eval (evalEnv)
-import Env.Value (ppTypes)
 
 -- source representations
 import qualified Curry.AbstractCurry as AC
@@ -174,7 +173,7 @@ checkModule opts env mdl = kindCheck env mdl -- should be only syntax checking ?
 
 -- |Translate FlatCurry into the intermediate language 'IL'
 transModule :: Options -> CompilerEnv -> CS.Module
-            -> (CompilerEnv, IL.Module, [(DumpLevel, String)])
+            -> (CompilerEnv, IL.Module, [(DumpLevel, CompilerEnv, String)])
 transModule opts env mdl = (env5, ilCaseComp, dumps)
   where
     flat' = FlatCurry `elem` optTargetTypes opts
@@ -184,13 +183,12 @@ transModule opts env mdl = (env5, ilCaseComp, dumps)
     (lifted    , env3) = lift           simplified env2
     (il        , env4) = ilTrans flat'  lifted     env3
     (ilCaseComp, env5) = completeCase   il         env4
-    dumps = [ (DumpRenamed   , show $ CS.ppModule    mdl         )
-            , (DumpTypes     , show $ ppTypes (moduleIdent env) (valueEnv env))
-            , (DumpDesugared , show $ CS.ppModule    desugared   )
-            , (DumpSimplified, show $ CS.ppModule    simplified  )
-            , (DumpLifted    , show $ CS.ppModule    lifted    )
-            , (DumpIL        , show $ IL.ppModule il        )
-            , (DumpCase      , show $ IL.ppModule ilCaseComp)
+    dumps = [ (DumpRenamed   , env , show $ CS.ppModule mdl       )
+            , (DumpDesugared , env1, show $ CS.ppModule desugared )
+            , (DumpSimplified, env2, show $ CS.ppModule simplified)
+            , (DumpLifted    , env3, show $ CS.ppModule lifted    )
+            , (DumpIL        , env4, show $ IL.ppModule il        )
+            , (DumpCase      , env5, show $ IL.ppModule ilCaseComp)
             ]
 
 -- ---------------------------------------------------------------------------
@@ -279,14 +277,13 @@ showWarnings opts msgs = when (optWarn opts)
 
 -- |The 'doDump' function writes the selected information to the
 -- standard output.
-doDump :: Options -> (DumpLevel, String) -> IO ()
-doDump opts (level, dump) = when (level `elem` optDumps opts) $ putStrLn $
-  unlines [header, replicate (length header) '=', dump]
+doDump :: Options -> (DumpLevel, CompilerEnv, String) -> IO ()
+doDump opts (level, env, dump) = when (level `elem` optDumps opts) $
+  putStrLn $ unlines [showCompilerEnv env, header, replicate (length header) '=', dump]
   where header = dumpHeader level
 
 dumpHeader :: DumpLevel -> String
 dumpHeader DumpRenamed    = "Module after renaming"
-dumpHeader DumpTypes      = "Types"
 dumpHeader DumpDesugared  = "Source code after desugaring"
 dumpHeader DumpSimplified = "Source code after simplification"
 dumpHeader DumpLifted     = "Source code after lifting"

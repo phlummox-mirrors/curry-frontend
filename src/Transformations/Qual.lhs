@@ -27,7 +27,7 @@ declarations groups as well as function arguments remain unchanged.
 
 > import Base.TopEnv
 
-> import Env.TypeConstructors (TCEnv, qualLookupTC)
+> import Env.TypeConstructor (TCEnv, qualLookupTC)
 > import Env.Value (ValueEnv, qualLookupValue)
 
 > data QualEnv = QualEnv
