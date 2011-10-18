@@ -921,7 +921,7 @@ lookupIdArity qid = gets (lookupA . typeEnvE)
 
 
 getTypeOf :: Ident -> FlatState (Maybe TypeExpr)
-getTypeOf _ident = do
+getTypeOf ident = do
   valEnv <- gets typeEnvE
   case lookupValue ident valEnv of
     Value _ _ (ForAll _ t) : _ -> do
