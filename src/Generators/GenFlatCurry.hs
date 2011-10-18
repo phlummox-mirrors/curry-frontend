@@ -921,24 +921,23 @@ lookupIdArity qid = gets (lookupA . typeEnvE)
 
 
 getTypeOf :: Ident -> FlatState (Maybe TypeExpr)
-getTypeOf _ident = return Nothing -- TODO 2011-10-18 (bjp): reactivate!
---   do
---   valEnv <- gets typeEnvE
---   case lookupValue ident valEnv of
---     Value _ _ (ForAll _ t) : _ -> do
---       t1 <- visitType (ttrans t)
---       trace' ("getTypeOf(" ++ show ident ++ ") = " ++ show t1) $
---         return (Just t1)
---     DataConstructor _ _ (ForAllExist _ _ t) : _ -> do
---       t1 <- visitType (ttrans t)
---       trace' ("getTypeOfDataCon(" ++ show ident ++ ") = " ++ show t1) $
---         return (Just t1)
---     _ -> do
---     (_, ats) <- gets functionIdE
---     case lookup ident ats of
---       Just t -> liftM Just (visitType t)
---       Nothing -> trace' ("lookupValue did not return a value for index " ++ show ident)
---                  (return Nothing)
+getTypeOf _ident = do
+  valEnv <- gets typeEnvE
+  case lookupValue ident valEnv of
+    Value _ _ (ForAll _ t) : _ -> do
+      t1 <- visitType (ttrans t)
+      trace' ("getTypeOf(" ++ show ident ++ ") = " ++ show t1) $
+        return (Just t1)
+    DataConstructor _ _ (ForAllExist _ _ t) : _ -> do
+      t1 <- visitType (ttrans t)
+      trace' ("getTypeOfDataCon(" ++ show ident ++ ") = " ++ show t1) $
+        return (Just t1)
+    _ -> do
+    (_, ats) <- gets functionIdE
+    case lookup ident ats of
+      Just t -> liftM Just (visitType t)
+      Nothing -> trace' ("lookupValue did not return a value for index " ++ show ident)
+                 (return Nothing)
 
 ttrans :: Type -> IL.Type
 ttrans (TypeConstructor    i ts) = IL.TypeConstructor i (map ttrans ts)
