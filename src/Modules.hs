@@ -159,11 +159,9 @@ checkModule opts env mdl = kindCheck env mdl -- should be only syntax checking ?
                        >>= uncurry (syntaxCheck opts)
                        >>= uncurry precCheck
                        >>= (if withTypeCheck then uncurry typeCheck else return)
-                       >>= return . (uncurry qual)
                        >>= uncurry exportCheck
-                       >>= return .  qualEnv
+                       >>= return . (uncurry (qual opts))
   where
-  qualEnv (e, m) = (qualifyEnv opts e, m)
   withTypeCheck  = any (`elem` optTargetTypes opts)
                        [FlatCurry, ExtendedFlatCurry, FlatXml, AbstractCurry]
 

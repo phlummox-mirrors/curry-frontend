@@ -24,6 +24,8 @@ import Transformations.Qual           as Q  (qual)
 import Transformations.Simplify       as S  (simplify)
 
 import CompilerEnv
+import CompilerOpts
+import Imports (qualifyEnv)
 import qualified IL
 
 -- |Add missing case branches
@@ -50,8 +52,8 @@ lift mdl env = (mdl', env { valueEnv = tyEnv', evalAnnotEnv = eEnv' })
   where (mdl', tyEnv', eEnv') = L.lift (valueEnv env) (evalAnnotEnv env) mdl
 
 -- |Fully qualify used constructors and functions
-qual :: CompilerEnv -> Module -> (CompilerEnv, Module)
-qual env (Module m es is ds) = (env, Module m es is ds')
+qual :: Options -> CompilerEnv -> Module -> (CompilerEnv, Module)
+qual opts env (Module m es is ds) = (qualifyEnv opts env, Module m es is ds')
   where ds' = Q.qual (moduleIdent env) (tyConsEnv env) (valueEnv env) ds
 
 -- |Simplify the source code
