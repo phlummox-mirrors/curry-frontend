@@ -258,7 +258,7 @@ writeXML opts fn modSum il = when xmlTarget $
     xmlTarget  = FlatXml `elem` optTargetTypes opts
     useSubDir  = optUseSubdir opts
     targetFile = fromMaybe (xmlName fn) (optOutput opts)
-    curryXml   = shows (IL.xmlModule modSum il) "\n"
+    curryXml   = shows (IL.xmlModule (interface modSum) (infixDecls modSum) il) "\n"
 
 writeAbstractCurry :: Options -> FilePath -> CompilerEnv -> CS.Module -> IO ()
 writeAbstractCurry opts fname env modul = do

@@ -36,9 +36,8 @@ data ModuleSummary = ModuleSummary
   } deriving Show
 
 
-{- |Return a 'ModuleSummary' for a module, its corresponding
-    table of type constructors and its interface
--}
+-- |Return a 'ModuleSummary' for a module, its corresponding
+-- table of type constructors and its interface
 summarizeModule :: TCEnv -> Interface -> Module -> ModuleSummary
 summarizeModule tcEnv (Interface iid _ idecls) (Module mid mExp imps decls)
   | iid == mid = ModuleSummary
@@ -49,20 +48,15 @@ summarizeModule tcEnv (Interface iid _ idecls) (Module mid mExp imps decls)
       , infixDecls   = genInfixDecls mid decls
       , typeSynonyms = genTypeSyns tcEnv mid decls
       }
-  | otherwise = internalError $ errInterfaceModuleMismatch iid mid
-
--- ---------------------------------------------------------------------------
+  | otherwise = internalError $
+      "Interface " ++ show iid ++ " does not match module " ++ show mid
 
 -- |Generate interface import declarations
 genImports :: [ImportDecl] -> [IImportDecl]
 genImports = map snd . foldr addImport []
-  where
-  addImport :: ImportDecl -> [(ModuleIdent, IImportDecl)] -> [(ModuleIdent, IImportDecl)]
-  addImport (ImportDecl pos mid _ _ _) imps = case lookup mid imps of
-    Nothing -> (mid, IImportDecl pos mid) : imps
-    Just _  -> imps
-
--- ---------------------------------------------------------------------------
+  where addImport (ImportDecl pos mid _ _ _) imps = case lookup mid imps of
+          Nothing -> (mid, IImportDecl pos mid) : imps
+          Just _  -> imps
 
 -- |Generate interface infix declarations in the module
 genInfixDecls :: ModuleIdent -> [Decl] -> [IDecl]
@@ -72,14 +66,6 @@ genInfixDecls mident decls = concatMap genInfixDecl decls
   genInfixDecl (InfixDecl pos spec prec idents)
     = map (IInfixDecl pos spec prec . qualifyWith mident) idents
   genInfixDecl _ = []
-
---   collectIInfixDecls mident decls
---   collectIInfixDecls :: ModuleIdent -> [Decl] -> [IDecl]
---   collectIInfixDecls _ [] = []
---   collectIInfixDecls mident ((InfixDecl pos infixspec prec idents) : decls)
---     =  map (IInfixDecl pos infixspec prec . qualifyWith mident) idents
---     ++ collectIInfixDecls mident decls
---   collectIInfixDecls mident (_ : decls) = collectIInfixDecls mident decls
 
 -- ---------------------------------------------------------------------------
 
@@ -158,7 +144,3 @@ lookupTCId qident tcEnv = case qualLookupTC qident tcEnv of
   [RenamingType qid _ _] -> Just qid
   [AliasType    qid _ _] -> Just qid
   _                      -> Nothing
-
-errInterfaceModuleMismatch :: ModuleIdent -> ModuleIdent -> String
-errInterfaceModuleMismatch mi mm =
-  "Interface " ++ show mi ++ " does not match module " ++ show mm

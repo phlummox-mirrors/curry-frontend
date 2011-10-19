@@ -24,22 +24,21 @@ similar to that of Flat-Curry XML representation.
 > import Curry.Base.Ident
 > import IL.Type
 
-TODO: The following two imports should be avoided if possible as they make
+TODO: The following import should be avoided if possible as it makes
   the program structure less clear.
 
 > import qualified Curry.Syntax as CS
-> import ModuleSummary
 
 > -- identation level
 > level::Int
 > level = 3
 
-> xmlModule :: ModuleSummary -> Module -> Doc
-> xmlModule modSum m
->   = text "<prog>" $$ nest level (xmlBody modSum m) $$ text "</prog>"
+> xmlModule :: [CS.IDecl] -> [CS.IDecl] -> Module -> Doc
+> xmlModule intf infx m
+>   = text "<prog>" $$ nest level (xmlBody intf infx m) $$ text "</prog>"
 
-> xmlBody :: ModuleSummary -> Module -> Doc
-> xmlBody modSum (Module mname mimports decls) =
+> xmlBody :: [CS.IDecl] -> [CS.IDecl] -> Module -> Doc
+> xmlBody intf infx (Module mname mimports decls) =
 >   xmlElement "module"      xmlModuleDecl      moduleDecl      $$
 >   xmlElement "import"      xmlImportDecl      importDecl      $$
 >   xmlElement "types"       xmlTypeDecl        typeDecl        $$
@@ -50,8 +49,8 @@ TODO: The following two imports should be avoided if possible as they make
 >   moduleDecl          = [mname]
 >   importDecl          = mimports
 >   (funcDecl,typeDecl) = splitDecls decls
->   operatorDecl        = infixDecls modSum
->   translationDecl     = foldl (qualIDeclId (moduleId modSum)) [] (interface modSum)
+>   operatorDecl        = infx
+>   translationDecl     = foldl (qualIDeclId mname) [] intf
 
 > xmlModuleDecl :: ModuleIdent -> Doc
 > xmlModuleDecl = xmlModuleIdent

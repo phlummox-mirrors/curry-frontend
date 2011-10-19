@@ -336,7 +336,6 @@ expandTypeWith m tcEnv tc cs = case Map.lookup tc tcEnv of
     | l `elem` ls' = l
     | otherwise    = errorMessage $ errUndefinedLabel tc l
 
-
 expandTypeAll :: ModuleIdent -> ExpTCEnv -> Ident -> Import
 expandTypeAll m tcEnv tc = case Map.lookup tc tcEnv of
   Just (DataType     _ _                 cs) -> ImportTypeWith tc
@@ -347,6 +346,25 @@ expandTypeAll m tcEnv tc = case Map.lookup tc tcEnv of
     [l | (l, _) <- fs]
   Just (AliasType _ _ _) -> errorMessage $ errNonDataType tc
   Nothing                -> errorMessage $ errUndefinedEntity m tc
+
+errUndefinedEntity :: ModuleIdent -> Ident -> Message
+errUndefinedEntity m x = posErr x $
+  "Module " ++ moduleName m ++ " does not export " ++ name x
+
+errUndefinedDataConstr :: Ident -> Ident -> Message
+errUndefinedDataConstr tc c = posErr c $
+  name c ++ " is not a data constructor of type " ++ name tc
+
+errUndefinedLabel :: Ident -> Ident -> Message
+errUndefinedLabel tc c = posErr c $
+  name c ++ " is not a label of record type " ++ name tc
+
+errNonDataType :: Ident -> Message
+errNonDataType tc = posErr tc $ name tc ++ " is not a data type"
+
+errImportDataConstr :: ModuleIdent -> Ident -> Message
+errImportDataConstr _ c = posErr c $
+  "Explicit import for data constructor " ++ name c
 
 -- ---------------------------------------------------------------------------
 
@@ -404,9 +422,9 @@ importInterfaceIntf i@(Interface m _ _) env = env
   , valueEnv  = importEntities m True (const True) id mTyEnv $ valueEnv  env
   }
   where
-  mPEnv  = intfEnv bindPrec       i -- all operator precedences
-  mTCEnv = intfEnv bindTCHidden   i -- all type constructors
-  mTyEnv = intfEnv bindTy         i -- all values
+  mPEnv  = intfEnv bindPrec     i -- all operator precedences
+  mTCEnv = intfEnv bindTCHidden i -- all type constructors
+  mTyEnv = intfEnv bindTy       i -- all values
 
 -- ---------------------------------------------------------------------------
 -- Record stuff
@@ -431,7 +449,7 @@ expandRecordTC tcEnv (DataType qid n args) =
 expandRecordTC tcEnv (RenamingType qid n (DataConstr c m [ty])) =
   RenamingType qid n (DataConstr c m [expandRecords tcEnv ty])
 expandRecordTC _     (RenamingType _   _ (DataConstr    _ _ _)) =
-  internalError "Records.expandRecordTC"
+  internalError "Imports.expandRecordTC"
 expandRecordTC tcEnv (AliasType qid n ty) =
   AliasType qid n (expandRecords tcEnv ty)
 
@@ -516,24 +534,3 @@ expandRecords _ ty = ty
 --   addLabelType (LabelType l r ty) = importTopEnv m' l lblInfo
 --     where lblInfo = Label (qualify l) (qualQualify m' r) (polyType ty)
 --           m' = fromMaybe m (qualidMod r)
-
--- Error messages:
-
-errUndefinedEntity :: ModuleIdent -> Ident -> Message
-errUndefinedEntity m x = posErr x $
-  "Module " ++ moduleName m ++ " does not export " ++ name x
-
-errUndefinedDataConstr :: Ident -> Ident -> Message
-errUndefinedDataConstr tc c = posErr c $
-  name c ++ " is not a data constructor of type " ++ name tc
-
-errUndefinedLabel :: Ident -> Ident -> Message
-errUndefinedLabel tc c = posErr c $
-  name c ++ " is not a label of record type " ++ name tc
-
-errNonDataType :: Ident -> Message
-errNonDataType tc = posErr tc $ name tc ++ " is not a data type"
-
-errImportDataConstr :: ModuleIdent -> Ident -> Message
-errImportDataConstr _ c = posErr c $
-  "Explicit import for data constructor " ++ name c

@@ -132,23 +132,23 @@ data IdentExport
 -- Runs a 'FlatState' action and returns the result
 run :: Options -> ModuleSummary.ModuleSummary -> InterfaceEnv -> ValueEnv -> TCEnv
     -> Bool -> FlatState a -> (a, [Message])
-run opts cEnv mEnv tyEnv tcEnv genIntf f = (result, messagesE env)
+run opts modSum mEnv tyEnv tcEnv genIntf f = (result, messagesE env)
   where
   (result, env) = runState f env0
   env0 = FlatEnv
-    { moduleIdE     = ModuleSummary.moduleId cEnv
+    { moduleIdE     = ModuleSummary.moduleId modSum
     , functionIdE   = (qualify (mkIdent ""), [])
     , compilerOptsE = opts
     , interfaceEnvE = mEnv
     , typeEnvE      = tyEnv
     , tConsEnvE     = tcEnv
-    , publicEnvE    = genPubEnv (ModuleSummary.moduleId  cEnv)
-                                (ModuleSummary.interface cEnv)
-    , fixitiesE     = ModuleSummary.infixDecls   cEnv
-    , typeSynonymsE = ModuleSummary.typeSynonyms cEnv
-    , importsE      = ModuleSummary.imports      cEnv
-    , exportsE      = ModuleSummary.exports      cEnv
-    , interfaceE    = ModuleSummary.interface    cEnv
+    , publicEnvE    = genPubEnv (ModuleSummary.moduleId  modSum)
+                                (ModuleSummary.interface modSum)
+    , fixitiesE     = ModuleSummary.infixDecls   modSum
+    , typeSynonymsE = ModuleSummary.typeSynonyms modSum
+    , importsE      = ModuleSummary.imports      modSum
+    , exportsE      = ModuleSummary.exports      modSum
+    , interfaceE    = ModuleSummary.interface    modSum
     , varIndexE     = 0
     , varIdsE       = ScopeEnv.new
     , tvarIndexE    = 0
