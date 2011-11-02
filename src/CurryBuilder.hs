@@ -58,8 +58,8 @@ makeCurry opts srcs targetFile = mapM_ (compile . snd) srcs where
         isEnforced  = optForce opts || (not $ null $ optDumps opts)
         destFiles   = if isFinalFile then destNames fn else [flatName' fn]
         depFiles    = fn : mapMaybe flatInterface deps
-        actOutdated = if isFinalFile then generateFile fn else compileFile fn
-        actUpToDate = skipFile fn
+        actOutdated = if isFinalFile then generateFile  fn else compileFile fn
+        actUpToDate = if isFinalFile then skipFinalFile fn else skipFile fn
 
     if interfaceExists && not (isEnforced && isFinalFile)
        then smake destFiles depFiles actOutdated actUpToDate
@@ -69,6 +69,8 @@ makeCurry opts srcs targetFile = mapM_ (compile . snd) srcs where
   compileFile f = do
     status opts $ "compiling " ++ f
     compileModule (opts { optTargetTypes = [FlatCurry], optDumps = [] }) f
+
+  skipFinalFile f = status opts $ "skipping " ++ f
 
   skipFile f = info opts $ "skipping " ++ f
 
