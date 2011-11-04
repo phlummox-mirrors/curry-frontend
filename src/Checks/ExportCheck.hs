@@ -158,14 +158,12 @@ expandTypeAll tc = do
 
 expandModule :: ModuleIdent -> ECM [Export]
 expandModule em = do
-  m        <- getModuleIdent
-  locals   <- if em == m then expandLocalModule else return []
-  reexport <- do
-    knownModules <- getImportedModules
-    if em `Set.member` knownModules
-      then expandImportedModule em
-      else report (errModuleNotImported em) >> return []
-  return $ locals ++ reexport
+  isLocal   <- (em ==)         `liftM` getModuleIdent
+  isForeign <- (Set.member em) `liftM` getImportedModules
+  locals    <- if isLocal   then expandLocalModule       else return []
+  foreigns  <- if isForeign then expandImportedModule em else return []
+  unless (isLocal || isForeign) $ report $ errModuleNotImported em
+  return $ locals ++ foreigns
 
 expandLocalModule :: ECM [Export]
 expandLocalModule = do
