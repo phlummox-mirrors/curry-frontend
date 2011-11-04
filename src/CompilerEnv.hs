@@ -13,7 +13,8 @@
 -}
 module CompilerEnv where
 
-import qualified Data.Map as Map (keys)
+import qualified Data.Map as Map (Map, keys, toList)
+import Text.PrettyPrint
 
 import Curry.Base.Ident (ModuleIdent)
 
@@ -51,13 +52,24 @@ initCompilerEnv mid = CompilerEnv
   }
 
 showCompilerEnv :: CompilerEnv -> String
-showCompilerEnv env = unlines $ concat
-  [ header "ModuleIdent"      $ show $ moduleIdent  env
-  , header "Interfaces"       $ show $ Map.keys      $ interfaceEnv env
-  , header "ModuleAliases"    $ show $ aliasEnv     env
-  , header "TypeConstructors" $ show $ allLocalBindings $ tyConsEnv    env
-  , header "Values"           $ show $ allLocalBindings $ valueEnv     env
-  , header "Precedences"      $ show $ allLocalBindings $ opPrecEnv    env
-  , header "Eval Annotations" $ show $ evalAnnotEnv env
+showCompilerEnv env = show $ vcat
+  [ header "ModuleIdent     " $ textS  $ moduleIdent env
+  , header "Interfaces      " $ hcat   $ punctuate comma $ map textS $ Map.keys $ interfaceEnv env
+  , header "ModuleAliases   " $ ppMap  $ aliasEnv     env
+  , header "TypeConstructors" $ ppAL $ allLocalBindings $ tyConsEnv    env
+  , header "Values          " $ ppAL $ allLocalBindings $ valueEnv     env
+  , header "Precedences     " $ ppAL $ allLocalBindings $ opPrecEnv    env
+  , header "Eval Annotations" $ ppMap $ evalAnnotEnv env
   ]
-  where header hdr content = [hdr, replicate (length hdr) '=', content]
+  where
+  header hdr content = hang (text hdr <+> colon) 4 content
+  textS = text . show
+
+ppMap :: (Show a, Show b) => Map.Map a b -> Doc
+ppMap = ppAL . Map.toList
+
+ppAL :: (Show a, Show b) => [(a, b)] -> Doc
+ppAL xs = vcat $ map (\(a,b) -> text (pad a keyWidth) <+> equals <+> text b) showXs
+  where showXs   = map (\(a,b) -> (show a, show b)) xs
+        keyWidth = maximum (0 : map (length .fst) showXs)
+        pad s n  = take n (s ++ repeat ' ')

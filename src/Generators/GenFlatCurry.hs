@@ -155,11 +155,11 @@ run opts modSum mEnv tyEnv tcEnv genIntf f = (result, messagesE env)
     , messagesE     = []
     , genInterfaceE = genIntf
     , localTypes    = Map.empty
-    , constrTypes   = Map.fromList $ getConstrTypes tcEnv
+    , constrTypes   = Map.fromList $ getConstrTypes tcEnv tyEnv
     }
 
-getConstrTypes :: TCEnv -> [(QualIdent, IL.Type)]
-getConstrTypes tcEnv =
+getConstrTypes :: TCEnv -> ValueEnv -> [(QualIdent, IL.Type)]
+getConstrTypes tcEnv tyEnv =
   [ mkConstrType tqid conid argtys argc
   | (_, (_, DataType tqid argc dts):_) <- Map.toList $ topEnvMap tcEnv
   , Just (DataConstr conid _ argtys) <- dts
@@ -169,7 +169,7 @@ getConstrTypes tcEnv =
     where
     conname    = QualIdent (qualidMod tqid) conid
     resulttype = IL.TypeConstructor tqid (map IL.TypeVariable [0 .. targnum - 1])
-    contype    = foldr IL.TypeArrow resulttype $ map ttrans argtypes
+    contype    = foldr IL.TypeArrow resulttype $ map (ttrans tcEnv tyEnv) argtypes
 
 --
 visitModule :: IL.Module -> FlatState Prog
@@ -919,33 +919,22 @@ lookupIdArity qid = gets (lookupA . typeEnvE)
       _                        -> Nothing
     _                        -> Nothing
 
-
-getTypeOf :: Ident -> FlatState (Maybe TypeExpr)
-getTypeOf ident = do
-  valEnv <- gets typeEnvE
-  case lookupValue ident valEnv of
-    Value _ _ (ForAll _ t) : _ -> do
-      t1 <- visitType (ttrans t)
-      trace' ("getTypeOf(" ++ show ident ++ ") = " ++ show t1) $
-        return (Just t1)
-    DataConstructor _ _ (ForAllExist _ _ t) : _ -> do
-      t1 <- visitType (ttrans t)
-      trace' ("getTypeOfDataCon(" ++ show ident ++ ") = " ++ show t1) $
-        return (Just t1)
-    _ -> do
-    (_, ats) <- gets functionIdE
-    case lookup ident ats of
-      Just t -> liftM Just (visitType t)
-      Nothing -> trace' ("lookupValue did not return a value for index " ++ show ident)
-                 (return Nothing)
-
-ttrans :: Type -> IL.Type
-ttrans (TypeConstructor    i ts) = IL.TypeConstructor i (map ttrans ts)
-ttrans (TypeVariable          v) = IL.TypeVariable v
-ttrans (TypeConstrained    [] v) = IL.TypeVariable v
-ttrans (TypeConstrained (v:_) _) = ttrans v
-ttrans (TypeArrow           f x) = IL.TypeArrow (ttrans f) (ttrans x)
-ttrans s                         = internalError $ "in ttrans: " ++ show s
+ttrans :: TCEnv -> ValueEnv -> Type -> IL.Type
+ttrans _     _     (TypeVariable          v) = IL.TypeVariable v
+ttrans tcEnv tyEnv (TypeConstructor    i ts) = IL.TypeConstructor i (map (ttrans tcEnv tyEnv) ts)
+ttrans tcEnv tyEnv (TypeArrow           f x) = IL.TypeArrow (ttrans tcEnv tyEnv f) (ttrans tcEnv tyEnv x)
+ttrans _     _     (TypeConstrained    [] v) = IL.TypeVariable v
+ttrans tcEnv tyEnv (TypeConstrained (v:_) _) = ttrans tcEnv tyEnv v
+ttrans _     _     (TypeSkolem            k) = internalError $
+  "Generators.GenFlatCurry.ttrans: skolem type " ++ show k
+ttrans _     _     (TypeRecord         [] _) = internalError $
+  "Generators.GenFlatCurry.ttrans: empty type record"
+ttrans tcEnv tyEnv (TypeRecord ((l, _):_) _) = case lookupValue l tyEnv of
+  [Label _ rec _ ] -> case qualLookupTC rec tcEnv of
+    [AliasType _ n (TypeRecord _ _)] ->
+      IL.TypeConstructor rec (map IL.TypeVariable [0 .. n - 1])
+    _ -> internalError $ "Generators.GenFlatCurry.ttrans: unknown record type " ++ show rec
+  _ -> internalError $ "Generators.GenFlatCurry.ttrans: ambigous record label " ++ show l
 
 -- Constructor (:) receives special treatment throughout the
 -- whole implementation. We won't depart from that for mere
@@ -987,6 +976,26 @@ newVarIndex ident = do
   let vid = VarIndex ty idx
   modify $ \ s -> s { varIndexE = idx, varIdsE = ScopeEnv.insert ident vid (varIdsE s) }
   return vid
+
+getTypeOf :: Ident -> FlatState (Maybe TypeExpr)
+getTypeOf ident = do
+  valEnv <- gets typeEnvE
+  tcEnv  <- gets tConsEnvE
+  case lookupValue ident valEnv of
+    Value _ _ (ForAll _ t) : _ -> do
+      t1 <- visitType (ttrans tcEnv valEnv t)
+      trace' ("getTypeOf(" ++ show ident ++ ") = " ++ show t1) $
+        return (Just t1)
+    DataConstructor _ _ (ForAllExist _ _ t) : _ -> do
+      t1 <- visitType (ttrans tcEnv valEnv t)
+      trace' ("getTypeOfDataCon(" ++ show ident ++ ") = " ++ show t1) $
+        return (Just t1)
+    _ -> do
+    (_, ats) <- gets functionIdE
+    case lookup ident ats of
+      Just t -> liftM Just (visitType t)
+      Nothing -> trace' ("lookupValue did not return a value for index " ++ show ident)
+                 (return Nothing)
 
 --
 lookupVarIndex :: Ident -> FlatState VarIndex
