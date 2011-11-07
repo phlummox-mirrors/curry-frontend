@@ -461,9 +461,17 @@ expandValueEnv opts env
   tcEnv    = tyConsEnv env
   tyEnv    = valueEnv env
   enabled  = Records `elem` optExtensions opts
-  tyEnv'   = fmap (expandRecordTypes tcEnv) tyEnv -- $ addImportedLabels m lEnv tyEnv
---   m        = moduleIdent env
---   lEnv     = labelEnv env
+  tyEnv'   = fmap (expandRecordTypes tcEnv) $ addImportedLabels m tyEnv
+  m        = moduleIdent env
+
+-- TODO: This is necessary as currently labels are unqualified.
+-- Without this additional import the labels would no longer be known.
+addImportedLabels :: ModuleIdent -> ValueEnv -> ValueEnv
+addImportedLabels m tyEnv = foldr addLabelType tyEnv (allImports tyEnv)
+  where
+  addLabelType (_, Label l r ty) = importTopEnv (fromMaybe m (qualidMod r))
+                                   (unqualify l) (Label l r ty)
+  addLabelType _ = id
 
 expandRecordTypes :: TCEnv -> ValueInfo -> ValueInfo
 expandRecordTypes tcEnv (DataConstructor  qid a (ForAllExist n m ty)) =
@@ -526,11 +534,3 @@ expandRecords _ ty = ty
 --   isImported r (Import         r'  ) = r == r'
 --   isImported r (ImportTypeWith r' _) = r == r'
 --   isImported r (ImportTypeAll  r'  ) = r == r'
-
--- addImportedLabels :: ModuleIdent -> LabelEnv -> ValueEnv -> ValueEnv
--- addImportedLabels m lEnv tyEnv =
---   foldr addLabelType tyEnv (concat $ Map.elems lEnv)
---   where
---   addLabelType (LabelType l r ty) = importTopEnv m' l lblInfo
---     where lblInfo = Label (qualify l) (qualQualify m' r) (polyType ty)
---           m' = fromMaybe m (qualidMod r)

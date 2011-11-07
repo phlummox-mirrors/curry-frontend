@@ -959,10 +959,13 @@ lookupIdType qid = do
   aEnv <- gets typeEnvE
   lt <- gets localTypes
   ct <- gets constrTypes
+  m  <- gets moduleIdE
+  tyEnv <- gets typeEnvE
+  tcEnv <- gets tConsEnvE
   case Map.lookup qid lt `mplus` Map.lookup qid ct of
     Just t  -> trace' ("lookupIdType local " ++ show (qid, t)) $ liftM Just (visitType t)  -- local name or constructor
     Nothing -> case [ t | Value _ _ (ForAll _ t) <- qualLookupValue qid aEnv ] of
-      t : _ -> liftM Just (visitType (translType t))  -- imported name
+      t : _ -> liftM Just (visitType (translType m tyEnv tcEnv t))  -- imported name
       []    -> case qualidMod qid of
         Nothing -> trace' ("no type for "  ++ show qid) $ return Nothing  -- no known type
         Just _ -> lookupIdType qid {qualidMod = Nothing}

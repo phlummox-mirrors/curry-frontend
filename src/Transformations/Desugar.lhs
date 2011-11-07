@@ -430,11 +430,12 @@ type \texttt{Bool} of the guard because the guard's type defaults to
 >       case (lookupValue l tyEnv) of
 >            [Label _ r _] -> desugarRecordConstr p r fs'
 >            _  -> internalError "Desugar.desugarExpr: illegal record construction"
-> desugarExpr p (RecordSelection e l) =
->   do tyEnv <- getValueEnv
->      case lookupValue l tyEnv of
->        [Label _ r _] -> desugarRecordSelection p r l e
->        _ -> internalError "Desugar.desugarExpr: illegal record selection"
+> desugarExpr p (RecordSelection e l) = do
+>   tyEnv <- getValueEnv
+>   case lookupValue l tyEnv of
+>     [Label _ r _] -> desugarRecordSelection p r l e
+>     other         -> internalError $ "Desugar.desugarExpr: "
+>       ++ "Illegal record selection, " ++ show l ++ " could only be resolved to " ++ show other ++ "\n" ++ show tyEnv
 > desugarExpr p (RecordUpdate fs rexpr)
 >   | null fs = internalError "Desugar.desugarExpr: empty record update"
 >   | otherwise = do

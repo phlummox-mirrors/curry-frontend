@@ -18,7 +18,7 @@ data structures, we can use only a qualified import for the
 \texttt{IL} module.
 \begin{verbatim}
 
-> module Transformations.CurryToIL (ilTrans, translType) where
+> module Transformations.CurryToIL (ilTrans, translType') where
 
 > import Data.List (nub, partition)
 > import qualified Data.Map as Map (Map, empty, insert, lookup)
@@ -170,7 +170,7 @@ them back into their corresponding type constructors.
 >   IL.TypeArrow (translType ty1) (translType ty2)
 > translType (TypeSkolem k) =
 >   IL.TypeConstructor (qualify (mkIdent ("_" ++ show k))) []
-> translType (TypeRecord _ _) = error "Translation of record not defined" -- TODO
+> translType rec@(TypeRecord _ _) = error $ "Translation of record not defined: " ++ show rec -- TODO
 
 > elimRecordTypes :: ModuleIdent -> ValueEnv -> TCEnv -> Int -> Type -> Type
 > elimRecordTypes m tyEnv tcEnv n (TypeConstructor t tys) =
