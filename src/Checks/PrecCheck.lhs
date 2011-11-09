@@ -27,7 +27,7 @@ of the operators involved.
 > import Curry.Syntax
 
 > import Base.Expr
-> import Base.Messages (Message, toMessage)
+> import Base.Messages (Message, posErr, qposErr)
 > import Base.Utils (findDouble)
 
 > import Env.OpPrec (PEnv, OpPrec (..), PrecInfo (..), defaultP, bindP
@@ -503,11 +503,8 @@ Error messages.
 >   ++ " with " ++ qualName op2 ++ (showLine $ positionOfQualIdent op2)
 
 > errAmbiguousParse :: String -> QualIdent -> QualIdent -> Message
-> errAmbiguousParse what op1 op2 = toMessage (positionOfQualIdent op1) $
+> errAmbiguousParse what op1 op2 = qposErr op1 $
 >   "Ambiguous use of " ++ what ++ " " ++ qualName op1
 >   ++ " with " ++ qualName op2 ++ (showLine $ positionOfQualIdent op2)
-
-> posErr :: Ident -> String -> Message
-> posErr i msg = toMessage (positionOfIdent i) msg
 
 \end{verbatim}

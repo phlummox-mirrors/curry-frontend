@@ -26,7 +26,7 @@ import Curry.Base.Position
 import Curry.Syntax
 
 import Base.CurryTypes (fromType)
-import Base.Messages (internalError, errorAt)
+import Base.Messages (internalError)
 import Base.TopEnv
 import Base.Types
 
@@ -152,8 +152,8 @@ genTypeDecl env (TypeDecl _ n vs ty)
     )
   where (env1, idxs) = mapAccumL genTVarIndex env vs
         (env2, ty' ) = genTypeExpr env1 ty
-genTypeDecl _ (NewtypeDecl pos _ _ _)
-  = errorAt pos "newtype declarations are not supported in AbstractCurry"
+genTypeDecl _ (NewtypeDecl _ _ _ _)
+  = internalError "newtype declarations are not supported in AbstractCurry"
 genTypeDecl _ _
   = internalError "GenAbstractCurry.genTypeDecl: unexpected declaration"
 
@@ -420,8 +420,8 @@ genLocalDecls env decls
       (foldr (\p1 p2 -> ConstructorPattern qConsId [p1,p2])
         (ConstructorPattern qNilId [])
         args)
-  genLocalPattern pos _ (NegativePattern _ _)
-    = errorAt pos "negative patterns are not supported in AbstractCurry"
+  genLocalPattern _ _ (NegativePattern _ _)
+    = internalError "negative patterns are not supported in AbstractCurry"
   genLocalPattern pos env' (AsPattern ident cterm)
     = let (env1, patt) = genLocalPattern pos env' cterm
           idx          = fromMaybe
@@ -443,8 +443,8 @@ genLocalDecls env decls
 
   genLocalPattRhs pos env' [(Variable _, expr)]
     = genExpr pos env' expr
-  genLocalPattRhs pos _ _
-    = errorAt pos ("guarded expressions in pattern declarations"
+  genLocalPattRhs _ _ _
+    = internalError ("guarded expressions in pattern declarations"
       ++ " are not supported in AbstractCurry")
 
 --
@@ -557,7 +557,7 @@ genBranchExpr env (Alt pos patt rhs)
   genBranchRhs env' [(Variable _, expr)]
     = genExpr pos env' expr
   genBranchRhs _ _
-    = errorAt pos ("guarded expressions in case alternatives"
+    = internalError ("guarded expressions in case alternatives"
       ++ " are not supported in AbstractCurry")
 
 --
@@ -583,8 +583,8 @@ genPattern pos env (ListPattern _ args) = genPattern pos env $
   foldr (\x1 x2 -> ConstructorPattern qConsId [x1, x2])
         (ConstructorPattern qNilId [])
         args
-genPattern pos _ (NegativePattern _ _)
-  = errorAt pos "negative patterns are not supported in AbstractCurry"
+genPattern _ _ (NegativePattern _ _)
+  = internalError "negative patterns are not supported in AbstractCurry"
 genPattern pos env (AsPattern ident cterm)
   = let (env1, patt) = genPattern pos env cterm
         (env2, idx ) = genVarIndex env1 ident

@@ -1,10 +1,8 @@
 module Base.Messages
   ( -- * Output of user information
-    info, status
-    -- * Error messages
-  , putErrLn, putErrsLn
+    info, status, putErrLn, putErrsLn
     -- * program abortion
-  , abortWith, internalError, errorAt, errorAt', errorMessage, errorMessages
+  , abortWith, internalError, errorMessage, errorMessages
     -- * creating messages
   , Message, toMessage, posErr, qposErr, mposErr
   ) where
@@ -16,7 +14,6 @@ import System.Exit (ExitCode (..), exitWith)
 import Curry.Base.Ident (ModuleIdent (..), Ident (..), QualIdent
   , positionOfQualIdent)
 import Curry.Base.MessageMonad (Message, toMessage)
-import Curry.Base.Position (Position)
 
 import CompilerOpts (Options (optVerbosity), Verbosity (..))
 
@@ -43,14 +40,6 @@ abortWith errs = putErrsLn errs >> exitWith (ExitFailure 1)
 -- |Raise an internal error
 internalError :: String -> a
 internalError msg = error $ "Internal error: " ++ msg
-
--- |Raise an error for a given position
-errorAt :: Position -> String -> a
-errorAt p msg = error ('\n' : (show $ toMessage p msg))
-
--- |Raise an error for a given position, uncurried
-errorAt' :: (Position, String) -> a
-errorAt' = uncurry errorAt
 
 errorMessage :: Message -> a
 errorMessage = error . show
