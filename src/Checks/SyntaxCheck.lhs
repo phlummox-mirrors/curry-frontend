@@ -50,9 +50,8 @@ imported (type) environments. Next, the data constructors defined in
 the current module are entered into this environment. After this,
 all record labels are entered into the environment too. If a record
 identifier is already assigned to a constructor, then an error will be
-generated. Finally, all
-declarations are checked within the resulting environment. In
-addition, this process will also rename the local variables.
+generated. Finally, all declarations are checked within the resulting
+environment. In addition, this process will also rename the local variables.
 \begin{verbatim}
 
 > syntaxCheck :: Options -> ModuleIdent -> ValueEnv -> TCEnv -> [Decl]
@@ -89,6 +88,9 @@ by which the variables get renamed.
 
 > hasExtension :: Extension -> SCM Bool
 > hasExtension ext = S.gets (elem ext . extensions)
+
+> addExtension :: Extension -> SCM ()
+> addExtension ext = S.modify $ \ s -> s { extensions = ext : extensions s }
 
 > getModuleIdent :: SCM ModuleIdent
 > getModuleIdent = S.gets moduleIdent
@@ -933,22 +935,22 @@ Miscellaneous functions.
 \begin{verbatim}
 
 > checkFuncPatsExtension :: Position -> SCM ()
-> checkFuncPatsExtension p = do
->   funcPats <- hasExtension FunctionalPatterns
->   unless funcPats $ report $ errMissingLanguageExtension p
->     "Functional Patterns" FunctionalPatterns
+> checkFuncPatsExtension p = checkExtension p
+>   "Functional Patterns" FunctionalPatterns
 
 > checkRecordExtension :: Position -> SCM ()
-> checkRecordExtension p = do
->   records <- hasExtension Records
->   unless records $ report $ errMissingLanguageExtension p
->     "Records" Records
+> checkRecordExtension p = checkExtension p "Records" Records
 
 > checkAnonFreeVarsExtension :: Position -> SCM ()
-> checkAnonFreeVarsExtension p = do
->   anonFreeVars <- hasExtension AnonFreeVars
->   unless anonFreeVars $ report $ errMissingLanguageExtension p
->     "Anonymous free variables" AnonFreeVars
+> checkAnonFreeVarsExtension p = checkExtension p
+>   "Anonymous free variables" AnonFreeVars
+
+> checkExtension :: Position -> String -> Extension -> SCM ()
+> checkExtension pos msg ext = do
+>   enabledOrAlreadyWarned <- hasExtension ext
+>   unless enabledOrAlreadyWarned $ do
+>     report $ errMissingLanguageExtension pos msg ext
+>     addExtension ext
 
 > typeArity :: TypeExpr -> Int
 > typeArity (ArrowType _ t2) = 1 + typeArity t2

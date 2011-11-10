@@ -34,7 +34,7 @@ data Options = Options
   , optHtml        :: Bool           -- ^ generate Html code
   , optVerbosity   :: Verbosity      -- ^ verbosity level
   -- compilation
-  , optForce       :: Bool           -- ^ force compilation
+  , optForce       :: Bool           -- ^ force compilation of target
   , optImportPaths :: [FilePath]     -- ^ directories for imports
   , optOutput      :: Maybe FilePath -- ^ name of output file
   , optUseSubdir   :: Bool           -- ^ use subdir for output?
