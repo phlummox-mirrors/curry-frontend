@@ -22,6 +22,7 @@ import Data.List (intercalate, nub)
 import Data.Maybe (isJust)
 import System.Console.GetOpt
 import System.Environment (getArgs, getProgName)
+import System.FilePath (splitSearchPath)
 
 import Curry.Files.Filenames (currySubdir)
 
@@ -140,17 +141,17 @@ options =
   , Option "v"  ["verbosity"]
       (ReqArg (\ arg opts -> opts { optVerbosity =
         classifyVerbosity arg $ optVerbosity opts}) "<n>")
-      "set verbosity level to <n>"
+      "set verbosity level to <n>, one of 0 = quiet, 1 = status, 2 = info"
   , Option "" ["no-verb"]
       (NoArg (\ opts -> opts { optVerbosity = VerbQuiet } ))
       "set verbosity level to quiet"
   -- compilation
   , Option "f"  ["force"]
       (NoArg (\ opts -> opts { optForce = True }))
-      "force compilation of dependent files"
+      "force compilation of target file"
   , Option "i"  ["import-dir"]
       (ReqArg (\ arg opts -> opts { optImportPaths =
-        nub $ arg : optImportPaths opts }) "DIR")
+        nub $ optImportPaths opts ++ splitSearchPath arg}) "DIR")
       "search for imports in DIR"
   , Option "o"  ["output"]
       (ReqArg (\ arg opts -> opts { optOutput = Just arg }) "FILE")
