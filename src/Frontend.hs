@@ -74,7 +74,8 @@ genFullCurrySyntax check paths fn m = runMsgIO m $ \mod1 -> do
   errs <- makeInterfaces paths fn mod1
   if null errs
     then do
-      iEnv <- loadInterfaces paths mod1
+      (iEnv, intfErrs) <- loadInterfaces paths mod1
+      unless (null intfErrs) $ failWith $ msgTxt $ head intfErrs
       let env = importModules opts mod1 iEnv
       case check opts env mod1 of
         CheckSuccess (_, mod') -> return (return  mod')

@@ -106,7 +106,8 @@ loadModule opts fn = do
   let (mdl, hdrErrs) = checkModuleHeader opts fn parsed
   unless (null hdrErrs) $ abortWith hdrErrs
   -- load the imported interfaces into an InterfaceEnv
-  iEnv <- loadInterfaces (optImportPaths opts) mdl
+  (iEnv, intfErrs) <- loadInterfaces (optImportPaths opts) mdl
+  unless (null intfErrs) $ errorMessages intfErrs
   -- add information of imported modules
   let env = importModules opts mdl iEnv
   return (env, mdl)

@@ -36,7 +36,7 @@ Executable cymake
     Build-Depends: base == 3.*
   Build-Depends:
     curry-base >= 0.3.0
-    , mtl, old-time, containers, pretty
+    , mtl, old-time, containers, pretty, transformers
   ghc-options: -Wall
   Other-Modules:
       Base.CurryTypes

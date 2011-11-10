@@ -25,6 +25,8 @@
 module Interfaces (loadInterfaces) where
 
 import Control.Monad (foldM, liftM, unless)
+import Control.Monad.IO.Class (liftIO)
+import qualified Control.Monad.State as S (StateT (..), modify)
 import Data.List (intercalate, isPrefixOf)
 import qualified Data.Map as Map
 
@@ -34,17 +36,24 @@ import qualified Curry.ExtendedFlat.Type as EF
 import Curry.Files.PathUtils as PU
 import Curry.Syntax
 
-import Base.Messages (Message, toMessage, errorMessage, internalError)
+import Base.Messages (Message, toMessage, internalError)
 
 import Env.Interface
 
 -- TODO: Propagate errors
 
+type IntfLoader a = S.StateT [Message] IO a
+
+report :: Message -> IntfLoader ()
+report msg = S.modify (msg:)
+
 -- |Load the interface files into the 'InterfaceEnv'
-loadInterfaces :: [FilePath] -> Module -> IO InterfaceEnv
-loadInterfaces paths (Module m _ is _) =
-  foldM (loadInterface paths [m]) initInterfaceEnv
-        [(p, m') | ImportDecl p m' _ _ _ <- is]
+loadInterfaces :: [FilePath] -> Module -> IO (InterfaceEnv, [Message])
+loadInterfaces paths (Module m _ is _) = do
+  (env, errs) <- S.runStateT action []
+  return (env, reverse errs)
+  where action = foldM (loadInterface paths [m]) initInterfaceEnv
+                 [(p, m') | ImportDecl p m' _ _ _ <- is]
 
 -- |Load an interface into the environment
 --
@@ -56,14 +65,17 @@ loadInterfaces paths (Module m _ is _) =
 -- be done, otherwise the interface will be searched for in the import paths
 -- and compiled.
 loadInterface :: [FilePath] -> [ModuleIdent] -> InterfaceEnv
-              -> (Position, ModuleIdent) -> IO InterfaceEnv
+              -> (Position, ModuleIdent) -> IntfLoader InterfaceEnv
 loadInterface paths ctxt mEnv (p, m)
-  | m `elem` ctxt       = errorMessage $ errCyclicImport p
-                        $ m : takeWhile (/= m) ctxt
+  | m `elem` ctxt       = do
+    report $ errCyclicImport p $ m : takeWhile (/= m) ctxt
+    return mEnv
   | m `Map.member` mEnv = return mEnv
-  | otherwise           = PU.lookupCurryInterface paths m >>=
-      maybe (errorMessage $ errInterfaceNotFound p m)
-            (compileInterface paths ctxt mEnv m)
+  | otherwise           = do
+      mbIntf <- liftIO $ PU.lookupCurryInterface paths m
+      case mbIntf of
+        Nothing   -> report (errInterfaceNotFound p m) >> return mEnv
+        Just intf -> compileInterface paths ctxt mEnv m intf
 
 -- |Compile an interface by recursively loading its dependencies
 --
@@ -72,13 +84,13 @@ loadInterface paths ctxt mEnv (p, m)
 -- to check FlatCurry-Interfaces, since these files contain automatically
 -- generated FlatCurry terms (type \texttt{Prog}).
 compileInterface :: [FilePath] -> [ModuleIdent] -> InterfaceEnv
-                 -> ModuleIdent -> FilePath -> IO InterfaceEnv
+                 -> ModuleIdent -> FilePath -> IntfLoader InterfaceEnv
 compileInterface paths ctxt mEnv m fn = do
-  mintf <- (fmap flatToCurryInterface) `liftM` EF.readFlatInterface fn
+  mintf <- (fmap flatToCurryInterface) `liftM` liftIO (EF.readFlatInterface fn)
   case mintf of
-    Nothing -> errorMessage $ errInterfaceNotFound (first fn) m
+    Nothing -> report (errInterfaceNotFound (first fn) m) >> return mEnv
     Just intf@(Interface m' is _) -> do
-      unless (m' == m) $ errorMessage $ errWrongInterface (first fn) m m'
+      unless (m' == m) $ report $ errWrongInterface (first fn) m m'
       let importDecls = [ (pos, imp) | IImportDecl pos imp <- is ]
       mEnv' <- foldM (loadInterface paths (m : ctxt)) mEnv importDecls
       return $ Map.insert m intf mEnv'
