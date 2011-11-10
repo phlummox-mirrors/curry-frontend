@@ -111,7 +111,7 @@ moduleIdentDeps :: Options -> [FilePath] -> SourceEnv -> ModuleIdent -> IO Sourc
 moduleIdentDeps opts paths sEnv m = case Map.lookup m sEnv of
   Just _  -> return sEnv
   Nothing -> do
-    mFile <- lookupModule paths libraryPaths m
+    mFile <- lookupCurryModule paths libraryPaths m
     case mFile of
       Nothing -> return $ Map.insert m Unknown sEnv
       Just fn
@@ -120,7 +120,7 @@ moduleIdentDeps opts paths sEnv m = case Map.lookup m sEnv of
   where
     libraryPaths = optImportPaths opts
     checkModuleHeader fn = do
-      hdr@(Module m' _ _ _) <- patchModuleId fn `liftM` (ok . parseHeader fn) 
+      hdr@(Module m' _ _ _) <- patchModuleId fn `liftM` (ok . parseHeader fn)
                                `liftM` readModule fn
       unless (m == m') $ error $ errWrongModule m m'
       moduleDeps opts paths sEnv fn hdr

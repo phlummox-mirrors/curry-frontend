@@ -61,7 +61,7 @@ loadInterface paths ctxt mEnv (p, m)
   | m `elem` ctxt       = errorMessage $ errCyclicImport p
                         $ m : takeWhile (/= m) ctxt
   | m `Map.member` mEnv = return mEnv
-  | otherwise           = PU.lookupInterface paths m >>=
+  | otherwise           = PU.lookupCurryInterface paths m >>=
       maybe (errorMessage $ errInterfaceNotFound p m)
             (compileInterface paths ctxt mEnv m)
 

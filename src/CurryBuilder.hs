@@ -22,8 +22,7 @@ import System.Time (ClockTime)
 
 import Curry.Base.Ident
 import Curry.Files.Filenames
-import Curry.Files.PathUtils ( dropExtension, doesModuleExist, lookupCurryFile
-  , getModuleModTime, tryGetModuleModTime)
+import Curry.Files.PathUtils
 
 import Base.Messages (info, status, abortWith)
 
@@ -33,20 +32,48 @@ import Modules (compileModule)
 
 -- |Compile the Curry module in the given source file including all imported
 -- modules, depending on the 'Options'.
-buildCurry :: Options -> FilePath -> IO ()
-buildCurry opts file = do
-  mbFile <- lookupCurryFile (optImportPaths opts) file
-  case mbFile of
-    Nothing -> abortWith [errMissingFile file]
-    Just fn -> do
+buildCurry :: Options -> String -> IO ()
+buildCurry opts str = do
+  target <- findCurry opts str
+  case target of
+    Left err -> abortWith [err]
+    Right fn -> do
       (srcs, depErrs) <- flatDeps opts fn
       if not $ null depErrs
         then abortWith depErrs
         else makeCurry (defaultToFlatCurry opts) srcs fn
+      where
+      defaultToFlatCurry opt
+        | null $ optTargetTypes opt = opt { optTargetTypes = [FlatCurry] }
+        | otherwise                 = opt
+
+findCurry :: Options -> String -> IO (Either String FilePath)
+findCurry opts str = do
+  mbTarget <- fileSearch `orIfNotFound` moduleSearch
+  case mbTarget of
+    Nothing -> return $ Left  complaint
+    Just fn -> return $ Right fn
   where
-    defaultToFlatCurry opt
-      | null $ optTargetTypes opt = opt { optTargetTypes = [FlatCurry] }
-      | otherwise                 = opt
+  canBeFile    = isCurryFilePath str
+  canBeModule  = isModuleName    str
+  moduleFile   = moduleNameToFile $ fromModuleName str
+  paths        = optImportPaths opts
+  fileSearch   = if canBeFile
+                    then lookupCurryFile paths str
+                    else return Nothing
+  moduleSearch = if canBeModule
+                    then lookupCurryFile paths moduleFile
+                    else return Nothing
+  complaint
+    | canBeFile && canBeModule = errMissingTarget str
+    | canBeFile                = errMissingFile   str
+    | canBeModule              = errMissingModule str
+    | otherwise                = errUnrecognized  str
+  first `orIfNotFound` second = do
+    mbFile <- first
+    case mbFile of
+      Nothing -> second
+      justFn  -> return justFn
 
 -- |Compiles the given source modules, which must be in topological order
 makeCurry :: Options -> [(ModuleIdent, Source)] -> FilePath -> IO ()
@@ -127,5 +154,14 @@ smake dests deps actOutdated actUpToDate = do
     abortOnError act = C.catch act handler
       where handler (C.SomeException e) = abortWith [show e]
 
-errMissingFile :: FilePath -> String
+errMissingFile :: String -> String
 errMissingFile f = "Missing file \"" ++ f ++ "\""
+
+errMissingModule :: String -> String
+errMissingModule f = "Missing module \"" ++ f ++ "\""
+
+errMissingTarget :: String -> String
+errMissingTarget f = "Missing target \"" ++ f ++ "\""
+
+errUnrecognized :: String -> String
+errUnrecognized f = "Unrecognized input \"" ++ f ++ "\""
