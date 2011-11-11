@@ -15,6 +15,8 @@
 -}
 module Imports (importModules, qualifyEnv) where
 
+import Control.Monad (liftM, unless)
+import qualified Control.Monad.State as S (State, gets, modify, runState)
 import qualified Data.Map as Map
 import Data.Maybe
 import qualified Data.Set as Set
@@ -23,7 +25,7 @@ import Curry.Base.Ident
 import Curry.Syntax
 
 import Base.CurryTypes (toQualType, toQualTypes)
-import Base.Messages (Message, errorMessage, posErr, internalError)
+import Base.Messages (Message, errorMessages, posErr, internalError)
 import Base.TopEnv
 import Base.Types
 import Base.TypeSubst (expandAliasType)
@@ -83,17 +85,19 @@ type ExpValueEnv = IdentMap ValueInfo
 
 importInterface :: ModuleIdent -> Bool -> Maybe ImportSpec -> Interface
                 -> CompilerEnv -> CompilerEnv
-importInterface m q is i env = env
-  { opPrecEnv = importEntities m q vs id              mPEnv  $ opPrecEnv env
-  , tyConsEnv = importEntities m q ts (importData vs) mTCEnv $ tyConsEnv env
-  , valueEnv  = importEntities m q vs id              mTyEnv $ valueEnv  env
-  }
+importInterface m q is i env
+  | not (null errs) = errorMessages errs
+  | otherwise       = env
+    { opPrecEnv = importEntities m q vs id              mPEnv  $ opPrecEnv env
+    , tyConsEnv = importEntities m q ts (importData vs) mTCEnv $ tyConsEnv env
+    , valueEnv  = importEntities m q vs id              mTyEnv $ valueEnv  env
+    }
   where
   mPEnv  = intfEnv bindPrec i -- all operator precedences
   mTCEnv = intfEnv bindTC   i -- all type constructors
   mTyEnv = intfEnv bindTy   i -- all values
   -- all imported type constructors / values
-  expandedSpec = maybe [] (expandSpecs m mTCEnv mTyEnv) is
+  (expandedSpec, errs) = runExpand (expandSpecs is) m mTCEnv mTyEnv
   ts = isVisible is (Set.fromList $ foldr addType  [] expandedSpec)
   vs = isVisible is (Set.fromList $ foldr addValue [] expandedSpec)
 
@@ -108,9 +112,9 @@ addValue (ImportTypeWith _ cs) fs = cs ++ fs
 addValue (ImportTypeAll     _) _  = internalError "Imports.addValue"
 
 isVisible :: Maybe ImportSpec -> Set.Set Ident -> Ident -> Bool
+isVisible Nothing                _  = const True
 isVisible (Just (Importing _ _)) xs = (`Set.member`    xs)
 isVisible (Just (Hiding    _ _)) xs = (`Set.notMember` xs)
-isVisible Nothing                _  = const True
 
 importEntities :: Entity a => ModuleIdent -> Bool -> (Ident -> Bool)
                -> (a -> a) -> IdentMap a -> TopEnv a -> TopEnv a
@@ -264,88 +268,128 @@ constrType tc tvs = ConstructorType tc $ map VariableType tvs
 -- changed into a \texttt{T()} specification and explicit imports for the
 -- data constructors are added.
 
-expandSpecs :: ModuleIdent -> ExpTCEnv -> ExpValueEnv -> ImportSpec
-            -> [Import]
-expandSpecs m tcEnv tyEnv (Importing _ is) =
-  concatMap (expandImport m tcEnv tyEnv) is
-expandSpecs m tcEnv tyEnv (Hiding _ is) =
-  concatMap (expandHiding m tcEnv tyEnv) is
+data ExpandState = ExpandState
+  { expModIdent :: ModuleIdent
+  , expTCEnv    :: ExpTCEnv
+  , expValueEnv :: ExpValueEnv
+  , errors      :: [Message]
+  }
 
-expandImport :: ModuleIdent -> ExpTCEnv -> ExpValueEnv -> Import -> [Import]
-expandImport m tcEnv tyEnv (Import             x) =
-  expandThing m tcEnv tyEnv x
-expandImport m tcEnv _     (ImportTypeWith tc cs) =
-  [expandTypeWith m tcEnv tc cs]
-expandImport m tcEnv _     (ImportTypeAll     tc) =
-  [expandTypeAll  m tcEnv tc   ]
+type ExpandM a = S.State ExpandState a
 
-expandHiding :: ModuleIdent -> ExpTCEnv -> ExpValueEnv -> Import -> [Import]
-expandHiding m tcEnv tyEnv (Import             x) = expandHide m tcEnv tyEnv x
-expandHiding m tcEnv _     (ImportTypeWith tc cs) =
-  [expandTypeWith m tcEnv tc cs]
-expandHiding m tcEnv _     (ImportTypeAll     tc) =
-  [expandTypeAll  m tcEnv tc   ]
+getModuleIdent :: ExpandM ModuleIdent
+getModuleIdent = S.gets expModIdent
+
+getTyConsEnv :: ExpandM ExpTCEnv
+getTyConsEnv = S.gets expTCEnv
+
+getValueEnv :: ExpandM ExpValueEnv
+getValueEnv = S.gets expValueEnv
+
+report :: Message -> ExpandM ()
+report msg = S.modify $ \ s -> s { errors = msg : errors s }
+
+runExpand :: ExpandM a -> ModuleIdent -> ExpTCEnv -> ExpValueEnv -> (a, [Message])
+runExpand expand m tcEnv tyEnv =
+  let (r, s) = S.runState expand (ExpandState m tcEnv tyEnv [])
+  in (r, reverse $ errors s)
+
+expandSpecs :: Maybe ImportSpec -> ExpandM [Import]
+expandSpecs Nothing                 = return []
+expandSpecs (Just (Importing _ is)) = concat `liftM` mapM expandImport is
+expandSpecs (Just (Hiding    _ is)) = concat `liftM` mapM expandHiding is
+
+expandImport :: Import -> ExpandM [Import]
+expandImport (Import             x) =               expandThing    x
+expandImport (ImportTypeWith tc cs) = (:[]) `liftM` expandTypeWith tc cs
+expandImport (ImportTypeAll     tc) = (:[]) `liftM` expandTypeAll  tc
+
+expandHiding :: Import -> ExpandM [Import]
+expandHiding (Import             x) = expandHide x
+expandHiding (ImportTypeWith tc cs) = (:[]) `liftM` expandTypeWith tc cs
+expandHiding (ImportTypeAll     tc) = (:[]) `liftM` expandTypeAll  tc
 
 -- try to expand as type constructor
-expandThing :: ModuleIdent -> ExpTCEnv -> ExpValueEnv -> Ident -> [Import]
-expandThing m tcEnv tyEnv tc = case Map.lookup tc tcEnv of
-  Just _  -> expandThing' m tyEnv tc $ Just [ImportTypeWith tc []]
-  Nothing -> expandThing' m tyEnv tc Nothing
+expandThing :: Ident -> ExpandM [Import]
+expandThing tc = do
+  tcEnv <- getTyConsEnv
+  case Map.lookup tc tcEnv of
+    Just _  -> expandThing' tc $ Just [ImportTypeWith tc []]
+    Nothing -> expandThing' tc Nothing
 
 -- try to expand as function / data constructor
-expandThing' :: ModuleIdent -> ExpValueEnv -> Ident -> Maybe [Import]
-             -> [Import]
-expandThing' m tyEnv f tcImport = case Map.lookup f tyEnv of
-  Just v
-    | isConstr v -> fromMaybe (errorMessage $ errImportDataConstr m f) tcImport
-    | otherwise  -> Import f : fromMaybe [] tcImport
-  Nothing -> fromMaybe (errorMessage $ errUndefinedEntity m f) tcImport
-  where isConstr (DataConstructor  _ _ _) = True
-        isConstr (NewtypeConstructor _ _) = True
-        isConstr (Value            _ _ _) = False
-        isConstr (Label            _ _ _) = False
+expandThing' :: Ident -> Maybe [Import] -> ExpandM [Import]
+expandThing' f tcImport = do
+  m     <- getModuleIdent
+  tyEnv <- getValueEnv
+  expand m f (Map.lookup f tyEnv) tcImport
+  where
+  expand :: ModuleIdent -> Ident
+         -> Maybe ValueInfo -> Maybe [Import] -> ExpandM [Import]
+  expand m e Nothing  Nothing   = report (errUndefinedEntity m e) >> return []
+  expand _ _ Nothing  (Just tc) = return tc
+  expand m e (Just v) maybeTc
+    | isConstr v = case maybeTc of
+        Nothing -> report (errImportDataConstr m e) >> return []
+        Just tc -> return tc
+    | otherwise  = return [Import e]
+
+  isConstr (DataConstructor  _ _ _) = True
+  isConstr (NewtypeConstructor _ _) = True
+  isConstr (Value            _ _ _) = False
+  isConstr (Label            _ _ _) = False
 
 -- try to hide as type constructor
-expandHide :: ModuleIdent -> ExpTCEnv -> ExpValueEnv -> Ident -> [Import]
-expandHide m tcEnv tyEnv tc = case Map.lookup tc tcEnv of
-  Just _  -> expandHide' m tyEnv tc $ Just [ImportTypeWith tc []]
-  Nothing -> expandHide' m tyEnv tc Nothing
+expandHide :: Ident -> ExpandM [Import]
+expandHide tc = do
+  tcEnv <- getTyConsEnv
+  case Map.lookup tc tcEnv of
+    Just _  -> expandHide' tc $ Just [ImportTypeWith tc []]
+    Nothing -> expandHide' tc Nothing
 
 -- try to hide as function / data constructor
-expandHide' :: ModuleIdent -> ExpValueEnv -> Ident -> Maybe [Import]
-            -> [Import]
-expandHide' m tyEnv f tcImport = case Map.lookup f tyEnv of
-  Just _  -> Import f : fromMaybe [] tcImport
-  Nothing -> fromMaybe (errorMessage $ errUndefinedEntity m f) tcImport
+expandHide' :: Ident -> Maybe [Import] -> ExpandM [Import]
+expandHide' f tcImport = do
+  m     <- getModuleIdent
+  tyEnv <- getValueEnv
+  case Map.lookup f tyEnv of
+    Just _  -> return $ Import f : fromMaybe [] tcImport
+    Nothing -> case tcImport of
+      Nothing -> report (errUndefinedEntity m f) >> return []
+      Just tc -> return tc
 
-expandTypeWith ::  ModuleIdent -> ExpTCEnv -> Ident -> [Ident] -> Import
-expandTypeWith m tcEnv tc cs = case Map.lookup tc tcEnv of
-  Just (DataType     _ _                cs') -> ImportTypeWith tc $
-    map (checkConstr [c | Just (DataConstr c _ _) <- cs']) cs
-  Just (RenamingType _ _ (DataConstr c _ _)) -> ImportTypeWith tc $
-    map (checkConstr [c]) cs
-  Just (AliasType    _ _ (TypeRecord  fs _)) -> ImportTypeWith tc $
-    map (checkLabel [l | (l, _) <- fs] . renameLabel) cs
-  Just (AliasType _ _ _) -> errorMessage $ errNonDataType tc
-  Nothing                -> errorMessage $ errUndefinedEntity m tc
+expandTypeWith ::  Ident -> [Ident] -> ExpandM Import
+expandTypeWith tc cs = do
+  m     <- getModuleIdent
+  tcEnv <- getTyConsEnv
+  ImportTypeWith tc `liftM` case Map.lookup tc tcEnv of
+    Just (DataType     _ _                cs') ->
+      mapM (checkConstr [c | Just (DataConstr c _ _) <- cs']) cs
+    Just (RenamingType _ _ (DataConstr c _ _)) ->
+      mapM (checkConstr [c]) cs
+    Just (AliasType    _ _ (TypeRecord  fs _)) ->
+      mapM (checkLabel [l | (l, _) <- fs] . renameLabel) cs
+    Just (AliasType _ _ _) -> report (errNonDataType       tc) >> return []
+    Nothing                -> report (errUndefinedEntity m tc) >> return []
   where
-  checkConstr cs' c
-    | c `elem` cs' = c
-    | otherwise    = errorMessage $ errUndefinedDataConstr tc c
-  checkLabel ls' l
-    | l `elem` ls' = l
-    | otherwise    = errorMessage $ errUndefinedLabel tc l
+  checkConstr cs' c = do
+    unless (c `elem` cs') $ report $ errUndefinedDataConstr tc c
+    return c
+  checkLabel ls' l  = do
+    unless (l `elem` ls') $ report $ errUndefinedLabel tc l
+    return l
 
-expandTypeAll :: ModuleIdent -> ExpTCEnv -> Ident -> Import
-expandTypeAll m tcEnv tc = case Map.lookup tc tcEnv of
-  Just (DataType     _ _                 cs) -> ImportTypeWith tc
-    [c | Just (DataConstr c _ _) <- cs]
-  Just (RenamingType _ _ (DataConstr c _ _)) -> ImportTypeWith tc
-    [c]
-  Just (AliasType    _ _ (TypeRecord  fs _)) -> ImportTypeWith tc
-    [l | (l, _) <- fs]
-  Just (AliasType _ _ _) -> errorMessage $ errNonDataType tc
-  Nothing                -> errorMessage $ errUndefinedEntity m tc
+expandTypeAll :: Ident -> ExpandM Import
+expandTypeAll tc = do
+  m     <- getModuleIdent
+  tcEnv <- getTyConsEnv
+  ImportTypeWith tc `liftM` case Map.lookup tc tcEnv of
+    Just (DataType     _ _                 cs) ->
+      return [c | Just (DataConstr c _ _) <- cs]
+    Just (RenamingType _ _ (DataConstr c _ _)) -> return [c]
+    Just (AliasType    _ _ (TypeRecord  fs _)) -> return [l | (l, _) <- fs]
+    Just (AliasType _ _ _) -> report (errNonDataType       tc) >> return []
+    Nothing                -> report (errUndefinedEntity m tc) >> return []
 
 errUndefinedEntity :: ModuleIdent -> Ident -> Message
 errUndefinedEntity m x = posErr x $
