@@ -15,7 +15,6 @@
 -}
 module CurryBuilder (buildCurry, smake) where
 
-import qualified Control.Exception as C (SomeException (..), catch)
 import Control.Monad (liftM)
 import Data.Maybe (catMaybes, mapMaybe)
 import System.Time (ClockTime)
@@ -134,7 +133,7 @@ smake :: [FilePath] -- ^ destination files
 smake dests deps actOutdated actUpToDate = do
   destTimes <- getDestTimes dests
   depTimes  <- getDepTimes deps
-  abortOnError $ make destTimes depTimes
+  make destTimes depTimes
   where
     make destTimes depTimes
       | length destTimes < length dests = actOutdated
@@ -142,17 +141,18 @@ smake dests deps actOutdated actUpToDate = do
       | otherwise                       = actUpToDate
 
     getDestTimes :: [FilePath] -> IO [ClockTime]
-    getDestTimes = liftM catMaybes . mapM tryGetModuleModTime
+    getDestTimes = liftM catMaybes . mapM getModuleModTime
 
     getDepTimes :: [FilePath] -> IO [ClockTime]
-    getDepTimes = mapM (abortOnError . getModuleModTime)
+    getDepTimes = mapM (abortOnMissing . getModuleModTime)
 
     outOfDate :: [ClockTime] -> [ClockTime] -> Bool
     outOfDate tgtimes dptimes = or [ tg < dp | tg <- tgtimes, dp <- dptimes]
 
-    abortOnError :: IO a -> IO a
-    abortOnError act = C.catch act handler
-      where handler (C.SomeException e) = abortWith [show e]
+    abortOnMissing :: IO (Maybe a) -> IO a
+    abortOnMissing act = act >>= \res -> case res of
+      Nothing  -> abortWith ["Could not inspect modification time of file"]
+      Just val -> return val
 
 errMissingFile :: String -> String
 errMissingFile f = "Missing file \"" ++ f ++ "\""

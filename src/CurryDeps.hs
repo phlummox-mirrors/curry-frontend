@@ -86,17 +86,21 @@ targetDeps opts paths sEnv fn = do
 -- |Retrieve the dependencies of a given source file
 sourceDeps :: Options -> [FilePath] -> SourceEnv -> FilePath -> IO SourceEnv
 sourceDeps opts paths sEnv fn = do
-  hdr <- patchModuleId fn `liftM` (ok . parseHeader fn) `liftM` readModule fn
-  moduleDeps opts paths sEnv fn hdr
+  mbFile <- readModule fn
+  case mbFile of
+    Nothing   -> internalError $ "CurryDeps.sourceDeps: missing file " ++ fn
+    Just file -> do
+      let hdr = patchModuleId fn $ ok $ parseHeader fn file
+      moduleDeps opts paths sEnv fn hdr
 
 -- |Retrieve the dependencies of a given module
 moduleDeps :: Options -> [FilePath] -> SourceEnv -> FilePath -> Module -> IO SourceEnv
 moduleDeps opts paths sEnv fn (Module m _ is _) = case Map.lookup m sEnv of
-    Just  _ -> return sEnv
-    Nothing -> do
-      let imps  = imports opts m is
-          sEnv' = Map.insert m (Source fn imps) sEnv
-      foldM (moduleIdentDeps opts paths) sEnv' imps
+  Just  _ -> return sEnv
+  Nothing -> do
+    let imps  = imports opts m is
+        sEnv' = Map.insert m (Source fn imps) sEnv
+    foldM (moduleIdentDeps opts paths) sEnv' imps
 
 -- |Retrieve the imported modules and add the import of the Prelude
 --  according to the compiler options.
@@ -118,12 +122,12 @@ moduleIdentDeps opts paths sEnv m = case Map.lookup m sEnv of
         | icurryExt `isSuffixOf` fn -> return $ Map.insert m (Interface fn) sEnv
         | otherwise                 -> checkModuleHeader fn
   where
-    libraryPaths = optImportPaths opts
-    checkModuleHeader fn = do
-      hdr@(Module m' _ _ _) <- patchModuleId fn `liftM` (ok . parseHeader fn)
-                               `liftM` readModule fn
-      unless (m == m') $ error $ errWrongModule m m'
-      moduleDeps opts paths sEnv fn hdr
+  libraryPaths = optImportPaths opts
+  checkModuleHeader fn = do
+    hdr@(Module m' _ _ _) <- patchModuleId fn `liftM` (ok . parseHeader fn)
+                              `liftM` readFile fn
+    unless (m == m') $ error $ errWrongModule m m'
+    moduleDeps opts paths sEnv fn hdr
 
 -- If we want to compile the program instead of generating Makefile
 -- dependencies the environment has to be sorted topologically. Note

@@ -18,7 +18,7 @@ module Modules
   ( compileModule, loadModule, checkModuleHeader, checkModule
   ) where
 
-import Control.Monad (liftM, unless, when)
+import Control.Monad (unless, when)
 import Data.Maybe (fromMaybe)
 
 import Curry.Base.MessageMonad
@@ -100,17 +100,22 @@ compileModule opts fn = do
 
 loadModule :: Options -> FilePath -> IO (CompilerEnv, CS.Module)
 loadModule opts fn = do
-  -- read and parse module
-  parsed <- (ok . CS.parseModule (not extTarget) fn) `liftM` readModule fn
-  -- check module header
-  let (mdl, hdrErrs) = checkModuleHeader opts fn parsed
-  unless (null hdrErrs) $ abortWith hdrErrs
-  -- load the imported interfaces into an InterfaceEnv
-  (iEnv, intfErrs) <- loadInterfaces (optImportPaths opts) mdl
-  unless (null intfErrs) $ errorMessages intfErrs
-  -- add information of imported modules
-  let env = importModules opts mdl iEnv
-  return (env, mdl)
+  -- read module
+  mbSrc <- readModule fn
+  case mbSrc of
+    Nothing  -> abortWith ["missing file: " ++ fn]
+    Just src -> do
+      -- parse module
+      let parsed = ok $ CS.parseModule (not extTarget) fn src
+      -- check module header
+      let (mdl, hdrErrs) = checkModuleHeader opts fn parsed
+      unless (null hdrErrs) $ abortWith hdrErrs
+      -- load the imported interfaces into an InterfaceEnv
+      (iEnv, intfErrs) <- loadInterfaces (optImportPaths opts) mdl
+      unless (null intfErrs) $ errorMessages intfErrs
+      -- add information of imported modules
+      let env = importModules opts mdl iEnv
+      return (env, mdl)
   where extTarget = ExtendedFlatCurry `elem` optTargetTypes opts
 
 checkModuleHeader :: Options -> FilePath -> CS.Module -> (CS.Module, [String])

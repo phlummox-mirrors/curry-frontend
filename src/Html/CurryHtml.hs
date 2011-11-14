@@ -51,7 +51,7 @@ source2html opts sourcefilename = do
 --- @return program
 filename2program :: [String] -> String -> IO Program
 filename2program paths filename = do
-  cont <- readModule filename
+  (Just cont) <- readModule filename
   typingParseRes <- catchError $ typingParse paths filename cont
   fullParseRes <- catchError $ fullParse paths filename cont
   parseRes <- catchError $ return (parse filename cont)
