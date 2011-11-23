@@ -113,11 +113,13 @@ by which the variables get renamed.
 > inNestedEnv :: SCM a -> SCM a
 > inNestedEnv act = do
 >   oldEnv <- getRenameEnv
->   modifyRenameEnv nestEnv
->   incId
+>   incNesting
 >   res <- act
 >   modifyRenameEnv $ const oldEnv
 >   return res
+
+> incNesting :: SCM ()
+> incNesting = modifyRenameEnv nestEnv >> incId
 
 > report :: Message -> SCM ()
 > report msg = S.modify $ \ s -> s { errors = msg : errors s }
@@ -778,11 +780,12 @@ checkParen
 > checkStatement p (StmtBind pos t e) =
 >   liftM2 (flip (StmtBind pos)) (checkExpr p e) (checkArg p t)
 > checkStatement _ (StmtDecl      ds) =
->   StmtDecl `liftM` checkDeclGroup bindVarDecl ds
+>   StmtDecl `liftM` (incNesting >> checkDeclGroup bindVarDecl ds)
 
 > checkArg :: Position -> ConstrTerm -> SCM ConstrTerm
 > checkArg p t = do
 >   t' <- checkConstrTerm p t
+>   incNesting
 >   checkExprVariables t'
 >   return t'
 
