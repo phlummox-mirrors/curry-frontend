@@ -48,7 +48,7 @@ the module \texttt{NestEnv}. Thus, only the latter needs to be imported.
 > bindNestEnv x y (GlobalEnv env)
 >   = GlobalEnv $ bindTopEnv "NestEnv.bindNestEnv" x y env
 > bindNestEnv x y (LocalEnv genv env) = case Map.lookup x env of
->   Just  _ -> internalError "NestEnv.bindNestEnv"
+>   Just  _ -> internalError $ "NestEnv.bindNestEnv " ++ show x ++ " failed"
 >   Nothing -> LocalEnv genv $ Map.insert x y env
 
 > qualBindNestEnv :: QualIdent -> a -> NestEnv a -> NestEnv a
