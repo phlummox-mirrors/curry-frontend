@@ -1,9 +1,9 @@
 {- |
     Module      :  $Header$
     Description :  Build tool for compiling multiple Curry modules
-    Copyright   :  (c) 2005, Martin Engelke (men@informatik.uni-kiel.de)
+    Copyright   :  (c) 2005, Martin Engelke    (men@informatik.uni-kiel.de)
                        2007, Sebastian Fischer (sebf@informatik.uni-kiel.de)
-                       2011, Björn Peemöller (bjp@informatik.uni-kiel.de)
+                       2011, Björn Peemöller   (bjp@informatik.uni-kiel.de)
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
@@ -46,6 +46,7 @@ buildCurry opts str = do
         | null $ optTargetTypes opt = opt { optTargetTypes = [FlatCurry] }
         | otherwise                 = opt
 
+-- |Search for a compilation target identified by the given 'String'.
 findCurry :: Options -> String -> IO (Either String FilePath)
 findCurry opts str = do
   mbTarget <- fileSearch `orIfNotFound` moduleSearch
