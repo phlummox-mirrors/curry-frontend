@@ -15,11 +15,11 @@
 module Main (main) where
 
 import Base.Messages (putErrsLn, abortWith)
-import Files.CymakePath (cymakeGreeting)
+import Files.CymakePath (cymakeGreeting, cymakeVersion)
 import Html.CurryHtml (source2html)
 
 import CurryBuilder (buildCurry)
-import CompilerOpts (Options (..), compilerOpts, usage)
+import CompilerOpts (Options (..), CymakeMode (..), compilerOpts, usage)
 
 -- |The command line tool cymake
 main :: IO ()
@@ -28,20 +28,26 @@ main = compilerOpts >>= cymake
 -- |Invoke the curry builder w.r.t the command line arguments
 cymake :: (String, Options, [String], [String]) -> IO ()
 cymake (prog, opts, files, errs)
-  | optHelp opts    = printUsage prog
-  | optVersion opts = printVersion
-  | null files      = printUsage prog
-  | not $ null errs = badUsage prog errs
-  | optHtml opts    = mapM_ (source2html opts) files
-  | otherwise       = mapM_ (buildCurry  opts) files
-
--- |Print the program greeting
-printVersion :: IO ()
-printVersion = putStrLn cymakeGreeting
+  | mode == ModeHelp           = printUsage prog
+  | mode == ModeVersion        = printVersion
+  | mode == ModeNumericVersion = printNumericVersion
+  | not $ null errs            = badUsage prog errs
+  | null files                 = printUsage prog
+  | mode == ModeHtml           = mapM_ (source2html opts) files
+  | otherwise                  = mapM_ (buildCurry  opts) files
+  where mode = optMode opts
 
 -- |Print the usage information of the command line tool
 printUsage :: String -> IO ()
 printUsage prog = putStrLn $ usage prog
+
+-- |Print the program version
+printVersion :: IO ()
+printVersion = putStrLn cymakeGreeting
+
+-- |Print the numeric program version
+printNumericVersion :: IO ()
+printNumericVersion = putStrLn cymakeVersion
 
 -- |Print errors and abort execution on bad parameters
 badUsage :: String -> [String] -> IO ()

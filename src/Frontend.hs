@@ -89,7 +89,7 @@ genFullCurrySyntax check paths fn m = runMsgIO m $ \mod1 -> do
 -- if they are not up-to-date.
 makeInterfaces ::  [FilePath] -> FilePath -> Module -> IO [String]
 makeInterfaces paths fn mdl = do
-  (deps1, errs) <- fmap flattenDeps $ moduleDeps defaultOptions paths Map.empty fn mdl
+  (deps1, errs) <- fmap flattenDeps $ moduleDeps (mkOpts paths) Map.empty fn mdl
   when (null errs) $ mapM_ (compile deps1 . snd) deps1
   return errs
   where

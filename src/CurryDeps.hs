@@ -50,14 +50,14 @@ type SourceEnv = Map.Map ModuleIdent Source
 -- |Retrieve the dependencies of a source file in topological order
 -- and possible errors during flattering
 flatDeps :: Options -> FilePath -> IO ([(ModuleIdent, Source)], [String])
-flatDeps opts fn = flattenDeps `liftM` deps opts [] Map.empty fn
+flatDeps opts fn = flattenDeps `liftM` deps opts Map.empty fn
 
 -- |Retrieve the dependencies of a source file as a 'SourceEnv'
-deps :: Options -> [FilePath] -> SourceEnv -> FilePath -> IO SourceEnv
-deps opts paths sEnv fn
+deps :: Options -> SourceEnv -> FilePath -> IO SourceEnv
+deps opts sEnv fn
   | ext   ==   icurryExt  = return Map.empty
-  | ext `elem` sourceExts = sourceDeps opts paths sEnv fn
-  | otherwise             = targetDeps opts paths sEnv fn
+  | ext `elem` sourceExts = sourceDeps opts sEnv fn
+  | otherwise             = targetDeps opts sEnv fn
   where ext = takeExtension fn
 
 -- The following functions are used to lookup files related to a given
@@ -76,31 +76,31 @@ deps opts paths sEnv fn
 -- prelude itself.
 
 -- |Retrieve the dependencies of a given target file
-targetDeps :: Options -> [FilePath] -> SourceEnv -> FilePath -> IO SourceEnv
-targetDeps opts paths sEnv fn = do
+targetDeps :: Options -> SourceEnv -> FilePath -> IO SourceEnv
+targetDeps opts sEnv fn = do
   mFile <- lookupFile [""] sourceExts fn
   case mFile of
     Nothing   -> return $ Map.insert (mkMIdent [fn]) Unknown sEnv
-    Just file -> sourceDeps opts paths sEnv file
+    Just file -> sourceDeps opts sEnv file
 
 -- |Retrieve the dependencies of a given source file
-sourceDeps :: Options -> [FilePath] -> SourceEnv -> FilePath -> IO SourceEnv
-sourceDeps opts paths sEnv fn = do
+sourceDeps :: Options -> SourceEnv -> FilePath -> IO SourceEnv
+sourceDeps opts sEnv fn = do
   mbFile <- readModule fn
   case mbFile of
     Nothing   -> internalError $ "CurryDeps.sourceDeps: missing file " ++ fn
     Just file -> do
       let hdr = patchModuleId fn $ ok $ parseHeader fn file
-      moduleDeps opts paths sEnv fn hdr
+      moduleDeps opts sEnv fn hdr
 
 -- |Retrieve the dependencies of a given module
-moduleDeps :: Options -> [FilePath] -> SourceEnv -> FilePath -> Module -> IO SourceEnv
-moduleDeps opts paths sEnv fn (Module m _ is _) = case Map.lookup m sEnv of
+moduleDeps :: Options -> SourceEnv -> FilePath -> Module -> IO SourceEnv
+moduleDeps opts sEnv fn (Module m _ is _) = case Map.lookup m sEnv of
   Just  _ -> return sEnv
   Nothing -> do
     let imps  = imports opts m is
         sEnv' = Map.insert m (Source fn imps) sEnv
-    foldM (moduleIdentDeps opts paths) sEnv' imps
+    foldM (moduleIdentDeps opts) sEnv' imps
 
 -- |Retrieve the imported modules and add the import of the Prelude
 --  according to the compiler options.
@@ -111,23 +111,22 @@ imports opts m ds = nub $
   where implicitPrelude = NoImplicitPrelude `notElem` optExtensions opts
 
 -- |Retrieve the dependencies for a given 'ModuleIdent'
-moduleIdentDeps :: Options -> [FilePath] -> SourceEnv -> ModuleIdent -> IO SourceEnv
-moduleIdentDeps opts paths sEnv m = case Map.lookup m sEnv of
+moduleIdentDeps :: Options -> SourceEnv -> ModuleIdent -> IO SourceEnv
+moduleIdentDeps opts sEnv m = case Map.lookup m sEnv of
   Just _  -> return sEnv
   Nothing -> do
-    mFile <- lookupCurryModule paths libraryPaths m
+    mFile <- lookupCurryModule (optImportPaths opts) (optLibraryPaths opts) m
     case mFile of
       Nothing -> return $ Map.insert m Unknown sEnv
       Just fn
         | icurryExt `isSuffixOf` fn -> return $ Map.insert m (Interface fn) sEnv
         | otherwise                 -> checkModuleHeader fn
   where
-  libraryPaths = optImportPaths opts
   checkModuleHeader fn = do
     hdr@(Module m' _ _ _) <- patchModuleId fn `liftM` (ok . parseHeader fn)
                               `liftM` readFile fn
     unless (m == m') $ error $ errWrongModule m m'
-    moduleDeps opts paths sEnv fn hdr
+    moduleDeps opts sEnv fn hdr
 
 -- If we want to compile the program instead of generating Makefile
 -- dependencies the environment has to be sorted topologically. Note

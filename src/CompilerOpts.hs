@@ -14,8 +14,8 @@
     compilation of Curry programs.
 -}
 module CompilerOpts
-  ( Options (..), Verbosity (..), TargetType (..), Extension (..)
-  , DumpLevel (..), defaultOptions, compilerOpts, usage
+  ( Options (..), CymakeMode (..), Verbosity (..), TargetType (..)
+  , Extension (..), DumpLevel (..), defaultOptions, compilerOpts, usage
   ) where
 
 import Data.List (intercalate, nub)
@@ -29,41 +29,47 @@ import Curry.Files.Filenames (currySubdir)
 -- |Data type for recording compiler options
 data Options = Options
   -- general
-  { optHelp        :: Bool           -- ^ show help
-  , optVersion     :: Bool           -- ^ show the version
-  , optHtml        :: Bool           -- ^ generate Html code
-  , optVerbosity   :: Verbosity      -- ^ verbosity level
+  { optMode         :: CymakeMode     -- ^ show help
+  , optVerbosity    :: Verbosity      -- ^ verbosity level
   -- compilation
-  , optForce       :: Bool           -- ^ force compilation of target
-  , optImportPaths :: [FilePath]     -- ^ directories for imports
-  , optOutput      :: Maybe FilePath -- ^ name of output file
-  , optUseSubdir   :: Bool           -- ^ use subdir for output?
-  , optInterface   :: Bool           -- ^ create an interface file
-  , optWarn        :: Bool           -- ^ show warnings
-  , optOverlapWarn :: Bool           -- ^ show "overlap" warnings
-  , optTargetTypes :: [TargetType]   -- ^ what to generate
-  , optExtensions  :: [Extension]    -- ^ enabled language extensions
-  , optDumps       :: [DumpLevel]    -- ^ dump levels
+  , optForce        :: Bool           -- ^ force compilation of target
+  , optLibraryPaths :: [FilePath]     -- ^ directories for libraries
+  , optImportPaths  :: [FilePath]     -- ^ directories for imports
+  , optOutput       :: Maybe FilePath -- ^ name of output file
+  , optUseSubdir    :: Bool           -- ^ use subdir for output?
+  , optInterface    :: Bool           -- ^ create an interface file
+  , optWarn         :: Bool           -- ^ show warnings
+  , optOverlapWarn  :: Bool           -- ^ show "overlap" warnings
+  , optTargetTypes  :: [TargetType]   -- ^ what to generate
+  , optExtensions   :: [Extension]    -- ^ enabled language extensions
+  , optDumps        :: [DumpLevel]    -- ^ dump levels
   }
 
 -- | Default compiler options
 defaultOptions :: Options
 defaultOptions = Options
-  { optHelp        = False
-  , optVersion     = False
-  , optHtml        = False
-  , optVerbosity   = VerbStatus
-  , optForce       = False
-  , optImportPaths = []
-  , optOutput      = Nothing
-  , optUseSubdir   = True
-  , optInterface   = True
-  , optWarn        = True
-  , optOverlapWarn = True
-  , optTargetTypes = []
-  , optExtensions  = []
-  , optDumps       = []
+  { optMode         = ModeMake
+  , optVerbosity    = VerbStatus
+  , optForce        = False
+  , optLibraryPaths = []
+  , optImportPaths  = []
+  , optOutput       = Nothing
+  , optUseSubdir    = True
+  , optInterface    = True
+  , optWarn         = True
+  , optOverlapWarn  = True
+  , optTargetTypes  = []
+  , optExtensions   = []
+  , optDumps        = []
   }
+
+data CymakeMode
+  = ModeHelp
+  | ModeVersion
+  | ModeNumericVersion
+  | ModeHtml
+  | ModeMake
+  deriving Eq
 
 -- |Type of the target file
 data TargetType
@@ -128,16 +134,20 @@ classifyExtension str = case reads str of
 -- | All available compiler options
 options :: [OptDescr (Options -> Options)]
 options =
-  -- general
+  -- modus operandi
   [ Option "h?" ["help"]
-      (NoArg (\ opts -> opts { optHelp = True }))
+      (NoArg (\ opts -> opts { optMode = ModeHelp }))
       "display this help and exit"
   , Option "V"  ["version"]
-      (NoArg (\ opts -> opts { optVersion = True }))
-      "show the version number"
+      (NoArg (\ opts -> opts { optMode = ModeVersion }))
+      "show the version number and exit"
+  , Option ""   ["numeric-version"]
+      (NoArg (\ opts -> opts { optMode = ModeNumericVersion }))
+      "show the numeric version number and exit"
   , Option ""   ["html"]
-      (NoArg (\ opts -> opts { optHtml = True }))
-      "generate html code"
+      (NoArg (\ opts -> opts { optMode = ModeHtml }))
+      "generate html code and exit"
+  -- verbosity
   , Option "v"  ["verbosity"]
       (ReqArg (\ arg opts -> opts { optVerbosity =
         classifyVerbosity arg $ optVerbosity opts}) "<n>")
@@ -149,10 +159,14 @@ options =
   , Option "f"  ["force"]
       (NoArg (\ opts -> opts { optForce = True }))
       "force compilation of target file"
+  , Option "P"  ["lib-dir"]
+      (ReqArg (\ arg opts -> opts { optLibraryPaths =
+        nub $ optLibraryPaths opts ++ splitSearchPath arg}) "dir:dir2:...")
+      "search for librares in dir:dir2:..."
   , Option "i"  ["import-dir"]
       (ReqArg (\ arg opts -> opts { optImportPaths =
-        nub $ optImportPaths opts ++ splitSearchPath arg}) "DIR")
-      "search for imports in DIR"
+        nub $ optImportPaths opts ++ splitSearchPath arg}) "dir:dir2:...")
+      "search for imports in dir:dir2:..."
   , Option "o"  ["output"]
       (ReqArg (\ arg opts -> opts { optOutput = Just arg }) "FILE")
       "write code to FILE"
