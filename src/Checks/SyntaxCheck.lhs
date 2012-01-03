@@ -76,6 +76,7 @@ renaming literals and underscore to disambiguate them.
 > -- |Syntax check monad
 > type SCM = S.State SCState
 
+> -- |Internal state of the syntax check
 > data SCState = SCState
 >   { extensions  :: [Extension] -- ^ Enabled language extensions
 >   , moduleIdent :: ModuleIdent -- ^ 'ModuleIdent' of the current module
@@ -85,6 +86,7 @@ renaming literals and underscore to disambiguate them.
 >   , errors      :: [Message]   -- ^ Syntactic errors in the module
 >   }
 
+> -- |Initial syntax check state
 > initState :: [Extension] -> ModuleIdent -> RenameEnv -> SCState
 > initState exts m rEnv = SCState exts m rEnv globalScopeId 1 []
 
@@ -100,7 +102,7 @@ renaming literals and underscore to disambiguate them.
 > hasExtension :: Extension -> SCM Bool
 > hasExtension ext = S.gets (elem ext . extensions)
 
-> -- |Enable an 'Extension' afterwards to avoid redundant complaints about
+> -- |Enable an additional 'Extension' to avoid redundant complaints about
 > -- missing extensions
 > enableExtension :: Extension -> SCM ()
 > enableExtension e = S.modify $ \ s -> s { extensions = e : extensions s }
@@ -123,7 +125,10 @@ renaming literals and underscore to disambiguate them.
 
 > -- |Create a new identifier and return it
 > newId :: SCM Integer
-> newId = S.modify (\ s -> s { nextId = succ $ nextId s }) >> S.gets nextId
+> newId = do
+>   curId <- S.gets nextId
+>   S.modify $ \ s -> s { nextId = succ curId }
+>   return curId
 
 > -- |Increase the nesting of the 'RenameEnv' to introduce a new local scope.
 > -- This also increases the scope identifier.
@@ -249,10 +254,10 @@ Furthermore, it is not allowed to declare a label more than once.
 >   = foldr bindTS env $ map (qualifyWith m) ids
 >  where
 >  bindTS qid env'
->     | null $ qualLookupVar qid env'
->       = bindGlobal m (unqualify qid) (GlobalVar (typeArity texpr) qid) env'
->     | otherwise
->       = env'
+>   | null $ qualLookupVar qid env'
+>   = bindGlobal m (unqualify qid) (GlobalVar (typeArity texpr) qid) env'
+>   | otherwise
+>   = env'
 > bindFuncDecl _ _ env = env
 
 ------------------------------------------------------------------------------
