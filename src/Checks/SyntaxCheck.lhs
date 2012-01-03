@@ -138,15 +138,17 @@ renaming literals and underscore to disambiguate them.
 >   S.modify $ \ s -> s { scopeId = newScopeId }
 >   modifyRenameEnv nestEnv
 
+> withLocalEnv :: SCM a -> SCM a
+> withLocalEnv act = do
+>   oldEnv <- getRenameEnv
+>   res    <- act
+>   modifyRenameEnv $ const oldEnv
+>   return res
+
 > -- |Perform an action in a nested scope (by creating a nested 'RenameEnv')
 > -- and discard the nested 'RenameEnv' afterwards
 > inNestedScope :: SCM a -> SCM a
-> inNestedScope act = do
->   oldEnv <- getRenameEnv
->   incNesting
->   res <- act
->   modifyRenameEnv $ const oldEnv
->   return res
+> inNestedScope act = withLocalEnv (incNesting >> act)
 
 > -- |Report a syntax error
 > report :: Message -> SCM ()
@@ -689,7 +691,7 @@ checkParen
 > checkExpr p (Typed    e ty) = flip Typed ty `liftM` checkExpr p e
 > checkExpr p (Tuple  pos es) = Tuple pos     `liftM` mapM (checkExpr p) es
 > checkExpr p (List   pos es) = List pos      `liftM` mapM (checkExpr p) es
-> checkExpr p (ListCompr      pos e qs) = inNestedScope $
+> checkExpr p (ListCompr      pos e qs) = withLocalEnv $
 >   -- Note: must be flipped to insert qs into RenameEnv first
 >   liftM2 (flip (ListCompr pos)) (mapM (checkStatement p) qs) (checkExpr p e)
 > checkExpr p (EnumFrom              e) = EnumFrom `liftM` checkExpr p e
@@ -712,7 +714,7 @@ checkParen
 >   liftM2 (Lambda r) (mapM (checkPattern p) ts) (checkExpr p e)
 > checkExpr p (Let                ds e) = inNestedScope $
 >   liftM2 Let (checkDeclGroup bindVarDecl ds) (checkExpr p e)
-> checkExpr p (Do                sts e) = inNestedScope $
+> checkExpr p (Do                sts e) = withLocalEnv $
 >   liftM2 Do (mapM (checkStatement p) sts) (checkExpr p e)
 > checkExpr p (IfThenElse r e1 e2 e3) =
 >   liftM3 (IfThenElse r) (checkExpr p e1) (checkExpr p e2) (checkExpr p e3)
