@@ -30,7 +30,7 @@ import Base.Messages (internalError)
 import Base.TopEnv
 import Base.Types
 
-import Env.ModuleAlias (AliasEnv, sureLookupAlias)
+import Env.ModuleAlias (AliasEnv)
 import Env.TypeConstructor (TCEnv, lookupTC)
 import Env.Value (ValueEnv, ValueInfo (..), lookupValue, qualLookupValue)
 
@@ -40,31 +40,29 @@ import CompilerEnv
 -- Interface
 -- ---------------------------------------------------------------------------
 
--- |Generates standard (type inferred) AbstractCurry code from a Curry
---  module. The function needs the type environment 'tyEnv' to determine the
+-- |Generate type inferred AbstractCurry code from a Curry module.
+--  The function needs the type environment 'tyEnv' to determine the
 --  inferred function types.
 genTypedAbstract :: CompilerEnv -> Module -> CurryProg
-genTypedAbstract env mdl = genAbstract (genAbstractEnv TypedAcy env mdl) mdl
+genTypedAbstract env mdl = genAbstract (abstractEnv TypedAcy env mdl) mdl
 
--- |Generates untyped AbstractCurry code from a CurrySyntax module. The type
+-- |Generate untyped AbstractCurry code from a Curry module. The type
 --  signature takes place in every function type annotation, if it exists,
 --  otherwise the dummy type "Prelude.untyped" is used.
 genUntypedAbstract :: CompilerEnv -> Module -> CurryProg
-genUntypedAbstract env mdl
-  = genAbstract (genAbstractEnv UntypedAcy env mdl) mdl
+genUntypedAbstract env mdl = genAbstract (abstractEnv UntypedAcy env mdl) mdl
 
 -- |Generate an AbstractCurry program term from the syntax tree
 genAbstract :: AbstractEnv -> Module -> CurryProg
 genAbstract env (Module mid _ imps decls)
-  = CurryProg modname imprts types funcs ops
+  = CurryProg modname imports types funcs ops
   where
   modname = moduleName mid
-  imprts  = map genImportDecl imps
-  types   = snd $ mapAccumL genTypeDecl env $ reverse $ typeDecls parts
-  funcs   = Map.elems $ snd $ Map.mapAccumWithKey (genFuncDecl False) env
-                                                  (funcDecls parts)
-  ops     = concatMap (genOpDecl env) $ reverse $ opDecls parts
-  parts   = foldl partitionDecl emptyPartition decls
+  imports = map genImportDecl imps
+  types   = snd $ mapAccumL genTypeDecl env         $ reverse $ typeDecls part
+  funcs   = snd $ mapAccumL (genFuncDecl False) env $ funcDecls part
+  ops     =       concatMap (genOpDecl env)         $ reverse $ opDecls part
+  part    = foldl partitionDecl emptyPartition decls
 
 -- ---------------------------------------------------------------------------
 -- Partition
@@ -83,7 +81,7 @@ genAbstract env (Module mid _ imps decls)
 -- to collect them within an association list
 data Partition = Partition
   { typeDecls   :: [Decl]
-  , funcDecls   :: Map.Map Ident [Decl]
+  , funcDecls   :: [(Ident, [Decl])] -- no Map to preserve order
   , opDecls     :: [Decl]
   } deriving Show
 
@@ -91,38 +89,37 @@ data Partition = Partition
 emptyPartition :: Partition
 emptyPartition = Partition
   { typeDecls   = []
-  , funcDecls   = Map.empty
+  , funcDecls   = []
   , opDecls     = []
   }
 
 -- |Insert a CurrySyntax top level declaration into a partition.
 -- /Note:/ Declarations are collected in reverse order.
 partitionDecl :: Partition -> Decl -> Partition
--- type decls
-partitionDecl parts decl@(InfixDecl _ _ _ _)
-  = parts { opDecls   = decl : opDecls   parts }
-partitionDecl parts decl@(DataDecl _ _ _ _)
-  = parts { typeDecls = decl : typeDecls parts }
-partitionDecl parts decl@(TypeDecl _ _ _ _)
-  = parts { typeDecls = decl : typeDecls parts }
+partitionDecl part d@(InfixDecl _ _ _ _) = part { opDecls   = d : opDecls   part }
+partitionDecl part d@(DataDecl  _ _ _ _) = part { typeDecls = d : typeDecls part }
+partitionDecl part d@(TypeDecl  _ _ _ _) = part { typeDecls = d : typeDecls part }
 -- function decls
-partitionDecl parts (TypeSig p ids tyexpr)
-  = partitionFuncDecls (\ident -> TypeSig p [ident] tyexpr) parts ids
-partitionDecl parts (EvalAnnot p ids annot)
-  = partitionFuncDecls (\ident -> EvalAnnot p [ident] annot) parts ids
-partitionDecl parts (FunctionDecl p ident equs)
-  = partitionFuncDecls (const (FunctionDecl p ident equs)) parts [ident]
-partitionDecl parts (ExternalDecl p conv dname ident tyexpr)
-  = partitionFuncDecls (const (ExternalDecl p conv dname ident tyexpr)) parts [ident]
-partitionDecl parts (FlatExternalDecl pos ids)
-  = partitionFuncDecls (\ident -> FlatExternalDecl pos [ident]) parts ids
-partitionDecl parts _ = parts
+partitionDecl part (TypeSig p ids ty)
+  = partitionFuncDecls (\q -> TypeSig p [q] ty) part ids
+partitionDecl part (EvalAnnot p ids ann)
+  = partitionFuncDecls (\q -> EvalAnnot p [q] ann) part ids
+partitionDecl part d@(FunctionDecl _ ident _)
+  = partitionFuncDecls (const d) part [ident]
+partitionDecl part d@(ExternalDecl _ _ _ ident _)
+  = partitionFuncDecls (const d) part [ident]
+partitionDecl part (FlatExternalDecl pos ids)
+  = partitionFuncDecls (\q -> FlatExternalDecl pos [q]) part ids
+partitionDecl part _ = part
 
 --
 partitionFuncDecls :: (Ident -> Decl) -> Partition -> [Ident] -> Partition
 partitionFuncDecls genDecl parts fs
   = parts { funcDecls = foldl insertDecls (funcDecls parts) fs }
-  where insertDecls funcs f = Map.insertWith (++) f [genDecl f] funcs
+  where
+  insertDecls funcs f = case span ((/=f) . fst) funcs of
+    (others, []                ) -> others ++ (f, genDecl f : []    ) : []
+    (others, (_, fDecls) : rest) -> others ++ (f, genDecl f : fDecls) : rest
 
 -- ---------------------------------------------------------------------------
 -- Conversion from Curry to AbstractCurry
@@ -204,7 +201,7 @@ genTypeExpr env (RecordType fss mr) = case mr of
   ls'        = map name ls
 
 genOpDecl :: AbstractEnv -> Decl -> [COpDecl]
-genOpDecl env (InfixDecl _ fix prec ops) = map genCOp ops
+genOpDecl env (InfixDecl _ fix prec ops) = map genCOp (reverse ops)
   where
   genCOp op = COp (genQName False env $ qualifyWith (moduleId env) op)
                   (genFixity fix)
@@ -222,8 +219,8 @@ genOpDecl _ _ = internalError "GenAbstractCurry.genOpDecl: no infix declaration"
 --   - since inferred types are internally represented in flat style,
 --     all type variables are renamed with generated symbols when
 --     generating typed AbstractCurry.
-genFuncDecl :: Bool -> AbstractEnv -> Ident -> [Decl] -> (AbstractEnv, CFuncDecl)
-genFuncDecl isLocal env ident decls
+genFuncDecl :: Bool -> AbstractEnv -> (Ident, [Decl]) -> (AbstractEnv, CFuncDecl)
+genFuncDecl isLocal env (ident, decls)
   | null decls = internalError $ "GenAbstractCurry.genFuncDecl: "
               ++ "missing declaration for function \"" ++ show ident ++ "\""
   | otherwise  = (env3, CFunc qname arity visibility typeexpr rule)
@@ -344,7 +341,7 @@ genLocalDecls env decls
 
   -- The association list 'fdecls' is necessary because function
   -- rules may not be together in the declaration list
-  genLocals :: AbstractEnv -> Map.Map Ident [Decl] -> [Decl]
+  genLocals :: AbstractEnv -> [(Ident, [Decl])] -> [Decl]
             -> (AbstractEnv, [CLocalDecl])
   genLocals env' _ [] = (env', [])
   genLocals env' fdecls ((FunctionDecl _ ident _):decls1)
@@ -384,15 +381,15 @@ genLocalDecls env decls
     = genLocals env' fdecls decls1
   genLocals _ _ decl = internalError ("GenAbstractCurry.genLocals: unexpected local declaration: \n" ++ show (head decl))
 
-  genLocalFuncDecl :: AbstractEnv -> Map.Map Ident [Decl] -> Ident
+  genLocalFuncDecl :: AbstractEnv -> [(Ident, [Decl])] -> Ident
                    -> (AbstractEnv, CLocalDecl)
   genLocalFuncDecl env' fdecls ident
     = let fdecl = fromMaybe
               (internalError ("GenAbstractCurry.genLocalFuncDecl: missing declaration"
                   ++ " for local function \""
                   ++ show ident ++ "\""))
-              (Map.lookup ident fdecls)
-          (_, funcdecl) = genFuncDecl True env' ident fdecl
+              (lookup ident fdecls)
+          (_, funcdecl) = genFuncDecl True env' (ident, fdecl)
       in  (env', CLocalFunc funcdecl)
 
   genLocalPattern pos env' (LiteralPattern l) = case l of
@@ -612,8 +609,8 @@ genField genTerm env (Field p l t) = (env1, (name l, t'))
 
 --
 genLiteral :: Literal -> CLiteral
-genLiteral (Char  _ c) = CCharc c
-genLiteral (Int   _ i) = CIntc i
+genLiteral (Char  _ c) = CCharc  c
+genLiteral (Int   _ i) = CIntc   i
 genLiteral (Float _ f) = CFloatc f
 genLiteral _           = internalError "GenAbstractCurry.genLiteral: unsupported literal"
 
@@ -629,11 +626,15 @@ genQName isTypeCons env qident
   | isQualified     qident = genQualName qident
   | otherwise              = genQualName $ getQualIdent $ unqualify qident
   where
-  genQualName qid = (moduleName mid, name ident)
-    where (mmid, ident) = (qualidMod qid, qualidId qid)
-          mid           = maybe (moduleId env)
-                          (flip sureLookupAlias (aliases env))
-                          mmid
+  genQualName qid = ( moduleName $ fromMaybe (moduleId env) $ qualidMod qid
+                    , name $ qualidId qid
+                    )
+-- TODO@bjp (2012-01-04): Disabled
+--   genQualName qid = (moduleName mid, name ident)
+--     where (mmid, ident) = (qualidMod qid, qualidId qid)
+--           mid           = maybe (moduleId env)
+--                           (`sureLookupAlias` aliases env)
+--                           mmid
 
   getQualIdent ident
     | isTypeCons = case lookupTC ident $ tconsEnv env of
@@ -680,8 +681,8 @@ data AbstractType
     deriving (Eq, Show)
 
 -- |Initialize the AbstractCurry generator environment
-genAbstractEnv :: AbstractType -> CompilerEnv -> Module -> AbstractEnv
-genAbstractEnv absType env (Module mid exps _ decls) = AbstractEnv
+abstractEnv :: AbstractType -> CompilerEnv -> Module -> AbstractEnv
+abstractEnv absType env (Module mid exps _ decls) = AbstractEnv
   { moduleId  = mid
   , typeEnv   = valueEnv env
   , tconsEnv  = tyConsEnv env
