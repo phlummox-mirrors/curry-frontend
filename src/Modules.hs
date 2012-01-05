@@ -106,7 +106,7 @@ loadModule opts fn = do
     Nothing  -> abortWith ["missing file: " ++ fn]
     Just src -> do
       -- parse module
-      let parsed = ok $ CS.parseModule (not extTarget) fn src
+      let parsed = ok $ CS.parseModule True fn src
       -- check module header
       let (mdl, hdrErrs) = checkModuleHeader opts fn parsed
       unless (null hdrErrs) $ abortWith hdrErrs
@@ -116,7 +116,6 @@ loadModule opts fn = do
       -- add information of imported modules
       let env = importModules opts mdl iEnv
       return (env, mdl)
-  where extTarget = ExtendedFlatCurry `elem` optTargetTypes opts
 
 checkModuleHeader :: Options -> FilePath -> CS.Module -> (CS.Module, [String])
 checkModuleHeader opts fn = checkModuleId fn
@@ -159,13 +158,17 @@ importPrelude opts m@(CS.Module mid es is ds)
 -- ---------------------------------------------------------------------------
 
 -- TODO: The order of the checks should be improved!
+-- TODO (2012-01-05, bjp): The export specification check for untyped
+--   AbstractCurry is deactivated as it requires the value information
+--   collected by the type checker.
 checkModule :: Options -> CompilerEnv -> CS.Module
             -> CheckResult (CompilerEnv, CS.Module)
 checkModule opts env mdl = kindCheck env mdl -- should be only syntax checking ?
                        >>= uncurry (syntaxCheck opts)
                        >>= uncurry precCheck
-                       >>= (if withTypeCheck then uncurry typeCheck else return)
-                       >>= uncurry exportCheck
+                       >>= (if withTypeCheck
+                              then \x -> uncurry typeCheck x >>= uncurry exportCheck
+                              else return)
                        >>= return . (uncurry (qual opts))
   where
   withTypeCheck  = any (`elem` optTargetTypes opts)
@@ -219,22 +222,34 @@ writeParsed opts fn modul = when srcTarget $
 writeFlat :: Options -> FilePath -> CompilerEnv -> ModuleSummary -> IL.Module
           -> IO ()
 writeFlat opts fn env modSum il = do
-  writeFlatCurry opts fn env modSum il
-  writeInterface opts fn env modSum il
-  writeXML       opts fn     modSum il
+  when (extTarget || fcyTarget) $ do
+    writeFlatCurry opts fn env modSum il
+    writeInterface opts fn env modSum il
+  when (xmlTarget) $ writeXML opts fn modSum il
+  where
+  extTarget    = ExtendedFlatCurry `elem` optTargetTypes opts
+  fcyTarget    = FlatCurry         `elem` optTargetTypes opts
+  xmlTarget    = FlatXml           `elem` optTargetTypes opts
 
 -- |Export an 'IL.Module' into a FlatCurry file
 writeFlatCurry :: Options -> FilePath -> CompilerEnv -> ModuleSummary
                -> IL.Module -> IO ()
 writeFlatCurry opts fn env modSum il = do
-  when (extTarget || fcyTarget) $ showWarnings opts msgs
+  showWarnings opts msgs
   when extTarget $ EF.writeExtendedFlat useSubDir (extFlatName fn) prog
-  when fcyTarget $ EF.writeFlatCurry    useSubDir (flatName fn)    prog
+  when fcyTarget $ EF.writeFlatCurry    useSubDir (flatName    fn) prog
   where
     extTarget    = ExtendedFlatCurry `elem` optTargetTypes opts
     fcyTarget    = FlatCurry         `elem` optTargetTypes opts
     useSubDir    = optUseSubdir opts
     (prog, msgs) = genFlatCurry opts modSum env il
+
+-- |Export an 'IL.Module' into an XML file
+writeXML :: Options -> FilePath -> ModuleSummary -> IL.Module -> IO ()
+writeXML opts fn modSum il = writeModule useSubDir (xmlName fn) curryXml
+  where
+  useSubDir = optUseSubdir opts
+  curryXml  = shows (IL.xmlModule (interface modSum) (infixDecls modSum) il) "\n"
 
 writeInterface :: Options -> FilePath -> CompilerEnv -> ModuleSummary
                -> IL.Module -> IO ()
@@ -254,15 +269,7 @@ writeInterface opts fn env modSum il
       showWarnings opts intMsgs
       EF.writeFlatCurry (optUseSubdir opts) targetFile newInterface
 
--- |Export an 'IL.Module' into an XML file
-writeXML :: Options -> FilePath -> ModuleSummary -> IL.Module -> IO ()
-writeXML opts fn modSum il = when xmlTarget $
-  writeModule useSubDir targetFile curryXml
-  where
-    xmlTarget  = FlatXml `elem` optTargetTypes opts
-    useSubDir  = optUseSubdir opts
-    targetFile = fromMaybe (xmlName fn) (optOutput opts)
-    curryXml   = shows (IL.xmlModule (interface modSum) (infixDecls modSum) il) "\n"
+
 
 writeAbstractCurry :: Options -> FilePath -> CompilerEnv -> CS.Module -> IO ()
 writeAbstractCurry opts fname env modul = do
@@ -282,8 +289,9 @@ showWarnings opts msgs = when (optWarn opts)
 -- |The 'doDump' function writes the selected information to the
 -- standard output.
 doDump :: Options -> (DumpLevel, CompilerEnv, String) -> IO ()
-doDump opts (level, env, dump) = when (level `elem` optDumps opts) $
-  putStrLn $ unlines [showCompilerEnv env, header, replicate (length header) '=', dump]
+doDump opts (level, env, dump) = when (level `elem` optDumps opts) $ do
+  when (optDumpEnv opts) $ putStrLn $ showCompilerEnv env
+  putStrLn $ unlines [header, replicate (length header) '=', dump]
   where header = dumpHeader level
 
 dumpHeader :: DumpLevel -> String
