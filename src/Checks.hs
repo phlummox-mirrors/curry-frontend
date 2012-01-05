@@ -56,7 +56,7 @@ kindCheck env (Module m es is ds)
 -- |Check for a correct syntax.
 --
 -- * Declarations: Nullary data constructors and variables are
---                 disambiguated
+--                 disambiguated, variables are renamed
 -- * Environment:  remains unchanged
 syntaxCheck :: Options -> CompilerEnv -> Module -> CheckResult (CompilerEnv, Module)
 syntaxCheck opts env (Module m es is ds)
@@ -66,8 +66,10 @@ syntaxCheck opts env (Module m es is ds)
                       (valueEnv env) (tyConsEnv env) ds
 
 -- |Check the precedences of infix operators.
--- In addition, the abstract syntax tree is rearranged to reflect the
--- relative precedences; the operator precedence environment is updated.
+--
+-- * Declarations: Expressions are reordered according to the specified
+--                 precedences
+-- * Environment:  The operator precedence environment is updated
 precCheck :: CompilerEnv -> Module -> CheckResult (CompilerEnv, Module)
 precCheck env (Module m es is ds)
   | null msgs = CheckSuccess (env { opPrecEnv = pEnv' }, Module m es is ds')

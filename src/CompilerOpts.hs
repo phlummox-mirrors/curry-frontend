@@ -43,6 +43,7 @@ data Options = Options
   , optTargetTypes  :: [TargetType]   -- ^ what to generate
   , optExtensions   :: [Extension]    -- ^ enabled language extensions
   , optDumps        :: [DumpLevel]    -- ^ dump levels
+  , optDumpEnv      :: Bool           -- ^ dump compilation environment
   }
 
 -- | Default compiler options
@@ -61,6 +62,7 @@ defaultOptions = Options
   , optTargetTypes  = []
   , optExtensions   = []
   , optDumps        = []
+  , optDumpEnv      = False
   }
 
 data CymakeMode
@@ -241,6 +243,9 @@ options =
   , Option ""   ["dump-case"]
       (NoArg (\ opts -> opts { optDumps = nub $ DumpCase : optDumps opts }))
       "dump intermediate language after case simplification"
+  , Option ""   ["dump-env"]
+      (NoArg (\ opts -> opts { optDumpEnv = True }))
+      "dump compilation environment for each dump level"
   ]
 
 -- |Parse the command line arguments
