@@ -17,6 +17,7 @@ module CurryBuilder (buildCurry, smake) where
 
 import Control.Monad (liftM)
 import Data.Maybe (catMaybes, mapMaybe)
+import System.FilePath (normalise)
 import System.Time (ClockTime)
 
 import Curry.Base.Ident
@@ -94,15 +95,15 @@ makeCurry opts srcs targetFile = mapM_ (compile . snd) srcs where
   compile _ = return ()
 
   compileFile f = do
-    status opts $ "compiling " ++ f
+    status opts $ "compiling " ++ normalise f
     compileModule (opts { optTargetTypes = [FlatCurry], optDumps = [] }) f
 
-  skipFinalFile f = status opts $ "skipping " ++ f
+  skipFinalFile f = status opts $ "skipping " ++ normalise f
 
-  skipFile f = info opts $ "skipping " ++ f
+  skipFile f = info opts $ "skipping " ++ normalise f
 
   generateFile f = do
-    status opts $ "generating " ++ head (destNames f)
+    status opts $ "generating " ++ (normalise $ head $ destNames f)
     compileModule opts f
 
   destNames fn = [ gen fn | (tgt, gen) <- nameGens
