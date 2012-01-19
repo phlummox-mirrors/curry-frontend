@@ -63,7 +63,7 @@ typingParse paths fn src = genFullCurrySyntax checkModule paths fn $ parse fn sr
 genCurrySyntax :: FilePath -> Module -> MsgMonad Module
 genCurrySyntax fn mod1
   | null hdrErrs = return mdl
-  | otherwise    = failWith $ head hdrErrs
+  | otherwise    = failWith $ show $ head hdrErrs
   where (mdl, hdrErrs) = checkModuleHeader defaultOptions fn mod1
 
 --

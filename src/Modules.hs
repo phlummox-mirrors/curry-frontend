@@ -85,7 +85,7 @@ compileModule opts fn = do
         -- types of the newly introduced functions are not inferred (hsi)
         let (env2, il, dumps) = transModule opts env modul
         -- dump intermediate results
-        mapM_ (dump opts) dumps
+        mapM_ (doDump opts) dumps
         -- generate target code
         let intf = exportInterface env2 modul
         let modSum = summarizeModule (tyConsEnv env2) intf modul
@@ -287,8 +287,8 @@ showWarnings opts msgs = when (optWarn opts)
                        $ putErrsLn $ map showWarning msgs
 
 -- |The 'dump' function writes the selected information to standard output.
-dump :: Options -> Dump -> IO ()
-dump opts (level, env, dump) = when (level `elem` optDumps opts) $ do
+doDump :: Options -> Dump -> IO ()
+doDump opts (level, env, dump) = when (level `elem` optDumps opts) $ do
   when (optDumpEnv opts) $ putStrLn $ showCompilerEnv env
   putStrLn $ unlines [header, replicate (length header) '=', dump]
   where header = dumpHeader level

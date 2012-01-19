@@ -6,11 +6,11 @@ Completed
     import CompilerOpts                -- okay, works
     import CompilerOpts (Options)      -- okay, but no field labels imported
     import CompilerOpts (Options (..)) -- fails: Options is not a data type
+- Checked correctness of created FlatCurry files by comparison with the old
+  frontend
 
 Still to do
 ===========
-- !!! Check correctness of created FlatCurry files by comparison
-  !!! with the old frontend
 - Module pragmas
 - type classes
 - option to disable nondeterminism by overlapping
