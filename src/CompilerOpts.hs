@@ -15,7 +15,7 @@
 -}
 module CompilerOpts
   ( Options (..), CymakeMode (..), Verbosity (..), TargetType (..)
-  , Extension (..), DumpLevel (..), defaultOptions, compilerOpts, usage
+  , Extension (..), DumpLevel (..), defaultOptions, getCompilerOpts, usage
   ) where
 
 import Data.List (intercalate, nub)
@@ -259,7 +259,7 @@ checkOpts opts files
   | isJust (optOutput opts) && length files > 1
   = ["cannot specify -o with multiple targets"]
   | not $ null unknownExtensions
-  = ["Unknown language extension(s): " ++ intercalate ", " unknownExtensions]
+  = ["unknown language extension(s): " ++ intercalate ", " unknownExtensions]
   | otherwise
   = []
   where unknownExtensions = [ e | UnknownExtension e <- optExtensions opts ]
@@ -267,11 +267,11 @@ checkOpts opts files
 -- |Print the usage information of the command line tool.
 usage :: String -> String
 usage prog = usageInfo header options
-  where header = "usage: " ++ prog ++ " [OPTION] ... MODULE ..."
+  where header = "usage: " ++ prog ++ " [OPTION] ... MODULES ..."
 
 -- |Retrieve the compiler 'Options'
-compilerOpts :: IO (String, Options, [String], [String])
-compilerOpts = do
+getCompilerOpts :: IO (String, Options, [String], [String])
+getCompilerOpts = do
   args <- getArgs
   prog <- getProgName
   let (opts, files, errs) = parseOpts args

@@ -209,36 +209,30 @@ environment.}
 > exprType _     (EnumFromTo _ _) = return (listType intType)
 > exprType _     (EnumFromThenTo _ _ _) = return (listType intType)
 > exprType tyEnv (UnaryMinus _ e) = exprType tyEnv e
-> exprType tyEnv (Apply e1 e2) =
->   do
+> exprType tyEnv (Apply e1 e2) = do
 >     (ty1,ty2) <- exprType tyEnv e1 >>= unifyArrow
 >     exprType tyEnv e2 >>= unify ty1
 >     return ty2
-> exprType tyEnv (InfixApply e1 op e2) =
->   do
+> exprType tyEnv (InfixApply e1 op e2) = do
 >     (ty1,ty2,ty3) <- exprType tyEnv (infixOp op) >>= unifyArrow2
 >     exprType tyEnv e1 >>= unify ty1
 >     exprType tyEnv e2 >>= unify ty2
 >     return ty3
-> exprType tyEnv (LeftSection e op) =
->   do
+> exprType tyEnv (LeftSection e op) = do
 >     (ty1,ty2,ty3) <- exprType tyEnv (infixOp op) >>= unifyArrow2
 >     exprType tyEnv e >>= unify ty1
 >     return (TypeArrow ty2 ty3)
-> exprType tyEnv (RightSection op e) =
->   do
+> exprType tyEnv (RightSection op e) = do
 >     (ty1,ty2,ty3) <- exprType tyEnv (infixOp op) >>= unifyArrow2
 >     exprType tyEnv e >>= unify ty2
 >     return (TypeArrow ty1 ty3)
-> exprType tyEnv (Lambda _ args e) =
->   do
+> exprType tyEnv (Lambda _ args e) = do
 >     tys <- mapM (argType tyEnv) args
 >     ty <- exprType tyEnv e
 >     return (foldr TypeArrow ty tys)
 > exprType tyEnv (Let _ e) = exprType tyEnv e
 > exprType tyEnv (Do _ e) = exprType tyEnv e
-> exprType tyEnv (IfThenElse _ e1 e2 e3) =
->   do
+> exprType tyEnv (IfThenElse _ e1 e2 e3) = do
 >     exprType tyEnv e1 >>= unify boolType
 >     ty2 <- exprType tyEnv e2
 >     ty3 <- exprType tyEnv e3
@@ -248,19 +242,16 @@ environment.}
 >   where altType ty [] = return ty
 >         altType ty (Alt _ _ rhs:alts1) =
 >           rhsType tyEnv rhs >>= unify ty >> altType ty alts1
-> exprType tyEnv (RecordConstr fs) =
->   do
+> exprType tyEnv (RecordConstr fs) = do
 >     tys <- mapM (fieldExprType tyEnv) fs
 >     return (TypeRecord tys Nothing)
-> exprType tyEnv (RecordSelection r l) =
->   do
+> exprType tyEnv (RecordSelection r l) = do
 >     lty <- instUniv (labelType l tyEnv)
 >     rty <- exprType tyEnv r
 >     (TypeVariable i) <- freshTypeVar
 >     unify rty (TypeRecord [(l,lty)] (Just i))
 >     return lty
-> exprType tyEnv (RecordUpdate fs r) =
->   do
+> exprType tyEnv (RecordUpdate fs r) = do
 >     tys <- mapM (fieldExprType tyEnv) fs
 >     rty <- exprType tyEnv r
 >     (TypeVariable i) <- freshTypeVar
@@ -275,8 +266,7 @@ environment.}
 >           exprType tyEnv e >>= unify ty >> condExprType ty es1
 
 > fieldExprType :: ValueEnv -> Field Expression -> TyState (Ident,Type)
-> fieldExprType tyEnv (Field _ l e) =
->   do
+> fieldExprType tyEnv (Field _ l e) = do
 >     lty <- instUniv (labelType l tyEnv)
 >     ty <- exprType tyEnv e
 >     unify lty ty
@@ -292,8 +282,7 @@ offsets here.
 > freshTypeVar = liftM TypeVariable $ S.lift (S.modify succ >> S.get)
 
 > instType :: Int -> Type -> TyState Type
-> instType n ty =
->   do
+> instType n ty = do
 >     tys <- sequence (replicate n freshTypeVar)
 >     return (expandAliasType tys ty)
 
@@ -318,8 +307,7 @@ checker.
 > unifyList tys1 tys2 = sequence_ (zipWith unify tys1 tys2)
 
 > unifyArrow :: Type -> TyState (Type,Type)
-> unifyArrow ty =
->   do
+> unifyArrow ty = do
 >     theta <- S.get
 >     case subst theta ty of
 >       TypeVariable tv

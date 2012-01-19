@@ -15,7 +15,6 @@ module ModuleSummary (ModuleSummary (..), summarizeModule) where
 
 import Data.Maybe (fromMaybe)
 
-import Curry.Base.Position
 import Curry.Base.Ident
 import Curry.Syntax
 
@@ -54,9 +53,10 @@ summarizeModule tcEnv (Interface iid _ idecls) (Module mid mExp imps decls)
 -- |Generate interface import declarations
 genImports :: [ImportDecl] -> [IImportDecl]
 genImports = map snd . foldr addImport []
-  where addImport (ImportDecl pos mid _ _ _) imps = case lookup mid imps of
-          Nothing -> (mid, IImportDecl pos mid) : imps
-          Just _  -> imps
+  where
+  addImport (ImportDecl pos mid _ _ _) imps = case lookup mid imps of
+    Nothing -> (mid, IImportDecl pos mid) : imps
+    Just _  -> imps
 
 -- |Generate interface infix declarations in the module
 genInfixDecls :: ModuleIdent -> [Decl] -> [IDecl]
@@ -82,52 +82,41 @@ isTypeSyn _ = False
 
 --
 genTypeSynDecl :: ModuleIdent -> TCEnv -> Decl -> [IDecl]
-genTypeSynDecl mid tcEnv (TypeDecl pos ident params texpr)
-  = [genTypeDecl pos mid ident params tcEnv texpr]
+genTypeSynDecl mid tcEnv (TypeDecl p i vs ty)
+  = [ITypeDecl p (qualifyWith mid i) vs (modifyTypeExpr tcEnv ty)]
 genTypeSynDecl _ _ _
   = []
 
 --
-genTypeDecl :: Position -> ModuleIdent -> Ident -> [Ident] -> TCEnv
-	    -> TypeExpr -> IDecl
-genTypeDecl pos mid ident params tcEnv texpr
-  = ITypeDecl pos (qualifyWith mid ident) params (modifyTypeExpr tcEnv texpr)
-
---
 modifyTypeExpr :: TCEnv -> TypeExpr -> TypeExpr
-modifyTypeExpr tcEnv (ConstructorType qident typeexprs)
-  = case qualLookupTC qident tcEnv of
-      [AliasType _ arity rhstype]
-        -> modifyTypeExpr tcEnv
-              (genTypeSynDeref (zip [0 .. arity - 1] typeexprs) rhstype)
-      _ -> ConstructorType (fromMaybe qident (lookupTCId qident tcEnv))
-                           (map (modifyTypeExpr tcEnv) typeexprs)
-modifyTypeExpr _ (VariableType ident)
-  = VariableType ident
-modifyTypeExpr tcEnv (ArrowType type1 type2)
-  = ArrowType (modifyTypeExpr tcEnv type1) (modifyTypeExpr tcEnv type2)
-modifyTypeExpr tcEnv (TupleType typeexprs)
-  | null typeexprs
-  = ConstructorType qUnitId []
-  | otherwise
-  = ConstructorType (qTupleId $ length typeexprs)
-                    (map (modifyTypeExpr tcEnv) typeexprs)
-modifyTypeExpr tcEnv (ListType typeexpr)
-  = ConstructorType (qualify listId) [(modifyTypeExpr tcEnv typeexpr)]
-modifyTypeExpr tcEnv (RecordType fields rtype)
+modifyTypeExpr tcEnv (ConstructorType q tys) = case qualLookupTC q tcEnv of
+  [AliasType _ ar ty] -> modifyTypeExpr tcEnv
+                        (genTypeSynDeref (zip [0 .. ar - 1] tys) ty)
+  _                   -> ConstructorType (fromMaybe q (lookupTCId q tcEnv))
+                                         (map (modifyTypeExpr tcEnv) tys)
+modifyTypeExpr _ v@(VariableType _) = v
+modifyTypeExpr tcEnv (ArrowType ty1 ty2)
+  = ArrowType (modifyTypeExpr tcEnv ty1) (modifyTypeExpr tcEnv ty2)
+modifyTypeExpr tcEnv (TupleType tys)
+  | null tys  = ConstructorType qUnitId []
+  | otherwise = ConstructorType (qTupleId $ length tys)
+                                (map (modifyTypeExpr tcEnv) tys)
+modifyTypeExpr tcEnv (ListType ty)
+  = ConstructorType (qualify listId) [modifyTypeExpr tcEnv ty]
+modifyTypeExpr tcEnv (RecordType fields mty)
   = RecordType
-    (map (\ (labs, texpr) -> (labs, (modifyTypeExpr tcEnv texpr))) fields)
-    (maybe Nothing (Just . modifyTypeExpr tcEnv) rtype)
+    (map (\ (lbls, lty) -> (lbls, modifyTypeExpr tcEnv lty)) fields)
+    (maybe Nothing (Just . modifyTypeExpr tcEnv) mty)
 
 --
 genTypeSynDeref :: [(Int, TypeExpr)] -> Type -> TypeExpr
 genTypeSynDeref its (TypeVariable i) = case lookup i its of
   Nothing -> internalError "ModuleSummary.genTypeSynDeref: unkown type var index"
   Just te -> te
-genTypeSynDeref its (TypeConstructor qid tyexps)
-  = ConstructorType qid $ map (genTypeSynDeref its) tyexps
-genTypeSynDeref its (TypeArrow type1 type2)
-  = ArrowType (genTypeSynDeref its type1) (genTypeSynDeref its type2)
+genTypeSynDeref its (TypeConstructor qid tys)
+  = ConstructorType qid $ map (genTypeSynDeref its) tys
+genTypeSynDeref its (TypeArrow ty1 ty2)
+  = ArrowType (genTypeSynDeref its ty1) (genTypeSynDeref its ty2)
 genTypeSynDeref its (TypeRecord fields ri)
   = RecordType
     (map (\ (lab, texpr) -> ([lab], genTypeSynDeref its texpr)) fields)
