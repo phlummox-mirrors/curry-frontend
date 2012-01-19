@@ -561,9 +561,9 @@ checkParen
 >   LazyPattern pos `liftM` checkConstrTerm p t
 > checkConstrTerm p (RecordPattern      fs t) =
 >   checkRecordPattern p fs t
-> checkConstrTerm _ (FunctionPattern     _ _) = error $
+> checkConstrTerm _ (FunctionPattern     _ _) = internalError $
 >   "SyntaxCheck.checkConstrTerm: function pattern not defined"
-> checkConstrTerm _ (InfixFuncPattern  _ _ _) = error $
+> checkConstrTerm _ (InfixFuncPattern  _ _ _) = internalError $
 >   "SyntaxCheck.checkConstrTerm: infix function pattern not defined"
 
 > checkConstructorPattern :: Position -> QualIdent -> [ConstrTerm]

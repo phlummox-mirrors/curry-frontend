@@ -34,7 +34,7 @@ import Curry.Files.Filenames
 import Curry.Files.PathUtils
 import Curry.Syntax (Module (..),  ImportDecl (..), parseHeader, patchModuleId)
 
-import Base.Messages (internalError)
+import Base.Messages (abortWith, internalError)
 import Base.SCC (scc)
 import CompilerOpts (Options (..), Extension (..))
 
@@ -125,7 +125,7 @@ moduleIdentDeps opts sEnv m = case Map.lookup m sEnv of
   checkModuleHeader fn = do
     hdr@(Module m' _ _ _) <- patchModuleId fn `liftM` (ok . parseHeader fn)
                               `liftM` readFile fn
-    unless (m == m') $ error $ errWrongModule m m'
+    unless (m == m') $ abortWith [errWrongModule m m']
     moduleDeps opts sEnv fn hdr
 
 -- If we want to compile the program instead of generating Makefile

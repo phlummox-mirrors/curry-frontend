@@ -23,6 +23,7 @@ similar to that of Flat-Curry XML representation.
 
 > import Curry.Base.Ident
 > import IL.Type
+> import Base.Messages (internalError)
 
 TODO: The following import should be avoided if possible as it makes
   the program structure less clear.
@@ -71,7 +72,7 @@ TODO: The following import should be avoided if possible as it makes
 >  where
 >   beginType = text "<type name=\"" <> (xmlQualIdent tc) <> text "\">"
 >   endType   = text "</type>"
-> xmlTypeDecl _ = error "IL.XML.xmlTypeDecl: no data declaration"
+> xmlTypeDecl _ = internalError "IL.XML.xmlTypeDecl: no data declaration"
 
 > xmlTypeParams :: Int -> Doc
 > xmlTypeParams n = xmlElement "params" xmlTypeVar [0..(n-1)]
@@ -132,23 +133,20 @@ TODO: The following import should be avoided if possible as it makes
 > xmlFunctionDecl (NewtypeDecl tc arity (ConstrDecl ident ty)) =
 >   xmlFunctionDecl (FunctionDecl ident [arg] ftype (Variable arg))
 >   where
->    arg = mkIdent "_1"
->    ftype = TypeArrow ty (TypeConstructor tc (map TypeVariable [0..arity-1]))
-
+>   arg = mkIdent "_1"
+>   ftype = TypeArrow ty (TypeConstructor tc (map TypeVariable [0..arity-1]))
 > xmlFunctionDecl (FunctionDecl ident largs fType expr) =
->    heading $$ nest level (xmlRule largs expr) $$ xmlEndFunction
->  where
->    heading = xmlBeginFunction ident (length largs) fType
-
+>   heading $$ nest level (xmlRule largs expr) $$ xmlEndFunction
+>   where
+>   heading = xmlBeginFunction ident (length largs) fType
 > xmlFunctionDecl (ExternalDecl ident _callConv internalName fType) =
->    heading $$ external $$ xmlEndFunction
->  where
->    heading  = xmlBeginFunction ident (xmlFunctionArity fType) fType
->    external = text ("<external>"
->                     ++ xmlFormat internalName
->                     ++ "</external>")
-
-> xmlFunctionDecl (DataDecl _ _ _) = error "IL.XML.xmlFunctionDecl: data declaration"
+>   heading $$ external $$ xmlEndFunction
+>   where
+>   heading  = xmlBeginFunction ident (xmlFunctionArity fType) fType
+>   external = text ("<external>"
+>                    ++ xmlFormat internalName
+>                    ++ "</external>")
+> xmlFunctionDecl (DataDecl _ _ _) = internalError "IL.XML.xmlFunctionDecl: data declaration"
 
 > xmlBeginFunction :: QualIdent -> Int -> Type -> Doc
 > xmlBeginFunction ident n fType = heading $$ typeDecls
@@ -194,7 +192,6 @@ TODO: The following import should be avoided if possible as it makes
 > xmlExpr d (Exist ident expr)        = xmlFree   d ident expr
 > xmlExpr d (Let binding expr)        = xmlLet    d binding expr
 > xmlExpr d (Letrec lBinding expr)    = xmlLetrec d lBinding expr
->   --error "Recursive let bindings not supported in FlatCurry"
 
 > xmlSingleApp :: QualIdent -> Int -> Bool -> Doc
 > xmlSingleApp ident arity isFunction =
@@ -234,19 +231,18 @@ TODO: The following import should be avoided if possible as it makes
 >     where
 >        (e1,d1) = xmlExpr d  expr1
 >        (e2,d2) = xmlExpr d1 expr2
-> xmlApply _ _ _ = error "IL.XML.xmlApply: no pattern match"
+> xmlApply _ _ _ = internalError "IL.XML.xmlApply: no pattern match"
 
 > xmlApplyFunctor ::[(Int,Ident)] -> QualIdent -> Int -> [Expression] ->
 >                     Bool -> (Doc,[(Int,Ident)])
 > xmlApplyFunctor d ident arity lArgs isFunction =
->    xmlCombApply d (xmlQualIdent ident)  (text cTypeS) n lArgs
->    where
->       n     = length (lArgs)
->       cTypeS = if n==arity
->               then if isFunction
->                    then "FuncCall"
->                    else "ConsCall"
->               else "PartCall"
+>   xmlCombApply d (xmlQualIdent ident) (text cTypeS) n lArgs
+>   where
+>   n     = length lArgs
+>   cTypeS
+>     | n /= arity = "PartCall"
+>     | isFunction = "FuncCall"
+>     | otherwise  = "ConsCall"
 
 > xmlCombApply :: [(Int,Ident)] -> Doc -> Doc -> Int ->
 >                                 [Expression] -> (Doc,[(Int,Ident)])
@@ -290,7 +286,7 @@ TODO: The following import should be avoided if possible as it makes
 > xmlPattern :: [(Int,Ident)] -> ConstrTerm -> (Doc,[(Int,Ident)])
 > xmlPattern d (LiteralPattern lit) = (xmlLitPattern (xmlLit lit),d)
 > xmlPattern d (ConstructorPattern ident lArgs) = xmlConsPattern d ident  lArgs
-> xmlPattern _ (VariablePattern _) = error "Variable patterns not allowed in Flat Curry"
+> xmlPattern _ (VariablePattern _) = internalError "Variable patterns not allowed in Flat Curry"
 
 > xmlConsPattern :: [(Int,Ident)] -> QualIdent -> [Ident] -> (Doc,[(Int,Ident)])
 > xmlConsPattern d ident lArgs =

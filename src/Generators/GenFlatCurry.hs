@@ -386,7 +386,7 @@ visitOpIDecl :: CS.IDecl -> FlatState OpDecl
 visitOpIDecl (CS.IInfixDecl _ fixi prec op) = do
   op' <- visitQualIdent op
   return $ Op op' (genFixity fixi) prec
-visitOpIDecl _ = error "GenFlatCurry.visitOpIDecl: no pattern match"
+visitOpIDecl _ = internalError "GenFlatCurry.visitOpIDecl: no pattern match"
 
 -------------------------------------------------------------------------------
 
@@ -665,7 +665,7 @@ genRecordType (CS.ITypeDecl _ qident params (CS.RecordType fields _))
 				 (recordExtId ident))
 	labels <- mapM (genRecordLabel modid (zip params is)) fields
 	return (Type qname Public is labels)
-genRecordType _ = error "GenFlatCurry.genRecordType: no pattern match"
+genRecordType _ = internalError "GenFlatCurry.genRecordType: no pattern match"
 
 --
 genRecordLabel :: Maybe ModuleIdent -> [(Ident,Int)] -> ([Ident],CS.TypeExpr)
@@ -678,7 +678,7 @@ genRecordLabel modid vis ([ident],typeexpr)
 	qname <- visitQualIdent ((maybe qualify qualifyWith modid)
 				 (labelExtId ident))
 	return (Cons qname 1 Public [texpr])
-genRecordLabel _ _ _ = error "GenFlatCurry.genRecordLabel: no pattern match"
+genRecordLabel _ _ _ = internalError "GenFlatCurry.genRecordLabel: no pattern match"
 
 
 -------------------------------------------------------------------------------
@@ -1089,9 +1089,9 @@ bindEnvNewConstrDecl env (CS.NewConstrDecl _ _ ident _) = bindIdentExport ident 
 bindEnvRecordLabel :: Ident -> Map.Map Ident IdentExport -> ([Ident],CS.TypeExpr) -> Map.Map Ident IdentExport
 bindEnvRecordLabel r env ([lab], _) = bindIdentExport (recSelectorId (qualify r) lab) False expo
   where expo = (bindIdentExport (recUpdateId (qualify r) lab) False env)
-bindEnvRecordLabel _ _ _ = error "GenFlatCurry.bindEnvRecordLabel: no pattern match"
+bindEnvRecordLabel _ _ _ = internalError "GenFlatCurry.bindEnvRecordLabel: no pattern match"
 
 splitoffArgTypes :: IL.Type -> [Ident] -> [(Ident, IL.Type)]
 splitoffArgTypes (IL.TypeArrow l r) (i:is) = (i, l):splitoffArgTypes r is
 splitoffArgTypes _ [] = []
-splitoffArgTypes _ _  = error "internal error in splitoffArgTypes"
+splitoffArgTypes _ _  = internalError "splitoffArgTypes"

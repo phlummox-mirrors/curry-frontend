@@ -30,7 +30,6 @@ import Base.Messages (internalError)
 import Base.TopEnv
 import Base.Types
 
-import Env.ModuleAlias (AliasEnv)
 import Env.TypeConstructor (TCEnv, lookupTC)
 import Env.Value (ValueEnv, ValueInfo (..), lookupValue, qualLookupValue)
 
@@ -230,14 +229,14 @@ genFuncDecl isLocal env (ident, decls)
   evalannot   = case find isEvalAnnot decls of
                   Nothing -> CFlex
                   Just (EvalAnnot _ _ ea) -> genEvalAnnot ea
-                  _ -> error "Gen.GenAbstractCurry.genFuncDecl: no Eval Annotation"
+                  _ -> internalError "Gen.GenAbstractCurry.genFuncDecl: no Eval Annotation"
   (env1, mtype) = case genFuncType env decls of
                   Nothing        -> (env, Nothing)
                   Just (env', t) -> (env', Just t)
   (env2, rules) = case find isFunctionDecl decls of
                   Nothing -> (env1, [])
                   Just (FunctionDecl _ _ eqs) -> mapAccumL genRule env1 eqs
-                  _ -> error "Gen.GenAbstractCurry.genFuncDecl: no FunctionDecl"
+                  _ -> internalError "Gen.GenAbstractCurry.genFuncDecl: no FunctionDecl"
   mexternal   = genExternal `fmap` find isExternal decls
   arity       = compArity mtype rules
   typeexpr    = fromMaybe (CTCons ("Prelude", "untyped") []) mtype
@@ -257,7 +256,7 @@ genFuncDecl isLocal env (ident, decls)
   genTypeSig env' (TypeSig          _ _ ts) = genTypeExpr env' ts
   genTypeSig env' (ExternalDecl _ _ _ _ ts) = genTypeExpr env' ts
   genTypeSig _    _ =
-    error "GenAbstractCurry.genFuncDecl.genTypeSig: no pattern match"
+    internalError "GenAbstractCurry.genFuncDecl.genTypeSig: no pattern match"
 
   genExternal (ExternalDecl _ _ mname ident' _)
     = CExternal (fromMaybe (name ident') mname)
@@ -277,7 +276,7 @@ genFuncDecl isLocal env (ident, decls)
   compArityFromType (CFuncType  _ t2) = 1 + compArityFromType t2
   compArityFromType (CTCons      _ _) = 0
   compArityFromType (CRecordType _ _) =
-    error "GenAbstractCurry.genFuncDecl.compArityFromType: record type"
+    internalError "GenAbstractCurry.genFuncDecl.compArityFromType: record type"
 
   compRule _  [] Nothing  = internalError $ "GenAbstractCurry.compRule: "
                             ++ "missing rule for function \""
@@ -436,7 +435,7 @@ genLocalDecls env decls
                               Nothing -> (env1, Nothing)
                               Just r  -> let (envX, patt) = genLocalPattern pos env1 r in (envX, Just patt)
       in  (env2, CPRecord fields' mr')
-  genLocalPattern _ _ _ = error "GenAbstractCurry.genLocalDecls.genLocalPattern: no pattern match"
+  genLocalPattern _ _ _ = internalError "GenAbstractCurry.genLocalDecls.genLocalPattern: no pattern match"
 
   genLocalPattRhs pos env' [(Variable _, expr)]
     = genExpr pos env' expr
@@ -665,7 +664,7 @@ data AbstractEnv = AbstractEnv
   , typeEnv    :: ValueEnv            -- ^known values
   , tconsEnv   :: TCEnv               -- ^known type constructors
   , exports    :: Set.Set Ident       -- ^exported symbols
-  , aliases    :: AliasEnv            -- ^module aliases
+--   , aliases    :: AliasEnv            -- ^module aliases
   , varIndex   :: Int                 -- ^counter for variable indices
   , tvarIndex  :: Int                 -- ^counter for type variable indices
   , varScope   :: [Map.Map Ident Int] -- ^stack of variable tables
@@ -687,7 +686,7 @@ abstractEnv absType env (Module mid exps _ decls) = AbstractEnv
   , typeEnv   = valueEnv env
   , tconsEnv  = tyConsEnv env
   , exports   = foldl (buildExportTable mid decls) Set.empty exps'
-  , aliases   = aliasEnv env
+--   , aliases   = aliasEnv env
   , varIndex  = 0
   , tvarIndex = 0
   , varScope  = [Map.empty]
@@ -747,7 +746,7 @@ getConstrIdents :: Decl -> [Ident]
 getConstrIdents (DataDecl _ _ _ cs) = map getConstr cs
   where getConstr (ConstrDecl  _ _  c _) = c
         getConstr (ConOpDecl _ _ _ op _) = op
-getConstrIdents _ = error "GenAbstractCurry.getConstrIdents: no data declaration"
+getConstrIdents _ = internalError "GenAbstractCurry.getConstrIdents: no data declaration"
 
 -- Checks whether an identifier is exported or not.
 isExported :: AbstractEnv -> Ident -> Bool

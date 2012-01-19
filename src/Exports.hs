@@ -70,7 +70,7 @@ infixDecl m pEnv (Export             f) ds = iInfixDecl m pEnv f ds
 infixDecl m pEnv (ExportTypeWith tc cs) ds =
   foldr (iInfixDecl m pEnv . qualifyLike (qualidMod tc)) ds cs
   where qualifyLike = maybe qualify qualifyWith
-infixDecl _ _ _ _ = error "Exports.infixDecl: no pattern match"
+infixDecl _ _ _ _ = internalError "Exports.infixDecl: no pattern match"
 
 iInfixDecl :: ModuleIdent -> PEnv -> QualIdent -> [IDecl] -> [IDecl]
 iInfixDecl m pEnv op ds = case qualLookupP op pEnv of
@@ -97,7 +97,7 @@ typeDecl m tcEnv (ExportTypeWith tc cs) ds = case qualLookupTC tc tcEnv of
         in  iTypeDecl ITypeDecl m tc' n (fromQualType m ty') : ds
     _ -> iTypeDecl ITypeDecl m tc' n (fromQualType m ty) : ds
   _ -> internalError "Exports.typeDecl"
-typeDecl _ _ _ _ = error "Exports.typeDecl: no pattern match"
+typeDecl _ _ _ _ = internalError "Exports.typeDecl: no pattern match"
 
 iTypeDecl :: (Position -> QualIdent -> [Ident] -> a -> IDecl)
            -> ModuleIdent -> QualIdent -> Int -> a -> IDecl

@@ -19,11 +19,11 @@ import Files.CymakePath (cymakeGreeting, cymakeVersion)
 import Html.CurryHtml (source2html)
 
 import CurryBuilder (buildCurry)
-import CompilerOpts (Options (..), CymakeMode (..), compilerOpts, usage)
+import CompilerOpts (Options (..), CymakeMode (..), getCompilerOpts, usage)
 
 -- |The command line tool cymake
 main :: IO ()
-main = compilerOpts >>= cymake
+main = getCompilerOpts >>= cymake
 
 -- |Invoke the curry builder w.r.t the command line arguments
 cymake :: (String, Options, [String], [String]) -> IO ()
@@ -32,9 +32,9 @@ cymake (prog, opts, files, errs)
   | mode == ModeVersion        = printVersion
   | mode == ModeNumericVersion = printNumericVersion
   | not $ null errs            = badUsage prog errs
-  | null files                 = printUsage prog
-  | mode == ModeHtml           = mapM_ (source2html opts) files
-  | otherwise                  = mapM_ (buildCurry  opts) files
+  | null files                 = badUsage prog ["no input files"]
+  | mode == ModeHtml           = mapM_ (source2html opts) files -- TODO@bjp (2012-01-16): handle errors
+  | otherwise                  = mapM_ (buildCurry  opts) files -- TODO@bjp (2012-01-16): handle errors
   where mode = optMode opts
 
 -- |Print the usage information of the command line tool

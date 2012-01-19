@@ -135,7 +135,7 @@ tupleDCs = map dataInfo tupleTCs
   dataInfo (DataType tc _ [Just (DataConstr _ _ tys)]) =
     DataConstructor (qualUnqualify preludeMIdent tc) (length tys)
       (ForAllExist (length tys) 0 $ foldr TypeArrow (tupleType tys) tys)
-  dataInfo _ = error "Env.Value.tupleDCs: no data constructor"
+  dataInfo _ = internalError "Env.Value.tupleDCs: no data constructor"
 
 initDCEnv :: ValueEnv
 initDCEnv = foldr predefDC emptyTopEnv

@@ -46,6 +46,7 @@ import Control.Monad (mplus)
 
 import Curry.Base.Ident
 
+import Base.Messages (internalError)
 import Base.TopEnv
 import Base.Types
 import Base.Utils ((++!))
@@ -121,4 +122,4 @@ initTCEnv = foldr (uncurry predefTC) emptyTopEnv predefTypes
   where predefTC (TypeConstructor tc tys) =
           predefTopEnv (qualify (unqualify tc)) .
             DataType tc (length tys) . map Just
-        predefTC _ = error "Base.initTCEnv.predefTC: no type constructor"
+        predefTC _ = internalError "Base.initTCEnv.predefTC: no type constructor"

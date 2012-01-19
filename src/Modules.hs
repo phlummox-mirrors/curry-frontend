@@ -28,7 +28,7 @@ import Curry.ExtendedFlat.InterfaceEquality (eqInterface)
 import Curry.Files.Filenames
 import Curry.Files.PathUtils
 
-import Base.Messages (abortWith, errorMessages, putErrsLn)
+import Base.Messages (abortWith, mposErr, putErrsLn)
 
 import Env.Eval (evalEnv)
 
@@ -74,7 +74,7 @@ compileModule :: Options -> FilePath -> IO ()
 compileModule opts fn = do
   loaded <- loadModule opts fn
   case uncurry (checkModule opts) loaded of
-    CheckFailed errs -> errorMessages errs
+    CheckFailed errs -> abortWith $ map show errs
     CheckSuccess (env, modul) -> do
       showWarnings opts $ uncurry warnCheck loaded
       writeParsed        opts fn     modul
@@ -85,14 +85,14 @@ compileModule opts fn = do
         -- types of the newly introduced functions are not inferred (hsi)
         let (env2, il, dumps) = transModule opts env modul
         -- dump intermediate results
-        mapM_ (doDump opts) dumps
+        mapM_ (dump opts) dumps
         -- generate target code
         let intf = exportInterface env2 modul
         let modSum = summarizeModule (tyConsEnv env2) intf modul
         writeFlat opts fn env2 modSum il
       where
-        withFlat = any (`elem` optTargetTypes opts)
-                      [FlatCurry, FlatXml, ExtendedFlatCurry]
+      withFlat = any (`elem` optTargetTypes opts)
+                 [FlatCurry, FlatXml, ExtendedFlatCurry]
 
 -- ---------------------------------------------------------------------------
 -- Loading a module
@@ -103,27 +103,27 @@ loadModule opts fn = do
   -- read module
   mbSrc <- readModule fn
   case mbSrc of
-    Nothing  -> abortWith ["missing file: " ++ fn]
+    Nothing  -> abortWith ["missing file: " ++ fn] -- TODO
     Just src -> do
       -- parse module
-      let parsed = ok $ CS.parseModule True fn src
+      let parsed = ok $ CS.parseModule True fn src -- TODO
       -- check module header
       let (mdl, hdrErrs) = checkModuleHeader opts fn parsed
-      unless (null hdrErrs) $ abortWith hdrErrs
+      unless (null hdrErrs) $ abortWith $ map show hdrErrs -- TODO
       -- load the imported interfaces into an InterfaceEnv
       (iEnv, intfErrs) <- loadInterfaces (optImportPaths opts) mdl
-      unless (null intfErrs) $ errorMessages intfErrs
+      unless (null intfErrs) $ abortWith $ map show intfErrs -- TODO
       -- add information of imported modules
       let env = importModules opts mdl iEnv
       return (env, mdl)
 
-checkModuleHeader :: Options -> FilePath -> CS.Module -> (CS.Module, [String])
+checkModuleHeader :: Options -> FilePath -> CS.Module -> (CS.Module, [Message])
 checkModuleHeader opts fn = checkModuleId fn
                           . importPrelude opts
                           . CS.patchModuleId fn
 
 -- |Check whether the 'ModuleIdent' and the 'FilePath' fit together
-checkModuleId :: FilePath -> CS.Module -> (CS.Module, [String])
+checkModuleId :: FilePath -> CS.Module -> (CS.Module, [Message])
 checkModuleId fn m@(CS.Module mid _ _ _)
   | last (moduleQualifiers mid) == takeBaseName fn
   = (m, [])
@@ -146,12 +146,12 @@ importPrelude opts m@(CS.Module mid es is ds)
     -- let's add it!
   | otherwise                     = CS.Module mid es (preludeImp : is) ds
   where
-    noImpPrelude = NoImplicitPrelude `elem` optExtensions opts
-    preludeImp   = CS.ImportDecl NoPos preludeMIdent
-                   False   -- qualified?
-                   Nothing -- no alias
-                   Nothing -- no selection of types, functions, etc.
-    imported     = [imp | (CS.ImportDecl _ imp _ _ _) <- is]
+  noImpPrelude = NoImplicitPrelude `elem` optExtensions opts
+  preludeImp   = CS.ImportDecl NoPos preludeMIdent
+                  False   -- qualified?
+                  Nothing -- no alias
+                  Nothing -- no selection of types, functions, etc.
+  imported     = [imp | (CS.ImportDecl _ imp _ _ _) <- is]
 
 -- ---------------------------------------------------------------------------
 -- Checking a module
@@ -178,25 +178,27 @@ checkModule opts env mdl = kindCheck env mdl -- should be only syntax checking ?
 -- Translating a module
 -- ---------------------------------------------------------------------------
 
+type Dump = (DumpLevel, CompilerEnv, String)
+
 -- |Translate FlatCurry into the intermediate language 'IL'
 transModule :: Options -> CompilerEnv -> CS.Module
-            -> (CompilerEnv, IL.Module, [(DumpLevel, CompilerEnv, String)])
+            -> (CompilerEnv, IL.Module, [Dump])
 transModule opts env mdl = (env5, ilCaseComp, dumps)
   where
-    flat' = FlatCurry `elem` optTargetTypes opts
-    env0 = env { evalAnnotEnv = evalEnv mdl }
-    (desugared , env1) = desugar        mdl        env0
-    (simplified, env2) = simplify flat' desugared  env1
-    (lifted    , env3) = lift           simplified env2
-    (il        , env4) = ilTrans flat'  lifted     env3
-    (ilCaseComp, env5) = completeCase   il         env4
-    dumps = [ (DumpRenamed   , env , show $ CS.ppModule mdl       )
-            , (DumpDesugared , env1, show $ CS.ppModule desugared )
-            , (DumpSimplified, env2, show $ CS.ppModule simplified)
-            , (DumpLifted    , env3, show $ CS.ppModule lifted    )
-            , (DumpIL        , env4, show $ IL.ppModule il        )
-            , (DumpCase      , env5, show $ IL.ppModule ilCaseComp)
-            ]
+  flat' = FlatCurry `elem` optTargetTypes opts
+  env0 = env { evalAnnotEnv = evalEnv mdl }
+  (desugared , env1) = desugar        mdl        env0
+  (simplified, env2) = simplify flat' desugared  env1
+  (lifted    , env3) = lift           simplified env2
+  (il        , env4) = ilTrans flat'  lifted     env3
+  (ilCaseComp, env5) = completeCase   il         env4
+  dumps = [ (DumpRenamed   , env , show $ CS.ppModule mdl       )
+          , (DumpDesugared , env1, show $ CS.ppModule desugared )
+          , (DumpSimplified, env2, show $ CS.ppModule simplified)
+          , (DumpLifted    , env3, show $ CS.ppModule lifted    )
+          , (DumpIL        , env4, show $ IL.ppModule il        )
+          , (DumpCase      , env5, show $ IL.ppModule ilCaseComp)
+          ]
 
 -- ---------------------------------------------------------------------------
 -- Writing output
@@ -214,10 +216,10 @@ writeParsed :: Options -> FilePath -> CS.Module -> IO ()
 writeParsed opts fn modul = when srcTarget $
   writeModule useSubDir targetFile source
   where
-    srcTarget  = Parsed `elem` optTargetTypes opts
-    useSubDir  = optUseSubdir opts
-    targetFile = fromMaybe (sourceRepName fn) (optOutput opts)
-    source     = CS.showModule modul
+  srcTarget  = Parsed `elem` optTargetTypes opts
+  useSubDir  = optUseSubdir opts
+  targetFile = fromMaybe (sourceRepName fn) (optOutput opts)
+  source     = CS.showModule modul
 
 writeFlat :: Options -> FilePath -> CompilerEnv -> ModuleSummary -> IL.Module
           -> IO ()
@@ -239,10 +241,10 @@ writeFlatCurry opts fn env modSum il = do
   when extTarget $ EF.writeExtendedFlat useSubDir (extFlatName fn) prog
   when fcyTarget $ EF.writeFlatCurry    useSubDir (flatName    fn) prog
   where
-    extTarget    = ExtendedFlatCurry `elem` optTargetTypes opts
-    fcyTarget    = FlatCurry         `elem` optTargetTypes opts
-    useSubDir    = optUseSubdir opts
-    (prog, msgs) = genFlatCurry opts modSum env il
+  extTarget    = ExtendedFlatCurry `elem` optTargetTypes opts
+  fcyTarget    = FlatCurry         `elem` optTargetTypes opts
+  useSubDir    = optUseSubdir opts
+  (prog, msgs) = genFlatCurry opts modSum env il
 
 -- |Export an 'IL.Module' into an XML file
 writeXML :: Options -> FilePath -> ModuleSummary -> IL.Module -> IO ()
@@ -262,14 +264,12 @@ writeInterface opts fn env modSum il
       when (mfint == mfint) $ return () -- necessary to close file -- TODO
       unless (oldInterface `eqInterface` newInterface) $ outputInterface
   where
-    targetFile = flatIntName fn
-    emptyIntf = EF.Prog "" [] [] [] []
-    (newInterface, intMsgs) = genFlatInterface opts modSum env il
-    outputInterface = do
-      showWarnings opts intMsgs
-      EF.writeFlatCurry (optUseSubdir opts) targetFile newInterface
-
-
+  targetFile = flatIntName fn
+  emptyIntf = EF.Prog "" [] [] [] []
+  (newInterface, intMsgs) = genFlatInterface opts modSum env il
+  outputInterface = do
+    showWarnings opts intMsgs
+    EF.writeFlatCurry (optUseSubdir opts) targetFile newInterface
 
 writeAbstractCurry :: Options -> FilePath -> CompilerEnv -> CS.Module -> IO ()
 writeAbstractCurry opts fname env modul = do
@@ -278,18 +278,17 @@ writeAbstractCurry opts fname env modul = do
   when uacyTarget $ AC.writeCurry useSubDir (uacyName fname)
                   $ genUntypedAbstractCurry env modul
   where
-    acyTarget  = AbstractCurry        `elem` optTargetTypes opts
-    uacyTarget = UntypedAbstractCurry `elem` optTargetTypes opts
-    useSubDir  = optUseSubdir opts
+  acyTarget  = AbstractCurry        `elem` optTargetTypes opts
+  uacyTarget = UntypedAbstractCurry `elem` optTargetTypes opts
+  useSubDir  = optUseSubdir opts
 
 showWarnings :: Options -> [Message] -> IO ()
 showWarnings opts msgs = when (optWarn opts)
                        $ putErrsLn $ map showWarning msgs
 
--- |The 'doDump' function writes the selected information to the
--- standard output.
-doDump :: Options -> (DumpLevel, CompilerEnv, String) -> IO ()
-doDump opts (level, env, dump) = when (level `elem` optDumps opts) $ do
+-- |The 'dump' function writes the selected information to standard output.
+dump :: Options -> Dump -> IO ()
+dump opts (level, env, dump) = when (level `elem` optDumps opts) $ do
   when (optDumpEnv opts) $ putStrLn $ showCompilerEnv env
   putStrLn $ unlines [header, replicate (length header) '=', dump]
   where header = dumpHeader level
@@ -302,6 +301,6 @@ dumpHeader DumpLifted     = "Source code after lifting"
 dumpHeader DumpIL         = "Intermediate code"
 dumpHeader DumpCase       = "Intermediate code after case completion"
 
-errModuleFileMismatch :: ModuleIdent -> String
-errModuleFileMismatch mid = "module \"" ++ moduleName mid
+errModuleFileMismatch :: ModuleIdent -> Message
+errModuleFileMismatch mid = mposErr mid $ "module \"" ++ moduleName mid
   ++ "\" must be in a file \"" ++ moduleName mid ++ ".(l)curry\""

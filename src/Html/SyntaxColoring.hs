@@ -15,6 +15,8 @@ import Curry.Base.Position
 import Curry.Base.MessageMonad
 import Curry.Syntax hiding (infixOp)
 
+import Base.Messages
+
 debug :: Bool
 debug = False -- mergen von Token und Codes
 
@@ -29,41 +31,46 @@ trace'' s x = if debug' then trace s x else x
 
 type Program = [(Int, Int, Code)]
 
-data Code =  Keyword String
-           | Space Int
-           | NewLine
-           | ConstructorName ConstructorKind QualIdent
-           | TypeConstructor TypeKind QualIdent
-           | Function FunctionKind QualIdent
-           | ModuleName ModuleIdent
-           | Commentary String
-           | NumberCode String
-           | StringCode String
-           | CharCode String
-           | Symbol String
-           | Identifier IdentifierKind QualIdent
-           | CodeWarning [Message] Code
-           | NotParsed String
-             deriving Show
+data Code
+  = Keyword String
+  | Space Int
+  | NewLine
+  | ConstructorName ConstructorKind QualIdent
+  | TypeConstructor TypeKind QualIdent
+  | Function FunctionKind QualIdent
+  | ModuleName ModuleIdent
+  | Commentary String
+  | NumberCode String
+  | StringCode String
+  | CharCode String
+  | Symbol String
+  | Identifier IdentifierKind QualIdent
+  | CodeWarning [Message] Code
+  | NotParsed String
+    deriving Show
 
-data TypeKind = TypeDecla
-              | TypeUse
-              | TypeExport deriving Show
+data TypeKind
+  = TypeDecla
+  | TypeUse
+  | TypeExport deriving Show
 
-data ConstructorKind = ConstrPattern
-                     | ConstrCall
-                     | ConstrDecla
-                     | OtherConstrKind deriving Show
+data ConstructorKind
+  = ConstrPattern
+  | ConstrCall
+  | ConstrDecla
+  | OtherConstrKind deriving Show
 
-data IdentifierKind = IdDecl
-                    | IdOccur
-                    | UnknownId  deriving Show
+data IdentifierKind
+  = IdDecl
+  | IdOccur
+  | UnknownId  deriving Show
 
-data FunctionKind = InfixFunction
-                  | TypSig
-                  | FunDecl
-                  | FunctionCall
-                  | OtherFunctionKind deriving Show
+data FunctionKind
+  = InfixFunction
+  | TypSig
+  | FunDecl
+  | FunctionCall
+  | OtherFunctionKind deriving Show
 
 --- @param plaintext
 --- @param list with parse-Results with descending quality  e.g. [typingParse, fullParse, parse]
@@ -100,7 +107,7 @@ area2codes xxs@((l,c,code):xs) p1@Position{file=f} p2
    where
       posBegin = Position f l c noRef
       posEnd   = Position f l (c + length (code2string code)) noRef
-area2codes _ _ _ = error "SyntaxColoring.area2codes: no pattern match"
+area2codes _ _ _ = internalError "SyntaxColoring.area2codes: no pattern match"
 
 --- @param code
 --- @return qualIdent if available
@@ -335,7 +342,7 @@ tokenNcodes2codes nameList currLine currCol toks@((messages,Position{line=row,co
          | null messages = (l,c,code):cs
          | otherwise = trace' ("Warning bei code: " ++ show codes ++ ":" ++ show messages)
                               ((l,c,CodeWarning messages code): addMessage cs)
-tokenNcodes2codes _ _ _ _ _ = error "SyntaxColoring.tokenNcodes2codes: no pattern match"
+tokenNcodes2codes _ _ _ _ _ = internalError "SyntaxColoring.tokenNcodes2codes: no pattern match"
 
 
 renameModuleIdents :: [(ModuleIdent,ModuleIdent)] -> Code -> Code
@@ -368,8 +375,6 @@ getModuleIdent (Identifier _ qualIdent) = qualidMod qualIdent
 getModuleIdent (TypeConstructor _ qualIdent) = qualidMod qualIdent
 getModuleIdent _ = Nothing
 
-
-
 {-
 setQualIdent :: Code -> QualIdent -> Code
 setQualIdent (Keyword str) _ = (Keyword str)
@@ -392,17 +397,17 @@ code2string (Keyword str) = str
 code2string (Space i)= concat (replicate i " ")
 code2string NewLine = "\n"
 code2string (ConstructorName _ qualIdent) = name $ unqualify qualIdent
+code2string (TypeConstructor _ qualIdent) = name $ unqualify qualIdent
 code2string (Function _ qualIdent) = name $ unqualify qualIdent
 code2string (ModuleName moduleIdent) = moduleName moduleIdent
 code2string (Commentary str) = str
 code2string (NumberCode str) = str
-code2string (Symbol str) = str
-code2string (Identifier _ qualIdent) = name $ unqualify qualIdent
-code2string (TypeConstructor _ qualIdent) = name $ unqualify qualIdent
 code2string (StringCode str) = str
 code2string (CharCode str) = str
+code2string (Symbol str) = str
+code2string (Identifier _ qualIdent) = name $ unqualify qualIdent
+code2string (CodeWarning _ c) = code2string c
 code2string (NotParsed str) = str
-code2string _ = "" -- error / warning
 
 code2qualString :: Code -> String
 code2qualString (ConstructorName _ qualIdent) = qualName qualIdent
@@ -410,8 +415,6 @@ code2qualString (Function _ qualIdent) = qualName qualIdent
 code2qualString (Identifier _ qualIdent) = qualName qualIdent
 code2qualString (TypeConstructor _ qualIdent) = qualName qualIdent
 code2qualString x = code2string x
-
-
 
 token2code :: Token -> Code
 token2code tok@(Token cat _)
@@ -586,7 +589,7 @@ constrTerm2codes (FunctionPattern qualIdent constrTerms) =
 constrTerm2codes (InfixFuncPattern constrTerm1 qualIdent constrTerm2) =
     constrTerm2codes constrTerm1 ++ [Function InfixFunction qualIdent] ++ constrTerm2codes constrTerm2
 constrTerm2codes (RecordPattern _ _) =
-  error "SyntaxColoring.constrTerm2codes: record pattern"
+  internalError "SyntaxColoring.constrTerm2codes: record pattern"
 
 expression2codes :: Expression -> [Code]
 expression2codes (Literal _) = []
@@ -634,7 +637,7 @@ expression2codes (IfThenElse _ expression1 expression2 expression3) =
     expression2codes expression1 ++ expression2codes expression2 ++ expression2codes expression3
 expression2codes (Case _ expression alts) =
     expression2codes expression ++ concatMap alt2codes alts
-expression2codes _ = error "SyntaxColoring.expression2codes: no pattern match"
+expression2codes _ = internalError "SyntaxColoring.expression2codes: no pattern match"
 
 infixOp2codes :: InfixOp -> [Code]
 infixOp2codes (InfixOp qualIdent) = [Function InfixFunction qualIdent]
@@ -685,7 +688,7 @@ typeExpr2codes (ListType typeExpr) =
     typeExpr2codes typeExpr
 typeExpr2codes (ArrowType typeExpr1 typeExpr2) =
     typeExpr2codes typeExpr1 ++ typeExpr2codes typeExpr2
-typeExpr2codes (RecordType _ _) = error "SyntaxColoring.typeExpr2codes: Record pattern"
+typeExpr2codes (RecordType _ _) = internalError "SyntaxColoring.typeExpr2codes: Record pattern"
 
 -- TOKEN TO STRING ------------------------------------------------------------
 token2string :: Token -> [Char]
