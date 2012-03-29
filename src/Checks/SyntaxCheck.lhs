@@ -452,22 +452,23 @@ top-level.
 
 > checkDecls :: (Decl -> RenameEnv -> RenameEnv) -> [Decl] -> SCM [Decl]
 > checkDecls bindDecl ds = do
->   onJust (report . errDuplicateDefinition) $ findDouble bvs
->   onJust (report . errDuplicateTypeSig   ) $ findDouble tys
->   onJust (report . errDuplicateEvalAnnot ) $ findDouble evs
->   case filter (`notElem` tys) fs of
->     f : _ -> report $ errNoTypeSig f
->     _     -> return ()
->   modifyRenameEnv $ \env -> foldr bindDecl env (tds ++ vds)
->   mapM (checkDeclRhs bvs) ds
->   where vds   = filter isValueDecl ds
->         tds   = filter isTypeSig ds
->         bvs   = concatMap vars vds
->         tys   = concatMap vars tds
->         evs   = concatMap vars $ filter isEvalAnnot ds
->         fs    = [f | FlatExternalDecl _ fs' <- ds, f <- fs']
->         onJust _ Nothing  = return ()
->         onJust f (Just v) = f v
+>   let dbls@[dblVar, dblTys, dblEAs] = map findDouble [bvs, tys, evs]
+>   onJust (report . errDuplicateDefinition) dblVar
+>   onJust (report . errDuplicateTypeSig   ) dblTys
+>   onJust (report . errDuplicateEvalAnnot ) dblEAs
+>   let missingTy = [f | FlatExternalDecl _ fs' <- ds, f <- fs', f `notElem` tys]
+>   mapM_ (report . errNoTypeSig) missingTy
+>   if all isNothing dbls && null missingTy
+>     then do
+>       modifyRenameEnv $ \env -> foldr bindDecl env (tds ++ vds)
+>       mapM (checkDeclRhs bvs) ds
+>     else return ds -- skip further checking
+>   where vds    = filter isValueDecl ds
+>         tds    = filter isTypeSig ds
+>         bvs    = concatMap vars vds
+>         tys    = concatMap vars tds
+>         evs    = concatMap vars $ filter isEvalAnnot ds
+>         onJust = maybe (return ())
 
 -- ---------------------------------------------------------------------------
 
