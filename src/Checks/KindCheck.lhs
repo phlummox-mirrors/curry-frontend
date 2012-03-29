@@ -323,16 +323,16 @@ Error messages:
 > errMultipleDeclaration []     = internalError
 >   "KindCheck.errMultipleDeclaration: empty list"
 > errMultipleDeclaration (i:is) = posErr i $
->   "Multiple declarations for type `" ++ name i ++ "` at:\n"
+>   "Multiple declarations for type `" ++ idName i ++ "` at:\n"
 >   ++ unlines (map showPos (i:is))
->   where showPos = ("    " ++) . showLine . positionOfIdent
+>   where showPos = ("    " ++) . showLine . idPosition
 
 > errNonLinear :: Ident -> Message
-> errNonLinear tv = posErr tv $ "Type variable " ++ name tv ++
+> errNonLinear tv = posErr tv $ "Type variable " ++ idName tv ++
 >   " occurs more than once on left hand side of type declaration"
 
 > errNoVariable :: Ident -> Message
-> errNoVariable tv = posErr tv $ "Type constructor " ++ name tv ++
+> errNoVariable tv = posErr tv $ "Type constructor " ++ idName tv ++
 >   " used in left hand side of type declaration"
 
 > errWrongArity :: QualIdent -> Int -> Int -> Message
@@ -344,6 +344,6 @@ Error messages:
 >         arguments n = show n ++ " arguments"
 
 > errUnboundVariable :: Ident -> Message
-> errUnboundVariable tv = posErr tv $ "Unbound type variable " ++ name tv
+> errUnboundVariable tv = posErr tv $ "Unbound type variable " ++ idName tv
 
 \end{verbatim}

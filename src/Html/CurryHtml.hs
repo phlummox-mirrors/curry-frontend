@@ -146,8 +146,8 @@ addHtmlAnchor str qualIdent = "<a name=\"" ++
   "\"></a>" ++ str
 
 addHtmlLink :: String -> QualIdent -> String
-addHtmlLink str qualIdent =
-   let (maybeModIdent, ident) = (qualidMod qualIdent, qualidId qualIdent) in
+addHtmlLink str qid =
+   let (maybeModIdent, ident) = (qidModule qid, qidIdent qid) in
    "<a href=\"" ++
    maybe "" (\ x -> show x ++ "_curry.html") maybeModIdent ++
    "#" ++

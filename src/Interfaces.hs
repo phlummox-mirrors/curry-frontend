@@ -181,7 +181,7 @@ errInterfaceNotFound p m = toMessage p $
 errWrongInterface :: Position -> ModuleIdent -> ModuleIdent -> Message
 errWrongInterface p m m' = toMessage p $
   "Expected interface for " ++ show m ++ " but found " ++ show m'
-  ++ show (moduleQualifiers m, moduleQualifiers m')
+  ++ show (midQualifiers m, midQualifiers m')
 
 errCyclicImport :: Position -> [ModuleIdent] -> Message
 errCyclicImport _ []  = internalError "Interfaces.errCyclicImport: empty list"

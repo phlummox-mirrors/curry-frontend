@@ -254,17 +254,17 @@ errMultipleExportType :: [Ident] -> Message
 errMultipleExportType []     = internalError
   "Checks.ExportCheck.errMultipleExportType: empty list"
 errMultipleExportType (i:is) = posErr i $
-  "Multiple exports of type " ++ name i ++ " at:\n"
+  "Multiple exports of type " ++ idName i ++ " at:\n"
   ++ unlines (map showPos (i:is))
-  where showPos = ("    " ++) . showLine . positionOfIdent
+  where showPos = ("    " ++) . showLine . idPosition
 
 errMultipleExportValue :: [Ident] -> Message
 errMultipleExportValue []     = internalError
   "Checks.ExportCheck.errMultipleExportValue: empty list"
 errMultipleExportValue (i:is) = posErr i $
-  "Multiple exports of " ++ name i ++ " at:\n"
+  "Multiple exports of " ++ idName i ++ " at:\n"
   ++ unlines (map showPos (i:is))
-  where showPos = ("    " ++) . showLine . positionOfIdent
+  where showPos = ("    " ++) . showLine . idPosition
 
 errAmbiguousType :: QualIdent -> Message
 errAmbiguousType tc = qposErr tc $ "Ambiguous type " ++ qualName tc
@@ -281,8 +281,8 @@ errNonDataType tc = qposErr tc $ qualName tc ++ " is not a data type"
 
 errUndefinedDataConstr :: QualIdent -> Ident -> Message
 errUndefinedDataConstr tc c = posErr c $
-  name c ++ " is not a data constructor of type " ++ qualName tc
+  idName c ++ " is not a data constructor of type " ++ qualName tc
 
 errUndefinedLabel :: QualIdent -> Ident -> Message
 errUndefinedLabel r l = posErr l $
-  name l ++ " is not a label of the record " ++ qualName r
+  idName l ++ " is not a label of the record " ++ qualName r

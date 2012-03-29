@@ -167,7 +167,7 @@ getConstrTypes tcEnv tyEnv =
   where
   mkConstrType tqid conid argtypes targnum = (conname, contype)
     where
-    conname    = QualIdent (qualidMod tqid) conid
+    conname    = QualIdent (qidModule tqid) conid
     resulttype = IL.TypeConstructor tqid (map IL.TypeVariable [0 .. targnum - 1])
     contype    = foldr IL.TypeArrow resulttype $ map (ttrans tcEnv tyEnv) argtypes
 
@@ -359,7 +359,7 @@ visitFuncIDecl _ = internalError "GenFlatCurry: no function interface"
 --
 visitTypeIDecl :: CS.IDecl -> FlatState TypeDecl
 visitTypeIDecl (CS.IDataDecl _ t vs cs) = do
-  let mid = fromMaybe (internalError "GenFlatCurry: no module name") (qualidMod t)
+  let mid = fromMaybe (internalError "GenFlatCurry: no module name") (qidModule t)
       is  = [0 .. length vs - 1]
   cdecls <- mapM (visitConstrIDecl mid $ zip vs is) $ catMaybes cs
   qname  <- visitQualTypeIdent t
@@ -398,13 +398,13 @@ visitModuleIdent = return . Id.moduleName
 visitQualIdent :: QualIdent -> FlatState QName
 visitQualIdent qident = do
   mid <- moduleId
-  let (mmod, ident) = (qualidMod qident, qualidId qident)
+  let (mmod, ident) = (qidModule qident, qidIdent qident)
       modid | elem ident [listId, consId, nilId, unitId] || isTupleId ident
             = Id.moduleName preludeMIdent
             | otherwise
             = maybe (Id.moduleName mid) Id.moduleName mmod
   ftype <- lookupIdType qident
-  return (QName Nothing ftype modid $ name ident)
+  return (QName Nothing ftype modid $ idName ident)
 
 -- This variant of visitQualIdent does not look up the type of the identifier,
 -- which is wise when the identifier is bound to a type, because looking up
@@ -412,12 +412,12 @@ visitQualIdent qident = do
 visitQualTypeIdent :: QualIdent -> FlatState QName
 visitQualTypeIdent qident = do
   mid <- moduleId
-  let (mmod, ident) = (qualidMod qident, qualidId qident)
+  let (mmod, ident) = (qidModule qident, qidIdent qident)
       modid | elem ident [listId, consId, nilId, unitId] || isTupleId ident
             = Id.moduleName preludeMIdent
             | otherwise
             = maybe (Id.moduleName mid) Id.moduleName mmod
-  return (QName Nothing Nothing modid $ name ident)
+  return (QName Nothing Nothing modid $ idName ident)
 
 --
 visitExternalName :: String -> FlatState String
@@ -466,7 +466,7 @@ bindExpImport mident qident export expenv
   | isJust (localIdent mident qident)
   = expenv
   | otherwise
-  = let (Just modid) = qualidMod qident
+  = let (Just modid) = qidModule qident
     in  maybe (Map.insert modid [export] expenv)
               (\es -> Map.insert modid (export:es) expenv)
               (Map.lookup modid expenv)
@@ -660,7 +660,7 @@ genRecordTypes = records >>= mapM genRecordType
 genRecordType :: CS.IDecl -> FlatState TypeDecl
 genRecordType (CS.ITypeDecl _ qident params (CS.RecordType fields _))
    = do let is = [0 .. (length params) - 1]
-	    (modid,ident) = (qualidMod qident, qualidId qident)
+	    (modid,ident) = (qidModule qident, qidIdent qident)
 	qname <- visitQualIdent ((maybe qualify qualifyWith modid)
 				 (recordExtId ident))
 	labels <- mapM (genRecordLabel modid (zip params is)) fields
@@ -966,9 +966,9 @@ lookupIdType qid = do
     Just t  -> trace' ("lookupIdType local " ++ show (qid, t)) $ liftM Just (visitType t)  -- local name or constructor
     Nothing -> case [ t | Value _ _ (ForAll _ t) <- qualLookupValue qid aEnv ] of
       t : _ -> liftM Just (visitType (translType m tyEnv tcEnv t))  -- imported name
-      []    -> case qualidMod qid of
+      []    -> case qidModule qid of
         Nothing -> trace' ("no type for "  ++ show qid) $ return Nothing  -- no known type
-        Just _ -> lookupIdType qid {qualidMod = Nothing}
+        Just _ -> lookupIdType qid {qidModule = Nothing}
 --
 
 -- Generates a new index for a variable

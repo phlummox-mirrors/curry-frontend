@@ -161,7 +161,7 @@ Marlow's pretty printer for Haskell.
 >   | otherwise = char '`' <> ppQual op <> char '`'
 
 > ppName :: Ident -> Doc
-> ppName x = text (name x)
+> ppName x = text (idName x)
 
 > ppQual :: QualIdent -> Doc
 > ppQual x = text (qualName x)

@@ -517,7 +517,7 @@ insertConstrTerm fp (VariablePattern ident)
   | fp        = do
     c <- isConsId ident
     v <- isVarId ident
-    unless c $ if name ident /= "_" && v then visitId ident else insertVar ident
+    unless c $ if idName ident /= "_" && v then visitId ident else insertVar ident
   | otherwise = do
     c <- isConsId ident
     unless c $ insertVar ident
@@ -744,7 +744,7 @@ typeId ident = qualify (renameIdent ident 1)
 -- ---------------------------------------------------------------------------
 
 warnMultiplyImportedModule :: ModuleIdent -> Message
-warnMultiplyImportedModule mid = toMessage (positionOfModuleIdent mid) $
+warnMultiplyImportedModule mid = toMessage (midPosition mid) $
   "Module \"" ++ show mid ++ "\" is imported more than once"
 
 warnMultiplyImportedSymbol :: ModuleIdent -> Ident -> Message
@@ -783,4 +783,4 @@ overlappingCaseAlt :: Position -> Message
 overlappingCaseAlt p = toMessage p "Redundant overlapping case alternative"
 
 posWarn :: Ident -> String -> Message
-posWarn i msg = toMessage (positionOfIdent i) msg
+posWarn i msg = toMessage (idPosition i) msg

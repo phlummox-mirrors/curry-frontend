@@ -367,10 +367,10 @@ TODO: The following import should be avoided if possible as it makes
 > -- looks for a ident in the dictorionary. If it appears returns its
 > -- associated value. Otherwise, -1 is returned
 > xmlLookUp :: Ident -> [(Int,Ident)] -> Int
-> xmlLookUp _       []          = -1
-> xmlLookUp ident ((n,idName):xs) = if ident==idName
->                                 then n
->                                 else xmlLookUp ident xs
+> xmlLookUp _     []               = -1
+> xmlLookUp ident ((n, name) : xs) = if ident == name
+>                                       then n
+>                                       else xmlLookUp ident xs
 
 > -- generates a integer corresponding to a new var
 > xmlNewVar :: [(Int, Ident)] -> Int
@@ -404,7 +404,7 @@ TODO: The following import should be avoided if possible as it makes
 >    $$ text "</trans>"
 
 > xmlIdent :: Ident -> Doc
-> xmlIdent = text .  xmlFormat . name
+> xmlIdent = text .  xmlFormat .idName
 
 > xmlInt :: Int -> Doc
 > xmlInt = text . show

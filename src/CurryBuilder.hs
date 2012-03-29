@@ -56,7 +56,7 @@ findCurry opts str = do
     Just fn -> return $ Right fn
   where
   canBeFile    = isCurryFilePath str
-  canBeModule  = isModuleName    str
+  canBeModule  = isValidModuleName str
   moduleFile   = moduleNameToFile $ fromModuleName str
   paths        = optImportPaths opts
   fileSearch   = if canBeFile

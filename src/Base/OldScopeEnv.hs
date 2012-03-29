@@ -12,11 +12,11 @@ type IdEnv = Map.Map IdRep Integer
 data IdRep = Name String | Index Integer deriving (Eq, Ord)
 
 insertId :: Integer -> Ident -> IdEnv -> IdEnv
-insertId level ident = Map.insert (Name  (name     ident)) level
-                     . Map.insert (Index (uniqueId ident)) level
+insertId level ident = Map.insert (Name  (idName   ident)) level
+                     . Map.insert (Index (idUnique ident)) level
 
 nameExists :: String -> IdEnv -> Bool
-nameExists idName = Map.member (Name idName)
+nameExists name = Map.member (Name name)
 
 indexExists :: Integer -> IdEnv -> Bool
 indexExists index = Map.member (Index index)
@@ -57,7 +57,7 @@ beginScope (topleveltab, leveltabs, level) = case leveltabs of
 -- the prefix 'name' followed by  an index (i.e. "var3" if 'name' was "var").
 -- All returned identifiers are unique within the current scope.
 genIdentList :: Int -> String -> ScopeEnv -> [Ident]
-genIdentList size idName scopeenv = p_genIdentList size idName scopeenv 0
+genIdentList size name scopeenv = p_genIdentList size name scopeenv 0
   where
     p_genIdentList :: Int -> String -> ScopeEnv -> Int -> [Ident]
     p_genIdentList s n env i
@@ -73,9 +73,9 @@ genIdentList size idName scopeenv = p_genIdentList size idName scopeenv 0
 -- unique within the current scope. If no identifier can be generated for
 -- 'name' then 'Nothing' will be returned
 genIdent :: String -> ScopeEnv -> Maybe Ident
-genIdent idName (topleveltab, leveltabs, _) = case leveltabs of
-  []     -> genId idName topleveltab
-  (lt:_) -> genId idName lt
+genIdent name (topleveltab, leveltabs, _) = case leveltabs of
+  []     -> genId name topleveltab
+  (lt:_) -> genId name lt
 
 -- -- Return the declaration level of an identifier if it exists
 -- getIdentLevel :: Ident -> ScopeEnv -> Maybe Integer

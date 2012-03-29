@@ -83,7 +83,7 @@ bindGlobalInfo f m c ty = bindTopEnv fun c v . qualBindTopEnv fun qc v
 
 bindFun :: ModuleIdent -> Ident -> Int -> TypeScheme -> ValueEnv -> ValueEnv
 bindFun m f a ty
-  | uniqueId f == 0 = bindTopEnv fun f v . qualBindTopEnv fun qf v
+  | idUnique f == 0 = bindTopEnv fun f v . qualBindTopEnv fun qf v
   | otherwise       = bindTopEnv fun f v
   where qf  = qualifyWith m f
         v   = Value qf a ty
@@ -97,7 +97,7 @@ qualBindFun m f a ty = qualBindTopEnv "Env.Value.qualBindFun" qf $
 rebindFun :: ModuleIdent -> Ident -> Int -> TypeScheme -> ValueEnv
           -> ValueEnv
 rebindFun m f a ty
-  | uniqueId f == 0 = rebindTopEnv f v . qualRebindTopEnv qf v
+  | idUnique f == 0 = rebindTopEnv f v . qualRebindTopEnv qf v
   | otherwise       = rebindTopEnv f v
   where qf = qualifyWith m f
         v = Value qf a ty
@@ -122,7 +122,7 @@ qualLookupCons x tyEnv
   | mmid == Just preludeMIdent && qid == consId
   = qualLookupTopEnv (qualify qid) tyEnv
   | otherwise = []
- where (mmid, qid) = (qualidMod x, qualidId x)
+ where (mmid, qid) = (qidModule x, qidIdent x)
 
 lookupTuple :: Ident -> [ValueInfo]
 lookupTuple c

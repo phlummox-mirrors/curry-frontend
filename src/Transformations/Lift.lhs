@@ -96,7 +96,7 @@ i.e. the function applied to its free variables.
 
 > abstractEquation :: [Ident] -> AbstractEnv -> Equation -> LiftM Equation
 > abstractEquation lvs env (Equation p lhs@(FunLhs f ts) rhs) =
->   Equation p lhs `liftM` abstractRhs (name f ++ ".") (lvs ++ bv ts) env rhs
+>   Equation p lhs `liftM` abstractRhs (idName f ++ ".") (lvs ++ bv ts) env rhs
 > abstractEquation _ _ _ = error "Lift.abstractEquation: no pattern match"
 
 > abstractRhs :: String -> [Ident] -> AbstractEnv -> Rhs -> LiftM Rhs
@@ -317,7 +317,7 @@ to the top-level.
 >   _ -> internalError $ "Lift.varType: " ++ show v
 
 > liftIdent :: String -> Ident -> Ident
-> liftIdent prefix x = renameIdent (mkIdent $ prefix ++ show x) $ uniqueId x
+> liftIdent prefix x = renameIdent (mkIdent $ prefix ++ show x) $ idUnique x
 > --renameIdent (mkIdent (prefix ++ name x ++ show (uniqueId x))) (uniqueId x)
 
 \end{verbatim}

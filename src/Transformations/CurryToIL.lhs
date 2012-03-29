@@ -362,7 +362,7 @@ position in the remaining arguments. If one is found,
 
 > translLiteral :: Literal -> IL.Literal
 > translLiteral (Char p c) = IL.Char p c
-> translLiteral (Int ident i) = IL.Int (srcRefOf (positionOfIdent ident)) i
+> translLiteral (Int ident i) = IL.Int (srcRefOf (idPosition ident)) i
 > translLiteral (Float p f) = IL.Float p f
 > translLiteral _ = internalError "CurryToIL.translLiteral"
 
@@ -387,7 +387,7 @@ position in the remaining arguments. If one is found,
 
 > argNames :: Ident -> [Ident]
 > argNames v = [mkIdent (prefix ++ show i) | i <- [1 ..] :: [Int]]
->   where prefix = name v ++ "_"
+>   where prefix = idName v ++ "_"
 
 > type Match = ([NestedTerm],IL.Expression)
 > type Match' = ([NestedTerm] -> [NestedTerm],[NestedTerm],IL.Expression)
@@ -591,6 +591,6 @@ module.
 > modulesBinding (IL.Binding _ e) = modulesExpr e
 
 > modules :: QualIdent -> [ModuleIdent] -> [ModuleIdent]
-> modules x ms = maybe ms (: ms) (qualidMod x)
+> modules x ms = maybe ms (: ms) (qidModule x)
 
 \end{verbatim}

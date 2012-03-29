@@ -134,7 +134,7 @@ genTypeDecl env (DataDecl _ n vs cs)
   = ( resetScope env2
     , CType (genQName True env2 $ qualifyWith (moduleId env) n)
             (genVisibility env2 n)
-            (zip idxs $ map name vs)
+            (zip idxs $ map idName vs)
             cs'
     )
   where (env1, idxs) = mapAccumL genTVarIndex env vs
@@ -143,7 +143,7 @@ genTypeDecl env (TypeDecl _ n vs ty)
   = ( resetScope env2
     , CTypeSyn (genQName True env2 $ qualifyWith (moduleId env) n)
                (genVisibility env2 n)
-               (zip idxs $ map name vs)
+               (zip idxs $ map idName vs)
                ty'
     )
   where (env1, idxs) = mapAccumL genTVarIndex env vs
@@ -172,8 +172,8 @@ genTypeExpr env (ConstructorType q vs)
   = (env', CTCons (genQName True env' q) vs')
   where (env', vs') = mapAccumL genTypeExpr env vs
 genTypeExpr env (VariableType ident) = case getTVarIndex env ident of
-  Just ix -> (env , CTVar (ix , name ident))
-  Nothing -> (env', CTVar (idx, name ident))
+  Just ix -> (env , CTVar (ix , idName ident))
+  Nothing -> (env', CTVar (idx, idName ident))
   where (env', idx) = genTVarIndex env ident
 genTypeExpr env (TupleType     tys) = genTypeExpr env $ case tys of
    []   -> ConstructorType qUnitId []
@@ -197,7 +197,7 @@ genTypeExpr env (RecordType fss mr) = case mr of
   where
   (ls  , ts ) = unzip $ concatMap (\ (ls1,ty) -> map (\l -> (l,ty)) ls1) fss
   (env1, ts') = mapAccumL genTypeExpr env ts
-  ls'        = map name ls
+  ls'        = map idName ls
 
 genOpDecl :: AbstractEnv -> Decl -> [COpDecl]
 genOpDecl env (InfixDecl _ fix prec ops) = map genCOp (reverse ops)
@@ -259,9 +259,9 @@ genFuncDecl isLocal env (ident, decls)
     internalError "GenAbstractCurry.genFuncDecl.genTypeSig: no pattern match"
 
   genExternal (ExternalDecl _ _ mname ident' _)
-    = CExternal (fromMaybe (name ident') mname)
+    = CExternal (fromMaybe (idName ident') mname)
   genExternal (FlatExternalDecl _ [ident'])
-    = CExternal (name ident')
+    = CExternal (idName ident')
   genExternal _
     = internalError $ "GenAbstractCurry.genExternal: "
       ++ "illegal external declaration occured"
@@ -375,7 +375,7 @@ genLocalDecls env decls
                   (getVarIndex env' ident)
             decls' = ExtraVariables pos (tail idents) : decls1
             (env'', locals) = genLocals env' fdecls decls'
-        in (env'', CLocalVar (idx, name ident) : locals)
+        in (env'', CLocalVar (idx, idName ident) : locals)
   genLocals env' fdecls ((TypeSig _ _ _):decls1)
     = genLocals env' fdecls decls1
   genLocals _ _ decl = internalError ("GenAbstractCurry.genLocals: unexpected local declaration: \n" ++ show (head decl))
@@ -398,7 +398,7 @@ genLocalDecls env decls
   genLocalPattern _ env' (VariablePattern v) = case getVarIndex env' v of
     Nothing  -> internalError $ "GenAbstractCurry.genLocalPattern: "
       ++ "cannot find index" ++ " for pattern variable \"" ++ show v ++ "\""
-    Just idx -> (env', CPVar (idx, name v))
+    Just idx -> (env', CPVar (idx, idName v))
   genLocalPattern pos env' (ConstructorPattern qident args)
     = let (env'', args') = mapAccumL (genLocalPattern pos) env' args
       in (env'', CPComb (genQName False env' qident) args')
@@ -425,7 +425,7 @@ genLocalDecls env decls
                     ++ " for alias variable \""
                     ++ show ident ++ "\""))
                 (getVarIndex env1 ident)
-      in  (env1, CPAs (idx, name ident) patt)
+      in  (env1, CPAs (idx, idName ident) patt)
   genLocalPattern pos env' (LazyPattern _ cterm)
     = let (env'', patt) = genLocalPattern pos env' cterm
       in  (env'', CPLazy patt)
@@ -449,7 +449,7 @@ genExpr pos env (Literal l) = case l of
   String _ cs -> genExpr pos env $ List [] $ map (Literal . Char noRef) cs
   _           -> (env, CLit $ genLiteral l)
 genExpr _ env   (Variable v)
-  | isJust midx     = (env, CVar (fromJust midx, name ident))
+  | isJust midx     = (env, CVar (fromJust midx, idName ident))
   | v == qSuccessId = (env, CSymbol $ genQName False env qSuccessFunId)
   | otherwise       = (env, CSymbol $ genQName False env v)
   where
@@ -523,7 +523,7 @@ genExpr _ env (RecordConstr fields)
     in  (env1, CRecConstr fields')
 genExpr pos env (RecordSelection expr label)
   = let (env1, expr') = genExpr pos env expr
-    in  (env1, CRecSelect expr' $ name label)
+    in  (env1, CRecSelect expr' $ idName label)
 genExpr pos env (RecordUpdate fields expr)
   = let (env1, fields') = mapAccumL (genField genExpr) env fields
         (env2, expr'  ) = genExpr pos env1 expr
@@ -563,7 +563,7 @@ genPattern pos env (LiteralPattern l) = case l of
   _           -> (env, CPLit $ genLiteral l)
 genPattern _ env (VariablePattern v)
   = let (env', idx) = genVarIndex env v
-    in  (env', CPVar (idx, name v))
+    in  (env', CPVar (idx, idName v))
 genPattern pos env (ConstructorPattern qident args)
   = let (env', args') = mapAccumL (genPattern pos) env args
     in  (env', CPComb (genQName False env qident) args')
@@ -584,7 +584,7 @@ genPattern _ _ (NegativePattern _ _)
 genPattern pos env (AsPattern ident cterm)
   = let (env1, patt) = genPattern pos env cterm
         (env2, idx ) = genVarIndex env1 ident
-    in  (env2, CPAs (idx, name ident) patt)
+    in  (env2, CPAs (idx, idName ident) patt)
 genPattern pos env (LazyPattern _ cterm)
   = let (env', patt) = genPattern pos env cterm
     in  (env', CPLazy patt)
@@ -603,7 +603,7 @@ genPattern pos env (RecordPattern fields mr)
 --
 genField :: (Position -> AbstractEnv -> a -> (AbstractEnv, b))
          -> AbstractEnv -> Field a -> (AbstractEnv, CField b)
-genField genTerm env (Field p l t) = (env1, (name l, t'))
+genField genTerm env (Field p l t) = (env1, (idName l, t'))
   where (env1, t') = genTerm p env t
 
 --
@@ -625,12 +625,12 @@ genQName isTypeCons env qident
   | isQualified     qident = genQualName qident
   | otherwise              = genQualName $ getQualIdent $ unqualify qident
   where
-  genQualName qid = ( moduleName $ fromMaybe (moduleId env) $ qualidMod qid
-                    , name $ qualidId qid
+  genQualName qid = ( moduleName $ fromMaybe (moduleId env) $ qidModule qid
+                    , idName $ qidIdent qid
                     )
 -- TODO@bjp (2012-01-04): Disabled
 --   genQualName qid = (moduleName mid, name ident)
---     where (mmid, ident) = (qualidMod qid, qualidId qid)
+--     where (mmid, ident) = (qidModule qid, qidIdent qid)
 --           mid           = maybe (moduleId env)
 --                           (`sureLookupAlias` aliases env)
 --                           mmid
@@ -868,7 +868,7 @@ isDataDeclOf _ _                  = False
 -- Checks, whether a symbol is defined in the Prelude.
 isPreludeSymbol :: QualIdent -> Bool
 isPreludeSymbol qident
-   = let (mmid, ident) = (qualidMod qident, qualidId qident)
+   = let (mmid, ident) = (qidModule qident, qidIdent qident)
      in (isJust mmid && preludeMIdent == fromJust mmid)
         || elem ident [unitId, listId, nilId, consId]
         || isTupleId ident

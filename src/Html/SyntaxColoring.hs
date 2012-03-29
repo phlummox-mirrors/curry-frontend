@@ -260,7 +260,7 @@ idOccur2functionCall _ code = code
 
 addModuleIdent :: ModuleIdent -> Code -> Code
 addModuleIdent moduleIdent c@(Function x qualIdent)
-    | uniqueId (unqualify qualIdent) == 0 =
+    | idUnique (unqualify qualIdent) == 0 =
         Function x (qualQualify moduleIdent qualIdent)
     | otherwise = c
 addModuleIdent moduleIdent cn@(ConstructorName x qualIdent)
@@ -348,12 +348,12 @@ tokenNcodes2codes _ _ _ _ _ = internalError "SyntaxColoring.tokenNcodes2codes: n
 renameModuleIdents :: [(ModuleIdent,ModuleIdent)] -> Code -> Code
 renameModuleIdents nameList c =
     case c of
-        Function x qualIdent -> Function x (rename qualIdent (qualidMod qualIdent))
-        Identifier x qualIdent -> Identifier x (rename qualIdent (qualidMod qualIdent))
+        Function x qualIdent -> Function x (rename qualIdent (qidModule qualIdent))
+        Identifier x qualIdent -> Identifier x (rename qualIdent (qidModule qualIdent))
         _ -> c
   where
     rename x (Nothing) = x
-    rename x (Just m) = maybe x (\ m' -> qualifyWith m' (qualidId x)) (lookup m nameList)
+    rename x (Just m) = maybe x (\ m' -> qualifyWith m' (qidIdent x)) (lookup m nameList)
 
 {-
 codeWithoutUniqueID ::  Code -> String
@@ -365,14 +365,14 @@ codeUnqualify code = maybe code (setQualIdent code . qualify . unqualify)  $ get
 -}
 
 codeQualifiers :: Code -> [String]
-codeQualifiers = maybe [] moduleQualifiers . getModuleIdent
+codeQualifiers = maybe [] midQualifiers . getModuleIdent
 
 getModuleIdent :: Code -> Maybe ModuleIdent
-getModuleIdent (ConstructorName _ qualIdent) = qualidMod qualIdent
-getModuleIdent (Function _ qualIdent) = qualidMod qualIdent
+getModuleIdent (ConstructorName _ qualIdent) = qidModule qualIdent
+getModuleIdent (Function _ qualIdent) = qidModule qualIdent
 getModuleIdent (ModuleName moduleIdent) = Just moduleIdent
-getModuleIdent (Identifier _ qualIdent) = qualidMod qualIdent
-getModuleIdent (TypeConstructor _ qualIdent) = qualidMod qualIdent
+getModuleIdent (Identifier _ qualIdent) = qidModule qualIdent
+getModuleIdent (TypeConstructor _ qualIdent) = qidModule qualIdent
 getModuleIdent _ = Nothing
 
 {-
@@ -396,16 +396,16 @@ code2string :: Code -> String
 code2string (Keyword str) = str
 code2string (Space i)= concat (replicate i " ")
 code2string NewLine = "\n"
-code2string (ConstructorName _ qualIdent) = name $ unqualify qualIdent
-code2string (TypeConstructor _ qualIdent) = name $ unqualify qualIdent
-code2string (Function _ qualIdent) = name $ unqualify qualIdent
+code2string (ConstructorName _ qualIdent) = idName $ unqualify qualIdent
+code2string (TypeConstructor _ qualIdent) = idName $ unqualify qualIdent
+code2string (Function _ qualIdent) = idName $ unqualify qualIdent
 code2string (ModuleName moduleIdent) = moduleName moduleIdent
 code2string (Commentary str) = str
 code2string (NumberCode str) = str
 code2string (StringCode str) = str
 code2string (CharCode str) = str
 code2string (Symbol str) = str
-code2string (Identifier _ qualIdent) = name $ unqualify qualIdent
+code2string (Identifier _ qualIdent) = idName $ unqualify qualIdent
 code2string (CodeWarning _ c) = code2string c
 code2string (NotParsed str) = str
 
@@ -618,7 +618,7 @@ expression2codes (EnumFromThenTo expression1 expression2 expression3) =
     expression2codes expression2 ++
     expression2codes expression3
 expression2codes (UnaryMinus ident expression) =
-    Symbol (name ident) : expression2codes expression
+    Symbol (idName ident) : expression2codes expression
 expression2codes (Apply expression1 expression2) =
     expression2codes expression1 ++ expression2codes expression2
 expression2codes (InfixApply expression1 infixOp expression2) =

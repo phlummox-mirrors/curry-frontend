@@ -11,8 +11,7 @@ import Control.Monad (unless)
 import System.IO (hPutStrLn, stderr)
 import System.Exit (ExitCode (..), exitWith)
 
-import Curry.Base.Ident (ModuleIdent (..), Ident (..), QualIdent
-  , positionOfQualIdent)
+import Curry.Base.Ident (ModuleIdent (..), Ident (..), QualIdent, qidPosition)
 import Curry.Base.MessageMonad (Message, toMessage)
 
 import CompilerOpts (Options (optVerbosity), Verbosity (..))
@@ -48,10 +47,10 @@ errorMessages :: [Message] -> a
 errorMessages = error . unlines . map show
 
 posErr :: Ident -> String -> Message
-posErr i errMsg = toMessage (positionOfIdent i) errMsg
+posErr i errMsg = toMessage (idPosition i) errMsg
 
 qposErr :: QualIdent -> String -> Message
-qposErr i errMsg = toMessage (positionOfQualIdent i) errMsg
+qposErr i errMsg = toMessage (qidPosition i) errMsg
 
 mposErr :: ModuleIdent -> String -> Message
-mposErr m errMsg = toMessage (positionOfModuleIdent m) errMsg
+mposErr m errMsg = toMessage (midPosition m) errMsg

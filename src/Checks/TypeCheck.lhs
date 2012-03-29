@@ -504,12 +504,12 @@ signature the declared type must be too general.
 >     Nothing    -> modifyValueEnv $ rebindFun m v arity sigma
 >     Just sigTy -> do
 >       sigma' <- expandPolyType sigTy
->       unless (eqTyScheme sigma sigma') $ report $ errTypeSigTooGeneral (positionOfIdent v) m what sigTy sigma
+>       unless (eqTyScheme sigma sigma') $ report $ errTypeSigTooGeneral (idPosition v) m what sigTy sigma
 >       modifyValueEnv $ rebindFun m v arity sigma
 >   where
 >   what = text (if poly then "Function:" else "Variable:") <+> ppIdent v
 >   genType poly' (ForAll n ty)
->     | n > 0 = internalError $ "TypeCheck.genVar: " ++ showLine (positionOfIdent v) ++ show v ++ " :: " ++ show ty
+>     | n > 0 = internalError $ "TypeCheck.genVar: " ++ showLine (idPosition v) ++ show v ++ " :: " ++ show ty
 >     | poly' = gen lvs ty
 >     | otherwise = monoType ty
 >   eqTyScheme (ForAll _ t1) (ForAll _ t2) = equTypes t1 t2
@@ -723,7 +723,7 @@ because of possibly multiple occurrences of variables.
 >             -> Field ConstrTerm -> TCM (Ident, Type)
 > tcFieldPatt tcPatt m f@(Field _ l t) = do
 >     tyEnv <- getValueEnv
->     let p = positionOfIdent l
+>     let p = idPosition l
 >     lty <- maybe (freshTypeVar
 >	             >>= (\lty' ->
 >		           modifyValueEnv
@@ -775,7 +775,7 @@ because of possibly multiple occurrences of variables.
 >       case qualLookupTypeSig m v sigs of
 >         Just ty -> expandPolyType ty >>= inst
 >         Nothing -> getValueEnv >>= inst . funType m v
->   where v' = qualidId v
+>   where v' = qidIdent v
 > tcExpr _ (Constructor c) = do
 >  m <- getModuleIdent
 >  getValueEnv >>= instExist . constrType m c
@@ -847,7 +847,7 @@ because of possibly multiple occurrences of variables.
 >   where opType op'
 >           | op' == minusId  = freshConstrained [intType,floatType]
 >           | op' == fminusId = return floatType
->           | otherwise = internalError $ "TypeCheck.tcExpr unary " ++ name op'
+>           | otherwise = internalError $ "TypeCheck.tcExpr unary " ++ idName op'
 > tcExpr p e@(Apply e1 e2) = do
 >     ty1 <- tcExpr p e1
 >     ty2 <- tcExpr p e2
@@ -985,7 +985,7 @@ because of possibly multiple occurrences of variables.
 > tcFieldExpr comb f@(Field _ l e) = do
 >   m     <- getModuleIdent
 >   tyEnv <- getValueEnv
->   let p = positionOfIdent l
+>   let p = idPosition l
 >   lty <- maybe (freshTypeVar
 >                >>= (\lty' ->
 >                      modifyValueEnv (bindLabel l (qualifyWith m (mkIdent "#Rec"))
@@ -1320,20 +1320,20 @@ Error functions.
 > errRecursiveTypes []         = internalError
 >   "TypeCheck.recursiveTypes: empty list"
 > errRecursiveTypes [tc]       = posErr tc $
->   "Recursive synonym type " ++ name tc
+>   "Recursive synonym type " ++ idName tc
 > errRecursiveTypes (tc : tcs) = posErr tc $
->   "Recursive synonym types " ++ name tc ++ types "" tcs
+>   "Recursive synonym types " ++ idName tc ++ types "" tcs
 >   where
 >   types _    []         = ""
->   types comm [tc1]      = comm ++ " and " ++ name tc1
->                           ++ showLine (positionOfIdent tc1)
->   types _    (tc1:tcs1) = ", " ++ name tc1
->                           ++ showLine (positionOfIdent tc1)
+>   types comm [tc1]      = comm ++ " and " ++ idName tc1
+>                           ++ showLine (idPosition tc1)
+>   types _    (tc1:tcs1) = ", " ++ idName tc1
+>                           ++ showLine (idPosition tc1)
 >                           ++ types "," tcs1
 
 > errPolymorphicFreeVar :: Ident -> Message
 > errPolymorphicFreeVar v = posErr v $
->   "Free variable " ++ name v ++ " has a polymorphic type"
+>   "Free variable " ++ idName v ++ " has a polymorphic type"
 
 > errTypeSigTooGeneral :: Position -> ModuleIdent -> Doc -> TypeExpr -> TypeScheme
 >                      -> Message

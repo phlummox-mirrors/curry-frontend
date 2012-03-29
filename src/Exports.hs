@@ -68,7 +68,7 @@ exportInterface' (Module _ Nothing _ _) _ _ _
 infixDecl :: ModuleIdent -> PEnv -> Export -> [IDecl] -> [IDecl]
 infixDecl m pEnv (Export             f) ds = iInfixDecl m pEnv f ds
 infixDecl m pEnv (ExportTypeWith tc cs) ds =
-  foldr (iInfixDecl m pEnv . qualifyLike (qualidMod tc)) ds cs
+  foldr (iInfixDecl m pEnv . qualifyLike (qidModule tc)) ds cs
   where qualifyLike = maybe qualify qualifyWith
 infixDecl _ _ _ _ = internalError "Exports.infixDecl: no pattern match"
 
@@ -144,7 +144,7 @@ funDecl _ _ _ _ = internalError "Exports.funDecl: no pattern match"
 -- the interface for module @C@ will import module @A@ but not module @B@.
 
 usedModules :: [IDecl] -> [ModuleIdent]
-usedModules ds = nub' (catMaybes (map qualidMod (foldr identsDecl [] ds)))
+usedModules ds = nub' (catMaybes (map qidModule (foldr identsDecl [] ds)))
   where nub' = Set.toList . Set.fromList
 
 identsDecl :: IDecl -> [QualIdent] -> [QualIdent]

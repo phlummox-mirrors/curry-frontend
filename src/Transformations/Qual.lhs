@@ -207,7 +207,7 @@ declarations groups as well as function arguments remain unchanged.
 >         [y] -> origName y
 >         _   -> qmx
 >       where qmx = qualQualify m x
->   where isGlobal = (== 0) . uniqueId . unqualify
+>   where isGlobal = (== 0) . idUnique . unqualify
 
 > qualConstructor :: Qual QualIdent
 > qualConstructor x = do

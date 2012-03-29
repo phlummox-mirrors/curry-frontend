@@ -171,7 +171,7 @@ declarations to the group that must be desugared as well.
 >   return $ map (externalDecl tyEnv p m) fs
 >   where
 >   externalDecl tyEnv p' m f =
->    ExternalDecl p' CallConvPrimitive (Just (name f)) f
+>    ExternalDecl p' CallConvPrimitive (Just (idName f)) f
 >      (fromType (typeOf tyEnv (Variable (qual m f))))
 >   qual m f
 >     | unRenameIdent f == f = qualifyWith m f
@@ -195,7 +195,7 @@ and a record label belongs to only one record declaration.
 > desugarDeclRhs (PatternDecl       p t rhs) =
 >   PatternDecl p t `liftM` desugarRhs p rhs
 > desugarDeclRhs (ExternalDecl p cc ie f ty) =
->   return $ ExternalDecl p cc (ie `mplus` Just (name f)) f ty
+>   return $ ExternalDecl p cc (ie `mplus` Just (idName f)) f ty
 > desugarDeclRhs vars@(ExtraVariables   _ _) = return vars
 > desugarDeclRhs _ = error "Desugar.desugarDeclRhs: no pattern match"
 
@@ -222,7 +222,7 @@ with a local declaration for $v$.
 >   where
 >   fixType tyEnv
 >     | typeOf tyEnv v == floatType
->     = Float (srcRefOf $ positionOfIdent v) (fromIntegral i)
+>     = Float (srcRefOf $ idPosition v) (fromIntegral i)
 >     | otherwise = Int v i
 > desugarLiteral (Float p f) = return $ Left $ Float p f
 > desugarLiteral (String (SrcRef [i]) cs) = return $ Right

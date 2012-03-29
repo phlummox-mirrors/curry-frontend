@@ -125,7 +125,7 @@ checkModuleHeader opts fn = checkModuleId fn
 -- |Check whether the 'ModuleIdent' and the 'FilePath' fit together
 checkModuleId :: FilePath -> CS.Module -> (CS.Module, [Message])
 checkModuleId fn m@(CS.Module mid _ _ _)
-  | last (moduleQualifiers mid) == takeBaseName fn
+  | last (midQualifiers mid) == takeBaseName fn
   = (m, [])
   | otherwise
   = (m, [errModuleFileMismatch mid])

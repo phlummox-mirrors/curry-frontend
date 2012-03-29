@@ -92,7 +92,7 @@ renaming literals and underscore to disambiguate them.
 
 > -- |Identifier for global (top-level) declarations
 > globalScopeId :: Integer
-> globalScopeId = uniqueId (mkIdent "")
+> globalScopeId = idUnique (mkIdent "")
 
 > -- |Run the syntax check monad
 > runSC :: SCM a -> SCState -> (a, [Message])
@@ -296,7 +296,7 @@ Furthermore, it is not allowed to declare a label more than once.
 > qualLookupListCons :: QualIdent -> RenameEnv -> [RenameInfo]
 > qualLookupListCons v env
 >   | v == qualifyWith preludeMIdent consId
->   = qualLookupNestEnv (qualify $ qualidId v) env
+>   = qualLookupNestEnv (qualify $ qidIdent v) env
 >   | otherwise
 >   = []
 
@@ -316,10 +316,10 @@ local declarations.
 
 > checkTypeDecl :: Decl -> SCM Decl
 > checkTypeDecl rec@(TypeDecl _ r _ (RecordType fs rty)) = do
->   checkRecordExtension $ positionOfIdent r
+>   checkRecordExtension $ idPosition r
 >   when (isJust  rty) $ internalError
 >                        "SyntaxCheck.checkTypeDecl: illegal record type"
->   when (null     fs) $ report $ errEmptyRecord $ positionOfIdent r
+>   when (null     fs) $ report $ errEmptyRecord $ idPosition r
 >   return rec
 > checkTypeDecl d = return d
 
@@ -435,7 +435,7 @@ top-level.
 >   = checkOpLhs k env (f . InfixPattern t1 op) t2
 >   | otherwise
 >   = Left (op'', OpLhs (f t1) op'' t2)
->   where (m,op') = (qualidMod op, qualidId op)
+>   where (m,op') = (qidModule op, qidIdent op)
 >         op''    = renameIdent op' k
 > checkOpLhs _ _ f t = Right (f t)
 
@@ -499,7 +499,7 @@ top-level.
 > checkLhs p (OpLhs t1 op t2) = do
 >   let wrongCalls = concatMap (checkParenConstrTerm (Just $ qualify op)) [t1,t2]
 >   unless (null wrongCalls) $ report $ errInfixWithoutParens
->     (positionOfIdent op) wrongCalls
+>     (idPosition op) wrongCalls
 >   liftM2 (flip OpLhs op) (checkConstrTerm p t1) (checkConstrTerm p t2)
 > checkLhs p (ApLhs   lhs ts) =
 >   liftM2 ApLhs (checkLhs p lhs) (mapM (checkConstrTerm p) ts)
@@ -648,7 +648,7 @@ checkParen
 >         if isNothing t
 >           then do
 >             when (not $ null missings) $ report $ errMissingLabel
->               (positionOfIdent l) (head missings) r "record pattern"
+>               (idPosition l) (head missings) r "record pattern"
 >             flip RecordPattern t `liftM` mapM (checkFieldPatt r) fs
 >           else if t == Just (VariablePattern anonId)
 >             then liftM2 RecordPattern
@@ -671,7 +671,7 @@ checkParen
 >     []                 -> report $ errUndefinedLabel l
 >     [_]                -> report $ errNotALabel l
 >     _                  -> report $ errDuplicateDefinition l
->   Field p l `liftM` checkConstrTerm (positionOfIdent l) t
+>   Field p l `liftM` checkConstrTerm (idPosition l) t
 
 > -- Note: process decls first
 > checkRhs :: Rhs -> SCM Rhs
@@ -730,7 +730,7 @@ checkParen
 >       [RecordLabel r ls] -> do
 >         unless (null dups)     $ report $ errDuplicateLabel $ head dups
 >         unless (null missings) $ report $ errMissingLabel
->              (positionOfIdent l) (head missings) r "record construction"
+>              (idPosition l) (head missings) r "record construction"
 >         RecordConstr `liftM` mapM (checkFieldExpr r) fs
 >         where ls' = map fieldLabel fs
 >               dups = maybeToList (findDouble ls')
@@ -757,7 +757,7 @@ checkParen
 >       [RecordLabel r _] -> do
 >         unless (null dups) $ report $ errDuplicateLabel $ head dups
 >         liftM2 RecordUpdate (mapM (checkFieldExpr r) fs)
->                             (checkExpr (positionOfIdent l) e)
+>                             (checkExpr (idPosition l) e)
 >         where dups = maybeToList $ findDouble $ map fieldLabel fs
 >       []  -> report (errUndefinedLabel l)      >> return rec
 >       [_] -> report (errNotALabel l)           >> return rec
@@ -766,7 +766,7 @@ checkParen
 > checkVariable :: QualIdent -> SCM Expression
 > checkVariable v
 >   | unqualify v == anonId = do
->     checkAnonFreeVarsExtension $ positionOfQualIdent v
+>     checkAnonFreeVarsExtension $ qidPosition v
 >     return $ Variable v
 >   | otherwise             = do
 >     env <- getRenameEnv
@@ -839,7 +839,7 @@ checkParen
 >     []                 -> report $ errUndefinedLabel l
 >     [_]                -> report $ errNotALabel l
 >     _                  -> report $ errDuplicateDefinition l
->   Field p l `liftM` checkExpr (positionOfIdent l) e
+>   Field p l `liftM` checkExpr (idPosition l) e
 
 \end{verbatim}
 Auxiliary definitions.
@@ -986,7 +986,7 @@ Error messages.
 > errUndefinedData c = qposErr c $ "Undefined data constructor " ++ qualName c
 
 > errUndefinedLabel :: Ident -> Message
-> errUndefinedLabel l = posErr l $ "Undefined record label `" ++ name l ++ "`"
+> errUndefinedLabel l = posErr l $ "Undefined record label `" ++ idName l ++ "`"
 
 > errAmbiguousIdent :: [RenameInfo] -> QualIdent -> Message
 > errAmbiguousIdent rs | any isConstr rs = errAmbiguousData
@@ -1000,67 +1000,67 @@ Error messages.
 
 > errDuplicateDefinition :: Ident -> Message
 > errDuplicateDefinition v = posErr v $
->   "More than one definition for `" ++ name v ++ "`"
+>   "More than one definition for `" ++ idName v ++ "`"
 
 > errDuplicateVariable :: Ident -> Message
 > errDuplicateVariable v = posErr v $
->   name v ++ " occurs more than once in pattern"
+>   idName v ++ " occurs more than once in pattern"
 
 > errMultipleDataConstructor :: [Ident] -> Message
 > errMultipleDataConstructor [] = internalError
 >   "SyntaxCheck.errMultipleDataDeclaration: empty list"
 > errMultipleDataConstructor (i:is) = posErr i $
->   "Multiple definitions for data constructor `" ++ name i ++ "` at:\n"
+>   "Multiple definitions for data constructor `" ++ idName i ++ "` at:\n"
 >   ++ unlines (map showPos (i:is))
->   where showPos = ("    " ++) . showLine . positionOfIdent
+>   where showPos = ("    " ++) . showLine . idPosition
 
 > errDuplicateTypeSig :: Ident -> Message
 > errDuplicateTypeSig v = posErr v $
->   "More than one type signature for `" ++ name v ++ "`"
+>   "More than one type signature for `" ++ idName v ++ "`"
 
 > errDuplicateEvalAnnot :: Ident -> Message
 > errDuplicateEvalAnnot v = posErr v $
->   "More than one eval annotation for `" ++ name v ++ "`"
+>   "More than one eval annotation for `" ++ idName v ++ "`"
 
 > errDuplicateLabel :: Ident -> Message
 > errDuplicateLabel l = posErr l $
->   "Multiple occurrence of record label `" ++ name l ++ "`"
+>   "Multiple occurrence of record label `" ++ idName l ++ "`"
 
 > errMissingLabel :: Position -> Ident -> QualIdent -> String -> Message
 > errMissingLabel p l r what = toMessage p $
->   "Missing label `" ++ name l
->   ++ "` in the " ++ what ++ " of `" ++ name (unqualify r) ++ "`"
+>   "Missing label `" ++ idName l
+>   ++ "` in the " ++ what ++ " of `" ++ idName (unqualify r) ++ "`"
 
 > errIllegalLabel :: Ident -> QualIdent -> Message
 > errIllegalLabel l r = posErr l $
->   "Label `" ++ name l ++ "` is not defined in record `"
->   ++ name (unqualify r) ++ "`"
+>   "Label `" ++ idName l ++ "` is not defined in record `"
+>   ++ idName (unqualify r) ++ "`"
 
 > errIllegalRecordId :: Ident -> Message
-> errIllegalRecordId r = posErr r $ "Record identifier `" ++ name r
+> errIllegalRecordId r = posErr r $ "Record identifier `" ++ idName r
 >     ++ "` already assigned to a data constructor"
 
 > errNonVariable :: String -> Ident -> Message
 > errNonVariable what c = posErr c $
->   "Data constructor `" ++ name c ++ "` in left hand side of " ++ what
+>   "Data constructor `" ++ idName c ++ "` in left hand side of " ++ what
 
 > errNoBody :: Ident -> Message
-> errNoBody v = posErr v $ "No body for `" ++ name v ++ "`"
+> errNoBody v = posErr v $ "No body for `" ++ idName v ++ "`"
 
 > errNoTypeSig :: Ident -> Message
 > errNoTypeSig f = posErr f $
->   "No type signature for external function `" ++ name f ++ "`"
+>   "No type signature for external function `" ++ idName f ++ "`"
 
 > errToplevelPattern :: Position -> Message
 > errToplevelPattern p = toMessage p
 >   "Pattern declaration not allowed at top-level"
 
 > errNotALabel :: Ident -> Message
-> errNotALabel l = posErr l $ "`" ++ name l ++ "` is not a record label"
+> errNotALabel l = posErr l $ "`" ++ idName l ++ "` is not a record label"
 
 > errDifferentArity :: Ident -> Message
 > errDifferentArity f = posErr f $
->   "Equations for `" ++ name f ++ "` have different arities"
+>   "Equations for `" ++ idName f ++ "` have different arities"
 
 > errWrongArity :: QualIdent -> Int -> Int -> Message
 > errWrongArity c arity' argc = qposErr c $
@@ -1086,7 +1086,7 @@ Error messages.
 > errInfixWithoutParens p calls = toMessage p $
 >   "Missing parens in infix patterns: \n" ++ unlines (map showCall calls)
 >   where showCall (q1, q2) =
->           show q1 ++ " " ++ showLine (positionOfQualIdent q1)
->           ++ "calls " ++ show q2 ++ " " ++ showLine (positionOfQualIdent q2)
+>           show q1 ++ " " ++ showLine (qidPosition q1)
+>           ++ "calls " ++ show q2 ++ " " ++ showLine (qidPosition q2)
 
 \end{verbatim}

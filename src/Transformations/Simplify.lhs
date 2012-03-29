@@ -408,7 +408,7 @@ selector functions.
 >   ty  = typeOf tyEnv t
 >   tys = map (typeOf tyEnv) vs
 >
->   getId t1 v = freshIdent (\ i -> updIdentName ( ++'#':name v) (fpSelectorId i))
+>   getId t1 v = freshIdent (\ i -> updIdentName (++ '#' : idName v) (fpSelectorId i))
 >                            (flatSelectorType ty t1)
 >   flatSelectorType ty0 ty1          = polyType (TypeArrow ty0 (identityType ty1))
 >   flatSelectorDecl p1 f1 t1 v1      = funDecl p1 f1 [t1] (mkVar v1)

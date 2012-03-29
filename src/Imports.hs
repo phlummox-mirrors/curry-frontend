@@ -224,7 +224,7 @@ constrType' m tvs evs ty = ForAllExist (length tvs) (length evs)
                                        (toQualType m tvs ty)
 
 qualifyLike :: QualIdent -> Ident -> QualIdent
-qualifyLike x = maybe qualify qualifyWith (qualidMod x)
+qualifyLike x = maybe qualify qualifyWith (qidModule x)
 
 bindRecordLabels :: ModuleIdent -> QualIdent -> ([Ident], TypeExpr)
                  -> ExpValueEnv -> ExpValueEnv
@@ -393,22 +393,22 @@ expandTypeAll tc = do
 
 errUndefinedEntity :: ModuleIdent -> Ident -> Message
 errUndefinedEntity m x = posErr x $
-  "Module " ++ moduleName m ++ " does not export " ++ name x
+  "Module " ++ moduleName m ++ " does not export " ++ idName x
 
 errUndefinedDataConstr :: Ident -> Ident -> Message
 errUndefinedDataConstr tc c = posErr c $
-  name c ++ " is not a data constructor of type " ++ name tc
+  idName c ++ " is not a data constructor of type " ++ idName tc
 
 errUndefinedLabel :: Ident -> Ident -> Message
 errUndefinedLabel tc c = posErr c $
-  name c ++ " is not a label of record type " ++ name tc
+  idName c ++ " is not a label of record type " ++ idName tc
 
 errNonDataType :: Ident -> Message
-errNonDataType tc = posErr tc $ name tc ++ " is not a data type"
+errNonDataType tc = posErr tc $ idName tc ++ " is not a data type"
 
 errImportDataConstr :: ModuleIdent -> Ident -> Message
 errImportDataConstr _ c = posErr c $
-  "Explicit import for data constructor " ++ name c
+  "Explicit import for data constructor " ++ idName c
 
 -- ---------------------------------------------------------------------------
 
@@ -450,7 +450,7 @@ qualifyLocal currentEnv initEnv = currentEnv
     tyEnv = valueEnv  initEnv
     bindQual   (_, y) = qualBindTopEnv "Imports.qualifyEnv" (origName y) y
     bindGlobal (x, y)
-      | uniqueId x == 0 = bindQual (x, y)
+      | idUnique x == 0 = bindQual (x, y)
       | otherwise       = bindTopEnv "Imports.qualifyEnv" x y
 
 -- Importing an interface into another interface is somewhat simpler
@@ -513,7 +513,7 @@ expandValueEnv opts env
 addImportedLabels :: ModuleIdent -> ValueEnv -> ValueEnv
 addImportedLabels m tyEnv = foldr addLabelType tyEnv (allImports tyEnv)
   where
-  addLabelType (_, Label l r ty) = importTopEnv (fromMaybe m (qualidMod r))
+  addLabelType (_, Label l r ty) = importTopEnv (fromMaybe m (qidModule r))
                                    (unqualify l) (Label l r ty)
   addLabelType _ = id
 

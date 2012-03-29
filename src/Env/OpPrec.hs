@@ -53,7 +53,7 @@ type PEnv = TopEnv PrecInfo
 
 bindP :: ModuleIdent -> Ident -> OpPrec -> PEnv -> PEnv
 bindP m op p
-  | uniqueId op == 0 = bindTopEnv fun op info . qualBindTopEnv fun qop info
+  | idUnique op == 0 = bindTopEnv fun op info . qualBindTopEnv fun qop info
   | otherwise        = bindTopEnv fun op info
   where qop  = qualifyWith m op
         info = PrecInfo qop p
