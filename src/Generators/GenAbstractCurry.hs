@@ -43,36 +43,38 @@ import CompilerEnv
 --  The function needs the type environment 'tyEnv' to determine the
 --  inferred function types.
 genTypedAbstract :: CompilerEnv -> Module -> CurryProg
-genTypedAbstract env mdl = genAbstract (abstractEnv TypedAcy env mdl) mdl
+genTypedAbstract = genAbstract TypedAcy
 
 -- |Generate untyped AbstractCurry code from a Curry module. The type
 --  signature takes place in every function type annotation, if it exists,
 --  otherwise the dummy type "Prelude.untyped" is used.
 genUntypedAbstract :: CompilerEnv -> Module -> CurryProg
-genUntypedAbstract env mdl = genAbstract (abstractEnv UntypedAcy env mdl) mdl
+genUntypedAbstract = genAbstract UntypedAcy
 
 -- |Generate an AbstractCurry program term from the syntax tree
-genAbstract :: AbstractEnv -> Module -> CurryProg
-genAbstract env (Module mid _ imps decls)
-  = CurryProg modname imports types funcs ops
+genAbstract :: AbstractType -> CompilerEnv -> Module -> CurryProg
+genAbstract ty env mdl@(Module mid _ imps decls)
+  = CurryProg mid' imps' types funcs ops
   where
-  modname = moduleName mid
-  imports = map genImportDecl imps
-  types   = snd $ mapAccumL genTypeDecl env         $ reverse $ typeDecls part
-  funcs   = snd $ mapAccumL (genFuncDecl False) env $ funcDecls part
-  ops     =       concatMap (genOpDecl env)         $ reverse $ opDecls part
-  part    = foldl partitionDecl emptyPartition decls
+  aEnv  = abstractEnv ty env mdl
+  mid'  = moduleName mid
+  imps' = map genImportDecl imps
+  types = snd $ mapAccumL genTypeDecl aEnv         $ reverse $ typeDecls part
+  funcs = snd $ mapAccumL (genFuncDecl False) aEnv $ funcDecls part
+  ops   =       concatMap (genOpDecl aEnv)         $ reverse $ opDecls part
+  part  = foldl partitionDecl emptyPartition decls
 
 -- ---------------------------------------------------------------------------
--- Partition
+-- Partition of declarations
 -- ---------------------------------------------------------------------------
 
--- The following type and functions are used to split a list of Curry
--- declarations into three parts: a list of type declarations (data types and
--- type synonyms), a table of function declarations and a list of fixity
--- declarations for infix operators.
+-- The following code is used to split a list of Curry declarations into
+-- three parts:
+--   * a list of type declarations (data types and type synonyms),
+--   * a table of function declarations,
+--   * a list of fixity declarations for infix operators.
 
--- |Data type for representing partitions of Curry declarations
+-- |Partition of Curry declarations.
 -- (according to the definition of the AbstractCurry program
 -- representation; type 'CurryProg').
 -- Since a complete function declaration usually consists of more than one
@@ -95,21 +97,24 @@ emptyPartition = Partition
 -- |Insert a CurrySyntax top level declaration into a partition.
 -- /Note:/ Declarations are collected in reverse order.
 partitionDecl :: Partition -> Decl -> Partition
-partitionDecl part d@(InfixDecl _ _ _ _) = part { opDecls   = d : opDecls   part }
-partitionDecl part d@(DataDecl  _ _ _ _) = part { typeDecls = d : typeDecls part }
-partitionDecl part d@(TypeDecl  _ _ _ _) = part { typeDecls = d : typeDecls part }
--- function decls
-partitionDecl part (TypeSig p ids ty)
-  = partitionFuncDecls (\q -> TypeSig p [q] ty) part ids
-partitionDecl part (EvalAnnot p ids ann)
-  = partitionFuncDecls (\q -> EvalAnnot p [q] ann) part ids
-partitionDecl part d@(FunctionDecl _ ident _)
-  = partitionFuncDecls (const d) part [ident]
-partitionDecl part d@(ExternalDecl _ _ _ ident _)
-  = partitionFuncDecls (const d) part [ident]
-partitionDecl part (FlatExternalDecl pos ids)
-  = partitionFuncDecls (\q -> FlatExternalDecl pos [q]) part ids
-partitionDecl part _ = part
+-- operator infix declarations
+partitionDecl p d@(InfixDecl _ _ _ _) = p { opDecls   = d : opDecls   p }
+-- type declarations
+partitionDecl p d@(DataDecl  _ _ _ _) = p { typeDecls = d : typeDecls p }
+partitionDecl p d@(TypeDecl  _ _ _ _) = p { typeDecls = d : typeDecls p }
+-- function declarations
+partitionDecl p (TypeSig pos ids ty)
+  = partitionFuncDecls (\q -> TypeSig pos [q] ty) p ids
+partitionDecl p (EvalAnnot pos ids ann)
+  = partitionFuncDecls (\q -> EvalAnnot pos [q] ann) p ids
+partitionDecl p d@(FunctionDecl _ ident _)
+  = partitionFuncDecls (const d) p [ident]
+partitionDecl p d@(ExternalDecl _ _ _ ident _)
+  = partitionFuncDecls (const d) p [ident]
+partitionDecl p (FlatExternalDecl pos ids)
+  = partitionFuncDecls (\q -> FlatExternalDecl pos [q]) p ids
+-- other (ignored)
+partitionDecl p _ = p
 
 --
 partitionFuncDecls :: (Ident -> Decl) -> Partition -> [Ident] -> Partition
@@ -148,21 +153,25 @@ genTypeDecl env (TypeDecl _ n vs ty)
     )
   where (env1, idxs) = mapAccumL genTVarIndex env vs
         (env2, ty' ) = genTypeExpr env1 ty
-genTypeDecl _ (NewtypeDecl _ _ _ _)
-  = internalError "newtype declarations are not supported in AbstractCurry"
+genTypeDecl env (NewtypeDecl _ n vs (NewConstrDecl p nvs nc ty))
+  = (resetScope env2
+    , CType (genQName True env2 $ qualifyWith (moduleId env) n)
+            (genVisibility env2 n)
+            (zip idxs $ map idName vs)
+            [nc']
+    ) where (env1, idxs) = mapAccumL genTVarIndex env vs
+            (env2, nc' ) = genConsDecl env1 (ConstrDecl p nvs nc [ty])
 genTypeDecl _ _
   = internalError "GenAbstractCurry.genTypeDecl: unexpected declaration"
 
 --
 genConsDecl :: AbstractEnv -> ConstrDecl -> (AbstractEnv, CConsDecl)
 genConsDecl env (ConstrDecl _ _ n vs)
-  = ( env'
-    , CCons (genQName False env' $ qualifyWith (moduleId env) n)
-            (length vs)
-            (genVisibility env' n)
-            vs'
-    )
-  where (env', vs') = mapAccumL genTypeExpr env vs
+  = ( env', CCons (genQName False env' $ qualifyWith (moduleId env) n)
+                  (length vs)
+                  (genVisibility env' n)
+                  vs'
+    ) where (env', vs') = mapAccumL genTypeExpr env vs
 genConsDecl env (ConOpDecl p vs ty1 op ty2)
   = genConsDecl env (ConstrDecl p vs op [ty1, ty2])
 
@@ -291,15 +300,15 @@ genRule env (Equation pos lhs rhs)
                                    (beginScope env)
                                    (simplifyLhs lhs)
         (env2, locals) = genLocalDecls env1 (simplifyRhsLocals rhs)
-        (env3, crhss ) = mapAccumL (genCrhs pos) env2 (simplifyRhsExpr rhs)
+        (env3, crhss ) = mapAccumL (genRhs pos) env2 (simplifyRhsExpr rhs)
     in  (endScope env3, CRule patts crhss locals)
 
 --
-genCrhs :: Position -> AbstractEnv -> (Expression, Expression)
-        -> (AbstractEnv, (CExpr, CExpr))
-genCrhs pos env (cond, expr)
-  = let (env1, cond') = genExpr pos env cond
-        (env2, expr') = genExpr pos env1 expr
+genRhs :: Position -> AbstractEnv -> (Expression, Expression)
+       -> (AbstractEnv, (CExpr, CExpr))
+genRhs p env (cond, expr)
+  = let (env1, cond') = genExpr p env cond
+        (env2, expr') = genExpr p env1 expr
     in  (env2, (cond', expr'))
 
 -- NOTE: guarded expressions and 'where' declarations in local pattern
@@ -545,16 +554,17 @@ genStatement pos env (StmtBind _ patt expr)
 -- NOTE: guarded expressions and local declarations in case branches
 -- are not supported in PAKCS
 genBranchExpr :: AbstractEnv -> Alt -> (AbstractEnv, CBranchExpr)
-genBranchExpr env (Alt pos patt rhs)
-  = let (env1, patt') = genPattern pos (beginScope env) patt
-        (env2, expr') = genBranchRhs env1 $ simplifyRhsExpr rhs
-    in  (endScope env2, CBranch patt' expr')
+genBranchExpr env (Alt p pat rhs)
+  = let (env1, pat') = genPattern p (beginScope env) pat
+        (env2, be  ) = genBranch env1 pat' $ simplifyRhsExpr rhs
+    in  (endScope env2, be)
   where
-  genBranchRhs env' [(Variable _, expr)]
-    = genExpr pos env' expr
-  genBranchRhs _ _
-    = internalError ("guarded expressions in case alternatives"
-      ++ " are not supported in AbstractCurry")
+  genBranch env' pat' [(Variable _, expr)] -- no guards!
+    = let (env2, expr') = genExpr p env' expr
+      in  (env2, CBranch pat' expr')
+  genBranch env' pat' bs
+    = let (env2, bs') = mapAccumL (genRhs p) env' bs
+      in  (env2, CGuardedBranch pat' bs')
 
 --
 genPattern :: Position -> AbstractEnv -> ConstrTerm -> (AbstractEnv, CPattern)
@@ -898,10 +908,8 @@ simplifyLhs :: Lhs -> [ConstrTerm]
 simplifyLhs = snd . flatLhs
 
 simplifyRhsExpr :: Rhs -> [(Expression, Expression)]
-simplifyRhsExpr (SimpleRhs _ expr _)
-  = [(Variable qSuccessId, expr)]
-simplifyRhsExpr (GuardedRhs crhs _)
-  = map (\ (CondExpr _ cond expr) -> (cond, expr)) crhs
+simplifyRhsExpr (SimpleRhs _ e _) = [(Variable qSuccessId, e)]
+simplifyRhsExpr (GuardedRhs gs _) = map (\ (CondExpr _ g e) -> (g, e)) gs
 
 simplifyRhsLocals :: Rhs -> [Decl]
 simplifyRhsLocals (SimpleRhs _ _ locals) = locals
