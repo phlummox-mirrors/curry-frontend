@@ -823,7 +823,7 @@ Auxiliary definitions
 > isNewtypeConstr tyEnv c = case qualLookupValue c tyEnv of
 >   [NewtypeConstructor _ _] -> True
 >   [DataConstructor  _ _ _] -> False
->   _ -> internalError $ "Transformations.Desugar.isNewtypeConstr: " ++ show c
+>   x -> internalError $ "Transformations.Desugar.isNewtypeConstr: " ++ show c ++ " is " ++ show x
 
 > isVarPattern :: ConstrTerm -> Bool
 > isVarPattern (VariablePattern _) = True

@@ -22,6 +22,7 @@ import Data.Maybe
 import qualified Data.Set as Set
 
 import Curry.Base.Ident
+import Curry.Base.Position
 import Curry.Syntax
 
 import Base.CurryTypes (toQualType, toQualTypes)
@@ -197,16 +198,19 @@ bindTy m (IDataDecl _ tc tvs cs) env =
 bindTy m (INewtypeDecl _ tc tvs nc) env =
   bindNewConstr m tc' tvs (constrType tc' tvs) nc env
   where tc' = qualQualify m tc
-bindTy m (ITypeDecl _ r _ (RecordType fs _)) env =
-  foldr (bindRecordLabels m r') env fs
-  where r' = qualifyWith m $ fromRecordExtId $ unqualify r
+bindTy m (ITypeDecl _ rtc tvs (RecordType fs _)) env =
+  foldr (bindRecordLabels m rtc') env' fs
+  where urtc = fromRecordExtId $ unqualify rtc
+        rtc' = qualifyWith m urtc
+        env' = bindConstr m rtc' tvs (constrType rtc' tvs)
+               (ConstrDecl NoPos [] urtc (map snd fs)) env
 bindTy m (IFunctionDecl _ f a ty) env = Map.insert (unqualify f)
   (Value (qualQualify m f) a (polyType (toQualType m [] ty))) env
 bindTy _ _ env = env
 
 bindConstr :: ModuleIdent -> QualIdent -> [Ident] -> TypeExpr -> ConstrDecl
            -> ExpValueEnv -> ExpValueEnv
-bindConstr m tc tvs ty0 (ConstrDecl _ evs c tys) = Map.insert c $
+bindConstr m tc tvs ty0 (ConstrDecl     _ evs c tys) = Map.insert c $
   DataConstructor (qualifyLike tc c) (length tys) $
   constrType' m tvs evs (foldr ArrowType ty0 tys)
 bindConstr m tc tvs ty0 (ConOpDecl _ evs ty1 op ty2) = Map.insert op $
