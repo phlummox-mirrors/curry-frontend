@@ -29,7 +29,7 @@ import declarations are commented out
 > import Control.Monad
 
 > import Curry.Base.MessageMonad
-> import Curry.Base.Position
+> import Curry.Base.Position as P
 > import Curry.Base.Ident
 
 > import Curry.Files.Filenames
@@ -411,7 +411,7 @@ only a qualified import is added.
 > importPrelude fn (Module m es ds) =
 >   Module m es (if m == preludeMIdent then ds else ds')
 >   where ids = [decl | decl@(ImportDecl _ _ _ _ _) <- ds]
->         ds' = ImportDecl (first fn) preludeMIdent
+>         ds' = ImportDecl (P.first fn) preludeMIdent
 >                          (preludeMIdent `elem` map importedModule ids)
 >                          Nothing Nothing : ds
 >         importedModule (ImportDecl _ m q asM is) = fromMaybe m asM
@@ -449,10 +449,10 @@ generated FlatCurry terms (type \texttt{Prog}).
 > compileInterface paths ctxt mEnv m fn =
 >   do
 >     mintf <- readFlatInterface fn
->     let intf = fromMaybe (errorAt (first fn) (interfaceNotFound m)) mintf
+>     let intf = fromMaybe (errorAt (P.first fn) (interfaceNotFound m)) mintf
 >         (Prog mod _ _ _ _) = intf
 >         m' = mkMIdent [mod]
->     unless (m' == m) (errorAt (first fn) (wrongInterface m m'))
+>     unless (m' == m) (errorAt (P.first fn) (wrongInterface m m'))
 >     mEnv' <- loadFlatInterfaces paths ctxt mEnv intf
 >     return (bindFlatInterface intf mEnv')
 
@@ -468,7 +468,7 @@ generated FlatCurry terms (type \texttt{Prog}).
 >   foldM (loadInterface paths ((mkMIdent [m]):ctxt)) 
 >         mEnv 
 >         (map (\i -> (p, mkMIdent [i])) is)
->  where p = first m
+>  where p = P.first m
 
 
 Interface files are updated by the Curry builder when necessary.
@@ -676,7 +676,7 @@ Error functions.
 >     = (name == "[]" || name == "()") && mod == "Prelude"
 >  isSpecialPreludeType _ = False
 >
->  pos = first m
+>  pos = P.first m
 >  ts' = filter (not . isSpecialPreludeType) ts
 
 
