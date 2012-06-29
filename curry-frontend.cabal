@@ -34,7 +34,7 @@ Executable cymake
   else
     Build-Depends: base == 3.*
   Build-Depends:
-    curry-base >= 0.2.8
+    curry-base >= 0.2.9 && < 0.3
     , mtl, old-time, containers, pretty
   ghc-options: -Wall
   Other-Modules:    Curry.Syntax.Lexer, Curry.Syntax.LexComb
