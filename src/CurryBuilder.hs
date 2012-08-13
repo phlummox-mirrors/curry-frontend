@@ -50,7 +50,7 @@ buildCurry opts str = do
 -- |Search for a compilation target identified by the given 'String'.
 findCurry :: Options -> String -> IO (Either String FilePath)
 findCurry opts str = do
-  mbTarget <- fileSearch `orIfNotFound` moduleSearch
+  mbTarget <- findFile `orIfNotFound` findModule
   case mbTarget of
     Nothing -> return $ Left  complaint
     Just fn -> return $ Right fn
@@ -59,10 +59,10 @@ findCurry opts str = do
   canBeModule  = isValidModuleName str
   moduleFile   = moduleNameToFile $ fromModuleName str
   paths        = optImportPaths opts
-  fileSearch   = if canBeFile
+  findFile     = if canBeFile
                     then lookupCurryFile paths str
                     else return Nothing
-  moduleSearch = if canBeModule
+  findModule   = if canBeModule
                     then lookupCurryFile paths moduleFile
                     else return Nothing
   complaint
@@ -137,33 +137,40 @@ smake dests deps actOutdated actUpToDate = do
   depTimes  <- getDepTimes deps
   make destTimes depTimes
   where
-    make destTimes depTimes
-      | length destTimes < length dests = actOutdated
-      | outOfDate destTimes depTimes    = actOutdated
-      | otherwise                       = actUpToDate
+  make destTimes depTimes
+    | length destTimes < length dests = actOutdated
+    | outOfDate destTimes depTimes    = actOutdated
+    | otherwise                       = actUpToDate
 
-    getDestTimes :: [FilePath] -> IO [ClockTime]
-    getDestTimes = liftM catMaybes . mapM getModuleModTime
+  getDestTimes :: [FilePath] -> IO [ClockTime]
+  getDestTimes = liftM catMaybes . mapM getModuleModTime
 
-    getDepTimes :: [FilePath] -> IO [ClockTime]
-    getDepTimes = mapM (abortOnMissing . getModuleModTime)
+  getDepTimes :: [FilePath] -> IO [ClockTime]
+  getDepTimes = mapM (abortOnMissing getModuleModTime)
 
-    outOfDate :: [ClockTime] -> [ClockTime] -> Bool
-    outOfDate tgtimes dptimes = or [ tg < dp | tg <- tgtimes, dp <- dptimes]
+  outOfDate :: [ClockTime] -> [ClockTime] -> Bool
+  outOfDate tgtimes dptimes = or [ tg < dp | tg <- tgtimes, dp <- dptimes]
 
-    abortOnMissing :: IO (Maybe a) -> IO a
-    abortOnMissing act = act >>= \res -> case res of
-      Nothing  -> abortWith ["Could not inspect modification time of file"]
-      Just val -> return val
+  abortOnMissing :: (FilePath -> IO (Maybe a)) -> FilePath -> IO a
+  abortOnMissing act f = act f >>= \res -> case res of
+    Nothing  -> abortWith [errModificationTime f]
+    Just val -> return val
 
 errMissingFile :: String -> String
-errMissingFile f = "Missing file \"" ++ f ++ "\""
+errMissingFile f = "Missing file " ++ quote f
 
 errMissingModule :: String -> String
-errMissingModule f = "Missing module \"" ++ f ++ "\""
+errMissingModule f = "Missing module " ++ quote f
 
 errMissingTarget :: String -> String
-errMissingTarget f = "Missing target \"" ++ f ++ "\""
+errMissingTarget f = "Missing target " ++ quote f
 
 errUnrecognized :: String -> String
-errUnrecognized f = "Unrecognized input \"" ++ f ++ "\""
+errUnrecognized f = "Unrecognized input " ++ quote f
+
+errModificationTime :: FilePath -> String
+errModificationTime f = "Could not inspect modification time of file "
+                        ++ quote f
+
+quote :: String -> String
+quote s = "\"" ++ s ++ "\""
