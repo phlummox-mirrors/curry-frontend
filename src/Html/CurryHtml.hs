@@ -24,8 +24,9 @@ import Curry.Syntax (lexFile)
 
 import Html.SyntaxColoring
 
-import CompilerOpts (Options(..))
-import Frontend (parse, typingParse, fullParse)
+import Base.Messages (abortWith)
+import CompilerOpts (Options(..), TargetType (..))
+import Frontend (parse, fullParse)
 
 
 --- translate source file into HTML file with syntaxcoloring
@@ -41,7 +42,7 @@ source2html opts sourcefilename = do
                  else outputfilename
       modulname = takeFileName sourceprogname
   fullfname <- lookupCurryFile imports sourcefilename
-  program <- filename2program imports (fromMaybe sourcefilename fullfname)
+  program <- filename2program opts (fromMaybe sourcefilename fullfname)
   (if null outputfilename then writeModule True output'
                           else writeFile   output')
       (program2html modulname program)
@@ -49,14 +50,17 @@ source2html opts sourcefilename = do
 --- @param importpaths
 --- @param filename
 --- @return program
-filename2program :: [String] -> String -> IO Program
-filename2program paths filename = do
-  (Just cont) <- readModule filename
-  typingParseRes <- catchError $ typingParse paths filename cont
-  fullParseRes <- catchError $ fullParse paths filename cont
-  parseRes <- catchError $ return (parse filename cont)
-  lexRes <- catchError $ return (lexFile filename cont)
-  return $ genProgram cont [typingParseRes, fullParseRes, parseRes] lexRes
+filename2program :: Options -> String -> IO Program
+filename2program opts filename = do
+  mbModule <- readModule filename
+  case mbModule of
+    Nothing   -> abortWith ["Missing file: " ++ filename]
+    Just cont -> do
+      typingParseRes <- catchError $ fullParse opts filename cont
+      fullParseRes <- catchError $ fullParse (opts { optTargetTypes = [UntypedAbstractCurry]}) filename cont
+      parseRes <- catchError $ return (parse filename cont)
+      lexRes <- catchError $ return (lexFile filename cont)
+      return $ genProgram cont [typingParseRes, fullParseRes, parseRes] lexRes
 
 
 --- this function intercepts errors and converts it to Messages

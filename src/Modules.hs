@@ -15,7 +15,7 @@
 -}
 
 module Modules
-  ( compileModule, loadModule, checkModuleHeader, checkModule
+  ( compileModule, loadModule, checkModuleHeader, checkModule, writeOutput
   ) where
 
 import Control.Monad (unless, when)
@@ -73,26 +73,30 @@ import Transformations
 compileModule :: Options -> FilePath -> IO ()
 compileModule opts fn = do
   loaded <- loadModule opts fn
-  case uncurry (checkModule opts) loaded of
+  case checkModule opts loaded of
     CheckFailed errs -> abortWith $ map show errs
-    CheckSuccess (env, modul) -> do
-      showWarnings opts $ uncurry warnCheck loaded
-      writeParsed        opts fn     modul
-      writeAbstractCurry opts fn env modul
-      when withFlat $ do
-        -- checkModule checks types, and then transModule introduces new
-        -- functions (by lambda lifting in 'desugar'). Consequence: The
-        -- types of the newly introduced functions are not inferred (hsi)
-        let (env2, il, dumps) = transModule opts env modul
-        -- dump intermediate results
-        mapM_ (doDump opts) dumps
-        -- generate target code
-        let intf = exportInterface env2 modul
-        let modSum = summarizeModule (tyConsEnv env2) intf modul
-        writeFlat opts fn env2 modSum il
-      where
-      withFlat = any (`elem` optTargetTypes opts)
-                 [FlatCurry, FlatXml, ExtendedFlatCurry]
+    CheckSuccess res -> do
+      showWarnings opts $ uncurry warnCheck res
+      writeOutput opts fn res
+
+writeOutput :: Options -> FilePath -> (CompilerEnv, CS.Module) -> IO ()
+writeOutput opts fn (env, modul) = do
+  writeParsed        opts fn     modul
+  writeAbstractCurry opts fn env modul
+  when withFlat $ do
+    -- checkModule checks types, and then transModule introduces new
+    -- functions (by lambda lifting in 'desugar'). Consequence: The
+    -- types of the newly introduced functions are not inferred (hsi)
+    let (env2, il, dumps) = transModule opts env modul
+    -- dump intermediate results
+    mapM_ (doDump opts) dumps
+    -- generate target code
+    let intf = exportInterface env2 modul
+    let modSum = summarizeModule (tyConsEnv env2) intf modul
+    writeFlat opts fn env2 modSum il
+  where
+  withFlat = any (`elem` optTargetTypes opts)
+              [FlatCurry, FlatXml, ExtendedFlatCurry]
 
 -- ---------------------------------------------------------------------------
 -- Loading a module
@@ -119,7 +123,7 @@ loadModule opts fn = do
 
 checkModuleHeader :: Options -> FilePath -> CS.Module -> (CS.Module, [Message])
 checkModuleHeader opts fn = checkModuleId fn
-                          . importPrelude opts
+                          . importPrelude opts fn
                           . CS.patchModuleId fn
 
 -- |Check whether the 'ModuleIdent' and the 'FilePath' fit together
@@ -135,8 +139,8 @@ checkModuleId fn m@(CS.Module mid _ _ _)
 -- by a compiler option. If no explicit import for the prelude is present,
 -- the prelude is imported unqualified, otherwise a qualified import is added.
 
-importPrelude :: Options -> CS.Module -> CS.Module
-importPrelude opts m@(CS.Module mid es is ds)
+importPrelude :: Options -> FilePath -> CS.Module -> CS.Module
+importPrelude opts fn m@(CS.Module mid es is ds)
     -- the Prelude itself
   | mid == preludeMIdent          = m
     -- disabled by compiler option
@@ -147,7 +151,7 @@ importPrelude opts m@(CS.Module mid es is ds)
   | otherwise                     = CS.Module mid es (preludeImp : is) ds
   where
   noImpPrelude = NoImplicitPrelude `elem` optExtensions opts
-  preludeImp   = CS.ImportDecl NoPos preludeMIdent
+  preludeImp   = CS.ImportDecl (first fn) preludeMIdent
                   False   -- qualified?
                   Nothing -- no alias
                   Nothing -- no selection of types, functions, etc.
@@ -161,18 +165,19 @@ importPrelude opts m@(CS.Module mid es is ds)
 -- TODO (2012-01-05, bjp): The export specification check for untyped
 --   AbstractCurry is deactivated as it requires the value information
 --   collected by the type checker.
-checkModule :: Options -> CompilerEnv -> CS.Module
+checkModule :: Options -> (CompilerEnv, CS.Module)
             -> CheckResult (CompilerEnv, CS.Module)
-checkModule opts env mdl = kindCheck env mdl -- should be only syntax checking ?
-                       >>= uncurry (syntaxCheck opts)
-                       >>= uncurry precCheck
-                       >>= (if withTypeCheck
-                              then \x -> uncurry typeCheck x >>= uncurry exportCheck
-                              else return)
-                       >>= return . (uncurry (qual opts))
+checkModule opts (env, mdl)
+  =   kindCheck env mdl -- should be only syntax checking ?
+  >>= uncurry (syntaxCheck opts)
+  >>= uncurry precCheck
+  >>= (if withTypeCheck
+        then \x -> uncurry typeCheck x >>= uncurry exportCheck
+        else return)
+  >>= return . (uncurry (qual opts))
   where
-  withTypeCheck  = any (`elem` optTargetTypes opts)
-                       [FlatCurry, ExtendedFlatCurry, FlatXml, AbstractCurry]
+  withTypeCheck = any (`elem` optTargetTypes opts)
+                      [FlatCurry, ExtendedFlatCurry, FlatXml, AbstractCurry]
 
 -- ---------------------------------------------------------------------------
 -- Translating a module

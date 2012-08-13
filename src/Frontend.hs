@@ -12,91 +12,71 @@
     This module provides an API for dealing with several kinds of Curry
     program representations.
 -}
+module Frontend (parse, fullParse) where
 
--- TODO: Should be updated/refactored
+import           Control.Monad.Writer
+import           Data.Maybe           (mapMaybe)
+import qualified Data.Map as Map      (empty)
 
-module Frontend (parse, fullParse, typingParse) where
-
-import Data.Maybe (mapMaybe)
-import qualified Data.Map as Map (empty)
-import Control.Monad.Writer
 
 import Curry.Base.MessageMonad
 import Curry.Files.Filenames
 import Curry.Files.PathUtils
 import Curry.Syntax (Module (..), parseModule)
 
-import Checks
-import CompilerEnv
-import CompilerOpts (Options (..), Verbosity (..), TargetType (..), defaultOptions)
+import Checks       (CheckResult (..))
+import CompilerOpts (Options (..), defaultOptions)
 import CurryBuilder (smake)
-import CurryDeps (Source (..), flattenDeps, moduleDeps)
-import Imports (importModules)
-import Interfaces (loadInterfaces)
-import Modules
+import CurryDeps    (Source (..), flattenDeps, moduleDeps)
+import Modules      (checkModule, checkModuleHeader, compileModule, loadModule)
 
 {- |Return the result of a syntactical analysis of the source program 'src'.
     The result is the syntax tree of the program (type 'Module'; see Module
     "CurrySyntax").
 -}
 parse :: FilePath -> String -> MsgMonad Module
-parse fn src = parseModule True fn src >>= genCurrySyntax fn
+parse fn src = parseModule True fn src >>= genCurrySyntax
+  where
+  genCurrySyntax mod1
+    | null hdrErrs = return mdl
+    | otherwise    = failWith $ show $ head hdrErrs
+    where (mdl, hdrErrs) = checkModuleHeader defaultOptions fn mod1
 
 {- |Return the syntax tree of the source program 'src' (type 'Module'; see
-    Module "CurrySyntax") after resolving the category (i.e. function,
-    constructor or variable) of an identifier. 'fullParse' always
-    searches for standard Curry libraries in the path defined in the
+    Module "CurrySyntax").after inferring the types of identifiers.
+    'fullParse' always searches for standard Curry libraries in the path
+    defined in the
     environment variable "PAKCSLIBPATH". Additional search paths can
     be defined using the argument 'paths'.
 -}
-fullParse :: [FilePath] -> FilePath -> String -> IO (MsgMonad Module)
-fullParse paths fn src = genFullCurrySyntax checkModule paths fn $ parse fn src
+fullParse :: Options -> FilePath -> String -> IO (MsgMonad Module)
+fullParse opts fn src = genFullCurrySyntax opts fn $ parse fn src
 
-{- |Behaves like 'fullParse', but returns the syntax tree of the source
-    program 'src' (type 'Module'; see Module "CurrySyntax") after inferring
-    the types of identifiers.
--}
-typingParse :: [FilePath] -> FilePath -> String -> IO (MsgMonad Module)
-typingParse paths fn src = genFullCurrySyntax checkModule paths fn $ parse fn src
-
---
-genCurrySyntax :: FilePath -> Module -> MsgMonad Module
-genCurrySyntax fn mod1
-  | null hdrErrs = return mdl
-  | otherwise    = failWith $ show $ head hdrErrs
-  where (mdl, hdrErrs) = checkModuleHeader defaultOptions fn mod1
-
---
-genFullCurrySyntax ::
-  (Options -> CompilerEnv -> Module -> CheckResult (CompilerEnv, Module))
-  -> [FilePath] -> FilePath -> MsgMonad Module -> IO (MsgMonad Module)
-genFullCurrySyntax check paths fn m = runMsgIO m $ \mod1 -> do
-  errs <- makeInterfaces paths fn mod1
+genFullCurrySyntax :: Options -> FilePath -> MsgMonad Module -> IO (MsgMonad Module)
+genFullCurrySyntax opts fn m = runMsgIO m $ \mod1 -> do
+  errs <- makeInterfaces opts fn mod1
   if null errs
     then do
-      (iEnv, intfErrs) <- loadInterfaces paths mod1
-      unless (null intfErrs) $ failWith $ msgTxt $ head intfErrs
-      let env = importModules opts mod1 iEnv
-      case check opts env mod1 of
-        CheckSuccess (_, mod') -> return (return  mod')
+      loaded <- loadModule opts fn
+      case checkModule opts loaded of
         CheckFailed errs'      -> return $ failWith $ msgTxt $ head errs'
+        CheckSuccess (_, mod') -> return (return  mod')
     else return $ failWith $ head errs
-  where opts = mkOpts paths
 
 -- TODO: Resembles CurryBuilder
 
 -- Generates interface files for importes modules, if they don't exist or
 -- if they are not up-to-date.
-makeInterfaces ::  [FilePath] -> FilePath -> Module -> IO [String]
-makeInterfaces paths fn mdl = do
-  (deps1, errs) <- fmap flattenDeps $ moduleDeps (mkOpts paths) Map.empty fn mdl
+makeInterfaces :: Options -> FilePath -> Module -> IO [String]
+makeInterfaces opts fn mdl = do
+  (deps1, errs) <- fmap flattenDeps $ moduleDeps opts Map.empty fn mdl
   when (null errs) $ mapM_ (compile deps1 . snd) deps1
   return errs
   where
     compile deps' (Source file' mods) = smake
       [flatName file', flatIntName file']
       (file':mapMaybe (flatInterface deps') mods)
-      (compileModule (mkOpts paths) file')
+      (compileModule opts file')
       (return ())
     compile _ _ = return ()
 
@@ -104,11 +84,3 @@ makeInterfaces paths fn mdl = do
       Just (Source f  _) -> Just $ flatIntName $ dropExtension f
       Just (Interface f) -> Just $ flatIntName $ dropExtension f
       _                  -> Nothing
-
-mkOpts :: [FilePath] -> Options
-mkOpts paths = defaultOptions
-  { optImportPaths = paths
-  , optVerbosity   = VerbQuiet
-  , optWarn        = False
-  , optTargetTypes = [AbstractCurry]
-  }
