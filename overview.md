@@ -1,22 +1,22 @@
-Modulübersicht curry-frontend
-=============================
+Module overview of package `curry-frontend`
+===========================================
 
-  * `Base`: Grundlegende Typen und Funktionen
-      * `.CurryTypes` : Konvertierung der Typrepräsentation aus
-                        `Curry.Syntax.Type` in die aus `Base.Types`
-      * `.Expr`       : Typklassem zur Berechnung von freien und gebundenen
-                        Variablen
-      * `.Messages`   : Darstellung von Fehlermeldungen
-      * `.NestEnv`    : Geschachtelte Umgebungen
-      * `.OldScopeEnv`:
-      * `.SCC`        : Berechnung streng zusammenhängender Komponenten
-      * `.ScopeEnv`   :
-      * `.Subst`      : Implementierung von Substitutionen
-      * `.TopEnv`     : Top-Level Umgebung
-      * `.Types`      : interne Repräsentation von Typen
-      * `.TypeSubst`  : Typsubstitutionen
-      * `.Typing`     : Typberechnung
-      * `.Utils`      : Hilfsfunktionen
+  * `Base`: Basic types and functions
+      * `.CurryTypes` : Conversion of the type representation of
+                        `Curry.Syntax.Type` into the representation of
+                        `Base.Types`
+      * `.Expr`       : Type class for computation of free and bound variables
+      * `.Messages`   : Error messages
+      * `.NestEnv`    : Nested environment
+      * `.OldScopeEnv`: TODO: old stuff
+      * `.SCC`        : Computation of strongly connected components
+      * `.ScopeEnv`   : TODO: old stuff
+      * `.Subst`      : general substitution implementation
+      * `.TopEnv`     : Top level environment
+      * `.Types`      : internal representation of types
+      * `.TypeSubst`  : type substitution
+      * `.Typing`     : Type computation
+      * `.Utils`      : auxiliary functions
   * `Checks`: Überprüfungen eines Curry-Moduls
       * `.ExportCheck`: Überprüfung der Exports (unbekannte Symbole etc.)
       * `.KindCheck`  : Überprüfung der Typkonstruktoren, Unterscheidung von

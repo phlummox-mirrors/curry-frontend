@@ -84,8 +84,7 @@ isTypeSyn _ = False
 genTypeSynDecl :: ModuleIdent -> TCEnv -> Decl -> [IDecl]
 genTypeSynDecl mid tcEnv (TypeDecl p i vs ty)
   = [ITypeDecl p (qualifyWith mid i) vs (modifyTypeExpr tcEnv ty)]
-genTypeSynDecl _ _ _
-  = []
+genTypeSynDecl _   _     _                    = []
 
 --
 modifyTypeExpr :: TCEnv -> TypeExpr -> TypeExpr

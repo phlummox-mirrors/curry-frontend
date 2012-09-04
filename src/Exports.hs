@@ -28,9 +28,9 @@ import Base.CurryTypes (fromQualType)
 import Base.Messages
 import Base.Types
 
-import Env.OpPrec (PEnv, PrecInfo (..), OpPrec (..), qualLookupP)
+import Env.OpPrec          (PEnv, PrecInfo (..), OpPrec (..), qualLookupP)
 import Env.TypeConstructor (TCEnv, TypeInfo (..), qualLookupTC)
-import Env.Value (ValueEnv, ValueInfo (..), qualLookupValue)
+import Env.Value           (ValueEnv, ValueInfo (..), qualLookupValue)
 
 import CompilerEnv
 

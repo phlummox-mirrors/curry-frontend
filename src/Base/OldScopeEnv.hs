@@ -8,8 +8,8 @@ import Curry.Base.Ident
 
 -- The IdEnv is an environment which stores the level in which an identifier
 -- was defined, starting with 0 for the top-level.
-type IdEnv = Map.Map IdRep Integer
 data IdRep = Name String | Index Integer deriving (Eq, Ord)
+type IdEnv = Map.Map IdRep Integer
 
 insertId :: Integer -> Ident -> IdEnv -> IdEnv
 insertId level ident = Map.insert (Name  (idName   ident)) level
@@ -76,6 +76,8 @@ genIdent :: String -> ScopeEnv -> Maybe Ident
 genIdent name (topleveltab, leveltabs, _) = case leveltabs of
   []     -> genId name topleveltab
   (lt:_) -> genId name lt
+
+-- OLD STUFF
 
 -- -- Return the declaration level of an identifier if it exists
 -- getIdentLevel :: Ident -> ScopeEnv -> Maybe Integer
