@@ -1,3 +1,7 @@
 -- NEW: Anonymous variable
 
-f x = _
+f _ = _
+
+g x = _ + x
+
+h x = _ + x + _

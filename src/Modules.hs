@@ -28,7 +28,7 @@ import Curry.ExtendedFlat.InterfaceEquality (eqInterface)
 import Curry.Files.Filenames
 import Curry.Files.PathUtils
 
-import Base.Messages (abortWith, mposErr, putErrsLn)
+import Base.Messages (abortWith, mposMsg, putErrsLn)
 
 import Env.Eval (evalEnv)
 
@@ -75,9 +75,10 @@ compileModule opts fn = do
   loaded <- loadModule opts fn
   case checkModule opts loaded of
     CheckFailed errs -> abortWith $ map show errs
-    CheckSuccess res -> do
-      showWarnings opts $ uncurry warnCheck res
-      writeOutput opts fn res
+    CheckSuccess (env, mdl, dumps) -> do
+      showWarnings opts $ warnCheck env mdl
+      mapM_ (doDump opts) dumps
+      writeOutput opts fn (env, mdl)
 
 writeOutput :: Options -> FilePath -> (CompilerEnv, CS.Module) -> IO ()
 writeOutput opts fn (env, modul) = do
@@ -166,15 +167,23 @@ importPrelude opts fn m@(CS.Module mid es is ds)
 --   AbstractCurry is deactivated as it requires the value information
 --   collected by the type checker.
 checkModule :: Options -> (CompilerEnv, CS.Module)
-            -> CheckResult (CompilerEnv, CS.Module)
-checkModule opts (env, mdl)
-  =   kindCheck env mdl -- should be only syntax checking ?
-  >>= uncurry (syntaxCheck opts)
-  >>= uncurry precCheck
-  >>= (if withTypeCheck
-        then \x -> uncurry typeCheck x >>= uncurry exportCheck
-        else return)
-  >>= return . (uncurry (qual opts))
+            -> CheckResult (CompilerEnv, CS.Module, [Dump])
+checkModule opts (env, mdl) = do
+  (env1, kc) <- kindCheck env mdl -- should be only syntax checking ?
+  (env2, sc) <- syntaxCheck opts env1 kc
+  (env3, pc) <- precCheck        env2 sc
+  (env4, tc) <- if withTypeCheck
+                   then typeCheck env3 pc >>= uncurry exportCheck
+                   else return (env3, pc)
+  (env5, ql) <- return $ qual opts env4 tc
+  let dumps = [ (DumpParsed       , env , CS.showModule mdl)
+              , (DumpKindChecked  , env1, CS.showModule kc)
+              , (DumpSyntaxChecked, env2, CS.showModule sc)
+              , (DumpPrecChecked  , env3, CS.showModule pc)
+              , (DumpTypeChecked  , env4, CS.showModule tc)
+              , (DumpRenamed      , env5, CS.showModule ql)
+              ]
+  return (env5, ql, dumps)
   where
   withTypeCheck = any (`elem` optTargetTypes opts)
                       [FlatCurry, ExtendedFlatCurry, FlatXml, AbstractCurry]
@@ -197,12 +206,11 @@ transModule opts env mdl = (env5, ilCaseComp, dumps)
   (lifted    , env3) = lift           simplified env2
   (il        , env4) = ilTrans flat'  lifted     env3
   (ilCaseComp, env5) = completeCase   il         env4
-  dumps = [ (DumpRenamed   , env , show $ CS.ppModule mdl       )
-          , (DumpDesugared , env1, show $ CS.ppModule desugared )
-          , (DumpSimplified, env2, show $ CS.ppModule simplified)
-          , (DumpLifted    , env3, show $ CS.ppModule lifted    )
-          , (DumpIL        , env4, show $ IL.ppModule il        )
-          , (DumpCase      , env5, show $ IL.ppModule ilCaseComp)
+  dumps = [ (DumpDesugared    , env1, show $ CS.ppModule desugared )
+          , (DumpSimplified   , env2, show $ CS.ppModule simplified)
+          , (DumpLifted       , env3, show $ CS.ppModule lifted    )
+          , (DumpTranslated   , env4, show $ IL.ppModule il        )
+          , (DumpCaseCompleted, env5, show $ IL.ppModule ilCaseComp)
           ]
 
 -- ---------------------------------------------------------------------------
@@ -296,16 +304,13 @@ doDump :: Options -> Dump -> IO ()
 doDump opts (level, env, dump) = when (level `elem` optDumps opts) $ do
   when (optDumpEnv opts) $ putStrLn $ showCompilerEnv env
   putStrLn $ unlines [header, replicate (length header) '=', dump]
-  where header = dumpHeader level
-
-dumpHeader :: DumpLevel -> String
-dumpHeader DumpRenamed    = "Module after renaming"
-dumpHeader DumpDesugared  = "Source code after desugaring"
-dumpHeader DumpSimplified = "Source code after simplification"
-dumpHeader DumpLifted     = "Source code after lifting"
-dumpHeader DumpIL         = "Intermediate code"
-dumpHeader DumpCase       = "Intermediate code after case completion"
+  where
+  header = lookupHeader dumpLevel
+  lookupHeader []            = "Unknown dump level " ++ show level
+  lookupHeader ((l,_,h):lhs)
+    | level == l = h
+    | otherwise  = lookupHeader lhs
 
 errModuleFileMismatch :: ModuleIdent -> Message
-errModuleFileMismatch mid = mposErr mid $ "module \"" ++ moduleName mid
+errModuleFileMismatch mid = mposMsg mid $ "module \"" ++ moduleName mid
   ++ "\" must be in a file \"" ++ moduleName mid ++ ".(l)curry\""

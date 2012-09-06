@@ -18,7 +18,7 @@ import Prelude hiding (lookup)
 
 -- |Data type for representing information in nested scopes.
 data ScopeEnv a b = ScopeEnv Int (Map.Map a (b,Int)) [Map.Map a (b,Int)]
-                    deriving Show
+  deriving Show
 
 -- |Returns an empty scope environment
 new :: Ord a => ScopeEnv a b
@@ -26,8 +26,8 @@ new = ScopeEnv 0 Map.empty []
 
 -- |Inserts a value under a key into the environment of the current scope
 insert :: Ord a => a -> b -> ScopeEnv a b -> ScopeEnv a b
-insert key val env = modifySE insertLev env where
- insertLev lev local = Map.insert key (val,lev) local
+insert k v env = modifySE insertLev env where
+ insertLev lev local = Map.insert k (v,lev) local
 
 {- |Updates the value stored under an existing key in the environment of
     the current scope -}
@@ -121,16 +121,15 @@ currentLevel env = selectSE const env
    Privates...
 --------------------------------------------------------------------------- -}
 
-modifySE :: (Int -> Map.Map a (b,Int) -> Map.Map a (b,Int)) -> ScopeEnv a b
-          -> ScopeEnv a b
-modifySE f (ScopeEnv _ top [])
-   = ScopeEnv 0 (f 0 top) []
-modifySE f (ScopeEnv lev top (local:locals))
-   = ScopeEnv lev top ((f lev local):locals)
+modifySE :: (Int -> Map.Map a (b, Int) -> Map.Map a (b, Int))
+         -> ScopeEnv a b
+         -> ScopeEnv a b
+modifySE f (ScopeEnv _   top []    ) = ScopeEnv 0 (f 0 top) []
+modifySE f (ScopeEnv lev top (l:ls)) = ScopeEnv lev top (f lev l:ls)
 
 selectSE :: (Int -> Map.Map a (b,Int) -> c) -> ScopeEnv a b -> c
-selectSE f (ScopeEnv _ top [])        = f 0 top
-selectSE f (ScopeEnv lev _ (local:_)) = f lev local
+selectSE f (ScopeEnv _   top []   ) = f 0 top
+selectSE f (ScopeEnv lev _   (l:_)) = f lev l
 
 updateSE :: Ord a => Map.Map a (b,Int) -> (a,(b,Int)) ->  Map.Map a (b,Int)
           -> Map.Map a (b,Int)

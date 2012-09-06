@@ -27,7 +27,7 @@ of the operators involved.
 > import Curry.Syntax
 
 > import Base.Expr
-> import Base.Messages (Message, posErr, qposErr)
+> import Base.Messages (Message, posMsg, qposMsg)
 > import Base.Utils (findDouble)
 
 > import Env.OpPrec (PEnv, OpPrec (..), PrecInfo (..), defaultP, bindP
@@ -490,20 +490,20 @@ Error messages.
 \begin{verbatim}
 
 > errUndefinedOperator :: Ident -> Message
-> errUndefinedOperator op = posErr op $
+> errUndefinedOperator op = posMsg op $
 >   "no definition for " ++ idName op ++ " in this scope"
 
 > errDuplicatePrecedence :: Ident -> Message
-> errDuplicatePrecedence op = posErr op $
+> errDuplicatePrecedence op = posMsg op $
 >   "More than one fixity declaration for " ++ idName op
 
 > errInvalidParse :: String -> Ident -> QualIdent -> Message
-> errInvalidParse what op1 op2 = posErr op1 $
+> errInvalidParse what op1 op2 = posMsg op1 $
 >   "Invalid use of " ++ what ++ " " ++ idName op1
 >   ++ " with " ++ qualName op2 ++ (showLine $ qidPosition op2)
 
 > errAmbiguousParse :: String -> QualIdent -> QualIdent -> Message
-> errAmbiguousParse what op1 op2 = qposErr op1 $
+> errAmbiguousParse what op1 op2 = qposMsg op1 $
 >   "Ambiguous use of " ++ what ++ " " ++ qualName op1
 >   ++ " with " ++ qualName op2 ++ (showLine $ qidPosition op2)
 

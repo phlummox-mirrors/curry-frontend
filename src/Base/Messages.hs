@@ -4,7 +4,7 @@ module Base.Messages
     -- * program abortion
   , abortWith, internalError, errorMessage, errorMessages
     -- * creating messages
-  , Message, toMessage, posErr, qposErr, mposErr
+  , Message, toMessage, posMsg, qposMsg, mposMsg
   ) where
 
 import Control.Monad (unless)
@@ -46,11 +46,11 @@ errorMessage = error . show
 errorMessages :: [Message] -> a
 errorMessages = error . unlines . map show
 
-posErr :: Ident -> String -> Message
-posErr i errMsg = toMessage (idPosition i) errMsg
+posMsg :: Ident -> String -> Message
+posMsg i errMsg = toMessage (idPosition i) errMsg
 
-qposErr :: QualIdent -> String -> Message
-qposErr i errMsg = toMessage (qidPosition i) errMsg
+qposMsg :: QualIdent -> String -> Message
+qposMsg i errMsg = toMessage (qidPosition i) errMsg
 
-mposErr :: ModuleIdent -> String -> Message
-mposErr m errMsg = toMessage (midPosition m) errMsg
+mposMsg :: ModuleIdent -> String -> Message
+mposMsg m errMsg = toMessage (midPosition m) errMsg

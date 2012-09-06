@@ -33,7 +33,7 @@ definition.
 > import Curry.Syntax
 
 > import Base.Expr
-> import Base.Messages (Message, toMessage, internalError, posErr, qposErr)
+> import Base.Messages (Message, toMessage, internalError, posMsg, qposMsg)
 > import Base.NestEnv
 > import Base.Types
 > import Base.Utils ((++!), findDouble, findMultiples)
@@ -276,9 +276,8 @@ Furthermore, it is not allowed to declare a label more than once.
 
 > bindVar :: Ident -> RenameEnv -> RenameEnv
 > bindVar v env
->   | v' == anonId = env
->   | otherwise    = bindLocal v' (LocalVar 0 v) env
->   where v' = unRenameIdent v
+>   | isAnonId v = env
+>   | otherwise  = bindLocal (unRenameIdent v) (LocalVar 0 v) env
 
 > lookupVar :: Ident -> RenameEnv -> [RenameInfo]
 > lookupVar v env = lookupNestEnv v env ++! lookupTupleConstr v
@@ -544,8 +543,8 @@ checkParen
 > checkConstrTerm _ (NegativePattern    op l) =
 >   NegativePattern op `liftM` renameLiteral l
 > checkConstrTerm p (VariablePattern       v)
->   | v == anonId = (VariablePattern . renameIdent v) `liftM` newId
->   | otherwise   = checkConstructorPattern p (qualify v) []
+>   | isAnonId v = (VariablePattern . renameIdent v) `liftM` newId
+>   | otherwise  = checkConstructorPattern p (qualify v) []
 > checkConstrTerm p (ConstructorPattern c ts) =
 >   checkConstructorPattern p c ts
 > checkConstrTerm p (InfixPattern   t1 op t2) =
@@ -765,9 +764,12 @@ checkParen
 
 > checkVariable :: QualIdent -> SCM Expression
 > checkVariable v
->   | unqualify v == anonId = do
+>     -- anonymous free variable
+>   | isAnonId (unqualify v) = do
 >     checkAnonFreeVarsExtension $ qidPosition v
->     return $ Variable v
+>     (\n -> Variable $ updQualIdent id (flip renameIdent n) v) `liftM` newId
+>     -- return $ Variable v
+>     -- normal variable
 >   | otherwise             = do
 >     env <- getRenameEnv
 >     case qualLookupVar v env of
@@ -980,50 +982,50 @@ Error messages.
 \begin{verbatim}
 
 > errUndefinedVariable :: QualIdent -> Message
-> errUndefinedVariable v = qposErr v $ qualName v ++ " is undefined"
+> errUndefinedVariable v = qposMsg v $ qualName v ++ " is undefined"
 
 > errUndefinedData :: QualIdent -> Message
-> errUndefinedData c = qposErr c $ "Undefined data constructor " ++ qualName c
+> errUndefinedData c = qposMsg c $ "Undefined data constructor " ++ qualName c
 
 > errUndefinedLabel :: Ident -> Message
-> errUndefinedLabel l = posErr l $ "Undefined record label `" ++ idName l ++ "`"
+> errUndefinedLabel l = posMsg l $ "Undefined record label `" ++ idName l ++ "`"
 
 > errAmbiguousIdent :: [RenameInfo] -> QualIdent -> Message
 > errAmbiguousIdent rs | any isConstr rs = errAmbiguousData
 >                      | otherwise       = errAmbiguousVariable
 
 > errAmbiguousVariable :: QualIdent -> Message
-> errAmbiguousVariable v = qposErr v $ "Ambiguous variable " ++ qualName v
+> errAmbiguousVariable v = qposMsg v $ "Ambiguous variable " ++ qualName v
 
 > errAmbiguousData :: QualIdent -> Message
-> errAmbiguousData c = qposErr c $ "Ambiguous data constructor " ++ qualName c
+> errAmbiguousData c = qposMsg c $ "Ambiguous data constructor " ++ qualName c
 
 > errDuplicateDefinition :: Ident -> Message
-> errDuplicateDefinition v = posErr v $
+> errDuplicateDefinition v = posMsg v $
 >   "More than one definition for `" ++ idName v ++ "`"
 
 > errDuplicateVariable :: Ident -> Message
-> errDuplicateVariable v = posErr v $
+> errDuplicateVariable v = posMsg v $
 >   idName v ++ " occurs more than once in pattern"
 
 > errMultipleDataConstructor :: [Ident] -> Message
 > errMultipleDataConstructor [] = internalError
 >   "SyntaxCheck.errMultipleDataDeclaration: empty list"
-> errMultipleDataConstructor (i:is) = posErr i $
+> errMultipleDataConstructor (i:is) = posMsg i $
 >   "Multiple definitions for data constructor `" ++ idName i ++ "` at:\n"
 >   ++ unlines (map showPos (i:is))
 >   where showPos = ("    " ++) . showLine . idPosition
 
 > errDuplicateTypeSig :: Ident -> Message
-> errDuplicateTypeSig v = posErr v $
+> errDuplicateTypeSig v = posMsg v $
 >   "More than one type signature for `" ++ idName v ++ "`"
 
 > errDuplicateEvalAnnot :: Ident -> Message
-> errDuplicateEvalAnnot v = posErr v $
+> errDuplicateEvalAnnot v = posMsg v $
 >   "More than one eval annotation for `" ++ idName v ++ "`"
 
 > errDuplicateLabel :: Ident -> Message
-> errDuplicateLabel l = posErr l $
+> errDuplicateLabel l = posMsg l $
 >   "Multiple occurrence of record label `" ++ idName l ++ "`"
 
 > errMissingLabel :: Position -> Ident -> QualIdent -> String -> Message
@@ -1032,23 +1034,23 @@ Error messages.
 >   ++ "` in the " ++ what ++ " of `" ++ idName (unqualify r) ++ "`"
 
 > errIllegalLabel :: Ident -> QualIdent -> Message
-> errIllegalLabel l r = posErr l $
+> errIllegalLabel l r = posMsg l $
 >   "Label `" ++ idName l ++ "` is not defined in record `"
 >   ++ idName (unqualify r) ++ "`"
 
 > errIllegalRecordId :: Ident -> Message
-> errIllegalRecordId r = posErr r $ "Record identifier `" ++ idName r
+> errIllegalRecordId r = posMsg r $ "Record identifier `" ++ idName r
 >     ++ "` already assigned to a data constructor"
 
 > errNonVariable :: String -> Ident -> Message
-> errNonVariable what c = posErr c $
+> errNonVariable what c = posMsg c $
 >   "Data constructor `" ++ idName c ++ "` in left hand side of " ++ what
 
 > errNoBody :: Ident -> Message
-> errNoBody v = posErr v $ "No body for `" ++ idName v ++ "`"
+> errNoBody v = posMsg v $ "No body for `" ++ idName v ++ "`"
 
 > errNoTypeSig :: Ident -> Message
-> errNoTypeSig f = posErr f $
+> errNoTypeSig f = posMsg f $
 >   "No type signature for external function `" ++ idName f ++ "`"
 
 > errToplevelPattern :: Position -> Message
@@ -1056,14 +1058,14 @@ Error messages.
 >   "Pattern declaration not allowed at top-level"
 
 > errNotALabel :: Ident -> Message
-> errNotALabel l = posErr l $ "`" ++ idName l ++ "` is not a record label"
+> errNotALabel l = posMsg l $ "`" ++ idName l ++ "` is not a record label"
 
 > errDifferentArity :: Ident -> Message
-> errDifferentArity f = posErr f $
+> errDifferentArity f = posMsg f $
 >   "Equations for `" ++ idName f ++ "` have different arities"
 
 > errWrongArity :: QualIdent -> Int -> Int -> Message
-> errWrongArity c arity' argc = qposErr c $
+> errWrongArity c arity' argc = qposMsg c $
 >   "Data constructor " ++ qualName c ++ " expects " ++ arguments arity' ++
 >   " but is applied to " ++ show argc
 >   where arguments 0 = "no arguments"

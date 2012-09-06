@@ -26,7 +26,7 @@ import Curry.Base.Position
 import Curry.Syntax
 
 import Base.CurryTypes (toQualType, toQualTypes)
-import Base.Messages (Message, errorMessages, posErr, internalError)
+import Base.Messages (Message, errorMessages, posMsg, internalError)
 import Base.TopEnv
 import Base.Types
 import Base.TypeSubst (expandAliasType)
@@ -396,22 +396,22 @@ expandTypeAll tc = do
     Nothing                -> report (errUndefinedEntity m tc) >> return []
 
 errUndefinedEntity :: ModuleIdent -> Ident -> Message
-errUndefinedEntity m x = posErr x $
+errUndefinedEntity m x = posMsg x $
   "Module " ++ moduleName m ++ " does not export " ++ idName x
 
 errUndefinedDataConstr :: Ident -> Ident -> Message
-errUndefinedDataConstr tc c = posErr c $
+errUndefinedDataConstr tc c = posMsg c $
   idName c ++ " is not a data constructor of type " ++ idName tc
 
 errUndefinedLabel :: Ident -> Ident -> Message
-errUndefinedLabel tc c = posErr c $
+errUndefinedLabel tc c = posMsg c $
   idName c ++ " is not a label of record type " ++ idName tc
 
 errNonDataType :: Ident -> Message
-errNonDataType tc = posErr tc $ idName tc ++ " is not a data type"
+errNonDataType tc = posMsg tc $ idName tc ++ " is not a data type"
 
 errImportDataConstr :: ModuleIdent -> Ident -> Message
-errImportDataConstr _ c = posErr c $
+errImportDataConstr _ c = posMsg c $
   "Explicit import for data constructor " ++ idName c
 
 -- ---------------------------------------------------------------------------

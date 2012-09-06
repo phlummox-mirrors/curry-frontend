@@ -14,7 +14,8 @@
 -}
 module Checks.WarnCheck (warnCheck) where
 
-import Control.Monad.State (State, execState, filterM, gets, modify, unless, when, foldM_)
+import Control.Monad.State
+  (State, execState, filterM, gets, modify, unless, when, foldM_)
 import qualified Data.Map as Map (empty, insert, lookup)
 import Data.List (intersect, intersectBy, unionBy)
 
@@ -159,51 +160,43 @@ checkFunctionRules decls = foldM_ checkDO (mkIdent "", Map.empty) decls
 
 --
 checkDecl :: Decl -> WCM ()
-checkDecl (DataDecl _ _ params cdecls) = withScope $ do
-  mapM_ insertTypeVar params
-  mapM_ checkConstrDecl cdecls
-  params' <- filterM isUnrefTypeVar params
-  unless (null params') $ mapM_ report $ map unrefTypeVar params'
-checkDecl (TypeDecl _ _ params ty) = withScope $ do
-  mapM_ insertTypeVar params
+checkDecl (DataDecl   _ _ vs cs) = withScope $ do
+  mapM_ insertTypeVar vs
+  mapM_ checkConstrDecl cs
+  vs' <- filterM isUnrefTypeVar vs
+  unless (null vs') $ mapM_ report $ map unrefTypeVar vs'
+checkDecl (TypeDecl   _ _ vs ty) = withScope $ do
+  mapM_ insertTypeVar vs
   checkTypeExpr ty
-  params' <- filterM isUnrefTypeVar params
-  unless (null params') $ mapM_ report $ map unrefTypeVar params'
-checkDecl (FunctionDecl _ ident equs) = withScope $ do
-  mapM_ checkEquation equs
-  c <- isConsId ident
-  idents' <- returnUnrefVars
-  unless (c || null idents') $ mapM_ report $ map unrefVar idents'
-checkDecl (PatternDecl _ cterm rhs) = do
-  checkConstrTerm cterm
+  vs' <- filterM isUnrefTypeVar vs
+  unless (null vs') $ mapM_ report $ map unrefTypeVar vs'
+checkDecl (FunctionDecl _ _ eqs) = withScope $ mapM_ checkEquation eqs
+checkDecl (PatternDecl  _ p rhs) = do
+  checkConstrTerm p
   checkRhs rhs
 checkDecl _ = ok
 
 -- Checks locally declared identifiers (i.e. functions and logic variables)
 -- for shadowing
 checkLocalDecl :: Decl -> WCM ()
-checkLocalDecl (FunctionDecl _ ident _) = do
-  s <- isShadowingVar ident
-  when s $ report $ shadowingVar ident
-checkLocalDecl (ExtraVariables _ idents) = do
-  idents' <- filterM isShadowingVar idents
-  unless (null idents') $ mapM_ report $ map shadowingVar idents'
-checkLocalDecl (PatternDecl _ constrTerm _) = do
+checkLocalDecl (FunctionDecl  _ f _) = checkShadowing f
+checkLocalDecl (ExtraVariables _ vs) = mapM_ checkShadowing vs
+checkLocalDecl (PatternDecl   _ p _) = do
   mid <- getModuleIdent
   setModuleIdent (mkMIdent []) -- TODO: is this right?
-  checkConstrTerm constrTerm
+  checkConstrTerm p
   setModuleIdent mid
 checkLocalDecl _ = ok
 
 --
 checkConstrDecl :: ConstrDecl -> WCM ()
-checkConstrDecl (ConstrDecl _ _ ident texprs) = do
-  visitId ident
-  mapM_ checkTypeExpr texprs
-checkConstrDecl (ConOpDecl _ _ texpr1 ident texpr2) = do
-  visitId ident
-  checkTypeExpr texpr1
-  checkTypeExpr texpr2
+checkConstrDecl (ConstrDecl     _ _ c tys) = do
+  visitId c
+  mapM_ checkTypeExpr tys
+checkConstrDecl (ConOpDecl _ _ ty1 op ty2) = do
+  visitId op
+  checkTypeExpr ty1
+  checkTypeExpr ty2
 
 
 checkTypeExpr :: TypeExpr -> WCM ()
@@ -224,53 +217,51 @@ checkTypeExpr (RecordType fields restr) = do
   mapM_ checkTypeExpr (map snd fields)
   maybe ok checkTypeExpr restr
 
---
+-- Check an equation for warnings.
+-- This is done in a seperate scope as the left-hand-side may introduce
+-- new variables.
 checkEquation :: Equation -> WCM ()
-checkEquation (Equation _ lhs rhs) = checkLhs lhs >> checkRhs rhs
+checkEquation (Equation _ lhs rhs) = withScope $
+  checkLhs lhs >> checkRhs rhs >> reportUnusedVars
 
 --
 checkLhs :: Lhs -> WCM ()
-checkLhs (FunLhs ident cterms) = do
-  visitId ident
-  mapM_ checkConstrTerm cterms
-  mapM_ (insertConstrTerm False) cterms
-checkLhs (OpLhs cterm1 ident cterm2)
-  = checkLhs (FunLhs ident [cterm1, cterm2])
-checkLhs (ApLhs lhs cterms) = do
+checkLhs (FunLhs    f ts) = do
+  visitId f
+  mapM_ checkConstrTerm ts
+  mapM_ (insertConstrTerm False) ts
+checkLhs (OpLhs t1 op t2) = checkLhs (FunLhs op [t1, t2])
+checkLhs (ApLhs   lhs ts) = do
   checkLhs lhs
-  mapM_ checkConstrTerm cterms
-  mapM_ (insertConstrTerm False) cterms
+  mapM_ checkConstrTerm ts
+  mapM_ (insertConstrTerm False) ts
 
---
+-- Check the right-hand-side of an equation.
+-- Because local declarations may introduce new variables, we need
+-- another scope nesting.
 checkRhs :: Rhs -> WCM ()
-checkRhs (SimpleRhs _ expr decls) = withScope $ do -- function arguments can be overwritten by local decls
-  mapM_ checkLocalDecl decls
-  mapM_ insertDecl decls
-  mapM_ checkDecl decls
-  checkFunctionRules decls
+checkRhs (SimpleRhs _ expr ds) = withScope $ do
+  mapM_ checkLocalDecl ds
+  mapM_ insertDecl ds
+  mapM_ checkDecl ds
+  checkFunctionRules ds
   checkExpression expr
-  idents' <- returnUnrefVars
-  unless (null idents') $ mapM_ report $ map unrefVar idents'
-checkRhs (GuardedRhs cexprs decls) = withScope $ do
-  mapM_ checkLocalDecl decls
-  mapM_ insertDecl decls
-  mapM_ checkDecl decls
-  checkFunctionRules decls
+  reportUnusedVars
+checkRhs (GuardedRhs cexprs ds) = withScope $ do
+  mapM_ checkLocalDecl ds
+  mapM_ insertDecl ds
+  mapM_ checkDecl ds
+  checkFunctionRules ds
   mapM_ checkCondExpr cexprs
-  idents' <- returnUnrefVars
-  unless (null idents') $  mapM_ report $ map unrefVar idents'
+  reportUnusedVars
 
 --
 checkCondExpr :: CondExpr -> WCM ()
-checkCondExpr (CondExpr _ cond expr) = do
-  checkExpression cond
-  checkExpression expr
+checkCondExpr (CondExpr _ c e) = checkExpression c >> checkExpression e
 
 --
 checkConstrTerm :: ConstrTerm -> WCM ()
-checkConstrTerm (VariablePattern ident) = do
-  s <- isShadowingVar ident
-  when s $ report $ shadowingVar ident
+checkConstrTerm (VariablePattern v) = checkShadowing v
 checkConstrTerm (ConstructorPattern _ cterms)
   = mapM_ checkConstrTerm cterms
 checkConstrTerm (InfixPattern cterm1 qident cterm2)
@@ -281,9 +272,8 @@ checkConstrTerm (TuplePattern _ cterms)
   = mapM_ checkConstrTerm cterms
 checkConstrTerm (ListPattern _ cterms)
   = mapM_ checkConstrTerm cterms
-checkConstrTerm (AsPattern ident cterm) = do
-  s <- isShadowingVar ident
-  when s $ report $ shadowingVar ident
+checkConstrTerm (AsPattern v cterm) = do
+  checkShadowing v
   checkConstrTerm cterm
 checkConstrTerm (LazyPattern _ cterm)
   = checkConstrTerm cterm
@@ -312,8 +302,7 @@ checkExpression (List _ exprs)
 checkExpression (ListCompr _ expr stmts) = withScope $ do
   mapM_ checkStatement stmts
   checkExpression expr
-  idents' <- returnUnrefVars
-  unless (null idents') $ mapM_ report $ map unrefVar idents'
+  reportUnusedVars
 checkExpression (EnumFrom expr)
   = checkExpression expr
 checkExpression (EnumFromThen expr1 expr2)
@@ -338,21 +327,18 @@ checkExpression (Lambda _ cterms expr) = withScope $ do
   mapM_ checkConstrTerm cterms
   mapM_ (insertConstrTerm False) cterms
   checkExpression expr
-  idents' <- returnUnrefVars
-  unless (null idents') $ mapM_ report $ map unrefVar idents'
+  reportUnusedVars
 checkExpression (Let decls expr) = withScope $ do
   mapM_ checkLocalDecl decls
   mapM_ insertDecl decls
   mapM_ checkDecl decls
   checkFunctionRules decls
   checkExpression expr
-  idents' <- returnUnrefVars
-  unless (null idents') $ mapM_ report $ map unrefVar idents'
+  reportUnusedVars
 checkExpression (Do stmts expr) = withScope $ do
   mapM_ checkStatement stmts
   checkExpression expr
-  idents' <- returnUnrefVars
-  unless (null idents') $ mapM_ report $ map unrefVar idents'
+  reportUnusedVars
 checkExpression (IfThenElse _ expr1 expr2 expr3)
   = mapM_ checkExpression [expr1, expr2, expr3]
 checkExpression (Case _ expr alts) = do
@@ -387,8 +373,7 @@ checkAlt (Alt _ cterm rhs) = withScope $ do
   checkConstrTerm  cterm
   insertConstrTerm False cterm
   checkRhs rhs
-  idents' <-  returnUnrefVars
-  unless (null idents') $ mapM_ report $ map unrefVar idents'
+  reportUnusedVars
 
 --
 checkFieldExpression :: Field Expression -> WCM ()
@@ -470,6 +455,16 @@ checkOverlappingAlts (alt : alts) = do
          else return False
   cmpListM _ _      _      = return False
 
+checkShadowing :: Ident -> WCM ()
+checkShadowing x = do
+  s <- isShadowingVar x
+  when s $ report $ shadowingVar x
+
+reportUnusedVars :: WCM ()
+reportUnusedVars = do
+  unused <- returnUnrefVars
+  unless (null unused) $ mapM_ report $ map unrefVar unused
+
 -------------------------------------------------------------------------------
 -- For detecting unreferenced variables, the following functions updates the
 -- current check state by adding identifiers occuring in declaration left hand
@@ -523,14 +518,14 @@ insertConstrDecl (ConOpDecl  _ _ _ ident _) = insertConsId ident
 --      necessary to determine, whether a constructor pattern represents a
 --      constructor or a function.
 insertConstrTerm :: Bool -> ConstrTerm -> WCM ()
-insertConstrTerm fp (VariablePattern ident)
+insertConstrTerm fp (VariablePattern v)
   | fp        = do
-    c <- isConsId ident
-    v <- isVarId ident
-    unless c $ if idName ident /= "_" && v then visitId ident else insertVar ident
+    c <- isConsId v
+    var <- isVarId v
+    unless c $ if idName v /= "_" && var then visitId v else insertVar v
   | otherwise = do
-    c <- isConsId ident
-    unless c $ insertVar ident
+    c <- isConsId v
+    unless c $ insertVar v
 insertConstrTerm fp (ConstructorPattern qident cterms) = do
   c <- isQualConsId qident
   if c then mapM_ (insertConstrTerm fp) cterms
@@ -601,14 +596,14 @@ insertScope qid info = modify $ modifyScope $ ScopeEnv.insert qid info
 --
 insertVar :: Ident -> WCM ()
 insertVar ident
-  | isAnnonId ident = return ()
-  | otherwise       = insertScope (commonId ident) (VarInfo False)
+  | isAnonId ident = return ()
+  | otherwise      = insertScope (commonId ident) (VarInfo False)
 
 --
 insertTypeVar :: Ident -> WCM ()
 insertTypeVar ident
-  | isAnnonId ident = return ()
-  | otherwise       = insertScope (typeId ident) (VarInfo False)
+  | isAnonId ident = return ()
+  | otherwise      = insertScope (typeId ident) (VarInfo False)
 
 --
 insertConsId :: Ident -> WCM ()
@@ -691,7 +686,7 @@ all' mpred (x:xs) = do
   p <- mpred x
   if p then all' mpred xs else return False
 
--------------------------------------------------------------------------------
+------------------------------------------------------------------------------
 
 --
 isShadowing :: WcState -> QualIdent -> Bool
@@ -709,7 +704,7 @@ isUnref state qid
 
 --
 isVar :: WcState -> QualIdent -> Bool
-isVar state qid = maybe (isAnnonId (unqualify qid))
+isVar state qid = maybe (isAnonId (unqualify qid))
                   isVariable
                   (ScopeEnv.lookup qid (scope state))
 
@@ -725,10 +720,6 @@ isCons state qid = maybe (isImportedCons state qid)
         (NewtypeConstructor _ _) : _ -> True
         _                            -> False
 
---
-isAnnonId :: Ident -> Bool
-isAnnonId = (== anonId)
-
 -- Since type identifiers and normal identifiers (e.g. functions, variables
 -- or constructors) don't share the same namespace, it is necessary
 -- to distinguish them in the scope environment of the check state.
@@ -741,7 +732,6 @@ commonId ident = qualify (unRenameIdent ident)
 --
 typeId :: Ident -> QualIdent
 typeId ident = qualify (renameIdent ident 1)
-
 
 -- ---------------------------------------------------------------------------
 -- Warnings messages

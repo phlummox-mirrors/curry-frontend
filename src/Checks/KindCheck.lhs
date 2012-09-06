@@ -25,14 +25,14 @@ is defined more than once.
 
 > module Checks.KindCheck (kindCheck) where
 
-> import Control.Monad (forM, liftM, liftM2, liftM3, when)
+> import Control.Monad (forM, liftM, liftM2, liftM3, unless, when)
 > import qualified Control.Monad.State as S (State, runState, gets, modify)
 
 > import Curry.Base.Ident
 > import Curry.Base.Position
 > import Curry.Syntax
 
-> import Base.Messages (Message, posErr, qposErr, internalError)
+> import Base.Messages (Message, posMsg, qposMsg, internalError)
 > import Base.TopEnv
 > import Base.Utils (findMultiples)
 
@@ -159,7 +159,7 @@ traversed because they can contain local type signatures.
 > checkTypeLhs :: [Ident] -> KCM [Ident]
 > checkTypeLhs []         = return []
 > checkTypeLhs (tv : tvs) = do
->   when (tv /= anonId) $ do
+>   unless (isAnonId tv) $ do
 >     isTyCons <- (not . null . lookupKind tv) `liftM` getKindEnv
 >     when isTyCons        $ report $ errNoVariable tv
 >     when (tv `elem` tvs) $ report $ errNonLinear  tv
@@ -263,8 +263,8 @@ interpret the identifier as such.
 >       _ -> report (errAmbiguousType tc) >> return c
 >  where n' = length tys
 > checkType v@(VariableType tv)
->   | tv == anonId = return v
->   | otherwise    = checkType $ ConstructorType (qualify tv) []
+>   | isAnonId tv = return v
+>   | otherwise   = checkType $ ConstructorType (qualify tv) []
 > checkType (TupleType     tys) = TupleType `liftM` mapM checkType tys
 > checkType (ListType       ty) = ListType  `liftM` checkType ty
 > checkType (ArrowType ty1 ty2) =
@@ -282,7 +282,7 @@ interpret the identifier as such.
 > checkClosed tvs (ConstructorType tc tys) =
 >   ConstructorType tc `liftM` mapM (checkClosed tvs) tys
 > checkClosed tvs v@(VariableType      tv) = do
->   when (tv == anonId || tv `notElem` tvs) $ report $ errUnboundVariable tv
+>   when (isAnonId tv || tv `notElem` tvs) $ report $ errUnboundVariable tv
 >   return v
 > checkClosed tvs (TupleType     tys) =
 >   TupleType `liftM` mapM (checkClosed tvs) tys
@@ -314,29 +314,29 @@ Error messages:
 \begin{verbatim}
 
 > errUndefinedType :: QualIdent -> Message
-> errUndefinedType tc = qposErr tc $ "Undefined type " ++ qualName tc
+> errUndefinedType tc = qposMsg tc $ "Undefined type " ++ qualName tc
 
 > errAmbiguousType :: QualIdent -> Message
-> errAmbiguousType tc = qposErr tc $ "Ambiguous type " ++ qualName tc
+> errAmbiguousType tc = qposMsg tc $ "Ambiguous type " ++ qualName tc
 
 > errMultipleDeclaration :: [Ident] -> Message
 > errMultipleDeclaration []     = internalError
 >   "KindCheck.errMultipleDeclaration: empty list"
-> errMultipleDeclaration (i:is) = posErr i $
+> errMultipleDeclaration (i:is) = posMsg i $
 >   "Multiple declarations for type `" ++ idName i ++ "` at:\n"
 >   ++ unlines (map showPos (i:is))
 >   where showPos = ("    " ++) . showLine . idPosition
 
 > errNonLinear :: Ident -> Message
-> errNonLinear tv = posErr tv $ "Type variable " ++ idName tv ++
+> errNonLinear tv = posMsg tv $ "Type variable " ++ idName tv ++
 >   " occurs more than once on left hand side of type declaration"
 
 > errNoVariable :: Ident -> Message
-> errNoVariable tv = posErr tv $ "Type constructor " ++ idName tv ++
+> errNoVariable tv = posMsg tv $ "Type constructor " ++ idName tv ++
 >   " used in left hand side of type declaration"
 
 > errWrongArity :: QualIdent -> Int -> Int -> Message
-> errWrongArity tc arity argc = qposErr tc $
+> errWrongArity tc arity argc = qposMsg tc $
 >   "Type constructor " ++ qualName tc ++ " expects " ++ arguments arity ++
 >   " but is applied to " ++ show argc
 >   where arguments 0 = "no arguments"
@@ -344,6 +344,6 @@ Error messages:
 >         arguments n = show n ++ " arguments"
 
 > errUnboundVariable :: Ident -> Message
-> errUnboundVariable tv = posErr tv $ "Unbound type variable " ++ idName tv
+> errUnboundVariable tv = posMsg tv $ "Unbound type variable " ++ idName tv
 
 \end{verbatim}

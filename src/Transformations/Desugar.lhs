@@ -339,10 +339,10 @@ type \texttt{Bool} of the guard because the guard's type defaults to
 >   desugarLiteral l >>=
 >   either (return . Literal) (\ (pos, ls) -> desugarExpr p $ List pos $ map Literal ls)
 > desugarExpr _ var@(Variable v)
->   | unqualify v == anonId = return prelUnknown
+>   | isAnonId (unqualify v) = return prelUnknown
 >       -- v' <- getValueEnv >>= freshIdent "_#anonfree" . polyType . flip typeOf var
 >       -- desugarExpr p $ Let [ExtraVariables p [v']] $ mkVar v'
->   | otherwise             = return var
+>   | otherwise              = return var
 > desugarExpr _ c@(Constructor _) = return c
 > desugarExpr p (Paren         e) = desugarExpr p e
 > desugarExpr p (Typed       e _) = desugarExpr p e

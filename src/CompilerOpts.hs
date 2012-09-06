@@ -15,7 +15,8 @@
 -}
 module CompilerOpts
   ( Options (..), CymakeMode (..), Verbosity (..), TargetType (..)
-  , Extension (..), DumpLevel (..), defaultOptions, getCompilerOpts, usage
+  , Extension (..), DumpLevel (..), dumpLevel
+  , defaultOptions, getCompilerOpts, usage
   ) where
 
 import Data.List (intercalate, nub)
@@ -99,17 +100,32 @@ classifyVerbosity _   v = v
 
 -- |Data type for representing code dumps
 data DumpLevel
-  = DumpRenamed      -- ^ dump source  after renaming
-  | DumpDesugared    -- ^ dump source  after desugaring
-  | DumpSimplified   -- ^ dump source  after simplification
-  | DumpLifted       -- ^ dump source  after lambda-lifting
-  | DumpIL           -- ^ dump IL code after translation
-  | DumpCase         -- ^ dump IL code after case completion
+  = DumpParsed        -- ^ dump source code after parsing
+  | DumpKindChecked   -- ^ dump source code after kind checking
+  | DumpSyntaxChecked -- ^ dump source code after syntax checking
+  | DumpPrecChecked   -- ^ dump source code after precedence checking
+  | DumpTypeChecked   -- ^ dump source code after type checking
+  | DumpRenamed       -- ^ dump source  after renaming
+  | DumpDesugared     -- ^ dump source  after desugaring
+  | DumpSimplified    -- ^ dump source  after simplification
+  | DumpLifted        -- ^ dump source  after lambda-lifting
+  | DumpTranslated    -- ^ dump IL code after translation
+  | DumpCaseCompleted -- ^ dump IL code after case completion
     deriving (Eq, Bounded, Enum, Show)
 
--- |All available 'DumpLevel's
-dumpAll :: [DumpLevel]
-dumpAll = [minBound .. maxBound]
+dumpLevel :: [(DumpLevel, String, String)]
+dumpLevel = [ (DumpParsed       , "parsed", "parse tree"               )
+            , (DumpKindChecked  , "kc"    , "kind checker output"      )
+            , (DumpSyntaxChecked, "sc"    , "syntax checker output"    )
+            , (DumpPrecChecked  , "pc"    , "precedence checker output")
+            , (DumpTypeChecked  , "tc"    , "type checker output"      )
+            , (DumpRenamed      , "rn"    , "renamer output"           )
+            , (DumpDesugared    , "ds"    , "desugarer output"         )
+            , (DumpSimplified   , "simpl" , "simplifier output"        )
+            , (DumpLifted       , "lifted", "lifting output"           )
+            , (DumpTranslated   , "trans" , "translated output"        )
+            , (DumpCaseCompleted, "cc"    , "case completed output"    )
+            ]
 
 -- |Data type representing language extensions
 data Extension
@@ -220,33 +236,18 @@ options =
       ("enable language extension EXT, one of " ++ show allExtensions)
   -- dump
   , Option ""   ["dump-all"]
-      (NoArg (\ opts -> opts { optDumps = dumpAll }))
+      (NoArg (\ opts -> opts { optDumps = [minBound .. maxBound] }))
       "dump everything"
-  , Option ""   ["dump-renamed"]
-      (NoArg (\ opts -> opts { optDumps =
-        nub $ DumpRenamed : optDumps opts }))
-      "dump source code after renaming"
-  , Option ""   ["dump-desugared"]
-      (NoArg (\ opts -> opts { optDumps =
-        nub $ DumpDesugared : optDumps opts }))
-      "dump source code after desugaring"
-  , Option ""   ["dump-simplified"]
-      (NoArg (\ opts -> opts { optDumps = nub $
-        DumpSimplified : optDumps opts }))
-      "dump source code after simplification"
-  , Option ""   ["dump-lifted"]
-      (NoArg (\ opts -> opts { optDumps = nub $ DumpLifted : optDumps opts }))
-      "dump source code after lambda-lifting"
-  , Option ""   ["dump-il"]
-      (NoArg (\ opts -> opts { optDumps = nub $ DumpIL : optDumps opts }))
-      "dump intermediate language before lifting"
-  , Option ""   ["dump-case"]
-      (NoArg (\ opts -> opts { optDumps = nub $ DumpCase : optDumps opts }))
-      "dump intermediate language after case simplification"
   , Option ""   ["dump-env"]
       (NoArg (\ opts -> opts { optDumpEnv = True }))
-      "dump compilation environment for each dump level"
-  ]
+      "additionally dump compilation environment for each dump level"
+  ] ++ dumpDescriptions
+
+dumpDescriptions :: [OptDescr (Options -> Options)]
+dumpDescriptions = map toDescr dumpLevel
+  where toDescr (lvl, flag, text) = Option "" ["dump-" ++ flag]
+          (NoArg (\ opts -> opts { optDumps = nub $ lvl : optDumps opts }))
+          ("dump " ++ text)
 
 -- |Parse the command line arguments
 parseOpts :: [String] -> (Options, [String], [String])

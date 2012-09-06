@@ -24,7 +24,7 @@ import Curry.ExtendedFlat.TypeInference
 import qualified Curry.Syntax as CS
 
 -- Base
-import Base.Messages (internalError)
+import Base.Messages (internalError, qposMsg)
 import Base.ScopeEnv (ScopeEnv)
 import qualified Base.ScopeEnv as ScopeEnv
 import Base.TopEnv (topEnvMap)
@@ -800,8 +800,8 @@ consArity qid = "GenFlatCurry: missing arity for constructor \""
 missingVarIndex :: Show a => a -> [Char]
 missingVarIndex ident = "GenFlatCurry: missing index for \"" ++ show ident ++ "\""
 
-overlappingRules :: QualIdent -> [Char]
-overlappingRules qid = "function \"" ++ qualName qid
+overlappingRules :: QualIdent -> Message
+overlappingRules qid = qposMsg qid $ "Function \"" ++ qualName qid
   ++ "\" is non-deterministic due to non-trivial overlapping rules"
 
 -------------------------------------------------------------------------------
@@ -1011,9 +1011,8 @@ clearVarIndices :: FlatState ()
 clearVarIndices = modify $ \ s -> s { varIndexE = 0, varIdsE = ScopeEnv.new }
 
 --
-genWarning :: String -> FlatState ()
-genWarning msg = modify $ \ s -> s { messagesE = warnMsg : messagesE s }
-  where warnMsg = Message Nothing msg
+genWarning :: Message -> FlatState ()
+genWarning msg = modify $ \ s -> s { messagesE = msg : messagesE s }
 
 --
 genInterface :: FlatState Bool

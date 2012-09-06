@@ -34,8 +34,11 @@ imported.
 \begin{verbatim}
 
 > module Base.TopEnv
->   ( TopEnv (..), Entity (..), emptyTopEnv, predefTopEnv, importTopEnv
->   , qualImportTopEnv, bindTopEnv, qualBindTopEnv, rebindTopEnv
+>   ( -- * Data types
+>     TopEnv (..), Entity (..)
+>     -- * creation and insertion
+>   , emptyTopEnv, predefTopEnv, importTopEnv, qualImportTopEnv
+>   , bindTopEnv, qualBindTopEnv, rebindTopEnv
 >   , qualRebindTopEnv, unbindTopEnv, lookupTopEnv, qualLookupTopEnv
 >   , allImports, moduleImports, localBindings, allLocalBindings
 >   ) where
@@ -47,51 +50,58 @@ imported.
 > import Curry.Base.Ident
 > import Base.Messages (internalError)
 
-> data Source = Local | Import [ModuleIdent] deriving (Eq, Show)
-
 > class Entity a where
 >  origName :: a -> QualIdent
 >  merge    :: a -> a -> Maybe a
 >  merge x y
 >    | origName x == origName y = Just x
->    | otherwise = Nothing
+>    | otherwise                = Nothing
 
-> newtype TopEnv a = TopEnv { topEnvMap :: Map.Map QualIdent [(Source, a)]
->                           } deriving Show
+> data Source = Local | Import [ModuleIdent] deriving (Eq, Show)
+
+> -- |Top level environment
+> newtype TopEnv a = TopEnv { topEnvMap :: Map.Map QualIdent [(Source, a)] }
+>   deriving Show
 
 > instance Functor TopEnv where
 >   fmap f (TopEnv env) = TopEnv (fmap (map (second f)) env)
 
+> -- local helper
 > entities :: QualIdent -> Map.Map QualIdent [(Source, a)] -> [(Source, a)]
 > entities = Map.findWithDefault []
 
+> -- |Empty 'TopEnv'
 > emptyTopEnv :: TopEnv a
 > emptyTopEnv = TopEnv Map.empty
 
+> -- |Insert an 'Entity' into a 'TopEnv' as a prefined 'Entity'
 > predefTopEnv :: Entity a => QualIdent -> a -> TopEnv a -> TopEnv a
-> predefTopEnv x y (TopEnv env) = case Map.lookup x env of
+> predefTopEnv k v (TopEnv env) = case Map.lookup k env of
 >   Just  _ -> internalError "TopEnv.predefTopEnv"
->   Nothing -> TopEnv $ Map.insert x [(Import [], y)] env
+>   Nothing -> TopEnv $ Map.insert k [(Import [], v)] env
 
+> -- |Insert an 'Entity' as unqualified into a 'TopEnv'
 > importTopEnv :: Entity a => ModuleIdent -> Ident -> a -> TopEnv a
 >              -> TopEnv a
-> importTopEnv m x y (TopEnv env) =
->   TopEnv $ Map.insert x' (mergeImport m y (entities x' env)) env
->   where x' = qualify x
+> importTopEnv m x y env = addImport m (qualify x) y env
 
+> -- |Insert an 'Entity' as qualified into a 'TopEnv'
 > qualImportTopEnv :: Entity a => ModuleIdent -> Ident -> a -> TopEnv a
 >                  -> TopEnv a
-> qualImportTopEnv m x y (TopEnv env) =
->   TopEnv $ Map.insert x' (mergeImport m y (entities x' env)) env
->   where x' = qualifyWith m x
+> qualImportTopEnv m x y env = addImport m (qualifyWith m x) y env
 
-> mergeImport :: Entity a => ModuleIdent -> a -> [(Source, a)]
->             -> [(Source, a)]
-> mergeImport m x []                         = [(Import [m], x)]
-> mergeImport m x (loc@(Local    ,  _) : xs) = loc : mergeImport m x xs
-> mergeImport m x (imp@(Import ms, x') : xs) = case merge x x' of
->   Just x'' -> (Import (m : ms), x'') : xs
->   Nothing  -> imp : mergeImport m x xs
+> -- local helper
+> addImport :: Entity a => ModuleIdent -> QualIdent -> a -> TopEnv a
+>           -> TopEnv a
+> addImport m k v (TopEnv env) = TopEnv $
+>   Map.insert k (mergeImport v (entities k env)) env
+>   where
+>   mergeImport :: Entity a => a -> [(Source, a)] -> [(Source, a)]
+>   mergeImport y []                         = [(Import [m], y)]
+>   mergeImport y (loc@(Local    ,  _) : xs) = loc : mergeImport y xs
+>   mergeImport y (imp@(Import ms, y') : xs) = case merge y y' of
+>     Just y'' -> (Import (m : ms), y'') : xs
+>     Nothing  -> imp : mergeImport y xs
 
 > bindTopEnv :: String -> Ident -> a -> TopEnv a -> TopEnv a
 > bindTopEnv fun x y env = qualBindTopEnv fun (qualify x) y env
@@ -99,10 +109,11 @@ imported.
 > qualBindTopEnv :: String -> QualIdent -> a -> TopEnv a -> TopEnv a
 > qualBindTopEnv fun x y (TopEnv env) =
 >   TopEnv $ Map.insert x (bindLocal y (entities x env)) env
->   where bindLocal y' ys
->           | null [ y'' | (Local, y'') <- ys ] = (Local, y') : ys
->           | otherwise = internalError $ "\"qualBindTopEnv " ++ show x
->                       ++ "\" failed in function \"" ++ fun ++ "\""
+>   where
+>   bindLocal y' ys
+>     | null [ y'' | (Local, y'') <- ys ] = (Local, y') : ys
+>     | otherwise = internalError $ "\"qualBindTopEnv " ++ show x
+>                       ++ "\" failed in function \"" ++ fun
 
 > rebindTopEnv :: Ident -> a -> TopEnv a -> TopEnv a
 > rebindTopEnv = qualRebindTopEnv . qualify

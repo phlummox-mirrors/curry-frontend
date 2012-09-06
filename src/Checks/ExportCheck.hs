@@ -11,7 +11,7 @@ import Curry.Base.Ident
 import Curry.Base.Position
 import Curry.Syntax
 
-import Base.Messages (Message, internalError, mposErr, posErr, qposErr)
+import Base.Messages (Message, internalError, mposMsg, posMsg, qposMsg)
 import Base.TopEnv
 import Base.Types
 import Base.Utils (findMultiples)
@@ -239,21 +239,21 @@ isRecordType _                                = False
 -- ---------------------------------------------------------------------------
 
 errUndefinedEntity :: QualIdent -> Message
-errUndefinedEntity x = qposErr x $
+errUndefinedEntity x = qposMsg x $
   "Entity " ++ qualName x ++ " in export list is not defined"
 
 errUndefinedType :: QualIdent -> Message
-errUndefinedType tc = qposErr tc $
+errUndefinedType tc = qposMsg tc $
   "Type " ++ qualName tc ++ " in export list is not defined"
 
 errModuleNotImported :: ModuleIdent -> Message
-errModuleNotImported m = mposErr m $
+errModuleNotImported m = mposMsg m $
   "Module " ++ moduleName m ++ " not imported"
 
 errMultipleExportType :: [Ident] -> Message
 errMultipleExportType []     = internalError
   "Checks.ExportCheck.errMultipleExportType: empty list"
-errMultipleExportType (i:is) = posErr i $
+errMultipleExportType (i:is) = posMsg i $
   "Multiple exports of type " ++ idName i ++ " at:\n"
   ++ unlines (map showPos (i:is))
   where showPos = ("    " ++) . showLine . idPosition
@@ -261,28 +261,28 @@ errMultipleExportType (i:is) = posErr i $
 errMultipleExportValue :: [Ident] -> Message
 errMultipleExportValue []     = internalError
   "Checks.ExportCheck.errMultipleExportValue: empty list"
-errMultipleExportValue (i:is) = posErr i $
+errMultipleExportValue (i:is) = posMsg i $
   "Multiple exports of " ++ idName i ++ " at:\n"
   ++ unlines (map showPos (i:is))
   where showPos = ("    " ++) . showLine . idPosition
 
 errAmbiguousType :: QualIdent -> Message
-errAmbiguousType tc = qposErr tc $ "Ambiguous type " ++ qualName tc
+errAmbiguousType tc = qposMsg tc $ "Ambiguous type " ++ qualName tc
 
 errAmbiguousName :: QualIdent -> Message
-errAmbiguousName x = qposErr x $ "Ambiguous name " ++ qualName x
+errAmbiguousName x = qposMsg x $ "Ambiguous name " ++ qualName x
 
 errExportDataConstr :: QualIdent -> Message
-errExportDataConstr c = qposErr c $
+errExportDataConstr c = qposMsg c $
   "Data constructor " ++ qualName c ++ " in export list"
 
 errNonDataType :: QualIdent -> Message
-errNonDataType tc = qposErr tc $ qualName tc ++ " is not a data type"
+errNonDataType tc = qposMsg tc $ qualName tc ++ " is not a data type"
 
 errUndefinedDataConstr :: QualIdent -> Ident -> Message
-errUndefinedDataConstr tc c = posErr c $
+errUndefinedDataConstr tc c = posMsg c $
   idName c ++ " is not a data constructor of type " ++ qualName tc
 
 errUndefinedLabel :: QualIdent -> Ident -> Message
-errUndefinedLabel r l = posErr l $
+errUndefinedLabel r l = posMsg l $
   idName l ++ " is not a label of the record " ++ qualName r

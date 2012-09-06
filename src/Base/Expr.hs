@@ -175,7 +175,7 @@ instance QualExpr ConstrTerm where
 instance Expr TypeExpr where
   fv (ConstructorType _ tys) = fv tys
   fv (VariableType       tv)
-    | tv == anonId           = []
+    | isAnonId tv            = []
     | otherwise              = [tv]
   fv (TupleType         tys) = fv tys
   fv (ListType           ty) = fv ty

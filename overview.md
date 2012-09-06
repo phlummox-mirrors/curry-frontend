@@ -8,7 +8,6 @@ Module overview of package `curry-frontend`
       * `.Expr`       : Type class for computation of free and bound variables
       * `.Messages`   : Error messages
       * `.NestEnv`    : Nested environment
-      * `.OldScopeEnv`: TODO: old stuff
       * `.SCC`        : Computation of strongly connected components
       * `.ScopeEnv`   : TODO: old stuff
       * `.Subst`      : general substitution implementation

@@ -38,7 +38,7 @@ type annotation is present.
 
 > import Base.CurryTypes (fromQualType, toType, toTypes)
 > import Base.Expr
-> import Base.Messages (Message, toMessage, posErr, internalError)
+> import Base.Messages (Message, toMessage, posMsg, internalError)
 > import Base.SCC
 > import Base.TopEnv
 > import Base.Types
@@ -85,12 +85,12 @@ generating fresh type variables.
 \begin{verbatim}
 
 > data TcState = TcState
->   { moduleIdent :: ModuleIdent
+>   { moduleIdent :: ModuleIdent -- read only
 >   , tyConsEnv   :: TCEnv
 >   , valueEnv    :: ValueEnv
 >   , typeSubst   :: TypeSubst
 >   , sigEnv      :: SigEnv
->   , nextId      :: Int
+>   , nextId      :: Int         -- automatic counter
 >   , errors      :: [Message]
 >   }
 
@@ -325,8 +325,8 @@ inferred type is less general than the signature.
 > nameType (ConstructorType tc tys) tvs = (ConstructorType tc tys', tvs')
 >   where (tys', tvs') = nameTypes tys tvs
 > nameType (VariableType tv) (tv' : tvs)
->   | tv == anonId = (VariableType tv', tvs      )
->   | otherwise    = (VariableType tv , tv' : tvs)
+>   | isAnonId tv = (VariableType tv', tvs      )
+>   | otherwise   = (VariableType tv , tv' : tvs)
 > nameType (TupleType tys) tvs = (TupleType tys', tvs')
 >   where (tys', tvs') = nameTypes tys tvs
 > nameType (ListType ty) tvs = (ListType ty', tvs')
@@ -764,7 +764,8 @@ because of possibly multiple occurrences of variables.
 > tcExpr :: Position -> Expression -> TCM Type
 > tcExpr _ (Literal     l) = tcLiteral l
 > tcExpr _ (Variable    v)
->   | v' == anonId = do
+>     -- anonymous free variable
+>   | isAnonId v' = do
 >       m <- getModuleIdent
 >       ty <- freshTypeVar
 >       modifyValueEnv $ bindFun m v' (arrowArity ty) $ monoType ty
@@ -775,7 +776,7 @@ because of possibly multiple occurrences of variables.
 >       case qualLookupTypeSig m v sigs of
 >         Just ty -> expandPolyType ty >>= inst
 >         Nothing -> getValueEnv >>= inst . funType m v
->   where v' = qidIdent v
+>   where v' = unqualify v
 > tcExpr _ (Constructor c) = do
 >  m <- getModuleIdent
 >  getValueEnv >>= instExist . constrType m c
@@ -1237,7 +1238,7 @@ unambiguously refers to the local definition.
 >   [Value _ _ sigma] -> sigma
 >   _ -> case qualLookupValue (qualQualify m f) tyEnv of
 >     [Value _ _ sigma] -> sigma
->     _ -> internalError $ "TypeCheck.funType " ++ show f
+>     _ -> internalError $ "TypeCheck.funType " ++ show f ++ ", more precisely " ++ show (unqualify f)
 
 > sureLabelType :: Ident -> ValueEnv -> Maybe TypeScheme
 > sureLabelType l tyEnv = case lookupValue l tyEnv of
@@ -1319,9 +1320,9 @@ Error functions.
 > errRecursiveTypes :: [Ident] -> Message
 > errRecursiveTypes []         = internalError
 >   "TypeCheck.recursiveTypes: empty list"
-> errRecursiveTypes [tc]       = posErr tc $
+> errRecursiveTypes [tc]       = posMsg tc $
 >   "Recursive synonym type " ++ idName tc
-> errRecursiveTypes (tc : tcs) = posErr tc $
+> errRecursiveTypes (tc : tcs) = posMsg tc $
 >   "Recursive synonym types " ++ idName tc ++ types "" tcs
 >   where
 >   types _    []         = ""
@@ -1332,7 +1333,7 @@ Error functions.
 >                           ++ types "," tcs1
 
 > errPolymorphicFreeVar :: Ident -> Message
-> errPolymorphicFreeVar v = posErr v $
+> errPolymorphicFreeVar v = posMsg v $
 >   "Free variable " ++ idName v ++ " has a polymorphic type"
 
 > errTypeSigTooGeneral :: Position -> ModuleIdent -> Doc -> TypeExpr -> TypeScheme
