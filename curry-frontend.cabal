@@ -1,5 +1,5 @@
 Name:          curry-frontend
-Version:       0.3.0
+Version:       0.3.1
 Cabal-Version: >= 1.6
 Synopsis:      Compile the functional logic language Curry to several
                intermediate formats
@@ -35,7 +35,7 @@ Executable cymake
   else
     Build-Depends: base == 3.*
   Build-Depends:
-    curry-base >= 0.3.0
+    curry-base == 0.3.1
     , mtl, old-time, containers, pretty, transformers
   ghc-options: -Wall
   Other-Modules:
@@ -43,7 +43,6 @@ Executable cymake
     , Base.Expr
     , Base.Messages
     , Base.NestEnv
-    , Base.OldScopeEnv
     , Base.SCC
     , Base.ScopeEnv
     , Base.Subst
