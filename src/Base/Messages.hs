@@ -2,17 +2,16 @@ module Base.Messages
   ( -- * Output of user information
     info, status, putErrLn, putErrsLn
     -- * program abortion
-  , abortWith, internalError, errorMessage, errorMessages
+  , abortWith, abortWithMessages, internalError, errorMessage, errorMessages
     -- * creating messages
-  , Message, toMessage, posMsg, qposMsg, mposMsg
+  , Message, posMessage
   ) where
 
 import Control.Monad (unless)
-import System.IO (hPutStrLn, stderr)
-import System.Exit (ExitCode (..), exitWith)
+import System.IO     (hPutStrLn, stderr)
+import System.Exit   (exitFailure)
 
-import Curry.Base.Ident (ModuleIdent (..), Ident (..), QualIdent, qidPosition)
-import Curry.Base.MessageMonad (Message, toMessage)
+import Curry.Base.MessageMonad (Message, posMessage, ppMessage, ppMessages)
 
 import CompilerOpts (Options (optVerbosity), Verbosity (..))
 
@@ -34,23 +33,18 @@ putErrsLn = mapM_ putErrLn
 
 -- |Print a list of error messages on 'stderr' and abort the program
 abortWith :: [String] -> IO a
-abortWith errs = putErrsLn errs >> exitWith (ExitFailure 1)
+abortWith errs = putErrsLn errs >> exitFailure
+
+-- |Print a list of error messages on 'stderr' and abort the program
+abortWithMessages :: [Message] -> IO a
+abortWithMessages msgs = putErrLn (show $ ppMessages msgs) >> exitFailure
 
 -- |Raise an internal error
 internalError :: String -> a
 internalError msg = error $ "Internal error: " ++ msg
 
 errorMessage :: Message -> a
-errorMessage = error . show
+errorMessage = error . show . ppMessage
 
 errorMessages :: [Message] -> a
-errorMessages = error . unlines . map show
-
-posMsg :: Ident -> String -> Message
-posMsg i errMsg = toMessage (idPosition i) errMsg
-
-qposMsg :: QualIdent -> String -> Message
-qposMsg i errMsg = toMessage (qidPosition i) errMsg
-
-mposMsg :: ModuleIdent -> String -> Message
-mposMsg m errMsg = toMessage (midPosition m) errMsg
+errorMessages = error . show . ppMessages

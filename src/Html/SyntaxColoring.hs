@@ -73,7 +73,8 @@ data FunctionKind
   | OtherFunctionKind deriving Show
 
 --- @param plaintext
---- @param list with parse-Results with descending quality  e.g. [typingParse, fullParse, parse]
+--- @param list with parse-Results with descending quality,
+---        e.g. [typingParse, fullParse, parse]
 --- @param lex-Result
 --- @return program
 genProgram :: String -> [MsgMonad Module] -> MsgMonad [(Position, Token)] -> Program
@@ -123,18 +124,18 @@ getQualIdent  _ = Nothing
 setMessagePosition :: Message -> Message
 setMessagePosition m@(Message (Just p) _) = trace'' ("pos:" ++ show p ++ ":" ++ show m) m
 setMessagePosition (Message _ m) =
-        let mes@(Message pos _) =  (Message (getPositionFromString m) m) in
+        let mes@(Message pos _) =  (Message (getPositionFromString $ show m) m) in
         trace'' ("pos:" ++ show pos ++ ":" ++ show mes) mes
 
 getPositionFromString :: String -> Maybe Position
-getPositionFromString message =
+getPositionFromString msg =
      if l > 0 && c > 0
           then Just Position{file=f,line=l,column=c,astRef=noRef}
           else Nothing
   where
-      f = takeWhile (/= '"') (tail (dropWhile (/= '"') message))
-      l = readInt (takeWhile (/= '.') (drop 7 (dropWhile (/= ',') message)))
-      c = readInt (takeWhile (/= ':') (tail (dropWhile (/= '.') (drop 7 (dropWhile (/= ',') message)))))
+      f = takeWhile (/= '"') (tail (dropWhile (/= '"') msg))
+      l = readInt (takeWhile (/= '.') (drop 7 (dropWhile (/= ',') msg)))
+      c = readInt (takeWhile (/= ':') (tail (dropWhile (/= '.') (drop 7 (dropWhile (/= ',') msg)))))
 
 
 readInt :: String -> Int
@@ -161,7 +162,7 @@ nubMessages :: [Message] -> [Message]
 nubMessages = nubBy eqMessage
 
 eqMessage :: Message -> Message -> Bool
-eqMessage (Message p1 s1) (Message p2 s2) = (p1 == p2) && (s1 == s2)
+eqMessage (Message p1 s1) (Message p2 s2) = (p1 == p2) && (show s1 == show s2)
 
 prepareMessages :: [Message] -> [Message]
 prepareMessages = qsort lessMessage . map setMessagePosition . nubMessages
@@ -281,7 +282,7 @@ mergeMessages' :: [Message] -> [(Position,Token)] -> [([Message],Position,Token)
 mergeMessages' _ [] = []
 mergeMessages' [] ((p,t):ps) = ([],p,t) : mergeMessages' [] ps
 mergeMessages' mss@(m@(Message mPos x):ms) ((p,t):ps)
-    | mPos <= Just p = trace' (show mPos ++ " <= " ++ show (Just p) ++ " Message: " ++ x) ([m],p,t) : mergeMessages' ms ps
+    | mPos <= Just p = trace' (show mPos ++ " <= " ++ show (Just p) ++ " Message: " ++ show x) ([m],p,t) : mergeMessages' ms ps
     | otherwise = ([],p,t) : mergeMessages' mss ps
 
 
@@ -448,29 +449,30 @@ isTokenIdentifier (Token cat _) =
 
 -- DECL Position
 
-getPosition :: Decl -> Position
-getPosition (InfixDecl pos _ _ _) = pos
-getPosition (DataDecl pos _ _ _) = pos
-getPosition (NewtypeDecl pos _ _ _) = pos
-getPosition (TypeDecl pos _ _ _) = pos
-getPosition (TypeSig pos _ _) = pos
-getPosition (EvalAnnot pos _ _) = pos
-getPosition (FunctionDecl pos _ _) = pos
-getPosition (ExternalDecl pos _ _ _ _) = pos
-getPosition (FlatExternalDecl pos _) = pos
-getPosition (PatternDecl pos _ _) = pos
-getPosition (ExtraVariables pos _) = pos
+declPos :: Decl -> Position
+declPos (InfixDecl        p _ _ _  ) = p
+declPos (DataDecl         p _ _ _  ) = p
+declPos (NewtypeDecl      p _ _ _  ) = p
+declPos (TypeDecl         p _ _ _  ) = p
+declPos (TypeSig          p _ _    ) = p
+declPos (EvalAnnot        p _ _    ) = p
+declPos (FunctionDecl     p _ _    ) = p
+declPos (ExternalDecl     p _ _ _ _) = p
+declPos (FlatExternalDecl p _      ) = p
+declPos (PatternDecl      p _ _    ) = p
+declPos (ExtraVariables   p _      ) = p
 
 
 lessDecl :: Decl -> Decl -> Bool
-lessDecl = (<) `on` getPosition
+lessDecl = (<) `on` declPos
 
 lessImportDecl :: ImportDecl -> ImportDecl -> Bool
 lessImportDecl = (<) `on` (\ (ImportDecl p _ _ _ _) -> p)
 
 qsort :: (a -> a -> Bool) -> [a] -> [a]
-qsort _ []     = []
-qsort less (x:xs) = qsort less [y | y <- xs, less y x] ++ [x] ++ qsort less [y | y <- xs, not $ less y x]
+qsort _    []     = []
+qsort less (x:xs) = concat [ qsort less [y | y <- xs, less y x]
+                           , [x], qsort less [y | y <- xs, not $ less y x]]
 
 
 -- DECL TO CODE --------------------------------------------------------------------

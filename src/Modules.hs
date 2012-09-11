@@ -20,6 +20,7 @@ module Modules
 
 import Control.Monad (unless, when)
 import Data.Maybe (fromMaybe)
+import Text.PrettyPrint
 
 import Curry.Base.MessageMonad
 import Curry.Base.Position
@@ -28,7 +29,7 @@ import Curry.ExtendedFlat.InterfaceEquality (eqInterface)
 import Curry.Files.Filenames
 import Curry.Files.PathUtils
 
-import Base.Messages (abortWith, mposMsg, putErrsLn)
+import Base.Messages (abortWith, abortWithMessages, putErrsLn)
 
 import Env.Eval (evalEnv)
 
@@ -74,7 +75,7 @@ compileModule :: Options -> FilePath -> IO ()
 compileModule opts fn = do
   loaded <- loadModule opts fn
   case checkModule opts loaded of
-    CheckFailed errs -> abortWith $ map show errs
+    CheckFailed errs -> abortWithMessages errs
     CheckSuccess (env, mdl, dumps) -> do
       showWarnings opts $ warnCheck env mdl
       mapM_ (doDump opts) dumps
@@ -114,12 +115,13 @@ loadModule opts fn = do
       let parsed = ok $ CS.parseModule True fn src -- TODO
       -- check module header
       let (mdl, hdrErrs) = checkModuleHeader opts fn parsed
-      unless (null hdrErrs) $ abortWith $ map show hdrErrs -- TODO
+      unless (null hdrErrs) $ abortWithMessages hdrErrs -- TODO
       -- load the imported interfaces into an InterfaceEnv
       (iEnv, intfErrs) <- loadInterfaces (optImportPaths opts) mdl
-      unless (null intfErrs) $ abortWith $ map show intfErrs -- TODO
+      unless (null intfErrs) $ abortWithMessages intfErrs -- TODO
       -- add information of imported modules
-      let env = importModules opts mdl iEnv
+      let (env, impErrs) = importModules opts mdl iEnv
+      unless (null impErrs) $ abortWithMessages impErrs -- TODO
       return (env, mdl)
 
 checkModuleHeader :: Options -> FilePath -> CS.Module -> (CS.Module, [Message])
@@ -312,5 +314,6 @@ doDump opts (level, env, dump) = when (level `elem` optDumps opts) $ do
     | otherwise  = lookupHeader lhs
 
 errModuleFileMismatch :: ModuleIdent -> Message
-errModuleFileMismatch mid = mposMsg mid $ "module \"" ++ moduleName mid
-  ++ "\" must be in a file \"" ++ moduleName mid ++ ".(l)curry\""
+errModuleFileMismatch mid = posMessage mid $ hsep $ map text
+  [ "Module", moduleName mid, "must be in a file"
+  , moduleName mid ++ ".(l)curry" ]

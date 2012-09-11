@@ -27,12 +27,13 @@ is defined more than once.
 
 > import Control.Monad (forM, liftM, liftM2, liftM3, unless, when)
 > import qualified Control.Monad.State as S (State, runState, gets, modify)
+> import Text.PrettyPrint
 
 > import Curry.Base.Ident
 > import Curry.Base.Position
 > import Curry.Syntax
 
-> import Base.Messages (Message, posMsg, qposMsg, internalError)
+> import Base.Messages (Message, posMessage, internalError)
 > import Base.TopEnv
 > import Base.Utils (findMultiples)
 
@@ -314,36 +315,43 @@ Error messages:
 \begin{verbatim}
 
 > errUndefinedType :: QualIdent -> Message
-> errUndefinedType tc = qposMsg tc $ "Undefined type " ++ qualName tc
+> errUndefinedType tc = posMessage tc $ hsep $ map text
+>   ["Undefined type", qualName tc]
 
 > errAmbiguousType :: QualIdent -> Message
-> errAmbiguousType tc = qposMsg tc $ "Ambiguous type " ++ qualName tc
+> errAmbiguousType tc = posMessage tc $ hsep $ map text
+>   ["Ambiguous type", qualName tc]
 
 > errMultipleDeclaration :: [Ident] -> Message
 > errMultipleDeclaration []     = internalError
 >   "KindCheck.errMultipleDeclaration: empty list"
-> errMultipleDeclaration (i:is) = posMsg i $
->   "Multiple declarations for type `" ++ idName i ++ "` at:\n"
->   ++ unlines (map showPos (i:is))
->   where showPos = ("    " ++) . showLine . idPosition
+> errMultipleDeclaration (i:is) = posMessage i $
+>   text "Multiple declarations for type" <+> text (escName i)
+>   <+> text "at:" $+$
+>   nest 2 (vcat (map showPos (i:is)))
+>   where showPos = text . showLine . idPosition
 
 > errNonLinear :: Ident -> Message
-> errNonLinear tv = posMsg tv $ "Type variable " ++ idName tv ++
->   " occurs more than once on left hand side of type declaration"
+> errNonLinear tv = posMessage tv $ hsep $ map text
+>   [ "Type variable", idName tv
+>   , "occurs more than once on left hand side of type declaration"]
 
 > errNoVariable :: Ident -> Message
-> errNoVariable tv = posMsg tv $ "Type constructor " ++ idName tv ++
->   " used in left hand side of type declaration"
+> errNoVariable tv = posMessage tv $ hsep $ map text
+>   [ "Type constructor", idName tv
+>   , "used in left hand side of type declaration"]
 
 > errWrongArity :: QualIdent -> Int -> Int -> Message
-> errWrongArity tc arity argc = qposMsg tc $
->   "Type constructor " ++ qualName tc ++ " expects " ++ arguments arity ++
->   " but is applied to " ++ show argc
+> errWrongArity tc arity argc = posMessage tc $
+>   text "Type constructor" <+> text (qualName tc)
+>   <+> text "expects" <+> text (arguments arity)
+>   <> comma <+> text "but is applied to" <+> text (show argc)
 >   where arguments 0 = "no arguments"
 >         arguments 1 = "1 argument"
 >         arguments n = show n ++ " arguments"
 
 > errUnboundVariable :: Ident -> Message
-> errUnboundVariable tv = posMsg tv $ "Unbound type variable " ++ idName tv
+> errUnboundVariable tv = posMessage tv $ hsep $ map text
+>   ["Unbound type variable", idName tv]
 
 \end{verbatim}

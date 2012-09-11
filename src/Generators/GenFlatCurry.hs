@@ -15,6 +15,7 @@ import Control.Monad.State (State, runState, gets, modify)
 import Data.List (mapAccumL, nub)
 import qualified Data.Map as Map (Map, empty, insert, lookup, fromList, toList)
 import Data.Maybe (catMaybes, fromJust, fromMaybe, isJust)
+import Text.PrettyPrint
 
 -- curry-base
 import Curry.Base.MessageMonad
@@ -24,7 +25,7 @@ import Curry.ExtendedFlat.TypeInference
 import qualified Curry.Syntax as CS
 
 -- Base
-import Base.Messages (internalError, qposMsg)
+import Base.Messages (internalError)
 import Base.ScopeEnv (ScopeEnv)
 import qualified Base.ScopeEnv as ScopeEnv
 import Base.TopEnv (topEnvMap)
@@ -801,8 +802,9 @@ missingVarIndex :: Show a => a -> [Char]
 missingVarIndex ident = "GenFlatCurry: missing index for \"" ++ show ident ++ "\""
 
 overlappingRules :: QualIdent -> Message
-overlappingRules qid = qposMsg qid $ "Function \"" ++ qualName qid
-  ++ "\" is non-deterministic due to non-trivial overlapping rules"
+overlappingRules qid = posMessage qid $ hsep $ map text
+  [ "Function", '"' : qualName qid ++ "\""
+  , "is non-deterministic due to non-trivial overlapping rules" ]
 
 -------------------------------------------------------------------------------
 

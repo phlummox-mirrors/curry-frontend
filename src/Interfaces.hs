@@ -29,6 +29,7 @@ import Control.Monad.IO.Class (liftIO)
 import qualified Control.Monad.State as S (StateT (..), modify)
 import Data.List (intercalate, isPrefixOf)
 import qualified Data.Map as Map
+import Text.PrettyPrint
 
 import Curry.Base.Ident
 import Curry.Base.Position
@@ -36,7 +37,7 @@ import qualified Curry.ExtendedFlat.Type as EF
 import Curry.Files.PathUtils as PU
 import Curry.Syntax
 
-import Base.Messages (Message, toMessage, internalError)
+import Base.Messages (Message, posMessage, internalError)
 
 import Env.Interface
 
@@ -175,21 +176,21 @@ flatToCurryInterface (EF.Prog m imps ts fs os)
   isSpecialPreludeType _ = False
 
 errInterfaceNotFound :: Position -> ModuleIdent -> Message
-errInterfaceNotFound p m = toMessage p $
-  "Interface for module " ++ moduleName m ++ " not found"
+errInterfaceNotFound p m = posMessage p $
+  text "Interface for module" <+> text (moduleName m) <+> text "not found"
 
 errWrongInterface :: Position -> ModuleIdent -> ModuleIdent -> Message
-errWrongInterface p m m' = toMessage p $
-  "Expected interface for " ++ show m ++ " but found " ++ show m'
-  ++ show (midQualifiers m, midQualifiers m')
+errWrongInterface p m m' = posMessage p $
+  text "Expected interface for" <+> text (moduleName m)
+  <> comma <+> text "but found" <+> text (moduleName m')
 
 errCyclicImport :: Position -> [ModuleIdent] -> Message
 errCyclicImport _ []  = internalError "Interfaces.errCyclicImport: empty list"
-errCyclicImport p [m] = toMessage p $
-  "Recursive import for module " ++ moduleName m
-errCyclicImport p ms  = toMessage p $
-  "Cylic import dependency between modules "
-  ++ intercalate ", " inits ++ " and " ++ lastm
+errCyclicImport p [m] = posMessage p $
+  text "Recursive import for module" <+> text (moduleName m)
+errCyclicImport p ms  = posMessage p $
+  text "Cylic import dependency between modules"
+  <+> text (intercalate ", " inits ++ " and " ++ lastm)
   where
   (inits, lastm)         = splitLast $ map moduleName ms
   splitLast []           = internalError "Interfaces.splitLast: empty list"

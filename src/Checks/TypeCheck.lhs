@@ -38,7 +38,7 @@ type annotation is present.
 
 > import Base.CurryTypes (fromQualType, toType, toTypes)
 > import Base.Expr
-> import Base.Messages (Message, toMessage, posMsg, internalError)
+> import Base.Messages (Message, posMessage, internalError)
 > import Base.SCC
 > import Base.TopEnv
 > import Base.Types
@@ -1320,39 +1320,39 @@ Error functions.
 > errRecursiveTypes :: [Ident] -> Message
 > errRecursiveTypes []         = internalError
 >   "TypeCheck.recursiveTypes: empty list"
-> errRecursiveTypes [tc]       = posMsg tc $
->   "Recursive synonym type " ++ idName tc
-> errRecursiveTypes (tc : tcs) = posMsg tc $
->   "Recursive synonym types " ++ idName tc ++ types "" tcs
+> errRecursiveTypes [tc]       = posMessage tc $ hsep $ map text
+>   ["Recursive synonym type", idName tc]
+> errRecursiveTypes (tc : tcs) = posMessage tc $
+>   text "Recursive synonym types" <+> text (idName tc) <+> types empty tcs
 >   where
->   types _    []         = ""
->   types comm [tc1]      = comm ++ " and " ++ idName tc1
->                           ++ showLine (idPosition tc1)
->   types _    (tc1:tcs1) = ", " ++ idName tc1
->                           ++ showLine (idPosition tc1)
->                           ++ types "," tcs1
+>   types _    []         = empty
+>   types comm [tc1]      = comm <+> text "and" <+> text (idName tc1)
+>                           <+> parens (text $ showLine $ idPosition tc1)
+>   types _    (tc1:tcs1) = comma <+> text (idName tc1) <+>
+>                           parens (text $ showLine $ idPosition tc1)
+>                           <> types comma tcs1
 
 > errPolymorphicFreeVar :: Ident -> Message
-> errPolymorphicFreeVar v = posMsg v $
->   "Free variable " ++ idName v ++ " has a polymorphic type"
+> errPolymorphicFreeVar v = posMessage v $ hsep $ map text
+>   ["Free variable", idName v, "has a polymorphic type"]
 
 > errTypeSigTooGeneral :: Position -> ModuleIdent -> Doc -> TypeExpr -> TypeScheme
 >                      -> Message
-> errTypeSigTooGeneral p m what ty sigma = toMessage p $ show $ vcat
+> errTypeSigTooGeneral p m what ty sigma = posMessage p $ vcat
 >   [ text "Type signature too general", what
 >   , text "Inferred type:"  <+> ppTypeScheme m sigma
 >   , text "Type signature:" <+> ppTypeExpr 0 ty
 >   ]
 
 > errNonFunctionType :: Position -> String -> Doc -> ModuleIdent -> Type -> Message
-> errNonFunctionType p what doc m ty = toMessage p $ show $ vcat
+> errNonFunctionType p what doc m ty = posMessage p $ vcat
 >   [ text "Type error in" <+> text what, doc
 >   , text "Type:" <+> ppType m ty
 >   , text "Cannot be applied"
 >   ]
 
 > errNonBinaryOp :: Position -> String -> Doc -> ModuleIdent -> Type -> Message
-> errNonBinaryOp p what doc m ty = toMessage p $ show $ vcat
+> errNonBinaryOp p what doc m ty = posMessage p $ vcat
 >   [ text "Type error in" <+> text what, doc
 >   , text "Type:" <+> ppType m ty
 >   , text "Cannot be used as binary operator"
@@ -1360,7 +1360,7 @@ Error functions.
 
 > errTypeMismatch :: Position -> String -> Doc -> ModuleIdent -> Type -> Type -> Doc
 >                 -> Message
-> errTypeMismatch p what doc m ty1 ty2 reason = toMessage p $ show $ vcat
+> errTypeMismatch p what doc m ty1 ty2 reason = posMessage p $ vcat
 >   [ text "Type error in"  <+> text what, doc
 >   , text "Inferred type:" <+> ppType m ty2
 >   , text "Expected type:" <+> ppType m ty1
@@ -1368,7 +1368,7 @@ Error functions.
 >   ]
 
 > errSkolemEscapingScope :: Position -> ModuleIdent -> Doc -> Type -> Message
-> errSkolemEscapingScope p m what ty = toMessage p $ show $ vcat
+> errSkolemEscapingScope p m what ty = posMessage p $ vcat
 >   [ text "Existential type escapes out of its scope"
 >   , what, text "Type:" <+> ppType m ty
 >   ]

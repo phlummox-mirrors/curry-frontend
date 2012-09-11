@@ -27,13 +27,14 @@ definition.
 > import Data.List ((\\), insertBy, partition)
 > import Data.Maybe (fromJust, isJust, isNothing, maybeToList)
 > import qualified Data.Set as Set (empty, insert, member)
+> import Text.PrettyPrint
 
 > import Curry.Base.Ident
 > import Curry.Base.Position
 > import Curry.Syntax
 
 > import Base.Expr
-> import Base.Messages (Message, toMessage, internalError, posMsg, qposMsg)
+> import Base.Messages (Message, posMessage, internalError)
 > import Base.NestEnv
 > import Base.Types
 > import Base.Utils ((++!), findDouble, findMultiples)
@@ -982,113 +983,122 @@ Error messages.
 \begin{verbatim}
 
 > errUndefinedVariable :: QualIdent -> Message
-> errUndefinedVariable v = qposMsg v $ qualName v ++ " is undefined"
+> errUndefinedVariable v = posMessage v $ hsep $ map text
+>   [qualName v, "is undefined"]
 
 > errUndefinedData :: QualIdent -> Message
-> errUndefinedData c = qposMsg c $ "Undefined data constructor " ++ qualName c
+> errUndefinedData c = posMessage c $ hsep $ map text
+>   ["Undefined data constructor", qualName c]
 
 > errUndefinedLabel :: Ident -> Message
-> errUndefinedLabel l = posMsg l $ "Undefined record label `" ++ idName l ++ "`"
+> errUndefinedLabel l = posMessage l $  hsep $ map text
+>   ["Undefined record label", escName l]
 
 > errAmbiguousIdent :: [RenameInfo] -> QualIdent -> Message
 > errAmbiguousIdent rs | any isConstr rs = errAmbiguousData
 >                      | otherwise       = errAmbiguousVariable
 
 > errAmbiguousVariable :: QualIdent -> Message
-> errAmbiguousVariable v = qposMsg v $ "Ambiguous variable " ++ qualName v
+> errAmbiguousVariable v = posMessage v $ hsep $ map text
+>   ["Ambiguous variable", qualName v]
 
 > errAmbiguousData :: QualIdent -> Message
-> errAmbiguousData c = qposMsg c $ "Ambiguous data constructor " ++ qualName c
+> errAmbiguousData c = posMessage c $  hsep $ map text
+>   ["Ambiguous data constructor", qualName c]
 
 > errDuplicateDefinition :: Ident -> Message
-> errDuplicateDefinition v = posMsg v $
->   "More than one definition for `" ++ idName v ++ "`"
+> errDuplicateDefinition v = posMessage v $ hsep $ map text
+>   ["More than one definition for", escName v]
 
 > errDuplicateVariable :: Ident -> Message
-> errDuplicateVariable v = posMsg v $
->   idName v ++ " occurs more than once in pattern"
+> errDuplicateVariable v = posMessage v $ hsep $ map text
+>   [idName v, "occurs more than once in pattern"]
 
 > errMultipleDataConstructor :: [Ident] -> Message
 > errMultipleDataConstructor [] = internalError
 >   "SyntaxCheck.errMultipleDataDeclaration: empty list"
-> errMultipleDataConstructor (i:is) = posMsg i $
->   "Multiple definitions for data constructor `" ++ idName i ++ "` at:\n"
->   ++ unlines (map showPos (i:is))
->   where showPos = ("    " ++) . showLine . idPosition
+> errMultipleDataConstructor (i:is) = posMessage i $
+>   text "Multiple definitions for data constructor" <+> text (escName i)
+>   <+> text "at:" $+$
+>   nest 2 (vcat (map showPos (i:is)))
+>   where showPos = text . showLine . idPosition
 
 > errDuplicateTypeSig :: Ident -> Message
-> errDuplicateTypeSig v = posMsg v $
->   "More than one type signature for `" ++ idName v ++ "`"
+> errDuplicateTypeSig v = posMessage v $ hsep $ map text
+>   ["More than one type signature for", escName v]
 
 > errDuplicateEvalAnnot :: Ident -> Message
-> errDuplicateEvalAnnot v = posMsg v $
->   "More than one eval annotation for `" ++ idName v ++ "`"
+> errDuplicateEvalAnnot v = posMessage v $ hsep $ map text
+>   ["More than one eval annotation for", escName v]
 
 > errDuplicateLabel :: Ident -> Message
-> errDuplicateLabel l = posMsg l $
->   "Multiple occurrence of record label `" ++ idName l ++ "`"
+> errDuplicateLabel l = posMessage l $ hsep $ map text
+>   ["Multiple occurrence of record label", escName l]
 
 > errMissingLabel :: Position -> Ident -> QualIdent -> String -> Message
-> errMissingLabel p l r what = toMessage p $
->   "Missing label `" ++ idName l
->   ++ "` in the " ++ what ++ " of `" ++ idName (unqualify r) ++ "`"
+> errMissingLabel p l r what = posMessage p $ hsep $ map text
+>   ["Missing label", escName l, "in the", what, "of", escName (unqualify r)]
 
 > errIllegalLabel :: Ident -> QualIdent -> Message
-> errIllegalLabel l r = posMsg l $
->   "Label `" ++ idName l ++ "` is not defined in record `"
->   ++ idName (unqualify r) ++ "`"
+> errIllegalLabel l r = posMessage l $ hsep $ map text
+>   ["Label", escName l, "is not defined in record", escName (unqualify r)]
 
 > errIllegalRecordId :: Ident -> Message
-> errIllegalRecordId r = posMsg r $ "Record identifier `" ++ idName r
->     ++ "` already assigned to a data constructor"
+> errIllegalRecordId r = posMessage r $ hsep $ map text
+>   ["Record identifier", escName r, "already assigned to a data constructor"]
 
 > errNonVariable :: String -> Ident -> Message
-> errNonVariable what c = posMsg c $
->   "Data constructor `" ++ idName c ++ "` in left hand side of " ++ what
+> errNonVariable what c = posMessage c $ hsep $ map text
+>   ["Data constructor", escName c, "in left hand side of", what]
 
 > errNoBody :: Ident -> Message
-> errNoBody v = posMsg v $ "No body for `" ++ idName v ++ "`"
+> errNoBody v = posMessage v $  hsep $ map text ["No body for", escName v]
 
 > errNoTypeSig :: Ident -> Message
-> errNoTypeSig f = posMsg f $
->   "No type signature for external function `" ++ idName f ++ "`"
+> errNoTypeSig f = posMessage f $ hsep $ map text
+>   ["No type signature for external function", escName f]
 
 > errToplevelPattern :: Position -> Message
-> errToplevelPattern p = toMessage p
+> errToplevelPattern p = posMessage p $ text
 >   "Pattern declaration not allowed at top-level"
 
 > errNotALabel :: Ident -> Message
-> errNotALabel l = posMsg l $ "`" ++ idName l ++ "` is not a record label"
+> errNotALabel l = posMessage l $
+>   text (escName l) <+> text "is not a record label"
 
 > errDifferentArity :: Ident -> Message
-> errDifferentArity f = posMsg f $
->   "Equations for `" ++ idName f ++ "` have different arities"
+> errDifferentArity f = posMessage f $ hsep $ map text
+>   ["Equations for", escName f, "have different arities"]
 
 > errWrongArity :: QualIdent -> Int -> Int -> Message
-> errWrongArity c arity' argc = qposMsg c $
->   "Data constructor " ++ qualName c ++ " expects " ++ arguments arity' ++
->   " but is applied to " ++ show argc
+> errWrongArity c arity' argc = posMessage c $ hsep (map text
+>   ["Data constructor", qualName c, "expects", arguments arity'])
+>   <> comma <+> text "but is applied to" <+> text (show argc)
 >   where arguments 0 = "no arguments"
 >         arguments 1 = "1 argument"
 >         arguments n = show n ++ " arguments"
 
 > errIllegalRecordPattern :: Position -> Message
-> errIllegalRecordPattern p = toMessage p
->   "Expexting `_` after `|` in the record pattern"
+> errIllegalRecordPattern p = posMessage p $ hsep $ map text
+>   [ "Expexting", escName anonId, "after", escName (mkIdent "|")
+>   , "in the record pattern" ]
 
 > errMissingLanguageExtension :: Position -> String -> Extension -> Message
-> errMissingLanguageExtension p what ext = toMessage p $
->   what ++ " are not supported in standard Curry."
->   ++ "\n  Use flag -e or -X" ++ show ext ++ " to enable this extension."
+> errMissingLanguageExtension p what ext = posMessage p $
+>   text what <+> text "are not supported in standard Curry." $+$
+>   nest 2 (text "Use flag -e or -X" <> text (show ext)
+>           <+> text "to enable this extension.")
 
 > errEmptyRecord :: Position -> Message
-> errEmptyRecord p = toMessage p "empty records are not allowed"
+> errEmptyRecord p = posMessage p $ text "Empty records are not allowed"
 
 > errInfixWithoutParens :: Position -> [(QualIdent, QualIdent)] -> Message
-> errInfixWithoutParens p calls = toMessage p $
->   "Missing parens in infix patterns: \n" ++ unlines (map showCall calls)
->   where showCall (q1, q2) =
->           show q1 ++ " " ++ showLine (qidPosition q1)
->           ++ "calls " ++ show q2 ++ " " ++ showLine (qidPosition q2)
+> errInfixWithoutParens p calls = posMessage p $
+>   text "Missing parens in infix patterns:" $+$
+>   vcat (map showCall calls)
+>   where
+>   showCall (q1, q2) = showWithPos q1 <+> text "calls" <+> showWithPos q2
+>   showWithPos q =  text (qualName q)
+>                <+> parens (text $ showLine $ qidPosition q)
 
 \end{verbatim}

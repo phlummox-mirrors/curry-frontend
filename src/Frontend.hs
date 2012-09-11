@@ -59,9 +59,9 @@ genFullCurrySyntax opts fn m = runMsgIO m $ \mod1 -> do
     then do
       loaded <- loadModule opts fn
       case checkModule opts loaded of
-        CheckFailed errs'        -> return $ failWith $ msgTxt $ head errs'
+        CheckFailed errs'        -> return $ failWith $ show $ head errs'
         CheckSuccess (_, mod',_) -> return (return  mod')
-    else return $ failWith $ head errs
+    else return $ failWith $ show $ head errs
 
 -- TODO: Resembles CurryBuilder
 

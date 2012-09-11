@@ -18,12 +18,13 @@ import Control.Monad.State
   (State, execState, filterM, gets, modify, unless, when, foldM_)
 import qualified Data.Map as Map (empty, insert, lookup)
 import Data.List (intersect, intersectBy, unionBy)
+import Text.PrettyPrint
 
 import Curry.Base.Ident
 import Curry.Base.Position
 import Curry.Syntax
 
-import Base.Messages (Message, toMessage)
+import Base.Messages (Message, posMessage)
 import qualified Base.ScopeEnv as ScopeEnv
 
 import Env.Value (ValueEnv, ValueInfo (..), qualLookupValue)
@@ -738,43 +739,39 @@ typeId ident = qualify (renameIdent ident 1)
 -- ---------------------------------------------------------------------------
 
 warnMultiplyImportedModule :: ModuleIdent -> Message
-warnMultiplyImportedModule mid = toMessage (midPosition mid) $
-  "Module \"" ++ show mid ++ "\" is imported more than once"
+warnMultiplyImportedModule mid = posMessage mid $ hsep $ map text
+  ["Module", moduleName mid, "is imported more than once"]
 
 warnMultiplyImportedSymbol :: ModuleIdent -> Ident -> Message
-warnMultiplyImportedSymbol mid ident = posWarn ident $
-  "Symbol \"" ++ show ident ++ "\" is imported from module \""
-  ++ show mid ++ "\" more than once"
+warnMultiplyImportedSymbol mid ident = posMessage ident $ hsep $ map text
+  [ "Symbol", escName ident, "from module", moduleName mid
+  , "is imported more than once" ]
 
 warnMultiplyHiddenSymbol :: ModuleIdent -> Ident -> Message
-warnMultiplyHiddenSymbol mid ident = posWarn ident $
-  "Symbol \"" ++ show ident ++ "\" from module \"" ++ show mid
-  ++ "\" is hidden more than once"
+warnMultiplyHiddenSymbol mid ident = posMessage ident $ hsep $ map text
+  [ "Symbol", escName ident, "from module", moduleName mid
+  , "is hidden more than once" ]
 
 warnDisjoinedFunctionRules :: Ident -> Position -> Message
-warnDisjoinedFunctionRules ident pos = posWarn ident $
-     "Rules for function \"" ++ show ident ++ "\" "
-     ++ "are disjoined "
-     ++ "(first occurrence at "
-     ++ show (line pos) ++ "." ++ show (column pos) ++ ")"
+warnDisjoinedFunctionRules ident pos = posMessage ident $ hsep (map text
+  [ "Rules for function", escName ident, "are disjoined" ])
+  <+> parens (text "first occurrence at" <+> text (showLine pos))
 
 unrefTypeVar :: Ident -> Message
-unrefTypeVar ident = posWarn ident $
-  "Unreferenced type variable \"" ++ show ident ++ "\""
+unrefTypeVar ident = posMessage ident $ hsep $ map text
+  [ "Unreferenced type variable", escName ident ]
 
 unrefVar :: Ident -> Message
-unrefVar ident = posWarn ident $
-  "Unused declaration of variable \"" ++ show ident ++ "\""
+unrefVar ident = posMessage ident $ hsep $ map text
+  [ "Unused declaration of variable", escName ident ]
 
 shadowingVar :: Ident -> Message
-shadowingVar ident = posWarn ident $
-  "Shadowing symbol \"" ++ show ident ++ "\""
+shadowingVar ident = posMessage ident $ hsep $ map text
+  [ "Shadowing symbol", escName ident ]
 
 idleCaseAlts :: Position -> Message
-idleCaseAlts p = toMessage p "Idle case alternative(s)"
+idleCaseAlts p = posMessage p $ text "Idle case alternative(s)"
 
 overlappingCaseAlt :: Position -> Message
-overlappingCaseAlt p = toMessage p "Redundant overlapping case alternative"
-
-posWarn :: Ident -> String -> Message
-posWarn i msg = toMessage (idPosition i) msg
+overlappingCaseAlt p = posMessage p $ text
+  "Redundant overlapping case alternative"

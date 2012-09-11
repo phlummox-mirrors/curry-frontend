@@ -20,13 +20,14 @@ import qualified Control.Monad.State as S (State, gets, modify, runState)
 import qualified Data.Map as Map
 import Data.Maybe
 import qualified Data.Set as Set
+import Text.PrettyPrint
 
 import Curry.Base.Ident
 import Curry.Base.Position
 import Curry.Syntax
 
 import Base.CurryTypes (toQualType, toQualTypes)
-import Base.Messages (Message, errorMessages, posMsg, internalError)
+import Base.Messages (Message, posMessage, internalError)
 import Base.TopEnv
 import Base.Types
 import Base.TypeSubst (expandAliasType)
@@ -42,20 +43,21 @@ import CompilerOpts
 
 -- |The function 'importModules' brings the declarations of all
 -- imported interfaces into scope for the current module.
-importModules :: Options -> Module -> InterfaceEnv -> CompilerEnv
+importModules :: Options -> Module -> InterfaceEnv -> (CompilerEnv, [Message])
 importModules opts (Module mid _ imps _) iEnv
-  = expandTCValueEnv opts
-  $ importUnifyData
-  $ foldl importModule initEnv imps
+  = (\ (e, m) -> (expandTCValueEnv opts $ importUnifyData e, m))
+  $ foldl importModule (initEnv, []) imps
   where
     initEnv = (initCompilerEnv mid)
       { aliasEnv     = importAliases     imps -- import module aliases
       , interfaceEnv = iEnv                   -- imported interfaces
       }
-    importModule env (ImportDecl _ m q asM is) = case Map.lookup m iEnv of
-      Just intf -> importInterface (fromMaybe m asM) q is intf env
-      Nothing   -> internalError $ "Imports.importModules: no interface for "
-                                   ++ show m
+    importModule (env, msgs) (ImportDecl _ m q asM is) =
+      case Map.lookup m iEnv of
+        Just intf -> let (env', msgs') = importInterface (fromMaybe m asM) q is intf env
+                     in  (env', msgs ++ msgs')
+        Nothing   -> internalError $ "Imports.importModules: no interface for "
+                                    ++ show m
 
 -- ---------------------------------------------------------------------------
 -- Importing an interface into the module
@@ -85,15 +87,14 @@ type ExpValueEnv = IdentMap ValueInfo
 -- or both a qualified and an unqualified import (non-qualified import).
 
 importInterface :: ModuleIdent -> Bool -> Maybe ImportSpec -> Interface
-                -> CompilerEnv -> CompilerEnv
-importInterface m q is i env
-  | not (null errs) = errorMessages errs
-  | otherwise       = env
+                -> CompilerEnv -> (CompilerEnv, [Message])
+importInterface m q is i env = (env', errs)
+  where
+  env' = env
     { opPrecEnv = importEntities m q vs id              mPEnv  $ opPrecEnv env
     , tyConsEnv = importEntities m q ts (importData vs) mTCEnv $ tyConsEnv env
     , valueEnv  = importEntities m q vs id              mTyEnv $ valueEnv  env
     }
-  where
   mPEnv  = intfEnv bindPrec i -- all operator precedences
   mTCEnv = intfEnv bindTC   i -- all type constructors
   mTyEnv = intfEnv bindTy   i -- all values
@@ -396,23 +397,24 @@ expandTypeAll tc = do
     Nothing                -> report (errUndefinedEntity m tc) >> return []
 
 errUndefinedEntity :: ModuleIdent -> Ident -> Message
-errUndefinedEntity m x = posMsg x $
-  "Module " ++ moduleName m ++ " does not export " ++ idName x
+errUndefinedEntity m x = posMessage x $ hsep $ map text
+  [ "Module", moduleName m, "does not export", idName x ]
 
 errUndefinedDataConstr :: Ident -> Ident -> Message
-errUndefinedDataConstr tc c = posMsg c $
-  idName c ++ " is not a data constructor of type " ++ idName tc
+errUndefinedDataConstr tc c = posMessage c $ hsep $ map text
+  [ idName c, "is not a data constructor of type", idName tc ]
 
 errUndefinedLabel :: Ident -> Ident -> Message
-errUndefinedLabel tc c = posMsg c $
-  idName c ++ " is not a label of record type " ++ idName tc
+errUndefinedLabel tc c = posMessage c $ hsep $ map text
+  [ idName c, "is not a label of record type", idName tc ]
 
 errNonDataType :: Ident -> Message
-errNonDataType tc = posMsg tc $ idName tc ++ " is not a data type"
+errNonDataType tc = posMessage tc $ hsep $ map text
+  [ idName tc, "is not a data type" ]
 
 errImportDataConstr :: ModuleIdent -> Ident -> Message
-errImportDataConstr _ c = posMsg c $
-  "Explicit import for data constructor " ++ idName c
+errImportDataConstr _ c = posMessage c $ hsep $ map text
+  [ "Explicit import for data constructor", idName c ]
 
 -- ---------------------------------------------------------------------------
 

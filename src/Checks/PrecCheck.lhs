@@ -21,13 +21,14 @@ of the operators involved.
 > import Control.Monad (liftM, liftM2, liftM3, unless, when)
 > import qualified Control.Monad.State as S (State, runState, gets, modify)
 > import Data.List (partition)
+> import Text.PrettyPrint
 
 > import Curry.Base.Ident
 > import Curry.Base.Position
 > import Curry.Syntax
 
 > import Base.Expr
-> import Base.Messages (Message, posMsg, qposMsg)
+> import Base.Messages (Message, posMessage)
 > import Base.Utils (findDouble)
 
 > import Env.OpPrec (PEnv, OpPrec (..), PrecInfo (..), defaultP, bindP
@@ -490,21 +491,21 @@ Error messages.
 \begin{verbatim}
 
 > errUndefinedOperator :: Ident -> Message
-> errUndefinedOperator op = posMsg op $
->   "no definition for " ++ idName op ++ " in this scope"
+> errUndefinedOperator op = posMessage op $ hsep $ map text
+>   ["No definition for", idName op, "in this scope"]
 
 > errDuplicatePrecedence :: Ident -> Message
-> errDuplicatePrecedence op = posMsg op $
->   "More than one fixity declaration for " ++ idName op
+> errDuplicatePrecedence op = posMessage op $ hsep $ map text
+>   ["More than one fixity declaration for", idName op]
 
 > errInvalidParse :: String -> Ident -> QualIdent -> Message
-> errInvalidParse what op1 op2 = posMsg op1 $
->   "Invalid use of " ++ what ++ " " ++ idName op1
->   ++ " with " ++ qualName op2 ++ (showLine $ qidPosition op2)
+> errInvalidParse what op1 op2 = posMessage op1 $ hsep $ map text
+>   [ "Invalid use of", what, idName op1, "with", qualName op2
+>   , showLine $ qidPosition op2]
 
 > errAmbiguousParse :: String -> QualIdent -> QualIdent -> Message
-> errAmbiguousParse what op1 op2 = qposMsg op1 $
->   "Ambiguous use of " ++ what ++ " " ++ qualName op1
->   ++ " with " ++ qualName op2 ++ (showLine $ qidPosition op2)
+> errAmbiguousParse what op1 op2 = posMessage op1 $ hsep $ map text
+>   ["Ambiguous use of", what, qualName op1, "with", qualName op2
+>   , showLine $ qidPosition op2]
 
 \end{verbatim}
