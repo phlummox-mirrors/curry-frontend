@@ -18,7 +18,6 @@ module CurryBuilder (buildCurry, smake) where
 import Control.Monad   (liftM)
 import Data.Maybe      (catMaybes, mapMaybe)
 import System.FilePath (normalise)
-import System.Time     (ClockTime)
 
 import Curry.Base.Ident
 import Curry.Files.Filenames
@@ -143,13 +142,13 @@ smake dests deps actOutdated actUpToDate = do
     | outOfDate destTimes depTimes    = actOutdated
     | otherwise                       = actUpToDate
 
-  getDestTimes :: [FilePath] -> IO [ClockTime]
+--   getDestTimes :: [FilePath] -> IO [ClockTime]
   getDestTimes = liftM catMaybes . mapM getModuleModTime
 
-  getDepTimes :: [FilePath] -> IO [ClockTime]
+--   getDepTimes :: [FilePath] -> IO [ClockTime]
   getDepTimes = mapM (abortOnMissing getModuleModTime)
 
-  outOfDate :: [ClockTime] -> [ClockTime] -> Bool
+--   outOfDate :: [ClockTime] -> [ClockTime] -> Bool
   outOfDate tgtimes dptimes = or [ tg < dp | tg <- tgtimes, dp <- dptimes]
 
   abortOnMissing :: (FilePath -> IO (Maybe a)) -> FilePath -> IO a
