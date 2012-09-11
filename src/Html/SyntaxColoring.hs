@@ -12,7 +12,7 @@ import Debug.Trace (trace)
 
 import Curry.Base.Ident
 import Curry.Base.Position
-import Curry.Base.MessageMonad
+import Curry.Base.Message
 import Curry.Syntax hiding (infixOp)
 
 import Base.Messages
@@ -77,7 +77,7 @@ data FunctionKind
 ---        e.g. [typingParse, fullParse, parse]
 --- @param lex-Result
 --- @return program
-genProgram :: String -> [MsgMonad Module] -> MsgMonad [(Position, Token)] -> Program
+genProgram :: String -> [MessageM Module] -> MessageM [(Position, Token)] -> Program
 genProgram plainText parseResults m = case runMsg m of
   (Left e, msgs) -> buildMessagesIntoPlainText (e : msgs) plainText
   (Right posNtokList, mess) ->
@@ -151,7 +151,7 @@ flatCode code = code
 
 -- ----------Message---------------------------------------
 
-getMessages :: MsgMonad a -> [Message]
+getMessages :: MessageM a -> [Message]
 getMessages = snd . runMsg --(Result mess _) = mess
 -- getMessages (Failure mess) = mess
 
@@ -193,7 +193,7 @@ buildMessagesIntoPlainText messages text =
          isLeq _ = True
 
 --- @param parse-Modules  [typingParse,fullParse,parse]
-catIdentifiers :: [MsgMonad Module] -> ([(ModuleIdent,ModuleIdent)],[Code])
+catIdentifiers :: [MessageM Module] -> ([(ModuleIdent,ModuleIdent)],[Code])
 catIdentifiers = catIds . rights_sc . map (fst . runMsg)
     where
       catIds [] = ([],[])

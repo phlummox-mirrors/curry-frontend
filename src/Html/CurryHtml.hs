@@ -17,7 +17,7 @@ import Control.Exception (SomeException (..), catch)
 import Data.Maybe (fromMaybe, isJust)
 
 import Curry.Base.Ident (QualIdent (..), unqualify)
-import Curry.Base.MessageMonad (MsgMonad, failWith, runMsg)
+import Curry.Base.Message (MessageM, failWith, runMsg)
 import Curry.Files.PathUtils (readModule, writeModule, lookupCurryFile
   , dropExtension, takeFileName)
 import Curry.Syntax (lexFile)
@@ -70,7 +70,7 @@ filename2program opts filename = do
 
 -- FIXME This is ugly. Avoid exceptions and report failure via MsgMonad
 -- instead! (hsi)
-catchError :: Show a => IO (MsgMonad a) -> IO (MsgMonad a)
+catchError :: Show a => IO (MessageM a) -> IO (MessageM a)
 catchError toDo = Control.Exception.catch (toDo >>= returnNF) handler
   where
     handler (SomeException e) = return (failWith (show e))

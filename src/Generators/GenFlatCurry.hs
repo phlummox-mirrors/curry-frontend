@@ -18,7 +18,7 @@ import Data.Maybe (catMaybes, fromJust, fromMaybe, isJust)
 import Text.PrettyPrint
 
 -- curry-base
-import Curry.Base.MessageMonad
+import Curry.Base.Message
 import Curry.Base.Ident as Id
 import Curry.ExtendedFlat.Type
 import Curry.ExtendedFlat.TypeInference

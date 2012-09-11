@@ -11,7 +11,7 @@ import Control.Monad (unless)
 import System.IO     (hPutStrLn, stderr)
 import System.Exit   (exitFailure)
 
-import Curry.Base.MessageMonad (Message, posMessage, ppMessage, ppMessages)
+import Curry.Base.Message (Message, posMessage, ppMessage, ppMessages)
 
 import CompilerOpts (Options (optVerbosity), Verbosity (..))
 

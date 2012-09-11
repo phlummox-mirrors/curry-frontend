@@ -12,7 +12,7 @@
 -}
 module Generators where
 
-import Curry.Base.MessageMonad (Message)
+import Curry.Base.Message (Message)
 
 import qualified Curry.AbstractCurry as AC (CurryProg)
 import qualified Curry.ExtendedFlat.Type as EF (Prog)

@@ -22,7 +22,7 @@ import Control.Monad (unless, when)
 import Data.Maybe (fromMaybe)
 import Text.PrettyPrint
 
-import Curry.Base.MessageMonad
+import Curry.Base.Message
 import Curry.Base.Position
 import Curry.Base.Ident
 import Curry.ExtendedFlat.InterfaceEquality (eqInterface)

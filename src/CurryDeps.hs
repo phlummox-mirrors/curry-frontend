@@ -29,7 +29,7 @@ import Data.List (intercalate, isSuffixOf, nub)
 import qualified Data.Map as Map (Map, empty, insert, lookup, toList)
 
 import Curry.Base.Ident
-import Curry.Base.MessageMonad
+import Curry.Base.Message
 import Curry.Files.Filenames
 import Curry.Files.PathUtils
 import Curry.Syntax (Module (..),  ImportDecl (..), parseHeader, patchModuleId)

@@ -19,7 +19,7 @@ import           Data.Maybe           (mapMaybe)
 import qualified Data.Map as Map      (empty)
 
 
-import Curry.Base.MessageMonad
+import Curry.Base.Message
 import Curry.Files.Filenames
 import Curry.Files.PathUtils
 import Curry.Syntax (Module (..), parseModule)
@@ -34,7 +34,7 @@ import Modules      (checkModule, checkModuleHeader, compileModule, loadModule)
     The result is the syntax tree of the program (type 'Module'; see Module
     "CurrySyntax").
 -}
-parse :: FilePath -> String -> MsgMonad Module
+parse :: FilePath -> String -> MessageM Module
 parse fn src = parseModule True fn src >>= genCurrySyntax
   where
   genCurrySyntax mod1
@@ -49,10 +49,10 @@ parse fn src = parseModule True fn src >>= genCurrySyntax
     environment variable "PAKCSLIBPATH". Additional search paths can
     be defined using the argument 'paths'.
 -}
-fullParse :: Options -> FilePath -> String -> IO (MsgMonad Module)
+fullParse :: Options -> FilePath -> String -> IO (MessageM Module)
 fullParse opts fn src = genFullCurrySyntax opts fn $ parse fn src
 
-genFullCurrySyntax :: Options -> FilePath -> MsgMonad Module -> IO (MsgMonad Module)
+genFullCurrySyntax :: Options -> FilePath -> MessageM Module -> IO (MessageM Module)
 genFullCurrySyntax opts fn m = runMsgIO m $ \mod1 -> do
   errs <- makeInterfaces opts fn mod1
   if null errs
