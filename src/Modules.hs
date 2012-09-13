@@ -31,8 +31,6 @@ import Curry.Files.PathUtils
 
 import Base.Messages (abortWith, abortWithMessages, putErrsLn)
 
-import Env.Eval (evalEnv)
-
 -- source representations
 import qualified Curry.AbstractCurry as AC
 import qualified Curry.ExtendedFlat.Type as EF
@@ -202,8 +200,7 @@ transModule :: Options -> CompilerEnv -> CS.Module
 transModule opts env mdl = (env5, ilCaseComp, dumps)
   where
   flat' = FlatCurry `elem` optTargetTypes opts
-  env0 = env { evalAnnotEnv = evalEnv mdl }
-  (desugared , env1) = desugar        mdl        env0
+  (desugared , env1) = desugar        mdl        env
   (simplified, env2) = simplify flat' desugared  env1
   (lifted    , env3) = lift           simplified env2
   (il        , env4) = ilTrans flat'  lifted     env3

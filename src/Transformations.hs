@@ -39,7 +39,7 @@ completeCase mdl env = (CC.completeCase (interfaceEnv env) mdl, env)
 -- |Translate into the intermediate language
 ilTrans :: Bool -> Module -> CompilerEnv -> (IL.Module, CompilerEnv)
 ilTrans flat mdl env = (il, env)
-  where il = IL.ilTrans flat (valueEnv env) (tyConsEnv env) (evalAnnotEnv env) mdl
+  where il = IL.ilTrans flat (valueEnv env) (tyConsEnv env) mdl
 
 -- |Translate a type into its representation in the intermediate language
 translType :: ModuleIdent -> ValueEnv -> TCEnv -> Type -> IL.Type
@@ -52,8 +52,8 @@ desugar mdl env = (mdl', env { valueEnv = tyEnv' })
 
 -- |Lift local declarations
 lift :: Module -> CompilerEnv -> (Module, CompilerEnv)
-lift mdl env = (mdl', env { valueEnv = tyEnv', evalAnnotEnv = eEnv' })
-  where (mdl', tyEnv', eEnv') = L.lift (valueEnv env) (evalAnnotEnv env) mdl
+lift mdl env = (mdl', env { valueEnv = tyEnv' })
+  where (mdl', tyEnv') = L.lift (valueEnv env) mdl
 
 -- |Fully qualify used constructors and functions
 qual :: Options -> CompilerEnv -> Module -> (CompilerEnv, Module)
@@ -63,4 +63,4 @@ qual opts env (Module m es is ds) = (qualifyEnv opts env, Module m es is ds')
 -- |Simplify the source code
 simplify :: Bool -> Module -> CompilerEnv -> (Module, CompilerEnv)
 simplify flat mdl env = (mdl', env { valueEnv = tyEnv' })
-  where (mdl', tyEnv') = S.simplify flat (valueEnv env) (evalAnnotEnv env) mdl
+  where (mdl', tyEnv') = S.simplify flat (valueEnv env) mdl

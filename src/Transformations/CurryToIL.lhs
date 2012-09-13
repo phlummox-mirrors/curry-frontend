@@ -34,7 +34,6 @@ data structures, we can use only a qualified import for the
 > import Base.Types
 > import Base.Utils (foldr2, thd3)
 
-> import Env.Eval (EvalEnv)
 > import Env.TypeConstructor (TCEnv, TypeInfo (..), qualLookupTC)
 > import Env.Value (ValueEnv, ValueInfo (..), lookupValue, qualLookupValue)
 
@@ -50,22 +49,21 @@ these types are already fully expanded, i.e., they do not include any
 alias types.
 \begin{verbatim}
 
-> ilTrans :: Bool -> ValueEnv -> TCEnv -> EvalEnv -> Module -> IL.Module
-> ilTrans flat tyEnv tcEnv evEnv (Module m _ _ ds) =
->   IL.Module m (imports m ds') ds'
->   where ds' = concatMap (translGlobalDecl flat m tyEnv tcEnv evEnv) ds
+> ilTrans :: Bool -> ValueEnv -> TCEnv -> Module -> IL.Module
+> ilTrans flat tyEnv tcEnv (Module m _ _ ds) = IL.Module m (imports m ds') ds'
+>   where ds' = concatMap (translGlobalDecl flat m tyEnv tcEnv) ds
 
-> translGlobalDecl :: Bool -> ModuleIdent -> ValueEnv -> TCEnv -> EvalEnv
+> translGlobalDecl :: Bool -> ModuleIdent -> ValueEnv -> TCEnv
 >                  -> Decl -> [IL.Decl]
-> translGlobalDecl _ m tyEnv tcEnv _ (DataDecl _ tc tvs cs) =
+> translGlobalDecl _ m tyEnv tcEnv (DataDecl _ tc tvs cs) =
 >   [translData m tyEnv tcEnv tc tvs cs]
-> translGlobalDecl _ m tyEnv tcEnv _ (NewtypeDecl _ tc tvs nc) =
+> translGlobalDecl _ m tyEnv tcEnv (NewtypeDecl _ tc tvs nc) =
 >   [translNewtype m tyEnv tcEnv tc tvs nc]
-> translGlobalDecl flat m tyEnv tcEnv evEnv (FunctionDecl pos f eqs) =
->   [translFunction pos flat m tyEnv tcEnv evEnv f eqs]
-> translGlobalDecl _ m tyEnv tcEnv _ (ExternalDecl _ cc ie f _) =
+> translGlobalDecl flat m tyEnv tcEnv (FunctionDecl pos f eqs) =
+>   [translFunction pos flat m tyEnv tcEnv f eqs]
+> translGlobalDecl _ m tyEnv tcEnv (ExternalDecl _ cc ie f _) =
 >   [translExternal m tyEnv tcEnv f cc (fromJust ie)]
-> translGlobalDecl _ _ _ _ _ _ = []
+> translGlobalDecl _ _ _ _ _ = []
 
 > translData :: ModuleIdent -> ValueEnv -> TCEnv -> Ident -> [Ident] -> [ConstrDecl]
 >            -> IL.Decl
@@ -255,8 +253,8 @@ uses flexible matching.
 > type RenameEnv = Map.Map Ident Ident
 
 > translFunction :: Position -> Bool -> ModuleIdent -> ValueEnv -> TCEnv
->       -> EvalEnv -> Ident -> [Equation] -> IL.Decl
-> translFunction pos flat m tyEnv tcEnv evEnv f eqs =
+>                -> Ident -> [Equation] -> IL.Decl
+> translFunction pos flat m tyEnv tcEnv f eqs =
 >   -- - | f == mkIdent "fun" = error (show (translType' m tyEnv tcEnv ty))
 >   -- - | otherwise =
 >     IL.FunctionDecl f' vs (translType' m tyEnv tcEnv ty) expr
@@ -265,29 +263,30 @@ uses flexible matching.
 >   where f'  = qualifyWith m f
 >         ty  = varType tyEnv f'
 >         -- ty' = elimRecordType m tyEnv tcEnv (maximum (0:(typeVars ty))) ty
->         ev' = Map.lookup f evEnv
->         ev  = maybe (defaultMode ty) evalMode ev'
+>         -- ev' = Map.lookup f evEnv
+>         ev = IL.Flex -- = maybe (defaultMode ty) evalMode ev'
 >         vs  = if not flat && isFpSelectorId f then translArgs eqs vs' else vs'
 >         (vs',vs'') = splitAt (equationArity (head eqs))
 >                              (argNames (mkIdent ""))
->         expr | ev' == Just EvalChoice
->                = IL.Apply
->                    (IL.Function
->                       (qualifyWith preludeMIdent (mkIdent "commit"))
->                       1)
->                    (match (srcRefOf pos) IL.Rigid vs
->                       (map (translEquation tyEnv vs vs'') eqs))
->              | otherwise
+>         expr
+>              --  | ev' == Just EvalChoice
+>              --   = IL.Apply
+>              --       (IL.Function
+>              --          (qualifyWith preludeMIdent (mkIdent "commit"))
+>              --          1)
+>              --       (match (srcRefOf pos) IL.Rigid vs
+>              --          (map (translEquation tyEnv vs vs'') eqs))
+>              -- | otherwise
 >                =  match (srcRefOf pos) ev vs (map (translEquation tyEnv vs vs'') eqs)
 >         ---
 >         -- (vs',vs'') = splitAt (arrowArity ty) (argNames (mkIdent ""))
 
-> evalMode :: EvalAnnotation -> IL.Eval
-> evalMode EvalRigid = IL.Rigid
-> evalMode EvalChoice = error "eval choice is not yet supported"
+> -- evalMode :: EvalAnnotation -> IL.Eval
+> -- evalMode EvalRigid = IL.Rigid
+> -- evalMode EvalChoice = error "eval choice is not yet supported"
 
-> defaultMode :: Type -> IL.Eval
-> defaultMode _ = IL.Flex
+> -- defaultMode :: Type -> IL.Eval
+> -- defaultMode _ = IL.Flex
 >
 > --defaultMode ty = if isIO (arrowBase ty) then IL.Rigid else IL.Flex
 > --  where TypeConstructor qIOId _ = ioType undefined

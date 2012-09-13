@@ -63,7 +63,6 @@ instance QualExpr Decl where
 
 instance QuantExpr Decl where
   bv (TypeSig         _ vs _) = vs
-  bv (EvalAnnot       _ fs _) = fs
   bv (FunctionDecl     _ f _) = [f]
   bv (ExternalDecl _ _ _ f _) = [f]
   bv (FlatExternalDecl  _ fs) = fs

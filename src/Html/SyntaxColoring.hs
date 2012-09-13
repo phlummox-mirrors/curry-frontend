@@ -419,11 +419,11 @@ code2qualString x = code2string x
 
 token2code :: Token -> Code
 token2code tok@(Token cat _)
-    | elem cat [IntTok,FloatTok,IntegerTok]
+    | elem cat [IntTok,FloatTok]
          = NumberCode (token2string tok)
-    | elem cat [KW_case,KW_choice,KW_data,KW_do,KW_else,KW_eval,KW_external,
+    | elem cat [KW_case,KW_data,KW_do,KW_else,KW_external,
                 KW_free,KW_if,KW_import,KW_in,KW_infix,KW_infixl,KW_infixr,
-                KW_let,KW_module,KW_newtype,KW_of,KW_rigid,KW_then,KW_type,
+                KW_let,KW_module,KW_newtype,KW_of,KW_then,KW_type,
                 KW_where,Id_as,Id_ccall,Id_forall,Id_hiding,Id_interface,Id_primitive,
                 Id_qualified]
          =  Keyword (token2string tok)
@@ -455,7 +455,6 @@ declPos (DataDecl         p _ _ _  ) = p
 declPos (NewtypeDecl      p _ _ _  ) = p
 declPos (TypeDecl         p _ _ _  ) = p
 declPos (TypeSig          p _ _    ) = p
-declPos (EvalAnnot        p _ _    ) = p
 declPos (FunctionDecl     p _ _    ) = p
 declPos (ExternalDecl     p _ _ _ _) = p
 declPos (FlatExternalDecl p _      ) = p
@@ -537,8 +536,6 @@ decl2codes (TypeDecl _ ident idents typeExpr) =
      typeExpr2codes typeExpr
 decl2codes (TypeSig _ idents typeExpr) =
      map (Function TypSig . qualify) idents ++ typeExpr2codes typeExpr
-decl2codes (EvalAnnot _ idents _) =
-     map (Function FunDecl . qualify) idents
 decl2codes (FunctionDecl _ _ equations) =
      concatMap equation2codes equations
 decl2codes (ExternalDecl _ _ _ _ _) =
@@ -701,7 +698,6 @@ token2string (Token QSym a) = attributes2string a
 token2string (Token IntTok a) = attributes2string a
 token2string (Token FloatTok a) = attributes2string a
 token2string (Token CharTok a) = attributes2string a
-token2string (Token IntegerTok a) = attributes2string a
 token2string (Token StringTok a) = attributes2string a
 token2string (Token LeftParen _) = "("
 token2string (Token RightParen _) = ")"
@@ -729,11 +725,9 @@ token2string (Token SymDot _) = "."
 token2string (Token SymMinus _) = "-"
 token2string (Token SymMinusDot _) = "-."
 token2string (Token KW_case _) = "case"
-token2string (Token KW_choice _) = "choice"
 token2string (Token KW_data _) = "data"
 token2string (Token KW_do _) = "do"
 token2string (Token KW_else _) = "else"
-token2string (Token KW_eval _) = "eval"
 token2string (Token KW_external _) = "external"
 token2string (Token KW_free _) = "free"
 token2string (Token KW_if _) = "if"
@@ -746,7 +740,6 @@ token2string (Token KW_let _) = "let"
 token2string (Token KW_module _) = "module"
 token2string (Token KW_newtype _) = "newtype"
 token2string (Token KW_of _) = "of"
-token2string (Token KW_rigid _) = "rigid"
 token2string (Token KW_then _) = "then"
 token2string (Token KW_type _) = "type"
 token2string (Token KW_where _) = "where"
@@ -764,14 +757,12 @@ token2string (Token NestedComment (StringAttributes sv _)) = sv
 token2string (Token NestedComment a) = attributes2string a
 token2string (Token LeftBraceSemicolon _) = "{;"
 token2string (Token Binds _) = ":="
-token2string (Token Pragma a) = "{-#" ++ attributes2string a ++ "#-}"
 
 attributes2string :: Attributes -> [Char]
 attributes2string NoAttributes = ""
 attributes2string (CharAttributes cv _) = showCh cv
 attributes2string (IntAttributes iv _) = show iv
 attributes2string (FloatAttributes fv _) = show fv
-attributes2string (IntegerAttributes iv _) = show iv
 attributes2string (StringAttributes sv _) = showSt sv
 attributes2string (IdentAttributes mIdent ident) =concat (intersperse "." (mIdent ++ [ident]))
 

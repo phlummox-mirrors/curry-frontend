@@ -37,13 +37,11 @@ Currently, the following optimizations are implemented:
 > import Base.Types
 > import Base.Typing
 
-> import Env.Eval (EvalEnv)
 > import Env.Value (ValueEnv, ValueInfo (..), bindFun, qualLookupValue)
 
 > data SimplifyState = SimplifyState
 >   { moduleIdent :: ModuleIdent
 >   , valueEnv    :: ValueEnv
->   , evalEnv     :: EvalEnv  -- read-only!
 >   , nextId      :: Int
 >   , flat        :: Bool     -- read-only!
 >   }
@@ -66,15 +64,12 @@ Currently, the following optimizations are implemented:
 > getValueEnv :: SIM ValueEnv
 > getValueEnv = S.gets valueEnv
 
-> getEvalEnv :: SIM EvalEnv
-> getEvalEnv = S.gets evalEnv
-
 > isFlat :: SIM Bool
 > isFlat = S.gets flat
 
-> simplify :: Bool -> ValueEnv -> EvalEnv -> Module -> (Module, ValueEnv)
-> simplify flags tyEnv evEnv mdl@(Module m _ _ _)
->   = S.evalState (simplifyModule mdl) (SimplifyState m tyEnv evEnv 1 flags)
+> simplify :: Bool -> ValueEnv -> Module -> (Module, ValueEnv)
+> simplify flags tyEnv mdl@(Module m _ _ _)
+>   = S.evalState (simplifyModule mdl) (SimplifyState m tyEnv 1 flags)
 
 > simplifyModule :: Module -> SIM (Module, ValueEnv)
 > simplifyModule (Module m es is ds) = do
@@ -166,17 +161,15 @@ explicitly in a Curry expression.
 >   m     <- getModuleIdent
 >   rhs'  <- simplifyRhs env rhs
 >   tyEnv <- getValueEnv
->   evEnv <- getEvalEnv
->   return $ inlineFun m tyEnv evEnv p lhs rhs'
+>   return $ inlineFun m tyEnv p lhs rhs'
 
-> inlineFun :: ModuleIdent -> ValueEnv -> EvalEnv -> Position -> Lhs -> Rhs -> [Equation]
-> inlineFun m tyEnv evEnv p (FunLhs f ts)
+> inlineFun :: ModuleIdent -> ValueEnv -> Position -> Lhs -> Rhs -> [Equation]
+> inlineFun m tyEnv p (FunLhs f ts)
 >           (SimpleRhs _ (Let [FunctionDecl _ f' eqs'] e) _)
 >   | True -- False -- inlining of functions is deactivated (hsi)
 >    && f' `notElem` qfv m eqs' && e' == Variable (qualify f') &&
 >     n == arrowArity (funType m tyEnv (qualify f')) &&
->     (evMode evEnv f == evMode evEnv f' ||
->      and [all isVarPattern ts1 | Equation _ (FunLhs _ ts1) _ <- eqs']) =
+>      and [all isVarPattern ts1 | Equation _ (FunLhs _ ts1) _ <- eqs'] =
 >     map (mergeEqns p f ts' vs') eqs'
 >   where n :: Int                      -- type signature necessary for nhc
 >         (n,vs',ts',e') = etaReduce 0 [] (reverse ts) e
@@ -186,7 +179,7 @@ explicitly in a Curry expression.
 >         etaReduce n1 vs (VariablePattern v : ts1) (Apply e1 (Variable v'))
 >           | qualify v == v' = etaReduce (n1+1) (v:vs) ts1 e1
 >         etaReduce n1 vs ts1 e1 = (n1,vs,reverse ts1,e1)
-> inlineFun _ _ _ p lhs rhs = [Equation p lhs rhs]
+> inlineFun _ _ p lhs rhs = [Equation p lhs rhs]
 
 > simplifyRhs :: InlineEnv -> Rhs -> SIM Rhs
 > simplifyRhs env (SimpleRhs p e _) =
@@ -443,9 +436,6 @@ Auxiliary functions
 >   _ -> case qualLookupValue (qualQualify m f) tyEnv of
 >     [Value _ _ (ForAll _ ty)] -> ty
 >     _ -> internalError $ "Simplify.funType " ++ show f
-
-> evMode :: EvalEnv -> Ident -> Maybe EvalAnnotation
-> evMode evEnv f = Map.lookup f evEnv
 
 > freshIdent :: (Int -> Ident) -> TypeScheme -> SIM Ident
 > freshIdent f ty@(ForAll _ t) = do

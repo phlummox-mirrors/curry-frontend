@@ -355,8 +355,6 @@ top-level.
 >   InfixDecl p fix' pr `liftM` mapM renameVar ops
 > checkDeclLhs (TypeSig           p vs ty) =
 >   (\vs' -> TypeSig p vs' ty) `liftM` mapM (checkVar "type signature") vs
-> checkDeclLhs (EvalAnnot         p fs ev) =
->   (\fs' -> EvalAnnot p fs' ev) `liftM` mapM (checkVar "evaluation annotation") fs
 > checkDeclLhs (FunctionDecl      p _ eqs) =
 >   checkEquationsLhs p eqs
 > checkDeclLhs (ExternalDecl p cc ie f ty) =
@@ -452,10 +450,9 @@ top-level.
 
 > checkDecls :: (Decl -> RenameEnv -> RenameEnv) -> [Decl] -> SCM [Decl]
 > checkDecls bindDecl ds = do
->   let dbls@[dblVar, dblTys, dblEAs] = map findDouble [bvs, tys, evs]
+>   let dbls@[dblVar, dblTys] = map findDouble [bvs, tys]
 >   onJust (report . errDuplicateDefinition) dblVar
 >   onJust (report . errDuplicateTypeSig   ) dblTys
->   onJust (report . errDuplicateEvalAnnot ) dblEAs
 >   let missingTy = [f | FlatExternalDecl _ fs' <- ds, f <- fs', f `notElem` tys]
 >   mapM_ (report . errNoTypeSig) missingTy
 >   if all isNothing dbls && null missingTy
@@ -467,7 +464,6 @@ top-level.
 >         tds    = filter isTypeSig ds
 >         bvs    = concatMap vars vds
 >         tys    = concatMap vars tds
->         evs    = concatMap vars $ filter isEvalAnnot ds
 >         onJust = maybe (return ())
 
 -- ---------------------------------------------------------------------------
@@ -475,8 +471,6 @@ top-level.
 > checkDeclRhs :: [Ident] -> Decl -> SCM Decl
 > checkDeclRhs bvs (TypeSig      p vs ty) =
 >   (\vs' -> TypeSig p vs' ty) `liftM` mapM (checkLocalVar bvs) vs
-> checkDeclRhs bvs (EvalAnnot    p vs ev) =
->   (\vs' -> EvalAnnot p vs' ev) `liftM` mapM (checkLocalVar bvs) vs
 > checkDeclRhs _   (FunctionDecl p f eqs) =
 >   FunctionDecl p f `liftM` mapM checkEquation eqs
 > checkDeclRhs _   (PatternDecl  p t rhs) =
@@ -857,7 +851,6 @@ Auxiliary definitions.
 
 > vars :: Decl -> [Ident]
 > vars (TypeSig         _ fs _) = fs
-> vars (EvalAnnot       _ fs _) = fs
 > vars (FunctionDecl     _ f _) = [f]
 > vars (ExternalDecl _ _ _ f _) = [f]
 > vars (FlatExternalDecl  _ fs) = fs
@@ -1026,10 +1019,6 @@ Error messages.
 > errDuplicateTypeSig :: Ident -> Message
 > errDuplicateTypeSig v = posMessage v $ hsep $ map text
 >   ["More than one type signature for", escName v]
-
-> errDuplicateEvalAnnot :: Ident -> Message
-> errDuplicateEvalAnnot v = posMessage v $ hsep $ map text
->   ["More than one eval annotation for", escName v]
 
 > errDuplicateLabel :: Ident -> Message
 > errDuplicateLabel l = posMessage l $ hsep $ map text

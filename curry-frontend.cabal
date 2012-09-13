@@ -62,7 +62,6 @@ Executable cymake
     , CompilerOpts
     , CurryBuilder
     , CurryDeps
-    , Env.Eval
     , Env.Interface
     , Env.ModuleAlias
     , Env.OpPrec

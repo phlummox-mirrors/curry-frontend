@@ -32,15 +32,14 @@ lifted to the top-level.
 > import Base.SCC
 > import Base.Types
 
-> import Env.Eval (EvalEnv)
 > import Env.Value
 
-> lift :: ValueEnv -> EvalEnv -> Module -> (Module, ValueEnv, EvalEnv)
-> lift tyEnv evEnv (Module m es is ds) = (lifted, tyEnv', evEnv')
+> lift :: ValueEnv -> Module -> (Module, ValueEnv)
+> lift tyEnv (Module m es is ds) = (lifted, tyEnv')
 >   where
 >   lifted = Module m es is $ concatMap liftFunDecl ds'
->   (ds', tyEnv', evEnv') = evalAbstract (abstractModule ds) initState
->   initState = LiftState m evEnv tyEnv
+>   (ds', tyEnv') = evalAbstract (abstractModule ds) initState
+>   initState = LiftState m tyEnv
 
 \end{verbatim}
 \paragraph{Abstraction}
@@ -55,7 +54,6 @@ i.e. the function applied to its free variables.
 
 > data LiftState = LiftState
 >   { moduleIdent :: ModuleIdent
->   , evalEnv  :: EvalEnv
 >   , valueEnv :: ValueEnv
 >   }
 
@@ -68,24 +66,17 @@ i.e. the function applied to its free variables.
 > getModuleIdent :: LiftM ModuleIdent
 > getModuleIdent = S.gets moduleIdent
 
-> getEvalEnv :: LiftM EvalEnv
-> getEvalEnv = S.gets evalEnv
-
 > getValueEnv :: LiftM ValueEnv
 > getValueEnv = S.gets valueEnv
 
 > modifyValueEnv :: (ValueEnv -> ValueEnv) -> LiftM ()
 > modifyValueEnv f = S.modify $ \ s -> s { valueEnv = f $ valueEnv s }
 
-> modifyEvalEnv :: (EvalEnv -> EvalEnv) -> LiftM ()
-> modifyEvalEnv f = S.modify $ \ s -> s { evalEnv = f $ evalEnv s }
-
-> abstractModule :: [Decl] -> LiftM ([Decl], ValueEnv, EvalEnv)
+> abstractModule :: [Decl] -> LiftM ([Decl], ValueEnv)
 > abstractModule ds = do
 >   ds' <- mapM (abstractDecl "" [] Map.empty) ds
 >   tyEnv' <- getValueEnv
->   evEnv' <- getEvalEnv
->   return (ds', tyEnv', evEnv')
+>   return (ds', tyEnv')
 
 > abstractDecl :: String -> [Ident] -> AbstractEnv -> Decl -> LiftM Decl
 > abstractDecl _ lvs env (FunctionDecl p f eqs) =
@@ -182,7 +173,6 @@ in the type environment.
 >       isLifted tyEnv f = null $ lookupValue f tyEnv
 >   fs' <- liftM (\tyEnv -> filter (not . isLifted tyEnv) fs) getValueEnv
 >   modifyValueEnv $ abstractFunTypes m pre fvs fs'
->   modifyEvalEnv $ abstractFunAnnots m pre fs'
 >   fds' <- mapM (abstractFunDecl pre fvs lvs env')
 >                [d | d <- fds, any (`elem` fs') (bv d)]
 >   e' <- abstractFunDecls pre lvs env' fdss vds e
@@ -198,13 +188,6 @@ in the type environment.
 >                         (polyType ty)
 >                         (unbindFun f tyEnv')
 >           where ty = foldr TypeArrow (varType tyEnv' f) tys
-
-> abstractFunAnnots :: ModuleIdent -> String -> [Ident] -> EvalEnv -> EvalEnv
-> abstractFunAnnots _ pre fs evEnv = foldr abstractFunAnnot evEnv fs
->   where
->   abstractFunAnnot f evEnv' = case Map.lookup f evEnv' of
->     Just ev -> Map.insert (liftIdent pre f) ev (Map.delete f evEnv')
->     Nothing -> evEnv'
 
 > abstractFunDecl :: String -> [Ident] -> [Ident]
 >                 -> AbstractEnv -> Decl -> LiftM Decl

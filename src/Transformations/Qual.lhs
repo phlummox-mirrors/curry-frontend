@@ -50,7 +50,6 @@ declarations groups as well as function arguments remain unchanged.
 >   NewtypeDecl p n vs `liftM` qualNewConstr nc
 > qualDecl (TypeDecl      p n vs ty) = TypeDecl p n vs `liftM` qualTypeExpr ty
 > qualDecl (TypeSig         p fs ty) = TypeSig p fs    `liftM` qualTypeExpr ty
-> qualDecl e@(EvalAnnot       _ _ _) = return e
 > qualDecl (FunctionDecl    p f eqs) =
 >   FunctionDecl p f `liftM` mapM qualEqn eqs
 > qualDecl (ExternalDecl p c x n ty) =

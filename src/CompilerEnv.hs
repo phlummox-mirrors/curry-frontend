@@ -20,7 +20,6 @@ import Curry.Base.Ident (ModuleIdent)
 
 import Base.TopEnv (allLocalBindings)
 
-import Env.Eval
 import Env.Interface
 import Env.ModuleAlias
 import Env.OpPrec
@@ -37,7 +36,6 @@ data CompilerEnv = CompilerEnv
   , tyConsEnv    :: TCEnv        -- ^ type constructors
   , valueEnv     :: ValueEnv     -- ^ functions and data constructors
   , opPrecEnv    :: PEnv         -- ^ operator precedences
-  , evalAnnotEnv :: EvalEnv      -- ^ evaluation annotations
   }
 
 initCompilerEnv :: ModuleIdent -> CompilerEnv
@@ -48,7 +46,6 @@ initCompilerEnv mid = CompilerEnv
   , tyConsEnv    = initTCEnv
   , valueEnv     = initDCEnv
   , opPrecEnv    = initPEnv
-  , evalAnnotEnv = initEEnv
   }
 
 showCompilerEnv :: CompilerEnv -> String
@@ -59,7 +56,6 @@ showCompilerEnv env = show $ vcat
   , header "TypeConstructors" $ ppAL $ allLocalBindings $ tyConsEnv    env
   , header "Values          " $ ppAL $ allLocalBindings $ valueEnv     env
   , header "Precedences     " $ ppAL $ allLocalBindings $ opPrecEnv    env
-  , header "Eval Annotations" $ ppMap $ evalAnnotEnv env
   ]
   where
   header hdr content = hang (text hdr <+> colon) 4 content

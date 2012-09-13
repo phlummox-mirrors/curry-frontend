@@ -105,8 +105,6 @@ partitionDecl p d@(TypeDecl  _ _ _ _) = p { typeDecls = d : typeDecls p }
 -- function declarations
 partitionDecl p (TypeSig pos ids ty)
   = partitionFuncDecls (\q -> TypeSig pos [q] ty) p ids
-partitionDecl p (EvalAnnot pos ids ann)
-  = partitionFuncDecls (\q -> EvalAnnot pos [q] ann) p ids
 partitionDecl p d@(FunctionDecl _ ident _)
   = partitionFuncDecls (const d) p [ident]
 partitionDecl p d@(ExternalDecl _ _ _ ident _)
@@ -235,10 +233,11 @@ genFuncDecl isLocal env (ident, decls)
   where
   qname       = genQName False env $ qualify ident
   visibility  = genVisibility env ident
-  evalannot   = case find isEvalAnnot decls of
-                  Nothing -> CFlex
-                  Just (EvalAnnot _ _ ea) -> genEvalAnnot ea
-                  _ -> internalError "Gen.GenAbstractCurry.genFuncDecl: no Eval Annotation"
+  evalannot   = CFlex
+--   evalannot   = case find isEvalAnnot decls of
+--                   Nothing -> CFlex
+--                   Just (EvalAnnot _ _ ea) -> genEvalAnnot ea
+--                   _ -> internalError "Gen.GenAbstractCurry.genFuncDecl: no Eval Annotation"
   (env1, mtype) = case genFuncType env decls of
                   Nothing        -> (env, Nothing)
                   Just (env', t) -> (env', Just t)
@@ -658,11 +657,6 @@ genVisibility :: AbstractEnv -> Ident -> CVisibility
 genVisibility env ident
   | isExported env ident = Public
   | otherwise            = Private
-
---
-genEvalAnnot :: EvalAnnotation -> CEvalAnnot
-genEvalAnnot EvalRigid  = CRigid
-genEvalAnnot EvalChoice = CChoice
 
 -------------------------------------------------------------------------------
 -- This part defines an environment containing all necessary information
