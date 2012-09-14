@@ -14,6 +14,7 @@ optimizer replaces pattern bindings with simple variable bindings and
 selector functions.
 
 Currently, the following optimizations are implemented:
+
 \begin{itemize}
 \item Remove unused declarations.
 \item Inline simple constants.
@@ -24,8 +25,9 @@ Currently, the following optimizations are implemented:
 
 > module Transformations.Simplify (simplify) where
 
-> import Control.Monad.State as S
-> import qualified Data.Map as Map
+> import Control.Monad (liftM, liftM2)
+> import Control.Monad.State as S (State, runState, gets, modify)
+> import qualified Data.Map as Map (Map, empty, insert, lookup)
 
 > import Curry.Base.Position
 > import Curry.Base.Ident
@@ -36,14 +38,15 @@ Currently, the following optimizations are implemented:
 > import Base.SCC
 > import Base.Types
 > import Base.Typing
+> import Base.Utils (concatMapM)
 
 > import Env.Value (ValueEnv, ValueInfo (..), bindFun, qualLookupValue)
 
 > data SimplifyState = SimplifyState
->   { moduleIdent :: ModuleIdent
+>   { moduleIdent :: ModuleIdent -- read-only!
 >   , valueEnv    :: ValueEnv
->   , nextId      :: Int
->   , flat        :: Bool     -- read-only!
+>   , nextId      :: Int         -- counter
+>   , flat        :: Bool        -- read-only!
 >   }
 
 > type SIM = S.State SimplifyState
@@ -67,22 +70,21 @@ Currently, the following optimizations are implemented:
 > isFlat :: SIM Bool
 > isFlat = S.gets flat
 
-> simplify :: Bool -> ValueEnv -> Module -> (Module, ValueEnv)
-> simplify flags tyEnv mdl@(Module m _ _ _)
->   = S.evalState (simplifyModule mdl) (SimplifyState m tyEnv 1 flags)
+> simplify :: Bool -> ValueEnv ->Module -> (Module, ValueEnv)
+> simplify flags tyEnv mdl@(Module m _ _ _) = (mdl', valueEnv s')
+>   where (mdl', s') = S.runState (simModule mdl)
+>                                 (SimplifyState m tyEnv 1 flags)
 
-> simplifyModule :: Module -> SIM (Module, ValueEnv)
-> simplifyModule (Module m es is ds) = do
->   ds' <- mapM (simplifyDecl Map.empty) ds
->   tyEnv <- getValueEnv
->   return (Module m es is ds', tyEnv)
+> simModule :: Module -> SIM (Module)
+> simModule (Module m es is ds)
+>   = Module m es is `liftM` mapM (simDecl Map.empty) ds
 
-> simplifyDecl :: InlineEnv -> Decl -> SIM Decl
-> simplifyDecl env (FunctionDecl p f eqs) =
->   liftM (FunctionDecl p f . concat) (mapM (simplifyEquation env) eqs)
-> simplifyDecl env (PatternDecl p t rhs) =
->   liftM (PatternDecl p t) (simplifyRhs env rhs)
-> simplifyDecl _ d = return d
+> simDecl :: InlineEnv -> Decl -> SIM Decl
+> simDecl env (FunctionDecl p f eqs) =
+>   FunctionDecl p f `liftM` concatMapM (simEquation env) eqs
+> simDecl env (PatternDecl  p t rhs) =
+>   PatternDecl p t  `liftM` simRhs env rhs
+> simDecl _   d                      = return d
 
 \end{verbatim}
 After simplifying the right hand side of an equation, the compiler
@@ -156,10 +158,10 @@ because it would require to represent the pattern matching code
 explicitly in a Curry expression.
 \begin{verbatim}
 
-> simplifyEquation :: InlineEnv -> Equation -> SIM [Equation]
-> simplifyEquation env (Equation p lhs rhs) = do
+> simEquation :: InlineEnv -> Equation -> SIM [Equation]
+> simEquation env (Equation p lhs rhs) = do
 >   m     <- getModuleIdent
->   rhs'  <- simplifyRhs env rhs
+>   rhs'  <- simRhs env rhs
 >   tyEnv <- getValueEnv
 >   return $ inlineFun m tyEnv p lhs rhs'
 
@@ -181,10 +183,10 @@ explicitly in a Curry expression.
 >         etaReduce n1 vs ts1 e1 = (n1,vs,reverse ts1,e1)
 > inlineFun _ _ p lhs rhs = [Equation p lhs rhs]
 
-> simplifyRhs :: InlineEnv -> Rhs -> SIM Rhs
-> simplifyRhs env (SimpleRhs p e _) =
->   (\ e' -> SimpleRhs p e' []) `liftM` simplifyExpr env e
-> simplifyRhs _ (GuardedRhs _ _) = error "Simplify.simplifyRhs: guarded rhs"
+> simRhs :: InlineEnv -> Rhs -> SIM Rhs
+> simRhs env (SimpleRhs p e _) =
+>   (\ e' -> SimpleRhs p e' []) `liftM` simExpr env e
+> simRhs _   (GuardedRhs  _ _) = error "Simplify.simRhs: guarded rhs"
 
 \end{verbatim}
 Variables that are bound to (simple) constants and aliases to other
@@ -205,33 +207,31 @@ This transformation avoids the creation of some redundant lifted
 functions in later phases of the compiler.
 \begin{verbatim}
 
-> simplifyExpr :: InlineEnv -> Expression -> SIM Expression
-> simplifyExpr _   (Literal     l) = return (Literal l)
-> simplifyExpr env (Variable    v)
->   | isQualified v = return (Variable v)
->   | otherwise     = maybe (return $ Variable v) (simplifyExpr env)
->                           (Map.lookup (unqualify v) env)
-> simplifyExpr _   (Constructor c) = return (Constructor c)
-> simplifyExpr env (Apply (Let ds e1) e2)
->   = simplifyExpr env (Let ds (Apply e1 e2))
-> simplifyExpr env (Apply (Case r e1 alts) e2)
->   = simplifyExpr env (Case r e1 (map (applyToAlt e2) alts))
+> simExpr :: InlineEnv -> Expression -> SIM Expression
+> simExpr _   l@(Literal     _) = return l
+> simExpr env v@(Variable    x)
+>   | isQualified x = return v
+>   | otherwise     = maybe (return v) (simExpr env)
+>                           (Map.lookup (unqualify x) env)
+> simExpr _   c@(Constructor _) = return c
+> simExpr env (Apply (Let ds e1) e2) = simExpr env (Let ds (Apply e1 e2))
+> simExpr env (Apply (Case r e1 alts) e2)
+>   = simExpr env (Case r e1 (map (applyToAlt e2) alts))
 >   where applyToAlt e (Alt p t rhs) = Alt p t (applyRhs rhs e)
 >         applyRhs (SimpleRhs p e1' _) e2' = SimpleRhs p (Apply e1' e2') []
->         applyRhs (GuardedRhs _ _) _ = error "Simplify.simplifyExpr.applyRhs: Guarded rhs"
-> simplifyExpr env (Apply e1 e2) =
->   liftM2 Apply (simplifyExpr env e1) (simplifyExpr env e2)
-> simplifyExpr env (Let ds e) = do
+>         applyRhs (GuardedRhs _ _) _ = error "Simplify.simExpr.applyRhs: Guarded rhs"
+> simExpr env (Apply e1 e2) = liftM2 Apply (simExpr env e1) (simExpr env e2)
+> simExpr env (Let ds e) = do
 >     m <- getModuleIdent
 >     tyEnv <- getValueEnv
 >     dss' <- mapM (sharePatternRhs tyEnv) ds
 >     simplifyLet env (scc bv (qfv m) (foldr hoistDecls [] (concat dss'))) e
-> simplifyExpr env (Case r e alts) =
->   liftM2 (Case r) (simplifyExpr env e) (mapM (simplifyAlt env) alts)
-> simplifyExpr _ _ = error "Simplify.simplifyExpr: no pattern match"
+> simExpr env (Case r e alts) =
+>   liftM2 (Case r) (simExpr env e) (mapM (simplifyAlt env) alts)
+> simExpr _ _ = error "Simplify.simExpr: no pattern match"
 
 > simplifyAlt :: InlineEnv -> Alt -> SIM Alt
-> simplifyAlt env (Alt p t rhs) = Alt p t `liftM` simplifyRhs env rhs
+> simplifyAlt env (Alt p t rhs) = Alt p t `liftM` simRhs env rhs
 
 > hoistDecls :: Decl -> [Decl] -> [Decl]
 > hoistDecls (PatternDecl p t (SimpleRhs p' (Let ds e) _)) ds'
@@ -261,10 +261,10 @@ functions to access the pattern variables.
 \begin{verbatim}
 
 > simplifyLet :: InlineEnv -> [[Decl]] -> Expression -> SIM Expression
-> simplifyLet env []       e = simplifyExpr env e
+> simplifyLet env []       e = simExpr env e
 > simplifyLet env (ds:dss) e = do
 >   m <- getModuleIdent
->   ds' <- mapM (simplifyDecl env) ds
+>   ds' <- mapM (simDecl env) ds
 >   tyEnv <- getValueEnv
 >   e' <- simplifyLet (inlineVars m tyEnv ds' env) dss e
 >   dss'' <- mapM (expandPatternBindings tyEnv (qfv m ds' ++ qfv m e')) ds'
@@ -306,7 +306,7 @@ functions $f_i$ are defined by $f_i$~$t$~\texttt{=}~$v_i$ (see also
 appendix D.8 of the Curry report~\cite{Hanus:Report}). The bindings
 $v_0$~\texttt{=}~$e$ are introduced before splitting the declaration
 groups of the enclosing let expression (cf. the \texttt{Let} case in
-\texttt{simplifyExpr} above) so that they are placed in their own
+\texttt{simExpr} above) so that they are placed in their own
 declaration group whenever possible. In particular, this ensures that
 the new binding is discarded when the expression $e$ is itself a
 variable.

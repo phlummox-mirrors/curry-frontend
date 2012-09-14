@@ -181,7 +181,7 @@ checkModule opts (env, mdl) = do
               , (DumpSyntaxChecked, env2, CS.showModule sc)
               , (DumpPrecChecked  , env3, CS.showModule pc)
               , (DumpTypeChecked  , env4, CS.showModule tc)
-              , (DumpRenamed      , env5, CS.showModule ql)
+              , (DumpQualified    , env5, CS.showModule ql)
               ]
   return (env5, ql, dumps)
   where

@@ -11,7 +11,7 @@ commonly used in the compiler, but not implemented in the Haskell
 \begin{verbatim}
 
 > module Base.Utils
->   ( thd3, (++!), foldr2, mapAccumM, findDouble, findMultiples
+>   ( thd3, (++!), foldr2, mapAccumM, findDouble, concatMapM, findMultiples
 >   ) where
 
 > import Data.List (partition)
@@ -103,6 +103,16 @@ The function \texttt{mapAccumM} is a generalization of
 >   (s' , y ) <- f s x
 >   (s'', ys) <- mapAccumM f s' xs
 >   return (s'', y : ys)
+
+\end{verbatim}
+\paragraph{Monadic concatMap}
+The function \texttt{concatMapM} is a generalization of
+\texttt{concatMap} to monads like \texttt{foldM} is for
+\texttt{foldl}.
+\begin{verbatim}
+
+> concatMapM :: Monad m => (a -> m [b]) -> [a] -> m [b]
+> concatMapM f xs = mapM f xs >>= return . concat
 
 \end{verbatim}
 The function \texttt{findDouble} checks whether a list of entities is

@@ -6,7 +6,7 @@ module Html.SyntaxColoring
 
 import Data.Char hiding (Space)
 import Data.Function (on)
-import Data.List (intersperse, nubBy, partition)
+import Data.List (intercalate, nubBy, partition)
 import Data.Maybe (fromMaybe, mapMaybe)
 import Debug.Trace (trace)
 
@@ -759,12 +759,12 @@ token2string (Token LeftBraceSemicolon _) = "{;"
 token2string (Token Binds _) = ":="
 
 attributes2string :: Attributes -> [Char]
-attributes2string NoAttributes = ""
-attributes2string (CharAttributes cv _) = showCh cv
-attributes2string (IntAttributes iv _) = show iv
-attributes2string (FloatAttributes fv _) = show fv
+attributes2string NoAttributes            = ""
+attributes2string (CharAttributes   cv _) = showCh cv
+attributes2string (IntAttributes    iv _) = show iv
+attributes2string (FloatAttributes  fv _) = show fv
 attributes2string (StringAttributes sv _) = showSt sv
-attributes2string (IdentAttributes mIdent ident) =concat (intersperse "." (mIdent ++ [ident]))
+attributes2string (IdentAttributes mid i) = intercalate "." $ mid ++ [i]
 
 showCh :: Char -> [Char]
 showCh c
