@@ -6,7 +6,7 @@ module Html.SyntaxColoring
 
 import Data.Char hiding (Space)
 import Data.Function (on)
-import Data.List (intersperse, nubBy, partition)
+import Data.List (intercalate, nubBy, partition)
 import Data.Maybe (fromMaybe, mapMaybe)
 import Debug.Trace (trace)
 
@@ -419,7 +419,7 @@ code2qualString x = code2string x
 
 token2code :: Token -> Code
 token2code tok@(Token cat _)
-    | elem cat [IntTok,FloatTok,IntegerTok]
+    | elem cat [IntTok,FloatTok]
          = NumberCode (token2string tok)
     | elem cat [KW_case,KW_choice,KW_data,KW_do,KW_else,KW_eval,KW_external,
                 KW_free,KW_if,KW_import,KW_in,KW_infix,KW_infixl,KW_infixr,
@@ -701,7 +701,6 @@ token2string (Token QSym a) = attributes2string a
 token2string (Token IntTok a) = attributes2string a
 token2string (Token FloatTok a) = attributes2string a
 token2string (Token CharTok a) = attributes2string a
-token2string (Token IntegerTok a) = attributes2string a
 token2string (Token StringTok a) = attributes2string a
 token2string (Token LeftParen _) = "("
 token2string (Token RightParen _) = ")"
@@ -764,16 +763,14 @@ token2string (Token NestedComment (StringAttributes sv _)) = sv
 token2string (Token NestedComment a) = attributes2string a
 token2string (Token LeftBraceSemicolon _) = "{;"
 token2string (Token Binds _) = ":="
-token2string (Token Pragma a) = "{-#" ++ attributes2string a ++ "#-}"
 
 attributes2string :: Attributes -> [Char]
-attributes2string NoAttributes = ""
-attributes2string (CharAttributes cv _) = showCh cv
-attributes2string (IntAttributes iv _) = show iv
-attributes2string (FloatAttributes fv _) = show fv
-attributes2string (IntegerAttributes iv _) = show iv
+attributes2string NoAttributes            = ""
+attributes2string (CharAttributes   cv _) = showCh cv
+attributes2string (IntAttributes    iv _) = show iv
+attributes2string (FloatAttributes  fv _) = show fv
 attributes2string (StringAttributes sv _) = showSt sv
-attributes2string (IdentAttributes mIdent ident) =concat (intersperse "." (mIdent ++ [ident]))
+attributes2string (IdentAttributes mid i) = intercalate "." $ mid ++ [i]
 
 showCh :: Char -> [Char]
 showCh c
