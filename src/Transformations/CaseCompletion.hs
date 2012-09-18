@@ -9,18 +9,19 @@
 -}
 module Transformations.CaseCompletion (completeCase) where
 
-import Control.Monad (liftM, liftM2)
-import qualified Control.Monad.State as S
-import Data.List (find, nubBy)
-import qualified Data.Map as Map
-import Data.Maybe (catMaybes, fromMaybe)
+import           Control.Monad              (liftM, liftM2)
+import qualified Control.Monad.State as S   (State, evalState, gets, modify)
+import           Data.List                  (find, nubBy)
+import           Data.Maybe                 (catMaybes, fromMaybe)
 
-import Curry.Base.Ident
-import Curry.Base.Position (SrcRef)
-import qualified Curry.Syntax as CS
+import           Curry.Base.Ident
+import           Curry.Base.Position        (SrcRef)
+import qualified Curry.Syntax        as CS
 
-import Base.Messages (internalError)
-import Env.Interface (InterfaceEnv, lookupInterface)
+import Base.Messages                        (internalError)
+import qualified Base.ScopeEnv       as SE
+  (ScopeEnv, new, beginScope, insert, exists)
+import Env.Interface                        (InterfaceEnv, lookupInterface)
 import IL
 
 -- Completes case expressions by adding branches for missing constructors.
@@ -58,7 +59,7 @@ withLocalEnv act = do
   return res
 
 inNestedScope :: CCM a -> CCM a
-inNestedScope act = modifyScopeEnv beginScope >> act
+inNestedScope act = modifyScopeEnv SE.beginScope >> act
 
 -- The following functions traverse an IL term searching for case expressions
 
@@ -84,9 +85,9 @@ ccExpr (Case  r ea e alts) = do
     _ | null altsR       -> internalError "CaseCompletion.ccExpr: empty alternative list"
       -- pattern matching causes flexible case expressions
       | ea == Flex       -> modifyScopeEnv (const senv1) >> return (Case r ea e' altsR)
-      | isConstrAlt altR ->          completeConsAlts r ea e' altsR
-      | isLitAlt    altR -> return $ completeLitAlts  r ea e' altsR
-      | isVarAlt    altR -> return $ completeVarAlts       e' altsR
+      | isConstrAlt altR -> completeConsAlts r ea e' altsR
+      | isLitAlt    altR -> completeLitAlts  r ea e' altsR
+      | isVarAlt    altR -> completeVarAlts       e' altsR
       | otherwise        -> internalError "CaseCompletion.ccExpr: illegal alternative list"
       where altR  = head altsR
 
@@ -190,41 +191,42 @@ completeConsAlts r ea expr alts = do
     = fromMaybe (Alt (VariablePattern (mkIdent "x!")) failedExpr)
     $ find isVarAlt alts
 
-  genConstrTerm (qid, arity) = do
-    senv <- getScopeEnv
-    let args  = genIdentList arity "x" senv
-    modifyScopeEnv $ flip (foldr insertIdent) args
-    return $ ConstructorPattern qid args
+  genConstrTerm (qid, arity)
+    = ConstructorPattern qid `liftM` newIdentList arity "x"
 
--- If the alternatives branches via literal pattern complementary
--- constructor list cannot be generated because it would become infinite.
--- So the function 'completeLitAlts' transforms case expressions like
---      case <ce> of
---        <lit_1> -> <expr_1>
---        <lit_2> -> <expr_2>
---                    :
---        <lit_n> -> <expr_n>
---       [<var>   -> <default_expr>]
+-- If the alternatives' branches contain literal patterns, a complementary
+-- constructor list cannot be generated because it would become potentially
+-- infinite. Thus, function 'completeLitAlts' transforms case expressions like
+--     case <ce> of
+--       <lit_1> -> <expr_1>
+--       <lit_2> -> <expr_2>
+--                   :
+--       <lit_n> -> <expr_n>
+--      [<var>   -> <default_expr>]
 -- to
---      case (<ce> == <lit_1>) of
---        True  -> <expr_1>
---        False -> case (<ce> == <lit_2>) of
---                   True  -> <expr_2>
---                   False -> case ...
---                                  :
---                               -> case (<ce> == <lit_n>) of
+--     let x = <ce> in
+--     case (v == <lit_1>) of
+--       True  -> <expr_1>
+--       False -> case (x == <lit_2>) of
+--                  True  -> <expr_2>
+--                  False -> case ...
+--                                 :
+--                               -> case (x == <lit_n>) of
 --                                    True  -> <expr_n>
 --                                    False -> <default_expr>
---
-completeLitAlts :: SrcRef -> Eval -> Expression -> [Alt] -> Expression
-completeLitAlts _ _  _  []                = failedExpr
-completeLitAlts r ea ce (Alt p ae : alts) = case p of
-  LiteralPattern l  -> Case r ea (ce `eqExpr` Literal l)
-                       [ Alt truePatt  ae
-                       , Alt falsePatt (completeLitAlts r ea ce alts)
-                       ]
-  VariablePattern v -> replaceVar v ce ae
-  _ -> internalError "CaseCompletion.completeLitAlts: illegal alternative"
+completeLitAlts :: SrcRef -> Eval -> Expression -> [Alt] -> CCM Expression
+completeLitAlts r ea ce alts = do
+  [x] <- newIdentList 1 "x"
+  return $ Let (Binding x ce) $ nestedCases x alts
+  where
+  nestedCases _ []              = failedExpr
+  nestedCases x (Alt p ae : as) = case p of
+    LiteralPattern l  -> Case r ea (Variable x `eqExpr` Literal l)
+                          [ Alt truePatt  ae
+                          , Alt falsePatt (nestedCases x as)
+                          ]
+    VariablePattern v -> replaceVar v (Variable x) ae
+    _ -> internalError "CaseCompletion.completeLitAlts: illegal alternative"
 
 -- For the unusual case of only one alternative containing a variable pattern,
 -- it is necessary to tranform it to a 'let' term because FlatCurry does not
@@ -233,10 +235,10 @@ completeLitAlts r ea ce (Alt p ae : alts) = case p of
 --      x -> <ae>
 -- is transformed to
 --      let x = <ce> in <ae>
-completeVarAlts :: Expression -> [Alt] -> Expression
-completeVarAlts _  []             = failedExpr
+completeVarAlts :: Expression -> [Alt] -> CCM Expression
+completeVarAlts _  []             = return failedExpr
 completeVarAlts ce (Alt p ae : _) = case p of
-  VariablePattern x -> Let (Binding x ce) ae
+  VariablePattern x -> return $ Let (Binding x ce) ae
   _                 -> internalError $
     "CaseCompletion.completeVarAlts: variable pattern expected"
 
@@ -377,13 +379,13 @@ getCCFromIDecls mid cs (CS.Interface _ _ ds) = complementary cs cinfos
 
   decl `declares` qid = case decl of
     CS.IDataDecl    _ _ _ cs' -> any (`declaresConstr` qid) $ catMaybes cs'
-    CS.INewtypeDecl _ _ _ nc  -> p_isINewConstrDecl qid nc
+    CS.INewtypeDecl _ _ _ nc  -> isNewConstrDecl qid nc
     _                         -> False
 
   declaresConstr (CS.ConstrDecl  _ _ cid _) qid = unqualify qid == cid
   declaresConstr (CS.ConOpDecl _ _ _ oid _) qid = unqualify qid == oid
 
-  p_isINewConstrDecl qid (CS.NewConstrDecl _ _ cid _) = unqualify qid == cid
+  isNewConstrDecl qid (CS.NewConstrDecl _ _ cid _) = unqualify qid == cid
 
   extractConstrDecls (CS.IDataDecl _ _ _ cs') = catMaybes cs'
   extractConstrDecls _                        = []
@@ -397,12 +399,43 @@ complementary known others = filter ((`notElem` known) . fst) others
 
 -- ---------------------------------------------------------------------------
 -- ScopeEnv stuff
--- 2011-02-08 (bjp): Moved from IL.Scope
--- Moved from Base.OldScopeEnv on 2012-09-04
 -- ---------------------------------------------------------------------------
 
+-- Type for representing an environment containing identifiers in several
+-- scope levels
+type ScopeEnv = SE.ScopeEnv (Either String Integer) ()
+
+insertIdent :: Ident -> ScopeEnv -> ScopeEnv
+insertIdent i = SE.insert (Left  (idName   i)) ()
+              . SE.insert (Right (idUnique i)) ()
+
+newIdentList :: Int -> String -> CCM [Ident]
+newIdentList num str = genIdentList num (0 :: Integer)
+  where
+  -- Generates a list of new identifiers where each identifier has
+  -- the prefix 'name' followed by an index (i.e., "var3" if 'name' was "var").
+  -- All returned identifiers are unique within the current scope.
+  genIdentList s i
+    | s == 0    = return []
+    | otherwise = do
+      env <- getScopeEnv
+      case genIdent (str ++ show i) env of
+        Nothing    -> genIdentList s (i + 1)
+        Just ident -> do
+          modifyScopeEnv $ insertIdent ident
+          idents <- genIdentList (s - 1) (i + 1)
+          return (ident : idents)
+
+  -- Generates a new identifier for the specified name. The new identifier is
+  -- unique within the current scope. If no identifier can be generated for
+  -- 'name', then 'Nothing' will be returned
+  genIdent n env | SE.exists (Left  n) env = Nothing
+                 | otherwise               = Just (try 0)
+    where try i  | SE.exists (Right i) env = try (i + 1)
+                 | otherwise               = renameIdent (mkIdent n) i
+
 getModuleScope :: Module -> ScopeEnv
-getModuleScope (Module _ _ ds) = foldr insertDecl newScopeEnv ds
+getModuleScope (Module _ _ ds) = foldr insertDecl SE.new ds
 
 insertDecl :: Decl -> ScopeEnv -> ScopeEnv
 insertDecl (DataDecl      qid _ cs) = flip (foldr insertConstrDecl) cs
@@ -423,63 +456,5 @@ insertConstrTerm (VariablePattern       v) = insertIdent v
 insertBinding :: Binding -> ScopeEnv -> ScopeEnv
 insertBinding (Binding v _) = insertIdent v
 
--- Type for representing an environment containing identifiers in several
--- scope levels
-type ScopeLevel = Integer
-type ScopeEnv   = (IdEnv, [IdEnv], ScopeLevel)
--- (top-level IdEnv, stack of lower level IdEnv, current level)
--- Invariant: The current level is the number of stack elements
-
--- Generates a new instance of a scope table
-newScopeEnv :: ScopeEnv
-newScopeEnv = (Map.empty, [], 0)
-
--- Increase the level of the scope.
-beginScope :: ScopeEnv -> ScopeEnv
-beginScope (topLevel, []    , _    ) = (topLevel, [Map.empty], 1)
-beginScope (topLevel, (l:ls), level) = (topLevel, (l:l:ls)   , level + 1)
-
--- Insert an identifier into the current level of the scope environment
-insertIdent :: Ident -> ScopeEnv -> ScopeEnv
-insertIdent ident (topLevel, nested, level) = case nested of
-  []     -> (insertInto topLevel, []                 , 0    )
-  lt:lts -> (topLevel           , insertInto lt : lts, level)
-  where insertInto = insertId level ident
-
 insertQIdent :: QualIdent -> ScopeEnv -> ScopeEnv
 insertQIdent q = insertIdent (unqualify q)
-
--- Generates a list of new identifiers where each identifier has
--- the prefix 'name' followed by an index (i.e., "var3" if 'name' was "var").
--- All returned identifiers are unique within the current scope.
-genIdentList :: Int -> String -> ScopeEnv -> [Ident]
-genIdentList = p_genIdentList 0
-  where
-  p_genIdentList :: Int -> Int -> String -> ScopeEnv -> [Ident]
-  p_genIdentList i s n env
-    | s == 0    = []
-    | otherwise = case genIdent (n ++ show i) env of
-        Nothing    ->         p_genIdentList (i + 1) s       n  env
-        Just ident -> ident : p_genIdentList (i + 1) (s - 1) n (insertIdent ident env)
-
-  -- Generates a new identifier for the specified name. The new identifier is
-  -- unique within the current scope. If no identifier can be generated for
-  -- 'name', then 'Nothing' will be returned
-  genIdent :: String -> ScopeEnv -> Maybe Ident
-  genIdent name (topLevel, []      , _) = genId name topLevel
-  genIdent name (_       , (lt : _), _) = genId name lt
-
--- The IdEnv is an environment which stores the level in which an identifier
--- was defined, starting with 0 for the top-level.
-type IdEnv = Map.Map (Either String Integer) Integer
-
-insertId :: Integer -> Ident -> IdEnv -> IdEnv
-insertId lvl i = Map.insert (Left  (idName   i)) lvl
-               . Map.insert (Right (idUnique i)) lvl
-
-genId :: String -> IdEnv -> Maybe Ident
-genId n env | Left n `Map.member` env  = Nothing
-            | otherwise                = Just (try 0)
-  where try i
-            | Right i `Map.member` env = try (i + 1)
-            | otherwise                = renameIdent (mkIdent n) i
