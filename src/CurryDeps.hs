@@ -1,10 +1,10 @@
 {- |
     Module      :  $Header$
     Description :  Computation of module dependencies
-    Copyright   :  (c) 2002-2004, Wolfgang Lux
-                       2005, Martin Engelke    (men@informatik.uni-kiel.de)
-                       2007, Sebastian Fischer (sebf@informatik.uni-kiel.de)
-                       2011, Björn Peemöller   (bjp@informatik.uni-kiel.de)
+    Copyright   :  (c) 2002 - 2004 Wolfgang Lux
+                       2005        Martin Engelke
+                       2007        Sebastian Fischer
+                       2011 - 2012 Björn Peemöller
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
@@ -25,16 +25,17 @@ module CurryDeps
   ( Source (..), flatDeps, deps, flattenDeps, sourceDeps, moduleDeps ) where
 
 import Control.Monad (foldM, liftM, unless)
-import Data.List (intercalate, isSuffixOf, nub)
+import Data.List (isSuffixOf, nub)
 import qualified Data.Map as Map (Map, empty, insert, lookup, toList)
+import Text.PrettyPrint
 
 import Curry.Base.Ident
-import Curry.Base.Message
+import Curry.Base.Message (runMsg, Message, message)
 import Curry.Files.Filenames
 import Curry.Files.PathUtils
 import Curry.Syntax (Module (..),  ImportDecl (..), parseHeader, patchModuleId)
 
-import Base.Messages (abortWith, internalError)
+import Base.Messages (abortWithMessage, internalError)
 import Base.SCC (scc)
 import CompilerOpts (Options (..), Extension (..))
 
@@ -49,13 +50,13 @@ type SourceEnv = Map.Map ModuleIdent Source
 
 -- |Retrieve the dependencies of a source file in topological order
 -- and possible errors during flattering
-flatDeps :: Options -> FilePath -> IO ([(ModuleIdent, Source)], [String])
+flatDeps :: Options -> FilePath -> IO ([(ModuleIdent, Source)], [Message])
 flatDeps opts fn = flattenDeps `liftM` deps opts Map.empty fn
 
 -- |Retrieve the dependencies of a source file as a 'SourceEnv'
 deps :: Options -> SourceEnv -> FilePath -> IO SourceEnv
 deps opts sEnv fn
-  | ext   ==   icurryExt  = return Map.empty
+  | ext   ==   icurryExt  = return sEnv
   | ext `elem` sourceExts = sourceDeps opts sEnv fn
   | otherwise             = targetDeps opts sEnv fn
   where ext = takeExtension fn
@@ -85,13 +86,7 @@ targetDeps opts sEnv fn = do
 
 -- |Retrieve the dependencies of a given source file
 sourceDeps :: Options -> SourceEnv -> FilePath -> IO SourceEnv
-sourceDeps opts sEnv fn = do
-  mbFile <- readModule fn
-  case mbFile of
-    Nothing   -> internalError $ "CurryDeps.sourceDeps: missing file " ++ fn
-    Just file -> do
-      let hdr = patchModuleId fn $ ok $ parseHeader fn file
-      moduleDeps opts sEnv fn hdr
+sourceDeps opts sEnv fn = readHeader fn >>= moduleDeps opts sEnv fn
 
 -- |Retrieve the dependencies of a given module
 moduleDeps :: Options -> SourceEnv -> FilePath -> Module -> IO SourceEnv
@@ -103,7 +98,7 @@ moduleDeps opts sEnv fn (Module m _ is _) = case Map.lookup m sEnv of
     foldM (moduleIdentDeps opts) sEnv' imps
 
 -- |Retrieve the imported modules and add the import of the Prelude
---  according to the compiler options.
+-- according to the compiler options.
 imports :: Options -> ModuleIdent -> [ImportDecl] -> [ModuleIdent]
 imports opts m ds = nub $
      [preludeMIdent | m /= preludeMIdent && implicitPrelude]
@@ -119,19 +114,27 @@ moduleIdentDeps opts sEnv m = case Map.lookup m sEnv of
     case mFile of
       Nothing -> return $ Map.insert m Unknown sEnv
       Just fn
-        | icurryExt `isSuffixOf` fn -> return $ Map.insert m (Interface fn) sEnv
-        | otherwise                 -> checkModuleHeader fn
-  where
-  checkModuleHeader fn = do
-    hdr@(Module m' _ _ _) <- patchModuleId fn `liftM` (ok . parseHeader fn)
-                              `liftM` readFile fn
-    unless (m == m') $ abortWith [errWrongModule m m']
-    moduleDeps opts sEnv fn hdr
+        | icurryExt `isSuffixOf` fn ->
+            return $ Map.insert m (Interface fn) sEnv
+        | otherwise                 -> do
+            hdr@(Module m' _ _ _) <- readHeader fn
+            unless (m == m') $ abortWithMessage $ errWrongModule m m'
+            moduleDeps opts sEnv fn hdr
+
+readHeader :: FilePath -> IO Module
+readHeader fn = do
+  mbFile <- readModule fn
+  case mbFile of
+    Nothing  -> abortWithMessage $ errMissingFile fn
+    Just src -> do
+      case runMsg $ parseHeader fn src of
+        Left  err      -> abortWithMessage err
+        Right (hdr, _) -> return $ patchModuleId fn hdr
 
 -- If we want to compile the program instead of generating Makefile
--- dependencies the environment has to be sorted topologically. Note
+-- dependencies, the environment has to be sorted topologically. Note
 -- that the dependency graph should not contain any cycles.
-flattenDeps :: SourceEnv -> ([(ModuleIdent, Source)], [String])
+flattenDeps :: SourceEnv -> ([(ModuleIdent, Source)], [Message])
 flattenDeps = fdeps . sortDeps
   where
   sortDeps :: SourceEnv -> [[(ModuleIdent, Source)]]
@@ -142,7 +145,7 @@ flattenDeps = fdeps . sortDeps
   imported (_, Source _ ms) = ms
   imported (_,           _) = []
 
-  fdeps :: [[(ModuleIdent, Source)]] -> ([(ModuleIdent, Source)], [String])
+  fdeps :: [[(ModuleIdent, Source)]] -> ([(ModuleIdent, Source)], [Message])
   fdeps = foldr checkdep ([], [])
 
   checkdep []    (srcs, errs) = (srcs      , errs      )
@@ -150,17 +153,23 @@ flattenDeps = fdeps . sortDeps
   checkdep dep   (srcs, errs) = (srcs      , err : errs)
     where err = errCyclicImport $ map fst dep
 
-errWrongModule :: ModuleIdent -> ModuleIdent -> String
-errWrongModule m m' =
-  "Expected module for " ++ show m ++ " but found " ++ show m'
+errMissingFile :: FilePath -> Message
+errMissingFile fn = message $ sep $ map text [ "Missing file:", fn ]
 
-errCyclicImport :: [ModuleIdent] -> String
+errWrongModule :: ModuleIdent -> ModuleIdent -> Message
+errWrongModule m m' = message $ sep $
+  [ text "Expected module for", text (moduleName m) <> comma
+  , text "but found", text (moduleName m') ]
+
+errCyclicImport :: [ModuleIdent] -> Message
 errCyclicImport []  = internalError "CurryDeps.errCyclicImport: empty list"
-errCyclicImport [m] = "Recursive import for module " ++ moduleName m
-errCyclicImport ms  = "Cylic import dependency between modules "
-                      ++ intercalate ", " inits ++ " and " ++ lastm
+errCyclicImport [m] = message $ sep $ map text
+  [ "Recursive import for module", moduleName m ]
+errCyclicImport ms  = message $ sep $
+  text "Cylic import dependency between modules" : punctuate comma inits
+  ++ [text "and", lastm]
   where
-  (inits, lastm)         = splitLast $ map moduleName ms
-  splitLast []           = internalError "CurryDeps.splitLast: empty list"
-  splitLast (x : [])     = ([]  , x)
-  splitLast (x : y : ys) = (x : xs, z) where (xs, z) = splitLast (y : ys)
+  (inits, lastm)     = splitLast $ map (text . moduleName) ms
+  splitLast []       = internalError "CurryDeps.splitLast: empty list"
+  splitLast (x : []) = ([]    , x)
+  splitLast (x : xs) = (x : ys, y) where (ys, y) = splitLast xs

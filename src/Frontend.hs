@@ -49,25 +49,27 @@ parse fn src = parseModule True fn src >>= genCurrySyntax
     environment variable "PAKCSLIBPATH". Additional search paths can
     be defined using the argument 'paths'.
 -}
-fullParse :: Options -> FilePath -> String -> IO (MessageM Module)
+fullParse :: Options -> FilePath -> String -> MessageIO Module
 fullParse opts fn src = genFullCurrySyntax opts fn $ parse fn src
 
-genFullCurrySyntax :: Options -> FilePath -> MessageM Module -> IO (MessageM Module)
-genFullCurrySyntax opts fn m = runMsgIO m $ \mod1 -> do
-  errs <- makeInterfaces opts fn mod1
+genFullCurrySyntax :: Options -> FilePath -> MessageM Module -> MessageIO Module
+genFullCurrySyntax opts fn m = case runMsg m of
+  Left err        -> failWith $ show err
+  Right (mod1, _) -> do
+  errs <- liftIO $ makeInterfaces opts fn mod1
   if null errs
     then do
-      loaded <- loadModule opts fn
+      loaded <- liftIO $ loadModule opts fn
       case checkModule opts loaded of
-        CheckFailed errs'        -> return $ failWith $ show $ head errs'
-        CheckSuccess (_, mod',_) -> return (return  mod')
-    else return $ failWith $ show $ head errs
+        CheckFailed errs'        -> failWith $ show $ head errs'
+        CheckSuccess (_, mod',_) -> return  mod'
+    else failWith $ show $ head errs
 
 -- TODO: Resembles CurryBuilder
 
 -- Generates interface files for importes modules, if they don't exist or
 -- if they are not up-to-date.
-makeInterfaces :: Options -> FilePath -> Module -> IO [String]
+makeInterfaces :: Options -> FilePath -> Module -> IO [Message]
 makeInterfaces opts fn mdl = do
   (deps1, errs) <- fmap flattenDeps $ moduleDeps opts Map.empty fn mdl
   when (null errs) $ mapM_ (compile deps1 . snd) deps1

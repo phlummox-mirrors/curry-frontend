@@ -79,8 +79,8 @@ data FunctionKind
 --- @return program
 genProgram :: String -> [MessageM Module] -> MessageM [(Position, Token)] -> Program
 genProgram plainText parseResults m = case runMsg m of
-  (Left e, msgs) -> buildMessagesIntoPlainText (e : msgs) plainText
-  (Right posNtokList, mess) ->
+  Left e -> buildMessagesIntoPlainText [e] plainText
+  Right (posNtokList, mess) ->
     let messages = (prepareMessages (concatMap getMessages parseResults ++ mess))
         mergedMessages = (mergeMessages' (trace' ("Messages: " ++ show messages) messages) posNtokList)
         (nameList,codes) = catIdentifiers parseResults
@@ -152,7 +152,7 @@ flatCode code = code
 -- ----------Message---------------------------------------
 
 getMessages :: MessageM a -> [Message]
-getMessages = snd . runMsg --(Result mess _) = mess
+getMessages = either return snd . runMsg --(Result mess _) = mess
 -- getMessages (Failure mess) = mess
 
 lessMessage :: Message -> Message -> Bool
@@ -194,7 +194,7 @@ buildMessagesIntoPlainText messages text =
 
 --- @param parse-Modules  [typingParse,fullParse,parse]
 catIdentifiers :: [MessageM Module] -> ([(ModuleIdent,ModuleIdent)],[Code])
-catIdentifiers = catIds . rights_sc . map (fst . runMsg)
+catIdentifiers = catIds . map fst . rights_sc . map runMsg
     where
       catIds [] = ([],[])
       catIds [m] =

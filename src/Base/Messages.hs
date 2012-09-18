@@ -2,16 +2,18 @@ module Base.Messages
   ( -- * Output of user information
     info, status, putErrLn, putErrsLn
     -- * program abortion
-  , abortWith, abortWithMessages, internalError, errorMessage, errorMessages
+  , abortWith, abortWithMessage, abortWithMessages
+  , internalError, errorMessage, errorMessages
     -- * creating messages
-  , Message, posMessage
+  , Message, message, posMessage
   ) where
 
 import Control.Monad (unless)
 import System.IO     (hPutStrLn, stderr)
 import System.Exit   (exitFailure)
 
-import Curry.Base.Message (Message, posMessage, ppMessage, ppMessages)
+import Curry.Base.Message
+  (Message, message, posMessage, ppMessage, ppMessages)
 
 import CompilerOpts (Options (optVerbosity), Verbosity (..))
 
@@ -31,9 +33,14 @@ putErrLn = hPutStrLn stderr
 putErrsLn :: [String] -> IO ()
 putErrsLn = mapM_ putErrLn
 
--- |Print a list of error messages on 'stderr' and abort the program
+-- |Print a list of 'String's as error messages on 'stderr'
+-- and abort the program
 abortWith :: [String] -> IO a
 abortWith errs = putErrsLn errs >> exitFailure
+
+-- |Print a single error message on 'stderr' and abort the program
+abortWithMessage :: Message -> IO a
+abortWithMessage msg = abortWithMessages [msg]
 
 -- |Print a list of error messages on 'stderr' and abort the program
 abortWithMessages :: [Message] -> IO a

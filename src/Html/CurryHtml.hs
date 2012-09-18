@@ -13,11 +13,10 @@
 -}
 module Html.CurryHtml (source2html) where
 
-import Control.Exception (SomeException (..), catch)
 import Data.Maybe (fromMaybe, isJust)
 
 import Curry.Base.Ident (QualIdent (..), unqualify)
-import Curry.Base.Message (MessageM, failWith, runMsg)
+import Curry.Base.Message (fromIO)
 import Curry.Files.PathUtils (readModule, writeModule, lookupCurryFile
   , dropExtension, takeFileName)
 import Curry.Syntax (lexFile)
@@ -56,27 +55,13 @@ filename2program opts filename = do
   case mbModule of
     Nothing   -> abortWith ["Missing file: " ++ filename]
     Just cont -> do
-      typingParseRes <- catchError $ fullParse opts filename cont
-      fullParseRes <- catchError $ fullParse (opts { optTargetTypes = [UntypedAbstractCurry]}) filename cont
-      parseRes <- catchError $ return (parse filename cont)
-      lexRes <- catchError $ return (lexFile filename cont)
+      typingParseRes <- fromIO $ fullParse opts filename cont
+      fullParseRes   <- fromIO $ fullParse (opts { optTargetTypes = [UntypedAbstractCurry]}) filename cont
+      let parseRes = parse filename cont
+          lexRes   = lexFile filename cont
       return $ genProgram cont [typingParseRes, fullParseRes, parseRes] lexRes
 
 
---- this function intercepts errors and converts it to Messages
---- @param a show-function for (Result a)
---- @param a function that generates a (Result a)
---- @return (Result a) without runtimeerrors
-
--- FIXME This is ugly. Avoid exceptions and report failure via MsgMonad
--- instead! (hsi)
-catchError :: Show a => IO (MessageM a) -> IO (MessageM a)
-catchError toDo = Control.Exception.catch (toDo >>= returnNF) handler
-  where
-    handler (SomeException e) = return (failWith (show e))
-
-    returnNF a = normalform a `seq` return a
-    normalform = length . show . runMsg
 
 -- generates htmlcode with syntax highlighting
 -- @param modulname

@@ -18,12 +18,14 @@ module CurryBuilder (buildCurry, smake) where
 import Control.Monad   (liftM)
 import Data.Maybe      (catMaybes, mapMaybe)
 import System.FilePath (normalise)
+import Text.PrettyPrint
 
 import Curry.Base.Ident
 import Curry.Files.Filenames
 import Curry.Files.PathUtils
 
-import Base.Messages (info, status, abortWith)
+import Base.Messages
+  (info, status, Message, message, abortWithMessage, abortWithMessages)
 
 import CompilerOpts (Options (..), TargetType (..))
 import CurryDeps    (Source (..), flatDeps)
@@ -35,11 +37,11 @@ buildCurry :: Options -> String -> IO ()
 buildCurry opts s = do
   target <- findCurry opts s
   case target of
-    Left err -> abortWith [err]
+    Left err -> abortWithMessage err
     Right fn -> do
       (srcs, depErrs) <- flatDeps opts fn
       if not $ null depErrs
-        then abortWith depErrs
+        then abortWithMessages depErrs
         else makeCurry (defaultToFlatCurry opts) srcs fn
       where
       defaultToFlatCurry opt
@@ -47,7 +49,7 @@ buildCurry opts s = do
         | otherwise                 = opt
 
 -- |Search for a compilation target identified by the given 'String'.
-findCurry :: Options -> String -> IO (Either String FilePath)
+findCurry :: Options -> String -> IO (Either Message FilePath)
 findCurry opts s = do
   mbTarget <- findFile `orIfNotFound` findModule
   case mbTarget of
@@ -65,9 +67,9 @@ findCurry opts s = do
                     then lookupCurryFile paths moduleFile
                     else return Nothing
   complaint
-    | canBeFile && canBeModule = errMissingTarget s
-    | canBeFile                = errMissingFile   s
-    | canBeModule              = errMissingModule s
+    | canBeFile && canBeModule = errMissing "target" s
+    | canBeFile                = errMissing "file"   s
+    | canBeModule              = errMissing "module" s
     | otherwise                = errUnrecognized  s
   first `orIfNotFound` second = do
     mbFile <- first
@@ -133,8 +135,8 @@ smake :: [FilePath] -- ^ destination files
       -> IO a       -- ^ action to perform if destination files are newer
       -> IO a
 smake dests deps actOutdated actUpToDate = do
-  destTimes <- getDestTimes dests
-  depTimes  <- getDepTimes deps
+  destTimes <- catMaybes `liftM` mapM getModuleModTime dests
+  depTimes  <- mapM (abortOnMissing getModuleModTime) deps
   make destTimes depTimes
   where
   make destTimes depTimes
@@ -142,35 +144,24 @@ smake dests deps actOutdated actUpToDate = do
     | outOfDate destTimes depTimes    = actOutdated
     | otherwise                       = actUpToDate
 
---   getDestTimes :: [FilePath] -> IO [ClockTime]
-  getDestTimes = liftM catMaybes . mapM getModuleModTime
-
---   getDepTimes :: [FilePath] -> IO [ClockTime]
-  getDepTimes = mapM (abortOnMissing getModuleModTime)
-
---   outOfDate :: [ClockTime] -> [ClockTime] -> Bool
   outOfDate tgtimes dptimes = or [ tg < dp | tg <- tgtimes, dp <- dptimes]
 
   abortOnMissing :: (FilePath -> IO (Maybe a)) -> FilePath -> IO a
   abortOnMissing act f = act f >>= \res -> case res of
-    Nothing  -> abortWith [errModificationTime f]
+    Nothing  -> abortWithMessage $ errModificationTime f
     Just val -> return val
 
-errMissingFile :: String -> String
-errMissingFile f = "Missing file " ++ quote f
+errMissing :: String -> String -> Message
+errMissing what which = message $ sep $ map text
+  [ "Missing", what, quote which ]
 
-errMissingModule :: String -> String
-errMissingModule f = "Missing module " ++ quote f
+errUnrecognized :: String -> Message
+errUnrecognized f = message $ sep $ map text
+  [ "Unrecognized input", quote f ]
 
-errMissingTarget :: String -> String
-errMissingTarget f = "Missing target " ++ quote f
-
-errUnrecognized :: String -> String
-errUnrecognized f = "Unrecognized input " ++ quote f
-
-errModificationTime :: FilePath -> String
-errModificationTime f = "Could not inspect modification time of file "
-                        ++ quote f
+errModificationTime :: FilePath -> Message
+errModificationTime f = message $ sep $ map text
+  [ "Could not inspect modification time of file", quote f ]
 
 quote :: String -> String
 quote s = "\"" ++ s ++ "\""

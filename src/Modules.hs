@@ -107,20 +107,22 @@ loadModule opts fn = do
   -- read module
   mbSrc <- readModule fn
   case mbSrc of
-    Nothing  -> abortWith ["missing file: " ++ fn] -- TODO
+    Nothing  -> abortWith ["Missing file: " ++ fn] -- TODO
     Just src -> do
       -- parse module
-      let parsed = ok $ CS.parseModule True fn src -- TODO
-      -- check module header
-      let (mdl, hdrErrs) = checkModuleHeader opts fn parsed
-      unless (null hdrErrs) $ abortWithMessages hdrErrs -- TODO
-      -- load the imported interfaces into an InterfaceEnv
-      (iEnv, intfErrs) <- loadInterfaces (optImportPaths opts) mdl
-      unless (null intfErrs) $ abortWithMessages intfErrs -- TODO
-      -- add information of imported modules
-      let (env, impErrs) = importModules opts mdl iEnv
-      unless (null impErrs) $ abortWithMessages impErrs -- TODO
-      return (env, mdl)
+      case runMsg $ CS.parseModule True fn src of
+        Left err -> abortWithMessages [err]
+        Right (parsed, _) -> do
+          -- check module header
+          let (mdl, hdrErrs) = checkModuleHeader opts fn parsed
+          unless (null hdrErrs) $ abortWithMessages hdrErrs -- TODO
+          -- load the imported interfaces into an InterfaceEnv
+          (iEnv, intfErrs) <- loadInterfaces (optImportPaths opts) mdl
+          unless (null intfErrs) $ abortWithMessages intfErrs -- TODO
+          -- add information of imported modules
+          let (env, impErrs) = importModules opts mdl iEnv
+          unless (null impErrs) $ abortWithMessages impErrs -- TODO
+          return (env, mdl)
 
 checkModuleHeader :: Options -> FilePath -> CS.Module -> (CS.Module, [Message])
 checkModuleHeader opts fn = checkModuleId fn
