@@ -77,20 +77,10 @@ ccExpr v@(Variable      _) = return v
 ccExpr f@(Function    _ _) = return f
 ccExpr c@(Constructor _ _) = return c
 ccExpr (Apply       e1 e2) = liftM2 Apply (ccExpr e1) (ccExpr e2)
-ccExpr (Case  r ea e alts) = do
-  e'    <- ccExpr e
-  senv1 <- getScopeEnv
-  altsR <- removeRedundantAlts `liftM` mapM ccAlt alts
-  case () of
-    _ | null altsR       -> internalError "CaseCompletion.ccExpr: empty alternative list"
-      -- pattern matching causes flexible case expressions
-      | ea == Flex       -> modifyScopeEnv (const senv1) >> return (Case r ea e' altsR)
-      | isConstrAlt altR -> completeConsAlts r ea e' altsR
-      | isLitAlt    altR -> completeLitAlts  r ea e' altsR
-      | isVarAlt    altR -> completeVarAlts       e' altsR
-      | otherwise        -> internalError "CaseCompletion.ccExpr: illegal alternative list"
-      where altR  = head altsR
-
+ccExpr (Case    r ea e bs) = do
+  e'  <- ccExpr e
+  bs' <- removeRedundantAlts `liftM` mapM ccAlt bs
+  ccCase r ea e' bs'
 ccExpr (Or    e1 e2) = liftM2 Or (ccExpr e1) (ccExpr e2)
 ccExpr (Exist   v e) = inNestedScope $ do
   modifyScopeEnv $ insertIdent v
@@ -135,7 +125,7 @@ removeIdleAlts = fst . splitAfter isVarAlt
     where
     go fs []                 = (reverse fs    , [])
     go fs (y:ys) | p y       = (reverse (y:fs), ys)
-                | otherwise = go (y:fs) ys
+                 | otherwise = go (y:fs) ys
 
 -- An alternative occurs multiply if at least two alternatives
 -- use the same pattern. Example:
@@ -156,6 +146,19 @@ removeMultipleAlts = nubBy eqAlt
 
 -- ---------------------------------------------------------------------------
 -- Functions for completing case alternatives
+-- ---------------------------------------------------------------------------
+
+ccCase :: SrcRef -> Eval -> Expression -> [Alt] -> CCM Expression
+ccCase _ _     _ []
+  = internalError "CaseCompletion.ccCase: empty alternative list"
+-- pattern matching causes flexible case expressions
+ccCase r Flex  e as       = return $ Case r Flex e as
+ccCase r Rigid e as@(a:_)
+  | isConstrAlt a = completeConsAlts r Rigid e as
+  | isLitAlt    a = completeLitAlts  r Rigid e as
+  | isVarAlt    a = completeVarAlts          e as
+  | otherwise
+  = internalError "CaseCompletion.ccExpr: illegal alternative list"
 
 -- Completes a case alternative list which branches via constructor patterns
 -- by adding alternatives of the form
