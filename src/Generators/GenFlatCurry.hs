@@ -28,6 +28,7 @@ import qualified Curry.Syntax as CS
 import Base.Messages (internalError)
 import Base.ScopeEnv (ScopeEnv)
 import qualified Base.ScopeEnv as ScopeEnv
+  (new, insert, lookup, beginScope, endScope)
 import Base.TopEnv (topEnvMap)
 import Base.Types
 

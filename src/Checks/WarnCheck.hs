@@ -26,6 +26,8 @@ import Curry.Syntax
 
 import Base.Messages (Message, posMessage)
 import qualified Base.ScopeEnv as ScopeEnv
+  ( ScopeEnv, new, beginScope, endScopeUp, insert, lookup, level, modify
+  , toLevelList, currentLevel)
 
 import Env.Value (ValueEnv, ValueInfo (..), qualLookupValue)
 
