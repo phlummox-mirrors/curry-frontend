@@ -21,7 +21,7 @@ import Env.Value
 import Env.TypeConstructor
 
 import Transformations.CaseCompletion as CC (completeCase)
-import Transformations.CurryToIL      as IL (ilTrans, translType')
+import Transformations.CurryToIL      as IL (ilTrans, transType)
 import Transformations.Desugar        as DS (desugar)
 import Transformations.Lift           as L  (lift)
 import Transformations.Qual           as Q  (qual)
@@ -42,8 +42,8 @@ ilTrans flat mdl env = (il, env)
   where il = IL.ilTrans flat (valueEnv env) (tyConsEnv env) mdl
 
 -- |Translate a type into its representation in the intermediate language
-translType :: ModuleIdent -> ValueEnv -> TCEnv -> Type -> IL.Type
-translType = IL.translType'
+transType :: ModuleIdent -> ValueEnv -> TCEnv -> Type -> IL.Type
+transType = IL.transType
 
 -- |Remove syntactic sugar
 desugar :: Module -> CompilerEnv -> (Module, CompilerEnv)

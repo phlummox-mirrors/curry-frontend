@@ -41,7 +41,7 @@ import Env.Value (ValueEnv, ValueInfo (..), lookupValue, qualLookupValue)
 import CompilerOpts (Options (..))
 import qualified IL as IL
 import qualified ModuleSummary
-import Transformations (translType)
+import Transformations (transType)
 
 trace' :: String -> a -> a
 trace' _ x = x
@@ -968,7 +968,7 @@ lookupIdType qid = do
   case Map.lookup qid lt `mplus` Map.lookup qid ct of
     Just t  -> trace' ("lookupIdType local " ++ show (qid, t)) $ liftM Just (visitType t)  -- local name or constructor
     Nothing -> case [ t | Value _ _ (ForAll _ t) <- qualLookupValue qid aEnv ] of
-      t : _ -> liftM Just (visitType (translType m tyEnv tcEnv t))  -- imported name
+      t : _ -> liftM Just (visitType (transType m tyEnv tcEnv t))  -- imported name
       []    -> case qidModule qid of
         Nothing -> trace' ("no type for "  ++ show qid) $ return Nothing  -- no known type
         Just _ -> lookupIdType qid {qidModule = Nothing}

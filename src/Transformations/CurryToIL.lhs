@@ -18,12 +18,14 @@ data structures, we can use only a qualified import for the
 \texttt{IL} module.
 \begin{verbatim}
 
-> module Transformations.CurryToIL (ilTrans, translType') where
+> module Transformations.CurryToIL (ilTrans, transType) where
 
-> import Data.List (nub, partition)
-> import qualified Data.Map as Map (Map, empty, insert, lookup)
-> import Data.Maybe (fromJust)
-> import qualified Data.Set as Set (delete, fromList, toList)
+> import           Control.Monad               (liftM, liftM2)
+> import qualified Control.Monad.Reader as R
+> import           Data.List                   (nub, partition)
+> import qualified Data.Map             as Map (Map, empty, insert, lookup)
+> import           Data.Maybe                  (fromJust)
+> import qualified Data.Set             as Set (Set, empty, insert, delete, toList)
 
 > import Curry.Base.Position
 > import Curry.Base.Ident
@@ -32,12 +34,45 @@ data structures, we can use only a qualified import for the
 > import Base.Expr
 > import Base.Messages (internalError)
 > import Base.Types
-> import Base.Utils (foldr2, thd3)
+> import Base.Utils (foldr2, concatMapM)
 
 > import Env.TypeConstructor (TCEnv, TypeInfo (..), qualLookupTC)
 > import Env.Value (ValueEnv, ValueInfo (..), lookupValue, qualLookupValue)
 
 > import qualified IL as IL
+
+> ilTrans :: Bool -> ValueEnv -> TCEnv -> Module -> IL.Module
+> ilTrans flat tyEnv tcEnv (Module m _ _ ds) = IL.Module m (imports m ds') ds'
+>   where ds' = R.runReader (concatMapM trDecl ds)
+>                           (TransEnv flat m tyEnv tcEnv)
+
+> transType :: ModuleIdent -> ValueEnv -> TCEnv -> Type -> IL.Type
+> transType m tyEnv tcEnv ty = R.runReader (trType ty)
+>                                          (TransEnv True m tyEnv tcEnv)
+
+> data TransEnv = TransEnv
+>   { flatTrans   :: Bool
+>   , moduleIdent :: ModuleIdent
+>   , valueEnv    :: ValueEnv
+>   , tyConsEnv   :: TCEnv
+>   }
+
+> type TransM a = R.Reader TransEnv a
+
+> isFlat :: TransM Bool
+> isFlat = R.asks flatTrans
+
+> getModuleIdent :: TransM ModuleIdent
+> getModuleIdent = R.asks moduleIdent
+
+> getValueEnv :: TransM ValueEnv
+> getValueEnv = R.asks valueEnv
+
+> getTCEnv :: TransM TCEnv
+> getTCEnv = R.asks tyConsEnv
+
+> trQualify :: Ident -> TransM QualIdent
+> trQualify i = getModuleIdent >>= \m -> return $ qualifyWith m i
 
 \end{verbatim}
 \paragraph{Modules}
@@ -49,56 +84,43 @@ these types are already fully expanded, i.e., they do not include any
 alias types.
 \begin{verbatim}
 
-> ilTrans :: Bool -> ValueEnv -> TCEnv -> Module -> IL.Module
-> ilTrans flat tyEnv tcEnv (Module m _ _ ds) = IL.Module m (imports m ds') ds'
->   where ds' = concatMap (translGlobalDecl flat m tyEnv tcEnv) ds
+> trDecl :: Decl -> TransM [IL.Decl]
+> trDecl (DataDecl     _ tc tvs cs) = (:[]) `liftM` trData    tc tvs cs
+> trDecl (NewtypeDecl  _ tc tvs nc) = (:[]) `liftM` trNewtype tc tvs nc
+> trDecl (FunctionDecl     p f eqs) = (:[]) `liftM` trFunction  p f eqs
+> trDecl (ExternalDecl _ cc ie f _) = (:[]) `liftM` trExternal  f cc ie
+> trDecl _                          = return []
 
-> translGlobalDecl :: Bool -> ModuleIdent -> ValueEnv -> TCEnv
->                  -> Decl -> [IL.Decl]
-> translGlobalDecl _ m tyEnv tcEnv (DataDecl _ tc tvs cs) =
->   [translData m tyEnv tcEnv tc tvs cs]
-> translGlobalDecl _ m tyEnv tcEnv (NewtypeDecl _ tc tvs nc) =
->   [translNewtype m tyEnv tcEnv tc tvs nc]
-> translGlobalDecl flat m tyEnv tcEnv (FunctionDecl pos f eqs) =
->   [translFunction pos flat m tyEnv tcEnv f eqs]
-> translGlobalDecl _ m tyEnv tcEnv (ExternalDecl _ cc ie f _) =
->   [translExternal m tyEnv tcEnv f cc (fromJust ie)]
-> translGlobalDecl _ _ _ _ _ = []
+> trData :: Ident -> [Ident] -> [ConstrDecl] -> TransM IL.Decl
+> trData tc tvs cs = do
+>   tc' <- trQualify tc
+>   IL.DataDecl tc' (length tvs) `liftM` mapM trConstrDecl cs
 
-> translData :: ModuleIdent -> ValueEnv -> TCEnv -> Ident -> [Ident] -> [ConstrDecl]
->            -> IL.Decl
-> translData m tyEnv tcEnv tc tvs cs =
->   IL.DataDecl (qualifyWith m tc) (length tvs)
->               (map (translConstrDecl m tyEnv tcEnv) cs)
+> trConstrDecl :: ConstrDecl -> TransM (IL.ConstrDecl [IL.Type])
+> trConstrDecl d = do
+>   c' <- trQualify (constr d)
+>   ty' <- arrowArgs `liftM` constrType c'
+>   IL.ConstrDecl c' `liftM` mapM trType ty'
+>   where
+>   constr (ConstrDecl    _ _ c _) = c
+>   constr (ConOpDecl  _ _ _ op _) = op
 
-> translNewtype :: ModuleIdent -> ValueEnv -> TCEnv -> Ident -> [Ident]
->	        -> NewConstrDecl -> IL.Decl
-> translNewtype m tyEnv tcEnv tc tvs (NewConstrDecl _ _ c _) =
->   IL.NewtypeDecl (qualifyWith m tc) (length tvs)
->                  (IL.ConstrDecl c' (translType' m tyEnv tcEnv ty))
->                  -- (IL.ConstrDecl c' (translType ty))
->   where c' = qualifyWith m c
->         TypeArrow ty _ = constrType tyEnv c'
+> trNewtype :: Ident -> [Ident] -> NewConstrDecl -> TransM IL.Decl
+> trNewtype tc tvs (NewConstrDecl _ _ c _) = do
+>   tc' <- trQualify tc
+>   c'  <- trQualify c
+>   [ty] <- arrowArgs `liftM` constrType c'
+>   (IL.NewtypeDecl tc' (length tvs) . IL.ConstrDecl c') `liftM` trType ty
 
-> translConstrDecl :: ModuleIdent -> ValueEnv -> TCEnv -> ConstrDecl
->                  -> IL.ConstrDecl [IL.Type]
-> translConstrDecl m tyEnv tcEnv d =
->   IL.ConstrDecl c' (map (translType' m tyEnv tcEnv)
->	                  (arrowArgs (constrType tyEnv c')))
->   -- IL.ConstrDecl c' (map translType (arrowArgs (constrType tyEnv c')))
->   where c' = qualifyWith m (constr d)
->         constr (ConstrDecl _ _ c _) = c
->         constr (ConOpDecl _ _ _ op _) = op
-
-> translExternal :: ModuleIdent -> ValueEnv -> TCEnv -> Ident -> CallConv
->                -> String -> IL.Decl
-> translExternal m tyEnv tcEnv f cc ie =
->   IL.ExternalDecl f' (callConv cc) ie
->                   (translType' m tyEnv tcEnv (varType tyEnv f'))
->   -- IL.ExternalDecl f' (callConv cc) ie (translType (varType tyEnv f'))
->   where f' = qualifyWith m f
->         callConv CallConvPrimitive = IL.Primitive
->         callConv CallConvCCall = IL.CCall
+> trExternal :: Ident -> CallConv -> Maybe String -> TransM IL.Decl
+> trExternal _ _  Nothing   = internalError "CurryToIL.trExternal: no target"
+> trExternal f cc (Just ie) = do
+>   f'  <- trQualify f
+>   ty' <- varType f' >>= trType
+>   return $ IL.ExternalDecl f' (callConv cc) ie ty'
+>   where
+>   callConv CallConvPrimitive = IL.Primitive
+>   callConv CallConvCCall     = IL.CCall
 
 \end{verbatim}
 \paragraph{Interfaces}
@@ -111,113 +133,93 @@ already fully expanded. Note that we do not translate data types
 which are imported into the interface from some other module.
 \begin{verbatim}
 
-ilTransIntf :: ValueEnv -> TCEnv -> Interface -> [IL.Decl]
-ilTransIntf tyEnv tcEnv (Interface m ds) =
-  foldr (translIntfDecl m tyEnv tcEnv) [] ds
+ilTransIntf :: Interface -> TransM [IL.Decl]
+ilTransIntf (Interface _ _ ds) = concatMapM translIntfDecl ds
 
-translIntfDecl :: ModuleIdent -> ValueEnv -> TCEnv -> IDecl -> [IL.Decl]
-         -> [IL.Decl]
-translIntfDecl m tyEnv tcEnv (IDataDecl _ tc tvs cs) ds
-  | not (isQualified tc) =
-    translIntfData m tyEnv tcEnv (unqualify tc) tvs cs : ds
-translIntfDecl _ _ _ _ ds = ds
+translIntfDecl ::IDecl -> TransM [IL.Decl]
+translIntfDecl (IDataDecl _ tc tvs cs)
+  | not (isQualified tc) = (:[]) `liftM`
+                           translIntfData (unqualify tc) tvs cs
+translIntfDecl _         = return []
 
-translIntfData :: ModuleIdent -> ValueEnv -> TCEnv -> Ident -> [Ident]
-         -> [Maybe ConstrDecl] -> IL.Decl
-translIntfData m tyEnv tcEnv tc tvs cs =
-  IL.DataDecl (qualifyWith m tc) (length tvs)
-              (map (maybe hiddenConstr
-                    (translIntfConstrDecl m tyEnv tcEnv tvs)) cs)
-  where hiddenConstr = IL.ConstrDecl qAnonId []
-        qAnonId = qualify anonId
+translIntfData :: Ident -> [Ident] -> [Maybe ConstrDecl] -> TransM IL.Decl
+translIntfData tc tvs cs = do
+  tc' <- trQualify tc
+  cs' <- mapM (maybe (return hiddenConstr) (translIntfConstrDecl tvs)) cs
+  return $ IL.DataDecl tc' (length tvs) cs'
+  where hiddenConstr = IL.ConstrDecl (qualify anonId) []
 
-translIntfConstrDecl :: ModuleIdent -> ValueEnv -> TCEnv -> [Ident]
-                     -> ConstrDecl -> IL.ConstrDecl [IL.Type]
-translIntfConstrDecl m tyEnv tcEnv tvs (ConstrDecl _ _ c tys) =
-  IL.ConstrDecl (qualifyWith m c) (map (translType' m tyEnv tcEnv)
-		                 (toQualTypes m tvs tys))
-  -- IL.ConstrDecl (qualifyWith m c) (map translType (toQualTypes m tvs tys))
-translIntfConstrDecl m tyEnv tcEnv tvs (ConOpDecl _ _ ty1 op ty2) =
-  IL.ConstrDecl (qualifyWith m op)
-                (map (translType' m tyEnv tcEnv)
-               (toQualTypes m tvs [ty1,ty2]))
-  -- IL.ConstrDecl (qualifyWith m op)
-  --              (map translType (toQualTypes m tvs [ty1,ty2]))
+translIntfConstrDecl :: [Ident] -> ConstrDecl
+                     -> TransM (IL.ConstrDecl [IL.Type])
+translIntfConstrDecl tvs (ConstrDecl     _ _ c tys) = do
+  m <- getModuleIdent
+  c' <- trQualify c
+  IL.ConstrDecl c' `liftM` mapM trType (toQualTypes m tvs tys)
+translIntfConstrDecl tvs (ConOpDecl _ _ ty1 op ty2) = do
+  m <- getModuleIdent
+  op' <- trQualify op
+  IL.ConstrDecl op' `liftM` mapM trType (toQualTypes m tvs [ty1, ty2])
 
 \end{verbatim}
 \paragraph{Types}
 The type representation in the intermediate language is the same as
-the internal representation except that it does not support
+the internal representation, except that it does not support
 constrained type variables and skolem types. The former are fixed and
 the later are replaced by fresh type constructors.
 
 Due to possible occurrence of record types, it is necessary to transform
-them back into their corresponding type constructors.
+them back into their corresponding type constructors first.
 \begin{verbatim}
 
-> translType' :: ModuleIdent -> ValueEnv -> TCEnv -> Type -> IL.Type
-> translType' m tyEnv tcEnv ty =
->   translType (elimRecordTypes m tyEnv tcEnv (maximum (0:(typeVars ty))) ty)
-
-> translType :: Type -> IL.Type
-> translType (TypeConstructor tc tys) =
->   IL.TypeConstructor tc (map translType tys)
-> translType (TypeVariable tv) = IL.TypeVariable tv
-> translType (TypeConstrained tys _) = translType (head tys)
-> translType (TypeArrow ty1 ty2) =
->   IL.TypeArrow (translType ty1) (translType ty2)
-> translType (TypeSkolem k) =
->   IL.TypeConstructor (qualify (mkIdent ("_" ++ show k))) []
-> translType rec@(TypeRecord _ _) = error $ "Translation of record not defined: " ++ show rec -- TODO
-
-> elimRecordTypes :: ModuleIdent -> ValueEnv -> TCEnv -> Int -> Type -> Type
-> elimRecordTypes m tyEnv tcEnv n (TypeConstructor t tys) =
->   TypeConstructor t (map (elimRecordTypes m tyEnv tcEnv n) tys)
-> elimRecordTypes _ _ _ _ (TypeVariable v) =
->   TypeVariable v
-> elimRecordTypes m tyEnv tcEnv n (TypeConstrained tys v) =
->   TypeConstrained (map (elimRecordTypes m tyEnv tcEnv n) tys) v
-> elimRecordTypes m tyEnv tcEnv n (TypeArrow t1 t2) =
->   TypeArrow (elimRecordTypes m tyEnv tcEnv n t1)
->             (elimRecordTypes m tyEnv tcEnv n t2)
-> elimRecordTypes _ _ _ _ (TypeSkolem v) =
->   TypeSkolem v
-> elimRecordTypes m tyEnv tcEnv n (TypeRecord fs _)
->   | null fs = internalError "CurryToIL.elimRecordTypes: empty record type"
->   | otherwise =
->     case (lookupValue (fst (head fs)) tyEnv) of
->       [Label _ r _] ->
->         case (qualLookupTC r tcEnv) of
->           [AliasType _ n' (TypeRecord fs' _)] ->
->	      let is = [0 .. n'-1]
->                 vs = foldl (matchTypeVars fs)
->			     Map.empty
->			     fs'
->		  tys = map (\i -> maybe (TypeVariable (i+n))
->			                 (elimRecordTypes m tyEnv tcEnv n)
->		                         (Map.lookup i vs))
->		            is
->	      in  TypeConstructor r tys
->	    _ -> internalError "CurryToIL.elimRecordTypes: no record type"
->       _ -> internalError "CurryToIL.elimRecordTypes: no label"
-
-> matchTypeVars :: [(Ident,Type)] -> Map.Map Int Type -> (Ident,Type)
->	           -> Map.Map Int Type
-> matchTypeVars fs vs (l,ty) =
->   maybe vs (match' vs ty) (lookup l fs)
+> trType :: Type -> TransM IL.Type
+> trType ty = trTy `liftM` elimRecordTypes (maximum $ 0 : typeVars ty) ty
 >   where
->   match' vs' (TypeVariable i) ty' = Map.insert i ty' vs'
->   match' vs' (TypeConstructor _ tys) (TypeConstructor _ tys') =
->     matchList vs' tys tys'
->   match' vs' (TypeConstrained tys _) (TypeConstrained tys' _) =
->     matchList vs' tys tys'
->   match' vs' (TypeArrow ty1 ty2) (TypeArrow ty1' ty2') =
->     matchList vs' [ty1,ty2] [ty1',ty2']
->   match' vs' (TypeSkolem _) (TypeSkolem _) = vs'
->   match' vs' (TypeRecord fs1 _) (TypeRecord fs2 _) =
->     foldl (matchTypeVars fs2) vs' fs1
->   match' _ ty1 ty2 =
->     internalError ("CurryToIL.matchTypeVars: " ++ show ty1 ++ "\n" ++ show ty2)
+>   trTy (TypeConstructor tc tys) = IL.TypeConstructor tc (map trTy tys)
+>   trTy (TypeVariable        tv) = IL.TypeVariable tv
+>   trTy (TypeConstrained  tys _) = trTy (head tys)
+>   trTy (TypeArrow      ty1 ty2) = IL.TypeArrow (trTy ty1) (trTy ty2)
+>   trTy (TypeSkolem           k) = IL.TypeConstructor
+>                                     (qualify (mkIdent ("_" ++ show k))) []
+>   trTy rec@(TypeRecord     _ _)
+>    = internalError $ "Translation of record not defined: " ++ show rec
+
+> elimRecordTypes :: Int -> Type -> TransM Type
+> elimRecordTypes n (TypeConstructor t tys)
+>   = TypeConstructor t `liftM` mapM (elimRecordTypes n) tys
+> elimRecordTypes _ v@(TypeVariable      _) = return v
+> elimRecordTypes n (TypeConstrained tys v)
+>   = flip TypeConstrained v `liftM` mapM (elimRecordTypes n) tys
+> elimRecordTypes n (TypeArrow       t1 t2)
+>   = liftM2 TypeArrow (elimRecordTypes n t1) (elimRecordTypes n t2)
+> elimRecordTypes _ s@(TypeSkolem        _) = return s
+> elimRecordTypes n (TypeRecord       fs _)
+>   | null fs   = internalError "CurryToIL.elimRecordTypes: empty record type"
+>   | otherwise = do
+>     (r, n', fs') <- recordInfo (fst $ head fs)
+>     let vs  = foldl (matchTypeVars fs) Map.empty fs'
+>         tys = mapM (\i -> maybe (return $ TypeVariable (i+n))
+>                                 (elimRecordTypes n)
+>                                 (Map.lookup i vs))
+>                    [0 .. n'-1]
+>     TypeConstructor r `liftM` tys
+
+> matchTypeVars :: [(Ident, Type)] -> Map.Map Int Type -> (Ident, Type)
+>               -> Map.Map Int Type
+> matchTypeVars fs vs (l, ty) = maybe vs (match' vs ty) (lookup l fs)
+>   where
+>   match' vs' (TypeVariable        i) ty'
+>     = Map.insert i ty' vs'
+>   match' vs' (TypeConstructor _ tys) (TypeConstructor _ tys')
+>     = matchList vs' tys tys'
+>   match' vs' (TypeConstrained tys _) (TypeConstrained tys' _)
+>     = matchList vs' tys tys'
+>   match' vs' (TypeArrow     ty1 ty2) (TypeArrow    ty1' ty2')
+>     = matchList vs' [ty1,ty2] [ty1',ty2']
+>   match' vs' (TypeSkolem          _) (TypeSkolem           _) = vs'
+>   match' vs' (TypeRecord      fs1 _) (TypeRecord       fs2 _)
+>     = foldl (matchTypeVars fs2) vs' fs1
+>   match' _   ty1                     ty2
+>     = internalError ("CurryToIL.matchTypeVars: " ++ show ty1 ++ "\n" ++ show ty2)
 >
 >   matchList vs1 tys tys' =
 >     foldl (\vs' (ty1,ty2) -> match' vs' ty1 ty2) vs1 (zip tys tys')
@@ -250,76 +252,156 @@ the evaluation mode of the case expression. Otherwise, the function
 uses flexible matching.
 \begin{verbatim}
 
-> type RenameEnv = Map.Map Ident Ident
+> trFunction :: Position -> Ident -> [Equation] -> TransM IL.Decl
+> trFunction p f eqs = do
+>   f' <- trQualify f
+>   ty' <- varType f' >>= trType
+>   flat <- isFlat
+>   let vs = if not flat && isFpSelectorId f then trArgs eqs funVars else funVars
+>   alts <-mapM (trEquation vs addVars) eqs
+>   let expr = match (srcRefOf p) IL.Flex vs alts
+>   return $ IL.FunctionDecl f' vs ty' expr
+>   where
+>   -- funVars are the variables needed for the function: _1, _2, etc.
+>   -- addVars is an infinite list for introducing additional variables later
+>   (funVars, addVars) = splitAt (equationArity (head eqs))
+>                                (argNames (mkIdent ""))
+>   equationArity (Equation _ lhs _) = p_equArity lhs
+>     where
+>     p_equArity (FunLhs _ ts) = length ts
+>     p_equArity (OpLhs _ _ _) = 2
+>     p_equArity _             = internalError "ILTrans - illegal equation"
 
-> translFunction :: Position -> Bool -> ModuleIdent -> ValueEnv -> TCEnv
->                -> Ident -> [Equation] -> IL.Decl
-> translFunction pos flat m tyEnv tcEnv f eqs =
->   -- - | f == mkIdent "fun" = error (show (translType' m tyEnv tcEnv ty))
->   -- - | otherwise =
->     IL.FunctionDecl f' vs (translType' m tyEnv tcEnv ty) expr
->    -- = IL.FunctionDecl f' vs (translType ty)
->    --                  (match ev vs (map (translEquation tyEnv vs vs'') eqs))
->   where f'  = qualifyWith m f
->         ty  = varType tyEnv f'
->         -- ty' = elimRecordType m tyEnv tcEnv (maximum (0:(typeVars ty))) ty
->         -- ev' = Map.lookup f evEnv
->         ev = IL.Flex -- = maybe (defaultMode ty) evalMode ev'
->         vs  = if not flat && isFpSelectorId f then translArgs eqs vs' else vs'
->         (vs',vs'') = splitAt (equationArity (head eqs))
->                              (argNames (mkIdent ""))
->         expr
->              --  | ev' == Just EvalChoice
->              --   = IL.Apply
->              --       (IL.Function
->              --          (qualifyWith preludeMIdent (mkIdent "commit"))
->              --          1)
->              --       (match (srcRefOf pos) IL.Rigid vs
->              --          (map (translEquation tyEnv vs vs'') eqs))
->              -- | otherwise
->                =  match (srcRefOf pos) ev vs (map (translEquation tyEnv vs vs'') eqs)
->         ---
->         -- (vs',vs'') = splitAt (arrowArity ty) (argNames (mkIdent ""))
-
-> -- evalMode :: EvalAnnotation -> IL.Eval
-> -- evalMode EvalRigid = IL.Rigid
-> -- evalMode EvalChoice = error "eval choice is not yet supported"
-
-> -- defaultMode :: Type -> IL.Eval
-> -- defaultMode _ = IL.Flex
->
-> --defaultMode ty = if isIO (arrowBase ty) then IL.Rigid else IL.Flex
-> --  where TypeConstructor qIOId _ = ioType undefined
-> --        isIO (TypeConstructor tc [_]) = tc == qIOId
-> --        isIO _ = False
-
-> translArgs :: [Equation] -> [Ident] -> [Ident]
-> translArgs [Equation _ (FunLhs _ (t:ts)) _] (v:_) =
+> -- TODO: What is this for?
+> trArgs :: [Equation] -> [Ident] -> [Ident]
+> trArgs [Equation _ (FunLhs _ (t:ts)) _] (v:_) =
 >   v : map (translArg (bindRenameEnv v t Map.empty)) ts
 >   where
 >     translArg env (VariablePattern v') = fromJust (Map.lookup v' env)
->     translArg _ _ = error "Translation of arguments not defined"
-> translArgs _ _ = error "Translation of arguments not defined" -- TODO
+>     translArg _ _ = internalError "Translation of arguments not defined"
+> trArgs _ _ = internalError "Translation of arguments not defined" -- TODO
 
-> translEquation :: ValueEnv -> [Ident] -> [Ident] -> Equation
->                -> ([NestedTerm],IL.Expression)
-> translEquation tyEnv vs vs' (Equation _ (FunLhs _ ts) rhs) =
->   (zipWith translTerm vs ts,
->    translRhs tyEnv vs' (foldr2 bindRenameEnv Map.empty vs ts) rhs)
-> translEquation _ _ _ _ = error "Translation of non-FunLhs euqation not defined"
+> trEquation :: [Ident]      -- identifiers for the function's parameters
+>            -> [Ident]      -- infinite list of additional identifiers
+>            -> Equation     -- equation to be translated
+>            -> TransM Match -- nested constructor terms + translated RHS
+> trEquation vs vs' (Equation _ (FunLhs _ ts) rhs) = do
+>   -- construct renaming of variables inside constructor terms
+>   let patternRenaming = foldr2 bindRenameEnv Map.empty vs ts
+>   rhs' <- trRhs vs' patternRenaming rhs
+>   return (zipWith trPattern vs ts, rhs')
+> trEquation _  _    _
+>   = internalError "Translation of non-FunLhs euqation not defined"
 
-> translRhs :: ValueEnv -> [Ident] -> RenameEnv -> Rhs -> IL.Expression
-> translRhs tyEnv vs env (SimpleRhs _ e _) = translExpr tyEnv vs env e
-> translRhs _ _ _ _ = error "Translation of non-simple RHS not defined"
+> trRhs :: [Ident] -> RenameEnv -> Rhs -> TransM IL.Expression
+> trRhs vs env (SimpleRhs _ e _) = trExpr vs env e
+> trRhs _  _   (GuardedRhs _  _) = internalError "CurryToIL.trRhs: GuardedRhs"
 
+> type RenameEnv = Map.Map Ident Ident
 
-> equationArity :: Equation -> Int
-> equationArity (Equation _ lhs _) = p_equArity lhs
->  where
->    p_equArity (FunLhs _ ts) = length ts
->    p_equArity (OpLhs _ _ _) = 2
->    p_equArity _             = error "ILTrans - illegal equation"
+> -- Construct a renaming of all variables inside the pattern
+> -- to fresh identifiers
+> bindRenameEnv :: Ident -> ConstrTerm -> RenameEnv -> RenameEnv
+> bindRenameEnv _ (LiteralPattern        _) env = env
+> bindRenameEnv v (VariablePattern      v') env = Map.insert v' v env
+> bindRenameEnv v (ConstructorPattern _ ts) env
+>   = foldr2 bindRenameEnv env (argNames v) ts
+> bindRenameEnv v (AsPattern          v' t) env
+>   = Map.insert v' v (bindRenameEnv v t env)
+> bindRenameEnv _ _                         _   = internalError "CurryToIL.bindRenameEnv"
 
+\end{verbatim}
+\paragraph{Expressions}
+Note that the case matching algorithm assumes that the matched
+expression is accessible through a variable. The translation of case
+expressions therefore introduces a let binding for the scrutinized
+expression and immediately throws it away after the matching -- except
+if the matching algorithm has decided to use that variable in the
+right hand sides of the case expression. This may happen, for
+instance, if one of the alternatives contains an \texttt{@}-pattern.
+\begin{verbatim}
+
+> trExpr :: [Ident] -> RenameEnv -> Expression -> TransM IL.Expression
+> trExpr _  _   (Literal     l) = return $ IL.Literal (trLiteral l)
+> trExpr _  env (Variable    v)
+>   | isQualified v = fun
+>   | otherwise     = case Map.lookup (unqualify v) env of
+>       Nothing -> fun
+>       Just v' -> return $ IL.Variable v' -- apply renaming
+>   where fun = (IL.Function v . arrowArity) `liftM` varType v
+> trExpr _  _   (Constructor c)
+>   = (IL.Constructor c . arrowArity) `liftM` constrType c
+> trExpr vs env (Apply   e1 e2)
+>   = liftM2 IL.Apply (trExpr vs env e1) (trExpr vs env e2)
+> trExpr vs env (Let      ds e) = do
+>   e' <- trExpr vs env' e
+>   case ds of
+>     [ExtraVariables _ vs']
+>        -> return $ foldr IL.Exist e' vs'
+>     [d] | all (`notElem` bv d) (qfv emptyMIdent d)
+>       -> flip IL.Let    e' `liftM`      trBinding d
+>     _ -> flip IL.Letrec e' `liftM` mapM trBinding ds
+>   where
+>   env' = foldr2 Map.insert env bvs bvs
+>   bvs  = bv ds
+>   trBinding (PatternDecl _ (VariablePattern v) rhs)
+>     = IL.Binding v `liftM` trRhs vs env' rhs
+>   trBinding p = error $ "unexpected binding: " ++ show p
+> trExpr (v:vs) env (Case r e alts) = do
+>   -- the ident v is used for the case expression subject, as this could
+>   -- be referenced in the case alternatives by a variable pattern
+>   e'   <- trExpr vs env e
+>   expr <- caseMatch r IL.Rigid [v] `liftM` mapM (trAlt vs env) alts
+>   return $ case expr of
+>     IL.Case r' mode (IL.Variable v') alts'
+>         -- subject is not referenced -> forget v and insert subject
+>       | v == v' && v `notElem` fv alts' -> IL.Case r' mode e' alts'
+>     _
+>         -- subject is referenced -> introduce binding for v as subject
+>       | v `elem` fv expr                -> IL.Let (IL.Binding v e') expr
+>       | otherwise                       -> expr
+> trExpr _ _ _ = internalError "CurryToIL.trExpr"
+
+> trAlt :: [Ident] -> RenameEnv -> Alt -> TransM Match
+> trAlt ~(v:vs) env (Alt _ t rhs) = do
+>   rhs' <- trRhs vs (bindRenameEnv v t env) rhs
+>   return ([trPattern v t], rhs')
+
+> data NestedTerm = NestedTerm IL.ConstrTerm [NestedTerm] deriving Show
+
+> pattern :: NestedTerm -> IL.ConstrTerm
+> pattern (NestedTerm t _) = t
+
+> arguments :: NestedTerm -> [NestedTerm]
+> arguments (NestedTerm _ ts) = ts
+
+> trLiteral :: Literal -> IL.Literal
+> trLiteral (Char    p c) = IL.Char p c
+> trLiteral (Int ident i) = IL.Int (srcRefOf (idPosition ident)) i
+> trLiteral (Float   p f) = IL.Float p f
+> trLiteral _             = internalError "CurryToIL.trLiteral"
+
+> trPattern :: Ident -> ConstrTerm -> NestedTerm
+> trPattern _ (LiteralPattern        l)
+>   = NestedTerm (IL.LiteralPattern $ trLiteral l) []
+> trPattern v (VariablePattern       _) = NestedTerm (IL.VariablePattern v) []
+> trPattern v (ConstructorPattern c ts)
+>   = NestedTerm (IL.ConstructorPattern c (take (length ts) vs))
+>          (zipWith trPattern vs ts)
+>   where vs = argNames v
+> trPattern v (AsPattern           _ t) = trPattern v t
+> trPattern _ _                         = internalError "CurryToIL.trPattern"
+
+> argNames :: Ident -> [Ident]
+> argNames v = [mkIdent (prefix ++ show i) | i <- [1 :: Integer ..] ]
+>   where prefix = idName v ++ "_"
+
+> isVarPattern :: IL.ConstrTerm -> Bool
+> isVarPattern (IL.VariablePattern _) = True
+> isVarPattern _                      = False
+
+> isVarMatch :: (IL.ConstrTerm, a) -> Bool
+> isVarMatch = isVarPattern . fst
 
 \end{verbatim}
 \paragraph{Pattern Matching}
@@ -351,94 +433,75 @@ position in the remaining arguments. If one is found,
 \texttt{match}.
 \begin{verbatim}
 
-> data NestedTerm = NestedTerm IL.ConstrTerm [NestedTerm] deriving Show
+> type Match  = ([NestedTerm], IL.Expression)
+> type Match' = ([NestedTerm] -> [NestedTerm], [NestedTerm], IL.Expression)
 
-> pattern :: NestedTerm -> IL.ConstrTerm
-> pattern (NestedTerm t _) = t
+> match :: SrcRef        -- source reference
+>       -> IL.Eval       -- evaluation mode (flex)
+>       -> [Ident]       -- new function variables
+>       -> [Match]       -- translated equations, list of: nested pattern+RHS
+>       -> IL.Expression -- result expression
+> match _ _  []     alts = foldl1 IL.Or (map snd alts)
+> match r ev (v:vs) alts
+>   | isInductive  = e1
+>   | notDemanded  = e2
+>   | otherwise    = optMatch r ev (IL.Or e1 e2) (v:) vs (map skipArg alts)
+>   where
+>   isInductive       = null vars
+>   notDemanded       = null nonVars
+>   -- seperate variable and inductive patterns
+>   (vars, nonVars)   = partition isVarMatch (map tagAlt alts)
+>   e1                = matchInductive r ev id v vs (map prep nonVars)
+>   -- match next variables
+>   e2                = match          r ev      vs (map snd vars)
+>   prep (p,(ts, e))  = (p, (id, ts, e))
+>   -- tagAlt extracts the constructor of the first pattern
+>   tagAlt  (t:ts, e) = (pattern t, (arguments t ++ ts, e))
+>   tagAlt  ([]  , _) = error "CurryToIL.match.tagAlt: empty list"
+>   -- skipArg skips the current argument for later matching
+>   skipArg (t:ts, e) = ((t:), ts, e)
+>   skipArg ([]  , _) = error "CurryToIL.match.skipArg: empty list"
 
-> arguments :: NestedTerm -> [NestedTerm]
-> arguments (NestedTerm _ ts) = ts
+> optMatch :: SrcRef               -- source reference
+>          -> IL.Eval              -- evaluation mode (flex)
+>          -> IL.Expression        -- default expression
+>          -> ([Ident] -> [Ident]) -- variables to be matched next
+>          -> [Ident]              -- variables to be matched afterwards
+>          -> [Match']             -- translated equations, list of: nested pattern+RHS
+>          -> IL.Expression
+> -- if there are no variables left: return the default expression
+> optMatch _ _  def _      []     _    = def
+> optMatch r ev def prefix (v:vs) alts
+>   | isInductive = matchInductive r ev prefix v vs alts'
+>   | otherwise   = optMatch r ev def (prefix . (v:)) vs (map skipArg alts)
+>   where
+>   isInductive              = not (any isVarMatch alts')
+>   alts'                    = map tagAlt alts
+>   -- tagAlt extracts the next pattern and reinserts the skipped ones
+>   tagAlt  (pref, t:ts, e') = (pattern t, (pref, arguments t ++ ts, e'))
+>   tagAlt  (_   , []  , _ ) = error "CurryToIL.optMatch.tagAlt: empty list"
+>   -- again, skipArg skips the current argument for later matching
+>   skipArg (pref, t:ts, e') = (pref . (t:), ts, e')
+>   skipArg (_   , []  , _ ) = error "CurryToIL.optMatch.skipArg: empty list"
 
-> translLiteral :: Literal -> IL.Literal
-> translLiteral (Char p c) = IL.Char p c
-> translLiteral (Int ident i) = IL.Int (srcRefOf (idPosition ident)) i
-> translLiteral (Float p f) = IL.Float p f
-> translLiteral _ = internalError "CurryToIL.translLiteral"
-
-> translTerm :: Ident -> ConstrTerm -> NestedTerm
-> translTerm _ (LiteralPattern l) =
->   NestedTerm (IL.LiteralPattern (translLiteral l)) []
-> translTerm v (VariablePattern _) = NestedTerm (IL.VariablePattern v) []
-> translTerm v (ConstructorPattern c ts) =
->   NestedTerm (IL.ConstructorPattern c (take (length ts) vs))
->              (zipWith translTerm vs ts)
->   where vs = argNames v
-> translTerm v (AsPattern _ t) = translTerm v t
-> translTerm _ _ = internalError "CurryToIL.translTerm"
-
-> bindRenameEnv :: Ident -> ConstrTerm -> RenameEnv -> RenameEnv
-> bindRenameEnv _ (LiteralPattern _) env = env
-> bindRenameEnv v (VariablePattern v') env = Map.insert v' v env
-> bindRenameEnv v (ConstructorPattern _ ts) env =
->   foldr2 bindRenameEnv env (argNames v) ts
-> bindRenameEnv v (AsPattern v' t) env = Map.insert v' v (bindRenameEnv v t env)
-> bindRenameEnv _ _ _ = internalError "CurryToIL.bindRenameEnv"
-
-> argNames :: Ident -> [Ident]
-> argNames v = [mkIdent (prefix ++ show i) | i <- [1 ..] :: [Int]]
->   where prefix = idName v ++ "_"
-
-> type Match = ([NestedTerm],IL.Expression)
-> type Match' = ([NestedTerm] -> [NestedTerm],[NestedTerm],IL.Expression)
-
-> isDefaultPattern :: IL.ConstrTerm -> Bool
-> isDefaultPattern (IL.VariablePattern _) = True
-> isDefaultPattern _ = False
-
-> isDefaultMatch :: (IL.ConstrTerm,a) -> Bool
-> isDefaultMatch = isDefaultPattern . fst
-
-> match :: SrcRef -> IL.Eval -> [Ident] -> [Match] -> IL.Expression
-> match _   _ [] alts = foldl1 IL.Or (map snd alts)
-> match pos ev (v:vs) alts
->   | null vars = e1
->   | null nonVars = e2
->   | otherwise = optMatch pos ev (IL.Or e1 e2) (v:) vs (map skipArg alts)
->   where (vars,nonVars) = partition isDefaultMatch (map tagAlt alts)
->         e1 = matchInductive pos ev id v vs nonVars
->         e2 = match pos ev vs (map snd vars)
->         tagAlt (t:ts,e) = (pattern t,(arguments t ++ ts,e))
->         tagAlt ([]  ,_) = error "IL.CurryToIL.match.tagAlt: empty list"
->         skipArg (t:ts,e) = ((t:),ts,e)
->         skipArg ([]  ,_) = error "IL.CurryToIL.match.skipArg: empty list"
-
-> optMatch :: SrcRef -> IL.Eval -> IL.Expression -> ([Ident] -> [Ident])
->    -> [Ident] ->[Match'] -> IL.Expression
-> optMatch _   _  e _      []     _    = e
-> optMatch pos ev e prefix (v:vs) alts
->   | null vars = matchInductive pos ev prefix v vs nonVars
->   | otherwise = optMatch pos ev e (prefix . (v:)) vs (map skipArg alts)
->   where (vars,nonVars) = partition isDefaultMatch (map tagAlt alts)
->         tagAlt (pref,t:ts,e') = (pattern t,(pref (arguments t ++ ts),e'))
->         tagAlt (_   ,[]  ,_ ) = error "IL.CurryToIL.optMatch.tagAlt: empty list"
->         skipArg (pref,t:ts,e') = (pref . (t:),ts,e')
->         skipArg (_   ,[]  ,_ ) = error "IL.CurryToIL.optMatch.skipArg: empty list"
-
+> -- Generate a case expression matching the inductive position
 > matchInductive :: SrcRef -> IL.Eval -> ([Ident] -> [Ident]) -> Ident
->    -> [Ident] ->[(IL.ConstrTerm,Match)] -> IL.Expression
-> matchInductive pos ev prefix v vs alts =
->   IL.Case pos ev (IL.Variable v) (matchAlts ev prefix vs alts)
-
-> matchAlts :: IL.Eval -> ([Ident] -> [Ident]) -> [Ident] ->
->     [(IL.ConstrTerm,Match)] -> [IL.Alt]
-> matchAlts _  _      _  [] = []
-> matchAlts ev prefix vs ((t,alt):alts) =
->   IL.Alt t (match (srcRefOf t)
->                   ev (prefix (vars t ++ vs)) (alt : map snd same)) :
->   matchAlts ev prefix vs others
->   where (same,others) = partition ((t ==) . fst) alts
->         vars (IL.ConstructorPattern _ vs') = vs'
->         vars _ = []
+>                -> [Ident] ->[(IL.ConstrTerm, Match')] -> IL.Expression
+> matchInductive r ev prefix v vs as = IL.Case r ev (IL.Variable v) $
+>   matchAlts as
+>   where
+>   -- create alternatives for the different constructors
+>   matchAlts []              = []
+>   matchAlts ((t, e) : alts) = IL.Alt t expr : matchAlts others
+>     where
+>     -- match nested patterns for same constructors
+>     expr = match (srcRefOf t) ev (prefix $ vars t ++ vs) matchingCases
+>     matchingCases = map expandVars (e : map snd same)
+>     expandVars (pref, ts1, e') = (pref ts1, e')
+>     -- split into same and other constructors
+>     (same, others) = partition ((t ==) . fst) alts
+>     vars (IL.ConstructorPattern _ vs') = vs'
+>     vars _                             = []
 
 \end{verbatim}
 Matching in a \texttt{case}-expression works a little bit differently.
@@ -451,86 +514,53 @@ to detect total matches and immediately discard all alternatives which
 cannot be reached.}
 \begin{verbatim}
 
-> caseMatch :: SrcRef -> ([Ident] -> [Ident]) -> [Ident] -> [Match']
->    -> IL.Expression
-> caseMatch _ _      []     alts = thd3 (head alts)
-> caseMatch r prefix (v:vs) alts
->   | isDefaultMatch (head alts') =
->       caseMatch r (prefix . (v:)) vs (map skipArg alts)
->   | otherwise =
->       IL.Case r IL.Rigid (IL.Variable v) (caseMatchAlts prefix vs alts')
->   where alts' = map tagAlt alts
->         tagAlt (pref,t:ts,e) = (pattern t,(pref,arguments t ++ ts,e))
->         tagAlt (_   ,[]  ,_ ) = error "IL.CurryToIL.caseMatch.tagAlt: empty list"
->         skipArg (pref,t:ts,e) = (pref . (t:),ts,e)
->         skipArg (_   ,[]  ,_ ) = error "IL.CurryToIL.caseMatch.skipArg: empty list"
+> caseMatch :: SrcRef -> IL.Eval -> [Ident] -> [Match] -> IL.Expression
+> caseMatch r ev vs alts = caseOptMatch r ev (snd $ head alts) id vs
+>                          (map prepare alts)
+>   where prepare (ts, e) = (id, ts, e)
 
-> caseMatchAlts ::
->     ([Ident] -> [Ident]) -> [Ident] -> [(IL.ConstrTerm,Match')] -> [IL.Alt]
-> caseMatchAlts prefix vs alts = map caseAlt (ts ++ ts')
->   where (ts',ts) = partition isDefaultPattern (nub (map fst alts))
->         caseAlt t =
->           IL.Alt t (caseMatch (srcRefOf t) id (prefix (vars t ++ vs))
->                               (matchingCases t alts))
->         matchingCases t =
->           map (joinArgs (vars t)) . filter (matches t . fst)
->         matches t t' = t == t' || isDefaultPattern t'
->         joinArgs vs' (IL.VariablePattern _,(pref,ts1,e)) =
->            (id,pref (map varPattern vs' ++ ts1),e)
->         joinArgs _ (_,(pref,ts1,e)) = (id,pref ts1,e)
->         varPattern v = NestedTerm (IL.VariablePattern v) []
->         vars (IL.ConstructorPattern _ vs') = vs'
->         vars _ = []
+> caseOptMatch :: SrcRef            -- source reference
+>           -> IL.Eval              -- evaluation mode (rigid)
+>           -> IL.Expression        -- default expression
+>           -> ([Ident] -> [Ident]) -- variables to be matched next
+>           -> [Ident]              -- variables to be matched afterwards
+>           -> [Match']             -- translated equations, list of: nested pattern+RHS
+>           -> IL.Expression
+> -- if there are no variables left: return the default expression
+> caseOptMatch _ _  def _      []       _    = def
+> caseOptMatch r ev def prefix (v : vs) alts
+>   | isInductive = caseMatchInductive r ev prefix v vs alts'
+>   | otherwise   = caseOptMatch r ev def (prefix . (v:)) vs (map skipArg alts)
+>   where
+>   isInductive              = not $ isVarMatch (head alts')
+>   alts'                    = map tagAlt alts
+>   -- tagAlt extracts the next pattern
+>   tagAlt  (pref, t:ts, e') = (pattern t, (pref, arguments t ++ ts, e'))
+>   tagAlt  (_   , []  , _ ) = error "CurryToIL.caseOptMatch.tagAlt: empty list"
+>   -- skipArg skips the current argument for later matching
+>   skipArg (pref, t:ts, e') = (pref . (t:), ts, e')
+>   skipArg (_   , []  , _ ) = error "CurryToIL.caseOptMatch.skipArg: empty list"
 
-\end{verbatim}
-\paragraph{Expressions}
-Note that the case matching algorithm assumes that the matched
-expression is accessible through a variable. The translation of case
-expressions therefore introduces a let binding for the scrutinized
-expression and immediately throws it away after the matching -- except
-if the matching algorithm has decided to use that variable in the
-right hand sides of the case expression. This may happen, for
-instance, if one of the alternatives contains an \texttt{@}-pattern.
-\begin{verbatim}
-
-> translExpr :: ValueEnv -> [Ident] -> RenameEnv -> Expression -> IL.Expression
-> translExpr _ _ _ (Literal l) = IL.Literal (translLiteral l)
-> translExpr tyEnv _ env (Variable v) =
->   case lookupVar v env of
->     Just v' -> IL.Variable v'
->     Nothing -> IL.Function v (arrowArity (varType tyEnv v))
->   where lookupVar v1 env1
->           | isQualified v1 = Nothing
->           | otherwise = Map.lookup (unqualify v1) env1
-> translExpr tyEnv _ _ (Constructor c) =
->   IL.Constructor c (arrowArity (constrType tyEnv c))
-> translExpr tyEnv vs env (Apply e1 e2) =
->   IL.Apply (translExpr tyEnv vs env e1) (translExpr tyEnv vs env e2)
-> translExpr tyEnv vs env (Let ds e) =
->   case ds of
->     [ExtraVariables _ vs'] -> foldr IL.Exist e' vs'
->     [d] | all (`notElem` bv d) (qfv emptyMIdent d) ->
->       IL.Let (translBinding env' d) e'
->     _ -> IL.Letrec (map (translBinding env') ds) e'
->   where e' = translExpr tyEnv vs env' e
->         env' = foldr2 Map.insert env bvs bvs
->         bvs = bv ds
->         translBinding env1 (PatternDecl _ (VariablePattern v) rhs) =
->           IL.Binding v (translRhs tyEnv vs env1 rhs)
->         translBinding _ p = error $ "unexpected binding: " ++ show p
-> translExpr tyEnv ~(v:vs) env (Case r e alts) =
->   case caseMatch r id [v] (map (translAlt v) alts) of
->     IL.Case r' mode (IL.Variable v') alts'
->       | v == v' && v `notElem` fv alts' -> IL.Case r' mode e' alts'
->     e''
->       | v `elem` fv e'' -> IL.Let (IL.Binding v e') e''
->       | otherwise -> e''
->   where e' = translExpr tyEnv vs env e
->         translAlt v' (Alt _ t rhs) =
->           (id,
->            [translTerm v' t],
->            translRhs tyEnv vs (bindRenameEnv v' t env) rhs)
-> translExpr _ _ _ _ = internalError "CurryToIL.translExpr"
+> -- Generate a case expression matching the inductive position
+> caseMatchInductive :: SrcRef -> IL.Eval -> ([Ident] -> [Ident]) -> Ident
+>                    -> [Ident] ->[(IL.ConstrTerm, Match')] -> IL.Expression
+> caseMatchInductive r ev prefix v vs alts = IL.Case r ev (IL.Variable v) $
+>   map caseAlt (nonVarPats ++ varPats)
+>   where
+>   (varPats, nonVarPats) = partition isVarPattern $ nub $ map fst alts
+>   caseAlt t = IL.Alt t expr
+>     where
+>     expr = caseMatch (srcRefOf t) ev (prefix $ vars t ++ vs) (matchingCases alts)
+>     -- matchingCases selects the matching branches and recursively
+>     -- matches the remaining patterns
+>     matchingCases = map (expandVars $ vars t) . filter (matches . fst)
+>     matches t' = t == t' || isVarPattern t'
+>     expandVars vs' (p, (pref, ts1, e)) = (pref ts2, e)
+>       where ts2 | isVarPattern p = map var2Pattern vs' ++ ts1
+>                 | otherwise      = ts1
+>             var2Pattern v' = NestedTerm (IL.VariablePattern v') []
+>     vars (IL.ConstructorPattern _ vs') = vs'
+>     vars _                             = []
 
 \end{verbatim}
 \paragraph{Auxiliary Definitions}
@@ -539,16 +569,31 @@ of variables and constructors, respectively. The quantifiers are
 stripped from the types.
 \begin{verbatim}
 
-> varType :: ValueEnv -> QualIdent -> Type
-> varType tyEnv f = case qualLookupValue f tyEnv of
->   [Value _ _ (ForAll _ ty)] -> ty
->   _ -> internalError $ "CurryToIL.varType: " ++ show f
+> varType :: QualIdent -> TransM Type
+> varType f = do
+>   tyEnv <- getValueEnv
+>   case qualLookupValue f tyEnv of
+>     [Value _ _ (ForAll _ ty)] -> return ty
+>     _ -> internalError $ "CurryToIL.varType: " ++ show f
 
-> constrType :: ValueEnv -> QualIdent -> Type
-> constrType tyEnv c = case qualLookupValue c tyEnv of
->   [DataConstructor  _ _ (ForAllExist _ _ ty)] -> ty
->   [NewtypeConstructor _ (ForAllExist _ _ ty)] -> ty
->   _ -> internalError $ "CurryToIL.constrType: " ++ show c
+> constrType :: QualIdent -> TransM Type
+> constrType c = do
+>   tyEnv <- getValueEnv
+>   case qualLookupValue c tyEnv of
+>     [DataConstructor  _ _ (ForAllExist _ _ ty)] -> return ty
+>     [NewtypeConstructor _ (ForAllExist _ _ ty)] -> return ty
+>     _ -> internalError $ "CurryToIL.constrType: " ++ show c
+
+> recordInfo :: Ident -> TransM (QualIdent, Int, [(Ident, Type)])
+> recordInfo f = do
+>   tyEnv <- getValueEnv
+>   case lookupValue f tyEnv of
+>     [Label _ r _] -> do
+>       tcEnv <- getTCEnv
+>       case qualLookupTC r tcEnv of
+>         [AliasType _ n (TypeRecord fs _)] -> return (r, n, fs)
+>         _ -> internalError $ "CurryToIL.recordInfo: " ++ show f
+>     _ -> internalError $ "CurryToIL.recordInfo: " ++ show f
 
 \end{verbatim}
 The list of import declarations in the intermediate language code is
@@ -557,39 +602,39 @@ module.
 \begin{verbatim}
 
 > imports :: ModuleIdent -> [IL.Decl] -> [ModuleIdent]
-> imports m = Set.toList . Set.delete m . Set.fromList . foldr modulesDecl []
+> imports m = Set.toList . Set.delete m . foldr mdlsDecl Set.empty
 
-> modulesDecl :: IL.Decl -> [ModuleIdent] -> [ModuleIdent]
-> modulesDecl (IL.DataDecl _ _ cs) ms = foldr modulesConstrDecl ms cs
->   where modulesConstrDecl (IL.ConstrDecl _ tys) ms' = foldr modulesType ms' tys
-> modulesDecl (IL.NewtypeDecl _ _ (IL.ConstrDecl _ ty)) ms = modulesType ty ms
-> modulesDecl (IL.FunctionDecl _ _ ty e) ms = modulesType ty (modulesExpr e ms)
-> modulesDecl (IL.ExternalDecl _ _ _ ty) ms = modulesType ty ms
+> mdlsDecl :: IL.Decl -> Set.Set ModuleIdent -> Set.Set ModuleIdent
+> mdlsDecl (IL.DataDecl       _ _ cs) ms = foldr mdlsConstrsDecl ms cs
+>   where mdlsConstrsDecl (IL.ConstrDecl _ tys) ms' = foldr mdlsType ms' tys
+> mdlsDecl (IL.NewtypeDecl _ _ (IL.ConstrDecl _ ty)) ms = mdlsType ty ms
+> mdlsDecl (IL.FunctionDecl _ _ ty e) ms = mdlsType ty (mdlsExpr e ms)
+> mdlsDecl (IL.ExternalDecl _ _ _ ty) ms = mdlsType ty ms
 
-> modulesType :: IL.Type -> [ModuleIdent] -> [ModuleIdent]
-> modulesType (IL.TypeConstructor tc tys) ms =
->   modules tc (foldr modulesType ms tys)
-> modulesType (IL.TypeVariable         _) ms = ms
-> modulesType (IL.TypeArrow      ty1 ty2) ms = modulesType ty1 (modulesType ty2 ms)
+> mdlsType :: IL.Type -> Set.Set ModuleIdent -> Set.Set ModuleIdent
+> mdlsType (IL.TypeConstructor tc tys) ms = modules tc (foldr mdlsType ms tys)
+> mdlsType (IL.TypeVariable         _) ms = ms
+> mdlsType (IL.TypeArrow      ty1 ty2) ms = mdlsType ty1 (mdlsType ty2 ms)
 
-> modulesExpr :: IL.Expression -> [ModuleIdent] -> [ModuleIdent]
-> modulesExpr (IL.Function    f _) ms = modules f ms
-> modulesExpr (IL.Constructor c _) ms = modules c ms
-> modulesExpr (IL.Apply     e1 e2) ms = modulesExpr e1 (modulesExpr e2 ms)
-> modulesExpr (IL.Case   _ _ e as) ms = modulesExpr e (foldr modulesAlt ms as)
->   where modulesAlt (IL.Alt t e') ms' = modulesConstrTerm t (modulesExpr e' ms')
->         modulesConstrTerm (IL.ConstructorPattern c _) ms' = modules c ms'
->         modulesConstrTerm _ ms' = ms'
-> modulesExpr (IL.Or        e1 e2) ms = modulesExpr e1 (modulesExpr e2 ms)
-> modulesExpr (IL.Exist       _ e) ms = modulesExpr e ms
-> modulesExpr (IL.Let         b e) ms = modulesBinding b (modulesExpr e ms)
-> modulesExpr (IL.Letrec     bs e) ms = foldr modulesBinding (modulesExpr e ms) bs
-> modulesExpr _                    ms = ms
+> mdlsExpr :: IL.Expression -> Set.Set ModuleIdent -> Set.Set ModuleIdent
+> mdlsExpr (IL.Function    f _) ms = modules f ms
+> mdlsExpr (IL.Constructor c _) ms = modules c ms
+> mdlsExpr (IL.Apply     e1 e2) ms = mdlsExpr e1 (mdlsExpr e2 ms)
+> mdlsExpr (IL.Case   _ _ e as) ms = mdlsExpr e (foldr mdlsAlt ms as)
+>   where
+>   mdlsAlt     (IL.Alt               t e') = mdlsPattern t . mdlsExpr e'
+>   mdlsPattern (IL.ConstructorPattern c _) = modules c
+>   mdlsPattern _                           = id
+> mdlsExpr (IL.Or        e1 e2) ms = mdlsExpr e1 (mdlsExpr e2 ms)
+> mdlsExpr (IL.Exist       _ e) ms = mdlsExpr e ms
+> mdlsExpr (IL.Let         b e) ms = mdlsBinding b (mdlsExpr e ms)
+> mdlsExpr (IL.Letrec     bs e) ms = foldr mdlsBinding (mdlsExpr e ms) bs
+> mdlsExpr _                    ms = ms
 
-> modulesBinding :: IL.Binding -> [ModuleIdent] -> [ModuleIdent]
-> modulesBinding (IL.Binding _ e) = modulesExpr e
+> mdlsBinding :: IL.Binding -> Set.Set ModuleIdent -> Set.Set ModuleIdent
+> mdlsBinding (IL.Binding _ e) = mdlsExpr e
 
-> modules :: QualIdent -> [ModuleIdent] -> [ModuleIdent]
-> modules x ms = maybe ms (: ms) (qidModule x)
+> modules :: QualIdent -> Set.Set ModuleIdent -> Set.Set ModuleIdent
+> modules x ms = maybe ms (`Set.insert` ms) (qidModule x)
 
 \end{verbatim}
