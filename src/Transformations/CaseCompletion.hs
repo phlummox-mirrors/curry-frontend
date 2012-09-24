@@ -11,7 +11,7 @@ module Transformations.CaseCompletion (completeCase) where
 
 import           Control.Monad              (liftM, liftM2)
 import qualified Control.Monad.State as S   (State, evalState, gets, modify)
-import           Data.List                  (find, nubBy)
+import           Data.List                  (find)
 import           Data.Maybe                 (catMaybes, fromMaybe)
 
 import           Curry.Base.Ident
@@ -106,7 +106,7 @@ ccBinding (Binding v e) = Binding v `liftM` ccExpr e
 ccCase :: SrcRef -> Eval -> Expression -> [Alt] -> CCM Expression
 ccCase _ _     _ []
   = internalError "CaseCompletion.ccCase: empty alternative list"
--- pattern matching causes flexible case expressions
+-- flexible cases are not completed
 ccCase r Flex  e alts = return $ Case r Flex e alts
 ccCase r Rigid e alts
   | isConstrAlt a     = completeConsAlts r Rigid e as
@@ -115,48 +115,6 @@ ccCase r Rigid e alts
   | otherwise
   = internalError "CaseCompletion.ccExpr: illegal alternative list"
   where as@(a:_) = alts -- removeRedundantAlts alts
-
--- The function 'removeRedundantAlts' removes case branches which are
--- either unreachable or multiply declared.
--- Note: unlike the PAKCS frontend, MCC does not support warnings. So
--- there will be no messages if alternatives have been removed.
-removeRedundantAlts :: [Alt] -> [Alt]
-removeRedundantAlts = removeMultipleAlts . removeIdleAlts
-
--- An alternative is idle if it occurs anywhere behind another alternative
--- which contains a variable pattern. Example:
---    case x of
---      (y:ys) -> e1
---      z      -> e2
---      []     -> e3
--- Here all alternatives behind (z  -> e2) are idle and will be removed.
-removeIdleAlts ::[Alt] -> [Alt]
-removeIdleAlts = fst . splitAfter isVarAlt
-  where
-  -- Splits a list behind the first element which satifies 'p'
-  splitAfter :: (a -> Bool) -> [a] -> ([a], [a])
-  splitAfter p xs = go [] xs
-    where
-    go fs []                 = (reverse fs    , [])
-    go fs (y:ys) | p y       = (reverse (y:fs), ys)
-                 | otherwise = go (y:fs) ys
-
--- An alternative occurs multiply if at least two alternatives
--- use the same pattern. Example:
---    case x of
---      []     -> e1
---      (y:ys) -> e2
---      []     -> e3
--- Here, the last alternative occures multiply because its pattern is already
--- used in the first alternative. All multiple alternatives will be
--- removed except for the first occurrence.
-removeMultipleAlts :: [Alt] -> [Alt]
-removeMultipleAlts = nubBy eqAlt where
-  eqAlt (Alt p1 _) (Alt p2 _) = case (p1, p2) of
-    (LiteralPattern       l1, LiteralPattern       l2) -> l1 == l2
-    (ConstructorPattern c1 _, ConstructorPattern c2 _) -> c1 == c2
-    (VariablePattern       _, VariablePattern       _) -> True
-    _                                                  -> False
 
 -- Completes a case alternative list which branches via constructor patterns
 -- by adding alternatives of the form
@@ -460,3 +418,48 @@ insertBinding (Binding v _) = insertIdent v
 
 insertQIdent :: QualIdent -> ScopeEnv -> ScopeEnv
 insertQIdent q = insertIdent (unqualify q)
+
+-- DEACTIVATED, as the CurryToIL transformation should already have
+-- eliminated redundant alternatives.
+
+-- The function 'removeRedundantAlts' removes case branches which are
+-- either unreachable or multiply declared.
+-- Note: unlike the PAKCS frontend, MCC does not support warnings. So
+-- there will be no messages if alternatives have been removed.
+-- removeRedundantAlts :: [Alt] -> [Alt]
+-- removeRedundantAlts = removeMultipleAlts . removeIdleAlts
+
+-- An alternative is idle if it occurs anywhere behind another alternative
+-- which contains a variable pattern. Example:
+--    case x of
+--      (y:ys) -> e1
+--      z      -> e2
+--      []     -> e3
+-- Here all alternatives behind (z  -> e2) are idle and will be removed.
+-- removeIdleAlts ::[Alt] -> [Alt]
+-- removeIdleAlts = fst . splitAfter isVarAlt
+--   where
+--   -- Splits a list behind the first element which satifies 'p'
+--   splitAfter :: (a -> Bool) -> [a] -> ([a], [a])
+--   splitAfter p xs = go [] xs
+--     where
+--     go fs []                 = (reverse fs    , [])
+--     go fs (y:ys) | p y       = (reverse (y:fs), ys)
+--                  | otherwise = go (y:fs) ys
+
+-- An alternative occurs multiply if at least two alternatives
+-- use the same pattern. Example:
+--    case x of
+--      []     -> e1
+--      (y:ys) -> e2
+--      []     -> e3
+-- Here, the last alternative occures multiply because its pattern is already
+-- used in the first alternative. All multiple alternatives will be
+-- removed except for the first occurrence.
+-- removeMultipleAlts :: [Alt] -> [Alt]
+-- removeMultipleAlts = nubBy eqAlt where
+--   eqAlt (Alt p1 _) (Alt p2 _) = case (p1, p2) of
+--     (LiteralPattern       l1, LiteralPattern       l2) -> l1 == l2
+--     (ConstructorPattern c1 _, ConstructorPattern c2 _) -> c1 == c2
+--     (VariablePattern       _, VariablePattern       _) -> True
+--     _                                                  -> False
