@@ -238,7 +238,7 @@ environment.}
 >     ty3 <- exprType tyEnv e3
 >     unify ty2 ty3
 >     return ty3
-> exprType tyEnv (Case _ _ alts) = freshTypeVar >>= flip altType alts
+> exprType tyEnv (Case _ _ _ alts) = freshTypeVar >>= flip altType alts
 >   where altType ty [] = return ty
 >         altType ty (Alt _ _ rhs:alts1) =
 >           rhsType tyEnv rhs >>= unify ty >> altType ty alts1

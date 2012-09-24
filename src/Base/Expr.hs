@@ -108,7 +108,7 @@ instance QualExpr Expression where
   qfv m (Let                ds e) = filterBv ds $ qfv m ds ++ qfv m e
   qfv m (Do                sts e) = foldr (qfvStmt m) (qfv m e) sts
   qfv m (IfThenElse   _ e1 e2 e3) = qfv m e1 ++ qfv m e2 ++ qfv m e3
-  qfv m (Case           _ e alts) = qfv m e ++ qfv m alts
+  qfv m (Case         _ _ e alts) = qfv m e ++ qfv m alts
   qfv m (RecordConstr         fs) = qfv m fs
   qfv m (RecordSelection     e _) = qfv m e
   qfv m (RecordUpdate       fs e) = qfv m e ++ qfv m fs

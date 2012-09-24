@@ -344,7 +344,7 @@ checkExpression (Do stmts expr) = withScope $ do
   reportUnusedVars
 checkExpression (IfThenElse _ expr1 expr2 expr3)
   = mapM_ checkExpression [expr1, expr2, expr3]
-checkExpression (Case _ expr alts) = do
+checkExpression (Case _ _ expr alts) = do
   checkExpression expr
   mapM_ checkAlt alts
   checkCaseAlternatives alts

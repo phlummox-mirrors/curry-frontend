@@ -209,21 +209,21 @@ in the type environment.
 > abstractFunDecl _ _ _ _ = error "Lift.abstractFunDecl: no pattern match"
 
 > abstractExpr :: String -> [Ident] -> Expression -> LiftM Expression
-> abstractExpr _   _   l@(Literal     _) = return l
-> abstractExpr pre lvs var@(Variable  v)
+> abstractExpr _   _   l@(Literal      _) = return l
+> abstractExpr pre lvs var@(Variable   v)
 >   | isQualified v = return var
 >   | otherwise     = do
 >     env <- getAbstractEnv
 >     case Map.lookup (unqualify v) env of
 >       Nothing -> return var
 >       Just v' -> abstractExpr pre lvs v'
-> abstractExpr _   _   c@(Constructor _) = return c
-> abstractExpr pre lvs (Apply     e1 e2) =
+> abstractExpr _   _   c@(Constructor  _) = return c
+> abstractExpr pre lvs (Apply      e1 e2) =
 >   liftM2 Apply (abstractExpr pre lvs e1) (abstractExpr pre lvs e2)
-> abstractExpr pre lvs (Let        ds e) = abstractDeclGroup pre lvs ds e
-> abstractExpr pre lvs (Case   r e alts) =
->   liftM2 (Case r) (abstractExpr pre lvs e)
->                   (mapM (abstractAlt pre lvs) alts)
+> abstractExpr pre lvs (Let         ds e) = abstractDeclGroup pre lvs ds e
+> abstractExpr pre lvs (Case r ct e alts) =
+>   liftM2 (Case r ct) (abstractExpr pre lvs e)
+>                      (mapM (abstractAlt pre lvs) alts)
 > abstractExpr _   _   _                 = internalError "Lift.abstractExpr"
 
 > abstractAlt :: String -> [Ident] -> Alt -> LiftM Alt
@@ -262,17 +262,17 @@ to the top-level.
 >         (vds', dss') = unzip $ map liftVarDecl vds
 
 > liftExpr :: Expression -> (Expression, [Decl])
-> liftExpr l@(Literal     _) = (l, [])
-> liftExpr v@(Variable    _) = (v, [])
-> liftExpr c@(Constructor _) = (c, [])
-> liftExpr (Apply     e1 e2) = (Apply e1' e2', ds' ++ ds'')
+> liftExpr l@(Literal      _) = (l, [])
+> liftExpr v@(Variable     _) = (v, [])
+> liftExpr c@(Constructor  _) = (c, [])
+> liftExpr (Apply      e1 e2) = (Apply e1' e2', ds' ++ ds'')
 >   where (e1', ds' ) = liftExpr e1
 >         (e2', ds'') = liftExpr e2
-> liftExpr (Let        ds e) = (mkLet ds' e', ds'' ++ ds''')
+> liftExpr (Let         ds e) = (mkLet ds' e', ds'' ++ ds''')
 >   where (ds', ds'' ) = liftDeclGroup ds
 >         (e' , ds''') = liftExpr e
 >         mkLet ds1 e1 = if null ds1 then e1 else Let ds1 e1
-> liftExpr (Case r e alts) = (Case r e' alts', concat $ ds' : dss')
+> liftExpr (Case r ct e alts) = (Case r ct e' alts', concat $ ds' : dss')
 >   where (e'   ,ds' ) = liftExpr e
 >         (alts',dss') = unzip $ map liftAlt alts
 > liftExpr _ = internalError "Lift.liftExpr"

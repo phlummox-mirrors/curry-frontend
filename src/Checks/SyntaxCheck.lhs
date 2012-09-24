@@ -713,8 +713,8 @@ checkParen
 >   liftM2 Do (mapM (checkStatement p) sts) (checkExpr p e)
 > checkExpr p (IfThenElse r e1 e2 e3) =
 >   liftM3 (IfThenElse r) (checkExpr p e1) (checkExpr p e2) (checkExpr p e3)
-> checkExpr p (Case r e alts) =
->   liftM2 (Case r) (checkExpr p e) (mapM checkAlt alts)
+> checkExpr p (Case r ct e alts) =
+>   liftM2 (Case r ct) (checkExpr p e) (mapM checkAlt alts)
 > checkExpr p rec@(RecordConstr   fs) = do
 >   checkRecordExtension p
 >   env <- getRenameEnv

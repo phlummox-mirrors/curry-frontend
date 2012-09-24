@@ -347,7 +347,7 @@ instance, if one of the alternatives contains an \texttt{@}-pattern.
 >   trBinding (PatternDecl _ (VariablePattern v) rhs)
 >     = IL.Binding v `liftM` trRhs vs env' rhs
 >   trBinding p = error $ "unexpected binding: " ++ show p
-> trExpr (v:vs) env (Case r e alts) = do
+> trExpr (v:vs) env (Case r _ e alts) = do
 >   -- the ident v is used for the case expression subject, as this could
 >   -- be referenced in the case alternatives by a variable pattern
 >   e'   <- trExpr vs env e

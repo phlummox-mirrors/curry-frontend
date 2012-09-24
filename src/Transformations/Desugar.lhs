@@ -407,8 +407,9 @@ type \texttt{Bool} of the guard because the guard's type defaults to
 >     e1' <- dsExpr p e1
 >     e2' <- dsExpr p e2
 >     e3' <- dsExpr p e3
->     return (Case r e1' [caseAlt p truePattern e2',caseAlt p falsePattern e3'])
-> dsExpr p (Case r e alts)
+>     return (Case r Rigid e1'
+>             [caseAlt p truePattern e2', caseAlt p falsePattern e3'])
+> dsExpr p (Case r ct e alts)
 >   | null alts = return prelFailed
 >   | otherwise = do
 >         m  <- getModuleIdent
@@ -417,11 +418,11 @@ type \texttt{Bool} of the guard because the guard's type defaults to
 >         alts' <- mapM dsAltLhs alts
 >         tyEnv <- getValueEnv
 >         alts'' <- mapM dsAltRhs
->                        (map (expandAlt tyEnv v) (init (tails alts')))
+>                        (map (expandAlt tyEnv v ct) (init (tails alts')))
 >         return (mkCase m v e' alts'')
 >   where mkCase m1 v e1 alts1
->           | v `elem` qfv m1 alts1 = Let [varDecl p v e1] (Case r (mkVar v) alts1)
->           | otherwise = Case r e1 alts1
+>           | v `elem` qfv m1 alts1 = Let [varDecl p v e1] (Case r ct (mkVar v) alts1)
+>           | otherwise             = Case r ct e1 alts1
 > dsExpr p (RecordConstr fs)
 >   | null fs = internalError "Desugar.dsExpr: empty record construction"
 >   | otherwise = do
@@ -465,10 +466,10 @@ are compatible with the matched pattern when the guards fail.
 > dsAltRhs :: Alt -> DsM Alt
 > dsAltRhs (Alt p t rhs) = Alt p t `liftM` dsRhs p rhs
 
-> expandAlt :: ValueEnv -> Ident -> [Alt] -> Alt
-> expandAlt _     _ []                   = error "Desugar.expandAlt: empty list"
-> expandAlt tyEnv v (Alt p t rhs : alts) = caseAlt p t (expandRhs tyEnv e0 rhs)
->   where e0 = Case (srcRefOf p) (mkVar v)
+> expandAlt :: ValueEnv -> Ident -> CaseType -> [Alt] -> Alt
+> expandAlt _     _ _  []                   = error "Desugar.expandAlt: empty list"
+> expandAlt tyEnv v ct (Alt p t rhs : alts) = caseAlt p t (expandRhs tyEnv e0 rhs)
+>   where e0 = Case (srcRefOf p) ct (mkVar v)
 >                   (filter (isCompatible t . altPattern) alts)
 >         altPattern (Alt _ t1 _) = t1
 
@@ -697,28 +698,27 @@ instead of \texttt{(++)} and \texttt{map} in place of
 \begin{verbatim}
 
 > dsQual :: Position -> Statement -> Expression -> DsM Expression
-> dsQual p (StmtExpr       pos b) e =
->   dsExpr p (IfThenElse pos b e (List [pos] []))
-> dsQual p (StmtDecl          ds) e = dsExpr p (Let ds e)
-> dsQual p (StmtBind refBind t l) e
+> dsQual p (StmtExpr   r b) e =
+>   dsExpr p (IfThenElse r b e (List [r] []))
+> dsQual p (StmtDecl    ds) e = dsExpr p (Let ds e)
+> dsQual p (StmtBind r t l) e
 >   | isVarPattern t = dsExpr p (qualExpr t e l)
 >   | otherwise      = do
->       v   <- addRefId refBind `liftM` freshMonoTypeVar "_#var" t
->       l'  <- addRefId refBind `liftM` freshMonoTypeVar "_#var" e
->       dsExpr p (apply (prelFoldr refBind)
->                            [foldFunct v l' e,List [refBind] [],l])
+>       v   <- addRefId r `liftM` freshMonoTypeVar "_#var" t
+>       l'  <- addRefId r `liftM` freshMonoTypeVar "_#var" e
+>       dsExpr p (apply (prelFoldr r) [foldFunct v l' e, List [r] [], l])
 >   where
 >   qualExpr v (ListCompr _ e1 []) l1
->     = apply (prelMap refBind) [Lambda refBind [v] e1,l1]
+>     = apply (prelMap r) [Lambda r [v] e1,l1]
 >   qualExpr v e1                  l1
->     = apply (prelConcatMap refBind) [Lambda refBind [v] e1,l1]
->   foldFunct v l1 e1 = Lambda refBind (map VariablePattern [v,l1])
->           (Case refBind (mkVar v)
+>     = apply (prelConcatMap r) [Lambda r [v] e1,l1]
+>   foldFunct v l1 e1 = Lambda r (map VariablePattern [v,l1])
+>           (Case r Flex (mkVar v)
 >                 [ caseAlt {-refBind-} p t (append e1 (mkVar l1))
 >                 , caseAlt {-refBind-} p (VariablePattern v) (mkVar l1)])
 >
->   append (ListCompr _ e1 []) l1 = apply (Constructor $ addRef refBind $ qConsId) [e1,l1]
->   append e1                  l1 = apply (prelAppend refBind) [e1,l1]
+>   append (ListCompr _ e1 []) l1 = apply (Constructor $ addRef r $ qConsId) [e1,l1]
+>   append e1                  l1 = apply (prelAppend r) [e1,l1]
 
 \end{verbatim}
 Generation of fresh names

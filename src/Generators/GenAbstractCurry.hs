@@ -522,7 +522,7 @@ genExpr pos env (Do stmts expr)
 genExpr pos env (IfThenElse _ expr1 expr2 expr3)
   = genExpr pos env (Apply (Apply (Apply (Variable qIfThenElseId)
                     expr1) expr2) expr3)
-genExpr pos env (Case _ expr alts)
+genExpr pos env (Case _ _ expr alts)
   = let (env1, expr') = genExpr pos env expr
         (env2, alts') = mapAccumL genBranchExpr env1 alts
     in  (env2, CCase expr' alts')

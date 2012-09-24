@@ -151,7 +151,7 @@ qExpr (Let                ds e) = liftM2 Let (mapM qDecl ds) (qExpr e)
 qExpr (Do                sts e) = liftM2 Do (mapM qStmt sts) (qExpr e)
 qExpr (IfThenElse   r e1 e2 e3) = liftM3 (IfThenElse r) (qExpr e1)
                                          (qExpr e2) (qExpr e3)
-qExpr (Case           r e alts) = liftM2 (Case r) (qExpr e) (mapM qAlt alts)
+qExpr (Case          r ct e as) = liftM2 (Case r ct) (qExpr e) (mapM qAlt as)
 qExpr (RecordConstr         fs) = RecordConstr `liftM` mapM qFieldExpr fs
 qExpr (RecordSelection     e l) = flip RecordSelection l `liftM` qExpr e
 qExpr (RecordUpdate       fs e) = liftM2 RecordUpdate (mapM qFieldExpr fs)

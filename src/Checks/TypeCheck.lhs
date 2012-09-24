@@ -915,8 +915,7 @@ because of possibly multiple occurrences of variables.
 >     unify p "expression" (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e3)
 >           ty2 ty3
 >     return ty3
-> tcExpr p (Case _ e alts) =
->   do
+> tcExpr p (Case _ _ e alts) = do
 >     tyEnv0 <- getValueEnv
 >     ty <- tcExpr p e
 >     alpha <- freshTypeVar
@@ -930,8 +929,7 @@ because of possibly multiple occurrences of variables.
 >                 ty1 >>
 >           tcRhs tyEnv0 rhs >>=
 >           unify p1 "case branch" doc ty2
-> tcExpr _ (RecordConstr fs) =
->   do
+> tcExpr _ (RecordConstr fs) = do
 >     fts <- mapM (tcFieldExpr equals) fs
 >     --when (1 == length fs)
 >     --     (error (show fs ++ "\n" ++ show fts))
@@ -962,14 +960,14 @@ because of possibly multiple occurrences of variables.
 >     return ty
 
 > tcQual :: Position -> Statement -> TCM ()
-> tcQual p (StmtExpr _ e) = do
+> tcQual p (StmtExpr     _ e) =
 >   tcExpr p e >>= unify p "guard" (ppExpr 0 e) boolType
 > tcQual p q@(StmtBind _ t e) = do
 >   ty1 <- tcConstrTerm p t
 >   ty2 <- tcExpr p e
 >   unify p "generator" (ppStmt q $-$ text "Term:" <+> ppExpr 0 e)
 >         (listType ty1) ty2
-> tcQual _ (StmtDecl ds) = tcDecls ds
+> tcQual _ (StmtDecl      ds) = tcDecls ds
 
 > tcStmt ::Position -> Statement -> TCM ()
 > tcStmt p (StmtExpr _ e) = do

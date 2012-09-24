@@ -106,7 +106,7 @@ an unlimited range of integer constants in Curry programs.
 >   | Apply Expression Expression
 >     -- |case expressions
 >   | Case SrcRef Eval Expression [Alt]
->     -- |non-determinisismic or
+>     -- |non-deterministic or
 >   | Or Expression Expression
 >     -- |exist binding (introduction of a free variable)
 >   | Exist Ident Expression
@@ -127,25 +127,21 @@ an unlimited range of integer constants in Curry programs.
 > data Binding = Binding Ident Expression
 >     deriving (Eq, Show)
 
-% instance for Expr
-
 > instance Expr Expression where
 >   fv (Variable            v) = [v]
 >   fv (Apply           e1 e2) = fv e1 ++ fv e2
->   fv (Case       _ _ e alts) = fv e ++ fv alts
+>   fv (Case       _ _ e alts) = fv e  ++ fv alts
 >   fv (Or              e1 e2) = fv e1 ++ fv e2
 >   fv (Exist             v e) = filter (/= v) (fv e)
 >   fv (Let (Binding v e1) e2) = fv e1 ++ filter (/= v) (fv e2)
 >   fv (Letrec          bds e) = filter (`notElem` vs) (fv es ++ fv e)
 >     where (vs, es) = unzip [(v, e') | Binding v e' <- bds]
->   fv _ = []
+>   fv _                       = []
 
 > instance Expr Alt where
 >   fv (Alt (ConstructorPattern _ vs) e) = filter (`notElem` vs) (fv e)
 >   fv (Alt (VariablePattern       v) e) = filter (v /=) (fv e)
 >   fv (Alt _                         e) = fv e
-
-% instance for SrcRefOf
 
 > instance SrcRefOf ConstrTerm where
 >   srcRefOf (LiteralPattern       l) = srcRefOf l

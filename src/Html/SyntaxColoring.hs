@@ -634,7 +634,7 @@ expression2codes (Do statements expression) =
     concatMap statement2codes statements ++ expression2codes expression
 expression2codes (IfThenElse _ expression1 expression2 expression3) =
     expression2codes expression1 ++ expression2codes expression2 ++ expression2codes expression3
-expression2codes (Case _ expression alts) =
+expression2codes (Case _ _ expression alts) =
     expression2codes expression ++ concatMap alt2codes alts
 expression2codes _ = internalError "SyntaxColoring.expression2codes: no pattern match"
 
@@ -729,6 +729,7 @@ token2string (Token KW_data _) = "data"
 token2string (Token KW_do _) = "do"
 token2string (Token KW_else _) = "else"
 token2string (Token KW_external _) = "external"
+token2string (Token KW_fcase _) = "fcase"
 token2string (Token KW_free _) = "free"
 token2string (Token KW_if _) = "if"
 token2string (Token KW_import _) = "import"

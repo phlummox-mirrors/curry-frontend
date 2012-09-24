@@ -215,8 +215,8 @@ functions in later phases of the compiler.
 >                           (Map.lookup (unqualify x) env)
 > simExpr _   c@(Constructor _) = return c
 > simExpr env (Apply (Let ds e1) e2) = simExpr env (Let ds (Apply e1 e2))
-> simExpr env (Apply (Case r e1 alts) e2)
->   = simExpr env (Case r e1 (map (applyToAlt e2) alts))
+> simExpr env (Apply (Case r ct e1 alts) e2)
+>   = simExpr env (Case r ct e1 (map (applyToAlt e2) alts))
 >   where applyToAlt e (Alt p t rhs) = Alt p t (applyRhs rhs e)
 >         applyRhs (SimpleRhs p e1' _) e2' = SimpleRhs p (Apply e1' e2') []
 >         applyRhs (GuardedRhs _ _) _ = error "Simplify.simExpr.applyRhs: Guarded rhs"
@@ -226,8 +226,8 @@ functions in later phases of the compiler.
 >     tyEnv <- getValueEnv
 >     dss' <- mapM (sharePatternRhs tyEnv) ds
 >     simplifyLet env (scc bv (qfv m) (foldr hoistDecls [] (concat dss'))) e
-> simExpr env (Case r e alts) =
->   liftM2 (Case r) (simExpr env e) (mapM (simplifyAlt env) alts)
+> simExpr env (Case r ct e alts) =
+>   liftM2 (Case r ct) (simExpr env e) (mapM (simplifyAlt env) alts)
 > simExpr _ _ = error "Simplify.simExpr: no pattern match"
 
 > simplifyAlt :: InlineEnv -> Alt -> SIM Alt

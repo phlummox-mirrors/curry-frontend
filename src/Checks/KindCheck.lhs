@@ -215,8 +215,8 @@ declaration groups.
 >   liftM2 Do (mapM checkStmt sts) (checkExpr e)
 > checkExpr (IfThenElse r e1 e2 e3) =
 >   liftM3 (IfThenElse r) (checkExpr e1) (checkExpr e2) (checkExpr e3)
-> checkExpr (Case       r e alts) =
->   liftM2 (Case r) (checkExpr e) (mapM checkAlt alts)
+> checkExpr (Case    r ct e alts) =
+>   liftM2 (Case r ct) (checkExpr e) (mapM checkAlt alts)
 > checkExpr (RecordConstr     fs) =
 >   RecordConstr `liftM` mapM checkFieldExpr fs
 > checkExpr (RecordSelection e l) =

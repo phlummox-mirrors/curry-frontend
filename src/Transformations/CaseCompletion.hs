@@ -79,7 +79,7 @@ ccExpr c@(Constructor _ _) = return c
 ccExpr (Apply       e1 e2) = liftM2 Apply (ccExpr e1) (ccExpr e2)
 ccExpr (Case    r ea e bs) = do
   e'  <- ccExpr e
-  bs' <- removeRedundantAlts `liftM` mapM ccAlt bs
+  bs' <- mapM ccAlt bs
   ccCase r ea e' bs'
 ccExpr (Or    e1 e2) = liftM2 Or (ccExpr e1) (ccExpr e2)
 ccExpr (Exist   v e) = inNestedScope $ do
@@ -101,11 +101,25 @@ ccBinding :: Binding -> CCM Binding
 ccBinding (Binding v e) = Binding v `liftM` ccExpr e
 
 -- ---------------------------------------------------------------------------
+-- Functions for completing case alternatives
+-- ---------------------------------------------------------------------------
+ccCase :: SrcRef -> Eval -> Expression -> [Alt] -> CCM Expression
+ccCase _ _     _ []
+  = internalError "CaseCompletion.ccCase: empty alternative list"
+-- pattern matching causes flexible case expressions
+ccCase r Flex  e alts = return $ Case r Flex e alts
+ccCase r Rigid e alts
+  | isConstrAlt a     = completeConsAlts r Rigid e as
+  | isLitAlt    a     = completeLitAlts  r Rigid e as
+  | isVarAlt    a     = completeVarAlts          e as
+  | otherwise
+  = internalError "CaseCompletion.ccExpr: illegal alternative list"
+  where as@(a:_) = alts -- removeRedundantAlts alts
+
 -- The function 'removeRedundantAlts' removes case branches which are
 -- either unreachable or multiply declared.
 -- Note: unlike the PAKCS frontend, MCC does not support warnings. So
 -- there will be no messages if alternatives have been removed.
-
 removeRedundantAlts :: [Alt] -> [Alt]
 removeRedundantAlts = removeMultipleAlts . removeIdleAlts
 
@@ -137,28 +151,12 @@ removeIdleAlts = fst . splitAfter isVarAlt
 -- used in the first alternative. All multiple alternatives will be
 -- removed except for the first occurrence.
 removeMultipleAlts :: [Alt] -> [Alt]
-removeMultipleAlts = nubBy eqAlt
-  where eqAlt (Alt p1 _) (Alt p2 _) = case (p1, p2) of
-          (LiteralPattern       l1, LiteralPattern       l2) -> l1 == l2
-          (ConstructorPattern c1 _, ConstructorPattern c2 _) -> c1 == c2
-          (VariablePattern       _, VariablePattern       _) -> True
-          _                                                  -> False
-
--- ---------------------------------------------------------------------------
--- Functions for completing case alternatives
--- ---------------------------------------------------------------------------
-
-ccCase :: SrcRef -> Eval -> Expression -> [Alt] -> CCM Expression
-ccCase _ _     _ []
-  = internalError "CaseCompletion.ccCase: empty alternative list"
--- pattern matching causes flexible case expressions
-ccCase r Flex  e as       = return $ Case r Flex e as
-ccCase r Rigid e as@(a:_)
-  | isConstrAlt a = completeConsAlts r Rigid e as
-  | isLitAlt    a = completeLitAlts  r Rigid e as
-  | isVarAlt    a = completeVarAlts          e as
-  | otherwise
-  = internalError "CaseCompletion.ccExpr: illegal alternative list"
+removeMultipleAlts = nubBy eqAlt where
+  eqAlt (Alt p1 _) (Alt p2 _) = case (p1, p2) of
+    (LiteralPattern       l1, LiteralPattern       l2) -> l1 == l2
+    (ConstructorPattern c1 _, ConstructorPattern c2 _) -> c1 == c2
+    (VariablePattern       _, VariablePattern       _) -> True
+    _                                                  -> False
 
 -- Completes a case alternative list which branches via constructor patterns
 -- by adding alternatives of the form
@@ -247,6 +245,7 @@ completeVarAlts ce (Alt p ae : _) = case p of
 
 -- ---------------------------------------------------------------------------
 -- Some functions for testing case alternatives
+-- ---------------------------------------------------------------------------
 
 isVarAlt :: Alt -> Bool
 isVarAlt (Alt (VariablePattern _) _) = True
