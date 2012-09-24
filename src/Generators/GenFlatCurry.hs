@@ -134,7 +134,7 @@ data IdentExport
 -- Runs a 'FlatState' action and returns the result
 run :: Options -> ModuleSummary.ModuleSummary -> InterfaceEnv -> ValueEnv -> TCEnv
     -> Bool -> FlatState a -> (a, [Message])
-run opts modSum mEnv tyEnv tcEnv genIntf f = (result, messagesE env)
+run opts modSum mEnv tyEnv tcEnv genIntf f = (result, reverse $ messagesE env)
   where
   (result, env) = runState f env0
   env0 = FlatEnv

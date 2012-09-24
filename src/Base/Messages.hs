@@ -1,6 +1,6 @@
 module Base.Messages
   ( -- * Output of user information
-    info, status, putErrLn, putErrsLn
+    info, status, warn, putErrLn, putErrsLn
     -- * program abortion
   , abortWith, abortWithMessage, abortWithMessages
   , internalError, errorMessage, errorMessages
@@ -8,14 +8,14 @@ module Base.Messages
   , Message, message, posMessage
   ) where
 
-import Control.Monad (unless)
+import Control.Monad (unless, when)
 import System.IO     (hPutStrLn, stderr)
 import System.Exit   (exitFailure)
 
 import Curry.Base.Message
   (Message, message, posMessage, ppMessage, ppMessages)
 
-import CompilerOpts (Options (optVerbosity), Verbosity (..))
+import CompilerOpts (Options (optVerbosity, optWarn), Verbosity (..))
 
 info :: Options -> String -> IO ()
 info opts msg = unless (optVerbosity opts < VerbInfo)
@@ -24,6 +24,9 @@ info opts msg = unless (optVerbosity opts < VerbInfo)
 status :: Options -> String -> IO ()
 status opts msg = unless (optVerbosity opts < VerbStatus)
                          (putStrLn $ msg ++ " ...")
+
+warn :: Options -> [Message] -> IO ()
+warn opts msgs = when (optWarn opts) $ putErrLn (show $ ppMessages msgs)
 
 -- |Print an error message on 'stderr'
 putErrLn :: String -> IO ()

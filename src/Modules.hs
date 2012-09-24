@@ -22,14 +22,15 @@ import Control.Monad (unless, when)
 import Data.Maybe (fromMaybe)
 import Text.PrettyPrint
 
-import Curry.Base.Message
-import Curry.Base.Position
 import Curry.Base.Ident
+import Curry.Base.Message (runMsg)
+import Curry.Base.Position
 import Curry.ExtendedFlat.InterfaceEquality (eqInterface)
 import Curry.Files.Filenames
 import Curry.Files.PathUtils
 
-import Base.Messages (abortWith, abortWithMessages, putErrsLn)
+import Base.Messages
+  (Message, message, posMessage, warn, abortWithMessages)
 
 -- source representations
 import qualified Curry.AbstractCurry as AC
@@ -75,7 +76,7 @@ compileModule opts fn = do
   case checkModule opts loaded of
     CheckFailed errs -> abortWithMessages errs
     CheckSuccess (env, mdl, dumps) -> do
-      showWarnings opts $ warnCheck env mdl
+      warn opts $ warnCheck env mdl
       mapM_ (doDump opts) dumps
       writeOutput opts fn (env, mdl)
 
@@ -107,7 +108,7 @@ loadModule opts fn = do
   -- read module
   mbSrc <- readModule fn
   case mbSrc of
-    Nothing  -> abortWith ["Missing file: " ++ fn] -- TODO
+    Nothing  -> abortWithMessages [message $ text $ "Missing file: " ++ fn] -- TODO
     Just src -> do
       -- parse module
       case runMsg $ CS.parseModule True fn src of
@@ -251,7 +252,7 @@ writeFlat opts fn env modSum il = do
 writeFlatCurry :: Options -> FilePath -> CompilerEnv -> ModuleSummary
                -> IL.Module -> IO ()
 writeFlatCurry opts fn env modSum il = do
-  showWarnings opts msgs
+  warn opts msgs
   when extTarget $ EF.writeExtendedFlat useSubDir (extFlatName fn) prog
   when fcyTarget $ EF.writeFlatCurry    useSubDir (flatName    fn) prog
   where
@@ -282,7 +283,7 @@ writeInterface opts fn env modSum il
   emptyIntf = EF.Prog "" [] [] [] []
   (newInterface, intMsgs) = genFlatInterface opts modSum env il
   outputInterface = do
-    showWarnings opts intMsgs
+    warn opts intMsgs
     EF.writeFlatCurry (optUseSubdir opts) targetFile newInterface
 
 writeAbstractCurry :: Options -> FilePath -> CompilerEnv -> CS.Module -> IO ()
@@ -295,10 +296,6 @@ writeAbstractCurry opts fname env modul = do
   acyTarget  = AbstractCurry        `elem` optTargetTypes opts
   uacyTarget = UntypedAbstractCurry `elem` optTargetTypes opts
   useSubDir  = optUseSubdir opts
-
-showWarnings :: Options -> [Message] -> IO ()
-showWarnings opts msgs = when (optWarn opts)
-                       $ putErrsLn $ map showWarning msgs
 
 -- |The 'dump' function writes the selected information to standard output.
 doDump :: Options -> Dump -> IO ()

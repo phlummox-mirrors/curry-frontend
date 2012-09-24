@@ -259,7 +259,7 @@ uses flexible matching.
 >   flat <- isFlat
 >   let vs = if not flat && isFpSelectorId f then trArgs eqs funVars else funVars
 >   alts <-mapM (trEquation vs addVars) eqs
->   let expr = match (srcRefOf p) IL.Flex vs alts
+>   let expr = flexMatch (srcRefOf p) vs alts
 >   return $ IL.FunctionDecl f' vs ty' expr
 >   where
 >   -- funVars are the variables needed for the function: _1, _2, etc.
@@ -347,11 +347,12 @@ instance, if one of the alternatives contains an \texttt{@}-pattern.
 >   trBinding (PatternDecl _ (VariablePattern v) rhs)
 >     = IL.Binding v `liftM` trRhs vs env' rhs
 >   trBinding p = error $ "unexpected binding: " ++ show p
-> trExpr (v:vs) env (Case r _ e alts) = do
+> trExpr (v:vs) env (Case r ct e alts) = do
 >   -- the ident v is used for the case expression subject, as this could
 >   -- be referenced in the case alternatives by a variable pattern
 >   e'   <- trExpr vs env e
->   expr <- caseMatch r IL.Rigid [v] `liftM` mapM (trAlt vs env) alts
+>   let matcher = if ct == Flex then flexMatch else rigidMatch
+>   expr <- matcher r [v] `liftM` mapM (trAlt vs env) alts
 >   return $ case expr of
 >     IL.Case r' mode (IL.Variable v') alts'
 >         -- subject is not referenced -> forget v and insert subject
@@ -422,80 +423,78 @@ hand sides of the remaining rules, eventually combining them using
 \texttt{or} expressions.
 
 Actually, the algorithm below combines the search for inductive and
-demanded positions. The function \texttt{match} scans the argument
+demanded positions. The function \texttt{flexMatch} scans the argument
 lists for the left-most demanded position. If this turns out to be
 also an inductive position, the function \texttt{matchInductive} is
 called in order to generate a \texttt{case} expression. Otherwise, the
-function \texttt{optMatch} is called that tries to find an inductive
+function \texttt{optFlexMatch} is called that tries to find an inductive
 position in the remaining arguments. If one is found,
 \texttt{matchInductive} is called, otherwise the function
-\texttt{optMatch} uses the demanded argument position found by
+\texttt{optFlexMatch} uses the demanded argument position found by
 \texttt{match}.
 \begin{verbatim}
 
 > type Match  = ([NestedTerm], IL.Expression)
 > type Match' = ([NestedTerm] -> [NestedTerm], [NestedTerm], IL.Expression)
 
-> match :: SrcRef        -- source reference
->       -> IL.Eval       -- evaluation mode (flex)
->       -> [Ident]       -- new function variables
->       -> [Match]       -- translated equations, list of: nested pattern+RHS
->       -> IL.Expression -- result expression
-> match _ _  []     alts = foldl1 IL.Or (map snd alts)
-> match r ev (v:vs) alts
+> flexMatch :: SrcRef       -- source reference
+>          -> [Ident]       -- new function variables
+>          -> [Match]       -- translated equations, list of: nested pattern+RHS
+>          -> IL.Expression -- result expression
+> flexMatch _ []     alts = foldl1 IL.Or (map snd alts)
+> flexMatch r (v:vs) alts
 >   | isInductive  = e1
 >   | notDemanded  = e2
->   | otherwise    = optMatch r ev (IL.Or e1 e2) (v:) vs (map skipArg alts)
+>   | otherwise    = optFlexMatch r (IL.Or e1 e2) (v:) vs (map skipArg alts)
 >   where
 >   isInductive       = null vars
 >   notDemanded       = null nonVars
 >   -- seperate variable and inductive patterns
 >   (vars, nonVars)   = partition isVarMatch (map tagAlt alts)
->   e1                = matchInductive r ev id v vs (map prep nonVars)
+>   e1                = flexMatchInductive r id v vs (map prep nonVars)
 >   -- match next variables
->   e2                = match          r ev      vs (map snd vars)
+>   e2                = flexMatch          r      vs (map snd vars)
 >   prep (p,(ts, e))  = (p, (id, ts, e))
 >   -- tagAlt extracts the constructor of the first pattern
 >   tagAlt  (t:ts, e) = (pattern t, (arguments t ++ ts, e))
->   tagAlt  ([]  , _) = error "CurryToIL.match.tagAlt: empty list"
+>   tagAlt  ([]  , _) = error "CurryToIL.flexMatch.tagAlt: empty list"
 >   -- skipArg skips the current argument for later matching
 >   skipArg (t:ts, e) = ((t:), ts, e)
->   skipArg ([]  , _) = error "CurryToIL.match.skipArg: empty list"
+>   skipArg ([]  , _) = error "CurryToIL.flexMatch.skipArg: empty list"
 
-> optMatch :: SrcRef               -- source reference
->          -> IL.Eval              -- evaluation mode (flex)
->          -> IL.Expression        -- default expression
->          -> ([Ident] -> [Ident]) -- variables to be matched next
->          -> [Ident]              -- variables to be matched afterwards
->          -> [Match']             -- translated equations, list of: nested pattern+RHS
->          -> IL.Expression
+> optFlexMatch :: SrcRef              -- source reference
+>             -> IL.Expression        -- default expression
+>             -> ([Ident] -> [Ident]) -- variables to be matched next
+>             -> [Ident]              -- variables to be matched afterwards
+>             -> [Match']             -- translated equations, list of: nested pattern+RHS
+>             -> IL.Expression
 > -- if there are no variables left: return the default expression
-> optMatch _ _  def _      []     _    = def
-> optMatch r ev def prefix (v:vs) alts
->   | isInductive = matchInductive r ev prefix v vs alts'
->   | otherwise   = optMatch r ev def (prefix . (v:)) vs (map skipArg alts)
+> optFlexMatch _ def _      []     _    = def
+> optFlexMatch r def prefix (v:vs) alts
+>   | isInductive = flexMatchInductive r prefix v vs alts'
+>   | otherwise   = optFlexMatch r def (prefix . (v:)) vs (map skipArg alts)
 >   where
 >   isInductive              = not (any isVarMatch alts')
 >   alts'                    = map tagAlt alts
 >   -- tagAlt extracts the next pattern and reinserts the skipped ones
 >   tagAlt  (pref, t:ts, e') = (pattern t, (pref, arguments t ++ ts, e'))
->   tagAlt  (_   , []  , _ ) = error "CurryToIL.optMatch.tagAlt: empty list"
+>   tagAlt  (_   , []  , _ ) = error "CurryToIL.optFlexMatch.tagAlt: empty list"
 >   -- again, skipArg skips the current argument for later matching
 >   skipArg (pref, t:ts, e') = (pref . (t:), ts, e')
->   skipArg (_   , []  , _ ) = error "CurryToIL.optMatch.skipArg: empty list"
+>   skipArg (_   , []  , _ ) = error "CurryToIL.optFlexMatch.skipArg: empty list"
 
 > -- Generate a case expression matching the inductive position
-> matchInductive :: SrcRef -> IL.Eval -> ([Ident] -> [Ident]) -> Ident
+> flexMatchInductive :: SrcRef -> ([Ident] -> [Ident]) -> Ident
 >                -> [Ident] ->[(IL.ConstrTerm, Match')] -> IL.Expression
-> matchInductive r ev prefix v vs as = IL.Case r ev (IL.Variable v) $
->   matchAlts as
+> flexMatchInductive r prefix v vs as = IL.Case r IL.Flex (IL.Variable v) $
+>   flexMatchAlts as
 >   where
 >   -- create alternatives for the different constructors
->   matchAlts []              = []
->   matchAlts ((t, e) : alts) = IL.Alt t expr : matchAlts others
+>   flexMatchAlts []              = []
+>   flexMatchAlts ((t, e) : alts) = IL.Alt t expr : flexMatchAlts others
 >     where
 >     -- match nested patterns for same constructors
->     expr = match (srcRefOf t) ev (prefix $ vars t ++ vs) matchingCases
+>     expr = flexMatch (srcRefOf t) (prefix $ vars t ++ vs) matchingCases
 >     matchingCases = map expandVars (e : map snd same)
 >     expandVars (pref, ts1, e') = (pref ts1, e')
 >     -- split into same and other constructors
@@ -514,43 +513,42 @@ to detect total matches and immediately discard all alternatives which
 cannot be reached.}
 \begin{verbatim}
 
-> caseMatch :: SrcRef -> IL.Eval -> [Ident] -> [Match] -> IL.Expression
-> caseMatch r ev vs alts = caseOptMatch r ev (snd $ head alts) id vs
->                          (map prepare alts)
+> rigidMatch :: SrcRef -> [Ident] -> [Match] -> IL.Expression
+> rigidMatch r vs alts = rigidOptMatch r (snd $ head alts) id vs
+>                        (map prepare alts)
 >   where prepare (ts, e) = (id, ts, e)
 
-> caseOptMatch :: SrcRef            -- source reference
->           -> IL.Eval              -- evaluation mode (rigid)
->           -> IL.Expression        -- default expression
->           -> ([Ident] -> [Ident]) -- variables to be matched next
->           -> [Ident]              -- variables to be matched afterwards
->           -> [Match']             -- translated equations, list of: nested pattern+RHS
->           -> IL.Expression
+> rigidOptMatch :: SrcRef               -- source reference
+>               -> IL.Expression        -- default expression
+>               -> ([Ident] -> [Ident]) -- variables to be matched next
+>               -> [Ident]              -- variables to be matched afterwards
+>               -> [Match']             -- translated equations, list of: nested pattern+RHS
+>               -> IL.Expression
 > -- if there are no variables left: return the default expression
-> caseOptMatch _ _  def _      []       _    = def
-> caseOptMatch r ev def prefix (v : vs) alts
->   | isInductive = caseMatchInductive r ev prefix v vs alts'
->   | otherwise   = caseOptMatch r ev def (prefix . (v:)) vs (map skipArg alts)
+> rigidOptMatch _ def _      []       _    = def
+> rigidOptMatch r def prefix (v : vs) alts
+>   | isInductive = rigidMatchInductive r prefix v vs alts'
+>   | otherwise   = rigidOptMatch r def (prefix . (v:)) vs (map skipArg alts)
 >   where
 >   isInductive              = not $ isVarMatch (head alts')
 >   alts'                    = map tagAlt alts
 >   -- tagAlt extracts the next pattern
 >   tagAlt  (pref, t:ts, e') = (pattern t, (pref, arguments t ++ ts, e'))
->   tagAlt  (_   , []  , _ ) = error "CurryToIL.caseOptMatch.tagAlt: empty list"
+>   tagAlt  (_   , []  , _ ) = error "CurryToIL.rigidOptMatch.tagAlt: empty list"
 >   -- skipArg skips the current argument for later matching
 >   skipArg (pref, t:ts, e') = (pref . (t:), ts, e')
->   skipArg (_   , []  , _ ) = error "CurryToIL.caseOptMatch.skipArg: empty list"
+>   skipArg (_   , []  , _ ) = error "CurryToIL.rigidOptMatch.skipArg: empty list"
 
 > -- Generate a case expression matching the inductive position
-> caseMatchInductive :: SrcRef -> IL.Eval -> ([Ident] -> [Ident]) -> Ident
+> rigidMatchInductive :: SrcRef -> ([Ident] -> [Ident]) -> Ident
 >                    -> [Ident] ->[(IL.ConstrTerm, Match')] -> IL.Expression
-> caseMatchInductive r ev prefix v vs alts = IL.Case r ev (IL.Variable v) $
->   map caseAlt (nonVarPats ++ varPats)
+> rigidMatchInductive r prefix v vs alts = IL.Case r IL.Rigid (IL.Variable v)
+>   $ map caseAlt (nonVarPats ++ varPats)
 >   where
 >   (varPats, nonVarPats) = partition isVarPattern $ nub $ map fst alts
 >   caseAlt t = IL.Alt t expr
 >     where
->     expr = caseMatch (srcRefOf t) ev (prefix $ vars t ++ vs) (matchingCases alts)
+>     expr = rigidMatch (srcRefOf t) (prefix $ vars t ++ vs) (matchingCases alts)
 >     -- matchingCases selects the matching branches and recursively
 >     -- matches the remaining patterns
 >     matchingCases = map (expandVars $ vars t) . filter (matches . fst)
