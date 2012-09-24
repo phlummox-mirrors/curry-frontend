@@ -288,7 +288,9 @@ uses flexible matching.
 > trEquation vs vs' (Equation _ (FunLhs _ ts) rhs) = do
 >   -- construct renaming of variables inside constructor terms
 >   let patternRenaming = foldr2 bindRenameEnv Map.empty vs ts
+>   -- translate right-hand-side
 >   rhs' <- trRhs vs' patternRenaming rhs
+>   -- convert patterns
 >   return (zipWith trPattern vs ts, rhs')
 > trEquation _  _    _
 >   = internalError "Translation of non-FunLhs euqation not defined"
@@ -350,9 +352,9 @@ instance, if one of the alternatives contains an \texttt{@}-pattern.
 > trExpr (v:vs) env (Case r ct e alts) = do
 >   -- the ident v is used for the case expression subject, as this could
 >   -- be referenced in the case alternatives by a variable pattern
->   e'   <- trExpr vs env e
+>   e' <- trExpr vs env e
 >   let matcher = if ct == Flex then flexMatch else rigidMatch
->   expr <- matcher r [v] `liftM` mapM (trAlt vs env) alts
+>   expr <- matcher r [v] `liftM` mapM (trAlt (v:vs) env) alts
 >   return $ case expr of
 >     IL.Case r' mode (IL.Variable v') alts'
 >         -- subject is not referenced -> forget v and insert subject
@@ -425,16 +427,19 @@ hand sides of the remaining rules, eventually combining them using
 Actually, the algorithm below combines the search for inductive and
 demanded positions. The function \texttt{flexMatch} scans the argument
 lists for the left-most demanded position. If this turns out to be
-also an inductive position, the function \texttt{matchInductive} is
+also an inductive position, the function \texttt{flexMatchInductive} is
 called in order to generate a \texttt{case} expression. Otherwise, the
 function \texttt{optFlexMatch} is called that tries to find an inductive
 position in the remaining arguments. If one is found,
-\texttt{matchInductive} is called, otherwise the function
+\texttt{flexMatchInductive} is called, otherwise the function
 \texttt{optFlexMatch} uses the demanded argument position found by
-\texttt{match}.
+\texttt{flexMatch}.
 \begin{verbatim}
 
+> -- a 'Match' is a list of patterns and the respective expression
 > type Match  = ([NestedTerm], IL.Expression)
+> -- a 'Match'' is a 'Match' with deferred patterns to be matched after
+> -- the next inductive position
 > type Match' = ([NestedTerm] -> [NestedTerm], [NestedTerm], IL.Expression)
 
 > flexMatch :: SrcRef       -- source reference
