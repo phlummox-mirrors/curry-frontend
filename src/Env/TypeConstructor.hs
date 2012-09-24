@@ -1,8 +1,8 @@
 {- |
     Module      :  $Header$
     Description :  Environment of type constructors
-    Copyright   :  (c) 2002-2004, Wolfgang Lux
-                       2011, Björn Peemöller   (bjp@informatik.uni-kiel.de)
+    Copyright   :  (c) 2002 - 2004, Wolfgang Lux
+                       2011       , Björn Peemöller
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
@@ -119,7 +119,7 @@ tupleData = [DataConstr (tupleId n) 0 (take n tvs) | n <- [2 ..]]
 
 initTCEnv :: TCEnv
 initTCEnv = foldr (uncurry predefTC) emptyTopEnv predefTypes
-  where predefTC (TypeConstructor tc tys) =
-          predefTopEnv (qualify (unqualify tc)) .
-            DataType tc (length tys) . map Just
-        predefTC _ = internalError "Base.initTCEnv.predefTC: no type constructor"
+  where
+  predefTC (TypeConstructor tc tys) = predefTopEnv (qualify (unqualify tc))
+                                    . DataType tc (length tys) . map Just
+  predefTC _ = internalError "Base.initTCEnv.predefTC: no type constructor"

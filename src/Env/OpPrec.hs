@@ -1,8 +1,8 @@
 {- |
     Module      :  $Header$
-    Description :  Environment of Operator precedences
-    Copyright   :  (c) 2002-2004, Wolfgang Lux
-                       2011, Björn Peemöller   (bjp@informatik.uni-kiel.de)
+    Description :  Environment of operator precedences
+    Copyright   :  (c) 2002 - 2004, Wolfgang Lux
+                       2011       , Björn Peemöller
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
@@ -19,14 +19,15 @@
     If no fixity is assigned to an operator, it will be given the default
     precedence 9 and assumed to be a left-associative operator.
 
-    \em{Note:} this modified version uses Haskell type \texttt{Integer}
+    /Note:/ this modified version uses Haskell type 'Integer'
     for representing the precedence. This change had to be done due to the
     introduction of unlimited integer constants in the parser / lexer.
 -}
 
 module Env.OpPrec
-  ( PEnv, PrecInfo (..), OpPrec (..), defaultP, bindP, lookupP, qualLookupP
-  , initPEnv ) where
+  ( OpPrecEnv, PrecInfo (..), OpPrec (..)
+  , defaultP, bindP, lookupP, qualLookupP, initOpPrecEnv
+  ) where
 
 import Curry.Base.Ident
 import Curry.Syntax (Infix (..))
@@ -49,12 +50,12 @@ data PrecInfo = PrecInfo QualIdent OpPrec deriving (Eq, Show)
 instance Entity PrecInfo where
   origName (PrecInfo op _) = op
 
-type PEnv = TopEnv PrecInfo
+type OpPrecEnv = TopEnv PrecInfo
 
-bindP :: ModuleIdent -> Ident -> OpPrec -> PEnv -> PEnv
+bindP :: ModuleIdent -> Ident -> OpPrec -> OpPrecEnv -> OpPrecEnv
 bindP m op p
-  | idUnique op == 0 = bindTopEnv fun op info . qualBindTopEnv fun qop info
-  | otherwise        = bindTopEnv fun op info
+  | hasGlobalScope op = bindTopEnv fun op info . qualBindTopEnv fun qop info
+  | otherwise         = bindTopEnv fun op info
   where qop  = qualifyWith m op
         info = PrecInfo qop p
         fun  = "Env.OpPrec.bindP"
@@ -63,14 +64,14 @@ bindP m op p
 -- precedences are simpler than for the type and value environments
 -- because they do not need to handle tuple constructors.
 
-lookupP :: Ident -> PEnv -> [PrecInfo]
+lookupP :: Ident -> OpPrecEnv -> [PrecInfo]
 lookupP = lookupTopEnv
 
-qualLookupP :: QualIdent -> PEnv -> [PrecInfo]
+qualLookupP :: QualIdent -> OpPrecEnv -> [PrecInfo]
 qualLookupP = qualLookupTopEnv
 
-initPEnv :: PEnv
-initPEnv = predefTopEnv qConsId consPrec emptyTopEnv
+initOpPrecEnv :: OpPrecEnv
+initOpPrecEnv = predefTopEnv qConsId consPrec emptyTopEnv
 
 consPrec :: PrecInfo
 consPrec = PrecInfo qConsId (OpPrec InfixR 5)

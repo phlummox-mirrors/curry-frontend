@@ -17,7 +17,7 @@ import Base.TopEnv
 import Base.Types
 import Base.Utils (findMultiples)
 
-import Env.ModuleAlias
+import Env.ModuleAlias (AliasEnv)
 import Env.TypeConstructor
 import Env.Value
 

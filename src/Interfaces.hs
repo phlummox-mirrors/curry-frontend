@@ -1,8 +1,8 @@
 {- |
     Module      :  $Header$
     Description :  Loading interfaces
-    Copyright   :  (c) 2000-2004, Wolfgang Lux
-                       2011, Björn Peemöller (bjp@informatik.uni-kiel.de)
+    Copyright   :  (c) 2000 - 2004, Wolfgang Lux
+                       2011       , Björn Peemöller
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
@@ -24,24 +24,22 @@
 -}
 module Interfaces (loadInterfaces) where
 
-import Control.Monad (foldM, liftM, unless)
-import Control.Monad.IO.Class (liftIO)
-import qualified Control.Monad.State as S (StateT (..), modify)
-import Data.List (intercalate, isPrefixOf)
-import qualified Data.Map as Map
-import Text.PrettyPrint
+import           Control.Monad                 (foldM, liftM, unless)
+import           Control.Monad.IO.Class        (liftIO)
+import qualified Control.Monad.State    as S   (StateT (..), modify)
+import           Data.List                     (intercalate, isPrefixOf)
+import qualified Data.Map               as Map
+import           Text.PrettyPrint
 
-import Curry.Base.Ident
-import Curry.Base.Position
+import           Curry.Base.Ident
+import           Curry.Base.Position
 import qualified Curry.ExtendedFlat.Type as EF
-import Curry.Files.PathUtils as PU
-import Curry.Syntax
+import           Curry.Files.PathUtils   as PU
+import           Curry.Syntax
 
 import Base.Messages (Message, posMessage, internalError)
 
 import Env.Interface
-
--- TODO: Propagate errors
 
 type IntfLoader a = S.StateT [Message] IO a
 
@@ -116,18 +114,15 @@ flatToCurryInterface (EF.Prog m imps ts fs os)
   genITypeDecl :: EF.TypeDecl -> IDecl
   genITypeDecl (EF.Type qn _ is cs)
     | recordExt `isPrefixOf` EF.localName qn
-    = ITypeDecl pos
-        (genQualIdent qn)
+    = ITypeDecl pos (genQualIdent qn)
         (map genVarIndexIdent is)
         (RecordType (map genLabeledType cs) Nothing)
     | otherwise
-    = IDataDecl pos
-        (genQualIdent qn)
+    = IDataDecl pos (genQualIdent qn)
         (map genVarIndexIdent is)
         (map (Just . genConstrDecl) cs)
   genITypeDecl (EF.TypeSyn qn _ is t)
-    = ITypeDecl pos
-        (genQualIdent qn)
+    = ITypeDecl pos (genQualIdent qn)
         (map genVarIndexIdent is)
         (genTypeExpr t)
 

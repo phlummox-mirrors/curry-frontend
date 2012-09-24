@@ -1,7 +1,7 @@
 {- |
     Module      :  $Header$
     Description :  Environment containing the module's information
-    Copyright   :  (c) 2011, Björn Peemöller (bjp@informatik.uni-kiel.de)
+    Copyright   :  (c) 2011, Björn Peemöller
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
@@ -21,7 +21,7 @@ import Curry.Base.Ident (ModuleIdent)
 import Base.TopEnv (allLocalBindings)
 
 import Env.Interface
-import Env.ModuleAlias
+import Env.ModuleAlias (AliasEnv, initAliasEnv)
 import Env.OpPrec
 import Env.TypeConstructor
 import Env.Value
@@ -35,7 +35,7 @@ data CompilerEnv = CompilerEnv
   , aliasEnv     :: AliasEnv     -- ^ aliases for imported modules
   , tyConsEnv    :: TCEnv        -- ^ type constructors
   , valueEnv     :: ValueEnv     -- ^ functions and data constructors
-  , opPrecEnv    :: PEnv         -- ^ operator precedences
+  , opPrecEnv    :: OpPrecEnv    -- ^ operator precedences
   }
 
 initCompilerEnv :: ModuleIdent -> CompilerEnv
@@ -45,7 +45,7 @@ initCompilerEnv mid = CompilerEnv
   , aliasEnv     = initAliasEnv
   , tyConsEnv    = initTCEnv
   , valueEnv     = initDCEnv
-  , opPrecEnv    = initPEnv
+  , opPrecEnv    = initOpPrecEnv
   }
 
 showCompilerEnv :: CompilerEnv -> String

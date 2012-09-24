@@ -31,10 +31,10 @@ of the operators involved.
 > import Base.Messages (Message, posMessage)
 > import Base.Utils (findDouble)
 
-> import Env.OpPrec (PEnv, OpPrec (..), PrecInfo (..), defaultP, bindP
+> import Env.OpPrec (OpPrecEnv, OpPrec (..), PrecInfo (..), defaultP, bindP
 >   , qualLookupP)
 
-> precCheck :: ModuleIdent -> PEnv -> [Decl] -> ([Decl], PEnv, [Message])
+> precCheck :: ModuleIdent -> OpPrecEnv -> [Decl] -> ([Decl], OpPrecEnv, [Message])
 > precCheck m pEnv decls = runPCM (checkDecls decls) initState
 >  where initState = PCState m pEnv []
 
@@ -44,23 +44,23 @@ The Prec check monad.
 
 > data PCState = PCState
 >   { moduleIdent :: ModuleIdent
->   , precEnv     :: PEnv
+>   , precEnv     :: OpPrecEnv
 >   , errors      :: [Message]
 >   }
 
 > type PCM = S.State PCState -- the Prec Check Monad
 
-> runPCM :: PCM a -> PCState -> (a, PEnv, [Message])
+> runPCM :: PCM a -> PCState -> (a, OpPrecEnv, [Message])
 > runPCM kcm s = let (a, s') = S.runState kcm s
 >                in  (a, precEnv s', reverse $ errors s')
 
 > getModuleIdent :: PCM ModuleIdent
 > getModuleIdent = S.gets moduleIdent
 
-> getPrecEnv :: PCM PEnv
+> getPrecEnv :: PCM OpPrecEnv
 > getPrecEnv = S.gets precEnv
 
-> modifyPrecEnv :: (PEnv -> PEnv) -> PCM ()
+> modifyPrecEnv :: (OpPrecEnv -> OpPrecEnv) -> PCM ()
 > modifyPrecEnv f = S.modify $ \ s -> s { precEnv = f $ precEnv s }
 
 > withLocalPrecEnv :: PCM a -> PCM a
@@ -94,7 +94,7 @@ imported precedence environment.
 >     opFixDecls        = [ op | InfixDecl _ _ _ ops <- fixDs, op <- ops]
 >     bvs               = concatMap boundValues nonFixDs
 
-> bindPrec :: ModuleIdent -> Decl -> PEnv -> PEnv
+> bindPrec :: ModuleIdent -> Decl -> OpPrecEnv -> OpPrecEnv
 > bindPrec m (InfixDecl _ fix prc ops) pEnv
 >   | p == defaultP = pEnv
 >   | otherwise     = foldr (flip (bindP m) p) pEnv ops
@@ -409,7 +409,7 @@ the pattern to be accepted.
 >         return $ infixpatt t1 op1 (InfixFuncPattern t2 op2 t3)
 > fixRPrecT infixpatt t1 op t2 = return $ infixpatt t1 op t2
 
-> {-fixPrecT :: Position -> PEnv -> ConstrTerm -> QualIdent -> ConstrTerm
+> {-fixPrecT :: Position -> OpPrecEnv -> ConstrTerm -> QualIdent -> ConstrTerm
 >          -> ConstrTerm
 > fixPrecT p pEnv t1@(NegativePattern uop l) op t2
 >   | pr < 6 || pr == 6 && fix == InfixL = fixRPrecT p pEnv t1 op t2
@@ -417,7 +417,7 @@ the pattern to be accepted.
 >   where OpPrec fix pr = prec op pEnv
 > fixPrecT p pEnv t1 op t2 = fixRPrecT p pEnv t1 op t2-}
 
-> {-fixRPrecT :: Position -> PEnv -> ConstrTerm -> QualIdent -> ConstrTerm
+> {-fixRPrecT :: Position -> OpPrecEnv -> ConstrTerm -> QualIdent -> ConstrTerm
 >           -> ConstrTerm
 > fixRPrecT p pEnv t1 op t2@(NegativePattern uop l)
 >   | pr < 6 = InfixPattern t1 op t2
@@ -478,10 +478,10 @@ an operator definition that shadows an imported definition.
 > getOpPrec :: InfixOp -> PCM OpPrec
 > getOpPrec op = opPrec op `liftM` getPrecEnv
 
-> opPrec :: InfixOp -> PEnv -> OpPrec
+> opPrec :: InfixOp -> OpPrecEnv -> OpPrec
 > opPrec op = prec (opName op)
 
-> prec :: QualIdent -> PEnv -> OpPrec
+> prec :: QualIdent -> OpPrecEnv -> OpPrec
 > prec op env = case qualLookupP op env of
 >   [] -> defaultP
 >   PrecInfo _ p : _ -> p

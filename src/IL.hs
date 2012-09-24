@@ -1,7 +1,7 @@
 {- |
     Module      :  $Header$
     Description :  Intermediate language
-    Copyright   :  (c) 2011, Björn Peemöller (bjp@informatik.uni-kiel.de)
+    Copyright   :  (c) 2011, Björn Peemöller
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
@@ -19,4 +19,4 @@ module IL
 
 import IL.Pretty (ppModule)
 import IL.Type
-import IL.XML (xmlModule)
+import IL.XML    (xmlModule)

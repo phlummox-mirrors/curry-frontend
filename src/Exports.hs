@@ -28,7 +28,7 @@ import Base.CurryTypes (fromQualType)
 import Base.Messages
 import Base.Types
 
-import Env.OpPrec          (PEnv, PrecInfo (..), OpPrec (..), qualLookupP)
+import Env.OpPrec          (OpPrecEnv, PrecInfo (..), OpPrec (..), qualLookupP)
 import Env.TypeConstructor (TCEnv, TypeInfo (..), qualLookupTC)
 import Env.Value           (ValueEnv, ValueInfo (..), qualLookupValue)
 
@@ -54,7 +54,7 @@ exportInterface :: CompilerEnv -> Module -> Interface
 exportInterface env mdl = exportInterface' mdl
   (opPrecEnv env) (tyConsEnv env) (valueEnv env)
 
-exportInterface' :: Module -> PEnv -> TCEnv -> ValueEnv -> Interface
+exportInterface' :: Module -> OpPrecEnv -> TCEnv -> ValueEnv -> Interface
 exportInterface' (Module m (Just (Exporting _ es)) _ _) pEnv tcEnv tyEnv
   = Interface m imports $ precs ++ hidden ++ decls
   where
@@ -65,14 +65,14 @@ exportInterface' (Module m (Just (Exporting _ es)) _ _) pEnv tcEnv tyEnv
 exportInterface' (Module _ Nothing _ _) _ _ _
   = internalError "Exports.exportInterface: no export specification"
 
-infixDecl :: ModuleIdent -> PEnv -> Export -> [IDecl] -> [IDecl]
+infixDecl :: ModuleIdent -> OpPrecEnv -> Export -> [IDecl] -> [IDecl]
 infixDecl m pEnv (Export             f) ds = iInfixDecl m pEnv f ds
 infixDecl m pEnv (ExportTypeWith tc cs) ds =
   foldr (iInfixDecl m pEnv . qualifyLike (qidModule tc)) ds cs
   where qualifyLike = maybe qualify qualifyWith
 infixDecl _ _ _ _ = internalError "Exports.infixDecl: no pattern match"
 
-iInfixDecl :: ModuleIdent -> PEnv -> QualIdent -> [IDecl] -> [IDecl]
+iInfixDecl :: ModuleIdent -> OpPrecEnv -> QualIdent -> [IDecl] -> [IDecl]
 iInfixDecl m pEnv op ds = case qualLookupP op pEnv of
   []                           -> ds
   [PrecInfo _ (OpPrec fix pr)] ->
