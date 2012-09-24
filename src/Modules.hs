@@ -205,7 +205,7 @@ transModule opts env mdl = (env5, ilCaseComp, dumps)
   (desugared , env1) = desugar        mdl        env
   (simplified, env2) = simplify flat' desugared  env1
   (lifted    , env3) = lift           simplified env2
-  (il        , env4) = ilTrans flat'  lifted     env3
+  (il        , env4) = ilTrans  flat' lifted     env3
   (ilCaseComp, env5) = completeCase   il         env4
   dumps = [ (DumpDesugared    , env1, show $ CS.ppModule desugared )
           , (DumpSimplified   , env2, show $ CS.ppModule simplified)

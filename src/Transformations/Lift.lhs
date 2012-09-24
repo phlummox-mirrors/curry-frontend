@@ -5,24 +5,24 @@
 %
 \nwfilename{Lift.lhs}
 \section{Lifting Declarations}
-After desugaring and simplifying the code, the compiler lifts all
-local function declarations to the top-level keeping only local
-variable declarations. The algorithm used here is similar to
+After desugaring and simplifying the code, the compiler lifts all local
+function declarations to the top-level keeping only local variable
+declarations. The algorithm used here is similar to
 Johnsson's~\cite{Johnsson87:Thesis} (see also chapter 6
-of~\cite{PeytonJonesLester92:Book}). It consists of two phases, first
-we abstract each local function declaration, adding its free variables
-as initial parameters and update all calls to take these variables
-into account. Then all local function declarations are collected and
-lifted to the top-level.
+of~\cite{PeytonJonesLester92:Book}). It consists of two phases, first we
+abstract each local function declaration, adding its free variables as
+initial parameters and update all calls to take these variables into account.
+Then all local function declarations are collected and lifted to the
+top-level.
 \begin{verbatim}
 
 > module Transformations.Lift (lift) where
 
-> import Control.Monad
-> import qualified Control.Monad.State as S
-> import Data.List
-> import qualified Data.Map as Map
-> import qualified Data.Set as Set
+> import           Control.Monad              (liftM, liftM2)
+> import qualified Control.Monad.State as S   (State, runState, gets, modify)
+> import           Data.List
+> import qualified Data.Map            as Map (Map, empty, insert, lookup)
+> import qualified Data.Set            as Set (toList, fromList, unions)
 
 > import Curry.Base.Ident
 > import Curry.Syntax
@@ -35,11 +35,11 @@ lifted to the top-level.
 > import Env.Value
 
 > lift :: ValueEnv -> Module -> (Module, ValueEnv)
-> lift tyEnv (Module m es is ds) = (lifted, tyEnv')
+> lift tyEnv (Module m es is ds) = (lifted, valueEnv s')
 >   where
->   lifted = Module m es is $ concatMap liftFunDecl ds'
->   (ds', tyEnv') = evalAbstract (abstractModule ds) initState
->   initState = LiftState m tyEnv
+>   (ds', s') = S.runState (mapM (abstractDecl "" []) ds) initState
+>   initState = LiftState m tyEnv Map.empty
+>   lifted    = Module m es is $ concatMap liftFunDecl ds'
 
 \end{verbatim}
 \paragraph{Abstraction}
@@ -52,16 +52,15 @@ each local function declaration onto its replacement expression,
 i.e. the function applied to its free variables.
 \begin{verbatim}
 
+> type AbstractEnv = Map.Map Ident Expression
+
 > data LiftState = LiftState
 >   { moduleIdent :: ModuleIdent
->   , valueEnv :: ValueEnv
+>   , valueEnv    :: ValueEnv
+>   , abstractEnv :: AbstractEnv
 >   }
 
 > type LiftM a = S.State LiftState a
-> type AbstractEnv = Map.Map Ident Expression
-
-> evalAbstract :: LiftM a -> LiftState -> a
-> evalAbstract = S.evalState
 
 > getModuleIdent :: LiftM ModuleIdent
 > getModuleIdent = S.gets moduleIdent
@@ -72,28 +71,33 @@ i.e. the function applied to its free variables.
 > modifyValueEnv :: (ValueEnv -> ValueEnv) -> LiftM ()
 > modifyValueEnv f = S.modify $ \ s -> s { valueEnv = f $ valueEnv s }
 
-> abstractModule :: [Decl] -> LiftM ([Decl], ValueEnv)
-> abstractModule ds = do
->   ds' <- mapM (abstractDecl "" [] Map.empty) ds
->   tyEnv' <- getValueEnv
->   return (ds', tyEnv')
+> getAbstractEnv :: LiftM AbstractEnv
+> getAbstractEnv = S.gets abstractEnv
 
-> abstractDecl :: String -> [Ident] -> AbstractEnv -> Decl -> LiftM Decl
-> abstractDecl _ lvs env (FunctionDecl p f eqs) =
->   FunctionDecl p f `liftM` mapM (abstractEquation lvs env) eqs
-> abstractDecl pre lvs env (PatternDecl p t rhs) =
->   PatternDecl p t `liftM` abstractRhs pre lvs env rhs
-> abstractDecl _ _ _ d = return d
+> withLocalAbstractEnv :: AbstractEnv -> LiftM a -> LiftM a
+> withLocalAbstractEnv ae act = do
+>   old <- getAbstractEnv
+>   S.modify $ \ s -> s { abstractEnv = ae }
+>   res <- act
+>   S.modify $ \ s -> s { abstractEnv = old }
+>   return res
 
-> abstractEquation :: [Ident] -> AbstractEnv -> Equation -> LiftM Equation
-> abstractEquation lvs env (Equation p lhs@(FunLhs f ts) rhs) =
->   Equation p lhs `liftM` abstractRhs (idName f ++ ".") (lvs ++ bv ts) env rhs
-> abstractEquation _ _ _ = error "Lift.abstractEquation: no pattern match"
+> abstractDecl :: String -> [Ident] -> Decl -> LiftM Decl
+> abstractDecl _   lvs (FunctionDecl p f eqs) =
+>   FunctionDecl p f `liftM` mapM (abstractEquation lvs) eqs
+> abstractDecl pre lvs (PatternDecl  p t rhs) =
+>   PatternDecl p t `liftM` abstractRhs pre lvs rhs
+> abstractDecl _   _   d                      = return d
 
-> abstractRhs :: String -> [Ident] -> AbstractEnv -> Rhs -> LiftM Rhs
-> abstractRhs pre lvs env (SimpleRhs p e _) =
->   flip (SimpleRhs p) [] `liftM` abstractExpr pre lvs env e
-> abstractRhs _ _ _ _ = error "Lift.abstractRhs: no pattern match"
+> abstractEquation :: [Ident] -> Equation -> LiftM Equation
+> abstractEquation lvs (Equation p lhs@(FunLhs f ts) rhs) =
+>   Equation p lhs `liftM` abstractRhs (idName f ++ ".") (lvs ++ bv ts) rhs
+> abstractEquation _ _ = error "Lift.abstractEquation: no pattern match"
+
+> abstractRhs :: String -> [Ident] -> Rhs -> LiftM Rhs
+> abstractRhs pre lvs (SimpleRhs p e _) =
+>   flip (SimpleRhs p) [] `liftM` abstractExpr pre lvs e
+> abstractRhs _ _ _ = error "Lift.abstractRhs: no pattern match"
 
 \end{verbatim}
 Within a declaration group we have to split the list of declarations
@@ -148,34 +152,37 @@ checking whether an entry for its untransformed name is still present
 in the type environment.
 \begin{verbatim}
 
-> abstractDeclGroup :: String -> [Ident] -> AbstractEnv
+> abstractDeclGroup :: String -> [Ident]
 >                   -> [Decl] -> Expression -> LiftM Expression
-> abstractDeclGroup pre lvs env ds e = do
+> abstractDeclGroup pre lvs ds e = do
 >   m <- getModuleIdent
->   abstractFunDecls pre (lvs ++ bv vds) env (scc bv (qfv m) fds) vds e
+>   abstractFunDecls pre (lvs ++ bv vds) (scc bv (qfv m) fds) vds e
 >   where (fds,vds) = partition isFunDecl ds
 
-> abstractFunDecls :: String -> [Ident] -> AbstractEnv
+> abstractFunDecls :: String -> [Ident]
 >                  -> [[Decl]] -> [Decl] -> Expression
 >                  -> LiftM Expression
-> abstractFunDecls pre lvs env [] vds e = do
->   vds' <- mapM (abstractDecl pre lvs env) vds
->   e' <- abstractExpr pre lvs env e
+> abstractFunDecls pre lvs [] vds e = do
+>   vds' <- mapM (abstractDecl pre lvs) vds
+>   e' <- abstractExpr pre lvs e
 >   return (Let vds' e')
-> abstractFunDecls pre lvs env (fds:fdss) vds e = do
->   m <- getModuleIdent
->   let fs = bv fds
->       fvs = filter (`elem` lvs) (Set.toList fvsRhs)
->       env' = foldr (bindF (map mkVar fvs)) env fs
+> abstractFunDecls pre lvs (fds:fdss) vds e = do
+>   m   <- getModuleIdent
+>   env <- getAbstractEnv
+>   let fs     = bv fds
+>       fvs    = filter (`elem` lvs) (Set.toList fvsRhs)
+>       env'   = foldr (bindF (map mkVar fvs)) env fs
 >       fvsRhs = Set.unions
 >         [Set.fromList (maybe [v] (qfv m) (Map.lookup v env)) | v <- qfv m fds]
 >       bindF fvs' f = Map.insert f (apply (mkFun m pre f) fvs')
 >       isLifted tyEnv f = null $ lookupValue f tyEnv
 >   fs' <- liftM (\tyEnv -> filter (not . isLifted tyEnv) fs) getValueEnv
 >   modifyValueEnv $ abstractFunTypes m pre fvs fs'
->   fds' <- mapM (abstractFunDecl pre fvs lvs env')
+>   (fds',e') <- withLocalAbstractEnv env' $ do
+>     fds'' <- mapM (abstractFunDecl pre fvs lvs)
 >                [d | d <- fds, any (`elem` fs') (bv d)]
->   e' <- abstractFunDecls pre lvs env' fdss vds e
+>     e'' <- abstractFunDecls pre lvs fdss vds e
+>     return (fds'',e'')
 >   return (Let fds' e')
 
 > abstractFunTypes :: ModuleIdent -> String -> [Ident] -> [Ident]
@@ -189,37 +196,39 @@ in the type environment.
 >                         (unbindFun f tyEnv')
 >           where ty = foldr TypeArrow (varType tyEnv' f) tys
 
-> abstractFunDecl :: String -> [Ident] -> [Ident]
->                 -> AbstractEnv -> Decl -> LiftM Decl
-> abstractFunDecl pre fvs lvs env (FunctionDecl p f eqs) =
->   abstractDecl pre lvs env (FunctionDecl p f' (map (addVars f') eqs))
->   where f' = liftIdent pre f
->         addVars f1 (Equation p1 (FunLhs _ ts) rhs) =
+> abstractFunDecl :: String -> [Ident] -> [Ident] -> Decl -> LiftM Decl
+> abstractFunDecl pre fvs lvs (FunctionDecl p f eqs) =
+>   abstractDecl pre lvs (FunctionDecl p f' (map (addVars f') eqs))
+>   where
+>   f' = liftIdent pre f
+>   addVars f1 (Equation p1 (FunLhs _ ts) rhs) =
 >           Equation p1 (FunLhs f1 (map VariablePattern fvs ++ ts)) rhs
->         addVars _ _ = error "Lift.abstractFunDecl.addVars: no pattern match"
-> abstractFunDecl pre _ _ _ (ExternalDecl p cc ie f ty) =
->   return (ExternalDecl p cc ie (liftIdent pre f) ty)
-> abstractFunDecl _ _ _ _ _ = error "Lift.abstractFunDecl: no pattern match"
+>   addVars _ _ = error "Lift.abstractFunDecl.addVars: no pattern match"
+> abstractFunDecl pre _   _  (ExternalDecl p cc ie f ty) =
+>   return $ ExternalDecl p cc ie (liftIdent pre f) ty
+> abstractFunDecl _ _ _ _ = error "Lift.abstractFunDecl: no pattern match"
 
-> abstractExpr :: String -> [Ident] -> AbstractEnv -> Expression -> LiftM Expression
-> abstractExpr _   _   _   l@(Literal     _) = return l
-> abstractExpr pre lvs env var@(Variable  v)
+> abstractExpr :: String -> [Ident] -> Expression -> LiftM Expression
+> abstractExpr _   _   l@(Literal     _) = return l
+> abstractExpr pre lvs var@(Variable  v)
 >   | isQualified v = return var
->   | otherwise     = case Map.lookup (unqualify v) env of
->                       Nothing -> return var
->                       Just v' -> abstractExpr pre lvs env v'
-> abstractExpr _   _   _   c@(Constructor _) = return c
-> abstractExpr pre lvs env (Apply     e1 e2) =
->   liftM2 Apply (abstractExpr pre lvs env e1) (abstractExpr pre lvs env e2)
-> abstractExpr pre lvs env (Let        ds e) = abstractDeclGroup pre lvs env ds e
-> abstractExpr pre lvs env (Case   r e alts) =
->   liftM2 (Case r) (abstractExpr pre lvs env e)
->                   (mapM (abstractAlt pre lvs env) alts)
-> abstractExpr _   _   _   _ = internalError "Lift.abstractExpr"
+>   | otherwise     = do
+>     env <- getAbstractEnv
+>     case Map.lookup (unqualify v) env of
+>       Nothing -> return var
+>       Just v' -> abstractExpr pre lvs v'
+> abstractExpr _   _   c@(Constructor _) = return c
+> abstractExpr pre lvs (Apply     e1 e2) =
+>   liftM2 Apply (abstractExpr pre lvs e1) (abstractExpr pre lvs e2)
+> abstractExpr pre lvs (Let        ds e) = abstractDeclGroup pre lvs ds e
+> abstractExpr pre lvs (Case   r e alts) =
+>   liftM2 (Case r) (abstractExpr pre lvs e)
+>                   (mapM (abstractAlt pre lvs) alts)
+> abstractExpr _   _   _                 = internalError "Lift.abstractExpr"
 
-> abstractAlt :: String -> [Ident] -> AbstractEnv -> Alt -> LiftM Alt
-> abstractAlt pre lvs env (Alt p t rhs) =
->   Alt p t `liftM` abstractRhs pre (lvs ++ bv t) env rhs
+> abstractAlt :: String -> [Ident] -> Alt -> LiftM Alt
+> abstractAlt pre lvs (Alt p t rhs) =
+>   Alt p t `liftM` abstractRhs pre (lvs ++ bv t) rhs
 
 \end{verbatim}
 \paragraph{Lifting}
@@ -300,7 +309,7 @@ to the top-level.
 >   _ -> internalError $ "Lift.varType: " ++ show v
 
 > liftIdent :: String -> Ident -> Ident
-> liftIdent prefix x = renameIdent (mkIdent $ prefix ++ show x) $ idUnique x
-> --renameIdent (mkIdent (prefix ++ name x ++ show (uniqueId x))) (uniqueId x)
+> liftIdent prefix x = renameIdent (mkIdent $ prefix ++ showIdent x)
+>                    $ idUnique x
 
 \end{verbatim}
