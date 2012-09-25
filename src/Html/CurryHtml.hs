@@ -15,18 +15,17 @@ module Html.CurryHtml (source2html) where
 
 import Data.Maybe (fromMaybe, isJust)
 
-import Curry.Base.Ident (QualIdent (..), unqualify)
-import Curry.Base.Message (fromIO)
-import Curry.Files.PathUtils (readModule, writeModule, lookupCurryFile
-  , dropExtension, takeFileName)
-import Curry.Syntax (lexFile)
+import Curry.Base.Ident      (QualIdent (..), unqualify)
+import Curry.Base.Message    (fromIO)
+import Curry.Files.PathUtils
+  (readModule, writeModule, lookupCurryFile, dropExtension, takeFileName)
+import Curry.Syntax          (lexSource)
 
 import Html.SyntaxColoring
 
 import Base.Messages (abortWith)
-import CompilerOpts (Options(..), TargetType (..))
-import Frontend (parse, fullParse)
-
+import CompilerOpts  (Options(..), TargetType (..))
+import Frontend      (parse, fullParse)
 
 --- translate source file into HTML file with syntaxcoloring
 --- @param outputfilename
@@ -58,7 +57,7 @@ filename2program opts filename = do
       typingParseRes <- fromIO $ fullParse opts filename cont
       fullParseRes   <- fromIO $ fullParse (opts { optTargetTypes = [UntypedAbstractCurry]}) filename cont
       let parseRes = parse filename cont
-          lexRes   = lexFile filename cont
+          lexRes   = lexSource filename cont
       return $ genProgram cont [typingParseRes, fullParseRes, parseRes] lexRes
 
 

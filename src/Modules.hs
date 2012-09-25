@@ -111,7 +111,7 @@ loadModule opts fn = do
     Nothing  -> abortWithMessages [message $ text $ "Missing file: " ++ fn] -- TODO
     Just src -> do
       -- parse module
-      case runMsg $ CS.parseModule True fn src of
+      case runMsg $ CS.parseModule fn src of
         Left err -> abortWithMessages [err]
         Right (parsed, _) -> do
           -- check module header

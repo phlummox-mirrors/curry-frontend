@@ -757,7 +757,8 @@ token2string (Token LineComment a) = attributes2string a
 token2string (Token NestedComment (StringAttributes sv _)) = sv
 token2string (Token NestedComment a) = attributes2string a
 token2string (Token LeftBraceSemicolon _) = "{;"
-token2string (Token Binds _) = ":="
+token2string (Token Bind _) = ":="
+token2string (Token Select _) = ":>"
 
 attributes2string :: Attributes -> [Char]
 attributes2string NoAttributes            = ""

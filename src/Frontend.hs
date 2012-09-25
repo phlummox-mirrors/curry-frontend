@@ -35,7 +35,7 @@ import Modules      (checkModule, checkModuleHeader, compileModule, loadModule)
     "CurrySyntax").
 -}
 parse :: FilePath -> String -> MessageM Module
-parse fn src = parseModule True fn src >>= genCurrySyntax
+parse fn src = parseModule fn src >>= genCurrySyntax
   where
   genCurrySyntax mod1
     | null hdrErrs = return mdl
