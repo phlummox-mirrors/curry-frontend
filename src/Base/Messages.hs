@@ -26,7 +26,8 @@ status opts msg = unless (optVerbosity opts < VerbStatus)
                          (putStrLn $ msg ++ " ...")
 
 warn :: Options -> [Message] -> IO ()
-warn opts msgs = when (optWarn opts) $ putErrLn (show $ ppMessages msgs)
+warn opts msgs = when (optWarn opts && not (null msgs))
+               $ putErrLn (show $ ppMessages msgs)
 
 -- |Print an error message on 'stderr'
 putErrLn :: String -> IO ()
@@ -39,7 +40,7 @@ putErrsLn = mapM_ putErrLn
 -- |Print a list of 'String's as error messages on 'stderr'
 -- and abort the program
 abortWith :: [String] -> IO a
-abortWith errs = putErrsLn errs >> exitFailure
+abortWith errs = unless (null errs) (putErrsLn errs) >> exitFailure
 
 -- |Print a single error message on 'stderr' and abort the program
 abortWithMessage :: Message -> IO a
@@ -47,7 +48,9 @@ abortWithMessage msg = abortWithMessages [msg]
 
 -- |Print a list of error messages on 'stderr' and abort the program
 abortWithMessages :: [Message] -> IO a
-abortWithMessages msgs = putErrLn (show $ ppMessages msgs) >> exitFailure
+abortWithMessages msgs = do
+  unless (null msgs) $ putErrLn (show $ ppMessages msgs)
+  exitFailure
 
 -- |Raise an internal error
 internalError :: String -> a
