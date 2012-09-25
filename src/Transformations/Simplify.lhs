@@ -284,9 +284,9 @@ functions to access the pattern variables.
 > inlineVars _ _ _ env = env
 
 > mkLet :: ModuleIdent -> [Decl] -> Expression -> Expression
-> mkLet m [ExtraVariables p vs] e
+> mkLet m [FreeDecl p vs] e
 >   | null vs'  = e
->   | otherwise = Let [ExtraVariables p vs'] e
+>   | otherwise = Let [FreeDecl p vs'] e
 >   where vs' = filter (`elem` qfv m e) vs
 > mkLet m [PatternDecl _ (VariablePattern v) (SimpleRhs _ e _)] (Variable v')
 >   | v' == qualify v && v `notElem` qfv m e = e
@@ -423,7 +423,7 @@ selector functions.
 Auxiliary functions
 \begin{verbatim}
 
-> isVarPattern :: ConstrTerm -> Bool
+> isVarPattern :: Pattern -> Bool
 > isVarPattern (VariablePattern      _) = True
 > isVarPattern (AsPattern          _ t) = isVarPattern t
 > isVarPattern (ConstructorPattern _ _) = False
@@ -459,7 +459,7 @@ Auxiliary functions
 > varDecl :: Position -> Ident -> Expression -> Decl
 > varDecl p v e = PatternDecl p (VariablePattern v) (SimpleRhs p e [])
 
-> funDecl :: Position -> Ident -> [ConstrTerm] -> Expression -> Decl
+> funDecl :: Position -> Ident -> [Pattern] -> Expression -> Decl
 > funDecl p f ts e = FunctionDecl p f [Equation p (FunLhs f ts) (SimpleRhs p e [])]
 
 > identityType :: Type -> Type

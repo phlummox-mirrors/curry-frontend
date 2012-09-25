@@ -107,10 +107,10 @@ imported precedence environment.
 >         constr (ConOpDecl  _ _ _ op _) = op
 > boundValues (NewtypeDecl _ _ _ (NewConstrDecl _ _ c _)) = [c]
 > boundValues (FunctionDecl     _ f _) = [f]
-> boundValues (ExternalDecl _ _ _ f _) = [f]
-> boundValues (FlatExternalDecl  _ fs) = fs
+> boundValues (ForeignDecl  _ _ _ f _) = [f]
+> boundValues (ExternalDecl      _ fs) = fs
 > boundValues (PatternDecl      _ t _) = bv t
-> boundValues (ExtraVariables    _ vs) = vs
+> boundValues (FreeDecl          _ vs) = vs
 > boundValues _                        = []
 
 \end{verbatim}
@@ -131,7 +131,7 @@ interface.
 > checkDecl (FunctionDecl p f eqs) =
 >   FunctionDecl p f `liftM` mapM checkEquation eqs
 > checkDecl (PatternDecl p  t rhs) =
->   liftM2 (PatternDecl p) (checkConstrTerm t) (checkRhs rhs)
+>   liftM2 (PatternDecl p) (checkPattern t) (checkRhs rhs)
 > checkDecl d                      = return d
 
 > checkEquation :: Equation -> PCM Equation
@@ -139,47 +139,47 @@ interface.
 >   liftM2 (Equation p) (checkLhs lhs) (checkRhs rhs)
 
 > checkLhs :: Lhs -> PCM Lhs
-> checkLhs (FunLhs    f ts) = FunLhs f `liftM` mapM checkConstrTerm ts
+> checkLhs (FunLhs    f ts) = FunLhs f `liftM` mapM checkPattern ts
 > checkLhs (OpLhs t1 op t2) =
->   liftM2 (flip OpLhs op) (checkConstrTerm t1 >>= checkOpL op)
->                          (checkConstrTerm t2 >>= checkOpR op)
+>   liftM2 (flip OpLhs op) (checkPattern t1 >>= checkOpL op)
+>                          (checkPattern t2 >>= checkOpR op)
 > checkLhs (ApLhs   lhs ts) =
->   liftM2 ApLhs (checkLhs lhs) (mapM checkConstrTerm ts)
+>   liftM2 ApLhs (checkLhs lhs) (mapM checkPattern ts)
 
-> checkConstrTerm :: ConstrTerm -> PCM ConstrTerm
-> checkConstrTerm l@(LiteralPattern      _) = return l
-> checkConstrTerm n@(NegativePattern   _ _) = return n
-> checkConstrTerm v@(VariablePattern     _) = return v
-> checkConstrTerm (ConstructorPattern c ts) =
->   ConstructorPattern c `liftM` mapM checkConstrTerm ts
-> checkConstrTerm (InfixPattern   t1 op t2) = do
->   t1' <- checkConstrTerm t1
->   t2' <- checkConstrTerm t2
+> checkPattern :: Pattern -> PCM Pattern
+> checkPattern l@(LiteralPattern      _) = return l
+> checkPattern n@(NegativePattern   _ _) = return n
+> checkPattern v@(VariablePattern     _) = return v
+> checkPattern (ConstructorPattern c ts) =
+>   ConstructorPattern c `liftM` mapM checkPattern ts
+> checkPattern (InfixPattern   t1 op t2) = do
+>   t1' <- checkPattern t1
+>   t2' <- checkPattern t2
 >   fixPrecT InfixPattern t1' op t2'
-> checkConstrTerm (ParenPattern          t) =
->   ParenPattern `liftM` checkConstrTerm t
-> checkConstrTerm (TuplePattern       p ts) =
->   TuplePattern p `liftM` mapM checkConstrTerm ts
-> checkConstrTerm (ListPattern        p ts) =
->   ListPattern p `liftM` mapM checkConstrTerm ts
-> checkConstrTerm (AsPattern           v t) =
->   AsPattern v `liftM` checkConstrTerm t
-> checkConstrTerm (LazyPattern         p t) =
->   LazyPattern p `liftM` checkConstrTerm t
-> checkConstrTerm (FunctionPattern    f ts) =
->   FunctionPattern f `liftM` mapM checkConstrTerm ts
-> checkConstrTerm (InfixFuncPattern t1 op t2) = do
->   t1' <- checkConstrTerm t1
->   t2' <- checkConstrTerm t2
+> checkPattern (ParenPattern          t) =
+>   ParenPattern `liftM` checkPattern t
+> checkPattern (TuplePattern       p ts) =
+>   TuplePattern p `liftM` mapM checkPattern ts
+> checkPattern (ListPattern        p ts) =
+>   ListPattern p `liftM` mapM checkPattern ts
+> checkPattern (AsPattern           v t) =
+>   AsPattern v `liftM` checkPattern t
+> checkPattern (LazyPattern         p t) =
+>   LazyPattern p `liftM` checkPattern t
+> checkPattern (FunctionPattern    f ts) =
+>   FunctionPattern f `liftM` mapM checkPattern ts
+> checkPattern (InfixFuncPattern t1 op t2) = do
+>   t1' <- checkPattern t1
+>   t2' <- checkPattern t2
 >   fixPrecT InfixFuncPattern t1' op t2'
-> checkConstrTerm (RecordPattern       fs r) =
+> checkPattern (RecordPattern       fs r) =
 >   liftM2 RecordPattern (mapM checkFieldPattern fs) $
 >     case r of
 >       Nothing -> return Nothing
->       Just r' -> Just `fmap` checkConstrTerm r'
+>       Just r' -> Just `fmap` checkPattern r'
 
-> checkFieldPattern :: Field ConstrTerm -> PCM (Field ConstrTerm)
-> checkFieldPattern (Field p l e) = Field p l `liftM` checkConstrTerm e
+> checkFieldPattern :: Field Pattern -> PCM (Field Pattern)
+> checkFieldPattern (Field p l e) = Field p l `liftM` checkPattern e
 
 > checkRhs :: Rhs -> PCM Rhs
 > checkRhs (SimpleRhs p e ds) = withLocalPrecEnv $
@@ -218,7 +218,7 @@ interface.
 > checkExpr (LeftSection      e op) = checkExpr e >>= checkLSection op
 > checkExpr (RightSection     op e) = checkExpr e >>= checkRSection op
 > checkExpr (Lambda         r ts e) =
->   liftM2 (Lambda r) (mapM checkConstrTerm ts) (checkExpr e)
+>   liftM2 (Lambda r) (mapM checkPattern ts) (checkExpr e)
 > checkExpr (Let              ds e) = withLocalPrecEnv $
 >   liftM2 Let (checkDecls ds) (checkExpr e)
 > checkExpr (Do              sts e) = withLocalPrecEnv $
@@ -241,10 +241,10 @@ interface.
 > checkStmt (StmtExpr   p e) = StmtExpr p `liftM` checkExpr e
 > checkStmt (StmtDecl    ds) = StmtDecl `liftM` checkDecls ds
 > checkStmt (StmtBind p t e) =
->   liftM2 (StmtBind p) (checkConstrTerm t) (checkExpr e)
+>   liftM2 (StmtBind p) (checkPattern t) (checkExpr e)
 
 > checkAlt :: Alt -> PCM Alt
-> checkAlt (Alt p t rhs) = liftM2 (Alt p) (checkConstrTerm t) (checkRhs rhs)
+> checkAlt (Alt p t rhs) = liftM2 (Alt p) (checkPattern t) (checkRhs rhs)
 
 \end{verbatim}
 The functions \texttt{fixPrec}, \texttt{fixUPrec}, and
@@ -368,8 +368,8 @@ this case, the negation must bind more tightly than the operator for
 the pattern to be accepted.
 \begin{verbatim}
 
-> fixPrecT :: (ConstrTerm -> QualIdent -> ConstrTerm -> ConstrTerm)
->          -> ConstrTerm -> QualIdent -> ConstrTerm -> PCM ConstrTerm
+> fixPrecT :: (Pattern -> QualIdent -> Pattern -> Pattern)
+>          -> Pattern -> QualIdent -> Pattern -> PCM Pattern
 > fixPrecT infixpatt t1@(NegativePattern uop _) op t2 = do
 >   OpPrec fix pr <- prec op `liftM` getPrecEnv
 >   unless (pr < 6 || pr == 6 && fix == InfixL) $
@@ -377,8 +377,8 @@ the pattern to be accepted.
 >   fixRPrecT infixpatt t1 op t2
 > fixPrecT infixpatt t1 op t2 = fixRPrecT infixpatt t1 op t2
 
-> fixRPrecT :: (ConstrTerm -> QualIdent -> ConstrTerm -> ConstrTerm)
->           -> ConstrTerm  -> QualIdent -> ConstrTerm -> PCM ConstrTerm
+> fixRPrecT :: (Pattern -> QualIdent -> Pattern -> Pattern)
+>           -> Pattern  -> QualIdent -> Pattern -> PCM Pattern
 > fixRPrecT infixpatt t1 op t2@(NegativePattern uop _) = do
 >   OpPrec _ pr <- prec op `liftM` getPrecEnv
 >   unless (pr < 6) $ report $ errInvalidParse "unary" uop op
@@ -409,16 +409,16 @@ the pattern to be accepted.
 >         return $ infixpatt t1 op1 (InfixFuncPattern t2 op2 t3)
 > fixRPrecT infixpatt t1 op t2 = return $ infixpatt t1 op t2
 
-> {-fixPrecT :: Position -> OpPrecEnv -> ConstrTerm -> QualIdent -> ConstrTerm
->          -> ConstrTerm
+> {-fixPrecT :: Position -> OpPrecEnv -> Pattern -> QualIdent -> Pattern
+>          -> Pattern
 > fixPrecT p pEnv t1@(NegativePattern uop l) op t2
 >   | pr < 6 || pr == 6 && fix == InfixL = fixRPrecT p pEnv t1 op t2
 >   | otherwise = errorAt p $ errInvalidParse "unary" uop op
 >   where OpPrec fix pr = prec op pEnv
 > fixPrecT p pEnv t1 op t2 = fixRPrecT p pEnv t1 op t2-}
 
-> {-fixRPrecT :: Position -> OpPrecEnv -> ConstrTerm -> QualIdent -> ConstrTerm
->           -> ConstrTerm
+> {-fixRPrecT :: Position -> OpPrecEnv -> Pattern -> QualIdent -> Pattern
+>           -> Pattern
 > fixRPrecT p pEnv t1 op t2@(NegativePattern uop l)
 >   | pr < 6 = InfixPattern t1 op t2
 >   | otherwise = errorAt p $ errInvalidParse "unary" uop op
@@ -440,7 +440,7 @@ patterns they must bind more tightly than the operator, otherwise the
 left-hand side of the declaration is invalid.
 \begin{verbatim}
 
-> checkOpL :: Ident -> ConstrTerm -> PCM ConstrTerm
+> checkOpL :: Ident -> Pattern -> PCM Pattern
 > checkOpL op t@(NegativePattern uop _) = do
 >   OpPrec fix pr <- prec (qualify op) `liftM` getPrecEnv
 >   unless (pr < 6 || pr == 6 && fix == InfixL) $
@@ -454,7 +454,7 @@ left-hand side of the declaration is invalid.
 >   return t
 > checkOpL _ t = return t
 
-> checkOpR :: Ident -> ConstrTerm -> PCM ConstrTerm
+> checkOpR :: Ident -> Pattern -> PCM Pattern
 > checkOpR op t@(NegativePattern uop _) = do
 >   OpPrec _ pr <- prec (qualify op)  `liftM` getPrecEnv
 >   when (pr >= 6) $ report $ errInvalidParse "unary" uop (qualify op)

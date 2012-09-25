@@ -62,13 +62,13 @@ instance QualExpr Decl where
   qfv _ _                      = []
 
 instance QuantExpr Decl where
-  bv (TypeSig         _ vs _) = vs
-  bv (FunctionDecl     _ f _) = [f]
-  bv (ExternalDecl _ _ _ f _) = [f]
-  bv (FlatExternalDecl  _ fs) = fs
-  bv (PatternDecl      _ t _) = bv t
-  bv (ExtraVariables    _ vs) = vs
-  bv _                        = []
+  bv (TypeSig        _ vs _) = vs
+  bv (FunctionDecl    _ f _) = [f]
+  bv (ForeignDecl _ _ _ f _) = [f]
+  bv (ExternalDecl     _ fs) = fs
+  bv (PatternDecl     _ t _) = bv t
+  bv (FreeDecl         _ vs) = vs
+  bv _                       = []
 
 instance QualExpr Equation where
   qfv m (Equation _ lhs rhs) = filterBv lhs $ qfv m lhs ++ qfv m rhs
@@ -139,7 +139,7 @@ instance QualExpr InfixOp where
   qfv m (InfixOp    op) = qfv m $ Variable op
   qfv _ (InfixConstr _) = []
 
-instance QuantExpr ConstrTerm where
+instance QuantExpr Pattern where
   bv (LiteralPattern          _) = []
   bv (NegativePattern       _ _) = []
   bv (VariablePattern         v) = [v]
@@ -154,7 +154,7 @@ instance QuantExpr ConstrTerm where
   bv (InfixFuncPattern t1 op t2) = bvFuncPatt $ InfixFuncPattern t1 op t2
   bv (RecordPattern        fs r) = maybe [] bv r ++ bv fs
 
-instance QualExpr ConstrTerm where
+instance QualExpr Pattern where
   qfv _ (LiteralPattern          _) = []
   qfv _ (NegativePattern       _ _) = []
   qfv _ (VariablePattern         _) = []
@@ -189,7 +189,7 @@ filterBv e = filter (`Set.notMember` Set.fromList (bv e))
 -- Each variable occuring in the function pattern will be unique in the result
 -- list.
 
-bvFuncPatt :: ConstrTerm -> [Ident]
+bvFuncPatt :: Pattern -> [Ident]
 bvFuncPatt = bvfp []
  where
  bvfp bvs (LiteralPattern         _) = bvs

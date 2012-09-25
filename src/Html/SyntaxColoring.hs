@@ -456,10 +456,10 @@ declPos (NewtypeDecl      p _ _ _  ) = p
 declPos (TypeDecl         p _ _ _  ) = p
 declPos (TypeSig          p _ _    ) = p
 declPos (FunctionDecl     p _ _    ) = p
-declPos (ExternalDecl     p _ _ _ _) = p
-declPos (FlatExternalDecl p _      ) = p
+declPos (ForeignDecl      p _ _ _ _) = p
+declPos (ExternalDecl     p _      ) = p
 declPos (PatternDecl      p _ _    ) = p
-declPos (ExtraVariables   p _      ) = p
+declPos (FreeDecl         p _      ) = p
 
 
 lessDecl :: Decl -> Decl -> Bool
@@ -538,13 +538,13 @@ decl2codes (TypeSig _ idents typeExpr) =
      map (Function TypSig . qualify) idents ++ typeExpr2codes typeExpr
 decl2codes (FunctionDecl _ _ equations) =
      concatMap equation2codes equations
-decl2codes (ExternalDecl _ _ _ _ _) =
+decl2codes (ForeignDecl _ _ _ _ _) =
      []
-decl2codes (FlatExternalDecl _ idents) =
+decl2codes (ExternalDecl _ idents) =
      map (Function FunDecl . qualify) idents
 decl2codes (PatternDecl _ constrTerm rhs) =
      constrTerm2codes constrTerm ++ rhs2codes rhs
-decl2codes (ExtraVariables _ idents) =
+decl2codes (FreeDecl _ idents) =
      map (Identifier IdDecl . qualify) idents
 
 equation2codes :: Equation -> [Code]
@@ -569,7 +569,7 @@ condExpr2codes :: CondExpr -> [Code]
 condExpr2codes (CondExpr _ expression1 expression2) =
    expression2codes expression1 ++ expression2codes expression2
 
-constrTerm2codes :: ConstrTerm -> [Code]
+constrTerm2codes :: Pattern -> [Code]
 constrTerm2codes (LiteralPattern _) = []
 constrTerm2codes (NegativePattern _ _) = []
 constrTerm2codes (VariablePattern ident) = [Identifier IdDecl (qualify ident)]
@@ -730,6 +730,7 @@ token2string (Token KW_do _) = "do"
 token2string (Token KW_else _) = "else"
 token2string (Token KW_external _) = "external"
 token2string (Token KW_fcase _) = "fcase"
+token2string (Token KW_foreign _) = "foreign"
 token2string (Token KW_free _) = "free"
 token2string (Token KW_if _) = "if"
 token2string (Token KW_import _) = "import"

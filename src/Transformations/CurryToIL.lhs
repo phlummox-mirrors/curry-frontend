@@ -88,7 +88,7 @@ alias types.
 > trDecl (DataDecl     _ tc tvs cs) = (:[]) `liftM` trData    tc tvs cs
 > trDecl (NewtypeDecl  _ tc tvs nc) = (:[]) `liftM` trNewtype tc tvs nc
 > trDecl (FunctionDecl     p f eqs) = (:[]) `liftM` trFunction  p f eqs
-> trDecl (ExternalDecl _ cc ie f _) = (:[]) `liftM` trExternal  f cc ie
+> trDecl (ForeignDecl  _ cc ie f _) = (:[]) `liftM` trForeign  f cc ie
 > trDecl _                          = return []
 
 > trData :: Ident -> [Ident] -> [ConstrDecl] -> TransM IL.Decl
@@ -112,9 +112,9 @@ alias types.
 >   [ty] <- arrowArgs `liftM` constrType c'
 >   (IL.NewtypeDecl tc' (length tvs) . IL.ConstrDecl c') `liftM` trType ty
 
-> trExternal :: Ident -> CallConv -> Maybe String -> TransM IL.Decl
-> trExternal _ _  Nothing   = internalError "CurryToIL.trExternal: no target"
-> trExternal f cc (Just ie) = do
+> trForeign :: Ident -> CallConv -> Maybe String -> TransM IL.Decl
+> trForeign _ _  Nothing   = internalError "CurryToIL.trForeign: no target"
+> trForeign f cc (Just ie) = do
 >   f'  <- trQualify f
 >   ty' <- varType f' >>= trType
 >   return $ IL.ExternalDecl f' (callConv cc) ie ty'
@@ -303,7 +303,7 @@ uses flexible matching.
 
 > -- Construct a renaming of all variables inside the pattern
 > -- to fresh identifiers
-> bindRenameEnv :: Ident -> ConstrTerm -> RenameEnv -> RenameEnv
+> bindRenameEnv :: Ident -> Pattern -> RenameEnv -> RenameEnv
 > bindRenameEnv _ (LiteralPattern        _) env = env
 > bindRenameEnv v (VariablePattern      v') env = Map.insert v' v env
 > bindRenameEnv v (ConstructorPattern _ ts) env
@@ -338,7 +338,7 @@ instance, if one of the alternatives contains an \texttt{@}-pattern.
 > trExpr vs env (Let      ds e) = do
 >   e' <- trExpr vs env' e
 >   case ds of
->     [ExtraVariables _ vs']
+>     [FreeDecl _ vs']
 >        -> return $ foldr IL.Exist e' vs'
 >     [d] | all (`notElem` bv d) (qfv emptyMIdent d)
 >       -> flip IL.Let    e' `liftM`      trBinding d
@@ -384,7 +384,7 @@ instance, if one of the alternatives contains an \texttt{@}-pattern.
 > trLiteral (Float   p f) = IL.Float p f
 > trLiteral _             = internalError "CurryToIL.trLiteral"
 
-> trPattern :: Ident -> ConstrTerm -> NestedTerm
+> trPattern :: Ident -> Pattern -> NestedTerm
 > trPattern _ (LiteralPattern        l)
 >   = NestedTerm (IL.LiteralPattern $ trLiteral l) []
 > trPattern v (VariablePattern       _) = NestedTerm (IL.VariablePattern v) []

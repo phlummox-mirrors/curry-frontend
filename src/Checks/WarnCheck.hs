@@ -175,19 +175,19 @@ checkDecl (TypeDecl   _ _ vs ty) = withScope $ do
   unless (null vs') $ mapM_ report $ map unrefTypeVar vs'
 checkDecl (FunctionDecl _ _ eqs) = withScope $ mapM_ checkEquation eqs
 checkDecl (PatternDecl  _ p rhs) = do
-  checkConstrTerm p
+  checkPattern p
   checkRhs rhs
 checkDecl _ = ok
 
 -- Checks locally declared identifiers (i.e. functions and logic variables)
 -- for shadowing
 checkLocalDecl :: Decl -> WCM ()
-checkLocalDecl (FunctionDecl  _ f _) = checkShadowing f
-checkLocalDecl (ExtraVariables _ vs) = mapM_ checkShadowing vs
-checkLocalDecl (PatternDecl   _ p _) = do
+checkLocalDecl (FunctionDecl _ f _) = checkShadowing f
+checkLocalDecl (FreeDecl      _ vs) = mapM_ checkShadowing vs
+checkLocalDecl (PatternDecl  _ p _) = do
   mid <- getModuleIdent
   setModuleIdent (mkMIdent []) -- TODO: is this right?
-  checkConstrTerm p
+  checkPattern p
   setModuleIdent mid
 checkLocalDecl _ = ok
 
@@ -231,13 +231,13 @@ checkEquation (Equation _ lhs rhs) = withScope $
 checkLhs :: Lhs -> WCM ()
 checkLhs (FunLhs    f ts) = do
   visitId f
-  mapM_ checkConstrTerm ts
-  mapM_ (insertConstrTerm False) ts
+  mapM_ checkPattern ts
+  mapM_ (insertPattern False) ts
 checkLhs (OpLhs t1 op t2) = checkLhs (FunLhs op [t1, t2])
 checkLhs (ApLhs   lhs ts) = do
   checkLhs lhs
-  mapM_ checkConstrTerm ts
-  mapM_ (insertConstrTerm False) ts
+  mapM_ checkPattern ts
+  mapM_ (insertPattern False) ts
 
 -- Check the right-hand-side of an equation.
 -- Because local declarations may introduce new variables, we need
@@ -263,31 +263,31 @@ checkCondExpr :: CondExpr -> WCM ()
 checkCondExpr (CondExpr _ c e) = checkExpression c >> checkExpression e
 
 --
-checkConstrTerm :: ConstrTerm -> WCM ()
-checkConstrTerm (VariablePattern v) = checkShadowing v
-checkConstrTerm (ConstructorPattern _ cterms)
-  = mapM_ checkConstrTerm cterms
-checkConstrTerm (InfixPattern cterm1 qident cterm2)
-  = checkConstrTerm (ConstructorPattern qident [cterm1, cterm2])
-checkConstrTerm (ParenPattern cterm)
-  = checkConstrTerm cterm
-checkConstrTerm (TuplePattern _ cterms)
-  = mapM_ checkConstrTerm cterms
-checkConstrTerm (ListPattern _ cterms)
-  = mapM_ checkConstrTerm cterms
-checkConstrTerm (AsPattern v cterm) = do
+checkPattern :: Pattern -> WCM ()
+checkPattern (VariablePattern v) = checkShadowing v
+checkPattern (ConstructorPattern _ cterms)
+  = mapM_ checkPattern cterms
+checkPattern (InfixPattern cterm1 qident cterm2)
+  = checkPattern (ConstructorPattern qident [cterm1, cterm2])
+checkPattern (ParenPattern cterm)
+  = checkPattern cterm
+checkPattern (TuplePattern _ cterms)
+  = mapM_ checkPattern cterms
+checkPattern (ListPattern _ cterms)
+  = mapM_ checkPattern cterms
+checkPattern (AsPattern v cterm) = do
   checkShadowing v
-  checkConstrTerm cterm
-checkConstrTerm (LazyPattern _ cterm)
-  = checkConstrTerm cterm
-checkConstrTerm (FunctionPattern _ cterms)
-  = mapM_ checkConstrTerm cterms
-checkConstrTerm  (InfixFuncPattern cterm1 qident cterm2)
-  = checkConstrTerm  (FunctionPattern qident [cterm1, cterm2])
-checkConstrTerm  (RecordPattern fields restr) = do
+  checkPattern cterm
+checkPattern (LazyPattern _ cterm)
+  = checkPattern cterm
+checkPattern (FunctionPattern _ cterms)
+  = mapM_ checkPattern cterms
+checkPattern  (InfixFuncPattern cterm1 qident cterm2)
+  = checkPattern  (FunctionPattern qident [cterm1, cterm2])
+checkPattern  (RecordPattern fields restr) = do
   mapM_ checkFieldPattern fields
-  maybe ok checkConstrTerm restr
-checkConstrTerm _ = return ()
+  maybe ok checkPattern restr
+checkPattern _ = return ()
 
 --
 checkExpression :: Expression -> WCM ()
@@ -327,8 +327,8 @@ checkExpression (LeftSection expr _)
 checkExpression (RightSection _ expr)
   = checkExpression expr
 checkExpression (Lambda _ cterms expr) = withScope $ do
-  mapM_ checkConstrTerm cterms
-  mapM_ (insertConstrTerm False) cterms
+  mapM_ checkPattern cterms
+  mapM_ (insertPattern False) cterms
   checkExpression expr
   reportUnusedVars
 checkExpression (Let decls expr) = withScope $ do
@@ -366,15 +366,15 @@ checkStatement (StmtDecl  decls) = do
   mapM_ checkDecl decls
   checkFunctionRules decls
 checkStatement (StmtBind _ cterm expr) = do
-  checkConstrTerm cterm
-  insertConstrTerm False cterm
+  checkPattern cterm
+  insertPattern False cterm
   checkExpression expr
 
 --
 checkAlt :: Alt -> WCM ()
 checkAlt (Alt _ cterm rhs) = withScope $ do
-  checkConstrTerm  cterm
-  insertConstrTerm False cterm
+  checkPattern  cterm
+  insertPattern False cterm
   checkRhs rhs
   reportUnusedVars
 
@@ -383,8 +383,8 @@ checkFieldExpression :: Field Expression -> WCM ()
 checkFieldExpression (Field _ _ expr) = checkExpression expr -- Hier auch "visitId ident" ?
 
 --
-checkFieldPattern :: Field ConstrTerm -> WCM ()
-checkFieldPattern (Field _ _ cterm) = checkConstrTerm cterm
+checkFieldPattern :: Field Pattern -> WCM ()
+checkFieldPattern (Field _ _ cterm) = checkPattern cterm
 
 -- Check for idle and overlapping case alternatives
 checkCaseAlternatives :: [Alt] -> WCM ()
@@ -419,36 +419,36 @@ checkOverlappingAlts (alt : alts) = do
   mapM_ (\ (Alt pos _ _) -> report $ overlappingCaseAlt pos) altsr
   checkOverlappingAlts alts'
   where
-  equalAlts (Alt _ cterm1 _) (Alt _ cterm2 _) = equalConstrTerms cterm1 cterm2
+  equalAlts (Alt _ cterm1 _) (Alt _ cterm2 _) = equalPatterns cterm1 cterm2
 
-  equalConstrTerms (LiteralPattern l1) (LiteralPattern l2)
+  equalPatterns (LiteralPattern l1) (LiteralPattern l2)
     = return $ l1 == l2
-  equalConstrTerms (NegativePattern id1 l1) (NegativePattern id2 l2)
+  equalPatterns (NegativePattern id1 l1) (NegativePattern id2 l2)
     = return $ id1 == id2 && l1 == l2
-  equalConstrTerms (VariablePattern id1) (VariablePattern id2) = do
+  equalPatterns (VariablePattern id1) (VariablePattern id2) = do
     p <- isConsId id1
     return $ p && id1 == id2
-  equalConstrTerms (ConstructorPattern qid1 cs1)
+  equalPatterns (ConstructorPattern qid1 cs1)
                    (ConstructorPattern qid2 cs2)
     = if qid1 == qid2
-        then all' (\ (c1,c2) -> equalConstrTerms c1 c2) (zip cs1 cs2)
+        then all' (\ (c1,c2) -> equalPatterns c1 c2) (zip cs1 cs2)
         else return False
-  equalConstrTerms (InfixPattern lcs1 qid1 rcs1)
+  equalPatterns (InfixPattern lcs1 qid1 rcs1)
                    (InfixPattern lcs2 qid2 rcs2)
-    = equalConstrTerms (ConstructorPattern qid1 [lcs1, rcs1])
+    = equalPatterns (ConstructorPattern qid1 [lcs1, rcs1])
                        (ConstructorPattern qid2 [lcs2, rcs2])
-  equalConstrTerms (ParenPattern cterm1) (ParenPattern cterm2)
-    = equalConstrTerms cterm1 cterm2
-  equalConstrTerms (TuplePattern _ cs1) (TuplePattern _ cs2)
-    = equalConstrTerms (ConstructorPattern (qTupleId 2) cs1)
+  equalPatterns (ParenPattern cterm1) (ParenPattern cterm2)
+    = equalPatterns cterm1 cterm2
+  equalPatterns (TuplePattern _ cs1) (TuplePattern _ cs2)
+    = equalPatterns (ConstructorPattern (qTupleId 2) cs1)
                        (ConstructorPattern (qTupleId 2) cs2)
-  equalConstrTerms (ListPattern _ cs1) (ListPattern _ cs2)
-    = cmpListM equalConstrTerms cs1 cs2
-  equalConstrTerms (AsPattern _ cterm1) (AsPattern _ cterm2)
-    = equalConstrTerms cterm1 cterm2
-  equalConstrTerms (LazyPattern _ cterm1) (LazyPattern _ cterm2)
-    = equalConstrTerms cterm1 cterm2
-  equalConstrTerms _ _ = return False
+  equalPatterns (ListPattern _ cs1) (ListPattern _ cs2)
+    = cmpListM equalPatterns cs1 cs2
+  equalPatterns (AsPattern _ cterm1) (AsPattern _ cterm2)
+    = equalPatterns cterm1 cterm2
+  equalPatterns (LazyPattern _ cterm1) (LazyPattern _ cterm2)
+    = equalPatterns cterm1 cterm2
+  equalPatterns _ _ = return False
 
   cmpListM :: Monad m => (a -> a -> m Bool) -> [a] -> [a] -> m Bool
   cmpListM _ []     []     = return True
@@ -484,13 +484,13 @@ insertDecl (TypeDecl _ ident _ texpr) = do
 insertDecl (FunctionDecl _ ident _) = do
   c <- isConsId ident
   unless c $ insertVar ident
-insertDecl (ExternalDecl _ _ _ ident _)
+insertDecl (ForeignDecl _ _ _ ident _)
   = insertVar ident
-insertDecl (FlatExternalDecl _ idents)
+insertDecl (ExternalDecl _ idents)
   = mapM_ insertVar idents
 insertDecl (PatternDecl _ cterm _)
-  = insertConstrTerm False cterm
-insertDecl (ExtraVariables _ idents)
+  = insertPattern False cterm
+insertDecl (FreeDecl _ idents)
   = mapM_ insertVar idents
 insertDecl _ = ok
 
@@ -515,13 +515,13 @@ insertConstrDecl (ConstrDecl _ _   ident _) = insertConsId ident
 insertConstrDecl (ConOpDecl  _ _ _ ident _) = insertConsId ident
 
 -- Notes:
---    - 'fp' indicates whether 'checkConstrTerm' deals with the arguments
+--    - 'fp' indicates whether 'checkPattern' deals with the arguments
 --      of a function pattern or not.
 --    - Since function patterns are not recognized before syntax check, it is
 --      necessary to determine, whether a constructor pattern represents a
 --      constructor or a function.
-insertConstrTerm :: Bool -> ConstrTerm -> WCM ()
-insertConstrTerm fp (VariablePattern v)
+insertPattern :: Bool -> Pattern -> WCM ()
+insertPattern fp (VariablePattern v)
   | fp        = do
     c <- isConsId v
     var <- isVarId v
@@ -529,35 +529,35 @@ insertConstrTerm fp (VariablePattern v)
   | otherwise = do
     c <- isConsId v
     unless c $ insertVar v
-insertConstrTerm fp (ConstructorPattern qident cterms) = do
+insertPattern fp (ConstructorPattern qident cterms) = do
   c <- isQualConsId qident
-  if c then mapM_ (insertConstrTerm fp) cterms
-       else mapM_ (insertConstrTerm True) cterms
-insertConstrTerm fp (InfixPattern cterm1 qident cterm2)
-  = insertConstrTerm fp (ConstructorPattern qident [cterm1, cterm2])
-insertConstrTerm fp (ParenPattern cterm)
-  = insertConstrTerm fp cterm
-insertConstrTerm fp (TuplePattern _ cterms)
-  = mapM_ (insertConstrTerm fp) cterms
-insertConstrTerm fp (ListPattern _ cterms)
-  = mapM_ (insertConstrTerm fp) cterms
-insertConstrTerm fp (AsPattern ident cterm) = do
+  if c then mapM_ (insertPattern fp) cterms
+       else mapM_ (insertPattern True) cterms
+insertPattern fp (InfixPattern cterm1 qident cterm2)
+  = insertPattern fp (ConstructorPattern qident [cterm1, cterm2])
+insertPattern fp (ParenPattern cterm)
+  = insertPattern fp cterm
+insertPattern fp (TuplePattern _ cterms)
+  = mapM_ (insertPattern fp) cterms
+insertPattern fp (ListPattern _ cterms)
+  = mapM_ (insertPattern fp) cterms
+insertPattern fp (AsPattern ident cterm) = do
   insertVar ident
-  insertConstrTerm fp cterm
-insertConstrTerm fp (LazyPattern _ cterm)
-  = insertConstrTerm fp cterm
-insertConstrTerm _ (FunctionPattern _ cterms)
-  = mapM_ (insertConstrTerm True) cterms
-insertConstrTerm _ (InfixFuncPattern cterm1 qident cterm2)
-  = insertConstrTerm True (FunctionPattern qident [cterm1, cterm2])
-insertConstrTerm fp (RecordPattern fields restr) = do
+  insertPattern fp cterm
+insertPattern fp (LazyPattern _ cterm)
+  = insertPattern fp cterm
+insertPattern _ (FunctionPattern _ cterms)
+  = mapM_ (insertPattern True) cterms
+insertPattern _ (InfixFuncPattern cterm1 qident cterm2)
+  = insertPattern True (FunctionPattern qident [cterm1, cterm2])
+insertPattern fp (RecordPattern fields restr) = do
   mapM_ (insertFieldPattern fp) fields
-  maybe (return ()) (insertConstrTerm fp) restr
-insertConstrTerm _ _ = ok
+  maybe (return ()) (insertPattern fp) restr
+insertPattern _ _ = ok
 
 --
-insertFieldPattern :: Bool -> Field ConstrTerm -> WCM ()
-insertFieldPattern fp (Field _ _ cterm) = insertConstrTerm fp cterm
+insertFieldPattern :: Bool -> Field Pattern -> WCM ()
+insertFieldPattern fp (Field _ _ cterm) = insertPattern fp cterm
 
 -- ---------------------------------------------------------------------------
 

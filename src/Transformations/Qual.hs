@@ -52,11 +52,11 @@ qDecl (NewtypeDecl   p n vs nc) = NewtypeDecl p n vs `liftM` qNewConstrDecl nc
 qDecl (TypeDecl      p n vs ty) = TypeDecl p n vs `liftM` qTypeExpr ty
 qDecl (TypeSig         p fs ty) = TypeSig p fs    `liftM` qTypeExpr ty
 qDecl (FunctionDecl    p f eqs) = FunctionDecl p f `liftM` mapM qEquation eqs
-qDecl (ExternalDecl p c x n ty) = ExternalDecl p c x n `liftM` qTypeExpr ty
-qDecl fe@(FlatExternalDecl _ _) = return fe
+qDecl (ForeignDecl  p c x n ty) = ForeignDecl p c x n `liftM` qTypeExpr ty
+qDecl e@(ExternalDecl      _ _) = return e
 qDecl (PatternDecl     p t rhs)
   = liftM2 (PatternDecl p) (qPattern t) (qRhs rhs)
-qDecl vs@(ExtraVariables   _ _) = return vs
+qDecl vs@(FreeDecl   _ _) = return vs
 
 qConstrDecl :: Qual ConstrDecl
 qConstrDecl (ConstrDecl     p vs n tys)
@@ -91,7 +91,7 @@ qLhs (FunLhs    f ts) = FunLhs f `liftM` mapM qPattern ts
 qLhs (OpLhs t1 op t2) = liftM2 (flip OpLhs op) (qPattern t1) (qPattern t2)
 qLhs (ApLhs   lhs ts) = liftM2 ApLhs (qLhs lhs) (mapM qPattern ts)
 
-qPattern :: Qual ConstrTerm
+qPattern :: Qual Pattern
 qPattern l@(LiteralPattern        _) = return l
 qPattern n@(NegativePattern     _ _) = return n
 qPattern v@(VariablePattern       _) = return v
@@ -113,7 +113,7 @@ qPattern (RecordPattern       fs rt)
   where qRecordTerm Nothing  = return Nothing
         qRecordTerm (Just v) = Just `liftM` qPattern v
 
-qFieldPattern :: Qual (Field ConstrTerm)
+qFieldPattern :: Qual (Field Pattern)
 qFieldPattern (Field p l t) = Field p l `liftM` qPattern t
 
 qRhs :: Qual Rhs

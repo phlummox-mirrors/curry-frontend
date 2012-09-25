@@ -99,7 +99,7 @@ environment.}
 > instance Typeable Ident where
 >   typeOf = computeType identType
 
-> instance Typeable ConstrTerm where
+> instance Typeable Pattern where
 >   typeOf = computeType argType
 
 > instance Typeable Expression where
@@ -135,7 +135,7 @@ environment.}
 > litType _ (Float _ _)   = return floatType
 > litType _ (String _ _)  = return stringType
 
-> argType :: ValueEnv -> ConstrTerm -> TyState Type
+> argType :: ValueEnv -> Pattern -> TyState Type
 > argType tyEnv (LiteralPattern l) = litType tyEnv l
 > argType tyEnv (NegativePattern _ l) = litType tyEnv l
 > argType tyEnv (VariablePattern v) = identType tyEnv v
@@ -182,7 +182,7 @@ environment.}
 >       tys <- mapM (fieldPattType tyEnv) fs
 >       return (TypeRecord tys Nothing)
 
-> fieldPattType :: ValueEnv -> Field ConstrTerm -> TyState (Ident,Type)
+> fieldPattType :: ValueEnv -> Field Pattern -> TyState (Ident,Type)
 > fieldPattType tyEnv (Field _ l t) =
 >   do
 >     lty <- instUniv (labelType l tyEnv)

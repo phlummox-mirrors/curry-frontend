@@ -107,10 +107,10 @@ partitionDecl p (TypeSig pos ids ty)
   = partitionFuncDecls (\q -> TypeSig pos [q] ty) p ids
 partitionDecl p d@(FunctionDecl _ ident _)
   = partitionFuncDecls (const d) p [ident]
-partitionDecl p d@(ExternalDecl _ _ _ ident _)
+partitionDecl p d@(ForeignDecl _ _ _ ident _)
   = partitionFuncDecls (const d) p [ident]
-partitionDecl p (FlatExternalDecl pos ids)
-  = partitionFuncDecls (\q -> FlatExternalDecl pos [q]) p ids
+partitionDecl p (ExternalDecl pos ids)
+  = partitionFuncDecls (\q -> ExternalDecl pos [q]) p ids
 -- other (ignored)
 partitionDecl p _ = p
 
@@ -261,14 +261,14 @@ genFuncDecl isLocal env (ident, decls)
            | otherwise = qualLookupType (qualifyWith (moduleId env) ident)
                           (typeEnv env)
 
-  genTypeSig env' (TypeSig          _ _ ts) = genTypeExpr env' ts
-  genTypeSig env' (ExternalDecl _ _ _ _ ts) = genTypeExpr env' ts
+  genTypeSig env' (TypeSig         _ _ ts) = genTypeExpr env' ts
+  genTypeSig env' (ForeignDecl _ _ _ _ ts) = genTypeExpr env' ts
   genTypeSig _    _ =
     internalError "GenAbstractCurry.genFuncDecl.genTypeSig: no pattern match"
 
-  genExternal (ExternalDecl _ _ mname ident' _)
+  genExternal (ForeignDecl _ _ mname ident' _)
     = CExternal (fromMaybe (idName ident') mname)
-  genExternal (FlatExternalDecl _ [ident'])
+  genExternal (ExternalDecl _ [ident'])
     = CExternal (idName ident')
   genExternal _
     = internalError $ "GenAbstractCurry.genExternal: "
@@ -320,7 +320,7 @@ genLocalDecls env decls
  where
   genLocalIndex env' (PatternDecl _ constr _)
     = genLocalPatternIndex env' constr
-  genLocalIndex env' (ExtraVariables _ idents)
+  genLocalIndex env' (FreeDecl _ idents)
     = let (env'', _) = mapAccumL genVarIndex env' idents
       in  env''
   genLocalIndex env' _ = env'
@@ -355,15 +355,15 @@ genLocalDecls env decls
     = let (env1, funcdecl) = genLocalFuncDecl (beginScope env') fdecls ident
           (env2, locals  ) = genLocals (endScope env1) fdecls decls1
       in  (env2, funcdecl:locals)
-  genLocals env' fdecls ((ExternalDecl _ _ _ ident _):decls1)
+  genLocals env' fdecls ((ForeignDecl _ _ _ ident _):decls1)
     = let (env1, funcdecl) = genLocalFuncDecl (beginScope env') fdecls ident
           (env2, locals  ) = genLocals (endScope env1) fdecls decls1
       in  (env2, funcdecl:locals)
-  genLocals env' fdecls ((FlatExternalDecl pos idents):decls1)
+  genLocals env' fdecls ((ExternalDecl pos idents):decls1)
     | null idents = genLocals env' fdecls decls1
     | otherwise
     = let (env1, funcdecl) = genLocalFuncDecl (beginScope env') fdecls (head idents)
-          (env2, locals  ) = genLocals (endScope env1) fdecls (FlatExternalDecl pos (tail idents):decls1)
+          (env2, locals  ) = genLocals (endScope env1) fdecls (ExternalDecl pos (tail idents):decls1)
       in  (env2, funcdecl:locals)
   genLocals env' fdecls (PatternDecl pos constr rhs : decls1)
     = let (env1, patt   ) = genLocalPattern pos env' constr
@@ -372,7 +372,7 @@ genLocalDecls env decls
           (env3, expr   ) = genLocalPattRhs pos env2 (simplifyRhsExpr rhs)
           (env4, locals ) = genLocals (endScope env3) fdecls decls1
       in  (env4, CLocalPat patt expr plocals:locals)
-  genLocals env' fdecls ((ExtraVariables pos idents):decls1)
+  genLocals env' fdecls ((FreeDecl pos idents):decls1)
     | null idents  = genLocals env' fdecls decls1
     | otherwise
       = let ident  = head idents
@@ -381,7 +381,7 @@ genLocalDecls env decls
                 ++ " for free variable \""
                 ++ show ident ++ "\""))
                   (getVarIndex env' ident)
-            decls' = ExtraVariables pos (tail idents) : decls1
+            decls' = FreeDecl pos (tail idents) : decls1
             (env'', locals) = genLocals env' fdecls decls'
         in (env'', CLocalVar (idx, idName ident) : locals)
   genLocals env' fdecls ((TypeSig _ _ _):decls1)
@@ -566,7 +566,7 @@ genBranchExpr env (Alt p pat rhs)
       in  (env2, CGuardedBranch pat' bs')
 
 --
-genPattern :: Position -> AbstractEnv -> ConstrTerm -> (AbstractEnv, CPattern)
+genPattern :: Position -> AbstractEnv -> Pattern{--} -> (AbstractEnv, CPattern)
 genPattern pos env (LiteralPattern l) = case l of
   String _ cs -> genPattern pos env $ ListPattern [] $ map (LiteralPattern . Char noRef) cs
   _           -> (env, CPLit $ genLiteral l)
@@ -710,9 +710,9 @@ buildExports mid ((TypeDecl _ ident _ _):ds)
   = Export (qualifyWith mid ident) : buildExports mid ds
 buildExports mid ((FunctionDecl _ ident _):ds)
   = Export (qualifyWith mid ident) : buildExports mid ds
-buildExports mid (ExternalDecl _ _ _ ident _ : ds)
+buildExports mid (ForeignDecl _ _ _ ident _ : ds)
   = Export (qualifyWith mid ident) : buildExports mid ds
-buildExports mid (FlatExternalDecl _ idents : ds)
+buildExports mid (ExternalDecl _ idents : ds)
   = map (Export . qualifyWith mid) idents ++ buildExports mid ds
 buildExports mid (_:ds) = buildExports mid ds
 
@@ -860,9 +860,9 @@ isFunctionDecl (FunctionDecl _ _ _) = True
 isFunctionDecl _                    = False
 
 isExternal :: Decl -> Bool
-isExternal (ExternalDecl _ _ _ _ _) = True
-isExternal (FlatExternalDecl   _ _) = True
-isExternal _                        = False
+isExternal (ForeignDecl _ _ _ _ _) = True
+isExternal (ExternalDecl      _ _) = True
+isExternal _                       = False
 
 -- Checks, whether a declaration is the data declaration of 'ident'.
 isDataDeclOf :: Ident -> Decl -> Bool
@@ -898,7 +898,7 @@ lookupType ident tyEnv = case lookupValue ident tyEnv of
 
 -- The following functions transform left-hand-side and right-hand-side terms
 -- for a better handling
-simplifyLhs :: Lhs -> [ConstrTerm]
+simplifyLhs :: Lhs -> [Pattern]
 simplifyLhs = snd . flatLhs
 
 simplifyRhsExpr :: Rhs -> [(Expression, Expression)]

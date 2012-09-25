@@ -204,8 +204,8 @@ in the type environment.
 >   addVars f1 (Equation p1 (FunLhs _ ts) rhs) =
 >           Equation p1 (FunLhs f1 (map VariablePattern fvs ++ ts)) rhs
 >   addVars _ _ = error "Lift.abstractFunDecl.addVars: no pattern match"
-> abstractFunDecl pre _   _  (ExternalDecl p cc ie f ty) =
->   return $ ExternalDecl p cc ie (liftIdent pre f) ty
+> abstractFunDecl pre _   _  (ForeignDecl p cc ie f ty) =
+>   return $ ForeignDecl p cc ie (liftIdent pre f) ty
 > abstractFunDecl _ _ _ _ = error "Lift.abstractFunDecl: no pattern match"
 
 > abstractExpr :: String -> [Ident] -> Expression -> LiftM Expression
@@ -244,7 +244,7 @@ to the top-level.
 > liftVarDecl :: Decl -> (Decl, [Decl])
 > liftVarDecl (PatternDecl   p t rhs) = (PatternDecl p t rhs', ds')
 >   where (rhs', ds') = liftRhs rhs
-> liftVarDecl ex@(ExtraVariables _ _) = (ex, [])
+> liftVarDecl ex@(FreeDecl _ _) = (ex, [])
 > liftVarDecl _ = error "Lift.liftVarDecl: no pattern match"
 
 > liftEquation :: Equation -> (Equation, [Decl])
@@ -286,7 +286,7 @@ to the top-level.
 
 > isFunDecl :: Decl -> Bool
 > isFunDecl (FunctionDecl     _ _ _) = True
-> isFunDecl (ExternalDecl _ _ _ _ _) = True
+> isFunDecl (ForeignDecl  _ _ _ _ _) = True
 > isFunDecl _                        = False
 
 > mkFun :: ModuleIdent -> String -> Ident -> Expression

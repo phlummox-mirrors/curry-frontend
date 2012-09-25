@@ -375,10 +375,10 @@ either one of the basic types or \texttt{()}.
 >   where (vds, ods) = partition isValueDecl ds
 
 > tcDeclGroup :: [Decl] -> TCM ()
-> tcDeclGroup [ExternalDecl _ _ _ f ty] = tcExternal f ty
-> tcDeclGroup [FlatExternalDecl   _ fs] = mapM_ tcFlatExternal fs
-> tcDeclGroup [ExtraVariables     _ vs] = mapM_ tcExtraVar     vs
-> tcDeclGroup ds                        = do
+> tcDeclGroup [ForeignDecl _ _ _ f ty] = tcExternal f ty
+> tcDeclGroup [ExternalDecl      _ fs] = mapM_ tcFlatExternal fs
+> tcDeclGroup [FreeDecl          _ vs] = mapM_ tcExtraVar     vs
+> tcDeclGroup ds                       = do
 >   tyEnv0 <- getValueEnv
 >   tysLhs <- mapM tcDeclLhs ds
 >   tysRhs <- mapM (tcDeclRhs tyEnv0) ds
@@ -439,8 +439,8 @@ either one of the basic types or \texttt{()}.
 >       modifyValueEnv $ bindFun m v (arrowArity ty') $ monoType ty'
 
 > tcDeclLhs :: Decl -> TCM Type
-> tcDeclLhs (FunctionDecl p f _) = tcConstrTerm p (VariablePattern f)
-> tcDeclLhs (PatternDecl  p t _) = tcConstrTerm p t
+> tcDeclLhs (FunctionDecl p f _) = tcPattern p (VariablePattern f)
+> tcDeclLhs (PatternDecl  p t _) = tcPattern p t
 > tcDeclLhs _ = internalError "TypeCheck.tcDeclLhs: no pattern match"
 
 > tcDeclRhs :: ValueEnv -> Decl -> TCM Type
@@ -458,7 +458,7 @@ either one of the basic types or \texttt{()}.
 > unifyDecl (FunctionDecl p f _) =
 >   unify p "function binding" (text "Function:" <+> ppIdent f)
 > unifyDecl (PatternDecl  p t _) =
->   unify p "pattern binding" (ppConstrTerm 0 t)
+>   unify p "pattern binding" (ppPattern 0 t)
 > unifyDecl _ = internalError "TypeCheck.unifyDecl: no pattern match"
 
 \end{verbatim}
@@ -516,7 +516,7 @@ signature the declared type must be too general.
 
 > tcEquation :: ValueEnv -> Equation -> TCM Type
 > tcEquation tyEnv0 (Equation p lhs rhs) = do
->   tys <- mapM (tcConstrTerm p) ts
+>   tys <- mapM (tcPattern p) ts
 >   ty <- tcRhs tyEnv0 rhs
 >   checkSkolems p (text "Function: " <+> ppIdent f) tyEnv0
 >                  (foldr TypeArrow ty tys)
@@ -532,10 +532,10 @@ signature the declared type must be too general.
 > tcLiteral (Float  _ _) = return floatType
 > tcLiteral (String _ _) = return stringType
 
-> tcConstrTerm :: Position -> ConstrTerm -> TCM Type
-> tcConstrTerm _ (LiteralPattern    l) = tcLiteral l
-> tcConstrTerm _ (NegativePattern _ l) = tcLiteral l
-> tcConstrTerm _ (VariablePattern   v) = do
+> tcPattern :: Position -> Pattern -> TCM Type
+> tcPattern _ (LiteralPattern    l) = tcLiteral l
+> tcPattern _ (NegativePattern _ l) = tcLiteral l
+> tcPattern _ (VariablePattern   v) = do
 >   sigs <- getSigEnv
 >   m  <- getModuleIdent
 >   ty <- case lookupTypeSig v sigs of
@@ -543,94 +543,94 @@ signature the declared type must be too general.
 >     Just t  -> expandPolyType t >>= inst
 >   modifyValueEnv $ bindFun m v (arrowArity ty) $ monoType ty
 >   return ty
-> tcConstrTerm p t@(ConstructorPattern c ts) = do
+> tcPattern p t@(ConstructorPattern c ts) = do
 >   m     <- getModuleIdent
 >   tyEnv <- getValueEnv
 >   ty <- skol $ constrType m c tyEnv
->   unifyArgs (ppConstrTerm 0 t) ts ty
+>   unifyArgs (ppPattern 0 t) ts ty
 >   where unifyArgs _   []       ty = return ty
 >         unifyArgs doc (t1:ts1) (TypeArrow ty1 ty2) =
->           tcConstrTerm p t1 >>=
->           unify p "pattern" (doc $-$ text "Term:" <+> ppConstrTerm 0 t1)
+>           tcPattern p t1 >>=
+>           unify p "pattern" (doc $-$ text "Term:" <+> ppPattern 0 t1)
 >                 ty1 >>
 >           unifyArgs doc ts1 ty2
->         unifyArgs _ _ _ = internalError "TypeCheck.tcConstrTerm"
-> tcConstrTerm p t@(InfixPattern t1 op t2) = do
+>         unifyArgs _ _ _ = internalError "TypeCheck.tcPattern"
+> tcPattern p t@(InfixPattern t1 op t2) = do
 >   m     <- getModuleIdent
 >   tyEnv <- getValueEnv
 >   ty <- skol (constrType m op tyEnv)
->   unifyArgs (ppConstrTerm 0 t) [t1,t2] ty
+>   unifyArgs (ppPattern 0 t) [t1,t2] ty
 >   where unifyArgs _ [] ty = return ty
 >         unifyArgs doc (t':ts') (TypeArrow ty1 ty2) =
->           tcConstrTerm p t' >>=
->           unify p "pattern" (doc $-$ text "Term:" <+> ppConstrTerm 0 t')
+>           tcPattern p t' >>=
+>           unify p "pattern" (doc $-$ text "Term:" <+> ppPattern 0 t')
 >                 ty1 >>
 >           unifyArgs doc ts' ty2
->         unifyArgs _ _ _ = internalError "TypeCheck.tcConstrTerm"
-> tcConstrTerm p (ParenPattern t) = tcConstrTerm p t
-> tcConstrTerm p (TuplePattern _ ts)
+>         unifyArgs _ _ _ = internalError "TypeCheck.tcPattern"
+> tcPattern p (ParenPattern t) = tcPattern p t
+> tcPattern p (TuplePattern _ ts)
 >  | null ts   = return unitType
->  | otherwise = liftM tupleType $ mapM (tcConstrTerm p) ts
-> tcConstrTerm p t@(ListPattern _ ts) =
->   freshTypeVar >>= flip (tcElems (ppConstrTerm 0 t)) ts
+>  | otherwise = liftM tupleType $ mapM (tcPattern p) ts
+> tcPattern p t@(ListPattern _ ts) =
+>   freshTypeVar >>= flip (tcElems (ppPattern 0 t)) ts
 >   where tcElems _ ty [] = return (listType ty)
 >         tcElems doc ty (t1:ts1) =
->           tcConstrTerm p t1 >>=
->           unify p "pattern" (doc $-$ text "Term:" <+> ppConstrTerm 0 t1)
+>           tcPattern p t1 >>=
+>           unify p "pattern" (doc $-$ text "Term:" <+> ppPattern 0 t1)
 >                 ty >>
 >           tcElems doc ty ts1
-> tcConstrTerm p t@(AsPattern v t') = do
->   ty1 <- tcConstrTerm p (VariablePattern v)
->   ty2 <- tcConstrTerm p t'
->   unify p "pattern" (ppConstrTerm 0 t) ty1 ty2
+> tcPattern p t@(AsPattern v t') = do
+>   ty1 <- tcPattern p (VariablePattern v)
+>   ty2 <- tcPattern p t'
+>   unify p "pattern" (ppPattern 0 t) ty1 ty2
 >   return ty1
-> tcConstrTerm p (LazyPattern _ t) = tcConstrTerm p t
-> tcConstrTerm p t@(FunctionPattern f ts) = do
+> tcPattern p (LazyPattern _ t) = tcPattern p t
+> tcPattern p t@(FunctionPattern f ts) = do
 >   m     <- getModuleIdent
 >   tyEnv <- getValueEnv
 >   ty <- inst (funType m f tyEnv) --skol (constrType m c tyEnv)
->   unifyArgs (ppConstrTerm 0 t) ts ty
+>   unifyArgs (ppPattern 0 t) ts ty
 >   where unifyArgs _ [] ty = return ty
 >         unifyArgs doc (t1:ts1) ty@(TypeVariable _) = do
 >              (alpha,beta) <- tcArrow p "function pattern" doc ty
->	       ty' <- tcConstrTermFP p t1
+>	       ty' <- tcPatternFP p t1
 >	       unify p "function pattern"
->	             (doc $-$ text "Term:" <+> ppConstrTerm 0 t1)
+>	             (doc $-$ text "Term:" <+> ppPattern 0 t1)
 >	             ty' alpha
 >	       unifyArgs doc ts1 beta
 >         unifyArgs doc (t1:ts1) (TypeArrow ty1 ty2) = do
->           tcConstrTermFP p t1 >>=
+>           tcPatternFP p t1 >>=
 >             unify p "function pattern"
->	          (doc $-$ text "Term:" <+> ppConstrTerm 0 t1)
+>	          (doc $-$ text "Term:" <+> ppPattern 0 t1)
 >                 ty1 >>
 >             unifyArgs doc ts1 ty2
->         unifyArgs _ _ ty = internalError $ "TypeCheck.tcConstrTerm: " ++ show ty
-> tcConstrTerm p (InfixFuncPattern t1 op t2) =
->   tcConstrTerm p (FunctionPattern op [t1,t2])
-> tcConstrTerm p r@(RecordPattern fs rt)
+>         unifyArgs _ _ ty = internalError $ "TypeCheck.tcPattern: " ++ show ty
+> tcPattern p (InfixFuncPattern t1 op t2) =
+>   tcPattern p (FunctionPattern op [t1,t2])
+> tcPattern p r@(RecordPattern fs rt)
 >   | isJust rt = do
 >       m <- getModuleIdent
->       ty <- tcConstrTerm p (fromJust rt)
->       fts <- mapM (tcFieldPatt tcConstrTerm m) fs
+>       ty <- tcPattern p (fromJust rt)
+>       fts <- mapM (tcFieldPatt tcPattern m) fs
 >       alpha <- freshVar id
 >	let rty = TypeRecord fts (Just alpha)
->	unify p "record pattern" (ppConstrTerm 0 r) ty rty
+>	unify p "record pattern" (ppPattern 0 r) ty rty
 >       return rty
 >   | otherwise = do
 >       m <- getModuleIdent
->       fts <- mapM (tcFieldPatt tcConstrTerm m) fs
+>       fts <- mapM (tcFieldPatt tcPattern m) fs
 >       return (TypeRecord fts Nothing)
 
 \end{verbatim}
 In contrast to usual patterns, the type checking routine for arguments of
-function patterns \texttt{tcConstrTermFP} differs from \texttt{tcConstrTerm}
+function patterns \texttt{tcPatternFP} differs from \texttt{tcPattern}
 because of possibly multiple occurrences of variables.
 \begin{verbatim}
 
-> tcConstrTermFP :: Position -> ConstrTerm -> TCM Type
-> tcConstrTermFP _ (LiteralPattern    l) = tcLiteral l
-> tcConstrTermFP _ (NegativePattern _ l) = tcLiteral l
-> tcConstrTermFP _ (VariablePattern v) = do
+> tcPatternFP :: Position -> Pattern -> TCM Type
+> tcPatternFP _ (LiteralPattern    l) = tcLiteral l
+> tcPatternFP _ (NegativePattern _ l) = tcLiteral l
+> tcPatternFP _ (VariablePattern v) = do
 >   sigs <- getSigEnv
 >   m <- getModuleIdent
 >   ty <- maybe freshTypeVar
@@ -641,86 +641,86 @@ because of possibly multiple occurrences of variables.
 >                (\ (ForAll _ t) -> return t)
 >          (sureVarType v tyEnv)
 >   return ty'
-> tcConstrTermFP p t@(ConstructorPattern c ts) = do
+> tcPatternFP p t@(ConstructorPattern c ts) = do
 >   m <- getModuleIdent
 >   tyEnv <- getValueEnv
 >   ty <- skol (constrType m c tyEnv)
->   unifyArgs (ppConstrTerm 0 t) ts ty
+>   unifyArgs (ppPattern 0 t) ts ty
 >   where unifyArgs _ [] ty = return ty
 >         unifyArgs doc (t1:ts1) (TypeArrow ty1 ty2) = do
->           tcConstrTermFP p t1 >>=
->             unify p "pattern" (doc $-$ text "Term:" <+> ppConstrTerm 0 t1)
+>           tcPatternFP p t1 >>=
+>             unify p "pattern" (doc $-$ text "Term:" <+> ppPattern 0 t1)
 >                 ty1 >>
 >             unifyArgs doc ts1 ty2
->         unifyArgs _ _ _ = internalError "TypeCheck.tcConstrTermFP"
-> tcConstrTermFP p t@(InfixPattern t1 op t2) = do
+>         unifyArgs _ _ _ = internalError "TypeCheck.tcPatternFP"
+> tcPatternFP p t@(InfixPattern t1 op t2) = do
 >   m <- getModuleIdent
 >   tyEnv <- getValueEnv
 >   ty <- skol (constrType m op tyEnv)
->   unifyArgs (ppConstrTerm 0 t) [t1,t2] ty
+>   unifyArgs (ppPattern 0 t) [t1,t2] ty
 >   where unifyArgs _ [] ty = return ty
 >         unifyArgs doc (t':ts') (TypeArrow ty1 ty2) = do
->           tcConstrTermFP p t' >>=
->             unify p "pattern" (doc $-$ text "Term:" <+> ppConstrTerm 0 t')
+>           tcPatternFP p t' >>=
+>             unify p "pattern" (doc $-$ text "Term:" <+> ppPattern 0 t')
 >                   ty1 >>
 >             unifyArgs doc ts' ty2
->         unifyArgs _ _ _ = internalError "TypeCheck.tcConstrTermFP"
-> tcConstrTermFP p (ParenPattern t) = tcConstrTermFP p t
-> tcConstrTermFP p (TuplePattern _ ts)
+>         unifyArgs _ _ _ = internalError "TypeCheck.tcPatternFP"
+> tcPatternFP p (ParenPattern t) = tcPatternFP p t
+> tcPatternFP p (TuplePattern _ ts)
 >  | null ts = return unitType
->  | otherwise = liftM tupleType $ mapM (tcConstrTermFP p) ts
-> tcConstrTermFP p t@(ListPattern _ ts) =
->   freshTypeVar >>= flip (tcElems (ppConstrTerm 0 t)) ts
+>  | otherwise = liftM tupleType $ mapM (tcPatternFP p) ts
+> tcPatternFP p t@(ListPattern _ ts) =
+>   freshTypeVar >>= flip (tcElems (ppPattern 0 t)) ts
 >   where tcElems _ ty [] = return (listType ty)
 >         tcElems doc ty (t1:ts1) =
->           tcConstrTermFP p t1 >>=
->           unify p "pattern" (doc $-$ text "Term:" <+> ppConstrTerm 0 t1)
+>           tcPatternFP p t1 >>=
+>           unify p "pattern" (doc $-$ text "Term:" <+> ppPattern 0 t1)
 >                 ty >>
 >           tcElems doc ty ts1
-> tcConstrTermFP p t@(AsPattern v t') =
+> tcPatternFP p t@(AsPattern v t') =
 >   do
->     ty1 <- tcConstrTermFP p (VariablePattern v)
->     ty2 <- tcConstrTermFP p t'
->     unify p "pattern" (ppConstrTerm 0 t) ty1 ty2
+>     ty1 <- tcPatternFP p (VariablePattern v)
+>     ty2 <- tcPatternFP p t'
+>     unify p "pattern" (ppPattern 0 t) ty1 ty2
 >     return ty1
-> tcConstrTermFP p (LazyPattern _ t) = tcConstrTermFP p t
-> tcConstrTermFP p t@(FunctionPattern f ts) = do
+> tcPatternFP p (LazyPattern _ t) = tcPatternFP p t
+> tcPatternFP p t@(FunctionPattern f ts) = do
 >     m <- getModuleIdent
 >     tyEnv <- getValueEnv
 >     ty <- inst (funType m f tyEnv) --skol (constrType m c tyEnv)
->     unifyArgs (ppConstrTerm 0 t) ts ty
+>     unifyArgs (ppPattern 0 t) ts ty
 >   where unifyArgs _ [] ty = return ty
 >         unifyArgs doc (t1:ts1) ty@(TypeVariable _) = do
 >              (alpha,beta) <- tcArrow p "function pattern" doc ty
->	       ty' <- tcConstrTermFP p t1
+>	       ty' <- tcPatternFP p t1
 >	       unify p "function pattern"
->	             (doc $-$ text "Term:" <+> ppConstrTerm 0 t1)
+>	             (doc $-$ text "Term:" <+> ppPattern 0 t1)
 >	             ty' alpha
 >	       unifyArgs doc ts1 beta
 >         unifyArgs doc (t1:ts1) (TypeArrow ty1 ty2) =
->           tcConstrTermFP p t1 >>=
->           unify p "pattern" (doc $-$ text "Term:" <+> ppConstrTerm 0 t1)
+>           tcPatternFP p t1 >>=
+>           unify p "pattern" (doc $-$ text "Term:" <+> ppPattern 0 t1)
 >                 ty1 >>
 >           unifyArgs doc ts1 ty2
->         unifyArgs _ _ _ = internalError "TypeCheck.tcConstrTermFP"
-> tcConstrTermFP p (InfixFuncPattern t1 op t2) =
->   tcConstrTermFP p (FunctionPattern op [t1,t2])
-> tcConstrTermFP p r@(RecordPattern fs rt)
+>         unifyArgs _ _ _ = internalError "TypeCheck.tcPatternFP"
+> tcPatternFP p (InfixFuncPattern t1 op t2) =
+>   tcPatternFP p (FunctionPattern op [t1,t2])
+> tcPatternFP p r@(RecordPattern fs rt)
 >   | isJust rt = do
 >       m <- getModuleIdent
->       ty <- tcConstrTermFP p (fromJust rt)
->       fts <- mapM (tcFieldPatt tcConstrTermFP m) fs
+>       ty <- tcPatternFP p (fromJust rt)
+>       fts <- mapM (tcFieldPatt tcPatternFP m) fs
 >       alpha <- freshVar id
 >	let rty = TypeRecord fts (Just alpha)
->	unify p "record pattern" (ppConstrTerm 0 r) ty rty
+>	unify p "record pattern" (ppPattern 0 r) ty rty
 >       return rty
 >   | otherwise = do
 >       m <- getModuleIdent
->       fts <- mapM (tcFieldPatt tcConstrTermFP m) fs
+>       fts <- mapM (tcFieldPatt tcPatternFP m) fs
 >       return (TypeRecord fts Nothing)
 
-> tcFieldPatt :: (Position -> ConstrTerm -> TCM Type) -> ModuleIdent
->             -> Field ConstrTerm -> TCM (Ident, Type)
+> tcFieldPatt :: (Position -> Pattern -> TCM Type) -> ModuleIdent
+>             -> Field Pattern -> TCM (Ident, Type)
 > tcFieldPatt tcPatt m f@(Field _ l t) = do
 >     tyEnv <- getValueEnv
 >     let p = idPosition l
@@ -890,7 +890,7 @@ because of possibly multiple occurrences of variables.
 >     return (TypeArrow alpha gamma)
 > tcExpr p expr@(Lambda _ ts e) = do
 >     tyEnv0 <- getValueEnv
->     tys <- mapM (tcConstrTerm p) ts
+>     tys <- mapM (tcPattern p) ts
 >     ty <- tcExpr p e
 >     checkSkolems p (text "Expression:" <+> ppExpr 0 expr) tyEnv0
 >                  (foldr TypeArrow ty tys)
@@ -924,8 +924,8 @@ because of possibly multiple occurrences of variables.
 >         tcAlts tyEnv0 ty1 ty2 (alt1:alts1) =
 >           tcAlt (ppAlt alt1) tyEnv0 ty1 ty2 alt1 >> tcAlts tyEnv0 ty1 ty2 alts1
 >         tcAlt doc tyEnv0 ty1 ty2 (Alt p1 t rhs) =
->           tcConstrTerm p1 t >>=
->           unify p1 "case pattern" (doc $-$ text "Term:" <+> ppConstrTerm 0 t)
+>           tcPattern p1 t >>=
+>           unify p1 "case pattern" (doc $-$ text "Term:" <+> ppPattern 0 t)
 >                 ty1 >>
 >           tcRhs tyEnv0 rhs >>=
 >           unify p1 "case branch" doc ty2
@@ -963,7 +963,7 @@ because of possibly multiple occurrences of variables.
 > tcQual p (StmtExpr     _ e) =
 >   tcExpr p e >>= unify p "guard" (ppExpr 0 e) boolType
 > tcQual p q@(StmtBind _ t e) = do
->   ty1 <- tcConstrTerm p t
+>   ty1 <- tcPattern p t
 >   ty2 <- tcExpr p e
 >   unify p "generator" (ppStmt q $-$ text "Term:" <+> ppExpr 0 e)
 >         (listType ty1) ty2
@@ -975,7 +975,7 @@ because of possibly multiple occurrences of variables.
 >   ty    <- tcExpr p e
 >   unify p "statement" (ppExpr 0 e) (ioType alpha) ty
 > tcStmt p st@(StmtBind _ t e) = do
->   ty1 <- tcConstrTerm p t
+>   ty1 <- tcPattern p t
 >   ty2 <- tcExpr p e
 >   unify p "statement" (ppStmt st $-$ text "Term:" <+> ppExpr 0 e) (ioType ty1) ty2
 > tcStmt _ (StmtDecl ds) = tcDecls ds

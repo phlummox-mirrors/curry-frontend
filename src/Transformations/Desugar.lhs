@@ -169,13 +169,13 @@ declarations to the group that must be desugared as well.
 >   (ds',t') <- dsPattern p [] t
 >   dss'     <- mapM dsDeclLhs ds'
 >   return $ PatternDecl p t' rhs : concat dss'
-> dsDeclLhs (FlatExternalDecl p fs) = do
+> dsDeclLhs (ExternalDecl p fs) = do
 >   m     <- getModuleIdent
 >   tyEnv <- getValueEnv
 >   return $ map (externalDecl tyEnv p m) fs
 >   where
 >   externalDecl tyEnv p' m f =
->    ExternalDecl p' CallConvPrimitive (Just (idName f)) f
+>    ForeignDecl p' CallConvPrimitive (Just (idName f)) f
 >      (fromType (typeOf tyEnv (Variable (qual m f))))
 >   qual m f
 >     | unRenameIdent f == f = qualifyWith m f
@@ -194,13 +194,13 @@ and a record label belongs to only one record declaration.
 \begin{verbatim}
 
 > dsDeclRhs :: Decl -> DsM Decl
-> dsDeclRhs (FunctionDecl      p f eqs) =
+> dsDeclRhs (FunctionDecl     p f eqs) =
 >   FunctionDecl p f `liftM` mapM dsEquation eqs
-> dsDeclRhs (PatternDecl       p t rhs) =
+> dsDeclRhs (PatternDecl      p t rhs) =
 >   PatternDecl p t `liftM` dsRhs p rhs
-> dsDeclRhs (ExternalDecl p cc ie f ty) =
->   return $ ExternalDecl p cc (ie `mplus` Just (idName f)) f ty
-> dsDeclRhs vars@(ExtraVariables   _ _) = return vars
+> dsDeclRhs (ForeignDecl p cc ie f ty) =
+>   return $ ForeignDecl p cc (ie `mplus` Just (idName f)) f ty
+> dsDeclRhs vars@(FreeDecl   _ _) = return vars
 > dsDeclRhs _ = error "Desugar.dsDeclRhs: no pattern match"
 
 > dsEquation :: Equation -> DsM Equation
@@ -220,7 +220,7 @@ $t$ is a variable or an as-pattern are replaced by $t$ in combination
 with a local declaration for $v$.
 \begin{verbatim}
 
-> dsPattern :: Position -> [Decl] -> ConstrTerm -> DsM ([Decl], ConstrTerm)
+> dsPattern :: Position -> [Decl] -> Pattern -> DsM ([Decl], Pattern)
 > dsPattern p ds (LiteralPattern l) = do
 >   dl <- dsLiteral l
 >   case dl of
@@ -287,13 +287,13 @@ with a local declaration for $v$.
 >         cons' t (rC:rCs',ts) = (rCs', cons rC t ts)
 >         cons' _ ([],_) = error "Desugar.dsList.cons': empty list"
 
-> dsAs :: Position -> Ident -> ([Decl], ConstrTerm) -> ([Decl], ConstrTerm)
+> dsAs :: Position -> Ident -> ([Decl], Pattern) -> ([Decl], Pattern)
 > dsAs p v (ds, t) = case t of
 >   VariablePattern v' -> (varDecl p v (mkVar v') : ds, t)
 >   AsPattern     v' _ -> (varDecl p v (mkVar v') : ds, t)
 >   _                  -> (ds, AsPattern v t)
 
-> dsLazy :: SrcRef -> Position -> [Decl] -> ConstrTerm -> DsM ([Decl], ConstrTerm)
+> dsLazy :: SrcRef -> Position -> [Decl] -> Pattern -> DsM ([Decl], Pattern)
 > dsLazy pos p ds t = case t of
 >   VariablePattern   _ -> return (ds, t)
 >   ParenPattern     t' -> dsLazy pos p ds t'
@@ -474,7 +474,7 @@ are compatible with the matched pattern when the guards fail.
 >         altPattern (Alt _ t1 _) = t1
 
 
-> isCompatible :: ConstrTerm -> ConstrTerm -> Bool
+> isCompatible :: Pattern -> Pattern -> Bool
 > isCompatible (VariablePattern _) _ = True
 > isCompatible _ (VariablePattern _) = True
 > isCompatible (AsPattern _ t1)   t2 = isCompatible t1 t2
@@ -498,12 +498,12 @@ have to be desugared as well. This part transforms the following extensions:
 Function Patterns
 =================
 
-> dsFunctionPattern :: [ConstrTerm] -> Rhs -> DsM ([ConstrTerm], Rhs)
+> dsFunctionPattern :: [Pattern] -> Rhs -> DsM ([Pattern], Rhs)
 > dsFunctionPattern ts rhs = do
 >   (ts', its) <- elimFP ts
 >   return (ts', genFPExpr its rhs)
 
-> elimFP :: [ConstrTerm] -> DsM ([ConstrTerm], [(Ident,ConstrTerm)])
+> elimFP :: [Pattern] -> DsM ([Pattern], [(Ident,Pattern)])
 > elimFP []     = return ([],[])
 > elimFP (t:ts)
 >   | containsFP t = do
@@ -514,7 +514,7 @@ Function Patterns
 >       (ts', its') <- elimFP ts
 >       return (t : ts', its')
 
-> containsFP :: ConstrTerm -> Bool
+> containsFP :: Pattern -> Bool
 > containsFP (ConstructorPattern _ ts) = any containsFP ts
 > containsFP (InfixPattern    t1 _ t2) = any containsFP [t1, t2]
 > containsFP (ParenPattern          t) = containsFP t
@@ -526,7 +526,7 @@ Function Patterns
 > containsFP (InfixFuncPattern  _ _ _) = True
 > containsFP _                         = False
 
-> genFPExpr :: [(Ident, ConstrTerm)] -> Rhs -> Rhs
+> genFPExpr :: [(Ident, Pattern)] -> Rhs -> Rhs
 > genFPExpr its rhs@(SimpleRhs p expr ds)
 >   | null its  = rhs
 >   | otherwise = SimpleRhs p rhsExpr ds
@@ -536,10 +536,10 @@ Function Patterns
 >                                       [fp2Expr t, Variable $ qualify i] )
 >             its
 >   frees   = foldl varsInPattern [] $ map snd its
->   rhsExpr = Let [ExtraVariables p frees] $ apply prelCond [fpExpr, expr]
+>   rhsExpr = Let [FreeDecl p frees] $ apply prelCond [fpExpr, expr]
 > genFPExpr _ _ = internalError "Desugar.genFPExpr: unexpected right-hand-side"
 
-> fp2Expr :: ConstrTerm -> Expression
+> fp2Expr :: Pattern -> Expression
 > fp2Expr (LiteralPattern        l) = Literal l
 > fp2Expr (VariablePattern       v) = Variable (qualify v)
 > fp2Expr (ConstructorPattern c ts) = apply (Constructor c) (map fp2Expr ts)
@@ -547,7 +547,7 @@ Function Patterns
 > fp2Expr t                         = internalError $
 >   "Desugar.fp2Expr: Unexpected constructor term: " ++ show t
 
-> varsInPattern :: [Ident] -> ConstrTerm -> [Ident]
+> varsInPattern :: [Ident] -> Pattern -> [Ident]
 > varsInPattern ids (VariablePattern v)
 >   | elem v ids = ids
 >   | otherwise  = v : ids
@@ -633,8 +633,8 @@ Records
 >   | ident == what = with  : ids
 >   | otherwise     = ident : replaceIdent what with ids
 
-> dsRecordPattern :: Position -> [Decl] -> [(Ident, ConstrTerm)]
->                 -> QualIdent -> DsM ([Decl], ConstrTerm)
+> dsRecordPattern :: Position -> [Decl] -> [(Ident, Pattern)]
+>                 -> QualIdent -> DsM ([Decl], Pattern)
 > dsRecordPattern p ds fs r = do
 >   tcEnv <- getTyConsEnv
 >   case qualLookupTC r tcEnv of
@@ -800,10 +800,10 @@ Prelude entities
 > prel :: String -> SrcRef -> Expression
 > prel s r = Variable $ addRef r $ preludeIdent s
 
-> truePattern :: ConstrTerm
+> truePattern :: Pattern
 > truePattern = ConstructorPattern qTrueId []
 
-> falsePattern :: ConstrTerm
+> falsePattern :: Pattern
 > falsePattern = ConstructorPattern qFalseId []
 
 > preludeIdent :: String -> QualIdent
@@ -820,18 +820,18 @@ Auxiliary definitions
 >   x -> internalError $ "Transformations.Desugar.isNewtypeConstr: "
 >                         ++ show c ++ " is " ++ show x
 
-> isVarPattern :: ConstrTerm -> Bool
+> isVarPattern :: Pattern -> Bool
 > isVarPattern (VariablePattern _) = True
 > isVarPattern (ParenPattern    t) = isVarPattern t
 > isVarPattern (AsPattern     _ t) = isVarPattern t
 > isVarPattern (LazyPattern   _ _) = True
 > isVarPattern _                   = False
 
-> funDecl :: Position -> Ident -> [ConstrTerm] -> Expression -> Decl
+> funDecl :: Position -> Ident -> [Pattern] -> Expression -> Decl
 > funDecl p f ts e = FunctionDecl p f
 >   [Equation p (FunLhs f ts) (SimpleRhs p e [])]
 
-> patDecl :: Position -> ConstrTerm -> Expression -> Decl
+> patDecl :: Position -> Pattern -> Expression -> Decl
 > patDecl p t e = PatternDecl p t (SimpleRhs p e [])
 
 > varDecl :: Position -> Ident -> Expression -> Decl
@@ -841,7 +841,7 @@ Auxiliary definitions
 > addDecls ds (SimpleRhs p e ds') = SimpleRhs p e (ds ++ ds')
 > addDecls ds (GuardedRhs es ds') = GuardedRhs es (ds ++ ds')
 
-> caseAlt :: Position -> ConstrTerm -> Expression -> Alt
+> caseAlt :: Position -> Pattern -> Expression -> Alt
 > caseAlt p t e = Alt p t (SimpleRhs p e [])
 
 > apply :: Expression -> [Expression] -> Expression

@@ -249,7 +249,7 @@ Furthermore, it is not allowed to declare a label more than once.
 >   | otherwise = let arty = length $ snd $ getFlatLhs $ head equs
 >                     qid  = qualifyWith m ident
 >                 in  bindGlobal m ident (GlobalVar arty qid) env
-> bindFuncDecl m (ExternalDecl _ _ _ ident texpr) env
+> bindFuncDecl m (ForeignDecl _ _ _ ident texpr) env
 >   = let arty = typeArity texpr
 >         qid  = qualifyWith m ident
 >     in bindGlobal m ident (GlobalVar arty qid) env
@@ -272,7 +272,7 @@ Furthermore, it is not allowed to declare a label more than once.
 >   | otherwise = let arty = length $ snd $ getFlatLhs $ head equs
 >                 in  bindLocal (unRenameIdent ident) (LocalVar arty ident) env
 > bindVarDecl (PatternDecl         _ t _) env = foldr bindVar env (bv t)
-> bindVarDecl (ExtraVariables       _ vs) env = foldr bindVar env vs
+> bindVarDecl (FreeDecl             _ vs) env = foldr bindVar env vs
 > bindVarDecl _                           env = env
 
 > bindVar :: Ident -> RenameEnv -> RenameEnv
@@ -357,14 +357,14 @@ top-level.
 >   (\vs' -> TypeSig p vs' ty) `liftM` mapM (checkVar "type signature") vs
 > checkDeclLhs (FunctionDecl      p _ eqs) =
 >   checkEquationsLhs p eqs
-> checkDeclLhs (ExternalDecl p cc ie f ty) =
->   (\f' -> ExternalDecl p cc ie f' ty) `liftM` checkVar "external declaration" f
-> checkDeclLhs (FlatExternalDecl     p fs) =
->   FlatExternalDecl p `liftM` mapM (checkVar "flat external declaration") fs
+> checkDeclLhs (ForeignDecl p cc ie f ty) =
+>   (\f' -> ForeignDecl p cc ie f' ty) `liftM` checkVar "foreign declaration" f
+> checkDeclLhs (    ExternalDecl     p fs) =
+>   ExternalDecl p `liftM` mapM (checkVar "external declaration") fs
 > checkDeclLhs (PatternDecl       p t rhs) =
->     (\t' -> PatternDecl p t' rhs) `liftM` checkConstrTerm p t
-> checkDeclLhs (ExtraVariables       p vs) =
->   ExtraVariables p `liftM` mapM (checkVar "free variables declaration") vs
+>     (\t' -> PatternDecl p t' rhs) `liftM` checkPattern p t
+> checkDeclLhs (FreeDecl             p vs) =
+>   FreeDecl p `liftM` mapM (checkVar "free variables declaration") vs
 > checkDeclLhs d                           = return d
 
 > checkVar :: String -> Ident -> SCM Ident
@@ -389,7 +389,7 @@ top-level.
 >           return $ PatternDecl p' t rhs
 > checkEquationsLhs _ _ = internalError "SyntaxCheck.checkEquationsLhs"
 
-> checkEqLhs :: Position -> Lhs -> SCM (Either (Ident, Lhs) ConstrTerm)
+> checkEqLhs :: Position -> Lhs -> SCM (Either (Ident, Lhs) Pattern)
 > checkEqLhs p toplhs = do
 >   m   <- getModuleIdent
 >   k   <- getScopeId
@@ -426,8 +426,8 @@ top-level.
 >                               return $ r
 >         where (f, _) = flatLhs lhs
 
-> checkOpLhs :: Integer -> RenameEnv -> (ConstrTerm -> ConstrTerm)
->            -> ConstrTerm -> Either (Ident, Lhs) ConstrTerm
+> checkOpLhs :: Integer -> RenameEnv -> (Pattern -> Pattern)
+>            -> Pattern -> Either (Ident, Lhs) Pattern
 > checkOpLhs k env f (InfixPattern t1 op t2)
 >   | isJust m || isDataConstr op' env
 >   = checkOpLhs k env (f . InfixPattern t1 op) t2
@@ -453,7 +453,7 @@ top-level.
 >   let dbls@[dblVar, dblTys] = map findDouble [bvs, tys]
 >   onJust (report . errDuplicateDefinition) dblVar
 >   onJust (report . errDuplicateTypeSig   ) dblTys
->   let missingTy = [f | FlatExternalDecl _ fs' <- ds, f <- fs', f `notElem` tys]
+>   let missingTy = [f | ExternalDecl _ fs' <- ds, f <- fs', f `notElem` tys]
 >   mapM_ (report . errNoTypeSig) missingTy
 >   if all isNothing dbls && null missingTy
 >     then do
@@ -489,80 +489,80 @@ top-level.
 >   return $ Equation p lhs' rhs'
 
 > checkLhs :: Position -> Lhs -> SCM Lhs
-> checkLhs p (FunLhs    f ts) = FunLhs f `liftM` mapM (checkConstrTerm p) ts
+> checkLhs p (FunLhs    f ts) = FunLhs f `liftM` mapM (checkPattern p) ts
 > checkLhs p (OpLhs t1 op t2) = do
->   let wrongCalls = concatMap (checkParenConstrTerm (Just $ qualify op)) [t1,t2]
+>   let wrongCalls = concatMap (checkParenPattern (Just $ qualify op)) [t1,t2]
 >   unless (null wrongCalls) $ report $ errInfixWithoutParens
 >     (idPosition op) wrongCalls
->   liftM2 (flip OpLhs op) (checkConstrTerm p t1) (checkConstrTerm p t2)
+>   liftM2 (flip OpLhs op) (checkPattern p t1) (checkPattern p t2)
 > checkLhs p (ApLhs   lhs ts) =
->   liftM2 ApLhs (checkLhs p lhs) (mapM (checkConstrTerm p) ts)
+>   liftM2 ApLhs (checkLhs p lhs) (mapM (checkPattern p) ts)
 
 checkParen
 @param Aufrufende InfixFunktion
-@param ConstrTerm
+@param Pattern
 @return Liste mit fehlerhaften Funktionsaufrufen
 \begin{verbatim}
 
-> checkParenConstrTerm :: (Maybe QualIdent) -> ConstrTerm -> [(QualIdent,QualIdent)]
-> checkParenConstrTerm _ (LiteralPattern          _) = []
-> checkParenConstrTerm _ (NegativePattern       _ _) = []
-> checkParenConstrTerm _ (VariablePattern         _) = []
-> checkParenConstrTerm _ (ConstructorPattern   _ cs) =
->   concatMap (checkParenConstrTerm Nothing) cs
-> checkParenConstrTerm o (InfixPattern     t1 op t2) =
+> checkParenPattern :: (Maybe QualIdent) -> Pattern -> [(QualIdent,QualIdent)]
+> checkParenPattern _ (LiteralPattern          _) = []
+> checkParenPattern _ (NegativePattern       _ _) = []
+> checkParenPattern _ (VariablePattern         _) = []
+> checkParenPattern _ (ConstructorPattern   _ cs) =
+>   concatMap (checkParenPattern Nothing) cs
+> checkParenPattern o (InfixPattern     t1 op t2) =
 >   maybe [] (\c -> [(c, op)]) o
->   ++ checkParenConstrTerm Nothing t1 ++ checkParenConstrTerm Nothing t2
-> checkParenConstrTerm _ (ParenPattern            t) =
->   checkParenConstrTerm Nothing t
-> checkParenConstrTerm _ (TuplePattern         _ ts) =
->   concatMap (checkParenConstrTerm Nothing) ts
-> checkParenConstrTerm _ (ListPattern          _ ts) =
->   concatMap (checkParenConstrTerm Nothing) ts
-> checkParenConstrTerm o (AsPattern             _ t) =
->   checkParenConstrTerm o t
-> checkParenConstrTerm o (LazyPattern           _ t) =
->   checkParenConstrTerm o t
-> checkParenConstrTerm _ (FunctionPattern      _ ts) =
->   concatMap (checkParenConstrTerm Nothing) ts
-> checkParenConstrTerm o (InfixFuncPattern t1 op t2) =
+>   ++ checkParenPattern Nothing t1 ++ checkParenPattern Nothing t2
+> checkParenPattern _ (ParenPattern            t) =
+>   checkParenPattern Nothing t
+> checkParenPattern _ (TuplePattern         _ ts) =
+>   concatMap (checkParenPattern Nothing) ts
+> checkParenPattern _ (ListPattern          _ ts) =
+>   concatMap (checkParenPattern Nothing) ts
+> checkParenPattern o (AsPattern             _ t) =
+>   checkParenPattern o t
+> checkParenPattern o (LazyPattern           _ t) =
+>   checkParenPattern o t
+> checkParenPattern _ (FunctionPattern      _ ts) =
+>   concatMap (checkParenPattern Nothing) ts
+> checkParenPattern o (InfixFuncPattern t1 op t2) =
 >   maybe [] (\c -> [(c, op)]) o
->   ++ checkParenConstrTerm Nothing t1 ++ checkParenConstrTerm Nothing t2
-> checkParenConstrTerm _ (RecordPattern        fs t) =
->     maybe [] (checkParenConstrTerm Nothing) t
->     ++ concatMap (\(Field _ _ t') -> checkParenConstrTerm Nothing t') fs
+>   ++ checkParenPattern Nothing t1 ++ checkParenPattern Nothing t2
+> checkParenPattern _ (RecordPattern        fs t) =
+>     maybe [] (checkParenPattern Nothing) t
+>     ++ concatMap (\(Field _ _ t') -> checkParenPattern Nothing t') fs
 
-> checkConstrTerm :: Position -> ConstrTerm -> SCM ConstrTerm
-> checkConstrTerm _ (LiteralPattern        l) =
+> checkPattern :: Position -> Pattern -> SCM Pattern
+> checkPattern _ (LiteralPattern        l) =
 >   LiteralPattern `liftM` renameLiteral l
-> checkConstrTerm _ (NegativePattern    op l) =
+> checkPattern _ (NegativePattern    op l) =
 >   NegativePattern op `liftM` renameLiteral l
-> checkConstrTerm p (VariablePattern       v)
+> checkPattern p (VariablePattern       v)
 >   | isAnonId v = (VariablePattern . renameIdent v) `liftM` newId
 >   | otherwise  = checkConstructorPattern p (qualify v) []
-> checkConstrTerm p (ConstructorPattern c ts) =
+> checkPattern p (ConstructorPattern c ts) =
 >   checkConstructorPattern p c ts
-> checkConstrTerm p (InfixPattern   t1 op t2) =
+> checkPattern p (InfixPattern   t1 op t2) =
 >   checkInfixPattern p t1 op t2
-> checkConstrTerm p (ParenPattern          t) =
->   ParenPattern `liftM` checkConstrTerm p t
-> checkConstrTerm p (TuplePattern     pos ts) =
->   TuplePattern pos `liftM` mapM (checkConstrTerm p) ts
-> checkConstrTerm p (ListPattern      pos ts) =
->   ListPattern pos `liftM` mapM (checkConstrTerm p) ts
-> checkConstrTerm p (AsPattern           v t) = do
->   liftM2 AsPattern (checkVar "@ pattern" v) (checkConstrTerm p t)
-> checkConstrTerm p (LazyPattern       pos t) =
->   LazyPattern pos `liftM` checkConstrTerm p t
-> checkConstrTerm p (RecordPattern      fs t) =
+> checkPattern p (ParenPattern          t) =
+>   ParenPattern `liftM` checkPattern p t
+> checkPattern p (TuplePattern     pos ts) =
+>   TuplePattern pos `liftM` mapM (checkPattern p) ts
+> checkPattern p (ListPattern      pos ts) =
+>   ListPattern pos `liftM` mapM (checkPattern p) ts
+> checkPattern p (AsPattern           v t) = do
+>   liftM2 AsPattern (checkVar "@ pattern" v) (checkPattern p t)
+> checkPattern p (LazyPattern       pos t) =
+>   LazyPattern pos `liftM` checkPattern p t
+> checkPattern p (RecordPattern      fs t) =
 >   checkRecordPattern p fs t
-> checkConstrTerm _ (FunctionPattern     _ _) = internalError $
->   "SyntaxCheck.checkConstrTerm: function pattern not defined"
-> checkConstrTerm _ (InfixFuncPattern  _ _ _) = internalError $
->   "SyntaxCheck.checkConstrTerm: infix function pattern not defined"
+> checkPattern _ (FunctionPattern     _ _) = internalError $
+>   "SyntaxCheck.checkPattern: function pattern not defined"
+> checkPattern _ (InfixFuncPattern  _ _ _) = internalError $
+>   "SyntaxCheck.checkPattern: infix function pattern not defined"
 
-> checkConstructorPattern :: Position -> QualIdent -> [ConstrTerm]
->                         -> SCM ConstrTerm
+> checkConstructorPattern :: Position -> QualIdent -> [Pattern]
+>                         -> SCM Pattern
 > checkConstructorPattern p c ts = do
 >   env <- getRenameEnv
 >   m <- getModuleIdent
@@ -585,22 +585,22 @@ checkParen
 >   n' = length ts
 >   processCons qc n = do
 >     when (n /= n') $ report $ errWrongArity c n n'
->     ConstructorPattern qc `liftM` mapM (checkConstrTerm p) ts
+>     ConstructorPattern qc `liftM` mapM (checkPattern p) ts
 >   processVarFun r k = do
 >     let n = arity r
 >     if null ts && not (isQualified c)
 >       then return $ VariablePattern $ renameIdent (varIdent r) k
 >       else do
 >         checkFuncPatsExtension p
->         ts' <- mapM (checkConstrTerm p) ts
+>         ts' <- mapM (checkPattern p) ts
 >         if n' > n
 >           then let (ts1, ts2) = splitAt n ts'
 >                in  return $ genFuncPattAppl
 >                    (FunctionPattern (qualVarIdent r) ts1) ts2
 >           else return $ FunctionPattern (qualVarIdent r) ts'
 
-> checkInfixPattern :: Position -> ConstrTerm -> QualIdent -> ConstrTerm
->                   -> SCM ConstrTerm
+> checkInfixPattern :: Position -> Pattern -> QualIdent -> Pattern
+>                   -> SCM Pattern
 > checkInfixPattern p t1 op t2 = do
 >   m <- getModuleIdent
 >   env <- getRenameEnv
@@ -617,17 +617,17 @@ checkParen
 >   where
 >   infixPattern qop n = do
 >     when (n /= 2) $ report $ errWrongArity op n 2
->     liftM2 (flip InfixPattern qop) (checkConstrTerm p t1)
->                                    (checkConstrTerm p t2)
+>     liftM2 (flip InfixPattern qop) (checkPattern p t1)
+>                                    (checkPattern p t2)
 >   funcPattern qop = do
 >     checkFuncPatsExtension p
->     liftM2 (flip InfixFuncPattern qop) (checkConstrTerm p t1)
->                                        (checkConstrTerm p t2)
+>     liftM2 (flip InfixFuncPattern qop) (checkPattern p t1)
+>                                        (checkPattern p t2)
 
 
 
-> checkRecordPattern :: Position -> [Field ConstrTerm]
->                    -> (Maybe ConstrTerm) -> SCM ConstrTerm
+> checkRecordPattern :: Position -> [Field Pattern]
+>                    -> (Maybe Pattern) -> SCM Pattern
 > checkRecordPattern p fs t = do
 >   checkRecordExtension p
 >   case fs of
@@ -647,7 +647,7 @@ checkParen
 >           else if t == Just (VariablePattern anonId)
 >             then liftM2 RecordPattern
 >                         (mapM (checkFieldPatt r) fs)
->                         (Just `liftM` checkConstrTerm p (fromJust t))
+>                         (Just `liftM` checkPattern p (fromJust t))
 >             else do report (errIllegalRecordPattern p)
 >                     return $ RecordPattern fs t
 >         where ls'       = map fieldLabel fs
@@ -657,7 +657,7 @@ checkParen
 >       [_] -> report (errNotALabel l) >> return (RecordPattern fs t)
 >       _   -> report (errDuplicateDefinition l) >> return (RecordPattern fs t)
 
-> checkFieldPatt :: QualIdent -> Field ConstrTerm -> SCM (Field ConstrTerm)
+> checkFieldPatt :: QualIdent -> Field Pattern -> SCM (Field Pattern)
 > checkFieldPatt r (Field p l t) = do
 >   env <- getRenameEnv
 >   case lookupVar l env of
@@ -665,7 +665,7 @@ checkParen
 >     []                 -> report $ errUndefinedLabel l
 >     [_]                -> report $ errNotALabel l
 >     _                  -> report $ errDuplicateDefinition l
->   Field p l `liftM` checkConstrTerm (idPosition l) t
+>   Field p l `liftM` checkPattern (idPosition l) t
 
 > -- Note: process decls first
 > checkRhs :: Rhs -> SCM Rhs
@@ -706,7 +706,7 @@ checkParen
 > checkExpr p (RightSection       op e) =
 >   liftM2 RightSection (checkOp op) (checkExpr p e)
 > checkExpr p (Lambda           r ts e) = inNestedScope $
->   liftM2 (Lambda r) (mapM (checkPattern p) ts) (checkExpr p e)
+>   liftM2 (Lambda r) (mapM (bindPattern p) ts) (checkExpr p e)
 > checkExpr p (Let                ds e) = inNestedScope $
 >   liftM2 Let (checkDeclGroup bindVarDecl ds) (checkExpr p e)
 > checkExpr p (Do                sts e) = withLocalEnv $
@@ -791,12 +791,12 @@ checkParen
 > checkStatement :: Position -> Statement -> SCM Statement
 > checkStatement p (StmtExpr   pos e) = StmtExpr pos `liftM` checkExpr p e
 > checkStatement p (StmtBind pos t e) =
->   liftM2 (flip (StmtBind pos)) (checkExpr p e) (incNesting >> checkPattern p t)
+>   liftM2 (flip (StmtBind pos)) (checkExpr p e) (incNesting >> bindPattern p t)
 > checkStatement _ (StmtDecl      ds) =
 >   StmtDecl `liftM` (incNesting >> checkDeclGroup bindVarDecl ds)
 
-> checkPattern :: Position -> ConstrTerm -> SCM ConstrTerm
-> checkPattern p t = checkConstrTerm p t >>= addBoundVariables
+> bindPattern :: Position -> Pattern -> SCM Pattern
+> bindPattern p t = checkPattern p t >>= addBoundVariables
 
 > checkOp :: InfixOp -> SCM InfixOp
 > checkOp op = do
@@ -818,7 +818,7 @@ checkParen
 
 > checkAlt :: Alt -> SCM Alt
 > checkAlt (Alt p t rhs) = inNestedScope $
->   liftM2 (Alt p) (checkPattern p t) (checkRhs rhs)
+>   liftM2 (Alt p) (bindPattern p t) (checkRhs rhs)
 
 > addBoundVariables :: QuantExpr t => t -> SCM t
 > addBoundVariables ts = do
@@ -852,10 +852,10 @@ Auxiliary definitions.
 > vars :: Decl -> [Ident]
 > vars (TypeSig         _ fs _) = fs
 > vars (FunctionDecl     _ f _) = [f]
-> vars (ExternalDecl _ _ _ f _) = [f]
-> vars (FlatExternalDecl  _ fs) = fs
+> vars (ForeignDecl  _ _ _ f _) = [f]
+> vars (ExternalDecl      _ fs) = fs
 > vars (PatternDecl      _ t _) = bv t
-> vars (ExtraVariables    _ vs) = vs
+> vars (FreeDecl          _ vs) = vs
 > vars _ = []
 
 > renameLiteral :: Literal -> SCM Literal
@@ -935,7 +935,7 @@ transform them to nested function patterns using the prelude function
 to \texttt{(apply (id id) 10)}.
 \begin{verbatim}
 
-> genFuncPattAppl :: ConstrTerm -> [ConstrTerm] -> ConstrTerm
+> genFuncPattAppl :: Pattern -> [Pattern] -> Pattern
 > genFuncPattAppl term []     = term
 > genFuncPattAppl term (t:ts)
 >    = FunctionPattern qApplyId [genFuncPattAppl term ts, t]
@@ -968,7 +968,7 @@ Miscellaneous functions.
 > typeArity (ArrowType _ t2) = 1 + typeArity t2
 > typeArity _                = 0
 
-> getFlatLhs :: Equation -> (Ident, [ConstrTerm])
+> getFlatLhs :: Equation -> (Ident, [Pattern])
 > getFlatLhs (Equation  _ lhs _) = flatLhs lhs
 
 \end{verbatim}

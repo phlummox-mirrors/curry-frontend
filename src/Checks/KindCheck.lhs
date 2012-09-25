@@ -113,27 +113,27 @@ traversed because they can contain local type signatures.
 \begin{verbatim}
 
 > checkDecl :: Decl -> KCM Decl
-> checkDecl (DataDecl      p tc tvs cs) = do
+> checkDecl (DataDecl     p tc tvs cs) = do
 >   tvs' <- checkTypeLhs tvs
 >   cs'  <- mapM (checkConstrDecl tvs') cs
 >   return $ DataDecl p tc tvs' cs'
-> checkDecl (NewtypeDecl   p tc tvs nc) = do
+> checkDecl (NewtypeDecl  p tc tvs nc) = do
 >   tvs' <- checkTypeLhs tvs
 >   nc'  <- checkNewConstrDecl tvs' nc
 >   return $ NewtypeDecl p tc tvs' nc'
-> checkDecl (TypeDecl      p tc tvs ty) = do
+> checkDecl (TypeDecl     p tc tvs ty) = do
 >   tvs' <- checkTypeLhs tvs
 >   ty'  <- checkClosedType tvs' ty
 >   return $ TypeDecl p tc tvs' ty'
-> checkDecl (TypeSig           p vs ty) =
+> checkDecl (TypeSig          p vs ty) =
 >   TypeSig p vs `liftM` checkType ty
-> checkDecl (FunctionDecl      p f eqs) =
+> checkDecl (FunctionDecl     p f eqs) =
 >   FunctionDecl p f `liftM` mapM checkEquation eqs
-> checkDecl (PatternDecl       p t rhs) =
+> checkDecl (PatternDecl      p t rhs) =
 >   PatternDecl p t `liftM` checkRhs rhs
-> checkDecl (ExternalDecl p cc ie f ty) =
->   ExternalDecl p cc ie f `liftM` checkType ty
-> checkDecl d                           = return d
+> checkDecl (ForeignDecl p cc ie f ty) =
+>   ForeignDecl p cc ie f `liftM` checkType ty
+> checkDecl d                          = return d
 
 > checkConstrDecl :: [Ident] -> ConstrDecl -> KCM ConstrDecl
 > checkConstrDecl tvs (ConstrDecl p evs c tys) = do
