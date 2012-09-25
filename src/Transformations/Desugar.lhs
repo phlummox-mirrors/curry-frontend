@@ -67,8 +67,8 @@ all names must be properly qualified before calling this module.}
 
 > module Transformations.Desugar (desugar) where
 
-> import Control.Arrow (second)
-> import Control.Monad (liftM, liftM2, mplus)
+> import           Control.Arrow            (second)
+> import           Control.Monad            (liftM, liftM2, mplus)
 > import qualified Control.Monad.State as S (State, runState, gets, modify)
 > import Data.List (tails)
 > import Data.Maybe (fromMaybe)

@@ -1,8 +1,8 @@
 {- |
     Module      :  $Header$
     Description :  Environment for functions, constructors and labels
-    Copyright   :  (c) 2001-2004, Wolfgang Lux
-                       2011, Björn Peemöller (bjp@informatik.uni-kiel.de)
+    Copyright   :  (c) 2001 - 2004, Wolfgang Lux
+                       2011       , Björn Peemöller
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
@@ -24,7 +24,8 @@ module Env.Value
   ( ValueEnv, ValueInfo (..)
   , bindGlobalInfo, bindFun, qualBindFun, rebindFun, unbindFun, bindLabel
   , lookupValue, qualLookupValue, qualLookupCons, lookupTuple, tupleDCs
-  , initDCEnv, ppTypes ) where
+  , initDCEnv, ppTypes
+  ) where
 
 import Text.PrettyPrint (Doc, vcat)
 
