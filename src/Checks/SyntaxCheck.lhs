@@ -352,12 +352,12 @@ top-level.
 
 > checkDeclLhs :: Decl -> SCM Decl
 > checkDeclLhs (InfixDecl   p fix' pr ops) =
->   InfixDecl p fix' pr `liftM` mapM renameVar ops
+>   liftM2 (InfixDecl p fix') (checkPrecedence p pr) (mapM renameVar ops)
 > checkDeclLhs (TypeSig           p vs ty) =
 >   (\vs' -> TypeSig p vs' ty) `liftM` mapM (checkVar "type signature") vs
 > checkDeclLhs (FunctionDecl      p _ eqs) =
 >   checkEquationsLhs p eqs
-> checkDeclLhs (ForeignDecl p cc ie f ty) =
+> checkDeclLhs (ForeignDecl  p cc ie f ty) =
 >   (\f' -> ForeignDecl p cc ie f' ty) `liftM` checkVar "foreign declaration" f
 > checkDeclLhs (    ExternalDecl     p fs) =
 >   ExternalDecl p `liftM` mapM (checkVar "external declaration") fs
@@ -366,6 +366,11 @@ top-level.
 > checkDeclLhs (FreeDecl             p vs) =
 >   FreeDecl p `liftM` mapM (checkVar "free variables declaration") vs
 > checkDeclLhs d                           = return d
+
+> checkPrecedence :: Position -> Integer -> SCM Integer
+> checkPrecedence p i = do
+>   unless (0 <= i && i <= 9) $ report $ errPrecedenceOutOfRange p i
+>   return i
 
 > checkVar :: String -> Ident -> SCM Ident
 > checkVar _what v = do
@@ -974,6 +979,10 @@ Miscellaneous functions.
 \end{verbatim}
 Error messages.
 \begin{verbatim}
+
+> errPrecedenceOutOfRange :: Position -> Integer -> Message
+> errPrecedenceOutOfRange p i = posMessage p $ hsep $ map text
+>   ["Precedence of out range:", show i]
 
 > errUndefinedVariable :: QualIdent -> Message
 > errUndefinedVariable v = posMessage v $ hsep $ map text
