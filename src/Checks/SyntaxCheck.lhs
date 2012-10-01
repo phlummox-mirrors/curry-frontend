@@ -24,7 +24,7 @@ definition.
 
 > import Control.Monad (liftM, liftM2, liftM3, unless, when)
 > import qualified Control.Monad.State as S (State, runState, gets, modify)
-> import Data.List ((\\), insertBy, partition)
+> import Data.List ((\\), insertBy, nub, partition)
 > import Data.Maybe (fromJust, isJust, isNothing, maybeToList)
 > import qualified Data.Set as Set (empty, insert, member)
 > import Text.PrettyPrint
@@ -489,7 +489,7 @@ top-level.
 
 > checkEquation :: Equation -> SCM Equation
 > checkEquation (Equation p lhs rhs) = inNestedScope $ do
->   lhs' <- checkLhs p lhs >>= addBoundVariables
+>   lhs' <- checkLhs p lhs >>= addBoundVariables False
 >   rhs' <- checkRhs rhs
 >   return $ Equation p lhs' rhs'
 
@@ -801,7 +801,7 @@ checkParen
 >   StmtDecl `liftM` (incNesting >> checkDeclGroup bindVarDecl ds)
 
 > bindPattern :: Position -> Pattern -> SCM Pattern
-> bindPattern p t = checkPattern p t >>= addBoundVariables
+> bindPattern p t = checkPattern p t >>= addBoundVariables True
 
 > checkOp :: InfixOp -> SCM InfixOp
 > checkOp op = do
@@ -825,11 +825,11 @@ checkParen
 > checkAlt (Alt p t rhs) = inNestedScope $
 >   liftM2 (Alt p) (bindPattern p t) (checkRhs rhs)
 
-> addBoundVariables :: QuantExpr t => t -> SCM t
-> addBoundVariables ts = do
->   case findDouble bvs of
->     Nothing -> modifyRenameEnv $ \ env -> foldr bindVar env bvs
->     Just v  -> report $ errDuplicateVariable v
+> addBoundVariables :: QuantExpr t => Bool -> t -> SCM t
+> addBoundVariables checkDuplicates ts = do
+>   when checkDuplicates $ maybe (return ()) (report . errDuplicateVariable)
+>                        $ findDouble bvs
+>   modifyRenameEnv $ \ env -> foldr bindVar env (nub bvs)
 >   return ts
 >   where bvs = bv ts
 

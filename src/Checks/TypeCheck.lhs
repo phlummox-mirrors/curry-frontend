@@ -541,8 +541,10 @@ signature the declared type must be too general.
 >   ty <- case lookupTypeSig v sigs of
 >     Nothing -> freshTypeVar
 >     Just t  -> expandPolyType t >>= inst
->   modifyValueEnv $ bindFun m v (arrowArity ty) $ monoType ty
->   return ty
+>   tyEnv <- getValueEnv
+>   maybe (modifyValueEnv (bindFun m v (arrowArity ty) (monoType ty)) >> return ty)
+>         (\ (ForAll _ t) -> return t)
+>         (sureVarType v tyEnv)
 > tcPattern p t@(ConstructorPattern c ts) = do
 >   m     <- getModuleIdent
 >   tyEnv <- getValueEnv
@@ -633,14 +635,13 @@ because of possibly multiple occurrences of variables.
 > tcPatternFP _ (VariablePattern v) = do
 >   sigs <- getSigEnv
 >   m <- getModuleIdent
->   ty <- maybe freshTypeVar
->               (\t -> expandPolyType t >>= inst)
->               (lookupTypeSig v sigs)
+>   ty <- case lookupTypeSig v sigs of
+>     Nothing -> freshTypeVar
+>     Just t  -> expandPolyType t >>= inst
 >   tyEnv <- getValueEnv
->   ty' <- maybe (modifyValueEnv (bindFun m v (arrowArity ty) (monoType ty)) >> return ty)
->                (\ (ForAll _ t) -> return t)
->          (sureVarType v tyEnv)
->   return ty'
+>   maybe (modifyValueEnv (bindFun m v (arrowArity ty) (monoType ty)) >> return ty)
+>         (\ (ForAll _ t) -> return t)
+>         (sureVarType v tyEnv)
 > tcPatternFP p t@(ConstructorPattern c ts) = do
 >   m <- getModuleIdent
 >   tyEnv <- getValueEnv

@@ -160,27 +160,26 @@ declarations to the group that must be desugared as well.
 \begin{verbatim}
 
 > dsDeclGroup :: [Decl] -> DsM [Decl]
-> dsDeclGroup ds
->  = concatMapM dsDeclLhs valDecls >>= mapM dsDeclRhs
+> dsDeclGroup ds = concatMapM dsDeclLhs valDecls >>= mapM dsDeclRhs
 >  where valDecls = filter isValueDecl ds
 
 > dsDeclLhs :: Decl -> DsM [Decl]
-> dsDeclLhs (PatternDecl   p t rhs) = do
->   (ds',t') <- dsPattern p [] t
->   dss'     <- mapM dsDeclLhs ds'
+> dsDeclLhs (PatternDecl p t rhs) = do
+>   (ds', t') <- dsPattern p [] t
+>   dss'      <- mapM dsDeclLhs ds'
 >   return $ PatternDecl p t' rhs : concat dss'
-> dsDeclLhs (ExternalDecl p fs) = do
+> dsDeclLhs (ExternalDecl   p fs) = mapM (genForeignDecl p) fs
+> dsDeclLhs d                     = return [d]
+
+> genForeignDecl :: Position -> Ident -> DsM Decl
+> genForeignDecl p f = do
 >   m     <- getModuleIdent
 >   tyEnv <- getValueEnv
->   return $ map (externalDecl tyEnv p m) fs
->   where
->   externalDecl tyEnv p' m f =
->    ForeignDecl p' CallConvPrimitive (Just (idName f)) f
->      (fromType (typeOf tyEnv (Variable (qual m f))))
->   qual m f
->     | unRenameIdent f == f = qualifyWith m f
->     | otherwise            = qualify f
-> dsDeclLhs d = return [d]
+>   return $ ForeignDecl p CallConvPrimitive (Just $ idName f) f
+>            (fromType $ typeOf tyEnv $ Variable $ qual m f)
+>   where qual m f'
+>          | hasGlobalScope f' = qualifyWith m f'
+>          | otherwise         = qualify f'
 
 \end{verbatim}
 After desugaring its right hand side, each equation is $\eta$-expanded
@@ -205,11 +204,64 @@ and a record label belongs to only one record declaration.
 
 > dsEquation :: Equation -> DsM Equation
 > dsEquation (Equation p lhs rhs) = do
->   (ds', ts')    <- mapAccumM (dsPattern p) [] ts
->   rhs'          <- dsRhs p $ addDecls ds' rhs
->   (ts'', rhs'') <- dsFunctionPattern ts' rhs'
->   return $ Equation p (FunLhs f ts'') rhs''
+>   ((_, ren), ts1) <- mapAccumM dsNonLinear ([], []) ts
+>   (ds'     , ts2) <- mapAccumM (dsPattern p) [] ts1
+>   rhs'            <- dsRhs p $ addDecls ds' $ addConstraints ren rhs
+>   (ts3   , rhs'') <- dsFunctionPattern ts2 rhs'
+>   return $ Equation p (FunLhs f ts3) rhs''
 >   where (f, ts) = flatLhs lhs
+
+> type RenameEnv = ([Ident], [(Ident, Ident)])
+
+> dsNonLinear :: RenameEnv -> Pattern -> DsM (RenameEnv, Pattern)
+> dsNonLinear env l@(LiteralPattern    _) = return (env, l)
+> dsNonLinear env n@(NegativePattern _ _) = return (env, n)
+> dsNonLinear env t@(VariablePattern   v)
+>   | v `elem` vis = do
+>     v' <- freshMonoTypeVar "_#nonlinear" t
+>     return ((vis, (v',v) : ren), VariablePattern v')
+>   | otherwise    = return ((v : vis, ren), t)
+>   where (vis, ren) = env
+> dsNonLinear env (ConstructorPattern   c ts) = do
+>   (env', ts') <- mapAccumM dsNonLinear env ts
+>   return (env', ConstructorPattern c ts')
+> dsNonLinear env (InfixPattern     t1 op t2) = do
+>   (env1, t1') <- dsNonLinear env  t1
+>   (env2, t2') <- dsNonLinear env1 t2
+>   return (env2, InfixPattern t1' op t2')
+> dsNonLinear env (ParenPattern            t) = do
+>   (env', t') <- dsNonLinear env t
+>   return (env', ParenPattern t')
+> dsNonLinear env (TuplePattern       pos ts) = do
+>   (env', ts') <- mapAccumM dsNonLinear env ts
+>   return (env', TuplePattern pos ts')
+> dsNonLinear env (ListPattern        pos ts) = do
+>   (env', ts') <- mapAccumM dsNonLinear env ts
+>   return (env', ListPattern pos ts')
+> dsNonLinear env (AsPattern             v t) = do
+>   (env1, VariablePattern v') <- dsNonLinear env (VariablePattern v)
+>   (env2, t') <- dsNonLinear env1 t
+>   return (env2, AsPattern v' t')
+> dsNonLinear env (LazyPattern           r t) = do
+>   (env', t') <- dsNonLinear env t
+>   return (env', LazyPattern r t')
+> dsNonLinear env fp@(FunctionPattern    _ _) = return (env, fp)
+> dsNonLinear env fp@(InfixFuncPattern _ _ _) = return (env, fp)
+> dsNonLinear env (RecordPattern        fs r) = do
+>   (env1, fs') <- mapAccumM dsField env fs
+>   return (env1, RecordPattern fs' r)
+>   where dsField e (Field p i t) = do
+>           (e', t') <- dsNonLinear e t
+>           return (e', Field p i t')
+
+> addConstraints :: [(Ident, Ident)] -> Rhs -> Rhs
+> addConstraints vws rhs@(SimpleRhs p e ds)
+>   | null vws  = rhs
+>   | otherwise = SimpleRhs p (apply prelCond [foldr1 combine constrs, e]) ds
+>   where
+>   combine ex g = apply prelSeqConj [g, ex]
+>   constrs      = map (\ (v, w) -> apply prelSEq $ map mkVar [w, v]) vws
+> addConstraints _ _ = internalError "Desugar.addConstraints: GuardedRHS"
 
 \end{verbatim}
 The transformation of patterns is straight forward except for lazy
@@ -259,19 +311,19 @@ with a local declaration for $v$.
 > dsPattern p ds (RecordPattern fs _)
 >   | null fs   = internalError "Desugar.dsPattern: empty record"
 >   | otherwise = do
->     tyEnv <- getValueEnv
->     case (lookupValue (fieldLabel (head fs)) tyEnv) of
->       [Label _ r _] -> dsRecordPattern p ds (map field2Tuple fs) r
->       _             -> internalError "Desugar.dsPattern: no label"
+>     r   <- recordFromField (fieldLabel (head fs))
+>     fs' <- (map fst . snd) `liftM` lookupRecord r
+>     let ts = map (dsLabel (map field2Tuple fs)) fs'
+>     dsPattern p ds (ConstructorPattern r ts)
+>   where dsLabel fs' l = fromMaybe (VariablePattern anonId) (lookup l fs')
 
 > dsLiteral :: Literal -> DsM (Either Literal ([SrcRef], [Literal]))
-> dsLiteral c@(Char _ _) = return $ Left c
-> dsLiteral (Int    v i) = (Left . fixType) `liftM` getValueEnv
->   where
->   fixType tyEnv
->     | typeOf tyEnv v == floatType
->     = Float (srcRefOf $ idPosition v) (fromIntegral i)
->     | otherwise = Int v i
+> dsLiteral c@(Char             _ _) = return $ Left c
+> dsLiteral (Int                v i) = (Left . fixType) `liftM` getValueEnv
+>   where fixType tyEnv
+>           | typeOf tyEnv v == floatType
+>           = Float (srcRefOf $ idPosition v) (fromIntegral i)
+>           | otherwise = Int v i
 > dsLiteral f@(Float            _ _) = return $ Left f
 > dsLiteral (String (SrcRef [i]) cs) = return $ Right
 >   (consRefs i cs, zipWith (Char . SrcRef . (:[])) [i, i + 2 ..] cs)
@@ -385,68 +437,59 @@ type \texttt{Bool} of the guard because the guard's type defaults to
 >   e2' <- dsExpr p e2
 >   return $ apply op' [e1', e2']
 > dsExpr p (LeftSection e op) = do
->     liftM2 Apply (dsExpr p (infixOp op)) (dsExpr p e)
+>   liftM2 Apply (dsExpr p (infixOp op)) (dsExpr p e)
 > dsExpr p (RightSection op e) = do
->     op' <- dsExpr p (infixOp op)
->     e' <- dsExpr p e
->     return $ apply prelFlip [op', e']
+>   op' <- dsExpr p (infixOp op)
+>   e' <- dsExpr p e
+>   return $ apply prelFlip [op', e']
 > dsExpr p expr@(Lambda r ts e) = do
 >   ty <- getTypeOf expr
 >   f  <- freshIdent "_#lambda" (length ts) (polyType ty)
 >   dsExpr p $ Let [funDecl (AST r) f ts e] $ mkVar f
 > dsExpr p (Let ds e) = do
->     ds' <- dsDeclGroup ds
->     e' <- dsExpr p e
->     return (if null ds' then e' else Let ds' e')
+>   ds' <- dsDeclGroup ds
+>   e' <- dsExpr p e
+>   return (if null ds' then e' else Let ds' e')
 > dsExpr p (Do sts e) =
 >   dsExpr p (foldr desugarStmt e sts)
 >   where desugarStmt (StmtExpr r e1) e' = apply (prelBind_ r) [e1,e']
 >         desugarStmt (StmtBind r t e1) e' = apply (prelBind r) [e1,Lambda r [t] e']
 >         desugarStmt (StmtDecl ds) e' = Let ds e'
 > dsExpr p (IfThenElse r e1 e2 e3) = do
->     e1' <- dsExpr p e1
->     e2' <- dsExpr p e2
->     e3' <- dsExpr p e3
->     return (Case r Rigid e1'
->             [caseAlt p truePattern e2', caseAlt p falsePattern e3'])
+>   e1' <- dsExpr p e1
+>   e2' <- dsExpr p e2
+>   e3' <- dsExpr p e3
+>   return (Case r Rigid e1'
+>           [caseAlt p truePattern e2', caseAlt p falsePattern e3'])
 > dsExpr p (Case r ct e alts)
 >   | null alts = return prelFailed
 >   | otherwise = do
->         m  <- getModuleIdent
->         e' <- dsExpr p e
->         v  <- freshMonoTypeVar "_#case" e
->         alts' <- mapM dsAltLhs alts
->         tyEnv <- getValueEnv
->         alts'' <- mapM dsAltRhs
->                        (map (expandAlt tyEnv v ct) (init (tails alts')))
->         return (mkCase m v e' alts'')
->   where mkCase m1 v e1 alts1
->           | v `elem` qfv m1 alts1 = Let [varDecl p v e1] (Case r ct (mkVar v) alts1)
->           | otherwise             = Case r ct e1 alts1
+>     m  <- getModuleIdent
+>     e' <- dsExpr p e
+>     v  <- freshMonoTypeVar "_#case" e
+>     alts' <- mapM dsAltLhs alts
+>     tyEnv <- getValueEnv
+>     alts'' <- mapM dsAltRhs
+>                    (map (expandAlt tyEnv v ct) (init (tails alts')))
+>     return (mkCase m v e' alts'')
+>   where
+>   mkCase m1 v e1 alts1
+>     | v `elem` qfv m1 alts1 = Let [varDecl p v e1] (Case r ct (mkVar v) alts1)
+>     | otherwise             = Case r ct e1 alts1
 > dsExpr p (RecordConstr fs)
->   | null fs = internalError "Desugar.dsExpr: empty record construction"
+>   | null fs   = internalError "Desugar.dsExpr: empty record construction"
 >   | otherwise = do
->       let l   = fieldLabel (head fs)
->           fs' = map field2Tuple fs
->       tyEnv <- getValueEnv
->       case (lookupValue l tyEnv) of
->            [Label _ r _] -> dsRecordConstr p r fs'
->            _  -> internalError "Desugar.dsExpr: illegal record construction"
+>     r <- recordFromField (fieldLabel (head fs))
+>     dsRecordConstr p r (map field2Tuple fs)
 > dsExpr p (RecordSelection e l) = do
->   tyEnv <- getValueEnv
->   case lookupValue l tyEnv of
->     [Label _ r _] -> dsRecordSelection p r l e
->     other         -> internalError $ "Desugar.dsExpr: "
->       ++ "Illegal record selection, " ++ show l ++ " could only be resolved to " ++ show other ++ "\n" ++ show tyEnv
+>   m <- getModuleIdent
+>   r <- recordFromField l
+>   dsExpr p (Apply (Variable (qualRecSelectorId m r l)) e)
 > dsExpr p (RecordUpdate fs rexpr)
->   | null fs = internalError "Desugar.dsExpr: empty record update"
+>   | null fs   = internalError "Desugar.dsExpr: empty record update"
 >   | otherwise = do
->       let l   = fieldLabel (head fs)
->           fs' = map field2Tuple fs
->       tyEnv <- getValueEnv
->       case (lookupValue l tyEnv) of
->            [Label _ r _] -> dsRecordUpdate p r rexpr fs'
->            _  -> internalError "Desugar.dsExpr: illegal record update"
+>     r <- recordFromField (fieldLabel (head fs))
+>     dsRecordUpdate p r rexpr (map field2Tuple fs)
 
 \end{verbatim}
 If an alternative in a case expression has boolean guards and all of
@@ -473,18 +516,18 @@ are compatible with the matched pattern when the guards fail.
 >                   (filter (isCompatible t . altPattern) alts)
 >         altPattern (Alt _ t1 _) = t1
 
-
 > isCompatible :: Pattern -> Pattern -> Bool
-> isCompatible (VariablePattern _) _ = True
-> isCompatible _ (VariablePattern _) = True
-> isCompatible (AsPattern _ t1)   t2 = isCompatible t1 t2
-> isCompatible t1 (AsPattern   _ t2) = isCompatible t1 t2
-> isCompatible (ConstructorPattern c1 ts1) (ConstructorPattern c2 ts2) =
->   and ((c1 == c2) : zipWith isCompatible ts1 ts2)
-> isCompatible (LiteralPattern l1) (LiteralPattern l2) = canon l1 == canon l2
+> isCompatible (VariablePattern _) _                   = True
+> isCompatible _                   (VariablePattern _) = True
+> isCompatible (AsPattern    _ t1) t2                  = isCompatible t1 t2
+> isCompatible t1                  (AsPattern    _ t2) = isCompatible t1 t2
+> isCompatible (ConstructorPattern c1 ts1) (ConstructorPattern c2 ts2)
+>   = and ((c1 == c2) : zipWith isCompatible ts1 ts2)
+> isCompatible (LiteralPattern         l1) (LiteralPattern         l2)
+>   = canon l1 == canon l2
 >   where canon (Int _ i) = Int anonId i
->         canon l = l
-> isCompatible _ _ = error "Desugar.isCompatible: no pattern match"
+>         canon l         = l
+> isCompatible _                    _                  = False
 
 \end{verbatim}
 The frontend provides several extensions of the Curry functionality, which
@@ -503,16 +546,16 @@ Function Patterns
 >   (ts', its) <- elimFP ts
 >   return (ts', genFPExpr its rhs)
 
-> elimFP :: [Pattern] -> DsM ([Pattern], [(Ident,Pattern)])
-> elimFP []     = return ([],[])
-> elimFP (t:ts)
+> elimFP :: [Pattern] -> DsM ([Pattern], [(Ident, Pattern)])
+> elimFP []        = return ([], [])
+> elimFP (t : ts)
 >   | containsFP t = do
->       v  <- freshMonoTypeVar "_#funpatt" t
->       (ts', its') <- elimFP ts
->       return (VariablePattern v : ts', (v, t) : its')
->   | otherwise = do
->       (ts', its') <- elimFP ts
->       return (t : ts', its')
+>     v  <- freshMonoTypeVar "_#funpatt" t
+>     (ts', its') <- elimFP ts
+>     return (VariablePattern v : ts', (v, t) : its')
+>   | otherwise    = do
+>     (ts', its') <- elimFP ts
+>     return (t : ts', its')
 
 > containsFP :: Pattern -> Bool
 > containsFP (ConstructorPattern _ ts) = any containsFP ts
@@ -541,9 +584,9 @@ Function Patterns
 
 > fp2Expr :: Pattern -> Expression
 > fp2Expr (LiteralPattern        l) = Literal l
-> fp2Expr (VariablePattern       v) = Variable (qualify v)
+> fp2Expr (VariablePattern       v) = mkVar v
 > fp2Expr (ConstructorPattern c ts) = apply (Constructor c) (map fp2Expr ts)
-> fp2Expr (FunctionPattern    f ts) = apply (Variable f)    (map fp2Expr ts)
+> fp2Expr (FunctionPattern    f ts) = apply (Variable    f) (map fp2Expr ts)
 > fp2Expr t                         = internalError $
 >   "Desugar.fp2Expr: Unexpected constructor term: " ++ show t
 
@@ -572,60 +615,66 @@ Function Patterns
 > varsInPattern ids _
 >   = ids
 
-Records
-=======
+Desugaring of Records
+=====================
+
+> recordFromField :: Ident -> DsM QualIdent
+> recordFromField lbl = do
+>   tyEnv <- getValueEnv
+>   case lookupValue lbl tyEnv of
+>     [Label _ r _] -> return r
+>     _             -> internalError $
+>       "Desugar.recordFromField: unknown label: " ++ show lbl
+
+> lookupRecord :: QualIdent -> DsM (Int, [(Ident, Type)])
+> lookupRecord r = do
+>   tcEnv <- getTyConsEnv
+>   case qualLookupTC r tcEnv of
+>     [AliasType _ n (TypeRecord fs _)] -> return (n, fs)
+>     _                                 ->
+>       internalError $ "Desugar.lookupRecord: no record: " ++ show r
 
 > dsRecordDecl :: Decl -> DsM [Decl]
 > dsRecordDecl (TypeDecl p r vs (RecordType fss _)) = do
->   m <- getModuleIdent
->   tcEnv <- getTyConsEnv
->   let r' = qualifyWith m r
->   case qualLookupTC r' tcEnv of
->     [AliasType _ n (TypeRecord fs' _)] -> do
->       let tys = concatMap (\ (ls, ty) -> replicate (length ls) ty) fss
->           --tys' = map (elimRecordTypes tyEnv) tys
->           rdecl = DataDecl p r vs [ConstrDecl p [] r tys]
->           rty'  = TypeConstructor r' (map TypeVariable [0 .. n-1])
->           rcts' = ForAllExist 0 n (foldr TypeArrow rty' (map snd fs'))
->       rfuncs <- mapM (genRecordFuncs p r' rty' (map fst fs')) fs'
->       modifyValueEnv
->           (bindGlobalInfo (flip DataConstructor (length tys)) m r rcts')
->       return $ rdecl : concat rfuncs
->     _ -> internalError "Desugar.dsRecordDecl: no record"
+>   m     <- getModuleIdent
+>   let qr = qualifyWith m r
+>   (n, fs') <- lookupRecord qr
+>   let tys   = concatMap (\ (ls, ty) -> replicate (length ls) ty) fss
+>       --tys' = map (elimRecordTypes tyEnv) tys
+>       rdecl = DataDecl p r vs [ConstrDecl p [] r tys]
+>       rty'  = TypeConstructor qr (map TypeVariable [0 .. n - 1])
+>       rcts' = ForAllExist 0 n (foldr TypeArrow rty' (map snd fs'))
+>   rfuncs <- mapM (genRecordFuncs p qr rty' (map fst fs')) fs'
+>   modifyValueEnv
+>       (bindGlobalInfo (flip DataConstructor (length tys)) m r rcts')
+>   return $ rdecl : concat rfuncs
 > dsRecordDecl d = return [d]
 
-> genRecordFuncs :: Position -> QualIdent -> Type -> [Ident] -> (Ident, Type) -> DsM [Decl]
-> genRecordFuncs p r rty ls (l,ty) = do
+> genRecordFuncs :: Position -> QualIdent -> Type -> [Ident] -> (Ident, Type)
+>                -> DsM [Decl]
+> genRecordFuncs p r rty ls (l, ty) = do
 >   m <- getModuleIdent
->   tcEnv <- getTyConsEnv
->   case qualLookupTC r tcEnv of
->     [AliasType _ _ (TypeRecord _ _)] -> do
->       let (selId, selFunc) = genSelectorFunc p r ls l
->           (updId, updFunc) = genUpdateFunc   p r ls l
->           selType = polyType (TypeArrow rty ty)
->           updType = polyType (TypeArrow rty $ TypeArrow ty rty)
->       modifyValueEnv (bindFun m selId 1 selType . bindFun m updId 2 updType)
->       return [selFunc, updFunc]
->     _ -> internalError "Transformations.Desugar.genRecordFuncs: wrong type"
+>   let (selId, selFunc) = genSelectFunc p r ls l
+>       (updId, updFunc) = genUpdateFunc p r ls l
+>       selType = polyType (TypeArrow rty ty)
+>       updType = polyType (TypeArrow rty $ TypeArrow ty rty)
+>   modifyValueEnv (bindFun m selId 1 selType . bindFun m updId 2 updType)
+>   return [selFunc, updFunc]
 
-> genSelectorFunc ::Position -> QualIdent -> [Ident] -> Ident -> (Ident, Decl)
-> genSelectorFunc p r ls l =
->   let selId  = recSelectorId r l
->       cpatt  = ConstructorPattern r (map VariablePattern ls)
->       selLhs = FunLhs selId [cpatt]
->       selRhs = SimpleRhs p (Variable (qualify l)) []
->   in  (selId, FunctionDecl p selId [Equation p selLhs selRhs])
+> genSelectFunc :: Position -> QualIdent -> [Ident] -> Ident -> (Ident, Decl)
+> genSelectFunc p r ls l = (selId, funDecl p selId [cpatt] (mkVar l))
+>   where
+>   selId  = recSelectorId r l
+>   cpatt  = ConstructorPattern r (map VariablePattern ls)
 
 > genUpdateFunc :: Position -> QualIdent -> [Ident] -> Ident -> (Ident, Decl)
-> genUpdateFunc p r ls l =
->   let updId  = recUpdateId r l
->       ls'    = replaceIdent l anonId ls
->       cpatt1 = ConstructorPattern r (map VariablePattern ls')
->       cpatt2 = VariablePattern l
->       cexpr  = apply (Constructor r) (map (Variable . qualify) ls)
->       updLhs = FunLhs updId [cpatt1, cpatt2]
->       updRhs = SimpleRhs p cexpr []
->   in  (updId, FunctionDecl p updId [Equation p updLhs updRhs])
+> genUpdateFunc p r ls l = (updId, funDecl p updId [cpatt1, cpatt2] cexpr)
+>   where
+>   updId  = recUpdateId r l
+>   ls'    = replaceIdent l anonId ls
+>   cpatt1 = ConstructorPattern r (map VariablePattern ls')
+>   cpatt2 = VariablePattern l
+>   cexpr  = apply (Constructor r) (map mkVar ls)
 
 > replaceIdent :: Ident -> Ident -> [Ident] -> [Ident]
 > replaceIdent _    _    []            = []
@@ -633,33 +682,16 @@ Records
 >   | ident == what = with  : ids
 >   | otherwise     = ident : replaceIdent what with ids
 
-> dsRecordPattern :: Position -> [Decl] -> [(Ident, Pattern)]
->                 -> QualIdent -> DsM ([Decl], Pattern)
-> dsRecordPattern p ds fs r = do
->   tcEnv <- getTyConsEnv
->   case qualLookupTC r tcEnv of
->     [AliasType _ _ (TypeRecord fs' _)] -> do
->       let ts = map (\ (l,_) -> fromMaybe (VariablePattern anonId) (lookup l fs))
->                fs'
->       dsPattern p ds (ConstructorPattern r ts)
->     _ -> error "Desugar.dsRecordPattern: no pattern match"
-
-> dsRecordConstr :: Position -> QualIdent -> [(Ident,Expression)] -> DsM Expression
+> dsRecordConstr :: Position -> QualIdent -> [(Ident, Expression)]
+>                -> DsM Expression
 > dsRecordConstr p r fs = do
->   tcEnv <- getTyConsEnv
->   case qualLookupTC r tcEnv of
->     [AliasType _ _ (TypeRecord fs' _)] -> do
->       let cts = map (\ (l,_) -> fromMaybe (internalError "Desugar.dsRecordConstr")
->                                 (lookup l fs)) fs'
->       dsExpr p (apply (Constructor r) cts)
->     _ -> internalError "Desugar.dsRecordConstr: wrong type"
+>   fs' <- snd `liftM` lookupRecord r
+>   let cts = map (\ (l, _) -> fromMaybe (internalError "Desugar.dsRecordConstr")
+>                             (lookup l fs)) fs'
+>   dsExpr p (apply (Constructor r) cts)
 
-> dsRecordSelection :: Position -> QualIdent -> Ident -> Expression -> DsM Expression
-> dsRecordSelection p r l e = do
->   m <- getModuleIdent
->   dsExpr p (Apply (Variable (qualRecSelectorId m r l)) e)
-
-> dsRecordUpdate :: Position -> QualIdent -> Expression -> [(Ident, Expression)] -> DsM Expression
+> dsRecordUpdate :: Position -> QualIdent -> Expression
+>                -> [(Ident, Expression)] -> DsM Expression
 > dsRecordUpdate p r rexpr fs = do
 >   m <- getModuleIdent
 >   dsExpr p (foldl (genRecordUpdate m r) rexpr fs)
@@ -796,6 +828,12 @@ Prelude entities
 
 > prelConj :: Expression
 > prelConj = Variable $ preludeIdent "&"
+
+> prelSEq :: Expression
+> prelSEq = Variable $ preludeIdent "=:="
+
+> prelSeqConj :: Expression
+> prelSeqConj = Variable $ preludeIdent "&>"
 
 > prel :: String -> SrcRef -> Expression
 > prel s r = Variable $ addRef r $ preludeIdent s
