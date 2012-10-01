@@ -1,5 +1,8 @@
-f x y x | True = x + y
 
--- g = let (x,x) = (0,1) in x
+multi x y y x = x + y
 
--- g x y z | x =:= z &> True = x + y
+nested (x:x:_) x = x
+
+funpat (n + n) = n
+
+combined ~(v:_) v = v
