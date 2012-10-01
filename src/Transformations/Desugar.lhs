@@ -67,11 +67,12 @@ all names must be properly qualified before calling this module.}
 
 > module Transformations.Desugar (desugar) where
 
-> import           Control.Arrow            (second)
-> import           Control.Monad            (liftM, liftM2, mplus)
-> import qualified Control.Monad.State as S (State, runState, gets, modify)
-> import Data.List (tails)
-> import Data.Maybe (fromMaybe)
+> import           Control.Arrow              (second)
+> import           Control.Monad              (liftM, liftM2, mplus)
+> import qualified Control.Monad.State as S   (State, runState, gets, modify)
+> import           Data.List                  (nub, tails)
+> import           Data.Maybe                 (fromMaybe)
+> import qualified Data.Set            as Set (Set, empty, member, insert)
 
 > import Curry.Base.Ident
 > import Curry.Base.Position
@@ -125,6 +126,25 @@ variables.
 >   return nid
 
 \end{verbatim}
+Generation of fresh names
+\begin{verbatim}
+
+> getTypeOf :: Typeable t => t -> DsM Type
+> getTypeOf t = getValueEnv >>= \ tyEnv -> return (typeOf tyEnv t)
+
+> freshIdent :: String -> Int -> TypeScheme -> DsM Ident
+> freshIdent prefix arity ty = do
+>   m <- getModuleIdent
+>   x <- mkName prefix `liftM` getNextId
+>   modifyValueEnv $ bindFun m x arity ty
+>   return x
+>   where mkName pre n = mkIdent $ pre ++ show n
+
+> freshMonoTypeVar :: Typeable t => String -> t -> DsM Ident
+> freshMonoTypeVar prefix t = getTypeOf t >>= \ ty ->
+>   freshIdent prefix (arrowArity ty) (monoType ty)
+
+\end{verbatim}
 The desugaring phase keeps only the type, function, and value
 declarations of the module. In the current version, record declarations
 are transformed into data types. The remaining type declarations are
@@ -141,14 +161,12 @@ as it allows value declarations at the top-level of a module.
 
 > desugar :: ValueEnv -> TCEnv -> Module -> (Module, ValueEnv)
 > desugar tyEnv tcEnv (Module m es is ds) = (Module m es is ds', valueEnv s')
->   where
->   (ds', s') = S.runState (desugarModuleDecls ds)
->                          (DesugarState m tcEnv tyEnv 1)
+>   where (ds', s') = S.runState (desugarModuleDecls ds)
+>                                (DesugarState m tcEnv tyEnv 1)
 
 > desugarModuleDecls :: [Decl] -> DsM [Decl]
 > desugarModuleDecls ds = do
->   -- convert record decls to data decls
->   ds'  <- concatMapM dsRecordDecl ds
+>   ds'  <- concatMapM dsRecordDecl ds -- convert record decls to data decls
 >   ds'' <- dsDeclGroup ds'
 >   return $ filter isTypeDecl ds' ++ ds''
 
@@ -174,9 +192,8 @@ declarations to the group that must be desugared as well.
 > genForeignDecl :: Position -> Ident -> DsM Decl
 > genForeignDecl p f = do
 >   m     <- getModuleIdent
->   tyEnv <- getValueEnv
->   return $ ForeignDecl p CallConvPrimitive (Just $ idName f) f
->            (fromType $ typeOf tyEnv $ Variable $ qual m f)
+>   ty    <- fromType `liftM` (getTypeOf $ Variable $ qual m f)
+>   return $ ForeignDecl p CallConvPrimitive (Just $ idName f) f ty
 >   where qual m f'
 >          | hasGlobalScope f' = qualifyWith m f'
 >          | otherwise         = qualify f'
@@ -199,59 +216,66 @@ and a record label belongs to only one record declaration.
 >   PatternDecl p t `liftM` dsRhs p rhs
 > dsDeclRhs (ForeignDecl p cc ie f ty) =
 >   return $ ForeignDecl p cc (ie `mplus` Just (idName f)) f ty
-> dsDeclRhs vars@(FreeDecl   _ _) = return vars
+> dsDeclRhs vars@(FreeDecl        _ _) = return vars
 > dsDeclRhs _ = error "Desugar.dsDeclRhs: no pattern match"
 
 > dsEquation :: Equation -> DsM Equation
 > dsEquation (Equation p lhs rhs) = do
->   ((_, ren), ts1) <- mapAccumM dsNonLinear ([], []) ts
->   (ds'     , ts2) <- mapAccumM (dsPattern p) [] ts1
->   rhs'            <- dsRhs p $ addDecls ds' $ addConstraints ren rhs
->   (ts3   , rhs'') <- dsFunctionPattern ts2 rhs'
->   return $ Equation p (FunLhs f ts3) rhs''
+>   ((_, cs), ts1) <- mapAccumM dsNonLinearity (Set.empty, []) ts
+>   (ds'    , ts2) <- mapAccumM (dsPattern p)  []              ts1
+>   rhs1           <- dsRhs p $ addDecls ds' $ addConstraints cs rhs
+>   (ts3   , rhs2) <- dsFunctionPattern ts2 rhs1
+>   return $ Equation p (FunLhs f ts3) rhs2
 >   where (f, ts) = flatLhs lhs
 
-> type RenameEnv = ([Ident], [(Ident, Ident)])
+> type NonLinearEnv = (Set.Set Ident, [(Ident, Ident)])
 
-> dsNonLinear :: RenameEnv -> Pattern -> DsM (RenameEnv, Pattern)
-> dsNonLinear env l@(LiteralPattern    _) = return (env, l)
-> dsNonLinear env n@(NegativePattern _ _) = return (env, n)
-> dsNonLinear env t@(VariablePattern   v)
->   | v `elem` vis = do
+> -- Desugaring of non-linear pattern
+> -- The desugaring traverses a pattern in depth-first order and collects
+> -- all variables. If it encounters a variable which has been previously
+> -- introduced, the second occurrence is changed to a fresh variable
+> -- and a new pair (newvar, oldvar) is saved to generate constraints later.
+> -- /Note:/ Non-linear patterns in functional patterns are not desugared,
+> -- as this special case is handled later.
+> dsNonLinearity :: NonLinearEnv -> Pattern -> DsM (NonLinearEnv, Pattern)
+> dsNonLinearity env l@(LiteralPattern    _) = return (env, l)
+> dsNonLinearity env n@(NegativePattern _ _) = return (env, n)
+> dsNonLinearity env t@(VariablePattern   v)
+>   | v `Set.member` vis = do
 >     v' <- freshMonoTypeVar "_#nonlinear" t
 >     return ((vis, (v',v) : ren), VariablePattern v')
->   | otherwise    = return ((v : vis, ren), t)
+>   | otherwise        = return ((Set.insert v vis, ren), t)
 >   where (vis, ren) = env
-> dsNonLinear env (ConstructorPattern   c ts) = do
->   (env', ts') <- mapAccumM dsNonLinear env ts
+> dsNonLinearity env (ConstructorPattern   c ts) = do
+>   (env', ts') <- mapAccumM dsNonLinearity env ts
 >   return (env', ConstructorPattern c ts')
-> dsNonLinear env (InfixPattern     t1 op t2) = do
->   (env1, t1') <- dsNonLinear env  t1
->   (env2, t2') <- dsNonLinear env1 t2
+> dsNonLinearity env (InfixPattern     t1 op t2) = do
+>   (env1, t1') <- dsNonLinearity env  t1
+>   (env2, t2') <- dsNonLinearity env1 t2
 >   return (env2, InfixPattern t1' op t2')
-> dsNonLinear env (ParenPattern            t) = do
->   (env', t') <- dsNonLinear env t
+> dsNonLinearity env (ParenPattern            t) = do
+>   (env', t') <- dsNonLinearity env t
 >   return (env', ParenPattern t')
-> dsNonLinear env (TuplePattern       pos ts) = do
->   (env', ts') <- mapAccumM dsNonLinear env ts
+> dsNonLinearity env (TuplePattern       pos ts) = do
+>   (env', ts') <- mapAccumM dsNonLinearity env ts
 >   return (env', TuplePattern pos ts')
-> dsNonLinear env (ListPattern        pos ts) = do
->   (env', ts') <- mapAccumM dsNonLinear env ts
+> dsNonLinearity env (ListPattern        pos ts) = do
+>   (env', ts') <- mapAccumM dsNonLinearity env ts
 >   return (env', ListPattern pos ts')
-> dsNonLinear env (AsPattern             v t) = do
->   (env1, VariablePattern v') <- dsNonLinear env (VariablePattern v)
->   (env2, t') <- dsNonLinear env1 t
+> dsNonLinearity env (AsPattern             v t) = do
+>   (env1, VariablePattern v') <- dsNonLinearity env (VariablePattern v)
+>   (env2, t') <- dsNonLinearity env1 t
 >   return (env2, AsPattern v' t')
-> dsNonLinear env (LazyPattern           r t) = do
->   (env', t') <- dsNonLinear env t
+> dsNonLinearity env (LazyPattern           r t) = do
+>   (env', t') <- dsNonLinearity env t
 >   return (env', LazyPattern r t')
-> dsNonLinear env fp@(FunctionPattern    _ _) = return (env, fp)
-> dsNonLinear env fp@(InfixFuncPattern _ _ _) = return (env, fp)
-> dsNonLinear env (RecordPattern        fs r) = do
+> dsNonLinearity env fp@(FunctionPattern    _ _) = return (env, fp)
+> dsNonLinearity env fp@(InfixFuncPattern _ _ _) = return (env, fp)
+> dsNonLinearity env (RecordPattern        fs r) = do
 >   (env1, fs') <- mapAccumM dsField env fs
 >   return (env1, RecordPattern fs' r)
 >   where dsField e (Field p i t) = do
->           (e', t') <- dsNonLinear e t
+>           (e', t') <- dsNonLinearity e t
 >           return (e', Field p i t')
 
 > addConstraints :: [(Ident, Ident)] -> Rhs -> Rhs
@@ -273,17 +297,17 @@ with a local declaration for $v$.
 \begin{verbatim}
 
 > dsPattern :: Position -> [Decl] -> Pattern -> DsM ([Decl], Pattern)
-> dsPattern p ds (LiteralPattern l) = do
+> dsPattern p ds (LiteralPattern         l) = do
 >   dl <- dsLiteral l
 >   case dl of
 >     Left  l'     -> return (ds, LiteralPattern l')
 >     Right (rs,ls) -> dsPattern p ds $ ListPattern rs $ map LiteralPattern ls
-> dsPattern p ds (NegativePattern _ l) =
+> dsPattern p ds (NegativePattern      _ l) =
 >   dsPattern p ds (LiteralPattern (negateLiteral l))
 >   where negateLiteral (Int    v i) = Int   v  (-i)
 >         negateLiteral (Float p' f) = Float p' (-f)
 >         negateLiteral _            = internalError "Desugar.negateLiteral"
-> dsPattern _ ds v@(VariablePattern _) = return (ds, v)
+> dsPattern _ ds v@(VariablePattern      _) = return (ds, v)
 > dsPattern p ds (ConstructorPattern c [t]) = do
 >     tyEnv <- getValueEnv
 >     liftM (if isNewtypeConstr tyEnv c then id else second (constrPat c))
@@ -328,7 +352,8 @@ with a local declaration for $v$.
 > dsLiteral (String (SrcRef [i]) cs) = return $ Right
 >   (consRefs i cs, zipWith (Char . SrcRef . (:[])) [i, i + 2 ..] cs)
 >   where consRefs r []     = [SrcRef [r]]
->         consRefs r (_:xs) = let r' = r + 2 in r' `seq` (SrcRef [r'] : consRefs r' xs)
+>         consRefs r (_:xs) = let r' = r + 2
+>                             in  r' `seq` (SrcRef [r'] : consRefs r' xs)
 > dsLiteral (String is _) = internalError $
 >   "Desugar.dsLiteral: " ++ "wrong source ref for string "  ++ show is
 
@@ -353,7 +378,7 @@ with a local declaration for $v$.
 >   LazyPattern pos' t' -> dsLazy pos' p ds t'
 >   _                   -> do
 >    v' <- addPositionIdent (AST pos) `liftM` freshMonoTypeVar "_#lazy" t
->    return (patDecl p{astRef=pos} t (mkVar v') : ds, VariablePattern v')
+>    return (patDecl p { astRef = pos } t (mkVar v') : ds, VariablePattern v')
 
 \end{verbatim}
 A list of boolean guards is expanded into a nested if-then-else
@@ -367,20 +392,21 @@ type \texttt{Bool} of the guard because the guard's type defaults to
 
 > dsRhs :: Position -> Rhs -> DsM Rhs
 > dsRhs p rhs = do
->   tyEnv <- getValueEnv
->   e' <- dsExpr p (expandRhs tyEnv prelFailed rhs)
+>   e' <- expandRhs prelFailed rhs >>= dsExpr p
 >   return (SimpleRhs p e' [])
 
-> expandRhs :: ValueEnv -> Expression -> Rhs -> Expression
-> expandRhs _     _  (SimpleRhs _ e ds) = Let ds e
-> expandRhs tyEnv e0 (GuardedRhs es ds) = Let ds (expandGuards tyEnv e0 es)
+> expandRhs :: Expression -> Rhs -> DsM Expression
+> expandRhs _  (SimpleRhs _ e ds) = return $ Let ds e
+> expandRhs e0 (GuardedRhs es ds) = Let ds `liftM` expandGuards e0 es
 
-> expandGuards :: ValueEnv -> Expression -> [CondExpr] -> Expression
-> expandGuards tyEnv e0 es
->   | booleanGuards tyEnv es = foldr mkIfThenElse e0 es
->   | otherwise              = mkCond es
+> expandGuards :: Expression -> [CondExpr] -> DsM Expression
+> expandGuards e0 es = do
+>   tyEnv <- getValueEnv
+>   return $ if booleanGuards tyEnv es
+>               then foldr mkIfThenElse e0 es
+>               else mkCond es
 >   where mkIfThenElse (CondExpr p g e) = IfThenElse (srcRefOf p) g e
->         mkCond [CondExpr _ g e] = apply prelCond [g, e]
+>         mkCond       [CondExpr _ g e] = apply prelCond [g, e]
 >         mkCond _ = error "Desugar.expandGuards.mkCond: non-unary list"
 
 > booleanGuards :: ValueEnv -> [CondExpr] -> Bool
@@ -418,11 +444,11 @@ type \texttt{Bool} of the guard because the guard's type defaults to
 > dsExpr p (EnumFromThenTo e1 e2 e3) =
 >   apply prelEnumFromThenTo `liftM` mapM (dsExpr p) [e1, e2, e3]
 > dsExpr p (UnaryMinus op e) = do
->   tyEnv <- getValueEnv
->   Apply (unaryMinus op (typeOf tyEnv e)) `liftM` dsExpr p e
+>   ty <- getTypeOf e
+>   Apply (unaryMinus op ty) `liftM` dsExpr p e
 >   where
->   unaryMinus op1 ty
->     | op1 ==  minusId = if ty == floatType then prelNegateFloat else prelNegate
+>   unaryMinus op1 ty'
+>     | op1 ==  minusId = if ty' == floatType then prelNegateFloat else prelNegate
 >     | op1 == fminusId = prelNegateFloat
 >     | otherwise       = internalError "Desugar.unaryMinus"
 > dsExpr p (Apply (Constructor c) e) = do
@@ -467,10 +493,8 @@ type \texttt{Bool} of the guard because the guard's type defaults to
 >     m  <- getModuleIdent
 >     e' <- dsExpr p e
 >     v  <- freshMonoTypeVar "_#case" e
->     alts' <- mapM dsAltLhs alts
->     tyEnv <- getValueEnv
->     alts'' <- mapM dsAltRhs
->                    (map (expandAlt tyEnv v ct) (init (tails alts')))
+>     alts'  <- mapM dsAltLhs alts
+>     alts'' <- mapM (expandAlt v ct) (init (tails alts')) >>= mapM dsAltRhs
 >     return (mkCase m v e' alts'')
 >   where
 >   mkCase m1 v e1 alts1
@@ -509,9 +533,9 @@ are compatible with the matched pattern when the guards fail.
 > dsAltRhs :: Alt -> DsM Alt
 > dsAltRhs (Alt p t rhs) = Alt p t `liftM` dsRhs p rhs
 
-> expandAlt :: ValueEnv -> Ident -> CaseType -> [Alt] -> Alt
-> expandAlt _     _ _  []                   = error "Desugar.expandAlt: empty list"
-> expandAlt tyEnv v ct (Alt p t rhs : alts) = caseAlt p t (expandRhs tyEnv e0 rhs)
+> expandAlt :: Ident -> CaseType -> [Alt] -> DsM Alt
+> expandAlt _ _  []                   = error "Desugar.expandAlt: empty list"
+> expandAlt v ct (Alt p t rhs : alts) = caseAlt p t `liftM` expandRhs e0 rhs
 >   where e0 = Case (srcRefOf p) ct (mkVar v)
 >                   (filter (isCompatible t . altPattern) alts)
 >         altPattern (Alt _ t1 _) = t1
@@ -575,12 +599,10 @@ Function Patterns
 >   | otherwise = SimpleRhs p rhsExpr ds
 >   where
 >   fpExpr  = foldl1 (\ e1 e2  -> apply prelConj [e1, e2])
->           $ map    (\ (i, t) -> apply prelFPEq
->                                       [fp2Expr t, Variable $ qualify i] )
->             its
->   frees   = foldl varsInPattern [] $ map snd its
+>           $ map    (\ (i, t) -> apply prelFPEq [fp2Expr t, mkVar i]) its
+>   frees   = nub $ bv $ map snd its
 >   rhsExpr = Let [FreeDecl p frees] $ apply prelCond [fpExpr, expr]
-> genFPExpr _ _ = internalError "Desugar.genFPExpr: unexpected right-hand-side"
+> genFPExpr _ _ = internalError "Desugar.genFPExpr: guarded right-hand-side"
 
 > fp2Expr :: Pattern -> Expression
 > fp2Expr (LiteralPattern        l) = Literal l
@@ -589,31 +611,6 @@ Function Patterns
 > fp2Expr (FunctionPattern    f ts) = apply (Variable    f) (map fp2Expr ts)
 > fp2Expr t                         = internalError $
 >   "Desugar.fp2Expr: Unexpected constructor term: " ++ show t
-
-> varsInPattern :: [Ident] -> Pattern -> [Ident]
-> varsInPattern ids (VariablePattern v)
->   | elem v ids = ids
->   | otherwise  = v : ids
-> varsInPattern ids (ConstructorPattern _ ts)
->   = foldl varsInPattern ids ts
-> varsInPattern ids (InfixPattern c1 _ c2)
->   = foldl varsInPattern ids [c1, c2]
-> varsInPattern ids (ParenPattern c)
->   = varsInPattern ids c
-> varsInPattern ids (TuplePattern _ cts)
->   = foldl varsInPattern ids cts
-> varsInPattern ids (ListPattern _ cts)
->   = foldl varsInPattern ids cts
-> varsInPattern ids (AsPattern _ c)
->   = varsInPattern ids c
-> varsInPattern ids (LazyPattern _ c)
->   = varsInPattern ids c
-> varsInPattern ids (FunctionPattern _ cts)
->   = foldl varsInPattern ids cts
-> varsInPattern ids (InfixFuncPattern c1 _ c2)
->   = foldl varsInPattern ids [c1,c2]
-> varsInPattern ids _
->   = ids
 
 Desugaring of Records
 =====================
@@ -671,22 +668,16 @@ Desugaring of Records
 > genUpdateFunc p r ls l = (updId, funDecl p updId [cpatt1, cpatt2] cexpr)
 >   where
 >   updId  = recUpdateId r l
->   ls'    = replaceIdent l anonId ls
->   cpatt1 = ConstructorPattern r (map VariablePattern ls')
+>   vs     = [ VariablePattern (if v == l then anonId else v) | v <- ls]
+>   cpatt1 = ConstructorPattern r vs
 >   cpatt2 = VariablePattern l
 >   cexpr  = apply (Constructor r) (map mkVar ls)
-
-> replaceIdent :: Ident -> Ident -> [Ident] -> [Ident]
-> replaceIdent _    _    []            = []
-> replaceIdent what with (ident : ids)
->   | ident == what = with  : ids
->   | otherwise     = ident : replaceIdent what with ids
 
 > dsRecordConstr :: Position -> QualIdent -> [(Ident, Expression)]
 >                -> DsM Expression
 > dsRecordConstr p r fs = do
->   fs' <- snd `liftM` lookupRecord r
->   let cts = map (\ (l, _) -> fromMaybe (internalError "Desugar.dsRecordConstr")
+>   fs' <- (map fst . snd) `liftM` lookupRecord r
+>   let cts = map (\ l -> fromMaybe (internalError "Desugar.dsRecordConstr")
 >                             (lookup l fs)) fs'
 >   dsExpr p (apply (Constructor r) cts)
 
@@ -730,46 +721,28 @@ instead of \texttt{(++)} and \texttt{map} in place of
 \begin{verbatim}
 
 > dsQual :: Position -> Statement -> Expression -> DsM Expression
-> dsQual p (StmtExpr   r b) e =
->   dsExpr p (IfThenElse r b e (List [r] []))
+> dsQual p (StmtExpr   r b) e = dsExpr p (IfThenElse r b e (List [r] []))
 > dsQual p (StmtDecl    ds) e = dsExpr p (Let ds e)
 > dsQual p (StmtBind r t l) e
 >   | isVarPattern t = dsExpr p (qualExpr t e l)
 >   | otherwise      = do
->       v   <- addRefId r `liftM` freshMonoTypeVar "_#var" t
->       l'  <- addRefId r `liftM` freshMonoTypeVar "_#var" e
->       dsExpr p (apply (prelFoldr r) [foldFunct v l' e, List [r] [], l])
+>     v   <- addRefId r `liftM` freshMonoTypeVar "_#var" t
+>     l'  <- addRefId r `liftM` freshMonoTypeVar "_#var" e
+>     dsExpr p (apply (prelFoldr r) [foldFunct v l' e, List [r] [], l])
 >   where
 >   qualExpr v (ListCompr _ e1 []) l1
 >     = apply (prelMap r) [Lambda r [v] e1,l1]
 >   qualExpr v e1                  l1
 >     = apply (prelConcatMap r) [Lambda r [v] e1,l1]
->   foldFunct v l1 e1 = Lambda r (map VariablePattern [v,l1])
->           (Case r Flex (mkVar v)
->                 [ caseAlt {-refBind-} p t (append e1 (mkVar l1))
->                 , caseAlt {-refBind-} p (VariablePattern v) (mkVar l1)])
+>   foldFunct v l1 e1
+>     = Lambda r (map VariablePattern [v,l1])
+>        (Case r Flex (mkVar v)
+>           [ caseAlt p t (append e1 (mkVar l1))
+>           , caseAlt p (VariablePattern v) (mkVar l1)])
 >
->   append (ListCompr _ e1 []) l1 = apply (Constructor $ addRef r $ qConsId) [e1,l1]
+>   append (ListCompr _ e1 []) l1 = apply (Constructor $ addRef r $ qConsId)
+>                                         [e1,l1]
 >   append e1                  l1 = apply (prelAppend r) [e1,l1]
-
-\end{verbatim}
-Generation of fresh names
-\begin{verbatim}
-
-> getTypeOf :: Typeable t => t -> DsM Type
-> getTypeOf t = getValueEnv >>= \ tyEnv -> return (typeOf tyEnv t)
-
-> freshIdent :: String -> Int -> TypeScheme -> DsM Ident
-> freshIdent prefix arity ty = do
->   m <- getModuleIdent
->   x <- mkName prefix `liftM` getNextId
->   modifyValueEnv $ bindFun m x arity ty
->   return x
->   where mkName pre n = mkIdent $ pre ++ show n
-
-> freshMonoTypeVar :: Typeable t => String -> t -> DsM Ident
-> freshMonoTypeVar prefix t = getTypeOf t >>= \ ty ->
->   freshIdent prefix (arrowArity ty) (monoType ty)
 
 \end{verbatim}
 Prelude entities

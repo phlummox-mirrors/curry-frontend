@@ -2,7 +2,7 @@
     Module      :  $Header$
     Description :  Extraction of free and bound variables
     Copyright   :  (c) Wolfgang Lux
-                       2011, Björn Peemöller (bjp@informatik.uni-kiel.de)
+                       2011 - 2012 Björn Peemöller
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
@@ -11,17 +11,18 @@
 
     The compiler needs to compute the lists of free and bound variables for
     various different entities. We will devote three type classes to that
-    purpose. The \texttt{QualExpr} class is expected to take into account
+    purpose. The 'QualExpr' class is expected to take into account
     that it is possible to use a qualified name to refer to a function
-    defined in the current module and therefore \emph{M.x} and $x$, where
-    $M$ is the current module name, should be considered the same name.
+    defined in the current module and therefore @M.x@ and @x@, where
+    @M@ is the current module name, should be considered the same name.
     However, note that this is correct only after renaming all local
-    definitions as \emph{M.x} always denotes an entity defined at the
+    definitions as @M.x@ always denotes an entity defined at the
     top-level.
 -}
 module Base.Expr (Expr (..), QualExpr (..), QuantExpr (..)) where
 
-import qualified Data.Set as Set (fromList, notMember)
+import           Data.List        (nub)
+import qualified Data.Set  as Set (fromList, notMember)
 
 import Curry.Base.Ident
 import Curry.Syntax
@@ -35,7 +36,7 @@ class QualExpr e where
   qfv :: ModuleIdent -> e -> [Ident]
 
 class QuantExpr e where
-  -- |Bound variables in an 'Expr'
+  -- |Bounded variables in an 'Expr'
   bv :: e -> [Ident]
 
 instance Expr e => Expr [e] where
@@ -47,7 +48,7 @@ instance QualExpr e => QualExpr [e] where
 instance QuantExpr e => QuantExpr [e] where
   bv = concatMap bv
 
--- The \texttt{Decl} instance of \texttt{QualExpr} returns all free
+-- The 'Decl' instance of 'QualExpr' returns all free
 -- variables on the right hand side, regardless of whether they are bound
 -- on the left hand side. This is more convenient as declarations are
 -- usually processed in a declaration group where the set of free
@@ -140,19 +141,19 @@ instance QualExpr InfixOp where
   qfv _ (InfixConstr _) = []
 
 instance QuantExpr Pattern where
-  bv (LiteralPattern          _) = []
-  bv (NegativePattern       _ _) = []
-  bv (VariablePattern         v) = [v]
-  bv (ConstructorPattern   _ ts) = bv ts
-  bv (InfixPattern      t1 _ t2) = bv t1 ++ bv t2
-  bv (ParenPattern            t) = bv t
-  bv (TuplePattern         _ ts) = bv ts
-  bv (ListPattern          _ ts) = bv ts
-  bv (AsPattern             v t) = v : bv t
-  bv (LazyPattern           _ t) = bv t
-  bv (FunctionPattern      f ts) = bvFuncPatt $ FunctionPattern f ts
-  bv (InfixFuncPattern t1 op t2) = bvFuncPatt $ InfixFuncPattern t1 op t2
-  bv (RecordPattern        fs r) = maybe [] bv r ++ bv fs
+  bv (LiteralPattern         _) = []
+  bv (NegativePattern      _ _) = []
+  bv (VariablePattern        v) = [v]
+  bv (ConstructorPattern  _ ts) = bv ts
+  bv (InfixPattern     t1 _ t2) = bv t1 ++ bv t2
+  bv (ParenPattern           t) = bv t
+  bv (TuplePattern        _ ts) = bv ts
+  bv (ListPattern         _ ts) = bv ts
+  bv (AsPattern            v t) = v : bv t
+  bv (LazyPattern          _ t) = bv t
+  bv (FunctionPattern     _ ts) = nub $ bv ts
+  bv (InfixFuncPattern t1 _ t2) = nub $ bv t1 ++ bv t2
+  bv (RecordPattern       fs r) = maybe [] bv r ++ bv fs
 
 instance QualExpr Pattern where
   qfv _ (LiteralPattern          _) = []
@@ -189,24 +190,27 @@ filterBv e = filter (`Set.notMember` Set.fromList (bv e))
 -- Each variable occuring in the function pattern will be unique in the result
 -- list.
 
-bvFuncPatt :: Pattern -> [Ident]
-bvFuncPatt = bvfp []
- where
- bvfp bvs (LiteralPattern         _) = bvs
- bvfp bvs (NegativePattern      _ _) = bvs
- bvfp bvs (VariablePattern        v)
-    | v `elem` bvs                   = bvs
-    | otherwise                      = v : bvs
- bvfp bvs (ConstructorPattern  _ ts) = foldl bvfp bvs ts
- bvfp bvs (InfixPattern     t1 _ t2) = foldl bvfp bvs [t1, t2]
- bvfp bvs (ParenPattern           t) = bvfp bvs t
- bvfp bvs (TuplePattern        _ ts) = foldl bvfp bvs ts
- bvfp bvs (ListPattern         _ ts) = foldl bvfp bvs ts
- bvfp bvs (AsPattern            v t)
-    | v `elem` bvs                   = bvfp bvs t
-    | otherwise                      = bvfp (v : bvs) t
- bvfp bvs (LazyPattern          _ t) = bvfp bvs t
- bvfp bvs (FunctionPattern     _ ts) = foldl bvfp bvs ts
- bvfp bvs (InfixFuncPattern t1 _ t2) = foldl bvfp bvs [t1, t2]
- bvfp bvs (RecordPattern       fs r)
-    = foldl bvfp (maybe bvs (bvfp bvs) r) (map fieldTerm fs)
+--  bv (FunctionPattern      f ts) = bvFuncPatt $ FunctionPattern f ts
+--  bv (InfixFuncPattern t1 op t2) = bvFuncPatt $ InfixFuncPattern t1 op t2
+
+-- bvFuncPatt :: Pattern -> [Ident]
+-- bvFuncPatt = bvfp []
+--  where
+--  bvfp bvs (LiteralPattern         _) = bvs
+--  bvfp bvs (NegativePattern      _ _) = bvs
+--  bvfp bvs (VariablePattern        v)
+--     | v `elem` bvs                   = bvs
+--     | otherwise                      = v : bvs
+--  bvfp bvs (ConstructorPattern  _ ts) = foldl bvfp bvs ts
+--  bvfp bvs (InfixPattern     t1 _ t2) = foldl bvfp bvs [t1, t2]
+--  bvfp bvs (ParenPattern           t) = bvfp bvs t
+--  bvfp bvs (TuplePattern        _ ts) = foldl bvfp bvs ts
+--  bvfp bvs (ListPattern         _ ts) = foldl bvfp bvs ts
+--  bvfp bvs (AsPattern            v t)
+--     | v `elem` bvs                   = bvfp bvs t
+--     | otherwise                      = bvfp (v : bvs) t
+--  bvfp bvs (LazyPattern          _ t) = bvfp bvs t
+--  bvfp bvs (FunctionPattern     _ ts) = foldl bvfp bvs ts
+--  bvfp bvs (InfixFuncPattern t1 _ t2) = foldl bvfp bvs [t1, t2]
+--  bvfp bvs (RecordPattern       fs r)
+--     = foldl bvfp (maybe bvs (bvfp bvs) r) (map fieldTerm fs)
