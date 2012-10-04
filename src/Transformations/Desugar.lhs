@@ -213,7 +213,7 @@ and a record label belongs to only one record declaration.
 > dsDeclRhs (FunctionDecl     p f eqs) =
 >   FunctionDecl p f `liftM` mapM dsEquation eqs
 > dsDeclRhs (PatternDecl      p t rhs) =
->   PatternDecl p t `liftM` dsRhs p rhs
+>   PatternDecl p t `liftM` dsRhs p [] rhs
 > dsDeclRhs (ForeignDecl p cc ie f ty) =
 >   return $ ForeignDecl p cc (ie `mplus` Just (idName f)) f ty
 > dsDeclRhs vars@(FreeDecl        _ _) = return vars
@@ -223,7 +223,7 @@ and a record label belongs to only one record declaration.
 > dsEquation (Equation p lhs rhs) = do
 >   ((_, cs), ts1) <- mapAccumM dsNonLinearity (Set.empty, []) ts
 >   (ds'    , ts2) <- mapAccumM (dsPattern p)  []              ts1
->   rhs1           <- dsRhs p $ addDecls ds' $ addConstraints cs rhs
+>   rhs1           <- dsRhs p cs $ addDecls ds' $ rhs
 >   (ts3   , rhs2) <- dsFunctionPattern ts2 rhs1
 >   return $ Equation p (FunLhs f ts3) rhs2
 >   where (f, ts) = flatLhs lhs
@@ -277,15 +277,6 @@ and a record label belongs to only one record declaration.
 >   where dsField e (Field p i t) = do
 >           (e', t') <- dsNonLinearity e t
 >           return (e', Field p i t')
-
-> addConstraints :: [(Ident, Ident)] -> Rhs -> Rhs
-> addConstraints vws rhs@(SimpleRhs p e ds)
->   | null vws  = rhs
->   | otherwise = SimpleRhs p (apply prelCond [foldr1 combine constrs, e]) ds
->   where
->   combine ex g = apply prelSeqConj [g, ex]
->   constrs      = map (\ (v, w) -> apply prelSEq $ map mkVar [w, v]) vws
-> addConstraints _ _ = internalError "Desugar.addConstraints: GuardedRHS"
 
 \end{verbatim}
 The transformation of patterns is straight forward except for lazy
@@ -390,14 +381,15 @@ type \texttt{Bool} of the guard because the guard's type defaults to
 \texttt{Success} if it is not restricted by the guard expression.
 \begin{verbatim}
 
-> dsRhs :: Position -> Rhs -> DsM Rhs
-> dsRhs p rhs = do
->   e' <- expandRhs prelFailed rhs >>= dsExpr p
+> dsRhs :: Position -> [(Ident, Ident)] -> Rhs -> DsM Rhs
+> dsRhs p cs rhs = do
+>   e' <- expandRhs prelFailed cs rhs >>= dsExpr p
 >   return (SimpleRhs p e' [])
 
-> expandRhs :: Expression -> Rhs -> DsM Expression
-> expandRhs _  (SimpleRhs _ e ds) = return $ Let ds e
-> expandRhs e0 (GuardedRhs es ds) = Let ds `liftM` expandGuards e0 es
+> expandRhs :: Expression -> [(Ident, Ident)] -> Rhs -> DsM Expression
+> expandRhs _  cs (SimpleRhs _ e ds) = return $ Let ds (addConstraints cs e)
+> expandRhs e0 cs (GuardedRhs es ds) = (Let ds . addConstraints cs) `liftM`
+>                                      expandGuards e0 es
 
 > expandGuards :: Expression -> [CondExpr] -> DsM Expression
 > expandGuards e0 es = do
@@ -408,6 +400,14 @@ type \texttt{Bool} of the guard because the guard's type defaults to
 >   where mkIfThenElse (CondExpr p g e) = IfThenElse (srcRefOf p) g e
 >         mkCond       [CondExpr _ g e] = apply prelCond [g, e]
 >         mkCond _ = error "Desugar.expandGuards.mkCond: non-unary list"
+
+> addConstraints :: [(Ident, Ident)] -> Expression -> Expression
+> addConstraints cs e
+>   | null cs   = e
+>   | otherwise = apply prelCond [foldr1 combine constrs, e]
+>   where
+>   combine ex g = apply prelSeqConj [g, ex]
+>   constrs      = map (\ (v, w) -> apply prelSEq $ map mkVar [w, v]) cs
 
 > booleanGuards :: ValueEnv -> [CondExpr] -> Bool
 > booleanGuards _     []                    = False
@@ -531,11 +531,11 @@ are compatible with the matched pattern when the guards fail.
 >   return $ Alt p t' (addDecls ds' rhs)
 
 > dsAltRhs :: Alt -> DsM Alt
-> dsAltRhs (Alt p t rhs) = Alt p t `liftM` dsRhs p rhs
+> dsAltRhs (Alt p t rhs) = Alt p t `liftM` dsRhs p [] rhs
 
 > expandAlt :: Ident -> CaseType -> [Alt] -> DsM Alt
 > expandAlt _ _  []                   = error "Desugar.expandAlt: empty list"
-> expandAlt v ct (Alt p t rhs : alts) = caseAlt p t `liftM` expandRhs e0 rhs
+> expandAlt v ct (Alt p t rhs : alts) = caseAlt p t `liftM` expandRhs e0 [] rhs
 >   where e0 = Case (srcRefOf p) ct (mkVar v)
 >                   (filter (isCompatible t . altPattern) alts)
 >         altPattern (Alt _ t1 _) = t1

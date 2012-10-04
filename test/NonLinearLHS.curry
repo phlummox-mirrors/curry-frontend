@@ -6,3 +6,5 @@ nested (x:x:_) x = x
 funpat (n + n) = n
 
 combined ~(v:_) v = v
+
+guarded x | x == x = x
