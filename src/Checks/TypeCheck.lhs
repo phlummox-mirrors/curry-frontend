@@ -31,8 +31,6 @@ type annotation is present.
 > import qualified Data.Set as Set (Set, fromList, member, notMember, unions)
 > import Text.PrettyPrint
 
-> import Debug.Trace
-
 > import Curry.Base.Ident
 > import Curry.Base.Position
 > import Curry.Syntax
