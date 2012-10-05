@@ -736,7 +736,7 @@ instead of \texttt{(++)} and \texttt{map} in place of
 >     = apply (prelConcatMap r) [Lambda r [v] e1,l1]
 >   foldFunct v l1 e1
 >     = Lambda r (map VariablePattern [v,l1])
->        (Case r Flex (mkVar v)
+>        (Case r Rigid (mkVar v)
 >           [ caseAlt p t (append e1 (mkVar l1))
 >           , caseAlt p (VariablePattern v) (mkVar l1)])
 >
