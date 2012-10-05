@@ -31,6 +31,8 @@ type annotation is present.
 > import qualified Data.Set as Set (Set, fromList, member, notMember, unions)
 > import Text.PrettyPrint
 
+> import Debug.Trace
+
 > import Curry.Base.Ident
 > import Curry.Base.Position
 > import Curry.Syntax
@@ -375,9 +377,9 @@ either one of the basic types or \texttt{()}.
 >   where (vds, ods) = partition isValueDecl ds
 
 > tcDeclGroup :: [Decl] -> TCM ()
-> tcDeclGroup [ForeignDecl _ _ _ f ty] = tcExternal f ty
-> tcDeclGroup [ExternalDecl      _ fs] = mapM_ tcFlatExternal fs
-> tcDeclGroup [FreeDecl          _ vs] = mapM_ tcExtraVar     vs
+> tcDeclGroup [ForeignDecl _ _ _ f ty] = tcForeign f ty
+> tcDeclGroup [ExternalDecl      _ fs] = mapM_ tcExternal fs
+> tcDeclGroup [FreeDecl          _ vs] = mapM_ tcFree     vs
 > tcDeclGroup ds                       = do
 >   tyEnv0 <- getValueEnv
 >   tysLhs <- mapM tcDeclLhs ds
@@ -386,11 +388,11 @@ either one of the basic types or \texttt{()}.
 >   theta <- getTypeSubst
 >   mapM_ (genDecl (fvEnv (subst theta tyEnv0)) theta) ds
 > --tcDeclGroup m tcEnv _ [ForeignDecl p cc _ f ty] =
-> --  tcForeignFunct m tcEnv p cc f ty
+> --  tcForeign m tcEnv p cc f ty
 
-> --tcForeignFunct :: ModuleIdent -> TCEnv -> Position -> CallConv -> Ident
+> --tcForeign :: ModuleIdent -> TCEnv -> Position -> CallConv -> Ident
 > --               -> TypeExpr -> TCM ()
-> --tcForeignFunct m tcEnv p cc f ty =
+> --tcForeign m tcEnv p cc f ty =
 > --  S.modify (bindFun m f (checkForeignType cc (expandPolyType tcEnv ty)))
 > --  where checkForeignType CallConvPrimitive ty = ty
 > --        checkForeignType CallConvCCall (ForAll n ty) =
@@ -409,39 +411,45 @@ either one of the basic types or \texttt{()}.
 > --        isCResultType _ = False
 > --        basicTypeId = [qBoolId,qCharId,qIntId,qFloatId]
 
-> tcExternal :: Ident -> TypeExpr -> TCM ()
-> tcExternal f ty = do
+> tcForeign :: Ident -> TypeExpr -> TCM ()
+> tcForeign f ty = do
 >   m <- getModuleIdent
 >   tySc@(ForAll _ ty') <- expandPolyType ty
 >   modifyValueEnv $ bindFun m f (arrowArity ty') tySc
 
-> tcFlatExternal :: Ident -> TCM ()
-> tcFlatExternal f = do
+> tcExternal :: Ident -> TCM ()
+> tcExternal f = do
 >   sigs <- getSigEnv
 >   case lookupTypeSig f sigs of
->     Nothing -> internalError "TypeCheck.tcFlatExternal"
->     Just ty -> do
->       m <- getModuleIdent
->       tySc@(ForAll _ ty') <- expandPolyType ty
->       modifyValueEnv $ bindFun m f (arrowArity ty') tySc
+>     Nothing -> internalError "TypeCheck.tcExternal"
+>     Just ty -> tcForeign f ty
 
-> tcExtraVar :: Ident -> TCM ()
-> tcExtraVar v = do
+> tcFree :: Ident -> TCM ()
+> tcFree v = do
 >   sigs <- getSigEnv
 >   m  <- getModuleIdent
->   case lookupTypeSig v sigs of
->     Nothing -> do
->       ty <- freshTypeVar
->       modifyValueEnv $ bindFun m v (arrowArity ty) $ monoType ty
->     Just ty -> do
->       ForAll n ty' <- expandPolyType ty
+>   ty <- case lookupTypeSig v sigs of
+>     Nothing -> freshTypeVar
+>     Just t  -> do
+>       ForAll n ty' <- expandPolyType t
 >       unless (n == 0) $ report $ errPolymorphicFreeVar v
->       modifyValueEnv $ bindFun m v (arrowArity ty') $ monoType ty'
+>       return ty'
+>   modifyValueEnv $ bindFun m v (arrowArity ty) $ monoType ty
 
 > tcDeclLhs :: Decl -> TCM Type
-> tcDeclLhs (FunctionDecl p f _) = tcPattern p (VariablePattern f)
+> tcDeclLhs (FunctionDecl _ f _) = tcFunDecl f
 > tcDeclLhs (PatternDecl  p t _) = tcPattern p t
 > tcDeclLhs _ = internalError "TypeCheck.tcDeclLhs: no pattern match"
+
+> tcFunDecl :: Ident -> TCM Type
+> tcFunDecl v = do
+>   sigs <- getSigEnv
+>   m <- getModuleIdent
+>   ty <- case lookupTypeSig v sigs of
+>     Nothing -> freshTypeVar
+>     Just t  -> expandPolyType t >>= inst
+>   modifyValueEnv $ bindFun m v (arrowArity ty) (monoType ty)
+>   return ty
 
 > tcDeclRhs :: ValueEnv -> Decl -> TCM Type
 > tcDeclRhs tyEnv0 (FunctionDecl _ f (eq:eqs)) = do
@@ -504,7 +512,8 @@ signature the declared type must be too general.
 >     Nothing    -> modifyValueEnv $ rebindFun m v arity sigma
 >     Just sigTy -> do
 >       sigma' <- expandPolyType sigTy
->       unless (eqTyScheme sigma sigma') $ report $ errTypeSigTooGeneral (idPosition v) m what sigTy sigma
+>       unless (eqTyScheme sigma sigma') $ report
+>         $ errTypeSigTooGeneral (idPosition v) m what sigTy sigma
 >       modifyValueEnv $ rebindFun m v arity sigma
 >   where
 >   what = text (if poly then "Function:" else "Variable:") <+> ppIdent v
@@ -537,11 +546,11 @@ signature the declared type must be too general.
 > tcPattern _ (NegativePattern _ l) = tcLiteral l
 > tcPattern _ (VariablePattern   v) = do
 >   sigs <- getSigEnv
->   m  <- getModuleIdent
 >   ty <- case lookupTypeSig v sigs of
 >     Nothing -> freshTypeVar
 >     Just t  -> expandPolyType t >>= inst
 >   tyEnv <- getValueEnv
+>   m  <- getModuleIdent
 >   maybe (modifyValueEnv (bindFun m v (arrowArity ty) (monoType ty)) >> return ty)
 >         (\ (ForAll _ t) -> return t)
 >         (sureVarType v tyEnv)
@@ -1243,7 +1252,6 @@ unambiguously refers to the local definition.
 > sureLabelType l tyEnv = case lookupValue l tyEnv of
 >   Label _ _ sigma : _ -> Just sigma
 >   _ -> Nothing
-
 
 \end{verbatim}
 The function \texttt{expandType} expands all type synonyms in a type
