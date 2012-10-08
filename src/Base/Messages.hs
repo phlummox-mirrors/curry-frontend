@@ -12,9 +12,7 @@ import Control.Monad (unless, when)
 import System.IO     (hPutStrLn, stderr)
 import System.Exit   (exitFailure)
 
-import Curry.Base.Message
-  (Message, message, posMessage, ppMessage, ppMessages)
-
+import Curry.Base.Message hiding (warn)
 import CompilerOpts (Options (optVerbosity, optWarn), Verbosity (..))
 
 info :: Options -> String -> IO ()
@@ -27,7 +25,7 @@ status opts msg = unless (optVerbosity opts < VerbStatus)
 
 warn :: Options -> [Message] -> IO ()
 warn opts msgs = when (optWarn opts && not (null msgs))
-               $ putErrLn (show $ ppMessages msgs)
+               $ putErrLn (show $ ppMessages ppWarning msgs)
 
 -- |Print an error message on 'stderr'
 putErrLn :: String -> IO ()
@@ -49,7 +47,7 @@ abortWithMessage msg = abortWithMessages [msg]
 -- |Print a list of error messages on 'stderr' and abort the program
 abortWithMessages :: [Message] -> IO a
 abortWithMessages msgs = do
-  unless (null msgs) $ putErrLn (show $ ppMessages msgs)
+  unless (null msgs) $ putErrLn (show $ ppMessages ppMessage msgs)
   exitFailure
 
 -- |Raise an internal error
@@ -57,7 +55,7 @@ internalError :: String -> a
 internalError msg = error $ "Internal error: " ++ msg
 
 errorMessage :: Message -> a
-errorMessage = error . show . ppMessage
+errorMessage = error . show . ppError
 
 errorMessages :: [Message] -> a
-errorMessages = error . show . ppMessages
+errorMessages = error . show . ppMessages ppError
