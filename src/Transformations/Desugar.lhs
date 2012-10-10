@@ -536,9 +536,11 @@ are compatible with the matched pattern when the guards fail.
 > expandAlt :: Ident -> CaseType -> [Alt] -> DsM Alt
 > expandAlt _ _  []                   = error "Desugar.expandAlt: empty list"
 > expandAlt v ct (Alt p t rhs : alts) = caseAlt p t `liftM` expandRhs e0 [] rhs
->   where e0 = Case (srcRefOf p) ct (mkVar v)
->                   (filter (isCompatible t . altPattern) alts)
->         altPattern (Alt _ t1 _) = t1
+>   where
+>   e0 | ct == Flex = prelFailed
+>      | otherwise  = Case (srcRefOf p) ct (mkVar v)
+>                          (filter (isCompatible t . altPattern) alts)
+>   altPattern (Alt _ t1 _) = t1
 
 > isCompatible :: Pattern -> Pattern -> Bool
 > isCompatible (VariablePattern _) _                   = True
