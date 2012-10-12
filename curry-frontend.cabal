@@ -35,7 +35,7 @@ Executable cymake
   else
     Build-Depends: base == 3.*
   Build-Depends:
-    curry-base == 0.3.2
+    curry-base == 0.3.3
     , mtl, containers, pretty, transformers
   ghc-options: -Wall
   Other-Modules:
