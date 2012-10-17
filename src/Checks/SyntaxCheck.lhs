@@ -267,18 +267,17 @@ Furthermore, it is not allowed to declare a label more than once.
 
 > -- |Bind a local declaration (function, variables) in the 'RenameEnv'
 > bindVarDecl :: Decl -> RenameEnv -> RenameEnv
-> bindVarDecl (FunctionDecl _ ident equs) env
->   | null equs = internalError "SyntaxCheck.bindVarDecl: no equations"
->   | otherwise = let arty = length $ snd $ getFlatLhs $ head equs
->                 in  bindLocal (unRenameIdent ident) (LocalVar arty ident) env
+> bindVarDecl (FunctionDecl _ f eqs) env
+>   | null eqs  = internalError "SyntaxCheck.bindVarDecl: no equations"
+>   | otherwise = let arty = length $ snd $ getFlatLhs $ head eqs
+>                 in  bindLocal (unRenameIdent f) (LocalVar arty f) env
 > bindVarDecl (PatternDecl         _ t _) env = foldr bindVar env (bv t)
 > bindVarDecl (FreeDecl             _ vs) env = foldr bindVar env vs
 > bindVarDecl _                           env = env
 
 > bindVar :: Ident -> RenameEnv -> RenameEnv
-> bindVar v env
->   | isAnonId v = env
->   | otherwise  = bindLocal (unRenameIdent v) (LocalVar 0 v) env
+> bindVar v | isAnonId v = id
+>           | otherwise  = bindLocal (unRenameIdent v) (LocalVar 0 v)
 
 > lookupVar :: Ident -> RenameEnv -> [RenameInfo]
 > lookupVar v env = lookupNestEnv v env ++! lookupTupleConstr v
@@ -580,7 +579,7 @@ checkParen
 >       [r]        -> processVarFun r k
 >       []
 >         | null ts && not (isQualified c) ->
->             return (VariablePattern (renameIdent (unqualify c) k))
+>             return $ VariablePattern $ renameIdent (unqualify c) k
 >         | null rs -> do
 >             report $ errUndefinedData c
 >             return $ ConstructorPattern c ts
@@ -591,18 +590,18 @@ checkParen
 >   processCons qc n = do
 >     when (n /= n') $ report $ errWrongArity c n n'
 >     ConstructorPattern qc `liftM` mapM (checkPattern p) ts
->   processVarFun r k = do
->     let n = arity r
->     if null ts && not (isQualified c)
->       then return $ VariablePattern $ renameIdent (varIdent r) k
->       else do
->         checkFuncPatsExtension p
->         ts' <- mapM (checkPattern p) ts
->         if n' > n
->           then let (ts1, ts2) = splitAt n ts'
->                in  return $ genFuncPattAppl
->                    (FunctionPattern (qualVarIdent r) ts1) ts2
->           else return $ FunctionPattern (qualVarIdent r) ts'
+>   processVarFun r k
+>     | null ts && not (isQualified c)
+>     = return $ VariablePattern $ renameIdent (unqualify c) k -- (varIdent r) k
+>     | otherwise = do
+>       let n = arity r
+>       checkFuncPatsExtension p
+>       ts' <- mapM (checkPattern p) ts
+>       return $ if n' > n
+>                  then let (ts1, ts2) = splitAt n ts'
+>                       in  genFuncPattAppl
+>                           (FunctionPattern (qualVarIdent r) ts1) ts2
+>                  else FunctionPattern (qualVarIdent r) ts'
 
 > checkInfixPattern :: Position -> Pattern -> QualIdent -> Pattern
 >                   -> SCM Pattern
@@ -916,10 +915,10 @@ the user about the fact that the identifier is ambiguous.
 > isConstr (LocalVar    _ _) = False
 > isConstr (RecordLabel _ _) = False
 
-> varIdent :: RenameInfo -> Ident
-> varIdent (GlobalVar _ v) = unqualify v
-> varIdent (LocalVar  _ v) = v
-> varIdent _ = internalError "SyntaxCheck.varIdent: no variable"
+varIdent :: RenameInfo -> Ident
+varIdent (GlobalVar _ v) = unqualify v
+varIdent (LocalVar  _ v) = v
+varIdent _ = internalError "SyntaxCheck.varIdent: no variable"
 
 > qualVarIdent :: RenameInfo -> QualIdent
 > qualVarIdent (GlobalVar _ v) = v
