@@ -9,7 +9,7 @@
 -}
 module Base.ScopeEnv
   ( Level, ScopeEnv
-  , new, insert, modify, lookup, level, exists, beginScope
+  , new, insert, modify, lookup, level, lookupWithLevel, exists, beginScope
   , endScope, endScopeUp, toLevelList, currentLevel
   ) where
 
@@ -41,13 +41,17 @@ modify f k = modifySE modifyLev
 -- |Looks up the value which is stored under a key from the environment of
 -- the current scope
 lookup :: Ord a => a -> ScopeEnv a b -> Maybe b
-lookup k = selectSE lookupLev
-  where lookupLev _ = fmap fst . Map.lookup k
+lookup k = fmap fst . lookupWithLevel k
 
 -- Returns the level of the last insertion of a key
-level :: Ord a => a -> ScopeEnv a b -> Int
-level k = selectSE levelLev
- where levelLev _ = maybe (-1) snd . Map.lookup k
+level :: Ord a => a -> ScopeEnv a b -> Level
+level k = maybe (-1) snd . lookupWithLevel k
+
+-- |Looks up the value and the level which is stored under a key from the
+-- environment of the current scope
+lookupWithLevel :: Ord a => a -> ScopeEnv a b -> Maybe (b, Level)
+lookupWithLevel k = selectSE lookupLev
+  where lookupLev _ = Map.lookup k
 
 -- Checks, whether a key exists in the environment of the current scope
 exists :: Ord a => a -> ScopeEnv a b -> Bool
