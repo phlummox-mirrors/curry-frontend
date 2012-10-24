@@ -454,12 +454,13 @@ top-level.
 
 > checkDecls :: (Decl -> RenameEnv -> RenameEnv) -> [Decl] -> SCM [Decl]
 > checkDecls bindDecl ds = do
->   let dbls@[dblVar, dblTys] = map findDouble [bvs, tys]
+>   let dblVar = findDouble bvs
 >   onJust (report . errDuplicateDefinition) dblVar
->   onJust (report . errDuplicateTypeSig   ) dblTys
->   let missingTy = [f | ExternalDecl _ fs' <- ds, f <- fs', f `notElem` tys]
->   mapM_ (report . errNoTypeSig) missingTy
->   if all isNothing dbls && null missingTy
+>   let mulTys = findMultiples tys
+>   mapM_ (report . errDuplicateTypeSig) mulTys
+>   let missingTys = [f | ExternalDecl _ fs' <- ds, f <- fs', f `notElem` tys]
+>   mapM_ (report . errNoTypeSig) missingTys
+>   if isNothing dblVar && null mulTys && null missingTys
 >     then do
 >       modifyRenameEnv $ \env -> foldr bindDecl env (tds ++ vds)
 >       mapM (checkDeclRhs bvs) ds
@@ -1021,12 +1022,15 @@ Error messages.
 > errMultipleDataConstructor (i:is) = posMessage i $
 >   text "Multiple definitions for data constructor" <+> text (escName i)
 >   <+> text "at:" $+$
->   nest 2 (vcat (map showPos (i:is)))
->   where showPos = text . showLine . idPosition
+>   nest 2 (vcat (map (ppPosition . getPosition) (i:is)))
 
-> errDuplicateTypeSig :: Ident -> Message
-> errDuplicateTypeSig v = posMessage v $ hsep $ map text
->   ["More than one type signature for", escName v]
+> errDuplicateTypeSig :: [Ident] -> Message
+> errDuplicateTypeSig [] = internalError
+>   "SyntaxCheck.errDuplicateTypeSig: empty list"
+> errDuplicateTypeSig (v:vs) = posMessage v $
+>   text "More than one type signature for" <+> text (escName v)
+>   <+> text "at:" $+$
+>   nest 2 (vcat (map (ppPosition . getPosition) (v:vs)))
 
 > errDuplicateLabel :: Ident -> Message
 > errDuplicateLabel l = posMessage l $ hsep $ map text
