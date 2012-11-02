@@ -9,6 +9,7 @@ module Base.Messages
   ) where
 
 import Control.Monad (unless, when)
+import Data.List     (sort)
 import System.IO     (hPutStrLn, stderr)
 import System.Exit   (exitFailure)
 
@@ -25,7 +26,7 @@ status opts msg = unless (optVerbosity opts < VerbStatus)
 
 warn :: Options -> [Message] -> IO ()
 warn opts msgs = when (optWarn opts && not (null msgs))
-               $ putErrLn (show $ ppMessages ppWarning msgs)
+               $ putErrLn (show $ ppMessages ppWarning $ sort msgs)
 
 -- |Print an error message on 'stderr'
 putErrLn :: String -> IO ()
@@ -47,7 +48,7 @@ abortWithMessage msg = abortWithMessages [msg]
 -- |Print a list of error messages on 'stderr' and abort the program
 abortWithMessages :: [Message] -> IO a
 abortWithMessages msgs = do
-  unless (null msgs) $ putErrLn (show $ ppMessages ppMessage msgs)
+  unless (null msgs) $ putErrLn (show $ ppMessages ppMessage $ sort msgs)
   exitFailure
 
 -- |Raise an internal error
@@ -58,4 +59,4 @@ errorMessage :: Message -> a
 errorMessage = error . show . ppError
 
 errorMessages :: [Message] -> a
-errorMessages = error . show . ppMessages ppError
+errorMessages = error . show . ppMessages ppError . sort
