@@ -938,9 +938,7 @@ because of possibly multiple occurrences of variables.
 >           tcRhs tyEnv0 rhs >>=
 >           unify p1 "case branch" doc ty2
 > tcExpr _ (RecordConstr fs) = do
->     fts <- mapM (tcFieldExpr equals) fs
->     --when (1 == length fs)
->     --     (error (show fs ++ "\n" ++ show fts))
+>     fts <- mapM tcFieldExpr fs
 >     return (TypeRecord fts Nothing)
 > tcExpr p r@(RecordSelection e l) = do
 >     m <- getModuleIdent
@@ -958,10 +956,9 @@ because of possibly multiple occurrences of variables.
 >     let rty = TypeRecord [(l,lty)] (Just alpha)
 >     unify p "record selection" (ppExpr 0 r) ty rty
 >     return lty
-> tcExpr p r@(RecordUpdate fs e) =
->   do
->     ty <- tcExpr p e
->     fts <- mapM (tcFieldExpr (text ":=")) fs
+> tcExpr p r@(RecordUpdate fs e) = do
+>     ty    <- tcExpr p e
+>     fts   <- mapM tcFieldExpr fs
 >     alpha <- freshVar id
 >     let rty = TypeRecord fts (Just alpha)
 >     unify p "record update" (ppExpr 0 r) ty rty
@@ -988,8 +985,8 @@ because of possibly multiple occurrences of variables.
 >   unify p "statement" (ppStmt st $-$ text "Term:" <+> ppExpr 0 e) (ioType ty1) ty2
 > tcStmt _ (StmtDecl ds) = tcDecls ds
 
-> tcFieldExpr :: Doc -> Field Expression -> TCM (Ident, Type)
-> tcFieldExpr comb f@(Field _ l e) = do
+> tcFieldExpr :: Field Expression -> TCM (Ident, Type)
+> tcFieldExpr f@(Field _ l e) = do
 >   m     <- getModuleIdent
 >   tyEnv <- getValueEnv
 >   let p = idPosition l
@@ -1001,7 +998,7 @@ because of possibly multiple occurrences of variables.
 >                  inst
 >         (sureLabelType l tyEnv)
 >   ty <- tcExpr p e
->   unify p "record" (text "Field:" <+> ppFieldExpr comb f) lty ty
+>   unify p "record" (text "Field:" <+> ppFieldExpr f) lty ty
 >   return (l,ty)
 
 \end{verbatim}
