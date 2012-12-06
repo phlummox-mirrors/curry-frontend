@@ -13,12 +13,13 @@
 -}
 module Html.CurryHtml (source2html) where
 
-import Data.Maybe (fromMaybe, isJust)
+import Data.Char             (toLower)
+import Data.Maybe            (fromMaybe, isJust)
 
 import Curry.Base.Ident      (QualIdent (..), unqualify)
 import Curry.Base.Message    (fromIO)
 import Curry.Files.PathUtils
-  (readModule, writeModule, lookupCurryFile, dropExtension, takeFileName)
+  (readModule, lookupCurryFile, dropExtension, takeFileName)
 import Curry.Syntax          (lexSource)
 
 import Html.SyntaxColoring
@@ -28,39 +29,32 @@ import CompilerOpts  (Options(..), TargetType (..))
 import Frontend      (parse, fullParse)
 
 --- translate source file into HTML file with syntaxcoloring
---- @param outputfilename
 --- @param sourcefilename
-source2html :: Options -> String -> IO ()
-source2html opts sourcefilename = do
-  let imports = optImportPaths opts
-      outputfilename = fromMaybe "" $ optOutput opts
-      sourceprogname = dropExtension sourcefilename
-      output' = if null outputfilename
-                 then sourceprogname ++ "_curry.html"
-                 else outputfilename
-      modulname = takeFileName sourceprogname
-  fullfname <- lookupCurryFile imports sourcefilename
-  program <- filename2program opts (fromMaybe sourcefilename fullfname)
-  (if null outputfilename then writeModule True output'
-                          else writeFile   output')
-      (program2html modulname program)
+source2html :: Options -> FilePath -> IO ()
+source2html opts f = do
+  let baseName   = dropExtension f
+      modulname  = takeFileName baseName
+      outFileOpt = fromMaybe "" $ optOutput opts
+      outFile    = if null outFileOpt then baseName ++ "_curry.html"
+                                      else outFileOpt
+  srcFile <- lookupCurryFile (optImportPaths opts) f
+  program <- filename2program opts (fromMaybe f srcFile)
+  writeFile outFile (program2html modulname program)
 
 --- @param importpaths
 --- @param filename
 --- @return program
 filename2program :: Options -> String -> IO Program
-filename2program opts filename = do
-  mbModule <- readModule filename
+filename2program opts f = do
+  mbModule <- readModule f
   case mbModule of
-    Nothing   -> abortWith ["Missing file: " ++ filename]
-    Just cont -> do
-      typingParseRes <- fromIO $ fullParse opts filename cont
-      fullParseRes   <- fromIO $ fullParse (opts { optTargetTypes = [UntypedAbstractCurry]}) filename cont
-      let parseRes = parse filename cont
-          lexRes   = lexSource filename cont
-      return $ genProgram cont [typingParseRes, fullParseRes, parseRes] lexRes
-
-
+    Nothing  -> abortWith ["Missing file: " ++ f]
+    Just src -> do
+      typed   <- fromIO $ fullParse opts f src
+      checked <- fromIO $ fullParse (opts { optTargetTypes = [UntypedAbstractCurry]}) f src
+      let parsed = parse f src
+          lexed  = lexSource f src
+      return $ genProgram src [typed, checked, parsed] lexed
 
 -- generates htmlcode with syntax highlighting
 -- @param modulname
@@ -77,37 +71,6 @@ program2html modulname codes =
   concatMap (code2html True . (\ (_, _, c) -> c)) codes ++
   "<pre>\n</body>\n</html>"
 
--- which code has which color
--- @param code
--- @return color of the code
-code2class :: Code -> String
-code2class (Keyword _) = "keyword"
-code2class (Space _) = ""
-code2class NewLine = ""
-code2class (ConstructorName ConstrPattern _) = "constructorname_constrpattern"
-code2class (ConstructorName ConstrCall _) = "constructorname_constrcall"
-code2class (ConstructorName ConstrDecla _) = "constructorname_constrdecla"
-code2class (ConstructorName OtherConstrKind _) = "constructorname_otherconstrkind"
-code2class (Function InfixFunction _) = "function_infixfunction"
-code2class (Function TypSig _) = "function_typsig"
-code2class (Function FunDecl _) = "function_fundecl"
-code2class (Function FunctionCall _) = "function_functioncall"
-code2class (Function OtherFunctionKind _) = "function_otherfunctionkind"
-code2class (ModuleName _) = "modulename"
-code2class (Commentary _) = "commentary"
-code2class (NumberCode _) = "numbercode"
-code2class (StringCode _) = "stringcode"
-code2class (CharCode _) = "charcode"
-code2class (Symbol _) = "symbol"
-code2class (Identifier IdDecl _) = "identifier_iddecl"
-code2class (Identifier IdOccur _) = "identifier_idoccur"
-code2class (Identifier UnknownId _) = "identifier_unknownid"
-code2class (TypeConstructor TypeDecla _) = "typeconstructor_typedecla"
-code2class (TypeConstructor TypeUse _) = "typeconstructor_typeuse"
-code2class (TypeConstructor TypeExport _) = "typeconstructor_typeexport"
-code2class (CodeWarning _ _) = "codewarning"
-code2class (NotParsed _) = "notparsed"
-
 code2html :: Bool -> Code -> String
 code2html ownClass code@(CodeWarning _ c) =
   (if ownClass then spanTag (code2class code) else id) (code2html False c)
@@ -115,9 +78,9 @@ code2html ownClass code@(Commentary _) =
   (if ownClass then spanTag (code2class code) else id)
     (replace '<' "<span>&lt</span>" (code2string code))
 code2html ownClass c
-  | isCall c && ownClass = maybe tag (addHtmlLink tag)   (getQualIdent c)
+  | isCall c && ownClass = maybe tag (addHtmlLink   tag) (getQualIdent c)
   | isDecl c && ownClass = maybe tag (addHtmlAnchor tag) (getQualIdent c)
-  | otherwise = tag
+  | otherwise            = tag
   where tag = (if ownClass then spanTag (code2class c) else id)
                       (htmlQuote (code2string c))
 
@@ -125,13 +88,35 @@ spanTag :: String -> String -> String
 spanTag [] str = str
 spanTag cl str = "<span class=\"" ++ cl ++ "\">" ++ str ++ "</span>"
 
+-- which code has which color
+-- @param code
+-- @return color of the code
+code2class :: Code -> String
+code2class (Keyword           _) = "keyword"
+code2class (Space             _) = ""
+code2class NewLine               = ""
+code2class (ConstructorName k _) = "constructorname_"  ++ showLower k
+code2class (Function        k _) = "function_" ++ showLower k
+code2class (ModuleName        _) = "modulename"
+code2class (Commentary        _) = "commentary"
+code2class (NumberCode        _) = "numbercode"
+code2class (StringCode        _) = "stringcode"
+code2class (CharCode          _) = "charcode"
+code2class (Symbol            _) = "symbol"
+code2class (Identifier      k _) = "identifier_" ++ showLower k
+code2class (TypeConstructor k _) = "typeconstructor_" ++ showLower k
+code2class (CodeWarning     _ _) = "codewarning"
+code2class (NotParsed         _) = "notparsed"
+
+showLower :: Show a => a -> String
+showLower = map toLower . show
+
 replace :: Char -> String -> String -> String
 replace old new = foldr (\ x -> if x == old then (new ++) else ([x] ++)) ""
 
 addHtmlAnchor :: String -> QualIdent -> String
-addHtmlAnchor str qualIdent = "<a name=\"" ++
-  string2urlencoded (show (unqualify qualIdent)) ++
-  "\"></a>" ++ str
+addHtmlAnchor str qid = "<a name=\"" ++ anchor ++ "\"></a>" ++ str
+  where anchor = string2urlencoded (show (unqualify qid))
 
 addHtmlLink :: String -> QualIdent -> String
 addHtmlLink str qid =
@@ -146,15 +131,15 @@ addHtmlLink str qid =
 
 isCall :: Code -> Bool
 isCall (TypeConstructor TypeExport _) = True
-isCall (TypeConstructor _ _) = False
-isCall (Identifier _ _) = False
+isCall (TypeConstructor          _ _) = False
+isCall (Identifier               _ _) = False
 isCall code = not (isDecl code) && isJust (getQualIdent code)
 
 isDecl :: Code -> Bool
 isDecl (ConstructorName ConstrDecla _) = True
-isDecl (Function FunDecl _) = True
-isDecl (TypeConstructor TypeDecla _) = True
-isDecl _ = False
+isDecl (Function FunDecl            _) = True
+isDecl (TypeConstructor TypeDecla   _) = True
+isDecl _                               = False
 
 -- Translates arbitrary strings into equivalent urlencoded string.
 string2urlencoded :: String -> String
