@@ -81,16 +81,17 @@ ccExpr (Case    r ea e bs) = do
   e'  <- ccExpr e
   bs' <- mapM ccAlt bs
   ccCase r ea e' bs'
-ccExpr (Or    e1 e2) = liftM2 Or (ccExpr e1) (ccExpr e2)
-ccExpr (Exist   v e) = inNestedScope $ do
+ccExpr (Or          e1 e2) = liftM2 Or (ccExpr e1) (ccExpr e2)
+ccExpr (Exist         v e) = inNestedScope $ do
   modifyScopeEnv $ insertIdent v
   Exist v `liftM` ccExpr e
-ccExpr (Let     b e) = inNestedScope $ do
+ccExpr (Let           b e) = inNestedScope $ do
   modifyScopeEnv $ insertBinding b
   liftM2 (flip Let) (ccExpr e) (ccBinding b)
-ccExpr (Letrec bs e) = inNestedScope $ do
+ccExpr (Letrec       bs e) = inNestedScope $ do
   modifyScopeEnv $ flip (foldr insertBinding) bs
   liftM2 (flip Letrec) (ccExpr e) (mapM ccBinding bs)
+ccExpr (Typed        e ty) = flip Typed ty `liftM` ccExpr e
 
 ccAlt :: Alt -> CCM Alt
 ccAlt (Alt p e) = inNestedScope $ do

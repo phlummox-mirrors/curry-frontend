@@ -114,6 +114,8 @@ an unlimited range of integer constants in Curry programs.
 >   | Let Binding Expression
 >     -- |letrec binding
 >   | Letrec [Binding] Expression
+>     -- |typed expression
+>   | Typed Expression Type
 >   deriving (Eq, Show)
 
 > data Eval

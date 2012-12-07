@@ -425,7 +425,7 @@ type \texttt{Bool} of the guard because the guard's type defaults to
 >   | otherwise              = return var
 > dsExpr _ c@(Constructor _) = return c
 > dsExpr p (Paren         e) = dsExpr p e
-> dsExpr p (Typed       e _) = dsExpr p e
+> dsExpr p (Typed      e ty) = flip Typed ty `liftM` dsExpr p e
 > dsExpr p (Tuple    pos es) =
 >   apply (Constructor $ tupleConstr es) `liftM` mapM (dsExpr p) es
 >   where tupleConstr es1 = addRef pos $ if null es1 then qUnitId else qTupleId (length es1)

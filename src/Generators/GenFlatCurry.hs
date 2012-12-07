@@ -238,10 +238,8 @@ visitType (IL.TypeConstructor qid tys) = do
     then head tys'
     else TCons qn tys'
 visitType (IL.TypeVariable        idx) = return $ TVar $ abs idx
-visitType (IL.TypeArrow       ty1 ty2) = do
-  ty1' <- visitType ty1
-  ty2' <- visitType ty2
-  return $ FuncType ty1' ty2'
+visitType (IL.TypeArrow       ty1 ty2) = liftM2 FuncType
+                                         (visitType ty1) (visitType ty2)
 
 --
 visitFuncDecl :: IL.Decl -> FlatState FuncDecl
@@ -319,6 +317,8 @@ visitExpression (IL.Letrec    bds e) = inNewScope $ do
   bds' <- mapM visitBinding bds
   e' <- visitExpression e
   return $ Let bds' e'
+visitExpression (IL.Typed e ty) = liftM2 Typed (visitExpression e)
+                                               (visitType ty)
 
 --
 visitLiteral :: IL.Literal -> FlatState Literal
