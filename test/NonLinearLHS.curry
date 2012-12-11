@@ -1,3 +1,4 @@
+double x x = True
 
 multi x y y x = x + y
 

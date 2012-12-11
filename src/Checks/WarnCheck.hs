@@ -17,6 +17,7 @@ module Checks.WarnCheck (warnCheck) where
 import           Control.Monad              (filterM, foldM_, guard, unless)
 import           Control.Monad.State.Strict (State, execState, gets, modify)
 import qualified Data.Map            as Map (empty, insert, lookup)
+import           Data.Maybe                 (isJust)
 import           Data.List         (intersect, intersectBy, sort, unionBy)
 import Text.PrettyPrint
 
@@ -468,7 +469,7 @@ insertConstrDecl (ConOpDecl  _ _ _ op _) = insertConsId op
 -- 'fp' indicates whether 'checkPattern' deals with the arguments
 -- of a function pattern or not.
 -- Since function patterns are not recognized before syntax check, it is
--- necessary to determine, whether a constructor pattern represents a
+-- necessary to determine whether a constructor pattern represents a
 -- constructor or a function.
 insertPattern :: Bool -> Pattern -> WCM ()
 insertPattern fp (VariablePattern        v) = do
@@ -531,8 +532,9 @@ insertScope :: QualIdent -> IdInfo -> WCM ()
 insertScope qid info = modifyScope $ SE.insert qid info
 
 insertVar :: Ident -> WCM ()
-insertVar v = unless (isAnonId v)
-            $ insertScope (commonId v) (VarInfo v False)
+insertVar v = unless (isAnonId v) $ do
+  known <- isKnownVar v
+  if known then visitId v else insertScope (commonId v) (VarInfo v False)
 
 insertTypeVar :: Ident -> WCM ()
 insertTypeVar v = unless (isAnonId v)
@@ -579,6 +581,9 @@ visitQTypeId v = do
   mid <- getModuleIdent
   maybe ok visitTypeId (localIdent mid v)
 
+isKnownVar :: Ident -> WCM Bool
+isKnownVar v = gets $ \s -> isKnown s (commonId v)
+
 isUnrefTypeVar :: Ident -> WCM Bool
 isUnrefTypeVar v = gets (\s -> isUnref s (typeId v))
 
@@ -598,6 +603,11 @@ endScope :: WCM ()
 endScope = modifyScope SE.endScopeUp
 
 ------------------------------------------------------------------------------
+
+isKnown :: WcState -> QualIdent -> Bool
+isKnown s qid = let sc = scope s
+                in  isJust (SE.lookup qid sc)
+                    && SE.level qid sc == SE.currentLevel sc
 
 isUnref :: WcState -> QualIdent -> Bool
 isUnref s qid = let sc = scope s
