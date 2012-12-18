@@ -31,6 +31,7 @@ data structures, we can use only a qualified import for the
 > import Curry.Base.Ident
 > import Curry.Syntax
 
+> import Base.CurryTypes (toType)
 > import Base.Expr
 > import Base.Messages (internalError)
 > import Base.Types
@@ -363,6 +364,8 @@ instance, if one of the alternatives contains an \texttt{@}-pattern.
 >         -- subject is referenced -> introduce binding for v as subject
 >       | v `elem` fv expr                -> IL.Let (IL.Binding v e') expr
 >       | otherwise                       -> expr
+> trExpr  vs env (Typed e ty) = liftM2 IL.Typed (trExpr vs env e)
+>                                               (trType $ toType [] ty)
 > trExpr _ _ _ = internalError "CurryToIL.trExpr"
 
 > trAlt :: [Ident] -> RenameEnv -> Alt -> TransM Match

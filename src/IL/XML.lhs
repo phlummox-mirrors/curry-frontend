@@ -182,16 +182,17 @@ TODO: The following import should be avoided if possible as it makes
 =========================================================================
 
 > xmlExpr :: [(Int,Ident)] -> Expression -> (Doc,[(Int,Ident)])
-> xmlExpr d (Literal lit)  = (xmlLiteral (xmlLit lit),d)
-> xmlExpr d (Variable ident)  = xmlExprVar d ident
+> xmlExpr d (Literal lit)             = (xmlLiteral (xmlLit lit),d)
+> xmlExpr d (Variable ident)          = xmlExprVar d ident
 > xmlExpr d (Function ident arity)    = (xmlSingleApp ident arity True,d)
 > xmlExpr d (Constructor ident arity) = (xmlSingleApp ident arity False,d)
 > xmlExpr d expr@(Apply _ _)          = xmlApply  d expr (xmlAppArgs expr)
-> xmlExpr d (Case _ eval expr alt)      = xmlCase   d eval expr alt
+> xmlExpr d (Case _ eval expr alt)    = xmlCase   d eval expr alt
 > xmlExpr d (Or expr1 expr2)          = xmlOr     d expr1 expr2
 > xmlExpr d (Exist ident expr)        = xmlFree   d ident expr
 > xmlExpr d (Let binding expr)        = xmlLet    d binding expr
 > xmlExpr d (Letrec lBinding expr)    = xmlLetrec d lBinding expr
+> xmlExpr d (Typed expr ty)           = xmlTyped  d expr ty
 
 > xmlSingleApp :: QualIdent -> Int -> Bool -> Doc
 > xmlSingleApp ident arity isFunction =
@@ -325,6 +326,11 @@ TODO: The following import should be avoided if possible as it makes
 >   where
 >     (b,d1) = xmlMapDicc d xmlBinding lB
 >     (e,d2) = xmlExpr d1 expr
+
+> xmlTyped :: [(Int,Ident)] -> Expression -> Type -> (Doc,[(Int,Ident)])
+> xmlTyped d expr ty =
+>   (text "<typed>" $$ nest level e1 $$ nest level (xmlType ty) $$ text "</typed>", d1)
+>   where (e1 ,d1) = xmlExpr d expr
 
 =========================================================================
             A U X I L I A R Y  F U N C T I O N S

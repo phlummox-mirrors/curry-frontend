@@ -228,6 +228,7 @@ functions in later phases of the compiler.
 >     simplifyLet env (scc bv (qfv m) (foldr hoistDecls [] (concat dss'))) e
 > simExpr env (Case r ct e alts) =
 >   liftM2 (Case r ct) (simExpr env e) (mapM (simplifyAlt env) alts)
+> simExpr env (Typed e ty) = flip Typed ty `liftM` simExpr env e
 > simExpr _ _ = error "Simplify.simExpr: no pattern match"
 
 > simplifyAlt :: InlineEnv -> Alt -> SIM Alt

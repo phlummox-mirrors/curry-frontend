@@ -141,6 +141,9 @@ Marlow's pretty printer for Haskell.
 >   [text "let" <+> ppBinding b <+> text "in",ppExpr 0 e]
 > ppExpr p (Letrec      bs e) = ppParen (p > 0) $ sep
 >   [text "letrec" <+> vcat (map ppBinding bs) <+> text "in", ppExpr 0 e]
+> ppExpr p (Typed       e ty) = ppParen (p > 0) $ sep
+>   [ppExpr 0 e, text "::", ppType 0 ty]
+
 
 > ppInfixApp :: Int -> Expression -> QualIdent -> Expression -> Doc
 > ppInfixApp p e1 op e2 = ppParen (p > 1) $ sep
