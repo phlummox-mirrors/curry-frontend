@@ -9,3 +9,7 @@ funpat (n + n) = n
 combined ~(v:_) v = v
 
 guarded x | x == x = x
+
+leftB a b (_ ++ [a,b] ++ _) = success
+
+f x (_ ++ [x]) [x] | not x = x

@@ -238,9 +238,9 @@ and a record label belongs to only one record declaration.
 > -- /Note:/ Non-linear patterns in functional patterns are not desugared,
 > -- as this special case is handled later.
 > dsNonLinearity :: NonLinearEnv -> Pattern -> DsM (NonLinearEnv, Pattern)
-> dsNonLinearity env l@(LiteralPattern    _) = return (env, l)
-> dsNonLinearity env n@(NegativePattern _ _) = return (env, n)
-> dsNonLinearity env t@(VariablePattern   v)
+> dsNonLinearity env l@(LiteralPattern        _) = return (env, l)
+> dsNonLinearity env n@(NegativePattern     _ _) = return (env, n)
+> dsNonLinearity env t@(VariablePattern       v)
 >   | v `Set.member` vis = do
 >     v' <- freshMonoTypeVar "_#nonlinear" t
 >     return ((vis, (v',v) : ren), VariablePattern v')
@@ -269,8 +269,13 @@ and a record label belongs to only one record declaration.
 > dsNonLinearity env (LazyPattern           r t) = do
 >   (env', t') <- dsNonLinearity env t
 >   return (env', LazyPattern r t')
-> dsNonLinearity env fp@(FunctionPattern    _ _) = return (env, fp)
-> dsNonLinearity env fp@(InfixFuncPattern _ _ _) = return (env, fp)
+> dsNonLinearity env (FunctionPattern      f ts) = do
+>   (env', ts') <- mapAccumM dsNonLinearity env ts
+>   return (env', FunctionPattern f ts')
+> dsNonLinearity env (InfixFuncPattern t1 op t2) = do
+>   (env1, t1') <- dsNonLinearity env  t1
+>   (env2, t2') <- dsNonLinearity env1 t2
+>   return (env2, InfixFuncPattern t1' op t2')
 > dsNonLinearity env (RecordPattern        fs r) = do
 >   (env1, fs') <- mapAccumM dsField env fs
 >   return (env1, RecordPattern fs' r)
