@@ -179,12 +179,12 @@ checkModule opts (env, mdl) = do
                    then typeCheck env3 pc >>= uncurry exportCheck
                    else return (env3, pc)
   (env5, ql) <- return $ qual opts env4 tc
-  let dumps = [ (DumpParsed       , env , CS.showModule mdl)
-              , (DumpKindChecked  , env1, CS.showModule kc)
-              , (DumpSyntaxChecked, env2, CS.showModule sc)
-              , (DumpPrecChecked  , env3, CS.showModule pc)
-              , (DumpTypeChecked  , env4, CS.showModule tc)
-              , (DumpQualified    , env5, CS.showModule ql)
+  let dumps = [ (DumpParsed       , env , show $ CS.ppModule mdl)
+              , (DumpKindChecked  , env1, show $ CS.ppModule kc)
+              , (DumpSyntaxChecked, env2, show $ CS.ppModule sc)
+              , (DumpPrecChecked  , env3, show $ CS.ppModule pc)
+              , (DumpTypeChecked  , env4, show $ CS.ppModule tc)
+              , (DumpQualified    , env5, show $ CS.ppModule ql)
               ]
   return (env5, ql, dumps)
   where
