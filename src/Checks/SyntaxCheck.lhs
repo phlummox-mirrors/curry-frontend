@@ -32,6 +32,7 @@ definition.
 > import Curry.Base.Ident
 > import Curry.Base.Position
 > import Curry.Syntax
+> import Curry.Syntax.Pretty (ppPattern)
 
 > import Base.Expr
 > import Base.Messages (Message, posMessage, internalError)
@@ -154,6 +155,9 @@ renaming literals and underscore to disambiguate them.
 > -- |Report a syntax error
 > report :: Message -> SCM ()
 > report msg = S.modify $ \ s -> s { errors = msg : errors s }
+
+> ok :: SCM ()
+> ok = return ()
 
 \end{verbatim}
 A nested environment is used for recording information about the data
@@ -598,6 +602,7 @@ checkParen
 >       let n = arity r
 >       checkFuncPatsExtension p
 >       ts' <- mapM (checkPattern p) ts
+>       mapM_ (checkFPTerm p) ts'
 >       return $ if n' > n
 >                  then let (ts1, ts2) = splitAt n ts'
 >                       in  genFuncPattAppl
@@ -626,10 +631,9 @@ checkParen
 >                                    (checkPattern p t2)
 >   funcPattern qop = do
 >     checkFuncPatsExtension p
->     liftM2 (flip InfixFuncPattern qop) (checkPattern p t1)
->                                        (checkPattern p t2)
-
-
+>     ts'@[t1',t2'] <- mapM (checkPattern p) [t1,t2]
+>     mapM_ (checkFPTerm p) ts'
+>     return $ InfixFuncPattern t1' qop t2'
 
 > checkRecordPattern :: Position -> [Field Pattern]
 >                    -> (Maybe Pattern) -> SCM Pattern
@@ -947,6 +951,21 @@ to \texttt{(apply (id id) 10)}.
 >  where
 >  qApplyId = qualifyWith preludeMIdent (mkIdent "apply")
 
+> checkFPTerm :: Position -> Pattern -> SCM ()
+> checkFPTerm _ (LiteralPattern         _) = ok
+> checkFPTerm _ (NegativePattern      _ _) = ok
+> checkFPTerm _ (VariablePattern        _) = ok
+> checkFPTerm p (ConstructorPattern  _ ts) = mapM_ (checkFPTerm p) ts
+> checkFPTerm p t@(InfixPattern     _ _ _) = report $ errUnsupportedFPTerm "Infix" p t
+> checkFPTerm p (ParenPattern           t) = checkFPTerm p t
+> checkFPTerm p (TuplePattern        _ ts) = mapM_ (checkFPTerm p) ts
+> checkFPTerm p (ListPattern         _ ts) = mapM_ (checkFPTerm p) ts
+> checkFPTerm p t@(AsPattern          _ _) = report $ errUnsupportedFPTerm "As"     p t
+> checkFPTerm p t@(LazyPattern        _ _) = report $ errUnsupportedFPTerm "Lazy"   p t
+> checkFPTerm p t@(RecordPattern      _ _) = report $ errUnsupportedFPTerm "Record" p t
+> checkFPTerm p (FunctionPattern     _ ts) = mapM_ (checkFPTerm p) ts
+> checkFPTerm p (InfixFuncPattern t1 _ t2) = mapM_ (checkFPTerm p) [t1,t2]
+
 \end{verbatim}
 Miscellaneous functions.
 \begin{verbatim}
@@ -979,6 +998,11 @@ Miscellaneous functions.
 \end{verbatim}
 Error messages.
 \begin{verbatim}
+
+> errUnsupportedFPTerm :: String -> Position -> Pattern -> Message
+> errUnsupportedFPTerm s p pat = posMessage p $ text s
+>   <+> text "patterns are not supported inside a functional pattern."
+>   $+$ ppPattern 0 pat
 
 > errPrecedenceOutOfRange :: Position -> Integer -> Message
 > errPrecedenceOutOfRange p i = posMessage p $ hsep $ map text
