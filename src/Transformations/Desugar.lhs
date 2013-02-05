@@ -70,7 +70,7 @@ all names must be properly qualified before calling this module.}
 > import           Control.Arrow              (second)
 > import           Control.Monad              (liftM, liftM2, mplus)
 > import qualified Control.Monad.State as S   (State, runState, gets, modify)
-> import           Data.List                  (nub, tails)
+> import           Data.List                  ((\\), nub, tails)
 > import           Data.Maybe                 (fromMaybe)
 > import qualified Data.Set            as Set (Set, empty, member, insert)
 
@@ -213,7 +213,7 @@ and a record label belongs to only one record declaration.
 > dsDeclRhs (FunctionDecl     p f eqs) =
 >   FunctionDecl p f `liftM` mapM dsEquation eqs
 > dsDeclRhs (PatternDecl      p t rhs) =
->   PatternDecl p t `liftM` dsRhs p [] rhs
+>   PatternDecl p t `liftM` dsRhs p id rhs
 > dsDeclRhs (ForeignDecl p cc ie f ty) =
 >   return $ ForeignDecl p cc (ie `mplus` Just (idName f)) f ty
 > dsDeclRhs vars@(FreeDecl        _ _) = return vars
@@ -221,11 +221,12 @@ and a record label belongs to only one record declaration.
 
 > dsEquation :: Equation -> DsM Equation
 > dsEquation (Equation p lhs rhs) = do
->   ((_, cs), ts1) <- mapAccumM dsNonLinearity (Set.empty, []) ts
->   (ds'    , ts2) <- mapAccumM (dsPattern p)  []              ts1
->   rhs1           <- dsRhs p cs $ addDecls ds' $ rhs
->   (ts3   , rhs2) <- dsFunctionPattern ts2 rhs1
->   return $ Equation p (FunLhs f ts3) rhs2
+>   (ts1, addFPConstraints) <- dsFunctionalPatterns ts
+>   ((_, cs), ts2)          <- mapAccumM dsNonLinearity (Set.empty, []) ts1
+>   (ds     , ts3)          <- mapAccumM (dsPattern p)  []              ts2
+>   rhs1                    <- dsRhs p (addFPConstraints p . addConstraints cs)
+>                            $ addDecls ds $ rhs
+>   return $ Equation p (FunLhs f ts3) rhs1
 >   where (f, ts) = flatLhs lhs
 
 > type NonLinearEnv = (Set.Set Ident, [(Ident, Ident)])
@@ -300,9 +301,6 @@ with a local declaration for $v$.
 >     Right (rs,ls) -> dsPattern p ds $ ListPattern rs $ map LiteralPattern ls
 > dsPattern p ds (NegativePattern      _ l) =
 >   dsPattern p ds (LiteralPattern (negateLiteral l))
->   where negateLiteral (Int    v i) = Int   v  (-i)
->         negateLiteral (Float p' f) = Float p' (-f)
->         negateLiteral _            = internalError "Desugar.negateLiteral"
 > dsPattern _ ds v@(VariablePattern      _) = return (ds, v)
 > dsPattern p ds (ConstructorPattern c [t]) = do
 >     tyEnv <- getValueEnv
@@ -376,6 +374,11 @@ with a local declaration for $v$.
 >    v' <- addPositionIdent (AST pos) `liftM` freshMonoTypeVar "_#lazy" t
 >    return (patDecl p { astRef = pos } t (mkVar v') : ds, VariablePattern v')
 
+> negateLiteral :: Literal -> Literal
+> negateLiteral (Int    v i) = Int   v  (-i)
+> negateLiteral (Float p' f) = Float p' (-f)
+> negateLiteral _            = internalError "Desugar.negateLiteral"
+
 \end{verbatim}
 A list of boolean guards is expanded into a nested if-then-else
 expression, whereas a constraint guard is replaced by a case
@@ -386,15 +389,14 @@ type \texttt{Bool} of the guard because the guard's type defaults to
 \texttt{Success} if it is not restricted by the guard expression.
 \begin{verbatim}
 
-> dsRhs :: Position -> [(Ident, Ident)] -> Rhs -> DsM Rhs
-> dsRhs p cs rhs = do
->   e' <- expandRhs prelFailed cs rhs >>= dsExpr p
+> dsRhs :: Position -> (Expression -> Expression) -> Rhs -> DsM Rhs
+> dsRhs p f rhs = do
+>   e' <- expandRhs prelFailed f rhs >>= dsExpr p
 >   return (SimpleRhs p e' [])
 
-> expandRhs :: Expression -> [(Ident, Ident)] -> Rhs -> DsM Expression
-> expandRhs _  cs (SimpleRhs _ e ds) = return $ Let ds (addConstraints cs e)
-> expandRhs e0 cs (GuardedRhs es ds) = (Let ds . addConstraints cs) `liftM`
->                                      expandGuards e0 es
+> expandRhs :: Expression -> (Expression -> Expression) -> Rhs -> DsM Expression
+> expandRhs _  f (SimpleRhs _ e ds) = return $ Let ds (f e)
+> expandRhs e0 f (GuardedRhs es ds) = (Let ds . f) `liftM` expandGuards e0 es
 
 > expandGuards :: Expression -> [CondExpr] -> DsM Expression
 > expandGuards e0 es = do
@@ -536,11 +538,11 @@ are compatible with the matched pattern when the guards fail.
 >   return $ Alt p t' (addDecls ds' rhs)
 
 > dsAltRhs :: Alt -> DsM Alt
-> dsAltRhs (Alt p t rhs) = Alt p t `liftM` dsRhs p [] rhs
+> dsAltRhs (Alt p t rhs) = Alt p t `liftM` dsRhs p id rhs
 
 > expandAlt :: Ident -> CaseType -> [Alt] -> DsM Alt
 > expandAlt _ _  []                   = error "Desugar.expandAlt: empty list"
-> expandAlt v ct (Alt p t rhs : alts) = caseAlt p t `liftM` expandRhs e0 [] rhs
+> expandAlt v ct (Alt p t rhs : alts) = caseAlt p t `liftM` expandRhs e0 id rhs
 >   where
 >   e0 | ct == Flex = prelFailed
 >      | otherwise  = Case (srcRefOf p) ct (mkVar v)
@@ -572,50 +574,65 @@ have to be desugared as well. This part transforms the following extensions:
 Function Patterns
 =================
 
-> dsFunctionPattern :: [Pattern] -> Rhs -> DsM ([Pattern], Rhs)
-> dsFunctionPattern ts rhs = do
->   (ts', its) <- elimFP ts
->   return (ts', genFPExpr its rhs)
+> dsFunctionalPatterns :: [Pattern] -> DsM ([Pattern], Position -> Expression -> Expression)
+> dsFunctionalPatterns ts = do
+>   (bs, ts') <- mapAccumM elimFP [] ts
+>   return (ts', genFPExpr (bv ts') (reverse bs))
 
-> elimFP :: [Pattern] -> DsM ([Pattern], [(Ident, Pattern)])
-> elimFP []        = return ([], [])
-> elimFP (t : ts)
->   | containsFP t = do
->     v  <- freshMonoTypeVar "_#funpatt" t
->     (ts', its') <- elimFP ts
->     return (VariablePattern v : ts', (v, t) : its')
->   | otherwise    = do
->     (ts', its') <- elimFP ts
->     return (t : ts', its')
+> type LazyBinding = (Pattern, Ident)
 
-> containsFP :: Pattern -> Bool
-> containsFP (ConstructorPattern _ ts) = any containsFP ts
-> containsFP (InfixPattern    t1 _ t2) = any containsFP [t1, t2]
-> containsFP (ParenPattern          t) = containsFP t
-> containsFP (TuplePattern       _ ts) = any containsFP ts
-> containsFP (ListPattern        _ ts) = any containsFP ts
-> containsFP (AsPattern           _ t) = containsFP t
-> containsFP (LazyPattern         _ t) = containsFP t
-> containsFP (FunctionPattern     _ _) = True
-> containsFP (InfixFuncPattern  _ _ _) = True
-> containsFP _                         = False
+> elimFP :: [LazyBinding] -> Pattern -> DsM ([LazyBinding], Pattern)
+> elimFP bs p@(LiteralPattern        _) = return (bs, p)
+> elimFP bs p@(NegativePattern     _ _) = return (bs, p)
+> elimFP bs p@(VariablePattern       _) = return (bs, p)
+> elimFP bs (ConstructorPattern   c ts)
+>   = second (ConstructorPattern c) `liftM` mapAccumM elimFP bs ts
+> elimFP bs (InfixPattern     t1 op t2) = do
+>   (bs', [t1',t2']) <- mapAccumM elimFP bs [t1,t2]
+>   return (bs', InfixPattern t1' op t2')
+> elimFP bs (ParenPattern            t)
+>  = second ParenPattern `liftM` elimFP bs t
+> elimFP bs (TuplePattern       pos ts)
+>   = second (TuplePattern pos) `liftM` mapAccumM elimFP bs ts
+> elimFP bs (ListPattern        pos ts)
+>   = second (ListPattern pos) `liftM` mapAccumM elimFP bs ts
+> elimFP bs (AsPattern             v t)
+>  = second (AsPattern v) `liftM` elimFP bs t
+> elimFP bs (LazyPattern           r t)
+>  = second (LazyPattern r) `liftM` elimFP bs t
+> elimFP bs p@(FunctionPattern     _ _) = do
+>  v <- freshMonoTypeVar "_#funpatt" p
+>  return ((p, v) : bs, VariablePattern v)
+> elimFP bs p@(InfixFuncPattern  _ _ _) = do
+>  v <- freshMonoTypeVar "_#funpatt" p
+>  return ((p, v) : bs, VariablePattern v)
+> elimFP bs (RecordPattern        fs r) = do
+>   second (flip RecordPattern r) `liftM` mapAccumM elimField bs fs
+>   where elimField b (Field p i t) = second (Field p i) `liftM` elimFP b t
 
-> genFPExpr :: [(Ident, Pattern)] -> Rhs -> Rhs
-> genFPExpr its rhs@(SimpleRhs p expr ds)
->   | null its  = rhs
->   | otherwise = SimpleRhs p rhsExpr ds
+> genFPExpr :: [Ident] -> [LazyBinding] -> Position -> Expression -> Expression
+> genFPExpr vs bs p expr
+>   | null bs   = expr
+>   | null free = fpExpr
+>   | otherwise = Let [FreeDecl p free] fpExpr
 >   where
->   fpExpr  = foldl1 (\ e1 e2  -> apply prelConj [e1, e2])
->           $ map    (\ (i, t) -> apply prelFPEq [fp2Expr t, mkVar i]) its
->   frees   = nub $ bv $ map snd its
->   rhsExpr = Let [FreeDecl p frees] $ apply prelCond [fpExpr, expr]
-> genFPExpr _ _ = internalError "Desugar.genFPExpr: guarded right-hand-side"
+>   fpExpr   = foldl1 (&) (map (uncurry (=:<=)) bs) &> expr
+>   free     = nub $ filter (not . isAnonId) $ bv (map fst bs) \\ vs
+>   e1 &> e2 = apply prelCond [e1, e2]
+>   e1 &  e2 = apply prelConj [e1, e2]
+>   t =:<= i = apply prelFPEq [fp2Expr t, mkVar i]
 
 > fp2Expr :: Pattern -> Expression
-> fp2Expr (LiteralPattern        l) = Literal l
-> fp2Expr (VariablePattern       v) = mkVar v
-> fp2Expr (ConstructorPattern c ts) = apply (Constructor c) (map fp2Expr ts)
-> fp2Expr (FunctionPattern    f ts) = apply (Variable    f) (map fp2Expr ts)
+> fp2Expr (LiteralPattern          l) = Literal l
+> fp2Expr (NegativePattern       _ l) = Literal (negateLiteral l)
+> fp2Expr (VariablePattern         v) = mkVar v
+> fp2Expr (ConstructorPattern   c ts) = apply (Constructor c) (map fp2Expr ts)
+> fp2Expr (InfixPattern     t1 op t2) = InfixApply (fp2Expr t1) (InfixOp op) (fp2Expr t2)
+> fp2Expr (ParenPattern            t) = Paren (fp2Expr t)
+> fp2Expr (TuplePattern         r ts) = Tuple r (map fp2Expr ts)
+> fp2Expr (ListPattern         rs ts) = List rs (map fp2Expr ts)
+> fp2Expr (FunctionPattern      f ts) = apply (Variable f) (map fp2Expr ts)
+> fp2Expr (InfixFuncPattern t1 op t2) = InfixApply (fp2Expr t1) (InfixOp op) (fp2Expr t2)
 > fp2Expr t                         = internalError $
 >   "Desugar.fp2Expr: Unexpected constructor term: " ++ show t
 
