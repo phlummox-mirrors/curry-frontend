@@ -963,8 +963,8 @@ to \texttt{(apply (id id) 10)}.
 > checkFPTerm p t@(AsPattern          _ _) = report $ errUnsupportedFPTerm "As"     p t
 > checkFPTerm p t@(LazyPattern        _ _) = report $ errUnsupportedFPTerm "Lazy"   p t
 > checkFPTerm p t@(RecordPattern      _ _) = report $ errUnsupportedFPTerm "Record" p t
-> checkFPTerm p (FunctionPattern     _ ts) = mapM_ (checkFPTerm p) ts
-> checkFPTerm p (InfixFuncPattern t1 _ t2) = mapM_ (checkFPTerm p) [t1,t2]
+> checkFPTerm p (FunctionPattern     _ ts) = ok -- dot not check again
+> checkFPTerm p (InfixFuncPattern t1 _ t2) = ok -- dot not check again
 
 \end{verbatim}
 Miscellaneous functions.
