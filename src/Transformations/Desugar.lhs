@@ -221,15 +221,13 @@ and a record label belongs to only one record declaration.
 
 > dsEquation :: Equation -> DsM Equation
 > dsEquation (Equation p lhs rhs) = do
->   (ts1, addFPConstraints) <- dsFunctionalPatterns ts
->   ((_, cs), ts2)          <- mapAccumM dsNonLinearity (Set.empty, []) ts1
->   (ds     , ts3)          <- mapAccumM (dsPattern p)  []              ts2
->   rhs1                    <- dsRhs p (addFPConstraints p . addConstraints cs)
->                            $ addDecls ds $ rhs
+>   (ds1, cs1, ts1) <- dsFunctionalPatterns p     ts
+>   (cs2     , ts2) <- dsNonLinearity             ts1
+>   (ds2     , ts3) <- mapAccumM (dsPattern p) [] ts2
+>   rhs1            <- dsRhs p (addConstraints (cs1 ++ cs2))
+>                    $ addDecls (ds1 ++ ds2) $ rhs
 >   return $ Equation p (FunLhs f ts3) rhs1
 >   where (f, ts) = flatLhs lhs
-
-> type NonLinearEnv = (Set.Set Ident, [(Ident, Ident)])
 
 > -- Desugaring of non-linear pattern
 > -- The desugaring traverses a pattern in depth-first order and collects
@@ -238,50 +236,57 @@ and a record label belongs to only one record declaration.
 > -- and a new pair (newvar, oldvar) is saved to generate constraints later.
 > -- /Note:/ Non-linear patterns in functional patterns are not desugared,
 > -- as this special case is handled later.
-> dsNonLinearity :: NonLinearEnv -> Pattern -> DsM (NonLinearEnv, Pattern)
-> dsNonLinearity env l@(LiteralPattern        _) = return (env, l)
-> dsNonLinearity env n@(NegativePattern     _ _) = return (env, n)
-> dsNonLinearity env t@(VariablePattern       v)
+> dsNonLinearity :: [Pattern] -> DsM ([Expression], [Pattern])
+> dsNonLinearity ts = do
+>   ((_, cs), ts') <- mapAccumM dsNonLinear (Set.empty, []) ts
+>   return (reverse cs, ts')
+
+> type NonLinearEnv = (Set.Set Ident, [Expression])
+
+> dsNonLinear :: NonLinearEnv -> Pattern -> DsM (NonLinearEnv, Pattern)
+> dsNonLinear env l@(LiteralPattern        _) = return (env, l)
+> dsNonLinear env n@(NegativePattern     _ _) = return (env, n)
+> dsNonLinear env t@(VariablePattern       v)
 >   | v `Set.member` vis = do
 >     v' <- freshMonoTypeVar "_#nonlinear" t
->     return ((vis, (v',v) : ren), VariablePattern v')
+>     return ((vis, (mkVar v =:= mkVar v') : ren), VariablePattern v')
 >   | otherwise        = return ((Set.insert v vis, ren), t)
 >   where (vis, ren) = env
-> dsNonLinearity env (ConstructorPattern   c ts) = do
->   (env', ts') <- mapAccumM dsNonLinearity env ts
+> dsNonLinear env (ConstructorPattern   c ts) = do
+>   (env', ts') <- mapAccumM dsNonLinear env ts
 >   return (env', ConstructorPattern c ts')
-> dsNonLinearity env (InfixPattern     t1 op t2) = do
->   (env1, t1') <- dsNonLinearity env  t1
->   (env2, t2') <- dsNonLinearity env1 t2
+> dsNonLinear env (InfixPattern     t1 op t2) = do
+>   (env1, t1') <- dsNonLinear env  t1
+>   (env2, t2') <- dsNonLinear env1 t2
 >   return (env2, InfixPattern t1' op t2')
-> dsNonLinearity env (ParenPattern            t) = do
->   (env', t') <- dsNonLinearity env t
+> dsNonLinear env (ParenPattern            t) = do
+>   (env', t') <- dsNonLinear env t
 >   return (env', ParenPattern t')
-> dsNonLinearity env (TuplePattern       pos ts) = do
->   (env', ts') <- mapAccumM dsNonLinearity env ts
+> dsNonLinear env (TuplePattern       pos ts) = do
+>   (env', ts') <- mapAccumM dsNonLinear env ts
 >   return (env', TuplePattern pos ts')
-> dsNonLinearity env (ListPattern        pos ts) = do
->   (env', ts') <- mapAccumM dsNonLinearity env ts
+> dsNonLinear env (ListPattern        pos ts) = do
+>   (env', ts') <- mapAccumM dsNonLinear env ts
 >   return (env', ListPattern pos ts')
-> dsNonLinearity env (AsPattern             v t) = do
->   (env1, VariablePattern v') <- dsNonLinearity env (VariablePattern v)
->   (env2, t') <- dsNonLinearity env1 t
+> dsNonLinear env (AsPattern             v t) = do
+>   (env1, VariablePattern v') <- dsNonLinear env (VariablePattern v)
+>   (env2, t') <- dsNonLinear env1 t
 >   return (env2, AsPattern v' t')
-> dsNonLinearity env (LazyPattern           r t) = do
->   (env', t') <- dsNonLinearity env t
+> dsNonLinear env (LazyPattern           r t) = do
+>   (env', t') <- dsNonLinear env t
 >   return (env', LazyPattern r t')
-> dsNonLinearity env (FunctionPattern      f ts) = do
->   (env', ts') <- mapAccumM dsNonLinearity env ts
+> dsNonLinear env (FunctionPattern      f ts) = do
+>   (env', ts') <- mapAccumM dsNonLinear env ts
 >   return (env', FunctionPattern f ts')
-> dsNonLinearity env (InfixFuncPattern t1 op t2) = do
->   (env1, t1') <- dsNonLinearity env  t1
->   (env2, t2') <- dsNonLinearity env1 t2
+> dsNonLinear env (InfixFuncPattern t1 op t2) = do
+>   (env1, t1') <- dsNonLinear env  t1
+>   (env2, t2') <- dsNonLinear env1 t2
 >   return (env2, InfixFuncPattern t1' op t2')
-> dsNonLinearity env (RecordPattern        fs r) = do
+> dsNonLinear env (RecordPattern        fs r) = do
 >   (env1, fs') <- mapAccumM dsField env fs
 >   return (env1, RecordPattern fs' r)
 >   where dsField e (Field p i t) = do
->           (e', t') <- dsNonLinearity e t
+>           (e', t') <- dsNonLinear e t
 >           return (e', Field p i t')
 
 \end{verbatim}
@@ -408,13 +413,10 @@ type \texttt{Bool} of the guard because the guard's type defaults to
 >         mkCond       [CondExpr _ g e] = apply prelCond [g, e]
 >         mkCond _ = error "Desugar.expandGuards.mkCond: non-unary list"
 
-> addConstraints :: [(Ident, Ident)] -> Expression -> Expression
+> addConstraints :: [Expression] -> Expression -> Expression
 > addConstraints cs e
 >   | null cs   = e
->   | otherwise = apply prelCond [foldr1 combine constrs, e]
->   where
->   combine ex g = apply prelSeqConj [g, ex]
->   constrs      = map (\ (v, w) -> apply prelSEq $ map mkVar [w, v]) cs
+>   | otherwise = apply prelCond [foldr1 (&) cs, e]
 
 > booleanGuards :: ValueEnv -> [CondExpr] -> Bool
 > booleanGuards _     []                    = False
@@ -574,10 +576,11 @@ have to be desugared as well. This part transforms the following extensions:
 Function Patterns
 =================
 
-> dsFunctionalPatterns :: [Pattern] -> DsM ([Pattern], Position -> Expression -> Expression)
-> dsFunctionalPatterns ts = do
+> dsFunctionalPatterns :: Position -> [Pattern] -> DsM ([Decl], [Expression], [Pattern])
+> dsFunctionalPatterns p ts = do
 >   (bs, ts') <- mapAccumM elimFP [] ts
->   return (ts', genFPExpr (bv ts') (reverse bs))
+>   let (ds, cs) = genFPExpr p (bv ts') (reverse bs)
+>   return (ds, cs, ts')
 
 > type LazyBinding = (Pattern, Ident)
 
@@ -610,16 +613,14 @@ Function Patterns
 >   second (flip RecordPattern r) `liftM` mapAccumM elimField bs fs
 >   where elimField b (Field p i t) = second (Field p i) `liftM` elimFP b t
 
-> genFPExpr :: [Ident] -> [LazyBinding] -> Position -> Expression -> Expression
-> genFPExpr vs bs p expr
->   | null bs   = expr
->   | null free = fpExpr
->   | otherwise = Let [FreeDecl p free] fpExpr
+> genFPExpr :: Position -> [Ident] -> [LazyBinding] -> ([Decl], [Expression])
+> genFPExpr p vs bs
+>   | null bs   = ([]               , [])
+>   | null free = ([]               , cs)
+>   | otherwise = ([FreeDecl p free], cs)
 >   where
->   fpExpr   = foldl1 (&) (map (uncurry (=:<=)) bs) &> expr
+>   cs       = map (uncurry (=:<=)) bs
 >   free     = nub $ filter (not . isAnonId) $ bv (map fst bs) \\ vs
->   e1 &> e2 = apply prelCond [e1, e2]
->   e1 &  e2 = apply prelConj [e1, e2]
 >   t =:<= i = apply prelFPEq [fp2Expr t, mkVar i]
 
 > fp2Expr :: Pattern -> Expression
@@ -826,11 +827,14 @@ Prelude entities
 > prelConj :: Expression
 > prelConj = Variable $ preludeIdent "&"
 
+> (=:=) :: Expression -> Expression -> Expression
+> e1 =:= e2 = apply prelSEq [e1, e2]
+
 > prelSEq :: Expression
 > prelSEq = Variable $ preludeIdent "=:="
 
-> prelSeqConj :: Expression
-> prelSeqConj = Variable $ preludeIdent "&>"
+> (&) :: Expression -> Expression -> Expression
+> e1 & e2 = apply prelConj [e1, e2]
 
 > prel :: String -> SrcRef -> Expression
 > prel s r = Variable $ addRef r $ preludeIdent s
