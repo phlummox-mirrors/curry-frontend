@@ -586,10 +586,12 @@ checkParen
 >         | null ts && not (isQualified c) ->
 >             return $ VariablePattern $ renameIdent (unqualify c) k
 >         | null rs -> do
+>             ts' <- mapM (checkPattern p) ts
 >             report $ errUndefinedData c
->             return $ ConstructorPattern c ts
->       _ -> do report $ errAmbiguousData c
->               return $ ConstructorPattern c ts
+>             return $ ConstructorPattern c ts'
+>       _ -> do ts' <- mapM (checkPattern p) ts
+>               report $ errAmbiguousData c
+>               return $ ConstructorPattern c ts'
 >   where
 >   n' = length ts
 >   processCons qc n = do
@@ -623,7 +625,8 @@ checkParen
 >       rs'          -> do if (null rs && null rs')
 >                             then report $ errUndefinedData op
 >                             else report $ errAmbiguousData op
->                          return $ InfixPattern t1 op t2
+>                          liftM2 (flip InfixPattern op) (checkPattern p t1)
+>                                                        (checkPattern p t2)
 >   where
 >   infixPattern qop n = do
 >     when (n /= 2) $ report $ errWrongArity op n 2
@@ -963,8 +966,8 @@ to \texttt{(apply (id id) 10)}.
 > checkFPTerm p t@(AsPattern          _ _) = report $ errUnsupportedFPTerm "As"     p t
 > checkFPTerm p t@(LazyPattern        _ _) = report $ errUnsupportedFPTerm "Lazy"   p t
 > checkFPTerm p t@(RecordPattern      _ _) = report $ errUnsupportedFPTerm "Record" p t
-> checkFPTerm p (FunctionPattern     _ ts) = ok -- dot not check again
-> checkFPTerm p (InfixFuncPattern t1 _ t2) = ok -- dot not check again
+> checkFPTerm _ (FunctionPattern      _ _) = ok -- dot not check again
+> checkFPTerm _ (InfixFuncPattern   _ _ _) = ok -- dot not check again
 
 \end{verbatim}
 Miscellaneous functions.
