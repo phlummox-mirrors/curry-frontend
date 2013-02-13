@@ -1,10 +1,10 @@
 {- |
     Module      :  $Header$
     Description :  Compilation of a single module
-    Copyright   :  (c) 1999-2004, Wolfgang Lux
-                       2005, Martin Engelke (men@informatik.uni-kiel.de)
-                       2007, Sebastian Fischer (sebf@informatik.uni-kiel.de)
-                       2011, Björn Peemöller (bjp@informatik.uni-kiel.de)
+    Copyright   :  (c) 1999 - 2004 Wolfgang Lux
+                       2005        Martin Engelke
+                       2007        Sebastian Fischer
+                       2011 - 2013 Björn Peemöller
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
