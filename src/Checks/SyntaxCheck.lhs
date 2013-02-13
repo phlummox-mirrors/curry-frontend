@@ -959,7 +959,7 @@ to \texttt{(apply (id id) 10)}.
 > checkFPTerm _ (NegativePattern      _ _) = ok
 > checkFPTerm _ (VariablePattern        _) = ok
 > checkFPTerm p (ConstructorPattern  _ ts) = mapM_ (checkFPTerm p) ts
-> checkFPTerm p t@(InfixPattern     _ _ _) = report $ errUnsupportedFPTerm "Infix" p t
+> checkFPTerm p (InfixPattern     t1 _ t2) = mapM_ (checkFPTerm p) [t1, t2]
 > checkFPTerm p (ParenPattern           t) = checkFPTerm p t
 > checkFPTerm p (TuplePattern        _ ts) = mapM_ (checkFPTerm p) ts
 > checkFPTerm p (ListPattern         _ ts) = mapM_ (checkFPTerm p) ts
