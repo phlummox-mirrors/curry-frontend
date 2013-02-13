@@ -634,7 +634,7 @@ Function Patterns
 > fp2Expr (InfixPattern     t1 op t2) =
 >   let (t1', es1) = fp2Expr t1
 >       (t2', es2) = fp2Expr t2
->   in  (InfixApply t1' (InfixOp op) t2', es1 ++ es2)
+>   in  (InfixApply t1' (InfixConstr op) t2', es1 ++ es2)
 > fp2Expr (ParenPattern            t) = first Paren (fp2Expr t)
 > fp2Expr (TuplePattern         r ts) =
 >   let (ts', ess) = unzip $ map fp2Expr ts
