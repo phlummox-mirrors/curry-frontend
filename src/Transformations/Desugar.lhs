@@ -67,7 +67,7 @@ all names must be properly qualified before calling this module.}
 
 > module Transformations.Desugar (desugar) where
 
-> import           Control.Arrow              (second)
+> import           Control.Arrow              (first, second)
 > import           Control.Monad              (liftM, liftM2, mplus)
 > import qualified Control.Monad.State as S   (State, runState, gets, modify)
 > import           Data.List                  ((\\), nub, tails)
@@ -75,7 +75,7 @@ all names must be properly qualified before calling this module.}
 > import qualified Data.Set            as Set (Set, empty, member, insert)
 
 > import Curry.Base.Ident
-> import Curry.Base.Position
+> import Curry.Base.Position hiding (first)
 > import Curry.Syntax
 
 > import Base.Expr
@@ -619,22 +619,40 @@ Function Patterns
 >   | null free = ([]               , cs)
 >   | otherwise = ([FreeDecl p free], cs)
 >   where
->   cs       = map (uncurry (=:<=)) bs
+>   mkLB (t, v) = let (t', es) = fp2Expr t
+>                 in  (t' =:<= mkVar v) : es
+>   cs       = concatMap mkLB bs
 >   free     = nub $ filter (not . isAnonId) $ bv (map fst bs) \\ vs
->   t =:<= i = apply prelFPEq [fp2Expr t, mkVar i]
 
-> fp2Expr :: Pattern -> Expression
-> fp2Expr (LiteralPattern          l) = Literal l
-> fp2Expr (NegativePattern       _ l) = Literal (negateLiteral l)
-> fp2Expr (VariablePattern         v) = mkVar v
-> fp2Expr (ConstructorPattern   c ts) = apply (Constructor c) (map fp2Expr ts)
-> fp2Expr (InfixPattern     t1 op t2) = InfixApply (fp2Expr t1) (InfixOp op) (fp2Expr t2)
-> fp2Expr (ParenPattern            t) = Paren (fp2Expr t)
-> fp2Expr (TuplePattern         r ts) = Tuple r (map fp2Expr ts)
-> fp2Expr (ListPattern         rs ts) = List rs (map fp2Expr ts)
-> fp2Expr (FunctionPattern      f ts) = apply (Variable f) (map fp2Expr ts)
-> fp2Expr (InfixFuncPattern t1 op t2) = InfixApply (fp2Expr t1) (InfixOp op) (fp2Expr t2)
-> fp2Expr t                         = internalError $
+> fp2Expr :: Pattern -> (Expression, [Expression])
+> fp2Expr (LiteralPattern          l) = (Literal l, [])
+> fp2Expr (NegativePattern       _ l) = (Literal (negateLiteral l), [])
+> fp2Expr (VariablePattern         v) = (mkVar v, [])
+> fp2Expr (ConstructorPattern   c ts) =
+>   let (ts', ess) = unzip $ map fp2Expr ts
+>   in  (apply (Constructor c) ts', concat ess)
+> fp2Expr (InfixPattern     t1 op t2) =
+>   let (t1', es1) = fp2Expr t1
+>       (t2', es2) = fp2Expr t2
+>   in  (InfixApply t1' (InfixOp op) t2', es1 ++ es2)
+> fp2Expr (ParenPattern            t) = first Paren (fp2Expr t)
+> fp2Expr (TuplePattern         r ts) =
+>   let (ts', ess) = unzip $ map fp2Expr ts
+>   in  (Tuple r ts', concat ess)
+> fp2Expr (ListPattern         rs ts) =
+>   let (ts', ess) = unzip $ map fp2Expr ts
+>   in  (List rs ts', concat ess)
+> fp2Expr (FunctionPattern      f ts) =
+>   let (ts', ess) = unzip $ map fp2Expr ts
+>   in  (apply (Variable f) ts', concat ess)
+> fp2Expr (InfixFuncPattern t1 op t2) =
+>   let (t1', es1) = fp2Expr t1
+>       (t2', es2) = fp2Expr t2
+>   in  (InfixApply t1' (InfixOp op) t2', es1 ++ es2)
+> fp2Expr (AsPattern             v t) =
+>   let (t', es) = fp2Expr t
+>   in  (mkVar v, (t' =:<= mkVar v):es)
+> fp2Expr t                           = internalError $
 >   "Desugar.fp2Expr: Unexpected constructor term: " ++ show t
 
 Desugaring of Records
@@ -820,6 +838,9 @@ Prelude entities
 
 > prelCond :: Expression
 > prelCond = Variable $ preludeIdent "cond"
+
+> (=:<=) :: Expression -> Expression -> Expression
+> e1 =:<= e2 = apply prelFPEq [e1, e2]
 
 > prelFPEq :: Expression
 > prelFPEq = Variable $ preludeIdent "=:<="

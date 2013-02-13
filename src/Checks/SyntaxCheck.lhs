@@ -963,7 +963,7 @@ to \texttt{(apply (id id) 10)}.
 > checkFPTerm p (ParenPattern           t) = checkFPTerm p t
 > checkFPTerm p (TuplePattern        _ ts) = mapM_ (checkFPTerm p) ts
 > checkFPTerm p (ListPattern         _ ts) = mapM_ (checkFPTerm p) ts
-> checkFPTerm p t@(AsPattern          _ _) = report $ errUnsupportedFPTerm "As"     p t
+> checkFPTerm p (AsPattern            _ t) = checkFPTerm p t
 > checkFPTerm p t@(LazyPattern        _ _) = report $ errUnsupportedFPTerm "Lazy"   p t
 > checkFPTerm p t@(RecordPattern      _ _) = report $ errUnsupportedFPTerm "Record" p t
 > checkFPTerm _ (FunctionPattern      _ _) = ok -- dot not check again
