@@ -208,12 +208,14 @@ transModule opts env mdl = (env5, ilCaseComp, dumps)
   (lifted    , env3) = lift           simplified env2
   (il        , env4) = ilTrans  flat' lifted     env3
   (ilCaseComp, env5) = completeCase   il         env4
-  dumps = [ (DumpDesugared    , env1, show $ CS.ppModule desugared )
-          , (DumpSimplified   , env2, show $ CS.ppModule simplified)
-          , (DumpLifted       , env3, show $ CS.ppModule lifted    )
-          , (DumpTranslated   , env4, show $ IL.ppModule il        )
-          , (DumpCaseCompleted, env5, show $ IL.ppModule ilCaseComp)
+  dumps = [ (DumpDesugared    , env1, presentCS desugared )
+          , (DumpSimplified   , env2, presentCS simplified)
+          , (DumpLifted       , env3, presentCS lifted    )
+          , (DumpTranslated   , env4, presentIL il        )
+          , (DumpCaseCompleted, env5, presentIL ilCaseComp)
           ]
+  presentCS = if optDumpRaw opts then show else show . CS.ppModule
+  presentIL = if optDumpRaw opts then show else show . IL.ppModule
 
 -- ---------------------------------------------------------------------------
 -- Writing output
