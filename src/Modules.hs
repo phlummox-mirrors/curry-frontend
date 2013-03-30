@@ -179,17 +179,18 @@ checkModule opts (env, mdl) = do
                    then typeCheck env3 pc >>= uncurry exportCheck
                    else return (env3, pc)
   (env5, ql) <- return $ qual opts env4 tc
-  let dumps = [ (DumpParsed       , env , show $ CS.ppModule mdl)
-              , (DumpKindChecked  , env1, show $ CS.ppModule kc)
-              , (DumpSyntaxChecked, env2, show $ CS.ppModule sc)
-              , (DumpPrecChecked  , env3, show $ CS.ppModule pc)
-              , (DumpTypeChecked  , env4, show $ CS.ppModule tc)
-              , (DumpQualified    , env5, show $ CS.ppModule ql)
+  let dumps = [ (DumpParsed       , env , show' CS.ppModule mdl)
+              , (DumpKindChecked  , env1, show' CS.ppModule kc)
+              , (DumpSyntaxChecked, env2, show' CS.ppModule sc)
+              , (DumpPrecChecked  , env3, show' CS.ppModule pc)
+              , (DumpTypeChecked  , env4, show' CS.ppModule tc)
+              , (DumpQualified    , env5, show' CS.ppModule ql)
               ]
   return (env5, ql, dumps)
   where
   withTypeCheck = any (`elem` optTargetTypes opts)
                       [FlatCurry, ExtendedFlatCurry, FlatXml, AbstractCurry]
+  show' pp = if optDumpRaw opts then show else show . pp 
 
 -- ---------------------------------------------------------------------------
 -- Translating a module
