@@ -57,6 +57,8 @@ qDecl e@(ExternalDecl      _ _) = return e
 qDecl (PatternDecl     p t rhs)
   = liftM2 (PatternDecl p) (qPattern t) (qRhs rhs)
 qDecl vs@(FreeDecl   _ _) = return vs
+qDecl e@(ClassDecl _ _ _ _ _) = return e -- TODO
+qDecl e@(InstanceDecl _ _ _ _ _ _) = return e -- TODO
 
 qConstrDecl :: Qual ConstrDecl
 qConstrDecl (ConstrDecl     p vs n tys)
