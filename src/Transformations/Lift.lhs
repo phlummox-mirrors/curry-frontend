@@ -18,7 +18,7 @@ top-level.
 
 > module Transformations.Lift (lift) where
 
-> import           Control.Monad              (liftM, liftM2)
+> import           Control.Monad              (liftM, liftM2, liftM3)
 > import qualified Control.Monad.State as S   (State, runState, gets, modify)
 > import           Data.List
 > import qualified Data.Map            as Map (Map, empty, insert, lookup)
@@ -224,8 +224,9 @@ in the type environment.
 > abstractExpr pre lvs (Case r ct e alts) =
 >   liftM2 (Case r ct) (abstractExpr pre lvs e)
 >                      (mapM (abstractAlt pre lvs) alts)
-> abstractExpr pre lvs (Typed       e ty) = flip Typed ty `liftM`
->                                           abstractExpr pre lvs e
+> abstractExpr pre lvs (Typed    e cx ty) = liftM3 Typed
+>                                           (abstractExpr pre lvs e)
+>                                           (return cx) (return ty)
 > abstractExpr _   _   _                  = internalError "Lift.abstractExpr"
 
 > abstractAlt :: String -> [Ident] -> Alt -> LiftM Alt
@@ -277,7 +278,7 @@ to the top-level.
 > liftExpr (Case r ct e alts) = (Case r ct e' alts', concat $ ds' : dss')
 >   where (e'   ,ds' ) = liftExpr e
 >         (alts',dss') = unzip $ map liftAlt alts
-> liftExpr (Typed       e ty) = (Typed e' ty, ds) where (e', ds) = liftExpr e
+> liftExpr (Typed    e cx ty) = (Typed e' cx ty, ds) where (e', ds) = liftExpr e
 > liftExpr _ = internalError "Lift.liftExpr"
 
 > liftAlt :: Alt -> (Alt, [Decl])

@@ -695,7 +695,7 @@ checkParen
 > checkExpr _ (Variable    v) = checkVariable v
 > checkExpr _ (Constructor c) = checkVariable c
 > checkExpr p (Paren       e) = Paren         `liftM` checkExpr p e
-> checkExpr p (Typed    e ty) = flip Typed ty `liftM` checkExpr p e
+> checkExpr p (Typed e cx ty) = liftM3 Typed (checkExpr p e) (return cx) (return ty)
 > checkExpr p (Tuple  pos es) = Tuple pos     `liftM` mapM (checkExpr p) es
 > checkExpr p (List   pos es) = List pos      `liftM` mapM (checkExpr p) es
 > checkExpr p (ListCompr      pos e qs) = withLocalEnv $

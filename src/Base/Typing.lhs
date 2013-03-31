@@ -194,7 +194,7 @@ environment.}
 > exprType tyEnv (Literal l) = litType tyEnv l
 > exprType tyEnv (Variable v) = instUniv (funType v tyEnv)
 > exprType tyEnv (Constructor c) = instUnivExist (constrType c tyEnv)
-> exprType tyEnv (Typed e _) = exprType tyEnv e
+> exprType tyEnv (Typed e _ _) = exprType tyEnv e
 > exprType tyEnv (Paren e) = exprType tyEnv e
 > exprType tyEnv (Tuple _ es)
 >   | null es = return unitType

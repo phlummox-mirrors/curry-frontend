@@ -463,10 +463,10 @@ genExpr _ env   (Variable v)
   where
   ident = unqualify v
   midx  = getVarIndex env ident
-genExpr _   env (Constructor c) = (env, CSymbol $ genQName False env c)
-genExpr pos env (Paren    expr) = genExpr pos env expr
-genExpr pos env (Typed  expr _) = genExpr pos env expr
-genExpr pos env (Tuple  _ args) = genExpr pos env $ case args of
+genExpr _   env (Constructor  c) = (env, CSymbol $ genQName False env c)
+genExpr pos env (Paren     expr) = genExpr pos env expr
+genExpr pos env (Typed expr _ _) = genExpr pos env expr
+genExpr pos env (Tuple   _ args) = genExpr pos env $ case args of
   []  -> Variable qUnitId
   [x] -> x
   _   -> foldl Apply (Variable $ qTupleId $ length args) args

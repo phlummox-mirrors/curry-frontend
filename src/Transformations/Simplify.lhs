@@ -25,7 +25,7 @@ Currently, the following optimizations are implemented:
 
 > module Transformations.Simplify (simplify) where
 
-> import Control.Monad (liftM, liftM2)
+> import Control.Monad (liftM, liftM2, liftM3)
 > import Control.Monad.State as S (State, runState, gets, modify)
 > import qualified Data.Map as Map (Map, empty, insert, lookup)
 
@@ -228,7 +228,7 @@ functions in later phases of the compiler.
 >     simplifyLet env (scc bv (qfv m) (foldr hoistDecls [] (concat dss'))) e
 > simExpr env (Case r ct e alts) =
 >   liftM2 (Case r ct) (simExpr env e) (mapM (simplifyAlt env) alts)
-> simExpr env (Typed e ty) = flip Typed ty `liftM` simExpr env e
+> simExpr env (Typed e cx ty) = liftM3 Typed (simExpr env e) (return cx) (return ty)
 > simExpr _ _ = error "Simplify.simExpr: no pattern match"
 
 > simplifyAlt :: InlineEnv -> Alt -> SIM Alt

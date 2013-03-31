@@ -788,7 +788,7 @@ because of possibly multiple occurrences of variables.
 > tcExpr _ (Constructor c) = do
 >  m <- getModuleIdent
 >  getValueEnv >>= instExist . constrType m c
-> tcExpr p (Typed   e sig) = do
+> tcExpr p (Typed e cx sig) = do
 >   m <- getModuleIdent
 >   tyEnv0 <- getValueEnv
 >   ty <- tcExpr p e
