@@ -397,7 +397,7 @@ declPos (InfixDecl        p _ _ _  ) = p
 declPos (DataDecl         p _ _ _  ) = p
 declPos (NewtypeDecl      p _ _ _  ) = p
 declPos (TypeDecl         p _ _ _  ) = p
-declPos (TypeSig          p _ _    ) = p
+declPos (TypeSig          p _ _ _  ) = p
 declPos (FunctionDecl     p _ _    ) = p
 declPos (ForeignDecl      p _ _ _ _) = p
 declPos (ExternalDecl     p _      ) = p
@@ -473,7 +473,7 @@ decl2codes (TypeDecl _ t vs ty) =
      TypeConstructor TypeDecla (qualify t) :
      map (Identifier UnknownId . qualify) vs ++
      typeExpr2codes ty
-decl2codes (TypeSig _ fs ty) =
+decl2codes (TypeSig _ fs cx ty) =
      map (Function TypSig . qualify) fs ++ typeExpr2codes ty
 decl2codes (FunctionDecl  _ _ eqs) = concatMap equation2codes eqs
 decl2codes (ForeignDecl _ _ _ _ _) = []

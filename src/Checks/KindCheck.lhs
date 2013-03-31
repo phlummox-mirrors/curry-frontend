@@ -125,8 +125,8 @@ traversed because they can contain local type signatures.
 >   tvs' <- checkTypeLhs tvs
 >   ty'  <- checkClosedType tvs' ty
 >   return $ TypeDecl p tc tvs' ty'
-> checkDecl (TypeSig          p vs ty) =
->   TypeSig p vs `liftM` checkType ty
+> checkDecl (TypeSig       p vs cx ty) =
+>   TypeSig p vs cx `liftM` checkType ty
 > checkDecl (FunctionDecl     p f eqs) =
 >   FunctionDecl p f `liftM` mapM checkEquation eqs
 > checkDecl (PatternDecl      p t rhs) =

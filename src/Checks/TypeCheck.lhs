@@ -302,7 +302,7 @@ inferred type is less general than the signature.
 > bindTypeSig = Map.insert
 
 > bindTypeSigs :: Decl -> SigEnv -> SigEnv
-> bindTypeSigs (TypeSig _ vs ty) env =
+> bindTypeSigs (TypeSig _ vs cx ty) env =
 >   foldr (flip bindTypeSig (nameSigType ty)) env vs
 > bindTypeSigs _ env = env
 

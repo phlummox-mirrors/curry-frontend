@@ -257,7 +257,7 @@ Furthermore, it is not allowed to declare a label more than once.
 >   = let arty = typeArity texpr
 >         qid  = qualifyWith m ident
 >     in bindGlobal m ident (GlobalVar arty qid) env
-> bindFuncDecl m (TypeSig _ ids texpr) env
+> bindFuncDecl m (TypeSig _ ids cx texpr) env
 >   = foldr bindTS env $ map (qualifyWith m) ids
 >  where
 >  bindTS qid env'
@@ -356,8 +356,8 @@ top-level.
 > checkDeclLhs :: Decl -> SCM Decl
 > checkDeclLhs (InfixDecl   p fix' pr ops) =
 >   liftM2 (InfixDecl p fix') (checkPrecedence p pr) (mapM renameVar ops)
-> checkDeclLhs (TypeSig           p vs ty) =
->   (\vs' -> TypeSig p vs' ty) `liftM` mapM (checkVar "type signature") vs
+> checkDeclLhs (TypeSig        p vs cx ty) =
+>   (\vs' -> TypeSig p vs' cx ty) `liftM` mapM (checkVar "type signature") vs
 > checkDeclLhs (FunctionDecl      p _ eqs) =
 >   checkEquationsLhs p eqs
 > checkDeclLhs (ForeignDecl  p cc ie f ty) =
@@ -478,8 +478,8 @@ top-level.
 -- ---------------------------------------------------------------------------
 
 > checkDeclRhs :: [Ident] -> Decl -> SCM Decl
-> checkDeclRhs bvs (TypeSig      p vs ty) =
->   (\vs' -> TypeSig p vs' ty) `liftM` mapM (checkLocalVar bvs) vs
+> checkDeclRhs bvs (TypeSig   p vs cx ty) =
+>   (\vs' -> TypeSig p vs' cx ty) `liftM` mapM (checkLocalVar bvs) vs
 > checkDeclRhs _   (FunctionDecl p f eqs) =
 >   FunctionDecl p f `liftM` mapM checkEquation eqs
 > checkDeclRhs _   (PatternDecl  p t rhs) =
@@ -862,7 +862,7 @@ Auxiliary definitions.
 > constrs _ = []
 
 > vars :: Decl -> [Ident]
-> vars (TypeSig         _ fs _) = fs
+> vars (TypeSig       _ fs _ _) = fs
 > vars (FunctionDecl     _ f _) = [f]
 > vars (ForeignDecl  _ _ _ f _) = [f]
 > vars (ExternalDecl      _ fs) = fs
