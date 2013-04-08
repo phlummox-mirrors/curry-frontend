@@ -602,15 +602,15 @@ signature the declared type must be too general.
 >   where unifyArgs _ [] ty = return ty
 >         unifyArgs doc (t1:ts1) ty@(TypeVariable _) = do
 >              (alpha,beta) <- tcArrow p "function pattern" doc ty
->	       ty' <- tcPatternFP p t1
->	       unify p "function pattern"
->	             (doc $-$ text "Term:" <+> ppPattern 0 t1)
->	             ty' alpha
->	       unifyArgs doc ts1 beta
+>              ty' <- tcPatternFP p t1
+>              unify p "function pattern"
+>                    (doc $-$ text "Term:" <+> ppPattern 0 t1)
+>                    ty' alpha
+>              unifyArgs doc ts1 beta
 >         unifyArgs doc (t1:ts1) (TypeArrow ty1 ty2) = do
 >           tcPatternFP p t1 >>=
 >             unify p "function pattern"
->	          (doc $-$ text "Term:" <+> ppPattern 0 t1)
+>                 (doc $-$ text "Term:" <+> ppPattern 0 t1)
 >                 ty1 >>
 >             unifyArgs doc ts1 ty2
 >         unifyArgs _ _ ty = internalError $ "TypeCheck.tcPattern: " ++ show ty
@@ -622,8 +622,8 @@ signature the declared type must be too general.
 >       ty <- tcPattern p (fromJust rt)
 >       fts <- mapM (tcFieldPatt tcPattern m) fs
 >       alpha <- freshVar id
->	let rty = TypeRecord fts (Just alpha)
->	unify p "record pattern" (ppPattern 0 r) ty rty
+>       let rty = TypeRecord fts (Just alpha)
+>       unify p "record pattern" (ppPattern 0 r) ty rty
 >       return rty
 >   | otherwise = do
 >       m <- getModuleIdent
@@ -700,11 +700,11 @@ because of possibly multiple occurrences of variables.
 >   where unifyArgs _ [] ty = return ty
 >         unifyArgs doc (t1:ts1) ty@(TypeVariable _) = do
 >              (alpha,beta) <- tcArrow p "function pattern" doc ty
->	       ty' <- tcPatternFP p t1
->	       unify p "function pattern"
->	             (doc $-$ text "Term:" <+> ppPattern 0 t1)
->	             ty' alpha
->	       unifyArgs doc ts1 beta
+>              ty' <- tcPatternFP p t1
+>              unify p "function pattern"
+>                    (doc $-$ text "Term:" <+> ppPattern 0 t1)
+>                    ty' alpha
+>              unifyArgs doc ts1 beta
 >         unifyArgs doc (t1:ts1) (TypeArrow ty1 ty2) =
 >           tcPatternFP p t1 >>=
 >           unify p "pattern" (doc $-$ text "Term:" <+> ppPattern 0 t1)
@@ -719,8 +719,8 @@ because of possibly multiple occurrences of variables.
 >       ty <- tcPatternFP p (fromJust rt)
 >       fts <- mapM (tcFieldPatt tcPatternFP m) fs
 >       alpha <- freshVar id
->	let rty = TypeRecord fts (Just alpha)
->	unify p "record pattern" (ppPattern 0 r) ty rty
+>       let rty = TypeRecord fts (Just alpha)
+>       unify p "record pattern" (ppPattern 0 r) ty rty
 >       return rty
 >   | otherwise = do
 >       m <- getModuleIdent
@@ -733,13 +733,13 @@ because of possibly multiple occurrences of variables.
 >     tyEnv <- getValueEnv
 >     let p = idPosition l
 >     lty <- maybe (freshTypeVar
->	             >>= (\lty' ->
->		           modifyValueEnv
->		             (bindLabel l (qualifyWith m (mkIdent "#Rec"))
->		                        (polyType lty'))
->		           >> return lty'))
->	           (\ (ForAll _ lty') -> return lty')
->	           (sureLabelType l tyEnv)
+>                    >>= (\lty' ->
+>                          modifyValueEnv
+>                            (bindLabel l (qualifyWith m (mkIdent "#Rec"))
+>                                       (polyType lty'))
+>                          >> return lty'))
+>                  (\ (ForAll _ lty') -> return lty')
+>                  (sureLabelType l tyEnv)
 >     ty <- tcPatt p t
 >     unify p "record" (text "Field:" <+> ppFieldPatt f) lty ty
 >     return (l,ty)
@@ -945,13 +945,13 @@ because of possibly multiple occurrences of variables.
 >     ty <- tcExpr p e
 >     tyEnv <- getValueEnv
 >     lty <- maybe (freshTypeVar
->	             >>= (\lty' ->
->		           modifyValueEnv
->		             (bindLabel l (qualifyWith m (mkIdent "#Rec"))
->		                        (monoType lty'))
->	                   >> return lty'))
+>                    >>= (\lty' ->
+>                          modifyValueEnv
+>                            (bindLabel l (qualifyWith m (mkIdent "#Rec"))
+>                                       (monoType lty'))
+>                          >> return lty'))
 >                  (\ (ForAll _ lty') -> return lty')
->	           (sureLabelType l tyEnv)
+>                  (sureLabelType l tyEnv)
 >     alpha <- freshVar id
 >     let rty = TypeRecord [(l,lty)] (Just alpha)
 >     unify p "record selection" (ppExpr 0 r) ty rty
@@ -1090,7 +1090,7 @@ of~\cite{PeytonJones87:Book}).
 > unifyTypes m tr1@(TypeRecord _ Nothing) (TypeRecord fs2 (Just a2)) =
 >   either Left
 >          (\res -> either Left
->	                   (Right . compose res)
+>                          (Right . compose res)
 >                          (unifyTypes m (TypeVariable a2) tr1))
 >          (unifyTypedLabels m fs2 tr1)
 > unifyTypes m tr1@(TypeRecord _ (Just _)) tr2@(TypeRecord _ Nothing) =
@@ -1102,11 +1102,11 @@ of~\cite{PeytonJones87:Book}).
 >         (\res ->
 >           either
 >             Left
->	      (\res' -> Right (compose res res'))
->	      (unifyTypeLists m [TypeVariable a1,
->			         TypeRecord (fs1 ++ rs2) Nothing]
->	                        [TypeVariable a2,
->			         TypeRecord (fs2 ++ rs1) Nothing]))
+>             (\res' -> Right (compose res res'))
+>             (unifyTypeLists m [TypeVariable a1,
+>                                TypeRecord (fs1 ++ rs2) Nothing]
+>                               [TypeVariable a2,
+>                                TypeRecord (fs2 ++ rs1) Nothing]))
 >         (unifyTypedLabels m fs1' tr2)
 >   where
 >   splitFields fsx fsy = split' [] [] fsy fsx
@@ -1133,9 +1133,9 @@ of~\cite{PeytonJones87:Book}).
 >          (\r ->
 >            maybe (Left (errMissingLabel m l tr))
 >                  (\ty' ->
->		     either (const (Left (errIncompatibleLabelTypes m l ty ty')))
->	                    (Right . flip compose r)
->	                    (unifyTypes m ty ty'))
+>                    either (const (Left (errIncompatibleLabelTypes m l ty ty')))
+>                           (Right . flip compose r)
+>                           (unifyTypes m ty ty'))
 >                  (lookup l fs2))
 >          (unifyTypedLabels m fs1 tr)
 > unifyTypedLabels _ _ _ = internalError "TypeCheck.unifyTypedLabels"
