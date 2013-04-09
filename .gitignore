@@ -1,2 +1,5 @@
 dist/
 .curry/
+.dist-buildwrapper/
+.project
+.settings
