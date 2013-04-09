@@ -444,7 +444,7 @@ getExportedImports = do
 
 --
 getExpImports :: ModuleIdent -> Map.Map ModuleIdent [CS.Export] -> [CS.Export]
-		 -> Map.Map ModuleIdent [CS.Export]
+                 -> Map.Map ModuleIdent [CS.Export]
 getExpImports _      expenv [] = expenv
 getExpImports mident expenv ((CS.Export qident):exps)
   = getExpImports mident
@@ -463,7 +463,7 @@ getExpImports mident expenv ((CS.ExportModule mident'):exps)
 
 --
 bindExpImport :: ModuleIdent -> QualIdent -> CS.Export
-	         -> Map.Map ModuleIdent [CS.Export] -> Map.Map ModuleIdent [CS.Export]
+                 -> Map.Map ModuleIdent [CS.Export] -> Map.Map ModuleIdent [CS.Export]
 bindExpImport mident qident export expenv
   | isJust (localIdent mident qident)
   = expenv
@@ -578,8 +578,8 @@ genConsCall qname arity args
      = genComb qname args (ConsPartCall (arity - cnt))
    | arity < cnt
      = do let (funcargs, applicargs) = splitAt arity args
-	  conscall <- genComb qname funcargs ConsCall
-	  genApplicComb conscall applicargs
+          conscall <- genComb qname funcargs ConsCall
+          genApplicComb conscall applicargs
    | otherwise
      = genComb qname args ConsCall
  where cnt = length args
@@ -588,7 +588,7 @@ genConsCall qname arity args
 genComb :: QName -> [IL.Expression] -> CombType -> FlatState Expr
 genComb qname args combtype
    = do exprs <- mapM visitExpression args
-	return (Comb combtype qname exprs)
+        return (Comb combtype qname exprs)
 
 --
 genApplicComb :: Expr -> [IL.Expression] -> FlatState Expr
@@ -662,24 +662,24 @@ genRecordTypes = records >>= mapM genRecordType
 genRecordType :: CS.IDecl -> FlatState TypeDecl
 genRecordType (CS.ITypeDecl _ qident params (CS.RecordType fields _))
    = do let is = [0 .. (length params) - 1]
-	    (modid,ident) = (qidModule qident, qidIdent qident)
-	qname <- visitQualIdent ((maybe qualify qualifyWith modid)
-				 (recordExtId ident))
-	labels <- mapM (genRecordLabel modid (zip params is)) fields
-	return (Type qname Public is labels)
+            (modid,ident) = (qidModule qident, qidIdent qident)
+        qname <- visitQualIdent ((maybe qualify qualifyWith modid)
+                                 (recordExtId ident))
+        labels <- mapM (genRecordLabel modid (zip params is)) fields
+        return (Type qname Public is labels)
 genRecordType _ = internalError "GenFlatCurry.genRecordType: no pattern match"
 
 --
 genRecordLabel :: Maybe ModuleIdent -> [(Ident,Int)] -> ([Ident],CS.TypeExpr)
-	       -> FlatState ConsDecl
+               -> FlatState ConsDecl
 genRecordLabel modid vis ([ident],typeexpr)
    = do tyEnv <- gets typeEnvE
         tcEnv <- gets tConsEnvE
-	let typeexpr' = elimRecordTypes tyEnv tcEnv typeexpr
+        let typeexpr' = elimRecordTypes tyEnv tcEnv typeexpr
         texpr <- visitType (snd (cs2ilType vis typeexpr'))
-	qname <- visitQualIdent ((maybe qualify qualifyWith modid)
-				 (labelExtId ident))
-	return (Cons qname 1 Public [texpr])
+        qname <- visitQualIdent ((maybe qualify qualifyWith modid)
+                                 (labelExtId ident))
+        return (Cons qname 1 Public [texpr])
 genRecordLabel _ _ _ = internalError "GenFlatCurry.genRecordLabel: no pattern match"
 
 
@@ -707,24 +707,24 @@ elimRecordTypes tyEnv tcEnv (CS.ArrowType typeexpr1 typeexpr2)
 elimRecordTypes tyEnv tcEnv (CS.RecordType fss _)
    = let fs = flattenRecordTypeFields fss
      in  case (lookupValue (fst (head fs)) tyEnv) of
-  	   [Label _ record _] ->
-	     case (qualLookupTC record tcEnv) of
-	       [AliasType _ n (TypeRecord fs' _)] ->
-	         let ms = foldl (matchTypeVars fs) Map.empty fs'
-		     types = map (\i -> maybe
-			 	          (CS.VariableType
-					     (mkIdent ("#tvar" ++ show i)))
-				          (elimRecordTypes tyEnv tcEnv)
-				          (Map.lookup i ms))
-			         [0 .. n-1]
-	         in  CS.ConstructorType record types
-	       _ -> internalError ("GenFlatCurry.elimRecordTypes: "
-		 		   ++ "no record type")
-	   _ -> internalError ("GenFlatCurry.elimRecordTypes: "
-			       ++ "no label")
+           [Label _ record _] ->
+             case (qualLookupTC record tcEnv) of
+               [AliasType _ n (TypeRecord fs' _)] ->
+                 let ms = foldl (matchTypeVars fs) Map.empty fs'
+                     types = map (\i -> maybe
+                                          (CS.VariableType
+                                             (mkIdent ("#tvar" ++ show i)))
+                                          (elimRecordTypes tyEnv tcEnv)
+                                          (Map.lookup i ms))
+                                 [0 .. n-1]
+                 in  CS.ConstructorType record types
+               _ -> internalError ("GenFlatCurry.elimRecordTypes: "
+                                   ++ "no record type")
+           _ -> internalError ("GenFlatCurry.elimRecordTypes: "
+                               ++ "no label")
 
 matchTypeVars :: [(Ident,CS.TypeExpr)] -> Map.Map Int CS.TypeExpr
-	      -> (Ident, Type) -> Map.Map Int CS.TypeExpr
+              -> (Ident, Type) -> Map.Map Int CS.TypeExpr
 matchTypeVars fs ms (l,ty) = maybe ms (match ms ty) (lookup l fs)
   where
   match ms1 (TypeVariable i) typeexpr = Map.insert i typeexpr ms1
@@ -740,7 +740,7 @@ matchTypeVars fs ms (l,ty) = maybe ms (match ms ty) (lookup l fs)
      = foldl (matchTypeVars (flattenRecordTypeFields fss)) ms1 fs'
   match _ ty1 typeexpr
      = internalError ("GenFlatCurry.matchTypeVars: "
-		      ++ show ty1 ++ "\n" ++ show typeexpr)
+                      ++ show ty1 ++ "\n" ++ show typeexpr)
 
   matchList ms1 tys
      = foldl (\ms' (ty',typeexpr) -> match ms' ty' typeexpr) ms1 . zip tys
