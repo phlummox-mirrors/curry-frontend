@@ -74,8 +74,13 @@ compileModule :: Options -> FilePath -> IO ()
 compileModule opts fn = do
   loaded <- loadModule opts fn
   -- write parsed output always if requested, also if the following checks fail
-  when (Parsed `elem` optTargetTypes opts) 
-    (let (_, mdl) = loaded in writeParsed opts fn mdl)
+  when (Parsed `elem` optTargetTypes opts) $ do 
+    let (env, mdl) = loaded
+    writeParsed opts fn mdl
+    -- dump parse tree if requested
+    when (DumpParsed `elem` optDumps opts) $ 
+      doDump opts (DumpParsed, env, 
+        (if optDumpRaw opts then show else show . CS.ppModule) mdl)
   -- do checks only if a different output than the parse tree is requested 
   when (not . null $ filter (/= Parsed) (optTargetTypes opts))
     (case checkModule opts loaded of
