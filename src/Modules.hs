@@ -73,12 +73,17 @@ import Transformations
 compileModule :: Options -> FilePath -> IO ()
 compileModule opts fn = do
   loaded <- loadModule opts fn
-  case checkModule opts loaded of
-    CheckFailed errs -> abortWithMessages errs
-    CheckSuccess (env, mdl, dumps) -> do
-      warn opts $ warnCheck env mdl
-      mapM_ (doDump opts) dumps
-      writeOutput opts fn (env, mdl)
+  -- write parsed output always if requested, also if the following checks fail
+  when (Parsed `elem` optTargetTypes opts) 
+    (let (_, mdl) = loaded in writeParsed opts fn mdl)
+  -- do checks only if a different output than the parse tree is requested 
+  when (not . null $ filter (/= Parsed) (optTargetTypes opts))
+    (case checkModule opts loaded of
+      CheckFailed errs -> abortWithMessages errs
+      CheckSuccess (env, mdl, dumps) -> do
+        warn opts $ warnCheck env mdl
+        mapM_ (doDump opts) dumps
+        writeOutput opts fn (env, mdl))
 
 writeOutput :: Options -> FilePath -> (CompilerEnv, CS.Module) -> IO ()
 writeOutput opts fn (env, modul) = do
