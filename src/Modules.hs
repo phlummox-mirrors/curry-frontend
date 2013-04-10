@@ -182,27 +182,27 @@ importPrelude opts fn m@(CS.Module mid es is ds)
 checkModule :: Options -> (CompilerEnv, CS.Module)
             -> CheckResult (CompilerEnv, CS.Module, [Dump])
 checkModule opts (env, mdl) = do
-  (env0, tcc) <- typeClassesCheck env mdl 
-  (env1,  kc) <- kindCheck env0 tcc -- should be only syntax checking ?
-  (env2,  sc) <- syntaxCheck opts env1 kc
-  (env3,  pc) <- precCheck        env2 sc
-  (env4a, tc) <- if withTypeCheck
-                   then typeCheck env3 pc 
-                   else return (env3, pc)
-  (env4b, ec) <- if withTypeCheck 
-                   then exportCheck env4a tc
-                   else return (env4a, tc)
-  (env5,  ql) <- return $ qual opts env4b ec
-  let dumps = [ (DumpParsed       , env ,  show' CS.ppModule mdl)
-              , (DumpTypeClassesChecked, env0, show' CS.ppModule tcc)
-              , (DumpKindChecked  , env1,  show' CS.ppModule kc)
-              , (DumpSyntaxChecked, env2,  show' CS.ppModule sc)
-              , (DumpPrecChecked  , env3,  show' CS.ppModule pc)
-              , (DumpTypeChecked  , env4a, show' CS.ppModule tc)
-              , (DumpExportChecked, env4b, show' CS.ppModule ec)
-              , (DumpQualified    , env5,  show' CS.ppModule ql)
+  (env1, tcc) <- typeClassesCheck env mdl 
+  (env2,  kc) <- kindCheck env1 tcc -- should be only syntax checking ?
+  (env3,  sc) <- syntaxCheck opts env2 kc
+  (env4,  pc) <- precCheck        env3 sc
+  (env5,  tc) <- if withTypeCheck
+                   then typeCheck env4 pc 
+                   else return (env4, pc)
+  (env6,  ec) <- if withTypeCheck 
+                   then exportCheck env5 tc
+                   else return (env5, tc)
+  (env7,  ql) <- return $ qual opts env6 ec
+  let dumps = [ (DumpParsed            , env , show' CS.ppModule mdl)
+              , (DumpTypeClassesChecked, env1, show' CS.ppModule tcc)
+              , (DumpKindChecked       , env2, show' CS.ppModule kc)
+              , (DumpSyntaxChecked     , env3, show' CS.ppModule sc)
+              , (DumpPrecChecked       , env4, show' CS.ppModule pc)
+              , (DumpTypeChecked       , env5, show' CS.ppModule tc)
+              , (DumpExportChecked     , env6, show' CS.ppModule ec)
+              , (DumpQualified         , env7, show' CS.ppModule ql)
               ]
-  return (env5, ql, dumps)
+  return (env7, ql, dumps)
   where
   withTypeCheck = any (`elem` optTargetTypes opts)
                       [FlatCurry, ExtendedFlatCurry, FlatXml, AbstractCurry]
