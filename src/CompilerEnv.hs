@@ -18,7 +18,7 @@ import Text.PrettyPrint
 
 import Curry.Base.Ident (ModuleIdent)
 
-import Base.TopEnv (allLocalBindings)
+import Base.TopEnv (allLocalBindings, allBindings)
 
 import Env.Interface
 import Env.ModuleAlias (AliasEnv, initAliasEnv)
@@ -26,6 +26,8 @@ import Env.OpPrec
 import Env.TypeConstructor
 import Env.Value
 import Env.ClassEnv
+
+import CompilerOpts
 
 -- |A compiler environment contains information about the module currently
 --  compiled. The information is updated during the different stages of
@@ -51,19 +53,20 @@ initCompilerEnv mid = CompilerEnv
   , classEnv     = initClassEnv
   }
 
-showCompilerEnv :: CompilerEnv -> String
-showCompilerEnv env = show $ vcat
+showCompilerEnv :: Options -> CompilerEnv -> String
+showCompilerEnv opts env = show $ vcat
   [ header "ModuleIdent     " $ textS  $ moduleIdent env
   , header "Interfaces      " $ hcat   $ punctuate comma $ map textS $ Map.keys $ interfaceEnv env
   , header "ModuleAliases   " $ ppMap  $ aliasEnv     env
-  , header "TypeConstructors" $ ppAL $ allLocalBindings $ tyConsEnv    env
-  , header "Values          " $ ppAL $ allLocalBindings $ valueEnv     env
-  , header "Precedences     " $ ppAL $ allLocalBindings $ opPrecEnv    env
+  , header "TypeConstructors" $ ppAL $ showLocalBindings $ tyConsEnv    env
+  , header "Values          " $ ppAL $ showLocalBindings $ valueEnv     env
+  , header "Precedences     " $ ppAL $ showLocalBindings $ opPrecEnv    env
   , header "Classes         " $ ppClasses $ classEnv env
   ]
   where
   header hdr content = hang (text hdr <+> colon) 4 content
   textS = text . show
+  showLocalBindings = if optDumpCompleteEnv opts then allBindings else allLocalBindings
 
 ppMap :: (Show a, Show b) => Map.Map a b -> Doc
 ppMap = ppAL . Map.toList

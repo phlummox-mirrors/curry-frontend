@@ -319,7 +319,7 @@ writeAbstractCurry opts fname env modul = do
 -- |The 'dump' function writes the selected information to standard output.
 doDump :: Options -> Dump -> IO ()
 doDump opts (level, env, dump) = when (level `elem` optDumps opts) $ do
-  when (optDumpEnv opts) $ putStrLn $ showCompilerEnv env
+  when (optDumpEnv opts) $ putStrLn $ showCompilerEnv opts env
   putStrLn $ unlines [header, replicate (length header) '=', dump]
   where
   header = lookupHeader dumpLevel

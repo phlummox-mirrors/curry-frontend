@@ -46,6 +46,7 @@ data Options = Options
   , optDumps        :: [DumpLevel]    -- ^ dump levels
   , optDumpEnv      :: Bool           -- ^ dump compilation environment
   , optDumpRaw      :: Bool           -- ^ dump data structure
+  , optDumpCompleteEnv :: Bool        -- ^ show complete environment
   }
 
 -- | Default compiler options
@@ -66,6 +67,7 @@ defaultOptions = Options
   , optDumps        = []
   , optDumpEnv      = False
   , optDumpRaw      = False
+  , optDumpCompleteEnv  = False
   }
 
 data CymakeMode
@@ -250,6 +252,9 @@ options =
   , Option ""   ["dump-raw"]
       (NoArg (\ opts -> opts { optDumpRaw = True }))
       "Dump as data structure instead of pretty printing"
+  , Option "" ["dump-complete-env"]
+      (NoArg (\opts -> opts { optDumpCompleteEnv = True}))
+      "Dump the complete environment"
   ] ++ dumpDescriptions
 
 dumpDescriptions :: [OptDescr (Options -> Options)]
