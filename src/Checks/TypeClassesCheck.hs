@@ -1,6 +1,6 @@
 {- |
     Module      :  $Header$
-    Description :  
+    Description :  TODO
     Copyright   :  (c) 2013 Matthias Böhm
     License     :  OtherLicense
 
@@ -17,6 +17,27 @@ import Curry.Syntax.Type
 import Env.ClassEnv
 import Base.Messages (Message, posMessage, internalError)
 
-typeClassesCheck :: [Decl] -> ([Decl], ClassEnv, [Message])
-typeClassesCheck decls = (decls, initClassEnv, [])
+import Data.List
 
+typeClassesCheck :: [Decl] -> ClassEnv -> ([Decl], ClassEnv, [Message])
+typeClassesCheck decls cenv = 
+  let 
+    (classDecls, rest) = extractClassDecls decls
+    -- TODO: do checks
+    classes = map classDeclToClass classDecls
+  in (rest, ClassEnv classes [], [])
+
+extractClassDecls :: [Decl] -> ([Decl], [Decl])
+extractClassDecls = partition isClass
+  where isClass (ClassDecl _ _ _ _ _) = True
+        isClass _ = False
+        
+classDeclToClass :: Decl -> Class
+classDeclToClass (ClassDecl _ (SContext scon) cls tyvar types) 
+  = Class { 
+    superClasses = map fst scon, 
+    theClass = cls, 
+    typeVar = 0, -- TODO
+    kind = -1, -- TODO
+    methods = [] -- TODO
+  }

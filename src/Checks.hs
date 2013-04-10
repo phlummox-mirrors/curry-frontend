@@ -107,6 +107,6 @@ typeClassesCheck :: CompilerEnv -> Module -> CheckResult (CompilerEnv, Module)
 typeClassesCheck env (Module m es is ds) 
   | null msgs = CheckSuccess (env {classEnv = clsEnv}, Module m es is decls') 
   | otherwise = CheckFailed msgs
-  where (decls', clsEnv, msgs) = TCC.typeClassesCheck ds 
+  where (decls', clsEnv, msgs) = TCC.typeClassesCheck ds (classEnv env)
 
 
