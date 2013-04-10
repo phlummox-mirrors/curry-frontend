@@ -17,12 +17,13 @@ import Curry.Syntax (Module (..))
 
 import Base.Messages
 
-import qualified Checks.ExportCheck as EC (exportCheck)
-import qualified Checks.KindCheck   as KC (kindCheck)
-import qualified Checks.PrecCheck   as PC (precCheck)
-import qualified Checks.SyntaxCheck as SC (syntaxCheck)
-import qualified Checks.TypeCheck   as TC (typeCheck)
-import qualified Checks.WarnCheck   as WC (warnCheck)
+import qualified Checks.ExportCheck      as EC (exportCheck)
+import qualified Checks.KindCheck        as KC (kindCheck)
+import qualified Checks.PrecCheck        as PC (precCheck)
+import qualified Checks.SyntaxCheck      as SC (syntaxCheck)
+import qualified Checks.TypeCheck        as TC (typeCheck)
+import qualified Checks.WarnCheck        as WC (warnCheck)
+import qualified Checks.TypeClassesCheck as TCC (typeClassesCheck)
 
 import CompilerEnv
 import CompilerOpts
@@ -99,3 +100,13 @@ exportCheck env (Module m es is ds)
 -- |Check for warnings.
 warnCheck :: CompilerEnv -> Module -> [Message]
 warnCheck env mdl = WC.warnCheck (valueEnv env) mdl
+
+-- |Check the type classes
+-- Changes the classes environment and removes class (and instance?) declarations
+typeClassesCheck :: CompilerEnv -> Module -> CheckResult (CompilerEnv, Module)
+typeClassesCheck env (Module m es is ds) 
+  | null msgs = CheckSuccess (env {classEnv = clsEnv}, Module m es is decls') 
+  | otherwise = CheckFailed msgs
+  where (decls', clsEnv, msgs) = TCC.typeClassesCheck ds 
+
+

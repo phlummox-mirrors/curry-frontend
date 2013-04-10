@@ -102,33 +102,35 @@ classifyVerbosity _   v = v
 
 -- |Data type for representing code dumps
 data DumpLevel
-  = DumpParsed        -- ^ dump source code after parsing
-  | DumpKindChecked   -- ^ dump source code after kind checking
-  | DumpSyntaxChecked -- ^ dump source code after syntax checking
-  | DumpPrecChecked   -- ^ dump source code after precedence checking
-  | DumpTypeChecked   -- ^ dump source code after type checking
-  | DumpExportChecked -- ^ dump source code after export checking
-  | DumpQualified     -- ^ dump source  after qualification
-  | DumpDesugared     -- ^ dump source  after desugaring
-  | DumpSimplified    -- ^ dump source  after simplification
-  | DumpLifted        -- ^ dump source  after lambda-lifting
-  | DumpTranslated    -- ^ dump IL code after translation
-  | DumpCaseCompleted -- ^ dump IL code after case completion
+  = DumpParsed             -- ^ dump source code after parsing
+  | DumpTypeClassesChecked -- ^ dump source code after type class checking
+  | DumpKindChecked        -- ^ dump source code after kind checking
+  | DumpSyntaxChecked      -- ^ dump source code after syntax checking
+  | DumpPrecChecked        -- ^ dump source code after precedence checking
+  | DumpTypeChecked        -- ^ dump source code after type checking
+  | DumpExportChecked      -- ^ dump source code after export checking
+  | DumpQualified          -- ^ dump source  after qualification
+  | DumpDesugared          -- ^ dump source  after desugaring
+  | DumpSimplified         -- ^ dump source  after simplification
+  | DumpLifted             -- ^ dump source  after lambda-lifting
+  | DumpTranslated         -- ^ dump IL code after translation
+  | DumpCaseCompleted      -- ^ dump IL code after case completion
     deriving (Eq, Bounded, Enum, Show)
 
 dumpLevel :: [(DumpLevel, String, String)]
-dumpLevel = [ (DumpParsed       , "parsed", "parse tree"               )
-            , (DumpKindChecked  , "kc"    , "kind checker output"      )
-            , (DumpSyntaxChecked, "sc"    , "syntax checker output"    )
-            , (DumpPrecChecked  , "pc"    , "precedence checker output")
-            , (DumpTypeChecked  , "tc"    , "type checker output"      )
-            , (DumpExportChecked, "ec"    , "export checker output"    )
-            , (DumpQualified    , "qual"  , "qualifier output"         )
-            , (DumpDesugared    , "ds"    , "desugarer output"         )
-            , (DumpSimplified   , "simpl" , "simplifier output"        )
-            , (DumpLifted       , "lifted", "lifting output"           )
-            , (DumpTranslated   , "trans" , "translated output"        )
-            , (DumpCaseCompleted, "cc"    , "case completed output"    )
+dumpLevel = [ (DumpParsed       , "parsed", "parse tree"                   )
+            , (DumpTypeClassesChecked, "tcc", "type classes checker output")
+            , (DumpKindChecked  , "kc"    , "kind checker output"          )
+            , (DumpSyntaxChecked, "sc"    , "syntax checker output"        )
+            , (DumpPrecChecked  , "pc"    , "precedence checker output"    )
+            , (DumpTypeChecked  , "tc"    , "type checker output"          )
+            , (DumpExportChecked, "ec"    , "export checker output"        )
+            , (DumpQualified    , "qual"  , "qualifier output"             )
+            , (DumpDesugared    , "ds"    , "desugarer output"             )
+            , (DumpSimplified   , "simpl" , "simplifier output"            )
+            , (DumpLifted       , "lifted", "lifting output"               )
+            , (DumpTranslated   , "trans" , "translated output"            )
+            , (DumpCaseCompleted, "cc"    , "case completed output"        )
             ]
 
 -- |Data type representing language extensions

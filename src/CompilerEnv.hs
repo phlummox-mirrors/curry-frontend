@@ -25,6 +25,7 @@ import Env.ModuleAlias (AliasEnv, initAliasEnv)
 import Env.OpPrec
 import Env.TypeConstructor
 import Env.Value
+import Env.ClassEnv
 
 -- |A compiler environment contains information about the module currently
 --  compiled. The information is updated during the different stages of
@@ -36,6 +37,7 @@ data CompilerEnv = CompilerEnv
   , tyConsEnv    :: TCEnv        -- ^ type constructors
   , valueEnv     :: ValueEnv     -- ^ functions and data constructors
   , opPrecEnv    :: OpPrecEnv    -- ^ operator precedences
+  , classEnv     :: ClassEnv     -- ^ type classes environment
   }
 
 initCompilerEnv :: ModuleIdent -> CompilerEnv
@@ -46,6 +48,7 @@ initCompilerEnv mid = CompilerEnv
   , tyConsEnv    = initTCEnv
   , valueEnv     = initDCEnv
   , opPrecEnv    = initOpPrecEnv
+  , classEnv     = initClassEnv
   }
 
 showCompilerEnv :: CompilerEnv -> String
@@ -56,6 +59,7 @@ showCompilerEnv env = show $ vcat
   , header "TypeConstructors" $ ppAL $ allLocalBindings $ tyConsEnv    env
   , header "Values          " $ ppAL $ allLocalBindings $ valueEnv     env
   , header "Precedences     " $ ppAL $ allLocalBindings $ opPrecEnv    env
+  , header "Classes         " $ ppClasses $ classEnv env
   ]
   where
   header hdr content = hang (text hdr <+> colon) 4 content

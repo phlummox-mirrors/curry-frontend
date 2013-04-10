@@ -57,11 +57,13 @@ Executable cymake
     , Checks.PrecCheck
     , Checks.SyntaxCheck
     , Checks.TypeCheck
+    , Checks.TypeClassesCheck
     , Checks.WarnCheck
     , CompilerEnv
     , CompilerOpts
     , CurryBuilder
     , CurryDeps
+    , Env.ClassEnv
     , Env.Interface
     , Env.ModuleAlias
     , Env.OpPrec
