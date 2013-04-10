@@ -60,14 +60,16 @@ ppClasses (ClassEnv classes ifs) =
 ppClass :: Class -> Doc
 ppClass (Class {superClasses = sc, theClass = tc, typeVar = tv, 
                 kind = k, methods = ms})
-  = text "class<" <> text (show k) <> text ", " <> text (show tv)
-  <> text ">" <+> hsep (map (text . show) sc) <> text " => " <> text (show tc)
-  <+> hsep (map (text . show) ms) 
+  = text "class<" <> text (show k) <> text ">" 
+  <+> parens (hsep $ punctuate (text ",") (map (text . show) sc))
+  <> text " => " <> text (show tc)
+  <+> text (show tv) 
+  <+> brackets (hsep $ punctuate (text ",") (map (text . show) ms)) 
 
 ppIf :: Interface -> Doc
 ppIf (Interface {context = cx, iClass = ic, iType = it, typeVars = tvs})
   = text "interface" 
-  <+> hsep (map (\(qid, tid) -> text (show qid) <+> text (show tid)) cx)
+  <+> parens (hsep $ punctuate (text ",") (map (\(qid, tid) -> text (show qid) <+> text (show tid)) cx))
   <> text " => " <> text (show ic) <+> text "(" <> text (show it)
   <+> hsep (map (text. show) tvs) <> text ")"
   
