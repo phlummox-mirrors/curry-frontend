@@ -3,3 +3,5 @@ dist/
 .dist-buildwrapper/
 .project
 .settings
+*.hi
+*.o
