@@ -21,6 +21,7 @@ import Base.Types hiding (typeVar, typeVars)
 import Curry.Base.Ident
 import Text.PrettyPrint
 
+-- |The class environment consists of the classes and instances in scope
 data ClassEnv = ClassEnv [Class] [Interface]
   deriving Show
 
@@ -45,6 +46,7 @@ data Interface = Interface
 initClassEnv :: ClassEnv 
 initClassEnv = ClassEnv [] []
 
+-- |looks up a given class from the class environment
 lookupClass :: ClassEnv -> Ident -> Maybe Class
 lookupClass (ClassEnv cls _) c = lookupClass' cls
   where lookupClass' [] = Nothing
@@ -52,6 +54,9 @@ lookupClass (ClassEnv cls _) c = lookupClass' cls
           | tc == c = Just c'
           | otherwise = lookupClass' cs
 
+-- ----------------------------------------------------------------------------
+-- Pritty printer functions
+-- ----------------------------------------------------------------------------
 ppClasses :: ClassEnv -> Doc
 ppClasses (ClassEnv classes ifs) = 
   vcat (map ppClass classes) $$ vcat (map ppIf ifs)
