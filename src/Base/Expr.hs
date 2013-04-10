@@ -174,6 +174,7 @@ instance QualExpr Pattern where
 
 instance Expr TypeExpr where
   fv (ConstructorType _ tys) = fv tys
+  fv (SpecialConstructorType _ tys) = fv tys
   fv (VariableType       tv)
     | isAnonId tv            = []
     | otherwise              = [tv]

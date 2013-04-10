@@ -44,6 +44,11 @@ order of type variables in the left hand side of a type declaration.
 > toType' :: Map.Map Ident Int -> CS.TypeExpr -> Type
 > toType' tvs (CS.ConstructorType tc tys)
 >   = TypeConstructor tc (map (toType' tvs) tys)
+> toType' tvs (CS.SpecialConstructorType (CS.QualTC tc) tys)
+>   = toType' tvs (CS.ConstructorType tc tys)
+> {-toType' _tvs (CS.SpecialConstructorType tc _tys)
+>   -- TODO
+>   = internalError $ "Base.CurryTypes.toType' " ++ show tc ++ " not yet supported" -}
 > toType' tvs (CS.VariableType        tv) = case Map.lookup tv tvs of
 >   Just tv' -> TypeVariable tv'
 >   Nothing  -> internalError $ "Base.CurryTypes.toType': " ++ show tv
