@@ -403,6 +403,8 @@ declPos (ForeignDecl      p _ _ _ _) = p
 declPos (ExternalDecl     p _      ) = p
 declPos (PatternDecl      p _ _    ) = p
 declPos (FreeDecl         p _      ) = p
+declPos (ClassDecl        p _ _ _ _) = p
+declPos (InstanceDecl   p _ _ _ _ _) = p
 
 lessDecl :: Decl -> Decl -> Bool
 lessDecl = (<) `on` declPos
@@ -619,7 +621,9 @@ showToken (Token Select       _) = ":>"
 showToken (Token SymDot       _) = "."
 showToken (Token SymMinus     _) = "-"
 showToken (Token SymMinusDot  _) = "-."
+showToken (Token DoubleArrow  _) = "=>" 
 showToken (Token KW_case      _) = "case"
+showToken (Token KW_class     _) = "class"
 showToken (Token KW_data      _) = "data"
 showToken (Token KW_do        _) = "do"
 showToken (Token KW_else      _) = "else"
@@ -633,6 +637,7 @@ showToken (Token KW_in        _) = "in"
 showToken (Token KW_infix     _) = "infix"
 showToken (Token KW_infixl    _) = "infixl"
 showToken (Token KW_infixr    _) = "infixr"
+showToken (Token KW_instance  _) = "instance"
 showToken (Token KW_let       _) = "let"
 showToken (Token KW_module    _) = "module"
 showToken (Token KW_newtype   _) = "newtype"
