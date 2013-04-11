@@ -19,6 +19,7 @@ import Base.Messages (Message, posMessage, internalError)
 
 import Data.List
 import Text.PrettyPrint
+import qualified Data.Map as Map
 
 import Base.Types (Type (..), TypeScheme (..))
 import Curry.Base.Ident
@@ -39,8 +40,9 @@ thenCheck chk cont = case chk of
 typeClassesCheck :: [Decl] -> ClassEnv -> ([Decl], ClassEnv, [Message])
 typeClassesCheck decls _cenv = 
   case result of 
-    CheckSuccess classes -> (decls {-_rest-}, ClassEnv classes [], [])
-    CheckFailed errs -> (decls, ClassEnv [] [], errs)
+    CheckSuccess classes -> 
+      (decls {-_rest-}, ClassEnv classes [] (buildClassMethodsMap classes), [])
+    CheckFailed errs -> (decls, ClassEnv [] [] Map.empty, errs)
   where
     (classDecls, _rest) = extractClassDecls decls
     result = do
@@ -77,6 +79,14 @@ isTypeSig _ = False
 isFuncDecl :: Decl -> Bool
 isFuncDecl (FunctionDecl _ _ _) = True
 isFuncDecl _ = False
+
+buildClassMethodsMap :: [Class] -> Map.Map QualIdent QualIdent
+buildClassMethodsMap cls = Map.unions $ map addClassMethods cls
+
+addClassMethods :: Class -> Map.Map QualIdent QualIdent
+addClassMethods (Class { methods = ms, theClass = cls}) = 
+  let ms_cls = map (\(m, _, _) -> (qualify m, qualify cls)) ms
+  in foldr (uncurry Map.insert) Map.empty ms_cls
 
 -- ---------------------------------------------------------------------------
 -- checks

@@ -21,9 +21,11 @@ module Env.ClassEnv
 import Curry.Base.Ident
 import Text.PrettyPrint
 import Curry.Syntax.Type
+import qualified Data.Map as Map
 
 -- |The class environment consists of the classes and instances in scope
-data ClassEnv = ClassEnv [Class] [Instance]
+-- plus a map from class methods to their defining classes
+data ClassEnv = ClassEnv [Class] [Instance] (Map.Map QualIdent QualIdent) 
   deriving Show
 
 data Class = Class
@@ -46,11 +48,11 @@ data Instance = Instance
   deriving Show
   
 initClassEnv :: ClassEnv 
-initClassEnv = ClassEnv [] []
+initClassEnv = ClassEnv [] [] Map.empty
 
 -- |looks up a given class from the class environment
 lookupClass :: ClassEnv -> Ident -> Maybe Class
-lookupClass (ClassEnv cls _) c = lookupClass' cls
+lookupClass (ClassEnv cls _ _) c = lookupClass' cls
   where lookupClass' [] = Nothing
         lookupClass' (c'@Class {theClass=tc}:cs) 
           | tc == c = Just c'
@@ -60,8 +62,9 @@ lookupClass (ClassEnv cls _) c = lookupClass' cls
 -- Pritty printer functions
 -- ----------------------------------------------------------------------------
 ppClasses :: ClassEnv -> Doc
-ppClasses (ClassEnv classes ifs) = 
+ppClasses (ClassEnv classes ifs mmap) = 
   vcat (map ppClass classes) $$ vcat (map ppInst ifs)
+  $$ text (show mmap)
   
   
 ppClass :: Class -> Doc
