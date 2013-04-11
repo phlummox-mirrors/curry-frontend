@@ -1,7 +1,7 @@
 
 module B where
 
-import A
+import A (A1)
 
 class B1 a where
   funB1 :: a
