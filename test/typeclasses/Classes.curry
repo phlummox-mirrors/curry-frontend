@@ -20,5 +20,5 @@ class (C1 a, C3 a) => C2 a
 -- errors:
 
 -- class C a => C2 b
--- class (C a, C2 b, C4 a) => C3 b
+-- class (C a, C2 b, C4 c) => C3 b
 

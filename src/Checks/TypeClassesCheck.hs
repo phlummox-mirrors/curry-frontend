@@ -23,6 +23,7 @@ import qualified Data.Map as Map
 
 import Base.Types (Type (..), TypeScheme (..))
 import Curry.Base.Ident
+import Curry.Base.Position
 
 data CheckResult a
   = CheckSuccess a
@@ -96,6 +97,15 @@ typeVariableInContext :: Decl -> CheckResult ()
 typeVariableInContext (ClassDecl p (SContext scon) _cls tyvar _decls) 
  = let idsInContext = map snd scon in 
    if not (null scon) && nub idsInContext /= [tyvar]
-   then CheckFailed [posMessage p (text "Illegal type variable in class context")]
+   then CheckFailed [errTypeVariableInContext p (nub idsInContext \\ [tyvar])]
    else return ()
 typeVariableInContext _ = internalError "typeVariableInContext"
+
+
+errTypeVariableInContext :: Position -> [Ident] -> Message
+errTypeVariableInContext p ids 
+  = posMessage p 
+  (text "Illegal type variable(s)" <+> text (show ids) 
+   <+> text "in class context")
+  
+ 
