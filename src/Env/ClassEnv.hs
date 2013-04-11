@@ -22,6 +22,7 @@ import Curry.Base.Ident
 import Text.PrettyPrint
 import Curry.Syntax.Type
 import qualified Data.Map as Map
+import Curry.Syntax.Pretty
 
 -- |The class environment consists of the classes and instances in scope
 -- plus a map from class methods to their defining classes
@@ -73,8 +74,10 @@ ppClass (Class {superClasses = sc, theClass = tc, typeVar = tv,
   = text "class<" <> text (show k) <> text ">" 
   <+> parens (hsep $ punctuate (text ",") (map (text . show) sc))
   <> text " => " <> text (show tc)
-  <+> text (show tv) 
-  <+> brackets (hsep $ punctuate (text ",") (map (text . show) ms)) 
+  <+> text (show tv) <+> text "where"
+  $$ vcat (map (\(id0, cx, ty) -> 
+                 nest 2 (ppIdent id0 <+> text "::" <+> ppContext cx <+> ppTypeExpr 0 ty))
+               ms)
 
 ppInst :: Instance -> Doc
 ppInst (Instance {context = cx, iClass = ic, iType = it, typeVars = tvs})
