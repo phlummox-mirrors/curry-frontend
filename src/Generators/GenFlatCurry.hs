@@ -68,7 +68,7 @@ genFlatInterface opts modSum mEnv tyEnv tcEnv cEnv mdl = (intf'' , messages)
        intf0  <- visitModule mdl
        -- we generate the inferface, so we have to add the class environment
        -- to the interface file  
-       cEnv0 <- convertClassEnv cEnv
+       cEnv0 <- return Nothing -- convertClassEnv cEnv
        return (intf0, cEnv0)
   intf'            = patchPrelude intf
   intf''           = addClassEnv intf' cEnv'
@@ -1115,13 +1115,14 @@ splitoffArgTypes _ _  = internalError "splitoffArgTypes"
 -- type classes specific
 -- ---------------------------------------------------------------------------
 
+{-
 convertClassEnv :: ClassEnv -> FlatState ClassExport
 convertClassEnv (ClassEnv cs _is) = do
   classes <- mapM convertClass cs
   return $ Just (classes, [])
 
 convertClass :: Env.ClassEnv.Class -> FlatState EF.Class
-convertClass (Env.ClassEnv.Class superClasses theClass typeVar kind methods) 
+convertClass (Env.ClassEnv.Class superClasses theClass typeVar kind methods defaults) 
  = do
    mdl <- gets moduleIdE 
    valEnv <- gets typeEnvE
@@ -1138,4 +1139,4 @@ convertClass (Env.ClassEnv.Class superClasses theClass typeVar kind methods)
 qIdentToQName :: QualIdent -> QName
 qIdentToQName (QualIdent mdl name) = 
   mkQName (maybe "" show mdl, (show name))
-
+-}

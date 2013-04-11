@@ -17,24 +17,26 @@ module Env.ClassEnv
     ppClasses
   ) where
 
-import Base.Types hiding (typeVar, typeVars)
+-- import Base.Types hiding (typeVar, typeVars)
 import Curry.Base.Ident
 import Text.PrettyPrint
+import Curry.Syntax.Type
 
 -- |The class environment consists of the classes and instances in scope
-data ClassEnv = ClassEnv [Class] [Interface]
+data ClassEnv = ClassEnv [Class] [Instance]
   deriving Show
 
 data Class = Class
   { superClasses :: [QualIdent]
   , theClass :: Ident
-  , typeVar :: Int -- TODO needed?
+  , typeVar :: Ident
   , kind :: Int
-  , methods :: [TypeScheme]
+  , methods :: [(Ident, Context, TypeExpr)]
+  , defaults :: [Decl]
   }
   deriving Show
 
-data Interface = Interface
+data Instance = Instance
   { context :: [(QualIdent,Ident)]
   , iClass :: QualIdent
   , iType :: QualIdent
@@ -59,7 +61,7 @@ lookupClass (ClassEnv cls _) c = lookupClass' cls
 -- ----------------------------------------------------------------------------
 ppClasses :: ClassEnv -> Doc
 ppClasses (ClassEnv classes ifs) = 
-  vcat (map ppClass classes) $$ vcat (map ppIf ifs)
+  vcat (map ppClass classes) $$ vcat (map ppInst ifs)
   
   
 ppClass :: Class -> Doc
@@ -71,8 +73,8 @@ ppClass (Class {superClasses = sc, theClass = tc, typeVar = tv,
   <+> text (show tv) 
   <+> brackets (hsep $ punctuate (text ",") (map (text . show) ms)) 
 
-ppIf :: Interface -> Doc
-ppIf (Interface {context = cx, iClass = ic, iType = it, typeVars = tvs})
+ppInst :: Instance -> Doc
+ppInst (Instance {context = cx, iClass = ic, iType = it, typeVars = tvs})
   = text "interface" 
   <+> parens (hsep $ punctuate (text ",") (map (\(qid, tid) -> text (show qid) <+> text (show tid)) cx))
   <> text " => " <> text (show ic) <+> text "(" <> text (show it)
