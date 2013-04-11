@@ -36,6 +36,7 @@ import Base.Types
 import Env.Interface
 import Env.TypeConstructor (TCEnv, TypeInfo (..), qualLookupTC)
 import Env.Value (ValueEnv, ValueInfo (..), lookupValue, qualLookupValue)
+import Env.ClassEnv
 
 -- other
 import CompilerOpts (Options (..))
@@ -58,15 +59,16 @@ genFlatCurry opts modSum mEnv tyEnv tcEnv mdl = (prog', messages)
 
 -- transforms intermediate language code (IL) to FlatCurry interfaces
 genFlatInterface :: Options -> ModuleSummary.ModuleSummary -> InterfaceEnv
-                 -> ValueEnv -> TCEnv -> IL.Module -> (Prog, [Message])
-genFlatInterface opts modSum mEnv tyEnv tcEnv mdl = (intf' , messages)
+                 -> ValueEnv -> TCEnv -> ClassEnv -> IL.Module 
+                 -> (Prog, [Message])
+genFlatInterface opts modSum mEnv tyEnv tcEnv cEnv mdl = (intf' , messages)
   where
   (intf, messages) = run opts modSum mEnv tyEnv tcEnv True (visitModule mdl)
   intf'            = patchPrelude intf
 
 patchPrelude :: Prog -> Prog
-patchPrelude p@(Prog n _ types funcs ops)
-  | n == prelude = Prog n [] (preludeTypes ++ types) funcs ops
+patchPrelude p@(Prog n _ types funcs ops cs)
+  | n == prelude = Prog n [] (preludeTypes ++ types) funcs ops cs
   | otherwise    = p
 
 preludeTypes :: [TypeDecl]
@@ -189,7 +191,7 @@ visitModule (IL.Module mid imps decls) = do
       modid   <- visitModuleIdent mid
       imps'   <- imports
       is      <- mapM visitModuleIdent $ nub $ imps ++ (map extractMid imps')
-      return $ Prog modid is (recrds ++ types ++ datas) funcs ops
+      return $ Prog modid is (recrds ++ types ++ datas) funcs ops Nothing -- TODO
     )
     ( do
       ds      <- filterM isPublicDataDecl decls
@@ -205,7 +207,7 @@ visitModule (IL.Module mid imps decls) = do
       modid   <- visitModuleIdent mid
       imps'   <- imports
       is      <- mapM visitModuleIdent $ nub $ imps ++ (map extractMid imps')
-      return $ Prog modid is (itypes ++ recrds ++ types ++ datas) (ifuncs ++ funcs) (iops ++ ops)
+      return $ Prog modid is (itypes ++ recrds ++ types ++ datas) (ifuncs ++ funcs) (iops ++ ops) Nothing -- TODO
     )
   where extractMid (CS.IImportDecl _ mid1) = mid1
 
@@ -695,6 +697,8 @@ genRecordLabel _ _ _ = internalError "GenFlatCurry.genRecordLabel: no pattern ma
 elimRecordTypes :: ValueEnv -> TCEnv -> CS.TypeExpr -> CS.TypeExpr
 elimRecordTypes tyEnv tcEnv (CS.ConstructorType qid typeexprs)
    = CS.ConstructorType qid (map (elimRecordTypes tyEnv tcEnv) typeexprs)
+elimRecordTypes tyEnv tcEnv (CS.SpecialConstructorType qid typeexprs)
+   = CS.SpecialConstructorType qid (map (elimRecordTypes tyEnv tcEnv) typeexprs)
 elimRecordTypes _ _ (CS.VariableType ident)
    = CS.VariableType ident
 elimRecordTypes tyEnv tcEnv (CS.TupleType typeexprs)

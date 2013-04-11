@@ -299,7 +299,7 @@ writeInterface opts fn env modSum il
       unless (oldInterface `eqInterface` newInterface) $ outputInterface
   where
   targetFile = flatIntName fn
-  emptyIntf = EF.Prog "" [] [] [] []
+  emptyIntf = EF.Prog "" [] [] [] [] Nothing
   (newInterface, intMsgs) = genFlatInterface opts modSum env il
   outputInterface = do
     warn opts intMsgs
