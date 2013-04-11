@@ -21,6 +21,7 @@ TODO: Use MultiParamTypeClasses ?
 >   , DataConstr (..)
 >     -- * Representation of Quantification
 >   , TypeScheme (..), ExistTypeScheme (..), monoType, polyType
+>   , typeSchemeToType
 >     -- * Predefined types
 >   , unitType, boolType, charType, intType, floatType, stringType
 >   , successType, listType, ioType, tupleType, primType
@@ -233,6 +234,9 @@ quantified variables.
 
 > data TypeScheme = ForAll Int Type deriving (Eq, Show)
 > data ExistTypeScheme = ForAllExist Int Int Type deriving (Eq, Show)
+
+> typeSchemeToType :: TypeScheme -> Type
+> typeSchemeToType (ForAll _ t) = t
 
 \end{verbatim}
 The functions \texttt{monoType} and \texttt{polyType} translate a type

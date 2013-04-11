@@ -20,7 +20,7 @@ import Text.PrettyPrint
 -- curry-base
 import Curry.Base.Message
 import Curry.Base.Ident as Id
-import Curry.ExtendedFlat.Type
+import Curry.ExtendedFlat.Type as EF
 import Curry.ExtendedFlat.TypeInference
 import qualified Curry.Syntax as CS
 
@@ -61,10 +61,18 @@ genFlatCurry opts modSum mEnv tyEnv tcEnv mdl = (prog', messages)
 genFlatInterface :: Options -> ModuleSummary.ModuleSummary -> InterfaceEnv
                  -> ValueEnv -> TCEnv -> ClassEnv -> IL.Module 
                  -> (Prog, [Message])
-genFlatInterface opts modSum mEnv tyEnv tcEnv cEnv mdl = (intf' , messages)
+genFlatInterface opts modSum mEnv tyEnv tcEnv cEnv mdl = (intf'' , messages)
   where
-  (intf, messages) = run opts modSum mEnv tyEnv tcEnv True (visitModule mdl)
+  ((intf,cEnv'), messages) 
+    = run opts modSum mEnv tyEnv tcEnv True $ do
+       intf0  <- visitModule mdl
+       -- we generate the inferface, so we have to add the class environment
+       -- to the interface file  
+       cEnv0 <- convertClassEnv cEnv
+       return (intf0, cEnv0)
   intf'            = patchPrelude intf
+  intf''           = addClassEnv intf' cEnv'
+  addClassEnv (Prog m is ts fs ops _) c = (Prog m is ts fs ops c)
 
 patchPrelude :: Prog -> Prog
 patchPrelude p@(Prog n _ types funcs ops cs)
@@ -1101,3 +1109,33 @@ splitoffArgTypes :: IL.Type -> [Ident] -> [(Ident, IL.Type)]
 splitoffArgTypes (IL.TypeArrow l r) (i:is) = (i, l):splitoffArgTypes r is
 splitoffArgTypes _ [] = []
 splitoffArgTypes _ _  = internalError "splitoffArgTypes"
+
+
+-- ---------------------------------------------------------------------------
+-- type classes specific
+-- ---------------------------------------------------------------------------
+
+convertClassEnv :: ClassEnv -> FlatState ClassExport
+convertClassEnv (ClassEnv cs _is) = do
+  classes <- mapM convertClass cs
+  return $ Just (classes, [])
+
+convertClass :: Env.ClassEnv.Class -> FlatState EF.Class
+convertClass (Env.ClassEnv.Class superClasses theClass typeVar kind methods) 
+ = do
+   mdl <- gets moduleIdE 
+   valEnv <- gets typeEnvE
+   tcEnv <- gets tConsEnvE
+   types <- mapM visitType (map (transType mdl valEnv tcEnv . typeSchemeToType) methods)
+   let translated = EF.Class 
+        (map qIdentToQName superClasses) 
+        (qIdentToQName (qualify theClass))
+        (mkIdx typeVar)
+        kind
+        types
+   return translated
+
+qIdentToQName :: QualIdent -> QName
+qIdentToQName (QualIdent mdl name) = 
+  mkQName (maybe "" show mdl, (show name))
+
