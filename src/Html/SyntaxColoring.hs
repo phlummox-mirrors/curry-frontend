@@ -364,16 +364,16 @@ token2code :: Token -> Code
 token2code tok@(Token cat _)
   | elem cat [IntTok,FloatTok]
         = NumberCode (showToken tok)
-  | elem cat [KW_case,KW_data,KW_do,KW_else,KW_external,
+  | elem cat [KW_case,KW_class,KW_data,KW_do,KW_else,KW_external,
               KW_free,KW_if,KW_import,KW_in,KW_infix,KW_infixl,KW_infixr,
-              KW_let,KW_module,KW_newtype,KW_of,KW_then,KW_type,
+              KW_instance, KW_let,KW_module,KW_newtype,KW_of,KW_then,KW_type,
               KW_where,Id_as,Id_ccall,Id_forall,Id_hiding,Id_interface,Id_primitive,
               Id_qualified]
         =  Keyword (showToken tok)
   | elem cat [LeftParen,RightParen,Semicolon,LeftBrace,RightBrace,LeftBracket,
               RightBracket,Comma,Underscore,Backquote,
               At,Colon,DotDot,DoubleColon,Equals,Backslash,Bar,LeftArrow,RightArrow,
-              Tilde]
+              Tilde, DoubleArrow]
         = Symbol (showToken tok)
   | elem cat [LineComment, NestedComment]
         = Commentary (showToken tok)
@@ -475,13 +475,15 @@ decl2codes (TypeDecl _ t vs ty) =
      TypeConstructor TypeDecla (qualify t) :
      map (Identifier UnknownId . qualify) vs ++
      typeExpr2codes ty
-decl2codes (TypeSig _ fs cx ty) =
+decl2codes (TypeSig _ fs _cx ty) =
      map (Function TypSig . qualify) fs ++ typeExpr2codes ty
 decl2codes (FunctionDecl  _ _ eqs) = concatMap equation2codes eqs
 decl2codes (ForeignDecl _ _ _ _ _) = []
 decl2codes (ExternalDecl     _ fs) = map (Function FunDecl . qualify) fs
 decl2codes (PatternDecl   _ p rhs) =  pat2codes p ++ rhs2codes rhs
 decl2codes (FreeDecl         _ vs) = map (Identifier IdDecl . qualify) vs
+decl2codes (ClassDecl _ _scx _cls _tyvar _decls) = []
+decl2codes (InstanceDecl _ _scx _cls _tycon _tyvars _decls) = [] 
 
 equation2codes :: Equation -> [Code]
 equation2codes (Equation _ lhs rhs) = lhs2codes lhs ++ rhs2codes rhs
@@ -524,7 +526,7 @@ expr2codes (Literal               _) = []
 expr2codes (Variable            qid) = [Identifier IdOccur qid]
 expr2codes (Constructor         qid) = [ConstructorName ConstrCall qid]
 expr2codes (Paren                 e) = expr2codes e
-expr2codes (Typed           e cx ty) = expr2codes e ++ typeExpr2codes ty
+expr2codes (Typed          e _cx ty) = expr2codes e ++ typeExpr2codes ty
 expr2codes (Tuple              _ es) = concatMap expr2codes es
 expr2codes (List               _ es) = concatMap expr2codes es
 expr2codes (ListCompr     _ e stmts) = expr2codes e ++ concatMap statement2codes stmts
@@ -583,6 +585,7 @@ typeExpr2codes (TupleType           tys) = concatMap typeExpr2codes tys
 typeExpr2codes (ListType             ty) = typeExpr2codes ty
 typeExpr2codes (ArrowType       ty1 ty2) = concatMap typeExpr2codes [ty1, ty2]
 typeExpr2codes (RecordType          _ _) = internalError "SyntaxColoring.typeExpr2codes: Record pattern"
+typeExpr2codes (SpecialConstructorType _tcon _tys) = []
 
 showToken :: Token -> [Char]
 showToken (Token Id           a) = showAttr a
