@@ -23,7 +23,7 @@
 
 module Transformations.Qual (qual) where
 
-import           Control.Monad             (liftM, liftM2, liftM3)
+import           Control.Monad             (liftM, liftM2, liftM3, liftM4, liftM5)
 import qualified Control.Monad.Reader as R (Reader, asks, runReader)
 
 import Curry.Base.Ident
@@ -57,8 +57,12 @@ qDecl e@(ExternalDecl      _ _) = return e
 qDecl (PatternDecl     p t rhs)
   = liftM2 (PatternDecl p) (qPattern t) (qRhs rhs)
 qDecl vs@(FreeDecl   _ _) = return vs
-qDecl e@(ClassDecl _ _ _ _ _) = return e -- TODO
-qDecl e@(InstanceDecl _ _ _ _ _ _) = return e -- TODO
+qDecl (ClassDecl p scon cls ty decls) 
+  = liftM4 (ClassDecl p) (qSContext scon) (return cls) (return ty) 
+           (mapM qDecl decls)
+qDecl (InstanceDecl p scon cls ty ids decls) 
+  = liftM5 (InstanceDecl p) (qSContext scon) (qIdent cls) (qTConstr ty) 
+           (return ids) (mapM qDecl decls) 
 
 qConstrDecl :: Qual ConstrDecl
 qConstrDecl (ConstrDecl     p vs n tys)
@@ -73,6 +77,10 @@ qNewConstrDecl (NewConstrDecl p vs n ty)
 qTypeExpr :: Qual TypeExpr
 qTypeExpr (ConstructorType c tys)
   = liftM2 ConstructorType (qConstr c) (mapM qTypeExpr tys)
+qTypeExpr (SpecialConstructorType (QualTC c) tys)
+  = liftM2 SpecialConstructorType (QualTC `liftM` qConstr c) (mapM qTypeExpr tys)
+qTypeExpr (SpecialConstructorType c tys)
+  = liftM (SpecialConstructorType c) (mapM qTypeExpr tys) 
 qTypeExpr v@(VariableType      _) = return v
 qTypeExpr (TupleType         tys) = TupleType `liftM` mapM qTypeExpr tys
 qTypeExpr (ListType           ty) = ListType `liftM` qTypeExpr ty
@@ -197,3 +205,16 @@ qConstr x = do
       [y] -> origName y
       _   -> qmx
       where qmx = qualQualify m x
+
+      
+qSContext :: Qual SContext
+qSContext (SContext cs) = do
+  list <- mapM (\(qid, id0) -> do qid' <- qIdent qid; return (qid', id0)) cs 
+  return $ SContext list 
+  
+qTConstr :: Qual TypeConstructor
+qTConstr (QualTC qid) = do
+  qid' <- qIdent qid 
+  return $ QualTC qid'
+qTConstr con = return con
+

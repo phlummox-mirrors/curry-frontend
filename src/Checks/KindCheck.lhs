@@ -133,6 +133,10 @@ traversed because they can contain local type signatures.
 >   PatternDecl p t `liftM` checkRhs rhs
 > checkDecl (ForeignDecl p cc ie f ty) =
 >   ForeignDecl p cc ie f `liftM` checkType ty
+> checkDecl (ClassDecl p scon cls id0 decls) = 
+>   ClassDecl p scon cls id0 `liftM` mapM checkDecl decls
+> checkDecl (InstanceDecl p scon cls ty ids decls) = 
+>   InstanceDecl p scon cls ty ids `liftM` mapM checkDecl decls
 > checkDecl d                          = return d
 
 > checkConstrDecl :: [Ident] -> ConstrDecl -> KCM ConstrDecl
@@ -263,13 +267,23 @@ interpret the identifier as such.
 >         | otherwise -> report (errWrongArity tc n n') >> return c
 >       _ -> report (errAmbiguousType tc) >> return c
 >  where n' = length tys
+> checkType (SpecialConstructorType (QualTC tc) tys) 
+>   = checkType (ConstructorType tc tys)
 > checkType v@(VariableType tv)
 >   | isAnonId tv = return v
 >   | otherwise   = checkType $ ConstructorType (qualify tv) []
 > checkType (TupleType     tys) = TupleType `liftM` mapM checkType tys
+> checkType (SpecialConstructorType UnitTC tys) 
+>   = SpecialConstructorType UnitTC `liftM` mapM checkType tys
+> checkType (SpecialConstructorType (TupleTC n) tys) 
+>   = SpecialConstructorType (TupleTC n) `liftM` mapM checkType tys
 > checkType (ListType       ty) = ListType  `liftM` checkType ty
+> checkType (SpecialConstructorType ListTC tys) 
+>   = SpecialConstructorType ListTC `liftM` mapM checkType tys
 > checkType (ArrowType ty1 ty2) =
 >   liftM2 ArrowType (checkType ty1) (checkType ty2)
+> checkType (SpecialConstructorType ArrowTC tys) 
+>   = SpecialConstructorType ArrowTC `liftM` mapM checkType tys
 > checkType (RecordType   fs r) = do
 >   fs' <- forM fs $ \ (l, ty) -> do
 >     ty' <- checkType ty
@@ -282,15 +296,25 @@ interpret the identifier as such.
 > checkClosed :: [Ident] -> TypeExpr -> KCM TypeExpr
 > checkClosed tvs (ConstructorType tc tys) =
 >   ConstructorType tc `liftM` mapM (checkClosed tvs) tys
+> checkClosed tvs (SpecialConstructorType (QualTC tc) tys) = 
+>   checkClosed tvs (ConstructorType tc tys)
 > checkClosed tvs v@(VariableType      tv) = do
 >   when (isAnonId tv || tv `notElem` tvs) $ report $ errUnboundVariable tv
 >   return v
 > checkClosed tvs (TupleType     tys) =
 >   TupleType `liftM` mapM (checkClosed tvs) tys
+> checkClosed tvs (SpecialConstructorType UnitTC tys) = 
+>   SpecialConstructorType UnitTC `liftM` mapM (checkClosed tvs) tys
+> checkClosed tvs (SpecialConstructorType (TupleTC n) tys) = 
+>   SpecialConstructorType (TupleTC n) `liftM` mapM (checkClosed tvs) tys
 > checkClosed tvs (ListType       ty) =
 >   ListType `liftM` checkClosed tvs ty
+> checkClosed tvs (SpecialConstructorType ListTC tys) = 
+>   SpecialConstructorType ListTC `liftM` mapM (checkClosed tvs) tys
 > checkClosed tvs (ArrowType ty1 ty2) =
 >   liftM2 ArrowType (checkClosed tvs ty1) (checkClosed tvs ty2)
+> checkClosed tvs (SpecialConstructorType ArrowTC tys) = 
+>   SpecialConstructorType ArrowTC `liftM` mapM (checkClosed tvs) tys
 > checkClosed tvs (RecordType   fs r) = do
 >   fs' <- forM fs $ \ (l, ty) -> do
 >     ty' <- checkClosed tvs ty
