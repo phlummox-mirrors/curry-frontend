@@ -23,7 +23,7 @@ definition.
 > module Checks.SyntaxCheck (syntaxCheck) where
 
 > import Control.Monad (liftM, liftM2, liftM3, unless, when)
-> import qualified Control.Monad.State as S (State, runState, gets, modify)
+> import qualified Control.Monad.State as S (State, runState, gets, modify, withState)
 > import Data.List ((\\), insertBy, nub, partition)
 > import Data.Maybe (fromJust, isJust, isNothing, maybeToList)
 > import qualified Data.Set as Set (empty, insert, member)
@@ -86,11 +86,13 @@ renaming literals and underscore to disambiguate them.
 >   , scopeId     :: Integer     -- ^ Identifier for the current scope
 >   , nextId      :: Integer     -- ^ Next fresh identifier
 >   , errors      :: [Message]   -- ^ Syntactic errors in the module
+>   , typeClassesCheck :: Bool   -- ^ Disable some checks when declarations in classes
+>                                -- are checked, like checking for missing function bodies
 >   }
 
 > -- |Initial syntax check state
 > initState :: [Extension] -> ModuleIdent -> RenameEnv -> SCState
-> initState exts m rEnv = SCState exts m rEnv globalScopeId 1 []
+> initState exts m rEnv = SCState exts m rEnv globalScopeId 1 [] False
 
 > -- |Identifier for global (top-level) declarations
 > globalScopeId :: Integer
@@ -265,6 +267,8 @@ Furthermore, it is not allowed to declare a label more than once.
 >   = bindGlobal m (unqualify qid) (GlobalVar (typeArity texpr) qid) env'
 >   | otherwise
 >   = env'
+> bindFuncDecl m (ClassDecl _ _ _ _ decls) env = undefined
+>  --  map (\decl -> bindFuncDecl m decl env) decls 
 > bindFuncDecl _ _ env = env
 
 ------------------------------------------------------------------------------
@@ -313,9 +317,21 @@ local declarations.
 > checkModule :: [Decl] -> SCM [Decl]
 > checkModule decls = do
 >   mapM_ bindTypeDecl (rds ++ dds)
->   liftM2 (++) (mapM checkTypeDecl tds) (checkTopDecls vds)
+>   decls0 <- liftM2 (++) (mapM checkTypeDecl tds) (checkTopDecls vds)
+>   -- check the declarations in classes and instances as well
+>   let classDecls = map extractCDecls $ filter isClassDecl decls0
+>   let instanceDecls = map extractIDecls $ filter isInstanceDecl decls0
+>   cDecls <- S.withState (\s -> s { typeClassesCheck = True }) $ mapM checkTopDecls classDecls
+>   iDecls <- S.withState (\s -> s { typeClassesCheck = True }) $ mapM checkTopDecls instanceDecls
+>   let decls1 = updateClassDecls decls0 cDecls
+>   let decls2 = updateInstanceDecls decls1 iDecls 
+>   return decls2
 >   where (tds, vds) = partition isTypeDecl decls
 >         (rds, dds) = partition isRecordDecl tds
+>         extractCDecls (ClassDecl _ _ _ _ ds) = ds
+>         extractCDecls _ = internalError "checkModule"
+>         extractIDecls (InstanceDecl _ _ _ _ _ ds) = ds
+>         extractIDecls _ = internalError "checkModule"
 
 > checkTypeDecl :: Decl -> SCM Decl
 > checkTypeDecl rec@(TypeDecl _ r _ (RecordType fs rty)) = do
@@ -488,7 +504,8 @@ top-level.
 
 > checkLocalVar :: [Ident] -> Ident -> SCM Ident
 > checkLocalVar bvs v = do
->   when (v `notElem` bvs) $ report $ errNoBody v
+>   tcs <- S.gets typeClassesCheck
+>   when (v `notElem` bvs && not tcs) $ report $ errNoBody v
 >   return v
 
 > checkEquation :: Equation -> SCM Equation
@@ -1128,5 +1145,23 @@ Error messages.
 >   showCall (q1, q2) = showWithPos q1 <+> text "calls" <+> showWithPos q2
 >   showWithPos q =  text (qualName q)
 >                <+> parens (text $ showLine $ qidPosition q)
+
+\end{verbatim}
+Type classes specific stuff
+\begin{verbatim}
+
+> updateClassDecls :: [Decl] -> [[Decl]] -> [Decl]
+> updateClassDecls (ClassDecl p scon cls id0 _ : decls) (cDecls : cDeclss) 
+>   = ClassDecl p scon cls id0 cDecls : updateClassDecls decls cDeclss
+> updateClassDecls (d : decls) cDeclss = d : updateClassDecls decls cDeclss
+> updateClassDecls [] [] = []
+> updateClassDecls _ _ = internalError "updateClassDecls" 
+
+> updateInstanceDecls :: [Decl] -> [[Decl]] -> [Decl]
+> updateInstanceDecls (InstanceDecl p scon cls tc ids _ : decls) (iDecls : iDeclss) 
+>   = InstanceDecl p scon cls tc ids iDecls : updateInstanceDecls decls iDeclss
+> updateInstanceDecls (d : decls) iDeclss = d : updateInstanceDecls decls iDeclss
+> updateInstanceDecls [] [] = [] 
+> updateInstanceDecls _ _ = internalError "updateInstanceDecls"
 
 \end{verbatim}
