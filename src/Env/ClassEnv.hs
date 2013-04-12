@@ -31,7 +31,7 @@ data ClassEnv = ClassEnv [Class] [Instance] (Map.Map QualIdent QualIdent)
 
 data Class = Class
   { superClasses :: [QualIdent]
-  , theClass :: Ident
+  , theClass :: QualIdent -- TODO Ident or QualIdent? 
   , typeVar :: Ident
   , kind :: Int
   , methods :: [(Ident, Context, TypeExpr)]
@@ -52,7 +52,7 @@ initClassEnv :: ClassEnv
 initClassEnv = ClassEnv [] [] Map.empty
 
 -- |looks up a given class from the class environment
-lookupClass :: ClassEnv -> Ident -> Maybe Class
+lookupClass :: ClassEnv -> QualIdent -> Maybe Class
 lookupClass (ClassEnv cls _ _) c = lookupClass' cls
   where lookupClass' [] = Nothing
         lookupClass' (c'@Class {theClass=tc}:cs) 

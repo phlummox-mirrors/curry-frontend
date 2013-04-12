@@ -15,7 +15,7 @@ module Checks.TypeClassesCheck (typeClassesCheck) where
 
 import Curry.Syntax.Type
 import Env.ClassEnv
-import Base.Messages (Message, posMessage, internalError)
+import Base.Messages (Message, {-message, -}posMessage, internalError)
 
 import Data.List
 import Text.PrettyPrint
@@ -46,7 +46,7 @@ thenCheck chk cont = case chk of
 -- |Checks class and instance declarations. TODO: removes these declarations?
 -- Builds a corresponding class environment 
 typeClassesCheck :: [Decl] -> ClassEnv -> ([Decl], ClassEnv, [Message])
-typeClassesCheck decls _cenv = 
+typeClassesCheck decls (ClassEnv importedClasses importedInstances _) = 
   case result of 
     CheckSuccess (classes, instances) -> 
       (decls {-_rest2-}, ClassEnv classes instances (buildClassMethodsMap classes), [])
@@ -56,8 +56,13 @@ typeClassesCheck decls _cenv =
     (instDecls, _rest2)  = partition isInstanceDecl rest1
     result = do
       mapM_ typeVariableInContext classDecls
-      let classes = map classDeclToClass classDecls
-      let instances = map instanceDeclToInstance instDecls
+      -- gather all classes and instances for more "global" checks
+      let classes = map classDeclToClass classDecls ++ importedClasses
+      let instances = map instanceDeclToInstance instDecls ++ importedInstances
+      let newClassEnv = ClassEnv classes instances Map.empty
+      -- TODO: check also contexts of (imported) classes and interfaces?
+      mapM_ (checkSuperclassContext newClassEnv) classDecls
+      mapM_ (checkSuperclassContext newClassEnv) instDecls
       return (classes, instances)
 
 -- |converts a class declaration into the form of the class environment 
@@ -65,7 +70,7 @@ classDeclToClass :: Decl -> Class
 classDeclToClass (ClassDecl _ (SContext scon) cls tyvar decls) 
   = Class { 
     superClasses = map fst scon, 
-    theClass = cls, 
+    theClass = qualify cls, -- TODO: qualify? 
     typeVar = tyvar, 
     kind = -1, -- TODO
     methods = map (\(TypeSig _ [id0] cx ty) -> (id0, cx, ty)) $ 
@@ -86,7 +91,7 @@ buildClassMethodsMap cls = Map.unions $ map addClassMethods cls
 
 addClassMethods :: Class -> Map.Map QualIdent QualIdent
 addClassMethods (Class { methods = ms, theClass = cls}) = 
-  let ms_cls = map (\(m, _, _) -> (qualify m, qualify cls)) ms
+  let ms_cls = map (\(m, _, _) -> (qualify m, cls)) ms
   in foldr (uncurry Map.insert) Map.empty ms_cls
 
 -- |converts an instance declaration into the form of the class environment
@@ -116,6 +121,30 @@ typeVariableInContext (ClassDecl p (SContext scon) _cls tyvar _decls)
    else return ()
 typeVariableInContext _ = internalError "typeVariableInContext"
 
+-- |check that the classes in superclass contexts or instance contexts are 
+-- in scope  
+checkSuperclassContext :: ClassEnv -> Decl -> CheckResult ()
+checkSuperclassContext cEnv (ClassDecl p (SContext scon) _ _ _) = 
+  mapM_ (checkSuperclassContext' cEnv p) (map fst scon)
+checkSuperclassContext cEnv (InstanceDecl p (SContext scon) _ _ _ _) = 
+  mapM_ (checkSuperclassContext' cEnv p) (map fst scon)
+checkSuperclassContext _ _ = internalError "TypeClassesCheck.checkSuperclassContext"
+    
+checkSuperclassContext' :: ClassEnv -> Position -> QualIdent -> CheckResult ()
+checkSuperclassContext' cEnv p qid = 
+  case lookupClass cEnv qid of 
+    Nothing -> CheckFailed [errSuperclassNotInScope p qid]
+    Just _ -> return ()
+
+
+{-
+lookupClassDecl :: [Decl] -> QualIdent -> Maybe Decl
+lookupClassDecl (c@(ClassDecl _ _ cls _ _) : decls) cls' 
+  | cls' == cls = Just c
+  | otherwise   = lookupClassDecl decls cls'
+lookupClassDecl [] _cls = Nothing
+-} 
+          
 -- ---------------------------------------------------------------------------
 -- error messages
 -- ---------------------------------------------------------------------------
@@ -126,4 +155,7 @@ errTypeVariableInContext p ids
   (text "Illegal type variable(s)" <+> text (show ids) 
    <+> text "in class context")
   
- 
+errSuperclassNotInScope :: Position -> QualIdent -> Message
+errSuperclassNotInScope p qid = 
+  posMessage p (text "superclass" <+> text (show qid)
+  <+> text "not in scope") 
