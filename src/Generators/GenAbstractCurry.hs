@@ -241,7 +241,7 @@ genFuncDecl isLocal env (ident, decls)
   (env1, mtype) = case genFuncType env decls of
                   Nothing        -> (env, Nothing)
                   Just (env', t) -> (env', Just t)
-  (env2, rules) = case find isFunctionDecl decls of
+  (env2, rules) = case find Generators.GenAbstractCurry.isFunctionDecl decls of
                   Nothing -> (env1, [])
                   Just (FunctionDecl _ _ eqs) -> mapAccumL genRule env1 eqs
                   _ -> internalError "Gen.GenAbstractCurry.genFuncDecl: no FunctionDecl"

@@ -218,7 +218,7 @@ replaceFunctionCalls codes = map (idOccur2functionCall qids) codes
 
 
 findFunctionDecls :: [Code] -> [QualIdent]
-findFunctionDecls = mapMaybe getQualIdent . filter isFunctionDecl . map flatCode
+findFunctionDecls = mapMaybe getQualIdent . filter Html.SyntaxColoring.isFunctionDecl . map flatCode
 
 isFunctionDecl :: Code -> Bool
 isFunctionDecl (Function FunDecl _) = True
