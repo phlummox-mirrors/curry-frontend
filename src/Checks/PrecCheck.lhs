@@ -132,6 +132,10 @@ interface.
 >   FunctionDecl p f `liftM` mapM checkEquation eqs
 > checkDecl (PatternDecl p  t rhs) =
 >   liftM2 (PatternDecl p) (checkPattern t) (checkRhs rhs)
+> checkDecl (ClassDecl p scon cls tyvar decls) = 
+>   ClassDecl p scon cls tyvar `liftM` mapM checkDecl decls
+> checkDecl (InstanceDecl p scon cls tycon ids decls) = 
+>   InstanceDecl p scon cls tycon ids `liftM` mapM checkDecl decls
 > checkDecl d                      = return d
 
 > checkEquation :: Equation -> PCM Equation
