@@ -267,9 +267,11 @@ Furthermore, it is not allowed to declare a label more than once.
 >   = bindGlobal m (unqualify qid) (GlobalVar (typeArity texpr) qid) env'
 >   | otherwise
 >   = env'
-> bindFuncDecl m (ClassDecl _ _ _ _ decls) env = undefined
->  --  map (\decl -> bindFuncDecl m decl env) decls 
 > bindFuncDecl _ _ env = env
+
+> bindClassMethods :: ModuleIdent -> [Decl] -> SCM ()
+> bindClassMethods m decls = do
+>   modifyRenameEnv $ \env -> foldr (bindFuncDecl m) env decls
 
 ------------------------------------------------------------------------------
 
@@ -317,21 +319,22 @@ local declarations.
 > checkModule :: [Decl] -> SCM [Decl]
 > checkModule decls = do
 >   mapM_ bindTypeDecl (rds ++ dds)
+>   m <- getModuleIdent
+>   -- bind class methods so that references to class methods do not
+>   -- cause errors
+>   bindClassMethods m (extractTypeDeclsFromClasses decls)
 >   decls0 <- liftM2 (++) (mapM checkTypeDecl tds) (checkTopDecls vds)
 >   -- check the declarations in classes and instances as well
 >   let classDecls = map extractCDecls $ filter isClassDecl decls0
 >   let instanceDecls = map extractIDecls $ filter isInstanceDecl decls0
->   cDecls <- S.withState (\s -> s { typeClassesCheck = True }) $ mapM checkTopDecls classDecls
->   iDecls <- S.withState (\s -> s { typeClassesCheck = True }) $ mapM checkTopDecls instanceDecls
+>   cDecls <- typeClassesCheck_ $ mapM checkTopDecls classDecls
+>   iDecls <- typeClassesCheck_ $ mapM checkTopDecls instanceDecls
 >   let decls1 = updateClassDecls decls0 cDecls
 >   let decls2 = updateInstanceDecls decls1 iDecls 
 >   return decls2
 >   where (tds, vds) = partition isTypeDecl decls
 >         (rds, dds) = partition isRecordDecl tds
->         extractCDecls (ClassDecl _ _ _ _ ds) = ds
->         extractCDecls _ = internalError "checkModule"
->         extractIDecls (InstanceDecl _ _ _ _ _ ds) = ds
->         extractIDecls _ = internalError "checkModule"
+>         typeClassesCheck_ = S.withState (\s -> s { typeClassesCheck = True })
 
 > checkTypeDecl :: Decl -> SCM Decl
 > checkTypeDecl rec@(TypeDecl _ r _ (RecordType fs rty)) = do
@@ -1163,5 +1166,18 @@ Type classes specific stuff
 > updateInstanceDecls (d : decls) iDeclss = d : updateInstanceDecls decls iDeclss
 > updateInstanceDecls [] [] = [] 
 > updateInstanceDecls _ _ = internalError "updateInstanceDecls"
+
+> extractTypeDeclsFromClasses :: [Decl] -> [Decl]
+> extractTypeDeclsFromClasses decls = 
+>   filter isTypeSig $ concatMap extractCDecls $ filter isClassDecl decls
+
+
+> extractCDecls :: Decl -> [Decl]
+> extractCDecls (ClassDecl _ _ _ _ ds) = ds
+> extractCDecls _ = internalError "extractCDecl"
+
+> extractIDecls :: Decl -> [Decl]
+> extractIDecls (InstanceDecl _ _ _ _ _ ds) = ds
+> extractIDecls _ = internalError "extractIDecl"
 
 \end{verbatim}
