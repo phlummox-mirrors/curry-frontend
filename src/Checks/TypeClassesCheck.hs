@@ -15,7 +15,7 @@ module Checks.TypeClassesCheck (typeClassesCheck) where
 
 import Curry.Syntax.Type
 import Env.ClassEnv
-import Base.Messages (Message, {-message, -}posMessage, internalError)
+import Base.Messages (Message, message, posMessage, internalError)
 
 import Data.List
 import Text.PrettyPrint
@@ -63,6 +63,8 @@ typeClassesCheck decls (ClassEnv importedClasses importedInstances _) =
       -- TODO: check also contexts of (imported) classes and interfaces?
       mapM_ (checkSuperclassContext newClassEnv) classDecls
       mapM_ (checkSuperclassContext newClassEnv) instDecls
+      
+      noDoubleClassMethods classes
       return (classes, instances)
 
 -- |converts a class declaration into the form of the class environment 
@@ -136,14 +138,27 @@ checkSuperclassContext' cEnv p qid =
     Nothing -> CheckFailed [errSuperclassNotInScope p qid]
     Just _ -> return ()
 
-
 {-
 lookupClassDecl :: [Decl] -> QualIdent -> Maybe Decl
 lookupClassDecl (c@(ClassDecl _ _ cls _ _) : decls) cls' 
   | cls' == cls = Just c
   | otherwise   = lookupClassDecl decls cls'
 lookupClassDecl [] _cls = Nothing
--} 
+  -}
+
+-- |check that there are no double class methods like in
+-- class Foo1 a where fun :: a
+-- class Foo2 a where fun :: a
+-- TODO: improve position output
+noDoubleClassMethods :: [Class] -> CheckResult()
+noDoubleClassMethods classes = 
+  let allMethods = map fst3 $ concatMap (\(Class {methods=ms}) -> ms) classes
+      theNub = nub allMethods -- nubBy (\ms1 ms2 -> fst3 ms1 == fst3 ms2) allMethods
+  in if length theNub /= length allMethods
+  then CheckFailed [errDoubleClassMethods NoPos NoPos (allMethods \\ theNub)]
+  else return ()
+  where fst3 (x, _, _) = x
+      
           
 -- ---------------------------------------------------------------------------
 -- error messages
@@ -159,3 +174,9 @@ errSuperclassNotInScope :: Position -> QualIdent -> Message
 errSuperclassNotInScope p qid = 
   posMessage p (text "superclass" <+> text (show qid)
   <+> text "not in scope") 
+  
+errDoubleClassMethods :: Position -> Position -> [Ident] -> Message
+errDoubleClassMethods _p1 _p2 methods_ = 
+  message (text "double class methods:" <+> text (show methods_) )
+
+  
