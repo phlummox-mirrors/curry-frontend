@@ -43,6 +43,8 @@ thenCheck chk cont = case chk of
 -- main function
 -- ---------------------------------------------------------------------------
 
+-- |Checks class and instance declarations. TODO: removes these declarations?
+-- Builds a corresponding class environment 
 typeClassesCheck :: [Decl] -> ClassEnv -> ([Decl], ClassEnv, [Message])
 typeClassesCheck decls _cenv = 
   case result of 
@@ -57,7 +59,8 @@ typeClassesCheck decls _cenv =
       let classes = map classDeclToClass classDecls
       let instances = map instanceDeclToInstance instDecls
       return (classes, instances)
-        
+
+-- |converts a class declaration into the form of the class environment 
 classDeclToClass :: Decl -> Class
 classDeclToClass (ClassDecl _ (SContext scon) cls tyvar decls) 
   = Class { 
@@ -77,6 +80,7 @@ classDeclToClass (ClassDecl _ (SContext scon) cls tyvar decls)
 classDeclToClass _ = internalError "classDeclToClass"
   
 
+-- |constructs a map from class methods to their defining classes 
 buildClassMethodsMap :: [Class] -> Map.Map QualIdent QualIdent
 buildClassMethodsMap cls = Map.unions $ map addClassMethods cls
 
@@ -84,7 +88,8 @@ addClassMethods :: Class -> Map.Map QualIdent QualIdent
 addClassMethods (Class { methods = ms, theClass = cls}) = 
   let ms_cls = map (\(m, _, _) -> (qualify m, qualify cls)) ms
   in foldr (uncurry Map.insert) Map.empty ms_cls
-  
+
+-- |converts an instance declaration into the form of the class environment
 instanceDeclToInstance :: Decl -> Instance
 instanceDeclToInstance (InstanceDecl _ (SContext scon) cls tcon ids decls) = 
   Instance { 
@@ -99,6 +104,10 @@ instanceDeclToInstance _ = internalError "instanceDeclToInstance"
 -- checks
 -- ---------------------------------------------------------------------------
 
+-- |check that in classes the type variables in the context are exactly the
+-- one that is given after the class name
+-- legal: Eq a => Ord a
+-- illegal: Eq b => Ord a  
 typeVariableInContext :: Decl -> CheckResult ()
 typeVariableInContext (ClassDecl p (SContext scon) _cls tyvar _decls) 
  = let idsInContext = map snd scon in 
@@ -107,6 +116,9 @@ typeVariableInContext (ClassDecl p (SContext scon) _cls tyvar _decls)
    else return ()
 typeVariableInContext _ = internalError "typeVariableInContext"
 
+-- ---------------------------------------------------------------------------
+-- error messages
+-- ---------------------------------------------------------------------------
 
 errTypeVariableInContext :: Position -> [Ident] -> Message
 errTypeVariableInContext p ids 
