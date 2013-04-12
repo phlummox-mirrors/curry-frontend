@@ -21,9 +21,10 @@ import Data.List
 import Text.PrettyPrint
 import qualified Data.Map as Map
 
-import Base.Types (Type (..), TypeScheme (..))
+-- import Base.Types (Type (..), TypeScheme (..))
 import Curry.Base.Ident
 import Curry.Base.Position
+import Curry.Syntax.Utils
 
 data CheckResult a
   = CheckSuccess a
@@ -38,23 +39,24 @@ thenCheck chk cont = case chk of
   CheckSuccess   a -> cont a
   CheckFailed errs -> CheckFailed errs
 
+-- ---------------------------------------------------------------------------
+-- main function
+-- ---------------------------------------------------------------------------
+
 typeClassesCheck :: [Decl] -> ClassEnv -> ([Decl], ClassEnv, [Message])
 typeClassesCheck decls _cenv = 
   case result of 
-    CheckSuccess classes -> 
-      (decls {-_rest-}, ClassEnv classes [] (buildClassMethodsMap classes), [])
+    CheckSuccess (classes, instances) -> 
+      (decls {-_rest2-}, ClassEnv classes instances (buildClassMethodsMap classes), [])
     CheckFailed errs -> (decls, ClassEnv [] [] Map.empty, errs)
   where
-    (classDecls, _rest) = extractClassDecls decls
+    (classDecls, rest1) = partition isClassDecl decls
+    (instDecls, _rest2)  = partition isInstanceDecl rest1
     result = do
       mapM_ typeVariableInContext classDecls
       let classes = map classDeclToClass classDecls
-      return classes
-
-extractClassDecls :: [Decl] -> ([Decl], [Decl])
-extractClassDecls = partition isClass
-  where isClass (ClassDecl _ _ _ _ _) = True
-        isClass _ = False
+      let instances = map instanceDeclToInstance instDecls
+      return (classes, instances)
         
 classDeclToClass :: Decl -> Class
 classDeclToClass (ClassDecl _ (SContext scon) cls tyvar decls) 
@@ -65,21 +67,15 @@ classDeclToClass (ClassDecl _ (SContext scon) cls tyvar decls)
     kind = -1, -- TODO
     methods = map (\(TypeSig _ [id0] cx ty) -> (id0, cx, ty)) $ 
       concatMap splitUpTypeSig $ filter isTypeSig decls, 
-    defaults = filter isFuncDecl decls
+    defaults = filter isFunctionDecl decls
   }
   where
     splitUpTypeSig :: Decl -> [Decl]
-    splitUpTypeSig (TypeSig p ids cx ty) = map (\id0 -> TypeSig p [id0] cx ty) ids
+    splitUpTypeSig (TypeSig p ids cx ty) 
+      = map (\id0 -> TypeSig p [id0] cx ty) ids
     splitUpTypeSig _ = internalError "splitUpTypeSig"
 classDeclToClass _ = internalError "classDeclToClass"
   
-isTypeSig :: Decl -> Bool
-isTypeSig (TypeSig _ _ _ _) = True
-isTypeSig _ = False
-
-isFuncDecl :: Decl -> Bool
-isFuncDecl (FunctionDecl _ _ _) = True
-isFuncDecl _ = False
 
 buildClassMethodsMap :: [Class] -> Map.Map QualIdent QualIdent
 buildClassMethodsMap cls = Map.unions $ map addClassMethods cls
@@ -88,6 +84,16 @@ addClassMethods :: Class -> Map.Map QualIdent QualIdent
 addClassMethods (Class { methods = ms, theClass = cls}) = 
   let ms_cls = map (\(m, _, _) -> (qualify m, qualify cls)) ms
   in foldr (uncurry Map.insert) Map.empty ms_cls
+  
+instanceDeclToInstance :: Decl -> Instance
+instanceDeclToInstance (InstanceDecl _ (SContext scon) cls tcon ids decls) = 
+  Instance { 
+    context = scon, 
+    iClass = cls,  
+    iType = tcon, 
+    typeVars = ids, 
+    rules = decls }
+instanceDeclToInstance _ = internalError "instanceDeclToInstance"
 
 -- ---------------------------------------------------------------------------
 -- checks

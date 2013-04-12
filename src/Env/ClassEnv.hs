@@ -42,9 +42,9 @@ data Class = Class
 data Instance = Instance
   { context :: [(QualIdent,Ident)]
   , iClass :: QualIdent
-  , iType :: QualIdent
-  , typeVars :: [Int]
-  -- , funcDefinitions :: [???]
+  , iType :: TypeConstructor
+  , typeVars :: [Ident]
+  , rules :: [Decl]
   }
   deriving Show
   
@@ -70,7 +70,7 @@ ppClasses (ClassEnv classes ifs mmap) =
   
 ppClass :: Class -> Doc
 ppClass (Class {superClasses = sc, theClass = tc, typeVar = tv, 
-                kind = k, methods = ms})
+                kind = k, methods = ms, defaults = ds})
   = text "class<" <> text (show k) <> text ">" 
   <+> parens (hsep $ punctuate (text ",") (map (text . show) sc))
   <> text " => " <> text (show tc)
@@ -78,11 +78,13 @@ ppClass (Class {superClasses = sc, theClass = tc, typeVar = tv,
   $$ vcat (map (\(id0, cx, ty) -> 
                  nest 2 (ppIdent id0 <+> text "::" <+> ppContext cx <+> ppTypeExpr 0 ty))
                ms)
+  $$ nest 2 (vcat $ map ppDecl ds)
 
 ppInst :: Instance -> Doc
-ppInst (Instance {context = cx, iClass = ic, iType = it, typeVars = tvs})
+ppInst (Instance {context = cx, iClass = ic, iType = it, typeVars = tvs, rules = rs})
   = text "instance" 
   <+> parens (hsep $ punctuate (text ",") (map (\(qid, tid) -> text (show qid) <+> text (show tid)) cx))
   <> text " => " <> text (show ic) <+> text "(" <> text (show it)
-  <+> hsep (map (text. show) tvs) <> text ")"
+  <+> hsep (map (text. show) tvs) <> text ")" <+> text "where"
+  $$ nest 2 (vcat $ map ppDecl rs)
   
