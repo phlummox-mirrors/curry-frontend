@@ -117,7 +117,7 @@ qualBindTopEnv fun x y (TopEnv env) =
   bindLocal y' ys
     | null [ y'' | (Local, y'') <- ys ] = (Local, y') : ys
     | otherwise = internalError $ "\"qualBindTopEnv " ++ show x
-                      ++ "\" failed in function \"" ++ fun
+                      ++ "\" failed in function \"" ++ fun ++ "\""
 
 rebindTopEnv :: Ident -> a -> TopEnv a -> TopEnv a
 rebindTopEnv = qualRebindTopEnv . qualify
