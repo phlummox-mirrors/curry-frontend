@@ -13,7 +13,7 @@
 
 
 module Env.ClassEnv 
-  ( ClassEnv (..), Class (..), Interface (..), initClassEnv, lookupClass, 
+  ( ClassEnv (..), Class (..), Instance (..), initClassEnv, lookupClass, 
     ppClasses
   ) where
 
@@ -81,7 +81,7 @@ ppClass (Class {superClasses = sc, theClass = tc, typeVar = tv,
 
 ppInst :: Instance -> Doc
 ppInst (Instance {context = cx, iClass = ic, iType = it, typeVars = tvs})
-  = text "interface" 
+  = text "instance" 
   <+> parens (hsep $ punctuate (text ",") (map (\(qid, tid) -> text (show qid) <+> text (show tid)) cx))
   <> text " => " <> text (show ic) <+> text "(" <> text (show it)
   <+> hsep (map (text. show) tvs) <> text ")"
