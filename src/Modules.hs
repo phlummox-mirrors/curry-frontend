@@ -21,6 +21,7 @@ module Modules
 import Control.Monad (unless, when)
 import Data.Maybe (fromMaybe)
 import Text.PrettyPrint
+import System.IO.Unsafe
 
 import Curry.Base.Ident
 import Curry.Base.Message (runMsg)
@@ -185,9 +186,9 @@ checkModule opts (env, mdl) = do
   (env1,  kc) <- kindCheck env mdl -- should be only syntax checking ?
   (env2,  sc) <- syntaxCheck opts env1 kc
   (env3,  pc) <- precCheck        env2 sc
-  (env4, tcc) <- typeClassesCheck env3 pc 
+  (env4, tcc) <- unsafePerformIO (doDump opts (DumpPrecChecked, env3, show' CS.ppModule pc) >> return (typeClassesCheck env3 pc) ) 
   (env5,  tc) <- if withTypeCheck
-                   then typeCheck env4 tcc 
+                   then unsafePerformIO (doDump opts (DumpTypeClassesChecked, env4, show' CS.ppModule tcc) >> return (typeCheck env4 tcc) )
                    else return (env4, tcc)
   (env6,  ec) <- if withTypeCheck 
                    then exportCheck env5 tc
