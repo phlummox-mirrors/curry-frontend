@@ -182,22 +182,22 @@ importPrelude opts fn m@(CS.Module mid es is ds)
 checkModule :: Options -> (CompilerEnv, CS.Module)
             -> CheckResult (CompilerEnv, CS.Module, [Dump])
 checkModule opts (env, mdl) = do
-  (env1, tcc) <- typeClassesCheck env mdl 
-  (env2,  kc) <- kindCheck env1 tcc -- should be only syntax checking ?
-  (env3,  sc) <- syntaxCheck opts env2 kc
-  (env4,  pc) <- precCheck        env3 sc
+  (env1,  kc) <- kindCheck env mdl -- should be only syntax checking ?
+  (env2,  sc) <- syntaxCheck opts env1 kc
+  (env3,  pc) <- precCheck        env2 sc
+  (env4, tcc) <- typeClassesCheck env3 pc 
   (env5,  tc) <- if withTypeCheck
-                   then typeCheck env4 pc 
-                   else return (env4, pc)
+                   then typeCheck env4 tcc 
+                   else return (env4, tcc)
   (env6,  ec) <- if withTypeCheck 
                    then exportCheck env5 tc
                    else return (env5, tc)
   (env7,  ql) <- return $ qual opts env6 ec
   let dumps = [ (DumpParsed            , env , show' CS.ppModule mdl)
-              , (DumpTypeClassesChecked, env1, show' CS.ppModule tcc)
-              , (DumpKindChecked       , env2, show' CS.ppModule kc)
-              , (DumpSyntaxChecked     , env3, show' CS.ppModule sc)
-              , (DumpPrecChecked       , env4, show' CS.ppModule pc)
+              , (DumpKindChecked       , env1, show' CS.ppModule kc)
+              , (DumpSyntaxChecked     , env2, show' CS.ppModule sc)
+              , (DumpPrecChecked       , env3, show' CS.ppModule pc)
+              , (DumpTypeClassesChecked, env4, show' CS.ppModule tcc)
               , (DumpTypeChecked       , env5, show' CS.ppModule tc)
               , (DumpExportChecked     , env6, show' CS.ppModule ec)
               , (DumpQualified         , env7, show' CS.ppModule ql)
