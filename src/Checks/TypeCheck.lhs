@@ -256,14 +256,14 @@ have been properly renamed and all type synonyms are already expanded.
 >     foldr (bindConstr m n (constrType' tc n)) tyEnv' (catMaybes cs)
 >   bindData (RenamingType tc n (DataConstr c n' [ty])) tyEnv' =
 >     bindGlobalInfo NewtypeConstructor m c
->                    (ForAllExist n n' (TypeArrow ty (constrType' tc n)))
+>                    (ForAllExist emptyContext n n' (TypeArrow ty (constrType' tc n)))
 >                    tyEnv'
 >   bindData (RenamingType _ _ (DataConstr _ _ _)) _ =
 >     internalError "TypeCheck.bindConstrs: newtype with illegal constructors"
 >   bindData (AliasType _ _ _) tyEnv' = tyEnv'
 >   bindConstr m' n ty (DataConstr c n' tys) =
 >     bindGlobalInfo (flip DataConstructor (length tys)) m' c
->                    (ForAllExist n n' (foldr TypeArrow ty tys))
+>                    (ForAllExist emptyContext n n' (foldr TypeArrow ty tys))
 >   constrType' tc n = TypeConstructor tc $ map TypeVariable [0 .. n - 1]
 
 \end{verbatim}
@@ -421,7 +421,7 @@ either one of the basic types or \texttt{()}.
 > tcForeign :: Ident -> TypeExpr -> TCM ()
 > tcForeign f ty = do
 >   m <- getModuleIdent
->   tySc@(ForAll _ ty') <- expandPolyType ty
+>   tySc@(ForAll cx _ ty') <- expandPolyType ty
 >   modifyValueEnv $ bindFun m f (arrowArity ty') tySc
 
 > tcExternal :: Ident -> TCM ()
@@ -438,7 +438,7 @@ either one of the basic types or \texttt{()}.
 >   ty <- case lookupTypeSig v sigs of
 >     Nothing -> freshTypeVar
 >     Just t  -> do
->       ForAll n ty' <- expandPolyType t
+>       ForAll cx n ty' <- expandPolyType t
 >       unless (n == 0) $ report $ errPolymorphicFreeVar v
 >       return ty'
 >   modifyValueEnv $ bindFun m v (arrowArity ty) $ monoType ty
@@ -524,11 +524,11 @@ signature the declared type must be too general.
 >       modifyValueEnv $ rebindFun m v arity sigma
 >   where
 >   what = text (if poly then "Function:" else "Variable:") <+> ppIdent v
->   genType poly' (ForAll n ty)
+>   genType poly' (ForAll cx n ty)
 >     | n > 0 = internalError $ "TypeCheck.genVar: " ++ showLine (idPosition v) ++ show v ++ " :: " ++ show ty
 >     | poly' = gen lvs ty
 >     | otherwise = monoType ty
->   eqTyScheme (ForAll _ t1) (ForAll _ t2) = equTypes t1 t2
+>   eqTyScheme (ForAll cx1 _ t1) (ForAll cx2 _ t2) = equTypes t1 t2
 
 > tcEquation :: ValueEnv -> Equation -> TCM Type
 > tcEquation tyEnv0 (Equation p lhs rhs) = do
@@ -559,7 +559,7 @@ signature the declared type must be too general.
 >   tyEnv <- getValueEnv
 >   m  <- getModuleIdent
 >   maybe (modifyValueEnv (bindFun m v (arrowArity ty) (monoType ty)) >> return ty)
->         (\ (ForAll _ t) -> return t)
+>         (\ (ForAll cx _ t) -> return t)
 >         (sureVarType v tyEnv)
 > tcPattern p t@(ConstructorPattern c ts) = do
 >   m     <- getModuleIdent
@@ -656,7 +656,7 @@ because of possibly multiple occurrences of variables.
 >     Just t  -> expandPolyType t >>= inst
 >   tyEnv <- getValueEnv
 >   maybe (modifyValueEnv (bindFun m v (arrowArity ty) (monoType ty)) >> return ty)
->         (\ (ForAll _ t) -> return t)
+>         (\ (ForAll cx _ t) -> return t)
 >         (sureVarType v tyEnv)
 > tcPatternFP p t@(ConstructorPattern c ts) = do
 >   m <- getModuleIdent
@@ -747,7 +747,7 @@ because of possibly multiple occurrences of variables.
 >                            (bindLabel l (qualifyWith m (mkIdent "#Rec"))
 >                                       (polyType lty'))
 >                          >> return lty'))
->                  (\ (ForAll _ lty') -> return lty')
+>                  (\ (ForAll cx _ lty') -> return lty')
 >                  (sureLabelType l tyEnv)
 >     ty <- tcPatt p t
 >     unify p "record" (text "Field:" <+> ppFieldPatt f) lty ty
@@ -959,7 +959,7 @@ because of possibly multiple occurrences of variables.
 >                            (bindLabel l (qualifyWith m (mkIdent "#Rec"))
 >                                       (monoType lty'))
 >                          >> return lty'))
->                  (\ (ForAll _ lty') -> return lty')
+>                  (\ (ForAll cx _ lty') -> return lty')
 >                  (sureLabelType l tyEnv)
 >     alpha <- freshVar id
 >     let rty = TypeRecord [(l,lty)] (Just alpha)
@@ -1185,23 +1185,23 @@ We use negative offsets for fresh type variables.
 > freshSkolem = fresh TypeSkolem
 
 > inst :: TypeScheme -> TCM Type
-> inst (ForAll n ty) = do
+> inst (ForAll cx n ty) = do
 >   tys <- replicateM n freshTypeVar
 >   return $ expandAliasType tys ty
 
 > instExist :: ExistTypeScheme -> TCM Type
-> instExist (ForAllExist n n' ty) = do
+> instExist (ForAllExist cx n n' ty) = do
 >   tys <- replicateM (n + n') freshTypeVar
 >   return $ expandAliasType tys ty
 
 > skol :: ExistTypeScheme -> TCM Type
-> skol (ForAllExist n n' ty) = do
+> skol (ForAllExist cx n n' ty) = do
 >   tys  <- replicateM n  freshTypeVar
 >   tys' <- replicateM n' freshSkolem
 >   return $ expandAliasType (tys ++ tys') ty
 
 > gen :: Set.Set Int -> Type -> TypeScheme
-> gen gvs ty = ForAll (length tvs)
+> gen gvs ty = ForAll emptyContext (length tvs)
 >                     (subst (foldr2 bindSubst idSubst tvs tvs') ty)
 >   where tvs = [tv | tv <- nub (typeVars ty), tv `Set.notMember` gvs]
 >         tvs' = map TypeVariable [0 ..]
@@ -1312,7 +1312,7 @@ know that they are closed.
 > fsEnv = Set.unions . map (Set.fromList . typeSkolems) . localTypes
 
 > localTypes :: ValueEnv -> [Type]
-> localTypes tyEnv = [ty | (_, Value _ _ (ForAll _ ty)) <- localBindings tyEnv]
+> localTypes tyEnv = [ty | (_, Value _ _ (ForAll cx _ ty)) <- localBindings tyEnv]
 
 \end{verbatim}
 Miscellaneous functions.
@@ -1415,4 +1415,4 @@ The following functions implement pretty-printing for types.
 > ppType m = ppTypeExpr 0 . fromQualType m
 
 > ppTypeScheme :: ModuleIdent -> TypeScheme -> Doc
-> ppTypeScheme m (ForAll _ ty) = ppType m ty
+> ppTypeScheme m (ForAll cx _ ty) = ppType m ty

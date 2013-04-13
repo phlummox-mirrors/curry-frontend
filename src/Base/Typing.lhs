@@ -124,7 +124,7 @@ environment.}
 >   where tvs = filter (>= 0) (typeVars ty)
 >         tvs' = map TypeVariable [n - 1,n - 2 ..]
 >         n = minimum (0 : concatMap typeVars tys)
->         tys = [ty1 | (_,Value _ _ (ForAll _ ty1)) <- localBindings tyEnv]
+>         tys = [ty1 | (_,Value _ _ (ForAll _ _ ty1)) <- localBindings tyEnv]
 
 > identType :: ValueEnv -> Ident -> TyState Type
 > identType tyEnv x = instUniv (varType x tyEnv)
@@ -287,10 +287,10 @@ offsets here.
 >     return (expandAliasType tys ty)
 
 > instUniv :: TypeScheme -> TyState Type
-> instUniv (ForAll n ty) = instType n ty
+> instUniv (ForAll con n ty) = instType n ty
 
 > instUnivExist :: ExistTypeScheme -> TyState Type
-> instUnivExist (ForAllExist n n' ty) = instType (n + n') ty
+> instUnivExist (ForAllExist con n n' ty) = instType (n + n') ty
 
 \end{verbatim}
 When unifying two types, the non-generalized variables, i.e.,

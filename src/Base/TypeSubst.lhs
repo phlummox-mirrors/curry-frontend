@@ -50,13 +50,15 @@ This module implements substitutions on types.
 >     | otherwise = TypeRecord fs' Nothing
 >    where fs' = map (\ (l,ty) -> (l, subst sigma ty)) fs
 
+> -- TODO: type subst in context!
 > instance SubstType TypeScheme where
->   subst sigma (ForAll n ty) =
->     ForAll n (subst (foldr unbindSubst sigma [0..n-1]) ty)
+>   subst sigma (ForAll con n ty) =
+>     ForAll con n (subst (foldr unbindSubst sigma [0..n-1]) ty)
 
+> -- TODO: type subst in context!
 > instance SubstType ExistTypeScheme where
->   subst sigma (ForAllExist n n' ty) =
->     ForAllExist n n' (subst (foldr unbindSubst sigma [0..n+n'-1]) ty)
+>   subst sigma (ForAllExist con n n' ty) =
+>     ForAllExist con n n' (subst (foldr unbindSubst sigma [0..n+n'-1]) ty)
 
 > instance SubstType ValueInfo where
 >   subst _     dc@(DataConstructor  _ _ _) = dc

@@ -579,15 +579,15 @@ stripped from the types.
 > varType f = do
 >   tyEnv <- getValueEnv
 >   case qualLookupValue f tyEnv of
->     [Value _ _ (ForAll _ ty)] -> return ty
+>     [Value _ _ (ForAll _ _ ty)] -> return ty
 >     _ -> internalError $ "CurryToIL.varType: " ++ show f
 
 > constrType :: QualIdent -> TransM Type
 > constrType c = do
 >   tyEnv <- getValueEnv
 >   case qualLookupValue c tyEnv of
->     [DataConstructor  _ _ (ForAllExist _ _ ty)] -> return ty
->     [NewtypeConstructor _ (ForAllExist _ _ ty)] -> return ty
+>     [DataConstructor  _ _ (ForAllExist _ _ _ ty)] -> return ty
+>     [NewtypeConstructor _ (ForAllExist _ _ _ ty)] -> return ty
 >     _ -> internalError $ "CurryToIL.constrType: " ++ show c
 
 > recordInfo :: Ident -> TransM (QualIdent, Int, [(Ident, Type)])

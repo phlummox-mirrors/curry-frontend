@@ -135,7 +135,7 @@ tupleDCs = map dataInfo tupleTCs
   where
   dataInfo (DataType tc _ [Just (DataConstr _ _ tys)]) =
     DataConstructor (qualUnqualify preludeMIdent tc) (length tys)
-      (ForAllExist (length tys) 0 $ foldr TypeArrow (tupleType tys) tys)
+      (ForAllExist emptyContext (length tys) 0 $ foldr TypeArrow (tupleType tys) tys)
   dataInfo _ = internalError "Env.Value.tupleDCs: no data constructor"
 
 initDCEnv :: ValueEnv
@@ -144,7 +144,7 @@ initDCEnv = foldr predefDC emptyTopEnv
   | (ty, cs) <- predefTypes, DataConstr c n' tys <- cs]
   where predefDC (c, a, ty) = predefTopEnv c' (DataConstructor c' a ty)
           where c' = qualify c
-        constrType (ForAll n ty) n' = ForAllExist n n' . foldr TypeArrow ty
+        constrType (ForAll cx n ty) n' = ForAllExist cx n n' . foldr TypeArrow ty
 
 -- |Pretty-printing the types from the type environment
 ppTypes :: ModuleIdent -> ValueEnv -> Doc
@@ -153,7 +153,7 @@ ppTypes mid valueEnv = ppTypes' mid $ localBindings valueEnv
   ppTypes' :: ModuleIdent -> [(Ident, ValueInfo)] -> Doc
   ppTypes' m = vcat . map (ppIDecl . mkDecl) . filter (isValue . snd)
     where
-    mkDecl (v, Value _ a (ForAll _ ty)) =
+    mkDecl (v, Value _ a (ForAll cx _ ty)) =
       IFunctionDecl NoPos (qualify v) a (fromQualType m ty)
     mkDecl _ = internalError "Env.Value.ppTypes: no value"
     isValue (Value _ _ _) = True

@@ -119,7 +119,7 @@ iConstrDecl tvs c tys = ConstrDecl NoPos tvs c tys
 
 funDecl :: ModuleIdent -> ValueEnv -> Export -> [IDecl] -> [IDecl]
 funDecl m tyEnv (Export f) ds = case qualLookupValue f tyEnv of
-  [Value _ a (ForAll _ ty)] ->
+  [Value _ a (ForAll _ _ ty)] ->
     IFunctionDecl NoPos (qualUnqualify m f) a (fromQualType m ty) : ds
   _ -> internalError $ "Exports.funDecl: " ++ show f
 funDecl _ _     (ExportTypeWith _ _) ds = ds

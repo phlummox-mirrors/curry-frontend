@@ -225,7 +225,7 @@ bindNewConstr m tc tvs ty0 (NewConstrDecl _ evs c ty1) = Map.insert c $
   constrType' m tvs evs (ArrowType ty1 ty0)
 
 constrType' :: ModuleIdent -> [Ident] -> [Ident] -> TypeExpr -> ExistTypeScheme
-constrType' m tvs evs ty = ForAllExist (length tvs) (length evs)
+constrType' m tvs evs ty = ForAllExist emptyContext (length tvs) (length evs)
                                        (toQualType m tvs ty)
 
 qualifyLike :: QualIdent -> Ident -> QualIdent
@@ -524,14 +524,14 @@ addImportedLabels m tyEnv = foldr addLabelType tyEnv (allImports tyEnv)
   addLabelType _ = id
 
 expandRecordTypes :: TCEnv -> ValueInfo -> ValueInfo
-expandRecordTypes tcEnv (DataConstructor  qid a (ForAllExist n m ty)) =
-  DataConstructor qid a (ForAllExist n m (expandRecords tcEnv ty))
-expandRecordTypes tcEnv (NewtypeConstructor qid (ForAllExist n m ty)) =
-  NewtypeConstructor qid (ForAllExist n m (expandRecords tcEnv ty))
-expandRecordTypes tcEnv (Value qid a (ForAll n ty)) =
-  Value qid a (ForAll n (expandRecords tcEnv ty))
-expandRecordTypes tcEnv (Label qid r (ForAll n ty)) =
-  Label qid r (ForAll n (expandRecords tcEnv ty))
+expandRecordTypes tcEnv (DataConstructor  qid a (ForAllExist con n m ty)) =
+  DataConstructor qid a (ForAllExist con n m (expandRecords tcEnv ty))
+expandRecordTypes tcEnv (NewtypeConstructor qid (ForAllExist con n m ty)) =
+  NewtypeConstructor qid (ForAllExist con n m (expandRecords tcEnv ty))
+expandRecordTypes tcEnv (Value qid a (ForAll con n ty)) =
+  Value qid a (ForAll con n (expandRecords tcEnv ty))
+expandRecordTypes tcEnv (Label qid r (ForAll con n ty)) =
+  Label qid r (ForAll con n (expandRecords tcEnv ty))
 
 expandRecords :: TCEnv -> Type -> Type
 expandRecords tcEnv (TypeConstructor qid tys) = case qualLookupTC qid tcEnv of

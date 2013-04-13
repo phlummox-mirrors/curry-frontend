@@ -683,7 +683,7 @@ Desugaring of Records
 >       --tys' = map (elimRecordTypes tyEnv) tys
 >       rdecl = DataDecl p r vs [ConstrDecl p [] r tys]
 >       rty'  = TypeConstructor qr (map TypeVariable [0 .. n - 1])
->       rcts' = ForAllExist 0 n (foldr TypeArrow rty' (map snd fs'))
+>       rcts' = ForAllExist emptyContext 0 n (foldr TypeArrow rty' (map snd fs'))
 >   rfuncs <- mapM (genRecordFuncs p qr rty' (map fst fs')) fs'
 >   modifyValueEnv
 >       (bindGlobalInfo (flip DataConstructor (length tys)) m r rcts')

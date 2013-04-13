@@ -433,13 +433,13 @@ Auxiliary functions
 
 > funType :: ModuleIdent -> ValueEnv -> QualIdent -> Type
 > funType m tyEnv f = case qualLookupValue f tyEnv of
->   [Value _ _ (ForAll _ ty)] -> ty
+>   [Value _ _ (ForAll _ _ ty)] -> ty
 >   _ -> case qualLookupValue (qualQualify m f) tyEnv of
->     [Value _ _ (ForAll _ ty)] -> ty
+>     [Value _ _ (ForAll _ _ ty)] -> ty
 >     _ -> internalError $ "Simplify.funType " ++ show f
 
 > freshIdent :: (Int -> Ident) -> TypeScheme -> SIM Ident
-> freshIdent f ty@(ForAll _ t) = do
+> freshIdent f ty@(ForAll _ _ t) = do
 >   m <- getModuleIdent
 >   x <- f `liftM` getNextId
 >   modifyValueEnv $ bindFun m x arity ty

@@ -21,7 +21,7 @@ TODO: Use MultiParamTypeClasses ?
 >   , DataConstr (..)
 >     -- * Representation of Quantification
 >   , TypeScheme (..), ExistTypeScheme (..), monoType, polyType
->   , typeSchemeToType
+>   , typeSchemeToType, emptyContext, Context
 >     -- * Predefined types
 >   , unitType, boolType, charType, intType, floatType, stringType
 >   , successType, listType, ioType, tupleType, primType
@@ -232,11 +232,19 @@ quantified variables and the second the number of existentially
 quantified variables.
 \begin{verbatim}
 
-> data TypeScheme = ForAll Int Type deriving (Eq, Show)
-> data ExistTypeScheme = ForAllExist Int Int Type deriving (Eq, Show)
+> data TypeScheme = ForAll Context Int Type deriving (Eq, Show)
+> data ExistTypeScheme = ForAllExist Context Int Int Type deriving (Eq, Show)
 
 > typeSchemeToType :: TypeScheme -> Type
-> typeSchemeToType (ForAll _ t) = t
+> typeSchemeToType (ForAll _ _ t) = t
+
+> type Context = [(QualIdent, Type)]
+ 
+> emptyContext :: Context
+> emptyContext = []
+
+> constrainBy :: TypeScheme -> Context -> TypeScheme
+> constrainBy (ForAll _cx n t) cx = (ForAll cx n t) 
 
 \end{verbatim}
 The functions \texttt{monoType} and \texttt{polyType} translate a type
@@ -248,10 +256,10 @@ starting with 0 and does not renumber the variables.
 \begin{verbatim}
 
 > monoType :: Type -> TypeScheme
-> monoType ty = ForAll 0 ty
+> monoType ty = ForAll emptyContext 0 ty
 
 > polyType :: Type -> TypeScheme
-> polyType ty = ForAll (maximum (-1 : typeVars ty) + 1) ty
+> polyType ty = ForAll emptyContext (maximum (-1 : typeVars ty) + 1) ty
 
 \end{verbatim}
 There are a few predefined types:

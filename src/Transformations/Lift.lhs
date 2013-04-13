@@ -309,7 +309,7 @@ to the top-level.
 
 > varType :: ValueEnv -> Ident -> Type
 > varType tyEnv v = case lookupValue v tyEnv of
->   [Value _ _ (ForAll _ ty)] -> ty
+>   [Value _ _ (ForAll _ _ ty)] -> ty
 >   _ -> internalError $ "Lift.varType: " ++ show v
 
 > liftIdent :: String -> Ident -> Ident
