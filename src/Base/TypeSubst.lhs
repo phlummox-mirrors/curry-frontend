@@ -50,15 +50,15 @@ This module implements substitutions on types.
 >     | otherwise = TypeRecord fs' Nothing
 >    where fs' = map (\ (l,ty) -> (l, subst sigma ty)) fs
 
-> -- TODO: type subst in context!
 > instance SubstType TypeScheme where
->   subst sigma (ForAll con n ty) =
->     ForAll con n (subst (foldr unbindSubst sigma [0..n-1]) ty)
+>   subst sigma (ForAll cx n ty) =
+>     ForAll (substContext sigma cx) n 
+>            (subst (foldr unbindSubst sigma [0..n-1]) ty)
 
-> -- TODO: type subst in context!
 > instance SubstType ExistTypeScheme where
->   subst sigma (ForAllExist con n n' ty) =
->     ForAllExist con n n' (subst (foldr unbindSubst sigma [0..n+n'-1]) ty)
+>   subst sigma (ForAllExist cx n n' ty) =
+>     ForAllExist (substContext sigma cx) n n' 
+>                 (subst (foldr unbindSubst sigma [0..n+n'-1]) ty)
 
 > instance SubstType ValueInfo where
 >   subst _     dc@(DataConstructor  _ _ _) = dc
@@ -68,6 +68,9 @@ This module implements substitutions on types.
 
 > instance SubstType a => SubstType (TopEnv a) where
 >   subst = fmap . subst
+
+> substContext :: TypeSubst -> Context -> Context
+> substContext s cx = map (\(qid, ty) -> (qid, subst s ty)) cx  
 
 \end{verbatim}
 The function \texttt{expandAliasType} expands all occurrences of a
