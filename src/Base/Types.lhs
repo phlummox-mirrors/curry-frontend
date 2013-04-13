@@ -21,7 +21,7 @@ TODO: Use MultiParamTypeClasses ?
 >   , DataConstr (..)
 >     -- * Representation of Quantification
 >   , TypeScheme (..), ExistTypeScheme (..), monoType, polyType
->   , typeSchemeToType, emptyContext, Context
+>   , typeSchemeToType, emptyContext, Context, constrainBy, mkContext
 >     -- * Predefined types
 >   , unitType, boolType, charType, intType, floatType, stringType
 >   , successType, listType, ioType, tupleType, primType
@@ -245,6 +245,9 @@ quantified variables.
 
 > constrainBy :: TypeScheme -> Context -> TypeScheme
 > constrainBy (ForAll _cx n t) cx = (ForAll cx n t) 
+
+> mkContext :: [(QualIdent, Type)] -> Context
+> mkContext = id 
 
 \end{verbatim}
 The functions \texttt{monoType} and \texttt{polyType} translate a type
