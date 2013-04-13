@@ -195,15 +195,6 @@ classMethodSigsContainTypeVar (ClassDecl _p _scon _tycon tyvar0 decls)
     tyVarInTypeSig _ _ = internalError "TypeClassesCheck tyVarInTypeSig"
 classMethodSigsContainTypeVar _ = internalError "TypeClassesCheck" 
 
-typeVarsInTypeExpr :: TypeExpr -> [Ident]
-typeVarsInTypeExpr (ConstructorType _ ts) = concatMap typeVarsInTypeExpr ts
-typeVarsInTypeExpr (SpecialConstructorType _ ts) = concatMap typeVarsInTypeExpr ts
-typeVarsInTypeExpr (VariableType t) = [t]
-typeVarsInTypeExpr (TupleType ts) = concatMap typeVarsInTypeExpr ts
-typeVarsInTypeExpr (ListType t) = typeVarsInTypeExpr t
-typeVarsInTypeExpr (ArrowType t1 t2) = typeVarsInTypeExpr t1 ++ typeVarsInTypeExpr t2
-typeVarsInTypeExpr (RecordType _ _ ) = internalError "TypeClassCheck.typeVarsInTypeExpr"
-
 -- ---------------------------------------------------------------------------
 -- error messages
 -- ---------------------------------------------------------------------------
