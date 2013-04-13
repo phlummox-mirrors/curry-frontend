@@ -22,3 +22,10 @@ class (C1 a, C3 a) => C2 a
 -- class C a => C2 b
 -- class (C a, C2 b, C4 c) => C3 b
 
+class C3 a where
+  fun1 :: a -> a
+  fun2 :: a -> b -> c -> d
+  -- error
+  -- fun3 :: b -> Int
+  -- fun4 :: Int
+  -- fun5 :: b -> c -> d -> Int

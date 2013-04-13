@@ -26,6 +26,7 @@ import qualified Data.Map as Map
 import Curry.Base.Ident
 import Curry.Base.Position
 import Curry.Syntax.Utils
+import Curry.Syntax.Pretty
 
 data CheckResult a
   = CheckSuccess a
@@ -57,6 +58,8 @@ typeClassesCheck decls (ClassEnv importedClasses importedInstances _) =
     (instDecls, _rest2)  = partition isInstanceDecl rest1
     result = do
       mapM_ typeVariableInContext classDecls
+      mapM_ classMethodSigsContainTypeVar classDecls
+      
       -- gather all classes and instances for more "global" checks
       let classes = map classDeclToClass classDecls ++ importedClasses
       let instances = map instanceDeclToInstance instDecls ++ importedInstances
@@ -165,6 +168,42 @@ noDoubleClassMethods classes =
 noConflictOfClassMethodsWithTopLevelBinding :: [Class] -> ValueEnv -> CheckResult ()
 noConflictOfClassMethodsWithTopLevelBinding = undefined
 
+-- |check that the type variable of the class appears in all method type 
+-- signatures. Example:
+-- OK:
+-- @
+-- class C a where
+--   fun1 :: a -> a
+--   fun2 :: a -> b -> c -> d
+-- @
+-- Errors:
+-- @ 
+-- class C a where
+--   fun3 :: b -> Int
+--   fun4 :: Int
+--   fun5 :: b -> c -> d -> Int
+-- @
+classMethodSigsContainTypeVar :: Decl -> CheckResult ()
+classMethodSigsContainTypeVar (ClassDecl _p _scon _tycon tyvar0 decls)
+  = mapM_ (tyVarInTypeSig tyvar0) typeSigs
+  where 
+    typeSigs = filter isTypeSig decls
+    tyVarInTypeSig tyvar (TypeSig p ids _con typeExpr) 
+      = if tyvar `elem` typeVarsInTypeExpr typeExpr
+        then return ()
+        else CheckFailed [errTypeVarNotInMethodSig p tyvar ids]
+    tyVarInTypeSig _ _ = internalError "TypeClassesCheck tyVarInTypeSig"
+classMethodSigsContainTypeVar _ = internalError "TypeClassesCheck" 
+
+typeVarsInTypeExpr :: TypeExpr -> [Ident]
+typeVarsInTypeExpr (ConstructorType _ ts) = concatMap typeVarsInTypeExpr ts
+typeVarsInTypeExpr (SpecialConstructorType _ ts) = concatMap typeVarsInTypeExpr ts
+typeVarsInTypeExpr (VariableType t) = [t]
+typeVarsInTypeExpr (TupleType ts) = concatMap typeVarsInTypeExpr ts
+typeVarsInTypeExpr (ListType t) = typeVarsInTypeExpr t
+typeVarsInTypeExpr (ArrowType t1 t2) = typeVarsInTypeExpr t1 ++ typeVarsInTypeExpr t2
+typeVarsInTypeExpr (RecordType _ _ ) = internalError "TypeClassCheck.typeVarsInTypeExpr"
+
 -- ---------------------------------------------------------------------------
 -- error messages
 -- ---------------------------------------------------------------------------
@@ -184,4 +223,9 @@ errDoubleClassMethods :: Position -> Position -> [Ident] -> Message
 errDoubleClassMethods _p1 _p2 methods_ = 
   message (text "double class methods:" <+> text (show methods_) )
 
-  
+errTypeVarNotInMethodSig :: Position -> Ident -> [Ident] -> Message
+errTypeVarNotInMethodSig p tyvar ids = 
+  posMessage p (text "the type variable of the class definition" 
+  <+> parens (ppIdent tyvar) 
+  <+> text "not in method signature of" 
+  <+> brackets (hsep $ punctuate comma (map ppIdent ids)))
