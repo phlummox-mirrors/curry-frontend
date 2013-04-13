@@ -49,6 +49,7 @@ type annotation is present.
 >   , qualLookupTC)
 > import Env.Value ( ValueEnv, ValueInfo (..), bindFun, rebindFun
 >   , bindGlobalInfo, bindLabel, lookupValue, qualLookupValue )
+> import Env.ClassEnv (ClassEnv)
 
 > infixl 5 $-$
 
@@ -64,9 +65,9 @@ for all function and value definitions is performed.
 The type checker returns the resulting type constructor and type environments.
 \begin{verbatim}
 
-> typeCheck :: ModuleIdent -> TCEnv -> ValueEnv -> [Decl]
+> typeCheck :: ModuleIdent -> TCEnv -> ValueEnv -> ClassEnv -> [Decl]
 >           -> (TCEnv, ValueEnv, [Message])
-> typeCheck m tcEnv tyEnv decls = execTCM check initState
+> typeCheck m tcEnv tyEnv cEnv decls = execTCM check initState
 >   where
 >   check = do
 >     checkTypeSynonyms m tds
@@ -75,7 +76,7 @@ The type checker returns the resulting type constructor and type environments.
 >     bindLabels
 >     tcDecls vds
 >   (tds, vds) = partition isTypeDecl decls
->   initState  = TcState m tcEnv tyEnv idSubst emptySigEnv 0 []
+>   initState  = TcState m tcEnv tyEnv cEnv idSubst emptySigEnv 0 []
 
 \end{verbatim}
 
@@ -88,6 +89,7 @@ generating fresh type variables.
 >   { moduleIdent :: ModuleIdent -- read only
 >   , tyConsEnv   :: TCEnv
 >   , valueEnv    :: ValueEnv
+>   , classEnv    :: ClassEnv
 >   , typeSubst   :: TypeSubst
 >   , sigEnv      :: SigEnv
 >   , nextId      :: Int         -- automatic counter
@@ -107,6 +109,9 @@ generating fresh type variables.
 
 > getValueEnv :: TCM ValueEnv
 > getValueEnv = S.gets valueEnv
+
+> getClassEnv :: TCM ClassEnv
+> getClassEnv = S.gets classEnv
 
 > modifyValueEnv :: (ValueEnv -> ValueEnv) -> TCM ()
 > modifyValueEnv f = S.modify $ \ s -> s { valueEnv = f $ valueEnv s }
@@ -193,12 +198,16 @@ and \texttt{expandMonoTypes}, respectively.
 > ft :: ModuleIdent -> TypeExpr -> [Ident] -> [Ident]
 > ft m (ConstructorType tc tys) tcs =
 >   maybe id (:) (localIdent m tc) (foldr (ft m) tcs tys)
+> ft m (SpecialConstructorType (QualTC tc) tys) tcs = 
+>   ft m (ConstructorType tc tys) tcs
 > ft _ (VariableType         _) tcs = tcs
 > ft m (TupleType          tys) tcs = foldr (ft m) tcs tys
 > ft m (ListType            ty) tcs = ft m ty tcs
 > ft m (ArrowType      ty1 ty2) tcs = ft m ty1 $ ft m ty2 $ tcs
 > ft m (RecordType      fs rty) tcs =
 >   foldr (ft m) (maybe tcs (\ty -> ft m ty tcs) rty) (map snd fs)
+> ft m (SpecialConstructorType _ tys) tcs = 
+>   foldr (ft m) tcs tys
 
 > bindTypes :: [Decl] -> TCM ()
 > bindTypes ds = do
