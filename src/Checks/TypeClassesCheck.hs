@@ -15,6 +15,7 @@ module Checks.TypeClassesCheck (typeClassesCheck) where
 
 import Curry.Syntax.Type
 import Env.ClassEnv
+import Env.Value
 import Base.Messages (Message, message, posMessage, internalError)
 
 import Data.List
@@ -75,15 +76,17 @@ classDeclToClass (ClassDecl _ (SContext scon) cls tyvar decls)
     theClass = qualify cls, -- TODO: qualify? 
     typeVar = tyvar, 
     kind = -1, -- TODO
-    methods = map (\(TypeSig _ [id0] cx ty) -> (id0, cx, ty)) $ 
-      concatMap splitUpTypeSig $ filter isTypeSig decls, 
-    defaults = filter isFunctionDecl decls
+    methods = allMethods, 
+    defaults = filter isFunctionDecl decls, 
+    typeSchemes = []
   }
   where
     splitUpTypeSig :: Decl -> [Decl]
     splitUpTypeSig (TypeSig p ids cx ty) 
       = map (\id0 -> TypeSig p [id0] cx ty) ids
     splitUpTypeSig _ = internalError "splitUpTypeSig"
+    allMethods = map (\(TypeSig _ [id0] cx ty) -> (id0, cx, ty)) $ 
+      concatMap splitUpTypeSig $ filter isTypeSig decls
 classDeclToClass _ = internalError "classDeclToClass"
   
 
@@ -150,7 +153,7 @@ lookupClassDecl [] _cls = Nothing
 -- class Foo1 a where fun :: a
 -- class Foo2 a where fun :: a
 -- TODO: improve position output
-noDoubleClassMethods :: [Class] -> CheckResult()
+noDoubleClassMethods :: [Class] -> CheckResult ()
 noDoubleClassMethods classes = 
   let allMethods = map fst3 $ concatMap (\(Class {methods=ms}) -> ms) classes
       theNub = nub allMethods -- nubBy (\ms1 ms2 -> fst3 ms1 == fst3 ms2) allMethods
@@ -158,8 +161,10 @@ noDoubleClassMethods classes =
   then CheckFailed [errDoubleClassMethods NoPos NoPos (allMethods \\ theNub)]
   else return ()
   where fst3 (x, _, _) = x
-      
-          
+
+noConflictOfClassMethodsWithTopLevelBinding :: [Class] -> ValueEnv -> CheckResult ()
+noConflictOfClassMethodsWithTopLevelBinding = undefined
+
 -- ---------------------------------------------------------------------------
 -- error messages
 -- ---------------------------------------------------------------------------

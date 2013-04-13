@@ -13,16 +13,19 @@
 
 
 module Env.ClassEnv 
-  ( ClassEnv (..), Class (..), Instance (..), initClassEnv, lookupClass, 
-    ppClasses
+  ( ClassEnv (..), Class (..), Instance (..), initClassEnv, lookupClass
+  , lookupDefiningClass, lookupMethodTypeScheme
+  , ppClasses
   ) where
 
--- import Base.Types hiding (typeVar, typeVars)
+-- import Base.Types hiding ()
 import Curry.Base.Ident
 import Text.PrettyPrint
 import Curry.Syntax.Type
 import qualified Data.Map as Map
 import Curry.Syntax.Pretty
+import Control.Monad (liftM)
+import Base.Types hiding (Context, typeVar, typeVars)
 
 -- |The class environment consists of the classes and instances in scope
 -- plus a map from class methods to their defining classes
@@ -35,9 +38,10 @@ data Class = Class
   , typeVar :: Ident
   , kind :: Int
   , methods :: [(Ident, Context, TypeExpr)]
+  , typeSchemes :: [(Ident, TypeScheme)] 
   , defaults :: [Decl]
   }
-  deriving Show
+  deriving (Eq, Show)
 
 data Instance = Instance
   { context :: [(QualIdent,Ident)]
@@ -46,7 +50,7 @@ data Instance = Instance
   , typeVars :: [Ident]
   , rules :: [Decl]
   }
-  deriving Show
+  deriving (Eq, Show)
   
 initClassEnv :: ClassEnv 
 initClassEnv = ClassEnv [] [] Map.empty
@@ -58,6 +62,16 @@ lookupClass (ClassEnv cls _ _) c = lookupClass' cls
         lookupClass' (c'@Class {theClass=tc}:cs) 
           | tc == c = Just c'
           | otherwise = lookupClass' cs
+
+-- |looks up the class that defines the given class method
+lookupDefiningClass :: ClassEnv -> QualIdent -> Maybe QualIdent
+lookupDefiningClass (ClassEnv _ _ ms) m = Map.lookup m ms  
+
+lookupMethodTypeScheme :: ClassEnv -> QualIdent -> Maybe TypeScheme
+lookupMethodTypeScheme cEnv qid = do
+  theClass_ <- lookupDefiningClass cEnv qid
+  classMethods <- liftM typeSchemes (lookupClass cEnv theClass_) 
+  lookup (unqualify qid) classMethods  
 
 -- ----------------------------------------------------------------------------
 -- Pritty printer functions
