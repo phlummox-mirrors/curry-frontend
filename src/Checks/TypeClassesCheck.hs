@@ -53,7 +53,7 @@ typeClassesCheck :: [Decl] -> ClassEnv -> ([Decl], ClassEnv, [Message])
 typeClassesCheck decls (ClassEnv importedClasses importedInstances _) = 
   case result of 
     CheckSuccess (classes, instances) -> 
-      let newDecls = concatMap transformInstances $ concatMap transformClasses decls
+      let newDecls = concatMap (transformInstance classes) $ concatMap transformClass decls
           classes' = map renameTypeSigVars classes
           classes'' = map buildTypeSchemes classes'
       in (newDecls, ClassEnv classes'' instances (buildClassMethodsMap classes''), [])
@@ -204,13 +204,62 @@ classMethodSigsContainTypeVar _ = internalError "TypeClassesCheck"
 -- source code transformation
 -- ---------------------------------------------------------------------------
 
-transformClasses :: Decl -> [Decl]
-transformClasses (ClassDecl p scx cls tyvar decls) = []
-transformClasses d = [d]
+transformClass :: Decl -> [Decl]
+transformClass (ClassDecl p scx cls tyvar decls) = []
+transformClass d = [d]
 
-transformInstances :: Decl -> [Decl]
-transformInstances (InstanceDecl p scx cls tcon tyvars decls) = []
-transformInstances d = [d]
+-- |transformInstance creates top level functions for the methods 
+-- of which rules are given in the instance declaration, and concrete 
+-- dictionaries, as well as type signatures for the instance rules. 
+transformInstance :: [Class] -> Decl -> [Decl]
+transformInstance classes idecl@(InstanceDecl _ _ _ _ _ decls)
+  = concatMap (transformMethod classes idecl) decls
+  -- create dictionary 
+transformInstance _ d = [d]
+
+transformMethod :: [Class] -> Decl -> Decl -> [Decl]
+transformMethod classes idecl decl@(FunctionDecl _ _ _) =
+  -- create type signature
+  createTypeSignature classes idecl decl
+  -- create function rules
+  : [createTopLevelFuncs rfunc decl] 
+  where 
+    rfunc = (\s -> {-"f" ++ show cls ++ show tcon-}"__" ++ s)
+transformMethod _ _ _ = internalError "transformMethod"
+
+createTypeSignature :: [Class] -> Decl -> Decl -> Decl
+createTypeSignature classes (InstanceDecl _ _scon cls tcon tyvars _) 
+                    (FunctionDecl p f _eqs) 
+  = TypeSig p [f] (Context []) theType -- TODO
+  where 
+    -- lookup class method of f
+    theClass = fromJust $ find (\(Class { theClass = tc}) -> tc == cls) classes
+    theMethod = fromJust $ find (\(id0, cx, te) -> id0 == f) (methods theClass)
+    
+    -- substitute class typevar with given instance type
+    theType = SpecialConstructorType tcon (map VariableType tyvars)
+    
+    -- add instance context
+createTypeSignature _ _ _ = internalError "createTypeSignature"    
+      
+
+type RenameFunc = String -> String
+
+createTopLevelFuncs :: RenameFunc -> Decl -> Decl
+createTopLevelFuncs rfunc (FunctionDecl p id0 eqs) 
+  = FunctionDecl p (rename rfunc id0) (map (transEq rfunc) eqs)
+createTopLevelFuncs _ _ = internalError "createTopLevelFuncs"
+  
+transEq :: RenameFunc -> Equation -> Equation
+transEq rfunc (Equation p lhs rhs) = Equation p (transLhs rfunc lhs) rhs
+
+transLhs :: RenameFunc -> Lhs -> Lhs
+transLhs rfunc (FunLhs id0 ps) = FunLhs (rename rfunc id0) ps
+transLhs rfunc (OpLhs ps1 id0 ps2) = OpLhs ps1 (rename rfunc id0) ps2
+transLhs rfunc (ApLhs lhs ps) = ApLhs (transLhs rfunc lhs) ps
+
+rename :: RenameFunc -> Ident -> Ident
+rename rfunc = updIdentName rfunc  
 
 -- ---------------------------------------------------------------------------
 -- other transformations
