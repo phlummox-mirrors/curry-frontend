@@ -222,17 +222,17 @@ transformInstance _ d = [d]
 transformMethod :: [Class] -> IDecl -> Decl -> [Decl]
 transformMethod classes idecl decl@(FunctionDecl _ _ _) =
   -- create type signature
-  createTypeSignature classes idecl decl
+  createTypeSignature rfunc classes idecl decl
   -- create function rules
   : [createTopLevelFuncs rfunc decl] 
   where 
-    rfunc = (\s -> {-"f" ++ show cls ++ show tcon-}"__" ++ s)
+    rfunc = (\s -> {-"f" ++ show cls ++ show tcon-}{-"__" ++-} s)
 transformMethod _ _ _ = internalError "transformMethod"
 
-createTypeSignature :: [Class] -> IDecl -> Decl -> Decl
-createTypeSignature classes (InstanceDecl _ scx cls tcon tyvars _) 
+createTypeSignature :: RenameFunc -> [Class] -> IDecl -> Decl -> Decl
+createTypeSignature rfunc classes (InstanceDecl _ scx cls tcon tyvars _) 
                     (FunctionDecl p f _eqs) 
-  = TypeSig p [f] cx' ty' -- TODO
+  = TypeSig p [rename rfunc f] cx' ty' -- TODO
   where 
     -- lookup class method of f
     theClass_ = fromJust $ find (\(Class { theClass = tc}) -> tc == cls) classes
@@ -247,7 +247,7 @@ createTypeSignature classes (InstanceDecl _ scx cls tcon tyvars _)
     -- add instance context
     icx = simpleContextToContext scx
     cx' = combineContexts icx cx
-createTypeSignature _ _ _ = internalError "createTypeSignature"    
+createTypeSignature _ _ _ _ = internalError "createTypeSignature"    
       
 
 combineContexts :: ST.Context -> ST.Context -> ST.Context
