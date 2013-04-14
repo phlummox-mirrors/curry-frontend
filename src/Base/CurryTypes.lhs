@@ -14,6 +14,7 @@ order of type variables in the left hand side of a type declaration.
 
 > module Base.CurryTypes
 >  ( toQualType, toQualTypes, toType, toTypes, fromQualType, fromType
+>  , toTypeAndGetMap
 >  ) where
 
 > import Data.List (nub)
@@ -32,9 +33,13 @@ order of type variables in the left hand side of a type declaration.
 > toQualTypes :: ModuleIdent -> [Ident] -> [CS.TypeExpr] -> [Type]
 > toQualTypes m tvs = map (qualifyType m) . toTypes tvs
 
-> toType :: [Ident] -> CS.TypeExpr -> Type
-> toType tvs ty = toType' (Map.fromList $ zip (tvs ++ newInTy) [0 ..]) ty
+> toTypeAndGetMap :: [Ident] -> CS.TypeExpr -> (Type, Map.Map Ident Int)
+> toTypeAndGetMap tvs ty = (toType' theMap ty, theMap)
 >   where newInTy = [tv | tv <- nub (fv ty), tv `notElem` tvs]
+>         theMap = Map.fromList $ zip (tvs ++ newInTy) [0 ..]
+
+> toType :: [Ident] -> CS.TypeExpr -> Type
+> toType tvs ty = fst $ toTypeAndGetMap tvs ty 
 
 > toTypes :: [Ident] -> [CS.TypeExpr] -> [Type]
 > toTypes tvs tys = map

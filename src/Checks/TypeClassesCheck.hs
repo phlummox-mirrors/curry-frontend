@@ -13,14 +13,14 @@
 
 module Checks.TypeClassesCheck (typeClassesCheck) where
 
-import Curry.Syntax.Type
+import Curry.Syntax.Type as ST
 import Env.ClassEnv
-import Env.Value
 import Base.Messages (Message, message, posMessage, internalError)
 
 import Data.List
 import Text.PrettyPrint
 import qualified Data.Map as Map
+import Data.Maybe
 
 -- import Base.Types (Type (..), TypeScheme (..))
 import Curry.Base.Ident
@@ -28,7 +28,7 @@ import Curry.Base.Position
 import Curry.Syntax.Utils
 import Curry.Syntax.Pretty
 import Base.CurryTypes
-import Base.Types (TypeScheme, polyType)
+import Base.Types as BT (TypeScheme, polyType, Context, Type (..), constrainBy) 
 
 data CheckResult a
   = CheckSuccess a
@@ -226,8 +226,8 @@ renameTypeSigVars :: Class -> Class
 renameTypeSigVars cls 
   = cls { methods = renameTypeSigVars' (typeVar cls) (methods cls) 1 }
   where
-    renameTypeSigVars' :: Ident -> [(Ident, Context, TypeExpr)] 
-                      -> Int -> [(Ident, Context, TypeExpr)]  
+    renameTypeSigVars' :: Ident -> [(Ident, ST.Context, TypeExpr)] 
+                      -> Int -> [(Ident, ST.Context, TypeExpr)]  
     renameTypeSigVars' _classTyvar [] _n = []
     renameTypeSigVars' classTyvar ((id0, cx, tyExp) : ms) n 
       = let allTypeVars = typeVarsInTypeExpr tyExp
@@ -248,7 +248,7 @@ applySubst subst id0 = case lookup id0 subst of
   Nothing -> id0
   Just x -> x
 
-renameVarsInContext :: Subst -> Context -> Context
+renameVarsInContext :: Subst -> ST.Context -> ST.Context
 renameVarsInContext subst (Context elems) = 
   Context $ map (renameVarsInContextElem subst) elems
 
@@ -275,11 +275,20 @@ buildTypeSchemes :: Class -> Class
 buildTypeSchemes cls@(Class { theClass = tc, methods = ms, typeVar = classTypeVar }) 
   = cls { typeSchemes = map buildTypeScheme ms }
   where 
-    buildTypeScheme :: (Ident, Context, TypeExpr) -> (Ident, TypeScheme)
-    buildTypeScheme (id0, (Context cElems), typ) =
-      let extendedCx = Context (cElems ++ [ContextElem tc classTypeVar []])
-      in (id0, polyType $ toType [classTypeVar] typ)
+    buildTypeScheme :: (Ident, ST.Context, TypeExpr) -> (Ident, TypeScheme)
+    buildTypeScheme (id0, (Context cElems), typeExpr) =
+      -- add also the class to the context!
+      let extendedCx = Context (ContextElem tc classTypeVar [] : cElems)
+          (theType, theMap) = toTypeAndGetMap [classTypeVar] typeExpr
+          translatedContext = translateContext theMap extendedCx
+      in (id0, (polyType theType `constrainBy`translatedContext))
 
+translateContext :: Map.Map Ident Int -> ST.Context -> BT.Context
+translateContext theMap (Context elems) 
+  -- TODO: translate also texps!
+  = map (\(ContextElem qid id0 texps) -> 
+         (qid, TypeVariable (fromJust $ Map.lookup id0 theMap)))
+        elems
 
 -- ---------------------------------------------------------------------------
 -- error messages
