@@ -51,8 +51,9 @@ typeClassesCheck :: [Decl] -> ClassEnv -> ([Decl], ClassEnv, [Message])
 typeClassesCheck decls (ClassEnv importedClasses importedInstances _) = 
   case result of 
     CheckSuccess (classes, instances) -> 
-      let newDecls = concatMap transformInstances $ concatMap transformClasses decls in
-      (newDecls, ClassEnv classes instances (buildClassMethodsMap classes), [])
+      let newDecls = concatMap transformInstances $ concatMap transformClasses decls
+          classes' = map renameTypeSigVars classes
+      in (newDecls, ClassEnv classes' instances (buildClassMethodsMap classes), [])
     CheckFailed errs -> (decls, ClassEnv [] [] Map.empty, errs)
   where
     (classDecls, rest1) = partition isClassDecl decls
@@ -166,8 +167,8 @@ noDoubleClassMethods classes =
   else return ()
   where fst3 (x, _, _) = x
 
-noConflictOfClassMethodsWithTopLevelBinding :: [Class] -> ValueEnv -> CheckResult ()
-noConflictOfClassMethodsWithTopLevelBinding = undefined
+-- noConflictOfClassMethodsWithTopLevelBinding :: [Class] -> ValueEnv -> CheckResult ()
+-- noConflictOfClassMethodsWithTopLevelBinding = undefined
 
 -- |check that the type variable of the class appears in all method type 
 -- signatures. Example:
@@ -207,6 +208,63 @@ transformClasses d = [d]
 transformInstances :: Decl -> [Decl]
 transformInstances (InstanceDecl p scx cls tcon tyvars decls) = []
 transformInstances d = [d]
+
+-- ---------------------------------------------------------------------------
+-- other transformations
+-- ---------------------------------------------------------------------------
+
+-- |the variables in class method type signatures have to be renamed, so that
+-- in the following example the type variable b in the first method declaration 
+-- does not refer to the type variable b in the second method declaration:
+-- class F a where
+--   fun1 :: a -> b -> a
+--   fun2 :: b -> a -> a 
+renameTypeSigVars :: Class -> Class
+renameTypeSigVars cls 
+  = cls { methods = renameTypeSigVars' (typeVar cls) (methods cls) 1 }
+  where
+    renameTypeSigVars' :: Ident -> [(Ident, Context, TypeExpr)] 
+                      -> Int -> [(Ident, Context, TypeExpr)]  
+    renameTypeSigVars' _classTyvar [] _n = []
+    renameTypeSigVars' classTyvar ((id0, cx, tyExp) : ms) n 
+      = let allTypeVars = typeVarsInTypeExpr tyExp
+            subst = buildSubst classTyvar allTypeVars n
+        in (id0, renameVarsInContext subst cx, renameVarsInTypeExpr subst tyExp)
+         : renameTypeSigVars' classTyvar ms (n+1)
+
+type Subst = [(Ident, Ident)]
+
+buildSubst :: Ident -> [Ident] -> Int -> Subst
+buildSubst classTyvar ids n = map 
+  (\id0 -> if id0 == classTyvar then (id0, id0)
+           else (id0, updIdentName (\i -> i ++ show n) id0))
+  ids
+
+applySubst :: Subst -> Ident -> Ident
+applySubst subst id0 = case lookup id0 subst of
+  Nothing -> id0
+  Just x -> x
+
+renameVarsInContext :: Subst -> Context -> Context
+renameVarsInContext subst (Context elems) = 
+  Context $ map (renameVarsInContextElem subst) elems
+
+renameVarsInContextElem :: Subst -> ContextElem -> ContextElem
+renameVarsInContextElem subst (ContextElem qid i texps)
+  = ContextElem qid (applySubst subst i) (map (renameVarsInTypeExpr subst) texps)
+
+renameVarsInTypeExpr :: Subst -> TypeExpr -> TypeExpr
+renameVarsInTypeExpr subst (ConstructorType qid texps) 
+  = ConstructorType qid (map (renameVarsInTypeExpr subst) texps)
+renameVarsInTypeExpr subst (SpecialConstructorType tcon texps) 
+  = SpecialConstructorType tcon (map (renameVarsInTypeExpr subst) texps)
+renameVarsInTypeExpr subst (VariableType id0) = VariableType $ applySubst subst id0
+renameVarsInTypeExpr subst (TupleType texps) 
+  = TupleType (map (renameVarsInTypeExpr subst) texps)
+renameVarsInTypeExpr subst (ListType texp) = ListType $ renameVarsInTypeExpr subst texp
+renameVarsInTypeExpr subst (ArrowType t1 t2) 
+  = ArrowType (renameVarsInTypeExpr subst t1) (renameVarsInTypeExpr subst t2)
+renameVarsInTypeExpr _subst (RecordType _ _) = internalError "TypeClassesCheck"
 
 -- ---------------------------------------------------------------------------
 -- error messages
