@@ -13,7 +13,7 @@
 
 module Checks.TypeClassesCheck (typeClassesCheck) where
 
-import Curry.Syntax.Type as ST
+import Curry.Syntax.Type as ST hiding (IDecl)
 import Env.ClassEnv
 import Base.Messages (Message, message, posMessage, internalError)
 
@@ -208,16 +208,18 @@ transformClass :: Decl -> [Decl]
 transformClass (ClassDecl p scx cls tyvar decls) = []
 transformClass d = [d]
 
+type IDecl = Decl
+
 -- |transformInstance creates top level functions for the methods 
 -- of which rules are given in the instance declaration, and concrete 
 -- dictionaries, as well as type signatures for the instance rules. 
-transformInstance :: [Class] -> Decl -> [Decl]
+transformInstance :: [Class] -> IDecl -> [Decl]
 transformInstance classes idecl@(InstanceDecl _ _ _ _ _ decls)
   = concatMap (transformMethod classes idecl) decls
   -- create dictionary 
 transformInstance _ d = [d]
 
-transformMethod :: [Class] -> Decl -> Decl -> [Decl]
+transformMethod :: [Class] -> IDecl -> Decl -> [Decl]
 transformMethod classes idecl decl@(FunctionDecl _ _ _) =
   -- create type signature
   createTypeSignature classes idecl decl
@@ -227,21 +229,29 @@ transformMethod classes idecl decl@(FunctionDecl _ _ _) =
     rfunc = (\s -> {-"f" ++ show cls ++ show tcon-}"__" ++ s)
 transformMethod _ _ _ = internalError "transformMethod"
 
-createTypeSignature :: [Class] -> Decl -> Decl -> Decl
-createTypeSignature classes (InstanceDecl _ _scon cls tcon tyvars _) 
+createTypeSignature :: [Class] -> IDecl -> Decl -> Decl
+createTypeSignature classes (InstanceDecl _ scx cls tcon tyvars _) 
                     (FunctionDecl p f _eqs) 
-  = TypeSig p [f] (Context []) theType -- TODO
+  = TypeSig p [f] cx' ty' -- TODO
   where 
     -- lookup class method of f
-    theClass = fromJust $ find (\(Class { theClass = tc}) -> tc == cls) classes
-    theMethod = fromJust $ find (\(id0, cx, te) -> id0 == f) (methods theClass)
+    theClass_ = fromJust $ find (\(Class { theClass = tc}) -> tc == cls) classes
+    (_, cx, ty) = fromJust $ find (\(id0, _, _) -> id0 == f) (methods theClass_)
     
     -- substitute class typevar with given instance type
     theType = SpecialConstructorType tcon (map VariableType tyvars)
+    subst = [(typeVar theClass_, theType)]
+    -- cx' = substInContext subst cx
+    ty' = substInTypeExpr subst ty 
     
     -- add instance context
+    icx = simpleContextToContext scx
+    cx' = combineContexts icx cx
 createTypeSignature _ _ _ = internalError "createTypeSignature"    
       
+
+combineContexts :: ST.Context -> ST.Context -> ST.Context
+combineContexts (Context e1) (Context e2) = Context (e1 ++ e2)
 
 type RenameFunc = String -> String
 
@@ -284,39 +294,13 @@ renameTypeSigVars cls
         in (id0, renameVarsInContext subst cx, renameVarsInTypeExpr subst tyExp)
          : renameTypeSigVars' classTyvar ms (n+1)
 
-type Subst = [(Ident, Ident)]
-
-buildSubst :: Ident -> [Ident] -> Int -> Subst
+buildSubst :: Ident -> [Ident] -> Int -> (Subst Ident)
 buildSubst classTyvar ids n = map 
   (\id0 -> if id0 == classTyvar then (id0, id0)
            else (id0, updIdentName (\i -> i ++ show n) id0))
   ids
 
-applySubst :: Subst -> Ident -> Ident
-applySubst subst id0 = case lookup id0 subst of
-  Nothing -> id0
-  Just x -> x
-
-renameVarsInContext :: Subst -> ST.Context -> ST.Context
-renameVarsInContext subst (Context elems) = 
-  Context $ map (renameVarsInContextElem subst) elems
-
-renameVarsInContextElem :: Subst -> ContextElem -> ContextElem
-renameVarsInContextElem subst (ContextElem qid i texps)
-  = ContextElem qid (applySubst subst i) (map (renameVarsInTypeExpr subst) texps)
-
-renameVarsInTypeExpr :: Subst -> TypeExpr -> TypeExpr
-renameVarsInTypeExpr subst (ConstructorType qid texps) 
-  = ConstructorType qid (map (renameVarsInTypeExpr subst) texps)
-renameVarsInTypeExpr subst (SpecialConstructorType tcon texps) 
-  = SpecialConstructorType tcon (map (renameVarsInTypeExpr subst) texps)
-renameVarsInTypeExpr subst (VariableType id0) = VariableType $ applySubst subst id0
-renameVarsInTypeExpr subst (TupleType texps) 
-  = TupleType (map (renameVarsInTypeExpr subst) texps)
-renameVarsInTypeExpr subst (ListType texp) = ListType $ renameVarsInTypeExpr subst texp
-renameVarsInTypeExpr subst (ArrowType t1 t2) 
-  = ArrowType (renameVarsInTypeExpr subst t1) (renameVarsInTypeExpr subst t2)
-renameVarsInTypeExpr _subst (RecordType _ _) = internalError "TypeClassesCheck"
+-- ---------------------------------------------------------------------------
 
 -- |translates the methods to type schemes. The type variable of the class
 -- has always the index 0!
@@ -338,6 +322,58 @@ translateContext theMap (Context elems)
   = map (\(ContextElem qid id0 texps) -> 
          (qid, TypeVariable (fromJust $ Map.lookup id0 theMap)))
         elems
+
+-- ---------------------------------------------------------------------------
+-- various substitutions
+-- ---------------------------------------------------------------------------
+
+type Subst a = [(Ident, a)]
+
+applySubst :: (Subst Ident) -> Ident -> Ident
+applySubst subst id0 = case lookup id0 subst of
+  Nothing -> id0
+  Just x -> x
+
+renameVarsInContext :: (Subst Ident) -> ST.Context -> ST.Context
+renameVarsInContext subst (Context elems) = 
+  Context $ map (renameVarsInContextElem subst) elems
+
+renameVarsInContextElem :: (Subst Ident) -> ContextElem -> ContextElem
+renameVarsInContextElem subst (ContextElem qid i texps)
+  = ContextElem qid (applySubst subst i) (map (renameVarsInTypeExpr subst) texps)
+
+renameVarsInTypeExpr :: (Subst Ident) -> TypeExpr -> TypeExpr
+renameVarsInTypeExpr subst (ConstructorType qid texps) 
+  = ConstructorType qid (map (renameVarsInTypeExpr subst) texps)
+renameVarsInTypeExpr subst (SpecialConstructorType tcon texps) 
+  = SpecialConstructorType tcon (map (renameVarsInTypeExpr subst) texps)
+renameVarsInTypeExpr subst (VariableType id0) = VariableType $ applySubst subst id0
+renameVarsInTypeExpr subst (TupleType texps) 
+  = TupleType (map (renameVarsInTypeExpr subst) texps)
+renameVarsInTypeExpr subst (ListType texp) = ListType $ renameVarsInTypeExpr subst texp
+renameVarsInTypeExpr subst (ArrowType t1 t2) 
+  = ArrowType (renameVarsInTypeExpr subst t1) (renameVarsInTypeExpr subst t2)
+renameVarsInTypeExpr _subst (RecordType _ _) = internalError "TypeClassesCheck"
+
+-- ---------------------------------------------------------------------------
+
+applySubst' :: (Subst TypeExpr) -> Ident -> TypeExpr
+applySubst' subst id0 = case lookup id0 subst of
+  Nothing -> VariableType id0
+  Just x -> x
+
+substInTypeExpr :: (Subst TypeExpr) -> TypeExpr -> TypeExpr
+substInTypeExpr subst (ConstructorType qid texps) 
+  = ConstructorType qid (map (substInTypeExpr subst) texps)
+substInTypeExpr subst (SpecialConstructorType tcon texps) 
+  = SpecialConstructorType tcon (map (substInTypeExpr subst) texps)
+substInTypeExpr subst (VariableType id0) = applySubst' subst id0
+substInTypeExpr subst (TupleType texps) 
+  = TupleType (map (substInTypeExpr subst) texps)
+substInTypeExpr subst (ListType texp) = ListType $ substInTypeExpr subst texp
+substInTypeExpr subst (ArrowType t1 t2) 
+  = ArrowType (substInTypeExpr subst t1) (substInTypeExpr subst t2)
+substInTypeExpr _subst (RecordType _ _) = internalError "TypeClassesCheck"
 
 -- ---------------------------------------------------------------------------
 -- error messages
