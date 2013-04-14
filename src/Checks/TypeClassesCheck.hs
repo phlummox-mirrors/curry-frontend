@@ -27,6 +27,8 @@ import Curry.Base.Ident
 import Curry.Base.Position
 import Curry.Syntax.Utils
 import Curry.Syntax.Pretty
+import Base.CurryTypes
+import Base.Types (TypeScheme, polyType)
 
 data CheckResult a
   = CheckSuccess a
@@ -53,7 +55,8 @@ typeClassesCheck decls (ClassEnv importedClasses importedInstances _) =
     CheckSuccess (classes, instances) -> 
       let newDecls = concatMap transformInstances $ concatMap transformClasses decls
           classes' = map renameTypeSigVars classes
-      in (newDecls, ClassEnv classes' instances (buildClassMethodsMap classes), [])
+          classes'' = map buildTypeSchemes classes'
+      in (newDecls, ClassEnv classes'' instances (buildClassMethodsMap classes''), [])
     CheckFailed errs -> (decls, ClassEnv [] [] Map.empty, errs)
   where
     (classDecls, rest1) = partition isClassDecl decls
@@ -265,6 +268,18 @@ renameVarsInTypeExpr subst (ListType texp) = ListType $ renameVarsInTypeExpr sub
 renameVarsInTypeExpr subst (ArrowType t1 t2) 
   = ArrowType (renameVarsInTypeExpr subst t1) (renameVarsInTypeExpr subst t2)
 renameVarsInTypeExpr _subst (RecordType _ _) = internalError "TypeClassesCheck"
+
+-- |translates the methods to type schemes. The type variable of the class
+-- has always the index 0!
+buildTypeSchemes :: Class -> Class
+buildTypeSchemes cls@(Class { theClass = tc, methods = ms, typeVar = classTypeVar }) 
+  = cls { typeSchemes = map buildTypeScheme ms }
+  where 
+    buildTypeScheme :: (Ident, Context, TypeExpr) -> (Ident, TypeScheme)
+    buildTypeScheme (id0, (Context cElems), typ) =
+      let extendedCx = Context (cElems ++ [ContextElem tc classTypeVar []])
+      in (id0, polyType $ toType [classTypeVar] typ)
+
 
 -- ---------------------------------------------------------------------------
 -- error messages

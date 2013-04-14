@@ -14,5 +14,6 @@ class F1 a where
   fun11 :: (Eq (a a), Eq (b b)) => a -> b
   fun12 :: a -> b13
   fun13 :: a -> b12
+  fun14 :: b -> c -> d -> a -> a
   
   
