@@ -51,7 +51,8 @@ typeClassesCheck :: [Decl] -> ClassEnv -> ([Decl], ClassEnv, [Message])
 typeClassesCheck decls (ClassEnv importedClasses importedInstances _) = 
   case result of 
     CheckSuccess (classes, instances) -> 
-      (decls {-_rest2-}, ClassEnv classes instances (buildClassMethodsMap classes), [])
+      let newDecls = concatMap transformInstances $ concatMap transformClasses decls in
+      (newDecls, ClassEnv classes instances (buildClassMethodsMap classes), [])
     CheckFailed errs -> (decls, ClassEnv [] [] Map.empty, errs)
   where
     (classDecls, rest1) = partition isClassDecl decls
@@ -194,6 +195,18 @@ classMethodSigsContainTypeVar (ClassDecl _p _scon _tycon tyvar0 decls)
         else CheckFailed [errTypeVarNotInMethodSig p tyvar ids]
     tyVarInTypeSig _ _ = internalError "TypeClassesCheck tyVarInTypeSig"
 classMethodSigsContainTypeVar _ = internalError "TypeClassesCheck" 
+
+-- ---------------------------------------------------------------------------
+-- source code transformation
+-- ---------------------------------------------------------------------------
+
+transformClasses :: Decl -> [Decl]
+transformClasses (ClassDecl p scx cls tyvar decls) = []
+transformClasses d = [d]
+
+transformInstances :: Decl -> [Decl]
+transformInstances (InstanceDecl p scx cls tcon tyvars decls) = []
+transformInstances d = [d]
 
 -- ---------------------------------------------------------------------------
 -- error messages
