@@ -21,7 +21,9 @@ TODO: Use MultiParamTypeClasses ?
 >   , DataConstr (..)
 >     -- * Representation of Quantification
 >   , TypeScheme (..), ExistTypeScheme (..), monoType, polyType
->   , typeSchemeToType, emptyContext, Context, constrainBy, mkContext
+>   , typeSchemeToType
+>     -- * Type classes context represenatations
+>   , emptyContext, Context, constrainBy, mkContext
 >     -- * Predefined types
 >   , unitType, boolType, charType, intType, floatType, stringType
 >   , successType, listType, ioType, tupleType, primType
