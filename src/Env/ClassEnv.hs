@@ -84,7 +84,7 @@ ppClasses (ClassEnv classes ifs mmap) =
   
 ppClass :: Class -> Doc
 ppClass (Class {superClasses = sc, theClass = tc, typeVar = tv, 
-                kind = k, methods = ms, defaults = ds})
+                kind = k, methods = ms, defaults = ds, typeSchemes = tscs})
   = text "class<" <> text (show k) <> text ">" 
   <+> parens (hsep $ punctuate (text ",") (map (text . show) sc))
   <> text " => " <> text (show tc)
@@ -92,6 +92,7 @@ ppClass (Class {superClasses = sc, theClass = tc, typeVar = tv,
   $$ vcat (map (\(id0, cx, ty) -> 
                  nest 2 (ppIdent id0 <+> text "::" <+> ppContext cx <+> ppTypeExpr 0 ty))
                ms)
+  $$ vcat (map (\(id0, tsc) -> nest 2 (ppIdent id0 <+> text "::" <+> text (show tsc))) tscs) 
   $$ nest 2 (vcat $ map ppDecl ds)
 
 ppInst :: Instance -> Doc
