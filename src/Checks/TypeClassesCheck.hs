@@ -226,20 +226,26 @@ transformMethod classes idecl decl@(FunctionDecl _ _ _) =
   -- create function rules
   : [createTopLevelFuncs rfunc decl] 
   where 
+    -- TODO: rename for specific instance!
     rfunc = (\s -> {-"f" ++ show cls ++ show tcon-}{-"__" ++-} s)
 transformMethod _ _ _ = internalError "transformMethod"
 
 createTypeSignature :: RenameFunc -> [Class] -> IDecl -> Decl -> Decl
 createTypeSignature rfunc classes (InstanceDecl _ scx cls tcon tyvars _) 
                     (FunctionDecl p f _eqs) 
-  = TypeSig p [rename rfunc f] cx' ty' -- TODO
+  = TypeSig p [rename rfunc f] cx' ty'
   where 
     -- lookup class method of f
     theClass_ = fromJust $ find (\(Class { theClass = tc}) -> tc == cls) classes
     (_, cx, ty) = fromJust $ find (\(id0, _, _) -> id0 == f) (methods theClass_)
     
     -- substitute class typevar with given instance type
+    -- TODO: rename tyvars, so that they do not equal type vars in the class
+    -- method type signature, like in the following example:
+    -- class C a where fun :: a -> b -> Bool
+    -- instance C (S b) where fun = ...
     theType = SpecialConstructorType tcon (map VariableType tyvars)
+    
     subst = [(typeVar theClass_, theType)]
     -- cx' = substInContext subst cx
     ty' = substInTypeExpr subst ty 
