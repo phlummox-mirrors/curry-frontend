@@ -79,3 +79,6 @@ fS2 = error ""
 -- -XFlexibleContexts
 -- dictCS :: (C (S a), Ord b) => (S a -> b -> Bool, b2 -> S a -> Bool)
 -- dictCS = (defFun1, fS2)
+
+dictCS :: (C a, Ord b) => (a -> b -> Bool, b2 -> S a -> Bool)
+dictCS = (defFun1, fS2)
