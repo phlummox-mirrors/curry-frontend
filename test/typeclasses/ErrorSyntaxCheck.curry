@@ -2,6 +2,7 @@
 
 class C a where
   fun :: a -> a -> Bool
+  fun = 1
 
 data T a = T a
 data S a = S a
