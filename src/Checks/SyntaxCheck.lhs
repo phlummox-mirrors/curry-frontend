@@ -23,7 +23,7 @@ definition.
 > module Checks.SyntaxCheck (syntaxCheck) where
 
 > import Control.Monad (liftM, liftM2, liftM3, unless, when)
-> import qualified Control.Monad.State as S (State, runState, gets, modify, withState, get, put)
+> import qualified Control.Monad.State as S (State, runState, gets, modify, withState)
 > import Data.List ((\\), insertBy, nub, partition)
 > import Data.Maybe (fromJust, isJust, isNothing, maybeToList)
 > import qualified Data.Set as Set (empty, insert, member)
@@ -325,21 +325,21 @@ local declarations.
 >   bindClassMethods m (extractTypeDeclsFromClasses decls)
 >   decls0 <- liftM2 (++) (mapM checkTypeDecl tds) (checkTopDecls vds)
 >   -- check the declarations in classes and instances as well
->   S.modify (\s -> s { scopeId = 0})  
->   env <- S.get
+>   theRenameEnv <- getRenameEnv
 >   let classDecls = map extractCDecls $ filter isClassDecl decls0
 >   let instanceDecls = map extractIDecls $ filter isInstanceDecl decls0
->   -- reset the environment before checking each class or instance, so that
+>   -- reset the rename environment before checking each class or instance, so that
 >   -- there will be no errors with multiple instance definitions that contain
 >   -- implementations of the same function
->   cDecls <- typeClassesCheck_ $ mapM (\ds -> S.put env >> checkTopDecls ds) classDecls
->   iDecls <- typeClassesCheck_ $ mapM (\ds -> S.put env >> checkTopDecls ds) instanceDecls
+>   cDecls <- typeClassesCheck_ $ mapM (\ds -> resetEnv theRenameEnv >> checkTopDecls ds) classDecls
+>   iDecls <- typeClassesCheck_ $ mapM (\ds -> resetEnv theRenameEnv >> checkTopDecls ds) instanceDecls
 >   let decls1 = updateClassDecls decls0 cDecls
 >   let decls2 = updateInstanceDecls decls1 iDecls 
 >   return decls2
 >   where (tds, vds) = partition isTypeDecl decls
 >         (rds, dds) = partition isRecordDecl tds
 >         typeClassesCheck_ = S.withState (\s -> s { typeClassesCheck = True })
+>         resetEnv re = S.modify (\s -> s { scopeId = 0, renameEnv = re})  
 
 > checkTypeDecl :: Decl -> SCM Decl
 > checkTypeDecl rec@(TypeDecl _ r _ (RecordType fs rty)) = do
