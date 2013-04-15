@@ -14,10 +14,11 @@ order of type variables in the left hand side of a type declaration.
 
 > module Base.CurryTypes
 >  ( toQualType, toQualTypes, toType, toTypes, fromQualType, fromType
->  , toTypeAndGetMap
+>  , toTypeAndGetMap, toConstrType
 >  ) where
 
 > import Data.List (nub)
+> import Data.Maybe (fromJust)
 > import qualified Data.Map as Map (Map, fromList, lookup)
 
 > import Curry.Base.Ident
@@ -25,7 +26,7 @@ order of type variables in the left hand side of a type declaration.
 
 > import Base.Expr
 > import Base.Messages (internalError)
-> import Base.Types
+> import Base.Types as BT
 
 > toQualType :: ModuleIdent -> [Ident] -> CS.TypeExpr -> Type
 > toQualType m tvs = qualifyType m . toType tvs
@@ -45,6 +46,19 @@ order of type variables in the left hand side of a type declaration.
 > toTypes tvs tys = map
 >    (toType' (Map.fromList $ zip (tvs ++ newInTys) [0 ..])) tys
 >   where newInTys = [tv | tv <- nub (concatMap fv tys), tv `notElem` tvs]
+
+> toConstrType :: [Ident] -> (CS.Context, CS.TypeExpr) -> (Context, Type)
+> toConstrType tvs (cx, ty) = 
+>   let (theType, theMap) = toTypeAndGetMap tvs ty
+>       translatedContext = translateContext theMap cx
+>   in (translatedContext, theType)
+
+> translateContext :: Map.Map Ident Int -> CS.Context -> BT.Context
+> translateContext theMap (CS.Context elems) 
+>   -- TODO: translate also texps!
+>   = map (\(CS.ContextElem qid id0 texps) -> 
+>          (qid, TypeVariable (fromJust $ Map.lookup id0 theMap)))
+>         elems
 
 > toType' :: Map.Map Ident Int -> CS.TypeExpr -> Type
 > toType' tvs (CS.ConstructorType tc tys)

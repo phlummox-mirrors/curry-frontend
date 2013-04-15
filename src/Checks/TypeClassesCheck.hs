@@ -321,16 +321,10 @@ buildTypeSchemes cls@(Class { theClass = tc, methods = ms, typeVar = classTypeVa
     buildTypeScheme (id0, (Context cElems), typeExpr) =
       -- add also the class to the context!
       let extendedCx = Context (ContextElem tc classTypeVar [] : cElems)
-          (theType, theMap) = toTypeAndGetMap [classTypeVar] typeExpr
-          translatedContext = translateContext theMap extendedCx
+          (translatedContext, theType) = toConstrType [classTypeVar] (extendedCx, typeExpr) 
       in (id0, (polyType theType `constrainBy`translatedContext))
 
-translateContext :: Map.Map Ident Int -> ST.Context -> BT.Context
-translateContext theMap (Context elems) 
-  -- TODO: translate also texps!
-  = map (\(ContextElem qid id0 texps) -> 
-         (qid, TypeVariable (fromJust $ Map.lookup id0 theMap)))
-        elems
+
 
 -- ---------------------------------------------------------------------------
 -- various substitutions
