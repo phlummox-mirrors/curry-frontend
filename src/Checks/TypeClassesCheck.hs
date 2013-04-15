@@ -28,7 +28,7 @@ import Curry.Base.Position
 import Curry.Syntax.Utils
 import Curry.Syntax.Pretty
 import Base.CurryTypes
-import Base.Types as BT (TypeScheme, polyType, Context, Type (..), constrainBy) 
+import Base.Types as BT (TypeScheme, polyType, constrainBy) 
 
 data CheckResult a
   = CheckSuccess a
@@ -72,6 +72,8 @@ typeClassesCheck decls (ClassEnv importedClasses importedInstances _) =
       -- TODO: check also contexts of (imported) classes and interfaces?
       mapM_ (checkSuperclassContext newClassEnv) classDecls
       mapM_ (checkSuperclassContext newClassEnv) instDecls
+      
+      mapM_ (checkRulesInInstance newClassEnv) instDecls
       
       noDoubleClassMethods classes
       return (classes, instances)
@@ -199,6 +201,24 @@ classMethodSigsContainTypeVar (ClassDecl _p _scon _tycon tyvar0 decls)
         else CheckFailed [errTypeVarNotInMethodSig p tyvar ids]
     tyVarInTypeSig _ _ = internalError "TypeClassesCheck tyVarInTypeSig"
 classMethodSigsContainTypeVar _ = internalError "TypeClassesCheck" 
+
+-- |check that the rules in the instance declaration are for class methods
+-- only. Illegal:
+-- class Eq a where fun1 :: a
+-- instance Eq Int where fun2 = 1 -- fun2 is not a class method!
+checkRulesInInstance :: ClassEnv -> Decl -> CheckResult ()
+checkRulesInInstance cEnv (InstanceDecl _ _ cls _tcon _tyvars decls) = 
+  mapM_ isDefinedFunctionClassMethod decls
+  where 
+    isDefinedFunctionClassMethod (FunctionDecl p f _) 
+      = let ms = methods (fromJust $ lookupClass cEnv cls)
+            eq = (\(id0, _, _) -> id0 == f)
+        in 
+        case find eq ms of
+          Nothing -> CheckFailed [errFunctionNoClassMethod p f]
+          Just _ -> return ()
+    isDefinedFunctionClassMethod _ = internalError "isDefinedFunctionClassMethod"
+checkRulesInInstance _ _ = internalError "checkRulesInInstance"
 
 -- ---------------------------------------------------------------------------
 -- source code transformation
@@ -403,3 +423,8 @@ errTypeVarNotInMethodSig p tyvar ids =
   <+> parens (ppIdent tyvar) 
   <+> text "not in method signature of" 
   <+> brackets (hsep $ punctuate comma (map ppIdent ids)))
+
+errFunctionNoClassMethod :: Position -> Ident -> Message
+errFunctionNoClassMethod p id0
+  = posMessage p (text "the function" <+> text (escName id0) 
+  <+> text "is not a class method! ") 
