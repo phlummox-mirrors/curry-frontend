@@ -240,19 +240,21 @@ createTypeSignature rfunc classes (InstanceDecl _ scx cls tcon tyvars _)
     theClass_ = fromJust $ find (\(Class { theClass = tc}) -> tc == cls) classes
     (_, cx, ty) = fromJust $ find (\(id0, _, _) -> id0 == f) (methods theClass_)
     
-    -- substitute class typevar with given instance type
-    -- TODO: rename tyvars, so that they do not equal type vars in the class
+    -- Substitute class typevar with given instance type. 
+    -- Rename tyvars, so that they do not equal type vars in the class
     -- method type signature, like in the following example:
     -- class C a where fun :: a -> b -> Bool
-    -- instance C (S b) where fun = ...
-    theType = SpecialConstructorType tcon (map VariableType tyvars)
+    -- instance Eq b => C (S b) where fun = ...
+    theType = SpecialConstructorType tcon (map (VariableType . flip renameIdent 1) tyvars)
     
     subst = [(typeVar theClass_, theType)]
     -- cx' = substInContext subst cx
     ty' = substInTypeExpr subst ty 
     
-    -- add instance context
-    icx = simpleContextToContext scx
+    -- add instance context. The variables have to be renamed here as well
+    renamedSContext = (\(SContext elems) -> 
+      SContext $ map (\(qid, id0) -> (qid, renameIdent id0 1)) elems) scx
+    icx = simpleContextToContext renamedSContext
     cx' = combineContexts icx cx
 createTypeSignature _ _ _ _ = internalError "createTypeSignature"    
       

@@ -10,7 +10,7 @@ fun x TA = TA
 fun x a = a
   where y = 0
         z = 1
-       
+        
 class Eqb a
         
 class {-Eqb a => -}Eqa a where
@@ -18,7 +18,7 @@ class {-Eqb a => -}Eqa a where
   fun2 :: a -> TA -> TA
   fun1 x TA = TA
   fun1 x y = y
-  fun1 x y = fun2 x y
+  fun1 x y = fun2 x y y
   fun1 x y = fun x y
 
 instance Eqb (TB a)
@@ -30,11 +30,16 @@ instance Eqa (TB a) where
 
 class Eqb a => Eqc a where
   fun3 x TA = TA
+  fun3 x y = y
   fun3 :: a -> TA -> TA
+  fun_double1 :: a
 
 class Eqd a where
   fun4 :: a -> TA -> TA
   fun5 :: a -> TA -> TA
+  fun3 :: a -> TA -> TA
+  fun_double1 :: a
+  fun_double2 :: a
 
 instance Eqa TA where
 
@@ -49,3 +54,6 @@ instance Eqd TA where
 fun6 :: Eqa a => a -> TA -> TA
 fun6 = error ""
 -- fun6 = fun1
+
+fun_double2 :: a
+fun_double2 = error ""

@@ -1,7 +1,19 @@
 
 
-class C a where
-  fun :: a -> b -> Bool
+data S a = S a
 
-instance C (S b) where
+data T a b = T a b
+
+class A a
+
+class B a
+
+class C a where
+  fun :: a -> b -> c -> Bool
+
+instance B b => C (S b) where
   fun = error ""
+  
+instance (A b, B b, B c) => C (T b c) where
+  fun = error ""
+
