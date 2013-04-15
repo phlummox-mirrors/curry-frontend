@@ -325,6 +325,7 @@ local declarations.
 >   bindClassMethods m (extractTypeDeclsFromClasses decls)
 >   decls0 <- liftM2 (++) (mapM checkTypeDecl tds) (checkTopDecls vds)
 >   -- check the declarations in classes and instances as well
+>   S.modify (\s -> s { scopeId = 0})  
 >   env <- S.get
 >   let classDecls = map extractCDecls $ filter isClassDecl decls0
 >   let instanceDecls = map extractIDecls $ filter isInstanceDecl decls0

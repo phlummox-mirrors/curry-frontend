@@ -18,4 +18,4 @@ instance C (R a) where
 
 
 test = fun
-
+-- test = fun2
