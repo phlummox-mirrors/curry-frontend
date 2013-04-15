@@ -23,7 +23,7 @@ definition.
 > module Checks.SyntaxCheck (syntaxCheck) where
 
 > import Control.Monad (liftM, liftM2, liftM3, unless, when)
-> import qualified Control.Monad.State as S (State, runState, gets, modify, withState)
+> import qualified Control.Monad.State as S (State, runState, gets, modify, withState, get, put)
 > import Data.List ((\\), insertBy, nub, partition)
 > import Data.Maybe (fromJust, isJust, isNothing, maybeToList)
 > import qualified Data.Set as Set (empty, insert, member)
@@ -325,10 +325,14 @@ local declarations.
 >   bindClassMethods m (extractTypeDeclsFromClasses decls)
 >   decls0 <- liftM2 (++) (mapM checkTypeDecl tds) (checkTopDecls vds)
 >   -- check the declarations in classes and instances as well
+>   env <- S.get
 >   let classDecls = map extractCDecls $ filter isClassDecl decls0
 >   let instanceDecls = map extractIDecls $ filter isInstanceDecl decls0
->   cDecls <- typeClassesCheck_ $ mapM checkTopDecls classDecls
->   iDecls <- typeClassesCheck_ $ mapM checkTopDecls instanceDecls
+>   -- reset the environment before checking each class or instance, so that
+>   -- there will be no errors with multiple instance definitions that contain
+>   -- implementations of the same function
+>   cDecls <- typeClassesCheck_ $ mapM (\ds -> S.put env >> checkTopDecls ds) classDecls
+>   iDecls <- typeClassesCheck_ $ mapM (\ds -> S.put env >> checkTopDecls ds) instanceDecls
 >   let decls1 = updateClassDecls decls0 cDecls
 >   let decls2 = updateInstanceDecls decls1 iDecls 
 >   return decls2
