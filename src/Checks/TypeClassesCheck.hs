@@ -220,14 +220,15 @@ transformInstance classes idecl@(InstanceDecl _ _ _ _ _ decls)
 transformInstance _ d = [d]
 
 transformMethod :: [Class] -> IDecl -> Decl -> [Decl]
-transformMethod classes idecl decl@(FunctionDecl _ _ _) =
+transformMethod classes idecl@(InstanceDecl _ _ cls tcon _ _)
+                         decl@(FunctionDecl _ _ _) =
   -- create type signature
   createTypeSignature rfunc classes idecl decl
   -- create function rules
   : [createTopLevelFuncs rfunc decl] 
   where 
-    -- TODO: rename for specific instance!
-    rfunc = (\s -> {-"f" ++ show cls ++ show tcon-}{-"__" ++-} s)
+    -- rename for specific instance!
+    rfunc = (\s -> "__" ++ show cls ++ "_" ++ show tcon ++ "_" ++ s)
 transformMethod _ _ _ = internalError "transformMethod"
 
 createTypeSignature :: RenameFunc -> [Class] -> IDecl -> Decl -> Decl
