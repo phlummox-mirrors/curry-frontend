@@ -31,12 +31,12 @@ import Text.PrettyPrint (Doc, vcat)
 
 import Curry.Base.Ident
 import Curry.Base.Position
-import Curry.Syntax
+import Curry.Syntax as CS
 
 import Base.CurryTypes (fromQualType)
 import Base.Messages (internalError)
 import Base.TopEnv
-import Base.Types
+import Base.Types as BT
 import Base.Utils ((++!))
 
 import Env.TypeConstructor (TypeInfo (..), tupleTCs)
@@ -135,7 +135,7 @@ tupleDCs = map dataInfo tupleTCs
   where
   dataInfo (DataType tc _ [Just (DataConstr _ _ tys)]) =
     DataConstructor (qualUnqualify preludeMIdent tc) (length tys)
-      (ForAllExist emptyContext (length tys) 0 $ foldr TypeArrow (tupleType tys) tys)
+      (ForAllExist BT.emptyContext (length tys) 0 $ foldr TypeArrow (tupleType tys) tys)
   dataInfo _ = internalError "Env.Value.tupleDCs: no data constructor"
 
 initDCEnv :: ValueEnv

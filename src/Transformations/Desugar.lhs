@@ -81,7 +81,7 @@ all names must be properly qualified before calling this module.}
 > import Base.Expr
 > import Base.CurryTypes (fromType)
 > import Base.Messages (internalError)
-> import Base.Types
+> import Base.Types as BT
 > import Base.Typing
 > import Base.Utils (mapAccumM, concatMapM)
 
@@ -683,7 +683,7 @@ Desugaring of Records
 >       --tys' = map (elimRecordTypes tyEnv) tys
 >       rdecl = DataDecl p r vs [ConstrDecl p [] r tys]
 >       rty'  = TypeConstructor qr (map TypeVariable [0 .. n - 1])
->       rcts' = ForAllExist emptyContext 0 n (foldr TypeArrow rty' (map snd fs'))
+>       rcts' = ForAllExist BT.emptyContext 0 n (foldr TypeArrow rty' (map snd fs'))
 >   rfuncs <- mapM (genRecordFuncs p qr rty' (map fst fs')) fs'
 >   modifyValueEnv
 >       (bindGlobalInfo (flip DataConstructor (length tys)) m r rcts')

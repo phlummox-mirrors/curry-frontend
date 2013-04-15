@@ -29,7 +29,7 @@ import Curry.Syntax
 import Base.CurryTypes (toQualType, toQualTypes)
 import Base.Messages (Message, posMessage, internalError)
 import Base.TopEnv
-import Base.Types
+import Base.Types as BT
 import Base.TypeSubst (expandAliasType)
 
 import Env.Interface
@@ -225,7 +225,7 @@ bindNewConstr m tc tvs ty0 (NewConstrDecl _ evs c ty1) = Map.insert c $
   constrType' m tvs evs (ArrowType ty1 ty0)
 
 constrType' :: ModuleIdent -> [Ident] -> [Ident] -> TypeExpr -> ExistTypeScheme
-constrType' m tvs evs ty = ForAllExist emptyContext (length tvs) (length evs)
+constrType' m tvs evs ty = ForAllExist BT.emptyContext (length tvs) (length evs)
                                        (toQualType m tvs ty)
 
 qualifyLike :: QualIdent -> Ident -> QualIdent
