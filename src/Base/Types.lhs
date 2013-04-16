@@ -20,7 +20,7 @@ TODO: Use MultiParamTypeClasses ?
 >     -- * Representation of Data Constructors
 >   , DataConstr (..)
 >     -- * Representation of Quantification
->   , TypeScheme (..), ExistTypeScheme (..), monoType, polyType
+>   , TypeScheme (..), ExistTypeScheme (..), monoType, monoType', polyType
 >   , typeSchemeToType
 >     -- * Type classes context represenatations
 >   , emptyContext, Context, constrainBy, mkContext
@@ -265,6 +265,9 @@ starting with 0 and does not renumber the variables.
 
 > polyType :: Type -> TypeScheme
 > polyType ty = ForAll emptyContext (maximum (-1 : typeVars ty) + 1) ty
+
+> monoType' :: (Context, Type) -> TypeScheme
+> monoType' (cx, ty) = ForAll cx 0 ty 
 
 \end{verbatim}
 There are a few predefined types:
