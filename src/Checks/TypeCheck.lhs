@@ -225,19 +225,19 @@ and \texttt{expandMonoTypes}, respectively.
 >   mkData (ConOpDecl  _ evs ty1 op ty2) = mkData' evs op [ty1, ty2]
 >   mkData' evs c tys = DataConstr c (length evs) $
 >     -- TODO: somewhen adding contexts to data declarations
->     map getBTType $ expandMonoTypes m tcEnv (cleanTVars tvs evs) (map noContext tys)
+>     map getType $ expandMonoTypes m tcEnv (cleanTVars tvs evs) (map noBContext tys)
 > bindTC m tcEnv (NewtypeDecl _ tc tvs (NewConstrDecl _ evs c ty)) =
 >   bindTypeInfo RenamingType m tc tvs (DataConstr c (length evs) [ty'])
->   where ty' = getBTType $ expandMonoType' m tcEnv (cleanTVars tvs evs) (noContext ty)
+>   where ty' = getType $ expandMonoType' m tcEnv (cleanTVars tvs evs) (noBContext ty)
 > bindTC m tcEnv (TypeDecl _ tc tvs ty) =
->   bindTypeInfo AliasType m tc tvs (getBTType $ expandMonoType' m tcEnv tvs (noContext ty))
+>   bindTypeInfo AliasType m tc tvs (getType $ expandMonoType' m tcEnv tvs (noBContext ty))
 > bindTC _ _ _ = id
 
 > cleanTVars :: [Ident] -> [Ident] -> [Ident]
 > cleanTVars tvs evs = [if tv `elem` evs then anonId else tv | tv <- tvs]
 
-> noContext :: TypeExpr -> ConstrainedType
-> noContext texp = (ST.emptyContext, texp) 
+> noBContext :: TypeExpr -> BaseConstrType
+> noBContext texp = (ST.emptyContext, texp) 
 
 \end{verbatim}
 \paragraph{Defining Data Constructors}
@@ -307,17 +307,17 @@ available for use in the error message that is printed when the
 inferred type is less general than the signature.
 \begin{verbatim}
 
-> type ConstrainedType = (ST.Context, TypeExpr)
+> type BaseConstrType = (ST.Context, TypeExpr)
 
-> getSTType :: ConstrainedType -> TypeExpr
+> getSTType :: BaseConstrType -> TypeExpr
 > getSTType (_cx, tyexp) = tyexp
 
-> type SigEnv = Map.Map Ident ConstrainedType
+> type SigEnv = Map.Map Ident BaseConstrType
 
 > emptySigEnv :: SigEnv
 > emptySigEnv = Map.empty
 
-> bindTypeSig :: Ident -> ConstrainedType -> SigEnv -> SigEnv
+> bindTypeSig :: Ident -> BaseConstrType -> SigEnv -> SigEnv
 > bindTypeSig = Map.insert
 
 > bindTypeSigs :: Decl -> SigEnv -> SigEnv
@@ -325,11 +325,11 @@ inferred type is less general than the signature.
 >   foldr (flip bindTypeSig (cx, nameSigType ty)) env vs
 > bindTypeSigs _ env = env
 
-> lookupTypeSig :: Ident -> SigEnv -> Maybe ConstrainedType
+> lookupTypeSig :: Ident -> SigEnv -> Maybe BaseConstrType
 > lookupTypeSig = Map.lookup
 
 > qualLookupTypeSig :: ModuleIdent -> QualIdent -> SigEnv 
->                   -> Maybe ConstrainedType
+>                   -> Maybe BaseConstrType
 > qualLookupTypeSig m f sigs = localIdent m f >>= flip lookupTypeSig sigs
 
 > nameSigType :: TypeExpr -> TypeExpr
@@ -459,22 +459,22 @@ either one of the basic types or \texttt{()}.
 >       return ty'
 >   modifyValueEnv $ bindFun m v (arrowArity ty) $ monoType ty
 
-> tcDeclLhs :: Decl -> TCM Type
+> tcDeclLhs :: Decl -> TCM ConstrType
 > tcDeclLhs (FunctionDecl _ f _) = tcFunDecl f
 > tcDeclLhs (PatternDecl  p t _) = tcPattern p t
 > tcDeclLhs _ = internalError "TypeCheck.tcDeclLhs: no pattern match"
 
-> tcFunDecl :: Ident -> TCM Type
+> tcFunDecl :: Ident -> TCM ConstrType
 > tcFunDecl v = do
 >   sigs <- getSigEnv
 >   m <- getModuleIdent
->   ty <- case lookupTypeSig v sigs of
->     Nothing -> freshTypeVar
+>   (cx, ty) <- case lookupTypeSig v sigs of
+>     Nothing -> freshConstrTypeVar
 >     Just t  -> expandPolyType t >>= inst
->   modifyValueEnv $ bindFun m v (arrowArity ty) (monoType ty)
->   return ty
+>   modifyValueEnv $ bindFun m v (arrowArity ty) (monoType' (cx, ty))
+>   return (cx, ty)
 
-> tcDeclRhs :: ValueEnv -> Decl -> TCM Type
+> tcDeclRhs :: ValueEnv -> Decl -> TCM ConstrType
 > tcDeclRhs tyEnv0 (FunctionDecl _ f (eq:eqs)) = do
 >   tcEquation tyEnv0 eq >>= flip tcEqns eqs
 >   where tcEqns ty [] = return ty
@@ -485,7 +485,7 @@ either one of the basic types or \texttt{()}.
 > tcDeclRhs tyEnv0 (PatternDecl _ _ rhs) = tcRhs tyEnv0 rhs
 > tcDeclRhs _ _ = internalError "TypeCheck.tcDeclRhs: no pattern match"
 
-> unifyDecl :: Decl -> Type -> Type -> TCM ()
+> unifyDecl :: Decl -> ConstrType -> ConstrType -> TCM ()
 > unifyDecl (FunctionDecl p f _) =
 >   unify p "function binding" (text "Function:" <+> ppIdent f)
 > unifyDecl (PatternDecl  p t _) =
@@ -546,72 +546,73 @@ signature the declared type must be too general.
 >     | otherwise = monoType ty
 >   eqTyScheme (ForAll cx1 _ t1) (ForAll cx2 _ t2) = equTypes t1 t2
 
-> tcEquation :: ValueEnv -> Equation -> TCM Type
+> tcEquation :: ValueEnv -> Equation -> TCM ConstrType
 > tcEquation tyEnv0 (Equation p lhs rhs) = do
 >   tys <- mapM (tcPattern p) ts
->   ty <- tcRhs tyEnv0 rhs
+>   (cx, ty) <- tcRhs tyEnv0 rhs
+>   let cxs = concat $ map fst tys ++ [cx] 
 >   checkSkolems p (text "Function: " <+> ppIdent f) tyEnv0
->                  (foldr TypeArrow ty tys)
+>                  (cxs, foldr TypeArrow ty (map getType tys))
 >   where (f, ts) = flatLhs lhs
 
-> tcLiteral :: Literal -> TCM Type
-> tcLiteral (Char   _ _) = return charType
+> tcLiteral :: Literal -> TCM ConstrType
+> tcLiteral (Char   _ _) = return (BT.emptyContext, charType)
 > tcLiteral (Int    v _)  = do --return intType
 >   m  <- getModuleIdent
 >   ty <- freshConstrained [intType, floatType]
 >   modifyValueEnv $ bindFun m v (arrowArity ty) $ monoType ty
->   return ty
-> tcLiteral (Float  _ _) = return floatType
-> tcLiteral (String _ _) = return stringType
+>   return (BT.emptyContext, ty)
+> tcLiteral (Float  _ _) = return (BT.emptyContext, floatType)
+> tcLiteral (String _ _) = return (BT.emptyContext, stringType)
 
-> tcPattern :: Position -> Pattern -> TCM Type
+> tcPattern :: Position -> Pattern -> TCM ConstrType
 > tcPattern _ (LiteralPattern    l) = tcLiteral l
 > tcPattern _ (NegativePattern _ l) = tcLiteral l
 > tcPattern _ (VariablePattern   v) = do
 >   sigs <- getSigEnv
->   ty <- case lookupTypeSig v sigs of
->     Nothing -> freshTypeVar
+>   (cx, ty) <- case lookupTypeSig v sigs of
+>     Nothing -> freshConstrTypeVar
 >     Just t  -> expandPolyType t >>= inst
 >   tyEnv <- getValueEnv
 >   m  <- getModuleIdent
->   maybe (modifyValueEnv (bindFun m v (arrowArity ty) (monoType ty)) >> return ty)
->         (\ (ForAll cx _ t) -> return t)
+>   maybe (modifyValueEnv (bindFun m v (arrowArity ty) (monoType' (cx, ty))) >> return (cx, ty))
+>         (\ (ForAll cx _ t) -> return (cx, t))
 >         (sureVarType v tyEnv)
 > tcPattern p t@(ConstructorPattern c ts) = do
 >   m     <- getModuleIdent
 >   tyEnv <- getValueEnv
 >   ty <- skol $ constrType m c tyEnv
->   unifyArgs (ppPattern 0 t) ts ty
+>   liftM noContext $ unifyArgs (ppPattern 0 t) ts ty
 >   where unifyArgs _   []       ty = return ty
 >         unifyArgs doc (t1:ts1) (TypeArrow ty1 ty2) =
 >           tcPattern p t1 >>=
 >           unify p "pattern" (doc $-$ text "Term:" <+> ppPattern 0 t1)
->                 ty1 >>
+>                 (noContext ty1) >>
 >           unifyArgs doc ts1 ty2
 >         unifyArgs _ _ _ = internalError "TypeCheck.tcPattern"
 > tcPattern p t@(InfixPattern t1 op t2) = do
 >   m     <- getModuleIdent
 >   tyEnv <- getValueEnv
 >   ty <- skol (constrType m op tyEnv)
->   unifyArgs (ppPattern 0 t) [t1,t2] ty
+>   liftM noContext $ unifyArgs (ppPattern 0 t) [t1,t2] ty
 >   where unifyArgs _ [] ty = return ty
 >         unifyArgs doc (t':ts') (TypeArrow ty1 ty2) =
 >           tcPattern p t' >>=
 >           unify p "pattern" (doc $-$ text "Term:" <+> ppPattern 0 t')
->                 ty1 >>
+>                 (noContext ty1) >>
 >           unifyArgs doc ts' ty2
 >         unifyArgs _ _ _ = internalError "TypeCheck.tcPattern"
 > tcPattern p (ParenPattern t) = tcPattern p t
 > tcPattern p (TuplePattern _ ts)
->  | null ts   = return unitType
->  | otherwise = liftM tupleType $ mapM (tcPattern p) ts
+>  | null ts   = return $ noContext unitType
+>  | otherwise = liftM (noContext . tupleType) $ mapM (\t -> liftM getType (tcPattern p t)) ts
 > tcPattern p t@(ListPattern _ ts) =
 >   freshTypeVar >>= flip (tcElems (ppPattern 0 t)) ts
->   where tcElems _ ty [] = return (listType ty)
+>   where tcElems _ ty [] = return (noContext $ listType ty)
 >         tcElems doc ty (t1:ts1) =
 >           tcPattern p t1 >>=
 >           unify p "pattern" (doc $-$ text "Term:" <+> ppPattern 0 t1)
->                 ty >>
+>                 (noContext ty) >>
 >           tcElems doc ty ts1
 > tcPattern p t@(AsPattern v t') = do
 >   ty1 <- tcPattern p (VariablePattern v)
@@ -624,20 +625,20 @@ signature the declared type must be too general.
 >   tyEnv <- getValueEnv
 >   cEnv <- getClassEnv
 >   ty <- inst (funType m f tyEnv cEnv) --skol (constrType m c tyEnv)
->   unifyArgs (ppPattern 0 t) ts ty
->   where unifyArgs _ [] ty = return ty
+>   unifyArgs (ppPattern 0 t) ts (getType ty)
+>   where unifyArgs _ [] ty = return $ noContext ty
 >         unifyArgs doc (t1:ts1) ty@(TypeVariable _) = do
 >              (alpha,beta) <- tcArrow p "function pattern" doc ty
 >              ty' <- tcPatternFP p t1
 >              unify p "function pattern"
 >                    (doc $-$ text "Term:" <+> ppPattern 0 t1)
->                    ty' alpha
+>                    ty' (noContext alpha)
 >              unifyArgs doc ts1 beta
 >         unifyArgs doc (t1:ts1) (TypeArrow ty1 ty2) = do
 >           tcPatternFP p t1 >>=
 >             unify p "function pattern"
 >                 (doc $-$ text "Term:" <+> ppPattern 0 t1)
->                 ty1 >>
+>                 (noContext ty1) >>
 >             unifyArgs doc ts1 ty2
 >         unifyArgs _ _ ty = internalError $ "TypeCheck.tcPattern: " ++ show ty
 > tcPattern p (InfixFuncPattern t1 op t2) =
@@ -647,14 +648,16 @@ signature the declared type must be too general.
 >       m <- getModuleIdent
 >       ty <- tcPattern p (fromJust rt)
 >       fts <- mapM (tcFieldPatt tcPattern m) fs
+>       let fts' = map (\(id0, ty) -> (id0, getType ty)) fts
 >       alpha <- freshVar id
->       let rty = TypeRecord fts (Just alpha)
+>       let rty = noContext $ TypeRecord fts' (Just alpha)
 >       unify p "record pattern" (ppPattern 0 r) ty rty
 >       return rty
 >   | otherwise = do
 >       m <- getModuleIdent
 >       fts <- mapM (tcFieldPatt tcPattern m) fs
->       return (TypeRecord fts Nothing)
+>       let fts' = map (\(id0, ty) -> (id0, getType ty)) fts
+>       return (noContext $ TypeRecord fts' Nothing)
 
 \end{verbatim}
 In contrast to usual patterns, the type checking routine for arguments of
@@ -662,54 +665,54 @@ function patterns \texttt{tcPatternFP} differs from \texttt{tcPattern}
 because of possibly multiple occurrences of variables.
 \begin{verbatim}
 
-> tcPatternFP :: Position -> Pattern -> TCM Type
+> tcPatternFP :: Position -> Pattern -> TCM ConstrType
 > tcPatternFP _ (LiteralPattern    l) = tcLiteral l
 > tcPatternFP _ (NegativePattern _ l) = tcLiteral l
 > tcPatternFP _ (VariablePattern v) = do
 >   sigs <- getSigEnv
 >   m <- getModuleIdent
->   ty <- case lookupTypeSig v sigs of
->     Nothing -> freshTypeVar
+>   cty@(cx, ty) <- case lookupTypeSig v sigs of
+>     Nothing -> freshConstrTypeVar
 >     Just t  -> expandPolyType t >>= inst
 >   tyEnv <- getValueEnv
->   maybe (modifyValueEnv (bindFun m v (arrowArity ty) (monoType ty)) >> return ty)
->         (\ (ForAll cx _ t) -> return t)
+>   maybe (modifyValueEnv (bindFun m v (arrowArity ty) (monoType' cty)) >> return cty)
+>         (\ (ForAll cx _ t) -> return (cx, t))
 >         (sureVarType v tyEnv)
 > tcPatternFP p t@(ConstructorPattern c ts) = do
 >   m <- getModuleIdent
 >   tyEnv <- getValueEnv
 >   ty <- skol (constrType m c tyEnv)
->   unifyArgs (ppPattern 0 t) ts ty
+>   liftM noContext $ unifyArgs (ppPattern 0 t) ts ty
 >   where unifyArgs _ [] ty = return ty
 >         unifyArgs doc (t1:ts1) (TypeArrow ty1 ty2) = do
 >           tcPatternFP p t1 >>=
 >             unify p "pattern" (doc $-$ text "Term:" <+> ppPattern 0 t1)
->                 ty1 >>
+>                 (noContext ty1) >>
 >             unifyArgs doc ts1 ty2
 >         unifyArgs _ _ _ = internalError "TypeCheck.tcPatternFP"
 > tcPatternFP p t@(InfixPattern t1 op t2) = do
 >   m <- getModuleIdent
 >   tyEnv <- getValueEnv
 >   ty <- skol (constrType m op tyEnv)
->   unifyArgs (ppPattern 0 t) [t1,t2] ty
+>   liftM noContext $ unifyArgs (ppPattern 0 t) [t1,t2] ty
 >   where unifyArgs _ [] ty = return ty
 >         unifyArgs doc (t':ts') (TypeArrow ty1 ty2) = do
 >           tcPatternFP p t' >>=
 >             unify p "pattern" (doc $-$ text "Term:" <+> ppPattern 0 t')
->                   ty1 >>
+>                   (noContext ty1) >>
 >             unifyArgs doc ts' ty2
 >         unifyArgs _ _ _ = internalError "TypeCheck.tcPatternFP"
 > tcPatternFP p (ParenPattern t) = tcPatternFP p t
 > tcPatternFP p (TuplePattern _ ts)
->  | null ts = return unitType
->  | otherwise = liftM tupleType $ mapM (tcPatternFP p) ts
+>  | null ts = return $ noContext unitType
+>  | otherwise = liftM (noContext . tupleType) $ mapM (\t -> liftM getType $ tcPatternFP p t) ts
 > tcPatternFP p t@(ListPattern _ ts) =
 >   freshTypeVar >>= flip (tcElems (ppPattern 0 t)) ts
->   where tcElems _ ty [] = return (listType ty)
+>   where tcElems _ ty [] = return (noContext $ listType ty)
 >         tcElems doc ty (t1:ts1) =
 >           tcPatternFP p t1 >>=
 >           unify p "pattern" (doc $-$ text "Term:" <+> ppPattern 0 t1)
->                 ty >>
+>                 (noContext ty) >>
 >           tcElems doc ty ts1
 > tcPatternFP p t@(AsPattern v t') =
 >   do
@@ -723,19 +726,19 @@ because of possibly multiple occurrences of variables.
 >     tyEnv <- getValueEnv
 >     cEnv <- getClassEnv
 >     ty <- inst (funType m f tyEnv cEnv) --skol (constrType m c tyEnv)
->     unifyArgs (ppPattern 0 t) ts ty
->   where unifyArgs _ [] ty = return ty
+>     unifyArgs (ppPattern 0 t) ts (getType ty)
+>   where unifyArgs _ [] ty = return $ noContext ty
 >         unifyArgs doc (t1:ts1) ty@(TypeVariable _) = do
 >              (alpha,beta) <- tcArrow p "function pattern" doc ty
 >              ty' <- tcPatternFP p t1
 >              unify p "function pattern"
 >                    (doc $-$ text "Term:" <+> ppPattern 0 t1)
->                    ty' alpha
+>                    ty' (noContext alpha)
 >              unifyArgs doc ts1 beta
 >         unifyArgs doc (t1:ts1) (TypeArrow ty1 ty2) =
 >           tcPatternFP p t1 >>=
 >           unify p "pattern" (doc $-$ text "Term:" <+> ppPattern 0 t1)
->                 ty1 >>
+>                 (noContext ty1) >>
 >           unifyArgs doc ts1 ty2
 >         unifyArgs _ _ _ = internalError "TypeCheck.tcPatternFP"
 > tcPatternFP p (InfixFuncPattern t1 op t2) =
@@ -745,17 +748,19 @@ because of possibly multiple occurrences of variables.
 >       m <- getModuleIdent
 >       ty <- tcPatternFP p (fromJust rt)
 >       fts <- mapM (tcFieldPatt tcPatternFP m) fs
+>       let fts' = map (\(id0, ty) -> (id0, getType ty)) fts
 >       alpha <- freshVar id
->       let rty = TypeRecord fts (Just alpha)
+>       let rty = noContext $ TypeRecord fts' (Just alpha)
 >       unify p "record pattern" (ppPattern 0 r) ty rty
 >       return rty
 >   | otherwise = do
 >       m <- getModuleIdent
 >       fts <- mapM (tcFieldPatt tcPatternFP m) fs
->       return (TypeRecord fts Nothing)
+>       let fts' = map (\(id0, ty) -> (id0, getType ty)) fts
+>       return (noContext $ TypeRecord fts' Nothing)
 
-> tcFieldPatt :: (Position -> Pattern -> TCM Type) -> ModuleIdent
->             -> Field Pattern -> TCM (Ident, Type)
+> tcFieldPatt :: (Position -> Pattern -> TCM ConstrType) -> ModuleIdent
+>             -> Field Pattern -> TCM (Ident, ConstrType)
 > tcFieldPatt tcPatt m f@(Field _ l t) = do
 >     tyEnv <- getValueEnv
 >     let p = idPosition l
@@ -764,14 +769,14 @@ because of possibly multiple occurrences of variables.
 >                          modifyValueEnv
 >                            (bindLabel l (qualifyWith m (mkIdent "#Rec"))
 >                                       (polyType lty'))
->                          >> return lty'))
->                  (\ (ForAll cx _ lty') -> return lty')
+>                          >> return (noContext lty')))
+>                  (\ (ForAll cx _ lty') -> return (cx, lty'))
 >                  (sureLabelType l tyEnv)
 >     ty <- tcPatt p t
 >     unify p "record" (text "Field:" <+> ppFieldPatt f) lty ty
 >     return (l,ty)
 
-> tcRhs ::ValueEnv -> Rhs -> TCM Type
+> tcRhs ::ValueEnv -> Rhs -> TCM ConstrType
 > tcRhs tyEnv0 (SimpleRhs p e ds) = do
 >   tcDecls ds
 >   ty <- tcExpr p e
@@ -780,11 +785,11 @@ because of possibly multiple occurrences of variables.
 >   tcDecls ds
 >   tcCondExprs tyEnv0 es
 
-> tcCondExprs :: ValueEnv -> [CondExpr] -> TCM Type
+> tcCondExprs :: ValueEnv -> [CondExpr] -> TCM ConstrType
 > tcCondExprs tyEnv0 es = do
->   gty <- if length es > 1 then return boolType
->                           else freshConstrained [successType,boolType]
->   ty <- freshTypeVar
+>   gty <- if length es > 1 then return $ noContext boolType
+>                           else liftM noContext $ freshConstrained [successType,boolType]
+>   ty <- freshConstrTypeVar
 >   tcCondExprs' gty ty es
 >   where tcCondExprs' _   ty [] = return ty
 >         tcCondExprs' gty ty (e1:es1) =
@@ -796,7 +801,7 @@ because of possibly multiple occurrences of variables.
 >             checkSkolems p (text "Expression:" <+> ppExpr 0 e) tyEnv0 >>=
 >             unify p "guarded expression" (ppExpr 0 e) ty
 
-> tcExpr :: Position -> Expression -> TCM Type
+> tcExpr :: Position -> Expression -> TCM ConstrType
 > tcExpr _ (Literal     l) = tcLiteral l
 > tcExpr _ (Variable    v)
 >     -- anonymous free variable
@@ -804,7 +809,7 @@ because of possibly multiple occurrences of variables.
 >       m <- getModuleIdent
 >       ty <- freshTypeVar
 >       modifyValueEnv $ bindFun m v' (arrowArity ty) $ monoType ty
->       return ty
+>       return $ noContext ty
 >   | otherwise    = do
 >       sigs <- getSigEnv
 >       m <- getModuleIdent
@@ -823,16 +828,21 @@ because of possibly multiple occurrences of variables.
 >   sigma' <- expandPolyType (cx, sig')
 >   inst sigma' >>= flip (unify p "explicitly typed expression" (ppExpr 0 e)) ty
 >   theta <- getTypeSubst
->   let sigma  = gen (fvEnv (subst theta tyEnv0)) (subst theta ty)
+>   let sigma  = gen (fvEnv (subst theta tyEnv0)) (subst theta (getType ty))
 >   unless (sigma == sigma') (report $ errTypeSigTooGeneral p m (text "Expression:" <+> ppExpr 0 e) (cx, sig') sigma)
 >   return ty
 >   where sig' = nameSigType sig
 > tcExpr p (Paren e) = tcExpr p e
 > tcExpr p (Tuple _ es)
->   | null es = return unitType
->   | otherwise = liftM tupleType $ mapM (tcExpr p) es
-> tcExpr p e@(List _ es) = freshTypeVar >>= tcElems (ppExpr 0 e) es
->   where tcElems _ [] ty = return (listType ty)
+>   | null es = return $ noContext unitType
+>   | otherwise = do 
+>      ctys <- mapM (tcExpr p) es
+>      let cx = concatMap fst ctys
+>      let tys = map snd ctys
+>      return (cx, tupleType tys)
+> tcExpr p e@(List _ es) = freshConstrTypeVar >>= tcElems (ppExpr 0 e) es
+>   where tcElems :: Doc -> [Expression] -> ConstrType -> TCM ConstrType
+>         tcElems _ [] (cx, ty) = return (cx, listType ty)
 >         tcElems doc (e1:es1) ty =
 >           tcExpr p e1 >>=
 >           unify p "expression" (doc $-$ text "Term:" <+> ppExpr 0 e1)
@@ -841,40 +851,40 @@ because of possibly multiple occurrences of variables.
 > tcExpr p (ListCompr _ e qs) = do
 >     tyEnv0 <- getValueEnv
 >     mapM_ (tcQual p) qs
->     ty <- tcExpr p e
->     checkSkolems p (text "Expression:" <+> ppExpr 0 e) tyEnv0 (listType ty)
+>     (cx, ty) <- tcExpr p e
+>     checkSkolems p (text "Expression:" <+> ppExpr 0 e) tyEnv0 (cx, listType ty)
 > tcExpr p e@(EnumFrom e1) = do
->     ty1 <- tcExpr p e1
+>     cty1@(cx1, ty1) <- tcExpr p e1
 >     unify p "arithmetic sequence"
->           (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e1) intType ty1
->     return (listType intType)
+>           (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e1) (noContext intType) cty1
+>     return (cx1, listType intType)
 > tcExpr p e@(EnumFromThen e1 e2) = do
->     ty1 <- tcExpr p e1
->     ty2 <- tcExpr p e2
+>     cty1@(cx1, ty1) <- tcExpr p e1
+>     cty2@(cx2, ty2) <- tcExpr p e2
 >     unify p "arithmetic sequence"
->           (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e1) intType ty1
+>           (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e1) (noContext intType) cty1
 >     unify p "arithmetic sequence"
->           (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e2) intType ty2
->     return (listType intType)
+>           (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e2) (noContext intType) cty2
+>     return ((cx1 ++ cx2), listType intType)
 > tcExpr p e@(EnumFromTo e1 e2) = do
->     ty1 <- tcExpr p e1
->     ty2 <- tcExpr p e2
+>     cty1@(cx1, ty1) <- tcExpr p e1
+>     cty2@(cx2, ty2) <- tcExpr p e2
 >     unify p "arithmetic sequence"
->           (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e1) intType ty1
+>           (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e1) (noContext intType) cty1
 >     unify p "arithmetic sequence"
->           (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e2) intType ty2
->     return (listType intType)
+>           (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e2) (noContext intType) cty2
+>     return (cx1 ++ cx2, listType intType)
 > tcExpr p e@(EnumFromThenTo e1 e2 e3) = do
->     ty1 <- tcExpr p e1
->     ty2 <- tcExpr p e2
->     ty3 <- tcExpr p e3
+>     cty1@(cx1, ty1) <- tcExpr p e1
+>     cty2@(cx2, ty2) <- tcExpr p e2
+>     cty3@(cx3, ty3) <- tcExpr p e3
 >     unify p "arithmetic sequence"
->           (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e1) intType ty1
+>           (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e1) (noContext intType) cty1
 >     unify p "arithmetic sequence"
->           (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e2) intType ty2
+>           (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e2) (noContext intType) cty2
 >     unify p "arithmetic sequence"
->           (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e3) intType ty3
->     return (listType intType)
+>           (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e3) (noContext intType) cty3
+>     return (cx1 ++ cx2 ++ cx3, listType intType)
 > tcExpr p e@(UnaryMinus op e1) = do
 >     opTy <- opType op
 >     ty1 <- tcExpr p e1
@@ -882,54 +892,55 @@ because of possibly multiple occurrences of variables.
 >           opTy ty1
 >     return ty1
 >   where opType op'
->           | op' == minusId  = freshConstrained [intType,floatType]
->           | op' == fminusId = return floatType
+>           | op' == minusId  = liftM noContext $ freshConstrained [intType,floatType]
+>           | op' == fminusId = return $ noContext floatType
 >           | otherwise = internalError $ "TypeCheck.tcExpr unary " ++ idName op'
 > tcExpr p e@(Apply e1 e2) = do
->     ty1 <- tcExpr p e1
->     ty2 <- tcExpr p e2
+>     cty1@(cx1, ty1) <- tcExpr p e1
+>     cty2@(cx2, ty2) <- tcExpr p e2
 >     (alpha,beta) <-
 >       tcArrow p "application" (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e1)
 >              ty1
 >     unify p "application" (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e2)
->           alpha ty2
->     return beta
+>           (noContext alpha) cty2
+>     return (cx1 ++ cx2, beta)
 > tcExpr p e@(InfixApply e1 op e2) = do
->     opTy <- tcExpr p (infixOp op)
->     ty1  <- tcExpr p e1
->     ty2  <- tcExpr p e2
+>     opTy@(cxo, _)   <- tcExpr p (infixOp op)
+>     cty1@(cx1, ty1) <- tcExpr p e1
+>     cty2@(cx2, ty2) <- tcExpr p e2
 >     (alpha,beta,gamma) <-
 >       tcBinary p "infix application"
->                (ppExpr 0 e $-$ text "Operator:" <+> ppOp op) opTy
+>                (ppExpr 0 e $-$ text "Operator:" <+> ppOp op) (getType opTy)
 >     unify p "infix application" (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e1)
->           alpha ty1
+>           (noContext alpha) cty1
 >     unify p "infix application" (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e2)
->           beta ty2
->     return gamma
+>           (noContext beta) cty2
+>     return (cxo ++ cx1 ++ cx2, gamma)
 > tcExpr p e@(LeftSection e1 op) = do
->     opTy <- tcExpr p (infixOp op)
->     ty1  <- tcExpr p e1
+>     opTy@(cxo, _)    <- tcExpr p (infixOp op)
+>     cty1@(cx1, ty1)  <- tcExpr p e1
 >     (alpha,beta) <-
 >       tcArrow p "left section" (ppExpr 0 e $-$ text "Operator:" <+> ppOp op)
->               opTy
+>               (getType opTy)
 >     unify p "left section" (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e1)
->           alpha ty1
->     return beta
+>           (noContext alpha) cty1
+>     return (cxo ++ cx1, beta)
 > tcExpr p e@(RightSection op e1) = do
->     opTy <- tcExpr p (infixOp op)
->     ty1  <- tcExpr p e1
+>     opTy@(cxo, _)    <- tcExpr p (infixOp op)
+>     cty1@(cx1, ty1)  <- tcExpr p e1
 >     (alpha,beta,gamma) <-
 >       tcBinary p "right section"
->                (ppExpr 0 e $-$ text "Operator:" <+> ppOp op) opTy
+>                (ppExpr 0 e $-$ text "Operator:" <+> ppOp op) (getType opTy)
 >     unify p "right section" (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e1)
->           beta ty1
->     return (TypeArrow alpha gamma)
+>           (noContext beta) cty1
+>     return (cxo ++ cx1, TypeArrow alpha gamma)
 > tcExpr p expr@(Lambda _ ts e) = do
 >     tyEnv0 <- getValueEnv
 >     tys <- mapM (tcPattern p) ts
->     ty <- tcExpr p e
+>     (cx, ty) <- tcExpr p e
+>     let cxs = concat (map fst tys ++ [cx]) 
 >     checkSkolems p (text "Expression:" <+> ppExpr 0 expr) tyEnv0
->                  (foldr TypeArrow ty tys)
+>                    (cxs, foldr TypeArrow ty (map getType tys))
 > tcExpr p (Let ds e) = do
 >     tyEnv0 <- getValueEnv
 >     tcDecls ds
@@ -940,21 +951,21 @@ because of possibly multiple occurrences of variables.
 >     mapM_ (tcStmt p) sts
 >     alpha <- freshTypeVar
 >     ty <- tcExpr p e
->     unify p "statement" (ppExpr 0 e) (ioType alpha) ty
+>     unify p "statement" (ppExpr 0 e) (noContext $ ioType alpha) ty
 >     checkSkolems p (text "Expression:" <+> ppExpr 0 e) tyEnv0 ty
 > tcExpr p e@(IfThenElse _ e1 e2 e3) = do
->     ty1 <- tcExpr p e1
+>     cty1@(cx1, ty1) <- tcExpr p e1
 >     unify p "expression" (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e1)
->           boolType ty1
->     ty2 <- tcExpr p e2
->     ty3 <- tcExpr p e3
+>           (noContext boolType) cty1
+>     cty2@(cx2, ty2) <- tcExpr p e2
+>     cty3@(cx3, ty3) <- tcExpr p e3
 >     unify p "expression" (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e3)
->           ty2 ty3
->     return ty3
+>           cty2 cty3
+>     return (cx1 ++ cx2 ++ cx3, ty3)
 > tcExpr p (Case _ _ e alts) = do
 >     tyEnv0 <- getValueEnv
 >     ty <- tcExpr p e
->     alpha <- freshTypeVar
+>     alpha <- freshConstrTypeVar
 >     tcAlts tyEnv0 ty alpha alts
 >   where tcAlts _      _   ty [] = return ty
 >         tcAlts tyEnv0 ty1 ty2 (alt1:alts1) =
@@ -967,7 +978,8 @@ because of possibly multiple occurrences of variables.
 >           unify p1 "case branch" doc ty2
 > tcExpr _ (RecordConstr fs) = do
 >     fts <- mapM tcFieldExpr fs
->     return (TypeRecord fts Nothing)
+>     return (noContext $ TypeRecord 
+>       (map (\(id0, cty) -> (id0, getType cty)) fts) Nothing)
 > tcExpr p r@(RecordSelection e l) = do
 >     m <- getModuleIdent
 >     ty <- tcExpr p e
@@ -982,38 +994,41 @@ because of possibly multiple occurrences of variables.
 >                  (sureLabelType l tyEnv)
 >     alpha <- freshVar id
 >     let rty = TypeRecord [(l,lty)] (Just alpha)
->     unify p "record selection" (ppExpr 0 r) ty rty
->     return lty
+>     unify p "record selection" (ppExpr 0 r) ty (noContext rty)
+>     return $ noContext lty
 > tcExpr p r@(RecordUpdate fs e) = do
 >     ty    <- tcExpr p e
 >     fts   <- mapM tcFieldExpr fs
 >     alpha <- freshVar id
->     let rty = TypeRecord fts (Just alpha)
->     unify p "record update" (ppExpr 0 r) ty rty
+>     let rty = TypeRecord (map (\(id0, cty) -> (id0, getType cty)) fts) (Just alpha)
+>     unify p "record update" (ppExpr 0 r) ty (noContext rty)
 >     return ty
 
 > tcQual :: Position -> Statement -> TCM ()
 > tcQual p (StmtExpr     _ e) =
->   tcExpr p e >>= unify p "guard" (ppExpr 0 e) boolType
+>   tcExpr p e >>= unify p "guard" (ppExpr 0 e) (noContext boolType)
 > tcQual p q@(StmtBind _ t e) = do
 >   ty1 <- tcPattern p t
 >   ty2 <- tcExpr p e
+>   -- TODO: return contexts
 >   unify p "generator" (ppStmt q $-$ text "Term:" <+> ppExpr 0 e)
->         (listType ty1) ty2
+>         (noContext $ listType $ getType ty1) ty2
 > tcQual _ (StmtDecl      ds) = tcDecls ds
 
 > tcStmt ::Position -> Statement -> TCM ()
 > tcStmt p (StmtExpr _ e) = do
 >   alpha <- freshTypeVar
 >   ty    <- tcExpr p e
->   unify p "statement" (ppExpr 0 e) (ioType alpha) ty
+>   -- TODO: return contexts
+>   unify p "statement" (ppExpr 0 e) (noContext $ ioType alpha) ty
 > tcStmt p st@(StmtBind _ t e) = do
 >   ty1 <- tcPattern p t
 >   ty2 <- tcExpr p e
->   unify p "statement" (ppStmt st $-$ text "Term:" <+> ppExpr 0 e) (ioType ty1) ty2
+>   -- TODO: return contexts
+>   unify p "statement" (ppStmt st $-$ text "Term:" <+> ppExpr 0 e) (noContext $ ioType $ getType ty1) ty2
 > tcStmt _ (StmtDecl ds) = tcDecls ds
 
-> tcFieldExpr :: Field Expression -> TCM (Ident, Type)
+> tcFieldExpr :: Field Expression -> TCM (Ident, ConstrType)
 > tcFieldExpr f@(Field _ l e) = do
 >   m     <- getModuleIdent
 >   tyEnv <- getValueEnv
@@ -1022,7 +1037,7 @@ because of possibly multiple occurrences of variables.
 >                >>= (\lty' ->
 >                      modifyValueEnv (bindLabel l (qualifyWith m (mkIdent "#Rec"))
 >                                     (monoType lty'))
->                >> return lty'))
+>                >> (return $ noContext lty')))
 >                  inst
 >         (sureLabelType l tyEnv)
 >   ty <- tcExpr p e
@@ -1074,8 +1089,8 @@ The unification uses Robinson's algorithm (cf., e.g., Chap.~9
 of~\cite{PeytonJones87:Book}).
 \begin{verbatim}
 
-> unify :: Position -> String -> Doc -> Type -> Type -> TCM ()
-> unify p what doc ty1 ty2 = do
+> unify :: Position -> String -> Doc -> ConstrType -> ConstrType -> TCM ()
+> unify p what doc (_, ty1) (_, ty2) = do
 >   theta <- getTypeSubst
 >   let ty1' = subst theta ty1
 >   let ty2' = subst theta ty2
@@ -1173,15 +1188,15 @@ For each declaration group, the type checker has to ensure that no
 skolem type escapes its scope.
 \begin{verbatim}
 
-> checkSkolems :: Position -> Doc -> ValueEnv -> Type -> TCM Type
-> checkSkolems p what tyEnv ty = do
+> checkSkolems :: Position -> Doc -> ValueEnv -> ConstrType -> TCM ConstrType
+> checkSkolems p what tyEnv (cx, ty) = do
 >   m     <- getModuleIdent
 >   theta <- getTypeSubst
 >   let ty' = subst theta ty
 >       fs  = fsEnv $ subst theta tyEnv
 >   unless (all (`Set.member` fs) $ typeSkolems ty') $
 >            report $ errSkolemEscapingScope p m what ty'
->   return ty'
+>   return (cx, ty')
 
 \end{verbatim}
 \paragraph{Instantiation and Generalization}
@@ -1197,21 +1212,24 @@ We use negative offsets for fresh type variables.
 > freshTypeVar :: TCM Type
 > freshTypeVar = freshVar TypeVariable
 
+> freshConstrTypeVar :: TCM ConstrType
+> freshConstrTypeVar = do ftvar <- freshTypeVar; return (BT.emptyContext, ftvar)
+
 > freshConstrained :: [Type] -> TCM Type
 > freshConstrained = freshVar . TypeConstrained
 
 > freshSkolem :: TCM Type
 > freshSkolem = fresh TypeSkolem
 
-> inst :: TypeScheme -> TCM Type
+> inst :: TypeScheme -> TCM ConstrType
 > inst (ForAll cx n ty) = do
 >   tys <- replicateM n freshTypeVar
->   return $ expandAliasType tys ty
+>   return $ (cx, expandAliasType tys ty) -- TODO: modify context?
 
-> instExist :: ExistTypeScheme -> TCM Type
+> instExist :: ExistTypeScheme -> TCM ConstrType
 > instExist (ForAllExist cx n n' ty) = do
 >   tys <- replicateM (n + n') freshTypeVar
->   return $ expandAliasType tys ty
+>   return $ (cx, expandAliasType tys ty) -- TODO: modify context?
 
 > skol :: ExistTypeScheme -> TCM Type
 > skol (ForAllExist cx n n' ty) = do
@@ -1284,26 +1302,29 @@ and also qualifies all type constructors with the name of the module
 in which the type was defined.
 \begin{verbatim}
 
-> type ConstrainedType' = (BT.Context, Type)
+> type ConstrType = (BT.Context, Type)
 
-> getBTType :: ConstrainedType' -> Type
-> getBTType (_cx, type0) = type0
+> noContext :: Type -> ConstrType
+> noContext ty = (BT.emptyContext, ty)
 
-> expandPolyType :: ConstrainedType -> TCM TypeScheme
+> getType :: ConstrType -> Type
+> getType (_cx, type0) = type0
+
+> expandPolyType :: BaseConstrType -> TCM TypeScheme
 > expandPolyType ty 
 >   = (\(cx, ty) -> (polyType (normalize ty) `constrainBy` cx)) `liftM` expandMonoType [] ty
 
-> expandMonoType :: [Ident] -> ConstrainedType -> TCM ConstrainedType'
+> expandMonoType :: [Ident] -> BaseConstrType -> TCM ConstrType
 > expandMonoType tvs ty = do
 >   m <- getModuleIdent
 >   tcEnv <- getTyConsEnv
 >   return $ expandMonoType' m tcEnv tvs ty
 
-> expandMonoType' :: ModuleIdent -> TCEnv -> [Ident] -> ConstrainedType -> ConstrainedType'
+> expandMonoType' :: ModuleIdent -> TCEnv -> [Ident] -> BaseConstrType -> ConstrType
 > expandMonoType' m tcEnv tvs ty = (cx, expandType m tcEnv ty')
 >   where (cx, ty') = (toConstrType tvs ty)
 
-> expandMonoTypes :: ModuleIdent -> TCEnv -> [Ident] -> [ConstrainedType] -> [ConstrainedType']
+> expandMonoTypes :: ModuleIdent -> TCEnv -> [Ident] -> [BaseConstrType] -> [ConstrType]
 > expandMonoTypes m tcEnv tvs tys 
 >   = map (\(cx, ty) -> (cx, expandType m tcEnv ty)) (toConstrTypes tvs tys)
 
@@ -1376,7 +1397,7 @@ Error functions.
 > errPolymorphicFreeVar v = posMessage v $ hsep $ map text
 >   ["Free variable", idName v, "has a polymorphic type"]
 
-> errTypeSigTooGeneral :: Position -> ModuleIdent -> Doc -> ConstrainedType -> TypeScheme
+> errTypeSigTooGeneral :: Position -> ModuleIdent -> Doc -> BaseConstrType -> TypeScheme
 >                      -> Message
 > errTypeSigTooGeneral p m what (cx, ty) sigma = posMessage p $ vcat
 >   [ text "Type signature too general", what
