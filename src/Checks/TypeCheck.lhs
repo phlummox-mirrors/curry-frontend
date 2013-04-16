@@ -31,6 +31,7 @@ type annotation is present.
 > import qualified Data.Set as Set (Set, fromList, member, notMember, unions)
 > import Text.PrettyPrint
 > import Debug.Trace
+> import Data.List (union)
 
 > import Curry.Base.Ident
 > import Curry.Base.Position
@@ -329,7 +330,7 @@ inferred type is less general than the signature.
 
 > lookupTypeSig :: Ident -> SigEnv -> Maybe BaseConstrType
 > -- lookupTypeSig = Map.lookup
-> lookupTypeSig id0 sEnv = trace ("lookupTypeSig " ++ show id0 ++ " " ++ show sEnv) $ Map.lookup id0 sEnv
+> lookupTypeSig id0 sEnv = trace ("lookupTypeSig " ++ show id0 {-++ " " ++ show sEnv-}) $ Map.lookup id0 sEnv
 
 > qualLookupTypeSig :: ModuleIdent -> QualIdent -> SigEnv 
 >                   -> Maybe BaseConstrType
@@ -419,9 +420,13 @@ either one of the basic types or \texttt{()}.
 >   tyEnv0 <- getValueEnv
 >   tysLhs <- mapM tcDeclLhs ds
 >   tysRhs <- mapM (tcDeclRhs tyEnv0) ds
->   sequence_ (zipWith3 unifyDecl ds tysLhs tysRhs)
+>   let cxsLhs = map fst tysLhs
+>   let cxsRhs = map fst tysRhs
+>   let cxs = zipWith union cxsLhs cxsRhs
+>   let dsWithCxs = zip cxs ds
+>   trace ("tcDeclGroup tysRhs: " ++ show tysRhs) $ sequence_ (zipWith3 unifyDecl ds tysLhs tysRhs)
 >   theta <- getTypeSubst
->   mapM_ (genDecl (fvEnv (subst theta tyEnv0)) theta) ds
+>   mapM_ (genDecl (fvEnv (subst theta tyEnv0)) theta) dsWithCxs
 > --tcDeclGroup m tcEnv _ [ForeignDecl p cc _ f ty] =
 > --  tcForeign m tcEnv p cc f ty
 
@@ -480,7 +485,7 @@ either one of the basic types or \texttt{()}.
 > tcDeclLhs _ = internalError "TypeCheck.tcDeclLhs: no pattern match"
 
 > tcFunDecl :: Ident -> TCM ConstrType
-> tcFunDecl v = trace ("tcFunDecl: " ++ show v) $ do
+> tcFunDecl v = do
 >   sigs <- getSigEnv
 >   m <- getModuleIdent
 >   (cx, ty) <- case lookupTypeSig v sigs of
@@ -491,8 +496,9 @@ either one of the basic types or \texttt{()}.
 
 > tcDeclRhs :: ValueEnv -> Decl -> TCM ConstrType
 > tcDeclRhs tyEnv0 (FunctionDecl _ f (eq:eqs)) = do
->   tcEquation tyEnv0 eq >>= flip tcEqns eqs
->   where tcEqns ty [] = return ty
+>   typ <- tcEquation tyEnv0 eq >>= flip tcEqns eqs
+>   return $ trace ("tcDeclRhs type: " ++ show typ) typ
+>   where tcEqns ty [] = return $ trace ("tcEqns: " ++ show ty) ty
 >         tcEqns ty (eq1@(Equation p _ _):eqs1) = do
 >           tcEquation tyEnv0 eq1 >>=
 >             unify p "equation" (ppDecl (FunctionDecl p f [eq1])) ty >>
@@ -531,20 +537,20 @@ specific. Therefore, if the inferred type does not match the type
 signature the declared type must be too general.
 \begin{verbatim}
 
-> genDecl :: Set.Set Int -> TypeSubst -> Decl -> TCM ()
-> genDecl lvs theta (FunctionDecl _ f (Equation _ lhs _ : _)) =
->   genVar True lvs theta arity f
+> genDecl :: Set.Set Int -> TypeSubst -> (BT.Context, Decl) -> TCM ()
+> genDecl lvs theta (cx, FunctionDecl _ f (Equation _ lhs _ : _)) =
+>   genVar True lvs theta arity cx f
 >   where arity = Just $ length $ snd $ flatLhs lhs
-> genDecl lvs theta (PatternDecl  _ t   _) =
->   mapM_ (genVar False lvs theta Nothing) (bv t)
+> genDecl lvs theta (cx, PatternDecl  _ t   _) =
+>   mapM_ (genVar False lvs theta Nothing cx) (bv t)
 > genDecl _ _ _ = internalError "TypeCheck.genDecl: no pattern match"
 
-> genVar :: Bool -> Set.Set Int -> TypeSubst -> Maybe Int -> Ident -> TCM ()
-> genVar poly lvs theta ma v = do
+> genVar :: Bool -> Set.Set Int -> TypeSubst -> Maybe Int -> BT.Context -> Ident -> TCM ()
+> genVar poly lvs theta ma cx v = do
 >   sigs <- getSigEnv
 >   m <- getModuleIdent
 >   tyEnv <- getValueEnv
->   let sigma = genType poly $ subst theta $ varType v tyEnv
+>   let sigma = (genType poly $ subst theta $ varType v tyEnv) `constrainBy` cx
 >       arity  = fromMaybe (varArity v tyEnv) ma
 >   case lookupTypeSig v sigs of
 >     Nothing    -> modifyValueEnv $ rebindFun m v arity sigma
@@ -566,7 +572,7 @@ signature the declared type must be too general.
 >   tys <- mapM (tcPattern p) ts
 >   (cx, ty) <- tcRhs tyEnv0 rhs
 >   let cxs = concat $ map fst tys ++ [cx] 
->   checkSkolems p (text "Function: " <+> ppIdent f) tyEnv0
+>   trace ("tcEquation cxs: " ++ show cxs) $ checkSkolems p (text "Function: " <+> ppIdent f) tyEnv0
 >                  (cxs, foldr TypeArrow ty (map getType tys))
 >   where (f, ts) = flatLhs lhs
 
@@ -795,7 +801,8 @@ because of possibly multiple occurrences of variables.
 > tcRhs tyEnv0 (SimpleRhs p e ds) = do
 >   tcDecls ds
 >   ty <- tcExpr p e
->   checkSkolems p (text "Expression:" <+> ppExpr 0 e) tyEnv0 ty
+>   tmp <- checkSkolems p (text "Expression:" <+> ppExpr 0 e) tyEnv0 ty
+>   return (trace ("tcRhs result " ++ show tmp) $ tmp)
 > tcRhs tyEnv0 (GuardedRhs es ds) = do
 >   tcDecls ds
 >   tcCondExprs tyEnv0 es
@@ -820,7 +827,7 @@ because of possibly multiple occurrences of variables.
 > tcExpr _ (Literal     l) = tcLiteral l
 > tcExpr _ (Variable    v)
 >     -- anonymous free variable
->   | isAnonId v' = do
+>   | isAnonId v' = trace ("tcExp: " ++ show v) $do
 >       m <- getModuleIdent
 >       ty <- freshTypeVar
 >       modifyValueEnv $ bindFun m v' (arrowArity ty) $ monoType ty
@@ -830,7 +837,7 @@ because of possibly multiple occurrences of variables.
 >       m <- getModuleIdent
 >       cEnv <- getClassEnv
 >       case qualLookupTypeSig m v sigs of
->         Just ty -> trace ("Just " ++ show ty) $ expandPolyType ty >>= inst
+>         Just ty -> {-trace ("Just " ++ show ty) $-}expandPolyType ty >>= inst
 >         Nothing -> getValueEnv >>= inst . (flip (funType m v) cEnv)
 >   where v' = unqualify v
 > tcExpr _ (Constructor c) = do
@@ -910,7 +917,7 @@ because of possibly multiple occurrences of variables.
 >           | op' == minusId  = liftM noContext $ freshConstrained [intType,floatType]
 >           | op' == fminusId = return $ noContext floatType
 >           | otherwise = internalError $ "TypeCheck.tcExpr unary " ++ idName op'
-> tcExpr p e@(Apply e1 e2) = do
+> tcExpr p e@(Apply e1 e2) = trace ("Apply: " ++ show e1 ++ " " ++ show e2) $ do
 >     cty1@(cx1, ty1) <- tcExpr p e1
 >     cty2@(cx2, ty2) <- tcExpr p e2
 >     (alpha,beta) <-
@@ -918,7 +925,7 @@ because of possibly multiple occurrences of variables.
 >              ty1
 >     unify p "application" (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e2)
 >           (noContext alpha) cty2
->     return (cx1 ++ cx2, beta)
+>     return (cx1 ++ cx2, beta) -- TODO: substitutions on contexts?
 > tcExpr p e@(InfixApply e1 op e2) = do
 >     opTy@(cxo, _)   <- tcExpr p (infixOp op)
 >     cty1@(cx1, ty1) <- tcExpr p e1
