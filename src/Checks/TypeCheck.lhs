@@ -30,18 +30,19 @@ type annotation is present.
 > import Data.Maybe (catMaybes, fromJust, fromMaybe, isJust, listToMaybe, maybeToList)
 > import qualified Data.Set as Set (Set, fromList, member, notMember, unions)
 > import Text.PrettyPrint
+> import Debug.Trace
 
 > import Curry.Base.Ident
 > import Curry.Base.Position
-> import Curry.Syntax
+> import Curry.Syntax as ST
 > import Curry.Syntax.Pretty
 
-> import Base.CurryTypes (fromQualType, toType, toTypes)
+> import Base.CurryTypes (fromQualType, toType, toTypes, toConstrType, toConstrTypes)
 > import Base.Expr
 > import Base.Messages (Message, posMessage, internalError)
 > import Base.SCC
 > import Base.TopEnv
-> import Base.Types
+> import Base.Types as BT
 > import Base.TypeSubst
 > import Base.Utils (foldr2)
 
@@ -49,7 +50,7 @@ type annotation is present.
 >   , qualLookupTC)
 > import Env.Value ( ValueEnv, ValueInfo (..), bindFun, rebindFun
 >   , bindGlobalInfo, bindLabel, lookupValue, qualLookupValue )
-> import Env.ClassEnv (ClassEnv)
+> import Env.ClassEnv (ClassEnv, lookupDefiningClass, lookupMethodTypeScheme)
 
 > infixl 5 $-$
 
@@ -217,22 +218,26 @@ and \texttt{expandMonoTypes}, respectively.
 >   setTyConsEnv tcEnv'
 
 > bindTC :: ModuleIdent -> TCEnv -> Decl -> TCEnv -> TCEnv
-> bindTC m tcEnv (DataDecl _ tc tvs cs) =
+> bindTC m tcEnv (DataDecl _ {- cx -} tc tvs cs) =
 >   bindTypeInfo DataType m tc tvs (map (Just . mkData) cs)
 >   where
 >   mkData (ConstrDecl _ evs     c  tys) = mkData' evs c  tys
 >   mkData (ConOpDecl  _ evs ty1 op ty2) = mkData' evs op [ty1, ty2]
 >   mkData' evs c tys = DataConstr c (length evs) $
->     expandMonoTypes m tcEnv (cleanTVars tvs evs) tys
+>     -- TODO: somewhen adding contexts to data declarations
+>     map getBTType $ expandMonoTypes m tcEnv (cleanTVars tvs evs) (map noContext tys)
 > bindTC m tcEnv (NewtypeDecl _ tc tvs (NewConstrDecl _ evs c ty)) =
 >   bindTypeInfo RenamingType m tc tvs (DataConstr c (length evs) [ty'])
->   where ty' = expandMonoType' m tcEnv (cleanTVars tvs evs) ty
+>   where ty' = getBTType $ expandMonoType' m tcEnv (cleanTVars tvs evs) (noContext ty)
 > bindTC m tcEnv (TypeDecl _ tc tvs ty) =
->   bindTypeInfo AliasType m tc tvs (expandMonoType' m tcEnv tvs ty)
+>   bindTypeInfo AliasType m tc tvs (getBTType $ expandMonoType' m tcEnv tvs (noContext ty))
 > bindTC _ _ _ = id
 
 > cleanTVars :: [Ident] -> [Ident] -> [Ident]
 > cleanTVars tvs evs = [if tv `elem` evs then anonId else tv | tv <- tvs]
+
+> noContext :: TypeExpr -> ConstrainedType
+> noContext texp = (ST.emptyContext, texp) 
 
 \end{verbatim}
 \paragraph{Defining Data Constructors}
@@ -256,14 +261,14 @@ have been properly renamed and all type synonyms are already expanded.
 >     foldr (bindConstr m n (constrType' tc n)) tyEnv' (catMaybes cs)
 >   bindData (RenamingType tc n (DataConstr c n' [ty])) tyEnv' =
 >     bindGlobalInfo NewtypeConstructor m c
->                    (ForAllExist emptyContext n n' (TypeArrow ty (constrType' tc n)))
+>                    (ForAllExist BT.emptyContext n n' (TypeArrow ty (constrType' tc n)))
 >                    tyEnv'
 >   bindData (RenamingType _ _ (DataConstr _ _ _)) _ =
 >     internalError "TypeCheck.bindConstrs: newtype with illegal constructors"
 >   bindData (AliasType _ _ _) tyEnv' = tyEnv'
 >   bindConstr m' n ty (DataConstr c n' tys) =
 >     bindGlobalInfo (flip DataConstructor (length tys)) m' c
->                    (ForAllExist emptyContext n n' (foldr TypeArrow ty tys))
+>                    (ForAllExist BT.emptyContext n n' (foldr TypeArrow ty tys))
 >   constrType' tc n = TypeConstructor tc $ map TypeVariable [0 .. n - 1]
 
 \end{verbatim}
@@ -302,23 +307,29 @@ available for use in the error message that is printed when the
 inferred type is less general than the signature.
 \begin{verbatim}
 
-> type SigEnv = Map.Map Ident TypeExpr
+> type ConstrainedType = (ST.Context, TypeExpr)
+
+> getSTType :: ConstrainedType -> TypeExpr
+> getSTType (_cx, tyexp) = tyexp
+
+> type SigEnv = Map.Map Ident ConstrainedType
 
 > emptySigEnv :: SigEnv
 > emptySigEnv = Map.empty
 
-> bindTypeSig :: Ident -> TypeExpr -> SigEnv -> SigEnv
+> bindTypeSig :: Ident -> ConstrainedType -> SigEnv -> SigEnv
 > bindTypeSig = Map.insert
 
 > bindTypeSigs :: Decl -> SigEnv -> SigEnv
 > bindTypeSigs (TypeSig _ vs cx ty) env =
->   foldr (flip bindTypeSig (nameSigType ty)) env vs
+>   foldr (flip bindTypeSig (cx, nameSigType ty)) env vs
 > bindTypeSigs _ env = env
 
-> lookupTypeSig :: Ident -> SigEnv -> Maybe TypeExpr
+> lookupTypeSig :: Ident -> SigEnv -> Maybe ConstrainedType
 > lookupTypeSig = Map.lookup
 
-> qualLookupTypeSig :: ModuleIdent -> QualIdent -> SigEnv -> Maybe TypeExpr
+> qualLookupTypeSig :: ModuleIdent -> QualIdent -> SigEnv 
+>                   -> Maybe ConstrainedType
 > qualLookupTypeSig m f sigs = localIdent m f >>= flip lookupTypeSig sigs
 
 > nameSigType :: TypeExpr -> TypeExpr
@@ -332,6 +343,8 @@ inferred type is less general than the signature.
 
 > nameType :: TypeExpr -> [Ident] -> (TypeExpr, [Ident])
 > nameType (ConstructorType tc tys) tvs = (ConstructorType tc tys', tvs')
+>   where (tys', tvs') = nameTypes tys tvs
+> nameType (SpecialConstructorType tc tys) tvs = (SpecialConstructorType tc tys', tvs')
 >   where (tys', tvs') = nameTypes tys tvs
 > nameType (VariableType tv) (tv' : tvs)
 >   | isAnonId tv = (VariableType tv', tvs      )
@@ -421,15 +434,18 @@ either one of the basic types or \texttt{()}.
 > tcForeign :: Ident -> TypeExpr -> TCM ()
 > tcForeign f ty = do
 >   m <- getModuleIdent
->   tySc@(ForAll cx _ ty') <- expandPolyType ty
+>   tySc@(ForAll cx _ ty') <- expandPolyType (ST.emptyContext, ty)
 >   modifyValueEnv $ bindFun m f (arrowArity ty') tySc
 
 > tcExternal :: Ident -> TCM ()
-> tcExternal f = do
+> tcExternal f = do -- TODO is the semantic correct?
 >   sigs <- getSigEnv
 >   case lookupTypeSig f sigs of
 >     Nothing -> internalError "TypeCheck.tcExternal"
->     Just ty -> tcForeign f ty
+>     Just (cx, ty) -> 
+>       case cx of 
+>         (ST.Context []) -> tcForeign f ty
+>         _  -> internalError "TypeCheck.tcExternal doesn't have context"
 
 > tcFree :: Ident -> TCM ()
 > tcFree v = do
@@ -606,7 +622,8 @@ signature the declared type must be too general.
 > tcPattern p t@(FunctionPattern f ts) = do
 >   m     <- getModuleIdent
 >   tyEnv <- getValueEnv
->   ty <- inst (funType m f tyEnv) --skol (constrType m c tyEnv)
+>   cEnv <- getClassEnv
+>   ty <- inst (funType m f tyEnv cEnv) --skol (constrType m c tyEnv)
 >   unifyArgs (ppPattern 0 t) ts ty
 >   where unifyArgs _ [] ty = return ty
 >         unifyArgs doc (t1:ts1) ty@(TypeVariable _) = do
@@ -704,7 +721,8 @@ because of possibly multiple occurrences of variables.
 > tcPatternFP p t@(FunctionPattern f ts) = do
 >     m <- getModuleIdent
 >     tyEnv <- getValueEnv
->     ty <- inst (funType m f tyEnv) --skol (constrType m c tyEnv)
+>     cEnv <- getClassEnv
+>     ty <- inst (funType m f tyEnv cEnv) --skol (constrType m c tyEnv)
 >     unifyArgs (ppPattern 0 t) ts ty
 >   where unifyArgs _ [] ty = return ty
 >         unifyArgs doc (t1:ts1) ty@(TypeVariable _) = do
@@ -790,9 +808,10 @@ because of possibly multiple occurrences of variables.
 >   | otherwise    = do
 >       sigs <- getSigEnv
 >       m <- getModuleIdent
+>       cEnv <- getClassEnv
 >       case qualLookupTypeSig m v sigs of
 >         Just ty -> expandPolyType ty >>= inst
->         Nothing -> getValueEnv >>= inst . funType m v
+>         Nothing -> getValueEnv >>= inst . (flip (funType m v) cEnv)
 >   where v' = unqualify v
 > tcExpr _ (Constructor c) = do
 >  m <- getModuleIdent
@@ -801,11 +820,11 @@ because of possibly multiple occurrences of variables.
 >   m <- getModuleIdent
 >   tyEnv0 <- getValueEnv
 >   ty <- tcExpr p e
->   sigma' <- expandPolyType sig'
+>   sigma' <- expandPolyType (cx, sig')
 >   inst sigma' >>= flip (unify p "explicitly typed expression" (ppExpr 0 e)) ty
 >   theta <- getTypeSubst
 >   let sigma  = gen (fvEnv (subst theta tyEnv0)) (subst theta ty)
->   unless (sigma == sigma') (report $ errTypeSigTooGeneral p m (text "Expression:" <+> ppExpr 0 e) sig' sigma)
+>   unless (sigma == sigma') (report $ errTypeSigTooGeneral p m (text "Expression:" <+> ppExpr 0 e) (cx, sig') sigma)
 >   return ty
 >   where sig' = nameSigType sig
 > tcExpr p (Paren e) = tcExpr p e
@@ -1201,7 +1220,7 @@ We use negative offsets for fresh type variables.
 >   return $ expandAliasType (tys ++ tys') ty
 
 > gen :: Set.Set Int -> Type -> TypeScheme
-> gen gvs ty = ForAll emptyContext (length tvs)
+> gen gvs ty = ForAll BT.emptyContext (length tvs)
 >                     (subst (foldr2 bindSubst idSubst tvs tvs') ty)
 >   where tvs = [tv | tv <- nub (typeVars ty), tv `Set.notMember` gvs]
 >         tvs' = map TypeVariable [0 ..]
@@ -1245,12 +1264,14 @@ unambiguously refers to the local definition.
 >   Value _ _ sigma : _ -> Just sigma
 >   _ -> Nothing
 
-> funType :: ModuleIdent -> QualIdent -> ValueEnv -> TypeScheme
-> funType m f tyEnv = case qualLookupValue f tyEnv of
+> funType :: ModuleIdent -> QualIdent -> ValueEnv -> ClassEnv -> TypeScheme
+> funType m f tyEnv cEnv = case qualLookupValue f tyEnv of
 >   [Value _ _ sigma] -> sigma
 >   _ -> case qualLookupValue (qualQualify m f) tyEnv of
 >     [Value _ _ sigma] -> sigma
->     _ -> internalError $ "TypeCheck.funType " ++ show f ++ ", more precisely " ++ show (unqualify f)
+>     _ -> case lookupMethodTypeScheme cEnv f of
+>        Just tsc -> tsc -- TODO: add instance context
+>        Nothing -> internalError $ "TypeCheck.funType " ++ show f ++ ", more precisely " ++ show (unqualify f)
 
 > sureLabelType :: Ident -> ValueEnv -> Maybe TypeScheme
 > sureLabelType l tyEnv = case lookupValue l tyEnv of
@@ -1263,20 +1284,28 @@ and also qualifies all type constructors with the name of the module
 in which the type was defined.
 \begin{verbatim}
 
-> expandPolyType :: TypeExpr -> TCM TypeScheme
-> expandPolyType ty = (polyType . normalize) `liftM` expandMonoType [] ty
+> type ConstrainedType' = (BT.Context, Type)
 
-> expandMonoType :: [Ident] -> TypeExpr -> TCM Type
+> getBTType :: ConstrainedType' -> Type
+> getBTType (_cx, type0) = type0
+
+> expandPolyType :: ConstrainedType -> TCM TypeScheme
+> expandPolyType ty 
+>   = (\(cx, ty) -> (polyType (normalize ty) `constrainBy` cx)) `liftM` expandMonoType [] ty
+
+> expandMonoType :: [Ident] -> ConstrainedType -> TCM ConstrainedType'
 > expandMonoType tvs ty = do
 >   m <- getModuleIdent
 >   tcEnv <- getTyConsEnv
 >   return $ expandMonoType' m tcEnv tvs ty
 
-> expandMonoType' :: ModuleIdent -> TCEnv -> [Ident] -> TypeExpr -> Type
-> expandMonoType' m tcEnv tvs ty = expandType m tcEnv (toType tvs ty)
+> expandMonoType' :: ModuleIdent -> TCEnv -> [Ident] -> ConstrainedType -> ConstrainedType'
+> expandMonoType' m tcEnv tvs ty = (cx, expandType m tcEnv ty')
+>   where (cx, ty') = (toConstrType tvs ty)
 
-> expandMonoTypes :: ModuleIdent -> TCEnv -> [Ident] -> [TypeExpr] -> [Type]
-> expandMonoTypes m tcEnv tvs tys = map (expandType m tcEnv) (toTypes tvs tys)
+> expandMonoTypes :: ModuleIdent -> TCEnv -> [Ident] -> [ConstrainedType] -> [ConstrainedType']
+> expandMonoTypes m tcEnv tvs tys 
+>   = map (\(cx, ty) -> (cx, expandType m tcEnv ty)) (toConstrTypes tvs tys)
 
 > expandType :: ModuleIdent -> TCEnv -> Type -> Type
 > expandType m tcEnv (TypeConstructor tc tys) = case qualLookupTC tc tcEnv of
@@ -1347,12 +1376,12 @@ Error functions.
 > errPolymorphicFreeVar v = posMessage v $ hsep $ map text
 >   ["Free variable", idName v, "has a polymorphic type"]
 
-> errTypeSigTooGeneral :: Position -> ModuleIdent -> Doc -> TypeExpr -> TypeScheme
+> errTypeSigTooGeneral :: Position -> ModuleIdent -> Doc -> ConstrainedType -> TypeScheme
 >                      -> Message
-> errTypeSigTooGeneral p m what ty sigma = posMessage p $ vcat
+> errTypeSigTooGeneral p m what (cx, ty) sigma = posMessage p $ vcat
 >   [ text "Type signature too general", what
 >   , text "Inferred type:"  <+> ppTypeScheme m sigma
->   , text "Type signature:" <+> ppTypeExpr 0 ty
+>   , text "Type signature:" <+> ppContext cx <+> text "=>" <+> ppTypeExpr 0 ty
 >   ]
 
 > errNonFunctionType :: Position -> String -> Doc -> ModuleIdent -> Type -> Message
