@@ -15,7 +15,7 @@
 module Env.ClassEnv 
   ( ClassEnv (..), Class (..), Instance (..), initClassEnv, lookupClass
   , lookupDefiningClass, lookupMethodTypeScheme
-  , ppClasses
+  , ppClasses, getAllClassMethods
   ) where
 
 -- import Base.Types hiding ()
@@ -67,11 +67,28 @@ lookupClass (ClassEnv cls _ _) c = lookupClass' cls
 lookupDefiningClass :: ClassEnv -> QualIdent -> Maybe QualIdent
 lookupDefiningClass (ClassEnv _ _ ms) m = Map.lookup m ms  
 
+-- |looks up the type scheme of a given class method
 lookupMethodTypeScheme :: ClassEnv -> QualIdent -> Maybe TypeScheme
 lookupMethodTypeScheme cEnv qid = do
   theClass_ <- lookupDefiningClass cEnv qid
   classMethods <- liftM typeSchemes (lookupClass cEnv theClass_) 
   lookup (unqualify qid) classMethods  
+
+-- |get all type signatures of all methods in all classes 
+-- in the given class environment; the context of a given method
+-- is expanded by the class itself and for the type variable of 
+-- the class. 
+getAllClassMethods :: ClassEnv -> [(Ident, Context, TypeExpr)]
+getAllClassMethods (ClassEnv classes _ _) = 
+  let msAndCls  = map (\c -> (theClass c, typeVar c, methods c)) classes
+      msAndCls' = concatMap (\(tc, tyvar, ms_) -> map (\m -> (tc, tyvar, m)) ms_) msAndCls 
+      ms        = map (\(tc, tyvar, (id0, cx, ty)) -> (id0, addClassContext tc tyvar cx, ty)) msAndCls'  
+  in ms
+  where 
+    addClassContext :: QualIdent -> Ident -> Context -> Context
+    addClassContext cls tyvar (Context elems) 
+      = Context (elems ++ [ContextElem cls tyvar []])  
+  
 
 -- ----------------------------------------------------------------------------
 -- Pritty printer functions

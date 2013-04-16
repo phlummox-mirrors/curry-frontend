@@ -50,7 +50,8 @@ type annotation is present.
 >   , qualLookupTC)
 > import Env.Value ( ValueEnv, ValueInfo (..), bindFun, rebindFun
 >   , bindGlobalInfo, bindLabel, lookupValue, qualLookupValue )
-> import Env.ClassEnv (ClassEnv, lookupDefiningClass, lookupMethodTypeScheme)
+> import Env.ClassEnv (ClassEnv, lookupDefiningClass, lookupMethodTypeScheme
+>   , getAllClassMethods)
 
 > infixl 5 $-$
 
@@ -75,6 +76,7 @@ The type checker returns the resulting type constructor and type environments.
 >     bindTypes tds
 >     bindConstrs
 >     bindLabels
+>     bindClassMethods cEnv
 >     tcDecls vds
 >   (tds, vds) = partition isTypeDecl decls
 >   initState  = TcState m tcEnv tyEnv cEnv idSubst emptySigEnv 0 []
@@ -326,7 +328,8 @@ inferred type is less general than the signature.
 > bindTypeSigs _ env = env
 
 > lookupTypeSig :: Ident -> SigEnv -> Maybe BaseConstrType
-> lookupTypeSig = Map.lookup
+> -- lookupTypeSig = Map.lookup
+> lookupTypeSig id0 sEnv = trace ("lookupTypeSig " ++ show id0 ++ " " ++ show sEnv) $ Map.lookup id0 sEnv
 
 > qualLookupTypeSig :: ModuleIdent -> QualIdent -> SigEnv 
 >                   -> Maybe BaseConstrType
@@ -363,6 +366,18 @@ inferred type is less general than the signature.
 >         (rty', _  ) = nameTypes (maybeToList rty) tvs
 > nameType (VariableType _) [] = internalError
 >  "TypeCheck.nameType: empty ident list"
+
+\end{verbatim}
+All type signatures of defined class methods are loaded into the signature
+environment as well. 
+\begin{verbatim}
+
+> bindClassMethods :: ClassEnv -> TCM ()
+> bindClassMethods cEnv = 
+>   let tySigs = getAllClassMethods cEnv
+>   in modifySigEnv $ 
+>      \sigs -> foldr (\(id0, cx, texp) sig -> bindTypeSig id0 (cx, texp) sig) 
+>                     sigs tySigs
 
 \end{verbatim}
 \paragraph{Type Inference}
@@ -465,7 +480,7 @@ either one of the basic types or \texttt{()}.
 > tcDeclLhs _ = internalError "TypeCheck.tcDeclLhs: no pattern match"
 
 > tcFunDecl :: Ident -> TCM ConstrType
-> tcFunDecl v = do
+> tcFunDecl v = trace ("tcFunDecl: " ++ show v) $ do
 >   sigs <- getSigEnv
 >   m <- getModuleIdent
 >   (cx, ty) <- case lookupTypeSig v sigs of
@@ -810,12 +825,12 @@ because of possibly multiple occurrences of variables.
 >       ty <- freshTypeVar
 >       modifyValueEnv $ bindFun m v' (arrowArity ty) $ monoType ty
 >       return $ noContext ty
->   | otherwise    = do
+>   | otherwise    = trace ("tcExp: " ++ show v) $ do
 >       sigs <- getSigEnv
 >       m <- getModuleIdent
 >       cEnv <- getClassEnv
 >       case qualLookupTypeSig m v sigs of
->         Just ty -> expandPolyType ty >>= inst
+>         Just ty -> trace ("Just " ++ show ty) $ expandPolyType ty >>= inst
 >         Nothing -> getValueEnv >>= inst . (flip (funType m v) cEnv)
 >   where v' = unqualify v
 > tcExpr _ (Constructor c) = do
