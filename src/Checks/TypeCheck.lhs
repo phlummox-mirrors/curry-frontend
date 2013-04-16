@@ -329,8 +329,8 @@ inferred type is less general than the signature.
 > bindTypeSigs _ env = env
 
 > lookupTypeSig :: Ident -> SigEnv -> Maybe BaseConstrType
-> -- lookupTypeSig = Map.lookup
-> lookupTypeSig id0 sEnv = trace ("lookupTypeSig " ++ show id0 {-++ " " ++ show sEnv-}) $ Map.lookup id0 sEnv
+> lookupTypeSig = Map.lookup
+> -- lookupTypeSig id0 sEnv = trace ("lookupTypeSig " ++ show id0 {-++ " " ++ show sEnv-}) $ Map.lookup id0 sEnv
 
 > qualLookupTypeSig :: ModuleIdent -> QualIdent -> SigEnv 
 >                   -> Maybe BaseConstrType
@@ -424,7 +424,7 @@ either one of the basic types or \texttt{()}.
 >   let cxsRhs = map fst tysRhs
 >   let cxs = zipWith union cxsLhs cxsRhs
 >   let dsWithCxs = zip cxs ds
->   trace ("tcDeclGroup tysRhs: " ++ show tysRhs) $ sequence_ (zipWith3 unifyDecl ds tysLhs tysRhs)
+>   sequence_ (zipWith3 unifyDecl ds tysLhs tysRhs)
 >   theta <- getTypeSubst
 >   mapM_ (genDecl (fvEnv (subst theta tyEnv0)) theta) dsWithCxs
 > --tcDeclGroup m tcEnv _ [ForeignDecl p cc _ f ty] =
@@ -496,9 +496,8 @@ either one of the basic types or \texttt{()}.
 
 > tcDeclRhs :: ValueEnv -> Decl -> TCM ConstrType
 > tcDeclRhs tyEnv0 (FunctionDecl _ f (eq:eqs)) = do
->   typ <- tcEquation tyEnv0 eq >>= flip tcEqns eqs
->   return $ trace ("tcDeclRhs type: " ++ show typ) typ
->   where tcEqns ty [] = return $ trace ("tcEqns: " ++ show ty) ty
+>   tcEquation tyEnv0 eq >>= flip tcEqns eqs
+>   where tcEqns ty [] = return ty
 >         tcEqns ty (eq1@(Equation p _ _):eqs1) = do
 >           tcEquation tyEnv0 eq1 >>=
 >             unify p "equation" (ppDecl (FunctionDecl p f [eq1])) ty >>
@@ -572,7 +571,7 @@ signature the declared type must be too general.
 >   tys <- mapM (tcPattern p) ts
 >   (cx, ty) <- tcRhs tyEnv0 rhs
 >   let cxs = concat $ map fst tys ++ [cx] 
->   trace ("tcEquation cxs: " ++ show cxs) $ checkSkolems p (text "Function: " <+> ppIdent f) tyEnv0
+>   checkSkolems p (text "Function: " <+> ppIdent f) tyEnv0
 >                  (cxs, foldr TypeArrow ty (map getType tys))
 >   where (f, ts) = flatLhs lhs
 
@@ -801,8 +800,7 @@ because of possibly multiple occurrences of variables.
 > tcRhs tyEnv0 (SimpleRhs p e ds) = do
 >   tcDecls ds
 >   ty <- tcExpr p e
->   tmp <- checkSkolems p (text "Expression:" <+> ppExpr 0 e) tyEnv0 ty
->   return (trace ("tcRhs result " ++ show tmp) $ tmp)
+>   checkSkolems p (text "Expression:" <+> ppExpr 0 e) tyEnv0 ty
 > tcRhs tyEnv0 (GuardedRhs es ds) = do
 >   tcDecls ds
 >   tcCondExprs tyEnv0 es
@@ -827,17 +825,17 @@ because of possibly multiple occurrences of variables.
 > tcExpr _ (Literal     l) = tcLiteral l
 > tcExpr _ (Variable    v)
 >     -- anonymous free variable
->   | isAnonId v' = trace ("tcExp: " ++ show v) $do
+>   | isAnonId v' = do
 >       m <- getModuleIdent
 >       ty <- freshTypeVar
 >       modifyValueEnv $ bindFun m v' (arrowArity ty) $ monoType ty
 >       return $ noContext ty
->   | otherwise    = trace ("tcExp: " ++ show v) $ do
+>   | otherwise    = do
 >       sigs <- getSigEnv
 >       m <- getModuleIdent
 >       cEnv <- getClassEnv
 >       case qualLookupTypeSig m v sigs of
->         Just ty -> {-trace ("Just " ++ show ty) $-}expandPolyType ty >>= inst
+>         Just ty -> expandPolyType ty >>= inst
 >         Nothing -> getValueEnv >>= inst . (flip (funType m v) cEnv)
 >   where v' = unqualify v
 > tcExpr _ (Constructor c) = do
@@ -917,7 +915,7 @@ because of possibly multiple occurrences of variables.
 >           | op' == minusId  = liftM noContext $ freshConstrained [intType,floatType]
 >           | op' == fminusId = return $ noContext floatType
 >           | otherwise = internalError $ "TypeCheck.tcExpr unary " ++ idName op'
-> tcExpr p e@(Apply e1 e2) = trace ("Apply: " ++ show e1 ++ " " ++ show e2) $ do
+> tcExpr p e@(Apply e1 e2) = do
 >     cty1@(cx1, ty1) <- tcExpr p e1
 >     cty2@(cx2, ty2) <- tcExpr p e2
 >     (alpha,beta) <-
