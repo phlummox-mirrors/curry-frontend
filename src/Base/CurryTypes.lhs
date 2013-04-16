@@ -14,7 +14,7 @@ order of type variables in the left hand side of a type declaration.
 
 > module Base.CurryTypes
 >  ( toQualType, toQualTypes, toType, toTypes, fromQualType, fromType
->  , toTypeAndGetMap, toConstrType
+>  , toTypeAndGetMap, toConstrType, toConstrTypes
 >  ) where
 
 > import Data.List (nub)
@@ -42,16 +42,25 @@ order of type variables in the left hand side of a type declaration.
 > toType :: [Ident] -> CS.TypeExpr -> Type
 > toType tvs ty = fst $ toTypeAndGetMap tvs ty 
 
-> toTypes :: [Ident] -> [CS.TypeExpr] -> [Type]
-> toTypes tvs tys = map
->    (toType' (Map.fromList $ zip (tvs ++ newInTys) [0 ..])) tys
+> toTypesAndGetMap :: [Ident] -> [CS.TypeExpr] -> ([Type], Map.Map Ident Int)
+> toTypesAndGetMap tvs tys = (map (toType' theMap) tys, theMap)
 >   where newInTys = [tv | tv <- nub (concatMap fv tys), tv `notElem` tvs]
+>         theMap = Map.fromList $ zip (tvs ++ newInTys) [0 ..]
+
+> toTypes :: [Ident] -> [CS.TypeExpr] -> [Type]
+> toTypes tvs tys = fst $ toTypesAndGetMap tvs tys
 
 > toConstrType :: [Ident] -> (CS.Context, CS.TypeExpr) -> (Context, Type)
 > toConstrType tvs (cx, ty) = 
 >   let (theType, theMap) = toTypeAndGetMap tvs ty
 >       translatedContext = translateContext theMap cx
 >   in (translatedContext, theType)
+
+> toConstrTypes :: [Ident] -> [(CS.Context, CS.TypeExpr)] -> [(Context, Type)]
+> toConstrTypes tvs tys = 
+>   let (theTypes, theMap) = toTypesAndGetMap tvs (map snd tys)
+>       contexts = map (translateContext theMap . fst) tys
+>   in zip contexts theTypes  
 
 > translateContext :: Map.Map Ident Int -> CS.Context -> BT.Context
 > translateContext theMap (CS.Context elems) 
