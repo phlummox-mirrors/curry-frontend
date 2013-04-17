@@ -918,12 +918,13 @@ because of possibly multiple occurrences of variables.
 > tcExpr p e@(Apply e1 e2) = do
 >     cty1@(cx1, ty1) <- tcExpr p e1
 >     cty2@(cx2, ty2) <- tcExpr p e2
->     (alpha,beta) <-
+>     (alpha,beta) <-  
 >       tcArrow p "application" (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e1)
 >              ty1
 >     unify p "application" (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e2)
 >           (noContext alpha) cty2
->     return (cx1 ++ cx2, beta) -- TODO: substitutions on contexts?
+>     theta <- getTypeSubst
+>     return (substContext theta (cx1 ++ cx2), beta)
 > tcExpr p e@(InfixApply e1 op e2) = do
 >     opTy@(cxo, _)   <- tcExpr p (infixOp op)
 >     cty1@(cx1, ty1) <- tcExpr p e1
@@ -1244,18 +1245,37 @@ We use negative offsets for fresh type variables.
 > inst :: TypeScheme -> TCM ConstrType
 > inst (ForAll cx n ty) = do
 >   tys <- replicateM n freshTypeVar
->   return $ (cx, expandAliasType tys ty) -- TODO: modify context?
+>   let cx' = instContext tys cx
+>   return $ (cx', expandAliasType tys ty)
+
+> instContext :: [Type] -> BT.Context -> BT.Context
+> instContext tys cx = map convert cx
+>   where 
+>     convert (qid, y) = (qid, convertType y)
+>     convertType (TypeVariable x) = tys !! x
+>     convertType (TypeConstructor tcon ts) 
+>       = TypeConstructor tcon (map convertType ts) 
+>     convertType (TypeArrow t1 t2) 
+>       = TypeArrow (convertType t1) (convertType t2)
+>     convertType (TypeConstrained ts n) 
+>       = TypeConstrained (map convertType ts) n
+>     convertType (TypeSkolem n) = TypeSkolem n
+>     convertType (TypeRecord ts n) = 
+>       TypeRecord (map (\(id0, t) -> (id0, convertType t)) ts) n
+   
 
 > instExist :: ExistTypeScheme -> TCM ConstrType
 > instExist (ForAllExist cx n n' ty) = do
 >   tys <- replicateM (n + n') freshTypeVar
->   return $ (cx, expandAliasType tys ty) -- TODO: modify context?
+>   let cx' = instContext tys cx
+>   return $ (cx', expandAliasType tys ty) 
 
 > skol :: ExistTypeScheme -> TCM Type
 > skol (ForAllExist cx n n' ty) = do
 >   tys  <- replicateM n  freshTypeVar
 >   tys' <- replicateM n' freshSkolem
->   return $ expandAliasType (tys ++ tys') ty
+>   -- let cx' = instContext (tys ++ tys') cx
+>   return $ ({-cx',-} expandAliasType (tys ++ tys') ty)
 
 > gen :: Set.Set Int -> Type -> TypeScheme
 > gen gvs ty = ForAll BT.emptyContext (length tvs)
