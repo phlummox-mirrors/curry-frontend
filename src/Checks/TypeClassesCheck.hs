@@ -68,8 +68,8 @@ typeClassesCheck decls (ClassEnv importedClasses importedInstances _) =
       
       -- gather all classes and instances for more "global" checks
       let classes = map classDeclToClass classDecls ++ importedClasses
-      let instances = map instanceDeclToInstance instDecls ++ importedInstances
-      let newClassEnv = ClassEnv classes instances Map.empty
+          instances = map instanceDeclToInstance instDecls ++ importedInstances
+          newClassEnv = ClassEnv classes instances Map.empty
       -- TODO: check also contexts of (imported) classes and interfaces?
       mapM_ (checkSuperclassContext newClassEnv) classDecls
       mapM_ (checkSuperclassContext newClassEnv) instDecls
