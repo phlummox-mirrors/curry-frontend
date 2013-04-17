@@ -45,6 +45,7 @@ type annotation is present.
 > import Base.TopEnv
 > import Base.Types as BT
 > import Base.TypeSubst
+> import Base.Subst (listToSubst)
 > import Base.Utils (foldr2)
 
 > import Env.TypeConstructor (TCEnv, TypeInfo (..), bindTypeInfo
@@ -418,14 +419,23 @@ either one of the basic types or \texttt{()}.
 > tcDeclGroup [FreeDecl          _ vs] = mapM_ tcFree     vs
 > tcDeclGroup ds                       = do
 >   tyEnv0 <- getValueEnv
->   tysLhs <- mapM tcDeclLhs ds
->   tysRhs <- mapM (tcDeclRhs tyEnv0) ds
->   let cxsLhs = map fst tysLhs
->   let cxsRhs = map fst tysRhs
->   let cxs = zipWith union cxsLhs cxsRhs
->   let dsWithCxs = zip cxs ds
->   sequence_ (zipWith3 unifyDecl ds tysLhs tysRhs)
+>   ctysLhs <- mapM tcDeclLhs ds
+>   ctysRhs <- mapM (tcDeclRhs tyEnv0) ds
+>   let cxsLhs = map fst ctysLhs
+>       cxsRhs = map fst ctysRhs
+>       tysRhs = map snd ctysRhs
+>       cxs = zipWith union cxsLhs cxsRhs
+>   sequence_ (zipWith3 unifyDecl ds ctysLhs ctysRhs)
 >   theta <- getTypeSubst
+>   let types  = map (subst theta) tysRhs
+>       -- builds a map from type variables in the given type to 
+>       -- the type variables that will appear in the type when it is newly
+>       -- instantiated. This information is needed to adjust the type variables
+>       -- in the contexts accordingly.  
+>       mappings = map (listToSubst . buildTypeVarsMapping) types
+>       cxs' = map (substContext theta) cxs
+>       finalCxs = zipWith substContext mappings cxs'
+>       dsWithCxs = zip finalCxs ds
 >   mapM_ (genDecl (fvEnv (subst theta tyEnv0)) theta) dsWithCxs
 > --tcDeclGroup m tcEnv _ [ForeignDecl p cc _ f ty] =
 > --  tcForeign m tcEnv p cc f ty
@@ -512,6 +522,24 @@ either one of the basic types or \texttt{()}.
 >   unify p "pattern binding" (ppPattern 0 t)
 > unifyDecl _ = internalError "TypeCheck.unifyDecl: no pattern match"
 
+> -- returns the type variables in the given type in the order they appear
+> -- in the type (this must be the same order as in fv?!)
+> fvars :: Type -> [Int]
+> fvars = nub . fvars'
+
+> fvars' :: Type -> [Int]
+> fvars' (TypeConstructor _ tys) = concatMap fvars' tys
+> fvars' (TypeVariable tv) = [tv]
+> fvars' (TypeConstrained _ _) = []
+> fvars' (TypeArrow t1 t2) = fvars' t1 ++ fvars' t2
+> fvars' (TypeSkolem _) = []
+> fvars' (TypeRecord _ _) = internalError "fvars' TODO"
+
+> buildTypeVarsMapping :: Type -> [(Int, Type)]
+> buildTypeVarsMapping ty 
+>   = let fvs = fvars ty
+>     in zip fvs [TypeVariable x | x <- [0..]]
+
 \end{verbatim}
 In Curry we cannot generalize the types of let-bound variables because
 they can refer to logic variables. Without this monomorphism
@@ -549,7 +577,7 @@ signature the declared type must be too general.
 >   sigs <- getSigEnv
 >   m <- getModuleIdent
 >   tyEnv <- getValueEnv
->   let sigma = (genType poly $ subst theta $ varType v tyEnv) `constrainBy` cx
+>   let sigma = (genType poly $ subst theta $ varType v tyEnv) `constrainBy` cx 
 >       arity  = fromMaybe (varArity v tyEnv) ma
 >   case lookupTypeSig v sigs of
 >     Nothing    -> modifyValueEnv $ rebindFun m v arity sigma
@@ -918,7 +946,7 @@ because of possibly multiple occurrences of variables.
 > tcExpr p e@(Apply e1 e2) = do
 >     cty1@(cx1, ty1) <- tcExpr p e1
 >     cty2@(cx2, ty2) <- tcExpr p e2
->     (alpha,beta) <-  
+>     (alpha,beta) <- 
 >       tcArrow p "application" (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e1)
 >              ty1
 >     unify p "application" (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e2)
