@@ -14,7 +14,7 @@ marked with a boolean flag (see below).
 
 > module Base.Subst
 >   ( Subst (..), IntSubst (..), idSubst, singleSubst, bindSubst, unbindSubst
->   , substToList, compose, substVar', isubstVar, restrictSubstTo
+>   , substToList, compose, substVar', isubstVar, restrictSubstTo, listToSubst
 >   ) where
 
 > import qualified Data.Map as Map
@@ -35,6 +35,9 @@ marked with a boolean flag (see below).
 
 > unbindSubst :: Ord v => v -> Subst v e -> Subst v e
 > unbindSubst v (Subst comp sigma) = Subst comp $ Map.delete v sigma
+
+> listToSubst :: Ord v => [(v, e)] -> Subst v e
+> listToSubst lst = Subst False (Map.fromList lst)
 
 \end{verbatim}
 For any substitution we have the following definitions:
