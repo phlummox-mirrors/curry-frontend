@@ -29,6 +29,7 @@ import Curry.Syntax.Utils
 import Curry.Syntax.Pretty
 import Base.CurryTypes
 import Base.Types as BT (TypeScheme, polyType, constrainBy) 
+import Base.SCC
 
 data CheckResult a
   = CheckSuccess a
@@ -74,6 +75,8 @@ typeClassesCheck decls (ClassEnv importedClasses importedInstances _) =
       mapM_ (checkSuperclassContext newClassEnv) instDecls
       
       mapM_ (checkRulesInInstance newClassEnv) instDecls
+      
+      checkForCyclesInClassHierarchy newClassEnv
       
       noDoubleClassMethods classes
       return (classes, instances)
@@ -219,6 +222,23 @@ checkRulesInInstance cEnv (InstanceDecl _ _ cls _tcon _tyvars decls) =
           Just _ -> return ()
     isDefinedFunctionClassMethod _ = internalError "isDefinedFunctionClassMethod"
 checkRulesInInstance _ _ = internalError "checkRulesInInstance"
+
+
+-- |Checks that there are no cycles in the class hierarchy. 
+-- This can be determined by computing the strong connection components
+-- and checking that each has only one element
+checkForCyclesInClassHierarchy :: ClassEnv -> CheckResult ()
+checkForCyclesInClassHierarchy cEnv@(ClassEnv classes _ _) = 
+  if all (==1) (map length sccs)
+  then return ()
+  else CheckFailed 
+        [errCyclesInClassHierarchy $ head $ filter (\xs -> length xs > 1) sccs]
+  where 
+    sccs = scc (\qid -> [qid]) 
+               (\qid -> (superClasses $ fromJust $ lookupClass cEnv qid))
+               (map theClass classes)
+      
+  
 
 -- ---------------------------------------------------------------------------
 -- source code transformation
@@ -428,3 +448,9 @@ errFunctionNoClassMethod :: Position -> Ident -> Message
 errFunctionNoClassMethod p id0
   = posMessage p (text "the function" <+> text (escName id0) 
   <+> text "is not a class method! ") 
+  
+errCyclesInClassHierarchy :: [QualIdent] -> Message
+errCyclesInClassHierarchy qids
+  = message (text "There are cycles in the class hierarchy. Classes concerned: "
+  <+> hsep (punctuate comma (map ppQIdent qids)))
+  
