@@ -3,6 +3,9 @@
 class C a where
   fun1 :: a -> a
   fun2 :: a -> b -> c
+  -- fun2 = error ""
+  -- error: 
+  fun4 = error ""
 
 instance C Int where
   fun1 = 1

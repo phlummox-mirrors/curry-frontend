@@ -74,7 +74,8 @@ typeClassesCheck decls (ClassEnv importedClasses importedInstances _) =
       mapM_ (checkSuperclassContext newClassEnv) classDecls
       mapM_ (checkSuperclassContext newClassEnv) instDecls
       
-      mapM_ (checkRulesInInstance newClassEnv) instDecls
+      mapM_ (checkRulesInInstanceOrClass newClassEnv) instDecls
+      mapM_ (checkRulesInInstanceOrClass newClassEnv) classDecls
       
       checkForCyclesInClassHierarchy newClassEnv
       
@@ -205,24 +206,31 @@ classMethodSigsContainTypeVar (ClassDecl _p _scon _tycon tyvar0 decls)
     tyVarInTypeSig _ _ = internalError "TypeClassesCheck tyVarInTypeSig"
 classMethodSigsContainTypeVar _ = internalError "TypeClassesCheck" 
 
--- |check that the rules in the instance declaration are for class methods
--- only. Illegal:
+-- |check that the rules in the instance declaration or default methods 
+-- in a class declaration are for class methods only
+-- Illegal:
 -- class Eq a where fun1 :: a
 -- instance Eq Int where fun2 = 1 -- fun2 is not a class method!
-checkRulesInInstance :: ClassEnv -> Decl -> CheckResult ()
-checkRulesInInstance cEnv (InstanceDecl _ _ cls _tcon _tyvars decls) = 
-  mapM_ isDefinedFunctionClassMethod decls
+-- Illegal:
+-- class Eq a where fun1 :: a -> a; fun2 = id 
+checkRulesInInstanceOrClass :: ClassEnv -> Decl -> CheckResult ()
+checkRulesInInstanceOrClass cEnv decl = 
+  mapM_ isDefinedFunctionClassMethod (getDecls decl)
   where 
-    isDefinedFunctionClassMethod (FunctionDecl p f _) 
+    isDefinedFunctionClassMethod (cls, FunctionDecl p f _) 
       = let ms = methods (fromJust $ lookupClass cEnv cls)
             eq = (\(id0, _, _) -> id0 == f)
         in 
         case find eq ms of
           Nothing -> CheckFailed [errFunctionNoClassMethod p f]
           Just _ -> return ()
+    isDefinedFunctionClassMethod (_, TypeSig _ _ _ _) = return ()
     isDefinedFunctionClassMethod _ = internalError "isDefinedFunctionClassMethod"
-checkRulesInInstance _ _ = internalError "checkRulesInInstance"
 
+getDecls :: Decl -> [(QualIdent, Decl)]
+getDecls (InstanceDecl _ _ cls _ _ decls) = zip (repeat cls) decls
+getDecls (ClassDecl _ _ cls _ decls) = zip (repeat $ qualify cls) decls
+getDecls _ = internalError "getDecls"
 
 -- |Checks that there are no cycles in the class hierarchy. 
 -- This can be determined by computing the strong connection components
