@@ -944,27 +944,28 @@ because of possibly multiple occurrences of variables.
 >           | op' == fminusId = return $ noContext floatType
 >           | otherwise = internalError $ "TypeCheck.tcExpr unary " ++ idName op'
 > tcExpr p e@(Apply e1 e2) = do
->     cty1@(cx1, ty1) <- tcExpr p e1
->     cty2@(cx2, ty2) <- tcExpr p e2
+>     (cx1,       ty1) <- tcExpr p e1
+>     cty2@(cx2, _ty2) <- tcExpr p e2
 >     (alpha,beta) <- 
 >       tcArrow p "application" (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e1)
 >              ty1
 >     unify p "application" (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e2)
 >           (noContext alpha) cty2
->     theta <- getTypeSubst
->     return (substContext theta (cx1 ++ cx2), beta)
+>     cx' <- adjustContext (cx1 ++ cx2)
+>     return (cx', beta)
 > tcExpr p e@(InfixApply e1 op e2) = do
->     opTy@(cxo, _)   <- tcExpr p (infixOp op)
->     cty1@(cx1, ty1) <- tcExpr p e1
->     cty2@(cx2, ty2) <- tcExpr p e2
+>     (cxo, opTy)      <- tcExpr p (infixOp op)
+>     cty1@(cx1, _ty1) <- tcExpr p e1
+>     cty2@(cx2, _ty2) <- tcExpr p e2
 >     (alpha,beta,gamma) <-
 >       tcBinary p "infix application"
->                (ppExpr 0 e $-$ text "Operator:" <+> ppOp op) (getType opTy)
+>                (ppExpr 0 e $-$ text "Operator:" <+> ppOp op) opTy
 >     unify p "infix application" (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e1)
 >           (noContext alpha) cty1
 >     unify p "infix application" (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e2)
 >           (noContext beta) cty2
->     return (cxo ++ cx1 ++ cx2, gamma)
+>     cx' <- adjustContext (cxo ++ cx1 ++ cx2)
+>     return (cx', gamma)
 > tcExpr p e@(LeftSection e1 op) = do
 >     opTy@(cxo, _)    <- tcExpr p (infixOp op)
 >     cty1@(cx1, ty1)  <- tcExpr p e1
@@ -985,11 +986,11 @@ because of possibly multiple occurrences of variables.
 >     return (cxo ++ cx1, TypeArrow alpha gamma)
 > tcExpr p expr@(Lambda _ ts e) = do
 >     tyEnv0 <- getValueEnv
->     tys <- mapM (tcPattern p) ts
+>     ctys <- mapM (tcPattern p) ts
 >     (cx, ty) <- tcExpr p e
->     let cxs = concat (map fst tys ++ [cx]) 
+>     let cxs = concat (map fst ctys ++ [cx]) 
 >     checkSkolems p (text "Expression:" <+> ppExpr 0 expr) tyEnv0
->                    (cxs, foldr TypeArrow ty (map getType tys))
+>                    (cxs, foldr TypeArrow ty (map getType ctys))
 > tcExpr p (Let ds e) = do
 >     tyEnv0 <- getValueEnv
 >     tcDecls ds
@@ -1092,6 +1093,11 @@ because of possibly multiple occurrences of variables.
 >   ty <- tcExpr p e
 >   unify p "record" (text "Field:" <+> ppFieldExpr f) lty ty
 >   return (l,ty)
+
+> adjustContext :: BT.Context -> TCM BT.Context
+> adjustContext cxs = do
+>   theta <- getTypeSubst
+>   return (substContext theta cxs) 
 
 \end{verbatim}
 The function \texttt{tcArrow} checks that its argument can be used as

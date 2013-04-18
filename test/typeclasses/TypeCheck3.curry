@@ -27,3 +27,14 @@ testB = testA
 testC :: (C a, D b) => b -> a -> Bool
 testC = error ""
 
+testD = testC
+
+testE x = fun x && fun3 x x
+
+testE2 x y = fun x && fun3 y y
+
+testE3 x y = fun x && fun3 x y
+
+testF x = (\y -> fun y) x
+
+testG x = (\y -> fun y) 'a'
