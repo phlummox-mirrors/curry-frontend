@@ -99,3 +99,7 @@ testMinus = - (fun2 1)
 testMinus2 = - (fun2 1 + fun4 1)
 testMinus3 = - (fun2 1) + (-(fun4 1))
 
+testEnum = [fun2 1 ..]
+testEnum2 = [fun2 1 .. fun4 4]
+testEnum3 = [(fun2 1), (fun4 2) ..]
+testEnum4 = [(fun2 1), (fun2 2) .. (fun4 3)]

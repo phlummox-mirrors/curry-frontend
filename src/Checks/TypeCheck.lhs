@@ -903,30 +903,30 @@ because of possibly multiple occurrences of variables.
 >     (cx, ty) <- tcExpr p e
 >     checkSkolems p (text "Expression:" <+> ppExpr 0 e) tyEnv0 (cx, listType ty)
 > tcExpr p e@(EnumFrom e1) = do
->     cty1@(cx1, ty1) <- tcExpr p e1
+>     cty1@(cx1, _ty1) <- tcExpr p e1
 >     unify p "arithmetic sequence"
 >           (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e1) (noContext intType) cty1
 >     return (cx1, listType intType)
 > tcExpr p e@(EnumFromThen e1 e2) = do
->     cty1@(cx1, ty1) <- tcExpr p e1
->     cty2@(cx2, ty2) <- tcExpr p e2
+>     cty1@(cx1, _ty1) <- tcExpr p e1
+>     cty2@(cx2, _ty2) <- tcExpr p e2
 >     unify p "arithmetic sequence"
 >           (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e1) (noContext intType) cty1
 >     unify p "arithmetic sequence"
 >           (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e2) (noContext intType) cty2
->     return ((cx1 ++ cx2), listType intType)
+>     return (cx1 ++ cx2, listType intType)
 > tcExpr p e@(EnumFromTo e1 e2) = do
->     cty1@(cx1, ty1) <- tcExpr p e1
->     cty2@(cx2, ty2) <- tcExpr p e2
+>     cty1@(cx1, _ty1) <- tcExpr p e1
+>     cty2@(cx2, _ty2) <- tcExpr p e2
 >     unify p "arithmetic sequence"
 >           (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e1) (noContext intType) cty1
 >     unify p "arithmetic sequence"
 >           (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e2) (noContext intType) cty2
 >     return (cx1 ++ cx2, listType intType)
 > tcExpr p e@(EnumFromThenTo e1 e2 e3) = do
->     cty1@(cx1, ty1) <- tcExpr p e1
->     cty2@(cx2, ty2) <- tcExpr p e2
->     cty3@(cx3, ty3) <- tcExpr p e3
+>     cty1@(cx1, _ty1) <- tcExpr p e1
+>     cty2@(cx2, _ty2) <- tcExpr p e2
+>     cty3@(cx3, _ty3) <- tcExpr p e3
 >     unify p "arithmetic sequence"
 >           (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e1) (noContext intType) cty1
 >     unify p "arithmetic sequence"
