@@ -46,7 +46,7 @@ type annotation is present.
 > import Base.Types as BT
 > import Base.TypeSubst
 > import Base.Subst (listToSubst)
-> import Base.Utils (foldr2)
+> import Base.Utils (foldr2, concatMapM)
 
 > import Env.TypeConstructor (TCEnv, TypeInfo (..), bindTypeInfo
 >   , qualLookupTC)
@@ -1005,7 +1005,7 @@ because of possibly multiple occurrences of variables.
 >     checkSkolems p (text "Expression:" <+> ppExpr 0 e) tyEnv0 ty
 > tcExpr p (Do sts e) = do
 >     tyEnv0 <- getValueEnv
->     cxs <- liftM concat $ mapM (tcStmt p) sts
+>     cxs <- concatMapM (tcStmt p) sts
 >     alpha <- freshTypeVar
 >     cty@(cx, ty) <- tcExpr p e
 >     unify p "statement" (ppExpr 0 e) (noContext $ ioType alpha) cty
