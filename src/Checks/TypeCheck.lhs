@@ -38,7 +38,7 @@ type annotation is present.
 > import Curry.Syntax as ST
 > import Curry.Syntax.Pretty
 
-> import Base.CurryTypes (fromQualType, toType, toTypes, toConstrType, toConstrTypes)
+> import Base.CurryTypes (fromQualType, toConstrType, toConstrTypes)
 > import Base.Expr
 > import Base.Messages (Message, posMessage, internalError)
 > import Base.SCC
@@ -52,7 +52,7 @@ type annotation is present.
 >   , qualLookupTC)
 > import Env.Value ( ValueEnv, ValueInfo (..), bindFun, rebindFun
 >   , bindGlobalInfo, bindLabel, lookupValue, qualLookupValue )
-> import Env.ClassEnv (ClassEnv, lookupDefiningClass, lookupMethodTypeScheme
+> import Env.ClassEnv (ClassEnv, lookupMethodTypeScheme
 >   , getAllClassMethods)
 
 > infixl 5 $-$
@@ -313,8 +313,8 @@ inferred type is less general than the signature.
 
 > type BaseConstrType = (ST.Context, TypeExpr)
 
-> getSTType :: BaseConstrType -> TypeExpr
-> getSTType (_cx, tyexp) = tyexp
+> -- getSTType :: BaseConstrType -> TypeExpr
+> -- getSTType (_cx, tyexp) = tyexp
 
 > type SigEnv = Map.Map Ident BaseConstrType
 
@@ -587,7 +587,7 @@ signature the declared type must be too general.
 >       modifyValueEnv $ rebindFun m v arity sigma
 >   where
 >   what = text (if poly then "Function:" else "Variable:") <+> ppIdent v
->   genType poly' (ForAll cx n ty)
+>   genType poly' (ForAll cx0 n ty)
 >     | n > 0 = internalError $ "TypeCheck.genVar: " ++ showLine (idPosition v) ++ show v ++ " :: " ++ show ty
 >     | poly' = gen lvs ty
 >     | otherwise = monoType ty
@@ -623,7 +623,7 @@ signature the declared type must be too general.
 >   tyEnv <- getValueEnv
 >   m  <- getModuleIdent
 >   maybe (modifyValueEnv (bindFun m v (arrowArity ty) (monoType' (cx, ty))) >> return (cx, ty))
->         (\ (ForAll cx _ t) -> return (cx, t))
+>         (\ (ForAll cx0 _ t) -> return (cx0, t))
 >         (sureVarType v tyEnv)
 > tcPattern p t@(ConstructorPattern c ts) = do
 >   m     <- getModuleIdent
@@ -695,7 +695,7 @@ signature the declared type must be too general.
 >       m <- getModuleIdent
 >       ty <- tcPattern p (fromJust rt)
 >       fts <- mapM (tcFieldPatt tcPattern m) fs
->       let fts' = map (\(id0, ty) -> (id0, getType ty)) fts
+>       let fts' = map (\(id0, ty0) -> (id0, getType ty0)) fts
 >       alpha <- freshVar id
 >       let rty = noContext $ TypeRecord fts' (Just alpha)
 >       unify p "record pattern" (ppPattern 0 r) ty rty
@@ -795,7 +795,7 @@ because of possibly multiple occurrences of variables.
 >       m <- getModuleIdent
 >       ty <- tcPatternFP p (fromJust rt)
 >       fts <- mapM (tcFieldPatt tcPatternFP m) fs
->       let fts' = map (\(id0, ty) -> (id0, getType ty)) fts
+>       let fts' = map (\(id0, ty0) -> (id0, getType ty0)) fts
 >       alpha <- freshVar id
 >       let rty = noContext $ TypeRecord fts' (Just alpha)
 >       unify p "record pattern" (ppPattern 0 r) ty rty
@@ -1393,7 +1393,7 @@ in which the type was defined.
 
 > expandPolyType :: BaseConstrType -> TCM TypeScheme
 > expandPolyType ty 
->   = (\(cx, ty) -> (polyType (normalize ty) `constrainBy` cx)) `liftM` expandMonoType [] ty
+>   = (\(cx, ty0) -> (polyType (normalize ty0) `constrainBy` cx)) `liftM` expandMonoType [] ty
 
 > expandMonoType :: [Ident] -> BaseConstrType -> TCM ConstrType
 > expandMonoType tvs ty = do
