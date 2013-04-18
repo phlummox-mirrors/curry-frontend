@@ -92,4 +92,10 @@ testExplTyped2 x y = (fun x :: Bool) && (fun3 y y :: Bool)
 
 testExplTyped3 x = x :: Bool
 
-testExplTyped4 x = x :: C Bool => Bool
+testExplTyped4 x = x :: Bool
+
+
+testMinus = - (fun2 1)
+testMinus2 = - (fun2 1 + fun4 1)
+testMinus3 = - (fun2 1) + (-(fun4 1))
+

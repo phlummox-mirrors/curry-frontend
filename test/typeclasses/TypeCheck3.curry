@@ -31,6 +31,10 @@ testC = error ""
 
 testD = testC
 
+testD2 = testC 4 'c'
+
+testD3 x = testC 4 x
+
 testE x = fun x && fun3 x x
 
 testE2 x y = fun x && fun3 y y

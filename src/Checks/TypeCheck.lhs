@@ -936,10 +936,10 @@ because of possibly multiple occurrences of variables.
 >     return (cx1 ++ cx2 ++ cx3, listType intType)
 > tcExpr p e@(UnaryMinus op e1) = do
 >     opTy <- opType op
->     ty1 <- tcExpr p e1
+>     cty1 <- tcExpr p e1
 >     unify p "unary negation" (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e1)
->           opTy ty1
->     return ty1
+>           opTy cty1
+>     return cty1
 >   where opType op'
 >           | op' == minusId  = liftM noContext $ freshConstrained [intType,floatType]
 >           | op' == fminusId = return $ noContext floatType
