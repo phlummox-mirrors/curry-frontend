@@ -871,13 +871,15 @@ because of possibly multiple occurrences of variables.
 > tcExpr p (Typed e cx sig) = do
 >   m <- getModuleIdent
 >   tyEnv0 <- getValueEnv
->   ty <- tcExpr p e
+>   cty <- tcExpr p e
 >   sigma' <- expandPolyType (cx, sig')
->   inst sigma' >>= flip (unify p "explicitly typed expression" (ppExpr 0 e)) ty
+>   inst sigma' >>= flip (unify p "explicitly typed expression" (ppExpr 0 e)) cty
 >   theta <- getTypeSubst
->   let sigma  = gen (fvEnv (subst theta tyEnv0)) (subst theta (getType ty))
->   unless (sigma == sigma') (report $ errTypeSigTooGeneral p m (text "Expression:" <+> ppExpr 0 e) (cx, sig') sigma)
->   return ty
+>   -- TODO: consider contexts!
+>   let sigma  = gen (fvEnv (subst theta tyEnv0)) (subst theta (getType cty))
+>   unless (sigma == sigma') 
+>     (report $ errTypeSigTooGeneral p m (text "Expression:" <+> ppExpr 0 e) (cx, sig') sigma)
+>   return cty
 >   where sig' = nameSigType sig
 > tcExpr p (Paren e) = tcExpr p e
 > tcExpr p (Tuple _ es)

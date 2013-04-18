@@ -83,3 +83,13 @@ testDo7 x y z = do
 testDo8 x y z = do
   _ <- return (fun3 x x)
   return (fun z)
+
+
+
+testExplTyped x = (fun x :: Bool)
+
+testExplTyped2 x y = (fun x :: Bool) && (fun3 y y :: Bool)
+
+testExplTyped3 x = x :: Bool
+
+testExplTyped4 x = x :: C Bool => Bool
