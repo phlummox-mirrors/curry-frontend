@@ -48,3 +48,38 @@ testCase8 x y =
     True -> fun4 'c'
     False -> 'd'
 
+
+
+
+
+testDo x y z v = do
+  True <- return (fun x)
+  'c' <- return (fun4 y)
+  return (fun z)
+  return (fun v)
+
+testDo2 x = do
+  return x
+
+testDo3 = do
+  return (fun 'c')
+
+testDo4 = do
+  return (fun3 'd' 'c')
+  return (fun 'c')
+
+testDo5 = do
+  _ <- return (fun3 'd' 'c')
+  return (fun 'c')
+
+testDo6 x y z = do
+  _ <- return (fun3 x y)
+  return (fun z)
+
+testDo7 x y z = do
+  return (fun3 x y)
+  return (fun z)
+
+testDo8 x y z = do
+  _ <- return (fun3 x x)
+  return (fun z)

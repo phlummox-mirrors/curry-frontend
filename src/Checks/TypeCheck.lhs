@@ -997,11 +997,11 @@ because of possibly multiple occurrences of variables.
 >     checkSkolems p (text "Expression:" <+> ppExpr 0 e) tyEnv0 ty
 > tcExpr p (Do sts e) = do
 >     tyEnv0 <- getValueEnv
->     mapM_ (tcStmt p) sts
+>     cxs <- liftM concat $ mapM (tcStmt p) sts
 >     alpha <- freshTypeVar
->     ty <- tcExpr p e
->     unify p "statement" (ppExpr 0 e) (noContext $ ioType alpha) ty
->     checkSkolems p (text "Expression:" <+> ppExpr 0 e) tyEnv0 ty
+>     cty@(cx, ty) <- tcExpr p e
+>     unify p "statement" (ppExpr 0 e) (noContext $ ioType alpha) cty
+>     checkSkolems p (text "Expression:" <+> ppExpr 0 e) tyEnv0 (cxs ++ cx, ty)
 > tcExpr p e@(IfThenElse _ e1 e2 e3) = do
 >     cty1@(cx1, _ty1) <- tcExpr p e1
 >     unify p "expression" (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e1)
@@ -1067,18 +1067,20 @@ because of possibly multiple occurrences of variables.
 >         (noContext $ listType $ getType ty1) ty2
 > tcQual _ (StmtDecl      ds) = tcDecls ds
 
-> tcStmt ::Position -> Statement -> TCM ()
+> tcStmt ::Position -> Statement -> TCM BT.Context
 > tcStmt p (StmtExpr _ e) = do
->   alpha <- freshTypeVar
->   ty    <- tcExpr p e
+>   alpha       <- freshTypeVar
+>   cty@(cx, _) <- tcExpr p e
 >   -- TODO: return contexts
->   unify p "statement" (ppExpr 0 e) (noContext $ ioType alpha) ty
+>   unify p "statement" (ppExpr 0 e) (noContext $ ioType alpha) cty
+>   return cx
 > tcStmt p st@(StmtBind _ t e) = do
->   ty1 <- tcPattern p t
->   ty2 <- tcExpr p e
+>   cty1@(cx1, _) <- tcPattern p t
+>   cty2@(cx2, _) <- tcExpr p e
 >   -- TODO: return contexts
->   unify p "statement" (ppStmt st $-$ text "Term:" <+> ppExpr 0 e) (noContext $ ioType $ getType ty1) ty2
-> tcStmt _ (StmtDecl ds) = tcDecls ds
+>   unify p "statement" (ppStmt st $-$ text "Term:" <+> ppExpr 0 e) (noContext $ ioType $ getType cty1) cty2
+>   return (cx1 ++ cx2)
+> tcStmt _ (StmtDecl ds) = tcDecls ds >> return [] -- TODO!!
 
 > tcFieldExpr :: Field Expression -> TCM (Ident, ConstrType)
 > tcFieldExpr f@(Field _ l e) = do
