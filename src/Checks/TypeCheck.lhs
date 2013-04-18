@@ -505,12 +505,15 @@ either one of the basic types or \texttt{()}.
 
 > tcDeclRhs :: ValueEnv -> Decl -> TCM ConstrType
 > tcDeclRhs tyEnv0 (FunctionDecl _ f (eq:eqs)) = do
->   tcEquation tyEnv0 eq >>= flip tcEqns eqs
->   where tcEqns ty [] = return ty
->         tcEqns ty (eq1@(Equation p _ _):eqs1) = do
->           tcEquation tyEnv0 eq1 >>=
->             unify p "equation" (ppDecl (FunctionDecl p f [eq1])) ty >>
->             tcEqns ty eqs1
+>   (cx0, ty0) <- tcEquation tyEnv0 eq
+>   (cxs, ty)  <- tcEqns ty0 [] eqs
+>   return (cx0 ++ cxs, ty)
+>   where tcEqns :: Type -> BT.Context -> [Equation] -> TCM ConstrType
+>         tcEqns ty cxs [] = return (cxs, ty)
+>         tcEqns ty cxs (eq1@(Equation p _ _):eqs1)  = do
+>           cty'@(cx', _ty') <- tcEquation tyEnv0 eq1
+>           unify p "equation" (ppDecl (FunctionDecl p f [eq1])) (noContext ty) cty'
+>           tcEqns ty (cx' ++ cxs) eqs1 
 > tcDeclRhs tyEnv0 (PatternDecl _ _ rhs) = tcRhs tyEnv0 rhs
 > tcDeclRhs _ _ = internalError "TypeCheck.tcDeclRhs: no pattern match"
 
