@@ -116,4 +116,11 @@ testRecConstr3b x = { a := fun4 x, b := error "" }
 
 testRecConstr4 x = { a := fun4 x, b := fun x }
 
+{-
+-- there are some strange compile errors with the following, so
+-- I disable this:
+testRecSel = { a := 'c', b := True } :> a
+testRecSel2 = { a := 'c', b := True } :> b
 
+testRecSel3 x y = { a := fun x, b := fun3 y y } :> a
+-}

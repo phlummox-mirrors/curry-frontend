@@ -1043,7 +1043,7 @@ because of possibly multiple occurrences of variables.
 >       (map (\(id0, cty) -> (id0, getType cty)) fts) Nothing)
 > tcExpr p r@(RecordSelection e l) = do
 >     m <- getModuleIdent
->     ty <- tcExpr p e
+>     cty@(cx, _) <- tcExpr p e
 >     tyEnv <- getValueEnv
 >     lty <- maybe (freshTypeVar
 >                    >>= (\lty' ->
@@ -1051,12 +1051,16 @@ because of possibly multiple occurrences of variables.
 >                            (bindLabel l (qualifyWith m (mkIdent "#Rec"))
 >                                       (monoType lty'))
 >                          >> return lty'))
->                  (\ (ForAll cx _ lty') -> return lty')
+>                  -- TODO: ignore context?
+>                  (\ (ForAll _cx _ lty') -> return lty')
 >                  (sureLabelType l tyEnv)
 >     alpha <- freshVar id
 >     let rty = TypeRecord [(l,lty)] (Just alpha)
->     unify p "record selection" (ppExpr 0 r) ty (noContext rty)
->     return $ noContext lty
+>     unify p "record selection" (ppExpr 0 r) cty (noContext rty)
+>     -- TODO: adjusting context, because we have a situation similar to
+>     -- Apply (?)
+>     cx' <- adjustContext cx
+>     return (cx', lty)
 > tcExpr p r@(RecordUpdate fs e) = do
 >     ty    <- tcExpr p e
 >     fts   <- mapM tcFieldExpr fs
