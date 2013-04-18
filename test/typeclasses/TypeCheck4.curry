@@ -103,3 +103,17 @@ testEnum = [fun2 1 ..]
 testEnum2 = [fun2 1 .. fun4 4]
 testEnum3 = [(fun2 1), (fun4 2) ..]
 testEnum4 = [(fun2 1), (fun2 2) .. (fun4 3)]
+
+
+
+type Rec a = { a :: a, b :: Bool }
+
+testRecConstr x = { a := fun2 x, b := fun x }
+
+testRecConstr2 x = { a := error "", b := fun x }
+testRecConstr3 x = { a := fun2 x, b := error "" }
+testRecConstr3b x = { a := fun4 x, b := error "" }
+
+testRecConstr4 x = { a := fun4 x, b := fun x }
+
+

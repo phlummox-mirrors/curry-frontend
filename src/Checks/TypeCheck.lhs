@@ -31,7 +31,7 @@ type annotation is present.
 > import qualified Data.Set as Set (Set, fromList, member, notMember, unions)
 > import Text.PrettyPrint
 > import Debug.Trace
-> import Data.List (union)
+> -- import Data.List (union)
 
 > import Curry.Base.Ident
 > import Curry.Base.Position
@@ -423,7 +423,7 @@ either one of the basic types or \texttt{()}.
 >   let cxsLhs = map fst ctysLhs
 >       cxsRhs = map fst ctysRhs
 >       tysRhs = map snd ctysRhs
->       cxs = zipWith union cxsLhs cxsRhs
+>       cxs = zipWith (++) cxsLhs cxsRhs
 >   sequence_ (zipWith3 unifyDecl ds ctysLhs ctysRhs)
 >   theta <- getTypeSubst
 >   let types  = map (subst theta) tysRhs
@@ -532,7 +532,10 @@ either one of the basic types or \texttt{()}.
 > fvars' (TypeConstrained _ _) = []
 > fvars' (TypeArrow t1 t2) = fvars' t1 ++ fvars' t2
 > fvars' (TypeSkolem _) = []
-> fvars' (TypeRecord _ _) = internalError "fvars' TODO"
+> -- TODO: which order is correct? in fv the second order is taken, 
+> -- but in the source code the first order is present
+> -- fvars' (TypeRecord fs r) = concatMap (fvars' . snd) fs ++ maybe [] (:[]) r
+> fvars' (TypeRecord fs r) = maybe [] (:[]) r ++ concatMap (fvars' . snd) fs 
 
 > buildTypeVarsMapping :: Type -> [(Int, Type)]
 > buildTypeVarsMapping ty 
@@ -1032,7 +1035,8 @@ because of possibly multiple occurrences of variables.
 >           return (cxP ++ cxRhs)
 > tcExpr _ (RecordConstr fs) = do
 >     fts <- mapM tcFieldExpr fs
->     return (noContext $ TypeRecord 
+>     let cxs = concatMap (fst . snd) fts
+>     return (cxs, TypeRecord 
 >       (map (\(id0, cty) -> (id0, getType cty)) fts) Nothing)
 > tcExpr p r@(RecordSelection e l) = do
 >     m <- getModuleIdent
@@ -1096,9 +1100,9 @@ because of possibly multiple occurrences of variables.
 >                >> (return $ noContext lty')))
 >                  inst
 >         (sureLabelType l tyEnv)
->   ty <- tcExpr p e
->   unify p "record" (text "Field:" <+> ppFieldExpr f) lty ty
->   return (l,ty)
+>   cty <- tcExpr p e
+>   unify p "record" (text "Field:" <+> ppFieldExpr f) lty cty
+>   return (l,cty)
 
 > adjustContext :: BT.Context -> TCM BT.Context
 > adjustContext cxs = do
