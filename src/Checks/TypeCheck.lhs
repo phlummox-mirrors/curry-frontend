@@ -1003,11 +1003,11 @@ because of possibly multiple occurrences of variables.
 >     unify p "statement" (ppExpr 0 e) (noContext $ ioType alpha) ty
 >     checkSkolems p (text "Expression:" <+> ppExpr 0 e) tyEnv0 ty
 > tcExpr p e@(IfThenElse _ e1 e2 e3) = do
->     cty1@(cx1, ty1) <- tcExpr p e1
+>     cty1@(cx1, _ty1) <- tcExpr p e1
 >     unify p "expression" (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e1)
 >           (noContext boolType) cty1
->     cty2@(cx2, ty2) <- tcExpr p e2
->     cty3@(cx3, ty3) <- tcExpr p e3
+>     cty2@(cx2, _ty2) <- tcExpr p e2
+>     cty3@(cx3, ty3)  <- tcExpr p e3
 >     unify p "expression" (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e3)
 >           cty2 cty3
 >     return (cx1 ++ cx2 ++ cx3, ty3)

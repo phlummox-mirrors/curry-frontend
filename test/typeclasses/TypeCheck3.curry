@@ -93,3 +93,13 @@ testList x y = [fun x, fun3 y y, fun3 x x]
 testList2 x y = [True, False]
 
 testList3 x = [True, False, fun x]
+
+testITE x = if fun x then 1 else 2
+
+testITE2 x = if fun x then fun x else fun3 x x
+
+testITE3 x = if True then fun2 'a' else 'b'
+
+testITE4 x = if True then fun2 x else x
+
+testITE5 x y = if fun4 y then fun2 x else x
