@@ -31,6 +31,8 @@ TODO: Use MultiParamTypeClasses ?
 >   ) where
 
 > import Curry.Base.Ident
+> import Text.PrettyPrint
+> import Curry.Syntax.Pretty hiding (ppContext)
 
 \end{verbatim}
 A type is either a type variable, an application of a type constructor
@@ -62,7 +64,7 @@ as well, these variables must never be quantified.
 >   | TypeConstrained [Type] Int
 >   | TypeSkolem Int
 >   | TypeRecord [(Ident, Type)] (Maybe Int)
->   deriving (Eq, Show)
+>   deriving Eq
 
 \end{verbatim}
 The function \texttt{isArrowType} checks whether a type is a function
@@ -234,8 +236,8 @@ quantified variables and the second the number of existentially
 quantified variables.
 \begin{verbatim}
 
-> data TypeScheme = ForAll Context Int Type deriving (Eq, Show)
-> data ExistTypeScheme = ForAllExist Context Int Int Type deriving (Eq, Show)
+> data TypeScheme = ForAll Context Int Type deriving Eq
+> data ExistTypeScheme = ForAllExist Context Int Int Type deriving Eq
 
 > typeSchemeToType :: TypeScheme -> Type
 > typeSchemeToType (ForAll _ _ t) = t
@@ -317,4 +319,42 @@ There are a few predefined types:
 >                  ])
 >   ]
 
+\end{verbatim}
+Some pretty printing functions:
+\begin{verbatim}
+
+> instance Show TypeScheme where
+>   show = show . ppTypeScheme
+
+> instance Show ExistTypeScheme where
+>   show = show . ppExistTypeScheme
+  
+> instance Show Type where
+>   show = show . ppType
+
+
+  
+> ppTypeScheme :: TypeScheme -> Doc
+> ppTypeScheme (ForAll cx n type0) = parens (text "ForAll" <+> text (show n) 
+>   <+> ppContext cx <+> text "=>" <+> ppType type0)
+
+> ppExistTypeScheme :: ExistTypeScheme -> Doc
+> ppExistTypeScheme (ForAllExist cx n1 n2 type0) 
+>   = parens (text "ForAllExist" <+> text (show n1) <+> text (show n2) 
+>   <+> ppContext cx <+> text "=>" <+> ppType type0)
+
+> ppContext :: Context -> Doc
+> ppContext cx = parens $ hsep $ 
+>   punctuate comma (map (\(qid, ty) -> ppQIdent qid <+> ppType ty) cx)
+
+> ppType :: Type -> Doc
+> ppType (TypeVariable n) = text (show n)
+> ppType (TypeConstructor c ts) = text (show c) <+> hsep (map ppType ts)
+> ppType (TypeArrow t1 t2) = parens $ ppType t1 <+> text "->" <+> ppType t2
+> ppType (TypeConstrained ts n) 
+>   = text "constr" <> text (show n) <> parens (hsep (map ppType ts))
+> ppType (TypeSkolem n) = text "skolem" <+> text (show n)
+> ppType (TypeRecord r n) 
+>   = text "record" <+> parens (text (show r) <+> text (show n))
+ 
 \end{verbatim}
