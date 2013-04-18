@@ -66,6 +66,7 @@ typeClassesCheck decls (ClassEnv importedClasses importedInstances _) =
     result = do
       mapM_ typeVariableInContext classDecls
       mapM_ classMethodSigsContainTypeVar classDecls
+      mapM_ instanceTypeVarsDoNotAppearTwice instDecls
       
       -- gather all classes and instances for more "global" checks
       let classes = map classDeclToClass classDecls ++ importedClasses
@@ -272,6 +273,15 @@ checkForDuplicateInstances (ClassEnv _classes instances _)
     then return ()
     else CheckFailed [errDuplicateInstances (map head duplInstances)]
 
+
+-- |Check that in an instance definition type variables don't appear twice like
+-- in @instance C (T a a)@
+instanceTypeVarsDoNotAppearTwice :: Decl -> CheckResult ()
+instanceTypeVarsDoNotAppearTwice (InstanceDecl p _scon cls tcon ids _) 
+  = let duplTypeVars = findMultiples ids
+    in if null duplTypeVars then return ()
+    else CheckFailed [errDuplicateTypeVars p cls tcon (map head duplTypeVars)]
+instanceTypeVarsDoNotAppearTwice _ = internalError "instanceTypeVarsDoNotAppearTwice"
 
 -- ---------------------------------------------------------------------------
 -- source code transformation
@@ -497,3 +507,10 @@ errDuplicateInstances is
   = message (text "Two or more instances for the same class and type: "
   <+> (hsep $ punctuate comma $ 
        map (\(qid, tcon) -> parens $ ppQIdent qid <> comma <+> text (show tcon)) is))
+
+errDuplicateTypeVars :: Position -> QualIdent -> TypeConstructor -> [Ident] -> Message
+errDuplicateTypeVars p cls tcon ids
+  = posMessage p 
+     (text "Type variables appear more than once in instance definition of class"
+      <+> ppQIdent cls <+> text "and type" <+> text (show tcon) <+> text ":"
+      <+> (hsep $ punctuate comma $ map ppIdent ids))
