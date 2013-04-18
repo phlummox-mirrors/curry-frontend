@@ -30,6 +30,7 @@ import Curry.Syntax.Pretty
 import Base.CurryTypes
 import Base.Types as BT (TypeScheme, polyType, constrainBy) 
 import Base.SCC
+import Base.Utils (findMultiples)
 
 data CheckResult a
   = CheckSuccess a
@@ -76,6 +77,8 @@ typeClassesCheck decls (ClassEnv importedClasses importedInstances _) =
       
       mapM_ (checkRulesInInstanceOrClass newClassEnv) instDecls
       mapM_ (checkRulesInInstanceOrClass newClassEnv) classDecls
+      
+      checkForDuplicateClassNames newClassEnv
       
       checkForCyclesInClassHierarchy newClassEnv
       
@@ -246,7 +249,12 @@ checkForCyclesInClassHierarchy cEnv@(ClassEnv classes _ _) =
                (\qid -> (superClasses $ fromJust $ lookupClass cEnv qid))
                (map theClass classes)
       
-  
+checkForDuplicateClassNames :: ClassEnv -> CheckResult ()
+checkForDuplicateClassNames (ClassEnv classes _ _) = 
+  let duplClassNames = findMultiples $ map theClass classes
+  in if null duplClassNames
+  then return ()
+  else CheckFailed [errDuplicateClassNames (map head duplClassNames)] 
 
 -- ---------------------------------------------------------------------------
 -- source code transformation
@@ -461,4 +469,8 @@ errCyclesInClassHierarchy :: [QualIdent] -> Message
 errCyclesInClassHierarchy qids
   = message (text "There are cycles in the class hierarchy. Classes concerned: "
   <+> hsep (punctuate comma (map ppQIdent qids)))
-  
+
+errDuplicateClassNames :: [QualIdent] -> Message
+errDuplicateClassNames clss 
+  = message (text "Two or more classes with the same name: "  
+  <+> hsep (punctuate comma (map ppQIdent clss)))
