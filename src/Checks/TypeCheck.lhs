@@ -1013,18 +1013,21 @@ because of possibly multiple occurrences of variables.
 >     return (cx1 ++ cx2 ++ cx3, ty3)
 > tcExpr p (Case _ _ e alts) = do
 >     tyEnv0 <- getValueEnv
->     ty <- tcExpr p e
+>     cty@(cx, _) <- tcExpr p e
 >     alpha <- freshConstrTypeVar
->     tcAlts tyEnv0 ty alpha alts
->   where tcAlts _      _   ty [] = return ty
->         tcAlts tyEnv0 ty1 ty2 (alt1:alts1) =
->           tcAlt (ppAlt alt1) tyEnv0 ty1 ty2 alt1 >> tcAlts tyEnv0 ty1 ty2 alts1
->         tcAlt doc tyEnv0 ty1 ty2 (Alt p1 t rhs) =
->           tcPattern p1 t >>=
+>     (cxA, tyA) <- tcAlts tyEnv0 cty alpha [] alts
+>     return (cx ++ cxA, tyA)
+>   where tcAlts _      _   (_, ty2) cx [] = return (cx, ty2)
+>         tcAlts tyEnv0 ty1 ty2 cx (alt1:alts1) = do
+>           cx1 <- tcAlt (ppAlt alt1) tyEnv0 ty1 ty2 alt1
+>           tcAlts tyEnv0 ty1 ty2 (cx ++ cx1) alts1
+>         tcAlt doc tyEnv0 ty1 ty2 (Alt p1 t rhs) = do
+>           ctyP@(cxP, _) <- tcPattern p1 t
 >           unify p1 "case pattern" (doc $-$ text "Term:" <+> ppPattern 0 t)
->                 ty1 >>
->           tcRhs tyEnv0 rhs >>=
->           unify p1 "case branch" doc ty2
+>                 ty1 ctyP
+>           ctyRhs@(cxRhs, _) <- tcRhs tyEnv0 rhs
+>           unify p1 "case branch" doc ty2 ctyRhs
+>           return (cxP ++ cxRhs)
 > tcExpr _ (RecordConstr fs) = do
 >     fts <- mapM tcFieldExpr fs
 >     return (noContext $ TypeRecord 
