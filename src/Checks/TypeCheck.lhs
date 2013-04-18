@@ -890,11 +890,11 @@ because of possibly multiple occurrences of variables.
 > tcExpr p e@(List _ es) = freshConstrTypeVar >>= tcElems (ppExpr 0 e) es
 >   where tcElems :: Doc -> [Expression] -> ConstrType -> TCM ConstrType
 >         tcElems _ [] (cx, ty) = return (cx, listType ty)
->         tcElems doc (e1:es1) ty =
->           tcExpr p e1 >>=
+>         tcElems doc (e1:es1) cty@(cx, ty) = do
+>           cty'@(cx', _ty') <- tcExpr p e1
 >           unify p "expression" (doc $-$ text "Term:" <+> ppExpr 0 e1)
->                 ty >>
->           tcElems doc es1 ty
+>                 cty cty'
+>           tcElems doc es1 (cx ++ cx', ty)
 > tcExpr p (ListCompr _ e qs) = do
 >     tyEnv0 <- getValueEnv
 >     mapM_ (tcQual p) qs

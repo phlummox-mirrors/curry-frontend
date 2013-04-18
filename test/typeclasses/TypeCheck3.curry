@@ -6,6 +6,9 @@ class C a where
 class D a where
   fun3 :: a -> a -> Bool
 
+class E a where
+  fun4 :: a -> a
+  
 test = fun 1
 
 test2 = fun True
@@ -73,3 +76,20 @@ testH11 x = let x' = let x'' = fun x in x'' in x'
 testH12 x = let y = 'a' : x in y
 
 testH13 x = let y = fun 'a' in fun3 x x && y
+
+
+testI1 = 1
+testI2 = 'a'
+
+
+testTuple x y = (fun x, fun4 y)
+
+testTuple2 x y = (fun x, y)
+
+testTuple x y = (fun x, fun2 y)
+
+testList x y = [fun x, fun3 y y, fun3 x x]
+
+testList2 x y = [True, False]
+
+testList3 x = [True, False, fun x]
