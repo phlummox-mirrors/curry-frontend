@@ -1084,13 +1084,11 @@ because of possibly multiple occurrences of variables.
 > tcStmt p (StmtExpr _ e) = do
 >   alpha       <- freshTypeVar
 >   cty@(cx, _) <- tcExpr p e
->   -- TODO: return contexts
 >   unify p "statement" (ppExpr 0 e) (noContext $ ioType alpha) cty
 >   return cx
 > tcStmt p st@(StmtBind _ t e) = do
 >   cty1@(cx1, _) <- tcPattern p t
 >   cty2@(cx2, _) <- tcExpr p e
->   -- TODO: return contexts
 >   unify p "statement" (ppStmt st $-$ text "Term:" <+> ppExpr 0 e) (noContext $ ioType $ getType cty1) cty2
 >   return (cx1 ++ cx2)
 > tcStmt _ (StmtDecl ds) = tcDecls ds >> return [] -- TODO!!
