@@ -331,7 +331,6 @@ inferred type is less general than the signature.
 
 > lookupTypeSig :: Ident -> SigEnv -> Maybe BaseConstrType
 > lookupTypeSig = Map.lookup
-> -- lookupTypeSig id0 sEnv = trace ("lookupTypeSig " ++ show id0 {-++ " " ++ show sEnv-}) $ Map.lookup id0 sEnv
 
 > qualLookupTypeSig :: ModuleIdent -> QualIdent -> SigEnv 
 >                   -> Maybe BaseConstrType
@@ -1286,7 +1285,8 @@ We use negative offsets for fresh type variables.
 > instContext tys cx = map convert cx
 >   where 
 >     convert (qid, y) = (qid, convertType y)
->     convertType (TypeVariable x) = tys !! x
+>     convertType (TypeVariable x) 
+>       = if x < 0 then {-internalError "instContext" -} TypeVariable x else tys !! x
 >     convertType (TypeConstructor tcon ts) 
 >       = TypeConstructor tcon (map convertType ts) 
 >     convertType (TypeArrow t1 t2) 
