@@ -79,6 +79,7 @@ typeClassesCheck decls (ClassEnv importedClasses importedInstances _) =
       mapM_ (checkRulesInInstanceOrClass newClassEnv) classDecls
       
       checkForDuplicateClassNames newClassEnv
+      checkForDuplicateInstances newClassEnv
       
       checkForCyclesInClassHierarchy newClassEnv
       
@@ -248,13 +249,29 @@ checkForCyclesInClassHierarchy cEnv@(ClassEnv classes _ _) =
     sccs = scc (\qid -> [qid]) 
                (\qid -> (superClasses $ fromJust $ lookupClass cEnv qid))
                (map theClass classes)
-      
+
+-- |Checks for duplicate class names like in 
+-- @
+-- class A a
+-- class A a
+-- @
 checkForDuplicateClassNames :: ClassEnv -> CheckResult ()
 checkForDuplicateClassNames (ClassEnv classes _ _) = 
   let duplClassNames = findMultiples $ map theClass classes
   in if null duplClassNames
   then return ()
   else CheckFailed [errDuplicateClassNames (map head duplClassNames)] 
+
+
+-- |Checks that there is at most one instance for a given class and type
+checkForDuplicateInstances :: ClassEnv -> CheckResult ()
+checkForDuplicateInstances (ClassEnv _classes instances _) 
+  = let duplInstances 
+          = findMultiples $ map (\i -> (iClass i, iType i)) instances
+    in if null duplInstances
+    then return ()
+    else CheckFailed [errDuplicateInstances (map head duplInstances)]
+
 
 -- ---------------------------------------------------------------------------
 -- source code transformation
@@ -474,3 +491,9 @@ errDuplicateClassNames :: [QualIdent] -> Message
 errDuplicateClassNames clss 
   = message (text "Two or more classes with the same name: "  
   <+> hsep (punctuate comma (map ppQIdent clss)))
+  
+errDuplicateInstances :: [(QualIdent, TypeConstructor)] -> Message
+errDuplicateInstances is
+  = message (text "Two or more instances for the same class and type: "
+  <+> (hsep $ punctuate comma $ 
+       map (\(qid, tcon) -> parens $ ppQIdent qid <> comma <+> text (show tcon)) is))
