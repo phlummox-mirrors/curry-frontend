@@ -28,6 +28,7 @@ definition.
 > import Data.Maybe (fromJust, isJust, isNothing, maybeToList)
 > import qualified Data.Set as Set (empty, insert, member)
 > import Text.PrettyPrint
+> import Debug.Trace
 
 > import Curry.Base.Ident
 > import Curry.Base.Position
@@ -175,7 +176,7 @@ When constructing or updating a record, it is necessary to compute
 all its labels using just one of them. Thus for each label
 the record identifier and all its labels are entered into the environment
 
-\em{Note:} the function \texttt{qualLookupVar} has been extended to
+\emph{Note:} the function \texttt{qualLookupVar} has been extended to
 allow the usage of the qualified list constructor \texttt{(prelude.:)}.
 \begin{verbatim}
 
@@ -207,7 +208,10 @@ Furthermore, it is not allowed to declare a label more than once.
 >   _ -> internalError $ "SyntaxCheck.renameInfo: ambiguous record " ++ show r
 
 > bindGlobal :: ModuleIdent -> Ident -> RenameInfo -> RenameEnv -> RenameEnv
-> bindGlobal m c r = bindNestEnv c r . qualBindNestEnv (qualifyWith m c) r
+> bindGlobal m c r rEnv = 
+>   if null $ qualLookupNestEnv (qualifyWith m c) rEnv
+>   then (bindNestEnv c r . qualBindNestEnv (qualifyWith m c) r) rEnv
+>   else rEnv -- this happens only when checking type classes!
 
 > bindLocal :: Ident -> RenameInfo -> RenameEnv -> RenameEnv
 > bindLocal = bindNestEnv
@@ -327,14 +331,14 @@ local declarations.
 >   -- check the declarations in classes and instances as well
 >   theRenameEnv <- getRenameEnv
 >   let classDecls = map extractCDecls $ filter isClassDecl decls0
->   let instanceDecls = map extractIDecls $ filter isInstanceDecl decls0
+>       instanceDecls = map extractIDecls $ filter isInstanceDecl decls0
 >   -- reset the rename environment before checking each class or instance, so that
 >   -- there will be no errors with multiple instance definitions that contain
 >   -- implementations of the same function
 >   cDecls <- typeClassesCheck_ $ mapM (\ds -> resetEnv theRenameEnv >> checkTopDecls ds) classDecls
 >   iDecls <- typeClassesCheck_ $ mapM (\ds -> resetEnv theRenameEnv >> checkTopDecls ds) instanceDecls
 >   let decls1 = updateClassDecls decls0 cDecls
->   let decls2 = updateInstanceDecls decls1 iDecls 
+>       decls2 = updateInstanceDecls decls1 iDecls
 >   return decls2
 >   where (tds, vds) = partition isTypeDecl decls
 >         (rds, dds) = partition isRecordDecl tds

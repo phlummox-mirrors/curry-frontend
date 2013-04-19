@@ -53,11 +53,11 @@ the module \texttt{NestEnv}. Thus, only the latter needs to be imported.
 
 > qualBindNestEnv :: QualIdent -> a -> NestEnv a -> NestEnv a
 > qualBindNestEnv x y (GlobalEnv env)
->   = GlobalEnv $ qualBindTopEnv "NestEnv.qualBindNestEnv" x y env
+>   = GlobalEnv $ qualBindTopEnv "NestEnv.qualBindNestEnv 1" x y env
 > qualBindNestEnv x y (LocalEnv genv env)
->   | isQualified x = internalError "NestEnv.qualBindNestEnv"
+>   | isQualified x = internalError "NestEnv.qualBindNestEnv 2"
 >   | otherwise     = case Map.lookup x' env of
->       Just  _ -> internalError "NestEnv.qualBindNestEnv"
+>       Just  _ -> internalError "NestEnv.qualBindNestEnv 3"
 >       Nothing -> LocalEnv genv $ Map.insert x' y env
 >     where x' = unqualify x
 
