@@ -905,9 +905,9 @@ because of possibly multiple occurrences of variables.
 >           tcElems doc es1 (cx ++ cx', ty)
 > tcExpr p (ListCompr _ e qs) = do
 >     tyEnv0 <- getValueEnv
->     mapM_ (tcQual p) qs
+>     cxs <- concatMapM (tcQual p) qs
 >     (cx, ty) <- tcExpr p e
->     checkSkolems p (text "Expression:" <+> ppExpr 0 e) tyEnv0 (cx, listType ty)
+>     checkSkolems p (text "Expression:" <+> ppExpr 0 e) tyEnv0 (cx ++ cxs, listType ty)
 > tcExpr p e@(EnumFrom e1) = do
 >     cty1@(cx1, _ty1) <- tcExpr p e1
 >     unify p "arithmetic sequence"
@@ -1071,16 +1071,19 @@ because of possibly multiple occurrences of variables.
 >     unify p "record update" (ppExpr 0 r) ty (noContext rty)
 >     return ty
 
-> tcQual :: Position -> Statement -> TCM ()
-> tcQual p (StmtExpr     _ e) =
->   tcExpr p e >>= unify p "guard" (ppExpr 0 e) (noContext boolType)
+> tcQual :: Position -> Statement -> TCM BT.Context
+> tcQual p (StmtExpr     _ e) = do
+>   cty@(cx, _ty) <- tcExpr p e
+>   unify p "guard" (ppExpr 0 e) (noContext boolType) cty
+>   return cx
 > tcQual p q@(StmtBind _ t e) = do
->   ty1 <- tcPattern p t
->   ty2 <- tcExpr p e
+>   (cx1,      ty1) <- tcPattern p t
+>   cty2@(cx2, _  ) <- tcExpr p e
 >   -- TODO: return contexts
 >   unify p "generator" (ppStmt q $-$ text "Term:" <+> ppExpr 0 e)
->         (noContext $ listType $ getType ty1) ty2
-> tcQual _ (StmtDecl      ds) = tcDecls ds
+>         (noContext $ listType ty1) cty2
+>   return (cx1 ++ cx2)
+> tcQual _ (StmtDecl      ds) = tcDecls ds >> return [] -- TODO!!
 
 > tcStmt ::Position -> Statement -> TCM BT.Context
 > tcStmt p (StmtExpr _ e) = do
