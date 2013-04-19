@@ -26,3 +26,7 @@ test3 x y z v w = [fun x | let a = fun3 y y
 
 test4 x y z = [fun x && a && fun b | let a = fun3 y y
                                          b = fun5 z]
+
+test5 x y z v = [fun x | let a = fun4 y
+                       , fun3 z z
+                       , _ <- fun5 v]
