@@ -117,7 +117,7 @@ testTuple x y = (fun x, fun4 y)
 
 testTuple2 x y = (fun x, y)
 
-testTuple x y = (fun x, fun2 y)
+testTuple3 x y = (fun x, fun2 y)
 
 testList x y = [fun x, fun3 y y, fun3 x x]
 
