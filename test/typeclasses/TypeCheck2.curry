@@ -9,6 +9,10 @@ class D a where
 class E a where
   fun4 :: a -> a
 
+class F a where
+  fun5 :: a -> a
+
+  
 testCase x =
   case x of
     True -> fun x
@@ -84,7 +88,25 @@ testDo8 x y z = do
   _ <- return (fun3 x x)
   return (fun z)
 
+testDo9 x y z = do
+  let a = fun x
+      b = fun3 y y
+  return True
 
+testDo10 x y z = do
+  let a = fun x
+      b = fun3 y y
+  return (fun4 z)
+
+testDo11 x y z = do
+  let a = fun3 y y
+      b = fun5 z
+  return (fun x)
+
+testDo12 x y z = do
+  let a = fun3 y y
+      b = fun5 z
+  return (fun x && a && fun b)
 
 testExplTyped x = (fun x :: Bool)
 

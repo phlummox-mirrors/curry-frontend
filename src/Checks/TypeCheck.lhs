@@ -403,19 +403,20 @@ either one of the basic types or \texttt{()}.
   Addendum.~\cite{Chakravarty03:FFI}}
 \begin{verbatim}
 
-> tcDecls :: [Decl] -> TCM ()
+> tcDecls :: [Decl] -> TCM BT.Context
 > tcDecls ds = do
 >   m <- getModuleIdent
 >   oldSig <- getSigEnv
 >   modifySigEnv $ \ sigs -> foldr bindTypeSigs sigs ods
->   mapM_ tcDeclGroup $ scc bv (qfv m) vds
+>   cxs <- mapM tcDeclGroup $ scc bv (qfv m) vds
 >   modifySigEnv (const oldSig)
+>   return $ concat cxs
 >   where (vds, ods) = partition isValueDecl ds
 
-> tcDeclGroup :: [Decl] -> TCM ()
-> tcDeclGroup [ForeignDecl _ _ _ f ty] = tcForeign f ty
-> tcDeclGroup [ExternalDecl      _ fs] = mapM_ tcExternal fs
-> tcDeclGroup [FreeDecl          _ vs] = mapM_ tcFree     vs
+> tcDeclGroup :: [Decl] -> TCM BT.Context
+> tcDeclGroup [ForeignDecl _ _ _ f ty] = tcForeign f ty >> return BT.emptyContext
+> tcDeclGroup [ExternalDecl      _ fs] = mapM_ tcExternal fs >> return BT.emptyContext
+> tcDeclGroup [FreeDecl          _ vs] = mapM_ tcFree     vs >> return BT.emptyContext
 > tcDeclGroup ds                       = do
 >   tyEnv0 <- getValueEnv
 >   ctysLhs <- mapM tcDeclLhs ds
@@ -436,6 +437,8 @@ either one of the basic types or \texttt{()}.
 >       finalCxs = zipWith substContext mappings cxs'
 >       dsWithCxs = zip finalCxs ds
 >   mapM_ (genDecl (fvEnv (subst theta tyEnv0)) theta) dsWithCxs
+>   -- do NOT return final contexts! TODO: return cxs or cxs' (or doesn't matter?)
+>   return $ concat cxs
 > --tcDeclGroup m tcEnv _ [ForeignDecl p cc _ f ty] =
 > --  tcForeign m tcEnv p cc f ty
 
@@ -1002,9 +1005,11 @@ because of possibly multiple occurrences of variables.
 >                    (cxs, foldr TypeArrow ty (map getType ctys))
 > tcExpr p (Let ds e) = do
 >     tyEnv0 <- getValueEnv
->     tcDecls ds
->     ty <- tcExpr p e
->     checkSkolems p (text "Expression:" <+> ppExpr 0 e) tyEnv0 ty
+>     _cxs <- tcDecls ds
+>     (cx, ty) <- tcExpr p e
+>     -- we do not have to add cxs to the context (when values in the let
+>     -- definition aren't used we don't have to pass contexts for them)
+>     checkSkolems p (text "Expression:" <+> ppExpr 0 e) tyEnv0 (cx {- ++ _cxs-}, ty)
 > tcExpr p (Do sts e) = do
 >     tyEnv0 <- getValueEnv
 >     cxs <- concatMapM (tcStmt p) sts
@@ -1083,7 +1088,7 @@ because of possibly multiple occurrences of variables.
 >   unify p "generator" (ppStmt q $-$ text "Term:" <+> ppExpr 0 e)
 >         (noContext $ listType ty1) cty2
 >   return (cx1 ++ cx2)
-> tcQual _ (StmtDecl      ds) = tcDecls ds >> return [] -- TODO!!
+> tcQual _ (StmtDecl      ds) = tcDecls ds
 
 > tcStmt ::Position -> Statement -> TCM BT.Context
 > tcStmt p (StmtExpr _ e) = do
@@ -1096,7 +1101,7 @@ because of possibly multiple occurrences of variables.
 >   cty2@(cx2, _) <- tcExpr p e
 >   unify p "statement" (ppStmt st $-$ text "Term:" <+> ppExpr 0 e) (noContext $ ioType $ getType cty1) cty2
 >   return (cx1 ++ cx2)
-> tcStmt _ (StmtDecl ds) = tcDecls ds >> return [] -- TODO!!
+> tcStmt _ (StmtDecl ds) = tcDecls ds
 
 > tcFieldExpr :: Field Expression -> TCM (Ident, ConstrType)
 > tcFieldExpr f@(Field _ l e) = do

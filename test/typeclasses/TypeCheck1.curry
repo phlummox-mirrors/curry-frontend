@@ -8,6 +8,9 @@ class D a where
 
 class E a where
   fun4 :: a -> a
+
+class F a where
+  fun5 :: a -> a
   
 test = fun 1
 
@@ -81,6 +84,30 @@ testH12 x = let y = 'a' : x in y
 
 testH13 x = let y = fun 'a' in fun3 x x && y
 
+testH14a x y = let x' = fun x
+                   y' = fun y
+               in True
+
+testH14b x y = let x' = fun x
+                   y' = fun y
+               in x'
+
+testH14c x y = let x' = fun x
+                   y' = fun y
+               in y'
+
+testH14d x y = let x' = fun x
+                   y' = fun y
+               in (x', y')
+
+
+testLet x y z =
+  let a = fun3 y y
+      b = fun5 z
+  in fun x && a && fun b
+
+
+testInfixOps x y z = fun x && fun y && fun z
 
 testI1 = 1
 testI2 = 'a'
