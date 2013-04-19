@@ -834,12 +834,13 @@ because of possibly multiple occurrences of variables.
 
 > tcRhs ::ValueEnv -> Rhs -> TCM ConstrType
 > tcRhs tyEnv0 (SimpleRhs p e ds) = do
->   tcDecls ds
->   ty <- tcExpr p e
->   checkSkolems p (text "Expression:" <+> ppExpr 0 e) tyEnv0 ty
+>   cxs <- tcDecls ds
+>   (cx, ty) <- tcExpr p e
+>   checkSkolems p (text "Expression:" <+> ppExpr 0 e) tyEnv0 (cx ++ cxs, ty)
 > tcRhs tyEnv0 (GuardedRhs es ds) = do
->   tcDecls ds
->   tcCondExprs tyEnv0 es
+>   cxs <- tcDecls ds
+>   (cxs', ty) <- tcCondExprs tyEnv0 es
+>   return (cxs ++ cxs', ty)
 
 > tcCondExprs :: ValueEnv -> [CondExpr] -> TCM ConstrType
 > tcCondExprs tyEnv0 es = do
