@@ -974,23 +974,25 @@ because of possibly multiple occurrences of variables.
 >     cx' <- adjustContext (cxo ++ cx1 ++ cx2)
 >     return (cx', gamma)
 > tcExpr p e@(LeftSection e1 op) = do
->     opTy@(cxo, _)    <- tcExpr p (infixOp op)
->     cty1@(cx1, ty1)  <- tcExpr p e1
+>     opTy@(cxo, _) <- tcExpr p (infixOp op)
+>     cty1@(cx1, _) <- tcExpr p e1
 >     (alpha,beta) <-
 >       tcArrow p "left section" (ppExpr 0 e $-$ text "Operator:" <+> ppOp op)
 >               (getType opTy)
 >     unify p "left section" (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e1)
 >           (noContext alpha) cty1
->     return (cxo ++ cx1, beta)
+>     cx' <- adjustContext (cxo ++ cx1)
+>     return (cx', beta)
 > tcExpr p e@(RightSection op e1) = do
->     opTy@(cxo, _)    <- tcExpr p (infixOp op)
->     cty1@(cx1, ty1)  <- tcExpr p e1
+>     opTy@(cxo, _) <- tcExpr p (infixOp op)
+>     cty1@(cx1, _) <- tcExpr p e1
 >     (alpha,beta,gamma) <-
 >       tcBinary p "right section"
 >                (ppExpr 0 e $-$ text "Operator:" <+> ppOp op) (getType opTy)
 >     unify p "right section" (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e1)
 >           (noContext beta) cty1
->     return (cxo ++ cx1, TypeArrow alpha gamma)
+>     cx' <- adjustContext (cxo ++ cx1)
+>     return (cx', TypeArrow alpha gamma)
 > tcExpr p expr@(Lambda _ ts e) = do
 >     tyEnv0 <- getValueEnv
 >     ctys <- mapM (tcPattern p) ts
