@@ -108,6 +108,18 @@ testDo12 x y z = do
       b = fun5 z
   return (fun x && a && fun b)
 
+testDo13 x y z = do
+  let a = fun3 y y
+  _ <- return (fun4 y)
+  _ <- return (fun4 z)
+  return (fun x)
+
+testDo14 x y z = do
+  let a = fun3 y y
+      b = fun y
+  _ <- return (fun4 z)
+  return (fun x)
+
 testExplTyped x = (fun x :: Bool)
 
 testExplTyped2 x y = (fun x :: Bool) && (fun3 y y :: Bool)
@@ -127,7 +139,7 @@ testEnum3 = [(fun2 1), (fun4 2) ..]
 testEnum4 = [(fun2 1), (fun2 2) .. (fun4 3)]
 
 
-
+{-
 type Rec a = { a :: a, b :: Bool }
 
 testRecConstr x = { a := fun2 x, b := fun x }
@@ -137,7 +149,7 @@ testRecConstr3 x = { a := fun2 x, b := error "" }
 testRecConstr3b x = { a := fun4 x, b := error "" }
 
 testRecConstr4 x = { a := fun4 x, b := fun x }
-
+-}
 {-
 -- there are some strange compile errors with the following, so
 -- I disable this:
