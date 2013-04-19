@@ -1507,7 +1507,7 @@ Error functions.
 > errTypeSigTooGeneral p m what (cx, ty) sigma = posMessage p $ vcat
 >   [ text "Type signature too general", what
 >   , text "Inferred type:"  <+> ppTypeScheme m sigma
->   , text "Type signature:" <+> ppContext cx <+> text "=>" <+> ppTypeExpr 0 ty
+>   , text "Type signature:" <+> parens (ppContext cx) <+> text "=>" <+> ppTypeExpr 0 ty
 >   ]
 
 > errNonFunctionType :: Position -> String -> Doc -> ModuleIdent -> Type -> Message
@@ -1570,4 +1570,8 @@ The following functions implement pretty-printing for types.
 > ppType m = ppTypeExpr 0 . fromQualType m
 
 > ppTypeScheme :: ModuleIdent -> TypeScheme -> Doc
-> ppTypeScheme m (ForAll cx _ ty) = ppType m ty
+> ppTypeScheme m (ForAll cx _ ty) = ppContext' m cx <+> text "=>" <+> ppType m ty
+
+> ppContext' :: ModuleIdent -> BT.Context -> Doc
+> ppContext' m cx = parens $ hsep $ 
+>   punctuate comma (map (\(qid, ty) -> ppQIdent qid <+> ppType m ty) cx)
