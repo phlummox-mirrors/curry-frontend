@@ -101,6 +101,10 @@ testH14d x y = let x' = fun x
                in (x', y')
 
 
+testI = let x' = fun4 y'
+            y' = fun5 x'
+        in x'
+
 testLet x y z =
   let a = fun3 y y
       b = fun5 z

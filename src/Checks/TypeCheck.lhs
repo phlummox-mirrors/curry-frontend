@@ -1006,11 +1006,12 @@ because of possibly multiple occurrences of variables.
 >                    (cxs, foldr TypeArrow ty (map getType ctys))
 > tcExpr p (Let ds e) = do
 >     tyEnv0 <- getValueEnv
->     _cxs <- tcDecls ds
+>     cxs <- tcDecls ds
 >     (cx, ty) <- tcExpr p e
->     -- we do not have to add cxs to the context (when values in the let
->     -- definition aren't used we don't have to pass contexts for them)
->     checkSkolems p (text "Expression:" <+> ppExpr 0 e) tyEnv0 (cx {- ++ _cxs-}, ty)
+>     -- We gather all contexts, also in the case that a declaration isn't 
+>     -- used at all (neither directly nor indirectly). But whether this 
+>     -- is the case is not trivially determinable (TODO!).  
+>     checkSkolems p (text "Expression:" <+> ppExpr 0 e) tyEnv0 (cx ++ cxs, ty)
 > tcExpr p (Do sts e) = do
 >     tyEnv0 <- getValueEnv
 >     cxs <- concatMapM (tcStmt p) sts
