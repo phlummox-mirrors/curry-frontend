@@ -40,7 +40,7 @@ type annotation is present.
 
 > import Base.CurryTypes (fromQualType, toConstrType, toConstrTypes)
 > import Base.Expr
-> import Base.Messages (Message, posMessage, internalError)
+> import Base.Messages (Message, posMessage, internalError, message)
 > import Base.SCC
 > import Base.TopEnv
 > import Base.Types as BT
@@ -79,7 +79,11 @@ The type checker returns the resulting type constructor and type environments.
 >     bindConstrs
 >     bindLabels
 >     bindClassMethods cEnv
->     tcDecls vds
+>     _ <- tcDecls vds
+
+>     cEnv' <- getClassEnv
+>     vEnv <- getValueEnv
+>     checkNoEqualClassMethodAndFunctionNames vEnv cEnv'
 >   (tds, vds) = partition isTypeDecl decls
 >   initState  = TcState m tcEnv tyEnv cEnv idSubst emptySigEnv 0 []
 
@@ -1563,6 +1567,10 @@ Error functions.
 >   , text "are incompatible"
 >   ]
 
+> errEqualClassMethodAndFunctionNames :: ModuleIdent -> Ident -> Doc
+> errEqualClassMethodAndFunctionNames _m f = 
+>   text "Equal class method and top level function names: " <> ppIdent f
+
 \end{verbatim}
 The following functions implement pretty-printing for types.
 \begin{verbatim}
@@ -1576,3 +1584,23 @@ The following functions implement pretty-printing for types.
 > ppContext' :: ModuleIdent -> BT.Context -> Doc
 > ppContext' m cx = parens $ hsep $ 
 >   punctuate comma (map (\(qid, ty) -> ppQIdent qid <+> ppType m ty) cx)
+
+\end{verbatim}
+After all type checking has been done, check at last, that there are 
+no class methods with the name of one of the top level functions. 
+\begin{verbatim}
+
+> checkNoEqualClassMethodAndFunctionNames :: ValueEnv -> ClassEnv -> TCM ()
+> checkNoEqualClassMethodAndFunctionNames vEnv cEnv = do
+>   let classMethods = map fst3 $ getAllClassMethods cEnv
+>   mapM_ searchClassMethod classMethods
+>   where
+>   searchClassMethod f 
+>     = if not $ null $ lookupValue f vEnv -- TODO: use also qualLookupValue?
+>       then do
+>         m <- getModuleIdent
+>         report $ message $ errEqualClassMethodAndFunctionNames m f
+>       else return ()
+>   fst3 (x, _, _) = x
+
+\end{verbatim}
