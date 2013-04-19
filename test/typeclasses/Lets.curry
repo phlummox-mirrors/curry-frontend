@@ -14,11 +14,18 @@ class F a where
   fun5 :: a -> a
 
 
-testLet x y z =
+
+testLet z =
+  let b = fun5 z
+  in b 
+
+
+testLet2 x y z =
   let a = fun3 y y
       b = fun5 z
   in fun x && a && fun b
-
+  
+-- b z = fun5 z
 
 
 test4 x y z = [fun x && a && fun b | let a = fun3 y y

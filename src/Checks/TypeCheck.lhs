@@ -421,24 +421,23 @@ either one of the basic types or \texttt{()}.
 >   tyEnv0 <- getValueEnv
 >   ctysLhs <- mapM tcDeclLhs ds
 >   ctysRhs <- mapM (tcDeclRhs tyEnv0) ds
+>   -- get all contexts
 >   let cxsLhs = map fst ctysLhs
 >       cxsRhs = map fst ctysRhs
 >       tysRhs = map snd ctysRhs
 >       cxs = zipWith (++) cxsLhs cxsRhs
 >   sequence_ (zipWith3 unifyDecl ds ctysLhs ctysRhs)
 >   theta <- getTypeSubst
->   let types  = map (subst theta) tysRhs
->       -- builds a map from type variables in the given type to 
->       -- the type variables that will appear in the type when it is newly
->       -- instantiated. This information is needed to adjust the type variables
->       -- in the contexts accordingly.  
->       mappings = map (listToSubst . buildTypeVarsMapping) types
+>   let -- build the types and contexts of all declarations
+>       types  = map (subst theta) tysRhs
 >       cxs' = map (substContext theta) cxs
->       finalCxs = zipWith substContext mappings cxs'
->       dsWithCxs = zip finalCxs ds
->   mapM_ (genDecl (fvEnv (subst theta tyEnv0)) theta) dsWithCxs
+>       dsWithCxsAndTys = zip3 cxs' ds types
+>   -- pass the inferred types to genDecl so that the contexts can be
+>   -- renamed properly
+>   mapM_ (genDecl (fvEnv (subst theta tyEnv0)) theta) dsWithCxsAndTys
 >   -- do NOT return final contexts! TODO: return cxs or cxs' (or doesn't matter?)
 >   return $ concat cxs
+
 > --tcDeclGroup m tcEnv _ [ForeignDecl p cc _ f ty] =
 > --  tcForeign m tcEnv p cc f ty
 
@@ -527,27 +526,6 @@ either one of the basic types or \texttt{()}.
 >   unify p "pattern binding" (ppPattern 0 t)
 > unifyDecl _ = internalError "TypeCheck.unifyDecl: no pattern match"
 
-> -- returns the type variables in the given type in the order they appear
-> -- in the type (this must be the same order as in fv?!)
-> fvars :: Type -> [Int]
-> fvars = nub . fvars'
-
-> fvars' :: Type -> [Int]
-> fvars' (TypeConstructor _ tys) = concatMap fvars' tys
-> fvars' (TypeVariable tv) = [tv]
-> fvars' (TypeConstrained _ _) = []
-> fvars' (TypeArrow t1 t2) = fvars' t1 ++ fvars' t2
-> fvars' (TypeSkolem _) = []
-> -- TODO: which order is correct? in fv the second order is taken, 
-> -- but in the source code the first order is present
-> -- fvars' (TypeRecord fs r) = concatMap (fvars' . snd) fs ++ maybe [] (:[]) r
-> fvars' (TypeRecord fs r) = maybe [] (:[]) r ++ concatMap (fvars' . snd) fs 
-
-> buildTypeVarsMapping :: Type -> [(Int, Type)]
-> buildTypeVarsMapping ty 
->   = let fvs = fvars ty
->     in zip fvs [TypeVariable x | x <- [0..]]
-
 \end{verbatim}
 In Curry we cannot generalize the types of let-bound variables because
 they can refer to logic variables. Without this monomorphism
@@ -572,21 +550,28 @@ specific. Therefore, if the inferred type does not match the type
 signature the declared type must be too general.
 \begin{verbatim}
 
-> genDecl :: Set.Set Int -> TypeSubst -> (BT.Context, Decl) -> TCM ()
-> genDecl lvs theta (cx, FunctionDecl _ f (Equation _ lhs _ : _)) =
->   genVar True lvs theta arity cx f
+> genDecl :: Set.Set Int -> TypeSubst -> (BT.Context, Decl, Type) -> TCM ()
+> genDecl lvs theta (cx, FunctionDecl _ f (Equation _ lhs _ : _), inferredTy) = 
+>   genVar True lvs theta arity cx inferredTy f
 >   where arity = Just $ length $ snd $ flatLhs lhs
-> genDecl lvs theta (cx, PatternDecl  _ t   _) =
->   mapM_ (genVar False lvs theta Nothing cx) (bv t)
+> genDecl lvs theta (cx, PatternDecl  _ t   _, inferredTy) = 
+>   mapM_ (genVar False lvs theta Nothing cx inferredTy) (bv t)
 > genDecl _ _ _ = internalError "TypeCheck.genDecl: no pattern match"
 
-> genVar :: Bool -> Set.Set Int -> TypeSubst -> Maybe Int -> BT.Context -> Ident -> TCM ()
-> genVar poly lvs theta ma cx v = do
+> genVar :: Bool -> Set.Set Int -> TypeSubst -> Maybe Int -> BT.Context -> Type -> Ident -> TCM ()
+> genVar poly lvs theta ma cx infTy v = do
 >   sigs <- getSigEnv
 >   m <- getModuleIdent
 >   tyEnv <- getValueEnv
->   let sigma = (genType poly $ subst theta $ varType v tyEnv) `constrainBy` cx 
+>   let sigma0 = (genType poly $ subst theta $ varType v tyEnv)
 >       arity  = fromMaybe (varArity v tyEnv) ma
+>       -- build a mapping from the inferred type variables to the type
+>       -- variables that appear in the newly instantiated type sigma0, 
+>       -- so that the type variables in the inferred contexts can be
+>       -- renamed properly
+>       mapping = buildTypeVarsMapping infTy (typeSchemeToType sigma0) 
+>       mapping' = map (\(n, n2) -> (n, TypeVariable n2)) mapping
+>       sigma = sigma0 `constrainBy` (substContext (listToSubst mapping') cx)
 >   case lookupTypeSig v sigs of
 >     Nothing    -> modifyValueEnv $ rebindFun m v arity sigma
 >     Just sigTy -> do
@@ -596,11 +581,26 @@ signature the declared type must be too general.
 >       modifyValueEnv $ rebindFun m v arity sigma
 >   where
 >   what = text (if poly then "Function:" else "Variable:") <+> ppIdent v
->   genType poly' (ForAll cx0 n ty)
+>   genType poly' (ForAll _cx0 n ty)
 >     | n > 0 = internalError $ "TypeCheck.genVar: " ++ showLine (idPosition v) ++ show v ++ " :: " ++ show ty
 >     | poly' = gen lvs ty
 >     | otherwise = monoType ty
->   eqTyScheme (ForAll cx1 _ t1) (ForAll cx2 _ t2) = equTypes t1 t2
+>   eqTyScheme (ForAll _cx1 _ t1) (ForAll _cx2 _ t2) = equTypes t1 t2
+
+> buildTypeVarsMapping :: Type -> Type -> [(Int, Int)]
+> buildTypeVarsMapping t1 t2 = nub $ buildTypeVarsMapping' t1 t2
+
+> buildTypeVarsMapping' :: Type -> Type -> [(Int, Int)]
+> buildTypeVarsMapping' (TypeVariable n1) (TypeVariable n2) = [(n1, n2)]
+> buildTypeVarsMapping' (TypeConstructor _ ts1) (TypeConstructor _ ts2)
+>   = concat $ zipWith buildTypeVarsMapping' ts1 ts2
+> buildTypeVarsMapping' (TypeArrow t11 t12) (TypeArrow t21 t22)
+>   = buildTypeVarsMapping' t11 t21 ++ buildTypeVarsMapping' t12 t22
+> buildTypeVarsMapping' (TypeConstrained _ _) (TypeConstrained _ _) = [] 
+> buildTypeVarsMapping' (TypeSkolem _) (TypeSkolem _) = []
+> buildTypeVarsMapping' (TypeRecord _ _) (TypeRecord _ _)
+>   = internalError "buildTypeVarsMapping TODO"
+> buildTypeVarsMapping' _ _ = internalError "types do not match in buildTypeVarsMapping"
 
 > tcEquation :: ValueEnv -> Equation -> TCM ConstrType
 > tcEquation tyEnv0 (Equation p lhs rhs) = do
@@ -1313,7 +1313,11 @@ We use negative offsets for fresh type variables.
 >   where 
 >     convert (qid, y) = (qid, convertType y)
 >     convertType (TypeVariable x) 
->       = if x < 0 then {-internalError "instContext" -} TypeVariable x else tys !! x
+>       = if x < 0 
+>         then {-internalError "instContext" -} TypeVariable x
+>         else if x >= length tys
+>              then internalError ("instContext too big " ++ show x)
+>              else tys !! x
 >     convertType (TypeConstructor tcon ts) 
 >       = TypeConstructor tcon (map convertType ts) 
 >     convertType (TypeArrow t1 t2) 
