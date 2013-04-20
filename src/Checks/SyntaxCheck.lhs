@@ -162,6 +162,9 @@ renaming literals and underscore to disambiguate them.
 > ok :: SCM ()
 > ok = return ()
 
+> tcCheck :: SCM Bool
+> tcCheck = S.gets typeClassesCheck
+
 \end{verbatim}
 A nested environment is used for recording information about the data
 constructors and variables in the module. For every data constructor
@@ -207,11 +210,13 @@ Furthermore, it is not allowed to declare a label more than once.
 >   [AliasType _ _ (TypeRecord fs _)] -> RecordLabel r $ map fst fs
 >   _ -> internalError $ "SyntaxCheck.renameInfo: ambiguous record " ++ show r
 
-> bindGlobal :: ModuleIdent -> Ident -> RenameInfo -> RenameEnv -> RenameEnv
-> bindGlobal m c r rEnv = 
->   if null $ qualLookupNestEnv (qualifyWith m c) rEnv
->   then (bindNestEnv c r . qualBindNestEnv (qualifyWith m c) r) rEnv
->   else rEnv -- this happens only when checking type classes!
+> bindGlobal :: Bool -> ModuleIdent -> Ident -> RenameInfo -> RenameEnv -> RenameEnv
+> bindGlobal tcCheck0 m c r = 
+>   -- Disable binding completely when checking type classes or instances. 
+>   -- This can be done because at the beginning of the syntax checking
+>   -- all class methods are already bound. 
+>   if not tcCheck0 then bindNestEnv c r . qualBindNestEnv (qualifyWith m c) r
+>   else id
 
 > bindLocal :: Ident -> RenameInfo -> RenameEnv -> RenameEnv
 > bindLocal = bindNestEnv
@@ -233,49 +238,53 @@ Furthermore, it is not allowed to declare a label more than once.
 > bindConstr :: ConstrDecl -> SCM ()
 > bindConstr (ConstrDecl _ _ c tys) = do
 >   m <- getModuleIdent
->   modifyRenameEnv $ bindGlobal m c (Constr $ length tys)
+>   tcc <- tcCheck
+>   modifyRenameEnv $ bindGlobal tcc m c (Constr $ length tys)
 > bindConstr (ConOpDecl _ _ _ op _) = do
 >   m <- getModuleIdent
->   modifyRenameEnv $ bindGlobal m op (Constr 2)
+>   tcc <- tcCheck
+>   modifyRenameEnv $ bindGlobal tcc m op (Constr 2)
 
 > bindNewConstr :: NewConstrDecl -> SCM ()
 > bindNewConstr (NewConstrDecl _ _ c _) = do
 >   m <- getModuleIdent
->   modifyRenameEnv $ bindGlobal m c (Constr 1)
+>   tcc <- tcCheck
+>   modifyRenameEnv $ bindGlobal tcc m c (Constr 1)
 
 > bindRecordLabel :: Ident -> [Ident] -> Ident -> SCM ()
 > bindRecordLabel t allLabels l = do
 >   m <- getModuleIdent
 >   new <- (null . lookupVar l) `liftM` getRenameEnv
 >   unless new $ report $ errDuplicateDefinition l
->   modifyRenameEnv $ bindGlobal m l (RecordLabel (qualifyWith m t) allLabels)
+>   tcc <- tcCheck
+>   modifyRenameEnv $ bindGlobal tcc m l (RecordLabel (qualifyWith m t) allLabels)
 
 ------------------------------------------------------------------------------
 
 > -- |Bind a global function declaration in the 'RenameEnv'
-> bindFuncDecl :: ModuleIdent -> Decl -> RenameEnv -> RenameEnv
-> bindFuncDecl m (FunctionDecl _ ident equs) env
+> bindFuncDecl :: Bool -> ModuleIdent -> Decl -> RenameEnv -> RenameEnv
+> bindFuncDecl tcc m (FunctionDecl _ ident equs) env
 >   | null equs = internalError "SyntaxCheck.bindFuncDecl: no equations"
 >   | otherwise = let arty = length $ snd $ getFlatLhs $ head equs
 >                     qid  = qualifyWith m ident
->                 in  bindGlobal m ident (GlobalVar arty qid) env
-> bindFuncDecl m (ForeignDecl _ _ _ ident texpr) env
+>                 in  bindGlobal tcc m ident (GlobalVar arty qid) env
+> bindFuncDecl tcc m (ForeignDecl _ _ _ ident texpr) env
 >   = let arty = typeArity texpr
 >         qid  = qualifyWith m ident
->     in bindGlobal m ident (GlobalVar arty qid) env
-> bindFuncDecl m (TypeSig _ ids cx texpr) env
+>     in bindGlobal tcc m ident (GlobalVar arty qid) env
+> bindFuncDecl tcc m (TypeSig _ ids cx texpr) env
 >   = foldr bindTS env $ map (qualifyWith m) ids
 >  where
 >  bindTS qid env'
 >   | null $ qualLookupVar qid env'
->   = bindGlobal m (unqualify qid) (GlobalVar (typeArity texpr) qid) env'
+>   = bindGlobal tcc m (unqualify qid) (GlobalVar (typeArity texpr) qid) env'
 >   | otherwise
 >   = env'
-> bindFuncDecl _ _ env = env
+> bindFuncDecl _ _ _ env = env
 
 > bindClassMethods :: ModuleIdent -> [Decl] -> SCM ()
 > bindClassMethods m decls = do
->   modifyRenameEnv $ \env -> foldr (bindFuncDecl m) env decls
+>   modifyRenameEnv $ \env -> foldr (bindFuncDecl False m) env decls
 
 ------------------------------------------------------------------------------
 
@@ -357,7 +366,8 @@ local declarations.
 > checkTopDecls :: [Decl] -> SCM [Decl]
 > checkTopDecls decls = do
 >   m <- getModuleIdent
->   checkDeclGroup (bindFuncDecl m) decls
+>   tcc <- tcCheck
+>   checkDeclGroup (bindFuncDecl tcc m) decls
 
 \end{verbatim}
 Each declaration group opens a new scope and uses a distinct key
@@ -518,7 +528,7 @@ top-level.
 
 > checkLocalVar :: [Ident] -> Ident -> SCM Ident
 > checkLocalVar bvs v = do
->   tcs <- S.gets typeClassesCheck
+>   tcs <- tcCheck
 >   when (v `notElem` bvs && not tcs) $ report $ errNoBody v
 >   return v
 
