@@ -24,7 +24,7 @@ definition.
 
 > import Control.Monad (liftM, liftM2, liftM3, unless, when)
 > import qualified Control.Monad.State as S (State, runState, gets, modify, withState)
-> import Data.List ((\\), insertBy, nub, partition)
+> import Data.List ((\\), insertBy, nub, partition, intersect)
 > import Data.Maybe (fromJust, isJust, isNothing, maybeToList)
 > import qualified Data.Set as Set (empty, insert, member)
 > import Text.PrettyPrint
@@ -36,7 +36,7 @@ definition.
 > import Curry.Syntax.Pretty (ppPattern)
 
 > import Base.Expr
-> import Base.Messages (Message, posMessage, internalError)
+> import Base.Messages (Message, posMessage, internalError, message)
 > import Base.NestEnv
 > import Base.Types
 > import Base.Utils ((++!), findDouble, findMultiples)
@@ -89,11 +89,12 @@ renaming literals and underscore to disambiguate them.
 >   , errors      :: [Message]   -- ^ Syntactic errors in the module
 >   , typeClassesCheck :: Bool   -- ^ Disable some checks when declarations in classes
 >                                -- are checked, like checking for missing function bodies
+>   , classMethods :: [Ident]    -- ^ the class methods defined by class declarations
 >   }
 
 > -- |Initial syntax check state
 > initState :: [Extension] -> ModuleIdent -> RenameEnv -> SCState
-> initState exts m rEnv = SCState exts m rEnv globalScopeId 1 [] False
+> initState exts m rEnv = SCState exts m rEnv globalScopeId 1 [] False []
 
 > -- |Identifier for global (top-level) declarations
 > globalScopeId :: Integer
@@ -164,6 +165,12 @@ renaming literals and underscore to disambiguate them.
 
 > tcCheck :: SCM Bool
 > tcCheck = S.gets typeClassesCheck
+
+> setClassMethods :: [Ident] -> SCM ()
+> setClassMethods cms = S.modify $ \s -> s { classMethods = cms }
+
+> getClassMethods :: SCM [Ident]
+> getClassMethods = S.gets classMethods
 
 \end{verbatim}
 A nested environment is used for recording information about the data
@@ -335,8 +342,15 @@ local declarations.
 >   m <- getModuleIdent
 >   -- bind class methods so that references to class methods do not
 >   -- cause errors
->   bindClassMethods m (extractTypeDeclsFromClasses decls)
+>   let classTypeSigs = extractTypeDeclsFromClasses decls
+>   bindClassMethods m classTypeSigs
+>   -- now reserve class methods so that they cannot be redefined as top level 
+>   -- functions... 
+>   let classMethods0 = concatMap (\(TypeSig _ ids _ _) -> ids) classTypeSigs 
+>   setClassMethods classMethods0
+>   -- ... and type check the top declaration group
 >   decls0 <- liftM2 (++) (mapM checkTypeDecl tds) (checkTopDecls vds)
+
 >   -- check the declarations in classes and instances as well
 >   theRenameEnv <- getRenameEnv
 >   let classDecls = map extractCDecls $ filter isClassDecl decls0
@@ -344,15 +358,17 @@ local declarations.
 >   -- reset the rename environment before checking each class or instance, so that
 >   -- there will be no errors with multiple instance definitions that contain
 >   -- implementations of the same function
->   cDecls <- typeClassesCheck_ $ mapM (\ds -> resetEnv theRenameEnv >> checkTopDecls ds) classDecls
->   iDecls <- typeClassesCheck_ $ mapM (\ds -> resetEnv theRenameEnv >> checkTopDecls ds) instanceDecls
+>   cDecls <- typeClassesCheck_ $ mapM (declsCheck' theRenameEnv) classDecls
+>   iDecls <- typeClassesCheck_ $ mapM (declsCheck' theRenameEnv) instanceDecls
 >   let decls1 = updateClassDecls decls0 cDecls
 >       decls2 = updateInstanceDecls decls1 iDecls
 >   return decls2
 >   where (tds, vds) = partition isTypeDecl decls
 >         (rds, dds) = partition isRecordDecl tds
 >         typeClassesCheck_ = S.withState (\s -> s { typeClassesCheck = True })
->         resetEnv re = S.modify (\s -> s { scopeId = 0, renameEnv = re})  
+>         resetEnv re = S.modify (\s -> s { scopeId = 0, renameEnv = re})
+>         declsCheck' theRenameEnv 
+>           = (\ds -> resetEnv theRenameEnv >> checkClassOrInstanceDecls ds)
 
 > checkTypeDecl :: Decl -> SCM Decl
 > checkTypeDecl rec@(TypeDecl _ r _ (RecordType fs rty)) = do
@@ -363,11 +379,23 @@ local declarations.
 >   return rec
 > checkTypeDecl d = return d
 
+> checkClassOrInstanceDecls :: [Decl] -> SCM [Decl]
+> checkClassOrInstanceDecls decls = do
+>   m <- getModuleIdent
+>   tcc <- tcCheck
+>   checkDeclGroup (bindFuncDecl tcc m) decls
+
 > checkTopDecls :: [Decl] -> SCM [Decl]
 > checkTopDecls decls = do
 >   m <- getModuleIdent
 >   tcc <- tcCheck
->   checkDeclGroup (bindFuncDecl tcc m) decls
+>   -- check that there are no class methods redefinitions on top level 
+>   let vs = concatMap vars decls
+>   cms <- getClassMethods
+>   let intersection = intersect cms vs
+>   case null intersection of
+>     True -> checkDeclGroup (bindFuncDecl tcc m) decls
+>     False -> report (errRedefiningClassMethods intersection) >> return decls  
 
 \end{verbatim}
 Each declaration group opens a new scope and uses a distinct key
@@ -1174,6 +1202,12 @@ Error messages.
 > errContextVariableNotInType p ids = posMessage p $
 >   text "Variable(s)" <+> (hsep $ punctuate comma (map (text . escName) ids))
 >   <+> text "in context, but not in type signature" 
+
+> -- TODO: a position would be nice...
+> errRedefiningClassMethods :: [Ident] -> Message
+> errRedefiningClassMethods ids = message $
+>   text "Redefining the following class methods: " 
+>   <+> (hsep $ punctuate comma (map (text . escName) ids))
 
 \end{verbatim}
 Type classes specific stuff
