@@ -575,11 +575,15 @@ signature the declared type must be too general.
 >       -- renamed properly
 >       mapping = buildTypeVarsMapping infTy (typeSchemeToType sigma0) 
 >       mapping' = map (\(n, n2) -> (n, TypeVariable n2)) mapping
->       sigma = sigma0 `constrainBy` (substContext (listToSubst mapping') cx)
+>       shiftedContext = substContext (listToSubst mapping') cx
+>       sigma = sigma0 `constrainBy` shiftedContext
+>       ambTVs = ambiguousTypeVars shiftedContext
+>   unless (null $ ambTVs) $ report (errAmbiguousTypeVars v ambTVs)  
 >   case lookupTypeSig v sigs of
 >     Nothing    -> modifyValueEnv $ rebindFun m v arity sigma
 >     Just sigTy -> do
 >       sigma' <- expandPolyType sigTy
+>       -- TODO: consider contexts!
 >       unless (eqTyScheme sigma sigma') $ report
 >         $ errTypeSigTooGeneral (idPosition v) m what sigTy sigma
 >       modifyValueEnv $ rebindFun m v arity sigma
@@ -590,6 +594,8 @@ signature the declared type must be too general.
 >     | poly' = gen lvs ty
 >     | otherwise = monoType ty
 >   eqTyScheme (ForAll _cx1 _ t1) (ForAll _cx2 _ t2) = equTypes t1 t2
+>   ambiguousTypeVars :: BT.Context -> [Int]
+>   ambiguousTypeVars = filter ( < 0) . concatMap (typeVars . snd)
 
 > buildTypeVarsMapping :: Type -> Type -> [(Int, Int)]
 > buildTypeVarsMapping t1 t2 = nub $ buildTypeVarsMapping' t1 t2
@@ -1570,6 +1576,12 @@ Error functions.
 > errEqualClassMethodAndFunctionNames :: ModuleIdent -> Ident -> Doc
 > errEqualClassMethodAndFunctionNames _m f = 
 >   text "Equal class method and top level function names: " <> ppIdent f
+
+> -- TODO: position would be nice...
+> errAmbiguousTypeVars :: Ident -> [Int] -> Message
+> errAmbiguousTypeVars f _tvars 
+>   = message (text "Ambiguous type variables in the context (function" 
+>   <+> text (show f) <> text ")")
 
 \end{verbatim}
 The following functions implement pretty-printing for types.
