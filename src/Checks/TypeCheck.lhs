@@ -28,10 +28,10 @@ type annotation is present.
 > import Data.List (nub, partition)
 > import qualified Data.Map as Map (Map, empty, insert, lookup)
 > import Data.Maybe (catMaybes, fromJust, fromMaybe, isJust, listToMaybe, maybeToList)
-> import qualified Data.Set as Set (Set, fromList, member, notMember, unions)
 > import Text.PrettyPrint
-> import Debug.Trace
+> import qualified Debug.Trace as Dbg
 > -- import Data.List (union)
+> import qualified Data.Set as Set
 
 > import Curry.Base.Ident
 > import Curry.Base.Position
@@ -59,6 +59,10 @@ type annotation is present.
 
 > ($-$) :: Doc -> Doc -> Doc
 > x $-$ y = x $$ space $$ y
+
+> trace = flip const
+> -- trace = Dbg.trace
+> trace2 = Dbg.trace
 
 \end{verbatim}
 Type checking proceeds as follows. First, the type constructor
@@ -422,6 +426,10 @@ either one of the basic types or \texttt{()}.
 > tcDeclGroup [ExternalDecl      _ fs] = mapM_ tcExternal fs >> return BT.emptyContext
 > tcDeclGroup [FreeDecl          _ vs] = mapM_ tcFree     vs >> return BT.emptyContext
 > tcDeclGroup ds                       = do
+>   tcFixPointIter ds (replicate (length ds) Set.empty)
+
+> tcFixPointIter :: [Decl] -> [Set.Set (QualIdent, Type)] -> TCM BT.Context 
+> tcFixPointIter ds oldCxs = do
 >   tyEnv0 <- getValueEnv
 >   ctysLhs <- mapM tcDeclLhs ds
 >   ctysRhs <- mapM (tcDeclRhs tyEnv0) ds
@@ -439,8 +447,14 @@ either one of the basic types or \texttt{()}.
 >   -- pass the inferred types to genDecl so that the contexts can be
 >   -- renamed properly
 >   mapM_ (genDecl (fvEnv (subst theta tyEnv0)) theta) dsWithCxsAndTys
->   -- do NOT return final contexts! TODO: return cxs or cxs' (or doesn't matter?)
->   return $ concat cxs
+>   
+>   let newCxs = map Set.fromList cxs'
+>   case newCxs /= oldCxs of
+>     True -> tcFixPointIter ds newCxs
+>     False -> -- do NOT return final contexts! 
+>              -- TODO: return cxs or cxs' (or doesn't matter?)
+>              return $ concat cxs
+
 
 > --tcDeclGroup m tcEnv _ [ForeignDecl p cc _ f ty] =
 > --  tcForeign m tcEnv p cc f ty
@@ -470,7 +484,7 @@ either one of the basic types or \texttt{()}.
 > tcForeign f ty = do
 >   m <- getModuleIdent
 >   tySc@(ForAll cx _ ty') <- expandPolyType (ST.emptyContext, ty)
->   modifyValueEnv $ bindFun m f (arrowArity ty') tySc
+>   modifyValueEnv $ bindFunOnce m f (arrowArity ty') tySc
 
 > tcExternal :: Ident -> TCM ()
 > tcExternal f = do -- TODO is the semantic correct?
@@ -492,7 +506,7 @@ either one of the basic types or \texttt{()}.
 >       ForAll cx n ty' <- expandPolyType t
 >       unless (n == 0) $ report $ errPolymorphicFreeVar v
 >       return ty'
->   modifyValueEnv $ bindFun m v (arrowArity ty) $ monoType ty
+>   modifyValueEnv $ bindFunOnce m v (arrowArity ty) $ monoType ty
 
 > tcDeclLhs :: Decl -> TCM ConstrType
 > tcDeclLhs (FunctionDecl _ f _) = tcFunDecl f
@@ -506,7 +520,7 @@ either one of the basic types or \texttt{()}.
 >   (cx, ty) <- case lookupTypeSig v sigs of
 >     Nothing -> freshConstrTypeVar
 >     Just t  -> expandPolyType t >>= inst
->   modifyValueEnv $ bindFun m v (arrowArity ty) (monoType' (cx, ty))
+>   modifyValueEnv $ bindFunOnce m v (arrowArity ty) (monoType' (cx, ty))
 >   return (cx, ty)
 
 > tcDeclRhs :: ValueEnv -> Decl -> TCM ConstrType
@@ -562,7 +576,8 @@ signature the declared type must be too general.
 >   mapM_ (genVar False lvs theta Nothing cx inferredTy) (bv t)
 > genDecl _ _ _ = internalError "TypeCheck.genDecl: no pattern match"
 
-> genVar :: Bool -> Set.Set Int -> TypeSubst -> Maybe Int -> BT.Context -> Type -> Ident -> TCM ()
+> genVar :: Bool -> Set.Set Int -> TypeSubst -> Maybe Int -> BT.Context 
+>        -> Type -> Ident -> TCM ()
 > genVar poly lvs theta ma cx infTy v = do
 >   sigs <- getSigEnv
 >   m <- getModuleIdent
@@ -589,8 +604,8 @@ signature the declared type must be too general.
 >       modifyValueEnv $ rebindFun m v arity sigma
 >   where
 >   what = text (if poly then "Function:" else "Variable:") <+> ppIdent v
->   genType poly' (ForAll _cx0 n ty)
->     | n > 0 = internalError $ "TypeCheck.genVar: " ++ showLine (idPosition v) ++ show v ++ " :: " ++ show ty
+>   genType poly' (ForAll _cx0 _n ty)
+>     -- | n > 0 = internalError $ "TypeCheck.genVar: " ++ showLine (idPosition v) ++ show v ++ " :: " ++ show ty ++ " " ++ show i 
 >     | poly' = gen lvs ty
 >     | otherwise = monoType ty
 >   eqTyScheme (ForAll _cx1 _ t1) (ForAll _cx2 _ t2) = equTypes t1 t2
@@ -626,7 +641,7 @@ signature the declared type must be too general.
 > tcLiteral (Int    v _)  = do --return intType
 >   m  <- getModuleIdent
 >   ty <- freshConstrained [intType, floatType]
->   modifyValueEnv $ bindFun m v (arrowArity ty) $ monoType ty
+>   modifyValueEnv $ bindFunOnce m v (arrowArity ty) $ monoType ty
 >   return (BT.emptyContext, ty)
 > tcLiteral (Float  _ _) = return (BT.emptyContext, floatType)
 > tcLiteral (String _ _) = return (BT.emptyContext, stringType)
@@ -641,7 +656,7 @@ signature the declared type must be too general.
 >     Just t  -> expandPolyType t >>= inst
 >   tyEnv <- getValueEnv
 >   m  <- getModuleIdent
->   maybe (modifyValueEnv (bindFun m v (arrowArity ty) (monoType' (cx, ty))) >> return (cx, ty))
+>   maybe (modifyValueEnv (bindFunOnce m v (arrowArity ty) (monoType' (cx, ty))) >> return (cx, ty))
 >         (\ (ForAll cx0 _ t) -> return (cx0, t))
 >         (sureVarType v tyEnv)
 > tcPattern p t@(ConstructorPattern c ts) = do
@@ -741,7 +756,7 @@ because of possibly multiple occurrences of variables.
 >     Nothing -> freshConstrTypeVar
 >     Just t  -> expandPolyType t >>= inst
 >   tyEnv <- getValueEnv
->   maybe (modifyValueEnv (bindFun m v (arrowArity ty) (monoType' cty)) >> return cty)
+>   maybe (modifyValueEnv (bindFunOnce m v (arrowArity ty) (monoType' cty)) >> return cty)
 >         (\ (ForAll cx _ t) -> return (cx, t))
 >         (sureVarType v tyEnv)
 > tcPatternFP p t@(ConstructorPattern c ts) = do
@@ -875,7 +890,7 @@ because of possibly multiple occurrences of variables.
 >   | isAnonId v' = do
 >       m <- getModuleIdent
 >       ty <- freshTypeVar
->       modifyValueEnv $ bindFun m v' (arrowArity ty) $ monoType ty
+>       modifyValueEnv $ bindFunOnce m v' (arrowArity ty) $ monoType ty
 >       return $ noContext ty
 >   | otherwise    = do
 >       sigs <- getSigEnv
@@ -1411,6 +1426,13 @@ unambiguously refers to the local definition.
 > sureLabelType l tyEnv = case lookupValue l tyEnv of
 >   Label _ _ sigma : _ -> Just sigma
 >   _ -> Nothing
+
+> bindFunOnce :: ModuleIdent -> Ident -> Int -> TypeScheme
+>                 -> ValueEnv -> ValueEnv
+> bindFunOnce m f n ty env = 
+>  if null $ lookupValue f env
+>  then bindFun m f n ty env
+>  else env
 
 \end{verbatim}
 The function \texttt{expandType} expands all type synonyms in a type
