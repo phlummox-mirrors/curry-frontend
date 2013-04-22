@@ -157,6 +157,9 @@ generating fresh type variables.
 >                     , reverse $ errors s'
 >                     )
 
+> hasError :: TCM Bool
+> hasError = liftM (not . null) (S.gets errors)
+
 \end{verbatim}
 \paragraph{Defining Types}
 Before type checking starts, the types defined in the local module
@@ -448,12 +451,18 @@ either one of the basic types or \texttt{()}.
 >   -- renamed properly
 >   mapM_ (genDecl (fvEnv (subst theta tyEnv0)) theta) dsWithCxsAndTys
 >   
->   let newCxs = map Set.fromList cxs'
->   case newCxs /= oldCxs of
->     True -> tcFixPointIter ds newCxs
->     False -> -- do NOT return final contexts! 
->              -- TODO: return cxs or cxs' (or doesn't matter?)
->              return $ concat cxs
+>   err <- hasError
+>   case err of
+>     -- break fix point iteration if there are errors
+>     True -> return $ concat cxs
+>     False -> do
+>       -- continue (no errors encountered)
+>       let newCxs = map Set.fromList cxs'
+>       case newCxs /= oldCxs of
+>         True -> tcFixPointIter ds newCxs
+>         False -> -- do NOT return final contexts! 
+>                  -- TODO: return cxs or cxs' (or doesn't matter?)
+>                  return $ concat cxs
 
 
 > --tcDeclGroup m tcEnv _ [ForeignDecl p cc _ f ty] =
@@ -1430,7 +1439,7 @@ unambiguously refers to the local definition.
 > bindFunOnce :: ModuleIdent -> Ident -> Int -> TypeScheme
 >                 -> ValueEnv -> ValueEnv
 > bindFunOnce m f n ty env = 
->  if null (lookupValue f env) || null (qualLookupValue (qualifyWith m f) env) 
+>  if null (lookupValue f env) {-|| null (qualLookupValue (qualifyWith m f) env) -} 
 >  then bindFun m f n ty env
 >  else env
 
