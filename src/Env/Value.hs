@@ -25,6 +25,7 @@ module Env.Value
   , bindGlobalInfo, bindFun, qualBindFun, rebindFun, unbindFun, bindLabel
   , lookupValue, qualLookupValue, qualLookupCons, lookupTuple, tupleDCs
   , initDCEnv, ppTypes
+  , tryBindFun, tryRebindFun
   ) where
 
 import Text.PrettyPrint (Doc, vcat)
@@ -82,26 +83,43 @@ bindGlobalInfo f m c ty = bindTopEnv fun c v . qualBindTopEnv fun qc v
         v   = f qc ty
         fun = "Env.Value.bindGlobalInfo"
 
-bindFun :: ModuleIdent -> Ident -> Int -> TypeScheme -> ValueEnv -> ValueEnv
-bindFun m f a ty
-  | idUnique f == 0 = bindTopEnv fun f v . qualBindTopEnv fun qf v
-  | otherwise       = bindTopEnv fun f v
+-- various binds
+
+tryBindFun :: ModuleIdent -> Ident -> Int -> TypeScheme -> ValueEnv -> Maybe (ValueEnv)
+tryBindFun m f a ty env
+  | idUnique f == 0 = tryQualBindTopEnv fun qf v env >>= tryBindTopEnv fun f v 
+  | otherwise       = tryBindTopEnv fun f v env
   where qf  = qualifyWith m f
         v   = Value qf a ty
         fun = "Env.Value.bindFun"
 
-qualBindFun :: ModuleIdent -> Ident -> Int -> TypeScheme -> ValueEnv -> ValueEnv
-qualBindFun m f a ty = qualBindTopEnv "Env.Value.qualBindFun" qf $
+tryQualBindFun :: ModuleIdent -> Ident -> Int -> TypeScheme -> ValueEnv -> Maybe ValueEnv
+tryQualBindFun m f a ty = tryQualBindTopEnv "Env.Value.qualBindFun" qf $
   Value qf a ty
   where qf = qualifyWith m f
 
-rebindFun :: ModuleIdent -> Ident -> Int -> TypeScheme -> ValueEnv
-          -> ValueEnv
-rebindFun m f a ty
-  | idUnique f == 0 = rebindTopEnv f v . qualRebindTopEnv qf v
-  | otherwise       = rebindTopEnv f v
+
+bindFun :: ModuleIdent -> Ident -> Int -> TypeScheme -> ValueEnv -> ValueEnv
+bindFun m x n tsc env = 
+  maybe (internalError "Value.bindFun") id $ tryBindFun m x n tsc env
+
+qualBindFun :: ModuleIdent -> Ident -> Int -> TypeScheme -> ValueEnv -> ValueEnv
+qualBindFun m x n tsc env = 
+  maybe (internalError "Value.qualBindFun") id $ tryQualBindFun m x n tsc env
+    
+-- various rebinds
+
+tryRebindFun :: ModuleIdent -> Ident -> Int -> TypeScheme -> ValueEnv
+             -> Maybe ValueEnv
+tryRebindFun m f a ty env
+  | idUnique f == 0 = tryQualRebindTopEnv qf v env >>= tryRebindTopEnv f v 
+  | otherwise       = tryRebindTopEnv f v env
   where qf = qualifyWith m f
         v = Value qf a ty
+
+rebindFun :: ModuleIdent -> Ident -> Int -> TypeScheme -> ValueEnv -> ValueEnv
+rebindFun m x n tsc env = 
+  maybe (internalError "Value.rebindFun") id $ tryRebindFun m x n tsc env
 
 unbindFun :: Ident -> ValueEnv -> ValueEnv
 unbindFun = unbindTopEnv

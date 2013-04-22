@@ -64,7 +64,7 @@ as well, these variables must never be quantified.
 >   | TypeConstrained [Type] Int
 >   | TypeSkolem Int
 >   | TypeRecord [(Ident, Type)] (Maybe Int)
->   deriving Eq
+>   deriving (Eq, Ord)
 
 \end{verbatim}
 The function \texttt{isArrowType} checks whether a type is a function

@@ -45,11 +45,14 @@ module Base.TopEnv
   , qualRebindTopEnv, unbindTopEnv, lookupTopEnv, qualLookupTopEnv
   , allImports, moduleImports, localBindings, allLocalBindings 
   , allBindings
+  , tryBindTopEnv, tryQualBindTopEnv, tryRebindTopEnv, tryQualRebindTopEnv
   ) where
 
 import           Control.Arrow        (second)
 import qualified Data.Map      as Map
   (Map, empty, insert, findWithDefault, lookup, toList)
+
+import Control.Monad
 
 import Curry.Base.Ident
 import Base.Messages (internalError)
@@ -107,28 +110,58 @@ addImport m k v (TopEnv env) = TopEnv $
     Just y'' -> (Import (m : ms), y'') : xs
     Nothing  -> imp : mergeImport y xs
 
-bindTopEnv :: String -> Ident -> a -> TopEnv a -> TopEnv a
-bindTopEnv fun x y env = qualBindTopEnv fun (qualify x) y env
+-- various binds
 
-qualBindTopEnv :: String -> QualIdent -> a -> TopEnv a -> TopEnv a
-qualBindTopEnv fun x y (TopEnv env) =
-  TopEnv $ Map.insert x (bindLocal y (entities x env)) env
+tryBindTopEnv :: String -> Ident -> a -> TopEnv a -> (Maybe (TopEnv a))
+tryBindTopEnv fun x y env = tryQualBindTopEnv fun (qualify x) y env
+
+tryQualBindTopEnv :: String -> QualIdent -> a -> TopEnv a -> (Maybe (TopEnv a))
+tryQualBindTopEnv _fun x y (TopEnv env) = do
+  local <- bindLocal y (entities x env)
+  return $ TopEnv $ Map.insert x local env
   where
   bindLocal y' ys
-    | null [ y'' | (Local, y'') <- ys ] = (Local, y') : ys
-    | otherwise = internalError $ "\"qualBindTopEnv " ++ show x
-                      ++ "\" failed in function \"" ++ fun ++ "\""
+    | null [ y'' | (Local, y'') <- ys ] = Just $ (Local, y') : ys
+    | otherwise = Nothing
 
-rebindTopEnv :: Ident -> a -> TopEnv a -> TopEnv a
-rebindTopEnv = qualRebindTopEnv . qualify
+bindTopEnv :: String -> Ident -> a -> TopEnv a -> (TopEnv a)
+bindTopEnv fun x y env = 
+  dontTry "bindTopEnv" (qualify x) fun $ tryBindTopEnv fun x y env
+
+qualBindTopEnv :: String -> QualIdent -> a -> TopEnv a -> (TopEnv a)
+qualBindTopEnv fun x y env = 
+  dontTry "qualBindTopEnv" x fun $ tryQualBindTopEnv fun x y env
+
+dontTry :: String -> QualIdent -> String -> Maybe a -> a 
+dontTry name x fun = 
+  maybe (internalError $ "\"" ++ show name ++ " " ++ show x
+    ++ "\" failed in function \"" ++ fun ++ "\"") id 
+
+-- various rebinds
+
+tryRebindTopEnv :: Ident -> a -> TopEnv a -> Maybe (TopEnv a)
+tryRebindTopEnv = tryQualRebindTopEnv . qualify
+
+tryQualRebindTopEnv :: QualIdent -> a -> TopEnv a -> Maybe (TopEnv a)
+tryQualRebindTopEnv x y (TopEnv env) = do
+  local <- rebindLocal (entities x env)
+  return $ TopEnv $ Map.insert x local env
+  where
+  rebindLocal []                = Nothing -- internalError "TopEnv.qualRebindTopEnv"
+  rebindLocal ((Local, _) : ys) = Just $ (Local, y) : ys
+  rebindLocal (imported   : ys) = liftM (imported   :) $ rebindLocal ys
 
 qualRebindTopEnv :: QualIdent -> a -> TopEnv a -> TopEnv a
-qualRebindTopEnv x y (TopEnv env) =
-  TopEnv $ Map.insert x (rebindLocal (entities x env)) env
-  where
-  rebindLocal []                = internalError "TopEnv.qualRebindTopEnv"
-  rebindLocal ((Local, _) : ys) = (Local, y) : ys
-  rebindLocal (imported   : ys) = imported   : rebindLocal ys
+qualRebindTopEnv x y env = dontTry' "qualRebindTopEnv"  $ tryQualRebindTopEnv x y env 
+
+rebindTopEnv :: Ident -> a -> TopEnv a -> TopEnv a
+rebindTopEnv x y env = dontTry' "rebindTopEnv" $ tryRebindTopEnv x y env
+
+dontTry' :: String -> Maybe a -> a
+dontTry' fun = maybe (internalError fun) id
+
+
+
 
 unbindTopEnv :: Ident -> TopEnv a -> TopEnv a
 unbindTopEnv x (TopEnv env) =

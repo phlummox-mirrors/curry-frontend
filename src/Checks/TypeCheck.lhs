@@ -51,7 +51,8 @@ type annotation is present.
 > import Env.TypeConstructor (TCEnv, TypeInfo (..), bindTypeInfo
 >   , qualLookupTC)
 > import Env.Value ( ValueEnv, ValueInfo (..), bindFun, rebindFun
->   , bindGlobalInfo, bindLabel, lookupValue, qualLookupValue )
+>   , bindGlobalInfo, bindLabel, lookupValue, qualLookupValue
+>   , tryBindFun )
 > import Env.ClassEnv (ClassEnv, lookupMethodTypeScheme
 >   , getAllClassMethods)
 
@@ -1439,9 +1440,7 @@ unambiguously refers to the local definition.
 > bindFunOnce :: ModuleIdent -> Ident -> Int -> TypeScheme
 >                 -> ValueEnv -> ValueEnv
 > bindFunOnce m f n ty env = 
->  if null (lookupValue f env) {-|| null (qualLookupValue (qualifyWith m f) env) -} 
->  then bindFun m f n ty env
->  else env
+>   maybe env id $ tryBindFun m f n ty env
 
 \end{verbatim}
 The function \texttt{expandType} expands all type synonyms in a type
