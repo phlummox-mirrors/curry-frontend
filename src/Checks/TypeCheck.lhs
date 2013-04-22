@@ -1430,7 +1430,7 @@ unambiguously refers to the local definition.
 > bindFunOnce :: ModuleIdent -> Ident -> Int -> TypeScheme
 >                 -> ValueEnv -> ValueEnv
 > bindFunOnce m f n ty env = 
->  if null $ lookupValue f env
+>  if null (lookupValue f env) || null (qualLookupValue (qualifyWith m f) env) 
 >  then bindFun m f n ty env
 >  else env
 
