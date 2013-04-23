@@ -53,14 +53,14 @@ testF3 x = testF4 x
 testF4 x = testF1 x
 
 
-{-
+
 testG1 x = fun x && testG2 x
 
 testG2 x =
   let testH1 x = fun x && testH2 x
       testH2 x = fun3 x x && testH1 x
   in fun3 x x && testG1 x
-  -}
+ 
 
 
 testI1 x y = fun x && testI2 x && fun2 y

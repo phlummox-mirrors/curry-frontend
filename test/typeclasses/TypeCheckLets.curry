@@ -35,4 +35,5 @@ test4 x y z = [fun x && a && fun b | let a = fun3 y y
 testDo12 x y z = do
   let a = fun3 y y
       b = fun5 z
+      c v = fun2 v
   return (fun x && a && fun b)

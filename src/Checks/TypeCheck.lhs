@@ -61,9 +61,9 @@ type annotation is present.
 > ($-$) :: Doc -> Doc -> Doc
 > x $-$ y = x $$ space $$ y
 
-> trace = flip const
-> -- trace = Dbg.trace
-> trace2 = Dbg.trace
+> -- trace = flip const
+> trace = Dbg.trace
+> -- trace2 = Dbg.trace
 
 \end{verbatim}
 Type checking proceeds as follows. First, the type constructor
@@ -448,6 +448,7 @@ either one of the basic types or \texttt{()}.
 >       types  = map (subst theta) tysRhs
 >       cxs' = map (substContext theta) cxs
 >       dsWithCxsAndTys = zip3 cxs' ds types
+>       nonLocalContexts = map (uncurry notLocal) $ zip cxs' types
 >   -- pass the inferred types to genDecl so that the contexts can be
 >   -- renamed properly
 >   mapM_ (genDecl (fvEnv (subst theta tyEnv0)) theta) dsWithCxsAndTys
@@ -455,7 +456,7 @@ either one of the basic types or \texttt{()}.
 >   err <- hasError
 >   case err of
 >     -- break fix point iteration if there are errors
->     True -> return $ concat cxs
+>     True -> return $ concat nonLocalContexts
 >     False -> do
 >       -- continue (no errors encountered)
 >       let newCxs = map Set.fromList cxs'
@@ -463,8 +464,16 @@ either one of the basic types or \texttt{()}.
 >         True -> tcFixPointIter ds newCxs
 >         False -> -- do NOT return final contexts! 
 >                  -- TODO: return cxs or cxs' (or doesn't matter?)
->                  return $ concat cxs
+>                  return $ concat nonLocalContexts
 
+> notLocal :: BT.Context -> Type -> BT.Context
+> notLocal cxs ty = 
+>   concatMap notLocal' cxs
+>   where
+>   notLocal' (qid, cty) = 
+>     if Set.isSubsetOf (Set.fromList $ typeVars cty) (Set.fromList $ typeVars ty) 
+>     then []
+>     else [(qid, cty)]
 
 > --tcDeclGroup m tcEnv _ [ForeignDecl p cc _ f ty] =
 > --  tcForeign m tcEnv p cc f ty
@@ -602,7 +611,7 @@ signature the declared type must be too general.
 >       mapping' = map (\(n, n2) -> (n, TypeVariable n2)) mapping
 >       shiftedContext = substContext (listToSubst mapping') cx
 >       sigma = sigma0 `constrainBy` shiftedContext
->       ambTVs = ambiguousTypeVars shiftedContext
+>       ambTVs = [] -- ambiguousTypeVars shiftedContext
 >   unless (null $ ambTVs) $ report (errAmbiguousTypeVars v ambTVs)  
 >   case lookupTypeSig v sigs of
 >     Nothing    -> modifyValueEnv $ rebindFun m v arity sigma
@@ -1045,7 +1054,7 @@ because of possibly multiple occurrences of variables.
 >     (cx, ty) <- tcExpr p e
 >     -- We gather all contexts, also in the case that a declaration isn't 
 >     -- used at all (neither directly nor indirectly). But whether this 
->     -- is the case is not trivially determinable (TODO!).  
+>     -- is the case is not trivially determinable (TODO!).
 >     checkSkolems p (text "Expression:" <+> ppExpr 0 e) tyEnv0 (cx ++ cxs, ty)
 > tcExpr p (Do sts e) = do
 >     tyEnv0 <- getValueEnv
