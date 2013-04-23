@@ -890,17 +890,19 @@ because of possibly multiple occurrences of variables.
 > tcCondExprs tyEnv0 es = do
 >   gty <- if length es > 1 then return $ noContext boolType
 >                           else liftM noContext $ freshConstrained [successType,boolType]
->   ty <- freshConstrTypeVar
->   tcCondExprs' gty ty es
->   where tcCondExprs' _   ty [] = return ty
->         tcCondExprs' gty ty (e1:es1) =
->           tcCondExpr gty ty e1 >> tcCondExprs' gty ty es1
->         tcCondExpr gty ty (CondExpr p g e) = do
->           tcExpr p g >>=
->             unify p "guard" (ppExpr 0 g) gty >>
->             tcExpr p e >>=
->             checkSkolems p (text "Expression:" <+> ppExpr 0 e) tyEnv0 >>=
->             unify p "guarded expression" (ppExpr 0 e) ty
+>   cty <- freshConstrTypeVar
+>   tcCondExprs' gty cty [] es
+>   where tcCondExprs' _ (_, ty) cx [] = return (cx, ty)
+>         tcCondExprs' gty cty cx (e1:es1) = do
+>           cx' <- tcCondExpr gty cty e1
+>           tcCondExprs' gty cty (cx ++ cx') es1
+>         tcCondExpr gty cty@(_cx, _) (CondExpr p g e) = do
+>           cty1@(cx1, _) <- tcExpr p g
+>           unify p "guard" (ppExpr 0 g) gty cty1
+>           cty2          <- tcExpr p e
+>           cty3@(cx3, _) <- checkSkolems p (text "Expression:" <+> ppExpr 0 e) tyEnv0 cty2
+>           unify p "guarded expression" (ppExpr 0 e) cty cty3
+>           return (cx1 ++ cx3)
 
 > tcExpr :: Position -> Expression -> TCM ConstrType
 > tcExpr _ (Literal     l) = tcLiteral l
