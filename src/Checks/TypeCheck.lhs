@@ -61,8 +61,8 @@ type annotation is present.
 > ($-$) :: Doc -> Doc -> Doc
 > x $-$ y = x $$ space $$ y
 
-> trace = flip const
-> -- trace = Dbg.trace
+> -- trace = flip const
+> trace = Dbg.trace
 > trace2 = flip const -- Dbg.trace
 > trace3 = Dbg.trace
 
@@ -86,10 +86,12 @@ The type checker returns the resulting type constructor and type environments.
 >     bindLabels
 >     bindClassMethods cEnv
 >     _ <- tcDecls vds
-
+>
 >     cEnv' <- getClassEnv
 >     vEnv <- getValueEnv
 >     checkNoEqualClassMethodAndFunctionNames vEnv cEnv'
+> 
+>     checkForAmbiguousContexts vds
 >   (tds, vds) = partition isTypeDecl decls
 >   initState  = TcState m tcEnv tyEnv cEnv idSubst emptySigEnv 0 []
 
@@ -646,8 +648,12 @@ signature the declared type must be too general.
 >       mapping' = map (\(n, n2) -> (n, TypeVariable n2)) mapping
 >       shiftedContext = substContext (listToSubst mapping') cx
 >       sigma = sigma0 `constrainBy` shiftedContext
->       ambTVs = [] -- ambiguousTypeVars shiftedContext
->   unless (null $ ambTVs) $ report (errAmbiguousTypeVars v ambTVs)  
+>       -- Do not check for amgiguous type variables here
+>       -- but only in global declarations after all type checking 
+>       -- has been done and ambiguous type variables have been 
+>       -- propagated to top level. The reason for this is that
+>       -- here it cannot be determined whether a variable is ambiguous
+>       -- or refers to a variable from a higher scope. 
 >   case lookupTypeSig v sigs of
 >     Nothing    -> modifyValueEnv $ rebindFun m v arity sigma
 >     Just sigTy -> do
@@ -663,8 +669,6 @@ signature the declared type must be too general.
 >     | poly' = gen lvs ty
 >     | otherwise = monoType ty
 >   eqTyScheme (ForAll _cx1 _ t1) (ForAll _cx2 _ t2) = equTypes t1 t2
->   ambiguousTypeVars :: BT.Context -> [Int]
->   ambiguousTypeVars = filter ( < 0) . concatMap (typeVars . snd)
 
 > buildTypeVarsMapping :: Type -> Type -> [(Int, Int)]
 > buildTypeVarsMapping t1 t2 = nub $ buildTypeVarsMapping' t1 t2
@@ -1655,11 +1659,10 @@ Error functions.
 > errEqualClassMethodAndFunctionNames _m f = 
 >   text "Equal class method and top level function names: " <> ppIdent f
 
-> -- TODO: position would be nice...
-> errAmbiguousTypeVars :: Ident -> [Int] -> Message
-> errAmbiguousTypeVars f _tvars 
->   = message (text "Ambiguous type variables in the context (function" 
->   <+> text (show f) <> text ")")
+> errAmbiguousTypeVarsInContext :: Position -> Ident -> [Int] -> Message
+> errAmbiguousTypeVarsInContext p f _tvars = 
+>   posMessage p (text "Ambiguous type variables in the context to function"
+>   <+> text (show f))
 
 \end{verbatim}
 The following functions implement pretty-printing for types.
@@ -1678,6 +1681,9 @@ The following functions implement pretty-printing for types.
 \end{verbatim}
 After all type checking has been done, check at last, that there are 
 no class methods with the name of one of the top level functions. 
+
+Also check that in the top level declarations there are no ambiguous type
+vars in their contexts. 
 \begin{verbatim}
 
 > checkNoEqualClassMethodAndFunctionNames :: ValueEnv -> ClassEnv -> TCM ()
@@ -1692,5 +1698,28 @@ no class methods with the name of one of the top level functions.
 >         report $ message $ errEqualClassMethodAndFunctionNames m f
 >       else return ()
 >   fst3 (x, _, _) = x
+
+
+
+> checkForAmbiguousContexts :: [Decl] -> TCM ()
+> checkForAmbiguousContexts decls = mapM_ check' (filter isFunctionDecl decls)
+>   where
+>   check' :: Decl -> TCM ()
+>   check' (FunctionDecl p f _) = do
+>     vEnv <- getValueEnv
+>     let tsc = lookupValue f vEnv
+>     case tsc of
+>       [] -> internalError "checkForAmbiguousContexts 1"
+>       [Value _ _ (ForAll cx _ _)] -> do
+>          let ambiguous = ambiguousTypeVars cx
+>          case null $ ambiguous of
+>            True -> return ()
+>            False -> report $ errAmbiguousTypeVarsInContext p f ambiguous
+>       _ -> return ()
+>   check' _ = internalError "checkForAmbiguousContexts 3"
+>   ambiguousTypeVars :: BT.Context -> [Int]
+>   ambiguousTypeVars = filter ( < 0) . concatMap (typeVars . snd)
+
+
 
 \end{verbatim}
