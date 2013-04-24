@@ -27,6 +27,15 @@ test5 x = fun x
 testA :: (C a, D b) => a -> a -> b -> Bool
 testA = error ""
 
+testA2 :: a -> a -> b -> Bool
+testA2 x y z = fun3 x y
+
+testA3 :: a -> a
+testA3 x = fun5 x
+
+testA4 :: (C a) => a -> a
+testA4 x = fun5 x
+
 testB = testA
 
 testC :: (C a, D b) => b -> a -> Bool
