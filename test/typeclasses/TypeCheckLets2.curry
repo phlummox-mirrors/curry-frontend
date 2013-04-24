@@ -18,6 +18,7 @@ class G a where
 class H a where
   fun7 :: a -> a -> Bool
 
+
 testG1 x = error ""
 
 testG2 x =
@@ -77,3 +78,9 @@ testS2 x =
       testT2 x = fun7 x x && testT1 x
   in fun3 x x && testS1 x
 
+
+testU1 x = error ""
+
+testU2 x =
+  let testV1 y = fun x && fun3 y y
+  in testU1 x

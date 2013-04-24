@@ -61,9 +61,10 @@ type annotation is present.
 > ($-$) :: Doc -> Doc -> Doc
 > x $-$ y = x $$ space $$ y
 
-> -- trace = flip const
-> trace = Dbg.trace
-> -- trace2 = Dbg.trace
+> trace = flip const
+> -- trace = Dbg.trace
+> trace2 = flip const -- Dbg.trace
+> trace3 = Dbg.trace
 
 \end{verbatim}
 Type checking proceeds as follows. First, the type constructor
@@ -160,6 +161,12 @@ generating fresh type variables.
 
 > hasError :: TCM Bool
 > hasError = liftM (not . null) (S.gets errors)
+
+> getOnlyNextId :: TCM Int
+> getOnlyNextId = S.gets nextId
+
+> resetNextId :: Int -> TCM ()
+> resetNextId n = S.modify $ \s -> s { nextId = n}
 
 \end{verbatim}
 \paragraph{Defining Types}
@@ -430,10 +437,17 @@ either one of the basic types or \texttt{()}.
 > tcDeclGroup [ExternalDecl      _ fs] = mapM_ tcExternal fs >> return BT.emptyContext
 > tcDeclGroup [FreeDecl          _ vs] = mapM_ tcFree     vs >> return BT.emptyContext
 > tcDeclGroup ds                       = do
->   tcFixPointIter ds (replicate (length ds) Set.empty)
+>   n <- getOnlyNextId
+>   theta <- getTypeSubst
+>   oldValEnv <- getValueEnv
+>   tcFixPointIter ds (replicate (length ds) Set.empty) n theta oldValEnv
 
-> tcFixPointIter :: [Decl] -> [Set.Set (QualIdent, Type)] -> TCM BT.Context 
-> tcFixPointIter ds oldCxs = do
+> tcFixPointIter :: [Decl] -> [Set.Set (QualIdent, Type)] -> Int -> TypeSubst -> ValueEnv -> TCM BT.Context 
+> tcFixPointIter ds oldCxs n t oldVEnv = do
+>   -- reset state
+>   resetNextId n
+>   modifyTypeSubst (const t)
+>
 >   tyEnv0 <- getValueEnv
 >   ctysLhs <- mapM tcDeclLhs ds
 >   ctysRhs <- mapM (tcDeclRhs tyEnv0) ds
@@ -461,7 +475,20 @@ either one of the basic types or \texttt{()}.
 >       -- continue (no errors encountered)
 >       let newCxs = map Set.fromList cxs'
 >       case newCxs /= oldCxs of
->         True -> tcFixPointIter ds newCxs
+>         True -> do
+>           -- Reset the value environment. Reset everything except the
+>           -- type schemes for the members of the declaration group, because
+>           -- over these the fix point iteration is done
+>           currentEnv <- getValueEnv
+>           modifyValueEnv (const oldVEnv)
+>           let declGroupMembers = bv ds
+>               -- lookup each element of the declaration group
+>               -- (qualified lookup is not needed because
+>               -- {re}bindFun stores everything also as unqualified (?))
+>               valInfos = map (flip lookupValue currentEnv) declGroupMembers
+>           -- add each element of the declaration group
+>           mapM_ modifyEnv' valInfos 
+>           tcFixPointIter ds newCxs n t oldVEnv
 >         False -> -- do NOT return final contexts! 
 >                  -- TODO: return cxs or cxs' (or doesn't matter?)
 >                  return $ concat nonLocalContexts
@@ -474,6 +501,14 @@ either one of the basic types or \texttt{()}.
 >     if Set.isSubsetOf (Set.fromList $ typeVars cty) (Set.fromList $ typeVars ty) 
 >     then []
 >     else [(qid, cty)]
+
+> modifyEnv' :: [ValueInfo] -> TCM ()
+> modifyEnv' [] = return ()
+> modifyEnv' [Value qid n tsc] = do
+>   m <- getModuleIdent
+>   modifyValueEnv $ \env -> 
+>     bindFun m (unqualify qid) n tsc env
+> modifyEnv' _ = internalError "TypeCheck modifyEnv'"
 
 > --tcDeclGroup m tcEnv _ [ForeignDecl p cc _ f ty] =
 > --  tcForeign m tcEnv p cc f ty
@@ -644,7 +679,9 @@ signature the declared type must be too general.
 > buildTypeVarsMapping' (TypeSkolem _) (TypeSkolem _) = []
 > buildTypeVarsMapping' (TypeRecord _ _) (TypeRecord _ _)
 >   = internalError "buildTypeVarsMapping TODO"
-> buildTypeVarsMapping' _ _ = internalError "types do not match in buildTypeVarsMapping"
+> buildTypeVarsMapping' t1 t2 = 
+>   internalError ("types do not match in buildTypeVarsMapping\n" ++ show t1 
+>     ++ "\n" ++ show t2)
 
 > tcEquation :: ValueEnv -> Equation -> TCM ConstrType
 > tcEquation tyEnv0 (Equation p lhs rhs) = do
