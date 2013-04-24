@@ -28,40 +28,44 @@ test1 x = let 1 = fun2 x in x
 
 test2 x = let -1 = fun2 x in x
 
-test3 x = let y3 = fun2 x in x
+test3 x = let y3 = fun2 x in y3
 
-test4 x = let Just y4 = Just $ fun2 x in x
+test4 x = let Just y4 = Just $ fun2 x in y4
 
-test5 x = let y5a :>: y5b = fun2 x :>: fun4 x in x
+test5a x = let y5a :>: y5b = fun2 x :>: fun4 x in x
+test5b x = let y5a :>: y5b = fun2 x :>: fun4 x in y5a
+test5c x = let y5a :>: y5b = fun2 x :>: fun4 x in y5b
+test5d x = let y5a :>: y5b = fun2 x :>: fun4 x in (y5a, y5b)
 
-test6 x = let (y6) = fun2 x in x
+test6 x = let (y6) = fun2 x in y6
 
--- test6b x = let () = fun2 x in x
+test6b x = let () = fun2 x in x
 
-test7 x = let (y7a, y7b) = (fun2 x, fun4 x) in x
+test7 x = let (y7a, y7b) = (fun2 x, fun4 x) in y7a
 
 
-test8a x = let [y8a1, y8a2, y8a3] = [fun2 x, fun4 x, fun5 x] in x
+test8a x = let [y8a1, y8a2, y8a3] = [fun2 x, fun4 x, fun5 x] in y8a1
 
 test8b x = let [] = [] in x
 
-test8c x = let [y8c] = [fun2 x] in x
+test8c x = let [y8c] = [fun2 x] in y8c
 
-test8d x = let [y8a1, y8a2, y8a3] = [True, False, True] in x
+test8d x = let [y8a1, y8a2, y8a3] = [True, False, True] in y8a1
 
-test9 x = let y9@(y9a, y9b) = (fun2 x, fun4 x) in x
+test9a x = let y9@(y9a, y9b) = (fun2 x, fun4 x) in y9
+test9b x = let y9@(y9a, y9b) = (fun2 x, fun4 x) in y9a
 
-test10 x = let ~[y10] = [fun2 x] in x
+test10 x = let ~[y10] = [fun2 x] in y10
 
 
 
--- test11 x = let Just (x1, [Left x2, Right x3], x4@(x5, x6, x7)) = Just (fun2 x, [Left $ fun4 x, Right $ fun5 x], (fun x, fun2 x, 1)) in x
+-- test11 x = let Just (x1, [Left x2, Right x3], x4@(x5, x6, x7)) = Just (fun2 x, [Left $ fun4 x, Right $ fun5 x], (fun x, fun2 x, 1)) in x1
 
-test12 x = let Just (x1, x2) = Just (fun2 x, fun4 x) in x
+test12 x = let Just (x1, x2) = Just (fun2 x, fun4 x) in x1
 
--- test13 x = let Just (x1, [Left x2, Right x3]) = Just (fun2 x, [Left $ fun4 x, Right $ fun4 x]) in x
+-- test13 x = let Just (x1, [Left x2, Right x3]) = Just (fun2 x, [Left $ fun4 x, Right $ fun4 x]) in x1
 
-test14 x = let Just (x1, x4@(Left x2, x3)) = Just (fun2 x, (Left $ fun4 x, fun5 x)) in x
+test14 x = let Just (x1, x4@(Left x2, x3)) = Just (fun2 x, (Left $ fun4 x, fun5 x)) in x2
 
 
 

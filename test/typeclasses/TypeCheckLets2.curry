@@ -19,6 +19,10 @@ class H a where
   fun7 :: a -> a -> Bool
 
 
+test y = let f x = fun2 x in f
+test' y = let f x = fun2 y in f
+test'' y = let Just x = Just $ fun2 y in x
+
 testG1 x = error ""
 
 testG2 x =

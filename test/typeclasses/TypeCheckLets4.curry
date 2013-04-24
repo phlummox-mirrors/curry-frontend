@@ -26,11 +26,19 @@ testA2 x =
       Just y = Just $ fun4 x
   in fun3 x x && testA1 x
 
- -}
+  -}
 
 testB1 x =
   let Just y = Just $ fun2 x
-  in x
+  in y
+
+testB3 x =
+  let y = fun2 x
+  in y
+
+testB2 x =
+  let Just y = Just $ fun2 x
+  in 'c'
 
 
 testC1 x =
@@ -40,3 +48,5 @@ testC1 x =
 testD1 x =
   let ('c', 1, y, z) = ('c', 1, fun2 x, fun3 x x)
   in x
+
+
