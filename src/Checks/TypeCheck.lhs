@@ -629,7 +629,13 @@ signature the declared type must be too general.
 >   genVar True lvs theta arity cx inferredTy f
 >   where arity = Just $ length $ snd $ flatLhs lhs
 > genDecl lvs theta (cx, PatternDecl  _ t   _, inferredTy) = 
->   mapM_ (genVar False lvs theta Nothing cx inferredTy) (bv t)
+>   mapM_ 
+>    (\f -> do 
+>      let inferredTy' = case searchType f t inferredTy of 
+>                          [x] -> x
+>                          _   -> internalError "genDecl/searchType" 
+>      genVar False lvs theta Nothing cx inferredTy' f) 
+>   (bv t)
 > genDecl _ _ _ = internalError "TypeCheck.genDecl: no pattern match"
 
 > genVar :: Bool -> Set.Set Int -> TypeSubst -> Maybe Int -> BT.Context 
@@ -686,6 +692,40 @@ signature the declared type must be too general.
 > buildTypeVarsMapping' t1 t2 = 
 >   internalError ("types do not match in buildTypeVarsMapping\n" ++ show t1 
 >     ++ "\n" ++ show t2)
+
+> -- This function is a helper function that does the following: 
+> -- In the given pattern it searches the given type variable, and while
+> -- descending into the patterns it descends into the inferred type as well 
+> -- (third argument). Thus it finds out which type the identifier has. This
+> -- is needed for genDecl, because in pattern declarations we have to know
+> -- the inferred types of the variables, but from the typechecker we only get 
+> -- the inferred type for the whole pattern. 
+> -- As patterns are linear, the result list should always contain exactly
+> -- one element. 
+> searchType :: Ident -> Pattern -> Type -> [Type]
+> searchType x (VariablePattern x') t | x == x'   = [t]
+>                                     | otherwise = []
+> searchType _ (LiteralPattern _) _t = []
+> searchType x (NegativePattern x' _) t | x == x'   = [t]
+>                                       | otherwise = [] 
+> searchType x (ConstructorPattern _ ps) (TypeConstructor _ ts)
+>   = concatMap (uncurry $ searchType x) $ zip ps ts
+> searchType x (InfixPattern p1 _ p2) (TypeConstructor _ [t1, t2])
+>   = searchType x p1 t1 ++ searchType x p2 t2
+> searchType x (ParenPattern p) t = searchType x p t
+> searchType x (TuplePattern _ ps) (TypeConstructor _ ts)
+>   = concatMap (uncurry $ searchType x) $ zip ps ts
+> searchType x (ListPattern _ ps) (TypeConstructor _ [t])
+>   = concatMap (uncurry $ searchType x) $ zip ps (replicate (length ps) t)
+> searchType x (AsPattern x' p) t | x == x'   = [t]
+>                                 | otherwise = searchType x p t
+> searchType x (LazyPattern _ p) t = searchType x p t
+> -- TODO: unsupported patterns (FunctionPattern, InfixFuncPattern: where
+> -- do they come from? RecordPattern: those are buggy and not testable)
+> searchType x (FunctionPattern _ ps) _ = internalError "searchType FunctionPattern not supported"
+> searchType x (InfixFuncPattern p1 _ p2) _ = internalError "searchType InfixFuncPattern not supported"
+> searchType x (RecordPattern _ _) _ = internalError "searchType RecordPattern not supported"
+> searchType x _ _ = internalError "searchType no pattern match"
 
 > tcEquation :: ValueEnv -> Equation -> TCM ConstrType
 > tcEquation tyEnv0 (Equation p lhs rhs) = do
