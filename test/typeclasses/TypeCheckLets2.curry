@@ -84,3 +84,14 @@ testU1 x = error ""
 testU2 x =
   let testV1 y = fun x && fun3 y y
   in testU1 x
+
+
+
+testW1 x = fun x && testW2 x
+
+testW2 x =
+  let testR1 x =   let testX1 x = fun x && testX2 x
+                       testX2 x = fun3 x x && testX1 x in fun x && testR2 x
+      testR2 x = fun3 x x && testR1 x
+  in fun3 x x && testW1 x
+
