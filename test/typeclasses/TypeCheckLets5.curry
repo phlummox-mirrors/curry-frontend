@@ -58,25 +58,31 @@ test9b x = let y9@(y9a, y9b) = (fun2 x, fun4 x) in y9a
 test10 x = let ~[y10] = [fun2 x] in y10
 
 
+-- combinations
 
--- test11 x = let Just (x1, [Left x2, Right x3], x4@(x5, x6, x7)) = Just (fun2 x, [Left $ fun4 x, Right $ fun5 x], (fun x, fun2 x, 1)) in x1
+test11 x = let Just (x1, [Left x2, Right x3], x4@(x5, x6, x7)) = Just (fun2 x, [Left $ fun4 x, Right $ fun5 x], (fun x, fun2 x, 1)) in x1
+
+test11b x = let y = Just (fun2 x, [Left $ fun4 x, Right $ fun5 x], (fun x, fun2 x, 1)) in y
 
 test12 x = let Just (x1, x2) = Just (fun2 x, fun4 x) in x1
 
--- test13 x = let Just (x1, [Left x2, Right x3]) = Just (fun2 x, [Left $ fun4 x, Right $ fun4 x]) in x1
+test13 x = let Just (x1, [Left x2, Right x3]) = Just (fun2 x, [Left $ fun4 x, Right $ fun4 x]) in x1
 
 test14 x = let Just (x1, x4@(Left x2, x3)) = Just (fun2 x, (Left $ fun4 x, fun5 x)) in x2
 
 
+test15 x = let  [Left x2, Right x3] =  [Left $ fun4 x, Right $ fun5 x] in x2
+
+test15b x y = let  [Left x2, Right x3] =  [Left $ fun4 x, Right $ fun5 y] in (x2, x3)
+
+
+test16 x = let  [Left x2] =  [Left $ fun4 x] in x2
+
+test17 x = [Left $ fun4 x, Right $ fun5 x]
 
 
 
-
-
-
-
-
-
+test18 x = let x2 = fun4 x in x2
 
 
 

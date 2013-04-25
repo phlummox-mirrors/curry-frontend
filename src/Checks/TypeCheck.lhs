@@ -32,6 +32,7 @@ type annotation is present.
 > import qualified Debug.Trace as Dbg
 > -- import Data.List (union)
 > import qualified Data.Set as Set
+> import Data.Maybe
 
 > import Curry.Base.Ident
 > import Curry.Base.Position
@@ -444,7 +445,8 @@ either one of the basic types or \texttt{()}.
 >   oldValEnv <- getValueEnv
 >   tcFixPointIter ds (replicate (length ds) Set.empty) n theta oldValEnv
 
-> tcFixPointIter :: [Decl] -> [Set.Set (QualIdent, Type)] -> Int -> TypeSubst -> ValueEnv -> TCM BT.Context 
+> tcFixPointIter :: [Decl] -> [Set.Set (QualIdent, Type)] -> Int -> TypeSubst 
+>                -> ValueEnv -> TCM BT.Context 
 > tcFixPointIter ds oldCxs n t oldVEnv = do
 >   -- reset state
 >   resetNextId n
@@ -754,11 +756,10 @@ signature the declared type must be too general.
 >   (cx, ty) <- case lookupTypeSig v sigs of
 >     Nothing -> freshConstrTypeVar
 >     Just t  -> expandPolyType t >>= inst
->   tyEnv <- getValueEnv
 >   m  <- getModuleIdent
->   maybe (modifyValueEnv (bindFunOnce m v (arrowArity ty) (monoType' (cx, ty))) >> return (cx, ty))
->         (\ (ForAll cx0 _ t) -> return (cx0, t))
->         (sureVarType v tyEnv)
+>   modifyValueEnv (bindFunOnce m v (arrowArity ty) (monoType' (cx, ty)))
+>   return (cx, ty)
+> 
 > tcPattern p t@(ConstructorPattern c ts) = do
 >   m     <- getModuleIdent
 >   tyEnv <- getValueEnv
