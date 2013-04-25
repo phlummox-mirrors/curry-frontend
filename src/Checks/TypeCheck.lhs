@@ -763,43 +763,46 @@ signature the declared type must be too general.
 >   m     <- getModuleIdent
 >   tyEnv <- getValueEnv
 >   ty <- skol $ constrType m c tyEnv
->   liftM noContext $ unifyArgs (ppPattern 0 t) ts ty
->   where unifyArgs _   []       ty = return ty
->         unifyArgs doc (t1:ts1) (TypeArrow ty1 ty2) =
->           tcPattern p t1 >>=
+>   unifyArgs (ppPattern 0 t) ts ty []
+>   where unifyArgs _   []       ty cx = return (cx, ty)
+>         unifyArgs doc (t1:ts1) (TypeArrow ty1 ty2) cx = do
+>           cty1@(cx1, _) <- tcPattern p t1
 >           unify p "pattern" (doc $-$ text "Term:" <+> ppPattern 0 t1)
->                 (noContext ty1) >>
->           unifyArgs doc ts1 ty2
->         unifyArgs _ _ _ = internalError "TypeCheck.tcPattern"
+>                 (noContext ty1) cty1
+>           unifyArgs doc ts1 ty2 (cx ++ cx1)
+>         unifyArgs _ _ _ _ = internalError "TypeCheck.tcPattern"
 > tcPattern p t@(InfixPattern t1 op t2) = do
 >   m     <- getModuleIdent
 >   tyEnv <- getValueEnv
 >   ty <- skol (constrType m op tyEnv)
->   liftM noContext $ unifyArgs (ppPattern 0 t) [t1,t2] ty
->   where unifyArgs _ [] ty = return ty
->         unifyArgs doc (t':ts') (TypeArrow ty1 ty2) =
->           tcPattern p t' >>=
+>   unifyArgs (ppPattern 0 t) [t1,t2] ty []
+>   where unifyArgs _ [] ty cx = return (cx, ty)
+>         unifyArgs doc (t':ts') (TypeArrow ty1 ty2) cx = do
+>           cty1@(cx1, _) <- tcPattern p t' 
 >           unify p "pattern" (doc $-$ text "Term:" <+> ppPattern 0 t')
->                 (noContext ty1) >>
->           unifyArgs doc ts' ty2
->         unifyArgs _ _ _ = internalError "TypeCheck.tcPattern"
+>                 (noContext ty1) cty1
+>           unifyArgs doc ts' ty2 (cx ++ cx1)
+>         unifyArgs _ _ _ _ = internalError "TypeCheck.tcPattern"
 > tcPattern p (ParenPattern t) = tcPattern p t
 > tcPattern p (TuplePattern _ ts)
 >  | null ts   = return $ noContext unitType
->  | otherwise = liftM (noContext . tupleType) $ mapM (\t -> liftM getType (tcPattern p t)) ts
+>  | otherwise = do
+>      ctys <- mapM (tcPattern p) ts
+>      let ty = tupleType $ (map snd ctys)
+>      return (concatMap fst ctys, ty) 
 > tcPattern p t@(ListPattern _ ts) =
->   freshTypeVar >>= flip (tcElems (ppPattern 0 t)) ts
->   where tcElems _ ty [] = return (noContext $ listType ty)
->         tcElems doc ty (t1:ts1) =
->           tcPattern p t1 >>=
+>   freshTypeVar >>= flip (tcElems [] (ppPattern 0 t)) ts
+>   where tcElems cx _ ty [] = return (cx, listType ty)
+>         tcElems cx doc ty (t1:ts1) = do
+>           cty1@(cx1, _) <- tcPattern p t1
 >           unify p "pattern" (doc $-$ text "Term:" <+> ppPattern 0 t1)
->                 (noContext ty) >>
->           tcElems doc ty ts1
+>                 (noContext ty) cty1
+>           tcElems (cx ++ cx1) doc ty ts1
 > tcPattern p t@(AsPattern v t') = do
->   ty1 <- tcPattern p (VariablePattern v)
->   ty2 <- tcPattern p t'
->   unify p "pattern" (ppPattern 0 t) ty1 ty2
->   return ty1
+>   cty1@(cx1, ty1) <- tcPattern p (VariablePattern v)
+>   cty2@(cx2, _  ) <- tcPattern p t'
+>   unify p "pattern" (ppPattern 0 t) cty1 cty2
+>   return (cx1 ++ cx2, ty1)
 > tcPattern p (LazyPattern _ t) = tcPattern p t
 > tcPattern p t@(FunctionPattern f ts) = do
 >   m     <- getModuleIdent
