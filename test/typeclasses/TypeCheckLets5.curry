@@ -75,6 +75,7 @@ test15 x = let  [Left x2, Right x3] =  [Left $ fun4 x, Right $ fun5 x] in x2
 
 test15b x y = let  [Left x2, Right x3] =  [Left $ fun4 x, Right $ fun5 y] in (x2, x3)
 
+test15c x y = let x2 = fun4 x; x3 = fun5 y in (x2, x3)
 
 test16 x = let  [Left x2] =  [Left $ fun4 x] in x2
 

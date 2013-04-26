@@ -125,3 +125,5 @@ testH z =
       Just y = Just $ fun4 x
   in (x, y)
 
+x_ = fun2 y_
+y_ = fun4 x_
