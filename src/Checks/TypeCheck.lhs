@@ -780,10 +780,11 @@ signature the declared type must be too general.
 >   (cx, ty) <- case lookupTypeSig v sigs of
 >     Nothing -> freshConstrTypeVar
 >     Just t  -> expandPolyType t >>= inst
+>   tyEnv <- getValueEnv
 >   m  <- getModuleIdent
->   modifyValueEnv (bindFunOnce m v (arrowArity ty) (monoType' (cx, ty)))
->   return (cx, ty)
-> 
+>   maybe (modifyValueEnv (bindFunOnce m v (arrowArity ty) (monoType' (cx, ty))) >> return (cx, ty))
+>         (\ (ForAll cx0 _ t) -> return (cx0, t))
+>         (sureVarType v tyEnv)
 > tcPattern p t@(ConstructorPattern c ts) = do
 >   m     <- getModuleIdent
 >   tyEnv <- getValueEnv
