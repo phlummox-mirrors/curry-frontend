@@ -748,10 +748,10 @@ signature the declared type must be too general.
 > searchType x (LazyPattern _ p) t = searchType x p t
 > -- TODO: unsupported patterns (FunctionPattern, InfixFuncPattern: where
 > -- do they come from? RecordPattern: those are buggy and not testable)
-> searchType x (FunctionPattern _ ps) _ = internalError "searchType FunctionPattern not supported"
-> searchType x (InfixFuncPattern p1 _ p2) _ = internalError "searchType InfixFuncPattern not supported"
-> searchType x (RecordPattern _ _) _ = internalError "searchType RecordPattern not supported"
-> searchType x _ _ = internalError "searchType no pattern match"
+> searchType _x (FunctionPattern _ _ps) _ = internalError "searchType FunctionPattern not supported"
+> searchType _x (InfixFuncPattern _p1 _ _p2) _ = internalError "searchType InfixFuncPattern not supported"
+> searchType _x (RecordPattern _ _) _ = internalError "searchType RecordPattern not supported"
+> searchType _x _ _ = internalError "searchType no pattern match"
 
 > tcEquation :: ValueEnv -> Equation -> TCM ConstrType
 > tcEquation tyEnv0 (Equation p lhs rhs) = do
