@@ -84,7 +84,7 @@ test17 x = [Left $ fun4 x, Right $ fun5 x]
 
 test18 x = let x2 = fun4 x in x2
 
-
+test19 x = let y = fun2 y in y
 
 
 

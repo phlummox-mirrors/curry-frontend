@@ -24,6 +24,11 @@ testLet2 x y z =
   let a = fun3 y y
       b = fun5 z
   in fun x && a && fun b
+
+testWhere2 x y z =
+  fun x && a && fun b
+  where a = fun3 y y
+        b = fun5 z
   
 -- b z = fun5 z
 
@@ -33,7 +38,7 @@ test4 x y z = [fun x && a && fun b | let a = fun3 y y
 
 
 testDo12 x y z = do
-  let a = fun3 y y
-      b = fun5 z
-      c v = fun2 v
-  return (fun x && a && fun b)
+  let ad = fun3 y y
+      bd = fun5 z
+      cd v = fun2 v
+  return (fun x && ad && fun bd)

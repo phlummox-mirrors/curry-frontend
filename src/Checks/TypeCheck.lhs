@@ -62,8 +62,8 @@ type annotation is present.
 > ($-$) :: Doc -> Doc -> Doc
 > x $-$ y = x $$ space $$ y
 
-> -- trace = flip const
-> trace = Dbg.trace
+> trace = flip const
+> -- trace = Dbg.trace
 > trace2 = flip const -- Dbg.trace
 > trace3 = Dbg.trace
 
@@ -443,11 +443,11 @@ either one of the basic types or \texttt{()}.
 >   n <- getOnlyNextId
 >   theta <- getTypeSubst
 >   oldValEnv <- getValueEnv
->   tcFixPointIter ds (replicate (length ds) Set.empty) n theta oldValEnv
+>   tcFixPointIter ds (replicate (length ds) Set.empty) n theta oldValEnv Nothing
 
 > tcFixPointIter :: [Decl] -> [Set.Set (QualIdent, Type)] -> Int -> TypeSubst 
->                -> ValueEnv -> TCM BT.Context 
-> tcFixPointIter ds oldCxs n t oldVEnv = do
+>                -> ValueEnv -> (Maybe (Set.Set Int)) -> TCM BT.Context 
+> tcFixPointIter ds oldCxs n t oldVEnv fEnv = do
 >   -- reset state
 >   resetNextId n
 >   modifyTypeSubst (const t)
@@ -467,10 +467,13 @@ either one of the basic types or \texttt{()}.
 >       cxs' = map (substContext theta) cxs
 >       dsWithCxsAndTys = zip3 cxs' ds types
 >       nonLocalContexts = map (uncurry notLocal) $ zip cxs' types
->   -- pass the inferred types to genDecl so that the contexts can be
->   -- renamed properly
->   mapM_ (genDecl (fvEnv (subst theta tyEnv0)) theta) dsWithCxsAndTys
->   
+>
+>   -- save/restore free environment variables of the first run of the 
+>   -- fix point iteration because these are later changed by the fix point
+>   -- iteration
+>   let firstFreeEnv = case fEnv of Nothing -> fvEnv (subst theta tyEnv0)
+>                                   Just x -> x
+> 
 >   err <- hasError
 >   case err of
 >     -- break fix point iteration if there are errors
@@ -480,6 +483,8 @@ either one of the basic types or \texttt{()}.
 >       let newCxs = map Set.fromList cxs'
 >       case newCxs /= oldCxs of
 >         True -> do
+>           -- update contexts in value environment
+>           writeContexts dsWithCxsAndTys
 >           -- Reset the value environment. Reset everything except the
 >           -- type schemes for the members of the declaration group, because
 >           -- over these the fix point iteration is done
@@ -492,10 +497,15 @@ either one of the basic types or \texttt{()}.
 >               valInfos = map (flip lookupValue currentEnv) declGroupMembers
 >           -- add each element of the declaration group
 >           mapM_ modifyEnv' valInfos 
->           tcFixPointIter ds newCxs n t oldVEnv
->         False -> -- do NOT return final contexts! 
->                  -- TODO: return cxs or cxs' (or doesn't matter?)
->                  return $ concat nonLocalContexts
+>           tcFixPointIter ds newCxs n t oldVEnv (Just firstFreeEnv)
+>         False -> do
+>           -- Establish the inferred types. 
+>           -- Pass the inferred types to genDecl so that the contexts can be
+>           -- renamed properly
+>           mapM_ (genDecl firstFreeEnv theta) dsWithCxsAndTys
+>           -- do NOT return final contexts! 
+>           -- TODO: return cxs or cxs' (or doesn't matter?)
+>           return $ concat nonLocalContexts
 
 > notLocal :: BT.Context -> Type -> BT.Context
 > notLocal cxs ty = 
@@ -513,6 +523,20 @@ either one of the basic types or \texttt{()}.
 >   modifyValueEnv $ \env -> 
 >     bindFun m (unqualify qid) n tsc env
 > modifyEnv' _ = internalError "TypeCheck modifyEnv'"
+
+> writeContexts :: [(BT.Context, Decl, Type)] -> TCM ()
+> writeContexts cs = mapM_ writeContext cs'
+>   where
+>   cs' = concatMap (\(cx, decl, ty) -> map (\d -> (cx, d, ty)) (bv decl)) cs
+>   writeContext :: (BT.Context, Ident, Type) -> TCM ()
+>   writeContext (cx, v, _ty) = do
+>     vEnv <- getValueEnv
+>     case lookupValue v vEnv of
+>       [(Value _ arity tysig)] -> do 
+>         m <- getModuleIdent
+>         let tysig' = tysig `constrainBy` cx
+>         modifyValueEnv $ rebindFun m v arity tysig'
+>       _ -> return ()
 
 > --tcDeclGroup m tcEnv _ [ForeignDecl p cc _ f ty] =
 > --  tcForeign m tcEnv p cc f ty
@@ -1137,12 +1161,12 @@ because of possibly multiple occurrences of variables.
 >                    (cxs, foldr TypeArrow ty (map getType ctys))
 > tcExpr p (Let ds e) = do
 >     tyEnv0 <- getValueEnv
->     cxs <- tcDecls ds
+>     _cxs <- tcDecls ds
 >     (cx, ty) <- tcExpr p e
->     -- We gather all contexts, also in the case that a declaration isn't 
->     -- used at all (neither directly nor indirectly). But whether this 
+>     -- Shall we gather all contexts, also in the case that a declaration isn't 
+>     -- used at all (neither directly nor indirectly)? But whether this 
 >     -- is the case is not trivially determinable (TODO!).
->     checkSkolems p (text "Expression:" <+> ppExpr 0 e) tyEnv0 (cx ++ cxs, ty)
+>     checkSkolems p (text "Expression:" <+> ppExpr 0 e) tyEnv0 (cx {-++ _cxs-}, ty)
 > tcExpr p (Do sts e) = do
 >     tyEnv0 <- getValueEnv
 >     cxs <- concatMapM (tcStmt p) sts
