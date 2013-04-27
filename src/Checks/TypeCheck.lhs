@@ -47,7 +47,7 @@ type annotation is present.
 > import Base.Types as BT
 > import Base.TypeSubst
 > import Base.Subst (listToSubst)
-> import Base.Utils (foldr2, concatMapM)
+> import Base.Utils (foldr2, concatMapM, findDouble)
 
 > import Env.TypeConstructor (TCEnv, TypeInfo (..), bindTypeInfo
 >   , qualLookupTC)
@@ -705,8 +705,16 @@ signature the declared type must be too general.
 > -- in the right type. Assumes that the types are alpha equivalent. 
 > buildTypeVarsMapping :: Type -> Type -> TypeSubst
 > buildTypeVarsMapping t1 t2 = 
->   listToSubst $ map (\(n, n2) -> (n, TypeVariable n2)) $ 
->     nub $ buildTypeVarsMapping' t1 t2
+>   if bijective theMapping
+>   then listToSubst $ map (\(n, n2) -> (n, TypeVariable n2)) $ theMapping
+>   else internalError ("mapping not bijective " ++ show theMapping)
+>   where
+>   theMapping :: [(Int, Int)]
+>   theMapping = nub $ buildTypeVarsMapping' t1 t2
+>   bijective :: [(Int, Int)] -> Bool
+>   bijective m = injective m && injective (map (\(x, y) -> (y, x)) m)
+>   injective :: [(Int, Int)] -> Bool
+>   injective m = isNothing $ findDouble (map snd m) 
 
 > buildTypeVarsMapping' :: Type -> Type -> [(Int, Int)]
 > buildTypeVarsMapping' (TypeVariable n1) (TypeVariable n2) = [(n1, n2)]
