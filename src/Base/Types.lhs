@@ -23,7 +23,7 @@ TODO: Use MultiParamTypeClasses ?
 >   , TypeScheme (..), ExistTypeScheme (..), monoType, monoType', polyType
 >   , typeSchemeToType
 >     -- * Type classes context represenatations
->   , emptyContext, Context, constrainBy, mkContext
+>   , emptyContext, Context, constrainBy, mkContext, combineContext
 >     -- * Predefined types
 >   , unitType, boolType, charType, intType, floatType, stringType
 >   , successType, listType, ioType, tupleType, primType
@@ -33,6 +33,7 @@ TODO: Use MultiParamTypeClasses ?
 > import Curry.Base.Ident
 > import Text.PrettyPrint
 > import Curry.Syntax.Pretty hiding (ppContext)
+> import Data.List
 
 \end{verbatim}
 A type is either a type variable, an application of a type constructor
@@ -250,6 +251,9 @@ quantified variables.
 > constrainBy :: TypeScheme -> Context -> TypeScheme
 > constrainBy (ForAll _cx n t) cx = (ForAll cx n t) 
 
+> combineContext :: Context -> TypeScheme -> TypeScheme
+> combineContext cx (ForAll cx' n t) = ForAll (cx ++ cx') n t
+
 > mkContext :: [(QualIdent, Type)] -> Context
 > mkContext = id 
 
@@ -345,7 +349,8 @@ Some pretty printing functions:
 
 > ppContext :: Context -> Doc
 > ppContext cx = parens $ hsep $ 
->   punctuate comma (map (\(qid, ty) -> ppQIdent qid <+> ppType ty) cx)
+>   punctuate comma (map (\(qid, ty) -> ppQIdent qid <+> ppType ty) cx')
+>   where cx' = nub cx
 
 > ppType :: Type -> Doc
 > ppType (TypeVariable n) = text (show n)
