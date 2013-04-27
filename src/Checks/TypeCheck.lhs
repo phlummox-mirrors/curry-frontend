@@ -62,9 +62,10 @@ type annotation is present.
 > ($-$) :: Doc -> Doc -> Doc
 > x $-$ y = x $$ space $$ y
 
-> trace = flip const
-> -- trace = Dbg.trace
-> trace2 = flip const -- Dbg.trace
+> -- trace = flip const
+> trace = Dbg.trace
+> trace2 = flip const
+> -- trace2 = Dbg.trace
 > trace3 = Dbg.trace
 
 \end{verbatim}
@@ -527,16 +528,23 @@ either one of the basic types or \texttt{()}.
 > writeContexts :: [(BT.Context, Decl, Type)] -> TCM ()
 > writeContexts cs = mapM_ writeContext cs'
 >   where
->   cs' = concatMap (\(cx, decl, ty) -> map (\d -> (cx, d, ty)) (bv decl)) cs
+>   cs' = concatMap unpack cs
 >   writeContext :: (BT.Context, Ident, Type) -> TCM ()
->   writeContext (cx, v, _ty) = do
+>   writeContext (cx, v, ty) = do
 >     vEnv <- getValueEnv
 >     case lookupValue v vEnv of
->       [(Value _ arity tysig)] -> do 
+>       [(Value _ arity tysig@(ForAll _ _ ty0))] -> do 
 >         m <- getModuleIdent
->         let tysig' = tysig `constrainBy` cx
+>         theta <- getTypeSubst
+>         let mapping = buildTypeVarsMapping ty (subst theta ty0)
+>         let tysig' = tysig `constrainBy` (substContext mapping cx)
 >         modifyValueEnv $ rebindFun m v arity tysig'
 >       _ -> return ()
+>   unpack (cx, FunctionDecl _ f _, ty) = [(cx, f, ty)]
+>   unpack (cx, PatternDecl _ p _, ty) = map (\d -> (cx, d, head' $ searchType d p ty)) (bv p)
+>   unpack _ = internalError "unpack"
+>   head' (x:_) = x
+>   head' [] = internalError "writeContexts unpack"
 
 > --tcDeclGroup m tcEnv _ [ForeignDecl p cc _ f ty] =
 > --  tcForeign m tcEnv p cc f ty
@@ -1039,7 +1047,15 @@ because of possibly multiple occurrences of variables.
 >       m <- getModuleIdent
 >       cEnv <- getClassEnv
 >       case qualLookupTypeSig m v sigs of
->         Just ty -> expandPolyType ty >>= inst
+>         -- Just ty -> expandPolyType ty >>= inst
+>         Just cty -> do
+>           -- add additional inferred contexts
+>           (cx0, ty0) <- expandPolyType cty >>= inst
+>           nextId' <- getOnlyNextId
+>           (icx, ity) <- getValueEnv >>= inst . (flip (funType m v) cEnv)
+>           resetNextId nextId'
+>           let mapping = buildTypeVarsMapping ity ty0
+>           return (cx0 ++ substContext mapping icx, ty0)
 >         Nothing -> getValueEnv >>= inst . (flip (funType m v) cEnv)
 >   where v' = unqualify v
 > tcExpr _ (Constructor c) = do
