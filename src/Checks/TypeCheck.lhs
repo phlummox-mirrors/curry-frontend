@@ -677,8 +677,7 @@ signature the declared type must be too general.
 >       -- so that the type variables in the inferred contexts can be
 >       -- renamed properly
 >       mapping = buildTypeVarsMapping infTy (typeSchemeToType sigma0) 
->       mapping' = map (\(n, n2) -> (n, TypeVariable n2)) mapping
->       shiftedContext = substContext (listToSubst mapping') cx
+>       shiftedContext = substContext mapping cx
 >       sigma = sigma0 `constrainBy` shiftedContext
 >       -- Do not check for amgiguous type variables here
 >       -- but only in global declarations after all type checking 
@@ -702,8 +701,12 @@ signature the declared type must be too general.
 >     | otherwise = monoType ty
 >   eqTyScheme (ForAll _cx1 _ t1) (ForAll _cx2 _ t2) = equTypes t1 t2
 
-> buildTypeVarsMapping :: Type -> Type -> [(Int, Int)]
-> buildTypeVarsMapping t1 t2 = nub $ buildTypeVarsMapping' t1 t2
+> -- | builds a mapping from type variables in the left type to the type variables
+> -- in the right type. Assumes that the types are alpha equivalent. 
+> buildTypeVarsMapping :: Type -> Type -> TypeSubst
+> buildTypeVarsMapping t1 t2 = 
+>   listToSubst $ map (\(n, n2) -> (n, TypeVariable n2)) $ 
+>     nub $ buildTypeVarsMapping' t1 t2
 
 > buildTypeVarsMapping' :: Type -> Type -> [(Int, Int)]
 > buildTypeVarsMapping' (TypeVariable n1) (TypeVariable n2) = [(n1, n2)]
