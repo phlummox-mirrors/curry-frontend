@@ -79,6 +79,8 @@ typeClassesCheck decls (ClassEnv importedClasses importedInstances _) =
       mapM_ (checkRulesInInstanceOrClass newClassEnv) instDecls
       mapM_ (checkRulesInInstanceOrClass newClassEnv) classDecls
       
+      mapM_ (checkClassNameInScope newClassEnv) instDecls
+      
       checkForDuplicateClassNames newClassEnv
       checkForDuplicateInstances newClassEnv
       
@@ -282,6 +284,14 @@ instanceTypeVarsDoNotAppearTwice (InstanceDecl p _scon cls tcon ids _)
     in if null duplTypeVars then return ()
     else CheckFailed [errDuplicateTypeVars p cls tcon (map head duplTypeVars)]
 instanceTypeVarsDoNotAppearTwice _ = internalError "instanceTypeVarsDoNotAppearTwice"
+
+-- |Checks whether the class name in an instance definition is in scope
+checkClassNameInScope :: ClassEnv -> Decl -> CheckResult ()
+checkClassNameInScope cEnv (InstanceDecl p _ cls _ _ _) = 
+  if isNothing $ lookupClass cEnv cls 
+  then CheckFailed [errClassNameNotInScope p cls]
+  else return ()
+checkClassNameInScope _ _ = internalError "checkClassNameInScope"
 
 -- ---------------------------------------------------------------------------
 -- source code transformation
@@ -514,3 +524,10 @@ errDuplicateTypeVars p cls tcon ids
      (text "Type variables appear more than once in instance definition of class"
       <+> ppQIdent cls <+> text "and type" <+> text (show tcon) <+> text ":"
       <+> (hsep $ punctuate comma $ map ppIdent ids))
+      
+      
+errClassNameNotInScope :: Position -> QualIdent -> Message
+errClassNameNotInScope p cls = posMessage p 
+  (text "Error in instance declaration: Class name not in scope: " <> text (show cls))
+
+ 
