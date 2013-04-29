@@ -51,8 +51,8 @@ thenCheck chk cont = case chk of
 
 -- |Checks class and instance declarations. TODO: removes these declarations?
 -- Builds a corresponding class environment 
-typeClassesCheck :: [Decl] -> ClassEnv -> ([Decl], ClassEnv, [Message])
-typeClassesCheck decls (ClassEnv importedClasses importedInstances _) = 
+typeClassesCheck :: ModuleIdent -> [Decl] -> ClassEnv -> ([Decl], ClassEnv, [Message])
+typeClassesCheck m decls (ClassEnv importedClasses importedInstances _) = 
   case result of 
     CheckSuccess (classes, instances) -> 
       let newDecls = concatMap (transformInstance classes) $ concatMap transformClass decls
@@ -62,7 +62,9 @@ typeClassesCheck decls (ClassEnv importedClasses importedInstances _) =
     CheckFailed errs -> (decls, ClassEnv [] [] Map.empty, errs)
   where
     (classDecls, rest1) = partition isClassDecl decls
-    (instDecls, _rest2)  = partition isInstanceDecl rest1
+    (instDecls,  rest2) = partition isInstanceDecl rest1
+    (dataDecls, _)      = partition (\x -> isDataDecl x || isNewtypeDecl x) rest2
+    allDataTypes = gatherDataTypes dataDecls m
     result = do
       mapM_ typeVariableInContext classDecls
       mapM_ classMethodSigsContainTypeVar classDecls
@@ -80,6 +82,7 @@ typeClassesCheck decls (ClassEnv importedClasses importedInstances _) =
       mapM_ (checkRulesInInstanceOrClass newClassEnv) classDecls
       
       mapM_ (checkClassNameInScope newClassEnv) instDecls
+      mapM_ (checkInstanceDataTypeCorrect allDataTypes) instDecls
       
       checkForDuplicateClassNames newClassEnv
       checkForDuplicateInstances newClassEnv
@@ -130,6 +133,14 @@ instanceDeclToInstance (InstanceDecl _ (SContext scon) cls tcon ids decls) =
     typeVars = ids, 
     rules = decls }
 instanceDeclToInstance _ = internalError "instanceDeclToInstance"
+
+-- |extract all data types/newtypes 
+gatherDataTypes :: [Decl] -> ModuleIdent -> [QualIdent]
+gatherDataTypes decls m = concatMap getDataType decls
+  where
+  getDataType (DataDecl _ d _ _) = [qualify d, qualifyWith m d]
+  getDataType (NewtypeDecl _ d _ _) = [qualify d, qualifyWith m d]
+  getDataType _ = internalError "allDataTypes"
 
 -- ---------------------------------------------------------------------------
 -- checks
@@ -292,6 +303,17 @@ checkClassNameInScope cEnv (InstanceDecl p _ cls _ _ _) =
   then CheckFailed [errClassNameNotInScope p cls]
   else return ()
 checkClassNameInScope _ _ = internalError "checkClassNameInScope"
+
+-- |Checks whether the instance data type is in scope and not a type synonym
+-- TODO: check that the arity of the data type in the instance declaration
+-- is correct
+checkInstanceDataTypeCorrect :: [QualIdent] -> Decl -> CheckResult ()
+checkInstanceDataTypeCorrect dataTypes (InstanceDecl p _ _ (QualTC qid) _ _) = 
+  if qid `elem` dataTypes
+  then return ()
+  else CheckFailed [errDataTypeNotInScope p qid] 
+checkInstanceDataTypeCorrect _dataTypes (InstanceDecl _ _ _ _ _ _) = return ()
+checkInstanceDataTypeCorrect _ _ = internalError "checkInstanceDataTypeCorrect"
 
 -- ---------------------------------------------------------------------------
 -- source code transformation
@@ -529,5 +551,11 @@ errDuplicateTypeVars p cls tcon ids
 errClassNameNotInScope :: Position -> QualIdent -> Message
 errClassNameNotInScope p cls = posMessage p 
   (text "Error in instance declaration: Class name not in scope: " <> text (show cls))
+
+
+errDataTypeNotInScope :: Position -> QualIdent -> Message
+errDataTypeNotInScope p dt = posMessage p
+  (text "Data type not in scope: " <> text (show dt))
+
 
  
