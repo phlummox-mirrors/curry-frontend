@@ -23,7 +23,7 @@ type annotation is present.
 
 > module Checks.TypeCheck (typeCheck) where
 
-> import Control.Monad (liftM, liftM2, liftM3, replicateM, unless)
+> import Control.Monad (liftM, liftM2, liftM3, replicateM, unless, when)
 > import qualified Control.Monad.State as S (State, execState, gets, modify)
 > import Data.List (nub, partition)
 > import qualified Data.Map as Map (Map, empty, insert, lookup)
@@ -444,11 +444,14 @@ either one of the basic types or \texttt{()}.
 >   n <- getOnlyNextId
 >   theta <- getTypeSubst
 >   oldValEnv <- getValueEnv
->   tcFixPointIter ds (replicate (length ds) Set.empty) n theta oldValEnv Nothing
+>   tcFixPointIter ds (replicate (length ds) Set.empty) n theta oldValEnv Nothing 0
 
 > tcFixPointIter :: [Decl] -> [Set.Set (QualIdent, Type)] -> Int -> TypeSubst 
->                -> ValueEnv -> (Maybe (Set.Set Int)) -> TCM BT.Context 
-> tcFixPointIter ds oldCxs n t oldVEnv fEnv = do
+>                -> ValueEnv -> (Maybe (Set.Set Int)) -> Int -> TCM BT.Context 
+> tcFixPointIter ds oldCxs n t oldVEnv fEnv fixPIter = do
+>   let maxFixPIter = 10000
+>   when (fixPIter > maxFixPIter) $ internalError "fix point iteration propably broken"  
+>       
 >   -- reset state
 >   resetNextId n
 >   modifyTypeSubst (const t)
@@ -498,7 +501,7 @@ either one of the basic types or \texttt{()}.
 >               valInfos = map (flip lookupValue currentEnv) declGroupMembers
 >           -- add each element of the declaration group
 >           mapM_ modifyEnv' valInfos 
->           tcFixPointIter ds newCxs n t oldVEnv (Just firstFreeEnv)
+>           tcFixPointIter ds newCxs n t oldVEnv (Just firstFreeEnv) (fixPIter + 1)
 >         False -> do
 >           -- Establish the inferred types. 
 >           -- Pass the inferred types to genDecl so that the contexts can be
