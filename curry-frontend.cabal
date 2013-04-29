@@ -94,7 +94,21 @@ Executable cymake
 Library
   hs-source-dirs:  src
   Build-Depends:   filepath
+  ghc-options: -Wall
   Exposed-Modules:
     Files.CymakePath
+    Base.Utils
   Other-Modules:
     Paths_curry_frontend
+
+
+Executable cmpPrograms
+  hs-source-dirs: src
+  Main-is:        cmpPrograms.hs
+  if flag(split-syb)
+    Build-Depends: base == 4.*, syb
+  else
+    Build-Depends: base == 3.*
+  Build-Depends:
+    curry-base == 0.3.7
+  ghc-options: -Wall
