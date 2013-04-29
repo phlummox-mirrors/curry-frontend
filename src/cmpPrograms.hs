@@ -17,7 +17,9 @@ main = do
   p2 <- liftM fromJust $ readFlat (args !! 1)
   
   case progsEqual p1 p2 of
-    True -> do putStrLn "Equal"; exitSuccess
-    False -> do putStrLn ("Not equal: " ++ show (args !! 0)); exitFailure
+    (True, _) -> do putStrLn "Equal"; exitSuccess
+    (False, cause) -> do 
+      putStrLn ("Not equal: " ++ show (args !! 0) ++ " cause: " ++ cause)
+      exitFailure
   
     
