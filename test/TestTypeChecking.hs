@@ -92,7 +92,7 @@ doCheck cEnv types =
   where
   findAndCmp :: (String, String) -> [(String, String, String)]
   findAndCmp (id0, ty0) = let
-    (Value _ _ infType) = head' $ lookupValue (mkIdent id0) (valueEnv cEnv)
+    (Value _ _ infType) = head' $ lookupValue (read id0) (valueEnv cEnv)
     infType' = show (ppTypeScheme infType)
     in if ty0 == infType'
        then []
