@@ -30,3 +30,21 @@ testITE3: (C Prelude.Char) => (0 -> Prelude.Char)
 testITE4: (C 0) => (0 -> 0)
 testITE5: (C 0, E Prelude.Bool) => (0 -> (Prelude.Bool -> 0))
 testITE6: (C 0, G 1) => (0 -> (1 -> 0))
+
+testAppl: (C 1, D 0) => (0 -> (1 -> Prelude.Bool))
+testAppl1: (C 1, D 0) => (0 -> (1 -> Prelude.Bool))
+testAppl2: (C Prelude.Char, D constr(Prelude.Int Prelude.Float)) => Prelude.Bool
+testAppl3: (C 0, D constr(Prelude.Int Prelude.Float)) => (0 -> Prelude.Bool)
+testAppl4: (C 1, D 0) => (0 -> (1 -> Prelude.Bool))
+
+testOp1: (C 0, D 0) => (0 -> Prelude.Bool)
+testOp2: (C 0, D 1) => (0 -> (1 -> Prelude.Bool))
+testOp3: (C 0, D 0) => (0 -> (0 -> Prelude.Bool))
+
+testLambda1: (C 0) => (0 -> Prelude.Bool)
+testLambda2: (C Prelude.Char) => (0 -> Prelude.Bool)
+testLambda3: (C 0, G 0) => (0 -> Prelude.Bool)
+testLambda4: (C 0) => (0 -> Prelude.Bool)
+
+testMultiple: (C 0, E 0, F 0) => (0 -> 0)
+

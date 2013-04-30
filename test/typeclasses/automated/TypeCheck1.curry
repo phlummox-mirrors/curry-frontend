@@ -78,3 +78,38 @@ testITE4 x = if True then fun2 x else x
 testITE5 x y = if fun4 y then fun2 x else x
 
 testITE6 x y = if fun6 y then fun2 x else x
+
+
+testAppl :: (C a, D b) => b -> a -> Bool
+testAppl = error ""
+
+testAppl1 = testAppl
+
+testAppl2 = testAppl 4 'c'
+
+testAppl3 x = testAppl 4 x
+
+testAppl4 x y = testAppl x y
+
+
+testOp1 x = fun x && fun3 x x
+
+testOp2 x y = fun x && fun3 y y
+
+testOp3 x y = fun x && fun3 x y
+
+
+testLambda1 x = (\y -> fun y) x
+
+testLambda2 x = (\y -> fun y) 'a'
+
+testLambda3 x = (\y -> fun y && fun6 y) x
+
+testLambda4 = (\y -> fun y)
+
+
+
+
+testMultiple x = fun2 x
+testMultiple x = fun4 x
+testMultiple x = fun5 x
