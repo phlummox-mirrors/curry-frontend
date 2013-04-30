@@ -135,11 +135,13 @@ instanceDeclToInstance (InstanceDecl _ (SContext scon) cls tcon ids decls) =
 instanceDeclToInstance _ = internalError "instanceDeclToInstance"
 
 -- |extract all data types/newtypes 
-gatherDataTypes :: [Decl] -> ModuleIdent -> [QualIdent]
+gatherDataTypes :: [Decl] -> ModuleIdent -> [(QualIdent, Int)]
 gatherDataTypes decls m = concatMap getDataType decls
   where
-  getDataType (DataDecl _ d _ _) = [qualify d, qualifyWith m d]
-  getDataType (NewtypeDecl _ d _ _) = [qualify d, qualifyWith m d]
+  getDataType (DataDecl _ d ids _) = 
+    let a = length ids in [(qualify d, a), (qualifyWith m d, a)]
+  getDataType (NewtypeDecl _ d ids _) = 
+    let a = length ids in [(qualify d, a), (qualifyWith m d, a)]
   getDataType _ = internalError "allDataTypes"
 
 -- ---------------------------------------------------------------------------
@@ -304,14 +306,17 @@ checkClassNameInScope cEnv (InstanceDecl p _ cls _ _ _) =
   else return ()
 checkClassNameInScope _ _ = internalError "checkClassNameInScope"
 
--- |Checks whether the instance data type is in scope and not a type synonym
--- TODO: check that the arity of the data type in the instance declaration
--- is correct
-checkInstanceDataTypeCorrect :: [QualIdent] -> Decl -> CheckResult ()
-checkInstanceDataTypeCorrect dataTypes (InstanceDecl p _ _ (QualTC qid) _ _) = 
-  if qid `elem` dataTypes
-  then return ()
+-- |Checks whether the instance data type is in scope and not a type synonym. 
+-- Check also that the arity of the data type in the instance declaration
+-- is correct. 
+checkInstanceDataTypeCorrect :: [(QualIdent, Int)] -> Decl -> CheckResult ()
+checkInstanceDataTypeCorrect dataTypes (InstanceDecl p _ _ (QualTC qid) ids _) = 
+  if qid `elem` (map fst dataTypes)
+  then if arity == length ids
+       then return ()
+       else CheckFailed [errDataTypeHasIncorrectArity p qid]
   else CheckFailed [errDataTypeNotInScope p qid] 
+  where arity = fromJust $ lookup qid dataTypes
 checkInstanceDataTypeCorrect _dataTypes (InstanceDecl _ _ _ _ _ _) = return ()
 checkInstanceDataTypeCorrect _ _ = internalError "checkInstanceDataTypeCorrect"
 
@@ -557,5 +562,7 @@ errDataTypeNotInScope :: Position -> QualIdent -> Message
 errDataTypeNotInScope p dt = posMessage p
   (text "Data type not in scope: " <> text (show dt))
 
-
+errDataTypeHasIncorrectArity :: Position -> QualIdent -> Message
+errDataTypeHasIncorrectArity p ty = posMessage p
+  (text "Data type has incorrect arity in instance declaration: " <> text (show ty))
  
