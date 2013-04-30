@@ -1,0 +1,26 @@
+
+testA1: (C 0, D 0) => (0 -> Prelude.Bool)
+testA2: (C 0, D 0) => (0 -> Prelude.Bool)
+
+testB1: (C 0, D 0) => (0 -> Prelude.Bool)
+
+testD1: (C 0, G 0) => (0 -> (1 -> Prelude.Bool))
+testD2: (C 1, G 1) => (0 -> (1 -> Prelude.Bool))
+
+testE1: (C 0, G 0) => (0 -> (0 -> Prelude.Bool))
+testE2: (C 0, G 0) => (0 -> (0 -> Prelude.Bool))
+
+testF1: (C 0) => (0 -> Prelude.Bool)
+testF2: (C 0) => (0 -> Prelude.Bool)
+testF3: (C 0) => (0 -> Prelude.Bool)
+testF4: (C 0) => (0 -> Prelude.Bool)
+
+testG1: (C 0, D 0) => (0 -> Prelude.Bool)
+testG2: (C 0, D 0) => (0 -> Prelude.Bool)
+
+testH1.27: (C 0, D 0) => (0 -> Prelude.Bool)
+testH2.27: (C 0, D 0) => (0 -> Prelude.Bool)
+
+testI1: (C 0, C Prelude.Bool, D 0) => (0 -> (Prelude.Bool -> Prelude.Bool))
+testI2: (C 0, C Prelude.Bool, D 0) => (0 -> Prelude.Bool)
+
