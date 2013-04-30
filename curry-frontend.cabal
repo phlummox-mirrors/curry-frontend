@@ -112,3 +112,23 @@ Executable cmpPrograms
   Build-Depends:
     curry-base == 0.3.7
   ghc-options: -Wall
+
+  
+
+Test-Suite TestTypeChecking
+    hs-source-dirs: test, src
+    type:       exitcode-stdio-1.0
+    main-is:    TestTypeChecking.hs
+    build-depends: base, pretty
+    ghc-options: -Wall
+
+-- Test-Suite TestTypeChecking
+--    hs-source-dirs: src
+--    type:       detailed-0.9
+--    test-module: TestTypeChecking
+--   build-depends: Cabal >= 1.9.2, curry-frontend == 0.3.7, filepath, base,
+--      curry-base == 0.3.7, pretty, containers, mtl, syb, transformers
+--    ghc-options: -Wall
+--    Other-Modules:
+--    CompilerOpts, 
+--    Modules
