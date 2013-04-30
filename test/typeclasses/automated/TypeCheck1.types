@@ -1,0 +1,16 @@
+test1: (C constr(Prelude.Int Prelude.Float)) => Prelude.Bool
+test2: (C Prelude.Bool) => Prelude.Bool
+test3: (C Prelude.Char) => Prelude.Bool
+test4: (C 0) => (0 -> Prelude.Bool)
+test5: (C 0) => (0 -> Prelude.Bool)
+test6: (C 0) => (0 -> Prelude.Bool)
+test7: (C 0) => (0 -> (1 -> Prelude.Bool))
+test8: (C 0, D 1) => (0 -> (1 -> Prelude.Bool))
+test9: (C 0, D 1) => (0 -> (1 -> Prelude.Bool))
+test10: (C 0) => (0 -> 0)
+test11: (C 0) => (0 -> 0)
+test12: (C 0, E 0) => (0 -> Prelude.Bool)
+test13: (D 0) => (0 -> (0 -> Prelude.Bool))
+test14: (C 0, D Prelude.Bool) => (0 -> (Prelude.Bool -> Prelude.Bool))
+test15: (C 0, D 0, E 0) => (0 -> (0 -> Prelude.Bool))
+test16: (C 0, D 0, E 1) => (0 -> (1 -> Prelude.Bool))
