@@ -36,6 +36,7 @@ testAppl1: (C 1, D 0) => (0 -> (1 -> Prelude.Bool))
 testAppl2: (C Prelude.Char, D constr(Prelude.Int Prelude.Float)) => Prelude.Bool
 testAppl3: (C 0, D constr(Prelude.Int Prelude.Float)) => (0 -> Prelude.Bool)
 testAppl4: (C 1, D 0) => (0 -> (1 -> Prelude.Bool))
+testAppl5: (C Prelude.[] Prelude.[] 1, D Prelude.[] 0) => (0 -> (1 -> Prelude.Bool))
 
 testOp1: (C 0, D 0) => (0 -> Prelude.Bool)
 testOp2: (C 0, D 1) => (0 -> (1 -> Prelude.Bool))

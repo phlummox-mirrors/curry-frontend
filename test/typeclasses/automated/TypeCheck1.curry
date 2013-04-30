@@ -91,6 +91,8 @@ testAppl3 x = testAppl 4 x
 
 testAppl4 x y = testAppl x y
 
+testAppl5 x y = testAppl [x] [[y]]
+
 
 testOp1 x = fun x && fun3 x x
 
