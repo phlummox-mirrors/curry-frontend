@@ -1,0 +1,4 @@
+
+listEq: (Eq 0, Eq Prelude.[] 0) => (Prelude.[] 0 -> (Prelude.[] 0 -> Prelude.Bool))
+member: (Eq 0) => (0 -> (Prelude.[] 0 -> Prelude.Bool))
+
