@@ -40,6 +40,7 @@ testAppl4: (C 1, D 0) => (0 -> (1 -> Prelude.Bool))
 testOp1: (C 0, D 0) => (0 -> Prelude.Bool)
 testOp2: (C 0, D 1) => (0 -> (1 -> Prelude.Bool))
 testOp3: (C 0, D 0) => (0 -> (0 -> Prelude.Bool))
+testOp4: (C 0, C 1, C 2) => (0 -> (1 -> (2 -> Prelude.Bool)))
 
 testLambda1: (C 0) => (0 -> Prelude.Bool)
 testLambda2: (C Prelude.Char) => (0 -> Prelude.Bool)

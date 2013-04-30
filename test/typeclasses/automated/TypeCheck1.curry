@@ -98,6 +98,8 @@ testOp2 x y = fun x && fun3 y y
 
 testOp3 x y = fun x && fun3 x y
 
+testOp4 x y z = fun x && fun y && fun z
+
 
 testLambda1 x = (\y -> fun y) x
 
