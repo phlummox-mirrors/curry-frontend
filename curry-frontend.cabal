@@ -119,7 +119,7 @@ Test-Suite TestTypeChecking
     hs-source-dirs: test, src
     type:       exitcode-stdio-1.0
     main-is:    TestTypeChecking.hs
-    build-depends: base, pretty
+    build-depends: base, pretty, directory
     ghc-options: -Wall
 
 -- Test-Suite TestTypeChecking

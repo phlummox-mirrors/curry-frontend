@@ -15,13 +15,24 @@ import Curry.Syntax.Pretty hiding (ppContext)
 import Env.Value
 import Curry.Base.Ident
 import System.Exit
+import System.FilePath
+import System.Directory
 
 import Base.Types
 
 main :: IO ()
-main = 
-  checkTypes "TypeCheck1"
+main = do
+  dirsContent <- readFile "test/typeCheckTests.txt"
+  let dirs = filter (/= []) $ lines dirsContent
+  mapM_ checkDir dirs 
   
+  
+checkDir :: FilePath -> IO ()
+checkDir dir = do
+  files <- getDirectoryContents dir
+  let files'  = filter (\str -> ".curry" `isSuffixOf` str) files
+      files'' = map dropExtension files'
+  mapM_ checkTypes files''
 
 location :: FilePath
 location = "test/typeclasses/automated/"
