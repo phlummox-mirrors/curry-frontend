@@ -1,0 +1,5 @@
+
+test1: (C 0) => (0 -> Prelude.Bool)
+test2: (C 0, D 0) => (0 -> Prelude.Bool)
+test3: (C 0, D 1) => (0 -> (1 -> Prelude.Bool))
+test4: (C 0, D 1, G 2) => (0 -> (1 -> (2 -> Prelude.Bool)))
