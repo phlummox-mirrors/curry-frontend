@@ -24,3 +24,11 @@ testH2.27: (C 0, D 0) => (0 -> Prelude.Bool)
 testI1: (C 0, C Prelude.Bool, D 0) => (0 -> (Prelude.Bool -> Prelude.Bool))
 testI2: (C 0, C Prelude.Bool, D 0) => (0 -> Prelude.Bool)
 
+testJ1: (C 1, E 1) => (0 -> 1)
+testJ2: (C 1, E 1) => (0 -> 1)
+
+testB1.40: (C 0, E 0) => (0 -> 1)
+testB2.40: (C 0, E 0) => (0 -> 1)
+
+testC1.45: (F 0, I 0) => (0 -> 1)
+testC2.45: (F 0, I 0) => (0 -> 1)

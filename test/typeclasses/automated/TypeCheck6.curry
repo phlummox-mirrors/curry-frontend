@@ -15,7 +15,8 @@ class F a where
 class G a where
   fun6 :: a -> Bool
 
-
+class I a where
+  fun8 :: a -> a
 
 testA1 x = fun x && testA2 x
 
@@ -67,3 +68,14 @@ testG2 x =
 testI1 x y = fun x && testI2 x && fun2 y
 
 testI2 x = fun3 x x && testI1 x True
+
+
+testJ1 x = fun2 (testJ2 x)
+
+testJ2 x =
+  let testB1 a = testB2 (fun2 a)
+      testB2 b = let testC1 c = testC2 (fun5 c)
+                     testC2 d = testC1 (fun8 d)
+                 in testB1 (fun4 b)
+  in fun4 (testJ1 x)
+
