@@ -79,3 +79,7 @@ testJ2 x =
                  in testB1 (fun4 b)
   in fun4 (testJ1 x)
 
+testK1 x = fun2 (testK2 x)
+
+testK2 x = testK1 (fun4 x)
+
