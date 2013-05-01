@@ -1,0 +1,11 @@
+
+f1: (B Prelude.Char) => (Prelude.Char -> Prelude.Bool)
+f2: (B Prelude.Char) => (0 -> Prelude.Bool)
+f3: (B Prelude.Char) => (0 -> Prelude.Bool)
+f4: (B Prelude.Char) => (Prelude.Char -> Prelude.Bool)
+f5: (B Prelude.Char) => (Prelude.Char -> Prelude.Bool)
+f6: (B constr(Prelude.Int Prelude.Float)) => (constr(Prelude.Int Prelude.Float) -> Prelude.Bool)
+f7: (B constr(Prelude.Int Prelude.Float)) => (0 -> Prelude.Bool)
+f8: (B constr(Prelude.Int Prelude.Float)) => (0 -> Prelude.Bool)
+f9: (B constr(Prelude.Int Prelude.Float)) => (constr(Prelude.Int Prelude.Float) -> Prelude.Bool)
+f10: (B constr(Prelude.Int Prelude.Float)) => (constr(Prelude.Int Prelude.Float) -> Prelude.Bool)
