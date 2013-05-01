@@ -51,7 +51,7 @@ checkTypes file = do
   case errs of
     [] -> return True
     _ -> do
-      putStrLn ("Test for " ++ file ++ " failed for following functions: ")
+      putStrLn ("\nTest for " ++ file ++ " failed for following functions: ")
       mapM_ putStrLn (map (\(x, y, z) -> x ++ " " ++ y ++ " " ++ z) errs)
       return False
     
@@ -72,7 +72,9 @@ checkModule' opts (env, mdl) = do
 extractTypes :: String -> [(String, String)]
 extractTypes fileContent = 
   let lines0 = filter ((/= []) . trim) $ lines fileContent
-      pairs = map (break (== ':')) lines0
+      -- remove comment lines
+      lines1 = filter (not . (== '#') . head) lines0
+      pairs = map (break (== ':')) lines1
   in -- remove ':'
      map (\(id0, ty0) -> (id0, trim $ tail ty0)) pairs
 
