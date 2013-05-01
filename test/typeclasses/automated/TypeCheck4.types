@@ -13,3 +13,19 @@ testLC6b: (D 0) => (0 -> Prelude.[] Prelude.Bool)
 
 
 
+testDo1: (C 0, C 1, C 2, E Prelude.Char) => (0 -> (Prelude.Char -> (1 -> (2 -> Prelude.IO Prelude.Bool))))
+testDo2: () => (0 -> Prelude.IO 0)
+testDo3: (C Prelude.Char) => Prelude.IO Prelude.Bool
+testDo4: (C Prelude.Char, D Prelude.Char) => Prelude.IO Prelude.Bool
+testDo5: (C Prelude.Char, D Prelude.Char) => Prelude.IO Prelude.Bool
+testDo6: (C 1, D 0) => (0 -> (0 -> (1 -> Prelude.IO Prelude.Bool)))
+testDo7: (C 1, D 0) => (0 -> (0 -> (1 -> Prelude.IO Prelude.Bool)))
+testDo8: (C 2, D 0) => (0 -> (1 -> (2 -> Prelude.IO Prelude.Bool)))
+testDo9: (C 0, D 1) => (0 -> (1 -> (2 -> Prelude.IO Prelude.Bool)))
+testDo10: (C 0, D 1, E 2) => (0 -> (1 -> (2 -> Prelude.IO 2)))
+testDo11: (C 0, D 1, F 2) => (0 -> (1 -> (2 -> Prelude.IO Prelude.Bool)))
+testDo12: (C 0, C 2, D 1, F 2) => (0 -> (1 -> (2 -> Prelude.IO Prelude.Bool)))
+testDo12b: (C 0, D 1, F 2) => (0 -> (1 -> (2 -> Prelude.IO Prelude.Bool)))
+testDo13: (C 0, D 1, E 1, E 2) => (0 -> (1 -> (2 -> Prelude.IO Prelude.Bool)))
+testDo14: (C 0, C 1, D 1, E 2) => (0 -> (1 -> (2 -> Prelude.IO Prelude.Bool)))
+

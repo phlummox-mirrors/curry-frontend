@@ -55,3 +55,75 @@ testLC6b y = [True | let a = fun3 y y]
 
 
 
+testDo1 x y z v = do
+  True <- return (fun x)
+  'c' <- return (fun4 y)
+  return (fun z)
+  return (fun v)
+
+testDo2 x = do
+  return x
+
+testDo3 = do
+  return (fun 'c')
+
+testDo4 = do
+  return (fun3 'd' 'c')
+  return (fun 'c')
+
+testDo5 = do
+  _ <- return (fun3 'd' 'c')
+  return (fun 'c')
+
+testDo6 x y z = do
+  _ <- return (fun3 x y)
+  return (fun z)
+
+testDo7 x y z = do
+  return (fun3 x y)
+  return (fun z)
+
+testDo8 x y z = do
+  _ <- return (fun3 x x)
+  return (fun z)
+
+testDo9 x y z = do
+  let a = fun x
+      b = fun3 y y
+  return True
+
+testDo10 x y z = do
+  let a = fun x
+      b = fun3 y y
+  return (fun4 z)
+
+testDo11 x y z = do
+  let a = fun3 y y
+      b = fun5 z
+  return (fun x)
+
+testDo12 x y z = do
+  let a = fun3 y y
+      b = fun5 z
+  return (fun x && a && fun b)
+
+toBool _ = True
+  
+testDo12b x y z = do
+  let a = fun3 y y
+      b = fun5 z
+  return (fun x && a && toBool b)
+
+testDo13 x y z = do
+  let a = fun3 y y
+  _ <- return (fun4 y)
+  _ <- return (fun4 z)
+  return (fun x)
+
+testDo14 x y z = do
+  let a = fun3 y y
+      b = fun y
+  _ <- return (fun4 z)
+  return (fun x)
+
+
