@@ -15,6 +15,9 @@ class F a where
 
 class G a where
   fun6 :: a -> Bool
+
+class H a where
+  fun7 :: a -> Int
   
 test1 = fun 1
 
@@ -157,3 +160,25 @@ testCase8 x y =
   case fun x of
     True -> fun4 'c'
     False -> 'd'
+
+
+
+testExplTyped1 x = (fun x :: Bool)
+
+testExplTyped2 x y = (fun x :: Bool) && (fun3 y y :: Bool)
+
+testExplTyped3 x = x :: Bool
+
+
+testMinus1 = - (fun2 1)
+testMinus2 = - (fun2 1 + fun4 1)
+testMinus3 = - (fun2 1) + (-(fun4 1))
+testMinus4 x = - (fun7 x)
+
+testEnum1 = [fun2 1 ..]
+testEnum2 = [fun2 1 .. fun4 4]
+testEnum3 = [(fun2 1), (fun4 2) ..]
+testEnum4 = [(fun2 1), (fun2 2) .. (fun4 3)]
+testEnum5 x = [fun7 x ..]
+
+

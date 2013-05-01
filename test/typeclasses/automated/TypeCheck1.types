@@ -58,3 +58,18 @@ testCase5: () => (Prelude.Bool -> Prelude.Bool)
 testCase6: (C Prelude.Char) => (Prelude.Bool -> Prelude.Bool)
 testCase7: (C Prelude.Char, E Prelude.Bool) => (Prelude.Bool -> (Prelude.Bool -> Prelude.Bool))
 testCase8: (C 0, E Prelude.Char) => (0 -> (1 -> Prelude.Char))
+
+testExplTyped1: (C 0) => (0 -> Prelude.Bool)
+testExplTyped2: (C 0, D 1) => (0 -> (1 -> Prelude.Bool))
+testExplTyped3: () => (Prelude.Bool -> Prelude.Bool)
+
+testMinus1: (C constr(Prelude.Int Prelude.Float)) => constr(Prelude.Int Prelude.Float)
+testMinus2: (C Prelude.Int, E Prelude.Int) => Prelude.Int
+testMinus3: (C Prelude.Int, E Prelude.Int) => Prelude.Int
+testMinus4: (H 0) => (0 -> Prelude.Int)
+
+testEnum1: (C Prelude.Int) => Prelude.[] Prelude.Int
+testEnum2: (C Prelude.Int, E Prelude.Int) => Prelude.[] Prelude.Int
+testEnum3: (C Prelude.Int, E Prelude.Int) => Prelude.[] Prelude.Int
+testEnum4: (C Prelude.Int, E Prelude.Int) => Prelude.[] Prelude.Int
+testEnum5: (H 0) => (0 -> Prelude.[] Prelude.Int)
