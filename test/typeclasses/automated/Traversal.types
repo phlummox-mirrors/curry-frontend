@@ -1,0 +1,5 @@
+
+children: () => ((0 -> Prelude.(,) Prelude.[] 1 (Prelude.[] 1 -> 0)) -> (0 -> Prelude.[] 1))
+concatFL: () => (Prelude.[] (Prelude.[] 0 -> Prelude.[] 0) -> (Prelude.[] 0 -> Prelude.[] 0))
+familyFL: () => ((0 -> Prelude.(,) Prelude.[] 0 (Prelude.[] 0 -> 0)) -> (0 -> (Prelude.[] 0 -> Prelude.[] 0)))
+childFamiliesFL: () => ((0 -> Prelude.(,) Prelude.[] 1 (Prelude.[] 1 -> 0)) -> ((1 -> Prelude.(,) Prelude.[] 1 (Prelude.[] 1 -> 1)) -> (0 -> (Prelude.[] 1 -> Prelude.[] 1))))
