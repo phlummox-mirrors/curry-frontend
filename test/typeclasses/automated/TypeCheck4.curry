@@ -127,3 +127,8 @@ testDo14 x y z = do
   return (fun x)
 
 
+testDo15 x y z = do
+  let ad = fun3 y y
+      bd = fun5 z
+      cd v = fun2 v
+  return (fun x && ad && fun bd)

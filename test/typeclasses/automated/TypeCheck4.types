@@ -28,4 +28,5 @@ testDo12: (C 0, C 2, D 1, F 2) => (0 -> (1 -> (2 -> Prelude.IO Prelude.Bool)))
 testDo12b: (C 0, D 1, F 2) => (0 -> (1 -> (2 -> Prelude.IO Prelude.Bool)))
 testDo13: (C 0, D 1, E 1, E 2) => (0 -> (1 -> (2 -> Prelude.IO Prelude.Bool)))
 testDo14: (C 0, C 1, D 1, E 2) => (0 -> (1 -> (2 -> Prelude.IO Prelude.Bool)))
+testDo15: (C 0, C 2, D 1, F 2) => (0 -> (1 -> (2 -> Prelude.IO Prelude.Bool)))
 
