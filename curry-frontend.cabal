@@ -122,6 +122,12 @@ Test-Suite TestTypeChecking
     build-depends: base, pretty, directory
     ghc-options: -Wall
 
+Executable TestTypeChecking2
+    hs-source-dirs: test, src
+    main-is:    TestTypeChecking.hs
+    build-depends: base, pretty, directory
+    ghc-options: -Wall -fhpc
+
 -- Test-Suite TestTypeChecking
 --    hs-source-dirs: src
 --    type:       detailed-0.9
