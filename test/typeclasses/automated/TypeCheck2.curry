@@ -90,3 +90,20 @@ testC1c = let x' = fun4 y'
 testC1d = let x' = y'
               y' = x'
           in (x', y')
+
+
+
+testD1 z =
+  let b = fun5 z
+  in b
+
+
+testD2 x y z =
+  let a = fun3 y y
+      b = fun5 z
+  in fun x && a && fun b
+
+testD3 x y z =
+  fun x && a && fun b
+  where a = fun3 y y
+        b = fun5 z
