@@ -1,0 +1,15 @@
+
+testLC1: (C 0, D 1, F Prelude.[] 2) => (0 -> (1 -> (Prelude.[] 2 -> Prelude.[] Prelude.Bool)))
+testLC1b: (D 1, F Prelude.[] 2) => (0 -> (1 -> (Prelude.[] 2 -> Prelude.[] Prelude.Bool)))
+testLC2: (C 0, C 2, D 1, F 2) => (0 -> (1 -> (2 -> Prelude.[] Prelude.Bool)))
+testLC3: (C 0, D 1, F 2, F Prelude.Bool, F Prelude.[] 3) => (0 -> (1 -> (2 -> (Prelude.Bool -> (Prelude.[] 3 -> Prelude.[] Prelude.Bool)))))
+testLC3b: (C 0, F Prelude.Bool, F Prelude.[] 3) => (0 -> (1 -> (2 -> (Prelude.Bool -> (Prelude.[] 3 -> Prelude.[] Prelude.Bool)))))
+testLC3c: (C 0, D 1, F Prelude.Bool, F Prelude.[] 3) => (0 -> (1 -> (2 -> (Prelude.Bool -> (Prelude.[] 3 -> Prelude.[] Prelude.Bool)))))
+testLC3d: (C 0, F 2, F Prelude.Bool, F Prelude.[] 3) => (0 -> (1 -> (2 -> (Prelude.Bool -> (Prelude.[] 3 -> Prelude.[] Prelude.Bool)))))
+testLC4: (C 0, C 2, D 1, F 2) => (0 -> (1 -> (2 -> Prelude.[] Prelude.Bool)))
+testLC5: (C 0, D 2, F Prelude.[] 3) => (0 -> (1 -> (2 -> (Prelude.[] 3 -> Prelude.[] Prelude.Bool))))
+testLC6: (F 0) => (0 -> Prelude.[] Prelude.Bool)
+testLC6b: (D 0) => (0 -> Prelude.[] Prelude.Bool)
+
+
+
