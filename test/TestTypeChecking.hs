@@ -17,6 +17,7 @@ import Curry.Base.Ident
 import System.Exit
 import System.FilePath
 import System.Directory
+import Control.Monad
 
 import Base.Types
 
@@ -32,12 +33,14 @@ checkDir dir = do
   files <- getDirectoryContents dir
   let files'  = filter (\str -> ".curry" `isSuffixOf` str) files
       files'' = map dropExtension files'
-  mapM_ checkTypes files''
+  success <- mapM checkTypes files''
+  when (any not success) $ exitFailure 
+  
 
 location :: FilePath
 location = "test/typeclasses/automated/"
 
-checkTypes :: FilePath -> IO () -- Result
+checkTypes :: FilePath -> IO Bool -- Result
 checkTypes file = do
   let opts = CO.defaultOptions
   mod <- loadModule opts (location ++ file ++ ".curry") 
@@ -46,11 +49,11 @@ checkTypes file = do
   -- print (extractTypes types)
   let errs = doCheck tcEnv (extractTypes types)
   case errs of
-    [] -> return () 
+    [] -> return True
     _ -> do
       putStrLn ("Test for " ++ file ++ " failed for following functions: ")
       mapM_ putStrLn (map (\(x, y, z) -> x ++ " " ++ y ++ " " ++ z) errs)
-      exitFailure
+      return False
     
   
   
