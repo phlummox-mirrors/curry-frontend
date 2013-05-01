@@ -5,3 +5,5 @@ dist/
 .settings
 *.hi
 *.o
+.hpc/
+hpc/
