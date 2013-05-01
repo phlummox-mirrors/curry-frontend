@@ -87,6 +87,7 @@ test18 x = let x2 = fun4 x in x2
 
 test19 x = let y = fun2 y in y
 
-
+test20 x = x1
+  where Just (x1, [Left x2, Right x3], x4@(x5, x6, x7)) = Just (fun2 x, [Left $ fun4 x, Right $ fun5 x], (fun x, fun2 x, 1))
 
 
