@@ -117,3 +117,43 @@ testLambda4 = (\y -> fun y)
 testMultiple x = fun2 x
 testMultiple x = fun4 x
 testMultiple x = fun5 x
+
+
+testCase1 x =
+  case x of
+    True -> fun x
+    False -> fun4 x
+
+testCase2 x y z =
+  case x of
+    1 -> fun2 y
+    2 -> fun4 z
+
+testCase3 x =
+  case fun x of
+    True -> False
+    False -> True
+
+testCase4 x y =
+  case fun x of
+    True -> fun3 y y
+    False -> True
+
+testCase5 x =
+  case x of
+    True -> False
+    False -> True
+
+testCase6 x =
+  case x of
+    True -> fun 'c'
+
+testCase7 x y =
+  case x of
+    True -> fun 'c'
+    False -> fun4 y
+
+testCase8 x y =
+  case fun x of
+    True -> fun4 'c'
+    False -> 'd'

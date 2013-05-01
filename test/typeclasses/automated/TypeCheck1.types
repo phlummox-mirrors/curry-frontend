@@ -50,3 +50,11 @@ testLambda4: (C 0) => (0 -> Prelude.Bool)
 
 testMultiple: (C 0, E 0, F 0) => (0 -> 0)
 
+testCase1: (C Prelude.Bool, E Prelude.Bool) => (Prelude.Bool -> Prelude.Bool)
+testCase2: (C 0, E 0) => (constr(Prelude.Int Prelude.Float) -> (0 -> (0 -> 0)))
+testCase3: (C 0) => (0 -> Prelude.Bool)
+testCase4: (C 0, D 1) => (0 -> (1 -> Prelude.Bool))
+testCase5: () => (Prelude.Bool -> Prelude.Bool)
+testCase6: (C Prelude.Char) => (Prelude.Bool -> Prelude.Bool)
+testCase7: (C Prelude.Char, E Prelude.Bool) => (Prelude.Bool -> (Prelude.Bool -> Prelude.Bool))
+testCase8: (C 0, E Prelude.Char) => (0 -> (1 -> Prelude.Char))
