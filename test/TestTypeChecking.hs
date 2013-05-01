@@ -52,7 +52,7 @@ checkTypes file = do
     [] -> return True
     _ -> do
       putStrLn ("\nTest for " ++ file ++ " failed for following functions: ")
-      mapM_ putStrLn (map (\(x, y, z) -> x ++ " " ++ y ++ " " ++ z) errs)
+      mapM_ putStrLn (map (\(x, y, z) -> x ++ "\n  " ++ y ++ "\n  " ++ z) errs)
       return False
     
   
