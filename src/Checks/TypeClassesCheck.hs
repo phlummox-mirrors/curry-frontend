@@ -313,8 +313,8 @@ checkClassNameInScope _ _ = internalError "checkClassNameInScope"
 checkInstanceDataTypeCorrect :: [(QualIdent, Int)] -> TCEnv -> Decl -> CheckResult ()
 checkInstanceDataTypeCorrect dataTypes tcEnv (InstanceDecl p _ _ (QualTC qid) ids _) =
   -- if the data type is defined in the module and in the type constructor
-  -- environment -> error! 
-  if defInModule && defInTCEnv
+  -- environment or more than once in the type constructor environment -> error! 
+  if (defInModule && defInTCEnv) || length tinfo > 1
   then CheckFailed [errDataTypeAmbiguous p qid]
   -- check if data type is defined in this module
   else if defInModule
