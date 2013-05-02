@@ -469,7 +469,7 @@ either one of the basic types or \texttt{()}.
 >   let -- build the types and contexts of all declarations
 >       types  = map (subst theta) tysRhs
 >       cxs' = map (substContext theta) cxs
->       dsWithCxsAndTys = zip3 cxs' ds types
+>       dsWithCxs = zip cxs' ds
 >       nonLocalContexts = map (uncurry notLocal) $ zip cxs' types
 >       -- nonLocalContexts = if propCxs then cxs' else []
 >       -- nonLocalContexts = if propCxs then map (uncurry notLocal) $ zip cxs' types else []
@@ -490,7 +490,7 @@ either one of the basic types or \texttt{()}.
 >       case newCxs /= oldCxs of
 >         True -> do
 >           -- update contexts in value environment
->           writeContexts dsWithCxsAndTys
+>           writeContexts dsWithCxs
 >           -- Reset the value environment. Reset everything except the
 >           -- type schemes for the members of the declaration group, because
 >           -- over these the fix point iteration is done
@@ -508,7 +508,7 @@ either one of the basic types or \texttt{()}.
 >           -- Establish the inferred types. 
 >           -- Pass the inferred types to genDecl so that the contexts can be
 >           -- renamed properly
->           mapM_ (genDecl firstFreeEnv theta) dsWithCxsAndTys
+>           mapM_ (genDecl firstFreeEnv theta) dsWithCxs
 >           -- do NOT return final contexts! 
 >           -- TODO: return cxs or cxs' (or doesn't matter?)
 >           return $ concat nonLocalContexts
@@ -530,12 +530,12 @@ either one of the basic types or \texttt{()}.
 >     bindFun m (unqualify qid) n tsc env
 > modifyEnv' _ = internalError "TypeCheck modifyEnv'"
 
-> writeContexts :: [(BT.Context, Decl, Type)] -> TCM ()
+> writeContexts :: [(BT.Context, Decl)] -> TCM ()
 > writeContexts cs = mapM_ writeContext cs'
 >   where
 >   cs' = concatMap unpack cs
->   writeContext :: (BT.Context, Ident, Type) -> TCM ()
->   writeContext (cx, v, _ty) = do
+>   writeContext :: (BT.Context, Ident) -> TCM ()
+>   writeContext (cx, v) = do
 >     vEnv <- getValueEnv
 >     case lookupValue v vEnv of
 >       [(Value _ arity tysig)] -> do 
@@ -543,8 +543,8 @@ either one of the basic types or \texttt{()}.
 >         let tysig' = tysig `constrainBy` cx
 >         modifyValueEnv $ rebindFun m v arity tysig'
 >       _ -> return ()
->   unpack (cx, FunctionDecl _ f _, ty) = [(cx, f, ty)]
->   unpack (cx, PatternDecl _ p _, ty) = map (\d -> (cx, d, ty)) (bv p)
+>   unpack (cx, FunctionDecl _ f _) = [(cx, f)]
+>   unpack (cx, PatternDecl _ p _) = map (\d -> (cx, d)) (bv p)
 >   unpack _ = internalError "unpack"
 
 > --tcDeclGroup m tcEnv _ [ForeignDecl p cc _ f ty] =
@@ -659,11 +659,11 @@ specific. Therefore, if the inferred type does not match the type
 signature the declared type must be too general.
 \begin{verbatim}
 
-> genDecl :: Set.Set Int -> TypeSubst -> (BT.Context, Decl, Type) -> TCM ()
-> genDecl lvs theta (cx, FunctionDecl _ f (Equation _ lhs _ : _), _inferredTy) = 
+> genDecl :: Set.Set Int -> TypeSubst -> (BT.Context, Decl) -> TCM ()
+> genDecl lvs theta (cx, FunctionDecl _ f (Equation _ lhs _ : _)) = 
 >   genVar True lvs theta arity cx f
 >   where arity = Just $ length $ snd $ flatLhs lhs
-> genDecl lvs theta (cx, PatternDecl  _ t   _, _inferredTy) = 
+> genDecl lvs theta (cx, PatternDecl  _ t   _) = 
 >   mapM_ (genVar False lvs theta Nothing cx) (bv t)
 > genDecl _ _ _ = internalError "TypeCheck.genDecl: no pattern match"
 
