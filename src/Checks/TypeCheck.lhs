@@ -62,8 +62,8 @@ type annotation is present.
 > ($-$) :: Doc -> Doc -> Doc
 > x $-$ y = x $$ space $$ y
 
-> -- trace = flip const
-> trace = Dbg.trace
+> trace = flip const
+> -- trace = Dbg.trace
 > trace2 = flip const
 > -- trace2 = Dbg.trace
 > trace3 = Dbg.trace
@@ -471,6 +471,8 @@ either one of the basic types or \texttt{()}.
 >       cxs' = map (substContext theta) cxs
 >       dsWithCxsAndTys = zip3 cxs' ds types
 >       nonLocalContexts = map (uncurry notLocal) $ zip cxs' types
+>       -- nonLocalContexts = if propCxs then cxs' else []
+>       -- nonLocalContexts = if propCxs then map (uncurry notLocal) $ zip cxs' types else []
 >
 >   -- save/restore free environment variables of the first run of the 
 >   -- fix point iteration because these are later changed by the fix point
@@ -1010,13 +1012,13 @@ because of possibly multiple occurrences of variables.
 
 > tcRhs ::ValueEnv -> Rhs -> TCM ConstrType
 > tcRhs tyEnv0 (SimpleRhs p e ds) = do
->   cxs <- tcDecls ds
+>   _cxs <- tcDecls ds
 >   (cx, ty) <- tcExpr p e
->   checkSkolems p (text "Expression:" <+> ppExpr 0 e) tyEnv0 (cx ++ cxs, ty)
+>   checkSkolems p (text "Expression:" <+> ppExpr 0 e) tyEnv0 (cx, ty)
 > tcRhs tyEnv0 (GuardedRhs es ds) = do
->   cxs <- tcDecls ds
+>   _cxs <- tcDecls ds
 >   (cxs', ty) <- tcCondExprs tyEnv0 es
->   return (cxs ++ cxs', ty)
+>   return (cxs', ty)
 
 > tcCondExprs :: ValueEnv -> [CondExpr] -> TCM ConstrType
 > tcCondExprs tyEnv0 es = do
@@ -1276,7 +1278,10 @@ because of possibly multiple occurrences of variables.
 >   unify p "generator" (ppStmt q $-$ text "Term:" <+> ppExpr 0 e)
 >         (noContext $ listType ty1) cty2
 >   return (cx1 ++ cx2)
-> tcQual _ (StmtDecl      ds) = tcDecls ds
+> tcQual _ (StmtDecl      ds) = do 
+>   -- ignore contexts of declarations
+>   _ <- tcDecls ds
+>   return BT.emptyContext
 
 > tcStmt ::Position -> Statement -> TCM BT.Context
 > tcStmt p (StmtExpr _ e) = do
@@ -1289,7 +1294,10 @@ because of possibly multiple occurrences of variables.
 >   cty2@(cx2, _) <- tcExpr p e
 >   unify p "statement" (ppStmt st $-$ text "Term:" <+> ppExpr 0 e) (noContext $ ioType $ getType cty1) cty2
 >   return (cx1 ++ cx2)
-> tcStmt _ (StmtDecl ds) = tcDecls ds
+> tcStmt _ (StmtDecl ds) = do
+>   -- ignore contexts of declarations
+>   _ <- tcDecls ds
+>   return BT.emptyContext
 
 > tcFieldExpr :: Field Expression -> TCM (Ident, ConstrType)
 > tcFieldExpr f@(Field _ l e) = do

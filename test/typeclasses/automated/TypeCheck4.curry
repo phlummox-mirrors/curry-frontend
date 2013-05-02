@@ -38,6 +38,27 @@ testLC3d x y z v w = [fun x | let b = fun5 z
                             , fun5 v
                             , _ <- fun5 w]
 
+testLC3e x y z v w = [fun x | let a = fun3 y y
+                                  b = fun5 z
+                            , fun5 v
+                            , a
+                            , _ <- fun5 w]
+
+testLC3f x y z v w = [fun x | let a = fun3 y y
+                                  b = fun5 z
+                            , fun5 v
+                            , toBool b
+                            , _ <- fun5 w]
+
+toBool _ = True
+                            
+testLC3g x y z v w = [fun x | let a = fun3 y y
+                                  b = fun5 z
+                            , fun5 v
+                            , a
+                            , toBool b
+                            , _ <- fun5 w]
+                            
 testLC4 x y z = [fun x && a && fun b | let a = fun3 y y
                                            b = fun5 z]
 
@@ -47,6 +68,8 @@ testLC5 x y z v = [fun x | let a = fun4 y
 
 testLC6 y = [True | let b = fun5 y]
 testLC6b y = [True | let a = fun3 y y]
+testLC6c y = [True | let b = fun5 y, toBool b]
+testLC6d y = [True | let a = fun3 y y, toBool a]
 
 
 
@@ -91,6 +114,21 @@ testDo9 x y z = do
   let a = fun x
       b = fun3 y y
   return True
+
+testDo9b x y z = do
+  let a = fun x
+      b = fun3 y y
+  return a
+
+testDo9c x y z = do
+  let a = fun x
+      b = fun3 y y
+  return b
+
+testDo9d x y z = do
+  let a = fun x
+      b = fun3 y y
+  return (a, b)
 
 testDo10 x y z = do
   let a = fun x
