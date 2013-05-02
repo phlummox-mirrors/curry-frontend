@@ -44,16 +44,19 @@ checkTypes :: FilePath -> IO Bool -- Result
 checkTypes file = do
   let opts = CO.defaultOptions
   mod <- loadModule opts (location ++ file ++ ".curry") 
-  let (CheckSuccess tcEnv) = checkModule' opts mod
-  types <- readFile (location ++ file ++ ".types")
-  -- print (extractTypes types)
-  let errs = doCheck tcEnv (extractTypes types)
-  case errs of
-    [] -> return True
-    _ -> do
-      putStrLn ("\nTest for " ++ file ++ " failed for following functions: ")
-      mapM_ putStrLn (map (\(x, y, z) -> x ++ "\n  " ++ y ++ "\n  " ++ z) errs)
-      return False
+  let result = checkModule' opts mod
+  case result of
+    CheckSuccess tcEnv -> do
+      types <- readFile (location ++ file ++ ".types")
+      -- print (extractTypes types)
+      let errs = doCheck tcEnv (extractTypes types)
+      case errs of
+        [] -> return True
+        _ -> do
+          putStrLn ("\nTest for " ++ file ++ " failed for following functions: ")
+          mapM_ putStrLn (map (\(x, y, z) -> x ++ "\n  " ++ y ++ "\n  " ++ z) errs)
+          return False
+    CheckFailed msgs -> do print (show msgs); return False  
     
   
   
@@ -102,8 +105,11 @@ doCheck cEnv types =
     in if ty0 == infType'
        then []
        else [(id0, ty0, infType')]
-  head' (x:_) = x
-  head' [] = error "id not found"
+    where
+    head' (x:_) = x
+    head' [] = error ("id " ++ id0 ++ " not found")
+
+      
 
 
 
