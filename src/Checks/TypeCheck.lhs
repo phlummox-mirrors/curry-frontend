@@ -535,21 +535,17 @@ either one of the basic types or \texttt{()}.
 >   where
 >   cs' = concatMap unpack cs
 >   writeContext :: (BT.Context, Ident, Type) -> TCM ()
->   writeContext (cx, v, ty) = do
+>   writeContext (cx, v, _ty) = do
 >     vEnv <- getValueEnv
 >     case lookupValue v vEnv of
->       [(Value _ arity tysig@(ForAll _ _ ty0))] -> do 
+>       [(Value _ arity tysig)] -> do 
 >         m <- getModuleIdent
->         theta <- getTypeSubst
->         let mapping = buildTypeVarsMapping ty (subst theta ty0)
->         let tysig' = tysig `constrainBy` (substContext mapping cx)
+>         let tysig' = tysig `constrainBy` cx
 >         modifyValueEnv $ rebindFun m v arity tysig'
 >       _ -> return ()
 >   unpack (cx, FunctionDecl _ f _, ty) = [(cx, f, ty)]
->   unpack (cx, PatternDecl _ p _, ty) = map (\d -> (cx, d, head' $ searchType d p ty)) (bv p)
+>   unpack (cx, PatternDecl _ p _, ty) = map (\d -> (cx, d, ty)) (bv p)
 >   unpack _ = internalError "unpack"
->   head' (x:_) = x
->   head' [] = internalError "writeContexts unpack"
 
 > --tcDeclGroup m tcEnv _ [ForeignDecl p cc _ f ty] =
 > --  tcForeign m tcEnv p cc f ty
@@ -664,27 +660,22 @@ signature the declared type must be too general.
 \begin{verbatim}
 
 > genDecl :: Set.Set Int -> TypeSubst -> (BT.Context, Decl, Type) -> TCM ()
-> genDecl lvs theta (cx, FunctionDecl _ f (Equation _ lhs _ : _), inferredTy) = 
->   genVar True lvs theta arity cx inferredTy f
+> genDecl lvs theta (cx, FunctionDecl _ f (Equation _ lhs _ : _), _inferredTy) = 
+>   genVar True lvs theta arity cx f
 >   where arity = Just $ length $ snd $ flatLhs lhs
-> genDecl lvs theta (cx, PatternDecl  _ t   _, inferredTy) = 
->   mapM_ 
->    (\f -> do 
->      let inferredTy' = case searchType f t inferredTy of 
->                          [x] -> x
->                          _   -> internalError "genDecl/searchType" 
->      genVar False lvs theta Nothing cx inferredTy' f) 
->   (bv t)
+> genDecl lvs theta (cx, PatternDecl  _ t   _, _inferredTy) = 
+>   mapM_ (genVar False lvs theta Nothing cx) (bv t)
 > genDecl _ _ _ = internalError "TypeCheck.genDecl: no pattern match"
 
 > genVar :: Bool -> Set.Set Int -> TypeSubst -> Maybe Int -> BT.Context 
->        -> Type -> Ident -> TCM ()
-> genVar poly lvs theta ma cx infTy v = do
+>        -> Ident -> TCM ()
+> genVar poly lvs theta ma cx v = do
 >   sigs <- getSigEnv
 >   m <- getModuleIdent
 >   tyEnv <- getValueEnv
 >   let sigma0 = (genType poly $ subst theta $ varType v tyEnv)
 >       arity  = fromMaybe (varArity v tyEnv) ma
+>       infTy = typeSchemeToType $ subst theta $ varType v tyEnv
 >       -- build a mapping from the inferred type variables to the type
 >       -- variables that appear in the newly instantiated type sigma0, 
 >       -- so that the type variables in the inferred contexts can be
@@ -742,40 +733,6 @@ signature the declared type must be too general.
 > buildTypeVarsMapping' t1 t2 = 
 >   internalError ("types do not match in buildTypeVarsMapping\n" ++ show t1 
 >     ++ "\n" ++ show t2)
-
-> -- This function is a helper function that does the following: 
-> -- In the given pattern it searches the given type variable, and while
-> -- descending into the patterns it descends into the inferred type as well 
-> -- (third argument). Thus it finds out which type the identifier has. This
-> -- is needed for genDecl, because in pattern declarations we have to know
-> -- the inferred types of the variables, but from the typechecker we only get 
-> -- the inferred type for the whole pattern. 
-> -- As patterns are linear, the result list should always contain exactly
-> -- one element. 
-> searchType :: Ident -> Pattern -> Type -> [Type]
-> searchType x (VariablePattern x') t | x == x'   = [t]
->                                     | otherwise = []
-> searchType _ (LiteralPattern _) _t = []
-> searchType x (NegativePattern x' _) t | x == x'   = [t]
->                                       | otherwise = [] 
-> searchType x (ConstructorPattern _ ps) (TypeConstructor _ ts)
->   = concatMap (uncurry $ searchType x) $ zip ps ts
-> searchType x (InfixPattern p1 _ p2) (TypeConstructor _ [t1, t2])
->   = searchType x p1 t1 ++ searchType x p2 t2
-> searchType x (ParenPattern p) t = searchType x p t
-> searchType x (TuplePattern _ ps) (TypeConstructor _ ts)
->   = concatMap (uncurry $ searchType x) $ zip ps ts
-> searchType x (ListPattern _ ps) (TypeConstructor _ [t])
->   = concatMap (uncurry $ searchType x) $ zip ps (replicate (length ps) t)
-> searchType x (AsPattern x' p) t | x == x'   = [t]
->                                 | otherwise = searchType x p t
-> searchType x (LazyPattern _ p) t = searchType x p t
-> -- TODO: unsupported patterns (FunctionPattern, InfixFuncPattern: where
-> -- do they come from? RecordPattern: those are buggy and not testable)
-> searchType _x (FunctionPattern _ _ps) _ = internalError "searchType FunctionPattern not supported"
-> searchType _x (InfixFuncPattern _p1 _ _p2) _ = internalError "searchType InfixFuncPattern not supported"
-> searchType _x (RecordPattern _ _) _ = internalError "searchType RecordPattern not supported"
-> searchType _x _ _ = internalError "searchType no pattern match"
 
 > tcEquation :: ValueEnv -> Equation -> TCM ConstrType
 > tcEquation tyEnv0 (Equation p lhs rhs) = do
