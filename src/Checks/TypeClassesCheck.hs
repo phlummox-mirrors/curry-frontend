@@ -15,6 +15,7 @@ module Checks.TypeClassesCheck (typeClassesCheck) where
 
 import Curry.Syntax.Type as ST hiding (IDecl)
 import Env.ClassEnv
+import Env.TypeConstructor
 import Base.Messages (Message, message, posMessage, internalError)
 
 import Data.List
@@ -51,8 +52,8 @@ thenCheck chk cont = case chk of
 
 -- |Checks class and instance declarations. TODO: removes these declarations?
 -- Builds a corresponding class environment 
-typeClassesCheck :: ModuleIdent -> [Decl] -> ClassEnv -> ([Decl], ClassEnv, [Message])
-typeClassesCheck m decls (ClassEnv importedClasses importedInstances _) = 
+typeClassesCheck :: ModuleIdent -> [Decl] -> ClassEnv -> TCEnv -> ([Decl], ClassEnv, [Message])
+typeClassesCheck m decls (ClassEnv importedClasses importedInstances _) tcEnv = 
   case result of 
     CheckSuccess (classes, instances) -> 
       let newDecls = concatMap (transformInstance classes) $ concatMap transformClass decls
@@ -82,7 +83,7 @@ typeClassesCheck m decls (ClassEnv importedClasses importedInstances _) =
       mapM_ (checkRulesInInstanceOrClass newClassEnv) classDecls
       
       mapM_ (checkClassNameInScope newClassEnv) instDecls
-      mapM_ (checkInstanceDataTypeCorrect allDataTypes) instDecls
+      mapM_ (checkInstanceDataTypeCorrect allDataTypes tcEnv) instDecls
       
       checkForDuplicateClassNames newClassEnv
       checkForDuplicateInstances newClassEnv
@@ -309,16 +310,31 @@ checkClassNameInScope _ _ = internalError "checkClassNameInScope"
 -- |Checks whether the instance data type is in scope and not a type synonym. 
 -- Check also that the arity of the data type in the instance declaration
 -- is correct. 
-checkInstanceDataTypeCorrect :: [(QualIdent, Int)] -> Decl -> CheckResult ()
-checkInstanceDataTypeCorrect dataTypes (InstanceDecl p _ _ (QualTC qid) ids _) = 
-  if qid `elem` (map fst dataTypes)
+checkInstanceDataTypeCorrect :: [(QualIdent, Int)] -> TCEnv -> Decl -> CheckResult ()
+checkInstanceDataTypeCorrect dataTypes tcEnv (InstanceDecl p _ _ (QualTC qid) ids _) =
+  -- if the data type is defined in the module and in the type constructor
+  -- environment -> error! 
+  if defInModule && defInTCEnv
+  then CheckFailed [errDataTypeAmbiguous p qid]
+  -- check if data type is defined in this module
+  else if defInModule
   then if arity == length ids
        then return ()
        else CheckFailed [errDataTypeHasIncorrectArity p qid]
+  -- if data type is not defined in this module, search it in the type
+  -- constructor environment that contains all imported type constructors
+  else if defInTCEnv
+  then if tcArity (head tinfo) /= length ids
+            then CheckFailed [errDataTypeHasIncorrectArity p qid]
+            else return ()
   else CheckFailed [errDataTypeNotInScope p qid] 
+
   where arity = fromJust $ lookup qid dataTypes
-checkInstanceDataTypeCorrect _dataTypes (InstanceDecl _ _ _ _ _ _) = return ()
-checkInstanceDataTypeCorrect _ _ = internalError "checkInstanceDataTypeCorrect"
+        tinfo = qualLookupTC qid tcEnv 
+        defInModule = qid `elem` (map fst dataTypes)
+        defInTCEnv = not . null $ tinfo
+checkInstanceDataTypeCorrect _dataTypes _ (InstanceDecl _ _ _ _ _ _) = return ()
+checkInstanceDataTypeCorrect _ _ _ = internalError "checkInstanceDataTypeCorrect"
 
 -- ---------------------------------------------------------------------------
 -- source code transformation
@@ -566,3 +582,6 @@ errDataTypeHasIncorrectArity :: Position -> QualIdent -> Message
 errDataTypeHasIncorrectArity p ty = posMessage p
   (text "Data type has incorrect arity in instance declaration: " <> text (show ty))
  
+errDataTypeAmbiguous :: Position -> QualIdent -> Message
+errDataTypeAmbiguous p id0 = posMessage p
+  (text "Data type in instance declaration ambiguous: " <> text (show id0))

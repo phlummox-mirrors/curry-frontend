@@ -28,3 +28,22 @@ data U a b = U a | U2 b
 
 -- correct:
 instance A (U a b) where
+
+instance A Char where
+
+instance A Int where
+
+instance A Float where
+
+instance A Prelude.Char where
+
+instance A Prelude.Int where
+
+-- errors:
+-- instance A (Char a) where
+-- instance A (Prelude.Char a) where
+
+instance A (Maybe a) where
+
+-- error:
+-- instance A Maybe where
