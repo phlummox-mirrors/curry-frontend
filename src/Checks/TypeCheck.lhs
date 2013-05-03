@@ -815,7 +815,8 @@ signature the declared type must be too general.
 >   m     <- getModuleIdent
 >   tyEnv <- getValueEnv
 >   cEnv <- getClassEnv
->   ty <- inst (funType m f tyEnv cEnv) --skol (constrType m c tyEnv)
+>   tcEnv <- getTyConsEnv
+>   ty <- inst (funType tcEnv m f tyEnv cEnv) --skol (constrType m c tyEnv)
 >   unifyArgs (ppPattern 0 t) ts (getType ty)
 >   where unifyArgs _ [] ty = return $ noContext ty
 >         unifyArgs doc (t1:ts1) ty@(TypeVariable _) = do
@@ -916,7 +917,8 @@ because of possibly multiple occurrences of variables.
 >     m <- getModuleIdent
 >     tyEnv <- getValueEnv
 >     cEnv <- getClassEnv
->     ty <- inst (funType m f tyEnv cEnv) --skol (constrType m c tyEnv)
+>     tcEnv <- getTyConsEnv
+>     ty <- inst (funType tcEnv m f tyEnv cEnv) --skol (constrType m c tyEnv)
 >     unifyArgs (ppPattern 0 t) ts (getType ty)
 >   where unifyArgs _ [] ty = return $ noContext ty
 >         unifyArgs doc (t1:ts1) ty@(TypeVariable _) = do
@@ -1008,17 +1010,18 @@ because of possibly multiple occurrences of variables.
 >       sigs <- getSigEnv
 >       m <- getModuleIdent
 >       cEnv <- getClassEnv
+>       tcEnv <- getTyConsEnv
 >       case qualLookupTypeSig m v sigs of
 >         -- Just ty -> expandPolyType ty >>= inst
 >         Just cty -> do
 >           -- add additional inferred contexts
 >           (cx0, ty0) <- expandPolyType cty >>= inst
 >           nextId' <- getOnlyNextId
->           (icx, ity) <- getValueEnv >>= inst . (flip (funType m v) cEnv)
+>           (icx, ity) <- getValueEnv >>= inst . (flip (funType tcEnv m v) cEnv)
 >           resetNextId nextId'
 >           let mapping = buildTypeVarsMapping ity ty0
 >           return (cx0 ++ substContext mapping icx, ty0)
->         Nothing -> getValueEnv >>= inst . (flip (funType m v) cEnv)
+>         Nothing -> getValueEnv >>= inst . (flip (funType tcEnv m v) cEnv)
 >   where v' = unqualify v
 > tcExpr _ (Constructor c) = do
 >  m <- getModuleIdent
@@ -1539,13 +1542,13 @@ unambiguously refers to the local definition.
 >   Value _ _ sigma : _ -> Just sigma
 >   _ -> Nothing
 
-> funType :: ModuleIdent -> QualIdent -> ValueEnv -> ClassEnv -> TypeScheme
-> funType m f tyEnv cEnv = case qualLookupValue f tyEnv of
+> funType :: TCEnv -> ModuleIdent -> QualIdent -> ValueEnv -> ClassEnv -> TypeScheme
+> funType tcEnv m f tyEnv cEnv = case qualLookupValue f tyEnv of
 >   [Value _ _ sigma] -> sigma
 >   _ -> case qualLookupValue (qualQualify m f) tyEnv of
 >     [Value _ _ sigma] -> sigma
 >     _ -> case lookupMethodTypeScheme cEnv f of
->        Just tsc -> tsc -- TODO: add instance context
+>        Just (ForAll cx n ty) -> (ForAll cx n (expandType m tcEnv ty)) -- TODO: add instance context
 >        Nothing -> internalError $ "TypeCheck.funType " ++ show f ++ ", more precisely " ++ show (unqualify f)
 
 > sureLabelType :: Ident -> ValueEnv -> Maybe TypeScheme
