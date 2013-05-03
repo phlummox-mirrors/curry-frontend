@@ -56,7 +56,7 @@ checkTypes file = do
           putStrLn ("\nTest for " ++ file ++ " failed for following functions: ")
           mapM_ putStrLn (map (\(x, y, z) -> x ++ "\n  " ++ y ++ "\n  " ++ z) errs)
           return False
-    CheckFailed msgs -> do print (show msgs); return False  
+    CheckFailed msgs -> do print msgs; return False  
     
   
   
