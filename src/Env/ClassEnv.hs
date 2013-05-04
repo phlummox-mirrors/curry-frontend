@@ -14,7 +14,7 @@
 
 module Env.ClassEnv 
   ( ClassEnv (..), Class (..), Instance (..), initClassEnv, lookupClass
-  , lookupDefiningClass, lookupMethodTypeScheme
+  , lookupDefiningClass, lookupMethodTypeScheme, lookupMethodTypeSig
   , ppClasses, getAllClassMethods
   ) where
 
@@ -73,6 +73,18 @@ lookupMethodTypeScheme cEnv qid = do
   theClass_ <- lookupDefiningClass cEnv qid
   classMethods <- liftM typeSchemes (lookupClass cEnv theClass_) 
   lookup (unqualify qid) classMethods  
+
+-- |looks up the method type signature of a given class method
+lookupMethodTypeSig :: ClassEnv -> QualIdent -> Maybe (Context, TypeExpr)
+lookupMethodTypeSig cEnv qid = do
+  theClass_ <- lookupDefiningClass cEnv qid
+  classMethods <- liftM methods (lookupClass cEnv theClass_)
+  lookup3 (unqualify qid) classMethods
+
+lookup3 :: Eq a => a -> [(a, b, c)] -> Maybe (b, c)
+lookup3 _ [] =  Nothing
+lookup3 x ((a, b, c):ys) | x == a = Just (b, c)
+                         | otherwise = lookup3 x ys
 
 -- |get all type signatures of all methods in all classes 
 -- in the given class environment; the context of a given method
