@@ -27,10 +27,8 @@ type annotation is present.
 > import qualified Control.Monad.State as S (State, execState, gets, modify)
 > import Data.List (nub, partition)
 > import qualified Data.Map as Map (Map, empty, insert, lookup)
-> import Data.Maybe (catMaybes, fromJust, fromMaybe, isJust, listToMaybe, maybeToList)
 > import Text.PrettyPrint
 > import qualified Debug.Trace as Dbg
-> -- import Data.List (union)
 > import qualified Data.Set as Set
 > import Data.Maybe
 
