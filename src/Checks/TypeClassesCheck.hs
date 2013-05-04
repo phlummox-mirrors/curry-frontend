@@ -458,7 +458,7 @@ buildTypeSchemes cls@(Class { theClass = tc, methods = ms, typeVar = classTypeVa
       -- add also the class to the context!
       let extendedCx = Context (ContextElem tc classTypeVar [] : cElems)
           (translatedContext, theType) = toConstrType [classTypeVar] (extendedCx, typeExpr) 
-      in (id0, (polyType theType `constrainBy`translatedContext))
+      in (id0, (polyType theType `constrainBy` translatedContext))
 
 
 
