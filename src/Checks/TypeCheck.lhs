@@ -86,7 +86,7 @@ The type checker returns the resulting type constructor and type environments.
 >     bindTypes tds
 >     bindConstrs
 >     bindLabels
->     bindClassMethods cEnv
+>     -- bindClassMethods cEnv
 >     _ <- tcDecls vds
 >
 >     cEnv' <- getClassEnv
@@ -95,7 +95,7 @@ The type checker returns the resulting type constructor and type environments.
 > 
 >     checkForAmbiguousContexts vds
 >   (tds, vds) = partition isTypeDecl decls
->   initState  = TcState m tcEnv tyEnv cEnv idSubst emptySigEnv 0 []
+>   initState  = TcState m tcEnv tyEnv cEnv idSubst emptySigEnv 0 [] []
 
 \end{verbatim}
 
@@ -112,6 +112,11 @@ generating fresh type variables.
 >   , typeSubst   :: TypeSubst
 >   , sigEnv      :: SigEnv
 >   , nextId      :: Int         -- automatic counter
+>   -- A stack for the substitutions after the first iteration of the
+>   -- fix point iteration. Each call of tcDecls creates a new scope for these
+>   -- substitutions by putting a new element onto the stack, which is 
+>   -- subsequently used in each declaration group.   
+>   , firstThetas :: [Maybe TypeSubst]
 >   , errors      :: [Message]
 >   }
 
@@ -171,6 +176,18 @@ generating fresh type variables.
 
 > resetNextId :: Int -> TCM ()
 > resetNextId n = S.modify $ \s -> s { nextId = n}
+
+> newScope :: TCM ()
+> newScope = S.modify $ \s -> s { firstThetas = Nothing : firstThetas s }
+
+> endScope :: TCM ()
+> endScope = S.modify $ \s -> s { firstThetas = tail $ firstThetas s }
+
+> setFirstTypeSubst :: Maybe TypeSubst -> TCM ()
+> setFirstTypeSubst t = S.modify $ \s -> s { firstThetas = t : (tail $ firstThetas s) }
+
+> getFirstTypeSubst :: TCM (Maybe TypeSubst)
+> getFirstTypeSubst = S.gets (head . firstThetas)
 
 \end{verbatim}
 \paragraph{Defining Types}
@@ -431,7 +448,9 @@ either one of the basic types or \texttt{()}.
 >   m <- getModuleIdent
 >   oldSig <- getSigEnv
 >   modifySigEnv $ \ sigs -> foldr bindTypeSigs sigs ods
+>   newScope -- scope for the first inferred type substitutions
 >   cxs <- mapM tcDeclGroup $ scc bv (qfv m) vds
+>   endScope
 >   modifySigEnv (const oldSig)
 >   return $ concat cxs
 >   where (vds, ods) = partition isValueDecl ds
@@ -444,17 +463,18 @@ either one of the basic types or \texttt{()}.
 >   n <- getOnlyNextId
 >   theta <- getTypeSubst
 >   oldValEnv <- getValueEnv
->   tcFixPointIter ds (replicate (length ds) Set.empty) n theta oldValEnv Nothing 0
+>   tcFixPointIter ds (replicate (length ds) Set.empty) n theta oldValEnv Nothing Nothing 0
 
 > tcFixPointIter :: [Decl] -> [Set.Set (QualIdent, Type)] -> Int -> TypeSubst 
->                -> ValueEnv -> (Maybe (Set.Set Int)) -> Int -> TCM BT.Context 
-> tcFixPointIter ds oldCxs n t oldVEnv fEnv fixPIter = do
+>                -> ValueEnv -> (Maybe (Set.Set Int)) -> (Maybe TypeSubst) -> Int -> TCM BT.Context 
+> tcFixPointIter ds oldCxs n t oldVEnv fEnv tySubst fixPIter = do
 >   let maxFixPIter = 10000
 >   when (fixPIter > maxFixPIter) $ internalError "fix point iteration propably broken"  
 >       
 >   -- reset state
 >   resetNextId n
 >   modifyTypeSubst (const t)
+>   setFirstTypeSubst tySubst
 >
 >   tyEnv0 <- getValueEnv
 >   ctysLhs <- mapM tcDeclLhs ds
@@ -479,6 +499,8 @@ either one of the basic types or \texttt{()}.
 >   -- iteration
 >   let firstFreeEnv = case fEnv of Nothing -> fvEnv (subst theta tyEnv0)
 >                                   Just x -> x
+>   let firstTySubst = case tySubst of Nothing -> theta
+>                                      Just x -> x
 > 
 >   err <- hasError
 >   case err of
@@ -503,7 +525,8 @@ either one of the basic types or \texttt{()}.
 >               valInfos = map (flip lookupValue currentEnv) declGroupMembers
 >           -- add each element of the declaration group
 >           mapM_ modifyEnv' valInfos 
->           tcFixPointIter ds newCxs n t oldVEnv (Just firstFreeEnv) (fixPIter + 1)
+>           tcFixPointIter ds newCxs n t oldVEnv (Just firstFreeEnv) 
+>             (Just firstTySubst) (fixPIter + 1)
 >         False -> do
 >           -- Establish the inferred types. 
 >           -- Pass the inferred types to genDecl so that the contexts can be
@@ -1012,13 +1035,25 @@ because of possibly multiple occurrences of variables.
 >       cEnv <- getClassEnv
 >       tcEnv <- getTyConsEnv
 >       case qualLookupTypeSig m v sigs of
->         -- Just ty -> expandPolyType ty >>= inst
 >         Just cty -> do
->           -- add additional inferred contexts
+>           -- load the inferred type together with the (new) contexts
+>           (icx', ity') <- getValueEnv >>= (inst . (flip (funType tcEnv m v) cEnv))
+>           -- Here we need the inferred type *after the first iteration of the
+>           -- fix point iteration*. The reason for this is that the type variables 
+>           -- in the context refer to this type. Only given this type we can construct 
+>           -- the correct mapping from inferred type variables to type variables
+>           -- in the type inferred by the type signature. 
+>           maybeTheta <- getFirstTypeSubst
+>           let firstTypeSubst = case maybeTheta of
+>                 Nothing -> idSubst
+>                 Just x -> x
+>               icx = substContext firstTypeSubst icx'
+>               ity = subst firstTypeSubst ity'
+>           -- retrieve the type from the type signature...
 >           (cx0, ty0) <- expandPolyType cty >>= inst
->           nextId' <- getOnlyNextId
->           (icx, ity) <- getValueEnv >>= inst . (flip (funType tcEnv m v) cEnv)
->           resetNextId nextId'
+>           -- ... and construct a mapping, so that the type variables in the 
+>           -- inferred (new) contexts match the type variables in the type
+>           -- constructed from the type signature
 >           let mapping = buildTypeVarsMapping ity ty0
 >           return (cx0 ++ substContext mapping icx, ty0)
 >         Nothing -> getValueEnv >>= inst . (flip (funType tcEnv m v) cEnv)
