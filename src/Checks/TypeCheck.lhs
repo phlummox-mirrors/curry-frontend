@@ -465,7 +465,7 @@ either one of the basic types or \texttt{()}.
 
 > tcFixPointIter :: [Decl] -> [Set.Set (QualIdent, Type)] -> Int -> TypeSubst 
 >                -> ValueEnv -> (Maybe (Set.Set Int)) -> (Maybe TypeSubst) -> Int -> TCM BT.Context 
-> tcFixPointIter ds oldCxs n t oldVEnv fEnv tySubst fixPIter = do
+> tcFixPointIter ds oldCxs n t oldVEnv freeVarsEnv tySubst fixPIter = do
 >   let maxFixPIter = 10000
 >   when (fixPIter > maxFixPIter) $ internalError "fix point iteration propably broken"  
 >       
@@ -489,16 +489,17 @@ either one of the basic types or \texttt{()}.
 >       cxs' = map (substContext theta) cxs
 >       dsWithCxs = zip cxs' ds
 >       nonLocalContexts = map (uncurry notLocal) $ zip cxs' types
->       -- nonLocalContexts = if propCxs then cxs' else []
->       -- nonLocalContexts = if propCxs then map (uncurry notLocal) $ zip cxs' types else []
 >
->   -- save/restore free environment variables of the first run of the 
->   -- fix point iteration because these are later changed by the fix point
->   -- iteration
->   let firstFreeEnv = case fEnv of Nothing -> fvEnv (subst theta tyEnv0)
->                                   Just x -> x
->   let firstTySubst = case tySubst of Nothing -> theta
->                                      Just x -> x
+>   -- save/restore free type variables that appear in the environment 
+>   -- after the first run of the fix point iteration because these are 
+>   -- later changed by the fix point iteration
+>   let firstFreeVars = case freeVarsEnv of 
+>         Nothing -> fvEnv (subst theta tyEnv0)
+>         Just x -> x
+>       -- save/restore type substitution that we get after the first iteration 
+>       firstTySubst = case tySubst of
+>         Nothing -> theta
+>         Just x -> x
 > 
 >   err <- hasError
 >   case err of
@@ -523,13 +524,13 @@ either one of the basic types or \texttt{()}.
 >               valInfos = map (flip lookupValue currentEnv) declGroupMembers
 >           -- add each element of the declaration group
 >           mapM_ modifyEnv' valInfos 
->           tcFixPointIter ds newCxs n t oldVEnv (Just firstFreeEnv) 
+>           tcFixPointIter ds newCxs n t oldVEnv (Just firstFreeVars) 
 >             (Just firstTySubst) (fixPIter + 1)
 >         False -> do
 >           -- Establish the inferred types. 
 >           -- Pass the inferred types to genDecl so that the contexts can be
 >           -- renamed properly
->           mapM_ (genDecl firstFreeEnv theta) dsWithCxs
+>           mapM_ (genDecl firstFreeVars theta) dsWithCxs
 >           -- do NOT return final contexts! 
 >           -- TODO: return cxs or cxs' (or doesn't matter?)
 >           return $ concat nonLocalContexts
