@@ -71,12 +71,12 @@ genFlatInterface opts modSum mEnv tyEnv tcEnv cEnv mdl = (intf'' , messages)
        cEnv0 <- return Nothing -- convertClassEnv cEnv
        return (intf0, cEnv0)
   intf'            = patchPrelude intf
-  intf''           = addClassEnv intf' cEnv'
-  addClassEnv (Prog m is ts fs ops _) c = (Prog m is ts fs ops c)
+  intf''           = intf' -- addClassEnv intf' cEnv'
+  -- addClassEnv (Prog m is ts fs ops _) c = (Prog m is ts fs ops c)
 
 patchPrelude :: Prog -> Prog
-patchPrelude p@(Prog n _ types funcs ops cs)
-  | n == prelude = Prog n [] (preludeTypes ++ types) funcs ops cs
+patchPrelude p@(Prog n _ types funcs ops {-cs-})
+  | n == prelude = Prog n [] (preludeTypes ++ types) funcs ops {-cs-}
   | otherwise    = p
 
 preludeTypes :: [TypeDecl]
@@ -199,7 +199,7 @@ visitModule (IL.Module mid imps decls) = do
       modid   <- visitModuleIdent mid
       imps'   <- imports
       is      <- mapM visitModuleIdent $ nub $ imps ++ (map extractMid imps')
-      return $ Prog modid is (recrds ++ types ++ datas) funcs ops Nothing -- TODO
+      return $ Prog modid is (recrds ++ types ++ datas) funcs ops -- Nothing -- TODO
     )
     ( do
       ds      <- filterM isPublicDataDecl decls
@@ -215,7 +215,7 @@ visitModule (IL.Module mid imps decls) = do
       modid   <- visitModuleIdent mid
       imps'   <- imports
       is      <- mapM visitModuleIdent $ nub $ imps ++ (map extractMid imps')
-      return $ Prog modid is (itypes ++ recrds ++ types ++ datas) (ifuncs ++ funcs) (iops ++ ops) Nothing -- TODO
+      return $ Prog modid is (itypes ++ recrds ++ types ++ datas) (ifuncs ++ funcs) (iops ++ ops) -- Nothing -- TODO
     )
   where extractMid (CS.IImportDecl _ mid1) = mid1
 
