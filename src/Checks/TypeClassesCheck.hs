@@ -19,7 +19,7 @@ import Env.TypeConstructor
 import Base.Messages (Message, message, posMessage, internalError)
 
 import Data.List
-import Text.PrettyPrint
+import Text.PrettyPrint hiding (sep)
 import qualified Data.Map as Map
 import Data.Maybe
 
@@ -56,10 +56,12 @@ typeClassesCheck :: ModuleIdent -> [Decl] -> ClassEnv -> TCEnv -> ([Decl], Class
 typeClassesCheck m decls (ClassEnv importedClasses importedInstances _) tcEnv = 
   case result of 
     CheckSuccess (classes, instances) -> 
-      let newDecls = concatMap (transformInstance classes) $ concatMap transformClass decls
+      let newDecls = concatMap (transformInstance cEnv) $ 
+            concatMap (transformClass cEnv) decls
           classes' = map renameTypeSigVars classes
           classes'' = map buildTypeSchemes classes'
-      in (newDecls, ClassEnv classes'' instances (buildClassMethodsMap classes''), [])
+          cEnv = ClassEnv classes'' instances (buildClassMethodsMap classes'')
+      in (newDecls, cEnv, [])
     CheckFailed errs -> (decls, ClassEnv [] [] Map.empty, errs)
   where
     (classDecls, rest1) = partition isClassDecl decls
@@ -340,18 +342,80 @@ checkInstanceDataTypeCorrect _ _ _ = internalError "checkInstanceDataTypeCorrect
 -- source code transformation
 -- ---------------------------------------------------------------------------
 
-transformClass :: Decl -> [Decl]
-transformClass (ClassDecl p scx cls tyvar decls) = []
-transformClass d = [d]
+transformClass :: ClassEnv -> Decl -> [Decl]
+transformClass cEnv (ClassDecl p scx cls tyvar decls) = 
+  [ DataDecl NoPos dataTypeName typeVars0 [
+     ConstrDecl NoPos existTypeVars dataTypeName (scs ++ methodTypes) ]
+  ] ++ concatMap genSuperClassDictSelMethod theSuperClasses 
+    ++ concatMap genMethodSelMethod (zip theMethods0 [0..])
+  where
+  theClass0 = fromJust $ lookupClass cEnv (qualify cls)
+  theMethods0 = methods theClass0
+  -- existTypeVars = (nub $ concatMap (typeVarsInTypeExpr . third) theMethods0) \\ [tyvar]
+  existTypeVars = []
+  typeVars0 = [tyvar]
+  third (_, _, x) = x
+  dataTypeName = mkIdent $ dictTypePrefix ++ show cls
+  -- TODO: qualify/unqualify??
+  theSuperClasses = 
+    map (show . unqualify) $ 
+      superClasses theClass0
+  qSuperClasses = map (dictTypePrefix ++) theSuperClasses
+  scs = map (\s -> ConstructorType (qualify $ mkIdent s) [VariableType tyvar])
+    qSuperClasses
+  methodTypes = map third theMethods0
+  genSuperClassDictSelMethod :: String -> [Decl]
+  genSuperClassDictSelMethod scls = 
+    let selMethodId = mkIdent $ selMethodName
+        selMethodName = selFunPrefix ++ (show $ theClass theClass0) ++ sep ++ scls in
+    [ TypeSig NoPos [selMethodId]
+        emptyContext (ArrowType 
+          (ConstructorType (qualify $ dataTypeName) [VariableType tyvar]) 
+          (ConstructorType (qualify $ mkIdent $ dictTypePrefix ++ scls) [VariableType tyvar]))
+    , FunctionDecl NoPos selMethodId 
+       [Equation NoPos 
+         (equationsLhs selMethodName)
+         (SimpleRhs NoPos (Variable $ qualify $ mkIdent $ (selMethodName ++ sep ++ scls)) [])
+       ]
+    ]
+  genMethodSelMethod :: ((Ident, Context, TypeExpr), Int) -> [Decl]
+  genMethodSelMethod ((m, cx, ty), i) = 
+    let selMethodId = mkIdent $ selMethodName
+        selMethodName = selFunPrefix ++ (show $ theClass theClass0) ++ sep ++ (show m) in
+    [ TypeSig NoPos [selMethodId]
+        emptyContext (ArrowType 
+          (ConstructorType (qualify $ mkIdent $ dictTypePrefix ++ (show cls)) [VariableType tyvar]) 
+          ty)
+    , FunctionDecl NoPos selMethodId 
+       [Equation NoPos 
+         (equationsLhs selMethodName)
+         (SimpleRhs NoPos (Variable $ qualify $ mkIdent (selMethodName ++ sep ++ "x" ++ show i)) [])
+       ]
+    ]
+  equationsLhs selMethodName = let selMethodId = mkIdent $ selMethodName in 
+    (FunLhs selMethodId [ConstructorPattern (qualify $ dataTypeName) 
+      (map (\s -> VariablePattern $ mkIdent (selMethodName ++ sep ++ s)) theSuperClasses
+       ++ map (\(n, _) -> VariablePattern $ mkIdent (selMethodName ++ sep ++ "x" ++ (show n))) (zip [0::Int ..] theMethods0))])
+  
+transformClass _ d = [d]
+
+dictTypePrefix :: String
+dictTypePrefix = "Dict" ++ sep
+
+selFunPrefix :: String
+selFunPrefix = "sel" ++ sep
+
+sep :: String
+sep = "."
 
 type IDecl = Decl
 
 -- |transformInstance creates top level functions for the methods 
 -- of which rules are given in the instance declaration, and concrete 
 -- dictionaries, as well as type signatures for the instance rules. 
-transformInstance :: [Class] -> IDecl -> [Decl]
-transformInstance classes idecl@(InstanceDecl _ _ _ _ _ decls)
-  = concatMap (transformMethod classes idecl) decls
+transformInstance :: ClassEnv -> IDecl -> [Decl]
+transformInstance cEnv idecl@(InstanceDecl _ _ _ _ _ decls)
+  = concatMap (transformMethod (classes cEnv) idecl) decls
   -- create dictionary 
 transformInstance _ d = [d]
 
