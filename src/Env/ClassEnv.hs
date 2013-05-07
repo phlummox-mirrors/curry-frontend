@@ -75,15 +75,15 @@ lookupDefiningClass (ClassEnv _ _ ms) m = Map.lookup m ms
 lookupMethodTypeScheme :: ClassEnv -> QualIdent -> Maybe TypeScheme
 lookupMethodTypeScheme cEnv qid = do
   theClass_ <- lookupDefiningClass cEnv qid
-  classMethods <- liftM typeSchemes (lookupClass cEnv theClass_) 
-  lookup (unqualify qid) classMethods  
+  classMethods0 <- liftM typeSchemes (lookupClass cEnv theClass_) 
+  lookup (unqualify qid) classMethods0  
 
 -- |looks up the method type signature of a given class method
 lookupMethodTypeSig :: ClassEnv -> QualIdent -> Maybe (Context, TypeExpr)
 lookupMethodTypeSig cEnv qid = do
   theClass_ <- lookupDefiningClass cEnv qid
-  classMethods <- liftM methods (lookupClass cEnv theClass_)
-  lookup3 (unqualify qid) classMethods
+  classMethods0 <- liftM methods (lookupClass cEnv theClass_)
+  lookup3 (unqualify qid) classMethods0
 
 lookup3 :: Eq a => a -> [(a, b, c)] -> Maybe (b, c)
 lookup3 _ [] =  Nothing
