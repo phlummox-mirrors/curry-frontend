@@ -481,7 +481,7 @@ type IDecl = Decl
 -- dictionaries, as well as type signatures for the instance rules. 
 transformInstance :: ClassEnv -> IDecl -> [Decl]
 transformInstance cEnv idecl@(InstanceDecl _ _ _ _ _ decls)
-  = concatMap (transformMethod (classes cEnv) idecl) decls
+  = concatMap (transformMethod (theClasses cEnv) idecl) decls
   -- create dictionary 
 transformInstance _ d = [d]
 

@@ -30,8 +30,8 @@ import Base.Types hiding (Context, typeVar, typeVars)
 -- |The class environment consists of the classes and instances in scope
 -- plus a map from class methods to their defining classes
 data ClassEnv = ClassEnv 
-  { classes :: [Class]
-  , instances :: [Instance] 
+  { theClasses :: [Class]
+  , theInstances :: [Instance] 
   , classMethods :: (Map.Map QualIdent QualIdent)
   } 
   deriving Show
