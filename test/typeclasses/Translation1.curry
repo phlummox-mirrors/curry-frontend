@@ -6,9 +6,10 @@ class A a where
 
 {-
 class B a where
-  funB1 :: a -> a
-  funB2 :: a -> a -> a
+  funB1 :: a -> a -> a
+  funB2 :: a -> a -> a -> a
   funB3 :: a -> a -> a
+  funB4 :: a -> a -> a
   -}
 
 class B a where

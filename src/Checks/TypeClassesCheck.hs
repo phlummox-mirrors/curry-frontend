@@ -499,7 +499,7 @@ transformInstance :: ClassEnv -> IDecl -> [Decl]
 transformInstance cEnv idecl@(InstanceDecl _ _ _ _ _ decls)
   = concatMap (transformMethod cEnv idecl) decls
   -- create dictionary 
-  ++ createDictionary cEnv idecl
+  ++ createDictionary2 cEnv idecl
 transformInstance _ d = [d]
 
 transformMethod :: ClassEnv -> IDecl -> Decl -> [Decl]
@@ -568,9 +568,35 @@ transLhs rfunc (ApLhs lhs ps) = ApLhs (transLhs rfunc lhs) ps
 rename :: RenameFunc -> Ident -> Ident
 rename rfunc = updIdentName rfunc  
 
--- |This function creates a dictionary for the given instance declaration
+-- |This function creates a dictionary for the given instance declaration, 
+-- using dictionary data types instead of tuples
 createDictionary :: ClassEnv -> IDecl -> [Decl]
 createDictionary cEnv (InstanceDecl _ _scx cls ty _tvars _decls) = 
+  [ FunctionDecl NoPos (dictName cls)
+    [Equation NoPos
+      (FunLhs (dictName cls) [])
+      (SimpleRhs NoPos 
+        all' [])
+      ]
+  ] 
+  where
+  dictName c = mkIdent $ dictPrefix ++ (show c) ++ sep ++ (show ty)
+  theClass0 = fromJust $ lookupClass cEnv cls
+  superClasses0 = superClasses theClass0
+  methods0 = methods theClass0
+  scs = map (Variable . qualify . dictName) superClasses0
+  ms = map (Variable . qualify . mkIdent . 
+    (\s -> instMethodName cls ty s) . show . fst3) methods0
+  fst3 (x, _, _) = x 
+  all0 = scs ++ ms
+  dict = qualify $ mkIdent $ dictTypePrefix ++ show cls
+  all' = foldl Apply (Constructor dict) all0
+createDictionary _ _ = internalError "createDictionary"
+
+-- |This function creates a dictionary for the given instance declaration, 
+-- using tuples
+createDictionary2 :: ClassEnv -> IDecl -> [Decl]
+createDictionary2 cEnv (InstanceDecl _ _scx cls ty _tvars _decls) = 
   [ FunctionDecl NoPos (dictName cls)
     [Equation NoPos
       (FunLhs (dictName cls) [])
@@ -588,7 +614,7 @@ createDictionary cEnv (InstanceDecl _ _scx cls ty _tvars _decls) =
     (\s -> instMethodName cls ty s) . show . fst3) methods0
   fst3 (x, _, _) = x 
   all0 = scs ++ ms
-createDictionary _ _ = internalError "createDictionary"
+createDictionary2 _ _ = internalError "createDictionary"
 
 -- ---------------------------------------------------------------------------
 -- other transformations
