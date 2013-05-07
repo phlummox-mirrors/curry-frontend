@@ -471,11 +471,21 @@ transformClass2 cEnv (ClassDecl _p _scx cls _tyvar _decls) =
   
 transformClass2 _ d = [d]
 
+-- |The prefix for dictionary types
 dictTypePrefix :: String
 dictTypePrefix = "Dict" ++ sep
 
+-- |The prefix for dictionaries
+dictPrefix :: String
+dictPrefix = "dict" ++ sep
+
+-- |The prefix for selector functions
 selFunPrefix :: String
 selFunPrefix = "sel" ++ sep
+
+-- |The prefix for functions that are implemented in a given instance declaration
+implPrefix :: String
+implPrefix = "impl" ++ sep
 
 sep :: String
 sep = "."
@@ -489,6 +499,7 @@ transformInstance :: ClassEnv -> IDecl -> [Decl]
 transformInstance cEnv idecl@(InstanceDecl _ _ _ _ _ decls)
   = concatMap (transformMethod cEnv idecl) decls
   -- create dictionary 
+  ++ createDictionary cEnv idecl
 transformInstance _ d = [d]
 
 transformMethod :: ClassEnv -> IDecl -> Decl -> [Decl]
@@ -500,8 +511,13 @@ transformMethod cEnv idecl@(InstanceDecl _ _ cls tcon _ _)
   : [createTopLevelFuncs rfunc decl] 
   where 
     -- rename for specific instance!
-    rfunc = (\s -> show cls ++ sep ++ show tcon ++ sep ++ s)
+    rfunc = (\s -> instMethodName cls tcon s)
 transformMethod _ _ _ = internalError "transformMethod"
+
+-- |create a name for the (hidden) function that is implemented by the  
+-- function definitions in the instance  
+instMethodName :: QualIdent -> TypeConstructor -> String -> String
+instMethodName cls tcon s = implPrefix ++ show cls ++ sep ++ show tcon ++ sep ++ s
 
 createTypeSignature :: RenameFunc -> ClassEnv -> IDecl -> Decl -> Decl
 createTypeSignature rfunc cEnv (InstanceDecl _ scx cls tcon tyvars _) 
@@ -551,6 +567,28 @@ transLhs rfunc (ApLhs lhs ps) = ApLhs (transLhs rfunc lhs) ps
 
 rename :: RenameFunc -> Ident -> Ident
 rename rfunc = updIdentName rfunc  
+
+-- |This function creates a dictionary for the given instance declaration
+createDictionary :: ClassEnv -> IDecl -> [Decl]
+createDictionary cEnv (InstanceDecl _ _scx cls ty _tvars _decls) = 
+  [ FunctionDecl NoPos (dictName cls)
+    [Equation NoPos
+      (FunLhs (dictName cls) [])
+      (SimpleRhs NoPos 
+        (if length all0 == 1 then head all0 else Tuple noRef all0) [])
+      ]
+  ] 
+  where
+  dictName c = mkIdent $ dictPrefix ++ (show c) ++ sep ++ (show ty)
+  theClass0 = fromJust $ lookupClass cEnv cls
+  superClasses0 = superClasses theClass0
+  methods0 = methods theClass0
+  scs = map (Variable . qualify . dictName) superClasses0
+  ms = map (Variable . qualify . mkIdent . 
+    (\s -> instMethodName cls ty s) . show . fst3) methods0
+  fst3 (x, _, _) = x 
+  all0 = scs ++ ms
+createDictionary _ _ = internalError "createDictionary"
 
 -- ---------------------------------------------------------------------------
 -- other transformations

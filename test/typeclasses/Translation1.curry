@@ -14,7 +14,7 @@ class B a where
 class B a where
   funB1 :: a -> b -> a
   funB2 :: a -> a -> c -> a
-  funB3 :: b -> a -> a
+  funB3 :: A b => b -> a -> a
   funB4 :: a -> c -> c
 
 class A a => C a where
@@ -44,3 +44,40 @@ instance B Int where
   funB2 x _ _ = x
   funB3 _ x = x
   funB4 x y = y
+
+instance A a => A [a] where
+  funA1 _ _ = True
+  funA2 x = x
+
+instance B a => B [a] where
+  funB1 x _ = x
+  funB2 x _ _ = x
+  funB3 _ x = x
+  funB4 x y = y
+
+instance (A a, B a) => F [a] where
+  funF x = x
+
+data T a b = T a b
+
+instance (A a, B b) => F (T a b) where
+  funF x = x
+  
+instance A (T a b) where
+  funA1 x y = True
+  funA2 x = x
+
+instance B (T a b) where
+  funB1 = error ""
+  funB2 = error ""
+  funB3 = error ""
+  funB4 = error ""
+  
+instance C (T a b) where
+  funC x = x
+
+instance D (T a b) where
+  funD1 x = x
+  funD2 x = True
+
+instance G (T a b) where
