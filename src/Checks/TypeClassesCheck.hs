@@ -352,7 +352,7 @@ checkInstanceDataTypeCorrect _ _ _ = internalError "checkInstanceDataTypeCorrect
 -- @
 -- are therefore not allowed.  
 transformClass :: ClassEnv -> Decl -> [Decl]
-transformClass cEnv (ClassDecl p scx cls tyvar decls) = 
+transformClass cEnv (ClassDecl _p _scx cls tyvar _decls) = 
   [ DataDecl NoPos dataTypeName typeVars0 [
      ConstrDecl NoPos existTypeVars dataTypeName (scs ++ methodTypes) ]
   ] ++ concatMap genSuperClassDictSelMethod theSuperClasses 
@@ -384,11 +384,11 @@ transformClass cEnv (ClassDecl p scx cls tyvar decls) =
     , FunctionDecl NoPos selMethodId 
        [Equation NoPos 
          (equationsLhs selMethodName)
-         (SimpleRhs NoPos (Variable $ qualify $ mkIdent $ (selMethodName ++ sep ++ scls)) [])
+         (SimpleRhs NoPos (Variable $ qualify $ dictSelParam selMethodName scls) [])
        ]
     ]
   genMethodSelMethod :: ((Ident, Context, TypeExpr), Int) -> [Decl]
-  genMethodSelMethod ((m, cx, ty), i) = 
+  genMethodSelMethod ((m, _cx, ty), i) = 
     let selMethodId = mkIdent $ selMethodName
         selMethodName = selFunPrefix ++ (show $ theClass theClass0) ++ sep ++ (show m) in
     [ TypeSig NoPos [selMethodId]
@@ -398,14 +398,21 @@ transformClass cEnv (ClassDecl p scx cls tyvar decls) =
     , FunctionDecl NoPos selMethodId 
        [Equation NoPos 
          (equationsLhs selMethodName)
-         (SimpleRhs NoPos (Variable $ qualify $ mkIdent (selMethodName ++ sep ++ "x" ++ show i)) [])
+         (SimpleRhs NoPos (Variable $ qualify $ methodSelParam selMethodName i) [])
        ]
     ]
   equationsLhs selMethodName = let selMethodId = mkIdent $ selMethodName in 
     FunLhs selMethodId [ConstructorPattern (qualify $ dataTypeName) 
-      (map (\s -> VariablePattern $ mkIdent (selMethodName ++ sep ++ s)) theSuperClasses
-       ++ map (\(n, _) -> VariablePattern $ mkIdent (selMethodName ++ sep ++ "x" ++ (show n)))
+      (map (\s -> VariablePattern $ dictSelParam selMethodName s) theSuperClasses
+       ++ map (\(n, _) -> VariablePattern $ methodSelParam selMethodName n)
          (zip [0::Int ..] theMethods0))]
+  
+  -- the renamings are important so that the parameters are not handled as
+  -- global functions    
+  dictSelParam selMethodName s = flip renameIdent 1 $ 
+    mkIdent (selMethodName ++ sep ++ s)
+  methodSelParam selMethodName n = flip renameIdent 1 $ 
+    mkIdent (selMethodName ++ sep ++ "x" ++ (show n))
   
 transformClass _ d = [d]
 
