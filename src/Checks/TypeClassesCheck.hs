@@ -57,7 +57,7 @@ typeClassesCheck m decls (ClassEnv importedClasses importedInstances _) tcEnv =
   case result of 
     CheckSuccess (classes, instances) -> 
       let newDecls = concatMap (transformInstance cEnv) $ 
-            concatMap (transformClass cEnv) decls
+            concatMap (transformClass2 cEnv) decls
           classes' = map renameTypeSigVars classes
           classes'' = map buildTypeSchemes classes'
           cEnv = ClassEnv classes'' instances (buildClassMethodsMap classes'')
@@ -342,6 +342,15 @@ checkInstanceDataTypeCorrect _ _ _ = internalError "checkInstanceDataTypeCorrect
 -- source code transformation
 -- ---------------------------------------------------------------------------
 
+-- |Transforms class declarations by generating a special data type for 
+-- the dictionaries. Disadvantage: Only class methods possible that do not contain
+-- other type variables than the type variable given in the class declaration. 
+-- Things like
+-- @
+-- class A a where
+--   fun :: a -> b
+-- @
+-- are therefore not allowed.  
 transformClass :: ClassEnv -> Decl -> [Decl]
 transformClass cEnv (ClassDecl p scx cls tyvar decls) = 
   [ DataDecl NoPos dataTypeName typeVars0 [
@@ -393,11 +402,61 @@ transformClass cEnv (ClassDecl p scx cls tyvar decls) =
        ]
     ]
   equationsLhs selMethodName = let selMethodId = mkIdent $ selMethodName in 
-    (FunLhs selMethodId [ConstructorPattern (qualify $ dataTypeName) 
+    FunLhs selMethodId [ConstructorPattern (qualify $ dataTypeName) 
       (map (\s -> VariablePattern $ mkIdent (selMethodName ++ sep ++ s)) theSuperClasses
-       ++ map (\(n, _) -> VariablePattern $ mkIdent (selMethodName ++ sep ++ "x" ++ (show n))) (zip [0::Int ..] theMethods0))])
+       ++ map (\(n, _) -> VariablePattern $ mkIdent (selMethodName ++ sep ++ "x" ++ (show n)))
+         (zip [0::Int ..] theMethods0))]
   
 transformClass _ d = [d]
+
+
+-- |Transforms class declarations using tuples as dictionaries. This handles
+-- class methods with other type variables than the type variable given in the class
+-- declaration well (?)
+transformClass2 :: ClassEnv -> Decl -> [Decl]
+transformClass2 cEnv (ClassDecl _p _scx cls _tyvar _decls) = 
+  concatMap genSuperClassDictSelMethod superClasses0
+  ++ concatMap genMethodSelMethod (zip methods0 [0..])
+  where
+  theClass0 = fromJust $ lookupClass cEnv (qualify cls)
+  superClasses0 = map (show . unqualify) $ superClasses theClass0
+  methods0 = methods theClass0
+  
+  genSuperClassDictSelMethod :: String -> [Decl]
+  genSuperClassDictSelMethod scls = 
+    let selMethodName = selFunPrefix ++ (show $ theClass theClass0) ++ sep ++ scls in
+    [ FunctionDecl NoPos (mkIdent selMethodName)
+      [Equation NoPos
+        (equationLhs selMethodName)
+        (SimpleRhs NoPos (Variable $ qualify $ dictSelParam selMethodName scls) [])
+      ]
+    ]
+    
+  genMethodSelMethod :: ((Ident, Context, TypeExpr), Int) -> [Decl]
+  genMethodSelMethod ((m, _cx, _ty), i) = 
+    let selMethodName = selFunPrefix ++ (show $ theClass theClass0) ++ sep ++ (show m) in
+    [ FunctionDecl NoPos (mkIdent selMethodName)
+      [Equation NoPos
+        (equationLhs selMethodName)
+        (SimpleRhs NoPos (Variable $ qualify $ methodSelParam selMethodName i) [])
+      ]
+    ]
+  
+  equationLhs selMethodName = 
+    FunLhs (mkIdent selMethodName) [TuplePattern noRef (
+      map (\s -> VariablePattern $ dictSelParam selMethodName s) superClasses0
+      ++ map (\(n, _) -> VariablePattern $ methodSelParam selMethodName n)
+        (zip [0::Int ..] methods0))]
+    
+  -- the renamings are important so that the parameters are not handled as
+  -- global functions    
+  dictSelParam selMethodName s = flip renameIdent 1 $ 
+    mkIdent (selMethodName ++ sep ++ s)
+  methodSelParam selMethodName n = flip renameIdent 1 $ 
+    mkIdent (selMethodName ++ sep ++ "x" ++ (show n))
+  
+  
+transformClass2 _ d = [d]
 
 dictTypePrefix :: String
 dictTypePrefix = "Dict" ++ sep
