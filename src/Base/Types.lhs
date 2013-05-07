@@ -354,7 +354,8 @@ Some pretty printing functions:
 
 > ppType :: Type -> Doc
 > ppType (TypeVariable n) = text (show n)
-> ppType (TypeConstructor c ts) = text (show c) <+> hsep (map ppType ts)
+> ppType (TypeConstructor c ts) = 
+>   (if length ts == 0 then id else parens) $ text (show c) <+> hsep (map ppType ts)
 > ppType (TypeArrow t1 t2) = parens $ ppType t1 <+> text "->" <+> ppType t2
 > ppType (TypeConstrained ts n) 
 >   = text "constr" <> text (show n) <> parens (hsep (map ppType ts))
