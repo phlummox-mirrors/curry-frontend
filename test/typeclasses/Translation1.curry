@@ -82,3 +82,15 @@ instance D (T a b) where
   funD2 x = True
 
 instance G (T a b) where
+
+data S a b = S a b
+
+-- missing functions!
+instance B (S a b) where
+
+data U a b = U a b
+  
+instance B (U a b) where
+  funB1 x _ = x
+  funB3 _ x = x
+  

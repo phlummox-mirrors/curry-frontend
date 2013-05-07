@@ -495,12 +495,19 @@ type IDecl = Decl
 -- of which rules are given in the instance declaration, and concrete 
 -- dictionaries, as well as type signatures for the instance rules. 
 transformInstance :: ClassEnv -> IDecl -> [Decl]
-transformInstance cEnv idecl@(InstanceDecl _ _ _ _ _ decls)
+transformInstance cEnv idecl@(InstanceDecl _ _ cls _ _ decls)
   = concatMap (transformMethod cEnv idecl) decls
+  ++ concatMap (handleMissingFunc cEnv idecl) missingMethods
   -- create dictionary 
   ++ createDictionary2 cEnv idecl
+  where
+  presentMethods = nub $ map (\(FunctionDecl _ id0 _) -> id0) decls
+  theClass0 = fromJust $ lookupClass cEnv cls 
+  theMethods0 = nub $ map fst3 $ methods theClass0
+  missingMethods = theMethods0 \\ presentMethods
 transformInstance _ d = [d]
 
+-- |transforms one method defined in an instance to a top level function 
 transformMethod :: ClassEnv -> IDecl -> Decl -> [Decl]
 transformMethod cEnv idecl@(InstanceDecl _ _ cls tcon _ _)
                       decl@(FunctionDecl _ _ _) =
@@ -518,6 +525,8 @@ transformMethod _ _ _ = internalError "transformMethod"
 instMethodName :: QualIdent -> TypeConstructor -> String -> String
 instMethodName cls tcon s = implPrefix ++ show cls ++ sep ++ show tcon ++ sep ++ s
 
+-- |creates a type signature for an instance method which is transformed to
+-- a top level function
 createTypeSignature :: RenameFunc -> ClassEnv -> IDecl -> Decl -> Decl
 createTypeSignature rfunc cEnv (InstanceDecl _ scx cls tcon tyvars _) 
                     (FunctionDecl p f _eqs) 
@@ -566,6 +575,23 @@ transLhs rfunc (ApLhs lhs ps) = ApLhs (transLhs rfunc lhs) ps
 
 rename :: RenameFunc -> Ident -> Ident
 rename rfunc = updIdentName rfunc  
+
+-- |handles functions missing in an instance declaration. Searches for a
+-- default method (TODO!) and inserts this, else inserts an error statement
+handleMissingFunc :: ClassEnv -> IDecl -> Ident -> [Decl]
+handleMissingFunc cEnv (InstanceDecl _ _ cls ty _ _) fun = 
+  [ FunctionDecl NoPos globalName [if defaultMethodDefined then equ2 else equ1]
+  ]
+  where
+  globalName = mkIdent $ instMethodName cls ty (show fun)
+  equ1 = Equation NoPos (FunLhs globalName []) 
+    (SimpleRhs NoPos (Apply (Variable . qualify . mkIdent $ "error") 
+                            (Literal $ String (srcRef 0) errorString)) [])
+  errorString = show fun ++ " not given in instance declaration of class "
+    ++ show cls ++ " and type " ++ show ty
+  equ2 = undefined -- TODO
+  defaultMethodDefined = False -- TODO
+
 
 -- |This function creates a dictionary for the given instance declaration, 
 -- using dictionary data types instead of tuples
