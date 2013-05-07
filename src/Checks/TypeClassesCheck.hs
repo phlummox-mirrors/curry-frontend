@@ -197,7 +197,6 @@ noDoubleClassMethods classes =
   in if length theNub /= length allMethods
   then CheckFailed [errDoubleClassMethods NoPos NoPos (allMethods \\ theNub)]
   else return ()
-  where fst3 (x, _, _) = x
 
 -- noConflictOfClassMethodsWithTopLevelBinding :: [Class] -> ValueEnv -> CheckResult ()
 -- noConflictOfClassMethodsWithTopLevelBinding = undefined
@@ -587,7 +586,6 @@ createDictionary cEnv (InstanceDecl _ _scx cls ty _tvars _decls) =
   scs = map (Variable . qualify . dictName) superClasses0
   ms = map (Variable . qualify . mkIdent . 
     (\s -> instMethodName cls ty s) . show . fst3) methods0
-  fst3 (x, _, _) = x 
   all0 = scs ++ ms
   dict = qualify $ mkIdent $ dictTypePrefix ++ show cls
   all' = foldl Apply (Constructor dict) all0
@@ -612,10 +610,12 @@ createDictionary2 cEnv (InstanceDecl _ _scx cls ty _tvars _decls) =
   scs = map (Variable . qualify . dictName) superClasses0
   ms = map (Variable . qualify . mkIdent . 
     (\s -> instMethodName cls ty s) . show . fst3) methods0
-  fst3 (x, _, _) = x 
   all0 = scs ++ ms
 createDictionary2 _ _ = internalError "createDictionary"
 
+fst3 :: (a, b, c) -> a
+fst3 (x, _, _) = x
+ 
 -- ---------------------------------------------------------------------------
 -- other transformations
 -- ---------------------------------------------------------------------------
