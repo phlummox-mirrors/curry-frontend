@@ -193,7 +193,8 @@ checkModule opts (env, mdl) = do
                    then unsafePerformIO (doDump opts (DumpTypeClassesChecked, env4, show' CS.ppModule tcc) >> return (typeCheck env4 tcc) )
                    else return (env4, tcc)
   (env6,  ec) <- if withTypeCheck 
-                   then exportCheck env5 tc
+                   then unsafePerformIO (doDump opts (DumpTypeChecked, env5, show' CS.ppModule tc) >> return (exportCheck env5 tc) )
+                   -- then exportCheck env5 tc
                    else return (env5, tc)
   (env7,  ql) <- return $ qual opts env6 ec
   let dumps = [ (DumpParsed            , env , show' CS.ppModule mdl)
