@@ -456,7 +456,8 @@ transformClass2 cEnv (ClassDecl _p _scx cls _tyvar _decls) =
         (zip [0::Int ..] methods0))]
     
   -- the renamings are important so that the parameters are not handled as
-  -- global functions    
+  -- global functions. Also important is that the parameters are globally
+  -- unique
   dictSelParam selMethodName s = flip renameIdent 1 $ 
     mkIdent (selMethodName ++ sep ++ s)
   methodSelParam selMethodName n = flip renameIdent 1 $ 
@@ -481,29 +482,29 @@ type IDecl = Decl
 -- dictionaries, as well as type signatures for the instance rules. 
 transformInstance :: ClassEnv -> IDecl -> [Decl]
 transformInstance cEnv idecl@(InstanceDecl _ _ _ _ _ decls)
-  = concatMap (transformMethod (theClasses cEnv) idecl) decls
+  = concatMap (transformMethod cEnv idecl) decls
   -- create dictionary 
 transformInstance _ d = [d]
 
-transformMethod :: [Class] -> IDecl -> Decl -> [Decl]
-transformMethod classes idecl@(InstanceDecl _ _ cls tcon _ _)
-                         decl@(FunctionDecl _ _ _) =
+transformMethod :: ClassEnv -> IDecl -> Decl -> [Decl]
+transformMethod cEnv idecl@(InstanceDecl _ _ cls tcon _ _)
+                      decl@(FunctionDecl _ _ _) =
   -- create type signature
-  createTypeSignature rfunc classes idecl decl
+  createTypeSignature rfunc cEnv idecl decl
   -- create function rules
   : [createTopLevelFuncs rfunc decl] 
   where 
     -- rename for specific instance!
-    rfunc = (\s -> "__" ++ show cls ++ "_" ++ show tcon ++ "_" ++ s)
+    rfunc = (\s -> show cls ++ sep ++ show tcon ++ sep ++ s)
 transformMethod _ _ _ = internalError "transformMethod"
 
-createTypeSignature :: RenameFunc -> [Class] -> IDecl -> Decl -> Decl
-createTypeSignature rfunc classes (InstanceDecl _ scx cls tcon tyvars _) 
+createTypeSignature :: RenameFunc -> ClassEnv -> IDecl -> Decl -> Decl
+createTypeSignature rfunc cEnv (InstanceDecl _ scx cls tcon tyvars _) 
                     (FunctionDecl p f _eqs) 
   = TypeSig p [rename rfunc f] cx' ty'
   where 
     -- lookup class method of f
-    theClass_ = fromJust $ find (\(Class { theClass = tc}) -> tc == cls) classes
+    theClass_ = fromJust $ lookupClass cEnv cls
     (_, cx, ty) = fromJust $ find (\(id0, _, _) -> id0 == f) (methods theClass_)
     
     -- Substitute class typevar with given instance type. 
