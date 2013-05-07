@@ -9,7 +9,7 @@ if [ "$1" = all ]
 then
   echo "building with orig"
   pushd lib2 && $cymake_orig -e -f *.curry && popd
-  pushd lib2/.curry/ && sed 's/$/ Nothing/' -s -i *.fint *.fcy && popd
+  #pushd lib2/.curry/ && sed 's/$/ Nothing/' -s -i *.fint *.fcy && popd
 fi
 
 ./ComparePrograms.sh lib
