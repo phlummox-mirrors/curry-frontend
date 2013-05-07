@@ -450,10 +450,15 @@ transformClass2 cEnv (ClassDecl _p _scx cls _tyvar _decls) =
     ]
   
   equationLhs selMethodName = 
-    FunLhs (mkIdent selMethodName) [TuplePattern noRef (
+    FunLhs (mkIdent selMethodName) [
+      if length patterns > 1 then TuplePattern noRef patterns
+      else if length patterns == 1 then head patterns
+      else internalError "transformClass2"]
+    where
+    patterns = (
       map (\s -> VariablePattern $ dictSelParam selMethodName s) superClasses0
       ++ map (\(n, _) -> VariablePattern $ methodSelParam selMethodName n)
-        (zip [0::Int ..] methods0))]
+        (zip [0::Int ..] methods0))
     
   -- the renamings are important so that the parameters are not handled as
   -- global functions. Also important is that the parameters are globally
