@@ -80,6 +80,7 @@ typeClassesCheck m decls (ClassEnv importedClasses importedInstances _) tcEnv =
       -- TODO: check also contexts of (imported) classes and interfaces?
       mapM_ (checkSuperclassContext newClassEnv) classDecls
       mapM_ (checkSuperclassContext newClassEnv) instDecls
+      mapM_ (checkForDirectCycle m) classDecls
       
       mapM_ (checkRulesInInstanceOrClass newClassEnv) instDecls
       mapM_ (checkRulesInInstanceOrClass newClassEnv) classDecls
@@ -267,6 +268,19 @@ checkForCyclesInClassHierarchy cEnv@(ClassEnv classes _ _) =
     sccs = scc (\qid -> [qid]) 
                (\qid -> (superClasses $ fromJust $ lookupClass cEnv qid))
                (map theClass classes)
+
+-- |Checks that in the superclass context the class declared doesn't appear
+-- in the context (this is a special case of the "no cycles" check which 
+-- doesn't cover this case):
+-- @class A a => A a where ...@ is illegal 
+-- Theoretically one could write this --- but who does? But well, we have
+-- nevertheless to cover this case...
+checkForDirectCycle :: ModuleIdent -> Decl -> CheckResult ()
+checkForDirectCycle m (ClassDecl _ (SContext cx) cls _ _) = 
+  if (qualify cls) `elem` (map fst cx) || (qualifyWith m cls) `elem` (map fst cx)
+  then CheckFailed [errCyclesInClassHierarchy [qualify cls]]
+  else return ()
+checkForDirectCycle _ _ = internalError "checkForDirectCycle"
 
 -- |Checks for duplicate class names like in 
 -- @
