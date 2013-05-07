@@ -1583,7 +1583,7 @@ unambiguously refers to the local definition.
 >     [Value _ _ sigma] -> sigma
 >     _ -> case lookupMethodTypeScheme cEnv f of
 >        Just (ForAll cx n ty) -> (ForAll cx n (expandType m tcEnv ty)) -- TODO: add instance context
->        Nothing -> internalError $ "TypeCheck.funType " ++ show f ++ ", more precisely " ++ show (unqualify f)
+>        Nothing -> internalError $ "TypeCheck.funType function not found: " ++ show f ++ ", more precisely " ++ show (unqualify f)
 
 > sureLabelType :: Ident -> ValueEnv -> Maybe TypeScheme
 > sureLabelType l tyEnv = case lookupValue l tyEnv of
