@@ -74,9 +74,18 @@ order of type variables in the left hand side of a type declaration.
 >   = TypeConstructor tc (map (toType' tvs) tys)
 > toType' tvs (CS.SpecialConstructorType (CS.QualTC tc) tys)
 >   = toType' tvs (CS.ConstructorType tc tys)
-> {-toType' _tvs (CS.SpecialConstructorType tc _tys)
->   -- TODO
->   = internalError $ "Base.CurryTypes.toType' " ++ show tc ++ " not yet supported" -}
+> toType' tvs (CS.SpecialConstructorType CS.UnitTC tys)
+>   = toType' tvs (CS.TupleType tys)
+> toType' tvs (CS.SpecialConstructorType (CS.TupleTC _n) tys)
+>   = toType' tvs (CS.TupleType tys)
+> toType' tvs (CS.SpecialConstructorType CS.ListTC [ty])
+>   = toType' tvs (CS.ListType ty)
+> toType' _tvs (CS.SpecialConstructorType CS.ListTC _)
+>   = internalError "toType': list"
+> toType' tvs (CS.SpecialConstructorType CS.ArrowTC [ty1, ty2])
+>   = toType' tvs (CS.ArrowType ty1 ty2)  
+> toType' _tvs (CS.SpecialConstructorType CS.ArrowTC _)
+>   = internalError "toType': arrow"
 > toType' tvs (CS.VariableType        tv) = case Map.lookup tv tvs of
 >   Just tv' -> TypeVariable tv'
 >   Nothing  -> internalError $ "Base.CurryTypes.toType': " ++ show tv
