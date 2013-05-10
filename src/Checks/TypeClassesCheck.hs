@@ -78,8 +78,8 @@ typeClassesCheck m decls (ClassEnv importedClasses importedInstances _) tcEnv =
           instances = map instanceDeclToInstance instDecls ++ importedInstances
           newClassEnv = ClassEnv classes instances Map.empty
       -- TODO: check also contexts of (imported) classes and interfaces?
-      mapM_ (checkSuperclassContext newClassEnv) classDecls
-      mapM_ (checkSuperclassContext newClassEnv) instDecls
+      mapM_ (checkSuperclassContext m newClassEnv) classDecls
+      mapM_ (checkSuperclassContext m newClassEnv) instDecls
       mapM_ (checkForDirectCycle m) classDecls
       
       mapM_ (checkRulesInInstanceOrClass newClassEnv) instDecls
@@ -166,16 +166,16 @@ typeVariableInContext _ = internalError "typeVariableInContext"
 
 -- |check that the classes in superclass contexts or instance contexts are 
 -- in scope  
-checkSuperclassContext :: ClassEnv -> Decl -> CheckResult ()
-checkSuperclassContext cEnv (ClassDecl p (SContext scon) _ _ _) = 
-  mapM_ (checkSuperclassContext' cEnv p) (map fst scon)
-checkSuperclassContext cEnv (InstanceDecl p (SContext scon) _ _ _ _) = 
-  mapM_ (checkSuperclassContext' cEnv p) (map fst scon)
-checkSuperclassContext _ _ = internalError "TypeClassesCheck.checkSuperclassContext"
+checkSuperclassContext :: ModuleIdent -> ClassEnv -> Decl -> CheckResult ()
+checkSuperclassContext m cEnv (ClassDecl p (SContext scon) _ _ _) = 
+  mapM_ (checkSuperclassContext' m cEnv p) (map fst scon)
+checkSuperclassContext m cEnv (InstanceDecl p (SContext scon) _ _ _ _) = 
+  mapM_ (checkSuperclassContext' m cEnv p) (map fst scon)
+checkSuperclassContext _ _ _ = internalError "TypeClassesCheck.checkSuperclassContext"
     
-checkSuperclassContext' :: ClassEnv -> Position -> QualIdent -> CheckResult ()
-checkSuperclassContext' cEnv p qid = 
-  case lookupClass cEnv qid of 
+checkSuperclassContext' :: ModuleIdent -> ClassEnv -> Position -> QualIdent -> CheckResult ()
+checkSuperclassContext' m cEnv p qid = 
+  case lookupClass cEnv (qualUnqualify m qid) of 
     Nothing -> CheckFailed [errSuperclassNotInScope p qid]
     Just _ -> return ()
 
