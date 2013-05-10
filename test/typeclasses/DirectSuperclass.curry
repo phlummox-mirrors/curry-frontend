@@ -1,14 +1,14 @@
 
 
 -- error: 
-class A a => A a where
-  fun3 :: a -> a
+-- class A a => A a where
+--   fun3 :: a -> a
 
-{-
--- todo:
-class DirectSuperclass.A a => A a where
-  fun3 :: a -> a
--}
+
+-- error:
+-- class DirectSuperclass.A a => A a where
+--   fun3 :: a -> a
+
 
 class B a where
 
