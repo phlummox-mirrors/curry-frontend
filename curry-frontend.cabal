@@ -93,7 +93,7 @@ Executable cymake
     , Transformations.Simplify
 Library
   hs-source-dirs:  src
-  Build-Depends:   filepath
+  Build-Depends:   filepath, base
   ghc-options: -Wall
   Exposed-Modules:
     Files.CymakePath
@@ -113,28 +113,70 @@ Executable cmpPrograms
     curry-base == 0.3.7
   ghc-options: -Wall
 
-  
 
 Test-Suite TestTypeChecking
     hs-source-dirs: test, src
-    type:       exitcode-stdio-1.0
-    main-is:    TestTypeChecking.hs
-    build-depends: base, pretty, directory
-    ghc-options: -Wall
+    type:       detailed-0.9
+    test-module: TestTypeChecking
+    build-depends: base, pretty, directory, curry-base, filepath, containers, mtl, syb,
+      transformers, Cabal >= 1.9.2, curry-base == 0.3.7
+    Other-Modules:
+     Base.CurryTypes
+     , Base.Expr
+     , Base.Messages
+     , Base.NestEnv
+     , Base.SCC
+     , Base.ScopeEnv
+     , Base.Subst
+     , Base.TopEnv
+     , Base.Types
+     , Base.TypeSubst
+     , Base.Typing
+     , Base.Utils
+     , Checks
+     , Checks.ExportCheck
+     , Checks.KindCheck
+     , Checks.PrecCheck
+     , Checks.SyntaxCheck
+     , Checks.TypeCheck
+     , Checks.TypeClassesCheck
+     , Checks.WarnCheck
+     , CompilerEnv
+     , CompilerOpts
+     , CurryBuilder
+     , CurryDeps
+     , Env.ClassEnv
+     , Env.Interface
+     , Env.ModuleAlias
+     , Env.OpPrec
+     , Env.TypeConstructor
+     , Env.Value
+     , Exports
+     , Frontend
+     , Generators
+     , Generators.GenAbstractCurry
+     , Generators.GenFlatCurry
+     , Html.CurryHtml
+     , Html.SyntaxColoring
+     , IL
+     , IL.Pretty
+     , IL.Type
+     , IL.XML
+     , Imports
+     , Interfaces
+     , Modules
+     , ModuleSummary
+     , Transformations
+     , Transformations.CaseCompletion
+     , Transformations.CurryToIL
+     , Transformations.Desugar
+     , Transformations.Lift
+     , Transformations.Qual
+     , Transformations.Simplify
 
-Executable TestTypeChecking2
+Executable TestTypeCheckingHpc
     hs-source-dirs: test, src
-    main-is:    TestTypeChecking.hs
-    build-depends: base, pretty, directory
+    main-is:    TestTypeCheckingHpc.hs
+    build-depends: base, pretty, directory, curry-base, filepath, containers, mtl, syb,
+      transformers, Cabal >= 1.9.2, curry-base == 0.3.7
     ghc-options: -Wall -fhpc
-
--- Test-Suite TestTypeChecking
---    hs-source-dirs: src
---    type:       detailed-0.9
---    test-module: TestTypeChecking
---   build-depends: Cabal >= 1.9.2, curry-frontend == 0.3.7, filepath, base,
---      curry-base == 0.3.7, pretty, containers, mtl, syb, transformers
---    ghc-options: -Wall
---    Other-Modules:
---    CompilerOpts, 
---    Modules

@@ -1,7 +1,7 @@
--- {-# LANGUAGE FlexibleInstances #-}
-module Main ( main ) where
 
--- import Distribution.TestSuite
+module TestTypeChecking ( tests, checkDir, Dir (..) ) where
+
+import Distribution.TestSuite
 import Prelude hiding (mod)
 import Modules
 import Checks
@@ -21,20 +21,30 @@ import Control.Monad
 
 import Base.Types
 
-main :: IO ()
-main = do
-  dirsContent <- readFile "test/typeCheckTests.txt"
-  let dirs = filter (/= []) $ lines dirsContent
-  mapM_ checkDir dirs 
+data Dir = Dir { fn :: String }
+
+instance TestOptions Dir where
+    name = fn
+    options = const []
+    defaultOptions _ = return (Options [])
+    check _ _ = []
+
+instance ImpureTestable Dir where
+    runM str opts = checkDir str
+
+-- TODO: read test directories from external file?
+tests :: [Test]
+tests = [impure (Dir "test/typeclasses/automated/") ]
   
-  
-checkDir :: FilePath -> IO ()
+checkDir :: Dir -> IO Result
 checkDir dir = do
-  files <- getDirectoryContents dir
+  files <- getDirectoryContents (fn dir)
   let files'  = filter (\str -> ".curry" `isSuffixOf` str) files
       files'' = map dropExtension files'
   success <- mapM checkTypes files''
-  when (any not success) $ exitFailure 
+  case (any not success) of
+    True -> return (Fail "checkDir")
+    False -> return Pass 
   
 
 location :: FilePath
@@ -42,6 +52,7 @@ location = "test/typeclasses/automated/"
 
 checkTypes :: FilePath -> IO Bool -- Result
 checkTypes file = do
+  putStrLn ("checking " ++ file)
   let opts = CO.defaultOptions
   mod <- loadModule opts (location ++ file ++ ".curry") 
   let result = checkModule' opts mod
