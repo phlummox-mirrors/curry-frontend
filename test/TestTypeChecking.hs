@@ -136,8 +136,9 @@ ppContext cx = parens $ hsep $
 
 ppType :: Type -> Doc
 ppType (TypeVariable n) = text (show n)
-ppType (TypeConstructor c ts) = text (show c) <+> hsep (map ppType ts)
-ppType (TypeArrow t1 t2) = parens $ ppType t1 <+> text "->" <+> ppType t2
+ppType (TypeConstructor c ts) = 
+  (if length ts == 0 then id else parens) $ text (show c) <+> hsep (map ppType ts)
+ppType (TypeArrow t1 t2) = parens $ ppTypeCon t1 True <+> text "->" <+> ppTypeCon t2 True
 ppType (TypeConstrained ts _n) 
   = text "constr" <> parens (hsep (map ppType ts))
 ppType (TypeSkolem n) = text "skolem" <+> text (show n)
@@ -145,9 +146,11 @@ ppType (TypeRecord r n)
   = text "record" <+> parens (text (show r) <+> text (show n))
 
 
-
-
-
+ppTypeCon :: Type -> Bool -> Doc
+ppTypeCon (TypeConstructor c ts) _arrow = 
+  {-(if length ts /= 0 && not arrow then parens else id) $-}
+  text (show c) <+> hsep (map ppType ts)
+ppTypeCon t _arrow = ppType t
 
 
 

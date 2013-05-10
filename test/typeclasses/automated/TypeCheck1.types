@@ -36,7 +36,7 @@ testAppl1: (C 1, D 0) => (0 -> (1 -> Prelude.Bool))
 testAppl2: (C Prelude.Char, D constr(Prelude.Int Prelude.Float)) => Prelude.Bool
 testAppl3: (C 0, D constr(Prelude.Int Prelude.Float)) => (0 -> Prelude.Bool)
 testAppl4: (C 1, D 0) => (0 -> (1 -> Prelude.Bool))
-testAppl5: (C Prelude.[] Prelude.[] 1, D Prelude.[] 0) => (0 -> (1 -> Prelude.Bool))
+testAppl5: (C (Prelude.[] (Prelude.[] 1)), D (Prelude.[] 0)) => (0 -> (1 -> Prelude.Bool))
 
 testOp1: (C 0, D 0) => (0 -> Prelude.Bool)
 testOp2: (C 0, D 1) => (0 -> (1 -> Prelude.Bool))
@@ -68,8 +68,8 @@ testMinus2: (C Prelude.Int, E Prelude.Int) => Prelude.Int
 testMinus3: (C Prelude.Int, E Prelude.Int) => Prelude.Int
 testMinus4: (H 0) => (0 -> Prelude.Int)
 
-testEnum1: (C Prelude.Int) => Prelude.[] Prelude.Int
-testEnum2: (C Prelude.Int, E Prelude.Int) => Prelude.[] Prelude.Int
-testEnum3: (C Prelude.Int, E Prelude.Int) => Prelude.[] Prelude.Int
-testEnum4: (C Prelude.Int, E Prelude.Int) => Prelude.[] Prelude.Int
+testEnum1: (C Prelude.Int) => (Prelude.[] Prelude.Int)
+testEnum2: (C Prelude.Int, E Prelude.Int) => (Prelude.[] Prelude.Int)
+testEnum3: (C Prelude.Int, E Prelude.Int) => (Prelude.[] Prelude.Int)
+testEnum4: (C Prelude.Int, E Prelude.Int) => (Prelude.[] Prelude.Int)
 testEnum5: (H 0) => (0 -> Prelude.[] Prelude.Int)

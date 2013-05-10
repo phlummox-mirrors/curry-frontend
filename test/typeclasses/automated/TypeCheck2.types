@@ -14,8 +14,8 @@ testB5: (C 0, D 1) => (0 -> (1 -> Prelude.(,) Prelude.Bool Prelude.Bool))
 testB6: (C 0) => (0 -> (1 -> Prelude.(,) Prelude.Bool Prelude.Bool))
 testB7: (C 0) => (0 -> Prelude.Bool)
 testB8: () => (Prelude.[] Prelude.Char -> Prelude.[] Prelude.Char)
-testB8b: (C Prelude.[] Prelude.Char) => (Prelude.[] Prelude.Char -> Prelude.[] Prelude.Char)
-testB8c: (C Prelude.[] 0, E 0) => (0 -> (Prelude.[] 0 -> Prelude.[] 0))
+testB8b: (C (Prelude.[] Prelude.Char)) => (Prelude.[] Prelude.Char -> Prelude.[] Prelude.Char)
+testB8c: (C (Prelude.[] 0), E 0) => (0 -> (Prelude.[] 0 -> Prelude.[] 0))
 testB9: (C Prelude.Char, D 0) => (0 -> Prelude.Bool)
 testB10: () => (0 -> (1 -> Prelude.Bool))
 testB11: (C 0) => (0 -> (1 -> Prelude.Bool))
@@ -24,8 +24,8 @@ testB13: (C 0, C 1) => (0 -> (1 -> Prelude.(,) Prelude.Bool Prelude.Bool))
 
 testC1: (E 0, F 0) => 0
 testC1b: (E 0, F 0) => 0
-testC1c: (E 0, F 0) => Prelude.(,) 0 0
-testC1d: () => Prelude.(,) 0 0
+testC1c: (E 0, F 0) => (Prelude.(,) 0 0)
+testC1d: () => (Prelude.(,) 0 0)
 
 testD1: (F 0) => (0 -> 0)
 testD2: (C 0, C 2, D 1, F 2) => (0 -> (1 -> (2 -> Prelude.Bool)))
