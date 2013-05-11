@@ -142,9 +142,9 @@ instanceDeclToInstance _ = internalError "instanceDeclToInstance"
 gatherDataTypes :: [Decl] -> ModuleIdent -> [(QualIdent, Int)]
 gatherDataTypes decls m = concatMap getDataType decls
   where
-  getDataType (DataDecl _ d ids _) = 
+  getDataType (DataDecl _ _ d ids _) = 
     let a = length ids in [(qualify d, a), (qualifyWith m d, a)]
-  getDataType (NewtypeDecl _ d ids _) = 
+  getDataType (NewtypeDecl _ _ d ids _) = 
     let a = length ids in [(qualify d, a), (qualifyWith m d, a)]
   getDataType _ = internalError "allDataTypes"
 
@@ -366,7 +366,7 @@ checkInstanceDataTypeCorrect _ _ _ = internalError "checkInstanceDataTypeCorrect
 -- are therefore not allowed.  
 transformClass :: ClassEnv -> Decl -> [Decl]
 transformClass cEnv (ClassDecl _p _scx cls tyvar _decls) = 
-  [ DataDecl NoPos dataTypeName typeVars0 [
+  [ DataDecl NoPos emptyContext dataTypeName typeVars0 [
      ConstrDecl NoPos existTypeVars dataTypeName (scs ++ methodTypes) ]
   ] ++ concatMap genSuperClassDictSelMethod theSuperClasses 
     ++ concatMap genMethodSelMethod (zip theMethods0 [0..])

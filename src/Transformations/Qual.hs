@@ -47,8 +47,8 @@ qual m tcEnv tyEnv ds = R.runReader (mapM qDecl ds) (QualEnv m tcEnv tyEnv)
 
 qDecl :: Qual Decl
 qDecl i@(InfixDecl     _ _ _ _) = return i
-qDecl (DataDecl      p n vs cs) = DataDecl p n vs `liftM` mapM qConstrDecl cs
-qDecl (NewtypeDecl   p n vs nc) = NewtypeDecl p n vs `liftM` qNewConstrDecl nc
+qDecl (DataDecl   p cx n vs cs) = DataDecl p cx n vs `liftM` mapM qConstrDecl cs
+qDecl (NewtypeDecl p cx n vs nc) = NewtypeDecl p cx n vs `liftM` qNewConstrDecl nc
 qDecl (TypeDecl      p n vs ty) = TypeDecl p n vs `liftM` qTypeExpr ty
 qDecl (TypeSig      p fs cx ty) = TypeSig p fs cx `liftM` qTypeExpr ty
 qDecl (FunctionDecl    p f eqs) = FunctionDecl p f `liftM` mapM qEquation eqs
