@@ -50,8 +50,9 @@ thenCheck chk cont = case chk of
 -- main function
 -- ---------------------------------------------------------------------------
 
--- |Checks class and instance declarations. TODO: removes these declarations?
--- Builds a corresponding class environment 
+-- |Checks class and instance declarations and removes these declarations; 
+-- adds new data types/functions for the class and instance declarations. 
+-- Also builds a corresponding class environment. 
 typeClassesCheck :: ModuleIdent -> [Decl] -> ClassEnv -> TCEnv -> ([Decl], ClassEnv, [Message])
 typeClassesCheck m decls (ClassEnv importedClasses importedInstances _) tcEnv = 
   case result of 

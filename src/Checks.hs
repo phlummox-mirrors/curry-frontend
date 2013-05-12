@@ -102,7 +102,8 @@ warnCheck :: CompilerEnv -> Module -> [Message]
 warnCheck env mdl = WC.warnCheck (valueEnv env) mdl
 
 -- |Check the type classes
--- Changes the classes environment and removes class (and instance?) declarations
+-- Changes the classes environment and removes class and instance declarations, 
+-- furthermore adds new code for them
 typeClassesCheck :: CompilerEnv -> Module -> CheckResult (CompilerEnv, Module)
 typeClassesCheck env (Module m es is ds) 
   | null msgs = CheckSuccess (env {classEnv = clsEnv}, Module m es is decls') 
