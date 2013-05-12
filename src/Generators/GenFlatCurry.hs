@@ -173,7 +173,7 @@ run opts modSum mEnv tyEnv tcEnv genIntf f = (result, reverse $ messagesE env)
 getConstrTypes :: TCEnv -> ValueEnv -> [(QualIdent, IL.Type)]
 getConstrTypes tcEnv tyEnv =
   [ mkConstrType tqid conid argtys argc
-  | (_, (_, DataType tqid argc dts):_) <- Map.toList $ topEnvMap tcEnv
+  | (_, (_, DataType tqid argc _cx dts):_) <- Map.toList $ topEnvMap tcEnv
   , Just (DataConstr conid _ argtys) <- dts
   ]
   where

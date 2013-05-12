@@ -47,7 +47,7 @@ type annotation is present.
 > import Base.Subst (listToSubst)
 > import Base.Utils (foldr2, concatMapM, findDouble)
 
-> import Env.TypeConstructor (TCEnv, TypeInfo (..), bindTypeInfo
+> import Env.TypeConstructor (TCEnv, TypeInfo (..), bindTypeInfoWithCx, bindTypeInfoWithoutCx
 >   , qualLookupTC)
 > import Env.Value ( ValueEnv, ValueInfo (..), bindFun, rebindFun
 >   , bindGlobalInfo, bindLabel, lookupValue, qualLookupValue
@@ -261,19 +261,33 @@ and \texttt{expandMonoTypes}, respectively.
 
 > bindTC :: ModuleIdent -> TCEnv -> Decl -> TCEnv -> TCEnv
 > bindTC m tcEnv (DataDecl _ cx tc tvs cs) =
->   bindTypeInfo DataType m tc tvs (map (Just . mkData) cs)
+>   bindTypeInfoWithCx DataType m cx' tc tvs (map (Just . mkData) cs)
 >   where
 >   mkData (ConstrDecl _ evs     c  tys) = mkData' evs c  tys
 >   mkData (ConOpDecl  _ evs ty1 op ty2) = mkData' evs op [ty1, ty2]
 >   mkData' evs c tys = DataConstr c (length evs) $
 >     -- TODO: somewhen adding contexts to data declarations
 >     map getType $ expandMonoTypes m tcEnv (cleanTVars tvs evs) (map noBContext tys)
+>   mapping = zip tvs [0::Int ..] 
+>   cx' = transCx mapping cx  
+
 > bindTC m tcEnv (NewtypeDecl _ cx tc tvs (NewConstrDecl _ evs c ty)) =
->   bindTypeInfo RenamingType m tc tvs (DataConstr c (length evs) [ty'])
->   where ty' = getType $ expandMonoType' m tcEnv (cleanTVars tvs evs) (noBContext ty)
+>   bindTypeInfoWithCx RenamingType m cx' tc tvs (DataConstr c (length evs) [ty'])
+>   where 
+>   ty' = getType $ expandMonoType' m tcEnv (cleanTVars tvs evs) (noBContext ty)
+>   mapping = zip tvs [0::Int ..] 
+>   cx' = transCx mapping cx
 > bindTC m tcEnv (TypeDecl _ tc tvs ty) =
->   bindTypeInfo AliasType m tc tvs (getType $ expandMonoType' m tcEnv tvs (noBContext ty))
+>   bindTypeInfoWithoutCx AliasType m tc tvs 
+>     (getType $ expandMonoType' m tcEnv tvs (noBContext ty))
 > bindTC _ _ _ = id
+
+> transCx :: [(Ident, Int)] -> ST.Context -> BT.Context 
+> transCx mapping (Context cx) = map (\(ContextElem qid id0 tys') -> 
+>     (qid, TypeVariable $ fromJust $ lookup id0 mapping)) cx  
+>   -- TODO:
+>   --  (qid, TypeVariableApplic (fromJust $ lookup id0 mapping) 
+>   --                           (map (toType tvs) tys')) cx 
 
 > cleanTVars :: [Ident] -> [Ident] -> [Ident]
 > cleanTVars tvs evs = [if tv `elem` evs then anonId else tv | tv <- tvs]
@@ -299,13 +313,13 @@ have been properly renamed and all type synonyms are already expanded.
 > bindConstrs' m tcEnv tyEnv = foldr (bindData . snd) tyEnv
 >                            $ localBindings tcEnv
 >   where
->   bindData (DataType tc n cs) tyEnv' =
+>   bindData (DataType tc n cx cs) tyEnv' =
 >     foldr (bindConstr m n (constrType' tc n)) tyEnv' (catMaybes cs)
->   bindData (RenamingType tc n (DataConstr c n' [ty])) tyEnv' =
+>   bindData (RenamingType tc n cx (DataConstr c n' [ty])) tyEnv' =
 >     bindGlobalInfo NewtypeConstructor m c
 >                    (ForAllExist BT.emptyContext n n' (TypeArrow ty (constrType' tc n)))
 >                    tyEnv'
->   bindData (RenamingType _ _ (DataConstr _ _ _)) _ =
+>   bindData (RenamingType _ _ _ (DataConstr _ _ _)) _ =
 >     internalError "TypeCheck.bindConstrs: newtype with illegal constructors"
 >   bindData (AliasType _ _ _) tyEnv' = tyEnv'
 >   bindConstr m' n ty (DataConstr c n' tys) =
@@ -1629,13 +1643,13 @@ in which the type was defined.
 
 > expandType :: ModuleIdent -> TCEnv -> Type -> Type
 > expandType m tcEnv (TypeConstructor tc tys) = case qualLookupTC tc tcEnv of
->   [DataType     tc' _  _] -> TypeConstructor tc' tys'
->   [RenamingType tc' _  _] -> TypeConstructor tc' tys'
->   [AliasType    _   _ ty] -> expandAliasType tys' ty
+>   [DataType     tc' _ cx _] -> TypeConstructor tc' tys'
+>   [RenamingType tc' _ cx _] -> TypeConstructor tc' tys'
+>   [AliasType    _   _   ty] -> expandAliasType tys' ty
 >   _ -> case qualLookupTC (qualQualify m tc) tcEnv of
->     [DataType     tc' _ _ ] -> TypeConstructor tc' tys'
->     [RenamingType tc' _ _ ] -> TypeConstructor tc' tys'
->     [AliasType    _   _ ty] -> expandAliasType tys' ty
+>     [DataType     tc' _ cx _ ] -> TypeConstructor tc' tys'
+>     [RenamingType tc' _ cx _ ] -> TypeConstructor tc' tys'
+>     [AliasType    _   _    ty] -> expandAliasType tys' ty
 >     _ -> internalError $ "TypeCheck.expandType " ++ show tc
 >   where tys' = map (expandType m tcEnv) tys
 > expandType _ _     tv@(TypeVariable      _) = tv

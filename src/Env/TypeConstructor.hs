@@ -38,8 +38,8 @@
 -}
 
 module Env.TypeConstructor
-  ( TCEnv, TypeInfo (..), tcArity, bindTypeInfo, lookupTC, qualLookupTC
-  , lookupTupleTC, tupleTCs, tupleData, initTCEnv
+  ( TCEnv, TypeInfo (..), tcArity, bindTypeInfoWithCx, lookupTC, qualLookupTC
+  , lookupTupleTC, tupleTCs, tupleData, initTCEnv, bindTypeInfoWithoutCx
   ) where
 
 import Control.Monad (mplus)
@@ -52,35 +52,36 @@ import Base.Types
 import Base.Utils ((++!))
 
 data TypeInfo
-  = DataType     QualIdent Int [Maybe DataConstr]
-  | RenamingType QualIdent Int DataConstr
+  = DataType     QualIdent Int Context [Maybe DataConstr]
+  | RenamingType QualIdent Int Context DataConstr
   | AliasType    QualIdent Int Type
     deriving Show
 
 instance Entity TypeInfo where
-  origName (DataType     tc _ _) = tc
-  origName (RenamingType tc _ _) = tc
-  origName (AliasType    tc _ _) = tc
+  origName (DataType     tc _ _ _) = tc
+  origName (RenamingType tc _ _ _) = tc
+  origName (AliasType    tc   _ _) = tc
 
-  merge (DataType tc n cs) (DataType tc' _ cs')
-    | tc == tc' = Just $ DataType tc n $ mergeData cs cs'
+  -- TODO: what context handling is correct????
+  merge (DataType tc n cx cs) (DataType tc' _ cx' cs')
+    | tc == tc' = Just $ DataType tc n (cx ++ cx') $ mergeData cs cs'
     where mergeData ds       []         = ds
           mergeData []       ds         = ds
           mergeData (d : ds) (d' : ds') = d `mplus` d' : mergeData ds ds'
-  merge (DataType tc n _) (RenamingType tc' _ nc)
-    | tc == tc' = Just (RenamingType tc n nc)
-  merge (RenamingType tc n nc) (DataType tc' _ _)
-    | tc == tc' = Just (RenamingType tc n nc)
-  merge (RenamingType tc n nc) (RenamingType tc' _ _)
-    | tc == tc' = Just (RenamingType tc n nc)
+  merge (DataType tc n cx _) (RenamingType tc' _ cx' nc)
+    | tc == tc' = Just (RenamingType tc n (cx ++ cx') nc)
+  merge (RenamingType tc n cx nc) (DataType tc' _ cx' _)
+    | tc == tc' = Just (RenamingType tc n cx nc)
+  merge (RenamingType tc n cx nc) (RenamingType tc' _ cx' _)
+    | tc == tc' = Just (RenamingType tc n cx nc)
   merge (AliasType tc n ty) (AliasType tc' _ _)
     | tc == tc' = Just (AliasType tc n ty)
   merge _ _ = Nothing
 
 tcArity :: TypeInfo -> Int
-tcArity (DataType     _ n _) = n
-tcArity (RenamingType _ n _) = n
-tcArity (AliasType    _ n _) = n
+tcArity (DataType     _ n _ _) = n
+tcArity (RenamingType _ n _ _) = n
+tcArity (AliasType    _ n _  ) = n
 
 -- Types can only be defined on the top-level; no nested environments are
 -- needed for them. Tuple types must be handled as a special case because
@@ -89,9 +90,16 @@ tcArity (AliasType    _ n _) = n
 
 type TCEnv = TopEnv TypeInfo
 
-bindTypeInfo :: (QualIdent -> Int -> a -> TypeInfo) -> ModuleIdent
-             -> Ident -> [Ident] -> a -> TCEnv -> TCEnv
-bindTypeInfo f m tc tvs x = bindTopEnv fun tc ty . qualBindTopEnv fun qtc ty
+bindTypeInfoWithCx :: (QualIdent -> Int -> Context -> a -> TypeInfo) -> ModuleIdent
+                   -> Context -> Ident -> [Ident] -> a -> TCEnv -> TCEnv
+bindTypeInfoWithCx f m cx tc tvs x = bindTopEnv fun tc ty . qualBindTopEnv fun qtc ty
+  where qtc = qualifyWith m tc
+        ty  = f qtc (length tvs) cx x
+        fun = "Base.bindTypeInfo"
+
+bindTypeInfoWithoutCx :: (QualIdent -> Int -> a -> TypeInfo) -> ModuleIdent
+              -> Ident -> [Ident] -> a -> TCEnv -> TCEnv
+bindTypeInfoWithoutCx f m tc tvs x = bindTopEnv fun tc ty . qualBindTopEnv fun qtc ty
   where qtc = qualifyWith m tc
         ty  = f qtc (length tvs) x
         fun = "Base.bindTypeInfo"
@@ -110,7 +118,7 @@ lookupTupleTC tc | isTupleId tc = [tupleTCs !! (tupleArity tc - 2)]
 tupleTCs :: [TypeInfo]
 tupleTCs = map typeInfo tupleData
   where typeInfo (DataConstr c _ tys) =
-          DataType (qualifyWith preludeMIdent c) (length tys)
+          DataType (qualifyWith preludeMIdent c) (length tys) emptyContext
                    [Just (DataConstr c 0 tys)]
 
 tupleData :: [DataConstr]
@@ -121,5 +129,5 @@ initTCEnv :: TCEnv
 initTCEnv = foldr (uncurry predefTC) emptyTopEnv predefTypes
   where
   predefTC (TypeConstructor tc tys) = predefTopEnv (qualify (unqualify tc))
-                                    . DataType tc (length tys) . map Just
+                                    . DataType tc (length tys) emptyContext . map Just
   predefTC _ = internalError "Base.initTCEnv.predefTC: no type constructor"
