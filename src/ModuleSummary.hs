@@ -128,7 +128,7 @@ genTypeSynDeref _ (TypeSkolem _) = internalError
 --
 lookupTCId :: QualIdent -> TCEnv -> Maybe QualIdent
 lookupTCId qident tcEnv = case qualLookupTC qident tcEnv of
-  [DataType     qid _ _ _] -> Just qid
-  [RenamingType qid _ _ _] -> Just qid
-  [AliasType    qid   _ _] -> Just qid
-  _                        -> Nothing
+  [DataType     qid _ _] -> Just qid
+  [RenamingType qid _ _] -> Just qid
+  [AliasType    qid _ _] -> Just qid
+  _                      -> Nothing

@@ -76,7 +76,7 @@ all names must be properly qualified before calling this module.}
 
 > import Curry.Base.Ident
 > import Curry.Base.Position hiding (first)
-> import Curry.Syntax as CS
+> import Curry.Syntax
 
 > import Base.Expr
 > import Base.CurryTypes (fromType)
@@ -681,7 +681,7 @@ Desugaring of Records
 >   (n, fs') <- lookupRecord qr
 >   let tys   = concatMap (\ (ls, ty) -> replicate (length ls) ty) fss
 >       --tys' = map (elimRecordTypes tyEnv) tys
->       rdecl = DataDecl p CS.emptyContext r vs [ConstrDecl p [] r tys]
+>       rdecl = DataDecl p r vs [ConstrDecl p [] r tys]
 >       rty'  = TypeConstructor qr (map TypeVariable [0 .. n - 1])
 >       rcts' = ForAllExist BT.emptyContext 0 n (foldr TypeArrow rty' (map snd fs'))
 >   rfuncs <- mapM (genRecordFuncs p qr rty' (map fst fs')) fs'

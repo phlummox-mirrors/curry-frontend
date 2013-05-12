@@ -86,11 +86,11 @@ alias types.
 \begin{verbatim}
 
 > trDecl :: Decl -> TransM [IL.Decl]
-> trDecl (DataDecl     _ _ tc tvs cs) = (:[]) `liftM` trData    tc tvs cs
-> trDecl (NewtypeDecl  _ _ tc tvs nc) = (:[]) `liftM` trNewtype tc tvs nc
-> trDecl (FunctionDecl       p f eqs) = (:[]) `liftM` trFunction  p f eqs
-> trDecl (ForeignDecl    _ cc ie f _) = (:[]) `liftM` trForeign  f cc ie
-> trDecl _                            = return []
+> trDecl (DataDecl     _ tc tvs cs) = (:[]) `liftM` trData    tc tvs cs
+> trDecl (NewtypeDecl  _ tc tvs nc) = (:[]) `liftM` trNewtype tc tvs nc
+> trDecl (FunctionDecl     p f eqs) = (:[]) `liftM` trFunction  p f eqs
+> trDecl (ForeignDecl  _ cc ie f _) = (:[]) `liftM` trForeign  f cc ie
+> trDecl _                          = return []
 
 > trData :: Ident -> [Ident] -> [ConstrDecl] -> TransM IL.Decl
 > trData tc tvs cs = do

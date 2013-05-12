@@ -82,10 +82,10 @@ iInfixDecl m pEnv op ds = case qualLookupP op pEnv of
 typeDecl :: ModuleIdent -> TCEnv -> Export -> [IDecl] -> [IDecl]
 typeDecl _ _     (Export             _) ds = ds
 typeDecl m tcEnv (ExportTypeWith tc cs) ds = case qualLookupTC tc tcEnv of
-  [DataType tc' n cx cs'] -> -- TODO
+  [DataType tc' n cs'] ->
     iTypeDecl IDataDecl m tc' n
        (constrDecls m (drop n identSupply) cs cs') : ds
-  [RenamingType tc' n cx (DataConstr c n' [ty])] -- TODO
+  [RenamingType tc' n (DataConstr c n' [ty])]
     | c `elem` cs ->
         iTypeDecl INewtypeDecl m tc' n (NewConstrDecl NoPos tvs c ty') : ds
     | otherwise -> iTypeDecl IDataDecl m tc' n [] : ds
@@ -180,8 +180,8 @@ identsType (RecordType      fs rty) xs =
 
 hiddenTypeDecl :: ModuleIdent -> TCEnv -> QualIdent -> IDecl
 hiddenTypeDecl m tcEnv tc = case qualLookupTC (qualQualify m tc) tcEnv of
-  [DataType     _ n _cx _] -> hidingDataDecl tc n
-  [RenamingType _ n _cx _] -> hidingDataDecl tc n
+  [DataType     _ n _] -> hidingDataDecl tc n
+  [RenamingType _ n _] -> hidingDataDecl tc n
   _                    -> internalError "Exports.hiddenTypeDecl"
   where hidingDataDecl tc1 n = HidingDataDecl NoPos (unqualify tc1)
                              $ take n identSupply

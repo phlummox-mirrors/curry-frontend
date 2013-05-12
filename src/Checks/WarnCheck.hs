@@ -169,7 +169,7 @@ checkLocalDeclGroup ds = do
   checkDeclGroup       ds
 
 checkDecl :: Decl -> WCM ()
-checkDecl (DataDecl _ _ _ vs cs) = inNestedScope $ do
+checkDecl (DataDecl   _ _ vs cs) = inNestedScope $ do
   mapM_ insertTypeVar   vs
   mapM_ checkConstrDecl cs
   reportUnusedTypeVars  vs
@@ -437,7 +437,7 @@ reportUnusedTypeVars vs = do
 -- sides.
 
 insertDecl :: Decl -> WCM ()
-insertDecl (DataDecl   _ _ d _ cs) = do
+insertDecl (DataDecl     _ d _ cs) = do
   insertTypeConsId d
   mapM_ insertConstrDecl cs
 insertDecl (TypeDecl     _ t _ ty) = do

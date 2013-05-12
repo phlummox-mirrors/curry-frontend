@@ -232,8 +232,8 @@ Furthermore, it is not allowed to declare a label more than once.
 
 > -- |Bind type constructor information
 > bindTypeDecl :: Decl -> SCM ()
-> bindTypeDecl (DataDecl    _ _ _ _ cs) = mapM_ bindConstr cs
-> bindTypeDecl (NewtypeDecl _ _ _ _ nc) = bindNewConstr nc
+> bindTypeDecl (DataDecl    _ _ _ cs) = mapM_ bindConstr cs
+> bindTypeDecl (NewtypeDecl _ _ _ nc) = bindNewConstr nc
 > bindTypeDecl (TypeDecl _ t _ (RecordType fs _)) = do
 >   m <- getModuleIdent
 >   others <- qualLookupVar (qualifyWith m t) `liftM` getRenameEnv
@@ -924,10 +924,10 @@ Auxiliary definitions.
 \begin{verbatim}
 
 > constrs :: Decl -> [Ident]
-> constrs (DataDecl _ _ _ _ cs) = map constr cs
+> constrs (DataDecl _ _ _ cs) = map constr cs
 >   where constr (ConstrDecl   _ _ c _) = c
 >         constr (ConOpDecl _ _ _ op _) = op
-> constrs (NewtypeDecl _ _ _ _ (NewConstrDecl _ _ c _)) = [c]
+> constrs (NewtypeDecl _ _ _ (NewConstrDecl _ _ c _)) = [c]
 > constrs _ = []
 
 > vars :: Decl -> [Ident]

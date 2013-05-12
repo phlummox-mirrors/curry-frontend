@@ -151,7 +151,7 @@ lookupTuple c
 tupleDCs :: [ValueInfo]
 tupleDCs = map dataInfo tupleTCs
   where
-  dataInfo (DataType tc _ cx [Just (DataConstr _ _ tys)]) =
+  dataInfo (DataType tc _ [Just (DataConstr _ _ tys)]) =
     DataConstructor (qualUnqualify preludeMIdent tc) (length tys)
       (ForAllExist BT.emptyContext (length tys) 0 $ foldr TypeArrow (tupleType tys) tys)
   dataInfo _ = internalError "Env.Value.tupleDCs: no data constructor"

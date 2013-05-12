@@ -126,10 +126,10 @@ importEntities m q isVisible' f mEnv env =
   where importUnqual m' x y = importTopEnv m' x y . qualImportTopEnv m' x y
 
 importData :: (Ident -> Bool) -> TypeInfo -> TypeInfo
-importData isVisible' (DataType tc n cx cs) =
-  DataType tc n cx (map (>>= importConstr isVisible') cs)
-importData isVisible' (RenamingType tc n cx nc) =
-  maybe (DataType tc n cx []) (RenamingType tc n cx) (importConstr isVisible' nc)
+importData isVisible' (DataType tc n cs) =
+  DataType tc n (map (>>= importConstr isVisible') cs)
+importData isVisible' (RenamingType tc n nc) =
+  maybe (DataType tc n []) (RenamingType tc n) (importConstr isVisible' nc)
 importData _ (AliasType tc n ty) = AliasType tc n ty
 
 importConstr :: (Ident -> Bool) -> DataConstr -> Maybe DataConstr
@@ -158,14 +158,14 @@ bindPrec _ _ = id
 
 bindTCHidden :: ModuleIdent -> IDecl -> ExpTCEnv -> ExpTCEnv
 bindTCHidden m (HidingDataDecl _ tc tvs) =
-  bindTypeWithCx DataType m (qualify tc) tvs []
+  bindType DataType m (qualify tc) tvs []
 bindTCHidden m d = bindTC m d
 
 -- type constructors
 bindTC :: ModuleIdent -> IDecl -> ExpTCEnv -> ExpTCEnv
 bindTC m (IDataDecl _ tc tvs cs) mTCEnv
   | unqualify tc `Map.member` mTCEnv = mTCEnv
-  | otherwise = bindTypeWithCx DataType m tc tvs (map (fmap mkData) cs) mTCEnv
+  | otherwise = bindType DataType m tc tvs (map (fmap mkData) cs) mTCEnv
   where
    mkData (ConstrDecl _ evs c tys) =
      DataConstr c (length evs) (toQualTypes m tvs tys)
@@ -173,28 +173,23 @@ bindTC m (IDataDecl _ tc tvs cs) mTCEnv
      DataConstr c (length evs) (toQualTypes m tvs [ty1,ty2])
 
 bindTC m (INewtypeDecl _ tc tvs (NewConstrDecl _ evs c ty)) mTCEnv =
-  bindTypeWithCx RenamingType m tc tvs
+  bindType RenamingType m tc tvs
  (DataConstr c (length evs) [toQualType m tvs ty]) mTCEnv
 
 bindTC m (ITypeDecl _ tc tvs ty) mTCEnv
   | isRecordExtId tc' =
-    bindTypeWithoutCx AliasType m (qualify (fromRecordExtId tc')) tvs
+    bindType AliasType m (qualify (fromRecordExtId tc')) tvs
    (toQualType m tvs ty) mTCEnv
   | otherwise =
-    bindTypeWithoutCx AliasType m tc tvs (toQualType m tvs ty) mTCEnv
+    bindType AliasType m tc tvs (toQualType m tvs ty) mTCEnv
   where tc' = unqualify tc
 
 bindTC _ _ mTCEnv = mTCEnv
 
-bindTypeWithCx :: (QualIdent -> Int -> BT.Context -> a -> TypeInfo) -> ModuleIdent 
-         -> QualIdent -> [Ident] -> a -> ExpTCEnv -> ExpTCEnv
-bindTypeWithCx f m tc tvs = Map.insert (unqualify tc)
-                          . f (qualQualify m tc) (length tvs) BT.emptyContext
-                          
-bindTypeWithoutCx :: (QualIdent -> Int -> a -> TypeInfo) -> ModuleIdent 
-         -> QualIdent -> [Ident] -> a -> ExpTCEnv -> ExpTCEnv
-bindTypeWithoutCx f m tc tvs = Map.insert (unqualify tc)
-                          . f (qualQualify m tc) (length tvs)
+bindType :: (QualIdent -> Int -> a -> TypeInfo) -> ModuleIdent -> QualIdent
+         -> [Ident] -> a -> ExpTCEnv -> ExpTCEnv
+bindType f m tc tvs = Map.insert (unqualify tc)
+                    . f (qualQualify m tc) (length tvs)
 
 -- functions and data constructors
 bindTy :: ModuleIdent -> IDecl -> ExpValueEnv -> ExpValueEnv
@@ -373,11 +368,11 @@ expandTypeWith tc cs = do
   m     <- getModuleIdent
   tcEnv <- getTyConsEnv
   ImportTypeWith tc `liftM` case Map.lookup tc tcEnv of
-    Just (DataType     _ _ _                cs') ->
+    Just (DataType     _ _                cs') ->
       mapM (checkConstr [c | Just (DataConstr c _ _) <- cs']) cs
-    Just (RenamingType _ _ _ (DataConstr c _ _)) ->
+    Just (RenamingType _ _ (DataConstr c _ _)) ->
       mapM (checkConstr [c]) cs
-    Just (AliasType    _ _   (TypeRecord  fs _)) ->
+    Just (AliasType    _ _ (TypeRecord  fs _)) ->
       mapM (checkLabel [l | (l, _) <- fs] . renameLabel) cs
     Just (AliasType _ _ _) -> report (errNonDataType       tc) >> return []
     Nothing                -> report (errUndefinedEntity m tc) >> return []
@@ -394,9 +389,9 @@ expandTypeAll tc = do
   m     <- getModuleIdent
   tcEnv <- getTyConsEnv
   ImportTypeWith tc `liftM` case Map.lookup tc tcEnv of
-    Just (DataType     _ _ _                cs) ->
+    Just (DataType     _ _                 cs) ->
       return [c | Just (DataConstr c _ _) <- cs]
-    Just (RenamingType _ _ _ (DataConstr c _ _)) -> return [c]
+    Just (RenamingType _ _ (DataConstr c _ _)) -> return [c]
     Just (AliasType    _ _ (TypeRecord  fs _)) -> return [l | (l, _) <- fs]
     Just (AliasType _ _ _) -> report (errNonDataType       tc) >> return []
     Nothing                -> report (errUndefinedEntity m tc) >> return []
@@ -496,14 +491,14 @@ expandTCValueEnv opts env
   env'    = expandValueEnv opts env
 
 expandRecordTC :: TCEnv -> TypeInfo -> TypeInfo
-expandRecordTC tcEnv (DataType qid n cx args) =
-  DataType qid n cx $ map (fmap expandData) args
+expandRecordTC tcEnv (DataType qid n args) =
+  DataType qid n $ map (fmap expandData) args
   where
   expandData (DataConstr c m tys) =
     DataConstr c m $ map (expandRecords tcEnv) tys
-expandRecordTC tcEnv (RenamingType qid n cx (DataConstr c m [ty])) =
-  RenamingType qid n cx (DataConstr c m [expandRecords tcEnv ty])
-expandRecordTC _     (RenamingType _   _ _ (DataConstr    _ _ _)) =
+expandRecordTC tcEnv (RenamingType qid n (DataConstr c m [ty])) =
+  RenamingType qid n (DataConstr c m [expandRecords tcEnv ty])
+expandRecordTC _     (RenamingType _   _ (DataConstr    _ _ _)) =
   internalError "Imports.expandRecordTC"
 expandRecordTC tcEnv (AliasType qid n ty) =
   AliasType qid n (expandRecords tcEnv ty)

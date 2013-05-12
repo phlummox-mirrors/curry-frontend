@@ -102,10 +102,10 @@ imported precedence environment.
 > bindPrec _ _ pEnv = pEnv
 
 > boundValues :: Decl -> [Ident]
-> boundValues (DataDecl    _ _ _ _ cs) = map constr cs
+> boundValues (DataDecl      _ _ _ cs) = map constr cs
 >   where constr (ConstrDecl _ _   c  _) = c
 >         constr (ConOpDecl  _ _ _ op _) = op
-> boundValues (NewtypeDecl _ _ _ _ (NewConstrDecl _ _ c _)) = [c]
+> boundValues (NewtypeDecl _ _ _ (NewConstrDecl _ _ c _)) = [c]
 > boundValues (FunctionDecl     _ f _) = [f]
 > boundValues (ForeignDecl  _ _ _ f _) = [f]
 > boundValues (ExternalDecl      _ fs) = fs

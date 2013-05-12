@@ -218,8 +218,8 @@ joinFun export                _ = internalError $
 -- ---------------------------------------------------------------------------
 
 constrs :: TypeInfo -> [Ident]
-constrs (DataType _ _ _ cs)  = [c | Just (DataConstr c _ _) <- cs]
-constrs (RenamingType _ _ _ (DataConstr c _ _)) = [c]
+constrs (DataType _ _ cs)  = [c | Just (DataConstr c _ _) <- cs]
+constrs (RenamingType _ _ (DataConstr c _ _)) = [c]
 constrs (AliasType _ _ _)  = []
 
 labels :: TypeInfo -> [Ident]
@@ -227,9 +227,9 @@ labels (AliasType _ _ (TypeRecord fs _)) = map fst fs
 labels _                                 = []
 
 isDataType :: TypeInfo -> Bool
-isDataType (DataType     _ _ _ _) = True
-isDataType (RenamingType _ _ _ _) = True
-isDataType (AliasType      _ _ _) = False
+isDataType (DataType     _ _ _) = True
+isDataType (RenamingType _ _ _) = True
+isDataType (AliasType    _ _ _) = False
 
 isRecordType :: TypeInfo -> Bool
 isRecordType (AliasType _ _ (TypeRecord _ _)) = True
