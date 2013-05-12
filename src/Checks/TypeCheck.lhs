@@ -266,7 +266,6 @@ and \texttt{expandMonoTypes}, respectively.
 >   mkData (ConstrDecl _ evs     c  tys) = mkData' evs c  tys
 >   mkData (ConOpDecl  _ evs ty1 op ty2) = mkData' evs op [ty1, ty2]
 >   mkData' evs c tys = DataConstr c (length evs) $
->     -- TODO: somewhen adding contexts to data declarations
 >     map getType $ expandMonoTypes m tcEnv (cleanTVars tvs evs) (map noBContext tys)
 >   mapping = zip tvs [0::Int ..] 
 >   cx' = transCx mapping cx  
@@ -314,17 +313,27 @@ have been properly renamed and all type synonyms are already expanded.
 >                            $ localBindings tcEnv
 >   where
 >   bindData (DataType tc n cx cs) tyEnv' =
->     foldr (bindConstr m n (constrType' tc n)) tyEnv' (catMaybes cs)
+>     foldr (bindConstr m n cx (constrType' tc n)) tyEnv' (catMaybes cs)
 >   bindData (RenamingType tc n cx (DataConstr c n' [ty])) tyEnv' =
 >     bindGlobalInfo NewtypeConstructor m c
->                    (ForAllExist BT.emptyContext n n' (TypeArrow ty (constrType' tc n)))
+>                    (ForAllExist cx' n n' (TypeArrow ty (constrType' tc n)))
 >                    tyEnv'
+>     where
+>     cx' = filter filter' cx
+>     filter' (_qid, TypeVariable id0) = id0 `elem` concatMap typeVars [ty]
+>     filter' _ = internalError "bindConstr"   
 >   bindData (RenamingType _ _ _ (DataConstr _ _ _)) _ =
 >     internalError "TypeCheck.bindConstrs: newtype with illegal constructors"
 >   bindData (AliasType _ _ _) tyEnv' = tyEnv'
->   bindConstr m' n ty (DataConstr c n' tys) =
+>   bindConstr m' n cx ty (DataConstr c n' tys) =
 >     bindGlobalInfo (flip DataConstructor (length tys)) m' c
->                    (ForAllExist BT.emptyContext n n' (foldr TypeArrow ty tys))
+>                    (ForAllExist cx' n n' (foldr TypeArrow ty tys))
+>     where
+>     cx' = filter filter' cx
+>     filter' (_qid, TypeVariable id0) = id0 `elem` concatMap typeVars tys
+>     -- filter' qid (TypeVarApplic ...) = id0 `elem` fv tys -- TODO
+>     -- filter' qid (TypeConstructor qid tys') = fv tys' `subset` fv tys
+>     filter' _ = internalError "bindConstr"   
 >   constrType' tc n = TypeConstructor tc $ map TypeVariable [0 .. n - 1]
 
 \end{verbatim}
