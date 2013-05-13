@@ -18,8 +18,23 @@ import System.Exit
 import System.FilePath
 import System.Directory
 import Control.Monad
+import qualified Data.Set as Set
+import Env.ClassEnv
 
 import Base.Types
+
+
+tests :: [Test]
+tests =
+  [ -- TODO: read test directories from external file?
+    impure (Dir "test/typeclasses/automated/")
+  , impure (Scs "test")]
+
+-- ----------------------------------------------------------------------------
+-- Check type checking by comparing the inferred types with the types 
+-- given in a special file. In the given folder, the file "Name.curry" must
+-- have a file "Name.types" with the given types. 
+-- ----------------------------------------------------------------------------
 
 data Dir = Dir { fn :: String }
 
@@ -32,9 +47,6 @@ instance TestOptions Dir where
 instance ImpureTestable Dir where
     runM str opts = checkDir str
 
--- TODO: read test directories from external file?
-tests :: [Test]
-tests = [impure (Dir "test/typeclasses/automated/") ]
   
 checkDir :: Dir -> IO Result
 checkDir dir = do
@@ -69,8 +81,10 @@ checkTypes file = do
           return False
     CheckFailed msgs -> do print msgs; return False  
     
-  
-  
+{-  
+loadAndCheck :: FilePath -> IO (CheckResult CompilerEnv)
+loadAndCheck str =
+-}   
   
 checkModule' :: CO.Options -> (CompilerEnv, CS.Module)
              -> CheckResult CompilerEnv
@@ -152,7 +166,57 @@ ppTypeCon (TypeConstructor c ts) _arrow =
   text (show c) <+> hsep (map ppType ts)
 ppTypeCon t _arrow = ppType t
 
+-- ----------------------------------------------------------------------------
+-- Check various class related functions:
+--   * Correct superclass calculation
+-- ----------------------------------------------------------------------------
 
+data Scs = Scs { scsFn :: FilePath}
+
+instance TestOptions Scs where
+    name = scsFn
+    options = const []
+    defaultOptions _ = return (Options [])
+    check _ _ = []
+
+instance ImpureTestable Scs where
+    runM str opts = checkVarious
+    
+checkVarious :: IO Result
+checkVarious = do
+  let opts = CO.defaultOptions
+  mod <- loadModule opts "test/typeclasses/TestScs.curry" 
+  let result = checkModule' opts mod
+  case result of
+    CheckSuccess tcEnv -> 
+      if checkScs tcEnv then return Pass
+      else return (Fail "check superclasses") 
+    CheckFailed msgs -> do print msgs; return (Fail "compilation error")
+
+-- |Check that the superclasses are calculated correctly    
+checkScs :: CompilerEnv -> Bool
+checkScs env = 
+  let cEnv = classEnv env in
+  allSuperClasses' cEnv (mkId "A") =:= [] &&
+  allSuperClasses' cEnv (mkId "B") =:= [] &&
+  allSuperClasses' cEnv (mkId "C") =:= map mkId ["A"] && 
+  allSuperClasses' cEnv (mkId "D") =:= map mkId ["A", "B", "E"] && 
+  allSuperClasses' cEnv (mkId "E") =:= [] &&
+  allSuperClasses' cEnv (mkId "F") =:= map mkId ["C", "D", "A", "B", "E"] &&
+  allSuperClasses' cEnv (mkId "G") =:= map mkId ["D", "A", "B", "E"] &&
+  allSuperClasses' cEnv (mkId "H") =:= map mkId ["F", "G", "C", "D", "A", "B", "E"] &&
+  allSuperClasses' cEnv (mkId "I") =:= [] &&
+  allSuperClasses' cEnv (mkId "J") =:= map mkId ["I"] &&
+  allSuperClasses' cEnv (mkId "K") =:= map mkId ["I", "J"] &&
+  allSuperClasses' cEnv (mkId "L") =:= map mkId ["K", "I", "J", "M"] &&
+  allSuperClasses' cEnv (mkId "M") =:= [] 
+
+
+(=:=) :: Ord a => [a] -> [a] -> Bool
+xs =:= ys = (Set.fromList xs) == (Set.fromList ys)
+
+mkId :: String -> QualIdent
+mkId s = qualify $ mkIdent s
 
 
 

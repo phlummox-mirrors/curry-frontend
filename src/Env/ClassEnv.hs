@@ -15,7 +15,8 @@
 module Env.ClassEnv 
   ( ClassEnv (..), Class (..), Instance (..), initClassEnv, lookupClass
   , lookupDefiningClass, lookupMethodTypeScheme, lookupMethodTypeSig
-  , ppClasses, getAllClassMethods
+  , ppClasses, getAllClassMethods, allSuperClasses, isSuperClassOf
+  , allSuperClasses', isSuperClassOf'
   ) where
 
 -- import Base.Types hiding ()
@@ -26,6 +27,9 @@ import qualified Data.Map as Map
 import Curry.Syntax.Pretty
 import Control.Monad (liftM)
 import Base.Types hiding (Context, typeVar, typeVars)
+import Data.List
+import Data.Maybe
+import Base.Messages
 
 -- |The class environment consists of the classes and instances in scope
 -- plus a map from class methods to their defining classes
@@ -105,6 +109,25 @@ getAllClassMethods (ClassEnv classes _ _) =
     addClassContext cls tyvar (Context elems) 
       = Context (elems ++ [ContextElem cls tyvar []])  
   
+
+-- |returns *all* superclasses of a given class
+allSuperClasses :: ClassEnv -> Class -> [QualIdent]
+allSuperClasses cEnv c = let scs = superClasses c in 
+  nub $ scs 
+    ++ concatMap (allSuperClasses cEnv . fromJust . lookupClass cEnv) scs
+
+allSuperClasses' :: ClassEnv -> QualIdent -> [QualIdent]
+allSuperClasses' cEnv c = let
+  theClass0 = lookupClass cEnv c
+  scs = maybe (internalError "allSuperClasses'") superClasses theClass0 in
+  nub $ scs ++ concatMap (allSuperClasses' cEnv) scs
+  
+-- |checks whether a given class is a superclass of another class
+isSuperClassOf :: ClassEnv -> Class -> Class -> Bool
+isSuperClassOf cEnv c1 c2 = (theClass c1) `elem` allSuperClasses cEnv c2
+
+isSuperClassOf' :: ClassEnv -> QualIdent -> QualIdent -> Bool
+isSuperClassOf' cEnv c1 c2 = c1 `elem` allSuperClasses' cEnv c2
 
 -- ----------------------------------------------------------------------------
 -- Pritty printer functions
