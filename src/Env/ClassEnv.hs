@@ -16,7 +16,7 @@ module Env.ClassEnv
   ( ClassEnv (..), Class (..), Instance (..), initClassEnv, lookupClass
   , lookupDefiningClass, lookupMethodTypeScheme, lookupMethodTypeSig
   , ppClasses, getAllClassMethods, allSuperClasses, isSuperClassOf
-  , allSuperClasses', isSuperClassOf'
+  , allSuperClasses', isSuperClassOf', implies, implies'
   ) where
 
 -- import Base.Types hiding ()
@@ -27,6 +27,7 @@ import qualified Data.Map as Map
 import Curry.Syntax.Pretty
 import Control.Monad (liftM)
 import Base.Types hiding (Context, typeVar, typeVars)
+import qualified Base.Types as BT 
 import Data.List
 import Data.Maybe
 import Base.Messages
@@ -128,6 +129,39 @@ isSuperClassOf cEnv c1 c2 = (theClass c1) `elem` allSuperClasses cEnv c2
 
 isSuperClassOf' :: ClassEnv -> QualIdent -> QualIdent -> Bool
 isSuperClassOf' cEnv c1 c2 = c1 `elem` allSuperClasses' cEnv c2
+
+-- |does a specific context imply a given type assertion?
+implies :: ClassEnv -> BT.Context -> (QualIdent, Type) -> Bool
+implies cEnv cx (qid, ty) = 
+  any (\(qid', ty') -> ty == ty' && (qid == qid' || isSuperClassOf' cEnv qid qid')) cx
+  ||
+  ((isTyCons ty || isArrow ty) && 
+    let (xi, tys) = getTyCons ty
+        insts = getInstancesForType cEnv xi in
+    any (\i -> 
+      let cx' = context i
+          ids = typeVars i
+          s = zip ids tys
+          cx'' = substContext s cx' in
+      implies' cEnv cx cx'') insts)
+
+-- |does a specific context imply another?
+implies' :: ClassEnv -> BT.Context -> BT.Context -> Bool
+implies' cEnv cx cx' = 
+  all (\c' -> implies cEnv cx c') cx' 
+
+-- |get all instances for a given type
+getInstancesForType :: ClassEnv -> QualIdent -> [Instance]
+getInstancesForType cEnv qid = filter (\inst -> iType inst == qid) (theInstances cEnv)
+
+-- |helper function
+substContext :: [(Ident, Type)] -> [(QualIdent, Ident)] -> BT.Context
+substContext subst cx = map (\(qid, id0) -> (qid, fromJust $ lookup id0 subst)) cx
+
+getTyCons :: Type -> (QualIdent, [Type])
+getTyCons (TypeConstructor xi tys) = (xi, tys)
+getTyCons (TypeArrow ty1 ty2) = (qArrowId, [ty1, ty2])
+getTyCons _ = internalError "getTyCons"
 
 -- ----------------------------------------------------------------------------
 -- Pritty printer functions

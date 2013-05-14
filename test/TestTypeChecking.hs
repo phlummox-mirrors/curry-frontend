@@ -189,8 +189,9 @@ checkVarious = do
   let result = checkModule' opts mod
   case result of
     CheckSuccess tcEnv -> 
-      if checkScs tcEnv then return Pass
-      else return (Fail "check superclasses") 
+      if not $ checkScs tcEnv then return (Fail "check superclasses")
+      else if not $ checkImpl (classEnv tcEnv) then return (Fail "implies")
+      else return Pass
     CheckFailed msgs -> do print msgs; return (Fail "compilation error")
 
 -- |Check that the superclasses are calculated correctly    
@@ -218,6 +219,70 @@ xs =:= ys = (Set.fromList xs) == (Set.fromList ys)
 mkId :: String -> QualIdent
 mkId s = qualify $ mkIdent s
 
+-- |check that the implies function works correctly
+checkImpl :: ClassEnv -> Bool
+checkImpl cEnv = 
+  implies cEnv [mk "A" 0] (mk "A" 0) &&
+  not (implies cEnv [mk "A" 0] (mk "B" 0)) &&
+  implies cEnv [mk "D" 0] (mk "A" 0) &&
+  implies cEnv [mk "H" 0] (mk "A" 0) &&
+  implies cEnv [mk "D" 0, mk "F" 0] (mk "A" 0) &&
+  implies cEnv [mk "D" 0, mk "E" 0] (mk "A" 0) &&
+  not (implies cEnv [mk "A" 0, mk "B" 0] (mk "E" 0)) &&
+  implies cEnv [mk "L" 0] (mk "I" 0) &&
+  not (implies cEnv [mk "I" 0] (mk "L" 0)) &&
+  implies' cEnv [mk "F" 0, mk "G" 0] [mk "C" 0, mk "D" 0] &&
+  not (implies cEnv [mk "A" 0] (mk "I" 0)) &&
+  
+  
+  not (implies cEnv [mk "A" 1] (mk "A" 0)) &&
+  not (implies cEnv [mk "H" 0] (mk "A" 1)) &&
+  not (implies cEnv [mk "F" 0, mk "G" 1] (mk "C" 1)) &&
+  implies' cEnv [mk "F" 0, mk "G" 1] [mk "C" 0, mk "D" 0, mk "D" 1] &&
 
 
+  implies cEnv [mk "A" 0] (mkId "A", TypeConstructor qListId [mkTy 0]) &&
+  not (implies cEnv [mk "A" 0] (mkId "A", TypeConstructor (mkId "T") [mkTy 0])) &&
+  implies cEnv [mk "A" 0] (mkId "A", TypeConstructor (mkId "S") [mkTy 0]) &&
+  implies cEnv [mk "B" 0] (mkId "A", TypeConstructor (mkId "U") [mkTy 0]) &&
+  implies cEnv [mk "A" 0, mk "B" 1] (mkId "E", TypeConstructor (mkId "V") [mkTy 0, mkTy 1]) && 
+  not (implies cEnv [mk "A" 0, mk "B" 0] (mkId "E", TypeConstructor (mkId "V") [mkTy 0, mkTy 1])) &&
+  implies cEnv [mk "F" 0, mk "B" 1] (mkId "E", TypeConstructor (mkId "V") [mkTy 0, mkTy 1]) &&
+  implies cEnv [mk "F" 0, mk "D" 1] (mkId "E", TypeConstructor (mkId "V") [mkTy 0, mkTy 1]) &&  
+  
+  implies cEnv [mk "A" 0] (mkId "A", TypeConstructor qListId [TypeConstructor (mkId "S") [mkTy 0]]) &&
+  implies cEnv [mk "A" 0] (mkId "A", TypeConstructor qListId [TypeConstructor qListId [TypeConstructor (mkId "S") [mkTy 0]]]) &&
+  implies cEnv [mk "H" 0] (mkId "A", TypeConstructor qListId [TypeConstructor (mkId "S") [mkTy 0]]) &&
+  
+  implies cEnv [mk "E" 0] (mkId "E", TypeArrow (mkTy 0) (mkTy 1)) &&
+  not (implies cEnv [mk "E" 1] (mkId "E", TypeArrow (mkTy 0) (mkTy 1))) &&
+  not (implies cEnv [mk "A" 0, mk "C" 1] (mkId "E", TypeArrow (mkTy 0) (mkTy 1))) &&
+  implies cEnv [mk "H" 0] (mkId "E", TypeArrow (mkTy 0) (mkTy 1)) &&
+  not (implies cEnv [mk "H" 1] (mkId "E", TypeArrow (mkTy 0) (mkTy 1))) &&
+  
+  not (implies cEnv [] (mkId "I", TypeArrow (mkTy 0) (mkTy 1))) &&
+  not (implies cEnv [mk "M" 0] (mkId "I", TypeArrow (mkTy 0) (mkTy 1))) &&
+  not (implies cEnv [mk "K" 0] (mkId "I", TypeArrow (mkTy 0) (mkTy 1))) &&
+  implies cEnv [mk "M" 0, mk "K" 0] (mkId "I", TypeArrow (mkTy 0) (mkTy 1)) &&
+  
+  not (implies cEnv [] (mk "E" 0)) &&
+  not (implies' cEnv [] [mk "E" 0, mk "F" 0]) &&
+  implies' cEnv [] [] &&
+  implies' cEnv [mk "E" 0] [] &&
+  
+  not (implies cEnv [mk "N" 0] (mk "O" 0)) &&
+  implies cEnv [mk "N" 0] (mk "N" 0) &&
+  not (implies cEnv [mk "O" 0] (mk "N" 0)) &&
+  implies cEnv [mk "N" 0] (mkId "O", TypeConstructor (mkId "T") [mkTy 0]) &&
+  
+  implies cEnv [mk "N" 0] (mkId "N", TypeConstructor (qTupleId 2) [mkTy 0, mkTy 1]) &&
+  implies cEnv [] (mkId "N", TypeConstructor qUnitId []) &&
+  
+  implies cEnv [] (mkId "N", TypeConstructor (mkId "Q") [mkTy 0])
+  
 
+mk :: String -> Int -> (QualIdent, Type)
+mk str n = (mkId str, mkTy n)  
+
+mkTy :: Int -> Type
+mkTy n = TypeVariable n

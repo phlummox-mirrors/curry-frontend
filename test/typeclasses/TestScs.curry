@@ -26,3 +26,43 @@ class M a where
 
 class (K a, M a) => L a where
 
+class N a where
+
+class O a where
+
+data T a = T a
+
+data S a = S a
+
+instance A a => A [a] where
+
+instance B a => B [a] where
+
+instance A a => A (S a) where
+
+data U a = U a
+
+instance B a => A (U a) where
+
+data V a b = V a b
+
+instance (A a, B b) => E (V a b) where
+
+instance E a => E ((->) a b) where
+
+
+instance (M a, K a) => I ((->) a b) where
+
+
+instance N a => O (T a) where
+
+instance O a => N (T a) where
+
+
+instance N a => N (a, b) where
+
+instance N () where
+
+data Q a = Q a
+
+instance N (Q a) where
