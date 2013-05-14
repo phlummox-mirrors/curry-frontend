@@ -134,10 +134,17 @@ instanceDeclToInstance (InstanceDecl _ (SContext scon) cls tcon ids decls) =
   Instance { 
     context = scon, 
     iClass = cls,  
-    iType = tcon, 
+    iType = tyConToQualIdent tcon, 
     typeVars = ids, 
     rules = decls }
 instanceDeclToInstance _ = internalError "instanceDeclToInstance"
+
+tyConToQualIdent :: TypeConstructor -> QualIdent
+tyConToQualIdent (QualTC qid) = qid
+tyConToQualIdent UnitTC = qUnitId
+tyConToQualIdent (TupleTC n) = qTupleId n 
+tyConToQualIdent ListTC = qListId
+tyConToQualIdent ArrowTC = qArrowId
 
 -- |extract all data types/newtypes 
 gatherDataTypes :: [Decl] -> ModuleIdent -> [(QualIdent, Int)]
@@ -796,7 +803,7 @@ errDuplicateClassNames clss
   = message (text "Two or more classes with the same name: "  
   <+> hsep (punctuate comma (map ppQIdent clss)))
   
-errDuplicateInstances :: [(QualIdent, TypeConstructor)] -> Message
+errDuplicateInstances :: [(QualIdent, QualIdent)] -> Message
 errDuplicateInstances is
   = message (text "Two or more instances for the same class and type: "
   <+> (hsep $ punctuate comma $ 

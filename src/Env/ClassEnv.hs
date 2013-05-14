@@ -54,7 +54,7 @@ data Class = Class
 data Instance = Instance
   { context :: [(QualIdent,Ident)]
   , iClass :: QualIdent
-  , iType :: TypeConstructor
+  , iType :: QualIdent
   , typeVars :: [Ident]
   , rules :: [Decl]
   }
