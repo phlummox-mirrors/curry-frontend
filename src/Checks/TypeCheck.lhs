@@ -504,7 +504,9 @@ either one of the basic types or \texttt{()}.
 >   err <- hasError
 >   case err of
 >     -- break fix point iteration if there are errors
->     True -> return $ concat nonLocalContexts
+>     True -> do
+>       mapM_ (genDecl firstFreeVars theta) dsWithCxs
+>       return $ concat nonLocalContexts
 >     False -> do
 >       -- continue (no errors encountered)
 >       let newCxs = map Set.fromList cxs'
