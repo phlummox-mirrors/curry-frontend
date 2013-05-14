@@ -28,7 +28,7 @@ tests :: [Test]
 tests =
   [ -- TODO: read test directories from external file?
     impure (Dir "test/typeclasses/automated/")
-  , impure (Scs "test")]
+  , impure (Various "test")]
 
 -- ----------------------------------------------------------------------------
 -- Check type checking by comparing the inferred types with the types 
@@ -189,23 +189,24 @@ ppTypeCon t _arrow = ppType t
 -- ----------------------------------------------------------------------------
 -- Check various class related functions:
 --   * Correct superclass calculation
+--   * Correctness of the implies function
 -- ----------------------------------------------------------------------------
 
-data Scs = Scs { scsFn :: FilePath}
+data Various = Various { vFn :: FilePath}
 
-instance TestOptions Scs where
-    name = scsFn
+instance TestOptions Various where
+    name = vFn
     options = const []
     defaultOptions _ = return (Options [])
     check _ _ = []
 
-instance ImpureTestable Scs where
+instance ImpureTestable Various where
     runM str opts = checkVarious
     
 checkVarious :: IO Result
 checkVarious = do
   let opts = CO.defaultOptions
-  mod <- loadModule opts "test/typeclasses/TestScs.curry" 
+  mod <- loadModule opts "test/typeclasses/TestVarious.curry" 
   let result = checkModule' opts mod
   case result of
     CheckSuccess tcEnv -> 
