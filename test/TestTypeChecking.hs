@@ -20,8 +20,10 @@ import System.Directory
 import Control.Monad
 import qualified Data.Set as Set
 import Env.ClassEnv
+import qualified Checks.TypeCheck as TC (typeCheck)
+import Curry.Syntax (Module (..))
 
-import Base.Types
+import Base.Types hiding (ppContext)
 
 
 tests :: [Test]
@@ -105,8 +107,17 @@ checkModule' opts (env, mdl) = do
   (env2,  sc) <- syntaxCheck opts env1 kc
   (env3,  pc) <- precCheck        env2 sc
   (env4, tcc) <- typeClassesCheck env3 pc
-  (env5, _tc) <- typeCheck env4 tcc
+  (env5, _tc) <- typeCheck' env4 tcc
   return env5
+  
+  
+typeCheck' :: CompilerEnv -> Module -> CheckResult (CompilerEnv, Module)
+typeCheck' env mdl@(Module _ _ _ ds)
+  -- always return success, also if there are error messages
+  {-| null msgs-} = CheckSuccess (env { tyConsEnv = tcEnv', valueEnv = tyEnv' }, mdl)
+  -- | otherwise = CheckFailed msgs
+  where (tcEnv', tyEnv', msgs) = TC.typeCheck (moduleIdent env)
+                                 (tyConsEnv env) (valueEnv env) (classEnv env) ds
   
 -- |This function extracts the (function name, type) pairs from the types
 -- file. 
