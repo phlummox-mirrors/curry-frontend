@@ -47,7 +47,7 @@ instance TestOptions Dir where
 instance ImpureTestable Dir where
     runM str opts = checkDir str
 
-  
+-- | Check all curry/type files in the given directory
 checkDir :: Dir -> IO Result
 checkDir dir = do
   files <- getDirectoryContents (fn dir)
@@ -62,6 +62,17 @@ checkDir dir = do
 location :: FilePath
 location = "test/typeclasses/automated/"
 
+-- | Reads a curry and the corresponding type file and checks whether
+-- the inferred types match the types given in the type file. 
+-- The lines in the type file has the format
+-- @
+-- # comment
+-- funName: type
+-- @
+-- The type given must not have less whitespace than the pretty printed type 
+-- (see pretty printing functions below), but more whitespace is allowed. 
+-- Furthermore the given type must have all brackets that are outputted by the
+-- pretty printing functions (for simplicity)  
 checkTypes :: FilePath -> IO Bool -- Result
 checkTypes file = do
   putStrLn ("checking " ++ file)
@@ -85,7 +96,8 @@ checkTypes file = do
 loadAndCheck :: FilePath -> IO (CheckResult CompilerEnv)
 loadAndCheck str =
 -}   
-  
+
+-- |This function checks the modules until the type check phase is reached
 checkModule' :: CO.Options -> (CompilerEnv, CS.Module)
              -> CheckResult CompilerEnv
 checkModule' opts (env, mdl) = do
@@ -96,7 +108,8 @@ checkModule' opts (env, mdl) = do
   (env5, _tc) <- typeCheck env4 tcc
   return env5
   
-  
+-- |This function extracts the (function name, type) pairs from the types
+-- file. 
 extractTypes :: String -> [(String, String)]
 extractTypes fileContent = 
   let lines0 = filter ((/= []) . trim) $ lines fileContent
@@ -118,7 +131,10 @@ removeDuplicateWhitespace (c:cs) = c : removeDuplicateWhitespace cs
 
 
 
-
+-- |compares a (function name, type) pair from the type file with the 
+-- inferred type from the value environment. If they match, the empty list
+-- is returned, else the triple with the function name, the expected type, 
+-- and the inferred type
 doCheck :: CompilerEnv -> [(String, String)] -> [(String, String, String)]
 doCheck cEnv types = 
   concatMap findAndCmp types
@@ -135,7 +151,11 @@ doCheck cEnv types =
     head' [] = error ("id " ++ id0 ++ " not found")
 
       
-
+-- ----------------------------------------------------------------------------
+-- Pretty printing functions for the types. Note that the types given in the
+-- type file must exaclty (except for whitespace) match the output of these
+-- functions
+-- ----------------------------------------------------------------------------
 
 
 ppTypeScheme :: TypeScheme -> Doc
