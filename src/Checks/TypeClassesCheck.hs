@@ -75,8 +75,8 @@ typeClassesCheck m decls (ClassEnv importedClasses importedInstances _) tcEnv =
   where
     (classDecls, rest1) = partition isClassDecl decls
     (instDecls,  rest2) = partition isInstanceDecl rest1
-    (dataDecls,  rest3) = partition (\x -> isDataDecl x || isNewtypeDecl x) rest2
-    (typeSigs, _) = partition isTypeSig rest3
+    (dataDecls, _rest3) = partition (\x -> isDataDecl x || isNewtypeDecl x) rest2
+    typeSigs = gatherTypeSigs decls
     allDataTypes = gatherDataTypes dataDecls m
     result = do
       mapM_ typeVariableInContext classDecls
@@ -172,6 +172,73 @@ gatherDataTypes decls m = concatMap getDataType decls
   getDataType (NewtypeDecl _ d ids _) = 
     let a = length ids in [(qualify d, a), (qualifyWith m d, a)]
   getDataType _ = internalError "allDataTypes"
+
+-- |gathers *all* type signatures, also those that are in nested scopes and in
+-- classes etc.
+gatherTypeSigs :: [Decl] -> [Decl]
+gatherTypeSigs decls = 
+  -- filter isTypeSig decls ++ 
+  concatMap gatherTS decls
+
+gatherTS :: Decl -> [Decl]
+gatherTS (ClassDecl _ _ _ _ decls) = gatherTypeSigs decls
+gatherTS (InstanceDecl _ _ _ _ _ decls) = gatherTypeSigs decls
+gatherTS (PatternDecl _ _ rhs) = gatherTSRhs rhs
+gatherTS (FunctionDecl _ _ eqs) = concatMap gatherTSEqu eqs 
+gatherTS ts@(TypeSig _ _ _ _) = [ts]
+gatherTS _ = []
+
+gatherTSRhs :: Rhs -> [Decl]
+gatherTSRhs (SimpleRhs _ expr decls) = gatherTSExpr expr ++ gatherTypeSigs decls
+gatherTSRhs (GuardedRhs cexps decls) = concatMap gatherTSCondExpr cexps ++ gatherTypeSigs decls
+
+gatherTSEqu :: Equation -> [Decl]
+gatherTSEqu (Equation _ _ rhs) = gatherTSRhs rhs
+
+gatherTSExpr :: Expression -> [Decl]
+gatherTSExpr (Literal _) = []
+gatherTSExpr (Variable _) = []
+gatherTSExpr (Constructor _) = []
+gatherTSExpr (Paren expr) = gatherTSExpr expr
+-- convert typification into type signatures without position (TODO: add
+-- position somehow)
+gatherTSExpr (Typed expr cx texp) = gatherTSExpr expr ++ [TypeSig NoPos [] cx texp]
+gatherTSExpr (Tuple _ exps) = concatMap gatherTSExpr exps
+gatherTSExpr (List _ exps) = concatMap gatherTSExpr exps
+gatherTSExpr (ListCompr _ expr stms) = gatherTSExpr expr ++ concatMap gatherTSStm stms
+gatherTSExpr (EnumFrom expr) = gatherTSExpr expr
+gatherTSExpr (EnumFromThen expr1 expr2) = gatherTSExpr expr1 ++ gatherTSExpr expr2
+gatherTSExpr (EnumFromTo expr1 expr2) = gatherTSExpr expr1 ++ gatherTSExpr expr2
+gatherTSExpr (EnumFromThenTo expr1 expr2 expr3) = 
+  gatherTSExpr expr1 ++ gatherTSExpr expr2 ++ gatherTSExpr expr3
+gatherTSExpr (UnaryMinus _ expr) = gatherTSExpr expr 
+gatherTSExpr (Apply e1 e2) = gatherTSExpr e1 ++ gatherTSExpr e2
+gatherTSExpr (InfixApply e1 _ e2) = gatherTSExpr e1 ++ gatherTSExpr e2
+gatherTSExpr (LeftSection e _) = gatherTSExpr e
+gatherTSExpr (RightSection _ e) = gatherTSExpr e
+gatherTSExpr (Lambda _ _ e) = gatherTSExpr e
+gatherTSExpr (Let decls expr) = gatherTypeSigs decls ++ gatherTSExpr expr
+gatherTSExpr (Do stms e) = concatMap gatherTSStm stms ++ gatherTSExpr e
+gatherTSExpr (IfThenElse _ e1 e2 e3) = 
+  gatherTSExpr e1 ++ gatherTSExpr e2 ++ gatherTSExpr e3
+gatherTSExpr (Case _ _ e alts) = gatherTSExpr e ++ concatMap gatherTSAlt alts
+gatherTSExpr (RecordConstr fs) = concatMap gatherTSFieldExpr fs
+gatherTSExpr (RecordSelection e _) = gatherTSExpr e
+gatherTSExpr (RecordUpdate fs e) = concatMap gatherTSFieldExpr fs ++ gatherTSExpr e
+
+gatherTSStm :: Statement -> [Decl]
+gatherTSStm (StmtExpr _ e) = gatherTSExpr e
+gatherTSStm (StmtDecl decls) = gatherTypeSigs decls
+gatherTSStm (StmtBind _ _ e) = gatherTSExpr e
+
+gatherTSCondExpr :: CondExpr -> [Decl]
+gatherTSCondExpr (CondExpr _ e1 e2) = gatherTSExpr e1 ++ gatherTSExpr e2
+
+gatherTSAlt :: Alt -> [Decl]
+gatherTSAlt (Alt _ _ rhs) = gatherTSRhs rhs
+
+gatherTSFieldExpr :: Field Expression -> [Decl]
+gatherTSFieldExpr (Field _ _ e) = gatherTSExpr e
 
 -- ---------------------------------------------------------------------------
 -- checks
