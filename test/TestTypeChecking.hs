@@ -23,7 +23,7 @@ import Env.ClassEnv
 import qualified Checks.TypeCheck as TC (typeCheck)
 import Curry.Syntax (Module (..))
 
-import Base.Types hiding (ppContext)
+import Base.Types
 
 
 tests :: [Test]
