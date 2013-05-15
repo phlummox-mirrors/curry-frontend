@@ -273,7 +273,7 @@ checkImpl cEnv =
   implies' cEnv [mk "F" 0, mk "G" 1] [mk "C" 0, mk "D" 0, mk "D" 1] &&
 
 
-  implies cEnv [mk "A" 0] (mkId "A", TypeConstructor qListId [mkTy 0]) &&
+  implies cEnv [mk "A" 0] (mkId "A", TypeConstructor qListIdP [mkTy 0]) &&
   not (implies cEnv [mk "A" 0] (mkId "A", TypeConstructor (mkId "T") [mkTy 0])) &&
   implies cEnv [mk "A" 0] (mkId "A", TypeConstructor (mkId "S") [mkTy 0]) &&
   implies cEnv [mk "B" 0] (mkId "A", TypeConstructor (mkId "U") [mkTy 0]) &&
@@ -282,9 +282,9 @@ checkImpl cEnv =
   implies cEnv [mk "F" 0, mk "B" 1] (mkId "E", TypeConstructor (mkId "V") [mkTy 0, mkTy 1]) &&
   implies cEnv [mk "F" 0, mk "D" 1] (mkId "E", TypeConstructor (mkId "V") [mkTy 0, mkTy 1]) &&  
   
-  implies cEnv [mk "A" 0] (mkId "A", TypeConstructor qListId [TypeConstructor (mkId "S") [mkTy 0]]) &&
-  implies cEnv [mk "A" 0] (mkId "A", TypeConstructor qListId [TypeConstructor qListId [TypeConstructor (mkId "S") [mkTy 0]]]) &&
-  implies cEnv [mk "H" 0] (mkId "A", TypeConstructor qListId [TypeConstructor (mkId "S") [mkTy 0]]) &&
+  implies cEnv [mk "A" 0] (mkId "A", TypeConstructor qListIdP [TypeConstructor (mkId "S") [mkTy 0]]) &&
+  implies cEnv [mk "A" 0] (mkId "A", TypeConstructor qListIdP [TypeConstructor qListIdP [TypeConstructor (mkId "S") [mkTy 0]]]) &&
+  implies cEnv [mk "H" 0] (mkId "A", TypeConstructor qListIdP [TypeConstructor (mkId "S") [mkTy 0]]) &&
   
   implies cEnv [mk "E" 0] (mkId "E", TypeArrow (mkTy 0) (mkTy 1)) &&
   not (implies cEnv [mk "E" 1] (mkId "E", TypeArrow (mkTy 0) (mkTy 1))) &&
@@ -307,8 +307,8 @@ checkImpl cEnv =
   not (implies cEnv [mk "O" 0] (mk "N" 0)) &&
   implies cEnv [mk "N" 0] (mkId "O", TypeConstructor (mkId "T") [mkTy 0]) &&
   
-  implies cEnv [mk "N" 0] (mkId "N", TypeConstructor (qTupleId 2) [mkTy 0, mkTy 1]) &&
-  implies cEnv [] (mkId "N", TypeConstructor qUnitId []) &&
+  implies cEnv [mk "N" 0] (mkId "N", TypeConstructor (qTupleIdP 2) [mkTy 0, mkTy 1]) &&
+  implies cEnv [] (mkId "N", TypeConstructor qUnitIdP []) &&
   
   implies cEnv [] (mkId "N", TypeConstructor (mkId "Q") [mkTy 0])
   

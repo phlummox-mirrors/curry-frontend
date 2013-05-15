@@ -158,9 +158,9 @@ instanceDeclToInstance _ = internalError "instanceDeclToInstance"
 
 tyConToQualIdent :: TypeConstructor -> QualIdent
 tyConToQualIdent (QualTC qid) = qid
-tyConToQualIdent UnitTC = qUnitId
-tyConToQualIdent (TupleTC n) = qTupleId n 
-tyConToQualIdent ListTC = qListId
+tyConToQualIdent UnitTC = qUnitIdP
+tyConToQualIdent (TupleTC n) = qTupleIdP n 
+tyConToQualIdent ListTC = qListIdP
 tyConToQualIdent ArrowTC = qArrowId
 
 -- |extract all data types/newtypes 
