@@ -32,6 +32,9 @@ class Read a where
 
 class (C a, E a) => J a where
 
+class Ord a where
+class Eq a where
+
 
 testA1 :: Bool
 testA1 = True

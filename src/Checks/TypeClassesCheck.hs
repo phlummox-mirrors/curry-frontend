@@ -67,7 +67,8 @@ typeClassesCheck m decls (ClassEnv importedClasses importedInstances _) tcEnv =
   where
     (classDecls, rest1) = partition isClassDecl decls
     (instDecls,  rest2) = partition isInstanceDecl rest1
-    (dataDecls, _)      = partition (\x -> isDataDecl x || isNewtypeDecl x) rest2
+    (dataDecls,  rest3) = partition (\x -> isDataDecl x || isNewtypeDecl x) rest2
+    (typeSigs, _) = partition isTypeSig rest3
     allDataTypes = gatherDataTypes dataDecls m
     result = do
       mapM_ typeVariableInContext classDecls
@@ -79,9 +80,11 @@ typeClassesCheck m decls (ClassEnv importedClasses importedInstances _) tcEnv =
           instances = map instanceDeclToInstance instDecls ++ importedInstances
           newClassEnv = ClassEnv classes instances Map.empty
       -- TODO: check also contexts of (imported) classes and interfaces?
-      mapM_ (checkSuperclassContext m newClassEnv) classDecls
-      mapM_ (checkSuperclassContext m newClassEnv) instDecls
-      mapM_ (checkForDirectCycle m) classDecls
+      mapM_ (checkClassesInContext m newClassEnv) classDecls
+      mapM_ (checkClassesInContext m newClassEnv) instDecls
+      mapM_ (checkClassesInContext m newClassEnv) typeSigs
+      -- TODO: check also classes in typed expressions
+
       
       mapM_ (checkRulesInInstanceOrClass newClassEnv) instDecls
       mapM_ (checkRulesInInstanceOrClass newClassEnv) classDecls
@@ -93,6 +96,7 @@ typeClassesCheck m decls (ClassEnv importedClasses importedInstances _) tcEnv =
       checkForDuplicateInstances newClassEnv
       
       checkForCyclesInClassHierarchy newClassEnv
+      mapM_ (checkForDirectCycle m) classDecls
       
       noDoubleClassMethods classes
       return (classes, instances)
@@ -174,17 +178,19 @@ typeVariableInContext _ = internalError "typeVariableInContext"
 
 -- |check that the classes in superclass contexts or instance contexts are 
 -- in scope  
-checkSuperclassContext :: ModuleIdent -> ClassEnv -> Decl -> CheckResult ()
-checkSuperclassContext m cEnv (ClassDecl p (SContext scon) _ _ _) = 
-  mapM_ (checkSuperclassContext' m cEnv p) (map fst scon)
-checkSuperclassContext m cEnv (InstanceDecl p (SContext scon) _ _ _ _) = 
-  mapM_ (checkSuperclassContext' m cEnv p) (map fst scon)
-checkSuperclassContext _ _ _ = internalError "TypeClassesCheck.checkSuperclassContext"
+checkClassesInContext :: ModuleIdent -> ClassEnv -> Decl -> CheckResult ()
+checkClassesInContext m cEnv (ClassDecl p (SContext scon) _ _ _) = 
+  mapM_ (checkClassesInContext' m cEnv p) (map fst scon)
+checkClassesInContext m cEnv (InstanceDecl p (SContext scon) _ _ _ _) = 
+  mapM_ (checkClassesInContext' m cEnv p) (map fst scon)
+checkClassesInContext m cEnv (TypeSig p _ (Context cx) _) = 
+  mapM_ (checkClassesInContext' m cEnv p) (map (\(ContextElem qid _ _) -> qid) cx)
+checkClassesInContext _ _ _ = internalError "TypeClassesCheck.checkClassesInContext"
     
-checkSuperclassContext' :: ModuleIdent -> ClassEnv -> Position -> QualIdent -> CheckResult ()
-checkSuperclassContext' m cEnv p qid = 
+checkClassesInContext' :: ModuleIdent -> ClassEnv -> Position -> QualIdent -> CheckResult ()
+checkClassesInContext' m cEnv p qid = 
   case lookupClass cEnv (qualUnqualify m qid) of 
-    Nothing -> CheckFailed [errSuperclassNotInScope p qid]
+    Nothing -> CheckFailed [errClassNotInScope p qid]
     Just _ -> return ()
 
 {-
@@ -772,9 +778,9 @@ errTypeVariableInContext p ids
   (text "Illegal type variable(s)" <+> text (show ids) 
    <+> text "in class context")
   
-errSuperclassNotInScope :: Position -> QualIdent -> Message
-errSuperclassNotInScope p qid = 
-  posMessage p (text "superclass" <+> text (show qid)
+errClassNotInScope :: Position -> QualIdent -> Message
+errClassNotInScope p qid = 
+  posMessage p (text "Class" <+> text (show qid)
   <+> text "not in scope") 
   
 errDoubleClassMethods :: Position -> Position -> [Ident] -> Message
