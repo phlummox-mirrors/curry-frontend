@@ -53,7 +53,7 @@ type annotation is present.
 >   , bindGlobalInfo, bindLabel, lookupValue, qualLookupValue
 >   , tryBindFun )
 > import Env.ClassEnv (ClassEnv, lookupMethodTypeScheme
->   , getAllClassMethods)
+>   , getAllClassMethods, implies', implies)
 
 > infixl 5 $-$
 
@@ -709,9 +709,14 @@ signature the declared type must be too general.
 >     Nothing    -> modifyValueEnv $ rebindFun m v arity sigma
 >     Just sigTy -> do
 >       sigma' <- expandPolyType sigTy
->       -- TODO: consider contexts!
 >       unless (eqTyScheme sigma sigma') $ report
 >         $ errTypeSigTooGeneral (idPosition v) m what sigTy sigma
+>       -- check that the given context implies the inferred
+>       cEnv <- getClassEnv
+>       unless (implies' cEnv (getContext sigma') (getContext sigma))
+>         $ report $ errContextImplication (idPosition v) m sigma' sigma
+>           (filter (\c -> not $ implies cEnv (getContext sigma') c) (getContext sigma))  
+>           v
 >       modifyValueEnv $ rebindFun m v arity sigma
 >   where
 >   what = text (if poly then "Function:" else "Variable:") <+> ppIdent v
@@ -720,6 +725,7 @@ signature the declared type must be too general.
 >     | poly' = gen lvs ty
 >     | otherwise = monoType ty
 >   eqTyScheme (ForAll _cx1 _ t1) (ForAll _cx2 _ t2) = equTypes t1 t2
+>   getContext (ForAll cx0 _ _) = cx0
 
 > -- | builds a mapping from type variables in the left type to the type variables
 > -- in the right type. Assumes that the types are alpha equivalent. 
@@ -1758,6 +1764,13 @@ Error functions.
 > errAmbiguousTypeVarsInContext p f _tvars = 
 >   posMessage p (text "Ambiguous type variables in the context to function"
 >   <+> text (show f))
+
+> errContextImplication :: Position -> ModuleIdent -> TypeScheme -> TypeScheme 
+>                       -> BT.Context -> Ident -> Message
+> errContextImplication p m (ForAll cx _ _) (ForAll cx' _ _) cx'' id0 = posMessage p $ 
+>   text "Given context" <+> ppContext' m cx <+> text "doesn't imply inferred context"
+>   <+> ppContext' m cx' <+> text "in type signature of" <+> text (show id0) <> text ":"
+>   $$ ppContext' m cx'' <+> text "is not implied. " 
 
 \end{verbatim}
 The following functions implement pretty-printing for types.
