@@ -1771,7 +1771,8 @@ The following functions implement pretty-printing for types.
 
 > ppContext' :: ModuleIdent -> BT.Context -> Doc
 > ppContext' m cx = parens $ hsep $ 
->   punctuate comma (map (\(qid, ty) -> ppQIdent qid <+> ppType m ty) cx)
+>   punctuate comma (map (\(qid, ty) -> ppQIdent qid <+> ppType m ty) cx')
+>   where cx' = nub cx
 
 \end{verbatim}
 After all type checking has been done, check at last, that there are 
