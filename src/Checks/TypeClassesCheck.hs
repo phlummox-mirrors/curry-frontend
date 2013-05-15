@@ -73,9 +73,9 @@ typeClassesCheck m decls (ClassEnv importedClasses importedInstances _) tcEnv =
       in (newDecls, cEnv, [])
     (_, errs@(_:_)) -> (decls, ClassEnv [] [] Map.empty, errs)
   where
-    (classDecls, rest1) = partition isClassDecl decls
-    (instDecls,  rest2) = partition isInstanceDecl rest1
-    (dataDecls, _rest3) = partition (\x -> isDataDecl x || isNewtypeDecl x) rest2
+    classDecls = filter isClassDecl decls
+    instDecls = filter isInstanceDecl decls
+    dataDecls = filter (\x -> isDataDecl x || isNewtypeDecl x) decls
     typeSigs = gatherTypeSigs decls
     allDataTypes = gatherDataTypes dataDecls m
     result = do
