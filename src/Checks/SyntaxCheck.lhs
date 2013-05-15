@@ -422,8 +422,7 @@ top-level.
 > checkDeclLhs :: Decl -> SCM Decl
 > checkDeclLhs (InfixDecl   p fix' pr ops) =
 >   liftM2 (InfixDecl p fix') (checkPrecedence p pr) (mapM renameVar ops)
-> checkDeclLhs ts@(TypeSig        p vs cx ty) = do
->   typeSigContextCorrect ts 
+> checkDeclLhs (TypeSig        p vs cx ty) = do
 >   (\vs' -> TypeSig p vs' cx ty) `liftM` mapM (checkVar "type signature") vs
 > checkDeclLhs (FunctionDecl      p _ eqs) =
 >   checkEquationsLhs p eqs
@@ -545,8 +544,7 @@ top-level.
 -- ---------------------------------------------------------------------------
 
 > checkDeclRhs :: [Ident] -> Decl -> SCM Decl
-> checkDeclRhs bvs ts@(TypeSig   p vs cx ty) = do
->   typeSigContextCorrect ts
+> checkDeclRhs bvs (TypeSig   p vs cx ty) = do
 >   (\vs' -> TypeSig p vs' cx ty) `liftM` mapM (checkLocalVar bvs) vs
 > checkDeclRhs _   (FunctionDecl p f eqs) =
 >   FunctionDecl p f `liftM` mapM checkEquation eqs
@@ -1198,11 +1196,6 @@ Error messages.
 >   showWithPos q =  text (qualName q)
 >                <+> parens (text $ showLine $ qidPosition q)
 
-> errContextVariableNotInType :: Position -> [Ident] -> Message
-> errContextVariableNotInType p ids = posMessage p $
->   text "Variable(s)" <+> (hsep $ punctuate comma (map (text . escName) ids))
->   <+> text "in context, but not in type signature" 
-
 > -- TODO: a position would be nice...
 > errRedefiningClassMethods :: [Ident] -> Message
 > errRedefiningClassMethods ids = message $
@@ -1239,15 +1232,5 @@ Type classes specific stuff
 > extractIDecls :: Decl -> [Decl]
 > extractIDecls (InstanceDecl _ _ _ _ _ ds) = ds
 > extractIDecls _ = internalError "extractIDecl"
-
-> typeSigContextCorrect :: Decl -> SCM ()
-> typeSigContextCorrect (TypeSig p _ids cx tyexp) = 
->   when (not . null $ wrongVars) $ report (errContextVariableNotInType p wrongVars)
->   -- TODO: check that all context elements are in head normal form
->   where
->     varsInTypeExp = nub $ typeVarsInTypeExpr tyexp
->     varsInContext = nub $ typeVarsInContext cx
->     wrongVars = varsInContext \\ varsInTypeExp
-> typeSigContextCorrect _ = internalError "typeSigCorrect"
 
 \end{verbatim}

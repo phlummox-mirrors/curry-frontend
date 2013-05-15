@@ -83,7 +83,12 @@ typeClassesCheck m decls (ClassEnv importedClasses importedInstances _) tcEnv =
       mapM_ (checkClassesInContext m newClassEnv) classDecls
       mapM_ (checkClassesInContext m newClassEnv) instDecls
       mapM_ (checkClassesInContext m newClassEnv) typeSigs
-      -- TODO: check also classes in typed expressions
+      
+      -- mapM_ checkTypeVarsInContext classDecls -- checked above (typeVariableInContext)
+      mapM_ checkTypeVarsInContext instDecls
+      mapM_ checkTypeVarsInContext typeSigs 
+      
+      -- TODO: check also contexts in typed expressions
 
       
       mapM_ (checkRulesInInstanceOrClass newClassEnv) instDecls
@@ -364,6 +369,28 @@ checkInstanceDataTypeCorrect dataTypes tcEnv (InstanceDecl p _ _ (QualTC qid) id
         defInTCEnv = not . null $ tinfo
 checkInstanceDataTypeCorrect _dataTypes _ (InstanceDecl _ _ _ _ _ _) = return ()
 checkInstanceDataTypeCorrect _ _ _ = internalError "checkInstanceDataTypeCorrect"
+
+-- |Checks that there are only type vars in the context that also appear on
+-- the right side
+checkTypeVarsInContext :: Decl -> CheckResult ()
+checkTypeVarsInContext (TypeSig p _ids cx tyexp) = 
+  case null wrongVars of
+    True -> return ()
+    False -> CheckFailed [errContextVariableNotOnTheRightSide p wrongVars "type signature"]
+  -- TODO: check that all context elements are in head normal form
+  where
+    varsInTypeExp = nub $ typeVarsInTypeExpr tyexp
+    varsInContext = nub $ typeVarsInContext cx
+    wrongVars = varsInContext \\ varsInTypeExp
+checkTypeVarsInContext (InstanceDecl p scx _qid _ ids _decls) = 
+  case null wrongVars of
+    True -> return ()
+    False -> CheckFailed [errContextVariableNotOnTheRightSide p wrongVars "instance declaration"]
+  where
+    varsInTypeExp = nub $ ids
+    varsInContext = nub $ typeVarsInSContext scx
+    wrongVars = varsInContext \\ varsInTypeExp
+checkTypeVarsInContext _ = internalError "typeSigCorrect"
 
 -- ---------------------------------------------------------------------------
 -- source code transformation
@@ -839,3 +866,9 @@ errDataTypeHasIncorrectArity p ty = posMessage p
 errDataTypeAmbiguous :: Position -> QualIdent -> Message
 errDataTypeAmbiguous p id0 = posMessage p
   (text "Data type in instance declaration ambiguous: " <> text (show id0))
+  
+errContextVariableNotOnTheRightSide :: Position -> [Ident] -> String -> Message
+errContextVariableNotOnTheRightSide p ids what = posMessage p $
+  text "Variable(s)" <+> (hsep $ punctuate comma (map (text . escName) ids))
+  <+> text ("in context, but not on the right side of the " ++ what)  
+  
