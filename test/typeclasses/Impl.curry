@@ -12,6 +12,8 @@ instance A a => B (a, b) where
 
 instance A a => B (a, b, c) where
 
+instance A a => B (a -> b) where
+
 test1 :: a -> a
 test1 x = (funA x)
 
@@ -44,3 +46,12 @@ test9 (x, y, z) = funB (x, y, z)
 
 test10 :: (a, b, c) -> (a, b, c)
 test10 (x, y, z) = funB (x, y, z)
+
+-- ok
+test11 :: A a => (a -> b) -> (a -> b)
+test11 f = funB f
+
+test12 :: (a -> b) -> (a -> b)
+test12 f = funB f
+
+
