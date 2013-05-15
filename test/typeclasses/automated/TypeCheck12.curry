@@ -35,6 +35,7 @@ class (C a, E a) => J a where
 class Ord a where
 class Eq a where
 
+instance I a => I [a] where
 
 testA1 :: Bool
 testA1 = True
@@ -249,8 +250,10 @@ testZ2 :: (F a, G b) => a -> b -> Bool
 testZ2 x y = testZ1 x
 
 
+test2A1 x = fun8 [x]
 
-
+test2A2 :: (I a) => a -> [a]
+test2A2 x = fun8 [x]
 
 
 

@@ -77,3 +77,7 @@ testY2: (F 0, F 1, G 0, G 1) => (0 -> (1 -> 2))
 
 testZ1: (F 0, G 0) => (0 -> Prelude.Bool)
 testZ2: (F 0, G 0, G 1) => (0 -> (1 -> Prelude.Bool))
+
+
+test2A1: (I (Prelude.[] 0)) => (0 -> Prelude.[] 0)
+test2A2: (I 0, I (Prelude.[] 0)) => (0 -> Prelude.[] 0)
