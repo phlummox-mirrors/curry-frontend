@@ -45,7 +45,7 @@ type annotation is present.
 > import Base.Types as BT
 > import Base.TypeSubst
 > import Base.Subst (listToSubst)
-> import Base.Utils (foldr2, concatMapM, findDouble)
+> import Base.Utils (fst3, foldr2, concatMapM, findDouble)
 
 > import Env.TypeConstructor (TCEnv, TypeInfo (..), bindTypeInfo
 >   , qualLookupTC)
@@ -1800,7 +1800,6 @@ vars in their contexts.
 >         m <- getModuleIdent
 >         report $ message $ errEqualClassMethodAndFunctionNames m f
 >       else return ()
->   fst3 (x, _, _) = x
 
 
 

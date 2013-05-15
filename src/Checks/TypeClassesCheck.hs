@@ -31,7 +31,7 @@ import Curry.Syntax.Pretty
 import Base.CurryTypes
 import Base.Types as BT (TypeScheme, polyType, constrainBy) 
 import Base.SCC
-import Base.Utils (findMultiples)
+import Base.Utils (findMultiples, fst3)
 
 data CheckResult a
   = CheckSuccess a
@@ -693,9 +693,6 @@ createDictionary2 cEnv (InstanceDecl _ _scx cls ty _tvars _decls) =
     (\s -> instMethodName cls ty s) . show . fst3) methods0
   all0 = scs ++ ms
 createDictionary2 _ _ = internalError "createDictionary"
-
-fst3 :: (a, b, c) -> a
-fst3 (x, _, _) = x
  
 -- ---------------------------------------------------------------------------
 -- other transformations

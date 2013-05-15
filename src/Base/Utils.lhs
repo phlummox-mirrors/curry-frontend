@@ -11,7 +11,7 @@ commonly used in the compiler, but not implemented in the Haskell
 \begin{verbatim}
 
 > module Base.Utils
->   ( thd3, (++!), foldr2, mapAccumM, findDouble, concatMapM, findMultiples
+>   ( fst3, thd3, (++!), foldr2, mapAccumM, findDouble, concatMapM, findMultiples
 >   ) where
 
 > import Data.List (partition)
@@ -25,8 +25,8 @@ triples. We provide projection, (un-)currying, and mapping for triples
 here.
 \begin{verbatim}
 
-fst3 :: (a, b, c) -> a
-fst3 (x, _, _) = x
+> fst3 :: (a, b, c) -> a
+> fst3 (x, _, _) = x
 
 snd3 :: (a, b, c) -> b
 snd3 (_, y, _) = y
