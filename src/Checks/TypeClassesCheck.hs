@@ -22,6 +22,7 @@ import Data.List
 import Text.PrettyPrint hiding (sep)
 import qualified Data.Map as Map
 import Data.Maybe
+import Control.Monad.State
 
 -- import Base.Types (Type (..), TypeScheme (..))
 import Curry.Base.Ident
@@ -33,18 +34,25 @@ import Base.Types as BT (TypeScheme, polyType, constrainBy)
 import Base.SCC
 import Base.Utils (findMultiples, fst3)
 
-data CheckResult a
-  = CheckSuccess a
-  | CheckFailed [Message]
+-- ---------------------------------------------------------------------------
+-- The state monad used (for gathering error messages)
+-- ---------------------------------------------------------------------------
 
-instance Monad CheckResult where
-  return = CheckSuccess
-  (>>=)  = thenCheck
+data TccState = TccState { errors :: [Message] }
 
-thenCheck :: CheckResult a -> (a -> CheckResult b) -> CheckResult b
-thenCheck chk cont = case chk of
-  CheckSuccess   a -> cont a
-  CheckFailed errs -> CheckFailed errs
+type Tcc = State TccState
+
+initTccState :: TccState
+initTccState = TccState []
+
+report :: Message -> Tcc ()
+report w = modify $ \ s -> s { errors = w : errors s }
+
+-- ok :: Tcc ()
+-- ok = return ()
+
+runTcc :: Tcc a -> TccState -> (a, [Message])
+runTcc tcc s = let (a, s') = runState tcc s in (a, reverse $ errors s')
 
 -- ---------------------------------------------------------------------------
 -- main function
@@ -55,15 +63,15 @@ thenCheck chk cont = case chk of
 -- Also builds a corresponding class environment. 
 typeClassesCheck :: ModuleIdent -> [Decl] -> ClassEnv -> TCEnv -> ([Decl], ClassEnv, [Message])
 typeClassesCheck m decls (ClassEnv importedClasses importedInstances _) tcEnv = 
-  case result of 
-    CheckSuccess (classes, instances) -> 
+  case runTcc result initTccState of 
+    ((classes, instances), []) -> 
       let newDecls = concatMap (transformInstance cEnv) $ 
             concatMap (transformClass2 cEnv) decls
           classes' = map renameTypeSigVars classes
           classes'' = map buildTypeSchemes classes'
           cEnv = ClassEnv classes'' instances (buildClassMethodsMap classes'')
       in (newDecls, cEnv, [])
-    CheckFailed errs -> (decls, ClassEnv [] [] Map.empty, errs)
+    (_, errs@(_:_)) -> (decls, ClassEnv [] [] Map.empty, errs)
   where
     (classDecls, rest1) = partition isClassDecl decls
     (instDecls,  rest2) = partition isInstanceDecl rest1
@@ -173,17 +181,17 @@ gatherDataTypes decls m = concatMap getDataType decls
 -- one that is given after the class name
 -- legal: Eq a => Ord a
 -- illegal: Eq b => Ord a  
-typeVariableInContext :: Decl -> CheckResult ()
+typeVariableInContext :: Decl -> Tcc ()
 typeVariableInContext (ClassDecl p (SContext scon) _cls tyvar _decls) 
  = let idsInContext = map snd scon in 
    if not (null scon) && nub idsInContext /= [tyvar]
-   then CheckFailed [errTypeVariableInContext p (nub idsInContext \\ [tyvar])]
+   then report (errTypeVariableInContext p (nub idsInContext \\ [tyvar]))
    else return ()
 typeVariableInContext _ = internalError "typeVariableInContext"
 
 -- |check that the classes in superclass contexts or instance contexts are 
 -- in scope  
-checkClassesInContext :: ModuleIdent -> ClassEnv -> Decl -> CheckResult ()
+checkClassesInContext :: ModuleIdent -> ClassEnv -> Decl -> Tcc ()
 checkClassesInContext m cEnv (ClassDecl p (SContext scon) _ _ _) = 
   mapM_ (checkClassesInContext' m cEnv p) (map fst scon)
 checkClassesInContext m cEnv (InstanceDecl p (SContext scon) _ _ _ _) = 
@@ -192,10 +200,10 @@ checkClassesInContext m cEnv (TypeSig p _ (Context cx) _) =
   mapM_ (checkClassesInContext' m cEnv p) (map (\(ContextElem qid _ _) -> qid) cx)
 checkClassesInContext _ _ _ = internalError "TypeClassesCheck.checkClassesInContext"
     
-checkClassesInContext' :: ModuleIdent -> ClassEnv -> Position -> QualIdent -> CheckResult ()
+checkClassesInContext' :: ModuleIdent -> ClassEnv -> Position -> QualIdent -> Tcc ()
 checkClassesInContext' m cEnv p qid = 
   case lookupClass cEnv (qualUnqualify m qid) of 
-    Nothing -> CheckFailed [errClassNotInScope p qid]
+    Nothing -> report (errClassNotInScope p qid)
     Just _ -> return ()
 
 {-
@@ -210,15 +218,15 @@ lookupClassDecl [] _cls = Nothing
 -- class Foo1 a where fun :: a
 -- class Foo2 a where fun :: a
 -- TODO: improve position output
-noDoubleClassMethods :: [Class] -> CheckResult ()
+noDoubleClassMethods :: [Class] -> Tcc ()
 noDoubleClassMethods classes = 
   let allMethods = map fst3 $ concatMap (\(Class {methods=ms}) -> ms) classes
       theNub = nub allMethods -- nubBy (\ms1 ms2 -> fst3 ms1 == fst3 ms2) allMethods
   in if length theNub /= length allMethods
-  then CheckFailed [errDoubleClassMethods NoPos NoPos (allMethods \\ theNub)]
+  then report (errDoubleClassMethods NoPos NoPos (allMethods \\ theNub))
   else return ()
 
--- noConflictOfClassMethodsWithTopLevelBinding :: [Class] -> ValueEnv -> CheckResult ()
+-- noConflictOfClassMethodsWithTopLevelBinding :: [Class] -> ValueEnv -> Tcc ()
 -- noConflictOfClassMethodsWithTopLevelBinding = undefined
 
 -- |check that the type variable of the class appears in all method type 
@@ -236,7 +244,7 @@ noDoubleClassMethods classes =
 --   fun4 :: Int
 --   fun5 :: b -> c -> d -> Int
 -- @
-classMethodSigsContainTypeVar :: Decl -> CheckResult ()
+classMethodSigsContainTypeVar :: Decl -> Tcc ()
 classMethodSigsContainTypeVar (ClassDecl _p _scon _tycon tyvar0 decls)
   = mapM_ (tyVarInTypeSig tyvar0) typeSigs
   where 
@@ -244,7 +252,7 @@ classMethodSigsContainTypeVar (ClassDecl _p _scon _tycon tyvar0 decls)
     tyVarInTypeSig tyvar (TypeSig p ids _con typeExpr) 
       = if tyvar `elem` typeVarsInTypeExpr typeExpr
         then return ()
-        else CheckFailed [errTypeVarNotInMethodSig p tyvar ids]
+        else report (errTypeVarNotInMethodSig p tyvar ids)
     tyVarInTypeSig _ _ = internalError "TypeClassesCheck tyVarInTypeSig"
 classMethodSigsContainTypeVar _ = internalError "TypeClassesCheck" 
 
@@ -255,7 +263,7 @@ classMethodSigsContainTypeVar _ = internalError "TypeClassesCheck"
 -- instance Eq Int where fun2 = 1 -- fun2 is not a class method!
 -- Illegal:
 -- class Eq a where fun1 :: a -> a; fun2 = id 
-checkRulesInInstanceOrClass :: ClassEnv -> Decl -> CheckResult ()
+checkRulesInInstanceOrClass :: ClassEnv -> Decl -> Tcc ()
 checkRulesInInstanceOrClass cEnv decl = 
   mapM_ isDefinedFunctionClassMethod (getDecls decl)
   where 
@@ -264,7 +272,7 @@ checkRulesInInstanceOrClass cEnv decl =
             eq = (\(id0, _, _) -> id0 == f)
         in 
         case find eq ms of
-          Nothing -> CheckFailed [errFunctionNoClassMethod p f]
+          Nothing -> report (errFunctionNoClassMethod p f)
           Just _ -> return ()
     isDefinedFunctionClassMethod (_, TypeSig _ _ _ _) = return ()
     isDefinedFunctionClassMethod _ = internalError "isDefinedFunctionClassMethod"
@@ -277,12 +285,12 @@ getDecls _ = internalError "getDecls"
 -- |Checks that there are no cycles in the class hierarchy. 
 -- This can be determined by computing the strong connection components
 -- and checking that each has only one element
-checkForCyclesInClassHierarchy :: ClassEnv -> CheckResult ()
+checkForCyclesInClassHierarchy :: ClassEnv -> Tcc ()
 checkForCyclesInClassHierarchy cEnv@(ClassEnv classes _ _) = 
   if all (==1) (map length sccs)
   then return ()
-  else CheckFailed 
-        [errCyclesInClassHierarchy $ head $ filter (\xs -> length xs > 1) sccs]
+  else report 
+        (errCyclesInClassHierarchy $ head $ filter (\xs -> length xs > 1) sccs)
   where 
     sccs = scc (\qid -> [qid]) 
                (\qid -> (superClasses $ fromJust $ lookupClass cEnv qid))
@@ -294,10 +302,10 @@ checkForCyclesInClassHierarchy cEnv@(ClassEnv classes _ _) =
 -- @class A a => A a where ...@ is illegal 
 -- Theoretically one could write this --- but who does? But well, we have
 -- nevertheless to cover this case...
-checkForDirectCycle :: ModuleIdent -> Decl -> CheckResult ()
+checkForDirectCycle :: ModuleIdent -> Decl -> Tcc ()
 checkForDirectCycle m (ClassDecl _ (SContext cx) cls _ _) = 
   if (qualify cls) `elem` (map fst cx) || (qualifyWith m cls) `elem` (map fst cx)
-  then CheckFailed [errCyclesInClassHierarchy [qualify cls]]
+  then report (errCyclesInClassHierarchy [qualify cls])
   else return ()
 checkForDirectCycle _ _ = internalError "checkForDirectCycle"
 
@@ -306,62 +314,62 @@ checkForDirectCycle _ _ = internalError "checkForDirectCycle"
 -- class A a
 -- class A a
 -- @
-checkForDuplicateClassNames :: ClassEnv -> CheckResult ()
+checkForDuplicateClassNames :: ClassEnv -> Tcc ()
 checkForDuplicateClassNames (ClassEnv classes _ _) = 
   let duplClassNames = findMultiples $ map theClass classes
   in if null duplClassNames
   then return ()
-  else CheckFailed [errDuplicateClassNames (map head duplClassNames)] 
+  else report (errDuplicateClassNames (map head duplClassNames)) 
 
 
 -- |Checks that there is at most one instance for a given class and type
-checkForDuplicateInstances :: ClassEnv -> CheckResult ()
+checkForDuplicateInstances :: ClassEnv -> Tcc ()
 checkForDuplicateInstances (ClassEnv _classes instances _) 
   = let duplInstances 
           = findMultiples $ map (\i -> (iClass i, iType i)) instances
     in if null duplInstances
     then return ()
-    else CheckFailed [errDuplicateInstances (map head duplInstances)]
+    else report (errDuplicateInstances (map head duplInstances))
 
 
 -- |Check that in an instance definition type variables don't appear twice like
 -- in @instance C (T a a)@
-instanceTypeVarsDoNotAppearTwice :: Decl -> CheckResult ()
+instanceTypeVarsDoNotAppearTwice :: Decl -> Tcc ()
 instanceTypeVarsDoNotAppearTwice (InstanceDecl p _scon cls tcon ids _) 
   = let duplTypeVars = findMultiples ids
     in if null duplTypeVars then return ()
-    else CheckFailed [errDuplicateTypeVars p cls tcon (map head duplTypeVars)]
+    else report (errDuplicateTypeVars p cls tcon (map head duplTypeVars))
 instanceTypeVarsDoNotAppearTwice _ = internalError "instanceTypeVarsDoNotAppearTwice"
 
 -- |Checks whether the class name in an instance definition is in scope
-checkClassNameInScope :: ClassEnv -> Decl -> CheckResult ()
+checkClassNameInScope :: ClassEnv -> Decl -> Tcc ()
 checkClassNameInScope cEnv (InstanceDecl p _ cls _ _ _) = 
   if isNothing $ lookupClass cEnv cls 
-  then CheckFailed [errClassNameNotInScope p cls]
+  then report (errClassNameNotInScope p cls)
   else return ()
 checkClassNameInScope _ _ = internalError "checkClassNameInScope"
 
 -- |Checks whether the instance data type is in scope and not a type synonym. 
 -- Check also that the arity of the data type in the instance declaration
 -- is correct. 
-checkInstanceDataTypeCorrect :: [(QualIdent, Int)] -> TCEnv -> Decl -> CheckResult ()
+checkInstanceDataTypeCorrect :: [(QualIdent, Int)] -> TCEnv -> Decl -> Tcc ()
 checkInstanceDataTypeCorrect dataTypes tcEnv (InstanceDecl p _ _ (QualTC qid) ids _) =
   -- if the data type is defined in the module and in the type constructor
   -- environment or more than once in the type constructor environment -> error! 
   if (defInModule && defInTCEnv) || length tinfo > 1
-  then CheckFailed [errDataTypeAmbiguous p qid]
+  then report (errDataTypeAmbiguous p qid)
   -- check if data type is defined in this module
   else if defInModule
   then if arity == length ids
        then return ()
-       else CheckFailed [errDataTypeHasIncorrectArity p qid]
+       else report (errDataTypeHasIncorrectArity p qid)
   -- if data type is not defined in this module, search it in the type
   -- constructor environment that contains all imported type constructors
   else if defInTCEnv
   then if tcArity (head tinfo) /= length ids
-            then CheckFailed [errDataTypeHasIncorrectArity p qid]
+            then report (errDataTypeHasIncorrectArity p qid)
             else return ()
-  else CheckFailed [errDataTypeNotInScope p qid] 
+  else report (errDataTypeNotInScope p qid) 
 
   where arity = fromJust $ lookup qid dataTypes
         tinfo = qualLookupTC qid tcEnv 
@@ -372,11 +380,11 @@ checkInstanceDataTypeCorrect _ _ _ = internalError "checkInstanceDataTypeCorrect
 
 -- |Checks that there are only type vars in the context that also appear on
 -- the right side
-checkTypeVarsInContext :: Decl -> CheckResult ()
+checkTypeVarsInContext :: Decl -> Tcc ()
 checkTypeVarsInContext (TypeSig p _ids cx tyexp) = 
   case null wrongVars of
     True -> return ()
-    False -> CheckFailed [errContextVariableNotOnTheRightSide p wrongVars "type signature"]
+    False -> report (errContextVariableNotOnTheRightSide p wrongVars "type signature")
   -- TODO: check that all context elements are in head normal form
   where
     varsInTypeExp = nub $ typeVarsInTypeExpr tyexp
@@ -385,7 +393,7 @@ checkTypeVarsInContext (TypeSig p _ids cx tyexp) =
 checkTypeVarsInContext (InstanceDecl p scx _qid _ ids _decls) = 
   case null wrongVars of
     True -> return ()
-    False -> CheckFailed [errContextVariableNotOnTheRightSide p wrongVars "instance declaration"]
+    False -> report (errContextVariableNotOnTheRightSide p wrongVars "instance declaration")
   where
     varsInTypeExp = nub $ ids
     varsInContext = nub $ typeVarsInSContext scx

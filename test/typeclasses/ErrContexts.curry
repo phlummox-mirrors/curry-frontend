@@ -11,7 +11,7 @@ data S a b = S a b
 instance B b => B (T a) where
 
 -- error
-instance B (T a a) where
+instance B (S a a) where
 
 -- error
 class B b => C a where
