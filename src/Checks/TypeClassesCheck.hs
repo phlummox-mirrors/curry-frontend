@@ -642,7 +642,7 @@ rename rfunc = updIdentName rfunc
 -- |handles functions missing in an instance declaration. Searches for a
 -- default method (TODO!) and inserts this, else inserts an error statement
 handleMissingFunc :: ClassEnv -> IDecl -> Ident -> [Decl]
-handleMissingFunc cEnv (InstanceDecl _ _ cls ty _ _) fun = 
+handleMissingFunc _cEnv (InstanceDecl _ _ cls ty _ _) fun = 
   [ FunctionDecl NoPos globalName [if defaultMethodDefined then equ2 else equ1]
   ]
   where
@@ -654,7 +654,7 @@ handleMissingFunc cEnv (InstanceDecl _ _ cls ty _ _) fun =
     ++ show cls ++ " and type " ++ show ty
   equ2 = undefined -- TODO
   defaultMethodDefined = False -- TODO
-
+handleMissingFunc _ _ _ = internalError "handleMissingFunc"
 
 -- |This function creates a dictionary for the given instance declaration, 
 -- using dictionary data types instead of tuples
