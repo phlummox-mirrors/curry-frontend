@@ -255,6 +255,8 @@ test2A1 x = fun8 [x]
 test2A2 :: (I a) => a -> [a]
 test2A2 x = fun8 [x]
 
+test2A3 :: a -> [a]
+test2A3 x = fun8 [x]
 
 
 
