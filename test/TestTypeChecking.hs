@@ -53,7 +53,7 @@ instance ImpureTestable Dir where
 checkDir :: Dir -> IO Result
 checkDir dir = do
   files <- getDirectoryContents (fn dir)
-  let files'  = filter (\str -> ".curry" `isSuffixOf` str) files
+  let files'  = filter (\str -> ".curry" `isSuffixOf` str && str /= ".curry") files
       files'' = map dropExtension files'
   success <- mapM checkTypes files''
   case (any not success) of
