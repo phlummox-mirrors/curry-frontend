@@ -144,7 +144,7 @@ implies cEnv cx (qid, ty) =
           ids = typeVars i
           s = zip ids tys
           cx'' = substContext s cx' in
-      implies' cEnv cx cx'') insts)
+      null (isValidCx cEnv cx'') && implies' cEnv cx cx'') insts)
 
 -- |does a specific context imply another?
 implies' :: ClassEnv -> BT.Context -> BT.Context -> Bool
