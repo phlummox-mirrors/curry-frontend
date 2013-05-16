@@ -323,10 +323,14 @@ mkTy n = TypeVariable n
 -- |checks the "isValidCx" function
 checkValidCx :: ClassEnv -> Bool
 checkValidCx cEnv = 
+  null (isValidCx cEnv []) && 
   null (isValidCx cEnv [mk "N" 0]) && 
   null (isValidCx cEnv [(mkId "N", TypeConstructor (mkId "Q") [mkTy 0])]) &&
+  not (null (isValidCx cEnv [(mkId "N", TypeConstructor (mkId "NotExistent") [mkTy 0])])) &&
   not (null $ isValidCx cEnv 
     [(mkId "A", TypeConstructor (mkId "U") [TypeConstructor (mkId "NotExistent") []])]) && 
   null (isValidCx cEnv 
-    [(mkId "N", TypeConstructor (mkId "W") [TypeConstructor (mkId "R") []])])
+    [(mkId "N", TypeConstructor (mkId "W") [TypeConstructor (mkId "R1") []])]) &&
+  not (null $ isValidCx cEnv 
+    [(mkId "N", TypeConstructor (mkId "W") [TypeConstructor (mkId "R2") []])])
 

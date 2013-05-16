@@ -67,10 +67,14 @@ data Q a = Q a
 
 instance N (Q a) where
 
-data R = R
+data R1 = R1
+data R2 = R2
 data W a = W a
 
-instance N R where
+instance N R1 where
 
 instance N a => N (W a) where
 
+
+
+  
