@@ -85,7 +85,7 @@ typeCheck env mdl@(Module _ _ _ ds)
   | null msgs = CheckSuccess (env { tyConsEnv = tcEnv', valueEnv = tyEnv' }, mdl)
   | otherwise = CheckFailed msgs
   where (tcEnv', tyEnv', msgs) = TC.typeCheck (moduleIdent env)
-                                 (tyConsEnv env) (valueEnv env) (classEnv env) ds
+                                 (tyConsEnv env) (valueEnv env) (classEnv env) True ds
 
 -- |Check the export specification
 exportCheck :: CompilerEnv -> Module -> CheckResult (CompilerEnv, Module)

@@ -113,11 +113,12 @@ checkModule' opts (env, mdl) = do
   
 typeCheck' :: CompilerEnv -> Module -> CheckResult (CompilerEnv, Module)
 typeCheck' env mdl@(Module _ _ _ ds)
-  -- always return success, also if there are error messages
-  {-| null msgs-} = CheckSuccess (env { tyConsEnv = tcEnv', valueEnv = tyEnv' }, mdl)
-  -- | otherwise = CheckFailed msgs
+  -- Always return success, also if there are error messages. 
+  -- Note that here "False" is passed to TC.typeCheck so that no context
+  -- reduction is done and we get the raw inferred contexts that we want!
+  = CheckSuccess (env { tyConsEnv = tcEnv', valueEnv = tyEnv' }, mdl)
   where (tcEnv', tyEnv', msgs) = TC.typeCheck (moduleIdent env)
-                                 (tyConsEnv env) (valueEnv env) (classEnv env) ds
+                                 (tyConsEnv env) (valueEnv env) (classEnv env) False ds
   
 -- |This function extracts the (function name, type) pairs from the types
 -- file. 

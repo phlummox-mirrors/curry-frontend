@@ -53,7 +53,7 @@ type annotation is present.
 >   , bindGlobalInfo, bindLabel, lookupValue, qualLookupValue
 >   , tryBindFun )
 > import Env.ClassEnv (ClassEnv, lookupMethodTypeScheme
->   , getAllClassMethods, implies', implies, isValidCx)
+>   , getAllClassMethods, implies', implies, isValidCx, reduceContext)
 
 > infixl 5 $-$
 
@@ -73,11 +73,15 @@ module. Next, the types of all data constructors and field labels
 are entered into the type environment and then a type inference
 for all function and value definitions is performed.
 The type checker returns the resulting type constructor and type environments.
+
+The boolean parameter doContextRed0 specifies whether a context reduction 
+should be exerted. This parameter is primarily for debugging, it is set
+to True in the normal execution of the compiler. 
 \begin{verbatim}
 
-> typeCheck :: ModuleIdent -> TCEnv -> ValueEnv -> ClassEnv -> [Decl]
+> typeCheck :: ModuleIdent -> TCEnv -> ValueEnv -> ClassEnv -> Bool -> [Decl]
 >           -> (TCEnv, ValueEnv, [Message])
-> typeCheck m tcEnv tyEnv cEnv decls = execTCM check initState
+> typeCheck m tcEnv tyEnv cEnv doContextRed0 decls = execTCM check initState
 >   where
 >   check = do
 >     checkTypeSynonyms m tds
@@ -93,7 +97,7 @@ The type checker returns the resulting type constructor and type environments.
 > 
 >     checkForAmbiguousContexts vds
 >   (tds, vds) = partition isTypeDecl decls
->   initState  = TcState m tcEnv tyEnv cEnv idSubst emptySigEnv 0 [] []
+>   initState  = TcState m tcEnv tyEnv cEnv doContextRed0 idSubst emptySigEnv 0 [] []
 
 \end{verbatim}
 
@@ -107,6 +111,7 @@ generating fresh type variables.
 >   , tyConsEnv   :: TCEnv
 >   , valueEnv    :: ValueEnv
 >   , classEnv    :: ClassEnv
+>   , doContextRed :: Bool
 >   , typeSubst   :: TypeSubst
 >   , sigEnv      :: SigEnv
 >   , nextId      :: Int         -- automatic counter
@@ -186,6 +191,9 @@ generating fresh type variables.
 
 > getFirstTypeSubst :: TCM (Maybe TypeSubst)
 > getFirstTypeSubst = S.gets (head . firstThetas)
+
+> getDoContextRed :: TCM Bool
+> getDoContextRed = S.gets doContextRed
 
 \end{verbatim}
 \paragraph{Defining Types}
@@ -689,6 +697,8 @@ signature the declared type must be too general.
 >   sigs <- getSigEnv
 >   m <- getModuleIdent
 >   tyEnv <- getValueEnv
+>   cEnv <- getClassEnv
+>   doContextRed0 <- getDoContextRed
 >   let sigma0 = (genType poly $ subst theta $ varType v tyEnv)
 >       arity  = fromMaybe (varArity v tyEnv) ma
 >       infTy = typeSchemeToType $ subst theta $ varType v tyEnv
@@ -698,15 +708,16 @@ signature the declared type must be too general.
 >       -- renamed properly
 >       mapping = buildTypeVarsMapping infTy (typeSchemeToType sigma0) 
 >       shiftedContext = substContext mapping cx
->       sigma = sigma0 `constrainBy` shiftedContext
+>       finalContext = (if doContextRed0 then reduceContext cEnv else id)
+>         shiftedContext
+>       sigma = sigma0 `constrainBy` finalContext
 >       -- Do not check for amgiguous type variables here
 >       -- but only in global declarations after all type checking 
 >       -- has been done and ambiguous type variables have been 
 >       -- propagated to top level. The reason for this is that
 >       -- here it cannot be determined whether a variable is ambiguous
->       -- or refers to a variable from a higher scope. 
+>       -- or refers to a variable from a higher scope.  
 >   -- check that the context is valid
->   cEnv <- getClassEnv
 >   let invalidCx = isValidCx cEnv (getContext sigma)
 >   unless (null invalidCx) $ report $ errNoInstance (idPosition v) m invalidCx
 >   case lookupTypeSig v sigs of
