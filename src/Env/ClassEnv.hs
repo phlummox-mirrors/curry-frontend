@@ -17,6 +17,7 @@ module Env.ClassEnv
   , lookupDefiningClass, lookupMethodTypeScheme, lookupMethodTypeSig
   , ppClasses, getAllClassMethods, allSuperClasses, isSuperClassOf
   , allSuperClasses', isSuperClassOf', implies, implies'
+  , getInstance, isValidCx, reduceContext
   ) where
 
 -- import Base.Types hiding ()
@@ -162,6 +163,34 @@ getTyCons :: Type -> (QualIdent, [Type])
 getTyCons (TypeConstructor xi tys) = (xi, tys)
 getTyCons (TypeArrow ty1 ty2) = (qArrowId, [ty1, ty2])
 getTyCons _ = internalError "getTyCons"
+
+-- | context reduction
+reduceContext :: BT.Context -> BT.Context
+reduceContext = undefined
+
+-- |checks whether the given context is valid. If the context returned is
+-- empty, the context is valid. Else the returned context contains the 
+-- elements of the context that are not valid
+-- TODO: consider superclass relations?
+isValidCx :: ClassEnv -> BT.Context -> BT.Context
+isValidCx cEnv cx = concatMap isValid' cx
+  where
+  isValid' :: (QualIdent, Type) -> BT.Context
+  isValid' (_cls, TypeVariable _) = []
+  isValid' (cls, ty) | (isTyCons ty || isArrow ty) = 
+    let (xi, tys) = getTyCons ty
+        inst = getInstance cEnv cls xi
+        tyVars = typeVars (fromJust inst)
+        iCx = context (fromJust inst)
+        s = zip tyVars tys in
+    if isNothing inst then [(cls, ty)]
+    else isValidCx cEnv (substContext s iCx)
+  isValid' (_cls, _) = []
+
+-- | returns the instance for a given class and type
+getInstance :: ClassEnv -> QualIdent -> QualIdent -> Maybe Instance
+getInstance cEnv cls ty = 
+  listToMaybe $ filter (\i -> iClass i == cls && iType i == ty) (theInstances cEnv)
 
 -- ----------------------------------------------------------------------------
 -- Pritty printer functions

@@ -223,6 +223,7 @@ checkVarious = do
     CheckSuccess tcEnv -> 
       if not $ checkScs tcEnv then return (Fail "check superclasses")
       else if not $ checkImpl (classEnv tcEnv) then return (Fail "implies")
+      else if not $ checkValidCx (classEnv tcEnv) then return (Fail "isValidCx")
       else return Pass
     CheckFailed msgs -> do print msgs; return (Fail "compilation error")
 
@@ -318,3 +319,14 @@ mk str n = (mkId str, mkTy n)
 
 mkTy :: Int -> Type
 mkTy n = TypeVariable n
+
+-- |checks the "isValidCx" function
+checkValidCx :: ClassEnv -> Bool
+checkValidCx cEnv = 
+  null (isValidCx cEnv [mk "N" 0]) && 
+  null (isValidCx cEnv [(mkId "N", TypeConstructor (mkId "Q") [mkTy 0])]) &&
+  not (null $ isValidCx cEnv 
+    [(mkId "A", TypeConstructor (mkId "U") [TypeConstructor (mkId "NotExistent") []])]) && 
+  null (isValidCx cEnv 
+    [(mkId "N", TypeConstructor (mkId "W") [TypeConstructor (mkId "R") []])])
+

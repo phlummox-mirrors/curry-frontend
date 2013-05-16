@@ -53,7 +53,7 @@ type annotation is present.
 >   , bindGlobalInfo, bindLabel, lookupValue, qualLookupValue
 >   , tryBindFun )
 > import Env.ClassEnv (ClassEnv, lookupMethodTypeScheme
->   , getAllClassMethods, implies', implies)
+>   , getAllClassMethods, implies', implies, isValidCx)
 
 > infixl 5 $-$
 
@@ -705,14 +705,17 @@ signature the declared type must be too general.
 >       -- propagated to top level. The reason for this is that
 >       -- here it cannot be determined whether a variable is ambiguous
 >       -- or refers to a variable from a higher scope. 
+>   -- check that the context is valid
+>   cEnv <- getClassEnv
+>   let invalidCx = isValidCx cEnv (getContext sigma)
+>   unless (null invalidCx) $ report $ errNoInstance (idPosition v) m invalidCx
 >   case lookupTypeSig v sigs of
 >     Nothing    -> modifyValueEnv $ rebindFun m v arity sigma
 >     Just sigTy -> do
 >       sigma' <- expandPolyType sigTy
 >       unless (eqTyScheme sigma sigma') $ report
 >         $ errTypeSigTooGeneral (idPosition v) m what sigTy sigma
->       -- check that the given context implies the inferred
->       cEnv <- getClassEnv
+>       -- check that the given context implies the inferred 
 >       unless (implies' cEnv (getContext sigma') (getContext sigma))
 >         $ report $ errContextImplication (idPosition v) m sigma' sigma
 >           (filter (\c -> not $ implies cEnv (getContext sigma') c) (getContext sigma))  
@@ -1771,6 +1774,10 @@ Error functions.
 >   text "Given context" <+> ppContext' m cx <+> text "doesn't imply inferred context"
 >   <+> ppContext' m cx' <+> text "in type signature of" <+> text (show id0) <> text ":"
 >   $$ ppContext' m cx'' <+> text "is not implied. " 
+
+> errNoInstance :: Position -> ModuleIdent -> BT.Context -> Message
+> errNoInstance p m cx = posMessage p $
+>   text "No instances for: " <> ppContext' m cx
 
 \end{verbatim}
 The following functions implement pretty-printing for types.
