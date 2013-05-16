@@ -12,6 +12,7 @@ commonly used in the compiler, but not implemented in the Haskell
 
 > module Base.Utils
 >   ( fst3, thd3, (++!), foldr2, mapAccumM, findDouble, concatMapM, findMultiples
+>   , without
 >   ) where
 
 > import Data.List (partition)
@@ -135,3 +136,19 @@ non-linear, the first offending object is returned.
 >         multiples     = findMultiples other
 
 \end{verbatim}
+A function that returns the given list without the nth element
+\begin{verbatim}
+
+> without :: [a] -> Int -> [a]
+> without xs n = 
+>   if n >= length xs || n < 0
+>   then error "without: index out of range" 
+>   else without' 0 xs
+>   where
+>   without' n' (y:ys) | n' == n   = without' (n' + 1) ys
+>                      | otherwise = y : without' (n' + 1) ys 
+>   without' _ [] = []
+
+\end{verbatim}
+
+

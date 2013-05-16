@@ -32,6 +32,7 @@ import qualified Base.Types as BT
 import Data.List
 import Data.Maybe
 import Base.Messages
+import Base.Utils
 
 -- |The class environment consists of the classes and instances in scope
 -- plus a map from class methods to their defining classes
@@ -165,8 +166,18 @@ getTyCons (TypeArrow ty1 ty2) = (qArrowId, [ty1, ty2])
 getTyCons _ = internalError "getTyCons"
 
 -- | context reduction
-reduceContext :: BT.Context -> BT.Context
-reduceContext = undefined
+reduceContext :: ClassEnv -> BT.Context -> BT.Context
+reduceContext cEnv cx = 
+  case searchReducible of
+    Nothing -> cx
+    Just cx' -> reduceContext cEnv cx'
+  where
+  searchReducible = searchReducible' 0
+  searchReducible' n
+    | n == length cx = Nothing
+    | implies cEnv (cx `without` n) (cx !! n) = Just $ cx `without` n
+    | otherwise = searchReducible' (n+1)
+
 
 -- |checks whether the given context is valid. If the context returned is
 -- empty, the context is valid. Else the returned context contains the 

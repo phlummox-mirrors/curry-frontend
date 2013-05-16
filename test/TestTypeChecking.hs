@@ -224,6 +224,7 @@ checkVarious = do
       if not $ checkScs tcEnv then return (Fail "check superclasses")
       else if not $ checkImpl (classEnv tcEnv) then return (Fail "implies")
       else if not $ checkValidCx (classEnv tcEnv) then return (Fail "isValidCx")
+      else if not $ checkContextReduction (classEnv tcEnv) then return (Fail "context reduction")
       else return Pass
     CheckFailed msgs -> do print msgs; return (Fail "compilation error")
 
@@ -334,3 +335,36 @@ checkValidCx cEnv =
   not (null $ isValidCx cEnv 
     [(mkId "N", TypeConstructor (mkId "W") [TypeConstructor (mkId "R2") []])])
 
+-- | checks the context reduction
+checkContextReduction :: ClassEnv -> Bool
+checkContextReduction cEnv =
+  reduceContext cEnv [] == [] && 
+  reduceContext cEnv [mk "H" 0] == [mk "H" 0] &&
+  reduceContext cEnv [mk "H" 0, mk "F" 0] == [mk "H" 0] &&
+  reduceContext cEnv [mk "H" 0, mk "G" 0] == [mk "H" 0] &&
+  reduceContext cEnv [mk "H" 0, mk "F" 0, mk "G" 0] == [mk "H" 0] &&
+  reduceContext cEnv [mk "F" 0, mk "H" 0, mk "G" 0] == [mk "H" 0] &&
+  reduceContext cEnv [mk "F" 0, mk "G" 0, mk "H" 0] == [mk "H" 0] &&
+  reduceContext cEnv [mk "F" 0, mk "G" 0, mk "H" 0, mk "D" 0] == [mk "H" 0] &&
+  reduceContext cEnv [mk "F" 0, mk "G" 0, mk "H" 0, mk "D" 1] == [mk "H" 0, mk "D" 1] &&
+  
+  reduceContext cEnv [mk "H" 0, mk "H" 0] == [mk "H" 0] &&
+  reduceContext cEnv [mk "H" 0, mk "H" 0, mk "H" 0] == [mk "H" 0] &&
+  
+  reduceContext cEnv [mk "A" 0, (mkId "A", list $ mkTy 0)] == [mk "A" 0] &&
+  reduceContext cEnv [mk "A" 0, (mkId "A", list $ mkTy 1)] == [mk "A" 0, (mkId "A", list $ mkTy 1)] &&
+  reduceContext cEnv 
+    [mk "A" 0, (mkId "A", list $ mkTy 0), (mkId "A", list $ list $ mkTy 0)] == [mk "A" 0] &&
+  reduceContext cEnv 
+    [mk "G" 0, (mkId "A", list $ mkTy 0), (mkId "A", list $ list $ mkTy 0)] == [mk "G" 0] &&
+  reduceContext cEnv 
+    [(mkId "A", list $ mkTy 0), (mkId "A", list $ list $ mkTy 0)] == [(mkId "A", list $ mkTy 0)] &&
+  
+  reduceContext cEnv [mk "H" 0, mk "F" 0, mk "G" 0, (mkId "A", list $ mkTy 0), (mkId "A", list $ list $ mkTy 0)] == [mk "H" 0] &&
+  
+  reduceContext cEnv [(mkId "N", TypeConstructor (mkId "R1") [])] == [] && 
+  reduceContext cEnv [mk "H" 0, (mkId "N", TypeConstructor (mkId "R1") [])] == [mk "H" 0] &&
+  reduceContext cEnv [(mkId "N", TypeConstructor (mkId "NotExistent") [])] == [(mkId "N", TypeConstructor (mkId "NotExistent") [])]
+
+list :: Type -> Type
+list t = TypeConstructor qListIdP [t]
