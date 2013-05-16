@@ -1082,11 +1082,11 @@ because of possibly multiple occurrences of variables.
 >   theta <- getTypeSubst
 >   -- TODO: consider contexts!
 >   let sigma  = gen (fvEnv (subst theta tyEnv0)) (subst theta (getType cty))
->   unless (eqTyScheme sigma sigma') 
+>   unless (eqTypes sigma sigma') 
 >     (report $ errTypeSigTooGeneral p m (text "Expression:" <+> ppExpr 0 e) (cx, sig') sigma)
 >   return (cx' ++ getContext sigma', ty')
 >   where sig' = nameSigType sig
->         eqTyScheme (ForAll _cx1 _ t1) (ForAll _cx2 _ t2) = t1 == t2
+>         eqTypes (ForAll _cx1 _ t1) (ForAll _cx2 _ t2) = t1 == t2
 > tcExpr p (Paren e) = tcExpr p e
 > tcExpr p (Tuple _ es)
 >   | null es = return $ noContext unitType
