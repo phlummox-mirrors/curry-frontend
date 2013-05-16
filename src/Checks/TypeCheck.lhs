@@ -739,7 +739,6 @@ signature the declared type must be too general.
 >     | poly' = gen lvs ty
 >     | otherwise = monoType ty
 >   eqTyScheme (ForAll _cx1 _ t1) (ForAll _cx2 _ t2) = equTypes t1 t2
->   getContext (ForAll cx0 _ _) = cx0
 
 > -- | builds a mapping from type variables in the left type to the type variables
 > -- in the right type. Assumes that the types are alpha equivalent. 
@@ -1087,7 +1086,6 @@ because of possibly multiple occurrences of variables.
 >     (report $ errTypeSigTooGeneral p m (text "Expression:" <+> ppExpr 0 e) (cx, sig') sigma)
 >   return (cx' ++ getContext sigma', ty')
 >   where sig' = nameSigType sig
->         getContext (ForAll cx0 _ _) = cx0
 >         eqTyScheme (ForAll _cx1 _ t1) (ForAll _cx2 _ t2) = t1 == t2
 > tcExpr p (Paren e) = tcExpr p e
 > tcExpr p (Tuple _ es)

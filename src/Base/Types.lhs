@@ -24,6 +24,7 @@ TODO: Use MultiParamTypeClasses ?
 >   , typeSchemeToType
 >     -- * Type classes context represenatations
 >   , emptyContext, Context, constrainBy, mkContext, combineContext
+>   , getContext
 >     -- * Predefined types
 >   , unitType, boolType, charType, intType, floatType, stringType
 >   , successType, listType, ioType, tupleType, primType
@@ -265,6 +266,9 @@ quantified variables.
 
 > mkContext :: [(QualIdent, Type)] -> Context
 > mkContext = id 
+
+> getContext :: TypeScheme -> Context
+> getContext (ForAll cx _ _) = cx
 
 \end{verbatim}
 The functions \texttt{monoType} and \texttt{polyType} translate a type
