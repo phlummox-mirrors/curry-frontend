@@ -275,18 +275,18 @@ checkImpl cEnv =
   implies' cEnv [mk "F" 0, mk "G" 1] [mk "C" 0, mk "D" 0, mk "D" 1] &&
 
 
-  implies cEnv [mk "A" 0] (mkId "A", TypeConstructor qListIdP [mkTy 0]) &&
-  not (implies cEnv [mk "A" 0] (mkId "A", TypeConstructor (mkId "T") [mkTy 0])) &&
-  implies cEnv [mk "A" 0] (mkId "A", TypeConstructor (mkId "S") [mkTy 0]) &&
-  implies cEnv [mk "B" 0] (mkId "A", TypeConstructor (mkId "U") [mkTy 0]) &&
-  implies cEnv [mk "A" 0, mk "B" 1] (mkId "E", TypeConstructor (mkId "V") [mkTy 0, mkTy 1]) && 
-  not (implies cEnv [mk "A" 0, mk "B" 0] (mkId "E", TypeConstructor (mkId "V") [mkTy 0, mkTy 1])) &&
-  implies cEnv [mk "F" 0, mk "B" 1] (mkId "E", TypeConstructor (mkId "V") [mkTy 0, mkTy 1]) &&
-  implies cEnv [mk "F" 0, mk "D" 1] (mkId "E", TypeConstructor (mkId "V") [mkTy 0, mkTy 1]) &&  
+  implies cEnv [mk "A" 0] (mkId "A", list (mkTy 0)) &&
+  not (implies cEnv [mk "A" 0] (mkId "A", tycon "T" [mkTy 0])) &&
+  implies cEnv [mk "A" 0] (mkId "A", tycon "S" [mkTy 0]) &&
+  implies cEnv [mk "B" 0] (mkId "A", tycon "U" [mkTy 0]) &&
+  implies cEnv [mk "A" 0, mk "B" 1] (mkId "E", tycon "V" [mkTy 0, mkTy 1]) && 
+  not (implies cEnv [mk "A" 0, mk "B" 0] (mkId "E", tycon "V" [mkTy 0, mkTy 1])) &&
+  implies cEnv [mk "F" 0, mk "B" 1] (mkId "E", tycon "V" [mkTy 0, mkTy 1]) &&
+  implies cEnv [mk "F" 0, mk "D" 1] (mkId "E", tycon "V" [mkTy 0, mkTy 1]) &&  
   
-  implies cEnv [mk "A" 0] (mkId "A", TypeConstructor qListIdP [TypeConstructor (mkId "S") [mkTy 0]]) &&
-  implies cEnv [mk "A" 0] (mkId "A", TypeConstructor qListIdP [TypeConstructor qListIdP [TypeConstructor (mkId "S") [mkTy 0]]]) &&
-  implies cEnv [mk "H" 0] (mkId "A", TypeConstructor qListIdP [TypeConstructor (mkId "S") [mkTy 0]]) &&
+  implies cEnv [mk "A" 0] (mkId "A", list $ tycon "S" [mkTy 0]) &&
+  implies cEnv [mk "A" 0] (mkId "A", list $ list $ tycon "S" [mkTy 0]) &&
+  implies cEnv [mk "H" 0] (mkId "A", list $ tycon "S" [mkTy 0]) &&
   
   implies cEnv [mk "E" 0] (mkId "E", TypeArrow (mkTy 0) (mkTy 1)) &&
   not (implies cEnv [mk "E" 1] (mkId "E", TypeArrow (mkTy 0) (mkTy 1))) &&
@@ -307,12 +307,12 @@ checkImpl cEnv =
   not (implies cEnv [mk "N" 0] (mk "O" 0)) &&
   implies cEnv [mk "N" 0] (mk "N" 0) &&
   not (implies cEnv [mk "O" 0] (mk "N" 0)) &&
-  implies cEnv [mk "N" 0] (mkId "O", TypeConstructor (mkId "T") [mkTy 0]) &&
+  implies cEnv [mk "N" 0] (mkId "O", tycon "T" [mkTy 0]) &&
   
   implies cEnv [mk "N" 0] (mkId "N", TypeConstructor (qTupleIdP 2) [mkTy 0, mkTy 1]) &&
   implies cEnv [] (mkId "N", TypeConstructor qUnitIdP []) &&
   
-  implies cEnv [] (mkId "N", TypeConstructor (mkId "Q") [mkTy 0])
+  implies cEnv [] (mkId "N", tycon "Q" [mkTy 0])
   
 
 mk :: String -> Int -> (QualIdent, Type)
@@ -321,19 +321,21 @@ mk str n = (mkId str, mkTy n)
 mkTy :: Int -> Type
 mkTy n = TypeVariable n
 
+tycon s = TypeConstructor (mkId s)
+
 -- |checks the "isValidCx" function
 checkValidCx :: ClassEnv -> Bool
 checkValidCx cEnv = 
   null (isValidCx cEnv []) && 
   null (isValidCx cEnv [mk "N" 0]) && 
-  null (isValidCx cEnv [(mkId "N", TypeConstructor (mkId "Q") [mkTy 0])]) &&
-  not (null (isValidCx cEnv [(mkId "N", TypeConstructor (mkId "NotExistent") [mkTy 0])])) &&
+  null (isValidCx cEnv [(mkId "N", tycon "Q" [mkTy 0])]) &&
+  not (null (isValidCx cEnv [(mkId "N", tycon "NotExistent" [mkTy 0])])) &&
   not (null $ isValidCx cEnv 
-    [(mkId "A", TypeConstructor (mkId "U") [TypeConstructor (mkId "NotExistent") []])]) && 
+    [(mkId "A", tycon "U" [tycon "NotExistent" []])]) && 
   null (isValidCx cEnv 
-    [(mkId "N", TypeConstructor (mkId "W") [TypeConstructor (mkId "R1") []])]) &&
+    [(mkId "N", tycon "W" [tycon "R1" []])]) &&
   not (null $ isValidCx cEnv 
-    [(mkId "N", TypeConstructor (mkId "W") [TypeConstructor (mkId "R2") []])])
+    [(mkId "N", tycon "W" [tycon "R2" []])])
 
 -- | checks the context reduction
 checkContextReduction :: ClassEnv -> Bool
@@ -362,9 +364,9 @@ checkContextReduction cEnv =
   
   reduceContext cEnv [mk "H" 0, mk "F" 0, mk "G" 0, (mkId "A", list $ mkTy 0), (mkId "A", list $ list $ mkTy 0)] == [mk "H" 0] &&
   
-  reduceContext cEnv [(mkId "N", TypeConstructor (mkId "R1") [])] == [] && 
-  reduceContext cEnv [mk "H" 0, (mkId "N", TypeConstructor (mkId "R1") [])] == [mk "H" 0] &&
-  reduceContext cEnv [(mkId "N", TypeConstructor (mkId "NotExistent") [])] == [(mkId "N", TypeConstructor (mkId "NotExistent") [])]
+  reduceContext cEnv [(mkId "N", tycon "R1" [])] == [] && 
+  reduceContext cEnv [mk "H" 0, (mkId "N", tycon "R1" [])] == [mk "H" 0] &&
+  reduceContext cEnv [(mkId "N", tycon "NotExistent" [])] == [(mkId "N", tycon "NotExistent" [])]
 
 list :: Type -> Type
 list t = TypeConstructor qListIdP [t]
