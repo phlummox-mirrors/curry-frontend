@@ -1080,10 +1080,16 @@ because of possibly multiple occurrences of variables.
 >   sigma' <- expandPolyType (cx, sig')
 >   inst sigma' >>= flip (unify p "explicitly typed expression" (ppExpr 0 e)) cty
 >   theta <- getTypeSubst
->   -- TODO: consider contexts!
 >   let sigma  = gen (fvEnv (subst theta tyEnv0)) (subst theta (getType cty))
 >   unless (eqTypes sigma sigma') 
 >     (report $ errTypeSigTooGeneral p m (text "Expression:" <+> ppExpr 0 e) (cx, sig') sigma)
+>   cEnv <- getClassEnv
+>   -- test context implication
+>   unless (implies' cEnv (getContext sigma') cx') $ report $
+>     errContextImplication p m sigma' (ForAll cx' 0 ty')
+>     (filter (\c -> not $ implies cEnv (getContext sigma') c) cx')
+>     (mkIdent "explicitely typed expression")
+>   -- merge contexts!
 >   return (cx' ++ getContext sigma', ty')
 >   where sig' = nameSigType sig
 >         eqTypes (ForAll _cx1 _ t1) (ForAll _cx2 _ t2) = t1 == t2
