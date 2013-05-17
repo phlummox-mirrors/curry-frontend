@@ -90,15 +90,13 @@ typeClassesCheck m decls (ClassEnv importedClasses importedInstances _) tcEnv =
       -- TODO: check also contexts of (imported) classes and interfaces?
       mapM_ (checkClassesInContext m newClassEnv) classDecls
       mapM_ (checkClassesInContext m newClassEnv) instDecls
+      -- check also contexts in typed expressions
       mapM_ (checkClassesInContext m newClassEnv) typeSigs
       
       -- mapM_ checkTypeVarsInContext classDecls -- checked above (typeVariableInContext)
       mapM_ checkTypeVarsInContext instDecls
       mapM_ checkTypeVarsInContext typeSigs 
-      
-      -- TODO: check also contexts in typed expressions
-
-      
+            
       mapM_ (checkRulesInInstanceOrClass newClassEnv) instDecls
       mapM_ (checkRulesInInstanceOrClass newClassEnv) classDecls
       
@@ -110,6 +108,8 @@ typeClassesCheck m decls (ClassEnv importedClasses importedInstances _) tcEnv =
       
       checkForCyclesInClassHierarchy newClassEnv
       mapM_ (checkForDirectCycle m) classDecls
+      
+      mapM_ (checkForInstanceDataTypeExistAlsoInstancesForSuperclasses newClassEnv) instDecls
       
       noDoubleClassMethods classes
       return (classes, instances)
@@ -467,6 +467,24 @@ checkTypeVarsInContext (InstanceDecl p scx _qid _ ids _decls) =
     wrongVars = varsInContext \\ varsInTypeExp
 checkTypeVarsInContext _ = internalError "typeSigCorrect"
 
+-- |Assuming we have an instance `instance C (T ...)`, we must verify that
+-- for each superclass S of C there is also an instance declaration 
+-- `instance S (T ...)`
+checkForInstanceDataTypeExistAlsoInstancesForSuperclasses :: ClassEnv -> Decl -> Tcc ()
+checkForInstanceDataTypeExistAlsoInstancesForSuperclasses cEnv 
+    (InstanceDecl p _scon cls ty _tyvars _)
+  = let -- TODO: is it sufficient to take only direct superclasses? 
+        -- scs = superClasses (fromJust $ lookupClass cEnv cls)
+        scs = allSuperClasses' cEnv cls
+        tyId = tyConToQualIdent ty
+        insts = map (\c -> getInstance cEnv c tyId) scs 
+        missingInsts = map fst $ filter (isNothing . snd) $ zip scs insts in
+    unless (all isJust insts) $ report $ 
+      errMissingSuperClassInstances p ty missingInsts      
+checkForInstanceDataTypeExistAlsoInstancesForSuperclasses _ _ 
+  = internalError "checkForInstanceDataTypeExistAlsoInstancesForSuperclasses"
+  
+  
 -- ---------------------------------------------------------------------------
 -- source code transformation
 -- ---------------------------------------------------------------------------
@@ -944,3 +962,9 @@ errContextVariableNotOnTheRightSide p ids what = posMessage p $
   text "Variable(s)" <+> (hsep $ punctuate comma (map (text . escName) ids))
   <+> text ("in context, but not on the right side of the " ++ what)  
   
+errMissingSuperClassInstances :: Position -> TypeConstructor -> [QualIdent] -> Message
+errMissingSuperClassInstances p tycon clss = posMessage p $
+  text "Missing superclass instances for type" <+> text (show tycon) <+>
+  text "and the following classes:" <+> (hsep $ punctuate comma $ map (text . show) clss)
+
+
