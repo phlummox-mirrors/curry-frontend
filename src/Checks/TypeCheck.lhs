@@ -1724,7 +1724,7 @@ Error functions.
 > errTypeSigTooGeneral p m what (cx, ty) sigma = posMessage p $ vcat
 >   [ text "Type signature too general", what
 >   , text "Inferred type:"  <+> ppTypeScheme m sigma
->   , text "Type signature:" <+> parens (ppContext cx) <+> text "=>" <+> ppTypeExpr 0 ty
+>   , text "Type signature:" <+> ppContext cx <+> ppTypeExpr 0 ty
 >   ]
 
 > errNonFunctionType :: Position -> String -> Doc -> ModuleIdent -> Type -> Message
