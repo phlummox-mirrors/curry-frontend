@@ -122,7 +122,7 @@ allSuperClasses cEnv c = let scs = superClasses c in
 allSuperClasses' :: ClassEnv -> QualIdent -> [QualIdent]
 allSuperClasses' cEnv c = let
   theClass0 = lookupClass cEnv c
-  scs = maybe (internalError ("allSuperClasses': " ++ show c)) superClasses theClass0 in
+  scs = maybe [] superClasses theClass0 in
   nub $ scs ++ concatMap (allSuperClasses' cEnv) scs
   
 -- |checks whether a given class is a superclass of another class
