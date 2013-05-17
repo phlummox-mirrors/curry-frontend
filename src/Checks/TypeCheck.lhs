@@ -717,19 +717,21 @@ signature the declared type must be too general.
 >       -- propagated to top level. The reason for this is that
 >       -- here it cannot be determined whether a variable is ambiguous
 >       -- or refers to a variable from a higher scope.  
+>       context = getContext sigma
 >   -- check that the context is valid
->   let invalidCx = isValidCx cEnv (getContext sigma)
+>   let invalidCx = isValidCx cEnv context
 >   unless (null invalidCx) $ report $ errNoInstance (idPosition v) m invalidCx
 >   case lookupTypeSig v sigs of
 >     Nothing    -> modifyValueEnv $ rebindFun m v arity sigma
 >     Just sigTy -> do
 >       sigma' <- expandPolyType sigTy
+>       let context' = getContext sigma'
 >       unless (eqTyScheme sigma sigma') $ report
 >         $ errTypeSigTooGeneral (idPosition v) m what sigTy sigma
 >       -- check that the given context implies the inferred 
->       unless (implies' cEnv (getContext sigma') (getContext sigma))
->         $ report $ errContextImplication (idPosition v) m sigma' sigma
->           (filter (\c -> not $ implies cEnv (getContext sigma') c) (getContext sigma))  
+>       unless (implies' cEnv context' context)
+>         $ report $ errContextImplication (idPosition v) m context' context
+>           (filter (not . implies cEnv context') context)  
 >           v
 >       modifyValueEnv $ rebindFun m v arity sigma
 >   where
@@ -1076,21 +1078,22 @@ because of possibly multiple occurrences of variables.
 > tcExpr p (Typed e cx sig) = do
 >   m <- getModuleIdent
 >   tyEnv0 <- getValueEnv
->   cty@(cx', ty') <- tcExpr p e
+>   cty@(cxInf, tyInf) <- tcExpr p e
 >   sigma' <- expandPolyType (cx, sig')
 >   inst sigma' >>= flip (unify p "explicitly typed expression" (ppExpr 0 e)) cty
 >   theta <- getTypeSubst
->   let sigma  = gen (fvEnv (subst theta tyEnv0)) (subst theta (getType cty))
+>   let sigma  = gen (fvEnv (subst theta tyEnv0)) (subst theta tyInf)
 >   unless (eqTypes sigma sigma') 
 >     (report $ errTypeSigTooGeneral p m (text "Expression:" <+> ppExpr 0 e) (cx, sig') sigma)
 >   cEnv <- getClassEnv
 >   -- test context implication
->   unless (implies' cEnv (getContext sigma') cx') $ report $
->     errContextImplication p m sigma' (ForAll cx' 0 ty')
->     (filter (\c -> not $ implies cEnv (getContext sigma') c) cx')
+>   let cxGiven = getContext sigma'
+>   unless (implies' cEnv cxGiven cxInf) $ report $
+>     errContextImplication p m cxGiven cxInf
+>     (filter (not . implies cEnv cxGiven) cxInf)
 >     (mkIdent "explicitely typed expression")
 >   -- merge contexts!
->   return (cx' ++ getContext sigma', ty')
+>   return (cxInf ++ cxGiven, tyInf)
 >   where sig' = nameSigType sig
 >         eqTypes (ForAll _cx1 _ t1) (ForAll _cx2 _ t2) = t1 == t2
 > tcExpr p (Paren e) = tcExpr p e
@@ -1785,9 +1788,9 @@ Error functions.
 >   posMessage p (text "Ambiguous type variables in the context to function"
 >   <+> text (show f))
 
-> errContextImplication :: Position -> ModuleIdent -> TypeScheme -> TypeScheme 
+> errContextImplication :: Position -> ModuleIdent -> BT.Context -> BT.Context 
 >                       -> BT.Context -> Ident -> Message
-> errContextImplication p m (ForAll cx _ _) (ForAll cx' _ _) cx'' id0 = posMessage p $ 
+> errContextImplication p m cx cx' cx'' id0 = posMessage p $ 
 >   text "Given context" <+> ppContext' m cx <+> text "doesn't imply inferred context"
 >   <+> ppContext' m cx' <+> text "in type signature of" <+> text (show id0) <> text ":"
 >   $$ ppContext' m cx'' <+> text "is not implied. " 
