@@ -24,13 +24,13 @@ import qualified Data.Map as Map
 import Data.Maybe
 import Control.Monad.State
 
--- import Base.Types (Type (..), TypeScheme (..))
 import Curry.Base.Ident
 import Curry.Base.Position
 import Curry.Syntax.Utils
 import Curry.Syntax.Pretty
 import Base.CurryTypes
-import Base.Types as BT (TypeScheme, polyType, constrainBy) 
+import Base.Types as BT (TypeScheme, polyType, constrainBy, Type (..))
+import qualified Base.Types as BTC (Context) 
 import Base.SCC
 import Base.Utils (findMultiples, fst3)
 
@@ -110,6 +110,7 @@ typeClassesCheck m decls (ClassEnv importedClasses importedInstances _) tcEnv =
       mapM_ (checkForDirectCycle m) classDecls
       
       mapM_ (checkForInstanceDataTypeExistAlsoInstancesForSuperclasses newClassEnv) instDecls
+      mapM_ (checkInstanceContextImpliesAllInstanceContextsOfSuperClasses newClassEnv) instDecls
       
       noDoubleClassMethods classes
       return (classes, instances)
@@ -484,7 +485,56 @@ checkForInstanceDataTypeExistAlsoInstancesForSuperclasses cEnv
 checkForInstanceDataTypeExistAlsoInstancesForSuperclasses _ _ 
   = internalError "checkForInstanceDataTypeExistAlsoInstancesForSuperclasses"
   
-  
+
+-- |Returns a Base.Types.Context for the given instance declaration. The type
+-- variables are numbered beginning with zero. 
+getContextFromInstDecl :: Decl -> BTC.Context
+getContextFromInstDecl (InstanceDecl _p (SContext scon) _cls _ty tyvars _)
+  = getContextFromSContext scon tyvars
+getContextFromInstDecl _ = internalError "getContextFromInst"
+
+-- |Returns a Base.Types.Context for the given instance. The type
+-- variables are numbered beginning with zero. 
+getContextFromInst :: Instance -> BTC.Context
+getContextFromInst i = getContextFromSContext (context i) (typeVars i)
+
+-- |Converts an SContext to a Base.Types.Context, considering the given
+-- type variables from the instance declaration. 
+getContextFromSContext :: [(QualIdent, Ident)] -> [Ident] -> BTC.Context
+getContextFromSContext scon tyvars = 
+  let mapping = zip tyvars [0::Int ..] in
+  map (\(qid, id0) -> (qid, TypeVariable $ fromJust $ lookup id0 mapping)) scon
+
+-- |Converts a Base.Types.Context back into a simple context, considering the
+-- given type variables. 
+getSContextFromContext :: BTC.Context -> [Ident] -> [(QualIdent, Ident)]
+getSContextFromContext con tyvars = 
+  let mapping = zip [0::Int ..] tyvars in
+  map (\(qid, TypeVariable n) -> (qid, fromJust $ lookup n mapping)) con
+
+-- |Checks that for a given instance declaration `instance cx => C (T ...)` 
+-- the context cx implies *all* contexts of instance declarations for 
+-- the same type and the superclasses of C
+checkInstanceContextImpliesAllInstanceContextsOfSuperClasses :: 
+    ClassEnv -> Decl -> Tcc ()
+checkInstanceContextImpliesAllInstanceContextsOfSuperClasses cEnv
+    inst@(InstanceDecl p _scon cls ty tyvars _)
+  = let thisContext = getContextFromInstDecl inst
+        scs = allSuperClasses' cEnv cls
+        tyId = tyConToQualIdent ty
+        insts = map fromJust $ filter isJust $ map (\c -> getInstance cEnv c tyId) scs
+        instCxs = concatMap getContextFromInst insts
+        
+        thisContext' = getSContextFromContext thisContext tyvars
+        instCxs' = getSContextFromContext instCxs tyvars
+        notImplCxs = (filter (not . implies cEnv thisContext) instCxs)
+        notImplCxs' = getSContextFromContext notImplCxs tyvars in
+    unless (implies' cEnv thisContext instCxs) $ report $  
+      errContextNotImplied p thisContext' instCxs' notImplCxs'
+        
+checkInstanceContextImpliesAllInstanceContextsOfSuperClasses _ _
+  = internalError "checkInstanceContextImpliesAllInstanceContextsOfSuperClasses"
+
 -- ---------------------------------------------------------------------------
 -- source code transformation
 -- ---------------------------------------------------------------------------
@@ -967,4 +1017,15 @@ errMissingSuperClassInstances p tycon clss = posMessage p $
   text "Missing superclass instances for type" <+> text (show tycon) <+>
   text "and the following classes:" <+> (hsep $ punctuate comma $ map (text . show) clss)
 
+type SCon = [(QualIdent, Ident)]
+
+showSCon :: SCon -> Doc
+showSCon scon = parens $ hsep $ 
+  punctuate comma (map (\(qid, ty) -> text (show qid) <+> text (show ty)) scon)
+
+errContextNotImplied :: Position -> SCon -> SCon -> SCon -> Message
+errContextNotImplied p thisContext _instsCxs notImplCxs = posMessage p $ 
+  text ("Context of instance declaration doesn't imply contexts of instance declarations"
+    ++ " for superclasses:") $$ text ("Context: ") <> (showSCon thisContext) $$
+  text ("Not implied: ") <> (showSCon notImplCxs)  
 
