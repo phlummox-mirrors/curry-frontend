@@ -233,19 +233,19 @@ checkVarious = do
 checkScs :: CompilerEnv -> Bool
 checkScs env = 
   let cEnv = classEnv env in
-  allSuperClasses' cEnv (mkId "A") =:= [] &&
-  allSuperClasses' cEnv (mkId "B") =:= [] &&
-  allSuperClasses' cEnv (mkId "C") =:= map mkId ["A"] && 
-  allSuperClasses' cEnv (mkId "D") =:= map mkId ["A", "B", "E"] && 
-  allSuperClasses' cEnv (mkId "E") =:= [] &&
-  allSuperClasses' cEnv (mkId "F") =:= map mkId ["C", "D", "A", "B", "E"] &&
-  allSuperClasses' cEnv (mkId "G") =:= map mkId ["D", "A", "B", "E"] &&
-  allSuperClasses' cEnv (mkId "H") =:= map mkId ["F", "G", "C", "D", "A", "B", "E"] &&
-  allSuperClasses' cEnv (mkId "I") =:= [] &&
-  allSuperClasses' cEnv (mkId "J") =:= map mkId ["I"] &&
-  allSuperClasses' cEnv (mkId "K") =:= map mkId ["I", "J"] &&
-  allSuperClasses' cEnv (mkId "L") =:= map mkId ["K", "I", "J", "M"] &&
-  allSuperClasses' cEnv (mkId "M") =:= [] 
+  allSuperClasses cEnv (mkId "A") =:= [] &&
+  allSuperClasses cEnv (mkId "B") =:= [] &&
+  allSuperClasses cEnv (mkId "C") =:= map mkId ["A"] && 
+  allSuperClasses cEnv (mkId "D") =:= map mkId ["A", "B", "E"] && 
+  allSuperClasses cEnv (mkId "E") =:= [] &&
+  allSuperClasses cEnv (mkId "F") =:= map mkId ["C", "D", "A", "B", "E"] &&
+  allSuperClasses cEnv (mkId "G") =:= map mkId ["D", "A", "B", "E"] &&
+  allSuperClasses cEnv (mkId "H") =:= map mkId ["F", "G", "C", "D", "A", "B", "E"] &&
+  allSuperClasses cEnv (mkId "I") =:= [] &&
+  allSuperClasses cEnv (mkId "J") =:= map mkId ["I"] &&
+  allSuperClasses cEnv (mkId "K") =:= map mkId ["I", "J"] &&
+  allSuperClasses cEnv (mkId "L") =:= map mkId ["K", "I", "J", "M"] &&
+  allSuperClasses cEnv (mkId "M") =:= [] 
 
 
 (=:=) :: Ord a => [a] -> [a] -> Bool

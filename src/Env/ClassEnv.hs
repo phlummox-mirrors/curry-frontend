@@ -16,7 +16,7 @@ module Env.ClassEnv
   ( ClassEnv (..), Class (..), Instance (..), initClassEnv, lookupClass
   , lookupDefiningClass, lookupMethodTypeScheme, lookupMethodTypeSig
   , ppClasses, getAllClassMethods, allSuperClasses, isSuperClassOf
-  , allSuperClasses', isSuperClassOf', implies, implies'
+  , implies, implies'
   , getInstance, isValidCx, reduceContext
   ) where
 
@@ -114,28 +114,20 @@ getAllClassMethods (ClassEnv classes _ _) =
   
 
 -- |returns *all* superclasses of a given class
-allSuperClasses :: ClassEnv -> Class -> [QualIdent]
-allSuperClasses cEnv c = let scs = superClasses c in 
-  nub $ scs 
-    ++ concatMap (allSuperClasses cEnv . fromJust . lookupClass cEnv) scs
-
-allSuperClasses' :: ClassEnv -> QualIdent -> [QualIdent]
-allSuperClasses' cEnv c = let
+allSuperClasses :: ClassEnv -> QualIdent -> [QualIdent]
+allSuperClasses cEnv c = let
   theClass0 = lookupClass cEnv c
   scs = maybe [] superClasses theClass0 in
-  nub $ scs ++ concatMap (allSuperClasses' cEnv) scs
+  nub $ scs ++ concatMap (allSuperClasses cEnv) scs
   
 -- |checks whether a given class is a superclass of another class
-isSuperClassOf :: ClassEnv -> Class -> Class -> Bool
-isSuperClassOf cEnv c1 c2 = (theClass c1) `elem` allSuperClasses cEnv c2
-
-isSuperClassOf' :: ClassEnv -> QualIdent -> QualIdent -> Bool
-isSuperClassOf' cEnv c1 c2 = c1 `elem` allSuperClasses' cEnv c2
+isSuperClassOf :: ClassEnv -> QualIdent -> QualIdent -> Bool
+isSuperClassOf cEnv c1 c2 = c1 `elem` allSuperClasses cEnv c2
 
 -- |does a specific context imply a given type assertion?
 implies :: ClassEnv -> BT.Context -> (QualIdent, Type) -> Bool
 implies cEnv cx (qid, ty) = 
-  any (\(qid', ty') -> ty == ty' && (qid == qid' || isSuperClassOf' cEnv qid qid')) cx
+  any (\(qid', ty') -> ty == ty' && (qid == qid' || isSuperClassOf cEnv qid qid')) cx
   ||
   ((isTyCons ty || isArrow ty) && 
     let (xi, tys) = getTyCons ty
