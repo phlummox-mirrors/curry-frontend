@@ -530,8 +530,6 @@ either one of the basic types or \texttt{()}.
 >         (Just firstTySubst) (fixPIter + 1)
 >     False -> do
 >       -- Establish the inferred types. 
->       -- Pass the inferred types to genDecl so that the contexts can be
->       -- renamed properly
 >       mapM_ (genDecl firstFreeVars theta) (map snd dsWithCxs)
 >       -- do NOT return final contexts! 
 >       -- TODO: return cxs or cxs' (or doesn't matter?)
