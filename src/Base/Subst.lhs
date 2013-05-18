@@ -15,6 +15,7 @@ marked with a boolean flag (see below).
 > module Base.Subst
 >   ( Subst (..), IntSubst (..), idSubst, singleSubst, bindSubst, unbindSubst
 >   , substToList, compose, substVar', isubstVar, restrictSubstTo, listToSubst
+>   , reverseSubst
 >   ) where
 
 > import qualified Data.Map as Map
@@ -38,6 +39,10 @@ marked with a boolean flag (see below).
 
 > listToSubst :: Ord v => [(v, e)] -> Subst v e
 > listToSubst lst = Subst False (Map.fromList lst)
+
+> reverseSubst :: (Ord v, Ord e) => Subst v e -> Subst e v
+> reverseSubst = listToSubst . map swap . substToList
+>   where swap (x, y) = (y, x)
 
 \end{verbatim}
 For any substitution we have the following definitions:
