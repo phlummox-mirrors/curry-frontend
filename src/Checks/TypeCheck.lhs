@@ -532,7 +532,7 @@ either one of the basic types or \texttt{()}.
 >       -- Establish the inferred types. 
 >       -- Pass the inferred types to genDecl so that the contexts can be
 >       -- renamed properly
->       mapM_ (genDecl firstFreeVars theta) dsWithCxs
+>       mapM_ (genDecl firstFreeVars theta) (map snd dsWithCxs)
 >       -- do NOT return final contexts! 
 >       -- TODO: return cxs or cxs' (or doesn't matter?)
 >       return $ concat nonLocalContexts
@@ -683,17 +683,17 @@ specific. Therefore, if the inferred type does not match the type
 signature the declared type must be too general.
 \begin{verbatim}
 
-> genDecl :: Set.Set Int -> TypeSubst -> (BT.Context, Decl) -> TCM ()
-> genDecl lvs theta (cx, FunctionDecl _ f (Equation _ lhs _ : _)) = 
->   genVar True lvs theta arity cx f
+> genDecl :: Set.Set Int -> TypeSubst -> Decl -> TCM ()
+> genDecl lvs theta (FunctionDecl _ f (Equation _ lhs _ : _)) = 
+>   genVar True lvs theta arity f
 >   where arity = Just $ length $ snd $ flatLhs lhs
-> genDecl lvs theta (cx, PatternDecl  _ t   _) = 
->   mapM_ (genVar False lvs theta Nothing cx) (bv t)
+> genDecl lvs theta (PatternDecl  _ t   _) = 
+>   mapM_ (genVar False lvs theta Nothing) (bv t)
 > genDecl _ _ _ = internalError "TypeCheck.genDecl: no pattern match"
 
-> genVar :: Bool -> Set.Set Int -> TypeSubst -> Maybe Int -> BT.Context 
+> genVar :: Bool -> Set.Set Int -> TypeSubst -> Maybe Int 
 >        -> Ident -> TCM ()
-> genVar poly lvs theta ma cx v = do
+> genVar poly lvs theta ma v = do
 >   sigs <- getSigEnv
 >   m <- getModuleIdent
 >   tyEnv <- getValueEnv
