@@ -738,7 +738,7 @@ signature the declared type must be too general.
 >   what = text (if poly then "Function:" else "Variable:") <+> ppIdent v
 >   genType poly' (ForAll _cx0 _n ty)
 >     -- | n > 0 = internalError $ "TypeCheck.genVar: " ++ showLine (idPosition v) ++ show v ++ " :: " ++ show ty ++ " " ++ show i 
->     | poly' = gen lvs ty
+>     | poly' = gen lvs (noContext ty)
 >     | otherwise = monoType ty
 >   eqTyScheme (ForAll _cx1 _ t1) (ForAll _cx2 _ t2) = equTypes t1 t2
 
@@ -1082,15 +1082,16 @@ because of possibly multiple occurrences of variables.
 >   sigma' <- expandPolyType (cx, sig')
 >   inst sigma' >>= flip (unify p "explicitly typed expression" (ppExpr 0 e)) cty
 >   theta <- getTypeSubst
->   let sigma  = gen (fvEnv (subst theta tyEnv0)) (subst theta tyInf)
+>   let sigma  = gen (fvEnv (subst theta tyEnv0)) (substContext theta cxInf, subst theta tyInf)
 >   unless (eqTypes sigma sigma') 
 >     (report $ errTypeSigTooGeneral p m (text "Expression:" <+> ppExpr 0 e) (cx, sig') sigma)
 >   cEnv <- getClassEnv
 >   -- test context implication
 >   let cxGiven = getContext sigma'
->   unless (implies' cEnv cxGiven cxInf) $ report $
->     errContextImplication p m cxGiven cxInf
->     (filter (not . implies cEnv cxGiven) cxInf)
+>       cxInf' = getContext sigma
+>   unless (implies' cEnv cxGiven cxInf') $ report $
+>     errContextImplication p m cxGiven cxInf'
+>     (filter (not . implies cEnv cxGiven) cxInf')
 >     (mkIdent "explicitely typed expression")
 >   -- merge contexts!
 >   return (cxInf ++ cxGiven, tyInf)
@@ -1554,11 +1555,12 @@ We use negative offsets for fresh type variables.
 >   -- let cx' = instContext (tys ++ tys') cx
 >   return $ ({-cx',-} expandAliasType (tys ++ tys') ty)
 
-> gen :: Set.Set Int -> Type -> TypeScheme
-> gen gvs ty = ForAll BT.emptyContext (length tvs)
->                     (subst (foldr2 bindSubst idSubst tvs tvs') ty)
+> gen :: Set.Set Int -> ConstrType -> TypeScheme
+> gen gvs (cx, ty) = ForAll (substContext s cx) (length tvs)
+>                           (subst s ty)
 >   where tvs = [tv | tv <- nub (typeVars ty), tv `Set.notMember` gvs]
 >         tvs' = map TypeVariable [0 ..]
+>         s = foldr2 bindSubst idSubst tvs tvs'
 
 \end{verbatim}
 \paragraph{Auxiliary Functions}
