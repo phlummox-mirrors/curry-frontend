@@ -701,23 +701,18 @@ signature the declared type must be too general.
 >   doContextRed0 <- getDoContextRed
 >   let sigma0 = (genType poly $ subst theta $ varType v tyEnv)
 >       arity  = fromMaybe (varArity v tyEnv) ma
->       infTy = typeSchemeToType $ subst theta $ varType v tyEnv
->       -- build a mapping from the inferred type variables to the type
->       -- variables that appear in the newly instantiated type sigma0, 
->       -- so that the type variables in the inferred contexts can be
->       -- renamed properly
->       mapping = buildTypeVarsMapping infTy (typeSchemeToType sigma0) 
->       shiftedContext = substContext mapping cx
+>       -- apply context reduction
+>       generalizedContext = getContext sigma0
 >       finalContext = (if doContextRed0 then reduceContext cEnv else id)
->         shiftedContext
+>         generalizedContext
 >       sigma = sigma0 `constrainBy` finalContext
+>       context = finalContext
 >       -- Do not check for amgiguous type variables here
 >       -- but only in global declarations after all type checking 
 >       -- has been done and ambiguous type variables have been 
 >       -- propagated to top level. The reason for this is that
 >       -- here it cannot be determined whether a variable is ambiguous
 >       -- or refers to a variable from a higher scope.  
->       context = getContext sigma
 >   -- check that the context is valid
 >   let invalidCx = isValidCx cEnv context
 >   unless (null invalidCx) $ report $ errNoInstance (idPosition v) m invalidCx
@@ -736,10 +731,10 @@ signature the declared type must be too general.
 >       modifyValueEnv $ rebindFun m v arity sigma
 >   where
 >   what = text (if poly then "Function:" else "Variable:") <+> ppIdent v
->   genType poly' (ForAll _cx0 _n ty)
+>   genType poly' (ForAll cx0 _n ty)
 >     -- | n > 0 = internalError $ "TypeCheck.genVar: " ++ showLine (idPosition v) ++ show v ++ " :: " ++ show ty ++ " " ++ show i 
->     | poly' = gen lvs (noContext ty)
->     | otherwise = monoType ty
+>     | poly' = gen lvs (cx0, ty)
+>     | otherwise = monoType' (cx0, ty)
 >   eqTyScheme (ForAll _cx1 _ t1) (ForAll _cx2 _ t2) = equTypes t1 t2
 
 > -- | builds a mapping from type variables in the left type to the type variables
