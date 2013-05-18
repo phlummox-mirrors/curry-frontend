@@ -286,6 +286,8 @@ checkImpl cEnv =
   implies cEnv [mk "F" 0, mk "D" 1] (mkId "E", tycon "V" [mkTy 0, mkTy 1]) &&  
   
   implies cEnv [mk "A" 0] (mkId "A", list $ tycon "S" [mkTy 0]) &&
+  implies' cEnv [mk "A" 0, mk "A" 1] 
+    [(mkId "A", list $ tycon "S" [mkTy 0]), (mkId "A", list $ tycon "S" [mkTy 1])] &&
   implies cEnv [mk "A" 0] (mkId "A", list $ list $ tycon "S" [mkTy 0]) &&
   implies cEnv [mk "H" 0] (mkId "A", list $ tycon "S" [mkTy 0]) &&
   
