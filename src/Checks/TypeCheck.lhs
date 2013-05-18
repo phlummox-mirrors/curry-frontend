@@ -44,7 +44,7 @@ type annotation is present.
 > import Base.TopEnv
 > import Base.Types as BT
 > import Base.TypeSubst
-> import Base.Subst (listToSubst)
+> import Base.Subst (listToSubst, substToList)
 > import Base.Utils (fst3, foldr2, concatMapM, findDouble)
 
 > import Env.TypeConstructor (TCEnv, TypeInfo (..), bindTypeInfo
@@ -1082,7 +1082,11 @@ because of possibly multiple occurrences of variables.
 >   sigma' <- expandPolyType (cx, sig')
 >   inst sigma' >>= flip (unify p "explicitly typed expression" (ppExpr 0 e)) cty
 >   theta <- getTypeSubst
->   let sigma  = gen (fvEnv (subst theta tyEnv0)) (substContext theta cxInf, subst theta tyInf)
+>   let (sigma, s) = genS (fvEnv (subst theta tyEnv0)) 
+>                         (substContext theta cxInf, subst theta tyInf)
+>       -- this is safe here because "gen" uses only substitutions of the 
+>       -- form (Int, TypeVariable Int)
+>       s' = reverseTySubst s
 >   unless (eqTypes sigma sigma') 
 >     (report $ errTypeSigTooGeneral p m (text "Expression:" <+> ppExpr 0 e) (cx, sig') sigma)
 >   cEnv <- getClassEnv
@@ -1093,8 +1097,12 @@ because of possibly multiple occurrences of variables.
 >     errContextImplication p m cxGiven cxInf'
 >     (filter (not . implies cEnv cxGiven) cxInf')
 >     (mkIdent "explicitely typed expression")
->   -- merge contexts!
->   return (cxInf ++ cxGiven, tyInf)
+>   -- Merge contexts. Note that the context cxGiven originates from the 
+>   -- type signature, not from the inferred type. Thus the type variables 
+>   -- in cxGiven don't refer to the type variables in the inferred type.  
+>   -- Because of this we have to "substitute" the type variables "back", so
+>   -- that they correctly refer to the type variables in the inferred type.  
+>   return (cxInf ++ substContext s' cxGiven, tyInf)
 >   where sig' = nameSigType sig
 >         eqTypes (ForAll _cx1 _ t1) (ForAll _cx2 _ t2) = t1 == t2
 > tcExpr p (Paren e) = tcExpr p e
@@ -1338,6 +1346,11 @@ because of possibly multiple occurrences of variables.
 >   theta <- getTypeSubst
 >   return (substContext theta cxs) 
 
+> reverseTySubst :: TypeSubst -> TypeSubst
+> reverseTySubst = listToSubst . map swap . substToList
+>   where swap (n, TypeVariable m) = (m, TypeVariable n)
+>         swap _ = internalError "reverseTySubst"
+
 \end{verbatim}
 The function \texttt{tcArrow} checks that its argument can be used as
 an arrow type $\alpha\rightarrow\beta$ and returns the pair
@@ -1555,12 +1568,15 @@ We use negative offsets for fresh type variables.
 >   -- let cx' = instContext (tys ++ tys') cx
 >   return $ ({-cx',-} expandAliasType (tys ++ tys') ty)
 
-> gen :: Set.Set Int -> ConstrType -> TypeScheme
-> gen gvs (cx, ty) = ForAll (substContext s cx) (length tvs)
->                           (subst s ty)
+> genS :: Set.Set Int -> ConstrType -> (TypeScheme, TypeSubst)
+> genS gvs (cx, ty) = (ForAll (substContext s cx) (length tvs)
+>                             (subst s ty), s)
 >   where tvs = [tv | tv <- nub (typeVars ty), tv `Set.notMember` gvs]
 >         tvs' = map TypeVariable [0 ..]
 >         s = foldr2 bindSubst idSubst tvs tvs'
+
+> gen :: Set.Set Int -> ConstrType -> TypeScheme
+> gen gvs = fst . genS gvs
 
 \end{verbatim}
 \paragraph{Auxiliary Functions}
