@@ -22,6 +22,7 @@ import qualified Data.Set as Set
 import Env.ClassEnv
 import qualified Checks.TypeCheck as TC (typeCheck)
 import Curry.Syntax (Module (..))
+import Data.Maybe
 
 import Base.Types
 
@@ -226,6 +227,7 @@ checkVarious = do
       else if not $ checkImpl (classEnv tcEnv) then return (Fail "implies")
       else if not $ checkValidCx (classEnv tcEnv) then return (Fail "isValidCx")
       else if not $ checkContextReduction (classEnv tcEnv) then return (Fail "context reduction")
+      else if not $ checkFindPath (classEnv tcEnv) then return (Fail "find path") 
       else return Pass
     CheckFailed msgs -> do print msgs; return (Fail "compilation error")
 
@@ -370,6 +372,27 @@ checkContextReduction cEnv =
   reduceContext cEnv [(mkId "N", tycon "R1" [])] == [] && 
   reduceContext cEnv [mk "H" 0, (mkId "N", tycon "R1" [])] == [mk "H" 0] &&
   reduceContext cEnv [(mkId "N", tycon "NotExistent" [])] == [(mkId "N", tycon "NotExistent" [])]
+
+-- | checks the findPath method
+checkFindPath :: ClassEnv -> Bool
+checkFindPath cEnv = 
+  (findPath cEnv (mkId "H") (mkId "D") == Just [mkId "H", mkId "F", mkId "D"]
+  || findPath cEnv (mkId "H") (mkId "D") == Just [mkId "H", mkId "G", mkId "D"]) &&
+  findPath cEnv (mkId "H") (mkId "I") == Nothing &&
+  findPath cEnv (mkId "L") (mkId "I") == Just [mkId "L", mkId "K", mkId "J", mkId "I"] &&
+  -- takes shortest path?
+  findPath cEnv (mkId "Q") (mkId "P") == Just [mkId "Q", mkId "P"] &&
+  findPath cEnv (mkId "P") (mkId "Q") == Nothing &&
+  findPath cEnv (mkId "K") (mkId "M") == Nothing &&
+  findPath cEnv (mkId "F") (mkId "G") == Nothing &&
+  findPath cEnv (mkId "G") (mkId "C") == Nothing &&
+  findPath cEnv (mkId "C") (mkId "G") == Nothing &&
+  isJust (findPath cEnv (mkId "H") (mkId "A")) &&
+  isJust (findPath cEnv (mkId "H") (mkId "E")) &&
+  isJust (findPath cEnv (mkId "H") (mkId "B")) &&
+  isJust (findPath cEnv (mkId "F") (mkId "A")) &&
+  isJust (findPath cEnv (mkId "F") (mkId "E")) &&
+  isJust (findPath cEnv (mkId "F") (mkId "B"))
 
 list :: Type -> Type
 list t = TypeConstructor qListIdP [t]

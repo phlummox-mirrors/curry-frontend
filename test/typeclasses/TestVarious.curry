@@ -77,4 +77,9 @@ instance N a => N (W a) where
 
 
 
-  
+class P a where
+
+class P a => R a where
+
+class (P a, R a) => Q a where
+

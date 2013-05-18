@@ -17,7 +17,7 @@ module Env.ClassEnv
   , lookupDefiningClass, lookupMethodTypeScheme, lookupMethodTypeSig
   , ppClasses, getAllClassMethods, allSuperClasses, isSuperClassOf
   , implies, implies'
-  , getInstance, isValidCx, reduceContext
+  , getInstance, isValidCx, reduceContext, findPath
   ) where
 
 -- import Base.Types hiding ()
@@ -194,6 +194,20 @@ isValidCx cEnv cx = concatMap isValid' cx
 getInstance :: ClassEnv -> QualIdent -> QualIdent -> Maybe Instance
 getInstance cEnv cls ty = 
   listToMaybe $ filter (\i -> iClass i == cls && iType i == ty) (theInstances cEnv)
+
+-- | finds a path in the class hierarchy from the given class to the given superclass
+findPath :: ClassEnv -> QualIdent -> QualIdent -> Maybe [QualIdent]
+findPath cEnv start target = 
+  let paths = findPath' cEnv start target [] in
+  if null paths then Nothing 
+  else Just $ minimumBy (\l1 l2 -> compare (length l1) (length l2)) paths
+    
+ 
+findPath' :: ClassEnv -> QualIdent -> QualIdent -> [QualIdent] -> [[QualIdent]]
+findPath' cEnv start target path
+  | start == target = [reverse (target:path)]
+  | otherwise = concatMap (\sc -> findPath' cEnv sc target (start:path)) 
+                          (superClasses $ fromJust $ lookupClass cEnv start)
 
 -- ----------------------------------------------------------------------------
 -- Pritty printer functions

@@ -621,11 +621,17 @@ transformClass2 :: ClassEnv -> Decl -> [Decl]
 transformClass2 cEnv (ClassDecl _p _scx cls _tyvar _decls) = 
   concatMap genSuperClassDictSelMethod superClasses0
   ++ concatMap genMethodSelMethod (zip methods0 [0..])
+  ++ concatMap genNonDirectSuperClassDictSelMethod nonDirectSuperClasses
   where
   theClass0 = fromJust $ lookupClass cEnv (qualify cls)
-  superClasses0 = map (show . unqualify) $ superClasses theClass0
+  -- TODO: unqualify???
+  superClasses0 = map (show {-. unqualify-}) $ superClasses theClass0
+  superClasses1 = superClasses theClass0
   methods0 = methods theClass0
+  nonDirectSuperClasses = allSuperClasses cEnv (theClass theClass0) \\ superClasses1
   
+  -- | Generates functions for extracting (direct) super class dictionaries 
+  -- from a given dictionary
   genSuperClassDictSelMethod :: String -> [Decl]
   genSuperClassDictSelMethod scls = 
     let selMethodName = selFunPrefix ++ (show $ theClass theClass0) ++ sep ++ scls in
@@ -636,6 +642,8 @@ transformClass2 cEnv (ClassDecl _p _scx cls _tyvar _decls) =
       ]
     ]
     
+  -- | Generates functions for extracting the class functions from a given 
+  -- directory 
   genMethodSelMethod :: ((Ident, Context, TypeExpr), Int) -> [Decl]
   genMethodSelMethod ((m, _cx, _ty), i) = 
     let selMethodName = selFunPrefix ++ (show $ theClass theClass0) ++ sep ++ (show m) in
@@ -646,6 +654,8 @@ transformClass2 cEnv (ClassDecl _p _scx cls _tyvar _decls) =
       ]
     ]
   
+  -- | The left side of the (direct) selection functions is always the same and
+  -- created by this function  
   equationLhs selMethodName = 
     FunLhs (mkIdent selMethodName) [
       if length patterns > 1 then TuplePattern noRef patterns
@@ -656,6 +666,38 @@ transformClass2 cEnv (ClassDecl _p _scx cls _tyvar _decls) =
       map (\s -> VariablePattern $ dictSelParam selMethodName s) superClasses0
       ++ map (\(n, _) -> VariablePattern $ methodSelParam selMethodName n)
         (zip [0::Int ..] methods0))
+  
+  -- | generate selector function for a non-direct superclass of the given 
+  -- class. If for example the superclass hierarchy is A -> B -> C -> D, then 
+  -- among others the following selector functions are created:
+  -- @ 
+  -- sel.D.A = sel.B.A . sel.C.B . sel.D.C
+  -- sel.C.A = sel.B.A . sel.C.B
+  -- @
+  genNonDirectSuperClassDictSelMethod :: QualIdent -> [Decl]
+  genNonDirectSuperClassDictSelMethod scls = 
+    let selMethodName = selFunPrefix ++ (show $ theClass theClass0) ++ sep ++ (show scls) in
+    [ FunctionDecl NoPos (mkIdent selMethodName)
+      [Equation NoPos
+        (FunLhs (mkIdent selMethodName) [])
+        (SimpleRhs NoPos expr [])
+      ]
+    ]
+    where
+    -- we want the shortest path in the superclass hierarchy to the given 
+    -- superclass
+    path = fromJust $ findPath cEnv (theClass theClass0) scls 
+    -- generate the names of the selector functions 
+    names :: [QualIdent] -> [Expression]
+    names (x:y:zs) = 
+      (Variable $ qualify $ mkIdent $ selFunPrefix ++ (show x) ++ sep ++ (show y)) 
+      : names (y:zs)
+    names [_] = []
+    names [] = internalError "genNonDirectSuperClassDictSelMethod"
+    -- enchain the selector functions
+    expr :: Expression
+    expr = foldr1 (\e1 e2 -> InfixApply e1 (InfixOp point) e2) (reverse $ names path)
+    point = qualify $ mkIdent "."
     
   -- the renamings are important so that the parameters are not handled as
   -- global functions. Also important is that the parameters are globally
