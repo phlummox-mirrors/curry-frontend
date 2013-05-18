@@ -21,6 +21,11 @@ class H a where
 class I a where
   fun8 :: a -> a
 
+instance C Prelude.Bool where
+instance D Prelude.Bool where
+instance E Prelude.Bool where
+instance F Prelude.Bool where
+  
 
 testA1 x = fun5 x && testA2 x
 
