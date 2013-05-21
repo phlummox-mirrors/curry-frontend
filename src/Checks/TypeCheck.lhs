@@ -718,14 +718,16 @@ signature the declared type must be too general.
 >     Nothing    -> modifyValueEnv $ rebindFun m v arity sigma
 >     Just sigTy -> do
 >       sigma' <- expandPolyType sigTy
->       let context' = getContext sigma'
->       unless (eqTyScheme sigma sigma') $ report
->         $ errTypeSigTooGeneral (idPosition v) m what sigTy sigma
->       -- check that the given context implies the inferred 
->       unless (implies' cEnv context' context)
->         $ report $ errContextImplication (idPosition v) m context' context
->           (filter (not . implies cEnv context') context)  
->           v
+>       case (eqTyScheme sigma sigma') of 
+>         False -> report  $ errTypeSigTooGeneral (idPosition v) m what sigTy sigma
+>         True -> do
+>           -- check that the given context implies the inferred
+>           let mapping = buildTypeVarsMapping (typeSchemeToType sigma') (typeSchemeToType sigma)
+>               context' = substContext mapping $ getContext sigma' 
+>           unless (implies' cEnv context' context)
+>             $ report $ errContextImplication (idPosition v) m context' context
+>               (filter (not . implies cEnv context') context)  
+>               v
 >       modifyValueEnv $ rebindFun m v arity sigma
 >   where
 >   what = text (if poly then "Function:" else "Variable:") <+> ppIdent v
