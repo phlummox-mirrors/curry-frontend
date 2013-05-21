@@ -449,30 +449,31 @@ either one of the basic types or \texttt{()}.
   Addendum.~\cite{Chakravarty03:FFI}}
 \begin{verbatim}
 
-> tcDecls :: [Decl] -> TCM BT.Context
+> tcDecls :: [Decl] -> TCM ([Decl], BT.Context)
 > tcDecls ds = do
 >   m <- getModuleIdent
 >   oldSig <- getSigEnv
 >   modifySigEnv $ \ sigs -> foldr bindTypeSigs sigs ods
 >   newScope -- scope for the first inferred type substitutions
->   cxs <- mapM tcDeclGroup $ scc bv (qfv m) vds
+>   dsAndCxs <- mapM tcDeclGroup $ scc bv (qfv m) vds
 >   endScope
 >   modifySigEnv (const oldSig)
->   return $ concat cxs
+>   return $ (concatMap fst dsAndCxs, concatMap snd dsAndCxs)
 >   where (vds, ods) = partition isValueDecl ds
 
-> tcDeclGroup :: [Decl] -> TCM BT.Context
-> tcDeclGroup [ForeignDecl _ _ _ f ty] = tcForeign f ty >> return BT.emptyContext
-> tcDeclGroup [ExternalDecl      _ fs] = mapM_ tcExternal fs >> return BT.emptyContext
-> tcDeclGroup [FreeDecl          _ vs] = mapM_ tcFree     vs >> return BT.emptyContext
-> tcDeclGroup ds                       = do
+> tcDeclGroup :: [Decl] -> TCM ([Decl], BT.Context)
+> tcDeclGroup d@[ForeignDecl _ _ _ f ty] = tcForeign f ty >> return (d, BT.emptyContext)
+> tcDeclGroup d@[ExternalDecl      _ fs] = mapM_ tcExternal fs >> return (d, BT.emptyContext)
+> tcDeclGroup d@[FreeDecl          _ vs] = mapM_ tcFree     vs >> return (d, BT.emptyContext)
+> tcDeclGroup ds                         = do
 >   n <- getOnlyNextId
 >   theta <- getTypeSubst
 >   oldValEnv <- getValueEnv
 >   tcFixPointIter ds (replicate (length ds) Set.empty) n theta oldValEnv Nothing Nothing 0
 
 > tcFixPointIter :: [Decl] -> [Set.Set (QualIdent, Type)] -> Int -> TypeSubst 
->                -> ValueEnv -> (Maybe (Set.Set Int)) -> (Maybe TypeSubst) -> Int -> TCM BT.Context 
+>                -> ValueEnv -> (Maybe (Set.Set Int)) -> (Maybe TypeSubst) 
+>                -> Int -> TCM ([Decl], BT.Context) 
 > tcFixPointIter ds oldCxs n t oldVEnv freeVarsEnv tySubst fixPIter = do
 >   let maxFixPIter = 10000
 >   when (fixPIter > maxFixPIter) $ internalError "fix point iteration propably broken"  
@@ -484,9 +485,10 @@ either one of the basic types or \texttt{()}.
 >
 >   tyEnv0 <- getValueEnv
 >   ctysLhs <- mapM tcDeclLhs ds
->   ctysRhs <- mapM (tcDeclRhs tyEnv0) ds
+>   dsAndCtysRhs <- mapM (tcDeclRhs tyEnv0) ds
 >   -- get all contexts
 >   let cxsLhs = map fst ctysLhs
+>       ctysRhs = map snd dsAndCtysRhs
 >       cxsRhs = map fst ctysRhs
 >       tysRhs = map snd ctysRhs
 >       cxs = zipWith (++) cxsLhs cxsRhs
@@ -533,7 +535,7 @@ either one of the basic types or \texttt{()}.
 >       mapM_ (genDecl firstFreeVars theta) (map snd dsWithCxs)
 >       -- do NOT return final contexts! 
 >       -- TODO: return cxs or cxs' (or doesn't matter?)
->       return $ concat nonLocalContexts
+>       return $ (map fst dsAndCtysRhs, concat nonLocalContexts)
 
 > notLocal :: BT.Context -> Type -> BT.Context
 > notLocal cxs ty = 
@@ -636,18 +638,20 @@ either one of the basic types or \texttt{()}.
 >   modifyValueEnv $ bindFunOnce m v (arrowArity ty) (monoType' (cx, ty))
 >   return (cx, ty)
 
-> tcDeclRhs :: ValueEnv -> Decl -> TCM ConstrType
-> tcDeclRhs tyEnv0 (FunctionDecl _ f (eq:eqs)) = do
->   (cx0, ty0) <- tcEquation tyEnv0 eq
->   (cxs, ty)  <- tcEqns ty0 [] eqs
->   return (cx0 ++ cxs, ty)
->   where tcEqns :: Type -> BT.Context -> [Equation] -> TCM ConstrType
->         tcEqns ty cxs [] = return (cxs, ty)
->         tcEqns ty cxs (eq1@(Equation p _ _):eqs1)  = do
->           cty'@(cx', _ty') <- tcEquation tyEnv0 eq1
+> tcDeclRhs :: ValueEnv -> Decl -> TCM (Decl, ConstrType)
+> tcDeclRhs tyEnv0 (FunctionDecl p0 f (eq:eqs)) = do
+>   (eq', (cx0, ty0)) <- tcEquation tyEnv0 eq
+>   (eqs', (cxs, ty))  <- tcEqns ty0 [] eqs [eq']
+>   return (FunctionDecl p0 f eqs', (cx0 ++ cxs, ty))
+>   where tcEqns :: Type -> BT.Context -> [Equation] -> [Equation] -> TCM ([Equation], ConstrType)
+>         tcEqns ty cxs [] newEqs = return (reverse newEqs, (cxs, ty))
+>         tcEqns ty cxs (eq1@(Equation p _ _):eqs1) newEqs = do
+>           (eq1', cty'@(cx', _ty')) <- tcEquation tyEnv0 eq1
 >           unify p "equation" (ppDecl (FunctionDecl p f [eq1])) (noContext ty) cty'
->           tcEqns ty (cx' ++ cxs) eqs1 
-> tcDeclRhs tyEnv0 (PatternDecl _ _ rhs) = tcRhs tyEnv0 rhs
+>           tcEqns ty (cx' ++ cxs) eqs1 (eq1':newEqs)
+> tcDeclRhs tyEnv0 (PatternDecl p t rhs) = do
+>   (rhs', cty) <- tcRhs tyEnv0 rhs
+>   return (PatternDecl p t rhs', cty)
 > tcDeclRhs _ _ = internalError "TypeCheck.tcDeclRhs: no pattern match"
 
 > unifyDecl :: Decl -> ConstrType -> ConstrType -> TCM ()
@@ -766,13 +770,14 @@ signature the declared type must be too general.
 >   internalError ("types do not match in buildTypeVarsMapping\n" ++ show t1 
 >     ++ "\n" ++ show t2)
 
-> tcEquation :: ValueEnv -> Equation -> TCM ConstrType
+> tcEquation :: ValueEnv -> Equation -> TCM (Equation, ConstrType)
 > tcEquation tyEnv0 (Equation p lhs rhs) = do
 >   tys <- mapM (tcPattern p) ts
->   (cx, ty) <- tcRhs tyEnv0 rhs
+>   (rhs', (cx, ty)) <- tcRhs tyEnv0 rhs
 >   let cxs = concat $ map fst tys ++ [cx] 
->   checkSkolems p (text "Function: " <+> ppIdent f) tyEnv0
->                  (cxs, foldr TypeArrow ty (map getType tys))
+>   cty <- checkSkolems p (text "Function: " <+> ppIdent f) tyEnv0
+>                         (cxs, foldr TypeArrow ty (map getType tys))
+>   return (Equation p lhs rhs', cty)
 >   where (f, ts) = flatLhs lhs
 
 > tcLiteral :: Literal -> TCM ConstrType
@@ -1001,43 +1006,49 @@ because of possibly multiple occurrences of variables.
 >     unify p "record" (text "Field:" <+> ppFieldPatt f) lty ty
 >     return (l,ty)
 
-> tcRhs ::ValueEnv -> Rhs -> TCM ConstrType
+> tcRhs ::ValueEnv -> Rhs -> TCM (Rhs, ConstrType)
 > tcRhs tyEnv0 (SimpleRhs p e ds) = do
->   _cxs <- tcDecls ds
->   (cx, ty) <- tcExpr p e
->   checkSkolems p (text "Expression:" <+> ppExpr 0 e) tyEnv0 (cx, ty)
+>   (ds', _cxs) <- tcDecls ds
+>   (e', (cx, ty)) <- tcExpr p e
+>   cty <- checkSkolems p (text "Expression:" <+> ppExpr 0 e) tyEnv0 (cx, ty)
+>   return (SimpleRhs p e' ds', cty)
 > tcRhs tyEnv0 (GuardedRhs es ds) = do
->   _cxs <- tcDecls ds
->   (cxs', ty) <- tcCondExprs tyEnv0 es
->   return (cxs', ty)
+>   (ds', _cxs) <- tcDecls ds
+>   (es', (cxs', ty)) <- tcCondExprs tyEnv0 es
+>   return (GuardedRhs es' ds', (cxs', ty))
 
-> tcCondExprs :: ValueEnv -> [CondExpr] -> TCM ConstrType
+> tcCondExprs :: ValueEnv -> [CondExpr] -> TCM ([CondExpr], ConstrType)
 > tcCondExprs tyEnv0 es = do
 >   gty <- if length es > 1 then return $ noContext boolType
 >                           else liftM noContext $ freshConstrained [successType,boolType]
 >   cty <- freshConstrTypeVar
->   tcCondExprs' gty cty [] es
->   where tcCondExprs' _ (_, ty) cx [] = return (cx, ty)
->         tcCondExprs' gty cty cx (e1:es1) = do
->           cx' <- tcCondExpr gty cty e1
->           tcCondExprs' gty cty (cx ++ cx') es1
+>   tcCondExprs' gty cty [] es []
+>   where tcCondExprs' :: ConstrType -> ConstrType -> BT.Context -> [CondExpr] 
+>                      -> [CondExpr] -> TCM ([CondExpr], ConstrType)
+>         tcCondExprs' _ (_, ty) cx [] newCs = return (reverse newCs, (cx, ty))
+>         tcCondExprs' gty cty cx (e1:es1) newCs = do
+>           (ce', cx') <- tcCondExpr gty cty e1
+>           tcCondExprs' gty cty (cx ++ cx') es1 (ce':newCs)
+>         tcCondExpr :: ConstrType -> ConstrType -> CondExpr -> TCM (CondExpr, BT.Context)
 >         tcCondExpr gty cty@(_cx, _) (CondExpr p g e) = do
->           cty1@(cx1, _) <- tcExpr p g
+>           (g', cty1@(cx1, _)) <- tcExpr p g
 >           unify p "guard" (ppExpr 0 g) gty cty1
->           cty2          <- tcExpr p e
+>           (e', cty2)          <- tcExpr p e
 >           cty3@(cx3, _) <- checkSkolems p (text "Expression:" <+> ppExpr 0 e) tyEnv0 cty2
 >           unify p "guarded expression" (ppExpr 0 e) cty cty3
->           return (cx1 ++ cx3)
+>           return (CondExpr p g' e', cx1 ++ cx3)
 
-> tcExpr :: Position -> Expression -> TCM ConstrType
-> tcExpr _ (Literal     l) = tcLiteral l
-> tcExpr _ (Variable    v)
+> tcExpr :: Position -> Expression -> TCM (Expression, ConstrType)
+> tcExpr _ e@(Literal     l) = do
+>   cty <- tcLiteral l
+>   return (e, cty)
+> tcExpr _ e@(Variable    v)
 >     -- anonymous free variable
 >   | isAnonId v' = do
 >       m <- getModuleIdent
 >       ty <- freshTypeVar
 >       modifyValueEnv $ bindFunOnce m v' (arrowArity ty) $ monoType ty
->       return $ noContext ty
+>       return $ (e, noContext ty)
 >   | otherwise    = do
 >       sigs <- getSigEnv
 >       m <- getModuleIdent
@@ -1064,16 +1075,19 @@ because of possibly multiple occurrences of variables.
 >           -- inferred (new) contexts match the type variables in the type
 >           -- constructed from the type signature
 >           let mapping = buildTypeVarsMapping ity ty0
->           return (cx0 ++ substContext mapping icx, ty0)
->         Nothing -> getValueEnv >>= inst . (flip (funType tcEnv m v) cEnv)
+>           return (e, (cx0 ++ substContext mapping icx, ty0))
+>         Nothing -> do
+>           cty <- getValueEnv >>= inst . (flip (funType tcEnv m v) cEnv)
+>           return (e, cty)
 >   where v' = unqualify v
-> tcExpr _ (Constructor c) = do
+> tcExpr _ e@(Constructor c) = do
 >  m <- getModuleIdent
->  getValueEnv >>= instExist . constrType m c
+>  cty <- getValueEnv >>= instExist . constrType m c
+>  return (e, cty)
 > tcExpr p (Typed e cx sig) = do
 >   m <- getModuleIdent
 >   tyEnv0 <- getValueEnv
->   cty@(cxInf, tyInf) <- tcExpr p e
+>   (e', cty@(cxInf, tyInf)) <- tcExpr p e
 >   sigma' <- expandPolyType (cx, sig')
 >   inst sigma' >>= flip (unify p "explicitly typed expression" (ppExpr 0 e)) cty
 >   theta <- getTypeSubst
@@ -1097,86 +1111,96 @@ because of possibly multiple occurrences of variables.
 >   -- in cxGiven don't refer to the type variables in the inferred type.  
 >   -- Because of this we have to "substitute" the type variables "back", so
 >   -- that they correctly refer to the type variables in the inferred type.  
->   return (cxInf ++ substContext s' cxGiven, tyInf)
+>   return (Typed e' cx sig, (cxInf ++ substContext s' cxGiven, tyInf))
 >   where sig' = nameSigType sig
 >         eqTypes (ForAll _cx1 _ t1) (ForAll _cx2 _ t2) = t1 == t2
-> tcExpr p (Paren e) = tcExpr p e
-> tcExpr p (Tuple _ es)
->   | null es = return $ noContext unitType
+> tcExpr p (Paren e) = do
+>   (e', cty) <- tcExpr p e
+>   return (Paren e', cty)
+> tcExpr p t@(Tuple sref es)
+>   | null es = return $ (t, noContext unitType)
 >   | otherwise = do 
->      ctys <- mapM (tcExpr p) es
->      let cx = concatMap fst ctys
->      let tys = map snd ctys
->      return (cx, tupleType tys)
-> tcExpr p e@(List _ es) = freshConstrTypeVar >>= tcElems (ppExpr 0 e) es
->   where tcElems :: Doc -> [Expression] -> ConstrType -> TCM ConstrType
->         tcElems _ [] (cx, ty) = return (cx, listType ty)
->         tcElems doc (e1:es1) cty@(cx, ty) = do
->           cty'@(cx', _ty') <- tcExpr p e1
+>      esAndCtys <- mapM (tcExpr p) es
+>      let cx = concatMap (fst . snd) esAndCtys
+>          tys = map (snd . snd) esAndCtys
+>          es' = map fst esAndCtys
+>      return (Tuple sref es', (cx, tupleType tys))
+> tcExpr p e@(List srefs es) = do 
+>   tvar <- freshConstrTypeVar
+>   (es', cty) <- tcElems (ppExpr 0 e) es tvar []
+>   return (List srefs es', cty)
+>   where tcElems :: Doc -> [Expression] -> ConstrType -> [Expression] 
+>                 -> TCM ([Expression], ConstrType)
+>         tcElems _ [] (cx, ty) newEs = return (reverse newEs, (cx, listType ty))
+>         tcElems doc (e1:es1) cty@(cx, ty) newEs = do
+>           (e1', cty'@(cx', _ty')) <- tcExpr p e1
 >           unify p "expression" (doc $-$ text "Term:" <+> ppExpr 0 e1)
 >                 cty cty'
->           tcElems doc es1 (cx ++ cx', ty)
-> tcExpr p (ListCompr _ e qs) = do
+>           tcElems doc es1 (cx ++ cx', ty) (e1':newEs)
+> tcExpr p (ListCompr sref e qs) = do
 >     tyEnv0 <- getValueEnv
->     cxs <- concatMapM (tcQual p) qs
->     (cx, ty) <- tcExpr p e
->     checkSkolems p (text "Expression:" <+> ppExpr 0 e) tyEnv0 (cx ++ cxs, listType ty)
+>     ss <- mapM (tcQual p) qs
+>     let cxs = concatMap snd ss
+>         qs' = map fst ss
+>     (e', (cx, ty)) <- tcExpr p e
+>     cty <- checkSkolems p (text "Expression:" <+> ppExpr 0 e) tyEnv0 (cx ++ cxs, listType ty)
+>     return (ListCompr sref e' qs', cty) 
 > tcExpr p e@(EnumFrom e1) = do
->     cty1@(cx1, _ty1) <- tcExpr p e1
+>     (e1', cty1@(cx1, _ty1)) <- tcExpr p e1
 >     unify p "arithmetic sequence"
 >           (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e1) (noContext intType) cty1
->     return (cx1, listType intType)
+>     return (e1', (cx1, listType intType))
 > tcExpr p e@(EnumFromThen e1 e2) = do
->     cty1@(cx1, _ty1) <- tcExpr p e1
->     cty2@(cx2, _ty2) <- tcExpr p e2
+>     (e1', cty1@(cx1, _ty1)) <- tcExpr p e1
+>     (e2', cty2@(cx2, _ty2)) <- tcExpr p e2
 >     unify p "arithmetic sequence"
 >           (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e1) (noContext intType) cty1
 >     unify p "arithmetic sequence"
 >           (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e2) (noContext intType) cty2
->     return (cx1 ++ cx2, listType intType)
+>     return (EnumFromThen e1' e2', (cx1 ++ cx2, listType intType))
 > tcExpr p e@(EnumFromTo e1 e2) = do
->     cty1@(cx1, _ty1) <- tcExpr p e1
->     cty2@(cx2, _ty2) <- tcExpr p e2
+>     (e1', cty1@(cx1, _ty1)) <- tcExpr p e1
+>     (e2', cty2@(cx2, _ty2)) <- tcExpr p e2
 >     unify p "arithmetic sequence"
 >           (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e1) (noContext intType) cty1
 >     unify p "arithmetic sequence"
 >           (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e2) (noContext intType) cty2
->     return (cx1 ++ cx2, listType intType)
+>     return (EnumFromTo e1' e2', (cx1 ++ cx2, listType intType))
 > tcExpr p e@(EnumFromThenTo e1 e2 e3) = do
->     cty1@(cx1, _ty1) <- tcExpr p e1
->     cty2@(cx2, _ty2) <- tcExpr p e2
->     cty3@(cx3, _ty3) <- tcExpr p e3
+>     (e1', cty1@(cx1, _ty1)) <- tcExpr p e1
+>     (e2', cty2@(cx2, _ty2)) <- tcExpr p e2
+>     (e3', cty3@(cx3, _ty3)) <- tcExpr p e3
 >     unify p "arithmetic sequence"
 >           (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e1) (noContext intType) cty1
 >     unify p "arithmetic sequence"
 >           (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e2) (noContext intType) cty2
 >     unify p "arithmetic sequence"
 >           (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e3) (noContext intType) cty3
->     return (cx1 ++ cx2 ++ cx3, listType intType)
+>     return (EnumFromThenTo e1' e2' e3', (cx1 ++ cx2 ++ cx3, listType intType))
 > tcExpr p e@(UnaryMinus op e1) = do
 >     opTy <- opType op
->     cty1 <- tcExpr p e1
+>     (e1', cty1) <- tcExpr p e1
 >     unify p "unary negation" (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e1)
 >           opTy cty1
->     return cty1
+>     return (UnaryMinus op e1', cty1)
 >   where opType op'
 >           | op' == minusId  = liftM noContext $ freshConstrained [intType,floatType]
 >           | op' == fminusId = return $ noContext floatType
 >           | otherwise = internalError $ "TypeCheck.tcExpr unary " ++ idName op'
 > tcExpr p e@(Apply e1 e2) = do
->     (cx1,       ty1) <- tcExpr p e1
->     cty2@(cx2, _ty2) <- tcExpr p e2
+>     (e1', (cx1,       ty1)) <- tcExpr p e1
+>     (e2', cty2@(cx2, _ty2)) <- tcExpr p e2
 >     (alpha,beta) <- 
 >       tcArrow p "application" (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e1)
 >              ty1
 >     unify p "application" (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e2)
 >           (noContext alpha) cty2
 >     cx' <- adjustContext (cx1 ++ cx2)
->     return (cx', beta)
+>     return (Apply e1' e2', (cx', beta))
 > tcExpr p e@(InfixApply e1 op e2) = do
->     (cxo, opTy)      <- tcExpr p (infixOp op)
->     cty1@(cx1, _ty1) <- tcExpr p e1
->     cty2@(cx2, _ty2) <- tcExpr p e2
+>     (_op, (cxo, opTy))      <- tcExpr p (infixOp op)
+>     (e1', cty1@(cx1, _ty1)) <- tcExpr p e1
+>     (e2', cty2@(cx2, _ty2)) <- tcExpr p e2
 >     (alpha,beta,gamma) <-
 >       tcBinary p "infix application"
 >                (ppExpr 0 e $-$ text "Operator:" <+> ppOp op) opTy
@@ -1185,83 +1209,91 @@ because of possibly multiple occurrences of variables.
 >     unify p "infix application" (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e2)
 >           (noContext beta) cty2
 >     cx' <- adjustContext (cxo ++ cx1 ++ cx2)
->     return (cx', gamma)
+>     return (InfixApply e1' op e2', (cx', gamma))
 > tcExpr p e@(LeftSection e1 op) = do
->     opTy@(cxo, _) <- tcExpr p (infixOp op)
->     cty1@(cx1, _) <- tcExpr p e1
+>     (_op, opTy@(cxo, _)) <- tcExpr p (infixOp op)
+>     (e1', cty1@(cx1, _)) <- tcExpr p e1
 >     (alpha,beta) <-
 >       tcArrow p "left section" (ppExpr 0 e $-$ text "Operator:" <+> ppOp op)
 >               (getType opTy)
 >     unify p "left section" (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e1)
 >           (noContext alpha) cty1
 >     cx' <- adjustContext (cxo ++ cx1)
->     return (cx', beta)
+>     return (LeftSection e1' op, (cx', beta))
 > tcExpr p e@(RightSection op e1) = do
->     opTy@(cxo, _) <- tcExpr p (infixOp op)
->     cty1@(cx1, _) <- tcExpr p e1
+>     (_op, opTy@(cxo, _)) <- tcExpr p (infixOp op)
+>     (e1', cty1@(cx1, _)) <- tcExpr p e1
 >     (alpha,beta,gamma) <-
 >       tcBinary p "right section"
 >                (ppExpr 0 e $-$ text "Operator:" <+> ppOp op) (getType opTy)
 >     unify p "right section" (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e1)
 >           (noContext beta) cty1
 >     cx' <- adjustContext (cxo ++ cx1)
->     return (cx', TypeArrow alpha gamma)
-> tcExpr p expr@(Lambda _ ts e) = do
+>     return (RightSection op e1', (cx', TypeArrow alpha gamma))
+> tcExpr p expr@(Lambda sref ts e) = do
 >     tyEnv0 <- getValueEnv
 >     ctys <- mapM (tcPattern p) ts
->     (cx, ty) <- tcExpr p e
+>     (e', (cx, ty)) <- tcExpr p e
 >     let cxs = concat (map fst ctys ++ [cx]) 
->     checkSkolems p (text "Expression:" <+> ppExpr 0 expr) tyEnv0
->                    (cxs, foldr TypeArrow ty (map getType ctys))
+>     cty <- checkSkolems p (text "Expression:" <+> ppExpr 0 expr) tyEnv0
+>                           (cxs, foldr TypeArrow ty (map getType ctys))
+>     return (Lambda sref ts e', cty)
 > tcExpr p (Let ds e) = do
 >     tyEnv0 <- getValueEnv
->     _cxs <- tcDecls ds
->     (cx, ty) <- tcExpr p e
+>     (ds', _cxs) <- tcDecls ds
+>     (e', (cx, ty)) <- tcExpr p e
 >     -- Shall we gather all contexts, also in the case that a declaration isn't 
 >     -- used at all (neither directly nor indirectly)? But whether this 
 >     -- is the case is not trivially determinable (TODO!).
->     checkSkolems p (text "Expression:" <+> ppExpr 0 e) tyEnv0 (cx {-++ _cxs-}, ty)
+>     cty <- checkSkolems p (text "Expression:" <+> ppExpr 0 e) tyEnv0 (cx {-++ _cxs-}, ty)
+>     return (Let ds' e', cty)
 > tcExpr p (Do sts e) = do
 >     tyEnv0 <- getValueEnv
->     cxs <- concatMapM (tcStmt p) sts
+>     ss <- mapM (tcStmt p) sts
+>     let cxs = concatMap snd ss
+>         sts' = map fst ss
 >     alpha <- freshTypeVar
->     cty@(cx, ty) <- tcExpr p e
+>     (e', cty@(cx, ty)) <- tcExpr p e
 >     unify p "statement" (ppExpr 0 e) (noContext $ ioType alpha) cty
->     checkSkolems p (text "Expression:" <+> ppExpr 0 e) tyEnv0 (cxs ++ cx, ty)
-> tcExpr p e@(IfThenElse _ e1 e2 e3) = do
->     cty1@(cx1, _ty1) <- tcExpr p e1
+>     cty' <- checkSkolems p (text "Expression:" <+> ppExpr 0 e) tyEnv0 (cxs ++ cx, ty)
+>     return (Do sts' e', cty')
+> tcExpr p e@(IfThenElse sref e1 e2 e3) = do
+>     (e1', cty1@(cx1, _ty1)) <- tcExpr p e1
 >     unify p "expression" (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e1)
 >           (noContext boolType) cty1
->     cty2@(cx2, _ty2) <- tcExpr p e2
->     cty3@(cx3, ty3)  <- tcExpr p e3
+>     (e2', cty2@(cx2, _ty2)) <- tcExpr p e2
+>     (e3', cty3@(cx3, ty3))  <- tcExpr p e3
 >     unify p "expression" (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e3)
 >           cty2 cty3
->     return (cx1 ++ cx2 ++ cx3, ty3)
-> tcExpr p (Case _ _ e alts) = do
+>     return (IfThenElse sref e1' e2' e3', (cx1 ++ cx2 ++ cx3, ty3))
+> tcExpr p (Case sref ct e alts) = do
 >     tyEnv0 <- getValueEnv
->     cty@(cx, _) <- tcExpr p e
+>     (e', cty@(cx, _)) <- tcExpr p e
 >     alpha <- freshConstrTypeVar
->     (cxA, tyA) <- tcAlts tyEnv0 cty alpha [] alts
->     return (cx ++ cxA, tyA)
->   where tcAlts _      _   (_, ty2) cx [] = return (cx, ty2)
->         tcAlts tyEnv0 ty1 ty2 cx (alt1:alts1) = do
->           cx1 <- tcAlt (ppAlt alt1) tyEnv0 ty1 ty2 alt1
->           tcAlts tyEnv0 ty1 ty2 (cx ++ cx1) alts1
+>     (alts', (cxA, tyA)) <- tcAlts tyEnv0 cty alpha [] alts []
+>     return (Case sref ct e' alts', (cx ++ cxA, tyA))
+>   where tcAlts _      _   (_, ty2) cx [] newAs = return (reverse newAs, (cx, ty2))
+>         tcAlts tyEnv0 ty1 ty2 cx (alt1:alts1) newAs = do
+>           (a, cx1) <- tcAlt (ppAlt alt1) tyEnv0 ty1 ty2 alt1
+>           tcAlts tyEnv0 ty1 ty2 (cx ++ cx1) alts1 (a:newAs)
+>         tcAlt :: Doc -> ValueEnv -> ConstrType -> ConstrType -> Alt -> TCM (Alt, BT.Context)
 >         tcAlt doc tyEnv0 ty1 ty2 (Alt p1 t rhs) = do
 >           ctyP@(cxP, _) <- tcPattern p1 t
 >           unify p1 "case pattern" (doc $-$ text "Term:" <+> ppPattern 0 t)
 >                 ty1 ctyP
->           ctyRhs@(cxRhs, _) <- tcRhs tyEnv0 rhs
+>           (rhs', ctyRhs@(cxRhs, _)) <- tcRhs tyEnv0 rhs
 >           unify p1 "case branch" doc ty2 ctyRhs
->           return (cxP ++ cxRhs)
+>           return (Alt p1 t rhs', cxP ++ cxRhs)
 > tcExpr _ (RecordConstr fs) = do
->     fts <- mapM tcFieldExpr fs
->     let cxs = concatMap (fst . snd) fts
->     return (cxs, TypeRecord 
->       (map (\(id0, cty) -> (id0, getType cty)) fts) Nothing)
+>     fs'AndFts <- mapM tcFieldExpr fs 
+>     let fts = map snd fs'AndFts 
+>         cxs = concatMap (fst . snd) fts
+>         fs' = map fst fs'AndFts
+>     return (RecordConstr fs', (cxs, TypeRecord 
+>       (map (\(id0, cty) -> (id0, getType cty)) fts) Nothing))
 > tcExpr p r@(RecordSelection e l) = do
 >     m <- getModuleIdent
->     cty@(cx, _) <- tcExpr p e
+>     (e', cty@(cx, _)) <- tcExpr p e
 >     tyEnv <- getValueEnv
 >     lty <- maybe (freshTypeVar
 >                    >>= (\lty' ->
@@ -1278,50 +1310,52 @@ because of possibly multiple occurrences of variables.
 >     -- TODO: adjusting context, because we have a situation similar to
 >     -- Apply (?)
 >     cx' <- adjustContext cx
->     return (cx', lty)
+>     return (RecordSelection e' l, (cx', lty))
 > tcExpr p r@(RecordUpdate fs e) = do
->     ty    <- tcExpr p e
->     fts   <- mapM tcFieldExpr fs
+>     (e', cty) <- tcExpr p e
+>     fs'AndFts   <- mapM tcFieldExpr fs
+>     let fts = map snd fs'AndFts
+>         fs' = map fst fs'AndFts
 >     alpha <- freshVar id
->     let rty = TypeRecord (map (\(id0, cty) -> (id0, getType cty)) fts) (Just alpha)
->     unify p "record update" (ppExpr 0 r) ty (noContext rty)
->     return ty
+>     let rty = TypeRecord (map (\(id0, cty0) -> (id0, getType cty0)) fts) (Just alpha)
+>     unify p "record update" (ppExpr 0 r) cty (noContext rty)
+>     return (RecordUpdate fs' e', cty)
 
-> tcQual :: Position -> Statement -> TCM BT.Context
-> tcQual p (StmtExpr     _ e) = do
->   cty@(cx, _ty) <- tcExpr p e
+> tcQual :: Position -> Statement -> TCM (Statement, BT.Context)
+> tcQual p (StmtExpr  sref e) = do
+>   (e', cty@(cx, _ty)) <- tcExpr p e
 >   unify p "guard" (ppExpr 0 e) (noContext boolType) cty
->   return cx
-> tcQual p q@(StmtBind _ t e) = do
->   (cx1,      ty1) <- tcPattern p t
->   cty2@(cx2, _  ) <- tcExpr p e
+>   return (StmtExpr sref e', cx)
+> tcQual p q@(StmtBind sref t e) = do
+>   (cx1, ty1) <- tcPattern p t
+>   (e', cty2@(cx2, _  )) <- tcExpr p e
 >   -- TODO: return contexts
 >   unify p "generator" (ppStmt q $-$ text "Term:" <+> ppExpr 0 e)
 >         (noContext $ listType ty1) cty2
->   return (cx1 ++ cx2)
+>   return (StmtBind sref t e', cx1 ++ cx2)
 > tcQual _ (StmtDecl      ds) = do 
 >   -- ignore contexts of declarations
->   _ <- tcDecls ds
->   return BT.emptyContext
+>   (ds', _) <- tcDecls ds
+>   return (StmtDecl ds', BT.emptyContext)
 
-> tcStmt ::Position -> Statement -> TCM BT.Context
-> tcStmt p (StmtExpr _ e) = do
+> tcStmt ::Position -> Statement -> TCM (Statement, BT.Context)
+> tcStmt p (StmtExpr sref e) = do
 >   alpha       <- freshTypeVar
->   cty@(cx, _) <- tcExpr p e
+>   (e', cty@(cx, _)) <- tcExpr p e
 >   unify p "statement" (ppExpr 0 e) (noContext $ ioType alpha) cty
->   return cx
-> tcStmt p st@(StmtBind _ t e) = do
+>   return (StmtExpr sref e', cx)
+> tcStmt p st@(StmtBind sref t e) = do
 >   cty1@(cx1, _) <- tcPattern p t
->   cty2@(cx2, _) <- tcExpr p e
+>   (e', cty2@(cx2, _)) <- tcExpr p e
 >   unify p "statement" (ppStmt st $-$ text "Term:" <+> ppExpr 0 e) (noContext $ ioType $ getType cty1) cty2
->   return (cx1 ++ cx2)
+>   return (StmtBind sref t e', cx1 ++ cx2)
 > tcStmt _ (StmtDecl ds) = do
 >   -- ignore contexts of declarations
->   _ <- tcDecls ds
->   return BT.emptyContext
+>   (ds', _) <- tcDecls ds
+>   return (StmtDecl ds', BT.emptyContext)
 
-> tcFieldExpr :: Field Expression -> TCM (Ident, ConstrType)
-> tcFieldExpr f@(Field _ l e) = do
+> tcFieldExpr :: Field Expression -> TCM (Field Expression, (Ident, ConstrType))
+> tcFieldExpr f@(Field p0 l e) = do
 >   m     <- getModuleIdent
 >   tyEnv <- getValueEnv
 >   let p = idPosition l
@@ -1332,9 +1366,9 @@ because of possibly multiple occurrences of variables.
 >                >> (return $ noContext lty')))
 >                  inst
 >         (sureLabelType l tyEnv)
->   cty <- tcExpr p e
+>   (e', cty) <- tcExpr p e
 >   unify p "record" (text "Field:" <+> ppFieldExpr f) lty cty
->   return (l,cty)
+>   return (Field p0 l e', (l,cty))
 
 > adjustContext :: BT.Context -> TCM BT.Context
 > adjustContext cxs = do
