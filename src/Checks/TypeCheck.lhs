@@ -45,7 +45,7 @@ type annotation is present.
 > import Base.Types as BT
 > import Base.TypeSubst
 > import Base.Subst (listToSubst, substToList)
-> import Base.Utils (fst3, foldr2, concatMapM, findDouble)
+> import Base.Utils (fst3, foldr2, findDouble)
 
 > import Env.TypeConstructor (TCEnv, TypeInfo (..), bindTypeInfo
 >   , qualLookupTC)
