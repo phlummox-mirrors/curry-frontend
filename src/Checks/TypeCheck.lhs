@@ -496,7 +496,8 @@ either one of the basic types or \texttt{()}.
 >   theta <- getTypeSubst
 >   let -- build the types and contexts of all declarations
 >       types  = map (subst theta) tysRhs
->       cxs' = map (substContext theta) cxs
+>       -- nubbing contexts for avoiding exponential growth of the context lists
+>       cxs' = map (nub . substContext theta) cxs
 >       dsWithCxs = zip cxs' ds
 >       nonLocalContexts = map (uncurry notLocal) $ zip cxs' types
 >
