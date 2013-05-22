@@ -81,11 +81,15 @@ precCheck env (Module m es is ds)
 -- The declarations remain unchanged; the type constructor and value
 -- environments are updated.
 typeCheck :: CompilerEnv -> Module -> CheckResult (CompilerEnv, Module)
-typeCheck env mdl@(Module _ _ _ ds)
-  | null msgs = CheckSuccess (env { tyConsEnv = tcEnv', valueEnv = tyEnv' }, mdl)
+typeCheck env (Module m es is ds)
+  | null msgs = CheckSuccess (env { tyConsEnv = tcEnv', valueEnv = tyEnv' }, 
+                  (Module m es is newDecls))
   | otherwise = CheckFailed msgs
-  where (tcEnv', tyEnv', msgs) = TC.typeCheck (moduleIdent env)
-                                 (tyConsEnv env) (valueEnv env) (classEnv env) True ds
+  where 
+  (tcEnv', tyEnv', newDecls, msgs) 
+    = TC.typeCheck (moduleIdent env) (tyConsEnv env) (valueEnv env) 
+                   (classEnv env) True ds
+                   
 
 -- |Check the export specification
 exportCheck :: CompilerEnv -> Module -> CheckResult (CompilerEnv, Module)

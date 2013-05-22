@@ -24,8 +24,8 @@ type annotation is present.
 > module Checks.TypeCheck (typeCheck) where
 
 > import Control.Monad (liftM, liftM2, liftM3, replicateM, unless, when)
-> import qualified Control.Monad.State as S (State, execState, gets, modify)
-> import Data.List (nub, partition)
+> import qualified Control.Monad.State as S (State, execState, gets, modify, runState)
+> import Data.List (nub, partition, sortBy)
 > import qualified Data.Map as Map (Map, empty, insert, lookup)
 > import Text.PrettyPrint
 > import qualified Debug.Trace as Dbg
@@ -80,7 +80,7 @@ to True in the normal execution of the compiler.
 \begin{verbatim}
 
 > typeCheck :: ModuleIdent -> TCEnv -> ValueEnv -> ClassEnv -> Bool -> [Decl]
->           -> (TCEnv, ValueEnv, [Message])
+>           -> (TCEnv, ValueEnv, [Decl], [Message])
 > typeCheck m tcEnv tyEnv cEnv doContextRed0 decls = execTCM check initState
 >   where
 >   check = do
@@ -89,13 +89,14 @@ to True in the normal execution of the compiler.
 >     bindConstrs
 >     bindLabels
 >     -- bindClassMethods cEnv
->     _ <- tcDecls vds
+>     (newDecls, _) <- tcDecls vds
 >
 >     cEnv' <- getClassEnv
 >     vEnv <- getValueEnv
 >     checkNoEqualClassMethodAndFunctionNames vEnv cEnv'
 > 
 >     checkForAmbiguousContexts vds
+>     return (tds ++ newDecls)
 >   (tds, vds) = partition isTypeDecl decls
 >   initState  = TcState m tcEnv tyEnv cEnv doContextRed0 idSubst emptySigEnv 0 [] []
 
@@ -164,10 +165,11 @@ generating fresh type variables.
 > report :: Message -> TCM ()
 > report err = S.modify $ \ s -> s { errors = err : errors s }
 
-> execTCM :: TCM a -> TcState -> (TCEnv, ValueEnv, [Message])
-> execTCM tcm s = let s' = S.execState tcm s
+> execTCM :: TCM [Decl] -> TcState -> (TCEnv, ValueEnv, [Decl], [Message])
+> execTCM tcm s = let (decls, s') = S.runState tcm s
 >                 in  ( tyConsEnv s'
 >                     , typeSubst s' `subst` valueEnv s'
+>                     , decls
 >                     , reverse $ nub $ errors s'
 >                     )
 
