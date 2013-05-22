@@ -24,7 +24,7 @@ type annotation is present.
 > module Checks.TypeCheck (typeCheck) where
 
 > import Control.Monad (liftM, liftM2, liftM3, replicateM, unless, when)
-> import qualified Control.Monad.State as S (State, execState, gets, modify, runState)
+> import qualified Control.Monad.State as S (State, gets, modify, runState)
 > import Data.List (nub, partition, sortBy)
 > import qualified Data.Map as Map (Map, empty, insert, lookup)
 > import Text.PrettyPrint
@@ -83,6 +83,7 @@ to True in the normal execution of the compiler.
 >           -> (TCEnv, ValueEnv, [Decl], [Message])
 > typeCheck m tcEnv tyEnv cEnv doContextRed0 decls = execTCM check initState
 >   where
+>   pdecls = zip [0::Int ..] decls
 >   check = do
 >     checkTypeSynonyms m tds
 >     bindTypes tds
@@ -96,8 +97,11 @@ to True in the normal execution of the compiler.
 >     checkNoEqualClassMethodAndFunctionNames vEnv cEnv'
 > 
 >     checkForAmbiguousContexts vds
->     return (tds ++ newDecls)
->   (tds, vds) = partition isTypeDecl decls
+>     return (map snd $ sortBy sorter $ tds' ++ zip (map fst vds') newDecls)
+>   (tds', vds') = partition (isTypeDecl . snd) pdecls
+>   tds = map snd tds'
+>   vds = map snd vds'
+>   sorter (n1, _) (n2, _) = compare n1 n2
 >   initState  = TcState m tcEnv tyEnv cEnv doContextRed0 idSubst emptySigEnv 0 [] []
 
 \end{verbatim}
@@ -451,27 +455,37 @@ either one of the basic types or \texttt{()}.
   Addendum.~\cite{Chakravarty03:FFI}}
 \begin{verbatim}
 
+> type PDecl = (Int, Decl)
+
 > tcDecls :: [Decl] -> TCM ([Decl], BT.Context)
 > tcDecls ds = do
 >   m <- getModuleIdent
 >   oldSig <- getSigEnv
 >   modifySigEnv $ \ sigs -> foldr bindTypeSigs sigs ods
 >   newScope -- scope for the first inferred type substitutions
->   dsAndCxs <- mapM tcDeclGroup $ scc bv (qfv m) vds
+>   dsAndCxs <- mapM tcDeclGroup $ scc (bv . snd) (qfv m . snd) vds'
 >   endScope
 >   modifySigEnv (const oldSig)
->   return $ (concatMap fst dsAndCxs, concatMap snd dsAndCxs)
->   where (vds, ods) = partition isValueDecl ds
+>   let allDecls = ods' ++ concatMap fst dsAndCxs
+>   return $ (map snd $ sortBy sorter allDecls, concatMap snd dsAndCxs)
+>   where
+>   pds = zip [0..] ds
+>   (vds', ods') = partition (isValueDecl . snd) pds
+>   ods = map snd ods'
+>   sorter (n1, _) (n2, _) = compare n1 n2
 
-> tcDeclGroup :: [Decl] -> TCM ([Decl], BT.Context)
-> tcDeclGroup d@[ForeignDecl _ _ _ f ty] = tcForeign f ty >> return (d, BT.emptyContext)
-> tcDeclGroup d@[ExternalDecl      _ fs] = mapM_ tcExternal fs >> return (d, BT.emptyContext)
-> tcDeclGroup d@[FreeDecl          _ vs] = mapM_ tcFree     vs >> return (d, BT.emptyContext)
-> tcDeclGroup ds                         = do
+> tcDeclGroup :: [PDecl] -> TCM ([PDecl], BT.Context)
+> tcDeclGroup d@[(_, ForeignDecl _ _ _ f ty)] = tcForeign f ty >> return (d, BT.emptyContext)
+> tcDeclGroup d@[(_, ExternalDecl      _ fs)] = mapM_ tcExternal fs >> return (d, BT.emptyContext)
+> tcDeclGroup d@[(_, FreeDecl          _ vs)] = mapM_ tcFree     vs >> return (d, BT.emptyContext)
+> tcDeclGroup pds                         = do
 >   n <- getOnlyNextId
 >   theta <- getTypeSubst
 >   oldValEnv <- getValueEnv
->   tcFixPointIter ds (replicate (length ds) Set.empty) n theta oldValEnv Nothing Nothing 0
+>   let ds   = map snd pds
+>       poss = map fst pds
+>   (ds', cx) <- tcFixPointIter ds (replicate (length ds) Set.empty) n theta oldValEnv Nothing Nothing 0
+>   return (zip poss ds, cx)
 
 > tcFixPointIter :: [Decl] -> [Set.Set (QualIdent, Type)] -> Int -> TypeSubst 
 >                -> ValueEnv -> (Maybe (Set.Set Int)) -> (Maybe TypeSubst) 
