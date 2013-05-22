@@ -1166,7 +1166,7 @@ because of possibly multiple occurrences of variables.
 >     (e1', cty1@(cx1, _ty1)) <- tcExpr p e1
 >     unify p "arithmetic sequence"
 >           (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e1) (noContext intType) cty1
->     return (e1', (cx1, listType intType))
+>     return (EnumFrom e1', (cx1, listType intType))
 > tcExpr p e@(EnumFromThen e1 e2) = do
 >     (e1', cty1@(cx1, _ty1)) <- tcExpr p e1
 >     (e2', cty2@(cx2, _ty2)) <- tcExpr p e2
