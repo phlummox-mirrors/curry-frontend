@@ -45,7 +45,7 @@ type annotation is present.
 > import Base.Types as BT
 > import Base.TypeSubst
 > import Base.Subst (listToSubst, substToList)
-> import Base.Utils (fst3, foldr2, findDouble)
+> import Base.Utils (fst3, foldr2, findDouble, zip')
 
 > import Env.TypeConstructor (TCEnv, TypeInfo (..), bindTypeInfo
 >   , qualLookupTC)
@@ -478,14 +478,14 @@ either one of the basic types or \texttt{()}.
 > tcDeclGroup d@[(_, ForeignDecl _ _ _ f ty)] = tcForeign f ty >> return (d, BT.emptyContext)
 > tcDeclGroup d@[(_, ExternalDecl      _ fs)] = mapM_ tcExternal fs >> return (d, BT.emptyContext)
 > tcDeclGroup d@[(_, FreeDecl          _ vs)] = mapM_ tcFree     vs >> return (d, BT.emptyContext)
-> tcDeclGroup pds                         = do
+> tcDeclGroup pds                             = do
 >   n <- getOnlyNextId
 >   theta <- getTypeSubst
 >   oldValEnv <- getValueEnv
 >   let ds   = map snd pds
 >       poss = map fst pds
 >   (ds', cx) <- tcFixPointIter ds (replicate (length ds) Set.empty) n theta oldValEnv Nothing Nothing 0
->   return (zip poss ds, cx)
+>   return (zip' poss ds', cx)
 
 > tcFixPointIter :: [Decl] -> [Set.Set (QualIdent, Type)] -> Int -> TypeSubst 
 >                -> ValueEnv -> (Maybe (Set.Set Int)) -> (Maybe TypeSubst) 
