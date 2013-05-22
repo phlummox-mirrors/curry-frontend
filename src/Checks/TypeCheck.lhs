@@ -513,7 +513,7 @@ either one of the basic types or \texttt{()}.
 >   let -- build the types and contexts of all declarations
 >       types  = map (subst theta) tysRhs
 >       -- nubbing contexts for avoiding exponential growth of the context lists
->       cxs' = map (nub . substContext theta) cxs
+>       cxs' = map (nub . subst theta) cxs
 >       dsWithCxs = zip cxs' ds
 >       nonLocalContexts = map (uncurry notLocal) $ zip cxs' types
 >
@@ -744,7 +744,7 @@ signature the declared type must be too general.
 >         True -> do
 >           -- check that the given context implies the inferred
 >           let mapping = buildTypeVarsMapping (typeSchemeToType sigma') (typeSchemeToType sigma)
->               context' = substContext mapping $ getContext sigma' 
+>               context' = subst mapping $ getContext sigma' 
 >           unless (implies' cEnv context' context)
 >             $ report $ errContextImplication (idPosition v) m context' context
 >               (filter (not . implies cEnv context') context)  
@@ -1084,15 +1084,14 @@ because of possibly multiple occurrences of variables.
 >           let firstTypeSubst = case maybeTheta of
 >                 Nothing -> idSubst
 >                 Just x -> x
->               icx = substContext firstTypeSubst icx'
->               ity = subst firstTypeSubst ity'
+>               (icx, ity) = subst firstTypeSubst (icx', ity')
 >           -- retrieve the type from the type signature...
 >           (cx0, ty0) <- expandPolyType cty >>= inst
 >           -- ... and construct a mapping, so that the type variables in the 
 >           -- inferred (new) contexts match the type variables in the type
 >           -- constructed from the type signature
 >           let mapping = buildTypeVarsMapping ity ty0
->           return (e, (cx0 ++ substContext mapping icx, ty0))
+>           return (e, (cx0 ++ subst mapping icx, ty0))
 >         Nothing -> do
 >           cty <- getValueEnv >>= inst . (flip (funType tcEnv m v) cEnv)
 >           return (e, cty)
@@ -1109,7 +1108,7 @@ because of possibly multiple occurrences of variables.
 >   inst sigma' >>= flip (unify p "explicitly typed expression" (ppExpr 0 e)) cty
 >   theta <- getTypeSubst
 >   let (sigma, s) = genS (fvEnv (subst theta tyEnv0)) 
->                         (substContext theta cxInf, subst theta tyInf)
+>                         (subst theta (cxInf, tyInf)) 
 >       -- this is safe here because "gen" uses only substitutions of the 
 >       -- form (Int, TypeVariable Int)
 >       s' = reverseTySubst s
@@ -1128,7 +1127,7 @@ because of possibly multiple occurrences of variables.
 >   -- in cxGiven don't refer to the type variables in the inferred type.  
 >   -- Because of this we have to "substitute" the type variables "back", so
 >   -- that they correctly refer to the type variables in the inferred type.  
->   return (Typed e' cx sig, (cxInf ++ substContext s' cxGiven, tyInf))
+>   return (Typed e' cx sig, (cxInf ++ subst s' cxGiven, tyInf))
 >   where sig' = nameSigType sig
 >         eqTypes (ForAll _cx1 _ t1) (ForAll _cx2 _ t2) = t1 == t2
 > tcExpr p (Paren e) = do
@@ -1390,7 +1389,7 @@ because of possibly multiple occurrences of variables.
 > adjustContext :: BT.Context -> TCM BT.Context
 > adjustContext cxs = do
 >   theta <- getTypeSubst
->   return (substContext theta cxs) 
+>   return (subst theta cxs) 
 
 > reverseTySubst :: TypeSubst -> TypeSubst
 > reverseTySubst = listToSubst . map swap . substToList
@@ -1615,7 +1614,7 @@ We use negative offsets for fresh type variables.
 >   return $ ({-cx',-} expandAliasType (tys ++ tys') ty)
 
 > genS :: Set.Set Int -> ConstrType -> (TypeScheme, TypeSubst)
-> genS gvs (cx, ty) = (ForAll (substContext s cx) (length tvs)
+> genS gvs (cx, ty) = (ForAll (subst s cx) (length tvs)
 >                             (subst s ty), s)
 >   where tvs = [tv | tv <- nub (typeVars ty), tv `Set.notMember` gvs]
 >         tvs' = map TypeVariable [0 ..]

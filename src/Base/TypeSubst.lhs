@@ -9,6 +9,8 @@
 This module implements substitutions on types.
 \begin{verbatim}
 
+> {-# LANGUAGE TypeSynonymInstances, FlexibleInstances #-}
+
 > module Base.TypeSubst
 >   ( module Base.TypeSubst, idSubst, singleSubst, bindSubst, compose
 >   ) where
@@ -68,6 +70,12 @@ This module implements substitutions on types.
 
 > instance SubstType a => SubstType (TopEnv a) where
 >   subst = fmap . subst
+
+> instance SubstType Context where
+>   subst = substContext
+
+> instance (SubstType a, SubstType b) => SubstType (a, b) where
+>   subst sigma (x, y) = (subst sigma x, subst sigma y)
 
 > substContext :: TypeSubst -> Context -> Context
 > substContext s cx = map (\(qid, ty) -> (qid, subst s ty)) cx  
