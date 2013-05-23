@@ -129,7 +129,7 @@ implies :: ClassEnv -> BT.Context -> (QualIdent, Type) -> Bool
 implies cEnv cx (qid, ty) = 
   any (\(qid', ty') -> ty == ty' && (qid == qid' || isSuperClassOf cEnv qid qid')) cx
   ||
-  ((isTyCons ty || isArrow ty) && 
+  (isCons ty && 
     let (xi, tys) = getTyCons ty
         insts = getInstancesForType cEnv xi in
     any (\i -> 
@@ -182,7 +182,7 @@ isValidCx cEnv cx = concatMap isValid' cx
   where
   isValid' :: (QualIdent, Type) -> BT.Context
   isValid' (_cls, TypeVariable _) = []
-  isValid' (cls, ty) | (isTyCons ty || isArrow ty) = 
+  isValid' (cls, ty) | isCons ty = 
     let (xi, tys) = getTyCons ty
         inst = getInstance cEnv cls xi
         tyVars = typeVars (fromJust inst)
