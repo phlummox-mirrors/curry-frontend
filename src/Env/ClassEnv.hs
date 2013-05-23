@@ -150,7 +150,9 @@ getInstancesForType cEnv qid = filter (\inst -> iType inst == qid) (theInstances
 
 -- |helper function
 substContext :: [(Ident, Type)] -> [(QualIdent, Ident)] -> BT.Context
-substContext subst cx = map (\(qid, id0) -> (qid, fromJust $ lookup id0 subst)) cx
+substContext subst cx = concatMap mfun cx
+  where
+  mfun (qid, id0) = maybe [] (\id' -> [(qid, id')]) (lookup id0 subst) 
 
 getTyCons :: Type -> (QualIdent, [Type])
 getTyCons (TypeConstructor xi tys) = (xi, tys)
@@ -207,7 +209,7 @@ findPath' :: ClassEnv -> QualIdent -> QualIdent -> [QualIdent] -> [[QualIdent]]
 findPath' cEnv start target path
   | start == target = [reverse (target:path)]
   | otherwise = concatMap (\sc -> findPath' cEnv sc target (start:path)) 
-                          (superClasses $ fromJust $ lookupClass cEnv start)
+                          (maybe [] superClasses (lookupClass cEnv start))
 
 -- ----------------------------------------------------------------------------
 -- Pritty printer functions

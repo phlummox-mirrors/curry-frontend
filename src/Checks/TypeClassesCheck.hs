@@ -336,7 +336,7 @@ checkRulesInInstanceOrClass cEnv decl =
   mapM_ isDefinedFunctionClassMethod (getDecls decl)
   where 
     isDefinedFunctionClassMethod (cls, FunctionDecl p f _) 
-      = let ms = methods (fromJust $ lookupClass cEnv cls)
+      = let ms = maybe [] methods (lookupClass cEnv cls)
             eq = (\(id0, _, _) -> id0 == f)
         in 
         case find eq ms of
