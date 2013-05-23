@@ -135,7 +135,7 @@ implies cEnv cx (qid, ty) =
     any (\i -> 
       let cx' = context i
           ids = typeVars i
-          s = zip ids tys
+          s = zip' ids tys
           cx'' = substContext s cx' in
       null (isValidCx cEnv cx'') && implies' cEnv cx cx'') insts)
 
@@ -187,7 +187,7 @@ isValidCx cEnv cx = concatMap isValid' cx
         inst = getInstance cEnv cls xi
         tyVars = typeVars (fromJust inst)
         iCx = context (fromJust inst)
-        s = zip tyVars tys in
+        s = zip' tyVars tys in
     if isNothing inst then [(cls, ty)]
     else isValidCx cEnv (substContext s iCx)
   isValid' (_cls, _) = []
