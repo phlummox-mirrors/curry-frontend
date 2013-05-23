@@ -86,7 +86,7 @@ typeClassesCheck m decls (ClassEnv importedClasses importedInstances _) tcEnv0 =
       
       -- gather all classes and instances for more "global" checks
       let classes = map classDeclToClass classDecls ++ importedClasses
-          instances = map (instanceDeclToInstance m tcEnv) instDecls ++ importedInstances
+          instances = catMaybes (map (instanceDeclToInstance m tcEnv) instDecls) ++ importedInstances
           newClassEnv = ClassEnv classes instances Map.empty
       -- TODO: check also contexts of (imported) classes and interfaces?
       mapM_ (checkClassesInContext m newClassEnv) classDecls
@@ -148,32 +148,35 @@ addClassMethods (Class { methods = ms, theClass = cls}) =
   in foldr (uncurry Map.insert) Map.empty ms_cls
 
 -- |converts an instance declaration into the form of the class environment
-instanceDeclToInstance :: ModuleIdent -> TCEnv -> Decl -> Instance
+instanceDeclToInstance :: ModuleIdent -> TCEnv -> Decl -> Maybe Instance
 instanceDeclToInstance m tcEnv (InstanceDecl _ (SContext scon) cls tcon ids decls) = 
-  Instance { 
-    context = scon, 
-    iClass = cls,  
-    iType = tyConToQualIdent m tcEnv tcon, 
-    typeVars = ids, 
-    rules = decls }
+  fmap (\ty -> 
+    Instance { 
+      context = scon, 
+      iClass = cls,  
+      iType = ty, 
+      typeVars = ids, 
+      rules = decls }) qid
+  where
+  qid = tyConToQualIdent m tcEnv tcon
 instanceDeclToInstance _ _ _ = internalError "instanceDeclToInstance"
 
-tyConToQualIdent :: ModuleIdent -> TCEnv -> TypeConstructor -> QualIdent
+tyConToQualIdent :: ModuleIdent -> TCEnv -> TypeConstructor -> Maybe QualIdent
 tyConToQualIdent m tcEnv (QualTC qid) = qualifyQid
   where
   qualifyQid = case qualLookupTC qid tcEnv of
-    [DataType tc' _ _] -> tc'
-    [RenamingType tc' _ _] -> tc'
-    [AliasType _ _ _] -> internalError "type synonym in instance declaration"
+    [DataType tc' _ _] -> Just tc'
+    [RenamingType tc' _ _] -> Just tc'
+    [AliasType _ _ _] -> Nothing
     _ -> case qualLookupTC (qualQualify m qid) tcEnv of
-      [DataType tc' _ _] -> tc'
-      [RenamingType tc' _ _] -> tc'
-      [AliasType _ _ _] -> internalError "type synonym in instance declaration"
-      _ -> internalError "type constructor not found"
-tyConToQualIdent _ _ UnitTC = qUnitIdP
-tyConToQualIdent _ _ (TupleTC n) = qTupleIdP n 
-tyConToQualIdent _ _ ListTC = qListIdP
-tyConToQualIdent _ _ ArrowTC = qArrowId
+      [DataType tc' _ _] -> Just tc'
+      [RenamingType tc' _ _] -> Just tc'
+      [AliasType _ _ _] -> Nothing
+      _ -> Nothing
+tyConToQualIdent _ _ UnitTC = Just qUnitIdP
+tyConToQualIdent _ _ (TupleTC n) = Just $ qTupleIdP n 
+tyConToQualIdent _ _ ListTC = Just qListIdP
+tyConToQualIdent _ _ ArrowTC = Just qArrowId
 
 -- |gathers *all* type signatures, also those that are in nested scopes and in
 -- classes etc.
@@ -479,9 +482,9 @@ checkForInstanceDataTypeExistAlsoInstancesForSuperclasses cEnv tcEnv m
         -- scs = superClasses (fromJust $ lookupClass cEnv cls)
         scs = allSuperClasses cEnv cls
         tyId = tyConToQualIdent m tcEnv ty
-        insts = map (\c -> getInstance cEnv c tyId) scs 
+        insts = map (\c -> getInstance cEnv c (fromJust tyId)) scs 
         missingInsts = map fst $ filter (isNothing . snd) $ zip scs insts in
-    unless (all isJust insts) $ report $ 
+    when (isJust tyId) $ unless (all isJust insts) $ report $ 
       errMissingSuperClassInstances p ty missingInsts      
 checkForInstanceDataTypeExistAlsoInstancesForSuperclasses _ _ _ _
   = internalError "checkForInstanceDataTypeExistAlsoInstancesForSuperclasses"
@@ -523,14 +526,15 @@ checkInstanceContextImpliesAllInstanceContextsOfSuperClasses cEnv tcEnv m
   = let thisContext = getContextFromInstDecl inst
         scs = allSuperClasses cEnv cls
         tyId = tyConToQualIdent m tcEnv ty
-        insts = map fromJust $ filter isJust $ map (\c -> getInstance cEnv c tyId) scs
+        insts = map fromJust $ filter isJust $ 
+          map (\c -> getInstance cEnv c (fromJust tyId)) scs
         instCxs = concatMap getContextFromInst insts
         
         thisContext' = getSContextFromContext thisContext tyvars
         instCxs' = getSContextFromContext instCxs tyvars
         notImplCxs = (filter (not . implies cEnv thisContext) instCxs)
         notImplCxs' = getSContextFromContext notImplCxs tyvars in
-    unless (implies' cEnv thisContext instCxs) $ report $  
+    when (isJust tyId) $ unless (implies' cEnv thisContext instCxs) $ report $  
       errContextNotImplied p thisContext' instCxs' notImplCxs'
         
 checkInstanceContextImpliesAllInstanceContextsOfSuperClasses _ _ _ _
