@@ -446,7 +446,6 @@ checkInstanceDataTypeCorrect _ (InstanceDecl p _ _ ListTC ids _) =
   unless (length ids == 1) $ report (errDataTypeHasIncorrectArity p qListId)
 checkInstanceDataTypeCorrect _ (InstanceDecl p _ _ ArrowTC ids _) =
   unless (length ids == 2) $ report (errDataTypeHasIncorrectArity p qArrowId)  
-checkInstanceDataTypeCorrect _ (InstanceDecl _ _ _ _ _ _) = ok
 checkInstanceDataTypeCorrect _ _ = internalError "checkInstanceDataTypeCorrect"
 
 -- |Checks that there are only type vars in the context that also appear on
