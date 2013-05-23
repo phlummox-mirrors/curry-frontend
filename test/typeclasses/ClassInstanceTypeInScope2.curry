@@ -9,11 +9,7 @@ instance A Char where
 
 instance A Int where
 
-instance A Float where
-
-instance A P.Char where
-
-instance A P.Int where
+instance A P.Float where
 
 data P = P
 

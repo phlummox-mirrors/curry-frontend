@@ -77,10 +77,8 @@ typeClassesCheck m decls (ClassEnv importedClasses importedInstances _) tcEnv0 =
   where
     classDecls = filter isClassDecl decls
     instDecls = filter isInstanceDecl decls
-    dataDecls = filter (\x -> isDataDecl x || isNewtypeDecl x) decls
     typeSigs = gatherTypeSigs decls
     tcEnv = foldr (bindTC m tcEnv) tcEnv0 decls
-    allDataTypes = gatherDataTypes dataDecls m
     result = do
       mapM_ typeVariableInContext classDecls
       mapM_ classMethodSigsContainTypeVar classDecls
@@ -104,7 +102,7 @@ typeClassesCheck m decls (ClassEnv importedClasses importedInstances _) tcEnv0 =
       mapM_ (checkRulesInInstanceOrClass newClassEnv) classDecls
       
       mapM_ (checkClassNameInScope newClassEnv) instDecls
-      mapM_ (checkInstanceDataTypeCorrect allDataTypes tcEnv0) instDecls
+      mapM_ (checkInstanceDataTypeCorrect tcEnv) instDecls
       
       checkForDuplicateClassNames newClassEnv
       checkForDuplicateInstances newClassEnv
@@ -176,16 +174,6 @@ tyConToQualIdent _ _ UnitTC = qUnitIdP
 tyConToQualIdent _ _ (TupleTC n) = qTupleIdP n 
 tyConToQualIdent _ _ ListTC = qListIdP
 tyConToQualIdent _ _ ArrowTC = qArrowId
-
--- |extract all data types/newtypes 
-gatherDataTypes :: [Decl] -> ModuleIdent -> [(QualIdent, Int)]
-gatherDataTypes decls m = concatMap getDataType decls
-  where
-  getDataType (DataDecl _ d ids _) = 
-    let a = length ids in [(qualify d, a), (qualifyWith m d, a)]
-  getDataType (NewtypeDecl _ d ids _) = 
-    let a = length ids in [(qualify d, a), (qualifyWith m d, a)]
-  getDataType _ = internalError "allDataTypes"
 
 -- |gathers *all* type signatures, also those that are in nested scopes and in
 -- classes etc.
@@ -433,31 +421,30 @@ checkClassNameInScope _ _ = internalError "checkClassNameInScope"
 -- |Checks whether the instance data type is in scope and not a type synonym. 
 -- Check also that the arity of the data type in the instance declaration
 -- is correct. 
-checkInstanceDataTypeCorrect :: [(QualIdent, Int)] -> TCEnv -> Decl -> Tcc ()
-checkInstanceDataTypeCorrect dataTypes tcEnv (InstanceDecl p _ _ (QualTC qid) ids _) =
-  -- if the data type is defined in the module and in the type constructor
-  -- environment or more than once in the type constructor environment -> error! 
-  if (defInModule && defInTCEnv) || length tinfo > 1
+checkInstanceDataTypeCorrect :: TCEnv -> Decl -> Tcc ()
+checkInstanceDataTypeCorrect tcEnv (InstanceDecl p _ _ (QualTC qid) ids _) =
+  if length tinfo > 1
   then report (errDataTypeAmbiguous p qid)
-  -- check if data type is defined in this module
-  else if defInModule
-  then if arity == length ids
-       then ok
-       else report (errDataTypeHasIncorrectArity p qid)
-  -- if data type is not defined in this module, search it in the type
-  -- constructor environment that contains all imported type constructors
-  else if defInTCEnv
-  then if tcArity (head tinfo) /= length ids
-            then report (errDataTypeHasIncorrectArity p qid)
-            else ok
-  else report (errDataTypeNotInScope p qid) 
+  else if null tinfo
+  then report (errDataTypeNotInScope p qid)
+  else do
+    when (isAliasType $ head tinfo) $ report (errTypeInInstanceDecl p qid)
+    when (tcArity (head tinfo) /= length ids) $ report (errDataTypeHasIncorrectArity p qid)  
 
-  where arity = fromJust $ lookup qid dataTypes
-        tinfo = qualLookupTC qid tcEnv 
-        defInModule = qid `elem` (map fst dataTypes)
-        defInTCEnv = not . null $ tinfo
-checkInstanceDataTypeCorrect _dataTypes _ (InstanceDecl _ _ _ _ _ _) = ok
-checkInstanceDataTypeCorrect _ _ _ = internalError "checkInstanceDataTypeCorrect"
+  where tinfo = qualLookupTC qid tcEnv 
+        isAliasType (AliasType _ _ _) = True
+        isAliasType _ = False
+
+checkInstanceDataTypeCorrect _ (InstanceDecl p _ _ UnitTC ids _) = 
+  unless (null ids) $ report (errDataTypeHasIncorrectArity p qUnitId)
+checkInstanceDataTypeCorrect _ (InstanceDecl p _ _ (TupleTC n) ids _) =
+  unless (length ids == n) $ report (errDataTypeHasIncorrectArity p (qTupleId n))
+checkInstanceDataTypeCorrect _ (InstanceDecl p _ _ ListTC ids _) =
+  unless (length ids == 1) $ report (errDataTypeHasIncorrectArity p qListId)
+checkInstanceDataTypeCorrect _ (InstanceDecl p _ _ ArrowTC ids _) =
+  unless (length ids == 2) $ report (errDataTypeHasIncorrectArity p qArrowId)  
+checkInstanceDataTypeCorrect _ (InstanceDecl _ _ _ _ _ _) = ok
+checkInstanceDataTypeCorrect _ _ = internalError "checkInstanceDataTypeCorrect"
 
 -- |Checks that there are only type vars in the context that also appear on
 -- the right side
@@ -1085,3 +1072,6 @@ errContextNotImplied p thisContext _instsCxs notImplCxs = posMessage p $
     ++ " for superclasses:") $$ text ("Context: ") <> (showSCon thisContext) $$
   text ("Not implied: ") <> (showSCon notImplCxs)  
 
+errTypeInInstanceDecl :: Position -> QualIdent -> Message
+errTypeInInstanceDecl p qid = posMessage p $ 
+  text "Alias type in instance declaration: " <> text (show qid)
