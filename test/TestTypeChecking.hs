@@ -326,7 +326,10 @@ mk str n = (mkId str, mkTy n)
 mkTy :: Int -> Type
 mkTy n = TypeVariable n
 
-tycon s = TypeConstructor (mkId s)
+tycon s = TypeConstructor (mkQId s)
+
+mkQId :: String -> QualIdent
+mkQId s = qualifyWith (mkMIdent ["TestVarious"]) $ mkIdent s
 
 -- |checks the "isValidCx" function
 checkValidCx :: ClassEnv -> Bool

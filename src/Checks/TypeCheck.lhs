@@ -21,7 +21,7 @@ unannotated declarations, but allows for polymorphic recursion when a
 type annotation is present.
 \begin{verbatim}
 
-> module Checks.TypeCheck (typeCheck) where
+> module Checks.TypeCheck (typeCheck, bindTC) where
 
 > import Control.Monad (liftM, liftM2, liftM3, replicateM, unless, when)
 > import qualified Control.Monad.State as S (State, gets, modify, runState)

@@ -34,6 +34,8 @@ import qualified Base.Types as BTC (Context)
 import Base.SCC
 import Base.Utils (findMultiples, fst3)
 
+import Checks.TypeCheck
+
 -- ---------------------------------------------------------------------------
 -- The state monad used (for gathering error messages)
 -- ---------------------------------------------------------------------------
@@ -62,7 +64,7 @@ runTcc tcc s = let (a, s') = runState tcc s in (a, reverse $ errors s')
 -- adds new data types/functions for the class and instance declarations. 
 -- Also builds a corresponding class environment. 
 typeClassesCheck :: ModuleIdent -> [Decl] -> ClassEnv -> TCEnv -> ([Decl], ClassEnv, [Message])
-typeClassesCheck m decls (ClassEnv importedClasses importedInstances _) tcEnv = 
+typeClassesCheck m decls (ClassEnv importedClasses importedInstances _) tcEnv0 = 
   case runTcc result initTccState of 
     ((classes, instances), []) -> 
       let newDecls = concatMap (transformInstance cEnv) $ 
@@ -77,6 +79,7 @@ typeClassesCheck m decls (ClassEnv importedClasses importedInstances _) tcEnv =
     instDecls = filter isInstanceDecl decls
     dataDecls = filter (\x -> isDataDecl x || isNewtypeDecl x) decls
     typeSigs = gatherTypeSigs decls
+    tcEnv = foldr (bindTC m tcEnv) tcEnv0 decls
     allDataTypes = gatherDataTypes dataDecls m
     result = do
       mapM_ typeVariableInContext classDecls
@@ -85,7 +88,7 @@ typeClassesCheck m decls (ClassEnv importedClasses importedInstances _) tcEnv =
       
       -- gather all classes and instances for more "global" checks
       let classes = map classDeclToClass classDecls ++ importedClasses
-          instances = map instanceDeclToInstance instDecls ++ importedInstances
+          instances = map (instanceDeclToInstance m tcEnv) instDecls ++ importedInstances
           newClassEnv = ClassEnv classes instances Map.empty
       -- TODO: check also contexts of (imported) classes and interfaces?
       mapM_ (checkClassesInContext m newClassEnv) classDecls
@@ -101,7 +104,7 @@ typeClassesCheck m decls (ClassEnv importedClasses importedInstances _) tcEnv =
       mapM_ (checkRulesInInstanceOrClass newClassEnv) classDecls
       
       mapM_ (checkClassNameInScope newClassEnv) instDecls
-      mapM_ (checkInstanceDataTypeCorrect allDataTypes tcEnv) instDecls
+      mapM_ (checkInstanceDataTypeCorrect allDataTypes tcEnv0) instDecls
       
       checkForDuplicateClassNames newClassEnv
       checkForDuplicateInstances newClassEnv
@@ -109,8 +112,8 @@ typeClassesCheck m decls (ClassEnv importedClasses importedInstances _) tcEnv =
       checkForCyclesInClassHierarchy newClassEnv
       mapM_ (checkForDirectCycle m) classDecls
       
-      mapM_ (checkForInstanceDataTypeExistAlsoInstancesForSuperclasses newClassEnv) instDecls
-      mapM_ (checkInstanceContextImpliesAllInstanceContextsOfSuperClasses newClassEnv) instDecls
+      mapM_ (checkForInstanceDataTypeExistAlsoInstancesForSuperclasses newClassEnv tcEnv m) instDecls
+      mapM_ (checkInstanceContextImpliesAllInstanceContextsOfSuperClasses newClassEnv tcEnv m) instDecls
       
       noDoubleClassMethods classes
       return (classes, instances)
@@ -147,22 +150,32 @@ addClassMethods (Class { methods = ms, theClass = cls}) =
   in foldr (uncurry Map.insert) Map.empty ms_cls
 
 -- |converts an instance declaration into the form of the class environment
-instanceDeclToInstance :: Decl -> Instance
-instanceDeclToInstance (InstanceDecl _ (SContext scon) cls tcon ids decls) = 
+instanceDeclToInstance :: ModuleIdent -> TCEnv -> Decl -> Instance
+instanceDeclToInstance m tcEnv (InstanceDecl _ (SContext scon) cls tcon ids decls) = 
   Instance { 
     context = scon, 
     iClass = cls,  
-    iType = tyConToQualIdent tcon, 
+    iType = tyConToQualIdent m tcEnv tcon, 
     typeVars = ids, 
     rules = decls }
-instanceDeclToInstance _ = internalError "instanceDeclToInstance"
+instanceDeclToInstance _ _ _ = internalError "instanceDeclToInstance"
 
-tyConToQualIdent :: TypeConstructor -> QualIdent
-tyConToQualIdent (QualTC qid) = qid
-tyConToQualIdent UnitTC = qUnitIdP
-tyConToQualIdent (TupleTC n) = qTupleIdP n 
-tyConToQualIdent ListTC = qListIdP
-tyConToQualIdent ArrowTC = qArrowId
+tyConToQualIdent :: ModuleIdent -> TCEnv -> TypeConstructor -> QualIdent
+tyConToQualIdent m tcEnv (QualTC qid) = qualifyQid
+  where
+  qualifyQid = case qualLookupTC qid tcEnv of
+    [DataType tc' _ _] -> tc'
+    [RenamingType tc' _ _] -> tc'
+    [AliasType _ _ _] -> internalError "type synonym in instance declaration"
+    _ -> case qualLookupTC (qualQualify m qid) tcEnv of
+      [DataType tc' _ _] -> tc'
+      [RenamingType tc' _ _] -> tc'
+      [AliasType _ _ _] -> internalError "type synonym in instance declaration"
+      _ -> internalError "type constructor not found"
+tyConToQualIdent _ _ UnitTC = qUnitIdP
+tyConToQualIdent _ _ (TupleTC n) = qTupleIdP n 
+tyConToQualIdent _ _ ListTC = qListIdP
+tyConToQualIdent _ _ ArrowTC = qArrowId
 
 -- |extract all data types/newtypes 
 gatherDataTypes :: [Decl] -> ModuleIdent -> [(QualIdent, Int)]
@@ -471,18 +484,19 @@ checkTypeVarsInContext _ = internalError "typeSigCorrect"
 -- |Assuming we have an instance `instance C (T ...)`, we must verify that
 -- for each superclass S of C there is also an instance declaration 
 -- `instance S (T ...)`
-checkForInstanceDataTypeExistAlsoInstancesForSuperclasses :: ClassEnv -> Decl -> Tcc ()
-checkForInstanceDataTypeExistAlsoInstancesForSuperclasses cEnv 
+checkForInstanceDataTypeExistAlsoInstancesForSuperclasses :: 
+    ClassEnv -> TCEnv -> ModuleIdent -> Decl -> Tcc ()
+checkForInstanceDataTypeExistAlsoInstancesForSuperclasses cEnv tcEnv m
     (InstanceDecl p _scon cls ty _tyvars _)
   = let -- TODO: is it sufficient to take only direct superclasses? 
         -- scs = superClasses (fromJust $ lookupClass cEnv cls)
         scs = allSuperClasses cEnv cls
-        tyId = tyConToQualIdent ty
+        tyId = tyConToQualIdent m tcEnv ty
         insts = map (\c -> getInstance cEnv c tyId) scs 
         missingInsts = map fst $ filter (isNothing . snd) $ zip scs insts in
     unless (all isJust insts) $ report $ 
       errMissingSuperClassInstances p ty missingInsts      
-checkForInstanceDataTypeExistAlsoInstancesForSuperclasses _ _ 
+checkForInstanceDataTypeExistAlsoInstancesForSuperclasses _ _ _ _
   = internalError "checkForInstanceDataTypeExistAlsoInstancesForSuperclasses"
   
 
@@ -516,12 +530,12 @@ getSContextFromContext con tyvars =
 -- the context cx implies *all* contexts of instance declarations for 
 -- the same type and the superclasses of C
 checkInstanceContextImpliesAllInstanceContextsOfSuperClasses :: 
-    ClassEnv -> Decl -> Tcc ()
-checkInstanceContextImpliesAllInstanceContextsOfSuperClasses cEnv
+    ClassEnv -> TCEnv -> ModuleIdent -> Decl -> Tcc ()
+checkInstanceContextImpliesAllInstanceContextsOfSuperClasses cEnv tcEnv m
     inst@(InstanceDecl p _scon cls ty tyvars _)
   = let thisContext = getContextFromInstDecl inst
         scs = allSuperClasses cEnv cls
-        tyId = tyConToQualIdent ty
+        tyId = tyConToQualIdent m tcEnv ty
         insts = map fromJust $ filter isJust $ map (\c -> getInstance cEnv c tyId) scs
         instCxs = concatMap getContextFromInst insts
         
@@ -532,7 +546,7 @@ checkInstanceContextImpliesAllInstanceContextsOfSuperClasses cEnv
     unless (implies' cEnv thisContext instCxs) $ report $  
       errContextNotImplied p thisContext' instCxs' notImplCxs'
         
-checkInstanceContextImpliesAllInstanceContextsOfSuperClasses _ _
+checkInstanceContextImpliesAllInstanceContextsOfSuperClasses _ _ _ _
   = internalError "checkInstanceContextImpliesAllInstanceContextsOfSuperClasses"
 
 -- ---------------------------------------------------------------------------
