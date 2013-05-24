@@ -389,7 +389,15 @@ checkContextReduction cEnv =
   reduceContext cEnv [(mkId "N", tycon "NotExistent" [])] == [(mkId "N", tycon "NotExistent" [])] &&
     
   reduceContext cEnv [(mkId "Eq", tycon "T" [tyconP "Int" []])] == [] && 
-  reduceContext cEnv [(mkId "Eq", tycon "T" [mkTy 0])] == [(mkId "Eq'", mkTy 0)]
+  reduceContext cEnv [(mkId "Eq", tycon "T" [mkTy 0])] == [(mkId "Eq'", mkTy 0)] &&
+  
+  reduceContext cEnv [(mkId "Eq", tyconP "Float" [])] == [(mkId "Eq", tyconP "Float" [])] && 
+  reduceContext cEnv [(mkId "Eq'", tyconP "Float" []), (mkId "Eq", tycon "T" [tyconP "Float" []])] ==
+    [(mkId "Eq'", tyconP "Float" [])] && 
+  reduceContext cEnv 
+    [(mkId "Eq", tyconP "Int" []), (mkId "Eq", tyconP "Char" []), 
+      (mkId "Eq", tyconP "(,)" [tyconP "Char" [], tyconP "Int" []])] =:=
+    [(mkId "Eq", tyconP "Char" []), (mkId "Eq", tyconP "Int" [])]
 
 -- | checks the findPath method
 checkFindPath :: ClassEnv -> Bool
