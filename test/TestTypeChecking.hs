@@ -23,6 +23,7 @@ import Env.ClassEnv
 import qualified Checks.TypeCheck as TC (typeCheck)
 import Curry.Syntax (Module (..))
 import Data.Maybe
+import Debug.Trace
 
 import Base.Types
 
@@ -351,6 +352,9 @@ checkValidCx cEnv =
     [(mkId "N", tycon "W" [tycon "R1" []])]) &&
   not (null $ isValidCx cEnv 
     [(mkId "N", tycon "W" [tycon "R2" []])])
+
+(===) :: (Eq a, Show a) => a -> a -> Bool
+x === y = if x == y then True else trace (show x ++ "/" ++ show y) False   
 
 -- | checks the context reduction
 checkContextReduction :: ClassEnv -> Bool
