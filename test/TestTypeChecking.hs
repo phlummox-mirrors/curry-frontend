@@ -317,7 +317,9 @@ checkImpl cEnv =
   implies cEnv [mk "N" 0] (mkId "N", TypeConstructor (qTupleIdP 2) [mkTy 0, mkTy 1]) &&
   implies cEnv [] (mkId "N", TypeConstructor qUnitIdP []) &&
   
-  implies cEnv [] (mkId "N", tycon "Q" [mkTy 0])
+  implies cEnv [] (mkId "N", tycon "Q" [mkTy 0]) &&
+  
+  not (implies cEnv [mk "A" 0] (mkId "C", tycon "X" [mkTy 0]))
   
 
 mk :: String -> Int -> (QualIdent, Type)

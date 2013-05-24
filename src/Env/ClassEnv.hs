@@ -131,13 +131,14 @@ implies cEnv cx (qid, ty) =
   ||
   (isCons ty && 
     let (xi, tys) = getTyCons ty
-        insts = getInstancesForType cEnv xi in
-    any (\i -> 
-      let cx' = context i
-          ids = typeVars i
-          s = zip' ids tys
-          cx'' = substContext s cx' in
-      null (isValidCx cEnv cx'') && implies' cEnv cx cx'') insts)
+        inst = getInstance cEnv qid xi
+        result = fmap (\i -> 
+          let cx' = context i
+              ids = typeVars i
+              s = zip' ids tys
+              cx'' = substContext s cx'
+          in null (isValidCx cEnv cx'') && implies' cEnv cx cx'') inst
+    in maybe False id result)
 
 -- |does a specific context imply another?
 implies' :: ClassEnv -> BT.Context -> BT.Context -> Bool
@@ -145,8 +146,8 @@ implies' cEnv cx cx' =
   all (\c' -> implies cEnv cx c') cx' 
 
 -- |get all instances for a given type
-getInstancesForType :: ClassEnv -> QualIdent -> [Instance]
-getInstancesForType cEnv qid = filter (\inst -> iType inst == qid) (theInstances cEnv)
+-- getInstancesForType :: ClassEnv -> QualIdent -> [Instance]
+-- getInstancesForType cEnv qid = filter (\inst -> iType inst == qid) (theInstances cEnv)
 
 -- |helper function
 substContext :: [(Ident, Type)] -> [(QualIdent, Ident)] -> BT.Context
