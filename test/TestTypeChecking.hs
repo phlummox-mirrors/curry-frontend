@@ -368,20 +368,24 @@ checkContextReduction cEnv =
   reduceContext cEnv [mk "H" 0, mk "H" 0] == [mk "H" 0] &&
   reduceContext cEnv [mk "H" 0, mk "H" 0, mk "H" 0] == [mk "H" 0] &&
   
+  
   reduceContext cEnv [mk "A" 0, (mkId "A", list $ mkTy 0)] == [mk "A" 0] &&
-  reduceContext cEnv [mk "A" 0, (mkId "A", list $ mkTy 1)] == [mk "A" 0, (mkId "A", list $ mkTy 1)] &&
+  reduceContext cEnv [mk "A" 0, (mkId "A", list $ mkTy 1)] == [mk "A" 0, mk "A" 1] &&
   reduceContext cEnv 
     [mk "A" 0, (mkId "A", list $ mkTy 0), (mkId "A", list $ list $ mkTy 0)] == [mk "A" 0] &&
   reduceContext cEnv 
     [mk "G" 0, (mkId "A", list $ mkTy 0), (mkId "A", list $ list $ mkTy 0)] == [mk "G" 0] &&
   reduceContext cEnv 
-    [(mkId "A", list $ mkTy 0), (mkId "A", list $ list $ mkTy 0)] == [(mkId "A", list $ mkTy 0)] &&
+    [(mkId "A", list $ mkTy 0), (mkId "A", list $ list $ mkTy 0)] == [(mk "A" 0)] &&
   
   reduceContext cEnv [mk "H" 0, mk "F" 0, mk "G" 0, (mkId "A", list $ mkTy 0), (mkId "A", list $ list $ mkTy 0)] == [mk "H" 0] &&
   
   reduceContext cEnv [(mkId "N", tycon "R1" [])] == [] && 
   reduceContext cEnv [mk "H" 0, (mkId "N", tycon "R1" [])] == [mk "H" 0] &&
-  reduceContext cEnv [(mkId "N", tycon "NotExistent" [])] == [(mkId "N", tycon "NotExistent" [])]
+  reduceContext cEnv [(mkId "N", tycon "NotExistent" [])] == [(mkId "N", tycon "NotExistent" [])] &&
+    
+  reduceContext cEnv [(mkId "Eq", tycon "T" [tyconP "Int" []])] == [] && 
+  reduceContext cEnv [(mkId "Eq", tycon "T" [mkTy 0])] == [(mkId "Eq'", mkTy 0)]
 
 -- | checks the findPath method
 checkFindPath :: ClassEnv -> Bool

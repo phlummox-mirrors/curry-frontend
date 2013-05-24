@@ -163,16 +163,17 @@ getTyCons _ = internalError "getTyCons"
 
 -- | context reduction
 reduceContext :: ClassEnv -> BT.Context -> BT.Context
-reduceContext cEnv cx = 
-  case searchReducible of
-    Nothing -> cx
-    Just cx' -> reduceContext cEnv cx'
-  where
-  searchReducible = searchReducible' 0
-  searchReducible' n
+reduceContext cEnv cx0 = reduceContext' (toHnfs cEnv cx0)
+  where 
+  reduceContext' cx = 
+    case searchReducible cx of
+      Nothing -> cx
+      Just cx' -> reduceContext' cx'
+  searchReducible cx = searchReducible' 0 cx
+  searchReducible' n cx
     | n == length cx = Nothing
     | implies cEnv (cx `without` n) (cx !! n) = Just $ cx `without` n
-    | otherwise = searchReducible' (n+1)
+    | otherwise = searchReducible' (n+1) cx
 
 -- |check whether the given constrained type is in head normal form 
 inHnf :: (QualIdent, Type) -> Bool
