@@ -18,6 +18,7 @@ module Env.ClassEnv
   , ppClasses, getAllClassMethods, allSuperClasses, isSuperClassOf
   , implies, implies'
   , getInstance, isValidCx, reduceContext, findPath
+  , toHnfs, toHnf, inHnf
   ) where
 
 -- import Base.Types hiding ()
@@ -173,6 +174,30 @@ reduceContext cEnv cx =
     | implies cEnv (cx `without` n) (cx !! n) = Just $ cx `without` n
     | otherwise = searchReducible' (n+1)
 
+-- |check whether the given constrained type is in head normal form 
+inHnf :: (QualIdent, Type) -> Bool
+inHnf (_cls, ty) | isCons ty = False
+                 | otherwise = True
+
+-- |transform a context by transforming the individual elements into head normal
+-- form (where possible)
+toHnfs :: ClassEnv -> BT.Context -> BT.Context
+toHnfs cEnv cx = concatMap (toHnf cEnv) cx
+
+-- |transform a single context element into head normal form
+toHnf :: ClassEnv -> (QualIdent, Type) -> BT.Context
+toHnf cEnv (cls, ty) 
+  | isCons ty = case inst of
+    Nothing -> [(cls, ty)]
+    Just i -> let 
+      ids = typeVars i
+      scon = context i
+      mapping = zip' ids tys in
+      toHnfs cEnv $ substContext mapping scon
+  | otherwise = [(cls, ty)]
+  where
+  (xi, tys) = getTyCons ty
+  inst = getInstance cEnv cls xi
 
 -- |checks whether the given context is valid. If the context returned is
 -- empty, the context is valid. Else the returned context contains the 

@@ -83,3 +83,28 @@ class P a => R a where
 
 class (P a, R a) => Q a where
 
+data X a = X a
+
+instance A a => B (X a)
+
+-- ------------------------------------------------------------
+
+class Eq a where
+  (===) :: a -> a -> Bool
+
+class Eq' a where
+
+instance Eq' a => Eq (T a) where
+  (===) a b = error ""
+
+instance Eq' Int where
+
+-- test = T (1::Int) === T 2
+
+-- test2 x y = T x === T y
+
+
+instance (Eq a, Eq b) => Eq (a, b) where
+
+instance Eq a => Eq [a] where
+

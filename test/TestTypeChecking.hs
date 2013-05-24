@@ -228,6 +228,7 @@ checkVarious = do
       else if not $ checkValidCx (classEnv tcEnv) then return (Fail "isValidCx")
       else if not $ checkContextReduction (classEnv tcEnv) then return (Fail "context reduction")
       else if not $ checkFindPath (classEnv tcEnv) then return (Fail "find path") 
+      else if not $ checkToHnf (classEnv tcEnv) then return (Fail "toHnf")
       else return Pass
     CheckFailed msgs -> do print msgs; return (Fail "compilation error")
 
@@ -328,10 +329,14 @@ mk str n = (mkId str, mkTy n)
 mkTy :: Int -> Type
 mkTy n = TypeVariable n
 
-tycon s = TypeConstructor (mkQId s)
+tycon s = TypeConstructor (mkQId' "TestVarious" s)
+tyconP s = TypeConstructor (mkQId' "Prelude" s)
 
 mkQId :: String -> QualIdent
-mkQId s = qualifyWith (mkMIdent ["TestVarious"]) $ mkIdent s
+mkQId s = mkQId' "TestVarious" s
+
+mkQId' :: String -> String -> QualIdent
+mkQId' m s = qualifyWith (mkMIdent [m]) $ mkIdent s
 
 -- |checks the "isValidCx" function
 checkValidCx :: ClassEnv -> Bool
@@ -398,6 +403,27 @@ checkFindPath cEnv =
   isJust (findPath cEnv (mkId "F") (mkId "A")) &&
   isJust (findPath cEnv (mkId "F") (mkId "E")) &&
   isJust (findPath cEnv (mkId "F") (mkId "B"))
+
+-- |checks toHnfs function
+checkToHnf :: ClassEnv -> Bool
+checkToHnf cEnv = 
+  toHnf cEnv (mkId "Eq", tyconP "(,)" [mkTy 0, mkTy 1]) 
+    == [mk "Eq" 0, mk "Eq" 1] &&
+  toHnf cEnv (mkId "Eq", tyconP "(,)" [tyconP "Int" [], mkTy 1]) 
+    == [(mkId "Eq", tyconP "Int" []), mk "Eq" 1] &&
+  toHnf cEnv (mkId "Eq", tyconP "(,)" [mkTy 0, tyconP "Char" []]) 
+    == [mk "Eq" 0, (mkId "Eq", tyconP "Char" [])] &&
+  toHnf cEnv (mkId "Eq", tyconP "(,)" [tyconP "Int" [], tyconP "Char" []]) 
+    == [(mkId "Eq", tyconP "Int" []), (mkId "Eq", tyconP "Char" [])] &&
+    
+  toHnf cEnv (mk "Eq" 0) == [mk "Eq" 0] &&
+  
+  toHnf cEnv (mkId "Eq", tycon "T" [mkTy 0]) == [(mkId "Eq'", mkTy 0)] &&
+  
+  toHnf cEnv (mkId "Eq", list $ list $ mkTy 0) == [(mkId "Eq", mkTy 0)] &&
+  toHnf cEnv (mkId "Eq", tyconP "(,)" [list $ mkTy 0, mkTy 1])
+    == [mk "Eq" 0, mk "Eq" 1]
+
 
 list :: Type -> Type
 list t = TypeConstructor qListIdP [t]
