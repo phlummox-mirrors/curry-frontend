@@ -546,9 +546,9 @@ top-level.
 > checkDeclRhs :: [Ident] -> Decl -> SCM Decl
 > checkDeclRhs bvs (TypeSig   p vs cx ty) = do
 >   (\vs' -> TypeSig p vs' cx ty) `liftM` mapM (checkLocalVar bvs) vs
-> checkDeclRhs _   (FunctionDecl p _ f eqs) =
->   FunctionDecl p Nothing f `liftM` mapM checkEquation eqs
-> checkDeclRhs _   (PatternDecl p cty t rhs) =
+> checkDeclRhs _ (FunctionDecl p cty f eqs) =
+>   FunctionDecl p cty f `liftM` mapM checkEquation eqs
+> checkDeclRhs _ (PatternDecl  p cty t rhs) =
 >   PatternDecl p cty t `liftM` checkRhs rhs
 > checkDeclRhs _   d                      = return d
 
@@ -776,8 +776,8 @@ checkParen
 > checkExpr p (EnumFromThenTo e1 e2 e3) =
 >   liftM3 EnumFromThenTo (checkExpr p e1) (checkExpr p e2) (checkExpr p e3)
 > checkExpr p (UnaryMinus         op e) = UnaryMinus op `liftM` checkExpr p e
-> checkExpr p (Apply         cty e1 e2) =
->   liftM2 (Apply cty) (checkExpr p e1) (checkExpr p e2)
+> checkExpr p (Apply             e1 e2) =
+>   liftM2 Apply (checkExpr p e1) (checkExpr p e2)
 > checkExpr p (InfixApply     e1 op e2) =
 >   liftM3 InfixApply (checkExpr p e1) (checkOp op) (checkExpr p e2)
 > checkExpr p (LeftSection        e op) =

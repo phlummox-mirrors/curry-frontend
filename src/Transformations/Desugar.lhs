@@ -441,11 +441,11 @@ type \texttt{Bool} of the guard because the guard's type defaults to
 > dsExpr p (List pos es) =
 >   dsList pos cons nil `liftM` mapM (dsExpr p) es
 >   where nil p'  = Constructor (addRef p' qNilId)
->         cons p' = Apply Nothing . Apply Nothing (Constructor $ addRef p' qConsId)
+>         cons p' = Apply . Apply (Constructor $ addRef p' qConsId)
 > dsExpr p (ListCompr r e []    ) = dsExpr p (List [r,r] [e])
 > dsExpr p (ListCompr r e (q:qs)) = dsQual p q (ListCompr r e qs)
 > dsExpr p (EnumFrom e) =
->   Apply Nothing prelEnumFrom `liftM` dsExpr p e
+>   Apply prelEnumFrom `liftM` dsExpr p e
 > dsExpr p (EnumFromThen e1 e2) =
 >   apply prelEnumFromThen `liftM` mapM (dsExpr p) [e1, e2]
 > dsExpr p (EnumFromTo e1 e2) =
@@ -454,25 +454,25 @@ type \texttt{Bool} of the guard because the guard's type defaults to
 >   apply prelEnumFromThenTo `liftM` mapM (dsExpr p) [e1, e2, e3]
 > dsExpr p (UnaryMinus op e) = do
 >   ty <- getTypeOf e
->   Apply Nothing (unaryMinus op ty) `liftM` dsExpr p e
+>   Apply (unaryMinus op ty) `liftM` dsExpr p e
 >   where
 >   unaryMinus op1 ty'
 >     | op1 ==  minusId = if ty' == floatType then prelNegateFloat else prelNegate
 >     | op1 == fminusId = prelNegateFloat
 >     | otherwise       = internalError "Desugar.unaryMinus"
-> dsExpr p (Apply cty (Constructor c) e) = do
+> dsExpr p (Apply (Constructor c) e) = do
 >   tyEnv <- getValueEnv
->   liftM (if isNewtypeConstr tyEnv c then id else (Apply cty (Constructor c)))
+>   liftM (if isNewtypeConstr tyEnv c then id else (Apply (Constructor c)))
 >         (dsExpr p e)
-> dsExpr p (Apply cty e1 e2) = do
->   liftM2 (Apply cty) (dsExpr p e1) (dsExpr p e2)
+> dsExpr p (Apply e1 e2) = do
+>   liftM2 Apply (dsExpr p e1) (dsExpr p e2)
 > dsExpr p (InfixApply e1 op e2) = do
 >   op' <- dsExpr p (infixOp op)
 >   e1' <- dsExpr p e1
 >   e2' <- dsExpr p e2
 >   return $ apply op' [e1', e2']
 > dsExpr p (LeftSection e op) = do
->   liftM2 (Apply Nothing) (dsExpr p (infixOp op)) (dsExpr p e)
+>   liftM2 Apply (dsExpr p (infixOp op)) (dsExpr p e)
 > dsExpr p (RightSection op e) = do
 >   op' <- dsExpr p (infixOp op)
 >   e' <- dsExpr p e
@@ -517,7 +517,7 @@ type \texttt{Bool} of the guard because the guard's type defaults to
 > dsExpr p (RecordSelection e l) = do
 >   m <- getModuleIdent
 >   r <- recordFromField l
->   dsExpr p (Apply Nothing (Variable Nothing (qualRecSelectorId m r l)) e)
+>   dsExpr p (Apply (Variable Nothing (qualRecSelectorId m r l)) e)
 > dsExpr p (RecordUpdate fs rexpr)
 >   | null fs   = internalError "Desugar.dsExpr: empty record update"
 >   | otherwise = do
@@ -905,7 +905,7 @@ Auxiliary definitions
 > caseAlt p t e = Alt p t (SimpleRhs p e [])
 
 > apply :: Expression -> [Expression] -> Expression
-> apply = foldl (Apply Nothing)
+> apply = foldl Apply
 
 > mkVar :: Ident -> Expression
 > mkVar = Variable Nothing . qualify

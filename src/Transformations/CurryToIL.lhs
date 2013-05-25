@@ -334,7 +334,7 @@ instance, if one of the alternatives contains an \texttt{@}-pattern.
 >   where fun = (IL.Function v . arrowArity) `liftM` varType v
 > trExpr _  _   (Constructor c)
 >   = (IL.Constructor c . arrowArity) `liftM` constrType c
-> trExpr vs env (Apply _ e1 e2)
+> trExpr vs env (Apply   e1 e2)
 >   = liftM2 IL.Apply (trExpr vs env e1) (trExpr vs env e2)
 > trExpr vs env (Let      ds e) = do
 >   e' <- trExpr vs env' e

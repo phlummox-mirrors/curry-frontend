@@ -217,7 +217,7 @@ gatherTSExpr (EnumFromTo expr1 expr2) = gatherTSExpr expr1 ++ gatherTSExpr expr2
 gatherTSExpr (EnumFromThenTo expr1 expr2 expr3) = 
   gatherTSExpr expr1 ++ gatherTSExpr expr2 ++ gatherTSExpr expr3
 gatherTSExpr (UnaryMinus _ expr) = gatherTSExpr expr 
-gatherTSExpr (Apply _ e1 e2) = gatherTSExpr e1 ++ gatherTSExpr e2
+gatherTSExpr (Apply e1 e2) = gatherTSExpr e1 ++ gatherTSExpr e2
 gatherTSExpr (InfixApply e1 _ e2) = gatherTSExpr e1 ++ gatherTSExpr e2
 gatherTSExpr (LeftSection e _) = gatherTSExpr e
 gatherTSExpr (RightSection _ e) = gatherTSExpr e
@@ -829,7 +829,7 @@ handleMissingFunc _cEnv (InstanceDecl _ _ cls ty _ _) fun =
   where
   globalName = mkIdent $ instMethodName cls ty (show fun)
   equ1 = Equation NoPos (FunLhs globalName []) 
-    (SimpleRhs NoPos (Apply Nothing (Variable Nothing . qualify . mkIdent $ "error") 
+    (SimpleRhs NoPos (Apply (Variable Nothing . qualify . mkIdent $ "error") 
                             (Literal $ String (srcRef 0) errorString)) [])
   errorString = show fun ++ " not given in instance declaration of class "
     ++ show cls ++ " and type " ++ show ty
@@ -858,7 +858,7 @@ createDictionary cEnv (InstanceDecl _ _scx cls ty _tvars _decls) =
     (\s -> instMethodName cls ty s) . show . fst3) methods0
   all0 = scs ++ ms
   dict = qualify $ mkIdent $ dictTypePrefix ++ show cls
-  all' = foldl (Apply Nothing) (Constructor dict) all0
+  all' = foldl Apply (Constructor dict) all0
 createDictionary _ _ = internalError "createDictionary"
 
 -- |This function creates a dictionary for the given instance declaration, 

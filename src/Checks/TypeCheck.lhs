@@ -1203,7 +1203,7 @@ because of possibly multiple occurrences of variables.
 >           | op' == minusId  = liftM noContext $ freshConstrained [intType,floatType]
 >           | op' == fminusId = return $ noContext floatType
 >           | otherwise = internalError $ "TypeCheck.tcExpr unary " ++ idName op'
-> tcExpr p e@(Apply _ e1 e2) = do
+> tcExpr p e@(Apply e1 e2) = do
 >     (e1', (cx1,       ty1)) <- tcExpr p e1
 >     (e2', cty2@(cx2, _ty2)) <- tcExpr p e2
 >     (alpha,beta) <- 
@@ -1212,7 +1212,7 @@ because of possibly multiple occurrences of variables.
 >     unify p "application" (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e2)
 >           (noContext alpha) cty2
 >     cx' <- adjustContext (cx1 ++ cx2)
->     return (Apply Nothing e1' e2', (cx', beta))
+>     return (Apply e1' e2', (cx', beta))
 > tcExpr p e@(InfixApply e1 op e2) = do
 >     (_op, (cxo, opTy))      <- tcExpr p (infixOp op)
 >     (e1', cty1@(cx1, _ty1)) <- tcExpr p e1

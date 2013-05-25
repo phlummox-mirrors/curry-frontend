@@ -150,7 +150,7 @@ qExpr (EnumFromTo        e1 e2) = liftM2 EnumFromTo     (qExpr e1) (qExpr e2)
 qExpr (EnumFromThenTo e1 e2 e3) = liftM3 EnumFromThenTo (qExpr e1) (qExpr e2)
                                                         (qExpr e3)
 qExpr (UnaryMinus         op e) = UnaryMinus op `liftM` qExpr e
-qExpr (Apply         cty e1 e2) = liftM2 (Apply cty) (qExpr e1) (qExpr e2)
+qExpr (Apply             e1 e2) = liftM2 Apply (qExpr e1) (qExpr e2)
 qExpr (InfixApply     e1 op e2) = liftM3 InfixApply (qExpr e1) (qInfixOp op)
                                                                (qExpr e2)
 qExpr (LeftSection        e op) = liftM2 LeftSection  (qExpr e) (qInfixOp op)

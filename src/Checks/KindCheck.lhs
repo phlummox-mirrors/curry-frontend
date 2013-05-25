@@ -207,7 +207,7 @@ declaration groups.
 > checkExpr (EnumFromThenTo e1 e2 e3) =
 >   liftM3 EnumFromThenTo (checkExpr e1) (checkExpr e2) (checkExpr e3)
 > checkExpr (UnaryMinus     op e) = UnaryMinus op `liftM` checkExpr e
-> checkExpr (Apply       _ e1 e2) = liftM2 (Apply Nothing) (checkExpr e1) (checkExpr e2)
+> checkExpr (Apply         e1 e2) = liftM2 Apply (checkExpr e1) (checkExpr e2)
 > checkExpr (InfixApply e1 op e2) =
 >   liftM2 (\f1 f2 -> InfixApply f1 op f2) (checkExpr e1) (checkExpr e2)
 > checkExpr (LeftSection    e op) = flip LeftSection op `liftM` checkExpr e

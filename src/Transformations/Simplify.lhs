@@ -178,7 +178,7 @@ explicitly in a Curry expression.
 >         mergeEqns p1 f1 ts1 vs (Equation _ (FunLhs _ ts2) rhs) =
 >           Equation p1 (FunLhs f1 (ts1 ++ zipWith AsPattern vs ts2)) rhs
 >         mergeEqns _ _ _ _ _ = error "Simplify.inlineFun.mergeEqns: no pattern match"
->         etaReduce n1 vs (VariablePattern v : ts1) (Apply _ e1 (Variable _ v'))
+>         etaReduce n1 vs (VariablePattern v : ts1) (Apply e1 (Variable _ v'))
 >           | qualify v == v' = etaReduce (n1+1) (v:vs) ts1 e1
 >         etaReduce n1 vs ts1 e1 = (n1,vs,reverse ts1,e1)
 > inlineFun _ _ p lhs rhs = [Equation p lhs rhs]
@@ -214,13 +214,13 @@ functions in later phases of the compiler.
 >   | otherwise     = maybe (return v) (simExpr env)
 >                           (Map.lookup (unqualify x) env)
 > simExpr _   c@(Constructor _) = return c
-> simExpr env (Apply _ (Let ds e1) e2) = simExpr env (Let ds (Apply Nothing e1 e2))
-> simExpr env (Apply _ (Case r ct e1 alts) e2)
+> simExpr env (Apply (Let ds e1) e2) = simExpr env (Let ds (Apply e1 e2))
+> simExpr env (Apply (Case r ct e1 alts) e2)
 >   = simExpr env (Case r ct e1 (map (applyToAlt e2) alts))
 >   where applyToAlt e (Alt p t rhs) = Alt p t (applyRhs rhs e)
->         applyRhs (SimpleRhs p e1' _) e2' = SimpleRhs p (Apply Nothing e1' e2') []
+>         applyRhs (SimpleRhs p e1' _) e2' = SimpleRhs p (Apply e1' e2') []
 >         applyRhs (GuardedRhs _ _) _ = error "Simplify.simExpr.applyRhs: Guarded rhs"
-> simExpr env (Apply _ e1 e2) = liftM2 (Apply Nothing) (simExpr env e1) (simExpr env e2)
+> simExpr env (Apply e1 e2) = liftM2 Apply (simExpr env e1) (simExpr env e2)
 > simExpr env (Let ds e) = do
 >     m <- getModuleIdent
 >     tyEnv <- getValueEnv
@@ -406,7 +406,7 @@ selector functions.
 >                            (flatSelectorType ty t1)
 >   flatSelectorType ty0 ty1          = polyType (TypeArrow ty0 (identityType ty1))
 >   flatSelectorDecl p1 f1 t1 v1      = funDecl p1 f1 [t1] (mkVar v1)
->   flatProjectionDecl p1 t1 e1 f1 v1 = varDecl p1 v1 (Let [flatSelectorDecl p1 f1 t1 v1] (Apply Nothing (mkVar f1) e1))
+>   flatProjectionDecl p1 t1 e1 f1 v1 = varDecl p1 v1 (Let [flatSelectorDecl p1 f1 t1 v1] (Apply (mkVar f1) e1))
 >
 >   selectorType ty0 (ty1:tys1) = polyType (foldr TypeArrow (identityType ty1) (ty0:tys1))
 >   selectorType _   []         = error "Simplify.expandPatternBindings.selectorType: empty list"
@@ -415,7 +415,7 @@ selector functions.
 >   selectorDecl _  _ _  []      = error "Simplify.expandPatternBindings.selectorDecl: empty list"
 >
 >   projectionDecl p1 t1 e1 f (v:vs1) = varDecl p1 v $
->     Let [selectorDecl p1 f t1 (v:vs1)] (foldl applyVar (Apply Nothing (mkVar f) e1) vs1)
+>     Let [selectorDecl p1 f t1 (v:vs1)] (foldl applyVar (Apply (mkVar f) e1) vs1)
 >   projectionDecl _ _ _ _ [] = error "Simplify.expandPatternBindings.projectionDecl: empty list"
 >
 > expandPatternBindings _ _ d = return [d]
@@ -455,7 +455,7 @@ Auxiliary functions
 > mkVar = Variable Nothing . qualify
 
 > applyVar :: Expression -> Ident -> Expression
-> applyVar e v = Apply Nothing e (mkVar v)
+> applyVar e v = Apply e (mkVar v)
 
 > varDecl :: Position -> Ident -> Expression -> Decl
 > varDecl p v e = PatternDecl p Nothing (VariablePattern v) (SimpleRhs p e [])

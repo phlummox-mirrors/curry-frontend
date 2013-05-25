@@ -213,8 +213,8 @@ interface.
 > checkExpr (EnumFromThenTo e1 e2 e3) =
 >   liftM3 EnumFromThenTo (checkExpr e1) (checkExpr e2) (checkExpr e3)
 > checkExpr (UnaryMinus         op e) = UnaryMinus op `liftM` (checkExpr e)
-> checkExpr (Apply cty e1 e2) =
->   liftM2 (Apply cty) (checkExpr e1) (checkExpr e2)
+> checkExpr (Apply e1 e2) =
+>   liftM2 Apply (checkExpr e1) (checkExpr e2)
 > checkExpr (InfixApply e1 op e2) = do
 >   e1' <- checkExpr e1
 >   e2' <- checkExpr e2

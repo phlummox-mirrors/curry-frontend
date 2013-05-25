@@ -469,43 +469,43 @@ genExpr pos env (Typed expr _ _) = genExpr pos env expr
 genExpr pos env (Tuple   _ args) = genExpr pos env $ case args of
   []  -> Variable Nothing qUnitId
   [x] -> x
-  _   -> foldl (Apply Nothing) (Variable Nothing $ qTupleId $ length args) args
+  _   -> foldl Apply (Variable Nothing $ qTupleId $ length args) args
 genExpr pos env (List _ args)
   = let cons = Constructor qConsId
         nil  = Constructor qNilId
-    in  genExpr pos env (foldr (Apply Nothing . Apply Nothing cons) nil args)
+    in  genExpr pos env (foldr (Apply . Apply cons) nil args)
 genExpr pos env (ListCompr _ expr stmts)
   = let (env1, stmts') = mapAccumL (genStatement pos) (beginScope env) stmts
         (env2, expr' )  = genExpr pos env1 expr
     in  (endScope env2, CListComp expr' stmts')
 genExpr pos env (EnumFrom expr)
-  = genExpr pos env (Apply Nothing (Variable Nothing qEnumFromId) expr)
+  = genExpr pos env (Apply (Variable Nothing qEnumFromId) expr)
 genExpr pos env (EnumFromThen expr1 expr2)
-  = genExpr pos env (Apply Nothing (Apply Nothing (Variable Nothing qEnumFromThenId) expr1) expr2)
+  = genExpr pos env (Apply (Apply (Variable Nothing qEnumFromThenId) expr1) expr2)
 genExpr pos env (EnumFromTo expr1 expr2)
-  = genExpr pos env (Apply Nothing (Apply Nothing (Variable Nothing qEnumFromToId) expr1) expr2)
+  = genExpr pos env (Apply (Apply (Variable Nothing qEnumFromToId) expr1) expr2)
 genExpr pos env (EnumFromThenTo expr1 expr2 expr3)
-  = genExpr pos env (Apply Nothing (Apply Nothing (Apply Nothing (Variable Nothing qEnumFromThenToId)
+  = genExpr pos env (Apply (Apply (Apply (Variable Nothing qEnumFromThenToId)
           expr1) expr2) expr3)
 genExpr pos env (UnaryMinus _ expr)
-  = genExpr pos env (Apply Nothing (Variable Nothing qNegateId) expr)
-genExpr pos env (Apply _ expr1 expr2)
+  = genExpr pos env (Apply (Variable Nothing qNegateId) expr)
+genExpr pos env (Apply expr1 expr2)
   = let (env1, expr1') = genExpr pos env expr1
         (env2, expr2') = genExpr pos env1 expr2
     in  (env2, CApply expr1' expr2')
 genExpr pos env (InfixApply expr1 op expr2)
-  = genExpr pos env (Apply Nothing (Apply Nothing (opToExpr op) expr1) expr2)
+  = genExpr pos env (Apply (Apply (opToExpr op) expr1) expr2)
 genExpr pos env (LeftSection expr op)
   = let ident  = freshVar env "x"
         patt   = VariablePattern ident
         var    = Variable Nothing (qualify ident)
-        applic = Apply Nothing (Apply Nothing (opToExpr op) expr) var
+        applic = Apply (Apply (opToExpr op) expr) var
     in  genExpr pos env (Lambda noRef [patt] applic)
 genExpr pos env (RightSection op expr)
   = let ident  = freshVar env "x"
         patt   = VariablePattern ident
         var    = Variable Nothing (qualify ident)
-        applic = Apply Nothing (Apply Nothing (opToExpr op) var) expr
+        applic = Apply (Apply (opToExpr op) var) expr
     in  genExpr pos env (Lambda noRef [patt] applic)
 genExpr pos env (Lambda _ params expr)
   = let (env1, params') = mapAccumL (genPattern pos) (beginScope env) params
@@ -520,7 +520,7 @@ genExpr pos env (Do stmts expr)
         (env2, expr' )  = genExpr pos env1 expr
     in  (endScope env2, CDoExpr (stmts' ++ [CSExpr expr']))
 genExpr pos env (IfThenElse _ expr1 expr2 expr3)
-  = genExpr pos env (Apply Nothing (Apply Nothing (Apply Nothing (Variable Nothing qIfThenElseId)
+  = genExpr pos env (Apply (Apply (Apply (Variable Nothing qIfThenElseId)
                     expr1) expr2) expr3)
 genExpr pos env (Case _ _ expr alts)
   = let (env1, expr') = genExpr pos env expr

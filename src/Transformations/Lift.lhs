@@ -218,8 +218,8 @@ in the type environment.
 >       Nothing -> return var
 >       Just v' -> abstractExpr pre lvs v'
 > abstractExpr _   _   c@(Constructor  _) = return c
-> abstractExpr pre lvs (Apply  cty e1 e2) =
->   liftM2 (Apply cty) (abstractExpr pre lvs e1) (abstractExpr pre lvs e2)
+> abstractExpr pre lvs (Apply      e1 e2) =
+>   liftM2 Apply (abstractExpr pre lvs e1) (abstractExpr pre lvs e2)
 > abstractExpr pre lvs (Let         ds e) = abstractDeclGroup pre lvs ds e
 > abstractExpr pre lvs (Case r ct e alts) =
 >   liftM2 (Case r ct) (abstractExpr pre lvs e)
@@ -268,7 +268,7 @@ to the top-level.
 > liftExpr l@(Literal      _) = (l, [])
 > liftExpr v@(Variable   _ _) = (v, [])
 > liftExpr c@(Constructor  _) = (c, [])
-> liftExpr (Apply  cty e1 e2) = (Apply cty e1' e2', ds' ++ ds'')
+> liftExpr (Apply      e1 e2) = (Apply e1' e2', ds' ++ ds'')
 >   where (e1', ds' ) = liftExpr e1
 >         (e2', ds'') = liftExpr e2
 > liftExpr (Let         ds e) = (mkLet ds' e', ds'' ++ ds''')
@@ -300,7 +300,7 @@ to the top-level.
 > mkVar v = Variable Nothing $ qualify v
 
 > apply :: Expression -> [Expression] -> Expression
-> apply = foldl (Apply Nothing)
+> apply = foldl Apply
 
 > varArity :: ValueEnv -> Ident -> Int
 > varArity tyEnv v = case lookupValue v tyEnv of

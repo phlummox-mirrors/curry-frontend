@@ -101,7 +101,7 @@ instance QualExpr Expression where
   qfv m (EnumFromTo        e1 e2) = qfv m e1 ++ qfv m e2
   qfv m (EnumFromThenTo e1 e2 e3) = qfv m e1 ++ qfv m e2 ++ qfv m e3
   qfv m (UnaryMinus          _ e) = qfv m e
-  qfv m (Apply           _ e1 e2) = qfv m e1 ++ qfv m e2
+  qfv m (Apply             e1 e2) = qfv m e1 ++ qfv m e2
   qfv m (InfixApply     e1 op e2) = qfv m op ++ qfv m e1 ++ qfv m e2
   qfv m (LeftSection        e op) = qfv m op ++ qfv m e
   qfv m (RightSection       op e) = qfv m op ++ qfv m e
