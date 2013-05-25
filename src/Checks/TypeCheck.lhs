@@ -91,13 +91,15 @@ to True in the normal execution of the compiler.
 >     bindLabels
 >     -- bindClassMethods cEnv
 >     (newDecls, _) <- tcDecls vds
+>     theta <- getTypeSubst
+>     let newDecls' = applyTypeSubst theta newDecls 
 >
 >     cEnv' <- getClassEnv
 >     vEnv <- getValueEnv
 >     checkNoEqualClassMethodAndFunctionNames vEnv cEnv'
 > 
 >     checkForAmbiguousContexts vds
->     return (map snd $ sortBy sorter $ tds' ++ zip (map fst vds') newDecls)
+>     return (map snd $ sortBy sorter $ tds' ++ zip (map fst vds') newDecls')
 >   (tds', vds') = partition (isTypeDecl . snd) pdecls
 >   tds = map snd tds'
 >   vds = map snd vds'
@@ -1398,6 +1400,9 @@ because of possibly multiple occurrences of variables.
 >   where swap (n, TypeVariable m) = (m, TypeVariable n)
 >         swap _ = internalError "reverseTySubst"
 
+> nubCx :: ConstrType -> ConstrType
+> nubCx (cx, ty) = (nub $ cx, ty)
+
 \end{verbatim}
 Functions for converting between the context/type data type used in curry-frontend
 and the context/type data types used in curry-base. This mirroring is necessary
@@ -1961,6 +1966,99 @@ vars in their contexts.
 >   ambiguousTypeVars :: BT.Context -> [Int]
 >   ambiguousTypeVars = filter ( < 0) . concatMap (typeVars . snd)
 
+\end{verbatim}
+After the type checking has finished, we still have to apply the finally 
+type substitution to the recorded contexts and types (at the moment for patterns
+nothing is recorded so that they are simply returned). 
+\begin{verbatim}
 
+> applyTypeSubst :: TypeSubst -> [Decl] -> [Decl]
+> applyTypeSubst theta ds = map (tsDecl theta) ds
+
+> tsDecl :: TypeSubst -> Decl -> Decl
+> tsDecl _theta d@(InfixDecl _ _ _ _) = d
+> tsDecl _theta d@(DataDecl _ _ _ _)  = d
+> tsDecl _theta d@(NewtypeDecl _ _ _ _) = d
+> tsDecl _theta d@(TypeDecl _ _ _ _) = d
+> tsDecl _theta d@(TypeSig _ _ _ _) = d
+> tsDecl theta (FunctionDecl p (Just cty) id0 eqs) 
+>   = FunctionDecl p (Just $ subst' theta cty)  id0 (map (tsEqu theta) eqs)
+> tsDecl _theta (FunctionDecl _ Nothing _ _) = internalError "tsDecl FunctionDecl"
+> tsDecl _theta d@(ForeignDecl _ _ _ _ _) = d
+> tsDecl _theta d@(ExternalDecl _ _) = d
+> tsDecl theta (PatternDecl p (Just cty) pt rhs) 
+>   = PatternDecl p (Just $ subst' theta cty) pt (tsRhs theta rhs)
+> tsDecl _theta (PatternDecl _ Nothing _ _) = internalError "tsDecl PatternDecl"
+> tsDecl _theta d@(FreeDecl _ _) = d
+> tsDecl _theta d@(ClassDecl _ _ _ _ _) = d
+> tsDecl _theta d@(InstanceDecl _ _ _ _ _ _) = d
+   
+> tsEqu :: TypeSubst -> Equation -> Equation
+> -- lhs only contains patterns, hence we do not need to include this
+> tsEqu theta (Equation p lhs rhs) = Equation p lhs (tsRhs theta rhs)
+
+> tsRhs :: TypeSubst -> Rhs -> Rhs
+> tsRhs theta (SimpleRhs p e ds) 
+>   = SimpleRhs p (tsExpr theta e) (map (tsDecl theta) ds)
+> tsRhs theta (GuardedRhs ces ds)
+>   = GuardedRhs (map (tsCondExpr theta) ces) (map (tsDecl theta) ds)
+
+> tsCondExpr :: TypeSubst -> CondExpr -> CondExpr
+> tsCondExpr theta (CondExpr p e1 e2) 
+>   = CondExpr p (tsExpr theta e1) (tsExpr theta e2)
+
+> tsExpr :: TypeSubst -> Expression -> Expression
+> tsExpr _theta e@(Literal _) = e
+> tsExpr theta (Variable (Just cty) i) = Variable (Just $ subst' theta cty) i
+> tsExpr _theta (Variable Nothing _) = internalError "tsExpr Variable"
+> tsExpr _theta e@(Constructor _) = e
+> tsExpr theta (Paren e) = Paren (tsExpr theta e) 
+> tsExpr theta (Typed e c t) = Typed (tsExpr theta e) c t
+> tsExpr theta (Tuple sref es) = Tuple sref (map (tsExpr theta) es)
+> tsExpr theta (List srefs es) = List srefs (map (tsExpr theta) es)
+> tsExpr theta (ListCompr sref e ss) 
+>   = ListCompr sref (tsExpr theta e) (map (tsStmt theta) ss)
+> tsExpr theta (EnumFrom e1) = EnumFrom (tsExpr theta e1)
+> tsExpr theta (EnumFromThen e1 e2) = EnumFromThen (tsExpr theta e1) (tsExpr theta e2)
+> tsExpr theta (EnumFromTo e1 e2) = EnumFromTo (tsExpr theta e1) (tsExpr theta e2)
+> tsExpr theta (EnumFromThenTo e1 e2 e3) = EnumFromThenTo (tsExpr theta e1) (tsExpr theta e2) (tsExpr theta e3)
+> tsExpr theta (UnaryMinus i e) = UnaryMinus i (tsExpr theta e)
+> tsExpr theta (Apply e1 e2) = Apply (tsExpr theta e1) (tsExpr theta e2)
+> tsExpr theta (InfixApply e1 op e2) 
+>   = InfixApply (tsExpr theta e1) op (tsExpr theta e2)
+> tsExpr theta (LeftSection e op) = LeftSection (tsExpr theta e) op
+> tsExpr theta (RightSection op e) = RightSection op (tsExpr theta e)
+> tsExpr theta (Lambda sref ps e) = Lambda sref ps (tsExpr theta e)
+> tsExpr theta (Let ds e) = Let (map (tsDecl theta) ds) (tsExpr theta e)
+> tsExpr theta (Do ss e) = Do (map (tsStmt theta) ss) (tsExpr theta e)
+> tsExpr theta (IfThenElse sref e1 e2 e3)
+>   = IfThenElse sref (tsExpr theta e1) (tsExpr theta e2) (tsExpr theta e3)
+> tsExpr theta (Case sref ct e alts) 
+>   = Case sref ct (tsExpr theta e) (map (tsAlt theta) alts)
+> tsExpr theta (RecordConstr fs) = RecordConstr (map (tsField theta) fs)
+> tsExpr theta (RecordSelection e i) = RecordSelection (tsExpr theta e) i
+> tsExpr theta (RecordUpdate fs e) 
+>   = RecordUpdate (map (tsField theta) fs) (tsExpr theta e)
+
+> tsStmt :: TypeSubst -> Statement -> Statement
+> tsStmt theta (StmtExpr sref e) = StmtExpr sref (tsExpr theta e)
+> tsStmt theta (StmtDecl ds) = StmtDecl (map (tsDecl theta) ds)
+> tsStmt theta (StmtBind sref p e) = StmtBind sref p (tsExpr theta e)
+
+> tsAlt :: TypeSubst -> Alt -> Alt
+> tsAlt theta (Alt p pt rhs) = Alt p pt (tsRhs theta rhs)
+
+> tsField :: TypeSubst -> Field Expression -> Field Expression
+> tsField theta (Field p i e) = Field p i (tsExpr theta e)
+
+> subst' :: TypeSubst -> ConstrType_ -> ConstrType_
+> subst' s ty = mirrorCT $ nubCx $ subst s $ mirror2CT ty
 
 \end{verbatim}
+
+
+
+
+
+
+
