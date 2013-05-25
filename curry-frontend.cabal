@@ -173,6 +173,7 @@ Test-Suite TestTypeChecking
      , Transformations.Lift
      , Transformations.Qual
      , Transformations.Simplify
+    ghc-options: -Wall 
 
 Executable TestTypeCheckingHpc
     hs-source-dirs: test, src

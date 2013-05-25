@@ -14,10 +14,8 @@ import Text.PrettyPrint
 import Curry.Syntax.Pretty hiding (ppContext)
 import Env.Value
 import Curry.Base.Ident
-import System.Exit
 import System.FilePath
 import System.Directory
-import Control.Monad
 import qualified Data.Set as Set
 import Env.ClassEnv
 import qualified Checks.TypeCheck as TC (typeCheck)
@@ -49,7 +47,7 @@ instance TestOptions Dir where
     check _ _ = []
 
 instance ImpureTestable Dir where
-    runM str opts = checkDir str
+    runM str _opts = checkDir str
 
 -- | Check all curry/type files in the given directory
 checkDir :: Dir -> IO Result
@@ -119,7 +117,7 @@ typeCheck' env mdl@(Module _ _ _ ds)
   -- Note that here "False" is passed to TC.typeCheck so that no context
   -- reduction is done and we get the raw inferred contexts that we want!
   = CheckSuccess (env { tyConsEnv = tcEnv', valueEnv = tyEnv' }, mdl)
-  where (tcEnv', tyEnv', decls, msgs) = TC.typeCheck (moduleIdent env)
+  where (tcEnv', tyEnv', _decls, _msgs) = TC.typeCheck (moduleIdent env)
           (tyConsEnv env) (valueEnv env) (classEnv env) False ds
   
 -- |This function extracts the (function name, type) pairs from the types
@@ -215,7 +213,7 @@ instance TestOptions Various where
     check _ _ = []
 
 instance ImpureTestable Various where
-    runM str opts = checkVarious
+    runM _str _opts = checkVarious
     
 checkVarious :: IO Result
 checkVarious = do
@@ -330,11 +328,14 @@ mk str n = (mkId str, mkTy n)
 mkTy :: Int -> Type
 mkTy n = TypeVariable n
 
+tycon :: String -> [Type] -> Type
 tycon s = TypeConstructor (mkQId' "TestVarious" s)
+
+tyconP :: String -> [Type] -> Type
 tyconP s = TypeConstructor (mkQId' "Prelude" s)
 
-mkQId :: String -> QualIdent
-mkQId s = mkQId' "TestVarious" s
+-- mkQId :: String -> QualIdent
+-- mkQId s = mkQId' "TestVarious" s
 
 mkQId' :: String -> String -> QualIdent
 mkQId' m s = qualifyWith (mkMIdent [m]) $ mkIdent s
