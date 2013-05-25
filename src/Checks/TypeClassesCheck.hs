@@ -188,8 +188,8 @@ gatherTypeSigs decls =
 gatherTS :: Decl -> [Decl]
 gatherTS (ClassDecl _ _ _ _ decls) = gatherTypeSigs decls
 gatherTS (InstanceDecl _ _ _ _ _ decls) = gatherTypeSigs decls
-gatherTS (PatternDecl _ _ rhs) = gatherTSRhs rhs
-gatherTS (FunctionDecl _ _ eqs) = concatMap gatherTSEqu eqs 
+gatherTS (PatternDecl _ _ _ rhs) = gatherTSRhs rhs
+gatherTS (FunctionDecl _ _ _ eqs) = concatMap gatherTSEqu eqs 
 gatherTS ts@(TypeSig _ _ _ _) = [ts]
 gatherTS _ = []
 
@@ -202,7 +202,7 @@ gatherTSEqu (Equation _ _ rhs) = gatherTSRhs rhs
 
 gatherTSExpr :: Expression -> [Decl]
 gatherTSExpr (Literal _) = []
-gatherTSExpr (Variable _) = []
+gatherTSExpr (Variable _ _) = []
 gatherTSExpr (Constructor _) = []
 gatherTSExpr (Paren expr) = gatherTSExpr expr
 -- convert typification into type signatures without position (TODO: add
@@ -217,7 +217,7 @@ gatherTSExpr (EnumFromTo expr1 expr2) = gatherTSExpr expr1 ++ gatherTSExpr expr2
 gatherTSExpr (EnumFromThenTo expr1 expr2 expr3) = 
   gatherTSExpr expr1 ++ gatherTSExpr expr2 ++ gatherTSExpr expr3
 gatherTSExpr (UnaryMinus _ expr) = gatherTSExpr expr 
-gatherTSExpr (Apply e1 e2) = gatherTSExpr e1 ++ gatherTSExpr e2
+gatherTSExpr (Apply _ e1 e2) = gatherTSExpr e1 ++ gatherTSExpr e2
 gatherTSExpr (InfixApply e1 _ e2) = gatherTSExpr e1 ++ gatherTSExpr e2
 gatherTSExpr (LeftSection e _) = gatherTSExpr e
 gatherTSExpr (RightSection _ e) = gatherTSExpr e
@@ -339,7 +339,7 @@ checkRulesInInstanceOrClass :: ClassEnv -> Decl -> Tcc ()
 checkRulesInInstanceOrClass cEnv decl = 
   mapM_ isDefinedFunctionClassMethod (getDecls decl)
   where 
-    isDefinedFunctionClassMethod (cls, FunctionDecl p f _) 
+    isDefinedFunctionClassMethod (cls, FunctionDecl p _ f _) 
       = let ms = maybe [] methods (lookupClass cEnv cls)
             eq = (\(id0, _, _) -> id0 == f)
         in 
@@ -582,10 +582,10 @@ transformClass cEnv (ClassDecl _p _scx cls tyvar _decls) =
         emptyContext (ArrowType 
           (ConstructorType (qualify $ dataTypeName) [VariableType tyvar]) 
           (ConstructorType (qualify $ mkIdent $ dictTypePrefix ++ scls) [VariableType tyvar]))
-    , FunctionDecl NoPos selMethodId 
+    , FunctionDecl NoPos Nothing selMethodId 
        [Equation NoPos 
          (equationsLhs selMethodName)
-         (SimpleRhs NoPos (Variable $ qualify $ dictSelParam selMethodName scls) [])
+         (SimpleRhs NoPos (Variable Nothing $ qualify $ dictSelParam selMethodName scls) [])
        ]
     ]
   genMethodSelMethod :: ((Ident, Context, TypeExpr), Int) -> [Decl]
@@ -596,10 +596,10 @@ transformClass cEnv (ClassDecl _p _scx cls tyvar _decls) =
         emptyContext (ArrowType 
           (ConstructorType (qualify $ mkIdent $ dictTypePrefix ++ (show cls)) [VariableType tyvar]) 
           ty)
-    , FunctionDecl NoPos selMethodId 
+    , FunctionDecl NoPos Nothing selMethodId 
        [Equation NoPos 
          (equationsLhs selMethodName)
-         (SimpleRhs NoPos (Variable $ qualify $ methodSelParam selMethodName i) [])
+         (SimpleRhs NoPos (Variable Nothing $ qualify $ methodSelParam selMethodName i) [])
        ]
     ]
   equationsLhs selMethodName = let selMethodId = mkIdent $ selMethodName in 
@@ -639,10 +639,10 @@ transformClass2 cEnv (ClassDecl _p _scx cls _tyvar _decls) =
   genSuperClassDictSelMethod :: String -> [Decl]
   genSuperClassDictSelMethod scls = 
     let selMethodName = selFunPrefix ++ (show $ theClass theClass0) ++ sep ++ scls in
-    [ FunctionDecl NoPos (mkIdent selMethodName)
+    [ FunctionDecl NoPos Nothing (mkIdent selMethodName)
       [Equation NoPos
         (equationLhs selMethodName)
-        (SimpleRhs NoPos (Variable $ qualify $ dictSelParam selMethodName scls) [])
+        (SimpleRhs NoPos (Variable Nothing $ qualify $ dictSelParam selMethodName scls) [])
       ]
     ]
     
@@ -651,10 +651,10 @@ transformClass2 cEnv (ClassDecl _p _scx cls _tyvar _decls) =
   genMethodSelMethod :: ((Ident, Context, TypeExpr), Int) -> [Decl]
   genMethodSelMethod ((m, _cx, _ty), i) = 
     let selMethodName = selFunPrefix ++ (show $ theClass theClass0) ++ sep ++ (show m) in
-    [ FunctionDecl NoPos (mkIdent selMethodName)
+    [ FunctionDecl NoPos Nothing (mkIdent selMethodName)
       [Equation NoPos
         (equationLhs selMethodName)
-        (SimpleRhs NoPos (Variable $ qualify $ methodSelParam selMethodName i) [])
+        (SimpleRhs NoPos (Variable Nothing $ qualify $ methodSelParam selMethodName i) [])
       ]
     ]
   
@@ -681,7 +681,7 @@ transformClass2 cEnv (ClassDecl _p _scx cls _tyvar _decls) =
   genNonDirectSuperClassDictSelMethod :: QualIdent -> [Decl]
   genNonDirectSuperClassDictSelMethod scls = 
     let selMethodName = selFunPrefix ++ (show $ theClass theClass0) ++ sep ++ (show scls) in
-    [ FunctionDecl NoPos (mkIdent selMethodName)
+    [ FunctionDecl NoPos Nothing (mkIdent selMethodName)
       [Equation NoPos
         (FunLhs (mkIdent selMethodName) [])
         (SimpleRhs NoPos expr [])
@@ -694,7 +694,7 @@ transformClass2 cEnv (ClassDecl _p _scx cls _tyvar _decls) =
     -- generate the names of the selector functions 
     names :: [QualIdent] -> [Expression]
     names (x:y:zs) = 
-      (Variable $ qualify $ mkIdent $ selFunPrefix ++ (show x) ++ sep ++ (show y)) 
+      (Variable Nothing $ qualify $ mkIdent $ selFunPrefix ++ (show x) ++ sep ++ (show y)) 
       : names (y:zs)
     names [_] = []
     names [] = internalError "genNonDirectSuperClassDictSelMethod"
@@ -745,7 +745,7 @@ transformInstance cEnv idecl@(InstanceDecl _ _ cls _ _ decls)
   -- create dictionary 
   ++ createDictionary2 cEnv idecl
   where
-  presentMethods = nub $ map (\(FunctionDecl _ id0 _) -> id0) decls
+  presentMethods = nub $ map (\(FunctionDecl _ _ id0 _) -> id0) decls
   theClass0 = fromJust $ lookupClass cEnv cls 
   theMethods0 = nub $ map fst3 $ methods theClass0
   missingMethods = theMethods0 \\ presentMethods
@@ -754,7 +754,7 @@ transformInstance _ d = [d]
 -- |transforms one method defined in an instance to a top level function 
 transformMethod :: ClassEnv -> IDecl -> Decl -> [Decl]
 transformMethod cEnv idecl@(InstanceDecl _ _ cls tcon _ _)
-                      decl@(FunctionDecl _ _ _) =
+                      decl@(FunctionDecl _ _ _ _) =
   -- create type signature
   createTypeSignature rfunc cEnv idecl decl
   -- create function rules
@@ -773,7 +773,7 @@ instMethodName cls tcon s = implPrefix ++ show cls ++ sep ++ show tcon ++ sep ++
 -- a top level function
 createTypeSignature :: RenameFunc -> ClassEnv -> IDecl -> Decl -> Decl
 createTypeSignature rfunc cEnv (InstanceDecl _ scx cls tcon tyvars _) 
-                    (FunctionDecl p f _eqs) 
+                    (FunctionDecl p _ f _eqs) 
   = TypeSig p [rename rfunc f] cx' ty'
   where 
     -- lookup class method of f
@@ -805,8 +805,8 @@ combineContexts (Context e1) (Context e2) = Context (e1 ++ e2)
 type RenameFunc = String -> String
 
 createTopLevelFuncs :: RenameFunc -> Decl -> Decl
-createTopLevelFuncs rfunc (FunctionDecl p id0 eqs) 
-  = FunctionDecl p (rename rfunc id0) (map (transEq rfunc) eqs)
+createTopLevelFuncs rfunc (FunctionDecl p cty id0 eqs) 
+  = FunctionDecl p cty (rename rfunc id0) (map (transEq rfunc) eqs)
 createTopLevelFuncs _ _ = internalError "createTopLevelFuncs"
   
 transEq :: RenameFunc -> Equation -> Equation
@@ -824,12 +824,12 @@ rename rfunc = updIdentName rfunc
 -- default method (TODO!) and inserts this, else inserts an error statement
 handleMissingFunc :: ClassEnv -> IDecl -> Ident -> [Decl]
 handleMissingFunc _cEnv (InstanceDecl _ _ cls ty _ _) fun = 
-  [ FunctionDecl NoPos globalName [if defaultMethodDefined then equ2 else equ1]
+  [ FunctionDecl NoPos Nothing globalName [if defaultMethodDefined then equ2 else equ1]
   ]
   where
   globalName = mkIdent $ instMethodName cls ty (show fun)
   equ1 = Equation NoPos (FunLhs globalName []) 
-    (SimpleRhs NoPos (Apply (Variable . qualify . mkIdent $ "error") 
+    (SimpleRhs NoPos (Apply Nothing (Variable Nothing . qualify . mkIdent $ "error") 
                             (Literal $ String (srcRef 0) errorString)) [])
   errorString = show fun ++ " not given in instance declaration of class "
     ++ show cls ++ " and type " ++ show ty
@@ -841,7 +841,7 @@ handleMissingFunc _ _ _ = internalError "handleMissingFunc"
 -- using dictionary data types instead of tuples
 createDictionary :: ClassEnv -> IDecl -> [Decl]
 createDictionary cEnv (InstanceDecl _ _scx cls ty _tvars _decls) = 
-  [ FunctionDecl NoPos (dictName cls)
+  [ FunctionDecl NoPos Nothing (dictName cls)
     [Equation NoPos
       (FunLhs (dictName cls) [])
       (SimpleRhs NoPos 
@@ -853,19 +853,19 @@ createDictionary cEnv (InstanceDecl _ _scx cls ty _tvars _decls) =
   theClass0 = fromJust $ lookupClass cEnv cls
   superClasses0 = superClasses theClass0
   methods0 = methods theClass0
-  scs = map (Variable . qualify . dictName) superClasses0
-  ms = map (Variable . qualify . mkIdent . 
+  scs = map (Variable Nothing . qualify . dictName) superClasses0
+  ms = map (Variable Nothing . qualify . mkIdent . 
     (\s -> instMethodName cls ty s) . show . fst3) methods0
   all0 = scs ++ ms
   dict = qualify $ mkIdent $ dictTypePrefix ++ show cls
-  all' = foldl Apply (Constructor dict) all0
+  all' = foldl (Apply Nothing) (Constructor dict) all0
 createDictionary _ _ = internalError "createDictionary"
 
 -- |This function creates a dictionary for the given instance declaration, 
 -- using tuples
 createDictionary2 :: ClassEnv -> IDecl -> [Decl]
 createDictionary2 cEnv (InstanceDecl _ _scx cls ty _tvars _decls) = 
-  [ FunctionDecl NoPos (dictName cls)
+  [ FunctionDecl NoPos Nothing (dictName cls)
     [Equation NoPos
       (FunLhs (dictName cls) [])
       (SimpleRhs NoPos 
@@ -877,8 +877,8 @@ createDictionary2 cEnv (InstanceDecl _ _scx cls ty _tvars _decls) =
   theClass0 = fromJust $ lookupClass cEnv cls
   superClasses0 = superClasses theClass0
   methods0 = methods theClass0
-  scs = map (Variable . qualify . dictName) superClasses0
-  ms = map (Variable . qualify . mkIdent . 
+  scs = map (Variable Nothing . qualify . dictName) superClasses0
+  ms = map (Variable Nothing . qualify . mkIdent . 
     (\s -> instMethodName cls ty s) . show . fst3) methods0
   all0 = scs ++ ms
 createDictionary2 _ _ = internalError "createDictionary"

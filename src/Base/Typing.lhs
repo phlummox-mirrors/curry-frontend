@@ -192,7 +192,7 @@ environment.}
 
 > exprType :: ValueEnv -> Expression -> TyState Type
 > exprType tyEnv (Literal l) = litType tyEnv l
-> exprType tyEnv (Variable v) = instUniv (funType v tyEnv)
+> exprType tyEnv (Variable _ v) = instUniv (funType v tyEnv)
 > exprType tyEnv (Constructor c) = instUnivExist (constrType c tyEnv)
 > exprType tyEnv (Typed e _ _) = exprType tyEnv e
 > exprType tyEnv (Paren e) = exprType tyEnv e
@@ -209,7 +209,7 @@ environment.}
 > exprType _     (EnumFromTo _ _) = return (listType intType)
 > exprType _     (EnumFromThenTo _ _ _) = return (listType intType)
 > exprType tyEnv (UnaryMinus _ e) = exprType tyEnv e
-> exprType tyEnv (Apply e1 e2) = do
+> exprType tyEnv (Apply _ e1 e2) = do
 >     (ty1,ty2) <- exprType tyEnv e1 >>= unifyArrow
 >     exprType tyEnv e2 >>= unify ty1
 >     return ty2

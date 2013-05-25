@@ -106,10 +106,10 @@ imported precedence environment.
 >   where constr (ConstrDecl _ _   c  _) = c
 >         constr (ConOpDecl  _ _ _ op _) = op
 > boundValues (NewtypeDecl _ _ _ (NewConstrDecl _ _ c _)) = [c]
-> boundValues (FunctionDecl     _ f _) = [f]
+> boundValues (FunctionDecl   _ _ f _) = [f]
 > boundValues (ForeignDecl  _ _ _ f _) = [f]
 > boundValues (ExternalDecl      _ fs) = fs
-> boundValues (PatternDecl      _ t _) = bv t
+> boundValues (PatternDecl    _ _ t _) = bv t
 > boundValues (FreeDecl          _ vs) = vs
 > boundValues _                        = []
 
@@ -128,10 +128,10 @@ interface.
 > checkDecls decls = bindPrecs decls >> mapM checkDecl decls
 
 > checkDecl :: Decl -> PCM Decl
-> checkDecl (FunctionDecl p f eqs) =
->   FunctionDecl p f `liftM` mapM checkEquation eqs
-> checkDecl (PatternDecl p  t rhs) =
->   liftM2 (PatternDecl p) (checkPattern t) (checkRhs rhs)
+> checkDecl (FunctionDecl p cty f eqs) =
+>   FunctionDecl p cty f `liftM` mapM checkEquation eqs
+> checkDecl (PatternDecl p cty t rhs) =
+>   liftM2 (PatternDecl p cty) (checkPattern t) (checkRhs rhs)
 > checkDecl (ClassDecl p scon cls tyvar decls) = 
 >   ClassDecl p scon cls tyvar `liftM` mapM checkDecl decls
 > checkDecl (InstanceDecl p scon cls tycon ids decls) = 
@@ -197,7 +197,7 @@ interface.
 
 > checkExpr :: Expression -> PCM Expression
 > checkExpr l@(Literal     _) = return l
-> checkExpr v@(Variable    _) = return v
+> checkExpr v@(Variable  _ _) = return v
 > checkExpr c@(Constructor _) = return c
 > checkExpr (Paren    e) = Paren `liftM` checkExpr e
 > checkExpr (Typed e cx ty) = liftM3 Typed (checkExpr e) (return cx) (return ty)
@@ -213,8 +213,8 @@ interface.
 > checkExpr (EnumFromThenTo e1 e2 e3) =
 >   liftM3 EnumFromThenTo (checkExpr e1) (checkExpr e2) (checkExpr e3)
 > checkExpr (UnaryMinus         op e) = UnaryMinus op `liftM` (checkExpr e)
-> checkExpr (Apply e1 e2) =
->   liftM2 Apply (checkExpr e1) (checkExpr e2)
+> checkExpr (Apply cty e1 e2) =
+>   liftM2 (Apply cty) (checkExpr e1) (checkExpr e2)
 > checkExpr (InfixApply e1 op e2) = do
 >   e1' <- checkExpr e1
 >   e2' <- checkExpr e2

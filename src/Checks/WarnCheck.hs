@@ -152,7 +152,7 @@ checkDeclGroup ds = do
 checkRuleAdjacency :: [Decl] -> WCM ()
 checkRuleAdjacency decls = foldM_ check (mkIdent "", Map.empty) decls
   where
-  check (prevId, env) (FunctionDecl p f _) = do
+  check (prevId, env) (FunctionDecl p _ f _) = do
     cons <- isConsId f
     if cons || prevId == f
       then return (f, env)
@@ -177,8 +177,8 @@ checkDecl (TypeDecl   _ _ vs ty) = inNestedScope $ do
   mapM_ insertTypeVar  vs
   checkTypeExpr ty
   reportUnusedTypeVars vs
-checkDecl (FunctionDecl _ _ eqs) = inNestedScope $ mapM_ checkEquation eqs
-checkDecl (PatternDecl  _ p rhs) = checkPattern p >> checkRhs rhs
+checkDecl (FunctionDecl _ _ _ eqs) = inNestedScope $ mapM_ checkEquation eqs
+checkDecl (PatternDecl  _ _ p rhs) = checkPattern p >> checkRhs rhs
 checkDecl _                      = ok
 
 checkConstrDecl :: ConstrDecl -> WCM ()
@@ -204,9 +204,9 @@ checkTypeExpr (RecordType       fs rty) = do
 -- Checks locally declared identifiers (i.e. functions and logic variables)
 -- for shadowing
 checkLocalDecl :: Decl -> WCM ()
-checkLocalDecl (FunctionDecl _ f _) = checkShadowing f
+checkLocalDecl (FunctionDecl _ _ f _) = checkShadowing f
 checkLocalDecl (FreeDecl      _ vs) = mapM_ checkShadowing vs
-checkLocalDecl (PatternDecl  _ p _) = checkPattern p
+checkLocalDecl (PatternDecl _ _ p _) = checkPattern p
 checkLocalDecl _                    = ok
 
 -- Check an equation for warnings.
@@ -264,7 +264,7 @@ checkCondExpr :: CondExpr -> WCM ()
 checkCondExpr (CondExpr _ c e) = checkExpr c >> checkExpr e
 
 checkExpr :: Expression -> WCM ()
-checkExpr (Variable              v) = visitQId v
+checkExpr (Variable            _ v) = visitQId v
 checkExpr (Paren                 e) = checkExpr e
 checkExpr (Typed             e _ _) = checkExpr e
 checkExpr (Tuple              _ es) = mapM_ checkExpr es
@@ -275,7 +275,7 @@ checkExpr (EnumFromThen      e1 e2) = mapM_ checkExpr [e1, e2]
 checkExpr (EnumFromTo        e1 e2) = mapM_ checkExpr [e1, e2]
 checkExpr (EnumFromThenTo e1 e2 e3) = mapM_ checkExpr [e1, e2, e3]
 checkExpr (UnaryMinus          _ e) = checkExpr e
-checkExpr (Apply             e1 e2) = mapM_ checkExpr [e1, e2]
+checkExpr (Apply           _ e1 e2) = mapM_ checkExpr [e1, e2]
 checkExpr (InfixApply     e1 op e2) = do
   visitQId (opName op)
   mapM_ checkExpr [e1, e2]
@@ -443,12 +443,12 @@ insertDecl (DataDecl     _ d _ cs) = do
 insertDecl (TypeDecl     _ t _ ty) = do
   insertTypeConsId t
   insertTypeExpr ty
-insertDecl (FunctionDecl    _ f _) = do
+insertDecl (FunctionDecl  _ _ f _) = do
   cons <- isConsId f
   unless cons $ insertVar f
 insertDecl (ForeignDecl _ _ _ f _) = insertVar f
 insertDecl (ExternalDecl     _ vs) = mapM_ insertVar vs
-insertDecl (PatternDecl     _ p _) = insertPattern False p
+insertDecl (PatternDecl   _ _ p _) = insertPattern False p
 insertDecl (FreeDecl         _ vs) = mapM_ insertVar vs
 insertDecl _                       = ok
 

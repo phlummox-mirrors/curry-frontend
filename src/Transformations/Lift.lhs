@@ -83,10 +83,10 @@ i.e. the function applied to its free variables.
 >   return res
 
 > abstractDecl :: String -> [Ident] -> Decl -> LiftM Decl
-> abstractDecl _   lvs (FunctionDecl p f eqs) =
->   FunctionDecl p f `liftM` mapM (abstractEquation lvs) eqs
-> abstractDecl pre lvs (PatternDecl  p t rhs) =
->   PatternDecl p t `liftM` abstractRhs pre lvs rhs
+> abstractDecl _   lvs (FunctionDecl p cty f eqs) =
+>   FunctionDecl p cty f `liftM` mapM (abstractEquation lvs) eqs
+> abstractDecl pre lvs (PatternDecl  p cty t rhs) =
+>   PatternDecl p cty t `liftM` abstractRhs pre lvs rhs
 > abstractDecl _   _   d                      = return d
 
 > abstractEquation :: [Ident] -> Equation -> LiftM Equation
@@ -197,8 +197,8 @@ in the type environment.
 >           where ty = foldr TypeArrow (varType tyEnv' f) tys
 
 > abstractFunDecl :: String -> [Ident] -> [Ident] -> Decl -> LiftM Decl
-> abstractFunDecl pre fvs lvs (FunctionDecl p f eqs) =
->   abstractDecl pre lvs (FunctionDecl p f' (map (addVars f') eqs))
+> abstractFunDecl pre fvs lvs (FunctionDecl p cty f eqs) =
+>   abstractDecl pre lvs (FunctionDecl p cty f' (map (addVars f') eqs))
 >   where
 >   f' = liftIdent pre f
 >   addVars f1 (Equation p1 (FunLhs _ ts) rhs) =
@@ -210,7 +210,7 @@ in the type environment.
 
 > abstractExpr :: String -> [Ident] -> Expression -> LiftM Expression
 > abstractExpr _   _   l@(Literal      _) = return l
-> abstractExpr pre lvs var@(Variable   v)
+> abstractExpr pre lvs var@(Variable _ v)
 >   | isQualified v = return var
 >   | otherwise     = do
 >     env <- getAbstractEnv
@@ -218,8 +218,8 @@ in the type environment.
 >       Nothing -> return var
 >       Just v' -> abstractExpr pre lvs v'
 > abstractExpr _   _   c@(Constructor  _) = return c
-> abstractExpr pre lvs (Apply      e1 e2) =
->   liftM2 Apply (abstractExpr pre lvs e1) (abstractExpr pre lvs e2)
+> abstractExpr pre lvs (Apply  cty e1 e2) =
+>   liftM2 (Apply cty) (abstractExpr pre lvs e1) (abstractExpr pre lvs e2)
 > abstractExpr pre lvs (Let         ds e) = abstractDeclGroup pre lvs ds e
 > abstractExpr pre lvs (Case r ct e alts) =
 >   liftM2 (Case r ct) (abstractExpr pre lvs e)
@@ -240,12 +240,12 @@ to the top-level.
 \begin{verbatim}
 
 > liftFunDecl :: Decl -> [Decl]
-> liftFunDecl (FunctionDecl p f eqs) = (FunctionDecl p f eqs' : concat dss')
+> liftFunDecl (FunctionDecl p cty f eqs) = (FunctionDecl p cty f eqs' : concat dss')
 >   where (eqs', dss') = unzip $ map liftEquation eqs
 > liftFunDecl d = [d]
 
 > liftVarDecl :: Decl -> (Decl, [Decl])
-> liftVarDecl (PatternDecl   p t rhs) = (PatternDecl p t rhs', ds')
+> liftVarDecl (PatternDecl   p cty t rhs) = (PatternDecl p cty t rhs', ds')
 >   where (rhs', ds') = liftRhs rhs
 > liftVarDecl ex@(FreeDecl _ _) = (ex, [])
 > liftVarDecl _ = error "Lift.liftVarDecl: no pattern match"
@@ -266,9 +266,9 @@ to the top-level.
 
 > liftExpr :: Expression -> (Expression, [Decl])
 > liftExpr l@(Literal      _) = (l, [])
-> liftExpr v@(Variable     _) = (v, [])
+> liftExpr v@(Variable   _ _) = (v, [])
 > liftExpr c@(Constructor  _) = (c, [])
-> liftExpr (Apply      e1 e2) = (Apply e1' e2', ds' ++ ds'')
+> liftExpr (Apply  cty e1 e2) = (Apply cty e1' e2', ds' ++ ds'')
 >   where (e1', ds' ) = liftExpr e1
 >         (e2', ds'') = liftExpr e2
 > liftExpr (Let         ds e) = (mkLet ds' e', ds'' ++ ds''')
@@ -289,18 +289,18 @@ to the top-level.
 \begin{verbatim}
 
 > isFunDecl :: Decl -> Bool
-> isFunDecl (FunctionDecl     _ _ _) = True
+> isFunDecl (FunctionDecl   _ _ _ _) = True
 > isFunDecl (ForeignDecl  _ _ _ _ _) = True
 > isFunDecl _                        = False
 
 > mkFun :: ModuleIdent -> String -> Ident -> Expression
-> mkFun m pre f = Variable $ qualifyWith m $ liftIdent pre f
+> mkFun m pre f = Variable Nothing $ qualifyWith m $ liftIdent pre f
 
 > mkVar :: Ident -> Expression
-> mkVar v = Variable $ qualify v
+> mkVar v = Variable Nothing $ qualify v
 
 > apply :: Expression -> [Expression] -> Expression
-> apply = foldl Apply
+> apply = foldl (Apply Nothing)
 
 > varArity :: ValueEnv -> Ident -> Int
 > varArity tyEnv v = case lookupValue v tyEnv of

@@ -51,11 +51,11 @@ qDecl (DataDecl      p n vs cs) = DataDecl p n vs `liftM` mapM qConstrDecl cs
 qDecl (NewtypeDecl   p n vs nc) = NewtypeDecl p n vs `liftM` qNewConstrDecl nc
 qDecl (TypeDecl      p n vs ty) = TypeDecl p n vs `liftM` qTypeExpr ty
 qDecl (TypeSig      p fs cx ty) = TypeSig p fs cx `liftM` qTypeExpr ty
-qDecl (FunctionDecl    p f eqs) = FunctionDecl p f `liftM` mapM qEquation eqs
+qDecl (FunctionDecl p cty f eqs) = FunctionDecl p cty f `liftM` mapM qEquation eqs
 qDecl (ForeignDecl  p c x n ty) = ForeignDecl p c x n `liftM` qTypeExpr ty
 qDecl e@(ExternalDecl      _ _) = return e
-qDecl (PatternDecl     p t rhs)
-  = liftM2 (PatternDecl p) (qPattern t) (qRhs rhs)
+qDecl (PatternDecl p cty t rhs)
+  = liftM2 (PatternDecl p cty) (qPattern t) (qRhs rhs)
 qDecl vs@(FreeDecl   _ _) = return vs
 qDecl (ClassDecl p scon cls ty decls) 
   = liftM4 (ClassDecl p) (qSContext scon) (return cls) (return ty) 
@@ -136,7 +136,7 @@ qCondExpr (CondExpr p g e) = liftM2 (CondExpr p) (qExpr g) (qExpr e)
 
 qExpr :: Qual Expression
 qExpr l@(Literal             _) = return l
-qExpr (Variable              v) = Variable `liftM` qIdent v
+qExpr (Variable          cty v) = Variable cty `liftM` qIdent v
 qExpr (Constructor           c) = Constructor `liftM` qIdent c
 qExpr (Paren                 e) = Paren `liftM` qExpr e
 qExpr (Typed           e cx ty) = liftM3 Typed (qExpr e) (return cx) (qTypeExpr ty)
@@ -150,7 +150,7 @@ qExpr (EnumFromTo        e1 e2) = liftM2 EnumFromTo     (qExpr e1) (qExpr e2)
 qExpr (EnumFromThenTo e1 e2 e3) = liftM3 EnumFromThenTo (qExpr e1) (qExpr e2)
                                                         (qExpr e3)
 qExpr (UnaryMinus         op e) = UnaryMinus op `liftM` qExpr e
-qExpr (Apply             e1 e2) = liftM2 Apply (qExpr e1) (qExpr e2)
+qExpr (Apply         cty e1 e2) = liftM2 (Apply cty) (qExpr e1) (qExpr e2)
 qExpr (InfixApply     e1 op e2) = liftM3 InfixApply (qExpr e1) (qInfixOp op)
                                                                (qExpr e2)
 qExpr (LeftSection        e op) = liftM2 LeftSection  (qExpr e) (qInfixOp op)

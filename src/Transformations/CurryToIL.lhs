@@ -88,7 +88,7 @@ alias types.
 > trDecl :: Decl -> TransM [IL.Decl]
 > trDecl (DataDecl     _ tc tvs cs) = (:[]) `liftM` trData    tc tvs cs
 > trDecl (NewtypeDecl  _ tc tvs nc) = (:[]) `liftM` trNewtype tc tvs nc
-> trDecl (FunctionDecl     p f eqs) = (:[]) `liftM` trFunction  p f eqs
+> trDecl (FunctionDecl   p _ f eqs) = (:[]) `liftM` trFunction  p f eqs
 > trDecl (ForeignDecl  _ cc ie f _) = (:[]) `liftM` trForeign  f cc ie
 > trDecl _                          = return []
 
@@ -326,7 +326,7 @@ instance, if one of the alternatives contains an \texttt{@}-pattern.
 
 > trExpr :: [Ident] -> RenameEnv -> Expression -> TransM IL.Expression
 > trExpr _  _   (Literal     l) = return $ IL.Literal (trLiteral l)
-> trExpr _  env (Variable    v)
+> trExpr _  env (Variable  _ v)
 >   | isQualified v = fun
 >   | otherwise     = case Map.lookup (unqualify v) env of
 >       Nothing -> fun
@@ -334,7 +334,7 @@ instance, if one of the alternatives contains an \texttt{@}-pattern.
 >   where fun = (IL.Function v . arrowArity) `liftM` varType v
 > trExpr _  _   (Constructor c)
 >   = (IL.Constructor c . arrowArity) `liftM` constrType c
-> trExpr vs env (Apply   e1 e2)
+> trExpr vs env (Apply _ e1 e2)
 >   = liftM2 IL.Apply (trExpr vs env e1) (trExpr vs env e2)
 > trExpr vs env (Let      ds e) = do
 >   e' <- trExpr vs env' e
@@ -347,7 +347,7 @@ instance, if one of the alternatives contains an \texttt{@}-pattern.
 >   where
 >   env' = foldr2 Map.insert env bvs bvs
 >   bvs  = bv ds
->   trBinding (PatternDecl _ (VariablePattern v) rhs)
+>   trBinding (PatternDecl _ _ (VariablePattern v) rhs)
 >     = IL.Binding v `liftM` trRhs vs env' rhs
 >   trBinding p = error $ "unexpected binding: " ++ show p
 > trExpr (v:vs) env (Case r ct e alts) = do

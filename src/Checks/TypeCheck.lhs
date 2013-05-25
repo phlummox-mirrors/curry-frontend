@@ -584,8 +584,8 @@ either one of the basic types or \texttt{()}.
 >         let tysig' = tysig `constrainBy` cx
 >         modifyValueEnv $ rebindFun m v arity tysig'
 >       _ -> return ()
->   unpack (cx, FunctionDecl _ f _) = [(cx, f)]
->   unpack (cx, PatternDecl _ p _) = map (\d -> (cx, d)) (bv p)
+>   unpack (cx, FunctionDecl _ _ f _) = [(cx, f)]
+>   unpack (cx, PatternDecl _ _ p _) = map (\d -> (cx, d)) (bv p)
 >   unpack _ = internalError "unpack"
 
 > --tcDeclGroup m tcEnv _ [ForeignDecl p cc _ f ty] =
@@ -641,8 +641,8 @@ either one of the basic types or \texttt{()}.
 >   modifyValueEnv $ bindFunOnce m v (arrowArity ty) $ monoType ty
 
 > tcDeclLhs :: Decl -> TCM ConstrType
-> tcDeclLhs (FunctionDecl _ f _) = tcFunDecl f
-> tcDeclLhs (PatternDecl  p t _) = tcPattern p t
+> tcDeclLhs (FunctionDecl _ _ f _) = tcFunDecl f
+> tcDeclLhs (PatternDecl  p _ t _) = tcPattern p t
 > tcDeclLhs _ = internalError "TypeCheck.tcDeclLhs: no pattern match"
 
 > tcFunDecl :: Ident -> TCM ConstrType
@@ -656,25 +656,25 @@ either one of the basic types or \texttt{()}.
 >   return (cx, ty)
 
 > tcDeclRhs :: ValueEnv -> Decl -> TCM (Decl, ConstrType)
-> tcDeclRhs tyEnv0 (FunctionDecl p0 f (eq:eqs)) = do
+> tcDeclRhs tyEnv0 (FunctionDecl p0 _ f (eq:eqs)) = do
 >   (eq', (cx0, ty0)) <- tcEquation tyEnv0 eq
 >   (eqs', (cxs, ty))  <- tcEqns ty0 [] eqs [eq']
->   return (FunctionDecl p0 f eqs', (cx0 ++ cxs, ty))
+>   return (FunctionDecl p0 Nothing f eqs', (cx0 ++ cxs, ty))
 >   where tcEqns :: Type -> BT.Context -> [Equation] -> [Equation] -> TCM ([Equation], ConstrType)
 >         tcEqns ty cxs [] newEqs = return (reverse newEqs, (cxs, ty))
 >         tcEqns ty cxs (eq1@(Equation p _ _):eqs1) newEqs = do
 >           (eq1', cty'@(cx', _ty')) <- tcEquation tyEnv0 eq1
->           unify p "equation" (ppDecl (FunctionDecl p f [eq1])) (noContext ty) cty'
+>           unify p "equation" (ppDecl (FunctionDecl p Nothing f [eq1])) (noContext ty) cty'
 >           tcEqns ty (cx' ++ cxs) eqs1 (eq1':newEqs)
-> tcDeclRhs tyEnv0 (PatternDecl p t rhs) = do
+> tcDeclRhs tyEnv0 (PatternDecl p _ t rhs) = do
 >   (rhs', cty) <- tcRhs tyEnv0 rhs
->   return (PatternDecl p t rhs', cty)
+>   return (PatternDecl p Nothing t rhs', cty)
 > tcDeclRhs _ _ = internalError "TypeCheck.tcDeclRhs: no pattern match"
 
 > unifyDecl :: Decl -> ConstrType -> ConstrType -> TCM ()
-> unifyDecl (FunctionDecl p f _) =
+> unifyDecl (FunctionDecl p _ f _) =
 >   unify p "function binding" (text "Function:" <+> ppIdent f)
-> unifyDecl (PatternDecl  p t _) =
+> unifyDecl (PatternDecl  p _ t _) =
 >   unify p "pattern binding" (ppPattern 0 t)
 > unifyDecl _ = internalError "TypeCheck.unifyDecl: no pattern match"
 
@@ -703,10 +703,10 @@ signature the declared type must be too general.
 \begin{verbatim}
 
 > genDecl :: Set.Set Int -> TypeSubst -> Decl -> TCM ()
-> genDecl lvs theta (FunctionDecl _ f (Equation _ lhs _ : _)) = 
+> genDecl lvs theta (FunctionDecl _ _ f (Equation _ lhs _ : _)) = 
 >   genVar True lvs theta arity f
 >   where arity = Just $ length $ snd $ flatLhs lhs
-> genDecl lvs theta (PatternDecl  _ t   _) = 
+> genDecl lvs theta (PatternDecl  _ _ t _) = 
 >   mapM_ (genVar False lvs theta Nothing) (bv t)
 > genDecl _ _ _ = internalError "TypeCheck.genDecl: no pattern match"
 
@@ -1059,13 +1059,13 @@ because of possibly multiple occurrences of variables.
 > tcExpr _ e@(Literal     l) = do
 >   cty <- tcLiteral l
 >   return (e, cty)
-> tcExpr _ e@(Variable    v)
+> tcExpr _ (Variable  _ v)
 >     -- anonymous free variable
 >   | isAnonId v' = do
 >       m <- getModuleIdent
 >       ty <- freshTypeVar
 >       modifyValueEnv $ bindFunOnce m v' (arrowArity ty) $ monoType ty
->       return $ (e, noContext ty)
+>       return $ (Variable Nothing v, noContext ty)
 >   | otherwise    = do
 >       sigs <- getSigEnv
 >       m <- getModuleIdent
@@ -1091,10 +1091,10 @@ because of possibly multiple occurrences of variables.
 >           -- inferred (new) contexts match the type variables in the type
 >           -- constructed from the type signature
 >           let mapping = buildTypeVarsMapping ity ty0
->           return (e, (cx0 ++ subst mapping icx, ty0))
+>           return (Variable Nothing v, (cx0 ++ subst mapping icx, ty0))
 >         Nothing -> do
 >           cty <- getValueEnv >>= inst . (flip (funType tcEnv m v) cEnv)
->           return (e, cty)
+>           return (Variable Nothing v, cty)
 >   where v' = unqualify v
 > tcExpr _ e@(Constructor c) = do
 >  m <- getModuleIdent
@@ -1203,7 +1203,7 @@ because of possibly multiple occurrences of variables.
 >           | op' == minusId  = liftM noContext $ freshConstrained [intType,floatType]
 >           | op' == fminusId = return $ noContext floatType
 >           | otherwise = internalError $ "TypeCheck.tcExpr unary " ++ idName op'
-> tcExpr p e@(Apply e1 e2) = do
+> tcExpr p e@(Apply _ e1 e2) = do
 >     (e1', (cx1,       ty1)) <- tcExpr p e1
 >     (e2', cty2@(cx2, _ty2)) <- tcExpr p e2
 >     (alpha,beta) <- 
@@ -1212,7 +1212,7 @@ because of possibly multiple occurrences of variables.
 >     unify p "application" (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e2)
 >           (noContext alpha) cty2
 >     cx' <- adjustContext (cx1 ++ cx2)
->     return (Apply e1' e2', (cx', beta))
+>     return (Apply Nothing e1' e2', (cx', beta))
 > tcExpr p e@(InfixApply e1 op e2) = do
 >     (_op, (cxo, opTy))      <- tcExpr p (infixOp op)
 >     (e1', cty1@(cx1, _ty1)) <- tcExpr p e1
@@ -1907,7 +1907,7 @@ vars in their contexts.
 > checkForAmbiguousContexts decls = mapM_ check' (filter isFunctionDecl decls)
 >   where
 >   check' :: Decl -> TCM ()
->   check' (FunctionDecl p f _) = do
+>   check' (FunctionDecl p _ f _) = do
 >     vEnv <- getValueEnv
 >     let tsc = lookupValue f vEnv
 >     case tsc of

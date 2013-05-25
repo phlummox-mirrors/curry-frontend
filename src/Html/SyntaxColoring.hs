@@ -398,10 +398,10 @@ declPos (DataDecl         p _ _ _  ) = p
 declPos (NewtypeDecl      p _ _ _  ) = p
 declPos (TypeDecl         p _ _ _  ) = p
 declPos (TypeSig          p _ _ _  ) = p
-declPos (FunctionDecl     p _ _    ) = p
+declPos (FunctionDecl     p _ _ _  ) = p
 declPos (ForeignDecl      p _ _ _ _) = p
 declPos (ExternalDecl     p _      ) = p
-declPos (PatternDecl      p _ _    ) = p
+declPos (PatternDecl      p _ _ _  ) = p
 declPos (FreeDecl         p _      ) = p
 declPos (ClassDecl        p _ _ _ _) = p
 declPos (InstanceDecl   p _ _ _ _ _) = p
@@ -477,10 +477,10 @@ decl2codes (TypeDecl _ t vs ty) =
      typeExpr2codes ty
 decl2codes (TypeSig _ fs _cx ty) =
      map (Function TypSig . qualify) fs ++ typeExpr2codes ty
-decl2codes (FunctionDecl  _ _ eqs) = concatMap equation2codes eqs
+decl2codes (FunctionDecl _ _ _ eqs) = concatMap equation2codes eqs
 decl2codes (ForeignDecl _ _ _ _ _) = []
 decl2codes (ExternalDecl     _ fs) = map (Function FunDecl . qualify) fs
-decl2codes (PatternDecl   _ p rhs) =  pat2codes p ++ rhs2codes rhs
+decl2codes (PatternDecl _ _ p rhs) =  pat2codes p ++ rhs2codes rhs
 decl2codes (FreeDecl         _ vs) = map (Identifier IdDecl . qualify) vs
 decl2codes (ClassDecl _ _scx _cls _tyvar _decls) = []
 decl2codes (InstanceDecl _ _scx _cls _tycon _tyvars _decls) = [] 
@@ -523,7 +523,7 @@ pat2codes (RecordPattern         _ _) =
 
 expr2codes :: Expression -> [Code]
 expr2codes (Literal               _) = []
-expr2codes (Variable            qid) = [Identifier IdOccur qid]
+expr2codes (Variable          _ qid) = [Identifier IdOccur qid]
 expr2codes (Constructor         qid) = [ConstructorName ConstrCall qid]
 expr2codes (Paren                 e) = expr2codes e
 expr2codes (Typed          e _cx ty) = expr2codes e ++ typeExpr2codes ty
@@ -535,7 +535,7 @@ expr2codes (EnumFromThen      e1 e2) = concatMap expr2codes [e1,e2]
 expr2codes (EnumFromTo        e1 e2) = concatMap expr2codes [e1,e2]
 expr2codes (EnumFromThenTo e1 e2 e3) = concatMap expr2codes [e1,e2,e3]
 expr2codes (UnaryMinus      ident e) = Symbol (idName ident) : expr2codes e
-expr2codes (Apply             e1 e2) = expr2codes e1 ++ expr2codes e2
+expr2codes (Apply           _ e1 e2) = expr2codes e1 ++ expr2codes e2
 expr2codes (InfixApply     e1 op e2) = expr2codes e1 ++ infixOp2codes op ++ expr2codes e2
 expr2codes (LeftSection        e op) = expr2codes e ++ infixOp2codes op
 expr2codes (RightSection       op e) = infixOp2codes op ++ expr2codes e

@@ -127,10 +127,10 @@ traversed because they can contain local type signatures.
 >   return $ TypeDecl p tc tvs' ty'
 > checkDecl (TypeSig       p vs cx ty) =
 >   TypeSig p vs cx `liftM` checkType ty
-> checkDecl (FunctionDecl     p f eqs) =
->   FunctionDecl p f `liftM` mapM checkEquation eqs
-> checkDecl (PatternDecl      p t rhs) =
->   PatternDecl p t `liftM` checkRhs rhs
+> checkDecl (FunctionDecl  p cty f eqs) =
+>   FunctionDecl p cty f `liftM` mapM checkEquation eqs
+> checkDecl (PatternDecl   p cty t rhs) =
+>   PatternDecl p cty t `liftM` checkRhs rhs
 > checkDecl (ForeignDecl p cc ie f ty) =
 >   ForeignDecl p cc ie f `liftM` checkType ty
 > checkDecl (ClassDecl p scon cls id0 decls) = 
@@ -191,7 +191,7 @@ declaration groups.
 
 > checkExpr :: Expression -> KCM Expression
 > checkExpr l@(Literal         _) = return l
-> checkExpr v@(Variable        _) = return v
+> checkExpr v@(Variable      _ _) = return v
 > checkExpr c@(Constructor     _) = return c
 > checkExpr (Paren             e) = Paren `liftM` checkExpr e
 > checkExpr (Typed       e cx ty) = liftM3 Typed (checkExpr e) (return cx) (checkType ty)
@@ -207,7 +207,7 @@ declaration groups.
 > checkExpr (EnumFromThenTo e1 e2 e3) =
 >   liftM3 EnumFromThenTo (checkExpr e1) (checkExpr e2) (checkExpr e3)
 > checkExpr (UnaryMinus     op e) = UnaryMinus op `liftM` checkExpr e
-> checkExpr (Apply         e1 e2) = liftM2 Apply (checkExpr e1) (checkExpr e2)
+> checkExpr (Apply       _ e1 e2) = liftM2 (Apply Nothing) (checkExpr e1) (checkExpr e2)
 > checkExpr (InfixApply e1 op e2) =
 >   liftM2 (\f1 f2 -> InfixApply f1 op f2) (checkExpr e1) (checkExpr e2)
 > checkExpr (LeftSection    e op) = flip LeftSection op `liftM` checkExpr e

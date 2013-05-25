@@ -105,7 +105,7 @@ partitionDecl p d@(TypeDecl  _ _ _ _) = p { typeDecls = d : typeDecls p }
 -- function declarations
 partitionDecl p (TypeSig pos ids cx ty)
   = partitionFuncDecls (\q -> TypeSig pos [q] cx ty) p ids
-partitionDecl p d@(FunctionDecl _ ident _)
+partitionDecl p d@(FunctionDecl _ _ ident _)
   = partitionFuncDecls (const d) p [ident]
 partitionDecl p d@(ForeignDecl _ _ _ ident _)
   = partitionFuncDecls (const d) p [ident]
@@ -243,7 +243,7 @@ genFuncDecl isLocal env (ident, decls)
                   Just (env', t) -> (env', Just t)
   (env2, rules) = case find Generators.GenAbstractCurry.isFunctionDecl decls of
                   Nothing -> (env1, [])
-                  Just (FunctionDecl _ _ eqs) -> mapAccumL genRule env1 eqs
+                  Just (FunctionDecl _ _ _ eqs) -> mapAccumL genRule env1 eqs
                   _ -> internalError "Gen.GenAbstractCurry.genFuncDecl: no FunctionDecl"
   mexternal   = genExternal `fmap` find isExternal decls
   arity       = compArity mtype rules
@@ -318,7 +318,7 @@ genLocalDecls env decls
               (funcDecls (foldl partitionDecl emptyPartition decls))
               decls
  where
-  genLocalIndex env' (PatternDecl _ constr _)
+  genLocalIndex env' (PatternDecl _ _ constr _)
     = genLocalPatternIndex env' constr
   genLocalIndex env' (FreeDecl _ idents)
     = let (env'', _) = mapAccumL genVarIndex env' idents
@@ -351,7 +351,7 @@ genLocalDecls env decls
   genLocals :: AbstractEnv -> [(Ident, [Decl])] -> [Decl]
             -> (AbstractEnv, [CLocalDecl])
   genLocals env' _ [] = (env', [])
-  genLocals env' fdecls ((FunctionDecl _ ident _):decls1)
+  genLocals env' fdecls ((FunctionDecl _ _ ident _):decls1)
     = let (env1, funcdecl) = genLocalFuncDecl (beginScope env') fdecls ident
           (env2, locals  ) = genLocals (endScope env1) fdecls decls1
       in  (env2, funcdecl:locals)
@@ -365,7 +365,7 @@ genLocalDecls env decls
     = let (env1, funcdecl) = genLocalFuncDecl (beginScope env') fdecls (head idents)
           (env2, locals  ) = genLocals (endScope env1) fdecls (ExternalDecl pos (tail idents):decls1)
       in  (env2, funcdecl:locals)
-  genLocals env' fdecls (PatternDecl pos constr rhs : decls1)
+  genLocals env' fdecls (PatternDecl pos _ constr rhs : decls1)
     = let (env1, patt   ) = genLocalPattern pos env' constr
           (env2, plocals) = genLocalDecls (beginScope env1)
                               (simplifyRhsLocals rhs)
@@ -445,7 +445,7 @@ genLocalDecls env decls
       in  (env2, CPRecord fields' mr')
   genLocalPattern _ _ _ = internalError "GenAbstractCurry.genLocalDecls.genLocalPattern: no pattern match"
 
-  genLocalPattRhs pos env' [(Variable _, expr)]
+  genLocalPattRhs pos env' [(Variable _ _, expr)]
     = genExpr pos env' expr
   genLocalPattRhs _ _ _
     = internalError ("guarded expressions in pattern declarations"
@@ -456,7 +456,7 @@ genExpr :: Position -> AbstractEnv -> Expression -> (AbstractEnv, CExpr)
 genExpr pos env (Literal l) = case l of
   String _ cs -> genExpr pos env $ List [] $ map (Literal . Char noRef) cs
   _           -> (env, CLit $ genLiteral l)
-genExpr _ env   (Variable v)
+genExpr _ env   (Variable _ v)
   | isJust midx     = (env, CVar (fromJust midx, idName ident))
   | v == qSuccessId = (env, CSymbol $ genQName False env qSuccessFunId)
   | otherwise       = (env, CSymbol $ genQName False env v)
@@ -467,45 +467,45 @@ genExpr _   env (Constructor  c) = (env, CSymbol $ genQName False env c)
 genExpr pos env (Paren     expr) = genExpr pos env expr
 genExpr pos env (Typed expr _ _) = genExpr pos env expr
 genExpr pos env (Tuple   _ args) = genExpr pos env $ case args of
-  []  -> Variable qUnitId
+  []  -> Variable Nothing qUnitId
   [x] -> x
-  _   -> foldl Apply (Variable $ qTupleId $ length args) args
+  _   -> foldl (Apply Nothing) (Variable Nothing $ qTupleId $ length args) args
 genExpr pos env (List _ args)
   = let cons = Constructor qConsId
         nil  = Constructor qNilId
-    in  genExpr pos env (foldr (Apply . Apply cons) nil args)
+    in  genExpr pos env (foldr (Apply Nothing . Apply Nothing cons) nil args)
 genExpr pos env (ListCompr _ expr stmts)
   = let (env1, stmts') = mapAccumL (genStatement pos) (beginScope env) stmts
         (env2, expr' )  = genExpr pos env1 expr
     in  (endScope env2, CListComp expr' stmts')
 genExpr pos env (EnumFrom expr)
-  = genExpr pos env (Apply (Variable qEnumFromId) expr)
+  = genExpr pos env (Apply Nothing (Variable Nothing qEnumFromId) expr)
 genExpr pos env (EnumFromThen expr1 expr2)
-  = genExpr pos env (Apply (Apply (Variable qEnumFromThenId) expr1) expr2)
+  = genExpr pos env (Apply Nothing (Apply Nothing (Variable Nothing qEnumFromThenId) expr1) expr2)
 genExpr pos env (EnumFromTo expr1 expr2)
-  = genExpr pos env (Apply (Apply (Variable qEnumFromToId) expr1) expr2)
+  = genExpr pos env (Apply Nothing (Apply Nothing (Variable Nothing qEnumFromToId) expr1) expr2)
 genExpr pos env (EnumFromThenTo expr1 expr2 expr3)
-  = genExpr pos env (Apply (Apply (Apply (Variable qEnumFromThenToId)
+  = genExpr pos env (Apply Nothing (Apply Nothing (Apply Nothing (Variable Nothing qEnumFromThenToId)
           expr1) expr2) expr3)
 genExpr pos env (UnaryMinus _ expr)
-  = genExpr pos env (Apply (Variable qNegateId) expr)
-genExpr pos env (Apply expr1 expr2)
+  = genExpr pos env (Apply Nothing (Variable Nothing qNegateId) expr)
+genExpr pos env (Apply _ expr1 expr2)
   = let (env1, expr1') = genExpr pos env expr1
         (env2, expr2') = genExpr pos env1 expr2
     in  (env2, CApply expr1' expr2')
 genExpr pos env (InfixApply expr1 op expr2)
-  = genExpr pos env (Apply (Apply (opToExpr op) expr1) expr2)
+  = genExpr pos env (Apply Nothing (Apply Nothing (opToExpr op) expr1) expr2)
 genExpr pos env (LeftSection expr op)
   = let ident  = freshVar env "x"
         patt   = VariablePattern ident
-        var    = Variable (qualify ident)
-        applic = Apply (Apply (opToExpr op) expr) var
+        var    = Variable Nothing (qualify ident)
+        applic = Apply Nothing (Apply Nothing (opToExpr op) expr) var
     in  genExpr pos env (Lambda noRef [patt] applic)
 genExpr pos env (RightSection op expr)
   = let ident  = freshVar env "x"
         patt   = VariablePattern ident
-        var    = Variable (qualify ident)
-        applic = Apply (Apply (opToExpr op) var) expr
+        var    = Variable Nothing (qualify ident)
+        applic = Apply Nothing (Apply Nothing (opToExpr op) var) expr
     in  genExpr pos env (Lambda noRef [patt] applic)
 genExpr pos env (Lambda _ params expr)
   = let (env1, params') = mapAccumL (genPattern pos) (beginScope env) params
@@ -520,7 +520,7 @@ genExpr pos env (Do stmts expr)
         (env2, expr' )  = genExpr pos env1 expr
     in  (endScope env2, CDoExpr (stmts' ++ [CSExpr expr']))
 genExpr pos env (IfThenElse _ expr1 expr2 expr3)
-  = genExpr pos env (Apply (Apply (Apply (Variable qIfThenElseId)
+  = genExpr pos env (Apply Nothing (Apply Nothing (Apply Nothing (Variable Nothing qIfThenElseId)
                     expr1) expr2) expr3)
 genExpr pos env (Case _ _ expr alts)
   = let (env1, expr') = genExpr pos env expr
@@ -558,7 +558,7 @@ genBranchExpr env (Alt p pat rhs)
         (env2, be  ) = genBranch env1 pat' $ simplifyRhsExpr rhs
     in  (endScope env2, be)
   where
-  genBranch env' pat' [(Variable _, expr)] -- no guards!
+  genBranch env' pat' [(Variable _ _, expr)] -- no guards!
     = let (env2, expr') = genExpr p env' expr
       in  (env2, CBranch pat' expr')
   genBranch env' pat' bs
@@ -708,7 +708,7 @@ buildExports mid ((NewtypeDecl _ ident _ _):ds)
   = ExportTypeAll (qualifyWith mid ident) : buildExports mid ds
 buildExports mid ((TypeDecl _ ident _ _):ds)
   = Export (qualifyWith mid ident) : buildExports mid ds
-buildExports mid ((FunctionDecl _ ident _):ds)
+buildExports mid ((FunctionDecl _ _ ident _):ds)
   = Export (qualifyWith mid ident) : buildExports mid ds
 buildExports mid (ForeignDecl _ _ _ ident _ : ds)
   = Export (qualifyWith mid ident) : buildExports mid ds
@@ -856,8 +856,8 @@ qSuccessFunId = qualifyWith preludeMIdent (mkIdent "success")
 
 -- The following functions check whether a declaration is of a certain kind
 isFunctionDecl :: Decl -> Bool
-isFunctionDecl (FunctionDecl _ _ _) = True
-isFunctionDecl _                    = False
+isFunctionDecl (FunctionDecl _ _ _ _ ) = True
+isFunctionDecl _                       = False
 
 isExternal :: Decl -> Bool
 isExternal (ForeignDecl _ _ _ _ _) = True
@@ -879,7 +879,7 @@ isPreludeSymbol qident
 
 -- Converts an infix operator to an expression
 opToExpr :: InfixOp -> Expression
-opToExpr (InfixOp    op) = Variable op
+opToExpr (InfixOp    op) = Variable Nothing op
 opToExpr (InfixConstr c) = Constructor c
 
 -- Looks up the type of a qualified symbol in the type environment and
@@ -902,7 +902,7 @@ simplifyLhs :: Lhs -> [Pattern]
 simplifyLhs = snd . flatLhs
 
 simplifyRhsExpr :: Rhs -> [(Expression, Expression)]
-simplifyRhsExpr (SimpleRhs _ e _) = [(Variable qSuccessId, e)]
+simplifyRhsExpr (SimpleRhs _ e _) = [(Variable Nothing qSuccessId, e)]
 simplifyRhsExpr (GuardedRhs gs _) = map (\ (CondExpr _ g e) -> (g, e)) gs
 
 simplifyRhsLocals :: Rhs -> [Decl]

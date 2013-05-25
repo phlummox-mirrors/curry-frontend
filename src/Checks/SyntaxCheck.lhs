@@ -270,7 +270,7 @@ Furthermore, it is not allowed to declare a label more than once.
 
 > -- |Bind a global function declaration in the 'RenameEnv'
 > bindFuncDecl :: Bool -> ModuleIdent -> Decl -> RenameEnv -> RenameEnv
-> bindFuncDecl tcc m (FunctionDecl _ ident equs) env
+> bindFuncDecl tcc m (FunctionDecl _ _ ident equs) env
 >   | null equs = internalError "SyntaxCheck.bindFuncDecl: no equations"
 >   | otherwise = let arty = length $ snd $ getFlatLhs $ head equs
 >                     qid  = qualifyWith m ident
@@ -297,11 +297,11 @@ Furthermore, it is not allowed to declare a label more than once.
 
 > -- |Bind a local declaration (function, variables) in the 'RenameEnv'
 > bindVarDecl :: Decl -> RenameEnv -> RenameEnv
-> bindVarDecl (FunctionDecl _ f eqs) env
+> bindVarDecl (FunctionDecl _ _ f eqs) env
 >   | null eqs  = internalError "SyntaxCheck.bindVarDecl: no equations"
 >   | otherwise = let arty = length $ snd $ getFlatLhs $ head eqs
 >                 in  bindLocal (unRenameIdent f) (LocalVar arty f) env
-> bindVarDecl (PatternDecl         _ t _) env = foldr bindVar env (bv t)
+> bindVarDecl (PatternDecl       _ _ t _) env = foldr bindVar env (bv t)
 > bindVarDecl (FreeDecl             _ vs) env = foldr bindVar env vs
 > bindVarDecl _                           env = env
 
@@ -424,14 +424,14 @@ top-level.
 >   liftM2 (InfixDecl p fix') (checkPrecedence p pr) (mapM renameVar ops)
 > checkDeclLhs (TypeSig        p vs cx ty) = do
 >   (\vs' -> TypeSig p vs' cx ty) `liftM` mapM (checkVar "type signature") vs
-> checkDeclLhs (FunctionDecl      p _ eqs) =
+> checkDeclLhs (FunctionDecl    p _ _ eqs) =
 >   checkEquationsLhs p eqs
 > checkDeclLhs (ForeignDecl  p cc ie f ty) =
 >   (\f' -> ForeignDecl p cc ie f' ty) `liftM` checkVar "foreign declaration" f
 > checkDeclLhs (    ExternalDecl     p fs) =
 >   ExternalDecl p `liftM` mapM (checkVar "external declaration") fs
-> checkDeclLhs (PatternDecl       p t rhs) =
->     (\t' -> PatternDecl p t' rhs) `liftM` checkPattern p t
+> checkDeclLhs (PatternDecl   p cty t rhs) =
+>     (\t' -> PatternDecl p cty t' rhs) `liftM` checkPattern p t
 > checkDeclLhs (FreeDecl             p vs) =
 >   FreeDecl p `liftM` mapM (checkVar "free variables declaration") vs
 > checkDeclLhs d                           = return d
@@ -456,11 +456,11 @@ top-level.
 >   case lhs' of
 >     Left  l -> return $ funDecl l
 >     Right r -> patDecl r >>= checkDeclLhs
->   where funDecl (f, lhs') = FunctionDecl p f [Equation p' lhs' rhs]
+>   where funDecl (f, lhs') = FunctionDecl p Nothing f [Equation p' lhs' rhs]
 >         patDecl t = do
 >           k <- getScopeId
 >           when (k == globalScopeId) $ report $ errToplevelPattern p
->           return $ PatternDecl p' t rhs
+>           return $ PatternDecl p' Nothing t rhs
 > checkEquationsLhs _ _ = internalError "SyntaxCheck.checkEquationsLhs"
 
 > checkEqLhs :: Position -> Lhs -> SCM (Either (Ident, Lhs) Pattern)
@@ -515,10 +515,10 @@ top-level.
 
 > joinEquations :: [Decl] -> SCM [Decl]
 > joinEquations [] = return []
-> joinEquations (FunctionDecl p f eqs : FunctionDecl _ f' [eq] : ds)
+> joinEquations (FunctionDecl p _ f eqs : FunctionDecl _ _ f' [eq] : ds)
 >   | f == f' = do
 >     when (getArity (head eqs) /= getArity eq) $ report $ errDifferentArity f
->     joinEquations (FunctionDecl p f (eqs ++ [eq]) : ds)
+>     joinEquations (FunctionDecl p Nothing f (eqs ++ [eq]) : ds)
 >   where getArity = length . snd . getFlatLhs
 > joinEquations (d : ds) = (d :) `liftM` joinEquations ds
 
@@ -546,10 +546,10 @@ top-level.
 > checkDeclRhs :: [Ident] -> Decl -> SCM Decl
 > checkDeclRhs bvs (TypeSig   p vs cx ty) = do
 >   (\vs' -> TypeSig p vs' cx ty) `liftM` mapM (checkLocalVar bvs) vs
-> checkDeclRhs _   (FunctionDecl p f eqs) =
->   FunctionDecl p f `liftM` mapM checkEquation eqs
-> checkDeclRhs _   (PatternDecl  p t rhs) =
->   PatternDecl p t `liftM` checkRhs rhs
+> checkDeclRhs _   (FunctionDecl p _ f eqs) =
+>   FunctionDecl p Nothing f `liftM` mapM checkEquation eqs
+> checkDeclRhs _   (PatternDecl p cty t rhs) =
+>   PatternDecl p cty t `liftM` checkRhs rhs
 > checkDeclRhs _   d                      = return d
 
 > checkLocalVar :: [Ident] -> Ident -> SCM Ident
@@ -759,7 +759,7 @@ checkParen
 
 > checkExpr :: Position -> Expression -> SCM Expression
 > checkExpr _ (Literal     l) = Literal       `liftM` renameLiteral l
-> checkExpr _ (Variable    v) = checkVariable v
+> checkExpr _ (Variable  _ v) = checkVariable v
 > checkExpr _ (Constructor c) = checkVariable c
 > checkExpr p (Paren       e) = Paren         `liftM` checkExpr p e
 > checkExpr p (Typed e cx ty) = liftM3 Typed (checkExpr p e) (return cx) (return ty)
@@ -776,8 +776,8 @@ checkParen
 > checkExpr p (EnumFromThenTo e1 e2 e3) =
 >   liftM3 EnumFromThenTo (checkExpr p e1) (checkExpr p e2) (checkExpr p e3)
 > checkExpr p (UnaryMinus         op e) = UnaryMinus op `liftM` checkExpr p e
-> checkExpr p (Apply             e1 e2) =
->   liftM2 Apply (checkExpr p e1) (checkExpr p e2)
+> checkExpr p (Apply         cty e1 e2) =
+>   liftM2 (Apply cty) (checkExpr p e1) (checkExpr p e2)
 > checkExpr p (InfixApply     e1 op e2) =
 >   liftM3 InfixApply (checkExpr p e1) (checkOp op) (checkExpr p e2)
 > checkExpr p (LeftSection        e op) =
@@ -841,27 +841,27 @@ checkParen
 >     -- anonymous free variable
 >   | isAnonId (unqualify v) = do
 >     checkAnonFreeVarsExtension $ qidPosition v
->     (\n -> Variable $ updQualIdent id (flip renameIdent n) v) `liftM` newId
+>     (\n -> Variable Nothing $ updQualIdent id (flip renameIdent n) v) `liftM` newId
 >     -- return $ Variable v
 >     -- normal variable
 >   | otherwise             = do
 >     env <- getRenameEnv
 >     case qualLookupVar v env of
 >       []              -> do report $ errUndefinedVariable v
->                             return $ Variable v
+>                             return $ Variable Nothing v
 >       [Constr _]      -> return $ Constructor v
->       [GlobalVar _ _] -> return $ Variable v
->       [LocalVar _ v'] -> return $ Variable $ qualify v'
+>       [GlobalVar _ _] -> return $ Variable Nothing v
+>       [LocalVar _ v'] -> return $ Variable Nothing $ qualify v'
 >       rs -> do
 >         m <- getModuleIdent
 >         case qualLookupVar (qualQualify m v) env of
 >           []              -> do report $ errAmbiguousIdent rs v
->                                 return $ Variable v
+>                                 return $ Variable Nothing v
 >           [Constr _]      -> return $ Constructor v
->           [GlobalVar _ _] -> return $ Variable v
->           [LocalVar _ v'] -> return $ Variable $ qualify v'
+>           [GlobalVar _ _] -> return $ Variable Nothing v
+>           [LocalVar _ v'] -> return $ Variable Nothing $ qualify v'
 >           rs'             -> do report $ errAmbiguousIdent rs' v
->                                 return $ Variable v
+>                                 return $ Variable Nothing v
 
 > -- * Because patterns or decls eventually introduce new variables, the
 > --   scope has to be nested one level.
@@ -930,10 +930,10 @@ Auxiliary definitions.
 
 > vars :: Decl -> [Ident]
 > vars (TypeSig       _ fs _ _) = fs
-> vars (FunctionDecl     _ f _) = [f]
+> vars (FunctionDecl   _ _ f _) = [f]
 > vars (ForeignDecl  _ _ _ f _) = [f]
 > vars (ExternalDecl      _ fs) = fs
-> vars (PatternDecl      _ t _) = bv t
+> vars (PatternDecl    _ _ t _) = bv t
 > vars (FreeDecl          _ vs) = vs
 > vars _ = []
 
@@ -949,7 +949,7 @@ it is necessary to sort the list of declarations.
 >  where
 >  sortFD _   res []              = reverse res
 >  sortFD env res (decl : decls') = case decl of
->    FunctionDecl _ ident _
+>    FunctionDecl _ _ ident _
 >     | ident `Set.member` env
 >     -> sortFD env (insertBy cmpFuncDecl decl res) decls'
 >     | otherwise
@@ -957,7 +957,7 @@ it is necessary to sort the list of declarations.
 >    _    -> sortFD env (decl:res) decls'
 
 > cmpFuncDecl :: Decl -> Decl -> Ordering
-> cmpFuncDecl (FunctionDecl _ id1 _) (FunctionDecl _ id2 _)
+> cmpFuncDecl (FunctionDecl _ _ id1 _) (FunctionDecl _ _ id2 _)
 >    | id1 == id2 = EQ
 >    | otherwise  = GT
 > cmpFuncDecl _ _ = GT
