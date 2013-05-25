@@ -659,7 +659,8 @@ either one of the basic types or \texttt{()}.
 > tcDeclRhs tyEnv0 (FunctionDecl p0 _ f (eq:eqs)) = do
 >   (eq', (cx0, ty0)) <- tcEquation tyEnv0 eq
 >   (eqs', (cxs, ty))  <- tcEqns ty0 [] eqs [eq']
->   return (FunctionDecl p0 Nothing f eqs', (cx0 ++ cxs, ty))
+>   let cty = (cx0 ++ cxs, ty)
+>   return (FunctionDecl p0 (Just $ mirrorCT cty) f eqs', cty)
 >   where tcEqns :: Type -> BT.Context -> [Equation] -> [Equation] -> TCM ([Equation], ConstrType)
 >         tcEqns ty cxs [] newEqs = return (reverse newEqs, (cxs, ty))
 >         tcEqns ty cxs (eq1@(Equation p _ _):eqs1) newEqs = do
@@ -668,7 +669,7 @@ either one of the basic types or \texttt{()}.
 >           tcEqns ty (cx' ++ cxs) eqs1 (eq1':newEqs)
 > tcDeclRhs tyEnv0 (PatternDecl p _ t rhs) = do
 >   (rhs', cty) <- tcRhs tyEnv0 rhs
->   return (PatternDecl p Nothing t rhs', cty)
+>   return (PatternDecl p (Just $ mirrorCT cty) t rhs', cty)
 > tcDeclRhs _ _ = internalError "TypeCheck.tcDeclRhs: no pattern match"
 
 > unifyDecl :: Decl -> ConstrType -> ConstrType -> TCM ()
@@ -1065,7 +1066,7 @@ because of possibly multiple occurrences of variables.
 >       m <- getModuleIdent
 >       ty <- freshTypeVar
 >       modifyValueEnv $ bindFunOnce m v' (arrowArity ty) $ monoType ty
->       return $ (Variable Nothing v, noContext ty)
+>       return $ (Variable (Just $ mirrorCT $ noContext ty) v, noContext ty)
 >   | otherwise    = do
 >       sigs <- getSigEnv
 >       m <- getModuleIdent
@@ -1091,10 +1092,11 @@ because of possibly multiple occurrences of variables.
 >           -- inferred (new) contexts match the type variables in the type
 >           -- constructed from the type signature
 >           let mapping = buildTypeVarsMapping ity ty0
->           return (Variable Nothing v, (cx0 ++ subst mapping icx, ty0))
+>               cty' = (cx0 ++ subst mapping icx, ty0)
+>           return (Variable (Just $ mirrorCT cty') v, cty')
 >         Nothing -> do
 >           cty <- getValueEnv >>= inst . (flip (funType tcEnv m v) cEnv)
->           return (Variable Nothing v, cty)
+>           return (Variable (Just $ mirrorCT cty) v, cty)
 >   where v' = unqualify v
 > tcExpr _ e@(Constructor c) = do
 >  m <- getModuleIdent
@@ -1395,6 +1397,43 @@ because of possibly multiple occurrences of variables.
 > reverseTySubst = listToSubst . map swap . substToList
 >   where swap (n, TypeVariable m) = (m, TypeVariable n)
 >         swap _ = internalError "reverseTySubst"
+
+\end{verbatim}
+Functions for converting between the context/type data type used in curry-frontend
+and the context/type data types used in curry-base. This mirroring is necessary
+because we cannot have cyclic dependencies between two modules like curry-base
+and curry-frontend, but in curry-base we *do* want to refer to the type datatypes
+in curry-frontend, hence the mirroring. 
+TODO: remove this functions as soon as possible 
+\begin{verbatim}
+
+> mirrorCx :: BT.Context -> ST.Context_
+> mirrorCx cx = map (\(qid, ty) -> (qid, mirrorTy ty)) cx
+
+> mirrorTy :: Type -> ST.Type_
+> mirrorTy (TypeVariable n) = TypeVariable_ n
+> mirrorTy (TypeConstructor q tys) = TypeConstructor_ q (map mirrorTy tys)
+> mirrorTy (TypeArrow t1 t2) = TypeArrow_ (mirrorTy t1) (mirrorTy t2)
+> mirrorTy (TypeConstrained tys n) = TypeConstrained_ (map mirrorTy tys) n
+> mirrorTy (TypeSkolem n) = TypeSkolem_ n
+> mirrorTy (TypeRecord tys n) = TypeRecord_ (map (\(id0, ty) -> (id0, mirrorTy ty)) tys) n
+
+> mirrorCT :: ConstrType -> ST.ConstrType_
+> mirrorCT (cx, ty) = (mirrorCx cx, mirrorTy ty)
+
+> mirror2Cx :: Context_ -> BT.Context
+> mirror2Cx cx = map (\(qid, ty) -> (qid, mirror2Ty ty)) cx
+
+> mirror2Ty :: Type_ -> Type
+> mirror2Ty (TypeVariable_ n) = TypeVariable n
+> mirror2Ty (TypeConstructor_ q tys) = TypeConstructor q (map mirror2Ty tys)
+> mirror2Ty (TypeArrow_ t1 t2) = TypeArrow (mirror2Ty t1) (mirror2Ty t2)
+> mirror2Ty (TypeConstrained_ tys n) = TypeConstrained (map mirror2Ty tys) n
+> mirror2Ty (TypeSkolem_ n) = TypeSkolem n
+> mirror2Ty (TypeRecord_ tys n) = TypeRecord (map (\(id0, ty) -> (id0, mirror2Ty ty)) tys) n
+
+> mirror2CT :: ConstrType_ -> ConstrType
+> mirror2CT (cx, ty) = (mirror2Cx cx, mirror2Ty ty)
 
 \end{verbatim}
 The function \texttt{tcArrow} checks that its argument can be used as
