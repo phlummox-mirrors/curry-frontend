@@ -17,6 +17,9 @@ module Transformations.Dictionaries (insertDicts) where
 import CompilerEnv
 import Curry.Syntax
 import Env.ClassEnv
+import Base.Messages
+
+import Base.Types as BT
 
 import Control.Monad.State as S
 
@@ -51,5 +54,69 @@ insertDicts mdl cEnv =
 
 -- |convert a whole module
 diModule :: Module -> DI Module
-diModule (Module m e i ds) = return $ Module m e i ds
+diModule (Module m e i ds) = Module m e i `liftM` (mapM diDecl ds)
+  
+-- |convert function declarations
+diDecl :: Decl -> DI Decl
+diDecl (FunctionDecl p (Just cty) id0 eqs) = do
+  cEnv <- getClassEnv
+  let cty'  = mirrorCT cty
+      -- we have to reduce the context before adding dictionary parameters, 
+      -- because the recorded context is the "raw" context 
+      cty'' = (reduceContext cEnv $ fst $ cty', snd cty')
+  FunctionDecl p (Just cty) id0 `liftM` (mapM (diEqu cty'' $ show id0) eqs)
+diDecl (FunctionDecl _ Nothing _ _) = internalError "no type info in diDecl"
+-- TODO: convert pattern declarations!
+diDecl f@(PatternDecl _p (Just _cty) _ps _rhs) = return f 
+diDecl (PatternDecl _ Nothing _ _) = internalError "no type info in diDecl"
+diDecl f = return f
 
+-- |transform an equation
+-- Takes the type of the corresponding function declaration, and the name
+-- of the function 
+diEqu :: ConstrType -> String -> Equation -> DI Equation
+diEqu cty fun (Equation p lhs rhs)= 
+  liftM2 (Equation p) (diLhs fun lhs) (diRhs cty fun rhs)
+
+-- |transform right hand sides
+diRhs :: ConstrType -> String -> Rhs -> DI Rhs
+diRhs cty fun (SimpleRhs p e ds) = 
+  liftM2 (SimpleRhs p) (diExpr cty fun e) (mapM diDecl ds)
+diRhs cty fun (GuardedRhs ces ds) = 
+  liftM2 GuardedRhs (mapM (diCondExpr cty fun) ces) (mapM diDecl ds)
+
+  
+-- | transform conditional expressions
+diCondExpr :: ConstrType -> String -> CondExpr -> DI CondExpr
+diCondExpr cty fun (CondExpr p e1 e2) = 
+  liftM2 (CondExpr p) (diExpr cty fun e1) (diExpr cty fun e2)
+  
+
+-- | transform left hand sides
+diLhs :: String -> Lhs -> DI Lhs
+diLhs _fun = return -- TODO
+
+-- | transform expressions
+diExpr :: ConstrType -> String -> Expression -> DI Expression
+diExpr _cty _fun e = return e -- TODO
+
+
+-- ---------------------------------------------------------------------------
+-- helper functions
+-- ---------------------------------------------------------------------------
+
+type ConstrType = (BT.Context, Type)
+
+mirrorCx :: Context_ -> BT.Context
+mirrorCx cx = map (\(qid, ty) -> (qid, mirrorTy ty)) cx
+
+mirrorTy :: Type_ -> Type
+mirrorTy (TypeVariable_ n) = TypeVariable n
+mirrorTy (TypeConstructor_ q tys) = TypeConstructor q (map mirrorTy tys)
+mirrorTy (TypeArrow_ t1 t2) = TypeArrow (mirrorTy t1) (mirrorTy t2)
+mirrorTy (TypeConstrained_ tys n) = TypeConstrained (map mirrorTy tys) n
+mirrorTy (TypeSkolem_ n) = TypeSkolem n
+mirrorTy (TypeRecord_ tys n) = TypeRecord (map (\(id0, ty) -> (id0, mirrorTy ty)) tys) n
+
+mirrorCT :: ConstrType_ -> ConstrType
+mirrorCT (cx, ty) = (mirrorCx cx, mirrorTy ty)
