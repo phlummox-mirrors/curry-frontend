@@ -186,16 +186,19 @@ checkModule opts (env, mdl) = do
   (env1,  kc) <- kindCheck env mdl -- should be only syntax checking ?
   (env2,  sc) <- syntaxCheck opts env1 kc
   (env3,  pc) <- precCheck        env2 sc
-  -- (env4, tcc) <- typeClassesCheck env3 pc
-  (env4, tcc) <- unsafePerformIO (doDump opts (DumpPrecChecked, env3, show' CS.ppModule pc) >> return (typeClassesCheck env3 pc) ) 
+  (env4, tcc) <- typeClassesCheck env3 pc
   (env5,  tc) <- if withTypeCheck
                    -- then typeCheck env4 tcc
-                   then unsafePerformIO (doDump opts (DumpTypeClassesChecked, env4, show' CS.ppModule tcc) >> return (typeCheck env4 tcc) )
+                   then dump DumpTypeClassesChecked typeCheck (env4, tcc)
                    else return (env4, tcc)
+  let (env5b, dicts) = if withTypeCheck
+                         -- then insertDicts env5 tc
+                         then dump DumpTypeChecked insertDicts (env5, tc)
+                         else (env5, tc)
   (env6,  ec) <- if withTypeCheck 
-                   then unsafePerformIO (doDump opts (DumpTypeChecked, env5, show' CS.ppModule tc) >> return (exportCheck env5 tc) )
-                   -- then exportCheck env5 tc
-                   else return (env5, tc)
+                   -- then exportCheck env5b dicts
+                   then dump DumpDictionaries exportCheck (env5b, dicts)
+                   else return (env5b, dicts)
   (env7,  ql) <- return $ qual opts env6 ec
   let dumps = [ (DumpParsed            , env , show' CS.ppModule mdl)
               , (DumpKindChecked       , env1, show' CS.ppModule kc)
@@ -203,6 +206,7 @@ checkModule opts (env, mdl) = do
               , (DumpPrecChecked       , env3, show' CS.ppModule pc)
               , (DumpTypeClassesChecked, env4, show' CS.ppModule tcc)
               , (DumpTypeChecked       , env5, show' CS.ppModule tc)
+              , (DumpDictionaries      , env5b, show' CS.ppModule dicts)
               , (DumpExportChecked     , env6, show' CS.ppModule ec)
               , (DumpQualified         , env7, show' CS.ppModule ql)
               ]
@@ -210,7 +214,9 @@ checkModule opts (env, mdl) = do
   where
   withTypeCheck = any (`elem` optTargetTypes opts)
                       [FlatCurry, ExtendedFlatCurry, FlatXml, AbstractCurry]
-  show' pp = if optDumpRaw opts then show else show . pp 
+  show' pp = if optDumpRaw opts then show else show . pp
+  
+  dump d check (env0, mdl0) = unsafePerformIO (doDump opts (d, env0, show' CS.ppModule mdl0) >> return (check env0 mdl0) )
 
 -- ---------------------------------------------------------------------------
 -- Translating a module

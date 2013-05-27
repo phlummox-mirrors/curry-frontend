@@ -39,7 +39,7 @@ Executable cymake
     , mtl, containers, pretty, transformers
   ghc-options: -Wall
   Other-Modules:
-      Base.CurryTypes
+    Base.CurryTypes
     , Base.Expr
     , Base.Messages
     , Base.NestEnv
@@ -88,6 +88,7 @@ Executable cymake
     , Transformations.CaseCompletion
     , Transformations.CurryToIL
     , Transformations.Desugar
+    , Transformations.Dictionaries
     , Transformations.Lift
     , Transformations.Qual
     , Transformations.Simplify
@@ -170,6 +171,7 @@ Test-Suite TestTypeChecking
      , Transformations.CaseCompletion
      , Transformations.CurryToIL
      , Transformations.Desugar
+     , Transformations.Dictionaries
      , Transformations.Lift
      , Transformations.Qual
      , Transformations.Simplify

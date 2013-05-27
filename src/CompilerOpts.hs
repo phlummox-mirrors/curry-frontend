@@ -110,6 +110,7 @@ data DumpLevel
   | DumpSyntaxChecked      -- ^ dump source code after syntax checking
   | DumpPrecChecked        -- ^ dump source code after precedence checking
   | DumpTypeChecked        -- ^ dump source code after type checking
+  | DumpDictionaries       -- ^ dump source code after dictionaries have been inserted
   | DumpExportChecked      -- ^ dump source code after export checking
   | DumpQualified          -- ^ dump source  after qualification
   | DumpDesugared          -- ^ dump source  after desugaring
@@ -126,6 +127,7 @@ dumpLevel = [ (DumpParsed       , "parsed", "parse tree"                   )
             , (DumpSyntaxChecked, "sc"    , "syntax checker output"        )
             , (DumpPrecChecked  , "pc"    , "precedence checker output"    )
             , (DumpTypeChecked  , "tc"    , "type checker output"          )
+            , (DumpDictionaries , "dict"  , "dictionaries inserter output" )
             , (DumpExportChecked, "ec"    , "export checker output"        )
             , (DumpQualified    , "qual"  , "qualifier output"             )
             , (DumpDesugared    , "ds"    , "desugarer output"             )
