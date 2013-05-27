@@ -11,7 +11,7 @@
     Description: TODO
 -}
 
-module Checks.TypeClassesCheck (typeClassesCheck) where
+module Checks.TypeClassesCheck (typeClassesCheck, sep) where
 
 import Curry.Syntax.Type as ST hiding (IDecl)
 import Env.ClassEnv

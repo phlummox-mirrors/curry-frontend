@@ -14,9 +14,11 @@
 
 module Transformations.Dictionaries (insertDicts) where
 
+import Curry.Base.Ident
 import CompilerEnv
 import Curry.Syntax
 import Env.ClassEnv
+import Checks.TypeClassesCheck (sep)
 import Base.Messages
 
 import Base.Types as BT
@@ -76,7 +78,7 @@ diDecl f = return f
 -- of the function 
 diEqu :: ConstrType -> String -> Equation -> DI Equation
 diEqu cty fun (Equation p lhs rhs)= 
-  liftM2 (Equation p) (diLhs fun lhs) (diRhs cty fun rhs)
+  liftM2 (Equation p) (diLhs cty fun lhs) (diRhs cty fun rhs)
 
 -- |transform right hand sides
 diRhs :: ConstrType -> String -> Rhs -> DI Rhs
@@ -91,14 +93,25 @@ diCondExpr :: ConstrType -> String -> CondExpr -> DI CondExpr
 diCondExpr cty fun (CondExpr p e1 e2) = 
   liftM2 (CondExpr p) (diExpr cty fun e1) (diExpr cty fun e2)
   
-
 -- | transform left hand sides
-diLhs :: String -> Lhs -> DI Lhs
-diLhs _fun = return -- TODO
+diLhs :: ConstrType -> String -> Lhs -> DI Lhs
+diLhs cty fun (FunLhs id0 ps) = 
+  return $ FunLhs id0 (dictParams ++ ps)  
+  where 
+  dictParams = map (VariablePattern . contextElemToVar fun) (fst cty)
+diLhs cty fun (OpLhs p1 id0 p2) = diLhs cty fun (FunLhs id0 [p1, p2])
+diLhs cty fun a@(ApLhs lhs ps) = return a -- TODO 
 
 -- | transform expressions
 diExpr :: ConstrType -> String -> Expression -> DI Expression
 diExpr _cty _fun e = return e -- TODO
+
+
+-- |generates an identifier for the given function and context element
+contextElemToVar:: String -> (QualIdent, Type) -> Ident
+contextElemToVar fun (cls, ty) =
+  -- TODO: better name generation?
+  flip renameIdent 1 $ mkIdent (fun ++ sep ++ show cls ++ sep ++ show ty)
 
 
 -- ---------------------------------------------------------------------------
