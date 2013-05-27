@@ -45,7 +45,7 @@ type annotation is present.
 > import Base.Types as BT
 > import Base.TypeSubst
 > import Base.Subst (listToSubst, substToList)
-> import Base.Utils (fst3, foldr2, findDouble, zip')
+> import Base.Utils (fst3, foldr2, findDouble, zip', zipWith', zipWith3')
 
 > import Env.TypeConstructor (TCEnv, TypeInfo (..), bindTypeInfo
 >   , qualLookupTC)
@@ -510,7 +510,7 @@ either one of the basic types or \texttt{()}.
 >       cxsRhs = map fst ctysRhs
 >       tysRhs = map snd ctysRhs
 >       cxs = zipWith (++) cxsLhs cxsRhs
->   sequence_ (zipWith3 unifyDecl ds ctysLhs ctysRhs)
+>   sequence_ (zipWith3' unifyDecl ds ctysLhs ctysRhs)
 >   theta <- getTypeSubst
 >   let -- build the types and contexts of all declarations
 >       types  = map (subst theta) tysRhs
@@ -779,7 +779,7 @@ signature the declared type must be too general.
 > buildTypeVarsMapping' :: Type -> Type -> [(Int, Int)]
 > buildTypeVarsMapping' (TypeVariable n1) (TypeVariable n2) = [(n1, n2)]
 > buildTypeVarsMapping' (TypeConstructor _ ts1) (TypeConstructor _ ts2)
->   = concat $ zipWith buildTypeVarsMapping' ts1 ts2
+>   = concat $ zipWith' buildTypeVarsMapping' ts1 ts2
 > buildTypeVarsMapping' (TypeArrow t11 t12) (TypeArrow t21 t22)
 >   = buildTypeVarsMapping' t11 t21 ++ buildTypeVarsMapping' t12 t22
 > buildTypeVarsMapping' (TypeConstrained _ _) (TypeConstrained _ _) = [] 
