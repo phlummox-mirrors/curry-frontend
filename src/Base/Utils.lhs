@@ -12,7 +12,7 @@ commonly used in the compiler, but not implemented in the Haskell
 
 > module Base.Utils
 >   ( fst3, thd3, (++!), foldr2, mapAccumM, findDouble, concatMapM, findMultiples
->   , without, zip'
+>   , without, zip', zipWith', zipWith3'
 >   ) where
 
 > import Data.List (partition)
@@ -150,14 +150,24 @@ A function that returns the given list without the nth element
 >   without' _ [] = []
 
 \end{verbatim}
-Zipping two lists as with zip, but throw an error if the lists don't have the
-same length
+Zipping lists as with zip/zipWith, but throw an error if the lists don't have 
+the same length
 \begin{verbatim}
 
 > zip' :: [a] -> [b] -> [(a, b)]
 > zip' (x:xs) (y:ys) = (x, y) : zip' xs ys
 > zip' [] [] = []
 > zip' _ _ = error "zip': lists don't have the same length!"
+
+> zipWith' :: (a -> b -> c) -> [a] -> [b] -> [c]
+> zipWith' _ [] [] = []
+> zipWith' f (x:xs) (y:ys) = f x y : zipWith' f xs ys
+> zipWith' _ _ _ = error "zipWith': lists don't have same length"
+
+> zipWith3' :: (a -> b -> c -> d) -> [a] -> [b] -> [c] -> [d]
+> zipWith3' _ [] [] [] = []
+> zipWith3' f (x:xs) (y:ys) (z:zs) = f x y z : zipWith3' f xs ys zs
+> zipWith3' _ _ _ _ = error "zipWith3': lists don't have same length"
 
 \end{verbatim} 
 
