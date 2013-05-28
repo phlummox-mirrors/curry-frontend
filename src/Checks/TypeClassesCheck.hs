@@ -68,7 +68,7 @@ typeClassesCheck :: ModuleIdent -> [Decl] -> ClassEnv -> TCEnv -> ([Decl], Class
 typeClassesCheck m decls (ClassEnv importedClasses importedInstances _) tcEnv0 = 
   case runTcc result initTccState of 
     ((classes, instances), []) -> 
-      let newDecls = concatMap (transformInstance cEnv) $ 
+      let newDecls = concatMap (transformInstance m cEnv tcEnv0) $ 
             concatMap (transformClass2 cEnv) decls
           classes' = map renameTypeSigVars classes
           classes'' = map buildTypeSchemes classes'
@@ -748,35 +748,36 @@ type IDecl = Decl
 -- |transformInstance creates top level functions for the methods 
 -- of which rules are given in the instance declaration, and concrete 
 -- dictionaries, as well as type signatures for the instance rules. 
-transformInstance :: ClassEnv -> IDecl -> [Decl]
-transformInstance cEnv idecl@(InstanceDecl _ _ cls _ _ decls)
-  = concatMap (transformMethod cEnv idecl) decls
-  ++ concatMap (handleMissingFunc cEnv idecl) missingMethods
+transformInstance :: ModuleIdent -> ClassEnv -> TCEnv -> IDecl -> [Decl]
+transformInstance m cEnv tcEnv idecl@(InstanceDecl _ _ cls tycon _ decls)
+  = concatMap (transformMethod cEnv idecl ity) decls
+  ++ concatMap (handleMissingFunc cEnv idecl ity) missingMethods
   -- create dictionary 
-  ++ createDictionary2 cEnv idecl
+  ++ createDictionary2 cEnv idecl ity
   where
+  ity = fromJust $ tyConToQualIdent m tcEnv tycon
   presentMethods = nub $ map (\(FunctionDecl _ _ id0 _) -> id0) decls
   theClass0 = fromJust $ lookupClass cEnv cls 
   theMethods0 = nub $ map fst3 $ methods theClass0
   missingMethods = theMethods0 \\ presentMethods
-transformInstance _ d = [d]
+transformInstance _ _ _ d = [d]
 
 -- |transforms one method defined in an instance to a top level function 
-transformMethod :: ClassEnv -> IDecl -> Decl -> [Decl]
-transformMethod cEnv idecl@(InstanceDecl _ _ cls tcon _ _)
-                      decl@(FunctionDecl _ _ _ _) =
+transformMethod :: ClassEnv -> IDecl -> QualIdent -> Decl -> [Decl]
+transformMethod cEnv idecl@(InstanceDecl _ _ cls _ _ _) ity
+                     decl@(FunctionDecl _ _ _ _) =
   -- create type signature
   createTypeSignature rfunc cEnv idecl decl
   -- create function rules
   : [createTopLevelFuncs rfunc decl] 
   where 
     -- rename for specific instance!
-    rfunc = (\s -> instMethodName cls tcon s)
-transformMethod _ _ _ = internalError "transformMethod"
+    rfunc = (\s -> instMethodName cls ity s)
+transformMethod _ _ _ _ = internalError "transformMethod"
 
 -- |create a name for the (hidden) function that is implemented by the  
 -- function definitions in the instance  
-instMethodName :: QualIdent -> TypeConstructor -> String -> String
+instMethodName :: QualIdent -> QualIdent -> String -> String
 instMethodName cls tcon s = implPrefix ++ show cls ++ sep ++ show tcon ++ sep ++ s
 
 -- |creates a type signature for an instance method which is transformed to
@@ -832,25 +833,25 @@ rename rfunc = updIdentName rfunc
 
 -- |handles functions missing in an instance declaration. Searches for a
 -- default method (TODO!) and inserts this, else inserts an error statement
-handleMissingFunc :: ClassEnv -> IDecl -> Ident -> [Decl]
-handleMissingFunc _cEnv (InstanceDecl _ _ cls ty _ _) fun = 
+handleMissingFunc :: ClassEnv -> IDecl -> QualIdent -> Ident -> [Decl]
+handleMissingFunc _cEnv (InstanceDecl _ _ cls _tcon _ _) ity fun = 
   [ FunctionDecl NoPos Nothing globalName [if defaultMethodDefined then equ2 else equ1]
   ]
   where
-  globalName = mkIdent $ instMethodName cls ty (show fun)
+  globalName = mkIdent $ instMethodName cls ity (show fun)
   equ1 = Equation NoPos (FunLhs globalName []) 
     (SimpleRhs NoPos (Apply (Variable Nothing . qualify . mkIdent $ "error") 
                             (Literal $ String (srcRef 0) errorString)) [])
   errorString = show fun ++ " not given in instance declaration of class "
-    ++ show cls ++ " and type " ++ show ty
+    ++ show cls ++ " and type " ++ show ity
   equ2 = undefined -- TODO
   defaultMethodDefined = False -- TODO
-handleMissingFunc _ _ _ = internalError "handleMissingFunc"
+handleMissingFunc _ _ _ _ = internalError "handleMissingFunc"
 
 -- |This function creates a dictionary for the given instance declaration, 
 -- using dictionary data types instead of tuples
-createDictionary :: ClassEnv -> IDecl -> [Decl]
-createDictionary cEnv (InstanceDecl _ _scx cls ty _tvars _decls) = 
+createDictionary :: ClassEnv -> IDecl -> QualIdent -> [Decl]
+createDictionary cEnv (InstanceDecl _ _scx cls _ _tvars _decls) ity = 
   [ FunctionDecl NoPos Nothing (dictName cls)
     [Equation NoPos
       (FunLhs (dictName cls) [])
@@ -859,22 +860,22 @@ createDictionary cEnv (InstanceDecl _ _scx cls ty _tvars _decls) =
       ]
   ] 
   where
-  dictName c = mkIdent $ mkDictName (show c) (show ty)
+  dictName c = mkIdent $ mkDictName (show c) (show ity)
   theClass0 = fromJust $ lookupClass cEnv cls
   superClasses0 = superClasses theClass0
   methods0 = methods theClass0
   scs = map (Variable Nothing . qualify . dictName) superClasses0
   ms = map (Variable Nothing . qualify . mkIdent . 
-    (\s -> instMethodName cls ty s) . show . fst3) methods0
+    (\s -> instMethodName cls ity s) . show . fst3) methods0
   all0 = scs ++ ms
   dict = qualify $ mkIdent $ dictTypePrefix ++ show cls
   all' = foldl Apply (Constructor dict) all0
-createDictionary _ _ = internalError "createDictionary"
+createDictionary _ _ _ = internalError "createDictionary"
 
 -- |This function creates a dictionary for the given instance declaration, 
 -- using tuples
-createDictionary2 :: ClassEnv -> IDecl -> [Decl]
-createDictionary2 cEnv (InstanceDecl _ _scx cls ty _tvars _decls) = 
+createDictionary2 :: ClassEnv -> IDecl -> QualIdent -> [Decl]
+createDictionary2 cEnv (InstanceDecl _ _scx cls _tcon _tvars _decls) ity = 
   [ FunctionDecl NoPos Nothing (dictName cls)
     [Equation NoPos
       (FunLhs (dictName cls) [])
@@ -883,15 +884,15 @@ createDictionary2 cEnv (InstanceDecl _ _scx cls ty _tvars _decls) =
       ]
   ] 
   where
-  dictName c = mkIdent $ mkDictName (show c) (show ty)
+  dictName c = mkIdent $ mkDictName (show c) (show ity)
   theClass0 = fromJust $ lookupClass cEnv cls
   superClasses0 = superClasses theClass0
   methods0 = methods theClass0
   scs = map (Variable Nothing . qualify . dictName) superClasses0
   ms = map (Variable Nothing . qualify . mkIdent . 
-    (\s -> instMethodName cls ty s) . show . fst3) methods0
+    (\s -> instMethodName cls ity s) . show . fst3) methods0
   all0 = scs ++ ms
-createDictionary2 _ _ = internalError "createDictionary"
+createDictionary2 _ _ _ = internalError "createDictionary"
  
 -- ---------------------------------------------------------------------------
 -- other transformations
