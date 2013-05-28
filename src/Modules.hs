@@ -216,7 +216,10 @@ checkModule opts (env, mdl) = do
                       [FlatCurry, ExtendedFlatCurry, FlatXml, AbstractCurry]
   show' pp = if optDumpRaw opts then show else show . pp
   
-  dump d check (env0, mdl0) = unsafePerformIO (doDump opts (d, env0, show' CS.ppModule mdl0) >> return (check env0 mdl0) )
+  dump d check (env0, mdl0) = unsafePerformIO $ 
+    (if doUnsafeDumps then doDump opts (d, env0, show' CS.ppModule mdl0) else return ()) 
+    >> return (check env0 mdl0)
+  doUnsafeDumps = True -- TODO: compiler option for (de)activating this?
 
 -- ---------------------------------------------------------------------------
 -- Translating a module
