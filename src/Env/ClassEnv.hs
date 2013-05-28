@@ -247,9 +247,9 @@ type Dict = (QualIdent, Type)
 
 -- |the abstract code used for generating dictionaries
 data Operation
-  = Dictionary Dict
-  | SelSuperClass Dict Dict
-  | BuildDict Dict [Operation]
+  = Dictionary Dict            -- ^ a simple dictionary
+  | SelSuperClass Dict Dict    -- ^ select from the first dictionary the second
+  | BuildDict Dict [Operation] -- ^ build a dictionary with the given operations
   deriving (Eq, Show)
   
 
