@@ -29,7 +29,7 @@ import Curry.Syntax.Type
 import qualified Data.Map as Map
 import Curry.Syntax.Pretty
 import Control.Monad (liftM)
-import Base.Types hiding (Context, typeVar, typeVars)
+import Base.Types hiding (Context, typeVar, typeVars, getTyCons)
 import qualified Base.Types as BT 
 import Data.List
 import Data.Maybe
@@ -158,9 +158,8 @@ substContext subst cx = concatMap mfun cx
   mfun (qid, id0) = maybe [] (\id' -> [(qid, id')]) (lookup id0 subst) 
 
 getTyCons :: Type -> (QualIdent, [Type])
-getTyCons (TypeConstructor xi tys) = (xi, tys)
-getTyCons (TypeArrow ty1 ty2) = (qArrowId, [ty1, ty2])
-getTyCons _ = internalError "getTyCons"
+getTyCons ty = 
+  maybe (internalError "getTyCons") id (BT.getTyCons ty)
 
 -- | context reduction
 reduceContext :: ClassEnv -> BT.Context -> BT.Context

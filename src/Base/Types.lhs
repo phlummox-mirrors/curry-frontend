@@ -29,7 +29,7 @@ TODO: Use MultiParamTypeClasses ?
 >   , unitType, boolType, charType, intType, floatType, stringType
 >   , successType, listType, ioType, tupleType, primType
 >   , typeVar, predefTypes
->   , isTyCons, isArrow, isCons
+>   , isTyCons, isArrow, isCons, getTyCons
 >   ) where
 
 > import Curry.Base.Ident
@@ -79,6 +79,11 @@ as well, these variables must never be quantified.
 
 > isCons :: Type -> Bool
 > isCons t = isTyCons t || isArrow t
+
+> getTyCons :: Type -> Maybe (QualIdent, [Type])
+> getTyCons (TypeConstructor xi tys) = Just (xi, tys)
+> getTyCons (TypeArrow ty1 ty2) = Just (qArrowId, [ty1, ty2])
+> getTyCons _ = Nothing
 
 \end{verbatim}
 The function \texttt{isArrowType} checks whether a type is a function
