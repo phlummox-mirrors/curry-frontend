@@ -11,7 +11,8 @@
     Description: TODO
 -}
 
-module Checks.TypeClassesCheck (typeClassesCheck, sep, mkSelFunName) where
+module Checks.TypeClassesCheck 
+  (typeClassesCheck, sep, mkSelFunName, mkDictName) where
 
 import Curry.Syntax.Type as ST hiding (IDecl)
 import Env.ClassEnv
@@ -733,7 +734,11 @@ implPrefix = "impl" ++ sep
 -- |creates a name for a selection function 
 mkSelFunName :: String -> String -> String
 mkSelFunName cls what = 
-  selFunPrefix ++ cls ++ sep ++ what 
+  selFunPrefix ++ cls ++ sep ++ what
+  
+-- |create a name for a dictionary
+mkDictName :: String -> String -> String
+mkDictName cls ty = dictPrefix ++ cls ++ sep ++ ty
 
 sep :: String
 sep = "."
@@ -854,7 +859,7 @@ createDictionary cEnv (InstanceDecl _ _scx cls ty _tvars _decls) =
       ]
   ] 
   where
-  dictName c = mkIdent $ dictPrefix ++ (show c) ++ sep ++ (show ty)
+  dictName c = mkIdent $ mkDictName (show c) (show ty)
   theClass0 = fromJust $ lookupClass cEnv cls
   superClasses0 = superClasses theClass0
   methods0 = methods theClass0
@@ -878,7 +883,7 @@ createDictionary2 cEnv (InstanceDecl _ _scx cls ty _tvars _decls) =
       ]
   ] 
   where
-  dictName c = mkIdent $ dictPrefix ++ (show c) ++ sep ++ (show ty)
+  dictName c = mkIdent $ mkDictName (show c) (show ty)
   theClass0 = fromJust $ lookupClass cEnv cls
   superClasses0 = superClasses theClass0
   methods0 = methods theClass0
