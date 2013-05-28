@@ -228,6 +228,7 @@ checkVarious = do
       else if not $ checkContextReduction (classEnv tcEnv) then return (Fail "context reduction")
       else if not $ checkFindPath (classEnv tcEnv) then return (Fail "find path") 
       else if not $ checkToHnf (classEnv tcEnv) then return (Fail "toHnf")
+      else if not $ checkDictCode (classEnv tcEnv) then return (Fail "createDict")
       else return Pass
     CheckFailed msgs -> do print msgs; return (Fail "compilation error")
 
@@ -442,5 +443,46 @@ checkToHnf cEnv =
     == [mk "Eq" 0, mk "Eq" 1]
 
 
+-- |checks dictCode function
+checkDictCode :: ClassEnv -> Bool
+checkDictCode cEnv = 
+  dictCode cEnv [mk "A" 0] (mk "A" 0) == Dictionary (mk "A" 0) &&
+  dictCode cEnv [mk "A" 0, mk "A" 1] (mk "A" 0) == Dictionary (mk "A" 0) &&
+  dictCode cEnv [mk "A" 0, mk "A" 1] (mk "A" 1) == Dictionary (mk "A" 1) &&
+  
+  dictCode cEnv [mk "K" 0] (mk "I" 0) == SelSuperClass (mk "K" 0) (mk "I" 0) &&
+  dictCode cEnv [mk "K" 0] (mk "J" 0) == SelSuperClass (mk "K" 0) (mk "J" 0) && 
+  dictCode cEnv [mk "L" 0] (mk "M" 0) == SelSuperClass (mk "L" 0) (mk "M" 0) &&
+  
+  dictCode cEnv [mk "A" 0] (mkId "A", list $ mkTy 0) 
+    === BuildDict (mkId "A", list $ mkTy 0) [Dictionary $ mk "A" 0] &&
+  dictCode cEnv [mk "A" 0, mk "A" 1] (mkId "A", list $ mkTy 0) 
+    === BuildDict (mkId "A", list $ mkTy 0) [Dictionary $ mk "A" 0] &&
+  dictCode cEnv [mk "A" 0, mk "A" 1] (mkId "A", list $ mkTy 1) 
+    === BuildDict (mkId "A", list $ mkTy 1) [Dictionary $ mk "A" 1] &&
+    
+  dictCode cEnv [mk "F" 0] (mkId "A", list $ mkTy 0) 
+    === BuildDict (mkId "A", list $ mkTy 0) [SelSuperClass (mk "F" 0) (mk "A" 0)] &&
+    
+  dictCode cEnv [] (mkId "Eq", tyconP "Bool" []) === Dictionary (mkId "Eq", tyconP "Bool" []) &&
+  
+  -- internalError
+  -- dictCode cEnv [] (mkId "Eq", tyconP "Boolx" []) === Dictionary (mkId "Eq", tyconP "Boolx" [])
+  
+  dictCode cEnv [mk "Eq" 0, mk "Eq" 1] (mkId "Eq", pair (list $ mkTy 0) (mkTy 1))
+    === BuildDict (mkId "Eq", pair (list $ mkTy 0) (mkTy 1))
+                  [ BuildDict (mkId "Eq", list $ mkTy 0) [Dictionary (mk "Eq" 0)]
+                  , Dictionary (mk "Eq" 1)
+                  ] &&
+
+  dictCode cEnv [mk "Ord" 0, mk "Ord" 1] (mkId "Eq", pair (list $ mkTy 0) (mkTy 1))
+    === BuildDict (mkId "Eq", pair (list $ mkTy 0) (mkTy 1))
+                  [ BuildDict (mkId "Eq", list $ mkTy 0) [SelSuperClass (mk "Ord" 0) (mk "Eq" 0)]
+                  , SelSuperClass (mk "Ord" 1) (mk "Eq" 1)
+                  ] 
+
 list :: Type -> Type
 list t = TypeConstructor qListIdP [t]
+
+pair :: Type -> Type -> Type
+pair t1 t2 = TypeConstructor (qTupleIdP 2) [t1, t2]

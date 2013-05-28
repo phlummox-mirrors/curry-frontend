@@ -19,6 +19,7 @@ module Env.ClassEnv
   , implies, implies'
   , getInstance, isValidCx, reduceContext, findPath
   , toHnfs, toHnf, inHnf
+  , dictCode, Operation (..)
   ) where
 
 -- import Base.Types hiding ()
@@ -237,6 +238,45 @@ findPath' cEnv start target path
   | start == target = [reverse (target:path)]
   | otherwise = concatMap (\sc -> findPath' cEnv sc target (start:path)) 
                           (maybe [] superClasses (lookupClass cEnv start))
+
+-- ----------------------------------------------------------------------------
+-- dictionary code creation 
+-- ----------------------------------------------------------------------------
+
+type Dict = (QualIdent, Type)
+
+-- |the abstract code used for generating dictionaries
+data Operation
+  = Dictionary Dict
+  | SelSuperClass Dict Dict
+  | BuildDict Dict [Operation]
+  deriving (Eq, Show)
+  
+
+-- | this function creates the (abstract) necessary code that is needed for
+-- creating a given dictionary from the available dictionaries. 
+-- This function is assumed to be called after all type classes checks succeeded, 
+-- so the internalError or an error from fromJust should not occur.  
+dictCode :: ClassEnv -> BT.Context -> Dict -> Operation
+dictCode cEnv available (qid, ty) 
+  | any equalCxElem available = Dictionary $ head $ filter equalCxElem available
+  | any subClass available = SelSuperClass (head $ filter subClass available) (qid, ty)
+  | isCons ty = 
+    let (xi, tys) = getTyCons ty
+        -- safe under the above assumptions  
+        inst = fromJust $ getInstance cEnv qid xi
+        ids = typeVars inst
+        mapping = zip' ids tys
+        cx = context inst
+        cx' = substContext mapping cx
+    in 
+    if null cx' 
+      then Dictionary (qid, ty)
+      else BuildDict (qid, ty) (map (dictCode cEnv available) cx')
+  | otherwise = internalError ("dictCode: " ++ show available ++ "\n" ++ show (qid, ty)) 
+ where
+ equalCxElem = \(qid', ty') -> qid' == qid && ty' == ty
+ subClass = \(qid', ty') -> ty == ty' && isSuperClassOf cEnv qid qid'  
 
 -- ----------------------------------------------------------------------------
 -- Pritty printer functions

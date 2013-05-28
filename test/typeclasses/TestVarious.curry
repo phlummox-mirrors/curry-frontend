@@ -108,3 +108,6 @@ instance (Eq a, Eq b) => Eq (a, b) where
 
 instance Eq a => Eq [a] where
 
+instance Eq Bool where
+
+class Eq a => Ord a where
