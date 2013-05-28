@@ -18,8 +18,9 @@ import Curry.Base.Ident
 import CompilerEnv
 import Curry.Syntax
 import Env.ClassEnv
-import Checks.TypeClassesCheck (sep)
+import Checks.TypeClassesCheck (sep, mkSelFunName, mkDictName)
 import Base.Messages
+import Data.Maybe
 
 import Base.Types as BT
 
@@ -59,6 +60,7 @@ diModule :: Module -> DI Module
 diModule (Module m e i ds) = Module m e i `liftM` (mapM diDecl ds)
   
 -- |convert function declarations
+-- TODO: pass constrained type from outer scope?
 diDecl :: Decl -> DI Decl
 diDecl (FunctionDecl p (Just cty) id0 eqs) = do
   cEnv <- getClassEnv
@@ -106,8 +108,67 @@ diLhs cty fun a@(ApLhs _ _) =
 
 -- | transform expressions
 diExpr :: ConstrType -> String -> Expression -> DI Expression
-diExpr _cty _fun e = return e -- TODO
+diExpr _ _ e@(Literal _) = return e
+diExpr cty fun v@(Variable (Just varCty) _qid) = do 
+  codes <- abstrCode
+  return $ foldl Apply v codes 
+  where
+  abstrCode = do
+    cEnv <- getClassEnv
+    let cx = mirrorCx (fst varCty)
+        codes = map (concreteCode fun . dictCode cEnv (fst cty)) cx 
+    return codes
+diExpr _ _ (Variable Nothing _) = internalError "diExpr: no type info"
+diExpr _ _ e@(Constructor _) = return e
+diExpr cty fun (Paren e) = Paren `liftM` diExpr cty fun e
+diExpr cty fun (Typed e cx t) = liftM3 Typed (diExpr cty fun e) (return cx) (return t)
+diExpr cty fun (Tuple sref es) = Tuple sref `liftM` (mapM (diExpr cty fun) es)   
+diExpr cty fun (List srefs es) = List srefs `liftM` (mapM (diExpr cty fun) es)
+diExpr cty fun (ListCompr sref e ss) = 
+  liftM2 (ListCompr sref) (diExpr cty fun e) (mapM (diStmt cty fun) ss) 
+diExpr cty fun (EnumFrom e1) = EnumFrom `liftM` (diExpr cty fun e1)
+diExpr cty fun (EnumFromThen e1 e2) = 
+  liftM2 EnumFromThen (diExpr cty fun e1) (diExpr cty fun e2)
+diExpr cty fun (EnumFromTo e1 e2) = 
+  liftM2 EnumFromTo (diExpr cty fun e1) (diExpr cty fun e2)
+diExpr cty fun (EnumFromThenTo e1 e2 e3) = 
+  liftM3 EnumFromThenTo (diExpr cty fun e1) (diExpr cty fun e2) (diExpr cty fun e3)
+diExpr cty fun (UnaryMinus i e) = UnaryMinus i `liftM` diExpr cty fun e
+diExpr cty fun (Apply e1 e2) = liftM2 Apply (diExpr cty fun e1) (diExpr cty fun e2)
+-- TODO: add parameters for op in InfixApply, Left- and RightSection!
+diExpr cty fun (InfixApply e1 op e2) = 
+  liftM3 InfixApply (diExpr cty fun e1) (return op) (diExpr cty fun e2)
+diExpr cty fun (LeftSection e op) = (flip LeftSection op) `liftM` diExpr cty fun e
+diExpr cty fun (RightSection op e) = RightSection op `liftM` diExpr cty fun e
+diExpr cty fun (Lambda sref ps e) = Lambda sref ps `liftM` diExpr cty fun e
+-- TODO: pass constrained type from outer scope?
+diExpr cty fun (Let ds e) = liftM2 Let (mapM diDecl ds) (diExpr cty fun e)
+diExpr cty fun (Do ss e) = liftM2 Do (mapM (diStmt cty fun) ss) (diExpr cty fun e)
+diExpr cty fun (IfThenElse s e1 e2 e3) = 
+  liftM3 (IfThenElse s) (diExpr cty fun e1) (diExpr cty fun e2) (diExpr cty fun e3)
+diExpr cty fun (Case s ct e alts) = 
+  liftM2 (Case s ct) (diExpr cty fun e) (mapM (diAlt cty fun) alts)
+diExpr cty fun (RecordConstr fs) = 
+  RecordConstr `liftM` (mapM (diField cty fun) fs)
+diExpr cty fun (RecordSelection e id0) = 
+  flip RecordSelection id0 `liftM` diExpr cty fun e
+diExpr cty fun (RecordUpdate fs e) = 
+  liftM2 RecordUpdate (mapM (diField cty fun) fs) (diExpr cty fun e)
+  
 
+-- |transform statements
+diStmt :: ConstrType -> String -> Statement -> DI Statement
+diStmt cty fun (StmtExpr s e) = StmtExpr s `liftM` diExpr cty fun e
+diStmt _   _ (StmtDecl ds) = StmtDecl `liftM` (mapM (diDecl) ds)
+diStmt cty fun (StmtBind s p e) = StmtBind s p `liftM` diExpr cty fun e
+
+-- |transform alts
+diAlt :: ConstrType -> String -> Alt -> DI Alt
+diAlt cty fun (Alt p pt rhs) = Alt p pt `liftM` (diRhs cty fun rhs)
+
+-- |transform fields
+diField :: ConstrType -> String -> Field Expression -> DI (Field Expression)
+diField cty fun (Field p i e) = Field p i `liftM` diExpr cty fun e
 
 -- |generates an identifier for the given function and context element
 contextElemToVar:: String -> (QualIdent, Type) -> Ident
@@ -115,6 +176,26 @@ contextElemToVar fun (cls, ty) =
   -- TODO: better name generation?
   flip renameIdent 1 $ mkIdent (fun ++ sep ++ show cls ++ sep ++ show ty)
 
+-- creates concrete code from the abstract operations
+concreteCode :: String -> Operation -> Expression
+concreteCode fun (Dictionary d) = 
+  var' $ contextElemToVar fun d
+concreteCode fun (SelSuperClass d1 d2) =
+  Apply (var sel) (var' $ contextElemToVar fun d1)
+  where sel = mkSelFunName (show $ fst d1) (show $ fst d2)  
+concreteCode fun (BuildDict (cls,ty) ops) = 
+  foldl Apply (var $ mkDictName (show cls) (show ty'))
+       (map (concreteCode fun) ops) 
+  where 
+  ty' = if not $ isCons ty then internalError "concreteCode"
+        else fst $ fromJust $ getTyCons ty 
+
+
+var :: String -> Expression
+var = Variable Nothing . qualify . mkIdent
+
+var' :: Ident -> Expression
+var' = Variable Nothing . qualify
 
 -- ---------------------------------------------------------------------------
 -- helper functions
