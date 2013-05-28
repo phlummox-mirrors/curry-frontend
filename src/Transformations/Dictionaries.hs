@@ -100,7 +100,9 @@ diLhs cty fun (FunLhs id0 ps) =
   where 
   dictParams = map (VariablePattern . contextElemToVar fun) (fst cty)
 diLhs cty fun (OpLhs p1 id0 p2) = diLhs cty fun (FunLhs id0 [p1, p2])
-diLhs cty fun a@(ApLhs lhs ps) = return a -- TODO 
+diLhs cty fun a@(ApLhs _ _) =
+  let (f, ps) = flatLhs a
+  in diLhs cty fun (FunLhs f ps)  
 
 -- | transform expressions
 diExpr :: ConstrType -> String -> Expression -> DI Expression

@@ -13,3 +13,15 @@ test3 x y = funB (funA x) y
 
 x === y = funB (funA x) y
 
+
+
+
+(=&=) :: A a => a -> b -> c -> a
+(x =&= y) z = funA x
+
+
+
+(f x y) z = funA x
+
+((g x) y) z = funA x
+
