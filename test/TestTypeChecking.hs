@@ -464,7 +464,7 @@ checkDictCode cEnv =
   dictCode cEnv [mk "F" 0] (mkId "A", list $ mkTy 0) 
     === BuildDict (mkId "A", list $ mkTy 0) [SelSuperClass (mk "F" 0) (mk "A" 0)] &&
     
-  dictCode cEnv [] (mkId "Eq", tyconP "Bool" []) === Dictionary (mkId "Eq", tyconP "Bool" []) &&
+  dictCode cEnv [] (mkId "Eq", tyconP "Bool" []) === BuildDict (mkId "Eq", tyconP "Bool" []) [] &&
   
   -- internalError
   -- dictCode cEnv [] (mkId "Eq", tyconP "Boolx" []) === Dictionary (mkId "Eq", tyconP "Boolx" [])

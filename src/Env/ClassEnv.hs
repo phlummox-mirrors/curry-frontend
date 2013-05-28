@@ -268,10 +268,8 @@ dictCode cEnv available (qid, ty)
         mapping = zip' ids tys
         cx = context inst
         cx' = substContext mapping cx
-    in 
-    if null cx' 
-      then Dictionary (qid, ty)
-      else BuildDict (qid, ty) (map (dictCode cEnv available) cx')
+    in
+    BuildDict (qid, ty) (map (dictCode cEnv available) cx')
   | otherwise = internalError ("dictCode: " ++ show available ++ "\n" ++ show (qid, ty)) 
  where
  equalCxElem = \(qid', ty') -> qid' == qid && ty' == ty
