@@ -11,7 +11,7 @@
     Description: TODO
 -}
 
-module Checks.TypeClassesCheck (typeClassesCheck, sep) where
+module Checks.TypeClassesCheck (typeClassesCheck, sep, mkSelFunName) where
 
 import Curry.Syntax.Type as ST hiding (IDecl)
 import Env.ClassEnv
@@ -577,7 +577,7 @@ transformClass cEnv (ClassDecl _p _scx cls tyvar _decls) =
   genSuperClassDictSelMethod :: String -> [Decl]
   genSuperClassDictSelMethod scls = 
     let selMethodId = mkIdent $ selMethodName
-        selMethodName = selFunPrefix ++ (show $ theClass theClass0) ++ sep ++ scls in
+        selMethodName = mkSelFunName (show $ theClass theClass0) scls in
     [ TypeSig NoPos [selMethodId]
         emptyContext (ArrowType 
           (ConstructorType (qualify $ dataTypeName) [VariableType tyvar]) 
@@ -591,7 +591,7 @@ transformClass cEnv (ClassDecl _p _scx cls tyvar _decls) =
   genMethodSelMethod :: ((Ident, Context, TypeExpr), Int) -> [Decl]
   genMethodSelMethod ((m, _cx, ty), i) = 
     let selMethodId = mkIdent $ selMethodName
-        selMethodName = selFunPrefix ++ (show $ theClass theClass0) ++ sep ++ (show m) in
+        selMethodName = mkSelFunName (show $ theClass theClass0) (show m) in
     [ TypeSig NoPos [selMethodId]
         emptyContext (ArrowType 
           (ConstructorType (qualify $ mkIdent $ dictTypePrefix ++ (show cls)) [VariableType tyvar]) 
@@ -638,7 +638,7 @@ transformClass2 cEnv (ClassDecl _p _scx cls _tyvar _decls) =
   -- from a given dictionary
   genSuperClassDictSelMethod :: String -> [Decl]
   genSuperClassDictSelMethod scls = 
-    let selMethodName = selFunPrefix ++ (show $ theClass theClass0) ++ sep ++ scls in
+    let selMethodName = mkSelFunName (show $ theClass theClass0) scls in
     [ FunctionDecl NoPos Nothing (mkIdent selMethodName)
       [Equation NoPos
         (equationLhs selMethodName)
@@ -650,7 +650,7 @@ transformClass2 cEnv (ClassDecl _p _scx cls _tyvar _decls) =
   -- directory 
   genMethodSelMethod :: ((Ident, Context, TypeExpr), Int) -> [Decl]
   genMethodSelMethod ((m, _cx, _ty), i) = 
-    let selMethodName = selFunPrefix ++ (show $ theClass theClass0) ++ sep ++ (show m) in
+    let selMethodName = mkSelFunName (show $ theClass theClass0) (show m) in
     [ FunctionDecl NoPos Nothing (mkIdent selMethodName)
       [Equation NoPos
         (equationLhs selMethodName)
@@ -680,7 +680,7 @@ transformClass2 cEnv (ClassDecl _p _scx cls _tyvar _decls) =
   -- @
   genNonDirectSuperClassDictSelMethod :: QualIdent -> [Decl]
   genNonDirectSuperClassDictSelMethod scls = 
-    let selMethodName = selFunPrefix ++ (show $ theClass theClass0) ++ sep ++ (show scls) in
+    let selMethodName = mkSelFunName (show $ theClass theClass0) (show scls) in
     [ FunctionDecl NoPos Nothing (mkIdent selMethodName)
       [Equation NoPos
         (FunLhs (mkIdent selMethodName) [])
@@ -694,7 +694,7 @@ transformClass2 cEnv (ClassDecl _p _scx cls _tyvar _decls) =
     -- generate the names of the selector functions 
     names :: [QualIdent] -> [Expression]
     names (x:y:zs) = 
-      (Variable Nothing $ qualify $ mkIdent $ selFunPrefix ++ (show x) ++ sep ++ (show y)) 
+      (Variable Nothing $ qualify $ mkIdent $ mkSelFunName (show x) (show y)) 
       : names (y:zs)
     names [_] = []
     names [] = internalError "genNonDirectSuperClassDictSelMethod"
@@ -729,6 +729,11 @@ selFunPrefix = "sel" ++ sep
 -- |The prefix for functions that are implemented in a given instance declaration
 implPrefix :: String
 implPrefix = "impl" ++ sep
+
+-- |creates a name for a selection function 
+mkSelFunName :: String -> String -> String
+mkSelFunName cls what = 
+  selFunPrefix ++ cls ++ sep ++ what 
 
 sep :: String
 sep = "."
