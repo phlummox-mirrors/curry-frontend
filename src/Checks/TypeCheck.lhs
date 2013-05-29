@@ -551,7 +551,8 @@ either one of the basic types or \texttt{()}.
 >       mapM_ (genDecl firstFreeVars theta) (map snd dsWithCxs)
 >       -- do NOT return final contexts! 
 >       -- TODO: return cxs or cxs' (or doesn't matter?)
->       return (map fst dsAndCtysRhs, concat cxs')
+>       let newDs = zipWith updateContexts cxs' (map fst dsAndCtysRhs)
+>       return (newDs, concat cxs')
 
 > modifyEnv' :: [ValueInfo] -> TCM ()
 > modifyEnv' [] = return ()
@@ -577,6 +578,15 @@ either one of the basic types or \texttt{()}.
 >   unpack (cx, FunctionDecl _ _ f _) = [(cx, f)]
 >   unpack (cx, PatternDecl _ _ p _) = map (\d -> (cx, d)) (bv p)
 >   unpack _ = internalError "unpack"
+
+> updateContexts :: BT.Context -> Decl -> Decl
+> updateContexts cx (FunctionDecl p (Just (_, ty)) f es) 
+>   = FunctionDecl p (Just (mirrorCx cx, ty)) f es
+> updateContexts cx (PatternDecl  p (Just (_, ty)) pt rhs)
+>   = PatternDecl  p (Just (mirrorCx cx, ty)) pt rhs
+> updateContexts _ _ = internalError "updateContexts"
+
+
 
 > --tcDeclGroup m tcEnv _ [ForeignDecl p cc _ f ty] =
 > --  tcForeign m tcEnv p cc f ty
