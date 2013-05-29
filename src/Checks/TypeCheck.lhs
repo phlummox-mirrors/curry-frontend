@@ -508,16 +508,13 @@ either one of the basic types or \texttt{()}.
 >   let cxsLhs = map fst ctysLhs
 >       ctysRhs = map snd dsAndCtysRhs
 >       cxsRhs = map fst ctysRhs
->       tysRhs = map snd ctysRhs
 >       cxs = zipWith (++) cxsLhs cxsRhs
 >   sequence_ (zipWith3' unifyDecl ds ctysLhs ctysRhs)
 >   theta <- getTypeSubst
->   let -- build the types and contexts of all declarations
->       types  = map (subst theta) tysRhs
+>   let -- build the contexts of all declarations
 >       -- nubbing contexts for avoiding exponential growth of the context lists
 >       cxs' = map (nub . subst theta) cxs
 >       dsWithCxs = zip cxs' ds
->       nonLocalContexts = map (uncurry notLocal) $ zip cxs' types
 >
 >   -- save/restore free type variables that appear in the environment 
 >   -- after the first run of the fix point iteration because these are 
@@ -554,16 +551,7 @@ either one of the basic types or \texttt{()}.
 >       mapM_ (genDecl firstFreeVars theta) (map snd dsWithCxs)
 >       -- do NOT return final contexts! 
 >       -- TODO: return cxs or cxs' (or doesn't matter?)
->       return $ (map fst dsAndCtysRhs, concat nonLocalContexts)
-
-> notLocal :: BT.Context -> Type -> BT.Context
-> notLocal cxs ty = 
->   concatMap notLocal' cxs
->   where
->   notLocal' (qid, cty) = 
->     if Set.isSubsetOf (Set.fromList $ typeVars cty) (Set.fromList $ typeVars ty) 
->     then []
->     else [(qid, cty)]
+>       return (map fst dsAndCtysRhs, concat cxs')
 
 > modifyEnv' :: [ValueInfo] -> TCM ()
 > modifyEnv' [] = return ()
