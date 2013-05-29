@@ -555,12 +555,19 @@ either one of the basic types or \texttt{()}.
 >       return (newDs, concat cxs')
 
 > modifyEnv' :: [ValueInfo] -> TCM ()
-> modifyEnv' [] = return ()
-> modifyEnv' [Value qid n tsc] = do
+> modifyEnv' vs = do
 >   m <- getModuleIdent
->   modifyValueEnv $ \env -> 
->     bindFun m (unqualify qid) n tsc env
-> modifyEnv' _ = internalError "TypeCheck modifyEnv'"
+>   let vs' = filter (valInMdl m) vs
+>       Value qid n tsc = head vs'
+>   case length vs' == 1 of
+>     True -> do
+>       modifyValueEnv $ \env -> 
+>         bindFun m (unqualify qid) n tsc env
+>     False -> internalError "TypeCheck modifyEnv'"
+
+> valInMdl :: ModuleIdent -> ValueInfo -> Bool
+> valInMdl m (Value qid' _ _) = fromJust (qidModule qid') == m 
+> valInMdl _ _ = internalError "valInMdl"
 
 > writeContexts :: [(BT.Context, Decl)] -> TCM ()
 > writeContexts cs = mapM_ writeContext cs'
@@ -569,12 +576,13 @@ either one of the basic types or \texttt{()}.
 >   writeContext :: (BT.Context, Ident) -> TCM ()
 >   writeContext (cx, v) = do
 >     vEnv <- getValueEnv
->     case lookupValue v vEnv of
->       [(Value _ arity tysig)] -> do 
->         m <- getModuleIdent
->         let tysig' = tysig `constrainBy` cx
->         modifyValueEnv $ rebindFun m v arity tysig'
->       _ -> return ()
+>     let vs = lookupValue v vEnv
+>     m <- getModuleIdent 
+>     let vs' = filter (valInMdl m) vs
+>         Value _ arity tysig = head vs'
+>     when (length vs' /= 1) $ internalError "writeContexts" 
+>     let tysig' = tysig `constrainBy` cx
+>     modifyValueEnv $ rebindFun m v arity tysig'
 >   unpack (cx, FunctionDecl _ _ f _) = [(cx, f)]
 >   unpack (cx, PatternDecl _ _ p _) = map (\d -> (cx, d)) (bv p)
 >   unpack _ = internalError "unpack"
