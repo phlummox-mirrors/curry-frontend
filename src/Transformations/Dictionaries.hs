@@ -198,7 +198,7 @@ concreteCode fun (BuildDict (cls,ty) ops) =
        (map (concreteCode fun) ops) 
   where 
   ty' = if not $ isCons ty then internalError "concreteCode"
-        else fst $ fromJust $ getTyCons ty 
+        else fst $ fromJust $ splitType ty 
 
 
 var :: String -> Expression

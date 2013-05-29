@@ -29,7 +29,7 @@ TODO: Use MultiParamTypeClasses ?
 >   , unitType, boolType, charType, intType, floatType, stringType
 >   , successType, listType, ioType, tupleType, primType
 >   , typeVar, predefTypes
->   , isTyCons, isArrow, isCons, getTyCons
+>   , isTyCons, isArrow, isCons, splitType
 >   ) where
 
 > import Curry.Base.Ident
@@ -77,13 +77,17 @@ as well, these variables must never be quantified.
 > isArrow (TypeArrow _ _) = True
 > isArrow _ = False
 
+> -- | returns whether the given type is a constructor type, i.e. whether its head is
+> -- a constructor
 > isCons :: Type -> Bool
 > isCons t = isTyCons t || isArrow t
 
-> getTyCons :: Type -> Maybe (QualIdent, [Type])
-> getTyCons (TypeConstructor xi tys) = Just (xi, tys)
-> getTyCons (TypeArrow ty1 ty2) = Just (qArrowId, [ty1, ty2])
-> getTyCons _ = Nothing
+> -- |splits a given type (that starts with a constructor) into
+> -- the constructor and its following types 
+> splitType :: Type -> Maybe (QualIdent, [Type])
+> splitType (TypeConstructor xi tys) = Just (xi, tys)
+> splitType (TypeArrow ty1 ty2) = Just (qArrowId, [ty1, ty2])
+> splitType _ = Nothing
 
 \end{verbatim}
 The function \texttt{isArrowType} checks whether a type is a function

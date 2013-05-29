@@ -29,7 +29,7 @@ import Curry.Syntax.Type
 import qualified Data.Map as Map
 import Curry.Syntax.Pretty
 import Control.Monad (liftM)
-import Base.Types hiding (Context, typeVar, typeVars, getTyCons)
+import Base.Types hiding (Context, typeVar, typeVars, splitType)
 import qualified Base.Types as BT 
 import Data.List
 import Data.Maybe
@@ -132,7 +132,7 @@ implies cEnv cx (qid, ty) =
   any (\(qid', ty') -> ty == ty' && (qid == qid' || isSuperClassOf cEnv qid qid')) cx
   ||
   (isCons ty && 
-    let (xi, tys) = getTyCons ty
+    let (xi, tys) = splitType ty
         inst = getInstance cEnv qid xi
         result = fmap (\i -> 
           let cx' = context i
@@ -157,9 +157,9 @@ substContext subst cx = concatMap mfun cx
   where
   mfun (qid, id0) = maybe [] (\id' -> [(qid, id')]) (lookup id0 subst) 
 
-getTyCons :: Type -> (QualIdent, [Type])
-getTyCons ty = 
-  maybe (internalError "getTyCons") id (BT.getTyCons ty)
+splitType :: Type -> (QualIdent, [Type])
+splitType ty = 
+  maybe (internalError "splitType") id (BT.splitType ty)
 
 -- | context reduction
 reduceContext :: ClassEnv -> BT.Context -> BT.Context
@@ -197,7 +197,7 @@ toHnf cEnv (cls, ty)
       toHnfs cEnv $ substContext mapping scon
   | otherwise = [(cls, ty)]
   where
-  (xi, tys) = getTyCons ty
+  (xi, tys) = splitType ty
   inst = getInstance cEnv cls xi
 
 -- |checks whether the given context is valid. If the context returned is
@@ -210,7 +210,7 @@ isValidCx cEnv cx = concatMap isValid' cx
   isValid' :: (QualIdent, Type) -> BT.Context
   isValid' (_cls, TypeVariable _) = []
   isValid' (cls, ty) | isCons ty = 
-    let (xi, tys) = getTyCons ty
+    let (xi, tys) = splitType ty
         inst = getInstance cEnv cls xi
         tyVars = typeVars (fromJust inst)
         iCx = context (fromJust inst)
@@ -261,7 +261,7 @@ dictCode cEnv available (qid, ty)
   | any equalCxElem available = Dictionary $ head $ filter equalCxElem available
   | any subClass available = SelSuperClass (head $ filter subClass available) (qid, ty)
   | isCons ty = 
-    let (xi, tys) = getTyCons ty
+    let (xi, tys) = splitType ty
         -- safe under the above assumptions  
         inst = fromJust $ getInstance cEnv qid xi
         ids = typeVars inst
