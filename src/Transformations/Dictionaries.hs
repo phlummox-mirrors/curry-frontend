@@ -109,15 +109,25 @@ diLhs cty fun a@(ApLhs _ _) =
 -- | transform expressions
 diExpr :: ConstrType -> String -> Expression -> DI Expression
 diExpr _ _ e@(Literal _) = return e
-diExpr cty fun v@(Variable (Just varCty) _qid) = do 
+diExpr cty fun v@(Variable (Just varCty) qid) = do 
   codes <- abstrCode
-  return $ foldl Apply v codes 
+  cEnv <- getClassEnv
+  return $ foldl Apply (var'' cEnv) codes 
   where
   abstrCode = do
     cEnv <- getClassEnv
     let cx = mirrorCx (fst varCty)
         codes = map (concreteCode fun . dictCode cEnv (fst cty)) cx 
     return codes
+  maybeCls cEnv = lookupDefiningClass cEnv qid
+  cls cEnv = fromJust $ maybeCls cEnv
+  -- if we have a class function, transform this into the appropriate selector
+  -- function
+  var'' cEnv = if isNothing $ maybeCls cEnv 
+    then v
+    -- TODO: canonical class/function names
+    else Variable (Just varCty) 
+           (qualify $ mkIdent $ mkSelFunName (show $ cls cEnv) (show $ qid))
 diExpr _ _ (Variable Nothing _) = internalError "diExpr: no type info"
 diExpr _ _ e@(Constructor _) = return e
 diExpr cty fun (Paren e) = Paren `liftM` diExpr cty fun e
