@@ -137,7 +137,7 @@ instance QuantExpr Statement where
   bv (StmtDecl    ds) = bv ds
 
 instance QualExpr InfixOp where
-  qfv m (InfixOp    op) = qfv m $ Variable Nothing op
+  qfv m (InfixOp  _ op) = qfv m $ Variable Nothing op
   qfv _ (InfixConstr _) = []
 
 instance QuantExpr Pattern where

@@ -547,7 +547,7 @@ expr2codes (Case         _ _ e alts) = expr2codes e ++ concatMap alt2codes alts
 expr2codes _ = internalError "SyntaxColoring.expr2codes: no pattern match"
 
 infixOp2codes :: InfixOp -> [Code]
-infixOp2codes (InfixOp     qid) = [Function InfixFunction qid]
+infixOp2codes (InfixOp   _ qid) = [Function InfixFunction qid]
 infixOp2codes (InfixConstr qid) = [ConstructorName OtherConstrKind qid]
 
 statement2codes :: Statement -> [Code]

@@ -883,15 +883,15 @@ checkParen
 >   case qualLookupVar v env of
 >     []              -> report (errUndefinedVariable v) >> return op
 >     [Constr _]      -> return $ InfixConstr v
->     [GlobalVar _ _] -> return $ InfixOp v
->     [LocalVar _ v'] -> return $ InfixOp $ qualify v'
+>     [GlobalVar _ _] -> return $ InfixOp Nothing v
+>     [LocalVar _ v'] -> return $ InfixOp Nothing $ qualify v'
 >     rs              -> do
 >       m <- getModuleIdent
 >       case qualLookupVar (qualQualify m v) env of
 >         []              -> report (errAmbiguousIdent rs v) >> return op
 >         [Constr _]      -> return $ InfixConstr v
->         [GlobalVar _ _] -> return $ InfixOp v
->         [LocalVar _ v'] -> return $ InfixOp $ qualify v'
+>         [GlobalVar _ _] -> return $ InfixOp Nothing v
+>         [LocalVar _ v'] -> return $ InfixOp Nothing $ qualify v'
 >         rs'             -> report (errAmbiguousIdent rs' v) >> return op
 >   where v = opName op
 

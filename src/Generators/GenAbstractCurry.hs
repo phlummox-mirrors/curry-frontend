@@ -879,8 +879,8 @@ isPreludeSymbol qident
 
 -- Converts an infix operator to an expression
 opToExpr :: InfixOp -> Expression
-opToExpr (InfixOp    op) = Variable Nothing op
-opToExpr (InfixConstr c) = Constructor c
+opToExpr (InfixOp cty op) = Variable cty op
+opToExpr (InfixConstr  c) = Constructor c
 
 -- Looks up the type of a qualified symbol in the type environment and
 -- converts it to a CurrySyntax type term.

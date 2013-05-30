@@ -648,7 +648,7 @@ Function Patterns
 > fp2Expr (InfixFuncPattern t1 op t2) =
 >   let (t1', es1) = fp2Expr t1
 >       (t2', es2) = fp2Expr t2
->   in  (InfixApply t1' (InfixOp op) t2', es1 ++ es2)
+>   in  (InfixApply t1' (InfixOp Nothing op) t2', es1 ++ es2)
 > fp2Expr (AsPattern             v t) =
 >   let (t', es) = fp2Expr t
 >   in  (mkVar v, (t' =:<= mkVar v):es)

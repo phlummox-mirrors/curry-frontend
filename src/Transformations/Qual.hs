@@ -179,7 +179,7 @@ qFieldExpr :: Qual (Field Expression)
 qFieldExpr (Field p l e) = Field p l `liftM` qExpr e
 
 qInfixOp :: Qual InfixOp
-qInfixOp (InfixOp     op) = InfixOp     `liftM` qIdent op
+qInfixOp (InfixOp cty op) = InfixOp cty `liftM` qIdent op
 qInfixOp (InfixConstr op) = InfixConstr `liftM` qIdent op
 
 qIdent :: Qual QualIdent
