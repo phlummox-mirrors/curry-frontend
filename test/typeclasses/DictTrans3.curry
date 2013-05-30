@@ -16,7 +16,7 @@ instance Eq a => Eq [a] where
   eq [] [] = True
   eq (x:xs) (y:ys) = eq x y && eq xs ys
 
--- member :: Eq a => a -> [a] -> Bool
+member :: Eq a => a -> [a] -> Bool
 member _ [] = False
 member x (y:ys) = if eq x y then True else member x ys
 
