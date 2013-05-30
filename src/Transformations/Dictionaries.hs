@@ -145,11 +145,16 @@ diExpr cty fun (EnumFromThenTo e1 e2 e3) =
   liftM3 EnumFromThenTo (diExpr cty fun e1) (diExpr cty fun e2) (diExpr cty fun e3)
 diExpr cty fun (UnaryMinus i e) = UnaryMinus i `liftM` diExpr cty fun e
 diExpr cty fun (Apply e1 e2) = liftM2 Apply (diExpr cty fun e1) (diExpr cty fun e2)
--- TODO: add parameters for op in InfixApply, Left- and RightSection!
+-- adding dictionary parameters for the operator in InfixApply, Left- and RightSection
+-- expressions by transforming them into a term with Variable's and Apply's where
+-- the operator (or the flipped operator) is at the head position. 
+-- Note that infixOp preserves the type annotation of the operator!
 diExpr cty fun (InfixApply e1 op e2) = 
-  liftM3 InfixApply (diExpr cty fun e1) (return op) (diExpr cty fun e2)
-diExpr cty fun (LeftSection e op) = (flip LeftSection op) `liftM` diExpr cty fun e
-diExpr cty fun (RightSection op e) = RightSection op `liftM` diExpr cty fun e
+  diExpr cty fun (Apply (Apply (infixOp op) e1) e2)
+diExpr cty fun (LeftSection e op) = 
+  diExpr cty fun (Apply (infixOp op) e)
+diExpr cty fun (RightSection op e) = 
+  diExpr cty fun (Apply (Apply prelFlip (infixOp op)) e)
 diExpr cty fun (Lambda sref ps e) = Lambda sref ps `liftM` diExpr cty fun e
 -- TODO: pass constrained type from outer scope?
 diExpr cty fun (Let ds e) = liftM2 Let (mapM diDecl ds) (diExpr cty fun e)
@@ -211,3 +216,14 @@ var' = Variable Nothing . qualify
 -- helper functions
 -- ---------------------------------------------------------------------------
 
+type ConstrType = (BT.Context, Type)
+
+tySchemeFlip :: ConstrType
+-- the type of flip shouldn't be needed, hence the internalError 
+tySchemeFlip = ([], internalError "tySchemeFlip")
+
+prelFlip :: Expression
+prelFlip = Variable (Just $ mirrorCT tySchemeFlip) $ preludeIdent "flip"
+
+preludeIdent :: String -> QualIdent
+preludeIdent = qualifyWith preludeMIdent . mkIdent
