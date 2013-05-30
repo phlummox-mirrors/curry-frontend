@@ -1415,43 +1415,6 @@ because of possibly multiple occurrences of variables.
 > annotInfixOpType _ _ = internalError "annotInfixOpType"  
 
 \end{verbatim}
-Functions for converting between the context/type data type used in curry-frontend
-and the context/type data types used in curry-base. This mirroring is necessary
-because we cannot have cyclic dependencies between two modules like curry-base
-and curry-frontend, but in curry-base we *do* want to refer to the type datatypes
-in curry-frontend, hence the mirroring. 
-TODO: remove this functions as soon as possible 
-\begin{verbatim}
-
-> mirrorCx :: BT.Context -> ST.Context_
-> mirrorCx cx = map (\(qid, ty) -> (qid, mirrorTy ty)) cx
-
-> mirrorTy :: Type -> ST.Type_
-> mirrorTy (TypeVariable n) = TypeVariable_ n
-> mirrorTy (TypeConstructor q tys) = TypeConstructor_ q (map mirrorTy tys)
-> mirrorTy (TypeArrow t1 t2) = TypeArrow_ (mirrorTy t1) (mirrorTy t2)
-> mirrorTy (TypeConstrained tys n) = TypeConstrained_ (map mirrorTy tys) n
-> mirrorTy (TypeSkolem n) = TypeSkolem_ n
-> mirrorTy (TypeRecord tys n) = TypeRecord_ (map (\(id0, ty) -> (id0, mirrorTy ty)) tys) n
-
-> mirrorCT :: ConstrType -> ST.ConstrType_
-> mirrorCT (cx, ty) = (mirrorCx cx, mirrorTy ty)
-
-> mirror2Cx :: Context_ -> BT.Context
-> mirror2Cx cx = map (\(qid, ty) -> (qid, mirror2Ty ty)) cx
-
-> mirror2Ty :: Type_ -> Type
-> mirror2Ty (TypeVariable_ n) = TypeVariable n
-> mirror2Ty (TypeConstructor_ q tys) = TypeConstructor q (map mirror2Ty tys)
-> mirror2Ty (TypeArrow_ t1 t2) = TypeArrow (mirror2Ty t1) (mirror2Ty t2)
-> mirror2Ty (TypeConstrained_ tys n) = TypeConstrained (map mirror2Ty tys) n
-> mirror2Ty (TypeSkolem_ n) = TypeSkolem n
-> mirror2Ty (TypeRecord_ tys n) = TypeRecord (map (\(id0, ty) -> (id0, mirror2Ty ty)) tys) n
-
-> mirror2CT :: ConstrType_ -> ConstrType
-> mirror2CT (cx, ty) = (mirror2Cx cx, mirror2Ty ty)
-
-\end{verbatim}
 The function \texttt{tcArrow} checks that its argument can be used as
 an arrow type $\alpha\rightarrow\beta$ and returns the pair
 $(\alpha,\beta)$. Similarly, the function \texttt{tcBinary} checks

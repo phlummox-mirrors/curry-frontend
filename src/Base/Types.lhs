@@ -29,13 +29,18 @@ TODO: Use MultiParamTypeClasses ?
 >   , unitType, boolType, charType, intType, floatType, stringType
 >   , successType, listType, ioType, tupleType, primType
 >   , typeVar, predefTypes
+>     -- * Helper functions
 >   , isTyCons, isArrow, isCons, splitType
+>    -- * Mirror functions
+>   , mirrorCx, mirrorCT, mirrorTy
+>   , mirror2Cx, mirror2CT, mirror2Ty
 >   ) where
 
 > import Curry.Base.Ident
 > import Text.PrettyPrint
 > import Curry.Syntax.Pretty hiding (ppContext)
 > import Data.List
+> import qualified Curry.Syntax.Type as ST
 
 \end{verbatim}
 A type is either a type variable, an application of a type constructor
@@ -387,5 +392,44 @@ Some pretty printing functions:
 > ppType (TypeSkolem n) = text "skolem" <+> text (show n)
 > ppType (TypeRecord r n) 
 >   = text "record" <+> parens (text (show r) <+> text (show n))
- 
+
+\end{verbatim}
+Functions for converting between the context/type data type used in curry-frontend
+and the context/type data types used in curry-base. This mirroring is necessary
+because we cannot have cyclic dependencies between two modules like curry-base
+and curry-frontend, but in curry-base we *do* want to refer to the type datatypes
+in curry-frontend, hence the mirroring. 
+TODO: remove this functions as soon as possible 
+\begin{verbatim}
+
+> type ConstrType = (Context, Type)
+
+> mirrorCx :: Context -> ST.Context_
+> mirrorCx cx = map (\(qid, ty) -> (qid, mirrorTy ty)) cx
+
+> mirrorTy :: Type -> ST.Type_
+> mirrorTy (TypeVariable n) = ST.TypeVariable_ n
+> mirrorTy (TypeConstructor q tys) = ST.TypeConstructor_ q (map mirrorTy tys)
+> mirrorTy (TypeArrow t1 t2) = ST.TypeArrow_ (mirrorTy t1) (mirrorTy t2)
+> mirrorTy (TypeConstrained tys n) = ST.TypeConstrained_ (map mirrorTy tys) n
+> mirrorTy (TypeSkolem n) = ST.TypeSkolem_ n
+> mirrorTy (TypeRecord tys n) = ST.TypeRecord_ (map (\(id0, ty) -> (id0, mirrorTy ty)) tys) n
+
+> mirrorCT :: ConstrType -> ST.ConstrType_
+> mirrorCT (cx, ty) = (mirrorCx cx, mirrorTy ty)
+
+> mirror2Cx :: ST.Context_ -> Context
+> mirror2Cx cx = map (\(qid, ty) -> (qid, mirror2Ty ty)) cx
+
+> mirror2Ty :: ST.Type_ -> Type
+> mirror2Ty (ST.TypeVariable_ n) = TypeVariable n
+> mirror2Ty (ST.TypeConstructor_ q tys) = TypeConstructor q (map mirror2Ty tys)
+> mirror2Ty (ST.TypeArrow_ t1 t2) = TypeArrow (mirror2Ty t1) (mirror2Ty t2)
+> mirror2Ty (ST.TypeConstrained_ tys n) = TypeConstrained (map mirror2Ty tys) n
+> mirror2Ty (ST.TypeSkolem_ n) = TypeSkolem n
+> mirror2Ty (ST.TypeRecord_ tys n) = TypeRecord (map (\(id0, ty) -> (id0, mirror2Ty ty)) tys) n
+
+> mirror2CT :: ST.ConstrType_ -> ConstrType
+> mirror2CT (cx, ty) = (mirror2Cx cx, mirror2Ty ty)
+
 \end{verbatim}

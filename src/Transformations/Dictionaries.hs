@@ -64,7 +64,7 @@ diModule (Module m e i ds) = Module m e i `liftM` (mapM diDecl ds)
 diDecl :: Decl -> DI Decl
 diDecl (FunctionDecl p (Just cty) id0 eqs) = do
   cEnv <- getClassEnv
-  let cty'  = mirrorCT cty
+  let cty'  = mirror2CT cty
       -- we have to reduce the context before adding dictionary parameters, 
       -- because the recorded context is the "raw" context 
       cty'' = (reduceContext cEnv $ fst $ cty', snd cty')
@@ -116,7 +116,7 @@ diExpr cty fun v@(Variable (Just varCty) qid) = do
   where
   abstrCode = do
     cEnv <- getClassEnv
-    let cx = mirrorCx (fst varCty)
+    let cx = mirror2Cx (fst varCty)
         codes = map (concreteCode fun . dictCode cEnv (fst cty)) cx 
     return codes
   maybeCls cEnv = lookupDefiningClass cEnv qid
@@ -211,18 +211,3 @@ var' = Variable Nothing . qualify
 -- helper functions
 -- ---------------------------------------------------------------------------
 
-type ConstrType = (BT.Context, Type)
-
-mirrorCx :: Context_ -> BT.Context
-mirrorCx cx = map (\(qid, ty) -> (qid, mirrorTy ty)) cx
-
-mirrorTy :: Type_ -> Type
-mirrorTy (TypeVariable_ n) = TypeVariable n
-mirrorTy (TypeConstructor_ q tys) = TypeConstructor q (map mirrorTy tys)
-mirrorTy (TypeArrow_ t1 t2) = TypeArrow (mirrorTy t1) (mirrorTy t2)
-mirrorTy (TypeConstrained_ tys n) = TypeConstrained (map mirrorTy tys) n
-mirrorTy (TypeSkolem_ n) = TypeSkolem n
-mirrorTy (TypeRecord_ tys n) = TypeRecord (map (\(id0, ty) -> (id0, mirrorTy ty)) tys) n
-
-mirrorCT :: ConstrType_ -> ConstrType
-mirrorCT (cx, ty) = (mirrorCx cx, mirrorTy ty)
