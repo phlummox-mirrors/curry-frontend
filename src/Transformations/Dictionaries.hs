@@ -18,7 +18,7 @@ import Curry.Base.Ident
 import CompilerEnv
 import Curry.Syntax
 import Env.ClassEnv
-import Checks.TypeClassesCheck (sep, mkSelFunName, mkDictName)
+import Base.Names (sep, mkSelFunName, mkDictName)
 import Base.Messages
 import Data.Maybe
 

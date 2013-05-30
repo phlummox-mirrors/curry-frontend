@@ -11,8 +11,7 @@
     Description: TODO
 -}
 
-module Checks.TypeClassesCheck 
-  (typeClassesCheck, sep, mkSelFunName, mkDictName) where
+module Checks.TypeClassesCheck (typeClassesCheck) where
 
 import Curry.Syntax.Type as ST hiding (IDecl)
 import Env.ClassEnv
@@ -34,6 +33,7 @@ import Base.Types as BT (TypeScheme, polyType, constrainBy, Type (..))
 import qualified Base.Types as BTC (Context) 
 import Base.SCC
 import Base.Utils (findMultiples, fst3)
+import Base.Names
 
 import Checks.TypeCheck
 
@@ -714,34 +714,6 @@ transformClass2 cEnv (ClassDecl _p _scx cls _tyvar _decls) =
   
   
 transformClass2 _ d = [d]
-
--- |The prefix for dictionary types
-dictTypePrefix :: String
-dictTypePrefix = "Dict" ++ sep
-
--- |The prefix for dictionaries
-dictPrefix :: String
-dictPrefix = "dict" ++ sep
-
--- |The prefix for selector functions
-selFunPrefix :: String
-selFunPrefix = "sel" ++ sep
-
--- |The prefix for functions that are implemented in a given instance declaration
-implPrefix :: String
-implPrefix = "impl" ++ sep
-
--- |creates a name for a selection function 
-mkSelFunName :: String -> String -> String
-mkSelFunName cls what = 
-  selFunPrefix ++ cls ++ sep ++ what
-  
--- |create a name for a dictionary
-mkDictName :: String -> String -> String
-mkDictName cls ty = dictPrefix ++ cls ++ sep ++ ty
-
-sep :: String
-sep = "."
 
 type IDecl = Decl
 

@@ -42,6 +42,7 @@ Executable cymake
     Base.CurryTypes
     , Base.Expr
     , Base.Messages
+    , Base.Names
     , Base.NestEnv
     , Base.SCC
     , Base.ScopeEnv
@@ -125,6 +126,7 @@ Test-Suite TestTypeChecking
      Base.CurryTypes
      , Base.Expr
      , Base.Messages
+     , Base.Names
      , Base.NestEnv
      , Base.SCC
      , Base.ScopeEnv
