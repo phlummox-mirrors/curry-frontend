@@ -78,8 +78,8 @@ precCheck env (Module m es is ds)
   where (ds', pEnv', msgs) = PC.precCheck (moduleIdent env) (opPrecEnv env) ds
 
 -- |Apply the correct typing of the module.
--- The declarations remain unchanged; the type constructor and value
--- environments are updated.
+-- Parts of the syntax tree are annotated by their type; the type constructor
+-- and value environments are updated.
 typeCheck :: CompilerEnv -> Module -> CheckResult (CompilerEnv, Module)
 typeCheck env (Module m es is ds)
   | null msgs = CheckSuccess (env { tyConsEnv = tcEnv', valueEnv = tyEnv' }, 
