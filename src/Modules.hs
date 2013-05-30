@@ -195,13 +195,16 @@ checkModule opts (env, mdl) = do
                          -- then insertDicts env5 tc
                          then dump DumpTypeChecked insertDicts (env5, tc)
                          else (env5, tc)
-  (env5c, tc2) <- if withTypeCheck
-                    -- then typeCheck env4 dicts
-                    then dump DumpDictionaries typeCheck (env4, dicts) 
-                    else return (env5b, dicts) 
+      (env5c, dicts') = if withTypeCheck
+                          then typeSigs env5b dicts
+                          else (env5b, dicts)
+  (env5d, tc2) <- if withTypeCheck
+                    -- then typeCheck (env4, dicts')
+                    then dump DumpDictionaries typeCheck (env4, dicts') 
+                    else return (env5c, dicts') 
   (env6,  ec) <- if withTypeCheck 
-                   -- then exportCheck env5c tc2
-                   then dump DumpTypeChecked2 exportCheck (env5c, tc2)
+                   -- then exportCheck env5d tc2
+                   then dump DumpTypeChecked2 exportCheck (env5d, tc2)
                    else return (env5c, tc2)
   (env7,  ql) <- return $ qual opts env6 ec
   let dumps = [ (DumpParsed            , env , show' CS.ppModule mdl)

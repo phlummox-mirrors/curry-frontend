@@ -93,6 +93,7 @@ Executable cymake
     , Transformations.Lift
     , Transformations.Qual
     , Transformations.Simplify
+    , Transformations.TypeSigs
 Library
   hs-source-dirs:  src
   Build-Depends:   filepath, base
@@ -177,6 +178,7 @@ Test-Suite TestTypeChecking
      , Transformations.Lift
      , Transformations.Qual
      , Transformations.Simplify
+     , Transformations.TypeSigs
     ghc-options: -Wall 
 
 Executable TestTypeCheckingHpc
