@@ -12,14 +12,14 @@ import Control.Monad
 main :: IO ()
 main = do
   args <- getArgs
-  -- print ("Comparing " ++ (args !! 0) ++ " " ++ (args !! 1))
+  putStr ("Comparing \"" ++ (args !! 0) ++ "\" and \"" ++ (args !! 1) ++ "\": ")
   p1 <- liftM fromJust $ readFlat (args !! 0)
   p2 <- liftM fromJust $ readFlat (args !! 1)
   
   case progsEqual p1 p2 of
     (True, _) -> do putStrLn "Equal"; exitSuccess
     (False, cause) -> do 
-      putStrLn ("Not equal: " ++ show (args !! 0) ++ " cause: " ++ cause)
+      putStrLn ("Not equal, " ++ {-show (args !! 0) ++ -}"cause: " ++ cause)
       exitFailure
   
     
