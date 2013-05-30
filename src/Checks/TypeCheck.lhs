@@ -1224,7 +1224,7 @@ because of possibly multiple occurrences of variables.
 >     cx' <- adjustContext (cx1 ++ cx2)
 >     return (Apply e1' e2', (cx', beta))
 > tcExpr p e@(InfixApply e1 op e2) = do
->     (_op, (cxo, opTy))      <- tcExpr p (infixOp op)
+>     (_op, ctyo@(cxo, opTy)) <- tcExpr p (infixOp op)
 >     (e1', cty1@(cx1, _ty1)) <- tcExpr p e1
 >     (e2', cty2@(cx2, _ty2)) <- tcExpr p e2
 >     (alpha,beta,gamma) <-
@@ -1235,7 +1235,7 @@ because of possibly multiple occurrences of variables.
 >     unify p "infix application" (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e2)
 >           (noContext beta) cty2
 >     cx' <- adjustContext (cxo ++ cx1 ++ cx2)
->     return (InfixApply e1' op e2', (cx', gamma))
+>     return (InfixApply e1' (annotInfixOpType op ctyo) e2', (cx', gamma))
 > tcExpr p e@(LeftSection e1 op) = do
 >     (_op, opTy@(cxo, _)) <- tcExpr p (infixOp op)
 >     (e1', cty1@(cx1, _)) <- tcExpr p e1
@@ -1245,7 +1245,7 @@ because of possibly multiple occurrences of variables.
 >     unify p "left section" (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e1)
 >           (noContext alpha) cty1
 >     cx' <- adjustContext (cxo ++ cx1)
->     return (LeftSection e1' op, (cx', beta))
+>     return (LeftSection e1' (annotInfixOpType op opTy), (cx', beta))
 > tcExpr p e@(RightSection op e1) = do
 >     (_op, opTy@(cxo, _)) <- tcExpr p (infixOp op)
 >     (e1', cty1@(cx1, _)) <- tcExpr p e1
@@ -1255,7 +1255,7 @@ because of possibly multiple occurrences of variables.
 >     unify p "right section" (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e1)
 >           (noContext beta) cty1
 >     cx' <- adjustContext (cxo ++ cx1)
->     return (RightSection op e1', (cx', TypeArrow alpha gamma))
+>     return (RightSection (annotInfixOpType op opTy) e1', (cx', TypeArrow alpha gamma))
 > tcExpr p expr@(Lambda sref ts e) = do
 >     tyEnv0 <- getValueEnv
 >     ctys <- mapM (tcPattern p) ts
@@ -1408,6 +1408,11 @@ because of possibly multiple occurrences of variables.
 
 > nubCx :: ConstrType -> ConstrType
 > nubCx (cx, ty) = (nub $ cx, ty)
+
+> annotInfixOpType :: InfixOp -> ConstrType -> InfixOp
+> annotInfixOpType (InfixOp _ qid) cty = InfixOp (Just $ mirrorCT cty) qid
+> annotInfixOpType (InfixConstr qid) _ = (InfixConstr qid)
+> annotInfixOpType _ _ = internalError "annotInfixOpType"  
 
 \end{verbatim}
 Functions for converting between the context/type data type used in curry-frontend
@@ -2031,9 +2036,9 @@ nothing is recorded so that they are simply returned).
 > tsExpr theta (UnaryMinus i e) = UnaryMinus i (tsExpr theta e)
 > tsExpr theta (Apply e1 e2) = Apply (tsExpr theta e1) (tsExpr theta e2)
 > tsExpr theta (InfixApply e1 op e2) 
->   = InfixApply (tsExpr theta e1) op (tsExpr theta e2)
-> tsExpr theta (LeftSection e op) = LeftSection (tsExpr theta e) op
-> tsExpr theta (RightSection op e) = RightSection op (tsExpr theta e)
+>   = InfixApply (tsExpr theta e1) (tsInfixOp theta op) (tsExpr theta e2)
+> tsExpr theta (LeftSection e op) = LeftSection (tsExpr theta e) (tsInfixOp theta op)
+> tsExpr theta (RightSection op e) = RightSection (tsInfixOp theta op) (tsExpr theta e)
 > tsExpr theta (Lambda sref ps e) = Lambda sref ps (tsExpr theta e)
 > tsExpr theta (Let ds e) = Let (map (tsDecl theta) ds) (tsExpr theta e)
 > tsExpr theta (Do ss e) = Do (map (tsStmt theta) ss) (tsExpr theta e)
@@ -2056,6 +2061,10 @@ nothing is recorded so that they are simply returned).
 
 > tsField :: TypeSubst -> Field Expression -> Field Expression
 > tsField theta (Field p i e) = Field p i (tsExpr theta e)
+
+> tsInfixOp :: TypeSubst -> InfixOp -> InfixOp
+> tsInfixOp theta (InfixOp (Just cty) qid) = InfixOp (Just $ subst' theta cty) qid
+> tsInfixOp _theta (InfixConstr qid) = InfixConstr qid 
 
 > subst' :: TypeSubst -> ConstrType_ -> ConstrType_
 > subst' s ty = mirrorCT $ nubCx $ subst s $ mirror2CT ty
