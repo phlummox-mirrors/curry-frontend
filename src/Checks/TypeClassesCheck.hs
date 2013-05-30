@@ -701,7 +701,7 @@ transformClass2 cEnv (ClassDecl _p _scx cls _tyvar _decls) =
     names [] = internalError "genNonDirectSuperClassDictSelMethod"
     -- enchain the selector functions
     expr :: Expression
-    expr = foldr1 (\e1 e2 -> InfixApply e1 (InfixOp point) e2) (reverse $ names path)
+    expr = foldr1 (\e1 e2 -> InfixApply e1 (InfixOp Nothing point) e2) (reverse $ names path)
     point = qualify $ mkIdent "."
     
   -- the renamings are important so that the parameters are not handled as
