@@ -5,7 +5,7 @@ class A a where
   fun :: a -> b -> a
 
 instance A Bool where
-  x === y = True
+  x === y = x
   fun x _ = x
 
 -- infix apply
