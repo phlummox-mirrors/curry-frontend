@@ -19,7 +19,7 @@ module Env.ClassEnv
   , implies, implies'
   , getInstance, isValidCx, reduceContext, findPath
   , toHnfs, toHnf, inHnf
-  , dictCode, Operation (..), dictType
+  , dictCode, Operation (..), dictType, dictTypes
   ) where
 
 -- import Base.Types hiding ()
@@ -280,7 +280,12 @@ dictCode cEnv available (qid, ty)
 
 -- ----------------------------------------------------------------------------
 
--- |This function calculates the dictonary type for the given class
+-- |This function calculates the dictionary types for all given classes, 
+-- using always fresh variables
+dictTypes :: ClassEnv -> [QualIdent] -> [Type]
+dictTypes cEnv qids = evalState (mapM (dictType' cEnv) qids) 0
+
+-- |This function calculates the dictionary type for the given class
 dictType :: ClassEnv -> QualIdent -> Type
 dictType cEnv cls = evalState (dictType' cEnv cls) 0
 

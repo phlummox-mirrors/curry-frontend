@@ -502,6 +502,8 @@ checkDictType cEnv =
     "(Prelude.(,,) (Prelude.(,) (Prelude.(,,,,) (0 -> (1 -> Bool)) (2 -> 2) (3 -> (4 -> 5)) (6 -> 7) (8 -> (9 -> 9))) (10 -> (11 -> (12 -> (13 -> 10))))) (14 -> 14) (15 -> (16 -> (17 -> 15))))" &&
   show (dictType cEnv (mkId "F1")) === "Prelude.()" &&
   show (dictType cEnv (mkId "G1")) === "Prelude.()" &&
-  show (dictType cEnv (mkId "H1")) === "(Prelude.(,) Prelude.() (0 -> 0))"    
+  show (dictType cEnv (mkId "H1")) === "(Prelude.(,) Prelude.() (0 -> 0))" &&
+  
+  show (dictTypes cEnv [mkId "I1", mkId "J1"]) === "[(0 -> 1),(0 -> 2)]"
   
 

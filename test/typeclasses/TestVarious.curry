@@ -144,4 +144,10 @@ class F1 a => G1 a where
 class F1 a => H1 a where
   funH1 :: a -> a
 
+class I1 a where
+  funI1 :: a -> b
+
+class J1 a where
+  funJ1 :: a -> b
+
 
