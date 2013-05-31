@@ -28,7 +28,6 @@ import Text.PrettyPrint
 import Curry.Syntax.Type
 import qualified Data.Map as Map
 import Curry.Syntax.Pretty
-import Control.Monad (liftM)
 import Base.Types hiding (Context, typeVar, typeVars, splitType)
 import qualified Base.Types as BT 
 import Data.List
@@ -157,9 +156,9 @@ implies' cEnv cx cx' =
 
 -- |helper function
 substContext :: [(Ident, Type)] -> [(QualIdent, Ident)] -> BT.Context
-substContext subst cx = concatMap mfun cx
+substContext subst0 cx = concatMap mfun cx
   where
-  mfun (qid, id0) = maybe [] (\id' -> [(qid, id')]) (lookup id0 subst) 
+  mfun (qid, id0) = maybe [] (\id' -> [(qid, id')]) (lookup id0 subst0) 
 
 splitType :: Type -> (QualIdent, [Type])
 splitType ty = 
