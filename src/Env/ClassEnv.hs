@@ -283,11 +283,11 @@ dictCode cEnv available (qid, ty)
 -- |This function calculates the dictionary types for all given classes, 
 -- using always fresh variables
 dictTypes :: ClassEnv -> [QualIdent] -> [Type]
-dictTypes cEnv qids = evalState (mapM (dictType' cEnv) qids) 0
+dictTypes cEnv qids = evalState (mapM (dictType' cEnv) qids) initFreshVar
 
 -- |This function calculates the dictionary type for the given class
 dictType :: ClassEnv -> QualIdent -> Type
-dictType cEnv cls = evalState (dictType' cEnv cls) 0
+dictType cEnv cls = evalState (dictType' cEnv cls) initFreshVar
 
 dictType' :: ClassEnv -> QualIdent -> State Int Type
 dictType' cEnv cls  = do
@@ -311,7 +311,9 @@ dictType' cEnv cls  = do
 -- so that the different types have no common type variables
 transTypeScheme :: TypeScheme -> State Int Type
 transTypeScheme (ForAll _ _ ty) = do 
-  let tvars = nub $ BT.typeVars ty
+  -- instantiate only those type variables that are not refering to the
+  -- type variable of the class (here always "0")
+  let tvars = (nub $ BT.typeVars ty) \\ [0] 
   freshVars <- replicateM (length tvars) freshTyVar
   let mapping = zip tvars (map TypeVariable freshVars)
   return $ subst (listToSubst mapping) ty
@@ -321,6 +323,9 @@ freshTyVar = do
   n <- get
   put (n+1)
   return n
+
+initFreshVar :: Int
+initFreshVar = 1 -- not zero! 
 
 -- ----------------------------------------------------------------------------
 -- Pritty printer functions
