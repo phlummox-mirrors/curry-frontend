@@ -199,13 +199,14 @@ checkModule opts (env, mdl) = do
                           then typeSigs env5b dicts
                           else (env5b, dicts)
   (env5d, tc2) <- if withTypeCheck
+                    -- take the older environment env4 instead of env5c!
                     -- then typeCheck (env4, dicts')
                     then dump DumpDictionaries typeCheck (env4, dicts') 
                     else return (env5c, dicts') 
   (env6,  ec) <- if withTypeCheck 
                    -- then exportCheck env5d tc2
                    then dump DumpTypeChecked2 exportCheck (env5d, tc2)
-                   else return (env5c, tc2)
+                   else return (env5d, tc2)
   (env7,  ql) <- return $ qual opts env6 ec
   let dumps = [ (DumpParsed            , env , show' CS.ppModule mdl)
               , (DumpKindChecked       , env1, show' CS.ppModule kc)
@@ -213,8 +214,8 @@ checkModule opts (env, mdl) = do
               , (DumpPrecChecked       , env3, show' CS.ppModule pc)
               , (DumpTypeClassesChecked, env4, show' CS.ppModule tcc)
               , (DumpTypeChecked       , env5, show' CS.ppModule tc)
-              , (DumpDictionaries      , env5b, show' CS.ppModule dicts)
-              , (DumpTypeChecked2      , env5c, show' CS.ppModule tc2)
+              , (DumpDictionaries      , env5c, show' CS.ppModule dicts')
+              , (DumpTypeChecked2      , env5d, show' CS.ppModule tc2)
               , (DumpExportChecked     , env6, show' CS.ppModule ec)
               , (DumpQualified         , env7, show' CS.ppModule ql)
               ]
