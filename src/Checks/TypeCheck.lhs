@@ -1412,7 +1412,6 @@ because of possibly multiple occurrences of variables.
 > annotInfixOpType :: InfixOp -> ConstrType -> InfixOp
 > annotInfixOpType (InfixOp _ qid) cty = InfixOp (Just $ mirrorCT cty) qid
 > annotInfixOpType (InfixConstr qid) _ = (InfixConstr qid)
-> annotInfixOpType _ _ = internalError "annotInfixOpType"  
 
 \end{verbatim}
 The function \texttt{tcArrow} checks that its argument can be used as
@@ -2027,6 +2026,7 @@ nothing is recorded so that they are simply returned).
 
 > tsInfixOp :: TypeSubst -> InfixOp -> InfixOp
 > tsInfixOp theta (InfixOp (Just cty) qid) = InfixOp (Just $ subst' theta cty) qid
+> tsInfixOp _theta (InfixOp Nothing _) = internalError "tsInfixOp"
 > tsInfixOp _theta (InfixConstr qid) = InfixConstr qid 
 
 > subst' :: TypeSubst -> ConstrType_ -> ConstrType_
