@@ -68,7 +68,7 @@ typeClassesCheck :: ModuleIdent -> [Decl] -> ClassEnv -> TCEnv -> ([Decl], Class
 typeClassesCheck m decls (ClassEnv importedClasses importedInstances _) tcEnv0 = 
   case runTcc result initTccState of 
     ((classes, instances), []) -> 
-      let newDecls = concatMap (transformInstance m cEnv tcEnv0) $ 
+      let newDecls = concatMap (transformInstance m cEnv tcEnv) $ 
             concatMap (transformClass2 cEnv) decls
           classes' = map renameTypeSigVars classes
           classes'' = map buildTypeSchemes classes'
