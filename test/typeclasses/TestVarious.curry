@@ -11,6 +11,7 @@ class (A a) => C a where
 class (A a, B a, E a) => D a where
 
 class (C a, D a ) => F a where
+  funF :: a -> a
 
 class (D a) => G a where
 
@@ -111,3 +112,36 @@ instance Eq a => Eq [a] where
 instance Eq Bool where
 
 class Eq a => Ord a where
+
+-- ------------------------------------------------------------
+
+class A1 a where
+  funA1 :: a -> b -> Bool
+  funA2 :: a -> a
+  funA3 :: a -> b -> c
+  funA4 :: a -> c
+  funA5 :: a -> b -> b
+
+class A1 a => B1 a where
+  funB1 :: a -> b -> c -> d -> a
+  
+
+
+class C1 a where
+  funC1 :: a -> a
+
+class (B1 a, C1 a) => D1 a where
+  funD1 :: a -> b -> c -> a
+
+
+class C1 a => E1 a
+
+
+class F1 a where
+
+class F1 a => G1 a where
+
+class F1 a => H1 a where
+  funH1 :: a -> a
+
+

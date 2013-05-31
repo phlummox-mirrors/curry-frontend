@@ -229,6 +229,7 @@ checkVarious = do
       else if not $ checkFindPath (classEnv tcEnv) then return (Fail "find path") 
       else if not $ checkToHnf (classEnv tcEnv) then return (Fail "toHnf")
       else if not $ checkDictCode (classEnv tcEnv) then return (Fail "createDict")
+      else if not $ checkDictType (classEnv tcEnv) then return (Fail "dictType")
       else return Pass
     CheckFailed msgs -> do print msgs; return (Fail "compilation error")
 
@@ -486,3 +487,21 @@ list t = TypeConstructor qListIdP [t]
 
 pair :: Type -> Type -> Type
 pair t1 t2 = TypeConstructor (qTupleIdP 2) [t1, t2]
+
+
+-- Checks the correctness of the dictType function
+checkDictType :: ClassEnv -> Bool
+checkDictType cEnv = 
+  show (dictType cEnv (mkId "A1")) === 
+    "(Prelude.(,,,,) (0 -> (1 -> Bool)) (2 -> 2) (3 -> (4 -> 5)) (6 -> 7) (8 -> (9 -> 9)))" &&
+  show (dictType cEnv (mkId "B1")) === 
+    "(Prelude.(,) (Prelude.(,,,,) (0 -> (1 -> Bool)) (2 -> 2) (3 -> (4 -> 5)) (6 -> 7) (8 -> (9 -> 9))) (10 -> (11 -> (12 -> (13 -> 10)))))" &&
+  show (dictType cEnv (mkId "C1")) === "(0 -> 0)" &&
+  show (dictType cEnv (mkId "E1")) === "(0 -> 0)" &&
+  show (dictType cEnv (mkId "D1")) === 
+    "(Prelude.(,,) (Prelude.(,) (Prelude.(,,,,) (0 -> (1 -> Bool)) (2 -> 2) (3 -> (4 -> 5)) (6 -> 7) (8 -> (9 -> 9))) (10 -> (11 -> (12 -> (13 -> 10))))) (14 -> 14) (15 -> (16 -> (17 -> 15))))" &&
+  show (dictType cEnv (mkId "F1")) === "Prelude.()" &&
+  show (dictType cEnv (mkId "G1")) === "Prelude.()" &&
+  show (dictType cEnv (mkId "H1")) === "(Prelude.(,) Prelude.() (0 -> 0))"    
+  
+

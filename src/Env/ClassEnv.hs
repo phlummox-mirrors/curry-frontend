@@ -19,7 +19,7 @@ module Env.ClassEnv
   , implies, implies'
   , getInstance, isValidCx, reduceContext, findPath
   , toHnfs, toHnf, inHnf
-  , dictCode, Operation (..)
+  , dictCode, Operation (..), dictType
   ) where
 
 -- import Base.Types hiding ()
@@ -35,6 +35,10 @@ import Data.List
 import Data.Maybe
 import Base.Messages
 import Base.Utils
+import Control.Monad.State
+import Base.TypeSubst (subst)
+import Base.Subst (listToSubst)
+
 
 -- |The class environment consists of the classes and instances in scope
 -- plus a map from class methods to their defining classes
@@ -274,6 +278,45 @@ dictCode cEnv available (qid, ty)
  where
  equalCxElem = \(qid', ty') -> qid' == qid && ty' == ty
  subClass = \(qid', ty') -> ty == ty' && isSuperClassOf cEnv qid qid'  
+
+-- ----------------------------------------------------------------------------
+
+-- |This function calculates the dictonary type for the given class
+dictType :: ClassEnv -> QualIdent -> Type
+dictType cEnv cls = evalState (dictType' cEnv cls) 0
+
+dictType' :: ClassEnv -> QualIdent -> State Int Type
+dictType' cEnv cls  = do
+  let c = fromJust $ lookupClass cEnv cls
+      scs = superClasses c
+      tschemes = map snd $ typeSchemes c
+  -- get the types for all superclasses
+  tsScs <- mapM (dictType' cEnv) scs
+  -- get the types of the class functions
+  funTs <- mapM transTypeScheme tschemes
+  -- build the dictionary tuple (or value, if there is only one element)
+  return $ case null (tsScs ++ funTs) of
+    True -> unitType
+    False -> case length (tsScs ++ funTs) == 1 of
+      True -> case length tsScs == 1 of
+        True -> head tsScs
+        False -> head funTs
+      False -> tupleType (tsScs ++ funTs)
+
+-- |for each class method, instantiate its type with new type variables, 
+-- so that the different types have no common type variables
+transTypeScheme :: TypeScheme -> State Int Type
+transTypeScheme (ForAll _ _ ty) = do 
+  let tvars = nub $ BT.typeVars ty
+  freshVars <- replicateM (length tvars) freshTyVar
+  let mapping = zip tvars (map TypeVariable freshVars)
+  return $ subst (listToSubst mapping) ty
+
+freshTyVar :: State Int Int
+freshTyVar = do
+  n <- get
+  put (n+1)
+  return n
 
 -- ----------------------------------------------------------------------------
 -- Pritty printer functions
