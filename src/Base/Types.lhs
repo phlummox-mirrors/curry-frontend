@@ -75,7 +75,9 @@ as well, these variables must never be quantified.
 >   deriving (Eq, Ord)
 
 > isTyCons :: Type -> Bool
-> isTyCons (TypeConstructor _ _) = True
+> isTyCons (TypeConstructor _     _) = True
+> isTyCons (TypeConstrained (t:_) _) = isTyCons t
+> isTyCons (TypeConstrained []    _) = False
 > isTyCons _ = False
 
 > isArrow :: Type -> Bool
@@ -92,6 +94,8 @@ as well, these variables must never be quantified.
 > splitType :: Type -> Maybe (QualIdent, [Type])
 > splitType (TypeConstructor xi tys) = Just (xi, tys)
 > splitType (TypeArrow ty1 ty2) = Just (qArrowId, [ty1, ty2])
+> splitType (TypeConstrained (t:_) _) = splitType t
+> splitType (TypeConstrained [] _) = Nothing
 > splitType _ = Nothing
 
 \end{verbatim}
