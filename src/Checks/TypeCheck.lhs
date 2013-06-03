@@ -90,6 +90,8 @@ to True in the normal execution of the compiler.
 >     bindConstrs
 >     bindLabels
 >     -- bindClassMethods cEnv
+>     _ <- tcDecls vds
+>     setIsFinal
 >     (newDecls, _) <- tcDecls vds
 >     theta <- getTypeSubst
 >     let newDecls' = applyTypeSubst theta newDecls 
@@ -104,7 +106,7 @@ to True in the normal execution of the compiler.
 >   tds = map snd tds'
 >   vds = map snd vds'
 >   sorter (n1, _) (n2, _) = compare n1 n2
->   initState  = TcState m tcEnv tyEnv cEnv doContextRed0 idSubst emptySigEnv 0 [] []
+>   initState = TcState m tcEnv tyEnv cEnv doContextRed0 idSubst emptySigEnv 0 [] [] False
 
 \end{verbatim}
 
@@ -128,6 +130,7 @@ generating fresh type variables.
 >   -- subsequently used in each declaration group.   
 >   , firstThetas :: [Maybe TypeSubst]
 >   , errors      :: [Message]
+>   , isFinal0    :: Bool
 >   }
 
 > type TCM = S.State TcState
@@ -202,6 +205,12 @@ generating fresh type variables.
 
 > getDoContextRed :: TCM Bool
 > getDoContextRed = S.gets doContextRed
+
+> setIsFinal :: TCM ()
+> setIsFinal = S.modify $ \s -> s { isFinal0 = True }
+
+> getIsFinal :: TCM Bool
+> getIsFinal = S.gets isFinal0
 
 \end{verbatim}
 \paragraph{Defining Types}
@@ -528,7 +537,9 @@ either one of the basic types or \texttt{()}.
 >         Just x -> x
 > 
 >   let newCxs = map Set.fromList cxs'
->   case newCxs /= oldCxs of
+>   isFinal <- getIsFinal
+>   -- do not run fix point iteration if it's the final run
+>   case newCxs /= oldCxs && not isFinal of
 >     True -> do
 >       -- update contexts in value environment
 >       writeContexts dsWithCxs
@@ -1080,8 +1091,12 @@ because of possibly multiple occurrences of variables.
 >       m <- getModuleIdent
 >       cEnv <- getClassEnv
 >       tcEnv <- getTyConsEnv
->       case qualLookupTypeSig m v sigs of
->         Just cty -> do
+>       isFinal <- getIsFinal
+>       let tySig = qualLookupTypeSig m v sigs
+>       -- if it's the final run, always load the type from the value environment!
+>       case isJust tySig && not isFinal of
+>         True -> do
+>           let cty = fromJust tySig
 >           -- load the inferred type together with the (new) contexts
 >           (icx', ity') <- getValueEnv >>= (inst . (flip (funType tcEnv m v) cEnv))
 >           -- Here we need the inferred type *after the first iteration of the
@@ -1102,7 +1117,7 @@ because of possibly multiple occurrences of variables.
 >           let mapping = buildTypeVarsMapping ity ty0
 >               cty' = (cx0 ++ subst mapping icx, ty0)
 >           return (Variable (Just $ mirrorCT cty') v, cty')
->         Nothing -> do
+>         False -> do
 >           cty <- getValueEnv >>= inst . (flip (funType tcEnv m v) cEnv)
 >           return (Variable (Just $ mirrorCT cty) v, cty)
 >   where v' = unqualify v
@@ -1214,7 +1229,7 @@ because of possibly multiple occurrences of variables.
 >           | op' == fminusId = return $ noContext floatType
 >           | otherwise = internalError $ "TypeCheck.tcExpr unary " ++ idName op'
 > tcExpr p e@(Apply e1 e2) = do
->     (e1', (cx1,       ty1)) <- tcExpr p e1
+>     (e1',      (cx1,  ty1)) <- tcExpr p e1
 >     (e2', cty2@(cx2, _ty2)) <- tcExpr p e2
 >     (alpha,beta) <- 
 >       tcArrow p "application" (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e1)
