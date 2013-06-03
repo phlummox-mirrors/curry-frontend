@@ -187,9 +187,9 @@ diField cty fun (Field p i e) = Field p i `liftM` diExpr cty fun e
 
 -- |generates an identifier for the given function and context element
 contextElemToVar:: String -> (QualIdent, Type) -> Ident
-contextElemToVar fun (cls, ty) =
+contextElemToVar _fun (cls, ty) =
   -- TODO: better name generation?
-  flip renameIdent 1 $ mkIdent (fun ++ sep ++ show cls ++ sep ++ show ty)
+  flip renameIdent 1 $ mkIdent ({-fun ++ sep ++ -}show cls ++ sep ++ show ty)
 
 -- creates concrete code from the abstract operations
 concreteCode :: String -> Operation -> Expression
