@@ -478,8 +478,10 @@ either one of the basic types or \texttt{()}.
 >   endScope
 >   modifySigEnv (const oldSig)
 >   let allDecls = ods' ++ concatMap fst dsAndCxs
+>   -- restore the original order of the declarations again
 >   return $ (map snd $ sortBy sorter allDecls, concatMap snd dsAndCxs)
 >   where
+>   -- record the order of the declarations by adding a position argument
 >   pds = zip [0..] ds
 >   (vds', ods') = partition (isValueDecl . snd) pds
 >   ods = map snd ods'
@@ -493,14 +495,23 @@ either one of the basic types or \texttt{()}.
 >   n <- getOnlyNextId
 >   theta <- getTypeSubst
 >   oldValEnv <- getValueEnv
+>   -- Strip the positions from the declarations, and add them later again. 
+>   -- This can be done because the fix point iteration doesn't change
+>   -- the order of the declarations
 >   let ds   = map snd pds
 >       poss = map fst pds
 >   (ds', cx) <- tcFixPointIter ds (replicate (length ds) Set.empty) n theta oldValEnv Nothing Nothing 0
 >   return (zip' poss ds', cx)
 
-> tcFixPointIter :: [Decl] -> [Set.Set (QualIdent, Type)] -> Int -> TypeSubst 
->                -> ValueEnv -> (Maybe (Set.Set Int)) -> (Maybe TypeSubst) 
->                -> Int -> TCM ([Decl], BT.Context) 
+> tcFixPointIter :: [Decl]                      -- ^ the declarations of the declaration group
+>                -> [Set.Set (QualIdent, Type)] -- ^ the old contexts of the members of the declaration group
+>                -> Int                         -- ^ the "next id" from at the beginning of the fix point iteration
+>                -> TypeSubst                   -- ^ the type substitution from at the beginning of the fix point iteration
+>                -> ValueEnv                    -- ^ the original value environment (with changes only for members of the declaration group)
+>                -> (Maybe (Set.Set Int))       -- ^ the free variables in the environment after the first run of the fix point iteration
+>                -> (Maybe TypeSubst)           -- ^ the type substitution after the first run of the fix point iteration 
+>                -> Int                         -- ^ a counter that counts the number of iterations already done
+>                -> TCM ([Decl], BT.Context) 
 > tcFixPointIter ds oldCxs n t oldVEnv freeVarsEnv tySubst fixPIter = do
 >   let maxFixPIter = 10000
 >   when (fixPIter > maxFixPIter) $ internalError "fix point iteration propably broken"  
@@ -567,6 +578,8 @@ either one of the basic types or \texttt{()}.
 >       let newDs = zipWith updateContexts cxs' (map fst dsAndCtysRhs)
 >       return (newDs, concat cxs')
 
+> -- |searches the correct ValueInfo in the given list and writes its
+> -- information back into the value environment 
 > modifyEnv' :: [ValueInfo] -> TCM ()
 > modifyEnv' vs = do
 >   m <- getModuleIdent
