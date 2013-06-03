@@ -1619,7 +1619,12 @@ We use negative offsets for fresh type variables.
 >       = if x < 0 
 >         then {-internalError "instContext" -} TypeVariable x
 >         else if x >= length tys
->              then internalError ("instContext too big " ++ show x)
+>              -- TODO: don't throw an internal error correct?
+>              -- there are situations where an internal error should not
+>              -- be thrown because if the program is not type correct this
+>              -- case can occur (for an example see "BugTypedExpr.curry"!) 
+>              -- internalError ("instContext too big " ++ show x ++ " " ++ show tys ++ " " ++ show cx)
+>              then TypeVariable x 
 >              else tys !! x
 >     convertType (TypeConstructor tcon ts) 
 >       = TypeConstructor tcon (map convertType ts) 
