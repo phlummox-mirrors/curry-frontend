@@ -562,6 +562,8 @@ either one of the basic types or \texttt{()}.
 >       mapM_ (genDecl firstFreeVars theta) (map snd dsWithCxs)
 >       -- do NOT return final contexts! 
 >       -- TODO: return cxs or cxs' (or doesn't matter?)
+>       -- The complete contexts are only known here, not earlier. 
+>       -- Update the type annotations with the complete contexts. 
 >       let newDs = zipWith updateContexts cxs' (map fst dsAndCtysRhs)
 >       return (newDs, concat cxs')
 
@@ -576,28 +578,36 @@ either one of the basic types or \texttt{()}.
 >         bindFun m (unqualify qid) n tsc env
 >     False -> internalError "TypeCheck modifyEnv'"
 
+> -- |checks whether the given "ValueInfo" refers to an identifier from
+> -- the given module
 > valInMdl :: ModuleIdent -> ValueInfo -> Bool
 > valInMdl m (Value qid' _ _) = fromJust (qidModule qid') == m 
 > valInMdl _ _ = internalError "valInMdl"
 
+> -- |update the contexts (and only the contexts!) of the type signatures
+> -- stored in the value environment 
 > writeContexts :: [(BT.Context, Decl)] -> TCM ()
 > writeContexts cs = mapM_ writeContext cs'
 >   where
 >   cs' = concatMap unpack cs
 >   writeContext :: (BT.Context, Ident) -> TCM ()
 >   writeContext (cx, v) = do
+>     -- find the correct entry in the value environment
 >     vEnv <- getValueEnv
 >     let vs = lookupValue v vEnv
 >     m <- getModuleIdent 
 >     let vs' = filter (valInMdl m) vs
 >         Value _ arity tysig = head vs'
 >     when (length vs' /= 1) $ internalError "writeContexts" 
+>     -- update the entry
 >     let tysig' = tysig `constrainBy` cx
 >     modifyValueEnv $ rebindFun m v arity tysig'
 >   unpack (cx, FunctionDecl _ _ f _) = [(cx, f)]
 >   unpack (cx, PatternDecl _ _ p _) = map (\d -> (cx, d)) (bv p)
 >   unpack _ = internalError "unpack"
 
+> -- |after the complete contexts have been determined, update the type annotations
+> -- in the syntax tree with them
 > updateContexts :: BT.Context -> Decl -> Decl
 > updateContexts cx (FunctionDecl p (Just (_, ty)) f es) 
 >   = FunctionDecl p (Just (mirrorCx cx, ty)) f es
