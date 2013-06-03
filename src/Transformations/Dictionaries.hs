@@ -53,63 +53,62 @@ getClassEnv = S.gets theClassEnv
 -- inserts dictionary parameters (in function declarations and in expressions)
 insertDicts :: Module -> CompilerEnv -> Module
 insertDicts mdl cEnv = 
-  runDI (diModule mdl) (initState $ classEnv cEnv)   
+  runDI (diModule mdl) (initState $ classEnv cEnv)
 
 -- |convert a whole module
 diModule :: Module -> DI Module
-diModule (Module m e i ds) = Module m e i `liftM` (mapM diDecl ds)
+diModule (Module m e i ds) = Module m e i `liftM` (mapM (diDecl BT.emptyContext) ds)
   
 -- |convert function declarations
--- TODO: pass constrained type from outer scope?
-diDecl :: Decl -> DI Decl
-diDecl (FunctionDecl p (Just cty) id0 eqs) = do
+-- pass context from outer scope
+diDecl :: BT.Context -> Decl -> DI Decl
+diDecl cx (FunctionDecl p (Just cty@(cx', _)) id0 eqs) = do
   cEnv <- getClassEnv
-  let cty'  = mirror2CT cty
-      -- we have to reduce the context before adding dictionary parameters, 
+  let -- we have to reduce the context before adding dictionary parameters, 
       -- because the recorded context is the "raw" context 
-      cty'' = (reduceContext cEnv $ fst $ cty', snd cty')
-  FunctionDecl p (Just cty) id0 `liftM` (mapM (diEqu cty'' $ show id0) eqs)
-diDecl (FunctionDecl _ Nothing _ _) = internalError "no type info in diDecl"
+      cx'' = reduceContext cEnv $ mirror2Cx cx'
+  FunctionDecl p (Just cty) id0 `liftM` (mapM (diEqu (cx ++ cx'') cx'' $ show id0) eqs)
+diDecl _ (FunctionDecl _ Nothing _ _) = internalError "no type info in diDecl"
 -- TODO: convert pattern declarations!
-diDecl f@(PatternDecl _p (Just _cty) _ps _rhs) = return f 
-diDecl (PatternDecl _ Nothing _ _) = internalError "no type info in diDecl"
-diDecl f = return f
+diDecl _cx f@(PatternDecl _p (Just _cty) _ps _rhs) = return f 
+diDecl _ (PatternDecl _ Nothing _ _) = internalError "no type info in diDecl"
+diDecl _ f = return f
 
 -- |transform an equation
 -- Takes the type of the corresponding function declaration, and the name
 -- of the function 
-diEqu :: ConstrType -> String -> Equation -> DI Equation
-diEqu cty fun (Equation p lhs rhs)= 
-  liftM2 (Equation p) (diLhs cty fun lhs) (diRhs cty fun rhs)
+diEqu :: BT.Context -> BT.Context -> String -> Equation -> DI Equation
+diEqu cxAll cxLocal fun (Equation p lhs rhs)= 
+  liftM2 (Equation p) (diLhs cxLocal fun lhs) (diRhs cxAll fun rhs)
 
 -- |transform right hand sides
-diRhs :: ConstrType -> String -> Rhs -> DI Rhs
-diRhs cty fun (SimpleRhs p e ds) = 
-  liftM2 (SimpleRhs p) (diExpr cty fun e) (mapM diDecl ds)
-diRhs cty fun (GuardedRhs ces ds) = 
-  liftM2 GuardedRhs (mapM (diCondExpr cty fun) ces) (mapM diDecl ds)
+diRhs :: BT.Context -> String -> Rhs -> DI Rhs
+diRhs cx fun (SimpleRhs p e ds) = 
+  liftM2 (SimpleRhs p) (diExpr cx fun e) (mapM (diDecl cx) ds)
+diRhs cx fun (GuardedRhs ces ds) = 
+  liftM2 GuardedRhs (mapM (diCondExpr cx fun) ces) (mapM (diDecl cx) ds)
 
   
 -- | transform conditional expressions
-diCondExpr :: ConstrType -> String -> CondExpr -> DI CondExpr
-diCondExpr cty fun (CondExpr p e1 e2) = 
-  liftM2 (CondExpr p) (diExpr cty fun e1) (diExpr cty fun e2)
+diCondExpr :: BT.Context -> String -> CondExpr -> DI CondExpr
+diCondExpr cx fun (CondExpr p e1 e2) = 
+  liftM2 (CondExpr p) (diExpr cx fun e1) (diExpr cx fun e2)
   
 -- | transform left hand sides
-diLhs :: ConstrType -> String -> Lhs -> DI Lhs
-diLhs cty fun (FunLhs id0 ps) = 
+diLhs :: BT.Context -> String -> Lhs -> DI Lhs
+diLhs cx fun (FunLhs id0 ps) = 
   return $ FunLhs id0 (dictParams ++ ps)  
   where 
-  dictParams = map (VariablePattern . contextElemToVar fun) (fst cty)
-diLhs cty fun (OpLhs p1 id0 p2) = diLhs cty fun (FunLhs id0 [p1, p2])
-diLhs cty fun a@(ApLhs _ _) =
+  dictParams = map (VariablePattern . contextElemToVar fun) cx
+diLhs cx fun (OpLhs p1 id0 p2) = diLhs cx fun (FunLhs id0 [p1, p2])
+diLhs cx fun a@(ApLhs _ _) =
   let (f, ps) = flatLhs a
-  in diLhs cty fun (FunLhs f ps)  
+  in diLhs cx fun (FunLhs f ps)  
 
 -- | transform expressions
-diExpr :: ConstrType -> String -> Expression -> DI Expression
+diExpr :: BT.Context -> String -> Expression -> DI Expression
 diExpr _ _ e@(Literal _) = return e
-diExpr cty fun v@(Variable (Just varCty) qid) = do 
+diExpr cx0 fun v@(Variable (Just varCty) qid) = do 
   codes <- abstrCode
   cEnv <- getClassEnv
   return $ foldl Apply (var'' cEnv) codes 
@@ -117,7 +116,7 @@ diExpr cty fun v@(Variable (Just varCty) qid) = do
   abstrCode = do
     cEnv <- getClassEnv
     let cx = mirror2Cx (fst varCty)
-        codes = map (concreteCode fun . dictCode cEnv (fst cty)) cx 
+        codes = map (concreteCode fun . dictCode cEnv cx0) cx 
     return codes
   maybeCls cEnv = lookupDefiningClass cEnv qid
   cls cEnv = fromJust $ maybeCls cEnv
@@ -130,60 +129,60 @@ diExpr cty fun v@(Variable (Just varCty) qid) = do
            (qualify $ mkIdent $ mkSelFunName (show $ cls cEnv) (show $ qid))
 diExpr _ _ (Variable Nothing _) = internalError "diExpr: no type info"
 diExpr _ _ e@(Constructor _) = return e
-diExpr cty fun (Paren e) = Paren `liftM` diExpr cty fun e
-diExpr cty fun (Typed e cx t) = liftM3 Typed (diExpr cty fun e) (return cx) (return t)
-diExpr cty fun (Tuple sref es) = Tuple sref `liftM` (mapM (diExpr cty fun) es)   
-diExpr cty fun (List srefs es) = List srefs `liftM` (mapM (diExpr cty fun) es)
-diExpr cty fun (ListCompr sref e ss) = 
-  liftM2 (ListCompr sref) (diExpr cty fun e) (mapM (diStmt cty fun) ss) 
-diExpr cty fun (EnumFrom e1) = EnumFrom `liftM` (diExpr cty fun e1)
-diExpr cty fun (EnumFromThen e1 e2) = 
-  liftM2 EnumFromThen (diExpr cty fun e1) (diExpr cty fun e2)
-diExpr cty fun (EnumFromTo e1 e2) = 
-  liftM2 EnumFromTo (diExpr cty fun e1) (diExpr cty fun e2)
-diExpr cty fun (EnumFromThenTo e1 e2 e3) = 
-  liftM3 EnumFromThenTo (diExpr cty fun e1) (diExpr cty fun e2) (diExpr cty fun e3)
-diExpr cty fun (UnaryMinus i e) = UnaryMinus i `liftM` diExpr cty fun e
-diExpr cty fun (Apply e1 e2) = liftM2 Apply (diExpr cty fun e1) (diExpr cty fun e2)
+diExpr cx fun (Paren e) = Paren `liftM` diExpr cx fun e
+diExpr cx fun (Typed e cxt t) = liftM3 Typed (diExpr cx fun e) (return cxt) (return t)
+diExpr cx fun (Tuple sref es) = Tuple sref `liftM` (mapM (diExpr cx fun) es)   
+diExpr cx fun (List srefs es) = List srefs `liftM` (mapM (diExpr cx fun) es)
+diExpr cx fun (ListCompr sref e ss) = 
+  liftM2 (ListCompr sref) (diExpr cx fun e) (mapM (diStmt cx fun) ss) 
+diExpr cx fun (EnumFrom e1) = EnumFrom `liftM` (diExpr cx fun e1)
+diExpr cx fun (EnumFromThen e1 e2) = 
+  liftM2 EnumFromThen (diExpr cx fun e1) (diExpr cx fun e2)
+diExpr cx fun (EnumFromTo e1 e2) = 
+  liftM2 EnumFromTo (diExpr cx fun e1) (diExpr cx fun e2)
+diExpr cx fun (EnumFromThenTo e1 e2 e3) = 
+  liftM3 EnumFromThenTo (diExpr cx fun e1) (diExpr cx fun e2) (diExpr cx fun e3)
+diExpr cx fun (UnaryMinus i e) = UnaryMinus i `liftM` diExpr cx fun e
+diExpr cx fun (Apply e1 e2) = liftM2 Apply (diExpr cx fun e1) (diExpr cx fun e2)
 -- adding dictionary parameters for the operator in InfixApply, Left- and RightSection
 -- expressions by transforming them into a term with Variable's and Apply's where
 -- the operator (or the flipped operator) is at the head position. 
 -- Note that infixOp preserves the type annotation of the operator!
-diExpr cty fun (InfixApply e1 op e2) = 
-  diExpr cty fun (Apply (Apply (infixOp op) e1) e2)
-diExpr cty fun (LeftSection e op) = 
-  diExpr cty fun (Apply (infixOp op) e)
-diExpr cty fun (RightSection op e) = 
-  diExpr cty fun (Apply (Apply prelFlip (infixOp op)) e)
-diExpr cty fun (Lambda sref ps e) = Lambda sref ps `liftM` diExpr cty fun e
--- TODO: pass constrained type from outer scope?
-diExpr cty fun (Let ds e) = liftM2 Let (mapM diDecl ds) (diExpr cty fun e)
-diExpr cty fun (Do ss e) = liftM2 Do (mapM (diStmt cty fun) ss) (diExpr cty fun e)
-diExpr cty fun (IfThenElse s e1 e2 e3) = 
-  liftM3 (IfThenElse s) (diExpr cty fun e1) (diExpr cty fun e2) (diExpr cty fun e3)
-diExpr cty fun (Case s ct e alts) = 
-  liftM2 (Case s ct) (diExpr cty fun e) (mapM (diAlt cty fun) alts)
-diExpr cty fun (RecordConstr fs) = 
-  RecordConstr `liftM` (mapM (diField cty fun) fs)
-diExpr cty fun (RecordSelection e id0) = 
-  flip RecordSelection id0 `liftM` diExpr cty fun e
-diExpr cty fun (RecordUpdate fs e) = 
-  liftM2 RecordUpdate (mapM (diField cty fun) fs) (diExpr cty fun e)
+diExpr cx fun (InfixApply e1 op e2) = 
+  diExpr cx fun (Apply (Apply (infixOp op) e1) e2)
+diExpr cx fun (LeftSection e op) = 
+  diExpr cx fun (Apply (infixOp op) e)
+diExpr cx fun (RightSection op e) = 
+  diExpr cx fun (Apply (Apply prelFlip (infixOp op)) e)
+diExpr cx fun (Lambda sref ps e) = Lambda sref ps `liftM` diExpr cx fun e
+-- pass context from outer scope
+diExpr cx fun (Let ds e) = liftM2 Let (mapM (diDecl cx) ds) (diExpr cx fun e)
+diExpr cx fun (Do ss e) = liftM2 Do (mapM (diStmt cx fun) ss) (diExpr cx fun e)
+diExpr cx fun (IfThenElse s e1 e2 e3) = 
+  liftM3 (IfThenElse s) (diExpr cx fun e1) (diExpr cx fun e2) (diExpr cx fun e3)
+diExpr cx fun (Case s ct e alts) = 
+  liftM2 (Case s ct) (diExpr cx fun e) (mapM (diAlt cx fun) alts)
+diExpr cx fun (RecordConstr fs) = 
+  RecordConstr `liftM` (mapM (diField cx fun) fs)
+diExpr cx fun (RecordSelection e id0) = 
+  flip RecordSelection id0 `liftM` diExpr cx fun e
+diExpr cx fun (RecordUpdate fs e) = 
+  liftM2 RecordUpdate (mapM (diField cx fun) fs) (diExpr cx fun e)
   
 
 -- |transform statements
-diStmt :: ConstrType -> String -> Statement -> DI Statement
-diStmt cty fun (StmtExpr s e) = StmtExpr s `liftM` diExpr cty fun e
-diStmt _   _ (StmtDecl ds) = StmtDecl `liftM` (mapM (diDecl) ds)
-diStmt cty fun (StmtBind s p e) = StmtBind s p `liftM` diExpr cty fun e
+diStmt :: BT.Context -> String -> Statement -> DI Statement
+diStmt cx fun (StmtExpr s e) = StmtExpr s `liftM` diExpr cx fun e
+diStmt cx   _ (StmtDecl ds) = StmtDecl `liftM` (mapM (diDecl cx) ds)
+diStmt cx fun (StmtBind s p e) = StmtBind s p `liftM` diExpr cx fun e
 
 -- |transform alts
-diAlt :: ConstrType -> String -> Alt -> DI Alt
-diAlt cty fun (Alt p pt rhs) = Alt p pt `liftM` (diRhs cty fun rhs)
+diAlt :: BT.Context -> String -> Alt -> DI Alt
+diAlt cx fun (Alt p pt rhs) = Alt p pt `liftM` (diRhs cx fun rhs)
 
 -- |transform fields
-diField :: ConstrType -> String -> Field Expression -> DI (Field Expression)
-diField cty fun (Field p i e) = Field p i `liftM` diExpr cty fun e
+diField :: BT.Context -> String -> Field Expression -> DI (Field Expression)
+diField cx fun (Field p i e) = Field p i `liftM` diExpr cx fun e
 
 -- |generates an identifier for the given function and context element
 contextElemToVar:: String -> (QualIdent, Type) -> Ident
