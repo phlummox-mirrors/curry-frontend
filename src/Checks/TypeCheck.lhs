@@ -90,18 +90,23 @@ to True in the normal execution of the compiler.
 >     bindConstrs
 >     bindLabels
 >     -- bindClassMethods cEnv
->     _ <- tcDecls vds
+>     -- Type check #1: generates valid value environment and valid type annotations
+>     -- of function/pattern declarations. 
+>     -- In the value environment all contexts are reduced. 
+>     (newDecls1, _) <- tcDecls vds
+>     -- Type check #2: generates valid variable type annotations, taking 
+>     -- into account the reduced contexts of all functions
 >     setIsFinal
->     (newDecls, _) <- tcDecls vds
+>     (newDecls2, _) <- tcDecls newDecls1
 >     theta <- getTypeSubst
->     let newDecls' = applyTypeSubst theta newDecls 
+>     let newDecls3 = applyTypeSubst theta newDecls2 
 >
 >     cEnv' <- getClassEnv
 >     vEnv <- getValueEnv
 >     checkNoEqualClassMethodAndFunctionNames vEnv cEnv'
 > 
 >     checkForAmbiguousContexts vds
->     return (map snd $ sortBy sorter $ tds' ++ zip (map fst vds') newDecls')
+>     return (map snd $ sortBy sorter $ tds' ++ zip (map fst vds') newDecls3)
 >   (tds', vds') = partition (isTypeDecl . snd) pdecls
 >   tds = map snd tds'
 >   vds = map snd vds'
@@ -550,33 +555,36 @@ either one of the basic types or \texttt{()}.
 >   let newCxs = map Set.fromList cxs'
 >   isFinal <- getIsFinal
 >   -- do not run fix point iteration if it's the final run
->   case newCxs /= oldCxs && not isFinal of
->     True -> do
->       -- update contexts in value environment
->       writeContexts dsWithCxs
->       -- Reset the value environment. Reset everything except the
->       -- type schemes for the members of the declaration group, because
->       -- over these the fix point iteration is done
->       currentEnv <- getValueEnv
->       modifyValueEnv (const oldVEnv)
->       let declGroupMembers = bv ds
->           -- lookup each element of the declaration group
->           -- (qualified lookup is not needed because
->           -- {re}bindFun stores everything also as unqualified (?))
->           valInfos = map (flip lookupValue currentEnv) declGroupMembers
->       -- add each element of the declaration group
->       mapM_ modifyEnv' valInfos 
->       tcFixPointIter ds newCxs n t oldVEnv (Just firstFreeVars) 
->         (Just firstTySubst) (fixPIter + 1)
->     False -> do
->       -- Establish the inferred types. 
->       mapM_ (genDecl firstFreeVars theta) (map snd dsWithCxs)
->       -- do NOT return final contexts! 
->       -- TODO: return cxs or cxs' (or doesn't matter?)
->       -- The complete contexts are only known here, not earlier. 
->       -- Update the type annotations with the complete contexts. 
->       let newDs = zipWith updateContexts cxs' (map fst dsAndCtysRhs)
->       return (newDs, concat cxs')
+>   case isFinal of
+>     True -> return (map fst dsAndCtysRhs, concat cxs')
+>     False -> 
+>       case newCxs /= oldCxs of
+>         True -> do
+>           -- update contexts in value environment
+>           writeContexts dsWithCxs
+>           -- Reset the value environment. Reset everything except the
+>           -- type schemes for the members of the declaration group, because
+>           -- over these the fix point iteration is done
+>           currentEnv <- getValueEnv
+>           modifyValueEnv (const oldVEnv)
+>           let declGroupMembers = bv ds
+>               -- lookup each element of the declaration group
+>               -- (qualified lookup is not needed because
+>               -- {re}bindFun stores everything also as unqualified (?))
+>               valInfos = map (flip lookupValue currentEnv) declGroupMembers
+>           -- add each element of the declaration group
+>           mapM_ modifyEnv' valInfos 
+>           tcFixPointIter ds newCxs n t oldVEnv (Just firstFreeVars) 
+>             (Just firstTySubst) (fixPIter + 1)
+>         False -> do
+>           -- Establish the inferred types. 
+>           mapM_ (genDecl firstFreeVars theta) (map snd dsWithCxs)
+>           -- do NOT return final contexts! 
+>           -- TODO: return cxs or cxs' (or doesn't matter?)
+>           -- The complete contexts are only known here, not earlier. 
+>           -- Update the type annotations with the complete contexts. 
+>           let newDs = zipWith updateContexts cxs' (map fst dsAndCtysRhs)
+>           return (newDs, concat cxs')
 
 > -- |searches the correct ValueInfo in the given list and writes its
 > -- information back into the value environment 
