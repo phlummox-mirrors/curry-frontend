@@ -90,28 +90,21 @@ to True in the normal execution of the compiler.
 >     bindConstrs
 >     bindLabels
 >     -- bindClassMethods cEnv
->     -- Type check #1: generates valid value environment and valid type annotations
->     -- of function/pattern declarations. 
->     -- In the value environment all contexts are reduced. 
->     (newDecls1, _) <- tcDecls vds
->     -- Type check #2: generates valid variable type annotations, taking 
->     -- into account the reduced contexts of all functions
->     setIsFinal
->     (newDecls2, _) <- tcDecls newDecls1
+>     (newDecls, _) <- tcDecls vds
 >     theta <- getTypeSubst
->     let newDecls3 = applyTypeSubst theta newDecls2 
+>     let newDecls' = applyTypeSubst theta newDecls 
 >
 >     cEnv' <- getClassEnv
 >     vEnv <- getValueEnv
 >     checkNoEqualClassMethodAndFunctionNames vEnv cEnv'
 > 
 >     checkForAmbiguousContexts vds
->     return (map snd $ sortBy sorter $ tds' ++ zip (map fst vds') newDecls3)
+>     return (map snd $ sortBy sorter $ tds' ++ zip (map fst vds') newDecls')
 >   (tds', vds') = partition (isTypeDecl . snd) pdecls
 >   tds = map snd tds'
 >   vds = map snd vds'
 >   sorter (n1, _) (n2, _) = compare n1 n2
->   initState = TcState m tcEnv tyEnv cEnv doContextRed0 idSubst emptySigEnv 0 [] [] False
+>   initState  = TcState m tcEnv tyEnv cEnv doContextRed0 idSubst emptySigEnv 0 [] []
 
 \end{verbatim}
 
@@ -135,7 +128,6 @@ generating fresh type variables.
 >   -- subsequently used in each declaration group.   
 >   , firstThetas :: [Maybe TypeSubst]
 >   , errors      :: [Message]
->   , isFinal0    :: Bool
 >   }
 
 > type TCM = S.State TcState
@@ -210,12 +202,6 @@ generating fresh type variables.
 
 > getDoContextRed :: TCM Bool
 > getDoContextRed = S.gets doContextRed
-
-> setIsFinal :: TCM ()
-> setIsFinal = S.modify $ \s -> s { isFinal0 = True }
-
-> getIsFinal :: TCM Bool
-> getIsFinal = S.gets isFinal0
 
 \end{verbatim}
 \paragraph{Defining Types}
@@ -553,38 +539,33 @@ either one of the basic types or \texttt{()}.
 >         Just x -> x
 > 
 >   let newCxs = map Set.fromList cxs'
->   isFinal <- getIsFinal
->   -- do not run fix point iteration if it's the final run
->   case isFinal of
->     True -> return (map fst dsAndCtysRhs, concat cxs')
->     False -> 
->       case newCxs /= oldCxs of
->         True -> do
->           -- update contexts in value environment
->           writeContexts dsWithCxs
->           -- Reset the value environment. Reset everything except the
->           -- type schemes for the members of the declaration group, because
->           -- over these the fix point iteration is done
->           currentEnv <- getValueEnv
->           modifyValueEnv (const oldVEnv)
->           let declGroupMembers = bv ds
->               -- lookup each element of the declaration group
->               -- (qualified lookup is not needed because
->               -- {re}bindFun stores everything also as unqualified (?))
->               valInfos = map (flip lookupValue currentEnv) declGroupMembers
->           -- add each element of the declaration group
->           mapM_ modifyEnv' valInfos 
->           tcFixPointIter ds newCxs n t oldVEnv (Just firstFreeVars) 
->             (Just firstTySubst) (fixPIter + 1)
->         False -> do
->           -- Establish the inferred types. 
->           mapM_ (genDecl firstFreeVars theta) (map snd dsWithCxs)
->           -- do NOT return final contexts! 
->           -- TODO: return cxs or cxs' (or doesn't matter?)
->           -- The complete contexts are only known here, not earlier. 
->           -- Update the type annotations with the complete contexts. 
->           let newDs = zipWith updateContexts cxs' (map fst dsAndCtysRhs)
->           return (newDs, concat cxs')
+>   case newCxs /= oldCxs of
+>     True -> do
+>       -- update contexts in value environment
+>       writeContexts dsWithCxs
+>       -- Reset the value environment. Reset everything except the
+>       -- type schemes for the members of the declaration group, because
+>       -- over these the fix point iteration is done
+>       currentEnv <- getValueEnv
+>       modifyValueEnv (const oldVEnv)
+>       let declGroupMembers = bv ds
+>           -- lookup each element of the declaration group
+>           -- (qualified lookup is not needed because
+>           -- {re}bindFun stores everything also as unqualified (?))
+>           valInfos = map (flip lookupValue currentEnv) declGroupMembers
+>       -- add each element of the declaration group
+>       mapM_ modifyEnv' valInfos 
+>       tcFixPointIter ds newCxs n t oldVEnv (Just firstFreeVars) 
+>         (Just firstTySubst) (fixPIter + 1)
+>     False -> do
+>       -- Establish the inferred types. 
+>       mapM_ (genDecl firstFreeVars theta) (map snd dsWithCxs)
+>       -- do NOT return final contexts! 
+>       -- TODO: return cxs or cxs' (or doesn't matter?)
+>       -- The complete contexts are only known here, not earlier. 
+>       -- Update the type annotations with the complete contexts. 
+>       let newDs = zipWith updateContexts cxs' (map fst dsAndCtysRhs)
+>       return (newDs, concat cxs')
 
 > -- |searches the correct ValueInfo in the given list and writes its
 > -- information back into the value environment 
@@ -1122,12 +1103,8 @@ because of possibly multiple occurrences of variables.
 >       m <- getModuleIdent
 >       cEnv <- getClassEnv
 >       tcEnv <- getTyConsEnv
->       isFinal <- getIsFinal
->       let tySig = qualLookupTypeSig m v sigs
->       -- if it's the final run, always load the type from the value environment!
->       case isJust tySig && not isFinal of
->         True -> do
->           let cty = fromJust tySig
+>       case qualLookupTypeSig m v sigs of
+>         Just cty -> do
 >           -- load the inferred type together with the (new) contexts
 >           (icx', ity') <- getValueEnv >>= (inst . (flip (funType tcEnv m v) cEnv))
 >           -- Here we need the inferred type *after the first iteration of the
@@ -1148,7 +1125,7 @@ because of possibly multiple occurrences of variables.
 >           let mapping = buildTypeVarsMapping ity ty0
 >               cty' = (cx0 ++ subst mapping icx, ty0)
 >           return (Variable (Just $ mirrorCT cty') v, cty')
->         False -> do
+>         Nothing -> do
 >           cty <- getValueEnv >>= inst . (flip (funType tcEnv m v) cEnv)
 >           return (Variable (Just $ mirrorCT cty) v, cty)
 >   where v' = unqualify v
@@ -1260,7 +1237,7 @@ because of possibly multiple occurrences of variables.
 >           | op' == fminusId = return $ noContext floatType
 >           | otherwise = internalError $ "TypeCheck.tcExpr unary " ++ idName op'
 > tcExpr p e@(Apply e1 e2) = do
->     (e1',      (cx1,  ty1)) <- tcExpr p e1
+>     (e1', (cx1,       ty1)) <- tcExpr p e1
 >     (e2', cty2@(cx2, _ty2)) <- tcExpr p e2
 >     (alpha,beta) <- 
 >       tcArrow p "application" (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e1)
