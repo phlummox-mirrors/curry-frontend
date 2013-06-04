@@ -18,9 +18,11 @@ import Curry.Base.Ident
 import CompilerEnv
 import Curry.Syntax
 import Env.ClassEnv
+import Env.Value
 import Base.Names (sep, mkSelFunName, mkDictName)
 import Base.Messages
 import Data.Maybe
+import Base.Utils
 
 import Base.Types as BT
 
@@ -34,16 +36,20 @@ type DI = S.State DIState
 
 data DIState = DIState 
   { theClassEnv :: ClassEnv
+  , theValueEnv :: ValueEnv
   }
 
-initState :: ClassEnv -> DIState
-initState cEnv = DIState cEnv
+initState :: ClassEnv -> ValueEnv -> DIState
+initState cEnv vEnv = DIState cEnv vEnv 
 
 runDI :: DI a -> DIState -> a
 runDI comp init0 = let (a, _s) = S.runState comp init0 in a
 
 getClassEnv :: DI ClassEnv
 getClassEnv = S.gets theClassEnv
+
+getValueEnv :: DI ValueEnv
+getValueEnv = S.gets theValueEnv
 
 -- ----------------------------------------------------------------------------
 -- the transformation functions
@@ -53,7 +59,7 @@ getClassEnv = S.gets theClassEnv
 -- inserts dictionary parameters (in function declarations and in expressions)
 insertDicts :: Module -> CompilerEnv -> Module
 insertDicts mdl cEnv = 
-  runDI (diModule mdl) (initState $ classEnv cEnv)
+  runDI (diModule mdl) (initState (classEnv cEnv) (valueEnv cEnv))
 
 -- |convert a whole module
 diModule :: Module -> DI Module
@@ -64,15 +70,29 @@ diModule (Module m e i ds) = Module m e i `liftM` (mapM (diDecl BT.emptyContext)
 diDecl :: BT.Context -> Decl -> DI Decl
 diDecl cx (FunctionDecl p (Just cty@(cx', _)) id0 eqs) = do
   cEnv <- getClassEnv
+  vEnv <- getValueEnv
   let -- we have to reduce the context before adding dictionary parameters, 
       -- because the recorded context is the "raw" context 
       cx'' = reduceContext cEnv $ mirror2Cx cx'
-  FunctionDecl p (Just cty) id0 `liftM` (mapM (diEqu (cx ++ cx'') cx'' $ show id0) eqs)
+      cx''' = removeNonLocal vEnv id0 lookupValue cx''
+  FunctionDecl p (Just cty) id0 `liftM` (mapM (diEqu (cx ++ cx''') cx''' $ show id0) eqs)
 diDecl _ (FunctionDecl _ Nothing _ _) = internalError "no type info in diDecl"
 -- TODO: convert pattern declarations!
 diDecl _cx f@(PatternDecl _p (Just _cty) _ps _rhs) = return f 
 diDecl _ (PatternDecl _ Nothing _ _) = internalError "no type info in diDecl"
 diDecl _ f = return f
+
+-- |removes context elements that are not local but refer to type variables from the
+-- upper scopes, i.e., context elements that have a type with type variables
+-- less than zero. 
+removeNonLocal :: ValueEnv -> a -> (a -> ValueEnv -> [ValueInfo]) -> BT.Context -> BT.Context
+removeNonLocal vEnv id0 lookup0 cx = newCx
+  where
+  Value _ _ (ForAll cxInf _ _) : _ = lookup0 id0 vEnv
+  newCx = map snd $ filter (\(e1, _e2) -> local e1) $ zip' cxInf cx
+  local :: (QualIdent, Type) -> Bool
+  -- TODO: actually check only the type variable in head position... 
+  local (_qid, ty) = all (>= 0) $ BT.typeVars ty
 
 -- |transform an equation
 -- Takes the type of the corresponding function declaration, and the name
@@ -108,14 +128,17 @@ diLhs cx fun a@(ApLhs _ _) =
 -- | transform expressions
 diExpr :: BT.Context -> String -> Expression -> DI Expression
 diExpr _ _ e@(Literal _) = return e
-diExpr cx0 fun v@(Variable (Just varCty) qid) = do 
+diExpr cx0 fun v@(Variable (Just varCty0) qid) = do 
   codes <- abstrCode
   cEnv <- getClassEnv
   return $ foldl Apply (var'' cEnv) codes 
   where
   abstrCode = do
     cEnv <- getClassEnv
-    let cx = mirror2Cx (fst varCty)
+    vEnv <- getValueEnv
+    let varCty = (removeNonLocal vEnv qid qualLookupValue $ mirror2Cx $ fst varCty0, snd varCty0)
+        -- check whether we have a class method
+        cx = if isNothing $ maybeCls cEnv then fst varCty else mirror2Cx $ fst varCty0
         codes = map (concreteCode fun . dictCode cEnv cx0) cx 
     return codes
   maybeCls cEnv = lookupDefiningClass cEnv qid
@@ -125,7 +148,7 @@ diExpr cx0 fun v@(Variable (Just varCty) qid) = do
   var'' cEnv = if isNothing $ maybeCls cEnv 
     then v
     -- TODO: canonical class/function names
-    else Variable (Just varCty) 
+    else Variable (Just varCty0) 
            (qualify $ mkIdent $ mkSelFunName (show $ cls cEnv) (show $ qid))
 diExpr _ _ (Variable Nothing _) = internalError "diExpr: no type info"
 diExpr _ _ e@(Constructor _) = return e
