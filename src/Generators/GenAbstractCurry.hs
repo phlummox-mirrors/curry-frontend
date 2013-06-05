@@ -261,7 +261,7 @@ genFuncDecl isLocal env (ident, decls)
            | otherwise = qualLookupType (qualifyWith (moduleId env) ident)
                           (typeEnv env)
 
-  genTypeSig env' (TypeSig      _ _ cx ts) = genTypeExpr env' ts
+  genTypeSig env' (TypeSig     _ _ _cx ts) = genTypeExpr env' ts
   genTypeSig env' (ForeignDecl _ _ _ _ ts) = genTypeExpr env' ts
   genTypeSig _    _ =
     internalError "GenAbstractCurry.genFuncDecl.genTypeSig: no pattern match"

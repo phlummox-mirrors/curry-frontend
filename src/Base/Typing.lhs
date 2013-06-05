@@ -287,10 +287,10 @@ offsets here.
 >     return (expandAliasType tys ty)
 
 > instUniv :: TypeScheme -> TyState Type
-> instUniv (ForAll con n ty) = instType n ty
+> instUniv (ForAll _cx n ty) = instType n ty
 
 > instUnivExist :: ExistTypeScheme -> TyState Type
-> instUnivExist (ForAllExist con n n' ty) = instType (n + n') ty
+> instUnivExist (ForAllExist _cx n n' ty) = instType (n + n') ty
 
 \end{verbatim}
 When unifying two types, the non-generalized variables, i.e.,
