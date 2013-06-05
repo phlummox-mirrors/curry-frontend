@@ -1,6 +1,6 @@
 {- |
     Module      :  $Header$
-    Description :  TODO
+    Description :  Type class related checks
     Copyright   :  (c) 2013 Matthias Böhm
     License     :  OtherLicense
 
@@ -8,7 +8,8 @@
     Stability   :  experimental
     Portability :  portable
 
-    Description: TODO
+    This file contains a lot of checks for typeclass elements (classes, 
+    instances, contexts)
 -}
 
 module Checks.TypeClassesCheck (typeClassesCheck) where
