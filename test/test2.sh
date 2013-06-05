@@ -4,7 +4,8 @@ cymake_orig=../dist/build/cymake/cymake_orig
 
 echo ================
   
-for file in DictTrans1 DictTrans2 DictTrans3 DictTrans4 DictTrans5 DictTrans6 DictTrans7 DictTrans8\
+for file in DictTrans1 DictTrans2 DictTrans3 DictTrans4 \
+  DictTrans5 DictTrans6 DictTrans7 DictTrans8 DictTrans9 \
   Annot1 Annot2 Annot3 Annot4 Annot5 Annot6 Annot7\
   BugDicts BugDictTrans8 Annot_bug Annot_bug3
 do

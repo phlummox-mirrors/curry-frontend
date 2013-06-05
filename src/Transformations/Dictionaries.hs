@@ -77,9 +77,11 @@ diDecl cx (FunctionDecl p (Just cty@(cx', _)) id0 eqs) = do
       cx''' = removeNonLocal vEnv id0 lookupValue cx''
   FunctionDecl p (Just cty) id0 `liftM` (mapM (diEqu (cx ++ cx''') cx''' $ show id0) eqs)
 diDecl _ (FunctionDecl _ Nothing _ _) = internalError "no type info in diDecl"
--- TODO: convert pattern declarations!
-diDecl _cx f@(PatternDecl _p (Just _cty) _ps _rhs) = return f 
+
+diDecl cx (PatternDecl p (Just cty) pt rhs) = 
+  PatternDecl p (Just cty) pt `liftM` (diRhs cx "$$$" rhs) 
 diDecl _ (PatternDecl _ Nothing _ _) = internalError "no type info in diDecl"
+
 diDecl _ f = return f
 
 -- |removes context elements that are not local but refer to type variables from the

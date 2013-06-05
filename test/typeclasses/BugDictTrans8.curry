@@ -22,4 +22,14 @@ test2 z = z
 test2 z = z
   where test2_1 x = funA z
 
-  
+toBool _ = True
+
+test3 x = 1
+  where Just (y, [z]) = Just (funA x, [funA x])
+
+test8 x = 1
+  where Just (y, [z]) = Just (funA z, [funA y])
+
+test9 x = 1
+  where Just (y, [z]) = Just (funA y, [funA z])
+
