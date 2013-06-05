@@ -573,7 +573,7 @@ transformClass cEnv (ClassDecl _p _scx cls tyvar _decls) =
     map (show . unqualify) $ 
       superClasses theClass0
   qSuperClasses = map (dictTypePrefix ++) theSuperClasses
-  scs = map (\s -> ConstructorType (qualify $ mkIdent s) [VariableType tyvar])
+  scs = map (\s -> ConstructorType (mkQIdent s) [VariableType tyvar])
     qSuperClasses
   methodTypes = map third theMethods0
   genSuperClassDictSelMethod :: String -> [Decl]
@@ -583,11 +583,11 @@ transformClass cEnv (ClassDecl _p _scx cls tyvar _decls) =
     [ TypeSig NoPos [selMethodId]
         emptyContext (ArrowType 
           (ConstructorType (qualify $ dataTypeName) [VariableType tyvar]) 
-          (ConstructorType (qualify $ mkIdent $ dictTypePrefix ++ scls) [VariableType tyvar]))
+          (ConstructorType (mkQIdent $ dictTypePrefix ++ scls) [VariableType tyvar]))
     , FunctionDecl NoPos Nothing selMethodId 
        [Equation NoPos 
          (equationsLhs selMethodName)
-         (SimpleRhs NoPos (Variable Nothing $ qualify $ dictSelParam selMethodName scls) [])
+         (SimpleRhs NoPos (qVar $ dictSelParam selMethodName scls) [])
        ]
     ]
   genMethodSelMethod :: ((Ident, Context, TypeExpr), Int) -> [Decl]
@@ -596,12 +596,12 @@ transformClass cEnv (ClassDecl _p _scx cls tyvar _decls) =
         selMethodName = mkSelFunName (show $ theClass theClass0) (show m) in
     [ TypeSig NoPos [selMethodId]
         emptyContext (ArrowType 
-          (ConstructorType (qualify $ mkIdent $ dictTypePrefix ++ (show cls)) [VariableType tyvar]) 
+          (ConstructorType (mkQIdent $ dictTypePrefix ++ (show cls)) [VariableType tyvar]) 
           ty)
     , FunctionDecl NoPos Nothing selMethodId 
        [Equation NoPos 
          (equationsLhs selMethodName)
-         (SimpleRhs NoPos (Variable Nothing $ qualify $ methodSelParam selMethodName i) [])
+         (SimpleRhs NoPos (qVar $ methodSelParam selMethodName i) [])
        ]
     ]
   equationsLhs selMethodName = let selMethodId = mkIdent $ selMethodName in 
@@ -644,7 +644,7 @@ transformClass2 cEnv (ClassDecl _p _scx cls _tyvar _decls) =
     [ FunctionDecl NoPos Nothing (mkIdent selMethodName)
       [Equation NoPos
         (equationLhs selMethodName)
-        (SimpleRhs NoPos (Variable Nothing $ qualify $ dictSelParam selMethodName scls) [])
+        (SimpleRhs NoPos (qVar $ dictSelParam selMethodName scls) [])
       ]
     ]
     
@@ -656,7 +656,7 @@ transformClass2 cEnv (ClassDecl _p _scx cls _tyvar _decls) =
     [ FunctionDecl NoPos Nothing (mkIdent selMethodName)
       [Equation NoPos
         (equationLhs selMethodName)
-        (SimpleRhs NoPos (Variable Nothing $ qualify $ methodSelParam selMethodName i) [])
+        (SimpleRhs NoPos (qVar $ methodSelParam selMethodName i) [])
       ]
     ]
   
@@ -696,14 +696,14 @@ transformClass2 cEnv (ClassDecl _p _scx cls _tyvar _decls) =
     -- generate the names of the selector functions 
     names :: [QualIdent] -> [Expression]
     names (x:y:zs) = 
-      (Variable Nothing $ qualify $ mkIdent $ mkSelFunName (show x) (show y)) 
+      (qVar $ mkIdent $ mkSelFunName (show x) (show y)) 
       : names (y:zs)
     names [_] = []
     names [] = internalError "genNonDirectSuperClassDictSelMethod"
     -- enchain the selector functions
     expr :: Expression
     expr = foldr1 (\e1 e2 -> InfixApply e1 (InfixOp Nothing point) e2) (reverse $ names path)
-    point = qualify $ mkIdent "."
+    point = mkQIdent "."
     
   -- the renamings are important so that the parameters are not handled as
   -- global functions. Also important is that the parameters are globally
@@ -813,7 +813,7 @@ handleMissingFunc _cEnv (InstanceDecl _ _ cls _tcon _ _) ity fun =
   where
   globalName = mkIdent $ instMethodName cls ity (show fun)
   equ1 = Equation NoPos (FunLhs globalName []) 
-    (SimpleRhs NoPos (Apply (Variable Nothing . qualify . mkIdent $ "error") 
+    (SimpleRhs NoPos (Apply (qVar . mkIdent $ "error") 
                             (Literal $ String (srcRef 0) errorString)) [])
   errorString = show fun ++ " not given in instance declaration of class "
     ++ show cls ++ " and type " ++ show ity
@@ -837,11 +837,11 @@ createDictionary cEnv (InstanceDecl _ _scx cls _ _tvars _decls) ity =
   theClass0 = fromJust $ lookupClass cEnv cls
   superClasses0 = superClasses theClass0
   methods0 = methods theClass0
-  scs = map (Variable Nothing . qualify . dictName) superClasses0
-  ms = map (Variable Nothing . qualify . mkIdent . 
+  scs = map (qVar . dictName) superClasses0
+  ms = map (qVar . mkIdent . 
     (\s -> instMethodName cls ity s) . show . fst3) methods0
   all0 = scs ++ ms
-  dict = qualify $ mkIdent $ dictTypePrefix ++ show cls
+  dict = mkQIdent $ dictTypePrefix ++ show cls
   all' = foldl Apply (Constructor dict) all0
 createDictionary _ _ _ = internalError "createDictionary"
 
@@ -861,12 +861,22 @@ createDictionary2 cEnv (InstanceDecl _ _scx cls _tcon _tvars _decls) ity =
   theClass0 = fromJust $ lookupClass cEnv cls
   superClasses0 = superClasses theClass0
   methods0 = methods theClass0
-  scs = map (Variable Nothing . qualify . dictName) superClasses0
-  ms = map (Variable Nothing . qualify . mkIdent . 
+  scs = map (qVar . dictName) superClasses0
+  ms = map (qVar . mkIdent . 
     (\s -> instMethodName cls ity s) . show . fst3) methods0
   all0 = scs ++ ms
 createDictionary2 _ _ _ = internalError "createDictionary"
- 
+
+-- ---------------------------------------------------------------------------
+-- helper functions
+-- ---------------------------------------------------------------------------
+
+qVar :: Ident -> Expression
+qVar = Variable Nothing . qualify 
+
+mkQIdent :: String -> QualIdent
+mkQIdent = qualify . mkIdent
+
 -- ---------------------------------------------------------------------------
 -- other transformations
 -- ---------------------------------------------------------------------------
