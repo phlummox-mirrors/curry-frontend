@@ -704,7 +704,7 @@ either one of the basic types or \texttt{()}.
 > tcDeclRhs :: ValueEnv -> Decl -> TCM (Decl, ConstrType)
 > tcDeclRhs tyEnv0 (FunctionDecl p0 _ f (eq:eqs)) = do
 >   (eq', (cx0, ty0)) <- tcEquation tyEnv0 eq
->   (eqs', (cxs, ty))  <- tcEqns ty0 [] eqs [eq']
+>   (eqs', (cxs, ty)) <- tcEqns ty0 [] eqs [eq']
 >   let cty = (cx0 ++ cxs, ty)
 >   return (FunctionDecl p0 (Just $ mirrorCT cty) f eqs', cty)
 >   where tcEqns :: Type -> BT.Context -> [Equation] -> [Equation] -> TCM ([Equation], ConstrType)
@@ -1256,7 +1256,7 @@ because of possibly multiple occurrences of variables.
 >           | op' == fminusId = return $ noContext floatType
 >           | otherwise = internalError $ "TypeCheck.tcExpr unary " ++ idName op'
 > tcExpr p e@(Apply e1 e2) = do
->     (e1', (cx1,       ty1)) <- tcExpr p e1
+>     (e1',      (cx1,  ty1)) <- tcExpr p e1
 >     (e2', cty2@(cx2, _ty2)) <- tcExpr p e2
 >     (alpha,beta) <- 
 >       tcArrow p "application" (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e1)
