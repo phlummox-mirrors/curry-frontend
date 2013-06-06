@@ -42,3 +42,7 @@ test7 = y
 test8 x = 1
   where Just (y, [z]) = Just (funA z, [funA y])
   -}
+
+test9 _ = x
+  where x = funA x
+
