@@ -243,8 +243,8 @@ var' = Variable Nothing . qualify
 type ConstrType = (BT.Context, Type)
 
 tySchemeFlip :: ConstrType
--- the type of flip shouldn't be needed, hence the internalError 
-tySchemeFlip = ([], internalError "tySchemeFlip")
+-- the type of flip shouldn't be needed
+tySchemeFlip = ([], TypeVariable 0)
 
 prelFlip :: Expression
 prelFlip = Variable (Just $ mirrorCT tySchemeFlip) $ preludeIdent "flip"
