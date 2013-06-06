@@ -580,7 +580,7 @@ either one of the basic types or \texttt{()}.
 >       -- The complete contexts are only known here, not earlier. 
 >       -- Update the type annotations with the complete contexts. 
 >       let newDs = zipWith updateContexts cxs' (map fst dsAndCtysRhs)
->       return (newDs, concat cxs')
+>       return (newDs, nonLocalContextElems firstFreeVars $ concat cxs')
 
 > -- |searches the correct ValueInfo in the given list and writes its
 > -- information back into the value environment 
@@ -632,7 +632,13 @@ either one of the basic types or \texttt{()}.
 >   = PatternDecl  p (Just (mirrorCx cx, ty)) pt rhs
 > updateContexts _ _ = internalError "updateContexts"
 
+> nonLocalContextElems :: Set.Set Int -> BT.Context -> BT.Context
+> nonLocalContextElems fvs cx = filter (isNotLocal fvs) cx 
 
+> -- | a context element is considered not local if it has type variables
+> -- that are free variables of the type environment 
+> isNotLocal :: Set.Set Int -> (QualIdent, Type) -> Bool
+> isNotLocal fvs (_qid, ty) = any (`Set.member` fvs) (typeVars ty) 
 
 > --tcDeclGroup m tcEnv _ [ForeignDecl p cc _ f ty] =
 > --  tcForeign m tcEnv p cc f ty
@@ -1084,14 +1090,14 @@ because of possibly multiple occurrences of variables.
 
 > tcRhs ::ValueEnv -> Rhs -> TCM (Rhs, ConstrType)
 > tcRhs tyEnv0 (SimpleRhs p e ds) = do
->   (ds', _cxs) <- tcDecls ds
+>   (ds', cxs) <- tcDecls ds
 >   (e', (cx, ty)) <- tcExpr p e
->   cty <- checkSkolems p (text "Expression:" <+> ppExpr 0 e) tyEnv0 (cx, ty)
+>   cty <- checkSkolems p (text "Expression:" <+> ppExpr 0 e) tyEnv0 (cx ++ cxs, ty)
 >   return (SimpleRhs p e' ds', cty)
 > tcRhs tyEnv0 (GuardedRhs es ds) = do
->   (ds', _cxs) <- tcDecls ds
+>   (ds', cxs) <- tcDecls ds
 >   (es', (cxs', ty)) <- tcCondExprs tyEnv0 es
->   return (GuardedRhs es' ds', (cxs', ty))
+>   return (GuardedRhs es' ds', (cxs' ++ cxs, ty))
 
 > tcCondExprs :: ValueEnv -> [CondExpr] -> TCM ([CondExpr], ConstrType)
 > tcCondExprs tyEnv0 es = do
@@ -1320,12 +1326,12 @@ because of possibly multiple occurrences of variables.
 >     return (Lambda sref ts e', cty)
 > tcExpr p (Let ds e) = do
 >     tyEnv0 <- getValueEnv
->     (ds', _cxs) <- tcDecls ds
+>     (ds', cxs) <- tcDecls ds
 >     (e', (cx, ty)) <- tcExpr p e
 >     -- Shall we gather all contexts, also in the case that a declaration isn't 
 >     -- used at all (neither directly nor indirectly)? But whether this 
 >     -- is the case is not trivially determinable (TODO!).
->     cty <- checkSkolems p (text "Expression:" <+> ppExpr 0 e) tyEnv0 (cx {-++ _cxs-}, ty)
+>     cty <- checkSkolems p (text "Expression:" <+> ppExpr 0 e) tyEnv0 (cx ++ cxs, ty)
 >     return (Let ds' e', cty)
 > tcExpr p (Do sts e) = do
 >     tyEnv0 <- getValueEnv
@@ -1414,9 +1420,9 @@ because of possibly multiple occurrences of variables.
 >         (noContext $ listType ty1) cty2
 >   return (StmtBind sref t e', cx1 ++ cx2)
 > tcQual _ (StmtDecl      ds) = do 
->   -- ignore contexts of declarations
->   (ds', _) <- tcDecls ds
->   return (StmtDecl ds', BT.emptyContext)
+>   -- do not ignore contexts of declarations
+>   (ds', cx) <- tcDecls ds
+>   return (StmtDecl ds', cx)
 
 > tcStmt ::Position -> Statement -> TCM (Statement, BT.Context)
 > tcStmt p (StmtExpr sref e) = do
@@ -1430,9 +1436,9 @@ because of possibly multiple occurrences of variables.
 >   unify p "statement" (ppStmt st $-$ text "Term:" <+> ppExpr 0 e) (noContext $ ioType $ getType cty1) cty2
 >   return (StmtBind sref t e', cx1 ++ cx2)
 > tcStmt _ (StmtDecl ds) = do
->   -- ignore contexts of declarations
->   (ds', _) <- tcDecls ds
->   return (StmtDecl ds', BT.emptyContext)
+>   -- do not ignore contexts of declarations
+>   (ds', cx) <- tcDecls ds
+>   return (StmtDecl ds', cx)
 
 > tcFieldExpr :: Field Expression -> TCM (Field Expression, (Ident, ConstrType))
 > tcFieldExpr f@(Field p0 l e) = do
