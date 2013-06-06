@@ -104,7 +104,7 @@ functions in the second (final) run, for taking the context reduction in account
 >     vEnv <- getValueEnv
 >     checkNoEqualClassMethodAndFunctionNames vEnv cEnv'
 > 
->     checkForAmbiguousContexts vds
+>     -- checkForAmbiguousContexts vds
 >     return (map snd $ sortBy sorter $ tds' ++ zip (map fst vds') newDecls')
 >   (tds', vds') = partition (isTypeDecl . snd) pdecls
 >   tds = map snd tds'
@@ -773,15 +773,14 @@ signature the declared type must be too general.
 >         generalizedContext
 >       sigma = sigma0 `constrainBy` finalContext
 >       context = finalContext
->       -- Do not check for amgiguous type variables here
->       -- but only in global declarations after all type checking 
->       -- has been done and ambiguous type variables have been 
->       -- propagated to top level. The reason for this is that
->       -- here it cannot be determined whether a variable is ambiguous
->       -- or refers to a variable from a higher scope.  
 >   -- check that the context is valid
 >   let invalidCx = isValidCx cEnv context
 >   unless (null invalidCx) $ report $ errNoInstance (idPosition v) m invalidCx
+>   -- check for ambiguous context elements
+>   let tyVars = typeVars (typeSchemeToType sigma)
+>       ambigCxElems = filter (isAmbiguous tyVars lvs) context 
+>   unless (null ambigCxElems) $ report $ 
+>     errAmbiguousContextElems (idPosition v) m v ambigCxElems
 >   case lookupTypeSig v sigs of
 >     Nothing    -> modifyValueEnv $ rebindFun m v arity sigma
 >     Just sigTy -> do
@@ -804,6 +803,19 @@ signature the declared type must be too general.
 >     | poly' = gen lvs (cx0, ty)
 >     | otherwise = monoType' (cx0, ty)
 >   eqTyScheme (ForAll _cx1 _ t1) (ForAll _cx2 _ t2) = equTypes t1 t2
+
+> -- | Returns whether the given context element is ambiguous.
+> -- A context element in the type signature C => T is exactly then ambiguous 
+> -- if it contains a type variable that does not appear in T and which 
+> -- is not free in the current type environment (definition from 
+> -- "Implementing Haskell Type Classes", K. Hammond and S. Blott)
+> isAmbiguous :: [Int]             -- ^ the type variables from T 
+>             -> Set.Set Int       -- ^ the free type vars in the current type environment
+>             -> (QualIdent, Type) -- ^ the context elem to be examined
+>             -> Bool
+> isAmbiguous tyVarsType freeVars (_qid, ty0) = 
+>   let tyVarsCxElem = typeVars ty0
+>   in any (\ty -> ty `notElem` tyVarsType && not (ty `Set.member` freeVars)) tyVarsCxElem
 
 > -- | builds a mapping from type variables in the left type to the type variables
 > -- in the right type. Assumes that the types are alpha equivalent. 
@@ -1925,6 +1937,12 @@ Error functions.
 > errNoInstance :: Position -> ModuleIdent -> BT.Context -> Message
 > errNoInstance p m cx = posMessage p $
 >   text "No instances for: " <> ppContext' m cx
+
+> errAmbiguousContextElems :: Position -> ModuleIdent -> Ident -> [(QualIdent, Type)] -> Message
+> errAmbiguousContextElems p m v cx = posMessage p $ 
+>   text "Ambiguous type variables in the following context elements of function"
+>   <+> text (escName v) <> text ": "
+>   $$ text (show (ppContext' m cx))
 
 \end{verbatim}
 The following functions implement pretty-printing for types.

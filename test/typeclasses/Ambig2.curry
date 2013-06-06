@@ -5,6 +5,8 @@ class Text a where
   get :: String -> [(a, String)]
   read :: a
 
+instance Text Int where
+  
 add n s = s ++ " + " ++ show n ++ " is " ++ showaddn
   where showaddn = put (read s + n) ""
   -- where showaddn = put (read s)
