@@ -110,7 +110,7 @@ functions in the second (final) run, for taking the context reduction in account
 >   tds = map snd tds'
 >   vds = map snd vds'
 >   sorter (n1, _) (n2, _) = compare n1 n2
->   initState = TcState m tcEnv tyEnv cEnv doContextRed0 idSubst emptySigEnv 0 [] [] False
+>   initState = TcState m tcEnv tyEnv cEnv doContextRed0 idSubst emptySigEnv 0 [] [] False Map.empty
 
 \end{verbatim}
 
@@ -135,6 +135,7 @@ generating fresh type variables.
 >   , firstThetas :: [Maybe TypeSubst]
 >   , errors      :: [Message]
 >   , isFinal0    :: Bool
+>   , theFirstFreeVars :: Map.Map [Ident] (Set.Set Int)
 >   }
 
 > type TCM = S.State TcState
@@ -215,6 +216,15 @@ generating fresh type variables.
 
 > getIsFinal :: TCM Bool
 > getIsFinal = S.gets isFinal0
+
+> setFirstFreeVars :: [Decl] -> Set.Set Int -> TCM ()
+> setFirstFreeVars decls freeVars = 
+>   S.modify $ \s -> s { theFirstFreeVars = Map.insert (concatMap bv decls) freeVars (theFirstFreeVars s) }
+
+> lookupFirstFreeVars :: [Decl] -> TCM (Maybe (Set.Set Int))
+> lookupFirstFreeVars decls = do
+>   theMap <- S.gets theFirstFreeVars
+>   return $ Map.lookup (concatMap bv decls) theMap
 
 \end{verbatim}
 \paragraph{Defining Types}
@@ -543,11 +553,14 @@ either one of the basic types or \texttt{()}.
 >   -- save/restore free type variables that appear in the environment 
 >   -- after the first run of the fix point iteration because these are 
 >   -- later changed by the fix point iteration
->   let firstFreeVars = case freeVarsEnv of 
->         Nothing -> fvEnv (subst theta tyEnv0)
->         Just x -> x
+>   fvars <- lookupFirstFreeVars ds
+>   firstFreeVars <- case fvars of 
+>         Nothing -> do
+>           setFirstFreeVars ds (fvEnv (subst theta tyEnv0))
+>           return $ fvEnv (subst theta tyEnv0)
+>         Just x -> return x
 >       -- save/restore type substitution that we get after the first iteration 
->       firstTySubst = case tySubst of
+>   let firstTySubst = case tySubst of
 >         Nothing -> theta
 >         Just x -> x
 > 
