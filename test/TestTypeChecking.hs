@@ -90,7 +90,7 @@ checkTypes file = do
         [] -> return True
         _ -> do
           putStrLn ("\nTest for " ++ file ++ " failed for following functions: ")
-          mapM_ putStrLn (map (\(x, y, z) -> x ++ "\n  " ++ y ++ "\n  " ++ z) errs)
+          mapM_ putStrLn (map (\(x, y, z) -> x ++ "\nexpected:  " ++ y ++ "\ninferred:  " ++ z) errs)
           return False
     CheckFailed msgs -> do print msgs; return False  
     
