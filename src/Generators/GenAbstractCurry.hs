@@ -465,7 +465,7 @@ genExpr _ env   (Variable _ v)
   midx  = getVarIndex env ident
 genExpr _   env (Constructor  c) = (env, CSymbol $ genQName False env c)
 genExpr pos env (Paren     expr) = genExpr pos env expr
-genExpr pos env (Typed expr _ _) = genExpr pos env expr
+genExpr pos env (Typed _ expr _ _) = genExpr pos env expr
 genExpr pos env (Tuple   _ args) = genExpr pos env $ case args of
   []  -> Variable Nothing qUnitId
   [x] -> x

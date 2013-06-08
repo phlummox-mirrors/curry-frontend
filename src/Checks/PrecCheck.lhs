@@ -200,7 +200,7 @@ interface.
 > checkExpr v@(Variable  _ _) = return v
 > checkExpr c@(Constructor _) = return c
 > checkExpr (Paren    e) = Paren `liftM` checkExpr e
-> checkExpr (Typed e cx ty) = liftM3 Typed (checkExpr e) (return cx) (return ty)
+> checkExpr (Typed cty e cx ty) = liftM3 (Typed cty) (checkExpr e) (return cx) (return ty)
 > checkExpr (Tuple p es) = Tuple p `liftM` mapM checkExpr es
 > checkExpr (List  p es) = List  p `liftM` mapM checkExpr es
 > checkExpr (ListCompr p e qs) = withLocalPrecEnv $

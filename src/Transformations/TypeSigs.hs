@@ -54,7 +54,7 @@ tsExpr e@(Variable _ _) = e
 tsExpr e@(Constructor _) = e
 tsExpr   (Paren e) = tsExpr e
 -- TODO: handle type signature in typed expression!
-tsExpr (Typed e cx t) = Typed (tsExpr e) cx t
+tsExpr (Typed cty e cx t) = Typed cty (tsExpr e) cx t
 tsExpr (Tuple sref es) = Tuple sref (map tsExpr es)
 tsExpr (List sref es) = List sref (map tsExpr es)
 tsExpr (ListCompr sref e ss) = ListCompr sref (tsExpr e) (map tsStmt ss)

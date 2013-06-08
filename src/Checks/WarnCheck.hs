@@ -266,7 +266,7 @@ checkCondExpr (CondExpr _ c e) = checkExpr c >> checkExpr e
 checkExpr :: Expression -> WCM ()
 checkExpr (Variable            _ v) = visitQId v
 checkExpr (Paren                 e) = checkExpr e
-checkExpr (Typed             e _ _) = checkExpr e
+checkExpr (Typed           _ e _ _) = checkExpr e
 checkExpr (Tuple              _ es) = mapM_ checkExpr es
 checkExpr (List               _ es) = mapM_ checkExpr es
 checkExpr (ListCompr       _ e sts) = checkStatements sts e

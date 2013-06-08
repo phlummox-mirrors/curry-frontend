@@ -92,7 +92,7 @@ instance QualExpr Expression where
   qfv m (Variable            _ v) = maybe [] return $ localIdent m v
   qfv _ (Constructor           _) = []
   qfv m (Paren                 e) = qfv m e
-  qfv m (Typed             e _ _) = qfv m e
+  qfv m (Typed          _  e _ _) = qfv m e
   qfv m (Tuple              _ es) = qfv m es
   qfv m (List               _ es) = qfv m es
   qfv m (ListCompr        _ e qs) = foldr (qfvStmt m) (qfv m e) qs

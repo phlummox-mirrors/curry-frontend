@@ -744,9 +744,9 @@ the maximal necessary contexts for the functions are determined.
 > fpExpr (Paren e) = do 
 >   (e', cx) <- fpExpr e
 >   return (Paren e', cx)
-> fpExpr (Typed e cx0 ty) = do
+> fpExpr (Typed cty e cx0 ty) = do
 >   (e', cx) <- fpExpr e
->   return (Typed e' cx0 ty, cx)
+>   return (Typed cty {- TODO -} e' cx0 ty, cx)
 > fpExpr (Tuple sref es) = do
 >   esAndCxs <- mapM fpExpr es
 >   return (Tuple sref (map fst esAndCxs), concatMap snd esAndCxs)
@@ -1383,7 +1383,7 @@ because of possibly multiple occurrences of variables.
 >  m <- getModuleIdent
 >  cty <- getValueEnv >>= instExist . constrType m c
 >  return (e, cty)
-> tcExpr p (Typed e cx sig) = do
+> tcExpr p (Typed _ e cx sig) = do
 >   m <- getModuleIdent
 >   tyEnv0 <- getValueEnv
 >   (e', cty@(cxInf, tyInf)) <- tcExpr p e
@@ -1410,7 +1410,7 @@ because of possibly multiple occurrences of variables.
 >   -- in cxGiven don't refer to the type variables in the inferred type.  
 >   -- Because of this we have to "substitute" the type variables "back", so
 >   -- that they correctly refer to the type variables in the inferred type.  
->   return (Typed e' cx sig, (cxInf ++ subst s' cxGiven, tyInf))
+>   return (Typed Nothing {- TODO -} e' cx sig, (cxInf ++ subst s' cxGiven, tyInf))
 >   where sig' = nameSigType sig
 >         eqTypes (ForAll _cx1 _ t1) (ForAll _cx2 _ t2) = t1 == t2
 > tcExpr p (Paren e) = do
@@ -2270,7 +2270,7 @@ nothing is recorded so that they are simply returned).
 > tsExpr _theta (Variable Nothing _) = internalError "tsExpr Variable"
 > tsExpr _theta e@(Constructor _) = e
 > tsExpr theta (Paren e) = Paren (tsExpr theta e) 
-> tsExpr theta (Typed e c t) = Typed (tsExpr theta e) c t
+> tsExpr theta (Typed cty e c t) = Typed cty (tsExpr theta e) c t
 > tsExpr theta (Tuple sref es) = Tuple sref (map (tsExpr theta) es)
 > tsExpr theta (List srefs es) = List srefs (map (tsExpr theta) es)
 > tsExpr theta (ListCompr sref e ss) 

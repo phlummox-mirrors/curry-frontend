@@ -209,7 +209,7 @@ gatherTSExpr (Constructor _) = []
 gatherTSExpr (Paren expr) = gatherTSExpr expr
 -- convert typification into type signatures without position (TODO: add
 -- position somehow)
-gatherTSExpr (Typed expr cx texp) = gatherTSExpr expr ++ [TypeSig NoPos [] cx texp]
+gatherTSExpr (Typed _ expr cx texp) = gatherTSExpr expr ++ [TypeSig NoPos [] cx texp]
 gatherTSExpr (Tuple _ exps) = concatMap gatherTSExpr exps
 gatherTSExpr (List _ exps) = concatMap gatherTSExpr exps
 gatherTSExpr (ListCompr _ expr stms) = gatherTSExpr expr ++ concatMap gatherTSStm stms

@@ -224,9 +224,9 @@ in the type environment.
 > abstractExpr pre lvs (Case r ct e alts) =
 >   liftM2 (Case r ct) (abstractExpr pre lvs e)
 >                      (mapM (abstractAlt pre lvs) alts)
-> abstractExpr pre lvs (Typed    e cx ty) = liftM3 Typed
->                                           (abstractExpr pre lvs e)
->                                           (return cx) (return ty)
+> abstractExpr pre lvs (Typed cty e cx ty) = liftM3 (Typed cty)
+>                                            (abstractExpr pre lvs e)
+>                                            (return cx) (return ty)
 > abstractExpr _   _   _                  = internalError "Lift.abstractExpr"
 
 > abstractAlt :: String -> [Ident] -> Alt -> LiftM Alt
@@ -278,7 +278,7 @@ to the top-level.
 > liftExpr (Case r ct e alts) = (Case r ct e' alts', concat $ ds' : dss')
 >   where (e'   ,ds' ) = liftExpr e
 >         (alts',dss') = unzip $ map liftAlt alts
-> liftExpr (Typed    e cx ty) = (Typed e' cx ty, ds) where (e', ds) = liftExpr e
+> liftExpr (Typed cty e cx ty) = (Typed cty e' cx ty, ds) where (e', ds) = liftExpr e
 > liftExpr _ = internalError "Lift.liftExpr"
 
 > liftAlt :: Alt -> (Alt, [Decl])
