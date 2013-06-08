@@ -94,8 +94,8 @@ functions in the second (final) run, for taking the context reduction in account
 >     bindConstrs
 >     bindLabels
 >     -- bindClassMethods cEnv
->     _ <- tcDecls vds
->     setIsFinal
+>     -- _ <- tcDecls vds
+>     -- setIsFinal
 >     (newDecls, _) <- tcDecls vds
 >     theta <- getTypeSubst
 >     let newDecls' = applyTypeSubst theta newDecls 
@@ -554,7 +554,7 @@ either one of the basic types or \texttt{()}.
 >   let newCxs = map Set.fromList cxs'
 >   isFinal <- getIsFinal
 >   -- do not run fix point iteration if it's the final run
->   case newCxs /= oldCxs && not isFinal of
+>   case False && newCxs /= oldCxs && not isFinal of
 >     True -> do
 >       -- update contexts in value environment
 >       writeContexts dsWithCxs
@@ -573,14 +573,14 @@ either one of the basic types or \texttt{()}.
 >       tcFixPointIter ds newCxs n t oldVEnv (Just firstFreeVars) 
 >         (Just firstTySubst) (fixPIter + 1)
 >     False -> do
+>       newDs0 <- fpIter (map fst dsAndCtysRhs)
 >       -- Establish the inferred types. 
->       mapM_ (genDecl firstFreeVars theta) (map snd dsWithCxs)
+>       mapM_ (genDecl firstFreeVars theta) newDs0
 >       -- do NOT return final contexts! 
 >       -- TODO: return cxs or cxs' (or doesn't matter?)
 >       -- The complete contexts are only known here, not earlier. 
 >       -- Update the type annotations with the complete contexts. 
->       let newDs = zipWith updateContexts cxs' (map fst dsAndCtysRhs)
->       return (newDs, nonLocalContextElems firstFreeVars $ concat cxs')
+>       return (newDs0, nonLocalContextElems firstFreeVars $ concat cxs')
 
 > -- |searches the correct ValueInfo in the given list and writes its
 > -- information back into the value environment 
@@ -639,6 +639,216 @@ either one of the basic types or \texttt{()}.
 > -- that are free variables of the type environment 
 > isNotLocal :: Set.Set Int -> (QualIdent, Type) -> Bool
 > isNotLocal fvs (_qid, ty) = any (`Set.member` fvs) (typeVars ty) 
+
+\end{verbatim}
+The fix point iteration propagates all contexts in a declaration group until
+the maximal necessary contexts for the functions are determined. 
+\begin{verbatim}
+
+> fpIter :: [Decl] -> TCM [Decl]
+> fpIter ds = do
+>   tcEnv <- getTyConsEnv
+>   m <- getModuleIdent
+>   cEnv <- getClassEnv
+>   vEnv <- getValueEnv
+>   theta <- getTypeSubst
+>   -- determine the very first context of a function declaration that
+>   -- is given by its type signature
+>   let maybeFs = map fromDecl ds 
+>       ctys = map 
+>         (fmap $ \v -> subst theta (funType tcEnv m (qualify v) vEnv cEnv))
+>         maybeFs
+>   let firstContexts = map genContext ctys 
+>   fpIter' ds firstContexts
+>   where
+>   fromDecl :: Decl -> Maybe Ident
+>   fromDecl (FunctionDecl _ _ f _) = Just f
+>   fromDecl (PatternDecl _ _ _ _) = Nothing 
+>   fromDecl _ = internalError "fromDecl|fpIter"
+>   genContext Nothing = Set.empty
+>   genContext (Just tsc) = Set.fromList (getContext tsc)
+
+> fpIter' :: [Decl] -> [Set.Set (QualIdent, Type)] -> TCM [Decl]
+> fpIter' ds oldCxs = do 
+>   newDsAndCxs <- mapM fpDeclRhs ds
+>   theta <- getTypeSubst
+>   let cxs = map snd newDsAndCxs
+>       cxs' = map (nub . subst theta) cxs
+>       cxs'' = zipWith (++) cxs' (map Set.toList oldCxs) 
+>       newCxs = map Set.fromList cxs''
+>   case oldCxs /= newCxs of
+>     True -> do
+>       writeContexts (zip cxs'' ds)
+>       fpIter' (map fst newDsAndCxs) newCxs
+>     False -> do
+>       return ds 
+>     
+
+> fpDeclRhs :: Decl -> TCM (Decl, BT.Context)
+> fpDeclRhs (FunctionDecl p0 _ f eqs) = do 
+>   eqsAndCxs <- mapM fpEquation eqs
+>   return (FunctionDecl p0 Nothing f (map fst eqsAndCxs), concatMap snd eqsAndCxs)
+> fpDeclRhs (PatternDecl p _ t rhs) = do
+>   (rhs', cx) <- fpRhs rhs
+>   return (PatternDecl p Nothing t rhs', cx) 
+> fpDeclRhs _ = internalError "fpDeclRhs"
+
+> fpEquation :: Equation -> TCM (Equation, BT.Context)
+> fpEquation (Equation p lhs rhs) = do
+>   (rhs', cx) <- fpRhs rhs
+>   return (Equation p lhs rhs', cx)
+
+> fpRhs :: Rhs -> TCM (Rhs, BT.Context)
+> fpRhs (SimpleRhs p e ds) = do
+>   (e', cxE) <- fpExpr e
+>   (ds', cxDs) <- return (ds, [])-- fpIter ds
+>   return (SimpleRhs p e' ds', cxE ++ cxDs)
+> fpRhs (GuardedRhs es ds) = do
+>   (es', cxEs) <- fpCondExprs es
+>   (ds', cxDs) <- return (ds, [])
+>   return (GuardedRhs es' ds', cxEs ++ cxDs)
+
+> fpCondExprs :: [CondExpr] -> TCM ([CondExpr], BT.Context)
+> fpCondExprs ces = do
+>   cesWithCxs <- mapM fpCondExpr ces
+>   return (map fst cesWithCxs, concatMap snd cesWithCxs)
+
+> fpCondExpr :: CondExpr -> TCM (CondExpr, BT.Context)
+> fpCondExpr (CondExpr p g e) = do
+>   (e', cxE) <- fpExpr e
+>   (g', cxG) <- fpExpr g
+>   return (CondExpr p g' e', cxE ++ cxG)
+
+> fpExpr :: Expression -> TCM (Expression, BT.Context)
+> fpExpr l@(Literal _) = return (l, BT.emptyContext)
+> fpExpr (Variable (Just (_cx0, ty0)) v) = do
+>   m <- getModuleIdent
+>   tcEnv <- getTyConsEnv
+>   cEnv <- getClassEnv
+>   theta <- getTypeSubst
+>   sigs <- getSigEnv
+>   tsc <- getValueEnv >>= \vEnv -> return (funType tcEnv m v vEnv cEnv)
+>   let tySig = qualLookupTypeSig m v sigs
+>   case isJust tySig of
+>     False -> do
+>       let mapping = buildTypeVarsMapping (typeSchemeToType tsc) (mirror2Ty ty0)
+>           cx' = subst mapping (getContext tsc)
+>       return (Variable (Just (mirrorCx cx', ty0)) v, cx')
+>     True -> do
+>       let mapping = buildTypeVarsMapping (subst theta $ typeSchemeToType tsc) (mirror2Ty ty0)
+>           cx' = subst mapping (subst theta $ getContext tsc)  
+>       return (Variable (Just (mirrorCx cx', ty0)) v, cx')
+> fpExpr (Variable Nothing v) = do
+>   internalError ("fpExpr Nothing: " ++ show v) 
+> fpExpr c@(Constructor _) = return (c, BT.emptyContext)
+> fpExpr (Paren e) = do 
+>   (e', cx) <- fpExpr e
+>   return (Paren e', cx)
+> fpExpr (Typed e cx0 ty) = do
+>   (e', cx) <- fpExpr e
+>   return (Typed e' cx0 ty, cx)
+> fpExpr (Tuple sref es) = do
+>   esAndCxs <- mapM fpExpr es
+>   return (Tuple sref (map fst esAndCxs), concatMap snd esAndCxs)
+> fpExpr (List sref es) = do
+>   esAndCxs <- mapM fpExpr es
+>   return (List sref (map fst esAndCxs), concatMap snd esAndCxs)
+> fpExpr (ListCompr sref e ss) = do
+>   (e', cx) <- fpExpr e
+>   ssAndCxs <- mapM fpStmt ss
+>   return (ListCompr sref e' (map fst ssAndCxs), cx ++ concatMap snd ssAndCxs)
+> fpExpr (EnumFrom e1) = do
+>   (e1', cx1) <- fpExpr e1
+>   return (EnumFrom e1', cx1)
+> fpExpr (EnumFromThen e1 e2) = do
+>   (e1', cx1) <- fpExpr e1
+>   (e2', cx2) <- fpExpr e2
+>   return (EnumFromThen e1' e2', cx1 ++ cx2)
+> fpExpr (EnumFromTo e1 e2) = do
+>   (e1', cx1) <- fpExpr e1
+>   (e2', cx2) <- fpExpr e2
+>   return (EnumFromTo e1' e2', cx1 ++ cx2)
+> fpExpr (EnumFromThenTo e1 e2 e3) = do
+>   (e1', cx1) <- fpExpr e1
+>   (e2', cx2) <- fpExpr e2
+>   (e3', cx3) <- fpExpr e3
+>   return (EnumFromThenTo e1' e2' e3', cx1 ++ cx2 ++ cx3)
+> fpExpr (UnaryMinus id0 e) = do
+>   (e', cx) <- fpExpr e
+>   return (UnaryMinus id0 e', cx)
+> fpExpr (Apply e1 e2) = do
+>   (e1', cx1) <- fpExpr e1
+>   (e2', cx2) <- fpExpr e2
+>   theta <- getTypeSubst
+>   return (Apply e1' e2', {-subst theta -}(cx1 ++ cx2))
+> fpExpr (InfixApply e1 op e2) = do
+>   (e1', cx1) <- fpExpr e1
+>   (_op', cxO) <- fpExpr (infixOp op)
+>   (e2', cx2) <- fpExpr e2
+>   theta <- getTypeSubst
+>   return (InfixApply e1' op e2', {-subst theta -}(cx1 ++ cxO ++ cx2))
+> fpExpr (LeftSection e1 op) = do
+>   (e1', cx1) <- fpExpr e1
+>   (_op', cxO) <- fpExpr (infixOp op)
+>   theta <- getTypeSubst
+>   return (LeftSection e1' op, {-subst theta -}(cx1 ++ cxO))
+> fpExpr (RightSection op e1) = do
+>   (e1', cx1) <- fpExpr e1
+>   (_op', cxO) <- fpExpr (infixOp op)
+>   theta <- getTypeSubst
+>   return (RightSection op e1', subst theta (cx1 ++ cxO))
+> fpExpr (Lambda sref ps e) = do
+>   (e', cx) <- fpExpr e
+>   return (Lambda sref ps e', cx)
+> fpExpr (Let ds e) = do
+>   (e', cx) <- fpExpr e
+>   (ds', cxDs) <- return (ds, [])
+>   return (Let ds' e', cx ++ cxDs)
+> fpExpr (Do ss e) = do
+>   ssAndCxs <- mapM fpStmt ss
+>   (e', cx) <- fpExpr e
+>   return (Do (map fst ssAndCxs) e', cx ++ concatMap snd ssAndCxs)
+> fpExpr (IfThenElse sref e1 e2 e3) = do
+>   (e1', cx1) <- fpExpr e1
+>   (e2', cx2) <- fpExpr e2
+>   (e3', cx3) <- fpExpr e3
+>   return (IfThenElse sref e1' e2' e3', cx1 ++ cx2 ++ cx3)
+> fpExpr (Case sref ct e alts) = do
+>   (e', cxE) <- fpExpr e
+>   altsWithCxs <- mapM fpAlt alts
+>   return (Case sref ct e' (map fst altsWithCxs), cxE ++ concatMap snd altsWithCxs)
+> fpExpr (RecordConstr fs) = do
+>   fsWithCxs <- mapM fpField fs
+>   return (RecordConstr (map fst fsWithCxs), concatMap snd fsWithCxs)
+> fpExpr (RecordSelection e i) = do
+>   (e', cxE) <- fpExpr e
+>   return (RecordSelection e' i, cxE)
+> fpExpr (RecordUpdate fs e) = do
+>   fsWithCxs <- mapM fpField fs
+>   (e', cxE) <- fpExpr e
+>   return (RecordUpdate (map fst fsWithCxs) e', concatMap snd fsWithCxs ++ cxE)
+
+> fpStmt :: Statement -> TCM (Statement, BT.Context)
+> fpStmt (StmtExpr sref e) = do
+>   (e', cxE) <- fpExpr e
+>   return (StmtExpr sref e', cxE)
+> fpStmt (StmtDecl ds) = do
+>   (ds', cx') <- return (ds, [])
+>   return (StmtDecl ds', cx')
+> fpStmt (StmtBind sref p e) = do
+>   (e', cxE) <- fpExpr e
+>   return (StmtBind sref p e', cxE)
+
+> fpAlt :: Alt -> TCM (Alt, BT.Context)
+> fpAlt (Alt p pt rhs) = do
+>   (rhs', cx) <- fpRhs rhs
+>   return (Alt p pt rhs', cx)
+
+> fpField :: Field Expression -> TCM (Field Expression, BT.Context)
+> fpField (Field p i e) = do
+>   (e', cxE) <- fpExpr e
+>   return (Field p i e', cxE)
+
 
 > --tcDeclGroup m tcEnv _ [ForeignDecl p cc _ f ty] =
 > --  tcForeign m tcEnv p cc f ty
