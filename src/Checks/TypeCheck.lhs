@@ -846,8 +846,11 @@ signature the declared type must be too general.
 >   = buildTypeVarsMapping' t11 t21 ++ buildTypeVarsMapping' t12 t22
 > buildTypeVarsMapping' (TypeConstrained _ _) (TypeConstrained _ _) = [] 
 > buildTypeVarsMapping' (TypeSkolem _) (TypeSkolem _) = []
-> buildTypeVarsMapping' (TypeRecord _ _) (TypeRecord _ _)
->   = internalError "buildTypeVarsMapping TODO"
+> buildTypeVarsMapping' (TypeRecord ids1 (Just i1)) (TypeRecord ids2 (Just i2))
+>   = concat (zipWith' buildTypeVarsMapping' (map snd ids1) (map snd ids2)) 
+>     ++ [(i1, i2)]
+> buildTypeVarsMapping' (TypeRecord ids1 Nothing) (TypeRecord ids2 Nothing)
+>   = concat $ zipWith' buildTypeVarsMapping' (map snd ids1) (map snd ids2) 
 > buildTypeVarsMapping' t1 t2 = 
 >   internalError ("types do not match in buildTypeVarsMapping\n" ++ show t1 
 >     ++ "\n" ++ show t2)
