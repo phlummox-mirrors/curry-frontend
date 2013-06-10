@@ -573,14 +573,15 @@ either one of the basic types or \texttt{()}.
 >       tcFixPointIter ds newCxs n t oldVEnv (Just firstFreeVars) 
 >         (Just firstTySubst) (fixPIter + 1)
 >     False -> do
->       newDs0 <- fpIter (map fst dsAndCtysRhs)
->       -- Establish the inferred types. 
->       mapM_ (genDecl firstFreeVars theta) newDs0
->       -- do NOT return final contexts! 
->       -- TODO: return cxs or cxs' (or doesn't matter?)
 >       -- The complete contexts are only known here, not earlier. 
 >       -- Update the type annotations with the complete contexts. 
->       return (newDs0, nonLocalContextElems firstFreeVars $ concat cxs')
+>       let newDs0 = zipWith updateContexts cxs' (map fst dsAndCtysRhs)
+>       newDs1 <- fpIter newDs0
+>       -- Establish the inferred types. 
+>       mapM_ (genDecl firstFreeVars theta) newDs1
+>       -- do NOT return final contexts! 
+>       -- TODO: return cxs or cxs' (or doesn't matter?)
+>       return (newDs1, nonLocalContextElems firstFreeVars $ concat cxs')
 
 > -- |searches the correct ValueInfo in the given list and writes its
 > -- information back into the value environment 
@@ -685,12 +686,13 @@ the maximal necessary contexts for the functions are determined.
 >     
 
 > fpDeclRhs :: Decl -> TCM (Decl, BT.Context)
-> fpDeclRhs (FunctionDecl p0 _ f eqs) = do 
+> fpDeclRhs (FunctionDecl p (Just (cx0, ty0)) f eqs) = do 
 >   eqsAndCxs <- mapM fpEquation eqs
->   return (FunctionDecl p0 Nothing f (map fst eqsAndCxs), concatMap snd eqsAndCxs)
-> fpDeclRhs (PatternDecl p _ t rhs) = do
+>   let cx' = concatMap snd eqsAndCxs
+>   return (FunctionDecl p (Just (mirrorCx cx' ++ cx0, ty0)) f (map fst eqsAndCxs), cx')
+> fpDeclRhs (PatternDecl p (Just (cx0, ty0)) t rhs) = do
 >   (rhs', cx) <- fpRhs rhs
->   return (PatternDecl p Nothing t rhs', cx) 
+>   return (PatternDecl p (Just (mirrorCx cx ++ cx0, ty0)) t rhs', cx) 
 > fpDeclRhs _ = internalError "fpDeclRhs"
 
 > fpEquation :: Equation -> TCM (Equation, BT.Context)
