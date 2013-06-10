@@ -98,14 +98,15 @@ functions in the second (final) run, for taking the context reduction in account
 >     -- setIsFinal
 >     (newDecls, _) <- tcDecls vds
 >     theta <- getTypeSubst
->     let newDecls' = applyTypeSubst theta newDecls 
+>     newDecls' <- correctVariableContexts newDecls
+>     let newDecls'' = applyTypeSubst theta newDecls' 
 >
 >     cEnv' <- getClassEnv
 >     vEnv <- getValueEnv
 >     checkNoEqualClassMethodAndFunctionNames vEnv cEnv'
 > 
 >     -- checkForAmbiguousContexts vds
->     return (map snd $ sortBy sorter $ tds' ++ zip (map fst vds') newDecls')
+>     return (map snd $ sortBy sorter $ tds' ++ zip (map fst vds') newDecls'')
 >   (tds', vds') = partition (isTypeDecl . snd) pdecls
 >   tds = map snd tds'
 >   vds = map snd vds'
@@ -852,6 +853,72 @@ the maximal necessary contexts for the functions are determined.
 >   (e', cxE) <- fpExpr e
 >   return (Field p i e', cxE)
 
+
+> correctVariableContexts :: [Decl] -> TCM [Decl]
+> correctVariableContexts ds = mapM cvcDecl ds
+
+> cvcDecl :: Decl -> TCM Decl
+> cvcDecl (FunctionDecl p cty id0 eqs) = FunctionDecl p cty id0 `liftM` mapM cvcEqu eqs
+> cvcDecl (PatternDecl p cty pt rhs) = PatternDecl p cty pt `liftM` cvcRhs rhs
+> cvcDecl x = return x
+
+> cvcEqu :: Equation -> TCM Equation
+> cvcEqu (Equation p lhs rhs) = Equation p lhs `liftM` cvcRhs rhs
+
+> cvcRhs :: Rhs -> TCM Rhs
+> cvcRhs (SimpleRhs p e ds) = liftM2 (SimpleRhs p) (cvcExpr e) (return ds)
+> cvcRhs (GuardedRhs ces ds) = liftM2 GuardedRhs (mapM cvcCondExpr ces) (return ds)
+
+> cvcExpr :: Expression -> TCM Expression
+> cvcExpr l@(Literal _) = return l
+> cvcExpr (Variable (Just (_cx0, ty0)) v) = do
+>   tcEnv <- getTyConsEnv
+>   tyEnv <- getValueEnv 
+>   cEnv <- getClassEnv
+>   m <- getModuleIdent
+>   theta <- getTypeSubst
+>   let ForAll cxInf _ tyInf = funType tcEnv m v tyEnv cEnv
+>   let s = either (internalError . show) id (unifyTypes m tyInf (subst theta $ mirror2Ty ty0))
+>   trace ("v: " ++ show v ++ "\nty0: " ++ show ty0 ++ "\n" ++ show (subst theta $ mirror2Ty ty0) ++ "\ntyInf: " ++ show tyInf) $ 
+>     return $ Variable (Just (mirrorCx $ subst s cxInf, ty0)) v
+> cvcExpr (Variable Nothing v) = internalError ("no type info for Variable " ++ show v) 
+> cvcExpr c@(Constructor _) = return c
+> cvcExpr (Paren e) = Paren `liftM` cvcExpr e
+> cvcExpr (Typed cty e cx ty) = liftM3 (Typed cty) (cvcExpr e) (return cx) (return ty)
+> cvcExpr (Tuple sref es) = Tuple sref `liftM` mapM cvcExpr es
+> cvcExpr (List sref es) = List sref `liftM` mapM cvcExpr es
+> cvcExpr (ListCompr sref e ss) = liftM2 (ListCompr sref) (cvcExpr e) (mapM cvcStmt ss)
+> cvcExpr (EnumFrom e1) = EnumFrom `liftM` (cvcExpr e1)
+> cvcExpr (EnumFromThen e1 e2) = liftM2 EnumFromThen (cvcExpr e1) (cvcExpr e2)
+> cvcExpr (EnumFromTo e1 e2) = liftM2 EnumFromTo (cvcExpr e1) (cvcExpr e2)
+> cvcExpr (EnumFromThenTo e1 e2 e3) = liftM3 EnumFromThenTo (cvcExpr e1) (cvcExpr e2) (cvcExpr e3)
+> cvcExpr (UnaryMinus i e) = UnaryMinus i `liftM` cvcExpr e
+> cvcExpr (Apply e1 e2) = liftM2 Apply (cvcExpr e1) (cvcExpr e2)
+> cvcExpr (InfixApply e1 op e2) = liftM3 InfixApply (cvcExpr e1) (return op) (cvcExpr e2)
+> cvcExpr (LeftSection e op) = liftM2 LeftSection (cvcExpr e) (return op)
+> cvcExpr (RightSection op e) = RightSection op `liftM` cvcExpr e
+> cvcExpr (Lambda sref ps e) = Lambda sref ps `liftM` (cvcExpr e)
+> cvcExpr (Let ds e) = liftM2 Let (mapM cvcDecl ds) (cvcExpr e)
+> cvcExpr (Do ss e) = liftM2 Do (mapM cvcStmt ss) (cvcExpr e)
+> cvcExpr (IfThenElse sref e1 e2 e3) = liftM3 (IfThenElse sref) (cvcExpr e1) (cvcExpr e2) (cvcExpr e3)
+> cvcExpr (Case sref ct e alts) = liftM2 (Case sref ct) (cvcExpr e) (mapM cvcAlt alts)
+> cvcExpr (RecordConstr fs) = RecordConstr `liftM` mapM cvcField fs
+> cvcExpr (RecordSelection e i) = flip RecordSelection i `liftM` cvcExpr e
+> cvcExpr (RecordUpdate fs e) = liftM2 RecordUpdate (mapM cvcField fs) (cvcExpr e)
+
+> cvcCondExpr :: CondExpr -> TCM CondExpr
+> cvcCondExpr (CondExpr p e1 e2) = liftM2 (CondExpr p) (cvcExpr e1) (cvcExpr e2)
+
+> cvcStmt :: Statement -> TCM Statement
+> cvcStmt (StmtExpr sref e) = StmtExpr sref `liftM` cvcExpr e
+> cvcStmt (StmtDecl ds) = StmtDecl `liftM` mapM cvcDecl ds
+> cvcStmt (StmtBind sref p e) = StmtBind sref p `liftM` cvcExpr e
+
+> cvcAlt :: Alt -> TCM Alt
+> cvcAlt (Alt p pt rhs) = Alt p pt `liftM` cvcRhs rhs
+
+> cvcField :: Field Expression -> TCM (Field Expression)
+> cvcField (Field p i e) = Field p i `liftM` cvcExpr e  
 
 > --tcDeclGroup m tcEnv _ [ForeignDecl p cc _ f ty] =
 > --  tcForeign m tcEnv p cc f ty
