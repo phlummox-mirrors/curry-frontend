@@ -744,9 +744,10 @@ the maximal necessary contexts for the functions are determined.
 > fpExpr (Paren e) = do 
 >   (e', cx) <- fpExpr e
 >   return (Paren e', cx)
-> fpExpr (Typed cty e cx0 ty) = do
+> fpExpr (Typed cty@(Just (cx1, _ty1)) e cx0 ty) = do
 >   (e', cx) <- fpExpr e
->   return (Typed cty {- TODO -} e' cx0 ty, cx)
+>   return (Typed cty e' cx0 ty, cx ++ mirror2Cx cx1)
+> fpExpr (Typed Nothing _ _ _) = internalError "fpExpr"
 > fpExpr (Tuple sref es) = do
 >   esAndCxs <- mapM fpExpr es
 >   return (Tuple sref (map fst esAndCxs), concatMap snd esAndCxs)
@@ -1409,8 +1410,9 @@ because of possibly multiple occurrences of variables.
 >   -- type signature, not from the inferred type. Thus the type variables 
 >   -- in cxGiven don't refer to the type variables in the inferred type.  
 >   -- Because of this we have to "substitute" the type variables "back", so
->   -- that they correctly refer to the type variables in the inferred type.  
->   return (Typed Nothing {- TODO -} e' cx sig, (cxInf ++ subst s' cxGiven, tyInf))
+>   -- that they correctly refer to the type variables in the inferred type.
+>   let cty1 = (cxInf ++ subst s' cxGiven, tyInf)
+>   return (Typed (Just $ mirrorCT cty1) e' cx sig, cty1)
 >   where sig' = nameSigType sig
 >         eqTypes (ForAll _cx1 _ t1) (ForAll _cx2 _ t2) = t1 == t2
 > tcExpr p (Paren e) = do
