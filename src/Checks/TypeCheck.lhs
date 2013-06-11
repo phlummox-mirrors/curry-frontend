@@ -879,8 +879,7 @@ the maximal necessary contexts for the functions are determined.
 >   theta <- getTypeSubst
 >   let ForAll cxInf _ tyInf = funType tcEnv m v tyEnv cEnv
 >   let s = either (internalError . show) id (unifyTypes m tyInf (subst theta $ mirror2Ty ty0))
->   trace ("v: " ++ show v ++ "\nty0: " ++ show ty0 ++ "\n" ++ show (subst theta $ mirror2Ty ty0) ++ "\ntyInf: " ++ show tyInf) $ 
->     return $ Variable (Just (mirrorCx $ subst s cxInf, ty0)) v
+>   return $ Variable (Just (mirrorCx $ subst s cxInf, ty0)) v
 > cvcExpr (Variable Nothing v) = internalError ("no type info for Variable " ++ show v) 
 > cvcExpr c@(Constructor _) = return c
 > cvcExpr (Paren e) = Paren `liftM` cvcExpr e
