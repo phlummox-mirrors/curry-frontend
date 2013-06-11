@@ -866,8 +866,8 @@ the maximal necessary contexts for the functions are determined.
 > cvcEqu (Equation p lhs rhs) = Equation p lhs `liftM` cvcRhs rhs
 
 > cvcRhs :: Rhs -> TCM Rhs
-> cvcRhs (SimpleRhs p e ds) = liftM2 (SimpleRhs p) (cvcExpr e) (return ds)
-> cvcRhs (GuardedRhs ces ds) = liftM2 GuardedRhs (mapM cvcCondExpr ces) (return ds)
+> cvcRhs (SimpleRhs p e ds) = liftM2 (SimpleRhs p) (cvcExpr e) (mapM cvcDecl ds)
+> cvcRhs (GuardedRhs ces ds) = liftM2 GuardedRhs (mapM cvcCondExpr ces) (mapM cvcDecl ds)
 
 > cvcExpr :: Expression -> TCM Expression
 > cvcExpr l@(Literal _) = return l
