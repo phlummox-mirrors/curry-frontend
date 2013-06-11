@@ -113,7 +113,7 @@ functions in the second (final) run, for taking the context reduction in account
 >   tds = map snd tds'
 >   vds = map snd vds'
 >   sorter (n1, _) (n2, _) = compare n1 n2
->   initState = TcState m tcEnv tyEnv cEnv doContextRed0 idSubst emptySigEnv 0 [] [] False 0 Map.empty
+>   initState = TcState m tcEnv tyEnv cEnv doContextRed0 idSubst emptySigEnv 0 [] [] 0 Map.empty
 
 \end{verbatim}
 
@@ -137,7 +137,6 @@ generating fresh type variables.
 >   -- subsequently used in each declaration group.   
 >   , firstThetas :: [Maybe TypeSubst]
 >   , errors      :: [Message]
->   , isFinal0    :: Bool
 >   , declCounter :: Int
 >   , declGroups  :: Map.Map [Int] ([Decl], BT.Context)
 >   }
@@ -214,12 +213,6 @@ generating fresh type variables.
 
 > getDoContextRed :: TCM Bool
 > getDoContextRed = S.gets doContextRed
-
-> setIsFinal :: TCM ()
-> setIsFinal = S.modify $ \s -> s { isFinal0 = True }
-
-> getIsFinal :: TCM Bool
-> getIsFinal = S.gets isFinal0
 
 > getNextDeclCounter :: TCM Int
 > getNextDeclCounter = do
@@ -580,9 +573,8 @@ either one of the basic types or \texttt{()}.
 >         Just x -> x
 > 
 >   let newCxs = map Set.fromList cxs'
->   isFinal <- getIsFinal
 >   -- do not run fix point iteration if it's the final run
->   case False && newCxs /= oldCxs && not isFinal of
+>   case False && newCxs /= oldCxs of
 >     True -> do
 >       -- update contexts in value environment
 >       writeContexts dsWithCxs
@@ -1468,7 +1460,6 @@ because of possibly multiple occurrences of variables.
 >       m <- getModuleIdent
 >       cEnv <- getClassEnv
 >       tcEnv <- getTyConsEnv
->       isFinal <- getIsFinal
 >       let tySig = qualLookupTypeSig m v sigs
 >       -- if it's the final run, always use the context from the value environment!
 >       case isJust tySig of
@@ -1492,7 +1483,7 @@ because of possibly multiple occurrences of variables.
 >           -- inferred (new) contexts match the type variables in the type
 >           -- constructed from the type signature
 >           let mapping = buildTypeVarsMapping ity ty0
->               cty' = ((if isFinal then [] else cx0) ++ subst mapping icx, ty0)
+>               cty' = (cx0 ++ subst mapping icx, ty0)
 >           return (Variable (Just $ mirrorCT cty') v, cty')
 >         False -> do
 >           cty <- getValueEnv >>= inst . (flip (funType tcEnv m v) cEnv)
