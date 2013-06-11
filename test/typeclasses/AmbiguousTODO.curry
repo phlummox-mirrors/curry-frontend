@@ -10,6 +10,8 @@ instance A Int where
 test10 y = y
   where x = funA x
 
+test10b _ = 1
+  where x = funA x
 
 
 test8 x = 1
@@ -18,3 +20,9 @@ test8 x = 1
 
 test11 _ = 1
   where x = funA x
+
+
+test12 _ = 1
+  where
+    x :: A a => a
+    x = funA x
