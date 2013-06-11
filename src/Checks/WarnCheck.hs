@@ -152,7 +152,7 @@ checkDeclGroup ds = do
 checkRuleAdjacency :: [Decl] -> WCM ()
 checkRuleAdjacency decls = foldM_ check (mkIdent "", Map.empty) decls
   where
-  check (prevId, env) (FunctionDecl p _ f _) = do
+  check (prevId, env) (FunctionDecl p _ _ f _) = do
     cons <- isConsId f
     if cons || prevId == f
       then return (f, env)
@@ -177,8 +177,8 @@ checkDecl (TypeDecl   _ _ vs ty) = inNestedScope $ do
   mapM_ insertTypeVar  vs
   checkTypeExpr ty
   reportUnusedTypeVars vs
-checkDecl (FunctionDecl _ _ _ eqs) = inNestedScope $ mapM_ checkEquation eqs
-checkDecl (PatternDecl  _ _ p rhs) = checkPattern p >> checkRhs rhs
+checkDecl (FunctionDecl _ _ _ _ eqs) = inNestedScope $ mapM_ checkEquation eqs
+checkDecl (PatternDecl  _ _ _ p rhs) = checkPattern p >> checkRhs rhs
 checkDecl _                      = ok
 
 checkConstrDecl :: ConstrDecl -> WCM ()
@@ -204,9 +204,9 @@ checkTypeExpr (RecordType       fs rty) = do
 -- Checks locally declared identifiers (i.e. functions and logic variables)
 -- for shadowing
 checkLocalDecl :: Decl -> WCM ()
-checkLocalDecl (FunctionDecl _ _ f _) = checkShadowing f
+checkLocalDecl (FunctionDecl _ _ _ f _) = checkShadowing f
 checkLocalDecl (FreeDecl      _ vs) = mapM_ checkShadowing vs
-checkLocalDecl (PatternDecl _ _ p _) = checkPattern p
+checkLocalDecl (PatternDecl _ _ _ p _) = checkPattern p
 checkLocalDecl _                    = ok
 
 -- Check an equation for warnings.
@@ -443,12 +443,12 @@ insertDecl (DataDecl     _ d _ cs) = do
 insertDecl (TypeDecl     _ t _ ty) = do
   insertTypeConsId t
   insertTypeExpr ty
-insertDecl (FunctionDecl  _ _ f _) = do
+insertDecl (FunctionDecl _ _ _ f _) = do
   cons <- isConsId f
   unless cons $ insertVar f
 insertDecl (ForeignDecl _ _ _ f _) = insertVar f
 insertDecl (ExternalDecl     _ vs) = mapM_ insertVar vs
-insertDecl (PatternDecl   _ _ p _) = insertPattern False p
+insertDecl (PatternDecl _ _ _ p _) = insertPattern False p
 insertDecl (FreeDecl         _ vs) = mapM_ insertVar vs
 insertDecl _                       = ok
 

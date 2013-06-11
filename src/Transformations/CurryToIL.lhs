@@ -88,7 +88,7 @@ alias types.
 > trDecl :: Decl -> TransM [IL.Decl]
 > trDecl (DataDecl     _ tc tvs cs) = (:[]) `liftM` trData    tc tvs cs
 > trDecl (NewtypeDecl  _ tc tvs nc) = (:[]) `liftM` trNewtype tc tvs nc
-> trDecl (FunctionDecl   p _ f eqs) = (:[]) `liftM` trFunction  p f eqs
+> trDecl (FunctionDecl p _ _ f eqs) = (:[]) `liftM` trFunction  p f eqs
 > trDecl (ForeignDecl  _ cc ie f _) = (:[]) `liftM` trForeign  f cc ie
 > trDecl _                          = return []
 
@@ -347,7 +347,7 @@ instance, if one of the alternatives contains an \texttt{@}-pattern.
 >   where
 >   env' = foldr2 Map.insert env bvs bvs
 >   bvs  = bv ds
->   trBinding (PatternDecl _ _ (VariablePattern v) rhs)
+>   trBinding (PatternDecl _ _ _ (VariablePattern v) rhs)
 >     = IL.Binding v `liftM` trRhs vs env' rhs
 >   trBinding p = error $ "unexpected binding: " ++ show p
 > trExpr (v:vs) env (Case r ct e alts) = do

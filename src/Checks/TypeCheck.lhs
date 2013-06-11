@@ -621,17 +621,17 @@ either one of the basic types or \texttt{()}.
 >     -- update the entry
 >     let tysig' = tysig `constrainBy` cx
 >     modifyValueEnv $ rebindFun m v arity tysig'
->   unpack (cx, FunctionDecl _ _ f _) = [(cx, f)]
->   unpack (cx, PatternDecl _ _ p _) = map (\d -> (cx, d)) (bv p)
+>   unpack (cx, FunctionDecl _ _ _ f _) = [(cx, f)]
+>   unpack (cx, PatternDecl _ _ _ p _) = map (\d -> (cx, d)) (bv p)
 >   unpack _ = internalError "unpack"
 
 > -- |after the complete contexts have been determined, update the type annotations
 > -- in the syntax tree with them
 > updateContexts :: BT.Context -> Decl -> Decl
-> updateContexts cx (FunctionDecl p (Just (_, ty)) f es) 
->   = FunctionDecl p (Just (mirrorCx cx, ty)) f es
-> updateContexts cx (PatternDecl  p (Just (_, ty)) pt rhs)
->   = PatternDecl  p (Just (mirrorCx cx, ty)) pt rhs
+> updateContexts cx (FunctionDecl p (Just (_, ty)) id0 f es) 
+>   = FunctionDecl p (Just (mirrorCx cx, ty)) id0 f es
+> updateContexts cx (PatternDecl  p (Just (_, ty)) id0 pt rhs)
+>   = PatternDecl  p (Just (mirrorCx cx, ty)) id0 pt rhs
 > updateContexts _ _ = internalError "updateContexts"
 
 > nonLocalContextElems :: Set.Set Int -> BT.Context -> BT.Context
@@ -664,8 +664,8 @@ the maximal necessary contexts for the functions are determined.
 >   fpIter' ds firstContexts
 >   where
 >   fromDecl :: Decl -> Maybe Ident
->   fromDecl (FunctionDecl _ _ f _) = Just f
->   fromDecl (PatternDecl _ _ _ _) = Nothing 
+>   fromDecl (FunctionDecl _ _ _ f _) = Just f
+>   fromDecl (PatternDecl _ _ _ _ _) = Nothing 
 >   fromDecl _ = internalError "fromDecl|fpIter"
 >   genContext Nothing = Set.empty
 >   genContext (Just tsc) = Set.fromList (getContext tsc)
@@ -687,13 +687,13 @@ the maximal necessary contexts for the functions are determined.
 >     
 
 > fpDeclRhs :: Decl -> TCM (Decl, BT.Context)
-> fpDeclRhs (FunctionDecl p (Just (cx0, ty0)) f eqs) = do 
+> fpDeclRhs (FunctionDecl p (Just (cx0, ty0)) id0 f eqs) = do 
 >   eqsAndCxs <- mapM fpEquation eqs
 >   let cx' = concatMap snd eqsAndCxs
->   return (FunctionDecl p (Just (mirrorCx cx' ++ cx0, ty0)) f (map fst eqsAndCxs), cx')
-> fpDeclRhs (PatternDecl p (Just (cx0, ty0)) t rhs) = do
+>   return (FunctionDecl p (Just (mirrorCx cx' ++ cx0, ty0)) id0 f (map fst eqsAndCxs), cx')
+> fpDeclRhs (PatternDecl p (Just (cx0, ty0)) id0 t rhs) = do
 >   (rhs', cx) <- fpRhs rhs
->   return (PatternDecl p (Just (mirrorCx cx ++ cx0, ty0)) t rhs', cx) 
+>   return (PatternDecl p (Just (mirrorCx cx ++ cx0, ty0)) id0 t rhs', cx) 
 > fpDeclRhs _ = internalError "fpDeclRhs"
 
 > fpEquation :: Equation -> TCM (Equation, BT.Context)
@@ -858,8 +858,8 @@ the maximal necessary contexts for the functions are determined.
 > correctVariableContexts ds = mapM cvcDecl ds
 
 > cvcDecl :: Decl -> TCM Decl
-> cvcDecl (FunctionDecl p cty id0 eqs) = FunctionDecl p cty id0 `liftM` mapM cvcEqu eqs
-> cvcDecl (PatternDecl p cty pt rhs) = PatternDecl p cty pt `liftM` cvcRhs rhs
+> cvcDecl (FunctionDecl p cty n id0 eqs) = FunctionDecl p cty n id0 `liftM` mapM cvcEqu eqs
+> cvcDecl (PatternDecl p cty n pt rhs) = PatternDecl p cty n pt `liftM` cvcRhs rhs
 > cvcDecl x = return x
 
 > cvcEqu :: Equation -> TCM Equation
@@ -972,8 +972,8 @@ the maximal necessary contexts for the functions are determined.
 >   modifyValueEnv $ bindFunOnce m v (arrowArity ty) $ monoType ty
 
 > tcDeclLhs :: Decl -> TCM ConstrType
-> tcDeclLhs (FunctionDecl _ _ f _) = tcFunDecl f
-> tcDeclLhs (PatternDecl  p _ t _) = tcPattern p t
+> tcDeclLhs (FunctionDecl _ _ _ f _) = tcFunDecl f
+> tcDeclLhs (PatternDecl  p _ _ t _) = tcPattern p t
 > tcDeclLhs _ = internalError "TypeCheck.tcDeclLhs: no pattern match"
 
 > tcFunDecl :: Ident -> TCM ConstrType
@@ -987,26 +987,26 @@ the maximal necessary contexts for the functions are determined.
 >   return (cx, ty)
 
 > tcDeclRhs :: ValueEnv -> Decl -> TCM (Decl, ConstrType)
-> tcDeclRhs tyEnv0 (FunctionDecl p0 _ f (eq:eqs)) = do
+> tcDeclRhs tyEnv0 (FunctionDecl p0 _ id0 f (eq:eqs)) = do
 >   (eq', (cx0, ty0)) <- tcEquation tyEnv0 eq
 >   (eqs', (cxs, ty)) <- tcEqns ty0 [] eqs [eq']
 >   let cty = (cx0 ++ cxs, ty)
->   return (FunctionDecl p0 (Just $ mirrorCT cty) f eqs', cty)
+>   return (FunctionDecl p0 (Just $ mirrorCT cty) id0 f eqs', cty)
 >   where tcEqns :: Type -> BT.Context -> [Equation] -> [Equation] -> TCM ([Equation], ConstrType)
 >         tcEqns ty cxs [] newEqs = return (reverse newEqs, (cxs, ty))
 >         tcEqns ty cxs (eq1@(Equation p _ _):eqs1) newEqs = do
 >           (eq1', cty'@(cx', _ty')) <- tcEquation tyEnv0 eq1
->           unify p "equation" (ppDecl (FunctionDecl p Nothing f [eq1])) (noContext ty) cty'
+>           unify p "equation" (ppDecl (FunctionDecl p Nothing id0 f [eq1])) (noContext ty) cty'
 >           tcEqns ty (cx' ++ cxs) eqs1 (eq1':newEqs)
-> tcDeclRhs tyEnv0 (PatternDecl p _ t rhs) = do
+> tcDeclRhs tyEnv0 (PatternDecl p _ id0 t rhs) = do
 >   (rhs', cty) <- tcRhs tyEnv0 rhs
->   return (PatternDecl p (Just $ mirrorCT cty) t rhs', cty)
+>   return (PatternDecl p (Just $ mirrorCT cty) id0 t rhs', cty)
 > tcDeclRhs _ _ = internalError "TypeCheck.tcDeclRhs: no pattern match"
 
 > unifyDecl :: Decl -> ConstrType -> ConstrType -> TCM ()
-> unifyDecl (FunctionDecl p _ f _) =
+> unifyDecl (FunctionDecl p _ _ f _) =
 >   unify p "function binding" (text "Function:" <+> ppIdent f)
-> unifyDecl (PatternDecl  p _ t _) =
+> unifyDecl (PatternDecl  p _ _ t _) =
 >   unify p "pattern binding" (ppPattern 0 t)
 > unifyDecl _ = internalError "TypeCheck.unifyDecl: no pattern match"
 
@@ -1035,10 +1035,10 @@ signature the declared type must be too general.
 \begin{verbatim}
 
 > genDecl :: Set.Set Int -> TypeSubst -> Decl -> TCM ()
-> genDecl lvs theta (FunctionDecl _ _ f (Equation _ lhs _ : _)) = 
+> genDecl lvs theta (FunctionDecl _ _ _ f (Equation _ lhs _ : _)) = 
 >   genVar True lvs theta arity f
 >   where arity = Just $ length $ snd $ flatLhs lhs
-> genDecl lvs theta (PatternDecl  _ _ t _) = 
+> genDecl lvs theta (PatternDecl  _ _ _ t _) = 
 >   mapM_ (genVar False lvs theta Nothing) (bv t)
 > genDecl _ _ _ = internalError "TypeCheck.genDecl: no pattern match"
 
@@ -2278,7 +2278,7 @@ vars in their contexts.
 > checkForAmbiguousContexts decls = mapM_ check' (filter isFunctionDecl decls)
 >   where
 >   check' :: Decl -> TCM ()
->   check' (FunctionDecl p _ f _) = do
+>   check' (FunctionDecl p _ _ f _) = do
 >     vEnv <- getValueEnv
 >     let tsc = lookupValue f vEnv
 >     case tsc of
@@ -2308,14 +2308,14 @@ nothing is recorded so that they are simply returned).
 > tsDecl _theta d@(NewtypeDecl _ _ _ _) = d
 > tsDecl _theta d@(TypeDecl _ _ _ _) = d
 > tsDecl _theta d@(TypeSig _ _ _ _) = d
-> tsDecl theta (FunctionDecl p (Just cty) id0 eqs) 
->   = FunctionDecl p (Just $ subst' theta cty)  id0 (map (tsEqu theta) eqs)
-> tsDecl _theta (FunctionDecl _ Nothing _ _) = internalError "tsDecl FunctionDecl"
+> tsDecl theta (FunctionDecl p (Just cty) n id0 eqs) 
+>   = FunctionDecl p (Just $ subst' theta cty)  n id0 (map (tsEqu theta) eqs)
+> tsDecl _theta (FunctionDecl _ Nothing _ _ _) = internalError "tsDecl FunctionDecl"
 > tsDecl _theta d@(ForeignDecl _ _ _ _ _) = d
 > tsDecl _theta d@(ExternalDecl _ _) = d
-> tsDecl theta (PatternDecl p (Just cty) pt rhs) 
->   = PatternDecl p (Just $ subst' theta cty) pt (tsRhs theta rhs)
-> tsDecl _theta (PatternDecl _ Nothing _ _) = internalError "tsDecl PatternDecl"
+> tsDecl theta (PatternDecl p (Just cty) n pt rhs) 
+>   = PatternDecl p (Just $ subst' theta cty) n pt (tsRhs theta rhs)
+> tsDecl _theta (PatternDecl _ Nothing _ _ _) = internalError "tsDecl PatternDecl"
 > tsDecl _theta d@(FreeDecl _ _) = d
 > tsDecl _theta d@(ClassDecl _ _ _ _ _) = d
 > tsDecl _theta d@(InstanceDecl _ _ _ _ _ _) = d

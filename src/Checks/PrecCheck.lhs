@@ -106,10 +106,10 @@ imported precedence environment.
 >   where constr (ConstrDecl _ _   c  _) = c
 >         constr (ConOpDecl  _ _ _ op _) = op
 > boundValues (NewtypeDecl _ _ _ (NewConstrDecl _ _ c _)) = [c]
-> boundValues (FunctionDecl   _ _ f _) = [f]
+> boundValues (FunctionDecl _ _ _ f _) = [f]
 > boundValues (ForeignDecl  _ _ _ f _) = [f]
 > boundValues (ExternalDecl      _ fs) = fs
-> boundValues (PatternDecl    _ _ t _) = bv t
+> boundValues (PatternDecl  _ _ _ t _) = bv t
 > boundValues (FreeDecl          _ vs) = vs
 > boundValues _                        = []
 
@@ -128,10 +128,10 @@ interface.
 > checkDecls decls = bindPrecs decls >> mapM checkDecl decls
 
 > checkDecl :: Decl -> PCM Decl
-> checkDecl (FunctionDecl p cty f eqs) =
->   FunctionDecl p cty f `liftM` mapM checkEquation eqs
-> checkDecl (PatternDecl p cty t rhs) =
->   liftM2 (PatternDecl p cty) (checkPattern t) (checkRhs rhs)
+> checkDecl (FunctionDecl p cty id0 f eqs) =
+>   FunctionDecl p cty id0 f `liftM` mapM checkEquation eqs
+> checkDecl (PatternDecl p cty id0 t rhs) =
+>   liftM2 (PatternDecl p cty id0) (checkPattern t) (checkRhs rhs)
 > checkDecl (ClassDecl p scon cls tyvar decls) = 
 >   ClassDecl p scon cls tyvar `liftM` mapM checkDecl decls
 > checkDecl (InstanceDecl p scon cls tycon ids decls) = 

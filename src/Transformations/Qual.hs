@@ -51,11 +51,11 @@ qDecl (DataDecl      p n vs cs) = DataDecl p n vs `liftM` mapM qConstrDecl cs
 qDecl (NewtypeDecl   p n vs nc) = NewtypeDecl p n vs `liftM` qNewConstrDecl nc
 qDecl (TypeDecl      p n vs ty) = TypeDecl p n vs `liftM` qTypeExpr ty
 qDecl (TypeSig      p fs cx ty) = TypeSig p fs cx `liftM` qTypeExpr ty
-qDecl (FunctionDecl p cty f eqs) = FunctionDecl p cty f `liftM` mapM qEquation eqs
+qDecl (FunctionDecl p cty id0 f eqs) = FunctionDecl p cty id0 f `liftM` mapM qEquation eqs
 qDecl (ForeignDecl  p c x n ty) = ForeignDecl p c x n `liftM` qTypeExpr ty
 qDecl e@(ExternalDecl      _ _) = return e
-qDecl (PatternDecl p cty t rhs)
-  = liftM2 (PatternDecl p cty) (qPattern t) (qRhs rhs)
+qDecl (PatternDecl p cty id0 t rhs)
+  = liftM2 (PatternDecl p cty id0) (qPattern t) (qRhs rhs)
 qDecl vs@(FreeDecl   _ _) = return vs
 qDecl (ClassDecl p scon cls ty decls) 
   = liftM4 (ClassDecl p) (qSContext scon) (return cls) (return ty) 

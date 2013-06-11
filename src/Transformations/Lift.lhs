@@ -83,10 +83,10 @@ i.e. the function applied to its free variables.
 >   return res
 
 > abstractDecl :: String -> [Ident] -> Decl -> LiftM Decl
-> abstractDecl _   lvs (FunctionDecl p cty f eqs) =
->   FunctionDecl p cty f `liftM` mapM (abstractEquation lvs) eqs
-> abstractDecl pre lvs (PatternDecl  p cty t rhs) =
->   PatternDecl p cty t `liftM` abstractRhs pre lvs rhs
+> abstractDecl _   lvs (FunctionDecl p cty id0 f eqs) =
+>   FunctionDecl p cty id0 f `liftM` mapM (abstractEquation lvs) eqs
+> abstractDecl pre lvs (PatternDecl  p cty id0 t rhs) =
+>   PatternDecl p cty id0 t `liftM` abstractRhs pre lvs rhs
 > abstractDecl _   _   d                      = return d
 
 > abstractEquation :: [Ident] -> Equation -> LiftM Equation
@@ -197,8 +197,8 @@ in the type environment.
 >           where ty = foldr TypeArrow (varType tyEnv' f) tys
 
 > abstractFunDecl :: String -> [Ident] -> [Ident] -> Decl -> LiftM Decl
-> abstractFunDecl pre fvs lvs (FunctionDecl p cty f eqs) =
->   abstractDecl pre lvs (FunctionDecl p cty f' (map (addVars f') eqs))
+> abstractFunDecl pre fvs lvs (FunctionDecl p cty id0 f eqs) =
+>   abstractDecl pre lvs (FunctionDecl p cty id0 f' (map (addVars f') eqs))
 >   where
 >   f' = liftIdent pre f
 >   addVars f1 (Equation p1 (FunLhs _ ts) rhs) =
@@ -240,12 +240,12 @@ to the top-level.
 \begin{verbatim}
 
 > liftFunDecl :: Decl -> [Decl]
-> liftFunDecl (FunctionDecl p cty f eqs) = (FunctionDecl p cty f eqs' : concat dss')
+> liftFunDecl (FunctionDecl p cty id0 f eqs) = (FunctionDecl p cty id0 f eqs' : concat dss')
 >   where (eqs', dss') = unzip $ map liftEquation eqs
 > liftFunDecl d = [d]
 
 > liftVarDecl :: Decl -> (Decl, [Decl])
-> liftVarDecl (PatternDecl   p cty t rhs) = (PatternDecl p cty t rhs', ds')
+> liftVarDecl (PatternDecl  p cty id0 t rhs) = (PatternDecl p cty id0 t rhs', ds')
 >   where (rhs', ds') = liftRhs rhs
 > liftVarDecl ex@(FreeDecl _ _) = (ex, [])
 > liftVarDecl _ = error "Lift.liftVarDecl: no pattern match"
@@ -289,7 +289,7 @@ to the top-level.
 \begin{verbatim}
 
 > isFunDecl :: Decl -> Bool
-> isFunDecl (FunctionDecl   _ _ _ _) = True
+> isFunDecl (FunctionDecl _ _ _ _ _) = True
 > isFunDecl (ForeignDecl  _ _ _ _ _) = True
 > isFunDecl _                        = False
 

@@ -58,16 +58,16 @@ instance QuantExpr e => QuantExpr [e] where
 -- prelude.
 
 instance QualExpr Decl where
-  qfv m (FunctionDecl _ _ _ eqs) = qfv m eqs
-  qfv m (PatternDecl  _ _ _ rhs) = qfv m rhs
-  qfv _ _                      = []
+  qfv m (FunctionDecl _ _ _ _ eqs) = qfv m eqs
+  qfv m (PatternDecl  _ _ _ _ rhs) = qfv m rhs
+  qfv _ _                          = []
 
 instance QuantExpr Decl where
   bv (TypeSig      _ vs _ _) = vs
-  bv (FunctionDecl  _ _ f _) = [f]
+  bv (FunctionDecl _ _ _ f _) = [f]
   bv (ForeignDecl _ _ _ f _) = [f]
   bv (ExternalDecl     _ fs) = fs
-  bv (PatternDecl   _ _ t _) = bv t
+  bv (PatternDecl _ _ _ t _) = bv t
   bv (FreeDecl         _ vs) = vs
   bv _                       = []
 

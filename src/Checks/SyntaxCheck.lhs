@@ -270,7 +270,7 @@ Furthermore, it is not allowed to declare a label more than once.
 
 > -- |Bind a global function declaration in the 'RenameEnv'
 > bindFuncDecl :: Bool -> ModuleIdent -> Decl -> RenameEnv -> RenameEnv
-> bindFuncDecl tcc m (FunctionDecl _ _ ident equs) env
+> bindFuncDecl tcc m (FunctionDecl _ _ _ ident equs) env
 >   | null equs = internalError "SyntaxCheck.bindFuncDecl: no equations"
 >   | otherwise = let arty = length $ snd $ getFlatLhs $ head equs
 >                     qid  = qualifyWith m ident
@@ -297,11 +297,11 @@ Furthermore, it is not allowed to declare a label more than once.
 
 > -- |Bind a local declaration (function, variables) in the 'RenameEnv'
 > bindVarDecl :: Decl -> RenameEnv -> RenameEnv
-> bindVarDecl (FunctionDecl _ _ f eqs) env
+> bindVarDecl (FunctionDecl _ _ _ f eqs) env
 >   | null eqs  = internalError "SyntaxCheck.bindVarDecl: no equations"
 >   | otherwise = let arty = length $ snd $ getFlatLhs $ head eqs
 >                 in  bindLocal (unRenameIdent f) (LocalVar arty f) env
-> bindVarDecl (PatternDecl       _ _ t _) env = foldr bindVar env (bv t)
+> bindVarDecl (PatternDecl     _ _ _ t _) env = foldr bindVar env (bv t)
 > bindVarDecl (FreeDecl             _ vs) env = foldr bindVar env vs
 > bindVarDecl _                           env = env
 
@@ -424,14 +424,14 @@ top-level.
 >   liftM2 (InfixDecl p fix') (checkPrecedence p pr) (mapM renameVar ops)
 > checkDeclLhs (TypeSig        p vs cx ty) = do
 >   (\vs' -> TypeSig p vs' cx ty) `liftM` mapM (checkVar "type signature") vs
-> checkDeclLhs (FunctionDecl    p _ _ eqs) =
+> checkDeclLhs (FunctionDecl  p _ _ _ eqs) =
 >   checkEquationsLhs p eqs
 > checkDeclLhs (ForeignDecl  p cc ie f ty) =
 >   (\f' -> ForeignDecl p cc ie f' ty) `liftM` checkVar "foreign declaration" f
 > checkDeclLhs (    ExternalDecl     p fs) =
 >   ExternalDecl p `liftM` mapM (checkVar "external declaration") fs
-> checkDeclLhs (PatternDecl   p cty t rhs) =
->     (\t' -> PatternDecl p cty t' rhs) `liftM` checkPattern p t
+> checkDeclLhs (PatternDecl p cty id0 t rhs) =
+>     (\t' -> PatternDecl p cty id0 t' rhs) `liftM` checkPattern p t
 > checkDeclLhs (FreeDecl             p vs) =
 >   FreeDecl p `liftM` mapM (checkVar "free variables declaration") vs
 > checkDeclLhs d                           = return d
@@ -456,11 +456,11 @@ top-level.
 >   case lhs' of
 >     Left  l -> return $ funDecl l
 >     Right r -> patDecl r >>= checkDeclLhs
->   where funDecl (f, lhs') = FunctionDecl p Nothing f [Equation p' lhs' rhs]
+>   where funDecl (f, lhs') = FunctionDecl p Nothing (-1) f [Equation p' lhs' rhs]
 >         patDecl t = do
 >           k <- getScopeId
 >           when (k == globalScopeId) $ report $ errToplevelPattern p
->           return $ PatternDecl p' Nothing t rhs
+>           return $ PatternDecl p' Nothing (-1) t rhs
 > checkEquationsLhs _ _ = internalError "SyntaxCheck.checkEquationsLhs"
 
 > checkEqLhs :: Position -> Lhs -> SCM (Either (Ident, Lhs) Pattern)
@@ -515,10 +515,10 @@ top-level.
 
 > joinEquations :: [Decl] -> SCM [Decl]
 > joinEquations [] = return []
-> joinEquations (FunctionDecl p _ f eqs : FunctionDecl _ _ f' [eq] : ds)
+> joinEquations (FunctionDecl p _ _ f eqs : FunctionDecl _ _ _ f' [eq] : ds)
 >   | f == f' = do
 >     when (getArity (head eqs) /= getArity eq) $ report $ errDifferentArity f
->     joinEquations (FunctionDecl p Nothing f (eqs ++ [eq]) : ds)
+>     joinEquations (FunctionDecl p Nothing (-1) f (eqs ++ [eq]) : ds)
 >   where getArity = length . snd . getFlatLhs
 > joinEquations (d : ds) = (d :) `liftM` joinEquations ds
 
@@ -546,10 +546,10 @@ top-level.
 > checkDeclRhs :: [Ident] -> Decl -> SCM Decl
 > checkDeclRhs bvs (TypeSig   p vs cx ty) = do
 >   (\vs' -> TypeSig p vs' cx ty) `liftM` mapM (checkLocalVar bvs) vs
-> checkDeclRhs _ (FunctionDecl p cty f eqs) =
->   FunctionDecl p cty f `liftM` mapM checkEquation eqs
-> checkDeclRhs _ (PatternDecl  p cty t rhs) =
->   PatternDecl p cty t `liftM` checkRhs rhs
+> checkDeclRhs _ (FunctionDecl p cty id0 f eqs) =
+>   FunctionDecl p cty id0 f `liftM` mapM checkEquation eqs
+> checkDeclRhs _ (PatternDecl p cty id0 t rhs) =
+>   PatternDecl p cty id0 t `liftM` checkRhs rhs
 > checkDeclRhs _   d                      = return d
 
 > checkLocalVar :: [Ident] -> Ident -> SCM Ident
@@ -930,10 +930,10 @@ Auxiliary definitions.
 
 > vars :: Decl -> [Ident]
 > vars (TypeSig       _ fs _ _) = fs
-> vars (FunctionDecl   _ _ f _) = [f]
+> vars (FunctionDecl _ _ _ f _) = [f]
 > vars (ForeignDecl  _ _ _ f _) = [f]
 > vars (ExternalDecl      _ fs) = fs
-> vars (PatternDecl    _ _ t _) = bv t
+> vars (PatternDecl  _ _ _ t _) = bv t
 > vars (FreeDecl          _ vs) = vs
 > vars _ = []
 
@@ -949,7 +949,7 @@ it is necessary to sort the list of declarations.
 >  where
 >  sortFD _   res []              = reverse res
 >  sortFD env res (decl : decls') = case decl of
->    FunctionDecl _ _ ident _
+>    FunctionDecl _ _ _ ident _
 >     | ident `Set.member` env
 >     -> sortFD env (insertBy cmpFuncDecl decl res) decls'
 >     | otherwise
@@ -957,7 +957,7 @@ it is necessary to sort the list of declarations.
 >    _    -> sortFD env (decl:res) decls'
 
 > cmpFuncDecl :: Decl -> Decl -> Ordering
-> cmpFuncDecl (FunctionDecl _ _ id1 _) (FunctionDecl _ _ id2 _)
+> cmpFuncDecl (FunctionDecl _ _ _ id1 _) (FunctionDecl _ _ _ id2 _)
 >    | id1 == id2 = EQ
 >    | otherwise  = GT
 > cmpFuncDecl _ _ = GT

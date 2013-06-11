@@ -105,7 +105,7 @@ partitionDecl p d@(TypeDecl  _ _ _ _) = p { typeDecls = d : typeDecls p }
 -- function declarations
 partitionDecl p (TypeSig pos ids cx ty)
   = partitionFuncDecls (\q -> TypeSig pos [q] cx ty) p ids
-partitionDecl p d@(FunctionDecl _ _ ident _)
+partitionDecl p d@(FunctionDecl _ _ _ ident _)
   = partitionFuncDecls (const d) p [ident]
 partitionDecl p d@(ForeignDecl _ _ _ ident _)
   = partitionFuncDecls (const d) p [ident]
@@ -243,7 +243,7 @@ genFuncDecl isLocal env (ident, decls)
                   Just (env', t) -> (env', Just t)
   (env2, rules) = case find Generators.GenAbstractCurry.isFunctionDecl decls of
                   Nothing -> (env1, [])
-                  Just (FunctionDecl _ _ _ eqs) -> mapAccumL genRule env1 eqs
+                  Just (FunctionDecl _ _ _ _ eqs) -> mapAccumL genRule env1 eqs
                   _ -> internalError "Gen.GenAbstractCurry.genFuncDecl: no FunctionDecl"
   mexternal   = genExternal `fmap` find isExternal decls
   arity       = compArity mtype rules
@@ -318,7 +318,7 @@ genLocalDecls env decls
               (funcDecls (foldl partitionDecl emptyPartition decls))
               decls
  where
-  genLocalIndex env' (PatternDecl _ _ constr _)
+  genLocalIndex env' (PatternDecl _ _ _ constr _)
     = genLocalPatternIndex env' constr
   genLocalIndex env' (FreeDecl _ idents)
     = let (env'', _) = mapAccumL genVarIndex env' idents
@@ -351,7 +351,7 @@ genLocalDecls env decls
   genLocals :: AbstractEnv -> [(Ident, [Decl])] -> [Decl]
             -> (AbstractEnv, [CLocalDecl])
   genLocals env' _ [] = (env', [])
-  genLocals env' fdecls ((FunctionDecl _ _ ident _):decls1)
+  genLocals env' fdecls ((FunctionDecl _ _ _ ident _):decls1)
     = let (env1, funcdecl) = genLocalFuncDecl (beginScope env') fdecls ident
           (env2, locals  ) = genLocals (endScope env1) fdecls decls1
       in  (env2, funcdecl:locals)
@@ -365,7 +365,7 @@ genLocalDecls env decls
     = let (env1, funcdecl) = genLocalFuncDecl (beginScope env') fdecls (head idents)
           (env2, locals  ) = genLocals (endScope env1) fdecls (ExternalDecl pos (tail idents):decls1)
       in  (env2, funcdecl:locals)
-  genLocals env' fdecls (PatternDecl pos _ constr rhs : decls1)
+  genLocals env' fdecls (PatternDecl pos _ _ constr rhs : decls1)
     = let (env1, patt   ) = genLocalPattern pos env' constr
           (env2, plocals) = genLocalDecls (beginScope env1)
                               (simplifyRhsLocals rhs)
@@ -708,7 +708,7 @@ buildExports mid ((NewtypeDecl _ ident _ _):ds)
   = ExportTypeAll (qualifyWith mid ident) : buildExports mid ds
 buildExports mid ((TypeDecl _ ident _ _):ds)
   = Export (qualifyWith mid ident) : buildExports mid ds
-buildExports mid ((FunctionDecl _ _ ident _):ds)
+buildExports mid ((FunctionDecl _ _ _ ident _):ds)
   = Export (qualifyWith mid ident) : buildExports mid ds
 buildExports mid (ForeignDecl _ _ _ ident _ : ds)
   = Export (qualifyWith mid ident) : buildExports mid ds
@@ -856,8 +856,8 @@ qSuccessFunId = qualifyWith preludeMIdent (mkIdent "success")
 
 -- The following functions check whether a declaration is of a certain kind
 isFunctionDecl :: Decl -> Bool
-isFunctionDecl (FunctionDecl _ _ _ _ ) = True
-isFunctionDecl _                       = False
+isFunctionDecl (FunctionDecl _ _ _ _ _ ) = True
+isFunctionDecl _                         = False
 
 isExternal :: Decl -> Bool
 isExternal (ForeignDecl _ _ _ _ _) = True

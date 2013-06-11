@@ -182,10 +182,10 @@ declarations to the group that must be desugared as well.
 >  where valDecls = filter isValueDecl ds
 
 > dsDeclLhs :: Decl -> DsM [Decl]
-> dsDeclLhs (PatternDecl p cty t rhs) = do
+> dsDeclLhs (PatternDecl p cty id0 t rhs) = do
 >   (ds', t') <- dsPattern p [] t
 >   dss'      <- mapM dsDeclLhs ds'
->   return $ PatternDecl p cty t' rhs : concat dss'
+>   return $ PatternDecl p cty id0 t' rhs : concat dss'
 > dsDeclLhs (ExternalDecl   p fs) = mapM (genForeignDecl p) fs
 > dsDeclLhs d                     = return [d]
 
@@ -210,10 +210,10 @@ and a record label belongs to only one record declaration.
 \begin{verbatim}
 
 > dsDeclRhs :: Decl -> DsM Decl
-> dsDeclRhs (FunctionDecl  p cty f eqs) =
->   FunctionDecl p cty f `liftM` mapM dsEquation eqs
-> dsDeclRhs (PatternDecl   p cty t rhs) =
->   PatternDecl p cty t `liftM` dsRhs p id rhs
+> dsDeclRhs (FunctionDecl p cty id0 f eqs) =
+>   FunctionDecl p cty id0 f `liftM` mapM dsEquation eqs
+> dsDeclRhs (PatternDecl  p cty id0 t rhs) =
+>   PatternDecl p cty id0 t `liftM` dsRhs p id rhs
 > dsDeclRhs (ForeignDecl p cc ie f ty) =
 >   return $ ForeignDecl p cc (ie `mplus` Just (idName f)) f ty
 > dsDeclRhs vars@(FreeDecl        _ _) = return vars
@@ -888,11 +888,11 @@ Auxiliary definitions
 > isVarPattern _                   = False
 
 > funDecl :: Position -> Ident -> [Pattern] -> Expression -> Decl
-> funDecl p f ts e = FunctionDecl p Nothing f
+> funDecl p f ts e = FunctionDecl p Nothing (-1) f
 >   [Equation p (FunLhs f ts) (SimpleRhs p e [])]
 
 > patDecl :: Position -> Pattern -> Expression -> Decl
-> patDecl p t e = PatternDecl p Nothing t (SimpleRhs p e [])
+> patDecl p t e = PatternDecl p Nothing (-1) t (SimpleRhs p e [])
 
 > varDecl :: Position -> Ident -> Expression -> Decl
 > varDecl p = patDecl p . VariablePattern

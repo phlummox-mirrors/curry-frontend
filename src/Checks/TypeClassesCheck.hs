@@ -190,8 +190,8 @@ gatherTypeSigs decls =
 gatherTS :: Decl -> [Decl]
 gatherTS (ClassDecl _ _ _ _ decls) = gatherTypeSigs decls
 gatherTS (InstanceDecl _ _ _ _ _ decls) = gatherTypeSigs decls
-gatherTS (PatternDecl _ _ _ rhs) = gatherTSRhs rhs
-gatherTS (FunctionDecl _ _ _ eqs) = concatMap gatherTSEqu eqs 
+gatherTS (PatternDecl _ _ _ _ rhs) = gatherTSRhs rhs
+gatherTS (FunctionDecl _ _ _ _ eqs) = concatMap gatherTSEqu eqs 
 gatherTS ts@(TypeSig _ _ _ _) = [ts]
 gatherTS _ = []
 
@@ -341,7 +341,7 @@ checkRulesInInstanceOrClass :: ClassEnv -> Decl -> Tcc ()
 checkRulesInInstanceOrClass cEnv decl = 
   mapM_ isDefinedFunctionClassMethod (getDecls decl)
   where 
-    isDefinedFunctionClassMethod (cls, FunctionDecl p _ f _) 
+    isDefinedFunctionClassMethod (cls, FunctionDecl p _ _ f _) 
       = let ms = maybe [] methods (lookupClass cEnv cls)
             eq = (\(id0, _, _) -> id0 == f)
         in 
@@ -584,7 +584,7 @@ transformClass cEnv (ClassDecl _p _scx cls tyvar _decls) =
         emptyContext (ArrowType 
           (ConstructorType (qualify $ dataTypeName) [VariableType tyvar]) 
           (ConstructorType (mkQIdent $ dictTypePrefix ++ scls) [VariableType tyvar]))
-    , FunctionDecl NoPos Nothing selMethodId 
+    , FunctionDecl NoPos Nothing (-1) selMethodId 
        [Equation NoPos 
          (equationsLhs selMethodName)
          (SimpleRhs NoPos (qVar $ dictSelParam selMethodName scls) [])
@@ -598,7 +598,7 @@ transformClass cEnv (ClassDecl _p _scx cls tyvar _decls) =
         emptyContext (ArrowType 
           (ConstructorType (mkQIdent $ dictTypePrefix ++ (show cls)) [VariableType tyvar]) 
           ty)
-    , FunctionDecl NoPos Nothing selMethodId 
+    , FunctionDecl NoPos Nothing (-1) selMethodId 
        [Equation NoPos 
          (equationsLhs selMethodName)
          (SimpleRhs NoPos (qVar $ methodSelParam selMethodName i) [])
@@ -641,7 +641,7 @@ transformClass2 cEnv (ClassDecl _p _scx cls _tyvar _decls) =
   genSuperClassDictSelMethod :: String -> [Decl]
   genSuperClassDictSelMethod scls = 
     let selMethodName = mkSelFunName (show $ theClass theClass0) scls in
-    [ FunctionDecl NoPos Nothing (mkIdent selMethodName)
+    [ FunctionDecl NoPos Nothing (-1) (mkIdent selMethodName)
       [Equation NoPos
         (equationLhs selMethodName)
         (SimpleRhs NoPos (qVar $ dictSelParam selMethodName scls) [])
@@ -653,7 +653,7 @@ transformClass2 cEnv (ClassDecl _p _scx cls _tyvar _decls) =
   genMethodSelMethod :: ((Ident, Context, TypeExpr), Int) -> [Decl]
   genMethodSelMethod ((m, _cx, _ty), i) = 
     let selMethodName = mkSelFunName (show $ theClass theClass0) (show m) in
-    [ FunctionDecl NoPos Nothing (mkIdent selMethodName)
+    [ FunctionDecl NoPos Nothing (-1) (mkIdent selMethodName)
       [Equation NoPos
         (equationLhs selMethodName)
         (SimpleRhs NoPos (qVar $ methodSelParam selMethodName i) [])
@@ -683,7 +683,7 @@ transformClass2 cEnv (ClassDecl _p _scx cls _tyvar _decls) =
   genNonDirectSuperClassDictSelMethod :: QualIdent -> [Decl]
   genNonDirectSuperClassDictSelMethod scls = 
     let selMethodName = mkSelFunName (show $ theClass theClass0) (show scls) in
-    [ FunctionDecl NoPos Nothing (mkIdent selMethodName)
+    [ FunctionDecl NoPos Nothing (-1) (mkIdent selMethodName)
       [Equation NoPos
         (FunLhs (mkIdent selMethodName) [])
         (SimpleRhs NoPos expr [])
@@ -729,7 +729,7 @@ transformInstance m cEnv tcEnv idecl@(InstanceDecl _ _ cls tycon _ decls)
   ++ createDictionary2 cEnv idecl ity
   where
   ity = fromJust $ tyConToQualIdent m tcEnv tycon
-  presentMethods = nub $ map (\(FunctionDecl _ _ id0 _) -> id0) decls
+  presentMethods = nub $ map (\(FunctionDecl _ _ _ id0 _) -> id0) decls
   theClass0 = fromJust $ lookupClass cEnv cls 
   theMethods0 = nub $ map fst3 $ methods theClass0
   missingMethods = theMethods0 \\ presentMethods
@@ -738,7 +738,7 @@ transformInstance _ _ _ d = [d]
 -- |transforms one method defined in an instance to a top level function 
 transformMethod :: ClassEnv -> IDecl -> QualIdent -> Decl -> [Decl]
 transformMethod cEnv idecl@(InstanceDecl _ _ cls _ _ _) ity
-                     decl@(FunctionDecl _ _ _ _) =
+                     decl@(FunctionDecl _ _ _ _ _) =
   -- create type signature
   createTypeSignature rfunc cEnv idecl decl
   -- create function rules
@@ -757,7 +757,7 @@ instMethodName cls tcon s = implPrefix ++ show cls ++ sep ++ show tcon ++ sep ++
 -- a top level function
 createTypeSignature :: RenameFunc -> ClassEnv -> IDecl -> Decl -> Decl
 createTypeSignature rfunc cEnv (InstanceDecl _ scx cls tcon tyvars _) 
-                    (FunctionDecl p _ f _eqs) 
+                    (FunctionDecl p _ _ f _eqs) 
   = TypeSig p [rename rfunc f] cx' ty'
   where 
     -- lookup class method of f
@@ -789,8 +789,8 @@ combineContexts (Context e1) (Context e2) = Context (e1 ++ e2)
 type RenameFunc = String -> String
 
 createTopLevelFuncs :: RenameFunc -> Decl -> Decl
-createTopLevelFuncs rfunc (FunctionDecl p cty id0 eqs) 
-  = FunctionDecl p cty (rename rfunc id0) (map (transEq rfunc) eqs)
+createTopLevelFuncs rfunc (FunctionDecl p cty n id0 eqs) 
+  = FunctionDecl p cty n (rename rfunc id0) (map (transEq rfunc) eqs)
 createTopLevelFuncs _ _ = internalError "createTopLevelFuncs"
   
 transEq :: RenameFunc -> Equation -> Equation
@@ -808,7 +808,7 @@ rename rfunc = updIdentName rfunc
 -- default method (TODO!) and inserts this, else inserts an error statement
 handleMissingFunc :: ClassEnv -> IDecl -> QualIdent -> Ident -> [Decl]
 handleMissingFunc _cEnv (InstanceDecl _ _ cls _tcon _ _) ity fun = 
-  [ FunctionDecl NoPos Nothing globalName [if defaultMethodDefined then equ2 else equ1]
+  [ FunctionDecl NoPos Nothing (-1) globalName [if defaultMethodDefined then equ2 else equ1]
   ]
   where
   globalName = mkIdent $ instMethodName cls ity (show fun)
@@ -825,7 +825,7 @@ handleMissingFunc _ _ _ _ = internalError "handleMissingFunc"
 -- using dictionary data types instead of tuples
 createDictionary :: ClassEnv -> IDecl -> QualIdent -> [Decl]
 createDictionary cEnv (InstanceDecl _ _scx cls _ _tvars _decls) ity = 
-  [ FunctionDecl NoPos Nothing (dictName cls)
+  [ FunctionDecl NoPos Nothing (-1) (dictName cls)
     [Equation NoPos
       (FunLhs (dictName cls) [])
       (SimpleRhs NoPos 
@@ -849,7 +849,7 @@ createDictionary _ _ _ = internalError "createDictionary"
 -- using tuples
 createDictionary2 :: ClassEnv -> IDecl -> QualIdent -> [Decl]
 createDictionary2 cEnv (InstanceDecl _ _scx cls _tcon _tvars _decls) ity = 
-  [ FunctionDecl NoPos Nothing (dictName cls)
+  [ FunctionDecl NoPos Nothing (-1) (dictName cls)
     [Equation NoPos
       (FunLhs (dictName cls) [])
       (SimpleRhs NoPos 

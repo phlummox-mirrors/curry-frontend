@@ -127,10 +127,10 @@ traversed because they can contain local type signatures.
 >   return $ TypeDecl p tc tvs' ty'
 > checkDecl (TypeSig       p vs cx ty) =
 >   TypeSig p vs cx `liftM` checkType ty
-> checkDecl (FunctionDecl  p cty f eqs) =
->   FunctionDecl p cty f `liftM` mapM checkEquation eqs
-> checkDecl (PatternDecl   p cty t rhs) =
->   PatternDecl p cty t `liftM` checkRhs rhs
+> checkDecl (FunctionDecl p cty id0 f eqs) =
+>   FunctionDecl p cty id0 f `liftM` mapM checkEquation eqs
+> checkDecl (PatternDecl p cty id0 t rhs) =
+>   PatternDecl p cty id0 t `liftM` checkRhs rhs
 > checkDecl (ForeignDecl p cc ie f ty) =
 >   ForeignDecl p cc ie f `liftM` checkType ty
 > checkDecl (ClassDecl p scon cls id0 decls) = 

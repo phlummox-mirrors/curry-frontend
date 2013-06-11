@@ -68,19 +68,19 @@ diModule (Module m e i ds) = Module m e i `liftM` (mapM (diDecl BT.emptyContext)
 -- |convert function declarations
 -- pass context from outer scope
 diDecl :: BT.Context -> Decl -> DI Decl
-diDecl cx (FunctionDecl p (Just cty@(cx', _)) id0 eqs) = do
+diDecl cx (FunctionDecl p (Just cty@(cx', _)) n id0 eqs) = do
   cEnv <- getClassEnv
   vEnv <- getValueEnv
   let -- we have to reduce the context before adding dictionary parameters, 
       -- because the recorded context is the "raw" context 
       cx'' = reduceContext cEnv $ mirror2Cx cx'
       cx''' = removeNonLocal vEnv id0 lookupValue cx''
-  FunctionDecl p (Just cty) id0 `liftM` (mapM (diEqu (cx ++ cx''') cx''' $ show id0) eqs)
-diDecl _ (FunctionDecl _ Nothing _ _) = internalError "no type info in diDecl"
+  FunctionDecl p (Just cty) n id0 `liftM` (mapM (diEqu (cx ++ cx''') cx''' $ show id0) eqs)
+diDecl _ (FunctionDecl _ Nothing _ _ _) = internalError "no type info in diDecl"
 
-diDecl cx (PatternDecl p (Just cty) pt rhs) = 
-  PatternDecl p (Just cty) pt `liftM` (diRhs cx "$$$" rhs) 
-diDecl _ (PatternDecl _ Nothing _ _) = internalError "no type info in diDecl"
+diDecl cx (PatternDecl p (Just cty) n pt rhs) = 
+  PatternDecl p (Just cty) n pt `liftM` (diRhs cx "$$$" rhs) 
+diDecl _ (PatternDecl _ Nothing _ _ _) = internalError "no type info in diDecl"
 
 diDecl _ f = return f
 

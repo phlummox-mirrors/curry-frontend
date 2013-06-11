@@ -398,10 +398,10 @@ declPos (DataDecl         p _ _ _  ) = p
 declPos (NewtypeDecl      p _ _ _  ) = p
 declPos (TypeDecl         p _ _ _  ) = p
 declPos (TypeSig          p _ _ _  ) = p
-declPos (FunctionDecl     p _ _ _  ) = p
+declPos (FunctionDecl     p _ _ _ _) = p
 declPos (ForeignDecl      p _ _ _ _) = p
 declPos (ExternalDecl     p _      ) = p
-declPos (PatternDecl      p _ _ _  ) = p
+declPos (PatternDecl      p _ _ _ _) = p
 declPos (FreeDecl         p _      ) = p
 declPos (ClassDecl        p _ _ _ _) = p
 declPos (InstanceDecl   p _ _ _ _ _) = p
@@ -477,10 +477,10 @@ decl2codes (TypeDecl _ t vs ty) =
      typeExpr2codes ty
 decl2codes (TypeSig _ fs _cx ty) =
      map (Function TypSig . qualify) fs ++ typeExpr2codes ty
-decl2codes (FunctionDecl _ _ _ eqs) = concatMap equation2codes eqs
+decl2codes (FunctionDecl _ _ _ _ eqs) = concatMap equation2codes eqs
 decl2codes (ForeignDecl _ _ _ _ _) = []
 decl2codes (ExternalDecl     _ fs) = map (Function FunDecl . qualify) fs
-decl2codes (PatternDecl _ _ p rhs) =  pat2codes p ++ rhs2codes rhs
+decl2codes (PatternDecl _ _ _ p rhs) =  pat2codes p ++ rhs2codes rhs
 decl2codes (FreeDecl         _ vs) = map (Identifier IdDecl . qualify) vs
 decl2codes (ClassDecl _ _scx _cls _tyvar _decls) = []
 decl2codes (InstanceDecl _ _scx _cls _tycon _tyvars _decls) = [] 
