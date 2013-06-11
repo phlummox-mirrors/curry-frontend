@@ -96,7 +96,9 @@ functions in the second (final) run, for taking the context reduction in account
 >     -- bindClassMethods cEnv
 >     -- _ <- tcDecls vds
 >     -- setIsFinal
->     (newDecls, _) <- tcDecls vds
+>     -- assign each declaration a unique id
+>     vdsN <- numberDecls vds
+>     (newDecls, _) <- tcDecls vdsN
 >     theta <- getTypeSubst
 >     newDecls' <- correctVariableContexts newDecls
 >     let newDecls'' = applyTypeSubst theta newDecls' 
@@ -111,7 +113,7 @@ functions in the second (final) run, for taking the context reduction in account
 >   tds = map snd tds'
 >   vds = map snd vds'
 >   sorter (n1, _) (n2, _) = compare n1 n2
->   initState = TcState m tcEnv tyEnv cEnv doContextRed0 idSubst emptySigEnv 0 [] [] False
+>   initState = TcState m tcEnv tyEnv cEnv doContextRed0 idSubst emptySigEnv 0 [] [] False 0
 
 \end{verbatim}
 
@@ -136,6 +138,7 @@ generating fresh type variables.
 >   , firstThetas :: [Maybe TypeSubst]
 >   , errors      :: [Message]
 >   , isFinal0    :: Bool
+>   , declCounter :: Int
 >   }
 
 > type TCM = S.State TcState
@@ -216,6 +219,12 @@ generating fresh type variables.
 
 > getIsFinal :: TCM Bool
 > getIsFinal = S.gets isFinal0
+
+> getNextDeclCounter :: TCM Int
+> getNextDeclCounter = do
+>   c <- S.gets declCounter
+>   S.modify $ \ s -> s { declCounter = succ c }
+>   return c
 
 \end{verbatim}
 \paragraph{Defining Types}
@@ -2387,10 +2396,77 @@ nothing is recorded so that they are simply returned).
 > subst' s ty = mirrorCT $ nubCx $ subst s $ mirror2CT ty
 
 \end{verbatim}
+The declarations are numbered, so that each declaration has a unique id. That
+is important because we want to store data for each declaration group, so we
+have to use a unique id for each declaration group. One could use the function
+names, but unfortunately pattern declarations don't have a function name. Thus 
+we have to use other unique ids.  
+\begin{verbatim}
 
+> numberDecls :: [Decl] -> TCM [Decl]
+> numberDecls ds = mapM numberDecl ds
 
+> numberDecl :: Decl -> TCM Decl
+> numberDecl (FunctionDecl p cty _ f eqs) = do
+>   n <- getNextDeclCounter
+>   eqs' <- mapM numberEqu eqs
+>   return $ FunctionDecl p cty n f eqs' 
+> numberDecl (PatternDecl p cty _ pt rhs) = do
+>   n <- getNextDeclCounter
+>   rhs' <- numberRhs rhs
+>   return $ PatternDecl p cty n pt rhs'
+> numberDecl d = return d 
 
+> numberEqu :: Equation -> TCM Equation
+> numberEqu (Equation p lhs rhs) = Equation p lhs `liftM` numberRhs rhs
 
+> numberRhs :: Rhs -> TCM Rhs
+> numberRhs (SimpleRhs p e ds) = liftM2 (SimpleRhs p) (numberExpr e) (numberDecls ds)
+> numberRhs (GuardedRhs ces ds) = liftM2 GuardedRhs (mapM numberCExpr ces) (numberDecls ds)
+
+> numberCExpr :: CondExpr -> TCM CondExpr
+> numberCExpr (CondExpr p e1 e2) = liftM2 (CondExpr p) (numberExpr e1) (numberExpr e2)
+
+> numberExpr :: Expression -> TCM Expression
+> numberExpr l@(Literal _) = return l
+> numberExpr v@(Variable _ _) = return v
+> numberExpr c@(Constructor _) = return c
+> numberExpr (Paren e) = Paren `liftM` numberExpr e
+> numberExpr (Typed cty e cx ty) = liftM3 (Typed cty) (numberExpr e) (return cx) (return ty)
+> numberExpr (Tuple sref es) = Tuple sref `liftM` mapM numberExpr es
+> numberExpr (List sref es) = List sref `liftM` mapM numberExpr es
+> numberExpr (ListCompr sref e ss) = liftM2 (ListCompr sref) (numberExpr e) (mapM numberStmt ss)
+> numberExpr (EnumFrom e1) = EnumFrom `liftM` numberExpr e1
+> numberExpr (EnumFromThen e1 e2) = liftM2 EnumFromThen (numberExpr e1) (numberExpr e2)
+> numberExpr (EnumFromTo e1 e2) = liftM2 EnumFromTo (numberExpr e1) (numberExpr e2)
+> numberExpr (EnumFromThenTo e1 e2 e3) = liftM3 EnumFromThenTo (numberExpr e1) (numberExpr e2) (numberExpr e3)
+> numberExpr (UnaryMinus i e) = UnaryMinus i `liftM` numberExpr e
+> numberExpr (Apply e1 e2) = liftM2 Apply (numberExpr e1) (numberExpr e2) 
+> numberExpr (InfixApply e1 op e2) = liftM3 InfixApply (numberExpr e1) (return op) (numberExpr e2)
+> numberExpr (LeftSection e op) = flip LeftSection op `liftM` numberExpr e 
+> numberExpr (RightSection op e) = RightSection op `liftM` numberExpr e
+> numberExpr (Lambda sref ps e) = Lambda sref ps `liftM` numberExpr e
+> numberExpr (Let ds e) = liftM2 Let (numberDecls ds) (numberExpr e) 
+> numberExpr (Do ss e) = liftM2 Do (mapM numberStmt ss) (numberExpr e)
+> numberExpr (IfThenElse sref e1 e2 e3) 
+>   = liftM3 (IfThenElse sref) (numberExpr e1) (numberExpr e2) (numberExpr e3)
+> numberExpr (Case sref cty e alts) = liftM2 (Case sref cty) (numberExpr e) (mapM numberAlt alts)
+> numberExpr (RecordConstr fs) = RecordConstr `liftM` (mapM numberField fs)
+> numberExpr (RecordSelection e i) = flip RecordSelection i `liftM` numberExpr e 
+> numberExpr (RecordUpdate fs e) = liftM2 RecordUpdate (mapM numberField fs) (numberExpr e)
+ 
+> numberStmt :: Statement -> TCM Statement
+> numberStmt (StmtExpr sref e) = StmtExpr sref `liftM` numberExpr e
+> numberStmt (StmtDecl ds) = StmtDecl `liftM` numberDecls ds
+> numberStmt (StmtBind sref p e) = StmtBind sref p `liftM` (numberExpr e)
+
+> numberAlt :: Alt -> TCM Alt
+> numberAlt (Alt p pt rhs) = Alt p pt `liftM` numberRhs rhs
+
+> numberField :: Field Expression -> TCM (Field Expression)
+> numberField (Field p i e) = Field p i `liftM` numberExpr e
+
+\end{verbatim}
 
 
 
