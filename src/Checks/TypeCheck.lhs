@@ -538,14 +538,6 @@ either one of the basic types or \texttt{()}.
 >                -> Int                         -- ^ a counter that counts the number of iterations already done
 >                -> TCM ([Decl], BT.Context) 
 > tcFixPointIter ds oldCxs n t oldVEnv freeVarsEnv tySubst fixPIter = do
->   let maxFixPIter = 10000
->   when (fixPIter > maxFixPIter) $ internalError "fix point iteration propably broken"  
->       
->   -- reset state
->   resetNextId n
->   modifyTypeSubst (const t)
->   setFirstTypeSubst tySubst
->
 >   tyEnv0 <- getValueEnv
 >   ctysLhs <- mapM tcDeclLhs ds
 >   dsAndCtysRhs <- mapM (tcDeclRhs tyEnv0) ds
@@ -559,49 +551,19 @@ either one of the basic types or \texttt{()}.
 >   let -- build the contexts of all declarations
 >       -- nubbing contexts for avoiding exponential growth of the context lists
 >       cxs' = map (nub . subst theta) cxs
->       dsWithCxs = zip cxs' ds
 >
->   -- save/restore free type variables that appear in the environment 
->   -- after the first run of the fix point iteration because these are 
->   -- later changed by the fix point iteration
->   let firstFreeVars = case freeVarsEnv of 
->         Nothing -> fvEnv (subst theta tyEnv0)
->         Just x -> x
->       -- save/restore type substitution that we get after the first iteration 
->       firstTySubst = case tySubst of
->         Nothing -> theta
->         Just x -> x
+>   let freeVars = fvEnv (subst theta tyEnv0)
 > 
->   let newCxs = map Set.fromList cxs'
->   -- do not run fix point iteration if it's the final run
->   case False && newCxs /= oldCxs of
->     True -> do
->       -- update contexts in value environment
->       writeContexts dsWithCxs
->       -- Reset the value environment. Reset everything except the
->       -- type schemes for the members of the declaration group, because
->       -- over these the fix point iteration is done
->       currentEnv <- getValueEnv
->       modifyValueEnv (const oldVEnv)
->       let declGroupMembers = bv ds
->           -- lookup each element of the declaration group
->           -- (qualified lookup is not needed because
->           -- {re}bindFun stores everything also as unqualified (?))
->           valInfos = map (flip lookupValue currentEnv) declGroupMembers
->       -- add each element of the declaration group
->       mapM_ modifyEnv' valInfos 
->       tcFixPointIter ds newCxs n t oldVEnv (Just firstFreeVars) 
->         (Just firstTySubst) (fixPIter + 1)
->     False -> do
->       -- The complete contexts are only known here, not earlier. 
->       -- Update the type annotations with the complete contexts. 
->       let newDs0 = zipWith updateContexts cxs' (map fst dsAndCtysRhs)
->       newDs1 <- fpIter newDs0
->       -- Establish the inferred types. 
->       mapM_ (genDecl firstFreeVars theta) newDs1
->       -- do NOT return final contexts! 
->       -- TODO: return cxs or cxs' (or doesn't matter?)
->       return (newDs1, nonLocalContextElems firstFreeVars $ concat cxs')
+>   -- The complete contexts are only known here, not earlier. 
+>   -- Update the type annotations with the complete contexts. 
+>   let newDs0 = zipWith updateContexts cxs' (map fst dsAndCtysRhs)
+>   -- Propagate all contexts. 
+>   newDs1 <- fpIter newDs0
+>   -- Establish the inferred types. 
+>   mapM_ (genDecl freeVars theta) newDs1
+>   -- do NOT return final contexts! 
+>   -- TODO: return cxs or cxs' (or doesn't matter?)
+>   return (newDs1, nonLocalContextElems freeVars $ concat cxs')
 
 > -- |searches the correct ValueInfo in the given list and writes its
 > -- information back into the value environment 
