@@ -674,6 +674,9 @@ The fix point iteration propagates all contexts in a declaration group until
 the maximal necessary contexts for the functions are determined. 
 \begin{verbatim}
 
+> -- | This function does a fix point iteration, in the course of which  
+> -- all contexts are propagated again and again until the maximal set of contexts
+> -- is reached. 
 > fpIter :: [Decl] -> TCM [Decl]
 > fpIter ds = do
 >   tcEnv <- getTyConsEnv
@@ -697,6 +700,8 @@ the maximal necessary contexts for the functions are determined.
 >   genContext Nothing = Set.empty
 >   genContext (Just tsc) = Set.fromList (getContext tsc)
 
+> -- | Helper function for fix point iteration. The second argument is
+> -- the list of contexts determined in the last run of the fix point iteration.  
 > fpIter' :: [Decl] -> [Set.Set (QualIdent, Type)] -> TCM [Decl]
 > fpIter' ds oldCxs = do 
 >   newDsAndCxs <- mapM fpDeclRhs ds
@@ -881,6 +886,11 @@ the maximal necessary contexts for the functions are determined.
 >   return (Field p i e', cxE)
 
 
+> -- | This function is called after all type checking has been done. Because
+> -- context reduction in a declaration group is always done at the very end 
+> -- of generalization, the contexts in the type annotations of variables
+> -- have to be updated so that they reflect the changes introduced by the
+> -- context reduction.  
 > correctVariableContexts :: [Decl] -> TCM [Decl]
 > correctVariableContexts ds = mapM cvcDecl ds
 
