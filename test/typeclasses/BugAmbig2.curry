@@ -3,7 +3,7 @@
 class Text a where
   put :: a -> String -> String
   get :: String -> [(a, String)]
-  read :: a
+  read :: String -> a
 
 instance Text Int where
   
