@@ -920,9 +920,9 @@ the maximal necessary contexts for the functions are determined.
 > cvcExpr (EnumFromThenTo e1 e2 e3) = liftM3 EnumFromThenTo (cvcExpr e1) (cvcExpr e2) (cvcExpr e3)
 > cvcExpr (UnaryMinus i e) = UnaryMinus i `liftM` cvcExpr e
 > cvcExpr (Apply e1 e2) = liftM2 Apply (cvcExpr e1) (cvcExpr e2)
-> cvcExpr (InfixApply e1 op e2) = liftM3 InfixApply (cvcExpr e1) (return op) (cvcExpr e2)
-> cvcExpr (LeftSection e op) = liftM2 LeftSection (cvcExpr e) (return op)
-> cvcExpr (RightSection op e) = RightSection op `liftM` cvcExpr e
+> cvcExpr (InfixApply e1 op e2) = liftM3 InfixApply (cvcExpr e1) (cvcInfixOp op) (cvcExpr e2)
+> cvcExpr (LeftSection e op) = liftM2 LeftSection (cvcExpr e) (cvcInfixOp op)
+> cvcExpr (RightSection op e) = liftM2 RightSection (cvcInfixOp op) (cvcExpr e)
 > cvcExpr (Lambda sref ps e) = Lambda sref ps `liftM` (cvcExpr e)
 > cvcExpr (Let ds e) = liftM2 Let (mapM cvcDecl ds) (cvcExpr e)
 > cvcExpr (Do ss e) = liftM2 Do (mapM cvcStmt ss) (cvcExpr e)
@@ -931,6 +931,19 @@ the maximal necessary contexts for the functions are determined.
 > cvcExpr (RecordConstr fs) = RecordConstr `liftM` mapM cvcField fs
 > cvcExpr (RecordSelection e i) = flip RecordSelection i `liftM` cvcExpr e
 > cvcExpr (RecordUpdate fs e) = liftM2 RecordUpdate (mapM cvcField fs) (cvcExpr e)
+
+> cvcInfixOp :: InfixOp -> TCM InfixOp
+> cvcInfixOp (InfixOp (Just (_cx0, ty0)) qid) = do
+>   tcEnv <- getTyConsEnv
+>   tyEnv <- getValueEnv 
+>   cEnv <- getClassEnv
+>   m <- getModuleIdent
+>   theta <- getTypeSubst
+>   let ForAll cxInf _ tyInf = funType tcEnv m qid tyEnv cEnv
+>   let s = either (internalError . show) id (unifyTypes m tyInf (subst theta $ mirror2Ty ty0))
+>   return $ InfixOp (Just (mirrorCx $ subst s cxInf, ty0)) qid
+> cvcInfixOp (InfixOp Nothing _) = internalError "cvcInfixOp"
+> cvcInfixOp ic@(InfixConstr _) = return ic
 
 > cvcCondExpr :: CondExpr -> TCM CondExpr
 > cvcCondExpr (CondExpr p e1 e2) = liftM2 (CondExpr p) (cvcExpr e1) (cvcExpr e2)
