@@ -511,33 +511,25 @@ either one of the basic types or \texttt{()}.
 > tcDeclGroup d@[(_, ExternalDecl      _ fs)] = mapM_ tcExternal fs >> return (d, BT.emptyContext)
 > tcDeclGroup d@[(_, FreeDecl          _ vs)] = mapM_ tcFree     vs >> return (d, BT.emptyContext)
 > tcDeclGroup pds                             = do
->   n <- getOnlyNextId
->   theta <- getTypeSubst
->   oldValEnv <- getValueEnv
 >   -- Strip the positions from the declarations, and add them later again. 
 >   -- This can be done because the fix point iteration doesn't change
 >   -- the order of the declarations
 >   let ds   = map snd pds
 >       poss = map fst pds
+>   -- If declaration group is stored, take the results from the store. 
+>   -- Else run (once!) the type checker for the specific declaration group and
+>   -- store the results.
 >   declGroup <- getDeclGroup ds
 >   (ds', cx) <- case isNothing declGroup of
 >     True -> do
->       (ds0, cx0) <- tcFixPointIter ds (replicate (length ds) Set.empty) n theta oldValEnv Nothing Nothing 0
+>       (ds0, cx0) <- tcDeclGroup' ds 
 >       setDeclGroup ds0 cx0
 >       return (ds0, cx0)
 >     False -> return (fromJust declGroup)
 >   return (zip' poss ds', cx)
 
-> tcFixPointIter :: [Decl]                      -- ^ the declarations of the declaration group
->                -> [Set.Set (QualIdent, Type)] -- ^ the old contexts of the members of the declaration group
->                -> Int                         -- ^ the "next id" from at the beginning of the fix point iteration
->                -> TypeSubst                   -- ^ the type substitution from at the beginning of the fix point iteration
->                -> ValueEnv                    -- ^ the original value environment (with changes only for members of the declaration group)
->                -> (Maybe (Set.Set Int))       -- ^ the free variables in the environment after the first run of the fix point iteration
->                -> (Maybe TypeSubst)           -- ^ the type substitution after the first run of the fix point iteration 
->                -> Int                         -- ^ a counter that counts the number of iterations already done
->                -> TCM ([Decl], BT.Context) 
-> tcFixPointIter ds oldCxs n t oldVEnv freeVarsEnv tySubst fixPIter = do
+> tcDeclGroup' :: [Decl] -> TCM ([Decl], BT.Context) 
+> tcDeclGroup' ds = do
 >   tyEnv0 <- getValueEnv
 >   ctysLhs <- mapM tcDeclLhs ds
 >   dsAndCtysRhs <- mapM (tcDeclRhs tyEnv0) ds
