@@ -113,7 +113,7 @@ functions in the second (final) run, for taking the context reduction in account
 >   tds = map snd tds'
 >   vds = map snd vds'
 >   sorter (n1, _) (n2, _) = compare n1 n2
->   initState = TcState m tcEnv tyEnv cEnv doContextRed0 idSubst emptySigEnv 0 [] [] False 0
+>   initState = TcState m tcEnv tyEnv cEnv doContextRed0 idSubst emptySigEnv 0 [] [] False 0 Map.empty
 
 \end{verbatim}
 
@@ -139,6 +139,7 @@ generating fresh type variables.
 >   , errors      :: [Message]
 >   , isFinal0    :: Bool
 >   , declCounter :: Int
+>   , declGroups  :: Map.Map [Int] ([Decl], BT.Context)
 >   }
 
 > type TCM = S.State TcState
@@ -225,6 +226,17 @@ generating fresh type variables.
 >   c <- S.gets declCounter
 >   S.modify $ \ s -> s { declCounter = succ c }
 >   return c
+
+> -- | stores the declarations and their context by using the unique ids 
+> -- of the declarations
+> setDeclGroup :: [Decl] -> BT.Context -> TCM ()
+> setDeclGroup ds cx = S.modify $
+>   \s -> s { declGroups = Map.insert (map getUniqueId ds) (ds, cx) (declGroups s) }
+
+> -- | loads the declarations and their context by using the unique ids of
+> -- the declarations
+> getDeclGroup :: [Decl] -> TCM (Maybe ([Decl], BT.Context))
+> getDeclGroup ds = S.gets (Map.lookup (map getUniqueId ds) . declGroups)
 
 \end{verbatim}
 \paragraph{Defining Types}
@@ -514,7 +526,13 @@ either one of the basic types or \texttt{()}.
 >   -- the order of the declarations
 >   let ds   = map snd pds
 >       poss = map fst pds
->   (ds', cx) <- tcFixPointIter ds (replicate (length ds) Set.empty) n theta oldValEnv Nothing Nothing 0
+>   declGroup <- getDeclGroup ds
+>   (ds', cx) <- case isNothing declGroup of
+>     True -> do
+>       (ds0, cx0) <- tcFixPointIter ds (replicate (length ds) Set.empty) n theta oldValEnv Nothing Nothing 0
+>       setDeclGroup ds0 cx0
+>       return (ds0, cx0)
+>     False -> return (fromJust declGroup)
 >   return (zip' poss ds', cx)
 
 > tcFixPointIter :: [Decl]                      -- ^ the declarations of the declaration group
@@ -712,12 +730,12 @@ the maximal necessary contexts for the functions are determined.
 
 > fpRhs :: Rhs -> TCM (Rhs, BT.Context)
 > fpRhs (SimpleRhs p e ds) = do
+>   (ds', cxDs) <- tcDecls ds
 >   (e', cxE) <- fpExpr e
->   (ds', cxDs) <- return (ds, [])-- fpIter ds
 >   return (SimpleRhs p e' ds', cxE ++ cxDs)
 > fpRhs (GuardedRhs es ds) = do
+>   (ds', cxDs) <- tcDecls ds
 >   (es', cxEs) <- fpCondExprs es
->   (ds', cxDs) <- return (ds, [])
 >   return (GuardedRhs es' ds', cxEs ++ cxDs)
 
 > fpCondExprs :: [CondExpr] -> TCM ([CondExpr], BT.Context)
@@ -814,8 +832,8 @@ the maximal necessary contexts for the functions are determined.
 >   (e', cx) <- fpExpr e
 >   return (Lambda sref ps e', cx)
 > fpExpr (Let ds e) = do
+>   (ds', cxDs) <- tcDecls ds
 >   (e', cx) <- fpExpr e
->   (ds', cxDs) <- return (ds, [])
 >   return (Let ds' e', cx ++ cxDs)
 > fpExpr (Do ss e) = do
 >   ssAndCxs <- mapM fpStmt ss
@@ -846,7 +864,7 @@ the maximal necessary contexts for the functions are determined.
 >   (e', cxE) <- fpExpr e
 >   return (StmtExpr sref e', cxE)
 > fpStmt (StmtDecl ds) = do
->   (ds', cx') <- return (ds, [])
+>   (ds', cx') <- tcDecls ds
 >   return (StmtDecl ds', cx')
 > fpStmt (StmtBind sref p e) = do
 >   (e', cxE) <- fpExpr e
@@ -2403,6 +2421,9 @@ names, but unfortunately pattern declarations don't have a function name. Thus
 we have to use other unique ids.  
 \begin{verbatim}
 
+> -- | numbers all declarations subsequently with unique ids, descending in
+> -- the tree to reach all declarations (also e.g. in statements or let 
+> -- expresssions 
 > numberDecls :: [Decl] -> TCM [Decl]
 > numberDecls ds = mapM numberDecl ds
 
@@ -2465,6 +2486,12 @@ we have to use other unique ids.
 
 > numberField :: Field Expression -> TCM (Field Expression)
 > numberField (Field p i e) = Field p i `liftM` numberExpr e
+
+> -- |returns the unique id assigned to a function or pattern declaration
+> getUniqueId :: Decl -> Int
+> getUniqueId (FunctionDecl _ _ n _ _) = n
+> getUniqueId (PatternDecl _ _ n _ _) = n
+> getUniqueId _ = internalError "getUniqueId"
 
 \end{verbatim}
 
