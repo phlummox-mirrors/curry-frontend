@@ -1,6 +1,6 @@
 {- |
     Module      :  $Header$
-    Description :  Removal of type signatures
+    Description :  Transformation of explicit type signatures
     Copyright   :  2013 Matthias Böhm
     License     :  OtherLicense
 
@@ -8,20 +8,23 @@
     Stability   :  experimental
     Portability :  portable
 
-    The transformation contained in this module removes all
-    type signatures from the module that have non-empty contexts. 
-    This is necessary for the second type check, that expects a program
-    without any type classes elements.  
+    This transformation removes the context in all explicit type signatures 
+    by inserting the appropriate dictionary types for each element of the context. 
+    This is needed for the second type check that expects a program without
+    any type class elements. 
 -}
 
 
-module Transformations.TypeSigs (removeTypeSigs) where
+module Transformations.TypeSigs (transformTypeSigs) where
 
 import Curry.Syntax.Type
 import CompilerEnv
 
-removeTypeSigs :: CompilerEnv -> Module -> Module
-removeTypeSigs cEnv (Module m e i ds) = Module m e i (concatMap (tsDecl cEnv) ds)
+-- | transforms all type signatures (in explicit type signatures declarations
+-- *and* in explicitely typed expressions (!)) by removing their contexts
+-- and inserting types for the dictionaries.  
+transformTypeSigs :: CompilerEnv -> Module -> Module
+transformTypeSigs cEnv (Module m e i ds) = Module m e i (concatMap (tsDecl cEnv) ds)
 
 tsDecl :: CompilerEnv -> Decl -> [Decl]
 tsDecl _cEnv d@(InfixDecl   _ _ _ _) = [d]

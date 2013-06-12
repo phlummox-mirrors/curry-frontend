@@ -24,7 +24,7 @@ import Transformations.CaseCompletion as CC (completeCase)
 import Transformations.CurryToIL      as IL (ilTrans, transType)
 import Transformations.Desugar        as DS (desugar)
 import Transformations.Dictionaries   as DI (insertDicts)
-import Transformations.TypeSigs       as TS (removeTypeSigs)
+import Transformations.TypeSigs       as TS (transformTypeSigs)
 import Transformations.Lift           as L  (lift)
 import Transformations.Qual           as Q  (qual)
 import Transformations.Simplify       as S  (simplify)
@@ -72,9 +72,9 @@ insertDicts :: CompilerEnv -> Module -> (CompilerEnv, Module)
 insertDicts cEnv m = (cEnv, m')
   where m' = DI.insertDicts m cEnv
 
--- |Currently removes all type signatures that have non-empty contexts
--- from the module
+-- |Removes all contexts in the explicit type signatures, so that the resulting
+-- program is free of type class elements
 typeSigs :: CompilerEnv -> Module -> (CompilerEnv, Module)
 typeSigs cEnv m = (cEnv, m')
-  where m' = TS.removeTypeSigs cEnv m
+  where m' = TS.transformTypeSigs cEnv m
   
