@@ -77,10 +77,6 @@ The type checker returns the resulting type constructor and type environments.
 The boolean parameter doContextRed0 specifies whether a context reduction 
 should be exerted. This parameter is primarily for debugging, it is set
 to True in the normal execution of the compiler. 
-
-The type check is executed twice: Because the type schemes get context
-reduced on generalization, we have to update the contexts of the variables/
-functions in the second (final) run, for taking the context reduction in account. 
 \begin{verbatim}
 
 > typeCheck :: ModuleIdent -> TCEnv -> ValueEnv -> ClassEnv -> Bool -> [Decl]
@@ -94,13 +90,15 @@ functions in the second (final) run, for taking the context reduction in account
 >     bindConstrs
 >     bindLabels
 >     -- bindClassMethods cEnv
->     -- _ <- tcDecls vds
->     -- setIsFinal
+>     
 >     -- assign each declaration a unique id
 >     vdsN <- numberDecls vds
+>     -- do the type check
 >     (newDecls, _) <- tcDecls vdsN
->     theta <- getTypeSubst
+>     -- correct the contexts of variables because of the context reduction
+>     -- and apply the final type substitution to the type annotations
 >     newDecls' <- correctVariableContexts newDecls
+>     theta <- getTypeSubst
 >     let newDecls'' = applyTypeSubst theta newDecls' 
 >
 >     cEnv' <- getClassEnv
@@ -108,6 +106,7 @@ functions in the second (final) run, for taking the context reduction in account
 >     checkNoEqualClassMethodAndFunctionNames vEnv cEnv'
 > 
 >     -- checkForAmbiguousContexts vds
+>     -- restore the order of the declarations!
 >     return (map snd $ sortBy sorter $ tds' ++ zip (map fst vds') newDecls'')
 >   (tds', vds') = partition (isTypeDecl . snd) pdecls
 >   tds = map snd tds'
@@ -1383,7 +1382,6 @@ because of possibly multiple occurrences of variables.
 >       cEnv <- getClassEnv
 >       tcEnv <- getTyConsEnv
 >       let tySig = qualLookupTypeSig m v sigs
->       -- if it's the final run, always use the context from the value environment!
 >       case isJust tySig of
 >         True -> do
 >           let cty = fromJust tySig
@@ -1564,9 +1562,6 @@ because of possibly multiple occurrences of variables.
 >     tyEnv0 <- getValueEnv
 >     (ds', cxs) <- tcDecls ds
 >     (e', (cx, ty)) <- tcExpr p e
->     -- Shall we gather all contexts, also in the case that a declaration isn't 
->     -- used at all (neither directly nor indirectly)? But whether this 
->     -- is the case is not trivially determinable (TODO!).
 >     cty <- checkSkolems p (text "Expression:" <+> ppExpr 0 e) tyEnv0 (cx ++ cxs, ty)
 >     return (Let ds' e', cty)
 > tcExpr p (Do sts e) = do
@@ -1651,7 +1646,6 @@ because of possibly multiple occurrences of variables.
 > tcQual p q@(StmtBind sref t e) = do
 >   (cx1, ty1) <- tcPattern p t
 >   (e', cty2@(cx2, _  )) <- tcExpr p e
->   -- TODO: return contexts
 >   unify p "generator" (ppStmt q $-$ text "Term:" <+> ppExpr 0 e)
 >         (noContext $ listType ty1) cty2
 >   return (StmtBind sref t e', cx1 ++ cx2)
@@ -2247,7 +2241,7 @@ vars in their contexts.
 >   ambiguousTypeVars = filter ( < 0) . concatMap (typeVars . snd)
 
 \end{verbatim}
-After the type checking has finished, we still have to apply the finally 
+After the type checking has finished, we still have to apply the final
 type substitution to the recorded contexts and types (at the moment for patterns
 nothing is recorded so that they are simply returned). 
 \begin{verbatim}
