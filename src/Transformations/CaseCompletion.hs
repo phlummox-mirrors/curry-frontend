@@ -1,11 +1,15 @@
-{- |CaseCompletion - expands case branches with missing constructors
+{- |
+    Module      : $Header$
+    Description : Expands case branches with missing constructors
+    
+    Copyright   : May 2005, Martin Engelke, (men@informatik.uni-kiel.de)
 
     The MMC translates case expressions into the intermediate language
     representation (IL) without completing them (i.e. without generating
     case branches for missing contructors). Because they are necessary for
     the PAKCS back end, this module expands all case expressions accordingly.
 
-    May 2005, Martin Engelke, (men@informatik.uni-kiel.de)
+
 -}
 module Transformations.CaseCompletion (completeCase) where
 
