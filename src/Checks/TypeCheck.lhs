@@ -1046,8 +1046,8 @@ signature the declared type must be too general.
 >       modifyValueEnv $ rebindFun m v arity sigma
 >   where
 >   what = text (if poly then "Function:" else "Variable:") <+> ppIdent v
->   genType poly' (ForAll cx0 _n ty)
->     -- n > 0 = internalError $ "TypeCheck.genVar: " ++ showLine (idPosition v) ++ show v ++ " :: " ++ show ty ++ " " ++ show i 
+>   genType poly' (ForAll cx0 n ty)
+>     | n > 0 = internalError $ "TypeCheck.genVar: " ++ showLine (idPosition v) ++ show v ++ " :: " ++ show ty
 >     | poly' = gen lvs (cx0, ty)
 >     | otherwise = monoType' (cx0, ty)
 >   eqTyScheme (ForAll _cx1 _ t1) (ForAll _cx2 _ t2) = equTypes t1 t2
