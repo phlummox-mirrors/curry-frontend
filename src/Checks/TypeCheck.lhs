@@ -113,7 +113,7 @@ functions in the second (final) run, for taking the context reduction in account
 >   tds = map snd tds'
 >   vds = map snd vds'
 >   sorter (n1, _) (n2, _) = compare n1 n2
->   initState = TcState m tcEnv tyEnv cEnv doContextRed0 idSubst emptySigEnv 0 [] [] 0 Map.empty
+>   initState = TcState m tcEnv tyEnv cEnv doContextRed0 idSubst emptySigEnv 0 [] 0 Map.empty
 
 \end{verbatim}
 
@@ -131,11 +131,6 @@ generating fresh type variables.
 >   , typeSubst   :: TypeSubst
 >   , sigEnv      :: SigEnv
 >   , nextId      :: Int         -- automatic counter
->   -- A stack for the substitutions after the first iteration of the
->   -- fix point iteration. Each call of tcDecls creates a new scope for these
->   -- substitutions by putting a new element onto the stack, which is 
->   -- subsequently used in each declaration group.   
->   , firstThetas :: [Maybe TypeSubst]
 >   , errors      :: [Message]
 >   , declCounter :: Int
 >   , declGroups  :: Map.Map [Int] ([Decl], BT.Context)
@@ -198,18 +193,6 @@ generating fresh type variables.
 
 > resetNextId :: Int -> TCM ()
 > resetNextId n = S.modify $ \s -> s { nextId = n}
-
-> newScope :: TCM ()
-> newScope = S.modify $ \s -> s { firstThetas = Nothing : firstThetas s }
-
-> endScope :: TCM ()
-> endScope = S.modify $ \s -> s { firstThetas = tail $ firstThetas s }
-
-> setFirstTypeSubst :: Maybe TypeSubst -> TCM ()
-> setFirstTypeSubst t = S.modify $ \s -> s { firstThetas = t : (tail $ firstThetas s) }
-
-> getFirstTypeSubst :: TCM (Maybe TypeSubst)
-> getFirstTypeSubst = S.gets (head . firstThetas)
 
 > getDoContextRed :: TCM Bool
 > getDoContextRed = S.gets doContextRed
@@ -492,9 +475,7 @@ either one of the basic types or \texttt{()}.
 >   m <- getModuleIdent
 >   oldSig <- getSigEnv
 >   modifySigEnv $ \ sigs -> foldr bindTypeSigs sigs ods
->   newScope -- scope for the first inferred type substitutions
 >   dsAndCxs <- mapM tcDeclGroup $ scc (bv . snd) (qfv m . snd) vds'
->   endScope
 >   modifySigEnv (const oldSig)
 >   let allDecls = ods' ++ concatMap fst dsAndCxs
 >   -- restore the original order of the declarations again
@@ -1419,22 +1400,12 @@ because of possibly multiple occurrences of variables.
 >       case isJust tySig of
 >         True -> do
 >           let cty = fromJust tySig
->           -- load the inferred type together with the (new) contexts
->           (icx', ity') <- getValueEnv >>= (inst . (flip (funType tcEnv m v) cEnv))
->           -- Here we need the inferred type *after the first iteration of the
->           -- fix point iteration*. The reason for this is that the type variables 
->           -- in the context refer to this type. Only given this type we can construct 
->           -- the correct mapping from inferred type variables to type variables
->           -- in the type inferred by the type signature. 
->           maybeTheta <- getFirstTypeSubst
->           let firstTypeSubst = case maybeTheta of
->                 Nothing -> idSubst
->                 Just x -> x
->               (icx, ity) = subst firstTypeSubst (icx', ity')
+>           -- load the inferred type together with the contexts
+>           (icx, ity) <- getValueEnv >>= (inst . (flip (funType tcEnv m v) cEnv))
 >           -- retrieve the type from the type signature...
 >           (cx0, ty0) <- expandPolyType cty >>= inst
 >           -- ... and construct a mapping, so that the type variables in the 
->           -- inferred (new) contexts match the type variables in the type
+>           -- inferred contexts match the type variables in the type
 >           -- constructed from the type signature
 >           let mapping = buildTypeVarsMapping ity ty0
 >               cty' = (cx0 ++ subst mapping icx, ty0)
