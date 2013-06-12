@@ -209,7 +209,7 @@ gatherTSExpr (Constructor _) = []
 gatherTSExpr (Paren expr) = gatherTSExpr expr
 -- convert typification into type signatures without position (TODO: add
 -- position somehow)
-gatherTSExpr (Typed _ expr cx texp) = gatherTSExpr expr ++ [TypeSig NoPos [] cx texp]
+gatherTSExpr (Typed _ expr cx texp) = gatherTSExpr expr ++ [typeSig [] cx texp]
 gatherTSExpr (Tuple _ exps) = concatMap gatherTSExpr exps
 gatherTSExpr (List _ exps) = concatMap gatherTSExpr exps
 gatherTSExpr (ListCompr _ expr stms) = gatherTSExpr expr ++ concatMap gatherTSStm stms
@@ -580,28 +580,28 @@ transformClass cEnv (ClassDecl _p _scx cls tyvar _decls) =
   genSuperClassDictSelMethod scls = 
     let selMethodId = mkIdent $ selMethodName
         selMethodName = mkSelFunName (show $ theClass theClass0) scls in
-    [ TypeSig NoPos [selMethodId]
+    [ typeSig [selMethodId]
         emptyContext (ArrowType 
           (ConstructorType (qualify $ dataTypeName) [VariableType tyvar]) 
           (ConstructorType (mkQIdent $ dictTypePrefix ++ scls) [VariableType tyvar]))
-    , FunctionDecl NoPos Nothing (-1) selMethodId 
-       [Equation NoPos 
+    , fun selMethodId 
+       [equation
          (equationsLhs selMethodName)
-         (SimpleRhs NoPos (qVar $ dictSelParam selMethodName scls) [])
+         (simpleRhs (qVar $ dictSelParam selMethodName scls))
        ]
     ]
   genMethodSelMethod :: ((Ident, Context, TypeExpr), Int) -> [Decl]
   genMethodSelMethod ((m, _cx, ty), i) = 
     let selMethodId = mkIdent $ selMethodName
         selMethodName = mkSelFunName (show $ theClass theClass0) (show m) in
-    [ TypeSig NoPos [selMethodId]
+    [ typeSig [selMethodId]
         emptyContext (ArrowType 
           (ConstructorType (mkQIdent $ dictTypePrefix ++ (show cls)) [VariableType tyvar]) 
           ty)
-    , FunctionDecl NoPos Nothing (-1) selMethodId 
-       [Equation NoPos 
+    , fun selMethodId 
+       [equation
          (equationsLhs selMethodName)
-         (SimpleRhs NoPos (qVar $ methodSelParam selMethodName i) [])
+         (simpleRhs (qVar $ methodSelParam selMethodName i))
        ]
     ]
   equationsLhs selMethodName = let selMethodId = mkIdent $ selMethodName in 
@@ -641,10 +641,10 @@ transformClass2 cEnv (ClassDecl _p _scx cls _tyvar _decls) =
   genSuperClassDictSelMethod :: String -> [Decl]
   genSuperClassDictSelMethod scls = 
     let selMethodName = mkSelFunName (show $ theClass theClass0) scls in
-    [ FunctionDecl NoPos Nothing (-1) (mkIdent selMethodName)
-      [Equation NoPos
+    [ fun (mkIdent selMethodName)
+      [equation
         (equationLhs selMethodName)
-        (SimpleRhs NoPos (qVar $ dictSelParam selMethodName scls) [])
+        (simpleRhs (qVar $ dictSelParam selMethodName scls))
       ]
     ]
     
@@ -653,10 +653,10 @@ transformClass2 cEnv (ClassDecl _p _scx cls _tyvar _decls) =
   genMethodSelMethod :: ((Ident, Context, TypeExpr), Int) -> [Decl]
   genMethodSelMethod ((m, _cx, _ty), i) = 
     let selMethodName = mkSelFunName (show $ theClass theClass0) (show m) in
-    [ FunctionDecl NoPos Nothing (-1) (mkIdent selMethodName)
-      [Equation NoPos
+    [ fun (mkIdent selMethodName)
+      [equation
         (equationLhs selMethodName)
-        (SimpleRhs NoPos (qVar $ methodSelParam selMethodName i) [])
+        (simpleRhs (qVar $ methodSelParam selMethodName i))
       ]
     ]
   
@@ -683,10 +683,10 @@ transformClass2 cEnv (ClassDecl _p _scx cls _tyvar _decls) =
   genNonDirectSuperClassDictSelMethod :: QualIdent -> [Decl]
   genNonDirectSuperClassDictSelMethod scls = 
     let selMethodName = mkSelFunName (show $ theClass theClass0) (show scls) in
-    [ FunctionDecl NoPos Nothing (-1) (mkIdent selMethodName)
-      [Equation NoPos
+    [ fun (mkIdent selMethodName)
+      [equation
         (FunLhs (mkIdent selMethodName) [])
-        (SimpleRhs NoPos expr [])
+        (simpleRhs expr)
       ]
     ]
     where
@@ -807,15 +807,15 @@ rename rfunc = updIdentName rfunc
 -- |handles functions missing in an instance declaration. Searches for a
 -- default method (TODO!) and inserts this, else inserts an error statement
 handleMissingFunc :: ClassEnv -> IDecl -> QualIdent -> Ident -> [Decl]
-handleMissingFunc _cEnv (InstanceDecl _ _ cls _tcon _ _) ity fun = 
-  [ FunctionDecl NoPos Nothing (-1) globalName [if defaultMethodDefined then equ2 else equ1]
+handleMissingFunc _cEnv (InstanceDecl _ _ cls _tcon _ _) ity fun0 = 
+  [ fun globalName [if defaultMethodDefined then equ2 else equ1]
   ]
   where
-  globalName = mkIdent $ instMethodName cls ity (show fun)
-  equ1 = Equation NoPos (FunLhs globalName []) 
-    (SimpleRhs NoPos (Apply (qVar . mkIdent $ "error") 
-                            (Literal $ String (srcRef 0) errorString)) [])
-  errorString = show fun ++ " not given in instance declaration of class "
+  globalName = mkIdent $ instMethodName cls ity (show fun0)
+  equ1 = equation (FunLhs globalName []) 
+    (simpleRhs (Apply (qVar . mkIdent $ "error") 
+                      (Literal $ String (srcRef 0) errorString)))
+  errorString = show fun0 ++ " not given in instance declaration of class "
     ++ show cls ++ " and type " ++ show ity
   equ2 = undefined -- TODO
   defaultMethodDefined = False -- TODO
@@ -825,11 +825,10 @@ handleMissingFunc _ _ _ _ = internalError "handleMissingFunc"
 -- using dictionary data types instead of tuples
 createDictionary :: ClassEnv -> IDecl -> QualIdent -> [Decl]
 createDictionary cEnv (InstanceDecl _ _scx cls _ _tvars _decls) ity = 
-  [ FunctionDecl NoPos Nothing (-1) (dictName cls)
-    [Equation NoPos
+  [ fun (dictName cls)
+    [equation
       (FunLhs (dictName cls) [])
-      (SimpleRhs NoPos 
-        all' [])
+      (simpleRhs all')
       ]
   ] 
   where
@@ -849,11 +848,11 @@ createDictionary _ _ _ = internalError "createDictionary"
 -- using tuples
 createDictionary2 :: ClassEnv -> IDecl -> QualIdent -> [Decl]
 createDictionary2 cEnv (InstanceDecl _ _scx cls _tcon _tvars _decls) ity = 
-  [ FunctionDecl NoPos Nothing (-1) (dictName cls)
-    [Equation NoPos
+  [ fun (dictName cls)
+    [equation
       (FunLhs (dictName cls) [])
-      (SimpleRhs NoPos 
-        (if length all0 == 1 then head all0 else Tuple noRef all0) [])
+      (simpleRhs 
+        (if length all0 == 1 then head all0 else Tuple noRef all0))
       ]
   ] 
   where
@@ -876,6 +875,18 @@ qVar = Variable Nothing . qualify
 
 mkQIdent :: String -> QualIdent
 mkQIdent = qualify . mkIdent
+
+fun :: Ident -> [Equation] -> Decl
+fun = FunctionDecl NoPos Nothing (-1)
+
+equation :: Lhs -> Rhs -> Equation
+equation = Equation NoPos
+
+typeSig :: [Ident] -> Context -> TypeExpr -> Decl
+typeSig = TypeSig NoPos
+
+simpleRhs :: Expression -> Rhs
+simpleRhs e = SimpleRhs NoPos e []
 
 -- ---------------------------------------------------------------------------
 -- other transformations
