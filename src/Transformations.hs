@@ -76,5 +76,5 @@ insertDicts cEnv m = (cEnv, m')
 -- from the module
 typeSigs :: CompilerEnv -> Module -> (CompilerEnv, Module)
 typeSigs cEnv m = (cEnv, m')
-  where m' = TS.removeTypeSigs m
+  where m' = TS.removeTypeSigs cEnv m
   

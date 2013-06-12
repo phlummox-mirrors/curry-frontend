@@ -18,74 +18,74 @@
 module Transformations.TypeSigs (removeTypeSigs) where
 
 import Curry.Syntax.Type
+import CompilerEnv
 
-removeTypeSigs :: Module -> Module
-removeTypeSigs (Module m e i ds) = Module m e i (concatMap tsDecl ds)
+removeTypeSigs :: CompilerEnv -> Module -> Module
+removeTypeSigs cEnv (Module m e i ds) = Module m e i (concatMap (tsDecl cEnv) ds)
 
-tsDecl :: Decl -> [Decl]
-tsDecl d@(InfixDecl   _ _ _ _) = [d]
-tsDecl d@(DataDecl    _ _ _ _) = [d]
-tsDecl d@(NewtypeDecl _ _ _ _) = [d]
-tsDecl d@(TypeDecl    _ _ _ _) = [d]
+tsDecl :: CompilerEnv -> Decl -> [Decl]
+tsDecl _cEnv d@(InfixDecl   _ _ _ _) = [d]
+tsDecl _cEnv d@(DataDecl    _ _ _ _) = [d]
+tsDecl _cEnv d@(NewtypeDecl _ _ _ _) = [d]
+tsDecl _cEnv d@(TypeDecl    _ _ _ _) = [d]
 -- remove type signatures if their context is not empty
-tsDecl d@(TypeSig _ _ (Context [])    _) = [d]
-tsDecl   (TypeSig _ _ (Context (_:_)) _) = []
-tsDecl   (FunctionDecl p cty n i eqs) = [FunctionDecl p cty n i (map tsEqu eqs)]
-tsDecl d@(ForeignDecl    _ _ _ _ _) = [d]
-tsDecl d@(ExternalDecl         _ _) = [d]
-tsDecl   (PatternDecl p cty n pt rhs) = [PatternDecl p cty n pt (tsRhs rhs)]
-tsDecl d@(FreeDecl             _ _) = [d]
-tsDecl d@(ClassDecl      _ _ _ _ _) = [d]
-tsDecl d@(InstanceDecl _ _ _ _ _ _) = [d]
+tsDecl _cEnv d@(TypeSig _ _ (Context [])    _) = [d]
+tsDecl _cEnv   (TypeSig _ _ (Context (_:_)) _) = []
+tsDecl  cEnv   (FunctionDecl p cty id0 i eqs) = [FunctionDecl p cty id0 i (map (tsEqu cEnv) eqs)]
+tsDecl _cEnv d@(ForeignDecl    _ _ _ _ _) = [d]
+tsDecl _cEnv d@(ExternalDecl         _ _) = [d]
+tsDecl  cEnv   (PatternDecl p cty id0 pt rhs) = [PatternDecl p cty id0 pt (tsRhs cEnv rhs)]
+tsDecl _cEnv d@(FreeDecl             _ _) = [d]
+tsDecl _cEnv d@(ClassDecl      _ _ _ _ _) = [d]
+tsDecl _cEnv d@(InstanceDecl _ _ _ _ _ _) = [d]
 
-tsEqu :: Equation -> Equation
-tsEqu (Equation p lhs rhs) = Equation p lhs (tsRhs rhs)
+tsEqu :: CompilerEnv -> Equation -> Equation
+tsEqu cEnv (Equation p lhs rhs) = Equation p lhs (tsRhs cEnv rhs)
 
-tsRhs :: Rhs -> Rhs
-tsRhs (SimpleRhs p e ds) = SimpleRhs p (tsExpr e) (concatMap tsDecl ds)
-tsRhs (GuardedRhs cs ds) = GuardedRhs (map tsCondExpr cs) (concatMap tsDecl ds)
+tsRhs :: CompilerEnv -> Rhs -> Rhs
+tsRhs cEnv (SimpleRhs p e ds) = SimpleRhs p (tsExpr cEnv e) (concatMap (tsDecl cEnv) ds)
+tsRhs cEnv (GuardedRhs cs ds) = GuardedRhs (map (tsCondExpr cEnv) cs) (concatMap (tsDecl cEnv) ds)
 
-tsCondExpr :: CondExpr -> CondExpr
-tsCondExpr (CondExpr p e1 e2) = CondExpr p (tsExpr e1) (tsExpr e2)
+tsCondExpr :: CompilerEnv -> CondExpr -> CondExpr
+tsCondExpr cEnv (CondExpr p e1 e2) = CondExpr p (tsExpr cEnv e1) (tsExpr cEnv e2)
 
-tsExpr :: Expression -> Expression
-tsExpr e@(Literal _) = e
-tsExpr e@(Variable _ _) = e
-tsExpr e@(Constructor _) = e
-tsExpr   (Paren e) = tsExpr e
+tsExpr :: CompilerEnv -> Expression -> Expression
+tsExpr _cEnv e@(Literal _) = e
+tsExpr _cEnv e@(Variable _ _) = e
+tsExpr _cEnv e@(Constructor _) = e
+tsExpr cEnv   (Paren e) = tsExpr cEnv e
 -- TODO: handle type signature in typed expression!
-tsExpr (Typed cty e cx t) = Typed cty (tsExpr e) cx t
-tsExpr (Tuple sref es) = Tuple sref (map tsExpr es)
-tsExpr (List sref es) = List sref (map tsExpr es)
-tsExpr (ListCompr sref e ss) = ListCompr sref (tsExpr e) (map tsStmt ss)
-tsExpr (EnumFrom e1) = EnumFrom (tsExpr e1)
-tsExpr (EnumFromThen e1 e2) = EnumFromThen (tsExpr e1) (tsExpr e2)
-tsExpr (EnumFromTo e1 e2) = EnumFromTo (tsExpr e1) (tsExpr e2)
-tsExpr (EnumFromThenTo e1 e2 e3) = EnumFromThenTo (tsExpr e1) (tsExpr e2) (tsExpr e3)
-tsExpr (UnaryMinus i e) = UnaryMinus i (tsExpr e)
-tsExpr (Apply e1 e2) = Apply (tsExpr e1) (tsExpr e2)
-tsExpr (InfixApply e1 op e2) = InfixApply (tsExpr e1) op (tsExpr e2)
-tsExpr (LeftSection e op) = LeftSection (tsExpr e) op
-tsExpr (RightSection op e) = RightSection op (tsExpr e)
-tsExpr (Lambda sref ps e) = Lambda sref ps (tsExpr e)
-tsExpr (Let ds e) = Let (concatMap tsDecl ds) (tsExpr e)
-tsExpr (Do ss e) = Do (map tsStmt ss) (tsExpr e)
-tsExpr (IfThenElse sref e1 e2 e3) = 
-  IfThenElse sref (tsExpr e1) (tsExpr e2) (tsExpr e3)
-tsExpr (Case sref ct e alts) = Case sref ct (tsExpr e) (map tsAlt alts)
-tsExpr (RecordConstr fs) = RecordConstr (map tsField fs)
-tsExpr (RecordSelection e i) = RecordSelection (tsExpr e) i
-tsExpr (RecordUpdate fs e) = RecordUpdate (map tsField fs) (tsExpr e)
+tsExpr cEnv (Typed cty e cx t) = Typed cty (tsExpr cEnv e) cx t
+tsExpr cEnv (Tuple sref es) = Tuple sref (map (tsExpr cEnv) es)
+tsExpr cEnv (List sref es) = List sref (map (tsExpr cEnv) es)
+tsExpr cEnv (ListCompr sref e ss) = ListCompr sref (tsExpr cEnv e) (map (tsStmt cEnv) ss)
+tsExpr cEnv (EnumFrom e1) = EnumFrom (tsExpr cEnv e1)
+tsExpr cEnv (EnumFromThen e1 e2) = EnumFromThen (tsExpr cEnv e1) (tsExpr cEnv e2)
+tsExpr cEnv (EnumFromTo e1 e2) = EnumFromTo (tsExpr cEnv e1) (tsExpr cEnv e2)
+tsExpr cEnv (EnumFromThenTo e1 e2 e3) = EnumFromThenTo (tsExpr cEnv e1) (tsExpr cEnv e2) (tsExpr cEnv e3)
+tsExpr cEnv (UnaryMinus i e) = UnaryMinus i (tsExpr cEnv e)
+tsExpr cEnv (Apply e1 e2) = Apply (tsExpr cEnv e1) (tsExpr cEnv e2)
+tsExpr cEnv (InfixApply e1 op e2) = InfixApply (tsExpr cEnv e1) op (tsExpr cEnv e2)
+tsExpr cEnv (LeftSection e op) = LeftSection (tsExpr cEnv e) op
+tsExpr cEnv (RightSection op e) = RightSection op (tsExpr cEnv e)
+tsExpr cEnv (Lambda sref ps e) = Lambda sref ps (tsExpr cEnv e)
+tsExpr cEnv (Let ds e) = Let (concatMap (tsDecl cEnv) ds) (tsExpr cEnv e)
+tsExpr cEnv (Do ss e) = Do (map (tsStmt cEnv) ss) (tsExpr cEnv e)
+tsExpr cEnv (IfThenElse sref e1 e2 e3) = 
+  IfThenElse sref (tsExpr cEnv e1) (tsExpr cEnv e2) (tsExpr cEnv e3)
+tsExpr cEnv (Case sref ct e alts) = Case sref ct (tsExpr cEnv e) (map (tsAlt cEnv) alts)
+tsExpr cEnv (RecordConstr fs) = RecordConstr (map (tsField cEnv) fs)
+tsExpr cEnv (RecordSelection e i) = RecordSelection (tsExpr cEnv e) i
+tsExpr cEnv (RecordUpdate fs e) = RecordUpdate (map (tsField cEnv) fs) (tsExpr cEnv e)
 
 
-tsStmt :: Statement -> Statement
-tsStmt (StmtExpr sref e) = StmtExpr sref (tsExpr e)
-tsStmt (StmtDecl ds) = StmtDecl (concatMap tsDecl ds)
-tsStmt (StmtBind sref p e) = StmtBind sref p (tsExpr e)
+tsStmt :: CompilerEnv -> Statement -> Statement
+tsStmt cEnv (StmtExpr sref e) = StmtExpr sref (tsExpr cEnv e)
+tsStmt cEnv (StmtDecl ds) = StmtDecl (concatMap (tsDecl cEnv) ds)
+tsStmt cEnv (StmtBind sref p e) = StmtBind sref p (tsExpr cEnv e)
 
-tsAlt :: Alt -> Alt
-tsAlt (Alt p pt rhs) = Alt p pt (tsRhs rhs)
+tsAlt :: CompilerEnv -> Alt -> Alt
+tsAlt cEnv (Alt p pt rhs) = Alt p pt (tsRhs cEnv rhs)
 
-tsField :: Field Expression -> Field Expression
-tsField (Field p i e) = Field p i (tsExpr e)
-
+tsField :: CompilerEnv -> Field Expression -> Field Expression
+tsField cEnv (Field p i e) = Field p i (tsExpr cEnv e)
