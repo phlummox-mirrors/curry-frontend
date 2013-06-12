@@ -188,11 +188,11 @@ generating fresh type variables.
 > -- hasError :: TCM Bool
 > -- hasError = liftM (not . null) (S.gets errors)
 
-> getOnlyNextId :: TCM Int
-> getOnlyNextId = S.gets nextId
+> -- getOnlyNextId :: TCM Int
+> -- getOnlyNextId = S.gets nextId
 
-> resetNextId :: Int -> TCM ()
-> resetNextId n = S.modify $ \s -> s { nextId = n}
+> -- resetNextId :: Int -> TCM ()
+> -- resetNextId n = S.modify $ \s -> s { nextId = n}
 
 > getDoContextRed :: TCM Bool
 > getDoContextRed = S.gets doContextRed
@@ -438,12 +438,12 @@ All type signatures of defined class methods are loaded into the signature
 environment as well. 
 \begin{verbatim}
 
-> bindClassMethods :: ClassEnv -> TCM ()
-> bindClassMethods cEnv = 
->   let tySigs = getAllClassMethods cEnv
->   in modifySigEnv $ 
->      \sigs -> foldr (\(id0, cx, texp) sig -> bindTypeSig id0 (cx, texp) sig) 
->                     sigs tySigs
+> -- bindClassMethods :: ClassEnv -> TCM ()
+> -- bindClassMethods cEnv = 
+> --   let tySigs = getAllClassMethods cEnv
+> --   in modifySigEnv $ 
+> --      \sigs -> foldr (\(id0, cx, texp) sig -> bindTypeSig id0 (cx, texp) sig) 
+> --                     sigs tySigs
 
 \end{verbatim}
 \paragraph{Type Inference}
@@ -537,19 +537,6 @@ either one of the basic types or \texttt{()}.
 >   -- do NOT return final contexts! 
 >   -- TODO: return cxs or cxs' (or doesn't matter?)
 >   return (newDs1, nonLocalContextElems freeVars $ concat cxs')
-
-> -- |searches the correct ValueInfo in the given list and writes its
-> -- information back into the value environment 
-> modifyEnv' :: [ValueInfo] -> TCM ()
-> modifyEnv' vs = do
->   m <- getModuleIdent
->   let vs' = filter (valInMdl m) vs
->       Value qid n tsc = head vs'
->   case length vs' == 1 of
->     True -> do
->       modifyValueEnv $ \env -> 
->         bindFun m (unqualify qid) n tsc env
->     False -> internalError "TypeCheck modifyEnv'"
 
 > -- |checks whether the given "ValueInfo" refers to an identifier from
 > -- the given module
@@ -742,24 +729,24 @@ the maximal necessary contexts for the functions are determined.
 > fpExpr (Apply e1 e2) = do
 >   (e1', cx1) <- fpExpr e1
 >   (e2', cx2) <- fpExpr e2
->   theta <- getTypeSubst
+>   -- theta <- getTypeSubst
 >   return (Apply e1' e2', {-subst theta -}(cx1 ++ cx2))
 > fpExpr (InfixApply e1 op e2) = do
 >   (e1', cx1) <- fpExpr e1
 >   (_op', cxO) <- fpExpr (infixOp op)
 >   (e2', cx2) <- fpExpr e2
->   theta <- getTypeSubst
+>   -- theta <- getTypeSubst
 >   return (InfixApply e1' op e2', {-subst theta -}(cx1 ++ cxO ++ cx2))
 > fpExpr (LeftSection e1 op) = do
 >   (e1', cx1) <- fpExpr e1
 >   (_op', cxO) <- fpExpr (infixOp op)
->   theta <- getTypeSubst
+>   -- theta <- getTypeSubst
 >   return (LeftSection e1' op, {-subst theta -}(cx1 ++ cxO))
 > fpExpr (RightSection op e1) = do
 >   (e1', cx1) <- fpExpr e1
 >   (_op', cxO) <- fpExpr (infixOp op)
->   theta <- getTypeSubst
->   return (RightSection op e1', subst theta (cx1 ++ cxO))
+>   -- theta <- getTypeSubst
+>   return (RightSection op e1', {-subst theta -}(cx1 ++ cxO))
 > fpExpr (Lambda sref ps e) = do
 >   (e', cx) <- fpExpr e
 >   return (Lambda sref ps e', cx)
