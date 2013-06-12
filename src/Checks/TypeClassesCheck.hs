@@ -86,6 +86,9 @@ typeClassesCheck m decls (ClassEnv importedClasses importedInstances _) tcEnv0 =
       mapM_ classMethodSigsContainTypeVar classDecls
       mapM_ instanceTypeVarsDoNotAppearTwice instDecls
       
+      -- currently disabled
+      when False $ mapM_ checkCorrectTypeVarsInTypeSigs classDecls
+      
       -- gather all classes and instances for more "global" checks
       let classes = map classDeclToClass classDecls ++ importedClasses
           instances = catMaybes (map (instanceDeclToInstance m tcEnv) instDecls) ++ importedInstances
@@ -540,6 +543,23 @@ checkInstanceContextImpliesAllInstanceContextsOfSuperClasses cEnv tcEnv m
         
 checkInstanceContextImpliesAllInstanceContextsOfSuperClasses _ _ _ _
   = internalError "checkInstanceContextImpliesAllInstanceContextsOfSuperClasses"
+
+-- | Check that in the type signatures of the class only the type variable
+-- of the class is used. TODO: later allow this! 
+checkCorrectTypeVarsInTypeSigs :: Decl -> Tcc ()
+checkCorrectTypeVarsInTypeSigs (ClassDecl _ _ _ tyvar ds) = do
+  mapM_ checkTypeVars tyVarsSigs
+  where
+  tySigs = filter isTypeSig ds
+  tyVarsSigs = map tyVars tySigs
+  tyVars (TypeSig p _ _ te) = (p, typeVarsInTypeExpr te)
+  tyVars _ = internalError "checkTypeVarsInTypeSigs"
+  checkTypeVars (p, tyvars) = 
+    when (nub tyvars /= [tyvar]) $ 
+      report $ errNotAllowedTypeVars p (nub tyvars \\ [tyvar])
+checkCorrectTypeVarsInTypeSigs _ = internalError "checkCorrectTypeVarsInTypeSigs"
+  
+
 
 -- ---------------------------------------------------------------------------
 -- source code transformation
@@ -1083,3 +1103,13 @@ errContextNotImplied p thisContext _instsCxs notImplCxs = posMessage p $
 errTypeInInstanceDecl :: Position -> QualIdent -> Message
 errTypeInInstanceDecl p qid = posMessage p $ 
   text "Alias type in instance declaration: " <> text (show qid)
+
+errNotAllowedTypeVars :: Position -> [Ident] -> Message
+errNotAllowedTypeVars p ids = posMessage p $ 
+  text ("Different type variables than the type variable given in the class declaration" ++ 
+  " (currently) unfortunately not supported! ")
+  $$ text "These are: " <> text (show ids)
+    
+  
+  
+  
