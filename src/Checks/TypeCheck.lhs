@@ -1381,10 +1381,8 @@ because of possibly multiple occurrences of variables.
 >       m <- getModuleIdent
 >       cEnv <- getClassEnv
 >       tcEnv <- getTyConsEnv
->       let tySig = qualLookupTypeSig m v sigs
->       case isJust tySig of
->         True -> do
->           let cty = fromJust tySig
+>       case qualLookupTypeSig m v sigs of
+>         Just cty -> do
 >           -- load the inferred type together with the contexts
 >           (icx, ity) <- getValueEnv >>= (inst . (flip (funType tcEnv m v) cEnv))
 >           -- retrieve the type from the type signature...
@@ -1395,7 +1393,7 @@ because of possibly multiple occurrences of variables.
 >           let mapping = buildTypeVarsMapping ity ty0
 >               cty' = (cx0 ++ subst mapping icx, ty0)
 >           return (Variable (Just $ mirrorCT cty') v, cty')
->         False -> do
+>         Nothing -> do
 >           cty <- getValueEnv >>= inst . (flip (funType tcEnv m v) cEnv)
 >           return (Variable (Just $ mirrorCT cty) v, cty)
 >   where v' = unqualify v
