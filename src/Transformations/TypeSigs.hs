@@ -18,6 +18,9 @@
 module Transformations.TypeSigs (transformTypeSigs) where
 
 import Curry.Syntax.Type
+import Env.ClassEnv
+import Base.CurryTypes
+import Curry.Base.Ident
 import CompilerEnv
 
 -- | transforms all type signatures (in explicit type signatures declarations
@@ -31,9 +34,30 @@ tsDecl _cEnv d@(InfixDecl   _ _ _ _) = [d]
 tsDecl _cEnv d@(DataDecl    _ _ _ _) = [d]
 tsDecl _cEnv d@(NewtypeDecl _ _ _ _) = [d]
 tsDecl _cEnv d@(TypeDecl    _ _ _ _) = [d]
--- remove type signatures if their context is not empty
-tsDecl _cEnv d@(TypeSig _ _ (Context [])    _) = [d]
-tsDecl _cEnv   (TypeSig _ _ (Context (_:_)) _) = []
+
+tsDecl  cEnv (TypeSig p ids (Context cx) ty) =
+  [TypeSig p ids (Context []) newTySig]
+  where
+  classes = map (\(ContextElem cls _ _) -> cls) cx
+  dictTys = dictTypes (classEnv cEnv) classes
+  dictTys' = map fromType dictTys
+  vars = map (\(ContextElem _ var _) -> var) cx
+  -- Replace the class variable (always 0 in dictTys, ergo always 
+  -- identSupply !! 0 in dictTys') with the variable given in the context.  
+  -- TODO: Rename all other variables so that they don't overlap with other type 
+  -- variables in the type signature AND/OR match the type variables from
+  -- the dictionary type with type variables from the type signature. 
+  -- As currently, no other type variables than the type variable of the class
+  -- itself are allowed, this TODO is not yet necessary. 
+  dictTys'' = zipWith (\var ty0 -> substId (classVar, var) ty0) vars dictTys'
+  
+  constrNewTySig [] sig = sig
+  constrNewTySig (d:ds) sig = constrNewTySig ds (ArrowType d sig)
+  
+  newTySig = constrNewTySig (reverse dictTys'') ty
+
+  classVar = identSupply !! 0
+  
 tsDecl  cEnv   (FunctionDecl p cty id0 i eqs) = [FunctionDecl p cty id0 i (map (tsEqu cEnv) eqs)]
 tsDecl _cEnv d@(ForeignDecl    _ _ _ _ _) = [d]
 tsDecl _cEnv d@(ExternalDecl         _ _) = [d]
@@ -92,3 +116,22 @@ tsAlt cEnv (Alt p pt rhs) = Alt p pt (tsRhs cEnv rhs)
 
 tsField :: CompilerEnv -> Field Expression -> Field Expression
 tsField cEnv (Field p i e) = Field p i (tsExpr cEnv e)
+
+-- ----------------------------------------------------------------------------
+-- helper functions
+-- ----------------------------------------------------------------------------
+
+-- | Substitutes the class variable with the given variable. (TODO: Also renames
+-- all other variables?)
+substId :: (Ident, Ident) -> TypeExpr -> TypeExpr
+substId s (ConstructorType qid tes) = ConstructorType qid (map (substId s) tes)
+substId s (SpecialConstructorType tcon tes) = SpecialConstructorType tcon (map (substId s) tes)
+substId (x, y) (VariableType i) 
+  | x == i = VariableType y
+  | otherwise = VariableType i -- VariableType (renameIdent i 1)  
+substId s (TupleType tes) = TupleType (map (substId s) tes)
+substId s (ListType te) = ListType (substId s te)
+substId s (ArrowType te1 te2) = ArrowType (substId s te1) (substId s te2)
+substId s (RecordType ts mt) = 
+  RecordType (map (\(ids, te) -> (ids, substId s te)) ts)
+             (fmap (substId s) mt)
