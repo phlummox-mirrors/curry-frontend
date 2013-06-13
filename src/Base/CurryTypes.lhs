@@ -14,7 +14,7 @@ order of type variables in the left hand side of a type declaration.
 
 > module Base.CurryTypes
 >  ( toQualType, toQualTypes, toType, toTypes, fromQualType, fromType
->  , toTypeAndGetMap, toConstrType, toConstrTypes
+>  , toTypeAndGetMap, toConstrType, toConstrTypes, fromContext
 >  ) where
 
 > import Data.List (nub)
@@ -128,3 +128,14 @@ order of type variables in the left hand side of a type declaration.
 > fromType (TypeRecord     fs rty)   = CS.RecordType
 >   (map (\ (l, ty) -> ([l], fromType ty)) fs)
 >   ((fromType . TypeVariable) `fmap` rty)
+
+> fromContext :: BT.Context -> CS.Context
+> fromContext cx = CS.Context $ map fromCx cx
+>   where
+>   -- assumes that context elements are in head normal form!
+>   fromCx :: (QualIdent, Type) -> CS.ContextElem
+>   fromCx (qid, TypeVariable i) = CS.ContextElem qid (supply i) [] 
+>   fromCx _ = internalError "fromContext"
+>   supply i | i >= 0 = identSupply !! i
+>            | otherwise = mkIdent ('_' : show (-i))
+
