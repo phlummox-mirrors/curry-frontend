@@ -49,7 +49,7 @@ type annotation is present.
 
 > import Env.TypeConstructor (TCEnv, TypeInfo (..), bindTypeInfo
 >   , qualLookupTC)
-> import Env.Value ( ValueEnv, ValueInfo (..), bindFun, rebindFun
+> import Env.Value ( ValueEnv, ValueInfo (..), rebindFun
 >   , bindGlobalInfo, bindLabel, lookupValue, qualLookupValue
 >   , tryBindFun )
 > import Env.ClassEnv (ClassEnv, lookupMethodTypeScheme
@@ -60,6 +60,7 @@ type annotation is present.
 > ($-$) :: Doc -> Doc -> Doc
 > x $-$ y = x $$ space $$ y
 
+> trace, trace2, trace3 :: String -> a -> a
 > trace = flip const
 > -- trace = Dbg.trace
 > trace2 = flip const
@@ -905,7 +906,7 @@ the maximal necessary contexts for the functions are determined.
 > tcForeign :: Ident -> TypeExpr -> TCM ()
 > tcForeign f ty = do
 >   m <- getModuleIdent
->   tySc@(ForAll cx _ ty') <- expandPolyType (ST.emptyContext, ty)
+>   tySc@(ForAll _cx _ ty') <- expandPolyType (ST.emptyContext, ty)
 >   modifyValueEnv $ bindFunOnce m f (arrowArity ty') tySc
 
 > tcExternal :: Ident -> TCM ()
@@ -925,7 +926,7 @@ the maximal necessary contexts for the functions are determined.
 >   ty <- case lookupTypeSig v sigs of
 >     Nothing -> freshTypeVar
 >     Just t  -> do
->       ForAll cx n ty' <- expandPolyType t
+>       ForAll _cx n ty' <- expandPolyType t
 >       unless (n == 0) $ report $ errPolymorphicFreeVar v
 >       return ty'
 >   modifyValueEnv $ bindFunOnce m v (arrowArity ty) $ monoType ty
@@ -2050,7 +2051,7 @@ know that they are closed.
 > fsEnv = Set.unions . map (Set.fromList . typeSkolems) . localTypes
 
 > localTypes :: ValueEnv -> [Type]
-> localTypes tyEnv = [ty | (_, Value _ _ (ForAll cx _ ty)) <- localBindings tyEnv]
+> localTypes tyEnv = [ty | (_, Value _ _ (ForAll _cx _ ty)) <- localBindings tyEnv]
 
 \end{verbatim}
 Miscellaneous functions.
@@ -2149,10 +2150,12 @@ Error functions.
 > errEqualClassMethodAndFunctionNames _m f = 
 >   text "Equal class method and top level function names: " <> ppIdent f
 
+> {-
 > errAmbiguousTypeVarsInContext :: Position -> Ident -> [Int] -> Message
 > errAmbiguousTypeVarsInContext p f _tvars = 
 >   posMessage p (text "Ambiguous type variables in the context to function"
 >   <+> text (show f))
+> -}
 
 > errContextImplication :: Position -> ModuleIdent -> BT.Context -> BT.Context 
 >                       -> BT.Context -> Ident -> Message
@@ -2212,6 +2215,7 @@ vars in their contexts.
 
 
 
+> {-
 > checkForAmbiguousContexts :: [Decl] -> TCM ()
 > checkForAmbiguousContexts decls = mapM_ check' (filter isFunctionDecl decls)
 >   where
@@ -2230,6 +2234,7 @@ vars in their contexts.
 >   check' _ = internalError "checkForAmbiguousContexts 3"
 >   ambiguousTypeVars :: BT.Context -> [Int]
 >   ambiguousTypeVars = filter ( < 0) . concatMap (typeVars . snd)
+> -}
 
 \end{verbatim}
 After the type checking has finished, we still have to apply the final
