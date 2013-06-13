@@ -493,13 +493,13 @@ pair t1 t2 = TypeConstructor (qTupleIdP 2) [t1, t2]
 checkDictType :: ClassEnv -> Bool
 checkDictType cEnv = 
   show (dictType cEnv (mkId "A1")) === 
-    "(Prelude.(,,,,) (0 -> (1 -> Bool)) (0 -> 0) (0 -> (2 -> 3)) (0 -> 4) (0 -> (5 -> 5)))" &&
+    "(Prelude.(,,,,) (0 -> (1 -> Prelude.Bool)) (0 -> 0) (0 -> (2 -> 3)) (0 -> 4) (0 -> (5 -> 5)))" &&
   show (dictType cEnv (mkId "B1")) === 
-    "(Prelude.(,) (Prelude.(,,,,) (0 -> (1 -> Bool)) (0 -> 0) (0 -> (2 -> 3)) (0 -> 4) (0 -> (5 -> 5))) (0 -> (6 -> (7 -> (8 -> 0)))))" &&
+    "(Prelude.(,) (Prelude.(,,,,) (0 -> (1 -> Prelude.Bool)) (0 -> 0) (0 -> (2 -> 3)) (0 -> 4) (0 -> (5 -> 5))) (0 -> (6 -> (7 -> (8 -> 0)))))" &&
   show (dictType cEnv (mkId "C1")) === "(0 -> 0)" &&
   show (dictType cEnv (mkId "E1")) === "(0 -> 0)" &&
   show (dictType cEnv (mkId "D1")) === 
-    "(Prelude.(,,) (Prelude.(,) (Prelude.(,,,,) (0 -> (1 -> Bool)) (0 -> 0) (0 -> (2 -> 3)) (0 -> 4) (0 -> (5 -> 5))) (0 -> (6 -> (7 -> (8 -> 0))))) (0 -> 0) (0 -> (9 -> (10 -> 0))))" &&
+    "(Prelude.(,,) (Prelude.(,) (Prelude.(,,,,) (0 -> (1 -> Prelude.Bool)) (0 -> 0) (0 -> (2 -> 3)) (0 -> 4) (0 -> (5 -> 5))) (0 -> (6 -> (7 -> (8 -> 0))))) (0 -> 0) (0 -> (9 -> (10 -> 0))))" &&
   show (dictType cEnv (mkId "F1")) === "Prelude.()" &&
   show (dictType cEnv (mkId "G1")) === "Prelude.()" &&
   show (dictType cEnv (mkId "H1")) === "(Prelude.(,) Prelude.() (0 -> 0))" &&

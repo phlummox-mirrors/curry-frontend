@@ -21,7 +21,7 @@ unannotated declarations, but allows for polymorphic recursion when a
 type annotation is present.
 \begin{verbatim}
 
-> module Checks.TypeCheck (typeCheck, bindTC) where
+> module Checks.TypeCheck (typeCheck, bindTC, expandType) where
 
 > import Control.Monad (liftM, liftM2, liftM3, replicateM, unless, when)
 > import qualified Control.Monad.State as S (State, gets, modify, runState)
@@ -1978,7 +1978,7 @@ unambiguously refers to the local definition.
 >   _ -> case qualLookupValue (qualQualify m f) tyEnv of
 >     [Value _ _ sigma] -> sigma
 >     _ -> case lookupMethodTypeScheme cEnv f of
->        Just (ForAll cx n ty) -> (ForAll cx n (expandType m tcEnv ty)) -- TODO: add instance context
+>        Just tsc -> tsc -- TODO: add instance context
 >        Nothing -> internalError $ "TypeCheck.funType function not found: " ++ show f ++ ", more precisely " ++ show (unqualify f)
 
 > sureLabelType :: Ident -> ValueEnv -> Maybe TypeScheme

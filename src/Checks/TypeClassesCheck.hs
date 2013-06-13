@@ -35,6 +35,7 @@ import qualified Base.Types as BTC (Context)
 import Base.SCC
 import Base.Utils (findMultiples, fst3)
 import Base.Names
+import Base.TypeSubst hiding (subst)
 
 import Checks.TypeCheck
 
@@ -72,7 +73,7 @@ typeClassesCheck m decls (ClassEnv importedClasses importedInstances _) tcEnv0 =
       let newDecls = concatMap (transformInstance m cEnv tcEnv) $ 
             concatMap (transformClass2 cEnv) decls
           classes' = map renameTypeSigVars classes
-          classes'' = map buildTypeSchemes classes'
+          classes'' = map (buildTypeSchemes m tcEnv) classes'
           cEnv = ClassEnv classes'' instances (buildClassMethodsMap classes'')
       in (newDecls, cEnv, [])
     (_, errs@(_:_)) -> (decls, ClassEnv [] [] Map.empty, errs)
@@ -941,8 +942,8 @@ buildSubst classTyvar ids n = map
 
 -- |translates the methods to type schemes. The type variable of the class
 -- has always the index 0!
-buildTypeSchemes :: Class -> Class
-buildTypeSchemes cls@(Class { theClass = tc, methods = ms, typeVar = classTypeVar }) 
+buildTypeSchemes :: ModuleIdent -> TCEnv -> Class -> Class
+buildTypeSchemes m tcEnv cls@(Class { theClass = tc, methods = ms, typeVar = classTypeVar }) 
   = cls { typeSchemes = map buildTypeScheme ms }
   where 
     buildTypeScheme :: (Ident, ST.Context, TypeExpr) -> (Ident, TypeScheme)
@@ -950,7 +951,7 @@ buildTypeSchemes cls@(Class { theClass = tc, methods = ms, typeVar = classTypeVa
       -- add also the class to the context!
       let extendedCx = Context (ContextElem tc classTypeVar [] : cElems)
           (translatedContext, theType) = toConstrType [classTypeVar] (extendedCx, typeExpr) 
-      in (id0, (polyType theType `constrainBy` translatedContext))
+      in (id0, polyType (expandType m tcEnv theType) `constrainBy` translatedContext)
 
 
 
