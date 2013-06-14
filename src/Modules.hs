@@ -189,7 +189,7 @@ checkModule opts (env, mdl) = do
   (env4, tcc) <- typeClassesCheck env3 pc
   (env5,  tc) <- if withTypeCheck
                    -- then typeCheck env4 tcc
-                   then dump DumpTypeClassesChecked typeCheck (env4, tcc)
+                   then dump DumpTypeClassesChecked (typeCheck False) (env4, tcc)
                    else return (env4, tcc)
   let (env5b, dicts) = if withTypeCheck
                          -- then insertDicts env5 tc
@@ -201,7 +201,7 @@ checkModule opts (env, mdl) = do
   (env5d, tc2) <- if withTypeCheck
                     -- take the older environment env4 instead of env5c!
                     -- then typeCheck (env4, dicts')
-                    then dump DumpDictionaries typeCheck (env4, dicts') 
+                    then dump DumpDictionaries (typeCheck True) (env4, dicts') 
                     else return (env5c, dicts') 
   (env6,  ec) <- if withTypeCheck 
                    -- then exportCheck env5d tc2

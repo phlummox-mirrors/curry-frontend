@@ -118,7 +118,7 @@ typeCheck' env mdl@(Module _ _ _ ds)
   -- reduction is done and we get the raw inferred contexts that we want!
   = CheckSuccess (env { tyConsEnv = tcEnv', valueEnv = tyEnv' }, mdl)
   where (tcEnv', tyEnv', _decls, _msgs) = TC.typeCheck (moduleIdent env)
-          (tyConsEnv env) (valueEnv env) (classEnv env) False ds
+          (tyConsEnv env) (valueEnv env) (classEnv env) False False ds
   
 -- |This function extracts the (function name, type) pairs from the types
 -- file. 

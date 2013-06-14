@@ -80,9 +80,9 @@ should be exerted. This parameter is primarily for debugging, it is set
 to True in the normal execution of the compiler. 
 \begin{verbatim}
 
-> typeCheck :: ModuleIdent -> TCEnv -> ValueEnv -> ClassEnv -> Bool -> [Decl]
+> typeCheck :: ModuleIdent -> TCEnv -> ValueEnv -> ClassEnv -> Bool -> Bool -> [Decl]
 >           -> (TCEnv, ValueEnv, [Decl], [Message])
-> typeCheck m tcEnv tyEnv cEnv doContextRed0 decls = execTCM check initState
+> typeCheck m tcEnv tyEnv cEnv doContextRed0 sndRun decls = execTCM check initState
 >   where
 >   pdecls = zip [0::Int ..] decls
 >   check = do
@@ -113,7 +113,8 @@ to True in the normal execution of the compiler.
 >   tds = map snd tds'
 >   vds = map snd vds'
 >   sorter (n1, _) (n2, _) = compare n1 n2
->   initState = TcState m tcEnv tyEnv cEnv doContextRed0 idSubst emptySigEnv 0 [] 0 Map.empty
+>   initState = TcState m tcEnv tyEnv cEnv doContextRed0 idSubst emptySigEnv 
+>     0 [] 0 Map.empty sndRun
 
 \end{verbatim}
 
@@ -134,6 +135,7 @@ generating fresh type variables.
 >   , errors      :: [Message]
 >   , declCounter :: Int
 >   , declGroups  :: Map.Map [Int] ([Decl], BT.Context)
+>   , secondRun   :: Bool
 >   }
 
 > type TCM = S.State TcState
@@ -213,6 +215,9 @@ generating fresh type variables.
 > -- the declarations
 > getDeclGroup :: [Decl] -> TCM (Maybe ([Decl], BT.Context))
 > getDeclGroup ds = S.gets (Map.lookup (map getUniqueId ds) . declGroups)
+
+> isSecondRun :: TCM Bool
+> isSecondRun = S.gets secondRun
 
 \end{verbatim}
 \paragraph{Defining Types}
