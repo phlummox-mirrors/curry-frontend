@@ -35,7 +35,6 @@ import qualified Base.Types as BTC (Context)
 import Base.SCC
 import Base.Utils (findMultiples, fst3)
 import Base.Names
-import Base.TypeSubst hiding (subst)
 
 import Checks.TypeCheck
 
