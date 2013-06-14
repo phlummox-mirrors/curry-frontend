@@ -19,6 +19,10 @@ inferred types. The type checker uses algorithm
 W~\cite{DamasMilner82:Principal} for inferring the types of
 unannotated declarations, but allows for polymorphic recursion when a
 type annotation is present.
+
+In the second run of the type checker, expanding types of type signatures  
+(with expandType) must be disabled, because the type signatures are already
+expanded. 
 \begin{verbatim}
 
 > module Checks.TypeCheck (typeCheck, bindTC, expandType) where
@@ -299,12 +303,12 @@ and \texttt{expandMonoTypes}, respectively.
 >   mkData (ConOpDecl  _ evs ty1 op ty2) = mkData' evs op [ty1, ty2]
 >   mkData' evs c tys = DataConstr c (length evs) $
 >     -- TODO: somewhen adding contexts to data declarations
->     map getType $ expandMonoTypes m tcEnv (cleanTVars tvs evs) (map noBContext tys)
+>     map getType $ expandMonoTypes m tcEnv (cleanTVars tvs evs) True (map noBContext tys)
 > bindTC m tcEnv (NewtypeDecl _ tc tvs (NewConstrDecl _ evs c ty)) =
 >   bindTypeInfo RenamingType m tc tvs (DataConstr c (length evs) [ty'])
->   where ty' = getType $ expandMonoType' m tcEnv (cleanTVars tvs evs) (noBContext ty)
+>   where ty' = getType $ expandMonoType' m tcEnv (cleanTVars tvs evs) True (noBContext ty)
 > bindTC m tcEnv (TypeDecl _ tc tvs ty) =
->   bindTypeInfo AliasType m tc tvs (getType $ expandMonoType' m tcEnv tvs (noBContext ty))
+>   bindTypeInfo AliasType m tc tvs (getType $ expandMonoType' m tcEnv tvs True (noBContext ty))
 > bindTC _ _ _ = id
 
 > cleanTVars :: [Ident] -> [Ident] -> [Ident]
@@ -911,7 +915,8 @@ the maximal necessary contexts for the functions are determined.
 > tcForeign :: Ident -> TypeExpr -> TCM ()
 > tcForeign f ty = do
 >   m <- getModuleIdent
->   tySc@(ForAll _cx _ ty') <- expandPolyType (ST.emptyContext, ty)
+>   sndRun <- isSecondRun
+>   tySc@(ForAll _cx _ ty') <- expandPolyType (not sndRun) (ST.emptyContext, ty)
 >   modifyValueEnv $ bindFunOnce m f (arrowArity ty') tySc
 
 > tcExternal :: Ident -> TCM ()
@@ -928,10 +933,11 @@ the maximal necessary contexts for the functions are determined.
 > tcFree v = do
 >   sigs <- getSigEnv
 >   m  <- getModuleIdent
+>   sndRun <- isSecondRun
 >   ty <- case lookupTypeSig v sigs of
 >     Nothing -> freshTypeVar
 >     Just t  -> do
->       ForAll _cx n ty' <- expandPolyType t
+>       ForAll _cx n ty' <- expandPolyType (not sndRun) t
 >       unless (n == 0) $ report $ errPolymorphicFreeVar v
 >       return ty'
 >   modifyValueEnv $ bindFunOnce m v (arrowArity ty) $ monoType ty
@@ -945,9 +951,10 @@ the maximal necessary contexts for the functions are determined.
 > tcFunDecl v = do
 >   sigs <- getSigEnv
 >   m <- getModuleIdent
+>   sndRun <- isSecondRun
 >   (cx, ty) <- case lookupTypeSig v sigs of
 >     Nothing -> freshConstrTypeVar
->     Just t  -> expandPolyType t >>= inst
+>     Just t  -> expandPolyType (not sndRun) t >>= inst
 >   modifyValueEnv $ bindFunOnce m v (arrowArity ty) (monoType' (cx, ty))
 >   return (cx, ty)
 
@@ -1031,10 +1038,11 @@ signature the declared type must be too general.
 >       ambigCxElems = filter (isAmbiguous tyVars lvs) context 
 >   unless (null ambigCxElems) $ report $ 
 >     errAmbiguousContextElems (idPosition v) m v ambigCxElems
+>   sndRun <- isSecondRun
 >   case lookupTypeSig v sigs of
 >     Nothing    -> modifyValueEnv $ rebindFun m v arity sigma
 >     Just sigTy -> do
->       sigma' <- expandPolyType sigTy
+>       sigma' <- expandPolyType (not sndRun) sigTy
 >       case (eqTyScheme sigma sigma') of 
 >         False -> report  $ errTypeSigTooGeneral (idPosition v) m what sigTy sigma
 >         True -> do
@@ -1124,9 +1132,10 @@ signature the declared type must be too general.
 > tcPattern _ (NegativePattern _ l) = tcLiteral l
 > tcPattern _ (VariablePattern   v) = do
 >   sigs <- getSigEnv
+>   sndRun <- isSecondRun
 >   (cx, ty) <- case lookupTypeSig v sigs of
 >     Nothing -> freshConstrTypeVar
->     Just t  -> expandPolyType t >>= inst
+>     Just t  -> expandPolyType (not sndRun) t >>= inst
 >   tyEnv <- getValueEnv
 >   m  <- getModuleIdent
 >   maybe (modifyValueEnv (bindFunOnce m v (arrowArity ty) (monoType' (cx, ty))) >> return (cx, ty))
@@ -1228,9 +1237,10 @@ because of possibly multiple occurrences of variables.
 > tcPatternFP _ (VariablePattern v) = do
 >   sigs <- getSigEnv
 >   m <- getModuleIdent
+>   sndRun <- isSecondRun
 >   cty@(cx, ty) <- case lookupTypeSig v sigs of
 >     Nothing -> freshConstrTypeVar
->     Just t  -> expandPolyType t >>= inst
+>     Just t  -> expandPolyType (not sndRun) t >>= inst
 >   tyEnv <- getValueEnv
 >   maybe (modifyValueEnv (bindFunOnce m v (arrowArity ty) (monoType' cty)) >> return cty)
 >         (\ (ForAll cx _ t) -> return (cx, t))
@@ -1380,12 +1390,13 @@ because of possibly multiple occurrences of variables.
 >       sigs <- getSigEnv
 >       m <- getModuleIdent
 >       cEnv <- getClassEnv
+>       sndRun <- isSecondRun
 >       case qualLookupTypeSig m v sigs of
 >         Just cty -> do
 >           -- load the inferred type together with the contexts
 >           (icx, ity) <- getValueEnv >>= (inst . (flip (funType m v) cEnv))
 >           -- retrieve the type from the type signature...
->           (cx0, ty0) <- expandPolyType cty >>= inst
+>           (cx0, ty0) <- expandPolyType (not sndRun) cty >>= inst
 >           -- ... and construct a mapping, so that the type variables in the 
 >           -- inferred contexts match the type variables in the type
 >           -- constructed from the type signature
@@ -1404,7 +1415,7 @@ because of possibly multiple occurrences of variables.
 >   m <- getModuleIdent
 >   tyEnv0 <- getValueEnv
 >   (e', cty@(cxInf, tyInf)) <- tcExpr p e
->   sigma' <- expandPolyType (cx, sig')
+>   sigma' <- expandPolyType True (cx, sig')
 >   inst sigma' >>= flip (unify p "explicitly typed expression" (ppExpr 0 e)) cty
 >   theta <- getTypeSubst
 >   let (sigma, s) = genS (fvEnv (subst theta tyEnv0)) 
@@ -2004,23 +2015,29 @@ in which the type was defined.
 > getType :: ConstrType -> Type
 > getType (_cx, type0) = type0
 
-> expandPolyType :: BaseConstrType -> TCM TypeScheme
-> expandPolyType ty 
->   = (\(cx, ty0) -> (polyType (normalize ty0) `constrainBy` cx)) `liftM` expandMonoType [] ty
+> -- | The boolean flag states whether the types should be expanded by
+> -- expandType. This must be disabled for type signatures in the second
+> -- run of the type checker. 
+> expandPolyType :: Bool -> BaseConstrType -> TCM TypeScheme
+> expandPolyType expType ty
+>   = (\(cx, ty0) -> (polyType (normalize ty0) `constrainBy` cx)) `liftM` expandMonoType expType [] ty
 
-> expandMonoType :: [Ident] -> BaseConstrType -> TCM ConstrType
-> expandMonoType tvs ty = do
+> expandMonoType :: Bool -> [Ident] -> BaseConstrType -> TCM ConstrType
+> expandMonoType expType tvs ty = do
 >   m <- getModuleIdent
 >   tcEnv <- getTyConsEnv
->   return $ expandMonoType' m tcEnv tvs ty
+>   return $ expandMonoType' m tcEnv tvs expType ty
 
-> expandMonoType' :: ModuleIdent -> TCEnv -> [Ident] -> BaseConstrType -> ConstrType
-> expandMonoType' m tcEnv tvs ty = (cx, expandType m tcEnv ty')
+> expandMonoType' :: ModuleIdent -> TCEnv -> [Ident] -> Bool -> BaseConstrType -> ConstrType
+> expandMonoType' m tcEnv tvs expType ty = 
+>   (cx, if not expType then ty' else expandType m tcEnv ty')
 >   where (cx, ty') = (toConstrType tvs ty)
 
-> expandMonoTypes :: ModuleIdent -> TCEnv -> [Ident] -> [BaseConstrType] -> [ConstrType]
-> expandMonoTypes m tcEnv tvs tys 
->   = map (\(cx, ty) -> (cx, expandType m tcEnv ty)) (toConstrTypes tvs tys)
+> expandMonoTypes :: ModuleIdent -> TCEnv -> [Ident] -> Bool -> [BaseConstrType] -> [ConstrType]
+> expandMonoTypes m tcEnv tvs expType tys 
+>   = map (\(cx, ty) -> 
+>             (cx, if not expType then ty else expandType m tcEnv ty))
+>       (toConstrTypes tvs tys)
 
 > expandType :: ModuleIdent -> TCEnv -> Type -> Type
 > expandType m tcEnv (TypeConstructor tc tys) = case qualLookupTC tc tcEnv of

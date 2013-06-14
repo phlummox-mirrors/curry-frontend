@@ -9,19 +9,31 @@
     Portability :  portable
 
     This transformation removes the context in all explicit type signatures 
-    by inserting the appropriate dictionary types for each element of the context. 
-    This is needed for the second type check that expects a program without
-    any type class elements. 
+    by inserting the appropriate dictionary types for each element of the 
+    (reduced) context. This is needed for the second type check that expects a
+    program without any type class elements. 
+    Note that instead of the contexts given in the source code, the reduced
+    contexts are used for inserting dictionary type parameters. 
+    In the new type signatures, all type synonyms are expanded and all 
+    data constructors qualified (because we take the type signature from
+    the value environment where this is the case). Because of this, in the
+    second run of the type checker, type expansion and constructor qualifying
+    must be disabled for type signatures. 
 -}
 
 
 module Transformations.TypeSigs (transformTypeSigs) where
 
+import Data.Maybe
+
 import Curry.Syntax.Type
 import Env.ClassEnv
-import Base.CurryTypes
-import Curry.Base.Ident
 import CompilerEnv
+import Env.Value
+import Base.Types
+import Base.TypeSubst
+import Base.Messages
+import Curry.Base.Ident
 
 -- | transforms all type signatures (in explicit type signatures declarations
 -- *and* in explicitely typed expressions (!)) by removing their contexts
@@ -34,30 +46,12 @@ tsDecl _cEnv d@(InfixDecl   _ _ _ _) = [d]
 tsDecl _cEnv d@(DataDecl    _ _ _ _) = [d]
 tsDecl _cEnv d@(NewtypeDecl _ _ _ _) = [d]
 tsDecl _cEnv d@(TypeDecl    _ _ _ _) = [d]
-
-tsDecl  cEnv (TypeSig p ids (Context cx) ty) =
-  [TypeSig p ids (Context []) newTySig]
+tsDecl  cEnv   (TypeSig p ids (Context cx) ty) = 
+  -- if null cx then [d] else [] 
+  map (tsTySig cEnv) splitTySigs
   where
-  classes = map (\(ContextElem cls _ _) -> cls) cx
-  dictTys = dictTypes (classEnv cEnv) classes
-  dictTys' = map fromType dictTys
-  vars = map (\(ContextElem _ var _) -> var) cx
-  -- Replace the class variable (always 0 in dictTys, ergo always 
-  -- identSupply !! 0 in dictTys') with the variable given in the context.  
-  -- TODO: Rename all other variables so that they don't overlap with other type 
-  -- variables in the type signature AND/OR match the type variables from
-  -- the dictionary type with type variables from the type signature. 
-  -- As currently, no other type variables than the type variable of the class
-  -- itself are allowed, this TODO is not yet necessary. 
-  dictTys'' = zipWith (\var ty0 -> substId (classVar, var) ty0) vars dictTys'
-  
-  constrNewTySig [] sig = sig
-  constrNewTySig (d:ds) sig = constrNewTySig ds (ArrowType d sig)
-  
-  newTySig = constrNewTySig (reverse dictTys'') ty
-
-  classVar = identSupply !! 0
-  
+  splitTySigs :: [Decl]
+  splitTySigs = map (\id0 -> TypeSig p [id0] (Context cx) ty) ids  
 tsDecl  cEnv   (FunctionDecl p cty id0 i eqs) = [FunctionDecl p cty id0 i (map (tsEqu cEnv) eqs)]
 tsDecl _cEnv d@(ForeignDecl    _ _ _ _ _) = [d]
 tsDecl _cEnv d@(ExternalDecl         _ _) = [d]
@@ -65,6 +59,39 @@ tsDecl  cEnv   (PatternDecl p cty id0 pt rhs) = [PatternDecl p cty id0 pt (tsRhs
 tsDecl _cEnv d@(FreeDecl             _ _) = [d]
 tsDecl _cEnv d@(ClassDecl      _ _ _ _ _) = [d]
 tsDecl _cEnv d@(InstanceDecl _ _ _ _ _ _) = [d]
+
+-- | replaces a type signature with the type signature extracted from the 
+-- value environment and inserts further dictionary types
+tsTySig :: CompilerEnv -> Decl -> Decl
+tsTySig cEnv (TypeSig p [id0] (Context _cx) _ty) =
+  TypeSig p [id0] (Context []) (fromType newTySig)
+  where
+  Value _ _ (ForAll cx _ ty) = lookupValue' (moduleIdent cEnv) id0 (valueEnv cEnv)
+
+  dictTys = dictTypes (classEnv cEnv) (map fst cx)
+  
+  -- As the context elements are reduced to HNF (head normal form) 
+  -- fromTypeVar shouldn't fail. 
+  fromTypeVar :: Type -> Int
+  fromTypeVar (TypeVariable i) = i
+  fromTypeVar _ = internalError "fromTypeVar"
+  
+  vars = map (fromTypeVar . snd) cx
+  -- Replace the class variable (always 0 in dictTys) 
+  -- with the variable given in the context.
+  -- TODO: Rename all other variables so that they don't overlap with other type
+  -- variables in the type signature AND/OR match the type variables from
+  -- the dictionary type with type variables from the type signature.
+  -- As currently, no other type variables than the type variable of the class
+  -- itself are allowed, this TODO is not yet necessary.
+  dictTys' = zipWith (\v ty0 -> subst (singleSubst 0 (TypeVariable v)) ty0) vars dictTys
+  
+  
+  constrNewTySig [] sig = sig
+  constrNewTySig (d:ds) sig = constrNewTySig ds (TypeArrow d sig)
+  
+  newTySig = constrNewTySig (reverse dictTys') ty
+tsTySig _ _ = internalError "tsTySig"  
 
 tsEqu :: CompilerEnv -> Equation -> Equation
 tsEqu cEnv (Equation p lhs rhs) = Equation p lhs (tsRhs cEnv rhs)
@@ -121,17 +148,32 @@ tsField cEnv (Field p i e) = Field p i (tsExpr cEnv e)
 -- helper functions
 -- ----------------------------------------------------------------------------
 
--- | Substitutes the class variable with the given variable. (TODO: Also renames
--- all other variables?)
-substId :: (Ident, Ident) -> TypeExpr -> TypeExpr
-substId s (ConstructorType qid tes) = ConstructorType qid (map (substId s) tes)
-substId s (SpecialConstructorType tcon tes) = SpecialConstructorType tcon (map (substId s) tes)
-substId (x, y) (VariableType i) 
-  | x == i = VariableType y
-  | otherwise = VariableType i -- VariableType (renameIdent i 1)  
-substId s (TupleType tes) = TupleType (map (substId s) tes)
-substId s (ListType te) = ListType (substId s te)
-substId s (ArrowType te1 te2) = ArrowType (substId s te1) (substId s te2)
-substId s (RecordType ts mt) = 
-  RecordType (map (\(ids, te) -> (ids, substId s te)) ts)
-             (fmap (substId s) mt)
+-- |looks up a given variable (from the given module!) in the value environment
+lookupValue' :: ModuleIdent -> Ident -> ValueEnv -> ValueInfo
+lookupValue' m id0 vEnv = 
+  case filter (valInMdl m) vals of
+    [v] -> v
+    _ -> internalError "TypeSigs.lookupValue'"
+  where
+  vals = lookupValue id0 vEnv
+  
+-- |checks whether the given "ValueInfo" refers to an identifier from
+-- the given module
+valInMdl :: ModuleIdent -> ValueInfo -> Bool
+valInMdl m (Value qid' _ _) = fromJust (qidModule qid') == m 
+valInMdl _ _ = internalError "valInMdl"
+
+-- |converts a type to a type expression
+fromType :: Type -> TypeExpr
+fromType (TypeConstructor tc tys) = ConstructorType tc tys'
+  where tys' = map fromType tys
+fromType (TypeVariable tv)         = VariableType
+   (if tv >= 0 then identSupply !! tv else mkIdent ('_' : show (-tv)))
+fromType (TypeConstrained tys _)   = fromType (head tys)
+fromType (TypeArrow     ty1 ty2)   =
+  ArrowType (fromType ty1) (fromType ty2)
+fromType (TypeSkolem          k)   =
+  VariableType $ mkIdent $ "_?" ++ show k
+fromType (TypeRecord     fs rty)   = RecordType
+  (map (\ (l, ty) -> ([l], fromType ty)) fs)
+  ((fromType . TypeVariable) `fmap` rty)
