@@ -57,5 +57,5 @@ toBool _ = True
 test9 :: (A a, G b, D c) => a -> b -> c -> Bool
 test9 x y z = toBool (funA x) && toBool (funG2 y) && toBool (funD z z)
 
-test10 :: (A a, D c, G b) => a -> b -> c -> Bool
+test10 :: (A a, G b, D c) => a -> b -> c -> Bool
 test10 x y z = toBool (funA x) && toBool (funF1 y) && toBool (funD z z)

@@ -11,7 +11,7 @@ for file in DictTrans1 DictTrans2 DictTrans3 DictTrans4 \
   BugDicts BugDictTrans8 Annot_bug Annot_bug2 Annot_bug3 \
   PropagTest1 PropagTest2 PropagTest3 \
   BugAmbig2 \
-  TypeSigsTrans
+  TypeSigsTrans BugTypeSigsTrans BugTypeSigsTrans2
 do
   #echo $file
   $cymake -f typeclasses/$file.curry 2>> output_test2_stderr.txt 1>> output_test2_stdout.txt || echo Error in $file.curry
