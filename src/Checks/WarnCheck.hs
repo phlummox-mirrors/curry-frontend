@@ -18,7 +18,7 @@ import           Control.Monad              (filterM, foldM_, guard, unless)
 import           Control.Monad.State.Strict (State, execState, gets, modify)
 import qualified Data.Map            as Map (empty, insert, lookup)
 import           Data.Maybe                 (isJust)
-import           Data.List         (intersect, intersectBy, sort, unionBy)
+import           Data.List (intersect, intersectBy, sort, unionBy, isPrefixOf)
 import Text.PrettyPrint
 
 import Curry.Base.Ident
@@ -29,6 +29,7 @@ import Base.Messages (Message, posMessage)
 import qualified Base.ScopeEnv as SE
   ( ScopeEnv, new, beginScope, endScopeUp, insert, lookup, level, modify
   , lookupWithLevel, toLevelList, currentLevel)
+import Base.Names
 
 import Env.Value (ValueEnv, ValueInfo (..), qualLookupValue)
 
@@ -591,7 +592,12 @@ returnUnrefVars :: WCM [Ident]
 returnUnrefVars = gets (\s ->
   let ids = map fst (SE.toLevelList (scope s))
       unrefs = filter (isUnref s) ids
-  in  map unqualify unrefs )
+      -- Issue the "variable unreferenced" warning only for variables 
+      -- that are given in the initial source code; 
+      -- all variables that start with "identPrefix" are constructed by the
+      -- compiler and no warning should be issued for these variables.  
+      unrefs' = filter (not . isPrefixOf identPrefix . idName . qidIdent) unrefs
+  in  map unqualify unrefs' )
 
 inNestedScope :: WCM a -> WCM ()
 inNestedScope m = beginScope >> m >> endScope

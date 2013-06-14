@@ -633,9 +633,9 @@ transformClass cEnv (ClassDecl _p _scx cls tyvar _decls) =
   -- the renamings are important so that the parameters are not handled as
   -- global functions    
   dictSelParam selMethodName s = flip renameIdent 1 $ 
-    mkIdent (selMethodName ++ sep ++ s)
+    mkIdent (identPrefix ++ selMethodName ++ sep ++ s)
   methodSelParam selMethodName n = flip renameIdent 1 $ 
-    mkIdent (selMethodName ++ sep ++ "x" ++ (show n))
+    mkIdent (identPrefix ++ selMethodName ++ sep ++ "x" ++ (show n))
   
 transformClass _ d = [d]
 
@@ -729,9 +729,9 @@ transformClass2 cEnv (ClassDecl _p _scx cls _tyvar _decls) =
   -- global functions. Also important is that the parameters are globally
   -- unique
   dictSelParam selMethodName s = flip renameIdent 1 $ 
-    mkIdent (selMethodName ++ sep ++ s)
+    mkIdent (identPrefix ++ selMethodName ++ sep ++ s)
   methodSelParam selMethodName n = flip renameIdent 1 $ 
-    mkIdent (selMethodName ++ sep ++ "x" ++ (show n))
+    mkIdent (identPrefix ++ selMethodName ++ sep ++ "x" ++ (show n))
   
   
 transformClass2 _ d = [d]

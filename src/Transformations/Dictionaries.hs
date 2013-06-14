@@ -19,7 +19,7 @@ import CompilerEnv
 import Curry.Syntax
 import Env.ClassEnv
 import Env.Value
-import Base.Names (sep, mkSelFunName, mkDictName)
+import Base.Names (sep, mkSelFunName, mkDictName, identPrefix)
 import Base.Messages
 import Data.Maybe
 import Base.Utils
@@ -213,7 +213,8 @@ diField cx fun (Field p i e) = Field p i `liftM` diExpr cx fun e
 contextElemToVar:: String -> (QualIdent, Type) -> Ident
 contextElemToVar _fun (cls, ty) =
   -- TODO: better name generation?
-  flip renameIdent 1 $ mkIdent ({-fun ++ sep ++ -}show cls ++ sep ++ show ty)
+  flip renameIdent 1 $ 
+    mkIdent (identPrefix ++ {-fun ++ sep ++ -}show cls ++ sep ++ show ty)
 
 -- creates concrete code from the abstract operations
 concreteCode :: String -> Operation -> Expression

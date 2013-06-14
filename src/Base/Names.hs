@@ -13,7 +13,7 @@
 -}
 
 module Base.Names 
-  (sep, implPrefix, dictTypePrefix
+  (sep, implPrefix, dictTypePrefix, identPrefix
     -- * name generation functions
   , mkSelFunName, mkDictName
   ) where
@@ -47,3 +47,7 @@ mkDictName cls ty = dictPrefix ++ cls ++ sep ++ ty
 sep :: String
 sep = "."
 
+-- |prefix that indicates that the identifier is constructed by the 
+-- compiler 
+identPrefix :: String
+identPrefix = "#"
