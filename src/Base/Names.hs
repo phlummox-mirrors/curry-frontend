@@ -13,10 +13,15 @@
 -}
 
 module Base.Names 
-  (sep, implPrefix, dictTypePrefix, identPrefix
+  (sep
+    -- * prefixes for constructed identifiers
+  , implPrefix, dictTypePrefix, identPrefix
     -- * name generation functions
   , mkSelFunName, mkDictName
   ) where
+
+-- | prefix that indicates that the identifier is constructed by the compiler
+import Curry.Base.Ident (identPrefix)
 
 -- |The prefix for dictionary types
 dictTypePrefix :: String
@@ -46,8 +51,3 @@ mkDictName cls ty = dictPrefix ++ cls ++ sep ++ ty
 -- |internal separator
 sep :: String
 sep = "."
-
--- |prefix that indicates that the identifier is constructed by the 
--- compiler 
-identPrefix :: String
-identPrefix = "#"
