@@ -44,7 +44,7 @@ module Base.TopEnv
   , bindTopEnv, qualBindTopEnv, rebindTopEnv
   , qualRebindTopEnv, unbindTopEnv, lookupTopEnv, qualLookupTopEnv
   , allImports, moduleImports, localBindings, allLocalBindings 
-  , allBindings
+  , allBindings, allBoundElems
   , tryBindTopEnv, tryQualBindTopEnv, tryRebindTopEnv, tryQualRebindTopEnv
   ) where
 
@@ -199,4 +199,8 @@ allLocalBindings (TopEnv env) = [ (x, y) | (x, ys)    <- Map.toList env
 
 allBindings :: TopEnv a -> [(QualIdent, a)]
 allBindings (TopEnv env) = [ (x, y) | (x, ys) <- Map.toList env
-                                    , (_, y)  <- ys ]  
+                                    , (_, y)  <- ys ]
+
+allBoundElems :: TopEnv a -> [a]
+allBoundElems (TopEnv env) = [ y | (_, ys) <- Map.toList env
+                                 , (_, y) <- ys ]
