@@ -15,7 +15,7 @@
 module Env.ClassEnv 
   ( ClassEnv (..), Class (..), Instance (..), initClassEnv, lookupClass
   , lookupDefiningClass, lookupMethodTypeScheme, lookupMethodTypeSig
-  , ppClasses, getAllClassMethods, allSuperClasses, isSuperClassOf
+  , ppClass, ppInst, getAllClassMethods, allSuperClasses, isSuperClassOf
   , implies, implies'
   , getInstance, isValidCx, reduceContext, findPath
   , toHnfs, toHnf, inHnf
@@ -330,11 +330,12 @@ initFreshVar = 1 -- not zero!
 -- ----------------------------------------------------------------------------
 -- Pritty printer functions
 -- ----------------------------------------------------------------------------
+{-
 ppClasses :: ClassEnv -> Doc
 ppClasses (ClassEnv classes ifs mmap) = 
   vcat (map ppClass classes) $$ vcat (map ppInst ifs)
   $$ text (show mmap)
-  
+-}  
   
 ppClass :: Class -> Doc
 ppClass (Class {superClasses = sc, theClass = tc, typeVar = tv, 

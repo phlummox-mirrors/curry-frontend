@@ -58,10 +58,12 @@ showCompilerEnv opts env = show $ vcat
   [ header "ModuleIdent     " $ textS  $ moduleIdent env
   , header "Interfaces      " $ hcat   $ punctuate comma $ map textS $ Map.keys $ interfaceEnv env
   , header "ModuleAliases   " $ ppMap  $ aliasEnv     env
-  , header "TypeConstructors" $ ppAL $ showLocalBindings $ tyConsEnv    env
-  , header "Values          " $ ppAL $ showLocalBindings $ valueEnv     env
-  , header "Precedences     " $ ppAL $ showLocalBindings $ opPrecEnv    env
-  , header "Classes         " $ ppClasses $ classEnv env
+  , header "TypeConstructors" $ ppAL (text . show) $ showLocalBindings $ tyConsEnv    env
+  , header "Values          " $ ppAL (text . show) $ showLocalBindings $ valueEnv     env
+  , header "Precedences     " $ ppAL (text . show) $ showLocalBindings $ opPrecEnv    env
+  , header "Classes         " $ ppAL ppClass $ allBindings $ theClasses $ classEnv env
+  , header "Instances       " $ vcat (map ppInst (theInstances $ classEnv env))
+  , header "ClassMethodsMap " $ text (show $ classMethods $ classEnv env)
   ]
   where
   header hdr content = hang (text hdr <+> colon) 4 content
@@ -69,10 +71,10 @@ showCompilerEnv opts env = show $ vcat
   showLocalBindings = if optDumpCompleteEnv opts then allBindings else allLocalBindings
 
 ppMap :: (Show a, Show b) => Map.Map a b -> Doc
-ppMap = ppAL . Map.toList
+ppMap = ppAL (text . show) . Map.toList
 
-ppAL :: (Show a, Show b) => [(a, b)] -> Doc
-ppAL xs = vcat $ map (\(a,b) -> text (pad a keyWidth) <+> equals <+> text b) showXs
-  where showXs   = map (\(a,b) -> (show a, show b)) xs
+ppAL :: (Show a, Show b) => (b -> Doc) -> [(a, b)] -> Doc
+ppAL pp xs = vcat $ map (\(a,b) -> text (pad a keyWidth) <+> equals <+> b) showXs
+  where showXs   = map (\(a,b) -> (show a, pp b)) xs
         keyWidth = maximum (0 : map (length .fst) showXs)
         pad s n  = take n (s ++ repeat ' ')
