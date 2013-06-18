@@ -21,6 +21,7 @@ module Env.ClassEnv
   , toHnfs, toHnf, inHnf
   , dictCode, Operation (..), dictType, dictTypes
   , bindClass, allClasses 
+  , getAllClassMethodNames
   ) where
 
 -- import Base.Types hiding ()
@@ -136,6 +137,12 @@ getAllClassMethods (ClassEnv classes _ _) =
     addClassContext :: QualIdent -> Ident -> Context -> Context
     addClassContext cls tyvar (Context elems) 
       = Context (elems ++ [ContextElem cls tyvar []])  
+
+-- |returns the names of all class methods in all classes in the given class
+-- environment
+getAllClassMethodNames :: ClassEnv -> [Ident]
+getAllClassMethodNames (ClassEnv classes _ _) = 
+  concatMap (map fst . typeSchemes) (allClasses classes)
   
 
 -- |returns *all* superclasses of a given class

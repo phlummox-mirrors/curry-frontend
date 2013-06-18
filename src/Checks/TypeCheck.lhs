@@ -57,7 +57,7 @@ expanded.
 >   , bindGlobalInfo, bindLabel, lookupValue, qualLookupValue
 >   , tryBindFun )
 > import Env.ClassEnv (ClassEnv, lookupMethodTypeScheme
->   , getAllClassMethods, implies', implies, isValidCx, reduceContext)
+>   , getAllClassMethodNames, implies', implies, isValidCx, reduceContext)
 
 > infixl 5 $-$
 
@@ -2225,7 +2225,7 @@ vars in their contexts.
 
 > checkNoEqualClassMethodAndFunctionNames :: ValueEnv -> ClassEnv -> TCM ()
 > checkNoEqualClassMethodAndFunctionNames vEnv cEnv = do
->   let classMethods = map fst3 $ getAllClassMethods cEnv
+>   let classMethods = getAllClassMethodNames cEnv
 >   mapM_ searchClassMethod classMethods
 >   where
 >   searchClassMethod f 
