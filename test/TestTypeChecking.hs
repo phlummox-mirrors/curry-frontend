@@ -177,8 +177,8 @@ ppTypeScheme (ForAll cx _n type0) =
 
 ppContext :: Context -> Doc
 ppContext cx = parens $ hsep $ 
-  punctuate comma (map (\(qid, ty) -> ppQIdent qid <+> ppType ty) cx')
-  where cx' = sort $ nub cx
+  punctuate comma (map (\(id0, ty) -> ppIdent id0 <+> ppType ty) cx')
+  where cx' = sort $ map (\(qid, ty) -> (unqualify qid, ty)) $ nub cx
 
 ppType :: Type -> Doc
 ppType (TypeVariable n) = text (show n)
@@ -252,11 +252,11 @@ checkScs env =
   allSuperClasses cEnv (mkId "M") =:= [] 
 
 
-(=:=) :: Ord a => [a] -> [a] -> Bool
-xs =:= ys = (Set.fromList xs) == (Set.fromList ys)
+(=:=) :: (Show a, Ord a) => [a] -> [a] -> Bool
+xs =:= ys = (Set.fromList xs) === (Set.fromList ys)
 
 mkId :: String -> QualIdent
-mkId s = qualify $ mkIdent s
+mkId s = qualifyWith (mkMIdent ["TestVarious"]) $ mkIdent s
 
 -- |check that the implies function works correctly
 checkImpl :: ClassEnv -> Bool
