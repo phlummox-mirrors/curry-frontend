@@ -128,7 +128,7 @@ typeClassesCheck m decls (ClassEnv importedClasses importedInstances _) tcEnv0 =
     -- ----------------------------------------------------------------------
     phase2 = do 
       let newClasses = map (classDeclToClass m) classDecls
-          instances = catMaybes (map (instanceDeclToInstance m tcEnv) instDecls) 
+          instances = map (instanceDeclToInstance m tcEnv) instDecls 
                       ++ importedInstances
           newClassEnv = ClassEnv (bindAll newClasses importedClasses) instances Map.empty
       
@@ -148,10 +148,13 @@ typeClassesCheck m decls (ClassEnv importedClasses importedInstances _) tcEnv0 =
     --          qualified superclass/instance contexts 
     -- ----------------------------------------------------------------------
     phase3 = do  
-      let newClasses' = map (qualifyClass newClassEnv' . classDeclToClass m) classDecls
-          instances' = map (qualifyInstance newClassEnv') 
-                           (catMaybes (map (instanceDeclToInstance m tcEnv) instDecls)) 
-                         ++ importedInstances
+      let newClasses' = 
+            map (qualifyClass newClassEnv' . classDeclToClass m) 
+                classDecls
+          instances' =  
+            map (qualifyInstance newClassEnv' . instanceDeclToInstance m tcEnv)
+                instDecls 
+            ++ importedInstances
           newClassEnv' = ClassEnv (bindAll newClasses' importedClasses) instances' Map.empty
       
       mapM_ (checkForInstanceDataTypeExistAlsoInstancesForSuperclasses newClassEnv' tcEnv m) instDecls
@@ -199,17 +202,18 @@ addClassMethods (Class { methods = ms, theClass = cls}) =
   in foldr (uncurry Map.insert) Map.empty ms_cls
 
 -- |converts an instance declaration into the form of the class environment
-instanceDeclToInstance :: ModuleIdent -> TCEnv -> Decl -> Maybe Instance
+instanceDeclToInstance :: ModuleIdent -> TCEnv -> Decl -> Instance
 instanceDeclToInstance m tcEnv (InstanceDecl _ (SContext scon) cls tcon ids decls) = 
-  fmap (\ty -> 
-    Instance { 
-      context = scon, -- still unqualified!
-      iClass = cls,   -- still unqualified!
-      iType = ty,     -- still unqualified!
-      typeVars = ids, 
-      rules = decls }) qid
+  Instance { 
+    context = scon, -- still unqualified!
+    iClass = cls,   -- still unqualified!
+    iType = ty,     -- still unqualified!
+    typeVars = ids, 
+    rules = decls }
   where
-  qid = tyConToQualIdent m tcEnv tcon
+  -- fromJust shouldn't fail here, because this function is first called
+  -- after it has been checked that the given type exists
+  ty = fromJust $ tyConToQualIdent m tcEnv tcon
 instanceDeclToInstance _ _ _ = internalError "instanceDeclToInstance"
 
 tyConToQualIdent :: ModuleIdent -> TCEnv -> TypeConstructor -> Maybe QualIdent
