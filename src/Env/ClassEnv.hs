@@ -94,10 +94,10 @@ bindClass m cEnv c cls =
   where
   qc = qualifyWith m c
   
--- |returns all classes bound in the class environment. Warning: Can 
--- contain duplicates!
+-- |returns all classes bound in the class environment. 
 allClasses :: TopEnv Class -> [Class]
-allClasses = allBoundElems
+allClasses = nubBy eqClass . allBoundElems
+  where eqClass c1 c2 = theClass c1 == theClass c2
 
 -- |looks up the class that defines the given class method
 lookupDefiningClass :: ClassEnv -> QualIdent -> Maybe QualIdent

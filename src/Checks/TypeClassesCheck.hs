@@ -59,6 +59,9 @@ ok = return ()
 runTcc :: Tcc a -> TccState -> (a, [Message])
 runTcc tcc s = let (a, s') = runState tcc s in (a, reverse $ errors s')
 
+hasError :: Tcc Bool
+hasError = liftM (not . null) $ gets errors
+
 -- ---------------------------------------------------------------------------
 -- main function
 -- ---------------------------------------------------------------------------
@@ -68,14 +71,14 @@ runTcc tcc s = let (a, s') = runState tcc s in (a, reverse $ errors s')
 -- Also builds a corresponding class environment. 
 typeClassesCheck :: ModuleIdent -> [Decl] -> ClassEnv -> TCEnv -> ([Decl], ClassEnv, [Message])
 typeClassesCheck m decls (ClassEnv importedClasses importedInstances _) tcEnv0 = 
-  case runTcc result initTccState of 
-    ((classes, instances), []) -> 
+  case runTcc tcCheck initTccState of 
+    ((newClasses, instances), []) -> 
       let newDecls = concatMap (transformInstance m cEnv tcEnv) $ 
             concatMap (transformClass2 cEnv) decls
-          classes' = map renameTypeSigVars classes
-          classes'' = map (buildTypeSchemes m tcEnv) classes'
-          allClassesEnv = bindAll classes'' importedClasses
-          cEnv = ClassEnv allClassesEnv instances (buildClassMethodsMap classes'')
+          newClasses' = map (buildTypeSchemes m tcEnv 
+                          . renameTypeSigVars) newClasses
+          allClassesEnv = bindAll newClasses' importedClasses
+          cEnv = ClassEnv allClassesEnv instances (buildClassMethodsMap $ allClasses allClassesEnv)
       in (newDecls, cEnv, [])
     (_, errs@(_:_)) -> (decls, ClassEnv emptyTopEnv [] Map.empty, errs)
   where
@@ -83,7 +86,22 @@ typeClassesCheck m decls (ClassEnv importedClasses importedInstances _) tcEnv0 =
     instDecls = filter isInstanceDecl decls
     typeSigs = gatherTypeSigs decls
     tcEnv = foldr (bindTC m tcEnv) tcEnv0 decls
-    result = do
+    tcCheck = do
+      phase1
+      hasErr1 <- hasError
+      case hasErr1 of
+        True -> return ([], [])
+        False -> do
+          phase2
+          hasErr2 <- hasError
+          case hasErr2 of
+            True -> return ([], [])
+            False -> do
+              phase3
+    -- ----------------------------------------------------------------------
+    -- phase 1: checks that don't need the class environment
+    -- ----------------------------------------------------------------------
+    phase1 = do
       mapM_ typeVariableInContext classDecls
       mapM_ classMethodSigsContainTypeVar classDecls
       mapM_ instanceTypeVarsDoNotAppearTwice instDecls
@@ -91,47 +109,70 @@ typeClassesCheck m decls (ClassEnv importedClasses importedInstances _) tcEnv0 =
       -- currently disabled
       when False $ mapM_ checkCorrectTypeVarsInTypeSigs classDecls
       
-      -- gather all classes and instances for more "global" checks
-      let newClasses = map classDeclToClass classDecls
-          classes = newClasses ++ allClasses importedClasses
-          instances = catMaybes (map (instanceDeclToInstance m tcEnv) instDecls) ++ importedInstances
+      -- mapM_ checkTypeVarsInContext classDecls -- checked above (typeVariableInContext)
+      mapM_ checkTypeVarsInContext instDecls
+      mapM_ checkTypeVarsInContext typeSigs 
+      
+      mapM_ (checkInstanceDataTypeCorrect tcEnv) instDecls
+      
+      checkForDuplicateClassNames classDecls
+      
+      mapM_ (checkForDirectCycle m) classDecls
+      
+      noDoubleClassMethods m classDecls
+    
+    -- ----------------------------------------------------------------------
+    -- phase 2: Checks that need the class environment, but mostly only for
+    --          determining whether a given class exists or not. Qualified
+    --          instance/superclass contexts are not yet needed. 
+    -- ----------------------------------------------------------------------
+    phase2 = do 
+      let newClasses = map (classDeclToClass m) classDecls
+          instances = catMaybes (map (instanceDeclToInstance m tcEnv) instDecls) 
+                      ++ importedInstances
           newClassEnv = ClassEnv (bindAll newClasses importedClasses) instances Map.empty
+      
       -- TODO: check also contexts of (imported) classes and interfaces?
       mapM_ (checkClassesInContext m newClassEnv) classDecls
       mapM_ (checkClassesInContext m newClassEnv) instDecls
       -- check also contexts in typed expressions
       mapM_ (checkClassesInContext m newClassEnv) typeSigs
-      
-      -- mapM_ checkTypeVarsInContext classDecls -- checked above (typeVariableInContext)
-      mapM_ checkTypeVarsInContext instDecls
-      mapM_ checkTypeVarsInContext typeSigs 
-            
+          
       mapM_ (checkRulesInInstanceOrClass newClassEnv) instDecls
       mapM_ (checkRulesInInstanceOrClass newClassEnv) classDecls
       
-      mapM_ (checkClassNameInScope newClassEnv) instDecls
-      mapM_ (checkInstanceDataTypeCorrect tcEnv) instDecls
+      mapM_ (checkClassNameInInstance newClassEnv) instDecls
       
-      checkForDuplicateClassNames newClassEnv
-      checkForDuplicateInstances newClassEnv
+    -- ----------------------------------------------------------------------
+    -- phase 3: checks that need the class environment, with
+    --          qualified superclass/instance contexts 
+    -- ----------------------------------------------------------------------
+    phase3 = do  
+      let newClasses' = map (qualifyClass newClassEnv' . classDeclToClass m) classDecls
+          instances' = map (qualifyInstance newClassEnv') 
+                           (catMaybes (map (instanceDeclToInstance m tcEnv) instDecls)) 
+                         ++ importedInstances
+          newClassEnv' = ClassEnv (bindAll newClasses' importedClasses) instances' Map.empty
       
-      checkForCyclesInClassHierarchy newClassEnv
-      mapM_ (checkForDirectCycle m) classDecls
+      mapM_ (checkForInstanceDataTypeExistAlsoInstancesForSuperclasses newClassEnv' tcEnv m) instDecls
+      mapM_ (checkInstanceContextImpliesAllInstanceContextsOfSuperClasses newClassEnv' tcEnv m) instDecls
       
-      mapM_ (checkForInstanceDataTypeExistAlsoInstancesForSuperclasses newClassEnv tcEnv m) instDecls
-      mapM_ (checkInstanceContextImpliesAllInstanceContextsOfSuperClasses newClassEnv tcEnv m) instDecls
+      checkForCyclesInClassHierarchy newClassEnv'
       
-      noDoubleClassMethods classes
-      return (classes, instances)
+      checkForDuplicateInstances newClassEnv'
+      
+      return (newClasses', instances')
+    -- |binds all classes into the given top environment
+    -- (under the qualified as well as the unqualified name) 
     bindAll :: [Class] -> TopEnv Class -> TopEnv Class
     bindAll cls cEnv = foldr (\c env -> bindClass m env (unqualify $ theClass c) c) cEnv cls 
 
 -- |converts a class declaration into the form of the class environment 
-classDeclToClass :: Decl -> Class
-classDeclToClass (ClassDecl _ (SContext scon) cls tyvar decls) 
+classDeclToClass :: ModuleIdent -> Decl -> Class
+classDeclToClass m (ClassDecl _ (SContext scon) cls tyvar decls) 
   = Class { 
-    superClasses = map fst scon, 
-    theClass = qualify cls, -- TODO: qualify? 
+    superClasses = map fst scon, -- still unqualified!
+    theClass = qualifyWith m cls, 
     typeVar = tyvar, 
     kind = -1, -- TODO
     methods = allMethods, 
@@ -145,7 +186,7 @@ classDeclToClass (ClassDecl _ (SContext scon) cls tyvar decls)
     splitUpTypeSig _ = internalError "splitUpTypeSig"
     allMethods = map (\(TypeSig _ [id0] cx ty) -> (id0, cx, ty)) $ 
       concatMap splitUpTypeSig $ filter isTypeSig decls
-classDeclToClass _ = internalError "classDeclToClass"
+classDeclToClass _ _ = internalError "classDeclToClass"
   
 
 -- |constructs a map from class methods to their defining classes 
@@ -162,9 +203,9 @@ instanceDeclToInstance :: ModuleIdent -> TCEnv -> Decl -> Maybe Instance
 instanceDeclToInstance m tcEnv (InstanceDecl _ (SContext scon) cls tcon ids decls) = 
   fmap (\ty -> 
     Instance { 
-      context = scon, 
-      iClass = cls,  
-      iType = ty, 
+      context = scon, -- still unqualified!
+      iClass = cls,   -- still unqualified!
+      iType = ty,     -- still unqualified!
       typeVars = ids, 
       rules = decls }) qid
   where
@@ -187,6 +228,29 @@ tyConToQualIdent _ _ UnitTC = Just qUnitIdP
 tyConToQualIdent _ _ (TupleTC n) = Just $ qTupleIdP n 
 tyConToQualIdent _ _ ListTC = Just qListIdP
 tyConToQualIdent _ _ ArrowTC = Just qArrowId
+
+-- |qualifies superclasses in the class context
+qualifyClass :: ClassEnv -> Class -> Class
+qualifyClass cEnv cls = 
+  cls { superClasses = 
+    map (getCanonClassName cEnv)
+        (superClasses cls) } 
+
+-- |canonicalizes the class name: unqualified class names are qualified
+-- with the module where the class is defined
+getCanonClassName :: ClassEnv -> QualIdent -> QualIdent
+getCanonClassName cEnv cls = theClass $ fromJust $ lookupClass cEnv cls
+
+-- |qualifies superclasses in the instance context and the class in the instance
+-- declaration
+qualifyInstance :: ClassEnv -> Instance -> Instance
+qualifyInstance cEnv i = 
+  i { context = map (\(qid, id0) -> (getCanonClassName cEnv qid, id0)) (context i)
+    , iClass = getCanonClassName cEnv (iClass i) }   
+
+-- ----------------------------------------------------------------------------
+-- functions for gathering type signatures
+-- ----------------------------------------------------------------------------
 
 -- |gathers *all* type signatures, also those that are in nested scopes and in
 -- classes etc.
@@ -272,7 +336,7 @@ typeVariableInContext (ClassDecl p (SContext scon) _cls tyvar _decls)
 typeVariableInContext _ = internalError "typeVariableInContext"
 
 -- |check that the classes in superclass contexts or instance contexts are 
--- in scope  
+-- in scope and not ambiguous
 checkClassesInContext :: ModuleIdent -> ClassEnv -> Decl -> Tcc ()
 checkClassesInContext m cEnv (ClassDecl p (SContext scon) _ _ _) = 
   mapM_ (checkClassesInContext' m cEnv p) (map fst scon)
@@ -284,9 +348,10 @@ checkClassesInContext _ _ _ = internalError "TypeClassesCheck.checkClassesInCont
     
 checkClassesInContext' :: ModuleIdent -> ClassEnv -> Position -> QualIdent -> Tcc ()
 checkClassesInContext' m cEnv p qid = 
-  case lookupClass cEnv (qualUnqualify m qid) of 
-    Nothing -> report (errClassNotInScope p qid)
-    Just _ -> ok
+  case lookupClass' cEnv (qualUnqualify m qid) of 
+    []    -> report (errClassNotInScope p qid)
+    [_]   -> ok
+    (_:_) -> report (errAmbiguousClassName p qid) 
 
 {-
 lookupClassDecl :: [Decl] -> QualIdent -> Maybe Decl
@@ -300,13 +365,15 @@ lookupClassDecl [] _cls = Nothing
 -- class Foo1 a where fun :: a
 -- class Foo2 a where fun :: a
 -- TODO: improve position output
-noDoubleClassMethods :: [Class] -> Tcc ()
-noDoubleClassMethods classes = 
+noDoubleClassMethods :: ModuleIdent -> [Decl] -> Tcc ()
+noDoubleClassMethods m classDecls = 
   let allMethods = map fst3 $ concatMap (\(Class {methods=ms}) -> ms) classes
       theNub = nub allMethods -- nubBy (\ms1 ms2 -> fst3 ms1 == fst3 ms2) allMethods
   in if length theNub /= length allMethods
   then report (errDoubleClassMethods NoPos NoPos (allMethods \\ theNub))
   else ok
+  where 
+  classes = map (classDeclToClass m) classDecls
 
 -- noConflictOfClassMethodsWithTopLevelBinding :: [Class] -> ValueEnv -> Tcc ()
 -- noConflictOfClassMethodsWithTopLevelBinding = undefined
@@ -395,12 +462,15 @@ checkForDirectCycle _ _ = internalError "checkForDirectCycle"
 -- class A a
 -- class A a
 -- @
-checkForDuplicateClassNames :: ClassEnv -> Tcc ()
-checkForDuplicateClassNames (ClassEnv classes _ _) = 
-  let duplClassNames = findMultiples $ map theClass (allClasses classes)
+checkForDuplicateClassNames :: [Decl] -> Tcc ()
+checkForDuplicateClassNames classes = 
+  let duplClassNames = findMultiples $ map idFromCls classes
   in if null duplClassNames
   then ok
-  else report (errDuplicateClassNames (map head duplClassNames)) 
+  else report (errDuplicateClassNames (map head duplClassNames))
+  where
+  idFromCls (ClassDecl _ _ cls _ _) = cls
+  idFromCls _ = internalError "checkForDuplicateClassNames"
 
 
 -- |Checks that there is at most one instance for a given class and type
@@ -422,13 +492,15 @@ instanceTypeVarsDoNotAppearTwice (InstanceDecl p _scon cls tcon ids _)
     else report (errDuplicateTypeVars p cls tcon (map head duplTypeVars))
 instanceTypeVarsDoNotAppearTwice _ = internalError "instanceTypeVarsDoNotAppearTwice"
 
--- |Checks whether the class name in an instance definition is in scope
-checkClassNameInScope :: ClassEnv -> Decl -> Tcc ()
-checkClassNameInScope cEnv (InstanceDecl p _ cls _ _ _) = 
-  if isNothing $ lookupClass cEnv cls 
-  then report (errClassNameNotInScope p cls)
-  else ok
-checkClassNameInScope _ _ = internalError "checkClassNameInScope"
+-- |Checks that the class name in an instance definition is in scope
+-- and that it is not ambiguous
+checkClassNameInInstance :: ClassEnv -> Decl -> Tcc ()
+checkClassNameInInstance cEnv (InstanceDecl p _ cls _ _ _) = 
+  case lookupClass' cEnv cls of
+    []    -> report (errClassNameNotInScope p cls)
+    [_]   -> ok
+    (_:_) -> report (errAmbiguousClassName p cls)
+checkClassNameInInstance _ _ = internalError "checkClassNameInScope"
 
 -- |Checks whether the instance data type is in scope and not a type synonym. 
 -- Check also that the arity of the data type in the instance declaration
@@ -1046,10 +1118,10 @@ errCyclesInClassHierarchy qids
   = message (text "There are cycles in the class hierarchy. Classes concerned: "
   <+> hsep (punctuate comma (map ppQIdent qids)))
 
-errDuplicateClassNames :: [QualIdent] -> Message
+errDuplicateClassNames :: [Ident] -> Message
 errDuplicateClassNames clss 
   = message (text "Two or more classes with the same name: "  
-  <+> hsep (punctuate comma (map ppQIdent clss)))
+  <+> hsep (punctuate comma (map ppIdent clss)))
   
 errDuplicateInstances :: [(QualIdent, QualIdent)] -> Message
 errDuplicateInstances is
@@ -1114,6 +1186,8 @@ errNotAllowedTypeVars p ids = posMessage p $
   " (currently) unfortunately not supported! ")
   $$ text "These are: " <> text (show ids)
     
-  
+errAmbiguousClassName :: Position -> QualIdent -> Message
+errAmbiguousClassName p id0 = posMessage p $ 
+  text "Ambiguous class name: " <> text (show id0) 
   
   
