@@ -19,7 +19,7 @@ import CompilerEnv
 import Curry.Syntax
 import Env.ClassEnv
 import Env.Value
-import Base.Names (sep, mkSelFunName, mkDictName, identPrefix)
+import Base.Names (sep, mkSelFunName, mkDictName)
 import Base.Messages
 import Data.Maybe
 import Base.Utils
