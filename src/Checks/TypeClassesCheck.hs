@@ -366,8 +366,7 @@ checkForCyclesInClassHierarchy :: ClassEnv -> Tcc ()
 checkForCyclesInClassHierarchy cEnv@(ClassEnv classes _ _) = 
   if all (==1) (map length sccs)
   then ok
-  else report 
-        (errCyclesInClassHierarchy $ head $ filter (\xs -> length xs > 1) sccs)
+  else mapM_ (report . errCyclesInClassHierarchy) (filter (\xs -> length xs > 1) sccs)
   where 
     sccs = scc (\qid -> [qid]) 
                (\qid -> (superClasses $ fromJust $ lookupClass cEnv qid))
