@@ -106,9 +106,9 @@ to True in the normal execution of the compiler.
 >     theta <- getTypeSubst
 >     let newDecls'' = applyTypeSubst theta newDecls' 
 >
->     cEnv' <- getClassEnv
->     vEnv <- getValueEnv
->     checkNoEqualClassMethodAndFunctionNames vEnv cEnv'
+>     -- cEnv' <- getClassEnv
+>     -- vEnv <- getValueEnv
+>     -- checkNoEqualClassMethodAndFunctionNames vEnv cEnv'
 > 
 >     -- checkForAmbiguousContexts vds
 >     -- restore the order of the declarations!
@@ -2168,9 +2168,11 @@ Error functions.
 >   , text "are incompatible"
 >   ]
 
+> {-
 > errEqualClassMethodAndFunctionNames :: ModuleIdent -> Ident -> Doc
 > errEqualClassMethodAndFunctionNames _m f = 
 >   text "Equal class method and top level function names: " <> ppIdent f
+> -}
 
 > {-
 > errAmbiguousTypeVarsInContext :: Position -> Ident -> [Int] -> Message
@@ -2218,11 +2220,11 @@ The following functions implement pretty-printing for types.
 \end{verbatim}
 After all type checking has been done, check at last, that there are 
 no class methods with the name of one of the top level functions. 
-
-Also check that in the top level declarations there are no ambiguous type
-vars in their contexts. 
 \begin{verbatim}
 
+> -- | checks that there are no class methods and function names with the
+> -- same name
+> {-
 > checkNoEqualClassMethodAndFunctionNames :: ValueEnv -> ClassEnv -> TCM ()
 > checkNoEqualClassMethodAndFunctionNames vEnv cEnv = do
 >   let classMethods = getAllClassMethodNames cEnv
@@ -2234,8 +2236,12 @@ vars in their contexts.
 >         m <- getModuleIdent
 >         report $ message $ errEqualClassMethodAndFunctionNames m f
 >       else return ()
+> -}
 
-
+\end{verbatim}
+Also check that in the top level declarations there are no ambiguous type
+vars in their contexts.
+\begin{verbatim} 
 
 > {-
 > checkForAmbiguousContexts :: [Decl] -> TCM ()
