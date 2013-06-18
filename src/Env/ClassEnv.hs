@@ -13,13 +13,14 @@
 
 
 module Env.ClassEnv 
-  ( ClassEnv (..), Class (..), Instance (..), initClassEnv, lookupClass
+  ( ClassEnv (..), Class (..), Instance (..), initClassEnv, lookupClass, lookupClass'
   , lookupDefiningClass, lookupMethodTypeScheme, lookupMethodTypeSig
   , ppClass, ppInst, getAllClassMethods, allSuperClasses, isSuperClassOf
   , implies, implies'
   , getInstance, isValidCx, reduceContext, findPath
   , toHnfs, toHnf, inHnf
   , dictCode, Operation (..), dictType, dictTypes
+  , bindClass, allClasses 
   ) where
 
 -- import Base.Types hiding ()
@@ -38,11 +39,12 @@ import Control.Monad.State
 import Base.TypeSubst (subst)
 import Base.Subst (listToSubst)
 
+import Base.TopEnv
 
 -- |The class environment consists of the classes and instances in scope
 -- plus a map from class methods to their defining classes
 data ClassEnv = ClassEnv 
-  { theClasses :: [Class]
+  { theClasses :: TopEnv Class
   , theInstances :: [Instance] 
   , classMethods :: (Map.Map QualIdent QualIdent)
   } 
@@ -69,15 +71,33 @@ data Instance = Instance
   deriving (Eq, Show)
   
 initClassEnv :: ClassEnv 
-initClassEnv = ClassEnv [] [] Map.empty
+initClassEnv = ClassEnv emptyTopEnv [] Map.empty
 
 -- |looks up a given class from the class environment
 lookupClass :: ClassEnv -> QualIdent -> Maybe Class
-lookupClass (ClassEnv cls _ _) c = lookupClass' cls
-  where lookupClass' [] = Nothing
-        lookupClass' (c'@Class {theClass=tc}:cs) 
-          | tc == c = Just c'
-          | otherwise = lookupClass' cs
+lookupClass cEnv c = 
+  list2Maybe $ lookupClass' cEnv c
+
+-- |looks up a given class from the class environment, returning 
+-- a list of matching classes: An empty list means there are no matching
+-- classes in scope, a list with more than one element means the class
+-- name is ambiguous 
+lookupClass' :: ClassEnv -> QualIdent -> [Class]
+lookupClass' (ClassEnv cEnv _ _) c = qualLookupTopEnv c cEnv 
+
+-- |Binds a given class in the class environment. This function is meant
+-- to be used for binding classes defined in a source file, not for binding
+-- classes imported from elsewhere
+bindClass :: ModuleIdent -> TopEnv Class -> Ident -> Class -> TopEnv Class
+bindClass m cEnv c cls = 
+  qualBindTopEnv "cEnv" qc cls $ bindTopEnv "cEnv" c cls cEnv
+  where
+  qc = qualifyWith m c
+  
+-- |returns all classes bound in the class environment. Warning: Can 
+-- contain duplicates!
+allClasses :: TopEnv Class -> [Class]
+allClasses = allBoundElems
 
 -- |looks up the class that defines the given class method
 lookupDefiningClass :: ClassEnv -> QualIdent -> Maybe QualIdent
@@ -108,7 +128,7 @@ lookup3 x ((a, b, c):ys) | x == a = Just (b, c)
 -- the class. 
 getAllClassMethods :: ClassEnv -> [(Ident, Context, TypeExpr)]
 getAllClassMethods (ClassEnv classes _ _) = 
-  let msAndCls  = map (\c -> (theClass c, typeVar c, methods c)) classes
+  let msAndCls  = map (\c -> (theClass c, typeVar c, methods c)) (allClasses classes)
       msAndCls' = concatMap (\(tc, tyvar, ms_) -> map (\m -> (tc, tyvar, m)) ms_) msAndCls 
       ms        = map (\(tc, tyvar, (id0, cx, ty)) -> (id0, addClassContext tc tyvar cx, ty)) msAndCls'  
   in ms
@@ -333,7 +353,9 @@ initFreshVar = 1 -- not zero!
 {-
 ppClasses :: ClassEnv -> Doc
 ppClasses (ClassEnv classes ifs mmap) = 
-  vcat (map ppClass classes) $$ vcat (map ppInst ifs)
+  vcat (map (\(qid, cls) -> text (show qid) <> text ":" $+$ nest 4 (ppClass cls)) 
+            (allBindings classes)) 
+  $$ vcat (map ppInst ifs)
   $$ text (show mmap)
 -}  
   
@@ -357,4 +379,12 @@ ppInst (Instance {context = cx, iClass = ic, iType = it, typeVars = tvs, rules =
   <> text " => " <> text (show ic) <+> text "(" <> text (show it)
   <+> hsep (map (text. show) tvs) <> text ")" <+> text "where"
   $$ nest 2 (vcat $ map ppDecl rs)
-  
+
+-- ----------------------------------------------------------------------------
+-- Helper functions
+-- ----------------------------------------------------------------------------
+
+list2Maybe :: [a] -> Maybe a
+list2Maybe [] = Nothing
+list2Maybe [x] = Just x
+list2Maybe (_:_) = Nothing

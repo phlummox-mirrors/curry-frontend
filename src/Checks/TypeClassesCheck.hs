@@ -35,6 +35,7 @@ import qualified Base.Types as BTC (Context)
 import Base.SCC
 import Base.Utils (findMultiples, fst3)
 import Base.Names
+import Base.TopEnv
 
 import Checks.TypeCheck
 
@@ -73,9 +74,10 @@ typeClassesCheck m decls (ClassEnv importedClasses importedInstances _) tcEnv0 =
             concatMap (transformClass2 cEnv) decls
           classes' = map renameTypeSigVars classes
           classes'' = map (buildTypeSchemes m tcEnv) classes'
-          cEnv = ClassEnv classes'' instances (buildClassMethodsMap classes'')
+          allClassesEnv = bindAll classes'' importedClasses
+          cEnv = ClassEnv allClassesEnv instances (buildClassMethodsMap classes'')
       in (newDecls, cEnv, [])
-    (_, errs@(_:_)) -> (decls, ClassEnv [] [] Map.empty, errs)
+    (_, errs@(_:_)) -> (decls, ClassEnv emptyTopEnv [] Map.empty, errs)
   where
     classDecls = filter isClassDecl decls
     instDecls = filter isInstanceDecl decls
@@ -90,9 +92,10 @@ typeClassesCheck m decls (ClassEnv importedClasses importedInstances _) tcEnv0 =
       when False $ mapM_ checkCorrectTypeVarsInTypeSigs classDecls
       
       -- gather all classes and instances for more "global" checks
-      let classes = map classDeclToClass classDecls ++ importedClasses
+      let newClasses = map classDeclToClass classDecls
+          classes = newClasses ++ allClasses importedClasses
           instances = catMaybes (map (instanceDeclToInstance m tcEnv) instDecls) ++ importedInstances
-          newClassEnv = ClassEnv classes instances Map.empty
+          newClassEnv = ClassEnv (bindAll newClasses importedClasses) instances Map.empty
       -- TODO: check also contexts of (imported) classes and interfaces?
       mapM_ (checkClassesInContext m newClassEnv) classDecls
       mapM_ (checkClassesInContext m newClassEnv) instDecls
@@ -120,6 +123,8 @@ typeClassesCheck m decls (ClassEnv importedClasses importedInstances _) tcEnv0 =
       
       noDoubleClassMethods classes
       return (classes, instances)
+    bindAll :: [Class] -> TopEnv Class -> TopEnv Class
+    bindAll cls cEnv = foldr (\c env -> bindClass m env (unqualify $ theClass c) c) cEnv cls 
 
 -- |converts a class declaration into the form of the class environment 
 classDeclToClass :: Decl -> Class
@@ -370,7 +375,7 @@ checkForCyclesInClassHierarchy cEnv@(ClassEnv classes _ _) =
   where 
     sccs = scc (\qid -> [qid]) 
                (\qid -> (superClasses $ fromJust $ lookupClass cEnv qid))
-               (map theClass classes)
+               (map theClass (allClasses classes))
 
 -- |Checks that in the superclass context the class declared doesn't appear
 -- in the context (this is a special case of the "no cycles" check which 
@@ -392,7 +397,7 @@ checkForDirectCycle _ _ = internalError "checkForDirectCycle"
 -- @
 checkForDuplicateClassNames :: ClassEnv -> Tcc ()
 checkForDuplicateClassNames (ClassEnv classes _ _) = 
-  let duplClassNames = findMultiples $ map theClass classes
+  let duplClassNames = findMultiples $ map theClass (allClasses classes)
   in if null duplClassNames
   then ok
   else report (errDuplicateClassNames (map head duplClassNames)) 
