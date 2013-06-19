@@ -149,9 +149,10 @@ diExpr cx0 v@(Variable (Just varCty0) qid) = do
   -- function
   var'' cEnv = if isNothing $ maybeCls cEnv 
     then v
-    -- TODO: canonical class/function names
+    -- Unqualify "qid"! The name of the selection function is still unique
+    -- because the class name is unique 
     else Variable (Just varCty0) 
-           (qualify $ mkIdent $ mkSelFunName (show $ cls cEnv) (show $ qid))
+           (qualify $ mkIdent $ mkSelFunName (show $ cls cEnv) (show $ unqualify $ qid))
 diExpr _ (Variable Nothing _) = internalError "diExpr: no type info"
 diExpr _ e@(Constructor _) = return e
 diExpr cx (Paren e) = Paren `liftM` diExpr cx e
