@@ -52,6 +52,10 @@ import Base.Subst (listToSubst)
 
 import Base.TopEnv
 
+-- ----------------------------------------------------------------------------
+-- environment definitions
+-- ----------------------------------------------------------------------------
+
 -- |The class environment consists of the classes and instances in scope
 -- plus a map from class methods to their defining classes
 data ClassEnv = ClassEnv 
@@ -83,6 +87,10 @@ data Instance = Instance
   
 initClassEnv :: ClassEnv 
 initClassEnv = ClassEnv emptyTopEnv [] Map.empty
+
+-- ----------------------------------------------------------------------------
+-- lookup and data retrieval functions
+-- ----------------------------------------------------------------------------
 
 -- |looks up a given class from the class environment
 lookupClass :: ClassEnv -> QualIdent -> Maybe Class
@@ -154,6 +162,9 @@ getAllClassMethodNames :: ClassEnv -> [Ident]
 getAllClassMethodNames (ClassEnv classes _ _) = 
   concatMap (map fst . typeSchemes) (allClasses classes)
   
+-- ----------------------------------------------------------------------------
+-- type classes related functionality
+-- ----------------------------------------------------------------------------
 
 -- |returns *all* superclasses of a given class
 allSuperClasses :: ClassEnv -> QualIdent -> [QualIdent]
