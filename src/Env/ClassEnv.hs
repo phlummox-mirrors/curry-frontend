@@ -23,7 +23,7 @@ module Env.ClassEnv (
   , allClasses, allLocalClasses, getAllClassMethods, getInstance
   , getAllClassMethodNames
   -- ** functions for modifying the class environment
-  , bindClass
+  , bindClass, bindClassMethods
   -- ** pretty printing
   , ppClass, ppInst
   -- * type classes related functionality 
@@ -167,7 +167,22 @@ getAllClassMethods (ClassEnv classes _ _) =
 getAllClassMethodNames :: ClassEnv -> [Ident]
 getAllClassMethodNames (ClassEnv classes _ _) = 
   concatMap (map fst . typeSchemes) (allClasses classes)
-  
+
+-- |binds the class methods in the class methods environment. This function
+-- is assumed to be used for classes in the given module, not for imported
+-- classes 
+bindClassMethods :: ModuleIdent -> [Class] -> TopEnv Class -> TopEnv Class
+bindClassMethods m cls env = foldr (bindClassMethods' m) env cls 
+
+-- |binds the methods of one class in the class methods environment 
+bindClassMethods' :: ModuleIdent -> Class -> TopEnv Class -> TopEnv Class
+bindClassMethods' m cls vEnv = 
+  let classMethods0 = map fst $ typeSchemes cls in
+  foldr (\id0 env -> 
+          qualBindTopEnv "bcm" (qualifyWith m id0) cls $ bindTopEnv "bcm" id0 cls env)
+    vEnv
+    classMethods0
+
 -- ----------------------------------------------------------------------------
 -- type classes related functionality
 -- ----------------------------------------------------------------------------
