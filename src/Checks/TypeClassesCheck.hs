@@ -70,7 +70,7 @@ hasError = liftM (not . null) $ gets errors
 -- adds new data types/functions for the class and instance declarations. 
 -- Also builds a corresponding class environment. 
 typeClassesCheck :: ModuleIdent -> [Decl] -> ClassEnv -> TCEnv -> ([Decl], ClassEnv, [Message])
-typeClassesCheck m decls (ClassEnv importedClasses importedInstances _) tcEnv0 = 
+typeClassesCheck m decls (ClassEnv importedClasses importedInstances classMethodsMap) tcEnv0 = 
   case runTcc tcCheck initTccState of 
     ((newClasses, instances), []) -> 
       let newDecls = adjustContexts cEnv $ concatMap (transformInstance m cEnv tcEnv) $ 
@@ -78,7 +78,8 @@ typeClassesCheck m decls (ClassEnv importedClasses importedInstances _) tcEnv0 =
           newClasses' = map (buildTypeSchemes m tcEnv 
                           . renameTypeSigVars) newClasses
           allClassesEnv = bindAll newClasses' importedClasses
-          cEnv = ClassEnv allClassesEnv instances emptyTopEnv
+          newClassMethodsMap = bindClassMethods m (allLocalClasses allClassesEnv) classMethodsMap
+          cEnv = ClassEnv allClassesEnv instances newClassMethodsMap
       in (newDecls, cEnv, [])
     (_, errs@(_:_)) -> (decls, ClassEnv emptyTopEnv [] emptyTopEnv, errs)
   where
