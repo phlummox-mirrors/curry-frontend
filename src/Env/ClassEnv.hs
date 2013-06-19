@@ -1,6 +1,6 @@
 {- |
     Module      :  $Header$
-    Description :  Environment for type classes
+    Description :  Environment and functionality for type classes
     Copyright   :  (c) 2013 Matthias Böhm
     License     :  OtherLicense
 
@@ -8,20 +8,30 @@
     Stability   :  experimental
     Portability :  portable
 
-    This file contains the environment definitions for type classes. 
+    This file contains the environment definitions for type classes and 
+    type classes related functionality. 
 -}
 
 
-module Env.ClassEnv 
-  ( ClassEnv (..), Class (..), Instance (..), initClassEnv, lookupClass, lookupClass'
+module Env.ClassEnv ( 
+  -- * class environment
+  -- ** the environment data types
+  ClassEnv (..), Class (..), Instance (..), initClassEnv
+  -- ** various functions for retrieving specific data from the environment 
+  , lookupClass, lookupClass'
   , lookupDefiningClass, lookupMethodTypeScheme, lookupMethodTypeSig
-  , ppClass, ppInst, getAllClassMethods, allSuperClasses, isSuperClassOf
+  , allClasses, getAllClassMethods, getInstance
+  , getAllClassMethodNames
+  -- ** functions for modifying the class environment
+  , bindClass
+  -- ** pretty printing
+  , ppClass, ppInst
+  -- * type classes related functionality 
+  , allSuperClasses, isSuperClassOf
   , implies, implies'
-  , getInstance, isValidCx, reduceContext, findPath
+  , isValidCx, reduceContext, findPath
   , toHnfs, toHnf, inHnf
   , dictCode, Operation (..), dictType, dictTypes
-  , bindClass, allClasses 
-  , getAllClassMethodNames
   ) where
 
 -- import Base.Types hiding ()
