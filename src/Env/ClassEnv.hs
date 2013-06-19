@@ -20,7 +20,7 @@ module Env.ClassEnv (
   -- ** various functions for retrieving specific data from the environment 
   , lookupClass, lookupClass'
   , lookupDefiningClass, lookupMethodTypeScheme, lookupMethodTypeSig
-  , allClasses, getAllClassMethods, getInstance
+  , allClasses, allLocalClasses, getAllClassMethods, getInstance
   , getAllClassMethodNames
   -- ** functions for modifying the class environment
   , bindClass
@@ -117,6 +117,11 @@ bindClass m cEnv c cls =
 allClasses :: TopEnv Class -> [Class]
 allClasses = nubBy eqClass . allBoundElems
   where eqClass c1 c2 = theClass c1 == theClass c2
+  
+-- |returns all locally defined classes bound in the class environment
+allLocalClasses :: TopEnv Class -> [Class]
+allLocalClasses = nubBy eqClass . map snd . allLocalBindings
+  where eqClass c1 c2 = theClass c1 == theClass c2 
 
 -- |looks up the class that defines the given class method
 lookupDefiningClass :: ClassEnv -> QualIdent -> Maybe QualIdent
