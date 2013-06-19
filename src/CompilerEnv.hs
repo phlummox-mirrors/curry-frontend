@@ -63,7 +63,7 @@ showCompilerEnv opts env = show $ vcat
   , header "Precedences     " $ ppAL (text . show) $ showLocalBindings $ opPrecEnv    env
   , header "Classes         " $ ppAL ppClass $ allBindings $ theClasses $ classEnv env
   , header "Instances       " $ vcat (map ppInst (theInstances $ classEnv env))
-  , header "ClassMethodsMap " $ text (show $ classMethods $ classEnv env)
+  , header "ClassMethodsMap " $ ppAL ppClass $ allBindings $ classMethods $ classEnv env
   ]
   where
   header hdr content = hang (text hdr <+> colon) 4 content

@@ -78,9 +78,9 @@ typeClassesCheck m decls (ClassEnv importedClasses importedInstances _) tcEnv0 =
           newClasses' = map (buildTypeSchemes m tcEnv 
                           . renameTypeSigVars) newClasses
           allClassesEnv = bindAll newClasses' importedClasses
-          cEnv = ClassEnv allClassesEnv instances (buildClassMethodsMap $ allClasses allClassesEnv)
+          cEnv = ClassEnv allClassesEnv instances emptyTopEnv
       in (newDecls, cEnv, [])
-    (_, errs@(_:_)) -> (decls, ClassEnv emptyTopEnv [] Map.empty, errs)
+    (_, errs@(_:_)) -> (decls, ClassEnv emptyTopEnv [] emptyTopEnv, errs)
   where
     classDecls = filter isClassDecl decls
     instDecls = filter isInstanceDecl decls
@@ -130,7 +130,7 @@ typeClassesCheck m decls (ClassEnv importedClasses importedInstances _) tcEnv0 =
       let newClasses = map (classDeclToClass m) classDecls
           instances = map (instanceDeclToInstance m tcEnv) instDecls 
                       ++ importedInstances
-          newClassEnv = ClassEnv (bindAll newClasses importedClasses) instances Map.empty
+          newClassEnv = ClassEnv (bindAll newClasses importedClasses) instances emptyTopEnv
       
       -- TODO: check also contexts of (imported) classes and interfaces?
       mapM_ (checkClassesInContext m newClassEnv) classDecls
@@ -155,7 +155,7 @@ typeClassesCheck m decls (ClassEnv importedClasses importedInstances _) tcEnv0 =
             map (qualifyInstance newClassEnv' . instanceDeclToInstance m tcEnv)
                 instDecls 
             ++ importedInstances
-          newClassEnv' = ClassEnv (bindAll newClasses' importedClasses) instances' Map.empty
+          newClassEnv' = ClassEnv (bindAll newClasses' importedClasses) instances' emptyTopEnv
       
       mapM_ (checkForInstanceDataTypeExistAlsoInstancesForSuperclasses newClassEnv' tcEnv m) instDecls
       mapM_ (checkInstanceContextImpliesAllInstanceContextsOfSuperClasses newClassEnv' tcEnv m) instDecls

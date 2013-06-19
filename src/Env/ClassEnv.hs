@@ -61,7 +61,7 @@ import Base.TopEnv
 data ClassEnv = ClassEnv 
   { theClasses :: TopEnv Class
   , theInstances :: [Instance] 
-  , classMethods :: (Map.Map QualIdent QualIdent)
+  , classMethods :: TopEnv Class
   } 
   deriving Show
 
@@ -86,7 +86,7 @@ data Instance = Instance
   deriving (Eq, Show)
   
 initClassEnv :: ClassEnv 
-initClassEnv = ClassEnv emptyTopEnv [] Map.empty
+initClassEnv = ClassEnv emptyTopEnv [] emptyTopEnv
 
 -- ----------------------------------------------------------------------------
 -- lookup and data retrieval functions
@@ -125,7 +125,8 @@ allLocalClasses = nubBy eqClass . map snd . allLocalBindings
 
 -- |looks up the class that defines the given class method
 lookupDefiningClass :: ClassEnv -> QualIdent -> Maybe QualIdent
-lookupDefiningClass (ClassEnv _ _ ms) m = Map.lookup m ms  
+lookupDefiningClass (ClassEnv _ _ ms) m = 
+  fmap theClass $ list2Maybe $ qualLookupTopEnv m ms
 
 -- |looks up the type scheme of a given class method
 lookupMethodTypeScheme :: ClassEnv -> QualIdent -> Maybe TypeScheme
