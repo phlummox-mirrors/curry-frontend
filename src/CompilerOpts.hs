@@ -47,7 +47,7 @@ data Options = Options
   , optDumps        :: [DumpLevel]    -- ^ dump levels
   , optDumpEnv      :: Bool           -- ^ dump compilation environment
   , optDumpRaw      :: Bool           -- ^ dump data structure
-  }
+  } deriving Show
 
 -- | Default compiler options
 defaultOptions :: Options
@@ -76,7 +76,7 @@ data CymakeMode
   | ModeNumericVersion -- ^ Show only version, suitable for later processing
   | ModeHtml           -- ^ Create HTML documentation
   | ModeMake           -- ^ Compile with dependencies
-  deriving Eq
+  deriving (Eq, Show)
 
 -- |Type of the target file
 data TargetType
@@ -86,14 +86,14 @@ data TargetType
   | FlatXml               -- ^ FlatCurry as XML
   | AbstractCurry         -- ^ AbstractCurry
   | UntypedAbstractCurry  -- ^ UntypedAbstractCurry
-    deriving Eq
+    deriving (Eq, Show)
 
 -- |Data type representing the verbosity level
 data Verbosity
   = VerbQuiet  -- ^ be quiet
   | VerbStatus -- ^ show status of compilation
   | VerbInfo   -- ^ show also additional info
-    deriving (Eq, Ord)
+    deriving (Eq, Ord, Show)
 
 -- |Classifies a number as a 'Verbosity'
 classifyVerbosity :: String -> Verbosity -> Verbosity
