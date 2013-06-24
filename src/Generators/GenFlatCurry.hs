@@ -1099,34 +1099,3 @@ splitoffArgTypes :: IL.Type -> [Ident] -> [(Ident, IL.Type)]
 splitoffArgTypes (IL.TypeArrow l r) (i:is) = (i, l):splitoffArgTypes r is
 splitoffArgTypes _ [] = []
 splitoffArgTypes _ _  = internalError "splitoffArgTypes"
-
-
--- ---------------------------------------------------------------------------
--- type classes specific
--- ---------------------------------------------------------------------------
-
-{-
-convertClassEnv :: ClassEnv -> FlatState ClassExport
-convertClassEnv (ClassEnv cs _is) = do
-  classes <- mapM convertClass cs
-  return $ Just (classes, [])
-
-convertClass :: Env.ClassEnv.Class -> FlatState EF.Class
-convertClass (Env.ClassEnv.Class superClasses theClass typeVar kind methods defaults) 
- = do
-   mdl <- gets moduleIdE 
-   valEnv <- gets typeEnvE
-   tcEnv <- gets tConsEnvE
-   types <- mapM visitType (map (transType mdl valEnv tcEnv . typeSchemeToType) methods)
-   let translated = EF.Class 
-        (map qIdentToQName superClasses) 
-        (qIdentToQName (qualify theClass))
-        (mkIdx typeVar)
-        kind
-        types
-   return translated
-
-qIdentToQName :: QualIdent -> QName
-qIdentToQName (QualIdent mdl name) = 
-  mkQName (maybe "" show mdl, (show name))
--}
