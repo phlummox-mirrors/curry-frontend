@@ -99,7 +99,7 @@ compileInterface paths ctxt mEnv m fn = do
 -- FlatInterfaces instead of ".icurry" files when using cymake as a frontend
 -- for PAKCS.
 flatToCurryInterface :: EF.Prog -> Interface
-flatToCurryInterface (EF.Prog m imps ts fs os {- cs-})
+flatToCurryInterface (EF.Prog m imps ts fs os)
   = Interface (fromModuleName m) (map genIImportDecl imps) $ concat
     [ map genITypeDecl $ filter (not . isSpecialPreludeType) ts
     , map genIFuncDecl fs

@@ -20,7 +20,7 @@ import Text.PrettyPrint
 -- curry-base
 import Curry.Base.Message
 import Curry.Base.Ident as Id
-import Curry.ExtendedFlat.Type as EF
+import Curry.ExtendedFlat.Type
 import Curry.ExtendedFlat.TypeInference
 import qualified Curry.Syntax as CS
 
@@ -36,7 +36,6 @@ import Base.Types
 import Env.Interface
 import Env.TypeConstructor (TCEnv, TypeInfo (..), qualLookupTC)
 import Env.Value (ValueEnv, ValueInfo (..), lookupValue, qualLookupValue)
-import Env.ClassEnv
 
 -- other
 import CompilerOpts (Options (..))
@@ -59,24 +58,15 @@ genFlatCurry opts modSum mEnv tyEnv tcEnv mdl = (prog', messages)
 
 -- transforms intermediate language code (IL) to FlatCurry interfaces
 genFlatInterface :: Options -> ModuleSummary.ModuleSummary -> InterfaceEnv
-                 -> ValueEnv -> TCEnv -> ClassEnv -> IL.Module 
-                 -> (Prog, [Message])
-genFlatInterface opts modSum mEnv tyEnv tcEnv cEnv mdl = (intf'' , messages)
+                 -> ValueEnv -> TCEnv -> IL.Module -> (Prog, [Message])
+genFlatInterface opts modSum mEnv tyEnv tcEnv mdl = (intf' , messages)
   where
-  ((intf,cEnv'), messages) 
-    = run opts modSum mEnv tyEnv tcEnv True $ do
-       intf0  <- visitModule mdl
-       -- we generate the inferface, so we have to add the class environment
-       -- to the interface file  
-       cEnv0 <- return Nothing -- convertClassEnv cEnv
-       return (intf0, cEnv0)
+  (intf, messages) = run opts modSum mEnv tyEnv tcEnv True (visitModule mdl)
   intf'            = patchPrelude intf
-  intf''           = intf' -- addClassEnv intf' cEnv'
-  -- addClassEnv (Prog m is ts fs ops _) c = (Prog m is ts fs ops c)
 
 patchPrelude :: Prog -> Prog
-patchPrelude p@(Prog n _ types funcs ops {-cs-})
-  | n == prelude = Prog n [] (preludeTypes ++ types) funcs ops {-cs-}
+patchPrelude p@(Prog n _ types funcs ops)
+  | n == prelude = Prog n [] (preludeTypes ++ types) funcs ops
   | otherwise    = p
 
 preludeTypes :: [TypeDecl]
@@ -199,7 +189,7 @@ visitModule (IL.Module mid imps decls) = do
       modid   <- visitModuleIdent mid
       imps'   <- imports
       is      <- mapM visitModuleIdent $ nub $ imps ++ (map extractMid imps')
-      return $ Prog modid is (recrds ++ types ++ datas) funcs ops -- Nothing -- TODO
+      return $ Prog modid is (recrds ++ types ++ datas) funcs ops
     )
     ( do
       ds      <- filterM isPublicDataDecl decls
@@ -215,7 +205,7 @@ visitModule (IL.Module mid imps decls) = do
       modid   <- visitModuleIdent mid
       imps'   <- imports
       is      <- mapM visitModuleIdent $ nub $ imps ++ (map extractMid imps')
-      return $ Prog modid is (itypes ++ recrds ++ types ++ datas) (ifuncs ++ funcs) (iops ++ ops) -- Nothing -- TODO
+      return $ Prog modid is (itypes ++ recrds ++ types ++ datas) (ifuncs ++ funcs) (iops ++ ops)
     )
   where extractMid (CS.IImportDecl _ mid1) = mid1
 

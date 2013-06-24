@@ -44,4 +44,4 @@ genFlatCurry opts ms env = GFC.genFlatCurry opts ms
 genFlatInterface :: Options -> ModuleSummary -> CompilerEnv -> IL.Module
                  -> (EF.Prog, [Message])
 genFlatInterface opts ms env = GFC.genFlatInterface opts ms
-  (interfaceEnv env) (valueEnv env) (tyConsEnv env) (classEnv env)
+  (interfaceEnv env) (valueEnv env) (tyConsEnv env)
