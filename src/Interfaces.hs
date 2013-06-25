@@ -2,7 +2,7 @@
     Module      :  $Header$
     Description :  Loading interfaces
     Copyright   :  (c) 2000 - 2004, Wolfgang Lux
-                       2011       , Björn Peemöller
+                       2011 - 2013, Björn Peemöller
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
@@ -17,180 +17,125 @@
     whether they are included by the import specification or not.
 
     The declarations are later brought into the scope of the module via the
-    function 'importModules' (see module @Imports@).
+    function 'importModules', see module "Imports".
 
-    Interface files are updated by the Curry builder when necessary
-    (see module @CurryBuilder@).
+    Interface files are updated by the Curry builder when necessary,
+    see module "CurryBuilder".
 -}
 module Interfaces (loadInterfaces) where
 
-import           Control.Monad                 (foldM, liftM, unless)
-import           Control.Monad.IO.Class        (liftIO)
-import qualified Control.Monad.State    as S   (StateT (..), modify)
-import           Data.List                     (intercalate, isPrefixOf)
-import qualified Data.Map               as Map
+import           Control.Monad               (unless)
+import           Control.Monad.IO.Class      (liftIO)
+import qualified Control.Monad.State    as S (StateT, execStateT, gets, modify)
+import qualified Data.Map               as M (insert, member)
 import           Text.PrettyPrint
 
 import           Curry.Base.Ident
-import           Curry.Base.Message            (runMsg)
+import           Curry.Base.Message          (runMsg)
 import           Curry.Base.Position
-import qualified Curry.ExtendedFlat.Type as EF
-import           Curry.Files.PathUtils   as PU
+import           Curry.Files.PathUtils
 import           Curry.Syntax
 
 import Base.Messages (Message, posMessage, internalError)
 
 import Env.Interface
 
-type IntfLoader a = S.StateT [Message] IO a
+-- Interface accumulating monad
+type IntfLoader a = S.StateT LoaderState IO a
 
+data LoaderState = LoaderState
+  { iEnv   :: InterfaceEnv
+  , spaths :: [FilePath]
+  , errs   :: [Message]
+  }
+
+-- Report an error.
 report :: Message -> IntfLoader ()
-report msg = S.modify (msg:)
+report msg = S.modify $ \ s -> s { errs = msg : errs s }
 
--- |Load the interface files into the 'InterfaceEnv'
-loadInterfaces :: [FilePath] -> Module -> IO (InterfaceEnv, [Message])
+-- Check whether a module interface is already loaded.
+loaded :: ModuleIdent -> IntfLoader Bool
+loaded m = S.gets $ \ s -> m `M.member` iEnv s
+
+-- Retrieve the search paths
+searchPaths :: IntfLoader [FilePath]
+searchPaths = S.gets spaths
+
+-- Add an interface to the environment.
+addInterface :: ModuleIdent -> Interface -> IntfLoader ()
+addInterface m intf = S.modify $ \ s -> s { iEnv = M.insert m intf $ iEnv s }
+
+-- |Load the interfaces needed by a given module.
+-- This function returns an 'InterfaceEnv' containing the 'Interface's which
+-- were successfully loaded, as well as a list of 'Message's contaning
+-- any errors encountered during loading.
+loadInterfaces :: [FilePath] -- ^ 'FilePath's to search in for interfaces
+               -> Module     -- ^ 'Module' header with import declarations
+               -> IO (InterfaceEnv, [Message])
 loadInterfaces paths (Module m _ is _) = do
-  (env, errs) <- S.runStateT action []
-  return (env, reverse errs)
-  where action = foldM (loadInterface paths [m]) initInterfaceEnv
-                 [(p, m') | ImportDecl p m' _ _ _ <- is]
+  res <- S.execStateT load (LoaderState initInterfaceEnv paths [])
+  return (iEnv res, reverse $ errs res)
+  where load = mapM_ (loadInterface [m]) [(p, m') | ImportDecl p m' _ _ _ <- is]
 
--- |Load an interface into the environment
+-- |Load an interface into the given environment.
 --
 -- If an import declaration for a module is found, the compiler first
--- checks whether an import for the module is already pending. In this
--- case the module imports are cyclic which is not allowed in Curry. The
--- compilation will therefore be aborted. Next, the compiler checks
--- whether the module has already been imported. If so, nothing needs to
--- be done, otherwise the interface will be searched for in the import paths
--- and compiled.
-loadInterface :: [FilePath] -> [ModuleIdent] -> InterfaceEnv
-              -> (Position, ModuleIdent) -> IntfLoader InterfaceEnv
-loadInterface paths ctxt mEnv (p, m)
-  | m `elem` ctxt       = do
-    report $ errCyclicImport p $ m : takeWhile (/= m) ctxt
-    return mEnv
-  | m `Map.member` mEnv = return mEnv
-  | otherwise           = do
-      mbIntf <- liftIO $ PU.lookupCurryInterface paths m
+-- checks whether an import for the module is already pending.
+-- In this case the module imports are cyclic which is not allowed in Curry.
+-- Therefore, the import will be skipped and an error will be issued.
+-- Otherwise, the compiler checks whether the module has already been imported.
+-- If so, nothing needs to be done, otherwise the interface will be searched
+-- for in the import paths and compiled.
+loadInterface :: [ModuleIdent] -> (Position, ModuleIdent) -> IntfLoader ()
+loadInterface ctxt imp@(p, m)
+  | m `elem` ctxt = report $ errCyclicImport p $ m : takeWhile (/= m) ctxt
+  | otherwise     = do
+    isLoaded <- loaded m
+    unless isLoaded $ do
+      paths  <- searchPaths
+      mbIntf <- liftIO $ lookupCurryInterface paths m
       case mbIntf of
-        Nothing   -> report (errInterfaceNotFound p m) >> return mEnv
-        Just intf -> compileInterface paths ctxt mEnv m intf
+        Nothing -> report (errInterfaceNotFound p m)
+        Just fn -> compileInterface ctxt imp fn
 
--- |Compile an interface by recursively loading its dependencies
+-- |Compile an interface by recursively loading its dependencies.
 --
 -- After reading an interface, all imported interfaces are recursively
--- loaded and entered into the interface's environment. There is no need
--- to check FlatCurry-Interfaces, since these files contain automatically
--- generated FlatCurry terms (type \texttt{Prog}).
-compileInterface :: [FilePath] -> [ModuleIdent] -> InterfaceEnv
-                 -> ModuleIdent -> FilePath -> IntfLoader InterfaceEnv
-compileInterface paths ctxt mEnv m fn = do
-  -- read module
-  src <- liftIO $ readFile fn
-  -- parse interface
-  case runMsg $ parseInterface fn src of
-    Left err -> report err >> return mEnv
-    Right (intf@(Interface m' is _), _) -> do
-      unless (m' == m) $ report $ errWrongInterface (first fn) m m'
-      let importDecls = [ (pos, imp) | IImportDecl pos imp <- is ]
-      mEnv' <- foldM (loadInterface paths (m : ctxt)) mEnv importDecls
-      return $ Map.insert m intf mEnv'
+-- loaded and inserted into the interface's environment.
+compileInterface :: [ModuleIdent] -> (Position, ModuleIdent) -> FilePath
+                 -> IntfLoader ()
+compileInterface ctxt (p, m) fn = do
+  mbSrc <- liftIO $ readModule fn
+  case mbSrc of
+    Nothing  -> report $ errInterfaceNotFound p m
+    Just src -> case runMsg $ parseInterface fn src of
+      Left err -> report err
+      Right (intf@(Interface n is _), _) ->
+        if (m /= n)
+          then report $ errWrongInterface (first fn) m n
+          else do
+            mapM_ (loadInterface (m : ctxt)) [ (q, i) | IImportDecl q i <- is ]
+            addInterface m intf
 
-{-
--- |Transforms an interface of type 'FlatCurry.Prog' to a Curry interface
--- of type 'CurrySyntax.Interface'. This is necessary to process
--- FlatInterfaces instead of ".icurry" files when using cymake as a frontend
--- for PAKCS.
-flatToCurryInterface :: EF.Prog -> Interface
-flatToCurryInterface (EF.Prog m imps ts fs os)
-  = Interface (fromModuleName m) (map genIImportDecl imps) $ concat
-    [ map genITypeDecl $ filter (not . isSpecialPreludeType) ts
-    , map genIFuncDecl fs
-    , map genIOpDecl os
-    ]
-  where
-  pos = first m
-
-  genIImportDecl :: String -> IImportDecl
-  genIImportDecl = IImportDecl pos . fromModuleName
-
-  genITypeDecl :: EF.TypeDecl -> IDecl
-  genITypeDecl (EF.Type qn _ is cs)
-    | recordExt `isPrefixOf` EF.localName qn
-    = ITypeDecl pos (genQualIdent qn)
-        (map genVarIndexIdent is)
-        (RecordType (map genLabeledType cs) Nothing)
-    | otherwise
-    = IDataDecl pos (genQualIdent qn)
-        (map genVarIndexIdent is)
-        (map (Just . genConstrDecl) cs)
-  genITypeDecl (EF.TypeSyn qn _ is t)
-    = ITypeDecl pos (genQualIdent qn)
-        (map genVarIndexIdent is)
-        (genTypeExpr t)
-
-  genLabeledType :: EF.ConsDecl -> ([Ident], TypeExpr)
-  genLabeledType (EF.Cons qn _ _ [t])
-    = ( [renameLabel $ fromLabelExtId $ mkIdent $ EF.localName qn]
-      , genTypeExpr t)
-  genLabeledType _ = internalError
-    "Interfaces.genLabeledType: not exactly one type expression"
-
-  genConstrDecl :: EF.ConsDecl -> ConstrDecl
-  genConstrDecl (EF.Cons qn _ _ ts1)
-    = ConstrDecl pos [] (mkIdent (EF.localName qn)) (map genTypeExpr ts1)
-
-  genIFuncDecl :: EF.FuncDecl -> IDecl
-  genIFuncDecl (EF.Func qn a _ t _)
-    = IFunctionDecl pos (genQualIdent qn) a (genTypeExpr t)
-
-  genIOpDecl :: EF.OpDecl -> IDecl
-  genIOpDecl (EF.Op qn f p) = IInfixDecl pos (genInfix f) p (genQualIdent qn)
-
-  genTypeExpr :: EF.TypeExpr -> TypeExpr
-  genTypeExpr (EF.TVar i)
-    = VariableType (genVarIndexIdent i)
-  genTypeExpr (EF.FuncType t1 t2)
-    = ArrowType (genTypeExpr t1) (genTypeExpr t2)
-  genTypeExpr (EF.TCons qn ts1)
-    = ConstructorType (genQualIdent qn) (map genTypeExpr ts1)
-
-  genInfix :: EF.Fixity -> Infix
-  genInfix EF.InfixOp  = Infix
-  genInfix EF.InfixlOp = InfixL
-  genInfix EF.InfixrOp = InfixR
-
-  genQualIdent :: EF.QName -> QualIdent
-  genQualIdent EF.QName { EF.modName = mdl, EF.localName = lname } =
-    qualifyWith (fromModuleName mdl) (mkIdent lname)
-
-  genVarIndexIdent :: Int -> Ident
-  genVarIndexIdent i = mkIdent $ 'a' : show i
-
-  isSpecialPreludeType :: EF.TypeDecl -> Bool
-  isSpecialPreludeType (EF.Type qn _ _ _)
-    = (lname == "[]" || lname == "()") && mdl == "Prelude"
-      where EF.QName { EF.modName = mdl, EF.localName = lname} = qn
-  isSpecialPreludeType _ = False
--}
-
+-- Error message for required interface that could not be found.
 errInterfaceNotFound :: Position -> ModuleIdent -> Message
 errInterfaceNotFound p m = posMessage p $
   text "Interface for module" <+> text (moduleName m) <+> text "not found"
 
+-- Error message for an unexpected interface.
 errWrongInterface :: Position -> ModuleIdent -> ModuleIdent -> Message
-errWrongInterface p m m' = posMessage p $
+errWrongInterface p m n = posMessage p $
   text "Expected interface for" <+> text (moduleName m)
-  <> comma <+> text "but found" <+> text (moduleName m')
+  <> comma <+> text "but found" <+> text (moduleName n)
 
+-- Error message for a cyclic import.
 errCyclicImport :: Position -> [ModuleIdent] -> Message
 errCyclicImport _ []  = internalError "Interfaces.errCyclicImport: empty list"
 errCyclicImport p [m] = posMessage p $
   text "Recursive import for module" <+> text (moduleName m)
 errCyclicImport p ms  = posMessage p $
   text "Cylic import dependency between modules"
-  <+> text (intercalate ", " inits ++ " and " ++ lastm)
+  <+> hsep (punctuate comma (map text inits)) <+> text "and" <+> text lastm
   where
   (inits, lastm)         = splitLast $ map moduleName ms
   splitLast []           = internalError "Interfaces.splitLast: empty list"
