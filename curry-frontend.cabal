@@ -181,9 +181,9 @@ Test-Suite TestTypeChecking
      , Transformations.TypeSigs
     ghc-options: -Wall 
 
-Executable TestTypeCheckingHpc
-    hs-source-dirs: test, src
-    main-is:    TestTypeCheckingHpc.hs
-    build-depends: base, pretty, directory, curry-base, filepath, containers, mtl, syb,
-      transformers, Cabal >= 1.9.2, curry-base == 0.3.7
-    ghc-options: -Wall -fhpc
+-- Executable TestTypeCheckingHpc
+--     hs-source-dirs: test, src
+--     main-is:    TestTypeCheckingHpc.hs
+--     build-depends: base, pretty, directory, curry-base, filepath, containers, mtl, syb,
+--       transformers, Cabal >= 1.9.2, curry-base == 0.3.7
+--     ghc-options: -Wall -fhpc
