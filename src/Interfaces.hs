@@ -32,6 +32,7 @@ import qualified Data.Map               as Map
 import           Text.PrettyPrint
 
 import           Curry.Base.Ident
+import           Curry.Base.Message            (runMsg)
 import           Curry.Base.Position
 import qualified Curry.ExtendedFlat.Type as EF
 import           Curry.Files.PathUtils   as PU
@@ -85,15 +86,18 @@ loadInterface paths ctxt mEnv (p, m)
 compileInterface :: [FilePath] -> [ModuleIdent] -> InterfaceEnv
                  -> ModuleIdent -> FilePath -> IntfLoader InterfaceEnv
 compileInterface paths ctxt mEnv m fn = do
-  mintf <- (fmap flatToCurryInterface) `liftM` liftIO (EF.readFlatInterface fn)
-  case mintf of
-    Nothing -> report (errInterfaceNotFound (first fn) m) >> return mEnv
-    Just intf@(Interface m' is _) -> do
+  -- read module
+  src <- liftIO $ readFile fn
+  -- parse interface
+  case runMsg $ parseInterface fn src of
+    Left err -> report err >> return mEnv
+    Right (intf@(Interface m' is _), _) -> do
       unless (m' == m) $ report $ errWrongInterface (first fn) m m'
       let importDecls = [ (pos, imp) | IImportDecl pos imp <- is ]
       mEnv' <- foldM (loadInterface paths (m : ctxt)) mEnv importDecls
       return $ Map.insert m intf mEnv'
 
+{-
 -- |Transforms an interface of type 'FlatCurry.Prog' to a Curry interface
 -- of type 'CurrySyntax.Interface'. This is necessary to process
 -- FlatInterfaces instead of ".icurry" files when using cymake as a frontend
@@ -169,6 +173,7 @@ flatToCurryInterface (EF.Prog m imps ts fs os)
     = (lname == "[]" || lname == "()") && mdl == "Prelude"
       where EF.QName { EF.modName = mdl, EF.localName = lname} = qn
   isSpecialPreludeType _ = False
+-}
 
 errInterfaceNotFound :: Position -> ModuleIdent -> Message
 errInterfaceNotFound p m = posMessage p $
