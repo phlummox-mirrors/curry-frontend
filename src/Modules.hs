@@ -91,8 +91,10 @@ writeOutput opts fn (env, modul) = do
     let (env2, il, dumps) = transModule opts env modul
     -- dump intermediate results
     mapM_ (doDump opts) dumps
-    -- generate target code
+    -- generate interface file
     let intf = exportInterface env2 modul
+    writeInterface opts fn intf
+    -- generate target code
     let modSum = summarizeModule (tyConsEnv env2) intf modul
     writeFlat opts fn env2 modSum il
   where
@@ -238,13 +240,29 @@ writeParsed opts fn modul = when srcTarget $
   targetFile = fromMaybe (sourceRepName fn) (optOutput opts)
   source     = CS.showModule modul
 
+writeInterface :: Options -> FilePath -> CS.Interface -> IO ()
+writeInterface opts fn intf
+  | not (optInterface opts) = return () -- TODO: reasonable?
+  | optForce opts           = outputInterface
+  | otherwise               = do
+      mbOldIntf <- readModule interfaceFile
+      case mbOldIntf of
+        Nothing  -> outputInterface
+        Just src -> case runMsg (CS.parseInterface interfaceFile src) of
+          Left  _     -> outputInterface
+          Right (i,_) -> unless (i == intf) outputInterface
+  where
+  interfaceFile   = interfName fn
+  outputInterface = writeModule (optUseSubdir opts) interfaceFile
+                    (show $ CS.ppInterface intf)
+
 writeFlat :: Options -> FilePath -> CompilerEnv -> ModuleSummary -> IL.Module
           -> IO ()
 writeFlat opts fn env modSum il = do
   when (extTarget || fcyTarget) $ do
     writeFlatCurry opts fn env modSum il
-    writeInterface opts fn env modSum il
-  when (xmlTarget) $ writeXML opts fn modSum il
+    writeFlatIntf  opts fn env modSum il
+  when (xmlTarget) $ writeFlatXml opts fn modSum il
   where
   extTarget    = ExtendedFlatCurry `elem` optTargetTypes opts
   fcyTarget    = FlatCurry         `elem` optTargetTypes opts
@@ -264,15 +282,15 @@ writeFlatCurry opts fn env modSum il = do
   (prog, msgs) = genFlatCurry opts modSum env il
 
 -- |Export an 'IL.Module' into an XML file
-writeXML :: Options -> FilePath -> ModuleSummary -> IL.Module -> IO ()
-writeXML opts fn modSum il = writeModule useSubDir (xmlName fn) curryXml
+writeFlatXml :: Options -> FilePath -> ModuleSummary -> IL.Module -> IO ()
+writeFlatXml opts fn modSum il = writeModule useSubDir (xmlName fn) curryXml
   where
   useSubDir = optUseSubdir opts
   curryXml  = shows (IL.xmlModule (interface modSum) (infixDecls modSum) il) "\n"
 
-writeInterface :: Options -> FilePath -> CompilerEnv -> ModuleSummary
-               -> IL.Module -> IO ()
-writeInterface opts fn env modSum il
+writeFlatIntf :: Options -> FilePath -> CompilerEnv -> ModuleSummary
+              -> IL.Module -> IO ()
+writeFlatIntf opts fn env modSum il
   | not (optInterface opts) = return ()
   | optForce opts           = outputInterface
   | otherwise               = do
