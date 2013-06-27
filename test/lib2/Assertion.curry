@@ -91,8 +91,9 @@ seqStrActions a1 a2 =
 --- @return a protocol string and a flag whether the test was successful
 checkAssertion :: String -> ((String,Bool) -> IO (String,Bool)) -> Assertion _
                -> IO (String,Bool)
-checkAssertion asrtfname prot assrt =
-   catchNDIO asrtfname prot (execAsrt assrt)
+checkAssertion _ prot assrt =
+   --catchNDIO asrtfname prot
+   (execAsrt assrt)
  where
   execAsrt (AssertTrue name cond) =
     catch (checkAssertTrue name cond) (returnError name) >>= prot
@@ -127,33 +128,16 @@ catchNDIO fname prot a = getAllValues a >>= checkIOActions
 -- Checks Boolean assertion.
 checkAssertTrue :: String -> Bool -> IO (String,Bool)
 checkAssertTrue name cond =
-  getAllValues cond >>= checkResults
- where
-  checkResults results
-    | null results
-     = return ("FAILURE of "++name++": computation of assertion failed\n",False)
-    | not (null (tail results))
-     = return ("FAILURE of "++name++
-               ": computation of assertion is non-deterministic\n",False)
-    | head results = return ("OK: "++name++"\n",True)
-    | otherwise
-     = return ("FAILURE of "++name++": assertion not satisfied:\n",False)
+  if cond
+  then return ("OK: "++name++"\n",True)
+  else return ("FAILURE of "++name++": assertion not satisfied:\n",False)
 
 -- Checks equality assertion.
 checkAssertEqual :: String -> a -> a -> IO (String,Bool)
 checkAssertEqual name call result =
-  getAllValues (call==result) >>= checkResults
- where
-  checkResults results
-    | null results
-     = return ("FAILURE of "++name++
-               ": computation of equality assertion failed\n",False)
-    | not (null (tail results))
-     = return ("FAILURE of "++name++
-               ": computation of equality assertion is non-deterministic\n",False)
-    | head results = return ("OK: "++name++"\n",True)
-    | otherwise
-     = return ("FAILURE of "++name++": equality assertion not satisfied:\n"++
+  if call==result
+  then return ("OK: "++name++"\n",True)
+  else return ("FAILURE of "++name++": equality assertion not satisfied:\n"++
                "Computed answer: "++show call++"\n"++
                "Expected answer: "++show result++"\n",False)
 

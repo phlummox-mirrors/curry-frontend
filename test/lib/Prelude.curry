@@ -5,12 +5,10 @@
 ----------------------------------------------------------------------------
 
 module Prelude where
-
 -- Lines beginning with "--++" are part of the prelude
 -- but cannot parsed by the compiler
 
 -- Infix operator declarations:
-
 
 infixl 9 !!
 infixr 9 .
@@ -18,20 +16,17 @@ infixl 7 *, `div`, `mod`
 infixl 6 +, -
 -- infixr 5 :                          -- declared together with list
 infixr 5 ++
-infix  4 =:=, ==, /=, <, >, <=, >=, =:<=
+infix  4 =:=, ==, /=, <, >, <=, >=, =:<=, =:<<=
 infix  4  `elem`, `notElem`
 infixr 3 &&
 infixr 2 ||
 infixl 1 >>, >>=
 infixr 0 $, $!, $!!, $#, $##, `seq`, &, &>, ?
 
-
 -- externally defined types for numbers and characters
 data Int
 data Float
 data Char
-
-
 type String = [Char]
 
 -- Some standard combinators:
@@ -67,8 +62,7 @@ until p f x     = if p x then x else until p f (f x)
 --- Evaluates the first argument to head normal form (which could also
 --- be a free variable) and returns the second argument.
 seq     :: _ -> a -> a
--- seq external
-x `seq` y = const y $! x
+seq external
 
 --- Evaluates the argument to head normal form and returns it.
 --- Suspends until the result is bound to a non-variable term.
@@ -86,17 +80,14 @@ ensureSpine l = ensureList (ensureNotFree l)
 ($)     :: (a -> b) -> a -> b
 f $ x   = f x
 
---- Right-associative application with strict evaluation of its argument
---- to head normal form.
+--- Right-associative application with strict evaluation of its argument.
 ($!)    :: (a -> b) -> a -> b
-($!) external
--- f $! x  = x `seq` f x
+f $! x  = x `seq` f x
 
 --- Right-associative application with strict evaluation of its argument
 --- to normal form.
 ($!!)   :: (a -> b) -> a -> b
-($!!) external
--- f $!! x | x=:=y = f y  where y free
+f $!! x | x=:=y = f y  where y free
 
 --- Right-associative application with strict evaluation of its argument
 --- to a non-variable term.
@@ -106,8 +97,7 @@ f $# x  = f $! (ensureNotFree x)
 --- Right-associative application with strict evaluation of its argument
 --- to ground normal form.
 ($##)   :: (a -> b) -> a -> b
-($##) external
--- f $## x | x=:=y = y==y `seq` f y  where y free
+f $## x | x=:=y = y==y `seq` f y  where y free
 
 --- Aborts the execution with an error message.
 error :: String -> _
@@ -119,8 +109,9 @@ prim_error external
 --- A non-reducible polymorphic function.
 --- It is useful to express a failure in a search branch of the execution.
 --- It could be defined by: <code>failed = head []</code>
-failed :: _
+failed :: _ 
 failed external
+
 
 -- Boolean values
 -- already defined as builtin, since it is required for if-then-else
@@ -130,13 +121,13 @@ data Bool = False | True
 (&&)            :: Bool -> Bool -> Bool
 True  && x      = x
 False && _      = False
-
+ 
 
 --- Sequential disjunction on Booleans.
 (||)            :: Bool -> Bool -> Bool
 True  || _      = True
 False || x      = x
-
+ 
 
 --- Negation on Booleans.
 not             :: Bool -> Bool
@@ -153,6 +144,7 @@ if_then_else           :: Bool -> a -> a -> a
 if_then_else b t f = case b of True  -> t
                                False -> f
 
+
 --- Equality on finite ground data terms.
 (==)            :: a -> a -> Bool
 (==) external
@@ -161,6 +153,7 @@ if_then_else b t f = case b of True  -> t
 (/=)            :: a -> a -> Bool
 x /= y          = not (x==y)
 
+
 --- Ordering type. Useful as a result of comparison functions.
 data Ordering = LT | EQ | GT
 
@@ -168,21 +161,21 @@ data Ordering = LT | EQ | GT
 --- Data constructors are compared in the order of their definition
 --- in the datatype declarations and recursively in the arguments.
 compare :: a -> a -> Ordering
-compare x y | x == y    = EQ
-            | x <= y    = LT
-            | otherwise = GT
+compare external
 
 --- Less-than on ground data terms.
 (<)   :: a -> a -> Bool
-x < y = not (y <= x)
+x < y = case compare x y of LT -> True
+                            _  -> False
 
 --- Greater-than on ground data terms.
 (>)   :: a -> a -> Bool
-x > y = not (x <= y)
+x > y = case compare x y of GT -> True
+                            _  -> False
 
 --- Less-or-equal on ground data terms.
 (<=)  :: a -> a -> Bool
-(<=)  external
+x <= y = not (x > y)
 
 --- Greater-or-equal on ground data terms.
 (>=)  :: a -> a -> Bool
@@ -195,6 +188,7 @@ max x y = if x >= y then x else y
 --- Minimum of ground data terms.
 min :: a -> a -> a
 min x y = if x <= y then x else y
+
 
 -- Pairs
 
@@ -238,16 +232,9 @@ null (_:_)      = False
 (x:xs) ++ ys    = x : xs++ys
 
 --- Computes the length of a list.
---length          :: [_] -> Int
---length []       = 0
---length (_:xs)   = 1 + length xs
-
-length xs = len xs 0
-  where
-    len [] n = n
-    len (_:ys) n
-        = let np1 = n + 1
-          in len ys $!! np1
+length          :: [_] -> Int
+length []       = 0
+length (_:xs)   = 1 + length xs
 
 --- List index (subscript) operator, head has index 0.
 (!!)            :: [a] -> Int -> a
@@ -462,7 +449,6 @@ enumFrom n             = n : enumFrom (n+1)
 enumFromThen           :: Int -> Int -> [Int]            -- [n1,n2..]
 enumFromThen n1 n2     = iterate ((n2-n1)+) n1
 
-
 --- Generates a sequence of ascending integers.
 enumFromTo             :: Int -> Int -> [Int]            -- [n..m]
 enumFromTo n m         = if n>m then [] else n : enumFromTo (n+1) m
@@ -481,11 +467,9 @@ ord c = prim_ord $# c
 prim_ord :: Char -> Int
 prim_ord external
 
---- Converts an Unicode value into a character, fails iff the value is out of bounds
+--- Converts an ASCII value into a character.
 chr :: Int -> Char
-chr n | n >= 0 = prim_chr $# n
--- chr n | n < 0 || n > 1114111 = failed
---       | otherwise = prim_chr $# n
+chr n = prim_chr $# n
 
 prim_chr :: Int -> Char
 prim_chr external
@@ -495,62 +479,44 @@ prim_chr external
 
 --- Adds two integers.
 (+)   :: Int -> Int -> Int
-(+) external
+x + y = (prim_Int_plus $# y) $# x
 
--- x + y = (prim_Int_plus $# y) $# x
---
--- prim_Int_plus :: Int -> Int -> Int
--- prim_Int_plus external
+prim_Int_plus :: Int -> Int -> Int
+prim_Int_plus external
 
 --- Subtracts two integers.
 (-)   :: Int -> Int -> Int
-(-) external
+x - y = (prim_Int_minus $# y) $# x
 
--- x - y = (prim_Int_minus $# y) $# x
---
--- prim_Int_minus :: Int -> Int -> Int
--- prim_Int_minus external
+prim_Int_minus :: Int -> Int -> Int
+prim_Int_minus external
 
 --- Multiplies two integers.
 (*)   :: Int -> Int -> Int
-(*) external
+x * y = (prim_Int_times $# y) $# x
 
--- x * y = (prim_Int_times $# y) $# x
---
--- prim_Int_times :: Int -> Int -> Int
--- prim_Int_times external
+prim_Int_times :: Int -> Int -> Int
+prim_Int_times external
 
 --- Integer division. The value is the integer quotient of its arguments
---- and always truncated towards negative infinity.
+--- and always truncated towards zero.
 --- Thus, the value of <code>13 `div` 5</code> is <code>2</code>,
---- and the value of <code>-15 `div` 4</code> is <code>-4</code>.
+--- and the value of <code>-15 `div` 4</code> is <code>-3</code>.
 div   :: Int -> Int -> Int
-div external
+x `div` y = (prim_Int_div $# y) $# x
 
--- prim_Int_div :: Int -> Int -> Int
--- prim_Int_div external
+prim_Int_div :: Int -> Int -> Int
+prim_Int_div external
 
 --- Integer remainder. The value is the remainder of the integer division and
 --- it obeys the rule <code>x `mod` y = x - y * (x `div` y)</code>.
 --- Thus, the value of <code>13 `mod` 5</code> is <code>3</code>,
---- and the value of <code>-15 `mod` 4</code> is <code>1</code>.
+--- and the value of <code>-15 `mod` 4</code> is <code>-3</code>.
 mod   :: Int -> Int -> Int
-mod external
+x `mod` y = (prim_Int_mod $# y) $# x
 
--- prim_Int_mod :: Int -> Int -> Int
--- prim_Int_mod external
-
-divMod :: Int -> Int -> (Int, Int)
-divMod external
-
-quot :: Int -> Int -> Int
-quot external
-
-rem :: Int -> Int -> Int
-rem external
-
-quotRem :: Int -> Int -> (Int, Int)
-quotRem external
+prim_Int_mod :: Int -> Int -> Int
+prim_Int_mod external
 
 --- Unary minus. Usually written as "- e".
 negate :: Int -> Int
@@ -558,10 +524,10 @@ negate x = 0 - x
 
 --- Unary minus on Floats. Usually written as "-e".
 negateFloat :: Float -> Float
-negateFloat external
+negateFloat x = prim_negateFloat $# x
 
--- prim_negateFloat :: Float -> Float
--- prim_negateFloat external
+prim_negateFloat :: Float -> Float
+prim_negateFloat external
 
 
 -- Constraints
@@ -638,7 +604,7 @@ done              = return ()
 
 --- An action that puts its character argument on standard output.
 putChar           :: Char -> IO ()
-putChar c = prim_putChar $## c
+putChar c = prim_putChar $# c
 
 prim_putChar           :: Char -> IO ()
 prim_putChar external
@@ -653,17 +619,15 @@ readFile f = prim_readFile $## f
 
 prim_readFile          :: String -> IO String
 prim_readFile external
-
--- TODO ask Michael how this function was used
 -- for internal implementation of readFile:
--- prim_readFileContents          :: String -> String
--- prim_readFileContents external
+prim_readFileContents          :: String -> String
+prim_readFileContents external
 
 --- An action that writes a file.
 --- @param filename - The name of the file to be written.
 --- @param contents - The contents to be written to the file.
 writeFile         :: String -> String -> IO ()
-writeFile f s = (prim_writeFile $## f) $## s
+writeFile f s = (prim_writeFile $## f) s
 
 prim_writeFile         :: String -> String -> IO ()
 prim_writeFile external
@@ -673,7 +637,7 @@ prim_writeFile external
 --- @param filename - The name of the file to be written.
 --- @param contents - The contents to be appended to the file.
 appendFile        :: String -> String -> IO ()
-appendFile f s = (prim_appendFile $## f) $## s
+appendFile f s = (prim_appendFile $## f) s
 
 prim_appendFile         :: String -> String -> IO ()
 prim_appendFile external
@@ -682,7 +646,7 @@ prim_appendFile external
 putStr            :: String -> IO ()
 putStr []         = done
 putStr (c:cs)     = putChar c >> putStr cs
-
+ 
 --- Action to print a string with a newline on stdout.
 putStrLn          :: String -> IO ()
 putStrLn cs       = putStr cs >> putChar '\n'
@@ -700,30 +664,20 @@ getLine           = do c <- getChar
 --- Currently, it contains only an error message as a string,
 --- but it might be extended in the future to distinguish
 --- various error situations.
-data IOError
-  = IOError     String -- normal IO error
-  | UserError   String -- user-specified error
-  | FailError   String -- failing computation
-  | NondetError String -- non-deterministic computation
+data IOError = IOError String
 
 --- A user error value is created by providing a description of the
 --- error situation as a string.
 userError :: String -> IOError
-userError s = UserError s
+userError s = IOError s
 
 --- Raises an I/O exception with a given error value.
 ioError :: IOError -> IO _
-ioError err = prim_ioError $## err
-
-prim_ioError :: IOError -> IO _
-prim_ioError external
+ioError (IOError s) = error s
 
 --- Shows an error values as a string.
 showError :: IOError -> String
-showError (IOError     s) = "i/o error: "   ++ s
-showError (UserError   s) = "user error: "   ++ s
-showError (FailError   s) = "fail error: "   ++ s
-showError (NondetError s) = "nondet error: " ++ s
+showError (IOError s) = s
 
 --- Catches a possible error or failure during the execution of an
 --- I/O action. <code>(catch act errfun)</code> executes the I/O action
@@ -732,6 +686,14 @@ showError (NondetError s) = "nondet error: " ++ s
 --- to the error value.
 catch :: IO a -> (IOError -> IO a) -> IO a
 catch external
+
+--- Catches a possible failure during the execution of an I/O action.
+--- <code>(catchFail act err)</code>:
+--- apply action <code>act</code> and, if it fails or raises an exception,
+--- print a corresponding error message and apply action <code>err</code>.
+catchFail         :: IO a -> IO a -> IO a
+catchFail external
+
 
 --- Converts an arbitrary term into an external string representation.
 show    :: _ -> String
@@ -783,9 +745,8 @@ mapIO_ f           = sequenceIO_ . map f
 --- @param y - The left argument.
 --- @return either <EM>x</EM> or <EM>y</EM> non-deterministically.
 (?)   :: a -> a -> a
-(?) external
--- x ? _ = x
--- _ ? y = y
+x ? _ = x
+_ ? y = y
 
 
 --- Evaluates to a fresh free variable.
@@ -801,8 +762,8 @@ unknown = let x free in x
 --- does not share any results. Moreover, the evaluation suspends
 --- as long as the expression contains unbound variables.
 --- Similar to Prolog's findall.
---getAllValues :: a -> IO [a]
---getAllValues e = return (findall (=:=e))
+getAllValues :: a -> IO [a]
+getAllValues e = return (findall (=:=e))
 
 --- Gets a value of an expression (currently, via an incomplete
 --- depth-first strategy). The expression must have a value, otherwise
@@ -821,7 +782,7 @@ try external
 --- procedure p to the search variable to the search goal
 --- taken from Oz. p x comes before g x to enable a test+generate
 --- form in a sequential implementation.
-inject  :: (a->Success) -> (a->Success) -> (a->Success)
+inject  :: (a->Success) -> (a->Success) -> (a->Success) 
 inject g p = \x -> p x & g x
 
 --- Computes all solutions via a a depth-first strategy.
@@ -841,12 +802,12 @@ solveAll     :: (a->Success) -> [a->Success]
 solveAll g = evalall (try g)
   where
     evalall []      = []
-    evalall [a]     = [a]
+    evalall [a]     = [a] 
     evalall (a:b:c) = evalall3 (try a) (b:c)
 
     evalall2 []    = []
     evalall2 (a:b) = evalall3 (try a) b
-
+    
     evalall3 []      b  = evalall2 b
     evalall3 [l]     b  = l : evalall2 b
     evalall3 (c:d:e) b  = evalall3 (try c) (d:e ++b)
@@ -875,15 +836,15 @@ best g cmp = bestHelp [] (try g) []
    bestHelp [] []     curbest = curbest
    bestHelp [] (y:ys) curbest = evalY (try (constrain y curbest)) ys curbest
    bestHelp (x:xs) ys curbest = evalX (try x) xs ys curbest
-
+   
    evalY []        ys curbest = bestHelp [] ys curbest
    evalY [newbest] ys _       = bestHelp [] ys [newbest]
    evalY (c:d:xs)  ys curbest = bestHelp (c:d:xs) ys curbest
-
+   
    evalX []        xs ys curbest = bestHelp xs ys curbest
    evalX [newbest] xs ys _       = bestHelp [] (xs++ys) [newbest]
    evalX (c:d:e)   xs ys curbest = bestHelp ((c:d:e)++xs) ys curbest
-
+   
    constrain y []        = y
    constrain y [curbest] =
        inject y (\v -> let w free in curbest w & cmp v w =:= True)
@@ -905,7 +866,7 @@ findfirst g = head (findall g)
 browse  :: (_->Success) -> IO ()
 browse g = putStr (show (unpack g))
 
---- Unpacks solutions from a list of lambda abstractions and write
+--- Unpacks solutions from a list of lambda abstractions and write 
 --- them to the screen.
 browseList :: [_ -> Success] -> IO ()
 browseList [] = done
@@ -917,21 +878,19 @@ unpack  :: (a -> Success) -> a
 unpack g | g x  = x  where x free
 
 
--- --- Identity function used by the partial evaluator
--- --- to mark expressions to be partially evaluated.
--- PEVAL   :: a -> a
--- PEVAL x = x
+--- Identity function used by the partial evaluator
+--- to mark expressions to be partially evaluated.
+PEVAL   :: a -> a
+PEVAL x = x
 
 --- Evaluates the argument to normal form and returns it.
 normalForm :: a -> a
-normalForm x = id $!! x
--- normalForm x | x=:=y = y where y free
+normalForm x | x=:=y = y where y free
 
 --- Evaluates the argument to ground normal form and returns it.
 --- Suspends as long as the normal form of the argument is not ground.
 groundNormalForm :: a -> a
-groundNormalForm x = id $## x
--- groundNormalForm x | y==y = y where y = normalForm x
+groundNormalForm x | y==y = y where y = normalForm x
 
 -- Only for internal use:
 -- Represenation of higher-order applications in FlatCurry.
@@ -943,27 +902,27 @@ apply external
 cond :: Success -> a -> a
 cond external
 
--- -- Only for internal use:
--- -- letrec ones (1:ones) -> bind ones to (1:ones)
--- letrec :: a -> a -> Success
--- letrec external
+-- Only for internal use:
+-- letrec ones (1:ones) -> bind ones to (1:ones)
+letrec :: a -> a -> Success
+letrec external
 
 --- Non-strict equational constraint. Experimental.
 (=:<=) :: a -> a -> Success
 (=:<=) external
 
--- --- Non-strict equational constraint for linear function patterns.
--- --- Thus, it must be ensured that the first argument is always (after evalutation
--- --- by narrowing) a linear pattern. Experimental.
--- (=:<<=) :: a -> a -> Success
--- (=:<<=) external
+--- Non-strict equational constraint for linear function patterns.
+--- Thus, it must be ensured that the first argument is always (after evalutation
+--- by narrowing) a linear pattern. Experimental.
+(=:<<=) :: a -> a -> Success
+(=:<<=) external
 
--- --- internal function to implement =:<=
--- ifVar :: _ -> a -> a -> a
--- ifVar external
---
--- --- internal operation to implement failure reporting
--- failure :: _ -> _ -> _
--- failure external
+--- internal function to implement =:<=
+ifVar :: _ -> a -> a -> a
+ifVar external
+
+--- internal operation to implement failure reporting
+failure :: _ -> _ -> _
+failure external
 
 -- the end

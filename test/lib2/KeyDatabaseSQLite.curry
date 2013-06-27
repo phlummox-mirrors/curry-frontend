@@ -126,10 +126,10 @@ runT trans =
 
 catchTrans :: IO (TransResult a) -> IO (TransResult a)
 catchTrans action =
-  action `catch` \terr ->
+  action `catch` \ (IOError msg) ->
     do err <- readGlobal lastQueryError
        writeGlobal lastQueryError Nothing
-       return . Error $ maybe (TError ExecutionError (showError terr)) id err
+       return . Error $ maybe (TError ExecutionError msg) id err
 
 --- Executes a possibly composed transaction on the current state
 --- of dynamic predicates as a single transaction.
