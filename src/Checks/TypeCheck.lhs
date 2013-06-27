@@ -43,13 +43,13 @@ expanded.
 
 > import Base.CurryTypes (fromQualType, toConstrType, toConstrTypes)
 > import Base.Expr
-> import Base.Messages (Message, posMessage, internalError, message)
+> import Base.Messages (Message, posMessage, internalError)
 > import Base.SCC
 > import Base.TopEnv
 > import Base.Types as BT
 > import Base.TypeSubst
 > import Base.Subst (listToSubst, substToList)
-> import Base.Utils (fst3, foldr2, findDouble, zip', zipWith', zipWith3')
+> import Base.Utils (foldr2, findDouble, zip', zipWith', zipWith3')
 
 > import Env.TypeConstructor (TCEnv, TypeInfo (..), bindTypeInfo
 >   , qualLookupTC)
@@ -57,7 +57,7 @@ expanded.
 >   , bindGlobalInfo, bindLabel, lookupValue, qualLookupValue
 >   , tryBindFun )
 > import Env.ClassEnv (ClassEnv, lookupMethodTypeScheme
->   , getAllClassMethodNames, implies', implies, isValidCx, reduceContext)
+>   , implies', implies, isValidCx, reduceContext)
 
 > infixl 5 $-$
 
