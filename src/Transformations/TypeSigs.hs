@@ -34,6 +34,7 @@ import Base.Types
 import Base.TypeSubst
 import Base.Messages
 import Curry.Base.Ident
+import Base.TopEnv
 
 -- | transforms all type signatures (in explicit type signatures declarations
 -- *and* in explicitely typed expressions (!)) by removing their contexts
@@ -160,8 +161,7 @@ lookupValue' m id0 vEnv =
 -- |checks whether the given "ValueInfo" refers to an identifier from
 -- the given module
 valInMdl :: ModuleIdent -> ValueInfo -> Bool
-valInMdl m (Value qid' _ _) = fromJust (qidModule qid') == m 
-valInMdl _ _ = internalError "valInMdl"
+valInMdl m v = fromJust (qidModule $ origName v) == m 
 
 -- |converts a type to a type expression
 fromType :: Type -> TypeExpr
