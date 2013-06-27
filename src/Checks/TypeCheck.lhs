@@ -550,8 +550,7 @@ either one of the basic types or \texttt{()}.
 > -- |checks whether the given "ValueInfo" refers to an identifier from
 > -- the given module
 > valInMdl :: ModuleIdent -> ValueInfo -> Bool
-> valInMdl m (Value qid' _ _) = fromJust (qidModule qid') == m 
-> valInMdl _ _ = internalError "valInMdl"
+> valInMdl m v = fromJust (qidModule $ origName v) == m
 
 > -- |update the contexts (and only the contexts!) of the type signatures
 > -- stored in the value environment 
