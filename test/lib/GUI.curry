@@ -1,33 +1,34 @@
 ------------------------------------------------------------------------------
 --- Library for GUI programming in Curry (based on Tcl/Tk).
---- [This paper](http://www.informatik.uni-kiel.de/~mh/papers/PADL00.html)
---- contains a description of the basic ideas behind this library.
+--- <A HREF="http://www.informatik.uni-kiel.de/~mh/papers/PADL00.html">
+--- This paper</A> contains a description of the basic ideas
+--- behind this library.
 ---
 --- This library is an improved and updated version of the library Tk.
 --- The latter might not be supported in the future.
 ---
 --- @authors Michael Hanus, Bernd Brassel
---- @version November 2012
+--- @version November 2006
 ------------------------------------------------------------------------------
 
 module GUI(GuiPort,Widget(..),Button,ConfigButton,
            TextEditScroll,ListBoxScroll,CanvasScroll,EntryScroll,
            ConfItem(..),ReconfigureItem(..),
-           Cmd,Command,Event(..),ConfCollection(..),MenuItem(..),
+           Cmd,Command,	   
+	   Event(..),ConfCollection(..),MenuItem(..),
            CanvasItem(..),WidgetRef, Style(..), Color(..),
            col,row,matrix,
-           runGUI,runGUIwithParams,runInitGUI,runInitGUI',
-           runInitGUIwithParams,runInitGUIwithParams',
+           runGUI,runGUIwithParams,runInitGUI,runInitGUIwithParams,
            runPassiveGUI,
            runControlledGUI,runConfigControlledGUI,runInitControlledGUI,
-           runHandlesControlledGUI,runHandlesControlledGUI',
-           runInitHandlesControlledGUI,runInitHandlesControlledGUI',
+           runHandlesControlledGUI,runInitHandlesControlledGUI,
            exitGUI,getValue,setValue,updateValue,appendValue,
            appendStyledValue,addRegionStyle,removeRegionStyle,
            getCursorPosition,seeText,
            focusInput,addCanvas,setConfig,
            getOpenFile,getOpenFileWithTypes,getSaveFile,getSaveFileWithTypes,
-           chooseColor,popupMessage,debugTcl)  where
+           chooseColor,popup_message,debugTcl,
+	   cmd,command,button)  where
 
 import Read
 import Unsafe(trace)
@@ -39,11 +40,11 @@ import Char(isSpace,toUpper)
 -- Tcl/Tk communication are shown (such errors should only occur on
 -- slow machines in exceptional cases; they should be handled by this library
 -- but might be interesting to see for debugging)
-showTclTkErrors = False
+showTclTkErrors = False -- True -- False
 
 -- If showTclTkCommunication is true, the all strings sent to and from
 -- the Tcl/Tk GUI are shown in stdout:
-showTclTkCommunication = False
+showTclTkCommunication = False -- True -- False
 
 --- The port to a GUI is just the stream connection to a GUI
 --- where Tcl/Tk communication is done.
@@ -87,9 +88,12 @@ data Widget = PlainButton            [ConfItem]
             | ScrollH WidgetRef      [ConfItem]
             | ScrollV WidgetRef      [ConfItem]
             | TextEdit               [ConfItem]
-            | Row    [ConfCollection] [Widget]
+	    | Row    [ConfCollection] [Widget]
             | Col    [ConfCollection] [Widget]
             | Matrix [ConfCollection] [[Widget]]
+	    -- 
+            | RowC   [ConfCollection] [ConfItem] [Widget]
+            | ColC    [ConfCollection] [ConfItem] [Widget]            
 
 --- The data type for possible configurations of a widget.
 --- @cons Active    - define the active state for buttons, entries, etc.
@@ -129,6 +133,7 @@ data ConfItem =
  | Width Int       
  | Fill | FillX | FillY           
  | TclOption String
+ | Display Bool
 
 --- Data type for describing configurations that are applied
 --- to a widget or GUI by some event handler.
@@ -488,6 +493,40 @@ widget2tcl wp label (Matrix confs ws) =
     (wstcl,wsevs) =  matrix2tcl 97 1 wp label confs ws
     wsGridInfo = concatMap widgets2gridinfo ws
 
+--
+
+widget2tcl wp label (RowC confs confitems ws) =
+  ((if label=="" then "wm resizable . " ++ resizeBehavior wsGridInfo++"\n"
+    else "frame "++label++"\n" ++ conf_tcl ++ "\n") ++   
+   wstcl ++
+   (snd $ foldl (\ (n,g) l->(n+1,g++"grid "++label ++ labelIndex2string (96+n)
+                                  ++" -row 1 -column "++show n++" "
+                                  ++confCollection2tcl confs
+                                  ++gridInfo2tcl n label "col" l ++ "\n")) 
+                (1,"")
+                wsGridInfo),
+   conf_evs ++ wsevs)
+  where (wstcl,wsevs) = widgets2tcl wp label 97 ws
+        (conf_tcl,conf_evs) = configs2tcl "row" wp label confitems
+	wsGridInfo = widgets2gridinfo ws
+        
+
+widget2tcl wp label (ColC confs confitems ws) =
+  ((if label=="" then "wm resizable . " ++ resizeBehavior wsGridInfo++"\n"
+    else "frame "++label++"\n"  ++ conf_tcl ++ "\n") ++
+      wstcl ++
+      (snd $ foldl (\ (n,g) l->(n+1,g++"grid "++label ++ labelIndex2string (96+n)
+                                     ++" -column 1 -row "++show n++" "
+                                     ++confCollection2tcl confs
+                                     ++gridInfo2tcl n label "row" l ++ "\n"))
+                   (1,"")
+                   (widgets2gridinfo ws)),
+      conf_evs ++ wsevs)
+  where (wstcl,wsevs) = widgets2tcl wp label 97 ws
+        (conf_tcl,conf_evs) = configs2tcl "col" wp label confitems  
+        wsGridInfo = widgets2gridinfo ws
+	
+
 -- actual translation function of the list of lists of widgets in a matrix
 matrix2tcl :: Int -> Int -> GuiPort -> String -> [ConfCollection] 
                     -> [[Widget]] -> (String,[EventHandler])
@@ -560,6 +599,8 @@ propagateFillInfo (TextEdit    confs) = filter isFillInfo confs
 propagateFillInfo (Row _ ws) = concatMap propagateFillInfo ws
 propagateFillInfo (Col _ ws) = concatMap propagateFillInfo ws
 propagateFillInfo (Matrix _ wss) = concatMap (concatMap propagateFillInfo) wss
+propagateFillInfo (RowC _ _ ws) = concatMap propagateFillInfo ws
+propagateFillInfo (ColC _ _ ws) = concatMap propagateFillInfo ws
 
 -- get the configurations of a widget
 getConfs (PlainButton confs) = confs
@@ -576,8 +617,9 @@ getConfs (ScrollH _   confs) = confs
 getConfs (TextEdit    confs) = filter isFillInfo confs
 getConfs (Row _ _)           = []
 getConfs (Col _ _)           = []
-getConfs (Matrix _ _)        = [] 
-
+getConfs (Matrix _ _)        = []
+getConfs (RowC _ confs _)     = confs
+getConfs (ColC _ confs _)     = confs
 
 -- translate configuration options for collections (rows or columns)
 -- into parameters for the Tcl/Tk command "grid":
@@ -683,10 +725,18 @@ config2tcl wtype _ label (Height h)
  | otherwise
   = label++" configure -height "++show h++"\n"
 
+-- show/hide widget 
+config2tcl _ _ label (Display b)
+  = if b then "grid " ++ label ++ "\n"
+         else "grid remove " ++ label ++ "\n"
+    
+
 -- value of checkbuttons:
 config2tcl wtype _ label (CheckInit s)
  | wtype=="checkbutton"
    = "setvar"++wLabel2Refname label++" \""++s++"\"\n"
+ | wtype=="listbox"
+   = label ++ " selection set " ++ " \""++s++"\"\n"
  | otherwise
  = trace ("WARNING: GUI.CheckInit ignored for widget type \""++wtype++"\"\n") ""
 
@@ -943,7 +993,7 @@ runPassiveGUI title widget = do
 --- @param title - the title of the main window containing the widget
 --- @param widget - the widget shown in the new window
 runGUI :: String -> Widget -> IO ()
-runGUI title widget = runInitGUIwithParams title "" widget (const (return []))
+runGUI title widget = runInitGUIwithParams title "" widget (const done)
 
 --- IO action to run a Widget in a new window.
 --- @param title - the title of the main window containing the widget
@@ -951,24 +1001,17 @@ runGUI title widget = runInitGUIwithParams title "" widget (const (return []))
 --- @param widget - the widget shown in the new window
 runGUIwithParams :: String -> String -> Widget -> IO ()
 runGUIwithParams title params widget =
-  runInitGUIwithParams title params widget (const (return []))
+  runInitGUIwithParams title params widget (const done)
 
 --- IO action to run a Widget in a new window. The GUI events
 --- are processed after executing an initial action on the GUI.
 --- @param title - the title of the main GUI window
 --- @param widget - the widget shown in the new GUI window
 --- @param initcmd - the initial command executed before activating the GUI
-runInitGUI :: String -> Widget -> (GuiPort -> IO [ReconfigureItem]) -> IO ()
+runInitGUI :: String -> Widget -> (GuiPort -> IO ()) -> IO ()
 runInitGUI title widget initcmd = do
   gport <- openWish (escape_tcl title) ""
   initSchedule widget gport [] [] initcmd
-
---- IO action to run a Widget in a new window
---- (deprecated operation, only included for backward compatibility).
---- Use operation 'runInitGUI'!
-runInitGUI' :: String -> Widget -> (GuiPort -> IO ()) -> IO ()
-runInitGUI' title widget initcmd =
-  runInitGUI title widget (\gp -> initcmd gp >> return [])
 
 --- IO action to run a Widget in a new window. The GUI events
 --- are processed after executing an initial action on the GUI.
@@ -976,18 +1019,10 @@ runInitGUI' title widget initcmd =
 --- @param params - parameter string passed to the initial wish command
 --- @param widget - the widget shown in the new GUI window
 --- @param initcmd - the initial command executed before activating the GUI
-runInitGUIwithParams :: String -> String -> Widget
-                     -> (GuiPort -> IO [ReconfigureItem]) -> IO ()
+runInitGUIwithParams :: String -> String -> Widget -> (GuiPort -> IO ()) -> IO ()
 runInitGUIwithParams title params widget initcmd = do
   gport <- openWish (escape_tcl title) params
   initSchedule widget gport [] [] initcmd
-
---- IO action to run a Widget in a new window
---- (deprecated operation, only included for backward compatibility).
---- Use operation 'runInitGUIwithParams'!
-runInitGUIwithParams' :: String -> String -> Widget -> (GuiPort -> IO ()) -> IO ()
-runInitGUIwithParams' title params widget initcmd =
-  runInitGUIwithParams title params widget (\gp -> initcmd gp >> return [])
 
 
 --- Runs a Widget in a new GUI window and process GUI events.
@@ -1002,7 +1037,7 @@ runInitGUIwithParams' title params widget initcmd =
 ---               an external port)
 runControlledGUI :: String -> (Widget, msg -> GuiPort -> IO ()) -> [msg] -> IO ()
 runControlledGUI title (widget,exth) msgs =
-  runInitControlledGUI title (widget,exth) (const (return [])) msgs
+  runInitControlledGUI title (widget,exth) (const done) msgs
 
 
 --- Runs a Widget in a new GUI window and process GUI events.
@@ -1022,7 +1057,7 @@ runConfigControlledGUI :: String ->
        (Widget, msg -> GuiPort -> IO [ReconfigureItem]) -> [msg] -> IO ()
 runConfigControlledGUI title (widget,exth) msgs = do
   gport <- openWish (escape_tcl title) ""
-  initSchedule widget gport [PortMsgHandler exth] msgs (const (return []))
+  initSchedule widget gport [PortMsgHandler exth] msgs (\_->done)
 
 --- Runs a Widget in a new GUI window and process GUI events
 --- after executing an initial action on the GUI window.
@@ -1037,21 +1072,12 @@ runConfigControlledGUI title (widget,exth) msgs = do
 --- @param msgs - the stream of external messages (usually coming from
 ---               an external port)
 runInitControlledGUI :: String -> (Widget, msg -> GuiPort -> IO ()) ->
-                        (GuiPort -> IO [ReconfigureItem]) -> [msg] -> IO ()
+                        (GuiPort -> IO ()) -> [msg] -> IO ()
 runInitControlledGUI title (widget,exth) initcmd msgs = do
   gport <- openWish (escape_tcl title) ""
   initSchedule widget gport
                [PortMsgHandler (\msg wp -> exth msg wp >> return [])]
                msgs initcmd
-
---- Runs a Widget in a new GUI window and process GUI events
---- after executing an initial action on the GUI window
---- (deprecated operation, only included for backward compatibility).
---- Use operation 'runInitControlledGUI'!
-runInitControlledGUI' :: String -> (Widget, msg -> GuiPort -> IO ()) ->
-                        (GuiPort -> IO ()) -> [msg] -> IO ()
-runInitControlledGUI' title (widget,exth) initcmd msgs =
-  runInitControlledGUI title (widget,exth) (\gp -> initcmd gp >> return []) msgs
 
 
 --- Runs a Widget in a new GUI window and process GUI events.
@@ -1066,19 +1092,10 @@ runInitControlledGUI' title (widget,exth) initcmd msgs =
 ---             new window and handlers is a list of event handler for external inputs
 --- @param handles - a list of handles to the external input streams for the
 ---                  corresponding event handlers
-runHandlesControlledGUI :: String
-                        -> (Widget,[Handle -> GuiPort -> IO [ReconfigureItem]])
-                        -> [Handle] -> IO ()
+runHandlesControlledGUI :: String -> (Widget,[Handle -> GuiPort -> IO ()])
+                           -> [Handle] -> IO ()
 runHandlesControlledGUI title widgethandlers handles =
-  runInitHandlesControlledGUI title widgethandlers (const (return [])) handles
-
---- Runs a Widget in a new GUI window and process GUI events
---- (deprecated operation, only included for backward compatibility).
---- Use operation 'runHandlesControlledGUI'!
-runHandlesControlledGUI' :: String -> (Widget,[Handle -> GuiPort -> IO ()])
-                         -> [Handle] -> IO ()
-runHandlesControlledGUI' title widgethandlers handles =
-  runInitHandlesControlledGUI' title widgethandlers (const done) handles
+  runInitHandlesControlledGUI title widgethandlers (const done) handles
 
 
 --- Runs a Widget in a new GUI window and process GUI events
@@ -1095,25 +1112,13 @@ runHandlesControlledGUI' title widgethandlers handles =
 --- @param initcmd - the initial command executed before starting the GUI
 --- @param handles - a list of handles to the external input streams for the
 ---                  corresponding event handlers
-runInitHandlesControlledGUI :: String
-                     -> (Widget,[Handle -> GuiPort -> IO [ReconfigureItem]])
-                     -> (GuiPort -> IO [ReconfigureItem]) -> [Handle] -> IO ()
+runInitHandlesControlledGUI :: String -> (Widget,[Handle -> GuiPort -> IO ()])
+                               -> (GuiPort -> IO ()) -> [Handle] -> IO ()
 runInitHandlesControlledGUI title (widget,handlers) initcmd handles =
  do gport <- openWish (escape_tcl title) ""
     initSchedule widget gport
                  (map IOHandler (zip handles (map toIOHandler handlers)))
                  [] initcmd
-
---- Runs a Widget in a new GUI window and process GUI events
---- after executing an initial action on the GUI window
---- (deprecated operation, only included for backward compatibility).
---- Use operation 'runInitHandlesControlledGUI'!
-runInitHandlesControlledGUI' :: String -> (Widget,[Handle -> GuiPort -> IO ()])
-                               -> (GuiPort -> IO ()) -> [Handle] -> IO ()
-runInitHandlesControlledGUI' title (widget,handlers) initcmd =
-  runInitHandlesControlledGUI title (widget,map toNewHdl handlers)
-                                    (\gp -> initcmd gp >> return [])
- where toNewHdl handler = \h gp -> handler h gp >> return []
 
 -- The type of external event handlers currently supported.
 -- It is either a handler processing messages from an external port
@@ -1126,16 +1131,22 @@ data ExternalHandler msg =
 -- start the scheduler (see below) with a given Widget on a wish port
 -- and an initial command:
 initSchedule :: Widget -> GuiPort -> [ExternalHandler msg] ->
-                [msg] -> (GuiPort -> IO [ReconfigureItem]) -> IO ()
+                [msg] -> (GuiPort -> IO ()) -> IO ()
 initSchedule widget gport exths msgs initcmd = do
-  send2tk tcl gport
-  confs <- initcmd gport
+  send2tk (defaultBgColor ++ tcl) gport
+  initcmd gport
   -- add handler on wish connection as first handler:
-  configAndProceedScheduler evs gport
+  scheduleTkEvents evs gport
                    (IOHandler (handleOf gport,processTkEvent) : exths) msgs
-                   (Just confs)
  where
   (tcl,evs) = mainWidget2tcl gport widget
+
+
+
+defaultBgColor = 
+   "label .foo\n" ++
+   "set defaultBgColor [.foo cget -background]\n" ++
+   "destroy .foo \n"
 
 -- Scheduler for Tcl/Tk events:
 --
@@ -1196,8 +1207,6 @@ processTkEvent evs str gport =
 -- Reconfigure scheduler with new configurations and proceed.
 -- If the configs are Nothing, then terminate the scheduler
 -- (this case occurs of the connection is closed by wish)
-configAndProceedScheduler :: [(String,Event,GuiPort -> IO [ReconfigureItem])]
-  -> GuiPort -> [ExternalHandler a] -> [a] -> Maybe [ReconfigureItem] -> IO ()
 configAndProceedScheduler _ gport _ _ Nothing = closeGuiPort gport
 configAndProceedScheduler evs gport exths msgs (Just configs) = do
   mapIO_ reconfigureGUI configs
@@ -1449,8 +1458,8 @@ addCanvas (WRefLabel wpv var wtype) items gport = do
 ----------------------------------------------------------------------------
 
 --- A simple popup message.
-popupMessage :: String -> IO ()
-popupMessage s = runGUI "" (Col [] [Label [Text s],
+popup_message :: String -> IO ()
+popup_message s = runGUI "" (col [Label [Text s],
                                      Button exitGUI [Text "Dismiss"]])
 
 --- A simple event handler that can be associated to a widget.
@@ -1473,6 +1482,10 @@ Button :: (GuiPort -> IO ()) -> [ConfItem] -> Widget
 Button cmd confs = PlainButton (Cmd cmd : confs)
 
 
+cmd = Cmd
+command = Command
+button = Button
+
 --- A button with an associated event handler which is activated
 --- if the button is pressed. The event handler is a configuration handler
 --- (see Command) that allows the configuration of some widgets.
@@ -1484,7 +1497,7 @@ ConfigButton cmd confs = PlainButton (Command cmd : confs)
 --- The argument contains the configuration options for the text edit widget.
 TextEditScroll :: [ConfItem] -> Widget
 TextEditScroll confs =
-   Matrix [] [[TextEdit ([WRef txtref, Fill]++confs),
+   matrix [[TextEdit ([WRef txtref, Fill]++confs),
                ScrollV txtref [FillY]],
               [ScrollH txtref [FillX]]]     where txtref free
 
@@ -1493,7 +1506,7 @@ TextEditScroll confs =
 --- The argument contains the configuration options for the list box widget.
 ListBoxScroll :: [ConfItem] -> Widget
 ListBoxScroll confs =
-   Matrix [] [[ListBox ([WRef lbref, Fill]++confs),
+   matrix [[ListBox ([WRef lbref, Fill]++confs),
                ScrollV lbref [FillY]],
               [ScrollH lbref [FillX]]]     where lbref free
 
@@ -1502,8 +1515,8 @@ ListBoxScroll confs =
 --- The argument contains the configuration options for the text edit widget.
 CanvasScroll :: [ConfItem] -> Widget
 CanvasScroll confs =
-   Col []
-     [Row [] [Canvas ([WRef cref, Fill]++confs),
+   col
+     [row [Canvas ([WRef cref, Fill]++confs),
               ScrollV cref [FillY]],
       ScrollH cref [FillX]]     where cref free
 
@@ -1512,7 +1525,7 @@ CanvasScroll confs =
 --- The argument contains the configuration options for the entry widget.
 EntryScroll :: [ConfItem] -> Widget
 EntryScroll confs =
-   Col []
+   col
     [Entry ([WRef entryref, FillX]++confs),
      ScrollH entryref [Width 10, FillX]]
   where entryref free
