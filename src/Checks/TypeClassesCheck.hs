@@ -967,6 +967,9 @@ combineContexts (Context e1) (Context e2) = Context (e1 ++ e2)
 
 type RenameFunc = String -> String
 
+-- |All concrete implementations of class methods in an instance declaration are
+-- shifted by this function to top level, using new generated function names
+-- for the definitions. 
 createTopLevelFuncs :: ClassEnv -> RenameFunc -> IDecl -> Decl -> Decl
 createTopLevelFuncs cEnv rfunc (InstanceDecl _ _ cls _ _ _) 
                                (FunctionDecl p cty n id0 eqs) 
@@ -975,11 +978,17 @@ createTopLevelFuncs cEnv rfunc (InstanceDecl _ _ cls _ _ _)
   (_, ty) = fromJust $ lookupMethodTypeSig' cEnv cls id0
   zeroArity = arrowArity ty == 0
 createTopLevelFuncs _ _ _ _ = internalError "createTopLevelFuncs"
-  
+
+-- |As we create top-level functions, all occurences of the prior function
+-- name must be replaced with the new top-level function name. Therefore, in 
+-- the left hand sides of the equations, the function names have to be updated.
 transEqu :: Bool -> RenameFunc -> Equation -> Equation
 transEqu zeroArity rfunc (Equation p lhs rhs) = 
   Equation p (transLhs zeroArity rfunc lhs) rhs
 
+-- |Renames the given function names with the new top level function names. 
+-- Also adds an additional unit argument for implementations of nullary class
+-- methods. 
 transLhs :: Bool -> RenameFunc -> Lhs -> Lhs
 -- TODO: throw internal error when illegal combination is found?
 -- transLhs False rfunc (FunLhs id0 ps@(_:_)) = FunLhs (rename rfunc id0) ps
