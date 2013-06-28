@@ -931,7 +931,7 @@ transformMethod cEnv idecl@(InstanceDecl _ _ cls _ _ _) ity
   -- create type signature
   createTypeSignature rfunc cEnv idecl decl
   -- create function rules
-  : [createTopLevelFuncs rfunc decl] 
+  : [createTopLevelFuncs cEnv rfunc idecl decl] 
   where 
     cls' = getCanonClassName cEnv cls
     -- rename for specific instance!
@@ -948,12 +948,11 @@ instMethodName cls tcon s = implPrefix ++ show cls ++ sep ++ show tcon ++ sep ++
 createTypeSignature :: RenameFunc -> ClassEnv -> IDecl -> Decl -> Decl
 createTypeSignature rfunc cEnv (InstanceDecl _ scx cls tcon tyvars _) 
                     (FunctionDecl p _ _ f _eqs) 
-  = TypeSig p [rename rfunc f] cx' ty'
-  where 
-    -- lookup class method of f
+  = TypeSig p [rename rfunc f] cx' ty''
+  where
+    (cx, ty) = fromJust $ lookupMethodTypeSig' cEnv cls f 
     theClass_ = fromJust $ lookupClass cEnv cls
-    (_, cx, ty) = fromJust $ find (\(id0, _, _) -> id0 == f) (methods theClass_)
-    
+     
     -- Substitute class typevar with given instance type. 
     -- Rename tyvars, so that they do not equal type vars in the class
     -- method type signature, like in the following example:
@@ -963,7 +962,8 @@ createTypeSignature rfunc cEnv (InstanceDecl _ scx cls tcon tyvars _)
     
     subst = [(typeVar theClass_, theType)]
     -- cx' = substInContext subst cx
-    ty' = substInTypeExpr subst ty 
+    ty' = substInTypeExpr subst ty
+    ty'' = if arrowArity ty' == 0 then ArrowType (TupleType []) ty' else ty'
     
     -- add instance context. The variables have to be renamed here as well
     renamedSContext = (\(SContext elems) -> 
@@ -971,28 +971,43 @@ createTypeSignature rfunc cEnv (InstanceDecl _ scx cls tcon tyvars _)
     icx = simpleContextToContext renamedSContext
     cx' = combineContexts icx cx
 createTypeSignature _ _ _ _ = internalError "createTypeSignature"    
-      
 
 combineContexts :: ST.Context -> ST.Context -> ST.Context
 combineContexts (Context e1) (Context e2) = Context (e1 ++ e2)
 
 type RenameFunc = String -> String
 
-createTopLevelFuncs :: RenameFunc -> Decl -> Decl
-createTopLevelFuncs rfunc (FunctionDecl p cty n id0 eqs) 
-  = FunctionDecl p cty n (rename rfunc id0) (map (transEq rfunc) eqs)
-createTopLevelFuncs _ _ = internalError "createTopLevelFuncs"
+createTopLevelFuncs :: ClassEnv -> RenameFunc -> IDecl -> Decl -> Decl
+createTopLevelFuncs cEnv rfunc (InstanceDecl _ _ cls _ _ _) 
+                               (FunctionDecl p cty n id0 eqs) 
+  = FunctionDecl p cty n (rename rfunc id0) (map (transEqu zeroArity rfunc) eqs)
+  where
+  (_, ty) = fromJust $ lookupMethodTypeSig' cEnv cls id0
+  zeroArity = arrowArity ty == 0
+createTopLevelFuncs _ _ _ _ = internalError "createTopLevelFuncs"
   
-transEq :: RenameFunc -> Equation -> Equation
-transEq rfunc (Equation p lhs rhs) = Equation p (transLhs rfunc lhs) rhs
+transEqu :: Bool -> RenameFunc -> Equation -> Equation
+transEqu zeroArity rfunc (Equation p lhs rhs) = 
+  Equation p (transLhs zeroArity rfunc lhs) rhs
 
-transLhs :: RenameFunc -> Lhs -> Lhs
-transLhs rfunc (FunLhs id0 ps) = FunLhs (rename rfunc id0) ps
-transLhs rfunc (OpLhs ps1 id0 ps2) = OpLhs ps1 (rename rfunc id0) ps2
-transLhs rfunc (ApLhs lhs ps) = ApLhs (transLhs rfunc lhs) ps
+transLhs :: Bool -> RenameFunc -> Lhs -> Lhs
+-- TODO: throw internal error when illegal combination is found?
+-- transLhs False rfunc (FunLhs id0 ps@(_:_)) = FunLhs (rename rfunc id0) ps
+-- transLhs True rfunc (FunLhs id0 []) = FunLhs (rename rfunc id0) [TuplePattern noRef []]
+transLhs zeroArity rfunc (FunLhs id0 ps) = 
+  FunLhs (rename rfunc id0) (if zeroArity then TuplePattern noRef [] : ps else ps)
+transLhs False rfunc (OpLhs ps1 id0 ps2) = OpLhs ps1 (rename rfunc id0) ps2
+transLhs True _ (OpLhs _ _ _) = internalError "transLhs: zero arity with operator lhs"
+transLhs zeroArity rfunc (ApLhs lhs ps) = ApLhs (transLhs zeroArity rfunc lhs) ps
 
 rename :: RenameFunc -> Ident -> Ident
 rename rfunc = updIdentName rfunc  
+
+-- |calculates the arity of a given type signature
+arrowArity :: TypeExpr -> Int
+arrowArity (ArrowType _ ty) = 1 + arrowArity ty
+arrowArity (SpecialConstructorType ArrowTC [_, ty]) = 1 + arrowArity ty
+arrowArity _                = 0
 
 -- |handles functions missing in an instance declaration. Searches for a
 -- default method (TODO!) and inserts this, else inserts an error statement
