@@ -14,3 +14,7 @@ tySig = funA1
 
 
 
+instance A a => A [a] where
+  funA1 = [funA1, funA1]
+  funA1 = [funA1]
+  funA2 [x] = [x]
