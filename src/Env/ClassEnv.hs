@@ -21,7 +21,7 @@ module Env.ClassEnv (
   , lookupClass, lookupClass'
   , lookupDefiningClass, lookupMethodTypeScheme, lookupMethodTypeSig
   , allClasses, allLocalClasses, getAllClassMethods, getInstance
-  , getAllClassMethodNames, lookupMethodTypeSig'
+  , getAllClassMethodNames, lookupMethodTypeSig', lookupMethodTypeScheme'
   -- ** functions for modifying the class environment
   , bindClass, bindClassMethods
   -- ** pretty printing
@@ -188,6 +188,14 @@ lookupMethodTypeSig' cEnv cls f = do
   theClass_ <- lookupClass cEnv cls
   (_, cx, ty) <- find (\(id0, _, _) -> id0 == f) (methods theClass_)
   return (cx, ty)  
+
+-- |lookup type scheme of class method f in class cls
+lookupMethodTypeScheme' :: ClassEnv -> QualIdent -> Ident -> Maybe TypeScheme
+lookupMethodTypeScheme' cEnv cls f = do
+  theClass_ <- lookupClass cEnv cls
+  (_, tsc) <- find (\(id0, _) -> id0 == f) (typeSchemes theClass_)
+  return tsc
+    
 
 -- ----------------------------------------------------------------------------
 -- type classes related functionality
