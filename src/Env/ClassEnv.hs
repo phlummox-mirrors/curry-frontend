@@ -399,7 +399,9 @@ transTypeScheme (ForAll _ _ ty) = do
   let tvars = (nub $ BT.typeVars ty) \\ [0] 
   freshVars <- replicateM (length tvars) freshTyVar
   let mapping = zip tvars (map TypeVariable freshVars)
-  return $ subst (listToSubst mapping) ty
+      zeroArity = arrowArity ty == 0
+      ty' = subst (listToSubst mapping) ty
+  return $ if zeroArity then TypeArrow unitType ty' else ty'
 
 freshTyVar :: State Int Int
 freshTyVar = do
