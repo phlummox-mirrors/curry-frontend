@@ -26,7 +26,7 @@ module Transformations.TypeSigs (transformTypeSigs) where
 
 import Data.Maybe
 
-import Curry.Syntax.Type
+import Curry.Syntax.Type as CS
 import Env.ClassEnv
 import CompilerEnv
 import Env.Value
@@ -109,8 +109,9 @@ tsExpr _cEnv e@(Literal _) = e
 tsExpr _cEnv e@(Variable _ _) = e
 tsExpr _cEnv e@(Constructor _) = e
 tsExpr cEnv   (Paren e) = tsExpr cEnv e
--- TODO: handle type signature in typed expression!
-tsExpr cEnv (Typed cty e cx t) = Typed cty (tsExpr cEnv e) cx t
+-- Handle type signature in typed expression by simply removing the context
+-- (no dictionaries have to be inserted here, so the context can be ignored)
+tsExpr cEnv (Typed cty e _cx t) = Typed cty (tsExpr cEnv e) CS.emptyContext t
 tsExpr cEnv (Tuple sref es) = Tuple sref (map (tsExpr cEnv) es)
 tsExpr cEnv (List sref es) = List sref (map (tsExpr cEnv) es)
 tsExpr cEnv (ListCompr sref e ss) = ListCompr sref (tsExpr cEnv e) (map (tsStmt cEnv) ss)
