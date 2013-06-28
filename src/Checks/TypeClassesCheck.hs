@@ -996,10 +996,11 @@ transLhs :: Bool -> RenameFunc -> Lhs -> Lhs
 -- TODO: throw internal error when illegal combination is found?
 -- transLhs False rfunc (FunLhs id0 ps@(_:_)) = FunLhs (rename rfunc id0) ps
 -- transLhs True rfunc (FunLhs id0 []) = FunLhs (rename rfunc id0) [TuplePattern noRef []]
+-- transLhs False rfunc (OpLhs ps1 id0 ps2) = OpLhs ps1 (rename rfunc id0) ps2
+-- transLhs True _ (OpLhs _ _ _) = internalError "transLhs: zero arity with operator lhs"
 transLhs zeroArity rfunc (FunLhs id0 ps) = 
   FunLhs (rename rfunc id0) (if zeroArity then TuplePattern noRef [] : ps else ps)
-transLhs False rfunc (OpLhs ps1 id0 ps2) = OpLhs ps1 (rename rfunc id0) ps2
-transLhs True _ (OpLhs _ _ _) = internalError "transLhs: zero arity with operator lhs"
+transLhs _ rfunc (OpLhs ps1 id0 ps2) = OpLhs ps1 (rename rfunc id0) ps2
 transLhs zeroArity rfunc (ApLhs lhs ps) = ApLhs (transLhs zeroArity rfunc lhs) ps
 
 rename :: RenameFunc -> Ident -> Ident
