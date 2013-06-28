@@ -193,16 +193,6 @@ classDeclToClass m (ClassDecl _ (SContext scon) cls tyvar decls)
       concatMap splitUpTypeSig $ filter isTypeSig decls
 classDeclToClass _ _ = internalError "classDeclToClass"
   
-
--- |constructs a map from class methods to their defining classes 
-buildClassMethodsMap :: [Class] -> Map.Map QualIdent QualIdent
-buildClassMethodsMap cls = Map.unions $ map addClassMethods cls
-
-addClassMethods :: Class -> Map.Map QualIdent QualIdent
-addClassMethods (Class { methods = ms, theClass = cls}) = 
-  let ms_cls = map (\(m, _, _) -> (qualify m, cls)) ms
-  in foldr (uncurry Map.insert) Map.empty ms_cls
-
 -- |converts an instance declaration into the form of the class environment
 instanceDeclToInstance :: ModuleIdent -> TCEnv -> Decl -> Instance
 instanceDeclToInstance m tcEnv (InstanceDecl _ (SContext scon) cls tcon ids decls) = 
