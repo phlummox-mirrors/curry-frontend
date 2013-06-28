@@ -21,7 +21,7 @@ module Env.ClassEnv (
   , lookupClass, lookupClass'
   , lookupDefiningClass, lookupMethodTypeScheme, lookupMethodTypeSig
   , allClasses, allLocalClasses, getAllClassMethods, getInstance
-  , getAllClassMethodNames
+  , getAllClassMethodNames, lookupMethodTypeSig'
   -- ** functions for modifying the class environment
   , bindClass, bindClassMethods
   -- ** pretty printing
@@ -182,6 +182,13 @@ bindClassMethods' m cls vEnv =
           qualBindTopEnv "bcm" (qualifyWith m id0) cls $ bindTopEnv "bcm" id0 cls env)
     vEnv
     classMethods0
+
+-- | lookup type signature of class method f in class cls
+lookupMethodTypeSig' :: ClassEnv -> QualIdent -> Ident -> Maybe (Context, TypeExpr)
+lookupMethodTypeSig' cEnv cls f = do
+  theClass_ <- lookupClass cEnv cls
+  (_, cx, ty) <- find (\(id0, _, _) -> id0 == f) (methods theClass_)
+  return (cx, ty)  
 
 -- ----------------------------------------------------------------------------
 -- type classes related functionality
