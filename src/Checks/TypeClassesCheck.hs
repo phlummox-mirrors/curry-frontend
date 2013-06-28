@@ -22,7 +22,6 @@ import Base.Messages (Message, message, posMessage, internalError)
 
 import Data.List
 import Text.PrettyPrint hiding (sep)
-import qualified Data.Map as Map
 import Data.Maybe
 import Control.Monad.State
 
