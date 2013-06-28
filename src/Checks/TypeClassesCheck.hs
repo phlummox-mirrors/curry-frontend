@@ -207,6 +207,10 @@ instanceDeclToInstance m tcEnv (InstanceDecl _ (SContext scon) cls tcon ids decl
   ty = fromJust $ tyConToQualIdent m tcEnv tcon
 instanceDeclToInstance _ _ _ = internalError "instanceDeclToInstance"
 
+-- |Determines the qualified name for the given type constructor. This name 
+-- refers always to the module where the given type constructor is defined, and
+-- doesn't use the qualification in the source file (for example the qualification
+-- used in connection with qualified module imports)
 tyConToQualIdent :: ModuleIdent -> TCEnv -> TypeConstructor -> Maybe QualIdent
 tyConToQualIdent m tcEnv (QualTC qid) = qualifyQid
   where
@@ -1144,6 +1148,7 @@ buildTypeSchemes m tcEnv cls@(Class { theClass = tc, methods = ms, typeVar = cla
 -- various substitutions
 -- ---------------------------------------------------------------------------
 
+-- |The type for substitutions
 type Subst a = [(Ident, a)]
 
 applySubst :: (Subst Ident) -> Ident -> Ident
@@ -1151,6 +1156,8 @@ applySubst subst id0 = case lookup id0 subst of
   Nothing -> id0
   Just x -> x
 
+-- | renames the type variables in the given context by using the given 
+-- substitution
 renameVarsInContext :: (Subst Ident) -> ST.Context -> ST.Context
 renameVarsInContext subst (Context elems) = 
   Context $ map (renameVarsInContextElem subst) elems
@@ -1179,6 +1186,8 @@ applySubst' subst id0 = case lookup id0 subst of
   Nothing -> VariableType id0
   Just x -> x
 
+-- |replaces the variables in the given type expression by type expressions, 
+-- using the given substitution
 substInTypeExpr :: (Subst TypeExpr) -> TypeExpr -> TypeExpr
 substInTypeExpr subst (ConstructorType qid texps) 
   = ConstructorType qid (map (substInTypeExpr subst) texps)
