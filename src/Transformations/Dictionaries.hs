@@ -133,7 +133,11 @@ diExpr _ e@(Literal _) = return e
 diExpr cx0 v@(Variable (Just varCty0) qid) = do 
   codes <- abstrCode
   cEnv <- getClassEnv
-  return $ foldl Apply (var'' cEnv) codes 
+  let code = foldl Apply (var'' cEnv) codes
+  -- for nullary class methods add additional unit argument
+  return $ if isClassMethod cEnv && zeroArity cEnv 
+    then Apply code (Constructor qUnitId)
+    else code
   where
   abstrCode = do
     cEnv <- getClassEnv
@@ -147,7 +151,10 @@ diExpr cx0 v@(Variable (Just varCty0) qid) = do
   cls cEnv = fromJust $ maybeCls cEnv
   -- if we have a class function, transform this into the appropriate selector
   -- function
-  var'' cEnv = if isNothing $ maybeCls cEnv 
+  isClassMethod cEnv = isJust $ maybeCls cEnv
+  zeroArity cEnv = (arrowArity $ typeSchemeToType $ 
+    fromJust $ lookupMethodTypeScheme' cEnv (cls cEnv) (unqualify qid)) == 0
+  var'' cEnv = if not $ isClassMethod cEnv 
     then v
     -- Unqualify "qid"! The name of the selection function is still unique
     -- because the class name is unique 
