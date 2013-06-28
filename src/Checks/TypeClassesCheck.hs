@@ -9,7 +9,8 @@
     Portability :  portable
 
     This file contains a lot of checks for typeclass elements (classes, 
-    instances, contexts)
+    instances, contexts). It also contains transformation functions for
+    the instance and class declarations. 
 -}
 
 module Checks.TypeClassesCheck (typeClassesCheck) where
