@@ -38,7 +38,6 @@ module Env.ClassEnv (
 import Curry.Base.Ident
 import Text.PrettyPrint
 import Curry.Syntax.Type
-import qualified Data.Map as Map
 import Curry.Syntax.Pretty
 import Base.Types hiding (Context, typeVar, typeVars, splitType)
 import qualified Base.Types as BT 
