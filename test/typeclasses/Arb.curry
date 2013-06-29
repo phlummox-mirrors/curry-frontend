@@ -8,11 +8,24 @@ instance Arb Bool where
   arb = False
 
 -- works
-arbLB :: [Bool]
-arbLB = [arb, arb]
+arbLB0 :: [Bool]
+arbLB0 = [arb, arb]
+
+-- ------------------------
 
 arbL :: Arb a => [a]
 arbL = [arb, arb]
 
 -- doesn't work!
-arbLB'' = arbL :: [Bool]
+arbLB = arbL :: [Bool]
+
+-- ------------------------
+
+test :: Arb a => a
+test = arb
+
+arbL2 :: Arb a => [a]
+arbL2 = [test, test]
+
+arbLB2 = arbL2 :: [Bool]
+
