@@ -1422,7 +1422,9 @@ because of possibly multiple occurrences of variables.
 >       -- this is safe here because "gen" uses only substitutions of the 
 >       -- form (Int, TypeVariable Int)
 >       s' = reverseTySubst s
->   unless (eqTypes sigma sigma') 
+>   sndRun <- isSecondRun
+>   -- issue errors only in the first run of the type check
+>   unless (eqTypes sigma sigma') $ when (not sndRun) $ 
 >     (report $ errTypeSigTooGeneral p m (text "Expression:" <+> ppExpr 0 e) (cx, sig') sigma)
 >   cEnv <- getClassEnv
 >   -- test context implication
