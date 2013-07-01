@@ -900,7 +900,7 @@ transformClass2 cEnv (ClassDecl _p _scx cls _tyvar _decls) =
     cx = combineContexts cx0 
           (Context [ContextElem (theClass theClass0) (typeVar theClass0) []])
     toTopLevel :: RenameFunc
-    toTopLevel f0 = defPrefix ++ show (theClass theClass0) ++ sep ++ f0
+    toTopLevel f0 = defMethodName (theClass theClass0) f0
   genDefaultMethod _ = internalError "genDefaultMethod"
   
   -- the renamings are important so that the parameters are not handled as
@@ -951,6 +951,10 @@ transformMethod _ _ _ _ = internalError "transformMethod"
 -- function definitions in the instance  
 instMethodName :: QualIdent -> QualIdent -> String -> String
 instMethodName cls tcon s = implPrefix ++ show cls ++ sep ++ show tcon ++ sep ++ s
+
+-- |create a name for the default method in a class declaration
+defMethodName :: QualIdent -> String -> String
+defMethodName cls fun0 = defPrefix ++ show cls ++ sep ++ fun0
 
 -- |creates a type signature for an instance method which is transformed to
 -- a top level function
@@ -1028,12 +1032,11 @@ arrowArity (ArrowType _ ty) = 1 + arrowArity ty
 arrowArity (SpecialConstructorType ArrowTC [_, ty]) = 1 + arrowArity ty
 arrowArity _                = 0
 
--- |handles functions missing in an instance declaration. Searches for a
--- default method (TODO!) and inserts this, else inserts an error statement
+-- |handles functions missing in an instance declaration. Searches first for a
+-- default method, and if none present, inserts an error statement
 handleMissingFunc :: ClassEnv -> IDecl -> QualIdent -> Ident -> [Decl]
 handleMissingFunc cEnv (InstanceDecl _ _ cls _tcon _ _) ity fun0 = 
-  [ fun globalName [if defaultMethodDefined then equ2 else equ1]
-  ]
+  if not defaultMethodDefined then [ fun globalName [equ1] ] else []
   where
   cls' = getCanonClassName cEnv cls
   globalName = mkIdent $ instMethodName cls' ity (show fun0)
@@ -1042,8 +1045,9 @@ handleMissingFunc cEnv (InstanceDecl _ _ cls _tcon _ _) ity fun0 =
                       (Literal $ String (srcRef 0) errorString)))
   errorString = show fun0 ++ " not given in instance declaration of class "
     ++ show cls' ++ " and type " ++ show ity
-  equ2 = undefined -- TODO
-  defaultMethodDefined = False -- TODO
+  theClass0 = fromJust $ lookupClass cEnv cls
+  defaultMethodDefined = fun0 `elem` getDefaultMethods theClass0
+  
 handleMissingFunc _ _ _ _ = internalError "handleMissingFunc"
 
 -- |This function creates a dictionary for the given instance declaration, 
@@ -1073,7 +1077,7 @@ createDictionary _ _ _ = internalError "createDictionary"
 -- |This function creates a dictionary for the given instance declaration, 
 -- using tuples
 createDictionary2 :: ClassEnv -> IDecl -> QualIdent -> [Decl]
-createDictionary2 cEnv (InstanceDecl _ _scx cls0 _tcon _tvars _decls) ity = 
+createDictionary2 cEnv (InstanceDecl _ _scx cls0 tcon _tvars _decls) ity = 
   [ fun (dictName cls)
     [equation
       (FunLhs (dictName cls) [])
@@ -1087,9 +1091,20 @@ createDictionary2 cEnv (InstanceDecl _ _scx cls0 _tcon _tvars _decls) ity =
   theClass0 = fromJust $ lookupClass cEnv cls0
   superClasses0 = superClasses theClass0
   methods0 = methods theClass0
+  defaultMethods = getDefaultMethods theClass0
   scs = map (qVar . dictName) superClasses0
-  ms = map (qVar . mkIdent . 
-    (\s -> instMethodName cls ity s) . show . fst3) methods0
+  ms = map (addType . correctName . fst3) methods0
+  correctName :: Ident -> (Ident, String)
+  correctName s | s `elem` defaultMethods = (s, defMethodName cls (show s))
+                | otherwise = (s, instMethodName cls ity (show s))
+  addType :: (Ident, String) -> Expression
+  addType (var, name)
+      | var `elem` defaultMethods = Typed Nothing (qVar $ mkIdent name) (Context []) theType'
+      | otherwise = qVar $ mkIdent name
+    where 
+    (_, theType) = fromJust $ lookupMethodTypeSig' cEnv cls0 var
+    subst = [(typeVar theClass0, SpecialConstructorType tcon [])]
+    theType' = substInTypeExpr subst theType
   all0 = scs ++ ms
 createDictionary2 _ _ _ = internalError "createDictionary"
 
