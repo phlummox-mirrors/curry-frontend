@@ -23,6 +23,9 @@ class F a => G a where
   funG1 :: a -> a
   funG2 :: a -> a
 
+class H a where
+  funH :: a -> b -> c -> a
+
 instance (A a, A b) => A (a, b) where
   
 toBool _ = True
