@@ -1077,7 +1077,7 @@ createDictionary _ _ _ = internalError "createDictionary"
 -- |This function creates a dictionary for the given instance declaration, 
 -- using tuples
 createDictionary2 :: ClassEnv -> IDecl -> QualIdent -> [Decl]
-createDictionary2 cEnv (InstanceDecl _ _scx cls0 tcon _tvars _decls) ity = 
+createDictionary2 cEnv (InstanceDecl _ scx cls0 tcon tvars _decls) ity = 
   [ fun (dictName cls)
     [equation
       (FunLhs (dictName cls) [])
@@ -1099,14 +1099,21 @@ createDictionary2 cEnv (InstanceDecl _ _scx cls0 tcon _tvars _decls) ity =
                 | otherwise = (s, instMethodName cls ity (show s))
   addType :: (Ident, String) -> Expression
   addType (var, name)
-      | var `elem` defaultMethods = Typed Nothing (qVar $ mkIdent name) (Context []) theType'
+      | var `elem` defaultMethods = 
+        Typed Nothing (qVar $ mkIdent name) (sContextToContext scx) theType'
       | otherwise = qVar $ mkIdent name
     where 
     (_, theType) = fromJust $ lookupMethodTypeSig' cEnv cls0 var
-    subst = [(typeVar theClass0, SpecialConstructorType tcon [])]
+    subst = [(typeVar theClass0, SpecialConstructorType tcon (map VariableType tvars))]
     theType' = substInTypeExpr subst theType
   all0 = scs ++ ms
 createDictionary2 _ _ _ = internalError "createDictionary"
+
+-- |converts a simple context into a context
+sContextToContext :: SContext -> Context
+sContextToContext (SContext scx) = Context $ map scxElemToCxElem scx
+  where
+  scxElemToCxElem (qid, id0) = ContextElem qid id0 []
 
 -- ---------------------------------------------------------------------------
 -- helper functions
