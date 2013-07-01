@@ -807,8 +807,9 @@ transformClass _ d = [d]
 -- class methods with other type variables than the type variable given in the class
 -- declaration well (?)
 transformClass2 :: ClassEnv -> Decl -> [Decl]
-transformClass2 cEnv (ClassDecl _p _scx cls _tyvar _decls) = 
-  concatMap genSuperClassDictSelMethod superClasses0
+transformClass2 cEnv (ClassDecl p _scx cls _tyvar _decls) = 
+  genDictType
+  : concatMap genSuperClassDictSelMethod superClasses0
   ++ concatMap genMethodSelMethod (zip methods0 [0..])
   ++ concatMap genNonDirectSuperClassDictSelMethod nonDirectSuperClasses
   where
@@ -886,6 +887,12 @@ transformClass2 cEnv (ClassDecl _p _scx cls _tyvar _decls) =
     expr :: Expression
     expr = foldr1 (\e1 e2 -> InfixApply e1 (InfixOp Nothing point) e2) (reverse $ names path)
     point = mkQIdent "."
+  
+  -- |generates a type declaration for the type of the dictionary for the given class  
+  genDictType :: Decl
+  genDictType = 
+    TypeDecl p (mkIdent $ mkDictTypeName $ show (theClass theClass0))
+             [typeVar theClass0] (dictTypeExpr cEnv (theClass theClass0))
     
   -- the renamings are important so that the parameters are not handled as
   -- global functions. Also important is that the parameters are globally
