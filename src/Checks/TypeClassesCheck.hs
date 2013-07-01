@@ -963,7 +963,7 @@ createTypeSignature rfunc cEnv (InstanceDecl _ scx cls tcon tyvars _)
     subst = [(typeVar theClass_, theType)]
     -- cx' = substInContext subst cx
     ty' = substInTypeExpr subst ty
-    ty'' = if arrowArity ty' == 0 then ArrowType (TupleType []) ty' else ty'
+    ty'' = if arrowArityTyExpr ty' == 0 then ArrowType (TupleType []) ty' else ty'
     
     -- add instance context. The variables have to be renamed here as well
     renamedSContext = (\(SContext elems) -> 
@@ -986,7 +986,7 @@ createTopLevelFuncs cEnv rfunc (InstanceDecl _ _ cls _ _ _)
   = FunctionDecl p cty n (rename rfunc id0) (map (transEqu zeroArity rfunc) eqs)
   where
   (_, ty) = fromJust $ lookupMethodTypeSig' cEnv cls id0
-  zeroArity = arrowArity ty == 0
+  zeroArity = arrowArityTyExpr ty == 0
 createTopLevelFuncs _ _ _ _ = internalError "createTopLevelFuncs"
 
 -- |As we create top-level functions, all occurences of the prior function
@@ -1012,12 +1012,6 @@ transLhs zeroArity rfunc (ApLhs lhs ps) = ApLhs (transLhs zeroArity rfunc lhs) p
 
 rename :: RenameFunc -> Ident -> Ident
 rename rfunc = updIdentName rfunc  
-
--- |calculates the arity of a given type signature
-arrowArity :: TypeExpr -> Int
-arrowArity (ArrowType _ ty) = 1 + arrowArity ty
-arrowArity (SpecialConstructorType ArrowTC [_, ty]) = 1 + arrowArity ty
-arrowArity _                = 0
 
 -- |handles functions missing in an instance declaration. Searches for a
 -- default method (TODO!) and inserts this, else inserts an error statement
