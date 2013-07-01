@@ -835,9 +835,16 @@ transformClass2 cEnv (ClassDecl p _scx cls _tyvar _decls) =
   -- | Generates functions for extracting the class functions from a given 
   -- directory 
   genMethodSelMethod :: ((Ident, Context, TypeExpr), Int) -> [Decl]
-  genMethodSelMethod ((m, _cx, _ty), i) = 
+  genMethodSelMethod ((m, _cx, ty), i) = 
     let selMethodName = mkSelFunName (show $ theClass theClass0) (show m) in
-    [ fun (mkIdent selMethodName)
+    [ typeSig [mkIdent selMethodName]
+      emptyContext
+      (ArrowType 
+        (ConstructorType (mkQIdent $ mkDictTypeName $ show $ theClass theClass0)
+          [VariableType $ typeVar theClass0])
+        ty
+      )
+    , fun (mkIdent selMethodName)
       [equation
         (equationLhs selMethodName)
         (simpleRhs (qVar $ methodSelParam selMethodName i))
