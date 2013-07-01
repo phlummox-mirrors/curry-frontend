@@ -811,6 +811,7 @@ transformClass2 cEnv (ClassDecl _p _scx cls _tyvar _decls) =
   concatMap genSuperClassDictSelMethod superClasses0
   ++ concatMap genMethodSelMethod (zip methods0 [0..])
   ++ concatMap genNonDirectSuperClassDictSelMethod nonDirectSuperClasses
+  ++ concatMap genDefaultMethod (defaults theClass0)
   where
   theClass0 = fromJust $ lookupClass cEnv (qualify cls)
   superClasses0 = map show $ superClasses theClass0
@@ -886,7 +887,22 @@ transformClass2 cEnv (ClassDecl _p _scx cls _tyvar _decls) =
     expr :: Expression
     expr = foldr1 (\e1 e2 -> InfixApply e1 (InfixOp Nothing point) e2) (reverse $ names path)
     point = mkQIdent "."
-    
+  
+  -- |Generates a top-level function containing the implementation of the
+  -- default implementation given in the class declaration
+  genDefaultMethod :: Decl -> [Decl]
+  genDefaultMethod (FunctionDecl p cty n f eqs) = 
+    TypeSig p [rename toTopLevel f] cx ty : 
+      -- TODO: arity == 0
+      [FunctionDecl p cty n (rename toTopLevel f) (map (transEqu False toTopLevel) eqs)] 
+    where
+    (cx0, ty) = fromJust $ lookupMethodTypeSig' cEnv (theClass theClass0) f
+    cx = combineContexts cx0 
+          (Context [ContextElem (theClass theClass0) (typeVar theClass0) []])
+    toTopLevel :: RenameFunc
+    toTopLevel f0 = defPrefix ++ show (theClass theClass0) ++ sep ++ f0
+  genDefaultMethod _ = internalError "genDefaultMethod"
+  
   -- the renamings are important so that the parameters are not handled as
   -- global functions. Also important is that the parameters are globally
   -- unique

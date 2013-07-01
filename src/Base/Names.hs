@@ -15,7 +15,7 @@
 module Base.Names 
   (sep
     -- * prefixes for constructed identifiers
-  , implPrefix, dictTypePrefix, identPrefix
+  , implPrefix, dictTypePrefix, identPrefix, defPrefix
     -- * name generation functions
   , mkSelFunName, mkDictName
   ) where
@@ -38,6 +38,10 @@ selFunPrefix = "sel" ++ sep
 -- |The prefix for functions that are implemented in a given instance declaration
 implPrefix :: String
 implPrefix = "impl" ++ sep
+
+-- |The prefix for default methods
+defPrefix :: String
+defPrefix = "def" ++ sep
 
 -- |creates a name for a selection function 
 mkSelFunName :: String -> String -> String
