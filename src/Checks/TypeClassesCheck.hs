@@ -824,7 +824,8 @@ transformClass2 cEnv (ClassDecl p _scx cls _tyvar _decls) =
   genSuperClassDictSelMethod :: String -> [Decl]
   genSuperClassDictSelMethod scls = 
     let selMethodName = mkSelFunName (show $ theClass theClass0) scls in
-    [ fun (mkIdent selMethodName)
+    [ superClassSelMethodTypeSig selMethodName scls
+    , fun (mkIdent selMethodName)
       [equation
         (equationLhs selMethodName)
         (simpleRhs (qVar $ dictSelParam selMethodName scls))
@@ -866,7 +867,8 @@ transformClass2 cEnv (ClassDecl p _scx cls _tyvar _decls) =
   genNonDirectSuperClassDictSelMethod :: QualIdent -> [Decl]
   genNonDirectSuperClassDictSelMethod scls = 
     let selMethodName = mkSelFunName (show $ theClass theClass0) (show scls) in
-    [ fun (mkIdent selMethodName)
+    [ superClassSelMethodTypeSig selMethodName (show scls)
+    , fun (mkIdent selMethodName)
       [equation
         (FunLhs (mkIdent selMethodName) [])
         (simpleRhs expr)
@@ -893,7 +895,20 @@ transformClass2 cEnv (ClassDecl p _scx cls _tyvar _decls) =
   genDictType = 
     TypeDecl p (mkIdent $ mkDictTypeName $ show (theClass theClass0))
              [typeVar theClass0] (dictTypeExpr cEnv (theClass theClass0))
-    
+  
+  -- |generates the typesignature of a superclass selection method
+  superClassSelMethodTypeSig :: String -> String -> Decl
+  superClassSelMethodTypeSig selMethodName scls =
+    typeSig [mkIdent selMethodName]
+      emptyContext
+      (ArrowType 
+        (ConstructorType (mkQIdent $ mkDictTypeName $ show $ theClass theClass0)
+          [VariableType $ mkIdent var])
+        (ConstructorType (mkQIdent $ mkDictTypeName scls) 
+          [VariableType $ mkIdent var])
+      )
+    where var = "a"
+  
   -- the renamings are important so that the parameters are not handled as
   -- global functions. Also important is that the parameters are globally
   -- unique
