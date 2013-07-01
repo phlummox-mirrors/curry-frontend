@@ -49,6 +49,7 @@ import Control.Monad.State
 import Base.TypeSubst (subst)
 import Base.Subst (listToSubst)
 import Base.Names
+import Curry.Syntax.Utils (arrowArityTyExpr)
 
 import Base.TopEnv
 
@@ -434,7 +435,12 @@ dictTypeExpr cEnv cls =
   scsTypes = map (\cls0 -> ConstructorType 
                              (qualify $ mkIdent $ mkDictTypeName $ show cls0) 
                              [VariableType $ typeVar c]) scs
-  methodTypes = map thd3 theMethods 
+  methodTypes = map considerZeroArity theMethods 
+  
+  considerZeroArity :: (Ident, Context, TypeExpr) -> TypeExpr
+  considerZeroArity (m, _cx, ty) = if arrowArityTyExpr ty /= 0
+    then ty
+    else ArrowType (TupleType []) ty  
 
 -- ----------------------------------------------------------------------------
 -- Pritty printer functions
