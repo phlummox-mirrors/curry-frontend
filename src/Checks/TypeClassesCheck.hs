@@ -30,7 +30,8 @@ import Curry.Base.Position
 import Curry.Syntax.Utils
 import Curry.Syntax.Pretty
 import Base.CurryTypes
-import Base.Types as BT (TypeScheme, polyType, constrainBy, Type (..))
+import Base.Types as BT (TypeScheme, polyType, constrainBy, Type (..), arrowArity
+                        , typeSchemeToType)
 import qualified Base.Types as BTC (Context) 
 import Base.SCC
 import Base.Utils (findMultiples, fst3)
@@ -842,7 +843,7 @@ transformClass2 cEnv (ClassDecl p _scx cls _tyvar _decls) =
       (ArrowType 
         (ConstructorType (mkQIdent $ mkDictTypeName $ show $ theClass theClass0)
           [VariableType $ typeVar theClass0])
-        ty
+        (if not zeroArity then ty else ArrowType (TupleType []) ty)
       )
     , fun (mkIdent selMethodName)
       [equation
@@ -850,6 +851,10 @@ transformClass2 cEnv (ClassDecl p _scx cls _tyvar _decls) =
         (simpleRhs (qVar $ methodSelParam selMethodName i))
       ]
     ]
+    where 
+    zeroArity = arrowArity 
+      (typeSchemeToType $ fromJust $ 
+        lookupMethodTypeScheme' cEnv (theClass theClass0) m) == 0
   
   -- | The left side of the (direct) selection functions is always the same and
   -- created by this function  
