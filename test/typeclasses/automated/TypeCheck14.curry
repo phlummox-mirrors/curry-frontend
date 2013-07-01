@@ -2,8 +2,12 @@
 
 class A a where
   (&&&) :: a -> a -> a
-  (|||) :: a -> b -> a
-  (///) :: b -> a -> a
+
+(|||) :: A a => a -> b -> a
+(|||) = error ""
+
+(///) :: A a => b -> a -> a
+(///) = error ""
 
 class B a where
   funB :: a -> a
