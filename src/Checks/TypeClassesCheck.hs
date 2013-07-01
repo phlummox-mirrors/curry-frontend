@@ -1084,7 +1084,7 @@ createDictionary2 cEnv (InstanceDecl _ _scx cls0 _tcon _tvars _decls) ity =
   where
   cls = getCanonClassName cEnv cls0
   dictName c = mkIdent $ mkDictName (show c) (show ity)
-  theClass0 = fromJust $ lookupClass cEnv cls
+  theClass0 = fromJust $ lookupClass cEnv cls0
   superClasses0 = superClasses theClass0
   methods0 = methods theClass0
   scs = map (qVar . dictName) superClasses0
