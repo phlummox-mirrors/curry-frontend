@@ -17,3 +17,8 @@ class D a => E a where
   funE2 :: a -> Bool
 
 
+class F f where
+  funF :: f -> Bool -> f
+
+class F g => G g where
+  funG :: g -> Bool
