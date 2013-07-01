@@ -833,7 +833,7 @@ transformClass2 cEnv (ClassDecl p _scx cls _tyvar _decls) =
     ]
     
   -- | Generates functions for extracting the class functions from a given 
-  -- directory 
+  -- dictionary
   genMethodSelMethod :: ((Ident, Context, TypeExpr), Int) -> [Decl]
   genMethodSelMethod ((m, _cx, ty), i) = 
     let selMethodName = mkSelFunName (show $ theClass theClass0) (show m) in
