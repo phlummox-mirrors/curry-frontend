@@ -1133,7 +1133,7 @@ createDictionary2 cEnv (InstanceDecl _ scx cls0 tcon tvars _decls) ity =
   addType :: (Ident, String) -> Expression
   addType (var, name)
       | var `elem` defaultMethods = 
-        Typed Nothing (qVar $ mkIdent name) (sContextToContext scx) theType'
+        Typed Nothing (qVar $ mkIdent name) (simpleContextToContext scx) theType'
       | otherwise = qVar $ mkIdent name
     where 
     (_, theType) = fromJust $ lookupMethodTypeSig' cEnv cls0 var
@@ -1145,12 +1145,6 @@ createDictionary2 cEnv (InstanceDecl _ scx cls0 tcon tvars _decls) ity =
     $ [SpecialConstructorType tcon (map VariableType tvars)]) 
   
 createDictionary2 _ _ _ = internalError "createDictionary"
-
--- |converts a simple context into a context
-sContextToContext :: SContext -> Context
-sContextToContext (SContext scx) = Context $ map scxElemToCxElem scx
-  where
-  scxElemToCxElem (qid, id0) = ContextElem qid id0 []
 
 -- ---------------------------------------------------------------------------
 -- helper functions
