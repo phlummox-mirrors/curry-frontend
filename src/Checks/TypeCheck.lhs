@@ -111,6 +111,12 @@ to True in the normal execution of the compiler.
 >     -- checkNoEqualClassMethodAndFunctionNames vEnv cEnv'
 > 
 >     -- checkForAmbiguousContexts vds
+>
+>     secondRun0 <- isSecondRun 
+>     errors0 <- getErrors
+>     when (secondRun0 && not (null errors0)) $ 
+>       internalError ("second type check failed: \n" ++ show errors0)
+>     
 >     -- restore the order of the declarations!
 >     return (map snd $ sortBy sorter $ tds' ++ zip (map fst vds') newDecls'')
 >   (tds', vds') = partition (isTypeDecl . snd) pdecls
@@ -193,6 +199,9 @@ generating fresh type variables.
 
 > -- hasError :: TCM Bool
 > -- hasError = liftM (not . null) (S.gets errors)
+
+> getErrors :: TCM [Message]
+> getErrors = S.gets errors
 
 > -- getOnlyNextId :: TCM Int
 > -- getOnlyNextId = S.gets nextId
