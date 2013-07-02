@@ -1126,19 +1126,10 @@ createDictionary2 cEnv (InstanceDecl _ scx cls0 tcon tvars _decls) ity =
   methods0 = methods theClass0
   defaultMethods = getDefaultMethods theClass0
   scs = map (qVar . dictName) superClasses0
-  ms = map (addType . correctName . fst3) methods0
-  correctName :: Ident -> (Ident, String)
-  correctName s | s `elem` defaultMethods = (s, defMethodName cls (show s))
-                | otherwise = (s, instMethodName cls ity (show s))
-  addType :: (Ident, String) -> Expression
-  addType (var, name)
-      | var `elem` defaultMethods = 
-        Typed Nothing (qVar $ mkIdent name) (simpleContextToContext scx) theType'
-      | otherwise = qVar $ mkIdent name
-    where 
-    (_, theType) = fromJust $ lookupMethodTypeSig' cEnv cls0 var
-    subst = [(typeVar theClass0, SpecialConstructorType tcon (map VariableType tvars))]
-    theType' = substInTypeExpr subst theType
+  ms = map (qVar . mkIdent . correctName . fst3) methods0
+  correctName :: Ident -> String
+  correctName s | s `elem` defaultMethods = defMethodName cls (show s)
+                | otherwise = instMethodName cls ity (show s)
   all0 = scs ++ ms
   
   dictType0 = (ConstructorType (mkQIdent $ mkDictTypeName $ show $ theClass theClass0)
