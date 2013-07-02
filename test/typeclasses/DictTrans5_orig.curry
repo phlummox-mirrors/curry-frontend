@@ -2,6 +2,9 @@
 
 class A a where
   funA1 :: a -> a -> Bool
+  funA2 :: a -> b -> c
+  funA3 :: a -> b -> c
+  funA4 :: a -> d -> b -> a
 
 instance A Bool where
   

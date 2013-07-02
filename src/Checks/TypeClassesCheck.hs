@@ -30,7 +30,8 @@ import Curry.Base.Position
 import Curry.Syntax.Utils
 import Curry.Syntax.Pretty
 import Base.CurryTypes
-import Base.Types as BT (TypeScheme, polyType, constrainBy, Type (..))
+import Base.Types as BT (TypeScheme, polyType, constrainBy, Type (..), arrowArity
+                        , typeSchemeToType)
 import qualified Base.Types as BTC (Context) 
 import Base.SCC
 import Base.Utils (findMultiples, fst3)
@@ -807,8 +808,9 @@ transformClass _ d = [d]
 -- class methods with other type variables than the type variable given in the class
 -- declaration well (?)
 transformClass2 :: ClassEnv -> Decl -> [Decl]
-transformClass2 cEnv (ClassDecl _p _scx cls _tyvar _decls) = 
-  concatMap genSuperClassDictSelMethod superClasses0
+transformClass2 cEnv (ClassDecl p _scx cls _tyvar _decls) = 
+  genDictType
+  : concatMap genSuperClassDictSelMethod superClasses0
   ++ concatMap genMethodSelMethod (zip methods0 [0..])
   ++ concatMap genNonDirectSuperClassDictSelMethod nonDirectSuperClasses
   ++ concatMap genDefaultMethod (defaults theClass0)
@@ -824,7 +826,8 @@ transformClass2 cEnv (ClassDecl _p _scx cls _tyvar _decls) =
   genSuperClassDictSelMethod :: String -> [Decl]
   genSuperClassDictSelMethod scls = 
     let selMethodName = mkSelFunName (show $ theClass theClass0) scls in
-    [ fun (mkIdent selMethodName)
+    [ superClassSelMethodTypeSig selMethodName scls
+    , fun (mkIdent selMethodName)
       [equation
         (equationLhs selMethodName)
         (simpleRhs (qVar $ dictSelParam selMethodName scls))
@@ -832,16 +835,26 @@ transformClass2 cEnv (ClassDecl _p _scx cls _tyvar _decls) =
     ]
     
   -- | Generates functions for extracting the class functions from a given 
-  -- directory 
+  -- dictionary
   genMethodSelMethod :: ((Ident, Context, TypeExpr), Int) -> [Decl]
-  genMethodSelMethod ((m, _cx, _ty), i) = 
+  genMethodSelMethod ((m, _cx, ty), i) = 
     let selMethodName = mkSelFunName (show $ theClass theClass0) (show m) in
-    [ fun (mkIdent selMethodName)
+    [ typeSig [mkIdent selMethodName]
+      emptyContext
+      (ArrowType 
+        (genDictTypeExpr (show $ theClass theClass0) (typeVar theClass0))
+        (if not zeroArity then ty else ArrowType (TupleType []) ty)
+      )
+    , fun (mkIdent selMethodName)
       [equation
         (equationLhs selMethodName)
         (simpleRhs (qVar $ methodSelParam selMethodName i))
       ]
     ]
+    where 
+    zeroArity = arrowArity 
+      (typeSchemeToType $ fromJust $ 
+        lookupMethodTypeScheme' cEnv (theClass theClass0) m) == 0
   
   -- | The left side of the (direct) selection functions is always the same and
   -- created by this function  
@@ -866,7 +879,8 @@ transformClass2 cEnv (ClassDecl _p _scx cls _tyvar _decls) =
   genNonDirectSuperClassDictSelMethod :: QualIdent -> [Decl]
   genNonDirectSuperClassDictSelMethod scls = 
     let selMethodName = mkSelFunName (show $ theClass theClass0) (show scls) in
-    [ fun (mkIdent selMethodName)
+    [ superClassSelMethodTypeSig selMethodName (show scls)
+    , fun (mkIdent selMethodName)
       [equation
         (FunLhs (mkIdent selMethodName) [])
         (simpleRhs expr)
@@ -902,6 +916,23 @@ transformClass2 cEnv (ClassDecl _p _scx cls _tyvar _decls) =
     toTopLevel :: RenameFunc
     toTopLevel f0 = defMethodName (theClass theClass0) f0
   genDefaultMethod _ = internalError "genDefaultMethod"
+
+  -- |generates a type declaration for the type of the dictionary for the given class  
+  genDictType :: Decl
+  genDictType = 
+    TypeDecl p (mkIdent $ mkDictTypeName $ show (theClass theClass0))
+             [typeVar theClass0] (dictTypeExpr cEnv (theClass theClass0))
+  
+  -- |generates the typesignature of a superclass selection method
+  superClassSelMethodTypeSig :: String -> String -> Decl
+  superClassSelMethodTypeSig selMethodName scls =
+    typeSig [mkIdent selMethodName]
+      emptyContext
+      (ArrowType 
+        (genDictTypeExpr (show $ theClass theClass0) (mkIdent var))
+        (genDictTypeExpr scls (mkIdent var))
+      )
+    where var = "a"
   
   -- the renamings are important so that the parameters are not handled as
   -- global functions. Also important is that the parameters are globally
@@ -913,6 +944,13 @@ transformClass2 cEnv (ClassDecl _p _scx cls _tyvar _decls) =
   
   
 transformClass2 _ d = [d]
+
+-- |generates a type expression that represents the type of the dictionary 
+-- of the given class 
+genDictTypeExpr :: String -> Ident -> TypeExpr
+genDictTypeExpr theClass0 var = 
+  (ConstructorType (mkQIdent $ mkDictTypeName $ theClass0)
+    [VariableType var])
 
 type IDecl = Decl
 
@@ -976,7 +1014,7 @@ createTypeSignature rfunc cEnv (InstanceDecl _ scx cls tcon tyvars _)
     subst = [(typeVar theClass_, theType)]
     -- cx' = substInContext subst cx
     ty' = substInTypeExpr subst ty
-    ty'' = if arrowArity ty' == 0 then ArrowType (TupleType []) ty' else ty'
+    ty'' = if arrowArityTyExpr ty' == 0 then ArrowType (TupleType []) ty' else ty'
     
     -- add instance context. The variables have to be renamed here as well
     renamedSContext = (\(SContext elems) -> 
@@ -999,7 +1037,7 @@ createTopLevelFuncs cEnv rfunc (InstanceDecl _ _ cls _ _ _)
   = FunctionDecl p cty n (rename rfunc id0) (map (transEqu zeroArity rfunc) eqs)
   where
   (_, ty) = fromJust $ lookupMethodTypeSig' cEnv cls id0
-  zeroArity = arrowArity ty == 0
+  zeroArity = arrowArityTyExpr ty == 0
 createTopLevelFuncs _ _ _ _ = internalError "createTopLevelFuncs"
 
 -- |As we create top-level functions, all occurences of the prior function
@@ -1025,12 +1063,6 @@ transLhs zeroArity rfunc (ApLhs lhs ps) = ApLhs (transLhs zeroArity rfunc lhs) p
 
 rename :: RenameFunc -> Ident -> Ident
 rename rfunc = updIdentName rfunc  
-
--- |calculates the arity of a given type signature
-arrowArity :: TypeExpr -> Int
-arrowArity (ArrowType _ ty) = 1 + arrowArity ty
-arrowArity (SpecialConstructorType ArrowTC [_, ty]) = 1 + arrowArity ty
-arrowArity _                = 0
 
 -- |handles functions missing in an instance declaration. Searches first for a
 -- default method, and if none present, inserts an error statement
@@ -1063,7 +1095,7 @@ createDictionary cEnv (InstanceDecl _ _scx cls0 _ _tvars _decls) ity =
   where
   cls = getCanonClassName cEnv cls0
   dictName c = mkIdent $ mkDictName (show c) (show ity)
-  theClass0 = fromJust $ lookupClass cEnv cls
+  theClass0 = fromJust $ lookupClass cEnv cls0
   superClasses0 = superClasses theClass0
   methods0 = methods theClass0
   scs = map (qVar . dictName) superClasses0
@@ -1078,7 +1110,8 @@ createDictionary _ _ _ = internalError "createDictionary"
 -- using tuples
 createDictionary2 :: ClassEnv -> IDecl -> QualIdent -> [Decl]
 createDictionary2 cEnv (InstanceDecl _ scx cls0 tcon tvars _decls) ity = 
-  [ fun (dictName cls)
+  [ typeSig [dictName cls] (simpleContextToContext scx) dictType0
+  , fun (dictName cls)
     [equation
       (FunLhs (dictName cls) [])
       (simpleRhs 
@@ -1107,6 +1140,10 @@ createDictionary2 cEnv (InstanceDecl _ scx cls0 tcon tvars _decls) ity =
     subst = [(typeVar theClass0, SpecialConstructorType tcon (map VariableType tvars))]
     theType' = substInTypeExpr subst theType
   all0 = scs ++ ms
+  
+  dictType0 = (ConstructorType (mkQIdent $ mkDictTypeName $ show $ theClass theClass0)
+    $ [SpecialConstructorType tcon (map VariableType tvars)]) 
+  
 createDictionary2 _ _ _ = internalError "createDictionary"
 
 -- |converts a simple context into a context

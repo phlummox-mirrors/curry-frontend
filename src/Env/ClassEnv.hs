@@ -32,7 +32,7 @@ module Env.ClassEnv (
   , implies, implies'
   , isValidCx, reduceContext, findPath
   , toHnfs, toHnf, inHnf
-  , dictCode, Operation (..), dictType, dictTypes
+  , dictCode, Operation (..), dictType, dictTypes, dictTypeExpr
   ) where
 
 -- import Base.Types hiding ()
@@ -49,6 +49,8 @@ import Base.Utils
 import Control.Monad.State
 import Base.TypeSubst (subst)
 import Base.Subst (listToSubst)
+import Base.Names
+import Curry.Syntax.Utils (arrowArityTyExpr)
 
 import Base.TopEnv
 
@@ -420,6 +422,34 @@ freshTyVar = do
 
 initFreshVar :: Int
 initFreshVar = 1 -- not zero! 
+
+-- ----------------------------------------------------------------------------
+
+-- |returns a type expression representing the type of the dictionary for
+-- the given class
+dictTypeExpr :: ClassEnv -> QualIdent -> TypeExpr
+dictTypeExpr cEnv cls = 
+  case null (scsTypes ++ methodTypes) of
+    True -> TupleType [] -- unit
+    False -> case length (scsTypes ++ methodTypes) == 1 of
+      True -> case length scsTypes == 1 of
+        True -> head scsTypes
+        False -> head methodTypes
+      False -> TupleType (scsTypes ++ methodTypes)
+  where
+  c = fromJust $ lookupClass cEnv cls
+  scs = superClasses c
+  theMethods = methods c
+  
+  scsTypes = map (\cls0 -> ConstructorType 
+                             (qualify $ mkIdent $ mkDictTypeName $ show cls0) 
+                             [VariableType $ typeVar c]) scs
+  methodTypes = map considerZeroArity theMethods 
+  
+  considerZeroArity :: (Ident, Context, TypeExpr) -> TypeExpr
+  considerZeroArity (m, _cx, ty) = if arrowArityTyExpr ty /= 0
+    then ty
+    else ArrowType (TupleType []) ty  
 
 -- ----------------------------------------------------------------------------
 -- Pritty printer functions

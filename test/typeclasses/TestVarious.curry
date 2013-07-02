@@ -115,6 +115,7 @@ class Eq a => Ord a where
 
 -- ------------------------------------------------------------
 
+{-
 class A1 a where
   funA1 :: a -> b -> Bool
   funA2 :: a -> a
@@ -149,5 +150,5 @@ class I1 a where
 
 class J1 a where
   funJ1 :: a -> b
-
+  -}
 

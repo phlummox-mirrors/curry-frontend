@@ -5,7 +5,9 @@ class C a where
 
 class D a where
   fun3 :: a -> a -> Bool
-  fun3b :: a -> b -> Bool
+
+fun3b :: D a => a -> b -> Bool
+fun3b = error ""
 
 class E a where
   fun4 :: a -> a

@@ -14,8 +14,18 @@ for file in DictTrans1 DictTrans2 DictTrans3 DictTrans4 \
   TypeSigsTrans BugTypeSigsTrans BugTypeSigsTrans2 \
   ClassEnv TCC GenElems \
   Arb NullaryClassMethods \
-  TypedExpressions2
+  TypedExpressions2 DictionaryTypes
 do
   #echo $file
   $cymake -f typeclasses/$file.curry 2>> output_test2_stderr.txt 1>> output_test2_stdout.txt || echo Error in $file.curry
 done
+
+
+# Those files contain type classes with other type vars in methods than
+# the type variable of the class and can thus not be checked:
+
+# DictTrans5_orig DictTrans6_orig Annot1_orig
+# Annot7_orig TypeSigsTrans_orig BugTypeSigsTrans_orig
+# TypedExpressions2_orig
+
+
