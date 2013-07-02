@@ -906,15 +906,17 @@ transformClass2 cEnv (ClassDecl p _scx cls _tyvar _decls) =
   -- default implementation given in the class declaration
   genDefaultMethod :: Decl -> [Decl]
   genDefaultMethod (FunctionDecl p cty n f eqs) = 
-    TypeSig p [rename toTopLevel f] cx ty : 
-      -- TODO: arity == 0
-      [FunctionDecl p cty n (rename toTopLevel f) (map (transEqu False toTopLevel) eqs)] 
+    TypeSig p [rename toTopLevel f] cx ty' : 
+      [FunctionDecl p cty n (rename toTopLevel f) (map (transEqu zeroArity toTopLevel) eqs)] 
     where
     (cx0, ty) = fromJust $ lookupMethodTypeSig' cEnv (theClass theClass0) f
     cx = combineContexts cx0 
           (Context [ContextElem (theClass theClass0) (typeVar theClass0) []])
     toTopLevel :: RenameFunc
     toTopLevel f0 = defMethodName (theClass theClass0) f0
+    zeroArity = arrowArityTyExpr ty == 0 
+    ty' = if zeroArity then ArrowType (TupleType []) ty else ty
+    
   genDefaultMethod _ = internalError "genDefaultMethod"
 
   -- |generates a type declaration for the type of the dictionary for the given class  
