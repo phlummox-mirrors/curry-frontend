@@ -22,6 +22,7 @@ module Env.ClassEnv (
   , lookupDefiningClass, lookupMethodTypeScheme, lookupMethodTypeSig
   , allClasses, allLocalClasses, getAllClassMethods, getInstance
   , getAllClassMethodNames, lookupMethodTypeSig', lookupMethodTypeScheme'
+  , getDefaultMethods
   -- ** functions for modifying the class environment
   , bindClass, bindClassMethods
   -- ** pretty printing
@@ -197,7 +198,15 @@ lookupMethodTypeScheme' cEnv cls f = do
   theClass_ <- lookupClass cEnv cls
   (_, tsc) <- find (\(id0, _) -> id0 == f) (typeSchemes theClass_)
   return tsc
-    
+
+-- |returns the names of the class methods for which a default method is 
+-- given 
+getDefaultMethods :: Class -> [Ident]
+getDefaultMethods cls = map getDefaultMethod (defaults cls)
+  where
+  getDefaultMethod (FunctionDecl _ _ _ f _) = f
+  getDefaultMethod _ = internalError "getDefaultMethods"
+
 
 -- ----------------------------------------------------------------------------
 -- type classes related functionality
