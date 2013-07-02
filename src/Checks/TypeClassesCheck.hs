@@ -938,6 +938,8 @@ genDictTypeExpr theClass0 var =
 
 type IDecl = Decl
 
+-- ----------------------------------------------------------------------------
+
 -- |transformInstance creates top level functions for the methods 
 -- of which rules are given in the instance declaration, and concrete 
 -- dictionaries, as well as type signatures for the instance rules. 
