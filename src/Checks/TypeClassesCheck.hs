@@ -841,8 +841,7 @@ transformClass2 cEnv (ClassDecl p _scx cls _tyvar _decls) =
     [ typeSig [mkIdent selMethodName]
       emptyContext
       (ArrowType 
-        (ConstructorType (mkQIdent $ mkDictTypeName $ show $ theClass theClass0)
-          [VariableType $ typeVar theClass0])
+        (genDictTypeExpr (show $ theClass theClass0) (typeVar theClass0))
         (if not zeroArity then ty else ArrowType (TupleType []) ty)
       )
     , fun (mkIdent selMethodName)
@@ -914,10 +913,8 @@ transformClass2 cEnv (ClassDecl p _scx cls _tyvar _decls) =
     typeSig [mkIdent selMethodName]
       emptyContext
       (ArrowType 
-        (ConstructorType (mkQIdent $ mkDictTypeName $ show $ theClass theClass0)
-          [VariableType $ mkIdent var])
-        (ConstructorType (mkQIdent $ mkDictTypeName scls) 
-          [VariableType $ mkIdent var])
+        (genDictTypeExpr (show $ theClass theClass0) (mkIdent var))
+        (genDictTypeExpr scls (mkIdent var))
       )
     where var = "a"
   
@@ -931,6 +928,13 @@ transformClass2 cEnv (ClassDecl p _scx cls _tyvar _decls) =
   
   
 transformClass2 _ d = [d]
+
+-- |generates a type expression that represents the type of the dictionary 
+-- of the given class 
+genDictTypeExpr :: String -> Ident -> TypeExpr
+genDictTypeExpr theClass0 var = 
+  (ConstructorType (mkQIdent $ mkDictTypeName $ theClass0)
+    [VariableType var])
 
 type IDecl = Decl
 
