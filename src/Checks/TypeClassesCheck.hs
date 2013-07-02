@@ -905,7 +905,7 @@ transformClass2 cEnv (ClassDecl p _scx cls _tyvar _decls) =
   -- |Generates a top-level function containing the implementation of the
   -- default implementation given in the class declaration
   genDefaultMethod :: Decl -> [Decl]
-  genDefaultMethod (FunctionDecl p cty n f eqs) = 
+  genDefaultMethod (FunctionDecl _p cty n f eqs) = 
     TypeSig p [rename toTopLevel f] cx ty' : 
       [FunctionDecl p cty n (rename toTopLevel f) (map (transEqu zeroArity toTopLevel) eqs)] 
     where
@@ -955,6 +955,8 @@ genDictTypeExpr theClass0 var =
     [VariableType var])
 
 type IDecl = Decl
+
+-- ----------------------------------------------------------------------------
 
 -- |transformInstance creates top level functions for the methods 
 -- of which rules are given in the instance declaration, and concrete 
