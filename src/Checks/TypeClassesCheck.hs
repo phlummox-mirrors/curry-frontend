@@ -1089,8 +1089,9 @@ createDictionary _ _ _ = internalError "createDictionary"
 -- |This function creates a dictionary for the given instance declaration, 
 -- using tuples
 createDictionary2 :: ClassEnv -> IDecl -> QualIdent -> [Decl]
-createDictionary2 cEnv (InstanceDecl _ _scx cls0 _tcon _tvars _decls) ity = 
-  [ fun (dictName cls)
+createDictionary2 cEnv (InstanceDecl _ scx cls0 tcon tvars _decls) ity = 
+  [ typeSig [dictName cls] (simpleContextToContext scx) dictType0
+  , fun (dictName cls)
     [equation
       (FunLhs (dictName cls) [])
       (simpleRhs 
@@ -1107,6 +1108,10 @@ createDictionary2 cEnv (InstanceDecl _ _scx cls0 _tcon _tvars _decls) ity =
   ms = map (qVar . mkIdent . 
     (\s -> instMethodName cls ity s) . show . fst3) methods0
   all0 = scs ++ ms
+  
+  dictType0 = (ConstructorType (mkQIdent $ mkDictTypeName $ show $ theClass theClass0)
+    $ [SpecialConstructorType tcon (map VariableType tvars)]) 
+  
 createDictionary2 _ _ _ = internalError "createDictionary"
 
 -- ---------------------------------------------------------------------------

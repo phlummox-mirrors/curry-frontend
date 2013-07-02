@@ -22,3 +22,28 @@ class F f where
 
 class F g => G g where
   funG :: g -> Bool
+
+
+class B a => H a where
+  funH :: a -> a
+  funH2 :: a -> a -> Bool
+
+instance B Bool where
+
+instance B [a] where
+
+instance B (T a b) where
+  
+instance H Bool where
+  funH True = False
+  funH2 True True = False
+
+instance H b => H [b] where
+  funH [x] = [x]
+  funH2 [x] [y] = True
+
+data T a b = T a b
+
+instance (H a, F b) => H (T a b) where
+  funH x = x
+  funH2 x y = True
