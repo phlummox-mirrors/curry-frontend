@@ -455,14 +455,19 @@ inferred type is less general than the signature.
 
 \end{verbatim}
 The class methods are inserted into the value environment. Thus, they are 
-treated just like any top level functions. 
+treated just like any top level functions. Top level functions and 
+class methods share the same namespace!
 \begin{verbatim}
 
+> -- |binds all class methods of /locally defined/ classes into the value
+> -- environment  
 > bindClassMethods :: ClassEnv -> TCM ()
 > bindClassMethods cEnv = do
 >   let allCls = allLocalClasses (theClasses cEnv)
 >   mapM_ bindClass allCls  
 > 
+> -- |binds the class methods of the given class into the value environment, 
+> -- just as if they were top level functions. 
 > bindClass :: Class -> TCM ()
 > bindClass cls = do
 >   let tySchemes = typeSchemes cls
