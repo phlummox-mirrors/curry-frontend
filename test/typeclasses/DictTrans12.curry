@@ -4,3 +4,11 @@ class A a where
 
 test5 x = y
   where y = funA x
+
+
+test9 x = y
+  where Just (y, [z]) = Just (funA z, [funA y])
+
+test10 x = z
+  where Just (y, [z]) = Just (funA z, [funA y])
+
