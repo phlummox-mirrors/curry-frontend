@@ -117,7 +117,7 @@ to True in the normal execution of the compiler.
 >     secondRun0 <- isSecondRun 
 >     errors0 <- getErrors
 >     when (secondRun0 && not (null errors0)) $ 
->       internalError ("second type check failed: \n" ++ show errors0)
+>       internalError ("second type check failed: \n" ++ show (reverse errors0))
 >     
 >     -- restore the order of the declarations!
 >     return (map snd $ sortBy sorter $ tds' ++ zip (map fst vds') newDecls'')
