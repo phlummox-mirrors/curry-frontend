@@ -642,14 +642,13 @@ the maximal necessary contexts for the functions are determined.
 > fpIter :: [Decl] -> TCM [Decl]
 > fpIter ds = do
 >   m <- getModuleIdent
->   cEnv <- getClassEnv
 >   vEnv <- getValueEnv
 >   theta <- getTypeSubst
 >   -- determine the very first context of a function declaration that
 >   -- is given by its type signature
 >   let maybeFs = map fromDecl ds 
 >       ctys = map 
->         (fmap $ \v -> subst theta (funType m (qualify v) vEnv cEnv))
+>         (fmap $ \v -> subst theta (funType m (qualify v) vEnv))
 >         maybeFs
 >   let firstContexts = map genContext ctys 
 >   fpIter' ds firstContexts
@@ -719,10 +718,9 @@ the maximal necessary contexts for the functions are determined.
 > fpExpr l@(Literal _) = return (l, BT.emptyContext)
 > fpExpr (Variable (Just (_cx0, ty0)) v) = do
 >   m <- getModuleIdent
->   cEnv <- getClassEnv
 >   theta <- getTypeSubst
 >   sigs <- getSigEnv
->   tsc <- getValueEnv >>= \vEnv -> return (funType m v vEnv cEnv)
+>   tsc <- getValueEnv >>= \vEnv -> return (funType m v vEnv)
 >   let tySig = qualLookupTypeSig m v sigs
 >   case isJust tySig of
 >     False -> do
@@ -870,10 +868,9 @@ the maximal necessary contexts for the functions are determined.
 > cvcExpr l@(Literal _) = return l
 > cvcExpr (Variable (Just (_cx0, ty0)) v) = do
 >   tyEnv <- getValueEnv 
->   cEnv <- getClassEnv
 >   m <- getModuleIdent
 >   theta <- getTypeSubst
->   let ForAll cxInf _ tyInf = funType m v tyEnv cEnv
+>   let ForAll cxInf _ tyInf = funType m v tyEnv
 >   let s = either (internalError . show) id (unifyTypes m tyInf (subst theta $ mirror2Ty ty0))
 >   return $ Variable (Just (mirrorCx $ subst s cxInf, ty0)) v
 > cvcExpr (Variable Nothing v) = internalError ("no type info for Variable " ++ show v) 
@@ -904,10 +901,9 @@ the maximal necessary contexts for the functions are determined.
 > cvcInfixOp :: InfixOp -> TCM InfixOp
 > cvcInfixOp (InfixOp (Just (_cx0, ty0)) qid) = do
 >   tyEnv <- getValueEnv 
->   cEnv <- getClassEnv
 >   m <- getModuleIdent
 >   theta <- getTypeSubst
->   let ForAll cxInf _ tyInf = funType m qid tyEnv cEnv
+>   let ForAll cxInf _ tyInf = funType m qid tyEnv
 >   let s = either (internalError . show) id (unifyTypes m tyInf (subst theta $ mirror2Ty ty0))
 >   return $ InfixOp (Just (mirrorCx $ subst s cxInf, ty0)) qid
 > cvcInfixOp (InfixOp Nothing _) = internalError "cvcInfixOp"
@@ -1238,8 +1234,7 @@ signature the declared type must be too general.
 > tcPattern p t@(FunctionPattern f ts) = do
 >   m     <- getModuleIdent
 >   tyEnv <- getValueEnv
->   cEnv <- getClassEnv
->   ty <- inst (funType m f tyEnv cEnv) --skol (constrType m c tyEnv)
+>   ty <- inst (funType m f tyEnv) --skol (constrType m c tyEnv)
 >   unifyArgs (ppPattern 0 t) ts (getType ty)
 >   where unifyArgs _ [] ty = return $ noContext ty
 >         unifyArgs doc (t1:ts1) ty@(TypeVariable _) = do
@@ -1340,8 +1335,7 @@ because of possibly multiple occurrences of variables.
 > tcPatternFP p t@(FunctionPattern f ts) = do
 >     m <- getModuleIdent
 >     tyEnv <- getValueEnv
->     cEnv <- getClassEnv
->     ty <- inst (funType m f tyEnv cEnv) --skol (constrType m c tyEnv)
+>     ty <- inst (funType m f tyEnv) --skol (constrType m c tyEnv)
 >     unifyArgs (ppPattern 0 t) ts (getType ty)
 >   where unifyArgs _ [] ty = return $ noContext ty
 >         unifyArgs doc (t1:ts1) ty@(TypeVariable _) = do
@@ -1438,12 +1432,11 @@ because of possibly multiple occurrences of variables.
 >   | otherwise    = do
 >       sigs <- getSigEnv
 >       m <- getModuleIdent
->       cEnv <- getClassEnv
 >       sndRun <- isSecondRun
 >       case qualLookupTypeSig m v sigs of
 >         Just cty -> do
 >           -- load the inferred type together with the contexts
->           (icx, ity) <- getValueEnv >>= (inst . (flip (funType m v) cEnv))
+>           (icx, ity) <- getValueEnv >>= inst . funType m v
 >           -- retrieve the type from the type signature...
 >           (cx0, ty0) <- expandPolyType (not sndRun) cty >>= inst
 >           -- ... and construct a mapping, so that the type variables in the 
@@ -1453,7 +1446,7 @@ because of possibly multiple occurrences of variables.
 >               cty' = (cx0 ++ subst mapping icx, ty0)
 >           return (Variable (Just $ mirrorCT cty') v, cty')
 >         Nothing -> do
->           cty <- getValueEnv >>= inst . (flip (funType m v) cEnv)
+>           cty <- getValueEnv >>= inst . funType m v
 >           return (Variable (Just $ mirrorCT cty) v, cty)
 >   where v' = unqualify v
 > tcExpr _ e@(Constructor c) = do
@@ -2033,8 +2026,8 @@ unambiguously refers to the local definition.
 >   Value _ _ sigma : _ -> Just sigma
 >   _ -> Nothing
 
-> funType :: ModuleIdent -> QualIdent -> ValueEnv -> ClassEnv -> TypeScheme
-> funType m f tyEnv _cEnv = case qualLookupValue f tyEnv of
+> funType :: ModuleIdent -> QualIdent -> ValueEnv -> TypeScheme
+> funType m f tyEnv = case qualLookupValue f tyEnv of
 >   [Value _ _ sigma] -> sigma
 >   _ -> case qualLookupValue (qualQualify m f) tyEnv of
 >     [Value _ _ sigma] -> sigma
