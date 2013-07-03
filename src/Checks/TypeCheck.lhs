@@ -1052,7 +1052,7 @@ signature the declared type must be too general.
 >   tyEnv <- getValueEnv
 >   cEnv <- getClassEnv
 >   doContextRed0 <- getDoContextRed
->   let sigma0 = (genType poly $ subst theta $ varType v tyEnv)
+>   let sigma0 = genType poly $ subst theta $ varType v tyEnv
 >       arity  = fromMaybe (varArity v tyEnv) ma
 >       -- apply context reduction
 >       generalizedContext = getContext sigma0
