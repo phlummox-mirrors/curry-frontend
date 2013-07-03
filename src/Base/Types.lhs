@@ -39,7 +39,6 @@ TODO: Use MultiParamTypeClasses ?
 > import Curry.Base.Ident
 > import Text.PrettyPrint
 > import Curry.Syntax.Pretty hiding (ppContext)
-> import Data.List
 > import qualified Curry.Syntax.Type as ST
 
 \end{verbatim}
@@ -383,8 +382,7 @@ Some pretty printing functions:
 
 > ppContext :: Context -> Doc
 > ppContext cx = parens $ hsep $ 
->   punctuate comma (map (\(qid, ty) -> ppQIdent qid <+> ppType ty) cx')
->   where cx' = nub cx
+>   punctuate comma (map (\(qid, ty) -> ppQIdent qid <+> ppType ty) cx)
 
 > ppType :: Type -> Doc
 > ppType (TypeVariable n) = text (show n)
