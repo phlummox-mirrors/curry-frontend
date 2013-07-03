@@ -1066,8 +1066,16 @@ signature the declared type must be too general.
 >   -- check for ambiguous context elements
 >   let tyVars = typeVars (typeSchemeToType sigma)
 >       ambigCxElems = filter (isAmbiguous tyVars lvs) context 
->   unless (null ambigCxElems) $ report $ 
->     errAmbiguousContextElems (idPosition v) m v ambigCxElems
+>   unless (null ambigCxElems) $ case lookupTypeSig v sigs of 
+>     Nothing -> report $ errAmbiguousContextElems (idPosition v) m v ambigCxElems
+>     Just tySig -> do
+>       -- check whether there are ambiguous type variables in the 
+>       -- unexpanded (!) type signature 
+>       tySig' <- expandPolyType False tySig
+>       let tyVars' = typeVars (typeSchemeToType tySig')
+>           ambigCxElems' = filter (isAmbiguous tyVars' Set.empty) (getContext tySig')
+>       unless (null ambigCxElems') $ report $ 
+>         errAmbiguousContextElems (idPosition v) m v ambigCxElems'
 >   sndRun <- isSecondRun
 >   case lookupTypeSig v sigs of
 >     Nothing    -> modifyValueEnv $ rebindFun m v arity sigma

@@ -12,7 +12,7 @@ for file in DictTrans1 DictTrans2 DictTrans3 DictTrans4 \
   PropagTest1 PropagTest2 PropagTest3 \
   BugAmbig2 \
   TypeSigsTrans BugTypeSigsTrans BugTypeSigsTrans2 \
-  ClassEnv TCC GenElems \
+  ClassEnv TCC GenElems TCC_Bug \
   Arb NullaryClassMethods \
   TypedExpressions2 DictionaryTypes \
   TestDictType \
