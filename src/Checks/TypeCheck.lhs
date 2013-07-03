@@ -112,6 +112,8 @@ to True in the normal execution of the compiler.
 > 
 >     -- checkForAmbiguousContexts vds
 >
+>     -- the second run should not produce any errors. If it does, we
+>     -- did something wrong. 
 >     secondRun0 <- isSecondRun 
 >     errors0 <- getErrors
 >     when (secondRun0 && not (null errors0)) $ 
