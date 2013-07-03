@@ -258,7 +258,11 @@ splitType :: Type -> (QualIdent, [Type])
 splitType ty = 
   maybe (internalError "splitType") id (BT.splitType ty)
 
--- | context reduction
+-- | Performs context reduction. When two contexts are equal except for 
+-- the types of the context elements, and it exists an 1:1 mapping for the types, 
+-- the resulting reduced contexts are also the same except for renaming using 
+-- the mentioned mapping. This is important, because we must rely on the fact
+-- that reduced contexts always have the same order of the context elements. 
 reduceContext :: ClassEnv -> BT.Context -> BT.Context
 reduceContext cEnv cx0 = reduceContext' (toHnfs cEnv cx0)
   where 

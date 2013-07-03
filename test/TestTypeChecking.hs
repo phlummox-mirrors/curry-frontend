@@ -371,6 +371,8 @@ checkContextReduction cEnv =
   reduceContext cEnv [mk "F" 0, mk "G" 0, mk "H" 0] == [mk "H" 0] &&
   reduceContext cEnv [mk "F" 0, mk "G" 0, mk "H" 0, mk "D" 0] == [mk "H" 0] &&
   reduceContext cEnv [mk "F" 0, mk "G" 0, mk "H" 0, mk "D" 1] == [mk "H" 0, mk "D" 1] &&
+  reduceContext cEnv [mk "F" 1, mk "G" 1, mk "H" 1, mk "D" 2] == [mk "H" 1, mk "D" 2] &&
+  reduceContext cEnv [mk "F" 5, mk "G" 5, mk "H" 5, mk "D" 4] == [mk "H" 5, mk "D" 4] &&
   
   reduceContext cEnv [mk "H" 0, mk "H" 0] == [mk "H" 0] &&
   reduceContext cEnv [mk "H" 0, mk "H" 0, mk "H" 0] == [mk "H" 0] &&
@@ -378,6 +380,8 @@ checkContextReduction cEnv =
   
   reduceContext cEnv [mk "A" 0, (mkId "A", list $ mkTy 0)] == [mk "A" 0] &&
   reduceContext cEnv [mk "A" 0, (mkId "A", list $ mkTy 1)] == [mk "A" 0, mk "A" 1] &&
+  reduceContext cEnv [mk "A" 1, (mkId "A", list $ mkTy 0)] == [mk "A" 1, mk "A" 0] &&
+  reduceContext cEnv [mk "A" 5, (mkId "A", list $ mkTy 6)] == [mk "A" 5, mk "A" 6] &&
   reduceContext cEnv 
     [mk "A" 0, (mkId "A", list $ mkTy 0), (mkId "A", list $ list $ mkTy 0)] == [mk "A" 0] &&
   reduceContext cEnv 
