@@ -552,11 +552,17 @@ either one of the basic types or \texttt{()}.
 >   let newDs0 = zipWith updateContexts cxs' (map fst dsAndCtysRhs)
 >   -- Propagate all contexts. 
 >   newDs1 <- fpIter newDs0
+>   -- Update contexts of function declarations with the contexts from the
+>   -- type environment. This is very important, because we want that
+>   -- the context reduction occuring at generalization yields exactly the
+>   -- same results as the context reduction occuring in the dictionary 
+>   -- transformation
+>   newDs2 <- updateFuncContexts newDs1 
 >   -- Establish the inferred types. 
 >   mapM_ (genDecl freeVars theta) newDs1
 >   -- do NOT return final contexts! 
 >   -- TODO: return cxs or cxs' (or doesn't matter?)
->   return (newDs1, nonLocalContextElems freeVars $ concat cxs')
+>   return (newDs2, nonLocalContextElems freeVars $ concat cxs')
 
 > -- |checks whether the given "ValueInfo" refers to an identifier from
 > -- the given module
@@ -601,6 +607,20 @@ either one of the basic types or \texttt{()}.
 > -- that are free variables of the type environment 
 > isNotLocal :: Set.Set Int -> (QualIdent, Type) -> Bool
 > isNotLocal fvs (_qid, ty) = any (`Set.member` fvs) (typeVars ty) 
+
+> -- | updates the contexts in the function/pattern declarations with the
+> -- contexts from the type environment
+> updateFuncContexts :: [Decl] -> TCM [Decl]
+> updateFuncContexts decls = mapM updateFuncContexts' decls
+>   where
+>   updateFuncContexts' :: Decl -> TCM Decl
+>   updateFuncContexts' (FunctionDecl p (Just (_cx, ty)) n f eqs) = do
+>     tyEnv <- getValueEnv
+>     theta <- getTypeSubst
+>     let cty = subst theta $ varType f tyEnv 
+>     return $ FunctionDecl p (Just (mirrorCx $ getContext cty, ty)) n f eqs
+>   updateFuncContexts' p@(PatternDecl _ _ _ _ _) = return p
+>   updateFuncContexts' _ = internalError "updateFuncContexts'"
 
 \end{verbatim}
 The fix point iteration propagates all contexts in a declaration group until
