@@ -1736,8 +1736,8 @@ because of possibly multiple occurrences of variables.
 >   where swap (n, TypeVariable m) = (m, TypeVariable n)
 >         swap _ = internalError "reverseTySubst"
 
-> nubCx :: ConstrType -> ConstrType
-> nubCx (cx, ty) = (nub $ cx, ty)
+> -- nubCx :: ConstrType -> ConstrType
+> -- nubCx (cx, ty) = (nub $ cx, ty)
 
 > annotInfixOpType :: InfixOp -> ConstrType -> InfixOp
 > annotInfixOpType (InfixOp _ qid) cty = InfixOp (Just $ mirrorCT cty) qid
@@ -2387,7 +2387,7 @@ nothing is recorded so that they are simply returned).
 > tsInfixOp _theta (InfixConstr qid) = InfixConstr qid 
 
 > subst' :: TypeSubst -> ConstrType_ -> ConstrType_
-> subst' s ty = mirrorCT $ nubCx $ subst s $ mirror2CT ty
+> subst' s ty = mirrorCT $ subst s $ mirror2CT ty
 
 \end{verbatim}
 The declarations are numbered, so that each declaration has a unique id. That
