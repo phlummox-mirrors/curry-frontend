@@ -1070,7 +1070,9 @@ signature the declared type must be too general.
 >     Nothing -> report $ errAmbiguousContextElems (idPosition v) m v ambigCxElems
 >     Just tySig -> do
 >       -- check whether there are ambiguous type variables in the 
->       -- unexpanded (!) type signature 
+>       -- unexpanded (!) type signature. TODO: Actually we could do without this
+>       -- test because we know that type signatures are unambiguous (as this
+>       -- is checked earlier) 
 >       tySig' <- expandPolyType False tySig
 >       let tyVars' = typeVars (typeSchemeToType tySig')
 >           ambigCxElems' = filter (isAmbiguous tyVars' Set.empty) (getContext tySig')
