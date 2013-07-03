@@ -53,10 +53,10 @@ expanded.
 
 > import Env.TypeConstructor (TCEnv, TypeInfo (..), bindTypeInfo
 >   , qualLookupTC)
-> import Env.Value ( ValueEnv, ValueInfo (..), rebindFun
+> import Env.Value ( ValueEnv, ValueInfo (..), bindFun, rebindFun
 >   , bindGlobalInfo, bindLabel, lookupValue, qualLookupValue
 >   , tryBindFun )
-> import Env.ClassEnv (ClassEnv, lookupMethodTypeScheme
+> import Env.ClassEnv (ClassEnv (..), Class (..), allLocalClasses 
 >   , implies', implies, isValidCx, reduceContext)
 
 > infixl 5 $-$
@@ -94,7 +94,7 @@ to True in the normal execution of the compiler.
 >     bindTypes tds
 >     bindConstrs
 >     bindLabels
->     -- bindClassMethods cEnv
+>     bindClassMethods cEnv
 >     
 >     -- assign each declaration a unique id
 >     vdsN <- numberDecls vds
@@ -454,16 +454,25 @@ inferred type is less general than the signature.
 >  "TypeCheck.nameType: empty ident list"
 
 \end{verbatim}
-All type signatures of defined class methods are loaded into the signature
-environment as well. 
+The class methods are inserted into the value environment. Thus, they are 
+treated just like any top level functions. 
 \begin{verbatim}
 
-> -- bindClassMethods :: ClassEnv -> TCM ()
-> -- bindClassMethods cEnv = 
-> --   let tySigs = getAllClassMethods cEnv
-> --   in modifySigEnv $ 
-> --      \sigs -> foldr (\(id0, cx, texp) sig -> bindTypeSig id0 (cx, texp) sig) 
-> --                     sigs tySigs
+> bindClassMethods :: ClassEnv -> TCM ()
+> bindClassMethods cEnv = do
+>   let allCls = allLocalClasses (theClasses cEnv)
+>   mapM_ bindClass allCls  
+> 
+> bindClass :: Class -> TCM ()
+> bindClass cls = do
+>   let tySchemes = typeSchemes cls
+>   m <- getModuleIdent
+>   vEnv <- getValueEnv
+>   let vEnv' = foldr (\(id0, tsc) env -> 
+>                       bindFun m id0 (arrowArity $ typeSchemeToType tsc) tsc env)
+>                     vEnv
+>                     tySchemes
+>   modifyValueEnv $ const vEnv'
 
 \end{verbatim}
 \paragraph{Type Inference}
@@ -2025,13 +2034,12 @@ unambiguously refers to the local definition.
 >   _ -> Nothing
 
 > funType :: ModuleIdent -> QualIdent -> ValueEnv -> ClassEnv -> TypeScheme
-> funType m f tyEnv cEnv = case qualLookupValue f tyEnv of
+> funType m f tyEnv _cEnv = case qualLookupValue f tyEnv of
 >   [Value _ _ sigma] -> sigma
 >   _ -> case qualLookupValue (qualQualify m f) tyEnv of
 >     [Value _ _ sigma] -> sigma
->     _ -> case lookupMethodTypeScheme cEnv f of
->        Just tsc -> tsc -- TODO: add instance context
->        Nothing -> internalError $ "TypeCheck.funType function not found: " ++ show f ++ ", more precisely " ++ show (unqualify f)
+>     _ -> internalError $ "TypeCheck.funType function not found: " 
+>            ++ show f ++ ", more precisely " ++ show (unqualify f)
 
 > sureLabelType :: Ident -> ValueEnv -> Maybe TypeScheme
 > sureLabelType l tyEnv = case lookupValue l tyEnv of
