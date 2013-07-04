@@ -451,7 +451,7 @@ dictTypeExpr cEnv cls =
   methodTypes = map considerZeroArity theMethods 
   
   considerZeroArity :: (Ident, Context, TypeExpr) -> TypeExpr
-  considerZeroArity (m, _cx, ty) = if arrowArityTyExpr ty /= 0
+  considerZeroArity (_m, _cx, ty) = if arrowArityTyExpr ty /= 0
     then ty
     else ArrowType (TupleType []) ty  
 
