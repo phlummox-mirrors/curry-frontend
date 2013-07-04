@@ -285,9 +285,12 @@ checkImpl cEnv =
   implies cEnv [mk "A" 0] (mkId "A", tycon "S" [mkTy 0]) &&
   implies cEnv [mk "B" 0] (mkId "A", tycon "U" [mkTy 0]) &&
   implies cEnv [mk "A" 0, mk "B" 1] (mkId "E", tycon "V" [mkTy 0, mkTy 1]) && 
+  implies cEnv [mk "B" 1, mk "A" 0] (mkId "E", tycon "V" [mkTy 0, mkTy 1]) &&
   not (implies cEnv [mk "A" 0, mk "B" 0] (mkId "E", tycon "V" [mkTy 0, mkTy 1])) &&
   implies cEnv [mk "F" 0, mk "B" 1] (mkId "E", tycon "V" [mkTy 0, mkTy 1]) &&
+  implies cEnv [mk "B" 1, mk "F" 0] (mkId "E", tycon "V" [mkTy 0, mkTy 1]) &&
   implies cEnv [mk "F" 0, mk "D" 1] (mkId "E", tycon "V" [mkTy 0, mkTy 1]) &&  
+  implies cEnv [mk "D" 1, mk "F" 0] (mkId "E", tycon "V" [mkTy 0, mkTy 1]) &&  
   
   implies cEnv [mk "A" 0] (mkId "A", list $ tycon "S" [mkTy 0]) &&
   implies' cEnv [mk "A" 0, mk "A" 1] 
@@ -305,6 +308,7 @@ checkImpl cEnv =
   not (implies cEnv [mk "M" 0] (mkId "I", TypeArrow (mkTy 0) (mkTy 1))) &&
   not (implies cEnv [mk "K" 0] (mkId "I", TypeArrow (mkTy 0) (mkTy 1))) &&
   implies cEnv [mk "M" 0, mk "K" 0] (mkId "I", TypeArrow (mkTy 0) (mkTy 1)) &&
+  implies cEnv [mk "K" 0, mk "M" 0] (mkId "I", TypeArrow (mkTy 0) (mkTy 1)) &&
   
   not (implies cEnv [] (mk "E" 0)) &&
   not (implies' cEnv [] [mk "E" 0, mk "F" 0]) &&
