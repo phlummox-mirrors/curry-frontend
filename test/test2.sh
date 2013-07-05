@@ -2,6 +2,9 @@
 cymake=../dist/build/cymake/cymake
 cymake_orig=../dist/build/cymake/cymake_orig
 
+rm -f output_test2_stderr.txt
+rm -f output_test2_stdout.txt
+
 echo ================
   
 for file in DictTrans1 DictTrans2 DictTrans3 DictTrans4 \
