@@ -23,7 +23,8 @@ for file in DictTrans1 DictTrans2 DictTrans3 DictTrans4 \
   BugClassMethodsVsPredefinedFuncs \
   BugTySigs \
   Example Example2 Example3 \
-  DictOrderBug DictOrderBug2 DictOrderBug3 DictOrderBug4
+  DictOrderBug DictOrderBug2 DictOrderBug3 DictOrderBug4 \
+  TestMixedDeclGroups
 do
   #echo $file
   $cymake -f typeclasses/$file.curry 2>> output_test2_stderr.txt 1>> output_test2_stdout.txt || echo Error in $file.curry
