@@ -12,6 +12,9 @@ instance (A a, A b) => A (a, b) where
 test1 :: (A a, A b) => a -> b -> (a, b)
 test1 x y = funA (x, y)
 
+test1b :: (A b, A a) => a -> b -> (a, b)
+test1b x y = funA (x, y)
+
 test2 :: (B a, B b) => a -> b -> (a, b)
 test2 x y = funA (x, y)
 
