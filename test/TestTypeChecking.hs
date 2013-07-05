@@ -80,7 +80,7 @@ checkTypes file = do
   putStrLn ("checking " ++ file)
   let opts = CO.defaultOptions
   mod <- loadModule opts (location ++ file ++ ".curry") 
-  let result = checkModule' opts mod
+  let result = checkModule' False opts mod
   case result of
     CheckSuccess tcEnv -> do
       types <- readFile (location ++ file ++ ".types")
@@ -100,25 +100,25 @@ loadAndCheck str =
 -}   
 
 -- |This function checks the modules until the type check phase is reached
-checkModule' :: CO.Options -> (CompilerEnv, CS.Module)
+checkModule' :: Bool -> CO.Options -> (CompilerEnv, CS.Module)
              -> CheckResult CompilerEnv
-checkModule' opts (env, mdl) = do
+checkModule' contextRed opts (env, mdl) = do
   (env1,  kc) <- kindCheck env mdl -- should be only syntax checking ?
   (env2,  sc) <- syntaxCheck opts env1 kc
   (env3,  pc) <- precCheck        env2 sc
   (env4, tcc) <- typeClassesCheck env3 pc
-  (env5, _tc) <- typeCheck' env4 tcc
+  (env5, _tc) <- typeCheck' contextRed env4 tcc
   return env5
   
   
-typeCheck' :: CompilerEnv -> Module -> CheckResult (CompilerEnv, Module)
-typeCheck' env mdl@(Module _ _ _ ds)
+typeCheck' :: Bool -> CompilerEnv -> Module -> CheckResult (CompilerEnv, Module)
+typeCheck' contextRed env mdl@(Module _ _ _ ds)
   -- Always return success, also if there are error messages. 
   -- Note that here "False" is passed to TC.typeCheck so that no context
   -- reduction is done and we get the raw inferred contexts that we want!
   = CheckSuccess (env { tyConsEnv = tcEnv', valueEnv = tyEnv' }, mdl)
   where (tcEnv', tyEnv', _decls, _msgs) = TC.typeCheck (moduleIdent env)
-          (tyConsEnv env) (valueEnv env) (classEnv env) False False ds
+          (tyConsEnv env) (valueEnv env) (classEnv env) contextRed False ds
   
 -- |This function extracts the (function name, type) pairs from the types
 -- file. 
@@ -219,7 +219,7 @@ checkVarious :: IO Result
 checkVarious = do
   let opts = CO.defaultOptions
   mod <- loadModule opts "test/typeclasses/TestVarious.curry" 
-  let result = checkModule' opts mod
+  let result = checkModule' True opts mod
   case result of
     CheckSuccess tcEnv -> 
       if not $ checkScs tcEnv then return (Fail "check superclasses")
