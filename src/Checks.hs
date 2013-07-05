@@ -13,16 +13,17 @@
 -}
 module Checks where
 
-import Curry.Syntax (Module (..))
+import Curry.Syntax (Module (..), Interface (..))
 
 import Base.Messages
 
-import qualified Checks.ExportCheck as EC (exportCheck)
-import qualified Checks.KindCheck   as KC (kindCheck)
-import qualified Checks.PrecCheck   as PC (precCheck)
-import qualified Checks.SyntaxCheck as SC (syntaxCheck)
-import qualified Checks.TypeCheck   as TC (typeCheck)
-import qualified Checks.WarnCheck   as WC (warnCheck)
+import qualified Checks.InterfaceCheck as IC (interfaceCheck)
+import qualified Checks.ExportCheck    as EC (exportCheck)
+import qualified Checks.KindCheck      as KC (kindCheck)
+import qualified Checks.PrecCheck      as PC (precCheck)
+import qualified Checks.SyntaxCheck    as SC (syntaxCheck)
+import qualified Checks.TypeCheck      as TC (typeCheck)
+import qualified Checks.WarnCheck      as WC (warnCheck)
 
 import CompilerEnv
 import CompilerOpts
@@ -41,6 +42,13 @@ thenCheck chk cont = case chk of
   CheckFailed errs -> CheckFailed errs
 
 -- TODO: More documentation
+
+interfaceCheck :: CompilerEnv -> Interface -> CheckResult ()
+interfaceCheck env intf
+  | null errs = return ()
+  | otherwise = CheckFailed errs
+  where errs = IC.interfaceCheck (opPrecEnv env) (tyConsEnv env)
+                                 (valueEnv env) intf
 
 -- |Check the kinds of type definitions and signatures.
 --
