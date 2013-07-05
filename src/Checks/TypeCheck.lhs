@@ -560,10 +560,9 @@ either one of the basic types or \texttt{()}.
 >       cxs' = map (nub . subst theta) cxs
 >
 >   let freeVars = fvEnv (subst theta tyEnv0)
-> 
->   -- The complete contexts are only known here, not earlier. 
->   -- Update the type annotations with the complete contexts. 
->   let newDs0 = zipWith updateContexts cxs' (map fst dsAndCtysRhs)
+>   
+>   -- TODO: updateContexts needed (perhaps for pattern declarations)?
+>   let newDs0 = {-zipWith updateContexts cxs' -}map fst dsAndCtysRhs
 >   -- Propagate all contexts. 
 >   newDs1 <- fpIter newDs0
 >   -- Update contexts of function declarations with the contexts from the
@@ -605,6 +604,7 @@ either one of the basic types or \texttt{()}.
 >   unpack (cx, PatternDecl _ _ _ p _) = map (\d -> (cx, d)) (bv p)
 >   unpack _ = internalError "unpack"
 
+> {-
 > -- |after the complete contexts have been determined, update the type annotations
 > -- in the syntax tree with them
 > updateContexts :: BT.Context -> Decl -> Decl
@@ -613,6 +613,7 @@ either one of the basic types or \texttt{()}.
 > updateContexts cx (PatternDecl  p (Just (_, ty)) id0 pt rhs)
 >   = PatternDecl  p (Just (mirrorCx cx, ty)) id0 pt rhs
 > updateContexts _ _ = internalError "updateContexts"
+> -}
 
 > nonLocalContextElems :: Set.Set Int -> BT.Context -> BT.Context
 > nonLocalContextElems fvs cx = filter (isNotLocal fvs) cx 
