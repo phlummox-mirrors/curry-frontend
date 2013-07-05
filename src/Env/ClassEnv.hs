@@ -39,6 +39,7 @@ module Env.ClassEnv (
 import Curry.Base.Ident
 import Text.PrettyPrint
 import Curry.Syntax.Type
+import Curry.Syntax.Utils
 import Curry.Syntax.Pretty
 import Base.Types hiding (Context, typeVar, typeVars, splitType)
 import qualified Base.Types as BT 
@@ -47,10 +48,9 @@ import Data.Maybe
 import Base.Messages
 import Base.Utils
 import Control.Monad.State
-import Base.TypeSubst (subst)
 import Base.Subst (listToSubst)
 import Base.Names
-import Curry.Syntax.Utils (arrowArityTyExpr)
+import Base.TypeSubst hiding (substContext)
 
 import Base.TopEnv
 
@@ -381,10 +381,23 @@ dictCode cEnv available (qid, ty)
         -- safe under the above assumptions  
         inst = fromJust $ getInstance cEnv qid xi
         ids = typeVars inst
+        -- do context reduction of the instance context! As reduceContext
+        -- wants Int's as type variables and no Ident's, we have to convert
+        -- the present identifiers to numbers and after the context reduction
+        -- the numbers back to identifiers again.   
+        tyVarsMapping = zip ids [0..]
+        origCx = context inst
+        cxElem (qid0, id0) = (qid0, TypeVariable $ fromJust $ lookup id0 tyVarsMapping)
+        reducedCx = reduceContext cEnv $ map cxElem origCx
+        reverseTyVarsMapping = zip [0..] ids
+        cxElem' (qid0, TypeVariable n) = (qid0, fromJust $ lookup n reverseTyVarsMapping)
+        cxElem' _ = internalError "cxElem'"
+        newCx = map cxElem' reducedCx
+        
         mapping = zip' ids tys
-        cx = context inst
-        cx' = substContext mapping cx
-    in
+        cx' = substContext mapping newCx
+        
+    in 
     BuildDict (qid, ty) (map (dictCode cEnv available) cx')
   | otherwise = internalError ("dictCode: " ++ show available ++ "\n" ++ show (qid, ty)) 
  where

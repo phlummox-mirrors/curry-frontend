@@ -115,6 +115,40 @@ class Eq a => Ord a where
 
 -- ------------------------------------------------------------
 
+data X1 a = X1 a
+
+instance (Ord a, Eq a) => Eq (X1 a) where
+
+data X2 a = X2 a
+
+instance (Eq a, Ord a) => Eq (X2 a) where
+
+data X3 a = X3 a
+
+instance (Eq a, Eq a, Ord a, Eq a) => Eq (X3 a) where
+
+data X4 a = X4 a
+
+instance (Ord a, Eq a, Ord a, Eq a) => Eq (X4 a) where
+
+
+
+data X5 a b = X5 a b
+
+instance (Ord a, Eq a, Ord b, Eq b) => Eq (X5 a b) where
+
+data X6 a b = X6 a b
+
+instance (Ord b, Eq b, Ord a, Eq a) => Eq (X6 a b) where
+
+data X7 a b = X7 a b
+
+instance (Ord b, Ord a, Eq b, Eq a) => Eq (X7 a b) where
+
+
+
+-- ------------------------------------------------------------
+
 {-
 class A1 a where
   funA1 :: a -> b -> Bool

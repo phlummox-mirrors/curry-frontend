@@ -458,13 +458,13 @@ checkToHnf cEnv =
 -- |checks dictCode function
 checkDictCode :: ClassEnv -> Bool
 checkDictCode cEnv = 
-  dictCode cEnv [mk "A" 0] (mk "A" 0) == Dictionary (mk "A" 0) &&
-  dictCode cEnv [mk "A" 0, mk "A" 1] (mk "A" 0) == Dictionary (mk "A" 0) &&
-  dictCode cEnv [mk "A" 0, mk "A" 1] (mk "A" 1) == Dictionary (mk "A" 1) &&
+  dictCode cEnv [mk "A" 0] (mk "A" 0) === Dictionary (mk "A" 0) &&
+  dictCode cEnv [mk "A" 0, mk "A" 1] (mk "A" 0) === Dictionary (mk "A" 0) &&
+  dictCode cEnv [mk "A" 0, mk "A" 1] (mk "A" 1) === Dictionary (mk "A" 1) &&
   
-  dictCode cEnv [mk "K" 0] (mk "I" 0) == SelSuperClass (mk "K" 0) (mk "I" 0) &&
-  dictCode cEnv [mk "K" 0] (mk "J" 0) == SelSuperClass (mk "K" 0) (mk "J" 0) && 
-  dictCode cEnv [mk "L" 0] (mk "M" 0) == SelSuperClass (mk "L" 0) (mk "M" 0) &&
+  dictCode cEnv [mk "K" 0] (mk "I" 0) === SelSuperClass (mk "K" 0) (mk "I" 0) &&
+  dictCode cEnv [mk "K" 0] (mk "J" 0) === SelSuperClass (mk "K" 0) (mk "J" 0) && 
+  dictCode cEnv [mk "L" 0] (mk "M" 0) === SelSuperClass (mk "L" 0) (mk "M" 0) &&
   
   dictCode cEnv [mk "A" 0] (mkId "A", list $ mkTy 0) 
     === BuildDict (mkId "A", list $ mkTy 0) [Dictionary $ mk "A" 0] &&
@@ -472,6 +472,8 @@ checkDictCode cEnv =
     === BuildDict (mkId "A", list $ mkTy 0) [Dictionary $ mk "A" 0] &&
   dictCode cEnv [mk "A" 0, mk "A" 1] (mkId "A", list $ mkTy 1) 
     === BuildDict (mkId "A", list $ mkTy 1) [Dictionary $ mk "A" 1] &&
+  dictCode cEnv [mk "A" (-1), mk "A" (-2)] (mkId "A", list $ mkTy (-2)) 
+    === BuildDict (mkId "A", list $ mkTy (-2)) [Dictionary $ mk "A" (-2)] &&
     
   dictCode cEnv [mk "F" 0] (mkId "A", list $ mkTy 0) 
     === BuildDict (mkId "A", list $ mkTy 0) [SelSuperClass (mk "F" 0) (mk "A" 0)] &&
@@ -491,7 +493,44 @@ checkDictCode cEnv =
     === BuildDict (mkId "Eq", pair (list $ mkTy 0) (mkTy 1))
                   [ BuildDict (mkId "Eq", list $ mkTy 0) [SelSuperClass (mk "Ord" 0) (mk "Eq" 0)]
                   , SelSuperClass (mk "Ord" 1) (mk "Eq" 1)
-                  ] 
+                  ] && 
+  
+  dictCode cEnv [mk "A" 0, mk "B" 1] (mkId "E", TypeConstructor (mkId "V") [mkTy 0, mkTy 1])
+    === BuildDict (mkId "E", TypeConstructor (mkId "V") [mkTy 0, mkTy 1]) 
+                  [Dictionary $ mk "A" 0, Dictionary $ mk "B" 1] &&
+  
+  dictCode cEnv [mk "B" 1, mk "A" 0] (mkId "E", TypeConstructor (mkId "V") [mkTy 0, mkTy 1])
+    === BuildDict (mkId "E", TypeConstructor (mkId "V") [mkTy 0, mkTy 1]) 
+                  [Dictionary $ mk "A" 0, Dictionary $ mk "B" 1] &&
+  
+  -- test context reduction of instance context
+  dictCode cEnv [mk "Ord" 0] (mkId "Eq", TypeConstructor (mkId "X1") [mkTy 0])
+    === BuildDict (mkId "Eq", TypeConstructor (mkId "X1") [mkTy 0])
+                  [Dictionary $ mk "Ord" 0] &&
+                  
+  dictCode cEnv [mk "Ord" 0] (mkId "Eq", TypeConstructor (mkId "X2") [mkTy 0])
+    === BuildDict (mkId "Eq", TypeConstructor (mkId "X2") [mkTy 0])
+                  [Dictionary $ mk "Ord" 0] &&
+                  
+  dictCode cEnv [mk "Ord" 0] (mkId "Eq", TypeConstructor (mkId "X3") [mkTy 0])
+    === BuildDict (mkId "Eq", TypeConstructor (mkId "X3") [mkTy 0])
+                  [Dictionary $ mk "Ord" 0] &&
+                  
+  dictCode cEnv [mk "Ord" 0] (mkId "Eq", TypeConstructor (mkId "X4") [mkTy 0])
+    === BuildDict (mkId "Eq", TypeConstructor (mkId "X4") [mkTy 0])
+                  [Dictionary $ mk "Ord" 0] &&
+                  
+  dictCode cEnv [mk "Ord" 0, mk "Ord" 1] (mkId "Eq", TypeConstructor (mkId "X5") [mkTy 0, mkTy 1])
+    === BuildDict (mkId "Eq", TypeConstructor (mkId "X5") [mkTy 0, mkTy 1])
+                  [Dictionary $ mk "Ord" 0, Dictionary $ mk "Ord" 1] &&
+                  
+  dictCode cEnv [mk "Ord" 0, mk "Ord" 1] (mkId "Eq", TypeConstructor (mkId "X6") [mkTy 0, mkTy 1])
+    === BuildDict (mkId "Eq", TypeConstructor (mkId "X6") [mkTy 0, mkTy 1])
+                  [Dictionary $ mk "Ord" 1, Dictionary $ mk "Ord" 0] &&
+                  
+  dictCode cEnv [mk "Ord" 0, mk "Ord" 1] (mkId "Eq", TypeConstructor (mkId "X7") [mkTy 0, mkTy 1])
+    === BuildDict (mkId "Eq", TypeConstructor (mkId "X7") [mkTy 0, mkTy 1])
+                  [Dictionary $ mk "Ord" 1, Dictionary $ mk "Ord" 0] 
 
 list :: Type -> Type
 list t = TypeConstructor qListIdP [t]
