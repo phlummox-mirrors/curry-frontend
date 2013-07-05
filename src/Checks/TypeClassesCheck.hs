@@ -731,7 +731,7 @@ checkCorrectTypeVarsInTypeSigs _ = internalError "checkCorrectTypeVarsInTypeSigs
 -- ---------------------------------------------------------------------------
 -- source code transformation
 -- ---------------------------------------------------------------------------
-
+{-
 -- |Transforms class declarations by generating a special data type for 
 -- the dictionaries. Disadvantage: Only class methods possible that do not contain
 -- other type variables than the type variable given in the class declaration. 
@@ -802,7 +802,7 @@ transformClass cEnv (ClassDecl _p _scx cls tyvar _decls) =
     mkIdent (identPrefix ++ selMethodName ++ sep ++ "x" ++ (show n))
   
 transformClass _ d = [d]
-
+-}
 
 -- |Transforms class declarations using tuples as dictionaries. This handles
 -- class methods with other type variables than the type variable given in the class
@@ -1086,6 +1086,7 @@ handleMissingFunc cEnv (InstanceDecl _ _ cls _tcon _ _) ity fun0 =
   
 handleMissingFunc _ _ _ _ = internalError "handleMissingFunc"
 
+{-
 -- |This function creates a dictionary for the given instance declaration, 
 -- using dictionary data types instead of tuples
 createDictionary :: ClassEnv -> IDecl -> QualIdent -> [Decl]
@@ -1109,6 +1110,7 @@ createDictionary cEnv (InstanceDecl _ _scx cls0 _ _tvars _decls) ity =
   dict = mkQIdent $ dictTypePrefix ++ show cls
   all' = foldl Apply (Constructor dict) all0
 createDictionary _ _ _ = internalError "createDictionary"
+-}
 
 -- |This function creates a dictionary for the given instance declaration, 
 -- using tuples
