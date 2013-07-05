@@ -378,6 +378,32 @@ dictCode cEnv available (qid, ty)
   | any subClass available = SelSuperClass (head $ filter subClass available) (qid, ty)
   | isCons ty = 
     let (xi, tys) = splitType ty
+        -- new version, doesn't work with empty dictionaries: 
+        {-dictType0 = dictType cEnv qid
+        s = singleSubst 0 ty
+        concreteDictType = subst s dictType0
+        dictName = mkDictName (show qid) (show xi)
+        -- TODO: lookupValue/qualifiedLookupValue?
+        [Value _ _ (ForAll infCx _ infDictType)] = 
+          lookupValue (mkIdent $ dictName) vEnv
+        
+        -- alternative 1: use unifyTypes
+        {-
+        s' = either 
+          (internalError 
+            ("unifyTypes dictCode concrete vs. inferred:\n" 
+              ++ show concreteDictType ++ "\n" ++ show infDictType))
+          id $ unifyTypes infDictType concreteDictType
+        -}
+        
+        -- alternative 2: use special buildMapping function
+        s' = buildMapping infDictType concreteDictType
+        
+        cx' = subst s' infCx
+        -}
+        
+        -- old version: 
+        
         -- safe under the above assumptions  
         inst = fromJust $ getInstance cEnv qid xi
         ids = typeVars inst
