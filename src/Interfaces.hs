@@ -37,8 +37,9 @@ import           Curry.Files.PathUtils
 import           Curry.Syntax
 
 import Base.Messages (Message, posMessage, internalError)
-
 import Env.Interface
+
+import Checks.InterfaceSyntaxCheck (intfSyntaxCheck)
 
 -- Interface accumulating monad
 type IntfLoader a = S.StateT LoaderState IO a
@@ -114,8 +115,10 @@ compileInterface ctxt (p, m) fn = do
         if (m /= n)
           then report $ errWrongInterface (first fn) m n
           else do
+            let (intf', intfErrs) = intfSyntaxCheck intf
+            mapM_ report intfErrs
             mapM_ (loadInterface (m : ctxt)) [ (q, i) | IImportDecl q i <- is ]
-            addInterface m intf
+            addInterface m intf'
 
 -- Error message for required interface that could not be found.
 errInterfaceNotFound :: Position -> ModuleIdent -> Message
