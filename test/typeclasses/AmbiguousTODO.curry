@@ -26,3 +26,12 @@ test12 _ = 1
   where
     x :: A a => a
     x = funA x
+
+class B a where
+  funB :: a -> a
+
+test = 1
+  where
+  Just x = Just $ funA (f x)
+  f y = funB x
+
