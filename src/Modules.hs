@@ -19,6 +19,7 @@ module Modules
   ) where
 
 import Control.Monad (unless, when)
+import qualified Data.Map as Map (elems)
 import Data.Maybe (fromMaybe)
 import Text.PrettyPrint
 
@@ -31,6 +32,7 @@ import Curry.Files.PathUtils
 
 import Base.Messages
   (Message, message, posMessage, warn, abortWithMessages)
+import Env.Interface
 
 -- source representations
 import qualified Curry.AbstractCurry as AC
@@ -44,6 +46,7 @@ import CompilerOpts
 import Exports
 import Generators
 import Imports
+import InterfaceEquivalence
 import Interfaces
 import ModuleSummary
 import Transformations
@@ -80,27 +83,6 @@ compileModule opts fn = do
       mapM_ (doDump opts) dumps
       writeOutput opts fn (env, mdl)
 
-writeOutput :: Options -> FilePath -> (CompilerEnv, CS.Module) -> IO ()
-writeOutput opts fn (env, modul) = do
-  writeParsed        opts fn     modul
-  writeAbstractCurry opts fn env modul
-  when withFlat $ do
-    -- checkModule checks types, and then transModule introduces new
-    -- functions (by lambda lifting in 'desugar'). Consequence: The
-    -- types of the newly introduced functions are not inferred (hsi)
-    let (env2, il, dumps) = transModule opts env modul
-    -- dump intermediate results
-    mapM_ (doDump opts) dumps
-    -- generate interface file
-    let intf = exportInterface env2 modul
-    writeInterface opts fn intf
-    -- generate target code
-    let modSum = summarizeModule (tyConsEnv env2) intf modul
-    writeFlat opts fn env2 modSum il
-  where
-  withFlat = any (`elem` optTargetTypes opts)
-              [FlatCurry, FlatXml, ExtendedFlatCurry]
-
 -- ---------------------------------------------------------------------------
 -- Loading a module
 -- ---------------------------------------------------------------------------
@@ -122,10 +104,13 @@ loadModule opts fn = do
           -- load the imported interfaces into an InterfaceEnv
           (iEnv, intfErrs) <- loadInterfaces (optImportPaths opts) mdl
           unless (null intfErrs) $ abortWithMessages intfErrs -- TODO
-          -- add information of imported modules
-          let (env, impErrs) = importModules opts mdl iEnv
-          unless (null impErrs) $ abortWithMessages impErrs -- TODO
-          return (env, mdl)
+          case checkInterfaces opts iEnv of
+            CheckFailed intfImpErrs -> abortWithMessages intfImpErrs -- TODO
+            _ -> do
+              -- add information of imported modules
+              let (env, impErrs) = importModules opts mdl iEnv
+              unless (null impErrs) $ abortWithMessages impErrs -- TODO
+              return (env, mdl)
 
 checkModuleHeader :: Options -> FilePath -> CS.Module -> (CS.Module, [Message])
 checkModuleHeader opts fn = checkModuleId fn
@@ -162,6 +147,13 @@ importPrelude opts fn m@(CS.Module mid es is ds)
                   Nothing -- no alias
                   Nothing -- no selection of types, functions, etc.
   imported     = [imp | (CS.ImportDecl _ imp _ _ _) <- is]
+
+checkInterfaces :: Options -> InterfaceEnv -> CheckResult ()
+checkInterfaces opts iEnv = mapM_ (checkInterface opts iEnv) (Map.elems iEnv)
+
+checkInterface :: Options -> InterfaceEnv -> CS.Interface -> CheckResult ()
+checkInterface opts iEnv intf = interfaceCheck env intf
+  where env = importInterfaces opts intf iEnv
 
 -- ---------------------------------------------------------------------------
 -- Checking a module
@@ -223,6 +215,27 @@ transModule opts env mdl = (env5, ilCaseComp, dumps)
 -- Writing output
 -- ---------------------------------------------------------------------------
 
+writeOutput :: Options -> FilePath -> (CompilerEnv, CS.Module) -> IO ()
+writeOutput opts fn (env, modul) = do
+  writeParsed        opts fn     modul
+  writeAbstractCurry opts fn env modul
+  when withFlat $ do
+    -- checkModule checks types, and then transModule introduces new
+    -- functions (by lambda lifting in 'desugar'). Consequence: The
+    -- types of the newly introduced functions are not inferred (hsi)
+    let (env2, il, dumps) = transModule opts env modul
+    -- dump intermediate results
+    mapM_ (doDump opts) dumps
+    -- generate interface file
+    let intf = exportInterface env2 modul
+    writeInterface opts fn intf
+    -- generate target code
+    let modSum = summarizeModule (tyConsEnv env2) intf modul
+    writeFlat opts fn env2 modSum il
+  where
+  withFlat = any (`elem` optTargetTypes opts)
+              [FlatCurry, FlatXml, ExtendedFlatCurry]
+
 -- The functions \texttt{genFlat} and \texttt{genAbstract} generate
 -- flat and abstract curry representations depending on the specified option.
 -- If the interface of a modified Curry module did not change, the
@@ -250,7 +263,7 @@ writeInterface opts fn intf
         Nothing  -> outputInterface
         Just src -> case runMsg (CS.parseInterface interfaceFile src) of
           Left  _     -> outputInterface
-          Right (i,_) -> unless (i == intf) outputInterface
+          Right (i,_) -> unless (intf `intfEquiv` fixInterface i) outputInterface
   where
   interfaceFile   = interfName fn
   outputInterface = writeModule (optUseSubdir opts) interfaceFile
