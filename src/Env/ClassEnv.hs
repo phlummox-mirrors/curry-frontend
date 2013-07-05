@@ -425,7 +425,9 @@ dictCode cEnv available (qid, ty)
         
     in 
     BuildDict (qid, ty) (map (dictCode cEnv available) cx')
-  | otherwise = internalError ("dictCode: " ++ show available ++ "\n" ++ show (qid, ty)) 
+  | otherwise = internalError ("dictCode: Cannot construct dictionary " 
+                               ++ show (qid, ty)++ 
+                               " from the following dictionaries:\n" ++ show available) 
  where
  equalCxElem = \(qid', ty') -> qid' == qid && ty' == ty
  subClass = \(qid', ty') -> ty == ty' && isSuperClassOf cEnv qid qid'  
