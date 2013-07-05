@@ -40,6 +40,7 @@
 module Env.TypeConstructor
   ( TCEnv, TypeInfo (..), tcArity, bindTypeInfo, lookupTC, qualLookupTC
   , lookupTupleTC, tupleTCs, tupleData, initTCEnv
+  , TypeEnv, TypeKind (..), typeKind
   ) where
 
 import Control.Monad (mplus)
@@ -123,3 +124,19 @@ initTCEnv = foldr (uncurry predefTC) emptyTopEnv predefTypes
   predefTC (TypeConstructor tc tys) = predefTopEnv (qualify (unqualify tc))
                                     . DataType tc (length tys) . map Just
   predefTC _ = internalError "Base.initTCEnv.predefTC: no type constructor"
+
+type TypeEnv = TopEnv TypeKind
+
+data TypeKind
+  =  Data QualIdent [Ident]
+  | Alias QualIdent
+  deriving (Eq, Show)
+
+typeKind :: TypeInfo -> TypeKind
+typeKind (DataType     tc _ cs) = Data tc [ c | Just (DataConstr c _ _) <- cs ]
+typeKind (RenamingType tc _ (DataConstr c _ _)) = Data tc [c]
+typeKind (AliasType    tc _ _) = Alias tc
+
+instance Entity TypeKind where
+  origName (Data tc _) = tc
+  origName (Alias  tc) = tc
