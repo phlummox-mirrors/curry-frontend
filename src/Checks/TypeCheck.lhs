@@ -651,7 +651,9 @@ the maximal necessary contexts for the functions are determined.
 >   vEnv <- getValueEnv
 >   theta <- getTypeSubst
 >   -- determine the very first context of a function declaration that
->   -- is given by its type signature
+>   -- is given by its type signature. This is important, because we want
+>   -- that the order of the elements in the inferred context is (roughly)
+>   -- the same as that of the elements in the type signature.  
 >   let maybeFs = map fromDecl ds 
 >       ctys = map 
 >         (fmap $ \v -> subst theta (funType m (qualify v) vEnv))
@@ -663,23 +665,22 @@ the maximal necessary contexts for the functions are determined.
 >   fromDecl (FunctionDecl _ _ _ f _) = Just f
 >   fromDecl (PatternDecl _ _ _ _ _) = Nothing 
 >   fromDecl _ = internalError "fromDecl|fpIter"
->   genContext Nothing = Set.empty
->   genContext (Just tsc) = Set.fromList (getContext tsc)
+>   genContext Nothing = []
+>   genContext (Just tsc) = getContext tsc
 
 > -- | Helper function for fix point iteration. The second argument is
 > -- the list of contexts determined in the last run of the fix point iteration.  
-> fpIter' :: [Decl] -> [Set.Set (QualIdent, Type)] -> TCM [Decl]
+> fpIter' :: [Decl] -> [[(QualIdent, Type)]] -> TCM [Decl]
 > fpIter' ds oldCxs = do 
 >   newDsAndCxs <- mapM fpDeclRhs ds
 >   theta <- getTypeSubst
 >   let cxs = map snd newDsAndCxs
 >       cxs' = map (nub . subst theta) cxs
->       cxs'' = zipWith (++) cxs' (map Set.toList oldCxs) 
->       newCxs = map Set.fromList cxs''
->   case oldCxs /= newCxs of
+>       cxs'' = zipWith (++) oldCxs cxs'
+>   case map Set.fromList oldCxs /= map Set.fromList cxs'' of
 >     True -> do
 >       writeContexts (zip cxs'' ds)
->       fpIter' (map fst newDsAndCxs) newCxs
+>       fpIter' (map fst newDsAndCxs) cxs''
 >     False -> do
 >       return ds 
 >     
