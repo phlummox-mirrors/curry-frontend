@@ -13,7 +13,7 @@
     entities into the module's scope, and the function 'qualifyEnv' to
     qualify the environment prior to computing the export interface.
 -}
-module Imports (importModules, qualifyEnv) where
+module Imports (importInterfaces, importModules, qualifyEnv) where
 
 import Control.Monad (liftM, unless)
 import qualified Control.Monad.State as S (State, gets, modify, runState)
@@ -33,7 +33,7 @@ import Base.Types
 import Base.TypeSubst (expandAliasType)
 
 import Env.Interface
-import Env.ModuleAlias (importAliases)
+import Env.ModuleAlias (importAliases, initAliasEnv)
 import Env.OpPrec
 import Env.TypeConstructor
 import Env.Value
@@ -58,6 +58,20 @@ importModules opts (Module mid _ imps _) iEnv
                      in  (env', msgs ++ msgs')
         Nothing   -> internalError $ "Imports.importModules: no interface for "
                                     ++ show m
+
+-- |The function 'importInterfaces' brings the declarations of all
+-- imported interfaces into scope for the current 'Interface'.
+importInterfaces :: Options -> Interface -> InterfaceEnv -> CompilerEnv
+importInterfaces opts (Interface m is _) iEnv
+  = (expandTCValueEnv opts . importUnifyData)
+  $ foldl importModule initEnv is
+  where
+    initEnv = (initCompilerEnv m) { aliasEnv = initAliasEnv, interfaceEnv = iEnv }
+    importModule env (IImportDecl _ i) = case Map.lookup i iEnv of
+        Just intf -> importInterfaceIntf intf env
+        Nothing   -> internalError $ "Imports.importInterfaces: no interface for "
+                                    ++ show m
+
 
 -- ---------------------------------------------------------------------------
 -- Importing an interface into the module
@@ -157,9 +171,8 @@ bindPrec m (IInfixDecl _ fix p op) =
 bindPrec _ _ = id
 
 bindTCHidden :: ModuleIdent -> IDecl -> ExpTCEnv -> ExpTCEnv
-bindTCHidden m (HidingDataDecl _ tc tvs) =
-  bindType DataType m (qualify tc) tvs []
-bindTCHidden m d = bindTC m d
+bindTCHidden m (HidingDataDecl _ tc tvs) = bindType DataType m tc tvs []
+bindTCHidden m d                         = bindTC m d
 
 -- type constructors
 bindTC :: ModuleIdent -> IDecl -> ExpTCEnv -> ExpTCEnv
@@ -227,9 +240,6 @@ bindNewConstr m tc tvs ty0 (NewConstrDecl _ evs c ty1) = Map.insert c $
 constrType' :: ModuleIdent -> [Ident] -> [Ident] -> TypeExpr -> ExistTypeScheme
 constrType' m tvs evs ty = ForAllExist (length tvs) (length evs)
                                        (toQualType m tvs ty)
-
-qualifyLike :: QualIdent -> Ident -> QualIdent
-qualifyLike x = maybe qualify qualifyWith (qidModule x)
 
 bindRecordLabels :: ModuleIdent -> QualIdent -> ([Ident], TypeExpr)
                  -> ExpValueEnv -> ExpValueEnv
