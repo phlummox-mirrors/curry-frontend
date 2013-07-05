@@ -262,7 +262,20 @@ splitType ty =
 -- the types of the context elements, and it exists an 1:1 mapping for the types, 
 -- the resulting reduced contexts are also the same except for renaming using 
 -- the mentioned mapping. This is important, because we must rely on the fact
--- that reduced contexts always have the same order of the context elements. 
+-- that reduced contexts always have the same order of the context elements.
+-- 
+-- The context reduction preserves also the order of the elements, under
+-- the assumption, that all context elements are in HNF. This property
+-- is needed, because we want the following: If there is a type signature,
+-- the elements in the inferred context should have the same order as 
+-- in the type signature. 
+-- 
+-- This is especially important for the dictionaries: Thus we can
+-- assure, that when in the dictionary code creation, a dictionary is
+-- constructed out of other dictionaries, these dictionaries are always
+-- passed in the correct order, given by the context of the instance
+-- declaration, because this context is also copied to the dictionary type
+-- signatures.
 reduceContext :: ClassEnv -> BT.Context -> BT.Context
 reduceContext cEnv cx0 = reduceContext' (toHnfs cEnv cx0)
   where 
@@ -270,11 +283,13 @@ reduceContext cEnv cx0 = reduceContext' (toHnfs cEnv cx0)
     case searchReducible cx of
       Nothing -> cx
       Just cx' -> reduceContext' cx'
-  searchReducible cx = searchReducible' 0 cx
+  -- search from the back to the front for preserving the order of the context
+  -- elements
+  searchReducible cx = searchReducible' (length cx - 1) cx
   searchReducible' n cx
-    | n == length cx = Nothing
+    | n == (-1) = Nothing
     | implies cEnv (cx `without` n) (cx !! n) = Just $ cx `without` n
-    | otherwise = searchReducible' (n+1) cx
+    | otherwise = searchReducible' (n-1) cx
 
 -- |check whether the given constrained type is in head normal form 
 inHnf :: (QualIdent, Type) -> Bool

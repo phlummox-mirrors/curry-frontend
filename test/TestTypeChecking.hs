@@ -370,9 +370,12 @@ checkContextReduction cEnv =
   reduceContext cEnv [mk "H" 0] == [mk "H" 0] &&
   reduceContext cEnv [mk "H" 0, mk "F" 0] == [mk "H" 0] &&
   reduceContext cEnv [mk "H" 0, mk "G" 0] == [mk "H" 0] &&
-  reduceContext cEnv [mk "H" 0, mk "F" 0, mk "G" 0] == [mk "H" 0] &&
-  reduceContext cEnv [mk "F" 0, mk "H" 0, mk "G" 0] == [mk "H" 0] &&
   reduceContext cEnv [mk "F" 0, mk "G" 0, mk "H" 0] == [mk "H" 0] &&
+  reduceContext cEnv [mk "F" 0, mk "H" 0, mk "G" 0] == [mk "H" 0] &&
+  reduceContext cEnv [mk "G" 0, mk "F" 0, mk "H" 0] == [mk "H" 0] &&
+  reduceContext cEnv [mk "G" 0, mk "H" 0, mk "F" 0] == [mk "H" 0] &&
+  reduceContext cEnv [mk "H" 0, mk "F" 0, mk "G" 0] == [mk "H" 0] &&
+  reduceContext cEnv [mk "H" 0, mk "G" 0, mk "F" 0] == [mk "H" 0] &&
   reduceContext cEnv [mk "F" 0, mk "G" 0, mk "H" 0, mk "D" 0] == [mk "H" 0] &&
   reduceContext cEnv [mk "F" 0, mk "G" 0, mk "H" 0, mk "D" 1] == [mk "H" 0, mk "D" 1] &&
   reduceContext cEnv [mk "F" 1, mk "G" 1, mk "H" 1, mk "D" 2] == [mk "H" 1, mk "D" 2] &&
