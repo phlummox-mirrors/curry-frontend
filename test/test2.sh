@@ -9,7 +9,7 @@ echo ================
   
 for file in DictTrans1 DictTrans2 DictTrans3 DictTrans4 \
   DictTrans5 DictTrans6 DictTrans7 DictTrans8 DictTrans9 \
-  DictTrans10 DictTrans12 \
+  DictTrans10 DictTrans11 DictTrans12 \
   Annot1 Annot2 Annot3 Annot4 Annot5 Annot6 Annot7\
   BugDicts BugDictTrans8 Annot_bug Annot_bug2 Annot_bug3 \
   PropagTest1 PropagTest2 PropagTest3 \
@@ -25,7 +25,11 @@ for file in DictTrans1 DictTrans2 DictTrans3 DictTrans4 \
   Example Example2 Example3 \
   DictOrderBug DictOrderBug2 DictOrderBug3 DictOrderBug4 DictOrderBug5 DictOrderBug6 DictOrderBug7 \
   TestMixedDeclGroups TypeSigPattern \
-  ImplicBug ExtendedExample
+  ImplicBug ExtendedExample \
+  QualifiedClassMethods Warnings ExpandClassTySigsTypes ExpandClassTySigs TypeSigProblem ContextRed \
+  SelSuperclasses2 SelSuperclasses TestInstances2 TestInstances InstanceConstraints2 \
+  TestVarious \
+  DataConstructorsBug1 DataConstructorsBug2
 do
   #echo $file
   $cymake -f -i typeclasses typeclasses/$file.curry 2>> output_test2_stderr.txt 1>> output_test2_stdout.txt || echo Error in $file.curry
