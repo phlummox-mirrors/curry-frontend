@@ -660,13 +660,17 @@ checkForInstanceDataTypeExistAlsoInstancesForSuperclasses cEnv tcEnv m
 checkForInstanceDataTypeExistAlsoInstancesForSuperclasses _ _ _ _
   = internalError "checkForInstanceDataTypeExistAlsoInstancesForSuperclasses"
   
-
--- |Returns a Base.Types.Context for the given instance declaration. The type
--- variables are numbered beginning with zero. 
-getContextFromInstDecl :: Decl -> BTC.Context
-getContextFromInstDecl (InstanceDecl _p (SContext scon) _cls _ty tyvars _)
-  = getContextFromSContext scon tyvars
-getContextFromInstDecl _ = internalError "getContextFromInst"
+-- |returns the instance from the class environment for the given instance
+-- declaration. This function must be called only after it has been checked
+-- that as well the class name and the type name are valid (i.e., in phase 3)
+getInstance' :: ModuleIdent -> ClassEnv -> TCEnv -> Decl -> Instance
+getInstance' m cEnv tcEnv (InstanceDecl _p (SContext _scon) cls ty _tyvars _) =
+  inst 
+  where 
+  tyId = fromJust $ tyConToQualIdent m tcEnv ty
+  cls' = getCanonClassName cEnv cls
+  inst = fromJust $ getInstance cEnv cls' tyId
+getInstance' _ _ _ _ = internalError "getInstance'"
 
 -- |Returns a Base.Types.Context for the given instance. The type
 -- variables are numbered beginning with zero. 
@@ -693,18 +697,19 @@ getSContextFromContext con tyvars =
 checkInstanceContextImpliesAllInstanceContextsOfSuperClasses :: 
     ClassEnv -> TCEnv -> ModuleIdent -> Decl -> Tcc ()
 checkInstanceContextImpliesAllInstanceContextsOfSuperClasses cEnv tcEnv m
-    inst@(InstanceDecl p _scon cls ty tyvars _)
-  = let thisContext = getContextFromInstDecl inst
+    inst@(InstanceDecl p _scon cls ty _tyvars _)
+  = let inst' = getInstance' m cEnv tcEnv inst
+        thisContext = getContextFromInst inst'
         scs = allSuperClasses cEnv cls
         tyId = tyConToQualIdent m tcEnv ty
         insts = map fromJust $ filter isJust $ 
           map (\c -> getInstance cEnv c (fromJust tyId)) scs
         instCxs = concatMap getContextFromInst insts
         
-        thisContext' = getSContextFromContext thisContext tyvars
-        instCxs' = getSContextFromContext instCxs tyvars
+        thisContext' = getSContextFromContext thisContext (typeVars inst')
+        instCxs' = getSContextFromContext instCxs (typeVars inst')
         notImplCxs = (filter (not . implies cEnv thisContext) instCxs)
-        notImplCxs' = getSContextFromContext notImplCxs tyvars in
+        notImplCxs' = getSContextFromContext notImplCxs (typeVars inst') in
     when (isJust tyId) $ unless (implies' cEnv thisContext instCxs) $ report $  
       errContextNotImplied p thisContext' instCxs' notImplCxs'
         
