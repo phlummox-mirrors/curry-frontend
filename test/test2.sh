@@ -23,7 +23,7 @@ for file in DictTrans1 DictTrans2 DictTrans3 DictTrans4 \
   BugClassMethodsVsPredefinedFuncs \
   BugTySigs \
   Example Example2 Example3 \
-  DictOrderBug DictOrderBug2 DictOrderBug3 DictOrderBug4 DictOrderBug5 DictOrderBug6 \
+  DictOrderBug DictOrderBug2 DictOrderBug3 DictOrderBug4 DictOrderBug5 DictOrderBug6 DictOrderBug7 \
   TestMixedDeclGroups TypeSigPattern
 do
   #echo $file
