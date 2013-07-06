@@ -145,7 +145,50 @@ data X7 a b = X7 a b
 
 instance (Ord b, Ord a, Eq b, Eq a) => Eq (X7 a b) where
 
+-- ------------------------------------------------------------
 
+class A1 a where
+
+
+class A2 a where
+
+class A3 a where
+
+class A4 a where
+
+class A5 a where
+
+class A5 a => A6 a where
+
+class A6 a => A7 a where
+
+class A8 a where
+
+data Y a b c = Y a b c
+
+instance (A1 a, A5 a, A3 a) => A5 (Y a b c) where
+
+instance (A1 a, A5 b, A4 c) => A4 (Y a b c) where
+
+instance (A1 a, A5 a, A3 a, A2 b, A3 b, A6 c) => A3 (Y a b c) where
+
+instance (A5 a, A6 a, A1 b, A3 c) => A2 (Y a b c) where
+
+instance (A1 a, A1 b, A1 c) => A1 (Y a b c) where
+
+data Z a b c = Z a b c
+
+instance (A5 a, A6 a, A7 a, A1 a) => A8 (Z a b c) where
+
+instance (A1 a, A5 a, A6 a, A7 a) => A5 (Z a b c) where
+
+instance (A5 a, A6 a, A1 a, A7 a) => A4 (Z a b c) where
+  
+instance (A5 a, A6 a, A7 a, A1 b) => A3 (Z a b c) where
+
+instance (A1 b, A5 a, A6 a, A7 a) => A2 (Z a b c) where
+
+instance (A5 a, A6 a, A1 b, A7 a) => A1 (Z a b c) where
 
 -- ------------------------------------------------------------
 

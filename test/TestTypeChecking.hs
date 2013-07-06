@@ -530,7 +530,79 @@ checkDictCode cEnv =
                   
   dictCode cEnv [mk "Ord" 0, mk "Ord" 1] (mkId "Eq", TypeConstructor (mkId "X7") [mkTy 0, mkTy 1])
     === BuildDict (mkId "Eq", TypeConstructor (mkId "X7") [mkTy 0, mkTy 1])
-                  [Dictionary $ mk "Ord" 1, Dictionary $ mk "Ord" 0] 
+                  [Dictionary $ mk "Ord" 1, Dictionary $ mk "Ord" 0] &&
+  -- --------------------------------------------------------
+  dictCode cEnv [mk "A1" 0, mk "A5" 0, mk "A3" 0] (mkId "A5", TypeConstructor (mkId "Y") [mkTy 0, mkTy 1, mkTy 2])
+    === BuildDict (mkId "A5", TypeConstructor (mkId "Y") [mkTy 0, mkTy 1, mkTy 2])
+                  [Dictionary $ mk "A1" 0, Dictionary $ mk "A5" 0, Dictionary $ mk "A3" 0] &&
+                  
+  dictCode cEnv [mk "A3" 0, mk "A5" 0, mk "A1" 0] (mkId "A5", TypeConstructor (mkId "Y") [mkTy 0, mkTy 1, mkTy 2])
+    === BuildDict (mkId "A5", TypeConstructor (mkId "Y") [mkTy 0, mkTy 1, mkTy 2])
+                  [Dictionary $ mk "A1" 0, Dictionary $ mk "A5" 0, Dictionary $ mk "A3" 0] &&
+                  
+  dictCode cEnv [mk "A1" 0, mk "A5" 1, mk "A4" 2] (mkId "A4", TypeConstructor (mkId "Y") [mkTy 0, mkTy 1, mkTy 2])
+    === BuildDict (mkId "A4", TypeConstructor (mkId "Y") [mkTy 0, mkTy 1, mkTy 2])
+                  [Dictionary $ mk "A1" 0, Dictionary $ mk "A5" 1, Dictionary $ mk "A4" 2] &&
+                  
+  -- A1 a, A5 a, A3 a, A2 b, A3 b, A6 c
+  dictCode cEnv [mk "A1" 0, mk "A5" 0, mk "A3" 0, mk "A2" 1, mk "A3" 1, mk "A6" 2] 
+                (mkId "A3", TypeConstructor (mkId "Y") [mkTy 0, mkTy 1, mkTy 2])
+    === BuildDict (mkId "A3", TypeConstructor (mkId "Y") [mkTy 0, mkTy 1, mkTy 2])
+                  [Dictionary $ mk "A1" 0, Dictionary $ mk "A5" 0, Dictionary $ mk "A3" 0
+                  , Dictionary $ mk "A2" 1, Dictionary $ mk "A3" 1, Dictionary $ mk "A6" 2] &&
+  
+  dictCode cEnv [mk "A1" 0, mk "A5" 0, mk "A3" 0, mk "A2" 1, mk "A3" 1, mk "A6" 2, mk "A1" 1, mk "A2" 10, mk "A3" (-5)]
+                (mkId "A3", TypeConstructor (mkId "Y") [mkTy 0, mkTy 1, mkTy 2])
+    === BuildDict (mkId "A3", TypeConstructor (mkId "Y") [mkTy 0, mkTy 1, mkTy 2])
+                  [Dictionary $ mk "A1" 0, Dictionary $ mk "A5" 0, Dictionary $ mk "A3" 0
+                  , Dictionary $ mk "A2" 1, Dictionary $ mk "A3" 1, Dictionary $ mk "A6" 2] &&
+                  
+  -- A5 a, A6 a, A1 b, A3 c
+  dictCode cEnv [mk "A6" 0, mk "A1" 1, mk "A3" 2] 
+                (mkId "A2", TypeConstructor (mkId "Y") [mkTy 0, mkTy 1, mkTy 2])
+    === BuildDict (mkId "A2", TypeConstructor (mkId "Y") [mkTy 0, mkTy 1, mkTy 2])
+                  [Dictionary $ mk "A6" 0, Dictionary $ mk "A1" 1, Dictionary $ mk "A3" 2] &&
+                  
+  dictCode cEnv [mk "A6" 0, mk "A5" 0, mk "A1" 1, mk "A3" 2] 
+                (mkId "A2", TypeConstructor (mkId "Y") [mkTy 0, mkTy 1, mkTy 2])
+    === BuildDict (mkId "A2", TypeConstructor (mkId "Y") [mkTy 0, mkTy 1, mkTy 2])
+                  [Dictionary $ mk "A6" 0, Dictionary $ mk "A1" 1, Dictionary $ mk "A3" 2] &&
+                  
+  -- (A1 a, A1 b, A1 c)
+  dictCode cEnv [mk "A1" 0, mk "A1" 1, mk "A1" 2] 
+                (mkId "A1", TypeConstructor (mkId "Y") [mkTy 0, mkTy 1, mkTy 2])
+    === BuildDict (mkId "A1", TypeConstructor (mkId "Y") [mkTy 0, mkTy 1, mkTy 2])
+                  [Dictionary $ mk "A1" 0, Dictionary $ mk "A1" 1, Dictionary $ mk "A1" 2] &&
+                  
+  dictCode cEnv [mk "A7" 0, mk "A1" 0] 
+                (mkId "A8", TypeConstructor (mkId "Z") [mkTy 0, mkTy 1, mkTy 2])
+    === BuildDict (mkId "A8", TypeConstructor (mkId "Z") [mkTy 0, mkTy 1, mkTy 2])
+                  [Dictionary $ mk "A7" 0, Dictionary $ mk "A1" 0] &&
+                  
+  dictCode cEnv [mk "A7" 0, mk "A1" 0] 
+                (mkId "A5", TypeConstructor (mkId "Z") [mkTy 0, mkTy 1, mkTy 2])
+    === BuildDict (mkId "A5", TypeConstructor (mkId "Z") [mkTy 0, mkTy 1, mkTy 2])
+                  [Dictionary $ mk "A1" 0, Dictionary $ mk "A7" 0] &&
+                  
+  dictCode cEnv [mk "A7" 0, mk "A1" 0] 
+                (mkId "A4", TypeConstructor (mkId "Z") [mkTy 0, mkTy 1, mkTy 2])
+    === BuildDict (mkId "A4", TypeConstructor (mkId "Z") [mkTy 0, mkTy 1, mkTy 2])
+                  [Dictionary $ mk "A1" 0, Dictionary $ mk "A7" 0] &&
+                  
+  dictCode cEnv [mk "A7" 0, mk "A1" 1] 
+                (mkId "A3", TypeConstructor (mkId "Z") [mkTy 0, mkTy 1, mkTy 2])
+    === BuildDict (mkId "A3", TypeConstructor (mkId "Z") [mkTy 0, mkTy 1, mkTy 2])
+                  [Dictionary $ mk "A7" 0, Dictionary $ mk "A1" 1] &&
+                  
+  dictCode cEnv [mk "A7" 0, mk "A1" 1] 
+                (mkId "A2", TypeConstructor (mkId "Z") [mkTy 0, mkTy 1, mkTy 2])
+    === BuildDict (mkId "A2", TypeConstructor (mkId "Z") [mkTy 0, mkTy 1, mkTy 2])
+                  [Dictionary $ mk "A1" 1, Dictionary $ mk "A7" 0] &&
+                  
+  dictCode cEnv [mk "A7" 0, mk "A1" 1] 
+                (mkId "A1", TypeConstructor (mkId "Z") [mkTy 0, mkTy 1, mkTy 2])
+    === BuildDict (mkId "A1", TypeConstructor (mkId "Z") [mkTy 0, mkTy 1, mkTy 2])
+                  [Dictionary $ mk "A1" 1, Dictionary $ mk "A7" 0]
 
 list :: Type -> Type
 list t = TypeConstructor qListIdP [t]
