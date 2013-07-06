@@ -108,8 +108,10 @@ typeClassesCheck m decls (ClassEnv importedClasses importedInstances classMethod
       mapM_ classMethodSigsContainTypeVar classDecls
       mapM_ instanceTypeVarsDoNotAppearTwice instDecls
       
-      -- currently disabled
-      when False $ mapM_ checkCorrectTypeVarsInTypeSigs classDecls
+      -- this test should be disabled when (in the far, far future) 
+      -- class methods are allowed that have other type variables in their
+      -- corresponding type signatures than the type variable of the class
+      mapM_ checkCorrectTypeVarsInTypeSigs classDecls
       
       -- mapM_ checkTypeVarsInContext classDecls -- checked above (typeVariableInContext)
       mapM_ checkTypeVarsInContext instDecls
