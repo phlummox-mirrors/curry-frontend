@@ -28,7 +28,7 @@ for file in DictTrans1 DictTrans2 DictTrans3 DictTrans4 \
   ImplicBug ExtendedExample
 do
   #echo $file
-  $cymake -f typeclasses/$file.curry 2>> output_test2_stderr.txt 1>> output_test2_stdout.txt || echo Error in $file.curry
+  $cymake -f -i typeclasses typeclasses/$file.curry 2>> output_test2_stderr.txt 1>> output_test2_stdout.txt || echo Error in $file.curry
 done
 
 
