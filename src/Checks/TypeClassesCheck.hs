@@ -112,6 +112,7 @@ typeClassesCheck m decls (ClassEnv importedClasses importedInstances classMethod
       -- class methods are allowed that have other type variables in their
       -- corresponding type signatures than the type variable of the class
       mapM_ checkCorrectTypeVarsInTypeSigs classDecls
+      mapM_ checkContextsInClassMethodTypeSigs classDecls 
       
       -- mapM_ checkTypeVarsInContext classDecls -- checked above (typeVariableInContext)
       mapM_ checkTypeVarsInContext instDecls
@@ -732,7 +733,18 @@ checkCorrectTypeVarsInTypeSigs (ClassDecl _ _ _ tyvar ds) = do
     when (nub tyvars /= [tyvar]) $ 
       report $ errNotAllowedTypeVars p (nub tyvars \\ [tyvar])
 checkCorrectTypeVarsInTypeSigs _ = internalError "checkCorrectTypeVarsInTypeSigs"
-  
+
+-- |Check that there are no contexts in the type signatures of class methods
+-- (currently not supported)  
+checkContextsInClassMethodTypeSigs :: Decl -> Tcc ()
+checkContextsInClassMethodTypeSigs (ClassDecl _ _ _ _ ds)
+  = mapM_ checkTySig tySigs
+  where
+  tySigs = filter isTypeSig ds
+  checkTySig (TypeSig p ids (Context cx) _) = 
+    unless (null cx) $ report $ errNonEmptyContext p ids
+  checkTySig _ = internalError "checkContextsInClassMethodTypeSigs"
+checkContextsInClassMethodTypeSigs _ = internalError "checkContextsInClassMethodTypeSigs"
 
 
 -- ---------------------------------------------------------------------------
@@ -1388,4 +1400,7 @@ errAmbiguousClassName :: Position -> QualIdent -> Message
 errAmbiguousClassName p id0 = posMessage p $ 
   text "Ambiguous class name: " <> text (show id0) 
   
-  
+errNonEmptyContext :: Position -> [Ident] -> Message
+errNonEmptyContext p ids = posMessage p $ 
+  text "Contexts in type signatures of class methods currently not supported! "
+  $$ text "Concerned: The following methods:" <+> text (show ids)  
