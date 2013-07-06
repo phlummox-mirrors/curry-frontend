@@ -335,7 +335,9 @@ isValidCx cEnv cx = concatMap isValid' cx
     else isValidCx cEnv (substContext s iCx)
   isValid' (_cls, _) = []
 
--- | returns the instance for a given class and type
+-- | returns the instance for a given class and type. Both the class and the 
+-- type must be expanded (i.e. Prelude.Eq instead of Eq; Prelude.Bool 
+-- instead of Bool)!
 getInstance :: ClassEnv -> QualIdent -> QualIdent -> Maybe Instance
 getInstance cEnv cls ty = 
   listToMaybe $ filter (\i -> iClass i == cls && iType i == ty) (theInstances cEnv)
