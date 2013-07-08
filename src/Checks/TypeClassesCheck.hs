@@ -666,7 +666,7 @@ checkForInstanceDataTypeExistAlsoInstancesForSuperclasses cEnv tcEnv m
     (InstanceDecl p _scon cls ty _tyvars _)
   = let -- TODO: is it sufficient to take only direct superclasses? 
         -- scs = superClasses (fromJust $ lookupClass cEnv cls)
-        scs = allSuperClasses cEnv cls
+        scs = allSuperClasses cEnv (getCanonClassName cEnv cls)
         tyId = tyConToQualIdent m tcEnv ty
         insts = map (\c -> getInstance cEnv c (fromJust tyId)) scs 
         missingInsts = map fst $ filter (isNothing . snd) $ zip scs insts in
@@ -715,7 +715,7 @@ checkInstanceContextImpliesAllInstanceContextsOfSuperClasses cEnv tcEnv m
     inst@(InstanceDecl p _scon cls ty _tyvars _)
   = let inst' = getInstance' m cEnv tcEnv inst
         thisContext = getContextFromInst inst'
-        scs = allSuperClasses cEnv cls
+        scs = allSuperClasses cEnv (getCanonClassName cEnv cls)
         tyId = tyConToQualIdent m tcEnv ty
         insts = map fromJust $ filter isJust $ 
           map (\c -> getInstance cEnv c (fromJust tyId)) scs
