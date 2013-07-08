@@ -138,7 +138,7 @@ interface module only. However, this has not been implemented yet.
 >   checkTypeInfo "synonym type" check p tc
 > checkImport (IFunctionDecl p f n ty) = do
 >   m <- getModuleIdent
->   let check (Value f' n' (ForAll _ ty')) =
+>   let check (Value f' n' (ForAll cx _ ty')) =
 >         f == f' && n' == n && toQualType m [] ty == ty'
 >       check _ = False
 >   checkValueInfo "function" check p f
@@ -147,7 +147,7 @@ interface module only. However, this has not been implemented yet.
 > checkConstrImport tc tvs (ConstrDecl p evs c tys) = do
 >   m <- getModuleIdent
 >   let qc = qualifyLike tc c
->       checkConstr (DataConstructor c' _ (ForAllExist m' n' ty')) =
+>       checkConstr (DataConstructor c' _ (ForAllExist cx m' n' ty')) =
 >         qc == c' && length evs == m' && length tvs == n' &&
 >         toQualTypes m tvs tys == arrowArgs ty'
 >       checkConstr _ = False
@@ -155,7 +155,7 @@ interface module only. However, this has not been implemented yet.
 > checkConstrImport tc tvs (ConOpDecl p evs ty1 op ty2) = do
 >   m <- getModuleIdent
 >   let qc = qualifyLike tc op
->       checkConstr (DataConstructor c' _ (ForAllExist m' n' ty')) =
+>       checkConstr (DataConstructor c' _ (ForAllExist cx m' n' ty')) =
 >         qc == c' && length evs == m' && length tvs == n' &&
 >         toQualTypes m tvs [ty1,ty2] == arrowArgs ty'
 >       checkConstr _ = False
@@ -165,7 +165,7 @@ interface module only. However, this has not been implemented yet.
 > checkNewConstrImport tc tvs (NewConstrDecl p evs c ty) = do
 >   m <- getModuleIdent
 >   let qc = qualifyLike tc c
->       checkNewConstr (NewtypeConstructor c' (ForAllExist m' n' ty')) =
+>       checkNewConstr (NewtypeConstructor c' (ForAllExist cx m' n' ty')) =
 >           qc == c' && length evs == m' && length tvs == n' &&
 >           toQualType m tvs ty == head (arrowArgs ty')
 >       checkNewConstr _ = False
