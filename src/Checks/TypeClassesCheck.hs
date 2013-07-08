@@ -547,7 +547,7 @@ checkForCyclesInClassHierarchy cEnv@(ClassEnv classes _ _ _) =
   else mapM_ (report . errCyclesInClassHierarchy) (filter (\xs -> length xs > 1) sccs)
   where 
     sccs = scc (\qid -> [qid]) 
-               (\qid -> (superClasses $ fromJust $ lookupClass cEnv qid))
+               (\qid -> (superClasses $ fromJust $ canonLookupClass cEnv qid))
                (map theClass (allClasses classes))
 
 -- |Checks that in the superclass context the class declared doesn't appear

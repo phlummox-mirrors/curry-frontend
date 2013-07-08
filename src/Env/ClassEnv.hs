@@ -18,7 +18,7 @@ module Env.ClassEnv (
   -- ** the environment data types
   ClassEnv (..), Class (..), Instance (..), initClassEnv
   -- ** various functions for retrieving specific data from the environment 
-  , lookupClass, lookupClass', canonClassName
+  , lookupClass, lookupClass', canonLookupClass, canonClassName
   , lookupDefiningClass, lookupMethodTypeScheme, lookupMethodTypeSig
   , allClasses, allLocalClasses, getAllClassMethods, getInstance
   , getAllClassMethodNames, lookupMethodTypeSig', lookupMethodTypeScheme'
@@ -96,7 +96,8 @@ initClassEnv = ClassEnv emptyTopEnv [] emptyTopEnv Map.empty
 -- lookup and data retrieval functions
 -- ----------------------------------------------------------------------------
 
--- |looks up a given class from the class environment
+-- |looks up a given class from the class environment. Takes as argument
+-- the name of the class used in the source code. 
 lookupClass :: ClassEnv -> QualIdent -> Maybe Class
 lookupClass cEnv c = 
   list2Maybe $ lookupClass' cEnv c
@@ -104,7 +105,8 @@ lookupClass cEnv c =
 -- |looks up a given class from the class environment, returning 
 -- a list of matching classes: An empty list means there are no matching
 -- classes in scope, a list with more than one element means the class
--- name is ambiguous 
+-- name is ambiguous. Takes as argument the name of the class 
+-- used in the source code. 
 lookupClass' :: ClassEnv -> QualIdent -> [Class]
 lookupClass' (ClassEnv cEnv _ _ _) c = qualLookupTopEnv c cEnv 
 
@@ -114,6 +116,11 @@ canonClassName :: ClassEnv -> QualIdent -> Maybe QualIdent
 canonClassName cEnv qid = do
   cls <- lookupClass cEnv qid
   return $ theClass cls
+
+-- |looks up a given class in the class environment. The argument must be
+-- the canonical class name.
+canonLookupClass :: ClassEnv -> QualIdent -> Maybe Class
+canonLookupClass cEnv qid = Map.lookup qid (canonClassMap cEnv)
 
 -- |Binds a given class in the class environment. This function is meant
 -- to be used for binding classes defined in a source file, not for binding
@@ -253,14 +260,16 @@ getDefaultMethods cls = map getDefaultMethod (defaults cls)
 -- type classes related functionality
 -- ----------------------------------------------------------------------------
 
--- |returns *all* superclasses of a given class
+-- |returns *all* superclasses of a given class. The given class name must be
+-- in canonical form
 allSuperClasses :: ClassEnv -> QualIdent -> [QualIdent]
 allSuperClasses cEnv c = let
-  theClass0 = lookupClass cEnv c
+  theClass0 = canonLookupClass cEnv c
   scs = maybe [] superClasses theClass0 in
   nub $ scs ++ concatMap (allSuperClasses cEnv) scs
   
--- |checks whether a given class is a superclass of another class
+-- |checks whether a given class is a superclass of another class. Both class 
+-- names must be in canonical form
 isSuperClassOf :: ClassEnv -> QualIdent -> QualIdent -> Bool
 isSuperClassOf cEnv c1 c2 = c1 `elem` allSuperClasses cEnv c2
 
@@ -383,7 +392,8 @@ getInstance :: ClassEnv -> QualIdent -> QualIdent -> Maybe Instance
 getInstance cEnv cls ty = 
   listToMaybe $ filter (\i -> iClass i == cls && iType i == ty) (theInstances cEnv)
 
--- | finds a path in the class hierarchy from the given class to the given superclass
+-- | finds a path in the class hierarchy from the given class to the given superclass. 
+-- The class names passed to this functions must be canonicalized.  
 findPath :: ClassEnv -> QualIdent -> QualIdent -> Maybe [QualIdent]
 findPath cEnv start target = 
   let paths = findPath' cEnv start target [] in
@@ -395,7 +405,7 @@ findPath' :: ClassEnv -> QualIdent -> QualIdent -> [QualIdent] -> [[QualIdent]]
 findPath' cEnv start target path
   | start == target = [reverse (target:path)]
   | otherwise = concatMap (\sc -> findPath' cEnv sc target (start:path)) 
-                          (maybe [] superClasses (lookupClass cEnv start))
+                          (maybe [] superClasses (canonLookupClass cEnv start))
 
 -- ----------------------------------------------------------------------------
 -- dictionary code creation 
@@ -478,7 +488,7 @@ dictCode cEnv available (qid, ty)
 -- ----------------------------------------------------------------------------
 
 -- |This function calculates the dictionary types for all given classes, 
--- using always fresh variables
+-- using always fresh variables. The passed class identifiers must be canonical.  
 dictTypes :: ClassEnv -> [QualIdent] -> [Type]
 dictTypes cEnv qids = evalState (mapM (dictType' cEnv) qids) initFreshVar
 
@@ -488,7 +498,7 @@ dictType cEnv cls = evalState (dictType' cEnv cls) initFreshVar
 
 dictType' :: ClassEnv -> QualIdent -> State Int Type
 dictType' cEnv cls  = do
-  let c = fromJust $ lookupClass cEnv cls
+  let c = fromJust $ canonLookupClass cEnv cls
       scs = superClasses c
       tschemes = map snd $ typeSchemes c
   -- get the types for all superclasses
@@ -529,7 +539,7 @@ initFreshVar = 1 -- not zero!
 -- ----------------------------------------------------------------------------
 
 -- |returns a type expression representing the type of the dictionary for
--- the given class
+-- the given class (here the canonicalized name must be given)
 dictTypeExpr :: ClassEnv -> QualIdent -> TypeExpr
 dictTypeExpr cEnv cls = 
   case null (scsTypes ++ methodTypes) of
@@ -540,7 +550,7 @@ dictTypeExpr cEnv cls =
         False -> head methodTypes
       False -> TupleType (scsTypes ++ methodTypes)
   where
-  c = fromJust $ lookupClass cEnv cls
+  c = fromJust $ canonLookupClass cEnv cls
   scs = superClasses c
   theMethods = methods c
   
