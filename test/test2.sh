@@ -4,6 +4,7 @@ cymake_orig=../dist/build/cymake/cymake_orig
 
 rm -f output_test2_stderr.txt
 rm -f output_test2_stdout.txt
+rm -f tmp.txt
 
 echo ================
   
@@ -31,9 +32,12 @@ for file in DictTrans1 DictTrans2 DictTrans3 DictTrans4 \
   TestVarious \
   DataConstructorsBug1 DataConstructorsBug2
 do
-  #echo $file
+  echo $file >> tmp.txt
   $cymake -f -i typeclasses typeclasses/$file.curry 2>> output_test2_stderr.txt 1>> output_test2_stdout.txt || echo Error in $file.curry
 done
+
+echo `cat tmp.txt | wc -l` files checked
+rm tmp.txt
 
 
 # Those files contain type classes with other type vars in methods than
