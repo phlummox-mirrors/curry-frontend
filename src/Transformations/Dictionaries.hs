@@ -153,7 +153,7 @@ diExpr cx0 v@(Variable (Just varCty0) qid) = do
   -- function
   isClassMethod cEnv = isJust $ maybeCls cEnv
   zeroArity cEnv = (arrowArity $ typeSchemeToType $ 
-    fromJust $ lookupMethodTypeScheme' cEnv (cls cEnv) (unqualify qid)) == 0
+    fromJust $ canonLookupMethodTypeScheme' cEnv (cls cEnv) (unqualify qid)) == 0
   var'' cEnv = if not $ isClassMethod cEnv 
     then v
     -- Unqualify "qid"! The name of the selection function is still unique

@@ -885,7 +885,7 @@ transformClass2 cEnv (ClassDecl p _scx cls _tyvar _decls) =
     where 
     zeroArity = arrowArity 
       (typeSchemeToType $ fromJust $ 
-        lookupMethodTypeScheme' cEnv (theClass theClass0) m) == 0
+        canonLookupMethodTypeScheme' cEnv (theClass theClass0) m) == 0
   
   -- | The left side of the (direct) selection functions is always the same and
   -- created by this function  
@@ -940,7 +940,7 @@ transformClass2 cEnv (ClassDecl p _scx cls _tyvar _decls) =
     TypeSig p [rename toTopLevel f] cx ty' : 
       [FunctionDecl p cty n (rename toTopLevel f) (map (transEqu zeroArity toTopLevel) eqs)] 
     where
-    (cx0, ty) = fromJust $ lookupMethodTypeSig' cEnv (theClass theClass0) f
+    (cx0, ty) = fromJust $ canonLookupMethodTypeSig' cEnv (theClass theClass0) f
     cx = combineContexts cx0 
           (Context [ContextElem (theClass theClass0) (typeVar theClass0) []])
     toTopLevel :: RenameFunc

@@ -22,6 +22,7 @@ module Env.ClassEnv (
   , lookupDefiningClass, lookupMethodTypeScheme, lookupMethodTypeSig
   , allClasses, allLocalClasses, getAllClassMethods, getInstance
   , getAllClassMethodNames, lookupMethodTypeSig', lookupMethodTypeScheme'
+  , canonLookupMethodTypeSig', canonLookupMethodTypeScheme'
   , getDefaultMethods
   -- ** functions for modifying the class environment
   , bindClass, bindClassMethods
@@ -186,17 +187,44 @@ bindClassMethods' m cls vEnv =
     vEnv
     classMethods0
 
--- | lookup type signature of class method f in class cls
+-- | lookup type signature of class method @f@ in class @cls@, using
+-- class names from the source code
 lookupMethodTypeSig' :: ClassEnv -> QualIdent -> Ident -> Maybe (Context, TypeExpr)
-lookupMethodTypeSig' cEnv cls f = do
-  theClass_ <- lookupClass cEnv cls
+lookupMethodTypeSig' cEnv cls f = 
+  lookupMethodTypeSigHelper cEnv cls f lookupClass
+
+-- |look up type signature of class method @f@ in clas @cls@, using canonical
+-- class names
+canonLookupMethodTypeSig' :: ClassEnv -> QualIdent -> Ident -> Maybe (Context, TypeExpr)
+canonLookupMethodTypeSig' cEnv cls f = 
+  lookupMethodTypeSigHelper cEnv cls f canonLookupClass
+  
+-- |helper function that looks up a method type signature; takes as argument
+-- also the lookup function to be used for looking up the given class
+lookupMethodTypeSigHelper :: ClassEnv -> QualIdent -> Ident -> 
+    (ClassEnv -> QualIdent ->  Maybe Class) -> Maybe (Context, TypeExpr)
+lookupMethodTypeSigHelper cEnv cls f lookupFun = do
+  theClass_ <- lookupFun cEnv cls
   (_, cx, ty) <- find (\(id0, _, _) -> id0 == f) (methods theClass_)
   return (cx, ty)  
 
--- |lookup type scheme of class method f in class cls
+-- |lookup type scheme of class method @f@ in class @cls@, using class names
+-- from the source code 
 lookupMethodTypeScheme' :: ClassEnv -> QualIdent -> Ident -> Maybe TypeScheme
-lookupMethodTypeScheme' cEnv cls f = do
-  theClass_ <- lookupClass cEnv cls
+lookupMethodTypeScheme' cEnv cls f = 
+  lookupMethodTypeSchemeHelper cEnv cls f lookupClass
+
+-- |lookup type scheme of class method @f@ in class @cls@, using canonical class names
+canonLookupMethodTypeScheme' :: ClassEnv -> QualIdent -> Ident -> Maybe TypeScheme
+canonLookupMethodTypeScheme' cEnv cls f =  
+  lookupMethodTypeSchemeHelper cEnv cls f canonLookupClass
+  
+-- |helper function for looking up a type scheme; takes as argument a lookup 
+-- function to be used for looking up the class. 
+lookupMethodTypeSchemeHelper :: ClassEnv -> QualIdent -> Ident -> 
+    (ClassEnv -> QualIdent -> Maybe Class) -> Maybe TypeScheme
+lookupMethodTypeSchemeHelper cEnv cls f lookupFun = do
+  theClass_ <- lookupFun cEnv cls
   (_, tsc) <- find (\(id0, _) -> id0 == f) (typeSchemes theClass_)
   return tsc
 
