@@ -222,8 +222,12 @@ instance ImpureTestable Various where
     
 checkVarious :: IO Result
 checkVarious = do
-  let opts = CO.defaultOptions
-  mod <- loadModule opts "test/typeclasses/TestVarious.curry" 
+  let path = "test/typeclasses/"
+  compileModule 
+    (CO.defaultOptions { CO.optForce = True, CO.optTargetTypes = [CO.FlatCurry]})
+    (path ++ "Prelude.curry")
+  let opts = CO.defaultOptions { CO.optImportPaths = [path] } 
+  mod <- loadModule opts (path ++ "TestVarious.curry") 
   let result = checkModule' True opts mod
   case result of
     CheckSuccess tcEnv -> 
