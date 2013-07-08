@@ -32,8 +32,8 @@ TODO: Use MultiParamTypeClasses ?
 >     -- * Helper functions
 >   , isTyCons, isArrow, isCons, splitType
 >    -- * Mirror functions
->   , mirrorCx, mirrorCT, mirrorTy
->   , mirror2Cx, mirror2CT, mirror2Ty
+>   , mirrorFBCx, mirrorFBCT, mirrorFBTy
+>   , mirrorBFCx, mirrorBFCT, mirrorBFTy
 >   ) where
 
 > import Curry.Base.Ident
@@ -401,37 +401,42 @@ and the context/type data types used in curry-base. This mirroring is necessary
 because we cannot have cyclic dependencies between two modules like curry-base
 and curry-frontend, but in curry-base we *do* want to refer to the type datatypes
 in curry-frontend, hence the mirroring. 
-TODO: remove this functions as soon as possible 
+
+TODO: remove this functions as soon as possible
+
+The functions are named by the following scheme: functions mirroring from
+the frontend to base are named mirrorFB$\dots$, functions mirroring from
+the base to the frontend mirrorBF$\dots$. 
 \begin{verbatim}
 
 > type ConstrType = (Context, Type)
 
-> mirrorCx :: Context -> ST.Context_
-> mirrorCx cx = map (\(qid, ty) -> (qid, mirrorTy ty)) cx
+> mirrorFBCx :: Context -> ST.Context_
+> mirrorFBCx cx = map (\(qid, ty) -> (qid, mirrorFBTy ty)) cx
 
-> mirrorTy :: Type -> ST.Type_
-> mirrorTy (TypeVariable n) = ST.TypeVariable_ n
-> mirrorTy (TypeConstructor q tys) = ST.TypeConstructor_ q (map mirrorTy tys)
-> mirrorTy (TypeArrow t1 t2) = ST.TypeArrow_ (mirrorTy t1) (mirrorTy t2)
-> mirrorTy (TypeConstrained tys n) = ST.TypeConstrained_ (map mirrorTy tys) n
-> mirrorTy (TypeSkolem n) = ST.TypeSkolem_ n
-> mirrorTy (TypeRecord tys n) = ST.TypeRecord_ (map (\(id0, ty) -> (id0, mirrorTy ty)) tys) n
+> mirrorFBTy :: Type -> ST.Type_
+> mirrorFBTy (TypeVariable n) = ST.TypeVariable_ n
+> mirrorFBTy (TypeConstructor q tys) = ST.TypeConstructor_ q (map mirrorFBTy tys)
+> mirrorFBTy (TypeArrow t1 t2) = ST.TypeArrow_ (mirrorFBTy t1) (mirrorFBTy t2)
+> mirrorFBTy (TypeConstrained tys n) = ST.TypeConstrained_ (map mirrorFBTy tys) n
+> mirrorFBTy (TypeSkolem n) = ST.TypeSkolem_ n
+> mirrorFBTy (TypeRecord tys n) = ST.TypeRecord_ (map (\(id0, ty) -> (id0, mirrorFBTy ty)) tys) n
 
-> mirrorCT :: ConstrType -> ST.ConstrType_
-> mirrorCT (cx, ty) = (mirrorCx cx, mirrorTy ty)
+> mirrorFBCT :: ConstrType -> ST.ConstrType_
+> mirrorFBCT (cx, ty) = (mirrorFBCx cx, mirrorFBTy ty)
 
-> mirror2Cx :: ST.Context_ -> Context
-> mirror2Cx cx = map (\(qid, ty) -> (qid, mirror2Ty ty)) cx
+> mirrorBFCx :: ST.Context_ -> Context
+> mirrorBFCx cx = map (\(qid, ty) -> (qid, mirrorBFTy ty)) cx
 
-> mirror2Ty :: ST.Type_ -> Type
-> mirror2Ty (ST.TypeVariable_ n) = TypeVariable n
-> mirror2Ty (ST.TypeConstructor_ q tys) = TypeConstructor q (map mirror2Ty tys)
-> mirror2Ty (ST.TypeArrow_ t1 t2) = TypeArrow (mirror2Ty t1) (mirror2Ty t2)
-> mirror2Ty (ST.TypeConstrained_ tys n) = TypeConstrained (map mirror2Ty tys) n
-> mirror2Ty (ST.TypeSkolem_ n) = TypeSkolem n
-> mirror2Ty (ST.TypeRecord_ tys n) = TypeRecord (map (\(id0, ty) -> (id0, mirror2Ty ty)) tys) n
+> mirrorBFTy :: ST.Type_ -> Type
+> mirrorBFTy (ST.TypeVariable_ n) = TypeVariable n
+> mirrorBFTy (ST.TypeConstructor_ q tys) = TypeConstructor q (map mirrorBFTy tys)
+> mirrorBFTy (ST.TypeArrow_ t1 t2) = TypeArrow (mirrorBFTy t1) (mirrorBFTy t2)
+> mirrorBFTy (ST.TypeConstrained_ tys n) = TypeConstrained (map mirrorBFTy tys) n
+> mirrorBFTy (ST.TypeSkolem_ n) = TypeSkolem n
+> mirrorBFTy (ST.TypeRecord_ tys n) = TypeRecord (map (\(id0, ty) -> (id0, mirrorBFTy ty)) tys) n
 
-> mirror2CT :: ST.ConstrType_ -> ConstrType
-> mirror2CT (cx, ty) = (mirror2Cx cx, mirror2Ty ty)
+> mirrorBFCT :: ST.ConstrType_ -> ConstrType
+> mirrorBFCT (cx, ty) = (mirrorBFCx cx, mirrorBFTy ty)
 
 \end{verbatim}

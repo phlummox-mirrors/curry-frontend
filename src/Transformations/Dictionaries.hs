@@ -73,7 +73,7 @@ diDecl cx (FunctionDecl p (Just cty@(cx', _)) n id0 eqs) = do
   vEnv <- getValueEnv
   let -- we have to reduce the context before adding dictionary parameters, 
       -- because the recorded context is the "raw" context 
-      cx'' = reduceContext cEnv $ mirror2Cx cx'
+      cx'' = reduceContext cEnv $ mirrorBFCx cx'
       cx''' = removeNonLocal vEnv id0 lookupValue cx''
   FunctionDecl p (Just cty) n id0 `liftM` (mapM (diEqu (cx ++ cx''') cx''') eqs)
 diDecl _ (FunctionDecl _ Nothing _ _ _) = internalError "no type info in diDecl"
@@ -142,9 +142,9 @@ diExpr cx0 v@(Variable (Just varCty0) qid) = do
   abstrCode = do
     cEnv <- getClassEnv
     vEnv <- getValueEnv
-    let varCty = (removeNonLocal vEnv qid qualLookupValue $ mirror2Cx $ fst varCty0, snd varCty0)
+    let varCty = (removeNonLocal vEnv qid qualLookupValue $ mirrorBFCx $ fst varCty0, snd varCty0)
         -- check whether we have a class method
-        cx = if isNothing $ maybeCls cEnv then fst varCty else mirror2Cx $ fst varCty0
+        cx = if isNothing $ maybeCls cEnv then fst varCty else mirrorBFCx $ fst varCty0
         codes = map (concreteCode . dictCode cEnv cx0) cx 
     return codes
   maybeCls cEnv = lookupDefiningClass cEnv qid
@@ -256,7 +256,7 @@ tySchemeFlip :: ConstrType
 tySchemeFlip = ([], TypeVariable 0)
 
 prelFlip :: Expression
-prelFlip = Variable (Just $ mirrorCT tySchemeFlip) $ preludeIdent "flip"
+prelFlip = Variable (Just $ mirrorFBCT tySchemeFlip) $ preludeIdent "flip"
 
 preludeIdent :: String -> QualIdent
 preludeIdent = qualifyWith preludeMIdent . mkIdent
