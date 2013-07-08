@@ -23,7 +23,7 @@ module Env.ClassEnv (
   , allClasses, allLocalClasses, getAllClassMethods, getInstance
   , getAllClassMethodNames, lookupMethodTypeSig', lookupMethodTypeScheme'
   , canonLookupMethodTypeSig', canonLookupMethodTypeScheme'
-  , getDefaultMethods
+  , getDefaultMethods, lookupDefiningClass'
   -- ** functions for modifying the class environment
   , bindClass, bindClassMethods
   -- ** pretty printing
@@ -136,21 +136,26 @@ allLocalClasses = nubBy eqClass . map snd . allLocalBindings
 
 -- |looks up the class that defines the given class method
 lookupDefiningClass :: ClassEnv -> QualIdent -> Maybe QualIdent
-lookupDefiningClass (ClassEnv _ _ ms _) m = 
-  fmap theClass $ list2Maybe $ qualLookupTopEnv m ms
+lookupDefiningClass cEnv m = 
+  fmap theClass $ lookupDefiningClass' cEnv m 
+
+-- |looks up the class that defines the given class method
+lookupDefiningClass' :: ClassEnv -> QualIdent -> Maybe Class
+lookupDefiningClass' (ClassEnv _ _ ms _) m = 
+  list2Maybe $ qualLookupTopEnv m ms
 
 -- |looks up the type scheme of a given class method
 lookupMethodTypeScheme :: ClassEnv -> QualIdent -> Maybe TypeScheme
 lookupMethodTypeScheme cEnv qid = do
-  theClass_ <- lookupDefiningClass cEnv qid
-  classMethods0 <- liftM typeSchemes (lookupClass cEnv theClass_) 
+  theClass_ <- lookupDefiningClass' cEnv qid
+  let classMethods0 = typeSchemes theClass_
   lookup (unqualify qid) classMethods0  
 
 -- |looks up the method type signature of a given class method
 lookupMethodTypeSig :: ClassEnv -> QualIdent -> Maybe (Context, TypeExpr)
 lookupMethodTypeSig cEnv qid = do
-  theClass_ <- lookupDefiningClass cEnv qid
-  classMethods0 <- liftM methods (lookupClass cEnv theClass_)
+  theClass_ <- lookupDefiningClass' cEnv qid
+  let classMethods0 = methods theClass_
   lookup3 (unqualify qid) classMethods0
 
 lookup3 :: Eq a => a -> [(a, b, c)] -> Maybe (b, c)
