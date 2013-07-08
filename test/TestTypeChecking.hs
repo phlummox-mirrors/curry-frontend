@@ -52,6 +52,11 @@ instance ImpureTestable Dir where
 -- | Check all curry/type files in the given directory
 checkDir :: Dir -> IO Result
 checkDir dir = do
+  -- compile prelude before compiling test files
+  compileModule 
+    (CO.defaultOptions { CO.optForce = True, CO.optTargetTypes = [CO.FlatCurry]})
+    (fn dir ++ "Prelude.curry")
+  -- now check the test files
   files <- getDirectoryContents (fn dir)
   let files'  = filter (\str -> ".curry" `isSuffixOf` str && str /= ".curry") files
       files'' = map dropExtension files'
@@ -78,7 +83,7 @@ location = "test/typeclasses/automated/"
 checkTypes :: FilePath -> IO Bool -- Result
 checkTypes file = do
   putStrLn ("checking " ++ file)
-  let opts = CO.defaultOptions
+  let opts = CO.defaultOptions { CO.optImportPaths = [location] }
   mod <- loadModule opts (location ++ file ++ ".curry") 
   let result = checkModule' False opts mod
   case result of
