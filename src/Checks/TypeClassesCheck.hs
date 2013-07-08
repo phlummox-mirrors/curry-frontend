@@ -37,6 +37,7 @@ import Base.SCC
 import Base.Utils (findMultiples, fst3)
 import Base.Names
 import Base.TopEnv
+import qualified Data.Map as Map  
 
 import Checks.TypeCheck
 
@@ -71,7 +72,8 @@ hasError = liftM (not . null) $ gets errors
 -- adds new data types/functions for the class and instance declarations. 
 -- Also builds a corresponding class environment. 
 typeClassesCheck :: ModuleIdent -> [Decl] -> ClassEnv -> TCEnv -> ([Decl], ClassEnv, [Message])
-typeClassesCheck m decls (ClassEnv importedClasses importedInstances classMethodsMap) tcEnv0 = 
+typeClassesCheck m decls 
+    (ClassEnv importedClasses importedInstances classMethodsMap _) tcEnv0 = 
   case runTcc tcCheck initTccState of 
     ((newClasses, instances), []) -> 
       let newDecls = adjustContexts cEnv $ concatMap (transformInstance m cEnv tcEnv) $ 
@@ -80,9 +82,9 @@ typeClassesCheck m decls (ClassEnv importedClasses importedInstances classMethod
                           . renameTypeSigVars) newClasses
           allClassesEnv = bindAll newClasses' importedClasses
           newClassMethodsMap = bindClassMethods m (allLocalClasses allClassesEnv) classMethodsMap
-          cEnv = ClassEnv allClassesEnv instances newClassMethodsMap
+          cEnv = ClassEnv allClassesEnv instances newClassMethodsMap (buildCanonClassMap allClassesEnv)
       in (newDecls, cEnv, [])
-    (_, errs@(_:_)) -> (decls, ClassEnv emptyTopEnv [] emptyTopEnv, errs)
+    (_, errs@(_:_)) -> (decls, ClassEnv emptyTopEnv [] emptyTopEnv Map.empty, errs)
   where
     classDecls = filter isClassDecl decls
     instDecls = filter isInstanceDecl decls
@@ -135,7 +137,8 @@ typeClassesCheck m decls (ClassEnv importedClasses importedInstances classMethod
       let newClasses = map (classDeclToClass m) classDecls
           instances = map (instanceDeclToInstance m tcEnv) instDecls 
                       ++ importedInstances
-          newClassEnv = ClassEnv (bindAll newClasses importedClasses) instances emptyTopEnv
+          allClasses0 = bindAll newClasses importedClasses
+          newClassEnv = ClassEnv allClasses0 instances emptyTopEnv (buildCanonClassMap allClasses0)
       
       -- TODO: check also contexts of (imported) classes and interfaces?
       mapM_ (checkClassesInContext m newClassEnv) classDecls
@@ -160,7 +163,8 @@ typeClassesCheck m decls (ClassEnv importedClasses importedInstances classMethod
             map (qualifyInstance newClassEnv' . instanceDeclToInstance m tcEnv)
                 instDecls 
             ++ importedInstances
-          newClassEnv' = ClassEnv (bindAll newClasses' importedClasses) instances' emptyTopEnv
+          allClasses0 = bindAll newClasses' importedClasses
+          newClassEnv' = ClassEnv allClasses0 instances' emptyTopEnv (buildCanonClassMap allClasses0)
       
       mapM_ (checkForInstanceDataTypeExistAlsoInstancesForSuperclasses newClassEnv' tcEnv m) instDecls
       mapM_ (checkInstanceContextImpliesAllInstanceContextsOfSuperClasses newClassEnv' tcEnv m) instDecls
@@ -250,6 +254,14 @@ qualifyInstance :: ClassEnv -> Instance -> Instance
 qualifyInstance cEnv i = 
   i { context = map (\(qid, id0) -> (getCanonClassName cEnv qid, id0)) (context i)
     , iClass = getCanonClassName cEnv (iClass i) }   
+
+-- |builds the canonical class map (a map from canonical class names to 
+-- the corresponding 
+buildCanonClassMap :: TopEnv Class -> Map.Map QualIdent Class
+buildCanonClassMap classes = Map.fromList allClasses''
+  where
+  allClasses' = allClasses classes
+  allClasses'' = map (\cls -> (theClass cls, cls)) allClasses'
 
 -- ----------------------------------------------------------------------------
 -- functions for gathering/transforming type signatures
@@ -529,7 +541,7 @@ getDecls _ = internalError "getDecls"
 -- This can be determined by computing the strong connection components
 -- and checking that each has only one element
 checkForCyclesInClassHierarchy :: ClassEnv -> Tcc ()
-checkForCyclesInClassHierarchy cEnv@(ClassEnv classes _ _) = 
+checkForCyclesInClassHierarchy cEnv@(ClassEnv classes _ _ _) = 
   if all (==1) (map length sccs)
   then ok
   else mapM_ (report . errCyclesInClassHierarchy) (filter (\xs -> length xs > 1) sccs)
@@ -569,7 +581,7 @@ checkForDuplicateClassNames classes =
 
 -- |Checks that there is at most one instance for a given class and type
 checkForDuplicateInstances :: ClassEnv -> Tcc ()
-checkForDuplicateInstances (ClassEnv _classes instances _) 
+checkForDuplicateInstances (ClassEnv _classes instances _ _) 
   = let duplInstances 
           = findMultiples $ map (\i -> (iClass i, iType i)) instances
     in if null duplInstances

@@ -51,7 +51,7 @@ import Control.Monad.State
 import Base.Subst (listToSubst)
 import Base.Names
 import Base.TypeSubst hiding (substContext)
-
+import qualified Data.Map as Map
 import Base.TopEnv
 
 -- ----------------------------------------------------------------------------
@@ -64,6 +64,7 @@ data ClassEnv = ClassEnv
   { theClasses :: TopEnv Class
   , theInstances :: [Instance] 
   , classMethods :: TopEnv Class
+  , canonClassMap :: Map.Map QualIdent Class
   } 
   deriving Show
 
@@ -88,7 +89,7 @@ data Instance = Instance
   deriving (Eq, Show)
   
 initClassEnv :: ClassEnv 
-initClassEnv = ClassEnv emptyTopEnv [] emptyTopEnv
+initClassEnv = ClassEnv emptyTopEnv [] emptyTopEnv Map.empty
 
 -- ----------------------------------------------------------------------------
 -- lookup and data retrieval functions
@@ -104,7 +105,7 @@ lookupClass cEnv c =
 -- classes in scope, a list with more than one element means the class
 -- name is ambiguous 
 lookupClass' :: ClassEnv -> QualIdent -> [Class]
-lookupClass' (ClassEnv cEnv _ _) c = qualLookupTopEnv c cEnv 
+lookupClass' (ClassEnv cEnv _ _ _) c = qualLookupTopEnv c cEnv 
 
 -- |Binds a given class in the class environment. This function is meant
 -- to be used for binding classes defined in a source file, not for binding
@@ -127,7 +128,7 @@ allLocalClasses = nubBy eqClass . map snd . allLocalBindings
 
 -- |looks up the class that defines the given class method
 lookupDefiningClass :: ClassEnv -> QualIdent -> Maybe QualIdent
-lookupDefiningClass (ClassEnv _ _ ms) m = 
+lookupDefiningClass (ClassEnv _ _ ms _) m = 
   fmap theClass $ list2Maybe $ qualLookupTopEnv m ms
 
 -- |looks up the type scheme of a given class method
@@ -154,7 +155,7 @@ lookup3 x ((a, b, c):ys) | x == a = Just (b, c)
 -- is expanded by the class itself and for the type variable of 
 -- the class. 
 getAllClassMethods :: ClassEnv -> [(Ident, Context, TypeExpr)]
-getAllClassMethods (ClassEnv classes _ _) = 
+getAllClassMethods (ClassEnv classes _ _ _) = 
   let msAndCls  = map (\c -> (theClass c, typeVar c, methods c)) (allClasses classes)
       msAndCls' = concatMap (\(tc, tyvar, ms_) -> map (\m -> (tc, tyvar, m)) ms_) msAndCls 
       ms        = map (\(tc, tyvar, (id0, cx, ty)) -> (id0, addClassContext tc tyvar cx, ty)) msAndCls'  
@@ -167,7 +168,7 @@ getAllClassMethods (ClassEnv classes _ _) =
 -- |returns the names of all class methods in all classes in the given class
 -- environment
 getAllClassMethodNames :: ClassEnv -> [Ident]
-getAllClassMethodNames (ClassEnv classes _ _) = 
+getAllClassMethodNames (ClassEnv classes _ _ _) = 
   concatMap (map fst . typeSchemes) (allClasses classes)
 
 -- |binds the class methods in the class methods environment. This function
