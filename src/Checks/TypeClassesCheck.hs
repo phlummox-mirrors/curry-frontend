@@ -246,7 +246,7 @@ qualifyClass cEnv cls =
 -- |canonicalizes the class name: unqualified class names are qualified
 -- with the module where the class is defined
 getCanonClassName :: ClassEnv -> QualIdent -> QualIdent
-getCanonClassName cEnv cls = theClass $ fromJust $ lookupClass cEnv cls
+getCanonClassName cEnv = fromJust . canonClassName cEnv 
 
 -- |qualifies superclasses in the instance context and the class in the instance
 -- declaration

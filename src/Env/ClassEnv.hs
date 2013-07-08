@@ -18,7 +18,7 @@ module Env.ClassEnv (
   -- ** the environment data types
   ClassEnv (..), Class (..), Instance (..), initClassEnv
   -- ** various functions for retrieving specific data from the environment 
-  , lookupClass, lookupClass'
+  , lookupClass, lookupClass', canonClassName
   , lookupDefiningClass, lookupMethodTypeScheme, lookupMethodTypeSig
   , allClasses, allLocalClasses, getAllClassMethods, getInstance
   , getAllClassMethodNames, lookupMethodTypeSig', lookupMethodTypeScheme'
@@ -107,6 +107,13 @@ lookupClass cEnv c =
 -- name is ambiguous 
 lookupClass' :: ClassEnv -> QualIdent -> [Class]
 lookupClass' (ClassEnv cEnv _ _ _) c = qualLookupTopEnv c cEnv 
+
+-- |looks up the canonical class name for the given class name that appears
+-- in the source code
+canonClassName :: ClassEnv -> QualIdent -> Maybe QualIdent
+canonClassName cEnv qid = do
+  cls <- lookupClass cEnv qid
+  return $ theClass cls
 
 -- |Binds a given class in the class environment. This function is meant
 -- to be used for binding classes defined in a source file, not for binding
