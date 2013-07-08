@@ -142,6 +142,8 @@ Test-Suite TestTypeChecking
      , Base.Utils
      , Checks
      , Checks.ExportCheck
+     , Checks.InterfaceCheck
+     , Checks.InterfaceSyntaxCheck
      , Checks.KindCheck
      , Checks.PrecCheck
      , Checks.SyntaxCheck
@@ -170,6 +172,7 @@ Test-Suite TestTypeChecking
      , IL.Type
      , IL.XML
      , Imports
+     , InterfaceEquivalence
      , Interfaces
      , Modules
      , ModuleSummary
