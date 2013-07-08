@@ -62,9 +62,13 @@ import Base.TopEnv
 -- |The class environment consists of the classes and instances in scope
 -- plus a map from class methods to their defining classes
 data ClassEnv = ClassEnv 
+  -- | environment that maps class identifiers to classes
   { theClasses :: TopEnv Class
+  -- | all instances (with canonical class and type names)
   , theInstances :: [Instance] 
+  -- | environment that maps class methods to their corresponding classes
   , classMethods :: TopEnv Class
+  -- | maps canonical (!) class names to the corresponding classes
   , canonClassMap :: Map.Map QualIdent Class
   } 
   deriving Show
