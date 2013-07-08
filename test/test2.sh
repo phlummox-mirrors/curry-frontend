@@ -7,7 +7,13 @@ rm -f output_test2_stdout.txt
 rm -f tmp.txt
 
 echo ================
-  
+
+# prepare needed interfaces
+
+$cymake -f -i typeclasses typeclasses/Float.curry typeclasses/Prelude.curry > /dev/null
+
+# do the check
+
 for file in DictTrans1 DictTrans2 DictTrans3 DictTrans4 \
   DictTrans5 DictTrans6 DictTrans7 DictTrans8 DictTrans9 \
   DictTrans10 DictTrans11 DictTrans12 \
