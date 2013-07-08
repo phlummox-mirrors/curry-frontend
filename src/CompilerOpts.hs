@@ -1,17 +1,18 @@
 {- |
     Module      :  $Header$
     Description :  Compiler options
-    Copyright   :  (c) 2005, Martin Engelke (men@informatik.uni-kiel.de)
-                       2007, Sebastian Fischer (sebf@informatik.uni-kiel.de)
-                       2011, Björn Peemöller (bjp@informatik.uni-kiel.de)
+    Copyright   :  (c) 2005        Martin Engelke
+                       2007        Sebastian Fischer
+                       2011 - 2013 Björn Peemöller
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
     Stability   :  experimental
     Portability :  portable
 
-    This module defines data structures containing options for the
-    compilation of Curry programs.
+    This module defines data structures holding options for the
+    compilation of Curry programs, and utility functions for printing
+    help information as well as parsing the cmd arguments.
 -}
 module CompilerOpts
   ( Options (..), CymakeMode (..), Verbosity (..), TargetType (..)
@@ -19,11 +20,11 @@ module CompilerOpts
   , defaultOptions, getCompilerOpts, usage
   ) where
 
-import Data.List (intercalate, nub)
-import Data.Maybe (isJust)
+import Data.List             (intercalate, nub)
+import Data.Maybe            (isJust)
 import System.Console.GetOpt
-import System.Environment (getArgs, getProgName)
-import System.FilePath (splitSearchPath)
+import System.Environment    (getArgs, getProgName)
+import System.FilePath       (splitSearchPath)
 
 import Curry.Files.Filenames (currySubdir)
 
@@ -47,7 +48,7 @@ data Options = Options
   , optDumpEnv      :: Bool           -- ^ dump compilation environment
   , optDumpRaw      :: Bool           -- ^ dump data structure
   , optDumpCompleteEnv :: Bool        -- ^ show complete environment
-  }
+  } deriving Show
 
 -- | Default compiler options
 defaultOptions :: Options
@@ -70,13 +71,14 @@ defaultOptions = Options
   , optDumpCompleteEnv  = False
   }
 
+-- |Modus operand of the program
 data CymakeMode
-  = ModeHelp
-  | ModeVersion
-  | ModeNumericVersion
-  | ModeHtml
-  | ModeMake
-  deriving Eq
+  = ModeHelp           -- ^ Show help information
+  | ModeVersion        -- ^ Show version
+  | ModeNumericVersion -- ^ Show only version, suitable for later processing
+  | ModeHtml           -- ^ Create HTML documentation
+  | ModeMake           -- ^ Compile with dependencies
+  deriving (Eq, Show)
 
 -- |Type of the target file
 data TargetType
@@ -86,14 +88,14 @@ data TargetType
   | FlatXml               -- ^ FlatCurry as XML
   | AbstractCurry         -- ^ AbstractCurry
   | UntypedAbstractCurry  -- ^ UntypedAbstractCurry
-    deriving Eq
+    deriving (Eq, Show)
 
 -- |Data type representing the verbosity level
 data Verbosity
-  = VerbQuiet  -- ^ be queit
+  = VerbQuiet  -- ^ be quiet
   | VerbStatus -- ^ show status of compilation
   | VerbInfo   -- ^ show also additional info
-    deriving (Eq, Ord)
+    deriving (Eq, Ord, Show)
 
 -- |Classifies a number as a 'Verbosity'
 classifyVerbosity :: String -> Verbosity -> Verbosity

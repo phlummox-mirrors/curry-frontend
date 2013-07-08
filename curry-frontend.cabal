@@ -54,6 +54,8 @@ Executable cymake
     , Base.Utils
     , Checks
     , Checks.ExportCheck
+    , Checks.InterfaceCheck
+    , Checks.InterfaceSyntaxCheck
     , Checks.KindCheck
     , Checks.PrecCheck
     , Checks.SyntaxCheck
@@ -82,6 +84,7 @@ Executable cymake
     , IL.Type
     , IL.XML
     , Imports
+    , InterfaceEquivalence
     , Interfaces
     , Modules
     , ModuleSummary

@@ -18,7 +18,7 @@ TODO: Use MultiParamTypeClasses ?
 >     Type (..), isArrowType, arrowArity, arrowArgs, arrowBase, typeVars
 >   , typeConstrs, typeSkolems, equTypes, qualifyType, unqualifyType
 >     -- * Representation of Data Constructors
->   , DataConstr (..)
+>   , DataConstr (..), constrIdent
 >     -- * Representation of Quantification
 >   , TypeScheme (..), ExistTypeScheme (..), monoType, monoType', polyType
 >   , typeSchemeToType
@@ -252,6 +252,9 @@ by data or newtype declarations.
 
 > data DataConstr = DataConstr Ident Int [Type]
 >     deriving (Eq, Show)
+
+> constrIdent :: DataConstr -> Ident
+> constrIdent (DataConstr c _ _) = c
 
 \end{verbatim}
 We support two kinds of quantifications of types here, universally

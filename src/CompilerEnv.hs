@@ -1,15 +1,15 @@
 {- |
     Module      :  $Header$
     Description :  Environment containing the module's information
-    Copyright   :  (c) 2011, Björn Peemöller
+    Copyright   :  (c) 2011 - 2013 Björn Peemöller
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
     Stability   :  experimental
     Portability :  portable
 
-    This module defines an environment for a module containing the information
-    needed throughout the compilation of the module.
+    This module defines the compilation environment for a single module,
+     containing the information needed throughout the compilation process.
 -}
 module CompilerEnv where
 
@@ -42,6 +42,7 @@ data CompilerEnv = CompilerEnv
   , classEnv     :: ClassEnv     -- ^ type classes environment
   }
 
+-- |Initial 'CompilerEnv'
 initCompilerEnv :: ModuleIdent -> CompilerEnv
 initCompilerEnv mid = CompilerEnv
   { moduleIdent  = mid
@@ -53,10 +54,13 @@ initCompilerEnv mid = CompilerEnv
   , classEnv     = initClassEnv
   }
 
+
+-- |Show the 'CompilerEnv'
 showCompilerEnv :: Options -> CompilerEnv -> String
 showCompilerEnv opts env = show $ vcat
   [ header "ModuleIdent     " $ textS  $ moduleIdent env
-  , header "Interfaces      " $ hcat   $ punctuate comma $ map textS $ Map.keys $ interfaceEnv env
+  , header "Interfaces      " $ hcat   $ punctuate comma $ map textS
+                                       $ Map.keys $ interfaceEnv env
   , header "ModuleAliases   " $ ppMap  $ aliasEnv     env
   , header "TypeConstructors" $ ppAL (text . show) $ showLocalBindings $ tyConsEnv    env
   , header "Values          " $ ppAL (text . show) $ showLocalBindings $ valueEnv     env
@@ -70,9 +74,11 @@ showCompilerEnv opts env = show $ vcat
   textS = text . show
   showLocalBindings = if optDumpCompleteEnv opts then allBindings else allLocalBindings
 
+-- |Pretty print a 'Map'
 ppMap :: (Show a, Show b) => Map.Map a b -> Doc
 ppMap = ppAL (text . show) . Map.toList
 
+-- |Pretty print an association list
 ppAL :: (Show a, Show b) => (b -> Doc) -> [(a, b)] -> Doc
 ppAL pp xs = vcat $ map (\(a,b) -> text (pad a keyWidth) <+> equals <+> b) showXs
   where showXs   = map (\(a,b) -> (show a, pp b)) xs

@@ -1,9 +1,9 @@
 {- |
     Module      :  $Header$
     Description :  Cumputation of export interface
-    Copyright   :  (c) 2000-2004, Wolfgang Lux
-                       2005, Martin Engelke (men@informatik.uni-kiel.de)
-                       2011, Björn Peemöller (bjp@informatik.uni-kiel.de)
+    Copyright   :  (c) 2000 - 2004, Wolfgang Lux
+                       2005       , Martin Engelke
+                       2011 - 2013, Björn Peemöller
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
@@ -17,7 +17,7 @@
 -}
 module Exports (exportInterface) where
 
-import Data.Maybe (isNothing, catMaybes)
+import           Data.Maybe      (isNothing, catMaybes)
 import qualified Data.Set as Set (delete, fromList, toList)
 
 import Curry.Base.Position
@@ -60,7 +60,7 @@ exportInterface' (Module m (Just (Exporting _ es)) _ _) pEnv tcEnv tyEnv
   where
   imports = map   (IImportDecl NoPos) $ usedModules decls
   precs   = foldr (infixDecl m pEnv) [] es
-  hidden  = map   (hiddenTypeDecl m tcEnv) $ hiddenTypes decls
+  hidden  = map   (hiddenTypeDecl m tcEnv) $ hiddenTypes m decls
   decls   = foldr (typeDecl m tcEnv) (foldr (funDecl m tyEnv) [] es) es
 exportInterface' (Module _ Nothing _ _) _ _ _
   = internalError "Exports.exportInterface: no export specification"
@@ -68,8 +68,7 @@ exportInterface' (Module _ Nothing _ _) _ _ _
 infixDecl :: ModuleIdent -> OpPrecEnv -> Export -> [IDecl] -> [IDecl]
 infixDecl m pEnv (Export             f) ds = iInfixDecl m pEnv f ds
 infixDecl m pEnv (ExportTypeWith tc cs) ds =
-  foldr (iInfixDecl m pEnv . qualifyLike (qidModule tc)) ds cs
-  where qualifyLike = maybe qualify qualifyWith
+  foldr (iInfixDecl m pEnv . qualifyLike tc) ds cs
 infixDecl _ _ _ _ = internalError "Exports.infixDecl: no pattern match"
 
 iInfixDecl :: ModuleIdent -> OpPrecEnv -> QualIdent -> [IDecl] -> [IDecl]
@@ -183,13 +182,13 @@ hiddenTypeDecl m tcEnv tc = case qualLookupTC (qualQualify m tc) tcEnv of
   [DataType     _ n _] -> hidingDataDecl tc n
   [RenamingType _ n _] -> hidingDataDecl tc n
   _                    -> internalError "Exports.hiddenTypeDecl"
-  where hidingDataDecl tc1 n = HidingDataDecl NoPos (unqualify tc1)
-                             $ take n identSupply
+  where hidingDataDecl tc1 n = HidingDataDecl NoPos tc1 $ take n identSupply
 
-hiddenTypes :: [IDecl] -> [QualIdent]
-hiddenTypes ds = [tc | tc <- Set.toList tcs, not (isQualified tc)]
+hiddenTypes :: ModuleIdent -> [IDecl] -> [QualIdent]
+hiddenTypes m ds = [tc | tc <- Set.toList tcs, hidden tc]
   where tcs = foldr Set.delete (Set.fromList $ usedTypes ds)
                     (definedTypes ds)
+        hidden tc = not (isQualified tc) || qidModule tc /= Just m
 
 usedTypes :: [IDecl] -> [QualIdent]
 usedTypes ds = foldr usedTypesDecl [] ds
