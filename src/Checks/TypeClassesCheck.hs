@@ -345,8 +345,8 @@ adjustContexts cEnv ds = map (adjDecl cEnv) ds
 
 adjDecl :: ClassEnv -> Decl -> Decl
 adjDecl _    d@(InfixDecl _ _ _ _)   = d
-adjDecl _    d@(DataDecl _ _ _ _)    = d
-adjDecl _    d@(NewtypeDecl _ _ _ _) = d
+adjDecl _    d@(DataDecl _ _ _ _ _)    = d
+adjDecl _    d@(NewtypeDecl _ _ _ _ _) = d
 adjDecl _    d@(TypeDecl _ _ _ _)    = d
 adjDecl cEnv   (TypeSig p ids cx te) = TypeSig p ids (canonContext cEnv cx) te
 adjDecl cEnv   (FunctionDecl p cty n f eqs) = 

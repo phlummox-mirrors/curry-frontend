@@ -43,10 +43,10 @@ transformTypeSigs :: CompilerEnv -> Module -> Module
 transformTypeSigs cEnv (Module m e i ds) = Module m e i (concatMap (tsDecl cEnv) ds)
 
 tsDecl :: CompilerEnv -> Decl -> [Decl]
-tsDecl _cEnv d@(InfixDecl   _ _ _ _) = [d]
-tsDecl _cEnv d@(DataDecl    _ _ _ _) = [d]
-tsDecl _cEnv d@(NewtypeDecl _ _ _ _) = [d]
-tsDecl _cEnv d@(TypeDecl    _ _ _ _) = [d]
+tsDecl _cEnv d@(InfixDecl     _ _ _ _) = [d]
+tsDecl _cEnv d@(DataDecl    _ _ _ _ _) = [d]
+tsDecl _cEnv d@(NewtypeDecl _ _ _ _ _) = [d]
+tsDecl _cEnv d@(TypeDecl      _ _ _ _) = [d]
 tsDecl  cEnv   (TypeSig p ids (Context cx) ty) = 
   -- if null cx then [d] else [] 
   map (tsTySig cEnv) splitTySigs

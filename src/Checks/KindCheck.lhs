@@ -88,8 +88,8 @@ The kind environment only needs to record the arity of each type constructor.
 > type KindEnv = TopEnv Int
 
 > bindKind :: ModuleIdent -> Decl -> KindEnv -> KindEnv
-> bindKind m (DataDecl    _ tc tvs _) = bindKind' m tc tvs
-> bindKind m (NewtypeDecl _ tc tvs _) = bindKind' m tc tvs
+> bindKind m (DataDecl    _ tc tvs _ _) = bindKind' m tc tvs
+> bindKind m (NewtypeDecl _ tc tvs _ _) = bindKind' m tc tvs
 > bindKind m (TypeDecl    _ tc tvs _) = bindKind' m tc tvs
 > bindKind _ _                        = id
 
@@ -113,14 +113,14 @@ traversed because they can contain local type signatures.
 \begin{verbatim}
 
 > checkDecl :: Decl -> KCM Decl
-> checkDecl (DataDecl     p tc tvs cs) = do
+> checkDecl (DataDecl     p tc tvs cs d) = do
 >   tvs' <- checkTypeLhs tvs
 >   cs'  <- mapM (checkConstrDecl tvs') cs
->   return $ DataDecl p tc tvs' cs'
-> checkDecl (NewtypeDecl  p tc tvs nc) = do
+>   return $ DataDecl p tc tvs' cs' d
+> checkDecl (NewtypeDecl  p tc tvs nc d) = do
 >   tvs' <- checkTypeLhs tvs
 >   nc'  <- checkNewConstrDecl tvs' nc
->   return $ NewtypeDecl p tc tvs' nc'
+>   return $ NewtypeDecl p tc tvs' nc' d
 > checkDecl (TypeDecl     p tc tvs ty) = do
 >   tvs' <- checkTypeLhs tvs
 >   ty'  <- checkClosedType tvs' ty
@@ -329,8 +329,8 @@ Auxiliary definitions
 \begin{verbatim}
 
 > typeConstr :: Decl -> Ident
-> typeConstr (DataDecl    _ tc _ _) = tc
-> typeConstr (NewtypeDecl _ tc _ _) = tc
+> typeConstr (DataDecl    _ tc _ _ _) = tc
+> typeConstr (NewtypeDecl _ tc _ _ _) = tc
 > typeConstr (TypeDecl    _ tc _ _) = tc
 > typeConstr _ = internalError "KindCheck.typeConstr: no type declaration"
 

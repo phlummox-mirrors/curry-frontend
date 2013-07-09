@@ -100,7 +100,7 @@ partitionDecl :: Partition -> Decl -> Partition
 -- operator infix declarations
 partitionDecl p d@(InfixDecl _ _ _ _) = p { opDecls   = d : opDecls   p }
 -- type declarations
-partitionDecl p d@(DataDecl  _ _ _ _) = p { typeDecls = d : typeDecls p }
+partitionDecl p d@(DataDecl _ _ _ _ _) = p { typeDecls = d : typeDecls p }
 partitionDecl p d@(TypeDecl  _ _ _ _) = p { typeDecls = d : typeDecls p }
 -- function declarations
 partitionDecl p (TypeSig pos ids cx ty)
@@ -133,7 +133,7 @@ genImportDecl (ImportDecl _ mid _ _ _) = moduleName mid
 
 --
 genTypeDecl :: AbstractEnv -> Decl -> (AbstractEnv, CTypeDecl)
-genTypeDecl env (DataDecl _ n vs cs)
+genTypeDecl env (DataDecl _ n vs cs _)
   = ( resetScope env2
     , CType (genQName True env2 $ qualifyWith (moduleId env) n)
             (genVisibility env2 n)
@@ -151,7 +151,7 @@ genTypeDecl env (TypeDecl _ n vs ty)
     )
   where (env1, idxs) = mapAccumL genTVarIndex env vs
         (env2, ty' ) = genTypeExpr env1 ty
-genTypeDecl env (NewtypeDecl _ n vs (NewConstrDecl p nvs nc ty))
+genTypeDecl env (NewtypeDecl _ n vs (NewConstrDecl p nvs nc ty) _)
   = (resetScope env2
     , CType (genQName True env2 $ qualifyWith (moduleId env) n)
             (genVisibility env2 n)
@@ -702,9 +702,9 @@ abstractEnv absType env (Module mid exps _ decls) = AbstractEnv
 -- Generates a list of exports for all specified top level declarations
 buildExports :: ModuleIdent -> [Decl] -> [Export]
 buildExports _ [] = []
-buildExports mid (DataDecl _ ident _ _:ds)
+buildExports mid (DataDecl _ ident _ _ _:ds)
   = ExportTypeAll (qualifyWith mid ident) : buildExports mid ds
-buildExports mid ((NewtypeDecl _ ident _ _):ds)
+buildExports mid ((NewtypeDecl _ ident _ _ _):ds)
   = ExportTypeAll (qualifyWith mid ident) : buildExports mid ds
 buildExports mid ((TypeDecl _ ident _ _):ds)
   = Export (qualifyWith mid ident) : buildExports mid ds
@@ -747,7 +747,7 @@ insertExportedIdent env ident = Set.insert ident env
 
 --
 getConstrIdents :: Decl -> [Ident]
-getConstrIdents (DataDecl _ _ _ cs) = map getConstr cs
+getConstrIdents (DataDecl _ _ _ cs _) = map getConstr cs
   where getConstr (ConstrDecl  _ _  c _) = c
         getConstr (ConOpDecl _ _ _ op _) = op
 getConstrIdents _ = internalError "GenAbstractCurry.getConstrIdents: no data declaration"
@@ -866,8 +866,8 @@ isExternal _                       = False
 
 -- Checks, whether a declaration is the data declaration of 'ident'.
 isDataDeclOf :: Ident -> Decl -> Bool
-isDataDeclOf i (DataDecl _ j _ _) = i == j
-isDataDeclOf _ _                  = False
+isDataDeclOf i (DataDecl _ j _ _ _) = i == j
+isDataDeclOf _ _                    = False
 
 -- Checks, whether a symbol is defined in the Prelude.
 isPreludeSymbol :: QualIdent -> Bool

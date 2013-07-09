@@ -263,20 +263,20 @@ and \texttt{expandMonoTypes}, respectively.
 > checkTypeSynonyms :: ModuleIdent -> [Decl] -> TCM ()
 > checkTypeSynonyms m = mapM_ (checkTypeDecls m) . scc bound free
 >   where
->   bound (DataDecl    _ tc _ _) = [tc]
->   bound (NewtypeDecl _ tc _ _) = [tc]
->   bound (TypeDecl    _ tc _ _) = [tc]
->   bound _                      = []
->   free  (DataDecl     _ _ _ _) = []
->   free  (NewtypeDecl  _ _ _ _) = []
->   free  (TypeDecl    _ _ _ ty) = ft m ty []
->   free _                       = []
+>   bound (DataDecl    _ tc _ _ _) = [tc]
+>   bound (NewtypeDecl _ tc _ _ _) = [tc]
+>   bound (TypeDecl      _ tc _ _) = [tc]
+>   bound _                        = []
+>   free  (DataDecl    _ _ _ _ _) = []
+>   free  (NewtypeDecl _ _ _ _ _) = []
+>   free  (TypeDecl     _ _ _ ty) = ft m ty []
+>   free _                        = []
 
 > checkTypeDecls :: ModuleIdent -> [Decl] -> TCM ()
 > checkTypeDecls _ []                    =
 >   internalError "TypeCheck.checkTypeDecls: empty list"
-> checkTypeDecls _ [DataDecl    _ _ _ _] = return ()
-> checkTypeDecls _ [NewtypeDecl _ _ _ _] = return ()
+> checkTypeDecls _ [DataDecl    _ _ _ _ _] = return ()
+> checkTypeDecls _ [NewtypeDecl _ _ _ _ _] = return ()
 > checkTypeDecls m [TypeDecl  _ tc _ ty]
 >   | tc `elem` ft m ty [] = report $ errRecursiveTypes [tc]
 >   | otherwise            = return ()
@@ -307,7 +307,7 @@ and \texttt{expandMonoTypes}, respectively.
 >   setTyConsEnv tcEnv'
 
 > bindTC :: ModuleIdent -> TCEnv -> Decl -> TCEnv -> TCEnv
-> bindTC m tcEnv (DataDecl _ {- cx -} tc tvs cs) =
+> bindTC m tcEnv (DataDecl _ {- cx -} tc tvs cs _) =
 >   bindTypeInfo DataType m tc tvs (map (Just . mkData) cs)
 >   where
 >   mkData (ConstrDecl _ evs     c  tys) = mkData' evs c  tys
@@ -315,7 +315,7 @@ and \texttt{expandMonoTypes}, respectively.
 >   mkData' evs c tys = DataConstr c (length evs) $
 >     -- TODO: somewhen adding contexts to data declarations
 >     map getType $ expandMonoTypes m tcEnv (cleanTVars tvs evs) True (map noBContext tys)
-> bindTC m tcEnv (NewtypeDecl _ tc tvs (NewConstrDecl _ evs c ty)) =
+> bindTC m tcEnv (NewtypeDecl _ tc tvs (NewConstrDecl _ evs c ty) _) =
 >   bindTypeInfo RenamingType m tc tvs (DataConstr c (length evs) [ty'])
 >   where ty' = getType $ expandMonoType' m tcEnv (cleanTVars tvs evs) True (noBContext ty)
 > bindTC m tcEnv (TypeDecl _ tc tvs ty) =
@@ -2325,8 +2325,8 @@ nothing is recorded so that they are simply returned).
 
 > tsDecl :: TypeSubst -> Decl -> Decl
 > tsDecl _theta d@(InfixDecl _ _ _ _) = d
-> tsDecl _theta d@(DataDecl _ _ _ _)  = d
-> tsDecl _theta d@(NewtypeDecl _ _ _ _) = d
+> tsDecl _theta d@(DataDecl _ _ _ _ _)  = d
+> tsDecl _theta d@(NewtypeDecl _ _ _ _ _) = d
 > tsDecl _theta d@(TypeDecl _ _ _ _) = d
 > tsDecl _theta d@(TypeSig _ _ _ _) = d
 > tsDecl theta (FunctionDecl p (Just cty) n id0 eqs) 
