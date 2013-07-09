@@ -34,7 +34,7 @@ import Base.Types as BT (TypeScheme, polyType, constrainBy, Type (..), arrowArit
                         , typeSchemeToType)
 import qualified Base.Types as BTC (Context) 
 import Base.SCC
-import Base.Utils (findMultiples, fst3)
+import Base.Utils (findMultiples, fst3, zipWith')
 import Base.Names
 import Base.TopEnv
 import qualified Data.Map as Map  
@@ -72,7 +72,7 @@ hasError = liftM (not . null) $ gets errors
 -- adds new data types/functions for the class and instance declarations. 
 -- Also builds a corresponding class environment. 
 typeClassesCheck :: ModuleIdent -> [Decl] -> ClassEnv -> TCEnv -> ([Decl], ClassEnv, [Message])
-typeClassesCheck m decls 
+typeClassesCheck m decls0 -- **** TODO ****
     (ClassEnv importedClasses importedInstances classMethodsMap _) tcEnv0 = 
   case runTcc tcCheck initTccState of 
     ((newClasses, instances), []) -> 
@@ -86,6 +86,7 @@ typeClassesCheck m decls
       in (newDecls, cEnv, [])
     (_, errs@(_:_)) -> (decls, ClassEnv emptyTopEnv [] emptyTopEnv Map.empty, errs)
   where
+    decls = expandDerivingDecls decls0 -- **** TODO ****
     classDecls = filter isClassDecl decls
     instDecls = filter isInstanceDecl decls
     typeSigs = gatherTypeSigs decls
@@ -1178,6 +1179,125 @@ createDictionary2 cEnv (InstanceDecl _ scx cls0 tcon tvars decls) ity =
   methodImplPresent f = f `elem` map (\(FunctionDecl _ _ _ f0 _) -> f0) decls
   
 createDictionary2 _ _ _ = internalError "createDictionary"
+
+-- ---------------------------------------------------------------------------
+-- source code transformations related to "deriving" of instances
+-- ---------------------------------------------------------------------------
+
+-- **** TODO ****
+expandDerivingDecls :: [Decl] -> [Decl]
+expandDerivingDecls ds = ds ++ concatMap expandDerivingDecl dataDecls
+  where
+  dataDecls = filter (\d -> isDataDecl d || isNewtypeDecl d) ds
+  
+-- | create all derived instances for the given data/newtype declaration 
+expandDerivingDecl :: Decl -> [Decl]
+expandDerivingDecl d = if isNothing maybeDeriv 
+  then []
+  else
+    map (createInstance d) classes
+  where
+  maybeDeriv = getDeriving d
+  Deriving classes = fromJust maybeDeriv
+
+-- |retrieve the deriving part of a newtype/data declaration
+getDeriving :: Decl -> Maybe Deriving
+getDeriving (NewtypeDecl _ _ _ _ d) = d
+getDeriving (DataDecl _ _ _ _ d) = d
+getDeriving _ = internalError "getDeriving"
+
+-- |creates an instance for the given data declaration and the given class
+createInstance :: Decl -> QualIdent -> Decl
+createInstance d cls = 
+  -- if cls == eqClsIdent -- **** TODO ****
+  if (unqualify cls) == (unqualify eqClsIdent)
+  then createEqInstance d
+  else -- TODO
+    internalError "createInstance"
+
+-- |creates an Eq instance for the given data declaration
+createEqInstance :: Decl -> Decl
+createEqInstance (DataDecl p ty dataVars cons _) = 
+
+  InstanceDecl p (SContext scon) cls tycon vars 
+    [FunctionDecl p Nothing (-1) eqOp eqs]
+  
+  where
+  scon = map (\v -> (eqClsIdentTmp, v)) dataVars
+  cls = eqClsIdentTmp
+  tycon = QualTC $ qualify ty
+  vars = dataVars
+  
+  eqs = concatMap (\(c, n) -> map (\(c', n') -> genEq c c' n n') cons') cons' 
+  
+  cons' = map getCon cons
+  
+  -- |get the data constructor and its arity from the given constructor declaration
+  getCon :: ConstrDecl -> (Ident, Int)
+  getCon (ConstrDecl _ _ c tes) = (c, length tes)
+  getCon (ConOpDecl _ _ _ c _) = (c, 2)
+  
+  -- |generate for each constructor pair (C_i, C_j) an equation. If C_i == C_j, 
+  -- then compare the parameters of the constructors, else return False. 
+  -- Note: here for /all/ constructor pairs must an equation be created, 
+  -- else we would get overlapping rules and thus unwanted non-determinism. 
+  genEq :: Ident -> Ident -> Int -> Int -> Equation 
+  genEq c c' n n' = Equation p 
+      (FunLhs eqOp [ConstructorPattern (qualify c) (map VariablePattern newVars), 
+                    ConstructorPattern (qualify c') (map VariablePattern newVars')])
+      (SimpleRhs p (if c == c' then compareExpr else Constructor $ qualify falseCons) [])
+    where
+    newVars  = map (mkIdent . makeName) [1..n]
+    newVars' = map (mkIdent . (++ "'") . makeName) [1..n']
+    makeName i = derivePrefix ++ show c ++ sep ++ show c' ++ sep ++ show i
+    
+    -- |creates the comparison expression for the parameters of the constructors
+    -- (or @True@ if none present)
+    compareExpr :: Expression
+    compareExpr = 
+      let vars0 = zipWith' (,) newVars newVars' 
+          (firstVar, firstVar') = head vars0 in
+      if n == 0 then Constructor $ qualify trueCons
+      else foldl (\el (v, v') -> InfixApply el infixAndOp 
+                   (InfixApply (qVar v) infixEqOp (qVar v'))) 
+                 (InfixApply (qVar firstVar) infixEqOp (qVar firstVar'))
+                 (tail vars0)
+
+createEqInstance (NewtypeDecl p ty vars (NewConstrDecl p' vars' id' ty') d) =
+  -- newtype declarations are simply treated as data declarations with 
+  -- one constructor.  
+  createEqInstance (DataDecl p ty vars [ConstrDecl p' vars' id' [ty']] d) 
+createEqInstance _ = internalError "createEqInstance"
+
+eqClsIdentName :: String
+eqClsIdentName = "Eq"
+
+eqClsIdent :: QualIdent
+eqClsIdent = qualifyWith preludeMIdent (mkIdent eqClsIdentName) 
+
+-- **** TODO ****
+eqClsIdentTmp :: QualIdent
+eqClsIdentTmp = qualify $ mkIdent eqClsIdentName
+
+eqOp :: Ident
+eqOp = mkIdent "=="
+
+infixEqOp :: InfixOp
+infixEqOp = InfixOp Nothing $ qualify $ eqOp
+
+-- **** TODO **** proper qualification (Prelude!)
+trueCons :: Ident
+trueCons = mkIdent "True"
+
+-- **** TODO **** proper qualification (Prelude!)
+falseCons :: Ident
+falseCons = mkIdent "False"
+
+infixAndOp :: InfixOp
+infixAndOp = InfixOp Nothing $ qualify $ mkIdent "&&"
+
+derivePrefix :: String
+derivePrefix = identPrefix ++ "drv" ++ sep
 
 -- ---------------------------------------------------------------------------
 -- helper functions
