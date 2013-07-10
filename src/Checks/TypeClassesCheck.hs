@@ -1212,6 +1212,9 @@ createInstance d cls =
   -- if cls == eqClsIdent -- **** TODO ****
   if (unqualify cls) == (unqualify eqClsIdent)
   then createEqInstance d
+  -- else if cls == eqOrdIdent -- **** TODO ****
+  else if (unqualify cls) == (unqualify ordClsIdent)
+  then createOrdInstance d
   else -- TODO
     internalError "createInstance"
 
@@ -1269,15 +1272,30 @@ createEqInstance (NewtypeDecl p ty vars (NewConstrDecl p' vars' id' ty') d) =
   createEqInstance (DataDecl p ty vars [ConstrDecl p' vars' id' [ty']] d) 
 createEqInstance _ = internalError "createEqInstance"
 
+createOrdInstance :: Decl -> Decl
+createOrdInstance = undefined
+
+-- ---------------------------------------------------------------------------
+
 eqClsIdentName :: String
 eqClsIdentName = "Eq"
+
+ordClsIdentName :: String
+ordClsIdentName = "Ord"
 
 eqClsIdent :: QualIdent
 eqClsIdent = qualifyWith preludeMIdent (mkIdent eqClsIdentName) 
 
+ordClsIdent :: QualIdent
+ordClsIdent = qualifyWith preludeMIdent (mkIdent ordClsIdentName)
+
 -- **** TODO ****
 eqClsIdentTmp :: QualIdent
 eqClsIdentTmp = qualify $ mkIdent eqClsIdentName
+
+-- **** TODO ****
+ordClsIdentTmp :: QualIdent
+ordClsIdentTmp = qualify $ mkIdent ordClsIdentName
 
 eqOp :: Ident
 eqOp = mkIdent "=="
