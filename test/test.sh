@@ -5,6 +5,8 @@ cymake_orig=../../dist/build/cymake/cymake_orig
 
 if [ "$1" = all ]
 then
+  rm -r lib2/.curry
+ 
   echo "=================="
   echo "building with orig"
   echo "=================="
@@ -15,6 +17,8 @@ fi
 echo "=================="
 echo "build with current"
 echo "=================="
+
+rm -r lib/.curry
 
 pushd lib && $cymake -e -f *.curry && popd
 
