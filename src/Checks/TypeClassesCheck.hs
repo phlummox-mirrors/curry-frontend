@@ -1249,7 +1249,7 @@ createEqInstance (DataDecl p ty dataVars cons _) =
     where
     newVars  = map (mkIdent . makeName) [1..n]
     newVars' = map (mkIdent . (++ "'") . makeName) [1..n']
-    makeName i = derivePrefix ++ show c ++ sep ++ show c' ++ sep ++ show i
+    makeName i = deriveEqPrefix ++ show c ++ sep ++ show c' ++ sep ++ show i
     
     -- |creates the comparison expression for the parameters of the constructors
     -- (or @True@ if none present)
@@ -1296,8 +1296,8 @@ falseCons = mkIdent "False"
 infixAndOp :: InfixOp
 infixAndOp = InfixOp Nothing $ qualify $ mkIdent "&&"
 
-derivePrefix :: String
-derivePrefix = identPrefix ++ "drv" ++ sep
+deriveEqPrefix :: String
+deriveEqPrefix = identPrefix ++ "drvEq" ++ sep
 
 -- ---------------------------------------------------------------------------
 -- helper functions
