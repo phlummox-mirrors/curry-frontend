@@ -529,9 +529,20 @@ expandValueEnv opts env
 addImportedLabels :: ModuleIdent -> ValueEnv -> ValueEnv
 addImportedLabels m tyEnv = foldr addLabelType tyEnv (allImports tyEnv)
   where
-  addLabelType (_, Label l r ty) = importTopEnv (fromMaybe m (qidModule r))
-                                   (unqualify l) (Label l r ty)
-  addLabelType _ = id
+  addLabelType (_, lbl@(Label l r ty))
+    = importTopEnv mid l' lbl
+    -- the following is necessary to be available during generation
+    -- of flat curry.
+    . importTopEnv     mid (recSelectorId r l') sel
+    . qualImportTopEnv mid (recSelectorId r l') sel
+    . importTopEnv     mid (recUpdateId   r l') upd
+    . qualImportTopEnv mid (recUpdateId   r l') upd
+    where
+    l' = unqualify l
+    mid = fromMaybe m (qidModule r)
+    sel = Value (qualRecSelectorId m r l') 1 ty
+    upd = Value (qualRecUpdateId   m r l') 2 ty
+  addLabelType _                       = id
 
 expandRecordTypes :: TCEnv -> ValueInfo -> ValueInfo
 expandRecordTypes tcEnv (DataConstructor  qid a (ForAllExist n m ty)) =
