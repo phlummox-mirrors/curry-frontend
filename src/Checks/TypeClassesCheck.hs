@@ -1218,16 +1218,22 @@ createInstance d cls =
   else -- TODO
     internalError "createInstance"
 
--- |creates an Eq instance for the given data declaration
-createEqInstance :: Decl -> Decl
-createEqInstance (DataDecl p ty dataVars cons _) = 
+-- |creates an Eq or an Ord instance for the given data declaration
+createEqOrOrdInstance :: Decl      -- ^ the data/newtype declaration 
+                      -> Ident     -- ^ the "==" or the "<=" operator
+                      -> QualIdent -- ^ the class for which the instance is build
+                      -- | the generation function for the right hand sides of the equations
+                      -> (Position -> Ident -> Ident -> Int -> Int -> [Ident] -> [Ident] -> Rhs)
+                      -> String  -- ^ the prefix to be used for parameters
+                      -> Decl    -- ^ the resulting instance declaration
+createEqOrOrdInstance (DataDecl p ty dataVars cons _) op clsIdent genRhs prefix = 
 
   InstanceDecl p (SContext scon) cls tycon vars 
-    [FunctionDecl p Nothing (-1) eqOp eqs]
+    [FunctionDecl p Nothing (-1) op eqs]
   
   where
-  scon = map (\v -> (eqClsIdentTmp, v)) dataVars
-  cls = eqClsIdentTmp
+  scon = map (\v -> (clsIdent, v)) dataVars
+  cls = clsIdent
   tycon = QualTC $ qualify ty
   vars = dataVars
   
@@ -1246,34 +1252,52 @@ createEqInstance (DataDecl p ty dataVars cons _) =
   -- else we would get overlapping rules and thus unwanted non-determinism. 
   genEq :: Ident -> Ident -> Int -> Int -> Equation 
   genEq c c' n n' = Equation p 
-      (FunLhs eqOp [ConstructorPattern (qualify c) (map VariablePattern newVars), 
-                    ConstructorPattern (qualify c') (map VariablePattern newVars')])
-      (SimpleRhs p (if c == c' then compareExpr else Constructor $ qualify falseCons) [])
+      (FunLhs op [ConstructorPattern (qualify c) (map VariablePattern newVars), 
+                  ConstructorPattern (qualify c') (map VariablePattern newVars')])
+      (genRhs p c c' n n' newVars newVars') 
     where
     newVars  = map (mkIdent . makeName) [1..n]
     newVars' = map (mkIdent . (++ "'") . makeName) [1..n']
-    makeName i = deriveEqPrefix ++ show c ++ sep ++ show c' ++ sep ++ show i
-    
-    -- |creates the comparison expression for the parameters of the constructors
-    -- (or @True@ if none present)
-    compareExpr :: Expression
-    compareExpr = 
-      let vars0 = zipWith' (,) newVars newVars' 
-          (firstVar, firstVar') = head vars0 in
-      if n == 0 then Constructor $ qualify trueCons
-      else foldl (\el (v, v') -> InfixApply el infixAndOp 
-                   (InfixApply (qVar v) infixEqOp (qVar v'))) 
-                 (InfixApply (qVar firstVar) infixEqOp (qVar firstVar'))
-                 (tail vars0)
+    makeName i = prefix ++ show c ++ sep ++ show c' ++ sep ++ show i
 
-createEqInstance (NewtypeDecl p ty vars (NewConstrDecl p' vars' id' ty') d) =
+createEqOrOrdInstance (NewtypeDecl p ty vars (NewConstrDecl p' vars' id' ty') d) 
+                       op clsIdent genRhs prefix =
   -- newtype declarations are simply treated as data declarations with 
   -- one constructor.  
-  createEqInstance (DataDecl p ty vars [ConstrDecl p' vars' id' [ty']] d) 
-createEqInstance _ = internalError "createEqInstance"
+  createEqOrOrdInstance (DataDecl p ty vars [ConstrDecl p' vars' id' [ty']] d) 
+                        op clsIdent genRhs prefix
+createEqOrOrdInstance _ _ _ _ _ = internalError "createEqOrOrdInstance"
 
+-- |creates an "Eq" instance for the given data type
+createEqInstance :: Decl -> Decl
+createEqInstance d = createEqOrOrdInstance d eqOp eqClsIdentTmp genEqRhs deriveEqPrefix
+
+-- |generates the right hand sides used in the derived Eq instance  
+genEqRhs :: Position -> Ident -> Ident -> Int -> Int -> [Ident] -> [Ident] -> Rhs
+genEqRhs p c c' n _n' newVars newVars' = 
+  SimpleRhs p (if c == c' then compareExpr else Constructor $ qualify falseCons) []
+  where
+  -- |creates the comparison expression for the parameters of the constructors
+  -- (or @True@ if none present)
+  compareExpr :: Expression
+  compareExpr = 
+    let vars0 = zipWith' (,) newVars newVars' 
+        (firstVar, firstVar') = head vars0 in
+    if n == 0 then Constructor $ qualify trueCons
+    else foldl (\el (v, v') -> InfixApply el infixAndOp 
+                 (InfixApply (qVar v) infixEqOp (qVar v'))) 
+               (InfixApply (qVar firstVar) infixEqOp (qVar firstVar'))
+               (tail vars0)
+
+-- |creates an "Ord" instance for the given data type
 createOrdInstance :: Decl -> Decl
-createOrdInstance = undefined
+createOrdInstance d = createEqOrOrdInstance d leqOp ordClsIdentTmp genOrdRhs deriveOrdPrefix
+
+-- |generates the right hand sides used in the derived Ord instance
+genOrdRhs :: Position -> Ident -> Ident -> Int -> Int -> [Ident] -> [Ident] -> Rhs
+genOrdRhs p c c' n n' newVars newVars' = 
+  -- TODO! 
+  SimpleRhs p (Constructor $ qualify falseCons) []
 
 -- ---------------------------------------------------------------------------
 
@@ -1300,8 +1324,14 @@ ordClsIdentTmp = qualify $ mkIdent ordClsIdentName
 eqOp :: Ident
 eqOp = mkIdent "=="
 
+leqOp :: Ident
+leqOp = mkIdent "<="
+
 infixEqOp :: InfixOp
 infixEqOp = InfixOp Nothing $ qualify $ eqOp
+
+infixLeqOp :: InfixOp
+infixLeqOp = InfixOp Nothing $ qualify $ leqOp
 
 -- **** TODO **** proper qualification (Prelude!)
 trueCons :: Ident
@@ -1316,6 +1346,9 @@ infixAndOp = InfixOp Nothing $ qualify $ mkIdent "&&"
 
 deriveEqPrefix :: String
 deriveEqPrefix = identPrefix ++ "drvEq" ++ sep
+
+deriveOrdPrefix :: String
+deriveOrdPrefix = identPrefix ++ "drvOrd" ++ sep
 
 -- ---------------------------------------------------------------------------
 -- helper functions
