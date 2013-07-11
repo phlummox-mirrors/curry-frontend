@@ -87,7 +87,22 @@ data W a b = W (T a b) (S a b a) (U Bool)
 
 data X a b = a :=: b | X1 a b
   deriving (Eq, Ord)
-  
+
+data C0 = C0
+  deriving (Eq, Ord)
+
+data C1 a = C1 a
+  deriving (Eq, Ord)
+
+data C2 a b = C2 a b
+  deriving (Eq, Ord)
+
+data C3 a b c = C3 a b c
+  deriving (Eq, Ord)
+
+data C4 a b c d = C4 a b c d
+  deriving (Eq, Ord)
+
 -- error
 {-
 data X a = X a Int

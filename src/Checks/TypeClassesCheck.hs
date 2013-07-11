@@ -1297,15 +1297,48 @@ genEqRhs p (c, _) (c', _) n _n' newVars newVars' =
 createOrdInstance :: Decl -> Decl
 createOrdInstance d = createEqOrOrdInstance d leqOp ordClsIdentTmp genOrdRhs deriveOrdPrefix
 
--- |generates the right hand sides used in the derived Ord instance
+-- |generates the right hand sides used in the derived Ord instance. The scheme
+-- is as follows:
+-- Consider @C_i ... <= C_j ...@:
+-- i < j: Result is True
+-- i > j: Result is False
+-- i == j: We have the following situation:
+--   C_i e_1 ... e_n <= C_i e_1' ... e_n'
+--   if n == 0: Result is True
+--   else compare lexicographically e_1 to e_n: Result is: 
+--        e_1 < e_1' || 
+--        e_1 == e_1' && e_2 < e2' ||
+--        e_1 == e_2' && e_2 == e_2' && e_3 < e_3' ||
+--        ...
+--        e_1 == e_2' && ... && e_(n-1) == e_(n-1)' && e_n <= e_n' 
+-- Note that in "e_n <= e_n'" a "<=" is used, not a "<"!
 genOrdRhs :: Position -> (Ident, Int) -> (Ident, Int) -> Int -> Int -> [Ident] -> [Ident] -> Rhs
-genOrdRhs p (c, i) (c', i') n n' newVars newVars' = 
+genOrdRhs p (_c, i0) (_c', i0') n _n' newVars newVars' = 
   SimpleRhs p 
-    (if i < i' 
+    (if i0 < i0' 
      then Constructor $ qualify trueCons
-     else if i > i'
+     else if i0 > i0'
      then Constructor $ qualify falseCons
-     else Constructor $ qualify falseCons) [] -- TODO
+     else 
+     
+       if n == 0 then Constructor $ qualify trueCons
+       else foldl1 (\e e' -> InfixApply e infixOrOp e') (map (createForN n) [1..n])
+    ) []
+  where 
+  createForN :: Int -> Int -> Expression
+  createForN numAll i 
+    = foldl1 (\e e' -> InfixApply e infixAndOp e') (map createForI [1..i])
+    where
+    createForI :: Int -> Expression
+    createForI k 
+      | k < i                 = InfixApply v infixEqOp   v' -- e_k == e_k'
+      | k == i && k /= numAll = InfixApply v infixLessOp v' -- e_k <  e_k'
+      | k == i && k == numAll = InfixApply v infixLeqOp  v' -- e_k <= e_k'
+      | otherwise = internalError "genOrdRhs" 
+      where
+      v  = Variable Nothing $ qualify $ newVars  !! (k-1)
+      v' = Variable Nothing $ qualify $ newVars' !! (k-1)
+     
 
 -- ---------------------------------------------------------------------------
 
@@ -1335,11 +1368,29 @@ eqOp = mkIdent "=="
 leqOp :: Ident
 leqOp = mkIdent "<="
 
+lessOp :: Ident
+lessOp = mkIdent "<"
+
+andOp :: Ident
+andOp = mkIdent "&&"
+
+orOp :: Ident
+orOp = mkIdent "||"
+
 infixEqOp :: InfixOp
 infixEqOp = InfixOp Nothing $ qualify $ eqOp
 
 infixLeqOp :: InfixOp
 infixLeqOp = InfixOp Nothing $ qualify $ leqOp
+
+infixLessOp :: InfixOp
+infixLessOp = InfixOp Nothing $ qualify $ lessOp
+
+infixAndOp :: InfixOp
+infixAndOp = InfixOp Nothing $ qualify $ andOp
+
+infixOrOp :: InfixOp
+infixOrOp = InfixOp Nothing $ qualify $ orOp
 
 -- **** TODO **** proper qualification (Prelude!)
 trueCons :: Ident
@@ -1348,9 +1399,6 @@ trueCons = mkIdent "True"
 -- **** TODO **** proper qualification (Prelude!)
 falseCons :: Ident
 falseCons = mkIdent "False"
-
-infixAndOp :: InfixOp
-infixAndOp = InfixOp Nothing $ qualify $ mkIdent "&&"
 
 deriveEqPrefix :: String
 deriveEqPrefix = identPrefix ++ "drvEq" ++ sep
