@@ -32,3 +32,6 @@ newtype V a = V a
 data W a b = W (T a b) (S a b a) (U Bool)
   deriving Eq
 
+data X a b = a :=: b | X1 a b
+  deriving Eq
+

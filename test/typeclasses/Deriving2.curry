@@ -85,6 +85,9 @@ newtype V a = V a
 data W a b = W (T a b) (S a b a) (U Bool)
   deriving (Eq, Ord)
 
+data X a b = a :=: b | X1 a b
+  deriving (Eq, Ord)
+  
 -- error
 {-
 data X a = X a Int
