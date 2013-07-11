@@ -25,6 +25,7 @@ import Curry.ExtendedFlat.TypeInference
 import qualified Curry.Syntax as CS
 
 -- Base
+import Base.CurryTypes
 import Base.Messages (internalError)
 import Base.ScopeEnv (ScopeEnv)
 import qualified Base.ScopeEnv as ScopeEnv
@@ -525,7 +526,8 @@ qualifyIDecl mident (CS.INewtypeDecl pos qident idents ncdecl)
 qualifyIDecl mident (CS.ITypeDecl pos qident idents texpr)
   = (CS.ITypeDecl pos (qualQualify mident qident) idents texpr)
 qualifyIDecl mident (CS.IFunctionDecl pos qident arity texpr)
-  = (CS.IFunctionDecl pos (qualQualify mident qident) arity texpr)
+  = (CS.IFunctionDecl pos (qualQualify mident qident) arity (qualifyCSType texpr))
+  where qualifyCSType = fromType . toQualType mident []
 qualifyIDecl _ idecl = idecl
 
 
