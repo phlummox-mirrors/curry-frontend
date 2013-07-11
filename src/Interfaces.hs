@@ -101,9 +101,9 @@ compileInterface paths ctxt mEnv m fn = do
 flatToCurryInterface :: EF.Prog -> Interface
 flatToCurryInterface (EF.Prog m imps ts fs os)
   = Interface (fromModuleName m) (map genIImportDecl imps) $ concat
-    [ map genITypeDecl $ filter (not . isSpecialPreludeType) ts
-    , map genIFuncDecl fs
-    , map genIOpDecl os
+    [ concatMap genITypeDecl $ filter (not . isSpecialPreludeType) ts
+    , concatMap genIFuncDecl fs
+    , map genIInfixDecl os
     ]
   where
   pos = first m
@@ -111,20 +111,24 @@ flatToCurryInterface (EF.Prog m imps ts fs os)
   genIImportDecl :: String -> IImportDecl
   genIImportDecl = IImportDecl pos . fromModuleName
 
-  genITypeDecl :: EF.TypeDecl -> IDecl
-  genITypeDecl (EF.Type qn _ is cs)
-    | recordExt `isPrefixOf` EF.localName qn
-    = ITypeDecl pos (genQualIdent qn)
-        (map genVarIndexIdent is)
-        (RecordType (map genLabeledType cs) Nothing)
-    | otherwise
-    = IDataDecl pos (genQualIdent qn)
-        (map genVarIndexIdent is)
-        (map (Just . genConstrDecl) cs)
-  genITypeDecl (EF.TypeSyn qn _ is t)
-    = ITypeDecl pos (genQualIdent qn)
-        (map genVarIndexIdent is)
-        (genTypeExpr t)
+  genITypeDecl :: EF.TypeDecl -> [IDecl]
+  genITypeDecl (EF.Type qn vis is cs)
+    | vis == EF.Private = []
+    | isRecord qn       = [ ITypeDecl pos (genQualIdent qn)
+                            (map genVarIndexIdent is)
+                            (RecordType (map genLabeledType cs) Nothing)
+                          ]
+    | otherwise         = [ IDataDecl pos (genQualIdent qn)
+                            (map genVarIndexIdent is)
+                            (map genConstrDecl cs)
+                          ]
+    where isRecord n = recordExt `isPrefixOf` EF.localName n
+  genITypeDecl (EF.TypeSyn qn vis is t)
+    | vis == EF.Private = []
+    | otherwise         = [ ITypeDecl pos (genQualIdent qn)
+                            (map genVarIndexIdent is)
+                            (genTypeExpr t)
+                          ]
 
   genLabeledType :: EF.ConsDecl -> ([Ident], TypeExpr)
   genLabeledType (EF.Cons qn _ _ [t])
@@ -133,24 +137,25 @@ flatToCurryInterface (EF.Prog m imps ts fs os)
   genLabeledType _ = internalError
     "Interfaces.genLabeledType: not exactly one type expression"
 
-  genConstrDecl :: EF.ConsDecl -> ConstrDecl
-  genConstrDecl (EF.Cons qn _ _ ts1)
-    = ConstrDecl pos [] (mkIdent (EF.localName qn)) (map genTypeExpr ts1)
+  genConstrDecl :: EF.ConsDecl -> Maybe ConstrDecl
+  genConstrDecl (EF.Cons qn _ vis tys)
+    | vis == EF.Private = Nothing
+    | otherwise         = Just $ ConstrDecl pos [] (mkIdent (EF.localName qn))
+                                                   (map genTypeExpr tys)
 
-  genIFuncDecl :: EF.FuncDecl -> IDecl
-  genIFuncDecl (EF.Func qn a _ t _)
-    = IFunctionDecl pos (genQualIdent qn) a (genTypeExpr t)
+  genIFuncDecl :: EF.FuncDecl -> [IDecl]
+  genIFuncDecl (EF.Func qn a vis t _)
+    | vis == EF.Private = []
+    | otherwise         = [IFunctionDecl pos (genQualIdent qn) a (genTypeExpr t)]
 
-  genIOpDecl :: EF.OpDecl -> IDecl
-  genIOpDecl (EF.Op qn f p) = IInfixDecl pos (genInfix f) p (genQualIdent qn)
+  genIInfixDecl :: EF.OpDecl -> IDecl
+  genIInfixDecl (EF.Op qn f p) = IInfixDecl pos (genInfix f) p (genQualIdent qn)
 
   genTypeExpr :: EF.TypeExpr -> TypeExpr
-  genTypeExpr (EF.TVar i)
-    = VariableType (genVarIndexIdent i)
-  genTypeExpr (EF.FuncType t1 t2)
-    = ArrowType (genTypeExpr t1) (genTypeExpr t2)
-  genTypeExpr (EF.TCons qn ts1)
-    = ConstructorType (genQualIdent qn) (map genTypeExpr ts1)
+  genTypeExpr (EF.TVar         i) = VariableType (genVarIndexIdent i)
+  genTypeExpr (EF.FuncType t1 t2) = ArrowType (genTypeExpr t1) (genTypeExpr t2)
+  genTypeExpr (EF.TCons   qn ts1) = ConstructorType (genQualIdent qn)
+                                                    (map genTypeExpr ts1)
 
   genInfix :: EF.Fixity -> Infix
   genInfix EF.InfixOp  = Infix
