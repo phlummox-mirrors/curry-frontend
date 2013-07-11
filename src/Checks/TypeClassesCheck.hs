@@ -1222,8 +1222,10 @@ createInstance d cls =
 createEqOrOrdInstance :: Decl      -- ^ the data/newtype declaration 
                       -> Ident     -- ^ the "==" or the "<=" operator
                       -> QualIdent -- ^ the class for which the instance is build
-                      -- | the generation function for the right hand sides of the equations
-                      -> (Position -> Ident -> Ident -> Int -> Int -> [Ident] -> [Ident] -> Rhs)
+                      -- | the generation function for the right hand sides of the equations. 
+                      -- Takes the two constructors and their positions in the 
+                      -- data declaration, as well as the arities of the constructors 
+                      -> (Position -> (Ident, Int) -> (Ident, Int) -> Int -> Int -> [Ident] -> [Ident] -> Rhs)
                       -> String  -- ^ the prefix to be used for parameters
                       -> Decl    -- ^ the resulting instance declaration
 createEqOrOrdInstance (DataDecl p ty dataVars cons _) op clsIdent genRhs prefix = 
@@ -1239,26 +1241,28 @@ createEqOrOrdInstance (DataDecl p ty dataVars cons _) op clsIdent genRhs prefix 
   
   eqs = concatMap (\(c, n) -> map (\(c', n') -> genEq c c' n n') cons') cons' 
   
-  cons' = map getCon cons
+  -- record the respective number for each constructor, because we need the order of 
+  -- the constructors for the Ord instance
+  cons' = map getCon (zip [0..] cons)
   
   -- |get the data constructor and its arity from the given constructor declaration
-  getCon :: ConstrDecl -> (Ident, Int)
-  getCon (ConstrDecl _ _ c tes) = (c, length tes)
-  getCon (ConOpDecl _ _ _ c _) = (c, 2)
+  getCon :: (Int, ConstrDecl) -> ((Ident, Int), Int)
+  getCon (i, ConstrDecl _ _ c tes) = ((c, i), length tes)
+  getCon (i, ConOpDecl  _ _ _ c _) = ((c, i), 2)
   
   -- |generate for each constructor pair (C_i, C_j) an equation. If C_i == C_j, 
   -- then compare the parameters of the constructors, else return False. 
   -- Note: here for /all/ constructor pairs must an equation be created, 
   -- else we would get overlapping rules and thus unwanted non-determinism. 
-  genEq :: Ident -> Ident -> Int -> Int -> Equation 
-  genEq c c' n n' = Equation p 
+  genEq :: (Ident, Int) -> (Ident, Int) -> Int -> Int -> Equation 
+  genEq (c, i) (c', i') n n' = Equation p 
       (FunLhs op [ConstructorPattern (qualify c) (map VariablePattern newVars), 
                   ConstructorPattern (qualify c') (map VariablePattern newVars')])
-      (genRhs p c c' n n' newVars newVars') 
+      (genRhs p (c, i) (c', i') n n' newVars newVars') 
     where
     newVars  = map (mkIdent . makeName) [1..n]
     newVars' = map (mkIdent . (++ "'") . makeName) [1..n']
-    makeName i = prefix ++ show c ++ sep ++ show c' ++ sep ++ show i
+    makeName i0 = prefix ++ show c ++ sep ++ show c' ++ sep ++ show i0
 
 createEqOrOrdInstance (NewtypeDecl p ty vars (NewConstrDecl p' vars' id' ty') d) 
                        op clsIdent genRhs prefix =
@@ -1273,8 +1277,8 @@ createEqInstance :: Decl -> Decl
 createEqInstance d = createEqOrOrdInstance d eqOp eqClsIdentTmp genEqRhs deriveEqPrefix
 
 -- |generates the right hand sides used in the derived Eq instance  
-genEqRhs :: Position -> Ident -> Ident -> Int -> Int -> [Ident] -> [Ident] -> Rhs
-genEqRhs p c c' n _n' newVars newVars' = 
+genEqRhs :: Position -> (Ident, Int) -> (Ident, Int) -> Int -> Int -> [Ident] -> [Ident] -> Rhs
+genEqRhs p (c, _) (c', _) n _n' newVars newVars' = 
   SimpleRhs p (if c == c' then compareExpr else Constructor $ qualify falseCons) []
   where
   -- |creates the comparison expression for the parameters of the constructors
@@ -1294,10 +1298,14 @@ createOrdInstance :: Decl -> Decl
 createOrdInstance d = createEqOrOrdInstance d leqOp ordClsIdentTmp genOrdRhs deriveOrdPrefix
 
 -- |generates the right hand sides used in the derived Ord instance
-genOrdRhs :: Position -> Ident -> Ident -> Int -> Int -> [Ident] -> [Ident] -> Rhs
-genOrdRhs p c c' n n' newVars newVars' = 
-  -- TODO! 
-  SimpleRhs p (Constructor $ qualify falseCons) []
+genOrdRhs :: Position -> (Ident, Int) -> (Ident, Int) -> Int -> Int -> [Ident] -> [Ident] -> Rhs
+genOrdRhs p (c, i) (c', i') n n' newVars newVars' = 
+  SimpleRhs p 
+    (if i < i' 
+     then Constructor $ qualify trueCons
+     else if i > i'
+     then Constructor $ qualify falseCons
+     else Constructor $ qualify falseCons) [] -- TODO
 
 -- ---------------------------------------------------------------------------
 
