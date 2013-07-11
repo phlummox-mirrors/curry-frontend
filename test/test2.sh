@@ -1,6 +1,5 @@
 
 cymake=../dist/build/cymake/cymake
-cymake_orig=../dist/build/cymake/cymake_orig
 
 rm -f output_test2_stderr.txt
 rm -f output_test2_stdout.txt
