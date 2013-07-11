@@ -228,9 +228,6 @@ constrType' :: ModuleIdent -> [Ident] -> [Ident] -> TypeExpr -> ExistTypeScheme
 constrType' m tvs evs ty = ForAllExist (length tvs) (length evs)
                                        (toQualType m tvs ty)
 
-qualifyLike :: QualIdent -> Ident -> QualIdent
-qualifyLike x = maybe qualify qualifyWith (qidModule x)
-
 bindRecordLabels :: ModuleIdent -> QualIdent -> ([Ident], TypeExpr)
                  -> ExpValueEnv -> ExpValueEnv
 bindRecordLabels m r (ls, ty) env = foldr bindLbl env ls

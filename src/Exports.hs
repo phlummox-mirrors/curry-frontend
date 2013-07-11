@@ -68,8 +68,7 @@ exportInterface' (Module _ Nothing _ _) _ _ _
 infixDecl :: ModuleIdent -> OpPrecEnv -> Export -> [IDecl] -> [IDecl]
 infixDecl m pEnv (Export             f) ds = iInfixDecl m pEnv f ds
 infixDecl m pEnv (ExportTypeWith tc cs) ds =
-  foldr (iInfixDecl m pEnv . qualifyLike (qidModule tc)) ds cs
-  where qualifyLike = maybe qualify qualifyWith
+  foldr (iInfixDecl m pEnv . qualifyLike tc) ds cs
 infixDecl _ _ _ _ = internalError "Exports.infixDecl: no pattern match"
 
 iInfixDecl :: ModuleIdent -> OpPrecEnv -> QualIdent -> [IDecl] -> [IDecl]
