@@ -105,7 +105,8 @@ exportCheck env (Module m es is ds)
   | null msgs = CheckSuccess (env, Module m es' is ds)
   | otherwise = CheckFailed msgs
   where (es', msgs) = EC.exportCheck (moduleIdent env) (aliasEnv env)
-                                     (tyConsEnv env) (valueEnv env) es
+                                     (tyConsEnv env) (valueEnv env) 
+                                     (classEnv env) es
 
 -- TODO: Which kind of warnings?
 

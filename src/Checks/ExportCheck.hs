@@ -20,19 +20,20 @@ import Base.Utils (findMultiples)
 import Env.ModuleAlias (AliasEnv)
 import Env.TypeConstructor
 import Env.Value
+import Env.ClassEnv
 
 -- ---------------------------------------------------------------------------
 -- Check and expansion of the export statement
 -- ---------------------------------------------------------------------------
 
-exportCheck :: ModuleIdent -> AliasEnv -> TCEnv -> ValueEnv
+exportCheck :: ModuleIdent -> AliasEnv -> TCEnv -> ValueEnv -> ClassEnv
             -> Maybe ExportSpec -> (Maybe ExportSpec, [Message])
-exportCheck m aEnv tcEnv tyEnv spec = case expErrs of
+exportCheck m aEnv tcEnv tyEnv cEnv spec = case expErrs of
   [] -> (Just $ Exporting NoPos exports, ambiErrs)
   ms -> (spec, ms)
   where
   (exports, expErrs) = runECM (joinExports `liftM` expandSpec spec) initState
-  initState          = ECState m imported tcEnv tyEnv []
+  initState          = ECState m imported tcEnv tyEnv cEnv []
   imported           = Set.fromList $ Map.elems aEnv
 
   ambiErrs = map errMultipleExportType  (findMultiples exportedTypes)
@@ -47,6 +48,7 @@ data ECState = ECState
   , importedMods :: Set.Set ModuleIdent
   , tyConsEnv    :: TCEnv
   , valueEnv     :: ValueEnv
+  , classEnv     :: ClassEnv
   , errors       :: [Message]
   }
 
@@ -66,6 +68,9 @@ getTyConsEnv = S.gets tyConsEnv
 
 getValueEnv :: ECM ValueEnv
 getValueEnv = S.gets valueEnv
+
+getClassEnv :: ECM ClassEnv
+getClassEnv = S.gets classEnv
 
 report :: Message -> ECM ()
 report err = S.modify (\ s -> s { errors = err : errors s })
