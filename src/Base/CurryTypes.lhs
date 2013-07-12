@@ -15,6 +15,7 @@ order of type variables in the left hand side of a type declaration.
 > module Base.CurryTypes
 >  ( toQualType, toQualTypes, toType, toTypes, fromQualType, fromType
 >  , toTypeAndGetMap, toConstrType, toConstrTypes, fromContext
+>  , fromType'
 >  ) where
 
 > import Data.List (nub)
@@ -110,24 +111,30 @@ order of type variables in the left hand side of a type declaration.
 > fromQualType :: ModuleIdent -> Type -> CS.TypeExpr
 > fromQualType m = fromType . unqualifyType m
 
+> -- |converts a "Type" into a "TypeExpr"
 > fromType :: Type -> CS.TypeExpr
-> fromType (TypeConstructor tc tys)
+> fromType = fromType' identSupply
+
+> -- |converts a "Type" into a "TypeExpr", using the given identifier supply. 
+> -- each variable @i@ is replaced by @supply !! i@  
+> fromType' :: [Ident] -> Type -> CS.TypeExpr
+> fromType' supply (TypeConstructor tc tys)
 >   | isTupleId c                    = CS.TupleType tys'
 >   | c == unitId && null tys        = CS.TupleType []
 >   | c == listId && length tys == 1 = CS.ListType (head tys')
 >   | otherwise                      = CS.ConstructorType tc tys'
 >   where c    = unqualify tc
->         tys' = map fromType tys
-> fromType (TypeVariable tv)         = CS.VariableType
->    (if tv >= 0 then identSupply !! tv else mkIdent ('_' : show (-tv)))
-> fromType (TypeConstrained tys _)   = fromType (head tys)
-> fromType (TypeArrow     ty1 ty2)   =
->   CS.ArrowType (fromType ty1) (fromType ty2)
-> fromType (TypeSkolem          k)   =
+>         tys' = map (fromType' supply) tys
+> fromType' supply (TypeVariable tv)         = CS.VariableType
+>    (if tv >= 0 then supply !! tv else mkIdent ('_' : show (-tv)))
+> fromType' supply (TypeConstrained tys _)   = fromType' supply (head tys)
+> fromType' supply (TypeArrow     ty1 ty2)   =
+>   CS.ArrowType (fromType' supply ty1) (fromType' supply ty2)
+> fromType' _supply (TypeSkolem          k)   =
 >   CS.VariableType $ mkIdent $ "_?" ++ show k
-> fromType (TypeRecord     fs rty)   = CS.RecordType
->   (map (\ (l, ty) -> ([l], fromType ty)) fs)
->   ((fromType . TypeVariable) `fmap` rty)
+> fromType' supply (TypeRecord     fs rty)   = CS.RecordType
+>   (map (\ (l, ty) -> ([l], fromType' supply ty)) fs)
+>   ((fromType' supply . TypeVariable) `fmap` rty)
 
 > fromContext :: BT.Context -> CS.Context
 > fromContext cx = CS.Context $ map fromCx cx
