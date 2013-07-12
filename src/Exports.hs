@@ -95,6 +95,7 @@ typeDecl m tcEnv (ExportTypeWith tc cs) ds = case qualLookupTC tc tcEnv of
         let ty' = TypeRecord (filter (\ (l,_) -> elem l cs) fs) Nothing
         in  iTypeDecl ITypeDecl m tc' n (fromQualType m ty') : ds
     _ -> iTypeDecl ITypeDecl m tc' n (fromQualType m ty) : ds
+  [] -> ds -- **** TODO ****
   _ -> internalError "Exports.typeDecl"
 typeDecl _ _ _ _ = internalError "Exports.typeDecl: no pattern match"
 

@@ -14,7 +14,7 @@ import Curry.Syntax
 
 import Base.Messages (Message, internalError, posMessage)
 import Base.TopEnv
-import Base.Types
+import Base.Types hiding (isTyCons)
 import Base.Utils (findMultiples)
 
 import Env.ModuleAlias (AliasEnv)
@@ -98,17 +98,42 @@ expandSpec (Just (Exporting _ es)) = concat `liftM` mapM expandExport es
 -- |Expand single export
 expandExport :: Export -> ECM [Export]
 expandExport (Export             x) = expandThing x
-expandExport (ExportTypeWith tc cs) = expandTypeWith tc cs
-expandExport (ExportTypeAll     tc) = expandTypeAll tc
+expandExport (ExportTypeWith tc cs) = do
+  tcEnv <- getTyConsEnv
+  cEnv <- getClassEnv
+  let isTyCons = not $ null $ qualLookupTC tc tcEnv
+      isClass = not $ null $ lookupClass' cEnv tc 
+  case () of
+    () | isTyCons     && isClass     -> report (errAmbiguousType tc) >> return []
+    () | isTyCons     && not isClass -> expandTypeWith tc cs
+    () | not isTyCons && isClass     -> expandClassWith tc cs
+    () | otherwise                   -> report (errUndefinedType tc) >> return []
+expandExport (ExportTypeAll     tc) = do
+  tcEnv <- getTyConsEnv
+  cEnv <- getClassEnv
+  let isTyCons = not $ null $ qualLookupTC tc tcEnv
+      isClass = not $ null $ lookupClass' cEnv tc 
+  case () of
+    () | isTyCons     && isClass     -> report (errAmbiguousType tc) >> return []
+    () | isTyCons     && not isClass -> expandTypeAll tc
+    () | not isTyCons && isClass     -> expandClassAll tc
+    () | otherwise                   -> report (errUndefinedType tc) >> return []
 expandExport (ExportModule      em) = expandModule em
 
--- |Expand export of type cons / data cons / function
+-- |Expand export of type cons / class / data cons / function
 expandThing :: QualIdent -> ECM [Export]
 expandThing tc = do
   tcEnv <- getTyConsEnv
+  cEnv <- getClassEnv
   case qualLookupTC tc tcEnv of
-    []  -> expandThing' tc Nothing
-    [t] -> expandThing' tc (Just [ExportTypeWith (origName t) []])
+    []  -> case lookupClass' cEnv tc of
+      []  -> expandThing' tc Nothing
+      [c] -> expandThing' tc (Just [ExportTypeWith (theClass c) []])
+      _   -> report (errAmbiguousType tc) >> return [] 
+    [t] -> case lookupClass' cEnv tc of
+      [] -> expandThing' tc (Just [ExportTypeWith (origName t) []])
+      -- TODO: export both class and type constructor?
+      _  -> report (errAmbiguousType tc) >> return []  
     _   -> report (errAmbiguousType tc) >> return []
 
 -- |Expand export of data cons / function
@@ -149,6 +174,22 @@ expandTypeWith tc cs = do
   checkLabel ls l   = unless (renameLabel l `elem` ls)
                       (report $ errUndefinedLabel tc l)
 
+-- |Expands class with explicitely given methods for exporting
+expandClassWith :: QualIdent -> [Ident] -> ECM [Export]
+expandClassWith cls fs = do
+  cEnv <- getClassEnv
+  case lookupClass' cEnv cls of
+    [] -> report (errUndefinedType cls) >> return []
+    [c] -> do
+      mapM_ (checkIsClassMethod c) fs 
+      return [ExportTypeWith (theClass c) fs]
+    _ -> report (errAmbiguousType cls) >> return []
+  where
+  checkIsClassMethod :: Class -> Ident -> ECM ()
+  checkIsClassMethod c f = 
+    unless (f `elem` (map fst $ typeSchemes c)) $ 
+      report (errNotAClassMethod (theClass c) f)
+
 -- |Expand type constructor with all data constructors
 expandTypeAll :: QualIdent -> ECM [Export]
 expandTypeAll tc = do
@@ -161,6 +202,15 @@ expandTypeAll tc = do
         then return [exportType tyEnv t]
         else report (errNonDataType tc) >> return []
     _   -> report (errAmbiguousType tc) >> return []
+
+-- |Expands class with all class methods
+expandClassAll :: QualIdent -> ECM [Export]
+expandClassAll cls = do
+  cEnv <- getClassEnv
+  case lookupClass' cEnv cls of
+    [] -> report (errUndefinedType cls) >> return []
+    [c] -> return [ExportTypeWith (theClass c) (map fst $ typeSchemes c)]
+    _ -> report (errAmbiguousType cls) >> return []
 
 expandModule :: ModuleIdent -> ECM [Export]
 expandModule em = do
@@ -295,3 +345,7 @@ errUndefinedDataConstr tc c = posMessage c $ hsep $ map text
 errUndefinedLabel :: QualIdent -> Ident -> Message
 errUndefinedLabel r l = posMessage l $ hsep $ map text
   [idName l, "is not a label of the record", qualName r]
+
+errNotAClassMethod :: QualIdent -> Ident -> Message
+errNotAClassMethod cls f = posMessage f $ 
+  text (show f ++ " is not a class method of " ++ show cls)
