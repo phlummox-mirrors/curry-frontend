@@ -189,11 +189,11 @@ checkModule opts (env, mdl) = do
   (env4, tcc) <- typeClassesCheck env3 pc
   (env5,  tc) <- if withTypeCheck
                    -- then typeCheck env4 tcc
-                   then dump DumpTypeClassesChecked (typeCheck False) (env4, tcc)
+                   then dump DumpTypeClassesChecked env4 (typeCheck False) (env4, tcc)
                    else return (env4, tcc)
   let (env5b, dicts) = if withTypeCheck
                          -- then insertDicts env5 tc
-                         then dump DumpTypeChecked insertDicts (env5, tc)
+                         then dump DumpTypeChecked env5 insertDicts (env5, tc)
                          else (env5, tc)
       (env5c, dicts') = if withTypeCheck
                           then typeSigs env5b dicts
@@ -201,11 +201,11 @@ checkModule opts (env, mdl) = do
   (env5d, tc2) <- if withTypeCheck
                     -- take the older environment env4 instead of env5c!
                     -- then typeCheck (env4, dicts')
-                    then dump DumpDictionaries (typeCheck True) (env4, dicts') 
+                    then dump DumpDictionaries env5c (typeCheck True) (env4, dicts') 
                     else return (env5c, dicts') 
   (env6,  ec) <- if withTypeCheck 
                    -- then exportCheck env5d tc2
-                   then dump DumpTypeChecked2 exportCheck (env5d, tc2)
+                   then dump DumpTypeChecked2 env5d exportCheck (env5d, tc2)
                    else return (env5d, tc2)
   (env7,  ql) <- return $ qual opts env6 ec
   let dumps = [ (DumpParsed            , env , show' CS.ppModule mdl)
@@ -225,8 +225,8 @@ checkModule opts (env, mdl) = do
                       [FlatCurry, ExtendedFlatCurry, FlatXml, AbstractCurry]
   show' pp = if optDumpRaw opts then show else show . pp
   
-  dump d check (env0, mdl0) = unsafePerformIO $ 
-    (if doUnsafeDumps then doDump opts (d, env0, show' CS.ppModule mdl0) else return ()) 
+  dump d dEnv check (env0, mdl0) = unsafePerformIO $ 
+    (if doUnsafeDumps then doDump opts (d, dEnv, show' CS.ppModule mdl0) else return ()) 
     >> return (check env0 mdl0)
   doUnsafeDumps = True -- TODO: compiler option for (de)activating this?
 
