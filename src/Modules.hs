@@ -197,22 +197,25 @@ checkModule opts (env, mdl) = do
   (envEc1', ec1') <- if withTypeCheck
                      then return $ qual opts envEc1 ec1
                      else return (envEc1, ec1)
-  let (env5b, dicts) = if withTypeCheck
-                         -- then insertDicts env5 tc
-                         then dump DumpTypeChecked env5 insertDicts (env5, tc)
-                         else (env5, tc)
+  let (env5b,  dicts) = if withTypeCheck
+                          -- then insertDicts env5 tc
+                          then dump DumpTypeChecked env5 insertDicts (env5, tc)
+                          else (env5, tc)
       (env5c, dicts') = if withTypeCheck
                           then typeSigs env5b dicts
                           else (env5b, dicts)
-  (env5d, tc2) <- if withTypeCheck
-                    -- take the older environment env4 instead of env5c!
-                    -- then typeCheck (env4, dicts')
-                    then dump DumpDictionaries env5c (typeCheck True) (env4, dicts') 
-                    else return (env5c, dicts') 
+      (env5d,     es) = if withTypeCheck
+                          then transExportSpec env5c dicts'
+                          else (env5c, dicts') 
+  (env5e, tc2) <- if withTypeCheck
+                    -- take the older environment env4 instead of env5d!
+                    -- then typeCheck (env4, es)
+                    then dump DumpDictionaries env5d (typeCheck True) (env4, es) 
+                    else return (env5d, es) 
   (env6,  ec2) <- if withTypeCheck 
-                   -- then exportCheck env5d tc2
-                   then dump DumpTypeChecked2 env5d exportCheck (env5d, tc2)
-                   else return (env5d, tc2)
+                   -- then exportCheck env5e tc2
+                   then dump DumpTypeChecked2 env5e exportCheck (env5e, tc2)
+                   else return (env5e, tc2)
   (env7,  ql) <- return $ qual opts env6 ec2
   let dumps = [ (DumpParsed            , env , show' CS.ppModule mdl)
               , (DumpKindChecked       , env1, show' CS.ppModule kc)
@@ -220,8 +223,8 @@ checkModule opts (env, mdl) = do
               , (DumpPrecChecked       , env3, show' CS.ppModule pc)
               , (DumpTypeClassesChecked, env4, show' CS.ppModule tcc)
               , (DumpTypeChecked       , env5, show' CS.ppModule tc)
-              , (DumpDictionaries      , env5c, show' CS.ppModule dicts')
-              , (DumpTypeChecked2      , env5d, show' CS.ppModule tc2)
+              , (DumpDictionaries      , env5d, show' CS.ppModule es)
+              , (DumpTypeChecked2      , env5e, show' CS.ppModule tc2)
               , (DumpExportChecked     , env6, show' CS.ppModule ec2)
               , (DumpQualified         , env7, show' CS.ppModule ql)
               ]
