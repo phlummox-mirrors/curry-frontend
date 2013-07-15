@@ -15,6 +15,16 @@ module TestClassExports
   , H (..)
   , I (..)
   , Fun
+  , test4
+  -- not A!
+  , B (B1)
+  , test5
+  , AClass (..)
+  , BClass (..)
+  , J (..)
+  , K (..)
+  , K2 (..)
+  , L (..)
   ) where
 
 test x = 1
@@ -75,3 +85,38 @@ Fun x = x
 
 test3 :: C a => a -> a
 test3 x = x
+
+
+data A a b = A1 a b | A2 a b
+
+test4 :: a -> A a a
+test4 x = A1 x x
+
+data B a b = B1 a b | B2 a b
+
+test5 :: a -> B a a
+test5 x = B1 x x
+
+class AClass a where
+  funAC :: a -> A a a
+
+class BClass a where
+  funBC :: a -> B a a
+  funBC2 :: a -> Int
+  
+
+
+class J a where
+  funJ :: a -> Maybe a
+  -- check later 
+  -- funJ2 :: a -> OtherModule.T a
+
+class K a where
+  funK :: a -> a
+
+class K2 a where
+  funK2 :: a -> Bool
+  
+class (K a, K2 a) => L a where
+  funL :: a -> a
+

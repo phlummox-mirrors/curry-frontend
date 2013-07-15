@@ -24,7 +24,7 @@ import Curry.Base.Position
 import Curry.Base.Ident
 import Curry.Syntax
 
-import Base.CurryTypes (fromQualType)
+import Base.CurryTypes (fromQualType, fromQualType')
 import Base.Messages
 import Base.Types
 
@@ -96,8 +96,24 @@ typeDecl m tcEnv cEnv (ExportTypeWith tc cs) ds = case qualLookupTC tc tcEnv of
         let ty' = TypeRecord (filter (\ (l,_) -> elem l cs) fs) Nothing
         in  iTypeDecl ITypeDecl m tc' n (fromQualType m ty') : ds
     _ -> iTypeDecl ITypeDecl m tc' n (fromQualType m ty) : ds
-  [] -> ds -- **** TODO ****
-  _ -> internalError "Exports.typeDecl"
+  [] -> case lookupClass' cEnv tc of
+    -- **** TODO ****: export only the listed class methods and hide the others!
+    -- We cannot simply drop the hidden class methods, because otherwise 
+    -- modules importing the given module would use different dictionaries than
+    -- the dictionaries used in the current module where the class is defined. 
+    -- The dictionaries must always have the same layout, no matter 
+    -- in which module we are. As the layout is determined by the class declaration, 
+    -- the whole class declaration must be exported, also the hidden methods 
+    -- (for these actually the name doesn't need to be exported, important is only 
+    -- the type signature). 
+    [c] -> IClassDecl 
+             NoPos 
+             (map (qualUnqualify m) $ superClasses c)
+             (qualUnqualify m $ theClass c) 
+             (CE.typeVar c) 
+             (map (typeSigToIFunDecl m (CE.typeVar c)) $ typeSchemes c) : ds
+    _ -> internalError "Exports.typeDecl: no class"
+  _ -> internalError "Exports.typeDecl: no type"
 typeDecl _ _ _ _ _ = internalError "Exports.typeDecl: no pattern match"
 
 iTypeDecl :: (Position -> QualIdent -> [Ident] -> a -> IDecl)
@@ -125,6 +141,11 @@ funDecl m tyEnv (Export f) ds = case qualLookupValue f tyEnv of
   _ -> internalError $ "Exports.funDecl: " ++ show f
 funDecl _ _     (ExportTypeWith _ _) ds = ds
 funDecl _ _ _ _ = internalError "Exports.funDecl: no pattern match"
+
+-- |converts a type signature of a class, considering the given class type variable
+typeSigToIFunDecl :: ModuleIdent -> Ident -> (Ident, TypeScheme) -> IDecl
+typeSigToIFunDecl m tyvar (f, ForAll _cx _ ty) 
+  = IFunctionDecl NoPos (qualify f) (arrowArity ty) (fromQualType' [tyvar] m ty) 
 
 -- The compiler determines the list of imported modules from the set of
 -- module qualifiers that are used in the interface. Careful readers
@@ -154,6 +175,7 @@ identsDecl (IDataDecl    _ tc _ cs) xs =
 identsDecl (INewtypeDecl _ tc _ nc) xs = tc : identsNewConstrDecl nc xs
 identsDecl (ITypeDecl    _ tc _ ty) xs = tc : identsType ty xs
 identsDecl (IFunctionDecl _ f _ ty) xs = f  : identsType ty xs
+identsDecl (IClassDecl _ scls cls _ sigs) xs = cls : scls ++ foldr identsDecl xs sigs
 identsDecl _ _ = internalError "Exports.identsDecl: no pattern match"
 
 identsConstrDecl :: ConstrDecl -> [QualIdent] -> [QualIdent]
@@ -201,6 +223,7 @@ usedTypesDecl (IDataDecl     _ _ _ cs) tcs =
 usedTypesDecl (INewtypeDecl  _ _ _ nc) tcs = usedTypesNewConstrDecl nc tcs
 usedTypesDecl (ITypeDecl     _ _ _ ty) tcs = usedTypesType ty tcs
 usedTypesDecl (IFunctionDecl _ _ _ ty) tcs = usedTypesType ty tcs
+usedTypesDecl (IClassDecl _ _ _ _ sigs) tcs = foldr usedTypesDecl tcs sigs
 usedTypesDecl _                        _   = internalError
   "Exports.usedTypesDecl: no pattern match" -- TODO
 
