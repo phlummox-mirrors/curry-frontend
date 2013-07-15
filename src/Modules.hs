@@ -192,8 +192,11 @@ checkModule opts (env, mdl) = do
   -- these are compiled out later, we already here have to set aside the
   -- export checked module and the environment 
   (envEc1, ec1) <- if withTypeCheck 
-                   then exportCheck env5 tc -- TODO execute qual after this? 
+                   then exportCheck env5 tc
                    else return (env5, tc)
+  (envEc1', ec1') <- if withTypeCheck
+                     then return $ qual opts envEc1 ec1
+                     else return (envEc1, ec1)
   let (env5b, dicts) = if withTypeCheck
                          -- then insertDicts env5 tc
                          then dump DumpTypeChecked env5 insertDicts (env5, tc)
@@ -222,7 +225,7 @@ checkModule opts (env, mdl) = do
               , (DumpExportChecked     , env6, show' CS.ppModule ec2)
               , (DumpQualified         , env7, show' CS.ppModule ql)
               ]
-  return (env7, ql, dumps, envEc1, ec1)
+  return (env7, ql, dumps, envEc1', ec1')
   where
   withTypeCheck = any (`elem` optTargetTypes opts)
                       [FlatCurry, ExtendedFlatCurry, FlatXml, AbstractCurry]
