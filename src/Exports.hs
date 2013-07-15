@@ -31,6 +31,7 @@ import Base.Types
 import Env.OpPrec          (OpPrecEnv, PrecInfo (..), OpPrec (..), qualLookupP)
 import Env.TypeConstructor (TCEnv, TypeInfo (..), qualLookupTC)
 import Env.Value           (ValueEnv, ValueInfo (..), qualLookupValue)
+import Env.ClassEnv as CE
 
 import CompilerEnv
 
@@ -52,17 +53,17 @@ import CompilerEnv
 
 exportInterface :: CompilerEnv -> Module -> Interface
 exportInterface env mdl = exportInterface' mdl
-  (opPrecEnv env) (tyConsEnv env) (valueEnv env)
+  (opPrecEnv env) (tyConsEnv env) (valueEnv env) (classEnv env)
 
-exportInterface' :: Module -> OpPrecEnv -> TCEnv -> ValueEnv -> Interface
-exportInterface' (Module m (Just (Exporting _ es)) _ _) pEnv tcEnv tyEnv
+exportInterface' :: Module -> OpPrecEnv -> TCEnv -> ValueEnv -> ClassEnv -> Interface
+exportInterface' (Module m (Just (Exporting _ es)) _ _) pEnv tcEnv tyEnv cEnv
   = Interface m imports $ precs ++ hidden ++ decls
   where
   imports = map   (IImportDecl NoPos) $ usedModules decls
   precs   = foldr (infixDecl m pEnv) [] es
   hidden  = map   (hiddenTypeDecl m tcEnv) $ hiddenTypes m decls
-  decls   = foldr (typeDecl m tcEnv) (foldr (funDecl m tyEnv) [] es) es
-exportInterface' (Module _ Nothing _ _) _ _ _
+  decls   = foldr (typeDecl m tcEnv cEnv) (foldr (funDecl m tyEnv) [] es) es
+exportInterface' (Module _ Nothing _ _) _ _ _ _
   = internalError "Exports.exportInterface: no export specification"
 
 infixDecl :: ModuleIdent -> OpPrecEnv -> Export -> [IDecl] -> [IDecl]
@@ -78,9 +79,9 @@ iInfixDecl m pEnv op ds = case qualLookupP op pEnv of
     IInfixDecl NoPos fix pr (qualUnqualify m op) : ds
   _                            -> internalError "Exports.infixDecl"
 
-typeDecl :: ModuleIdent -> TCEnv -> Export -> [IDecl] -> [IDecl]
-typeDecl _ _     (Export             _) ds = ds
-typeDecl m tcEnv (ExportTypeWith tc cs) ds = case qualLookupTC tc tcEnv of
+typeDecl :: ModuleIdent -> TCEnv -> ClassEnv -> Export -> [IDecl] -> [IDecl]
+typeDecl _ _     _    (Export             _) ds = ds
+typeDecl m tcEnv cEnv (ExportTypeWith tc cs) ds = case qualLookupTC tc tcEnv of
   [DataType tc' n cs'] ->
     iTypeDecl IDataDecl m tc' n
        (constrDecls m (drop n identSupply) cs cs') : ds
@@ -97,7 +98,7 @@ typeDecl m tcEnv (ExportTypeWith tc cs) ds = case qualLookupTC tc tcEnv of
     _ -> iTypeDecl ITypeDecl m tc' n (fromQualType m ty) : ds
   [] -> ds -- **** TODO ****
   _ -> internalError "Exports.typeDecl"
-typeDecl _ _ _ _ = internalError "Exports.typeDecl: no pattern match"
+typeDecl _ _ _ _ _ = internalError "Exports.typeDecl: no pattern match"
 
 iTypeDecl :: (Position -> QualIdent -> [Ident] -> a -> IDecl)
            -> ModuleIdent -> QualIdent -> Int -> a -> IDecl
