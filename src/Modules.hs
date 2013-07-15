@@ -32,7 +32,7 @@ import Curry.Files.Filenames
 import Curry.Files.PathUtils
 
 import Base.Messages
-  (Message, message, posMessage, warn, abortWithMessages)
+  (Message, message, posMessage, warn, abortWithMessages, internalError)
 import Env.Interface
 
 -- source representations
@@ -302,11 +302,16 @@ writeInterface opts fn intf
         Nothing  -> outputInterface
         Just src -> case runMsg (CS.parseInterface interfaceFile src) of
           Left  _     -> outputInterface
-          Right (i,_) -> unless (intf `intfEquiv` fixInterface i) outputInterface
+          -- **** TODO ****
+          Right ([i,_],_) -> unless (intf `intfEquiv` fixInterface i) outputInterface
+          Right (_, _) -> internalError "writeInterface"
   where
   interfaceFile   = interfName fn
   outputInterface = writeModule (optUseSubdir opts) interfaceFile
-                    (show $ CS.ppInterface intf)
+                    -- **** TODO ****
+                    (show 
+                      (CS.ppInterface "interface" intf
+                        $$ CS.ppInterface "interfaceTypeClasses" intf))
 
 writeFlat :: Options -> FilePath -> CompilerEnv -> ModuleSummary -> IL.Module
           -> IO ()

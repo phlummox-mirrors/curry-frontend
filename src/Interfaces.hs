@@ -111,7 +111,7 @@ compileInterface ctxt (p, m) fn = do
     Nothing  -> report $ errInterfaceNotFound p m
     Just src -> case runMsg $ parseInterface fn src of
       Left err -> report err
-      Right (intf@(Interface n is _), _) ->
+      Right ([intf@(Interface n is _), _], _) -> -- **** TODO **** 
         if (m /= n)
           then report $ errWrongInterface (first fn) m n
           else do
@@ -119,6 +119,7 @@ compileInterface ctxt (p, m) fn = do
             mapM_ report intfErrs
             mapM_ (loadInterface (m : ctxt)) [ (q, i) | IImportDecl q i <- is ]
             addInterface m intf'
+      Right (_, _) -> internalError "compileInterface"
 
 -- Error message for required interface that could not be found.
 errInterfaceNotFound :: Position -> ModuleIdent -> Message
