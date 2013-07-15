@@ -2,6 +2,7 @@
 module TestClassExports
   ( test
   , test2
+  , test3
   , T (..)
   , S (S1)
   , U (U2)
@@ -70,3 +71,7 @@ Fun x = x
 -- data Fun2 a = Fun2 a
 
 -- Fun2 x = x
+
+
+test3 :: C a => a -> a
+test3 x = x

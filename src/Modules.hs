@@ -89,10 +89,10 @@ compileModule opts fn = do
   when (not . null $ filter (/= Parsed) (optTargetTypes opts))
     (case checkModule opts loaded of
       CheckFailed errs -> abortWithMessages errs
-      CheckSuccess (env, mdl, dumps) -> do
+      CheckSuccess (env, mdl, dumps, tcExportEnv, tcExportMdl) -> do
         warn opts $ warnCheck env mdl
         mapM_ (doDump opts) dumps
-        writeOutput opts fn (env, mdl))
+        writeOutput opts fn (env, mdl) (tcExportEnv, tcExportMdl))
 
 -- ---------------------------------------------------------------------------
 -- Loading a module
@@ -174,8 +174,11 @@ checkInterface opts iEnv intf = interfaceCheck env intf
 -- TODO (2012-01-05, bjp): The export specification check for untyped
 --   AbstractCurry is deactivated as it requires the value information
 --   collected by the type checker.
+-- CheckModule returns two export checked modules + the corresponding
+-- environments: One still with type class elements, the second without 
+-- type class elements. 
 checkModule :: Options -> (CompilerEnv, CS.Module)
-            -> CheckResult (CompilerEnv, CS.Module, [Dump])
+            -> CheckResult (CompilerEnv, CS.Module, [Dump], CompilerEnv, CS.Module)
 checkModule opts (env, mdl) = do
   (env1,  kc) <- kindCheck env mdl -- should be only syntax checking ?
   (env2,  sc) <- syntaxCheck opts env1 kc
@@ -185,6 +188,12 @@ checkModule opts (env, mdl) = do
                    -- then typeCheck env4 tcc
                    then dump DumpTypeClassesChecked env4 (typeCheck False) (env4, tcc)
                    else return (env4, tcc)
+  -- Run an export check here for exporting type class specific elements. As
+  -- these are compiled out later, we already here have to set aside the
+  -- export checked module and the environment 
+  (envEc1, ec1) <- if withTypeCheck 
+                   then exportCheck env5 tc -- TODO execute qual after this? 
+                   else return (env5, tc)
   let (env5b, dicts) = if withTypeCheck
                          -- then insertDicts env5 tc
                          then dump DumpTypeChecked env5 insertDicts (env5, tc)
@@ -197,11 +206,11 @@ checkModule opts (env, mdl) = do
                     -- then typeCheck (env4, dicts')
                     then dump DumpDictionaries env5c (typeCheck True) (env4, dicts') 
                     else return (env5c, dicts') 
-  (env6,  ec) <- if withTypeCheck 
+  (env6,  ec2) <- if withTypeCheck 
                    -- then exportCheck env5d tc2
                    then dump DumpTypeChecked2 env5d exportCheck (env5d, tc2)
                    else return (env5d, tc2)
-  (env7,  ql) <- return $ qual opts env6 ec
+  (env7,  ql) <- return $ qual opts env6 ec2
   let dumps = [ (DumpParsed            , env , show' CS.ppModule mdl)
               , (DumpKindChecked       , env1, show' CS.ppModule kc)
               , (DumpSyntaxChecked     , env2, show' CS.ppModule sc)
@@ -210,10 +219,10 @@ checkModule opts (env, mdl) = do
               , (DumpTypeChecked       , env5, show' CS.ppModule tc)
               , (DumpDictionaries      , env5c, show' CS.ppModule dicts')
               , (DumpTypeChecked2      , env5d, show' CS.ppModule tc2)
-              , (DumpExportChecked     , env6, show' CS.ppModule ec)
+              , (DumpExportChecked     , env6, show' CS.ppModule ec2)
               , (DumpQualified         , env7, show' CS.ppModule ql)
               ]
-  return (env7, ql, dumps)
+  return (env7, ql, dumps, envEc1, ec1)
   where
   withTypeCheck = any (`elem` optTargetTypes opts)
                       [FlatCurry, ExtendedFlatCurry, FlatXml, AbstractCurry]
@@ -254,8 +263,9 @@ transModule opts env mdl = (env5, ilCaseComp, dumps)
 -- Writing output
 -- ---------------------------------------------------------------------------
 
-writeOutput :: Options -> FilePath -> (CompilerEnv, CS.Module) -> IO ()
-writeOutput opts fn (env, modul) = do
+writeOutput :: Options -> FilePath -> (CompilerEnv, CS.Module) 
+            -> (CompilerEnv, CS.Module) -> IO ()
+writeOutput opts fn (env, modul) (tcExportEnv, tcExportModule) = do
   writeParsed        opts fn     modul
   writeAbstractCurry opts fn env modul
   when withFlat $ do
@@ -267,7 +277,8 @@ writeOutput opts fn (env, modul) = do
     mapM_ (doDump opts) dumps
     -- generate interface file
     let intf = exportInterface env2 modul
-    writeInterface opts fn intf
+        tcIntf = exportInterface tcExportEnv tcExportModule
+    writeInterfaces opts fn [intf, tcIntf]
     -- generate target code
     let modSum = summarizeModule (tyConsEnv env2) intf modul
     writeFlat opts fn env2 modSum il
@@ -292,8 +303,8 @@ writeParsed opts fn modul = when srcTarget $
   targetFile = fromMaybe (sourceRepName fn) (optOutput opts)
   source     = CS.showModule modul
 
-writeInterface :: Options -> FilePath -> CS.Interface -> IO ()
-writeInterface opts fn intf
+writeInterfaces :: Options -> FilePath -> [CS.Interface] -> IO ()
+writeInterfaces opts fn [intf, intfTC]
   | not (optInterface opts) = return () -- TODO: reasonable?
   | optForce opts           = outputInterface
   | otherwise               = do
@@ -302,8 +313,9 @@ writeInterface opts fn intf
         Nothing  -> outputInterface
         Just src -> case runMsg (CS.parseInterface interfaceFile src) of
           Left  _     -> outputInterface
-          -- **** TODO ****
-          Right ([i,_],_) -> unless (intf `intfEquiv` fixInterface i) outputInterface
+          Right ([i, itc], _) -> 
+            unless (intf `intfEquiv` fixInterface i 
+                 && intfTC `intfEquiv` fixInterface itc) outputInterface
           Right (_, _) -> internalError "writeInterface"
   where
   interfaceFile   = interfName fn
@@ -311,7 +323,8 @@ writeInterface opts fn intf
                     -- **** TODO ****
                     (show 
                       (CS.ppInterface "interface" intf
-                        $$ CS.ppInterface "interfaceTypeClasses" intf))
+                        $$ CS.ppInterface "interfaceTypeClasses" intfTC))
+writeInterfaces _ _ _ = internalError "writeInterfaces"
 
 writeFlat :: Options -> FilePath -> CompilerEnv -> ModuleSummary -> IL.Module
           -> IO ()
