@@ -15,7 +15,7 @@ order of type variables in the left hand side of a type declaration.
 > module Base.CurryTypes
 >  ( toQualType, toQualTypes, toType, toTypes, fromQualType, fromType
 >  , toTypeAndGetMap, toConstrType, toConstrTypes, fromContext
->  , fromType'
+>  , fromType', fromQualType'
 >  ) where
 
 > import Data.List (nub)
@@ -109,7 +109,10 @@ order of type variables in the left hand side of a type declaration.
 >         _ -> internalError $ "Base.CurryTypes.toType' " ++ show ty
 
 > fromQualType :: ModuleIdent -> Type -> CS.TypeExpr
-> fromQualType m = fromType . unqualifyType m
+> fromQualType = fromQualType' identSupply
+
+> fromQualType' :: [Ident] -> ModuleIdent -> Type -> CS.TypeExpr
+> fromQualType' supply m = fromType' supply . unqualifyType m
 
 > -- |converts a "Type" into a "TypeExpr"
 > fromType :: Type -> CS.TypeExpr
