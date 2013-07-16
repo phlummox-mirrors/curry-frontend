@@ -34,7 +34,7 @@ import Curry.Base.Ident
 import Curry.Base.Position
 import Curry.Syntax as CS
 
-import Base.CurryTypes (fromQualType)
+import Base.CurryTypes (fromQualType, fromContext)
 import Base.Messages (internalError)
 import Base.TopEnv
 import Base.Types as BT
@@ -172,7 +172,7 @@ ppTypes mid valueEnv = ppTypes' mid $ localBindings valueEnv
   ppTypes' m = vcat . map (ppIDecl . mkDecl) . filter (isValue . snd)
     where
     mkDecl (v, Value _ a (ForAll cx _ ty)) =
-      IFunctionDecl NoPos (qualify v) a (fromQualType m ty)
+      IFunctionDecl NoPos (qualify v) a (fromContext cx) (fromQualType m ty)
     mkDecl _ = internalError "Env.Value.ppTypes: no value"
     isValue (Value _ _ _) = True
     isValue _             = False

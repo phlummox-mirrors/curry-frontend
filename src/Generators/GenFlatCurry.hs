@@ -353,7 +353,7 @@ visitBinding (IL.Binding v e) = liftM2 (,) (lookupVarIndex v) (visitExpression e
 
 --
 visitFuncIDecl :: CS.IDecl -> FlatState FuncDecl
-visitFuncIDecl (CS.IFunctionDecl _ f a ty) = do
+visitFuncIDecl (CS.IFunctionDecl _ f a _ ty) = do
   texpr <- visitType $ snd $ cs2ilType [] ty
   qname <- visitQualIdent f
   return $ Func qname a Public texpr (Rule [] (Var $ mkIdx 0))
@@ -499,7 +499,7 @@ isExportedIDecl exprts (CS.IDataDecl _ qident _ _)
   = isExportedQualIdent qident exprts
 isExportedIDecl exprts (CS.ITypeDecl _ qident _ _)
   = isExportedQualIdent qident exprts
-isExportedIDecl exprts (CS.IFunctionDecl _ qident _ _)
+isExportedIDecl exprts (CS.IFunctionDecl _ qident _ _ _)
   = isExportedQualIdent qident exprts
 isExportedIDecl _ _ = False
 
@@ -525,8 +525,8 @@ qualifyIDecl mident (CS.INewtypeDecl pos qident idents ncdecl)
   = (CS.INewtypeDecl pos (qualQualify mident qident) idents ncdecl)
 qualifyIDecl mident (CS.ITypeDecl pos qident idents texpr)
   = (CS.ITypeDecl pos (qualQualify mident qident) idents texpr)
-qualifyIDecl mident (CS.IFunctionDecl pos qident arity texpr)
-  = (CS.IFunctionDecl pos (qualQualify mident qident) arity (qualifyCSType texpr))
+qualifyIDecl mident (CS.IFunctionDecl pos qident arity cx texpr)
+  = (CS.IFunctionDecl pos (qualQualify mident qident) arity cx (qualifyCSType texpr))
   where qualifyCSType = fromType . toQualType mident []
 qualifyIDecl _ idecl = idecl
 
@@ -848,8 +848,8 @@ isRecordIDecl _                                            = False
 
 --
 isFuncIDecl :: CS.IDecl -> Bool
-isFuncIDecl (CS.IFunctionDecl _ _ _ _) = True
-isFuncIDecl _                          = False
+isFuncIDecl (CS.IFunctionDecl _ _ _ _ _) = True
+isFuncIDecl _                            = False
 
 --
 isOpIDecl :: CS.IDecl -> Bool
@@ -1071,7 +1071,7 @@ bindEnvIDecl mid env (CS.INewtypeDecl _ qid _ ncdecl)
     (localIdent mid qid)
 bindEnvIDecl mid env (CS.ITypeDecl _ qid _ texpr)
   = maybe env (\ident -> bindEnvITypeDecl env ident texpr) (localIdent mid qid)
-bindEnvIDecl mid env (CS.IFunctionDecl _ qid _ _)
+bindEnvIDecl mid env (CS.IFunctionDecl _ qid _ _ _)
   = maybe env (\ident -> bindIdentExport ident False env) (localIdent mid qid)
 bindEnvIDecl _ env _ = env
 

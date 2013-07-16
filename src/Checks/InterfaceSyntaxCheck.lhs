@@ -78,7 +78,7 @@ The latter must not occur in type expressions in interfaces.
 > bindType (INewtypeDecl   _ tc _ nc) = qualBindTopEnv "" tc (Data tc [nconstr nc])
 >   where nconstr (NewConstrDecl _ _ c _) = c
 > bindType (ITypeDecl       _ tc _ _) = qualBindTopEnv "" tc (Alias tc)
-> bindType (IFunctionDecl    _ _ _ _) = id
+> bindType (IFunctionDecl  _ _ _ _ _) = id
 > bindType (IClassDecl     _ _ _ _ _) = id
 
 \end{verbatim}
@@ -100,8 +100,8 @@ during syntax checking of type expressions.
 > checkIDecl (ITypeDecl p tc tvs ty) = do
 >   checkTypeLhs tvs
 >   liftM (ITypeDecl p tc tvs) (checkClosedType tvs ty)
-> checkIDecl (IFunctionDecl p f n ty) =
->   liftM (IFunctionDecl p f n) (checkType ty)
+> checkIDecl (IFunctionDecl p f n cx ty) =
+>   liftM (IFunctionDecl p f n cx) (checkType ty)
 > checkIDecl (IClassDecl p scls cls var tySigs) = 
 >   liftM (IClassDecl p scls cls var) (mapM checkIDecl tySigs)
 

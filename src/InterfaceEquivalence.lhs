@@ -69,8 +69,8 @@ import Set
 >     tc1 == tc2 && tvs1 == tvs2 && nc1 =~= nc2
 >   ITypeDecl _ tc1 tvs1 ty1 =~= ITypeDecl _ tc2 tvs2 ty2 =
 >     tc1 == tc2 && tvs1 == tvs2 && ty1 == ty2
->   IFunctionDecl _ f1 n1 ty1 =~= IFunctionDecl _ f2 n2 ty2 =
->     f1 == f2 && n1 == n2 && ty1 == ty2
+>   IFunctionDecl _ f1 n1 cx1 ty1 =~= IFunctionDecl _ f2 n2 cx2 ty2 =
+>     f1 == f2 && n1 == n2 && ty1 == ty2 && cx1 == cx2
 >   _ =~= _ = False
 
 > instance IntfEquiv ConstrDecl where
@@ -109,7 +109,7 @@ by function \texttt{fixInterface} and the associated type class
 >   fix tcs (IDataDecl     p tc tvs cs) = IDataDecl     p tc tvs (fix tcs cs)
 >   fix tcs (INewtypeDecl  p tc tvs nc) = INewtypeDecl  p tc tvs (fix tcs nc)
 >   fix tcs (ITypeDecl     p tc tvs ty) = ITypeDecl     p tc tvs (fix tcs ty)
->   fix tcs (IFunctionDecl p f  n   ty) = IFunctionDecl p f  n   (fix tcs ty)
+>   fix tcs (IFunctionDecl p f n cx ty) = IFunctionDecl p f n cx (fix tcs ty)
 >   fix _   d                           = d
 
 > instance FixInterface ConstrDecl where
@@ -145,7 +145,7 @@ by function \texttt{fixInterface} and the associated type class
 >         tyCons (IDataDecl      _ tc _ _) tcs = tc : tcs
 >         tyCons (INewtypeDecl   _ tc _ _) tcs = tc : tcs
 >         tyCons (ITypeDecl      _ tc _ _) tcs = tc : tcs
->         tyCons (IFunctionDecl   _ _ _ _) tcs = tcs
+>         tyCons (IFunctionDecl _ _ _ _ _) tcs = tcs
 >         tyCons (IClassDecl    _ _ _ _ _) tcs = tcs
 
 > isPrimTypeId :: QualIdent -> Bool

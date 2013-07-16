@@ -449,7 +449,7 @@ TODO: The following import should be avoided if possible as it makes
 >    = qualNewConstrDeclId mid (qid:qids) ncdecl
 > qualIDeclId _ qids (CS.ITypeDecl _ qid _ _)
 >    = qid:qids
-> qualIDeclId _ qids (CS.IFunctionDecl _ qid _ _)
+> qualIDeclId _ qids (CS.IFunctionDecl _ qid _ _ _)
 >    = qid:qids
 > qualIDeclId _ qids _ = qids
 
