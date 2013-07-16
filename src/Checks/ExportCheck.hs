@@ -4,7 +4,7 @@ import Control.Monad (liftM, unless)
 import qualified Control.Monad.State as S (State, runState, gets, modify)
 import Data.List (nub, union)
 import qualified Data.Map as Map
-import Data.Maybe (fromMaybe)
+import Data.Maybe
 import qualified Data.Set as Set
 import Text.PrettyPrint
 
@@ -225,8 +225,13 @@ expandLocalModule :: ECM [Export]
 expandLocalModule = do
   tcEnv <- getTyConsEnv
   tyEnv <- getValueEnv
+  cEnv  <- getClassEnv
   return $ [exportType tyEnv t | (_, t) <- localBindings tcEnv] ++
-    [Export f' | (f, Value f' _ _) <- localBindings tyEnv, f == unRenameIdent f]
+    [Export f' | (f, Value f' _ _) <- localBindings tyEnv, 
+                  f == unRenameIdent f, not $ isClassMethod cEnv (qualify f)] ++
+    [ExportTypeWith cName ms | cls <- allLocalClasses (theClasses cEnv), 
+                               let cName = theClass cls
+                                   ms = map fst (typeSchemes cls)]
 
 -- |Expand a module export
 expandImportedModule :: ModuleIdent -> ECM [Export]
