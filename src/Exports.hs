@@ -194,6 +194,8 @@ identsType (ListType            ty) xs = identsType ty xs
 identsType (ArrowType      ty1 ty2) xs = identsType ty1 (identsType ty2 xs)
 identsType (RecordType      fs rty) xs =
   foldr identsType (maybe xs (\ty -> identsType ty xs) rty) (map snd fs)
+identsType s@(SpecialConstructorType _ _) xs = 
+  identsType (specialConsToTyExpr s) xs
 
 -- After the interface declarations have been computed, the compiler
 -- eventually must add hidden (data) type declarations to the interface
@@ -245,6 +247,8 @@ usedTypesType (ArrowType      ty1 ty2) tcs =
   usedTypesType ty1 (usedTypesType ty2 tcs)
 usedTypesType (RecordType      fs rty) tcs = foldr usedTypesType
   (maybe tcs (\ty -> usedTypesType ty tcs) rty) (map snd fs)
+usedTypesType s@(SpecialConstructorType _ _) tcs = 
+  usedTypesType (specialConsToTyExpr s) tcs
 
 definedTypes :: [IDecl] -> [QualIdent]
 definedTypes ds = foldr definedType [] ds

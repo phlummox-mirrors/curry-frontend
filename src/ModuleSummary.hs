@@ -106,6 +106,9 @@ modifyTypeExpr tcEnv (RecordType fields mty)
   = RecordType
     (map (\ (lbls, lty) -> (lbls, modifyTypeExpr tcEnv lty)) fields)
     (maybe Nothing (Just . modifyTypeExpr tcEnv) mty)
+modifyTypeExpr tcEnv s@(SpecialConstructorType _ _) = 
+  modifyTypeExpr tcEnv $ specialConsToTyExpr s
+
 
 --
 genTypeSynDeref :: [(Int, TypeExpr)] -> Type -> TypeExpr

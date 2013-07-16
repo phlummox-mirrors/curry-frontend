@@ -621,8 +621,8 @@ pair t1 t2 = TypeConstructor (qTupleIdP 2) [t1, t2]
 
 
 -- Checks the correctness of the dictType function
-checkDictType :: ClassEnv -> Bool
-checkDictType cEnv = 
+_checkDictType :: ClassEnv -> Bool
+_checkDictType cEnv = 
   show (dictType cEnv (mkId "A1")) === 
     "(Prelude.(,,,,) (0 -> (1 -> Prelude.Bool)) (0 -> 0) (0 -> (2 -> 3)) (0 -> 4) (0 -> (5 -> 5)))" &&
   show (dictType cEnv (mkId "B1")) === 

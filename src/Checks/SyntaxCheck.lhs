@@ -28,7 +28,7 @@ definition.
 > import Data.Maybe (fromJust, isJust, isNothing, maybeToList)
 > import qualified Data.Set as Set (empty, insert, member)
 > import Text.PrettyPrint
-> import Debug.Trace
+> -- import Debug.Trace
 
 > import Curry.Base.Ident
 > import Curry.Base.Position
