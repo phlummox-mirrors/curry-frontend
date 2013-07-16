@@ -23,7 +23,7 @@ module Env.ClassEnv (
   , allClasses, allLocalClasses, getAllClassMethods, getInstance
   , getAllClassMethodNames, lookupMethodTypeSig', lookupMethodTypeScheme'
   , canonLookupMethodTypeSig', canonLookupMethodTypeScheme'
-  , getDefaultMethods, lookupDefiningClass'
+  , getDefaultMethods, lookupDefiningClass', isClassMethod
   -- ** functions for modifying the class environment
   , bindClass, bindClassMethods
   -- ** pretty printing
@@ -154,6 +154,10 @@ lookupDefiningClass cEnv m =
 lookupDefiningClass' :: ClassEnv -> QualIdent -> Maybe Class
 lookupDefiningClass' (ClassEnv _ _ ms _) m = 
   list2Maybe $ qualLookupTopEnv m ms
+
+-- |checks whether the given method is a class method
+isClassMethod :: ClassEnv -> QualIdent -> Bool
+isClassMethod cEnv = isJust . lookupDefiningClass cEnv
 
 -- |looks up the type scheme of a given class method
 lookupMethodTypeScheme :: ClassEnv -> QualIdent -> Maybe TypeScheme
