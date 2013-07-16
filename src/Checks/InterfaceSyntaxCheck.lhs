@@ -143,6 +143,8 @@ during syntax checking of type expressions.
 > checkType (RecordType      fs mty) = liftM2 RecordType (mapM checkField fs)
 >                                             (liftMaybe checkType mty)
 >  where checkField (l, ty) = checkType ty >>= \ty' -> return (l, ty')
+> checkType s@(SpecialConstructorType _ _) = 
+>   checkType $ specialConsToTyExpr s
 
 > checkTypeConstructor :: QualIdent -> [TypeExpr] -> ISC TypeExpr
 > checkTypeConstructor tc tys = do
