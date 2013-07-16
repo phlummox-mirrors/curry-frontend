@@ -136,10 +136,12 @@ interface module only. However, this has not been implemented yet.
 >         = Just ok
 >       check _ = Nothing
 >   checkTypeInfo "synonym type" check p tc
-> checkImport (IFunctionDecl p f n ty) = do
+> checkImport (IFunctionDecl p f n cx ty) = do
 >   m <- getModuleIdent
->   let check (Value f' n' (ForAll cx _ ty')) =
->         f == f' && n' == n && toQualType m [] ty == ty'
+>   let check (Value f' n' (ForAll cx' _ ty')) =
+>         -- TODO: is this correct?
+>         f == f' && n' == n && ty'' == ty' && cx'' == cx' 
+>         where (cx'', ty'') = toQualConstrType m [] (cx, ty)
 >       check _ = False
 >   checkValueInfo "function" check p f
 
