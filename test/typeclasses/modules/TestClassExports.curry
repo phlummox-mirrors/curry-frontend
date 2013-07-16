@@ -25,6 +25,9 @@ module TestClassExports
   , K (..)
   , K2 (..)
   , L (..)
+  , hiding
+  , test6
+  , test7
   ) where
 
 test x = 1
@@ -119,4 +122,14 @@ class K2 a where
   
 class (K a, K2 a) => L a where
   funL :: a -> a
+
+hiding :: C a => a -> a
+hiding x = x
+
+test6 :: (C a, D a, E a) => a -> a
+test6 x = x
+
+
+test7 :: (K a, K2 a, L a) => a -> a
+test7 x = x
 
