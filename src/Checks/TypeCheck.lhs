@@ -1287,7 +1287,7 @@ because of possibly multiple occurrences of variables.
 >     Just t  -> expandPolyType (not sndRun) t >>= inst
 >   tyEnv <- getValueEnv
 >   maybe (modifyValueEnv (bindFunOnce m v (arrowArity ty) (monoType' cty)) >> return cty)
->         (\ (ForAll cx _ t) -> return (cx, t))
+>         (\ (ForAll cx0 _ t) -> return (cx0, t))
 >         (sureVarType v tyEnv)
 > tcPatternFP p t@(ConstructorPattern c ts) = do
 >   m <- getModuleIdent

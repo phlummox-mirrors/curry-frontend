@@ -65,7 +65,7 @@ order of type variables in the left hand side of a type declaration.
 > translateContext :: Map.Map Ident Int -> CS.Context -> BT.Context
 > translateContext theMap (CS.Context elems) 
 >   -- TODO: translate also texps!
->   = map (\(CS.ContextElem qid id0 texps) -> 
+>   = map (\(CS.ContextElem qid id0 _texps) -> 
 >          (qid, TypeVariable (fromJust $ Map.lookup id0 theMap)))
 >         elems
 
