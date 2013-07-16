@@ -26,7 +26,7 @@ import Curry.Base.Ident
 import Curry.Base.Position
 import Curry.Syntax
 
-import Base.CurryTypes (toQualType, toQualTypes)
+import Base.CurryTypes (toQualType, toQualTypes, toQualConstrType)
 import Base.Messages (Message, posMessage, internalError)
 import Base.TopEnv
 import Base.Types as BT
@@ -218,8 +218,9 @@ bindTy m (ITypeDecl _ rtc tvs (RecordType fs _)) env =
         rtc' = qualifyWith m urtc
         env' = bindConstr m rtc' tvs (constrType rtc' tvs)
                (ConstrDecl NoPos [] urtc (map snd fs)) env
-bindTy m (IFunctionDecl _ f a ty) env = Map.insert (unqualify f)
-  (Value (qualQualify m f) a (polyType (toQualType m [] ty))) env
+bindTy m (IFunctionDecl _ f a cx ty) env = Map.insert (unqualify f)
+  (Value (qualQualify m f) a (polyType ty' `constrainBy` cx')) env
+  where (cx', ty') = toQualConstrType m [] (cx, ty)
 bindTy _ _ env = env
 
 bindConstr :: ModuleIdent -> QualIdent -> [Ident] -> TypeExpr -> ConstrDecl
