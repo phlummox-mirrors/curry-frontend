@@ -17,6 +17,7 @@ TODO: Use MultiParamTypeClasses ?
 >   ( -- * Representation of Types
 >     Type (..), isArrowType, arrowArity, arrowArgs, arrowBase, typeVars
 >   , typeConstrs, typeSkolems, equTypes, qualifyType, unqualifyType
+>   , qualifyContext, qualifyConstrType, unqualifyContext
 >     -- * Representation of Data Constructors
 >   , DataConstr (..), constrIdent
 >     -- * Representation of Quantification
@@ -244,6 +245,21 @@ qualification with a module identifier for type constructors.
 > unqualifyType _ skol@(TypeSkolem      _) = skol
 > unqualifyType m (TypeRecord      fs rty) =
 >   TypeRecord (map (\ (l, ty) -> (l, unqualifyType m ty)) fs) rty
+
+> qualifyContext :: ModuleIdent -> Context -> Context
+> qualifyContext m cx = map qualifyContext' cx
+>   where
+>   qualifyContext' :: (QualIdent, Type) -> (QualIdent, Type)
+>   qualifyContext' (cls, ty) = (qualQualify m cls, qualifyType m ty)  
+
+> qualifyConstrType :: ModuleIdent -> (Context, Type) -> (Context, Type)
+> qualifyConstrType m (cx, ty) = (qualifyContext m cx, qualifyType m ty) 
+
+> unqualifyContext :: ModuleIdent -> Context -> Context
+> unqualifyContext m cx = map unqualifyContext' cx
+>   where
+>   unqualifyContext' :: (QualIdent, Type) -> (QualIdent, Type)
+>   unqualifyContext' (cls, ty) = (qualUnqualify m cls, unqualifyType m ty)
 
 \end{verbatim}
 The type \texttt{Data} is used to represent value constructors introduced
