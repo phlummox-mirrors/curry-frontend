@@ -32,7 +32,7 @@ expanded.
 > import Data.List (nub, partition, sortBy)
 > import qualified Data.Map as Map (Map, empty, insert, lookup)
 > import Text.PrettyPrint
-> import qualified Debug.Trace as Dbg
+> -- import qualified Debug.Trace as Dbg
 > import qualified Data.Set as Set
 > import Data.Maybe
 
@@ -63,13 +63,6 @@ expanded.
 
 > ($-$) :: Doc -> Doc -> Doc
 > x $-$ y = x $$ space $$ y
-
-> trace, trace2, trace3 :: String -> a -> a
-> trace = flip const
-> -- trace = Dbg.trace
-> trace2 = flip const
-> -- trace2 = Dbg.trace
-> trace3 = Dbg.trace
 
 \end{verbatim}
 Type checking proceeds as follows. First, the type constructor

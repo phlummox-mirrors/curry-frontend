@@ -29,7 +29,6 @@ import Base.Messages (Message, posMessage)
 import qualified Base.ScopeEnv as SE
   ( ScopeEnv, new, beginScope, endScopeUp, insert, lookup, level, modify
   , lookupWithLevel, toLevelList, currentLevel)
-import Base.Names
 
 import Env.Value (ValueEnv, ValueInfo (..), qualLookupValue)
 
