@@ -200,6 +200,8 @@ checkTypeExpr (ArrowType       ty1 ty2) = mapM_ checkTypeExpr [ty1, ty2]
 checkTypeExpr (RecordType       fs rty) = do
   mapM_ checkTypeExpr (map snd fs)
   maybe ok checkTypeExpr rty
+checkTypeExpr s@(SpecialConstructorType _ _) = 
+  checkTypeExpr $ specialConsToTyExpr s
 
 -- Checks locally declared identifiers (i.e. functions and logic variables)
 -- for shadowing
@@ -461,6 +463,8 @@ insertTypeExpr (ArrowType     ty1 ty2) = mapM_ insertTypeExpr [ty1,ty2]
 insertTypeExpr (RecordType      _ rty) = do
   --mapM_ insertVar (concatMap fst fs)
   maybe (return ()) insertTypeExpr rty
+insertTypeExpr s@(SpecialConstructorType _ _) = 
+  insertTypeExpr $ specialConsToTyExpr s 
 
 insertConstrDecl :: ConstrDecl -> WCM ()
 insertConstrDecl (ConstrDecl _ _    c _) = insertConsId c

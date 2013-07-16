@@ -205,6 +205,8 @@ genTypeExpr env (RecordType fss mr) = case mr of
   (ls  , ts ) = unzip $ concatMap (\ (ls1,ty) -> map (\l -> (l,ty)) ls1) fss
   (env1, ts') = mapAccumL genTypeExpr env ts
   ls'        = map idName ls
+genTypeExpr env s@(SpecialConstructorType _ _) = 
+  genTypeExpr env (specialConsToTyExpr s) 
 
 genOpDecl :: AbstractEnv -> Decl -> [COpDecl]
 genOpDecl env (InfixDecl _ fix prec ops) = map genCOp (reverse ops)
