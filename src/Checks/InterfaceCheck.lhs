@@ -147,7 +147,7 @@ interface module only. However, this has not been implemented yet.
 > checkConstrImport tc tvs (ConstrDecl p evs c tys) = do
 >   m <- getModuleIdent
 >   let qc = qualifyLike tc c
->       checkConstr (DataConstructor c' _ (ForAllExist cx uqvs eqvs ty')) =
+>       checkConstr (DataConstructor c' _ (ForAllExist _cx uqvs eqvs ty')) =
 >         qc == c' && length evs == eqvs && length tvs == uqvs &&
 >         toQualTypes m tvs tys == arrowArgs ty'
 >       checkConstr _ = False
@@ -155,7 +155,7 @@ interface module only. However, this has not been implemented yet.
 > checkConstrImport tc tvs (ConOpDecl p evs ty1 op ty2) = do
 >   m <- getModuleIdent
 >   let qc = qualifyLike tc op
->       checkConstr (DataConstructor c' _ (ForAllExist cx uqvs eqvs ty')) =
+>       checkConstr (DataConstructor c' _ (ForAllExist _cx uqvs eqvs ty')) =
 >         qc == c' && length evs == eqvs && length tvs == uqvs &&
 >         toQualTypes m tvs [ty1,ty2] == arrowArgs ty'
 >       checkConstr _ = False
@@ -165,7 +165,7 @@ interface module only. However, this has not been implemented yet.
 > checkNewConstrImport tc tvs (NewConstrDecl p evs c ty) = do
 >   m <- getModuleIdent
 >   let qc = qualifyLike tc c
->       checkNewConstr (NewtypeConstructor c' (ForAllExist cx uqvs eqvs ty')) =
+>       checkNewConstr (NewtypeConstructor c' (ForAllExist _cx uqvs eqvs ty')) =
 >           qc == c' && length evs == eqvs && length tvs == uqvs &&
 >           toQualType m tvs ty == head (arrowArgs ty')
 >       checkNewConstr _ = False
