@@ -22,11 +22,11 @@ import qualified Data.Set as Set (delete, fromList, toList)
 
 import Curry.Base.Position
 import Curry.Base.Ident
-import Curry.Syntax
+import Curry.Syntax as CS
 
-import Base.CurryTypes (fromQualType, fromQualType')
+import Base.CurryTypes (fromQualType, fromQualType', fromContext)
 import Base.Messages
-import Base.Types
+import Base.Types as BT
 
 import Env.OpPrec          (OpPrecEnv, PrecInfo (..), OpPrec (..), qualLookupP)
 import Env.TypeConstructor (TCEnv, TypeInfo (..), qualLookupTC)
@@ -136,8 +136,8 @@ iConstrDecl tvs c tys = ConstrDecl NoPos tvs c tys
 
 funDecl :: ModuleIdent -> ValueEnv -> Export -> [IDecl] -> [IDecl]
 funDecl m tyEnv (Export f) ds = case qualLookupValue f tyEnv of
-  [Value _ a (ForAll _ _ ty)] ->
-    IFunctionDecl NoPos (qualUnqualify m f) a (fromQualType m ty) : ds
+  [Value _ a (ForAll cx _ ty)] ->
+    IFunctionDecl NoPos (qualUnqualify m f) a (fromContext $ unqualifyContext m cx) (fromQualType m ty) : ds
   _ -> internalError $ "Exports.funDecl: " ++ show f
 funDecl _ _     (ExportTypeWith _ _) ds = ds
 funDecl _ _ _ _ = internalError "Exports.funDecl: no pattern match"
@@ -145,7 +145,9 @@ funDecl _ _ _ _ = internalError "Exports.funDecl: no pattern match"
 -- |converts a type signature of a class, considering the given class type variable
 typeSigToIFunDecl :: ModuleIdent -> Ident -> (Ident, TypeScheme) -> IDecl
 typeSigToIFunDecl m tyvar (f, ForAll _cx _ ty) 
-  = IFunctionDecl NoPos (qualify f) (arrowArity ty) (fromQualType' [tyvar] m ty) 
+  = IFunctionDecl NoPos (qualify f) (arrowArity ty) 
+                  -- ignore the context from the type scheme for now 
+                  CS.emptyContext (fromQualType' [tyvar] m ty) 
 
 -- The compiler determines the list of imported modules from the set of
 -- module qualifiers that are used in the interface. Careful readers
@@ -174,7 +176,7 @@ identsDecl (IDataDecl    _ tc _ cs) xs =
   tc : foldr identsConstrDecl xs (catMaybes cs)
 identsDecl (INewtypeDecl _ tc _ nc) xs = tc : identsNewConstrDecl nc xs
 identsDecl (ITypeDecl    _ tc _ ty) xs = tc : identsType ty xs
-identsDecl (IFunctionDecl _ f _ ty) xs = f  : identsType ty xs
+identsDecl (IFunctionDecl _ f _ cx ty) xs = f  : identsCx cx (identsType ty xs)
 identsDecl (IClassDecl _ scls cls _ sigs) xs = cls : scls ++ foldr identsDecl xs sigs
 identsDecl _ _ = internalError "Exports.identsDecl: no pattern match"
 
@@ -196,6 +198,12 @@ identsType (RecordType      fs rty) xs =
   foldr identsType (maybe xs (\ty -> identsType ty xs) rty) (map snd fs)
 identsType s@(SpecialConstructorType _ _) xs = 
   identsType (specialConsToTyExpr s) xs
+
+identsCx :: CS.Context -> [QualIdent] -> [QualIdent]
+identsCx (Context cx) xs = foldr identsCxElem xs cx
+  where
+  identsCxElem :: CS.ContextElem -> [QualIdent] -> [QualIdent]
+  identsCxElem (ContextElem cls _var tys) ys = cls : foldr identsType ys tys
 
 -- After the interface declarations have been computed, the compiler
 -- eventually must add hidden (data) type declarations to the interface
@@ -224,7 +232,7 @@ usedTypesDecl (IDataDecl     _ _ _ cs) tcs =
   foldr usedTypesConstrDecl tcs (catMaybes cs)
 usedTypesDecl (INewtypeDecl  _ _ _ nc) tcs = usedTypesNewConstrDecl nc tcs
 usedTypesDecl (ITypeDecl     _ _ _ ty) tcs = usedTypesType ty tcs
-usedTypesDecl (IFunctionDecl _ _ _ ty) tcs = usedTypesType ty tcs
+usedTypesDecl (IFunctionDecl _ _ _ cx ty) tcs = usedTypesContext cx (usedTypesType ty tcs)
 usedTypesDecl (IClassDecl _ _ _ _ sigs) tcs = foldr usedTypesDecl tcs sigs
 usedTypesDecl _                        _   = internalError
   "Exports.usedTypesDecl: no pattern match" -- TODO
@@ -249,6 +257,10 @@ usedTypesType (RecordType      fs rty) tcs = foldr usedTypesType
   (maybe tcs (\ty -> usedTypesType ty tcs) rty) (map snd fs)
 usedTypesType s@(SpecialConstructorType _ _) tcs = 
   usedTypesType (specialConsToTyExpr s) tcs
+
+usedTypesContext :: CS.Context -> [QualIdent] -> [QualIdent]
+usedTypesContext (Context cx) tcs = foldr usedTypesType tcs (concatMap getTy cx)
+  where getTy (ContextElem _qid _v ty) = ty
 
 definedTypes :: [IDecl] -> [QualIdent]
 definedTypes ds = foldr definedType [] ds

@@ -28,6 +28,8 @@ module TestClassExports
   , hiding
   , test6
   , test7
+  , test8
+  , test9
   ) where
 
 test x = 1
@@ -133,3 +135,8 @@ test6 x = x
 test7 :: (K a, K2 a, L a) => a -> a
 test7 x = x
 
+test8 :: (C x, D y, E z) => x -> y -> z
+test8 _ _ = error ""
+
+test9 :: TestClassExports.C a => a -> a
+test9 x = x
