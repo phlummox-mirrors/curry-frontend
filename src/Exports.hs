@@ -61,7 +61,7 @@ exportInterface' (Module m (Just (Exporting _ es)) _ _) pEnv tcEnv tyEnv cEnv
   where
   imports = map   (IImportDecl NoPos) $ usedModules (decls ++ instances)
   precs   = foldr (infixDecl m pEnv) [] es
-  hidden  = map   (hiddenTypeDecl m tcEnv) $ hiddenTypes m (decls ++ instances)
+  hidden  = concatMap (hiddenTypeDecl m tcEnv) $ hiddenTypes m (decls ++ instances)
   decls   = foldr (typeDecl m tcEnv cEnv) (foldr (funDecl m tyEnv) [] es) es
   instances = map (instanceToIDecl . unqualInst m) $ getLocalInstances cEnv
 exportInterface' (Module _ Nothing _ _) _ _ _ _
@@ -226,12 +226,23 @@ identsCx (Context cx) xs = foldr identsCxElem xs cx
 -- from the current module, so that these type constructors can always be
 -- distinguished from type variables.
 
-hiddenTypeDecl :: ModuleIdent -> TCEnv -> QualIdent -> IDecl
-hiddenTypeDecl m tcEnv tc = case qualLookupTC (qualQualify m tc) tcEnv of
-  [DataType     _ n _] -> hidingDataDecl tc n
-  [RenamingType _ n _] -> hidingDataDecl tc n
-  _                    -> internalError "Exports.hiddenTypeDecl"
+hiddenTypeDecl :: ModuleIdent -> TCEnv -> QualIdent -> [IDecl]
+hiddenTypeDecl m tcEnv tc = if isPredef then [] else
+  case qualLookupTC (qualQualify m tc) tcEnv of
+    [DataType     _ n _] -> [hidingDataDecl tc n]
+    [RenamingType _ n _] -> [hidingDataDecl tc n]
+    _                    -> internalError ("Exports.hiddenTypeDecl: " 
+                                           ++ show tc ++ " " ++ 
+                                           show (qualQualify m tc))
   where hidingDataDecl tc1 n = HidingDataDecl NoPos tc1 $ take n identSupply
+        -- Predefined types are not found in the type constructor environment
+        -- or only under the unqualified name. Thus the call to qualQualify
+        -- above would fail. This case we have to catch.  
+        -- As unit, tuple, list and arrow type constructors have special syntactical 
+        -- forms, it doesn't matter if they are not listed as hidden. It's always
+        -- clear, that they represent type constructors and no type variables. 
+        isPredef = tc == qUnitIdP || tc == qListIdP
+                || tc == qArrowId || isQTupleId tc
 
 hiddenTypes :: ModuleIdent -> [IDecl] -> [QualIdent]
 hiddenTypes m ds = [tc | tc <- Set.toList tcs, hidden tc]
