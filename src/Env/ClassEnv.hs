@@ -24,6 +24,7 @@ module Env.ClassEnv (
   , getAllClassMethodNames, lookupMethodTypeSig', lookupMethodTypeScheme'
   , canonLookupMethodTypeSig', canonLookupMethodTypeScheme'
   , getDefaultMethods, lookupDefiningClass', isClassMethod
+  , localInst, getAllInstances, getLocalInstances, allInstances
   -- ** functions for modifying the class environment
   , bindClass, bindClassMethods
   -- ** pretty printing
@@ -65,12 +66,15 @@ data ClassEnv = ClassEnv
   -- | environment that maps class identifiers to classes
   { theClasses :: TopEnv Class
   -- | all instances (with canonical class and type names)
-  , theInstances :: [Instance] 
+  , theInstances :: [(Source, Instance)] 
   -- | environment that maps class methods to their corresponding classes
   , classMethods :: TopEnv Class
   -- | maps canonical (!) class names to the corresponding classes
   , canonClassMap :: Map.Map QualIdent Class
   } 
+  deriving Show
+
+data Source = Local | Imported
   deriving Show
 
 data Class = Class
@@ -263,6 +267,22 @@ getDefaultMethods cls = map getDefaultMethod (defaults cls)
   getDefaultMethod (FunctionDecl _ _ _ f _) = f
   getDefaultMethod _ = internalError "getDefaultMethods"
 
+-- |returns all locally declared instances
+getLocalInstances :: ClassEnv -> [Instance]
+getLocalInstances cEnv = map snd $ filter isLocal $ theInstances cEnv
+  where isLocal (Local, _) = True
+        isLocal _ = False
+
+-- |makes an instance a local instance
+localInst :: Instance -> (Source, Instance)
+localInst i = (Local, i) 
+
+-- |returns all instances
+getAllInstances :: ClassEnv -> [Instance]
+getAllInstances cEnv = map snd $ theInstances cEnv
+
+allInstances :: [(Source, Instance)] -> [Instance]
+allInstances = map snd 
 
 -- ----------------------------------------------------------------------------
 -- type classes related functionality
@@ -398,7 +418,7 @@ isValidCx cEnv cx = concatMap isValid' cx
 -- instead of Bool)!
 getInstance :: ClassEnv -> QualIdent -> QualIdent -> Maybe Instance
 getInstance cEnv cls ty = 
-  listToMaybe $ filter (\i -> iClass i == cls && iType i == ty) (theInstances cEnv)
+  listToMaybe $ filter (\i -> iClass i == cls && iType i == ty) (allInstances $ theInstances cEnv)
 
 -- | finds a path in the class hierarchy from the given class to the given superclass. 
 -- The class names passed to this functions must be canonicalized.  

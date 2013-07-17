@@ -66,7 +66,7 @@ showCompilerEnv opts env = show $ vcat
   , header "Values          " $ ppAL (text . show) $ showLocalBindings $ valueEnv     env
   , header "Precedences     " $ ppAL (text . show) $ showLocalBindings $ opPrecEnv    env
   , header "Classes         " $ ppAL ppClass $ allBindings $ theClasses $ classEnv env
-  , header "Instances       " $ vcat (map ppInst (theInstances $ classEnv env))
+  , header "Instances       " $ vcat (map ppInst (allInstances $ theInstances $ classEnv env))
   , header "ClassMethodsMap " $ ppAL ppClass $ allBindings $ classMethods $ classEnv env
   ]
   where

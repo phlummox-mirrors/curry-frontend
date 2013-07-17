@@ -135,7 +135,7 @@ typeClassesCheck m decls
     -- ----------------------------------------------------------------------
     phase2 = do 
       let newClasses = map (classDeclToClass m) classDecls
-          instances = map (instanceDeclToInstance m tcEnv) instDecls 
+          instances = map (localInst . instanceDeclToInstance m tcEnv) instDecls 
                       ++ importedInstances
           allClasses0 = bindAll newClasses importedClasses
           newClassEnv = ClassEnv allClasses0 instances emptyTopEnv (buildCanonClassMap allClasses0)
@@ -160,7 +160,7 @@ typeClassesCheck m decls
             map (qualifyClass newClassEnv' . classDeclToClass m) 
                 classDecls
           instances' =  
-            map (qualifyInstance newClassEnv' . instanceDeclToInstance m tcEnv)
+            map (localInst . qualifyInstance newClassEnv' . instanceDeclToInstance m tcEnv)
                 instDecls 
             ++ importedInstances
           allClasses0 = bindAll newClasses' importedClasses
@@ -583,7 +583,7 @@ checkForDuplicateClassNames classes =
 checkForDuplicateInstances :: ClassEnv -> Tcc ()
 checkForDuplicateInstances (ClassEnv _classes instances _ _) 
   = let duplInstances 
-          = findMultiples $ map (\i -> (iClass i, iType i)) instances
+          = findMultiples $ map (\i -> (iClass i, iType i)) (allInstances instances)
     in if null duplInstances
     then ok
     else report (errDuplicateInstances (map head duplInstances))
