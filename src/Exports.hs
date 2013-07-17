@@ -160,8 +160,16 @@ unqualInst m (Instance cx cls ty tyvars decls) =
 
 -- |convert an instance to an IInstanceDecl
 instanceToIDecl :: Instance -> IDecl
-instanceToIDecl (Instance cx cls ty tyvars _) = 
-  IInstanceDecl NoPos cx cls ty tyvars
+instanceToIDecl (Instance cx cls ty0 tyvars _) = 
+  IInstanceDecl NoPos cx cls (toTypeConstructor ty0) tyvars
+  where
+  toTypeConstructor :: QualIdent -> TypeConstructor
+  toTypeConstructor ty
+    | ty == qArrowId || ty == qArrowIdP = ArrowTC
+    | ty == qListId  || ty == qListIdP  = ListTC
+    | isQTupleId ty                     = TupleTC $ qTupleArity ty
+    | ty == qUnitId  || ty == qUnitIdP  = UnitTC
+    | otherwise                         = QualTC ty
 
 -- The compiler determines the list of imported modules from the set of
 -- module qualifiers that are used in the interface. Careful readers
@@ -192,7 +200,8 @@ identsDecl (INewtypeDecl _ tc _ nc) xs = tc : identsNewConstrDecl nc xs
 identsDecl (ITypeDecl    _ tc _ ty) xs = tc : identsType ty xs
 identsDecl (IFunctionDecl _ f _ cx ty) xs = f  : identsCx cx (identsType ty xs)
 identsDecl (IClassDecl _ scls cls _ sigs) xs = cls : scls ++ foldr identsDecl xs sigs
-identsDecl (IInstanceDecl _ scx cls ty _tyvars) xs = cls : ty : map fst scx ++ xs 
+identsDecl (IInstanceDecl _ scx cls (QualTC ty) _tyvars) xs = cls : ty : map fst scx ++ xs 
+identsDecl (IInstanceDecl _ scx cls _ _tyvars) xs = cls : map fst scx ++ xs
 identsDecl _ _ = internalError "Exports.identsDecl: no pattern match"
 
 identsConstrDecl :: ConstrDecl -> [QualIdent] -> [QualIdent]
@@ -227,7 +236,7 @@ identsCx (Context cx) xs = foldr identsCxElem xs cx
 -- distinguished from type variables.
 
 hiddenTypeDecl :: ModuleIdent -> TCEnv -> QualIdent -> [IDecl]
-hiddenTypeDecl m tcEnv tc = if isSpecial then [] else
+hiddenTypeDecl m tcEnv tc = 
   case qualLookupTC (qualQualify m tc) tcEnv of
     [DataType     _ n _] -> [hidingDataDecl tc n]
     [RenamingType _ n _] -> [hidingDataDecl tc n]
@@ -235,19 +244,6 @@ hiddenTypeDecl m tcEnv tc = if isSpecial then [] else
                                            ++ show tc ++ " " ++ 
                                            show (qualQualify m tc))
   where hidingDataDecl tc1 n = HidingDataDecl NoPos tc1 $ take n identSupply
-        -- Predefined type constructors that have a special syntax 
-        -- (i.e., lists, unit, tuples, and arrow) are not found 
-        -- in the type constructor environment or only under the unqualified name.  
-        -- Thus the call to qualQualify above would fail for these type 
-        -- constructors. This case we have to catch.  
-        -- These type constructors have as origin the instance declarations;
-        -- in all other cases the arrow, lists and tuple types are silently
-        -- dropped. 
-        -- As unit, tuple, list and arrow type constructors have special syntactical 
-        -- forms, it doesn't matter that they are not listed as hidden. When 
-        -- we encounter such a type constructor it's always
-        -- clear, that it is a type constructor and no type variable. 
-        isSpecial = hasSpecialSyntax tc
 
 hiddenTypes :: ModuleIdent -> [IDecl] -> [QualIdent]
 hiddenTypes m ds = [tc | tc <- Set.toList tcs, hidden tc]
@@ -265,7 +261,8 @@ usedTypesDecl (INewtypeDecl  _ _ _ nc) tcs = usedTypesNewConstrDecl nc tcs
 usedTypesDecl (ITypeDecl     _ _ _ ty) tcs = usedTypesType ty tcs
 usedTypesDecl (IFunctionDecl _ _ _ cx ty) tcs = usedTypesContext cx (usedTypesType ty tcs)
 usedTypesDecl (IClassDecl _ _ _ _ sigs) tcs = foldr usedTypesDecl tcs sigs
-usedTypesDecl (IInstanceDecl _ _ _cls ty _) tcs = ty : tcs
+usedTypesDecl (IInstanceDecl _ _ _cls (QualTC ty) _) tcs = ty : tcs
+usedTypesDecl (IInstanceDecl _ _ _cls _ _) tcs = tcs
 usedTypesDecl _                        _   = internalError
   "Exports.usedTypesDecl: no pattern match" -- TODO
 
