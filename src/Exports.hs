@@ -227,7 +227,7 @@ identsCx (Context cx) xs = foldr identsCxElem xs cx
 -- distinguished from type variables.
 
 hiddenTypeDecl :: ModuleIdent -> TCEnv -> QualIdent -> [IDecl]
-hiddenTypeDecl m tcEnv tc = if isPredef then [] else
+hiddenTypeDecl m tcEnv tc = if isSpecial then [] else
   case qualLookupTC (qualQualify m tc) tcEnv of
     [DataType     _ n _] -> [hidingDataDecl tc n]
     [RenamingType _ n _] -> [hidingDataDecl tc n]
@@ -235,14 +235,22 @@ hiddenTypeDecl m tcEnv tc = if isPredef then [] else
                                            ++ show tc ++ " " ++ 
                                            show (qualQualify m tc))
   where hidingDataDecl tc1 n = HidingDataDecl NoPos tc1 $ take n identSupply
-        -- Predefined types are not found in the type constructor environment
-        -- or only under the unqualified name. Thus the call to qualQualify
-        -- above would fail. This case we have to catch.  
+        -- Predefined type constructors that have a special syntax 
+        -- (i.e., lists, unit, tuples, and arrow) are not found 
+        -- in the type constructor environment or only under the unqualified name.  
+        -- Thus the call to qualQualify above would fail for these type 
+        -- constructors. This case we have to catch.  
+        -- These type constructors have as origin the instance declarations;
+        -- in all other cases the arrow, lists and tuple types are silently
+        -- dropped. 
         -- As unit, tuple, list and arrow type constructors have special syntactical 
-        -- forms, it doesn't matter if they are not listed as hidden. It's always
-        -- clear, that they represent type constructors and no type variables. 
-        isPredef = tc == qUnitIdP || tc == qListIdP
-                || tc == qArrowId || isQTupleId tc
+        -- forms, it doesn't matter that they are not listed as hidden. When 
+        -- we encounter such a type constructor it's always
+        -- clear, that it is a type constructor and no type variable. 
+        -- NOTE: the following special type constructor ids must be 
+        -- the same as those used in TypeClassesCheck, function tyConToQualIdent
+        isSpecial = tc == qUnitIdP || tc == qListIdP
+                 || tc == qArrowId || isQTupleId tc
 
 hiddenTypes :: ModuleIdent -> [IDecl] -> [QualIdent]
 hiddenTypes m ds = [tc | tc <- Set.toList tcs, hidden tc]
