@@ -57,12 +57,13 @@ exportInterface env mdl = exportInterface' mdl
 
 exportInterface' :: Module -> OpPrecEnv -> TCEnv -> ValueEnv -> ClassEnv -> Interface
 exportInterface' (Module m (Just (Exporting _ es)) _ _) pEnv tcEnv tyEnv cEnv
-  = Interface m imports $ precs ++ hidden ++ decls
+  = Interface m imports $ precs ++ hidden ++ decls ++ instances
   where
-  imports = map   (IImportDecl NoPos) $ usedModules decls
+  imports = map   (IImportDecl NoPos) $ usedModules (decls ++ instances)
   precs   = foldr (infixDecl m pEnv) [] es
-  hidden  = map   (hiddenTypeDecl m tcEnv) $ hiddenTypes m decls
+  hidden  = map   (hiddenTypeDecl m tcEnv) $ hiddenTypes m (decls ++ instances)
   decls   = foldr (typeDecl m tcEnv cEnv) (foldr (funDecl m tyEnv) [] es) es
+  instances = map (instanceToIDecl . unqualInst m) $ getLocalInstances cEnv
 exportInterface' (Module _ Nothing _ _) _ _ _ _
   = internalError "Exports.exportInterface: no export specification"
 
@@ -149,6 +150,19 @@ typeSigToIFunDecl m tyvar (f, ForAll _cx _ ty)
                   -- ignore the context from the type scheme for now 
                   CS.emptyContext (fromQualType' [tyvar] m ty) 
 
+-- |unqualifies an instance
+unqualInst :: ModuleIdent -> Instance -> Instance
+unqualInst m (Instance cx cls ty tyvars decls) = 
+  Instance (map unqualifyContextElem cx) (qualUnqualify m cls)
+  (qualUnqualify m ty) tyvars decls
+  where
+  unqualifyContextElem (qid, id0) = (qualUnqualify m qid, id0)
+
+-- |convert an instance to an IInstanceDecl
+instanceToIDecl :: Instance -> IDecl
+instanceToIDecl (Instance cx cls ty tyvars _) = 
+  IInstanceDecl NoPos cx cls ty tyvars
+
 -- The compiler determines the list of imported modules from the set of
 -- module qualifiers that are used in the interface. Careful readers
 -- probably will have noticed that the functions above carefully strip
@@ -178,6 +192,7 @@ identsDecl (INewtypeDecl _ tc _ nc) xs = tc : identsNewConstrDecl nc xs
 identsDecl (ITypeDecl    _ tc _ ty) xs = tc : identsType ty xs
 identsDecl (IFunctionDecl _ f _ cx ty) xs = f  : identsCx cx (identsType ty xs)
 identsDecl (IClassDecl _ scls cls _ sigs) xs = cls : scls ++ foldr identsDecl xs sigs
+identsDecl (IInstanceDecl _ scx cls ty _tyvars) xs = cls : ty : map fst scx ++ xs 
 identsDecl _ _ = internalError "Exports.identsDecl: no pattern match"
 
 identsConstrDecl :: ConstrDecl -> [QualIdent] -> [QualIdent]
@@ -234,6 +249,7 @@ usedTypesDecl (INewtypeDecl  _ _ _ nc) tcs = usedTypesNewConstrDecl nc tcs
 usedTypesDecl (ITypeDecl     _ _ _ ty) tcs = usedTypesType ty tcs
 usedTypesDecl (IFunctionDecl _ _ _ cx ty) tcs = usedTypesContext cx (usedTypesType ty tcs)
 usedTypesDecl (IClassDecl _ _ _ _ sigs) tcs = foldr usedTypesDecl tcs sigs
+usedTypesDecl (IInstanceDecl _ _ _cls ty _) tcs = ty : tcs
 usedTypesDecl _                        _   = internalError
   "Exports.usedTypesDecl: no pattern match" -- TODO
 
