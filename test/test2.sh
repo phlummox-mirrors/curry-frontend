@@ -10,8 +10,9 @@ echo ================
 # prepare needed interfaces
 
 $cymake -f -i typeclasses typeclasses/Float.curry typeclasses/Prelude.curry > /dev/null
+$cymake -f -i typeclasses/modules typeclasses/modules/Prelude.curry > /dev/null
 
-# do the check
+# do the check # 1
 
 for file in DictTrans1 DictTrans2 DictTrans3 DictTrans4 \
   DictTrans5 DictTrans6 DictTrans7 DictTrans8 DictTrans9 \
@@ -41,15 +42,25 @@ do
   $cymake -f -i typeclasses typeclasses/$file.curry 2>> output_test2_stderr.txt 1>> output_test2_stdout.txt || echo Error in $file.curry
 done
 
-echo `cat tmp.txt | wc -l` files checked
-rm tmp.txt
-
-
 # Those files contain type classes with other type vars in methods than
 # the type variable of the class and can thus not be checked:
 
 # DictTrans5_orig DictTrans6_orig Annot1_orig
 # Annot7_orig TypeSigsTrans_orig BugTypeSigsTrans_orig
 # TypedExpressions2_orig
+
+
+# do the check # 2 (modules system related)
+
+for file in TestClassExports TestClassExports2 TestClassExportsImports \
+  TestClassExportsNoExportSpec \
+  InstancesExports InstancesExportBug
+do
+  echo $file >> tmp.txt
+  $cymake -f -i typeclasses/modules typeclasses/modules/$file.curry 2>> output_test2_stderr.txt 1>> output_test2_stdout.txt || echo Error in $file.curry
+done
+
+echo `cat tmp.txt | wc -l` files checked
+rm tmp.txt
 
 
