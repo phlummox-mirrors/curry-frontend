@@ -145,6 +145,7 @@ interface module only. However, this has not been implemented yet.
 >       check _ = False
 >   checkValueInfo "function" check p f
 > checkImport (IClassDecl _ _ _ _ _) = internalError "TODO: checkImport IClassDecl"
+> checkImport (IInstanceDecl _ _ _ _ _) = internalError "TODO: checkImport IInstanceDecl"
 
 > checkConstrImport :: QualIdent -> [Ident] -> ConstrDecl -> IC ()
 > checkConstrImport tc tvs (ConstrDecl p evs c tys) = do
