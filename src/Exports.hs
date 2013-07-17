@@ -247,10 +247,7 @@ hiddenTypeDecl m tcEnv tc = if isSpecial then [] else
         -- forms, it doesn't matter that they are not listed as hidden. When 
         -- we encounter such a type constructor it's always
         -- clear, that it is a type constructor and no type variable. 
-        -- NOTE: the following special type constructor ids must be 
-        -- the same as those used in TypeClassesCheck, function tyConToQualIdent
-        isSpecial = tc == qUnitIdP || tc == qListIdP
-                 || tc == qArrowId || isQTupleId tc
+        isSpecial = hasSpecialSyntax tc
 
 hiddenTypes :: ModuleIdent -> [IDecl] -> [QualIdent]
 hiddenTypes m ds = [tc | tc <- Set.toList tcs, hidden tc]
