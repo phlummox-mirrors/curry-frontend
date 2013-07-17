@@ -17,7 +17,7 @@ module Transformations.Dictionaries (insertDicts) where
 import Curry.Base.Ident
 import CompilerEnv
 import Curry.Syntax
-import Env.ClassEnv
+import Env.ClassEnv hiding (isClassMethod)
 import Env.Value
 import Base.Names (sep, mkSelFunName, mkDictName)
 import Base.Messages
