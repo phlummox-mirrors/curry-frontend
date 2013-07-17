@@ -61,7 +61,7 @@ exportInterface' (Module m (Just (Exporting _ es)) _ _) pEnv tcEnv tyEnv cEnv
   where
   imports = map   (IImportDecl NoPos) $ usedModules (decls ++ instances)
   precs   = foldr (infixDecl m pEnv) [] es
-  hidden  = concatMap (hiddenTypeDecl m tcEnv) $ hiddenTypes m (decls ++ instances)
+  hidden  = map   (hiddenTypeDecl m tcEnv) $ hiddenTypes m (decls ++ instances)
   decls   = foldr (typeDecl m tcEnv cEnv) (foldr (funDecl m tyEnv) [] es) es
   instances = map (instanceToIDecl . unqualInst m) $ getLocalInstances cEnv
 exportInterface' (Module _ Nothing _ _) _ _ _ _
@@ -235,14 +235,11 @@ identsCx (Context cx) xs = foldr identsCxElem xs cx
 -- from the current module, so that these type constructors can always be
 -- distinguished from type variables.
 
-hiddenTypeDecl :: ModuleIdent -> TCEnv -> QualIdent -> [IDecl]
-hiddenTypeDecl m tcEnv tc = 
-  case qualLookupTC (qualQualify m tc) tcEnv of
-    [DataType     _ n _] -> [hidingDataDecl tc n]
-    [RenamingType _ n _] -> [hidingDataDecl tc n]
-    _                    -> internalError ("Exports.hiddenTypeDecl: " 
-                                           ++ show tc ++ " " ++ 
-                                           show (qualQualify m tc))
+hiddenTypeDecl :: ModuleIdent -> TCEnv -> QualIdent -> IDecl
+hiddenTypeDecl m tcEnv tc = case qualLookupTC (qualQualify m tc) tcEnv of
+  [DataType     _ n _] -> hidingDataDecl tc n
+  [RenamingType _ n _] -> hidingDataDecl tc n
+  _                    -> internalError "Exports.hiddenTypeDecl"
   where hidingDataDecl tc1 n = HidingDataDecl NoPos tc1 $ take n identSupply
 
 hiddenTypes :: ModuleIdent -> [IDecl] -> [QualIdent]
