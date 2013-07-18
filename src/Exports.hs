@@ -28,6 +28,7 @@ import Curry.Syntax as CS
 import Base.CurryTypes (fromQualType, fromQualType', fromContext)
 import Base.Messages
 import Base.Types as BT
+import Base.Names
 
 import Env.OpPrec          (OpPrecEnv, PrecInfo (..), OpPrec (..), qualLookupP)
 import Env.TypeConstructor (TCEnv, TypeInfo (..), qualLookupTC)
@@ -72,8 +73,15 @@ exportInterface' (Module m (Just (Exporting _ es)) _ _) tcs pEnv tcEnv tyEnv cEn
     (nub $ calculateDependencies cEnv (getLocalInstances cEnv) exportedClasses')
      \\ (nub exportedClasses')
   exportedClasses' = exportedClasses cEnv es
-  allDecls = if tcs then decls ++ instances ++ hiddenClasses else decls
+  allDecls = if tcs 
+    then decls ++ instances ++ hiddenClasses
+    else decls ++ dictDecls
   isLocal qid = not (isQualified qid) || fromJust (qidModule qid) == m
+  dictionaries = map (Export . qualifyWith m . mkIdent . dictName) $ 
+    getLocalInstances cEnv
+  dictName :: Instance -> String
+  dictName i = mkDictName (show $ iClass i) (show $ iType i)
+  dictDecls = foldr (funDecl m tyEnv) [] dictionaries
 exportInterface' (Module _ Nothing _ _) _ _ _ _ _
   = internalError "Exports.exportInterface: no export specification"
 
