@@ -70,18 +70,25 @@ exportInterface' (Module m (Just (Exporting _ es)) _ _) tcs pEnv tcEnv tyEnv cEn
   decls   = foldr (typeDecl m tcEnv cEnv) (foldr (funDecl m tyEnv) [] es) es
   instances = map (instanceToIDecl . unqualInst m) $ getLocalInstances cEnv
   hiddenClasses = map (toHiddenClassDecl m cEnv) $ filter isLocal $ 
-    (nub $ calculateDependencies cEnv (getLocalInstances cEnv) exportedClasses')
-     \\ (nub exportedClasses')
+    nub dependencies \\ nub exportedClasses'
+  dependencies = calculateDependencies cEnv (getLocalInstances cEnv) exportedClasses'
   exportedClasses' = exportedClasses cEnv es
   allDecls = if tcs 
     then decls ++ instances ++ hiddenClasses
-    else decls ++ dictDecls
+    else decls ++ dictDecls ++ classElemDecls
   isLocal qid = not (isQualified qid) || fromJust (qidModule qid) == m
   dictionaries = map (Export . qualifyWith m . mkIdent . dictName) $ 
     getLocalInstances cEnv
   dictName :: Instance -> String
   dictName i = mkDictName (show $ iClass i) (show $ iType i)
   dictDecls = foldr (funDecl m tyEnv) [] dictionaries
+  allClasses0 = nub $ exportedClasses' ++ dependencies
+  classElems = exportsForDictTypes m allClasses0 ++
+    exportsForSelFuns m cEnv allClasses0
+  classElemDecls = 
+    foldr (typeDecl m tcEnv cEnv) 
+          (foldr (funDecl m tyEnv) [] classElems)
+          classElems
 exportInterface' (Module _ Nothing _ _) _ _ _ _ _
   = internalError "Exports.exportInterface: no export specification"
 
@@ -369,4 +376,33 @@ toHiddenClassDecl :: ModuleIdent -> ClassEnv -> QualIdent -> IDecl
 toHiddenClassDecl m cEnv qid = 
   classToClassDecl m IHidingClassDecl (fromJust $ lookupClass cEnv qid)
  
+-- for classes, the dictionary types have to be exported, as well as all 
+-- selection functions
+
+-- |determines the dictionary types for the given classes
+exportsForDictTypes :: ModuleIdent -> [QualIdent] -> [Export]
+exportsForDictTypes m clss = map (exportForDictType m) clss
+
+-- |determines the dictionary type for one given class
+exportForDictType :: ModuleIdent -> QualIdent -> Export
+exportForDictType m cls = 
+  ExportTypeWith (qualifyWith m $ mkIdent $ mkDictTypeName (show cls)) []
+
+-- |creates export specifications for all selection functions for the given 
+-- classes
+exportsForSelFuns :: ModuleIdent -> ClassEnv -> [QualIdent] -> [Export]
+exportsForSelFuns m cEnv clss = concatMap (exportsForSelFuns' m cEnv) clss
+
+-- |creates export specifications for all selection functions for a given class
+exportsForSelFuns' :: ModuleIdent -> ClassEnv -> QualIdent -> [Export]
+exportsForSelFuns' m cEnv cls = 
+  map (Export . qualifyWith m . mkIdent . mkSelFunName (show cls) . show) scls ++
+  map (Export . qualifyWith m . mkIdent . mkSelFunName (show cls) . show) ms
+  where
+  scls = allSuperClasses cEnv cls
+  class0 = fromJust $ canonLookupClass cEnv cls
+  ms = map fst $ typeSchemes class0
   
+
+
+
