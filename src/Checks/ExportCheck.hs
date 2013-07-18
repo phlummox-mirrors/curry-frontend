@@ -26,14 +26,14 @@ import Env.ClassEnv
 -- Check and expansion of the export statement
 -- ---------------------------------------------------------------------------
 
-exportCheck :: ModuleIdent -> AliasEnv -> TCEnv -> ValueEnv -> ClassEnv
+exportCheck :: Bool -> ModuleIdent -> AliasEnv -> TCEnv -> ValueEnv -> ClassEnv
             -> Maybe ExportSpec -> (Maybe ExportSpec, [Message])
-exportCheck m aEnv tcEnv tyEnv cEnv spec = case expErrs of
+exportCheck tcs m aEnv tcEnv tyEnv cEnv spec = case expErrs of
   [] -> (Just $ Exporting NoPos exports, ambiErrs)
   ms -> (spec, ms)
   where
   (exports, expErrs) = runECM (joinExports `liftM` expandSpec spec) initState
-  initState          = ECState m imported tcEnv tyEnv cEnv []
+  initState          = ECState m imported tcEnv tyEnv cEnv [] tcs
   imported           = Set.fromList $ Map.elems aEnv
 
   ambiErrs = map errMultipleExportType  (findMultiples exportedTypes)
@@ -50,6 +50,7 @@ data ECState = ECState
   , valueEnv     :: ValueEnv
   , classEnv     :: ClassEnv
   , errors       :: [Message]
+  , typeClasses  :: Bool   
   }
 
 type ECM a = S.State ECState a
@@ -74,6 +75,10 @@ getClassEnv = S.gets classEnv
 
 report :: Message -> ECM ()
 report err = S.modify (\ s -> s { errors = err : errors s })
+
+isTypeClasses :: ECM Bool
+isTypeClasses = S.gets typeClasses
+
 
 -- While checking all export specifications, the compiler expands
 -- specifications of the form @T(..)@ into @T(C_1,...,C_n)@,
@@ -226,12 +231,15 @@ expandLocalModule = do
   tcEnv <- getTyConsEnv
   tyEnv <- getValueEnv
   cEnv  <- getClassEnv
+  tcs <- isTypeClasses 
   return $ [exportType tyEnv t | (_, t) <- localBindings tcEnv] ++
     [Export f' | (f, Value f' _ _) <- localBindings tyEnv, 
                   f == unRenameIdent f, not $ isClassMethod cEnv (qualify f)] ++
-    [ExportTypeWith cName ms | cls <- allLocalClasses (theClasses cEnv), 
-                               let cName = theClass cls
-                                   ms = map fst (typeSchemes cls)]
+    if tcs 
+    then [ExportTypeWith cName ms | cls <- allLocalClasses (theClasses cEnv), 
+                                    let cName = theClass cls
+                                        ms = map fst (typeSchemes cls)]
+    else []
 
 -- |Expand a module export
 expandImportedModule :: ModuleIdent -> ECM [Export]

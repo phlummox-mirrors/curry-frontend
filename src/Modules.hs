@@ -192,7 +192,7 @@ checkModule opts (env, mdl) = do
   -- these are compiled out later, we already here have to set aside the
   -- export checked module and the environment 
   (envEc1, ec1) <- if withTypeCheck 
-                   then exportCheck env5 tc
+                   then exportCheck True env5 tc
                    else return (env5, tc)
   (envEc1', ec1') <- if withTypeCheck
                      then return $ qual opts envEc1 ec1
@@ -214,7 +214,7 @@ checkModule opts (env, mdl) = do
                     else return (env5d, es) 
   (env6,  ec2) <- if withTypeCheck 
                    -- then exportCheck env5e tc2
-                   then dump DumpTypeChecked2 env5e exportCheck (env5e, tc2)
+                   then dump DumpTypeChecked2 env5e (exportCheck False) (env5e, tc2)
                    else return (env5e, tc2)
   (env7,  ql) <- return $ qual opts env6 ec2
   let dumps = [ (DumpParsed            , env , show' CS.ppModule mdl)
