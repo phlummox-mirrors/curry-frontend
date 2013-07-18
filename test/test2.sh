@@ -55,7 +55,8 @@ done
 
 for file in TestClassExports TestClassExports2 TestClassExportsImports \
   TestClassExportsNoExportSpec \
-  InstancesExports InstancesExportsImports InstancesExportBug InstancesExportBugImports
+  InstancesExports InstancesExportsImports InstancesExportBug InstancesExportBugImports \
+  Dependencies1
 do
   echo $file >> tmp.txt
   $cymake -f -i typeclasses/modules typeclasses/modules/$file.curry 2>> output_test2_stderr.txt 1>> output_test2_stdout.txt || echo Error in $file.curry
