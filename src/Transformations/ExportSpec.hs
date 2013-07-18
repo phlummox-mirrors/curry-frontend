@@ -52,8 +52,8 @@ getClassEnv = S.gets theClassEnv
 
 
 transExportSpec :: CompilerEnv -> Module -> Module
-transExportSpec cEnv mdl = 
-  runES (transExportSpec' mdl) (initState (classEnv cEnv) (valueEnv cEnv))
+transExportSpec cEnv mdl = mdl
+  -- runES (transExportSpec' mdl) (initState (classEnv cEnv) (valueEnv cEnv))
 
 transExportSpec' :: Module -> ES Module
 transExportSpec' mdl@(Module _ Nothing _ _)     = return mdl
