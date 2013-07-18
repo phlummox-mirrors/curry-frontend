@@ -59,7 +59,7 @@ done
 
 for file in TestClassExports TestClassExports2 TestClassExportsImports \
   TestClassExportsNoExportSpec \
-  InstancesExports InstancesExportsImports InstancesExportBug InstancesExportBugImports \
+  InstancesExports InstancesExports2 InstancesExportsImports InstancesExportBug InstancesExportBugImports \
   Dependencies1 Dependencies1Imports
 do
   echo $file >> tmp.txt
