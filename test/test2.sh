@@ -36,7 +36,8 @@ for file in DictTrans1 DictTrans2 DictTrans3 DictTrans4 \
   QualifiedClassMethods Warnings ExpandClassTySigsTypes ExpandClassTySigs TypeSigProblem ContextRed \
   SelSuperclasses2 SelSuperclasses TestInstances2 TestInstances InstanceConstraints2 \
   TestVarious \
-  DataConstructorsBug1 DataConstructorsBug2
+  DataConstructorsBug1 DataConstructorsBug2 \
+  ArrowInstances
 do
   echo $file >> tmp.txt
   $cymake -f -i typeclasses typeclasses/$file.curry 2>> output_test2_stderr.txt 1>> output_test2_stdout.txt || echo Error in $file.curry
