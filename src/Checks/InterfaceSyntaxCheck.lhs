@@ -81,6 +81,7 @@ The latter must not occur in type expressions in interfaces.
 > bindType (IFunctionDecl  _ _ _ _ _) = id
 > bindType (IClassDecl     _ _ _ _ _) = id
 > bindType (IInstanceDecl  _ _ _ _ _) = id
+> bindType (IHidingClassDecl _ _ _ _ _) = id
 
 \end{verbatim}
 The checks applied to the interface are similar to those performed
@@ -106,6 +107,8 @@ during syntax checking of type expressions.
 > checkIDecl (IClassDecl p scls cls var tySigs) = 
 >   liftM (IClassDecl p scls cls var) (mapM checkIDecl tySigs)
 > checkIDecl i@(IInstanceDecl _ _ _ _ _) = return i 
+> checkIDecl (IHidingClassDecl p scls cls var tySigs) = 
+>  liftM (IHidingClassDecl p scls cls var) (mapM checkIDecl tySigs)
 
 > checkTypeLhs :: [Ident] -> ISC ()
 > checkTypeLhs tvs = do
