@@ -165,16 +165,18 @@ unqualInst m (Instance cx cls ty tyvars decls) =
 
 -- |convert an instance to an IInstanceDecl
 instanceToIDecl :: Instance -> IDecl
-instanceToIDecl (Instance cx cls ty0 tyvars _) = 
-  IInstanceDecl NoPos cx cls (toTypeConstructor ty0) tyvars
-  where
-  toTypeConstructor :: QualIdent -> TypeConstructor
-  toTypeConstructor ty
-    | ty == qArrowId || ty == qArrowIdP = ArrowTC
-    | ty == qListId  || ty == qListIdP  = ListTC
-    | isQTupleId ty                     = TupleTC $ qTupleArity ty
-    | ty == qUnitId  || ty == qUnitIdP  = UnitTC
-    | otherwise                         = QualTC ty
+instanceToIDecl (Instance cx cls ty tyvars _) = 
+  IInstanceDecl NoPos cx cls (toTypeConstructor ty) tyvars
+
+-- |converts a given identifier to a type constructor, considering special
+-- syntax constructors
+toTypeConstructor :: QualIdent -> TypeConstructor
+toTypeConstructor ty
+  | ty == qArrowId || ty == qArrowIdP = ArrowTC
+  | ty == qListId  || ty == qListIdP  = ListTC
+  | isQTupleId ty                     = TupleTC $ qTupleArity ty
+  | ty == qUnitId  || ty == qUnitIdP  = UnitTC
+  | otherwise                         = QualTC ty
 
 -- The compiler determines the list of imported modules from the set of
 -- module qualifiers that are used in the interface. Careful readers
