@@ -67,7 +67,7 @@ exportInterface' (Module m (Just (Exporting _ es)) _ _) tcs pEnv tcEnv tyEnv cEn
   imports = map   (IImportDecl NoPos) $ usedModules allDecls
   precs   = foldr (infixDecl m pEnv) [] es
   hidden  = map   (hiddenTypeDecl m tcEnv) $ hiddenTypes m allDecls
-  decls   = foldr (typeDecl m tcEnv cEnv) (foldr (funDecl m tyEnv) [] es) es
+  decls   = foldr (typeDecl tcs m tcEnv cEnv) (foldr (funDecl m tyEnv) [] es) es
   instances = map (instanceToIDecl . unqualInst m) $ getLocalInstances cEnv
   hiddenClasses = map (toHiddenClassDecl m cEnv) $ filter isLocal $ 
     nub dependencies \\ nub exportedClasses'
@@ -86,7 +86,7 @@ exportInterface' (Module m (Just (Exporting _ es)) _ _) tcs pEnv tcEnv tyEnv cEn
   classElems = exportsForDictTypes m allClasses0 ++
     exportsForSelFuns m cEnv allClasses0
   classElemDecls = 
-    foldr (typeDecl m tcEnv cEnv) 
+    foldr (typeDecl tcs m tcEnv cEnv) 
           (foldr (funDecl m tyEnv) [] classElems)
           classElems
 exportInterface' (Module _ Nothing _ _) _ _ _ _ _
@@ -105,9 +105,9 @@ iInfixDecl m pEnv op ds = case qualLookupP op pEnv of
     IInfixDecl NoPos fix pr (qualUnqualify m op) : ds
   _                            -> internalError "Exports.infixDecl"
 
-typeDecl :: ModuleIdent -> TCEnv -> ClassEnv -> Export -> [IDecl] -> [IDecl]
-typeDecl _ _     _    (Export             _) ds = ds
-typeDecl m tcEnv cEnv (ExportTypeWith tc cs) ds = case qualLookupTC tc tcEnv of
+typeDecl :: Bool -> ModuleIdent -> TCEnv -> ClassEnv -> Export -> [IDecl] -> [IDecl]
+typeDecl _   _ _     _    (Export             _) ds = ds
+typeDecl tcs m tcEnv cEnv (ExportTypeWith tc cs) ds = case qualLookupTC tc tcEnv of
   [DataType tc' n cs'] ->
     iTypeDecl IDataDecl m tc' n
        (constrDecls m (drop n identSupply) cs cs') : ds
@@ -132,10 +132,10 @@ typeDecl m tcEnv cEnv (ExportTypeWith tc cs) ds = case qualLookupTC tc tcEnv of
     -- the whole class declaration must be exported, also the hidden methods 
     -- (for these actually the name doesn't need to be exported, important is only 
     -- the type signature). 
-    [c] -> classToClassDecl m IClassDecl c : ds
+    [c] -> (if tcs then (classToClassDecl m IClassDecl c :) else id) ds
     _ -> internalError "Exports.typeDecl: no class"
   _ -> internalError "Exports.typeDecl: no type"
-typeDecl _ _ _ _ _ = internalError "Exports.typeDecl: no pattern match"
+typeDecl _ _ _ _ _ _ = internalError "Exports.typeDecl: no pattern match"
 
 iTypeDecl :: (Position -> QualIdent -> [Ident] -> a -> IDecl)
            -> ModuleIdent -> QualIdent -> Int -> a -> IDecl
