@@ -7,6 +7,10 @@ rm -f tmp.txt
 
 echo ================
 
+# delete old files
+rm -f -r typeclasses/.curry
+rm -f -r typeclasses/modules/.curry
+
 # prepare needed interfaces
 
 $cymake -f -i typeclasses typeclasses/Float.curry typeclasses/Prelude.curry > /dev/null
