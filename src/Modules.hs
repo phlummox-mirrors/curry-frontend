@@ -282,8 +282,8 @@ writeOutput opts fn (env, modul) (tcExportEnv, tcExportModule) = do
     -- dump intermediate results
     mapM_ (doDump opts) dumps
     -- generate interface file
-    let intf = exportInterface env2 modul
-        tcIntf = exportInterface tcExportEnv tcExportModule
+    let intf = exportInterface env2 modul False
+        tcIntf = exportInterface tcExportEnv tcExportModule True
     writeInterfaces opts fn [intf, tcIntf]
     -- generate target code
     let modSum = summarizeModule (tyConsEnv env2) intf modul

@@ -51,20 +51,25 @@ import CompilerEnv
 -- the name of the module where it is defined. The same applies to an
 -- exported function.
 
-exportInterface :: CompilerEnv -> Module -> Interface
-exportInterface env mdl = exportInterface' mdl
+-- |The boolean flag indicates whether type class elements should be exported
+-- or not 
+exportInterface :: CompilerEnv -> Module -> Bool -> Interface
+exportInterface env mdl tcs = exportInterface' mdl tcs
   (opPrecEnv env) (tyConsEnv env) (valueEnv env) (classEnv env)
 
-exportInterface' :: Module -> OpPrecEnv -> TCEnv -> ValueEnv -> ClassEnv -> Interface
-exportInterface' (Module m (Just (Exporting _ es)) _ _) pEnv tcEnv tyEnv cEnv
+exportInterface' :: Module -> Bool -> OpPrecEnv -> TCEnv -> ValueEnv 
+                 -> ClassEnv -> Interface
+exportInterface' (Module m (Just (Exporting _ es)) _ _) tcs pEnv tcEnv tyEnv cEnv
   = Interface m imports $ precs ++ hidden ++ decls ++ instances
   where
   imports = map   (IImportDecl NoPos) $ usedModules (decls ++ instances)
   precs   = foldr (infixDecl m pEnv) [] es
   hidden  = map   (hiddenTypeDecl m tcEnv) $ hiddenTypes m (decls ++ instances)
   decls   = foldr (typeDecl m tcEnv cEnv) (foldr (funDecl m tyEnv) [] es) es
-  instances = map (instanceToIDecl . unqualInst m) $ getLocalInstances cEnv
-exportInterface' (Module _ Nothing _ _) _ _ _ _
+  instances = if tcs 
+    then map (instanceToIDecl . unqualInst m) $ getLocalInstances cEnv
+    else []
+exportInterface' (Module _ Nothing _ _) _ _ _ _ _
   = internalError "Exports.exportInterface: no export specification"
 
 infixDecl :: ModuleIdent -> OpPrecEnv -> Export -> [IDecl] -> [IDecl]
