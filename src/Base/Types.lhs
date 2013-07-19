@@ -93,7 +93,7 @@ as well, these variables must never be quantified.
 > -- the constructor and its following types 
 > splitType :: Type -> Maybe (QualIdent, [Type])
 > splitType (TypeConstructor xi tys) = Just (xi, tys)
-> splitType (TypeArrow ty1 ty2) = Just (qArrowId, [ty1, ty2])
+> splitType (TypeArrow ty1 ty2) = Just (qArrowIdP, [ty1, ty2])
 > splitType (TypeConstrained (t:_) _) = splitType t
 > splitType (TypeConstrained [] _) = Nothing
 > splitType _ = Nothing

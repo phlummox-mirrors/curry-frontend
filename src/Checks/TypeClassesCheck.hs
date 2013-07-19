@@ -234,7 +234,7 @@ tyConToQualIdent m tcEnv (QualTC qid) = qualifyQid
 tyConToQualIdent _ _ UnitTC = Just qUnitIdP
 tyConToQualIdent _ _ (TupleTC n) = Just $ qTupleIdP n 
 tyConToQualIdent _ _ ListTC = Just qListIdP
-tyConToQualIdent _ _ ArrowTC = Just qArrowId
+tyConToQualIdent _ _ ArrowTC = Just qArrowIdP
 
 -- |qualifies superclasses in the class context
 qualifyClass :: ClassEnv -> Class -> Class
