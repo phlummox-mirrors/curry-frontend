@@ -58,4 +58,4 @@ mkDictTypeName cls = dictTypePrefix ++ cls
 
 -- |internal separator
 sep :: String
-sep = "."
+sep = ":"
