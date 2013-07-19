@@ -105,10 +105,10 @@ loadAndCheck str =
 -}   
 
 -- |This function checks the modules until the type check phase is reached
-checkModule' :: Bool -> CO.Options -> (CompilerEnv, CS.Module)
+checkModule' :: Bool -> CO.Options -> (CompilerEnv, CompilerEnv, CS.Module)
              -> CheckResult CompilerEnv
-checkModule' contextRed opts (env, mdl) = do
-  (env1,  kc) <- kindCheck env mdl -- should be only syntax checking ?
+checkModule' contextRed opts (_env, envtc, mdl) = do
+  (env1,  kc) <- kindCheck envtc mdl -- should be only syntax checking ?
   (env2,  sc) <- syntaxCheck opts env1 kc
   (env3,  pc) <- precCheck        env2 sc
   (env4, tcc) <- typeClassesCheck env3 pc

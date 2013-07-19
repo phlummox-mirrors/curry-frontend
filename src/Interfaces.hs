@@ -48,6 +48,8 @@ data LoaderState = LoaderState
   { iEnv   :: InterfaceEnv
   , spaths :: [FilePath]
   , errs   :: [Message]
+  -- | should we load the type classes or the non-type-classes interfaces?
+  , tcs0   :: Bool 
   }
 
 -- Report an error.
@@ -62,6 +64,9 @@ loaded m = S.gets $ \ s -> m `M.member` iEnv s
 searchPaths :: IntfLoader [FilePath]
 searchPaths = S.gets spaths
 
+isTypeClasses :: IntfLoader Bool
+isTypeClasses = S.gets tcs0
+
 -- Add an interface to the environment.
 addInterface :: ModuleIdent -> Interface -> IntfLoader ()
 addInterface m intf = S.modify $ \ s -> s { iEnv = M.insert m intf $ iEnv s }
@@ -70,11 +75,12 @@ addInterface m intf = S.modify $ \ s -> s { iEnv = M.insert m intf $ iEnv s }
 -- This function returns an 'InterfaceEnv' containing the 'Interface's which
 -- were successfully loaded, as well as a list of 'Message's contaning
 -- any errors encountered during loading.
-loadInterfaces :: [FilePath] -- ^ 'FilePath's to search in for interfaces
+loadInterfaces :: Bool       -- ^ should we load type class interfaces or non-type-classes interfaces
+               -> [FilePath] -- ^ 'FilePath's to search in for interfaces
                -> Module     -- ^ 'Module' header with import declarations
                -> IO (InterfaceEnv, [Message])
-loadInterfaces paths (Module m _ is _) = do
-  res <- S.execStateT load (LoaderState initInterfaceEnv paths [])
+loadInterfaces tcs paths (Module m _ is _) = do
+  res <- S.execStateT load (LoaderState initInterfaceEnv paths [] tcs)
   return (iEnv res, reverse $ errs res)
   where load = mapM_ (loadInterface [m]) [(p, m') | ImportDecl p m' _ _ _ <- is]
 
@@ -107,11 +113,13 @@ compileInterface :: [ModuleIdent] -> (Position, ModuleIdent) -> FilePath
                  -> IntfLoader ()
 compileInterface ctxt (p, m) fn = do
   mbSrc <- liftIO $ readModule fn
+  tcs <- isTypeClasses
   case mbSrc of
     Nothing  -> report $ errInterfaceNotFound p m
     Just src -> case runMsg $ parseInterface fn src of
       Left err -> report err
-      Right ([intf@(Interface n is _), _], _) -> -- **** TODO **** 
+      Right ([intf0, intftc0], _) ->
+        let intf@(Interface n is _) = if tcs then intftc0 else intf0 in
         if (m /= n)
           then report $ errWrongInterface (first fn) m n
           else do
