@@ -75,7 +75,7 @@ exportInterface' (Module m (Just (Exporting _ es)) _ _) tcs pEnv tcEnv tyEnv cEn
   exportedClasses' = exportedClasses cEnv es
   allDecls = if tcs 
     then decls ++ instances ++ hiddenClasses
-    else decls ++ dictDecls ++ classElemDecls
+    else nub $ decls ++ dictDecls ++ classElemDecls
   isLocal qid = not (isQualified qid) || fromJust (qidModule qid) == m
   dictionaries = map (Export . qualifyWith m . mkIdent . dictName) $ 
     getLocalInstances cEnv
