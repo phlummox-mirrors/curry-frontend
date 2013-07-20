@@ -231,15 +231,12 @@ expandLocalModule = do
   tcEnv <- getTyConsEnv
   tyEnv <- getValueEnv
   cEnv  <- getClassEnv
-  tcs <- isTypeClasses 
   return $ [exportType tyEnv t | (_, t) <- localBindings tcEnv] ++
     [Export f' | (f, Value f' _ _) <- localBindings tyEnv, 
                   f == unRenameIdent f, not $ isClassMethod cEnv (qualify f)] ++
-    if tcs 
-    then [ExportTypeWith cName ms | cls <- allLocalClasses (theClasses cEnv), 
-                                    let cName = theClass cls
-                                        ms = map fst (typeSchemes cls)]
-    else []
+    [ExportTypeWith cName ms | cls <- allLocalClasses (theClasses cEnv), 
+                               let cName = theClass cls
+                                   ms = map fst (typeSchemes cls)]
 
 -- |Expand a module export
 expandImportedModule :: ModuleIdent -> ECM [Export]
