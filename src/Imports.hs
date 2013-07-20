@@ -123,7 +123,7 @@ importInterface tcs m q is i env = (env', errs)
   mTyEnv = intfEnv bindTy   i -- all values
   mClsEnv = intfEnv bindCls i -- all classes
   -- all imported type constructors / values
-  (expandedSpec, errs) = runExpand (expandSpecs is) m mTCEnv mTyEnv
+  (expandedSpec, errs) = runExpand (expandSpecs is) m mTCEnv mTyEnv mClsEnv
   ts = isVisible is (Set.fromList $ foldr addType  [] expandedSpec)
   vs = isVisible is (Set.fromList $ foldr addValue [] expandedSpec)
 
@@ -321,6 +321,7 @@ data ExpandState = ExpandState
   { expModIdent :: ModuleIdent
   , expTCEnv    :: ExpTCEnv
   , expValueEnv :: ExpValueEnv
+  , expClassEnv :: ExpClassEnv
   , errors      :: [Message]
   }
 
@@ -335,12 +336,15 @@ getTyConsEnv = S.gets expTCEnv
 getValueEnv :: ExpandM ExpValueEnv
 getValueEnv = S.gets expValueEnv
 
+getClassEnv :: ExpandM ExpClassEnv
+getClassEnv = S.gets expClassEnv
+
 report :: Message -> ExpandM ()
 report msg = S.modify $ \ s -> s { errors = msg : errors s }
 
-runExpand :: ExpandM a -> ModuleIdent -> ExpTCEnv -> ExpValueEnv -> (a, [Message])
-runExpand expand m tcEnv tyEnv =
-  let (r, s) = S.runState expand (ExpandState m tcEnv tyEnv [])
+runExpand :: ExpandM a -> ModuleIdent -> ExpTCEnv -> ExpValueEnv -> ExpClassEnv -> (a, [Message])
+runExpand expand m tcEnv tyEnv cEnv =
+  let (r, s) = S.runState expand (ExpandState m tcEnv tyEnv cEnv [])
   in (r, reverse $ errors s)
 
 expandSpecs :: Maybe ImportSpec -> ExpandM [Import]
