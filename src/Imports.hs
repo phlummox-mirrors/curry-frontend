@@ -21,6 +21,7 @@ import qualified Data.Map as Map
 import Data.Maybe
 import qualified Data.Set as Set
 import Text.PrettyPrint
+import Data.List (nub, (\\))
 
 import Curry.Base.Ident
 import Curry.Base.Position
@@ -29,8 +30,9 @@ import Curry.Syntax as CS
 import Base.CurryTypes (toQualType, toQualTypes, toQualConstrType)
 import Base.Messages (Message, posMessage, internalError)
 import Base.TopEnv
-import Base.Types as BT
+import Base.Types as BT hiding (isCons)
 import Base.TypeSubst (expandAliasType)
+import Base.Utils (fst3)
 
 import Env.Interface
 import Env.ModuleAlias (importAliases, initAliasEnv)
@@ -353,14 +355,31 @@ expandSpecs (Just (Importing _ is)) = concat `liftM` mapM expandImport is
 expandSpecs (Just (Hiding    _ is)) = concat `liftM` mapM expandHiding is
 
 expandImport :: Import -> ExpandM [Import]
-expandImport (Import             x) =               expandThing    x
-expandImport (ImportTypeWith tc cs) = (:[]) `liftM` expandTypeWith tc cs
-expandImport (ImportTypeAll     tc) = (:[]) `liftM` expandTypeAll  tc
+expandImport (Import             x) = expandThing    x
+expandImport (ImportTypeWith tc cs) = 
+  expandHelper tc (expandClassWith tc cs) (expandTypeWith tc cs) 
+expandImport (ImportTypeAll     tc) = 
+  expandHelper tc (expandClassAll tc) (expandTypeAll tc)
 
 expandHiding :: Import -> ExpandM [Import]
 expandHiding (Import             x) = expandHide x
-expandHiding (ImportTypeWith tc cs) = (:[]) `liftM` expandTypeWith tc cs
-expandHiding (ImportTypeAll     tc) = (:[]) `liftM` expandTypeAll  tc
+expandHiding (ImportTypeWith tc cs) = 
+  expandHelper tc (expandClassWith tc cs) (expandTypeWith tc cs) 
+expandHiding (ImportTypeAll     tc) = 
+  expandHelper tc (expandClassAll tc) (expandTypeAll tc)
+
+expandHelper :: Ident -> ExpandM Import -> ExpandM Import -> ExpandM [Import]
+expandHelper tc expandClass expandType = do
+  cEnv <- getClassEnv
+  tyEnv <- getTyConsEnv
+  m <- getModuleIdent
+  let isClass = tc `Map.member` cEnv
+      isCons  = tc `Map.member` tyEnv
+  case () of
+    () | isClass && isCons     -> report (errAmbiguousEntity m tc) >> return []
+       | isClass && not isCons -> (:[]) `liftM` expandClass
+       | not isClass && isCons -> (:[]) `liftM` expandType
+       | otherwise             -> report (errUndefinedEntity m tc) >> return []
 
 -- try to expand as type constructor or class
 expandThing :: Ident -> ExpandM [Import]
@@ -438,6 +457,19 @@ expandTypeWith tc cs = do
     unless (l `elem` ls') $ report $ errUndefinedLabel tc l
     return l
 
+expandClassWith :: Ident -> [Ident] -> ExpandM Import
+expandClassWith cls fs = do
+  m <- getModuleIdent
+  cEnv <- getClassEnv
+  ImportTypeWith cls `liftM` case Map.lookup cls cEnv of
+    Nothing -> report (errUndefinedEntity m cls) >> return []
+    Just c -> 
+      let ms = map fst3 $ methods c
+          invalidFs = nub fs \\ ms
+      in if null invalidFs
+         then return fs
+         else report (errUndefinedMethods cls invalidFs) >> return []
+
 expandTypeAll :: Ident -> ExpandM Import
 expandTypeAll tc = do
   m     <- getModuleIdent
@@ -449,6 +481,19 @@ expandTypeAll tc = do
     Just (AliasType    _ _ (TypeRecord  fs _)) -> return [l | (l, _) <- fs]
     Just (AliasType _ _ _) -> report (errNonDataType       tc) >> return []
     Nothing                -> report (errUndefinedEntity m tc) >> return []
+
+expandClassAll :: Ident -> ExpandM Import
+expandClassAll cls = do
+  m <- getModuleIdent
+  cEnv <- getClassEnv
+  let theClass0 = Map.lookup cls cEnv
+  ImportTypeWith cls `liftM` case theClass0 of
+    Nothing -> report (errUndefinedEntity m cls) >> return []
+    Just c -> return $ map fst3 (methods c)
+
+errAmbiguousEntity :: ModuleIdent -> Ident -> Message
+errAmbiguousEntity m x = posMessage x $ hsep $ map text
+  [ "Ambiguous entity", idName x, "in Module", moduleName m ]
 
 errUndefinedEntity :: ModuleIdent -> Ident -> Message
 errUndefinedEntity m x = posMessage x $ hsep $ map text
@@ -469,6 +514,11 @@ errNonDataType tc = posMessage tc $ hsep $ map text
 errImportDataConstr :: ModuleIdent -> Ident -> Message
 errImportDataConstr _ c = posMessage c $ hsep $ map text
   [ "Explicit import for data constructor", idName c ]
+
+errUndefinedMethods :: Ident -> [Ident] -> Message
+errUndefinedMethods cls fs = posMessage cls $ 
+  text "The following methods are no class methods of class" <+> text (show cls)
+  <> text ":" <+> brackets (hsep $ punctuate comma (map (text . show) fs))
 
 -- ---------------------------------------------------------------------------
 
