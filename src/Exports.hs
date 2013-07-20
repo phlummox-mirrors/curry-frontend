@@ -24,7 +24,6 @@ import Data.List
 import Curry.Base.Position
 import Curry.Base.Ident
 import Curry.Syntax as CS
-import Curry.Syntax.Utils
 
 import Base.CurryTypes (fromQualType, fromQualType', fromContext)
 import Base.Messages
