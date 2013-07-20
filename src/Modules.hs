@@ -121,8 +121,8 @@ loadModule opts fn = do
             CheckFailed intfImpErrs -> abortWithMessages intfImpErrs -- TODO
             _ -> do
               -- add information of imported modules
-              let (env, impErrs)     = importModules opts mdl iEnv
-                  (envtc, impErrsTc) = importModules opts mdl iEnvTc
+              let (env, impErrs)     = importModules False opts mdl iEnv
+                  (envtc, impErrsTc) = importModules True opts mdl iEnvTc
                   errs' = impErrs ++ impErrsTc
               unless (null errs') $ abortWithMessages errs' -- TODO
               return (env, envtc, mdl)

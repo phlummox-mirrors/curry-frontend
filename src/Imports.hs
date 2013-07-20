@@ -44,8 +44,8 @@ import CompilerOpts
 
 -- |The function 'importModules' brings the declarations of all
 -- imported interfaces into scope for the current module.
-importModules :: Options -> Module -> InterfaceEnv -> (CompilerEnv, [Message])
-importModules opts (Module mid _ imps _) iEnv
+importModules :: Bool -> Options -> Module -> InterfaceEnv -> (CompilerEnv, [Message])
+importModules tcs opts (Module mid _ imps _) iEnv
   = (\ (e, m) -> (expandTCValueEnv opts $ importUnifyData e, m))
   $ foldl importModule (initEnv, []) imps
   where
@@ -55,7 +55,7 @@ importModules opts (Module mid _ imps _) iEnv
       }
     importModule (env, msgs) (ImportDecl _ m q asM is) =
       case Map.lookup m iEnv of
-        Just intf -> let (env', msgs') = importInterface (fromMaybe m asM) q is intf env
+        Just intf -> let (env', msgs') = importInterface tcs (fromMaybe m asM) q is intf env
                      in  (env', msgs ++ msgs')
         Nothing   -> internalError $ "Imports.importModules: no interface for "
                                     ++ show m
@@ -102,9 +102,9 @@ type ExpClassEnv = IdentMap Class
 -- using either a qualified import (if the module is imported qualified)
 -- or both a qualified and an unqualified import (non-qualified import).
 
-importInterface :: ModuleIdent -> Bool -> Maybe ImportSpec -> Interface
+importInterface :: Bool -> ModuleIdent -> Bool -> Maybe ImportSpec -> Interface
                 -> CompilerEnv -> (CompilerEnv, [Message])
-importInterface m q is i env = (env', errs)
+importInterface tcs m q is i env = (env', errs)
   where
   env' = env
     { opPrecEnv = importEntities m q vs id              mPEnv  $ opPrecEnv env
