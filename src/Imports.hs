@@ -37,6 +37,7 @@ import Env.ModuleAlias (importAliases, initAliasEnv)
 import Env.OpPrec
 import Env.TypeConstructor
 import Env.Value
+import Env.ClassEnv
 
 import CompilerEnv
 import CompilerOpts
@@ -460,15 +461,20 @@ qualifyLocal currentEnv initEnv = currentEnv
   { opPrecEnv = foldr bindQual   pEnv  $ localBindings $ opPrecEnv currentEnv
   , tyConsEnv = foldr bindQual   tcEnv $ localBindings $ tyConsEnv currentEnv
   , valueEnv  = foldr bindGlobal tyEnv $ localBindings $ valueEnv  currentEnv
+  , classEnv  = (classEnv currentEnv) { theClasses = classesInClassEnv }
   }
   where
     pEnv  = opPrecEnv initEnv
     tcEnv = tyConsEnv initEnv
     tyEnv = valueEnv  initEnv
+    cEnv  = classEnv  initEnv
     bindQual   (_, y) = qualBindTopEnv "Imports.qualifyEnv" (origName y) y
     bindGlobal (x, y)
       | idUnique x == 0 = bindQual (x, y)
       | otherwise       = bindTopEnv "Imports.qualifyEnv" x y
+    
+    classesInClassEnv = 
+      foldr bindQual (theClasses cEnv) $ localBindings $ theClasses $ classEnv currentEnv
 
 -- Importing an interface into another interface is somewhat simpler
 -- because all entities are imported into the environment. In addition,
