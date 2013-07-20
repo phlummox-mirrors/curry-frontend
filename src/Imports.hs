@@ -24,7 +24,7 @@ import Text.PrettyPrint
 
 import Curry.Base.Ident
 import Curry.Base.Position
-import Curry.Syntax
+import Curry.Syntax as CS
 
 import Base.CurryTypes (toQualType, toQualTypes, toQualConstrType)
 import Base.Messages (Message, posMessage, internalError)
@@ -92,6 +92,7 @@ type IdentMap    = Map.Map Ident
 type ExpPEnv     = IdentMap PrecInfo
 type ExpTCEnv    = IdentMap TypeInfo
 type ExpValueEnv = IdentMap ValueInfo
+type ExpClassEnv = IdentMap Class
 
 -- When an interface is imported, the compiler first transforms the
 -- interface into these environments. If an import specification is
@@ -113,6 +114,7 @@ importInterface m q is i env = (env', errs)
   mPEnv  = intfEnv bindPrec i -- all operator precedences
   mTCEnv = intfEnv bindTC   i -- all type constructors
   mTyEnv = intfEnv bindTy   i -- all values
+  mClsEnv = intfEnv bindCls i -- all classes
   -- all imported type constructors / values
   (expandedSpec, errs) = runExpand (expandSpecs is) m mTCEnv mTyEnv
   ts = isVisible is (Set.fromList $ foldr addType  [] expandedSpec)
@@ -252,6 +254,26 @@ bindRecordLabels m r (ls, ty) env = foldr bindLbl env ls
 
 constrType :: QualIdent -> [Ident] -> TypeExpr
 constrType tc tvs = ConstructorType tc $ map VariableType tvs
+
+-- | binding classes
+bindCls :: ModuleIdent -> IDecl -> ExpClassEnv -> ExpClassEnv
+bindCls m (IClassDecl _ scx cls tyvar ds) env
+  = Map.insert (unqualify cls)
+    Class { 
+      superClasses = map (qualQualify m) scx, 
+      theClass = qualQualify m cls, 
+      Env.ClassEnv.typeVar = tyvar, 
+      kind = -1, 
+      methods = map (iFunDeclToMethod m) ds, 
+      typeSchemes = [], defaults = [] }
+    env
+bindCls _ _ env = env
+
+-- |convert an IFunctionDecl to the method representation used in "Class"
+iFunDeclToMethod :: ModuleIdent -> IDecl -> (Ident, CS.Context, TypeExpr)
+iFunDeclToMethod m (IFunctionDecl _ f _a cx te) 
+  = (unqualify f, cx, qualifyTypeExpr m te)
+iFunDeclToMethod _ _ = internalError "iFunDeclToMethod"
 
 -- ---------------------------------------------------------------------------
 -- Expansion of the import specification
