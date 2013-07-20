@@ -362,13 +362,16 @@ expandHiding (Import             x) = expandHide x
 expandHiding (ImportTypeWith tc cs) = (:[]) `liftM` expandTypeWith tc cs
 expandHiding (ImportTypeAll     tc) = (:[]) `liftM` expandTypeAll  tc
 
--- try to expand as type constructor
+-- try to expand as type constructor or class
 expandThing :: Ident -> ExpandM [Import]
 expandThing tc = do
   tcEnv <- getTyConsEnv
+  cEnv  <- getClassEnv 
   case Map.lookup tc tcEnv of
     Just _  -> expandThing' tc $ Just [ImportTypeWith tc []]
-    Nothing -> expandThing' tc Nothing
+    Nothing -> case Map.lookup tc cEnv of
+      Just _ -> expandThing' tc $ Just [ImportTypeWith tc []]
+      Nothing -> expandThing' tc Nothing
 
 -- try to expand as function / data constructor
 expandThing' :: Ident -> Maybe [Import] -> ExpandM [Import]
@@ -392,13 +395,16 @@ expandThing' f tcImport = do
   isConstr (Value            _ _ _) = False
   isConstr (Label            _ _ _) = False
 
--- try to hide as type constructor
+-- try to hide as type constructor/class
 expandHide :: Ident -> ExpandM [Import]
 expandHide tc = do
   tcEnv <- getTyConsEnv
+  cEnv <- getClassEnv
   case Map.lookup tc tcEnv of
     Just _  -> expandHide' tc $ Just [ImportTypeWith tc []]
-    Nothing -> expandHide' tc Nothing
+    Nothing -> case Map.lookup tc cEnv of
+      Just _ -> expandHide' tc $ Just [ImportTypeWith tc []]
+      Nothing -> expandHide' tc Nothing
 
 -- try to hide as function / data constructor
 expandHide' :: Ident -> Maybe [Import] -> ExpandM [Import]
