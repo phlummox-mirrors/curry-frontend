@@ -26,14 +26,14 @@ import Env.ClassEnv
 -- Check and expansion of the export statement
 -- ---------------------------------------------------------------------------
 
-exportCheck :: Bool -> ModuleIdent -> AliasEnv -> TCEnv -> ValueEnv -> ClassEnv
+exportCheck :: ModuleIdent -> AliasEnv -> TCEnv -> ValueEnv -> ClassEnv
             -> Maybe ExportSpec -> (Maybe ExportSpec, [Message])
-exportCheck tcs m aEnv tcEnv tyEnv cEnv spec = case expErrs of
+exportCheck m aEnv tcEnv tyEnv cEnv spec = case expErrs of
   [] -> (Just $ Exporting NoPos exports, ambiErrs)
   ms -> (spec, ms)
   where
   (exports, expErrs) = runECM (joinExports `liftM` expandSpec spec) initState
-  initState          = ECState m imported tcEnv tyEnv cEnv [] tcs
+  initState          = ECState m imported tcEnv tyEnv cEnv []
   imported           = Set.fromList $ Map.elems aEnv
 
   ambiErrs = map errMultipleExportType  (findMultiples exportedTypes)
@@ -49,8 +49,7 @@ data ECState = ECState
   , tyConsEnv    :: TCEnv
   , valueEnv     :: ValueEnv
   , classEnv     :: ClassEnv
-  , errors       :: [Message]
-  , typeClasses  :: Bool   
+  , errors       :: [Message]   
   }
 
 type ECM a = S.State ECState a
@@ -75,10 +74,6 @@ getClassEnv = S.gets classEnv
 
 report :: Message -> ECM ()
 report err = S.modify (\ s -> s { errors = err : errors s })
-
-isTypeClasses :: ECM Bool
-isTypeClasses = S.gets typeClasses
-
 
 -- While checking all export specifications, the compiler expands
 -- specifications of the form @T(..)@ into @T(C_1,...,C_n)@,

@@ -100,11 +100,11 @@ typeCheck run env (Module m es is ds)
                    
 
 -- |Check the export specification
-exportCheck :: Bool -> CompilerEnv -> Module -> CheckResult (CompilerEnv, Module)
-exportCheck tcs env (Module m es is ds)
+exportCheck ::  CompilerEnv -> Module -> CheckResult (CompilerEnv, Module)
+exportCheck env (Module m es is ds)
   | null msgs = CheckSuccess (env, Module m es' is ds)
   | otherwise = CheckFailed msgs
-  where (es', msgs) = EC.exportCheck tcs (moduleIdent env) (aliasEnv env)
+  where (es', msgs) = EC.exportCheck (moduleIdent env) (aliasEnv env)
                                      (tyConsEnv env) (valueEnv env) 
                                      (classEnv env) es
 
