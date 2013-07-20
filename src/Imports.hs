@@ -267,6 +267,9 @@ bindCls m (IClassDecl _ scx cls tyvar ds) env
       methods = map (iFunDeclToMethod m) ds, 
       typeSchemes = [], defaults = [] }
     env
+bindCls m (IHidingClassDecl p scx cls tyvar ds) env =
+  -- TODO: later special handling 
+  bindCls m (IClassDecl p scx cls tyvar ds) env
 bindCls _ _ env = env
 
 -- |convert an IFunctionDecl to the method representation used in "Class"
