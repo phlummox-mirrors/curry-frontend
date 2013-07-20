@@ -110,6 +110,13 @@ importInterface tcs m q is i env = (env', errs)
     { opPrecEnv = importEntities m q vs id              mPEnv  $ opPrecEnv env
     , tyConsEnv = importEntities m q ts (importData vs) mTCEnv $ tyConsEnv env
     , valueEnv  = importEntities m q vs id              mTyEnv $ valueEnv  env
+    , classEnv  = 
+      if tcs
+      then (classEnv env) {
+          theClasses = importEntities m q ts id mClsEnv $ theClasses $ classEnv env, 
+          theInstances = []
+        }
+      else initClassEnv
     }
   mPEnv  = intfEnv bindPrec i -- all operator precedences
   mTCEnv = intfEnv bindTC   i -- all type constructors
