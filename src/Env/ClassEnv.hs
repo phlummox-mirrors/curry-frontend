@@ -100,6 +100,11 @@ data Instance = Instance
 initClassEnv :: ClassEnv 
 initClassEnv = ClassEnv emptyTopEnv [] emptyTopEnv Map.empty
 
+instance Entity Class where
+  origName = theClass
+  -- TODO: 
+  -- merge (Class c1) (Class c2) = 
+
 -- ----------------------------------------------------------------------------
 -- lookup and data retrieval functions
 -- ----------------------------------------------------------------------------
