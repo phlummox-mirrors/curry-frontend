@@ -63,7 +63,8 @@ for file in TestClassExports TestClassExports2 TestClassExportsImports \
   Dependencies1 Dependencies1Imports \
   ClassExportImport ClassExportImport1 ClassExportImport2 ClassExportImport3 ClassExportImport4 \
                     ClassExportImport5 ClassExportImport6 ClassExportImport7 \
-  Dependencies2 Dependencies2Import1 Dependencies2Import2 Dependencies2Import3
+  Dependencies2 Dependencies2Import1 Dependencies2Import2 Dependencies2Import3 \
+  Dependencies3 Dependencies3Import1 Dependencies3Import2 Dependencies3Import3
 do
   echo $file >> tmp.txt
   $cymake -f -i typeclasses/modules typeclasses/modules/$file.curry 2>> output_test2_stderr.txt 1>> output_test2_stdout.txt || echo Error in $file.curry
