@@ -62,11 +62,11 @@ exportInterface env mdl tcs = exportInterface' mdl tcs
 exportInterface' :: Module -> Bool -> OpPrecEnv -> TCEnv -> ValueEnv 
                  -> ClassEnv -> Interface
 exportInterface' (Module m (Just (Exporting _ es)) _ _) tcs pEnv tcEnv tyEnv cEnv
-  = Interface m imports $ precs ++ hidden ++ allDecls
+  = Interface m imports $ precs ++ hidden0 ++ allDecls
   where
   imports = map   (IImportDecl NoPos) $ usedModules allDecls
   precs   = foldr (infixDecl m pEnv) [] es
-  hidden  = map   (hiddenTypeDecl m tcEnv) $ hiddenTypes m allDecls
+  hidden0  = map   (hiddenTypeDecl m tcEnv) $ hiddenTypes m allDecls
   decls   = foldr (typeDecl tcs m tcEnv cEnv) (foldr (funDecl m tyEnv) [] es) es
   instances = map (instanceToIDecl m cEnv) $ getLocalInstances cEnv
   hiddenClasses = map (toHiddenClassDecl m cEnv) $ filter (isLocal m) $ 
@@ -267,10 +267,10 @@ hiddenTypeDecl m tcEnv tc = case qualLookupTC (qualQualify m tc) tcEnv of
   where hidingDataDecl tc1 n = HidingDataDecl NoPos tc1 $ take n identSupply
 
 hiddenTypes :: ModuleIdent -> [IDecl] -> [QualIdent]
-hiddenTypes m ds = [tc | tc <- Set.toList tcs, hidden tc]
+hiddenTypes m ds = [tc | tc <- Set.toList tcs, hidden0 tc]
   where tcs = foldr Set.delete (Set.fromList $ usedTypes ds)
                     (definedTypes ds)
-        hidden tc = not (isQualified tc) || qidModule tc /= Just m
+        hidden0 tc = not (isQualified tc) || qidModule tc /= Just m
 
 usedTypes :: [IDecl] -> [QualIdent]
 usedTypes ds = foldr usedTypesDecl [] ds
