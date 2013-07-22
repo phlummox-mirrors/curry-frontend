@@ -184,7 +184,7 @@ checkInterface opts iEnv intf = interfaceCheck env intf
 checkModule :: Options -> (CompilerEnv, CompilerEnv, CS.Module)
             -> CheckResult (CompilerEnv, CS.Module, [Dump], CompilerEnv, CS.Module)
 checkModule opts (envNonTc, envTc, mdl) = do
-  (env1,  kc) <- kindCheck envTc mdl -- should be only syntax checking ?
+  (env1,  kc) <- dump DumpParsed envTc kindCheck (envTc, mdl) -- should be only syntax checking ?
   (env2,  sc) <- syntaxCheck opts env1 kc
   (env3,  pc) <- precCheck        env2 sc
   (env4, tcc) <- typeClassesCheck env3 pc
