@@ -75,7 +75,7 @@ exportInterface' (Module m (Just (Exporting _ es)) _ _) tcs pEnv tcEnv tyEnv cEn
   exportedClasses' = exportedClasses cEnv es
   allDecls = if tcs 
     then decls ++ instances ++ hiddenClasses
-    else nub $ decls ++ dictDecls ++ classElemDecls ++ exportedClassesHidden
+    else nub $ decls ++ dictDecls ++ classElemDecls ++ exportedClasses''
   dictionaries = map (Export . qualifyWith m . mkIdent . dictName) $ 
     getLocalInstances cEnv
   dictName :: Instance -> String
@@ -88,7 +88,8 @@ exportInterface' (Module m (Just (Exporting _ es)) _ _) tcs pEnv tcEnv tyEnv cEn
     foldr (typeDecl tcs m tcEnv cEnv) 
           (foldr (funDecl m tyEnv) [] classElems)
           classElems
-  exportedClassesHidden = map (toHiddenClassDecl m cEnv) exportedClasses'
+  -- exportedClassesHidden = map (toHiddenClassDecl m cEnv) exportedClasses'
+  exportedClasses'' = map (classToClassDecl m cEnv . fromJust . lookupClass cEnv) exportedClasses' 
 exportInterface' (Module _ Nothing _ _) _ _ _ _ _
   = internalError "Exports.exportInterface: no export specification"
 
