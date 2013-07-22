@@ -116,7 +116,7 @@ importInterface tcs m q is i env = (env', errs)
     , classEnv  = 
       if tcs
       then (classEnv env) {
-          theClasses = importEntities m q ts id mClsEnv $ theClasses $ classEnv env, 
+          theClasses = importEntities m q cs id mClsEnv $ theClasses $ classEnv env, 
           theInstances = []
         }
       else initClassEnv
@@ -129,6 +129,22 @@ importInterface tcs m q is i env = (env', errs)
   (expandedSpec, errs) = runExpand (expandSpecs is) m mTCEnv mTyEnv mClsEnv
   ts = isVisible is (Set.fromList $ foldr addType  [] expandedSpec)
   vs = isVisible is (Set.fromList $ foldr addValue [] expandedSpec)
+  
+  -- class specific importing (considering dependencies!)
+  allNotHiddenClasses = Map.keys mClsEnv -- TODO: only not hidden classes!
+  classesInImportSpec = 
+    if isImportingAll is
+    then allNotHiddenClasses
+    else nub $ classesInImportSpec' mClsEnv expandedSpec
+  imported = 
+    if isImporting is
+    then classesInImportSpec
+    else allNotHiddenClasses \\ classesInImportSpec
+  deps = nub $ calcDependencies imported i -- TODO: ++ dependencies instances
+  
+  cs c = if c `elem` imported then True -- import public
+         else if c `elem` deps then True -- import hidden
+         else False -- do not import
 
 addType :: Import -> [Ident] -> [Ident]
 addType (Import            _) tcs = tcs
@@ -144,6 +160,15 @@ isVisible :: Maybe ImportSpec -> Set.Set Ident -> Ident -> Bool
 isVisible Nothing                _  = const True
 isVisible (Just (Importing _ _)) xs = (`Set.member`    xs)
 isVisible (Just (Hiding    _ _)) xs = (`Set.notMember` xs)
+
+isImporting :: Maybe ImportSpec -> Bool
+isImporting Nothing = True
+isImporting (Just (Importing _ _)) = True
+isImporting (Just (Hiding    _ _)) = False
+
+isImportingAll :: Maybe ImportSpec -> Bool
+isImportingAll Nothing = True
+isImportingAll (Just _) = False
 
 importEntities :: Entity a => ModuleIdent -> Bool -> (Ident -> Bool)
                -> (a -> a) -> IdentMap a -> TopEnv a -> TopEnv a
@@ -267,7 +292,7 @@ constrType tc tvs = ConstructorType tc $ map VariableType tvs
 
 -- | binding classes
 bindCls :: ModuleIdent -> IDecl -> ExpClassEnv -> ExpClassEnv
-bindCls m (IClassDecl _ scx cls tyvar ds [] {- TODO -}) env
+bindCls m (IClassDecl _ scx cls tyvar ds _deps) env
   = Map.insert (unqualify cls)
     Class { 
       superClasses = map (qualQualify m) scx, 
@@ -287,6 +312,42 @@ iFunDeclToMethod :: ModuleIdent -> IDecl -> (Ident, CS.Context, TypeExpr)
 iFunDeclToMethod m (IFunctionDecl _ f _a cx te) 
   = (unqualify f, cx, qualifyTypeExpr m te)
 iFunDeclToMethod _ _ = internalError "iFunDeclToMethod"
+
+-- |calculates dependecies of the given classes
+calcDependencies :: [Ident] -> Interface -> [Ident]
+calcDependencies ids i = 
+  concatMap (calcDeps i) ids
+
+-- | calculates the dependencies of one given class (by a simple lookup)
+calcDeps :: Interface -> Ident -> [Ident]
+calcDeps i cls =  
+  case lookupClassIDecl cls i of
+    Just (IClassDecl _ _ _ _ _ deps) -> map unqualify deps
+    _ -> []
+
+-- |Looks up (if present) an interface class declaration. This is needed
+-- for calculating the dependencies of a given class
+lookupClassIDecl :: Ident -> Interface -> Maybe IDecl
+lookupClassIDecl cls (Interface _ _ decls) = list2Maybe $ catMaybes $ map lookupClassIDecl' decls
+  where
+  lookupClassIDecl' i@(IClassDecl     _ _ cls' _ _ _) | cls == unqualify cls' = Just i
+  -- lookupClassIDecl' i@(IHidingClassDecl _ _ cls' _ _) | cls == unqualify cls' = Just i
+  lookupClassIDecl' _ = Nothing
+  list2Maybe [] = Nothing
+  list2Maybe [a] = Just a
+  list2Maybe (_:_) = internalError "lookupClassIDecl"
+
+-- |returns all imported classes from the given import list
+classesInImportSpec' :: ExpClassEnv -> [Import] -> [Ident]
+classesInImportSpec' cEnv = map importId . filter isClassImport
+  where
+  isClassImport :: Import -> Bool
+  isClassImport (Import _) = False
+  isClassImport (ImportTypeWith cls _) = isJust $ Map.lookup cls cEnv
+  isClassImport (ImportTypeAll _) = internalError "classesInImportSpec"
+  importId (Import _) = internalError "classesInImportSpec"
+  importId (ImportTypeWith cls _) = cls
+  importId (ImportTypeAll _) = internalError "classesInImportSpec"
 
 -- ---------------------------------------------------------------------------
 -- Expansion of the import specification
