@@ -39,7 +39,7 @@ import Env.ModuleAlias (importAliases, initAliasEnv)
 import Env.OpPrec
 import Env.TypeConstructor
 import Env.Value
-import Env.ClassEnv
+import Env.ClassEnv as CE
 
 import CompilerEnv
 import CompilerOpts
@@ -117,7 +117,7 @@ importInterface tcs m q is i env = (env', errs)
       if tcs
       then (classEnv env) {
           theClasses = importEntities m q cs id mClsEnv $ theClasses $ classEnv env, 
-          theInstances = []
+          theInstances = map importedInst mInstances
         }
       else initClassEnv
     }
@@ -127,6 +127,7 @@ importInterface tcs m q is i env = (env', errs)
   mClsEnv         = intfEnv (bindCls True)  i -- all classes
   mExportedClsEnv = intfEnv (bindCls False) i -- all exported classes 
                                               -- (i.e., not hidden in the interface)
+  (mInstances, depsInstances) = loadInstances m i
   -- all imported type constructors / values
   (expandedSpec, errs) = runExpand (expandSpecs is) m mTCEnv mTyEnv mExportedClsEnv
   ts = isVisible is (Set.fromList $ foldr addType  [] expandedSpec)
@@ -142,7 +143,7 @@ importInterface tcs m q is i env = (env', errs)
     if isImporting is
     then classesInImportSpec
     else allExportedClasses \\ classesInImportSpec
-  deps = nub $ calcDependencies imported i -- TODO: ++ dependencies instances
+  deps = nub $ calcDependencies imported i ++ depsInstances
   
   cs c = if c `elem` imported then True -- import public
          else if c `elem` deps then True -- import hidden
@@ -309,7 +310,7 @@ mkClass m scx cls tyvar ds =
   Class { 
     superClasses = map (qualQualify m) scx, 
     theClass = qualQualify m cls, 
-    Env.ClassEnv.typeVar = tyvar, 
+    CE.typeVar = tyvar, 
     kind = -1, 
     methods = map (iFunDeclToMethod m) ds, 
     typeSchemes = [], defaults = [] }
@@ -355,6 +356,26 @@ classesInImportSpec' cEnv = map importId . filter isClassImport
   importId (Import _) = internalError "classesInImportSpec"
   importId (ImportTypeWith cls _) = cls
   importId (ImportTypeAll _) = internalError "classesInImportSpec"
+
+-- |load instances from interface and return the instances as well as the
+-- class dependencies of all instances
+loadInstances :: ModuleIdent -> Interface -> ([Instance], [Ident])
+loadInstances m (Interface _ _ ds) = foldr (bindInstance m) ([], []) ds
+
+-- |bind an instance into the environment that holds all instances and as well
+-- all classes the instances depend on
+bindInstance :: ModuleIdent -> IDecl -> ([Instance], [Ident]) -> ([Instance], [Ident])
+bindInstance m (IInstanceDecl _ scx cls ty tyvars ideps) (is, deps)
+  = let inst = Instance {
+          context = map (\(qid, id0) -> (qualQualify m qid, id0)) scx, 
+          iClass = qualQualify m cls, 
+          iType = qualQualify m $ specialTyConToQualIdent ty,
+          CE.typeVars = tyvars,
+          rules = []
+        }
+    in (inst:is, deps ++ map unqualify ideps)
+bindInstance _ _ iEnv = iEnv
+
 
 -- ---------------------------------------------------------------------------
 -- Expansion of the import specification
