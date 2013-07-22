@@ -23,6 +23,7 @@ import qualified Data.Map as Map (elems)
 import Data.Maybe (fromMaybe)
 import Text.PrettyPrint
 import System.IO.Unsafe
+import Data.List (nub)
 
 import Curry.Base.Ident
 import Curry.Base.Message (runMsg)
@@ -115,7 +116,7 @@ loadModule opts fn = do
           -- load the imported interfaces into an InterfaceEnv
           (iEnv, intfErrs) <- loadInterfaces False (optImportPaths opts) mdl
           (iEnvTc, intfErrsTc) <- loadInterfaces True (optImportPaths opts) mdl
-          let errs = intfErrs ++ intfErrsTc
+          let errs = nub $ intfErrs ++ intfErrsTc
           unless (null errs) $ abortWithMessages errs -- TODO
           case checkInterfaces opts iEnv >> checkInterfaces opts iEnvTc of
             CheckFailed intfImpErrs -> abortWithMessages intfImpErrs -- TODO
@@ -123,7 +124,7 @@ loadModule opts fn = do
               -- add information of imported modules
               let (env, impErrs)     = importModules False opts mdl iEnv
                   (envtc, impErrsTc) = importModules True opts mdl iEnvTc
-                  errs' = impErrs ++ impErrsTc
+                  errs' = nub $ impErrs ++ impErrsTc
               unless (null errs') $ abortWithMessages errs' -- TODO
               return (env, envtc, mdl)
 
