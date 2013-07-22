@@ -80,11 +80,12 @@ importInterfaces opts (Interface m is _) iEnv
 -- Importing an interface into the module
 -- ---------------------------------------------------------------------------
 
--- Three kinds of environments are computed from the interface:
+-- TODO kinds of environments are computed from the interface:
 --
 -- 1. The operator precedences
 -- 2. The type constructors
 -- 3. The types of the data constructors and functions (values)
+-- 4. TODO
 --
 -- Note that the original names of all entities defined in the imported module
 -- are qualified appropriately. The same is true for type expressions.
