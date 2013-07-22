@@ -85,6 +85,7 @@ data Class = Class
   , methods :: [(Ident, Context, TypeExpr)]
   , typeSchemes :: [(Ident, TypeScheme)] 
   , defaults :: [Decl]
+  , hidden :: Bool
   }
   deriving (Eq, Show)
 
@@ -615,8 +616,9 @@ ppClasses (ClassEnv classes ifs mmap) =
   
 ppClass :: Class -> Doc
 ppClass (Class {superClasses = sc, theClass = tc, typeVar = tv, 
-                kind = k, methods = ms, defaults = ds, typeSchemes = tscs})
-  = text "class<" <> text (show k) <> text ">" 
+                kind = k, methods = ms, defaults = ds, typeSchemes = tscs, 
+                hidden = h})
+  = (if h then text "hidden" else empty) <+> text "class<" <> text (show k) <> text ">" 
   <+> parens (hsep $ punctuate (text ",") (map (text . show) sc))
   <> text " => " <> text (show tc)
   <+> text (show tv) <+> text "where"

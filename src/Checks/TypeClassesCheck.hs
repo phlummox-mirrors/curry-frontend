@@ -189,7 +189,8 @@ classDeclToClass m (ClassDecl _ (SContext scon) cls tyvar decls)
     kind = -1, -- TODO
     methods = allMethods, 
     defaults = filter isFunctionDecl decls, 
-    typeSchemes = []
+    typeSchemes = [], 
+    hidden = False
   }
   where
     splitUpTypeSig :: Decl -> [Decl]
