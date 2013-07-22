@@ -116,7 +116,7 @@ importInterface tcs m q is i env = (env', errs)
     , classEnv  = 
       if tcs
       then (classEnv env) {
-          theClasses = importEntities m q cs id mClsEnv $ theClasses $ classEnv env, 
+          theClasses = importEntities m q cs id mClsEnv' $ theClasses $ classEnv env, 
           theInstances = map importedInst mInstances
         }
       else initClassEnv
@@ -148,6 +148,16 @@ importInterface tcs m q is i env = (env', errs)
   cs c = if c `elem` imported then True -- import public
          else if c `elem` deps then True -- import hidden
          else False -- do not import
+
+  -- classes can be imported as hidden or as public
+  hflag c = if c `elem` imported then False -- import public
+            else if c `elem` deps then True -- import hidden
+            else True -- or False, doesn't matter
+  
+  mClsEnv' = Map.mapWithKey (setHidden . hflag) mClsEnv
+         
+  setHidden :: Bool -> Class -> Class
+  setHidden h c = c { hidden = h } 
 
 addType :: Import -> [Ident] -> [Ident]
 addType (Import            _) tcs = tcs
@@ -313,7 +323,8 @@ mkClass m scx cls tyvar ds =
     CE.typeVar = tyvar, 
     kind = -1, 
     methods = map (iFunDeclToMethod m) ds, 
-    typeSchemes = [], defaults = [] }
+    typeSchemes = [], defaults = [],
+    hidden = internalError "hidden not yet defined" }
 
 -- |convert an IFunctionDecl to the method representation used in "Class"
 iFunDeclToMethod :: ModuleIdent -> IDecl -> (Ident, CS.Context, TypeExpr)
