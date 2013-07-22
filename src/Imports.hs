@@ -266,7 +266,7 @@ constrType tc tvs = ConstructorType tc $ map VariableType tvs
 
 -- | binding classes
 bindCls :: ModuleIdent -> IDecl -> ExpClassEnv -> ExpClassEnv
-bindCls m (IClassDecl _ scx cls tyvar ds) env
+bindCls m (IClassDecl _ scx cls tyvar ds [] {- TODO -}) env
   = Map.insert (unqualify cls)
     Class { 
       superClasses = map (qualQualify m) scx, 
@@ -278,7 +278,7 @@ bindCls m (IClassDecl _ scx cls tyvar ds) env
     env
 bindCls m (IHidingClassDecl p scx cls tyvar ds) env =
   -- TODO: later special handling 
-  bindCls m (IClassDecl p scx cls tyvar ds) env
+  bindCls m (IClassDecl p scx cls tyvar ds [] {- TODO -}) env
 bindCls _ _ env = env
 
 -- |convert an IFunctionDecl to the method representation used in "Class"
