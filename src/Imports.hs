@@ -124,22 +124,24 @@ importInterface tcs m q is i env = (env', errs)
   mPEnv  = intfEnv bindPrec i -- all operator precedences
   mTCEnv = intfEnv bindTC   i -- all type constructors
   mTyEnv = intfEnv bindTy   i -- all values
-  mClsEnv = intfEnv bindCls i -- all classes
+  mClsEnv         = intfEnv (bindCls True)  i -- all classes
+  mExportedClsEnv = intfEnv (bindCls False) i -- all exported classes 
+                                              -- (i.e., not hidden in the interface)
   -- all imported type constructors / values
-  (expandedSpec, errs) = runExpand (expandSpecs is) m mTCEnv mTyEnv mClsEnv
+  (expandedSpec, errs) = runExpand (expandSpecs is) m mTCEnv mTyEnv mExportedClsEnv
   ts = isVisible is (Set.fromList $ foldr addType  [] expandedSpec)
   vs = isVisible is (Set.fromList $ foldr addValue [] expandedSpec)
   
   -- class specific importing (considering dependencies!)
-  allNotHiddenClasses = Map.keys mClsEnv -- TODO: only not hidden classes!
+  allExportedClasses = Map.keys mExportedClsEnv
   classesInImportSpec = 
     if isImportingAll is
-    then allNotHiddenClasses
-    else nub $ classesInImportSpec' mClsEnv expandedSpec
+    then allExportedClasses
+    else nub $ classesInImportSpec' mExportedClsEnv expandedSpec
   imported = 
     if isImporting is
     then classesInImportSpec
-    else allNotHiddenClasses \\ classesInImportSpec
+    else allExportedClasses \\ classesInImportSpec
   deps = nub $ calcDependencies imported i -- TODO: ++ dependencies instances
   
   cs c = if c `elem` imported then True -- import public
@@ -290,22 +292,27 @@ bindRecordLabels m r (ls, ty) env = foldr bindLbl env ls
 constrType :: QualIdent -> [Ident] -> TypeExpr
 constrType tc tvs = ConstructorType tc $ map VariableType tvs
 
--- | binding classes
-bindCls :: ModuleIdent -> IDecl -> ExpClassEnv -> ExpClassEnv
-bindCls m (IClassDecl _ scx cls tyvar ds _deps) env
-  = Map.insert (unqualify cls)
-    Class { 
-      superClasses = map (qualQualify m) scx, 
-      theClass = qualQualify m cls, 
-      Env.ClassEnv.typeVar = tyvar, 
-      kind = -1, 
-      methods = map (iFunDeclToMethod m) ds, 
-      typeSchemes = [], defaults = [] }
-    env
-bindCls m (IHidingClassDecl p scx cls tyvar ds) env =
-  -- TODO: later special handling 
-  bindCls m (IClassDecl p scx cls tyvar ds [] {- TODO -}) env
-bindCls _ _ env = env
+-- | binding classes, either all classes or only exported classes, i.e., 
+-- classes not hidden in the interface
+bindCls :: Bool -> ModuleIdent -> IDecl -> ExpClassEnv -> ExpClassEnv
+bindCls _allClasses m (IClassDecl _ scx cls tyvar ds _deps) env =
+  Map.insert (unqualify cls) (mkClass m scx cls tyvar ds) env
+bindCls allClasses0 m (IHidingClassDecl _ scx cls tyvar ds) env =
+  if allClasses0
+  then Map.insert (unqualify cls) (mkClass m scx cls tyvar ds) env
+  else env
+bindCls _ _ _ env = env
+
+-- |construct a class from an "IClassDecl" or "IHidingClassDecl"
+mkClass :: ModuleIdent -> [QualIdent] -> QualIdent -> Ident -> [IDecl] -> Class
+mkClass m scx cls tyvar ds = 
+  Class { 
+    superClasses = map (qualQualify m) scx, 
+    theClass = qualQualify m cls, 
+    Env.ClassEnv.typeVar = tyvar, 
+    kind = -1, 
+    methods = map (iFunDeclToMethod m) ds, 
+    typeSchemes = [], defaults = [] }
 
 -- |convert an IFunctionDecl to the method representation used in "Class"
 iFunDeclToMethod :: ModuleIdent -> IDecl -> (Ident, CS.Context, TypeExpr)

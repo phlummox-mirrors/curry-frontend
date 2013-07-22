@@ -1,6 +1,6 @@
 
 
-module ClassExportImport where
+module ClassExportImport (C, D, E, F, G, H, I, K) where
 
 class C a where
   funC1 :: a -> a
@@ -18,3 +18,8 @@ class G a where
 class H a where
 
 class I a where
+
+class J a where
+
+class J a => K a where
+
