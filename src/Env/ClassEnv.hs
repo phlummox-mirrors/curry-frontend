@@ -24,7 +24,7 @@ module Env.ClassEnv (
   , getAllClassMethodNames, lookupMethodTypeSig', lookupMethodTypeScheme'
   , canonLookupMethodTypeSig', canonLookupMethodTypeScheme'
   , getDefaultMethods, lookupDefiningClass', isClassMethod
-  , localInst, getAllInstances, getLocalInstances, allInstances
+  , localInst, importedInst, getAllInstances, getLocalInstances, allInstances
   -- ** functions for modifying the class environment
   , bindClass, bindClassMethods
   -- ** pretty printing
@@ -281,6 +281,10 @@ getLocalInstances cEnv = map snd $ filter isLocal $ theInstances cEnv
 -- |makes an instance a local instance
 localInst :: Instance -> (Source, Instance)
 localInst i = (Local, i) 
+
+-- |makes an instance an imported instance
+importedInst :: Instance -> (Source, Instance)
+importedInst i = (Imported, i)
 
 -- |returns all instances
 getAllInstances :: ClassEnv -> [Instance]
