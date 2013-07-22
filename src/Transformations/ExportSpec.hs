@@ -17,18 +17,22 @@
 module Transformations.ExportSpec (transExportSpec) where
 
 import CompilerEnv
+{-
 import Env.ClassEnv
 import Env.Value
+-}
 import Curry.Syntax.Type
+{-
 import Base.Utils
 import Curry.Base.Ident
 
 import Control.Monad.State as S
+-}
 
 -- ----------------------------------------------------------------------------
 -- the state monad used
 -- ----------------------------------------------------------------------------
-
+{-
 type ES = S.State ESState
 
 data ESState = ESState 
@@ -44,7 +48,7 @@ runES comp init0 = let (a, _s) = S.runState comp init0 in a
 
 getClassEnv :: ES ClassEnv
 getClassEnv = S.gets theClassEnv
-
+-}
 -- getValueEnv :: ES ValueEnv
 -- getValueEnv = S.gets theValueEnv
 
@@ -52,9 +56,9 @@ getClassEnv = S.gets theClassEnv
 
 
 transExportSpec :: CompilerEnv -> Module -> Module
-transExportSpec cEnv mdl = mdl
+transExportSpec _cEnv mdl = mdl
   -- runES (transExportSpec' mdl) (initState (classEnv cEnv) (valueEnv cEnv))
-
+{-
 transExportSpec' :: Module -> ES Module
 transExportSpec' mdl@(Module _ Nothing _ _)     = return mdl
 transExportSpec'     (Module m (Just es) is ds) = do
@@ -79,3 +83,4 @@ handleClassExport qid orig = do
     Nothing -> return [orig]
     Just _ -> return [] -- TODO!
 
+-}
