@@ -307,25 +307,31 @@ constrType tc tvs = ConstructorType tc $ map VariableType tvs
 -- | binding classes, either all classes or only exported classes, i.e., 
 -- classes not hidden in the interface
 bindCls :: Bool -> ModuleIdent -> IDecl -> ExpClassEnv -> ExpClassEnv
-bindCls _allClasses m (IClassDecl _ scx cls tyvar ds _deps) env =
-  Map.insert (unqualify cls) (mkClass m scx cls tyvar ds) env
+bindCls _allClasses m (IClassDecl _ scx cls tyvar ds defs _deps) env =
+  Map.insert (unqualify cls) (mkClass m scx cls tyvar ds defs) env
 bindCls allClasses0 m (IHidingClassDecl _ scx cls tyvar ds) env =
   if allClasses0
-  then Map.insert (unqualify cls) (mkClass m scx cls tyvar ds) env
+  then Map.insert (unqualify cls) (mkClass m scx cls tyvar ds []) env
   else env
 bindCls _ _ _ env = env
 
 -- |construct a class from an "IClassDecl" or "IHidingClassDecl"
-mkClass :: ModuleIdent -> [QualIdent] -> QualIdent -> Ident -> [IDecl] -> Class
-mkClass m scx cls tyvar ds = 
+mkClass :: ModuleIdent -> [QualIdent] -> QualIdent -> Ident -> [IDecl] -> [Ident] -> Class
+mkClass m scx cls tyvar ds defs = 
   Class { 
     superClasses = map (qualQualify m) scx, 
     theClass = qualQualify m cls, 
     CE.typeVar = tyvar, 
     kind = -1, 
     methods = map (iFunDeclToMethod m) ds, 
-    typeSchemes = [], defaults = [],
+    typeSchemes = [], 
+    defaults = map toDefFun defs,
     hidden = internalError "hidden not yet defined" }
+  where
+  toDefFun :: Ident -> Decl 
+  toDefFun f = FunctionDecl NoPos Nothing (-1) f 
+    -- the implementation of the default method isn't needed
+    [Equation NoPos (FunLhs f []) (SimpleRhs NoPos (Tuple (SrcRef []) []) [])]
 
 -- |convert an IFunctionDecl to the method representation used in "Class"
 iFunDeclToMethod :: ModuleIdent -> IDecl -> (Ident, CS.Context, TypeExpr)
