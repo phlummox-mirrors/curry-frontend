@@ -650,11 +650,12 @@ importUnifyData' tcEnv = fmap (setInfo allTyCons) tcEnv
 
 -- |
 qualifyEnv :: Options -> CompilerEnv -> CompilerEnv
-qualifyEnv opts env = expandValueEnv opts
+qualifyEnv opts env = (expandValueEnv opts
                     $ qualifyLocal env
                     $ foldl (flip importInterfaceIntf) initEnv
                     $ Map.elems
-                    $ interfaceEnv env
+                    $ interfaceEnv env) 
+    { classEnv = classEnv env }
   where initEnv = initCompilerEnv $ moduleIdent env
 
 qualifyLocal :: CompilerEnv -> CompilerEnv -> CompilerEnv
@@ -662,20 +663,20 @@ qualifyLocal currentEnv initEnv = currentEnv
   { opPrecEnv = foldr bindQual   pEnv  $ localBindings $ opPrecEnv currentEnv
   , tyConsEnv = foldr bindQual   tcEnv $ localBindings $ tyConsEnv currentEnv
   , valueEnv  = foldr bindGlobal tyEnv $ localBindings $ valueEnv  currentEnv
-  , classEnv  = (classEnv currentEnv) { theClasses = classesInClassEnv }
+  -- , classEnv  = (classEnv currentEnv) { theClasses = classesInClassEnv }
   }
   where
     pEnv  = opPrecEnv initEnv
     tcEnv = tyConsEnv initEnv
     tyEnv = valueEnv  initEnv
-    cEnv  = classEnv  initEnv
+    -- cEnv  = classEnv  initEnv
     bindQual   (_, y) = qualBindTopEnv "Imports.qualifyEnv" (origName y) y
     bindGlobal (x, y)
       | idUnique x == 0 = bindQual (x, y)
       | otherwise       = bindTopEnv "Imports.qualifyEnv" x y
     
-    classesInClassEnv = 
-      foldr bindQual (theClasses cEnv) $ localBindings $ theClasses $ classEnv currentEnv
+    -- classesInClassEnv = 
+    --   foldr bindQual (theClasses cEnv) $ localBindings $ theClasses $ classEnv currentEnv
 
 -- Importing an interface into another interface is somewhat simpler
 -- because all entities are imported into the environment. In addition,
@@ -688,17 +689,17 @@ importInterfaceIntf i@(Interface m _ _) env = env
   { opPrecEnv = importEntities m True (const True) id mPEnv  $ opPrecEnv env
   , tyConsEnv = importEntities m True (const True) id mTCEnv $ tyConsEnv env
   , valueEnv  = importEntities m True (const True) id mTyEnv $ valueEnv  env
-  , classEnv  = (classEnv env) { 
-      theClasses = importEntities m True (const True) id mClsEnv' $ theClasses $ classEnv env
-    }  
+  -- , classEnv  = (classEnv env) { 
+  --     theClasses = importEntities m True (const True) id mClsEnv' $ theClasses $ classEnv env
+  --   }  
   }
   where
   mPEnv  = intfEnv bindPrec     i -- all operator precedences
   mTCEnv = intfEnv bindTCHidden i -- all type constructors
   mTyEnv = intfEnv bindTy       i -- all values
-  mClsEnv = intfEnv (bindCls True) i -- all classes
+  -- mClsEnv = intfEnv (bindCls True) i -- all classes
   -- TODO: is it correct to always set the hidden flag to false?
-  mClsEnv' = Map.map (setHidden False) mClsEnv
+  -- mClsEnv' = Map.map (setHidden False) mClsEnv
 
 -- ---------------------------------------------------------------------------
 -- Record stuff
