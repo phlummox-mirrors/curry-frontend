@@ -20,7 +20,7 @@ import Data.Maybe      (catMaybes, mapMaybe)
 import System.FilePath (normalise)
 import Text.PrettyPrint
 
-import Curry.Base.Ident
+import Curry.Base.Ident hiding (sep)
 import Curry.Files.Filenames
 import Curry.Files.PathUtils
 

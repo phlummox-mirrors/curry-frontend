@@ -36,7 +36,7 @@ expanded.
 > import qualified Data.Set as Set
 > import Data.Maybe
 
-> import Curry.Base.Ident
+> import Curry.Base.Ident hiding (sep)
 > import Curry.Base.Position
 > import Curry.Syntax as ST
 > import Curry.Syntax.Pretty

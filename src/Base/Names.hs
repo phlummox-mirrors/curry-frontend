@@ -13,7 +13,9 @@
 -}
 
 module Base.Names 
-  (sep
+  (
+    -- * the separator string
+    sep
     -- * prefixes for constructed identifiers
   , implPrefix, dictTypePrefix, identPrefix, defPrefix
     -- * name generation functions
@@ -21,7 +23,7 @@ module Base.Names
   ) where
 
 -- | prefix that indicates that the identifier is constructed by the compiler
-import Curry.Base.Ident (identPrefix)
+import Curry.Base.Ident (identPrefix, sep)
 
 -- |The prefix for dictionary types
 dictTypePrefix :: String
@@ -58,7 +60,3 @@ mkDictTypeName cls = dictTypePrefix ++ cls
 
 mkDefFunName :: String -> String -> String
 mkDefFunName cls fun0 = defPrefix ++ cls ++ sep ++ fun0
-
--- |internal separator
-sep :: String
-sep = ":"
