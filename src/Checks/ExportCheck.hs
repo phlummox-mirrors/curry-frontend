@@ -102,7 +102,7 @@ expandExport (ExportTypeWith tc cs) = do
   tcEnv <- getTyConsEnv
   cEnv <- getClassEnv
   let isTyCons = not $ null $ qualLookupTC tc tcEnv
-      isClass = not $ null $ lookupClass' cEnv tc 
+      isClass = not $ null $ lookupNonHiddenClass cEnv tc 
   case () of
     () | isTyCons     && isClass     -> report (errAmbiguousType tc) >> return []
     () | isTyCons     && not isClass -> expandTypeWith tc cs
@@ -112,7 +112,7 @@ expandExport (ExportTypeAll     tc) = do
   tcEnv <- getTyConsEnv
   cEnv <- getClassEnv
   let isTyCons = not $ null $ qualLookupTC tc tcEnv
-      isClass = not $ null $ lookupClass' cEnv tc 
+      isClass = not $ null $ lookupNonHiddenClass cEnv tc 
   case () of
     () | isTyCons     && isClass     -> report (errAmbiguousType tc) >> return []
     () | isTyCons     && not isClass -> expandTypeAll tc
@@ -126,11 +126,11 @@ expandThing tc = do
   tcEnv <- getTyConsEnv
   cEnv <- getClassEnv
   case qualLookupTC tc tcEnv of
-    []  -> case lookupClass' cEnv tc of
+    []  -> case lookupNonHiddenClass cEnv tc of
       []  -> expandThing' tc Nothing
       [c] -> expandThing' tc (Just [ExportTypeWith (theClass c) []])
       _   -> report (errAmbiguousType tc) >> return [] 
-    [t] -> case lookupClass' cEnv tc of
+    [t] -> case lookupNonHiddenClass cEnv tc of
       [] -> expandThing' tc (Just [ExportTypeWith (origName t) []])
       -- TODO: export both class and type constructor?
       _  -> report (errAmbiguousType tc) >> return []  
@@ -178,7 +178,7 @@ expandTypeWith tc cs = do
 expandClassWith :: QualIdent -> [Ident] -> ECM [Export]
 expandClassWith cls fs = do
   cEnv <- getClassEnv
-  case lookupClass' cEnv cls of
+  case lookupNonHiddenClass cEnv cls of
     [] -> report (errUndefinedType cls) >> return []
     [c] -> do
       mapM_ (checkIsClassMethod c) fs 
@@ -207,7 +207,7 @@ expandTypeAll tc = do
 expandClassAll :: QualIdent -> ECM [Export]
 expandClassAll cls = do
   cEnv <- getClassEnv
-  case lookupClass' cEnv cls of
+  case lookupNonHiddenClass cEnv cls of
     [] -> report (errUndefinedType cls) >> return []
     [c] -> return [ExportTypeWith (theClass c) (map fst $ typeSchemes c)]
     _ -> report (errAmbiguousType cls) >> return []
