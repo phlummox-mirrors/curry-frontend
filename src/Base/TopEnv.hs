@@ -46,11 +46,12 @@ module Base.TopEnv
   , allImports, moduleImports, localBindings, allLocalBindings 
   , allBindings, allBoundElems
   , tryBindTopEnv, tryQualBindTopEnv, tryRebindTopEnv, tryQualRebindTopEnv
+  , filterEnv
   ) where
 
 import           Control.Arrow        (second)
 import qualified Data.Map      as Map
-  (Map, empty, insert, findWithDefault, lookup, toList)
+  (Map, empty, insert, findWithDefault, lookup, toList, map)
 
 import Control.Monad
 
@@ -204,3 +205,11 @@ allBindings (TopEnv env) = [ (x, y) | (x, ys) <- Map.toList env
 allBoundElems :: TopEnv a -> [a]
 allBoundElems (TopEnv env) = [ y | (_, ys) <- Map.toList env
                                  , (_, y) <- ys ]
+
+filterEnv :: (a -> Bool) -> TopEnv a -> TopEnv a
+filterEnv p (TopEnv env) = TopEnv $ Map.map filter' env
+  where
+  -- filter' :: [(Source, a)] -> [(Source, a)]
+  filter' = filter p' 
+  -- p' :: (Source, a) -> Bool
+  p' (_src, x) = p x
