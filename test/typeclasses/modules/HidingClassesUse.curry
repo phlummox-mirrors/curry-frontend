@@ -56,3 +56,7 @@ test9 x = x
 test11 :: HidingClasses5.H a => a -> a
 test11 x = x
 
+class H a => J a where
+
+instance H Bool where
+

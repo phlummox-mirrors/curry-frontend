@@ -18,7 +18,7 @@ module Env.ClassEnv (
   -- ** the environment data types
   ClassEnv (..), Class (..), Instance (..), initClassEnv
   -- ** various functions for retrieving specific data from the environment 
-  , lookupClass, lookupClass', canonLookupClass, canonClassName
+  , lookupClass, canonLookupClass, canonClassName
   , lookupDefiningClass, lookupMethodTypeScheme, lookupMethodTypeSig
   , allClasses, allLocalClasses, getAllClassMethods, getInstance
   , getAllClassMethodNames, lookupMethodTypeSig', lookupMethodTypeScheme'
@@ -111,21 +111,22 @@ instance Entity Class where
 -- lookup and data retrieval functions
 -- ----------------------------------------------------------------------------
 
--- |looks up a given class from the class environment. Takes as argument
+-- |looks up a given, not hidden class from the class environment. Takes as argument
 -- the name of the class used in the source code. 
 lookupClass :: ClassEnv -> QualIdent -> Maybe Class
 lookupClass cEnv c = 
-  list2Maybe $ lookupClass' cEnv c
+  list2Maybe $ lookupNonHiddenClass cEnv c
 
 -- |looks up a given class from the class environment, returning 
 -- a list of matching classes: An empty list means there are no matching
 -- classes in scope, a list with more than one element means the class
 -- name is ambiguous. Takes as argument the name of the class 
 -- used in the source code. 
-lookupClass' :: ClassEnv -> QualIdent -> [Class]
-lookupClass' (ClassEnv cEnv _ _ _) c = qualLookupTopEnv c cEnv 
+-- lookupClass' :: ClassEnv -> QualIdent -> [Class]
+-- lookupClass' (ClassEnv cEnv _ _ _) c = qualLookupTopEnv c cEnv 
 
--- |looks up a class if it's not hidden, returning a list of candidates. 
+-- |looks up a class if it's not hidden, returning a list of candidates. Takes
+-- as argument the name of the class used in the source code. 
 lookupNonHiddenClass :: ClassEnv -> QualIdent -> [Class]
 lookupNonHiddenClass (ClassEnv cEnv _ _ _) c = 
   qualLookupTopEnv c (filterEnv (not . hidden) cEnv)
