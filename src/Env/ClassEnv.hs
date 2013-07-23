@@ -25,6 +25,7 @@ module Env.ClassEnv (
   , canonLookupMethodTypeSig', canonLookupMethodTypeScheme'
   , getDefaultMethods, lookupDefiningClass', isClassMethod
   , localInst, importedInst, getAllInstances, getLocalInstances, allInstances
+  , lookupNonHiddenClass
   -- ** functions for modifying the class environment
   , bindClass, bindClassMethods
   -- ** pretty printing
@@ -123,6 +124,11 @@ lookupClass cEnv c =
 -- used in the source code. 
 lookupClass' :: ClassEnv -> QualIdent -> [Class]
 lookupClass' (ClassEnv cEnv _ _ _) c = qualLookupTopEnv c cEnv 
+
+-- |looks up a class if it's not hidden, returning a list of candidates. 
+lookupNonHiddenClass :: ClassEnv -> QualIdent -> [Class]
+lookupNonHiddenClass (ClassEnv cEnv _ _ _) c = 
+  qualLookupTopEnv c (filterEnv (not . hidden) cEnv)
 
 -- |looks up the canonical class name for the given class name that appears
 -- in the source code
