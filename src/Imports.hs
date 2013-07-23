@@ -342,7 +342,7 @@ calcDependencies ids i =
 calcDeps :: Interface -> Ident -> [Ident]
 calcDeps i cls =  
   case lookupClassIDecl cls i of
-    Just (IClassDecl _ _ _ _ _ deps) -> map unqualify deps
+    Just (IClassDecl _ _ _ _ _ _ deps) -> map unqualify deps
     _ -> []
 
 -- |Looks up (if present) an interface class declaration. This is needed
@@ -350,7 +350,7 @@ calcDeps i cls =
 lookupClassIDecl :: Ident -> Interface -> Maybe IDecl
 lookupClassIDecl cls (Interface _ _ decls) = list2Maybe $ catMaybes $ map lookupClassIDecl' decls
   where
-  lookupClassIDecl' i@(IClassDecl     _ _ cls' _ _ _) | cls == unqualify cls' = Just i
+  lookupClassIDecl' i@(IClassDecl   _ _ cls' _ _ _ _) | cls == unqualify cls' = Just i
   -- lookupClassIDecl' i@(IHidingClassDecl _ _ cls' _ _) | cls == unqualify cls' = Just i
   lookupClassIDecl' _ = Nothing
   list2Maybe [] = Nothing
