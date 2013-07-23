@@ -156,9 +156,10 @@ importInterface tcs m q is i env = (env', errs)
             else True -- or False, doesn't matter
   
   mClsEnv' = Map.mapWithKey (setHidden . hflag) mClsEnv
-         
-  setHidden :: Bool -> Class -> Class
-  setHidden h c = c { hidden = h } 
+      
+-- |sets the hidden flag in the given class to true or false
+setHidden :: Bool -> Class -> Class
+setHidden h c = c { hidden = h } 
 
 addType :: Import -> [Ident] -> [Ident]
 addType (Import            _) tcs = tcs
@@ -687,11 +688,17 @@ importInterfaceIntf i@(Interface m _ _) env = env
   { opPrecEnv = importEntities m True (const True) id mPEnv  $ opPrecEnv env
   , tyConsEnv = importEntities m True (const True) id mTCEnv $ tyConsEnv env
   , valueEnv  = importEntities m True (const True) id mTyEnv $ valueEnv  env
+  , classEnv  = (classEnv env) { 
+      theClasses = importEntities m True (const True) id mClsEnv' $ theClasses $ classEnv env
+    }  
   }
   where
   mPEnv  = intfEnv bindPrec     i -- all operator precedences
   mTCEnv = intfEnv bindTCHidden i -- all type constructors
   mTyEnv = intfEnv bindTy       i -- all values
+  mClsEnv = intfEnv (bindCls True) i -- all classes
+  -- TODO: is it correct to always set the hidden flag to false?
+  mClsEnv' = Map.map (setHidden False) mClsEnv
 
 -- ---------------------------------------------------------------------------
 -- Record stuff
