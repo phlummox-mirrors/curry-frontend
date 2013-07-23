@@ -1,8 +1,6 @@
 
 cymake=../dist/build/cymake/cymake
 
-rm -f output_test2_stderr.txt
-rm -f output_test2_stdout.txt
 rm -f tmp.txt
 
 echo ================
@@ -44,7 +42,7 @@ for file in DictTrans1 DictTrans2 DictTrans3 DictTrans4 \
   ArrowInstances
 do
   echo $file >> tmp.txt
-  $cymake -f -i typeclasses typeclasses/$file.curry 2>> output_test2_stderr.txt 1>> output_test2_stdout.txt || echo Error in $file.curry
+  $cymake -f -i typeclasses typeclasses/$file.curry 2> stderr.txt 1> stdout.txt || (echo "Error in $file.curry:" ; echo "===================="; cat stdout.txt; cat stderr.txt; echo "====================")
 done
 
 # Those files contain type classes with other type vars in methods than
@@ -72,10 +70,11 @@ for file in TestClassExports TestClassExports2 TestClassExportsImports \
   ExportNonHidden ExportNonHiddenUse
 do
   echo $file >> tmp.txt
-  $cymake -f -i typeclasses/modules typeclasses/modules/$file.curry 2>> output_test2_stderr.txt 1>> output_test2_stdout.txt || echo Error in $file.curry
+  $cymake -f -i typeclasses/modules typeclasses/modules/$file.curry 2> stderr.txt 1> stdout.txt || (echo "Error in $file.curry:" ; echo "===================="; cat stdout.txt; cat stderr.txt; echo "====================")
 done
 
 echo `cat tmp.txt | wc -l` files checked
 rm tmp.txt
-
+rm stderr.txt
+rm stdout.txt
 
