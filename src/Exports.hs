@@ -83,7 +83,7 @@ exportInterface' (Module m (Just (Exporting _ es)) _ _) tcs pEnv tcEnv tyEnv cEn
   dictDecls = foldr (funDecl m tyEnv) [] dictionaries
   allClasses0 = nub $ exportedClasses' ++ dependencies
   classElems = exportsForDictTypes m allClasses0 ++
-    exportsForSelFuns m cEnv allClasses0
+    exportsForSelFuns m cEnv allClasses0 ++ exportsForDefaultFuns m cEnv allClasses0
   classElemDecls = 
     foldr (typeDecl tcs m tcEnv cEnv) 
           (foldr (funDecl m tyEnv) [] classElems)
@@ -387,7 +387,7 @@ toHiddenClassDecl m cEnv qid =
   c = fromJust $ lookupClass cEnv qid
  
 -- for classes, the dictionary types have to be exported, as well as all 
--- selection functions
+-- selection functions and the default methods
 
 -- |determines the dictionary types for the given classes
 exportsForDictTypes :: ModuleIdent -> [QualIdent] -> [Export]
@@ -413,6 +413,18 @@ exportsForSelFuns' m cEnv cls =
   class0 = fromJust $ canonLookupClass cEnv cls
   ms = map fst $ typeSchemes class0
   
+-- |creates export specifications for all default functions for the given classes
+exportsForDefaultFuns :: ModuleIdent -> ClassEnv -> [QualIdent] -> [Export]
+exportsForDefaultFuns m cEnv clss = concatMap (exportsForDefaultFuns' m cEnv) clss 
 
-
+-- |creates export specifications for all default functions for the given class
+exportsForDefaultFuns' :: ModuleIdent -> ClassEnv -> QualIdent -> [Export]
+exportsForDefaultFuns' m cEnv cls = 
+  map (Export . qualifyWith m . mkIdent . mkDefFunName (show cls) . show) 
+      defaultMethods
+  where
+  defaultMethods = concatMap toDef (defaults class0)
+  class0 = fromJust $ canonLookupClass cEnv cls
+  toDef (FunctionDecl _ _ _ f _) = [f]
+  toDef _ = []
 
