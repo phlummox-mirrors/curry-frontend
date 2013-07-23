@@ -368,7 +368,12 @@ classToClassDecl m cEnv c =
        (qualUnqualify m $ theClass c) 
        (CE.typeVar c) 
        (map (typeSigToIFunDecl m (CE.typeVar c)) $ typeSchemes c)
+       (nub $ concatMap defaultMethods $ defaults c)
        (map (qualUnqualify m) $ filter (isLocal m) $ classesFromClass False cEnv (theClass c))
+  where
+  defaultMethods :: Decl -> [Ident]
+  defaultMethods (FunctionDecl _ _ _ f _) = [f]
+  defaultMethods _                        = []
 
 -- |converts the given class to a hidden class interface declaration
 toHiddenClassDecl :: ModuleIdent -> ClassEnv -> QualIdent -> IDecl
