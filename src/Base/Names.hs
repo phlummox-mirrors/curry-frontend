@@ -17,7 +17,7 @@ module Base.Names
     -- * prefixes for constructed identifiers
   , implPrefix, dictTypePrefix, identPrefix, defPrefix
     -- * name generation functions
-  , mkSelFunName, mkDictName, mkDictTypeName
+  , mkSelFunName, mkDictName, mkDictTypeName, mkDefFunName
   ) where
 
 -- | prefix that indicates that the identifier is constructed by the compiler
@@ -55,6 +55,9 @@ mkDictName cls ty = dictPrefix ++ cls ++ sep ++ ty
 -- |creates a name for a dictionary type
 mkDictTypeName :: String -> String
 mkDictTypeName cls = dictTypePrefix ++ cls
+
+mkDefFunName :: String -> String -> String
+mkDefFunName cls fun0 = defPrefix ++ cls ++ sep ++ fun0
 
 -- |internal separator
 sep :: String

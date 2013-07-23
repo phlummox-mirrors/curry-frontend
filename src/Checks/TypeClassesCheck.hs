@@ -1025,7 +1025,7 @@ instMethodName cls tcon s = implPrefix ++ show cls ++ sep ++ show tcon ++ sep ++
 
 -- |create a name for the default method in a class declaration
 defMethodName :: QualIdent -> String -> String
-defMethodName cls fun0 = defPrefix ++ show cls ++ sep ++ fun0
+defMethodName cls fun0 = mkDefFunName (show cls) fun0
 
 -- |creates a type signature for an instance method which is transformed to
 -- a top level function
