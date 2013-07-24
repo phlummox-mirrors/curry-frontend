@@ -187,7 +187,7 @@ checkModule :: Options -> (CompilerEnv, CompilerEnv, CS.Module)
 checkModule opts (envNonTc, envTc, mdl) = do
   (env1,  kc) <- dump DumpParsed envTc kindCheck (envTc, mdl) -- should be only syntax checking ?
   (env2,  sc) <- syntaxCheck opts env1 kc
-  (env3,  pc) <- precCheck        env2 sc
+  (env3,  pc) <- dump DumpSyntaxChecked env2 precCheck (env2, sc)
   (env4, tcc) <- typeClassesCheck env3 pc
   (env5,  tc) <- if withTypeCheck
                    -- then typeCheck env4 tcc
