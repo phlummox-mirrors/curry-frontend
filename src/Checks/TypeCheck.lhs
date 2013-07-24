@@ -53,11 +53,11 @@ expanded.
 
 > import Env.TypeConstructor (TCEnv, TypeInfo (..), bindTypeInfo
 >   , qualLookupTC)
-> import Env.Value ( ValueEnv, ValueInfo (..), bindFun, rebindFun
+> import Env.Value ( ValueEnv, ValueInfo (..), rebindFun
 >   , bindGlobalInfo, bindLabel, lookupValue, qualLookupValue
 >   , tryBindFun )
-> import Env.ClassEnv (ClassEnv (..), Class (..), allLocalClasses 
->   , implies', implies, isValidCx, reduceContext)
+> import Env.ClassEnv (ClassEnv (..), Class (..)
+>   , implies', implies, isValidCx, reduceContext, lookupTypeScheme)
 
 > infixl 5 $-$
 
@@ -452,6 +452,7 @@ treated just like any top level functions. Top level functions and
 class methods share the same namespace!
 \begin{verbatim}
 
+> {-
 > -- |binds all class methods of /locally defined/ classes into the value
 > -- environment  
 > bindClassMethods :: ClassEnv -> TCM ()
@@ -471,6 +472,26 @@ class methods share the same namespace!
 >                     vEnv
 >                     tySchemes
 >   modifyValueEnv $ const vEnv'
+> -}
+> 
+> bindClassMethods :: ClassEnv -> TCM ()
+> bindClassMethods (ClassEnv _ _ methodEnv _) = do 
+>   vEnv <- getValueEnv
+>   let classMethods0 = allBindings methodEnv
+>       vEnv' = foldr bind vEnv classMethods0
+>   modifyValueEnv $ const vEnv'
+>   where
+>   bind :: (QualIdent, Class) -> ValueEnv -> ValueEnv
+>   bind (m, cls) = 
+>     let tsc = fromJust $ lookupTypeScheme cls (unqualify m)
+>         v = Value (qualifyLike (theClass cls) $ unqualify m) 
+>                   (BT.arrowArity $ typeSchemeToType tsc) tsc
+>     in qualBindTopEnv "bindClassMethods" m v   
+>    
+>     
+ 
+
+
 
 \end{verbatim}
 \paragraph{Type Inference}
