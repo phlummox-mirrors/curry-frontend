@@ -429,7 +429,7 @@ local declarations.
 >            filter (const True) (methods cls)))
 >     clss
 >   where
->   clss = allNonHiddenBindings cEnv
+>   clss = allNonHiddenClassBindings cEnv
 
 \end{verbatim}
 Each declaration group opens a new scope and uses a distinct key
