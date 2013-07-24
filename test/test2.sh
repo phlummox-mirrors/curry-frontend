@@ -45,7 +45,7 @@ for file in DictTrans1 DictTrans2 DictTrans3 DictTrans4 \
   ArrowInstances
 do
   echo $file >> tmp.txt
-  $cymake -f -i typeclasses typeclasses/$file.curry 2> stderr.txt 1> stdout.txt || (echo "| Error in $file.curry:" ; echo "===================="; cat stdout.txt; cat stderr.txt; echo "====================")
+  $cymake -f -i typeclasses typeclasses/$file.curry 2> stderr.txt 1> stdout.txt || (echo "===================="; echo "| Error in $file.curry:" ; echo "===================="; cat stdout.txt; cat stderr.txt; echo)
 done
 
 fi
@@ -77,7 +77,7 @@ for file in TestClassExports TestClassExports2 TestClassExportsImports \
   TCC TCCUse TCCUse2 TCCUse3 TCCUse4
 do
   echo $file >> tmp.txt
-  $cymake -f -i typeclasses/modules typeclasses/modules/$file.curry 2> stderr.txt 1> stdout.txt || (echo "| Error in $file.curry:" ; echo "===================="; cat stdout.txt; cat stderr.txt; echo "====================")
+  $cymake -f -i typeclasses/modules typeclasses/modules/$file.curry 2> stderr.txt 1> stdout.txt || (echo "===================="; echo "| Error in $file.curry:" ; echo "===================="; cat stdout.txt; cat stderr.txt; echo)
 done
 
 echo `cat tmp.txt | wc -l` files checked
