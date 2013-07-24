@@ -16,6 +16,9 @@ $cymake -f -i typeclasses/modules typeclasses/modules/Prelude.curry > /dev/null
 
 # do the check # 1
 
+if [ "$1" != "modulesOnly" ]
+then
+
 for file in DictTrans1 DictTrans2 DictTrans3 DictTrans4 \
   DictTrans5 DictTrans6 DictTrans7 DictTrans8 DictTrans9 \
   DictTrans10 DictTrans11 DictTrans12 \
@@ -44,6 +47,8 @@ do
   echo $file >> tmp.txt
   $cymake -f -i typeclasses typeclasses/$file.curry 2> stderr.txt 1> stdout.txt || (echo "Error in $file.curry:" ; echo "===================="; cat stdout.txt; cat stderr.txt; echo "====================")
 done
+
+fi
 
 # Those files contain type classes with other type vars in methods than
 # the type variable of the class and can thus not be checked:
