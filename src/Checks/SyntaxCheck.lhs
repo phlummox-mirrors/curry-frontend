@@ -43,6 +43,7 @@ definition.
 
 > import Env.TypeConstructor (TCEnv, TypeInfo (..), qualLookupTC)
 > import Env.Value (ValueEnv, ValueInfo (..))
+> import Env.ClassEnv hiding (classMethods, bindClassMethods)
 
 > import CompilerOpts
 
@@ -297,6 +298,16 @@ Furthermore, it is not allowed to declare a label more than once.
 > bindClassMethods m decls = do
 >   modifyRenameEnv $ \env -> foldr (bindFuncDecl False m) env decls
 
+> -- |binds imported class methods. All class methods are qualified with
+> -- the module name under which the containing class is imported.  
+> bindImportedClassMethods :: [(QualIdent, Ident, Int)] -> SCM ()
+> bindImportedClassMethods ms = do
+>   modifyRenameEnv $ \env -> foldr bind env ms
+>   where
+>   bind :: (QualIdent, Ident, Int) -> RenameEnv -> RenameEnv
+>   bind (c, m, n) = qualBindNestEnv m' $ GlobalVar n m'
+>     where m' = qualifyLike c m
+
 ------------------------------------------------------------------------------
 
 > -- |Bind a local declaration (function, variables) in the 'RenameEnv'
@@ -344,10 +355,13 @@ local declarations.
 > checkModule decls = do
 >   mapM_ bindTypeDecl (rds ++ dds)
 >   m <- getModuleIdent
+>   cEnv <- getClassEnv
 >   -- bind class methods so that references to class methods do not
 >   -- cause errors
 >   let classTypeSigs = extractTypeDeclsFromClasses decls
+>       importedClassMethods = classMethodsFromClassEnv cEnv
 >   bindClassMethods m classTypeSigs
+>   bindImportedClassMethods importedClassMethods
 >   -- now reserve class methods so that they cannot be redefined as top level 
 >   -- functions... 
 >   let classMethods0 = concatMap (\(TypeSig _ ids _ _) -> ids) classTypeSigs 
@@ -400,6 +414,22 @@ local declarations.
 >   case null intersection of
 >     True -> checkDeclGroup (bindFuncDecl tcc m) decls
 >     False -> report (errRedefiningClassMethods intersection) >> return decls  
+
+> -- | returns all class methods from the class environment in the following
+> -- form: (The name under which the class containing the methods is imported, 
+> -- a name of a method, its arity)
+> classMethodsFromClassEnv :: ClassEnv -> [(QualIdent, Ident, Int)]
+> classMethodsFromClassEnv cEnv =
+>   -- TODO: return only class methods that are not hidden! 
+>   concatMap 
+>     (\(c, cls) -> 
+>       zipWith (\x (y, z) -> (x, y, z))
+>         (repeat c)  
+>         (map (\(m, _, ty) -> (m, typeArity ty)) $
+>            filter (const True) (methods cls)))
+>     clss
+>   where
+>   clss = allNonHiddenBindings cEnv
 
 \end{verbatim}
 Each declaration group opens a new scope and uses a distinct key
