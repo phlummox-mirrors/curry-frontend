@@ -72,7 +72,7 @@ syntaxCheck opts env (Module m es is ds)
   | null msgs = CheckSuccess (env, Module m es is ds')
   | otherwise = CheckFailed msgs
   where (ds', msgs) = SC.syntaxCheck opts (moduleIdent env)
-                      (valueEnv env) (tyConsEnv env) ds
+                      (valueEnv env) (tyConsEnv env) (classEnv env) ds
 
 -- |Check the precedences of infix operators.
 --

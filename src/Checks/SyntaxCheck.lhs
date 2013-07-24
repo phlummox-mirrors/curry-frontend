@@ -57,16 +57,16 @@ generated. Finally, all declarations are checked within the resulting
 environment. In addition, this process will also rename the local variables.
 \begin{verbatim}
 
-> syntaxCheck :: Options -> ModuleIdent -> ValueEnv -> TCEnv -> [Decl]
+> syntaxCheck :: Options -> ModuleIdent -> ValueEnv -> TCEnv -> ClassEnv -> [Decl]
 >             -> ([Decl], [Message])
-> syntaxCheck opts m tyEnv tcEnv decls =
+> syntaxCheck opts m tyEnv tcEnv cEnv decls =
 >   case findMultiples $ concatMap constrs typeDecls of
 >     []  -> runSC (checkModule decls) state
 >     css -> (decls, map errMultipleDataConstructor css)
 >   where
 >     typeDecls  = filter isTypeDecl decls
 >     rEnv       = globalEnv $ fmap (renameInfo tcEnv) tyEnv
->     state      = initState (optExtensions opts) m rEnv
+>     state      = initState (optExtensions opts) m rEnv cEnv
 
 \end{verbatim}
 A global state transformer is used for generating fresh integer keys with
@@ -90,11 +90,12 @@ renaming literals and underscore to disambiguate them.
 >   , typeClassesCheck :: Bool   -- ^ Disable some checks when declarations in classes
 >                                -- are checked, like checking for missing function bodies
 >   , classMethods :: [Ident]    -- ^ the class methods defined by class declarations
+>   , classEnv    :: ClassEnv    -- ^ the class environment with imported classes
 >   }
 
 > -- |Initial syntax check state
-> initState :: [Extension] -> ModuleIdent -> RenameEnv -> SCState
-> initState exts m rEnv = SCState exts m rEnv globalScopeId 1 [] False []
+> initState :: [Extension] -> ModuleIdent -> RenameEnv -> ClassEnv -> SCState
+> initState exts m rEnv cEnv = SCState exts m rEnv globalScopeId 1 [] False [] cEnv
 
 > -- |Identifier for global (top-level) declarations
 > globalScopeId :: Integer
@@ -171,6 +172,9 @@ renaming literals and underscore to disambiguate them.
 
 > getClassMethods :: SCM [Ident]
 > getClassMethods = S.gets classMethods
+
+> getClassEnv :: SCM ClassEnv
+> getClassEnv = S.gets classEnv
 
 \end{verbatim}
 A nested environment is used for recording information about the data
