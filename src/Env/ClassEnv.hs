@@ -318,7 +318,7 @@ allClassBindings (ClassEnv cEnv _ _ _) = allBindings cEnv
 lookupTypeScheme :: Class -> Ident -> Maybe TypeScheme
 lookupTypeScheme cls f = listToMaybe $ map snd $ filter p (typeSchemes cls)
   where
-  p (id0, tsc) = id0 == f
+  p (id0, _tsc) = id0 == f
 
 -- ----------------------------------------------------------------------------
 -- type classes related functionality
