@@ -138,7 +138,7 @@ typeDecl tcs m tcEnv cEnv (ExportTypeWith tc cs) ds = case qualLookupTC tc tcEnv
     -- the type signature). 
     [c] -> (if tcs then (classToClassDecl m cEnv c :) else id) ds
     _ -> internalError ("Exports.typeDecl: no class: " ++ show tc ++ 
-                        " tcs: " ++ show tcs ++ "\n" ++ show cEnv)
+                        " tcs: " ++ show tcs {-++ "\n" ++ show cEnv-})
   _ -> internalError "Exports.typeDecl: no type"
 typeDecl _ _ _ _ _ _ = internalError "Exports.typeDecl: no pattern match"
 
