@@ -73,19 +73,24 @@ hasError = liftM (not . null) $ gets errors
 -- Also builds a corresponding class environment. 
 typeClassesCheck :: ModuleIdent -> [Decl] -> ClassEnv -> TCEnv -> ([Decl], ClassEnv, [Message])
 typeClassesCheck m decls 
-    (ClassEnv importedClasses importedInstances _ _) tcEnv0 = 
+    (ClassEnv importedClassesEnv importedInstances _ _) tcEnv0 = 
   case runTcc tcCheck initTccState of 
     ((newClasses, instances), []) -> 
-      let newDecls = adjustContexts cEnv $ concatMap (transformInstance m cEnv tcEnv) $ 
+      let -- translate contexts, instances and classes
+          newDecls = adjustContexts cEnv $ 
+            concatMap (transformInstance m cEnv tcEnv) $ 
             concatMap (transformClass2 cEnv) decls
           
+          -- build type schemes for all classes
           newClasses' = map (buildTypeSchemes m tcEnv 
                           . renameTypeSigVars) newClasses
-          importedClasses' = 
-            fmap (buildTypeSchemes m tcEnv . renameTypeSigVars) importedClasses
-          allClassesEnv = bindAll newClasses' importedClasses'
-          classMethodsMap = constructClassMethodsEnv $ allClassBindings cEnv
-          cEnv = ClassEnv allClassesEnv instances classMethodsMap 
+          importedClassesEnv' = 
+            fmap (buildTypeSchemes m tcEnv . renameTypeSigVars) importedClassesEnv
+          
+          -- construct class environment
+          allClassesEnv = bindAll newClasses' importedClassesEnv'
+          classMethodsEnv = constructClassMethodsEnv $ allClassBindings cEnv
+          cEnv = ClassEnv allClassesEnv instances classMethodsEnv
                           (buildCanonClassMap allClassesEnv)
       in (newDecls, cEnv, [])
     (_, errs@(_:_)) -> (decls, ClassEnv emptyTopEnv [] emptyTopEnv Map.empty, errs)
@@ -141,8 +146,9 @@ typeClassesCheck m decls
       let newClasses = map (classDeclToClass m) classDecls
           instances = map (localInst . instanceDeclToInstance m tcEnv) instDecls 
                       ++ importedInstances
-          allClasses0 = bindAll newClasses importedClasses
-          newClassEnv = ClassEnv allClasses0 instances emptyTopEnv (buildCanonClassMap allClasses0)
+          allClassesEnv = bindAll newClasses importedClassesEnv
+          newClassEnv = ClassEnv allClassesEnv instances emptyTopEnv 
+                                 (buildCanonClassMap allClassesEnv)
       
       -- TODO: check also contexts of (imported) classes and interfaces?
       mapM_ (checkClassesInContext m newClassEnv) classDecls
@@ -161,14 +167,14 @@ typeClassesCheck m decls
     -- ----------------------------------------------------------------------
     phase3 = do  
       let newClasses' = 
-            map (qualifyClass newClassEnv' . classDeclToClass m) 
-                classDecls
+            map (qualifyClass newClassEnv' . classDeclToClass m) classDecls
           instances' =  
-            map (localInst . qualifyInstance newClassEnv' . instanceDeclToInstance m tcEnv)
-                instDecls 
+            map (localInst . qualifyInstance newClassEnv' 
+                           . instanceDeclToInstance m tcEnv) instDecls 
             ++ importedInstances
-          allClasses0 = bindAll newClasses' importedClasses
-          newClassEnv' = ClassEnv allClasses0 instances' emptyTopEnv (buildCanonClassMap allClasses0)
+          allClassesEnv = bindAll newClasses' importedClassesEnv
+          newClassEnv' = ClassEnv allClassesEnv instances' emptyTopEnv 
+                                  (buildCanonClassMap allClassesEnv)
       
       mapM_ (checkForInstanceDataTypeExistAlsoInstancesForSuperclasses newClassEnv' tcEnv m) instDecls
       mapM_ (checkInstanceContextImpliesAllInstanceContextsOfSuperClasses newClassEnv' tcEnv m) instDecls
@@ -258,7 +264,7 @@ qualifyInstance cEnv i =
     , iClass = getCanonClassName cEnv (iClass i) }   
 
 -- |builds the canonical class map (a map from canonical class names to 
--- the corresponding 
+-- the corresponding classes)
 buildCanonClassMap :: TopEnv Class -> Map.Map QualIdent Class
 buildCanonClassMap classes = Map.fromList allClasses''
   where
