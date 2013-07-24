@@ -314,7 +314,7 @@ allNonHiddenClassBindings (ClassEnv cEnv _ _ _) = allBindings $ nonHiddenClassEn
 allClassBindings :: ClassEnv -> [(QualIdent, Class)]
 allClassBindings (ClassEnv cEnv _ _ _) = allBindings cEnv 
 
--- |
+-- |looks up a type scheme in the given class
 lookupTypeScheme :: Class -> Ident -> Maybe TypeScheme
 lookupTypeScheme cls f = listToMaybe $ map snd $ filter p (typeSchemes cls)
   where

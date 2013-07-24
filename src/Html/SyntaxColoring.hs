@@ -655,6 +655,7 @@ showToken (Token Id_hiding    _) = "hiding"
 showToken (Token Id_interface _) = "interface"
 showToken (Token Id_interfaceTypeClasses _) = "interfaceTypeClasses"
 showToken (Token Id_primitive _) = "primitive"
+showToken (Token Id_public    _) = "public"
 showToken (Token Id_qualified _) = "qualified"
 showToken (Token EOF          _) = ""
 showToken (Token LineComment   (StringAttributes sv _)) = sv
