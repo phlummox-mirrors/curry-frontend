@@ -73,6 +73,7 @@ for file in TestClassExports TestClassExports2 TestClassExportsImports \
   OpClassFuns OpClassFunsImport \
   HidingClasses HidingClasses2 HidingClasses3 HidingClasses4 HidingClasses5 HidingClassesUse \
   ExportNonHidden ExportNonHiddenUse \
+  SyntaxCheck SyntaxCheckUse SyntaxCheckUse2 SyntaxCheckUse3 \
   TCC TCCUse TCCUse2 TCCUse3 TCCUse4
 do
   echo $file >> tmp.txt
