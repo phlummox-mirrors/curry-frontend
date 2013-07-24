@@ -89,7 +89,7 @@ exportInterface' (Module m (Just (Exporting _ es)) _ _) tcs pEnv tcEnv tyEnv cEn
           (foldr (funDecl m tyEnv) [] classElems)
           classElems
   -- exportedClassesHidden = map (toHiddenClassDecl m cEnv) exportedClasses'
-  exportedClasses'' = map (classToClassDecl m cEnv . fromJust . lookupClass cEnv) exportedClasses' 
+  exportedClasses'' = map (classToClassDecl m cEnv [] . fromJust . lookupClass cEnv) exportedClasses' 
 exportInterface' (Module _ Nothing _ _) _ _ _ _ _
   = internalError "Exports.exportInterface: no export specification"
 
@@ -136,7 +136,7 @@ typeDecl tcs m tcEnv cEnv (ExportTypeWith tc cs) ds = case qualLookupTC tc tcEnv
     -- the whole class declaration must be exported, also the hidden methods 
     -- (for these actually the name doesn't need to be exported, important is only 
     -- the type signature). 
-    [c] -> (if tcs then (classToClassDecl m cEnv c :) else id) ds
+    [c] -> (if tcs then (classToClassDecl m cEnv cs c :) else id) ds
     _ -> internalError ("Exports.typeDecl: no class: " ++ show tc ++ 
                         " tcs: " ++ show tcs {-++ "\n" ++ show cEnv-})
   _ -> internalError "Exports.typeDecl: no type"
@@ -223,7 +223,7 @@ identsDecl (ITypeDecl    _ tc _ ty) xs = tc : identsType ty xs
 identsDecl (IFunctionDecl _ f _ cx ty) xs = f  : identsCx cx (identsType ty xs)
 -- TODO: consider also identifiers/classes in the "depends" section of class
 -- or instance declarations? 
-identsDecl (IClassDecl _ scls cls _ sigs _ _) xs = cls : scls ++ foldr identsDecl xs sigs
+identsDecl (IClassDecl _ scls cls _ sigs _ _) xs = cls : scls ++ foldr identsDecl xs (map snd sigs)
 identsDecl (IInstanceDecl _ scx cls (QualTC ty) _tyvars _) xs = cls : ty : map fst scx ++ xs 
 identsDecl (IInstanceDecl _ scx cls _ _tyvars _) xs = cls : map fst scx ++ xs
 identsDecl (IHidingClassDecl _ scls cls _ sigs) xs = cls : scls ++ foldr identsDecl xs sigs
@@ -282,7 +282,7 @@ usedTypesDecl (IDataDecl     _ _ _ cs) tcs =
 usedTypesDecl (INewtypeDecl  _ _ _ nc) tcs = usedTypesNewConstrDecl nc tcs
 usedTypesDecl (ITypeDecl     _ _ _ ty) tcs = usedTypesType ty tcs
 usedTypesDecl (IFunctionDecl _ _ _ cx ty) tcs = usedTypesContext cx (usedTypesType ty tcs)
-usedTypesDecl (IClassDecl _ _ _ _ sigs _ _) tcs = foldr usedTypesDecl tcs sigs
+usedTypesDecl (IClassDecl _ _ _ _ sigs _ _) tcs = foldr usedTypesDecl tcs (map snd sigs)
 usedTypesDecl (IInstanceDecl _ _ _cls (QualTC ty) _ _) tcs = ty : tcs
 usedTypesDecl (IInstanceDecl _ _ _cls _ _ _) tcs = tcs
 usedTypesDecl (IHidingClassDecl _ _ _ _ sigs) tcs = foldr usedTypesDecl tcs sigs
@@ -362,13 +362,14 @@ calculateDependencies cEnv insts classes =
   classesFromInstances cEnv insts ++ classesFromClasses False cEnv classes
 
 -- |converts a class into a IClassDecl
-classToClassDecl :: ModuleIdent -> ClassEnv -> Class -> IDecl
-classToClassDecl m cEnv c = 
+classToClassDecl :: ModuleIdent -> ClassEnv -> [Ident] -> Class -> IDecl
+classToClassDecl m cEnv fs c =
   IClassDecl NoPos 
        (map (qualUnqualify m) $ superClasses c)
        (qualUnqualify m $ theClass c) 
        (CE.typeVar c) 
-       (map (typeSigToIFunDecl m (CE.typeVar c)) $ typeSchemes c)
+       (map (\(f, tsc) -> (f `elem` fs, typeSigToIFunDecl m (CE.typeVar c) (f, tsc))) 
+            $ typeSchemes c)
        (nub $ concatMap defaultMethods $ defaults c)
        (map (qualUnqualify m) $ filter (isLocal m) $ classesFromClass False cEnv (theClass c))
   where

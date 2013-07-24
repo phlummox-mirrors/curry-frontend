@@ -105,8 +105,9 @@ during syntax checking of type expressions.
 > checkIDecl (IFunctionDecl p f n cx ty) =
 >   liftM (IFunctionDecl p f n cx) (checkType ty)
 > checkIDecl (IClassDecl p scls cls var tySigs defs deps) = 
->   liftM3 (IClassDecl p scls cls var) (mapM checkIDecl tySigs) (return defs) 
->          (return deps)
+>   liftM3 (IClassDecl p scls cls var) 
+>          (mapM (\(b, sig) -> checkIDecl sig >>= \sig' -> return (b, sig')) tySigs)
+>          (return defs) (return deps)
 > checkIDecl i@(IInstanceDecl _ _ _ _ _ _) = return i 
 > checkIDecl (IHidingClassDecl p scls cls var tySigs) = 
 >  liftM (IHidingClassDecl p scls cls var) (mapM checkIDecl tySigs)

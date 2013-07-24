@@ -312,19 +312,21 @@ bindCls _allClasses m (IClassDecl _ scx cls tyvar ds defs _deps) env =
   Map.insert (unqualify cls) (mkClass m scx cls tyvar ds defs) env
 bindCls allClasses0 m (IHidingClassDecl _ scx cls tyvar ds) env =
   if allClasses0
-  then Map.insert (unqualify cls) (mkClass m scx cls tyvar ds []) env
+  then Map.insert (unqualify cls) 
+                  (mkClass m scx cls tyvar (map (\d -> (False, d)) ds) []) env
   else env
 bindCls _ _ _ env = env
 
 -- |construct a class from an "IClassDecl" or "IHidingClassDecl"
-mkClass :: ModuleIdent -> [QualIdent] -> QualIdent -> Ident -> [IDecl] -> [Ident] -> Class
+mkClass :: ModuleIdent -> [QualIdent] -> QualIdent -> Ident -> [(Bool, IDecl)] 
+        -> [Ident] -> Class
 mkClass m scx cls tyvar ds defs = 
   Class { 
     superClasses = map (qualQualify m) scx, 
     theClass = qualQualify m cls, 
     CE.typeVar = tyvar, 
     kind = -1, 
-    methods = map (iFunDeclToMethod m) ds, 
+    methods = map (iFunDeclToMethod m) (map snd ds), -- TODO: consider public flag! 
     typeSchemes = [], 
     defaults = map toDefFun defs,
     hidden = internalError "hidden not yet defined" }
