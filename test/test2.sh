@@ -67,7 +67,8 @@ for file in TestClassExports TestClassExports2 TestClassExportsImports \
   DefaultMethods DefaultMethodsImport \
   OpClassFuns OpClassFunsImport \
   HidingClasses HidingClasses2 HidingClasses3 HidingClasses4 HidingClasses5 HidingClassesUse \
-  ExportNonHidden ExportNonHiddenUse
+  ExportNonHidden ExportNonHiddenUse \
+  TCC TCCUse TCCUse2 TCCUse3 TCCUse4
 do
   echo $file >> tmp.txt
   $cymake -f -i typeclasses/modules typeclasses/modules/$file.curry 2> stderr.txt 1> stdout.txt || (echo "Error in $file.curry:" ; echo "===================="; cat stdout.txt; cat stderr.txt; echo "====================")
