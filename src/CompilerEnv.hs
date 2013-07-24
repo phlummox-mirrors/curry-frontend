@@ -68,6 +68,7 @@ showCompilerEnv opts env = show $ vcat
   , header "Classes         " $ ppAL ppClass $ allBindings $ theClasses $ classEnv env
   , header "Instances       " $ vcat (map ppInst (allInstances $ theInstances $ classEnv env))
   , header "ClassMethodsMap " $ ppAL ppClass $ allBindings $ classMethods $ classEnv env
+  , header "CanonClassMap   " $ ppAL ppClass $ Map.toList $ canonClassMap $ classEnv env
   ]
   where
   header hdr content = hang (text hdr <+> colon) 4 content
