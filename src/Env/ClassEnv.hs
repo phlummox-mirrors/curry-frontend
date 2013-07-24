@@ -25,7 +25,7 @@ module Env.ClassEnv (
   , canonLookupMethodTypeSig', canonLookupMethodTypeScheme'
   , getDefaultMethods, lookupDefiningClass', isClassMethod
   , localInst, importedInst, getAllInstances, getLocalInstances, allInstances
-  , lookupNonHiddenClass, allNonHiddenClassBindings
+  , lookupNonHiddenClass, allNonHiddenClassBindings, allClassBindings
   -- ** functions for modifying the class environment
   , bindClass, bindClassMethods
   -- ** pretty printing
@@ -308,6 +308,10 @@ allInstances = map snd
 -- |returns all bindings with classes that are not hidden
 allNonHiddenClassBindings :: ClassEnv -> [(QualIdent, Class)]
 allNonHiddenClassBindings (ClassEnv cEnv _ _ _) = allBindings $ nonHiddenClassEnv cEnv
+
+-- |returns all bindings
+allClassBindings :: ClassEnv -> [(QualIdent, Class)]
+allClassBindings (ClassEnv cEnv _ _ _) = allBindings cEnv 
 
 -- ----------------------------------------------------------------------------
 -- type classes related functionality
