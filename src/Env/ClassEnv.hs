@@ -26,6 +26,7 @@ module Env.ClassEnv (
   , getDefaultMethods, lookupDefiningClass', isClassMethod
   , localInst, importedInst, getAllInstances, getLocalInstances, allInstances
   , lookupNonHiddenClass, allNonHiddenClassBindings, allClassBindings
+  , lookupTypeScheme
   -- ** functions for modifying the class environment
   , bindClass, bindClassMethods
   -- ** pretty printing
@@ -312,6 +313,12 @@ allNonHiddenClassBindings (ClassEnv cEnv _ _ _) = allBindings $ nonHiddenClassEn
 -- |returns all bindings
 allClassBindings :: ClassEnv -> [(QualIdent, Class)]
 allClassBindings (ClassEnv cEnv _ _ _) = allBindings cEnv 
+
+-- |
+lookupTypeScheme :: Class -> Ident -> Maybe TypeScheme
+lookupTypeScheme cls f = listToMaybe $ map snd $ filter p (typeSchemes cls)
+  where
+  p (id0, tsc) = id0 == f
 
 -- ----------------------------------------------------------------------------
 -- type classes related functionality
