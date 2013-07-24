@@ -73,16 +73,20 @@ hasError = liftM (not . null) $ gets errors
 -- Also builds a corresponding class environment. 
 typeClassesCheck :: ModuleIdent -> [Decl] -> ClassEnv -> TCEnv -> ([Decl], ClassEnv, [Message])
 typeClassesCheck m decls 
-    (ClassEnv importedClasses importedInstances classMethodsMap _) tcEnv0 = 
+    (ClassEnv importedClasses importedInstances _ _) tcEnv0 = 
   case runTcc tcCheck initTccState of 
     ((newClasses, instances), []) -> 
       let newDecls = adjustContexts cEnv $ concatMap (transformInstance m cEnv tcEnv) $ 
             concatMap (transformClass2 cEnv) decls
+          
           newClasses' = map (buildTypeSchemes m tcEnv 
                           . renameTypeSigVars) newClasses
-          allClassesEnv = bindAll newClasses' importedClasses
-          newClassMethodsMap = bindClassMethods m (allLocalClasses allClassesEnv) classMethodsMap
-          cEnv = ClassEnv allClassesEnv instances newClassMethodsMap (buildCanonClassMap allClassesEnv)
+          importedClasses' = 
+            fmap (buildTypeSchemes m tcEnv . renameTypeSigVars) importedClasses
+          allClassesEnv = bindAll newClasses' importedClasses'
+          classMethodsMap = constructClassMethodsEnv $ allClassBindings cEnv
+          cEnv = ClassEnv allClassesEnv instances classMethodsMap 
+                          (buildCanonClassMap allClassesEnv)
       in (newDecls, cEnv, [])
     (_, errs@(_:_)) -> (decls, ClassEnv emptyTopEnv [] emptyTopEnv Map.empty, errs)
   where
@@ -260,6 +264,21 @@ buildCanonClassMap classes = Map.fromList allClasses''
   where
   allClasses' = allClasses classes
   allClasses'' = map (\cls -> (theClass cls, cls)) allClasses'
+
+-- | constructs the environment that maps class methods to classes  
+constructClassMethodsEnv :: [(QualIdent, Class)] -> TopEnv Class
+constructClassMethodsEnv bindings = 
+  foldr bind emptyTopEnv classesAndMethods
+  where
+  classesAndMethods = 
+    concatMap (\(c, cls) -> zip3 (repeat c) (repeat cls) (map fst3 $ methods cls))
+      bindings
+  bind :: (QualIdent, Class, Ident) -> TopEnv Class -> TopEnv Class
+  bind (c, cls, m) env = 
+    -- use as qualification for the method the qualification of the qualIdent
+    -- under which the current class is stored. 
+    qualBindTopEnv "constructClassMethodsMap" (qualifyLike c m) cls env
+
 
 -- ----------------------------------------------------------------------------
 -- functions for gathering/transforming type signatures
