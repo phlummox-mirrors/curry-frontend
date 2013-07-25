@@ -39,7 +39,7 @@ definition.
 > import Base.Messages (Message, posMessage, internalError, message)
 > import Base.NestEnv
 > import Base.Types
-> import Base.Utils ((++!), findDouble, findMultiples)
+> import Base.Utils ((++!), findDouble, findMultiples, fst3)
 
 > import Env.TypeConstructor (TCEnv, TypeInfo (..), qualLookupTC)
 > import Env.Value (ValueEnv, ValueInfo (..))
@@ -420,13 +420,13 @@ local declarations.
 > -- a name of a method, its arity)
 > classMethodsFromClassEnv :: ClassEnv -> [(QualIdent, Ident, Int)]
 > classMethodsFromClassEnv cEnv =
->   -- TODO: return only class methods that are not hidden! 
+>   -- return only class methods that are not hidden! 
 >   concatMap 
 >     (\(c, cls) -> 
 >       zipWith (\x (y, z) -> (x, y, z))
 >         (repeat c)  
 >         (map (\(m, _, ty) -> (m, typeArity ty)) $
->            filter (const True) (methods cls)))
+>            filter (( `elem` publicMethods cls) . fst3) (methods cls)))
 >     clss
 >   where
 >   clss = allNonHiddenClassBindings cEnv
