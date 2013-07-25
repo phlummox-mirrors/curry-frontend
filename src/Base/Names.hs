@@ -20,10 +20,15 @@ module Base.Names
   , implPrefix, dictTypePrefix, identPrefix, defPrefix
     -- * name generation functions
   , mkSelFunName, mkDictName, mkDictTypeName, mkDefFunName
+    -- * functions that test whether an identifier is a constructed identifier
+    -- of a given type
+  , isDictType, isDictionary, isSelFun, isDefaultMethod 
   ) where
 
+import Data.List
+
 -- | prefix that indicates that the identifier is constructed by the compiler
-import Curry.Base.Ident (identPrefix, sep)
+import Curry.Base.Ident (identPrefix, sep, Ident)
 
 -- |The prefix for dictionary types
 dictTypePrefix :: String
@@ -60,3 +65,16 @@ mkDictTypeName cls = dictTypePrefix ++ cls
 
 mkDefFunName :: String -> String -> String
 mkDefFunName cls fun0 = defPrefix ++ cls ++ sep ++ fun0
+
+isDictType :: Ident -> Bool
+isDictType i = dictTypePrefix `isPrefixOf` show i
+
+isDictionary :: Ident -> Bool
+isDictionary i = dictPrefix `isPrefixOf` show i
+
+isSelFun :: Ident -> Bool
+isSelFun i = selFunPrefix `isPrefixOf` show i
+
+isDefaultMethod :: Ident -> Bool
+isDefaultMethod i = defPrefix `isPrefixOf` show i
+
