@@ -29,6 +29,7 @@ import Base.CurryTypes (fromQualType, fromQualType', fromContext)
 import Base.Messages
 import Base.Types as BT
 import Base.Names
+import Base.Utils
 
 import Env.OpPrec          (OpPrecEnv, PrecInfo (..), OpPrec (..), qualLookupP)
 import Env.TypeConstructor (TCEnv, TypeInfo (..), qualLookupTC)
@@ -89,7 +90,9 @@ exportInterface' (Module m (Just (Exporting _ es)) _ _) tcs pEnv tcEnv tyEnv cEn
           (foldr (funDecl m tyEnv) [] classElems)
           classElems
   -- exportedClassesHidden = map (toHiddenClassDecl m cEnv) exportedClasses'
-  exportedClasses'' = map (classToClassDecl m cEnv [] . fromJust . lookupClass cEnv) exportedClasses' 
+  exportedClasses'' = 
+    map ((\c -> classToClassDecl m cEnv (map fst3 $ methods c) c) . 
+         fromJust . lookupClass cEnv) exportedClasses' 
 exportInterface' (Module _ Nothing _ _) _ _ _ _ _
   = internalError "Exports.exportInterface: no export specification"
 
