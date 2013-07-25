@@ -51,7 +51,7 @@ data ValueInfo
   | Value              QualIdent Int       TypeScheme
   -- |Record label with original name, record name and type
   | Label              QualIdent QualIdent TypeScheme
-    deriving Show
+    deriving (Eq, Show)
 
 instance Entity ValueInfo where
   origName (DataConstructor    orgName _ _) = orgName

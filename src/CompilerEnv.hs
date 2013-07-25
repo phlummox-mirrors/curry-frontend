@@ -15,10 +15,12 @@ module CompilerEnv where
 
 import qualified Data.Map as Map (Map, keys, toList)
 import Text.PrettyPrint
+import Data.Maybe
+import Data.List (nub)
 
-import Curry.Base.Ident (ModuleIdent)
+import Curry.Base.Ident (ModuleIdent, preludeMIdent, QualIdent (..))
 
-import Base.TopEnv (allLocalBindings, allBindings)
+import Base.TopEnv
 
 import Env.Interface
 import Env.ModuleAlias (AliasEnv, initAliasEnv)
@@ -73,7 +75,15 @@ showCompilerEnv opts env = show $ vcat
   where
   header hdr content = hang (text hdr <+> colon) 4 content
   textS = text . show
-  showLocalBindings = if optDumpCompleteEnv opts then allBindings else allLocalBindings
+  showLocalBindings :: (Entity a, Eq a) => TopEnv a -> [(QualIdent, a)]
+  showLocalBindings = 
+    if optDumpCompleteEnv opts
+    then allBindings
+    else -- show only bindings that are outside the prelude
+      nub . map (\(x, _, y) -> (x, y)) . 
+        filter (\(_, origName', _) -> isNothing (qidModule origName') || 
+                                      fromJust (qidModule origName') /= preludeMIdent) . 
+        allBindingsWithOrigNames
 
 -- |Pretty print a 'Map'
 ppMap :: (Show a, Show b) => Map.Map a b -> Doc

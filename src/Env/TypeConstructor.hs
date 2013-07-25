@@ -56,7 +56,7 @@ data TypeInfo
   = DataType     QualIdent Int [Maybe DataConstr]
   | RenamingType QualIdent Int DataConstr
   | AliasType    QualIdent Int Type
-    deriving Show
+    deriving (Eq, Show)
 
 instance Entity TypeInfo where
   origName (DataType     tc _ _) = tc
