@@ -73,7 +73,7 @@ for file in TestClassExports TestClassExports2 TestClassExportsImports \
   OpClassFuns OpClassFunsImport \
   HidingClasses HidingClasses2 HidingClasses3 HidingClasses4 HidingClasses5 HidingClassesUse \
   ExportNonHidden ExportNonHiddenUse \
-  SyntaxCheck SyntaxCheckUse SyntaxCheckUse2 SyntaxCheckUse3 \
+  SyntaxCheck SyntaxCheckUse SyntaxCheckUse2 SyntaxCheckUse3 SyntaxCheckUse4 \
   TCC TCCUse TCCUse2 TCCUse3 TCCUse4 \
   ClassMethodsExport ClassMethodsExportUse ClassMethodsExportUse2 ClassMethodsExportUse3 ClassMethodsExportUse4 \
                      ClassMethodsExportUse5 ClassMethodsExportUse6 ClassMethodsExportUse7 ClassMethodsExportUse8 \
