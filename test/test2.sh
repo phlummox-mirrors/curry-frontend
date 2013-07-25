@@ -75,7 +75,10 @@ for file in TestClassExports TestClassExports2 TestClassExportsImports \
   ExportNonHidden ExportNonHiddenUse \
   SyntaxCheck SyntaxCheckUse SyntaxCheckUse2 SyntaxCheckUse3 \
   TCC TCCUse TCCUse2 TCCUse3 TCCUse4 \
-  ClassMethodsExport ClassMethodsExportUse 
+  ClassMethodsExport ClassMethodsExportUse ClassMethodsExportUse2 ClassMethodsExportUse3 ClassMethodsExportUse4 \
+                     ClassMethodsExportUse5 ClassMethodsExportUse6 ClassMethodsExportUse7 ClassMethodsExportUse8 \
+                     ClassMethodsExportUse9 ClassMethodsExportUse10 ClassMethodsExportUse11 ClassMethodsExportUse12 \
+                     ClassMethodsExportUse13 ClassMethodsExportUse14 ClassMethodsExportUse15 
 do
   echo $file >> tmp.txt
   $cymake -f -i typeclasses/modules typeclasses/modules/$file.curry 2> stderr.txt 1> stdout.txt || (echo "===================="; echo "| Error in $file.curry:" ; echo "===================="; cat stdout.txt; cat stderr.txt; echo)
