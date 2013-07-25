@@ -71,14 +71,15 @@ for file in TestClassExports TestClassExports2 TestClassExportsImports \
   HiddenNotHidden HiddenNotHiddenImport \
   DefaultMethods DefaultMethodsImport \
   OpClassFuns OpClassFunsImport \
-  HidingClasses HidingClasses2 HidingClasses3 HidingClasses4 HidingClasses5 HidingClassesUse \
+  HidingClasses HidingClasses2 HidingClasses3 HidingClasses4 HidingClasses5 HidingClassesUse HidingClassesUse2 \
   ExportNonHidden ExportNonHiddenUse \
-  SyntaxCheck SyntaxCheckUse SyntaxCheckUse2 SyntaxCheckUse3 SyntaxCheckUse4 \
+  SyntaxCheck SyntaxCheckUse SyntaxCheckUse2 SyntaxCheckUse3 SyntaxCheckUse4 SyntaxCheckUse5 \
   TCC TCCUse TCCUse2 TCCUse3 TCCUse4 \
   ClassMethodsExport ClassMethodsExportUse ClassMethodsExportUse2 ClassMethodsExportUse3 ClassMethodsExportUse4 \
                      ClassMethodsExportUse5 ClassMethodsExportUse6 ClassMethodsExportUse7 ClassMethodsExportUse8 \
                      ClassMethodsExportUse9 ClassMethodsExportUse10 ClassMethodsExportUse11 ClassMethodsExportUse12 \
-                     ClassMethodsExportUse13 ClassMethodsExportUse14 ClassMethodsExportUse15 
+                     ClassMethodsExportUse13 ClassMethodsExportUse14 ClassMethodsExportUse15 \
+  ImportStar ImportStarUse ImportStarUse2 ImportStarUse3
 do
   echo $file >> tmp.txt
   $cymake -f -i typeclasses/modules typeclasses/modules/$file.curry 2> stderr.txt 1> stdout.txt || (echo "===================="; echo "| Error in $file.curry:" ; echo "===================="; cat stdout.txt; cat stderr.txt; echo)
