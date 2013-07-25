@@ -66,11 +66,11 @@ import Base.TopEnv
 -- plus a map from class methods to their defining classes
 data ClassEnv = ClassEnv 
   -- | environment that maps class identifiers to classes
-  { theClasses :: TopEnv Class
+  { theClasses    :: TopEnv Class
   -- | all instances (with canonical class and type names)
-  , theInstances :: [(Source, Instance)] 
+  , theInstances  :: [(Source, Instance)] 
   -- | environment that maps class methods to their corresponding classes
-  , classMethods :: TopEnv Class
+  , classMethods  :: TopEnv Class
   -- | maps canonical (!) class names to the corresponding classes
   , canonClassMap :: Map.Map QualIdent Class
   } 
@@ -81,22 +81,22 @@ data Source = Local | Imported
 
 data Class = Class
   { superClasses :: [QualIdent]
-  , theClass :: QualIdent -- TODO Ident or QualIdent? 
-  , typeVar :: Ident
-  , kind :: Int
-  , methods :: [(Ident, Context, TypeExpr)]
-  , typeSchemes :: [(Ident, TypeScheme)] 
-  , defaults :: [Decl]
-  , hidden :: Bool
+  , theClass     :: QualIdent -- TODO Ident or QualIdent? 
+  , typeVar      :: Ident
+  , kind         :: Int
+  , methods      :: [(Ident, Context, TypeExpr)]
+  , typeSchemes  :: [(Ident, TypeScheme)] 
+  , defaults     :: [Decl]
+  , hidden       :: Bool 
   }
   deriving (Eq, Show)
 
 data Instance = Instance
-  { context :: [(QualIdent,Ident)]
-  , iClass :: QualIdent
-  , iType :: QualIdent
+  { context  :: [(QualIdent,Ident)]
+  , iClass   :: QualIdent
+  , iType    :: QualIdent
   , typeVars :: [Ident]
-  , rules :: [Decl]
+  , rules    :: [Decl]
   }
   deriving (Eq, Show)
   
