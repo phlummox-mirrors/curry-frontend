@@ -117,7 +117,8 @@ importInterface tcs m q is i env = (env', errs)
     , classEnv  = 
       if tcs
       then (classEnv env) {
-          theClasses = importEntities m q cs id mClsEnv' $ theClasses $ classEnv env, 
+          theClasses = importEntities m q cs setPublicMethods mClsEnv' $ 
+            theClasses $ classEnv env, 
           theInstances = map importedInst mInstances
         }
       else initClassEnv
@@ -156,6 +157,32 @@ importInterface tcs m q is i env = (env', errs)
             else True -- or False, doesn't matter
   
   mClsEnv' = Map.mapWithKey (setHidden . hflag) mClsEnv
+  
+  -- |sets the class methods that will be public in the module, 
+  -- according to the given import specification
+  setPublicMethods :: Class -> Class
+  setPublicMethods cls = cls { publicMethods =
+    case is of 
+      Nothing              -> ms
+      Just (Importing _ _) -> fs
+      Just (Hiding    _ _) -> ms \\ fs  }
+    where
+    fs = nub $ getImportedClassMethods expandedSpec
+    ms = publicMethods cls
+    
+  -- | returns all class methods imported in the import specification via
+  -- C(..) or C(f1, ..., fn)  
+  getImportedClassMethods :: [Import] -> [Ident]
+  getImportedClassMethods = concatMap getImportedClassMethods'
+    where
+    getImportedClassMethods' :: Import -> [Ident]
+    getImportedClassMethods' (ImportTypeWith tc fs) = 
+      if tc `Map.member` mExportedClsEnv then fs else [] 
+    getImportedClassMethods' (Import _) = []
+    getImportedClassMethods' (ImportTypeAll _) = 
+      internalError "getImportedClassMethods"
+    
+  
       
 -- |sets the hidden flag in the given class to true or false
 setHidden :: Bool -> Class -> Class
@@ -326,15 +353,19 @@ mkClass m scx cls tyvar ds defs =
     theClass = qualQualify m cls, 
     CE.typeVar = tyvar, 
     kind = -1, 
-    methods = map (iFunDeclToMethod m) (map snd ds), -- TODO: consider public flag! 
+    methods = map (iFunDeclToMethod m) (map snd ds), 
     typeSchemes = [], 
     defaults = map toDefFun defs,
-    hidden = internalError "hidden not yet defined" }
+    hidden = internalError "hidden not yet defined", 
+    publicMethods = map (fName . snd) $ filter fst ds }
   where
   toDefFun :: Ident -> Decl 
   toDefFun f = FunctionDecl NoPos Nothing (-1) f 
     -- the implementation of the default method isn't needed
     [Equation NoPos (FunLhs f []) (SimpleRhs NoPos (Tuple (SrcRef []) []) [])]
+  fName :: IDecl -> Ident
+  fName (IFunctionDecl _ f  _ _ _) = unqualify f
+  fName _ = internalError "mkClass in Imports"
 
 -- |convert an IFunctionDecl to the method representation used in "Class"
 iFunDeclToMethod :: ModuleIdent -> IDecl -> (Ident, CS.Context, TypeExpr)
@@ -575,8 +606,8 @@ expandClassWith cls fs = do
   ImportTypeWith cls `liftM` case Map.lookup cls cEnv of
     Nothing -> report (errUndefinedEntity m cls) >> return []
     Just c -> 
-      let ms = map fst3 $ methods c
-          invalidFs = nub fs \\ ms
+      let publicMs = publicMethods c
+          invalidFs = nub fs \\ publicMs
       in if null invalidFs
          then return fs
          else report (errUndefinedMethods cls invalidFs) >> return []
@@ -600,7 +631,7 @@ expandClassAll cls = do
   let theClass0 = Map.lookup cls cEnv
   ImportTypeWith cls `liftM` case theClass0 of
     Nothing -> report (errUndefinedEntity m cls) >> return []
-    Just c -> return $ map fst3 (methods c)
+    Just c -> return $ publicMethods c
 
 errAmbiguousEntity :: ModuleIdent -> Ident -> Message
 errAmbiguousEntity m x = posMessage x $ hsep $ map text
@@ -628,7 +659,7 @@ errImportDataConstr _ c = posMessage c $ hsep $ map text
 
 errUndefinedMethods :: Ident -> [Ident] -> Message
 errUndefinedMethods cls fs = posMessage cls $ 
-  text "The following methods are no class methods of class" <+> text (show cls)
+  text "The following methods are no visible class methods of class" <+> text (show cls)
   <> text ":" <+> brackets (hsep $ punctuate comma (map (text . show) fs))
 
 -- ---------------------------------------------------------------------------
