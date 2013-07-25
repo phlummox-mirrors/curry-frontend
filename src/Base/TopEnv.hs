@@ -47,6 +47,7 @@ module Base.TopEnv
   , allBindings, allBoundElems
   , tryBindTopEnv, tryQualBindTopEnv, tryRebindTopEnv, tryQualRebindTopEnv
   , filterEnv
+  , allBindingsWithOrigNames
   ) where
 
 import           Control.Arrow        (second)
@@ -205,6 +206,12 @@ allBindings (TopEnv env) = [ (x, y) | (x, ys) <- Map.toList env
 allBoundElems :: TopEnv a -> [a]
 allBoundElems (TopEnv env) = [ y | (_, ys) <- Map.toList env
                                  , (_, y) <- ys ]
+
+-- |returns all bindings together with the original names
+allBindingsWithOrigNames :: Entity a => TopEnv a -> [(QualIdent, QualIdent, a)]
+allBindingsWithOrigNames (TopEnv env) = 
+  [ (x, origName y, y) | (x, ys) <- Map.toList env
+                       , (_, y) <- ys]
 
 filterEnv :: (a -> Bool) -> TopEnv a -> TopEnv a
 filterEnv p (TopEnv env) = TopEnv $ Map.map filter' env
