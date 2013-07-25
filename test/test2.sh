@@ -85,6 +85,15 @@ do
   $cymake -f -i typeclasses/modules typeclasses/modules/$file.curry 2> stderr.txt 1> stdout.txt || (echo "===================="; echo "| Error in $file.curry:" ; echo "===================="; cat stdout.txt; cat stderr.txt; echo)
 done
 
+# do the check # 3 (modules system related, errors)
+
+for file in ClassExportErrors ClassExportImportErrors ClassMethodsExportErr1 ClassMethodsExportErr2 \
+  ExportNonHiddenUseErr HidingClassesUseErrs RedefineClassesError SyntaxCheckUseErr
+do
+  echo $file >> tmp.txt
+  $cymake -f -i typeclasses/modules typeclasses/modules/$file.curry 2> stderr.txt 1> stdout.txt && (echo "===================="; echo "| No error in $file.curry:" ; echo "===================="; cat stdout.txt; cat stderr.txt; echo)
+done
+
 echo `cat tmp.txt | wc -l` files checked
 rm tmp.txt
 rm stderr.txt
