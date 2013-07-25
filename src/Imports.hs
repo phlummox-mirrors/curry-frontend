@@ -32,7 +32,6 @@ import Base.Messages (Message, posMessage, internalError)
 import Base.TopEnv
 import Base.Types as BT hiding (isCons)
 import Base.TypeSubst (expandAliasType)
-import Base.Names
 
 import Env.Interface
 import Env.ModuleAlias (importAliases, initAliasEnv)
@@ -190,13 +189,13 @@ importInterface tcs m q is i env = (env'', errs)
     , valueEnv = bindFuns depImports mTyEnv (valueEnv env')
     }
     
-importsForDependencies :: [Ident] -> [Import]
-importsForDependencies = concatMap imports
-  where
-  imports :: Ident -> [Import]
-  imports x | isSelFun x || isDefaultMethod x || isDictionary x = [Import x]
-            | isDictType x = [ImportTypeWith x []]
-            | otherwise = [] 
+  importsForDependencies :: [Ident] -> [Import]
+  importsForDependencies = concatMap imports
+    where
+    imports :: Ident -> [Import]
+    imports x | x `Map.member` mTyEnv = [Import x]
+              | x `Map.member` mTCEnv = [ImportTypeWith x []]
+              | otherwise = [] 
       
 -- |sets the hidden flag in the given class to true or false
 setHidden :: Bool -> Class -> Class
