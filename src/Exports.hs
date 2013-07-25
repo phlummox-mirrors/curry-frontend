@@ -81,8 +81,10 @@ exportInterface' (Module m (Just (Exporting _ es)) _ _) tcs pEnv tcEnv tyEnv cEn
     getLocalInstances cEnv
   dictDecls = foldr (funDecl m tyEnv) [] dictionaries
   allClasses0 = nub $ exportedClasses' ++ dependencies
-  classElems = exportsForDictTypes m allClasses0 ++
-    exportsForSelFuns m cEnv allClasses0 ++ exportsForDefaultFuns m cEnv allClasses0
+  dictTypes0 = exportsForDictTypes m allClasses0
+  selFuns = exportsForSelFuns m cEnv allClasses0
+  defFuns = exportsForDefaultFuns m cEnv allClasses0
+  classElems = dictTypes0 ++ selFuns ++ defFuns
   classElemDecls = 
     foldr (typeDecl tcs m tcEnv cEnv) 
           (foldr (funDecl m tyEnv) [] classElems)
