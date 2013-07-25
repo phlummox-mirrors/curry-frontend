@@ -79,8 +79,6 @@ exportInterface' (Module m (Just (Exporting _ es)) _ _) tcs pEnv tcEnv tyEnv cEn
     else nub $ decls ++ dictDecls ++ classElemDecls ++ exportedClasses''
   dictionaries = map (Export . qualifyWith m . mkIdent . dictName) $ 
     getLocalInstances cEnv
-  dictName :: Instance -> String
-  dictName i = mkDictName (show $ iClass i) (show $ iType i)
   dictDecls = foldr (funDecl m tyEnv) [] dictionaries
   allClasses0 = nub $ exportedClasses' ++ dependencies
   classElems = exportsForDictTypes m allClasses0 ++
@@ -98,6 +96,9 @@ exportInterface' (Module _ Nothing _ _) _ _ _ _ _
 
 isLocal :: ModuleIdent -> QualIdent -> Bool
 isLocal m qid = not (isQualified qid) || fromJust (qidModule qid) == m
+
+dictName :: Instance -> String
+dictName i = mkDictName (show $ iClass i) (show $ iType i)
 
 infixDecl :: ModuleIdent -> OpPrecEnv -> Export -> [IDecl] -> [IDecl]
 infixDecl m pEnv (Export             f) ds = iInfixDecl m pEnv f ds
@@ -192,7 +193,8 @@ instanceToIDecl m cEnv i@(Instance cx cls ty tyvars _) =
   IInstanceDecl NoPos 
     (map unqualifyContextElem cx) (qualUnqualify m cls)
     (toTypeConstructor $ qualUnqualify m ty) tyvars
-    (map (qualUnqualify m) $ filter (isLocal m) $ classesFromInstances cEnv [i])
+    ((map (qualUnqualify m) $ filter (isLocal m) $ classesFromInstances cEnv [i])
+     ++ [qualify $ mkIdent $ dictName i]) 
   where
   unqualifyContextElem (qid, id0) = (qualUnqualify m qid, id0)
 
@@ -369,16 +371,20 @@ classToClassDecl :: ModuleIdent -> ClassEnv -> [Ident] -> Class -> IDecl
 classToClassDecl m cEnv fs c =
   IClassDecl NoPos 
        (map (qualUnqualify m) $ superClasses c)
-       (qualUnqualify m $ theClass c) 
+       (qualUnqualify m cName) 
        (CE.typeVar c) 
        (map (\(f, tsc) -> (f `elem` fs, typeSigToIFunDecl m (CE.typeVar c) (f, tsc))) 
             $ typeSchemes c)
        (nub $ concatMap defaultMethods $ defaults c)
-       (map (qualUnqualify m) $ filter (isLocal m) $ classesFromClass False cEnv (theClass c))
+       ((map (qualUnqualify m) $ filter (isLocal m) $ classesFromClass False cEnv (theClass c))
+        ++ [qualify $ dictTypeIdent cName]
+        ++ map (qualify . mkIdent) (selFunsNames cEnv cName)
+        ++ map qualify (defaultMethodsIdents cEnv cName))
   where
   defaultMethods :: Decl -> [Ident]
   defaultMethods (FunctionDecl _ _ _ f _) = [f]
   defaultMethods _                        = []
+  cName = theClass c
 
 -- |converts the given class to a hidden class interface declaration
 toHiddenClassDecl :: ModuleIdent -> ClassEnv -> QualIdent -> IDecl
@@ -401,7 +407,11 @@ exportsForDictTypes m clss = map (exportForDictType m) clss
 -- |determines the dictionary type for one given class
 exportForDictType :: ModuleIdent -> QualIdent -> Export
 exportForDictType m cls = 
-  ExportTypeWith (qualifyWith m $ mkIdent $ mkDictTypeName (show cls)) []
+  ExportTypeWith (qualifyWith m $ dictTypeIdent cls) []
+
+-- |returns the identifier for the dictionary type of the given class
+dictTypeIdent :: QualIdent -> Ident
+dictTypeIdent cls = mkIdent $ mkDictTypeName (show cls)
 
 -- |creates export specifications for all selection functions for the given 
 -- classes
@@ -411,8 +421,13 @@ exportsForSelFuns m cEnv clss = concatMap (exportsForSelFuns' m cEnv) clss
 -- |creates export specifications for all selection functions for a given class
 exportsForSelFuns' :: ModuleIdent -> ClassEnv -> QualIdent -> [Export]
 exportsForSelFuns' m cEnv cls = 
-  map (Export . qualifyWith m . mkIdent . mkSelFunName (show cls) . show) scls ++
-  map (Export . qualifyWith m . mkIdent . mkSelFunName (show cls) . show) ms
+  map (Export . qualifyWith m . mkIdent) $ selFunsNames cEnv cls
+  
+-- |returns the names of all dictionary selection functions for the 
+-- given class 
+selFunsNames :: ClassEnv -> QualIdent -> [String]
+selFunsNames cEnv cls = map (mkSelFunName (show cls)) 
+    (map show scls ++ map show ms)
   where
   scls = allSuperClasses cEnv cls
   class0 = fromJust $ canonLookupClass cEnv cls
@@ -425,11 +440,15 @@ exportsForDefaultFuns m cEnv clss = concatMap (exportsForDefaultFuns' m cEnv) cl
 -- |creates export specifications for all default functions for the given class
 exportsForDefaultFuns' :: ModuleIdent -> ClassEnv -> QualIdent -> [Export]
 exportsForDefaultFuns' m cEnv cls = 
-  map (Export . qualifyWith m . mkIdent . mkDefFunName (show cls) . show) 
-      defaultMethods
+  map (Export . qualifyWith m) $ defaultMethodsIdents cEnv cls
+
+-- |returns the identifiers of the default methods of a given class
+defaultMethodsIdents :: ClassEnv -> QualIdent -> [Ident]
+defaultMethodsIdents cEnv cls =
+  map  (mkIdent . mkDefFunName (show cls) . show) defaultMethods 
   where
   defaultMethods = concatMap toDef (defaults class0)
   class0 = fromJust $ canonLookupClass cEnv cls
   toDef (FunctionDecl _ _ _ f _) = [f]
   toDef _ = []
-
+  
