@@ -32,7 +32,7 @@ import Base.Messages (Message, posMessage, internalError)
 import Base.TopEnv
 import Base.Types as BT hiding (isCons)
 import Base.TypeSubst (expandAliasType)
-import Base.Utils (fst3)
+import Base.Names
 
 import Env.Interface
 import Env.ModuleAlias (importAliases, initAliasEnv)
@@ -108,7 +108,7 @@ type ExpClassEnv = IdentMap Class
 
 importInterface :: Bool -> ModuleIdent -> Bool -> Maybe ImportSpec -> Interface
                 -> CompilerEnv -> (CompilerEnv, [Message])
-importInterface tcs m q is i env = (env', errs)
+importInterface tcs m q is i env = (env'', errs)
   where
   env' = env
     { opPrecEnv = importEntities m q vs id              mPEnv  $ opPrecEnv env
@@ -157,7 +157,7 @@ importInterface tcs m q is i env = (env', errs)
             else True -- or False, doesn't matter
   
   mClsEnv' = Map.mapWithKey (setHidden . hflag) mClsEnv
-  
+    
   -- |sets the class methods that will be public in the module, 
   -- according to the given import specification
   setPublicMethods :: Class -> Class
@@ -181,8 +181,22 @@ importInterface tcs m q is i env = (env', errs)
     getImportedClassMethods' (Import _) = []
     getImportedClassMethods' (ImportTypeAll _) = 
       internalError "getImportedClassMethods"
-    
+      
+  -- importing dependencies; always as unqualified!
+  depImports = importsForDependencies deps
   
+  env'' = env' 
+    { tyConsEnv = bindTypes depImports mTCEnv (tyConsEnv env')
+    , valueEnv = bindFuns depImports mTyEnv (valueEnv env')
+    }
+    
+importsForDependencies :: [Ident] -> [Import]
+importsForDependencies = concatMap imports
+  where
+  imports :: Ident -> [Import]
+  imports x | isSelFun x || isDefaultMethod x || isDictionary x = [Import x]
+            | isDictType x = [ImportTypeWith x []]
+            | otherwise = [] 
       
 -- |sets the hidden flag in the given class to true or false
 setHidden :: Bool -> Class -> Class
@@ -230,6 +244,30 @@ importConstr :: (Ident -> Bool) -> DataConstr -> Maybe DataConstr
 importConstr isVisible' dc@(DataConstr c _ _)
   | isVisible' c = Just dc
   | otherwise    = Nothing
+
+-- |binds all dependencies of classes and instances that are types 
+bindTypes :: [Import] -> ExpTCEnv -> TCEnv -> TCEnv 
+bindTypes is tcEnv env0 = foldr bind env0 is
+  where
+  bind :: Import -> TCEnv -> TCEnv
+  bind (ImportTypeWith t _) env 
+    | t `Map.member` tcEnv = let ty = fromJust $ Map.lookup t tcEnv in
+       importTopEnv (fromJust $ qidModule (origName ty)) t ty env  
+    | otherwise = env
+  bind (Import _) env = env
+  bind (ImportTypeAll _) _ = internalError "Imports bindTypes"
+
+-- |binds all dependencies of classes and instances that are functions
+bindFuns :: [Import] -> ExpValueEnv -> ValueEnv -> ValueEnv
+bindFuns is vEnv env0 = foldr bind env0 is
+  where
+  bind :: Import -> ValueEnv -> ValueEnv
+  bind (ImportTypeWith _ _) env = env
+  bind (Import f) env 
+    | f `Map.member` vEnv = let val = fromJust $ Map.lookup f vEnv in
+      importTopEnv (fromJust $ qidModule (origName val)) f val env
+    | otherwise = internalError ("Imports bindFuns 2: " ++ show f)
+  bind (ImportTypeAll _) _ = internalError "Imports bindFuns"
 
 -- ---------------------------------------------------------------------------
 -- Building the initial environment
