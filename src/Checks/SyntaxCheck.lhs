@@ -305,7 +305,7 @@ Furthermore, it is not allowed to declare a label more than once.
 >   modifyRenameEnv $ \env -> foldr bind env ms
 >   where
 >   bind :: (QualIdent, Ident, Int) -> RenameEnv -> RenameEnv
->   bind (c, m, n) = qualBindNestEnv m' $ GlobalVar n m'
+>   bind (c, m, n) env = globalEnv $ qualImportTopEnvNoMerge m' (GlobalVar n m') $ toplevelEnv env
 >     where m' = qualifyLike c m
 
 ------------------------------------------------------------------------------
