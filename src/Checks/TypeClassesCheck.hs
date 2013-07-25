@@ -200,7 +200,8 @@ classDeclToClass m (ClassDecl _ (SContext scon) cls tyvar decls)
     methods = allMethods, 
     defaults = filter isFunctionDecl decls, 
     typeSchemes = [], 
-    hidden = False
+    hidden = False, 
+    publicMethods = map fst3 allMethods
   }
   where
     splitUpTypeSig :: Decl -> [Decl]

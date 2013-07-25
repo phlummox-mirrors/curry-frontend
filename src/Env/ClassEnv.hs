@@ -88,6 +88,7 @@ data Class = Class
   , typeSchemes  :: [(Ident, TypeScheme)] 
   , defaults     :: [Decl]
   , hidden       :: Bool 
+  , publicMethods:: [Ident] 
   }
   deriving (Eq, Show)
 
@@ -105,8 +106,10 @@ initClassEnv = ClassEnv emptyTopEnv [] emptyTopEnv Map.empty
 
 instance Entity Class where
   origName = theClass
-  -- TODO: 
-  -- merge (Class c1) (Class c2) = 
+  merge c1 c2 = 
+    if theClass c1 == theClass c2
+    then Just $ c1 { publicMethods = nub $ publicMethods c1 ++ publicMethods c2 }
+    else Nothing
 
 -- ----------------------------------------------------------------------------
 -- lookup and data retrieval functions
@@ -643,13 +646,14 @@ ppClasses (ClassEnv classes ifs mmap) =
 ppClass :: Class -> Doc
 ppClass (Class {superClasses = sc, theClass = tc, typeVar = tv, 
                 kind = k, methods = ms, defaults = ds, typeSchemes = tscs, 
-                hidden = h})
+                hidden = h, publicMethods = pms })
   = (if h then text "hidden" else empty) <+> text "class<" <> text (show k) <> text ">" 
   <+> parens (hsep $ punctuate (text ",") (map (text . show) sc))
   <> text " => " <> text (show tc)
   <+> text (show tv) <+> text "where"
   $$ vcat (map (\(id0, cx, ty) -> 
-                 nest 2 (ppIdent id0 <+> text "::" <+> ppContext cx <+> ppTypeExpr 0 ty))
+                 nest 2 (if id0 `elem` pms then text "public" else text "hidden") 
+                         <+> ppIdent id0 <+> text "::" <+> ppContext cx <+> ppTypeExpr 0 ty)
                ms)
   $$ vcat (map (\(id0, tsc) -> nest 2 (ppIdent id0 <+> text "::" <+> text (show tsc))) tscs) 
   $$ nest 2 (vcat $ map ppDecl ds)
