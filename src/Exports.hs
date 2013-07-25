@@ -74,7 +74,7 @@ exportInterface' (Module m (Just (Exporting _ es)) _ _) tcs pEnv tcEnv tyEnv cEn
   dependencies = calculateDependencies cEnv (getLocalInstances cEnv) exportedClasses'
   exportedClasses' = exportedClasses cEnv es
   allDecls = if tcs 
-    then decls ++ instances ++ hiddenClasses
+    then nub $ decls ++ instances ++ hiddenClasses ++ classElemDecls
     else nub $ decls ++ dictDecls ++ classElemDecls ++ exportedClasses''
   dictionaries = map (Export . qualifyWith m . mkIdent . dictName) $ 
     getLocalInstances cEnv
