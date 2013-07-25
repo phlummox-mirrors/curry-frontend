@@ -284,7 +284,7 @@ Furthermore, it is not allowed to declare a label more than once.
 >   = let arty = typeArity texpr
 >         qid  = qualifyWith m ident
 >     in bindGlobal tcc m ident (GlobalVar arty qid) env
-> bindFuncDecl tcc m (TypeSig _ ids cx texpr) env
+> bindFuncDecl tcc m (TypeSig _ ids _cx texpr) env
 >   = foldr bindTS env $ map (qualifyWith m) ids
 >  where
 >  bindTS qid env'
