@@ -72,10 +72,10 @@ exportInterface' (Module m (Just (Exporting _ es)) _ _) tcs pEnv tcEnv tyEnv cEn
   instances = map (instanceToIDecl m cEnv) $ getLocalInstances cEnv
   hiddenClasses = map (toHiddenClassDecl m cEnv) $ filter (isLocal m) $ 
     nub dependencies \\ nub exportedClasses'
-  dependencies = calculateDependencies cEnv (getLocalInstances cEnv) exportedClasses'
+  dependencies = calcLocalDependencies m cEnv (getLocalInstances cEnv) exportedClasses'
   exportedClasses' = exportedClasses cEnv es
   allDecls = if tcs 
-    then nub $ decls ++ instances ++ hiddenClasses ++ classElemDecls
+    then nub $ decls ++ dictDecls ++ instances ++ hiddenClasses ++ classElemDecls
     else nub $ decls ++ dictDecls ++ classElemDecls ++ exportedClasses''
   dictionaries = map (Export . qualifyWith m . mkIdent . dictName) $ 
     getLocalInstances cEnv
@@ -141,7 +141,7 @@ typeDecl tcs m tcEnv cEnv (ExportTypeWith tc cs) ds = case qualLookupTC tc tcEnv
     -- (for these actually the name doesn't need to be exported, important is only 
     -- the type signature). 
     [c] -> (if tcs then (classToClassDecl m cEnv cs c :) else id) ds
-    _ -> internalError ("Exports.typeDecl: no class: " ++ show tc ++ 
+    _ -> internalError ("Exports.typeDecl: no class/type: " ++ show tc ++ 
                         " tcs: " ++ show tcs {-++ "\n" ++ show cEnv-})
   _ -> internalError "Exports.typeDecl: no type"
 typeDecl _ _ _ _ _ _ = internalError "Exports.typeDecl: no pattern match"
@@ -359,6 +359,10 @@ exportedClasses cEnv = concatMap exportedClass
   exportedClass (Export _ ) = [] 
   exportedClass _ = internalError "exportedClasses"
 
+-- |calculates the *local* classes on which the given instances and classes
+-- depend
+calcLocalDependencies :: ModuleIdent -> ClassEnv -> [Instance] -> [QualIdent] -> [QualIdent]
+calcLocalDependencies m cEnv insts = filter (isLocal m) . calculateDependencies cEnv insts 
   
 -- |calculates the classes on which the given instances and classes
 -- depend
