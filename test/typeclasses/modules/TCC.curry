@@ -1,5 +1,5 @@
 
-module TCC (C, D, E) where
+module TCC (C, D (..), E) where
 
 class C a where
   funC :: a -> a

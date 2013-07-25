@@ -1,7 +1,7 @@
 
 module TCCUse4 where
 
-import qualified TCC as T (D, E)
+import qualified TCC as T (D(..), E)
 
 test :: T.D a => a -> a
 test x = x
