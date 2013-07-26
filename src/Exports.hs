@@ -81,9 +81,9 @@ exportInterface' (Module m (Just (Exporting _ es)) _ _) tcs pEnv tcEnv tyEnv cEn
     getLocalInstances cEnv
   dictDecls = foldr (funDecl m tyEnv) [] dictionaries
   allClasses0 = nub $ exportedClasses' ++ dependencies
-  dictTypes0 = exportsForDictTypes m allClasses0
-  selFuns = exportsForSelFuns m cEnv allClasses0
-  defFuns = exportsForDefaultFuns m cEnv allClasses0
+  dictTypes0 = exportsForDictTypes allClasses0
+  selFuns = exportsForSelFuns cEnv allClasses0
+  defFuns = exportsForDefaultFuns cEnv allClasses0
   classElems = dictTypes0 ++ selFuns ++ defFuns
   classElemDecls = 
     foldr (typeDecl tcs m tcEnv cEnv) 
@@ -407,13 +407,13 @@ toHiddenClassDecl m cEnv qid =
 -- selection functions and the default methods
 
 -- |determines the dictionary types for the given classes
-exportsForDictTypes :: ModuleIdent -> [QualIdent] -> [Export]
-exportsForDictTypes m clss = map (exportForDictType m) clss
+exportsForDictTypes :: [QualIdent] -> [Export]
+exportsForDictTypes clss = map exportForDictType clss
 
 -- |determines the dictionary type for one given class
-exportForDictType :: ModuleIdent -> QualIdent -> Export
-exportForDictType m cls = 
-  ExportTypeWith (qualifyWith m $ dictTypeIdent cls) []
+exportForDictType :: QualIdent -> Export
+exportForDictType cls = 
+  ExportTypeWith (qualifyLike cls $ dictTypeIdent cls) []
 
 -- |returns the identifier for the dictionary type of the given class
 dictTypeIdent :: QualIdent -> Ident
@@ -421,13 +421,13 @@ dictTypeIdent cls = mkIdent $ mkDictTypeName (show cls)
 
 -- |creates export specifications for all selection functions for the given 
 -- classes
-exportsForSelFuns :: ModuleIdent -> ClassEnv -> [QualIdent] -> [Export]
-exportsForSelFuns m cEnv clss = concatMap (exportsForSelFuns' m cEnv) clss
+exportsForSelFuns :: ClassEnv -> [QualIdent] -> [Export]
+exportsForSelFuns cEnv clss = concatMap (exportsForSelFuns' cEnv) clss
 
 -- |creates export specifications for all selection functions for a given class
-exportsForSelFuns' :: ModuleIdent -> ClassEnv -> QualIdent -> [Export]
-exportsForSelFuns' m cEnv cls = 
-  map (Export . qualifyWith m . mkIdent) $ selFunsNames cEnv cls
+exportsForSelFuns' :: ClassEnv -> QualIdent -> [Export]
+exportsForSelFuns' cEnv cls = 
+  map (Export . qualifyLike cls . mkIdent) $ selFunsNames cEnv cls
   
 -- |returns the names of all dictionary selection functions for the 
 -- given class 
@@ -440,13 +440,13 @@ selFunsNames cEnv cls = map (mkSelFunName (show cls))
   ms = map fst $ typeSchemes class0
   
 -- |creates export specifications for all default functions for the given classes
-exportsForDefaultFuns :: ModuleIdent -> ClassEnv -> [QualIdent] -> [Export]
-exportsForDefaultFuns m cEnv clss = concatMap (exportsForDefaultFuns' m cEnv) clss 
+exportsForDefaultFuns :: ClassEnv -> [QualIdent] -> [Export]
+exportsForDefaultFuns cEnv clss = concatMap (exportsForDefaultFuns' cEnv) clss 
 
 -- |creates export specifications for all default functions for the given class
-exportsForDefaultFuns' :: ModuleIdent -> ClassEnv -> QualIdent -> [Export]
-exportsForDefaultFuns' m cEnv cls = 
-  map (Export . qualifyWith m) $ defaultMethodsIdents cEnv cls
+exportsForDefaultFuns' :: ClassEnv -> QualIdent -> [Export]
+exportsForDefaultFuns' cEnv cls = 
+  map (Export . qualifyLike cls) $ defaultMethodsIdents cEnv cls
 
 -- |returns the identifiers of the default methods of a given class
 defaultMethodsIdents :: ClassEnv -> QualIdent -> [Ident]
