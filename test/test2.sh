@@ -79,7 +79,9 @@ for file in TestClassExports TestClassExports2 TestClassExportsImports \
                      ClassMethodsExportUse5 ClassMethodsExportUse6 ClassMethodsExportUse7 ClassMethodsExportUse8 \
                      ClassMethodsExportUse9 ClassMethodsExportUse10 ClassMethodsExportUse11 ClassMethodsExportUse12 \
                      ClassMethodsExportUse13 ClassMethodsExportUse14 ClassMethodsExportUse15 \
-  ImportStar ImportStarUse ImportStarUse2 ImportStarUse3
+  ImportStar ImportStarUse ImportStarUse2 ImportStarUse3 \
+  OverlappingClassMethods1 OverlappingClassMethods2 OverlappingClassMethods3 OverlappingClassMethods4 \
+  OverlappingClassMethodsUse2 OverlappingClassMethodsUse4 OverlappingClassMethodsUse5
 do
   echo $file >> tmp.txt
   $cymake -f -i typeclasses/modules typeclasses/modules/$file.curry 2> stderr.txt 1> stdout.txt || (echo "===================="; echo "| Error in $file.curry:" ; echo "===================="; cat stdout.txt; cat stderr.txt; echo)
@@ -88,7 +90,8 @@ done
 # do the check # 3 (modules system related, errors)
 
 for file in ClassExportErrors ClassExportImportErrors ClassMethodsExportErr1 ClassMethodsExportErr2 \
-  ExportNonHiddenUseErr HidingClassesUseErrs RedefineClassesError SyntaxCheckUseErr
+  ExportNonHiddenUseErr HidingClassesUseErrs RedefineClassesError SyntaxCheckUseErr \
+  OverlappingClassMethodsUse1Err OverlappingClassMethodsUse3Err
 do
   echo $file >> tmp.txt
   $cymake -f -i typeclasses/modules typeclasses/modules/$file.curry 2> stderr.txt 1> stdout.txt && (echo "===================="; echo "| No error in $file.curry:" ; echo "===================="; cat stdout.txt; cat stderr.txt; echo)
