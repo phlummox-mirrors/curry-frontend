@@ -26,7 +26,7 @@ module Env.ClassEnv (
   , getDefaultMethods, lookupDefiningClass', isClassMethod
   , localInst, importedInst, getAllInstances, getLocalInstances, allInstances
   , lookupNonHiddenClass, allNonHiddenClassBindings, allClassBindings
-  , lookupTypeScheme
+  , lookupTypeScheme, lookupLocalClass
   -- ** functions for modifying the class environment
   , bindClass, bindClassMethods
   -- ** pretty printing
@@ -120,6 +120,10 @@ instance Entity Class where
 lookupClass :: ClassEnv -> QualIdent -> Maybe Class
 lookupClass cEnv c = 
   list2Maybe $ lookupNonHiddenClass cEnv c
+
+lookupLocalClass :: ClassEnv -> QualIdent -> Maybe Class
+lookupLocalClass (ClassEnv cEnv _ _ _) c = 
+  list2Maybe $ qualLookupLocalTopEnv c (nonHiddenClassEnv cEnv)
 
 -- |looks up a given class from the class environment, returning 
 -- a list of matching classes: An empty list means there are no matching
