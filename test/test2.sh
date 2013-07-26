@@ -83,7 +83,7 @@ for file in TestClassExports TestClassExports2 TestClassExportsImports \
   OverlappingClassMethods1 OverlappingClassMethods2 OverlappingClassMethods3 OverlappingClassMethods4 \
   OverlappingClassMethodsUse2 OverlappingClassMethodsUse4 OverlappingClassMethodsUse5 \
   RedefineClassesBug \
-  ReExport ReExportUse \
+  ReExport ReExportUse ReExportUse2 \
   ModuleExport1 ModuleExport1Import ModuleExport1Import2 \
   ModuleExport2 ModuleExport2Import \
   ModuleExport3 ModuleExport3Import \
