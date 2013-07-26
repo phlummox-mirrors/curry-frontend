@@ -1,0 +1,5 @@
+
+module MultipleInstancesBugUse where
+
+import MultipleInstancesBug1
+import MultipleInstancesBug2
