@@ -48,7 +48,7 @@ module Base.TopEnv
   , tryBindTopEnv, tryQualBindTopEnv, tryRebindTopEnv, tryQualRebindTopEnv
   , filterEnv
   , allBindingsWithOrigNames
-  , qualImportTopEnvNoMerge
+  , qualImportTopEnvNoMerge, qualImportTopEnv'
   ) where
 
 import           Control.Arrow        (second)
@@ -99,6 +99,10 @@ importTopEnv m x y env = addImport m (qualify x) y env
 qualImportTopEnv :: Entity a => ModuleIdent -> Ident -> a -> TopEnv a
                  -> TopEnv a
 qualImportTopEnv m x y env = addImport m (qualifyWith m x) y env
+
+qualImportTopEnv' :: Entity a => ModuleIdent -> QualIdent -> a -> TopEnv a
+                     -> TopEnv a
+qualImportTopEnv' m x y env = addImport m x y env
 
 -- TODO: remove this again (?)
 qualImportTopEnvNoMerge :: QualIdent -> a -> TopEnv a -> TopEnv a
