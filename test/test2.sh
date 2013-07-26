@@ -82,7 +82,8 @@ for file in TestClassExports TestClassExports2 TestClassExportsImports \
   ImportStar ImportStarUse ImportStarUse2 ImportStarUse3 \
   OverlappingClassMethods1 OverlappingClassMethods2 OverlappingClassMethods3 OverlappingClassMethods4 \
   OverlappingClassMethodsUse2 OverlappingClassMethodsUse4 OverlappingClassMethodsUse5 \
-  RedefineClassesBug
+  RedefineClassesBug \
+  ReExport ReExportUse
 do
   echo $file >> tmp.txt
   $cymake -f -i typeclasses/modules typeclasses/modules/$file.curry 2> stderr.txt 1> stdout.txt || (echo "===================="; echo "| Error in $file.curry:" ; echo "===================="; cat stdout.txt; cat stderr.txt; echo)
