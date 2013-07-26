@@ -76,7 +76,7 @@ exportInterface' (Module m (Just (Exporting _ es)) _ _) tcs pEnv tcEnv tyEnv cEn
   exportedClasses' = exportedClasses cEnv es
   allDecls = if tcs 
     then nub $ decls ++ dictDecls ++ instances ++ hiddenClasses ++ classElemDecls
-    else nub $ decls ++ dictDecls ++ classElemDecls ++ exportedClasses''
+    else nub $ decls ++ dictDecls ++ instances ++ classElemDecls ++ exportedClasses''
   dictionaries = map (Export . qualifyWith m . mkIdent . dictName) $ 
     getLocalInstances cEnv
   dictDecls = foldr (funDecl m tyEnv) [] dictionaries
