@@ -181,7 +181,9 @@ typeClassesCheck m decls
       
       checkForCyclesInClassHierarchy newClassEnv'
       
-      checkForDuplicateInstances newClassEnv'
+      -- Do not check here! This is too restrictive. Errors should only be
+      -- raised when actually an ambiguous instance is *used*! 
+      -- checkForDuplicateInstances newClassEnv'
       
       return (newClasses', instances')
     -- |binds all classes into the given top environment
@@ -605,13 +607,13 @@ checkForDuplicateClassNames classes =
 
 
 -- |Checks that there is at most one instance for a given class and type
-checkForDuplicateInstances :: ClassEnv -> Tcc ()
-checkForDuplicateInstances (ClassEnv _classes instances _ _) 
-  = let duplInstances 
-          = findMultiples $ map (\i -> (iClass i, iType i)) (allInstances instances)
-    in if null duplInstances
-    then ok
-    else report (errDuplicateInstances (map head duplInstances))
+--checkForDuplicateInstances :: ClassEnv -> Tcc ()
+--checkForDuplicateInstances (ClassEnv _classes instances _ _) 
+--  = let duplInstances 
+--          = findMultiples $ map (\i -> (iClass i, iType i)) (allInstances instances)
+--    in if null duplInstances
+--    then ok
+--    else report (errDuplicateInstances (map head duplInstances))
 
 
 -- |Check that in an instance definition type variables don't appear twice like
@@ -1370,11 +1372,11 @@ errDuplicateClassNames clss
   = message (text "Two or more classes with the same name: "  
   <+> hsep (punctuate comma (map ppIdent clss)))
   
-errDuplicateInstances :: [(QualIdent, QualIdent)] -> Message
-errDuplicateInstances is
-  = message (text "Two or more instances for the same class and type: "
-  <+> (hsep $ punctuate comma $ 
-       map (\(qid, tcon) -> parens $ ppQIdent qid <> comma <+> text (show tcon)) is))
+--errDuplicateInstances :: [(QualIdent, QualIdent)] -> Message
+--errDuplicateInstances is
+--  = message (text "Two or more instances for the same class and type: "
+--  <+> (hsep $ punctuate comma $ 
+--       map (\(qid, tcon) -> parens $ ppQIdent qid <> comma <+> text (show tcon)) is))
 
 errDuplicateTypeVars :: Position -> QualIdent -> TypeConstructor -> [Ident] -> Message
 errDuplicateTypeVars p cls tcon ids
