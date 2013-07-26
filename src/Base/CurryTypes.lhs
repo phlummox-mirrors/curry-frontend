@@ -19,7 +19,6 @@ order of type variables in the left hand side of a type declaration.
 >  ) where
 
 > import Data.List (nub)
-> import Data.Maybe (fromJust)
 > import qualified Data.Map as Map (Map, fromList, lookup)
 
 > import Curry.Base.Ident
@@ -71,7 +70,9 @@ order of type variables in the left hand side of a type declaration.
 > translateContext theMap (CS.Context elems) 
 >   -- TODO: translate also texps!
 >   = map (\(CS.ContextElem qid id0 _texps) -> 
->          (qid, TypeVariable (fromJust $ Map.lookup id0 theMap)))
+>          -- TODO: handle the case better that we have in the context 
+>          -- variables that don't appear in the type
+>          (qid, TypeVariable (case Map.lookup id0 theMap of Just x -> x; Nothing -> (-42))))
 >         elems
 
 > toType' :: Map.Map Ident Int -> CS.TypeExpr -> Type
