@@ -39,7 +39,7 @@ definition.
 > import Base.Messages (Message, posMessage, internalError, message)
 > import Base.NestEnv
 > import Base.Types
-> import Base.Utils ((++!), findDouble, findMultiples, fst3)
+> import Base.Utils ((++!), findDouble, findMultiples, fst3, fromJust')
 
 > import Env.TypeConstructor (TCEnv, TypeInfo (..), qualLookupTC)
 > import Env.Value (ValueEnv, ValueInfo (..))
@@ -298,14 +298,22 @@ Furthermore, it is not allowed to declare a label more than once.
 > bindClassMethods m decls = do
 >   modifyRenameEnv $ \env -> foldr (bindFuncDecl False m) env decls
 
+> instance Entity RenameInfo where
+>   origName _x = qualify $ mkIdent ""
+>   -- do no merging
+>   merge _x _y = Nothing
+
 > -- |binds imported class methods. All class methods are qualified with
 > -- the module name under which the containing class is imported.  
-> bindImportedClassMethods :: [(QualIdent, Ident, Int)] -> SCM ()
+> bindImportedClassMethods :: [(QualIdent, Class, Ident, Int)] -> SCM ()
 > bindImportedClassMethods ms = do
 >   modifyRenameEnv $ \env -> foldr bind env ms
 >   where
->   bind :: (QualIdent, Ident, Int) -> RenameEnv -> RenameEnv
->   bind (c, m, n) env = globalEnv $ qualImportTopEnvNoMerge m' (GlobalVar n m') $ toplevelEnv env
+>   bind :: (QualIdent, Class, Ident, Int) -> RenameEnv -> RenameEnv
+>   bind (c, cls, m, n) env = globalEnv $ 
+>       qualImportTopEnv' 
+>         (fromJust' "bindImportedClassMethods" $ qidModule $ theClass cls) 
+>         m' (GlobalVar n m') $ toplevelEnv env
 >     where m' = qualifyLike c m
 
 ------------------------------------------------------------------------------
@@ -418,13 +426,14 @@ local declarations.
 > -- | returns all class methods from the class environment in the following
 > -- form: (The name under which the class containing the methods is imported, 
 > -- a name of a method, its arity)
-> classMethodsFromClassEnv :: ClassEnv -> [(QualIdent, Ident, Int)]
+> classMethodsFromClassEnv :: ClassEnv -> [(QualIdent, Class, Ident, Int)]
 > classMethodsFromClassEnv cEnv =
 >   -- return only class methods that are not hidden! 
 >   concatMap 
 >     (\(c, cls) -> 
->       zipWith (\x (y, z) -> (x, y, z))
->         (repeat c)  
+>       zipWith3 (\x x2 (y, z) -> (x, x2, y, z))
+>         (repeat c)
+>         (repeat cls)
 >         (map (\(m, _, ty) -> (m, typeArity ty)) $
 >            filter (( `elem` publicMethods cls) . fst3) (methods cls)))
 >     clss
