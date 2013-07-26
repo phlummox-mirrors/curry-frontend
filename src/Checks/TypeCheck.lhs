@@ -49,7 +49,7 @@ expanded.
 > import Base.Types as BT
 > import Base.TypeSubst
 > import Base.Subst (listToSubst, substToList)
-> import Base.Utils (foldr2, findDouble, zip', zipWith', zipWith3')
+> import Base.Utils (foldr2, findDouble, zip', zipWith', zipWith3', fromJust')
 
 > import Env.TypeConstructor (TCEnv, TypeInfo (..), bindTypeInfo
 >   , qualLookupTC)
@@ -486,7 +486,8 @@ class methods share the same namespace!
 >     let tsc = fromJust $ lookupTypeScheme cls (unqualify m)
 >         v = Value (qualifyLike (theClass cls) $ unqualify m) 
 >                   (BT.arrowArity $ typeSchemeToType tsc) tsc
->     in qualBindTopEnv "bindClassMethods" m v   
+>     in qualImportTopEnv' (fromJust' "bindClassMethods" $ qidModule $ theClass cls) 
+>          m v
 >    
 >     
  

@@ -34,7 +34,7 @@ import Base.Types as BT (TypeScheme, polyType, constrainBy, Type (..), arrowArit
                         , typeSchemeToType)
 import qualified Base.Types as BTC (Context) 
 import Base.SCC
-import Base.Utils (findMultiples, fst3)
+import Base.Utils (findMultiples, fst3, fromJust')
 import Base.Names
 import Base.TopEnv
 import qualified Data.Map as Map  
@@ -284,7 +284,8 @@ constructClassMethodsEnv bindings =
   bind (c, cls, m) env = 
     -- use as qualification for the method the qualification of the qualIdent
     -- under which the current class is stored. 
-    qualBindTopEnv "constructClassMethodsMap" (qualifyLike c m) cls env
+    qualImportTopEnv' (fromJust' "constructClassMethodsEnv" $ qidModule $ theClass cls)
+      (qualifyLike c m) cls env
 
 
 -- ----------------------------------------------------------------------------
