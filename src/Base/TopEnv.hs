@@ -49,6 +49,7 @@ module Base.TopEnv
   , filterEnv
   , allBindingsWithOrigNames
   , qualImportTopEnvNoMerge, qualImportTopEnv'
+  , qualLookupLocalTopEnv
   ) where
 
 import           Control.Arrow        (second)
@@ -189,6 +190,12 @@ lookupTopEnv = qualLookupTopEnv . qualify
 
 qualLookupTopEnv :: QualIdent -> TopEnv a -> [a]
 qualLookupTopEnv x (TopEnv env) = map snd (entities x env)
+
+qualLookupLocalTopEnv :: QualIdent -> TopEnv a -> [a]
+qualLookupLocalTopEnv x (TopEnv env) = map snd $ filter isLocal $ (entities x env)
+  where
+  isLocal (Local, _) = True
+  isLocal _ = False
 
 allImports :: TopEnv a -> [(QualIdent, a)]
 allImports (TopEnv env) =
