@@ -27,6 +27,7 @@ module Env.ClassEnv (
   , localInst, importedInst, getAllInstances, getLocalInstances, allInstances
   , lookupNonHiddenClass, allNonHiddenClassBindings, allClassBindings
   , lookupTypeScheme, lookupLocalClass
+  , nonHiddenClassEnv
   -- ** functions for modifying the class environment
   , bindClass, bindClassMethods
   -- ** pretty printing

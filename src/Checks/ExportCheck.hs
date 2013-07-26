@@ -15,7 +15,7 @@ import Curry.Syntax
 import Base.Messages (Message, internalError, posMessage)
 import Base.TopEnv
 import Base.Types hiding (isTyCons)
-import Base.Utils (findMultiples)
+import Base.Utils (findMultiples, fst3)
 
 import Env.ModuleAlias (AliasEnv)
 import Env.TypeConstructor
@@ -238,8 +238,12 @@ expandImportedModule :: ModuleIdent -> ECM [Export]
 expandImportedModule m = do
   tcEnv <- getTyConsEnv
   tyEnv <- getValueEnv
+  cEnv <- getClassEnv
   return $ [exportType tyEnv t | (_, t) <- moduleImports m tcEnv]
-        ++ [Export f | (_, Value f _ _) <- moduleImports m tyEnv]
+        ++ [Export f | (_, Value f _ _) <- moduleImports m tyEnv
+                     , not $ isClassMethod cEnv f]
+        ++ [ExportTypeWith (theClass c) (map fst3 $ methods c) 
+             | (_, c) <- moduleImports m (nonHiddenClassEnv $ theClasses cEnv)] 
 
 exportType :: ValueEnv -> TypeInfo -> Export
 exportType tyEnv t
