@@ -89,7 +89,8 @@ for file in TestClassExports TestClassExports2 TestClassExportsImports \
   ModuleExport3 ModuleExport3Import \
   ModuleExport4 ModuleExport4Import \
   HiddenClasses1 HiddenClasses2 HiddenClasses3 \
-  AmbigClassExport1 AmbigClassExport2
+  AmbigClassExport1 AmbigClassExport2 \
+  QualProblem1 QualProblem2
 do
   echo $file >> tmp.txt
   $cymake -f -i typeclasses/modules typeclasses/modules/$file.curry 2> stderr.txt 1> stdout.txt || (echo "===================="; echo "| Error in $file.curry:" ; echo "===================="; cat stdout.txt; cat stderr.txt; echo)
