@@ -871,7 +871,7 @@ transformClass2 cEnv (ClassDecl p _scx cls _tyvar _decls) =
   ++ concatMap genNonDirectSuperClassDictSelMethod nonDirectSuperClasses
   ++ concatMap genDefaultMethod (defaults theClass0)
   where
-  theClass0 = fromJust $ lookupClass cEnv (qualify cls)
+  theClass0 = fromJust $ lookupLocalClass cEnv (qualify cls)
   superClasses0 = map show $ superClasses theClass0
   superClasses1 = superClasses theClass0
   methods0 = methods theClass0
