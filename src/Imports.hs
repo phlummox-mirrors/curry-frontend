@@ -166,17 +166,17 @@ importInterface tcs m q is i env = (env'', errs)
       Just (Importing _ _) -> fs
       Just (Hiding    _ _) -> ms \\ fs  }
     where
-    fs = nub $ getImportedClassMethods expandedSpec
+    fs = nub $ getImportedClassMethods (theClass cls) expandedSpec
     ms = publicMethods cls
     
   -- | returns all class methods imported in the import specification via
   -- C(..) or C(f1, ..., fn)  
-  getImportedClassMethods :: [Import] -> [Ident]
-  getImportedClassMethods = concatMap getImportedClassMethods'
+  getImportedClassMethods :: QualIdent -> [Import] -> [Ident]
+  getImportedClassMethods cls = concatMap getImportedClassMethods'
     where
     getImportedClassMethods' :: Import -> [Ident]
     getImportedClassMethods' (ImportTypeWith tc fs) = 
-      if tc `Map.member` mExportedClsEnv then fs else [] 
+      if tc == unqualify cls then fs else []
     getImportedClassMethods' (Import _) = []
     getImportedClassMethods' (ImportTypeAll _) = 
       internalError "getImportedClassMethods"
