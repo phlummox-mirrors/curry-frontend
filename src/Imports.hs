@@ -118,7 +118,7 @@ importInterface tcs m q is i env = (env'', errs)
       then (classEnv env) {
           theClasses = importEntities m q cs setPublicMethods mClsEnv' $ 
             theClasses $ classEnv env, 
-          theInstances = map importedInst mInstances ++ (theInstances $ classEnv env)
+          theInstances = map (importedInst m) mInstances ++ (theInstances $ classEnv env)
         }
       else initClassEnv
     }

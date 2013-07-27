@@ -27,7 +27,7 @@ module Env.ClassEnv (
   , localInst, importedInst, getAllInstances, getLocalInstances, allInstances
   , lookupNonHiddenClass, allNonHiddenClassBindings, allClassBindings
   , lookupTypeScheme, lookupLocalClass
-  , nonHiddenClassEnv
+  , nonHiddenClassEnv, instanceImportedFrom
   -- ** functions for modifying the class environment
   , bindClass, bindClassMethods
   -- ** pretty printing
@@ -77,7 +77,7 @@ data ClassEnv = ClassEnv
   } 
   deriving Show
 
-data Source = Local | Imported
+data Source = Local | Imported ModuleIdent
   deriving Show
 
 data Class = Class
@@ -304,8 +304,20 @@ localInst :: Instance -> (Source, Instance)
 localInst i = (Local, i) 
 
 -- |makes an instance an imported instance
-importedInst :: Instance -> (Source, Instance)
-importedInst i = (Imported, i)
+importedInst :: ModuleIdent -> Instance -> (Source, Instance)
+importedInst m i = (Imported m, i)
+
+-- |returns where the instance for the given class and type
+-- is imported from (or Nothing if it's a local instance)
+instanceImportedFrom :: ClassEnv -> QualIdent -> QualIdent -> Maybe ModuleIdent
+instanceImportedFrom cEnv cls ty = 
+  maybe (internalError "importedFrom") (\(source, _) -> case source of
+    Local -> Nothing
+    Imported m -> Just m) $
+  -- TODO: consider overlapping instances
+  list2Maybe $ 
+  filter (\(_src, Instance { iClass = ic, iType = it}) -> ic == cls && it == ty) 
+    $ theInstances cEnv
 
 -- |returns all instances
 getAllInstances :: ClassEnv -> [Instance]
