@@ -381,16 +381,16 @@ classToClassDecl m cEnv fs c =
        (CE.typeVar c) 
        (map (\(f, tsc) -> (f `elem` fs, typeSigToIFunDecl m (CE.typeVar c) (f, tsc))) 
             $ typeSchemes c)
-       (nub $ concatMap defaultMethods $ defaults c)
+       (nub $ concatMap funName $ defaults c)
        (map (qualUnqualify m) (classDeps ++ concatMap 
          (depsForClass cEnv) (cName : classDeps)))
   where
   cName = theClass c
   classDeps = classesFromClass False cEnv (theClass c)
   
-defaultMethods :: Decl -> [Ident]
-defaultMethods (FunctionDecl _ _ _ f _) = [f]
-defaultMethods _                        = []
+funName :: Decl -> [Ident]
+funName (FunctionDecl _ _ _ f _) = [f]
+funName _                        = []
 
 -- |calculates all dependencies (dictionary types, selection functions, 
 -- default methods) of a given classs
@@ -414,7 +414,7 @@ toHiddenClassDecl m cEnv qid =
        (qualUnqualify m $ theClass c) 
        (CE.typeVar c) 
        (map (typeSigToIFunDecl m (CE.typeVar c)) $ typeSchemes c)
-       (nub $ concatMap defaultMethods $ defaults c)
+       (nub $ concatMap funName $ defaults c)
   where
   c = fromJust $ lookupClass cEnv qid
  
