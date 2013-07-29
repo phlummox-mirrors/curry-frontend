@@ -383,7 +383,7 @@ classToClassDecl m cEnv fs c =
             $ typeSchemes c)
        (nub $ concatMap defaultMethods $ defaults c)
        (map (qualUnqualify m) (classDeps ++ concatMap 
-         (depsForClass cEnv . fromJust . canonLookupClass cEnv) (cName : classDeps)))
+         (depsForClass cEnv) (cName : classDeps)))
   where
   cName = theClass c
   classDeps = classesFromClass False cEnv (theClass c)
@@ -391,11 +391,14 @@ classToClassDecl m cEnv fs c =
 defaultMethods :: Decl -> [Ident]
 defaultMethods (FunctionDecl _ _ _ f _) = [f]
 defaultMethods _                        = []
-  
+
 -- |calculates all dependencies (dictionary types, selection functions, 
 -- default methods) of a given classs
-depsForClass :: ClassEnv -> Class -> [QualIdent]
-depsForClass cEnv c = [qualify' $ dictTypeIdent cName]
+depsForClass :: ClassEnv -> QualIdent -> [QualIdent]
+depsForClass cEnv = depsForClass' cEnv . fromJust . canonLookupClass cEnv
+
+depsForClass' :: ClassEnv -> Class -> [QualIdent]
+depsForClass' cEnv c = [qualify' $ dictTypeIdent cName]
       ++ map (qualify' . mkIdent) (selFunsNames cEnv cName)
       ++ map qualify' (defaultMethodsIdents cEnv cName)
   where
