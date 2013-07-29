@@ -26,7 +26,7 @@ type annotation is present.
 > import Control.Monad (liftM, liftM2, liftM3, replicateM, unless)
 > import qualified Control.Monad.State as S (State, execState, gets, modify)
 > import Data.List (nub, partition)
-> import qualified Data.Map as Map (Map, empty, insert, lookup)
+> import qualified Data.Map as Map (Map, delete, empty, insert, lookup)
 > import Data.Maybe (catMaybes, fromJust, fromMaybe, isJust, listToMaybe, maybeToList)
 > import qualified Data.Set as Set (Set, fromList, member, notMember, unions)
 
@@ -68,7 +68,7 @@ The type checker returns the resulting type constructor and type environments.
 >           -> (TCEnv, ValueEnv, [Message])
 > typeCheck m tcEnv tyEnv decls = execTCM check initState
 >   where
->   check      = checkTypeSynonyms m tds `andIfOkay` checkDecls
+>   check      = checkTypeSynonyms m tds &&> checkDecls
 >   checkDecls = do
 >     bindTypes tds
 >     bindConstrs
@@ -132,8 +132,8 @@ generating fresh type variables.
 > report :: Message -> TCM ()
 > report err = S.modify $ \ s -> s { errors = err : errors s }
 
-> andIfOkay :: TCM () -> TCM () -> TCM ()
-> andIfOkay pre suf = do
+> (&&>) :: TCM () -> TCM () -> TCM ()
+> pre &&> suf = do
 >   errs <- pre >> S.gets errors
 >   if null errs then suf else return ()
 
@@ -303,13 +303,16 @@ inferred type is less general than the signature.
 > emptySigEnv :: SigEnv
 > emptySigEnv = Map.empty
 
+> unbindTypeSig :: Ident -> SigEnv -> SigEnv
+> unbindTypeSig = Map.delete
+
 > bindTypeSig :: Ident -> TypeExpr -> SigEnv -> SigEnv
 > bindTypeSig = Map.insert
 
 > bindTypeSigs :: Decl -> SigEnv -> SigEnv
 > bindTypeSigs (TypeSig _ vs ty) env =
 >   foldr (flip bindTypeSig (nameSigType ty)) env vs
-> bindTypeSigs _ env = env
+> bindTypeSigs _                 env = env
 
 > lookupTypeSig :: Ident -> SigEnv -> Maybe TypeExpr
 > lookupTypeSig = Map.lookup
@@ -430,13 +433,17 @@ either one of the basic types or \texttt{()}.
 > tcFree :: Ident -> TCM ()
 > tcFree v = do
 >   sigs <- getSigEnv
->   m  <- getModuleIdent
 >   ty <- case lookupTypeSig v sigs of
 >     Nothing -> freshTypeVar
 >     Just t  -> do
 >       ForAll n ty' <- expandPolyType t
->       unless (n == 0) $ report $ errPolymorphicFreeVar v
->       return ty'
+>       if (n == 0) then return ty' else do
+>         -- because of error aggregation, we have to fix
+>         -- the corrupt information
+>         report $ errPolymorphicFreeVar v
+>         modifySigEnv $ unbindTypeSig v
+>         freshTypeVar
+>   m  <- getModuleIdent
 >   modifyValueEnv $ bindFun m v (arrowArity ty) $ monoType ty
 
 > tcDeclLhs :: Decl -> TCM Type
