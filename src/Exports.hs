@@ -70,9 +70,9 @@ exportInterface' (Module m (Just (Exporting _ es)) _ _) tcs pEnv tcEnv tyEnv cEn
   hidden0  = map   (hiddenTypeDecl m tcEnv) $ hiddenTypes m allDecls
   decls   = foldr (typeDecl tcs m tcEnv cEnv) (foldr (funDecl m tyEnv) [] es) es
   instances = map (instanceToIDecl m cEnv) $ getLocalInstances cEnv
-  hiddenClasses = map (toHiddenClassDecl m cEnv) $ filter (isLocal m) $ 
+  hiddenClasses = map (toHiddenClassDecl m cEnv) $ 
     nub dependencies \\ nub exportedClasses'
-  dependencies = calcLocalDependencies m cEnv (getLocalInstances cEnv) exportedClasses'
+  dependencies = calculateDependencies cEnv (getLocalInstances cEnv) exportedClasses'
   exportedClasses' = exportedClasses cEnv es
   allDecls = if tcs 
     then nub $ decls ++ dictDecls ++ instances ++ hiddenClasses ++ classElemDecls
@@ -363,8 +363,8 @@ exportedClasses cEnv = concatMap exportedClass
 
 -- |calculates the *local* classes on which the given instances and classes
 -- depend
-calcLocalDependencies :: ModuleIdent -> ClassEnv -> [Instance] -> [QualIdent] -> [QualIdent]
-calcLocalDependencies m cEnv insts = filter (isLocal m) . calculateDependencies cEnv insts 
+-- calcLocalDependencies :: ModuleIdent -> ClassEnv -> [Instance] -> [QualIdent] -> [QualIdent]
+-- calcLocalDependencies m cEnv insts = filter (isLocal m) . calculateDependencies cEnv insts 
   
 -- |calculates the classes on which the given instances and classes
 -- depend
@@ -382,16 +382,26 @@ classToClassDecl m cEnv fs c =
        (map (\(f, tsc) -> (f `elem` fs, typeSigToIFunDecl m (CE.typeVar c) (f, tsc))) 
             $ typeSchemes c)
        (nub $ concatMap defaultMethods $ defaults c)
-       ((map (qualUnqualify m) $ filter (isLocal m) $ classesFromClass False cEnv (theClass c))
-        ++ [qualify $ dictTypeIdent cName]
-        ++ map (qualify . mkIdent) (selFunsNames cEnv cName)
-        ++ map qualify (defaultMethodsIdents cEnv cName))
+       (map (qualUnqualify m) (classDeps ++ concatMap 
+         (depsForClass cEnv . fromJust . canonLookupClass cEnv) (cName : classDeps)))
   where
   cName = theClass c
+  classDeps = classesFromClass False cEnv (theClass c)
   
 defaultMethods :: Decl -> [Ident]
 defaultMethods (FunctionDecl _ _ _ f _) = [f]
 defaultMethods _                        = []
+  
+-- |calculates all dependencies (dictionary types, selection functions, 
+-- default methods) of a given classs
+depsForClass :: ClassEnv -> Class -> [QualIdent]
+depsForClass cEnv c = [qualify' $ dictTypeIdent cName]
+      ++ map (qualify' . mkIdent) (selFunsNames cEnv cName)
+      ++ map qualify' (defaultMethodsIdents cEnv cName)
+  where
+  cName = theClass c
+  qualify' :: Ident -> QualIdent
+  qualify' = qualifyLike cName
 
 -- |converts the given class to a hidden class interface declaration
 toHiddenClassDecl :: ModuleIdent -> ClassEnv -> QualIdent -> IDecl
