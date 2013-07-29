@@ -68,8 +68,8 @@ The type checker returns the resulting type constructor and type environments.
 >           -> (TCEnv, ValueEnv, [Message])
 > typeCheck m tcEnv tyEnv decls = execTCM check initState
 >   where
->   check = do
->     checkTypeSynonyms m tds
+>   check      = checkTypeSynonyms m tds `andIfOkay` checkDecls
+>   checkDecls = do
 >     bindTypes tds
 >     bindConstrs
 >     bindLabels
@@ -131,6 +131,11 @@ generating fresh type variables.
 
 > report :: Message -> TCM ()
 > report err = S.modify $ \ s -> s { errors = err : errors s }
+
+> andIfOkay :: TCM () -> TCM () -> TCM ()
+> andIfOkay pre suf = do
+>   errs <- pre >> S.gets errors
+>   if null errs then suf else return ()
 
 > execTCM :: TCM a -> TcState -> (TCEnv, ValueEnv, [Message])
 > execTCM tcm s = let s' = S.execState tcm s
