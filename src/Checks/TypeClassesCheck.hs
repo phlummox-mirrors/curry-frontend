@@ -13,7 +13,7 @@
     the instance and class declarations. 
 -}
 
-module Checks.TypeClassesCheck (typeClassesCheck) where
+module Checks.TypeClassesCheck (buildTypeSchemes, typeClassesCheck) where
 
 import Curry.Syntax.Type as ST hiding (IDecl)
 import Env.ClassEnv

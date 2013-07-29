@@ -40,6 +40,8 @@ import Env.TypeConstructor
 import Env.Value
 import Env.ClassEnv as CE
 
+import Checks.TypeClassesCheck as TCC (buildTypeSchemes)
+
 import CompilerEnv
 import CompilerOpts
 
@@ -735,8 +737,10 @@ importInterfaceIntf i@(Interface m _ _) env = env
   mTCEnv = intfEnv bindTCHidden i -- all type constructors
   mTyEnv = intfEnv bindTy       i -- all values
   mClsEnv = intfEnv (bindCls True) i -- all classes
-  -- It shouldn't be wrong to always set the hidden flag to false
-  mClsEnv' = Map.map (setHidden False) mClsEnv
+  -- It shouldn't be wrong to always set the hidden flag to false. 
+  -- As we don't expand the type scheme, we can pass an empty module name
+  -- and type constructor environment. 
+  mClsEnv' = Map.map (buildTypeSchemes False (mkMIdent []) initTCEnv . setHidden False) mClsEnv
 
 -- ---------------------------------------------------------------------------
 -- Record stuff
