@@ -80,7 +80,7 @@ The latter must not occur in type expressions in interfaces.
 > bindType (ITypeDecl       _ tc _ _) = qualBindTopEnv "" tc (Alias tc)
 > bindType (IFunctionDecl  _ _ _ _ _) = id
 > bindType (IClassDecl _ _ _ _ _ _ _) = id
-> bindType (IInstanceDecl _ _ _ _ _ _) = id
+> bindType (IInstanceDecl _ _ _ _ _ _ _) = id
 > bindType (IHidingClassDecl _ _ _ _ _ _) = id
 
 \end{verbatim}
@@ -108,7 +108,7 @@ during syntax checking of type expressions.
 >   liftM3 (IClassDecl p scls cls var) 
 >          (mapM (\(b, sig) -> checkIDecl sig >>= \sig' -> return (b, sig')) tySigs)
 >          (return defs) (return deps)
-> checkIDecl i@(IInstanceDecl _ _ _ _ _ _) = return i 
+> checkIDecl i@(IInstanceDecl _ _ _ _ _ _ _) = return i 
 > checkIDecl (IHidingClassDecl p scls cls var tySigs defs) = 
 >  liftM2 (IHidingClassDecl p scls cls var) (mapM checkIDecl tySigs) (return defs)
 

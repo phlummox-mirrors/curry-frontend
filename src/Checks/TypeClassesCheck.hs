@@ -222,7 +222,8 @@ instanceDeclToInstance m tcEnv (InstanceDecl _ (SContext scon) cls tcon ids decl
     iClass = cls,   -- still unqualified!
     iType = ty,     -- still unqualified!
     typeVars = ids, 
-    rules = decls }
+    rules = decls, 
+    origin = m }
   where
   -- fromJust shouldn't fail here, because this function is first called
   -- after it has been checked that the given type exists

@@ -94,7 +94,8 @@ data Class = Class
   deriving (Eq, Show)
 
 data Instance = Instance
-  { context  :: [(QualIdent,Ident)]
+  { origin   :: ModuleIdent
+  , context  :: [(QualIdent,Ident)]
   , iClass   :: QualIdent
   , iType    :: QualIdent
   , typeVars :: [Ident]
@@ -676,8 +677,8 @@ ppClass (Class {superClasses = sc, theClass = tc, typeVar = tv,
   $$ nest 2 (vcat $ map ppDecl ds)
 
 ppInst :: Instance -> Doc
-ppInst (Instance {context = cx, iClass = ic, iType = it, typeVars = tvs, rules = rs})
-  = text "instance" 
+ppInst (Instance {context = cx, iClass = ic, iType = it, typeVars = tvs, rules = rs, origin = o})
+  = text "instance" <> text "<" <> text (show o) <> text ">" 
   <+> parens (hsep $ punctuate (text ",") (map (\(qid, tid) -> text (show qid) <+> text (show tid)) cx))
   <> text " => " <> text (show ic) <+> text "(" <> text (show it)
   <+> hsep (map (text. show) tvs) <> text ")" <+> text "where"

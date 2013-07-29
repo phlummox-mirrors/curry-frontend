@@ -145,7 +145,7 @@ interface module only. However, this has not been implemented yet.
 >       check _ = False
 >   checkValueInfo "function" check p f
 > checkImport (IClassDecl _ _ _ _ _ _ _) = ok
-> checkImport (IInstanceDecl _ _ _ _ _ _) = ok
+> checkImport (IInstanceDecl _ _ _ _ _ _ _) = ok
 > checkImport (IHidingClassDecl _ _ _ _ _ _) = ok
 
 > checkConstrImport :: QualIdent -> [Ident] -> ConstrDecl -> IC ()

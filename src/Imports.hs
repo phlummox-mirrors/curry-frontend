@@ -130,7 +130,7 @@ importInterface tcs m q is i env = (env'', errs)
   mClsEnv         = intfEnv (bindCls True)  i -- all classes
   mExportedClsEnv = intfEnv (bindCls False) i -- all exported classes 
                                               -- (i.e., not hidden in the interface)
-  (mInstances, depsInstances) = loadInstances m i
+  (mInstances, depsInstances) = loadInstances i
   -- all imported type constructors / values
   (expandedSpec, errs) = runExpand (expandSpecs is) m mTCEnv mTyEnv mExportedClsEnv
   ts = isVisible is (Set.fromList $ foldr addType  [] expandedSpec)
@@ -418,19 +418,20 @@ classesInImportSpec' cEnv = map importId . filter isClassImport
 
 -- |load instances from interface and return the instances as well as the
 -- class dependencies of all instances
-loadInstances :: ModuleIdent -> Interface -> ([Instance], [Ident])
-loadInstances m (Interface _ _ ds) = foldr (bindInstance m) ([], []) ds
+loadInstances :: Interface -> ([Instance], [Ident])
+loadInstances (Interface m _ ds) = foldr (bindInstance m) ([], []) ds
 
 -- |bind an instance into the environment that holds all instances and as well
 -- all classes the instances depend on
 bindInstance :: ModuleIdent -> IDecl -> ([Instance], [Ident]) -> ([Instance], [Ident])
-bindInstance m (IInstanceDecl _ scx cls ty tyvars ideps) (is, deps)
+bindInstance m (IInstanceDecl _ maybeOrigin scx cls ty tyvars ideps) (is, deps)
   = let inst = Instance {
           context = map (\(qid, id0) -> (qualQualify m qid, id0)) scx, 
           iClass = qualQualify m cls, 
           iType = qualQualify m $ specialTyConToQualIdent ty,
           CE.typeVars = tyvars,
-          rules = []
+          rules = [], 
+          origin = if isNothing maybeOrigin then m else fromJust maybeOrigin
         }
     in (inst:is, deps ++ map unqualify ideps)
 bindInstance _ _ iEnv = iEnv

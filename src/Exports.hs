@@ -191,8 +191,9 @@ typeSigToIFunDecl m tyvar (f, ForAll _cx _ ty)
 
 -- |convert an instance to an IInstanceDecl
 instanceToIDecl :: ModuleIdent -> ClassEnv -> Instance -> IDecl
-instanceToIDecl m cEnv i@(Instance cx cls ty tyvars _) = 
+instanceToIDecl m cEnv i@(Instance origin' cx cls ty tyvars _) = 
   IInstanceDecl NoPos 
+    (if m == origin' then Nothing else Just origin')
     (map unqualifyContextElem cx) (qualUnqualify m cls)
     (toTypeConstructor $ qualUnqualify m ty) tyvars
     ((map (qualUnqualify m) $ filter (isLocal m) $ classesFromInstances cEnv [i])
@@ -231,10 +232,18 @@ identsDecl (IFunctionDecl _ f _ cx ty) xs = f  : identsCx cx (identsType ty xs)
 -- TODO: consider also identifiers/classes in the "depends" section of class
 -- or instance declarations? 
 identsDecl (IClassDecl _ scls cls _ sigs _ _) xs = cls : scls ++ foldr identsDecl xs (map snd sigs)
-identsDecl (IInstanceDecl _ scx cls (QualTC ty) _tyvars _) xs = cls : ty : map fst scx ++ xs 
-identsDecl (IInstanceDecl _ scx cls _ _tyvars _) xs = cls : map fst scx ++ xs
+identsDecl (IInstanceDecl _ m scx cls (QualTC ty) _tyvars _) xs = 
+  cls : ty : map fst scx ++ qIdentFromModule m ++ xs 
+identsDecl (IInstanceDecl _ m scx cls _ _tyvars _) xs = 
+  cls : map fst scx ++ qIdentFromModule m ++ xs 
 identsDecl (IHidingClassDecl _ scls cls _ sigs _) xs = cls : scls ++ foldr identsDecl xs sigs
 identsDecl _ _ = internalError "Exports.identsDecl: no pattern match"
+
+-- | as we gather qualified identifiers, we have to construct a dummy qualified
+-- identifier for the given module name
+qIdentFromModule :: Maybe ModuleIdent -> [QualIdent]
+qIdentFromModule Nothing = []
+qIdentFromModule (Just m) = [qualifyWith m $ mkIdent "dummy"]
 
 identsConstrDecl :: ConstrDecl -> [QualIdent] -> [QualIdent]
 identsConstrDecl (ConstrDecl    _ _ _ tys) xs = foldr identsType xs tys
@@ -290,8 +299,8 @@ usedTypesDecl (INewtypeDecl  _ _ _ nc) tcs = usedTypesNewConstrDecl nc tcs
 usedTypesDecl (ITypeDecl     _ _ _ ty) tcs = usedTypesType ty tcs
 usedTypesDecl (IFunctionDecl _ _ _ cx ty) tcs = usedTypesContext cx (usedTypesType ty tcs)
 usedTypesDecl (IClassDecl _ _ _ _ sigs _ _) tcs = foldr usedTypesDecl tcs (map snd sigs)
-usedTypesDecl (IInstanceDecl _ _ _cls (QualTC ty) _ _) tcs = ty : tcs
-usedTypesDecl (IInstanceDecl _ _ _cls _ _ _) tcs = tcs
+usedTypesDecl (IInstanceDecl _ _ _ _cls (QualTC ty) _ _) tcs = ty : tcs
+usedTypesDecl (IInstanceDecl _ _ _ _cls _ _ _) tcs = tcs
 usedTypesDecl (IHidingClassDecl _ _ _ _ sigs _) tcs = foldr usedTypesDecl tcs sigs
 usedTypesDecl _                        _   = internalError
   "Exports.usedTypesDecl: no pattern match" -- TODO
