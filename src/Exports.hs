@@ -271,7 +271,7 @@ hiddenTypeDecl :: ModuleIdent -> TCEnv -> QualIdent -> IDecl
 hiddenTypeDecl m tcEnv tc = case qualLookupTC (qualQualify m tc) tcEnv of
   [DataType     _ n _] -> hidingDataDecl tc n
   [RenamingType _ n _] -> hidingDataDecl tc n
-  _                    -> internalError "Exports.hiddenTypeDecl"
+  _                    -> internalError ("Exports.hiddenTypeDecl: " ++ show tc)
   where hidingDataDecl tc1 n = HidingDataDecl NoPos tc1 $ take n identSupply
 
 hiddenTypes :: ModuleIdent -> [IDecl] -> [QualIdent]
