@@ -233,7 +233,7 @@ identsDecl (IFunctionDecl _ f _ cx ty) xs = f  : identsCx cx (identsType ty xs)
 identsDecl (IClassDecl _ scls cls _ sigs _ _) xs = cls : scls ++ foldr identsDecl xs (map snd sigs)
 identsDecl (IInstanceDecl _ scx cls (QualTC ty) _tyvars _) xs = cls : ty : map fst scx ++ xs 
 identsDecl (IInstanceDecl _ scx cls _ _tyvars _) xs = cls : map fst scx ++ xs
-identsDecl (IHidingClassDecl _ scls cls _ sigs) xs = cls : scls ++ foldr identsDecl xs sigs
+identsDecl (IHidingClassDecl _ scls cls _ sigs _) xs = cls : scls ++ foldr identsDecl xs sigs
 identsDecl _ _ = internalError "Exports.identsDecl: no pattern match"
 
 identsConstrDecl :: ConstrDecl -> [QualIdent] -> [QualIdent]
@@ -292,7 +292,7 @@ usedTypesDecl (IFunctionDecl _ _ _ cx ty) tcs = usedTypesContext cx (usedTypesTy
 usedTypesDecl (IClassDecl _ _ _ _ sigs _ _) tcs = foldr usedTypesDecl tcs (map snd sigs)
 usedTypesDecl (IInstanceDecl _ _ _cls (QualTC ty) _ _) tcs = ty : tcs
 usedTypesDecl (IInstanceDecl _ _ _cls _ _ _) tcs = tcs
-usedTypesDecl (IHidingClassDecl _ _ _ _ sigs) tcs = foldr usedTypesDecl tcs sigs
+usedTypesDecl (IHidingClassDecl _ _ _ _ sigs _) tcs = foldr usedTypesDecl tcs sigs
 usedTypesDecl _                        _   = internalError
   "Exports.usedTypesDecl: no pattern match" -- TODO
 
@@ -387,10 +387,11 @@ classToClassDecl m cEnv fs c =
         ++ map (qualify . mkIdent) (selFunsNames cEnv cName)
         ++ map qualify (defaultMethodsIdents cEnv cName))
   where
-  defaultMethods :: Decl -> [Ident]
-  defaultMethods (FunctionDecl _ _ _ f _) = [f]
-  defaultMethods _                        = []
   cName = theClass c
+  
+defaultMethods :: Decl -> [Ident]
+defaultMethods (FunctionDecl _ _ _ f _) = [f]
+defaultMethods _                        = []
 
 -- |converts the given class to a hidden class interface declaration
 toHiddenClassDecl :: ModuleIdent -> ClassEnv -> QualIdent -> IDecl
@@ -400,6 +401,7 @@ toHiddenClassDecl m cEnv qid =
        (qualUnqualify m $ theClass c) 
        (CE.typeVar c) 
        (map (typeSigToIFunDecl m (CE.typeVar c)) $ typeSchemes c)
+       (nub $ concatMap defaultMethods $ defaults c)
   where
   c = fromJust $ lookupClass cEnv qid
  

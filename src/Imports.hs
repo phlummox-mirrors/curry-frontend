@@ -344,10 +344,10 @@ constrType tc tvs = ConstructorType tc $ map VariableType tvs
 bindCls :: Bool -> ModuleIdent -> IDecl -> ExpClassEnv -> ExpClassEnv
 bindCls _allClasses m (IClassDecl _ scx cls tyvar ds defs _deps) env =
   Map.insert (unqualify cls) (mkClass m scx cls tyvar ds defs) env
-bindCls allClasses0 m (IHidingClassDecl _ scx cls tyvar ds) env =
+bindCls allClasses0 m (IHidingClassDecl _ scx cls tyvar ds defs) env =
   if allClasses0
   then Map.insert (unqualify cls) 
-                  (mkClass m scx cls tyvar (map (\d -> (False, d)) ds) []) env
+                  (mkClass m scx cls tyvar (map (\d -> (False, d)) ds) defs) env
   else env
 bindCls _ _ _ env = env
 
