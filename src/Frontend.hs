@@ -15,8 +15,9 @@
 module Frontend (parse, fullParse) where
 
 import           Control.Monad.Writer
-import           Data.Maybe           (mapMaybe)
-import qualified Data.Map as Map      (empty)
+import           Control.Monad.Trans.Either
+import           Data.Maybe                 (mapMaybe)
+import qualified Data.Map as Map            (empty)
 
 
 import Curry.Base.Message
@@ -24,7 +25,6 @@ import Curry.Files.Filenames
 import Curry.Files.PathUtils
 import Curry.Syntax (Module (..), parseModule)
 
-import Checks       (CheckResult (..))
 import CompilerOpts (Options (..), defaultOptions)
 import CurryBuilder (smake)
 import CurryDeps    (Source (..), flattenDeps, moduleDeps)
@@ -60,9 +60,10 @@ genFullCurrySyntax opts fn m = case runMsg m of
   if null errs
     then do
       loaded <- liftIO $ loadModule opts fn
-      case checkModule opts loaded of
-        CheckFailed errs'        -> failWith $ show $ head errs'
-        CheckSuccess (_, mod',_) -> return  mod'
+      checked <- liftIO $ runEitherT $ checkModule opts loaded
+      case checked of
+        Left errs'      -> failWith $ show $ head errs'
+        Right (_, mod') -> return mod'
     else failWith $ show $ head errs
 
 -- TODO: Resembles CurryBuilder

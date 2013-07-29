@@ -19,6 +19,8 @@ module Modules
   ) where
 
 import Control.Monad (unless, when)
+import Control.Monad.IO.Class
+import Control.Monad.Trans.Either
 import Data.Maybe (fromMaybe)
 import Text.PrettyPrint
 
@@ -73,11 +75,11 @@ import Transformations
 compileModule :: Options -> FilePath -> IO ()
 compileModule opts fn = do
   loaded <- loadModule opts fn
-  case checkModule opts loaded of
-    CheckFailed errs -> abortWithMessages errs
-    CheckSuccess (env, mdl, dumps) -> do
+  checked <- runEitherT $ checkModule opts loaded
+  case checked of
+    Left errs -> abortWithMessages errs
+    Right (env, mdl) -> do
       warn opts $ warnCheck env mdl
-      mapM_ (doDump opts) dumps
       writeOutput opts fn (env, mdl)
 
 writeOutput :: Options -> FilePath -> (CompilerEnv, CS.Module) -> IO ()
@@ -105,7 +107,6 @@ writeOutput opts fn (env, modul) = do
 
 loadModule :: Options -> FilePath -> IO (CompilerEnv, CS.Module)
 loadModule opts fn = do
-  -- read module
   mbSrc <- readModule fn
   case mbSrc of
     Nothing  -> abortWithMessages [message $ text $ "Missing file: " ++ fn] -- TODO
@@ -170,23 +171,22 @@ importPrelude opts fn m@(CS.Module mid es is ds)
 --   AbstractCurry is deactivated as it requires the value information
 --   collected by the type checker.
 checkModule :: Options -> (CompilerEnv, CS.Module)
-            -> CheckResult (CompilerEnv, CS.Module, [Dump])
+            -> EitherT [Message] IO (CompilerEnv, CS.Module)
 checkModule opts (env, mdl) = do
-  (env1, kc) <- kindCheck env mdl -- should be only syntax checking ?
+  doDump opts (DumpParsed       , env , show $ CS.ppModule mdl)
+  (env1, kc) <- kindCheck   opts env mdl -- should be only syntax checking ?
+  doDump opts (DumpKindChecked  , env1, show $ CS.ppModule kc)
   (env2, sc) <- syntaxCheck opts env1 kc
-  (env3, pc) <- precCheck        env2 sc
+  doDump opts (DumpSyntaxChecked, env2, show $ CS.ppModule sc)
+  (env3, pc) <- precCheck   opts env2 sc
+  doDump opts (DumpPrecChecked  , env3, show $ CS.ppModule pc)
   (env4, tc) <- if withTypeCheck
-                   then typeCheck env3 pc >>= uncurry exportCheck
+                   then typeCheck opts env3 pc >>= uncurry (exportCheck opts)
                    else return (env3, pc)
+  doDump opts (DumpTypeChecked  , env4, show $ CS.ppModule tc)
   (env5, ql) <- return $ qual opts env4 tc
-  let dumps = [ (DumpParsed       , env , show $ CS.ppModule mdl)
-              , (DumpKindChecked  , env1, show $ CS.ppModule kc)
-              , (DumpSyntaxChecked, env2, show $ CS.ppModule sc)
-              , (DumpPrecChecked  , env3, show $ CS.ppModule pc)
-              , (DumpTypeChecked  , env4, show $ CS.ppModule tc)
-              , (DumpQualified    , env5, show $ CS.ppModule ql)
-              ]
-  return (env5, ql, dumps)
+  doDump opts (DumpQualified    , env5, show $ CS.ppModule ql)
+  return (env5, ql)
   where
   withTypeCheck = any (`elem` optTargetTypes opts)
                       [FlatCurry, ExtendedFlatCurry, FlatXml, AbstractCurry]
@@ -300,10 +300,10 @@ writeAbstractCurry opts fname env modul = do
   useSubDir  = optUseSubdir opts
 
 -- |The 'dump' function writes the selected information to standard output.
-doDump :: Options -> Dump -> IO ()
+doDump :: MonadIO m => Options -> Dump -> m ()
 doDump opts (level, env, dump) = when (level `elem` optDumps opts) $ do
-  when (optDumpEnv opts) $ putStrLn $ showCompilerEnv env
-  putStrLn $ unlines [header, replicate (length header) '=', dump]
+  when (optDumpEnv opts) $ liftIO $ putStrLn $ showCompilerEnv env
+  liftIO $ putStrLn $ unlines [header, replicate (length header) '=', dump]
   where
   header = lookupHeader dumpLevel
   lookupHeader []            = "Unknown dump level " ++ show level
