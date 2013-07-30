@@ -149,9 +149,42 @@ interface module only. However, this has not been implemented yet.
 >         where (cx'', ty'') = toQualConstrType m [] (cx, ty)
 >       check _ = False
 >   checkValueInfo "function" check p f
-> checkImport (IClassDecl _ _ _ _ _ _ _) = ok
+> checkImport (IClassDecl _p _cx (QualIdent Nothing _) _tyvar _ds _defs _) = ok
+> checkImport (IClassDecl p cx cls tyvar ds defs _) = do
+>   m <- getModuleIdent 
+>   cEnv <- getClassEnv
+>   let theClass0 = qualLookupTopEnv cls (theClasses cEnv)
+>   case theClass0 of
+>     [] -> report $ errNotExported p "class" m (unqualify cls)
+>     [c] -> do
+>       let tscs = map (typeFunDecl m (CE.typeVar c) . snd) ds
+>       unless 
+>         (cx == superClasses c && cls == theClass c && 
+>            tyvar == CE.typeVar c && length tscs == length (typeSchemes c) &&
+>            all (uncurry tySchemeEq) (zip tscs (typeSchemes c)) &&
+>            defs == map funName (defaults c)) 
+>         (report $ errImportConflict p "class" m (unqualify cls))
+>     _ -> internalError "checkImport IClassDecl"
+>   where
+>   tySchemeEq :: (Ident, TypeScheme) -> (Ident, TypeScheme) -> Bool
+>   tySchemeEq (i, tsc) (i', tsc') = i == i' 
+>     && typeSchemeToType tsc == typeSchemeToType tsc'
+>   
 > checkImport (IInstanceDecl _ _ _ _ _ _ _) = ok
-> checkImport (IHidingClassDecl _ _ _ _ _ _) = ok
+> checkImport (IHidingClassDecl p cx cls tyvar ds defs) = 
+>   checkImport (IClassDecl p cx cls tyvar (map (\x -> (True, x)) ds) defs [])
+
+> funName :: Decl -> Ident
+> funName (FunctionDecl _ _ _ f _) = f
+> funName _ = internalError "funName"
+
+> -- | returns the type of the given class method 
+> typeFunDecl :: ModuleIdent -> Ident -> IDecl -> (Ident, TypeScheme)
+> typeFunDecl m tyvar (IFunctionDecl _p method n cx ty) = 
+>   (unqualify method, ForAll cx' n ty')
+>   where
+>   (cx', ty') = toQualConstrType m [tyvar] (cx, ty) 
+> typeFunDecl _ _ _ = internalError "typeFunDecl"
 
 > checkConstrImport :: QualIdent -> [Ident] -> ConstrDecl -> IC ()
 > checkConstrImport tc tvs (ConstrDecl p evs c tys) = do
