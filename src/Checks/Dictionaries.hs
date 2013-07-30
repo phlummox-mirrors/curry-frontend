@@ -23,11 +23,10 @@ import Env.ClassEnv hiding (isClassMethod)
 import Env.Value
 import Base.Names (mkSelFunName, mkDictName)
 import Base.Messages
-import Data.Maybe
 import Base.Utils
-
 import Base.Types as BT
 
+import Data.Maybe
 import Control.Monad.State as S
 
 -- ----------------------------------------------------------------------------
@@ -39,19 +38,26 @@ type DI = S.State DIState
 data DIState = DIState 
   { theClassEnv :: ClassEnv
   , theValueEnv :: ValueEnv
+  , errors      :: [Message]
   }
 
 initState :: ClassEnv -> ValueEnv -> DIState
-initState cEnv vEnv = DIState cEnv vEnv 
+initState cEnv vEnv = DIState cEnv vEnv []
 
-runDI :: DI a -> DIState -> a
-runDI comp init0 = let (a, _s) = S.runState comp init0 in a
+runDI :: DI a -> DIState -> (a, [Message])
+runDI comp init0 = let (a, s) = S.runState comp init0 in (a, reverse $ errors s)
 
 getClassEnv :: DI ClassEnv
 getClassEnv = S.gets theClassEnv
 
 getValueEnv :: DI ValueEnv
 getValueEnv = S.gets theValueEnv
+
+ok :: DI ()
+ok = return ()
+
+report :: Message -> DI ()
+report err = S.modify (\ s -> s { errors = err : errors s })
 
 -- ----------------------------------------------------------------------------
 -- the transformation functions
@@ -61,7 +67,7 @@ getValueEnv = S.gets theValueEnv
 -- inserts dictionary parameters (in function declarations and in expressions)
 insertDicts :: Module -> CompilerEnv -> (Module, [Message])
 insertDicts mdl cEnv = 
-  (runDI (diModule mdl) (initState (classEnv cEnv) (valueEnv cEnv)), [])
+  runDI (diModule mdl) (initState (classEnv cEnv) (valueEnv cEnv))
 
 -- |convert a whole module
 diModule :: Module -> DI Module
