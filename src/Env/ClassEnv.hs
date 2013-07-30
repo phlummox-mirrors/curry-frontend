@@ -30,6 +30,7 @@ module Env.ClassEnv (
   , nonHiddenClassEnv, instanceImportedFrom
   -- ** functions for modifying the class environment
   , bindClass, bindClassMethods
+  , importInstance
   -- ** pretty printing
   , ppClass, ppInst
   -- * type classes related functionality 
@@ -308,6 +309,18 @@ localInst i = (Local, i)
 -- |makes an instance an imported instance
 importedInst :: ModuleIdent -> Instance -> (Source, Instance)
 importedInst m i = (Imported m, i)
+
+-- |imports an instance into the instance environment, considering
+-- that the same instance can be imported from various paths
+importInstance :: ModuleIdent -> Instance -> [(Source, Instance)] -> [(Source, Instance)]
+importInstance m i@(Instance origin' _ cls' ty' _ _) insts = 
+  if findInstance then insts
+  else (Imported m, i) : insts -- TODO: add mutliple import modules?
+  where
+  findInstance :: Bool
+  findInstance  = 
+    not . null $ filter (\(_, Instance origin'' _ cls'' ty'' _ _) -> 
+      origin' == origin'' && cls' == cls'' && ty' == ty'') insts 
 
 -- |returns where the instance for the given class and type
 -- is imported from (or Nothing if it's a local instance)
