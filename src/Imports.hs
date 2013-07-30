@@ -730,7 +730,8 @@ importInterfaceIntf i@(Interface m _ _) env = env
   , tyConsEnv = importEntities m True (const True) id mTCEnv $ tyConsEnv env
   , valueEnv  = importEntities m True (const True) id mTyEnv $ valueEnv  env
   , classEnv  = (classEnv env) { 
-      theClasses = importEntities m True (const True) id mClsEnv' $ theClasses $ classEnv env
+      theClasses = importEntities m True (const True) id mClsEnv' $ theClasses $ classEnv env, 
+      theInstances = foldr (importInstance m) (theInstances $ classEnv env) mInstances
     }  
   }
   where
@@ -743,6 +744,7 @@ importInterfaceIntf i@(Interface m _ _) env = env
   -- and type constructor environment. 
   mClsEnv' = Map.map (buildTypeSchemes False (mkMIdent []) initTCEnv . setHidden False) mClsEnv
 
+  (mInstances, _deps) = loadInstances i
 -- ---------------------------------------------------------------------------
 -- Record stuff
 -- ---------------------------------------------------------------------------
