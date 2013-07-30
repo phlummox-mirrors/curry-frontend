@@ -202,11 +202,11 @@ checkModule opts (envNonTc, envTc, mdl) = do
   (envEc1', ec1') <- if withTypeCheck
                      then return $ qual opts envEc1 ec1
                      else return (envEc1, ec1)
-  let (env5b,  dicts) = if withTypeCheck
-                          -- then insertDicts env5 tc
-                          then dump DumpTypeChecked env5 insertDicts (env5, tc)
-                          else (env5, tc)
-      (env5c, dicts') = if withTypeCheck
+  (env5b,  dicts) <- if withTypeCheck
+                     -- then insertDicts env5 tc
+                     then dump DumpTypeChecked env5 insertDicts (env5, tc)
+                     else return (env5, tc)
+  let (env5c, dicts') = if withTypeCheck
                           then typeSigs env5b dicts
                           else (env5b, dicts)
       (env5d,     es) = if withTypeCheck

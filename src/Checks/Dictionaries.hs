@@ -9,7 +9,9 @@
     Portability :  portable
 
     The main function of this module transforms the abstract syntax tree by
-    adding dictionary parameters where necessary. 
+    adding dictionary parameters where necessary. This is actually not a
+    check, but a transformation - but it can produce errors, so we include
+    it as a check. 
 -}
 
 module Checks.Dictionaries (insertDicts) where
@@ -57,9 +59,9 @@ getValueEnv = S.gets theValueEnv
 
 -- |The main function of this module. It descends into the syntax tree and
 -- inserts dictionary parameters (in function declarations and in expressions)
-insertDicts :: Module -> CompilerEnv -> Module
+insertDicts :: Module -> CompilerEnv -> (Module, [Message])
 insertDicts mdl cEnv = 
-  runDI (diModule mdl) (initState (classEnv cEnv) (valueEnv cEnv))
+  (runDI (diModule mdl) (initState (classEnv cEnv) (valueEnv cEnv)), [])
 
 -- |convert a whole module
 diModule :: Module -> DI Module

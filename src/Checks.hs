@@ -124,8 +124,11 @@ typeClassesCheck env (Module m es is ds)
   | otherwise = CheckFailed msgs
   where (decls', clsEnv, msgs) = TCC.typeClassesCheck m ds (classEnv env) (tyConsEnv env)
 
--- |Insert dictionaries where necessary
-insertDicts :: CompilerEnv -> Module -> (CompilerEnv, Module)
-insertDicts cEnv m = (cEnv, m')
-  where m' = DI.insertDicts m cEnv
+-- |Insert dictionaries where necessary. This is actually not a check, but a
+-- transformation - but as it can produce errors, it is treated as a check  
+insertDicts :: CompilerEnv -> Module -> CheckResult (CompilerEnv, Module)
+insertDicts cEnv m 
+  | null msgs = CheckSuccess (cEnv, m')
+  | otherwise = CheckFailed msgs
+  where (m', msgs) = DI.insertDicts m cEnv
   
