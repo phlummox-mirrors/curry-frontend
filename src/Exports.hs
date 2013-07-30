@@ -69,16 +69,17 @@ exportInterface' (Module m (Just (Exporting _ es)) _ _) tcs pEnv tcEnv tyEnv cEn
   precs   = foldr (infixDecl m pEnv) [] es
   hidden0  = map   (hiddenTypeDecl m tcEnv) $ hiddenTypes m allDecls
   decls   = foldr (typeDecl tcs m tcEnv cEnv) (foldr (funDecl m tyEnv) [] es) es
-  instances = map (instanceToIDecl m cEnv) $ getLocalInstances cEnv
+  instances = nub $ map (instanceToIDecl m cEnv) $ 
+    concatMap (getClassAndSuperClassInstances cEnv) $ getAllInstances cEnv
   hiddenClasses = map (toHiddenClassDecl m cEnv) $ 
     nub dependencies \\ nub exportedClasses'
-  dependencies = calculateDependencies cEnv (getLocalInstances cEnv) exportedClasses'
+  dependencies = calculateDependencies cEnv (getAllInstances cEnv) exportedClasses'
   exportedClasses' = exportedClasses cEnv es
   allDecls = if tcs 
     then nub $ decls ++ dictDecls ++ instances ++ hiddenClasses ++ classElemDecls
     else nub $ decls ++ dictDecls ++ instances ++ classElemDecls ++ exportedClasses''
-  dictionaries = map (Export . qualifyWith m . mkIdent . dictName) $ 
-    getLocalInstances cEnv
+  dictionaries = map Export $ nub $ concatMap (getClassAndSuperClassDicts cEnv) $ 
+    getAllInstances cEnv
   dictDecls = foldr (funDecl m tyEnv) [] dictionaries
   allClasses0 = nub $ exportedClasses' ++ dependencies
   dictTypes0 = exportsForDictTypes allClasses0
@@ -95,12 +96,6 @@ exportInterface' (Module m (Just (Exporting _ es)) _ _) tcs pEnv tcEnv tyEnv cEn
          fromJust . lookupClass cEnv) exportedClasses' 
 exportInterface' (Module _ Nothing _ _) _ _ _ _ _
   = internalError "Exports.exportInterface: no export specification"
-
-isLocal :: ModuleIdent -> QualIdent -> Bool
-isLocal m qid = not (isQualified qid) || fromJust (qidModule qid) == m
-
-dictName :: Instance -> String
-dictName i = mkDictName (show $ iClass i) (show $ iType i)
 
 infixDecl :: ModuleIdent -> OpPrecEnv -> Export -> [IDecl] -> [IDecl]
 infixDecl m pEnv (Export             f) ds = iInfixDecl m pEnv f ds
@@ -196,10 +191,36 @@ instanceToIDecl m cEnv i@(Instance origin' cx cls ty tyvars _) =
     (if m == origin' then Nothing else Just origin')
     (map unqualifyContextElem cx) (qualUnqualify m cls)
     (toTypeConstructor $ qualUnqualify m ty) tyvars
-    ((map (qualUnqualify m) $ filter (isLocal m) $ classesFromInstances cEnv [i])
-     ++ [qualify $ mkIdent $ dictName i]) 
+    (map (qualUnqualify m) (classDeps ++ 
+      concatMap (depsForClass cEnv) classDeps ++ dicts)) 
   where
   unqualifyContextElem (qid, id0) = (qualUnqualify m qid, id0)
+  classDeps = classesFromInstances cEnv [i]
+  -- we depend also on dictionaries for superclasses and the instance type
+  dicts = getClassAndSuperClassDicts cEnv i
+  
+-- |returns all dictionaries for the given instance (i.e., for the instance
+-- itself and for superclasses and the instance type)
+getClassAndSuperClassDicts :: ClassEnv -> Instance -> [QualIdent]
+getClassAndSuperClassDicts cEnv i = map dictNameForInstance insts
+  where
+  insts = getClassAndSuperClassInstances cEnv i
+
+-- |returns the dictionary name for the given instance
+dictNameForInstance :: Instance -> QualIdent
+dictNameForInstance (Instance origin' _ cls ty _ _) = 
+  qualifyWith origin' $ mkIdent $ mkDictName (show cls) (show ty)
+
+
+-- |returns the following instances: 
+-- * the instance that is passed to the function
+-- * the instances for all superclasses and the type of the instance passed to
+-- the function
+getClassAndSuperClassInstances :: ClassEnv -> Instance -> [Instance]
+getClassAndSuperClassInstances cEnv (Instance _ _ cls ty _ _) =
+  map fromJust $ zipWith (getInstance cEnv) (cls:scs) (repeat ty) 
+  where
+  scs = allSuperClasses cEnv cls
 
 -- The compiler determines the list of imported modules from the set of
 -- module qualifiers that are used in the interface. Careful readers
