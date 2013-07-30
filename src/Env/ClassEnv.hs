@@ -110,7 +110,8 @@ instance Entity Class where
   origName = theClass
   merge c1 c2 = 
     if theClass c1 == theClass c2
-    then Just $ c1 { publicMethods = nub $ publicMethods c1 ++ publicMethods c2 }
+    then Just $ c1 { publicMethods = nub $ publicMethods c1 ++ publicMethods c2
+                   , hidden = hidden c1 && hidden c2 }
     else Nothing
 
 -- ----------------------------------------------------------------------------
