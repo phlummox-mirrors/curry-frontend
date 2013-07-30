@@ -49,7 +49,7 @@ interfaceCheck env intf
   | null errs = return ()
   | otherwise = CheckFailed errs
   where errs = IC.interfaceCheck (opPrecEnv env) (tyConsEnv env)
-                                 (valueEnv env) intf
+                                 (valueEnv env) (classEnv env) intf
 
 -- |Check the kinds of type definitions and signatures.
 --

@@ -63,12 +63,14 @@ interface module only. However, this has not been implemented yet.
 > import Env.OpPrec
 > import Env.TypeConstructor
 > import Env.Value
+> import Env.ClassEnv as CE
 
 > data ICState = ICState
 >   { moduleIdent :: ModuleIdent
 >   , precEnv     :: OpPrecEnv
 >   , tyConsEnv   :: TCEnv
 >   , valueEnv    :: ValueEnv
+>   , classEnv    :: ClassEnv
 >   , errors      :: [Message]
 >   }
 
@@ -86,6 +88,9 @@ interface module only. However, this has not been implemented yet.
 > getValueEnv :: IC ValueEnv
 > getValueEnv = S.gets valueEnv
 
+> getClassEnv :: IC ClassEnv
+> getClassEnv = S.gets classEnv
+
 > -- |Report a syntax error
 > report :: Message -> IC ()
 > report msg = S.modify $ \ s -> s { errors = msg : errors s }
@@ -93,9 +98,9 @@ interface module only. However, this has not been implemented yet.
 > ok :: IC ()
 > ok = return ()
 
-> interfaceCheck :: OpPrecEnv -> TCEnv -> ValueEnv -> Interface -> [Message]
-> interfaceCheck pEnv tcEnv tyEnv (Interface m _ ds) = reverse (errors s)
->   where s = S.execState (mapM_ checkImport ds) (ICState m pEnv tcEnv tyEnv [])
+> interfaceCheck :: OpPrecEnv -> TCEnv -> ValueEnv -> ClassEnv -> Interface -> [Message]
+> interfaceCheck pEnv tcEnv tyEnv cEnv (Interface m _ ds) = reverse (errors s)
+>   where s = S.execState (mapM_ checkImport ds) (ICState m pEnv tcEnv tyEnv cEnv [])
 
 > checkImport :: IDecl -> IC ()
 > checkImport (IInfixDecl p fix pr op) = checkPrecInfo check p op
