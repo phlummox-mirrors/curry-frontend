@@ -98,7 +98,10 @@ for file in TestClassExports TestClassExports2 TestClassExportsImports \
   ClassMethodsImportBug ClassMethodsImportBug2 \
   ClassHierarchy ClassHierarchy2 ClassHierarchy3 ClassHierarchy4 \
   ModulesExportInstances ModulesExportInstancesModuleExport ModulesExportInstancesModuleExport2 \
-  DiamondInsts1 DiamondInsts2 DiamondInsts3 DiamondInsts4
+  DiamondInsts1 DiamondInsts2 DiamondInsts3 DiamondInsts4 \
+  InstancesHierarchy1 InstancesHierarchy2 InstancesHierarchy3 \
+  InstancesHierarchy1b InstancesHierarchy2b InstancesHierarchy3b InstancesHierarchy4b \
+  InstancesHierarchy1c InstancesHierarchy2c InstancesHierarchy3c InstancesHierarchy4c
 do
   echo $file >> tmp.txt
   $cymake -f -i typeclasses/modules typeclasses/modules/$file.curry 2> stderr.txt 1> stdout.txt || (echo "===================="; echo "| Error in $file.curry:" ; echo "===================="; cat stdout.txt; cat stderr.txt; echo)
