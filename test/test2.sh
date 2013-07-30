@@ -101,7 +101,8 @@ for file in TestClassExports TestClassExports2 TestClassExportsImports \
   DiamondInsts1 DiamondInsts2 DiamondInsts3 DiamondInsts4 \
   InstancesHierarchy1 InstancesHierarchy2 InstancesHierarchy3 \
   InstancesHierarchy1b InstancesHierarchy2b InstancesHierarchy3b InstancesHierarchy4b \
-  InstancesHierarchy1c InstancesHierarchy2c InstancesHierarchy3c InstancesHierarchy4c
+  InstancesHierarchy1c InstancesHierarchy2c InstancesHierarchy3c InstancesHierarchy4c \
+  OverlappingInstances0 OverlappingInstances1 OverlappingInstances2 OverlappingInstancesUse
 do
   echo $file >> tmp.txt
   $cymake -f -i typeclasses/modules typeclasses/modules/$file.curry 2> stderr.txt 1> stdout.txt || (echo "===================="; echo "| Error in $file.curry:" ; echo "===================="; cat stdout.txt; cat stderr.txt; echo)
@@ -113,7 +114,7 @@ for file in ClassExportErrors ClassExportImportErrors ClassMethodsExportErr1 Cla
   ExportNonHiddenUseErr HidingClassesUseErrs RedefineClassesError SyntaxCheckUseErr \
   OverlappingClassMethodsUse1Err OverlappingClassMethodsUse3Err \
   RedefineClassesBug2Err ModuleExport4ImportErr HiddenClasses2Err HiddenClasses3Err \
-  AmbigClassExportUseErr ConflictHiddenUseErr
+  AmbigClassExportUseErr ConflictHiddenUseErr OverlappingInstancesUseErr
 do
   echo $file >> tmp.txt
   $cymake -f -i typeclasses/modules typeclasses/modules/$file.curry 2> stderr.txt 1> stdout.txt && (echo "===================="; echo "| No error in $file.curry:" ; echo "===================="; cat stdout.txt; cat stderr.txt; echo)
