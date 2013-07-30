@@ -23,7 +23,6 @@ import Env.TypeConstructor
 import Transformations.CaseCompletion as CC (completeCase)
 import Transformations.CurryToIL      as IL (ilTrans, transType)
 import Transformations.Desugar        as DS (desugar)
-import Transformations.Dictionaries   as DI (insertDicts)
 import Transformations.TypeSigs       as TS (transformTypeSigs)
 import Transformations.Lift           as L  (lift)
 import Transformations.Qual           as Q  (qual)
@@ -67,11 +66,6 @@ qual opts env (Module m es is ds) = (qualifyEnv opts env, Module m es is ds')
 simplify :: Bool -> Module -> CompilerEnv -> (Module, CompilerEnv)
 simplify flat mdl env = (mdl', env { valueEnv = tyEnv' })
   where (mdl', tyEnv') = S.simplify flat (valueEnv env) mdl
-
--- |Insert dictionaries where necessary
-insertDicts :: CompilerEnv -> Module -> (CompilerEnv, Module)
-insertDicts cEnv m = (cEnv, m')
-  where m' = DI.insertDicts m cEnv
 
 -- |Removes all contexts in the explicit type signatures, so that the resulting
 -- program is free of type class elements

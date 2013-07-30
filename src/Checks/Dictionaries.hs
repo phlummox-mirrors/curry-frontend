@@ -12,7 +12,7 @@
     adding dictionary parameters where necessary. 
 -}
 
-module Transformations.Dictionaries (insertDicts) where
+module Checks.Dictionaries (insertDicts) where
 
 import Curry.Base.Ident
 import CompilerEnv

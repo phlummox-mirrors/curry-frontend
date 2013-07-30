@@ -53,6 +53,7 @@ Executable cymake
     , Base.Typing
     , Base.Utils
     , Checks
+    , Checks.Dictionaries
     , Checks.ExportCheck
     , Checks.InterfaceCheck
     , Checks.InterfaceSyntaxCheck
@@ -92,7 +93,6 @@ Executable cymake
     , Transformations.CaseCompletion
     , Transformations.CurryToIL
     , Transformations.Desugar
-    , Transformations.Dictionaries
     , Transformations.ExportSpec
     , Transformations.Lift
     , Transformations.Qual
@@ -142,6 +142,7 @@ Test-Suite TestTypeChecking
      , Base.Typing
      , Base.Utils
      , Checks
+     , Checks.Dictionaries
      , Checks.ExportCheck
      , Checks.InterfaceCheck
      , Checks.InterfaceSyntaxCheck
@@ -181,7 +182,6 @@ Test-Suite TestTypeChecking
      , Transformations.CaseCompletion
      , Transformations.CurryToIL
      , Transformations.Desugar
-     , Transformations.Dictionaries
      , Transformations.ExportSpec
      , Transformations.Lift
      , Transformations.Qual

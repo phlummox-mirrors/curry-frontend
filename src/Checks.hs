@@ -25,6 +25,7 @@ import qualified Checks.SyntaxCheck      as SC (syntaxCheck)
 import qualified Checks.TypeCheck        as TC (typeCheck)
 import qualified Checks.WarnCheck        as WC (warnCheck)
 import qualified Checks.TypeClassesCheck as TCC (typeClassesCheck)
+import qualified Checks.Dictionaries     as DI (insertDicts)
 
 import CompilerEnv
 import CompilerOpts
@@ -123,4 +124,8 @@ typeClassesCheck env (Module m es is ds)
   | otherwise = CheckFailed msgs
   where (decls', clsEnv, msgs) = TCC.typeClassesCheck m ds (classEnv env) (tyConsEnv env)
 
-
+-- |Insert dictionaries where necessary
+insertDicts :: CompilerEnv -> Module -> (CompilerEnv, Module)
+insertDicts cEnv m = (cEnv, m')
+  where m' = DI.insertDicts m cEnv
+  
