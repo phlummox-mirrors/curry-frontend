@@ -169,8 +169,18 @@ interface module only. However, this has not been implemented yet.
 >   tySchemeEq :: (Ident, TypeScheme) -> (Ident, TypeScheme) -> Bool
 >   tySchemeEq (i, tsc) (i', tsc') = i == i' 
 >     && typeSchemeToType tsc == typeSchemeToType tsc'
->   
-> checkImport (IInstanceDecl _ _ _ _ _ _ _) = ok
+> checkImport (IInstanceDecl _ Nothing _ _ _ _ _) = ok
+> checkImport (IInstanceDecl p (Just m) cx cls ty tyvars _) = do
+>   cEnv <- getClassEnv
+>   let ty' = specialTyConToQualIdent ty
+>   -- TODO: handle overlapping instances correctly 
+>   let inst = getInstance cEnv cls ty'
+>   case inst of
+>     Nothing -> report $ errInstNotExported p "instance" m (unqualify cls) (unqualify ty')
+>     Just i -> do
+>       unless (origin i == m && context i == cx
+>         && iClass i == cls && iType i == ty' && CE.typeVars i == tyvars) $
+>         report $ errInstImportConflict p "instance" m (unqualify cls) (unqualify ty')
 > checkImport (IHidingClassDecl p cx cls tyvar ds defs) = 
 >   checkImport (IClassDecl p cx cls tyvar (map (\x -> (True, x)) ds) defs [])
 
@@ -258,6 +268,13 @@ Error messages.
 >   $+$ text "Module" <+> text (moduleName m)
 >   <+> text "does not export"<+> text what <+> text (escName x)
 
+> errInstNotExported :: Position -> String -> ModuleIdent -> Ident -> Ident -> Message
+> errInstNotExported p what m x y = posMessage p $
+>   text "Inconsistent module interfaces"
+>   $+$ text "Module" <+> text (moduleName m)
+>   <+> text "does not export" <+> text what <+> text "for" 
+>   <+> text (escName x) <+> text "and" <+> text (escName y)  
+
 > errNoPrecedence :: Position -> ModuleIdent -> Ident -> Message
 > errNoPrecedence p m x = posMessage p $
 >   text "Inconsistent module interfaces"
@@ -268,6 +285,13 @@ Error messages.
 > errImportConflict p what m x = posMessage p $
 >   text "Inconsistent module interfaces"
 >   $+$ text "Declaration of" <+> text what <+> text (escName x)
+>   <+> text "does not match its definition in module" <+> text (moduleName m)
+
+> errInstImportConflict :: Position -> String -> ModuleIdent -> Ident -> Ident -> Message
+> errInstImportConflict p what m x y = posMessage p $
+>   text "Inconsistent module interfaces"
+>   $+$ text "Declaration of" <+> text what <+> text "for" <+> text (escName x)
+>   <+> text "and" <+> text (escName y)
 >   <+> text "does not match its definition in module" <+> text (moduleName m)
 
 \end{verbatim}
