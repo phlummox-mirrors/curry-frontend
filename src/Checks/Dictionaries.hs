@@ -19,6 +19,7 @@ module Checks.Dictionaries (insertDicts) where
 import Curry.Base.Ident
 import CompilerEnv
 import Curry.Syntax
+import Curry.Base.Position
 import Env.ClassEnv hiding (isClassMethod)
 import Env.Value
 import Base.Names (mkSelFunName, mkDictName)
@@ -26,6 +27,7 @@ import Base.Messages
 import Base.Utils
 import Base.Types as BT
 
+import Text.PrettyPrint hiding (sep)
 import Data.Maybe
 import Control.Monad.State as S
 
@@ -139,6 +141,7 @@ diLhs cx a@(ApLhs _ _) =
 diExpr :: BT.Context -> Expression -> DI Expression
 diExpr _ e@(Literal _) = return e
 diExpr cx0 v@(Variable (Just varCty0) qid) = do 
+  checkForAmbiguousInstances (qidPosition qid) (mirrorBFCx $ fst varCty0)
   codes <- abstrCode
   cEnv <- getClassEnv
   let code = foldl Apply (var'' cEnv) codes
@@ -246,6 +249,27 @@ concreteCode (BuildDict (cls,ty) ops) =
   ty' = if not $ isCons ty then internalError "concreteCode"
         else fst $ fromJust $ splitType ty 
 
+-- |looks whether there are context elements for which exist more than one
+-- possible instance that could be applied
+checkForAmbiguousInstances :: Position -> BT.Context -> DI ()
+checkForAmbiguousInstances p = mapM_ check
+  where
+  check :: (QualIdent, Type) -> DI ()
+  check (_cls, TypeVariable _) = ok
+  check (cls,  TypeConstructor ty _) = do
+    cEnv <- getClassEnv
+    let insts = getInstances cEnv cls ty
+    case insts of
+      [] -> report $ errNoInstance p cls ty
+      [_] -> ok
+      (_:_:_) -> report $ errAmbiguousInstance p cls ty
+  check (cls,  TypeConstrained (t:_) _) = check (cls, t)
+  check (_cls, TypeConstrained [] _) = internalError "typeconstrained empty"
+  check (cls,  TypeArrow _ty1 _ty2) = check (cls, TypeConstructor qArrowIdP [])
+  check (_cls, TypeSkolem _) = internalError "typeSklolem"
+  check (_cls, TypeRecord _ _) = internalError "typerecord"
+      
+
 
 var :: String -> Expression
 var = Variable Nothing . qualify . mkIdent
@@ -268,3 +292,19 @@ prelFlip = Variable (Just $ mirrorFBCT tySchemeFlip) $ preludeIdent "flip"
 
 preludeIdent :: String -> QualIdent
 preludeIdent = qualifyWith preludeMIdent . mkIdent
+
+-- ---------------------------------------------------------------------------
+-- error messages
+-- ---------------------------------------------------------------------------
+
+errNoInstance :: Position -> QualIdent -> QualIdent -> Message
+errNoInstance p cls ty = posMessage p $ 
+  text "No instance for the class" <+> text (show cls) <+> text "and the type"
+  <+> text (show ty)  
+
+errAmbiguousInstance :: Position -> QualIdent -> QualIdent -> Message
+errAmbiguousInstance p cls ty = posMessage p $ 
+  text "Ambiguous instance use: " $$ 
+  text "More than one instance applicable for the class" <+> 
+  text (show cls) <+> text "and the type" <+> text (show ty)
+
