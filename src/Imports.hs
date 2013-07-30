@@ -740,6 +740,7 @@ importInterfaceIntf i@(Interface m _ _) env = env
   mTyEnv = intfEnv bindTy       i -- all values
   mClsEnv = intfEnv (bindCls True) i -- all classes
   -- It shouldn't be wrong to always set the hidden flag to false. 
+  -- The type schemes might get lost, so we have to recompute them. 
   -- As we don't expand the type scheme, we can pass an empty module name
   -- and type constructor environment. 
   mClsEnv' = Map.map (buildTypeSchemes False (mkMIdent []) initTCEnv . setHidden False) mClsEnv
