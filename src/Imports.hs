@@ -32,6 +32,7 @@ import Base.Messages (Message, posMessage, internalError)
 import Base.TopEnv
 import Base.Types as BT hiding (isCons)
 import Base.TypeSubst (expandAliasType)
+import Base.Utils (fromJust') 
 
 import Env.Interface
 import Env.ModuleAlias (importAliases, initAliasEnv)
@@ -93,11 +94,14 @@ importInterfaces opts (Interface m is _) iEnv
 -- are qualified appropriately. The same is true for type expressions.
 
 type IdentMap    = Map.Map Ident
+type QIdentMap   = Map.Map QualIdent
 
 type ExpPEnv     = IdentMap PrecInfo
 type ExpTCEnv    = IdentMap TypeInfo
 type ExpValueEnv = IdentMap ValueInfo
-type ExpClassEnv = IdentMap Class
+type ExpClassEnv = QIdentMap Class
+type ExpClassEnv' = IdentMap Class
+type ExpIdentMap = IdentMap QualIdent
 
 -- When an interface is imported, the compiler first transforms the
 -- interface into these environments. If an import specification is
@@ -118,7 +122,7 @@ importInterface tcs m q is i env = (env'', errs)
     , classEnv  = 
       if tcs
       then (classEnv env) {
-          theClasses = importEntities m q cs setPublicMethods mClsEnv' $ 
+          theClasses = importEntities' m q cs setPublicMethods mClsEnv' $ 
             theClasses $ classEnv env, 
           theInstances = foldr (importInstance m) (theInstances $ classEnv env) mInstances
         }
@@ -130,18 +134,25 @@ importInterface tcs m q is i env = (env'', errs)
   mClsEnv         = intfEnv (bindCls True)  i -- all classes
   mExportedClsEnv = intfEnv (bindCls False) i -- all exported classes 
                                               -- (i.e., not hidden in the interface)
+  mExportedClsEnv' = intfEnv (bindCls' False) i
   (mInstances, depsInstances) = loadInstances i
   -- all imported type constructors / values
-  (expandedSpec, errs) = runExpand (expandSpecs is) m mTCEnv mTyEnv mExportedClsEnv
+  (expandedSpec, errs) = runExpand (expandSpecs is) m mTCEnv mTyEnv mExportedClsEnv'
   ts = isVisible is (Set.fromList $ foldr addType  [] expandedSpec)
   vs = isVisible is (Set.fromList $ foldr addValue [] expandedSpec)
   
   -- class specific importing (considering dependencies!)
+  identMap = intfEnv (bindIdentMap False) i
+  
   allExportedClasses = Map.keys mExportedClsEnv
   classesInImportSpec = 
     if isImportingAll is
     then allExportedClasses
-    else nub $ classesInImportSpec' mExportedClsEnv expandedSpec
+    -- lookup for each class in the import specification the name under
+    -- which it appears in the interface
+    -- TODO: is fromJust here safe?
+    else nub $ map (fromJust' "Imports" . flip Map.lookup identMap) $ 
+      classesInImportSpec' mExportedClsEnv' expandedSpec
   imported = 
     if isImporting is
     then classesInImportSpec
@@ -189,7 +200,7 @@ importInterface tcs m q is i env = (env'', errs)
     , valueEnv = importEntities m False ts' id mTyEnv $ valueEnv env'
     }
   
-  ts' = (`elem` deps)
+  ts' = (`elem` map unqualify deps)
       
 -- |sets the hidden flag in the given class to true or false
 setHidden :: Bool -> Class -> Class
@@ -225,6 +236,14 @@ importEntities m q isVisible' f mEnv env =
   foldr (uncurry (if q then qualImportTopEnv m else importUnqual m)) env
         [(x,f y) | (x,y) <- Map.toList mEnv, isVisible' x]
   where importUnqual m' x y = importTopEnv m' x y . qualImportTopEnv m' x y
+  
+-- |nearly the same as importEntities, only for QualIdents instead of Idents
+importEntities' :: Entity a => ModuleIdent -> Bool -> (QualIdent -> Bool)
+               -> (a -> a) -> QIdentMap a -> TopEnv a -> TopEnv a
+importEntities' m q isVisible' f mEnv env =
+  foldr (uncurry (if q then qualImportTopEnv m else importUnqual m)) env
+        [(x',f y) | (x,y) <- Map.toList mEnv, let x' = unqualify x, isVisible' x]
+  where importUnqual m' x y = importTopEnv m' x y . qualImportTopEnv m' x y
 
 importData :: (Ident -> Bool) -> TypeInfo -> TypeInfo
 importData isVisible' (DataType tc n cs) =
@@ -247,8 +266,8 @@ importConstr isVisible' dc@(DataConstr c _ _)
 -- all entities defined in (but not imported into) the interface with its
 -- module name.
 
-intfEnv :: (ModuleIdent -> IDecl -> IdentMap a -> IdentMap a)
-        -> Interface -> IdentMap a
+intfEnv :: (ModuleIdent -> IDecl -> Map.Map m a -> Map.Map m a)
+        -> Interface -> Map.Map m a
 intfEnv bind (Interface m _ ds) = foldr (bind m) Map.empty ds
 
 -- operator precedences
@@ -343,13 +362,35 @@ constrType tc tvs = ConstructorType tc $ map VariableType tvs
 -- classes not hidden in the interface
 bindCls :: Bool -> ModuleIdent -> IDecl -> ExpClassEnv -> ExpClassEnv
 bindCls _allClasses m (IClassDecl _ scx cls tyvar ds defs _deps) env =
-  Map.insert (unqualify cls) (mkClass m scx cls tyvar ds defs) env
+  Map.insert cls (mkClass m scx cls tyvar ds defs) env
 bindCls allClasses0 m (IHidingClassDecl _ scx cls tyvar ds defs) env =
   if allClasses0
-  then Map.insert (unqualify cls) 
+  then Map.insert cls
                   (mkClass m scx cls tyvar (map (\d -> (False, d)) ds) defs) env
   else env
 bindCls _ _ _ env = env
+
+-- |compute map that maps identifiers to the qualified identifiers under which
+-- they appear in the interface
+bindIdentMap :: Bool -> ModuleIdent -> IDecl -> ExpIdentMap -> ExpIdentMap
+bindIdentMap _allClasses _m (IClassDecl _ _ cls _ _ _ _) env =
+  Map.insert (unqualify cls) cls env
+bindIdentMap allClasses0 _m (IHidingClassDecl _ _ cls _ _ _) env =
+  if allClasses0
+  then Map.insert (unqualify cls) cls env
+  else env
+bindIdentMap _ _ _ env = env
+
+-- |the same as bindCls', only that it uses a IdentMap instead of a QIdentMap
+bindCls' :: Bool -> ModuleIdent -> IDecl -> ExpClassEnv' -> ExpClassEnv'
+bindCls' _allClasses m (IClassDecl _ scx cls tyvar ds defs _deps) env =
+  Map.insert (unqualify cls) (mkClass m scx cls tyvar ds defs) env
+bindCls' allClasses0 m (IHidingClassDecl _ scx cls tyvar ds defs) env =
+  if allClasses0
+  then Map.insert (unqualify cls)
+                  (mkClass m scx cls tyvar (map (\d -> (False, d)) ds) defs) env
+  else env
+bindCls' _ _ _ env = env
 
 -- |construct a class from an "IClassDecl" or "IHidingClassDecl"
 mkClass :: ModuleIdent -> [QualIdent] -> QualIdent -> Ident -> [(Bool, IDecl)] 
@@ -381,23 +422,23 @@ iFunDeclToMethod m (IFunctionDecl _ f _a cx te)
 iFunDeclToMethod _ _ = internalError "iFunDeclToMethod"
 
 -- |calculates dependecies of the given classes
-calcDependencies :: [Ident] -> Interface -> [Ident]
+calcDependencies :: [QualIdent] -> Interface -> [QualIdent]
 calcDependencies ids i = 
   concatMap (calcDeps i) ids
 
 -- | calculates the dependencies of one given class (by a simple lookup)
-calcDeps :: Interface -> Ident -> [Ident]
+calcDeps :: Interface -> QualIdent -> [QualIdent]
 calcDeps i cls =  
   case lookupClassIDecl cls i of
-    Just (IClassDecl _ _ _ _ _ _ deps) -> map unqualify deps
+    Just (IClassDecl _ _ _ _ _ _ deps) -> deps
     _ -> []
 
 -- |Looks up (if present) an interface class declaration. This is needed
 -- for calculating the dependencies of a given class
-lookupClassIDecl :: Ident -> Interface -> Maybe IDecl
+lookupClassIDecl :: QualIdent -> Interface -> Maybe IDecl
 lookupClassIDecl cls (Interface _ _ decls) = list2Maybe $ catMaybes $ map lookupClassIDecl' decls
   where
-  lookupClassIDecl' i@(IClassDecl   _ _ cls' _ _ _ _) | cls == unqualify cls' = Just i
+  lookupClassIDecl' i@(IClassDecl   _ _ cls' _ _ _ _) | cls == cls' = Just i
   -- lookupClassIDecl' i@(IHidingClassDecl _ _ cls' _ _) | cls == unqualify cls' = Just i
   lookupClassIDecl' _ = Nothing
   list2Maybe [] = Nothing
@@ -405,7 +446,7 @@ lookupClassIDecl cls (Interface _ _ decls) = list2Maybe $ catMaybes $ map lookup
   list2Maybe (_:_) = internalError "lookupClassIDecl"
 
 -- |returns all imported classes from the given import list
-classesInImportSpec' :: ExpClassEnv -> [Import] -> [Ident]
+classesInImportSpec' :: ExpClassEnv' -> [Import] -> [Ident]
 classesInImportSpec' cEnv = map importId . filter isClassImport
   where
   isClassImport :: Import -> Bool
@@ -418,12 +459,12 @@ classesInImportSpec' cEnv = map importId . filter isClassImport
 
 -- |load instances from interface and return the instances as well as the
 -- class dependencies of all instances
-loadInstances :: Interface -> ([Instance], [Ident])
+loadInstances :: Interface -> ([Instance], [QualIdent])
 loadInstances (Interface m _ ds) = foldr (bindInstance m) ([], []) ds
 
 -- |bind an instance into the environment that holds all instances and as well
 -- all classes the instances depend on
-bindInstance :: ModuleIdent -> IDecl -> ([Instance], [Ident]) -> ([Instance], [Ident])
+bindInstance :: ModuleIdent -> IDecl -> ([Instance], [QualIdent]) -> ([Instance], [QualIdent])
 bindInstance m (IInstanceDecl _ maybeOrigin scx cls ty tyvars ideps) (is, deps)
   = let inst = Instance {
           context = map (\(qid, id0) -> (qualQualify m qid, id0)) scx, 
@@ -433,7 +474,7 @@ bindInstance m (IInstanceDecl _ maybeOrigin scx cls ty tyvars ideps) (is, deps)
           rules = [], 
           origin = if isNothing maybeOrigin then m else fromJust maybeOrigin
         }
-    in (inst:is, deps ++ map unqualify ideps)
+    in (inst:is, deps ++ ideps)
 bindInstance _ _ iEnv = iEnv
 
 
@@ -473,7 +514,7 @@ data ExpandState = ExpandState
   { expModIdent :: ModuleIdent
   , expTCEnv    :: ExpTCEnv
   , expValueEnv :: ExpValueEnv
-  , expClassEnv :: ExpClassEnv
+  , expClassEnv :: ExpClassEnv'
   , errors      :: [Message]
   }
 
@@ -488,13 +529,13 @@ getTyConsEnv = S.gets expTCEnv
 getValueEnv :: ExpandM ExpValueEnv
 getValueEnv = S.gets expValueEnv
 
-getClassEnv :: ExpandM ExpClassEnv
+getClassEnv :: ExpandM ExpClassEnv'
 getClassEnv = S.gets expClassEnv
 
 report :: Message -> ExpandM ()
 report msg = S.modify $ \ s -> s { errors = msg : errors s }
 
-runExpand :: ExpandM a -> ModuleIdent -> ExpTCEnv -> ExpValueEnv -> ExpClassEnv -> (a, [Message])
+runExpand :: ExpandM a -> ModuleIdent -> ExpTCEnv -> ExpValueEnv -> ExpClassEnv' -> (a, [Message])
 runExpand expand m tcEnv tyEnv cEnv =
   let (r, s) = S.runState expand (ExpandState m tcEnv tyEnv cEnv [])
   in (r, reverse $ errors s)
@@ -730,7 +771,7 @@ importInterfaceIntf i@(Interface m _ _) env = env
   , tyConsEnv = importEntities m True (const True) id mTCEnv $ tyConsEnv env
   , valueEnv  = importEntities m True (const True) id mTyEnv $ valueEnv  env
   , classEnv  = (classEnv env) { 
-      theClasses = importEntities m True (const True) id mClsEnv' $ theClasses $ classEnv env, 
+      theClasses = importEntities' m True (const True) id mClsEnv' $ theClasses $ classEnv env, 
       theInstances = foldr (importInstance m) (theInstances $ classEnv env) mInstances
     }  
   }
