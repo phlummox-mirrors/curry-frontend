@@ -218,7 +218,7 @@ dictNameForInstance (Instance origin' _ cls ty _ _) =
 -- the function
 getClassAndSuperClassInstances :: ClassEnv -> Instance -> [Instance]
 getClassAndSuperClassInstances cEnv (Instance _ _ cls ty _ _) =
-  map fromJust $ zipWith (getInstance cEnv) (cls:scs) (repeat ty) 
+  concat $ zipWith (getInstances cEnv) (cls:scs) (repeat ty) 
   where
   scs = allSuperClasses cEnv cls
 
