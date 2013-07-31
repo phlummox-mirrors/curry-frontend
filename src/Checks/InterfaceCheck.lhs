@@ -173,8 +173,7 @@ interface module only. However, this has not been implemented yet.
 > checkImport (IInstanceDecl p (Just m) cx cls ty tyvars _) = do
 >   cEnv <- getClassEnv
 >   let ty' = specialTyConToQualIdent ty
->   -- TODO: handle overlapping instances correctly 
->   let inst = getInstance cEnv cls ty'
+>       inst = getInstanceWithOrigin cEnv m cls ty'
 >   case inst of
 >     Nothing -> report $ errInstNotExported p "instance" m (unqualify cls) (unqualify ty')
 >     Just i -> do
