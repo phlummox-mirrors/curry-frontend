@@ -28,7 +28,7 @@ module Env.ClassEnv (
   , lookupNonHiddenClass, allNonHiddenClassBindings, allClassBindings
   , lookupTypeScheme, lookupLocalClass
   , nonHiddenClassEnv, instanceImportedFrom
-  , getInstances
+  , getInstances, getInstanceWithOrigin
   -- ** functions for modifying the class environment
   , bindClass, bindClassMethods
   , importInstance
@@ -360,6 +360,12 @@ lookupTypeScheme cls f = listToMaybe $ map snd $ filter p (typeSchemes cls)
 getInstances :: ClassEnv -> QualIdent -> QualIdent -> [Instance]
 getInstances cEnv cls ty =
   filter (\i -> iClass i == cls && iType i == ty) (allInstances $ theInstances cEnv) 
+
+-- |returns the instance for the given class and type from the given module
+getInstanceWithOrigin :: ClassEnv -> ModuleIdent -> QualIdent -> QualIdent -> Maybe Instance
+getInstanceWithOrigin cEnv m cls ty = list2Maybe $ 
+  filter (\i -> origin i == m && iClass i == cls && iType i == ty) 
+    (allInstances $ theInstances cEnv)
 
 -- ----------------------------------------------------------------------------
 -- type classes related functionality
