@@ -102,7 +102,7 @@ for file in TestClassExports TestClassExports2 TestClassExportsImports \
   InstancesHierarchy1 InstancesHierarchy2 InstancesHierarchy3 \
   InstancesHierarchy1b InstancesHierarchy2b InstancesHierarchy3b InstancesHierarchy4b \
   InstancesHierarchy1c InstancesHierarchy2c InstancesHierarchy3c InstancesHierarchy4c \
-  OverlappingInstances0 OverlappingInstances1 OverlappingInstances2 OverlappingInstancesUse \
+  OverlappingInstances0 OverlappingInstances1 OverlappingInstances2 OverlappingInstancesUse OverlappingInstancesUse2 \
   OverlappingArrowInstances0 OverlappingArrowInstances1 OverlappingArrowInstances2 OverlappingArrowInstancesUse
 do
   echo $file >> tmp.txt
