@@ -105,7 +105,8 @@ for file in TestClassExports TestClassExports2 TestClassExportsImports \
   OverlappingInstances0 OverlappingInstances1 OverlappingInstances2 OverlappingInstancesUse OverlappingInstancesUse2 \
   OverlappingArrowInstances0 OverlappingArrowInstances1 OverlappingArrowInstances2 OverlappingArrowInstancesUse \
   DuplicateClasses1 DuplicateClasses2 DuplicateClassesUse DuplicateClassesUse2 DuplicateClassesUse3 \
-  DuplicateClassesUseB DuplicateClassesUseB2 DuplicateClassesUseB3
+  DuplicateClassesUseB DuplicateClassesUseB2 DuplicateClassesUseB3 \
+  DuplicateClassesD1 DuplicateClassesD2 DuplicateClassesD3 DuplicateClassesD4
 do
   echo $file >> tmp.txt
   $cymake -f -i typeclasses/modules typeclasses/modules/$file.curry 2> stderr.txt 1> stdout.txt || (echo "===================="; echo "| Error in $file.curry:" ; echo "===================="; cat stdout.txt; cat stderr.txt; echo)
