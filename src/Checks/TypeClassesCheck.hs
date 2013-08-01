@@ -30,7 +30,7 @@ import Curry.Base.Position
 import Curry.Syntax.Utils
 import Curry.Syntax.Pretty
 import Base.CurryTypes
-import Base.Types as BT (TypeScheme, polyType, constrainBy, Type (..), arrowArity
+import Base.Types as BT (TypeScheme (..), polyType, constrainBy, Type (..), arrowArity
                         , typeSchemeToType)
 import qualified Base.Types as BTC (Context) 
 import Base.SCC
@@ -1264,8 +1264,9 @@ buildSubst classTyvar ids n = map
 -- has always the index 0!
 buildTypeSchemes :: Bool -> ModuleIdent -> TCEnv -> Class -> Class
 buildTypeSchemes expand m tcEnv cls@(Class { theClass = tc, methods = ms, typeVar = classTypeVar }) 
-  = cls { typeSchemes = map buildTypeScheme ms }
+  = cls { typeSchemes = typeSchemes', methods = ms' }
   where 
+    typeSchemes' = map buildTypeScheme ms
     buildTypeScheme :: (Ident, ST.Context, TypeExpr) -> (Ident, TypeScheme)
     buildTypeScheme (id0, (Context cElems), typeExpr) =
       -- add also the class to the context!
@@ -1274,8 +1275,14 @@ buildTypeSchemes expand m tcEnv cls@(Class { theClass = tc, methods = ms, typeVa
       in (id0, polyType 
             (if expand then expandType m tcEnv theType else theType) 
             `constrainBy` translatedContext)
+    typeSchemeToMethod :: (Ident, TypeScheme) -> (Ident, Context, TypeExpr)
+    typeSchemeToMethod (m, ForAll cx _ ty) = 
+      (m, {-fromContext' [classTypeVar] cx-}emptyContext, fromType' [classTypeVar] ty)  
+    ms' = map typeSchemeToMethod typeSchemes'
 
-
+-- |translate the methods to typeschemes, not expanding the types. 
+buildTypeSchemesNoExpand :: Class -> Class
+buildTypeSchemesNoExpand = buildTypeSchemes False (mkMIdent []) initTCEnv
 
 -- ---------------------------------------------------------------------------
 -- various substitutions
