@@ -73,7 +73,7 @@ importInterfaces opts (Interface m is _) iEnv
   where
     initEnv = (initCompilerEnv m) { aliasEnv = initAliasEnv, interfaceEnv = iEnv }
     importModule env (IImportDecl _ i) = case Map.lookup i iEnv of
-        Just intf -> importInterfaceIntf intf env
+        Just intf -> importInterfaceIntf initClassEnv intf env
         Nothing   -> internalError $ "Imports.importInterfaces: no interface for "
                                     ++ show m
 
@@ -734,7 +734,7 @@ importUnifyData' tcEnv = fmap (setInfo allTyCons) tcEnv
 qualifyEnv :: Options -> CompilerEnv -> CompilerEnv
 qualifyEnv opts env = expandValueEnv opts
                     $ qualifyLocal env
-                    $ foldl (flip importInterfaceIntf) initEnv
+                    $ foldl (flip (importInterfaceIntf $ classEnv env)) initEnv
                     $ Map.elems
                     $ interfaceEnv env 
   where initEnv = initCompilerEnv $ moduleIdent env
@@ -765,8 +765,8 @@ qualifyLocal currentEnv initEnv = currentEnv
 -- are imported as well because they may be used in type expressions in
 -- an interface.
 
-importInterfaceIntf :: Interface -> CompilerEnv -> CompilerEnv
-importInterfaceIntf i@(Interface m _ _) env = env
+importInterfaceIntf :: ClassEnv -> Interface -> CompilerEnv -> CompilerEnv
+importInterfaceIntf cEnv i@(Interface m _ _) env = env
   { opPrecEnv = importEntities m True (const True) id mPEnv  $ opPrecEnv env
   , tyConsEnv = importEntities m True (const True) id mTCEnv $ tyConsEnv env
   , valueEnv  = importEntities m True (const True) id mTyEnv $ valueEnv  env
@@ -780,11 +780,20 @@ importInterfaceIntf i@(Interface m _ _) env = env
   mTCEnv = intfEnv bindTCHidden i -- all type constructors
   mTyEnv = intfEnv bindTy       i -- all values
   mClsEnv = intfEnv (bindCls True) i -- all classes
-  -- It shouldn't be wrong to always set the hidden flag to false. 
-  -- The type schemes might get lost, so we have to recompute them. 
+  -- The type schemes might get lost, so we have to recompute them. We
+  -- also have to set the hidden flags again, looking them up in the old 
+  -- class environment. 
   -- As we don't expand the type scheme, we can pass an empty module name
   -- and type constructor environment. 
-  mClsEnv' = Map.map (buildTypeSchemes False (mkMIdent []) initTCEnv . setHidden False) mClsEnv
+  mClsEnv' = Map.map (buildTypeSchemes False (mkMIdent []) initTCEnv . setHidden') mClsEnv
+  
+  canonClassMap' = canonClassMap cEnv
+  
+  -- we have to set the hidden flags again
+  setHidden' :: Class -> Class
+  setHidden' cls@(Class { theClass = cName}) = case Map.lookup cName canonClassMap' of
+    Nothing -> cls { hidden = False }
+    Just c -> cls { hidden = hidden c }
 
   (mInstances, _deps) = loadInstances i
 -- ---------------------------------------------------------------------------
