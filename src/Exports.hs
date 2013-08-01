@@ -68,16 +68,15 @@ exportInterface' (Module m (Just (Exporting _ es)) _ _) tcs pEnv tcEnv tyEnv cEn
   imports = map   (IImportDecl NoPos) $ usedModules allDecls
   precs   = foldr (infixDecl m pEnv) [] es
   hidden0  = map   (hiddenTypeDecl m tcEnv) $ hiddenTypes m allDecls
-  decls   = foldr (typeDecl tcs m tcEnv cEnv) (foldr (funDecl m tyEnv) [] es) es
+  decls   = foldr (typeDecl True m tcEnv cEnv) (foldr (funDecl m tyEnv) [] es) es
   instances = nub $ map (instanceToIDecl m cEnv) $ 
     concatMap (getClassAndSuperClassInstances cEnv) $ getAllInstances cEnv
   hiddenClasses = map (toHiddenClassDecl m cEnv) $ 
     nub dependencies \\ nub exportedClasses'
   dependencies = calculateDependencies cEnv (getAllInstances cEnv) exportedClasses'
   exportedClasses' = exportedClasses cEnv es
-  allDecls = if tcs 
-    then nub $ decls ++ dictDecls ++ instances ++ hiddenClasses ++ classElemDecls
-    else nub $ decls ++ dictDecls ++ instances ++ classElemDecls ++ exportedClasses''
+  allDecls = 
+    nub $ decls ++ dictDecls ++ instances ++ hiddenClasses ++ classElemDecls
   dictionaries = map Export $ nub $ concatMap (getClassAndSuperClassDicts cEnv) $ 
     getAllInstances cEnv
   dictDecls = foldr (funDecl m tyEnv) [] dictionaries
@@ -90,10 +89,6 @@ exportInterface' (Module m (Just (Exporting _ es)) _ _) tcs pEnv tcEnv tyEnv cEn
     foldr (typeDecl tcs m tcEnv cEnv) 
           (foldr (funDecl m tyEnv) [] classElems)
           classElems
-  -- exportedClassesHidden = map (toHiddenClassDecl m cEnv) exportedClasses'
-  exportedClasses'' = 
-    map ((\c -> classToClassDecl m cEnv (map fst3 $ methods c) c) . 
-         fromJust . lookupClass cEnv) exportedClasses' 
 exportInterface' (Module _ Nothing _ _) _ _ _ _ _
   = internalError "Exports.exportInterface: no export specification"
 
