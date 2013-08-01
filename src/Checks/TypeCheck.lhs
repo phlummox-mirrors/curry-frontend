@@ -403,7 +403,7 @@ inferred type is less general than the signature.
 > bindTypeSig = Map.insert
 
 > bindTypeSigs :: Decl -> SigEnv -> SigEnv
-> bindTypeSigs (TypeSig _ vs cx ty) env =
+> bindTypeSigs (TypeSig _ expanded vs cx ty) env =
 >   foldr (flip bindTypeSig (cx, nameSigType ty)) env vs
 > bindTypeSigs _ env = env
 
@@ -2343,7 +2343,7 @@ nothing is recorded so that they are simply returned).
 > tsDecl _theta d@(DataDecl _ _ _ _)  = d
 > tsDecl _theta d@(NewtypeDecl _ _ _ _) = d
 > tsDecl _theta d@(TypeDecl _ _ _ _) = d
-> tsDecl _theta d@(TypeSig _ _ _ _) = d
+> tsDecl _theta d@(TypeSig _ _ _ _ _) = d
 > tsDecl theta (FunctionDecl p (Just cty) n id0 eqs) 
 >   = FunctionDecl p (Just $ subst' theta cty)  n id0 (map (tsEqu theta) eqs)
 > tsDecl _theta (FunctionDecl _ Nothing _ _ _) = internalError "tsDecl FunctionDecl"

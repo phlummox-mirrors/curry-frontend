@@ -207,10 +207,10 @@ classDeclToClass m (ClassDecl _ (SContext scon) cls tyvar decls)
   }
   where
     splitUpTypeSig :: Decl -> [Decl]
-    splitUpTypeSig (TypeSig p ids cx ty) 
-      = map (\id0 -> TypeSig p [id0] cx ty) ids
+    splitUpTypeSig (TypeSig p e ids cx ty) 
+      = map (\id0 -> TypeSig p e [id0] cx ty) ids
     splitUpTypeSig _ = internalError "splitUpTypeSig"
-    allMethods = map (\(TypeSig _ [id0] cx ty) -> (id0, cx, ty)) $ 
+    allMethods = map (\(TypeSig _ _ [id0] cx ty) -> (id0, cx, ty)) $ 
       concatMap splitUpTypeSig $ filter isTypeSig decls
 classDeclToClass _ _ = internalError "classDeclToClass"
   
@@ -307,7 +307,7 @@ gatherTS (ClassDecl _ _ _ _ decls) = gatherTypeSigs decls
 gatherTS (InstanceDecl _ _ _ _ _ decls) = gatherTypeSigs decls
 gatherTS (PatternDecl _ _ _ _ rhs) = gatherTSRhs rhs
 gatherTS (FunctionDecl _ _ _ _ eqs) = concatMap gatherTSEqu eqs 
-gatherTS ts@(TypeSig _ _ _ _) = [ts]
+gatherTS ts@(TypeSig _ _ _ _ _) = [ts]
 gatherTS _ = []
 
 gatherTSRhs :: Rhs -> [Decl]
@@ -324,7 +324,7 @@ gatherTSExpr (Constructor _) = []
 gatherTSExpr (Paren expr) = gatherTSExpr expr
 -- convert typification into type signatures without position (TODO: add
 -- position somehow)
-gatherTSExpr (Typed _ expr cx texp) = gatherTSExpr expr ++ [typeSig [] cx texp]
+gatherTSExpr (Typed _ expr cx texp) = gatherTSExpr expr ++ [typeSig False [] cx texp]
 gatherTSExpr (Tuple _ exps) = concatMap gatherTSExpr exps
 gatherTSExpr (List _ exps) = concatMap gatherTSExpr exps
 gatherTSExpr (ListCompr _ expr stms) = gatherTSExpr expr ++ concatMap gatherTSStm stms
@@ -376,7 +376,7 @@ adjDecl _    d@(InfixDecl _ _ _ _)   = d
 adjDecl _    d@(DataDecl _ _ _ _)    = d
 adjDecl _    d@(NewtypeDecl _ _ _ _) = d
 adjDecl _    d@(TypeDecl _ _ _ _)    = d
-adjDecl cEnv   (TypeSig p ids cx te) = TypeSig p ids (canonContext cEnv cx) te
+adjDecl cEnv   (TypeSig p e ids cx te) = TypeSig p e ids (canonContext cEnv cx) te
 adjDecl cEnv   (FunctionDecl p cty n f eqs) = 
   FunctionDecl p cty n f (map (adjEqu cEnv) eqs)
 adjDecl _    d@(ForeignDecl _ _ _ _ _) = d
@@ -476,7 +476,7 @@ checkClassesInContext m cEnv (ClassDecl p (SContext scon) _ _ _) =
   mapM_ (checkClassesInContext' m cEnv p) (map fst scon)
 checkClassesInContext m cEnv (InstanceDecl p (SContext scon) _ _ _ _) = 
   mapM_ (checkClassesInContext' m cEnv p) (map fst scon)
-checkClassesInContext m cEnv (TypeSig p _ (Context cx) _) = 
+checkClassesInContext m cEnv (TypeSig p _ _ (Context cx) _) = 
   mapM_ (checkClassesInContext' m cEnv p) (map (\(ContextElem qid _ _) -> qid) cx)
 checkClassesInContext _ _ _ = internalError "TypeClassesCheck.checkClassesInContext"
     
@@ -532,7 +532,7 @@ classMethodSigsContainTypeVar (ClassDecl _p _scon _tycon tyvar0 decls)
   = mapM_ (tyVarInTypeSig tyvar0) typeSigs
   where 
     typeSigs = filter isTypeSig decls
-    tyVarInTypeSig tyvar (TypeSig p ids _con typeExpr) 
+    tyVarInTypeSig tyvar (TypeSig p _ ids _con typeExpr) 
       = if tyvar `elem` typeVarsInTypeExpr typeExpr
         then ok
         else report (errTypeVarNotInMethodSig p tyvar ids)
@@ -557,7 +557,7 @@ checkRulesInInstanceOrClass cEnv decl =
         case find eq ms of
           Nothing -> report (errFunctionNoClassMethod p f)
           Just _ -> ok
-    isDefinedFunctionClassMethod (_, TypeSig _ _ _ _) = ok
+    isDefinedFunctionClassMethod (_, TypeSig _ _ _ _ _) = ok
     isDefinedFunctionClassMethod _ = internalError "isDefinedFunctionClassMethod"
 
 getDecls :: Decl -> [(QualIdent, Decl)]
@@ -666,7 +666,7 @@ checkInstanceDataTypeCorrect _ _ = internalError "checkInstanceDataTypeCorrect"
 -- |Checks that there are only type vars in the context that also appear on
 -- the right side
 checkTypeVarsInContext :: Decl -> Tcc ()
-checkTypeVarsInContext (TypeSig p _ids cx tyexp) = 
+checkTypeVarsInContext (TypeSig p _ _ids cx tyexp) = 
   case null wrongVars of
     True -> ok
     False -> report (errContextVariableNotOnTheRightSide p wrongVars "type signature")
@@ -767,7 +767,7 @@ checkCorrectTypeVarsInTypeSigs (ClassDecl _ _ _ tyvar ds) = do
   where
   tySigs = filter isTypeSig ds
   tyVarsSigs = map tyVars tySigs
-  tyVars (TypeSig p _ _ te) = (p, typeVarsInTypeExpr te)
+  tyVars (TypeSig p _ _ _ te) = (p, typeVarsInTypeExpr te)
   tyVars _ = internalError "checkTypeVarsInTypeSigs"
   checkTypeVars (p, tyvars) = 
     when (nub tyvars /= [tyvar]) $ 
@@ -781,7 +781,7 @@ checkContextsInClassMethodTypeSigs (ClassDecl _ _ _ _ ds)
   = mapM_ checkTySig tySigs
   where
   tySigs = filter isTypeSig ds
-  checkTySig (TypeSig p ids (Context cx) _) = 
+  checkTySig (TypeSig p _ ids (Context cx) _) = 
     unless (null cx) $ report $ errNonEmptyContext p ids
   checkTySig _ = internalError "checkContextsInClassMethodTypeSigs"
 checkContextsInClassMethodTypeSigs _ = internalError "checkContextsInClassMethodTypeSigs"
@@ -898,7 +898,7 @@ transformClass2 cEnv (ClassDecl p _scx cls _tyvar _decls) =
   genMethodSelMethod :: ((Ident, Context, TypeExpr), Int) -> [Decl]
   genMethodSelMethod ((m, _cx, ty), i) = 
     let selMethodName = mkSelFunName (show $ theClass theClass0) (show m) in
-    [ typeSig [mkIdent selMethodName]
+    [ typeSig True [mkIdent selMethodName]
       emptyContext
       (ArrowType 
         (genDictTypeExpr (show $ theClass theClass0) (typeVar theClass0))
@@ -965,7 +965,7 @@ transformClass2 cEnv (ClassDecl p _scx cls _tyvar _decls) =
   -- default implementation given in the class declaration
   genDefaultMethod :: Decl -> [Decl]
   genDefaultMethod (FunctionDecl _p cty n f eqs) = 
-    TypeSig p [rename toTopLevel f] cx ty' : 
+    TypeSig p True [rename toTopLevel f] cx ty' : 
       [FunctionDecl p cty n (rename toTopLevel f) (map (transEqu zeroArity toTopLevel) eqs)] 
     where
     (cx0, ty) = fromJust $ canonLookupMethodTypeSig' cEnv (theClass theClass0) f
@@ -987,7 +987,7 @@ transformClass2 cEnv (ClassDecl p _scx cls _tyvar _decls) =
   -- |generates the typesignature of a superclass selection method
   superClassSelMethodTypeSig :: String -> String -> Decl
   superClassSelMethodTypeSig selMethodName scls =
-    typeSig [mkIdent selMethodName]
+    typeSig True [mkIdent selMethodName]
       emptyContext
       (ArrowType 
         (genDictTypeExpr (show $ theClass theClass0) (mkIdent var))
@@ -1062,7 +1062,7 @@ defMethodName cls fun0 = mkDefFunName (show cls) fun0
 createTypeSignature :: RenameFunc -> ClassEnv -> IDecl -> Decl -> Decl
 createTypeSignature rfunc cEnv (InstanceDecl _ scx cls tcon tyvars _) 
                     (FunctionDecl p _ _ f _eqs) 
-  = TypeSig p [rename rfunc f] cx' ty''
+  = TypeSig p True [rename rfunc f] cx' ty''
   where
     (cx, ty) = fromJust $ lookupMethodTypeSig' cEnv cls f 
     theClass_ = fromJust $ lookupClass cEnv cls
@@ -1175,7 +1175,7 @@ createDictionary _ _ _ = internalError "createDictionary"
 -- using tuples
 createDictionary2 :: ClassEnv -> IDecl -> QualIdent -> [Decl]
 createDictionary2 cEnv (InstanceDecl _ scx cls0 tcon tvars decls) ity = 
-  [ typeSig [dictName cls] (simpleContextToContext scx) dictType0
+  [ typeSig True [dictName cls] (simpleContextToContext scx) dictType0
   , fun (dictName cls)
     [equation
       (FunLhs (dictName cls) [])
@@ -1223,7 +1223,7 @@ fun = FunctionDecl NoPos Nothing (-1)
 equation :: Lhs -> Rhs -> Equation
 equation = Equation NoPos
 
-typeSig :: [Ident] -> Context -> TypeExpr -> Decl
+typeSig :: Bool -> [Ident] -> Context -> TypeExpr -> Decl
 typeSig = TypeSig NoPos
 
 simpleRhs :: Expression -> Rhs

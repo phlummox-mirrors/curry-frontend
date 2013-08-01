@@ -47,12 +47,12 @@ tsDecl _cEnv d@(InfixDecl   _ _ _ _) = [d]
 tsDecl _cEnv d@(DataDecl    _ _ _ _) = [d]
 tsDecl _cEnv d@(NewtypeDecl _ _ _ _) = [d]
 tsDecl _cEnv d@(TypeDecl    _ _ _ _) = [d]
-tsDecl  cEnv   (TypeSig p ids (Context cx) ty) = 
+tsDecl  cEnv   (TypeSig p _ ids (Context cx) ty) = 
   -- if null cx then [d] else [] 
   map (tsTySig cEnv) splitTySigs
   where
   splitTySigs :: [Decl]
-  splitTySigs = map (\id0 -> TypeSig p [id0] (Context cx) ty) ids  
+  splitTySigs = map (\id0 -> TypeSig p True [id0] (Context cx) ty) ids  
 tsDecl  cEnv   (FunctionDecl p cty id0 i eqs) = [FunctionDecl p cty id0 i (map (tsEqu cEnv) eqs)]
 tsDecl _cEnv d@(ForeignDecl    _ _ _ _ _) = [d]
 tsDecl _cEnv d@(ExternalDecl         _ _) = [d]
@@ -64,8 +64,8 @@ tsDecl _cEnv d@(InstanceDecl _ _ _ _ _ _) = [d]
 -- | replaces a type signature with the type signature extracted from the 
 -- value environment and inserts further dictionary types
 tsTySig :: CompilerEnv -> Decl -> Decl
-tsTySig cEnv (TypeSig p [id0] (Context _cx) _ty) =
-  TypeSig p [id0] (Context []) (fromType newTySig)
+tsTySig cEnv (TypeSig p _ [id0] (Context _cx) _ty) =
+  TypeSig p True [id0] (Context []) (fromType newTySig)
   where
   Value _ _ (ForAll cx _ ty) = lookupValue' (moduleIdent cEnv) id0 (valueEnv cEnv)
 

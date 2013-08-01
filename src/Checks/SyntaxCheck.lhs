@@ -284,7 +284,7 @@ Furthermore, it is not allowed to declare a label more than once.
 >   = let arty = typeArity texpr
 >         qid  = qualifyWith m ident
 >     in bindGlobal tcc m ident (GlobalVar arty qid) env
-> bindFuncDecl tcc m (TypeSig _ ids _cx texpr) env
+> bindFuncDecl tcc m (TypeSig _ _ ids _cx texpr) env
 >   = foldr bindTS env $ map (qualifyWith m) ids
 >  where
 >  bindTS qid env'
@@ -372,7 +372,7 @@ local declarations.
 >   bindImportedClassMethods importedClassMethods
 >   -- now reserve class methods so that they cannot be redefined as top level 
 >   -- functions... 
->   let classMethods0 = concatMap (\(TypeSig _ ids _ _) -> ids) classTypeSigs 
+>   let classMethods0 = concatMap (\(TypeSig _ _ ids _ _) -> ids) classTypeSigs 
 >   setClassMethods classMethods0
 >   -- ... and type check the top declaration group
 >   decls0 <- liftM2 (++) (mapM checkTypeDecl tds) (checkTopDecls vds)
@@ -465,8 +465,8 @@ top-level.
 > checkDeclLhs :: Decl -> SCM Decl
 > checkDeclLhs (InfixDecl   p fix' pr ops) =
 >   liftM2 (InfixDecl p fix') (checkPrecedence p pr) (mapM renameVar ops)
-> checkDeclLhs (TypeSig        p vs cx ty) = do
->   (\vs' -> TypeSig p vs' cx ty) `liftM` mapM (checkVar "type signature") vs
+> checkDeclLhs (TypeSig      p e vs cx ty) = do
+>   (\vs' -> TypeSig p e vs' cx ty) `liftM` mapM (checkVar "type signature") vs
 > checkDeclLhs (FunctionDecl  p _ _ _ eqs) =
 >   checkEquationsLhs p eqs
 > checkDeclLhs (ForeignDecl  p cc ie f ty) =
@@ -587,8 +587,8 @@ top-level.
 -- ---------------------------------------------------------------------------
 
 > checkDeclRhs :: [Ident] -> Decl -> SCM Decl
-> checkDeclRhs bvs (TypeSig   p vs cx ty) = do
->   (\vs' -> TypeSig p vs' cx ty) `liftM` mapM (checkLocalVar bvs) vs
+> checkDeclRhs bvs (TypeSig p e vs cx ty) = do
+>   (\vs' -> TypeSig p e vs' cx ty) `liftM` mapM (checkLocalVar bvs) vs
 > checkDeclRhs _ (FunctionDecl p cty id0 f eqs) =
 >   FunctionDecl p cty id0 f `liftM` mapM checkEquation eqs
 > checkDeclRhs _ (PatternDecl p cty id0 t rhs) =
@@ -972,7 +972,7 @@ Auxiliary definitions.
 > constrs _ = []
 
 > vars :: Decl -> [Ident]
-> vars (TypeSig       _ fs _ _) = fs
+> vars (TypeSig     _ _ fs _ _) = fs
 > vars (FunctionDecl _ _ _ f _) = [f]
 > vars (ForeignDecl  _ _ _ f _) = [f]
 > vars (ExternalDecl      _ fs) = fs
