@@ -72,15 +72,16 @@ exportInterface' (Module m (Just (Exporting _ es)) _ _) tcs pEnv tcEnv tyEnv cEn
   instances = nub $ map (instanceToIDecl m cEnv) $ 
     concatMap (getClassAndSuperClassInstances cEnv) $ getAllInstances cEnv
   hiddenClasses = map (toHiddenClassDecl m cEnv) $ 
-    nub dependencies \\ nub exportedClasses'
-  dependencies = calculateDependencies cEnv (getAllInstances cEnv) exportedClasses'
+    nub dependencies \\ nub exportedClasses''
+  dependencies = calculateDependencies cEnv (getAllInstances cEnv) exportedClasses''
   exportedClasses' = exportedClasses cEnv es
+  exportedClasses'' = map (fromJust . canonClassName cEnv) exportedClasses'
   allDecls = 
     nub $ decls ++ dictDecls ++ instances ++ hiddenClasses ++ classElemDecls
   dictionaries = map Export $ nub $ concatMap (getClassAndSuperClassDicts cEnv) $ 
     getAllInstances cEnv
   dictDecls = foldr (funDecl m tyEnv) [] dictionaries
-  allClasses0 = nub $ exportedClasses' ++ dependencies
+  allClasses0 = nub $ exportedClasses'' ++ dependencies
   dictTypes0 = exportsForDictTypes allClasses0
   selFuns = exportsForSelFuns cEnv allClasses0
   defFuns = exportsForDefaultFuns cEnv allClasses0
@@ -441,7 +442,7 @@ toHiddenClassDecl m cEnv qid =
        (map (typeSigToIFunDecl m (CE.typeVar c)) $ typeSchemes c)
        (nub $ concatMap funName $ defaults c)
   where
-  c = fromJust $ lookupClass cEnv qid
+  c = fromJust $ canonLookupClass cEnv qid
  
 -- for classes, the dictionary types have to be exported, as well as all 
 -- selection functions and the default methods
