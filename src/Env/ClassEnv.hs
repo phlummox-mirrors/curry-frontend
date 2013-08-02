@@ -651,7 +651,11 @@ initFreshVar = 1 -- not zero!
 -- ----------------------------------------------------------------------------
 
 -- |returns a type expression representing the type of the dictionary for
--- the given class (here the canonicalized name must be given)
+-- the given class (here the canonicalized name must be given). Note that
+-- the resulting type expression is completely unexpanded (using 
+-- dictionary types and the original method signatures). It follows that
+-- this function can only be used for classes from the source file being compiled, 
+-- not for classes that are imported. 
 dictTypeExpr :: ClassEnv -> QualIdent -> TypeExpr
 dictTypeExpr cEnv cls = 
   case null (scsTypes ++ methodTypes) of
