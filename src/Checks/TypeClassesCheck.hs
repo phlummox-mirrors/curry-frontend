@@ -199,6 +199,7 @@ classDeclToClass m (ClassDecl _ (SContext scon) cls tyvar decls)
     theClass = qualifyWith m cls, 
     typeVar = tyvar, 
     kind = -1, -- TODO
+    origMethods = allMethods,
     methods = allMethods, 
     defaults = filter isFunctionDecl decls, 
     typeSchemes = [], 

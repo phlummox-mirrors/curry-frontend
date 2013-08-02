@@ -87,6 +87,7 @@ data Class = Class
   , theClass     :: QualIdent -- TODO Ident or QualIdent? 
   , typeVar      :: Ident
   , kind         :: Int
+  , origMethods  :: [(Ident, Context, TypeExpr)]
   , methods      :: [(Ident, Context, TypeExpr)]
   , typeSchemes  :: [(Ident, TypeScheme)] 
   , defaults     :: [Decl]

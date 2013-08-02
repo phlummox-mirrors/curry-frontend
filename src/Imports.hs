@@ -401,6 +401,7 @@ mkClass m scx cls tyvar ds defs =
     theClass = qualQualify m cls, 
     CE.typeVar = tyvar, 
     kind = -1, 
+    origMethods = [], 
     methods = map (iFunDeclToMethod m) (map snd ds), 
     typeSchemes = [], 
     defaults = map toDefFun defs,
