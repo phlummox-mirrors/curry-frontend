@@ -209,21 +209,17 @@ checkModule opts (envNonTc, envTc, mdl) = do
   let (env5c, dicts') = if withTypeCheck
                           then typeSigs env5b dicts
                           else (env5b, dicts)
-      (env5d,     es) = if withTypeCheck
-                          then (env5c, dicts')
-                          else (env5c, dicts') 
   (env5e, tc2) <- if withTypeCheck
-                    -- Take the older environment env4 instead of env5d;
+                    -- Take the older environment env4 instead of env5c;
                     -- moreover, replace the value/type constructor environments with the 
                     -- value/type constructor environments that contain only *compiled* 
                     -- type class elements (dictionaries, types, selection 
                     -- methods) that are exported from other modules
-                    -- then typeCheck (env4, es)
-                    then dump DumpDictionaries env5d (typeCheck True) 
+                    then dump DumpDictionaries env5c (typeCheck True) 
                           (env4 { valueEnv = valueEnv envNonTc, 
                                   tyConsEnv = tyConsEnv envNonTc,
-                                  interfaceEnv = interfaceEnv envNonTc }, es) 
-                    else return (env5d, es) 
+                                  interfaceEnv = interfaceEnv envNonTc }, dicts') 
+                    else return (env5c, dicts') 
   (env6,  ec2) <- if withTypeCheck 
                    -- then exportCheck env5e tc2
                    then dump DumpTypeChecked2 env5e exportCheck (env5e, tc2)
@@ -235,7 +231,7 @@ checkModule opts (envNonTc, envTc, mdl) = do
               , (DumpPrecChecked       , env3, show' CS.ppModule pc)
               , (DumpTypeClassesChecked, env4, show' CS.ppModule tcc)
               , (DumpTypeChecked       , env5, show' CS.ppModule tc)
-              , (DumpDictionaries      , env5d, show' CS.ppModule es)
+              , (DumpDictionaries      , env5c, show' CS.ppModule dicts')
               , (DumpTypeChecked2      , env5e, show' CS.ppModule tc2)
               , (DumpExportChecked     , env6, show' CS.ppModule ec2)
               , (DumpQualified         , env7, show' CS.ppModule ql)
