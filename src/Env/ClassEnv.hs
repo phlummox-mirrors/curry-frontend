@@ -664,7 +664,7 @@ dictTypeExpr cEnv cls =
   where
   c = fromJust $ canonLookupClass cEnv cls
   scs = superClasses c
-  theMethods = methods c
+  theMethods = origMethods c
   
   scsTypes = map (\cls0 -> ConstructorType 
                              (qualify $ mkIdent $ mkDictTypeName $ show cls0) 

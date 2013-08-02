@@ -11,6 +11,15 @@
     This file contains a lot of checks for typeclass elements (classes, 
     instances, contexts). It also contains transformation functions for
     the instance and class declarations. 
+    
+    As the type signatures of the imported classes are already expanded, 
+    we have to write out type signatures that are also expanded 
+    in the code transformation. Since the type checker must expand non-expanded
+    type signatures, but must not re-expand expanded type signatures again, 
+    we provide a flag in all type signatures that indicates whether the 
+    type signature has already been expanded. We have to be careful that
+    we either provide completely unexpanded or completely expanded 
+    type signatures. 
 -}
 
 module Checks.TypeClassesCheck (buildTypeSchemes, typeClassesCheck) where
@@ -21,7 +30,7 @@ import Env.TypeConstructor
 import Base.Messages (Message, message, posMessage, internalError)
 
 import Data.List
-import Text.PrettyPrint hiding (sep)
+import Text.PrettyPrint hiding (sep, isEmpty)
 import Data.Maybe
 import Control.Monad.State
 
@@ -76,10 +85,13 @@ typeClassesCheck m decls
     (ClassEnv importedClassesEnv importedInstances _ _) tcEnv0 = 
   case runTcc tcCheck initTccState of 
     ((newClasses, instances), []) -> 
-      let -- translate contexts, instances and classes
+      let -- add newly generated dictionary types to type constructor environment  
+          tcEnv' = foldr (bindTC m tcEnv') tcEnv0 newDecls
+          
+          -- translate contexts, instances and classes:
           newDecls = adjustContexts cEnv $ 
-            concatMap (transformInstance m cEnv tcEnv) $ 
-            concatMap (transformClass2 cEnv) decls
+            concatMap (transformInstance m cEnv tcEnv') $ 
+            concatMap (transformClass2 m cEnv tcEnv') decls
           
           -- build type schemes for all classes
           newClasses' = map (buildTypeSchemes True m tcEnv 
@@ -867,8 +879,8 @@ transformClass _ d = [d]
 -- |Transforms class declarations using tuples as dictionaries. This handles
 -- class methods with other type variables than the type variable given in the class
 -- declaration well (?)
-transformClass2 :: ClassEnv -> Decl -> [Decl]
-transformClass2 cEnv (ClassDecl p _scx cls _tyvar _decls) = 
+transformClass2 :: ModuleIdent -> ClassEnv -> TCEnv -> Decl -> [Decl]
+transformClass2 mdl cEnv tcEnv (ClassDecl p _scx cls _tyvar _decls) = 
   genDictType
   : concatMap genSuperClassDictSelMethod superClasses0
   ++ concatMap genMethodSelMethod (zip methods0 [0..])
@@ -902,8 +914,8 @@ transformClass2 cEnv (ClassDecl p _scx cls _tyvar _decls) =
     [ typeSig True [mkIdent selMethodName]
       emptyContext
       (ArrowType 
-        (genDictTypeExpr (show $ theClass theClass0) (typeVar theClass0))
-        (if not zeroArity then ty else ArrowType (TupleType []) ty)
+        (genDictTypeExpr mdl tcEnv (show $ theClass theClass0) (typeVar theClass0))
+        (if not zeroArity then ty else ArrowType (expandedUnit mdl tcEnv) ty)
       )
     , fun (mkIdent selMethodName)
       [equation
@@ -975,7 +987,7 @@ transformClass2 cEnv (ClassDecl p _scx cls _tyvar _decls) =
     toTopLevel :: RenameFunc
     toTopLevel f0 = defMethodName (theClass theClass0) f0
     zeroArity = arrowArityTyExpr ty == 0 
-    ty' = if zeroArity then ArrowType (TupleType []) ty else ty
+    ty' = if zeroArity then ArrowType (expandedUnit mdl tcEnv) ty else ty
     
   genDefaultMethod _ = internalError "genDefaultMethod"
 
@@ -991,8 +1003,8 @@ transformClass2 cEnv (ClassDecl p _scx cls _tyvar _decls) =
     typeSig True [mkIdent selMethodName]
       emptyContext
       (ArrowType 
-        (genDictTypeExpr (show $ theClass theClass0) (mkIdent var))
-        (genDictTypeExpr scls (mkIdent var))
+        (genDictTypeExpr mdl tcEnv (show $ theClass theClass0) (mkIdent var))
+        (genDictTypeExpr mdl tcEnv scls (mkIdent var))
       )
     where var = "a"
   
@@ -1005,16 +1017,21 @@ transformClass2 cEnv (ClassDecl p _scx cls _tyvar _decls) =
     mkIdent (identPrefix ++ selMethodName ++ sep ++ "x" ++ (show n))
   
   
-transformClass2 _ d = [d]
+transformClass2 _ _ _ d = [d]
 
 -- |generates a type expression that represents the type of the dictionary 
 -- of the given class 
-genDictTypeExpr :: String -> Ident -> TypeExpr
-genDictTypeExpr theClass0 var = 
+genDictTypeExpr :: ModuleIdent -> TCEnv -> String -> Ident -> TypeExpr
+genDictTypeExpr m tcEnv theClass0 var = expandTypeExpr m tcEnv $  
   (ConstructorType (mkQIdent $ mkDictTypeName $ theClass0)
     [VariableType var])
 
 type IDecl = Decl
+
+-- |as we have to be careful to provide *expanded* type signatures, we 
+-- have to expand the unit type as well
+expandedUnit :: ModuleIdent -> TCEnv -> TypeExpr
+expandedUnit mdl tcEnv = (expandTypeExpr mdl tcEnv $ TupleType [])
 
 -- ----------------------------------------------------------------------------
 
@@ -1023,10 +1040,10 @@ type IDecl = Decl
 -- dictionaries, as well as type signatures for the instance rules. 
 transformInstance :: ModuleIdent -> ClassEnv -> TCEnv -> IDecl -> [Decl]
 transformInstance m cEnv tcEnv idecl@(InstanceDecl _ _ cls tycon _ decls)
-  = concatMap (transformMethod cEnv idecl ity) decls
+  = concatMap (transformMethod m cEnv tcEnv idecl ity) decls
   ++ concatMap (handleMissingFunc cEnv idecl ity) missingMethods
   -- create dictionary 
-  ++ createDictionary2 cEnv idecl ity
+  ++ createDictionary2 m cEnv tcEnv idecl ity
   where
   ity = fromJust $ tyConToQualIdent m tcEnv tycon
   presentMethods = nub $ map (\(FunctionDecl _ _ _ id0 _) -> id0) decls
@@ -1036,18 +1053,18 @@ transformInstance m cEnv tcEnv idecl@(InstanceDecl _ _ cls tycon _ decls)
 transformInstance _ _ _ d = [d]
 
 -- |transforms one method defined in an instance to a top level function 
-transformMethod :: ClassEnv -> IDecl -> QualIdent -> Decl -> [Decl]
-transformMethod cEnv idecl@(InstanceDecl _ _ cls _ _ _) ity
+transformMethod :: ModuleIdent -> ClassEnv -> TCEnv -> IDecl -> QualIdent -> Decl -> [Decl]
+transformMethod m cEnv tcEnv idecl@(InstanceDecl _ _ cls _ _ _) ity
                      decl@(FunctionDecl _ _ _ _ _) =
   -- create type signature
-  createTypeSignature rfunc cEnv idecl decl
+  createTypeSignature m rfunc cEnv tcEnv idecl decl
   -- create function rules
   : [createTopLevelFuncs cEnv rfunc idecl decl] 
   where 
     cls' = getCanonClassName cEnv cls
     -- rename for specific instance!
     rfunc = (\s -> instMethodName cls' ity s)
-transformMethod _ _ _ _ = internalError "transformMethod"
+transformMethod _ _ _ _ _ _ = internalError "transformMethod"
 
 -- |create a name for the (hidden) function that is implemented by the  
 -- function definitions in the instance  
@@ -1060,8 +1077,8 @@ defMethodName cls fun0 = mkDefFunName (show cls) fun0
 
 -- |creates a type signature for an instance method which is transformed to
 -- a top level function
-createTypeSignature :: RenameFunc -> ClassEnv -> IDecl -> Decl -> Decl
-createTypeSignature rfunc cEnv (InstanceDecl _ scx cls tcon tyvars _) 
+createTypeSignature :: ModuleIdent -> RenameFunc -> ClassEnv -> TCEnv -> IDecl -> Decl -> Decl
+createTypeSignature m rfunc cEnv tcEnv (InstanceDecl _ scx cls tcon tyvars _) 
                     (FunctionDecl p _ _ f _eqs) 
   = TypeSig p True [rename rfunc f] cx' ty''
   where
@@ -1073,19 +1090,21 @@ createTypeSignature rfunc cEnv (InstanceDecl _ scx cls tcon tyvars _)
     -- method type signature, like in the following example:
     -- class C a where fun :: a -> b -> Bool
     -- instance Eq b => C (S b) where fun = ...
-    theType = SpecialConstructorType tcon (map (VariableType . flip renameIdent 1) tyvars)
+    -- Important: expand the type!
+    theType = expandTypeExpr m tcEnv $ 
+      SpecialConstructorType tcon (map (VariableType . flip renameIdent 1) tyvars)
     
     subst = [(typeVar theClass_, theType)]
     -- cx' = substInContext subst cx
     ty' = substInTypeExpr subst ty
-    ty'' = if arrowArityTyExpr ty' == 0 then ArrowType (TupleType []) ty' else ty'
+    ty'' = if arrowArityTyExpr ty' == 0 then ArrowType (expandedUnit m tcEnv) ty' else ty'
     
     -- add instance context. The variables have to be renamed here as well
     renamedSContext = (\(SContext elems) -> 
       SContext $ map (\(qid, id0) -> (qid, renameIdent id0 1)) elems) scx
     icx = simpleContextToContext renamedSContext
     cx' = combineContexts icx cx
-createTypeSignature _ _ _ _ = internalError "createTypeSignature"    
+createTypeSignature _ _ _ _ _ _ = internalError "createTypeSignature"    
 
 combineContexts :: ST.Context -> ST.Context -> ST.Context
 combineContexts (Context e1) (Context e2) = Context (e1 ++ e2)
@@ -1174,9 +1193,10 @@ createDictionary _ _ _ = internalError "createDictionary"
 
 -- |This function creates a dictionary for the given instance declaration, 
 -- using tuples
-createDictionary2 :: ClassEnv -> IDecl -> QualIdent -> [Decl]
-createDictionary2 cEnv (InstanceDecl _ scx cls0 tcon tvars decls) ity = 
-  [ typeSig True [dictName cls] (simpleContextToContext scx) dictType0
+createDictionary2 :: ModuleIdent -> ClassEnv -> TCEnv -> IDecl -> QualIdent -> [Decl]
+createDictionary2 m cEnv tcEnv (InstanceDecl _ scx cls0 tcon tvars decls) ity = 
+  [ typeSig True [dictName cls] 
+      (if isEmpty then ST.emptyContext else simpleContextToContext scx) dictType0
   , fun (dictName cls)
     [equation
       (FunLhs (dictName cls) [])
@@ -1200,13 +1220,21 @@ createDictionary2 cEnv (InstanceDecl _ scx cls0 tcon tvars decls) ity =
     | otherwise = instMethodName cls ity (show s)
   all0 = scs ++ ms
   
-  dictType0 = (ConstructorType (mkQIdent $ mkDictTypeName $ show $ theClass theClass0)
+  dictType0 = expandTypeExpr m tcEnv $  
+    (ConstructorType (mkQIdent $ mkDictTypeName $ show $ theClass theClass0)
     $ [SpecialConstructorType tcon (map VariableType tvars)]) 
     
   methodImplPresent :: Ident -> Bool
   methodImplPresent f = f `elem` map (\(FunctionDecl _ _ _ f0 _) -> f0) decls
   
-createDictionary2 _ _ _ = internalError "createDictionary"
+  -- if dictionaries are empty, i.e., they don't contain any class methods (both
+  -- from the class itself and the superclasses), we would get ambiguous
+  -- context elements if we don't remove the context completely. This removing
+  -- should be safe because we will never use the dictionary as there are no
+  -- class methods (?). 
+  isEmpty = null $ typeVarsInTypeExpr dictType0
+  
+createDictionary2 _ _ _ _ _ = internalError "createDictionary"
 
 -- ---------------------------------------------------------------------------
 -- helper functions
@@ -1229,6 +1257,37 @@ typeSig = TypeSig NoPos
 
 simpleRhs :: Expression -> Rhs
 simpleRhs e = SimpleRhs NoPos e []
+
+-- |expands the given type expression by converting it first to a "Type", 
+-- expanding the "Type", and then re-converting it back to a "TypeExpr"
+expandTypeExpr :: ModuleIdent -> TCEnv -> TypeExpr -> TypeExpr
+expandTypeExpr m tcEnv texp = 
+  let (ty, map0) = toTypeAndGetMap [] texp
+      ty'        = expandType m tcEnv ty
+      texp'      = fromType'' (identSupplyFromMap map0) ty'
+  in texp' 
+  where
+  identSupplyFromMap :: Map.Map Ident Int -> [Ident]
+  identSupplyFromMap map' = map snd $ sortBy smaller $ map swap $ Map.toList map'
+  swap (x, y) = (y, x)
+  smaller (x, _) (x', _) = compare x x'
+
+-- |this is a slightly modified version of fromType' that doesn't convert
+-- TypeConstructors that are Lists/Tuples/Unit back into the corresponding
+-- TypeExpr type. 
+fromType'' :: [Ident] -> Type -> TypeExpr
+fromType'' supply (TypeConstructor tc tys) = 
+  ConstructorType tc $ map (fromType'' supply) tys
+fromType'' supply (TypeVariable tv)         = VariableType
+   (if tv >= 0 then supply !! tv else mkIdent ('_' : show (-tv)))
+fromType'' supply (TypeConstrained tys _)   = fromType'' supply (head tys)
+fromType'' supply (TypeArrow     ty1 ty2)   =
+  ArrowType (fromType'' supply ty1) (fromType'' supply ty2)
+fromType'' _supply (TypeSkolem          k)   =
+  VariableType $ mkIdent $ "_?" ++ show k
+fromType'' supply (TypeRecord     fs rty)   = RecordType
+  (map (\ (l, ty) -> ([l], fromType'' supply ty)) fs)
+  ((fromType'' supply . TypeVariable) `fmap` rty)
 
 -- ---------------------------------------------------------------------------
 -- other transformations
@@ -1277,8 +1336,8 @@ buildTypeSchemes expand m tcEnv cls@(Class { theClass = tc, methods = ms, typeVa
             (if expand then expandType m tcEnv theType else theType) 
             `constrainBy` translatedContext)
     typeSchemeToMethod :: (Ident, TypeScheme) -> (Ident, Context, TypeExpr)
-    typeSchemeToMethod (m, ForAll cx _ ty) = 
-      (m, {-fromContext' [classTypeVar] cx-}emptyContext, fromType' [classTypeVar] ty)  
+    typeSchemeToMethod (m', ForAll _cx _ ty) = 
+      (m', {-fromContext' [classTypeVar] cx-}emptyContext, fromType'' [classTypeVar] ty)  
     ms' = map typeSchemeToMethod typeSchemes'
 
 -- |translate the methods to typeschemes, not expanding the types. 
