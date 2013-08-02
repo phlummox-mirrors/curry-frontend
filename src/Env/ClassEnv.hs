@@ -127,17 +127,11 @@ lookupClass :: ClassEnv -> QualIdent -> Maybe Class
 lookupClass cEnv c = 
   list2Maybe $ lookupNonHiddenClass cEnv c
 
+-- |looks up a local, not hidden class from the class environment. 
+-- Takes as argument the name of the class used in the source code. 
 lookupLocalClass :: ClassEnv -> QualIdent -> Maybe Class
 lookupLocalClass (ClassEnv cEnv _ _ _) c = 
   list2Maybe $ qualLookupLocalTopEnv c (nonHiddenClassEnv cEnv)
-
--- |looks up a given class from the class environment, returning 
--- a list of matching classes: An empty list means there are no matching
--- classes in scope, a list with more than one element means the class
--- name is ambiguous. Takes as argument the name of the class 
--- used in the source code. 
--- lookupClass' :: ClassEnv -> QualIdent -> [Class]
--- lookupClass' (ClassEnv cEnv _ _ _) c = qualLookupTopEnv c cEnv 
 
 -- |looks up a class if it's not hidden, returning a list of candidates. Takes
 -- as argument the name of the class used in the source code. 
