@@ -122,7 +122,7 @@ typeDecl tcs m tcEnv cEnv (ExportTypeWith tc cs) ds = case qualLookupTC tc tcEnv
         let ty' = TypeRecord (filter (\ (l,_) -> elem l cs) fs) Nothing
         in  iTypeDecl ITypeDecl m tc' n (fromQualType m ty') : ds
     _ -> iTypeDecl ITypeDecl m tc' n (fromQualType m ty) : ds
-  [] -> case lookupNonHiddenClass cEnv tc of
+  [] -> case lookupNonHiddenClasses cEnv tc of
     -- **** TODO ****: export only the listed class methods and hide the others!
     -- We cannot simply drop the hidden class methods, because otherwise 
     -- modules importing the given module would use different dictionaries than

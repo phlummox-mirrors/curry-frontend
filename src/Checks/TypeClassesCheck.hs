@@ -495,7 +495,7 @@ checkClassesInContext _ _ _ = internalError "TypeClassesCheck.checkClassesInCont
     
 checkClassesInContext' :: ModuleIdent -> ClassEnv -> Position -> QualIdent -> Tcc ()
 checkClassesInContext' m cEnv p qid = 
-  case lookupNonHiddenClass cEnv (qualUnqualify m qid) of 
+  case lookupNonHiddenClasses cEnv (qualUnqualify m qid) of 
     []    -> report (errClassNotInScope p qid)
     [_]   -> ok
     (_:_) -> report (errAmbiguousClassName p qid) 
@@ -643,7 +643,7 @@ instanceTypeVarsDoNotAppearTwice _ = internalError "instanceTypeVarsDoNotAppearT
 -- and that it is not ambiguous
 checkClassNameInInstance :: ClassEnv -> Decl -> Tcc ()
 checkClassNameInInstance cEnv (InstanceDecl p _ cls _ _ _) = 
-  case lookupNonHiddenClass cEnv cls of
+  case lookupNonHiddenClasses cEnv cls of
     []    -> report (errClassNameNotInScope p cls)
     [_]   -> ok
     (_:_) -> report (errAmbiguousClassName p cls)

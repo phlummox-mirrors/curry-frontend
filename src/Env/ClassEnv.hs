@@ -25,7 +25,7 @@ module Env.ClassEnv (
   , canonLookupMethodTypeSig', canonLookupMethodTypeScheme'
   , getDefaultMethods, lookupDefiningClass', isClassMethod
   , localInst, importedInst, getAllInstances, getLocalInstances, allInstances
-  , lookupNonHiddenClass, allNonHiddenClassBindings, allClassBindings
+  , lookupNonHiddenClasses, allNonHiddenClassBindings, allClassBindings
   , lookupTypeScheme, lookupLocalClass
   , nonHiddenClassEnv, instanceImportedFrom
   , getInstances, getInstanceWithOrigin
@@ -125,7 +125,7 @@ instance Entity Class where
 -- the name of the class used in the source code. 
 lookupClass :: ClassEnv -> QualIdent -> Maybe Class
 lookupClass cEnv c = 
-  list2Maybe $ lookupNonHiddenClass cEnv c
+  list2Maybe $ lookupNonHiddenClasses cEnv c
 
 -- |looks up a local, not hidden class from the class environment. 
 -- Takes as argument the name of the class used in the source code. 
@@ -135,8 +135,8 @@ lookupLocalClass (ClassEnv cEnv _ _ _) c =
 
 -- |looks up a class if it's not hidden, returning a list of candidates. Takes
 -- as argument the name of the class used in the source code. 
-lookupNonHiddenClass :: ClassEnv -> QualIdent -> [Class]
-lookupNonHiddenClass (ClassEnv cEnv _ _ _) c = 
+lookupNonHiddenClasses :: ClassEnv -> QualIdent -> [Class]
+lookupNonHiddenClasses (ClassEnv cEnv _ _ _) c = 
   qualLookupTopEnv c (nonHiddenClassEnv cEnv)
 
 -- |returns the class environment without hidden classes
