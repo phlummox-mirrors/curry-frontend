@@ -210,7 +210,7 @@ checkModule opts (envNonTc, envTc, mdl) = do
                           then typeSigs env5b dicts
                           else (env5b, dicts)
       (env5d,     es) = if withTypeCheck
-                          then transExportSpec env5c dicts'
+                          then (env5c, dicts')
                           else (env5c, dicts') 
   (env5e, tc2) <- if withTypeCheck
                     -- Take the older environment env4 instead of env5d;

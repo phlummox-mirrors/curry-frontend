@@ -27,7 +27,6 @@ import Transformations.TypeSigs       as TS (transformTypeSigs)
 import Transformations.Lift           as L  (lift)
 import Transformations.Qual           as Q  (qual)
 import Transformations.Simplify       as S  (simplify)
-import Transformations.ExportSpec     as ES (transExportSpec)
 
 import CompilerEnv
 import CompilerOpts
@@ -72,10 +71,3 @@ simplify flat mdl env = (mdl', env { valueEnv = tyEnv' })
 typeSigs :: CompilerEnv -> Module -> (CompilerEnv, Module)
 typeSigs cEnv m = (cEnv, m')
   where m' = TS.transformTypeSigs cEnv m
-
--- |Transforms the export specification. All type class related elements
--- are removed and replaced by elements of the implementation of the type 
--- classes.  
-transExportSpec :: CompilerEnv -> Module -> (CompilerEnv, Module)
-transExportSpec cEnv m = (cEnv, m')
-  where m' = ES.transExportSpec cEnv m

@@ -93,7 +93,6 @@ Executable cymake
     , Transformations.CaseCompletion
     , Transformations.CurryToIL
     , Transformations.Desugar
-    , Transformations.ExportSpec
     , Transformations.Lift
     , Transformations.Qual
     , Transformations.Simplify
@@ -182,7 +181,6 @@ Test-Suite TestTypeChecking
      , Transformations.CaseCompletion
      , Transformations.CurryToIL
      , Transformations.Desugar
-     , Transformations.ExportSpec
      , Transformations.Lift
      , Transformations.Qual
      , Transformations.Simplify
