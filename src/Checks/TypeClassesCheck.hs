@@ -22,7 +22,7 @@
     type signatures. 
 -}
 
-module Checks.TypeClassesCheck (buildTypeSchemes, typeClassesCheck) where
+module Checks.TypeClassesCheck (buildTypeSchemesNoExpand, typeClassesCheck) where
 
 import Curry.Syntax.Type as ST hiding (IDecl)
 import Env.ClassEnv

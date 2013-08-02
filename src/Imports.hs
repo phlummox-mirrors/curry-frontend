@@ -41,7 +41,7 @@ import Env.TypeConstructor
 import Env.Value
 import Env.ClassEnv as CE
 
-import Checks.TypeClassesCheck as TCC (buildTypeSchemes)
+import Checks.TypeClassesCheck as TCC (buildTypeSchemesNoExpand)
 
 import CompilerEnv
 import CompilerOpts
@@ -784,9 +784,7 @@ importInterfaceIntf cEnv i@(Interface m _ _) env = env
   -- The type schemes might get lost, so we have to recompute them. We
   -- also have to set the hidden flags again, looking them up in the old 
   -- class environment. 
-  -- As we don't expand the type scheme, we can pass an empty module name
-  -- and type constructor environment. 
-  mClsEnv' = Map.map (buildTypeSchemes False (mkMIdent []) initTCEnv . setHidden') mClsEnv
+  mClsEnv' = Map.map (buildTypeSchemesNoExpand . setHidden') mClsEnv
   
   canonClassMap' = canonClassMap cEnv
   
