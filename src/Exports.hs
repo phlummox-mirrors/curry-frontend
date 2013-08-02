@@ -29,7 +29,6 @@ import Base.CurryTypes (fromQualType, fromQualType', fromContext)
 import Base.Messages
 import Base.Types as BT
 import Base.Names
-import Base.Utils
 
 import Env.OpPrec          (OpPrecEnv, PrecInfo (..), OpPrec (..), qualLookupP)
 import Env.TypeConstructor (TCEnv, TypeInfo (..), qualLookupTC)
