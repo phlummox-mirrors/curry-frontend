@@ -297,11 +297,14 @@ constructClassMethodsEnv bindings =
     concatMap (\(c, cls) -> zip3 (repeat c) (repeat cls) (map fst3 $ methods cls))
       bindings
   bind :: (QualIdent, Class, Ident) -> TopEnv Class -> TopEnv Class
-  bind (c, cls, m) env = 
-    -- use as qualification for the method the qualification of the qualIdent
-    -- under which the current class is stored. 
-    qualImportTopEnv' (fromJust' "constructClassMethodsEnv" $ qidModule $ theClass cls)
-      (qualifyLike c m) cls env
+  bind (c, cls, m) env 
+    | m `elem` publicMethods cls = 
+      -- use as qualification for the method the qualification of the qualIdent
+      -- under which the current class is stored. 
+      qualImportTopEnv' (fromJust' "constructClassMethodsEnv" $ qidModule $ theClass cls)
+        (qualifyLike c m) cls env
+    | otherwise = env
+       
 
 
 -- ----------------------------------------------------------------------------
