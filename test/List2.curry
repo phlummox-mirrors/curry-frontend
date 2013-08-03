@@ -1,4 +1,4 @@
-module List (last) where
+module List2 (last) where
 
 last :: [a] -> a
 last [x] = x
