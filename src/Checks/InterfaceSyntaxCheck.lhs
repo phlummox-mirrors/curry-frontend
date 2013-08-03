@@ -79,9 +79,8 @@ The latter must not occur in type expressions in interfaces.
 >   where nconstr (NewConstrDecl _ _ c _) = c
 > bindType (ITypeDecl       _ tc _ _) = qualBindTopEnv "" tc (Alias tc)
 > bindType (IFunctionDecl  _ _ _ _ _) = id
-> bindType (IClassDecl _ _ _ _ _ _ _) = id
+> bindType (IClassDecl _ _ _ _ _ _ _ _) = id
 > bindType (IInstanceDecl _ _ _ _ _ _ _) = id
-> bindType (IHidingClassDecl _ _ _ _ _ _) = id
 
 \end{verbatim}
 The checks applied to the interface are similar to those performed
@@ -104,13 +103,11 @@ during syntax checking of type expressions.
 >   liftM (ITypeDecl p tc tvs) (checkClosedType tvs ty)
 > checkIDecl (IFunctionDecl p f n cx ty) =
 >   liftM (IFunctionDecl p f n cx) (checkType ty)
-> checkIDecl (IClassDecl p scls cls var tySigs defs deps) = 
->   liftM3 (IClassDecl p scls cls var) 
+> checkIDecl (IClassDecl p h scls cls var tySigs defs deps) = 
+>   liftM3 (IClassDecl p h scls cls var) 
 >          (mapM (\(b, sig) -> checkIDecl sig >>= \sig' -> return (b, sig')) tySigs)
 >          (return defs) (return deps)
 > checkIDecl i@(IInstanceDecl _ _ _ _ _ _ _) = return i 
-> checkIDecl (IHidingClassDecl p scls cls var tySigs defs) = 
->  liftM2 (IHidingClassDecl p scls cls var) (mapM checkIDecl tySigs) (return defs)
 
 > checkTypeLhs :: [Ident] -> ISC ()
 > checkTypeLhs tvs = do

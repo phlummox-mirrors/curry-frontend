@@ -361,21 +361,21 @@ constrType tc tvs = ConstructorType tc $ map VariableType tvs
 -- | binding classes, either all classes or only exported classes, i.e., 
 -- classes not hidden in the interface
 bindCls :: Bool -> ModuleIdent -> IDecl -> ExpClassEnv -> ExpClassEnv
-bindCls _allClasses m (IClassDecl _ scx cls tyvar ds defs _deps) env =
+bindCls _allClasses m (IClassDecl _ False scx cls tyvar ds defs _deps) env =
   Map.insert cls (mkClass m scx cls tyvar ds defs) env
-bindCls allClasses0 m (IHidingClassDecl _ scx cls tyvar ds defs) env =
+bindCls allClasses0 m (IClassDecl _ True scx cls tyvar ds defs _deps) env =
   if allClasses0
   then Map.insert cls
-                  (mkClass m scx cls tyvar (map (\d -> (False, d)) ds) defs) env
+                  (mkClass m scx cls tyvar ds defs) env
   else env
 bindCls _ _ _ env = env
 
 -- |compute map that maps identifiers to the qualified identifiers under which
 -- they appear in the interface
 bindIdentMap :: Bool -> ModuleIdent -> IDecl -> ExpIdentMap -> ExpIdentMap
-bindIdentMap _allClasses _m (IClassDecl _ _ cls _ _ _ _) env =
+bindIdentMap _allClasses _m (IClassDecl _ False _ cls _ _ _ _) env =
   Map.insert (unqualify cls) cls env
-bindIdentMap allClasses0 _m (IHidingClassDecl _ _ cls _ _ _) env =
+bindIdentMap allClasses0 _m (IClassDecl _ True _ cls _ _ _ _) env =
   if allClasses0
   then Map.insert (unqualify cls) cls env
   else env
@@ -383,12 +383,12 @@ bindIdentMap _ _ _ env = env
 
 -- |the same as bindCls', only that it uses a IdentMap instead of a QIdentMap
 bindCls' :: Bool -> ModuleIdent -> IDecl -> ExpClassEnv' -> ExpClassEnv'
-bindCls' _allClasses m (IClassDecl _ scx cls tyvar ds defs _deps) env =
+bindCls' _allClasses m (IClassDecl _ False scx cls tyvar ds defs _deps) env =
   Map.insert (unqualify cls) (mkClass m scx cls tyvar ds defs) env
-bindCls' allClasses0 m (IHidingClassDecl _ scx cls tyvar ds defs) env =
+bindCls' allClasses0 m (IClassDecl _ True scx cls tyvar ds defs _deps) env =
   if allClasses0
   then Map.insert (unqualify cls)
-                  (mkClass m scx cls tyvar (map (\d -> (False, d)) ds) defs) env
+                  (mkClass m scx cls tyvar ds defs) env
   else env
 bindCls' _ _ _ env = env
 
@@ -431,7 +431,7 @@ calcDependencies ids i =
 calcDeps :: Interface -> QualIdent -> [QualIdent]
 calcDeps i cls =  
   case lookupClassIDecl cls i of
-    Just (IClassDecl _ _ _ _ _ _ deps) -> deps
+    Just (IClassDecl _ _ _ _ _ _ _ deps) -> deps
     _ -> []
 
 -- |Looks up (if present) an interface class declaration. This is needed
@@ -439,7 +439,7 @@ calcDeps i cls =
 lookupClassIDecl :: QualIdent -> Interface -> Maybe IDecl
 lookupClassIDecl cls (Interface _ _ decls) = list2Maybe $ catMaybes $ map lookupClassIDecl' decls
   where
-  lookupClassIDecl' i@(IClassDecl   _ _ cls' _ _ _ _) | cls == cls' = Just i
+  lookupClassIDecl' i@(IClassDecl _ _ _ cls' _ _ _ _) | cls == cls' = Just i
   -- lookupClassIDecl' i@(IHidingClassDecl _ _ cls' _ _) | cls == unqualify cls' = Just i
   lookupClassIDecl' _ = Nothing
   list2Maybe [] = Nothing

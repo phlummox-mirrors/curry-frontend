@@ -146,9 +146,8 @@ by function \texttt{fixInterface} and the associated type class
 >         tyCons (INewtypeDecl   _ tc _ _) tcs = tc : tcs
 >         tyCons (ITypeDecl      _ tc _ _) tcs = tc : tcs
 >         tyCons (IFunctionDecl _ _ _ _ _) tcs = tcs
->         tyCons (IClassDecl _ _ _ _ _ _ _) tcs = tcs
+>         tyCons (IClassDecl _ _ _ _ _ _ _ _) tcs = tcs
 >         tyCons (IInstanceDecl _ _ _ _ _ _ _) tcs = tcs
->         tyCons (IHidingClassDecl _ _ _ _ _ _) tcs = tcs
 
 > isPrimTypeId :: QualIdent -> Bool
 > isPrimTypeId tc = tc `elem` [qUnitId, qListId] || isQTupleId tc

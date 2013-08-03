@@ -149,8 +149,8 @@ interface module only. However, this has not been implemented yet.
 >         where (cx'', ty'') = toQualConstrType m [] (cx, ty)
 >       check _ = False
 >   checkValueInfo "function" check p f
-> checkImport (IClassDecl _p _cx (QualIdent Nothing _) _tyvar _ds _defs _) = ok
-> checkImport (IClassDecl p cx cls tyvar ds defs _) = do
+> checkImport (IClassDecl _p _h _cx (QualIdent Nothing _) _tyvar _ds _defs _) = ok
+> checkImport (IClassDecl p _h cx cls tyvar ds defs _) = do
 >   m <- getModuleIdent 
 >   cEnv <- getClassEnv
 >   let theClasses0 = qualLookupTopEnv cls (theClasses cEnv)
@@ -181,8 +181,6 @@ interface module only. However, this has not been implemented yet.
 >       unless (origin i == m && context i == cx
 >         && iClass i == cls && iType i == ty' && CE.typeVars i == tyvars) $
 >         report $ errInstImportConflict p "instance" m (unqualify cls) (unqualify ty')
-> checkImport (IHidingClassDecl p cx cls tyvar ds defs) = 
->   checkImport (IClassDecl p cx cls tyvar (map (\x -> (True, x)) ds) defs [])
 
 > funName :: Decl -> Ident
 > funName (FunctionDecl _ _ _ f _) = f

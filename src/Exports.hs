@@ -70,7 +70,7 @@ exportInterface' (Module m (Just (Exporting _ es)) _ _) tcs pEnv tcEnv tyEnv cEn
   decls   = foldr (typeDecl m tcEnv cEnv) (foldr (funDecl m tyEnv) [] es) es
   instances = nub $ map (instanceToIDecl m cEnv) $ 
     concatMap (getClassAndSuperClassInstances cEnv) $ getAllInstances cEnv
-  hiddenClasses = map (toHiddenClassDecl m cEnv) $ 
+  hiddenClasses = map (classToClassDecl m cEnv True [] {- TODO -}. fromJust . canonLookupClass cEnv) $ 
     nub dependencies \\ nub exportedClasses''
   dependencies = calculateDependencies cEnv (getAllInstances cEnv) exportedClasses''
   exportedClasses' = exportedClasses cEnv es
@@ -132,7 +132,7 @@ typeDecl m tcEnv cEnv (ExportTypeWith tc cs) ds = case qualLookupTC tc tcEnv of
     -- the whole class declaration must be exported, also the hidden methods 
     -- (for these actually the name doesn't need to be exported, important is only 
     -- the type signature). 
-    [c] -> classToClassDecl m cEnv cs c : ds
+    [c] -> classToClassDecl m cEnv False cs c : ds
     _ -> internalError ("Exports.typeDecl: no class/type: " ++ show tc)
   _ -> internalError "Exports.typeDecl: no type"
 typeDecl _ _ _ _ _ = internalError "Exports.typeDecl: no pattern match"
@@ -246,12 +246,11 @@ identsDecl (ITypeDecl    _ tc _ ty) xs = tc : identsType ty xs
 identsDecl (IFunctionDecl _ f _ cx ty) xs = f  : identsCx cx (identsType ty xs)
 -- TODO: consider also identifiers/classes in the "depends" section of class
 -- or instance declarations? 
-identsDecl (IClassDecl _ scls cls _ sigs _ _) xs = cls : scls ++ foldr identsDecl xs (map snd sigs)
+identsDecl (IClassDecl _ _ scls cls _ sigs _ _) xs = cls : scls ++ foldr identsDecl xs (map snd sigs)
 identsDecl (IInstanceDecl _ m scx cls (QualTC ty) _tyvars _) xs = 
   cls : ty : map fst scx ++ qIdentFromModule m ++ xs 
 identsDecl (IInstanceDecl _ m scx cls _ _tyvars _) xs = 
   cls : map fst scx ++ qIdentFromModule m ++ xs 
-identsDecl (IHidingClassDecl _ scls cls _ sigs _) xs = cls : scls ++ foldr identsDecl xs sigs
 identsDecl _ _ = internalError "Exports.identsDecl: no pattern match"
 
 -- | as we gather qualified identifiers, we have to construct a dummy qualified
@@ -313,10 +312,9 @@ usedTypesDecl (IDataDecl     _ _ _ cs) tcs =
 usedTypesDecl (INewtypeDecl  _ _ _ nc) tcs = usedTypesNewConstrDecl nc tcs
 usedTypesDecl (ITypeDecl     _ _ _ ty) tcs = usedTypesType ty tcs
 usedTypesDecl (IFunctionDecl _ _ _ cx ty) tcs = usedTypesContext cx (usedTypesType ty tcs)
-usedTypesDecl (IClassDecl _ _ _ _ sigs _ _) tcs = foldr usedTypesDecl tcs (map snd sigs)
+usedTypesDecl (IClassDecl _ _ _ _ _ sigs _ _) tcs = foldr usedTypesDecl tcs (map snd sigs)
 usedTypesDecl (IInstanceDecl _ _ _ _cls (QualTC ty) _ _) tcs = ty : tcs
 usedTypesDecl (IInstanceDecl _ _ _ _cls _ _ _) tcs = tcs
-usedTypesDecl (IHidingClassDecl _ _ _ _ sigs _) tcs = foldr usedTypesDecl tcs sigs
 usedTypesDecl _                        _   = internalError
   "Exports.usedTypesDecl: no pattern match" -- TODO
 
@@ -397,9 +395,9 @@ calculateDependencies cEnv insts classes =
   classesFromInstances cEnv insts ++ classesFromClasses False cEnv classes
 
 -- |converts a class into a IClassDecl
-classToClassDecl :: ModuleIdent -> ClassEnv -> [Ident] -> Class -> IDecl
-classToClassDecl m cEnv fs c =
-  IClassDecl NoPos 
+classToClassDecl :: ModuleIdent -> ClassEnv -> Bool -> [Ident] -> Class -> IDecl
+classToClassDecl m cEnv hidden fs c =
+  IClassDecl NoPos hidden
        (map (qualUnqualify m) $ superClasses c)
        (qualUnqualify m cName) 
        (CE.typeVar c) 
@@ -431,16 +429,17 @@ depsForClass' cEnv c = [qualify' $ dictTypeIdent cName]
   qualify' = qualifyLike cName
 
 -- |converts the given class to a hidden class interface declaration
-toHiddenClassDecl :: ModuleIdent -> ClassEnv -> QualIdent -> IDecl
-toHiddenClassDecl m cEnv qid = 
-  IHidingClassDecl NoPos 
-       (map (qualUnqualify m) $ superClasses c)
-       (qualUnqualify m $ theClass c) 
-       (CE.typeVar c) 
-       (map (typeSigToIFunDecl m (CE.typeVar c)) $ typeSchemes c)
-       (nub $ concatMap funName $ defaults c)
-  where
-  c = fromJust $ canonLookupClass cEnv qid
+--toHiddenClassDecl :: ModuleIdent -> ClassEnv -> QualIdent -> IDecl
+--toHiddenClassDecl m cEnv qid = 
+--  IClassDecl NoPos True 
+--       (map (qualUnqualify m) $ superClasses c)
+--       (qualUnqualify m cName) 
+--       (CE.typeVar c) 
+--       (map (typeSigToIFunDecl m (CE.typeVar c)) $ typeSchemes c)
+--       (nub $ concatMap funName $ defaults c)
+--  where
+--  cName = theClass c
+--  c = fromJust $ canonLookupClass cEnv qid
  
 -- for classes, the dictionary types have to be exported, as well as all 
 -- selection functions and the default methods
