@@ -1272,10 +1272,12 @@ createDictionary2 m cEnv tcEnv (InstanceDecl _ scx cls0 tcon tvars decls) ity =
   
   -- if dictionaries are empty, i.e., they don't contain any class methods (both
   -- from the class itself and the superclasses), we would get ambiguous
-  -- context elements if we don't remove the context completely. This removing
-  -- should be safe because we will never use the dictionary as there are no
-  -- class methods (?). 
-  isEmpty = null $ typeVarsInTypeExpr dictType0
+  -- context elements if we don't remove the context completely. It is 
+  -- important that in the "dictCode" function of the class environment, 
+  -- this removal of the whole context is reflected.
+  isEmpty = isEmptyDict cEnv cls
+  -- or equivalent:  
+  -- isEmpty = null $ typeVarsInTypeExpr dictType0
   
 createDictionary2 _ _ _ _ _ = internalError "createDictionary"
 

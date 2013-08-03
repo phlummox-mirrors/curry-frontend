@@ -40,11 +40,12 @@ module Env.ClassEnv (
   , isValidCx, reduceContext, findPath
   , toHnfs, toHnf, inHnf
   , dictCode, Operation (..), dictType, dictTypes
+  , isEmptyDict
   ) where
 
 -- import Base.Types hiding ()
 import Curry.Base.Ident
-import Text.PrettyPrint
+import Text.PrettyPrint hiding (isEmpty)
 import Curry.Syntax.Type
 import Curry.Syntax.Pretty
 import Base.Types hiding (Context, typeVar, typeVars, splitType)
@@ -580,14 +581,31 @@ dictCode cEnv available (qid, ty)
         mapping = zip' ids tys
         cx' = substContext mapping newCx
         
+        -- if we have an empty dictionary, i.e., a dictionary without any 
+        -- class methods, we had to remove the context of the dictionary
+        -- in the type classes check where the instances are transformed 
+        -- into dictionaries for avoiding ambiguous context elements errors. 
+        -- The removal of the context must be reflected here as well.  
+        emptyDict = isEmptyDict cEnv qid
+        
     in 
-    BuildDict (qid, ty) (map (dictCode cEnv available) cx')
+    BuildDict (qid, ty) (if emptyDict then [] else map (dictCode cEnv available) cx')
   | otherwise = internalError ("dictCode: Cannot construct dictionary " 
                                ++ show (qid, ty)++ 
                                " from the following dictionaries:\n" ++ show available) 
  where
  equalCxElem = \(qid', ty') -> qid' == qid && ty' == ty
  subClass = \(qid', ty') -> ty == ty' && isSuperClassOf cEnv qid qid'  
+
+-- |returns whether the dictionary for the given class is empty, i.e., whether
+-- it doesn't contain any class methods. The class name must be canonical. 
+isEmptyDict :: ClassEnv -> QualIdent -> Bool
+isEmptyDict cEnv cls = 
+  all (isEmpty . fromJust . canonLookupClass cEnv) (cls:scs)
+  where
+  scs = allSuperClasses cEnv cls
+  isEmpty :: Class -> Bool
+  isEmpty cls' = null $ methods cls'
 
 -- ----------------------------------------------------------------------------
 
