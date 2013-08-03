@@ -484,6 +484,11 @@ checkDictCode cEnv =
   dictCode cEnv [mk "A" (-1), mk "A" (-2)] (mkId "A", list $ mkTy (-2)) 
     === BuildDict (mkId "A", list $ mkTy (-2)) [Dictionary $ mk "A" (-2)] &&
     
+  dictCode cEnv [mk "Empty" 0] (mkId "Empty", list $ mkTy 0) 
+    === BuildDict (mkId "Empty", list $ mkTy 0) [] &&
+  dictCode cEnv [mk "Empty2" 0] (mkId "Empty2", list $ mkTy 0) 
+    === BuildDict (mkId "Empty2", list $ mkTy 0) [] &&
+    
   dictCode cEnv [mk "F" 0] (mkId "A", list $ mkTy 0) 
     === BuildDict (mkId "A", list $ mkTy 0) [SelSuperClass (mk "F" 0) (mk "A" 0)] &&
     
