@@ -2,11 +2,41 @@
 
 module TCPrelude 
   ( Eq(..)
-  , Bool (..)
+  , elem, notElem, lookup
+  , Ord(..)
+  , Show(..), print
+  , Read (..)
+  -- re-export data types from the original Prelude
+  , Bool (..) , Char (..) , Int (..) , Float (..), String , Ordering (..)
+  , Success (..), Maybe (..), Either (..), IO (..), IOError (..)
+  -- re-export functions from the original Prelude
+  , (.), id, const, curry, uncurry, flip, until, seq, ensureNotFree
+  , ensureSpine, ($), ($!), ($!!), ($#), ($##), error, prim_error
+  , failed, (&&), (||), not, otherwise, if_then_else
+  , fst, snd, head, tail, null, (++), length, (!!), map, foldl, foldl1
+  , foldr, foldr1, filter, zip, zip3, zipWith, zipWith3, unzip, unzip3
+  , concat, concatMap, iterate, repeat, replicate, take, drop, splitAt
+  , takeWhile, dropWhile, span, break, lines, unlines, words, unwords
+  , reverse, and, or, any, all, enumFrom, enumFromThen, enumFromTo
+  , enumFromThenTo, ord, prim_ord, chr, prim_chr, (+), prim_Int_plus, (-)
+  , prim_Int_minus, (*), prim_Int_times, div, prim_Int_div, mod, prim_Int_mod
+  , negate, negateFloat, prim_negateFloat, (=:=), success, (&), (&>), maybe
+  , either, (>>=), return, (>>), done, putChar, prim_putChar, getChar, readFile
+  , prim_readFile, prim_readFileContents, writeFile, prim_writeFile, appendFile
+  , prim_appendFile, putStr, putStrLn, getLine, userError, ioError, showError
+  , catch, catchFail, prim_show, doSolve, sequenceIO, sequenceIO_, mapIO
+  , mapIO_, (?), unknown, getAllValues, getSomeValue, try, inject, solveAll
+  , solveAll2, once, best, findall, findfirst, browse, browseList, unpack
+  , PEVAL, normalForm, groundNormalForm, apply, cond, letrec, (=:<=), (=:<<=)
+  , ifVar, failure
   ) where
 
-import qualified Prelude as P ((==))
-import Prelude hiding ((==))
+import qualified Prelude as P ((==), (<=))
+import Prelude hiding ((==), (/=), compare, (<), (<=), (>), (>=), min, max, show)
+
+-- -------------------------------------------------------------------------
+-- Eq class and related instances and functions
+-- -------------------------------------------------------------------------
 
 class Eq a where
   (==), (/=) :: a -> a -> Bool
@@ -35,6 +65,9 @@ instance Eq a => Eq [a] where
   (_:_) == []    = False
   (x:xs) == (y:ys) = x == y && xs == ys
 
+instance Eq () where
+  () == () = True
+  
 instance (Eq a, Eq b) => Eq (a, b) where
   (a, b) == (a', b') = a == a' && b == b'
 
@@ -53,3 +86,166 @@ instance (Eq a, Eq b, Eq c, Eq d, Eq e, Eq f) => Eq (a, b, c, d, e, f) where
 instance (Eq a, Eq b, Eq c, Eq d, Eq e, Eq f, Eq g) => Eq (a, b, c, d, e, f, g) where
   (a, b, c, d, e, f, g) == (a', b', c', d', e', f', g') = a == a' && b == b' && c == c' && d == d' && e == e' && f == f' && g == g'
 
+instance Eq a => Eq (Maybe a) where
+  Nothing == Nothing = True
+  Just _  == Nothing = False
+  Nothing == Just _  = False
+  Just x  == Just y  = x == y
+
+-- TODO: use deriving instead
+instance Eq Ordering where
+  LT == LT = True
+  LT == EQ = False
+  LT == GT = False
+  EQ == LT = False
+  EQ == EQ = True
+  EQ == GT = False
+  GT == LT = False
+  GT == EQ = False
+  GT == GT = True
+
+instance Eq Success where
+  Success == Success = True
+
+instance (Eq a, Eq b) => Eq (Either a b) where
+  Left x  == Left y  = x == y
+  Left _  == Right _ = False
+  Right _ == Left _  = False
+  Right x == Right y = x == y
+  
+--- Element of a list?
+elem :: Eq a => a -> [a] -> Bool
+elem x = any (x ==)
+
+--- Not element of a list?
+notElem :: Eq a => a -> [a] -> Bool
+notElem x = all (x /=)
+
+--- Looks up a key in an association list.
+lookup :: Eq a => a -> [(a, b)] -> Maybe b
+lookup _ []       = Nothing
+lookup k ((x,y):xys)
+      | k==x      = Just y
+      | otherwise = lookup k xys
+
+-- -------------------------------------------------------------------------
+-- Ord class and related instances and functions
+-- -------------------------------------------------------------------------
+
+--- minimal complete definition: compare or <=
+class Eq a => Ord a where
+  compare :: a -> a -> Ordering
+  (<=) :: a -> a -> Bool
+  (>=) :: a -> a -> Bool
+  (<)  :: a -> a -> Bool
+  (>)  :: a -> a -> Bool
+
+  min :: a -> a -> a
+  max :: a -> a -> a
+
+  x < y = x <= y && x /= y
+  x > y = not (x <= y)
+  x >= y = y <= x
+  x <= y = compare x y == EQ || compare x y == LT
+
+  compare x y | x == y = EQ
+              | x <= y = LT
+              | otherwise = GT
+
+  min x y | x <= y    = x
+          | otherwise = y
+
+  max x y | x >= y    = x
+          | otherwise = y
+
+instance Ord Bool where
+  False <= False = True
+  False <= True  = True
+  True  <= False = False
+  True  <= True  = True
+
+instance Ord Char where
+  c1 <= c2 = c1 P.<= c2
+
+instance Ord Int where
+  i1 <= i2 = i1 P.<= i2
+
+instance Ord Float where
+  f1 <= f2 = f1 P.<= f2
+
+instance Ord Success where
+  Success <= Success = True
+
+-- TODO: use deriving instead
+instance Ord Ordering where
+  LT <= LT = True
+  LT <= EQ = True
+  LT <= GT = True
+  EQ <= LT = False
+  EQ <= EQ = True
+  EQ <= GT = True
+  GT <= LT = False
+  GT <= EQ = False
+  GT <= GT = True
+
+instance Ord a => Ord (Maybe a) where
+  Nothing <= Nothing = True
+  Nothing <= Just _  = True
+  Just _  <= Nothing = False
+  Just x  <= Just y  = x < y
+
+instance (Ord a, Ord b) => Ord (Either a b) where
+  Left x  <= Left y  = x <= y
+  Left _  <= Right _ = True
+  Right _ <= Left _  = False
+  Right x <= Right y = x <= y
+
+instance Ord a => Ord [a] where
+  []    <= []    = True
+  (_:_) <= []    = False
+  []    <= (_:_) = True
+  (x:xs) <= (y:ys) | x == y    = xs <= ys
+                   | otherwise = x < y
+
+instance Ord () where
+  () <= () = True
+
+instance (Ord a, Ord b) => Ord (a, b) where
+  (a, b) <= (a', b') = a < a' || (a == a' && b <= b')
+
+instance (Ord a, Ord b, Ord c) => Ord (a, b, c) where
+  (a, b, c) <= (a', b', c') = a < a'
+     || (a == a' && b < b')
+     || (a == a' && b == b' && c <= c')
+
+instance (Ord a, Ord b, Ord c, Ord d) => Ord (a, b, c, d) where
+  (a, b, c, d) <= (a', b', c', d') = a < a'
+     || (a == a' && b < b')
+     || (a == a' && b == b' && c < c')
+     || (a == a' && b == b' && c == c' && d <= d')
+
+instance (Ord a, Ord b, Ord c, Ord d, Ord e) => Ord (a, b, c, d, e) where
+  (a, b, c, d, e) <= (a', b', c', d', e') = a < a'
+     || (a == a' && b < b')
+     || (a == a' && b == b' && c < c')
+     || (a == a' && b == b' && c == c' && d < d')
+     || (a == a' && b == b' && c == c' && d == d' && e <= e')
+
+-- -------------------------------------------------------------------------
+-- Show class and related instances and functions
+-- -------------------------------------------------------------------------
+
+class Show a where
+  show :: a -> String
+
+print :: Show a => a -> IO ()
+print t = putStrLn (show t)
+
+-- -------------------------------------------------------------------------
+-- Read class and related instances and functions
+-- -------------------------------------------------------------------------
+
+class Read a where
+  read :: String -> a
+
+  
