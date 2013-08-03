@@ -109,7 +109,8 @@ for file in TestClassExports TestClassExports2 TestClassExportsImports \
   DuplicateClassesD1 DuplicateClassesD2 DuplicateClassesD3 DuplicateClassesD4 \
   AsImportBug1 AsImportBug2 AsImportBug3 \
   Arb ArbUse \
-  TCPrelude TCPreludeUse
+  TCPrelude TCPreludeUse \
+  ArbTypeSyn ArbTypeSynUse
 do
   echo $file >> tmp.txt
   $cymake -f -i typeclasses/modules typeclasses/modules/$file.curry 2> stderr.txt 1> stdout.txt || (echo "===================="; echo "| Error in $file.curry:" ; echo "===================="; cat stdout.txt; cat stderr.txt; echo)
