@@ -995,7 +995,7 @@ transformClass2 mdl cEnv tcEnv (ClassDecl p _scx cls _tyvar _decls) =
   genDictType :: Decl
   genDictType = 
     TypeDecl p (mkIdent $ mkDictTypeName $ show (theClass theClass0))
-             [typeVar theClass0] (dictTypeExpr cEnv (theClass theClass0))
+             [typeVar theClass0] (dictTypeExpr mdl cEnv tcEnv (theClass theClass0))
   
   -- |generates the typesignature of a superclass selection method
   superClassSelMethodTypeSig :: String -> String -> Decl
@@ -1039,8 +1039,8 @@ expandedUnit mdl tcEnv = (expandTypeExpr mdl tcEnv $ TupleType [])
 -- dictionary types and the original method signatures). It follows that
 -- this function can only be used for classes from the source file being compiled,
 -- not for classes that are imported.
-dictTypeExpr :: ClassEnv -> QualIdent -> TypeExpr
-dictTypeExpr cEnv cls =
+dictTypeExpr :: ModuleIdent -> ClassEnv -> TCEnv -> QualIdent -> TypeExpr
+dictTypeExpr m cEnv tcEnv cls =
   case null (scsTypes ++ methodTypes) of
     True -> TupleType [] -- unit
     False -> case length (scsTypes ++ methodTypes) == 1 of
@@ -1059,7 +1059,17 @@ dictTypeExpr cEnv cls =
   methodTypes = map considerZeroArity theMethods
 
   considerZeroArity :: (Ident, Context, TypeExpr) -> TypeExpr
-  considerZeroArity (_m, _cx, ty) = if arrowArityTyExpr ty /= 0
+  considerZeroArity (_m, _cx, ty) = 
+    -- we have to expand the type because there could be type synonyms in 
+    -- the class methods that hide the fact that the arity isn't zero. Example:
+    -- 
+    -- type Fun a = a -> a
+    -- class Arb a where
+    --   arb :: Fun a
+    -- 
+    -- Here without expanding the compiler would erronously assume an arity
+    -- of zero. 
+    if arrowArity (expandType m tcEnv $ toType [] ty) /= 0
     then ty
     else ArrowType (TupleType []) ty
 
