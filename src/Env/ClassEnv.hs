@@ -39,14 +39,13 @@ module Env.ClassEnv (
   , implies, implies'
   , isValidCx, reduceContext, findPath
   , toHnfs, toHnf, inHnf
-  , dictCode, Operation (..), dictType, dictTypes, dictTypeExpr
+  , dictCode, Operation (..), dictType, dictTypes
   ) where
 
 -- import Base.Types hiding ()
 import Curry.Base.Ident
 import Text.PrettyPrint
 import Curry.Syntax.Type
-import Curry.Syntax.Utils
 import Curry.Syntax.Pretty
 import Base.Types hiding (Context, typeVar, typeVars, splitType)
 import qualified Base.Types as BT 
@@ -56,7 +55,6 @@ import Base.Messages
 import Base.Utils
 import Control.Monad.State
 import Base.Subst (listToSubst)
-import Base.Names
 import Base.TypeSubst hiding (substContext)
 import qualified Data.Map as Map
 import Base.TopEnv
@@ -641,38 +639,6 @@ freshTyVar = do
 
 initFreshVar :: Int
 initFreshVar = 1 -- not zero! 
-
--- ----------------------------------------------------------------------------
-
--- |returns a type expression representing the type of the dictionary for
--- the given class (here the canonicalized name must be given). Note that
--- the resulting type expression is completely unexpanded (using 
--- dictionary types and the original method signatures). It follows that
--- this function can only be used for classes from the source file being compiled, 
--- not for classes that are imported. 
-dictTypeExpr :: ClassEnv -> QualIdent -> TypeExpr
-dictTypeExpr cEnv cls = 
-  case null (scsTypes ++ methodTypes) of
-    True -> TupleType [] -- unit
-    False -> case length (scsTypes ++ methodTypes) == 1 of
-      True -> case length scsTypes == 1 of
-        True -> head scsTypes
-        False -> head methodTypes
-      False -> TupleType (scsTypes ++ methodTypes)
-  where
-  c = fromJust $ canonLookupClass cEnv cls
-  scs = superClasses c
-  theMethods = origMethods c
-  
-  scsTypes = map (\cls0 -> ConstructorType 
-                             (qualify $ mkIdent $ mkDictTypeName $ show cls0) 
-                             [VariableType $ typeVar c]) scs
-  methodTypes = map considerZeroArity theMethods 
-  
-  considerZeroArity :: (Ident, Context, TypeExpr) -> TypeExpr
-  considerZeroArity (_m, _cx, ty) = if arrowArityTyExpr ty /= 0
-    then ty
-    else ArrowType (TupleType []) ty  
 
 -- ----------------------------------------------------------------------------
 -- Pritty printer functions
