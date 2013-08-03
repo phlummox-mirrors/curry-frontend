@@ -110,7 +110,7 @@ for file in TestClassExports TestClassExports2 TestClassExportsImports \
   DuplicateClassesD1 DuplicateClassesD2 DuplicateClassesD3 DuplicateClassesD4 \
   AsImportBug1 AsImportBug2 AsImportBug3 \
   Arb ArbUse \
-  TCPrelude TCPreludeUse \
+  TCPrelude TCPreludeUse List Maybe TCList \
   ArbTypeSyn ArbTypeSynUse \
   HiddenClassMethodsBug1 HiddenClassMethodsBug2 \
   AmbiguousClassMethods1 AmbiguousClassMethods2
