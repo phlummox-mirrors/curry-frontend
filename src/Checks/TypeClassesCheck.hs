@@ -110,6 +110,7 @@ typeClassesCheck m decls0 -- **** TODO ****
     decls = expandDerivingDecls decls0 -- **** TODO ****
     classDecls = filter isClassDecl decls
     instDecls = filter isInstanceDecl decls
+    dataDecls = filter (\x -> isDataDecl x || isNewtypeDecl x) decls
     typeSigs = gatherTypeSigs decls
     tcEnv = foldr (bindTC m tcEnv) tcEnv0 decls
     tcCheck = do
@@ -173,6 +174,8 @@ typeClassesCheck m decls0 -- **** TODO ****
       mapM_ (checkRulesInInstanceOrClass newClassEnv) classDecls
       
       mapM_ (checkClassNameInInstance newClassEnv) instDecls
+      
+      mapM_ (checkClassesInDeriving m newClassEnv) dataDecls
       
     -- ----------------------------------------------------------------------
     -- phase 3: checks that need the class environment, with
@@ -490,15 +493,17 @@ typeVariableInContext _ = internalError "typeVariableInContext"
 -- in scope and not ambiguous
 checkClassesInContext :: ModuleIdent -> ClassEnv -> Decl -> Tcc ()
 checkClassesInContext m cEnv (ClassDecl p (SContext scon) _ _ _) = 
-  mapM_ (checkClassesInContext' m cEnv p) (map fst scon)
+  mapM_ (checkClassOk m cEnv p) (map fst scon)
 checkClassesInContext m cEnv (InstanceDecl p (SContext scon) _ _ _ _) = 
-  mapM_ (checkClassesInContext' m cEnv p) (map fst scon)
+  mapM_ (checkClassOk m cEnv p) (map fst scon)
 checkClassesInContext m cEnv (TypeSig p _ _ (Context cx) _) = 
-  mapM_ (checkClassesInContext' m cEnv p) (map (\(ContextElem qid _ _) -> qid) cx)
+  mapM_ (checkClassOk m cEnv p) (map (\(ContextElem qid _ _) -> qid) cx)
 checkClassesInContext _ _ _ = internalError "TypeClassesCheck.checkClassesInContext"
     
-checkClassesInContext' :: ModuleIdent -> ClassEnv -> Position -> QualIdent -> Tcc ()
-checkClassesInContext' m cEnv p qid = 
+-- |checks whether the given class (from a deriving declaration or a context)
+-- is in scope and unambiguous
+checkClassOk :: ModuleIdent -> ClassEnv -> Position -> QualIdent -> Tcc ()
+checkClassOk m cEnv p qid = 
   case lookupNonHiddenClasses cEnv (qualUnqualify m qid) of 
     []    -> report (errClassNotInScope p qid)
     [_]   -> ok
@@ -803,6 +808,16 @@ checkContextsInClassMethodTypeSigs (ClassDecl _ _ _ _ ds)
   checkTySig _ = internalError "checkContextsInClassMethodTypeSigs"
 checkContextsInClassMethodTypeSigs _ = internalError "checkContextsInClassMethodTypeSigs"
 
+
+-- |Checks that the classes in the deriving declaration of a data type are
+-- in scope and unambiguous. 
+checkClassesInDeriving :: ModuleIdent -> ClassEnv -> Decl -> Tcc ()
+checkClassesInDeriving m cEnv (DataDecl    _ _ _ _ Nothing) = ok
+checkClassesInDeriving m cEnv (NewtypeDecl _ _ _ _ Nothing) = ok
+checkClassesInDeriving m cEnv (DataDecl    p _ _ _ (Just (Deriving clss))) = 
+  mapM_ (checkClassOk m cEnv p) clss
+checkClassesInDeriving m cEnv (NewtypeDecl p _ _ _ (Just (Deriving clss))) = 
+  mapM_ (checkClassOk m cEnv p) clss
 
 -- ---------------------------------------------------------------------------
 -- source code transformation
