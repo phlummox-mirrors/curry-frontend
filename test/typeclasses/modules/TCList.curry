@@ -130,7 +130,7 @@ insert x [] = [x]
 
 insert x (y:ys) = if x <= y
                     then x : y : ys
-                    else y : insertBy x ys
+                    else y : insert x ys
 
 --- Returns the maximum of a non-empty list.
 maximum :: Ord a => [a] -> a
