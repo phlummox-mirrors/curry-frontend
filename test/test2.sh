@@ -43,8 +43,7 @@ for file in DictTrans1 DictTrans2 DictTrans3 DictTrans4 \
   TestVarious \
   DataConstructorsBug1 DataConstructorsBug2 \
   ArrowInstances ArbTypeSyn \
-  EmptyDicts \
-  DerivingClassesInScope
+  EmptyDicts
 do
   echo $file >> tmp.txt
   $cymake -f -i typeclasses typeclasses/$file.curry 2> stderr.txt 1> stdout.txt || (echo "===================="; echo "| Error in $file.curry:" ; echo "===================="; cat stdout.txt; cat stderr.txt; echo)
@@ -65,7 +64,7 @@ done
 
 # do the check # 1 c (other errors)
 
-for file in DerivingClassesNotInScope
+for file in DerivingClassesInScope DerivingClassesNotInScope
 do
   echo $file >> tmp.txt
   $cymake -f -i typeclasses typeclasses/$file.curry 2> stderr.txt 1> stdout.txt && (echo "===================="; echo "| No error in $file.curry:" ; echo "===================="; cat stdout.txt; cat stderr.txt; echo)
