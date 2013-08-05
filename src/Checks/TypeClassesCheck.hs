@@ -81,7 +81,7 @@ hasError = liftM (not . null) $ gets errors
 -- adds new data types/functions for the class and instance declarations. 
 -- Also builds a corresponding class environment. 
 typeClassesCheck :: ModuleIdent -> [Decl] -> ClassEnv -> TCEnv -> ([Decl], ClassEnv, [Message])
-typeClassesCheck m decls0 -- **** TODO ****
+typeClassesCheck m decls0
     (ClassEnv importedClassesEnv importedInstances _ _) tcEnv0 = 
   case runTcc tcCheck initTccState of 
     ((newClasses, instances), []) -> 
@@ -107,7 +107,7 @@ typeClassesCheck m decls0 -- **** TODO ****
       in (newDecls, cEnv, [])
     (_, errs@(_:_)) -> (decls, ClassEnv emptyTopEnv [] emptyTopEnv Map.empty, errs)
   where
-    decls = expandDerivingDecls decls0 -- **** TODO ****
+    decls = expandDerivingDecls decls0
     classDecls = filter isClassDecl decls
     instDecls = filter isInstanceDecl decls
     dataDecls = filter (\x -> isDataDecl x || isNewtypeDecl x) decls
@@ -1331,7 +1331,7 @@ createDictionary2 _ _ _ _ _ = internalError "createDictionary"
 -- source code transformations related to "deriving" of instances
 -- ---------------------------------------------------------------------------
 
--- **** TODO ****
+-- | expand all data declarations with a deriving annotation in the given list
 expandDerivingDecls :: [Decl] -> [Decl]
 expandDerivingDecls ds = ds ++ concatMap expandDerivingDecl dataDecls
   where
@@ -1342,7 +1342,7 @@ expandDerivingDecl :: Decl -> [Decl]
 expandDerivingDecl d = if isNothing maybeDeriv 
   then []
   else
-    map (createInstance d) classes
+    concatMap (createInstance d) classes
   where
   maybeDeriv = getDeriving d
   Deriving classes = fromJust maybeDeriv
@@ -1354,16 +1354,16 @@ getDeriving (DataDecl _ _ _ _ d) = d
 getDeriving _ = internalError "getDeriving"
 
 -- |creates an instance for the given data declaration and the given class
-createInstance :: Decl -> QualIdent -> Decl
+createInstance :: Decl -> QualIdent -> [Decl]
 createInstance d cls = 
-  -- if cls == eqClsIdent -- **** TODO ****
-  if (unqualify cls) == (unqualify eqClsIdent)
-  then createEqInstance d
-  -- else if cls == eqOrdIdent -- **** TODO ****
-  else if (unqualify cls) == (unqualify ordClsIdent)
-  then createOrdInstance d
-  else -- TODO
-    internalError "createInstance"
+  -- consider only the *name* of the class, not the module identifier. If 
+  -- this is wrong, it will be detected later
+  if unqualify cls == unqualify eqClsIdent
+  then [createEqInstance d cls]
+  else if unqualify cls == unqualify ordClsIdent
+  then [createOrdInstance d cls]
+  else []
+  -- TODO: add further instances here
 
 -- |creates an Eq or an Ord instance for the given data declaration
 createEqOrOrdInstance :: Decl      -- ^ the data/newtype declaration 
@@ -1420,8 +1420,8 @@ createEqOrOrdInstance (NewtypeDecl p ty vars (NewConstrDecl p' vars' id' ty') d)
 createEqOrOrdInstance _ _ _ _ _ = internalError "createEqOrOrdInstance"
 
 -- |creates an "Eq" instance for the given data type
-createEqInstance :: Decl -> Decl
-createEqInstance d = createEqOrOrdInstance d eqOp eqClsIdentTmp genEqRhs deriveEqPrefix
+createEqInstance :: Decl -> QualIdent -> Decl
+createEqInstance d cls = createEqOrOrdInstance d eqOp cls genEqRhs deriveEqPrefix
 
 -- |generates the right hand sides used in the derived Eq instance  
 genEqRhs :: Position -> (Ident, Int) -> (Ident, Int) -> Int -> Int -> [Ident] -> [Ident] -> Rhs
@@ -1441,8 +1441,8 @@ genEqRhs p (c, _) (c', _) n _n' newVars newVars' =
                (tail vars0)
 
 -- |creates an "Ord" instance for the given data type
-createOrdInstance :: Decl -> Decl
-createOrdInstance d = createEqOrOrdInstance d leqOp ordClsIdentTmp genOrdRhs deriveOrdPrefix
+createOrdInstance :: Decl -> QualIdent -> Decl
+createOrdInstance d cls = createEqOrOrdInstance d leqOp cls genOrdRhs deriveOrdPrefix
 
 -- |generates the right hand sides used in the derived Ord instance. The scheme
 -- is as follows:
@@ -1500,14 +1500,6 @@ eqClsIdent = qualifyWith tcPreludeMIdent (mkIdent eqClsIdentName)
 
 ordClsIdent :: QualIdent
 ordClsIdent = qualifyWith tcPreludeMIdent (mkIdent ordClsIdentName)
-
--- **** TODO ****
-eqClsIdentTmp :: QualIdent
-eqClsIdentTmp = qualify $ mkIdent eqClsIdentName
-
--- **** TODO ****
-ordClsIdentTmp :: QualIdent
-ordClsIdentTmp = qualify $ mkIdent ordClsIdentName
 
 eqOp :: Ident
 eqOp = mkIdent "=="
