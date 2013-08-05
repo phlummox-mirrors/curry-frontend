@@ -64,7 +64,8 @@ done
 
 # do the check # 1 c (other errors)
 
-for file in DerivingClassesInScope DerivingClassesNotInScope
+for file in DerivingClassesInScope DerivingClassesNotInScope \
+  EmptyDataTypeDeriving
 do
   echo $file >> tmp.txt
   $cymake -f -i typeclasses typeclasses/$file.curry 2> stderr.txt 1> stdout.txt && (echo "===================="; echo "| No error in $file.curry:" ; echo "===================="; cat stdout.txt; cat stderr.txt; echo)

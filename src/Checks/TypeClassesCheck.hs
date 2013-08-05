@@ -150,6 +150,8 @@ typeClassesCheck m decls0 -- **** TODO ****
       mapM_ (checkForDirectCycle m) classDecls
       
       noDoubleClassMethods m classDecls
+      
+      mapM_ checkEmptyDataTypeAndDeriving dataDecls
     
     -- ----------------------------------------------------------------------
     -- phase 2: Checks that need the class environment, but mostly only for
@@ -806,6 +808,15 @@ checkContextsInClassMethodTypeSigs (ClassDecl _ _ _ _ ds)
   checkTySig _ = internalError "checkContextsInClassMethodTypeSigs"
 checkContextsInClassMethodTypeSigs _ = internalError "checkContextsInClassMethodTypeSigs"
 
+-- |checks that we don't use deriving for data types without constructors
+checkEmptyDataTypeAndDeriving :: Decl -> Tcc ()
+checkEmptyDataTypeAndDeriving (DataDecl    _ _ _ _ Nothing) = ok
+checkEmptyDataTypeAndDeriving (NewtypeDecl _ _ _ _ Nothing) = ok
+checkEmptyDataTypeAndDeriving (DataDecl p ty _ cs (Just (Deriving ds))) = 
+  when (null cs && not (null ds)) $ report $ errEmptyDataTypeDeriving p ty
+-- Newtype declaration has always a constructor!
+checkEmptyDataTypeAndDeriving (NewtypeDecl _ _ _ _ (Just (Deriving _))) = ok
+checkEmptyDataTypeAndDeriving _ = internalError "checkEmptyDataTypeAndDeriving"
 
 -- |Checks that the classes in the deriving declaration of a data type are
 -- in scope and unambiguous. It tests furtherly, whether the classes are 
@@ -1824,3 +1835,8 @@ errNotSupportedDerivingClass :: Position -> Ident -> QualIdent -> Message
 errNotSupportedDerivingClass p ty cls = posMessage p $
   text "Cannot derive instance for the type" <+> text (show ty) <+>
   text "and the class" <+> text (show cls)
+
+errEmptyDataTypeDeriving :: Position -> Ident -> Message
+errEmptyDataTypeDeriving p ty = posMessage p $ 
+  text "Cannot derive an instance for an empty data type (here" <+> text (show ty)
+  <> text ")"
