@@ -63,6 +63,15 @@ do
   $cymake -f -i typeclasses/TCCheck typeclasses/TCCheck/$file.curry 2> stderr.txt 1> stdout.txt && (echo "===================="; echo "| No error in $file.curry:" ; echo "===================="; cat stdout.txt; cat stderr.txt; echo)
 done
 
+# do the check # 1 c (other errors)
+
+for file in DerivingClassesNotInScope
+do
+  echo $file >> tmp.txt
+  $cymake -f -i typeclasses typeclasses/$file.curry 2> stderr.txt 1> stdout.txt && (echo "===================="; echo "| No error in $file.curry:" ; echo "===================="; cat stdout.txt; cat stderr.txt; echo)
+done
+
+
 fi
 
 # Those files contain type classes with other type vars in methods than
