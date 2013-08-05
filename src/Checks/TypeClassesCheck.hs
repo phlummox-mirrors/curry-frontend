@@ -810,14 +810,35 @@ checkContextsInClassMethodTypeSigs _ = internalError "checkContextsInClassMethod
 
 
 -- |Checks that the classes in the deriving declaration of a data type are
--- in scope and unambiguous. 
+-- in scope and unambiguous. It tests furtherly, whether the classes are 
+-- supported. 
 checkClassesInDeriving :: ModuleIdent -> ClassEnv -> Decl -> Tcc ()
-checkClassesInDeriving m cEnv (DataDecl    _ _ _ _ Nothing) = ok
-checkClassesInDeriving m cEnv (NewtypeDecl _ _ _ _ Nothing) = ok
-checkClassesInDeriving m cEnv (DataDecl    p _ _ _ (Just (Deriving clss))) = 
+checkClassesInDeriving _m _cEnv (DataDecl    _ _ _ _ Nothing) = ok
+checkClassesInDeriving _m _cEnv (NewtypeDecl _ _ _ _ Nothing) = ok
+checkClassesInDeriving m cEnv (DataDecl    p ty _ _ (Just (Deriving clss))) = do
   mapM_ (checkClassOk m cEnv p) clss
-checkClassesInDeriving m cEnv (NewtypeDecl p _ _ _ (Just (Deriving clss))) = 
+  mapM_ (checkSupported cEnv p ty) clss
+checkClassesInDeriving m cEnv (NewtypeDecl p ty _ _ (Just (Deriving clss))) = do
   mapM_ (checkClassOk m cEnv p) clss
+  mapM_ (checkSupported cEnv p ty) clss
+checkClassesInDeriving _ _ _ = internalError "checkClassesInDeriving"
+
+-- |checks whether we can derive an instance for the given class
+checkSupported :: ClassEnv -> Position -> Ident -> QualIdent -> Tcc ()
+checkSupported cEnv p ty cls = 
+  case lookupClass cEnv cls of 
+    Nothing -> ok -- error message for this case already issued
+    Just c -> unless (theClass c `elem` supportedDerivingClasses) $
+      report $ errNotSupportedDerivingClass p ty cls 
+
+-- |the classes for which deriving is supported
+supportedDerivingClasses :: [QualIdent]
+supportedDerivingClasses = 
+  [ eqClsIdent 
+  , ordClsIdent
+  -- , showClsIdent -- not yet
+  -- , readClsIdent -- not yet
+  ]
 
 -- ---------------------------------------------------------------------------
 -- source code transformation
@@ -1466,10 +1487,10 @@ ordClsIdentName :: String
 ordClsIdentName = "Ord"
 
 eqClsIdent :: QualIdent
-eqClsIdent = qualifyWith preludeMIdent (mkIdent eqClsIdentName) 
+eqClsIdent = qualifyWith tcPreludeMIdent (mkIdent eqClsIdentName) 
 
 ordClsIdent :: QualIdent
-ordClsIdent = qualifyWith preludeMIdent (mkIdent ordClsIdentName)
+ordClsIdent = qualifyWith tcPreludeMIdent (mkIdent ordClsIdentName)
 
 -- **** TODO ****
 eqClsIdentTmp :: QualIdent
@@ -1800,3 +1821,8 @@ errNonEmptyContext :: Position -> [Ident] -> Message
 errNonEmptyContext p ids = posMessage p $ 
   text "Contexts in type signatures of class methods currently not supported! "
   $$ text "Concerned: The following methods:" <+> text (show ids)  
+
+errNotSupportedDerivingClass :: Position -> Ident -> QualIdent -> Message
+errNotSupportedDerivingClass p ty cls = posMessage p $
+  text "Cannot derive instance for the type" <+> text (show ty) <+>
+  text "and the class" <+> text (show cls)
