@@ -49,6 +49,19 @@ do
   $cymake -f -i typeclasses typeclasses/$file.curry 2> stderr.txt 1> stdout.txt || (echo "===================="; echo "| Error in $file.curry:" ; echo "===================="; cat stdout.txt; cat stderr.txt; echo)
 done
 
+# do the check # 1 b (errors of type class check component)
+
+for file in checkCorrectTypeVarsInTypeSigs CheckRulesInClass CheckRulesInInstance \
+  ClassesInContext ClassMethodSigsContainTypeVar ClassNameInInstance \
+  ContextImplication ContextsInClassMethodTypeSigs Cycles directCycle \
+  doubleClassMethods duplicateClassNames duplicateInstances InstanceConstraints \
+  instanceDataTypeCorrect InstanceTypeVarsDoNotAppearTwice SuperclassInstances \
+  typeVarsInInstContext typeVarsInTySigContext TyVarInContext
+do
+  echo $file >> tmp.txt
+  $cymake -f -i typeclasses/TCCheck typeclasses/TCCheck/$file.curry 2> stderr.txt 1> stdout.txt && (echo "===================="; echo "| No error in $file.curry:" ; echo "===================="; cat stdout.txt; cat stderr.txt; echo)
+done
+
 fi
 
 # Those files contain type classes with other type vars in methods than
