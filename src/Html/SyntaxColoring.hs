@@ -397,7 +397,7 @@ declPos (InfixDecl        p _ _ _  ) = p
 declPos (DataDecl         p _ _ _ _) = p
 declPos (NewtypeDecl      p _ _ _ _) = p
 declPos (TypeDecl         p _ _ _  ) = p
-declPos (TypeSig          p _ _ _  ) = p
+declPos (TypeSig          p _ _ _ _) = p
 declPos (FunctionDecl     p _ _ _ _) = p
 declPos (ForeignDecl      p _ _ _ _) = p
 declPos (ExternalDecl     p _      ) = p
@@ -475,7 +475,7 @@ decl2codes (TypeDecl _ t vs ty) =
      TypeConstructor TypeDecla (qualify t) :
      map (Identifier UnknownId . qualify) vs ++
      typeExpr2codes ty
-decl2codes (TypeSig _ fs _cx ty) =
+decl2codes (TypeSig _ _ fs _cx ty) =
      map (Function TypSig . qualify) fs ++ typeExpr2codes ty
 decl2codes (FunctionDecl _ _ _ _ eqs) = concatMap equation2codes eqs
 decl2codes (ForeignDecl _ _ _ _ _) = []
@@ -654,7 +654,9 @@ showToken (Token Id_ccall     _) = "ccall"
 showToken (Token Id_forall    _) = "forall"
 showToken (Token Id_hiding    _) = "hiding"
 showToken (Token Id_interface _) = "interface"
+showToken (Token Id_interfaceTypeClasses _) = "interfaceTypeClasses"
 showToken (Token Id_primitive _) = "primitive"
+showToken (Token Id_public    _) = "public"
 showToken (Token Id_qualified _) = "qualified"
 showToken (Token EOF          _) = ""
 showToken (Token LineComment   (StringAttributes sv _)) = sv

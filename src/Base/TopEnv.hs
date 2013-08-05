@@ -46,11 +46,15 @@ module Base.TopEnv
   , allImports, moduleImports, localBindings, allLocalBindings 
   , allBindings, allBoundElems
   , tryBindTopEnv, tryQualBindTopEnv, tryRebindTopEnv, tryQualRebindTopEnv
+  , filterEnv
+  , allBindingsWithOrigNames
+  , qualImportTopEnvNoMerge, qualImportTopEnv'
+  , qualLookupLocalTopEnv
   ) where
 
 import           Control.Arrow        (second)
 import qualified Data.Map      as Map
-  (Map, empty, insert, findWithDefault, lookup, toList)
+  (Map, empty, insert, findWithDefault, lookup, toList, map)
 
 import Control.Monad
 
@@ -96,6 +100,16 @@ importTopEnv m x y env = addImport m (qualify x) y env
 qualImportTopEnv :: Entity a => ModuleIdent -> Ident -> a -> TopEnv a
                  -> TopEnv a
 qualImportTopEnv m x y env = addImport m (qualifyWith m x) y env
+
+qualImportTopEnv' :: Entity a => ModuleIdent -> QualIdent -> a -> TopEnv a
+                     -> TopEnv a
+qualImportTopEnv' m x y env = addImport m x y env
+
+-- TODO: remove this again (?)
+qualImportTopEnvNoMerge :: QualIdent -> a -> TopEnv a -> TopEnv a
+qualImportTopEnvNoMerge x y (TopEnv env) = 
+  let current = Map.findWithDefault [] x env
+  in TopEnv $ Map.insert x ((Import [], y) : current) env
 
 -- local helper
 addImport :: Entity a => ModuleIdent -> QualIdent -> a -> TopEnv a
@@ -177,6 +191,12 @@ lookupTopEnv = qualLookupTopEnv . qualify
 qualLookupTopEnv :: QualIdent -> TopEnv a -> [a]
 qualLookupTopEnv x (TopEnv env) = map snd (entities x env)
 
+qualLookupLocalTopEnv :: QualIdent -> TopEnv a -> [a]
+qualLookupLocalTopEnv x (TopEnv env) = map snd $ filter isLocal $ (entities x env)
+  where
+  isLocal (Local, _) = True
+  isLocal _ = False
+
 allImports :: TopEnv a -> [(QualIdent, a)]
 allImports (TopEnv env) =
   [ (x, y) | (x, ys) <- Map.toList env, (Import _, y) <- ys ]
@@ -204,3 +224,17 @@ allBindings (TopEnv env) = [ (x, y) | (x, ys) <- Map.toList env
 allBoundElems :: TopEnv a -> [a]
 allBoundElems (TopEnv env) = [ y | (_, ys) <- Map.toList env
                                  , (_, y) <- ys ]
+
+-- |returns all bindings together with the original names
+allBindingsWithOrigNames :: Entity a => TopEnv a -> [(QualIdent, QualIdent, a)]
+allBindingsWithOrigNames (TopEnv env) = 
+  [ (x, origName y, y) | (x, ys) <- Map.toList env
+                       , (_, y) <- ys]
+
+filterEnv :: (a -> Bool) -> TopEnv a -> TopEnv a
+filterEnv p (TopEnv env) = TopEnv $ Map.map filter' env
+  where
+  -- filter' :: [(Source, a)] -> [(Source, a)]
+  filter' = filter p' 
+  -- p' :: (Source, a) -> Bool
+  p' (_src, x) = p x

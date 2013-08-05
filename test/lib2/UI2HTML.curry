@@ -63,7 +63,9 @@ module UI2HTML (
   nextHtmlForm,
   includeHtmlForm,
   onClickSpicy, 
-  changeChilds
+  changeChilds,
+  UIWidget,
+  UIRef
 ) where
 
 import HTML

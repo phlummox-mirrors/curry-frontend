@@ -61,8 +61,8 @@ genFullCurrySyntax opts fn m = case runMsg m of
     then do
       loaded <- liftIO $ loadModule opts fn
       case checkModule opts loaded of
-        CheckFailed errs'        -> failWith $ show $ head errs'
-        CheckSuccess (_, mod',_) -> return  mod'
+        CheckFailed errs'              -> failWith $ show $ head errs'
+        CheckSuccess (_, mod',_, _, _) -> return  mod'
     else failWith $ show $ head errs
 
 -- TODO: Resembles CurryBuilder

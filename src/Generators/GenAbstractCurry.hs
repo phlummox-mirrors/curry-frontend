@@ -103,8 +103,8 @@ partitionDecl p d@(InfixDecl _ _ _ _) = p { opDecls   = d : opDecls   p }
 partitionDecl p d@(DataDecl _ _ _ _ _) = p { typeDecls = d : typeDecls p }
 partitionDecl p d@(TypeDecl  _ _ _ _) = p { typeDecls = d : typeDecls p }
 -- function declarations
-partitionDecl p (TypeSig pos ids cx ty)
-  = partitionFuncDecls (\q -> TypeSig pos [q] cx ty) p ids
+partitionDecl p (TypeSig pos e ids cx ty)
+  = partitionFuncDecls (\q -> TypeSig pos e [q] cx ty) p ids
 partitionDecl p d@(FunctionDecl _ _ _ ident _)
   = partitionFuncDecls (const d) p [ident]
 partitionDecl p d@(ForeignDecl _ _ _ ident _)
@@ -205,6 +205,8 @@ genTypeExpr env (RecordType fss mr) = case mr of
   (ls  , ts ) = unzip $ concatMap (\ (ls1,ty) -> map (\l -> (l,ty)) ls1) fss
   (env1, ts') = mapAccumL genTypeExpr env ts
   ls'        = map idName ls
+genTypeExpr env s@(SpecialConstructorType _ _) = 
+  genTypeExpr env (specialConsToTyExpr s) 
 
 genOpDecl :: AbstractEnv -> Decl -> [COpDecl]
 genOpDecl env (InfixDecl _ fix prec ops) = map genCOp (reverse ops)
@@ -261,7 +263,7 @@ genFuncDecl isLocal env (ident, decls)
            | otherwise = qualLookupType (qualifyWith (moduleId env) ident)
                           (typeEnv env)
 
-  genTypeSig env' (TypeSig     _ _ _cx ts) = genTypeExpr env' ts
+  genTypeSig env' (TypeSig   _ _ _ _cx ts) = genTypeExpr env' ts
   genTypeSig env' (ForeignDecl _ _ _ _ ts) = genTypeExpr env' ts
   genTypeSig _    _ =
     internalError "GenAbstractCurry.genFuncDecl.genTypeSig: no pattern match"
@@ -384,7 +386,7 @@ genLocalDecls env decls
             decls' = FreeDecl pos (tail idents) : decls1
             (env'', locals) = genLocals env' fdecls decls'
         in (env'', CLocalVar (idx, idName ident) : locals)
-  genLocals env' fdecls ((TypeSig _ _ _ _):decls1)
+  genLocals env' fdecls ((TypeSig _ _ _ _ _):decls1)
     = genLocals env' fdecls decls1
   genLocals _ _ decl = internalError ("GenAbstractCurry.genLocals: unexpected local declaration: \n" ++ show (head decl))
 

@@ -13,7 +13,7 @@
     entities into the module's scope, and the function 'qualifyEnv' to
     qualify the environment prior to computing the export interface.
 -}
-module Imports (importModules, qualifyEnv) where
+module Imports (importInterfaces, importModules, qualifyEnv) where
 
 import Control.Monad (liftM, unless)
 import qualified Control.Monad.State as S (State, gets, modify, runState)
@@ -21,30 +21,35 @@ import qualified Data.Map as Map
 import Data.Maybe
 import qualified Data.Set as Set
 import Text.PrettyPrint
+import Data.List (nub, (\\))
 
 import Curry.Base.Ident
 import Curry.Base.Position
-import Curry.Syntax
+import Curry.Syntax as CS
 
-import Base.CurryTypes (toQualType, toQualTypes)
+import Base.CurryTypes (toQualType, toQualTypes, toQualConstrType)
 import Base.Messages (Message, posMessage, internalError)
 import Base.TopEnv
-import Base.Types as BT
+import Base.Types as BT hiding (isCons)
 import Base.TypeSubst (expandAliasType)
+import Base.Utils (fromJust') 
 
 import Env.Interface
-import Env.ModuleAlias (importAliases)
+import Env.ModuleAlias (importAliases, initAliasEnv)
 import Env.OpPrec
 import Env.TypeConstructor
 import Env.Value
+import Env.ClassEnv as CE
+
+import Checks.TypeClassesCheck as TCC (buildTypeSchemesNoExpand)
 
 import CompilerEnv
 import CompilerOpts
 
 -- |The function 'importModules' brings the declarations of all
 -- imported interfaces into scope for the current module.
-importModules :: Options -> Module -> InterfaceEnv -> (CompilerEnv, [Message])
-importModules opts (Module mid _ imps _) iEnv
+importModules :: Bool -> Options -> Module -> InterfaceEnv -> (CompilerEnv, [Message])
+importModules tcs opts (Module mid _ imps _) iEnv
   = (\ (e, m) -> (expandTCValueEnv opts $ importUnifyData e, m))
   $ foldl importModule (initEnv, []) imps
   where
@@ -54,29 +59,49 @@ importModules opts (Module mid _ imps _) iEnv
       }
     importModule (env, msgs) (ImportDecl _ m q asM is) =
       case Map.lookup m iEnv of
-        Just intf -> let (env', msgs') = importInterface (fromMaybe m asM) q is intf env
+        Just intf -> let (env', msgs') = importInterface tcs (fromMaybe m asM) q is intf env
                      in  (env', msgs ++ msgs')
         Nothing   -> internalError $ "Imports.importModules: no interface for "
                                     ++ show m
+
+-- |The function 'importInterfaces' brings the declarations of all
+-- imported interfaces into scope for the current 'Interface'.
+importInterfaces :: Options -> Interface -> InterfaceEnv -> CompilerEnv
+importInterfaces opts (Interface m is _) iEnv
+  = (expandTCValueEnv opts . importUnifyData)
+  $ foldl importModule initEnv is
+  where
+    initEnv = (initCompilerEnv m) { aliasEnv = initAliasEnv, interfaceEnv = iEnv }
+    importModule env (IImportDecl _ i) = case Map.lookup i iEnv of
+        Just intf -> importInterfaceIntf initClassEnv intf env
+        Nothing   -> internalError $ "Imports.importInterfaces: no interface for "
+                                    ++ show m
+
 
 -- ---------------------------------------------------------------------------
 -- Importing an interface into the module
 -- ---------------------------------------------------------------------------
 
--- Three kinds of environments are computed from the interface:
+-- (At least) five kinds of environments are computed from the interface:
 --
 -- 1. The operator precedences
 -- 2. The type constructors
 -- 3. The types of the data constructors and functions (values)
+-- 4. The classes in the class environment
+-- 5. The instances in the class environments (not using a TopEnv)
 --
 -- Note that the original names of all entities defined in the imported module
 -- are qualified appropriately. The same is true for type expressions.
 
 type IdentMap    = Map.Map Ident
+type QIdentMap   = Map.Map QualIdent
 
 type ExpPEnv     = IdentMap PrecInfo
 type ExpTCEnv    = IdentMap TypeInfo
 type ExpValueEnv = IdentMap ValueInfo
+type ExpClassEnv = QIdentMap Class
+type ExpClassEnv' = IdentMap Class
+type ExpIdentMap = IdentMap QualIdent
 
 -- When an interface is imported, the compiler first transforms the
 -- interface into these environments. If an import specification is
@@ -86,22 +111,100 @@ type ExpValueEnv = IdentMap ValueInfo
 -- using either a qualified import (if the module is imported qualified)
 -- or both a qualified and an unqualified import (non-qualified import).
 
-importInterface :: ModuleIdent -> Bool -> Maybe ImportSpec -> Interface
+importInterface :: Bool -> ModuleIdent -> Bool -> Maybe ImportSpec -> Interface
                 -> CompilerEnv -> (CompilerEnv, [Message])
-importInterface m q is i env = (env', errs)
+importInterface tcs m q is i env = (env'', errs)
   where
   env' = env
     { opPrecEnv = importEntities m q vs id              mPEnv  $ opPrecEnv env
     , tyConsEnv = importEntities m q ts (importData vs) mTCEnv $ tyConsEnv env
     , valueEnv  = importEntities m q vs id              mTyEnv $ valueEnv  env
+    , classEnv  = 
+      if tcs
+      then (classEnv env) {
+          theClasses = importEntities' m q cs setPublicMethods mClsEnv' $ 
+            theClasses $ classEnv env, 
+          theInstances = foldr (importInstance m) (theInstances $ classEnv env) mInstances
+        }
+      else initClassEnv
     }
   mPEnv  = intfEnv bindPrec i -- all operator precedences
   mTCEnv = intfEnv bindTC   i -- all type constructors
   mTyEnv = intfEnv bindTy   i -- all values
+  mClsEnv         = intfEnv (bindCls True)  i -- all classes
+  mExportedClsEnv = intfEnv (bindCls False) i -- all exported classes 
+                                              -- (i.e., not hidden in the interface)
+  mExportedClsEnv' = intfEnv (bindCls' False) i
+  (mInstances, depsInstances) = loadInstances i
   -- all imported type constructors / values
-  (expandedSpec, errs) = runExpand (expandSpecs is) m mTCEnv mTyEnv
+  (expandedSpec, errs) = runExpand (expandSpecs is) m mTCEnv mTyEnv mExportedClsEnv'
   ts = isVisible is (Set.fromList $ foldr addType  [] expandedSpec)
   vs = isVisible is (Set.fromList $ foldr addValue [] expandedSpec)
+  
+  -- class specific importing (considering dependencies!)
+  identMap = intfEnv (bindIdentMap False) i
+  
+  allExportedClasses = Map.keys mExportedClsEnv
+  classesInImportSpec = 
+    if isImportingAll is
+    then allExportedClasses
+    -- lookup for each class in the import specification the name under
+    -- which it appears in the interface
+    -- TODO: is fromJust here safe?
+    else nub $ map (fromJust' "Imports" . flip Map.lookup identMap) $ 
+      classesInImportSpec' mExportedClsEnv' expandedSpec
+  imported = 
+    if isImporting is
+    then classesInImportSpec
+    else allExportedClasses \\ classesInImportSpec
+  deps = nub $ calcDependencies imported i ++ depsInstances
+  
+  cs c = if c `elem` imported then True -- import public
+         else if c `elem` deps then True -- import hidden
+         else False -- do not import
+
+  -- classes can be imported as hidden or as public
+  hflag c = if c `elem` imported then False -- import public
+            else if c `elem` deps then True -- import hidden
+            else True -- or False, doesn't matter
+  
+  mClsEnv' = Map.mapWithKey (setHidden . hflag) mClsEnv
+    
+  -- |sets the class methods that will be public in the module, 
+  -- according to the given import specification
+  setPublicMethods :: Class -> Class
+  setPublicMethods cls = cls { publicMethods =
+    case is of 
+      Nothing              -> ms
+      Just (Importing _ _) -> fs
+      Just (Hiding    _ _) -> ms \\ fs  }
+    where
+    fs = nub $ getImportedClassMethods (theClass cls) expandedSpec
+    ms = publicMethods cls
+    
+  -- | returns all class methods imported in the import specification via
+  -- C(..) or C(f1, ..., fn)  
+  getImportedClassMethods :: QualIdent -> [Import] -> [Ident]
+  getImportedClassMethods cls = concatMap getImportedClassMethods'
+    where
+    getImportedClassMethods' :: Import -> [Ident]
+    getImportedClassMethods' (ImportTypeWith tc fs) = 
+      if tc == unqualify cls then fs else []
+    getImportedClassMethods' (Import _) = []
+    getImportedClassMethods' (ImportTypeAll _) = 
+      internalError "getImportedClassMethods"
+      
+  -- importing dependencies; always as unqualified!
+  env'' = env' 
+    { tyConsEnv = importEntities m False ts' id mTCEnv $ tyConsEnv env'
+    , valueEnv = importEntities m False ts' id mTyEnv $ valueEnv env'
+    }
+  
+  ts' = (`elem` map unqualify deps)
+      
+-- |sets the hidden flag in the given class to true or false
+setHidden :: Bool -> Class -> Class
+setHidden h c = c { hidden = h } 
 
 addType :: Import -> [Ident] -> [Ident]
 addType (Import            _) tcs = tcs
@@ -118,11 +221,28 @@ isVisible Nothing                _  = const True
 isVisible (Just (Importing _ _)) xs = (`Set.member`    xs)
 isVisible (Just (Hiding    _ _)) xs = (`Set.notMember` xs)
 
+isImporting :: Maybe ImportSpec -> Bool
+isImporting Nothing = True
+isImporting (Just (Importing _ _)) = True
+isImporting (Just (Hiding    _ _)) = False
+
+isImportingAll :: Maybe ImportSpec -> Bool
+isImportingAll Nothing = True
+isImportingAll (Just _) = False
+
 importEntities :: Entity a => ModuleIdent -> Bool -> (Ident -> Bool)
                -> (a -> a) -> IdentMap a -> TopEnv a -> TopEnv a
 importEntities m q isVisible' f mEnv env =
   foldr (uncurry (if q then qualImportTopEnv m else importUnqual m)) env
         [(x,f y) | (x,y) <- Map.toList mEnv, isVisible' x]
+  where importUnqual m' x y = importTopEnv m' x y . qualImportTopEnv m' x y
+  
+-- |nearly the same as importEntities, only for QualIdents instead of Idents
+importEntities' :: Entity a => ModuleIdent -> Bool -> (QualIdent -> Bool)
+               -> (a -> a) -> QIdentMap a -> TopEnv a -> TopEnv a
+importEntities' m q isVisible' f mEnv env =
+  foldr (uncurry (if q then qualImportTopEnv m else importUnqual m)) env
+        [(x',f y) | (x,y) <- Map.toList mEnv, let x' = unqualify x, isVisible' x]
   where importUnqual m' x y = importTopEnv m' x y . qualImportTopEnv m' x y
 
 importData :: (Ident -> Bool) -> TypeInfo -> TypeInfo
@@ -146,8 +266,8 @@ importConstr isVisible' dc@(DataConstr c _ _)
 -- all entities defined in (but not imported into) the interface with its
 -- module name.
 
-intfEnv :: (ModuleIdent -> IDecl -> IdentMap a -> IdentMap a)
-        -> Interface -> IdentMap a
+intfEnv :: (ModuleIdent -> IDecl -> Map.Map m a -> Map.Map m a)
+        -> Interface -> Map.Map m a
 intfEnv bind (Interface m _ ds) = foldr (bind m) Map.empty ds
 
 -- operator precedences
@@ -157,9 +277,8 @@ bindPrec m (IInfixDecl _ fix p op) =
 bindPrec _ _ = id
 
 bindTCHidden :: ModuleIdent -> IDecl -> ExpTCEnv -> ExpTCEnv
-bindTCHidden m (HidingDataDecl _ tc tvs) =
-  bindType DataType m (qualify tc) tvs []
-bindTCHidden m d = bindTC m d
+bindTCHidden m (HidingDataDecl _ tc tvs) = bindType DataType m tc tvs []
+bindTCHidden m d                         = bindTC m d
 
 -- type constructors
 bindTC :: ModuleIdent -> IDecl -> ExpTCEnv -> ExpTCEnv
@@ -205,8 +324,9 @@ bindTy m (ITypeDecl _ rtc tvs (RecordType fs _)) env =
         rtc' = qualifyWith m urtc
         env' = bindConstr m rtc' tvs (constrType rtc' tvs)
                (ConstrDecl NoPos [] urtc (map snd fs)) env
-bindTy m (IFunctionDecl _ f a ty) env = Map.insert (unqualify f)
-  (Value (qualQualify m f) a (polyType (toQualType m [] ty))) env
+bindTy m (IFunctionDecl _ f a cx ty) env = Map.insert (unqualify f)
+  (Value (qualQualify m f) a (polyType ty' `constrainBy` cx')) env
+  where (cx', ty') = toQualConstrType m [] (cx, ty)
 bindTy _ _ env = env
 
 bindConstr :: ModuleIdent -> QualIdent -> [Ident] -> TypeExpr -> ConstrDecl
@@ -228,9 +348,6 @@ constrType' :: ModuleIdent -> [Ident] -> [Ident] -> TypeExpr -> ExistTypeScheme
 constrType' m tvs evs ty = ForAllExist BT.emptyContext (length tvs) (length evs)
                                        (toQualType m tvs ty)
 
-qualifyLike :: QualIdent -> Ident -> QualIdent
-qualifyLike x = maybe qualify qualifyWith (qidModule x)
-
 bindRecordLabels :: ModuleIdent -> QualIdent -> ([Ident], TypeExpr)
                  -> ExpValueEnv -> ExpValueEnv
 bindRecordLabels m r (ls, ty) env = foldr bindLbl env ls
@@ -240,6 +357,127 @@ bindRecordLabels m r (ls, ty) env = foldr bindLbl env ls
 
 constrType :: QualIdent -> [Ident] -> TypeExpr
 constrType tc tvs = ConstructorType tc $ map VariableType tvs
+
+-- | binding classes, either all classes or only exported classes, i.e., 
+-- classes not hidden in the interface
+bindCls :: Bool -> ModuleIdent -> IDecl -> ExpClassEnv -> ExpClassEnv
+bindCls _allClasses m (IClassDecl _ scx cls tyvar ds defs _deps) env =
+  Map.insert cls (mkClass m scx cls tyvar ds defs) env
+bindCls allClasses0 m (IHidingClassDecl _ scx cls tyvar ds defs) env =
+  if allClasses0
+  then Map.insert cls
+                  (mkClass m scx cls tyvar (map (\d -> (False, d)) ds) defs) env
+  else env
+bindCls _ _ _ env = env
+
+-- |compute map that maps identifiers to the qualified identifiers under which
+-- they appear in the interface
+bindIdentMap :: Bool -> ModuleIdent -> IDecl -> ExpIdentMap -> ExpIdentMap
+bindIdentMap _allClasses _m (IClassDecl _ _ cls _ _ _ _) env =
+  Map.insert (unqualify cls) cls env
+bindIdentMap allClasses0 _m (IHidingClassDecl _ _ cls _ _ _) env =
+  if allClasses0
+  then Map.insert (unqualify cls) cls env
+  else env
+bindIdentMap _ _ _ env = env
+
+-- |the same as bindCls', only that it uses a IdentMap instead of a QIdentMap
+bindCls' :: Bool -> ModuleIdent -> IDecl -> ExpClassEnv' -> ExpClassEnv'
+bindCls' _allClasses m (IClassDecl _ scx cls tyvar ds defs _deps) env =
+  Map.insert (unqualify cls) (mkClass m scx cls tyvar ds defs) env
+bindCls' allClasses0 m (IHidingClassDecl _ scx cls tyvar ds defs) env =
+  if allClasses0
+  then Map.insert (unqualify cls)
+                  (mkClass m scx cls tyvar (map (\d -> (False, d)) ds) defs) env
+  else env
+bindCls' _ _ _ env = env
+
+-- |construct a class from an "IClassDecl" or "IHidingClassDecl"
+mkClass :: ModuleIdent -> [QualIdent] -> QualIdent -> Ident -> [(Bool, IDecl)] 
+        -> [Ident] -> Class
+mkClass m scx cls tyvar ds defs = 
+  Class { 
+    superClasses = map (qualQualify m) scx, 
+    theClass = qualQualify m cls, 
+    CE.typeVar = tyvar, 
+    kind = -1, 
+    origMethods = [], 
+    methods = map (iFunDeclToMethod m) (map snd ds), 
+    typeSchemes = [], 
+    defaults = map toDefFun defs,
+    hidden = internalError "hidden not yet defined", 
+    publicMethods = map (fName . snd) $ filter fst ds }
+  where
+  toDefFun :: Ident -> Decl 
+  toDefFun f = FunctionDecl NoPos Nothing (-1) f 
+    -- the implementation of the default method isn't needed
+    [Equation NoPos (FunLhs f []) (SimpleRhs NoPos (Tuple (SrcRef []) []) [])]
+  fName :: IDecl -> Ident
+  fName (IFunctionDecl _ f  _ _ _) = unqualify f
+  fName _ = internalError "mkClass in Imports"
+
+-- |convert an IFunctionDecl to the method representation used in "Class"
+iFunDeclToMethod :: ModuleIdent -> IDecl -> (Ident, CS.Context, TypeExpr)
+iFunDeclToMethod m (IFunctionDecl _ f _a cx te) 
+  = (unqualify f, cx, qualifyTypeExpr m te)
+iFunDeclToMethod _ _ = internalError "iFunDeclToMethod"
+
+-- |calculates dependecies of the given classes
+calcDependencies :: [QualIdent] -> Interface -> [QualIdent]
+calcDependencies ids i = 
+  concatMap (calcDeps i) ids
+
+-- | calculates the dependencies of one given class (by a simple lookup)
+calcDeps :: Interface -> QualIdent -> [QualIdent]
+calcDeps i cls =  
+  case lookupClassIDecl cls i of
+    Just (IClassDecl _ _ _ _ _ _ deps) -> deps
+    _ -> []
+
+-- |Looks up (if present) an interface class declaration. This is needed
+-- for calculating the dependencies of a given class
+lookupClassIDecl :: QualIdent -> Interface -> Maybe IDecl
+lookupClassIDecl cls (Interface _ _ decls) = list2Maybe $ catMaybes $ map lookupClassIDecl' decls
+  where
+  lookupClassIDecl' i@(IClassDecl   _ _ cls' _ _ _ _) | cls == cls' = Just i
+  -- lookupClassIDecl' i@(IHidingClassDecl _ _ cls' _ _) | cls == unqualify cls' = Just i
+  lookupClassIDecl' _ = Nothing
+  list2Maybe [] = Nothing
+  list2Maybe [a] = Just a
+  list2Maybe (_:_) = internalError "lookupClassIDecl"
+
+-- |returns all imported classes from the given import list
+classesInImportSpec' :: ExpClassEnv' -> [Import] -> [Ident]
+classesInImportSpec' cEnv = map importId . filter isClassImport
+  where
+  isClassImport :: Import -> Bool
+  isClassImport (Import _) = False
+  isClassImport (ImportTypeWith cls _) = isJust $ Map.lookup cls cEnv
+  isClassImport (ImportTypeAll _) = internalError "classesInImportSpec"
+  importId (Import _) = internalError "classesInImportSpec"
+  importId (ImportTypeWith cls _) = cls
+  importId (ImportTypeAll _) = internalError "classesInImportSpec"
+
+-- |load instances from interface and return the instances as well as the
+-- class dependencies of all instances
+loadInstances :: Interface -> ([Instance], [QualIdent])
+loadInstances (Interface m _ ds) = foldr (bindInstance m) ([], []) ds
+
+-- |bind an instance into the environment that holds all instances and as well
+-- all classes the instances depend on
+bindInstance :: ModuleIdent -> IDecl -> ([Instance], [QualIdent]) -> ([Instance], [QualIdent])
+bindInstance m (IInstanceDecl _ maybeOrigin scx cls ty tyvars ideps) (is, deps)
+  = let inst = Instance {
+          context = map (\(qid, id0) -> (qualQualify m qid, id0)) scx, 
+          iClass = qualQualify m cls, 
+          iType = qualQualify m $ specialTyConToQualIdent ty,
+          CE.typeVars = tyvars,
+          rules = [], 
+          origin = if isNothing maybeOrigin then m else fromJust maybeOrigin
+        }
+    in (inst:is, deps ++ ideps)
+bindInstance _ _ iEnv = iEnv
+
 
 -- ---------------------------------------------------------------------------
 -- Expansion of the import specification
@@ -277,6 +515,7 @@ data ExpandState = ExpandState
   { expModIdent :: ModuleIdent
   , expTCEnv    :: ExpTCEnv
   , expValueEnv :: ExpValueEnv
+  , expClassEnv :: ExpClassEnv'
   , errors      :: [Message]
   }
 
@@ -291,12 +530,15 @@ getTyConsEnv = S.gets expTCEnv
 getValueEnv :: ExpandM ExpValueEnv
 getValueEnv = S.gets expValueEnv
 
+getClassEnv :: ExpandM ExpClassEnv'
+getClassEnv = S.gets expClassEnv
+
 report :: Message -> ExpandM ()
 report msg = S.modify $ \ s -> s { errors = msg : errors s }
 
-runExpand :: ExpandM a -> ModuleIdent -> ExpTCEnv -> ExpValueEnv -> (a, [Message])
-runExpand expand m tcEnv tyEnv =
-  let (r, s) = S.runState expand (ExpandState m tcEnv tyEnv [])
+runExpand :: ExpandM a -> ModuleIdent -> ExpTCEnv -> ExpValueEnv -> ExpClassEnv' -> (a, [Message])
+runExpand expand m tcEnv tyEnv cEnv =
+  let (r, s) = S.runState expand (ExpandState m tcEnv tyEnv cEnv [])
   in (r, reverse $ errors s)
 
 expandSpecs :: Maybe ImportSpec -> ExpandM [Import]
@@ -305,22 +547,42 @@ expandSpecs (Just (Importing _ is)) = concat `liftM` mapM expandImport is
 expandSpecs (Just (Hiding    _ is)) = concat `liftM` mapM expandHiding is
 
 expandImport :: Import -> ExpandM [Import]
-expandImport (Import             x) =               expandThing    x
-expandImport (ImportTypeWith tc cs) = (:[]) `liftM` expandTypeWith tc cs
-expandImport (ImportTypeAll     tc) = (:[]) `liftM` expandTypeAll  tc
+expandImport (Import             x) = expandThing    x
+expandImport (ImportTypeWith tc cs) = 
+  expandHelper tc (expandClassWith tc cs) (expandTypeWith tc cs) 
+expandImport (ImportTypeAll     tc) = 
+  expandHelper tc (expandClassAll tc) (expandTypeAll tc)
 
 expandHiding :: Import -> ExpandM [Import]
 expandHiding (Import             x) = expandHide x
-expandHiding (ImportTypeWith tc cs) = (:[]) `liftM` expandTypeWith tc cs
-expandHiding (ImportTypeAll     tc) = (:[]) `liftM` expandTypeAll  tc
+expandHiding (ImportTypeWith tc cs) = 
+  expandHelper tc (expandClassWith tc cs) (expandTypeWith tc cs) 
+expandHiding (ImportTypeAll     tc) = 
+  expandHelper tc (expandClassAll tc) (expandTypeAll tc)
 
--- try to expand as type constructor
+expandHelper :: Ident -> ExpandM Import -> ExpandM Import -> ExpandM [Import]
+expandHelper tc expandClass expandType = do
+  cEnv <- getClassEnv
+  tyEnv <- getTyConsEnv
+  m <- getModuleIdent
+  let isClass = tc `Map.member` cEnv
+      isCons  = tc `Map.member` tyEnv
+  case () of
+    () | isClass && isCons     -> report (errAmbiguousEntity m tc) >> return []
+       | isClass && not isCons -> (:[]) `liftM` expandClass
+       | not isClass && isCons -> (:[]) `liftM` expandType
+       | otherwise             -> report (errUndefinedEntity m tc) >> return []
+
+-- try to expand as type constructor or class
 expandThing :: Ident -> ExpandM [Import]
 expandThing tc = do
   tcEnv <- getTyConsEnv
+  cEnv  <- getClassEnv 
   case Map.lookup tc tcEnv of
     Just _  -> expandThing' tc $ Just [ImportTypeWith tc []]
-    Nothing -> expandThing' tc Nothing
+    Nothing -> case Map.lookup tc cEnv of
+      Just _ -> expandThing' tc $ Just [ImportTypeWith tc []]
+      Nothing -> expandThing' tc Nothing
 
 -- try to expand as function / data constructor
 expandThing' :: Ident -> Maybe [Import] -> ExpandM [Import]
@@ -344,13 +606,16 @@ expandThing' f tcImport = do
   isConstr (Value            _ _ _) = False
   isConstr (Label            _ _ _) = False
 
--- try to hide as type constructor
+-- try to hide as type constructor/class
 expandHide :: Ident -> ExpandM [Import]
 expandHide tc = do
   tcEnv <- getTyConsEnv
+  cEnv <- getClassEnv
   case Map.lookup tc tcEnv of
     Just _  -> expandHide' tc $ Just [ImportTypeWith tc []]
-    Nothing -> expandHide' tc Nothing
+    Nothing -> case Map.lookup tc cEnv of
+      Just _ -> expandHide' tc $ Just [ImportTypeWith tc []]
+      Nothing -> expandHide' tc Nothing
 
 -- try to hide as function / data constructor
 expandHide' :: Ident -> Maybe [Import] -> ExpandM [Import]
@@ -384,6 +649,19 @@ expandTypeWith tc cs = do
     unless (l `elem` ls') $ report $ errUndefinedLabel tc l
     return l
 
+expandClassWith :: Ident -> [Ident] -> ExpandM Import
+expandClassWith cls fs = do
+  m <- getModuleIdent
+  cEnv <- getClassEnv
+  ImportTypeWith cls `liftM` case Map.lookup cls cEnv of
+    Nothing -> report (errUndefinedEntity m cls) >> return []
+    Just c -> 
+      let publicMs = publicMethods c
+          invalidFs = nub fs \\ publicMs
+      in if null invalidFs
+         then return fs
+         else report (errUndefinedMethods cls invalidFs) >> return []
+
 expandTypeAll :: Ident -> ExpandM Import
 expandTypeAll tc = do
   m     <- getModuleIdent
@@ -395,6 +673,19 @@ expandTypeAll tc = do
     Just (AliasType    _ _ (TypeRecord  fs _)) -> return [l | (l, _) <- fs]
     Just (AliasType _ _ _) -> report (errNonDataType       tc) >> return []
     Nothing                -> report (errUndefinedEntity m tc) >> return []
+
+expandClassAll :: Ident -> ExpandM Import
+expandClassAll cls = do
+  m <- getModuleIdent
+  cEnv <- getClassEnv
+  let theClass0 = Map.lookup cls cEnv
+  ImportTypeWith cls `liftM` case theClass0 of
+    Nothing -> report (errUndefinedEntity m cls) >> return []
+    Just c -> return $ publicMethods c
+
+errAmbiguousEntity :: ModuleIdent -> Ident -> Message
+errAmbiguousEntity m x = posMessage x $ hsep $ map text
+  [ "Ambiguous entity", idName x, "in Module", moduleName m ]
 
 errUndefinedEntity :: ModuleIdent -> Ident -> Message
 errUndefinedEntity m x = posMessage x $ hsep $ map text
@@ -415,6 +706,11 @@ errNonDataType tc = posMessage tc $ hsep $ map text
 errImportDataConstr :: ModuleIdent -> Ident -> Message
 errImportDataConstr _ c = posMessage c $ hsep $ map text
   [ "Explicit import for data constructor", idName c ]
+
+errUndefinedMethods :: Ident -> [Ident] -> Message
+errUndefinedMethods cls fs = posMessage cls $ 
+  text "The following methods are no visible class methods of class" <+> text (show cls)
+  <> text ":" <+> brackets (hsep $ punctuate comma (map (text . show) fs))
 
 -- ---------------------------------------------------------------------------
 
@@ -439,9 +735,9 @@ importUnifyData' tcEnv = fmap (setInfo allTyCons) tcEnv
 qualifyEnv :: Options -> CompilerEnv -> CompilerEnv
 qualifyEnv opts env = expandValueEnv opts
                     $ qualifyLocal env
-                    $ foldl (flip importInterfaceIntf) initEnv
+                    $ foldl (flip (importInterfaceIntf $ classEnv env)) initEnv
                     $ Map.elems
-                    $ interfaceEnv env
+                    $ interfaceEnv env 
   where initEnv = initCompilerEnv $ moduleIdent env
 
 qualifyLocal :: CompilerEnv -> CompilerEnv -> CompilerEnv
@@ -449,15 +745,20 @@ qualifyLocal currentEnv initEnv = currentEnv
   { opPrecEnv = foldr bindQual   pEnv  $ localBindings $ opPrecEnv currentEnv
   , tyConsEnv = foldr bindQual   tcEnv $ localBindings $ tyConsEnv currentEnv
   , valueEnv  = foldr bindGlobal tyEnv $ localBindings $ valueEnv  currentEnv
+  , classEnv  = (classEnv currentEnv) { theClasses = classesInClassEnv }
   }
   where
     pEnv  = opPrecEnv initEnv
     tcEnv = tyConsEnv initEnv
     tyEnv = valueEnv  initEnv
+    cEnv  = classEnv  initEnv
     bindQual   (_, y) = qualBindTopEnv "Imports.qualifyEnv" (origName y) y
     bindGlobal (x, y)
       | idUnique x == 0 = bindQual (x, y)
       | otherwise       = bindTopEnv "Imports.qualifyEnv" x y
+    
+    classesInClassEnv = 
+       foldr bindQual (theClasses cEnv) $ localBindings $ theClasses $ classEnv currentEnv
 
 -- Importing an interface into another interface is somewhat simpler
 -- because all entities are imported into the environment. In addition,
@@ -465,17 +766,35 @@ qualifyLocal currentEnv initEnv = currentEnv
 -- are imported as well because they may be used in type expressions in
 -- an interface.
 
-importInterfaceIntf :: Interface -> CompilerEnv -> CompilerEnv
-importInterfaceIntf i@(Interface m _ _) env = env
+importInterfaceIntf :: ClassEnv -> Interface -> CompilerEnv -> CompilerEnv
+importInterfaceIntf cEnv i@(Interface m _ _) env = env
   { opPrecEnv = importEntities m True (const True) id mPEnv  $ opPrecEnv env
   , tyConsEnv = importEntities m True (const True) id mTCEnv $ tyConsEnv env
   , valueEnv  = importEntities m True (const True) id mTyEnv $ valueEnv  env
+  , classEnv  = (classEnv env) { 
+      theClasses = importEntities' m True (const True) id mClsEnv' $ theClasses $ classEnv env, 
+      theInstances = foldr (importInstance m) (theInstances $ classEnv env) mInstances
+    }  
   }
   where
   mPEnv  = intfEnv bindPrec     i -- all operator precedences
   mTCEnv = intfEnv bindTCHidden i -- all type constructors
   mTyEnv = intfEnv bindTy       i -- all values
+  mClsEnv = intfEnv (bindCls True) i -- all classes
+  -- The type schemes might get lost, so we have to recompute them. We
+  -- also have to set the hidden flags again, looking them up in the old 
+  -- class environment. 
+  mClsEnv' = Map.map (buildTypeSchemesNoExpand . setHidden') mClsEnv
+  
+  canonClassMap' = canonClassMap cEnv
+  
+  -- we have to set the hidden flags again
+  setHidden' :: Class -> Class
+  setHidden' cls@(Class { theClass = cName}) = case Map.lookup cName canonClassMap' of
+    Nothing -> cls { hidden = False }
+    Just c -> cls { hidden = hidden c }
 
+  (mInstances, _deps) = loadInstances i
 -- ---------------------------------------------------------------------------
 -- Record stuff
 -- ---------------------------------------------------------------------------
@@ -519,9 +838,20 @@ expandValueEnv opts env
 addImportedLabels :: ModuleIdent -> ValueEnv -> ValueEnv
 addImportedLabels m tyEnv = foldr addLabelType tyEnv (allImports tyEnv)
   where
-  addLabelType (_, Label l r ty) = importTopEnv (fromMaybe m (qidModule r))
-                                   (unqualify l) (Label l r ty)
-  addLabelType _ = id
+  addLabelType (_, lbl@(Label l r ty))
+    = importTopEnv mid l' lbl
+    -- the following is necessary to be available during generation
+    -- of flat curry.
+    . importTopEnv     mid (recSelectorId r l') sel
+    . qualImportTopEnv mid (recSelectorId r l') sel
+    . importTopEnv     mid (recUpdateId   r l') upd
+    . qualImportTopEnv mid (recUpdateId   r l') upd
+    where
+    l' = unqualify l
+    mid = fromMaybe m (qidModule r)
+    sel = Value (qualRecSelectorId m r l') 1 ty
+    upd = Value (qualRecUpdateId   m r l') 2 ty
+  addLabelType _                       = id
 
 expandRecordTypes :: TCEnv -> ValueInfo -> ValueInfo
 expandRecordTypes tcEnv (DataConstructor  qid a (ForAllExist con n m ty)) =

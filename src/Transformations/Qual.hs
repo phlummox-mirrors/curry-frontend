@@ -50,7 +50,8 @@ qDecl i@(InfixDecl     _ _ _ _) = return i
 qDecl (DataDecl    p n vs cs d) = flip (DataDecl p n vs) d `liftM` mapM qConstrDecl cs
 qDecl (NewtypeDecl p n vs nc d) = flip (NewtypeDecl p n vs) d `liftM` qNewConstrDecl nc
 qDecl (TypeDecl      p n vs ty) = TypeDecl p n vs `liftM` qTypeExpr ty
-qDecl (TypeSig      p fs cx ty) = TypeSig p fs cx `liftM` qTypeExpr ty
+qDecl (TypeSig    p expanded fs cx ty) = 
+  TypeSig p expanded fs cx `liftM` (if expanded then return ty else qTypeExpr ty)
 qDecl (FunctionDecl p cty id0 f eqs) = FunctionDecl p cty id0 f `liftM` mapM qEquation eqs
 qDecl (ForeignDecl  p c x n ty) = ForeignDecl p c x n `liftM` qTypeExpr ty
 qDecl e@(ExternalDecl      _ _) = return e

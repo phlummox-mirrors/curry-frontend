@@ -41,7 +41,9 @@ module UI2GUI (
   showBorderStyle,showColor,showPos,
   --  
   UI2GUI.UIEnv,--,seeText 
-  setErrorBg
+  setErrorBg,
+  UIRef,
+  UIWidget
 ) where
 
 

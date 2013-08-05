@@ -105,10 +105,10 @@ loadAndCheck str =
 -}   
 
 -- |This function checks the modules until the type check phase is reached
-checkModule' :: Bool -> CO.Options -> (CompilerEnv, CS.Module)
+checkModule' :: Bool -> CO.Options -> (CompilerEnv, CompilerEnv, CS.Module)
              -> CheckResult CompilerEnv
-checkModule' contextRed opts (env, mdl) = do
-  (env1,  kc) <- kindCheck env mdl -- should be only syntax checking ?
+checkModule' contextRed opts (_env, envtc, mdl) = do
+  (env1,  kc) <- kindCheck envtc mdl -- should be only syntax checking ?
   (env2,  sc) <- syntaxCheck opts env1 kc
   (env3,  pc) <- precCheck        env2 sc
   (env4, tcc) <- typeClassesCheck env3 pc
@@ -484,6 +484,11 @@ checkDictCode cEnv =
   dictCode cEnv [mk "A" (-1), mk "A" (-2)] (mkId "A", list $ mkTy (-2)) 
     === BuildDict (mkId "A", list $ mkTy (-2)) [Dictionary $ mk "A" (-2)] &&
     
+  dictCode cEnv [mk "Empty" 0] (mkId "Empty", list $ mkTy 0) 
+    === BuildDict (mkId "Empty", list $ mkTy 0) [] &&
+  dictCode cEnv [mk "Empty2" 0] (mkId "Empty2", list $ mkTy 0) 
+    === BuildDict (mkId "Empty2", list $ mkTy 0) [] &&
+    
   dictCode cEnv [mk "F" 0] (mkId "A", list $ mkTy 0) 
     === BuildDict (mkId "A", list $ mkTy 0) [SelSuperClass (mk "F" 0) (mk "A" 0)] &&
     
@@ -621,8 +626,8 @@ pair t1 t2 = TypeConstructor (qTupleIdP 2) [t1, t2]
 
 
 -- Checks the correctness of the dictType function
-checkDictType :: ClassEnv -> Bool
-checkDictType cEnv = 
+_checkDictType :: ClassEnv -> Bool
+_checkDictType cEnv = 
   show (dictType cEnv (mkId "A1")) === 
     "(Prelude.(,,,,) (0 -> (1 -> Prelude.Bool)) (0 -> 0) (0 -> (2 -> 3)) (0 -> 4) (0 -> (5 -> 5)))" &&
   show (dictType cEnv (mkId "B1")) === 

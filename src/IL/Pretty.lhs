@@ -18,7 +18,7 @@ Marlow's pretty printer for Haskell.
 > import Data.List (intersperse)
 > import Text.PrettyPrint
 
-> import Curry.Base.Ident
+> import Curry.Base.Ident hiding (sep)
 > import IL.Type
 
 > dataIndent :: Int

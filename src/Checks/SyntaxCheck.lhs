@@ -28,7 +28,7 @@ definition.
 > import Data.Maybe (fromJust, isJust, isNothing, maybeToList)
 > import qualified Data.Set as Set (empty, insert, member)
 > import Text.PrettyPrint
-> import Debug.Trace
+> -- import Debug.Trace
 
 > import Curry.Base.Ident
 > import Curry.Base.Position
@@ -39,10 +39,11 @@ definition.
 > import Base.Messages (Message, posMessage, internalError, message)
 > import Base.NestEnv
 > import Base.Types
-> import Base.Utils ((++!), findDouble, findMultiples)
+> import Base.Utils ((++!), findDouble, findMultiples, fst3, fromJust')
 
 > import Env.TypeConstructor (TCEnv, TypeInfo (..), qualLookupTC)
 > import Env.Value (ValueEnv, ValueInfo (..))
+> import Env.ClassEnv hiding (classMethods, bindClassMethods)
 
 > import CompilerOpts
 
@@ -57,16 +58,16 @@ generated. Finally, all declarations are checked within the resulting
 environment. In addition, this process will also rename the local variables.
 \begin{verbatim}
 
-> syntaxCheck :: Options -> ModuleIdent -> ValueEnv -> TCEnv -> [Decl]
+> syntaxCheck :: Options -> ModuleIdent -> ValueEnv -> TCEnv -> ClassEnv -> [Decl]
 >             -> ([Decl], [Message])
-> syntaxCheck opts m tyEnv tcEnv decls =
+> syntaxCheck opts m tyEnv tcEnv cEnv decls =
 >   case findMultiples $ concatMap constrs typeDecls of
 >     []  -> runSC (checkModule decls) state
 >     css -> (decls, map errMultipleDataConstructor css)
 >   where
 >     typeDecls  = filter isTypeDecl decls
 >     rEnv       = globalEnv $ fmap (renameInfo tcEnv) tyEnv
->     state      = initState (optExtensions opts) m rEnv
+>     state      = initState (optExtensions opts) m rEnv cEnv
 
 \end{verbatim}
 A global state transformer is used for generating fresh integer keys with
@@ -90,11 +91,12 @@ renaming literals and underscore to disambiguate them.
 >   , typeClassesCheck :: Bool   -- ^ Disable some checks when declarations in classes
 >                                -- are checked, like checking for missing function bodies
 >   , classMethods :: [Ident]    -- ^ the class methods defined by class declarations
+>   , classEnv    :: ClassEnv    -- ^ the class environment with imported classes
 >   }
 
 > -- |Initial syntax check state
-> initState :: [Extension] -> ModuleIdent -> RenameEnv -> SCState
-> initState exts m rEnv = SCState exts m rEnv globalScopeId 1 [] False []
+> initState :: [Extension] -> ModuleIdent -> RenameEnv -> ClassEnv -> SCState
+> initState exts m rEnv cEnv = SCState exts m rEnv globalScopeId 1 [] False [] cEnv
 
 > -- |Identifier for global (top-level) declarations
 > globalScopeId :: Integer
@@ -171,6 +173,9 @@ renaming literals and underscore to disambiguate them.
 
 > getClassMethods :: SCM [Ident]
 > getClassMethods = S.gets classMethods
+
+> getClassEnv :: SCM ClassEnv
+> getClassEnv = S.gets classEnv
 
 \end{verbatim}
 A nested environment is used for recording information about the data
@@ -279,7 +284,7 @@ Furthermore, it is not allowed to declare a label more than once.
 >   = let arty = typeArity texpr
 >         qid  = qualifyWith m ident
 >     in bindGlobal tcc m ident (GlobalVar arty qid) env
-> bindFuncDecl tcc m (TypeSig _ ids cx texpr) env
+> bindFuncDecl tcc m (TypeSig _ _ ids _cx texpr) env
 >   = foldr bindTS env $ map (qualifyWith m) ids
 >  where
 >  bindTS qid env'
@@ -292,6 +297,24 @@ Furthermore, it is not allowed to declare a label more than once.
 > bindClassMethods :: ModuleIdent -> [Decl] -> SCM ()
 > bindClassMethods m decls = do
 >   modifyRenameEnv $ \env -> foldr (bindFuncDecl False m) env decls
+
+> instance Entity RenameInfo where
+>   origName _x = qualify $ mkIdent ""
+>   -- do no merging
+>   merge _x _y = Nothing
+
+> -- |binds imported class methods. All class methods are qualified with
+> -- the module name under which the containing class is imported.  
+> bindImportedClassMethods :: [(QualIdent, Class, Ident, Int)] -> SCM ()
+> bindImportedClassMethods ms = do
+>   modifyRenameEnv $ \env -> foldr bind env ms
+>   where
+>   bind :: (QualIdent, Class, Ident, Int) -> RenameEnv -> RenameEnv
+>   bind (c, cls, m, n) env = globalEnv $ 
+>       qualImportTopEnv' 
+>         (fromJust' "bindImportedClassMethods" $ qidModule $ theClass cls) 
+>         m' (GlobalVar n m') $ toplevelEnv env
+>     where m' = qualifyLike c m
 
 ------------------------------------------------------------------------------
 
@@ -340,13 +363,16 @@ local declarations.
 > checkModule decls = do
 >   mapM_ bindTypeDecl (rds ++ dds)
 >   m <- getModuleIdent
+>   cEnv <- getClassEnv
 >   -- bind class methods so that references to class methods do not
 >   -- cause errors
 >   let classTypeSigs = extractTypeDeclsFromClasses decls
+>       importedClassMethods = classMethodsFromClassEnv cEnv
 >   bindClassMethods m classTypeSigs
+>   bindImportedClassMethods importedClassMethods
 >   -- now reserve class methods so that they cannot be redefined as top level 
 >   -- functions... 
->   let classMethods0 = concatMap (\(TypeSig _ ids _ _) -> ids) classTypeSigs 
+>   let classMethods0 = concatMap (\(TypeSig _ _ ids _ _) -> ids) classTypeSigs 
 >   setClassMethods classMethods0
 >   -- ... and type check the top declaration group
 >   decls0 <- liftM2 (++) (mapM checkTypeDecl tds) (checkTopDecls vds)
@@ -397,6 +423,23 @@ local declarations.
 >     True -> checkDeclGroup (bindFuncDecl tcc m) decls
 >     False -> report (errRedefiningClassMethods intersection) >> return decls  
 
+> -- | returns all class methods from the class environment in the following
+> -- form: (The name under which the class containing the methods is imported, 
+> -- a name of a method, its arity)
+> classMethodsFromClassEnv :: ClassEnv -> [(QualIdent, Class, Ident, Int)]
+> classMethodsFromClassEnv cEnv =
+>   -- return only class methods that are not hidden! 
+>   concatMap 
+>     (\(c, cls) -> 
+>       zipWith3 (\x x2 (y, z) -> (x, x2, y, z))
+>         (repeat c)
+>         (repeat cls)
+>         (map (\(m, _, ty) -> (m, typeArity ty)) $
+>            filter (( `elem` publicMethods cls) . fst3) (methods cls)))
+>     clss
+>   where
+>   clss = allNonHiddenClassBindings cEnv
+
 \end{verbatim}
 Each declaration group opens a new scope and uses a distinct key
 for renaming the variables in this scope. In a declaration group,
@@ -422,8 +465,8 @@ top-level.
 > checkDeclLhs :: Decl -> SCM Decl
 > checkDeclLhs (InfixDecl   p fix' pr ops) =
 >   liftM2 (InfixDecl p fix') (checkPrecedence p pr) (mapM renameVar ops)
-> checkDeclLhs (TypeSig        p vs cx ty) = do
->   (\vs' -> TypeSig p vs' cx ty) `liftM` mapM (checkVar "type signature") vs
+> checkDeclLhs (TypeSig      p e vs cx ty) = do
+>   (\vs' -> TypeSig p e vs' cx ty) `liftM` mapM (checkVar "type signature") vs
 > checkDeclLhs (FunctionDecl  p _ _ _ eqs) =
 >   checkEquationsLhs p eqs
 > checkDeclLhs (ForeignDecl  p cc ie f ty) =
@@ -544,8 +587,8 @@ top-level.
 -- ---------------------------------------------------------------------------
 
 > checkDeclRhs :: [Ident] -> Decl -> SCM Decl
-> checkDeclRhs bvs (TypeSig   p vs cx ty) = do
->   (\vs' -> TypeSig p vs' cx ty) `liftM` mapM (checkLocalVar bvs) vs
+> checkDeclRhs bvs (TypeSig p e vs cx ty) = do
+>   (\vs' -> TypeSig p e vs' cx ty) `liftM` mapM (checkLocalVar bvs) vs
 > checkDeclRhs _ (FunctionDecl p cty id0 f eqs) =
 >   FunctionDecl p cty id0 f `liftM` mapM checkEquation eqs
 > checkDeclRhs _ (PatternDecl p cty id0 t rhs) =
@@ -929,7 +972,7 @@ Auxiliary definitions.
 > constrs _ = []
 
 > vars :: Decl -> [Ident]
-> vars (TypeSig       _ fs _ _) = fs
+> vars (TypeSig     _ _ fs _ _) = fs
 > vars (FunctionDecl _ _ _ f _) = [f]
 > vars (ForeignDecl  _ _ _ f _) = [f]
 > vars (ExternalDecl      _ fs) = fs

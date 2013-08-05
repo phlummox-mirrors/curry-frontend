@@ -13,10 +13,11 @@
 -}
 module Checks where
 
-import Curry.Syntax (Module (..))
+import Curry.Syntax (Module (..), Interface (..))
 
 import Base.Messages
 
+import qualified Checks.InterfaceCheck   as IC (interfaceCheck)
 import qualified Checks.ExportCheck      as EC (exportCheck)
 import qualified Checks.KindCheck        as KC (kindCheck)
 import qualified Checks.PrecCheck        as PC (precCheck)
@@ -24,6 +25,7 @@ import qualified Checks.SyntaxCheck      as SC (syntaxCheck)
 import qualified Checks.TypeCheck        as TC (typeCheck)
 import qualified Checks.WarnCheck        as WC (warnCheck)
 import qualified Checks.TypeClassesCheck as TCC (typeClassesCheck)
+import qualified Checks.Dictionaries     as DI (insertDicts)
 
 import CompilerEnv
 import CompilerOpts
@@ -42,6 +44,13 @@ thenCheck chk cont = case chk of
   CheckFailed errs -> CheckFailed errs
 
 -- TODO: More documentation
+
+interfaceCheck :: CompilerEnv -> Interface -> CheckResult ()
+interfaceCheck env intf
+  | null errs = return ()
+  | otherwise = CheckFailed errs
+  where errs = IC.interfaceCheck (opPrecEnv env) (tyConsEnv env)
+                                 (valueEnv env) (classEnv env) intf
 
 -- |Check the kinds of type definitions and signatures.
 --
@@ -64,7 +73,7 @@ syntaxCheck opts env (Module m es is ds)
   | null msgs = CheckSuccess (env, Module m es is ds')
   | otherwise = CheckFailed msgs
   where (ds', msgs) = SC.syntaxCheck opts (moduleIdent env)
-                      (valueEnv env) (tyConsEnv env) ds
+                      (valueEnv env) (tyConsEnv env) (classEnv env) ds
 
 -- |Check the precedences of infix operators.
 --
@@ -92,12 +101,13 @@ typeCheck run env (Module m es is ds)
                    
 
 -- |Check the export specification
-exportCheck :: CompilerEnv -> Module -> CheckResult (CompilerEnv, Module)
+exportCheck ::  CompilerEnv -> Module -> CheckResult (CompilerEnv, Module)
 exportCheck env (Module m es is ds)
   | null msgs = CheckSuccess (env, Module m es' is ds)
   | otherwise = CheckFailed msgs
   where (es', msgs) = EC.exportCheck (moduleIdent env) (aliasEnv env)
-                                     (tyConsEnv env) (valueEnv env) es
+                                     (tyConsEnv env) (valueEnv env) 
+                                     (classEnv env) es
 
 -- TODO: Which kind of warnings?
 
@@ -114,4 +124,11 @@ typeClassesCheck env (Module m es is ds)
   | otherwise = CheckFailed msgs
   where (decls', clsEnv, msgs) = TCC.typeClassesCheck m ds (classEnv env) (tyConsEnv env)
 
-
+-- |Insert dictionaries where necessary. This is actually not a check, but a
+-- transformation - but as it can produce errors, it is treated as a check  
+insertDicts :: CompilerEnv -> Module -> CheckResult (CompilerEnv, Module)
+insertDicts cEnv m 
+  | null msgs = CheckSuccess (cEnv, m')
+  | otherwise = CheckFailed msgs
+  where (m', msgs) = DI.insertDicts m cEnv
+  

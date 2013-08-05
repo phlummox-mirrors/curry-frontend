@@ -17,8 +17,9 @@ TODO: Use MultiParamTypeClasses ?
 >   ( -- * Representation of Types
 >     Type (..), isArrowType, arrowArity, arrowArgs, arrowBase, typeVars
 >   , typeConstrs, typeSkolems, equTypes, qualifyType, unqualifyType
+>   , qualifyContext, qualifyConstrType, unqualifyContext
 >     -- * Representation of Data Constructors
->   , DataConstr (..)
+>   , DataConstr (..), constrIdent
 >     -- * Representation of Quantification
 >   , TypeScheme (..), ExistTypeScheme (..), monoType, monoType', polyType
 >   , typeSchemeToType
@@ -92,7 +93,7 @@ as well, these variables must never be quantified.
 > -- the constructor and its following types 
 > splitType :: Type -> Maybe (QualIdent, [Type])
 > splitType (TypeConstructor xi tys) = Just (xi, tys)
-> splitType (TypeArrow ty1 ty2) = Just (qArrowId, [ty1, ty2])
+> splitType (TypeArrow ty1 ty2) = Just (qArrowIdP, [ty1, ty2])
 > splitType (TypeConstrained (t:_) _) = splitType t
 > splitType (TypeConstrained [] _) = Nothing
 > splitType _ = Nothing
@@ -245,6 +246,21 @@ qualification with a module identifier for type constructors.
 > unqualifyType m (TypeRecord      fs rty) =
 >   TypeRecord (map (\ (l, ty) -> (l, unqualifyType m ty)) fs) rty
 
+> qualifyContext :: ModuleIdent -> Context -> Context
+> qualifyContext m cx = map qualifyContext' cx
+>   where
+>   qualifyContext' :: (QualIdent, Type) -> (QualIdent, Type)
+>   qualifyContext' (cls, ty) = (qualQualify m cls, qualifyType m ty)  
+
+> qualifyConstrType :: ModuleIdent -> (Context, Type) -> (Context, Type)
+> qualifyConstrType m (cx, ty) = (qualifyContext m cx, qualifyType m ty) 
+
+> unqualifyContext :: ModuleIdent -> Context -> Context
+> unqualifyContext m cx = map unqualifyContext' cx
+>   where
+>   unqualifyContext' :: (QualIdent, Type) -> (QualIdent, Type)
+>   unqualifyContext' (cls, ty) = (qualUnqualify m cls, unqualifyType m ty)
+
 \end{verbatim}
 The type \texttt{Data} is used to represent value constructors introduced
 by data or newtype declarations.
@@ -252,6 +268,9 @@ by data or newtype declarations.
 
 > data DataConstr = DataConstr Ident Int [Type]
 >     deriving (Eq, Show)
+
+> constrIdent :: DataConstr -> Ident
+> constrIdent (DataConstr c _ _) = c
 
 \end{verbatim}
 We support two kinds of quantifications of types here, universally

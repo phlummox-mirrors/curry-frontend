@@ -12,7 +12,7 @@ commonly used in the compiler, but not implemented in the Haskell
 
 > module Base.Utils
 >   ( fst3, thd3, (++!), foldr2, mapAccumM, findDouble, concatMapM, findMultiples
->   , without, zip', zipWith', zipWith3'
+>   , without, zip', zipWith', zipWith3', fromJust'
 >   ) where
 
 > import Data.List (partition)
@@ -171,3 +171,10 @@ the same length
 
 \end{verbatim} 
 
+\begin{verbatim}
+
+> fromJust' :: String -> Maybe a -> a
+> fromJust' _s (Just x) = x
+> fromJust' s Nothing = error ("fromJust': " ++ s)
+
+\end{verbatim}

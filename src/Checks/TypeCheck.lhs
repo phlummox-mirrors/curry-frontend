@@ -32,11 +32,11 @@ expanded.
 > import Data.List (nub, partition, sortBy)
 > import qualified Data.Map as Map (Map, empty, insert, lookup)
 > import Text.PrettyPrint
-> import qualified Debug.Trace as Dbg
+> -- import qualified Debug.Trace as Dbg
 > import qualified Data.Set as Set
 > import Data.Maybe
 
-> import Curry.Base.Ident
+> import Curry.Base.Ident hiding (sep)
 > import Curry.Base.Position
 > import Curry.Syntax as ST
 > import Curry.Syntax.Pretty
@@ -49,27 +49,20 @@ expanded.
 > import Base.Types as BT
 > import Base.TypeSubst
 > import Base.Subst (listToSubst, substToList)
-> import Base.Utils (foldr2, findDouble, zip', zipWith', zipWith3')
+> import Base.Utils (foldr2, findDouble, zip', zipWith', zipWith3', fromJust')
 
 > import Env.TypeConstructor (TCEnv, TypeInfo (..), bindTypeInfo
 >   , qualLookupTC)
-> import Env.Value ( ValueEnv, ValueInfo (..), bindFun, rebindFun
+> import Env.Value ( ValueEnv, ValueInfo (..), rebindFun
 >   , bindGlobalInfo, bindLabel, lookupValue, qualLookupValue
 >   , tryBindFun )
-> import Env.ClassEnv (ClassEnv (..), Class (..), allLocalClasses 
->   , implies', implies, isValidCx, reduceContext)
+> import Env.ClassEnv (ClassEnv (..), Class (..)
+>   , implies', implies, isValidCx, reduceContext, lookupTypeScheme)
 
 > infixl 5 $-$
 
 > ($-$) :: Doc -> Doc -> Doc
 > x $-$ y = x $$ space $$ y
-
-> trace, trace2, trace3 :: String -> a -> a
-> trace = flip const
-> -- trace = Dbg.trace
-> trace2 = flip const
-> -- trace2 = Dbg.trace
-> trace3 = Dbg.trace
 
 \end{verbatim}
 Type checking proceeds as follows. First, the type constructor
@@ -394,6 +387,10 @@ anonymous variables occurring in a signature are replaced by fresh
 names. However, the type is not expanded so that the signature is
 available for use in the error message that is printed when the
 inferred type is less general than the signature.
+
+As from earlier compile stages we get also already expanded type signatures, 
+we have to introduce a flag for all type signatures that indicates whether
+the type signature has already been expanded.  
 \begin{verbatim}
 
 > type BaseConstrType = (ST.Context, TypeExpr)
@@ -401,24 +398,24 @@ inferred type is less general than the signature.
 > -- getSTType :: BaseConstrType -> TypeExpr
 > -- getSTType (_cx, tyexp) = tyexp
 
-> type SigEnv = Map.Map Ident BaseConstrType
+> type SigEnv = Map.Map Ident (Bool, BaseConstrType)
 
 > emptySigEnv :: SigEnv
 > emptySigEnv = Map.empty
 
-> bindTypeSig :: Ident -> BaseConstrType -> SigEnv -> SigEnv
+> bindTypeSig :: Ident -> (Bool, BaseConstrType) -> SigEnv -> SigEnv
 > bindTypeSig = Map.insert
 
 > bindTypeSigs :: Decl -> SigEnv -> SigEnv
-> bindTypeSigs (TypeSig _ vs cx ty) env =
->   foldr (flip bindTypeSig (cx, nameSigType ty)) env vs
+> bindTypeSigs (TypeSig _ expanded vs cx ty) env = 
+>   foldr (flip bindTypeSig (expanded, (cx, nameSigType ty))) env vs
 > bindTypeSigs _ env = env
 
-> lookupTypeSig :: Ident -> SigEnv -> Maybe BaseConstrType
+> lookupTypeSig :: Ident -> SigEnv -> Maybe (Bool, BaseConstrType)
 > lookupTypeSig = Map.lookup
 
 > qualLookupTypeSig :: ModuleIdent -> QualIdent -> SigEnv 
->                   -> Maybe BaseConstrType
+>                   -> Maybe (Bool, BaseConstrType)
 > qualLookupTypeSig m f sigs = localIdent m f >>= flip lookupTypeSig sigs
 
 > nameSigType :: TypeExpr -> TypeExpr
@@ -459,6 +456,7 @@ treated just like any top level functions. Top level functions and
 class methods share the same namespace!
 \begin{verbatim}
 
+> {-
 > -- |binds all class methods of /locally defined/ classes into the value
 > -- environment  
 > bindClassMethods :: ClassEnv -> TCM ()
@@ -478,6 +476,27 @@ class methods share the same namespace!
 >                     vEnv
 >                     tySchemes
 >   modifyValueEnv $ const vEnv'
+> -}
+> 
+> bindClassMethods :: ClassEnv -> TCM ()
+> bindClassMethods (ClassEnv _ _ methodEnv _) = do 
+>   vEnv <- getValueEnv
+>   let classMethods0 = allBindings methodEnv
+>       vEnv' = foldr bind vEnv classMethods0
+>   modifyValueEnv $ const vEnv'
+>   where
+>   bind :: (QualIdent, Class) -> ValueEnv -> ValueEnv
+>   bind (m, cls) = 
+>     let tsc = fromJust $ lookupTypeScheme cls (unqualify m)
+>         v = Value (qualifyLike (theClass cls) $ unqualify m) 
+>                   (BT.arrowArity $ typeSchemeToType tsc) tsc
+>     in qualImportTopEnv' (fromJust' "bindClassMethods" $ qidModule $ theClass cls) 
+>          m v
+>    
+>     
+ 
+
+
 
 \end{verbatim}
 \paragraph{Type Inference}
@@ -958,6 +977,7 @@ the maximal necessary contexts for the functions are determined.
 > tcForeign f ty = do
 >   m <- getModuleIdent
 >   sndRun <- isSecondRun
+>   -- TODO: expanding correct?
 >   tySc@(ForAll _cx _ ty') <- expandPolyType (not sndRun) (ST.emptyContext, ty)
 >   modifyValueEnv $ bindFunOnce m f (arrowArity ty') tySc
 
@@ -966,7 +986,7 @@ the maximal necessary contexts for the functions are determined.
 >   sigs <- getSigEnv
 >   case lookupTypeSig f sigs of
 >     Nothing -> internalError "TypeCheck.tcExternal"
->     Just (cx, ty) -> 
+>     Just (_, (cx, ty)) -> 
 >       case cx of 
 >         (ST.Context []) -> tcForeign f ty
 >         _  -> internalError "TypeCheck.tcExternal doesn't have context"
@@ -975,11 +995,10 @@ the maximal necessary contexts for the functions are determined.
 > tcFree v = do
 >   sigs <- getSigEnv
 >   m  <- getModuleIdent
->   sndRun <- isSecondRun
 >   ty <- case lookupTypeSig v sigs of
 >     Nothing -> freshTypeVar
->     Just t  -> do
->       ForAll _cx n ty' <- expandPolyType (not sndRun) t
+>     Just (expanded, t) -> do
+>       ForAll _cx n ty' <- expandPolyType (not expanded) t
 >       unless (n == 0) $ report $ errPolymorphicFreeVar v
 >       return ty'
 >   modifyValueEnv $ bindFunOnce m v (arrowArity ty) $ monoType ty
@@ -993,10 +1012,9 @@ the maximal necessary contexts for the functions are determined.
 > tcFunDecl v = do
 >   sigs <- getSigEnv
 >   m <- getModuleIdent
->   sndRun <- isSecondRun
 >   (cx, ty) <- case lookupTypeSig v sigs of
 >     Nothing -> freshConstrTypeVar
->     Just t  -> expandPolyType (not sndRun) t >>= inst
+>     Just (expanded, t)  -> expandPolyType (not expanded) t >>= inst
 >   modifyValueEnv $ bindFunOnce m v (arrowArity ty) (monoType' (cx, ty))
 >   return (cx, ty)
 
@@ -1080,7 +1098,7 @@ signature the declared type must be too general.
 >       ambigCxElems = filter (isAmbiguous tyVars lvs) context 
 >   unless (null ambigCxElems) $ case lookupTypeSig v sigs of 
 >     Nothing -> report $ errAmbiguousContextElems (idPosition v) m v ambigCxElems
->     Just tySig -> do
+>     Just (_, tySig) -> do
 >       -- check whether there are ambiguous type variables in the 
 >       -- unexpanded (!) type signature. TODO: Actually we could do without this
 >       -- test because we know that type signatures are unambiguous (as this
@@ -1090,11 +1108,10 @@ signature the declared type must be too general.
 >           ambigCxElems' = filter (isAmbiguous tyVars' Set.empty) (getContext tySig')
 >       unless (null ambigCxElems') $ report $ 
 >         errAmbiguousContextElems (idPosition v) m v ambigCxElems'
->   sndRun <- isSecondRun
 >   case lookupTypeSig v sigs of
 >     Nothing    -> modifyValueEnv $ rebindFun m v arity sigma
->     Just sigTy -> do
->       sigma' <- expandPolyType (not sndRun) sigTy
+>     Just (expanded, sigTy) -> do
+>       sigma' <- expandPolyType (not expanded) sigTy
 >       case (eqTyScheme sigma sigma') of 
 >         False -> report  $ errTypeSigTooGeneral (idPosition v) m what sigTy sigma
 >         True -> do
@@ -1184,10 +1201,9 @@ signature the declared type must be too general.
 > tcPattern _ (NegativePattern _ l) = tcLiteral l
 > tcPattern _ (VariablePattern   v) = do
 >   sigs <- getSigEnv
->   sndRun <- isSecondRun
 >   (cx, ty) <- case lookupTypeSig v sigs of
 >     Nothing -> freshConstrTypeVar
->     Just t  -> expandPolyType (not sndRun) t >>= inst
+>     Just (expanded, t)  -> expandPolyType (not expanded) t >>= inst
 >   tyEnv <- getValueEnv
 >   m  <- getModuleIdent
 >   maybe (modifyValueEnv (bindFunOnce m v (arrowArity ty) (monoType' (cx, ty))) >> return (cx, ty))
@@ -1288,13 +1304,12 @@ because of possibly multiple occurrences of variables.
 > tcPatternFP _ (VariablePattern v) = do
 >   sigs <- getSigEnv
 >   m <- getModuleIdent
->   sndRun <- isSecondRun
 >   cty@(cx, ty) <- case lookupTypeSig v sigs of
 >     Nothing -> freshConstrTypeVar
->     Just t  -> expandPolyType (not sndRun) t >>= inst
+>     Just (expanded, t)  -> expandPolyType (not expanded) t >>= inst
 >   tyEnv <- getValueEnv
 >   maybe (modifyValueEnv (bindFunOnce m v (arrowArity ty) (monoType' cty)) >> return cty)
->         (\ (ForAll cx _ t) -> return (cx, t))
+>         (\ (ForAll cx0 _ t) -> return (cx0, t))
 >         (sureVarType v tyEnv)
 > tcPatternFP p t@(ConstructorPattern c ts) = do
 >   m <- getModuleIdent
@@ -1439,13 +1454,12 @@ because of possibly multiple occurrences of variables.
 >   | otherwise    = do
 >       sigs <- getSigEnv
 >       m <- getModuleIdent
->       sndRun <- isSecondRun
 >       case qualLookupTypeSig m v sigs of
->         Just cty -> do
+>         Just (expanded, cty) -> do
 >           -- load the inferred type together with the contexts
 >           (icx, ity) <- getValueEnv >>= inst . funType m v
 >           -- retrieve the type from the type signature...
->           (cx0, ty0) <- expandPolyType (not sndRun) cty >>= inst
+>           (cx0, ty0) <- expandPolyType (not expanded) cty >>= inst
 >           -- ... and construct a mapping, so that the type variables in the 
 >           -- inferred contexts match the type variables in the type
 >           -- constructed from the type signature
@@ -2328,7 +2342,7 @@ nothing is recorded so that they are simply returned).
 > tsDecl _theta d@(DataDecl _ _ _ _ _)  = d
 > tsDecl _theta d@(NewtypeDecl _ _ _ _ _) = d
 > tsDecl _theta d@(TypeDecl _ _ _ _) = d
-> tsDecl _theta d@(TypeSig _ _ _ _) = d
+> tsDecl _theta d@(TypeSig _ _ _ _ _) = d
 > tsDecl theta (FunctionDecl p (Just cty) n id0 eqs) 
 >   = FunctionDecl p (Just $ subst' theta cty)  n id0 (map (tsEqu theta) eqs)
 > tsDecl _theta (FunctionDecl _ Nothing _ _ _) = internalError "tsDecl FunctionDecl"

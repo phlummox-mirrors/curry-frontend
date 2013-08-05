@@ -20,7 +20,7 @@ import Data.Maybe      (catMaybes, mapMaybe)
 import System.FilePath (normalise)
 import Text.PrettyPrint
 
-import Curry.Base.Ident
+import Curry.Base.Ident hiding (sep)
 import Curry.Files.Filenames
 import Curry.Files.PathUtils
 
@@ -86,15 +86,15 @@ makeCurry opts srcs targetFile = mapM_ (process . snd) srcs
         isEnforced  = optForce opts || (not $ null $ optDumps opts)
 
         destFiles   = if isFinalFile then destNames fn else [getFlatName fn]
-        depFiles    = fn : mapMaybe flatInterface deps
+        depFiles    = fn : mapMaybe curryInterface deps
 
         actOutdated = if isFinalFile then compileFinal else compile
         actUpToDate = if isFinalFile then skipFinal    else skip
 
-    interfaceExists <- doesModuleExist $ flatIntName fn
+    interfaceExists <- doesModuleExist $ interfName fn
     if interfaceExists && not (isEnforced && isFinalFile)
        then smake destFiles depFiles (actOutdated fn) (actUpToDate fn)
-       else (actOutdated fn)
+       else actOutdated fn
   process _ = return ()
 
   compileFinal f = do
@@ -119,9 +119,9 @@ makeCurry opts srcs targetFile = mapM_ (process . snd) srcs
             , (Parsed               , sourceRepName)
             ]
 
-  flatInterface m = case lookup m srcs of
-    Just (Source fn  _) -> Just $ flatIntName fn
-    Just (Interface fn) -> Just $ flatIntName fn
+  curryInterface m = case lookup m srcs of
+    Just (Source fn  _) -> Just $ interfName fn
+    Just (Interface fn) -> Just $ interfName fn
     _                   -> Nothing
 
   getFlatName = if ExtendedFlatCurry `elem` optTargetTypes opts

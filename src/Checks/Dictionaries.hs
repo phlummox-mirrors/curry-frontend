@@ -9,23 +9,26 @@
     Portability :  portable
 
     The main function of this module transforms the abstract syntax tree by
-    adding dictionary parameters where necessary. 
+    adding dictionary parameters where necessary. This is actually not a
+    check, but a transformation - but it can produce errors, so we include
+    it as a check. 
 -}
 
-module Transformations.Dictionaries (insertDicts) where
+module Checks.Dictionaries (insertDicts) where
 
 import Curry.Base.Ident
 import CompilerEnv
 import Curry.Syntax
-import Env.ClassEnv
+import Curry.Base.Position
+import Env.ClassEnv hiding (isClassMethod)
 import Env.Value
-import Base.Names (sep, mkSelFunName, mkDictName)
+import Base.Names (mkSelFunName, mkDictName)
 import Base.Messages
-import Data.Maybe
 import Base.Utils
-
 import Base.Types as BT
 
+import Text.PrettyPrint hiding (sep)
+import Data.Maybe
 import Control.Monad.State as S
 
 -- ----------------------------------------------------------------------------
@@ -37,13 +40,14 @@ type DI = S.State DIState
 data DIState = DIState 
   { theClassEnv :: ClassEnv
   , theValueEnv :: ValueEnv
+  , errors      :: [Message]
   }
 
 initState :: ClassEnv -> ValueEnv -> DIState
-initState cEnv vEnv = DIState cEnv vEnv 
+initState cEnv vEnv = DIState cEnv vEnv []
 
-runDI :: DI a -> DIState -> a
-runDI comp init0 = let (a, _s) = S.runState comp init0 in a
+runDI :: DI a -> DIState -> (a, [Message])
+runDI comp init0 = let (a, s) = S.runState comp init0 in (a, reverse $ errors s)
 
 getClassEnv :: DI ClassEnv
 getClassEnv = S.gets theClassEnv
@@ -51,13 +55,19 @@ getClassEnv = S.gets theClassEnv
 getValueEnv :: DI ValueEnv
 getValueEnv = S.gets theValueEnv
 
+ok :: DI ()
+ok = return ()
+
+report :: Message -> DI ()
+report err = S.modify (\ s -> s { errors = err : errors s })
+
 -- ----------------------------------------------------------------------------
 -- the transformation functions
 -- ----------------------------------------------------------------------------
 
 -- |The main function of this module. It descends into the syntax tree and
 -- inserts dictionary parameters (in function declarations and in expressions)
-insertDicts :: Module -> CompilerEnv -> Module
+insertDicts :: Module -> CompilerEnv -> (Module, [Message])
 insertDicts mdl cEnv = 
   runDI (diModule mdl) (initState (classEnv cEnv) (valueEnv cEnv))
 
@@ -131,6 +141,7 @@ diLhs cx a@(ApLhs _ _) =
 diExpr :: BT.Context -> Expression -> DI Expression
 diExpr _ e@(Literal _) = return e
 diExpr cx0 v@(Variable (Just varCty0) qid) = do 
+  checkForAmbiguousInstances (qidPosition qid) (mirrorBFCx $ fst varCty0)
   codes <- abstrCode
   cEnv <- getClassEnv
   let code = foldl Apply (var'' cEnv) codes
@@ -238,6 +249,27 @@ concreteCode (BuildDict (cls,ty) ops) =
   ty' = if not $ isCons ty then internalError "concreteCode"
         else fst $ fromJust $ splitType ty 
 
+-- |looks whether there are context elements for which exist more than one
+-- possible instance that could be applied
+checkForAmbiguousInstances :: Position -> BT.Context -> DI ()
+checkForAmbiguousInstances p = mapM_ check
+  where
+  check :: (QualIdent, Type) -> DI ()
+  check (_cls, TypeVariable _) = ok
+  check (cls,  TypeConstructor ty _) = do
+    cEnv <- getClassEnv
+    let insts = getInstances cEnv cls ty
+    case insts of
+      [] -> report $ errNoInstance p cls ty
+      [_] -> ok
+      (_:_:_) -> report $ errAmbiguousInstance p cls ty
+  check (cls,  TypeConstrained (t:_) _) = check (cls, t)
+  check (_cls, TypeConstrained [] _) = internalError "typeconstrained empty"
+  check (cls,  TypeArrow _ty1 _ty2) = check (cls, TypeConstructor qArrowIdP [])
+  check (_cls, TypeSkolem _) = internalError "typeSklolem"
+  check (_cls, TypeRecord _ _) = internalError "typerecord"
+      
+
 
 var :: String -> Expression
 var = Variable Nothing . qualify . mkIdent
@@ -260,3 +292,19 @@ prelFlip = Variable (Just $ mirrorFBCT tySchemeFlip) $ preludeIdent "flip"
 
 preludeIdent :: String -> QualIdent
 preludeIdent = qualifyWith preludeMIdent . mkIdent
+
+-- ---------------------------------------------------------------------------
+-- error messages
+-- ---------------------------------------------------------------------------
+
+errNoInstance :: Position -> QualIdent -> QualIdent -> Message
+errNoInstance p cls ty = posMessage p $ 
+  text "No instance for the class" <+> text (show cls) <+> text "and the type"
+  <+> text (show ty)  
+
+errAmbiguousInstance :: Position -> QualIdent -> QualIdent -> Message
+errAmbiguousInstance p cls ty = posMessage p $ 
+  text "Ambiguous instance use: " $$ 
+  text "More than one instance applicable for the class" <+> 
+  text (show cls) <+> text "and the type" <+> text (show ty)
+

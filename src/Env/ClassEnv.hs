@@ -18,14 +18,20 @@ module Env.ClassEnv (
   -- ** the environment data types
   ClassEnv (..), Class (..), Instance (..), initClassEnv
   -- ** various functions for retrieving specific data from the environment 
-  , lookupClass, lookupClass', canonLookupClass, canonClassName
+  , lookupClass, canonLookupClass, canonClassName
   , lookupDefiningClass, lookupMethodTypeScheme, lookupMethodTypeSig
   , allClasses, allLocalClasses, getAllClassMethods, getInstance
   , getAllClassMethodNames, lookupMethodTypeSig', lookupMethodTypeScheme'
   , canonLookupMethodTypeSig', canonLookupMethodTypeScheme'
-  , getDefaultMethods, lookupDefiningClass'
+  , getDefaultMethods, lookupDefiningClass', isClassMethod
+  , localInst, importedInst, getAllInstances, getLocalInstances, allInstances
+  , lookupNonHiddenClasses, allNonHiddenClassBindings, allClassBindings
+  , lookupTypeScheme, lookupLocalClass
+  , nonHiddenClassEnv, instanceImportedFrom
+  , getInstances, getInstanceWithOrigin
   -- ** functions for modifying the class environment
   , bindClass, bindClassMethods
+  , importInstance
   -- ** pretty printing
   , ppClass, ppInst
   -- * type classes related functionality 
@@ -33,14 +39,14 @@ module Env.ClassEnv (
   , implies, implies'
   , isValidCx, reduceContext, findPath
   , toHnfs, toHnf, inHnf
-  , dictCode, Operation (..), dictType, dictTypes, dictTypeExpr
+  , dictCode, Operation (..), dictType, dictTypes
+  , isEmptyDict
   ) where
 
 -- import Base.Types hiding ()
 import Curry.Base.Ident
-import Text.PrettyPrint
+import Text.PrettyPrint hiding (isEmpty)
 import Curry.Syntax.Type
-import Curry.Syntax.Utils
 import Curry.Syntax.Pretty
 import Base.Types hiding (Context, typeVar, typeVars, splitType)
 import qualified Base.Types as BT 
@@ -50,7 +56,6 @@ import Base.Messages
 import Base.Utils
 import Control.Monad.State
 import Base.Subst (listToSubst)
-import Base.Names
 import Base.TypeSubst hiding (substContext)
 import qualified Data.Map as Map
 import Base.TopEnv
@@ -63,56 +68,79 @@ import Base.TopEnv
 -- plus a map from class methods to their defining classes
 data ClassEnv = ClassEnv 
   -- | environment that maps class identifiers to classes
-  { theClasses :: TopEnv Class
+  { theClasses    :: TopEnv Class
   -- | all instances (with canonical class and type names)
-  , theInstances :: [Instance] 
+  , theInstances  :: [(Source, Instance)] 
   -- | environment that maps class methods to their corresponding classes
-  , classMethods :: TopEnv Class
+  , classMethods  :: TopEnv Class
   -- | maps canonical (!) class names to the corresponding classes
   , canonClassMap :: Map.Map QualIdent Class
   } 
   deriving Show
 
+data Source = Local | Imported ModuleIdent
+  deriving Show
+
 data Class = Class
   { superClasses :: [QualIdent]
-  , theClass :: QualIdent -- TODO Ident or QualIdent? 
-  , typeVar :: Ident
-  , kind :: Int
-  , methods :: [(Ident, Context, TypeExpr)]
-  , typeSchemes :: [(Ident, TypeScheme)] 
-  , defaults :: [Decl]
+  , theClass     :: QualIdent -- TODO Ident or QualIdent? 
+  , typeVar      :: Ident
+  , kind         :: Int
+  , origMethods  :: [(Ident, Context, TypeExpr)]
+  , methods      :: [(Ident, Context, TypeExpr)]
+  , typeSchemes  :: [(Ident, TypeScheme)] 
+  , defaults     :: [Decl]
+  , hidden       :: Bool 
+  , publicMethods:: [Ident] 
   }
   deriving (Eq, Show)
 
 data Instance = Instance
-  { context :: [(QualIdent,Ident)]
-  , iClass :: QualIdent
-  , iType :: QualIdent
+  { origin   :: ModuleIdent
+  , context  :: [(QualIdent,Ident)]
+  , iClass   :: QualIdent
+  , iType    :: QualIdent
   , typeVars :: [Ident]
-  , rules :: [Decl]
+  , rules    :: [Decl]
   }
   deriving (Eq, Show)
   
 initClassEnv :: ClassEnv 
 initClassEnv = ClassEnv emptyTopEnv [] emptyTopEnv Map.empty
 
+instance Entity Class where
+  origName = theClass
+  merge c1 c2 = 
+    if theClass c1 == theClass c2
+    then Just $ c1 { publicMethods = nub $ publicMethods c1 ++ publicMethods c2
+                   , hidden = hidden c1 && hidden c2 }
+    else Nothing
+
 -- ----------------------------------------------------------------------------
 -- lookup and data retrieval functions
 -- ----------------------------------------------------------------------------
 
--- |looks up a given class from the class environment. Takes as argument
+-- |looks up a given, not hidden class from the class environment. Takes as argument
 -- the name of the class used in the source code. 
 lookupClass :: ClassEnv -> QualIdent -> Maybe Class
 lookupClass cEnv c = 
-  list2Maybe $ lookupClass' cEnv c
+  list2Maybe $ lookupNonHiddenClasses cEnv c
 
--- |looks up a given class from the class environment, returning 
--- a list of matching classes: An empty list means there are no matching
--- classes in scope, a list with more than one element means the class
--- name is ambiguous. Takes as argument the name of the class 
--- used in the source code. 
-lookupClass' :: ClassEnv -> QualIdent -> [Class]
-lookupClass' (ClassEnv cEnv _ _ _) c = qualLookupTopEnv c cEnv 
+-- |looks up a local, not hidden class from the class environment. 
+-- Takes as argument the name of the class used in the source code. 
+lookupLocalClass :: ClassEnv -> QualIdent -> Maybe Class
+lookupLocalClass (ClassEnv cEnv _ _ _) c = 
+  list2Maybe $ qualLookupLocalTopEnv c (nonHiddenClassEnv cEnv)
+
+-- |looks up a class if it's not hidden, returning a list of candidates. Takes
+-- as argument the name of the class used in the source code. 
+lookupNonHiddenClasses :: ClassEnv -> QualIdent -> [Class]
+lookupNonHiddenClasses (ClassEnv cEnv _ _ _) c = 
+  qualLookupTopEnv c (nonHiddenClassEnv cEnv)
+
+-- |returns the class environment without hidden classes
+nonHiddenClassEnv :: TopEnv Class -> TopEnv Class
+nonHiddenClassEnv = filterEnv (not . hidden)
 
 -- |looks up the canonical class name for the given class name that appears
 -- in the source code
@@ -154,6 +182,10 @@ lookupDefiningClass cEnv m =
 lookupDefiningClass' :: ClassEnv -> QualIdent -> Maybe Class
 lookupDefiningClass' (ClassEnv _ _ ms _) m = 
   list2Maybe $ qualLookupTopEnv m ms
+
+-- |checks whether the given method is a class method
+isClassMethod :: ClassEnv -> QualIdent -> Bool
+isClassMethod cEnv = isJust . lookupDefiningClass cEnv
 
 -- |looks up the type scheme of a given class method
 lookupMethodTypeScheme :: ClassEnv -> QualIdent -> Maybe TypeScheme
@@ -259,6 +291,75 @@ getDefaultMethods cls = map getDefaultMethod (defaults cls)
   getDefaultMethod (FunctionDecl _ _ _ f _) = f
   getDefaultMethod _ = internalError "getDefaultMethods"
 
+-- |returns all locally declared instances
+getLocalInstances :: ClassEnv -> [Instance]
+getLocalInstances cEnv = map snd $ filter isLocal $ theInstances cEnv
+  where isLocal (Local, _) = True
+        isLocal _ = False
+
+-- |makes an instance a local instance
+localInst :: Instance -> (Source, Instance)
+localInst i = (Local, i) 
+
+-- |makes an instance an imported instance
+importedInst :: ModuleIdent -> Instance -> (Source, Instance)
+importedInst m i = (Imported m, i)
+
+-- |imports an instance into the instance environment, considering
+-- that the same instance can be imported from various paths
+importInstance :: ModuleIdent -> Instance -> [(Source, Instance)] -> [(Source, Instance)]
+importInstance m i@(Instance origin' _ cls' ty' _ _) insts = 
+  if findInstance then insts
+  else (Imported m, i) : insts -- TODO: add mutliple import modules?
+  where
+  findInstance :: Bool
+  findInstance  = 
+    not . null $ filter (\(_, Instance origin'' _ cls'' ty'' _ _) -> 
+      origin' == origin'' && cls' == cls'' && ty' == ty'') insts 
+
+-- |returns where the instance for the given class and type
+-- is imported from (or Nothing if it's a local instance)
+instanceImportedFrom :: ClassEnv -> QualIdent -> QualIdent -> Maybe ModuleIdent
+instanceImportedFrom cEnv cls ty = 
+  maybe (internalError "importedFrom") (\(source, _) -> case source of
+    Local -> Nothing
+    Imported m -> Just m) $
+  -- TODO: consider overlapping instances
+  list2Maybe $ 
+  filter (\(_src, Instance { iClass = ic, iType = it}) -> ic == cls && it == ty) 
+    $ theInstances cEnv
+
+-- |returns all instances
+getAllInstances :: ClassEnv -> [Instance]
+getAllInstances cEnv = map snd $ theInstances cEnv
+
+allInstances :: [(Source, Instance)] -> [Instance]
+allInstances = map snd 
+
+-- |returns all bindings with classes that are not hidden
+allNonHiddenClassBindings :: ClassEnv -> [(QualIdent, Class)]
+allNonHiddenClassBindings (ClassEnv cEnv _ _ _) = allBindings $ nonHiddenClassEnv cEnv
+
+-- |returns all bindings
+allClassBindings :: ClassEnv -> [(QualIdent, Class)]
+allClassBindings (ClassEnv cEnv _ _ _) = allBindings cEnv 
+
+-- |looks up a type scheme in the given class
+lookupTypeScheme :: Class -> Ident -> Maybe TypeScheme
+lookupTypeScheme cls f = listToMaybe $ map snd $ filter p (typeSchemes cls)
+  where
+  p (id0, _tsc) = id0 == f
+
+-- |returns *all* instances for the given class and the given type
+getInstances :: ClassEnv -> QualIdent -> QualIdent -> [Instance]
+getInstances cEnv cls ty =
+  filter (\i -> iClass i == cls && iType i == ty) (allInstances $ theInstances cEnv) 
+
+-- |returns the instance for the given class and type from the given module
+getInstanceWithOrigin :: ClassEnv -> ModuleIdent -> QualIdent -> QualIdent -> Maybe Instance
+getInstanceWithOrigin cEnv m cls ty = list2Maybe $ 
+  filter (\i -> origin i == m && iClass i == cls && iType i == ty) 
+    (allInstances $ theInstances cEnv)
 
 -- ----------------------------------------------------------------------------
 -- type classes related functionality
@@ -394,7 +495,7 @@ isValidCx cEnv cx = concatMap isValid' cx
 -- instead of Bool)!
 getInstance :: ClassEnv -> QualIdent -> QualIdent -> Maybe Instance
 getInstance cEnv cls ty = 
-  listToMaybe $ filter (\i -> iClass i == cls && iType i == ty) (theInstances cEnv)
+  listToMaybe $ filter (\i -> iClass i == cls && iType i == ty) (allInstances $ theInstances cEnv)
 
 -- | finds a path in the class hierarchy from the given class to the given superclass. 
 -- The class names passed to this functions must be canonicalized.  
@@ -480,14 +581,31 @@ dictCode cEnv available (qid, ty)
         mapping = zip' ids tys
         cx' = substContext mapping newCx
         
+        -- if we have an empty dictionary, i.e., a dictionary without any 
+        -- class methods, we had to remove the context of the dictionary
+        -- in the type classes check where the instances are transformed 
+        -- into dictionaries for avoiding ambiguous context elements errors. 
+        -- The removal of the context must be reflected here as well.  
+        emptyDict = isEmptyDict cEnv qid
+        
     in 
-    BuildDict (qid, ty) (map (dictCode cEnv available) cx')
+    BuildDict (qid, ty) (if emptyDict then [] else map (dictCode cEnv available) cx')
   | otherwise = internalError ("dictCode: Cannot construct dictionary " 
                                ++ show (qid, ty)++ 
                                " from the following dictionaries:\n" ++ show available) 
  where
  equalCxElem = \(qid', ty') -> qid' == qid && ty' == ty
  subClass = \(qid', ty') -> ty == ty' && isSuperClassOf cEnv qid qid'  
+
+-- |returns whether the dictionary for the given class is empty, i.e., whether
+-- it doesn't contain any class methods. The class name must be canonical. 
+isEmptyDict :: ClassEnv -> QualIdent -> Bool
+isEmptyDict cEnv cls = 
+  all (isEmpty . fromJust . canonLookupClass cEnv) (cls:scs)
+  where
+  scs = allSuperClasses cEnv cls
+  isEmpty :: Class -> Bool
+  isEmpty cls' = null $ methods cls'
 
 -- ----------------------------------------------------------------------------
 
@@ -541,34 +659,6 @@ initFreshVar :: Int
 initFreshVar = 1 -- not zero! 
 
 -- ----------------------------------------------------------------------------
-
--- |returns a type expression representing the type of the dictionary for
--- the given class (here the canonicalized name must be given)
-dictTypeExpr :: ClassEnv -> QualIdent -> TypeExpr
-dictTypeExpr cEnv cls = 
-  case null (scsTypes ++ methodTypes) of
-    True -> TupleType [] -- unit
-    False -> case length (scsTypes ++ methodTypes) == 1 of
-      True -> case length scsTypes == 1 of
-        True -> head scsTypes
-        False -> head methodTypes
-      False -> TupleType (scsTypes ++ methodTypes)
-  where
-  c = fromJust $ canonLookupClass cEnv cls
-  scs = superClasses c
-  theMethods = methods c
-  
-  scsTypes = map (\cls0 -> ConstructorType 
-                             (qualify $ mkIdent $ mkDictTypeName $ show cls0) 
-                             [VariableType $ typeVar c]) scs
-  methodTypes = map considerZeroArity theMethods 
-  
-  considerZeroArity :: (Ident, Context, TypeExpr) -> TypeExpr
-  considerZeroArity (_m, _cx, ty) = if arrowArityTyExpr ty /= 0
-    then ty
-    else ArrowType (TupleType []) ty  
-
--- ----------------------------------------------------------------------------
 -- Pritty printer functions
 -- ----------------------------------------------------------------------------
 {-
@@ -582,20 +672,22 @@ ppClasses (ClassEnv classes ifs mmap) =
   
 ppClass :: Class -> Doc
 ppClass (Class {superClasses = sc, theClass = tc, typeVar = tv, 
-                kind = k, methods = ms, defaults = ds, typeSchemes = tscs})
-  = text "class<" <> text (show k) <> text ">" 
+                kind = k, methods = ms, defaults = ds, typeSchemes = tscs, 
+                hidden = h, publicMethods = pms })
+  = (if h then text "hidden" else empty) <+> text "class<" <> text (show k) <> text ">" 
   <+> parens (hsep $ punctuate (text ",") (map (text . show) sc))
   <> text " => " <> text (show tc)
   <+> text (show tv) <+> text "where"
   $$ vcat (map (\(id0, cx, ty) -> 
-                 nest 2 (ppIdent id0 <+> text "::" <+> ppContext cx <+> ppTypeExpr 0 ty))
+                 nest 2 (if id0 `elem` pms then text "public" else text "hidden") 
+                         <+> ppIdent id0 <+> text "::" <+> ppContext cx <+> ppTypeExpr 0 ty)
                ms)
   $$ vcat (map (\(id0, tsc) -> nest 2 (ppIdent id0 <+> text "::" <+> text (show tsc))) tscs) 
   $$ nest 2 (vcat $ map ppDecl ds)
 
 ppInst :: Instance -> Doc
-ppInst (Instance {context = cx, iClass = ic, iType = it, typeVars = tvs, rules = rs})
-  = text "instance" 
+ppInst (Instance {context = cx, iClass = ic, iType = it, typeVars = tvs, rules = rs, origin = o})
+  = text "instance" <> text "<" <> text (show o) <> text ">" 
   <+> parens (hsep $ punctuate (text ",") (map (\(qid, tid) -> text (show qid) <+> text (show tid)) cx))
   <> text " => " <> text (show ic) <+> text "(" <> text (show it)
   <+> hsep (map (text. show) tvs) <> text ")" <+> text "where"

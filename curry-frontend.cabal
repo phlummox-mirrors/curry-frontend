@@ -53,7 +53,10 @@ Executable cymake
     , Base.Typing
     , Base.Utils
     , Checks
+    , Checks.Dictionaries
     , Checks.ExportCheck
+    , Checks.InterfaceCheck
+    , Checks.InterfaceSyntaxCheck
     , Checks.KindCheck
     , Checks.PrecCheck
     , Checks.SyntaxCheck
@@ -82,6 +85,7 @@ Executable cymake
     , IL.Type
     , IL.XML
     , Imports
+    , InterfaceEquivalence
     , Interfaces
     , Modules
     , ModuleSummary
@@ -89,7 +93,6 @@ Executable cymake
     , Transformations.CaseCompletion
     , Transformations.CurryToIL
     , Transformations.Desugar
-    , Transformations.Dictionaries
     , Transformations.Lift
     , Transformations.Qual
     , Transformations.Simplify
@@ -138,7 +141,10 @@ Test-Suite TestTypeChecking
      , Base.Typing
      , Base.Utils
      , Checks
+     , Checks.Dictionaries
      , Checks.ExportCheck
+     , Checks.InterfaceCheck
+     , Checks.InterfaceSyntaxCheck
      , Checks.KindCheck
      , Checks.PrecCheck
      , Checks.SyntaxCheck
@@ -167,6 +173,7 @@ Test-Suite TestTypeChecking
      , IL.Type
      , IL.XML
      , Imports
+     , InterfaceEquivalence
      , Interfaces
      , Modules
      , ModuleSummary
@@ -174,7 +181,6 @@ Test-Suite TestTypeChecking
      , Transformations.CaseCompletion
      , Transformations.CurryToIL
      , Transformations.Desugar
-     , Transformations.Dictionaries
      , Transformations.Lift
      , Transformations.Qual
      , Transformations.Simplify
