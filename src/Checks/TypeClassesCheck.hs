@@ -119,12 +119,17 @@ typeClassesCheck m decls0
       case hasErr1 of
         True -> return ([], [])
         False -> do
-          phase2
-          hasErr2 <- hasError
-          case hasErr2 of
+          phase2a
+          hasErr2a <- hasError
+          case hasErr2a of
             True -> return ([], [])
             False -> do
-              phase3
+              phase2b
+              hasErr2b <- hasError
+              case hasErr2b of
+                True -> return ([], [])
+                False -> phase3
+
     -- ----------------------------------------------------------------------
     -- phase 1: checks that don't need the class environment
     -- ----------------------------------------------------------------------
@@ -154,11 +159,27 @@ typeClassesCheck m decls0
       mapM_ checkEmptyDataTypeAndDeriving dataDecls
     
     -- ----------------------------------------------------------------------
-    -- phase 2: Checks that need the class environment, but mostly only for
-    --          determining whether a given class exists or not. Qualified
-    --          instance/superclass contexts are not yet needed. 
+    -- phase 2a: We test only that the deriving declarations are correct. 
+    --           Thus we avoid many error messages in phase 2 b when these are
+    --           not correct. 
     -- ----------------------------------------------------------------------
-    phase2 = do 
+    phase2a = do
+      let newClasses = map (classDeclToClass m) classDecls
+          instances = map (localInst . instanceDeclToInstance m tcEnv) instDecls 
+                      ++ importedInstances
+          allClassesEnv = bindAll newClasses importedClassesEnv
+          newClassEnv = ClassEnv allClassesEnv instances emptyTopEnv 
+                                 (buildCanonClassMap allClassesEnv)
+                                 
+      mapM_ (checkClassesInDeriving m newClassEnv) dataDecls
+    
+    -- ----------------------------------------------------------------------
+    -- phase 2b: Checks that need the class environment, but mostly only for
+    --           determining whether a given class exists or not. Qualified
+    --           instance/superclass contexts are not yet needed. 
+    -- ----------------------------------------------------------------------
+    phase2b = do 
+      -- as in phase 2a
       let newClasses = map (classDeclToClass m) classDecls
           instances = map (localInst . instanceDeclToInstance m tcEnv) instDecls 
                       ++ importedInstances
@@ -176,9 +197,7 @@ typeClassesCheck m decls0
       mapM_ (checkRulesInInstanceOrClass newClassEnv) classDecls
       
       mapM_ (checkClassNameInInstance newClassEnv) instDecls
-      
-      mapM_ (checkClassesInDeriving m newClassEnv) dataDecls
-      
+            
     -- ----------------------------------------------------------------------
     -- phase 3: checks that need the class environment, with
     --          qualified superclass/instance contexts 
