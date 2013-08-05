@@ -43,7 +43,8 @@ for file in DictTrans1 DictTrans2 DictTrans3 DictTrans4 \
   TestVarious \
   DataConstructorsBug1 DataConstructorsBug2 \
   ArrowInstances ArbTypeSyn \
-  EmptyDicts
+  EmptyDicts \
+  DerivingClassesInScope
 do
   echo $file >> tmp.txt
   $cymake -f -i typeclasses typeclasses/$file.curry 2> stderr.txt 1> stdout.txt || (echo "===================="; echo "| Error in $file.curry:" ; echo "===================="; cat stdout.txt; cat stderr.txt; echo)
