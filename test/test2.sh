@@ -105,7 +105,7 @@ for file in TestClassExports TestClassExports2 TestClassExportsImports \
   InstancesHierarchy1c InstancesHierarchy2c InstancesHierarchy3c InstancesHierarchy4c \
   OverlappingInstances0 OverlappingInstances1 OverlappingInstances2 OverlappingInstancesUse OverlappingInstancesUse2 \
   OverlappingArrowInstances0 OverlappingArrowInstances1 OverlappingArrowInstances2 OverlappingArrowInstancesUse \
-  DuplicateClasses1 DuplicateClasses2 DuplicateClassesUse DuplicateClassesUse2 DuplicateClassesUse3 \
+  DuplicateClasses1 DuplicateClasses2 DuplicateClassesUse DuplicateClassesUse2 DuplicateClassesUse3 DuplicateClassesUse4 \
   DuplicateClassesUseB DuplicateClassesUseB2 DuplicateClassesUseB3 \
   DuplicateClassesD1 DuplicateClassesD2 DuplicateClassesD3 DuplicateClassesD4 \
   AsImportBug1 AsImportBug2 AsImportBug3 \
