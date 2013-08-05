@@ -114,7 +114,8 @@ for file in TestClassExports TestClassExports2 TestClassExportsImports \
   ArbTypeSyn ArbTypeSynUse \
   HiddenClassMethodsBug1 HiddenClassMethodsBug2 \
   AmbiguousClassMethods1 AmbiguousClassMethods2 \
-  DuplicateHiddenClasses1 DuplicateHiddenClasses2 DuplicateHiddenClassesUse
+  DuplicateHiddenClasses1 DuplicateHiddenClasses2 DuplicateHiddenClassesUse \
+  InstancesClassInScope1 InstancesClassInScope2
 do
   echo $file >> tmp.txt
   $cymake -f -i typeclasses/modules typeclasses/modules/$file.curry 2> stderr.txt 1> stdout.txt || (echo "===================="; echo "| Error in $file.curry:" ; echo "===================="; cat stdout.txt; cat stderr.txt; echo)
