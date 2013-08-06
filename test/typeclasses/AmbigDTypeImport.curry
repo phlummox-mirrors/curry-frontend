@@ -1,8 +1,8 @@
 
 module AmbigDTypeImport where
 
-import Test1
-import Test2
+import AmbigDType1
+import AmbigDType2
 
 -- data A a = A a
 
@@ -12,6 +12,6 @@ class C a where
 -- instance C A where
 
 -- ok:
-instance C Test1.A where
-instance C Test2.A where
+instance C AmbigDType1.A where
+instance C AmbigDType2.A where
 

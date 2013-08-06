@@ -29,7 +29,7 @@ for file in DictTrans1 DictTrans2 DictTrans3 DictTrans4 \
   TypeSigsTrans BugTypeSigsTrans BugTypeSigsTrans2 \
   ClassEnv TCC GenElems TCC_Bug \
   Arb NullaryClassMethods \
-  TypedExpressions2 DictionaryTypes \
+  TypedExpressions TypedExpressions2 DictionaryTypes \
   TestDictType \
   DefaultMethods1 DefaultMethods2 \
   BugClassMethodsVsPredefinedFuncs \
@@ -43,7 +43,9 @@ for file in DictTrans1 DictTrans2 DictTrans3 DictTrans4 \
   TestVarious \
   DataConstructorsBug1 DataConstructorsBug2 \
   ArrowInstances ArbTypeSyn \
-  EmptyDicts
+  EmptyDicts \
+  Ambig2 AmbigDType1 AmbigDType2 AmbigDTypeImport \
+  DuplicateTypeVarsInInstance QualSuperclasses Traversal
 do
   echo $file >> tmp.txt
   $cymake -f -i typeclasses typeclasses/$file.curry 2> stderr.txt 1> stdout.txt || (echo "===================="; echo "| Error in $file.curry:" ; echo "===================="; cat stdout.txt; cat stderr.txt; echo)
@@ -64,7 +66,13 @@ done
 
 # do the check # 1 c (other errors)
 
-for file in DerivingClassesInScope DerivingClassesNotInScope \
+for file in Ambig1 Ambiguous Ambiguous2 Ambiguous3 \
+  CheckContexts classAndFunNamesOverlapping CyclesInClassStructure \
+  Deriving1 Deriving2 Deriving3 DerivingClassesInScope DerivingClassesNotInScope \
+  DoubleMethods DuplicateClasses DuplicateInstances \
+  ErrContexts ErrorClassAndGlobalFuncs \
+  Impl InstanceConstraints InstanceMethodsCheck \
+  TestCxs TestCxs2 TypeSigs \
   EmptyDataTypeDeriving
 do
   echo $file >> tmp.txt
