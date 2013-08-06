@@ -31,7 +31,7 @@ module TCPrelude
   , ifVar, failure
   ) where
 
-import qualified Prelude as P ((==), (<=))
+import qualified Prelude as P ((==), (<=), show)
 import Prelude hiding ((==), (/=), compare, (<), (<=), (>), (>=), min, max, show)
 
 -- -------------------------------------------------------------------------
@@ -235,11 +235,106 @@ instance (Ord a, Ord b, Ord c, Ord d, Ord e) => Ord (a, b, c, d, e) where
 -- Show class and related instances and functions
 -- -------------------------------------------------------------------------
 
+type ShowS = String -> String
+
 class Show a where
   show :: a -> String
 
+  showsPrec :: Int -> a -> ShowS
+
+  showList :: [a] -> ShowS
+
+  showsPrec _ x s = show x ++ s
+  show x = shows x ""
+  showList ls s = showList' shows ls s
+
+shows :: Show a => a -> ShowS
+shows = showsPrec 0
+
+showChar :: Char -> ShowS
+showChar c s = c:s
+
+showString :: String -> ShowS
+showString str s = foldr showChar s str
+
+showParen :: Bool -> ShowS -> ShowS
+showParen b s = if b then showChar '(' . s . showChar ')' else s
+
+showList' :: (a -> ShowS) ->  [a] -> ShowS
+showList' _     []     s = "[]" ++ s
+showList' showx (x:xs) s = '[' : showx x (showl xs)
+  where
+    showl []     = ']' : s
+    showl (y:ys) = ',' : showx y (showl ys)
+
+
 print :: Show a => a -> IO ()
 print t = putStrLn (show t)
+
+-- -------------------------------------------------------------------------
+
+instance Show () where
+  showsPrec _ () = showString "()"
+
+instance (Show a, Show b) => Show (a, b) where
+  showsPrec _ (a, b) = showTuple [shows a, shows a]
+
+instance (Show a, Show b, Show c) => Show (a, b, c) where
+  showsPrec _ (a, b, c) = showTuple [shows a, shows b, shows c]
+
+instance (Show a, Show b, Show c, Show d) => Show (a, b, c, d) where
+  showsPrec _ (a, b, c, d) = showTuple [shows a, shows b, shows c, shows d]
+
+instance (Show a, Show b, Show c, Show d, Show e) => Show (a, b, c, d, e) where
+  showsPrec _ (a, b, c, d, e) = showTuple [shows a, shows b, shows c, shows d, shows e]
+
+instance Show a => Show [a] where
+  showsPrec _ = showList
+
+instance Show Bool where
+  showsPrec _ True = showString "True"
+  showsPrec _ False = showString "False"
+
+instance Show Ordering where
+  showsPrec _ LT = showString "LT"
+  showsPrec _ EQ = showString "EQ"
+  showsPrec _ GT = showString "GT"
+
+
+instance Show Char where
+  -- TODO: own implementation instead of passing to original Prelude functions?
+  showsPrec _ c = showString (P.show c)
+
+  showList cs = showString (P.show cs)
+
+instance Show Int where
+  showsPrec _ i = showString $ P.show i
+
+instance Show Float where
+  showsPrec _ f = showString $ P.show f
+
+instance Show a => Show (Maybe a) where
+  showsPrec _ Nothing = showString "Nothing"
+  showsPrec p (Just x) = showParen (p > appPrec)
+    (showString "Just " . showsPrec appPrec1 x)
+
+
+instance (Show a, Show b) => Show (Either a b) where
+  showsPrec p (Left x) = showParen (p > appPrec)
+    (showString "Left " . showsPrec appPrec1 x)
+  showsPrec p (Right y) = showParen (p > appPrec)
+    (showString "Right " . showsPrec appPrec1 y)
+  
+showTuple :: [ShowS] -> ShowS
+showTuple ss = showChar '('
+             . foldr1 (\s r -> s . showChar ',' . r) ss
+             . showChar ')'
+
+appPrec = 10
+appPrec1 = 11
+
+instance Show Success where
+  showsPrec _ Success = showString "Success"
 
 -- -------------------------------------------------------------------------
 -- Read class and related instances and functions
