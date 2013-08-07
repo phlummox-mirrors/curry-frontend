@@ -811,7 +811,7 @@ checkCorrectTypeVarsInTypeSigs (ClassDecl _ _ _ tyvar ds) = do
   tyVars (TypeSig p _ _ _ te) = (p, typeVarsInTypeExpr te)
   tyVars _ = internalError "checkTypeVarsInTypeSigs"
   checkTypeVars (p, tyvars) = 
-    when (nub tyvars /= [tyvar]) $ 
+    when (nub tyvars /= [tyvar] && not (null $ nub tyvars)) $ 
       report $ errNotAllowedTypeVars p (nub tyvars \\ [tyvar])
 checkCorrectTypeVarsInTypeSigs _ = internalError "checkCorrectTypeVarsInTypeSigs"
 
