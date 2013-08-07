@@ -277,7 +277,7 @@ instance Show () where
   showsPrec _ () = showString "()"
 
 instance (Show a, Show b) => Show (a, b) where
-  showsPrec _ (a, b) = showTuple [shows a, shows a]
+  showsPrec _ (a, b) = showTuple [shows a, shows b]
 
 instance (Show a, Show b, Show c) => Show (a, b, c) where
   showsPrec _ (a, b, c) = showTuple [shows a, shows b, shows c]
