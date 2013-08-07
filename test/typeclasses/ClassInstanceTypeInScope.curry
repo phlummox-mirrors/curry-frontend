@@ -50,8 +50,8 @@ instance A (Maybe a) where
 
 data Either a b = Either a b
 
--- error: 
--- instance A (Either a b) where
+-- *no* error: 
+instance A (Either a b) where
 
 type F a = S a
 

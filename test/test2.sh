@@ -45,7 +45,9 @@ for file in DictTrans1 DictTrans2 DictTrans3 DictTrans4 \
   ArrowInstances ArbTypeSyn \
   EmptyDicts \
   Ambig2 AmbigDType1 AmbigDType2 AmbigDTypeImport \
-  DuplicateTypeVarsInInstance QualSuperclasses Traversal
+  DuplicateTypeVarsInInstance QualSuperclasses Traversal \
+  ClassInstanceTypeInScope ClassInstanceTypeInScope2 ClassInstanceTypeInScope3 ClassInstanceTypeInScope4 \
+  ClassInstanceTypeInScope6
 do
   echo $file >> tmp.txt
   $cymake -f -i typeclasses typeclasses/$file.curry 2> stderr.txt 1> stdout.txt || (echo "===================="; echo "| Error in $file.curry:" ; echo "===================="; cat stdout.txt; cat stderr.txt; echo)
@@ -73,7 +75,8 @@ for file in Ambig1 Ambiguous Ambiguous2 Ambiguous3 \
   ErrContexts ErrorClassAndGlobalFuncs \
   Impl InstanceConstraints InstanceMethodsCheck \
   TestCxs TestCxs2 TypeSigs \
-  EmptyDataTypeDeriving
+  EmptyDataTypeDeriving \
+  ClassInstanceTypeInScope5
 do
   echo $file >> tmp.txt
   $cymake -f -i typeclasses typeclasses/$file.curry 2> stderr.txt 1> stdout.txt && (echo "===================="; echo "| No error in $file.curry:" ; echo "===================="; cat stdout.txt; cat stderr.txt; echo)
