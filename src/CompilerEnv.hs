@@ -18,7 +18,7 @@ import Text.PrettyPrint
 import Data.Maybe
 import Data.List (nub)
 
-import Curry.Base.Ident (ModuleIdent, preludeMIdent, QualIdent (..))
+import Curry.Base.Ident (ModuleIdent, preludeMIdent, tcPreludeMIdent, QualIdent (..))
 
 import Base.TopEnv
 
@@ -82,7 +82,8 @@ showCompilerEnv opts env = show $ vcat
     else -- show only bindings that are outside the prelude
       nub . map (\(x, _, y) -> (x, y)) . 
         filter (\(_, origName', _) -> isNothing (qidModule origName') || 
-                                      fromJust (qidModule origName') /= preludeMIdent) . 
+            (fromJust (qidModule origName') /= preludeMIdent
+          && fromJust (qidModule origName') /= tcPreludeMIdent)) . 
         allBindingsWithOrigNames
 
 -- |Pretty print a 'Map'
