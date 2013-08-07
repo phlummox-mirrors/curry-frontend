@@ -1661,7 +1661,7 @@ buildTypeSchemes expand m tcEnv cls@(Class { theClass = tc, methods = ms, typeVa
       let extendedCx = Context (ContextElem tc classTypeVar [] : cElems)
           (translatedContext, theType) = toConstrType [classTypeVar] (extendedCx, typeExpr) 
       in (id0, polyType 
-            (if expand then expandType m tcEnv theType else theType) 
+            (if expand then expandType m tcEnv theType else expandSpecial theType) 
             `constrainBy` translatedContext)
     typeSchemeToMethod :: (Ident, TypeScheme) -> (Ident, Context, TypeExpr)
     typeSchemeToMethod (m', ForAll _cx _ ty) = 
@@ -1671,6 +1671,25 @@ buildTypeSchemes expand m tcEnv cls@(Class { theClass = tc, methods = ms, typeVa
 -- |translate the methods to typeschemes, not expanding the types. 
 buildTypeSchemesNoExpand :: Class -> Class
 buildTypeSchemesNoExpand = buildTypeSchemes False (mkMIdent []) initTCEnv
+
+-- |Only expands special type constructors, i.e., units, tuples and lists. 
+-- This is neccessary when we have an already expanded type from the interface;
+-- as lists and tuples have special syntactical forms, they are the only elements
+-- still unexpanded and have to be expanded. 
+expandSpecial :: Type -> Type
+expandSpecial v@(TypeVariable _) = v
+expandSpecial (TypeConstructor qid tys) 
+  | qid == qualify unitId = TypeConstructor (qualify' qid) tys'
+  | isQTupleId qid        = TypeConstructor (qualify' qid) tys'
+  | qid == qualify listId = TypeConstructor (qualify' qid) tys'
+  | otherwise             = TypeConstructor qid tys'
+  where tys' = map expandSpecial tys
+        qualify' = qualifyWith preludeMIdent . unqualify
+expandSpecial (TypeArrow t1 t2) = TypeArrow (expandSpecial t1) (expandSpecial t2)
+expandSpecial (TypeConstrained tys n) = TypeConstrained (map expandSpecial tys) n 
+expandSpecial ts@(TypeSkolem _) = ts
+expandSpecial (TypeRecord ts n) = 
+  TypeRecord (map (\(id0, ty) -> (id0, expandSpecial ty)) ts) n
 
 -- ---------------------------------------------------------------------------
 -- various substitutions
