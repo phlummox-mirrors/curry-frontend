@@ -1426,9 +1426,14 @@ createEqOrOrdInstance (DataDecl p ty dataVars cons _) op clsIdent genRhs prefix 
                   ConstructorPattern (qualify c') (map VariablePattern newVars')])
       (genRhs p (c, i) (c', i') n n' newVars newVars') 
     where
-    newVars  = map (mkIdent . makeName) [1..n]
-    newVars' = map (mkIdent . (++ "'") . makeName) [1..n']
+    newVars  = map (mkIdent' . makeName) [1..n]
+    newVars' = map (mkIdent' . (++ "'") . makeName) [1..n']
     makeName i0 = prefix ++ show c ++ sep ++ show c' ++ sep ++ show i0
+  
+  -- |the renaming of the identifiers is important so that the parameters
+  -- are not handled as top level functions. 
+  mkIdent' :: String -> Ident
+  mkIdent' = flip renameIdent 1 . mkIdent
 
 createEqOrOrdInstance (NewtypeDecl p ty vars (NewConstrDecl p' vars' id' ty') d) 
                        op clsIdent genRhs prefix =
