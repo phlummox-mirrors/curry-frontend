@@ -148,7 +148,8 @@ for file in TestClassExports TestClassExports2 TestClassExportsImports \
   DuplicateHiddenClasses1 DuplicateHiddenClasses2 DuplicateHiddenClassesUse \
   InstancesClassInScope1 InstancesClassInScope2 \
   DerivingClassesSupported3 DerivingClassesSupported4 \
-  Deriving1 Deriving2 DerivingProcessTest1 DerivingProcessTest2
+  Deriving1 Deriving2 DerivingProcessTest1 DerivingProcessTest2 \
+  AmbiguousTypeInInstanceBug1 AmbiguousTypeInInstanceBug2
 do
   echo $file >> tmp.txt
   $cymake -f -i typeclasses/modules typeclasses/modules/$file.curry 2> stderr.txt 1> stdout.txt || (echo "===================="; echo "| Error in $file.curry:" ; echo "===================="; cat stdout.txt; cat stderr.txt; echo)

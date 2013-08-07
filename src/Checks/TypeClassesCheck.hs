@@ -148,7 +148,7 @@ typeClassesCheck m decls0
       mapM_ checkTypeVarsInContext instDecls
       mapM_ checkTypeVarsInContext typeSigs 
       
-      mapM_ (checkInstanceDataTypeCorrect tcEnv) instDecls
+      mapM_ (checkInstanceDataTypeCorrect m tcEnv) instDecls
       
       checkForDuplicateClassNames classDecls
       
@@ -274,10 +274,12 @@ tyConToQualIdent :: ModuleIdent -> TCEnv -> TypeConstructor -> Maybe QualIdent
 tyConToQualIdent m tcEnv (QualTC qid) = qualifyQid
   where
   qualifyQid = case qualLookupTC qid tcEnv of
+    [] -> Nothing
     [DataType tc' _ _] -> Just tc'
     [RenamingType tc' _ _] -> Just tc'
     [AliasType _ _ _] -> Nothing
     _ -> case qualLookupTC (qualQualify m qid) tcEnv of
+      [] -> Nothing
       [DataType tc' _ _] -> Just tc'
       [RenamingType tc' _ _] -> Just tc'
       [AliasType _ _ _] -> Nothing
@@ -680,29 +682,30 @@ checkClassNameInInstance _ _ = internalError "checkClassNameInScope"
 -- |Checks whether the instance data type is in scope and not a type synonym. 
 -- Check also that the arity of the data type in the instance declaration
 -- is correct. 
-checkInstanceDataTypeCorrect :: TCEnv -> Decl -> Tcc ()
-checkInstanceDataTypeCorrect tcEnv (InstanceDecl p _ _ (QualTC qid) ids _) =
-  if length tinfo > 1
-  then report (errDataTypeAmbiguous p qid)
-  else if null tinfo
-  then report (errDataTypeNotInScope p qid)
-  else do
-    when (isAliasType $ head tinfo) $ report (errTypeInInstanceDecl p qid)
-    when (tcArity (head tinfo) /= length ids) $ report (errDataTypeHasIncorrectArity p qid)  
+checkInstanceDataTypeCorrect :: ModuleIdent -> TCEnv -> Decl -> Tcc ()
+checkInstanceDataTypeCorrect m tcEnv (InstanceDecl p _ _ (QualTC qid) ids _) = do
+  tinfo <- case qualLookupTC qid tcEnv of
+    [] -> report (errDataTypeNotInScope p qid) >> return []
+    [AliasType _ _ _] -> report (errTypeInInstanceDecl p qid) >> return []
+    info@[_] -> return info
+    _ -> case qualLookupTC (qualQualify m qid) tcEnv of
+      [] -> report (errDataTypeAmbiguous p qid) >> return []
+      [AliasType _ _ _] -> report (errTypeInInstanceDecl p qid) >> return []
+      info@[_] -> return info
+      _ -> report (errDataTypeAmbiguous p qid) >> return []
+      
+  when ((not $ null tinfo) && tcArity (head tinfo) /= length ids) $ 
+    report (errDataTypeHasIncorrectArity p qid)  
 
-  where tinfo = qualLookupTC qid tcEnv 
-        isAliasType (AliasType _ _ _) = True
-        isAliasType _ = False
-
-checkInstanceDataTypeCorrect _ (InstanceDecl p _ _ UnitTC ids _) = 
+checkInstanceDataTypeCorrect _ _ (InstanceDecl p _ _ UnitTC ids _) = 
   unless (null ids) $ report (errDataTypeHasIncorrectArity p qUnitId)
-checkInstanceDataTypeCorrect _ (InstanceDecl p _ _ (TupleTC n) ids _) =
+checkInstanceDataTypeCorrect _ _ (InstanceDecl p _ _ (TupleTC n) ids _) =
   unless (length ids == n) $ report (errDataTypeHasIncorrectArity p (qTupleId n))
-checkInstanceDataTypeCorrect _ (InstanceDecl p _ _ ListTC ids _) =
+checkInstanceDataTypeCorrect _ _ (InstanceDecl p _ _ ListTC ids _) =
   unless (length ids == 1) $ report (errDataTypeHasIncorrectArity p qListId)
-checkInstanceDataTypeCorrect _ (InstanceDecl p _ _ ArrowTC ids _) =
+checkInstanceDataTypeCorrect _ _ (InstanceDecl p _ _ ArrowTC ids _) =
   unless (length ids == 2) $ report (errDataTypeHasIncorrectArity p qArrowId)  
-checkInstanceDataTypeCorrect _ _ = internalError "checkInstanceDataTypeCorrect"
+checkInstanceDataTypeCorrect _ _ _ = internalError "checkInstanceDataTypeCorrect"
 
 -- |Checks that there are only type vars in the context that also appear on
 -- the right side
