@@ -192,7 +192,7 @@ instance Ord a => Ord (Maybe a) where
   Nothing <= Nothing = True
   Nothing <= Just _  = True
   Just _  <= Nothing = False
-  Just x  <= Just y  = x < y
+  Just x  <= Just y  = x <= y
 
 instance (Ord a, Ord b) => Ord (Either a b) where
   Left x  <= Left y  = x <= y
