@@ -67,17 +67,17 @@ showCompilerEnv opts env = show $ vcat
   , header "TypeConstructors" $ ppAL (text . show) $ showLocalBindings $ tyConsEnv    env
   , header "Values          " $ ppAL (text . show) $ showLocalBindings $ valueEnv     env
   , header "Precedences     " $ ppAL (text . show) $ showLocalBindings $ opPrecEnv    env
-  , header "Classes         " $ ppAL ppClass $ allBindings $ theClasses $ classEnv env
-  , header "Instances       " $ vcat (map ppInst (allInstances $ theInstances $ classEnv env))
-  , header "ClassMethodsMap " $ ppAL ppClass $ allBindings $ classMethods $ classEnv env
-  , header "CanonClassMap   " $ ppAL ppClass $ Map.toList $ canonClassMap $ classEnv env
+  , header "Classes         " $ ppAL ppClass $ showLocalBindings $ theClasses $ classEnv env
+  , header "Instances       " $ vcat (map ppInst (filter filterInst $ allInstances $ theInstances $ classEnv env))
+  , header "ClassMethodsMap " $ ppAL ppClass $ showLocalBindings $ classMethods $ classEnv env
+  , header "CanonClassMap   " $ ppAL ppClass $ filter filterCanon $ Map.toList $ canonClassMap $ classEnv env
   ]
   where
   header hdr content = hang (text hdr <+> colon) 4 content
   textS = text . show
   showLocalBindings :: (Entity a, Eq a) => TopEnv a -> [(QualIdent, a)]
   showLocalBindings = 
-    if optDumpCompleteEnv opts
+    if showAll
     then allBindings
     else -- show only bindings that are outside the prelude
       nub . map (\(x, _, y) -> (x, y)) . 
@@ -85,6 +85,13 @@ showCompilerEnv opts env = show $ vcat
             (fromJust (qidModule origName') /= preludeMIdent
           && fromJust (qidModule origName') /= tcPreludeMIdent)) . 
         allBindingsWithOrigNames
+  filterInst :: Instance -> Bool
+  filterInst (Instance { origin = o }) = 
+    if showAll then True else o /= tcPreludeMIdent 
+  filterCanon :: (QualIdent, Class) -> Bool
+  filterCanon (qid, _) = if showAll then True
+    else isNothing (qidModule qid) || (fromJust (qidModule qid)) /= tcPreludeMIdent 
+  showAll = optDumpCompleteEnv opts
 
 -- |Pretty print a 'Map'
 ppMap :: (Show a, Show b) => Map.Map a b -> Doc
