@@ -1811,9 +1811,9 @@ errDuplicateTypeVars p cls tcon ids
       <+> (hsep $ punctuate comma $ map ppIdent ids))
       
       
-errClassNameNotInScope :: Position -> QualIdent -> Message
-errClassNameNotInScope p cls = posMessage p 
-  (text "Error in instance declaration: Class name not in scope: " <> text (show cls))
+--errClassNameNotInScope :: Position -> QualIdent -> Message
+--errClassNameNotInScope p cls = posMessage p 
+--  (text "Error in instance declaration: Class name not in scope: " <> text (show cls))
 
 
 errDataTypeNotInScope :: Position -> QualIdent -> Message
