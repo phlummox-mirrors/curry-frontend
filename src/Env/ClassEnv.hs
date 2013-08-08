@@ -121,8 +121,8 @@ instance Entity Class where
 
 -- |looks up a given, not hidden class from the class environment. Takes as argument
 -- the name of the class used in the source code. 
-lookupClass :: ClassEnv -> QualIdent -> Maybe Class
-lookupClass cEnv c = 
+lookupClass :: ModuleIdent -> ClassEnv -> QualIdent -> Maybe Class
+lookupClass m cEnv c = 
   list2Maybe $ lookupNonHiddenClasses cEnv c
 
 -- |looks up a local, not hidden class from the class environment. 
@@ -143,9 +143,9 @@ nonHiddenClassEnv = filterEnv (not . hidden)
 
 -- |looks up the canonical class name for the given class name that appears
 -- in the source code
-canonClassName :: ClassEnv -> QualIdent -> Maybe QualIdent
-canonClassName cEnv qid = do
-  cls <- lookupClass cEnv qid
+canonClassName :: ModuleIdent -> ClassEnv -> QualIdent -> Maybe QualIdent
+canonClassName m cEnv qid = do
+  cls <- lookupClass m cEnv qid
   return $ theClass cls
 
 -- |looks up a given class in the class environment. The argument must be
@@ -243,9 +243,9 @@ bindClassMethods' m cls vEnv =
 
 -- | lookup type signature of class method @f@ in class @cls@, using
 -- class names from the source code
-lookupMethodTypeSig' :: ClassEnv -> QualIdent -> Ident -> Maybe (Context, TypeExpr)
-lookupMethodTypeSig' cEnv cls f = 
-  lookupMethodTypeSigHelper cEnv cls f lookupClass
+lookupMethodTypeSig' :: ModuleIdent -> ClassEnv -> QualIdent -> Ident -> Maybe (Context, TypeExpr)
+lookupMethodTypeSig' m cEnv cls f = 
+  lookupMethodTypeSigHelper cEnv cls f (lookupClass m)
 
 -- |look up type signature of class method @f@ in clas @cls@, using canonical
 -- class names
@@ -264,9 +264,9 @@ lookupMethodTypeSigHelper cEnv cls f lookupFun = do
 
 -- |lookup type scheme of class method @f@ in class @cls@, using class names
 -- from the source code 
-lookupMethodTypeScheme' :: ClassEnv -> QualIdent -> Ident -> Maybe TypeScheme
-lookupMethodTypeScheme' cEnv cls f = 
-  lookupMethodTypeSchemeHelper cEnv cls f lookupClass
+lookupMethodTypeScheme' :: ModuleIdent -> ClassEnv -> QualIdent -> Ident -> Maybe TypeScheme
+lookupMethodTypeScheme' m cEnv cls f = 
+  lookupMethodTypeSchemeHelper cEnv cls f (lookupClass m)
 
 -- |lookup type scheme of class method @f@ in class @cls@, using canonical class names
 canonLookupMethodTypeScheme' :: ClassEnv -> QualIdent -> Ident -> Maybe TypeScheme

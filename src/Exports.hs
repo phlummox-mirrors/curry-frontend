@@ -73,8 +73,8 @@ exportInterface' (Module m (Just (Exporting _ es)) _ _) tcs pEnv tcEnv tyEnv cEn
   hiddenClasses = map (toHiddenClassDecl m cEnv) $ 
     nub dependencies \\ nub exportedClasses''
   dependencies = calculateDependencies cEnv (getAllInstances cEnv) exportedClasses''
-  exportedClasses' = exportedClasses cEnv es
-  exportedClasses'' = map (fromJust . canonClassName cEnv) exportedClasses'
+  exportedClasses' = exportedClasses m cEnv es
+  exportedClasses'' = map (fromJust . canonClassName m cEnv) exportedClasses'
   allDecls = 
     nub $ decls ++ dictDecls ++ instances ++ hiddenClasses ++ classElemDecls
   dictionaries = map Export $ nub $ concatMap (getClassAndSuperClassDicts cEnv) $ 
@@ -377,11 +377,11 @@ classesFromClass includeThisClass cEnv cls =
   (if includeThisClass then (cls:) else id) $ allSuperClasses cEnv cls
  
 -- | determines which classes are exported
-exportedClasses :: ClassEnv -> [Export] -> [QualIdent]
-exportedClasses cEnv = concatMap exportedClass
+exportedClasses :: ModuleIdent -> ClassEnv -> [Export] -> [QualIdent]
+exportedClasses m cEnv = concatMap exportedClass
   where
   exportedClass (ExportTypeWith qid _) = 
-    if isJust $ lookupClass cEnv qid then [qid] else [] 
+    if isJust $ lookupClass m cEnv qid then [qid] else [] 
   exportedClass (Export _ ) = [] 
   exportedClass _ = internalError "exportedClasses"
 
