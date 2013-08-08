@@ -122,14 +122,22 @@ instance Entity Class where
 -- |looks up a given, not hidden class from the class environment. Takes as argument
 -- the name of the class used in the source code. 
 lookupClass :: ModuleIdent -> ClassEnv -> QualIdent -> Maybe Class
-lookupClass m cEnv c = 
-  list2Maybe $ lookupNonHiddenClasses cEnv c
+lookupClass m cEnv qid = case lookupNonHiddenClasses cEnv qid of
+  [] -> Nothing
+  [c] -> Just c
+  _ -> case lookupNonHiddenClasses cEnv (qualQualify m qid) of
+    [] -> Nothing
+    [c] -> Just c
+    _ -> Nothing 
 
 -- |looks up a local, not hidden class from the class environment. 
 -- Takes as argument the name of the class used in the source code. 
 lookupLocalClass :: ClassEnv -> QualIdent -> Maybe Class
-lookupLocalClass (ClassEnv cEnv _ _ _) c = 
-  list2Maybe $ qualLookupLocalTopEnv c (nonHiddenClassEnv cEnv)
+lookupLocalClass (ClassEnv cEnv _ _ _) qid = 
+  case qualLookupLocalTopEnv qid (nonHiddenClassEnv cEnv) of
+    [] -> Nothing
+    [c] -> Just c
+    _ -> Nothing
 
 -- |looks up a class if it's not hidden, returning a list of candidates. Takes
 -- as argument the name of the class used in the source code. 

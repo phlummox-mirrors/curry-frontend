@@ -525,10 +525,13 @@ checkClassesInContext _ _ _ = internalError "TypeClassesCheck.checkClassesInCont
 -- is in scope and unambiguous
 checkClassOk :: ModuleIdent -> ClassEnv -> Position -> QualIdent -> Tcc ()
 checkClassOk m cEnv p qid = 
-  case lookupNonHiddenClasses cEnv (qualUnqualify m qid) of 
+  case lookupNonHiddenClasses cEnv qid of 
     []    -> report (errClassNotInScope p qid)
     [_]   -> ok
-    (_:_) -> report (errAmbiguousClassName p qid) 
+    _     -> case lookupNonHiddenClasses cEnv (qualQualify m qid) of
+      []  -> report (errAmbiguousClassName p qid) 
+      [_] -> ok
+      _   -> report (errAmbiguousClassName p qid) 
 
 {-
 lookupClassDecl :: [Decl] -> QualIdent -> Maybe Decl
@@ -673,10 +676,7 @@ instanceTypeVarsDoNotAppearTwice _ = internalError "instanceTypeVarsDoNotAppearT
 -- and that it is not ambiguous
 checkClassNameInInstance :: ModuleIdent -> ClassEnv -> Decl -> Tcc ()
 checkClassNameInInstance m cEnv (InstanceDecl p _ cls _ _ _) = 
-  case lookupNonHiddenClasses cEnv cls of
-    []    -> report (errClassNameNotInScope p cls)
-    [_]   -> ok
-    (_:_) -> report (errAmbiguousClassName p cls)
+  checkClassOk m cEnv p cls
 checkClassNameInInstance _ _ _ = internalError "checkClassNameInScope"
 
 -- |Checks whether the instance data type is in scope and not a type synonym. 
