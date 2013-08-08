@@ -20,7 +20,7 @@ import Curry.Base.Ident
 import CompilerEnv
 import Curry.Syntax
 import Curry.Base.Position
-import Env.ClassEnv hiding (isClassMethod)
+import Env.ClassEnv
 import Env.Value
 import Base.Names (mkSelFunName, mkDictName)
 import Base.Messages
