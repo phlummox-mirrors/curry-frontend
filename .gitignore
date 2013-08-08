@@ -11,3 +11,4 @@ hpc/
 *.tix
 *.fint
 Curry_Main_Goal.curry
+*~
