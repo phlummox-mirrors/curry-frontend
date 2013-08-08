@@ -4,6 +4,8 @@ import TCPrelude
 
 import Deriving2
 
+import Assertion
+
 test1a = (T1 True :: T Bool Bool) <= T1 True
 test2a = not ((T1 True :: T Bool Bool) < T1 True)
 test3a = T1 True < T2 True
@@ -76,3 +78,5 @@ allTests = [test1a, test2a, test3a, test4, test5, test6, test7, test8, test9
            , test50, test51, test52, test53, test54, test55, test56]
 
 allCorrect = and allTests
+
+test = assertTrue "allCorrect" allCorrect

@@ -4,6 +4,8 @@ module TestPrelude where
 import Prelude ()
 import TCPrelude
 
+import Assertion
+
 -- --------------------------------------------------------------------------
 -- Eq class
 -- --------------------------------------------------------------------------
@@ -82,3 +84,5 @@ allTests = [test1a, test2a, test3a, test4a, test5, test6, test7, test8, test9
   , test37, test38, test39, test40, test41]
 
 allCorrect = and allTests
+
+test = assertTrue "allCorrect" allCorrect

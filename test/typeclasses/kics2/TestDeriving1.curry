@@ -4,6 +4,7 @@ import TCPrelude
 
 import Deriving1
 
+import Assertion
 
 test1a = (T1 False :: T Bool Bool) == T1 False
 test2a = (T1 False :: T Bool Bool) /= T1 True
@@ -55,3 +56,5 @@ allTests = [test1a, test2a, test3a, test4, test5, test6, test7, test8, test9
            , test32, test33, test34]
 
 allCorrect = and allTests
+
+test = assertTrue "allCorrect" allCorrect
