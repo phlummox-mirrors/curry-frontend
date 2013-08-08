@@ -226,9 +226,10 @@ expandLocalModule = do
   tcEnv <- getTyConsEnv
   tyEnv <- getValueEnv
   cEnv  <- getClassEnv
+  m     <- getModuleIdent
   return $ [exportType tyEnv t | (_, t) <- localBindings tcEnv] ++
     [Export f' | (f, Value f' _ _ _) <- localBindings tyEnv, 
-                  f == unRenameIdent f, not $ isClassMethod cEnv (qualify f)] ++
+                  f == unRenameIdent f, not $ isClassMethod m tyEnv (qualify f)] ++
     [ExportTypeWith cName ms | cls <- allLocalClasses (theClasses cEnv), 
                                let cName = theClass cls
                                    ms = map fst (typeSchemes cls)]
@@ -241,7 +242,7 @@ expandImportedModule m = do
   cEnv <- getClassEnv
   return $ [exportType tyEnv t | (_, t) <- moduleImports m tcEnv]
         ++ [Export f | (_, Value f _ _ _) <- moduleImports m tyEnv
-                     , not $ isClassMethod cEnv f]
+                     , not $ isClassMethod m tyEnv f]
         ++ [ExportTypeWith (theClass c) (map fst3 $ methods c) 
              | (_, c) <- moduleImports m (nonHiddenClassEnv $ theClasses cEnv)] 
 
@@ -276,6 +277,14 @@ joinFun (Export           f) fs = f `Set.insert` fs
 joinFun (ExportTypeWith _ _) fs = fs
 joinFun export                _ = internalError $
   "Checks.ExportCheck.joinFun: " ++ show export
+
+-- |checks whether the given function is a class method or not. 
+isClassMethod :: ModuleIdent -> ValueEnv -> QualIdent -> Bool  
+isClassMethod m vEnv qid = case qualLookupValue qid vEnv of
+  [Value _ _ _ cls] -> isJust cls
+  _ -> case qualLookupValue (qualQualify m qid) vEnv of
+    [Value _ _ _ cls] -> isJust cls
+    _ -> internalError "no function/method in isClassMethod" 
 
 -- ---------------------------------------------------------------------------
 -- Auxiliary definitions
