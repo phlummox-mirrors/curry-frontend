@@ -47,8 +47,8 @@ data ValueInfo
   = DataConstructor    QualIdent Int       ExistTypeScheme
   -- |Newtype constructor with original name and type (arity is always 1)
   | NewtypeConstructor QualIdent           ExistTypeScheme
-  -- |Value with original name, arity and type
-  | Value              QualIdent Int       TypeScheme
+  -- |Value with original name, arity, type and (perhaps) the defining class
+  | Value              QualIdent Int       TypeScheme (Maybe QualIdent)
   -- |Record label with original name, record name and type
   | Label              QualIdent QualIdent TypeScheme
     deriving (Eq, Show)
@@ -56,7 +56,7 @@ data ValueInfo
 instance Entity ValueInfo where
   origName (DataConstructor    orgName _ _) = orgName
   origName (NewtypeConstructor orgName   _) = orgName
-  origName (Value              orgName _ _) = orgName
+  origName (Value              orgName _ _ _) = orgName
   origName (Label              orgName _ _) = orgName
 
   merge (Label l r ty) (Label l' r' _)
@@ -90,12 +90,12 @@ tryBindFun m f a ty env
   | idUnique f == 0 = tryQualBindTopEnv fun qf v env >>= tryBindTopEnv fun f v 
   | otherwise       = tryBindTopEnv fun f v env
   where qf  = qualifyWith m f
-        v   = Value qf a ty
+        v   = Value qf a ty Nothing
         fun = "Env.Value.bindFun"
 
 tryQualBindFun :: ModuleIdent -> Ident -> Int -> TypeScheme -> ValueEnv -> Maybe ValueEnv
 tryQualBindFun m f a ty = tryQualBindTopEnv "Env.Value.qualBindFun" qf $
-  Value qf a ty
+  Value qf a ty Nothing
   where qf = qualifyWith m f
 
 
@@ -115,7 +115,7 @@ tryRebindFun m f a ty env
   | idUnique f == 0 = tryQualRebindTopEnv qf v env >>= tryRebindTopEnv f v 
   | otherwise       = tryRebindTopEnv f v env
   where qf = qualifyWith m f
-        v = Value qf a ty
+        v = Value qf a ty Nothing
 
 rebindFun :: ModuleIdent -> Ident -> Int -> TypeScheme -> ValueEnv -> ValueEnv
 rebindFun m x n tsc env = 
@@ -171,8 +171,8 @@ ppTypes mid valueEnv = ppTypes' mid $ localBindings valueEnv
   ppTypes' :: ModuleIdent -> [(Ident, ValueInfo)] -> Doc
   ppTypes' m = vcat . map (ppIDecl . mkDecl) . filter (isValue . snd)
     where
-    mkDecl (v, Value _ a (ForAll cx _ ty)) =
+    mkDecl (v, Value _ a (ForAll cx _ ty) _) =
       IFunctionDecl NoPos (qualify v) a (fromContext cx) (fromQualType m ty)
     mkDecl _ = internalError "Env.Value.ppTypes: no value"
-    isValue (Value _ _ _) = True
-    isValue _             = False
+    isValue (Value _ _ _ _) = True
+    isValue _               = False

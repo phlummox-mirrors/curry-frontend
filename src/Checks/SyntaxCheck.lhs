@@ -217,7 +217,7 @@ Furthermore, it is not allowed to declare a label more than once.
 > renameInfo :: TCEnv -> ValueInfo -> RenameInfo
 > renameInfo _     (DataConstructor  _ a _) = Constr $ a
 > renameInfo _     (NewtypeConstructor _ _) = Constr 1
-> renameInfo _     (Value          qid a _) = GlobalVar a qid
+> renameInfo _     (Value        qid a _ _) = GlobalVar a qid
 > renameInfo tcEnv (Label            _ r _) = case qualLookupTC r tcEnv of
 >   [AliasType _ _ (TypeRecord fs _)] -> RecordLabel r $ map fst fs
 >   _ -> internalError $ "SyntaxCheck.renameInfo: ambiguous record " ++ show r

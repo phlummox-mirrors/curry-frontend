@@ -65,7 +65,7 @@ This module implements substitutions on types.
 > instance SubstType ValueInfo where
 >   subst _     dc@(DataConstructor  _ _ _) = dc
 >   subst _     nc@(NewtypeConstructor _ _) = nc
->   subst theta (Value              v a ty) = Value v a (subst theta ty)
+>   subst theta (Value           v a ty mc) = Value v a (subst theta ty) mc
 >   subst theta (Label              l r ty) = Label l r (subst theta ty)
 
 > instance SubstType a => SubstType (TopEnv a) where

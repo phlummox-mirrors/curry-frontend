@@ -124,7 +124,7 @@ environment.}
 >   where tvs = filter (>= 0) (typeVars ty)
 >         tvs' = map TypeVariable [n - 1,n - 2 ..]
 >         n = minimum (0 : concatMap typeVars tys)
->         tys = [ty1 | (_,Value _ _ (ForAll _ _ ty1)) <- localBindings tyEnv]
+>         tys = [ty1 | (_,Value _ _ (ForAll _ _ ty1) _) <- localBindings tyEnv]
 
 > identType :: ValueEnv -> Ident -> TyState Type
 > identType tyEnv x = instUniv (varType x tyEnv)
@@ -377,12 +377,12 @@ pattern variables, and variables.
 
 > varType :: Ident -> ValueEnv -> TypeScheme
 > varType v tyEnv = case lookupValue v tyEnv of
->   [Value _ _ sigma] -> sigma
+>   [Value _ _ sigma _] -> sigma
 >   _ -> internalError $ "Base.Typing.varType: " ++ show v
 
 > funType :: QualIdent -> ValueEnv -> TypeScheme
 > funType f tyEnv = case qualLookupValue f tyEnv of
->   [Value _ _ sigma] -> sigma
+>   [Value _ _ sigma _] -> sigma
 >   _ -> internalError $ "Base.Typing.funType: " ++ show f
 
 > labelType :: Ident -> ValueEnv -> TypeScheme

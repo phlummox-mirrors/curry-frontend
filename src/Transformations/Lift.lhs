@@ -304,12 +304,12 @@ to the top-level.
 
 > varArity :: ValueEnv -> Ident -> Int
 > varArity tyEnv v = case lookupValue v tyEnv of
->   [Value _ a _] -> a
+>   [Value _ a _ _] -> a
 >   _ -> internalError $ "Lift.varArity: " ++ show v
 
 > varType :: ValueEnv -> Ident -> Type
 > varType tyEnv v = case lookupValue v tyEnv of
->   [Value _ _ (ForAll _ _ ty)] -> ty
+>   [Value _ _ (ForAll _ _ ty) _] -> ty
 >   _ -> internalError $ "Lift.varType: " ++ show v
 
 > liftIdent :: String -> Ident -> Ident

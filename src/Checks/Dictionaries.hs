@@ -100,7 +100,7 @@ diDecl _ f = return f
 removeNonLocal :: ValueEnv -> a -> (a -> ValueEnv -> [ValueInfo]) -> BT.Context -> BT.Context
 removeNonLocal vEnv id0 lookup0 cx = newCx
   where
-  Value _ _ (ForAll cxInf _ _) : _ = lookup0 id0 vEnv
+  Value _ _ (ForAll cxInf _ _) _ : _ = lookup0 id0 vEnv
   newCx = map snd $ filter (\(e1, _e2) -> local e1) $ zip' cxInf cx
   local :: (QualIdent, Type) -> Bool
   -- TODO: actually check only the type variable in head position... 

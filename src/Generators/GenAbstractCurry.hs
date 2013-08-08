@@ -888,14 +888,14 @@ opToExpr (InfixConstr  c) = Constructor c
 -- converts it to a CurrySyntax type term.
 qualLookupType :: QualIdent -> ValueEnv -> Maybe TypeExpr
 qualLookupType qident tyEnv = case qualLookupValue qident tyEnv of
-  [Value _ _ (ForAll _ _ ty)] -> Just $ fromType ty
+  [Value _ _ (ForAll _ _ ty) _] -> Just $ fromType ty
   _                           -> Nothing
 
 -- Looks up the type of a symbol in the type environment and
 -- converts it to a CurrySyntax type term.
 lookupType :: Ident -> ValueEnv -> Maybe TypeExpr
 lookupType ident tyEnv = case lookupValue ident tyEnv of
-  [Value _ _ (ForAll _ _ ty)] -> Just $ fromType ty
+  [Value _ _ (ForAll _ _ ty) _] -> Just $ fromType ty
   _                           -> Nothing
 
 -- The following functions transform left-hand-side and right-hand-side terms

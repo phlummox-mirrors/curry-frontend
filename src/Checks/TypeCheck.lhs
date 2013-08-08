@@ -490,6 +490,7 @@ class methods share the same namespace!
 >     let tsc = fromJust $ lookupTypeScheme cls (unqualify m)
 >         v = Value (qualifyLike (theClass cls) $ unqualify m) 
 >                   (BT.arrowArity $ typeSchemeToType tsc) tsc
+>                   (Just $ theClass cls)
 >     in qualImportTopEnv' (fromJust' "bindClassMethods" $ qidModule $ theClass cls) 
 >          m v
 >    
@@ -614,7 +615,7 @@ either one of the basic types or \texttt{()}.
 >     let vs = lookupValue v vEnv
 >     m <- getModuleIdent 
 >     let vs' = filter (valInMdl m) vs
->         Value _ arity tysig = head vs'
+>         Value _ arity tysig _ = head vs'
 >     when (length vs' /= 1) $ internalError "writeContexts" 
 >     -- update the entry
 >     let tysig' = tysig `constrainBy` cx
@@ -2034,24 +2035,24 @@ unambiguously refers to the local definition.
 
 > varArity :: Ident -> ValueEnv -> Int
 > varArity v tyEnv = case lookupValue v tyEnv of
->   Value _ a _ : _ -> a
+>   Value _ a _ _ : _ -> a
 >   _ -> internalError $ "TypeCheck.varArity " ++ show v
 
 > varType :: Ident -> ValueEnv -> TypeScheme
 > varType v tyEnv = case lookupValue v tyEnv of
->   Value _ _ sigma : _ -> sigma
+>   Value _ _ sigma _ : _ -> sigma
 >   _ -> internalError $ "TypeCheck.varType " ++ show v
 
 > sureVarType :: Ident -> ValueEnv -> Maybe TypeScheme
 > sureVarType v tyEnv = case lookupValue v tyEnv of
->   Value _ _ sigma : _ -> Just sigma
+>   Value _ _ sigma _ : _ -> Just sigma
 >   _ -> Nothing
 
 > funType :: ModuleIdent -> QualIdent -> ValueEnv -> TypeScheme
 > funType m f tyEnv = case qualLookupValue f tyEnv of
->   [Value _ _ sigma] -> sigma
+>   [Value _ _ sigma _] -> sigma
 >   _ -> case qualLookupValue (qualQualify m f) tyEnv of
->     [Value _ _ sigma] -> sigma
+>     [Value _ _ sigma _] -> sigma
 >     _ -> internalError $ "TypeCheck.funType function not found: " 
 >            ++ show f ++ ", more precisely " ++ show (unqualify f)
 
@@ -2137,7 +2138,7 @@ know that they are closed.
 > fsEnv = Set.unions . map (Set.fromList . typeSkolems) . localTypes
 
 > localTypes :: ValueEnv -> [Type]
-> localTypes tyEnv = [ty | (_, Value _ _ (ForAll _cx _ ty)) <- localBindings tyEnv]
+> localTypes tyEnv = [ty | (_, Value _ _ (ForAll _cx _ ty) _) <- localBindings tyEnv]
 
 \end{verbatim}
 Miscellaneous functions.

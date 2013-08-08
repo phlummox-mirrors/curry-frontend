@@ -325,7 +325,7 @@ bindTy m (ITypeDecl _ rtc tvs (RecordType fs _)) env =
         env' = bindConstr m rtc' tvs (constrType rtc' tvs)
                (ConstrDecl NoPos [] urtc (map snd fs)) env
 bindTy m (IFunctionDecl _ f a cx ty) env = Map.insert (unqualify f)
-  (Value (qualQualify m f) a (polyType ty' `constrainBy` cx')) env
+  (Value (qualQualify m f) a (polyType ty' `constrainBy` cx') Nothing) env
   where (cx', ty') = toQualConstrType m [] (cx, ty)
 bindTy _ _ env = env
 
@@ -603,7 +603,7 @@ expandThing' f tcImport = do
 
   isConstr (DataConstructor  _ _ _) = True
   isConstr (NewtypeConstructor _ _) = True
-  isConstr (Value            _ _ _) = False
+  isConstr (Value          _ _ _ _) = False
   isConstr (Label            _ _ _) = False
 
 -- try to hide as type constructor/class
@@ -849,8 +849,8 @@ addImportedLabels m tyEnv = foldr addLabelType tyEnv (allImports tyEnv)
     where
     l' = unqualify l
     mid = fromMaybe m (qidModule r)
-    sel = Value (qualRecSelectorId m r l') 1 ty
-    upd = Value (qualRecUpdateId   m r l') 2 ty
+    sel = Value (qualRecSelectorId m r l') 1 ty Nothing
+    upd = Value (qualRecUpdateId   m r l') 2 ty Nothing
   addLabelType _                       = id
 
 expandRecordTypes :: TCEnv -> ValueInfo -> ValueInfo
@@ -858,8 +858,8 @@ expandRecordTypes tcEnv (DataConstructor  qid a (ForAllExist con n m ty)) =
   DataConstructor qid a (ForAllExist con n m (expandRecords tcEnv ty))
 expandRecordTypes tcEnv (NewtypeConstructor qid (ForAllExist con n m ty)) =
   NewtypeConstructor qid (ForAllExist con n m (expandRecords tcEnv ty))
-expandRecordTypes tcEnv (Value qid a (ForAll con n ty)) =
-  Value qid a (ForAll con n (expandRecords tcEnv ty))
+expandRecordTypes tcEnv (Value qid a (ForAll con n ty) mc) =
+  Value qid a (ForAll con n (expandRecords tcEnv ty)) mc
 expandRecordTypes tcEnv (Label qid r (ForAll con n ty)) =
   Label qid r (ForAll con n (expandRecords tcEnv ty))
 

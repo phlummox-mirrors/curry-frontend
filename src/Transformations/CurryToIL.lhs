@@ -579,7 +579,7 @@ stripped from the types.
 > varType f = do
 >   tyEnv <- getValueEnv
 >   case qualLookupValue f tyEnv of
->     [Value _ _ (ForAll _ _ ty)] -> return ty
+>     [Value _ _ (ForAll _ _ ty) _] -> return ty
 >     _ -> internalError $ "CurryToIL.varType: " ++ show f
 
 > constrType :: QualIdent -> TransM Type
