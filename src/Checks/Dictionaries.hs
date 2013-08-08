@@ -146,35 +146,40 @@ diExpr :: BT.Context -> Expression -> DI Expression
 diExpr _ e@(Literal _) = return e
 diExpr cx0 v@(Variable (Just varCty0) qid) = do 
   checkForAmbiguousInstances (qidPosition qid) (mirrorBFCx $ fst varCty0)
-  codes <- abstrCode
   cEnv <- getClassEnv
-  let code = foldl Apply (var'' cEnv) codes
+  vEnv <- getValueEnv
+  
+  
+  let 
+    abstrCode = do
+      let varCty = (removeNonLocal vEnv qid qualLookupValue $ mirrorBFCx $ fst varCty0, snd varCty0)
+          -- check whether we have a class method
+          cx = if isNothing $ maybeCls then fst varCty else mirrorBFCx $ fst varCty0
+          codes = map (concreteCode . dictCode cEnv cx0) cx 
+      return codes
+    maybeCls = lookupDefiningClass cEnv qid
+    cls = fromJust $ maybeCls
+    -- if we have a class function, transform this into the appropriate selector
+    -- function
+    isClassMethod = isJust $ maybeCls
+    zeroArity  = (arrowArity $ typeSchemeToType $ 
+      fromJust $ canonLookupMethodTypeScheme' cEnv cls (unqualify qid)) == 0
+    var'' = if not isClassMethod 
+      then v
+      -- Unqualify "qid"! The name of the selection function is still unique
+      -- because the class name is unique 
+      else Variable (Just varCty0) 
+             (qualify $ mkIdent $ mkSelFunName (show cls) (show $ unqualify $ qid))
+             
+  
+  codes <- abstrCode   
+  let code = foldl Apply var'' codes
   -- for nullary class methods add additional unit argument
-  return $ if isClassMethod cEnv && zeroArity cEnv 
+  return $ if isClassMethod && zeroArity 
     then Apply code (Constructor qUnitId)
     else code
-  where
-  abstrCode = do
-    cEnv <- getClassEnv
-    vEnv <- getValueEnv
-    let varCty = (removeNonLocal vEnv qid qualLookupValue $ mirrorBFCx $ fst varCty0, snd varCty0)
-        -- check whether we have a class method
-        cx = if isNothing $ maybeCls cEnv then fst varCty else mirrorBFCx $ fst varCty0
-        codes = map (concreteCode . dictCode cEnv cx0) cx 
-    return codes
-  maybeCls cEnv = lookupDefiningClass cEnv qid
-  cls cEnv = fromJust $ maybeCls cEnv
-  -- if we have a class function, transform this into the appropriate selector
-  -- function
-  isClassMethod cEnv = isJust $ maybeCls cEnv
-  zeroArity cEnv = (arrowArity $ typeSchemeToType $ 
-    fromJust $ canonLookupMethodTypeScheme' cEnv (cls cEnv) (unqualify qid)) == 0
-  var'' cEnv = if not $ isClassMethod cEnv 
-    then v
-    -- Unqualify "qid"! The name of the selection function is still unique
-    -- because the class name is unique 
-    else Variable (Just varCty0) 
-           (qualify $ mkIdent $ mkSelFunName (show $ cls cEnv) (show $ unqualify $ qid))
+  
+  
 diExpr _ (Variable Nothing _) = internalError "diExpr: no type info"
 diExpr _ e@(Constructor _) = return e
 diExpr cx (Paren e) = Paren `liftM` diExpr cx e
