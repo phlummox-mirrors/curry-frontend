@@ -38,13 +38,14 @@ import Control.Monad.State as S
 type DI = S.State DIState
 
 data DIState = DIState 
-  { theClassEnv :: ClassEnv
+  { mdl         :: ModuleIdent
+  , theClassEnv :: ClassEnv
   , theValueEnv :: ValueEnv
   , errors      :: [Message]
   }
 
-initState :: ClassEnv -> ValueEnv -> DIState
-initState cEnv vEnv = DIState cEnv vEnv []
+initState :: ModuleIdent -> ClassEnv -> ValueEnv -> DIState
+initState m cEnv vEnv = DIState m cEnv vEnv []
 
 runDI :: DI a -> DIState -> (a, [Message])
 runDI comp init0 = let (a, s) = S.runState comp init0 in (a, reverse $ errors s)
@@ -54,6 +55,9 @@ getClassEnv = S.gets theClassEnv
 
 getValueEnv :: DI ValueEnv
 getValueEnv = S.gets theValueEnv
+
+getModuleIdent :: DI ModuleIdent
+getModuleIdent = S.gets mdl
 
 ok :: DI ()
 ok = return ()
@@ -68,8 +72,8 @@ report err = S.modify (\ s -> s { errors = err : errors s })
 -- |The main function of this module. It descends into the syntax tree and
 -- inserts dictionary parameters (in function declarations and in expressions)
 insertDicts :: Module -> CompilerEnv -> (Module, [Message])
-insertDicts mdl cEnv = 
-  runDI (diModule mdl) (initState (classEnv cEnv) (valueEnv cEnv))
+insertDicts mdl@(Module m _ _ _) cEnv = 
+  runDI (diModule mdl) (initState m (classEnv cEnv) (valueEnv cEnv))
 
 -- |convert a whole module
 diModule :: Module -> DI Module
