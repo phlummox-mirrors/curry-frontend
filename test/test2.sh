@@ -152,7 +152,8 @@ for file in TestClassExports TestClassExports2 TestClassExportsImports \
   InstancesClassInScope1 InstancesClassInScope2 \
   DerivingClassesSupported3 DerivingClassesSupported4 \
   Deriving1 Deriving2 DerivingProcessTest1 DerivingProcessTest2 \
-  AmbiguousTypeInInstanceBug1 AmbiguousTypeInInstanceBug2
+  AmbiguousTypeInInstanceBug1 AmbiguousTypeInInstanceBug2 \
+  BugClassMethodsAndTopLevelFuns1 BugClassMethodsAndTopLevelFuns2
 do
   echo $file >> tmp.txt
   $cymake -f -i typeclasses/modules typeclasses/modules/$file.curry 2> stderr.txt 1> stdout.txt || (echo "===================="; echo "| Error in $file.curry:" ; echo "===================="; cat stdout.txt; cat stderr.txt; echo)
@@ -167,7 +168,7 @@ for file in ClassExportErrors ClassExportImportErrors ClassMethodsExportErr1 Cla
   AmbigClassExportUseErr ConflictHiddenUseErr OverlappingInstancesUseErr OverlappingArrowInstancesUseErr \
   DuplicateClassesUse2Err AmbiguousClassMethodsUseErr \
   DerivingClassesSupported1Err DerivingClassesSupported2Err \
-  Deriving3Err
+  Deriving3Err BugClassMethodsAndTopLevelFuns3
 do
   echo $file >> tmp.txt
   $cymake -f -i typeclasses/modules typeclasses/modules/$file.curry 2> stderr.txt 1> stdout.txt && (echo "===================="; echo "| No error in $file.curry:" ; echo "===================="; cat stdout.txt; cat stderr.txt; echo)

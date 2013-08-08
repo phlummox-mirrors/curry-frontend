@@ -148,7 +148,7 @@ diExpr cx0 v@(Variable (Just varCty0) qid) = do
   checkForAmbiguousInstances (qidPosition qid) (mirrorBFCx $ fst varCty0)
   cEnv <- getClassEnv
   vEnv <- getValueEnv
-  
+  m <- getModuleIdent
   
   let 
     abstrCode = do
@@ -157,7 +157,11 @@ diExpr cx0 v@(Variable (Just varCty0) qid) = do
           cx = if isNothing $ maybeCls then fst varCty else mirrorBFCx $ fst varCty0
           codes = map (concreteCode . dictCode cEnv cx0) cx 
       return codes
-    maybeCls = lookupDefiningClass cEnv qid
+    maybeCls = case qualLookupValue qid vEnv of
+      [Value _ _ _ cls'] -> cls'
+      _ -> case qualLookupValue (qualQualify m qid) vEnv of
+        [Value _ _ _ cls'] -> cls'
+        _ -> internalError "no function/method in Dictionaries" 
     cls = fromJust $ maybeCls
     -- if we have a class function, transform this into the appropriate selector
     -- function
