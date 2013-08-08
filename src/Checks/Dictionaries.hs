@@ -72,8 +72,8 @@ report err = S.modify (\ s -> s { errors = err : errors s })
 -- |The main function of this module. It descends into the syntax tree and
 -- inserts dictionary parameters (in function declarations and in expressions)
 insertDicts :: Module -> CompilerEnv -> (Module, [Message])
-insertDicts mdl@(Module m _ _ _) cEnv = 
-  runDI (diModule mdl) (initState m (classEnv cEnv) (valueEnv cEnv))
+insertDicts mdl'@(Module m _ _ _) cEnv = 
+  runDI (diModule mdl') (initState m (classEnv cEnv) (valueEnv cEnv))
 
 -- |convert a whole module
 diModule :: Module -> DI Module
