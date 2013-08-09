@@ -150,8 +150,7 @@ importInterface tcs m q is i env = (env'', errs)
     then allExportedClasses
     -- lookup for each class in the import specification the name under
     -- which it appears in the interface
-    -- TODO: is fromJust here safe?
-    else nub $ map (fromJust' "Imports" . flip Map.lookup identMap) $ 
+    else nub $ map lookupQualName $ 
       classesInImportSpec' mExportedClsEnv' expandedSpec
   imported = 
     if isImporting is
@@ -204,6 +203,14 @@ importInterface tcs m q is i env = (env'', errs)
     }
   
   ts' = (`elem` map unqualify deps)
+  
+  -- | looks up for the given class from the import specification the name under
+  -- which it appears in the interface
+  -- TODO: is fromJust here safe?
+  lookupQualName :: Ident -> QualIdent
+  lookupQualName = fromJust' "Imports" . flip Map.lookup identMap
+  
+  
       
 -- |sets the hidden flag in the given class to true or false
 setHidden :: Bool -> Class -> Class
