@@ -1,5 +1,5 @@
 
 import ClassExportImport (K)
 
-test :: K a => a -> a
+test :: J a => a -> a
 test x = x

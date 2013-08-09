@@ -187,7 +187,11 @@ for file in ClassExportErrors ClassExportImportErrors ClassMethodsExportErr1 Cla
   ClassMethodsExportUse12Err ClassMethodsExportUse13Err1 ClassMethodsExportUse13Err2 \
   ClassMethodsExportUse15Err ClassMethodsExportUse16Err ClassMethodsExportUse17Err1 \
   ClassMethodsExportUse17Err2 ClassMethodsExportUse23Err1 ClassMethodsExportUse23Err2 \
-  ClassMethodsExportUse25Err1 ClassMethodsExportUse25Err2
+  ClassMethodsExportUse25Err1 ClassMethodsExportUse25Err2 \
+  \
+  ClassExportImport1Err ClassExportImport2Err ClassExportImport3Err ClassExportImport4Err \
+  ClassExportImport5Err1 ClassExportImport5Err2 ClassExportImport6Err ClassExportImport7Err1 \
+  ClassExportImport7Err2 ClassExportImport8Err
 do
   echo $file >> tmp.txt
   if [ ! -r typeclasses/modules/$file.curry ]; then echo "*********** file doesn't exist: $file"; fi
