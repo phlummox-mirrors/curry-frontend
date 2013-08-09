@@ -156,15 +156,18 @@ importInterface tcs m q is i env = (env'', errs)
   imported = 
     if isImporting is
     then classesInImportSpec
-    else allExportedClasses \\ classesInImportSpec
+    -- TODO: do not include classes hidden by C(..)
+    else allExportedClasses 
+  hiddenClasses = if isImporting is then [] else classesInImportSpec
   deps = nub $ calcDependencies imported i ++ depsInstances
   
-  cs c = if c `elem` imported then True -- import public
+  cs c = if c `elem` imported then True -- import public or hidden
          else if c `elem` deps then True -- import hidden
          else False -- do not import
 
   -- classes can be imported as hidden or as public
-  hflag c = if c `elem` imported then False -- import public
+  hflag c = if c `elem` imported && c `notElem` hiddenClasses then False -- import public
+            else if c `elem` imported && c `elem` hiddenClasses then True -- import hidden
             else if c `elem` deps then True -- import hidden
             else True -- or False, doesn't matter
   
