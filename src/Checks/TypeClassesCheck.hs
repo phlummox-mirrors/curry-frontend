@@ -744,10 +744,16 @@ checkForInstanceDataTypeExistAlsoInstancesForSuperclasses cEnv tcEnv m
         -- scs = superClasses (fromJust $ lookupClass cEnv cls)
         scs = allSuperClasses cEnv (getCanonClassName m cEnv cls)
         tyId = tyConToQualIdent m tcEnv ty
-        insts = map (\c -> getInstance cEnv c (fromJust tyId)) scs 
-        missingInsts = map fst $ filter (isNothing . snd) $ zip scs insts in
-    when (isJust tyId) $ unless (all isJust insts) $ report $ 
-      errMissingSuperClassInstances p ty missingInsts      
+        insts = map (\c -> getInstances cEnv c (fromJust tyId)) scs 
+        missingInsts = map fst $ filter (null . snd) $ zip scs insts 
+        ambiguousInsts = map fst $ filter ((\xs -> length xs > 1) . snd) $ 
+          zip scs insts
+    in
+    when (isJust tyId) $ do
+      unless (null missingInsts) $ report $ 
+        errMissingSuperClassInstances p ty missingInsts  
+      unless (null ambiguousInsts) $ report $ 
+        errAmbiguousSuperClassInstances p ty ambiguousInsts
 checkForInstanceDataTypeExistAlsoInstancesForSuperclasses _ _ _ _
   = internalError "checkForInstanceDataTypeExistAlsoInstancesForSuperclasses"
   
@@ -1840,6 +1846,11 @@ errContextVariableNotOnTheRightSide p ids what = posMessage p $
 errMissingSuperClassInstances :: Position -> TypeConstructor -> [QualIdent] -> Message
 errMissingSuperClassInstances p tycon clss = posMessage p $
   text "Missing superclass instances for type" <+> text (show tycon) <+>
+  text "and the following classes:" <+> (hsep $ punctuate comma $ map (text . show) clss)
+
+errAmbiguousSuperClassInstances :: Position -> TypeConstructor -> [QualIdent] -> Message
+errAmbiguousSuperClassInstances p ty clss = posMessage p $
+  text "Ambiguous superclass instances for type" <+> text (show ty) <+>
   text "and the following classes:" <+> (hsep $ punctuate comma $ map (text . show) clss)
 
 type SCon = [(QualIdent, Ident)]
