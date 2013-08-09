@@ -5,6 +5,8 @@ module ClassMethodsExport
   , E (funE1, funE3)
   , F (..)
   , H (funH1)
+  , I (..)
+  , J (..)
   ) where
 
 class C a where
@@ -32,3 +34,12 @@ class G a where
 
 class G a => H a where
   funH1 :: a -> a
+
+class I a where
+  funI1 :: a -> a
+  funI2 :: a -> a
+  funI3 :: a -> a
+
+class I a => J a where
+  funJ1 :: a -> a
+  

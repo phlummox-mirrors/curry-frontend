@@ -2,5 +2,4 @@
 
 import ClassMethodsExport (F(funF1))
 
-test :: F a => a -> a
-test x = funF1 x
+test x = funF2 x

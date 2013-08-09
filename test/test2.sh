@@ -113,7 +113,10 @@ for file in TestClassExports TestClassExports2 TestClassExportsImports \
   ClassMethodsExport ClassMethodsExportUse ClassMethodsExportUse2 ClassMethodsExportUse3 ClassMethodsExportUse4 \
                      ClassMethodsExportUse5 ClassMethodsExportUse6 ClassMethodsExportUse7 ClassMethodsExportUse8 \
                      ClassMethodsExportUse9 ClassMethodsExportUse10 ClassMethodsExportUse11 ClassMethodsExportUse12 \
-                     ClassMethodsExportUse13 ClassMethodsExportUse14 ClassMethodsExportUse15 \
+                     ClassMethodsExportUse13 ClassMethodsExportUse14 ClassMethodsExportUse15 ClassMethodsExportUse16 \
+                     ClassMethodsExportUse17 ClassMethodsExportUse18 ClassMethodsExportUse19 ClassMethodsExportUse20 \
+                     ClassMethodsExportUse21 ClassMethodsExportUse22 ClassMethodsExportUse23 ClassMethodsExportUse24 \
+                     ClassMethodsExportUse25 \
   ImportStar ImportStarUse ImportStarUse2 ImportStarUse3 \
   OverlappingClassMethods1 OverlappingClassMethods2 OverlappingClassMethods3 OverlappingClassMethods4 \
   OverlappingClassMethodsUse2 OverlappingClassMethodsUse4 OverlappingClassMethodsUse5 \
@@ -169,7 +172,18 @@ for file in ClassExportErrors ClassExportImportErrors ClassMethodsExportErr1 Cla
   AmbigClassExportUseErr ConflictHiddenUseErr OverlappingInstancesUseErr OverlappingArrowInstancesUseErr \
   DuplicateClassesUse2Err AmbiguousClassMethodsUseErr \
   DerivingClassesSupported1Err DerivingClassesSupported2Err \
-  Deriving3Err BugClassMethodsAndTopLevelFuns3
+  Deriving3Err BugClassMethodsAndTopLevelFuns3 \
+  \
+  ClassMethodsExportUseErr1 ClassMethodsExportUseErr2 ClassMethodsExportUse2Err \
+  ClassMethodsExportUse3Err1 ClassMethodsExportUse3Err2 ClassMethodsExportUse4Err1 \
+  ClassMethodsExportUse4Err2 ClassMethodsExportUse4Err3 \
+  ClassMethodsExportUse5Err1 ClassMethodsExportUse6Err1 ClassMethodsExportUse6Err2 \
+  ClassMethodsExportUse7Err1 ClassMethodsExportUse7Err2 ClassMethodsExportUse8Err \
+  ClassMethodsExportUse9Err ClassMethodsExportUse10Err ClassMethodsExportUse11Err \
+  ClassMethodsExportUse12Err ClassMethodsExportUse13Err1 ClassMethodsExportUse13Err2 \
+  ClassMethodsExportUse15Err ClassMethodsExportUse16Err ClassMethodsExportUse17Err1 \
+  ClassMethodsExportUse17Err2 ClassMethodsExportUse23Err1 ClassMethodsExportUse23Err2 \
+  ClassMethodsExportUse25Err1 ClassMethodsExportUse25Err2
 do
   echo $file >> tmp.txt
   $cymake -f -i typeclasses/modules typeclasses/modules/$file.curry 2> stderr.txt 1> stdout.txt && (echo "===================="; echo "| No error in $file.curry:" ; echo "===================="; cat stdout.txt; cat stderr.txt; echo)
