@@ -760,13 +760,13 @@ checkForInstanceDataTypeExistAlsoInstancesForSuperclasses _ _ _ _
 -- |returns the instance from the class environment for the given instance
 -- declaration. This function must be called only after it has been checked
 -- that as well the class name and the type name are valid (i.e., in phase 3)
-getInstance' :: ModuleIdent -> ClassEnv -> TCEnv -> Decl -> Instance
+getInstance' :: ModuleIdent -> ClassEnv -> TCEnv -> Decl -> Maybe Instance
 getInstance' m cEnv tcEnv (InstanceDecl _p (SContext _scon) cls ty _tyvars _) =
   inst 
   where 
   tyId = fromJust $ tyConToQualIdent m tcEnv ty
   cls' = getCanonClassName m cEnv cls
-  inst = fromJust $ getInstance cEnv cls' tyId
+  inst = getInstanceWithOrigin cEnv m cls' tyId
 getInstance' _ _ _ _ = internalError "getInstance'"
 
 -- |Returns a Base.Types.Context for the given instance. The type
@@ -795,7 +795,8 @@ checkInstanceContextImpliesAllInstanceContextsOfSuperClasses ::
     ClassEnv -> TCEnv -> ModuleIdent -> Decl -> Tcc ()
 checkInstanceContextImpliesAllInstanceContextsOfSuperClasses cEnv tcEnv m
     inst@(InstanceDecl p _scon cls ty _tyvars _)
-  = let inst' = getInstance' m cEnv tcEnv inst
+  = let inst0 = getInstance' m cEnv tcEnv inst
+        inst' = fromJust inst0
         thisContext = getContextFromInst inst'
         scs = allSuperClasses cEnv (getCanonClassName m cEnv cls)
         tyId = tyConToQualIdent m tcEnv ty
@@ -810,8 +811,9 @@ checkInstanceContextImpliesAllInstanceContextsOfSuperClasses cEnv tcEnv m
         instCxs' = getSContextFromContext instCxs (typeVars inst')
         notImplCxs = (filter (not . implies cEnv thisContext) instCxs)
         notImplCxs' = getSContextFromContext notImplCxs (typeVars inst') in
-    when (isJust tyId) $ unless (implies' cEnv thisContext instCxs) $ report $  
-      errContextNotImplied p thisContext' instCxs' notImplCxs'
+    -- catch the case that there are duplicate local instances
+    when (isJust tyId && isJust inst0) $ unless (implies' cEnv thisContext instCxs) $ 
+      report $ errContextNotImplied p thisContext' instCxs' notImplCxs'
         
 checkInstanceContextImpliesAllInstanceContextsOfSuperClasses _ _ _ _
   = internalError "checkInstanceContextImpliesAllInstanceContextsOfSuperClasses"
