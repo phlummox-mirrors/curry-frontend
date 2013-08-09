@@ -155,8 +155,11 @@ importInterface tcs m q is i env = (env'', errs)
   imported = 
     if isImporting is
     then classesInImportSpec
-    -- TODO: do not include classes hidden by C(..)
-    else allExportedClasses 
+    -- do not include classes hidden by C(..) or C(funC1, ..., funCn) where
+    -- the set {funC1, ..., funCn} contains all publicly exported class methods 
+    else allExportedClasses \\ completeClassImports'
+  completeClassImports' = nub $ map lookupQualName $  
+    completeClassImports mExportedClsEnv' expandedSpec
   hiddenClasses = if isImporting is then [] else classesInImportSpec
   deps = nub $ calcDependencies imported i ++ depsInstances
   
@@ -464,9 +467,11 @@ classesInImportSpec' cEnv = map importId . filter isClassImport
   isClassImport (Import _) = False
   isClassImport (ImportTypeWith cls _) = isJust $ Map.lookup cls cEnv
   isClassImport (ImportTypeAll _) = internalError "classesInImportSpec"
-  importId (Import _) = internalError "classesInImportSpec"
-  importId (ImportTypeWith cls _) = cls
-  importId (ImportTypeAll _) = internalError "classesInImportSpec"
+
+importId :: Import -> Ident
+importId (Import _) = internalError "classesInImportSpec"
+importId (ImportTypeWith cls _) = cls
+importId (ImportTypeAll _) = internalError "classesInImportSpec"
 
 -- |load instances from interface and return the instances as well as the
 -- class dependencies of all instances
@@ -488,6 +493,19 @@ bindInstance m (IInstanceDecl _ maybeOrigin scx cls ty tyvars ideps) (is, deps)
     in (inst:is, deps ++ ideps)
 bindInstance _ _ iEnv = iEnv
 
+-- |returns all class imports that are /complete/, i.e., class imports
+-- in which all available (i.e., public) class methods are listed
+completeClassImports :: ExpClassEnv' -> [Import] -> [Ident]
+completeClassImports cEnv = map importId . filter completeClassImport
+  where
+  completeClassImport :: Import -> Bool
+  completeClassImport (Import _) = False
+  completeClassImport (ImportTypeWith cls ms) 
+    | isJust $ Map.lookup cls cEnv = 
+      let c = fromJust $ Map.lookup cls cEnv in 
+      Set.fromList ms == Set.fromList (publicMethods c)
+    | otherwise = False
+  completeClassImport (ImportTypeAll _) = internalError "completelyHiddenClasses"  
 
 -- ---------------------------------------------------------------------------
 -- Expansion of the import specification
