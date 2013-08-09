@@ -50,6 +50,7 @@ for file in DictTrans1 DictTrans2 DictTrans3 DictTrans4 \
   ClassInstanceTypeInScope6
 do
   echo $file >> tmp.txt
+  if [ ! -r typeclasses/$file.curry ]; then echo "*********** file doesn't exist: $file"; fi
   $cymake -f -i typeclasses typeclasses/$file.curry 2> stderr.txt 1> stdout.txt || (echo "===================="; echo "| Error in $file.curry:" ; echo "===================="; cat stdout.txt; cat stderr.txt; echo)
 done
 
@@ -63,6 +64,7 @@ for file in checkCorrectTypeVarsInTypeSigs CheckRulesInClass CheckRulesInInstanc
   typeVarsInInstContext typeVarsInTySigContext TyVarInContext
 do
   echo $file >> tmp.txt
+  if [ ! -r typeclasses/TCCheck/$file.curry ]; then echo "*********** file doesn't exist: $file"; fi
   $cymake -f -i typeclasses/TCCheck typeclasses/TCCheck/$file.curry 2> stderr.txt 1> stdout.txt && (echo "===================="; echo "| No error in $file.curry:" ; echo "===================="; cat stdout.txt; cat stderr.txt; echo)
 done
 
@@ -79,6 +81,7 @@ for file in Ambig1 Ambiguous Ambiguous2 Ambiguous3 \
   ClassInstanceTypeInScope5
 do
   echo $file >> tmp.txt
+  if [ ! -r typeclasses/$file.curry ]; then echo "*********** file doesn't exist: $file"; fi
   $cymake -f -i typeclasses typeclasses/$file.curry 2> stderr.txt 1> stdout.txt && (echo "===================="; echo "| No error in $file.curry:" ; echo "===================="; cat stdout.txt; cat stderr.txt; echo)
 done
 
@@ -160,6 +163,7 @@ for file in TestClassExports TestClassExports2 TestClassExportsImports \
   ClassShadowing1 ClassShadowing2 ClassShadowing3 RedefineClassesBug2Err
 do
   echo $file >> tmp.txt
+  if [ ! -r typeclasses/modules/$file.curry ]; then echo "*********** file doesn't exist: $file"; fi
   $cymake -f -i typeclasses/modules typeclasses/modules/$file.curry 2> stderr.txt 1> stdout.txt || (echo "===================="; echo "| Error in $file.curry:" ; echo "===================="; cat stdout.txt; cat stderr.txt; echo)
 done
 
@@ -186,6 +190,7 @@ for file in ClassExportErrors ClassExportImportErrors ClassMethodsExportErr1 Cla
   ClassMethodsExportUse25Err1 ClassMethodsExportUse25Err2
 do
   echo $file >> tmp.txt
+  if [ ! -r typeclasses/modules/$file.curry ]; then echo "*********** file doesn't exist: $file"; fi
   $cymake -f -i typeclasses/modules typeclasses/modules/$file.curry 2> stderr.txt 1> stdout.txt && (echo "===================="; echo "| No error in $file.curry:" ; echo "===================="; cat stdout.txt; cat stderr.txt; echo)
 done
 
