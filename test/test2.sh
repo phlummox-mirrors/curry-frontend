@@ -62,7 +62,7 @@ for file in checkCorrectTypeVarsInTypeSigs CheckRulesInClass CheckRulesInInstanc
   ContextImplication ContextsInClassMethodTypeSigs Cycles directCycle \
   doubleClassMethods duplicateClassNames duplicateInstances InstanceConstraints \
   instanceDataTypeCorrect InstanceTypeVarsDoNotAppearTwice SuperclassInstances \
-  typeVarsInInstContext typeVarsInTySigContext TyVarInContext
+  typeVarsInInstContext typeVarsInTySigContext TyVarInContext AmbiguousInstancesUse
 do
   echo $file >> tmp.txt
   if [ ! -r typeclasses/TCCheck/$file.curry ]; then echo "*********** file doesn't exist: $file"; fi
