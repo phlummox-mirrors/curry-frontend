@@ -14,7 +14,7 @@ data U a = U Bool a
   deriving Eq
 
 
-newtype V a = V a
+data V a = V a
   deriving Eq
 
 data W a b = W (T a b) (S a b a) (U Bool)
@@ -23,3 +23,5 @@ data W a b = W (T a b) (S a b a) (U Bool)
 data X a b = a :=: b | X1 a b
   deriving Eq
 
+data Y a b = Y1 a b | Y2 a | Y3 b
+  deriving Eq

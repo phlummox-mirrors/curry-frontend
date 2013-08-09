@@ -15,8 +15,8 @@ data U a = U Bool a
   deriving (Eq, Ord)
 
 
-newtype V a = V a
-  deriving (Eq, Ord)
+-- newtype V a = V a
+--  deriving (Eq, Ord)
 
 data W a b = W (T a b) (S a b a) (U Bool)
   deriving (Eq, Ord)
