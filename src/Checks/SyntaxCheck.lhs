@@ -438,7 +438,7 @@ local declarations.
 >            filter (( `elem` publicMethods cls) . fst3) (methods cls)))
 >     clss
 >   where
->   clss = allNonHiddenClassBindings cEnv
+>   clss = allClassBindings cEnv
 
 \end{verbatim}
 Each declaration group opens a new scope and uses a distinct key
