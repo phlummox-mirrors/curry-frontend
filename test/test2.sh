@@ -170,7 +170,7 @@ done
 # do the check # 3 (modules system related, errors)
 
 for file in ClassExportErrors ClassExportImportErrors ClassMethodsExportErr1 ClassMethodsExportErr2 \
-  ExportNonHiddenUseErr HidingClassesUseErrs RedefineClassesError SyntaxCheckUseErr \
+  ExportNonHiddenUseErr HidingClassesUseErrs SyntaxCheckUseErr \
   OverlappingClassMethodsUse1Err OverlappingClassMethodsUse3Err \
   ModuleExport4ImportErr HiddenClasses2Err HiddenClasses3Err \
   AmbigClassExportUseErr ConflictHiddenUseErr OverlappingInstancesUseErr OverlappingArrowInstancesUseErr \
