@@ -918,11 +918,11 @@ lookupIdArity qid = gets (lookupA . typeEnvE)
   lookupA tyEnv = case qualLookupValue qid tyEnv of
     [DataConstructor  _ a _] -> Just a
     [NewtypeConstructor _ _] -> Just 1
-    [Value            _ a _] -> Just a
+    [Value          _ a _ _] -> Just a
     []                       -> case lookupValue (unqualify qid) tyEnv of
       [DataConstructor  _ a _] -> Just a
       [NewtypeConstructor _ _] -> Just 1
-      [Value            _ a _] -> Just a
+      [Value          _ a _ _] -> Just a
       _                        -> Nothing
     _                        -> Nothing
 
@@ -971,7 +971,7 @@ lookupIdType qid = do
   tcEnv <- gets tConsEnvE
   case Map.lookup qid lt `mplus` Map.lookup qid ct of
     Just t  -> trace' ("lookupIdType local " ++ show (qid, t)) $ liftM Just (visitType t)  -- local name or constructor
-    Nothing -> case [ t | Value _ _ (ForAll _ _ t) <- qualLookupValue qid aEnv ] of
+    Nothing -> case [ t | Value _ _ (ForAll _ _ t) _ <- qualLookupValue qid aEnv ] of
       t : _ -> liftM Just (visitType (transType m tyEnv tcEnv t))  -- imported name
       []    -> case qidModule qid of
         Nothing -> trace' ("no type for "  ++ show qid) $ return Nothing  -- no known type
@@ -992,7 +992,7 @@ getTypeOf ident = do
   valEnv <- gets typeEnvE
   tcEnv  <- gets tConsEnvE
   case lookupValue ident valEnv of
-    Value _ _ (ForAll _ _ t) : _ -> do
+    Value _ _ (ForAll _ _ t) _ : _ -> do
       t1 <- visitType (ttrans tcEnv valEnv t)
       trace' ("getTypeOf(" ++ show ident ++ ") = " ++ show t1) $
         return (Just t1)

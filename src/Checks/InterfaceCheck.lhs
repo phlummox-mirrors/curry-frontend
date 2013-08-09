@@ -143,7 +143,7 @@ interface module only. However, this has not been implemented yet.
 >   checkTypeInfo "synonym type" check p tc
 > checkImport (IFunctionDecl p f n cx ty) = do
 >   m <- getModuleIdent
->   let check (Value f' n' (ForAll cx' _ ty')) =
+>   let check (Value f' n' (ForAll cx' _ ty') _) =
 >         -- TODO: is this correct?
 >         f == f' && n' == n && ty'' == ty' && cx'' == cx' 
 >         where (cx'', ty'') = toQualConstrType m [] (cx, ty)

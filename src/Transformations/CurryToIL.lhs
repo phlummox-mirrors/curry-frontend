@@ -86,8 +86,8 @@ alias types.
 \begin{verbatim}
 
 > trDecl :: Decl -> TransM [IL.Decl]
-> trDecl (DataDecl     _ tc tvs cs) = (:[]) `liftM` trData    tc tvs cs
-> trDecl (NewtypeDecl  _ tc tvs nc) = (:[]) `liftM` trNewtype tc tvs nc
+> trDecl (DataDecl    _ tc tvs cs _) = (:[]) `liftM` trData    tc tvs cs
+> trDecl (NewtypeDecl _ tc tvs nc _) = (:[]) `liftM` trNewtype tc tvs nc
 > trDecl (FunctionDecl p _ _ f eqs) = (:[]) `liftM` trFunction  p f eqs
 > trDecl (ForeignDecl  _ cc ie f _) = (:[]) `liftM` trForeign  f cc ie
 > trDecl _                          = return []
@@ -579,7 +579,7 @@ stripped from the types.
 > varType f = do
 >   tyEnv <- getValueEnv
 >   case qualLookupValue f tyEnv of
->     [Value _ _ (ForAll _ _ ty)] -> return ty
+>     [Value _ _ (ForAll _ _ ty) _] -> return ty
 >     _ -> internalError $ "CurryToIL.varType: " ++ show f
 
 > constrType :: QualIdent -> TransM Type

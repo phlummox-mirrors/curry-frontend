@@ -43,7 +43,7 @@ import Base.Types as BT (TypeScheme (..), polyType, constrainBy, Type (..), arro
                         , typeSchemeToType)
 import qualified Base.Types as BTC (Context) 
 import Base.SCC
-import Base.Utils (findMultiples, fst3, fromJust')
+import Base.Utils (findMultiples, fst3, zipWith', fromJust')
 import Base.Names
 import Base.TopEnv
 import qualified Data.Map as Map  
@@ -81,7 +81,7 @@ hasError = liftM (not . null) $ gets errors
 -- adds new data types/functions for the class and instance declarations. 
 -- Also builds a corresponding class environment. 
 typeClassesCheck :: ModuleIdent -> [Decl] -> ClassEnv -> TCEnv -> ([Decl], ClassEnv, [Message])
-typeClassesCheck m decls 
+typeClassesCheck m decls0
     (ClassEnv importedClassesEnv importedInstances _ _) tcEnv0 = 
   case runTcc tcCheck initTccState of 
     ((newClasses, instances), []) -> 
@@ -89,7 +89,7 @@ typeClassesCheck m decls
           tcEnv' = foldr (bindTC m tcEnv') tcEnv0 newDecls
           
           -- translate contexts, instances and classes:
-          newDecls = adjustContexts cEnv $ 
+          newDecls = adjustContexts m cEnv $ 
             concatMap (transformInstance m cEnv tcEnv') $ 
             concatMap (transformClass2 m cEnv tcEnv') decls
           
@@ -107,8 +107,10 @@ typeClassesCheck m decls
       in (newDecls, cEnv, [])
     (_, errs@(_:_)) -> (decls, ClassEnv emptyTopEnv [] emptyTopEnv Map.empty, errs)
   where
+    decls = expandDerivingDecls decls0
     classDecls = filter isClassDecl decls
     instDecls = filter isInstanceDecl decls
+    dataDecls = filter (\x -> isDataDecl x || isNewtypeDecl x) decls
     typeSigs = gatherTypeSigs decls
     tcEnv = foldr (bindTC m tcEnv) tcEnv0 decls
     tcCheck = do
@@ -117,12 +119,17 @@ typeClassesCheck m decls
       case hasErr1 of
         True -> return ([], [])
         False -> do
-          phase2
-          hasErr2 <- hasError
-          case hasErr2 of
+          phase2a
+          hasErr2a <- hasError
+          case hasErr2a of
             True -> return ([], [])
             False -> do
-              phase3
+              phase2b
+              hasErr2b <- hasError
+              case hasErr2b of
+                True -> return ([], [])
+                False -> phase3
+
     -- ----------------------------------------------------------------------
     -- phase 1: checks that don't need the class environment
     -- ----------------------------------------------------------------------
@@ -141,20 +148,38 @@ typeClassesCheck m decls
       mapM_ checkTypeVarsInContext instDecls
       mapM_ checkTypeVarsInContext typeSigs 
       
-      mapM_ (checkInstanceDataTypeCorrect tcEnv) instDecls
+      mapM_ (checkInstanceDataTypeCorrect m tcEnv) instDecls
       
       checkForDuplicateClassNames classDecls
       
       mapM_ (checkForDirectCycle m) classDecls
       
       noDoubleClassMethods m classDecls
+      
+      mapM_ checkEmptyDataTypeAndDeriving dataDecls
     
     -- ----------------------------------------------------------------------
-    -- phase 2: Checks that need the class environment, but mostly only for
-    --          determining whether a given class exists or not. Qualified
-    --          instance/superclass contexts are not yet needed. 
+    -- phase 2a: We test only that the deriving declarations are correct. 
+    --           Thus we avoid many error messages in phase 2 b when these are
+    --           not correct. 
     -- ----------------------------------------------------------------------
-    phase2 = do 
+    phase2a = do
+      let newClasses = map (classDeclToClass m) classDecls
+          instances = map (localInst . instanceDeclToInstance m tcEnv) instDecls 
+                      ++ importedInstances
+          allClassesEnv = bindAll newClasses importedClassesEnv
+          newClassEnv = ClassEnv allClassesEnv instances emptyTopEnv 
+                                 (buildCanonClassMap allClassesEnv)
+                                 
+      mapM_ (checkClassesInDeriving m newClassEnv) dataDecls
+    
+    -- ----------------------------------------------------------------------
+    -- phase 2b: Checks that need the class environment, but mostly only for
+    --           determining whether a given class exists or not. Qualified
+    --           instance/superclass contexts are not yet needed. 
+    -- ----------------------------------------------------------------------
+    phase2b = do 
+      -- as in phase 2a
       let newClasses = map (classDeclToClass m) classDecls
           instances = map (localInst . instanceDeclToInstance m tcEnv) instDecls 
                       ++ importedInstances
@@ -168,20 +193,20 @@ typeClassesCheck m decls
       -- check also contexts in typed expressions
       mapM_ (checkClassesInContext m newClassEnv) typeSigs
           
-      mapM_ (checkRulesInInstanceOrClass newClassEnv) instDecls
-      mapM_ (checkRulesInInstanceOrClass newClassEnv) classDecls
+      mapM_ (checkRulesInInstanceOrClass m newClassEnv) instDecls
+      mapM_ (checkRulesInInstanceOrClass m newClassEnv) classDecls
       
-      mapM_ (checkClassNameInInstance newClassEnv) instDecls
-      
+      mapM_ (checkClassNameInInstance m newClassEnv) instDecls
+            
     -- ----------------------------------------------------------------------
     -- phase 3: checks that need the class environment, with
     --          qualified superclass/instance contexts 
     -- ----------------------------------------------------------------------
     phase3 = do  
       let newClasses' = 
-            map (qualifyClass newClassEnv' . classDeclToClass m) classDecls
+            map (qualifyClass m newClassEnv' . classDeclToClass m) classDecls
           instances' =  
-            map (localInst . qualifyInstance newClassEnv' 
+            map (localInst . qualifyInstance m newClassEnv' 
                            . instanceDeclToInstance m tcEnv) instDecls 
             ++ importedInstances
           allClassesEnv = bindAll newClasses' importedClassesEnv
@@ -193,9 +218,7 @@ typeClassesCheck m decls
       
       checkForCyclesInClassHierarchy newClassEnv'
       
-      -- Do not check here! This is too restrictive. Errors should only be
-      -- raised when actually an ambiguous instance is *used*! 
-      -- checkForDuplicateInstances newClassEnv'
+      checkForDuplicateInstances newClassEnv'
       
       return (newClasses', instances')
     -- |binds all classes into the given top environment
@@ -251,10 +274,12 @@ tyConToQualIdent :: ModuleIdent -> TCEnv -> TypeConstructor -> Maybe QualIdent
 tyConToQualIdent m tcEnv (QualTC qid) = qualifyQid
   where
   qualifyQid = case qualLookupTC qid tcEnv of
+    [] -> Nothing
     [DataType tc' _ _] -> Just tc'
     [RenamingType tc' _ _] -> Just tc'
     [AliasType _ _ _] -> Nothing
     _ -> case qualLookupTC (qualQualify m qid) tcEnv of
+      [] -> Nothing
       [DataType tc' _ _] -> Just tc'
       [RenamingType tc' _ _] -> Just tc'
       [AliasType _ _ _] -> Nothing
@@ -262,23 +287,23 @@ tyConToQualIdent m tcEnv (QualTC qid) = qualifyQid
 tyConToQualIdent _ _ c = Just $ specialTyConToQualIdent c
 
 -- |qualifies superclasses in the class context
-qualifyClass :: ClassEnv -> Class -> Class
-qualifyClass cEnv cls = 
+qualifyClass :: ModuleIdent -> ClassEnv -> Class -> Class
+qualifyClass m cEnv cls = 
   cls { superClasses = 
-    map (getCanonClassName cEnv)
+    map (getCanonClassName m cEnv)
         (superClasses cls) } 
 
 -- |canonicalizes the class name: unqualified class names are qualified
 -- with the module where the class is defined
-getCanonClassName :: ClassEnv -> QualIdent -> QualIdent
-getCanonClassName cEnv = fromJust . canonClassName cEnv 
+getCanonClassName :: ModuleIdent -> ClassEnv -> QualIdent -> QualIdent
+getCanonClassName m cEnv = fromJust . canonClassName m cEnv
 
 -- |qualifies superclasses in the instance context and the class in the instance
 -- declaration
-qualifyInstance :: ClassEnv -> Instance -> Instance
-qualifyInstance cEnv i = 
-  i { context = map (\(qid, id0) -> (getCanonClassName cEnv qid, id0)) (context i)
-    , iClass = getCanonClassName cEnv (iClass i) }   
+qualifyInstance :: ModuleIdent -> ClassEnv -> Instance -> Instance
+qualifyInstance m cEnv i = 
+  i { context = map (\(qid, id0) -> (getCanonClassName m cEnv qid, id0)) (context i)
+    , iClass = getCanonClassName m cEnv (iClass i) }   
 
 -- |builds the canonical class map (a map from canonical class names to 
 -- the corresponding classes)
@@ -301,6 +326,10 @@ constructClassMethodsEnv bindings =
     | m `elem` publicMethods cls = 
       -- use as qualification for the method the qualification of the qualIdent
       -- under which the current class is stored. 
+      -- The module under which the class method is imported should actually
+      -- be all modules under which the class itself is imported. But as
+      -- we never need this information, it is safe here to provide a "dummy"
+      -- module. 
       qualImportTopEnv' (fromJust' "constructClassMethodsEnv" $ qidModule $ theClass cls)
         (qualifyLike c m) cls env
     | otherwise = env
@@ -384,90 +413,90 @@ gatherTSFieldExpr (Field _ _ e) = gatherTSExpr e
 -- all appearing class names (i.e., it replaces the given qualified class name
 -- with a qualified class name in which the module identifier points to the
 -- module where the class is actually defined)   
-adjustContexts :: ClassEnv -> [Decl] -> [Decl]
-adjustContexts cEnv ds = map (adjDecl cEnv) ds
+adjustContexts :: ModuleIdent -> ClassEnv -> [Decl] -> [Decl]
+adjustContexts m cEnv ds = map (adjDecl m cEnv) ds
 
-adjDecl :: ClassEnv -> Decl -> Decl
-adjDecl _    d@(InfixDecl _ _ _ _)   = d
-adjDecl _    d@(DataDecl _ _ _ _)    = d
-adjDecl _    d@(NewtypeDecl _ _ _ _) = d
-adjDecl _    d@(TypeDecl _ _ _ _)    = d
-adjDecl cEnv   (TypeSig p e ids cx te) = TypeSig p e ids (canonContext cEnv cx) te
-adjDecl cEnv   (FunctionDecl p cty n f eqs) = 
-  FunctionDecl p cty n f (map (adjEqu cEnv) eqs)
-adjDecl _    d@(ForeignDecl _ _ _ _ _) = d
-adjDecl _    d@(ExternalDecl _ _)      = d
-adjDecl cEnv   (PatternDecl p cty n pt rhs) = PatternDecl p cty n pt (adjRhs cEnv rhs)
-adjDecl _    d@(FreeDecl _ _) = d
-adjDecl cEnv   (ClassDecl p scon cls v ds) = 
-  ClassDecl p scon cls v (adjustContexts cEnv ds)
-adjDecl cEnv   (InstanceDecl p scon cls ty vs ds) = 
-  InstanceDecl p scon cls ty vs (adjustContexts cEnv ds)
+adjDecl :: ModuleIdent -> ClassEnv -> Decl -> Decl
+adjDecl _ _    d@(InfixDecl _ _ _ _)   = d
+adjDecl _ _    d@(DataDecl _ _ _ _ _)    = d
+adjDecl _ _    d@(NewtypeDecl _ _ _ _ _) = d
+adjDecl _ _    d@(TypeDecl _ _ _ _)    = d
+adjDecl m cEnv   (TypeSig p e ids cx te) = TypeSig p e ids (canonContext m cEnv cx) te
+adjDecl m cEnv   (FunctionDecl p cty n f eqs) = 
+  FunctionDecl p cty n f (map (adjEqu m cEnv) eqs)
+adjDecl _ _    d@(ForeignDecl _ _ _ _ _) = d
+adjDecl _ _    d@(ExternalDecl _ _)      = d
+adjDecl m cEnv   (PatternDecl p cty n pt rhs) = PatternDecl p cty n pt (adjRhs m cEnv rhs)
+adjDecl _ _    d@(FreeDecl _ _) = d
+adjDecl m cEnv   (ClassDecl p scon cls v ds) = 
+  ClassDecl p scon cls v (adjustContexts m cEnv ds)
+adjDecl m cEnv   (InstanceDecl p scon cls ty vs ds) = 
+  InstanceDecl p scon cls ty vs (adjustContexts m cEnv ds)
 
-adjEqu :: ClassEnv -> Equation -> Equation
-adjEqu cEnv (Equation p lhs rhs) = Equation p lhs (adjRhs cEnv rhs)
+adjEqu :: ModuleIdent -> ClassEnv -> Equation -> Equation
+adjEqu m cEnv (Equation p lhs rhs) = Equation p lhs (adjRhs m cEnv rhs)
 
-adjRhs :: ClassEnv -> Rhs -> Rhs
-adjRhs cEnv (SimpleRhs p e ds) = 
-  SimpleRhs p (adjExpr cEnv e) (adjustContexts cEnv ds)
-adjRhs cEnv (GuardedRhs ces ds) =
-  GuardedRhs (map (adjCondExpr cEnv) ces) (adjustContexts cEnv ds)
+adjRhs :: ModuleIdent -> ClassEnv -> Rhs -> Rhs
+adjRhs m cEnv (SimpleRhs p e ds) = 
+  SimpleRhs p (adjExpr m cEnv e) (adjustContexts m cEnv ds)
+adjRhs m cEnv (GuardedRhs ces ds) =
+  GuardedRhs (map (adjCondExpr m cEnv) ces) (adjustContexts m cEnv ds)
  
-adjCondExpr :: ClassEnv -> CondExpr -> CondExpr
-adjCondExpr cEnv (CondExpr p e1 e2) = 
-  CondExpr p (adjExpr cEnv e1) (adjExpr cEnv e2)
+adjCondExpr :: ModuleIdent -> ClassEnv -> CondExpr -> CondExpr
+adjCondExpr m cEnv (CondExpr p e1 e2) = 
+  CondExpr p (adjExpr m cEnv e1) (adjExpr m cEnv e2)
 
-adjExpr :: ClassEnv -> Expression -> Expression
-adjExpr _    e@(Literal _) = e
-adjExpr _    e@(Variable _ _) = e
-adjExpr _    e@(Constructor _) = e
-adjExpr cEnv (Paren e) = Paren (adjExpr cEnv e)
-adjExpr cEnv (Typed cty e cx ty) = 
-  Typed cty (adjExpr cEnv e) (canonContext cEnv cx) ty
-adjExpr cEnv (Tuple sref es) = Tuple sref (map (adjExpr cEnv) es)
-adjExpr cEnv (List sref es) = List sref (map (adjExpr cEnv) es)
-adjExpr cEnv (ListCompr sref e ss) = 
-  ListCompr sref (adjExpr cEnv e) (map (adjStmt cEnv) ss)
-adjExpr cEnv (EnumFrom e1) = EnumFrom (adjExpr cEnv e1)
-adjExpr cEnv (EnumFromThen e1 e2) = EnumFromThen (adjExpr cEnv e1) (adjExpr cEnv e2)
-adjExpr cEnv (EnumFromTo e1 e2) = EnumFromTo (adjExpr cEnv e1) (adjExpr cEnv e2)
-adjExpr cEnv (EnumFromThenTo e1 e2 e3) = 
-  EnumFromThenTo (adjExpr cEnv e1) (adjExpr cEnv e2) (adjExpr cEnv e3)
-adjExpr cEnv (UnaryMinus i e) = UnaryMinus i (adjExpr cEnv e)
-adjExpr cEnv (Apply e1 e2) = Apply (adjExpr cEnv e1) (adjExpr cEnv e2)
-adjExpr cEnv (InfixApply e1 op e2) = InfixApply (adjExpr cEnv e1) op (adjExpr cEnv e2)
-adjExpr cEnv (LeftSection e op) = LeftSection (adjExpr cEnv e) op
-adjExpr cEnv (RightSection op e) = RightSection op (adjExpr cEnv e)
-adjExpr cEnv (Lambda sref pts e) = Lambda sref pts (adjExpr cEnv e)
-adjExpr cEnv (Let ds e) = Let (adjustContexts cEnv ds) (adjExpr cEnv e)
-adjExpr cEnv (Do ss e) = Do (map (adjStmt cEnv) ss) (adjExpr cEnv e)
-adjExpr cEnv (IfThenElse sref e1 e2 e3) = IfThenElse sref
-  (adjExpr cEnv e1) (adjExpr cEnv e2) (adjExpr cEnv e3)
-adjExpr cEnv (Case sref ct e alts) = 
-  Case sref ct (adjExpr cEnv e) (map (adjAlt cEnv) alts)
-adjExpr cEnv (RecordConstr fs) = RecordConstr (map (adjField cEnv) fs)
-adjExpr cEnv (RecordSelection e i) = RecordSelection (adjExpr cEnv e) i
-adjExpr cEnv (RecordUpdate fs e) = 
-  RecordUpdate (map (adjField cEnv) fs) (adjExpr cEnv e)   
+adjExpr :: ModuleIdent -> ClassEnv -> Expression -> Expression
+adjExpr _ _    e@(Literal _) = e
+adjExpr _ _    e@(Variable _ _) = e
+adjExpr _ _    e@(Constructor _) = e
+adjExpr m cEnv (Paren e) = Paren (adjExpr m cEnv e)
+adjExpr m cEnv (Typed cty e cx ty) = 
+  Typed cty (adjExpr m cEnv e) (canonContext m cEnv cx) ty
+adjExpr m cEnv (Tuple sref es) = Tuple sref (map (adjExpr m cEnv) es)
+adjExpr m cEnv (List sref es) = List sref (map (adjExpr m cEnv) es)
+adjExpr m cEnv (ListCompr sref e ss) = 
+  ListCompr sref (adjExpr m cEnv e) (map (adjStmt m cEnv) ss)
+adjExpr m cEnv (EnumFrom e1) = EnumFrom (adjExpr m cEnv e1)
+adjExpr m cEnv (EnumFromThen e1 e2) = EnumFromThen (adjExpr m cEnv e1) (adjExpr m cEnv e2)
+adjExpr m cEnv (EnumFromTo e1 e2) = EnumFromTo (adjExpr m cEnv e1) (adjExpr m cEnv e2)
+adjExpr m cEnv (EnumFromThenTo e1 e2 e3) = 
+  EnumFromThenTo (adjExpr m cEnv e1) (adjExpr m cEnv e2) (adjExpr m cEnv e3)
+adjExpr m cEnv (UnaryMinus i e) = UnaryMinus i (adjExpr m cEnv e)
+adjExpr m cEnv (Apply e1 e2) = Apply (adjExpr m cEnv e1) (adjExpr m cEnv e2)
+adjExpr m cEnv (InfixApply e1 op e2) = InfixApply (adjExpr m cEnv e1) op (adjExpr m cEnv e2)
+adjExpr m cEnv (LeftSection e op) = LeftSection (adjExpr m cEnv e) op
+adjExpr m cEnv (RightSection op e) = RightSection op (adjExpr m cEnv e)
+adjExpr m cEnv (Lambda sref pts e) = Lambda sref pts (adjExpr m cEnv e)
+adjExpr m cEnv (Let ds e) = Let (adjustContexts m cEnv ds) (adjExpr m cEnv e)
+adjExpr m cEnv (Do ss e) = Do (map (adjStmt m cEnv) ss) (adjExpr m cEnv e)
+adjExpr m cEnv (IfThenElse sref e1 e2 e3) = IfThenElse sref
+  (adjExpr m cEnv e1) (adjExpr m cEnv e2) (adjExpr m cEnv e3)
+adjExpr m cEnv (Case sref ct e alts) = 
+  Case sref ct (adjExpr m cEnv e) (map (adjAlt m cEnv) alts)
+adjExpr m cEnv (RecordConstr fs) = RecordConstr (map (adjField m cEnv) fs)
+adjExpr m cEnv (RecordSelection e i) = RecordSelection (adjExpr m cEnv e) i
+adjExpr m cEnv (RecordUpdate fs e) = 
+  RecordUpdate (map (adjField m cEnv) fs) (adjExpr m cEnv e)   
 
-adjStmt :: ClassEnv -> Statement -> Statement
-adjStmt cEnv (StmtExpr sref e) = StmtExpr sref (adjExpr cEnv e)
-adjStmt cEnv (StmtDecl ds) = StmtDecl (adjustContexts cEnv ds)
-adjStmt cEnv (StmtBind sref p e) = StmtBind sref p (adjExpr cEnv e)
+adjStmt :: ModuleIdent -> ClassEnv -> Statement -> Statement
+adjStmt m cEnv (StmtExpr sref e) = StmtExpr sref (adjExpr m cEnv e)
+adjStmt m cEnv (StmtDecl ds) = StmtDecl (adjustContexts m cEnv ds)
+adjStmt m cEnv (StmtBind sref p e) = StmtBind sref p (adjExpr m cEnv e)
 
-adjAlt :: ClassEnv -> Alt -> Alt
-adjAlt cEnv (Alt p pt rhs) = Alt p pt (adjRhs cEnv rhs)
+adjAlt :: ModuleIdent -> ClassEnv -> Alt -> Alt
+adjAlt m cEnv (Alt p pt rhs) = Alt p pt (adjRhs m cEnv rhs)
 
-adjField :: ClassEnv -> Field Expression -> Field Expression
-adjField cEnv (Field p i e) = Field p i (adjExpr cEnv e)
+adjField :: ModuleIdent -> ClassEnv -> Field Expression -> Field Expression
+adjField m cEnv (Field p i e) = Field p i (adjExpr m cEnv e)
 
 -- |canonicalizes all classes in the given context: the given qualified class
 -- name is replaced by the class name qualified with the module
 -- where the class is in fact declared
-canonContext :: ClassEnv -> Context -> Context
-canonContext cEnv (Context cx) = 
+canonContext :: ModuleIdent -> ClassEnv -> Context -> Context
+canonContext m cEnv (Context cx) = 
   Context $ map 
-    (\(ContextElem qid id0 tys) -> ContextElem (getCanonClassName cEnv qid) id0 tys) cx
+    (\(ContextElem qid id0 tys) -> ContextElem (getCanonClassName m cEnv qid) id0 tys) cx
 
 -- ---------------------------------------------------------------------------
 -- checks
@@ -489,19 +518,24 @@ typeVariableInContext _ = internalError "typeVariableInContext"
 -- in scope and not ambiguous
 checkClassesInContext :: ModuleIdent -> ClassEnv -> Decl -> Tcc ()
 checkClassesInContext m cEnv (ClassDecl p (SContext scon) _ _ _) = 
-  mapM_ (checkClassesInContext' m cEnv p) (map fst scon)
+  mapM_ (checkClassOk m cEnv p) (map fst scon)
 checkClassesInContext m cEnv (InstanceDecl p (SContext scon) _ _ _ _) = 
-  mapM_ (checkClassesInContext' m cEnv p) (map fst scon)
+  mapM_ (checkClassOk m cEnv p) (map fst scon)
 checkClassesInContext m cEnv (TypeSig p _ _ (Context cx) _) = 
-  mapM_ (checkClassesInContext' m cEnv p) (map (\(ContextElem qid _ _) -> qid) cx)
+  mapM_ (checkClassOk m cEnv p) (map (\(ContextElem qid _ _) -> qid) cx)
 checkClassesInContext _ _ _ = internalError "TypeClassesCheck.checkClassesInContext"
     
-checkClassesInContext' :: ModuleIdent -> ClassEnv -> Position -> QualIdent -> Tcc ()
-checkClassesInContext' m cEnv p qid = 
-  case lookupNonHiddenClasses cEnv (qualUnqualify m qid) of 
+-- |checks whether the given class (from a deriving declaration or a context)
+-- is in scope and unambiguous
+checkClassOk :: ModuleIdent -> ClassEnv -> Position -> QualIdent -> Tcc ()
+checkClassOk m cEnv p qid = 
+  case lookupNonHiddenClasses cEnv qid of 
     []    -> report (errClassNotInScope p qid)
     [_]   -> ok
-    (_:_) -> report (errAmbiguousClassName p qid) 
+    _     -> case lookupNonHiddenClasses cEnv (qualQualify m qid) of
+      []  -> report (errAmbiguousClassName p qid) 
+      [_] -> ok
+      _   -> report (errAmbiguousClassName p qid) 
 
 {-
 lookupClassDecl :: [Decl] -> QualIdent -> Maybe Decl
@@ -562,12 +596,12 @@ classMethodSigsContainTypeVar _ = internalError "TypeClassesCheck"
 -- instance Eq Int where fun2 = 1 -- fun2 is not a class method!
 -- Illegal:
 -- class Eq a where fun1 :: a -> a; fun2 = id 
-checkRulesInInstanceOrClass :: ClassEnv -> Decl -> Tcc ()
-checkRulesInInstanceOrClass cEnv decl = 
+checkRulesInInstanceOrClass :: ModuleIdent -> ClassEnv -> Decl -> Tcc ()
+checkRulesInInstanceOrClass m cEnv decl = 
   mapM_ isDefinedFunctionClassMethod (getDecls decl)
   where 
     isDefinedFunctionClassMethod (cls, FunctionDecl p _ _ f _) 
-      = let ms = maybe [] methods (lookupClass cEnv cls)
+      = let ms = maybe [] methods (lookupClass m cEnv cls)
             eq = (\(id0, _, _) -> id0 == f)
         in 
         case find eq ms of
@@ -623,14 +657,14 @@ checkForDuplicateClassNames classes =
   idFromCls _ = internalError "checkForDuplicateClassNames"
 
 
--- |Checks that there is at most one instance for a given class and type
---checkForDuplicateInstances :: ClassEnv -> Tcc ()
---checkForDuplicateInstances (ClassEnv _classes instances _ _) 
---  = let duplInstances 
---          = findMultiples $ map (\i -> (iClass i, iType i)) (allInstances instances)
---    in if null duplInstances
---    then ok
---    else report (errDuplicateInstances (map head duplInstances))
+-- |Checks that there is at most one local instance for a given class and type
+checkForDuplicateInstances :: ClassEnv -> Tcc ()
+checkForDuplicateInstances cEnv
+  = let duplInstances 
+          = findMultiples $ map (\i -> (iClass i, iType i)) (getLocalInstances cEnv)
+    in if null duplInstances
+    then ok
+    else report (errDuplicateInstances (map head duplInstances))
 
 
 -- |Check that in an instance definition type variables don't appear twice like
@@ -644,40 +678,38 @@ instanceTypeVarsDoNotAppearTwice _ = internalError "instanceTypeVarsDoNotAppearT
 
 -- |Checks that the class name in an instance definition is in scope
 -- and that it is not ambiguous
-checkClassNameInInstance :: ClassEnv -> Decl -> Tcc ()
-checkClassNameInInstance cEnv (InstanceDecl p _ cls _ _ _) = 
-  case lookupNonHiddenClasses cEnv cls of
-    []    -> report (errClassNameNotInScope p cls)
-    [_]   -> ok
-    (_:_) -> report (errAmbiguousClassName p cls)
-checkClassNameInInstance _ _ = internalError "checkClassNameInScope"
+checkClassNameInInstance :: ModuleIdent -> ClassEnv -> Decl -> Tcc ()
+checkClassNameInInstance m cEnv (InstanceDecl p _ cls _ _ _) = 
+  checkClassOk m cEnv p cls
+checkClassNameInInstance _ _ _ = internalError "checkClassNameInScope"
 
 -- |Checks whether the instance data type is in scope and not a type synonym. 
 -- Check also that the arity of the data type in the instance declaration
 -- is correct. 
-checkInstanceDataTypeCorrect :: TCEnv -> Decl -> Tcc ()
-checkInstanceDataTypeCorrect tcEnv (InstanceDecl p _ _ (QualTC qid) ids _) =
-  if length tinfo > 1
-  then report (errDataTypeAmbiguous p qid)
-  else if null tinfo
-  then report (errDataTypeNotInScope p qid)
-  else do
-    when (isAliasType $ head tinfo) $ report (errTypeInInstanceDecl p qid)
-    when (tcArity (head tinfo) /= length ids) $ report (errDataTypeHasIncorrectArity p qid)  
+checkInstanceDataTypeCorrect :: ModuleIdent -> TCEnv -> Decl -> Tcc ()
+checkInstanceDataTypeCorrect m tcEnv (InstanceDecl p _ _ (QualTC qid) ids _) = do
+  tinfo <- case qualLookupTC qid tcEnv of
+    [] -> report (errDataTypeNotInScope p qid) >> return []
+    [AliasType _ _ _] -> report (errTypeInInstanceDecl p qid) >> return []
+    info@[_] -> return info
+    _ -> case qualLookupTC (qualQualify m qid) tcEnv of
+      [] -> report (errDataTypeAmbiguous p qid) >> return []
+      [AliasType _ _ _] -> report (errTypeInInstanceDecl p qid) >> return []
+      info@[_] -> return info
+      _ -> report (errDataTypeAmbiguous p qid) >> return []
+      
+  when ((not $ null tinfo) && tcArity (head tinfo) /= length ids) $ 
+    report (errDataTypeHasIncorrectArity p qid)  
 
-  where tinfo = qualLookupTC qid tcEnv 
-        isAliasType (AliasType _ _ _) = True
-        isAliasType _ = False
-
-checkInstanceDataTypeCorrect _ (InstanceDecl p _ _ UnitTC ids _) = 
+checkInstanceDataTypeCorrect _ _ (InstanceDecl p _ _ UnitTC ids _) = 
   unless (null ids) $ report (errDataTypeHasIncorrectArity p qUnitId)
-checkInstanceDataTypeCorrect _ (InstanceDecl p _ _ (TupleTC n) ids _) =
+checkInstanceDataTypeCorrect _ _ (InstanceDecl p _ _ (TupleTC n) ids _) =
   unless (length ids == n) $ report (errDataTypeHasIncorrectArity p (qTupleId n))
-checkInstanceDataTypeCorrect _ (InstanceDecl p _ _ ListTC ids _) =
+checkInstanceDataTypeCorrect _ _ (InstanceDecl p _ _ ListTC ids _) =
   unless (length ids == 1) $ report (errDataTypeHasIncorrectArity p qListId)
-checkInstanceDataTypeCorrect _ (InstanceDecl p _ _ ArrowTC ids _) =
+checkInstanceDataTypeCorrect _ _ (InstanceDecl p _ _ ArrowTC ids _) =
   unless (length ids == 2) $ report (errDataTypeHasIncorrectArity p qArrowId)  
-checkInstanceDataTypeCorrect _ _ = internalError "checkInstanceDataTypeCorrect"
+checkInstanceDataTypeCorrect _ _ _ = internalError "checkInstanceDataTypeCorrect"
 
 -- |Checks that there are only type vars in the context that also appear on
 -- the right side
@@ -710,7 +742,7 @@ checkForInstanceDataTypeExistAlsoInstancesForSuperclasses cEnv tcEnv m
     (InstanceDecl p _scon cls ty _tyvars _)
   = let -- TODO: is it sufficient to take only direct superclasses? 
         -- scs = superClasses (fromJust $ lookupClass cEnv cls)
-        scs = allSuperClasses cEnv (getCanonClassName cEnv cls)
+        scs = allSuperClasses cEnv (getCanonClassName m cEnv cls)
         tyId = tyConToQualIdent m tcEnv ty
         insts = map (\c -> getInstance cEnv c (fromJust tyId)) scs 
         missingInsts = map fst $ filter (isNothing . snd) $ zip scs insts in
@@ -727,7 +759,7 @@ getInstance' m cEnv tcEnv (InstanceDecl _p (SContext _scon) cls ty _tyvars _) =
   inst 
   where 
   tyId = fromJust $ tyConToQualIdent m tcEnv ty
-  cls' = getCanonClassName cEnv cls
+  cls' = getCanonClassName m cEnv cls
   inst = fromJust $ getInstance cEnv cls' tyId
 getInstance' _ _ _ _ = internalError "getInstance'"
 
@@ -759,7 +791,7 @@ checkInstanceContextImpliesAllInstanceContextsOfSuperClasses cEnv tcEnv m
     inst@(InstanceDecl p _scon cls ty _tyvars _)
   = let inst' = getInstance' m cEnv tcEnv inst
         thisContext = getContextFromInst inst'
-        scs = allSuperClasses cEnv (getCanonClassName cEnv cls)
+        scs = allSuperClasses cEnv (getCanonClassName m cEnv cls)
         tyId = tyConToQualIdent m tcEnv ty
         insts = map fromJust $ filter isJust $ 
           map (\c -> getInstance cEnv c (fromJust tyId)) scs
@@ -786,7 +818,7 @@ checkCorrectTypeVarsInTypeSigs (ClassDecl _ _ _ tyvar ds) = do
   tyVars (TypeSig p _ _ _ te) = (p, typeVarsInTypeExpr te)
   tyVars _ = internalError "checkTypeVarsInTypeSigs"
   checkTypeVars (p, tyvars) = 
-    when (nub tyvars /= [tyvar]) $ 
+    when (nub tyvars /= [tyvar] && not (null $ nub tyvars)) $ 
       report $ errNotAllowedTypeVars p (nub tyvars \\ [tyvar])
 checkCorrectTypeVarsInTypeSigs _ = internalError "checkCorrectTypeVarsInTypeSigs"
 
@@ -802,6 +834,46 @@ checkContextsInClassMethodTypeSigs (ClassDecl _ _ _ _ ds)
   checkTySig _ = internalError "checkContextsInClassMethodTypeSigs"
 checkContextsInClassMethodTypeSigs _ = internalError "checkContextsInClassMethodTypeSigs"
 
+-- |checks that we don't use deriving for data types without constructors
+checkEmptyDataTypeAndDeriving :: Decl -> Tcc ()
+checkEmptyDataTypeAndDeriving (DataDecl    _ _ _ _ Nothing) = ok
+checkEmptyDataTypeAndDeriving (NewtypeDecl _ _ _ _ Nothing) = ok
+checkEmptyDataTypeAndDeriving (DataDecl p ty _ cs (Just (Deriving ds))) = 
+  when (null cs && not (null ds)) $ report $ errEmptyDataTypeDeriving p ty
+-- Newtype declaration has always a constructor!
+checkEmptyDataTypeAndDeriving (NewtypeDecl _ _ _ _ (Just (Deriving _))) = ok
+checkEmptyDataTypeAndDeriving _ = internalError "checkEmptyDataTypeAndDeriving"
+
+-- |Checks that the classes in the deriving declaration of a data type are
+-- in scope and unambiguous. It tests furtherly, whether the classes are 
+-- supported. 
+checkClassesInDeriving :: ModuleIdent -> ClassEnv -> Decl -> Tcc ()
+checkClassesInDeriving _m _cEnv (DataDecl    _ _ _ _ Nothing) = ok
+checkClassesInDeriving _m _cEnv (NewtypeDecl _ _ _ _ Nothing) = ok
+checkClassesInDeriving m cEnv (DataDecl    p ty _ _ (Just (Deriving clss))) = do
+  mapM_ (checkClassOk m cEnv p) clss
+  mapM_ (checkSupported m cEnv p ty) clss
+checkClassesInDeriving m cEnv (NewtypeDecl p ty _ _ (Just (Deriving clss))) = do
+  mapM_ (checkClassOk m cEnv p) clss
+  mapM_ (checkSupported m cEnv p ty) clss
+checkClassesInDeriving _ _ _ = internalError "checkClassesInDeriving"
+
+-- |checks whether we can derive an instance for the given class
+checkSupported :: ModuleIdent -> ClassEnv -> Position -> Ident -> QualIdent -> Tcc ()
+checkSupported m cEnv p ty cls = 
+  case lookupClass m cEnv cls of 
+    Nothing -> ok -- error message for this case already issued
+    Just c -> unless (theClass c `elem` supportedDerivingClasses) $
+      report $ errNotSupportedDerivingClass p ty cls 
+
+-- |the classes for which deriving is supported
+supportedDerivingClasses :: [QualIdent]
+supportedDerivingClasses = 
+  [ eqClsIdent 
+  , ordClsIdent
+  -- , showClsIdent -- not yet
+  -- , readClsIdent -- not yet
+  ]
 
 -- ---------------------------------------------------------------------------
 -- source code transformation
@@ -1084,13 +1156,13 @@ dictTypeExpr m cEnv tcEnv cls =
 transformInstance :: ModuleIdent -> ClassEnv -> TCEnv -> IDecl -> [Decl]
 transformInstance m cEnv tcEnv idecl@(InstanceDecl _ _ cls tycon _ decls)
   = concatMap (transformMethod m cEnv tcEnv idecl ity) decls
-  ++ concatMap (handleMissingFunc cEnv idecl ity) missingMethods
+  ++ concatMap (handleMissingFunc m cEnv idecl ity) missingMethods
   -- create dictionary 
   ++ createDictionary2 m cEnv tcEnv idecl ity
   where
   ity = fromJust $ tyConToQualIdent m tcEnv tycon
   presentMethods = nub $ map (\(FunctionDecl _ _ _ id0 _) -> id0) decls
-  theClass0 = fromJust $ lookupClass cEnv cls 
+  theClass0 = fromJust $ lookupClass m cEnv cls 
   theMethods0 = nub $ map fst3 $ methods theClass0
   missingMethods = theMethods0 \\ presentMethods
 transformInstance _ _ _ d = [d]
@@ -1102,9 +1174,9 @@ transformMethod m cEnv tcEnv idecl@(InstanceDecl _ _ cls _ _ _) ity
   -- create type signature
   createTypeSignature m rfunc cEnv tcEnv idecl decl
   -- create function rules
-  : [createTopLevelFuncs cEnv rfunc idecl decl] 
+  : [createTopLevelFuncs m cEnv rfunc idecl decl] 
   where 
-    cls' = getCanonClassName cEnv cls
+    cls' = getCanonClassName m cEnv cls
     -- rename for specific instance!
     rfunc = (\s -> instMethodName cls' ity s)
 transformMethod _ _ _ _ _ _ = internalError "transformMethod"
@@ -1125,8 +1197,8 @@ createTypeSignature m rfunc cEnv tcEnv (InstanceDecl _ scx cls tcon tyvars _)
                     (FunctionDecl p _ _ f _eqs) 
   = TypeSig p True [rename rfunc f] cx' ty''
   where
-    (cx, ty) = fromJust $ lookupMethodTypeSig' cEnv cls f 
-    theClass_ = fromJust $ lookupClass cEnv cls
+    (cx, ty) = fromJust $ lookupMethodTypeSig' m cEnv cls f 
+    theClass_ = fromJust $ lookupClass m cEnv cls
      
     -- Substitute class typevar with given instance type. 
     -- Rename tyvars, so that they do not equal type vars in the class
@@ -1157,14 +1229,14 @@ type RenameFunc = String -> String
 -- |All concrete implementations of class methods in an instance declaration are
 -- shifted by this function to top level, using new generated function names
 -- for the definitions. 
-createTopLevelFuncs :: ClassEnv -> RenameFunc -> IDecl -> Decl -> Decl
-createTopLevelFuncs cEnv rfunc (InstanceDecl _ _ cls _ _ _) 
+createTopLevelFuncs :: ModuleIdent -> ClassEnv -> RenameFunc -> IDecl -> Decl -> Decl
+createTopLevelFuncs m cEnv rfunc (InstanceDecl _ _ cls _ _ _) 
                                (FunctionDecl p cty n id0 eqs) 
   = FunctionDecl p cty n (rename rfunc id0) (map (transEqu zeroArity rfunc) eqs)
   where
-  (_, ty) = fromJust $ lookupMethodTypeSig' cEnv cls id0
+  (_, ty) = fromJust $ lookupMethodTypeSig' m cEnv cls id0
   zeroArity = arrowArityTyExpr ty == 0
-createTopLevelFuncs _ _ _ _ = internalError "createTopLevelFuncs"
+createTopLevelFuncs _ _ _ _ _ = internalError "createTopLevelFuncs"
 
 -- |As we create top-level functions, all occurences of the prior function
 -- name must be replaced with the new top-level function name. Therefore, in 
@@ -1192,21 +1264,21 @@ rename rfunc = updIdentName rfunc
 
 -- |handles functions missing in an instance declaration. Searches first for a
 -- default method, and if none present, inserts an error statement
-handleMissingFunc :: ClassEnv -> IDecl -> QualIdent -> Ident -> [Decl]
-handleMissingFunc cEnv (InstanceDecl _ _ cls _tcon _ _) ity fun0 = 
+handleMissingFunc :: ModuleIdent -> ClassEnv -> IDecl -> QualIdent -> Ident -> [Decl]
+handleMissingFunc m cEnv (InstanceDecl _ _ cls _tcon _ _) ity fun0 = 
   if not defaultMethodDefined then [ fun globalName [equ1] ] else []
   where
-  cls' = getCanonClassName cEnv cls
+  cls' = getCanonClassName m cEnv cls
   globalName = mkIdent $ instMethodName cls' ity (show fun0)
   equ1 = equation (FunLhs globalName []) 
     (simpleRhs (Apply (qVar . mkIdent $ "error") 
                       (Literal $ String (srcRef 0) errorString)))
   errorString = show fun0 ++ " not given in instance declaration of class "
     ++ show cls' ++ " and type " ++ show ity
-  theClass0 = fromJust $ lookupClass cEnv cls
+  theClass0 = fromJust $ lookupClass m cEnv cls
   defaultMethodDefined = fun0 `elem` getDefaultMethods theClass0
   
-handleMissingFunc _ _ _ _ = internalError "handleMissingFunc"
+handleMissingFunc _ _ _ _ _ = internalError "handleMissingFunc"
 
 {-
 -- |This function creates a dictionary for the given instance declaration, 
@@ -1248,9 +1320,9 @@ createDictionary2 m cEnv tcEnv (InstanceDecl _ scx cls0 tcon tvars decls) ity =
       ]
   ] 
   where
-  cls = getCanonClassName cEnv cls0
+  cls = getCanonClassName m cEnv cls0
   dictName c = mkIdent $ mkDictName (show c) (show ity)
-  theClass0 = fromJust $ lookupClass cEnv cls0
+  theClass0 = fromJust $ lookupClass m cEnv cls0
   superClasses0 = superClasses theClass0
   methods0 = methods theClass0
   defaultMethods = getDefaultMethods theClass0
@@ -1272,12 +1344,237 @@ createDictionary2 m cEnv tcEnv (InstanceDecl _ scx cls0 tcon tvars decls) ity =
   
   -- if dictionaries are empty, i.e., they don't contain any class methods (both
   -- from the class itself and the superclasses), we would get ambiguous
-  -- context elements if we don't remove the context completely. This removing
-  -- should be safe because we will never use the dictionary as there are no
-  -- class methods (?). 
-  isEmpty = null $ typeVarsInTypeExpr dictType0
+  -- context elements if we don't remove the context completely. It is 
+  -- important that in the "dictCode" function of the class environment, 
+  -- this removal of the whole context is reflected.
+  isEmpty = isEmptyDict cEnv cls
+  -- or equivalent:  
+  -- isEmpty = null $ typeVarsInTypeExpr dictType0
   
 createDictionary2 _ _ _ _ _ = internalError "createDictionary"
+
+-- ---------------------------------------------------------------------------
+-- source code transformations related to "deriving" of instances
+-- ---------------------------------------------------------------------------
+
+-- | expand all data declarations with a deriving annotation in the given list
+expandDerivingDecls :: [Decl] -> [Decl]
+expandDerivingDecls ds = ds ++ concatMap expandDerivingDecl dataDecls
+  where
+  dataDecls = filter (\d -> isDataDecl d || isNewtypeDecl d) ds
+  
+-- | create all derived instances for the given data/newtype declaration 
+expandDerivingDecl :: Decl -> [Decl]
+expandDerivingDecl d = if isNothing maybeDeriv 
+  then []
+  else
+    concatMap (createInstance d) classes
+  where
+  maybeDeriv = getDeriving d
+  Deriving classes = fromJust maybeDeriv
+
+-- |retrieve the deriving part of a newtype/data declaration
+getDeriving :: Decl -> Maybe Deriving
+getDeriving (NewtypeDecl _ _ _ _ d) = d
+getDeriving (DataDecl _ _ _ _ d) = d
+getDeriving _ = internalError "getDeriving"
+
+-- |creates an instance for the given data declaration and the given class
+createInstance :: Decl -> QualIdent -> [Decl]
+createInstance d cls = 
+  -- consider only the *name* of the class, not the module identifier. If 
+  -- this is wrong, it will be detected later
+  if unqualify cls == unqualify eqClsIdent
+  then [createEqInstance d cls]
+  else if unqualify cls == unqualify ordClsIdent
+  then [createOrdInstance d cls]
+  else []
+  -- TODO: add further instances here
+
+-- |creates an Eq or an Ord instance for the given data declaration
+createEqOrOrdInstance :: Decl      -- ^ the data/newtype declaration 
+                      -> Ident     -- ^ the "==" or the "<=" operator
+                      -> QualIdent -- ^ the class for which the instance is build
+                      -- | the generation function for the right hand sides of the equations. 
+                      -- Takes the two constructors and their positions in the 
+                      -- data declaration, as well as the arities of the constructors 
+                      -> (Position -> (Ident, Int) -> (Ident, Int) -> Int -> Int -> [Ident] -> [Ident] -> Rhs)
+                      -> String  -- ^ the prefix to be used for parameters
+                      -> Decl    -- ^ the resulting instance declaration
+createEqOrOrdInstance (DataDecl p ty dataVars cons _) op clsIdent genRhs prefix = 
+
+  InstanceDecl p (SContext scon) cls tycon vars 
+    [FunctionDecl p Nothing (-1) op eqs]
+  
+  where
+  scon = map (\v -> (clsIdent, v)) dataVars
+  cls = clsIdent
+  tycon = QualTC $ qualify ty
+  vars = dataVars
+  
+  eqs = concatMap (\(c, n) -> map (\(c', n') -> genEq c c' n n') cons') cons' 
+  
+  -- record the respective number for each constructor, because we need the order of 
+  -- the constructors for the Ord instance
+  cons' = map getCon (zip [0..] cons)
+  
+  -- |get the data constructor and its arity from the given constructor declaration
+  getCon :: (Int, ConstrDecl) -> ((Ident, Int), Int)
+  getCon (i, ConstrDecl _ _ c tes) = ((c, i), length tes)
+  getCon (i, ConOpDecl  _ _ _ c _) = ((c, i), 2)
+  
+  -- |generate for each constructor pair (C_i, C_j) an equation. If C_i == C_j, 
+  -- then compare the parameters of the constructors, else return False. 
+  -- Note: here for /all/ constructor pairs must an equation be created, 
+  -- else we would get overlapping rules and thus unwanted non-determinism. 
+  genEq :: (Ident, Int) -> (Ident, Int) -> Int -> Int -> Equation 
+  genEq (c, i) (c', i') n n' = Equation p 
+      (FunLhs op [ConstructorPattern (qualify c) (map VariablePattern newVars), 
+                  ConstructorPattern (qualify c') (map VariablePattern newVars')])
+      (genRhs p (c, i) (c', i') n n' newVars newVars') 
+    where
+    newVars  = map (mkIdent' . makeName) [1..n]
+    newVars' = map (mkIdent' . (++ "'") . makeName) [1..n']
+    makeName i0 = prefix ++ show c ++ sep ++ show c' ++ sep ++ show i0
+  
+  -- |the renaming of the identifiers is important so that the parameters
+  -- are not handled as top level functions. 
+  mkIdent' :: String -> Ident
+  mkIdent' = flip renameIdent 1 . mkIdent
+
+createEqOrOrdInstance (NewtypeDecl p ty vars (NewConstrDecl p' vars' id' ty') d) 
+                       op clsIdent genRhs prefix =
+  -- newtype declarations are simply treated as data declarations with 
+  -- one constructor.  
+  createEqOrOrdInstance (DataDecl p ty vars [ConstrDecl p' vars' id' [ty']] d) 
+                        op clsIdent genRhs prefix
+createEqOrOrdInstance _ _ _ _ _ = internalError "createEqOrOrdInstance"
+
+-- |creates an "Eq" instance for the given data type
+createEqInstance :: Decl -> QualIdent -> Decl
+createEqInstance d cls = createEqOrOrdInstance d eqOp cls genEqRhs deriveEqPrefix
+
+-- |generates the right hand sides used in the derived Eq instance  
+genEqRhs :: Position -> (Ident, Int) -> (Ident, Int) -> Int -> Int -> [Ident] -> [Ident] -> Rhs
+genEqRhs p (c, _) (c', _) n _n' newVars newVars' = 
+  SimpleRhs p (if c == c' then compareExpr else Constructor $ qualify falseCons) []
+  where
+  -- |creates the comparison expression for the parameters of the constructors
+  -- (or @True@ if none present)
+  compareExpr :: Expression
+  compareExpr = 
+    let vars0 = zipWith' (,) newVars newVars' 
+        (firstVar, firstVar') = head vars0 in
+    if n == 0 then Constructor $ qualify trueCons
+    else foldl (\el (v, v') -> InfixApply el infixAndOp 
+                 (InfixApply (qVar v) infixEqOp (qVar v'))) 
+               (InfixApply (qVar firstVar) infixEqOp (qVar firstVar'))
+               (tail vars0)
+
+-- |creates an "Ord" instance for the given data type
+createOrdInstance :: Decl -> QualIdent -> Decl
+createOrdInstance d cls = createEqOrOrdInstance d leqOp cls genOrdRhs deriveOrdPrefix
+
+-- |generates the right hand sides used in the derived Ord instance. The scheme
+-- is as follows:
+-- Consider @C_i ... <= C_j ...@:
+-- i < j: Result is True
+-- i > j: Result is False
+-- i == j: We have the following situation:
+--   C_i e_1 ... e_n <= C_i e_1' ... e_n'
+--   if n == 0: Result is True
+--   else compare lexicographically e_1 to e_n: Result is: 
+--        e_1 < e_1' || 
+--        e_1 == e_1' && e_2 < e2' ||
+--        e_1 == e_2' && e_2 == e_2' && e_3 < e_3' ||
+--        ...
+--        e_1 == e_2' && ... && e_(n-1) == e_(n-1)' && e_n <= e_n' 
+-- Note that in "e_n <= e_n'" a "<=" is used, not a "<"!
+genOrdRhs :: Position -> (Ident, Int) -> (Ident, Int) -> Int -> Int -> [Ident] -> [Ident] -> Rhs
+genOrdRhs p (_c, i0) (_c', i0') n _n' newVars newVars' = 
+  SimpleRhs p 
+    (if i0 < i0' 
+     then Constructor $ qualify trueCons
+     else if i0 > i0'
+     then Constructor $ qualify falseCons
+     else 
+     
+       if n == 0 then Constructor $ qualify trueCons
+       else foldl1 (\e e' -> InfixApply e infixOrOp e') (map (createForN n) [1..n])
+    ) []
+  where 
+  createForN :: Int -> Int -> Expression
+  createForN numAll i 
+    = foldl1 (\e e' -> InfixApply e infixAndOp e') (map createForI [1..i])
+    where
+    createForI :: Int -> Expression
+    createForI k 
+      | k < i                 = InfixApply v infixEqOp   v' -- e_k == e_k'
+      | k == i && k /= numAll = InfixApply v infixLessOp v' -- e_k <  e_k'
+      | k == i && k == numAll = InfixApply v infixLeqOp  v' -- e_k <= e_k'
+      | otherwise = internalError "genOrdRhs" 
+      where
+      v  = Variable Nothing $ qualify $ newVars  !! (k-1)
+      v' = Variable Nothing $ qualify $ newVars' !! (k-1)
+     
+
+-- ---------------------------------------------------------------------------
+
+eqClsIdentName :: String
+eqClsIdentName = "Eq"
+
+ordClsIdentName :: String
+ordClsIdentName = "Ord"
+
+eqClsIdent :: QualIdent
+eqClsIdent = qualifyWith tcPreludeMIdent (mkIdent eqClsIdentName) 
+
+ordClsIdent :: QualIdent
+ordClsIdent = qualifyWith tcPreludeMIdent (mkIdent ordClsIdentName)
+
+eqOp :: Ident
+eqOp = mkIdent "=="
+
+leqOp :: Ident
+leqOp = mkIdent "<="
+
+lessOp :: Ident
+lessOp = mkIdent "<"
+
+andOp :: Ident
+andOp = mkIdent "&&"
+
+orOp :: Ident
+orOp = mkIdent "||"
+
+infixEqOp :: InfixOp
+infixEqOp = InfixOp Nothing $ qualify $ eqOp
+
+infixLeqOp :: InfixOp
+infixLeqOp = InfixOp Nothing $ qualify $ leqOp
+
+infixLessOp :: InfixOp
+infixLessOp = InfixOp Nothing $ qualify $ lessOp
+
+infixAndOp :: InfixOp
+infixAndOp = InfixOp Nothing $ qualify $ andOp
+
+infixOrOp :: InfixOp
+infixOrOp = InfixOp Nothing $ qualify $ orOp
+
+-- **** TODO **** proper qualification (Prelude!)
+trueCons :: Ident
+trueCons = mkIdent "True"
+
+-- **** TODO **** proper qualification (Prelude!)
+falseCons :: Ident
+falseCons = mkIdent "False"
+
+deriveEqPrefix :: String
+deriveEqPrefix = identPrefix ++ "drvEq" ++ sep
+
+deriveOrdPrefix :: String
+deriveOrdPrefix = identPrefix ++ "drvOrd" ++ sep
 
 -- ---------------------------------------------------------------------------
 -- helper functions
@@ -1376,7 +1673,7 @@ buildTypeSchemes expand m tcEnv cls@(Class { theClass = tc, methods = ms, typeVa
       let extendedCx = Context (ContextElem tc classTypeVar [] : cElems)
           (translatedContext, theType) = toConstrType [classTypeVar] (extendedCx, typeExpr) 
       in (id0, polyType 
-            (if expand then expandType m tcEnv theType else theType) 
+            (if expand then expandType m tcEnv theType else expandSpecial theType) 
             `constrainBy` translatedContext)
     typeSchemeToMethod :: (Ident, TypeScheme) -> (Ident, Context, TypeExpr)
     typeSchemeToMethod (m', ForAll _cx _ ty) = 
@@ -1386,6 +1683,25 @@ buildTypeSchemes expand m tcEnv cls@(Class { theClass = tc, methods = ms, typeVa
 -- |translate the methods to typeschemes, not expanding the types. 
 buildTypeSchemesNoExpand :: Class -> Class
 buildTypeSchemesNoExpand = buildTypeSchemes False (mkMIdent []) initTCEnv
+
+-- |Only expands special type constructors, i.e., units, tuples and lists. 
+-- This is neccessary when we have an already expanded type from the interface;
+-- as lists and tuples have special syntactical forms, they are the only elements
+-- still unexpanded and have to be expanded. 
+expandSpecial :: Type -> Type
+expandSpecial v@(TypeVariable _) = v
+expandSpecial (TypeConstructor qid tys) 
+  | qid == qualify unitId = TypeConstructor (qualify' qid) tys'
+  | isQTupleId qid        = TypeConstructor (qualify' qid) tys'
+  | qid == qualify listId = TypeConstructor (qualify' qid) tys'
+  | otherwise             = TypeConstructor qid tys'
+  where tys' = map expandSpecial tys
+        qualify' = qualifyWith preludeMIdent . unqualify
+expandSpecial (TypeArrow t1 t2) = TypeArrow (expandSpecial t1) (expandSpecial t2)
+expandSpecial (TypeConstrained tys n) = TypeConstrained (map expandSpecial tys) n 
+expandSpecial ts@(TypeSkolem _) = ts
+expandSpecial (TypeRecord ts n) = 
+  TypeRecord (map (\(id0, ty) -> (id0, expandSpecial ty)) ts) n
 
 -- ---------------------------------------------------------------------------
 -- various substitutions
@@ -1485,11 +1801,11 @@ errDuplicateClassNames clss
   = message (text "Two or more classes with the same name: "  
   <+> hsep (punctuate comma (map ppIdent clss)))
   
---errDuplicateInstances :: [(QualIdent, QualIdent)] -> Message
---errDuplicateInstances is
---  = message (text "Two or more instances for the same class and type: "
---  <+> (hsep $ punctuate comma $ 
---       map (\(qid, tcon) -> parens $ ppQIdent qid <> comma <+> text (show tcon)) is))
+errDuplicateInstances :: [(QualIdent, QualIdent)] -> Message
+errDuplicateInstances is
+  = message (text "Two or more instances for the same class and type: "
+  <+> (hsep $ punctuate comma $ 
+       map (\(qid, tcon) -> parens $ ppQIdent qid <> comma <+> text (show tcon)) is))
 
 errDuplicateTypeVars :: Position -> QualIdent -> TypeConstructor -> [Ident] -> Message
 errDuplicateTypeVars p cls tcon ids
@@ -1499,9 +1815,9 @@ errDuplicateTypeVars p cls tcon ids
       <+> (hsep $ punctuate comma $ map ppIdent ids))
       
       
-errClassNameNotInScope :: Position -> QualIdent -> Message
-errClassNameNotInScope p cls = posMessage p 
-  (text "Error in instance declaration: Class name not in scope: " <> text (show cls))
+--errClassNameNotInScope :: Position -> QualIdent -> Message
+--errClassNameNotInScope p cls = posMessage p 
+--  (text "Error in instance declaration: Class name not in scope: " <> text (show cls))
 
 
 errDataTypeNotInScope :: Position -> QualIdent -> Message
@@ -1556,3 +1872,13 @@ errNonEmptyContext :: Position -> [Ident] -> Message
 errNonEmptyContext p ids = posMessage p $ 
   text "Contexts in type signatures of class methods currently not supported! "
   $$ text "Concerned: The following methods:" <+> text (show ids)  
+
+errNotSupportedDerivingClass :: Position -> Ident -> QualIdent -> Message
+errNotSupportedDerivingClass p ty cls = posMessage p $
+  text "Cannot derive instance for the type" <+> text (show ty) <+>
+  text "and the class" <+> text (show cls)
+
+errEmptyDataTypeDeriving :: Position -> Ident -> Message
+errEmptyDataTypeDeriving p ty = posMessage p $ 
+  text "Cannot derive an instance for an empty data type (here" <+> text (show ty)
+  <> text ")"

@@ -256,20 +256,20 @@ and \texttt{expandMonoTypes}, respectively.
 > checkTypeSynonyms :: ModuleIdent -> [Decl] -> TCM ()
 > checkTypeSynonyms m = mapM_ (checkTypeDecls m) . scc bound free
 >   where
->   bound (DataDecl    _ tc _ _) = [tc]
->   bound (NewtypeDecl _ tc _ _) = [tc]
->   bound (TypeDecl    _ tc _ _) = [tc]
->   bound _                      = []
->   free  (DataDecl     _ _ _ _) = []
->   free  (NewtypeDecl  _ _ _ _) = []
->   free  (TypeDecl    _ _ _ ty) = ft m ty []
->   free _                       = []
+>   bound (DataDecl    _ tc _ _ _) = [tc]
+>   bound (NewtypeDecl _ tc _ _ _) = [tc]
+>   bound (TypeDecl      _ tc _ _) = [tc]
+>   bound _                        = []
+>   free  (DataDecl    _ _ _ _ _) = []
+>   free  (NewtypeDecl _ _ _ _ _) = []
+>   free  (TypeDecl     _ _ _ ty) = ft m ty []
+>   free _                        = []
 
 > checkTypeDecls :: ModuleIdent -> [Decl] -> TCM ()
 > checkTypeDecls _ []                    =
 >   internalError "TypeCheck.checkTypeDecls: empty list"
-> checkTypeDecls _ [DataDecl    _ _ _ _] = return ()
-> checkTypeDecls _ [NewtypeDecl _ _ _ _] = return ()
+> checkTypeDecls _ [DataDecl    _ _ _ _ _] = return ()
+> checkTypeDecls _ [NewtypeDecl _ _ _ _ _] = return ()
 > checkTypeDecls m [TypeDecl  _ tc _ ty]
 >   | tc `elem` ft m ty [] = report $ errRecursiveTypes [tc]
 >   | otherwise            = return ()
@@ -300,7 +300,7 @@ and \texttt{expandMonoTypes}, respectively.
 >   setTyConsEnv tcEnv'
 
 > bindTC :: ModuleIdent -> TCEnv -> Decl -> TCEnv -> TCEnv
-> bindTC m tcEnv (DataDecl _ {- cx -} tc tvs cs) =
+> bindTC m tcEnv (DataDecl _ {- cx -} tc tvs cs _) =
 >   bindTypeInfo DataType m tc tvs (map (Just . mkData) cs)
 >   where
 >   mkData (ConstrDecl _ evs     c  tys) = mkData' evs c  tys
@@ -308,7 +308,7 @@ and \texttt{expandMonoTypes}, respectively.
 >   mkData' evs c tys = DataConstr c (length evs) $
 >     -- TODO: somewhen adding contexts to data declarations
 >     map getType $ expandMonoTypes m tcEnv (cleanTVars tvs evs) True (map noBContext tys)
-> bindTC m tcEnv (NewtypeDecl _ tc tvs (NewConstrDecl _ evs c ty)) =
+> bindTC m tcEnv (NewtypeDecl _ tc tvs (NewConstrDecl _ evs c ty) _) =
 >   bindTypeInfo RenamingType m tc tvs (DataConstr c (length evs) [ty'])
 >   where ty' = getType $ expandMonoType' m tcEnv (cleanTVars tvs evs) True (noBContext ty)
 > bindTC m tcEnv (TypeDecl _ tc tvs ty) =
@@ -478,6 +478,7 @@ class methods share the same namespace!
 >   modifyValueEnv $ const vEnv'
 > -}
 > 
+> -- |binds all class methods into the value environment
 > bindClassMethods :: ClassEnv -> TCM ()
 > bindClassMethods (ClassEnv _ _ methodEnv _) = do 
 >   vEnv <- getValueEnv
@@ -490,6 +491,9 @@ class methods share the same namespace!
 >     let tsc = fromJust $ lookupTypeScheme cls (unqualify m)
 >         v = Value (qualifyLike (theClass cls) $ unqualify m) 
 >                   (BT.arrowArity $ typeSchemeToType tsc) tsc
+>                   (Just $ theClass cls)
+>     -- Here we provide a "dummy" module. This is safe because the module
+>     -- information isn't needed for class methods (but later may be?) 
 >     in qualImportTopEnv' (fromJust' "bindClassMethods" $ qidModule $ theClass cls) 
 >          m v
 >    
@@ -614,7 +618,7 @@ either one of the basic types or \texttt{()}.
 >     let vs = lookupValue v vEnv
 >     m <- getModuleIdent 
 >     let vs' = filter (valInMdl m) vs
->         Value _ arity tysig = head vs'
+>         Value _ arity tysig _ = head vs'
 >     when (length vs' /= 1) $ internalError "writeContexts" 
 >     -- update the entry
 >     let tysig' = tysig `constrainBy` cx
@@ -1172,9 +1176,9 @@ signature the declared type must be too general.
 >     ++ [(i1, i2)]
 > buildTypeVarsMapping' (TypeRecord ids1 Nothing) (TypeRecord ids2 Nothing)
 >   = concat $ zipWith' buildTypeVarsMapping' (map snd ids1) (map snd ids2) 
-> buildTypeVarsMapping' t1 t2 = 
->   internalError ("types do not match in buildTypeVarsMapping\n" ++ show t1 
->     ++ "\n" ++ show t2)
+> buildTypeVarsMapping' _t1 _t2 = []
+>   -- internalError ("types do not match in buildTypeVarsMapping\n" ++ show t1 
+>   --   ++ "\n" ++ show t2)
 
 > tcEquation :: ValueEnv -> Equation -> TCM (Equation, ConstrType)
 > tcEquation tyEnv0 (Equation p lhs rhs) = do
@@ -2034,24 +2038,24 @@ unambiguously refers to the local definition.
 
 > varArity :: Ident -> ValueEnv -> Int
 > varArity v tyEnv = case lookupValue v tyEnv of
->   Value _ a _ : _ -> a
+>   Value _ a _ _ : _ -> a
 >   _ -> internalError $ "TypeCheck.varArity " ++ show v
 
 > varType :: Ident -> ValueEnv -> TypeScheme
 > varType v tyEnv = case lookupValue v tyEnv of
->   Value _ _ sigma : _ -> sigma
+>   Value _ _ sigma _ : _ -> sigma
 >   _ -> internalError $ "TypeCheck.varType " ++ show v
 
 > sureVarType :: Ident -> ValueEnv -> Maybe TypeScheme
 > sureVarType v tyEnv = case lookupValue v tyEnv of
->   Value _ _ sigma : _ -> Just sigma
+>   Value _ _ sigma _ : _ -> Just sigma
 >   _ -> Nothing
 
 > funType :: ModuleIdent -> QualIdent -> ValueEnv -> TypeScheme
 > funType m f tyEnv = case qualLookupValue f tyEnv of
->   [Value _ _ sigma] -> sigma
+>   [Value _ _ sigma _] -> sigma
 >   _ -> case qualLookupValue (qualQualify m f) tyEnv of
->     [Value _ _ sigma] -> sigma
+>     [Value _ _ sigma _] -> sigma
 >     _ -> internalError $ "TypeCheck.funType function not found: " 
 >            ++ show f ++ ", more precisely " ++ show (unqualify f)
 
@@ -2137,7 +2141,7 @@ know that they are closed.
 > fsEnv = Set.unions . map (Set.fromList . typeSkolems) . localTypes
 
 > localTypes :: ValueEnv -> [Type]
-> localTypes tyEnv = [ty | (_, Value _ _ (ForAll _cx _ ty)) <- localBindings tyEnv]
+> localTypes tyEnv = [ty | (_, Value _ _ (ForAll _cx _ ty) _) <- localBindings tyEnv]
 
 \end{verbatim}
 Miscellaneous functions.
@@ -2339,8 +2343,8 @@ nothing is recorded so that they are simply returned).
 
 > tsDecl :: TypeSubst -> Decl -> Decl
 > tsDecl _theta d@(InfixDecl _ _ _ _) = d
-> tsDecl _theta d@(DataDecl _ _ _ _)  = d
-> tsDecl _theta d@(NewtypeDecl _ _ _ _) = d
+> tsDecl _theta d@(DataDecl _ _ _ _ _)  = d
+> tsDecl _theta d@(NewtypeDecl _ _ _ _ _) = d
 > tsDecl _theta d@(TypeDecl _ _ _ _) = d
 > tsDecl _theta d@(TypeSig _ _ _ _ _) = d
 > tsDecl theta (FunctionDecl p (Just cty) n id0 eqs) 

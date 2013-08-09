@@ -217,7 +217,7 @@ Furthermore, it is not allowed to declare a label more than once.
 > renameInfo :: TCEnv -> ValueInfo -> RenameInfo
 > renameInfo _     (DataConstructor  _ a _) = Constr $ a
 > renameInfo _     (NewtypeConstructor _ _) = Constr 1
-> renameInfo _     (Value          qid a _) = GlobalVar a qid
+> renameInfo _     (Value        qid a _ _) = GlobalVar a qid
 > renameInfo tcEnv (Label            _ r _) = case qualLookupTC r tcEnv of
 >   [AliasType _ _ (TypeRecord fs _)] -> RecordLabel r $ map fst fs
 >   _ -> internalError $ "SyntaxCheck.renameInfo: ambiguous record " ++ show r
@@ -237,8 +237,8 @@ Furthermore, it is not allowed to declare a label more than once.
 
 > -- |Bind type constructor information
 > bindTypeDecl :: Decl -> SCM ()
-> bindTypeDecl (DataDecl    _ _ _ cs) = mapM_ bindConstr cs
-> bindTypeDecl (NewtypeDecl _ _ _ nc) = bindNewConstr nc
+> bindTypeDecl (DataDecl    _ _ _ cs _) = mapM_ bindConstr cs
+> bindTypeDecl (NewtypeDecl _ _ _ nc _) = bindNewConstr nc
 > bindTypeDecl (TypeDecl _ t _ (RecordType fs _)) = do
 >   m <- getModuleIdent
 >   others <- qualLookupVar (qualifyWith m t) `liftM` getRenameEnv
@@ -965,10 +965,10 @@ Auxiliary definitions.
 \begin{verbatim}
 
 > constrs :: Decl -> [Ident]
-> constrs (DataDecl _ _ _ cs) = map constr cs
+> constrs (DataDecl _ _ _ cs _) = map constr cs
 >   where constr (ConstrDecl   _ _ c _) = c
 >         constr (ConOpDecl _ _ _ op _) = op
-> constrs (NewtypeDecl _ _ _ (NewConstrDecl _ _ c _)) = [c]
+> constrs (NewtypeDecl _ _ _ (NewConstrDecl _ _ c _) _) = [c]
 > constrs _ = []
 
 > vars :: Decl -> [Ident]

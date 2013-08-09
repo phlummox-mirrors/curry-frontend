@@ -1,0 +1,364 @@
+
+
+module TCPrelude 
+  ( Eq(..)
+  , elem, notElem, lookup
+  , Ord(..)
+  , Show(..), print
+  , Read (..)
+  -- re-export data types from the original Prelude
+  , Bool (..) , Char (..) , Int (..) , Float (..), String , Ordering (..)
+  , Success (..), Maybe (..), Either (..), IO (..), IOError (..)
+  -- re-export functions from the original Prelude
+  , (.), id, const, curry, uncurry, flip, until, seq, ensureNotFree
+  , ensureSpine, ($), ($!), ($!!), ($#), ($##), error, prim_error
+  , failed, (&&), (||), not, otherwise, if_then_else
+  , fst, snd, head, tail, null, (++), length, (!!), map, foldl, foldl1
+  , foldr, foldr1, filter, zip, zip3, zipWith, zipWith3, unzip, unzip3
+  , concat, concatMap, iterate, repeat, replicate, take, drop, splitAt
+  , takeWhile, dropWhile, span, break, lines, unlines, words, unwords
+  , reverse, and, or, any, all, enumFrom, enumFromThen, enumFromTo
+  , enumFromThenTo, ord, prim_ord, chr, prim_chr, (+), (-)
+  , (*), div, mod
+  , negate, negateFloat, (=:=), success, (&), (&>), maybe
+  , either, (>>=), return, (>>), done, putChar, prim_putChar, getChar, readFile
+  , prim_readFile, writeFile, prim_writeFile, appendFile
+  , prim_appendFile, putStr, putStrLn, getLine, userError, ioError, showError
+  , catch, prim_show, doSolve, sequenceIO, sequenceIO_, mapIO
+  , mapIO_, (?), unknown
+  , normalForm, groundNormalForm, apply, cond, (=:<=)
+  ) where
+    
+import qualified Prelude as P ((==), (<=), show)
+import Prelude hiding ((==), (/=), compare, (<), (<=), (>), (>=), min, max, show)
+
+-- -------------------------------------------------------------------------
+-- Eq class and related instances and functions
+-- -------------------------------------------------------------------------
+
+class Eq a where
+  (==), (/=) :: a -> a -> Bool
+
+  x == y = not $ x /= y
+  x /= y = not $ x == y
+
+instance Eq Bool where
+  False == False  = True
+  False == True   = False
+  True  == False  = False
+  True  == True   = True
+
+instance Eq Char where
+  c == c' = c P.== c'
+
+instance Eq Int where
+  i == i' = i P.== i'
+
+instance Eq Float where
+  f == f' = f P.== f'
+
+instance Eq a => Eq [a] where
+  []    == []    = True
+  []    == (_:_) = False
+  (_:_) == []    = False
+  (x:xs) == (y:ys) = x == y && xs == ys
+
+instance Eq () where
+  () == () = True
+
+instance (Eq a, Eq b) => Eq (a, b) where
+  (a, b) == (a', b') = a == a' && b == b'
+
+instance (Eq a, Eq b, Eq c) => Eq (a, b, c) where
+  (a, b, c) == (a', b', c') = a == a' && b == b' && c == c'
+
+instance (Eq a, Eq b, Eq c, Eq d) => Eq (a, b, c, d) where
+  (a, b, c, d) == (a', b', c', d') = a == a' && b == b' && c == c' && d == d'
+
+instance (Eq a, Eq b, Eq c, Eq d, Eq e) => Eq (a, b, c, d, e) where
+  (a, b, c, d, e) == (a', b', c', d', e') = a == a' && b == b' && c == c' && d == d' && e == e'
+
+instance (Eq a, Eq b, Eq c, Eq d, Eq e, Eq f) => Eq (a, b, c, d, e, f) where
+  (a, b, c, d, e, f) == (a', b', c', d', e', f') = a == a' && b == b' && c == c' && d == d' && e == e' && f == f'
+
+instance (Eq a, Eq b, Eq c, Eq d, Eq e, Eq f, Eq g) => Eq (a, b, c, d, e, f, g) where
+  (a, b, c, d, e, f, g) == (a', b', c', d', e', f', g') = a == a' && b == b' && c == c' && d == d' && e == e' && f == f' && g == g'
+
+instance Eq a => Eq (Maybe a) where
+  Nothing == Nothing = True
+  Just _  == Nothing = False
+  Nothing == Just _  = False
+  Just x  == Just y  = x == y
+
+-- TODO: use deriving instead
+instance Eq Ordering where
+  LT == LT = True
+  LT == EQ = False
+  LT == GT = False
+  EQ == LT = False
+  EQ == EQ = True
+  EQ == GT = False
+  GT == LT = False
+  GT == EQ = False
+  GT == GT = True
+
+instance Eq Success where
+  Success == Success = True
+
+instance (Eq a, Eq b) => Eq (Either a b) where
+  Left x  == Left y  = x == y
+  Left _  == Right _ = False
+  Right _ == Left _  = False
+  Right x == Right y = x == y
+
+--- Element of a list?
+elem :: Eq a => a -> [a] -> Bool
+elem x = any (x ==)
+
+--- Not element of a list?
+notElem :: Eq a => a -> [a] -> Bool
+notElem x = all (x /=)
+
+--- Looks up a key in an association list.
+lookup :: Eq a => a -> [(a, b)] -> Maybe b
+lookup _ []       = Nothing
+lookup k ((x,y):xys)
+      | k==x      = Just y
+      | otherwise = lookup k xys
+
+-- -------------------------------------------------------------------------
+-- Ord class and related instances and functions
+-- -------------------------------------------------------------------------
+
+--- minimal complete definition: compare or <=
+class Eq a => Ord a where
+  compare :: a -> a -> Ordering
+  (<=) :: a -> a -> Bool
+  (>=) :: a -> a -> Bool
+  (<)  :: a -> a -> Bool
+  (>)  :: a -> a -> Bool
+
+  min :: a -> a -> a
+  max :: a -> a -> a
+
+  x < y = x <= y && x /= y
+  x > y = not (x <= y)
+  x >= y = y <= x
+  x <= y = compare x y == EQ || compare x y == LT
+
+  compare x y | x == y = EQ
+              | x <= y = LT
+              | otherwise = GT
+
+  min x y | x <= y    = x
+          | otherwise = y
+
+  max x y | x >= y    = x
+          | otherwise = y
+
+instance Ord Bool where
+  False <= False = True
+  False <= True  = True
+  True  <= False = False
+  True  <= True  = True
+
+instance Ord Char where
+  c1 <= c2 = c1 P.<= c2
+
+instance Ord Int where
+  i1 <= i2 = i1 P.<= i2
+
+instance Ord Float where
+  f1 <= f2 = f1 P.<= f2
+
+instance Ord Success where
+  Success <= Success = True
+
+-- TODO: use deriving instead
+instance Ord Ordering where
+  LT <= LT = True
+  LT <= EQ = True
+  LT <= GT = True
+  EQ <= LT = False
+  EQ <= EQ = True
+  EQ <= GT = True
+  GT <= LT = False
+  GT <= EQ = False
+  GT <= GT = True
+
+instance Ord a => Ord (Maybe a) where
+  Nothing <= Nothing = True
+  Nothing <= Just _  = True
+  Just _  <= Nothing = False
+  Just x  <= Just y  = x <= y
+
+instance (Ord a, Ord b) => Ord (Either a b) where
+  Left x  <= Left y  = x <= y
+  Left _  <= Right _ = True
+  Right _ <= Left _  = False
+  Right x <= Right y = x <= y
+
+instance Ord a => Ord [a] where
+  []    <= []    = True
+  (_:_) <= []    = False
+  []    <= (_:_) = True
+  (x:xs) <= (y:ys) | x == y    = xs <= ys
+                   | otherwise = x < y
+
+instance Ord () where
+  () <= () = True
+
+instance (Ord a, Ord b) => Ord (a, b) where
+  (a, b) <= (a', b') = a < a' || (a == a' && b <= b')
+
+instance (Ord a, Ord b, Ord c) => Ord (a, b, c) where
+  (a, b, c) <= (a', b', c') = a < a'
+     || (a == a' && b < b')
+     || (a == a' && b == b' && c <= c')
+
+instance (Ord a, Ord b, Ord c, Ord d) => Ord (a, b, c, d) where
+  (a, b, c, d) <= (a', b', c', d') = a < a'
+     || (a == a' && b < b')
+     || (a == a' && b == b' && c < c')
+     || (a == a' && b == b' && c == c' && d <= d')
+
+instance (Ord a, Ord b, Ord c, Ord d, Ord e) => Ord (a, b, c, d, e) where
+  (a, b, c, d, e) <= (a', b', c', d', e') = a < a'
+     || (a == a' && b < b')
+     || (a == a' && b == b' && c < c')
+     || (a == a' && b == b' && c == c' && d < d')
+     || (a == a' && b == b' && c == c' && d == d' && e <= e')
+
+-- -------------------------------------------------------------------------
+-- Show class and related instances and functions
+-- -------------------------------------------------------------------------
+
+type ShowS = String -> String
+
+class Show a where
+  show :: a -> String
+
+  showsPrec :: Int -> a -> ShowS
+
+  showList :: [a] -> ShowS
+
+  showsPrec _ x s = show x ++ s
+  show x = shows x ""
+  showList ls s = showList' shows ls s
+
+  test1 :: [a] -> a
+  test2 :: a -> ()
+  test3 :: (a, a) -> a
+
+shows :: Show a => a -> ShowS
+shows = showsPrec 0
+
+showChar :: Char -> ShowS
+showChar c s = c:s
+
+showString :: String -> ShowS
+showString str s = foldr showChar s str
+
+showParen :: Bool -> ShowS -> ShowS
+showParen b s = if b then showChar '(' . s . showChar ')' else s
+
+showList' :: (a -> ShowS) ->  [a] -> ShowS
+showList' _     []     s = "[]" ++ s
+showList' showx (x:xs) s = '[' : showx x (showl xs)
+  where
+    showl []     = ']' : s
+    showl (y:ys) = ',' : showx y (showl ys)
+
+
+print :: Show a => a -> IO ()
+print t = putStrLn (show t)
+
+-- -------------------------------------------------------------------------
+
+instance Show () where
+  showsPrec _ () = showString "()"
+
+instance (Show a, Show b) => Show (a, b) where
+  showsPrec _ (a, b) = showTuple [shows a, shows b]
+
+instance (Show a, Show b, Show c) => Show (a, b, c) where
+  showsPrec _ (a, b, c) = showTuple [shows a, shows b, shows c]
+
+instance (Show a, Show b, Show c, Show d) => Show (a, b, c, d) where
+  showsPrec _ (a, b, c, d) = showTuple [shows a, shows b, shows c, shows d]
+
+instance (Show a, Show b, Show c, Show d, Show e) => Show (a, b, c, d, e) where
+  showsPrec _ (a, b, c, d, e) = showTuple [shows a, shows b, shows c, shows d, shows e]
+
+instance Show a => Show [a] where
+  showsPrec _ = showList
+
+instance Show Bool where
+  showsPrec _ True = showString "True"
+  showsPrec _ False = showString "False"
+
+instance Show Ordering where
+  showsPrec _ LT = showString "LT"
+  showsPrec _ EQ = showString "EQ"
+  showsPrec _ GT = showString "GT"
+
+
+instance Show Char where
+  -- TODO: own implementation instead of passing to original Prelude functions?
+  showsPrec _ c = showString (P.show c)
+
+  showList cs = showString (P.show cs)
+
+instance Show Int where
+  showsPrec _ i = showString $ P.show i
+
+instance Show Float where
+  showsPrec _ f = showString $ P.show f
+
+instance Show a => Show (Maybe a) where
+  showsPrec _ Nothing = showString "Nothing"
+  showsPrec p (Just x) = showParen (p > appPrec)
+    (showString "Just " . showsPrec appPrec1 x)
+
+
+instance (Show a, Show b) => Show (Either a b) where
+  showsPrec p (Left x) = showParen (p > appPrec)
+    (showString "Left " . showsPrec appPrec1 x)
+  showsPrec p (Right y) = showParen (p > appPrec)
+    (showString "Right " . showsPrec appPrec1 y)
+
+showTuple :: [ShowS] -> ShowS
+showTuple ss = showChar '('
+             . foldr1 (\s r -> s . showChar ',' . r) ss
+             . showChar ')'
+
+appPrec = 10
+appPrec1 = 11
+
+instance Show Success where
+  showsPrec _ Success = showString "Success"
+
+-- -------------------------------------------------------------------------
+-- Read class and related instances and functions
+-- -------------------------------------------------------------------------
+
+type ReadS a = String -> [(a, String)]
+
+
+class Read a where
+  readsPrec :: Int -> ReadS a
+
+  readList :: ReadS [a]
+
+reads :: Read a => ReadS a
+reads = readsPrec minPrec
+
+-- readParen :: Bool -> ReadS a -> ReadS a
+-- readParen b =
+
+-- read :: Read a => String -> a
+-- read s =
+
+minPrec = 0
+
+

@@ -394,8 +394,8 @@ isTokenIdentifier (Token cat _) =
 
 declPos :: Decl -> Position
 declPos (InfixDecl        p _ _ _  ) = p
-declPos (DataDecl         p _ _ _  ) = p
-declPos (NewtypeDecl      p _ _ _  ) = p
+declPos (DataDecl         p _ _ _ _) = p
+declPos (NewtypeDecl      p _ _ _ _) = p
 declPos (TypeDecl         p _ _ _  ) = p
 declPos (TypeSig          p _ _ _ _) = p
 declPos (FunctionDecl     p _ _ _ _) = p
@@ -466,11 +466,11 @@ importDecl2codes (ImportDecl _ mid _ mModuleIdent importSpec) =
 
 decl2codes :: Decl -> [Code]
 decl2codes (InfixDecl _ _ _ ops) = map (Function InfixFunction . qualify) ops
-decl2codes (DataDecl _ d vs cds) =
+decl2codes (DataDecl _ d vs cds der) =
      TypeConstructor TypeDecla (qualify d) :
      map (Identifier UnknownId . qualify) vs ++
      concatMap constrDecl2codes cds
-decl2codes (NewtypeDecl _ _ _ _) = []
+decl2codes (NewtypeDecl _ _ _ _ der) = []
 decl2codes (TypeDecl _ t vs ty) =
      TypeConstructor TypeDecla (qualify t) :
      map (Identifier UnknownId . qualify) vs ++
@@ -628,6 +628,7 @@ showToken (Token DoubleArrow  _) = "=>"
 showToken (Token KW_case      _) = "case"
 showToken (Token KW_class     _) = "class"
 showToken (Token KW_data      _) = "data"
+showToken (Token KW_deriving  _) = "deriving"
 showToken (Token KW_do        _) = "do"
 showToken (Token KW_else      _) = "else"
 showToken (Token KW_external  _) = "external"

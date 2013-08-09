@@ -1,10 +1,12 @@
 
 
 class A a where
+  funA :: a -> a
 
 class B a where
 
 class E a where
+  funE :: a -> a
 
 class (A a) => C a where
 
@@ -148,21 +150,26 @@ instance (Ord b, Ord a, Eq b, Eq a) => Eq (X7 a b) where
 -- ------------------------------------------------------------
 
 class A1 a where
-
+  funA1 :: a -> a
 
 class A2 a where
+  funA2 :: a -> a
 
 class A3 a where
+  funA3 :: a -> a
 
 class A4 a where
+  funA4 :: a -> a
 
 class A5 a where
+  funA5 :: a -> a
 
 class A5 a => A6 a where
 
 class A6 a => A7 a where
 
 class A8 a where
+  funA8 :: a -> a
 
 data Y a b c = Y a b c
 
@@ -189,6 +196,16 @@ instance (A5 a, A6 a, A7 a, A1 b) => A3 (Z a b c) where
 instance (A1 b, A5 a, A6 a, A7 a) => A2 (Z a b c) where
 
 instance (A5 a, A6 a, A1 b, A7 a) => A1 (Z a b c) where
+
+-- ------------------------------------------------------------
+
+class Empty a where
+
+instance Empty a => Empty [a] where
+
+class Empty a => Empty2 a where
+
+instance Empty2 a => Empty2 [a] where
 
 -- ------------------------------------------------------------
 

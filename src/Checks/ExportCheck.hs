@@ -142,13 +142,13 @@ expandThing' f tcExport = do
   tyEnv <- getValueEnv
   case qualLookupValue f tyEnv of
     []             -> justTcOr errUndefinedEntity
-    [Value f' _ _] -> return $ Export f' : fromMaybe [] tcExport
+    [Value f' _ _ _] -> return $ Export f' : fromMaybe [] tcExport
     [_]            -> justTcOr errExportDataConstr
     _              -> do
       m <- getModuleIdent
       case qualLookupValue (qualQualify m f) tyEnv of
         []             -> justTcOr errUndefinedEntity
-        [Value f' _ _] -> return $ Export f' : fromMaybe [] tcExport
+        [Value f' _ _ _] -> return $ Export f' : fromMaybe [] tcExport
         [_]            -> justTcOr errExportDataConstr
         _              -> report (errAmbiguousName f) >> return []
   where justTcOr errFun = case tcExport of
@@ -227,8 +227,8 @@ expandLocalModule = do
   tyEnv <- getValueEnv
   cEnv  <- getClassEnv
   return $ [exportType tyEnv t | (_, t) <- localBindings tcEnv] ++
-    [Export f' | (f, Value f' _ _) <- localBindings tyEnv, 
-                  f == unRenameIdent f, not $ isClassMethod cEnv (qualify f)] ++
+    [Export f' | (f, Value f' _ _ Nothing) <- localBindings tyEnv, 
+                  f == unRenameIdent f] ++
     [ExportTypeWith cName ms | cls <- allLocalClasses (theClasses cEnv), 
                                let cName = theClass cls
                                    ms = map fst (typeSchemes cls)]
@@ -240,8 +240,7 @@ expandImportedModule m = do
   tyEnv <- getValueEnv
   cEnv <- getClassEnv
   return $ [exportType tyEnv t | (_, t) <- moduleImports m tcEnv]
-        ++ [Export f | (_, Value f _ _) <- moduleImports m tyEnv
-                     , not $ isClassMethod cEnv f]
+        ++ [Export f | (_, Value f _ _ Nothing) <- moduleImports m tyEnv]
         ++ [ExportTypeWith (theClass c) (map fst3 $ methods c) 
              | (_, c) <- moduleImports m (nonHiddenClassEnv $ theClasses cEnv)] 
 

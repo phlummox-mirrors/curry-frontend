@@ -20,7 +20,7 @@ import Curry.Base.Ident
 import CompilerEnv
 import Curry.Syntax
 import Curry.Base.Position
-import Env.ClassEnv hiding (isClassMethod)
+import Env.ClassEnv
 import Env.Value
 import Base.Names (mkSelFunName, mkDictName)
 import Base.Messages
@@ -38,13 +38,14 @@ import Control.Monad.State as S
 type DI = S.State DIState
 
 data DIState = DIState 
-  { theClassEnv :: ClassEnv
+  { mdl         :: ModuleIdent
+  , theClassEnv :: ClassEnv
   , theValueEnv :: ValueEnv
   , errors      :: [Message]
   }
 
-initState :: ClassEnv -> ValueEnv -> DIState
-initState cEnv vEnv = DIState cEnv vEnv []
+initState :: ModuleIdent -> ClassEnv -> ValueEnv -> DIState
+initState m cEnv vEnv = DIState m cEnv vEnv []
 
 runDI :: DI a -> DIState -> (a, [Message])
 runDI comp init0 = let (a, s) = S.runState comp init0 in (a, reverse $ errors s)
@@ -54,6 +55,9 @@ getClassEnv = S.gets theClassEnv
 
 getValueEnv :: DI ValueEnv
 getValueEnv = S.gets theValueEnv
+
+getModuleIdent :: DI ModuleIdent
+getModuleIdent = S.gets mdl
 
 ok :: DI ()
 ok = return ()
@@ -68,8 +72,8 @@ report err = S.modify (\ s -> s { errors = err : errors s })
 -- |The main function of this module. It descends into the syntax tree and
 -- inserts dictionary parameters (in function declarations and in expressions)
 insertDicts :: Module -> CompilerEnv -> (Module, [Message])
-insertDicts mdl cEnv = 
-  runDI (diModule mdl) (initState (classEnv cEnv) (valueEnv cEnv))
+insertDicts mdl'@(Module m _ _ _) cEnv = 
+  runDI (diModule mdl') (initState m (classEnv cEnv) (valueEnv cEnv))
 
 -- |convert a whole module
 diModule :: Module -> DI Module
@@ -100,7 +104,7 @@ diDecl _ f = return f
 removeNonLocal :: ValueEnv -> a -> (a -> ValueEnv -> [ValueInfo]) -> BT.Context -> BT.Context
 removeNonLocal vEnv id0 lookup0 cx = newCx
   where
-  Value _ _ (ForAll cxInf _ _) : _ = lookup0 id0 vEnv
+  Value _ _ (ForAll cxInf _ _) _ : _ = lookup0 id0 vEnv
   newCx = map snd $ filter (\(e1, _e2) -> local e1) $ zip' cxInf cx
   local :: (QualIdent, Type) -> Bool
   -- TODO: actually check only the type variable in head position... 
@@ -142,35 +146,44 @@ diExpr :: BT.Context -> Expression -> DI Expression
 diExpr _ e@(Literal _) = return e
 diExpr cx0 v@(Variable (Just varCty0) qid) = do 
   checkForAmbiguousInstances (qidPosition qid) (mirrorBFCx $ fst varCty0)
-  codes <- abstrCode
   cEnv <- getClassEnv
-  let code = foldl Apply (var'' cEnv) codes
+  vEnv <- getValueEnv
+  m <- getModuleIdent
+  
+  let 
+    abstrCode = do
+      let varCty = (removeNonLocal vEnv qid qualLookupValue $ mirrorBFCx $ fst varCty0, snd varCty0)
+          -- check whether we have a class method
+          cx = if isNothing $ maybeCls then fst varCty else mirrorBFCx $ fst varCty0
+          codes = map (concreteCode . dictCode cEnv cx0) cx 
+      return codes
+    maybeCls = case qualLookupValue qid vEnv of
+      [Value _ _ _ cls'] -> cls'
+      _ -> case qualLookupValue (qualQualify m qid) vEnv of
+        [Value _ _ _ cls'] -> cls'
+        _ -> internalError "no function/method in Dictionaries" 
+    cls = fromJust $ maybeCls
+    -- if we have a class function, transform this into the appropriate selector
+    -- function
+    isClassMethod = isJust $ maybeCls
+    zeroArity  = (arrowArity $ typeSchemeToType $ 
+      fromJust $ canonLookupMethodTypeScheme' cEnv cls (unqualify qid)) == 0
+    var'' = if not isClassMethod 
+      then v
+      -- Unqualify "qid"! The name of the selection function is still unique
+      -- because the class name is unique 
+      else Variable (Just varCty0) 
+             (qualify $ mkIdent $ mkSelFunName (show cls) (show $ unqualify $ qid))
+             
+  
+  codes <- abstrCode   
+  let code = foldl Apply var'' codes
   -- for nullary class methods add additional unit argument
-  return $ if isClassMethod cEnv && zeroArity cEnv 
+  return $ if isClassMethod && zeroArity 
     then Apply code (Constructor qUnitId)
     else code
-  where
-  abstrCode = do
-    cEnv <- getClassEnv
-    vEnv <- getValueEnv
-    let varCty = (removeNonLocal vEnv qid qualLookupValue $ mirrorBFCx $ fst varCty0, snd varCty0)
-        -- check whether we have a class method
-        cx = if isNothing $ maybeCls cEnv then fst varCty else mirrorBFCx $ fst varCty0
-        codes = map (concreteCode . dictCode cEnv cx0) cx 
-    return codes
-  maybeCls cEnv = lookupDefiningClass cEnv qid
-  cls cEnv = fromJust $ maybeCls cEnv
-  -- if we have a class function, transform this into the appropriate selector
-  -- function
-  isClassMethod cEnv = isJust $ maybeCls cEnv
-  zeroArity cEnv = (arrowArity $ typeSchemeToType $ 
-    fromJust $ canonLookupMethodTypeScheme' cEnv (cls cEnv) (unqualify qid)) == 0
-  var'' cEnv = if not $ isClassMethod cEnv 
-    then v
-    -- Unqualify "qid"! The name of the selection function is still unique
-    -- because the class name is unique 
-    else Variable (Just varCty0) 
-           (qualify $ mkIdent $ mkSelFunName (show $ cls cEnv) (show $ unqualify $ qid))
+  
+  
 diExpr _ (Variable Nothing _) = internalError "diExpr: no type info"
 diExpr _ e@(Constructor _) = return e
 diExpr cx (Paren e) = Paren `liftM` diExpr cx e

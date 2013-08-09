@@ -29,7 +29,7 @@ for file in DictTrans1 DictTrans2 DictTrans3 DictTrans4 \
   TypeSigsTrans BugTypeSigsTrans BugTypeSigsTrans2 \
   ClassEnv TCC GenElems TCC_Bug \
   Arb NullaryClassMethods \
-  TypedExpressions2 DictionaryTypes \
+  TypedExpressions TypedExpressions2 DictionaryTypes \
   TestDictType \
   DefaultMethods1 DefaultMethods2 \
   BugClassMethodsVsPredefinedFuncs \
@@ -42,11 +42,46 @@ for file in DictTrans1 DictTrans2 DictTrans3 DictTrans4 \
   SelSuperclasses2 SelSuperclasses TestInstances2 TestInstances InstanceConstraints2 \
   TestVarious \
   DataConstructorsBug1 DataConstructorsBug2 \
-  ArrowInstances ArbTypeSyn
+  ArrowInstances ArbTypeSyn \
+  EmptyDicts \
+  Ambig2 AmbigDType1 AmbigDType2 AmbigDTypeImport \
+  DuplicateTypeVarsInInstance QualSuperclasses Traversal \
+  ClassInstanceTypeInScope ClassInstanceTypeInScope2 ClassInstanceTypeInScope3 ClassInstanceTypeInScope4 \
+  ClassInstanceTypeInScope6
 do
   echo $file >> tmp.txt
   $cymake -f -i typeclasses typeclasses/$file.curry 2> stderr.txt 1> stdout.txt || (echo "===================="; echo "| Error in $file.curry:" ; echo "===================="; cat stdout.txt; cat stderr.txt; echo)
 done
+
+# do the check # 1 b (errors of type class check component)
+
+for file in checkCorrectTypeVarsInTypeSigs CheckRulesInClass CheckRulesInInstance \
+  ClassesInContext ClassMethodSigsContainTypeVar ClassNameInInstance \
+  ContextImplication ContextsInClassMethodTypeSigs Cycles directCycle \
+  doubleClassMethods duplicateClassNames duplicateInstances InstanceConstraints \
+  instanceDataTypeCorrect InstanceTypeVarsDoNotAppearTwice SuperclassInstances \
+  typeVarsInInstContext typeVarsInTySigContext TyVarInContext
+do
+  echo $file >> tmp.txt
+  $cymake -f -i typeclasses/TCCheck typeclasses/TCCheck/$file.curry 2> stderr.txt 1> stdout.txt && (echo "===================="; echo "| No error in $file.curry:" ; echo "===================="; cat stdout.txt; cat stderr.txt; echo)
+done
+
+# do the check # 1 c (other errors)
+
+for file in Ambig1 Ambiguous Ambiguous2 Ambiguous3 \
+  CheckContexts classAndFunNamesOverlapping CyclesInClassStructure \
+  Deriving1 Deriving2 Deriving3 DerivingClassesInScope DerivingClassesNotInScope \
+  DoubleMethods DuplicateClasses DuplicateInstances \
+  ErrContexts ErrorClassAndGlobalFuncs \
+  Impl InstanceConstraints InstanceMethodsCheck \
+  TestCxs TestCxs2 TypeSigs \
+  EmptyDataTypeDeriving \
+  ClassInstanceTypeInScope5
+do
+  echo $file >> tmp.txt
+  $cymake -f -i typeclasses typeclasses/$file.curry 2> stderr.txt 1> stdout.txt && (echo "===================="; echo "| No error in $file.curry:" ; echo "===================="; cat stdout.txt; cat stderr.txt; echo)
+done
+
 
 fi
 
@@ -104,15 +139,22 @@ for file in TestClassExports TestClassExports2 TestClassExportsImports \
   InstancesHierarchy1c InstancesHierarchy2c InstancesHierarchy3c InstancesHierarchy4c \
   OverlappingInstances0 OverlappingInstances1 OverlappingInstances2 OverlappingInstancesUse OverlappingInstancesUse2 \
   OverlappingArrowInstances0 OverlappingArrowInstances1 OverlappingArrowInstances2 OverlappingArrowInstancesUse \
-  DuplicateClasses1 DuplicateClasses2 DuplicateClassesUse DuplicateClassesUse2 DuplicateClassesUse3 \
+  DuplicateClasses1 DuplicateClasses2 DuplicateClassesUse DuplicateClassesUse2 DuplicateClassesUse3 DuplicateClassesUse4 \
   DuplicateClassesUseB DuplicateClassesUseB2 DuplicateClassesUseB3 \
   DuplicateClassesD1 DuplicateClassesD2 DuplicateClassesD3 DuplicateClassesD4 \
   AsImportBug1 AsImportBug2 AsImportBug3 \
   Arb ArbUse \
-  TCPrelude TCPreludeUse \
+  TCPrelude TCPreludeUse List Maybe TCList \
   ArbTypeSyn ArbTypeSynUse \
   HiddenClassMethodsBug1 HiddenClassMethodsBug2 \
-  AmbiguousClassMethods1 AmbiguousClassMethods2
+  AmbiguousClassMethods1 AmbiguousClassMethods2 \
+  DuplicateHiddenClasses1 DuplicateHiddenClasses2 DuplicateHiddenClassesUse \
+  InstancesClassInScope1 InstancesClassInScope2 \
+  DerivingClassesSupported3 DerivingClassesSupported4 \
+  Deriving1 Deriving2 DerivingProcessTest1 DerivingProcessTest2 \
+  AmbiguousTypeInInstanceBug1 AmbiguousTypeInInstanceBug2 \
+  BugClassMethodsAndTopLevelFuns1 BugClassMethodsAndTopLevelFuns2 \
+  ClassShadowing1 ClassShadowing2 ClassShadowing3 RedefineClassesBug2Err
 do
   echo $file >> tmp.txt
   $cymake -f -i typeclasses/modules typeclasses/modules/$file.curry 2> stderr.txt 1> stdout.txt || (echo "===================="; echo "| Error in $file.curry:" ; echo "===================="; cat stdout.txt; cat stderr.txt; echo)
@@ -123,9 +165,11 @@ done
 for file in ClassExportErrors ClassExportImportErrors ClassMethodsExportErr1 ClassMethodsExportErr2 \
   ExportNonHiddenUseErr HidingClassesUseErrs RedefineClassesError SyntaxCheckUseErr \
   OverlappingClassMethodsUse1Err OverlappingClassMethodsUse3Err \
-  RedefineClassesBug2Err ModuleExport4ImportErr HiddenClasses2Err HiddenClasses3Err \
+  ModuleExport4ImportErr HiddenClasses2Err HiddenClasses3Err \
   AmbigClassExportUseErr ConflictHiddenUseErr OverlappingInstancesUseErr OverlappingArrowInstancesUseErr \
-  DuplicateClassesUse2Err AmbiguousClassMethodsUseErr
+  DuplicateClassesUse2Err AmbiguousClassMethodsUseErr \
+  DerivingClassesSupported1Err DerivingClassesSupported2Err \
+  Deriving3Err BugClassMethodsAndTopLevelFuns3
 do
   echo $file >> tmp.txt
   $cymake -f -i typeclasses/modules typeclasses/modules/$file.curry 2> stderr.txt 1> stdout.txt && (echo "===================="; echo "| No error in $file.curry:" ; echo "===================="; cat stdout.txt; cat stderr.txt; echo)
