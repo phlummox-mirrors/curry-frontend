@@ -799,6 +799,9 @@ checkInstanceContextImpliesAllInstanceContextsOfSuperClasses cEnv tcEnv m
         thisContext = getContextFromInst inst'
         scs = allSuperClasses cEnv (getCanonClassName m cEnv cls)
         tyId = tyConToQualIdent m tcEnv ty
+        -- ignore missing/ambiguous superclass instances (those are
+        -- already detected by 
+        -- checkForInstanceDataTypeExistAlsoInstancesForSuperclasses)
         insts = map fromJust $ filter isJust $ 
           map (\c -> getInstance cEnv c (fromJust tyId)) scs
         instCxs = concatMap getContextFromInst insts
