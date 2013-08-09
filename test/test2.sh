@@ -13,6 +13,7 @@ rm -f -r typeclasses/modules/.curry
 
 $cymake -f -i typeclasses typeclasses/Float.curry typeclasses/Prelude.curry > /dev/null
 $cymake -f -i typeclasses/modules typeclasses/modules/Prelude.curry > /dev/null
+$cymake -f -i typeclasses/TCCheck typeclasses/TCCheck/Prelude.curry > /dev/null
 
 # do the check # 1
 
