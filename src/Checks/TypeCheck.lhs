@@ -478,6 +478,7 @@ class methods share the same namespace!
 >   modifyValueEnv $ const vEnv'
 > -}
 > 
+> -- |binds all class methods into the value environment
 > bindClassMethods :: ClassEnv -> TCM ()
 > bindClassMethods (ClassEnv _ _ methodEnv _) = do 
 >   vEnv <- getValueEnv
@@ -491,6 +492,8 @@ class methods share the same namespace!
 >         v = Value (qualifyLike (theClass cls) $ unqualify m) 
 >                   (BT.arrowArity $ typeSchemeToType tsc) tsc
 >                   (Just $ theClass cls)
+>     -- Here we provide a "dummy" module. This is safe because the module
+>     -- information isn't needed for class methods (but later may be?) 
 >     in qualImportTopEnv' (fromJust' "bindClassMethods" $ qidModule $ theClass cls) 
 >          m v
 >    

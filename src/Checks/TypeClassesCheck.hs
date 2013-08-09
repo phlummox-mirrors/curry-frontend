@@ -326,6 +326,10 @@ constructClassMethodsEnv bindings =
     | m `elem` publicMethods cls = 
       -- use as qualification for the method the qualification of the qualIdent
       -- under which the current class is stored. 
+      -- The module under which the class method is imported should actually
+      -- be all modules under which the class itself is imported. But as
+      -- we never need this information, it is safe here to provide a "dummy"
+      -- module. 
       qualImportTopEnv' (fromJust' "constructClassMethodsEnv" $ qidModule $ theClass cls)
         (qualifyLike c m) cls env
     | otherwise = env
