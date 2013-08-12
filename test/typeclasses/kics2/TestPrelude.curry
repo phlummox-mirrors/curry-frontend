@@ -100,6 +100,9 @@ test58 = pred 2 == 1
 test59 = enumFromTo 1 4 == [1, 2, 3, 4]
 test60 = enumFromThenTo 1 3 5 == [1, 3, 5]
 
+test61 = boundedEnumFrom LT == [LT, EQ, GT]
+test62 = boundedEnumFrom GT == [GT]
+
 -- --------------------------------------------------------------------------
 -- all together
 -- --------------------------------------------------------------------------
@@ -110,7 +113,7 @@ allTests = [test1a, test2a, test3a, test4a, test5, test6, test7, test8, test9
   , test28, test29, test30, test31, test32, test33, test34, test35, test36
   , test37, test38, test39, test40, test41, test42, test43, test44, test45
   , test46, test47, test48, test49, test50, test51, test52, test53, test54
-  , test55, test56, test57, test58, test59, test60]
+  , test55, test56, test57, test58, test59, test60, test61, test62]
 
 allCorrect = and allTests
 

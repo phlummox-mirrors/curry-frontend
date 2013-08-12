@@ -6,7 +6,8 @@ module TCPrelude
   , Ord(..)
   , Show(..), print
   , Read (..)
-  , Bounded (..), Enum (..)
+  , Bounded (..), Enum (..), boundedEnumFrom, boundedEnumFromThen
+  , asTypeOf
   -- re-export data types from the original Prelude
   , Bool (..) , Char (..) , Int (..) , Float (..), String , Ordering (..)
   , Success (..), Maybe (..), Either (..), IO (..), IOError (..)
@@ -492,7 +493,7 @@ instance Enum Int where
   enumFromThen = P.enumFromThen
   enumFromThenTo = P.enumFromThenTo
 
-{-
+
 boundedEnumFrom :: (Enum a, Bounded a) => a -> [a]
 boundedEnumFrom n = map toEnum [fromEnum n .. fromEnum (maxBound `asTypeOf` n)]
 
@@ -503,4 +504,11 @@ boundedEnumFromThen n1 n2
   where
     i_n1 = fromEnum n1
     i_n2 = fromEnum n2
--}
+
+
+-- -------------------------------------------------------------------------
+-- Helper functions
+-- -------------------------------------------------------------------------
+
+asTypeOf :: a -> a -> a
+asTypeOf = const
