@@ -72,6 +72,33 @@ test39 = show 1.0 == "1.0"
 test40 = show [Just 1, Nothing] == "[Just 1,Nothing]"
 test41 = show (Just (Just 3)) == "Just (Just 3)"
 
+-- --------------------------------------------------------------------------
+-- Enum and bounded classes
+-- --------------------------------------------------------------------------
+
+test42 = (minBound :: Bool) == False
+test43 = (maxBound :: Bool) == True
+test44 = (minBound :: (Bool, Bool, Bool)) == (False, False, False)
+test45 = (maxBound :: (Bool, Bool, Bool)) == (True, True, True)
+test46 = (minBound :: ()) == ()
+test47 = (maxBound :: ()) == ()
+
+test48 = succ False == True
+test49 = pred True == False
+test50 = toEnum 0 == False
+test51 = toEnum 1 == True
+
+test52 = (minBound :: Ordering) == LT
+test53 = (maxBound :: Ordering) == GT
+test54 = enumFromTo LT GT == [LT, EQ, GT]
+
+test55 = succ 1 == 2
+test56 = succ 2 == 3
+test57 = pred 1 == 0
+test58 = pred 2 == 1
+
+test59 = enumFromTo 1 4 == [1, 2, 3, 4]
+test60 = enumFromThenTo 1 3 5 == [1, 3, 5]
 
 -- --------------------------------------------------------------------------
 -- all together
@@ -81,7 +108,9 @@ allTests = [test1a, test2a, test3a, test4a, test5, test6, test7, test8, test9
   , test10, test11, test12, test13, test14, test15, test16, test17, test18
   , test19, test20, test21, test22, test23, test24, test25, test26, test27
   , test28, test29, test30, test31, test32, test33, test34, test35, test36
-  , test37, test38, test39, test40, test41]
+  , test37, test38, test39, test40, test41, test42, test43, test44, test45
+  , test46, test47, test48, test49, test50, test51, test52, test53, test54
+  , test55, test56, test57, test58, test59, test60]
 
 allCorrect = and allTests
 

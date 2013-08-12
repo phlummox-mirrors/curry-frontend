@@ -6,6 +6,7 @@ module TCPrelude
   , Ord(..)
   , Show(..), print
   , Read (..)
+  , Bounded (..), Enum (..)
   -- re-export data types from the original Prelude
   , Bool (..) , Char (..) , Int (..) , Float (..), String , Ordering (..)
   , Success (..), Maybe (..), Either (..), IO (..), IOError (..)
@@ -17,8 +18,8 @@ module TCPrelude
   , foldr, foldr1, filter, zip, zip3, zipWith, zipWith3, unzip, unzip3
   , concat, concatMap, iterate, repeat, replicate, take, drop, splitAt
   , takeWhile, dropWhile, span, break, lines, unlines, words, unwords
-  , reverse, and, or, any, all, enumFrom, enumFromThen, enumFromTo
-  , enumFromThenTo, ord, prim_ord, chr, prim_chr, (+), (-)
+  , reverse, and, or, any, all
+  , ord, prim_ord, chr, prim_chr, (+), (-)
   , (*), div, mod
   , negate, negateFloat, (=:=), success, (&), (&>), maybe
   , either, (>>=), return, (>>), done, putChar, prim_putChar, getChar, readFile
@@ -29,7 +30,8 @@ module TCPrelude
   , normalForm, groundNormalForm, apply, cond, (=:<=)
   ) where
     
-import qualified Prelude as P ((==), (<=), show)
+import qualified Prelude as P ((==), (<=), show, enumFrom, enumFromTo
+  , enumFromThen, enumFromThenTo)
 import Prelude hiding ((==), (/=), compare, (<), (<=), (>), (>=), min, max, show)
 
 -- -------------------------------------------------------------------------
@@ -362,3 +364,143 @@ reads = readsPrec minPrec
 minPrec = 0
 
 
+
+-- -------------------------------------------------------------------------
+-- Bounded and Enum classes and instances
+-- -------------------------------------------------------------------------
+
+class Bounded a where
+  minBound, maxBound :: a
+
+class Enum a where
+  succ :: a -> a
+  pred :: a -> a
+
+  toEnum   :: Int -> a
+  fromEnum :: a -> Int
+
+  enumFrom       :: a -> [a]
+  enumFromThen   :: a -> a -> [a]
+  enumFromTo     :: a -> a -> [a]
+  enumFromThenTo :: a -> a -> a -> [a]
+
+  succ = toEnum . (+ 1) . fromEnum
+  pred = toEnum . (\x -> x -1) . fromEnum
+  enumFrom x = map toEnum [fromEnum x ..]
+  enumFromThen x y = map toEnum [fromEnum x, fromEnum y ..]
+  enumFromTo x y = map toEnum [fromEnum x .. fromEnum y]
+  enumFromThenTo x1 x2 y = map toEnum [fromEnum x1, fromEnum x2 .. fromEnum y]
+
+instance Bounded () where
+  minBound = ()
+  maxBound = ()
+
+instance Enum () where
+  succ _      = error "TCPrelude.Enum.().succ: bad argument"
+  pred _      = error "TCPrelude.Enum.().pred: bad argument"
+
+  toEnum x | x == 0    = ()
+           | otherwise = error "TCPrelude.Enum.().toEnum: bad argument"
+
+  fromEnum () = 0
+  enumFrom ()         = [()]
+  enumFromThen () ()  = let many = ():many in many
+  enumFromTo () ()    = [()]
+  enumFromThenTo () () () = let many = ():many in many
+
+instance Bounded Bool where
+  minBound = False
+  maxBound = True
+
+instance Enum Bool where
+  succ False = True
+  succ True  = error "TCPrelude.Enum.Bool.succ: bad argument"
+
+  pred False = error "TCPrelude.Enum.Bool.pred: bad argument"
+  pred True  = False
+
+  toEnum n | n == 0 = False
+           | n == 1 = True
+           | otherwise = error "TCPrelude.Enum.Bool.toEnum: bad argument"
+
+  fromEnum False = 0
+  fromEnum True  = 1
+
+
+instance (Bounded a, Bounded b) => Bounded (a, b) where
+  minBound = (minBound, minBound)
+  maxBound = (maxBound, maxBound)
+
+instance (Bounded a, Bounded b, Bounded c) => Bounded (a, b, c) where
+  minBound = (minBound, minBound, minBound)
+  maxBound = (maxBound, maxBound, maxBound)
+
+instance (Bounded a, Bounded b, Bounded c, Bounded d) => Bounded (a, b, c, d) where
+  minBound = (minBound, minBound, minBound, minBound)
+  maxBound = (maxBound, maxBound, maxBound, maxBound)
+
+instance (Bounded a, Bounded b, Bounded c, Bounded d, Bounded e) => Bounded (a, b, c, d, e) where
+  minBound = (minBound, minBound, minBound, minBound, minBound)
+  maxBound = (maxBound, maxBound, maxBound, maxBound, maxBound)
+
+
+
+instance Bounded Ordering where
+  minBound = LT
+  maxBound = GT
+
+instance Enum Ordering where
+  succ LT = EQ
+  succ EQ = GT
+  succ GT = error "TCPrelude.Enum.Ordering.succ: bad argument"
+
+  pred LT = error "TCPrelude.Enum.Ordering.pred: bad argument"
+  pred EQ = LT
+  pred GT = EQ
+
+  toEnum n | n == 0 = LT
+           | n == 1 = EQ
+           | n == 2 = GT
+           | otherwise = error "TCPrelude.Enum.Ordering.toEnum: bad argument"
+
+  fromEnum LT = 0
+  fromEnum EQ = 1
+  fromEnum GT = 2
+
+-- TODO:
+-- instance Enum Char
+-- instance Bounded Char where
+
+-- TODO:
+-- instance Enum Float where
+
+-- TODO (?):
+-- instance Bounded Int where
+
+instance Enum Int where
+  -- TODO: is Int unbounded?
+  succ x = x + 1
+  pred x = x - 1
+
+  -- TODO: correct semantic?
+  toEnum n = n
+  fromEnum n = n
+
+  -- TODO: provide own implementations?
+  enumFrom = P.enumFrom
+  enumFromTo = P.enumFromTo
+  enumFromThen = P.enumFromThen
+  enumFromThenTo = P.enumFromThenTo
+
+{-
+boundedEnumFrom :: (Enum a, Bounded a) => a -> [a]
+boundedEnumFrom n = map toEnum [fromEnum n .. fromEnum (maxBound `asTypeOf` n)]
+
+boundedEnumFromThen :: (Enum a, Bounded a) => a -> a -> [a]
+boundedEnumFromThen n1 n2
+  | i_n2 >= i_n1  = map toEnum [i_n1, i_n2 .. fromEnum (maxBound `asTypeOf` n1)]
+  | otherwise     = map toEnum [i_n1, i_n2 .. fromEnum (minBound `asTypeOf` n1)]
+  where
+    i_n1 = fromEnum n1
+    i_n2 = fromEnum n2
+-}
