@@ -125,7 +125,8 @@ Test-Suite TestTypeChecking
     type:       detailed-0.9
     test-module: TestTypeChecking
     build-depends: base, pretty, directory, curry-base, filepath, containers, mtl, syb,
-      transformers, Cabal >= 1.9.2, curry-base == 0.3.7
+      -- Cabal 1.16.0 introduces a new test suite format
+      transformers, Cabal >= 1.9.2 && <= 1.14.0, curry-base == 0.3.7
     Other-Modules:
      Base.CurryTypes
      , Base.Expr
