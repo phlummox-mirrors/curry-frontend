@@ -1,10 +1,12 @@
 % $Id: TypeCheck.lhs,v 1.90 2004/11/06 18:34:07 wlux Exp $
 %
 % Copyright (c) 1999-2004, Wolfgang Lux
+%                    2013, Matthias Böhm
 % See LICENSE for the full license.
 %
 % Modified by Martin Engelke (men@informatik.uni-kiel.de)
 % Modified by Björn Peemöller (bjp@informatik.uni-kiel.de)
+% Modified by Matthias Böhm (mboe@informatik.uni-kiel.de)
 %
 \nwfilename{TypeCheck.lhs}
 \section{Type Checking Curry Programs}

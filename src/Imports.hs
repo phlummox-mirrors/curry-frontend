@@ -3,6 +3,7 @@
     Description :  Importing interface declarations
     Copyright   :  (c) 2000-2003, Wolfgang Lux
                        2011, Björn Peemöller (bjp@informatik.uni-kiel.de)
+                       2013, Matthias Böhm
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de

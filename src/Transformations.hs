@@ -2,6 +2,7 @@
     Module      :  $Header$
     Description :  Code transformations
     Copyright   :  (c) 2011, Björn Peemöller (bjp@informatik.uni-kiel.de)
+                       2013, Matthias Böhm
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de

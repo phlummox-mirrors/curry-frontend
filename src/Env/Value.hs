@@ -3,6 +3,7 @@
     Description :  Environment for functions, constructors and labels
     Copyright   :  (c) 2001 - 2004, Wolfgang Lux
                        2011       , Björn Peemöller
+                       2013       , Matthias Böhm
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de

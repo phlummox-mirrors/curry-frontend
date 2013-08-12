@@ -1,3 +1,18 @@
+> {- |
+>     Module      :  $Header$
+>     Description :  Converting between type expressions and types
+>     Copyright   :  (c) 2002 Wolfgang Lux
+>                    (c) 2013 Matthias Böhm
+>     License     :  OtherLicense
+> 
+>     Maintainer  :  bjp@informatik.uni-kiel.de
+>     Stability   :  experimental
+>     Portability :  portable
+> 
+>     This module contains functions for converting between type expressions 
+>     and types. 
+> -}
+
 \paragraph{Types}
 The functions \texttt{toType}, \texttt{toTypes}, and \texttt{fromType}
 convert Curry type expressions into types and vice versa. The

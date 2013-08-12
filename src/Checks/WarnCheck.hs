@@ -3,6 +3,7 @@
     Description :  Checks for irregular code
     Copyright   :  (c) 2006        Martin Engelke
                        2011 - 2012 Björn Peemöller
+                       2013        Matthias Böhm
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de

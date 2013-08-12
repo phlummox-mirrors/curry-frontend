@@ -1,6 +1,7 @@
 % $Id: Types.lhs,v 1.11 2004/02/08 22:14:02 wlux Exp $
 %
 % Copyright (c) 2002-2004, Wolfgang Lux
+%                    2013, Matthias Böhm
 % See LICENSE for the full license.
 %
 % Modified by Martin Engelke (men@informatik.uni-kiel.de)

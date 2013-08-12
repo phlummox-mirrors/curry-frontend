@@ -1,4 +1,5 @@
 % Copyright (c) 2002, Wolfgang Lux
+%           (c) 2013, Matthias Böhm
 % See LICENSE for the full license.
 %
 \nwfilename{Subst.lhs}

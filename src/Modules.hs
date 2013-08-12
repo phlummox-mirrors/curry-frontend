@@ -5,6 +5,7 @@
                        2005        Martin Engelke
                        2007        Sebastian Fischer
                        2011 - 2013 Björn Peemöller
+                       2013        Matthias Böhm
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de

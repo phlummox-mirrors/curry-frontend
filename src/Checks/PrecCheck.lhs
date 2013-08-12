@@ -1,6 +1,7 @@
 % $Id: PrecCheck.lhs,v 1.21 2004/02/15 22:10:34 wlux Exp $
 %
 % Copyright (c) 2001-2004, Wolfgang Lux
+%                    2013, Matthias Böhm
 % See LICENSE for the full license.
 %
 % Modified by Martin Engelke (men@informatik.uni-kiel.de)

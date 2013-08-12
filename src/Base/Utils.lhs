@@ -1,6 +1,7 @@
 % $Id: Utils.lhs,v 1.4 2003/10/04 17:04:38 wlux Exp $
 %
 % Copyright (c) 2001-2003, Wolfgang Lux
+%                    2013, Matthias Böhm
 % See LICENSE for the full license.
 %
 \nwfilename{Utils.lhs}

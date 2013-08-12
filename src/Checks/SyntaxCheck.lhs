@@ -1,10 +1,12 @@
 % $Id: SyntaxCheck.lhs,v 1.53 2004/02/15 22:10:37 wlux Exp $
 %
 % Copyright (c) 1999-2004, Wolfgang Lux
+%                    2013, Matthias Böhm
 % See LICENSE for the full license.
 %
 % Modified by Martin Engelke (men@informatik.uni-kiel.de)
 % Modified by Björn Peemöller (bjp@informatik.uni-kiel.de)
+% Modified by Matthias Böhm (mboe@informatik.uni-kiel.de)
 %
 \nwfilename{SyntaxCheck.lhs}
 \section{Syntax Checks}

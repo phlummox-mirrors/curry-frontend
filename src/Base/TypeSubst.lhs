@@ -2,6 +2,7 @@
 % $Id: TypeSubst.lhs,v 1.2 2004/02/08 22:14:01 wlux Exp $
 %
 % Copyright (c) 2003, Wolfgang Lux
+%               2013, Matthias Böhm
 % See LICENSE for the full license.
 %
 \nwfilename{TypeSubst.lhs}

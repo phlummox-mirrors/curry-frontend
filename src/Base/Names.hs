@@ -1,7 +1,7 @@
 {- |
     Module      :  $Header$
     Description :  Provides internal names used in transformations 
-    Copyright   :  2013 Matthias Böhm
+    Copyright   :  (c) 2013 Matthias Böhm
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de

@@ -1,3 +1,17 @@
+{- |
+    Module      :  $Header$
+    Description :  Checks the validity of the export specification
+    Copyright   :  (c) 2013 Matthias Böhm
+    License     :  OtherLicense
+
+    Maintainer  :  bjp@informatik.uni-kiel.de
+    Stability   :  experimental
+    Portability :  portable
+
+    The validity of the export specification is checked, and all 
+    occuring exports are brought into a canonical form for the actual export
+-}
+
 module Checks.ExportCheck (exportCheck) where
 
 import Control.Monad (liftM, unless)

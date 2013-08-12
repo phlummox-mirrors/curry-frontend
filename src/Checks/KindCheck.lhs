@@ -1,6 +1,7 @@
 % $Id: KindCheck.lhs,v 1.33 2004/02/13 19:24:04 wlux Exp $
 %
 % Copyright (c) 1999-2004, Wolfgang Lux
+%                    2013, Matthias Böhm
 % See LICENSE for the full license.
 %
 % Modified by Martin Engelke (men@informatik.uni-kiel.de)

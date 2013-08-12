@@ -2,6 +2,7 @@
 % $Id: IntfCheck.lhs 2148 2007-04-02 13:56:20Z wlux $
 %
 % Copyright (c) 2000-2007, Wolfgang Lux
+%                    2013, Matthias Böhm
 % See LICENSE for the full license.
 %
 \nwfilename{IntfCheck.lhs}

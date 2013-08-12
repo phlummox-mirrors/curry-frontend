@@ -4,6 +4,7 @@
     Copyright   :  (c) 2001 - 2004 Wolfgang Lux
                        2005        Martin Engelke
                        2011 - 2012 Björn Peemöller
+                       2013        Matthias Böhm
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de

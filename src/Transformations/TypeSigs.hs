@@ -1,7 +1,7 @@
 {- |
     Module      :  $Header$
     Description :  Transformation of explicit type signatures
-    Copyright   :  2013 Matthias Böhm
+    Copyright   :  (c) 2013 Matthias Böhm
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
