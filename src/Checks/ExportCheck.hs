@@ -142,13 +142,15 @@ expandThing' f tcExport = do
   tyEnv <- getValueEnv
   case qualLookupValue f tyEnv of
     []             -> justTcOr errUndefinedEntity
-    [Value f' _ _ _] -> return $ Export f' : fromMaybe [] tcExport
+    [Value f' _ _ Nothing] -> return $ Export f' : fromMaybe [] tcExport
+    [Value _ _ _ (Just _)] -> justTcOr errExportClassMethod
     [_]            -> justTcOr errExportDataConstr
     _              -> do
       m <- getModuleIdent
       case qualLookupValue (qualQualify m f) tyEnv of
         []             -> justTcOr errUndefinedEntity
-        [Value f' _ _ _] -> return $ Export f' : fromMaybe [] tcExport
+        [Value f' _ _ Nothing] -> return $ Export f' : fromMaybe [] tcExport
+        [Value _ _ _ (Just _)] -> justTcOr errExportClassMethod
         [_]            -> justTcOr errExportDataConstr
         _              -> report (errAmbiguousName f) >> return []
   where justTcOr errFun = case tcExport of
@@ -341,6 +343,10 @@ errAmbiguousName x = posMessage x $ hsep $ map text
 errExportDataConstr :: QualIdent -> Message
 errExportDataConstr c = posMessage c $ hsep $ map text
   ["Data constructor", qualName c, "in export list"]
+
+errExportClassMethod :: QualIdent -> Message
+errExportClassMethod c = posMessage c $ hsep $ map text
+  ["Class method", qualName c, "in export list"]
 
 errNonDataType :: QualIdent -> Message
 errNonDataType tc = posMessage tc $ hsep $ map text
