@@ -106,7 +106,7 @@ instance Eq Ordering where
   GT == GT = True
 
 instance Eq Success where
-  Success == Success = True
+  _ == _ = True
 
 instance (Eq a, Eq b) => Eq (Either a b) where
   Left x  == Left y  = x == y
@@ -175,7 +175,7 @@ instance Ord Float where
   f1 <= f2 = f1 P.<= f2
 
 instance Ord Success where
-  Success <= Success = True
+  _ <= _ = True
 
 -- TODO: use deriving instead
 instance Ord Ordering where
@@ -339,7 +339,7 @@ appPrec = 10
 appPrec1 = 11
 
 instance Show Success where
-  showsPrec _ Success = showString "Success"
+  showsPrec _ _ = showString "Success"
 
 -- -------------------------------------------------------------------------
 -- Read class and related instances and functions
