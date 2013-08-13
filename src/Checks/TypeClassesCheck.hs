@@ -884,6 +884,8 @@ supportedDerivingClasses =
   , ordClsIdent
   -- , showClsIdent -- not yet
   -- , readClsIdent -- not yet
+  -- , boundedClsIdent -- not yet
+  -- , enumClsIdent -- not yet
   ]
 
 -- ---------------------------------------------------------------------------
@@ -1537,11 +1539,38 @@ eqClsIdentName = "Eq"
 ordClsIdentName :: String
 ordClsIdentName = "Ord"
 
+showClsIdentName :: String
+showClsIdentName = "Show"
+
+readClsIdentName :: String
+readClsIdentName = "Read"
+
+boundedClsIdentName :: String
+boundedClsIdentName = "Bounded"
+
+enumClsIdentName :: String
+enumClsIdentName = "Enum"
+
+mkTCPQIdent :: String -> QualIdent
+mkTCPQIdent = qualifyWith tcPreludeMIdent . mkIdent
+
 eqClsIdent :: QualIdent
-eqClsIdent = qualifyWith tcPreludeMIdent (mkIdent eqClsIdentName) 
+eqClsIdent = mkTCPQIdent eqClsIdentName 
 
 ordClsIdent :: QualIdent
-ordClsIdent = qualifyWith tcPreludeMIdent (mkIdent ordClsIdentName)
+ordClsIdent = mkTCPQIdent ordClsIdentName
+
+showClsIdent :: QualIdent
+showClsIdent = mkTCPQIdent showClsIdentName
+
+readClsIdent :: QualIdent
+readClsIdent = mkTCPQIdent readClsIdentName
+
+boundedClsIdent :: QualIdent
+boundedClsIdent = mkTCPQIdent boundedClsIdentName
+
+enumClsIdent :: QualIdent
+enumClsIdent = mkTCPQIdent enumClsIdentName
 
 eqOp :: Ident
 eqOp = mkIdent "=="
