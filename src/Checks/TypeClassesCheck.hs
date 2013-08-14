@@ -861,10 +861,22 @@ checkEmptyDataTypeAndDeriving _ = internalError "checkEmptyDataTypeAndDeriving"
 checkClassesInDeriving :: ModuleIdent -> ClassEnv -> Decl -> Tcc ()
 checkClassesInDeriving _m _cEnv (DataDecl    _ _ _ _ Nothing) = ok
 checkClassesInDeriving _m _cEnv (NewtypeDecl _ _ _ _ Nothing) = ok
-checkClassesInDeriving m cEnv (DataDecl    p ty _ _ (Just (Deriving clss))) = do
+checkClassesInDeriving m cEnv (DataDecl p ty _ cs (Just (Deriving clss))) = do
   mapM_ (checkClassOk m cEnv p) clss
   mapM_ (checkSupported m cEnv p ty) clss
+  when (containsClass boundedClsIdentName) $ do
+    let isEnum            = checkIsEnum cs
+        hasOneConstructor = length cs == 1
+    unless (isEnum || hasOneConstructor) $ report $ 
+      errBoundedDeriving p ty
+  when (containsClass enumClsIdentName) $ unless (checkIsEnum cs) $ report $
+      errEnumDeriving p ty
+  where 
+  containsClass :: String -> Bool
+  containsClass name = any (\cls -> idName (unqualify cls) == name) clss
 checkClassesInDeriving m cEnv (NewtypeDecl p ty _ _ (Just (Deriving clss))) = do
+  -- TODO: newtype is not supported. Implementation should be the same 
+  -- as above.  
   mapM_ (checkClassOk m cEnv p) clss
   mapM_ (checkSupported m cEnv p ty) clss
 checkClassesInDeriving _ _ _ = internalError "checkClassesInDeriving"
@@ -876,6 +888,13 @@ checkSupported m cEnv p ty cls =
     Nothing -> ok -- error message for this case already issued
     Just c -> unless (theClass c `elem` supportedDerivingClasses) $
       report $ errNotSupportedDerivingClass p ty cls 
+
+-- |checks that all data constructors are nullary
+checkIsEnum :: [ConstrDecl] -> Bool
+checkIsEnum = all nullary
+  where
+  nullary (ConOpDecl _ _ _ _ _) = False
+  nullary (ConstrDecl _ _ _ tys) = null tys
 
 -- |the classes for which deriving is supported
 supportedDerivingClasses :: [QualIdent]
@@ -1927,3 +1946,13 @@ errEmptyDataTypeDeriving :: Position -> Ident -> Message
 errEmptyDataTypeDeriving p ty = posMessage p $ 
   text "Cannot derive an instance for an empty data type (here" <+> text (show ty)
   <> text ")"
+  
+errBoundedDeriving :: Position -> Ident -> Message
+errBoundedDeriving p ty = posMessage p $
+  text "Cannot derive Bounded instance for type" <+> text (show ty) <> 
+  text ": Data type must be enumeration or have only one constructor"
+  
+errEnumDeriving :: Position -> Ident -> Message
+errEnumDeriving p ty = posMessage p $
+  text "Cannot derive Enum instance for type" <+> text (show ty) <>
+  text ": Data type must be enumeration"
