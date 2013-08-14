@@ -22,10 +22,11 @@ import Curry.Syntax
 import Curry.Base.Position
 import Env.ClassEnv
 import Env.Value
-import Base.Names (mkSelFunName, mkDictName)
+import Base.Names (mkSelFunName, mkDictName, dummyMIdent)
 import Base.Messages
 import Base.Utils
 import Base.Types as BT
+import Base.Idents (flipIdent)
 
 import Text.PrettyPrint hiding (sep)
 import Data.Maybe
@@ -301,10 +302,8 @@ tySchemeFlip :: ConstrType
 tySchemeFlip = ([], TypeVariable 0)
 
 prelFlip :: Expression
-prelFlip = Variable (Just $ mirrorFBCT tySchemeFlip) $ preludeIdent "flip"
-
-preludeIdent :: String -> QualIdent
-preludeIdent = qualifyWith preludeMIdent . mkIdent
+prelFlip = Variable (Just $ mirrorFBCT tySchemeFlip) $ 
+  qualifyWith dummyMIdent flipIdent
 
 -- ---------------------------------------------------------------------------
 -- error messages
