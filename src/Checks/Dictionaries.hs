@@ -161,7 +161,7 @@ diExpr cx0 v@(Variable (Just varCty0) qid) = do
       [Value _ _ _ cls'] -> cls'
       _ -> case qualLookupValue (qualQualify m qid) vEnv of
         [Value _ _ _ cls'] -> cls'
-        _ -> internalError "no function/method in Dictionaries" 
+        _ -> internalError ("no function/method in Dictionaries: " ++ show qid) 
     cls = fromJust $ maybeCls
     -- if we have a class function, transform this into the appropriate selector
     -- function
