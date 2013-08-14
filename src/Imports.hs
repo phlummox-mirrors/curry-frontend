@@ -34,6 +34,8 @@ import Base.TopEnv
 import Base.Types as BT hiding (isCons)
 import Base.TypeSubst (expandAliasType)
 import Base.Utils (fromJust') 
+import Base.Idents
+import Base.Names
 
 import Env.Interface
 import Env.ModuleAlias (importAliases, initAliasEnv)
@@ -51,7 +53,7 @@ import CompilerOpts
 -- imported interfaces into scope for the current module.
 importModules :: Bool -> Options -> Module -> InterfaceEnv -> (CompilerEnv, [Message])
 importModules tcs opts (Module mid _ imps _) iEnv
-  = (\ (e, m) -> (expandTCValueEnv opts $ importUnifyData e, m))
+  = (\ (e, m) -> (expandTCValueEnv opts $ importUnifyData $ insertDummyIdents' e, m))
   $ foldl importModule (initEnv, []) imps
   where
     initEnv = (initCompilerEnv mid)
@@ -943,3 +945,67 @@ expandRecords _ ty = ty
 --   isImported r (Import         r'  ) = r == r'
 --   isImported r (ImportTypeWith r' _) = r == r'
 --   isImported r (ImportTypeAll  r'  ) = r == r'
+
+-- ---------------------------------------------------------------------------
+-- Dummy identifiers for source code transformations
+-- ---------------------------------------------------------------------------
+
+-- When we want to do source code transformations *before* the qualification 
+-- transformation, and we have to insert functions from the Prelude/TCPrelude,
+-- we have to consider that these functions are still in some stages expanded, 
+-- for example in the type checker. 
+-- All Prelude/TCPrelude functions that are used in these source code 
+-- transformations are qualified with a dummy module, and these functions
+-- are imported as if they are contained in this dummy module. 
+-- We have to use a dummy module, and not an existing module name, because
+-- else we could do an erroneous expansion. Consider for example the following
+-- import specifications:
+-- 
+-- import TCPrelude as P (Eq)
+-- import Prelude ()
+-- import C as Prelude
+-- 
+-- Now if we add in a source code transformation "Prelude.&&", and in module
+-- C is also an operator "&&" defined, we would after the expansion 
+-- of "Prelude.&&" get "C.&&", but that's not the operator we want. 
+-- This problem is solved by using a dummy module identifier that contains
+-- characters not allowed in a module identifier from the source code, so that
+-- it differs from all possible module identifiers. 
+
+-- |Adds the dummy identifiers to the class environment 
+insertDummyIdents' :: CompilerEnv -> CompilerEnv
+insertDummyIdents' env@(CompilerEnv { valueEnv = v} ) = 
+  env { valueEnv = insertDummyIdents v }   
+
+-- |This function adds the needed dummy identifiers to the value environment
+insertDummyIdents :: ValueEnv -> ValueEnv
+insertDummyIdents vEnv = 
+  foldr (\(v, m, v') env -> qualImportTopEnv' m
+                        (qualifyWith dummyMIdent v) v' env) vEnv 
+  [ (andOp, preludeMIdent, Value (qualifyWith preludeMIdent andOp) 2 
+      boolOpTypeScheme Nothing)
+  , (orOp,  preludeMIdent, Value (qualifyWith preludeMIdent orOp) 2
+      boolOpTypeScheme Nothing)
+  , (trueCons', preludeMIdent, 
+      DataConstructor (qualifyWith preludeMIdent trueCons') 0 boolConstrTypeScheme)
+  , (falseCons', preludeMIdent, 
+      DataConstructor (qualifyWith preludeMIdent falseCons') 0 boolConstrTypeScheme)
+  , (eqOp, tcPreludeMIdent, Value (qualifyWith tcPreludeMIdent eqOp) 2
+       (cmpOpTypeScheme eqClsIdent) (Just eqClsIdent))
+  , (leqOp, tcPreludeMIdent, Value (qualifyWith tcPreludeMIdent leqOp) 2
+       (cmpOpTypeScheme ordClsIdent) (Just ordClsIdent))
+  , (lessOp, tcPreludeMIdent, Value (qualifyWith tcPreludeMIdent lessOp) 2
+       (cmpOpTypeScheme ordClsIdent) (Just ordClsIdent))
+  ]
+                 
+  where
+  trueCons' = unqualify trueCons
+  falseCons' = unqualify falseCons
+  preludeBool = TypeConstructor (qualifyWith preludeMIdent $ mkIdent "Bool") []
+  boolOpTypeScheme = 
+    (ForAll [] 0 (TypeArrow preludeBool (TypeArrow preludeBool preludeBool)))
+  boolConstrTypeScheme = ForAllExist [] 0 0 preludeBool
+  cmpOpTypeScheme cls = 
+    ForAll [(cls, TypeVariable 0)] 1 
+      (TypeArrow (TypeVariable 0) (TypeArrow (TypeVariable 0) preludeBool))
+      
