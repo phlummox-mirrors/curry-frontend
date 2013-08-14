@@ -41,6 +41,7 @@ Executable cymake
   Other-Modules:
     Base.CurryTypes
     , Base.Expr
+    , Base.Idents
     , Base.Messages
     , Base.Names
     , Base.NestEnv
@@ -130,6 +131,7 @@ Test-Suite TestTypeChecking
     Other-Modules:
      Base.CurryTypes
      , Base.Expr
+     , Base.Idents
      , Base.Messages
      , Base.Names
      , Base.NestEnv
