@@ -47,6 +47,7 @@ import Base.Utils (findMultiples, fst3, zipWith', fromJust')
 import Base.Names
 import Base.TopEnv
 import qualified Data.Map as Map  
+import Base.Idents
 
 import Checks.TypeCheck
 
@@ -1489,7 +1490,7 @@ createEqInstance d cls = createEqOrOrdInstance d eqOp cls genEqRhs deriveEqPrefi
 -- |generates the right hand sides used in the derived Eq instance  
 genEqRhs :: Position -> (Ident, Int) -> (Ident, Int) -> Int -> Int -> [Ident] -> [Ident] -> Rhs
 genEqRhs p (c, _) (c', _) n _n' newVars newVars' = 
-  SimpleRhs p (if c == c' then compareExpr else Constructor $ qualify falseCons) []
+  SimpleRhs p (if c == c' then compareExpr else Constructor falseCons) []
   where
   -- |creates the comparison expression for the parameters of the constructors
   -- (or @True@ if none present)
@@ -1497,7 +1498,7 @@ genEqRhs p (c, _) (c', _) n _n' newVars newVars' =
   compareExpr = 
     let vars0 = zipWith' (,) newVars newVars' 
         (firstVar, firstVar') = head vars0 in
-    if n == 0 then Constructor $ qualify trueCons
+    if n == 0 then Constructor trueCons
     else foldl (\el (v, v') -> InfixApply el infixAndOp 
                  (InfixApply (qVar v) infixEqOp (qVar v'))) 
                (InfixApply (qVar firstVar) infixEqOp (qVar firstVar'))
@@ -1526,12 +1527,12 @@ genOrdRhs :: Position -> (Ident, Int) -> (Ident, Int) -> Int -> Int -> [Ident] -
 genOrdRhs p (_c, i0) (_c', i0') n _n' newVars newVars' = 
   SimpleRhs p 
     (if i0 < i0' 
-     then Constructor $ qualify trueCons
+     then Constructor trueCons
      else if i0 > i0'
-     then Constructor $ qualify falseCons
+     then Constructor falseCons
      else 
      
-       if n == 0 then Constructor $ qualify trueCons
+       if n == 0 then Constructor trueCons
        else foldl1 (\e e' -> InfixApply e infixOrOp e') (map (createForN n) [1..n])
     ) []
   where 
@@ -1552,82 +1553,6 @@ genOrdRhs p (_c, i0) (_c', i0') n _n' newVars newVars' =
 
 -- ---------------------------------------------------------------------------
 
-eqClsIdentName :: String
-eqClsIdentName = "Eq"
-
-ordClsIdentName :: String
-ordClsIdentName = "Ord"
-
-showClsIdentName :: String
-showClsIdentName = "Show"
-
-readClsIdentName :: String
-readClsIdentName = "Read"
-
-boundedClsIdentName :: String
-boundedClsIdentName = "Bounded"
-
-enumClsIdentName :: String
-enumClsIdentName = "Enum"
-
-mkTCPQIdent :: String -> QualIdent
-mkTCPQIdent = qualifyWith tcPreludeMIdent . mkIdent
-
-eqClsIdent :: QualIdent
-eqClsIdent = mkTCPQIdent eqClsIdentName 
-
-ordClsIdent :: QualIdent
-ordClsIdent = mkTCPQIdent ordClsIdentName
-
-showClsIdent :: QualIdent
-showClsIdent = mkTCPQIdent showClsIdentName
-
-readClsIdent :: QualIdent
-readClsIdent = mkTCPQIdent readClsIdentName
-
-boundedClsIdent :: QualIdent
-boundedClsIdent = mkTCPQIdent boundedClsIdentName
-
-enumClsIdent :: QualIdent
-enumClsIdent = mkTCPQIdent enumClsIdentName
-
-eqOp :: Ident
-eqOp = mkIdent "=="
-
-leqOp :: Ident
-leqOp = mkIdent "<="
-
-lessOp :: Ident
-lessOp = mkIdent "<"
-
-andOp :: Ident
-andOp = mkIdent "&&"
-
-orOp :: Ident
-orOp = mkIdent "||"
-
-infixEqOp :: InfixOp
-infixEqOp = InfixOp Nothing $ qualify $ eqOp
-
-infixLeqOp :: InfixOp
-infixLeqOp = InfixOp Nothing $ qualify $ leqOp
-
-infixLessOp :: InfixOp
-infixLessOp = InfixOp Nothing $ qualify $ lessOp
-
-infixAndOp :: InfixOp
-infixAndOp = InfixOp Nothing $ qualify $ andOp
-
-infixOrOp :: InfixOp
-infixOrOp = InfixOp Nothing $ qualify $ orOp
-
--- **** TODO **** proper qualification (Prelude!)
-trueCons :: Ident
-trueCons = mkIdent "True"
-
--- **** TODO **** proper qualification (Prelude!)
-falseCons :: Ident
-falseCons = mkIdent "False"
 
 deriveEqPrefix :: String
 deriveEqPrefix = identPrefix ++ "drvEq" ++ sep
