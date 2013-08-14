@@ -991,11 +991,11 @@ insertDummyIdents vEnv =
   , (falseCons', preludeMIdent, 
       DataConstructor (qualifyWith preludeMIdent falseCons') 0 boolConstrTypeScheme)
   , (eqOp, tcPreludeMIdent, Value (qualifyWith tcPreludeMIdent eqOp) 2
-       (cmpOpTypeScheme eqClsIdent) (Just eqClsIdent))
+      (cmpOpTypeScheme eqClsIdent) (Just eqClsIdent))
   , (leqOp, tcPreludeMIdent, Value (qualifyWith tcPreludeMIdent leqOp) 2
-       (cmpOpTypeScheme ordClsIdent) (Just ordClsIdent))
+      (cmpOpTypeScheme ordClsIdent) (Just ordClsIdent))
   , (lessOp, tcPreludeMIdent, Value (qualifyWith tcPreludeMIdent lessOp) 2
-       (cmpOpTypeScheme ordClsIdent) (Just ordClsIdent))
+      (cmpOpTypeScheme ordClsIdent) (Just ordClsIdent))
   ]
                  
   where
