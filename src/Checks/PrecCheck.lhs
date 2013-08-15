@@ -112,6 +112,9 @@ imported precedence environment.
 > boundValues (ExternalDecl      _ fs) = fs
 > boundValues (PatternDecl  _ _ _ t _) = bv t
 > boundValues (FreeDecl          _ vs) = vs
+> boundValues (ClassDecl   _ _ _ _ ds) = concatMap tysig ds
+>   where tysig (TypeSig _ _ ids _ _) = ids
+>         tysig _                     = [] 
 > boundValues _                        = []
 
 \end{verbatim}
