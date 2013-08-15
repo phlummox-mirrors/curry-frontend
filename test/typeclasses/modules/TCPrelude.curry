@@ -37,6 +37,9 @@ import qualified Prelude as P ((==), (<=), show, enumFrom, enumFromTo
   , enumFromThen, enumFromThenTo)
 import Prelude hiding ((==), (/=), compare, (<), (<=), (>), (>=), min, max, show)
 
+infix 4 ==, /=, <, >, <=, >=
+infix 4 `elem`, `notElem`
+
 -- -------------------------------------------------------------------------
 -- Eq class and related instances and functions
 -- -------------------------------------------------------------------------

@@ -43,8 +43,8 @@ test29 = W (T1 True) (S1 False 2 True) (U False False) == W (T1 True) (S1 False 
 test30 = W (T1 True) (S1 False 2 True) (U False False) /= W (T1 True) (S1 False 1 True) (U False False)
 test30b = W (T2 3) (S1 False 2 True) (U False False)   /= W (T1 True) (S1 False 2 True) (U False False)
 
-test31 = (True :=: 3) == (True :=: 3)
-test32 = (True :=: 4) /= (True :=: 3)
+test31 = True :=: 3 == True :=: 3
+test32 = True :=: 4 /= True :=: 3
 
 test33 = Y1 True 1 == Y1 True 1
 test34 = Y1 True 1 /= Y2 False
