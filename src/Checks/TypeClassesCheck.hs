@@ -905,7 +905,7 @@ supportedDerivingClasses =
   -- , showClsIdent -- not yet
   -- , readClsIdent -- not yet
   -- , boundedClsIdent -- not yet
-  -- , enumClsIdent -- not yet
+  , enumClsIdent
   ]
 
 -- ---------------------------------------------------------------------------
@@ -1421,6 +1421,8 @@ createInstance d cls =
   then [createEqInstance d cls]
   else if unqualify cls == unqualify ordClsIdent
   then [createOrdInstance d cls]
+  else if unqualify cls == unqualify enumClsIdent 
+  then [createEnumInstance d cls]
   else []
   -- TODO: add further instances here
 
@@ -1551,8 +1553,69 @@ genOrdRhs p (_c, i0) (_c', i0') n _n' newVars newVars' =
       v' = Variable Nothing $ qualify $ newVars' !! (k-1)
      
 
+-- | Creates an Enum instance for the given data type. 
+-- The following scheme is followed:
+-- The data constructors are numbered in the order they appear in the
+-- data type definition, beginning with zero. 
+-- Example: 
+-- @deriving T = T1 | T2 | T3@
+-- Created instance:
+-- @
+-- instance Enum T where
+--   fromEnum T1 = 0
+--   fromEnum T2 = 1
+--   fromEnum T3 = 2
+-- 
+--   toEnum n | n == 0 = T1
+--            | n == 1 = T2
+--            | n == 2 = T3
+--            | otherwise = error "TCPrelude.Enum.T: bad argument" 
+-- @
+createEnumInstance :: Decl -> QualIdent -> Decl
+createEnumInstance (DataDecl p ty _ cs _) cls = 
+
+  InstanceDecl p (SContext []) cls tycon [] 
+    [ FunctionDecl p Nothing (-1) toEnum' toEnumEqs
+    , FunctionDecl p Nothing (-1) fromEnum' fromEnumEqs
+    -- TODO: succ, pred, maybe also enumFrom{Then}{To}
+    ] 
+    
+  where
+  tycon = QualTC $ qualify ty
+  toEnum' = mkIdent "toEnum"
+  fromEnum' = mkIdent "fromEnum"
+  -- number the data constructors
+  cs' = zip [0..] (map (\(ConstrDecl _ _ c []) -> qualify c) cs) 
+  
+  -- fromEnum equations
+  fromEnumEqs = map (\(n, c) -> 
+    Equation p (FunLhs fromEnum' [ConstructorPattern c []]) 
+               (SimpleRhs p (Literal $ mkInt'' n) [])) cs'
+  
+  -- toEnum equations
+  toEnumEqs = [Equation p (FunLhs toEnum' [VariablePattern nIdent])
+    (GuardedRhs (toEnumConds ++ [toEnumOtherwiseCond]) [])]
+  toEnumConds = map (\(n, c) -> 
+    CondExpr p 
+      (InfixApply (Variable Nothing $ qualify nIdent)
+                  infixEqOp
+                  (Literal $ mkInt'' n))
+      (Constructor c)
+    ) cs'
+  toEnumOtherwiseCond = CondExpr p (Variable Nothing otherwiseQIdent) 
+    (Apply (Variable Nothing errorQIdent) 
+           (Literal $ String (srcRef 0) toEnumErrString))
+  toEnumErrString = "TCPrelude.Enum." ++ show ty ++ ".toEnum: bad argument"
+  nIdent = renameIdent (mkIdent "n") 1 
+  
+  mkInt'' = mkInt' enumClsIdentName (show ty) 
+createEnumInstance _ _ = internalError "createEnumInstance"  
+
 -- ---------------------------------------------------------------------------
 
+-- |we have to provide unique identifiers for integers (yes!)
+mkInt' :: String -> String -> Integer -> Literal
+mkInt' cls ty n = Int (flip renameIdent 1 $ mkIdent $ cls ++ sep ++ ty ++ sep ++ show n) n  
 
 deriveEqPrefix :: String
 deriveEqPrefix = identPrefix ++ "drvEq" ++ sep
