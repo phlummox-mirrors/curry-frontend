@@ -1002,6 +1002,8 @@ insertDummyIdents vEnv =
         (TypeArrow (tyvar 0) (TypeArrow (tyvar 1) (tyvar 2)))
         (TypeArrow (tyvar 1) (TypeArrow (tyvar 0) (tyvar 2))))) 
       Nothing)
+  , (otherwiseIdent, preludeMIdent, Value (qualifyWith preludeMIdent otherwiseIdent)
+      0 (ForAll [] 0 preludeBool) Nothing)
   , (errorIdent, preludeMIdent, Value (qualifyWith preludeMIdent errorIdent) 1
       (ForAll [] 1 (TypeArrow preludeString (tyvar 0))) Nothing)
   ]
