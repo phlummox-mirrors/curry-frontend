@@ -1002,12 +1002,16 @@ insertDummyIdents vEnv =
         (TypeArrow (tyvar 0) (TypeArrow (tyvar 1) (tyvar 2)))
         (TypeArrow (tyvar 1) (TypeArrow (tyvar 0) (tyvar 2))))) 
       Nothing)
+  , (errorIdent, preludeMIdent, Value (qualifyWith preludeMIdent errorIdent) 1
+      (ForAll [] 1 (TypeArrow preludeString (tyvar 0))) Nothing)
   ]
                  
   where
   trueCons' = unqualify trueCons
   falseCons' = unqualify falseCons
   preludeBool = TypeConstructor (qualifyWith preludeMIdent $ mkIdent "Bool") []
+  preludeChar = TypeConstructor (qualifyWith preludeMIdent $ mkIdent "Char") []
+  preludeString = TypeConstructor qListIdP [preludeChar]
   boolOpTypeScheme = 
     (ForAll [] 0 (TypeArrow preludeBool (TypeArrow preludeBool preludeBool)))
   boolConstrTypeScheme = ForAllExist [] 0 0 preludeBool

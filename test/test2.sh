@@ -164,7 +164,8 @@ for file in TestClassExports TestClassExports2 TestClassExportsImports \
   BugClassMethodsAndTopLevelFuns1 BugClassMethodsAndTopLevelFuns2 \
   ClassShadowing1 ClassShadowing2 ClassShadowing3 RedefineClassesBug2Err \
   Deriving3 Deriving4 DictsBug DictsBug2 \
-  ClassMethodFixities ClassMethodFixities2 ClassMethodFixities3 ClassMethodFixities4
+  ClassMethodFixities ClassMethodFixities2 ClassMethodFixities3 ClassMethodFixities4 \
+  InstanceErrorBug
 do
   echo $file >> tmp.txt
   if [ ! -r typeclasses/modules/$file.curry ]; then echo "*********** file doesn't exist: $file"; fi

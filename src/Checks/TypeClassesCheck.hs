@@ -1304,7 +1304,7 @@ handleMissingFunc m cEnv (InstanceDecl _ _ cls _tcon _ _) ity fun0 =
   cls' = getCanonClassName m cEnv cls
   globalName = mkIdent $ instMethodName cls' ity (show fun0)
   equ1 = equation (FunLhs globalName []) 
-    (simpleRhs (Apply (qVar . mkIdent $ "error") 
+    (simpleRhs (Apply (Variable Nothing errorQIdent)
                       (Literal $ String (srcRef 0) errorString)))
   errorString = show fun0 ++ " not given in instance declaration of class "
     ++ show cls' ++ " and type " ++ show ity
