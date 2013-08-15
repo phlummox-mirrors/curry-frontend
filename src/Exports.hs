@@ -397,8 +397,8 @@ calculateDependencies cEnv insts classes =
 
 -- |converts a class into a IClassDecl
 classToClassDecl :: ModuleIdent -> ClassEnv -> Bool -> [Ident] -> Class -> IDecl
-classToClassDecl m cEnv hidden fs c =
-  IClassDecl NoPos hidden
+classToClassDecl m cEnv hidden' fs c =
+  IClassDecl NoPos hidden'
        (map (qualUnqualify m) $ superClasses c)
        (qualUnqualify m cName) 
        (CE.typeVar c) 
