@@ -904,7 +904,7 @@ supportedDerivingClasses =
   , ordClsIdent
   -- , showClsIdent -- not yet
   -- , readClsIdent -- not yet
-  -- , boundedClsIdent -- not yet
+  , boundedClsIdent
   , enumClsIdent
   ]
 
@@ -1414,14 +1414,21 @@ getDeriving _ = internalError "getDeriving"
 
 -- |creates an instance for the given data declaration and the given class
 createInstance :: Decl -> QualIdent -> [Decl]
-createInstance d cls 
+createInstance d@(DataDecl _ _ _ cs _) cls
   -- consider only the *name* of the class, not the module identifier. If 
   -- this is wrong, it will be detected later
   | unqualify cls == unqualify eqClsIdent   = [createEqInstance   d cls]
   | unqualify cls == unqualify ordClsIdent  = [createOrdInstance  d cls]
   | unqualify cls == unqualify enumClsIdent = [createEnumInstance d cls] 
+  | unqualify cls == unqualify boundedClsIdent = 
+      if checkIsEnum cs
+      then [createBoundedInstanceForEnum d cls]
+      else if length cs == 1
+      then [createBoundedInstanceForOneConstructor d cls]
+      else internalError "createInstance"
   | otherwise = []
   -- TODO: add further instances here
+createInstance _ _ = internalError "createInstance"
 
 -- |creates an Eq or an Ord instance for the given data declaration
 createEqOrOrdInstance :: Decl      -- ^ the data/newtype declaration 
@@ -1644,6 +1651,35 @@ createEnumInstance (DataDecl p ty _ cs _) cls =
            (Literal $ String (srcRef 0) s))
   errorMsg s = "TCPrelude.Enum." ++ show ty ++ "." ++ s ++ ": bad argument"
 createEnumInstance _ _ = internalError "createEnumInstance"  
+
+-- |Creates a bounded instance for an enumeration. Example: 
+-- @
+-- data T = T1 | T2 | T3
+--   deriving Bounded
+-- @
+-- gets:
+-- @
+-- instance Bounded T where
+--   minBound = T1
+--   maxBound = T3
+-- @
+createBoundedInstanceForEnum :: Decl -> QualIdent -> Decl
+createBoundedInstanceForEnum (DataDecl p ty _ cs _) cls =
+  InstanceDecl p (SContext []) cls tycon []
+    [ FunctionDecl p Nothing (-1) minBound' [minBoundEq]
+    , FunctionDecl p Nothing (-1) maxBound' [maxBoundEq]]
+  where
+  tycon = QualTC $ qualify ty
+  minBound' = mkIdent "minBound"
+  maxBound' = mkIdent "maxBound"
+  cs' = map (\(ConstrDecl _ _ c _) -> c) cs
+  minBoundEq = Equation p (FunLhs minBound' []) 
+    (SimpleRhs p (Constructor $ qualify $ head cs') [])
+  maxBoundEq = Equation p (FunLhs maxBound' [])
+    (SimpleRhs p (Constructor $ qualify $ last cs') [])
+createBoundedInstanceForEnum _ _ = internalError "createBoundedInstanceForEnum"
+
+createBoundedInstanceForOneConstructor _ _ = undefined
 
 -- ---------------------------------------------------------------------------
 
