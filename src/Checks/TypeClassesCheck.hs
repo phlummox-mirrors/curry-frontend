@@ -1577,15 +1577,19 @@ createEnumInstance (DataDecl p ty _ cs _) cls =
   InstanceDecl p (SContext []) cls tycon [] 
     [ FunctionDecl p Nothing (-1) toEnum' toEnumEqs
     , FunctionDecl p Nothing (-1) fromEnum' fromEnumEqs
-    -- TODO: succ, pred, maybe also enumFrom{Then}{To}
+    , FunctionDecl p Nothing (-1) succ' succEqs
+    , FunctionDecl p Nothing (-1) pred' predEqs
+    -- TODO: maybe also enumFrom{Then}{To}?
     ] 
     
   where
   tycon = QualTC $ qualify ty
   toEnum' = mkIdent "toEnum"
   fromEnum' = mkIdent "fromEnum"
+  succ' = mkIdent "succ"
+  pred' = mkIdent "pred"
   -- number the data constructors
-  cs' = zip [0..] (map (\(ConstrDecl _ _ c []) -> qualify c) cs) 
+  cs' = zip [0 :: Int ..] (map (\(ConstrDecl _ _ c []) -> qualify c) cs) 
   
   -- fromEnum equations
   fromEnumEqs = map (\(n, c) -> 
@@ -1603,19 +1607,46 @@ createEnumInstance (DataDecl p ty _ cs _) cls =
       (Constructor c)
     ) cs'
   toEnumOtherwiseCond = CondExpr p (Variable Nothing otherwiseQIdent) 
-    (Apply (Variable Nothing errorQIdent) 
-           (Literal $ String (srcRef 0) toEnumErrString))
-  toEnumErrString = "TCPrelude.Enum." ++ show ty ++ ".toEnum: bad argument"
+    (errorExpr toEnumErrString)
+  toEnumErrString = errorMsg "toEnum"
   nIdent = renameIdent (mkIdent "n") 1 
   
+  -- succ equations
+  succEqs = map (\(n, c) -> 
+    Equation p 
+      (FunLhs succ' [ConstructorPattern c []])
+      (SimpleRhs p (Constructor (snd $ cs' !! (n+1))) [])
+      ) (init cs') ++
+    [Equation p 
+      (FunLhs succ' [ConstructorPattern (snd $ last cs') []])
+      (SimpleRhs p (errorExpr $ errorMsg "succ") [])]
+      
+  -- pred equations
+  predEqs =
+    Equation p
+      (FunLhs pred' [ConstructorPattern (snd $ head cs') []])
+      (SimpleRhs p (errorExpr $ errorMsg "pred") []) :  
+    map (\(n, c) -> 
+      Equation p
+        (FunLhs pred' [ConstructorPattern c []])
+        (SimpleRhs p (Constructor (snd $ cs' !! (n-1))) [])
+        ) (tail cs')
+  
   mkInt'' = mkInt' enumClsIdentName (show ty) 
+  
+  errorExpr :: String -> Expression
+  errorExpr s = (Apply (Variable Nothing errorQIdent) 
+           (Literal $ String (srcRef 0) s))
+  errorMsg s = "TCPrelude.Enum." ++ show ty ++ "." ++ s ++ ": bad argument"
 createEnumInstance _ _ = internalError "createEnumInstance"  
 
 -- ---------------------------------------------------------------------------
 
 -- |we have to provide unique identifiers for integers (yes!)
-mkInt' :: String -> String -> Integer -> Literal
-mkInt' cls ty n = Int (flip renameIdent 1 $ mkIdent $ cls ++ sep ++ ty ++ sep ++ show n) n  
+mkInt' :: String -> String -> Int -> Literal
+mkInt' cls ty n = 
+  Int (flip renameIdent 1 $ mkIdent $ cls ++ sep ++ ty ++ sep ++ show n)
+      (toInteger n)  
 
 deriveEqPrefix :: String
 deriveEqPrefix = identPrefix ++ "drvEq" ++ sep
