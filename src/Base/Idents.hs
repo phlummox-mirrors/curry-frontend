@@ -8,7 +8,10 @@
     Stability   :  experimental
     Portability :  portable
     
-    This file contains some identifiers used in different places. 
+    This file contains some identifiers used in different places, mainly *before*
+    the qualification stage. As these identifiers are later expanded, they 
+    must be provided in the value environment; currently they are provided under
+    a dummy module name. 
 -}
 
 module Base.Idents where
