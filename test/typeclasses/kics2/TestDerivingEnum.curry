@@ -2,6 +2,8 @@
 import Prelude ()
 import TCPrelude
 
+import Assertion
+
 import DerivingEnum
 
 test1 = (toEnum 0 :: T) == T1
@@ -35,3 +37,4 @@ allTests = [test1, test2, test3, test4, test5, test6, test9, test10, test11
 
 allCorrect = and allTests
 
+test = assertTrue "allCorrect" allCorrect

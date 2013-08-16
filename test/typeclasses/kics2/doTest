@@ -15,7 +15,7 @@ if [ "$2" = "--gui" ] ; then
 fi
 
 
-ALLTESTS="TestPrelude TestDeriving1 TestDeriving2"
+ALLTESTS="TestPrelude TestDeriving1 TestDeriving2 TestDerivingEnum TestDerivingBounded"
 
 # clean up before
 $KICS2BIN/cleancurry

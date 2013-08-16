@@ -1,6 +1,8 @@
 import Prelude ()
 import TCPrelude
 
+import Assertion
+
 import DerivingBounded
 
 test1 = (minBound :: S) == S1
@@ -15,3 +17,5 @@ test6 = (maxBound :: T Bool Bool Bool) == T True True True True S4 (U True)
 allTests = [test1, test2, test3, test4, test5, test6]
 
 allCorrect = and allTests
+
+test = assertTrue "allCorrect" allCorrect
