@@ -109,3 +109,15 @@ errorIdent = mkIdent "error"
 
 errorQIdent :: QualIdent
 errorQIdent = qualifyWith dummyMIdent $ errorIdent 
+
+minBoundIdent :: Ident
+minBoundIdent = mkIdent "minBound"
+
+maxBoundIdent :: Ident
+maxBoundIdent = mkIdent "maxBound"
+
+minBoundQIdent :: QualIdent
+minBoundQIdent = qualifyWith dummyMIdent $ minBoundIdent
+
+maxBoundQIdent :: QualIdent
+maxBoundQIdent = qualifyWith dummyMIdent $ maxBoundIdent

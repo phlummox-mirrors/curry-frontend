@@ -1679,7 +1679,46 @@ createBoundedInstanceForEnum (DataDecl p ty _ cs _) cls =
     (SimpleRhs p (Constructor $ qualify $ last cs') [])
 createBoundedInstanceForEnum _ _ = internalError "createBoundedInstanceForEnum"
 
-createBoundedInstanceForOneConstructor _ _ = undefined
+-- |Creates a bounded instance for a data type with only one constructor:
+-- Example:
+-- @
+-- data S a = S a
+--   deriving Bounded
+-- data T a b c = T a Bool b (S c)
+--   deriving Bounded
+-- @
+-- gets:
+-- @
+-- instance (Bounded a, Bounded b, Bounded c) => Bounded (T a b c) where
+--   minBound = T minBound minBound minBound minBound
+--   maxBound = T maxBound maxBound maxBound maxBound
+-- @  
+createBoundedInstanceForOneConstructor :: Decl -> QualIdent -> Decl
+createBoundedInstanceForOneConstructor (DataDecl p ty vars [cs] _) cls =
+  InstanceDecl p 
+    (SContext $ map (\v -> (cls, v)) vars)
+    cls tycon vars 
+    [ FunctionDecl p Nothing (-1) minBound' [minBoundEq]
+    , FunctionDecl p Nothing (-1) maxBound' [maxBoundEq]] 
+  where
+  minBound' = mkIdent "minBound"
+  maxBound' = mkIdent "maxBound"
+  tycon = QualTC $ qualify ty
+  minBoundEq = Equation p (FunLhs minBound' []) 
+    (SimpleRhs p minBoundExpr [])
+  maxBoundEq = Equation p (FunLhs maxBound' [])
+    (SimpleRhs p maxBoundExpr [])
+  
+  (c, tys) = case cs of 
+    ConstrDecl _ _ c' tys' -> (c', tys')
+    ConOpDecl _ _ ty1 c' ty2 -> (c', [ty1, ty2])
+  
+  minBoundExpr = foldl Apply (Constructor $ qualify c) 
+    (map (const $ Variable Nothing minBoundQIdent) tys)  
+  maxBoundExpr = foldl Apply (Constructor $ qualify c)
+    (map (const $ Variable Nothing maxBoundQIdent) tys) 
+createBoundedInstanceForOneConstructor _ _ = 
+  internalError "createBoundedInstanceForOneConstructor"
 
 -- ---------------------------------------------------------------------------
 

@@ -1006,6 +1006,10 @@ insertDummyIdents vEnv =
       0 (ForAll [] 0 preludeBool) Nothing)
   , (errorIdent, preludeMIdent, Value (qualifyWith preludeMIdent errorIdent) 1
       (ForAll [] 1 (TypeArrow preludeString (tyvar 0))) Nothing)
+  , (minBoundIdent, tcPreludeMIdent, Value (qualifyWith tcPreludeMIdent minBoundIdent)
+      0 (ForAll [(boundedClsIdent, tyvar 0)] 1 (tyvar 0)) (Just boundedClsIdent))
+  , (maxBoundIdent, tcPreludeMIdent, Value (qualifyWith tcPreludeMIdent maxBoundIdent)
+      0 (ForAll [(boundedClsIdent, tyvar 0)] 1 (tyvar 0)) (Just boundedClsIdent))
   ]
                  
   where
