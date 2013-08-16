@@ -1570,6 +1570,14 @@ genOrdRhs p (_c, i0) (_c', i0') n _n' newVars newVars' =
 --            | n == 1 = T2
 --            | n == 2 = T3
 --            | otherwise = error "TCPrelude.Enum.T: bad argument" 
+--   
+--   succ T1 = T2
+--   succ T2 = T3
+--   succ T3 = "TCPrelude.Enum.T.succ: bad argument"
+--
+--   pred T1 = "TCPrelude.Enum.T.pred: bad argument"
+--   pred T2 = T1
+--   pred T3 = T2
 -- @
 createEnumInstance :: Decl -> QualIdent -> Decl
 createEnumInstance (DataDecl p ty _ cs _) cls = 
