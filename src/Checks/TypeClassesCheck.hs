@@ -1414,16 +1414,13 @@ getDeriving _ = internalError "getDeriving"
 
 -- |creates an instance for the given data declaration and the given class
 createInstance :: Decl -> QualIdent -> [Decl]
-createInstance d cls = 
+createInstance d cls 
   -- consider only the *name* of the class, not the module identifier. If 
   -- this is wrong, it will be detected later
-  if unqualify cls == unqualify eqClsIdent
-  then [createEqInstance d cls]
-  else if unqualify cls == unqualify ordClsIdent
-  then [createOrdInstance d cls]
-  else if unqualify cls == unqualify enumClsIdent 
-  then [createEnumInstance d cls]
-  else []
+  | unqualify cls == unqualify eqClsIdent   = [createEqInstance   d cls]
+  | unqualify cls == unqualify ordClsIdent  = [createOrdInstance  d cls]
+  | unqualify cls == unqualify enumClsIdent = [createEnumInstance d cls] 
+  | otherwise = []
   -- TODO: add further instances here
 
 -- |creates an Eq or an Ord instance for the given data declaration
