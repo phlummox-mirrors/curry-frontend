@@ -1492,7 +1492,35 @@ createEqOrOrdInstance (NewtypeDecl p ty vars (NewConstrDecl p' vars' id' ty') d)
                         op clsIdent genRhs prefix
 createEqOrOrdInstance _ _ _ _ _ = internalError "createEqOrOrdInstance"
 
--- |creates an "Eq" instance for the given data type
+-- |creates an "Eq" instance for the given data type. 
+-- Example:
+-- @
+-- data T a b = T1 a | T2 b | T3
+--   deriving Eq
+-- @
+-- gets:
+-- @
+-- instance (Eq a, Eq b) => Eq (T a b) where
+--   T1 x == T1 x' = x == x'
+--   T1 x == T2 y  = False
+--   T1 x == T3    = False
+--   T2 y == T1 x  = False
+--   T2 y == T2 y' = y == y'
+--   T2 y == T3    = False
+--   T3   == T1 x  = False
+--   T3   == T2 y  = False
+--   T3   == T3    = True
+-- @
+-- Note that the following simpler instance must not be generated:
+-- @
+-- instance (Eq a, Eq b) => Eq (T a b) where
+--   T1 x == T1 x' = x == x'
+--   T2 y == T2 y' = y == y'
+--   T3   == T3    = True
+--   _    == _     = False
+-- @
+-- Because the rules overlap, and we have non-determinism, a comparison would
+-- always yield "False" as one result.  
 createEqInstance :: Decl -> QualIdent -> Decl
 createEqInstance d cls = createEqOrOrdInstance d eqOp cls genEqRhs deriveEqPrefix
 
