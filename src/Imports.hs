@@ -1011,6 +1011,24 @@ insertDummyIdents vEnv =
       0 (ForAll [(boundedClsIdent, tyvar 0)] 1 (tyvar 0)) (Just boundedClsIdent))
   , (maxBoundIdent, tcPreludeMIdent, Value (qualifyWith tcPreludeMIdent maxBoundIdent)
       0 (ForAll [(boundedClsIdent, tyvar 0)] 1 (tyvar 0)) (Just boundedClsIdent))
+  , (mapIdent, preludeMIdent, Value (qualifyWith preludeMIdent mapIdent) 2
+      (ForAll [] 2 (TypeArrow (TypeArrow (tyvar 0) (tyvar 1))
+        (TypeArrow (TypeConstructor qListIdP [tyvar 0]) (TypeConstructor qListIdP [tyvar 1]))))
+      Nothing)
+  , (fromEnumIdent, tcPreludeMIdent, Value (qualifyWith tcPreludeMIdent fromEnumIdent)
+      1 (ForAll [(enumClsIdent, tyvar 0)] 1 (TypeArrow (tyvar 0) preludeInt)) 
+      (Just enumClsIdent))
+  , (toEnumIdent, tcPreludeMIdent, Value (qualifyWith tcPreludeMIdent toEnumIdent)
+      1 (ForAll [(enumClsIdent, tyvar 0)] 1 (TypeArrow preludeInt (tyvar 0)))
+      (Just enumClsIdent))
+  , (preludeEnumFromToIdent, preludeMIdent, 
+      Value (qualifyWith preludeMIdent preludeEnumFromToIdent) 2 
+            (ForAll [] 0 (arrow [preludeInt, preludeInt, TypeConstructor qListIdP [preludeInt]]))
+      Nothing)
+  , (preludeEnumFromThenToIdent, preludeMIdent, 
+      Value (qualifyWith preludeMIdent preludeEnumFromThenToIdent) 3
+            (ForAll [] 0 (arrow [preludeInt, preludeInt, preludeInt, TypeConstructor qListIdP [preludeInt]]))
+      Nothing)
   ]
                  
   where
@@ -1018,6 +1036,7 @@ insertDummyIdents vEnv =
   falseCons' = unqualify falseCons
   preludeBool = TypeConstructor (qualifyWith preludeMIdent $ mkIdent "Bool") []
   preludeChar = TypeConstructor (qualifyWith preludeMIdent $ mkIdent "Char") []
+  preludeInt  = TypeConstructor (qualifyWith preludeMIdent $ mkIdent "Int") []
   preludeString = TypeConstructor qListIdP [preludeChar]
   boolOpTypeScheme = 
     (ForAll [] 0 (TypeArrow preludeBool (TypeArrow preludeBool preludeBool)))
@@ -1026,4 +1045,4 @@ insertDummyIdents vEnv =
     ForAll [(cls, TypeVariable 0)] 1 
       (TypeArrow (TypeVariable 0) (TypeArrow (TypeVariable 0) preludeBool))
   tyvar i = TypeVariable i
-      
+  arrow = foldr1 TypeArrow

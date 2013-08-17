@@ -124,3 +124,33 @@ minBoundQIdent = qualifyWith tcDummyMIdent $ minBoundIdent
 
 maxBoundQIdent :: QualIdent
 maxBoundQIdent = qualifyWith tcDummyMIdent $ maxBoundIdent
+
+mapIdent :: Ident
+mapIdent = mkIdent "map"
+
+mapQIdent :: QualIdent
+mapQIdent = qualifyWith dummyMIdent $ mapIdent
+
+toEnumIdent :: Ident
+toEnumIdent = mkIdent "toEnum"
+
+fromEnumIdent :: Ident
+fromEnumIdent = mkIdent "fromEnum"
+
+toEnumQIdent :: QualIdent
+toEnumQIdent = qualifyWith tcDummyMIdent $ toEnumIdent
+
+fromEnumQIdent :: QualIdent
+fromEnumQIdent = qualifyWith tcDummyMIdent $ fromEnumIdent
+
+preludeEnumFromToIdent :: Ident
+preludeEnumFromToIdent = mkIdent "enumFromTo"
+
+preludeEnumFromToQIdent :: QualIdent
+preludeEnumFromToQIdent = qualifyWith dummyMIdent $ preludeEnumFromToIdent
+
+preludeEnumFromThenToIdent :: Ident
+preludeEnumFromThenToIdent = mkIdent "enumFromThenTo"
+
+preludeEnumFromThenToQIdent :: QualIdent
+preludeEnumFromThenToQIdent = qualifyWith dummyMIdent $ preludeEnumFromThenToIdent
