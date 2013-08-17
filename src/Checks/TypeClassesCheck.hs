@@ -1580,11 +1580,18 @@ genOrdRhs p (_c, i0) (_c', i0') n _n' newVars newVars' =
 --   
 --   succ T1 = T2
 --   succ T2 = T3
---   succ T3 = "TCPrelude.Enum.T.succ: bad argument"
+--   succ T3 = error "TCPrelude.Enum.T.succ: bad argument"
 --
---   pred T1 = "TCPrelude.Enum.T.pred: bad argument"
+--   pred T1 = error "TCPrelude.Enum.T.pred: bad argument"
 --   pred T2 = T1
 --   pred T3 = T2
+-- 
+--   enumFrom x = map toEnum (Prelude.enumFromTo (fromEnum x) 2)
+--   enumFromTo x y = map toEnum (Prelude.enumFromTo (fromEnum x) (fromEnum y))
+--   enumFromThen x y = map toEnum (Prelude.enumFromThenTo (fromEnum x) (fromEnum y) 
+--     (if fromEnum y < fromEnum x then 0 else 2))
+--   enumFromThenTo x y z = map toEnum (Prelude.enumFromThenTo (fromEnum x) (fromEnum y) 
+--     (fromEnum z)
 -- @
 createEnumInstance :: Decl -> QualIdent -> Decl
 createEnumInstance (DataDecl p ty _ cs _) cls = 
@@ -1594,7 +1601,10 @@ createEnumInstance (DataDecl p ty _ cs _) cls =
     , FunctionDecl p Nothing (-1) fromEnum' fromEnumEqs
     , FunctionDecl p Nothing (-1) succ' succEqs
     , FunctionDecl p Nothing (-1) pred' predEqs
-    -- TODO: maybe also enumFrom{Then}{To}?
+    , FunctionDecl p Nothing (-1) enumFrom'       [enumFromEq]
+    , FunctionDecl p Nothing (-1) enumFromTo'     [enumFromToEq]
+    , FunctionDecl p Nothing (-1) enumFromThen'   [enumFromThenEq]
+    , FunctionDecl p Nothing (-1) enumFromThenTo' [enumFromThenToEq]
     ] 
     
   where
@@ -1603,6 +1613,10 @@ createEnumInstance (DataDecl p ty _ cs _) cls =
   fromEnum' = mkIdent "fromEnum"
   succ' = mkIdent "succ"
   pred' = mkIdent "pred"
+  enumFrom'       = mkIdent "enumFrom"
+  enumFromTo'     = mkIdent "enumFromTo"
+  enumFromThen'   = mkIdent "enumFromThen"
+  enumFromThenTo' = mkIdent "enumFromThenTo"
   -- number the data constructors
   cs' = zip [0 :: Int ..] (map (\(ConstrDecl _ _ c []) -> qualify c) cs) 
   
@@ -1624,7 +1638,7 @@ createEnumInstance (DataDecl p ty _ cs _) cls =
   toEnumOtherwiseCond = CondExpr p (Variable Nothing otherwiseQIdent) 
     (errorExpr toEnumErrString)
   toEnumErrString = errorMsg "toEnum"
-  nIdent = renameIdent (mkIdent "n") 1 
+  nIdent = mkIdent' "n"
   
   -- succ equations
   succEqs = map (\(n, c) -> 
@@ -1647,13 +1661,63 @@ createEnumInstance (DataDecl p ty _ cs _) cls =
         (SimpleRhs p (Constructor (snd $ cs' !! (n-1))) [])
         ) (tail cs')
   
+  -- enumFrom{To} equations
+  enumFromToEq' which maxBound' ids = Equation p (FunLhs which (map VariablePattern ids))
+    (SimpleRhs p (
+        apply [ var mapQIdent
+              , var toEnumQIdent
+              , apply [var preludeEnumFromToQIdent
+                      , fromEnumExpr xIdent
+                      , maxBound'
+                      ]
+              ]  
+      ) [])
+      
+  enumFromEq = enumFromToEq' enumFrom'
+    (Literal $ mkInt'' $ length cs - 1) [xIdent]
+  enumFromToEq = enumFromToEq' enumFromTo'
+    (fromEnumExpr yIdent) [xIdent, yIdent] 
+    
+  -- enumFromThen{To} equations
+  enumFromThenToEq' which bound' ids = Equation p (FunLhs which (map VariablePattern ids))
+    (SimpleRhs p (
+        apply [ var mapQIdent
+              , var toEnumQIdent
+              , apply [var preludeEnumFromThenToQIdent
+                      , fromEnumExpr xIdent
+                      , fromEnumExpr yIdent
+                      , bound'
+                      ]
+              ]  
+      ) [])
+  
+  enumFromThenEq = enumFromThenToEq' enumFromThen' 
+    (IfThenElse (srcRef 0) 
+      (InfixApply (fromEnumExpr yIdent) infixLessOp (fromEnumExpr xIdent))
+      (Literal $ mkInt'' 0)
+      (Literal $ mkInt'' $ length cs - 1))
+    [xIdent, yIdent]
+  enumFromThenToEq = enumFromThenToEq' enumFromThenTo' 
+    (apply [var fromEnumQIdent, var $ qualify zIdent]) [xIdent, yIdent, zIdent]
+  
+  fromEnumExpr ident = apply [var fromEnumQIdent, var $ qualify ident]
+  
+  xIdent = mkIdent' "x"
+  yIdent = mkIdent' "y"
+  zIdent = mkIdent' "z"
+  
   mkInt'' = mkInt' enumClsIdentName (show ty) 
   
   errorExpr :: String -> Expression
   errorExpr s = (Apply (Variable Nothing errorQIdent) 
            (Literal $ String (srcRef 0) s))
   errorMsg s = "TCPrelude.Enum." ++ show ty ++ "." ++ s ++ ": bad argument"
+  
+  mkIdent' x = flip renameIdent 1 $ mkIdent (deriveEnumPrefix ++ show ty ++ sep ++ x)
 createEnumInstance _ _ = internalError "createEnumInstance"  
+
+apply :: [Expression] -> Expression
+apply = foldl1 Apply   
 
 -- |Creates a bounded instance for an enumeration. Example: 
 -- @
@@ -1737,9 +1801,15 @@ deriveEqPrefix = identPrefix ++ "drvEq" ++ sep
 deriveOrdPrefix :: String
 deriveOrdPrefix = identPrefix ++ "drvOrd" ++ sep
 
+deriveEnumPrefix :: String
+deriveEnumPrefix = identPrefix ++ "drvEnum" ++ sep
+
 -- ---------------------------------------------------------------------------
 -- helper functions
 -- ---------------------------------------------------------------------------
+
+var :: QualIdent -> Expression
+var = Variable Nothing
 
 qVar :: Ident -> Expression
 qVar = Variable Nothing . qualify 
