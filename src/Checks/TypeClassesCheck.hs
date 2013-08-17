@@ -1111,10 +1111,10 @@ transformClass2 mdl cEnv tcEnv (ClassDecl p _scx cls _tyvar _decls) =
     typeSig True [mkIdent selMethodName]
       emptyContext
       (ArrowType 
-        (genDictTypeExpr mdl tcEnv (show $ theClass theClass0) (mkIdent var))
-        (genDictTypeExpr mdl tcEnv scls (mkIdent var))
+        (genDictTypeExpr mdl tcEnv (show $ theClass theClass0) (mkIdent var'))
+        (genDictTypeExpr mdl tcEnv scls (mkIdent var'))
       )
-    where var = "a"
+    where var' = "a"
   
   -- the renamings are important so that the parameters are not handled as
   -- global functions. Also important is that the parameters are globally
@@ -1130,9 +1130,9 @@ transformClass2 _ _ _ d = [d]
 -- |generates a type expression that represents the type of the dictionary 
 -- of the given class 
 genDictTypeExpr :: ModuleIdent -> TCEnv -> String -> Ident -> TypeExpr
-genDictTypeExpr m tcEnv theClass0 var = expandTypeExpr m tcEnv $  
+genDictTypeExpr m tcEnv theClass0 var' = expandTypeExpr m tcEnv $  
   (ConstructorType (mkQIdent $ mkDictTypeName $ theClass0)
-    [VariableType var])
+    [VariableType var'])
 
 type IDecl = Decl
 
