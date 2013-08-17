@@ -98,6 +98,9 @@ falseCons = qualifyWith dummyMIdent $ mkIdent "False"
 flipIdent :: Ident
 flipIdent = mkIdent "flip"
 
+flipQIdent :: QualIdent
+flipQIdent = qualifyWith dummyMIdent flipIdent
+
 otherwiseIdent :: Ident
 otherwiseIdent = mkIdent "otherwise"
 
