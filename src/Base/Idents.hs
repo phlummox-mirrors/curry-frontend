@@ -75,13 +75,13 @@ orOp :: Ident
 orOp = mkIdent "||"
 
 infixEqOp :: InfixOp
-infixEqOp = InfixOp Nothing $ qualifyWith dummyMIdent $ eqOp
+infixEqOp = InfixOp Nothing $ qualifyWith tcDummyMIdent $ eqOp
 
 infixLeqOp :: InfixOp
-infixLeqOp = InfixOp Nothing $ qualifyWith dummyMIdent $ leqOp
+infixLeqOp = InfixOp Nothing $ qualifyWith tcDummyMIdent $ leqOp
 
 infixLessOp :: InfixOp
-infixLessOp = InfixOp Nothing $ qualifyWith dummyMIdent $ lessOp
+infixLessOp = InfixOp Nothing $ qualifyWith tcDummyMIdent $ lessOp
 
 infixAndOp :: InfixOp
 infixAndOp = InfixOp Nothing $ qualifyWith dummyMIdent $ andOp
@@ -120,7 +120,7 @@ maxBoundIdent :: Ident
 maxBoundIdent = mkIdent "maxBound"
 
 minBoundQIdent :: QualIdent
-minBoundQIdent = qualifyWith dummyMIdent $ minBoundIdent
+minBoundQIdent = qualifyWith tcDummyMIdent $ minBoundIdent
 
 maxBoundQIdent :: QualIdent
-maxBoundQIdent = qualifyWith dummyMIdent $ maxBoundIdent
+maxBoundQIdent = qualifyWith tcDummyMIdent $ maxBoundIdent

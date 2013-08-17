@@ -24,7 +24,7 @@ module Base.Names
     -- of a given type
   , isDictType, isDictionary, isSelFun, isDefaultMethod 
     -- * other names
-  , dummyMIdent
+  , dummyMIdent, tcDummyMIdent
   ) where
 
 import Data.List
@@ -84,3 +84,7 @@ isDefaultMethod i = defPrefix `isPrefixOf` show i
 -- before the qualification transformation has been executed
 dummyMIdent :: ModuleIdent
 dummyMIdent = mkMIdent ["<dummy>"]
+
+-- |this dummy module identifier is for the type classes Prelude
+tcDummyMIdent :: ModuleIdent
+tcDummyMIdent = mkMIdent ["<dummyTC>"]

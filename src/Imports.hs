@@ -980,8 +980,9 @@ insertDummyIdents' env@(CompilerEnv { valueEnv = v} ) =
 -- |This function adds the needed dummy identifiers to the value environment
 insertDummyIdents :: ValueEnv -> ValueEnv
 insertDummyIdents vEnv = 
-  foldr (\(v, m, v') env -> qualImportTopEnv' m
-                        (qualifyWith dummyMIdent v) v' env) vEnv 
+  foldr (\(v, m, v') env -> 
+      let dm = if m == preludeMIdent then dummyMIdent else tcDummyMIdent
+      in qualImportTopEnv' m (qualifyWith dm v) v' env) vEnv 
   [ (andOp, preludeMIdent, Value (qualifyWith preludeMIdent andOp) 2 
       boolOpTypeScheme Nothing)
   , (orOp,  preludeMIdent, Value (qualifyWith preludeMIdent orOp) 2
