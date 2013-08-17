@@ -1419,13 +1419,16 @@ createInstance d@(DataDecl _ _ _ cs _) cls
   -- this is wrong, it will be detected later
   | unqualify cls == unqualify eqClsIdent   = [createEqInstance   d cls]
   | unqualify cls == unqualify ordClsIdent  = [createOrdInstance  d cls]
-  | unqualify cls == unqualify enumClsIdent = [createEnumInstance d cls] 
+  | unqualify cls == unqualify enumClsIdent = 
+      if checkIsEnum cs
+      then [createEnumInstance d cls]
+      else [] 
   | unqualify cls == unqualify boundedClsIdent = 
       if checkIsEnum cs
       then [createBoundedInstanceForEnum d cls]
       else if length cs == 1
       then [createBoundedInstanceForOneConstructor d cls]
-      else internalError "createInstance"
+      else [] -- no internal error!
   | otherwise = []
   -- TODO: add further instances here
 createInstance _ _ = internalError "createInstance"
