@@ -5,6 +5,9 @@ rm -f tmp.txt
 
 echo ================
 
+errorFile=hasError.tmp
+rm -f $errorFile
+
 # delete old files
 rm -f -r typeclasses/.curry
 rm -f -r typeclasses/modules/.curry
@@ -52,7 +55,7 @@ for file in DictTrans1 DictTrans2 DictTrans3 DictTrans4 \
 do
   echo $file >> tmp.txt
   if [ ! -r typeclasses/$file.curry ]; then echo "*********** file doesn't exist: $file"; fi
-  $cymake -f -i typeclasses typeclasses/$file.curry 2> stderr.txt 1> stdout.txt || (echo "===================="; echo "| Error in $file.curry:" ; echo "===================="; cat stdout.txt; cat stderr.txt; echo)
+  $cymake -f -i typeclasses typeclasses/$file.curry 2> stderr.txt 1> stdout.txt || (echo "===================="; echo "| Error in $file.curry:" ; echo "===================="; cat stdout.txt; cat stderr.txt; echo; touch $errorFile)
 done
 
 # do the check # 1 b (errors of type class check component)
@@ -67,7 +70,7 @@ for file in checkCorrectTypeVarsInTypeSigs CheckRulesInClass CheckRulesInInstanc
 do
   echo $file >> tmp.txt
   if [ ! -r typeclasses/TCCheck/$file.curry ]; then echo "*********** file doesn't exist: $file"; fi
-  $cymake -f -i typeclasses/TCCheck typeclasses/TCCheck/$file.curry 2> stderr.txt 1> stdout.txt && (echo "===================="; echo "| No error in $file.curry:" ; echo "===================="; cat stdout.txt; cat stderr.txt; echo)
+  $cymake -f -i typeclasses/TCCheck typeclasses/TCCheck/$file.curry 2> stderr.txt 1> stdout.txt && (echo "===================="; echo "| No error in $file.curry:" ; echo "===================="; cat stdout.txt; cat stderr.txt; echo; touch $errorFile)
 done
 
 # do the check # 1 c (other errors)
@@ -84,7 +87,7 @@ for file in Ambig1 Ambiguous Ambiguous2 Ambiguous3 \
 do
   echo $file >> tmp.txt
   if [ ! -r typeclasses/$file.curry ]; then echo "*********** file doesn't exist: $file"; fi
-  $cymake -f -i typeclasses typeclasses/$file.curry 2> stderr.txt 1> stdout.txt && (echo "===================="; echo "| No error in $file.curry:" ; echo "===================="; cat stdout.txt; cat stderr.txt; echo)
+  $cymake -f -i typeclasses typeclasses/$file.curry 2> stderr.txt 1> stdout.txt && (echo "===================="; echo "| No error in $file.curry:" ; echo "===================="; cat stdout.txt; cat stderr.txt; echo; touch $errorFile)
 done
 
 
@@ -169,7 +172,7 @@ for file in TestClassExports TestClassExports2 TestClassExportsImports \
 do
   echo $file >> tmp.txt
   if [ ! -r typeclasses/modules/$file.curry ]; then echo "*********** file doesn't exist: $file"; fi
-  $cymake -f -i typeclasses/modules typeclasses/modules/$file.curry 2> stderr.txt 1> stdout.txt || (echo "===================="; echo "| Error in $file.curry:" ; echo "===================="; cat stdout.txt; cat stderr.txt; echo)
+  $cymake -f -i typeclasses/modules typeclasses/modules/$file.curry 2> stderr.txt 1> stdout.txt || (echo "===================="; echo "| Error in $file.curry:" ; echo "===================="; cat stdout.txt; cat stderr.txt; echo; touch $errorFile)
 done
 
 # do the check # 3 (modules system related, errors)
@@ -204,11 +207,18 @@ for file in ClassExportErrors ClassExportImportErrors ClassMethodsExportErr1 Cla
 do
   echo $file >> tmp.txt
   if [ ! -r typeclasses/modules/$file.curry ]; then echo "*********** file doesn't exist: $file"; fi
-  $cymake -f -i typeclasses/modules typeclasses/modules/$file.curry 2> stderr.txt 1> stdout.txt && (echo "===================="; echo "| No error in $file.curry:" ; echo "===================="; cat stdout.txt; cat stderr.txt; echo)
+  $cymake -f -i typeclasses/modules typeclasses/modules/$file.curry 2> stderr.txt 1> stdout.txt && (echo "===================="; echo "| No error in $file.curry:" ; echo "===================="; cat stdout.txt; cat stderr.txt; echo; touch $errorFile)
 done
 
 echo `cat tmp.txt | wc -l` files checked
+
+if [ ! -f $errorFile ]; then
+  echo "Test successfully passed"
+else
+  echo "Test result: there were errors"
+fi
+
 rm tmp.txt
 rm stderr.txt
 rm stdout.txt
-
+rm -f $errorFile
