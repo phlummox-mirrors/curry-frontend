@@ -22,6 +22,9 @@ import qualified Checks.TypeCheck as TC (typeCheck)
 import Curry.Syntax (Module (..))
 import Data.Maybe
 import Debug.Trace
+import Control.Monad.Trans.Either
+import Control.Monad.IO.Class
+import Base.Messages
 
 import Base.Types
 
@@ -85,9 +88,9 @@ checkTypes file = do
   putStrLn ("checking " ++ file)
   let opts = CO.defaultOptions { CO.optImportPaths = [location] }
   mod <- loadModule opts (location ++ file ++ ".curry") 
-  let result = checkModule' False opts mod
+  result <- liftIO $ runEitherT $ checkModule' False opts mod
   case result of
-    CheckSuccess tcEnv -> do
+    Right tcEnv -> do
       types <- readFile (location ++ file ++ ".types")
       -- print (extractTypes types)
       let errs = doCheck tcEnv (extractTypes types)
@@ -97,7 +100,7 @@ checkTypes file = do
           putStrLn ("\nTest for " ++ file ++ " failed for following functions: ")
           mapM_ putStrLn (map (\(x, y, z) -> x ++ "\nexpected:  " ++ y ++ "\ninferred:  " ++ z) errs)
           return False
-    CheckFailed msgs -> do print msgs; return False  
+    Left msgs -> do print msgs; return False  
     
 {-  
 loadAndCheck :: FilePath -> IO (CheckResult CompilerEnv)
@@ -106,22 +109,22 @@ loadAndCheck str =
 
 -- |This function checks the modules until the type check phase is reached
 checkModule' :: Bool -> CO.Options -> (CompilerEnv, CompilerEnv, CS.Module)
-             -> CheckResult CompilerEnv
+             -> EitherT [Message] IO CompilerEnv
 checkModule' contextRed opts (_env, envtc, mdl) = do
-  (env1,  kc) <- kindCheck envtc mdl -- should be only syntax checking ?
+  (env1,  kc) <- kindCheck opts envtc mdl -- should be only syntax checking ?
   (env2,  sc) <- syntaxCheck opts env1 kc
-  (env3,  pc) <- precCheck        env2 sc
-  (env4, tcc) <- typeClassesCheck env3 pc
+  (env3,  pc) <- precCheck opts   env2 sc
+  (env4, tcc) <- typeClassesCheck opts env3 pc
   (env5, _tc) <- typeCheck' contextRed env4 tcc
   return env5
   
   
-typeCheck' :: Bool -> CompilerEnv -> Module -> CheckResult (CompilerEnv, Module)
+typeCheck' :: Bool -> CompilerEnv -> Module ->  EitherT [Message] IO (CompilerEnv, CS.Module)
 typeCheck' contextRed env mdl@(Module _ _ _ ds)
   -- Always return success, also if there are error messages. 
   -- Note that here "False" is passed to TC.typeCheck so that no context
   -- reduction is done and we get the raw inferred contexts that we want!
-  = CheckSuccess (env { tyConsEnv = tcEnv', valueEnv = tyEnv' }, mdl)
+  = right (env { tyConsEnv = tcEnv', valueEnv = tyEnv' }, mdl)
   where (tcEnv', tyEnv', _decls, _msgs) = TC.typeCheck (moduleIdent env)
           (tyConsEnv env) (valueEnv env) (classEnv env) contextRed False ds
   
@@ -228,9 +231,9 @@ checkVarious = do
     (path ++ "Prelude.curry")
   let opts = CO.defaultOptions { CO.optImportPaths = [path] } 
   mod <- loadModule opts (path ++ "TestVarious.curry") 
-  let result = checkModule' True opts mod
+  result <- liftIO $ runEitherT $ checkModule' True opts mod
   case result of
-    CheckSuccess tcEnv -> 
+    Right tcEnv -> 
       if not $ checkScs tcEnv then return (Fail "check superclasses")
       else if not $ checkImpl (classEnv tcEnv) then return (Fail "implies")
       else if not $ checkValidCx (classEnv tcEnv) then return (Fail "isValidCx")
@@ -240,7 +243,7 @@ checkVarious = do
       else if not $ checkDictCode (classEnv tcEnv) then return (Fail "createDict")
       -- else if not $ checkDictType (classEnv tcEnv) then return (Fail "dictType")
       else return Pass
-    CheckFailed msgs -> do print msgs; return (Fail "compilation error")
+    Left msgs -> do print msgs; return (Fail "compilation error")
 
 -- |Check that the superclasses are calculated correctly    
 checkScs :: CompilerEnv -> Bool

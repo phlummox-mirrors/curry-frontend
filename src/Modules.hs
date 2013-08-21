@@ -20,10 +20,11 @@ module Modules
   ) where
 
 import Control.Monad (unless, when)
+import Control.Monad.IO.Class
+import Control.Monad.Trans.Either
 import qualified Data.Map as Map (elems)
 import Data.Maybe (fromMaybe)
 import Text.PrettyPrint
-import System.IO.Unsafe
 import Data.List (nub)
 
 import Curry.Base.Ident
@@ -89,12 +90,13 @@ compileModule opts fn = do
         (if optDumpRaw opts then show else show . CS.ppModule) mdl)
   -- do checks only if a different output than the parse tree is requested 
   when (not . null $ filter (/= Parsed) (optTargetTypes opts))
-    (case checkModule opts loaded of
-      CheckFailed errs -> abortWithMessages errs
-      CheckSuccess (env, mdl, dumps, tcExportEnv, tcExportMdl) -> do
-        warn opts $ warnCheck env mdl
-        mapM_ (doDump opts) dumps
-        writeOutput opts fn (env, mdl) (tcExportEnv, tcExportMdl))
+    (do
+      checked <- runEitherT $ checkModule opts loaded
+      case checked of
+        Left errs -> abortWithMessages errs
+        Right (env, mdl, tcExportEnv, tcExportMdl) -> do
+          warn opts $ warnCheck env mdl
+          writeOutput opts fn (env, mdl) (tcExportEnv, tcExportMdl))
 
 -- ---------------------------------------------------------------------------
 -- Loading a module
@@ -102,7 +104,6 @@ compileModule opts fn = do
 
 loadModule :: Options -> FilePath -> IO (CompilerEnv, CompilerEnv, CS.Module)
 loadModule opts fn = do
-  -- read module
   mbSrc <- readModule fn
   case mbSrc of
     Nothing  -> abortWithMessages [message $ text $ "Missing file: " ++ fn] -- TODO
@@ -184,69 +185,62 @@ checkInterface opts iEnv intf = interfaceCheck env intf
 -- environments: One still with type class elements, the second without 
 -- type class elements. 
 checkModule :: Options -> (CompilerEnv, CompilerEnv, CS.Module)
-            -> CheckResult (CompilerEnv, CS.Module, [Dump], CompilerEnv, CS.Module)
+            -> EitherT [Message] IO (CompilerEnv, CS.Module, CompilerEnv, CS.Module)
 checkModule opts (envNonTc, envTc, mdl) = do
-  (env1,  kc) <- dump DumpParsed envTc kindCheck (envTc, mdl) -- should be only syntax checking ?
+  doDump opts (DumpParsed       , envTc , show' CS.ppModule mdl)
+  (env1,  kc) <- kindCheck opts envTc mdl -- should be only syntax checking ?
+  doDump opts (DumpKindChecked  , env1, show' CS.ppModule kc)
   (env2,  sc) <- syntaxCheck opts env1 kc
-  (env3,  pc) <- dump DumpSyntaxChecked env2 precCheck (env2, sc)
-  (env4, tcc) <- typeClassesCheck env3 pc
+  doDump opts (DumpSyntaxChecked, env2, show' CS.ppModule sc)
+  (env3,  pc) <- precCheck opts env2 sc
+  doDump opts (DumpPrecChecked  , env3, show' CS.ppModule pc)
+  (env4, tcc) <- typeClassesCheck opts env3 pc
+  doDump opts (DumpTypeClassesChecked, env4, show' CS.ppModule tcc)
   (env5,  tc) <- if withTypeCheck
-                   -- then typeCheck env4 tcc
-                   then dump DumpTypeClassesChecked env4 (typeCheck False) (env4, tcc)
+                   then typeCheck False opts env4 tcc
                    else return (env4, tcc)
+  doDump opts (DumpTypeChecked  , env5, show' CS.ppModule tc)
   -- Run an export check here for exporting type class specific elements. As
   -- these are compiled out later, we already here have to set aside the
   -- export checked module and the environment 
   (envEc1, ec1) <- if withTypeCheck 
-                   then exportCheck env5 tc
+                   then exportCheck opts env5 tc
                    else return (env5, tc)
   (envEc1', ec1') <- if withTypeCheck
                      then return $ qual opts envEc1 ec1
                      else return (envEc1, ec1)
+  -- Continue with the compile process
   (env5b,  dicts) <- if withTypeCheck
-                     -- then insertDicts env5 tc
-                     then dump DumpTypeChecked env5 insertDicts (env5, tc)
+                     then insertDicts opts env5 tc
                      else return (env5, tc)
   let (env5c, dicts') = if withTypeCheck
                           then typeSigs env5b dicts
                           else (env5b, dicts)
+  doDump opts (DumpDictionaries , env5c, show' CS.ppModule dicts')
   (env5e, tc2) <- if withTypeCheck
                     -- Take the older environment env4 instead of env5c;
                     -- moreover, replace the value/type constructor environments with the 
                     -- value/type constructor environments that contain only *compiled* 
                     -- type class elements (dictionaries, types, selection 
                     -- methods) that are exported from other modules
-                    then dump DumpDictionaries env5c (typeCheck True) 
-                          (env4 { valueEnv = valueEnv envNonTc, 
+                    then typeCheck True opts
+                           env4 { valueEnv = valueEnv envNonTc, 
                                   tyConsEnv = tyConsEnv envNonTc,
-                                  interfaceEnv = interfaceEnv envNonTc }, dicts') 
-                    else return (env5c, dicts') 
-  (env6,  ec2) <- if withTypeCheck 
-                   -- then exportCheck env5e tc2
-                   then dump DumpTypeChecked2 env5e exportCheck (env5e, tc2)
+                                  interfaceEnv = interfaceEnv envNonTc } 
+                           dicts' 
+                    else return (env5c, dicts')
+  doDump opts (DumpTypeChecked2 , env5e, show' CS.ppModule tc2)
+  (env6,  ec2) <- if withTypeCheck
+                   then exportCheck opts env5e tc2
                    else return (env5e, tc2)
+  doDump opts (DumpExportChecked, env6, show' CS.ppModule ec2)
   (env7,  ql) <- return $ qual opts env6 ec2
-  let dumps = [ (DumpParsed            , envTc, show' CS.ppModule mdl)
-              , (DumpKindChecked       , env1, show' CS.ppModule kc)
-              , (DumpSyntaxChecked     , env2, show' CS.ppModule sc)
-              , (DumpPrecChecked       , env3, show' CS.ppModule pc)
-              , (DumpTypeClassesChecked, env4, show' CS.ppModule tcc)
-              , (DumpTypeChecked       , env5, show' CS.ppModule tc)
-              , (DumpDictionaries      , env5c, show' CS.ppModule dicts')
-              , (DumpTypeChecked2      , env5e, show' CS.ppModule tc2)
-              , (DumpExportChecked     , env6, show' CS.ppModule ec2)
-              , (DumpQualified         , env7, show' CS.ppModule ql)
-              ]
-  return (env7, ql, dumps, envEc1', ec1')
+  doDump opts (DumpQualified    , env7, show' CS.ppModule ql)
+  return (env7, ql, envEc1', ec1')
   where
   withTypeCheck = any (`elem` optTargetTypes opts)
                       [FlatCurry, ExtendedFlatCurry, FlatXml, AbstractCurry]
   show' pp = if optDumpRaw opts then show else show . pp
-  
-  dump d dEnv check (env0, mdl0) = unsafePerformIO $ 
-    (if doUnsafeDumps then doDump opts (d, dEnv, show' CS.ppModule mdl0) else return ()) 
-    >> return (check env0 mdl0)
-  doUnsafeDumps = True -- TODO: compiler option for (de)activating this?
 
 -- ---------------------------------------------------------------------------
 -- Translating a module
@@ -402,10 +396,10 @@ writeAbstractCurry opts fname env modul = do
   useSubDir  = optUseSubdir opts
 
 -- |The 'dump' function writes the selected information to standard output.
-doDump :: Options -> Dump -> IO ()
+doDump :: MonadIO m => Options -> Dump -> m ()
 doDump opts (level, env, dump) = when (level `elem` optDumps opts) $ do
-  when (optDumpEnv opts) $ putStrLn $ showCompilerEnv opts env
-  putStrLn $ unlines [header, replicate (length header) '=', dump]
+  when (optDumpEnv opts) $ liftIO $ putStrLn $ showCompilerEnv opts env
+  liftIO $ putStrLn $ unlines [header, replicate (length header) '=', dump]
   where
   header = lookupHeader dumpLevel
   lookupHeader []            = "Unknown dump level " ++ show level
