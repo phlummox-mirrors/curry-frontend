@@ -19,7 +19,7 @@ then
   exit
 fi
 
-cymake_orig=$1
+cymake_orig=`readlink -f $1`
 cymake=../../dist/build/cymake/cymake
 
 if [ "$2" = all ]
