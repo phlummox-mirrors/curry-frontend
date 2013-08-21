@@ -1,7 +1,7 @@
 
 if [ ! $1 ]
 then
-  echo Usage: test.sh \<original_cymake\> [all]
+  echo Usage: test1.sh \<original_cymake\> [all]
   echo 
   echo Compares files compiled with the original cymake \(without typeclasses
   echo support\) with the files compiled with the new cymake \(with typeclasses
