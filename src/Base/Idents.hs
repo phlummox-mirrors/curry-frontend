@@ -74,6 +74,9 @@ andOp = mkIdent "&&"
 orOp :: Ident
 orOp = mkIdent "||"
 
+pointOp :: Ident
+pointOp = mkIdent "."
+
 infixEqOp :: InfixOp
 infixEqOp = InfixOp Nothing $ qualifyWith tcDummyMIdent $ eqOp
 
@@ -88,6 +91,9 @@ infixAndOp = InfixOp Nothing $ qualifyWith dummyMIdent $ andOp
 
 infixOrOp :: InfixOp
 infixOrOp = InfixOp Nothing $ qualifyWith dummyMIdent $ orOp
+
+infixPointOp :: InfixOp
+infixPointOp = InfixOp Nothing $ qualifyWith dummyMIdent $ pointOp
 
 trueCons :: QualIdent
 trueCons = qualifyWith dummyMIdent $ mkIdent "True"

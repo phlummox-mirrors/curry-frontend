@@ -997,6 +997,13 @@ insertDummyIdents vEnv =
       (cmpOpTypeScheme ordClsIdent) (Just ordClsIdent))
   , (lessOp, tcPreludeMIdent, Value (qualifyWith tcPreludeMIdent lessOp) 2
       (cmpOpTypeScheme ordClsIdent) (Just ordClsIdent))
+  -- (0 -> 1) -> (2 -> 0) -> 2 -> 1)
+  , (pointOp, preludeMIdent, Value (qualifyWith preludeMIdent pointOp) 2
+      (ForAll [] 3 (arrow [arrow [tyvar 0, tyvar 1], 
+                           arrow [tyvar 2, tyvar 0],
+                           tyvar 2,
+                           tyvar 1])) 
+      Nothing)
   -- ((0 -> (1 -> 2)) -> (1 -> (0 -> 2))))
   , (flipIdent, preludeMIdent, Value (qualifyWith preludeMIdent flipIdent) 3
       (ForAll [] 3 (TypeArrow 
