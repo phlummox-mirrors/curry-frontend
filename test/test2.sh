@@ -1,4 +1,8 @@
 
+# This test checks:
+# 1) for files without semantical errors whether they compile
+# 2) for files that have sematical errors that the compiler produces errors
+
 cymake=../dist/build/cymake/cymake
 
 rm -f tmp.txt

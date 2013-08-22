@@ -1,5 +1,9 @@
 #!/bin/sh
 
+# This test runs several tests using "currytest". It checks for example
+# the correctness of the type classes Prelude and the correctness of
+# derived instances. 
+
 if [ ! $1 ]; then
   echo Warning: using default Kics2 home
   echo Use \"test4.sh \<Kics2Home\>\" if you want to set a different home
