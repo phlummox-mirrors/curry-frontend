@@ -70,7 +70,7 @@ showCompilerEnv opts env = show $ vcat
   , header "Precedences     " $ ppAL (text . show) $ showLocalBindings $ opPrecEnv    env
   , header "Classes         " $ ppAL ppClass $ showLocalBindings $ theClasses $ classEnv env
   , header "Instances       " $ vcat (map ppInst (filter filterInst $ allInstances $ theInstances $ classEnv env))
-  , header "ClassMethodsMap " $ ppAL ppClass $ showLocalBindings $ classMethods $ classEnv env
+  -- , header "ClassMethodsMap " $ ppAL ppClass $ showLocalBindings $ classMethods $ classEnv env
   , header "CanonClassMap   " $ ppAL ppClass $ filter filterCanon $ Map.toList $ canonClassMap $ classEnv env
   ]
   where
