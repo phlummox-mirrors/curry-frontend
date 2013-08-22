@@ -1079,8 +1079,7 @@ transformClass2 mdl cEnv tcEnv (ClassDecl p _scx cls _tyvar _decls) =
     names [] = internalError "genNonDirectSuperClassDictSelMethod"
     -- enchain the selector functions
     expr :: Expression
-    expr = foldr1 (\e1 e2 -> InfixApply e1 (InfixOp Nothing point) e2) (reverse $ names path)
-    point = mkQIdent "."
+    expr = foldr1 (\e1 e2 -> InfixApply e1 infixPointOp e2) (reverse $ names path)
   
   -- |Generates a top-level function containing the implementation of the
   -- default implementation given in the class declaration
