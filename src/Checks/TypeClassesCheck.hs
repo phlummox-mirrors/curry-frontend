@@ -1643,6 +1643,7 @@ genOrdRhs p (_c, i0) (_c', i0') n _n' newVars newVars' =
 createEnumInstance :: Decl -> QualIdent -> Der Decl
 createEnumInstance (DataDecl p ty _ cs _) cls = do
 
+  fromEnumEqs_      <- fromEnumEqs
   toEnumEqs_        <- toEnumEqs
   enumFromEq_       <- enumFromEq
   enumFromToEq_     <- enumFromToEq
@@ -1651,7 +1652,7 @@ createEnumInstance (DataDecl p ty _ cs _) cls = do
 
   return $ InstanceDecl p (SContext []) cls tycon [] 
     [ FunctionDecl p Nothing (-1) toEnum' toEnumEqs_
-    , FunctionDecl p Nothing (-1) fromEnum' fromEnumEqs
+    , FunctionDecl p Nothing (-1) fromEnum' fromEnumEqs_
     , FunctionDecl p Nothing (-1) succ' succEqs
     , FunctionDecl p Nothing (-1) pred' predEqs
     , FunctionDecl p Nothing (-1) enumFrom'       [enumFromEq_]
@@ -1674,22 +1675,27 @@ createEnumInstance (DataDecl p ty _ cs _) cls = do
   cs' = zip [0 :: Int ..] (map (\(ConstrDecl _ _ c []) -> qualify c) cs) 
   
   -- fromEnum equations
-  fromEnumEqs = map (\(n, c) -> 
-    Equation p (FunLhs fromEnum' [ConstructorPattern c []]) 
-               (SimpleRhs p (Literal $ mkInt'' n) [])) cs'
+  fromEnumEqs = do
+    numId <- newIdent "num"
+    return $ map (\(n, c) -> 
+      Equation p (FunLhs fromEnum' [ConstructorPattern c []]) 
+                 (SimpleRhs p (Literal $ Int numId $ toInteger n) [])) cs'
   
   -- toEnum equations
   toEnumEqs = do
     nIdent <- newIdent "n"
+    toEnumConds_ <- toEnumConds nIdent
     return $ [Equation p (FunLhs toEnum' [VariablePattern nIdent])
-      (GuardedRhs (toEnumConds nIdent ++ [toEnumOtherwiseCond]) [])]
-  toEnumConds nIdent = map (\(n, c) -> 
-    CondExpr p 
-      (InfixApply (Variable Nothing $ qualify nIdent)
-                  infixEqOp
-                  (Literal $ mkInt'' n))
-      (Constructor c)
-    ) cs'
+      (GuardedRhs (toEnumConds_ ++ [toEnumOtherwiseCond]) [])]
+  toEnumConds nIdent = do
+    numId <- newIdent "num"
+    return $ map (\(n, c) -> 
+      CondExpr p 
+        (InfixApply (Variable Nothing $ qualify nIdent)
+                    infixEqOp
+                    (Literal $ Int numId $ toInteger n))
+        (Constructor c)
+      ) cs'
   toEnumOtherwiseCond = CondExpr p (Variable Nothing otherwiseQIdent) 
     (errorExpr toEnumErrString)
   toEnumErrString = errorMsg "toEnum"
@@ -1729,8 +1735,9 @@ createEnumInstance (DataDecl p ty _ cs _) cls = do
       
   enumFromEq = do
      xIdent <- newIdent "x"
+     numlm1 <- newIdent "numlm1"
      return $ enumFromToEq' enumFrom'
-       (Literal $ mkInt'' $ length cs - 1) [xIdent]
+       (Literal $ Int numlm1 $ toInteger (length cs - 1)) [xIdent]
   enumFromToEq = do
     xIdent <- newIdent "x"
     yIdent <- newIdent "y"
@@ -1753,11 +1760,13 @@ createEnumInstance (DataDecl p ty _ cs _) cls = do
   enumFromThenEq = do
     xIdent <- newIdent "x"
     yIdent <- newIdent "y"
+    num0   <- newIdent "num0"
+    numlm1 <- newIdent "numlm1"
     return $ enumFromThenToEq' enumFromThen' 
       (IfThenElse (srcRef 0) 
         (InfixApply (fromEnumExpr yIdent) infixLessOp (fromEnumExpr xIdent))
-        (Literal $ mkInt'' 0)
-        (Literal $ mkInt'' $ length cs - 1))
+        (Literal $ Int num0 0)
+        (Literal $ Int numlm1 $ toInteger (length cs - 1)))
       [xIdent, yIdent]
   enumFromThenToEq = do
     xIdent <- newIdent "x"
@@ -1767,8 +1776,6 @@ createEnumInstance (DataDecl p ty _ cs _) cls = do
       (apply [var fromEnumQIdent, var $ qualify zIdent]) [xIdent, yIdent, zIdent]
   
   fromEnumExpr ident = apply [var fromEnumQIdent, var $ qualify ident]
-    
-  mkInt'' = mkInt' enumClsIdentName (show ty) 
   
   errorExpr :: String -> Expression
   errorExpr s = (Apply (Variable Nothing errorQIdent) 
@@ -1846,14 +1853,6 @@ createBoundedInstanceForOneConstructor (DataDecl p ty vars [cs] _) cls =
     (map (const $ Variable Nothing maxBoundQIdent) tys) 
 createBoundedInstanceForOneConstructor _ _ = 
   internalError "createBoundedInstanceForOneConstructor"
-
--- ---------------------------------------------------------------------------
-
--- |we have to provide unique identifiers for integers (yes!)
-mkInt' :: String -> String -> Int -> Literal
-mkInt' cls ty n = 
-  Int (flip renameIdent 1 $ mkIdent $ cls ++ sep ++ ty ++ sep ++ show n)
-      (toInteger n)  
 
 -- ---------------------------------------------------------------------------
 -- helper functions
