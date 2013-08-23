@@ -1641,17 +1641,23 @@ genOrdRhs p (_c, i0) (_c', i0') n _n' newVars newVars' =
 --     (fromEnum z)
 -- @
 createEnumInstance :: Decl -> QualIdent -> Der Decl
-createEnumInstance (DataDecl p ty _ cs _) cls = 
+createEnumInstance (DataDecl p ty _ cs _) cls = do
+
+  toEnumEqs_        <- toEnumEqs
+  enumFromEq_       <- enumFromEq
+  enumFromToEq_     <- enumFromToEq
+  enumFromThenEq_   <- enumFromThenEq
+  enumFromThenToEq_ <- enumFromThenToEq
 
   return $ InstanceDecl p (SContext []) cls tycon [] 
-    [ FunctionDecl p Nothing (-1) toEnum' toEnumEqs
+    [ FunctionDecl p Nothing (-1) toEnum' toEnumEqs_
     , FunctionDecl p Nothing (-1) fromEnum' fromEnumEqs
     , FunctionDecl p Nothing (-1) succ' succEqs
     , FunctionDecl p Nothing (-1) pred' predEqs
-    , FunctionDecl p Nothing (-1) enumFrom'       [enumFromEq]
-    , FunctionDecl p Nothing (-1) enumFromTo'     [enumFromToEq]
-    , FunctionDecl p Nothing (-1) enumFromThen'   [enumFromThenEq]
-    , FunctionDecl p Nothing (-1) enumFromThenTo' [enumFromThenToEq]
+    , FunctionDecl p Nothing (-1) enumFrom'       [enumFromEq_]
+    , FunctionDecl p Nothing (-1) enumFromTo'     [enumFromToEq_]
+    , FunctionDecl p Nothing (-1) enumFromThen'   [enumFromThenEq_]
+    , FunctionDecl p Nothing (-1) enumFromThenTo' [enumFromThenToEq_]
     ] 
     
   where
@@ -1673,9 +1679,11 @@ createEnumInstance (DataDecl p ty _ cs _) cls =
                (SimpleRhs p (Literal $ mkInt'' n) [])) cs'
   
   -- toEnum equations
-  toEnumEqs = [Equation p (FunLhs toEnum' [VariablePattern nIdent])
-    (GuardedRhs (toEnumConds ++ [toEnumOtherwiseCond]) [])]
-  toEnumConds = map (\(n, c) -> 
+  toEnumEqs = do
+    nIdent <- newIdent "n"
+    return $ [Equation p (FunLhs toEnum' [VariablePattern nIdent])
+      (GuardedRhs (toEnumConds nIdent ++ [toEnumOtherwiseCond]) [])]
+  toEnumConds nIdent = map (\(n, c) -> 
     CondExpr p 
       (InfixApply (Variable Nothing $ qualify nIdent)
                   infixEqOp
@@ -1685,7 +1693,6 @@ createEnumInstance (DataDecl p ty _ cs _) cls =
   toEnumOtherwiseCond = CondExpr p (Variable Nothing otherwiseQIdent) 
     (errorExpr toEnumErrString)
   toEnumErrString = errorMsg "toEnum"
-  nIdent = mkIdent' "n"
   
   -- succ equations
   succEqs = map (\(n, c) -> 
@@ -1714,16 +1721,21 @@ createEnumInstance (DataDecl p ty _ cs _) cls =
         apply [ var mapQIdent
               , var toEnumQIdent
               , apply [var preludeEnumFromToQIdent
-                      , fromEnumExpr xIdent
+                      , fromEnumExpr $ head ids
                       , maxBound'
                       ]
               ]  
       ) [])
       
-  enumFromEq = enumFromToEq' enumFrom'
-    (Literal $ mkInt'' $ length cs - 1) [xIdent]
-  enumFromToEq = enumFromToEq' enumFromTo'
-    (fromEnumExpr yIdent) [xIdent, yIdent] 
+  enumFromEq = do
+     xIdent <- newIdent "x"
+     return $ enumFromToEq' enumFrom'
+       (Literal $ mkInt'' $ length cs - 1) [xIdent]
+  enumFromToEq = do
+    xIdent <- newIdent "x"
+    yIdent <- newIdent "y"
+    return $ enumFromToEq' enumFromTo'
+      (fromEnumExpr yIdent) [xIdent, yIdent] 
     
   -- enumFromThen{To} equations
   enumFromThenToEq' which bound' ids = Equation p (FunLhs which (map VariablePattern ids))
@@ -1731,36 +1743,37 @@ createEnumInstance (DataDecl p ty _ cs _) cls =
         apply [ var mapQIdent
               , var toEnumQIdent
               , apply [var preludeEnumFromThenToQIdent
-                      , fromEnumExpr xIdent
-                      , fromEnumExpr yIdent
+                      , fromEnumExpr $ ids !! 0
+                      , fromEnumExpr $ ids !! 1
                       , bound'
                       ]
               ]  
       ) [])
   
-  enumFromThenEq = enumFromThenToEq' enumFromThen' 
-    (IfThenElse (srcRef 0) 
-      (InfixApply (fromEnumExpr yIdent) infixLessOp (fromEnumExpr xIdent))
-      (Literal $ mkInt'' 0)
-      (Literal $ mkInt'' $ length cs - 1))
-    [xIdent, yIdent]
-  enumFromThenToEq = enumFromThenToEq' enumFromThenTo' 
-    (apply [var fromEnumQIdent, var $ qualify zIdent]) [xIdent, yIdent, zIdent]
+  enumFromThenEq = do
+    xIdent <- newIdent "x"
+    yIdent <- newIdent "y"
+    return $ enumFromThenToEq' enumFromThen' 
+      (IfThenElse (srcRef 0) 
+        (InfixApply (fromEnumExpr yIdent) infixLessOp (fromEnumExpr xIdent))
+        (Literal $ mkInt'' 0)
+        (Literal $ mkInt'' $ length cs - 1))
+      [xIdent, yIdent]
+  enumFromThenToEq = do
+    xIdent <- newIdent "x"
+    yIdent <- newIdent "y"
+    zIdent <- newIdent "z"
+    return $ enumFromThenToEq' enumFromThenTo' 
+      (apply [var fromEnumQIdent, var $ qualify zIdent]) [xIdent, yIdent, zIdent]
   
   fromEnumExpr ident = apply [var fromEnumQIdent, var $ qualify ident]
-  
-  xIdent = mkIdent' "x"
-  yIdent = mkIdent' "y"
-  zIdent = mkIdent' "z"
-  
+    
   mkInt'' = mkInt' enumClsIdentName (show ty) 
   
   errorExpr :: String -> Expression
   errorExpr s = (Apply (Variable Nothing errorQIdent) 
            (Literal $ String (srcRef 0) s))
   errorMsg s = "TCPrelude.Enum." ++ show ty ++ "." ++ s ++ ": bad argument"
-  
-  mkIdent' x = flip renameIdent 1 $ mkIdent (deriveEnumPrefix ++ show ty ++ sep ++ x)
 createEnumInstance _ _ = internalError "createEnumInstance"  
 
 apply :: [Expression] -> Expression
@@ -1841,9 +1854,6 @@ mkInt' :: String -> String -> Int -> Literal
 mkInt' cls ty n = 
   Int (flip renameIdent 1 $ mkIdent $ cls ++ sep ++ ty ++ sep ++ show n)
       (toInteger n)  
-
-deriveEnumPrefix :: String
-deriveEnumPrefix = identPrefix ++ "drvEnum" ++ sep
 
 -- ---------------------------------------------------------------------------
 -- helper functions
