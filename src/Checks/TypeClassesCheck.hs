@@ -1395,12 +1395,18 @@ data DerState = DerState
 
 type Der = State DerState
 
-getNewIdent :: String -> Der Ident
-getNewIdent v = (\n -> mkIdent (derivePrefix ++ v ++ sep ++ show n)) 
-  `liftM` gets counter
+newIdent :: String -> Der Ident
+newIdent v = do
+  nextId <- gets counter
+  modify $ \s -> s { counter = nextId + 1 }
+  -- the renaming of the identifiers is important so that the parameters
+  -- are not handled as top level functions. 
+  return $ flip renameIdent 1 $ mkIdent (derivePrefix ++ show nextId ++ sep ++ v)
 
-derivePrefix = "derive" ++ sep
+derivePrefix :: String
+derivePrefix = identPrefix ++ "derive" ++ sep
 
+initDerState :: DerState
 initDerState = DerState 0
 
 runDer :: Der a -> a
@@ -1461,10 +1467,11 @@ createEqOrOrdInstance :: Decl      -- ^ the data/newtype declaration
                       -- Takes the two constructors and their positions in the 
                       -- data declaration, as well as the arities of the constructors 
                       -> (Position -> (Ident, Int) -> (Ident, Int) -> Int -> Int -> [Ident] -> [Ident] -> Rhs)
-                      -> String  -- ^ the prefix to be used for parameters
                       -> Der Decl    -- ^ the resulting instance declaration
-createEqOrOrdInstance (DataDecl p ty dataVars cons _) op clsIdent genRhs prefix = 
-
+createEqOrOrdInstance (DataDecl p ty dataVars cons _) op clsIdent genRhs = do
+ 
+  eqs <- concatMapM (\(c, n) -> mapM (\(c', n') -> genEq c c' n n') cons') cons'
+   
   return $ InstanceDecl p (SContext scon) cls tycon vars 
     [FunctionDecl p Nothing (-1) op eqs]
   
@@ -1473,8 +1480,6 @@ createEqOrOrdInstance (DataDecl p ty dataVars cons _) op clsIdent genRhs prefix 
   cls = clsIdent
   tycon = QualTC $ qualify ty
   vars = dataVars
-  
-  eqs = concatMap (\(c, n) -> map (\(c', n') -> genEq c c' n n') cons') cons' 
   
   -- record the respective number for each constructor, because we need the order of 
   -- the constructors for the Ord instance
@@ -1489,28 +1494,22 @@ createEqOrOrdInstance (DataDecl p ty dataVars cons _) op clsIdent genRhs prefix 
   -- then compare the parameters of the constructors, else return False. 
   -- Note: here for /all/ constructor pairs must an equation be created, 
   -- else we would get overlapping rules and thus unwanted non-determinism. 
-  genEq :: (Ident, Int) -> (Ident, Int) -> Int -> Int -> Equation 
-  genEq (c, i) (c', i') n n' = Equation p 
+  genEq :: (Ident, Int) -> (Ident, Int) -> Int -> Int -> Der Equation 
+  genEq (c, i) (c', i') n n' = do
+    newVars  <- mapM (\k -> newIdent $ "x" ++ show k) [1..n]
+    newVars' <- mapM (\k -> newIdent $ "y" ++ show k) [1..n'] 
+    return $ Equation p 
       (FunLhs op [ConstructorPattern (qualify c) (map VariablePattern newVars), 
                   ConstructorPattern (qualify c') (map VariablePattern newVars')])
       (genRhs p (c, i) (c', i') n n' newVars newVars') 
-    where
-    newVars  = map (mkIdent' . makeName) [1..n]
-    newVars' = map (mkIdent' . (++ "'") . makeName) [1..n']
-    makeName i0 = prefix ++ show c ++ sep ++ show c' ++ sep ++ show i0
-  
-  -- |the renaming of the identifiers is important so that the parameters
-  -- are not handled as top level functions. 
-  mkIdent' :: String -> Ident
-  mkIdent' = flip renameIdent 1 . mkIdent
 
 createEqOrOrdInstance (NewtypeDecl p ty vars (NewConstrDecl p' vars' id' ty') d) 
-                       op clsIdent genRhs prefix =
+                       op clsIdent genRhs =
   -- newtype declarations are simply treated as data declarations with 
   -- one constructor.  
   createEqOrOrdInstance (DataDecl p ty vars [ConstrDecl p' vars' id' [ty']] d) 
-                        op clsIdent genRhs prefix
-createEqOrOrdInstance _ _ _ _ _ = internalError "createEqOrOrdInstance"
+                        op clsIdent genRhs
+createEqOrOrdInstance _ _ _ _ = internalError "createEqOrOrdInstance"
 
 -- |creates an "Eq" instance for the given data type. 
 -- Example:
@@ -1542,7 +1541,7 @@ createEqOrOrdInstance _ _ _ _ _ = internalError "createEqOrOrdInstance"
 -- Because the rules overlap, and we have non-determinism, a comparison would
 -- always yield "False" as one result.  
 createEqInstance :: Decl -> QualIdent -> Der Decl
-createEqInstance d cls = createEqOrOrdInstance d eqOp cls genEqRhs deriveEqPrefix
+createEqInstance d cls = createEqOrOrdInstance d eqOp cls genEqRhs
 
 -- |generates the right hand sides used in the derived Eq instance  
 genEqRhs :: Position -> (Ident, Int) -> (Ident, Int) -> Int -> Int -> [Ident] -> [Ident] -> Rhs
@@ -1563,7 +1562,7 @@ genEqRhs p (c, _) (c', _) n _n' newVars newVars' =
 
 -- |creates an "Ord" instance for the given data type
 createOrdInstance :: Decl -> QualIdent -> Der Decl
-createOrdInstance d cls = createEqOrOrdInstance d leqOp cls genOrdRhs deriveOrdPrefix
+createOrdInstance d cls = createEqOrOrdInstance d leqOp cls genOrdRhs
 
 -- |generates the right hand sides used in the derived Ord instance. The scheme
 -- is as follows:
@@ -1842,12 +1841,6 @@ mkInt' :: String -> String -> Int -> Literal
 mkInt' cls ty n = 
   Int (flip renameIdent 1 $ mkIdent $ cls ++ sep ++ ty ++ sep ++ show n)
       (toInteger n)  
-
-deriveEqPrefix :: String
-deriveEqPrefix = identPrefix ++ "drvEq" ++ sep
-
-deriveOrdPrefix :: String
-deriveOrdPrefix = identPrefix ++ "drvOrd" ++ sep
 
 deriveEnumPrefix :: String
 deriveEnumPrefix = identPrefix ++ "drvEnum" ++ sep
