@@ -1783,9 +1783,6 @@ createEnumInstance (DataDecl p ty _ cs _) cls = do
   errorMsg s = "TCPrelude.Enum." ++ show ty ++ "." ++ s ++ ": bad argument"
 createEnumInstance _ _ = internalError "createEnumInstance"  
 
-apply :: [Expression] -> Expression
-apply = foldl1 Apply   
-
 -- |Creates a bounded instance for an enumeration. Example: 
 -- @
 -- data T = T1 | T2 | T3
@@ -1878,6 +1875,9 @@ typeSig = TypeSig NoPos
 
 simpleRhs :: Expression -> Rhs
 simpleRhs e = SimpleRhs NoPos e []
+
+apply :: [Expression] -> Expression
+apply = foldl1 Apply   
 
 -- |expands the given type expression by converting it first to a "Type", 
 -- expanding the "Type", and then re-converting it back to a "TypeExpr"
