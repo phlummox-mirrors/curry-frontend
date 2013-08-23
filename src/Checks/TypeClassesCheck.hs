@@ -43,7 +43,7 @@ import Base.Types as BT (TypeScheme (..), polyType, constrainBy, Type (..), arro
                         , typeSchemeToType)
 import qualified Base.Types as BTC (Context) 
 import Base.SCC
-import Base.Utils (findMultiples, fst3, zipWith', fromJust')
+import Base.Utils (findMultiples, fst3, zipWith', fromJust', concatMapM)
 import Base.Names
 import Base.TopEnv
 import qualified Data.Map as Map  
@@ -108,7 +108,7 @@ typeClassesCheck m decls0
       in (newDecls, cEnv, [])
     (_, errs@(_:_)) -> (decls, ClassEnv emptyTopEnv [] emptyTopEnv Map.empty, errs)
   where
-    decls = expandDerivingDecls decls0
+    decls = runDer $ expandDerivingDecls decls0
     classDecls = filter isClassDecl decls
     instDecls = filter isInstanceDecl decls
     dataDecls = filter (\x -> isDataDecl x || isNewtypeDecl x) decls
@@ -1389,18 +1389,39 @@ createDictionary2 _ _ _ _ _ = internalError "createDictionary"
 -- source code transformations related to "deriving" of instances
 -- ---------------------------------------------------------------------------
 
+data DerState = DerState
+  { counter :: Int
+  }
+
+type Der = State DerState
+
+getNewIdent :: String -> Der Ident
+getNewIdent v = (\n -> mkIdent (derivePrefix ++ v ++ sep ++ show n)) 
+  `liftM` gets counter
+
+derivePrefix = "derive" ++ sep
+
+initDerState = DerState 0
+
+runDer :: Der a -> a
+runDer der = evalState der initDerState
+
+-- ---------------------------------------------------------------------------
+
 -- | expand all data declarations with a deriving annotation in the given list
-expandDerivingDecls :: [Decl] -> [Decl]
-expandDerivingDecls ds = ds ++ concatMap expandDerivingDecl dataDecls
+expandDerivingDecls :: [Decl] -> Der [Decl]
+expandDerivingDecls ds = do
+  expanded <- concatMapM expandDerivingDecl dataDecls
+  return $ ds ++ expanded 
   where
   dataDecls = filter (\d -> isDataDecl d || isNewtypeDecl d) ds
   
 -- | create all derived instances for the given data/newtype declaration 
-expandDerivingDecl :: Decl -> [Decl]
+expandDerivingDecl :: Decl -> Der [Decl]
 expandDerivingDecl d = if isNothing maybeDeriv 
-  then []
+  then return []
   else
-    concatMap (createInstance d) classes
+    concatMapM (createInstance d) classes
   where
   maybeDeriv = getDeriving d
   Deriving classes = fromJust maybeDeriv
@@ -1412,23 +1433,23 @@ getDeriving (DataDecl _ _ _ _ d) = d
 getDeriving _ = internalError "getDeriving"
 
 -- |creates an instance for the given data declaration and the given class
-createInstance :: Decl -> QualIdent -> [Decl]
+createInstance :: Decl -> QualIdent -> Der [Decl]
 createInstance d@(DataDecl _ _ _ cs _) cls
   -- consider only the *name* of the class, not the module identifier. If 
   -- this is wrong, it will be detected later
-  | unqualify cls == unqualify eqClsIdent   = [createEqInstance   d cls]
-  | unqualify cls == unqualify ordClsIdent  = [createOrdInstance  d cls]
+  | unqualify cls == unqualify eqClsIdent   = liftM (:[]) $ createEqInstance  d cls
+  | unqualify cls == unqualify ordClsIdent  = liftM (:[]) $ createOrdInstance d cls
   | unqualify cls == unqualify enumClsIdent = 
       if checkIsEnum cs
-      then [createEnumInstance d cls]
-      else [] 
+      then liftM (:[]) $ createEnumInstance d cls
+      else return [] 
   | unqualify cls == unqualify boundedClsIdent = 
       if checkIsEnum cs
-      then [createBoundedInstanceForEnum d cls]
+      then liftM (:[]) $ createBoundedInstanceForEnum d cls
       else if length cs == 1
-      then [createBoundedInstanceForOneConstructor d cls]
-      else [] -- no internal error!
-  | otherwise = []
+      then liftM (:[]) $ createBoundedInstanceForOneConstructor d cls
+      else return [] -- no internal error!
+  | otherwise = return []
   -- TODO: add further instances here
 createInstance _ _ = internalError "createInstance"
 
@@ -1441,10 +1462,10 @@ createEqOrOrdInstance :: Decl      -- ^ the data/newtype declaration
                       -- data declaration, as well as the arities of the constructors 
                       -> (Position -> (Ident, Int) -> (Ident, Int) -> Int -> Int -> [Ident] -> [Ident] -> Rhs)
                       -> String  -- ^ the prefix to be used for parameters
-                      -> Decl    -- ^ the resulting instance declaration
+                      -> Der Decl    -- ^ the resulting instance declaration
 createEqOrOrdInstance (DataDecl p ty dataVars cons _) op clsIdent genRhs prefix = 
 
-  InstanceDecl p (SContext scon) cls tycon vars 
+  return $ InstanceDecl p (SContext scon) cls tycon vars 
     [FunctionDecl p Nothing (-1) op eqs]
   
   where
@@ -1520,7 +1541,7 @@ createEqOrOrdInstance _ _ _ _ _ = internalError "createEqOrOrdInstance"
 -- @
 -- Because the rules overlap, and we have non-determinism, a comparison would
 -- always yield "False" as one result.  
-createEqInstance :: Decl -> QualIdent -> Decl
+createEqInstance :: Decl -> QualIdent -> Der Decl
 createEqInstance d cls = createEqOrOrdInstance d eqOp cls genEqRhs deriveEqPrefix
 
 -- |generates the right hand sides used in the derived Eq instance  
@@ -1541,7 +1562,7 @@ genEqRhs p (c, _) (c', _) n _n' newVars newVars' =
                (tail vars0)
 
 -- |creates an "Ord" instance for the given data type
-createOrdInstance :: Decl -> QualIdent -> Decl
+createOrdInstance :: Decl -> QualIdent -> Der Decl
 createOrdInstance d cls = createEqOrOrdInstance d leqOp cls genOrdRhs deriveOrdPrefix
 
 -- |generates the right hand sides used in the derived Ord instance. The scheme
@@ -1620,10 +1641,10 @@ genOrdRhs p (_c, i0) (_c', i0') n _n' newVars newVars' =
 --   enumFromThenTo x y z = map toEnum (Prelude.enumFromThenTo (fromEnum x) (fromEnum y) 
 --     (fromEnum z)
 -- @
-createEnumInstance :: Decl -> QualIdent -> Decl
+createEnumInstance :: Decl -> QualIdent -> Der Decl
 createEnumInstance (DataDecl p ty _ cs _) cls = 
 
-  InstanceDecl p (SContext []) cls tycon [] 
+  return $ InstanceDecl p (SContext []) cls tycon [] 
     [ FunctionDecl p Nothing (-1) toEnum' toEnumEqs
     , FunctionDecl p Nothing (-1) fromEnum' fromEnumEqs
     , FunctionDecl p Nothing (-1) succ' succEqs
@@ -1757,9 +1778,9 @@ apply = foldl1 Apply
 --   minBound = T1
 --   maxBound = T3
 -- @
-createBoundedInstanceForEnum :: Decl -> QualIdent -> Decl
+createBoundedInstanceForEnum :: Decl -> QualIdent -> Der Decl
 createBoundedInstanceForEnum (DataDecl p ty _ cs _) cls =
-  InstanceDecl p (SContext []) cls tycon []
+  return $ InstanceDecl p (SContext []) cls tycon []
     [ FunctionDecl p Nothing (-1) minBound' [minBoundEq]
     , FunctionDecl p Nothing (-1) maxBound' [maxBoundEq]]
   where
@@ -1787,9 +1808,9 @@ createBoundedInstanceForEnum _ _ = internalError "createBoundedInstanceForEnum"
 --   minBound = T minBound minBound minBound minBound
 --   maxBound = T maxBound maxBound maxBound maxBound
 -- @  
-createBoundedInstanceForOneConstructor :: Decl -> QualIdent -> Decl
+createBoundedInstanceForOneConstructor :: Decl -> QualIdent -> Der Decl
 createBoundedInstanceForOneConstructor (DataDecl p ty vars [cs] _) cls =
-  InstanceDecl p 
+  return $ InstanceDecl p 
     (SContext $ map (\v -> (cls, v)) vars)
     cls tycon vars 
     [ FunctionDecl p Nothing (-1) minBound' [minBoundEq]
