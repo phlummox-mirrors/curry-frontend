@@ -69,4 +69,7 @@ data ET = ET1 | ET2 | ET3 | ET4
 data ES = ES1
   deriving Enum
 
-  
+
+data TS a b c = TS1 | TS2 a | TS3 a b | TS4 a b c | TS5 c | TS6 a c | a :~: b
+  deriving Show
+
