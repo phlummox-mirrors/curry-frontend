@@ -59,6 +59,16 @@ boundedClsIdent = mkTCPQIdent boundedClsIdentName
 enumClsIdent :: QualIdent
 enumClsIdent = mkTCPQIdent enumClsIdentName
 
+-- ---------------------------------------------------------------------------
+
+preludeIdent :: Ident -> QualIdent
+preludeIdent = qualifyWith dummyMIdent
+
+tcPreludeIdent :: Ident -> QualIdent
+tcPreludeIdent = qualifyWith tcDummyMIdent
+
+-- ---------------------------------------------------------------------------
+
 eqOp :: Ident
 eqOp = mkIdent "=="
 
@@ -78,46 +88,48 @@ pointOp :: Ident
 pointOp = mkIdent "."
 
 infixEqOp :: InfixOp
-infixEqOp = InfixOp Nothing $ qualifyWith tcDummyMIdent $ eqOp
+infixEqOp = InfixOp Nothing $ tcPreludeIdent eqOp
 
 infixLeqOp :: InfixOp
-infixLeqOp = InfixOp Nothing $ qualifyWith tcDummyMIdent $ leqOp
+infixLeqOp = InfixOp Nothing $ tcPreludeIdent leqOp
 
 infixLessOp :: InfixOp
-infixLessOp = InfixOp Nothing $ qualifyWith tcDummyMIdent $ lessOp
+infixLessOp = InfixOp Nothing $ tcPreludeIdent lessOp
 
 infixAndOp :: InfixOp
-infixAndOp = InfixOp Nothing $ qualifyWith dummyMIdent $ andOp
+infixAndOp = InfixOp Nothing $ preludeIdent andOp
 
 infixOrOp :: InfixOp
-infixOrOp = InfixOp Nothing $ qualifyWith dummyMIdent $ orOp
+infixOrOp = InfixOp Nothing $ preludeIdent orOp
 
 infixPointOp :: InfixOp
-infixPointOp = InfixOp Nothing $ qualifyWith dummyMIdent $ pointOp
+infixPointOp = InfixOp Nothing $ preludeIdent pointOp
+
+-- ---------------------------------------------------------------------------
 
 trueCons :: QualIdent
-trueCons = qualifyWith dummyMIdent $ mkIdent "True"
+trueCons = preludeIdent $ mkIdent "True"
 
 falseCons :: QualIdent
-falseCons = qualifyWith dummyMIdent $ mkIdent "False"
+falseCons = preludeIdent $ mkIdent "False"
 
 flipIdent :: Ident
 flipIdent = mkIdent "flip"
 
 flipQIdent :: QualIdent
-flipQIdent = qualifyWith dummyMIdent flipIdent
+flipQIdent = preludeIdent flipIdent
 
 otherwiseIdent :: Ident
 otherwiseIdent = mkIdent "otherwise"
 
 otherwiseQIdent :: QualIdent
-otherwiseQIdent = qualifyWith dummyMIdent $ otherwiseIdent
+otherwiseQIdent = preludeIdent otherwiseIdent
 
 errorIdent :: Ident
 errorIdent = mkIdent "error"
 
 errorQIdent :: QualIdent
-errorQIdent = qualifyWith dummyMIdent $ errorIdent 
+errorQIdent = preludeIdent errorIdent 
 
 minBoundIdent :: Ident
 minBoundIdent = mkIdent "minBound"
@@ -126,16 +138,16 @@ maxBoundIdent :: Ident
 maxBoundIdent = mkIdent "maxBound"
 
 minBoundQIdent :: QualIdent
-minBoundQIdent = qualifyWith tcDummyMIdent $ minBoundIdent
+minBoundQIdent = tcPreludeIdent minBoundIdent
 
 maxBoundQIdent :: QualIdent
-maxBoundQIdent = qualifyWith tcDummyMIdent $ maxBoundIdent
+maxBoundQIdent = tcPreludeIdent maxBoundIdent
 
 mapIdent :: Ident
 mapIdent = mkIdent "map"
 
 mapQIdent :: QualIdent
-mapQIdent = qualifyWith dummyMIdent $ mapIdent
+mapQIdent = preludeIdent mapIdent
 
 toEnumIdent :: Ident
 toEnumIdent = mkIdent "toEnum"
@@ -144,19 +156,19 @@ fromEnumIdent :: Ident
 fromEnumIdent = mkIdent "fromEnum"
 
 toEnumQIdent :: QualIdent
-toEnumQIdent = qualifyWith tcDummyMIdent $ toEnumIdent
+toEnumQIdent = tcPreludeIdent toEnumIdent
 
 fromEnumQIdent :: QualIdent
-fromEnumQIdent = qualifyWith tcDummyMIdent $ fromEnumIdent
+fromEnumQIdent = tcPreludeIdent fromEnumIdent
 
 preludeEnumFromToIdent :: Ident
 preludeEnumFromToIdent = mkIdent "enumFromTo"
 
 preludeEnumFromToQIdent :: QualIdent
-preludeEnumFromToQIdent = qualifyWith dummyMIdent $ preludeEnumFromToIdent
+preludeEnumFromToQIdent = preludeIdent preludeEnumFromToIdent
 
 preludeEnumFromThenToIdent :: Ident
 preludeEnumFromThenToIdent = mkIdent "enumFromThenTo"
 
 preludeEnumFromThenToQIdent :: QualIdent
-preludeEnumFromThenToQIdent = qualifyWith dummyMIdent $ preludeEnumFromThenToIdent
+preludeEnumFromThenToQIdent = preludeIdent preludeEnumFromThenToIdent
