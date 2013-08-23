@@ -4,7 +4,7 @@ module TCPrelude
   ( Eq(..)
   , elem, notElem, lookup
   , Ord(..)
-  , Show(..), print
+  , Show(..), print, shows, showChar, showString, showParen
   , Read (..)
   , Bounded (..), Enum (..), boundedEnumFrom, boundedEnumFromThen
   , asTypeOf
@@ -254,6 +254,13 @@ class Show a where
   show x = shows x ""
   showList ls s = showList' shows ls s
 
+showList' :: (a -> ShowS) ->  [a] -> ShowS
+showList' _     []     s = "[]" ++ s
+showList' showx (x:xs) s = '[' : showx x (showl xs)
+  where
+    showl []     = ']' : s
+    showl (y:ys) = ',' : showx y (showl ys)
+
 shows :: Show a => a -> ShowS
 shows = showsPrec 0
 
@@ -265,14 +272,6 @@ showString str s = foldr showChar s str
 
 showParen :: Bool -> ShowS -> ShowS
 showParen b s = if b then showChar '(' . s . showChar ')' else s
-
-showList' :: (a -> ShowS) ->  [a] -> ShowS
-showList' _     []     s = "[]" ++ s
-showList' showx (x:xs) s = '[' : showx x (showl xs)
-  where
-    showl []     = ']' : s
-    showl (y:ys) = ',' : showx y (showl ys)
-
 
 print :: Show a => a -> IO ()
 print t = putStrLn (show t)
