@@ -1036,6 +1036,15 @@ insertDummyIdents vEnv =
       Value (qualifyWith preludeMIdent preludeEnumFromThenToIdent) 3
             (ForAll [] 0 (arrow [preludeInt, preludeInt, preludeInt, TypeConstructor qListIdP [preludeInt]]))
       Nothing)
+  , (showStringIdent, tcPreludeMIdent, Value (qualifyWith tcPreludeMIdent showStringIdent) 
+      2 (ForAll [] 0 (arrow [preludeString, preludeString, preludeString])) Nothing)
+  , (showParenIdent, tcPreludeMIdent, Value (qualifyWith tcPreludeMIdent showParenIdent)
+      2 (ForAll [] 0 (arrow [preludeBool, arrow [preludeString, preludeString], 
+                                          arrow [preludeString, preludeString]])) Nothing)
+  , (showsPrecIdent, tcPreludeMIdent, Value (qualifyWith tcPreludeMIdent showsPrecIdent)
+      3 (ForAll [(showClsIdent, tyvar 0)] 1 
+          (arrow [preludeInt, tyvar 0, preludeString, preludeString])) (Just showClsIdent)) 
+      
   ]
                  
   where

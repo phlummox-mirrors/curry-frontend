@@ -172,3 +172,24 @@ preludeEnumFromThenToIdent = mkIdent "enumFromThenTo"
 
 preludeEnumFromThenToQIdent :: QualIdent
 preludeEnumFromThenToQIdent = preludeIdent preludeEnumFromThenToIdent
+
+showStringIdent :: Ident
+showStringIdent = mkIdent "showString"
+
+showParenIdent :: Ident
+showParenIdent = mkIdent "showParen"
+
+showsPrecIdent :: Ident
+showsPrecIdent = mkIdent "showsPrec"
+
+showStringQIdent :: QualIdent
+showStringQIdent = tcPreludeIdent showStringIdent
+
+showParenQIdent :: QualIdent
+showParenQIdent = tcPreludeIdent showParenIdent
+
+showsPrecQIdent :: QualIdent
+showsPrecQIdent = tcPreludeIdent showsPrecIdent
+
+ 
+
