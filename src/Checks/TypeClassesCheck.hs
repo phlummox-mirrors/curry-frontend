@@ -30,7 +30,7 @@ import Env.TypeConstructor
 import Base.Messages (Message, message, posMessage, internalError)
 
 import Data.List
-import Text.PrettyPrint hiding (sep, isEmpty)
+import Text.PrettyPrint hiding (sep, isEmpty, space)
 import Data.Maybe
 import Control.Monad.State
 
@@ -902,7 +902,7 @@ supportedDerivingClasses :: [QualIdent]
 supportedDerivingClasses = 
   [ eqClsIdent 
   , ordClsIdent
-  -- , showClsIdent -- not yet
+  , showClsIdent
   -- , readClsIdent -- not yet
   , boundedClsIdent
   , enumClsIdent
@@ -1445,6 +1445,7 @@ createInstance d@(DataDecl _ _ _ cs _) cls
   -- this is wrong, it will be detected later
   | unqualify cls == unqualify eqClsIdent   = liftM (:[]) $ createEqInstance  d cls
   | unqualify cls == unqualify ordClsIdent  = liftM (:[]) $ createOrdInstance d cls
+  | unqualify cls == unqualify showClsIdent = liftM (:[]) $ createShowInstance d cls
   | unqualify cls == unqualify enumClsIdent = 
       if checkIsEnum cs
       then liftM (:[]) $ createEnumInstance d cls
@@ -1605,6 +1606,79 @@ genOrdRhs p (_c, i0) (_c', i0') n _n' newVars newVars' =
       where
       v  = Variable Nothing $ qualify $ newVars  !! (k-1)
       v' = Variable Nothing $ qualify $ newVars' !! (k-1)
+
+-- |Creates a Show instance for the given data type. 
+-- TODO: description
+createShowInstance :: Decl -> QualIdent -> Der Decl
+createShowInstance (DataDecl p ty vars cs _) cls = do
+  showsPrecEqs_ <- showsPrecEqs
+  return $ InstanceDecl p 
+    (SContext $ map (\v -> (cls, v)) vars)
+    cls tycon vars
+    [ FunctionDecl p Nothing (-1) showsPrec' showsPrecEqs_ ]
+  where
+  showsPrec' = mkIdent "showsPrec"
+  showsPrecEqs = mapM showsPrecEq cs
+  
+  showsPrecEq :: ConstrDecl -> Der Equation
+  -- when we have a nullary constructor, never wrap it in parentheses
+  showsPrecEq (ConstrDecl _ _ c []) = do
+    dId <- newIdent "d"
+    return $ Equation p 
+      (FunLhs showsPrec' [VariablePattern dId, ConstructorPattern (qualify c) []])
+      (SimpleRhs p (apply [var showStringQIdent, string $ show c ]) []) 
+  -- TODO: constructor with arguments
+  showsPrecEq (ConstrDecl _ _ c tys) = do
+    dId   <- newIdent "d"
+    xIds  <- mapM (\i -> newIdent ("x" ++ show i)) $ map fst $ zip [1::Int ..] tys 
+    num11 <- newIdent "n11"
+    let eleven = 11 -- TODO
+    return $ Equation p
+      (FunLhs showsPrec' 
+        [ VariablePattern dId, 
+          ConstructorPattern (qualify c) (map VariablePattern xIds)])
+      (SimpleRhs p (
+        apply [var showParenQIdent, Constructor trueCons {- TODO -}, 
+          pointApply $ 
+            apply [var showStringQIdent, string $ show c] : 
+            map (\x -> apply [ var showsPrecQIdent 
+                             , Literal $ Int num11 eleven {- TODO -}
+                             , qVar x]) xIds])
+        [])
+  -- TODO: operator
+  showsPrecEq (ConOpDecl _ _ _ c _) = do
+    dId   <- newIdent "d"
+    x1    <- newIdent "x1"
+    x2    <- newIdent "x2"
+    num11 <- newIdent "n11"
+    let eleven = 11 -- TODO
+    return $ Equation p
+      (FunLhs showsPrec'
+        [ VariablePattern dId, 
+          InfixPattern (VariablePattern x1) (qualify c) (VariablePattern x2) ])
+      (SimpleRhs p (
+        apply [var showParenQIdent, Constructor trueCons {- TODO -},
+          pointApply $ 
+            apply [ var showsPrecQIdent
+                  , Literal $ Int num11 eleven {- TODO -}
+                  , qVar x1]
+            : apply [var showStringQIdent, string $ show c]
+            : [apply [ var showsPrecQIdent
+                     , Literal $ Int num11 eleven {- TODO -}
+                     , qVar x2]]])
+       [])
+  
+  -- |applies the "ShowS" functions one after another (right associative) by
+  -- using the infix operator ".". Between two "ShowS" an additional space
+  -- is inserted.  
+  pointApply :: [Expression] -> Expression
+  pointApply = foldr1 (\l r -> 
+    InfixApply l infixPointOp (InfixApply space infixPointOp r))
+    where
+    space = apply [var showStringQIdent, string " "]
+  
+  tycon = QualTC $ qualify ty
+createShowInstance _ _ = internalError "createShowInstance"
      
 
 -- | Creates an Enum instance for the given data type. 
@@ -1875,6 +1949,9 @@ typeSig = TypeSig NoPos
 
 simpleRhs :: Expression -> Rhs
 simpleRhs e = SimpleRhs NoPos e []
+
+string :: String -> Expression
+string s = Literal $ String (srcRef 0) s
 
 apply :: [Expression] -> Expression
 apply = foldl1 Apply   
