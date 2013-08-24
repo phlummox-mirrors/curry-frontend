@@ -110,7 +110,7 @@ typeClassesCheck m decls0
       in (newDecls, cEnv, [])
     (_, errs@(_:_)) -> (decls, ClassEnv emptyTopEnv [] emptyTopEnv Map.empty, errs)
   where
-    decls = runDer $ expandDerivingDecls decls0
+    decls = runDer opPrecEnv $ expandDerivingDecls decls0
     classDecls = filter isClassDecl decls
     instDecls = filter isInstanceDecl decls
     dataDecls = filter (\x -> isDataDecl x || isNewtypeDecl x) decls
@@ -1393,6 +1393,7 @@ createDictionary2 _ _ _ _ _ = internalError "createDictionary"
 
 data DerState = DerState
   { counter :: Int
+  , opPrecEnv0   :: OpPrecEnv
   }
 
 type Der = State DerState
@@ -1408,11 +1409,14 @@ newIdent v = do
 derivePrefix :: String
 derivePrefix = identPrefix ++ "derive" ++ sep
 
-initDerState :: DerState
-initDerState = DerState 0
+getOpPrecEnv :: Der OpPrecEnv
+getOpPrecEnv = gets opPrecEnv0
 
-runDer :: Der a -> a
-runDer der = evalState der initDerState
+initDerState :: OpPrecEnv -> DerState
+initDerState opPrecEnv = DerState 0 opPrecEnv
+
+runDer :: OpPrecEnv -> Der a -> a
+runDer opPrecEnv der = evalState der (initDerState opPrecEnv)
 
 -- ---------------------------------------------------------------------------
 
