@@ -41,9 +41,11 @@ data S a = S a
 
 test15 = show (T (S 1) (S 2))
 
+test16 = show "abc"
+
 allTests = sequenceIO $ map putStrLn
   [ test1, test2, test3, test4, test5, test6, test7, test8, test9, test10, test10b
-  , test11, test12, test13, test14, test15]
+  , test11, test12, test13, test14, test15, test16]
 
 
   
@@ -63,10 +65,11 @@ test12' = test12 == "(Val 1 :+: Val 2) :*: Val 3"
 test13' = test13 == "(Val 1 :+: Val 2 :*: Val 3) :*: Val 4"
 test14' = test14 == "(Val 1 :+: Val 2 :*: Val 3) :*: (Val 4 :+: Val 5)"
 test15' = test15 == "T (S 1) (S 2)"
+test16' = test16 == "\"abc\""
 
 allTests' =
   [ test1', test2', test3', test4', test5', test6', test7', test8', test9', test10', test10b'
-  , test11', test12', test13', test14', test15']
+  , test11', test12', test13', test14', test15', test16']
 
 allCorrect = and allTests'
 
