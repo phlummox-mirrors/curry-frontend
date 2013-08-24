@@ -1081,7 +1081,7 @@ transformClass2 mdl cEnv tcEnv (ClassDecl p _scx cls _tyvar _decls) =
     names [] = internalError "genNonDirectSuperClassDictSelMethod"
     -- enchain the selector functions
     expr :: Expression
-    expr = foldr1 (\e1 e2 -> InfixApply e1 infixPointOp e2) (reverse $ names path)
+    expr = foldr1 (\e1 e2 -> InfixApply e1 pointInfixOp e2) (reverse $ names path)
   
   -- |Generates a top-level function containing the implementation of the
   -- default implementation given in the class declaration
@@ -1562,9 +1562,9 @@ genEqRhs p (c, _) (c', _) n _n' newVars newVars' =
     let vars0 = zipWith' (,) newVars newVars' 
         (firstVar, firstVar') = head vars0 in
     if n == 0 then Constructor trueCons
-    else foldl (\el (v, v') -> InfixApply el infixAndOp 
-                 (InfixApply (qVar v) infixEqOp (qVar v'))) 
-               (InfixApply (qVar firstVar) infixEqOp (qVar firstVar'))
+    else foldl (\el (v, v') -> InfixApply el andInfixOp 
+                 (InfixApply (qVar v) eqInfixOp (qVar v'))) 
+               (InfixApply (qVar firstVar) eqInfixOp (qVar firstVar'))
                (tail vars0)
 
 -- |creates an "Ord" instance for the given data type
@@ -1596,18 +1596,18 @@ genOrdRhs p (_c, i0) (_c', i0') n _n' newVars newVars' =
      else 
      
        if n == 0 then Constructor trueCons
-       else foldl1 (\e e' -> InfixApply e infixOrOp e') (map (createForN n) [1..n])
+       else foldl1 (\e e' -> InfixApply e orInfixOp e') (map (createForN n) [1..n])
     ) []
   where 
   createForN :: Int -> Int -> Expression
   createForN numAll i 
-    = foldl1 (\e e' -> InfixApply e infixAndOp e') (map createForI [1..i])
+    = foldl1 (\e e' -> InfixApply e andInfixOp e') (map createForI [1..i])
     where
     createForI :: Int -> Expression
     createForI k 
-      | k < i                 = InfixApply v infixEqOp   v' -- e_k == e_k'
-      | k == i && k /= numAll = InfixApply v infixLessOp v' -- e_k <  e_k'
-      | k == i && k == numAll = InfixApply v infixLeqOp  v' -- e_k <= e_k'
+      | k < i                 = InfixApply v eqInfixOp   v' -- e_k == e_k'
+      | k == i && k /= numAll = InfixApply v lessInfixOp v' -- e_k <  e_k'
+      | k == i && k == numAll = InfixApply v leqInfixOp  v' -- e_k <= e_k'
       | otherwise = internalError "genOrdRhs" 
       where
       v  = Variable Nothing $ qualify $ newVars  !! (k-1)
@@ -1683,14 +1683,14 @@ createShowInstance (DataDecl p ty vars cs _) cls = do
   cmpExpr :: Integer -> Ident -> Der Expression
   cmpExpr prec d = do
     numIdent <- newIdent "numPrec"
-    return $ InfixApply (qVar d) infixGreaterOp (Literal $ Int numIdent prec)
+    return $ InfixApply (qVar d) greaterInfixOp (Literal $ Int numIdent prec)
   
   -- |applies the "ShowS" functions one after another (right associative) by
   -- using the infix operator ".". Between two "ShowS" an additional space
   -- is inserted.  
   pointApply :: [Expression] -> Expression
   pointApply = foldr1 (\l r -> 
-    InfixApply l infixPointOp (InfixApply space infixPointOp r))
+    InfixApply l pointInfixOp (InfixApply space pointInfixOp r))
     where
     space = apply [var showStringQIdent, string " "]
   
@@ -1787,7 +1787,7 @@ createEnumInstance (DataDecl p ty _ cs _) cls = do
     return $ map (\(n, c) -> 
       CondExpr p 
         (InfixApply (Variable Nothing $ qualify nIdent)
-                    infixEqOp
+                    eqInfixOp
                     (Literal $ Int numId $ toInteger n))
         (Constructor c)
       ) cs'
@@ -1859,7 +1859,7 @@ createEnumInstance (DataDecl p ty _ cs _) cls = do
     numlm1 <- newIdent "numlm1"
     return $ enumFromThenToEq' enumFromThen' 
       (IfThenElse (srcRef 0) 
-        (InfixApply (fromEnumExpr yIdent) infixLessOp (fromEnumExpr xIdent))
+        (InfixApply (fromEnumExpr yIdent) lessInfixOp (fromEnumExpr xIdent))
         (Literal $ Int num0 0)
         (Literal $ Int numlm1 $ toInteger (length cs - 1)))
       [xIdent, yIdent]

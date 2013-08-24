@@ -90,26 +90,26 @@ orOp = mkIdent "||"
 pointOp :: Ident
 pointOp = mkIdent "."
 
-infixEqOp :: InfixOp
-infixEqOp = InfixOp Nothing $ tcPreludeIdent eqOp
+eqInfixOp :: InfixOp
+eqInfixOp = InfixOp Nothing $ tcPreludeIdent eqOp
 
-infixLeqOp :: InfixOp
-infixLeqOp = InfixOp Nothing $ tcPreludeIdent leqOp
+leqInfixOp :: InfixOp
+leqInfixOp = InfixOp Nothing $ tcPreludeIdent leqOp
 
-infixLessOp :: InfixOp
-infixLessOp = InfixOp Nothing $ tcPreludeIdent lessOp
+lessInfixOp :: InfixOp
+lessInfixOp = InfixOp Nothing $ tcPreludeIdent lessOp
 
-infixGreaterOp :: InfixOp
-infixGreaterOp = InfixOp Nothing $ tcPreludeIdent greaterOp
+greaterInfixOp :: InfixOp
+greaterInfixOp = InfixOp Nothing $ tcPreludeIdent greaterOp
 
-infixAndOp :: InfixOp
-infixAndOp = InfixOp Nothing $ preludeIdent andOp
+andInfixOp :: InfixOp
+andInfixOp = InfixOp Nothing $ preludeIdent andOp
 
-infixOrOp :: InfixOp
-infixOrOp = InfixOp Nothing $ preludeIdent orOp
+orInfixOp :: InfixOp
+orInfixOp = InfixOp Nothing $ preludeIdent orOp
 
-infixPointOp :: InfixOp
-infixPointOp = InfixOp Nothing $ preludeIdent pointOp
+pointInfixOp :: InfixOp
+pointInfixOp = InfixOp Nothing $ preludeIdent pointOp
 
 -- ---------------------------------------------------------------------------
 
