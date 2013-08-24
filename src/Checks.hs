@@ -125,7 +125,8 @@ typeClassesCheck :: Monad m => Check m
 typeClassesCheck _ env (Module m es is ds) 
   | null msgs = right (env {classEnv = clsEnv}, Module m es is decls') 
   | otherwise = left msgs
-  where (decls', clsEnv, msgs) = TCC.typeClassesCheck m ds (classEnv env) (tyConsEnv env)
+  where (decls', clsEnv, msgs) = TCC.typeClassesCheck m ds 
+           (classEnv env) (tyConsEnv env) (opPrecEnv env)
 
 -- |Insert dictionaries where necessary. This is actually not a check, but a
 -- transformation - but as it can produce errors, it is treated as a check  

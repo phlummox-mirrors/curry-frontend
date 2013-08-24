@@ -27,6 +27,7 @@ module Checks.TypeClassesCheck (buildTypeSchemesNoExpand, typeClassesCheck) wher
 import Curry.Syntax.Type as ST hiding (IDecl)
 import Env.ClassEnv
 import Env.TypeConstructor
+import Env.OpPrec
 import Base.Messages (Message, message, posMessage, internalError)
 
 import Data.List
@@ -81,9 +82,10 @@ hasError = liftM (not . null) $ gets errors
 -- |Checks class and instance declarations and removes these declarations; 
 -- adds new data types/functions for the class and instance declarations. 
 -- Also builds a corresponding class environment. 
-typeClassesCheck :: ModuleIdent -> [Decl] -> ClassEnv -> TCEnv -> ([Decl], ClassEnv, [Message])
+typeClassesCheck :: ModuleIdent -> [Decl] -> ClassEnv -> TCEnv -> OpPrecEnv 
+                 -> ([Decl], ClassEnv, [Message])
 typeClassesCheck m decls0
-    (ClassEnv importedClassesEnv importedInstances _ _) tcEnv0 = 
+    (ClassEnv importedClassesEnv importedInstances _ _) tcEnv0 opPrecEnv = 
   case runTcc tcCheck initTccState of 
     ((newClasses, instances), []) -> 
       let -- add newly generated dictionary types to type constructor environment  
