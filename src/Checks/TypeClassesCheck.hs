@@ -1633,46 +1633,57 @@ createShowInstance (DataDecl p ty vars cs _) cls = do
     return $ Equation p 
       (FunLhs showsPrec' [VariablePattern dId, ConstructorPattern (qualify c) []])
       (SimpleRhs p (apply [var showStringQIdent, string $ show c ]) []) 
-  -- TODO: constructor with arguments
+  -- constructor with arguments
   showsPrecEq (ConstrDecl _ _ c tys) = do
     dId   <- newIdent "d"
-    xIds  <- mapM (\i -> newIdent ("x" ++ show i)) $ map fst $ zip [1::Int ..] tys 
-    num11 <- newIdent "n11"
-    let eleven = 11 -- TODO
+    xIds  <- mapM (\i -> newIdent ("x" ++ show i)) $ map fst $ zip [1::Int ..] tys
+    cmpExpr_ <- cmpExpr appPrec dId
+    numIdent <- newIdent "numAppPrec"
     return $ Equation p
       (FunLhs showsPrec' 
         [ VariablePattern dId, 
           ConstructorPattern (qualify c) (map VariablePattern xIds)])
       (SimpleRhs p (
-        apply [var showParenQIdent, Constructor trueCons {- TODO -}, 
+        apply [var showParenQIdent, cmpExpr_, 
           pointApply $ 
             apply [var showStringQIdent, string $ show c] : 
             map (\x -> apply [ var showsPrecQIdent 
-                             , Literal $ Int num11 eleven {- TODO -}
+                             , Literal $ Int numIdent (appPrec + 1)
                              , qVar x]) xIds])
         [])
-  -- TODO: operator
+  -- operator
   showsPrecEq (ConOpDecl _ _ _ c _) = do
     dId   <- newIdent "d"
     x1    <- newIdent "x1"
     x2    <- newIdent "x2"
-    num11 <- newIdent "n11"
-    let eleven = 11 -- TODO
+    num1  <- newIdent "num1"
+    num2  <- newIdent "num2"
+    opPrecEnv <- getOpPrecEnv
+    let opPrec = case lookupP c opPrecEnv of
+          []  -> (\(OpPrec _ n) -> n) defaultP
+          [p'] -> (\(PrecInfo _ (OpPrec _ n)) -> n) p'
+          _   -> internalError "showsPrecEq" 
+    cmpExpr_ <- cmpExpr opPrec dId
     return $ Equation p
       (FunLhs showsPrec'
         [ VariablePattern dId, 
           InfixPattern (VariablePattern x1) (qualify c) (VariablePattern x2) ])
       (SimpleRhs p (
-        apply [var showParenQIdent, Constructor trueCons {- TODO -},
+        apply [var showParenQIdent, cmpExpr_,
           pointApply $ 
             apply [ var showsPrecQIdent
-                  , Literal $ Int num11 eleven {- TODO -}
+                  , Literal $ Int num1 (opPrec + 1)
                   , qVar x1]
             : apply [var showStringQIdent, string $ show c]
             : [apply [ var showsPrecQIdent
-                     , Literal $ Int num11 eleven {- TODO -}
+                     , Literal $ Int num2 (opPrec + 1)
                      , qVar x2]]])
        [])
+  
+  cmpExpr :: Integer -> Ident -> Der Expression
+  cmpExpr prec d = do
+    numIdent <- newIdent "numPrec"
+    return $ InfixApply (qVar d) infixGreaterOp (Literal $ Int numIdent prec)
   
   -- |applies the "ShowS" functions one after another (right associative) by
   -- using the infix operator ".". Between two "ShowS" an additional space
@@ -1684,6 +1695,10 @@ createShowInstance (DataDecl p ty vars cs _) cls = do
     space = apply [var showStringQIdent, string " "]
   
   tycon = QualTC $ qualify ty
+  
+  appPrec :: Integer
+  appPrec = 10
+  
 createShowInstance _ _ = internalError "createShowInstance"
      
 
