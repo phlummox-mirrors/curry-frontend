@@ -1614,7 +1614,37 @@ genOrdRhs p (_c, i0) (_c', i0') n _n' newVars newVars' =
       v' = Variable Nothing $ qualify $ newVars' !! (k-1)
 
 -- |Creates a Show instance for the given data type. 
--- TODO: description
+-- Example:
+-- Be the following data type given:
+-- @
+-- infix{l/r} n :=:
+-- data T a b = T1 | T2 a b | a :=: b
+--   deriving Show 
+-- @
+-- The created instance is as follows:
+-- @
+-- instance (Show a, Show b) => Show (T a b) where
+--   -- nullary constructors never are surrounded by parentheses 
+--   showsPrec d T1 = showString "T1"
+--   
+--   showsPrec d (T3 x1 x2 x3) =
+--     showParen (d > appPrec)
+--       (showString "T3" .
+--        showString " " .
+--        showsPrec (appPrec + 1) x1 .
+--        showString " " .
+--        showsPrec (appPrec + 1) x2 .
+--        showString " " .
+--        showsPrec (appPrec + 1) x3)
+--
+--   showsPrec d (x1 :=: x2) = 
+--     showParen (d > n) 
+--       (showsPrec (n + 1) x1 . 
+--        showString " " .
+--        showString ":=:" .
+--        showsPrec (n + 1) x2)
+-- @ 
+-- where appPrec is the precedence of the application (10). 
 createShowInstance :: Decl -> QualIdent -> Der Decl
 createShowInstance (DataDecl p ty vars cs _) cls = do
   showsPrecEqs_ <- showsPrecEqs
@@ -1659,6 +1689,7 @@ createShowInstance (DataDecl p ty vars cs _) cls = do
     num1  <- newIdent "num1"
     num2  <- newIdent "num2"
     opPrecEnv <- getOpPrecEnv
+    -- find out the precendence of the given operator
     let opPrec = case lookupP c opPrecEnv of
           []  -> (\(OpPrec _ n) -> n) defaultP
           [p'] -> (\(PrecInfo _ (OpPrec _ n)) -> n) p'
@@ -1680,6 +1711,8 @@ createShowInstance (DataDecl p ty vars cs _) cls = do
                      , qVar x2]]])
        [])
   
+  -- |creates a compare expression that compares the given variable with
+  -- the given integer
   cmpExpr :: Integer -> Ident -> Der Expression
   cmpExpr prec d = do
     numIdent <- newIdent "numPrec"
