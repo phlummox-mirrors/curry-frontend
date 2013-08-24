@@ -4,6 +4,8 @@
 import Prelude ()
 import TCPrelude
 
+import Assertion
+
 infixl 7 :*:
 infixl 6 :+:
 
@@ -67,3 +69,7 @@ allTests' =
   , test11', test12', test13', test14', test15']
 
 allCorrect = and allTests'
+
+
+test = assertTrue "allCorrect" allCorrect
+
