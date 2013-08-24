@@ -78,6 +78,9 @@ leqOp = mkIdent "<="
 lessOp :: Ident
 lessOp = mkIdent "<"
 
+greaterOp :: Ident
+greaterOp = mkIdent ">"
+
 andOp :: Ident
 andOp = mkIdent "&&"
 
@@ -95,6 +98,9 @@ infixLeqOp = InfixOp Nothing $ tcPreludeIdent leqOp
 
 infixLessOp :: InfixOp
 infixLessOp = InfixOp Nothing $ tcPreludeIdent lessOp
+
+infixGreaterOp :: InfixOp
+infixGreaterOp = InfixOp Nothing $ tcPreludeIdent greaterOp
 
 infixAndOp :: InfixOp
 infixAndOp = InfixOp Nothing $ preludeIdent andOp
