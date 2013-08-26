@@ -23,8 +23,7 @@ TODO: Use MultiParamTypeClasses ?
 >   , TypeScheme (..), ExistTypeScheme (..), monoType, polyType
 >     -- * Predefined types
 >   , unitType, boolType, charType, intType, floatType, stringType
->   , successType, listType, ioType, tupleType, primType
->   , typeVar, predefTypes
+>   , successType, listType, ioType, tupleType, typeVar, predefTypes
 >   ) where
 
 > import Curry.Base.Ident
@@ -254,37 +253,34 @@ There are a few predefined types:
 \begin{verbatim}
 
 > unitType :: Type
-> unitType = primType unitId []
+> unitType = TypeConstructor qUnitId []
 
 > boolType :: Type
-> boolType = primType boolId []
+> boolType = TypeConstructor qBoolId []
 
 > charType :: Type
-> charType = primType charId []
+> charType = TypeConstructor qCharId []
 
 > intType :: Type
-> intType = primType intId []
+> intType = TypeConstructor qIntId []
 
 > floatType :: Type
-> floatType = primType floatId []
+> floatType = TypeConstructor qFloatId []
 
 > stringType :: Type
 > stringType = listType charType
 
 > successType :: Type
-> successType = primType successId []
+> successType = TypeConstructor qSuccessId []
 
 > listType :: Type -> Type
-> listType ty = primType listId [ty]
+> listType ty = TypeConstructor qListId [ty]
 
 > ioType :: Type -> Type
-> ioType ty = primType ioId [ty]
+> ioType ty = TypeConstructor qIOId [ty]
 
 > tupleType :: [Type] -> Type
-> tupleType tys = primType (tupleId (length tys)) tys
-
-> primType :: Ident -> [Type] -> Type
-> primType = TypeConstructor . qualifyWith preludeMIdent
+> tupleType tys = TypeConstructor (qTupleId (length tys)) tys
 
 > typeVar :: Int -> Type
 > typeVar = TypeVariable
