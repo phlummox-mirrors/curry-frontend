@@ -85,12 +85,14 @@ compileModule opts fn = do
 writeOutput :: Options -> FilePath -> (CompilerEnv, CS.Module) -> IO ()
 writeOutput opts fn (env, modul) = do
   writeParsed        opts fn     modul
-  writeAbstractCurry opts fn env modul
+  let (env1, qlfd) = qual opts env modul
+  doDump opts (DumpQualified, env1, show $ CS.ppModule qlfd)
+  writeAbstractCurry opts fn env1 qlfd
   when withFlat $ do
     -- checkModule checks types, and then transModule introduces new
     -- functions (by lambda lifting in 'desugar'). Consequence: The
     -- types of the newly introduced functions are not inferred (hsi)
-    let (env2, il, dumps) = transModule opts env modul
+    let (env2, il, dumps) = transModule opts env1 qlfd
     -- dump intermediate results
     mapM_ (doDump opts) dumps
     -- generate target code
@@ -184,9 +186,7 @@ checkModule opts (env, mdl) = do
                    then typeCheck opts env3 pc >>= uncurry (exportCheck opts)
                    else return (env3, pc)
   doDump opts (DumpTypeChecked  , env4, show $ CS.ppModule tc)
-  (env5, ql) <- return $ qual opts env4 tc
-  doDump opts (DumpQualified    , env5, show $ CS.ppModule ql)
-  return (env5, ql)
+  return (env4, tc)
   where
   withTypeCheck = any (`elem` optTargetTypes opts)
                       [FlatCurry, ExtendedFlatCurry, FlatXml, AbstractCurry]

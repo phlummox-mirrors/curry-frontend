@@ -14,22 +14,27 @@
 -}
 module Checks.WarnCheck (warnCheck) where
 
-import           Control.Monad              (filterM, foldM_, guard, unless)
+import           Control.Monad
+  (filterM, foldM_, guard, liftM, unless)
 import           Control.Monad.State.Strict (State, execState, gets, modify)
 import qualified Data.Map            as Map (empty, insert, lookup)
-import           Data.Maybe                 (isJust)
-import           Data.List         (intersect, intersectBy, sort, unionBy)
+import           Data.Maybe                 (catMaybes, isJust)
+import           Data.List
+  (intersect, intersectBy, nub, partition, sort, unionBy)
 import Text.PrettyPrint
 
 import Curry.Base.Ident
 import Curry.Base.Position
 import Curry.Syntax
+import Curry.Syntax.Pretty (ppPattern, ppExpr, ppIdent)
 
-import Base.Messages (Message, posMessage)
+import Base.Messages (Message, posMessage, internalError)
 import qualified Base.ScopeEnv as SE
   ( ScopeEnv, new, beginScope, endScopeUp, insert, lookup, level, modify
   , lookupWithLevel, toLevelList, currentLevel)
 
+import Base.Types
+import Env.TypeConstructor (TCEnv, TypeInfo (..), qualLookupTC)
 import Env.Value (ValueEnv, ValueInfo (..), qualLookupValue)
 
 -- Find potentially incorrect code in a Curry program and generate warnings
@@ -40,11 +45,12 @@ import Env.Value (ValueEnv, ValueInfo (..), qualLookupValue)
 --   - idle case alternatives
 --   - overlapping case alternatives
 --   - non-adjacent function rules
-warnCheck :: ValueEnv -> Module -> [Message]
-warnCheck valEnv (Module mid es is ds) = runOn (initWcState mid valEnv) $ do
-  checkExports   es
-  checkImports   is
-  checkDeclGroup ds
+warnCheck :: ValueEnv -> TCEnv -> Module -> [Message]
+warnCheck valEnv tcEnv (Module mid es is ds)
+  = runOn (initWcState mid valEnv tcEnv) $ do
+      checkExports   es
+      checkImports   is
+      checkDeclGroup ds
 
 type ScopeEnv = SE.ScopeEnv QualIdent IdInfo
 
@@ -53,6 +59,7 @@ data WcState = WcState
   { moduleId    :: ModuleIdent
   , scope       :: ScopeEnv
   , valueEnv    :: ValueEnv
+  , tyConsEnv   :: TCEnv
   , warnings    :: [Message]
   }
 
@@ -61,8 +68,8 @@ data WcState = WcState
 -- contents.
 type WCM = State WcState
 
-initWcState :: ModuleIdent -> ValueEnv -> WcState
-initWcState mid ve = WcState mid SE.new ve []
+initWcState :: ModuleIdent -> ValueEnv -> TCEnv -> WcState
+initWcState mid ve te = WcState mid SE.new ve te []
 
 getModuleIdent :: WCM ModuleIdent
 getModuleIdent = gets moduleId
@@ -177,7 +184,7 @@ checkDecl (TypeDecl   _ _ vs ty) = inNestedScope $ do
   mapM_ insertTypeVar  vs
   checkTypeExpr ty
   reportUnusedTypeVars vs
-checkDecl (FunctionDecl _ _ eqs) = inNestedScope $ mapM_ checkEquation eqs
+checkDecl (FunctionDecl _ _ eqs) = checkEquations eqs
 checkDecl (PatternDecl  _ p rhs) = checkPattern p >> checkRhs rhs
 checkDecl _                      = ok
 
@@ -208,6 +215,13 @@ checkLocalDecl (FunctionDecl _ f _) = checkShadowing f
 checkLocalDecl (FreeDecl      _ vs) = mapM_ checkShadowing vs
 checkLocalDecl (PatternDecl  _ p _) = checkPattern p
 checkLocalDecl _                    = ok
+
+checkEquations :: [Equation] -> WCM ()
+checkEquations [] = ok
+checkEquations eqs@(Equation pos _ _ : _) = inNestedScope $ do
+  mapM_ checkEquation eqs
+  checkNonExhaustivePattern "function declaration" pos
+    $ map (\(Equation _ lhs _) -> snd (flatLhs lhs)) eqs
 
 -- Check an equation for warnings.
 -- This is done in a seperate scope as the left-hand-side may introduce
@@ -327,99 +341,229 @@ checkFieldExpression (Field _ _ e) = checkExpr e -- Hier auch "visitId ident" ?
 
 -- Check for idle and overlapping case alternatives
 checkCaseAlternatives :: [Alt] -> WCM ()
-checkCaseAlternatives as = do
-  checkIdleAlts as
-  checkOverlappingAlts as
+checkCaseAlternatives []                     = ok
+checkCaseAlternatives alts@(Alt pos _ _ : _) = do
+  checkIdleAlts alts
+  checkOverlappingAlts alts
+  checkNonExhaustivePattern "case alternative" pos
+    (map (\(Alt _ p _) -> [p]) alts)
 
--- TODO FIXME this is buggy: is alts' required to be non-null or not? (hsi, bjp)
 checkIdleAlts :: [Alt] -> WCM ()
-checkIdleAlts alts = do
-  alts' <- dropUnless' isVarAlt alts
-  let idles         = tail_ [] alts'
-      (Alt pos _ _) = head idles
-  unless (null idles) $ report $ warnIdleCaseAlts pos
+checkIdleAlts alts = case idles of
+  Alt p _ _ : _ : _ -> report $ warnIdleCaseAlts p
+  _                 -> ok
   where
-  isVarAlt (Alt _ (VariablePattern                v) _) = isVarId v
-  isVarAlt (Alt _ (ParenPattern (VariablePattern v)) _) = isVarId v
-  isVarAlt (Alt _ (AsPattern _  (VariablePattern v)) _) = isVarId v
-  isVarAlt _ = return False
+  idles = dropWhile (not . isVarAlt) alts
 
-  -- safer versions of 'tail'
-  tail_ :: [a] -> [a] -> [a]
-  tail_ alt []     = alt
-  tail_ _   (_:xs) = xs
+  isVarAlt (Alt _ p _) = isVarPat' p
 
-  dropUnless' :: Monad m => (a -> m Bool) -> [a] -> m [a]
-  dropUnless' _     []     = return []
-  dropUnless' mpred (x:xs) = do
-    p <- mpred x
-    if p then return (x:xs) else dropUnless' mpred xs
+  isVarPat' (VariablePattern _) = True
+  isVarPat' (ParenPattern    p) = isVarPat' p
+  isVarPat' (AsPattern     _ p) = isVarPat' p
+  isVarPat' _                   = False
 
 checkOverlappingAlts :: [Alt] -> WCM ()
 checkOverlappingAlts []           = ok
 checkOverlappingAlts (alt : alts) = do
-  (altsr, alts') <- partition' (eqAlt alt) alts
-  mapM_ (\ (Alt pos _ _) -> report $ warnOverlappingCaseAlts pos) altsr
-  checkOverlappingAlts alts'
+  let (overlapping, rest) = partition (eqAlt alt) alts
+  unless (null overlapping) $ report $ warnOverlappingCaseAlts (alt : overlapping)
+  checkOverlappingAlts rest
   where
   eqAlt (Alt _ p1 _) (Alt _ p2 _) = eqPattern p1 p2
 
-  eqPattern (LiteralPattern      l1) (LiteralPattern l2)
-    = return $ l1 == l2
-  eqPattern (NegativePattern id1 l1) (NegativePattern id2 l2)
-    = return $ id1 == id2 && l1 == l2
-  eqPattern (VariablePattern    id1) (VariablePattern id2) = do
-    p <- isConsId id1
-    return $ p && id1 == id2
-  eqPattern (ConstructorPattern qid1 cs1)
-                   (ConstructorPattern qid2 cs2)
-    = if qid1 == qid2
-        then all' (\ (c1,c2) -> eqPattern c1 c2) (zip cs1 cs2)
-        else return False
-  eqPattern (InfixPattern lcs1 qid1 rcs1)
-                   (InfixPattern lcs2 qid2 rcs2)
-    = eqPattern (ConstructorPattern qid1 [lcs1, rcs1])
-                       (ConstructorPattern qid2 [lcs2, rcs2])
-  eqPattern (ParenPattern p1) (ParenPattern p2)
+  eqPattern (LiteralPattern         l1) (LiteralPattern         l2)
+    = l1 == l2
+  eqPattern (NegativePattern    id1 l1) (NegativePattern    id2 l2)
+    = id1 == id2 && l1 == l2
+  eqPattern (VariablePattern         _) (VariablePattern         _)
+    = False -- treated as idle case alternative!
+  eqPattern (ConstructorPattern c1 cs1) (ConstructorPattern c2 cs2)
+    = and ((c1 == c2) : zipWith eqPattern cs1 cs2)
+  eqPattern (InfixPattern     l1 c1 r1) (InfixPattern     l2 c2 r2)
+    = and [c1 == c2, l1 `eqPattern` l2, r1 `eqPattern` r2]
+  eqPattern (ParenPattern           p1) (ParenPattern           p2)
     = eqPattern p1 p2
-  eqPattern (TuplePattern _ cs1) (TuplePattern _ cs2)
-    = eqPattern (ConstructorPattern (qTupleId 2) cs1)
-                       (ConstructorPattern (qTupleId 2) cs2)
-  eqPattern (ListPattern _ cs1) (ListPattern _ cs2)
-    = cmpListM eqPattern cs1 cs2
-  eqPattern (AsPattern    _ p1) (AsPattern   _ p2)
+  eqPattern (TuplePattern         _ p1) (TuplePattern         _ p2)
+    = and (zipWith eqPattern p1 p2)
+  eqPattern (ListPattern          _ p1) (ListPattern          _ p2)
+    = and (zipWith eqPattern p1 p2)
+  eqPattern (AsPattern            _ p1) (AsPattern            _ p2)
     = eqPattern p1 p2
-  eqPattern (LazyPattern  _ p1) (LazyPattern _ p2)
+  eqPattern (LazyPattern          _ p1) (LazyPattern          _ p2)
     = eqPattern p1 p2
-  eqPattern _ _ = return False
+  eqPattern _                           _
+    = False
 
-  cmpListM :: Monad m => (a -> a -> m Bool) -> [a] -> [a] -> m Bool
-  cmpListM _ []     []     = return True
-  cmpListM cmpM (x:xs) (y:ys) = do
-    c <- cmpM x y
-    if c then cmpListM cmpM xs ys
-         else return False
-  cmpListM _ _      _      = return False
+checkNonExhaustivePattern :: String -> Position -> [[Pattern]] -> WCM ()
+checkNonExhaustivePattern loc pos pats = do
+  missing <- missingPattern (map (map simplifyPat) pats)
+  unless (null missing) $ report $ warnMissingPattern loc pos missing
 
-  partition' :: Monad m => (a -> m Bool) -> [a] -> m ([a],[a])
-  partition' mpred xs' = part mpred [] [] xs'
-    where
-    part _      ts fs []     = return (reverse ts, reverse fs)
-    part mpred' ts fs (x:xs) = do
-      p <- mpred' x
-      if p then part mpred' (x:ts) fs     xs
-          else part mpred' ts     (x:fs) xs
+-- simplify pattern to only consist of
+--   * variables
+--   * literals
+--   * constructors
+simplifyPat :: Pattern -> Pattern
+simplifyPat l@(LiteralPattern      _) = l
+simplifyPat (NegativePattern     _ l) = LiteralPattern (negateLit l)
+  where
+  negateLit (Int   i n) = Int   i (-n)
+  negateLit (Float r d) = Float r (-d)
+  negateLit x           = x
+simplifyPat v@(VariablePattern     _) = v
+simplifyPat (ConstructorPattern c ps)
+  = ConstructorPattern c (map simplifyPat ps)
+simplifyPat (InfixPattern    p1 c p2)
+  = ConstructorPattern c (map simplifyPat [p1, p2])
+simplifyPat (ParenPattern          p) = simplifyPat p
+simplifyPat (TuplePattern       _ ps)
+  = ConstructorPattern (qTupleId (length ps)) (map simplifyPat ps)
+simplifyPat (ListPattern        _ ps)
+  = foldr (\e1 e2 -> ConstructorPattern qConsId (map simplifyPat [e1, e2]))
+          (ConstructorPattern qNilId []) ps
+simplifyPat (AsPattern           _ p) = simplifyPat p
+simplifyPat (LazyPattern         _ _) = VariablePattern anonId
+simplifyPat p                         = p
 
-  all' :: Monad m => (a -> m Bool) -> [a] -> m Bool
-  all' _     []     = return True
-  all' mpred (x:xs) = do
-    p <- mpred x
-    if p then all' mpred xs else return False
+type ExhaustivePats = ([Pattern], [(Ident, [Literal])])
+
+missingPattern :: [[Pattern]] -> WCM [ExhaustivePats]
+missingPattern []       = return []
+missingPattern (eq:eqs)
+  | any isLitPat eq     = processLiterals (eq:eqs)
+  | any isConPat eq     = processCons     (eq:eqs)
+  | all isVarPat eq     = missingPattern  eqs
+  | otherwise           = return []
+
+processLiterals :: [[Pattern]] -> WCM [ExhaustivePats]
+processLiterals []       = return []
+processLiterals qs@(q:_) = do
+  missing1 <- processUsedLiterals used_lits qs
+  if null defaults
+    then return $ defaultPat : missing1
+    else do
+      missing2 <- missingPattern defaults
+      return $ [ (wildPat : ps, cs) | (ps, cs) <- missing2 ] ++ missing1
+  where
+  used_lits  = nub $ concatMap (getLit . head) qs
+  defaults   = [ tail q' | q' <- qs, isVarPat (head q') ]
+  defaultPat = ( VariablePattern new_var : replicate (length q - 1) wildPat
+               , [(new_var, used_lits)])
+  new_var    = mkIdent "v"
+
+processUsedLiterals :: [Literal] -> [[Pattern]] -> WCM [ExhaustivePats]
+processUsedLiterals lits qs = concat `liftM` mapM process lits
+  where
+  process lit = do
+    missing <- missingPattern [tail q | q <- qs, isVarLit lit (head q)]
+    return $ map (\(xs, ys) -> (LiteralPattern lit : xs, ys)) missing
+
+processCons :: [[Pattern]] -> WCM [ExhaustivePats]
+processCons []       = return []
+processCons qs@(q:_) = do
+  missing1 <- processUsedCons used_cons qs
+  unused   <- getUnusedCons (map fst used_cons)
+  if null unused
+    then return missing1
+    else if null defaults
+      then return $ map defaultPat unused ++ missing1
+      else do
+        missing2 <- missingPattern defaults
+        return $ [ (mkPattern c : ps, cs) | c <- unused, (ps, cs) <- missing2 ]
+                  ++ missing1
+  where
+  used_cons    = nub $ concatMap (getCon . head) qs
+  defaults     = [ tail q' | q' <- qs, isVarPat (head q') ]
+  defaultPat c = (mkPattern c : replicate (length q - 1) wildPat, [])
+  mkPattern (DataConstr c _ tys) = ConstructorPattern (qualifyLike (fst $ head used_cons) c)
+                                   (replicate (length tys) wildPat)
+
+processUsedCons :: [(QualIdent, Int)] -> [[Pattern]] -> WCM [ExhaustivePats]
+processUsedCons used qs = concat `liftM` mapM process used
+  where
+  process (c, a) = do
+    missing <- missingPattern [ removeFirstCon c a q
+                              | q <- qs , isVarCon c (head q)]
+    return $ map (\(xs,ys) -> (makeCon c a xs, ys)) missing
+
+  makeCon c a ps = let (args, rest) = splitAt a ps
+                   in ConstructorPattern c args : rest
+
+  removeFirstCon c a (p:ps)
+    | isVarPat p = replicate a wildPat ++ ps
+    | isCon c  p = patArgs p           ++ ps
+  removeFirstCon _ _ _ = internalError "Checks.WarnCheck.removeFirstCon"
+
+getUnusedCons :: [QualIdent] -> WCM [DataConstr]
+getUnusedCons []       = internalError "Checks.WarnCheck.getUnusedCons"
+getUnusedCons qs@(q:_) = do
+  allCons <- getConTy q >>= getTyCons . arrowBase
+  return [ c | c@(DataConstr q' _ _) <- allCons, q' `notElem` map unqualify qs]
+
+getConTy :: QualIdent -> WCM Type
+getConTy q = do
+  tyEnv <- gets valueEnv
+  return $ case qualLookupValue q tyEnv of
+    [DataConstructor  _ _ (ForAllExist _ _ ty)] -> ty
+    [NewtypeConstructor _ (ForAllExist _ _ ty)] -> ty
+    _                                           -> internalError $
+      "Checks.WarnCheck.getConTy: " ++ show q
+
+getTyCons :: Type -> WCM [DataConstr]
+getTyCons (TypeConstructor tc _) = do
+  tcEnv <- gets tyConsEnv
+  return $ case qualLookupTC tc tcEnv of
+    [DataType     _ _ cs] -> catMaybes cs
+    [RenamingType _ _ nc] -> [nc]
+    _                     -> internalError $
+      "Checks.WarnCheck.getTyCons: " ++ show tc
+getTyCons _ = internalError "Checks.WarnCheck.getTyCons"
+
+wildPat :: Pattern
+wildPat = VariablePattern anonId
+
+getLit :: Pattern -> [Literal]
+getLit (LiteralPattern l) = [l]
+getLit _                  = []
+
+getCon :: Pattern -> [(QualIdent, Int)]
+getCon (ConstructorPattern c ps) = [(c, length ps)]
+getCon _                         = []
+
+isVarLit :: Literal -> Pattern -> Bool
+isVarLit l p = isVarPat p || isLit l p
+
+isVarCon :: QualIdent -> Pattern -> Bool
+isVarCon c p = isVarPat p || isCon c p
+
+isCon :: QualIdent -> Pattern -> Bool
+isCon c (ConstructorPattern d _) = c == d
+isCon _ _                        = False
+
+isLit :: Literal -> Pattern -> Bool
+isLit l (LiteralPattern m) = l == m
+isLit _ _                  = False
+
+isLitPat :: Pattern -> Bool
+isLitPat (LiteralPattern  _) = True
+isLitPat _                   = False
+
+isVarPat :: Pattern -> Bool
+isVarPat (VariablePattern _) = True
+isVarPat _                   = False
+
+isConPat :: Pattern -> Bool
+isConPat (ConstructorPattern _ _) = True
+isConPat      _                   = False
+
+patArgs :: Pattern -> [Pattern]
+patArgs (ConstructorPattern _ ps) = ps
+patArgs _                         = []
+
+
 
 checkShadowing :: Ident -> WCM ()
-checkShadowing x = do
-  mbVar <- shadowsVar x
-  maybe ok (report . warnShadowing x) mbVar
+checkShadowing x = shadowsVar x >>= maybe ok (report . warnShadowing x)
 
 reportUnusedVars :: WCM ()
 reportUnusedVars = do
@@ -678,6 +822,22 @@ warnShadowing x v = posMessage x $
 warnIdleCaseAlts :: Position -> Message
 warnIdleCaseAlts p = posMessage p $ text "Idle case alternative(s)"
 
-warnOverlappingCaseAlts :: Position -> Message
-warnOverlappingCaseAlts p = posMessage p $ text
-  "Redundant overlapping case alternative"
+warnOverlappingCaseAlts :: [Alt] -> Message
+warnOverlappingCaseAlts [] = internalError
+  "WarnCheck.warnOverlappingCaseAlts: empty list"
+warnOverlappingCaseAlts alts@(Alt p _ _ : _) = posMessage p $ text
+  "Overlapping case alternatives" $+$ nest 2 (vcat (map myppAlt alts))
+  where myppAlt (Alt pos pat _) = ppLine pos <> text ":" <+> ppPattern 0 pat
+
+warnMissingPattern :: String -> Position -> [ExhaustivePats] -> Message
+warnMissingPattern loc p pats = posMessage p
+  $   text "Pattern matches are non-exhaustive"
+  $+$ text "In a" <+> text loc <> char ':'
+  $+$ nest 2 (text "Patterns not matched:" $+$ nest 2 (vcat (map ppExPat pats)))
+  where
+  ppExPat (ps, cs)
+    | null cs   = ppPats
+    | otherwise = ppPats <+> text "with" <+> hsep (map ppCons cs)
+    where ppPats = hsep (map (ppPattern 0) ps)
+  ppCons (i, lits) = ppIdent i <+> text "`notElem`"
+                 <+> ppExpr 0 (List [] (map Literal lits))
