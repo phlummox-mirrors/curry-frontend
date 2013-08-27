@@ -184,7 +184,7 @@ checkDecl (TypeDecl   _ _ vs ty) = inNestedScope $ do
   mapM_ insertTypeVar  vs
   checkTypeExpr ty
   reportUnusedTypeVars vs
-checkDecl (FunctionDecl _ _ eqs) = checkEquations eqs
+checkDecl (FunctionDecl p f eqs) = checkFunctionDecl p f eqs
 checkDecl (PatternDecl  _ p rhs) = checkPattern p >> checkRhs rhs
 checkDecl _                      = ok
 
@@ -216,11 +216,11 @@ checkLocalDecl (FreeDecl      _ vs) = mapM_ checkShadowing vs
 checkLocalDecl (PatternDecl  _ p _) = checkPattern p
 checkLocalDecl _                    = ok
 
-checkEquations :: [Equation] -> WCM ()
-checkEquations [] = ok
-checkEquations eqs@(Equation pos _ _ : _) = inNestedScope $ do
+checkFunctionDecl :: Position -> Ident -> [Equation] -> WCM ()
+checkFunctionDecl _ _ []  = ok
+checkFunctionDecl p f eqs = inNestedScope $ do
   mapM_ checkEquation eqs
-  checkNonExhaustivePattern "function declaration" pos
+  checkNonExhaustivePattern ("an equation for " ++ escName f) p
     $ map (\(Equation _ lhs _) -> snd (flatLhs lhs)) eqs
 
 -- Check an equation for warnings.
@@ -345,7 +345,7 @@ checkCaseAlternatives []                     = ok
 checkCaseAlternatives alts@(Alt pos _ _ : _) = do
   checkIdleAlts alts
   checkOverlappingAlts alts
-  checkNonExhaustivePattern "case alternative" pos
+  checkNonExhaustivePattern "a case alternative" pos
     (map (\(Alt _ p _) -> [p]) alts)
 
 checkIdleAlts :: [Alt] -> WCM ()
@@ -394,6 +394,10 @@ checkOverlappingAlts (alt : alts) = do
   eqPattern _                           _
     = False
 
+-- -----------------------------------------------------------------------------
+-- Check for non-exhaustive patterns
+-- -----------------------------------------------------------------------------
+
 checkNonExhaustivePattern :: String -> Position -> [[Pattern]] -> WCM ()
 checkNonExhaustivePattern loc pos pats = do
   missing <- missingPattern (map (map simplifyPat) pats)
@@ -403,6 +407,7 @@ checkNonExhaustivePattern loc pos pats = do
 --   * variables
 --   * literals
 --   * constructors
+--   * record pattern (currently ignored)
 simplifyPat :: Pattern -> Pattern
 simplifyPat l@(LiteralPattern      _) = l
 simplifyPat (NegativePattern     _ l) = LiteralPattern (negateLit l)
@@ -428,12 +433,14 @@ simplifyPat p                         = p
 type ExhaustivePats = ([Pattern], [(Ident, [Literal])])
 
 missingPattern :: [[Pattern]] -> WCM [ExhaustivePats]
-missingPattern []       = return []
-missingPattern (eq:eqs)
-  | any isLitPat eq     = processLiterals (eq:eqs)
-  | any isConPat eq     = processCons     (eq:eqs)
-  | all isVarPat eq     = missingPattern  eqs
-  | otherwise           = return []
+missingPattern []          = return []
+missingPattern eqs@(e:es)
+  | null e                 = return []
+  | any isLitPat firstPats = processLiterals eqs
+  | any isConPat firstPats = processCons     eqs
+  | all isVarPat firstPats = missingPattern  es
+  | otherwise              = return []
+  where firstPats = map firstPat eqs
 
 processLiterals :: [[Pattern]] -> WCM [ExhaustivePats]
 processLiterals []       = return []
@@ -445,17 +452,17 @@ processLiterals qs@(q:_) = do
       missing2 <- missingPattern defaults
       return $ [ (wildPat : ps, cs) | (ps, cs) <- missing2 ] ++ missing1
   where
-  used_lits  = nub $ concatMap (getLit . head) qs
-  defaults   = [ tail q' | q' <- qs, isVarPat (head q') ]
+  used_lits  = nub $ concatMap (getLit . firstPat) qs
+  defaults   = [ shiftPat q' | q' <- qs, isVarPat (head q') ]
   defaultPat = ( VariablePattern new_var : replicate (length q - 1) wildPat
                , [(new_var, used_lits)])
-  new_var    = mkIdent "v"
+  new_var    = mkIdent "x"
 
 processUsedLiterals :: [Literal] -> [[Pattern]] -> WCM [ExhaustivePats]
 processUsedLiterals lits qs = concat `liftM` mapM process lits
   where
   process lit = do
-    missing <- missingPattern [tail q | q <- qs, isVarLit lit (head q)]
+    missing <- missingPattern [shiftPat q | q <- qs, isVarLit lit (firstPat q)]
     return $ map (\(xs, ys) -> (LiteralPattern lit : xs, ys)) missing
 
 processCons :: [[Pattern]] -> WCM [ExhaustivePats]
@@ -473,10 +480,11 @@ processCons qs@(q:_) = do
                   ++ missing1
   where
   used_cons    = nub $ concatMap (getCon . head) qs
-  defaults     = [ tail q' | q' <- qs, isVarPat (head q') ]
+  defaults     = [ shiftPat q' | q' <- qs, isVarPat (firstPat q') ]
   defaultPat c = (mkPattern c : replicate (length q - 1) wildPat, [])
-  mkPattern (DataConstr c _ tys) = ConstructorPattern (qualifyLike (fst $ head used_cons) c)
-                                   (replicate (length tys) wildPat)
+  mkPattern (DataConstr c _ tys)
+    = ConstructorPattern (qualifyLike (fst $ head used_cons) c)
+                         (replicate (length tys) wildPat)
 
 processUsedCons :: [(QualIdent, Int)] -> [[Pattern]] -> WCM [ExhaustivePats]
 processUsedCons used qs = concat `liftM` mapM process used
@@ -519,6 +527,14 @@ getTyCons (TypeConstructor tc _) = do
       "Checks.WarnCheck.getTyCons: " ++ show tc
 getTyCons _ = internalError "Checks.WarnCheck.getTyCons"
 
+firstPat :: [Pattern] -> Pattern
+firstPat []    = internalError "Checks.WarnCheck.firstPat: empty list"
+firstPat (p:_) = p
+
+shiftPat :: [Pattern] -> [Pattern]
+shiftPat []     = internalError "Checks.WarnCheck.shiftPat: empty list"
+shiftPat (_:ps) = ps
+
 wildPat :: Pattern
 wildPat = VariablePattern anonId
 
@@ -560,7 +576,7 @@ patArgs :: Pattern -> [Pattern]
 patArgs (ConstructorPattern _ ps) = ps
 patArgs _                         = []
 
-
+-- -----------------------------------------------------------------------------
 
 checkShadowing :: Ident -> WCM ()
 checkShadowing x = shadowsVar x >>= maybe ok (report . warnShadowing x)
