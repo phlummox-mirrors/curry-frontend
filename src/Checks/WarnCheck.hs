@@ -410,7 +410,11 @@ checkOverlappingAlts (alt : alts) = warnFor WarnOverlapping $ do
 checkNonExhaustivePattern :: String -> Position -> [[Pattern]] -> WCM ()
 checkNonExhaustivePattern loc pos pats = warnFor WarnIncompletePatterns $ do
   missing <- missingPattern (map (map simplifyPat) pats)
-  unless (null missing) $ report $ warnMissingPattern loc pos missing
+  unless (null missing) $ report $ warnMissingPattern loc pos $
+    tidyExhaustivePats missing
+
+tidyExhaustivePats :: [ExhaustivePats] -> [ExhaustivePats]
+tidyExhaustivePats = map (\(xs, ys) -> (map tidyPat xs, ys))
 
 -- simplify pattern to only consist of
 --   * variables
@@ -432,22 +436,42 @@ simplifyPat (InfixPattern    p1 c p2)
 simplifyPat (ParenPattern          p) = simplifyPat p
 simplifyPat (TuplePattern       _ ps)
   = ConstructorPattern (qTupleId (length ps)) (map simplifyPat ps)
-simplifyPat (ListPattern        _ ps)
-  = foldr (\e1 e2 -> ConstructorPattern qConsId (map simplifyPat [e1, e2]))
-          (ConstructorPattern qNilId []) ps
+simplifyPat (ListPattern        _ ps) =
+  foldr (\e1 e2 -> ConstructorPattern qConsId [e1, e2])
+        (ConstructorPattern qNilId []) (map simplifyPat ps)
 simplifyPat (AsPattern           _ p) = simplifyPat p
 simplifyPat (LazyPattern         _ _) = VariablePattern anonId
 simplifyPat p                         = p
+
+tidyPat :: Pattern -> Pattern
+tidyPat p@(ConstructorPattern c ps)
+  | isQTupleId c                   = TuplePattern noRef (map tidyPat ps)
+  | c == qConsId && isFiniteList p = ListPattern [] (unwrapFinite p)
+  | c == qConsId                   = unwrapInfinite p
+  where
+  isFiniteList (ConstructorPattern d [])                = d == qNilId
+  isFiniteList (ConstructorPattern d es) | d == qConsId = isFiniteList (last es)
+  isFiniteList _                                        = False
+
+  unwrapInfinite (ConstructorPattern d [p1,p2])
+    = InfixPattern (tidyPat p1) d (unwrapInfinite p2)
+  unwrapInfinite p0                             = p0
+
+  unwrapFinite (ConstructorPattern _ []     ) = []
+  unwrapFinite (ConstructorPattern _ [p1,p2]) = tidyPat p1 : unwrapFinite p2
+  unwrapFinite _                              = internalError $
+    "WarnCheck.tidyPat.unwrapFinite"
+tidyPat p = p
 
 type ExhaustivePats = ([Pattern], [(Ident, [Literal])])
 
 missingPattern :: [[Pattern]] -> WCM [ExhaustivePats]
 missingPattern []          = return []
-missingPattern eqs@(e:es)
+missingPattern eqs@(e:_)
   | null e                 = return []
   | any isLitPat firstPats = processLiterals eqs
   | any isConPat firstPats = processCons     eqs
-  | all isVarPat firstPats = missingPattern  es
+  | all isVarPat firstPats = processVars     eqs
   | otherwise              = return []
   where firstPats = map firstPat eqs
 
@@ -499,9 +523,9 @@ processUsedCons :: [(QualIdent, Int)] -> [[Pattern]] -> WCM [ExhaustivePats]
 processUsedCons used qs = concat `liftM` mapM process used
   where
   process (c, a) = do
-    missing <- missingPattern [ removeFirstCon c a q
-                              | q <- qs , isVarCon c (head q)]
-    return $ map (\(xs,ys) -> (makeCon c a xs, ys)) missing
+    let qs' = [ removeFirstCon c a q | q <- qs , isVarCon c (head q)]
+    missing <- missingPattern qs'
+    return $ map (\(xs, ys) -> (makeCon c a xs, ys)) missing
 
   makeCon c a ps = let (args, rest) = splitAt a ps
                    in ConstructorPattern c args : rest
@@ -510,6 +534,11 @@ processUsedCons used qs = concat `liftM` mapM process used
     | isVarPat p = replicate a wildPat ++ ps
     | isCon c  p = patArgs p           ++ ps
   removeFirstCon _ _ _ = internalError "Checks.WarnCheck.removeFirstCon"
+
+processVars :: [[Pattern]] -> WCM [ExhaustivePats]
+processVars eqs = do
+  missing <- missingPattern (map shiftPat eqs)
+  return $ map (\(xs, ys) -> (wildPat : xs, ys)) missing
 
 getUnusedCons :: [QualIdent] -> WCM [DataConstr]
 getUnusedCons []       = internalError "Checks.WarnCheck.getUnusedCons"
@@ -867,6 +896,6 @@ warnMissingPattern loc p pats = posMessage p
   ppExPat (ps, cs)
     | null cs   = ppPats
     | otherwise = ppPats <+> text "with" <+> hsep (map ppCons cs)
-    where ppPats = hsep (map (ppPattern 0) ps)
+    where ppPats = hsep (map (ppPattern 2) ps)
   ppCons (i, lits) = ppIdent i <+> text "`notElem`"
                  <+> ppExpr 0 (List [] (map Literal lits))
