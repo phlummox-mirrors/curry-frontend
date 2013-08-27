@@ -117,8 +117,9 @@ lookupTupleTC tc | isTupleId tc = [tupleTCs !! (tupleArity tc - 2)]
 
 tupleTCs :: [TypeInfo]
 tupleTCs = map typeInfo tupleData
-  where typeInfo c@(DataConstr _ _ tys) = let arity = length tys
-          in DataType (qTupleId arity) arity [Just c]
+  where typeInfo (DataConstr c _ tys) =
+          DataType (qualifyWith preludeMIdent c) (length tys)
+                   [Just (DataConstr c 0 tys)]
 
 tupleData :: [DataConstr]
 tupleData = [DataConstr (tupleId n) 0 (take n tvs) | n <- [2 ..]]

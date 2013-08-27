@@ -34,7 +34,7 @@ import qualified Base.ScopeEnv as SE
   , lookupWithLevel, toLevelList, currentLevel)
 
 import Base.Types
-import Env.TypeConstructor (TCEnv, TypeInfo (..), qualLookupTC)
+import Env.TypeConstructor (TCEnv, TypeInfo (..), lookupTC, qualLookupTC)
 import Env.Value (ValueEnv, ValueInfo (..), qualLookupValue)
 
 import CompilerOpts
@@ -529,11 +529,14 @@ getConTy q = do
 getTyCons :: Type -> WCM [DataConstr]
 getTyCons (TypeConstructor tc _) = do
   tcEnv <- gets tyConsEnv
-  return $ case qualLookupTC tc tcEnv of
+  return $ case lookupTC (unqualify tc) tcEnv of
     [DataType     _ _ cs] -> catMaybes cs
     [RenamingType _ _ nc] -> [nc]
-    _                     -> internalError $
-      "Checks.WarnCheck.getTyCons: " ++ show tc
+    _ -> case qualLookupTC tc tcEnv of
+      [DataType     _ _ cs] -> catMaybes cs
+      [RenamingType _ _ nc] -> [nc]
+      err                   -> internalError $
+        "Checks.WarnCheck.getTyCons: " ++ show tc ++ ' ' : show err ++ '\n' : show tcEnv
 getTyCons _ = internalError "Checks.WarnCheck.getTyCons"
 
 firstPat :: [Pattern] -> Pattern

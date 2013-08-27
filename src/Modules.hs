@@ -80,11 +80,11 @@ compileModule opts fn = do
     Left errs -> abortWithMessages errs
     Right (env, mdl) -> do
       warn opts $ warnCheck opts env mdl
+      writeParsed opts fn mdl
       writeOutput opts fn (env, mdl)
 
 writeOutput :: Options -> FilePath -> (CompilerEnv, CS.Module) -> IO ()
 writeOutput opts fn (env, modul) = do
-  writeParsed        opts fn     modul
   let (env1, qlfd) = qual opts env modul
   doDump opts (DumpQualified, env1, show $ CS.ppModule qlfd)
   writeAbstractCurry opts fn env1 qlfd
@@ -96,8 +96,8 @@ writeOutput opts fn (env, modul) = do
     -- dump intermediate results
     mapM_ (doDump opts) dumps
     -- generate target code
-    let intf = exportInterface env2 modul
-    let modSum = summarizeModule (tyConsEnv env2) intf modul
+    let intf = exportInterface env2 qlfd
+    let modSum = summarizeModule (tyConsEnv env2) intf qlfd
     writeFlat opts fn env2 modSum il
   where
   withFlat = any (`elem` optTargetTypes opts)
