@@ -253,37 +253,40 @@ There are a few predefined types:
 \begin{verbatim}
 
 > unitType :: Type
-> unitType = TypeConstructor qUnitId []
+> unitType = primType unitId []
 
 > boolType :: Type
-> boolType = TypeConstructor qBoolId []
+> boolType = primType boolId []
 
 > charType :: Type
-> charType = TypeConstructor qCharId []
+> charType = primType charId []
 
 > intType :: Type
-> intType = TypeConstructor qIntId []
+> intType = primType intId []
 
 > floatType :: Type
-> floatType = TypeConstructor qFloatId []
+> floatType = primType floatId []
 
 > stringType :: Type
 > stringType = listType charType
 
 > successType :: Type
-> successType = TypeConstructor qSuccessId []
+> successType = primType successId []
 
 > listType :: Type -> Type
-> listType ty = TypeConstructor qListId [ty]
+> listType ty = primType listId [ty]
 
 > ioType :: Type -> Type
-> ioType ty = TypeConstructor qIOId [ty]
+> ioType ty = primType ioId [ty]
 
 > tupleType :: [Type] -> Type
-> tupleType tys = TypeConstructor (qTupleId (length tys)) tys
+> tupleType tys = primType (tupleId (length tys)) tys
 
 > typeVar :: Int -> Type
 > typeVar = TypeVariable
+
+> primType :: Ident -> [Type] -> Type
+> primType = TypeConstructor . qualifyWith preludeMIdent
 
 > predefTypes :: [(Type, [DataConstr])]
 > predefTypes = let a = typeVar 0 in
