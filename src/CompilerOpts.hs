@@ -16,7 +16,7 @@
 -}
 module CompilerOpts
   ( Options (..), CymakeMode (..), Verbosity (..), TargetType (..)
-  , Extension (..), DumpLevel (..), dumpLevel
+  , WarnFlag (..), Extension (..), DumpLevel (..), dumpLevel
   , defaultOptions, getCompilerOpts, usage
   ) where
 
@@ -41,7 +41,8 @@ data Options = Options
   , optUseSubdir    :: Bool           -- ^ use subdir for output?
   , optInterface    :: Bool           -- ^ create an interface file
   , optWarn         :: Bool           -- ^ show warnings
-  , optOverlapWarn  :: Bool           -- ^ show "overlap" warnings
+  , optWarnFlags    :: [WarnFlag]
+  , optWarnAsError  :: Bool
   , optTargetTypes  :: [TargetType]   -- ^ what to generate
   , optExtensions   :: [Extension]    -- ^ enabled language extensions
   , optDumps        :: [DumpLevel]    -- ^ dump levels
@@ -61,7 +62,8 @@ defaultOptions = Options
   , optUseSubdir    = True
   , optInterface    = True
   , optWarn         = True
-  , optOverlapWarn  = True
+  , optWarnFlags    = [minBound .. maxBound]
+  , optWarnAsError  = False
   , optTargetTypes  = []
   , optExtensions   = []
   , optDumps        = []
@@ -78,16 +80,6 @@ data CymakeMode
   | ModeMake           -- ^ Compile with dependencies
   deriving (Eq, Show)
 
--- |Type of the target file
-data TargetType
-  = Parsed                -- ^ Parsed source code
-  | FlatCurry             -- ^ FlatCurry
-  | ExtendedFlatCurry     -- ^ Extended FlatCurry
-  | FlatXml               -- ^ FlatCurry as XML
-  | AbstractCurry         -- ^ AbstractCurry
-  | UntypedAbstractCurry  -- ^ UntypedAbstractCurry
-    deriving (Eq, Show)
-
 -- |Data type representing the verbosity level
 data Verbosity
   = VerbQuiet  -- ^ be quiet
@@ -95,12 +87,37 @@ data Verbosity
   | VerbInfo   -- ^ show also additional info
     deriving (Eq, Ord, Show)
 
--- |Classifies a number as a 'Verbosity'
-classifyVerbosity :: String -> Verbosity -> Verbosity
-classifyVerbosity "0" _ = VerbQuiet
-classifyVerbosity "1" _ = VerbStatus
-classifyVerbosity "2" _ = VerbInfo
-classifyVerbosity _   v = v
+-- |Type of the target file
+data TargetType
+  = Parsed                -- ^ Parsed source code
+  | FlatCurry             -- ^ FlatCurry
+  | ExtendedFlatCurry     -- ^ Extended FlatCurry
+  | FlatXml               -- ^ FlatCurry as XML
+  | AbstractCurry         -- ^ AbstractCurry
+  | UntypedAbstractCurry  -- ^ Untyped AbstractCurry
+    deriving (Eq, Show)
+
+-- |Warnings flags
+data WarnFlag
+  = WarnMultipleImports    -- ^ Warn for multiple imports
+  | WarnDisjoinedRules     -- ^ Warn for disjoined function rules
+  | WarnUnusedBindings     -- ^ Warn for unused bindings
+  | WarnNameShadowing      -- ^ Warn for name shadowing
+  | WarnOverlapping        -- ^ Warn for overlapping rules/alternatives
+  | WarnIncompletePatterns -- ^ Warn for incomplete pattern matching
+  | WarnIdleAlternatives   -- ^ Warn for idle case alternatives
+    deriving (Eq, Bounded, Enum, Show)
+
+warnFlags :: [(WarnFlag, String, String)]
+warnFlags =
+  [ (WarnMultipleImports   , "multiple-imports"   , "multiple imports"           )
+  , (WarnDisjoinedRules    , "disjoined-rules"    , "disjoined function rules"   )
+  , (WarnUnusedBindings    , "unused-bindings"    , "unused bindings"            )
+  , (WarnNameShadowing     , "name-shadowing"     , "name shadowing"             )
+  , (WarnOverlapping       , "overlapping"        , "overlapping function rules" )
+  , (WarnIncompletePatterns, "incomplete-patterns", "incomplete pattern matching")
+  , (WarnIdleAlternatives  , "idle-alternatives"  , "idle case alternatives"     )
+  ]
 
 -- |Data type for representing code dumps
 data DumpLevel
@@ -137,7 +154,6 @@ data Extension
   | FunctionalPatterns
   | AnonFreeVars
   | NoImplicitPrelude
-  | UnknownExtension String
     deriving (Eq, Read, Show)
 
 allExtensions :: [Extension]
@@ -147,130 +163,205 @@ allExtensions = [Records, FunctionalPatterns, AnonFreeVars, NoImplicitPrelude]
 curryExtensions :: [Extension]
 curryExtensions = [Records, FunctionalPatterns, AnonFreeVars]
 
--- |Classifies a 'String' as an 'Extension'
-classifyExtension :: String -> Extension
-classifyExtension str = case reads str of
-  [(e, "")] -> e
-  _         -> UnknownExtension str
+type OptErr = (Options, [String])
+
+onOpts :: (Options -> Options) -> OptErr -> OptErr
+onOpts f (opts, errs) = (f opts, errs)
+
+onOptsArg :: (String -> Options -> Options) -> String -> OptErr -> OptErr
+onOptsArg f arg (opts, errs) = (f arg opts, errs)
+
+addErr :: String -> OptErr -> OptErr
+addErr err (opts, errs) = (opts, errs ++ [err])
 
 -- | All available compiler options
-options :: [OptDescr (Options -> Options)]
+options :: [OptDescr (OptErr -> OptErr)]
 options =
   -- modus operandi
   [ Option "h?" ["help"]
-      (NoArg (\ opts -> opts { optMode = ModeHelp }))
+      (NoArg (onOpts $ \ opts -> opts { optMode = ModeHelp }))
       "display this help and exit"
   , Option "V"  ["version"]
-      (NoArg (\ opts -> opts { optMode = ModeVersion }))
+      (NoArg (onOpts $ \ opts -> opts { optMode = ModeVersion }))
       "show the version number and exit"
   , Option ""   ["numeric-version"]
-      (NoArg (\ opts -> opts { optMode = ModeNumericVersion }))
+      (NoArg (onOpts $ \ opts -> opts { optMode = ModeNumericVersion }))
       "show the numeric version number and exit"
   , Option ""   ["html"]
-      (NoArg (\ opts -> opts { optMode = ModeHtml }))
+      (NoArg (onOpts $ \ opts -> opts { optMode = ModeHtml }))
       "generate html code and exit"
   -- verbosity
   , Option "v"  ["verbosity"]
-      (ReqArg (\ arg opts -> opts { optVerbosity =
-        classifyVerbosity arg $ optVerbosity opts}) "<n>")
-      "set verbosity level to <n>, one of 0 = quiet, 1 = status, 2 = info"
-  , Option "" ["no-verb"]
-      (NoArg (\ opts -> opts { optVerbosity = VerbQuiet } ))
+      (ReqArg parseVerbosity "n")
+      ("set verbosity level to `n', where `n' is one of\n"
+        ++ "  0: quiet\n  1: status\n  2: info")
+    -- legacy
+  , Option "q"  ["no-verb"]
+      (NoArg (onOpts $ \ opts -> opts { optVerbosity = VerbQuiet } ))
       "set verbosity level to quiet"
   -- compilation
   , Option "f"  ["force"]
-      (NoArg (\ opts -> opts { optForce = True }))
+      (NoArg (onOpts $ \ opts -> opts { optForce = True }))
       "force compilation of target file"
   , Option "P"  ["lib-dir"]
-      (ReqArg (\ arg opts -> opts { optLibraryPaths =
-        nub $ optLibraryPaths opts ++ splitSearchPath arg}) "dir:dir2:...")
-      "search for librares in dir:dir2:..."
+      (ReqArg (onOptsArg $ \ arg opts -> opts { optLibraryPaths =
+        nub $ optLibraryPaths opts ++ splitSearchPath arg}) "dir[:dir]")
+      "search for libraries in dir[:dir]"
   , Option "i"  ["import-dir"]
-      (ReqArg (\ arg opts -> opts { optImportPaths =
-        nub $ optImportPaths opts ++ splitSearchPath arg}) "dir:dir2:...")
-      "search for imports in dir:dir2:..."
+      (ReqArg (onOptsArg $ \ arg opts -> opts { optImportPaths =
+        nub $ optImportPaths opts ++ splitSearchPath arg}) "dir[:dir]")
+      "search for imports in dir[:dir]"
   , Option "o"  ["output"]
-      (ReqArg (\ arg opts -> opts { optOutput = Just arg }) "FILE")
-      "write code to FILE"
+      (ReqArg (onOptsArg $ \ arg opts -> opts { optOutput = Just arg }) "file")
+      "write code to `file'"
   , Option ""   ["no-subdir"]
-      (NoArg (\ opts -> opts { optUseSubdir = False }))
-      ("disable writing to '" ++ currySubdir ++ "' subdirectory")
+      (NoArg (onOpts $ \ opts -> opts { optUseSubdir = False }))
+      ("disable writing to `" ++ currySubdir ++ "' subdirectory")
   , Option ""   ["no-intf"]
-      (NoArg (\ opts -> opts { optInterface = False }))
+      (NoArg (onOpts $ \ opts -> opts { optInterface = False }))
       "do not create an interface file"
   , Option ""   ["no-warn"]
-      (NoArg (\ opts -> opts { optWarn = False }))
+      (NoArg (onOpts $ \ opts -> opts { optWarn = False }))
       "do not print warnings"
+    -- legacy
   , Option ""   ["no-overlap-warn"]
-      (NoArg (\ opts -> opts { optOverlapWarn = False }))
+      (NoArg (onOpts $ \ opts -> opts { optWarnFlags =
+          addFlag WarnOverlapping (optWarnFlags opts) }))
       "do not print warnings for overlapping rules"
   -- target types
   , Option ""   ["parse-only"]
-      (NoArg (\ opts -> opts { optTargetTypes =
+      (NoArg (onOpts $ \ opts -> opts { optTargetTypes =
         nub $ Parsed : optTargetTypes opts }))
       "generate source representation"
   , Option ""   ["flat"]
-      (NoArg (\ opts -> opts { optTargetTypes =
+      (NoArg (onOpts $ \ opts -> opts { optTargetTypes =
         nub $ FlatCurry : optTargetTypes opts }))
       "generate FlatCurry code"
   , Option ""   ["extended-flat"]
-      (NoArg (\ opts -> opts { optTargetTypes =
+      (NoArg (onOpts $ \ opts -> opts { optTargetTypes =
         nub $ ExtendedFlatCurry : optTargetTypes opts }))
       "generate FlatCurry code with source references"
   , Option ""   ["xml"]
-      (NoArg (\ opts -> opts { optTargetTypes =
+      (NoArg (onOpts $ \ opts -> opts { optTargetTypes =
         nub $ FlatXml : optTargetTypes opts }))
       "generate flat xml code"
   , Option ""   ["acy"]
-      (NoArg (\ opts -> opts { optTargetTypes =
+      (NoArg (onOpts $ \ opts -> opts { optTargetTypes =
         nub $ AbstractCurry : optTargetTypes opts }))
       "generate (type infered) AbstractCurry code"
   , Option ""   ["uacy"]
-      (NoArg (\ opts -> opts { optTargetTypes =
+      (NoArg (onOpts $ \ opts -> opts { optTargetTypes =
         nub $ UntypedAbstractCurry : optTargetTypes opts }))
       "generate untyped AbstractCurry code"
   -- extensions
   , Option "e"  ["extended"]
-      (NoArg (\ opts -> opts { optExtensions =
+      (NoArg (onOpts $ \ opts -> opts { optExtensions =
         nub $ curryExtensions ++ optExtensions opts }))
       "enable extended Curry functionalities"
   , Option "X"   []
-      (ReqArg (\ arg opts -> opts { optExtensions =
-        nub $ classifyExtension arg : optExtensions opts }) "EXT")
-      ("enable language extension EXT, one of " ++ show allExtensions)
-  -- dump
-  , Option ""   ["dump-all"]
-      (NoArg (\ opts -> opts { optDumps = [minBound .. maxBound] }))
-      "dump everything"
-  , Option ""   ["dump-env"]
-      (NoArg (\ opts -> opts { optDumpEnv = True }))
-      "additionally dump compilation environment for each dump level"
-  , Option ""   ["dump-raw"]
-      (NoArg (\ opts -> opts { optDumpRaw = True }))
-      "Dump as data structure instead of pretty printing"
-  ] ++ dumpDescriptions
+      (ReqArg parseLanguageExtension "ext")
+      ("enable language extension `ext', where `ext' is one of\n"
+      ++ intercalate "\n" (map (\e -> "  " ++ show e) allExtensions))
+  , Option "W"   ["warning"]
+      (ReqArg parseWarnOption "opt")
+      ("set warning option `opt', where `opt' ist one of\n"
+        ++ renderDescriptions warnDescriptions)
+  , Option "d"   ["dump"]
+      (ReqArg parseDumpOption "opt")
+      ("set dump option `opt', where `opt' ist one of\n"
+        ++ renderDescriptions dumpDescriptions)
+  ]
 
-dumpDescriptions :: [OptDescr (Options -> Options)]
-dumpDescriptions = map toDescr dumpLevel
-  where toDescr (lvl, flag, text) = Option "" ["dump-" ++ flag]
-          (NoArg (\ opts -> opts { optDumps = nub $ lvl : optDumps opts }))
-          ("dump " ++ text)
+-- |Classifies a number as a 'Verbosity'
+parseVerbosity :: String -> OptErr -> OptErr
+parseVerbosity "0" = onOpts $ \ opts -> opts { optVerbosity =  VerbQuiet  }
+parseVerbosity "1" = onOpts $ \ opts -> opts { optVerbosity =  VerbStatus }
+parseVerbosity "2" = onOpts $ \ opts -> opts { optVerbosity =  VerbInfo   }
+parseVerbosity opt = addErr $ "illegal verbosity `" ++ opt ++ "'\n"
+
+parseLanguageExtension :: String -> OptErr -> OptErr
+parseLanguageExtension opt = case reads opt of
+  [(ext, "")] -> onOpts (addExt ext)
+  _           -> addErr $ "unrecognized language extension `" ++ opt ++ "'\n"
+  where
+  addExt e = \opts -> opts { optExtensions = addFlag e (optExtensions opts) }
+
+parseWarnOption :: String -> OptErr -> OptErr
+parseWarnOption opt = case lookup3 opt warnDescriptions of
+  Just f  -> onOpts f
+  Nothing -> addErr $ "unrecognized warning option `" ++ opt ++ "'\n"
+
+renderDescriptions :: [(String, String, Options -> Options)] -> String
+renderDescriptions ds
+  = intercalate "\n" $ map (\(k, d, _) -> "  " ++ rpad maxLen k ++ ": " ++ d) ds
+  where
+  maxLen = maximum $ map (\(k, _, _) -> length k) ds
+  rpad n x = x ++ replicate (n - length x) ' '
+
+warnDescriptions :: [(String, String, Options -> Options)]
+warnDescriptions
+  = [ ( "all"  , "turn on all warnings"
+        , \ opts -> opts { optWarnFlags = [minBound .. maxBound] } )
+    , ("none" , "turn off all warnings"
+        , \ opts -> opts { optWarnFlags = []                     } )
+    , ("error", "treat warnings as errors"
+        , \ opts -> opts { optWarnAsError = True                 } )
+    ] ++ map turnOn warnFlags ++ map turnOff warnFlags
+  where
+  turnOn (flag, name, desc)
+    = (name, "warn for " ++ desc
+      , \ opts -> opts { optWarnFlags = addFlag flag (optWarnFlags opts)})
+  turnOff (flag, name, desc)
+    = ("no-" ++ name, "do not warn for " ++ desc
+      , \ opts -> opts { optWarnFlags = removeFlag flag (optWarnFlags opts)})
+
+parseDumpOption :: String -> OptErr -> OptErr
+parseDumpOption opt = case lookup3 opt dumpDescriptions of
+  Just f  -> onOpts f
+  Nothing -> addErr $ "unrecognized dump option `" ++ opt ++ "'"
+
+dumpDescriptions :: [(String, String, Options -> Options)]
+dumpDescriptions =
+  [ ( "all", "dump everything"
+    , \ opts -> opts { optDumps = [minBound .. maxBound] })
+  , ( "none", "dump nothing"
+    , \ opts -> opts { optDumps = []                     })
+  , ( "env" , "additionally dump compiler environment"
+    , \ opts -> opts { optDumpEnv = True                 })
+  , ( "raw" , "dump as raw AST (instead of pretty printed)"
+    , \ opts -> opts { optDumpRaw = True                 })
+  ] ++ map toDescr dumpLevel
+  where
+  toDescr (flag, name, desc)
+    = (name , "dump " ++ desc
+        , \ opts -> opts { optDumps = addFlag flag (optDumps opts)})
+
+addFlag :: Eq a => a -> [a] -> [a]
+addFlag o opts = nub $ o : opts
+
+removeFlag :: Eq a => a -> [a] -> [a]
+removeFlag o opts = filter (/= o) opts
+
+lookup3 :: Eq a => a -> [(a, b, c)] -> Maybe c
+lookup3 _ []                  = Nothing
+lookup3 k ((k', _, v2) : kvs)
+  | k == k'                   = Just v2
+  | otherwise                 = lookup3 k kvs
 
 -- |Parse the command line arguments
 parseOpts :: [String] -> (Options, [String], [String])
-parseOpts args = (foldl (flip ($)) defaultOptions opts, files, errs) where
-  (opts, files, errs) = getOpt Permute options args
+parseOpts args = (opts, files, errs ++ errs2)
+  where
+  (opts, errs2) = foldl (flip ($)) (defaultOptions, []) optErrs
+  (optErrs, files, errs) = getOpt Permute options args
 
 -- |Check options and files and return a list of error messages
 checkOpts :: Options -> [String] -> [String]
 checkOpts opts files
   | isJust (optOutput opts) && length files > 1
   = ["cannot specify -o with multiple targets"]
-  | not $ null unknownExtensions
-  = ["unknown language extension(s): " ++ intercalate ", " unknownExtensions]
   | otherwise
   = []
-  where unknownExtensions = [ e | UnknownExtension e <- optExtensions opts ]
 
 -- |Print the usage information of the command line tool.
 usage :: String -> String

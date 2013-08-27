@@ -15,7 +15,7 @@
 module Checks.WarnCheck (warnCheck) where
 
 import           Control.Monad
-  (filterM, foldM_, guard, liftM, unless)
+  (filterM, foldM_, guard, liftM, when, unless)
 import           Control.Monad.State.Strict (State, execState, gets, modify)
 import qualified Data.Map            as Map (empty, insert, lookup)
 import           Data.Maybe                 (catMaybes, isJust)
@@ -37,6 +37,8 @@ import Base.Types
 import Env.TypeConstructor (TCEnv, TypeInfo (..), qualLookupTC)
 import Env.Value (ValueEnv, ValueInfo (..), qualLookupValue)
 
+import CompilerOpts
+
 -- Find potentially incorrect code in a Curry program and generate warnings
 -- for the following issues:
 --   - multiply imported modules, multiply imported/hidden values
@@ -45,9 +47,9 @@ import Env.Value (ValueEnv, ValueInfo (..), qualLookupValue)
 --   - idle case alternatives
 --   - overlapping case alternatives
 --   - non-adjacent function rules
-warnCheck :: ValueEnv -> TCEnv -> Module -> [Message]
-warnCheck valEnv tcEnv (Module mid es is ds)
-  = runOn (initWcState mid valEnv tcEnv) $ do
+warnCheck :: Options -> ValueEnv -> TCEnv -> Module -> [Message]
+warnCheck opts valEnv tcEnv (Module mid es is ds)
+  = runOn (initWcState mid valEnv tcEnv (optWarnFlags opts)) $ do
       checkExports   es
       checkImports   is
       checkDeclGroup ds
@@ -60,6 +62,7 @@ data WcState = WcState
   , scope       :: ScopeEnv
   , valueEnv    :: ValueEnv
   , tyConsEnv   :: TCEnv
+  , warnFlags   :: [WarnFlag]
   , warnings    :: [Message]
   }
 
@@ -68,14 +71,19 @@ data WcState = WcState
 -- contents.
 type WCM = State WcState
 
-initWcState :: ModuleIdent -> ValueEnv -> TCEnv -> WcState
-initWcState mid ve te = WcState mid SE.new ve te []
+initWcState :: ModuleIdent -> ValueEnv -> TCEnv -> [WarnFlag] -> WcState
+initWcState mid ve te wf = WcState mid SE.new ve te wf []
 
 getModuleIdent :: WCM ModuleIdent
 getModuleIdent = gets moduleId
 
 modifyScope :: (ScopeEnv -> ScopeEnv) -> WCM ()
 modifyScope f = modify $ \s -> s { scope = f $ scope s }
+
+warnFor :: WarnFlag -> WCM () -> WCM ()
+warnFor f act = do
+  warn <- gets $ \s -> f `elem` warnFlags s
+  when warn act
 
 report :: Message -> WCM ()
 report w = modify $ \ s -> s { warnings = w : warnings s }
@@ -104,7 +112,7 @@ checkExports _ = ok -- TODO
 -- The function uses a map of the already imported or hidden entities to
 -- collect the entities throughout multiple import statements.
 checkImports :: [ImportDecl] -> WCM ()
-checkImports = foldM_ checkImport Map.empty
+checkImports = warnFor WarnMultipleImports . foldM_ checkImport Map.empty
   where
   checkImport env (ImportDecl pos mid _ _ spec) = case Map.lookup mid env of
     Nothing   -> setImportSpec env mid $ fromImpSpec spec
@@ -157,7 +165,8 @@ checkDeclGroup ds = do
 
 -- Find function rules which are not together
 checkRuleAdjacency :: [Decl] -> WCM ()
-checkRuleAdjacency decls = foldM_ check (mkIdent "", Map.empty) decls
+checkRuleAdjacency decls = warnFor WarnDisjoinedRules
+                         $ foldM_ check (mkIdent "", Map.empty) decls
   where
   check (prevId, env) (FunctionDecl p f _) = do
     cons <- isConsId f
@@ -349,7 +358,7 @@ checkCaseAlternatives alts@(Alt pos _ _ : _) = do
     (map (\(Alt _ p _) -> [p]) alts)
 
 checkIdleAlts :: [Alt] -> WCM ()
-checkIdleAlts alts = case idles of
+checkIdleAlts alts = warnFor WarnIdleAlternatives $ case idles of
   Alt p _ _ : _ : _ -> report $ warnIdleCaseAlts p
   _                 -> ok
   where
@@ -364,9 +373,9 @@ checkIdleAlts alts = case idles of
 
 checkOverlappingAlts :: [Alt] -> WCM ()
 checkOverlappingAlts []           = ok
-checkOverlappingAlts (alt : alts) = do
-  let (overlapping, rest) = partition (eqAlt alt) alts
-  unless (null overlapping) $ report $ warnOverlappingCaseAlts (alt : overlapping)
+checkOverlappingAlts (alt : alts) = warnFor WarnOverlapping $ do
+  let (overlapped, rest) = partition (eqAlt alt) alts
+  unless (null overlapped) $ report $ warnOverlappingCaseAlts (alt : overlapped)
   checkOverlappingAlts rest
   where
   eqAlt (Alt _ p1 _) (Alt _ p2 _) = eqPattern p1 p2
@@ -399,7 +408,7 @@ checkOverlappingAlts (alt : alts) = do
 -- -----------------------------------------------------------------------------
 
 checkNonExhaustivePattern :: String -> Position -> [[Pattern]] -> WCM ()
-checkNonExhaustivePattern loc pos pats = do
+checkNonExhaustivePattern loc pos pats = warnFor WarnIncompletePatterns $ do
   missing <- missingPattern (map (map simplifyPat) pats)
   unless (null missing) $ report $ warnMissingPattern loc pos missing
 
@@ -579,15 +588,16 @@ patArgs _                         = []
 -- -----------------------------------------------------------------------------
 
 checkShadowing :: Ident -> WCM ()
-checkShadowing x = shadowsVar x >>= maybe ok (report . warnShadowing x)
+checkShadowing x = warnFor WarnNameShadowing $
+  shadowsVar x >>= maybe ok (report . warnShadowing x)
 
 reportUnusedVars :: WCM ()
-reportUnusedVars = do
+reportUnusedVars = warnFor WarnUnusedBindings $ do
   unused <- returnUnrefVars
   unless (null unused) $ mapM_ report $ map warnUnrefVar unused
 
 reportUnusedTypeVars :: [Ident] -> WCM ()
-reportUnusedTypeVars vs = do
+reportUnusedTypeVars vs = warnFor WarnUnusedBindings $ do
   unused <- filterM isUnrefTypeVar vs
   unless (null unused) $ mapM_ report $ map warnUnrefTypeVar unused
 

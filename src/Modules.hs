@@ -79,7 +79,7 @@ compileModule opts fn = do
   case checked of
     Left errs -> abortWithMessages errs
     Right (env, mdl) -> do
-      warn opts $ warnCheck env mdl
+      warn opts $ warnCheck opts env mdl
       writeOutput opts fn (env, mdl)
 
 writeOutput :: Options -> FilePath -> (CompilerEnv, CS.Module) -> IO ()
