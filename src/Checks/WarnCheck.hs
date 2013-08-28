@@ -315,10 +315,10 @@ checkExpr (Let                ds e) = inNestedScope $ do
   reportUnusedVars
 checkExpr (Do                sts e) = checkStatements sts e
 checkExpr (IfThenElse   _ e1 e2 e3) = mapM_ checkExpr [e1, e2, e3]
-checkExpr (Case         _ _ e alts) = do
+checkExpr (Case        _ ct e alts) = do
   checkExpr e
   mapM_ checkAlt alts
-  checkCaseAlternatives alts
+  checkCaseAlternatives ct alts
 checkExpr (RecordConstr         fs) = mapM_ checkFieldExpression fs
 checkExpr (RecordSelection     e _) = checkExpr e -- Hier auch "visitId ident" ?
 checkExpr (RecordUpdate       fs e) = do
@@ -349,11 +349,11 @@ checkFieldExpression :: Field Expression -> WCM ()
 checkFieldExpression (Field _ _ e) = checkExpr e -- Hier auch "visitId ident" ?
 
 -- Check for idle and overlapping case alternatives
-checkCaseAlternatives :: [Alt] -> WCM ()
-checkCaseAlternatives []                     = ok
-checkCaseAlternatives alts@(Alt pos _ _ : _) = do
+checkCaseAlternatives :: CaseType -> [Alt] -> WCM ()
+checkCaseAlternatives _  []                     = ok
+checkCaseAlternatives ct alts@(Alt pos _ _ : _) = do
   checkIdleAlts alts
-  checkOverlappingAlts alts
+  when (ct == Flex) (checkOverlappingAlts alts)
   checkNonExhaustivePattern "a case alternative" pos
     (map (\(Alt _ p _) -> [p]) alts)
 
