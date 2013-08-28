@@ -891,11 +891,18 @@ warnMissingPattern :: String -> Position -> [ExhaustivePats] -> Message
 warnMissingPattern loc p pats = posMessage p
   $   text "Pattern matches are non-exhaustive"
   $+$ text "In a" <+> text loc <> char ':'
-  $+$ nest 2 (text "Patterns not matched:" $+$ nest 2 (vcat (map ppExPat pats)))
+  $+$ nest 2 (text "Patterns not matched:" $+$ nest 2 (vcat (ppExPats pats)))
   where
+  ppExPats ps
+    | length ps > maxMissingPattern = ppPats ++ [text "..."]
+    | otherwise                     = ppPats
+    where ppPats = map ppExPat (take maxMissingPattern ps)
   ppExPat (ps, cs)
     | null cs   = ppPats
     | otherwise = ppPats <+> text "with" <+> hsep (map ppCons cs)
     where ppPats = hsep (map (ppPattern 2) ps)
   ppCons (i, lits) = ppIdent i <+> text "`notElem`"
                  <+> ppExpr 0 (List [] (map Literal lits))
+
+maxMissingPattern :: Int
+maxMissingPattern = 4
