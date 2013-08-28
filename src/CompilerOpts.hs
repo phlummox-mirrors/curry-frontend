@@ -12,12 +12,12 @@
 
     This module defines data structures holding options for the
     compilation of Curry programs, and utility functions for printing
-    help information as well as parsing the cmd arguments.
+    help information as well as parsing the command line arguments.
 -}
 module CompilerOpts
   ( Options (..), CymakeMode (..), Verbosity (..), TargetType (..)
-  , WarnFlag (..), Extension (..), DumpLevel (..), dumpLevel
-  , defaultOptions, getCompilerOpts, usage
+  , WarnFlag (..), Extension (..), DumpLevel (..)
+  , dumpLevel, defaultOptions, getCompilerOpts, usage
   ) where
 
 import Data.List             (intercalate, nub)
@@ -27,6 +27,10 @@ import System.Environment    (getArgs, getProgName)
 import System.FilePath       (splitSearchPath)
 
 import Curry.Files.Filenames (currySubdir)
+
+-- -----------------------------------------------------------------------------
+-- Option data structures
+-- -----------------------------------------------------------------------------
 
 -- |Data type for recording compiler options
 data Options = Options
@@ -62,7 +66,7 @@ defaultOptions = Options
   , optUseSubdir    = True
   , optInterface    = True
   , optWarn         = True
-  , optWarnFlags    = [minBound .. maxBound]
+  , optWarnFlags    = stdWarnFlags
   , optWarnAsError  = False
   , optTargetTypes  = []
   , optExtensions   = []
@@ -71,7 +75,7 @@ defaultOptions = Options
   , optDumpRaw      = False
   }
 
--- |Modus operand of the program
+-- |Modus operandi of the program
 data CymakeMode
   = ModeHelp           -- ^ Show help information
   | ModeVersion        -- ^ Show version
@@ -80,12 +84,19 @@ data CymakeMode
   | ModeMake           -- ^ Compile with dependencies
   deriving (Eq, Show)
 
--- |Data type representing the verbosity level
+-- |Verbosity level
 data Verbosity
   = VerbQuiet  -- ^ be quiet
   | VerbStatus -- ^ show status of compilation
-  | VerbInfo   -- ^ show also additional info
+  | VerbInfo   -- ^ also show additional info
     deriving (Eq, Ord, Show)
+
+-- |Description and flag of verbosities
+verbosities :: [(Verbosity, String, String)]
+verbosities = [ ( VerbQuiet , "0", "quiet" )
+              , ( VerbStatus, "1", "status")
+              , ( VerbInfo  , "2", "info"  )
+              ]
 
 -- |Type of the target file
 data TargetType
@@ -108,6 +119,11 @@ data WarnFlag
   | WarnIdleAlternatives   -- ^ Warn for idle case alternatives
     deriving (Eq, Bounded, Enum, Show)
 
+-- |Warning flags enabled by default
+stdWarnFlags :: [WarnFlag]
+stdWarnFlags = [minBound .. maxBound]
+
+-- |Description and flag of warnings flags
 warnFlags :: [(WarnFlag, String, String)]
 warnFlags =
   [ (WarnMultipleImports   , "multiple-imports"   , "multiple imports"           )
@@ -119,7 +135,7 @@ warnFlags =
   , (WarnIdleAlternatives  , "idle-alternatives"  , "idle case alternatives"     )
   ]
 
--- |Data type for representing code dumps
+-- |Dump level
 data DumpLevel
   = DumpParsed        -- ^ dump source code after parsing
   | DumpKindChecked   -- ^ dump source code after kind checking
@@ -134,21 +150,22 @@ data DumpLevel
   | DumpCaseCompleted -- ^ dump IL code after case completion
     deriving (Eq, Bounded, Enum, Show)
 
+-- |Description and flag of dump levels
 dumpLevel :: [(DumpLevel, String, String)]
-dumpLevel = [ (DumpParsed       , "parsed", "parse tree"               )
-            , (DumpKindChecked  , "kc"    , "kind checker output"      )
-            , (DumpSyntaxChecked, "sc"    , "syntax checker output"    )
-            , (DumpPrecChecked  , "pc"    , "precedence checker output")
-            , (DumpTypeChecked  , "tc"    , "type checker output"      )
-            , (DumpQualified    , "qual"  , "qualifier output"         )
-            , (DumpDesugared    , "ds"    , "desugarer output"         )
-            , (DumpSimplified   , "simpl" , "simplifier output"        )
-            , (DumpLifted       , "lifted", "lifting output"           )
-            , (DumpTranslated   , "trans" , "translated output"        )
-            , (DumpCaseCompleted, "cc"    , "case completed output"    )
+dumpLevel = [ (DumpParsed       , "dump-parse", "parse tree"               )
+            , (DumpKindChecked  , "dump-kc"   , "kind checker output"      )
+            , (DumpSyntaxChecked, "dump-sc"   , "syntax checker output"    )
+            , (DumpPrecChecked  , "dump-pc"   , "precedence checker output")
+            , (DumpTypeChecked  , "dump-tc"   , "type checker output"      )
+            , (DumpQualified    , "dump-qual" , "qualifier output"         )
+            , (DumpDesugared    , "dump-ds"   , "desugarer output"         )
+            , (DumpSimplified   , "dump-simpl", "simplifier output"        )
+            , (DumpLifted       , "dump-lift" , "lifting output"           )
+            , (DumpTranslated   , "dump-trans", "translated output"        )
+            , (DumpCaseCompleted, "dump-cc"   , "case completed output"    )
             ]
 
--- |Data type representing language extensions
+-- |Language extensions
 data Extension
   = Records
   | FunctionalPatterns
@@ -156,14 +173,33 @@ data Extension
   | NoImplicitPrelude
     deriving (Eq, Read, Show)
 
-allExtensions :: [Extension]
-allExtensions = [Records, FunctionalPatterns, AnonFreeVars, NoImplicitPrelude]
+-- |Description and flag of language extensions
+extensions :: [(Extension, String, String)]
+extensions =
+  [ ( Records           , "Records"
+    , "enable record syntax"                )
+  , ( FunctionalPatterns, "FunctionalPatterns"
+    , "enable functional patterns"          )
+  , ( AnonFreeVars      , "AnonFreeVars"
+    , "enable anonymous free variables"     )
+  , ( NoImplicitPrelude , "NoImplicitPrelude"
+    , "do not implicitly import the Prelude")
+  ]
 
--- |'Extension's available by @-e@ flag
+-- |'Extension's enabled by @-e@ flag
 curryExtensions :: [Extension]
 curryExtensions = [Records, FunctionalPatterns, AnonFreeVars]
 
+-- -----------------------------------------------------------------------------
+-- Parsing of the command line options.
+--
+-- Because some flags require additional arguments, the structure is slightly
+-- more complicated to enable malformed arguments to be reported.
+-- -----------------------------------------------------------------------------
+
 type OptErr = (Options, [String])
+
+type OptErrTable = [(String, String, Options -> Options)]
 
 onOpts :: (Options -> Options) -> OptErr -> OptErr
 onOpts f (opts, errs) = (f opts, errs)
@@ -173,6 +209,30 @@ onOptsArg f arg (opts, errs) = (f arg opts, errs)
 
 addErr :: String -> OptErr -> OptErr
 addErr err (opts, errs) = (opts, errs ++ [err])
+
+mkOptErrOption :: String -> [String] -> String -> String -> OptErrTable
+               -> OptDescr (OptErr -> OptErr)
+mkOptErrOption flags longFlags arg what tbl = Option flags longFlags
+  (ReqArg (parseOptErr what tbl) arg)
+  ("set " ++ what ++ " `" ++ arg ++ "', where `" ++ arg ++ "' is one of\n"
+    ++ renderOptErrTable tbl)
+
+parseOptErr :: String -> OptErrTable -> String -> OptErr -> OptErr
+parseOptErr what table opt = case lookup3 opt table of
+  Just f  -> onOpts f
+  Nothing -> addErr $ "unrecognized " ++ what ++ '`' : opt ++ "'\n"
+  where
+  lookup3 _ []                  = Nothing
+  lookup3 k ((k', _, v2) : kvs)
+    | k == k'                   = Just v2
+    | otherwise                 = lookup3 k kvs
+
+renderOptErrTable :: OptErrTable -> String
+renderOptErrTable ds
+  = intercalate "\n" $ map (\(k, d, _) -> rpad maxLen k ++ ": " ++ d) ds
+  where
+  maxLen = maximum $ map (\(k, _, _) -> length k) ds
+  rpad n x = x ++ replicate (n - length x) ' '
 
 -- | All available compiler options
 options :: [OptDescr (OptErr -> OptErr)]
@@ -191,10 +251,7 @@ options =
       (NoArg (onOpts $ \ opts -> opts { optMode = ModeHtml }))
       "generate html code and exit"
   -- verbosity
-  , Option "v"  ["verbosity"]
-      (ReqArg parseVerbosity "n")
-      ("set verbosity level to `n', where `n' is one of\n"
-        ++ "  0: quiet\n  1: status\n  2: info")
+  , mkOptErrOption "v" ["verbosity"] "n" "verbosity level" verbDescriptions
     -- legacy
   , Option "q"  ["no-verb"]
       (NoArg (onOpts $ \ opts -> opts { optVerbosity = VerbQuiet } ))
@@ -258,47 +315,25 @@ options =
       (NoArg (onOpts $ \ opts -> opts { optExtensions =
         nub $ curryExtensions ++ optExtensions opts }))
       "enable extended Curry functionalities"
-  , Option "X"   []
-      (ReqArg parseLanguageExtension "ext")
-      ("enable language extension `ext', where `ext' is one of\n"
-      ++ intercalate "\n" (map (\e -> "  " ++ show e) allExtensions))
-  , Option "W"   ["warning"]
-      (ReqArg parseWarnOption "opt")
-      ("set warning option `opt', where `opt' ist one of\n"
-        ++ renderDescriptions warnDescriptions)
-  , Option "d"   ["dump"]
-      (ReqArg parseDumpOption "opt")
-      ("set dump option `opt', where `opt' ist one of\n"
-        ++ renderDescriptions dumpDescriptions)
+  , mkOptErrOption "X" [] "ext" "language extension" extDescriptions
+  , mkOptErrOption "W" [] "opt" "warning option"     warnDescriptions
+  , mkOptErrOption "d" [] "opt" "debug option"       debugDescriptions
   ]
 
--- |Classifies a number as a 'Verbosity'
-parseVerbosity :: String -> OptErr -> OptErr
-parseVerbosity "0" = onOpts $ \ opts -> opts { optVerbosity =  VerbQuiet  }
-parseVerbosity "1" = onOpts $ \ opts -> opts { optVerbosity =  VerbStatus }
-parseVerbosity "2" = onOpts $ \ opts -> opts { optVerbosity =  VerbInfo   }
-parseVerbosity opt = addErr $ "illegal verbosity `" ++ opt ++ "'\n"
-
-parseLanguageExtension :: String -> OptErr -> OptErr
-parseLanguageExtension opt = case reads opt of
-  [(ext, "")] -> onOpts (addExt ext)
-  _           -> addErr $ "unrecognized language extension `" ++ opt ++ "'\n"
+verbDescriptions :: OptErrTable
+verbDescriptions = map toDescr verbosities
   where
-  addExt e = \opts -> opts { optExtensions = addFlag e (optExtensions opts) }
+  toDescr (flag, name, desc)
+    = (name, desc, \ opts -> opts { optVerbosity = flag })
 
-parseWarnOption :: String -> OptErr -> OptErr
-parseWarnOption opt = case lookup3 opt warnDescriptions of
-  Just f  -> onOpts f
-  Nothing -> addErr $ "unrecognized warning option `" ++ opt ++ "'\n"
-
-renderDescriptions :: [(String, String, Options -> Options)] -> String
-renderDescriptions ds
-  = intercalate "\n" $ map (\(k, d, _) -> "  " ++ rpad maxLen k ++ ": " ++ d) ds
+extDescriptions :: OptErrTable
+extDescriptions = map toDescr extensions
   where
-  maxLen = maximum $ map (\(k, _, _) -> length k) ds
-  rpad n x = x ++ replicate (n - length x) ' '
+  toDescr (flag, name, desc)
+    = (name, desc,
+        \ opts -> opts { optExtensions = addFlag flag (optExtensions opts)})
 
-warnDescriptions :: [(String, String, Options -> Options)]
+warnDescriptions :: OptErrTable
 warnDescriptions
   = [ ( "all"  , "turn on all warnings"
         , \ opts -> opts { optWarnFlags = [minBound .. maxBound] } )
@@ -315,20 +350,15 @@ warnDescriptions
     = ("no-" ++ name, "do not warn for " ++ desc
       , \ opts -> opts { optWarnFlags = removeFlag flag (optWarnFlags opts)})
 
-parseDumpOption :: String -> OptErr -> OptErr
-parseDumpOption opt = case lookup3 opt dumpDescriptions of
-  Just f  -> onOpts f
-  Nothing -> addErr $ "unrecognized dump option `" ++ opt ++ "'"
-
-dumpDescriptions :: [(String, String, Options -> Options)]
-dumpDescriptions =
-  [ ( "all", "dump everything"
+debugDescriptions :: OptErrTable
+debugDescriptions =
+  [ ( "dump-all", "dump everything"
     , \ opts -> opts { optDumps = [minBound .. maxBound] })
-  , ( "none", "dump nothing"
+  , ( "dump-none", "dump nothing"
     , \ opts -> opts { optDumps = []                     })
-  , ( "env" , "additionally dump compiler environment"
+  , ( "dump-env" , "additionally dump compiler environment"
     , \ opts -> opts { optDumpEnv = True                 })
-  , ( "raw" , "dump as raw AST (instead of pretty printed)"
+  , ( "dump-raw" , "dump as raw AST (instead of pretty printed)"
     , \ opts -> opts { optDumpRaw = True                 })
   ] ++ map toDescr dumpLevel
   where
@@ -341,12 +371,6 @@ addFlag o opts = nub $ o : opts
 
 removeFlag :: Eq a => a -> [a] -> [a]
 removeFlag o opts = filter (/= o) opts
-
-lookup3 :: Eq a => a -> [(a, b, c)] -> Maybe c
-lookup3 _ []                  = Nothing
-lookup3 k ((k', _, v2) : kvs)
-  | k == k'                   = Just v2
-  | otherwise                 = lookup3 k kvs
 
 -- |Parse the command line arguments
 parseOpts :: [String] -> (Options, [String], [String])
