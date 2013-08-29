@@ -181,14 +181,20 @@ allow the usage of the qualified list constructor \texttt{(prelude.:)}.
 
 > data RenameInfo
 >   -- |Arity of data constructor
->   = Constr Int
+>   = Constr QualIdent Int
 >   -- |Record type and all labels for a single record label
 >   | RecordLabel QualIdent [Ident]
 >   -- |Arity of global function
->   | GlobalVar Int QualIdent
+>   | GlobalVar QualIdent Int
 >   -- |Arity of local function
->   | LocalVar Int Ident
+>   | LocalVar Ident Int
 >     deriving (Eq, Show)
+
+> ppRenameInfo :: RenameInfo -> Doc
+> ppRenameInfo (Constr      qn _) = text (escQualName qn)
+> ppRenameInfo (RecordLabel qn _) = text (escQualName qn)
+> ppRenameInfo (GlobalVar   qn _) = text (escQualName qn)
+> ppRenameInfo (LocalVar     n _) = text (escName      n)
 
 \end{verbatim}
 Since record types are currently translated into data types, it is necessary
@@ -197,10 +203,10 @@ Furthermore, it is not allowed to declare a label more than once.
 \begin{verbatim}
 
 > renameInfo :: TCEnv -> ValueInfo -> RenameInfo
-> renameInfo _     (DataConstructor  _ a _) = Constr $ a
-> renameInfo _     (NewtypeConstructor _ _) = Constr 1
-> renameInfo _     (Value          qid a _) = GlobalVar a qid
-> renameInfo tcEnv (Label            _ r _) = case qualLookupTC r tcEnv of
+> renameInfo _     (DataConstructor    qid a _) = Constr    qid a
+> renameInfo _     (NewtypeConstructor qid   _) = Constr    qid 1
+> renameInfo _     (Value              qid a _) = GlobalVar qid a
+> renameInfo tcEnv (Label              _   r _) = case qualLookupTC r tcEnv of
 >   [AliasType _ _ (TypeRecord fs _)] -> RecordLabel r $ map fst fs
 >   _ -> internalError $ "SyntaxCheck.renameInfo: ambiguous record " ++ show r
 
@@ -227,15 +233,15 @@ Furthermore, it is not allowed to declare a label more than once.
 > bindConstr :: ConstrDecl -> SCM ()
 > bindConstr (ConstrDecl _ _ c tys) = do
 >   m <- getModuleIdent
->   modifyRenameEnv $ bindGlobal m c (Constr $ length tys)
+>   modifyRenameEnv $ bindGlobal m c (Constr (qualifyWith m c) $ length tys)
 > bindConstr (ConOpDecl _ _ _ op _) = do
 >   m <- getModuleIdent
->   modifyRenameEnv $ bindGlobal m op (Constr 2)
+>   modifyRenameEnv $ bindGlobal m op (Constr (qualifyWith m op) 2)
 
 > bindNewConstr :: NewConstrDecl -> SCM ()
 > bindNewConstr (NewConstrDecl _ _ c _) = do
 >   m <- getModuleIdent
->   modifyRenameEnv $ bindGlobal m c (Constr 1)
+>   modifyRenameEnv $ bindGlobal m c (Constr (qualifyWith m c) 1)
 
 > bindRecordLabel :: Ident -> [Ident] -> Ident -> SCM ()
 > bindRecordLabel t allLabels l = do
@@ -248,21 +254,20 @@ Furthermore, it is not allowed to declare a label more than once.
 
 > -- |Bind a global function declaration in the 'RenameEnv'
 > bindFuncDecl :: ModuleIdent -> Decl -> RenameEnv -> RenameEnv
-> bindFuncDecl m (FunctionDecl _ ident equs) env
->   | null equs = internalError "SyntaxCheck.bindFuncDecl: no equations"
->   | otherwise = let arty = length $ snd $ getFlatLhs $ head equs
->                     qid  = qualifyWith m ident
->                 in  bindGlobal m ident (GlobalVar arty qid) env
-> bindFuncDecl m (ForeignDecl _ _ _ ident texpr) env
->   = let arty = typeArity texpr
->         qid  = qualifyWith m ident
->     in bindGlobal m ident (GlobalVar arty qid) env
-> bindFuncDecl m (TypeSig _ ids texpr) env
->   = foldr bindTS env $ map (qualifyWith m) ids
+> bindFuncDecl _ (FunctionDecl _ _ []) _
+>   = internalError "SyntaxCheck.bindFuncDecl: no equations"
+> bindFuncDecl m (FunctionDecl _ f (eq:_)) env
+>   = let arty = length $ snd $ getFlatLhs eq
+>     in  bindGlobal m f (GlobalVar (qualifyWith m f) arty) env
+> bindFuncDecl m (ForeignDecl _ _ _ f ty) env
+>   = let arty = typeArity ty
+>     in bindGlobal m f (GlobalVar (qualifyWith m f) arty) env
+> bindFuncDecl m (TypeSig _ fs ty) env
+>   = foldr bindTS env $ map (qualifyWith m) fs
 >  where
->  bindTS qid env'
->   | null $ qualLookupVar qid env'
->   = bindGlobal m (unqualify qid) (GlobalVar (typeArity texpr) qid) env'
+>  bindTS qf env'
+>   | null $ qualLookupVar qf env'
+>   = bindGlobal m (unqualify qf) (GlobalVar qf (typeArity ty)) env'
 >   | otherwise
 >   = env'
 > bindFuncDecl _ _ env = env
@@ -274,14 +279,14 @@ Furthermore, it is not allowed to declare a label more than once.
 > bindVarDecl (FunctionDecl _ f eqs) env
 >   | null eqs  = internalError "SyntaxCheck.bindVarDecl: no equations"
 >   | otherwise = let arty = length $ snd $ getFlatLhs $ head eqs
->                 in  bindLocal (unRenameIdent f) (LocalVar arty f) env
+>                 in  bindLocal (unRenameIdent f) (LocalVar f arty) env
 > bindVarDecl (PatternDecl         _ t _) env = foldr bindVar env (bv t)
 > bindVarDecl (FreeDecl             _ vs) env = foldr bindVar env vs
 > bindVarDecl _                           env = env
 
 > bindVar :: Ident -> RenameEnv -> RenameEnv
 > bindVar v | isAnonId v = id
->           | otherwise  = bindLocal (unRenameIdent v) (LocalVar 0 v)
+>           | otherwise  = bindLocal (unRenameIdent v) (LocalVar v 0)
 
 > lookupVar :: Ident -> RenameEnv -> [RenameInfo]
 > lookupVar v env = lookupNestEnv v env ++! lookupTupleConstr v
@@ -293,7 +298,8 @@ Furthermore, it is not allowed to declare a label more than once.
 
 > lookupTupleConstr :: Ident -> [RenameInfo]
 > lookupTupleConstr v
->   | isTupleId v = [Constr $ tupleArity v]
+>   | isTupleId v = let a = tupleArity v
+>                   in  [Constr (qualifyWith preludeMIdent $ tupleId a) a]
 >   | otherwise   = []
 
 > qualLookupListCons :: QualIdent -> RenameEnv -> [RenameInfo]
@@ -577,11 +583,11 @@ checkParen
 >   m <- getModuleIdent
 >   k <- getScopeId
 >   case qualLookupVar c env of
->     [Constr n] -> processCons c n
->     [r]        -> processVarFun r k
+>     [Constr _ n] -> processCons c n
+>     [r]          -> processVarFun r k
 >     rs -> case qualLookupVar (qualQualify m c) env of
->       [Constr n] -> processCons (qualQualify m c) n
->       [r]        -> processVarFun r k
+>       [Constr _ n] -> processCons (qualQualify m c) n
+>       [r]          -> processVarFun r k
 >       []
 >         | null ts && not (isQualified c) ->
 >             return $ VariablePattern $ renameIdent (unqualify c) k
@@ -590,7 +596,7 @@ checkParen
 >             report $ errUndefinedData c
 >             return $ ConstructorPattern c ts'
 >       _ -> do ts' <- mapM (checkPattern p) ts
->               report $ errAmbiguousData c
+>               report $ errAmbiguousData rs c
 >               return $ ConstructorPattern c ts'
 >   where
 >   n' = length ts
@@ -617,14 +623,14 @@ checkParen
 >   m <- getModuleIdent
 >   env <- getRenameEnv
 >   case qualLookupVar op env of
->     [Constr n] -> infixPattern op n
->     [_]        -> funcPattern  op
->     rs         -> case qualLookupVar (qualQualify m op) env of
->       [Constr n]   -> infixPattern (qualQualify m op) n
+>     [Constr _ n] -> infixPattern op n
+>     [_]          -> funcPattern  op
+>     rs           -> case qualLookupVar (qualQualify m op) env of
+>       [Constr _ n] -> infixPattern (qualQualify m op) n
 >       [_]          -> funcPattern  (qualQualify m op)
 >       rs'          -> do if (null rs && null rs')
 >                             then report $ errUndefinedData op
->                             else report $ errAmbiguousData op
+>                             else report $ errAmbiguousData rs op
 >                          liftM2 (flip InfixPattern op) (checkPattern p t1)
 >                                                        (checkPattern p t2)
 >   where
@@ -782,17 +788,17 @@ checkParen
 >     case qualLookupVar v env of
 >       []              -> do report $ errUndefinedVariable v
 >                             return $ Variable v
->       [Constr _]      -> return $ Constructor v
+>       [Constr _ _]    -> return $ Constructor v
 >       [GlobalVar _ _] -> return $ Variable v
->       [LocalVar _ v'] -> return $ Variable $ qualify v'
+>       [LocalVar v' _] -> return $ Variable $ qualify v'
 >       rs -> do
 >         m <- getModuleIdent
 >         case qualLookupVar (qualQualify m v) env of
 >           []              -> do report $ errAmbiguousIdent rs v
 >                                 return $ Variable v
->           [Constr _]      -> return $ Constructor v
+>           [Constr _ _]    -> return $ Constructor v
 >           [GlobalVar _ _] -> return $ Variable v
->           [LocalVar _ v'] -> return $ Variable $ qualify v'
+>           [LocalVar v' _] -> return $ Variable $ qualify v'
 >           rs'             -> do report $ errAmbiguousIdent rs' v
 >                                 return $ Variable v
 
@@ -815,16 +821,16 @@ checkParen
 >   env <- getRenameEnv
 >   case qualLookupVar v env of
 >     []              -> report (errUndefinedVariable v) >> return op
->     [Constr _]      -> return $ InfixConstr v
+>     [Constr _ _]    -> return $ InfixConstr v
 >     [GlobalVar _ _] -> return $ InfixOp v
->     [LocalVar _ v'] -> return $ InfixOp $ qualify v'
+>     [LocalVar v' _] -> return $ InfixOp $ qualify v'
 >     rs              -> do
 >       m <- getModuleIdent
 >       case qualLookupVar (qualQualify m v) env of
 >         []              -> report (errAmbiguousIdent rs v) >> return op
->         [Constr _]      -> return $ InfixConstr v
+>         [Constr _ _]    -> return $ InfixConstr v
 >         [GlobalVar _ _] -> return $ InfixOp v
->         [LocalVar _ v'] -> return $ InfixOp $ qualify v'
+>         [LocalVar v' _] -> return $ InfixOp $ qualify v'
 >         rs'             -> report (errAmbiguousIdent rs' v) >> return op
 >   where v = opName op
 
@@ -918,7 +924,7 @@ the user about the fact that the identifier is ambiguous.
 > isDataConstr v = any isConstr . lookupVar v . globalEnv . toplevelEnv
 
 > isConstr :: RenameInfo -> Bool
-> isConstr (Constr        _) = True
+> isConstr (Constr      _ _) = True
 > isConstr (GlobalVar   _ _) = False
 > isConstr (LocalVar    _ _) = False
 > isConstr (RecordLabel _ _) = False
@@ -929,14 +935,14 @@ varIdent (LocalVar  _ v) = v
 varIdent _ = internalError "SyntaxCheck.varIdent: no variable"
 
 > qualVarIdent :: RenameInfo -> QualIdent
-> qualVarIdent (GlobalVar _ v) = v
-> qualVarIdent (LocalVar  _ v) = qualify v
+> qualVarIdent (GlobalVar v _) = v
+> qualVarIdent (LocalVar  v _) = qualify v
 > qualVarIdent _ = internalError "SyntaxCheck.qualVarIdent: no variable"
 
 > arity :: RenameInfo -> Int
-> arity (Constr         n) = n
-> arity (GlobalVar   n  _) = n
-> arity (LocalVar    n  _) = n
+> arity (Constr      _  n) = n
+> arity (GlobalVar   _  n) = n
+> arity (LocalVar    _  n) = n
 > arity (RecordLabel _ ls) = length ls
 
 \end{verbatim}
@@ -1013,27 +1019,28 @@ Error messages.
 
 > errUndefinedVariable :: QualIdent -> Message
 > errUndefinedVariable v = posMessage v $ hsep $ map text
->   [qualName v, "is undefined"]
+>   [escQualName v, "is undefined"]
 
 > errUndefinedData :: QualIdent -> Message
 > errUndefinedData c = posMessage c $ hsep $ map text
->   ["Undefined data constructor", qualName c]
+>   ["Undefined data constructor", escQualName c]
 
 > errUndefinedLabel :: Ident -> Message
 > errUndefinedLabel l = posMessage l $  hsep $ map text
 >   ["Undefined record label", escName l]
 
 > errAmbiguousIdent :: [RenameInfo] -> QualIdent -> Message
-> errAmbiguousIdent rs | any isConstr rs = errAmbiguousData
->                      | otherwise       = errAmbiguousVariable
+> errAmbiguousIdent rs qn | any isConstr rs = errAmbiguousData rs qn
+>                         | otherwise       = errAmbiguous "variable" rs qn
 
-> errAmbiguousVariable :: QualIdent -> Message
-> errAmbiguousVariable v = posMessage v $ hsep $ map text
->   ["Ambiguous variable", qualName v]
+> errAmbiguousData :: [RenameInfo] -> QualIdent -> Message
+> errAmbiguousData = errAmbiguous "data constructor"
 
-> errAmbiguousData :: QualIdent -> Message
-> errAmbiguousData c = posMessage c $  hsep $ map text
->   ["Ambiguous data constructor", qualName c]
+> errAmbiguous :: String -> [RenameInfo] -> QualIdent -> Message
+> errAmbiguous what rs qn = posMessage qn
+>   $   text "Ambiguous" <+> text what <+> text (escQualName qn)
+>   $+$ text "It could refer to:"
+>   $+$ nest 2 (vcat (map ppRenameInfo rs))
 
 > errDuplicateDefinition :: Ident -> Message
 > errDuplicateDefinition v = posMessage v $ hsep $ map text
@@ -1041,7 +1048,7 @@ Error messages.
 
 > errDuplicateVariable :: Ident -> Message
 > errDuplicateVariable v = posMessage v $ hsep $ map text
->   [idName v, "occurs more than once in pattern"]
+>   [escName v, "occurs more than once in pattern"]
 
 > errMultipleDataConstructor :: [Ident] -> Message
 > errMultipleDataConstructor [] = internalError
@@ -1065,11 +1072,11 @@ Error messages.
 
 > errMissingLabel :: Position -> Ident -> QualIdent -> String -> Message
 > errMissingLabel p l r what = posMessage p $ hsep $ map text
->   ["Missing label", escName l, "in the", what, "of", escName (unqualify r)]
+>   ["Missing label", escName l, "in the", what, "of", escQualName r]
 
 > errIllegalLabel :: Ident -> QualIdent -> Message
 > errIllegalLabel l r = posMessage l $ hsep $ map text
->   ["Label", escName l, "is not defined in record", escName (unqualify r)]
+>   ["Label", escName l, "is not defined in record", escQualName r]
 
 > errIllegalRecordId :: Ident -> Message
 > errIllegalRecordId r = posMessage r $ hsep $ map text
@@ -1100,7 +1107,7 @@ Error messages.
 
 > errWrongArity :: QualIdent -> Int -> Int -> Message
 > errWrongArity c arity' argc = posMessage c $ hsep (map text
->   ["Data constructor", qualName c, "expects", arguments arity'])
+>   ["Data constructor", escQualName c, "expects", arguments arity'])
 >   <> comma <+> text "but is applied to" <+> text (show argc)
 >   where arguments 0 = "no arguments"
 >         arguments 1 = "1 argument"
