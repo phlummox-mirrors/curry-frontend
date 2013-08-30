@@ -229,11 +229,15 @@ echo `cat tmp.txt | wc -l` files checked
 
 if [ ! -f $errorFile ]; then
   echo "Test successfully passed"
+  exitCode=0
 else
   echo "Test result: there were errors"
+  exitCode=1
 fi
 
 rm tmp.txt
 rm stderr.txt
 rm stdout.txt
 rm -f $errorFile
+
+exit $exitCode

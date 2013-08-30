@@ -23,11 +23,15 @@ then
   echo "============================="
 
   cat errors2.txt
+
+  exitCode=1
 else
   echo "============================="
   echo "Test successfully passed"
+
+  exitCode=0
 fi
 
 rm errors2.txt
 
-exit 0
+exit $exitCode

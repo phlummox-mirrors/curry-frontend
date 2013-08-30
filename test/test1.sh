@@ -44,3 +44,5 @@ pushd typeclasses/comparetest_new ; $cymake -e -f *.curry || exit 1; popd
 
 
 ./ComparePrograms.sh typeclasses/comparetest_orig typeclasses/comparetest_new
+
+exit $?

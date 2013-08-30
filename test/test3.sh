@@ -4,3 +4,4 @@
 
 cd .. && cabal test
 
+exit $?
