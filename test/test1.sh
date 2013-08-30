@@ -23,26 +23,29 @@ fi
 cymake_orig=`readlink -f $1`
 cymake=`readlink -f ../dist/build/cymake/cymake`
 
+origDir=typeclasses/comparetest_orig
+newDir=typeclasses/comparetest_new
+
 if [ "$2" = all ]
 then
-  rm -r -f typeclasses/comparetest_orig/.curry
+  rm -r -f $origDir/.curry
  
   echo "=================="
   echo "building with orig"
   echo "=================="
-  pushd typeclasses/comparetest_orig ; $cymake_orig -e -f *.curry || exit 1; popd
-  #pushd typeclasses/comparetest_orig/.curry/ && sed 's/$/ Nothing/' -s -i *.fint *.fcy && popd
+  pushd $origDir ; $cymake_orig -e -f *.curry || exit 1; popd
+  #pushd $origDir/.curry/ && sed 's/$/ Nothing/' -s -i *.fint *.fcy && popd
 fi
 
 echo "=================="
 echo "build with current"
 echo "=================="
 
-rm -r -f typeclasses/comparetest_new/.curry
+rm -r -f $newDir/.curry
 
-pushd typeclasses/comparetest_new ; $cymake -e -f *.curry || exit 1; popd
+pushd $newDir ; $cymake -e -f *.curry || exit 1; popd
 
 
-./ComparePrograms.sh typeclasses/comparetest_orig typeclasses/comparetest_new
+./ComparePrograms.sh $origDir $newDir
 
 exit $?
