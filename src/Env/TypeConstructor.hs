@@ -102,7 +102,15 @@ lookupTC tc tcEnv = lookupTopEnv tc tcEnv ++! lookupTupleTC tc
 
 qualLookupTC :: QualIdent -> TCEnv -> [TypeInfo]
 qualLookupTC tc tcEnv =   qualLookupTopEnv tc tcEnv
+                      ++! qualLookupList   tc tcEnv
                       ++! lookupTupleTC (unqualify tc)
+
+qualLookupList :: QualIdent -> TCEnv -> [TypeInfo]
+qualLookupList tc tcEnv
+  | mmid == Just preludeMIdent && qid == listId
+  = qualLookupTopEnv (qualify qid) tcEnv
+  | otherwise = []
+ where (mmid, qid) = (qidModule tc, qidIdent tc)
 
 lookupTupleTC :: Ident -> [TypeInfo]
 lookupTupleTC tc | isTupleId tc = [tupleTCs !! (tupleArity tc - 2)]

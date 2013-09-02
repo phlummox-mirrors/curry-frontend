@@ -14,7 +14,7 @@ import System.IO     (hPutStrLn, stderr)
 import System.Exit   (exitFailure)
 
 import Curry.Base.Message hiding (warn)
-import CompilerOpts (Options (optVerbosity, optWarn), Verbosity (..))
+import CompilerOpts (Options (..), Verbosity (..))
 
 info :: Options -> String -> IO ()
 info opts msg = unless (optVerbosity opts < VerbInfo)
@@ -25,8 +25,11 @@ status opts msg = unless (optVerbosity opts < VerbStatus)
                          (putStrLn $ msg ++ " ...")
 
 warn :: Options -> [Message] -> IO ()
-warn opts msgs = when (optWarn opts && not (null msgs))
-               $ putErrLn (show $ ppMessages ppWarning $ sort msgs)
+warn opts msgs = when (optWarn opts && not (null msgs)) $ do
+  putErrLn (show $ ppMessages ppWarning $ sort msgs)
+  when (optWarnAsError opts) $ do
+    putErrLn "Failed due to -Werror"
+    exitFailure
 
 -- |Print an error message on 'stderr'
 putErrLn :: String -> IO ()

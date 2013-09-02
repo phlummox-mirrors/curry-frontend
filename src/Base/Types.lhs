@@ -23,8 +23,7 @@ TODO: Use MultiParamTypeClasses ?
 >   , TypeScheme (..), ExistTypeScheme (..), monoType, polyType
 >     -- * Predefined types
 >   , unitType, boolType, charType, intType, floatType, stringType
->   , successType, listType, ioType, tupleType, primType
->   , typeVar, predefTypes
+>   , successType, listType, ioType, tupleType, typeVar, predefTypes
 >   ) where
 
 > import Curry.Base.Ident
@@ -286,11 +285,11 @@ There are a few predefined types:
 > tupleType :: [Type] -> Type
 > tupleType tys = primType (tupleId (length tys)) tys
 
-> primType :: Ident -> [Type] -> Type
-> primType = TypeConstructor . qualifyWith preludeMIdent
-
 > typeVar :: Int -> Type
 > typeVar = TypeVariable
+
+> primType :: Ident -> [Type] -> Type
+> primType = TypeConstructor . qualifyWith preludeMIdent
 
 > predefTypes :: [(Type, [DataConstr])]
 > predefTypes = let a = typeVar 0 in

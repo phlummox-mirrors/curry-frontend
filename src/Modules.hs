@@ -76,12 +76,33 @@ import Transformations
 compileModule :: Options -> FilePath -> IO ()
 compileModule opts fn = do
   loaded <- loadModule opts fn
-  case checkModule opts loaded of
-    CheckFailed errs -> abortWithMessages errs
-    CheckSuccess (env, mdl, dumps) -> do
-      warn opts $ warnCheck env mdl
-      mapM_ (doDump opts) dumps
+  checked <- runEitherT $ checkModule opts loaded
+  case checked of
+    Left errs -> abortWithMessages errs
+    Right (env, mdl) -> do
+      warn opts $ warnCheck opts env mdl
+      writeParsed opts fn mdl
       writeOutput opts fn (env, mdl)
+
+writeOutput :: Options -> FilePath -> (CompilerEnv, CS.Module) -> IO ()
+writeOutput opts fn (env, modul) = do
+  let (env1, qlfd) = qual opts env modul
+  doDump opts (DumpQualified, env1, show $ CS.ppModule qlfd)
+  writeAbstractCurry opts fn env1 qlfd
+  when withFlat $ do
+    -- checkModule checks types, and then transModule introduces new
+    -- functions (by lambda lifting in 'desugar'). Consequence: The
+    -- types of the newly introduced functions are not inferred (hsi)
+    let (env2, il, dumps) = transModule opts env1 qlfd
+    -- dump intermediate results
+    mapM_ (doDump opts) dumps
+    -- generate target code
+    let intf = exportInterface env2 qlfd
+    let modSum = summarizeModule (tyConsEnv env2) intf qlfd
+    writeFlat opts fn env2 modSum il
+  where
+  withFlat = any (`elem` optTargetTypes opts)
+              [FlatCurry, FlatXml, ExtendedFlatCurry]
 
 -- ---------------------------------------------------------------------------
 -- Loading a module
@@ -89,7 +110,6 @@ compileModule opts fn = do
 
 loadModule :: Options -> FilePath -> IO (CompilerEnv, CS.Module)
 loadModule opts fn = do
-  -- read module
   mbSrc <- readModule fn
   case mbSrc of
     Nothing  -> abortWithMessages [message $ text $ "Missing file: " ++ fn] -- TODO
@@ -164,23 +184,20 @@ checkInterface opts iEnv intf = interfaceCheck env intf
 --   AbstractCurry is deactivated as it requires the value information
 --   collected by the type checker.
 checkModule :: Options -> (CompilerEnv, CS.Module)
-            -> CheckResult (CompilerEnv, CS.Module, [Dump])
+            -> EitherT [Message] IO (CompilerEnv, CS.Module)
 checkModule opts (env, mdl) = do
-  (env1, kc) <- kindCheck env mdl -- should be only syntax checking ?
+  doDump opts (DumpParsed       , env , show $ CS.ppModule mdl)
+  (env1, kc) <- kindCheck   opts env mdl -- should be only syntax checking ?
+  doDump opts (DumpKindChecked  , env1, show $ CS.ppModule kc)
   (env2, sc) <- syntaxCheck opts env1 kc
-  (env3, pc) <- precCheck        env2 sc
+  doDump opts (DumpSyntaxChecked, env2, show $ CS.ppModule sc)
+  (env3, pc) <- precCheck   opts env2 sc
+  doDump opts (DumpPrecChecked  , env3, show $ CS.ppModule pc)
   (env4, tc) <- if withTypeCheck
-                   then typeCheck env3 pc >>= uncurry exportCheck
+                   then typeCheck opts env3 pc >>= uncurry (exportCheck opts)
                    else return (env3, pc)
-  (env5, ql) <- return $ qual opts env4 tc
-  let dumps = [ (DumpParsed       , env , show $ CS.ppModule mdl)
-              , (DumpKindChecked  , env1, show $ CS.ppModule kc)
-              , (DumpSyntaxChecked, env2, show $ CS.ppModule sc)
-              , (DumpPrecChecked  , env3, show $ CS.ppModule pc)
-              , (DumpTypeChecked  , env4, show $ CS.ppModule tc)
-              , (DumpQualified    , env5, show $ CS.ppModule ql)
-              ]
-  return (env5, ql, dumps)
+  doDump opts (DumpTypeChecked  , env4, show $ CS.ppModule tc)
+  return (env4, tc)
   where
   withTypeCheck = any (`elem` optTargetTypes opts)
                       [FlatCurry, ExtendedFlatCurry, FlatXml, AbstractCurry]
@@ -214,27 +231,6 @@ transModule opts env mdl = (env5, ilCaseComp, dumps)
 -- ---------------------------------------------------------------------------
 -- Writing output
 -- ---------------------------------------------------------------------------
-
-writeOutput :: Options -> FilePath -> (CompilerEnv, CS.Module) -> IO ()
-writeOutput opts fn (env, modul) = do
-  writeParsed        opts fn     modul
-  writeAbstractCurry opts fn env modul
-  when withFlat $ do
-    -- checkModule checks types, and then transModule introduces new
-    -- functions (by lambda lifting in 'desugar'). Consequence: The
-    -- types of the newly introduced functions are not inferred (hsi)
-    let (env2, il, dumps) = transModule opts env modul
-    -- dump intermediate results
-    mapM_ (doDump opts) dumps
-    -- generate interface file
-    let intf = exportInterface env2 modul
-    writeInterface opts fn intf
-    -- generate target code
-    let modSum = summarizeModule (tyConsEnv env2) intf modul
-    writeFlat opts fn env2 modSum il
-  where
-  withFlat = any (`elem` optTargetTypes opts)
-              [FlatCurry, FlatXml, ExtendedFlatCurry]
 
 -- The functions \texttt{genFlat} and \texttt{genAbstract} generate
 -- flat and abstract curry representations depending on the specified option.
@@ -331,10 +327,10 @@ writeAbstractCurry opts fname env modul = do
   useSubDir  = optUseSubdir opts
 
 -- |The 'dump' function writes the selected information to standard output.
-doDump :: Options -> Dump -> IO ()
+doDump :: MonadIO m => Options -> Dump -> m ()
 doDump opts (level, env, dump) = when (level `elem` optDumps opts) $ do
-  when (optDumpEnv opts) $ putStrLn $ showCompilerEnv env
-  putStrLn $ unlines [header, replicate (length header) '=', dump]
+  when (optDumpEnv opts) $ liftIO $ putStrLn $ showCompilerEnv env
+  liftIO $ putStrLn $ unlines [header, replicate (length header) '=', dump]
   where
   header = lookupHeader dumpLevel
   lookupHeader []            = "Unknown dump level " ++ show level
