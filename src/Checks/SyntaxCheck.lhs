@@ -457,7 +457,7 @@ top-level.
 > joinEquations [] = return []
 > joinEquations (FunctionDecl p f eqs : FunctionDecl _ f' [eq] : ds)
 >   | f == f' = do
->     when (getArity (head eqs) /= getArity eq) $ report $ errDifferentArity f
+>     when (getArity (head eqs) /= getArity eq) $ report $ errDifferentArity [f, f']
 >     joinEquations (FunctionDecl p f (eqs ++ [eq]) : ds)
 >   where getArity = length . snd . getFlatLhs
 > joinEquations (d : ds) = (d :) `liftM` joinEquations ds
@@ -1101,9 +1101,13 @@ Error messages.
 > errNotALabel l = posMessage l $
 >   text (escName l) <+> text "is not a record label"
 
-> errDifferentArity :: Ident -> Message
-> errDifferentArity f = posMessage f $ hsep $ map text
->   ["Equations for", escName f, "have different arities"]
+> errDifferentArity :: [Ident] -> Message
+> errDifferentArity [] = internalError
+>   "SyntaxCheck.errDifferentArity: empty list"
+> errDifferentArity (i:is) = posMessage i $
+>   text "Equations for" <+> text (escName i) <+> text "have different arities"
+>   <+> text "at:" $+$
+>   nest 2 (vcat (map (ppPosition . getPosition) (i:is)))
 
 > errWrongArity :: QualIdent -> Int -> Int -> Message
 > errWrongArity c arity' argc = posMessage c $ hsep (map text
