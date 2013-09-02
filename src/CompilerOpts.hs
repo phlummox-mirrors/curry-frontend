@@ -121,7 +121,11 @@ data WarnFlag
 
 -- |Warning flags enabled by default
 stdWarnFlags :: [WarnFlag]
-stdWarnFlags = [minBound .. maxBound]
+stdWarnFlags =
+  [ WarnMultipleImports , WarnDisjoinedRules, WarnUnusedBindings
+  , WarnNameShadowing   , WarnOverlapping -- , WarnIncompletePatterns
+  , WarnIdleAlternatives
+  ]
 
 -- |Description and flag of warnings flags
 warnFlags :: [(WarnFlag, String, String)]
