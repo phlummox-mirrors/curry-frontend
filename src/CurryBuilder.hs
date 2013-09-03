@@ -86,7 +86,7 @@ makeCurry opts srcs targetFile = mapM_ (process . snd) srcs
         actOutdated = if isFinalFile then compileFinal else compile
         actUpToDate = if isFinalFile then skipFinal    else skip
 
-    interfaceExists <- liftIO $ doesModuleExist $ flatIntName fn
+    interfaceExists <- liftIO $ doesModuleExist $ interfName fn
     if interfaceExists && not (isEnforced && isFinalFile)
        then smake destFiles depFiles (actOutdated fn) (actUpToDate fn)
        else actOutdated fn

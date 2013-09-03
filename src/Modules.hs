@@ -18,9 +18,11 @@ module Modules
   ( compileModule, loadModule, checkModuleHeader, checkModule, writeOutput
   ) where
 
+import qualified Control.Exception as C (catch, IOException)
 import           Control.Monad   (unless, when)
 import qualified Data.Map as Map (elems)
 import           Data.Maybe      (fromMaybe)
+import           System.IO       (hClose, hGetContents, openFile, IOMode (ReadMode))
 
 import Curry.Base.Ident
 import Curry.Base.Message (runMsg)
@@ -245,26 +247,32 @@ writeParsed opts fn modul = when srcTarget $
 
 writeInterface :: Options -> FilePath -> CS.Interface -> IO ()
 writeInterface opts fn intf
-  | not (optInterface opts) = return () -- TODO: reasonable?
-  | optForce opts           = outputInterface
-  | otherwise               = do
-      mbOldIntf <- readModule interfaceFile
-      case mbOldIntf of
-        Nothing  -> outputInterface
-        Just src -> case runMsg (CS.parseInterface interfaceFile src) of
-          Left  _     -> outputInterface
-          Right (i,_) -> unless (intf `intfEquiv` fixInterface i) outputInterface
+  | optForce opts = outputInterface
+  | otherwise     = do
+      equal <- C.catch (matchInterface interfaceFile intf) ignoreIOException
+      unless equal outputInterface
   where
+  ignoreIOException :: C.IOException -> IO Bool
+  ignoreIOException _ = return False
+
   interfaceFile   = interfName fn
   outputInterface = writeModule (optUseSubdir opts) interfaceFile
                     (show $ CS.ppInterface intf)
+
+matchInterface :: FilePath -> CS.Interface -> IO Bool
+matchInterface ifn i = do
+  hdl <- openFile ifn ReadMode
+  src <- hGetContents hdl
+  case runMsg (CS.parseInterface ifn src) of
+    Left _        -> hClose hdl >> return False
+    Right (i', _) -> return (i `intfEquiv` fixInterface i')
 
 writeFlat :: Options -> FilePath -> CompilerEnv -> ModuleSummary -> IL.Module
           -> IO ()
 writeFlat opts fn env modSum il = do
   when (extTarget || fcyTarget) $ do
     writeFlatCurry opts fn env modSum il
-    writeFlatIntf  opts fn env modSum il
+    writeFlatIntf opts fn env modSum il
   when (xmlTarget) $ writeFlatXml opts fn modSum il
   where
   extTarget    = ExtendedFlatCurry `elem` optTargetTypes opts
