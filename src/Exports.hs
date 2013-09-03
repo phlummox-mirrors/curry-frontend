@@ -1,9 +1,9 @@
 {- |
     Module      :  $Header$
     Description :  Cumputation of export interface
-    Copyright   :  (c) 2000-2004, Wolfgang Lux
-                       2005, Martin Engelke (men@informatik.uni-kiel.de)
-                       2011, Björn Peemöller (bjp@informatik.uni-kiel.de)
+    Copyright   :  (c) 2000-2004  , Wolfgang Lux
+                       2005       , Martin Engelke
+                       2011 - 2013, Björn Peemöller
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
@@ -17,8 +17,8 @@
 -}
 module Exports (exportInterface) where
 
-import Data.Maybe (isNothing, catMaybes)
-import qualified Data.Set as Set (delete, fromList, toList)
+import           Data.Maybe        (isNothing, catMaybes)
+import qualified Data.Set   as Set (delete, fromList, toList)
 
 import Curry.Base.Position
 import Curry.Base.Ident

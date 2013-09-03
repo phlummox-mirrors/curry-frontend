@@ -2,7 +2,7 @@
     Module      :  $Header$
     Description :  Loading interfaces
     Copyright   :  (c) 2000 - 2004, Wolfgang Lux
-                       2011       , Björn Peemöller
+                       2011 - 2013, Björn Peemöller
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
@@ -25,19 +25,18 @@
 module Interfaces (loadInterfaces) where
 
 import           Control.Monad                 (foldM, liftM, unless)
-import           Control.Monad.IO.Class        (liftIO)
 import qualified Control.Monad.State    as S   (StateT (..), modify)
 import           Data.List                     (intercalate, isPrefixOf)
 import qualified Data.Map               as Map
-import           Text.PrettyPrint
 
 import           Curry.Base.Ident
 import           Curry.Base.Position
+import           Curry.Base.Pretty
 import qualified Curry.ExtendedFlat.Type as EF
 import           Curry.Files.PathUtils   as PU
 import           Curry.Syntax
 
-import Base.Messages (Message, posMessage, internalError)
+import Base.Messages
 
 import Env.Interface
 
@@ -47,10 +46,10 @@ report :: Message -> IntfLoader ()
 report msg = S.modify (msg:)
 
 -- |Load the interface files into the 'InterfaceEnv'
-loadInterfaces :: [FilePath] -> Module -> IO (InterfaceEnv, [Message])
+loadInterfaces :: [FilePath] -> Module -> CYIO InterfaceEnv
 loadInterfaces paths (Module m _ is _) = do
-  (env, errs) <- S.runStateT action []
-  return (env, reverse errs)
+  (env, errs) <- liftIO $ S.runStateT action []
+  if null errs then right env else left (reverse errs)
   where action = foldM (loadInterface paths [m]) initInterfaceEnv
                  [(p, m') | ImportDecl p m' _ _ _ <- is]
 

@@ -4,7 +4,7 @@
     Copyright   :  (c) 2002 - 2004 Wolfgang Lux
                        2005        Martin Engelke
                        2007        Sebastian Fischer
-                       2011 - 2012 Björn Peemöller
+                       2011 - 2013 Björn Peemöller
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
@@ -16,26 +16,22 @@
     dependencies and to update programs composed of multiple modules.
 -}
 
--- TODO (bjp): Propagate errors
--- Currently errors during the dependency search (like missing files
--- or errors during parsing a module header) lead to calls of the error
--- function. This dramatically limits the usability as a library.
-
 module CurryDeps
   ( Source (..), flatDeps, deps, flattenDeps, sourceDeps, moduleDeps ) where
 
-import Control.Monad (foldM, liftM, unless)
-import Data.List (isSuffixOf, nub)
+import           Control.Monad   (foldM)
+import           Data.List       (isSuffixOf, nub)
 import qualified Data.Map as Map (Map, empty, insert, lookup, toList)
-import Text.PrettyPrint
 
 import Curry.Base.Ident
-import Curry.Base.Message (runMsg, Message, message)
+import Curry.Base.Message    (runMsg)
+import Curry.Base.Pretty
 import Curry.Files.Filenames
 import Curry.Files.PathUtils
-import Curry.Syntax (Module (..),  ImportDecl (..), parseHeader, patchModuleId)
+import Curry.Syntax
+  (Module (..),  ImportDecl (..), parseHeader, patchModuleId)
 
-import Base.Messages (abortWithMessage, internalError)
+import Base.Messages
 import Base.SCC (scc)
 import CompilerOpts (Options (..), Extension (..))
 
@@ -50,11 +46,15 @@ type SourceEnv = Map.Map ModuleIdent Source
 
 -- |Retrieve the dependencies of a source file in topological order
 -- and possible errors during flattering
-flatDeps :: Options -> FilePath -> IO ([(ModuleIdent, Source)], [Message])
-flatDeps opts fn = flattenDeps `liftM` deps opts Map.empty fn
+flatDeps :: Options -> FilePath -> CYIO [(ModuleIdent, Source)]
+flatDeps opts fn = do
+  sEnv <- deps opts Map.empty fn
+  case flattenDeps sEnv of
+    (env, []  ) -> right env
+    (_  , errs) -> left errs
 
 -- |Retrieve the dependencies of a source file as a 'SourceEnv'
-deps :: Options -> SourceEnv -> FilePath -> IO SourceEnv
+deps :: Options -> SourceEnv -> FilePath -> CYIO SourceEnv
 deps opts sEnv fn
   | ext   ==   icurryExt  = return sEnv
   | ext `elem` sourceExts = sourceDeps opts sEnv fn
@@ -77,19 +77,19 @@ deps opts sEnv fn
 -- prelude itself.
 
 -- |Retrieve the dependencies of a given target file
-targetDeps :: Options -> SourceEnv -> FilePath -> IO SourceEnv
+targetDeps :: Options -> SourceEnv -> FilePath -> CYIO SourceEnv
 targetDeps opts sEnv fn = do
-  mFile <- lookupFile [""] sourceExts fn
+  mFile <- liftIO $ lookupFile [""] sourceExts fn
   case mFile of
     Nothing   -> return $ Map.insert (mkMIdent [fn]) Unknown sEnv
     Just file -> sourceDeps opts sEnv file
 
 -- |Retrieve the dependencies of a given source file
-sourceDeps :: Options -> SourceEnv -> FilePath -> IO SourceEnv
+sourceDeps :: Options -> SourceEnv -> FilePath -> CYIO SourceEnv
 sourceDeps opts sEnv fn = readHeader fn >>= moduleDeps opts sEnv fn
 
 -- |Retrieve the dependencies of a given module
-moduleDeps :: Options -> SourceEnv -> FilePath -> Module -> IO SourceEnv
+moduleDeps :: Options -> SourceEnv -> FilePath -> Module -> CYIO SourceEnv
 moduleDeps opts sEnv fn (Module m _ is _) = case Map.lookup m sEnv of
   Just  _ -> return sEnv
   Nothing -> do
@@ -106,11 +106,12 @@ imports opts m ds = nub $
   where implicitPrelude = NoImplicitPrelude `notElem` optExtensions opts
 
 -- |Retrieve the dependencies for a given 'ModuleIdent'
-moduleIdentDeps :: Options -> SourceEnv -> ModuleIdent -> IO SourceEnv
+moduleIdentDeps :: Options -> SourceEnv -> ModuleIdent -> CYIO SourceEnv
 moduleIdentDeps opts sEnv m = case Map.lookup m sEnv of
   Just _  -> return sEnv
   Nothing -> do
-    mFile <- lookupCurryModule (optImportPaths opts) (optLibraryPaths opts) m
+    mFile <- liftIO $ lookupCurryModule (optImportPaths opts)
+                                        (optLibraryPaths opts) m
     case mFile of
       Nothing -> return $ Map.insert m Unknown sEnv
       Just fn
@@ -118,17 +119,17 @@ moduleIdentDeps opts sEnv m = case Map.lookup m sEnv of
             return $ Map.insert m (Interface fn) sEnv
         | otherwise                 -> do
             hdr@(Module m' _ _ _) <- readHeader fn
-            unless (m == m') $ abortWithMessage $ errWrongModule m m'
-            moduleDeps opts sEnv fn hdr
+            if (m == m') then moduleDeps opts sEnv fn hdr
+                         else left [errWrongModule m m']
 
-readHeader :: FilePath -> IO Module
+readHeader :: FilePath -> CYIO Module
 readHeader fn = do
-  mbFile <- readModule fn
+  mbFile <- liftIO $ readModule fn
   case mbFile of
-    Nothing  -> abortWithMessage $ errMissingFile fn
+    Nothing  -> left [errMissingFile fn]
     Just src -> do
       case runMsg $ parseHeader fn src of
-        Left  err      -> abortWithMessage err
+        Left  err      -> left [err]
         Right (hdr, _) -> return $ patchModuleId fn hdr
 
 -- If we want to compile the program instead of generating Makefile

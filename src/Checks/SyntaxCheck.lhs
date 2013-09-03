@@ -27,10 +27,10 @@ definition.
 > import Data.List ((\\), insertBy, nub, partition)
 > import Data.Maybe (fromJust, isJust, isNothing, maybeToList)
 > import qualified Data.Set as Set (empty, insert, member)
-> import Text.PrettyPrint
 
 > import Curry.Base.Ident
 > import Curry.Base.Position
+> import Curry.Base.Pretty
 > import Curry.Syntax
 > import Curry.Syntax.Pretty (ppPattern)
 

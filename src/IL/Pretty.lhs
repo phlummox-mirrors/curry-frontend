@@ -15,10 +15,8 @@ Marlow's pretty printer for Haskell.
 
 > module IL.Pretty (ppModule) where
 
-> import Data.List (intersperse)
-> import Text.PrettyPrint
-
 > import Curry.Base.Ident
+> import Curry.Base.Pretty
 > import IL.Type
 
 > dataIndent :: Int
@@ -39,13 +37,9 @@ Marlow's pretty printer for Haskell.
 > orIndent :: Int
 > orIndent = 2
 
-> newline :: Doc
-> newline = text ""
-
 > ppModule :: Module -> Doc
-> ppModule (Module m is ds) = ppHeader m
->  $$ vcat (newline : map ppImport is)
->  $$ vcat (newline : intersperse newline (map ppDecl ds))
+> ppModule (Module m is ds) = sepByBlankLine
+>   [ppHeader m, vcat (map ppImport is), sepByBlankLine (map ppDecl ds)]
 
 > ppHeader :: ModuleIdent -> Doc
 > ppHeader m = text "module" <+> text (show m) <+> text "where"

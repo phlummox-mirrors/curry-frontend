@@ -6,9 +6,12 @@ module Base.Messages
   , internalError, errorMessage, errorMessages
     -- * creating messages
   , Message, message, posMessage
+  , MonadIO (..), CYIO, CYT, left, right, runEitherCYIO
   ) where
 
 import Control.Monad (unless, when)
+import Control.Monad.IO.Class
+import Control.Monad.Trans.Either
 import Data.List     (sort)
 import System.IO     (hPutStrLn, stderr)
 import System.Exit   (exitFailure)
@@ -16,33 +19,46 @@ import System.Exit   (exitFailure)
 import Curry.Base.Message hiding (warn)
 import CompilerOpts (Options (..), Verbosity (..))
 
-info :: Options -> String -> IO ()
-info opts msg = unless (optVerbosity opts < VerbInfo)
-                       (putStrLn $ msg ++ " ...")
+type CYT m a = EitherT [Message] m a
 
-status :: Options -> String -> IO ()
-status opts msg = unless (optVerbosity opts < VerbStatus)
-                         (putStrLn $ msg ++ " ...")
+type CYIO a = EitherT [Message] IO a
 
-warn :: Options -> [Message] -> IO ()
+runEitherCYIO :: CYIO a -> IO a
+runEitherCYIO act = do
+  res <- runEitherT act
+  case res of
+    Left errs -> abortWithMessages errs
+    Right val -> return val
+
+info :: MonadIO m => Options -> String -> m ()
+info opts msg = unless (optVerbosity opts < VerbInfo) (putMsg msg)
+
+status :: MonadIO m => Options -> String -> m ()
+status opts msg = unless (optVerbosity opts < VerbStatus) (putMsg msg)
+
+warn :: MonadIO m => Options -> [Message] -> m ()
 warn opts msgs = when (optWarn opts && not (null msgs)) $ do
-  putErrLn (show $ ppMessages ppWarning $ sort msgs)
-  when (optWarnAsError opts) $ do
+  liftIO $ putErrLn (show $ ppMessages ppWarning $ sort msgs)
+  when (optWarnAsError opts) $ liftIO $ do
     putErrLn "Failed due to -Werror"
     exitFailure
 
+-- |Print a message on 'stdout'
+putMsg :: MonadIO m => String -> m ()
+putMsg msg = liftIO $ putStrLn $ msg ++ " ..."
+
 -- |Print an error message on 'stderr'
-putErrLn :: String -> IO ()
-putErrLn = hPutStrLn stderr
+putErrLn :: MonadIO m => String -> m ()
+putErrLn = liftIO . hPutStrLn stderr
 
 -- |Print a list of error messages on 'stderr'
-putErrsLn :: [String] -> IO ()
+putErrsLn :: MonadIO m => [String] -> m ()
 putErrsLn = mapM_ putErrLn
 
 -- |Print a list of 'String's as error messages on 'stderr'
 -- and abort the program
 abortWith :: [String] -> IO a
-abortWith errs = unless (null errs) (putErrsLn errs) >> exitFailure
+abortWith errs = putErrsLn errs >> exitFailure
 
 -- |Print a single error message on 'stderr' and abort the program
 abortWithMessage :: Message -> IO a

@@ -19,20 +19,17 @@ module Modules
   ) where
 
 import Control.Monad (unless, when)
-import Control.Monad.IO.Class
-import Control.Monad.Trans.Either
-import Data.Maybe (fromMaybe)
-import Text.PrettyPrint
+import Data.Maybe    (fromMaybe)
 
 import Curry.Base.Ident
 import Curry.Base.Message (runMsg)
 import Curry.Base.Position
+import Curry.Base.Pretty
 import Curry.ExtendedFlat.InterfaceEquality (eqInterface)
 import Curry.Files.Filenames
 import Curry.Files.PathUtils
 
 import Base.Messages
-  (Message, message, posMessage, warn, abortWithMessages)
 
 -- source representations
 import qualified Curry.AbstractCurry as AC
@@ -72,16 +69,12 @@ import Transformations
 -- as a frontend for PAKCS, all functions for evaluating goals and generating
 -- C code are obsolete and commented out.
 
-compileModule :: Options -> FilePath -> IO ()
+compileModule :: Options -> FilePath -> CYIO ()
 compileModule opts fn = do
-  loaded <- loadModule opts fn
-  checked <- runEitherT $ checkModule opts loaded
-  case checked of
-    Left errs -> abortWithMessages errs
-    Right (env, mdl) -> do
-      warn opts $ warnCheck opts env mdl
-      writeParsed opts fn mdl
-      writeOutput opts fn (env, mdl)
+  (env, mdl) <- loadModule opts fn >>= checkModule opts
+  warn opts $ warnCheck opts env mdl
+  liftIO $ writeParsed opts fn mdl
+  liftIO $ writeOutput opts fn (env, mdl)
 
 writeOutput :: Options -> FilePath -> (CompilerEnv, CS.Module) -> IO ()
 writeOutput opts fn (env, modul) = do
@@ -107,39 +100,42 @@ writeOutput opts fn (env, modul) = do
 -- Loading a module
 -- ---------------------------------------------------------------------------
 
-loadModule :: Options -> FilePath -> IO (CompilerEnv, CS.Module)
+loadModule :: Options -> FilePath -> CYIO (CompilerEnv, CS.Module)
 loadModule opts fn = do
-  mbSrc <- readModule fn
+  parsed <- parseModule fn
+  -- check module header
+  mdl    <- checkModuleHeader opts fn parsed
+  -- load the imported interfaces into an InterfaceEnv
+  iEnv   <- loadInterfaces (optImportPaths opts) mdl
+  -- add information of imported modules
+  cEnv   <- importModules opts mdl iEnv
+  return (cEnv, mdl)
+
+parseModule :: FilePath -> CYIO CS.Module
+parseModule fn = do
+  mbSrc <- liftIO $ readModule fn
   case mbSrc of
-    Nothing  -> abortWithMessages [message $ text $ "Missing file: " ++ fn] -- TODO
+    Nothing  -> left [message $ text $ "Missing file: " ++ fn]
     Just src -> do
       -- parse module
-      case runMsg $ CS.parseModule fn src of
-        Left err -> abortWithMessages [err]
-        Right (parsed, _) -> do
-          -- check module header
-          let (mdl, hdrErrs) = checkModuleHeader opts fn parsed
-          unless (null hdrErrs) $ abortWithMessages hdrErrs -- TODO
-          -- load the imported interfaces into an InterfaceEnv
-          (iEnv, intfErrs) <- loadInterfaces (optImportPaths opts) mdl
-          unless (null intfErrs) $ abortWithMessages intfErrs -- TODO
-          -- add information of imported modules
-          let (env, impErrs) = importModules opts mdl iEnv
-          unless (null impErrs) $ abortWithMessages impErrs -- TODO
-          return (env, mdl)
+      case runMsg (CS.parseModule fn src) of
+        Left  err         -> left [err]
+        Right (parsed, _) -> right parsed
 
-checkModuleHeader :: Options -> FilePath -> CS.Module -> (CS.Module, [Message])
+checkModuleHeader :: Monad m => Options -> FilePath -> CS.Module
+                  -> CYT m CS.Module
 checkModuleHeader opts fn = checkModuleId fn
                           . importPrelude opts fn
                           . CS.patchModuleId fn
 
 -- |Check whether the 'ModuleIdent' and the 'FilePath' fit together
-checkModuleId :: FilePath -> CS.Module -> (CS.Module, [Message])
+checkModuleId :: Monad m => FilePath -> CS.Module
+              -> CYT m CS.Module
 checkModuleId fn m@(CS.Module mid _ _ _)
   | last (midQualifiers mid) == takeBaseName fn
-  = (m, [])
+  = right m
   | otherwise
-  = (m, [errModuleFileMismatch mid])
+  = left [errModuleFileMismatch mid]
 
 -- An implicit import of the prelude is added to the declarations of
 -- every module, except for the prelude itself, or when the import is disabled
@@ -173,7 +169,7 @@ importPrelude opts fn m@(CS.Module mid es is ds)
 --   AbstractCurry is deactivated as it requires the value information
 --   collected by the type checker.
 checkModule :: Options -> (CompilerEnv, CS.Module)
-            -> EitherT [Message] IO (CompilerEnv, CS.Module)
+            -> CYIO (CompilerEnv, CS.Module)
 checkModule opts (env, mdl) = do
   doDump opts (DumpParsed       , env , show $ CS.ppModule mdl)
   (env1, kc) <- kindCheck   opts env mdl -- should be only syntax checking ?

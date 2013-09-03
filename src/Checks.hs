@@ -13,10 +13,7 @@
 -}
 module Checks where
 
-import Control.Monad.Trans.Either
 import Curry.Syntax (Module (..))
-
-import Base.Messages
 
 import qualified Checks.ExportCheck as EC (exportCheck)
 import qualified Checks.KindCheck   as KC (kindCheck)
@@ -25,18 +22,18 @@ import qualified Checks.SyntaxCheck as SC (syntaxCheck)
 import qualified Checks.TypeCheck   as TC (typeCheck)
 import qualified Checks.WarnCheck   as WC (warnCheck)
 
+import Base.Messages
 import CompilerEnv
 import CompilerOpts
 
-type Check m = Options -> CompilerEnv -> Module
-            -> EitherT [Message] m (CompilerEnv, Module)
+type Check m a = Options -> CompilerEnv -> a -> CYT m (CompilerEnv, a)
 
 -- |Check the kinds of type definitions and signatures.
 --
 -- * Declarations: Nullary type constructors and type variables are
 --                 disambiguated
 -- * Environment:  remains unchanged
-kindCheck :: Monad m => Check m
+kindCheck :: Monad m => Check m Module
 kindCheck _ env (Module m es is ds)
   | null msgs = right (env, Module m es is ds')
   | otherwise = left msgs
@@ -47,7 +44,7 @@ kindCheck _ env (Module m es is ds)
 -- * Declarations: Nullary data constructors and variables are
 --                 disambiguated, variables are renamed
 -- * Environment:  remains unchanged
-syntaxCheck :: Monad m => Check m
+syntaxCheck :: Monad m => Check m Module
 syntaxCheck opts env (Module m es is ds)
   | null msgs = right (env, Module m es is ds')
   | otherwise = left msgs
@@ -59,7 +56,7 @@ syntaxCheck opts env (Module m es is ds)
 -- * Declarations: Expressions are reordered according to the specified
 --                 precedences
 -- * Environment:  The operator precedence environment is updated
-precCheck :: Monad m => Check m
+precCheck :: Monad m => Check m Module
 precCheck _ env (Module m es is ds)
   | null msgs = right (env { opPrecEnv = pEnv' }, Module m es is ds')
   | otherwise = left msgs
@@ -68,7 +65,7 @@ precCheck _ env (Module m es is ds)
 -- |Apply the correct typing of the module.
 -- The declarations remain unchanged; the type constructor and value
 -- environments are updated.
-typeCheck :: Monad m => Check m
+typeCheck :: Monad m => Check m Module
 typeCheck _ env mdl@(Module _ _ _ ds)
   | null msgs = right (env { tyConsEnv = tcEnv', valueEnv = tyEnv' }, mdl)
   | otherwise = left msgs
@@ -76,7 +73,7 @@ typeCheck _ env mdl@(Module _ _ _ ds)
                                  (tyConsEnv env) (valueEnv env) ds
 
 -- |Check the export specification
-exportCheck :: Monad m => Check m
+exportCheck :: Monad m => Check m Module
 exportCheck _ env (Module m es is ds)
   | null msgs = right (env, Module m es' is ds)
   | otherwise = left msgs

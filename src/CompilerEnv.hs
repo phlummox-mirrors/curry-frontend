@@ -14,9 +14,9 @@
 module CompilerEnv where
 
 import qualified Data.Map as Map (Map, keys, toList)
-import Text.PrettyPrint
 
-import Curry.Base.Ident (ModuleIdent)
+import Curry.Base.Ident  (ModuleIdent)
+import Curry.Base.Pretty
 
 import Base.TopEnv (allLocalBindings)
 

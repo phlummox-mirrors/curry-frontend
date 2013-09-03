@@ -19,9 +19,9 @@ similar to that of Flat-Curry XML representation.
 > module IL.XML (xmlModule) where
 
 > import Data.Maybe
-> import Text.PrettyPrint
 
 > import Curry.Base.Ident
+> import Curry.Base.Pretty
 > import IL.Type
 > import Base.Messages (internalError)
 
@@ -70,7 +70,7 @@ TODO: The following import should be avoided if possible as it makes
 >   xmlLines xmlConstructor cs                 $$
 >   endType
 >  where
->   beginType = text "<type name=\"" <> (xmlQualIdent tc) <> text "\">"
+>   beginType = text "<type name=\"" <> xmlQualIdent tc <> text "\">"
 >   endType   = text "</type>"
 > xmlTypeDecl _ = internalError "IL.XML.xmlTypeDecl: no data declaration"
 
@@ -79,7 +79,7 @@ TODO: The following import should be avoided if possible as it makes
 
 > xmlConstructor :: ConstrDecl [Type] -> Doc
 > xmlConstructor (ConstrDecl ident []) = xmlConstructorBegin ident 0
-> xmlConstructor (ConstrDecl ident l)  =
+> xmlConstructor (ConstrDecl ident l ) =
 >   xmlConstructorBegin ident (length l) $$
 >   xmlLines xmlType l $$
 >   xmlConstructorEnd

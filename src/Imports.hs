@@ -1,8 +1,8 @@
 {- |
     Module      :  $Header$
     Description :  Importing interface declarations
-    Copyright   :  (c) 2000-2003, Wolfgang Lux
-                       2011, Björn Peemöller (bjp@informatik.uni-kiel.de)
+    Copyright   :  (c) 2000 - 2003, Wolfgang Lux
+                       2011       , Björn Peemöller
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
@@ -15,19 +15,20 @@
 -}
 module Imports (importModules, qualifyEnv) where
 
-import Control.Monad (liftM, unless)
-import qualified Control.Monad.State as S (State, gets, modify, runState)
-import qualified Data.Map as Map
-import Data.Maybe
-import qualified Data.Set as Set
-import Text.PrettyPrint
+import           Control.Monad                   (liftM, unless)
+import qualified Control.Monad.State        as S (State, gets, modify, runState)
+import           Control.Monad.Trans.Either
+import qualified Data.Map                   as Map
+import           Data.Maybe
+import qualified Data.Set                   as Set
 
 import Curry.Base.Ident
 import Curry.Base.Position
+import Curry.Base.Pretty
 import Curry.Syntax
 
 import Base.CurryTypes (toQualType, toQualTypes)
-import Base.Messages (Message, posMessage, internalError)
+import Base.Messages
 import Base.TopEnv
 import Base.Types
 import Base.TypeSubst (expandAliasType)
@@ -43,10 +44,11 @@ import CompilerOpts
 
 -- |The function 'importModules' brings the declarations of all
 -- imported interfaces into scope for the current module.
-importModules :: Options -> Module -> InterfaceEnv -> (CompilerEnv, [Message])
+importModules :: Monad m => Options -> Module -> InterfaceEnv -> CYT m CompilerEnv
 importModules opts (Module mid _ imps _) iEnv
-  = (\ (e, m) -> (expandTCValueEnv opts $ importUnifyData e, m))
-  $ foldl importModule (initEnv, []) imps
+  = case foldl importModule (initEnv, []) imps of
+      (e, []  ) -> right $ expandTCValueEnv opts $ importUnifyData e
+      (_, errs) -> left errs
   where
     initEnv = (initCompilerEnv mid)
       { aliasEnv     = importAliases     imps -- import module aliases
