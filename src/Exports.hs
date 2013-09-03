@@ -17,8 +17,8 @@
 -}
 module Exports (exportInterface) where
 
-import           Data.Maybe      (isNothing, catMaybes)
-import qualified Data.Set as Set (delete, fromList, toList)
+import           Data.Maybe        (isNothing, catMaybes)
+import qualified Data.Set   as Set (delete, fromList, toList)
 
 import Curry.Base.Position
 import Curry.Base.Ident

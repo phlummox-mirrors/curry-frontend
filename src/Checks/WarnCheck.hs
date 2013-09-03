@@ -21,10 +21,10 @@ import qualified Data.Map            as Map (empty, insert, lookup)
 import           Data.Maybe                 (catMaybes, isJust)
 import           Data.List
   (intersect, intersectBy, nub, partition, sort, unionBy)
-import Text.PrettyPrint
 
 import Curry.Base.Ident
 import Curry.Base.Position
+import Curry.Base.Pretty
 import Curry.Syntax
 import Curry.Syntax.Pretty (ppPattern, ppExpr, ppIdent)
 

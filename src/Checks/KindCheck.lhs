@@ -25,12 +25,12 @@ is defined more than once.
 
 > module Checks.KindCheck (kindCheck) where
 
-> import Control.Monad (forM, liftM, liftM2, liftM3, unless, when)
+> import           Control.Monad (forM, liftM, liftM2, liftM3, unless, when)
 > import qualified Control.Monad.State as S (State, runState, gets, modify)
-> import Text.PrettyPrint
 
 > import Curry.Base.Ident
 > import Curry.Base.Position
+> import Curry.Base.Pretty
 > import Curry.Syntax
 
 > import Base.Messages (Message, posMessage, internalError)

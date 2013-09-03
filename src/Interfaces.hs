@@ -25,18 +25,17 @@
 module Interfaces (loadInterfaces) where
 
 import           Control.Monad               (unless)
-import           Control.Monad.IO.Class      (liftIO)
 import qualified Control.Monad.State    as S (StateT, execStateT, gets, modify)
 import qualified Data.Map               as M (insert, member)
-import           Text.PrettyPrint
 
 import           Curry.Base.Ident
 import           Curry.Base.Message          (runMsg)
 import           Curry.Base.Position
+import           Curry.Base.Pretty
 import           Curry.Files.PathUtils
 import           Curry.Syntax
 
-import Base.Messages (Message, posMessage, internalError)
+import Base.Messages
 import Env.Interface
 
 import Checks.InterfaceSyntaxCheck (intfSyntaxCheck)
@@ -68,14 +67,13 @@ addInterface m intf = S.modify $ \ s -> s { iEnv = M.insert m intf $ iEnv s }
 
 -- |Load the interfaces needed by a given module.
 -- This function returns an 'InterfaceEnv' containing the 'Interface's which
--- were successfully loaded, as well as a list of 'Message's contaning
--- any errors encountered during loading.
+-- were successfully loaded.
 loadInterfaces :: [FilePath] -- ^ 'FilePath's to search in for interfaces
                -> Module     -- ^ 'Module' header with import declarations
-               -> IO (InterfaceEnv, [Message])
+               -> CYIO InterfaceEnv
 loadInterfaces paths (Module m _ is _) = do
-  res <- S.execStateT load (LoaderState initInterfaceEnv paths [])
-  return (iEnv res, reverse $ errs res)
+  res <- liftIO $ S.execStateT load (LoaderState initInterfaceEnv paths [])
+  if null (errs res) then right (iEnv res) else left (reverse $ errs res)
   where load = mapM_ (loadInterface [m]) [(p, m') | ImportDecl p m' _ _ _ <- is]
 
 -- |Load an interface into the given environment.

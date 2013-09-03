@@ -20,19 +20,19 @@ the global environments.
 
 > module Checks.InterfaceSyntaxCheck (intfSyntaxCheck) where
 
-> import Control.Monad (liftM, liftM2)
+> import           Control.Monad            (liftM, liftM2)
 > import qualified Control.Monad.State as S
-> import Data.List (nub, partition)
-> import Data.Maybe (catMaybes)
-> import Text.PrettyPrint
+> import           Data.List                (nub, partition)
+> import           Data.Maybe               (catMaybes)
 
 > import Base.Expr
 > import Base.Messages (Message, posMessage, internalError)
 > import Base.TopEnv
-> import Base.Utils (findMultiples)
+> import Base.Utils    (findMultiples)
 > import Env.TypeConstructor
 
 > import Curry.Base.Ident
+> import Curry.Base.Pretty
 > import Curry.Syntax
 
 import Base

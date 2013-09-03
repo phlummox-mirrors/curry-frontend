@@ -27,10 +27,9 @@ module Env.Value
   , initDCEnv, ppTypes
   ) where
 
-import Text.PrettyPrint (Doc, vcat)
-
 import Curry.Base.Ident
 import Curry.Base.Position
+import Curry.Base.Pretty (Doc, vcat)
 import Curry.Syntax
 
 import Base.CurryTypes (fromQualType)

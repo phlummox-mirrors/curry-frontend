@@ -10,16 +10,17 @@
 module Generators.GenFlatCurry (genFlatCurry, genFlatInterface) where
 
 -- Haskell libraries
-import Control.Monad (filterM, liftM, liftM2, liftM3, mplus, when)
-import Control.Monad.State (State, runState, gets, modify)
-import Data.List (mapAccumL, nub)
-import qualified Data.Map as Map (Map, empty, insert, lookup, fromList, toList)
-import Data.Maybe (catMaybes, fromJust, fromMaybe, isJust)
-import Text.PrettyPrint
+import           Control.Monad       (filterM, liftM, liftM2, liftM3, mplus, when)
+import           Control.Monad.State (State, runState, gets, modify)
+import           Data.List           (mapAccumL, nub)
+import qualified Data.Map as Map     (Map, empty, insert, lookup, fromList, toList)
+import           Data.Maybe          (catMaybes, fromJust, fromMaybe, isJust)
 
 -- curry-base
-import Curry.Base.Message
 import Curry.Base.Ident as Id
+import Curry.Base.Message
+import Curry.Base.Pretty
+
 import Curry.ExtendedFlat.Type
 import Curry.ExtendedFlat.TypeInference
 import qualified Curry.Syntax as CS

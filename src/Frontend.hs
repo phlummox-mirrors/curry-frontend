@@ -37,10 +37,11 @@ import Modules      (checkModule, checkModuleHeader, compileModule, loadModule)
 parse :: FilePath -> String -> MessageM Module
 parse fn src = parseModule fn src >>= genCurrySyntax
   where
-  genCurrySyntax mod1
-    | null hdrErrs = return mdl
-    | otherwise    = failWith $ show $ head hdrErrs
-    where (mdl, hdrErrs) = checkModuleHeader defaultOptions fn mod1
+  genCurrySyntax mod1 = do
+    checked <- lift $ runEitherT $ checkModuleHeader defaultOptions fn mod1
+    case checked of
+      Left hdrErrs -> failWith $ show $ head hdrErrs
+      Right mdl    -> return mdl
 
 {- |Return the syntax tree of the source program 'src' (type 'Module'; see
     Module "CurrySyntax").after inferring the types of identifiers.
@@ -59,8 +60,7 @@ genFullCurrySyntax opts fn m = case runMsg m of
   errs <- liftIO $ makeInterfaces opts fn mod1
   if null errs
     then do
-      loaded <- liftIO $ loadModule opts fn
-      checked <- liftIO $ runEitherT $ checkModule opts loaded
+      checked <- liftIO $ runEitherT $ loadModule opts fn >>= checkModule opts
       case checked of
         Left errs'      -> failWith $ show $ head errs'
         Right (_, mod') -> return mod'
@@ -72,9 +72,13 @@ genFullCurrySyntax opts fn m = case runMsg m of
 -- if they are not up-to-date.
 makeInterfaces :: Options -> FilePath -> Module -> IO [Message]
 makeInterfaces opts fn mdl = do
-  (deps1, errs) <- fmap flattenDeps $ moduleDeps opts Map.empty fn mdl
-  when (null errs) $ mapM_ (compile deps1 . snd) deps1
-  return errs
+  res <- runEitherT $ do
+    (deps1, errs) <- fmap flattenDeps $ moduleDeps opts Map.empty fn mdl
+    when (null errs) $ mapM_ (compile deps1 . snd) deps1
+    return errs
+  case res of
+    Left  errs -> return errs
+    Right errs -> return errs
   where
     compile deps' (Source file' mods) = smake
       [flatName file', flatIntName file']
