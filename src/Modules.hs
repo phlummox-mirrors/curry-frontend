@@ -272,7 +272,7 @@ writeFlat :: Options -> FilePath -> CompilerEnv -> ModuleSummary -> IL.Module
 writeFlat opts fn env modSum il = do
   when (extTarget || fcyTarget) $ do
     writeFlatCurry opts fn env modSum il
-    writeFlatIntf opts fn env modSum il
+    writeFlatIntf  opts fn env modSum il
   when (xmlTarget) $ writeFlatXml opts fn modSum il
   where
   extTarget    = ExtendedFlatCurry `elem` optTargetTypes opts

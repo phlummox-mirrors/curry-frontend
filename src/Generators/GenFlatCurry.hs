@@ -518,18 +518,27 @@ isExportedQualIdent qident ((CS.ExportModule _):exps)
 
 --
 qualifyIDecl :: ModuleIdent -> CS.IDecl -> CS.IDecl
-qualifyIDecl mident (CS.IInfixDecl pos fixi prec qident)
-  = (CS.IInfixDecl pos fixi prec (qualQualify mident qident))
-qualifyIDecl mident (CS.IDataDecl pos qident idents cdecls)
-  = (CS.IDataDecl pos (qualQualify mident qident) idents cdecls)
-qualifyIDecl mident (CS.INewtypeDecl pos qident idents ncdecl)
-  = (CS.INewtypeDecl pos (qualQualify mident qident) idents ncdecl)
-qualifyIDecl mident (CS.ITypeDecl pos qident idents texpr)
-  = (CS.ITypeDecl pos (qualQualify mident qident) idents texpr)
-qualifyIDecl mident (CS.IFunctionDecl pos qident arity texpr)
-  = (CS.IFunctionDecl pos (qualQualify mident qident) arity (qualifyCSType texpr))
-  where qualifyCSType = fromType . toQualType mident []
+qualifyIDecl mid (CS.IInfixDecl   pos fixi prec qid)
+  = CS.IInfixDecl pos fixi prec (qualQualify mid qid)
+qualifyIDecl mid (CS.IDataDecl    pos qid vs cs)
+  = CS.IDataDecl pos (qualQualify mid qid) vs
+  $ map (fmap (qualifyIConstrDecl mid)) cs
+qualifyIDecl mid (CS.INewtypeDecl  pos qid vs nc)
+  = CS.INewtypeDecl pos (qualQualify mid qid) vs nc
+qualifyIDecl mid (CS.ITypeDecl     pos qid vs ty)
+  = CS.ITypeDecl pos (qualQualify mid qid) vs ty
+qualifyIDecl mid (CS.IFunctionDecl pos qid arity ty)
+  = CS.IFunctionDecl pos (qualQualify mid qid) arity (qualifyCSType mid ty)
 qualifyIDecl _ idecl = idecl
+
+qualifyIConstrDecl :: ModuleIdent -> CS.ConstrDecl -> CS.ConstrDecl
+qualifyIConstrDecl mid (CS.ConstrDecl pos vs cid tys)
+  = CS.ConstrDecl pos vs cid (map (qualifyCSType mid) tys)
+qualifyIConstrDecl mid (CS.ConOpDecl pos vs ty1 op ty2)
+  = CS.ConOpDecl pos vs (qualifyCSType mid ty1) op (qualifyCSType mid ty2)
+
+qualifyCSType :: ModuleIdent -> CS.TypeExpr -> CS.TypeExpr
+qualifyCSType mid = fromType . toQualType mid []
 
 
 --
