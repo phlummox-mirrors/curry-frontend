@@ -21,7 +21,6 @@ module CompilerOpts
   ) where
 
 import Data.List             (intercalate, nub)
-import Data.Maybe            (isJust)
 import System.Console.GetOpt
 import System.Environment    (getArgs, getProgName)
 import System.FilePath       (splitSearchPath)
@@ -35,23 +34,22 @@ import Curry.Files.Filenames (currySubdir)
 -- |Data type for recording compiler options
 data Options = Options
   -- general
-  { optMode         :: CymakeMode     -- ^ show help
-  , optVerbosity    :: Verbosity      -- ^ verbosity level
+  { optMode         :: CymakeMode   -- ^ modus operandi
+  , optVerbosity    :: Verbosity    -- ^ verbosity level
   -- compilation
-  , optForce        :: Bool           -- ^ force compilation of target
-  , optLibraryPaths :: [FilePath]     -- ^ directories for libraries
-  , optImportPaths  :: [FilePath]     -- ^ directories for imports
-  , optOutput       :: Maybe FilePath -- ^ name of output file
-  , optUseSubdir    :: Bool           -- ^ use subdir for output?
-  , optInterface    :: Bool           -- ^ create an interface file
-  , optWarn         :: Bool           -- ^ show warnings
-  , optWarnFlags    :: [WarnFlag]
-  , optWarnAsError  :: Bool
-  , optTargetTypes  :: [TargetType]   -- ^ what to generate
-  , optExtensions   :: [Extension]    -- ^ enabled language extensions
-  , optDumps        :: [DumpLevel]    -- ^ dump levels
-  , optDumpEnv      :: Bool           -- ^ dump compilation environment
-  , optDumpRaw      :: Bool           -- ^ dump data structure
+  , optForce        :: Bool         -- ^ force (re-)compilation of target
+  , optLibraryPaths :: [FilePath]   -- ^ directories to search in for libraries
+  , optImportPaths  :: [FilePath]   -- ^ directories to search in for imports
+  , optUseSubdir    :: Bool         -- ^ use subdir for output?
+  , optInterface    :: Bool         -- ^ create a FlatCurry interface file?
+  , optWarn         :: Bool         -- ^ show warnings? (legacy option)
+  , optWarnFlags    :: [WarnFlag]   -- ^ Warnings flags (see below)
+  , optWarnAsError  :: Bool         -- ^ Should warnings be treated as errors?
+  , optTargetTypes  :: [TargetType] -- ^ what to generate
+  , optExtensions   :: [Extension]  -- ^ enabled language extensions
+  , optDumps        :: [DumpLevel]  -- ^ dump levels
+  , optDumpEnv      :: Bool         -- ^ dump compilation environment
+  , optDumpRaw      :: Bool         -- ^ dump data structure
   } deriving Show
 
 -- | Default compiler options
@@ -62,7 +60,6 @@ defaultOptions = Options
   , optForce        = False
   , optLibraryPaths = []
   , optImportPaths  = []
-  , optOutput       = Nothing
   , optUseSubdir    = True
   , optInterface    = True
   , optWarn         = True
@@ -77,9 +74,9 @@ defaultOptions = Options
 
 -- |Modus operandi of the program
 data CymakeMode
-  = ModeHelp           -- ^ Show help information
-  | ModeVersion        -- ^ Show version
-  | ModeNumericVersion -- ^ Show only version, suitable for later processing
+  = ModeHelp           -- ^ Show help information and exit
+  | ModeVersion        -- ^ Show version and exit
+  | ModeNumericVersion -- ^ Show numeric version, suitable for later processing
   | ModeHtml           -- ^ Create HTML documentation
   | ModeMake           -- ^ Compile with dependencies
   deriving (Eq, Show)
@@ -89,7 +86,7 @@ data Verbosity
   = VerbQuiet  -- ^ be quiet
   | VerbStatus -- ^ show status of compilation
   | VerbInfo   -- ^ also show additional info
-    deriving (Eq, Ord, Show)
+  deriving (Eq, Ord, Show)
 
 -- |Description and flag of verbosities
 verbosities :: [(Verbosity, String, String)]
@@ -190,7 +187,7 @@ extensions =
     , "do not implicitly import the Prelude")
   ]
 
--- |'Extension's enabled by @-e@ flag
+-- |Language 'Extension's enabled by @-e@ flag
 curryExtensions :: [Extension]
 curryExtensions = [Records, FunctionalPatterns, AnonFreeVars]
 
@@ -256,7 +253,6 @@ options =
       "generate html code and exit"
   -- verbosity
   , mkOptErrOption "v" ["verbosity"] "n" "verbosity level" verbDescriptions
-    -- legacy
   , Option "q"  ["no-verb"]
       (NoArg (onOpts $ \ opts -> opts { optVerbosity = VerbQuiet } ))
       "set verbosity level to quiet"
@@ -272,19 +268,16 @@ options =
       (ReqArg (onOptsArg $ \ arg opts -> opts { optImportPaths =
         nub $ optImportPaths opts ++ splitSearchPath arg}) "dir[:dir]")
       "search for imports in dir[:dir]"
-  , Option "o"  ["output"]
-      (ReqArg (onOptsArg $ \ arg opts -> opts { optOutput = Just arg }) "file")
-      "write code to `file'"
   , Option ""   ["no-subdir"]
       (NoArg (onOpts $ \ opts -> opts { optUseSubdir = False }))
       ("disable writing to `" ++ currySubdir ++ "' subdirectory")
   , Option ""   ["no-intf"]
       (NoArg (onOpts $ \ opts -> opts { optInterface = False }))
       "do not create an interface file"
+    -- legacy warning flags
   , Option ""   ["no-warn"]
       (NoArg (onOpts $ \ opts -> opts { optWarn = False }))
       "do not print warnings"
-    -- legacy
   , Option ""   ["no-overlap-warn"]
       (NoArg (onOpts $ \ opts -> opts { optWarnFlags =
           addFlag WarnOverlapping (optWarnFlags opts) }))
@@ -383,14 +376,6 @@ parseOpts args = (opts, files, errs ++ errs2)
   (opts, errs2) = foldl (flip ($)) (defaultOptions, []) optErrs
   (optErrs, files, errs) = getOpt Permute options args
 
--- |Check options and files and return a list of error messages
-checkOpts :: Options -> [String] -> [String]
-checkOpts opts files
-  | isJust (optOutput opts) && length files > 1
-  = ["cannot specify -o with multiple targets"]
-  | otherwise
-  = []
-
 -- |Print the usage information of the command line tool.
 usage :: String -> String
 usage prog = usageInfo header options
@@ -402,4 +387,4 @@ getCompilerOpts = do
   args <- getArgs
   prog <- getProgName
   let (opts, files, errs) = parseOpts args
-  return (prog, opts, files, errs ++ checkOpts opts files)
+  return (prog, opts, files, errs)

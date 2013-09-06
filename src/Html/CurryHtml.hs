@@ -35,9 +35,7 @@ source2html :: Options -> FilePath -> CYIO ()
 source2html opts f = do
   let baseName   = dropExtension f
       modulname  = takeFileName baseName
-      outFileOpt = fromMaybe "" $ optOutput opts
-      outFile    = if null outFileOpt then baseName ++ "_curry.html"
-                                      else outFileOpt
+      outFile    = baseName ++ "_curry.html"
   srcFile <- liftIO $ lookupCurryFile (optImportPaths opts) f
   program <- filename2program opts (fromMaybe f srcFile)
   liftIO $ writeFile outFile (program2html modulname program)

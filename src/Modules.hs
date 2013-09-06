@@ -238,11 +238,10 @@ writeOutput opts fn (env, modul) = do
 -- |Output the parsed 'Module' on request
 writeParsed :: Options -> FilePath -> CS.Module -> IO ()
 writeParsed opts fn modul = when srcTarget $
-  writeModule useSubDir targetFile source
+  writeModule useSubDir (sourceRepName fn) source
   where
   srcTarget  = Parsed `elem` optTargetTypes opts
   useSubDir  = optUseSubdir opts
-  targetFile = fromMaybe (sourceRepName fn) (optOutput opts)
   source     = CS.showModule modul
 
 writeInterface :: Options -> FilePath -> CS.Interface -> IO ()
