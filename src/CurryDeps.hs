@@ -29,7 +29,8 @@ import Curry.Base.Pretty
 import Curry.Files.Filenames
 import Curry.Files.PathUtils
 import Curry.Syntax
-  (Module (..),  ImportDecl (..), parseHeader, patchModuleId)
+  ( Module (..), ImportDecl (..), parseHeader, patchModuleId
+  , hasLanguageExtension)
 
 import Base.Messages
 import Base.SCC (scc)
@@ -90,20 +91,21 @@ sourceDeps opts sEnv fn = readHeader fn >>= moduleDeps opts sEnv fn
 
 -- |Retrieve the dependencies of a given module
 moduleDeps :: Options -> SourceEnv -> FilePath -> Module -> CYIO SourceEnv
-moduleDeps opts sEnv fn (Module _ m _ is _) = case Map.lookup m sEnv of
+moduleDeps opts sEnv fn mdl@(Module _ m _ _ _) = case Map.lookup m sEnv of
   Just  _ -> return sEnv
   Nothing -> do
-    let imps  = imports opts m is
+    let imps  = imports opts mdl
         sEnv' = Map.insert m (Source fn imps) sEnv
     foldM (moduleIdentDeps opts) sEnv' imps
 
 -- |Retrieve the imported modules and add the import of the Prelude
 -- according to the compiler options.
-imports :: Options -> ModuleIdent -> [ImportDecl] -> [ModuleIdent]
-imports opts m ds = nub $
-     [preludeMIdent | m /= preludeMIdent && implicitPrelude]
-  ++ [m' | ImportDecl _ m' _ _ _ <- ds]
-  where implicitPrelude = NoImplicitPrelude `notElem` optExtensions opts
+imports :: Options -> Module -> [ModuleIdent]
+imports opts mdl@(Module _ m _ is _) = nub $
+     [preludeMIdent | m /= preludeMIdent && not noImplicitPrelude]
+  ++ [m' | ImportDecl _ m' _ _ _ <- is]
+  where noImplicitPrelude = NoImplicitPrelude `elem` optExtensions opts
+                              || mdl `hasLanguageExtension` NoImplicitPrelude
 
 -- |Retrieve the dependencies for a given 'ModuleIdent'
 moduleIdentDeps :: Options -> SourceEnv -> ModuleIdent -> CYIO SourceEnv
