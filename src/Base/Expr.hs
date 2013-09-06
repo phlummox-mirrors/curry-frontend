@@ -1,7 +1,7 @@
 {- |
     Module      :  $Header$
     Description :  Extraction of free and bound variables
-    Copyright   :  (c) Wolfgang Lux
+    Copyright   :  (c)             Wolfgang Lux
                        2011 - 2012 Björn Peemöller
     License     :  OtherLicense
 

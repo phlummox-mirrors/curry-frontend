@@ -2,7 +2,7 @@
     Module      :  $Header$
     Description :  Environment of operator precedences
     Copyright   :  (c) 2002 - 2004, Wolfgang Lux
-                       2011       , Björn Peemöller
+                       2011 - 2013, Björn Peemöller
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
@@ -23,17 +23,17 @@
     for representing the precedence. This change had to be done due to the
     introduction of unlimited integer constants in the parser / lexer.
 -}
-
 module Env.OpPrec
-  ( OpPrecEnv, PrecInfo (..), OpPrec (..)
-  , defaultP, bindP, lookupP, qualLookupP, initOpPrecEnv
+  ( OpPrec (..), defaultP
+  , OpPrecEnv,  PrecInfo (..), bindP, lookupP, qualLookupP, initOpPrecEnv
   ) where
 
 import Curry.Base.Ident
-import Curry.Syntax (Infix (..))
+import Curry.Syntax     (Infix (..))
 
 import Base.TopEnv
 
+-- |Operator precedence.
 data OpPrec = OpPrec Infix Integer deriving Eq
 
 instance Show OpPrec where
@@ -42,16 +42,28 @@ instance Show OpPrec where
           assoc InfixR = "right "
           assoc Infix  = "non-assoc "
 
+-- |Default operator precedence.
 defaultP :: OpPrec
 defaultP = OpPrec InfixL 9
 
+-- |Precedence information for an identifier.
 data PrecInfo = PrecInfo QualIdent OpPrec deriving (Eq, Show)
 
 instance Entity PrecInfo where
   origName (PrecInfo op _) = op
 
+-- |Environment mapping identifiers to their operator precedence.
 type OpPrecEnv = TopEnv PrecInfo
 
+-- |Initial 'OpPrecEnv'.
+initOpPrecEnv :: OpPrecEnv
+initOpPrecEnv = predefTopEnv qConsId consPrec emptyTopEnv
+
+-- |Precedence of list constructor.
+consPrec :: PrecInfo
+consPrec = PrecInfo qConsId (OpPrec InfixR 5)
+
+-- |Bind an operator precedence.
 bindP :: ModuleIdent -> Ident -> OpPrec -> OpPrecEnv -> OpPrecEnv
 bindP m op p
   | hasGlobalScope op = bindTopEnv fun op info . qualBindTopEnv fun qop info
@@ -64,14 +76,10 @@ bindP m op p
 -- precedences are simpler than for the type and value environments
 -- because they do not need to handle tuple constructors.
 
+-- |Lookup the operator precedence for an 'Ident'.
 lookupP :: Ident -> OpPrecEnv -> [PrecInfo]
 lookupP = lookupTopEnv
 
+-- |Lookup the operator precedence for an 'QualIdent'.
 qualLookupP :: QualIdent -> OpPrecEnv -> [PrecInfo]
 qualLookupP = qualLookupTopEnv
-
-initOpPrecEnv :: OpPrecEnv
-initOpPrecEnv = predefTopEnv qConsId consPrec emptyTopEnv
-
-consPrec :: PrecInfo
-consPrec = PrecInfo qConsId (OpPrec InfixR 5)
