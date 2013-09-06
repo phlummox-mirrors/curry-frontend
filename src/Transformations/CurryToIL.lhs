@@ -43,7 +43,7 @@ data structures, we can use only a qualified import for the
 > import qualified IL as IL
 
 > ilTrans :: Bool -> ValueEnv -> TCEnv -> Module -> IL.Module
-> ilTrans flat tyEnv tcEnv (Module m _ _ ds) = IL.Module m (imports m ds') ds'
+> ilTrans flat tyEnv tcEnv (Module _ m _ _ ds) = IL.Module m (imports m ds') ds'
 >   where ds' = R.runReader (concatMapM trDecl ds)
 >                           (TransEnv flat m tyEnv tcEnv)
 

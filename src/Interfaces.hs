@@ -71,7 +71,7 @@ addInterface m intf = S.modify $ \ s -> s { iEnv = M.insert m intf $ iEnv s }
 loadInterfaces :: [FilePath] -- ^ 'FilePath's to search in for interfaces
                -> Module     -- ^ 'Module' header with import declarations
                -> CYIO InterfaceEnv
-loadInterfaces paths (Module m _ is _) = do
+loadInterfaces paths (Module _ m _ is _) = do
   res <- liftIO $ S.execStateT load (LoaderState initInterfaceEnv paths [])
   if null (errs res) then right (iEnv res) else left (reverse $ errs res)
   where load = mapM_ (loadInterface [m]) [(p, m') | ImportDecl p m' _ _ _ <- is]

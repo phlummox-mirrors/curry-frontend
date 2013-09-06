@@ -33,7 +33,7 @@ import Curry.Syntax
 
 import Base.Messages
 import Base.SCC (scc)
-import CompilerOpts (Options (..), Extension (..))
+import CompilerOpts (Options (..), KnownExtension (..))
 
 -- |Different types of source files
 data Source
@@ -90,7 +90,7 @@ sourceDeps opts sEnv fn = readHeader fn >>= moduleDeps opts sEnv fn
 
 -- |Retrieve the dependencies of a given module
 moduleDeps :: Options -> SourceEnv -> FilePath -> Module -> CYIO SourceEnv
-moduleDeps opts sEnv fn (Module m _ is _) = case Map.lookup m sEnv of
+moduleDeps opts sEnv fn (Module _ m _ is _) = case Map.lookup m sEnv of
   Just  _ -> return sEnv
   Nothing -> do
     let imps  = imports opts m is
@@ -118,7 +118,7 @@ moduleIdentDeps opts sEnv m = case Map.lookup m sEnv of
         | icurryExt `isSuffixOf` fn ->
             return $ Map.insert m (Interface fn) sEnv
         | otherwise                 -> do
-            hdr@(Module m' _ _ _) <- readHeader fn
+            hdr@(Module _ m' _ _ _) <- readHeader fn
             if (m == m') then moduleDeps opts sEnv fn hdr
                          else left [errWrongModule m m']
 

@@ -80,16 +80,16 @@ renaming literals and underscore to disambiguate them.
 
 > -- |Internal state of the syntax check
 > data SCState = SCState
->   { extensions  :: [Extension] -- ^ Enabled language extensions
->   , moduleIdent :: ModuleIdent -- ^ 'ModuleIdent' of the current module
->   , renameEnv   :: RenameEnv   -- ^ Information store
->   , scopeId     :: Integer     -- ^ Identifier for the current scope
->   , nextId      :: Integer     -- ^ Next fresh identifier
->   , errors      :: [Message]   -- ^ Syntactic errors in the module
+>   { extensions  :: [KnownExtension] -- ^ Enabled language extensions
+>   , moduleIdent :: ModuleIdent      -- ^ 'ModuleIdent' of the current module
+>   , renameEnv   :: RenameEnv        -- ^ Information store
+>   , scopeId     :: Integer          -- ^ Identifier for the current scope
+>   , nextId      :: Integer          -- ^ Next fresh identifier
+>   , errors      :: [Message]        -- ^ Syntactic errors in the module
 >   }
 
 > -- |Initial syntax check state
-> initState :: [Extension] -> ModuleIdent -> RenameEnv -> SCState
+> initState :: [KnownExtension] -> ModuleIdent -> RenameEnv -> SCState
 > initState exts m rEnv = SCState exts m rEnv globalScopeId 1 []
 
 > -- |Identifier for global (top-level) declarations
@@ -101,12 +101,12 @@ renaming literals and underscore to disambiguate them.
 > runSC scm s = let (a, s') = S.runState scm s in (a, reverse $ errors s')
 
 > -- |Check for an enabled extension
-> hasExtension :: Extension -> SCM Bool
+> hasExtension :: KnownExtension -> SCM Bool
 > hasExtension ext = S.gets (elem ext . extensions)
 
 > -- |Enable an additional 'Extension' to avoid redundant complaints about
 > -- missing extensions
-> enableExtension :: Extension -> SCM ()
+> enableExtension :: KnownExtension -> SCM ()
 > enableExtension e = S.modify $ \ s -> s { extensions = e : extensions s }
 
 > -- |Retrieve the 'ModuleIdent' of the current module
@@ -990,7 +990,7 @@ Miscellaneous functions.
 > checkAnonFreeVarsExtension p = checkExtension p
 >   "Anonymous free variables" AnonFreeVars
 
-> checkExtension :: Position -> String -> Extension -> SCM ()
+> checkExtension :: Position -> String -> KnownExtension -> SCM ()
 > checkExtension pos msg ext = do
 >   enabled <- hasExtension ext
 >   unless enabled $ do
@@ -1122,7 +1122,7 @@ Error messages.
 >   [ "Expexting", escName anonId, "after", escName (mkIdent "|")
 >   , "in the record pattern" ]
 
-> errMissingLanguageExtension :: Position -> String -> Extension -> Message
+> errMissingLanguageExtension :: Position -> String -> KnownExtension -> Message
 > errMissingLanguageExtension p what ext = posMessage p $
 >   text what <+> text "are not supported in standard Curry." $+$
 >   nest 2 (text "Use flag -e or -X" <> text (show ext)

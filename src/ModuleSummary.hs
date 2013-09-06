@@ -38,7 +38,7 @@ data ModuleSummary = ModuleSummary
 -- |Return a 'ModuleSummary' for a module, its corresponding
 -- table of type constructors and its interface
 summarizeModule :: TCEnv -> Interface -> Module -> ModuleSummary
-summarizeModule tcEnv (Interface iid _ idecls) (Module mid mExp imps decls)
+summarizeModule tcEnv (Interface iid _ idecls) (Module _ mid mExp imps decls)
   | iid == mid = ModuleSummary
       { moduleId     = mid
       , interface    = idecls

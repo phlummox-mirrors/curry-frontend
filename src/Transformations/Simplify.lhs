@@ -71,13 +71,13 @@ Currently, the following optimizations are implemented:
 > isFlat = S.gets flat
 
 > simplify :: Bool -> ValueEnv ->Module -> (Module, ValueEnv)
-> simplify flags tyEnv mdl@(Module m _ _ _) = (mdl', valueEnv s')
+> simplify flags tyEnv mdl@(Module _ m _ _ _) = (mdl', valueEnv s')
 >   where (mdl', s') = S.runState (simModule mdl)
 >                                 (SimplifyState m tyEnv 1 flags)
 
 > simModule :: Module -> SIM (Module)
-> simModule (Module m es is ds)
->   = Module m es is `liftM` mapM (simDecl Map.empty) ds
+> simModule (Module ps m es is ds)
+>   = Module ps m es is `liftM` mapM (simDecl Map.empty) ds
 
 > simDecl :: InlineEnv -> Decl -> SIM Decl
 > simDecl env (FunctionDecl p f eqs) =

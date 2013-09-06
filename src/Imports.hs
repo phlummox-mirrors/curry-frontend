@@ -45,7 +45,7 @@ import CompilerOpts
 -- |The function 'importModules' brings the declarations of all
 -- imported interfaces into scope for the current module.
 importModules :: Monad m => Options -> Module -> InterfaceEnv -> CYT m CompilerEnv
-importModules opts (Module mid _ imps _) iEnv
+importModules opts (Module _ mid _ imps _) iEnv
   = case foldl importModule (initEnv, []) imps of
       (e, []  ) -> right $ expandTCValueEnv opts $ importUnifyData e
       (_, errs) -> left errs

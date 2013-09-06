@@ -35,11 +35,11 @@ top-level.
 > import Env.Value
 
 > lift :: ValueEnv -> Module -> (Module, ValueEnv)
-> lift tyEnv (Module m es is ds) = (lifted, valueEnv s')
+> lift tyEnv (Module ps m es is ds) = (lifted, valueEnv s')
 >   where
 >   (ds', s') = S.runState (mapM (abstractDecl "" []) ds) initState
 >   initState = LiftState m tyEnv Map.empty
->   lifted    = Module m es is $ concatMap liftFunDecl ds'
+>   lifted    = Module ps m es is $ concatMap liftFunDecl ds'
 
 \end{verbatim}
 \paragraph{Abstraction}

@@ -160,7 +160,7 @@ as it allows value declarations at the top-level of a module.
 \begin{verbatim}
 
 > desugar :: ValueEnv -> TCEnv -> Module -> (Module, ValueEnv)
-> desugar tyEnv tcEnv (Module m es is ds) = (Module m es is ds', valueEnv s')
+> desugar tyEnv tcEnv (Module ps m es is ds) = (Module ps m es is ds', valueEnv s')
 >   where (ds', s') = S.runState (desugarModuleDecls ds)
 >                                (DesugarState m tcEnv tyEnv 1)
 
