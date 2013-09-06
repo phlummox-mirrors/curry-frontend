@@ -18,7 +18,7 @@ TODO: Use MultiParamTypeClasses ?
 >     Type (..), isArrowType, arrowArity, arrowArgs, arrowBase, typeVars
 >   , typeConstrs, typeSkolems, equTypes, qualifyType, unqualifyType
 >     -- * Representation of Data Constructors
->   , DataConstr (..), constrIdent
+>   , DataConstr (..), constrIdent, tupleData
 >     -- * Representation of Quantification
 >   , TypeScheme (..), ExistTypeScheme (..), monoType, polyType
 >     -- * Predefined types
@@ -256,40 +256,40 @@ There are a few predefined types:
 \begin{verbatim}
 
 > unitType :: Type
-> unitType = primType unitId []
+> unitType = primType qUnitId []
 
 > boolType :: Type
-> boolType = primType boolId []
+> boolType = primType qBoolId []
 
 > charType :: Type
-> charType = primType charId []
+> charType = primType qCharId []
 
 > intType :: Type
-> intType = primType intId []
+> intType = primType qIntId []
 
 > floatType :: Type
-> floatType = primType floatId []
+> floatType = primType qFloatId []
 
 > stringType :: Type
 > stringType = listType charType
 
 > successType :: Type
-> successType = primType successId []
+> successType = primType qSuccessId []
 
 > listType :: Type -> Type
-> listType ty = primType listId [ty]
+> listType ty = primType qListId [ty]
 
 > ioType :: Type -> Type
-> ioType ty = primType ioId [ty]
+> ioType ty = primType qIOId [ty]
 
 > tupleType :: [Type] -> Type
-> tupleType tys = primType (tupleId (length tys)) tys
+> tupleType tys = primType (qTupleId (length tys)) tys
 
 > typeVar :: Int -> Type
 > typeVar = TypeVariable
 
-> primType :: Ident -> [Type] -> Type
-> primType = TypeConstructor . qualifyWith preludeMIdent
+> primType :: QualIdent -> [Type] -> Type
+> primType = TypeConstructor --  . qualifyWith preludeMIdent
 
 > predefTypes :: [(Type, [DataConstr])]
 > predefTypes = let a = typeVar 0 in
@@ -298,5 +298,9 @@ There are a few predefined types:
 >                  , DataConstr consId 0 [a, listType a]
 >                  ])
 >   ]
+
+> tupleData :: [DataConstr]
+> tupleData = [DataConstr (tupleId n) n (take n tvs) | n <- [2 ..]]
+>   where tvs = map typeVar [0 ..]
 
 \end{verbatim}

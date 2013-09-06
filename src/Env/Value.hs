@@ -23,7 +23,7 @@
 module Env.Value
   ( ValueEnv, ValueInfo (..)
   , bindGlobalInfo, bindFun, qualBindFun, rebindFun, unbindFun, bindLabel
-  , lookupValue, qualLookupValue, qualLookupCons, lookupTuple, tupleDCs
+  , lookupValue, qualLookupValue
   , initDCEnv, ppTypes
   ) where
 
@@ -37,8 +37,6 @@ import Base.Messages (internalError)
 import Base.TopEnv
 import Base.Types
 import Base.Utils ((++!))
-
-import Env.TypeConstructor (TypeInfo (..), tupleTCs)
 
 data ValueInfo
   -- |Data constructor with original name, arity and type
@@ -114,28 +112,16 @@ lookupValue x tyEnv = lookupTopEnv x tyEnv ++! lookupTuple x
 
 qualLookupValue :: QualIdent -> ValueEnv -> [ValueInfo]
 qualLookupValue x tyEnv = qualLookupTopEnv x tyEnv
-                          ++! qualLookupCons x tyEnv
-                          ++! lookupTuple (unqualify x)
-
-qualLookupCons :: QualIdent -> ValueEnv -> [ValueInfo]
-qualLookupCons x tyEnv
-  | mmid == Just preludeMIdent && qid == consId
-  = qualLookupTopEnv (qualify qid) tyEnv
-  | otherwise = []
- where (mmid, qid) = (qidModule x, qidIdent x)
+                      ++! lookupTuple (unqualify x)
 
 lookupTuple :: Ident -> [ValueInfo]
-lookupTuple c
-  | isTupleId c = [tupleDCs !! (tupleArity c - 2)]
-  | otherwise = []
+lookupTuple c | isTupleId c = [tupleDCs !! (tupleArity c - 2)]
+              | otherwise   = []
 
 tupleDCs :: [ValueInfo]
-tupleDCs = map dataInfo tupleTCs
-  where
-  dataInfo (DataType tc _ [Just (DataConstr _ _ tys)]) =
-    DataConstructor (qualUnqualify preludeMIdent tc) (length tys)
-      (ForAllExist (length tys) 0 $ foldr TypeArrow (tupleType tys) tys)
-  dataInfo _ = internalError "Env.Value.tupleDCs: no data constructor"
+tupleDCs = map dataInfo tupleData
+  where dataInfo (DataConstr _ n tys) = DataConstructor (qTupleId n) n
+          (ForAllExist n 0 $ foldr TypeArrow (tupleType tys) tys)
 
 initDCEnv :: ValueEnv
 initDCEnv = foldr predefDC emptyTopEnv
