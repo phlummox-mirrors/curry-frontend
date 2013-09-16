@@ -645,9 +645,14 @@ either one of the basic types or \texttt{()}.
 > nonLocalContextElems cEnv fvs = filter (isNotLocal fvs) . reduceContext cEnv
 
 > -- | a context element is considered not local if it has type variables
-> -- that are free variables of the type environment 
+> -- that are free variables of the type environment. 
+> -- In a correct program the type can only be of the form "TypeVariable n" 
+> -- because of the context reduction. In an incorrect program it could also
+> -- have another form, whence we cannot throw an internal error in this case.  
 > isNotLocal :: Set.Set Int -> (QualIdent, Type) -> Bool
-> isNotLocal fvs (_qid, ty) = any (`Set.member` fvs) (typeVars ty) 
+> isNotLocal fvs (_qid, TypeVariable v) = v `Set.member` fvs
+> -- isNotLocal _ (qid, ty) = internalError ("isNotLocal: " ++ show qid ++ " " ++ show ty)
+> isNotLocal _ _ = False -- or True, shouldn't matter 
 
 > -- | updates the contexts in the function/pattern declarations with the
 > -- contexts from the type environment
