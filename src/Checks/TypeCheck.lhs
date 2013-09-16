@@ -600,7 +600,8 @@ either one of the basic types or \texttt{()}.
 >   mapM_ (genDecl freeVars theta) newDs1
 >   -- do NOT return final contexts! 
 >   -- TODO: return cxs or cxs' (or doesn't matter?)
->   return (newDs2, nonLocalContextElems freeVars $ concat cxs')
+>   cEnv <- getClassEnv
+>   return (newDs2, nonLocalContextElems cEnv freeVars $ concat cxs')
 
 > -- |checks whether the given "ValueInfo" refers to an identifier from
 > -- the given module
@@ -640,8 +641,8 @@ either one of the basic types or \texttt{()}.
 > updateContexts _ _ = internalError "updateContexts"
 > -}
 
-> nonLocalContextElems :: Set.Set Int -> BT.Context -> BT.Context
-> nonLocalContextElems fvs cx = filter (isNotLocal fvs) cx 
+> nonLocalContextElems :: ClassEnv -> Set.Set Int -> BT.Context -> BT.Context
+> nonLocalContextElems cEnv fvs = filter (isNotLocal fvs) . reduceContext cEnv
 
 > -- | a context element is considered not local if it has type variables
 > -- that are free variables of the type environment 
