@@ -480,7 +480,8 @@ toHnf cEnv (cls, ty)
 
 -- |checks whether the given context is valid. If the context returned is
 -- empty, the context is valid. Else the returned context contains the 
--- elements of the context that are not valid
+-- elements of the context that are not valid. Currently checks whether all
+-- context elements can be reduced to head normal form by instance declarations. 
 -- TODO: consider superclass relations?
 isValidCx :: ClassEnv -> BT.Context -> BT.Context
 isValidCx cEnv cx = concatMap isValid' cx
