@@ -80,6 +80,8 @@ do
   $cymake -f -i typeclasses/TCCheck typeclasses/TCCheck/$file.curry 2> stderr.txt 1> stdout.txt && \
     (echo "===================="; echo "| No error in $file.curry:" ; echo "===================="; \
     cat stdout.txt; cat stderr.txt; echo; touch $errorFile)
+  internalErrs=`cat stderr.txt | grep "Internal error"`
+  if [ -n "$internalErrs" ]; then echo "Internal error in $file"; fi
 done
 
 # do the check # 1 c (other errors)
@@ -99,6 +101,8 @@ do
   $cymake -f -i typeclasses typeclasses/$file.curry 2> stderr.txt 1> stdout.txt && \
     (echo "===================="; echo "| No error in $file.curry:" ; echo "===================="; \
     cat stdout.txt; cat stderr.txt; echo; touch $errorFile)
+  internalErrs=`cat stderr.txt | grep "Internal error"`
+  if [ -n "$internalErrs" ]; then echo "Internal error in $file"; fi
 done
 
 
@@ -224,6 +228,8 @@ do
   $cymake -f -i typeclasses/modules typeclasses/modules/$file.curry 2> stderr.txt 1> stdout.txt && \
     (echo "===================="; echo "| No error in $file.curry:" ; echo "===================="; \
     cat stdout.txt; cat stderr.txt; echo; touch $errorFile)
+  internalErrs=`cat stderr.txt | grep "Internal error"`
+  if [ -n "$internalErrs" ]; then echo "Internal error in $file"; fi
 done
 
 echo `cat tmp.txt | wc -l` files checked
