@@ -1464,6 +1464,8 @@ createInstance d@(DataDecl _ _ _ cs _) cls
       else return [] -- no internal error!
   | otherwise = return []
   -- TODO: add further instances here
+-- newtypes aren't supported
+createInstance (NewtypeDecl _ _ _ _ _) _cls = return []
 createInstance _ _ = internalError "createInstance"
 
 -- |creates an Eq or an Ord instance for the given data declaration
