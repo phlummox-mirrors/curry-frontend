@@ -789,9 +789,9 @@ the maximal necessary contexts for the functions are determined.
 >   (e', cx) <- fpExpr e
 >   ssAndCxs <- mapM fpStmt ss
 >   return (ListCompr sref e' (map fst ssAndCxs), cx ++ concatMap snd ssAndCxs)
-> fpExpr (EnumFrom e1) = do
+> fpExpr (EnumFrom cty e1) = do
 >   (e1', cx1) <- fpExpr e1
->   return (EnumFrom e1', cx1)
+>   return (EnumFrom cty e1', cx1)
 > fpExpr (EnumFromThen e1 e2) = do
 >   (e1', cx1) <- fpExpr e1
 >   (e2', cx2) <- fpExpr e2
@@ -918,7 +918,7 @@ the maximal necessary contexts for the functions are determined.
 > cvcExpr (Tuple sref es) = Tuple sref `liftM` mapM cvcExpr es
 > cvcExpr (List sref es) = List sref `liftM` mapM cvcExpr es
 > cvcExpr (ListCompr sref e ss) = liftM2 (ListCompr sref) (cvcExpr e) (mapM cvcStmt ss)
-> cvcExpr (EnumFrom e1) = EnumFrom `liftM` (cvcExpr e1)
+> cvcExpr (EnumFrom cty e1) = EnumFrom cty `liftM` (cvcExpr e1)
 > cvcExpr (EnumFromThen e1 e2) = liftM2 EnumFromThen (cvcExpr e1) (cvcExpr e2)
 > cvcExpr (EnumFromTo e1 e2) = liftM2 EnumFromTo (cvcExpr e1) (cvcExpr e2)
 > cvcExpr (EnumFromThenTo e1 e2 e3) = liftM3 EnumFromThenTo (cvcExpr e1) (cvcExpr e2) (cvcExpr e3)
@@ -1550,11 +1550,11 @@ because of possibly multiple occurrences of variables.
 >     (e', (cx, ty)) <- tcExpr p e
 >     cty <- checkSkolems p (text "Expression:" <+> ppExpr 0 e) tyEnv0 (cx ++ cxs, listType ty)
 >     return (ListCompr sref e' qs', cty) 
-> tcExpr p e@(EnumFrom e1) = do
+> tcExpr p e@(EnumFrom cty e1) = do
 >     (e1', cty1@(cx1, _ty1)) <- tcExpr p e1
 >     unify p "arithmetic sequence"
 >           (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e1) (noContext intType) cty1
->     return (EnumFrom e1', (cx1, listType intType))
+>     return (EnumFrom cty e1', (cx1, listType intType))
 > tcExpr p e@(EnumFromThen e1 e2) = do
 >     (e1', cty1@(cx1, _ty1)) <- tcExpr p e1
 >     (e2', cty2@(cx2, _ty2)) <- tcExpr p e2
@@ -2392,7 +2392,7 @@ nothing is recorded so that they are simply returned).
 > tsExpr theta (List srefs es) = List srefs (map (tsExpr theta) es)
 > tsExpr theta (ListCompr sref e ss) 
 >   = ListCompr sref (tsExpr theta e) (map (tsStmt theta) ss)
-> tsExpr theta (EnumFrom e1) = EnumFrom (tsExpr theta e1)
+> tsExpr theta (EnumFrom cty e1) = EnumFrom cty (tsExpr theta e1)
 > tsExpr theta (EnumFromThen e1 e2) = EnumFromThen (tsExpr theta e1) (tsExpr theta e2)
 > tsExpr theta (EnumFromTo e1 e2) = EnumFromTo (tsExpr theta e1) (tsExpr theta e2)
 > tsExpr theta (EnumFromThenTo e1 e2 e3) = EnumFromThenTo (tsExpr theta e1) (tsExpr theta e2) (tsExpr theta e3)
@@ -2477,7 +2477,7 @@ we have to use other unique ids.
 > numberExpr (Tuple sref es) = Tuple sref `liftM` mapM numberExpr es
 > numberExpr (List sref es) = List sref `liftM` mapM numberExpr es
 > numberExpr (ListCompr sref e ss) = liftM2 (ListCompr sref) (numberExpr e) (mapM numberStmt ss)
-> numberExpr (EnumFrom e1) = EnumFrom `liftM` numberExpr e1
+> numberExpr (EnumFrom cty e1) = EnumFrom cty `liftM` numberExpr e1
 > numberExpr (EnumFromThen e1 e2) = liftM2 EnumFromThen (numberExpr e1) (numberExpr e2)
 > numberExpr (EnumFromTo e1 e2) = liftM2 EnumFromTo (numberExpr e1) (numberExpr e2)
 > numberExpr (EnumFromThenTo e1 e2 e3) = liftM3 EnumFromThenTo (numberExpr e1) (numberExpr e2) (numberExpr e3)

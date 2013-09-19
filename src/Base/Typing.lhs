@@ -204,7 +204,7 @@ environment.}
 >         elemType ty (e:es1) =
 >           exprType tyEnv e >>= unify ty >> elemType ty es1
 > exprType tyEnv (ListCompr _ e _) = liftM listType $ exprType tyEnv e
-> exprType _     (EnumFrom _) = return (listType intType)
+> exprType _     (EnumFrom cty _) = return (listType intType) -- TODO
 > exprType _     (EnumFromThen _ _) = return (listType intType)
 > exprType _     (EnumFromTo _ _) = return (listType intType)
 > exprType _     (EnumFromThenTo _ _ _) = return (listType intType)

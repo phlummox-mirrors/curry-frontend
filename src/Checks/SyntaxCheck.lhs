@@ -813,7 +813,7 @@ checkParen
 > checkExpr p (ListCompr      pos e qs) = withLocalEnv $
 >   -- Note: must be flipped to insert qs into RenameEnv first
 >   liftM2 (flip (ListCompr pos)) (mapM (checkStatement p) qs) (checkExpr p e)
-> checkExpr p (EnumFrom              e) = EnumFrom `liftM` checkExpr p e
+> checkExpr p (EnumFrom cty          e) = EnumFrom cty `liftM` checkExpr p e
 > checkExpr p (EnumFromThen      e1 e2) =
 >   liftM2 EnumFromThen (checkExpr p e1) (checkExpr p e2)
 > checkExpr p (EnumFromTo        e1 e2) =

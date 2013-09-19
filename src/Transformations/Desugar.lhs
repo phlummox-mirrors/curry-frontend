@@ -444,7 +444,7 @@ type \texttt{Bool} of the guard because the guard's type defaults to
 >         cons p' = Apply . Apply (Constructor $ addRef p' qConsId)
 > dsExpr p (ListCompr r e []    ) = dsExpr p (List [r,r] [e])
 > dsExpr p (ListCompr r e (q:qs)) = dsQual p q (ListCompr r e qs)
-> dsExpr p (EnumFrom e) =
+> dsExpr p (EnumFrom cty e) = -- TODO
 >   Apply prelEnumFrom `liftM` dsExpr p e
 > dsExpr p (EnumFromThen e1 e2) =
 >   apply prelEnumFromThen `liftM` mapM (dsExpr p) [e1, e2]

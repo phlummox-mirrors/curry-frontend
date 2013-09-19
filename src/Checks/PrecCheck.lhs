@@ -209,7 +209,7 @@ interface.
 > checkExpr (List  p es) = List  p `liftM` mapM checkExpr es
 > checkExpr (ListCompr p e qs) = withLocalPrecEnv $
 >   liftM2 (flip (ListCompr p)) (mapM checkStmt qs) (checkExpr e)
-> checkExpr (EnumFrom              e) = EnumFrom `liftM` checkExpr e
+> checkExpr (EnumFrom cty          e) = EnumFrom cty `liftM` checkExpr e
 > checkExpr (EnumFromThen      e1 e2) =
 >   liftM2 EnumFromThen (checkExpr e1) (checkExpr e2)
 > checkExpr (EnumFromTo        e1 e2) =

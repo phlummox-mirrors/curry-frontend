@@ -376,7 +376,7 @@ gatherTSExpr (Typed _ expr cx texp) = gatherTSExpr expr ++ [typeSig False [] cx 
 gatherTSExpr (Tuple _ exps) = concatMap gatherTSExpr exps
 gatherTSExpr (List _ exps) = concatMap gatherTSExpr exps
 gatherTSExpr (ListCompr _ expr stms) = gatherTSExpr expr ++ concatMap gatherTSStm stms
-gatherTSExpr (EnumFrom expr) = gatherTSExpr expr
+gatherTSExpr (EnumFrom _ expr) = gatherTSExpr expr
 gatherTSExpr (EnumFromThen expr1 expr2) = gatherTSExpr expr1 ++ gatherTSExpr expr2
 gatherTSExpr (EnumFromTo expr1 expr2) = gatherTSExpr expr1 ++ gatherTSExpr expr2
 gatherTSExpr (EnumFromThenTo expr1 expr2 expr3) = 
@@ -460,7 +460,7 @@ adjExpr m cEnv (Tuple sref es) = Tuple sref (map (adjExpr m cEnv) es)
 adjExpr m cEnv (List sref es) = List sref (map (adjExpr m cEnv) es)
 adjExpr m cEnv (ListCompr sref e ss) = 
   ListCompr sref (adjExpr m cEnv e) (map (adjStmt m cEnv) ss)
-adjExpr m cEnv (EnumFrom e1) = EnumFrom (adjExpr m cEnv e1)
+adjExpr m cEnv (EnumFrom cty e1) = EnumFrom cty (adjExpr m cEnv e1)
 adjExpr m cEnv (EnumFromThen e1 e2) = EnumFromThen (adjExpr m cEnv e1) (adjExpr m cEnv e2)
 adjExpr m cEnv (EnumFromTo e1 e2) = EnumFromTo (adjExpr m cEnv e1) (adjExpr m cEnv e2)
 adjExpr m cEnv (EnumFromThenTo e1 e2 e3) = 

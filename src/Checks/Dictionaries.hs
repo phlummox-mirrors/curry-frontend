@@ -193,7 +193,7 @@ diExpr cx (Tuple sref es) = Tuple sref `liftM` (mapM (diExpr cx) es)
 diExpr cx (List srefs es) = List srefs `liftM` (mapM (diExpr cx) es)
 diExpr cx (ListCompr sref e ss) = 
   liftM2 (ListCompr sref) (diExpr cx e) (mapM (diStmt cx) ss) 
-diExpr cx (EnumFrom e1) = EnumFrom `liftM` (diExpr cx e1)
+diExpr cx (EnumFrom cty e1) = EnumFrom cty `liftM` (diExpr cx e1) -- TODO
 diExpr cx (EnumFromThen e1 e2) = 
   liftM2 EnumFromThen (diExpr cx e1) (diExpr cx e2)
 diExpr cx (EnumFromTo e1 e2) = 

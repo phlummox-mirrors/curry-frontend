@@ -146,7 +146,7 @@ qExpr (Tuple              p es) = Tuple p `liftM` mapM qExpr es
 qExpr (List               p es) = List p `liftM` mapM qExpr es
 qExpr (ListCompr        p e qs) = liftM2 (ListCompr p) (qExpr e)
                                                        (mapM qStmt qs)
-qExpr (EnumFrom              e) = EnumFrom `liftM` qExpr e
+qExpr (EnumFrom cty          e) = EnumFrom cty `liftM` qExpr e
 qExpr (EnumFromThen      e1 e2) = liftM2 EnumFromThen   (qExpr e1) (qExpr e2)
 qExpr (EnumFromTo        e1 e2) = liftM2 EnumFromTo     (qExpr e1) (qExpr e2)
 qExpr (EnumFromThenTo e1 e2 e3) = liftM3 EnumFromThenTo (qExpr e1) (qExpr e2)
