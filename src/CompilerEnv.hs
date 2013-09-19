@@ -17,6 +17,7 @@ import qualified Data.Map as Map (Map, keys, toList)
 
 import Curry.Base.Ident  (ModuleIdent)
 import Curry.Base.Pretty
+import Curry.Syntax
 
 import Base.TopEnv (allLocalBindings)
 
@@ -30,18 +31,20 @@ import Env.Value
 --  compiled. The information is updated during the different stages of
 --  compilation.
 data CompilerEnv = CompilerEnv
-  { moduleIdent  :: ModuleIdent  -- ^ identifier of the module
-  , interfaceEnv :: InterfaceEnv -- ^ declarations of imported interfaces
-  , aliasEnv     :: AliasEnv     -- ^ aliases for imported modules
-  , tyConsEnv    :: TCEnv        -- ^ type constructors
-  , valueEnv     :: ValueEnv     -- ^ functions and data constructors
-  , opPrecEnv    :: OpPrecEnv    -- ^ operator precedences
+  { moduleIdent  :: ModuleIdent      -- ^ identifier of the module
+  , extensions   :: [KnownExtension] -- ^ enabled language extensions
+  , interfaceEnv :: InterfaceEnv     -- ^ declarations of imported interfaces
+  , aliasEnv     :: AliasEnv         -- ^ aliases for imported modules
+  , tyConsEnv    :: TCEnv            -- ^ type constructors
+  , valueEnv     :: ValueEnv         -- ^ functions and data constructors
+  , opPrecEnv    :: OpPrecEnv        -- ^ operator precedences
   }
 
 -- |Initial 'CompilerEnv'
 initCompilerEnv :: ModuleIdent -> CompilerEnv
 initCompilerEnv mid = CompilerEnv
   { moduleIdent  = mid
+  , extensions   = []
   , interfaceEnv = initInterfaceEnv
   , aliasEnv     = initAliasEnv
   , tyConsEnv    = initTCEnv
@@ -52,13 +55,14 @@ initCompilerEnv mid = CompilerEnv
 -- |Show the 'CompilerEnv'
 showCompilerEnv :: CompilerEnv -> String
 showCompilerEnv env = show $ vcat
-  [ header "ModuleIdent     " $ textS  $ moduleIdent env
-  , header "Interfaces      " $ hcat   $ punctuate comma $ map textS
-                                       $ Map.keys $ interfaceEnv env
-  , header "ModuleAliases   " $ ppMap  $ aliasEnv     env
-  , header "TypeConstructors" $ ppAL $ allLocalBindings $ tyConsEnv    env
-  , header "Values          " $ ppAL $ allLocalBindings $ valueEnv     env
-  , header "Precedences     " $ ppAL $ allLocalBindings $ opPrecEnv    env
+  [ header "ModuleIdent       " $ textS $ moduleIdent env
+  , header "Language Etensions" $ text  $ show $ extensions  env
+  , header "Interfaces        " $ hcat  $ punctuate comma $ map textS
+                                        $ Map.keys $ interfaceEnv env
+  , header "ModuleAliases     " $ ppMap $ aliasEnv     env
+  , header "TypeConstructors  " $ ppAL $ allLocalBindings $ tyConsEnv env
+  , header "Values            " $ ppAL $ allLocalBindings $ valueEnv  env
+  , header "Precedences       " $ ppAL $ allLocalBindings $ opPrecEnv env
   ]
   where
   header hdr content = hang (text hdr <+> colon) 4 content
