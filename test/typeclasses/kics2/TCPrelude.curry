@@ -472,14 +472,17 @@ instance Enum Ordering where
   enumFrom = boundedEnumFrom
   enumFromThen = boundedEnumFromThen
 
+uppermostCharacter :: Int
+uppermostCharacter = 0x10FFFF
+
 instance Bounded Char where
    minBound = chr 0
-   maxBound = chr 255 -- TODO: what about Unicode?
+   maxBound = chr uppermostCharacter
 
 
 instance Enum Char where
 
-  succ c | ord c < 255 = chr $ ord c + 1
+  succ c | ord c < uppermostCharacter = chr $ ord c + 1
          | otherwise = error "TCPrelude.Enum.Char.succ: no successor"
 
   pred c | ord c > 0 = chr $ ord c - 1
