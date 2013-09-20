@@ -56,7 +56,8 @@ for file in DictTrans1 DictTrans2 DictTrans3 DictTrans4 \
   DuplicateTypeVarsInInstance QualSuperclasses Traversal \
   ClassInstanceTypeInScope ClassInstanceTypeInScope2 ClassInstanceTypeInScope3 ClassInstanceTypeInScope4 \
   ClassInstanceTypeInScope6 DefsInWhere \
-  LocalNotLocal
+  LocalNotLocal \
+  EnumerationsOrig
 do
   echo $file >> tmp.txt
   if [ ! -r typeclasses/$file.curry ]; then echo "*********** file doesn't exist: $file"; fi
@@ -189,6 +190,17 @@ do
   echo $file >> tmp.txt
   if [ ! -r typeclasses/modules/$file.curry ]; then echo "*********** file doesn't exist: $file"; fi
   $cymake -f -i typeclasses/modules typeclasses/modules/$file.curry 2> stderr.txt 1> stdout.txt || \
+    (echo "===================="; echo "| Error in $file.curry:" ; echo "===================="; \
+    cat stdout.txt; cat stderr.txt; echo; touch $errorFile)
+done
+
+# check 2b (type class extensions)
+
+for file in Enums
+do
+  echo $file >> tmp.txt
+  if [ ! -r typeclasses/modules/$file.curry ]; then echo "*********** file doesn't exist: $file"; fi
+  $cymake -f -X TypeClassReplacements -i typeclasses/modules typeclasses/modules/$file.curry 2> stderr.txt 1> stdout.txt || \
     (echo "===================="; echo "| Error in $file.curry:" ; echo "===================="; \
     cat stdout.txt; cat stderr.txt; echo; touch $errorFile)
 done
