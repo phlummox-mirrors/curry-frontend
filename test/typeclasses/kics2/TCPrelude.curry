@@ -425,6 +425,9 @@ instance Enum Bool where
   fromEnum False = 0
   fromEnum True  = 1
 
+  enumFrom = boundedEnumFrom
+  enumFromThen = boundedEnumFromThen
+
 
 instance (Bounded a, Bounded b) => Bounded (a, b) where
   minBound = (minBound, minBound)
@@ -466,6 +469,9 @@ instance Enum Ordering where
   fromEnum EQ = 1
   fromEnum GT = 2
 
+  enumFrom = boundedEnumFrom
+  enumFromThen = boundedEnumFromThen
+
 instance Bounded Char where
    minBound = chr 0
    maxBound = chr 255 -- TODO: what about Unicode?
@@ -481,6 +487,9 @@ instance Enum Char where
 
   toEnum = chr
   fromEnum = ord
+
+  enumFrom = boundedEnumFrom
+  enumFromThen = boundedEnumFromThen
 
 -- TODO:
 -- instance Enum Float where
