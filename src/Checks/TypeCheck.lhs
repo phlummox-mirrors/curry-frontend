@@ -52,7 +52,7 @@ expanded.
 > import Base.TypeSubst
 > import Base.Subst (listToSubst, substToList)
 > import Base.Utils (foldr2, findDouble, zip', zipWith', zipWith3', fromJust')
-> import Base.Idents (enumClsIdent)
+> import Base.Idents (enumClsIdent, tcPreludeEnumFromQIdent)
 
 > import CompilerOpts
 
@@ -915,13 +915,9 @@ the maximal necessary contexts for the functions are determined.
 
 > cvcExpr :: Expression -> TCM Expression
 > cvcExpr l@(Literal _) = return l
-> cvcExpr (Variable (Just (_cx0, ty0)) v) = do
->   tyEnv <- getValueEnv 
->   m <- getModuleIdent
->   theta <- getTypeSubst
->   let ForAll cxInf _ tyInf = funType m v tyEnv
->   let s = either (internalError . show) id (unifyTypes m tyInf (subst theta $ mirrorBFTy ty0))
->   return $ Variable (Just (mirrorFBCx $ subst s cxInf, ty0)) v
+> cvcExpr (Variable (Just cty) v) = do
+>   cty' <- adjustType cty v
+>   return $ Variable (Just cty') v
 > cvcExpr (Variable Nothing v) = internalError ("no type info for Variable " ++ show v) 
 > cvcExpr c@(Constructor _) = return c
 > cvcExpr (Paren e) = Paren `liftM` cvcExpr e
@@ -929,7 +925,14 @@ the maximal necessary contexts for the functions are determined.
 > cvcExpr (Tuple sref es) = Tuple sref `liftM` mapM cvcExpr es
 > cvcExpr (List sref es) = List sref `liftM` mapM cvcExpr es
 > cvcExpr (ListCompr sref e ss) = liftM2 (ListCompr sref) (cvcExpr e) (mapM cvcStmt ss)
-> cvcExpr (EnumFrom cty e1) = EnumFrom cty `liftM` (cvcExpr e1)
+> cvcExpr (EnumFrom (Just cty) e1) = do
+>   e1' <- cvcExpr e1
+>   useReplacements <- typeClassReplacements
+>   cty' <- if useReplacements 
+>           then adjustType cty tcPreludeEnumFromQIdent
+>           else return cty
+>   return $ EnumFrom (Just cty') e1' 
+> cvcExpr (EnumFrom Nothing _) = internalError "cvcExpr EnumFrom"
 > cvcExpr (EnumFromThen e1 e2) = liftM2 EnumFromThen (cvcExpr e1) (cvcExpr e2)
 > cvcExpr (EnumFromTo e1 e2) = liftM2 EnumFromTo (cvcExpr e1) (cvcExpr e2)
 > cvcExpr (EnumFromThenTo e1 e2 e3) = liftM3 EnumFromThenTo (cvcExpr e1) (cvcExpr e2) (cvcExpr e3)
@@ -946,6 +949,15 @@ the maximal necessary contexts for the functions are determined.
 > cvcExpr (RecordConstr fs) = RecordConstr `liftM` mapM cvcField fs
 > cvcExpr (RecordSelection e i) = flip RecordSelection i `liftM` cvcExpr e
 > cvcExpr (RecordUpdate fs e) = liftM2 RecordUpdate (mapM cvcField fs) (cvcExpr e)
+
+> adjustType :: ConstrType_ -> QualIdent -> TCM ConstrType_ 
+> adjustType (_cx0, ty0) v = do
+>   tyEnv <- getValueEnv 
+>   m <- getModuleIdent
+>   theta <- getTypeSubst
+>   let ForAll cxInf _ tyInf = funType m v tyEnv
+>   let s = either (internalError . show) id (unifyTypes m tyInf (subst theta $ mirrorBFTy ty0))
+>   return (mirrorFBCx $ subst s cxInf, ty0)
 
 > cvcInfixOp :: InfixOp -> TCM InfixOp
 > cvcInfixOp (InfixOp (Just (_cx0, ty0)) qid) = do
@@ -1575,8 +1587,9 @@ because of possibly multiple occurrences of variables.
 >         let enumCx = [(enumClsIdent, alpha)]
 >         unify p "arithmetic sequence"
 >              (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e1) (enumCx, alpha) cty1
->         let cty = (cx1 ++ enumCx, listType alpha)
->         return (EnumFrom (Just $ mirrorFBCT cty) e1', cty)
+>         return (EnumFrom (Just $ mirrorFBCT 
+>                  (cx1 ++ enumCx, (TypeArrow alpha (listType alpha)))) e1',
+>                (cx1 ++ enumCx, listType alpha))
 > tcExpr p e@(EnumFromThen e1 e2) = do
 >     (e1', cty1@(cx1, _ty1)) <- tcExpr p e1
 >     (e2', cty2@(cx2, _ty2)) <- tcExpr p e2
@@ -2414,7 +2427,8 @@ nothing is recorded so that they are simply returned).
 > tsExpr theta (List srefs es) = List srefs (map (tsExpr theta) es)
 > tsExpr theta (ListCompr sref e ss) 
 >   = ListCompr sref (tsExpr theta e) (map (tsStmt theta) ss)
-> tsExpr theta (EnumFrom cty e1) = EnumFrom cty (tsExpr theta e1)
+> tsExpr theta (EnumFrom (Just cty) e1) = EnumFrom (Just $ subst' theta cty) (tsExpr theta e1)
+> tsExpr _theta (EnumFrom Nothing _) = internalError "tsExpr EnumFrom"
 > tsExpr theta (EnumFromThen e1 e2) = EnumFromThen (tsExpr theta e1) (tsExpr theta e2)
 > tsExpr theta (EnumFromTo e1 e2) = EnumFromTo (tsExpr theta e1) (tsExpr theta e2)
 > tsExpr theta (EnumFromThenTo e1 e2 e3) = EnumFromThenTo (tsExpr theta e1) (tsExpr theta e2) (tsExpr theta e3)

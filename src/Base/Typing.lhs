@@ -204,7 +204,12 @@ environment.}
 >         elemType ty (e:es1) =
 >           exprType tyEnv e >>= unify ty >> elemType ty es1
 > exprType tyEnv (ListCompr _ e _) = liftM listType $ exprType tyEnv e
-> exprType _     (EnumFrom cty _) = return (listType intType) -- TODO
+> -- the following equations for exprType should never be needed when the
+> -- type class extensions are enabled, because the dictionaries transformation
+> -- removes the Enum* data constructors from the AST, hence it should be 
+> -- OK to return only the type [Int] 
+> exprType _     (EnumFrom (Just (_cx, _ty)) _) = return (listType intType)
+> exprType _     (EnumFrom Nothing _) = internalError "exprType EnumFrom"
 > exprType _     (EnumFromThen _ _) = return (listType intType)
 > exprType _     (EnumFromTo _ _) = return (listType intType)
 > exprType _     (EnumFromThenTo _ _ _) = return (listType intType)
