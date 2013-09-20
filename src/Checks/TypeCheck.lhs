@@ -123,7 +123,7 @@ to True in the normal execution of the compiler.
 >   vds = map snd vds'
 >   sorter (n1, _) (n2, _) = compare n1 n2
 >   initState = TcState m tcEnv tyEnv cEnv doContextRed0 idSubst emptySigEnv 
->     0 [] 0 Map.empty sndRun
+>     0 [] 0 Map.empty sndRun (TypeClassReplacements `elem` optExtensions opts)
 
 \end{verbatim}
 
@@ -145,6 +145,7 @@ generating fresh type variables.
 >   , declCounter :: Int
 >   , declGroups  :: Map.Map [Int] ([Decl], BT.Context)
 >   , secondRun   :: Bool
+>   , typeClassRepls :: Bool
 >   }
 
 > type TCM = S.State TcState
@@ -230,6 +231,9 @@ generating fresh type variables.
 
 > isSecondRun :: TCM Bool
 > isSecondRun = S.gets secondRun
+
+> typeClassReplacements :: TCM Bool
+> typeClassReplacements = S.gets typeClassRepls
 
 \end{verbatim}
 \paragraph{Defining Types}
