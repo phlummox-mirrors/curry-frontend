@@ -43,11 +43,12 @@ data DIState = DIState
   { mdl         :: ModuleIdent
   , theClassEnv :: ClassEnv
   , theValueEnv :: ValueEnv
+  , typeClassRepls :: Bool
   , errors      :: [Message]
   }
 
-initState :: ModuleIdent -> ClassEnv -> ValueEnv -> DIState
-initState m cEnv vEnv = DIState m cEnv vEnv []
+initState :: ModuleIdent -> ClassEnv -> ValueEnv -> Bool -> DIState
+initState m cEnv vEnv repl = DIState m cEnv vEnv repl []
 
 runDI :: DI a -> DIState -> (a, [Message])
 runDI comp init0 = let (a, s) = S.runState comp init0 in (a, reverse $ errors s)
@@ -60,6 +61,9 @@ getValueEnv = S.gets theValueEnv
 
 getModuleIdent :: DI ModuleIdent
 getModuleIdent = S.gets mdl
+
+typeClassReplacements :: DI Bool
+typeClassReplacements = S.gets typeClassRepls
 
 ok :: DI ()
 ok = return ()
@@ -75,7 +79,9 @@ report err = S.modify (\ s -> s { errors = err : errors s })
 -- inserts dictionary parameters (in function declarations and in expressions)
 insertDicts :: Module -> CompilerEnv -> Options -> (Module, [Message])
 insertDicts mdl'@(Module m _ _ _) cEnv opts = 
-  runDI (diModule mdl') (initState m (classEnv cEnv) (valueEnv cEnv))
+  runDI (diModule mdl') 
+        (initState m (classEnv cEnv) (valueEnv cEnv) 
+                     (TypeClassReplacements `elem` optExtensions opts))
 
 -- |convert a whole module
 diModule :: Module -> DI Module
