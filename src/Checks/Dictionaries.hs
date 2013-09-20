@@ -43,7 +43,7 @@ data DIState = DIState
   { mdl         :: ModuleIdent
   , theClassEnv :: ClassEnv
   , theValueEnv :: ValueEnv
-  , typeClassRepls :: Bool
+  , typeClassExts :: Bool
   , errors      :: [Message]
   }
 
@@ -62,8 +62,8 @@ getValueEnv = S.gets theValueEnv
 getModuleIdent :: DI ModuleIdent
 getModuleIdent = S.gets mdl
 
-typeClassReplacements :: DI Bool
-typeClassReplacements = S.gets typeClassRepls
+typeClassExtensions :: DI Bool
+typeClassExtensions = S.gets typeClassExts
 
 ok :: DI ()
 ok = return ()
@@ -81,7 +81,7 @@ insertDicts :: Module -> CompilerEnv -> Options -> (Module, [Message])
 insertDicts mdl'@(Module m _ _ _) cEnv opts = 
   runDI (diModule mdl') 
         (initState m (classEnv cEnv) (valueEnv cEnv) 
-                     (TypeClassReplacements `elem` optExtensions opts))
+                     (TypeClassExtensions `elem` optExtensions opts))
 
 -- |convert a whole module
 diModule :: Module -> DI Module
@@ -201,8 +201,8 @@ diExpr cx (List srefs es) = List srefs `liftM` (mapM (diExpr cx) es)
 diExpr cx (ListCompr sref e ss) = 
   liftM2 (ListCompr sref) (diExpr cx e) (mapM (diStmt cx) ss) 
 diExpr cx (EnumFrom cty e1) = do
-  useReplacements <- typeClassReplacements
-  case useReplacements of
+  exts <- typeClassExtensions
+  case exts of
     False -> EnumFrom cty `liftM` (diExpr cx e1) 
     True -> diExpr cx (Apply (Variable cty tcPreludeEnumFromQIdent) e1)
 diExpr cx (EnumFromThen e1 e2) = 

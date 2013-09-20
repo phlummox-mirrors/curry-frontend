@@ -125,7 +125,7 @@ to True in the normal execution of the compiler.
 >   vds = map snd vds'
 >   sorter (n1, _) (n2, _) = compare n1 n2
 >   initState = TcState m tcEnv tyEnv cEnv doContextRed0 idSubst emptySigEnv 
->     0 [] 0 Map.empty sndRun (TypeClassReplacements `elem` optExtensions opts)
+>     0 [] 0 Map.empty sndRun (TypeClassExtensions `elem` optExtensions opts)
 
 \end{verbatim}
 
@@ -147,7 +147,7 @@ generating fresh type variables.
 >   , declCounter :: Int
 >   , declGroups  :: Map.Map [Int] ([Decl], BT.Context)
 >   , secondRun   :: Bool
->   , typeClassRepls :: Bool
+>   , typeClassExts :: Bool
 >   }
 
 > type TCM = S.State TcState
@@ -234,8 +234,8 @@ generating fresh type variables.
 > isSecondRun :: TCM Bool
 > isSecondRun = S.gets secondRun
 
-> typeClassReplacements :: TCM Bool
-> typeClassReplacements = S.gets typeClassRepls
+> typeClassExtensions :: TCM Bool
+> typeClassExtensions = S.gets typeClassExts
 
 \end{verbatim}
 \paragraph{Defining Types}
@@ -799,9 +799,9 @@ the maximal necessary contexts for the functions are determined.
 >   return (ListCompr sref e' (map fst ssAndCxs), cx ++ concatMap snd ssAndCxs)
 > fpExpr (EnumFrom cty@(Just (cx, _ty)) e1) = do
 >   (e1', cx1) <- fpExpr e1
->   useReplacements <- typeClassReplacements
+>   exts <- typeClassExtensions
 >   return (EnumFrom cty e1', 
->           cx1 ++ (if useReplacements then mirrorBFCx cx else []))
+>           cx1 ++ (if exts then mirrorBFCx cx else []))
 > fpExpr (EnumFrom Nothing _) = internalError "fpExpr EnumFrom"
 > fpExpr (EnumFromThen e1 e2) = do
 >   (e1', cx1) <- fpExpr e1
@@ -927,8 +927,8 @@ the maximal necessary contexts for the functions are determined.
 > cvcExpr (ListCompr sref e ss) = liftM2 (ListCompr sref) (cvcExpr e) (mapM cvcStmt ss)
 > cvcExpr (EnumFrom (Just cty) e1) = do
 >   e1' <- cvcExpr e1
->   useReplacements <- typeClassReplacements
->   cty' <- if useReplacements 
+>   exts <- typeClassExtensions
+>   cty' <- if exts 
 >           then adjustType cty tcPreludeEnumFromQIdent
 >           else return cty
 >   return $ EnumFrom (Just cty') e1' 
@@ -1575,8 +1575,8 @@ because of possibly multiple occurrences of variables.
 >     return (ListCompr sref e' qs', cty) 
 > tcExpr p e@(EnumFrom _ e1) = do
 >     (e1', cty1@(cx1, _ty1)) <- tcExpr p e1
->     useReplacements <- typeClassReplacements
->     case useReplacements of 
+>     exts <- typeClassExtensions
+>     case exts of 
 >       False -> do
 >         unify p "arithmetic sequence"
 >               (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e1) (noContext intType) cty1

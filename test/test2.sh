@@ -200,7 +200,7 @@ for file in Enums
 do
   echo $file >> tmp.txt
   if [ ! -r typeclasses/modules/$file.curry ]; then echo "*********** file doesn't exist: $file"; fi
-  $cymake -f -X TypeClassReplacements -i typeclasses/modules typeclasses/modules/$file.curry 2> stderr.txt 1> stdout.txt || \
+  $cymake -f -X TypeClassExtensions -i typeclasses/modules typeclasses/modules/$file.curry 2> stderr.txt 1> stdout.txt || \
     (echo "===================="; echo "| Error in $file.curry:" ; echo "===================="; \
     cat stdout.txt; cat stderr.txt; echo; touch $errorFile)
 done

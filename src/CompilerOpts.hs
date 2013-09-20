@@ -149,12 +149,12 @@ data Extension
   | AnonFreeVars
   | NoImplicitPrelude
   | UnknownExtension String
-  | TypeClassReplacements
+  | TypeClassExtensions
     deriving (Eq, Read, Show)
 
 allExtensions :: [Extension]
 allExtensions = [Records, FunctionalPatterns, AnonFreeVars, NoImplicitPrelude, 
-                 TypeClassReplacements]
+                 TypeClassExtensions]
 
 -- |'Extension's available by @-e@ flag
 curryExtensions :: [Extension]
