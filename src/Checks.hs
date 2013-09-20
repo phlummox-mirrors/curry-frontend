@@ -131,8 +131,8 @@ typeClassesCheck _ env (Module m es is ds)
 -- |Insert dictionaries where necessary. This is actually not a check, but a
 -- transformation - but as it can produce errors, it is treated as a check  
 insertDicts :: Monad m => Check m
-insertDicts _ cEnv m 
+insertDicts opts cEnv m 
   | null msgs = right (cEnv, m')
   | otherwise = left msgs
-  where (m', msgs) = DI.insertDicts m cEnv
+  where (m', msgs) = DI.insertDicts m cEnv opts
   
