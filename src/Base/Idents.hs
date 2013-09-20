@@ -197,5 +197,10 @@ showParenQIdent = tcPreludeIdent showParenIdent
 showsPrecQIdent :: QualIdent
 showsPrecQIdent = tcPreludeIdent showsPrecIdent
 
- 
 
+
+tcPreludeEnumFromIdent :: Ident
+tcPreludeEnumFromIdent = mkIdent "enumFrom"
+
+tcPreludeEnumFromQIdent :: QualIdent
+tcPreludeEnumFromQIdent = tcPreludeIdent tcPreludeEnumFromIdent
