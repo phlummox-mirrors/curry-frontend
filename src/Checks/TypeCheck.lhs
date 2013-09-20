@@ -52,6 +52,8 @@ expanded.
 > import Base.TypeSubst
 > import Base.Subst (listToSubst, substToList)
 > import Base.Utils (foldr2, findDouble, zip', zipWith', zipWith3', fromJust')
+> import Base.Idents (enumClsIdent)
+
 > import CompilerOpts
 
 > import Env.TypeConstructor (TCEnv, TypeInfo (..), bindTypeInfo
@@ -795,9 +797,12 @@ the maximal necessary contexts for the functions are determined.
 >   (e', cx) <- fpExpr e
 >   ssAndCxs <- mapM fpStmt ss
 >   return (ListCompr sref e' (map fst ssAndCxs), cx ++ concatMap snd ssAndCxs)
-> fpExpr (EnumFrom cty e1) = do
+> fpExpr (EnumFrom cty@(Just (cx, _ty)) e1) = do
 >   (e1', cx1) <- fpExpr e1
->   return (EnumFrom cty e1', cx1)
+>   useReplacements <- typeClassReplacements
+>   return (EnumFrom cty e1', 
+>           cx1 ++ (if useReplacements then mirrorBFCx cx else []))
+> fpExpr (EnumFrom Nothing _) = internalError "fpExpr EnumFrom"
 > fpExpr (EnumFromThen e1 e2) = do
 >   (e1', cx1) <- fpExpr e1
 >   (e2', cx2) <- fpExpr e2
@@ -1556,11 +1561,22 @@ because of possibly multiple occurrences of variables.
 >     (e', (cx, ty)) <- tcExpr p e
 >     cty <- checkSkolems p (text "Expression:" <+> ppExpr 0 e) tyEnv0 (cx ++ cxs, listType ty)
 >     return (ListCompr sref e' qs', cty) 
-> tcExpr p e@(EnumFrom cty e1) = do
+> tcExpr p e@(EnumFrom _ e1) = do
 >     (e1', cty1@(cx1, _ty1)) <- tcExpr p e1
->     unify p "arithmetic sequence"
->           (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e1) (noContext intType) cty1
->     return (EnumFrom cty e1', (cx1, listType intType))
+>     useReplacements <- typeClassReplacements
+>     case useReplacements of 
+>       False -> do
+>         unify p "arithmetic sequence"
+>               (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e1) (noContext intType) cty1
+>         let cty = (cx1, listType intType)
+>         return (EnumFrom (Just $ mirrorFBCT cty) e1', cty)
+>       True -> do
+>         alpha <- freshTypeVar
+>         let enumCx = [(enumClsIdent, alpha)]
+>         unify p "arithmetic sequence"
+>              (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e1) (enumCx, alpha) cty1
+>         let cty = (cx1 ++ enumCx, listType alpha)
+>         return (EnumFrom (Just $ mirrorFBCT cty) e1', cty)
 > tcExpr p e@(EnumFromThen e1 e2) = do
 >     (e1', cty1@(cx1, _ty1)) <- tcExpr p e1
 >     (e2', cty2@(cx2, _ty2)) <- tcExpr p e2
