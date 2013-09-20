@@ -55,13 +55,15 @@ This module implements substitutions on types.
 
 > instance SubstType TypeScheme where
 >   subst sigma (ForAll cx n ty) =
->     ForAll (substContext sigma cx) n 
->            (subst (foldr unbindSubst sigma [0..n-1]) ty)
+>     ForAll (substContext newSigma cx) n (subst newSigma ty)
+>     where
+>     newSigma = foldr unbindSubst sigma [0..n-1]
 
 > instance SubstType ExistTypeScheme where
 >   subst sigma (ForAllExist cx n n' ty) =
->     ForAllExist (substContext sigma cx) n n' 
->                 (subst (foldr unbindSubst sigma [0..n+n'-1]) ty)
+>     ForAllExist (substContext newSigma cx) n n' (subst newSigma ty)
+>     where
+>     newSigma = foldr unbindSubst sigma [0..n+n'-1]
 
 > instance SubstType ValueInfo where
 >   subst _     dc@(DataConstructor  _ _ _) = dc
