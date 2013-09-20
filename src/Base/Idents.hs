@@ -204,3 +204,22 @@ tcPreludeEnumFromIdent = mkIdent "enumFrom"
 
 tcPreludeEnumFromQIdent :: QualIdent
 tcPreludeEnumFromQIdent = tcPreludeIdent tcPreludeEnumFromIdent
+
+tcPreludeEnumFromThenIdent :: Ident
+tcPreludeEnumFromThenIdent = mkIdent "enumFromThen"
+
+tcPreludeEnumFromThenQIdent :: QualIdent
+tcPreludeEnumFromThenQIdent = tcPreludeIdent tcPreludeEnumFromThenIdent
+
+tcPreludeEnumFromToIdent :: Ident
+tcPreludeEnumFromToIdent = mkIdent "enumFromTo"
+
+tcPreludeEnumFromToQIdent :: QualIdent
+tcPreludeEnumFromToQIdent = tcPreludeIdent tcPreludeEnumFromToIdent
+
+tcPreludeEnumFromThenToIdent :: Ident
+tcPreludeEnumFromThenToIdent = mkIdent "enumFromThenTo"
+
+tcPreludeEnumFromThenToQIdent :: QualIdent
+tcPreludeEnumFromThenToQIdent = tcPreludeIdent tcPreludeEnumFromThenToIdent
+

@@ -1052,6 +1052,21 @@ insertDummyIdents vEnv =
             (ForAll [(enumClsIdent, tyvar 0)] 1 
                     (arrow [tyvar 0, TypeConstructor qListIdP [tyvar 0]]))
             (Just enumClsIdent))
+  , (tcPreludeEnumFromThenIdent, tcPreludeMIdent, 
+      Value (qualifyWith tcPreludeMIdent tcPreludeEnumFromThenIdent) 2
+            (ForAll [(enumClsIdent, tyvar 0)] 1
+                    (arrow [tyvar 0, tyvar 0, TypeConstructor qListIdP [tyvar 0]]))
+            (Just enumClsIdent))
+  , (tcPreludeEnumFromToIdent, tcPreludeMIdent, 
+      Value (qualifyWith tcPreludeMIdent tcPreludeEnumFromToIdent) 2
+            (ForAll [(enumClsIdent, tyvar 0)] 1
+                    (arrow [tyvar 0, tyvar 0, TypeConstructor qListIdP [tyvar 0]]))
+            (Just enumClsIdent))
+  , (tcPreludeEnumFromThenToIdent, tcPreludeMIdent, 
+      Value (qualifyWith tcPreludeMIdent tcPreludeEnumFromThenToIdent) 3
+            (ForAll [(enumClsIdent, tyvar 0)] 1
+                    (arrow [tyvar 0, tyvar 0, tyvar 0, TypeConstructor qListIdP [tyvar 0]]))
+            (Just enumClsIdent))
   ]
                  
   where
