@@ -466,9 +466,21 @@ instance Enum Ordering where
   fromEnum EQ = 1
   fromEnum GT = 2
 
--- TODO:
--- instance Enum Char
--- instance Bounded Char where
+instance Bounded Char where
+   minBound = chr 0
+   maxBound = chr 255 -- TODO: what about Unicode?
+
+
+instance Enum Char where
+
+  succ c | ord c < 255 = chr $ ord c + 1
+         | otherwise = error "TCPrelude.Enum.Char.succ: no successor"
+
+  pred c | ord c > 0 = chr $ ord c - 1
+         | otherwise = error "TCPrelude.Enum.Char.succ: no predecessor"
+
+  toEnum = chr
+  fromEnum = ord
 
 -- TODO:
 -- instance Enum Float where
