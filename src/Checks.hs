@@ -93,14 +93,14 @@ precCheck _ env (Module m es is ds)
 -- Parts of the syntax tree are annotated by their type; the type constructor
 -- and value environments are updated.
 typeCheck :: Monad m => Bool -> Check m
-typeCheck run _ env (Module m es is ds)
+typeCheck run opts env (Module m es is ds)
   | null msgs = right (env { tyConsEnv = tcEnv', valueEnv = tyEnv' }, 
                   (Module m es is newDecls))
   | otherwise = left msgs
   where 
   (tcEnv', tyEnv', newDecls, msgs) 
     = TC.typeCheck (moduleIdent env) (tyConsEnv env) (valueEnv env) 
-                   (classEnv env) True run ds
+                   (classEnv env) opts True run ds
                    
 
 -- |Check the export specification

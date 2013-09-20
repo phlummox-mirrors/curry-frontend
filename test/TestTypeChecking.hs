@@ -25,6 +25,7 @@ import Debug.Trace
 import Control.Monad.Trans.Either
 import Control.Monad.IO.Class
 import Base.Messages
+import qualified CompilerOpts as COpts
 
 import Base.Types
 
@@ -126,7 +127,7 @@ typeCheck' contextRed env mdl@(Module _ _ _ ds)
   -- reduction is done and we get the raw inferred contexts that we want!
   = right (env { tyConsEnv = tcEnv', valueEnv = tyEnv' }, mdl)
   where (tcEnv', tyEnv', _decls, _msgs) = TC.typeCheck (moduleIdent env)
-          (tyConsEnv env) (valueEnv env) (classEnv env) contextRed False ds
+          (tyConsEnv env) (valueEnv env) (classEnv env) COpts.defaultOptions contextRed False ds
   
 -- |This function extracts the (function name, type) pairs from the types
 -- file. 

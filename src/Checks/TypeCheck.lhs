@@ -52,6 +52,7 @@ expanded.
 > import Base.TypeSubst
 > import Base.Subst (listToSubst, substToList)
 > import Base.Utils (foldr2, findDouble, zip', zipWith', zipWith3', fromJust')
+> import CompilerOpts
 
 > import Env.TypeConstructor (TCEnv, TypeInfo (..), bindTypeInfo
 >   , qualLookupTC)
@@ -79,9 +80,10 @@ should be exerted. This parameter is primarily for debugging, it is set
 to True in the normal execution of the compiler. 
 \begin{verbatim}
 
-> typeCheck :: ModuleIdent -> TCEnv -> ValueEnv -> ClassEnv -> Bool -> Bool -> [Decl]
->           -> (TCEnv, ValueEnv, [Decl], [Message])
-> typeCheck m tcEnv tyEnv cEnv doContextRed0 sndRun decls = execTCM check initState
+> typeCheck :: ModuleIdent -> TCEnv -> ValueEnv -> ClassEnv -> Options
+>           -> Bool -> Bool -> [Decl] -> (TCEnv, ValueEnv, [Decl], [Message])
+> typeCheck m tcEnv tyEnv cEnv opts doContextRed0 sndRun decls = 
+>   execTCM check initState
 >   where
 >   pdecls = zip [0::Int ..] decls
 >   check = do
