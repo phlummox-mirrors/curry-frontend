@@ -205,12 +205,12 @@ diExpr cx (EnumFrom cty e1) = do
   case exts of
     False -> EnumFrom cty `liftM` (diExpr cx e1) 
     True -> diExpr cx (Apply (Variable cty tcPreludeEnumFromQIdent) e1)
-diExpr cx (EnumFromThen e1 e2) = 
-  liftM2 EnumFromThen (diExpr cx e1) (diExpr cx e2)
-diExpr cx (EnumFromTo e1 e2) = 
-  liftM2 EnumFromTo (diExpr cx e1) (diExpr cx e2)
-diExpr cx (EnumFromThenTo e1 e2 e3) = 
-  liftM3 EnumFromThenTo (diExpr cx e1) (diExpr cx e2) (diExpr cx e3)
+diExpr cx (EnumFromThen cty e1 e2) = 
+  liftM2 (EnumFromThen cty) (diExpr cx e1) (diExpr cx e2)
+diExpr cx (EnumFromTo cty e1 e2) = 
+  liftM2 (EnumFromTo cty) (diExpr cx e1) (diExpr cx e2)
+diExpr cx (EnumFromThenTo cty e1 e2 e3) = 
+  liftM3 (EnumFromThenTo cty) (diExpr cx e1) (diExpr cx e2) (diExpr cx e3)
 diExpr cx (UnaryMinus i e) = UnaryMinus i `liftM` diExpr cx e
 diExpr cx (Apply e1 e2) = liftM2 Apply (diExpr cx e1) (diExpr cx e2)
 -- adding dictionary parameters for the operator in InfixApply, Left- and RightSection

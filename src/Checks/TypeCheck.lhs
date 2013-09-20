@@ -803,19 +803,19 @@ the maximal necessary contexts for the functions are determined.
 >   return (EnumFrom cty e1', 
 >           cx1 ++ (if exts then mirrorBFCx cx else []))
 > fpExpr (EnumFrom Nothing _) = internalError "fpExpr EnumFrom"
-> fpExpr (EnumFromThen e1 e2) = do
+> fpExpr (EnumFromThen cty e1 e2) = do
 >   (e1', cx1) <- fpExpr e1
 >   (e2', cx2) <- fpExpr e2
->   return (EnumFromThen e1' e2', cx1 ++ cx2)
-> fpExpr (EnumFromTo e1 e2) = do
+>   return (EnumFromThen cty e1' e2', cx1 ++ cx2)
+> fpExpr (EnumFromTo cty e1 e2) = do
 >   (e1', cx1) <- fpExpr e1
 >   (e2', cx2) <- fpExpr e2
->   return (EnumFromTo e1' e2', cx1 ++ cx2)
-> fpExpr (EnumFromThenTo e1 e2 e3) = do
+>   return (EnumFromTo cty e1' e2', cx1 ++ cx2)
+> fpExpr (EnumFromThenTo cty e1 e2 e3) = do
 >   (e1', cx1) <- fpExpr e1
 >   (e2', cx2) <- fpExpr e2
 >   (e3', cx3) <- fpExpr e3
->   return (EnumFromThenTo e1' e2' e3', cx1 ++ cx2 ++ cx3)
+>   return (EnumFromThenTo cty e1' e2' e3', cx1 ++ cx2 ++ cx3)
 > fpExpr (UnaryMinus id0 e) = do
 >   (e', cx) <- fpExpr e
 >   return (UnaryMinus id0 e', cx)
@@ -933,9 +933,9 @@ the maximal necessary contexts for the functions are determined.
 >           else return cty
 >   return $ EnumFrom (Just cty') e1' 
 > cvcExpr (EnumFrom Nothing _) = internalError "cvcExpr EnumFrom"
-> cvcExpr (EnumFromThen e1 e2) = liftM2 EnumFromThen (cvcExpr e1) (cvcExpr e2)
-> cvcExpr (EnumFromTo e1 e2) = liftM2 EnumFromTo (cvcExpr e1) (cvcExpr e2)
-> cvcExpr (EnumFromThenTo e1 e2 e3) = liftM3 EnumFromThenTo (cvcExpr e1) (cvcExpr e2) (cvcExpr e3)
+> cvcExpr (EnumFromThen cty e1 e2) = liftM2 (EnumFromThen cty) (cvcExpr e1) (cvcExpr e2)
+> cvcExpr (EnumFromTo cty e1 e2) = liftM2 (EnumFromTo cty) (cvcExpr e1) (cvcExpr e2)
+> cvcExpr (EnumFromThenTo cty e1 e2 e3) = liftM3 (EnumFromThenTo cty) (cvcExpr e1) (cvcExpr e2) (cvcExpr e3)
 > cvcExpr (UnaryMinus i e) = UnaryMinus i `liftM` cvcExpr e
 > cvcExpr (Apply e1 e2) = liftM2 Apply (cvcExpr e1) (cvcExpr e2)
 > cvcExpr (InfixApply e1 op e2) = liftM3 InfixApply (cvcExpr e1) (cvcInfixOp op) (cvcExpr e2)
@@ -1590,23 +1590,23 @@ because of possibly multiple occurrences of variables.
 >         return (EnumFrom (Just $ mirrorFBCT 
 >                  (cx1 ++ enumCx, (TypeArrow alpha (listType alpha)))) e1',
 >                (cx1 ++ enumCx, listType alpha))
-> tcExpr p e@(EnumFromThen e1 e2) = do
+> tcExpr p e@(EnumFromThen cty e1 e2) = do
 >     (e1', cty1@(cx1, _ty1)) <- tcExpr p e1
 >     (e2', cty2@(cx2, _ty2)) <- tcExpr p e2
 >     unify p "arithmetic sequence"
 >           (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e1) (noContext intType) cty1
 >     unify p "arithmetic sequence"
 >           (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e2) (noContext intType) cty2
->     return (EnumFromThen e1' e2', (cx1 ++ cx2, listType intType))
-> tcExpr p e@(EnumFromTo e1 e2) = do
+>     return (EnumFromThen cty e1' e2', (cx1 ++ cx2, listType intType))
+> tcExpr p e@(EnumFromTo cty e1 e2) = do
 >     (e1', cty1@(cx1, _ty1)) <- tcExpr p e1
 >     (e2', cty2@(cx2, _ty2)) <- tcExpr p e2
 >     unify p "arithmetic sequence"
 >           (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e1) (noContext intType) cty1
 >     unify p "arithmetic sequence"
 >           (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e2) (noContext intType) cty2
->     return (EnumFromTo e1' e2', (cx1 ++ cx2, listType intType))
-> tcExpr p e@(EnumFromThenTo e1 e2 e3) = do
+>     return (EnumFromTo cty e1' e2', (cx1 ++ cx2, listType intType))
+> tcExpr p e@(EnumFromThenTo cty e1 e2 e3) = do
 >     (e1', cty1@(cx1, _ty1)) <- tcExpr p e1
 >     (e2', cty2@(cx2, _ty2)) <- tcExpr p e2
 >     (e3', cty3@(cx3, _ty3)) <- tcExpr p e3
@@ -1616,7 +1616,7 @@ because of possibly multiple occurrences of variables.
 >           (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e2) (noContext intType) cty2
 >     unify p "arithmetic sequence"
 >           (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e3) (noContext intType) cty3
->     return (EnumFromThenTo e1' e2' e3', (cx1 ++ cx2 ++ cx3, listType intType))
+>     return (EnumFromThenTo cty e1' e2' e3', (cx1 ++ cx2 ++ cx3, listType intType))
 > tcExpr p e@(UnaryMinus op e1) = do
 >     opTy <- opType op
 >     (e1', cty1) <- tcExpr p e1
@@ -2427,11 +2427,13 @@ nothing is recorded so that they are simply returned).
 > tsExpr theta (List srefs es) = List srefs (map (tsExpr theta) es)
 > tsExpr theta (ListCompr sref e ss) 
 >   = ListCompr sref (tsExpr theta e) (map (tsStmt theta) ss)
+> 
 > tsExpr theta (EnumFrom (Just cty) e1) = EnumFrom (Just $ subst' theta cty) (tsExpr theta e1)
 > tsExpr _theta (EnumFrom Nothing _) = internalError "tsExpr EnumFrom"
-> tsExpr theta (EnumFromThen e1 e2) = EnumFromThen (tsExpr theta e1) (tsExpr theta e2)
-> tsExpr theta (EnumFromTo e1 e2) = EnumFromTo (tsExpr theta e1) (tsExpr theta e2)
-> tsExpr theta (EnumFromThenTo e1 e2 e3) = EnumFromThenTo (tsExpr theta e1) (tsExpr theta e2) (tsExpr theta e3)
+> tsExpr theta (EnumFromThen cty e1 e2) = EnumFromThen cty (tsExpr theta e1) (tsExpr theta e2)
+> tsExpr theta (EnumFromTo cty e1 e2) = EnumFromTo cty (tsExpr theta e1) (tsExpr theta e2)
+> tsExpr theta (EnumFromThenTo cty e1 e2 e3) = EnumFromThenTo cty (tsExpr theta e1) (tsExpr theta e2) (tsExpr theta e3)
+> 
 > tsExpr theta (UnaryMinus i e) = UnaryMinus i (tsExpr theta e)
 > tsExpr theta (Apply e1 e2) = Apply (tsExpr theta e1) (tsExpr theta e2)
 > tsExpr theta (InfixApply e1 op e2) 
@@ -2514,9 +2516,9 @@ we have to use other unique ids.
 > numberExpr (List sref es) = List sref `liftM` mapM numberExpr es
 > numberExpr (ListCompr sref e ss) = liftM2 (ListCompr sref) (numberExpr e) (mapM numberStmt ss)
 > numberExpr (EnumFrom cty e1) = EnumFrom cty `liftM` numberExpr e1
-> numberExpr (EnumFromThen e1 e2) = liftM2 EnumFromThen (numberExpr e1) (numberExpr e2)
-> numberExpr (EnumFromTo e1 e2) = liftM2 EnumFromTo (numberExpr e1) (numberExpr e2)
-> numberExpr (EnumFromThenTo e1 e2 e3) = liftM3 EnumFromThenTo (numberExpr e1) (numberExpr e2) (numberExpr e3)
+> numberExpr (EnumFromThen cty e1 e2) = liftM2 (EnumFromThen cty) (numberExpr e1) (numberExpr e2)
+> numberExpr (EnumFromTo cty e1 e2) = liftM2 (EnumFromTo cty) (numberExpr e1) (numberExpr e2)
+> numberExpr (EnumFromThenTo cty e1 e2 e3) = liftM3 (EnumFromThenTo cty) (numberExpr e1) (numberExpr e2) (numberExpr e3)
 > numberExpr (UnaryMinus i e) = UnaryMinus i `liftM` numberExpr e
 > numberExpr (Apply e1 e2) = liftM2 Apply (numberExpr e1) (numberExpr e2) 
 > numberExpr (InfixApply e1 op e2) = liftM3 InfixApply (numberExpr e1) (return op) (numberExpr e2)

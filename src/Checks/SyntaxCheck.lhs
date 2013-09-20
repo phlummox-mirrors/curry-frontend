@@ -814,12 +814,12 @@ checkParen
 >   -- Note: must be flipped to insert qs into RenameEnv first
 >   liftM2 (flip (ListCompr pos)) (mapM (checkStatement p) qs) (checkExpr p e)
 > checkExpr p (EnumFrom cty          e) = EnumFrom cty `liftM` checkExpr p e
-> checkExpr p (EnumFromThen      e1 e2) =
->   liftM2 EnumFromThen (checkExpr p e1) (checkExpr p e2)
-> checkExpr p (EnumFromTo        e1 e2) =
->   liftM2 EnumFromTo (checkExpr p e1) (checkExpr p e2)
-> checkExpr p (EnumFromThenTo e1 e2 e3) =
->   liftM3 EnumFromThenTo (checkExpr p e1) (checkExpr p e2) (checkExpr p e3)
+> checkExpr p (EnumFromThen cty  e1 e2) =
+>   liftM2 (EnumFromThen cty) (checkExpr p e1) (checkExpr p e2)
+> checkExpr p (EnumFromTo cty    e1 e2) =
+>   liftM2 (EnumFromTo cty) (checkExpr p e1) (checkExpr p e2)
+> checkExpr p (EnumFromThenTo cty e1 e2 e3) =
+>   liftM3 (EnumFromThenTo cty) (checkExpr p e1) (checkExpr p e2) (checkExpr p e3)
 > checkExpr p (UnaryMinus         op e) = UnaryMinus op `liftM` checkExpr p e
 > checkExpr p (Apply             e1 e2) =
 >   liftM2 Apply (checkExpr p e1) (checkExpr p e2)

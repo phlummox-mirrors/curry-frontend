@@ -210,9 +210,9 @@ environment.}
 > -- OK to return only the type [Int] 
 > exprType _     (EnumFrom (Just (_cx, _ty)) _) = return (listType intType)
 > exprType _     (EnumFrom Nothing _) = internalError "exprType EnumFrom"
-> exprType _     (EnumFromThen _ _) = return (listType intType)
-> exprType _     (EnumFromTo _ _) = return (listType intType)
-> exprType _     (EnumFromThenTo _ _ _) = return (listType intType)
+> exprType _     (EnumFromThen _ _ _) = return (listType intType)
+> exprType _     (EnumFromTo _ _ _) = return (listType intType)
+> exprType _     (EnumFromThenTo _ _ _ _) = return (listType intType)
 > exprType tyEnv (UnaryMinus _ e) = exprType tyEnv e
 > exprType tyEnv (Apply e1 e2) = do
 >     (ty1,ty2) <- exprType tyEnv e1 >>= unifyArrow

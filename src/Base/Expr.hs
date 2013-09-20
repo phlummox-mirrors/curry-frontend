@@ -97,9 +97,9 @@ instance QualExpr Expression where
   qfv m (List               _ es) = qfv m es
   qfv m (ListCompr        _ e qs) = foldr (qfvStmt m) (qfv m e) qs
   qfv m (EnumFrom _            e) = qfv m e
-  qfv m (EnumFromThen      e1 e2) = qfv m e1 ++ qfv m e2
-  qfv m (EnumFromTo        e1 e2) = qfv m e1 ++ qfv m e2
-  qfv m (EnumFromThenTo e1 e2 e3) = qfv m e1 ++ qfv m e2 ++ qfv m e3
+  qfv m (EnumFromThen _    e1 e2) = qfv m e1 ++ qfv m e2
+  qfv m (EnumFromTo _      e1 e2) = qfv m e1 ++ qfv m e2
+  qfv m (EnumFromThenTo _ e1 e2 e3) = qfv m e1 ++ qfv m e2 ++ qfv m e3
   qfv m (UnaryMinus          _ e) = qfv m e
   qfv m (Apply             e1 e2) = qfv m e1 ++ qfv m e2
   qfv m (InfixApply     e1 op e2) = qfv m op ++ qfv m e1 ++ qfv m e2

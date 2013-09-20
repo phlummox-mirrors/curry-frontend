@@ -201,12 +201,12 @@ declaration groups.
 > checkExpr (ListCompr    p e qs) =
 >   liftM2 (ListCompr p) (checkExpr e) (mapM checkStmt qs)
 > checkExpr (EnumFrom cty      e) = EnumFrom cty `liftM` checkExpr e
-> checkExpr (EnumFromThen  e1 e2) =
->   liftM2 EnumFromThen (checkExpr e1) (checkExpr e2)
-> checkExpr (EnumFromTo    e1 e2) =
->   liftM2 EnumFromTo (checkExpr e1) (checkExpr e2)
-> checkExpr (EnumFromThenTo e1 e2 e3) =
->   liftM3 EnumFromThenTo (checkExpr e1) (checkExpr e2) (checkExpr e3)
+> checkExpr (EnumFromThen cty e1 e2) =
+>   liftM2 (EnumFromThen cty) (checkExpr e1) (checkExpr e2)
+> checkExpr (EnumFromTo cty e1 e2) =
+>   liftM2 (EnumFromTo cty) (checkExpr e1) (checkExpr e2)
+> checkExpr (EnumFromThenTo cty e1 e2 e3) =
+>   liftM3 (EnumFromThenTo cty) (checkExpr e1) (checkExpr e2) (checkExpr e3)
 > checkExpr (UnaryMinus     op e) = UnaryMinus op `liftM` checkExpr e
 > checkExpr (Apply         e1 e2) = liftM2 Apply (checkExpr e1) (checkExpr e2)
 > checkExpr (InfixApply e1 op e2) =
