@@ -26,7 +26,8 @@ import Base.Names (mkSelFunName, mkDictName)
 import Base.Messages
 import Base.Utils
 import Base.Types as BT
-import Base.Idents (flipQIdent, tcPreludeEnumFromQIdent)
+import Base.Idents (flipQIdent, tcPreludeEnumFromQIdent, tcPreludeEnumFromThenQIdent
+                   , tcPreludeEnumFromToQIdent, tcPreludeEnumFromThenToQIdent)
 import CompilerOpts
 
 import Text.PrettyPrint hiding (sep)
@@ -205,12 +206,21 @@ diExpr cx (EnumFrom cty e1) = do
   case exts of
     False -> EnumFrom cty `liftM` (diExpr cx e1) 
     True -> diExpr cx (Apply (Variable cty tcPreludeEnumFromQIdent) e1)
-diExpr cx (EnumFromThen cty e1 e2) = 
-  liftM2 (EnumFromThen cty) (diExpr cx e1) (diExpr cx e2)
-diExpr cx (EnumFromTo cty e1 e2) = 
-  liftM2 (EnumFromTo cty) (diExpr cx e1) (diExpr cx e2)
-diExpr cx (EnumFromThenTo cty e1 e2 e3) = 
-  liftM3 (EnumFromThenTo cty) (diExpr cx e1) (diExpr cx e2) (diExpr cx e3)
+diExpr cx (EnumFromThen cty e1 e2) = do
+  exts <- typeClassExtensions
+  case exts of
+    False -> liftM2 (EnumFromThen cty) (diExpr cx e1) (diExpr cx e2)
+    True -> diExpr cx (Apply (Apply (Variable cty tcPreludeEnumFromThenQIdent) e1) e2)
+diExpr cx (EnumFromTo cty e1 e2) = do
+  exts <- typeClassExtensions
+  case exts of
+    False -> liftM2 (EnumFromTo cty) (diExpr cx e1) (diExpr cx e2)
+    True -> diExpr cx (Apply (Apply (Variable cty tcPreludeEnumFromToQIdent) e1) e2)
+diExpr cx (EnumFromThenTo cty e1 e2 e3) = do
+  exts <- typeClassExtensions
+  case exts of
+    False -> liftM3 (EnumFromThenTo cty) (diExpr cx e1) (diExpr cx e2) (diExpr cx e3)
+    True -> diExpr cx (Apply (Apply (Apply (Variable cty tcPreludeEnumFromThenToQIdent) e1) e2) e3)
 diExpr cx (UnaryMinus i e) = UnaryMinus i `liftM` diExpr cx e
 diExpr cx (Apply e1 e2) = liftM2 Apply (diExpr cx e1) (diExpr cx e2)
 -- adding dictionary parameters for the operator in InfixApply, Left- and RightSection

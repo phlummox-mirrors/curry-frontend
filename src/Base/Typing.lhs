@@ -208,11 +208,15 @@ environment.}
 > -- type class extensions are enabled, because the dictionaries transformation
 > -- removes the Enum* data constructors from the AST, hence it should be 
 > -- OK to return only the type [Int] 
-> exprType _     (EnumFrom (Just (_cx, _ty)) _) = return (listType intType)
+> exprType _     (EnumFrom (Just _cty) _) = return (listType intType)
 > exprType _     (EnumFrom Nothing _) = internalError "exprType EnumFrom"
-> exprType _     (EnumFromThen _ _ _) = return (listType intType)
-> exprType _     (EnumFromTo _ _ _) = return (listType intType)
-> exprType _     (EnumFromThenTo _ _ _ _) = return (listType intType)
+> exprType _     (EnumFromThen (Just _cty) _ _) = return (listType intType)
+> exprType _     (EnumFromThen Nothing _ _) = internalError "exprType EnumFromThen"
+> exprType _     (EnumFromTo (Just _cty) _ _) = return (listType intType)
+> exprType _     (EnumFromTo Nothing _ _) = internalError "exprType EnumFromTo"
+> exprType _     (EnumFromThenTo (Just _cty) _ _ _) = return (listType intType)
+> exprType _     (EnumFromThenTo Nothing _ _ _) = internalError "exprType EnumFromThenTo"
+
 > exprType tyEnv (UnaryMinus _ e) = exprType tyEnv e
 > exprType tyEnv (Apply e1 e2) = do
 >     (ty1,ty2) <- exprType tyEnv e1 >>= unifyArrow
