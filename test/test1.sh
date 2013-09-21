@@ -23,6 +23,8 @@ fi
 cymake_orig=`readlink -f $1`
 cymake=`readlink -f ../dist/build/cymake/cymake`
 
+exts="-X Records -X FunctionalPatterns -X AnonFreeVars"
+
 origDir=typeclasses/comparetest_orig
 newDir=typeclasses/comparetest_new
 
@@ -33,7 +35,7 @@ then
   echo "=================="
   echo "building with orig"
   echo "=================="
-  pushd $origDir ; $cymake_orig -e -f *.curry || exit 1; popd
+  pushd $origDir ; $cymake_orig $exts -f *.curry || exit 1; popd
   #pushd $origDir/.curry/ && sed 's/$/ Nothing/' -s -i *.fint *.fcy && popd
 fi
 
@@ -43,7 +45,7 @@ echo "=================="
 
 rm -r -f $newDir/.curry
 
-pushd $newDir ; $cymake -e -f *.curry || exit 1; popd
+pushd $newDir ; $cymake $exts -f *.curry || exit 1; popd
 
 
 ./ComparePrograms.sh $origDir $newDir
