@@ -2511,13 +2511,17 @@ nothing is recorded so that they are simply returned).
 > tsExpr theta (ListCompr sref e ss) 
 >   = ListCompr sref (tsExpr theta e) (map (tsStmt theta) ss)
 > 
-> tsExpr theta (EnumFrom (Just cty) e1) = EnumFrom (Just $ subst' theta cty) (tsExpr theta e1)
+> tsExpr theta  (EnumFrom (Just cty) e1) = 
+>   EnumFrom (Just $ subst' theta cty) (tsExpr theta e1)
 > tsExpr _theta (EnumFrom Nothing _) = internalError "tsExpr EnumFrom"
-> tsExpr theta (EnumFromThen (Just cty) e1 e2) = EnumFromThen (Just $ subst' theta cty) (tsExpr theta e1) (tsExpr theta e2)
+> tsExpr theta  (EnumFromThen (Just cty) e1 e2) = 
+>   EnumFromThen (Just $ subst' theta cty) (tsExpr theta e1) (tsExpr theta e2)
 > tsExpr _theta (EnumFromThen Nothing _ _) = internalError "tsExpr EnumFromThen"
-> tsExpr theta (EnumFromTo (Just cty) e1 e2) = EnumFromTo (Just $ subst' theta cty) (tsExpr theta e1) (tsExpr theta e2)
+> tsExpr theta  (EnumFromTo (Just cty) e1 e2) = 
+>   EnumFromTo (Just $ subst' theta cty) (tsExpr theta e1) (tsExpr theta e2)
 > tsExpr _theta (EnumFromTo Nothing _ _) = internalError "tsExpr EnumFromTo"
-> tsExpr theta (EnumFromThenTo (Just cty) e1 e2 e3) = EnumFromThenTo (Just $ subst' theta cty) (tsExpr theta e1) (tsExpr theta e2) (tsExpr theta e3)
+> tsExpr theta  (EnumFromThenTo (Just cty) e1 e2 e3) = 
+>   EnumFromThenTo (Just $ subst' theta cty) (tsExpr theta e1) (tsExpr theta e2) (tsExpr theta e3)
 > tsExpr _theta (EnumFromThenTo Nothing _ _ _) = internalError "tsExpr EnumFromThenTo"
 > 
 > tsExpr theta (UnaryMinus i e) = UnaryMinus i (tsExpr theta e)
