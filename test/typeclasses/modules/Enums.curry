@@ -27,3 +27,6 @@ test7 = test3 1
 instance C Int where
 
 test8 = test4 1
+
+test9 = ['a' ..]
+
