@@ -1289,9 +1289,10 @@ signature the declared type must be too general.
 >       modifyValueEnv $ bindFunOnce m v (arrowArity ty) $ monoType ty
 >       return (BT.emptyContext, ty)
 >     True -> do
+>       sndRun <- isSecondRun
 >       m <- getModuleIdent
 >       alpha <- freshTypeVar
->       let numCx = [(numClsIdent, alpha)]
+>       let numCx = if sndRun then [] else [(numClsIdent, alpha)]
 >       modifyValueEnv $ bindFunOnce m v (arrowArity alpha) $ monoType' (numCx, alpha)
 >       return (numCx, alpha) 
 > tcLiteral (Float  v _) = do
@@ -1299,9 +1300,10 @@ signature the declared type must be too general.
 >   case exts of
 >     False -> return (BT.emptyContext, floatType)
 >     True -> do
+>       sndRun <- isSecondRun
 >       m <- getModuleIdent
 >       alpha <- freshTypeVar
->       let fracCx = [(fractionalClsIdent, alpha)]
+>       let fracCx = if sndRun then [] else [(fractionalClsIdent, alpha)]
 >       modifyValueEnv $ bindFunOnce m v (arrowArity alpha) $ monoType' (fracCx, alpha)
 >       return (fracCx, alpha)
 > tcLiteral (String _ _) = return (BT.emptyContext, stringType)
