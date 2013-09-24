@@ -235,3 +235,16 @@ tcPreludeEnumFromThenToIdent = mkIdent "enumFromThenTo"
 tcPreludeEnumFromThenToQIdent :: QualIdent
 tcPreludeEnumFromThenToQIdent = tcPreludeIdent tcPreludeEnumFromThenToIdent
 
+
+fromIntegerIdent :: Ident
+fromIntegerIdent = mkIdent "fromInteger"
+
+fromFloatIdent :: Ident
+fromFloatIdent = mkIdent "fromFloat"
+
+fromIntegerQIdent :: QualIdent
+fromIntegerQIdent = tcPreludeIdent fromIntegerIdent
+
+fromFloatQIdent :: QualIdent
+fromFloatQIdent = tcPreludeIdent fromFloatIdent
+

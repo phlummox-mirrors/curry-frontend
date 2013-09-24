@@ -1067,6 +1067,11 @@ insertDummyIdents vEnv =
             (ForAll [(enumClsIdent, tyvar 0)] 1
                     (arrow [tyvar 0, tyvar 0, tyvar 0, TypeConstructor qListIdP [tyvar 0]]))
             (Just enumClsIdent))
+            
+  , (fromIntegerIdent, tcPreludeMIdent, Value (qualifyWith tcPreludeMIdent fromIntegerIdent)
+      1 (ForAll [(numClsIdent, tyvar 0)] 1 (arrow [preludeInt, tyvar 0])) (Just numClsIdent))
+  , (fromFloatIdent, tcPreludeMIdent, Value (qualifyWith tcPreludeMIdent fromFloatIdent)
+      1 (ForAll [(fractionalClsIdent, tyvar 0)] 1 (arrow [preludeFloat, tyvar 0])) (Just fractionalClsIdent))
   ]
                  
   where
@@ -1075,6 +1080,7 @@ insertDummyIdents vEnv =
   preludeBool = TypeConstructor (qualifyWith preludeMIdent $ mkIdent "Bool") []
   preludeChar = TypeConstructor (qualifyWith preludeMIdent $ mkIdent "Char") []
   preludeInt  = TypeConstructor (qualifyWith preludeMIdent $ mkIdent "Int") []
+  preludeFloat = TypeConstructor (qualifyWith preludeMIdent $ mkIdent "Float") []
   preludeString = TypeConstructor qListIdP [preludeChar]
   boolOpTypeScheme = 
     (ForAll [] 0 (TypeArrow preludeBool (TypeArrow preludeBool preludeBool)))
