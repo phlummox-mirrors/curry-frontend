@@ -196,7 +196,7 @@ done
 
 # check 2b (type class extensions)
 
-for file in Enums Enums2 Enums3 Enums4
+for file in Enums Enums2 Enums3 Enums4 TestNum
 do
   echo $file >> tmp.txt
   if [ ! -r typeclasses/modules/$file.curry ]; then echo "*********** file doesn't exist: $file"; fi
