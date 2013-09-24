@@ -54,7 +54,7 @@ expanded.
 > import Base.Utils (foldr2, findDouble, zip', zipWith', zipWith3', fromJust')
 > import Base.Idents (enumClsIdent, tcPreludeEnumFromQIdent
 >   , tcPreludeEnumFromThenQIdent, tcPreludeEnumFromToQIdent
->   , tcPreludeEnumFromThenToQIdent)
+>   , tcPreludeEnumFromThenToQIdent, numClsIdent, fractionalClsIdent)
 
 > import CompilerOpts
 
@@ -763,7 +763,11 @@ the maximal necessary contexts for the functions are determined.
 >   return (CondExpr p g' e', cxE ++ cxG)
 
 > fpExpr :: Expression -> TCM (Expression, BT.Context)
-> fpExpr l@(Literal _) = return (l, BT.emptyContext)
+> fpExpr (Literal l) = do
+>   sndRun <- isSecondRun
+>   -- TODO
+>   (l', cx) <- if sndRun then return (l, BT.emptyContext) else fpLiteral l
+>   return (Literal l', cx)
 > fpExpr (Variable (Just (_cx0, ty0)) v) = do
 >   m <- getModuleIdent
 >   theta <- getTypeSubst
@@ -903,6 +907,23 @@ the maximal necessary contexts for the functions are determined.
 >   (e', cxE) <- fpExpr e
 >   return (Field p i e', cxE)
 
+> fpLiteral :: Literal -> TCM (Literal, BT.Context)
+> fpLiteral l@(Int    v _) = do
+>   m <- getModuleIdent
+>   vEnv <- getValueEnv
+>   let cty = funType m (qualify v) vEnv
+>   return (l, getContext cty) 
+> fpLiteral l@(Float v _ ) = do
+>   exts <- typeClassExtensions
+>   case exts of
+>     True -> do
+>       m <- getModuleIdent
+>       vEnv <- getValueEnv
+>       let cty = funType m (qualify v) vEnv
+>       return (l, getContext cty)
+>     False -> return (l, BT.emptyContext) 
+> fpLiteral l@(Char  _ _ ) = return(l, BT.emptyContext) 
+> fpLiteral l@(String _ _) = return (l, BT.emptyContext)
 
 > -- | This function is called after all type checking has been done. Because
 > -- context reduction in a declaration group is always done at the very end 
@@ -1260,11 +1281,29 @@ signature the declared type must be too general.
 > tcLiteral :: Literal -> TCM ConstrType
 > tcLiteral (Char   _ _) = return (BT.emptyContext, charType)
 > tcLiteral (Int    v _)  = do --return intType
->   m  <- getModuleIdent
->   ty <- freshConstrained [intType, floatType]
->   modifyValueEnv $ bindFunOnce m v (arrowArity ty) $ monoType ty
->   return (BT.emptyContext, ty)
-> tcLiteral (Float  _ _) = return (BT.emptyContext, floatType)
+>   exts <- typeClassExtensions
+>   case exts of
+>     False -> do 
+>       m  <- getModuleIdent
+>       ty <- freshConstrained [intType, floatType]
+>       modifyValueEnv $ bindFunOnce m v (arrowArity ty) $ monoType ty
+>       return (BT.emptyContext, ty)
+>     True -> do
+>       m <- getModuleIdent
+>       alpha <- freshTypeVar
+>       let numCx = [(numClsIdent, alpha)]
+>       modifyValueEnv $ bindFunOnce m v (arrowArity alpha) $ monoType' (numCx, alpha)
+>       return (numCx, alpha) 
+> tcLiteral (Float  v _) = do
+>   exts <- typeClassExtensions
+>   case exts of
+>     False -> return (BT.emptyContext, floatType)
+>     True -> do
+>       m <- getModuleIdent
+>       alpha <- freshTypeVar
+>       let fracCx = [(fractionalClsIdent, alpha)]
+>       modifyValueEnv $ bindFunOnce m v (arrowArity alpha) $ monoType' (fracCx, alpha)
+>       return (fracCx, alpha)
 > tcLiteral (String _ _) = return (BT.emptyContext, stringType)
 
 > tcPattern :: Position -> Pattern -> TCM ConstrType
