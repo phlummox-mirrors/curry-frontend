@@ -27,7 +27,8 @@ import Base.Messages
 import Base.Utils
 import Base.Types as BT
 import Base.Idents (flipQIdent, tcPreludeEnumFromQIdent, tcPreludeEnumFromThenQIdent
-                   , tcPreludeEnumFromToQIdent, tcPreludeEnumFromThenToQIdent)
+                   , tcPreludeEnumFromToQIdent, tcPreludeEnumFromThenToQIdent
+                   , fromIntegerQIdent, fromFloatQIdent)
 import CompilerOpts
 
 import Text.PrettyPrint hiding (sep)
@@ -152,7 +153,11 @@ diLhs cx a@(ApLhs _ _) =
 
 -- | transform expressions
 diExpr :: BT.Context -> Expression -> DI Expression
-diExpr _ e@(Literal _) = return e
+diExpr cx e@(Literal l) = do
+  exts <- typeClassExtensions
+  case exts of
+    False -> return e
+    True -> diLiteral cx l
 diExpr cx0 v@(Variable (Just varCty0) qid) = do 
   checkForAmbiguousInstances (qidPosition qid) (mirrorBFCx $ fst varCty0)
   cEnv <- getClassEnv
@@ -247,6 +252,25 @@ diExpr cx (RecordSelection e id0) =
   flip RecordSelection id0 `liftM` diExpr cx e
 diExpr cx (RecordUpdate fs e) = 
   liftM2 RecordUpdate (mapM (diField cx) fs) (diExpr cx e)
+  
+-- |transform literals
+diLiteral :: BT.Context -> Literal -> DI Expression
+diLiteral _cx l@(Char   _ _) = return (Literal l)
+diLiteral _cx l@(String _ _) = return (Literal l)
+diLiteral cx l@(Int   v _) = do
+  vEnv <- getValueEnv
+  let Value _ _ (ForAll cxInt _n ty) _ : _ = lookupValue v vEnv
+      intTy = TypeConstructor (qualifyWith preludeMIdent $ mkIdent "Int") []
+      newType = (cxInt, TypeArrow intTy ty)
+  fromInt <- diExpr cx $ Variable (Just $ mirrorFBCT newType) fromIntegerQIdent
+  return $ Apply fromInt (Literal l)
+diLiteral cx l@(Float v _) = do
+  vEnv <- getValueEnv
+  let Value _ _ (ForAll cxFloat _n ty) _ : _ = lookupValue v vEnv
+      floatTy = TypeConstructor (qualifyWith preludeMIdent $ mkIdent "Float") []
+      newType = (cxFloat, TypeArrow floatTy ty)
+  fromFloat <- diExpr cx $ Variable (Just $ mirrorFBCT newType) fromFloatQIdent
+  return $ Apply fromFloat (Literal l)
   
 
 -- |transform statements
