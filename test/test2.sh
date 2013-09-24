@@ -119,7 +119,7 @@ fi
 
 # do the check # 2 (modules system related)
 
-for file in TestClassExports TestClassExports2 TestClassExportsImports \
+for file in TCPrelude TestClassExports TestClassExports2 TestClassExportsImports \
   TestClassExportsNoExportSpec \
   InstancesExports InstancesExports2 InstancesExportsImports InstancesExportBug InstancesExportBugImports \
   Dependencies1 Dependencies1Imports \
