@@ -38,6 +38,12 @@ boundedClsIdentName = "Bounded"
 enumClsIdentName :: String
 enumClsIdentName = "Enum"
 
+numClsIdentName :: String
+numClsIdentName = "Num"
+
+fractionalClsIdentName :: String
+fractionalClsIdentName = "Fractional"
+
 mkTCPQIdent :: String -> QualIdent
 mkTCPQIdent = qualifyWith tcPreludeMIdent . mkIdent
 
@@ -58,6 +64,12 @@ boundedClsIdent = mkTCPQIdent boundedClsIdentName
 
 enumClsIdent :: QualIdent
 enumClsIdent = mkTCPQIdent enumClsIdentName
+
+numClsIdent :: QualIdent
+numClsIdent = mkTCPQIdent numClsIdentName
+
+fractionalClsIdent :: QualIdent
+fractionalClsIdent = mkTCPQIdent fractionalClsIdentName
 
 -- ---------------------------------------------------------------------------
 
