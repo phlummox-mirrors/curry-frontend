@@ -384,7 +384,7 @@ instance, if one of the alternatives contains an \texttt{@}-pattern.
 > trLiteral :: Literal -> IL.Literal
 > trLiteral (Char    p c) = IL.Char p c
 > trLiteral (Int ident i) = IL.Int (srcRefOf (idPosition ident)) i
-> trLiteral (Float   p f) = IL.Float p f
+> trLiteral (Float ident f) = IL.Float (srcRefOf (idPosition ident)) f
 > trLiteral _             = internalError "CurryToIL.trLiteral"
 
 > trPattern :: Ident -> Pattern -> NestedTerm

@@ -345,7 +345,7 @@ with a local declaration for $v$.
 > dsLiteral (Int                v i) = (Left . fixType) `liftM` getValueEnv
 >   where fixType tyEnv
 >           | typeOf tyEnv v == floatType
->           = Float (srcRefOf $ idPosition v) (fromIntegral i)
+>           = Float v (fromIntegral i)
 >           | otherwise = Int v i
 > dsLiteral f@(Float            _ _) = return $ Left f
 > dsLiteral (String (SrcRef [i]) cs) = return $ Right
