@@ -14,6 +14,7 @@ test3 = test1 :: Int
 test3b = test1 :: Float
 
 test4 x 1 = x
+test4b x 1.0 = x
 
 test5 = 1 + 1.3
 
@@ -30,3 +31,9 @@ test6b = test6 1.2
 
 test7a = test7 1
 test7b = test7 1.2
+
+test8 = 1 :: Int
+
+test9 = 5 `div` 2
+test10 = 4 `mod` 3
+
