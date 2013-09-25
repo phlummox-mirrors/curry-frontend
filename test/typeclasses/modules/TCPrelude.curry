@@ -8,6 +8,7 @@ module TCPrelude
   , Read (..)
   , Bounded (..), Enum (..), boundedEnumFrom, boundedEnumFromThen
   , asTypeOf
+  , Num(..), Fractional(..), Real(..), Integral(..)
   -- re-export data types from the original Prelude
   , Bool (..) , Char (..) , Int (..) , Float (..), String , Ordering (..)
   , Success (..), Maybe (..), Either (..), IO (..), IOError (..)
@@ -20,9 +21,9 @@ module TCPrelude
   , concat, concatMap, iterate, repeat, replicate, take, drop, splitAt
   , takeWhile, dropWhile, span, break, lines, unlines, words, unwords
   , reverse, and, or, any, all
-  , ord, prim_ord, chr, prim_chr, (+), prim_Int_plus, (-)
-  , prim_Int_minus, (*), prim_Int_times, div, prim_Int_div, mod, prim_Int_mod
-  , negate, negateFloat, prim_negateFloat, (=:=), success, (&), (&>), maybe
+  , ord, prim_ord, chr, prim_chr, prim_Int_plus
+  , prim_Int_minus, prim_Int_times, prim_Int_div, prim_Int_mod
+  , negateFloat, prim_negateFloat, (=:=), success, (&), (&>), maybe
   , either, (>>=), return, (>>), done, putChar, prim_putChar, getChar, readFile
   , prim_readFile, prim_readFileContents, writeFile, prim_writeFile, appendFile
   , prim_appendFile, putStr, putStrLn, getLine, userError, ioError, showError
@@ -34,9 +35,14 @@ module TCPrelude
   ) where
 
 import qualified Prelude as P ((==), (<=), show, enumFrom, enumFromTo
-  , enumFromThen, enumFromThenTo)
-import Prelude hiding ((==), (/=), compare, (<), (<=), (>), (>=), min, max, show)
+  , enumFromThen, enumFromThenTo, (+), (-), (*), negateFloat, div, mod)
+import Prelude hiding ((==), (/=), compare, (<), (<=), (>), (>=), min, max, show
+                      , (+), (-), (*), div, mod)
 
+import qualified Float as F
+
+infixl 7 *, `div`, `mod`, /
+infixl 6 +, -
 infix 4 ==, /=, <, >, <=, >=
 infix 4 `elem`, `notElem`
 
@@ -510,6 +516,91 @@ boundedEnumFromThen n1 n2
   where
     i_n1 = fromEnum n1
     i_n2 = fromEnum n2
+
+-- -------------------------------------------------------------------------
+-- Numeric classes and instances
+-- -------------------------------------------------------------------------
+
+-- minimal definition: all (except negate or (-))
+class Num a where
+  (+), (-), (*) :: a -> a -> a
+  negate :: a -> a
+  abs :: a -> a
+  signum :: a -> a
+
+  fromInteger :: Int -> a
+
+  x - y = x + negate y
+  negate x = 0 - x
+
+instance Num Int where
+  x + y = x P.+ y
+  x - y = x P.- y
+  x * y = x P.* y
+
+  negate x = 0 - x
+
+  abs x | x >= 0 = x
+        | otherwise = negate x
+  
+  signum x | x > 0     = 1
+           | x == 0    = 0
+           | otherwise = -1
+
+  fromInteger x = x
+
+instance Num Float where
+  x + y = x F.+. y
+  x - y = x F.-. y
+  x * y = x F.*. y
+
+  negate x = P.negateFloat x
+
+  abs x | x >= 0 = x
+        | otherwise = negate x
+
+
+  signum x | x > 0     = 1
+           | x == 0    = 0
+           | otherwise = -1
+
+  fromInteger x = F.i2f x
+
+-- minimal definition: fromRational and (recip or (/))
+class Num a => Fractional a where
+
+  (/) :: a -> a -> a
+  recip :: a -> a
+
+  recip x = 1/x
+  x / y = x * recip y
+
+  fromFloat :: Float -> a
+  -- fromRational :: Rational -> a
+
+instance Fractional Float where
+  x / y = x F./. y
+  recip x = 1.0/x
+
+  fromFloat x = x
+
+class (Num a, Ord a) => Real a where
+  -- toRational :: a -> Rational
+
+class Real a => Integral a where
+  div :: a -> a -> a
+  mod :: a -> a -> a
+
+  divMod :: a -> a -> (a, a)
+
+  n `div` d = q where (q, _) = divMod n d
+  n `mod` d = r where (_, r) = divMod n d
+
+instance Real Int where
+  -- no class methods to implement
+
+instance Integral Int where
+  divMod n d = (n `P.div` d, n `P.mod` d)
 
 -- -------------------------------------------------------------------------
 -- Helper functions
