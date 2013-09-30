@@ -566,7 +566,7 @@ instance Num Float where
 
   fromInteger x = F.i2f x
 
--- minimal definition: fromRational and (recip or (/))
+-- minimal definition: fromFloat and (recip or (/))
 class Num a => Fractional a where
 
   (/) :: a -> a -> a
