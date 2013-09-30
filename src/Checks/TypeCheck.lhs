@@ -922,7 +922,7 @@ the maximal necessary contexts for the functions are determined.
 >       let cty = funType m (qualify v) vEnv
 >       return (l, getContext cty)
 >     False -> return (l, BT.emptyContext) 
-> fpLiteral l@(Char  _ _ ) = return(l, BT.emptyContext) 
+> fpLiteral l@(Char  _ _ ) = return (l, BT.emptyContext) 
 > fpLiteral l@(String _ _) = return (l, BT.emptyContext)
 
 > -- | This function is called after all type checking has been done. Because
