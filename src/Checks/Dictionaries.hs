@@ -185,13 +185,18 @@ diExpr cx0 v@(Variable (Just varCty0) qid) = do
              (qualify $ mkIdent $ mkSelFunName (show cls) (show $ unqualify $ qid))
              
   
-  codes <- abstrCode   
-  let code = foldl Apply var'' codes
-  -- for nullary class methods add additional unit argument
-  return $ if isClassMethod && zeroArity 
-    then Apply code (Constructor qUnitId)
-    else code
-  
+  case (isClassMethod && isNothing (canonLookupMethodTypeScheme' cEnv cls (unqualify qid))) of
+    True -> do
+      report $ errClassNeeded (qidPosition qid) cls
+      return v
+    False -> do 
+      codes <- abstrCode   
+      let code = foldl Apply var'' codes
+      -- for nullary class methods add additional unit argument
+      return $ if isClassMethod && zeroArity 
+        then Apply code (Constructor qUnitId)
+        else code
+      
   
 diExpr _ (Variable Nothing _) = internalError "diExpr: no type info"
 diExpr _ e@(Constructor _) = return e
@@ -340,3 +345,7 @@ errAmbiguousInstance p cls ty = posMessage p $
   text "More than one instance applicable for the class" <+> 
   text (show cls) <+> text "and the type" <+> text (show ty)
 
+errClassNeeded :: Position -> QualIdent -> Message
+errClassNeeded p cls = posMessage p $ 
+  text "class" <+> text (show cls) <+> 
+  text "needed but not found. Import TCPrelude to fix this error. "
