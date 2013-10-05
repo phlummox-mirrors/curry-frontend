@@ -244,6 +244,20 @@ do
   if [ -n "$internalErrs" ]; then echo "Internal error in $file"; fi
 done
 
+# check # 3b (errors in files that are compiled with type class extensions)
+
+for file in EnumBug EnumBug2
+do
+  echo $file >> tmp.txt
+  if [ ! -r typeclasses/modules/$file.curry ]; then echo "*********** file doesn't exist: $file"; fi
+  $cymake -f -X TypeClassExtensions -i typeclasses/modules typeclasses/modules/$file.curry 2> stderr.txt 1> stdout.txt && \
+    (echo "===================="; echo "| No error in $file.curry:" ; echo "===================="; \
+    cat stdout.txt; cat stderr.txt; echo; touch $errorFile)
+  internalErrs=`cat stderr.txt | grep "Internal error"`
+  if [ -n "$internalErrs" ]; then echo "Internal error in $file"; fi
+done
+
+
 echo `cat tmp.txt | wc -l` files checked
 
 if [ ! -f $errorFile ]; then
