@@ -1207,10 +1207,11 @@ signature the declared type must be too general.
 >       case (eqTyScheme sigma sigma') of 
 >         False -> report  $ errTypeSigTooGeneral (idPosition v) m what sigTy sigma
 >         True -> do
->           -- check that the given context implies the inferred
+>           -- check that the given context implies the inferred (but don't 
+>           -- report an error when the inferred context is invalid)
 >           let mapping = buildTypeVarsMapping (typeSchemeToType sigma') (typeSchemeToType sigma)
 >               context' = subst mapping $ getContext sigma' 
->           unless (implies' cEnv context' context)
+>           unless (implies' cEnv context' context) $ when (null invalidCx)
 >             $ report $ errContextImplication (idPosition v) m context' context
 >               (filter (not . implies cEnv context') context)  
 >               v
