@@ -185,7 +185,8 @@ for file in TCPrelude TestClassExports TestClassExports2 TestClassExportsImports
   Deriving3 Deriving4 DictsBug DictsBug2 \
   ClassMethodFixities ClassMethodFixities2 ClassMethodFixities3 ClassMethodFixities4 \
   InstanceErrorBug DerivingEnum DerivingBounded1 DerivingBounded2 DerivingEnumBounded \
-  PointBug DerivingAll DerivingAll2 DerivingShow
+  PointBug DerivingAll DerivingAll2 DerivingShow \
+  EnumFromBug
 do
   echo $file >> tmp.txt
   if [ ! -r typeclasses/modules/$file.curry ]; then echo "*********** file doesn't exist: $file"; fi

@@ -101,10 +101,14 @@ to True in the normal execution of the compiler.
 >     vdsN <- numberDecls vds
 >     -- do the type check
 >     (newDecls, _) <- tcDecls vdsN
+>     -- apply the final substitution to the type schemes in the value 
+>     -- environment and reduce still unreduced contexts
+>     tyEnv' <- getValueEnv
+>     theta <- getTypeSubst
+>     modifyValueEnv $ const (fmap reduceContexts (theta `subst` tyEnv'))
 >     -- correct the contexts of variables because of the context reduction
 >     -- and apply the final type substitution to the type annotations
 >     newDecls' <- correctVariableContexts newDecls
->     theta <- getTypeSubst
 >     let newDecls'' = applyTypeSubst theta newDecls' 
 >
 >     -- cEnv' <- getClassEnv
@@ -128,6 +132,10 @@ to True in the normal execution of the compiler.
 >   sorter (n1, _) (n2, _) = compare n1 n2
 >   initState = TcState m tcEnv tyEnv cEnv doContextRed0 idSubst emptySigEnv 
 >     0 [] 0 Map.empty sndRun (TypeClassExtensions `elem` optExtensions opts)
+>   reduceContexts = if doContextRed0 then reduceContexts' else id
+>   reduceContexts' (Value qid a (ForAll cx n ty) cls) = 
+>     Value qid a (ForAll (reduceContext cEnv cx) n ty) cls
+>   reduceContexts' v = v
 
 \end{verbatim}
 
@@ -196,7 +204,7 @@ generating fresh type variables.
 > execTCM :: TCM [Decl] -> TcState -> (TCEnv, ValueEnv, [Decl], [Message])
 > execTCM tcm s = let (decls, s') = S.runState tcm s
 >                 in  ( tyConsEnv s'
->                     , typeSubst s' `subst` valueEnv s'
+>                     , valueEnv s'
 >                     , decls
 >                     , reverse $ nub $ errors s'
 >                     )
