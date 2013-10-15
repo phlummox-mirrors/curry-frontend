@@ -166,7 +166,7 @@ diExpr cx0 v@(Variable (Just varCty0) qid) = do
   
   let 
     abstrCode = do
-      let varCty = (removeNonLocal vEnv qid qualLookupValue $ mirrorBFCx $ fst varCty0, snd varCty0)
+      let varCty = (removeNonLocal vEnv qid (qualLookupValue' m) $ mirrorBFCx $ fst varCty0, snd varCty0)
           -- check whether we have a class method
           cx = if isNothing $ maybeCls then fst varCty else mirrorBFCx $ fst varCty0
           codes = map (concreteCode . dictCode cEnv cx0) cx 
@@ -353,6 +353,13 @@ tySchemeFlip = ([], TypeVariable 0)
 
 prelFlip :: Expression
 prelFlip = Variable (Just $ mirrorFBCT tySchemeFlip) flipQIdent
+
+qualLookupValue' :: ModuleIdent -> QualIdent -> ValueEnv -> [ValueInfo]
+qualLookupValue' m qid tyEnv = case qualLookupValue qid tyEnv of
+  [v] -> [v]
+  _ -> case qualLookupValue (qualQualify m qid) tyEnv of
+    [v] -> [v]
+    _ -> internalError ("no function/method in Dictionaries, qualLookupValue': " ++ show qid)
 
 -- ---------------------------------------------------------------------------
 -- error messages
