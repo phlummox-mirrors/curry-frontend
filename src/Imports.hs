@@ -1072,6 +1072,8 @@ insertDummyIdents vEnv =
       1 (ForAll [(numClsIdent, tyvar 0)] 1 (arrow [preludeInt, tyvar 0])) (Just numClsIdent))
   , (fromFloatIdent, tcPreludeMIdent, Value (qualifyWith tcPreludeMIdent fromFloatIdent)
       1 (ForAll [(fractionalClsIdent, tyvar 0)] 1 (arrow [preludeFloat, tyvar 0])) (Just fractionalClsIdent))
+  , (negateIdent, tcPreludeMIdent, Value (qualifyWith tcPreludeMIdent negateIdent)
+      1 (ForAll [(numClsIdent, tyvar 0)] 1 (arrow [tyvar 0, tyvar 0])) (Just numClsIdent))
   ]
                  
   where

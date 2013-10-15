@@ -248,3 +248,8 @@ fromIntegerQIdent = tcPreludeIdent fromIntegerIdent
 fromFloatQIdent :: QualIdent
 fromFloatQIdent = tcPreludeIdent fromFloatIdent
 
+negateIdent :: Ident
+negateIdent = mkIdent "negate"
+
+negateQIdent :: QualIdent
+negateQIdent = tcPreludeIdent negateIdent
