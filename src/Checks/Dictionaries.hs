@@ -94,10 +94,11 @@ diDecl :: BT.Context -> Decl -> DI Decl
 diDecl cx (FunctionDecl p (Just cty@(cx', _)) n id0 eqs) = do
   cEnv <- getClassEnv
   vEnv <- getValueEnv
+  m <- getModuleIdent
   let -- we have to reduce the context before adding dictionary parameters, 
       -- because the recorded context is the "raw" context 
       cx'' = reduceContext cEnv $ mirrorBFCx cx'
-      cx''' = removeNonLocal vEnv id0 lookupValue cx''
+      cx''' = removeNonLocal vEnv (qualify id0) (qualLookupValue' m) cx''
   FunctionDecl p (Just cty) n id0 `liftM` (mapM (diEqu (cx ++ cx''') cx''') eqs)
 diDecl _ (FunctionDecl _ Nothing _ _ _) = internalError "no type info in diDecl"
 
@@ -113,7 +114,7 @@ diDecl _ f = return f
 removeNonLocal :: ValueEnv -> a -> (a -> ValueEnv -> [ValueInfo]) -> BT.Context -> BT.Context
 removeNonLocal vEnv id0 lookup0 cx = newCx
   where
-  Value _ _ (ForAll cxInf _ _) _ : _ = lookup0 id0 vEnv
+  [Value _ _ (ForAll cxInf _ _) _] = lookup0 id0 vEnv
   newCx = map snd $ filter (\(e1, _e2) -> local e1) $ zip' cxInf cx
   local :: (QualIdent, Type) -> Bool
   -- TODO: actually check only the type variable in head position... 
