@@ -980,99 +980,100 @@ insertDummyIdents' env@(CompilerEnv { valueEnv = v} ) =
 -- |This function adds the needed dummy identifiers to the value environment
 insertDummyIdents :: ValueEnv -> ValueEnv
 insertDummyIdents vEnv = 
-  foldr (\(v, m, v') env -> 
-      let dm = if m == preludeMIdent then dummyMIdent else tcDummyMIdent
+  foldr (\(v, tcPrelude, v') env -> 
+      let dm = if not tcPrelude then dummyMIdent else tcDummyMIdent
+          m = if not tcPrelude then preludeMIdent else tcPreludeMIdent
       in qualImportTopEnv' m (qualifyWith dm v) v' env) vEnv 
-  [ (andOp, preludeMIdent, Value (qualifyWith preludeMIdent andOp) 2 
+  [ (andOp, False, Value (qualifyWith preludeMIdent andOp) 2 
       boolOpTypeScheme Nothing)
-  , (orOp,  preludeMIdent, Value (qualifyWith preludeMIdent orOp) 2
+  , (orOp,  False, Value (qualifyWith preludeMIdent orOp) 2
       boolOpTypeScheme Nothing)
-  , (trueCons', preludeMIdent, 
+  , (trueCons', False, 
       DataConstructor (qualifyWith preludeMIdent trueCons') 0 boolConstrTypeScheme)
-  , (falseCons', preludeMIdent, 
+  , (falseCons', False, 
       DataConstructor (qualifyWith preludeMIdent falseCons') 0 boolConstrTypeScheme)
-  , (eqOp, tcPreludeMIdent, Value (qualifyWith tcPreludeMIdent eqOp) 2
+  , (eqOp, True, Value (qualifyWith tcPreludeMIdent eqOp) 2
       (cmpOpTypeScheme eqClsIdent) (Just eqClsIdent))
-  , (leqOp, tcPreludeMIdent, Value (qualifyWith tcPreludeMIdent leqOp) 2
+  , (leqOp, True, Value (qualifyWith tcPreludeMIdent leqOp) 2
       (cmpOpTypeScheme ordClsIdent) (Just ordClsIdent))
-  , (lessOp, tcPreludeMIdent, Value (qualifyWith tcPreludeMIdent lessOp) 2
+  , (lessOp, True, Value (qualifyWith tcPreludeMIdent lessOp) 2
       (cmpOpTypeScheme ordClsIdent) (Just ordClsIdent))
-  , (greaterOp, tcPreludeMIdent, Value (qualifyWith tcPreludeMIdent greaterOp) 2
+  , (greaterOp, True, Value (qualifyWith tcPreludeMIdent greaterOp) 2
       (cmpOpTypeScheme ordClsIdent) (Just ordClsIdent))
   -- (0 -> 1) -> (2 -> 0) -> 2 -> 1)
-  , (pointOp, preludeMIdent, Value (qualifyWith preludeMIdent pointOp) 2
+  , (pointOp, False, Value (qualifyWith preludeMIdent pointOp) 2
       (ForAll [] 3 (arrow [arrow [tyvar 0, tyvar 1], 
                            arrow [tyvar 2, tyvar 0],
                            tyvar 2,
                            tyvar 1])) 
       Nothing)
   -- ((0 -> (1 -> 2)) -> (1 -> (0 -> 2))))
-  , (flipIdent, preludeMIdent, Value (qualifyWith preludeMIdent flipIdent) 3
+  , (flipIdent, False, Value (qualifyWith preludeMIdent flipIdent) 3
       (ForAll [] 3 (TypeArrow 
         (TypeArrow (tyvar 0) (TypeArrow (tyvar 1) (tyvar 2)))
         (TypeArrow (tyvar 1) (TypeArrow (tyvar 0) (tyvar 2))))) 
       Nothing)
-  , (otherwiseIdent, preludeMIdent, Value (qualifyWith preludeMIdent otherwiseIdent)
+  , (otherwiseIdent, False, Value (qualifyWith preludeMIdent otherwiseIdent)
       0 (ForAll [] 0 preludeBool) Nothing)
-  , (errorIdent, preludeMIdent, Value (qualifyWith preludeMIdent errorIdent) 1
+  , (errorIdent, False, Value (qualifyWith preludeMIdent errorIdent) 1
       (ForAll [] 1 (TypeArrow preludeString (tyvar 0))) Nothing)
-  , (minBoundIdent, tcPreludeMIdent, Value (qualifyWith tcPreludeMIdent minBoundIdent)
+  , (minBoundIdent, True, Value (qualifyWith tcPreludeMIdent minBoundIdent)
       0 (ForAll [(boundedClsIdent, tyvar 0)] 1 (tyvar 0)) (Just boundedClsIdent))
-  , (maxBoundIdent, tcPreludeMIdent, Value (qualifyWith tcPreludeMIdent maxBoundIdent)
+  , (maxBoundIdent, True, Value (qualifyWith tcPreludeMIdent maxBoundIdent)
       0 (ForAll [(boundedClsIdent, tyvar 0)] 1 (tyvar 0)) (Just boundedClsIdent))
-  , (mapIdent, preludeMIdent, Value (qualifyWith preludeMIdent mapIdent) 2
+  , (mapIdent, False, Value (qualifyWith preludeMIdent mapIdent) 2
       (ForAll [] 2 (TypeArrow (TypeArrow (tyvar 0) (tyvar 1))
         (TypeArrow (TypeConstructor qListIdP [tyvar 0]) (TypeConstructor qListIdP [tyvar 1]))))
       Nothing)
-  , (fromEnumIdent, tcPreludeMIdent, Value (qualifyWith tcPreludeMIdent fromEnumIdent)
+  , (fromEnumIdent, True, Value (qualifyWith tcPreludeMIdent fromEnumIdent)
       1 (ForAll [(enumClsIdent, tyvar 0)] 1 (TypeArrow (tyvar 0) preludeInt)) 
       (Just enumClsIdent))
-  , (toEnumIdent, tcPreludeMIdent, Value (qualifyWith tcPreludeMIdent toEnumIdent)
+  , (toEnumIdent, True, Value (qualifyWith tcPreludeMIdent toEnumIdent)
       1 (ForAll [(enumClsIdent, tyvar 0)] 1 (TypeArrow preludeInt (tyvar 0)))
       (Just enumClsIdent))
-  , (preludeEnumFromToIdent, preludeMIdent, 
+  , (preludeEnumFromToIdent, False, 
       Value (qualifyWith preludeMIdent preludeEnumFromToIdent) 2 
             (ForAll [] 0 (arrow [preludeInt, preludeInt, TypeConstructor qListIdP [preludeInt]]))
       Nothing)
-  , (preludeEnumFromThenToIdent, preludeMIdent, 
+  , (preludeEnumFromThenToIdent, False, 
       Value (qualifyWith preludeMIdent preludeEnumFromThenToIdent) 3
             (ForAll [] 0 (arrow [preludeInt, preludeInt, preludeInt, TypeConstructor qListIdP [preludeInt]]))
       Nothing)
-  , (showStringIdent, tcPreludeMIdent, Value (qualifyWith tcPreludeMIdent showStringIdent) 
+  , (showStringIdent, True, Value (qualifyWith tcPreludeMIdent showStringIdent) 
       2 (ForAll [] 0 (arrow [preludeString, preludeString, preludeString])) Nothing)
-  , (showParenIdent, tcPreludeMIdent, Value (qualifyWith tcPreludeMIdent showParenIdent)
+  , (showParenIdent, True, Value (qualifyWith tcPreludeMIdent showParenIdent)
       2 (ForAll [] 0 (arrow [preludeBool, arrow [preludeString, preludeString], 
                                           arrow [preludeString, preludeString]])) Nothing)
-  , (showsPrecIdent, tcPreludeMIdent, Value (qualifyWith tcPreludeMIdent showsPrecIdent)
+  , (showsPrecIdent, True, Value (qualifyWith tcPreludeMIdent showsPrecIdent)
       3 (ForAll [(showClsIdent, tyvar 0)] 1 
           (arrow [preludeInt, tyvar 0, preludeString, preludeString])) (Just showClsIdent)) 
   
-  , (tcPreludeEnumFromIdent, tcPreludeMIdent, 
+  , (tcPreludeEnumFromIdent, True, 
       Value (qualifyWith tcPreludeMIdent tcPreludeEnumFromIdent) 1 
             (ForAll [(enumClsIdent, tyvar 0)] 1 
                     (arrow [tyvar 0, TypeConstructor qListIdP [tyvar 0]]))
             (Just enumClsIdent))
-  , (tcPreludeEnumFromThenIdent, tcPreludeMIdent, 
+  , (tcPreludeEnumFromThenIdent, True, 
       Value (qualifyWith tcPreludeMIdent tcPreludeEnumFromThenIdent) 2
             (ForAll [(enumClsIdent, tyvar 0)] 1
                     (arrow [tyvar 0, tyvar 0, TypeConstructor qListIdP [tyvar 0]]))
             (Just enumClsIdent))
-  , (tcPreludeEnumFromToIdent, tcPreludeMIdent, 
+  , (tcPreludeEnumFromToIdent, True, 
       Value (qualifyWith tcPreludeMIdent tcPreludeEnumFromToIdent) 2
             (ForAll [(enumClsIdent, tyvar 0)] 1
                     (arrow [tyvar 0, tyvar 0, TypeConstructor qListIdP [tyvar 0]]))
             (Just enumClsIdent))
-  , (tcPreludeEnumFromThenToIdent, tcPreludeMIdent, 
+  , (tcPreludeEnumFromThenToIdent, True, 
       Value (qualifyWith tcPreludeMIdent tcPreludeEnumFromThenToIdent) 3
             (ForAll [(enumClsIdent, tyvar 0)] 1
                     (arrow [tyvar 0, tyvar 0, tyvar 0, TypeConstructor qListIdP [tyvar 0]]))
             (Just enumClsIdent))
             
-  , (fromIntegerIdent, tcPreludeMIdent, Value (qualifyWith tcPreludeMIdent fromIntegerIdent)
+  , (fromIntegerIdent, True, Value (qualifyWith tcPreludeMIdent fromIntegerIdent)
       1 (ForAll [(numClsIdent, tyvar 0)] 1 (arrow [preludeInt, tyvar 0])) (Just numClsIdent))
-  , (fromFloatIdent, tcPreludeMIdent, Value (qualifyWith tcPreludeMIdent fromFloatIdent)
+  , (fromFloatIdent, True, Value (qualifyWith tcPreludeMIdent fromFloatIdent)
       1 (ForAll [(fractionalClsIdent, tyvar 0)] 1 (arrow [preludeFloat, tyvar 0])) (Just fractionalClsIdent))
-  , (negateIdent, tcPreludeMIdent, Value (qualifyWith tcPreludeMIdent negateIdent)
+  , (negateIdent, True, Value (qualifyWith tcPreludeMIdent negateIdent)
       1 (ForAll [(numClsIdent, tyvar 0)] 1 (arrow [tyvar 0, tyvar 0])) (Just numClsIdent))
   ]
                  
