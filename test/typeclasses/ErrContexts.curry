@@ -1,6 +1,4 @@
 
-import Prelude hiding (show)
-
 class B a where
 
 data T a = T a

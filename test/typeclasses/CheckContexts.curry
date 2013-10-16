@@ -1,6 +1,4 @@
 
-import Prelude hiding (show)
-
 class C a where
   fun :: a -> Bool
   fun2 :: a -> a
