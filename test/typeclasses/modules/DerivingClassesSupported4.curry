@@ -1,8 +1,7 @@
 
 module DerivingClassesSupported4 where
 
-import Prelude ()
-import TCPrelude as TCP
+import Prelude as TCP
 
 data T a = T a
   deriving (TCP.Eq, TCP.Ord)

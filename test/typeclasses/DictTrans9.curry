@@ -12,7 +12,7 @@ test x = toBool y && toBool z
   where Just (y, [z]) = Just (funA x, [funA x])
 
 test2 x = toBool y && toBool z
-  where Just (y, [z]) = Just (funA 'c', [funA 1])
+  where Just (y, [z]) = Just (funA 'c', [funA (1::Int)])
 
 {-
 test3 x = 1

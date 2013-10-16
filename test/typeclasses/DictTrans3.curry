@@ -22,7 +22,7 @@ member x (y:ys) = if eq x y then True else member x ys
 
 test1 = member True [False, False, False]
 
-test2 = member 0 [1, 2, 3, 0]
+test2 = member (0::Int) [1, 2, 3, 0]
 
 test3 = member [True] [[False], [False, True, False]]
 

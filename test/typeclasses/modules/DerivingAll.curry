@@ -1,7 +1,4 @@
 
-import Prelude ()
-import TCPrelude
-
 
 infixl 3 :==:
 infixr 8 :~:

@@ -4,6 +4,7 @@
 # 2) for files that have sematical errors that the compiler produces errors
 
 cymake=../dist/build/cymake/cymake
+exts="-X TypeClassExtensions"
 
 rm -f tmp.txt
 
@@ -15,12 +16,6 @@ rm -f $errorFile
 # delete old files
 rm -f -r typeclasses/.curry
 rm -f -r typeclasses/modules/.curry
-
-# prepare needed interfaces
-
-$cymake -f -i typeclasses typeclasses/Float.curry typeclasses/Prelude.curry > /dev/null
-$cymake -f -i typeclasses/modules typeclasses/modules/Prelude.curry > /dev/null
-$cymake -f -i typeclasses/TCCheck typeclasses/TCCheck/Prelude.curry > /dev/null
 
 # do the check # 1
 
@@ -61,7 +56,7 @@ for file in DictTrans1 DictTrans2 DictTrans3 DictTrans4 \
 do
   echo $file >> tmp.txt
   if [ ! -r typeclasses/$file.curry ]; then echo "*********** file doesn't exist: $file"; fi
-  $cymake -f -i typeclasses typeclasses/$file.curry 2> stderr.txt 1> stdout.txt || \
+  $cymake $exts -f -i typeclasses -i typeclasses/modules typeclasses/$file.curry 2> stderr.txt 1> stdout.txt || \
     (echo "===================="; echo "| Error in $file.curry:" ; echo "===================="; \
     cat stdout.txt; cat stderr.txt; echo; touch $errorFile)
 done
@@ -78,7 +73,7 @@ for file in checkCorrectTypeVarsInTypeSigs CheckRulesInClass CheckRulesInInstanc
 do
   echo $file >> tmp.txt
   if [ ! -r typeclasses/TCCheck/$file.curry ]; then echo "*********** file doesn't exist: $file"; fi
-  $cymake -f -i typeclasses/TCCheck typeclasses/TCCheck/$file.curry 2> stderr.txt 1> stdout.txt && \
+  $cymake $exts -f -i typeclasses/TCCheck -i typeclasses/modules typeclasses/TCCheck/$file.curry 2> stderr.txt 1> stdout.txt && \
     (echo "===================="; echo "| No error in $file.curry:" ; echo "===================="; \
     cat stdout.txt; cat stderr.txt; echo; touch $errorFile)
   internalErrs=`cat stderr.txt | grep "Internal error"`
@@ -89,7 +84,7 @@ done
 
 for file in Ambig1 Ambiguous Ambiguous2 Ambiguous3 \
   CheckContexts classAndFunNamesOverlapping CyclesInClassStructure \
-  Deriving1 Deriving2 Deriving3 DerivingClassesInScope DerivingClassesNotInScope \
+  Deriving1 Deriving2 DerivingClassesInScope DerivingClassesNotInScope \
   DoubleMethods DuplicateClasses DuplicateInstances \
   ErrContexts ErrorClassAndGlobalFuncs \
   Impl InstanceConstraints InstanceMethodsCheck \
@@ -99,7 +94,7 @@ for file in Ambig1 Ambiguous Ambiguous2 Ambiguous3 \
 do
   echo $file >> tmp.txt
   if [ ! -r typeclasses/$file.curry ]; then echo "*********** file doesn't exist: $file"; fi
-  $cymake -f -i typeclasses typeclasses/$file.curry 2> stderr.txt 1> stdout.txt && \
+  $cymake $exts -f -i typeclasses -i typeclasses/modules typeclasses/$file.curry 2> stderr.txt 1> stdout.txt && \
     (echo "===================="; echo "| No error in $file.curry:" ; echo "===================="; \
     cat stdout.txt; cat stderr.txt; echo; touch $errorFile)
   internalErrs=`cat stderr.txt | grep "Internal error"`
@@ -119,7 +114,7 @@ fi
 
 # do the check # 2 (modules system related)
 
-for file in TCPrelude TestClassExports TestClassExports2 TestClassExportsImports \
+for file in TestClassExports TestClassExports2 TestClassExportsImports \
   TestClassExportsNoExportSpec \
   InstancesExports InstancesExports2 InstancesExportsImports InstancesExportBug InstancesExportBugImports \
   Dependencies1 Dependencies1Imports \
@@ -171,7 +166,7 @@ for file in TCPrelude TestClassExports TestClassExports2 TestClassExportsImports
   DuplicateClassesD1 DuplicateClassesD2 DuplicateClassesD3 DuplicateClassesD4 \
   AsImportBug1 AsImportBug2 AsImportBug3 \
   Arb ArbUse \
-  TCPrelude TCPreludeUse List Maybe TCList \
+  TCPreludeUse Maybe TCList \
   ArbTypeSyn ArbTypeSynUse \
   HiddenClassMethodsBug1 HiddenClassMethodsBug2 \
   AmbiguousClassMethods1 AmbiguousClassMethods2 \
@@ -190,7 +185,7 @@ for file in TCPrelude TestClassExports TestClassExports2 TestClassExportsImports
 do
   echo $file >> tmp.txt
   if [ ! -r typeclasses/modules/$file.curry ]; then echo "*********** file doesn't exist: $file"; fi
-  $cymake -f -i typeclasses/modules typeclasses/modules/$file.curry 2> stderr.txt 1> stdout.txt || \
+  $cymake $exts -f -i typeclasses/modules typeclasses/modules/$file.curry 2> stderr.txt 1> stdout.txt || \
     (echo "===================="; echo "| Error in $file.curry:" ; echo "===================="; \
     cat stdout.txt; cat stderr.txt; echo; touch $errorFile)
 done
@@ -201,7 +196,7 @@ for file in Enums Enums2 Enums3 Enums4 TestNum
 do
   echo $file >> tmp.txt
   if [ ! -r typeclasses/modules/$file.curry ]; then echo "*********** file doesn't exist: $file"; fi
-  $cymake -f -X TypeClassExtensions -i typeclasses/modules typeclasses/modules/$file.curry 2> stderr.txt 1> stdout.txt || \
+  $cymake $exts -f -i typeclasses/modules typeclasses/modules/$file.curry 2> stderr.txt 1> stdout.txt || \
     (echo "===================="; echo "| Error in $file.curry:" ; echo "===================="; \
     cat stdout.txt; cat stderr.txt; echo; touch $errorFile)
 done
@@ -214,7 +209,7 @@ for file in ClassExportErrors ClassExportImportErrors ClassMethodsExportErr1 Cla
   ModuleExport4ImportErr HiddenClasses2Err HiddenClasses3Err \
   AmbigClassExportUseErr ConflictHiddenUseErr OverlappingInstancesUseErr OverlappingArrowInstancesUseErr \
   DuplicateClassesUse2Err AmbiguousClassMethodsUseErr \
-  DerivingClassesSupported1Err DerivingClassesSupported2Err \
+  DerivingClassesSupported2Err \
   Deriving3Err BugClassMethodsAndTopLevelFuns3 \
   \
   ClassMethodsExportUseErr1 ClassMethodsExportUseErr2 ClassMethodsExportUse2Err \
@@ -238,20 +233,7 @@ for file in ClassExportErrors ClassExportImportErrors ClassMethodsExportErr1 Cla
 do
   echo $file >> tmp.txt
   if [ ! -r typeclasses/modules/$file.curry ]; then echo "*********** file doesn't exist: $file"; fi
-  $cymake -f -i typeclasses/modules typeclasses/modules/$file.curry 2> stderr.txt 1> stdout.txt && \
-    (echo "===================="; echo "| No error in $file.curry:" ; echo "===================="; \
-    cat stdout.txt; cat stderr.txt; echo; touch $errorFile)
-  internalErrs=`cat stderr.txt | grep "Internal error"`
-  if [ -n "$internalErrs" ]; then echo "Internal error in $file"; fi
-done
-
-# check # 3b (errors in files that are compiled with type class extensions)
-
-for file in EnumBug EnumBug2
-do
-  echo $file >> tmp.txt
-  if [ ! -r typeclasses/modules/$file.curry ]; then echo "*********** file doesn't exist: $file"; fi
-  $cymake -f -X TypeClassExtensions -i typeclasses/modules typeclasses/modules/$file.curry 2> stderr.txt 1> stdout.txt && \
+  $cymake $exts -f -i typeclasses/modules typeclasses/modules/$file.curry 2> stderr.txt 1> stdout.txt && \
     (echo "===================="; echo "| No error in $file.curry:" ; echo "===================="; \
     cat stdout.txt; cat stderr.txt; echo; touch $errorFile)
   internalErrs=`cat stderr.txt | grep "Internal error"`

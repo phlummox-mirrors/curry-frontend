@@ -45,7 +45,7 @@ test6 x = (&&) (funC x) ((&&) (funC True) (funC (1::Int)))
 test8 :: (A a, C c, D d, E e) => a -> b -> c -> d -> e -> f
 test8 x y z u v = error ""
 
-test9 x = test8 True (1::Int) 'a' x (1.0)
+test9 x = test8 True (1::Int) 'a' x (1.0::Float)
 
 
 test10 x y = x `funF` y

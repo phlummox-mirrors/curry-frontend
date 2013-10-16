@@ -1,7 +1,6 @@
 
 
-import qualified TCPrelude as TCP
-import Prelude ()
+import qualified Prelude as TCP
 
 data T a = T a
   deriving (TCP.Eq)

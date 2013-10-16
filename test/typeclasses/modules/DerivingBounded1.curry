@@ -1,7 +1,4 @@
 
-import Prelude ()
-import TCPrelude
-
 data T = T1 | T2 | T3 | T4
   deriving Bounded
 

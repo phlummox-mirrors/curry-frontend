@@ -1,7 +1,6 @@
 
 
-import Prelude ()
-import qualified TCPrelude as TCP
+import qualified Prelude as TCP
 
 class C a where
   funC :: a -> a

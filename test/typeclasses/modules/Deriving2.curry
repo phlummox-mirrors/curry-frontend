@@ -1,8 +1,4 @@
 
-import Prelude ()
-import TCPrelude
-
-
 data T a b = T1 a | T2 b | T3 b
   deriving (Eq, Ord)
 

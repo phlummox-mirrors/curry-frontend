@@ -1,8 +1,7 @@
 
 module DerivingClassesSupported2Err where
 
--- import Prelude ()
--- import TCPrelude
+-- import Prelude
 
 class Eq a where
 

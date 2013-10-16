@@ -137,14 +137,14 @@ instance (Ord a, Ord b, Ord c, Ord d) => Ord (a, b, c, d) where
 -- Tests
 -- ------------------------------------------------------------------------------------
 
-testShow1 = show [1, 2, 3]
+testShow1 = show [1::Int, 2, 3]
 testShow2 = show ['a', 'b']
-testShow3 = show 1
+testShow3 = show (1::Int)
 testShow4 = show [True, False, True]
 testShow5 = show ([] :: [Int])
-testShow6 = show (1, 'a')
-testShow7 = show ('a', 0, True, False)
-testShow8 = show ('a', Node Empty (True, 0) (Node Empty (False, 1) Empty), [1,2])
+testShow6 = show (1::Int, 'a')
+testShow7 = show ('a', 0::Int, True, False)
+testShow8 = show ('a', Node Empty (True, 0::Int) (Node Empty (False, 1) Empty), [1::Int,2])
 
 testShow9 :: Show a => a -> String
 testShow9 x = show x
@@ -154,9 +154,9 @@ testShow9 x = show x
 testOrd1 :: Int -> Int -> Ordering
 testOrd1 x y = x `compare` y
 
-testOrd1a = 1 <= 2
-testOrd1b = 2 <= 1
-testOrd1c = 1 `compare` 2
+testOrd1a = (1::Int) <= 2
+testOrd1b = (2::Int) <= 1
+testOrd1c = (1::Int) `compare` 2
 
 testOrd2 :: Char -> Char -> Bool
 testOrd2 x y = x <= y
@@ -185,10 +185,10 @@ testOrd8 x y = x <= y
 testEq1 :: Tree Int -> Tree Int -> Bool
 testEq1 t1 t2 = t1 == t2
 
-testEq2 = Node (Node Empty (1, 'a', [True]) Empty) (2, 'b', [False, False]) Empty
+testEq2 = Node (Node Empty (1::Int, 'a', [True]) Empty) (2, 'b', [False, False]) Empty
   == Node (Node Empty (1, 'a', [True]) Empty) (2, 'b', [False, False]) Empty
 
-testEq3 = Node (Node Empty (1, 'a', [True]) Empty) (2, 'b', [False, False]) Empty
+testEq3 = Node (Node Empty (1::Int, 'a', [True]) Empty) (2, 'b', [False, False]) Empty
   == Node (Node Empty (1, 'a', [True]) Empty) (2, 'b', [True, False]) Empty
 
 testEq4 :: Eq a => a -> a -> Bool

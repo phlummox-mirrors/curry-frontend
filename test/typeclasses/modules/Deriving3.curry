@@ -1,6 +1,5 @@
 
-import Prelude ()
-import qualified TCPrelude as P
+import qualified Prelude as P
 
 data T a b = T1 a | T2 b | T3 b
   deriving P.Eq

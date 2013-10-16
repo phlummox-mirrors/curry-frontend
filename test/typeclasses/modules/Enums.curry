@@ -1,7 +1,4 @@
 
-import Prelude ()
-import TCPrelude
-
 test1 = [1 ..]
 
 test2 = [False ..]

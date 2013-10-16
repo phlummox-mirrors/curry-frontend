@@ -14,4 +14,4 @@ test2 :: Float
 test2 = 0
 
 
-test3 = test 1
+test3 = test (1::Int)

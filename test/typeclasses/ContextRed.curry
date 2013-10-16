@@ -1,6 +1,4 @@
 
-import Prelude hiding (show)
-
 class C a where
   fun :: a -> Bool
   fun2 :: a -> a
@@ -123,7 +121,7 @@ testJ1b x y = fun2 (testJ2b x y)
 testJ2b :: (J a, Ord a, Eq a, Show a) => a -> b -> a
 testJ2b x y = fun4 (testJ1b x y)
 
-testK1 :: Eq a => a -> a -> Bool
+testK1 :: Prelude.Eq a => a -> a -> Bool
 testK1 x y = [x, x] == [y, y]
 
 testL1 :: (J a, Ord a, Eq a, Show a) => a -> a

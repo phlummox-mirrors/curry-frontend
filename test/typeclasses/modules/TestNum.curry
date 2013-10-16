@@ -1,8 +1,4 @@
 
-import Prelude ()
-import TCPrelude
-
-
 test0 = 1
 test0b = 1.0
 

@@ -1,6 +1,5 @@
 
-import Prelude ()
-import qualified TCPrelude as P
+import qualified Prelude as P
 
 infixl 3 :==:
 infixr 8 :~:

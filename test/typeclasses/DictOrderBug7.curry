@@ -107,7 +107,7 @@ test9 x = funA3 (Y True x 0) True
 
 test10 x y z = funA2 (Y x y z) (Y x y z)
 
-test11 x = funA2 (Y x 0 True) (Y x 1 False)
+test11 x = funA2 (Y x (0::Int) True) (Y x 1 False)
 
 -- funA1 + Y
 
@@ -135,7 +135,7 @@ test17b x = funA3 (Z x True 0) True
 
 test18 x y z = funA2 (Z x y z) (Z x y z)
 
-test18b x = funA2 (Z x 0 True) (Z x (-1) False)
+test18b x = funA2 (Z x (0::Int) True) (Z x (-1) False)
 
 test19 x y z = funA1 (Z x y z) (Z x y z)
 
@@ -143,7 +143,7 @@ test19b x y z = funA1 (Z x True 0) (Z x False 1)
 
 test20 x y z = funA0 (Z x y z) False
 
-test21 x = funA0 (Z x 0 True) False
+test21 x = funA0 (Z x (0::Int) True) False
 
 -- -------------------------
 
