@@ -576,11 +576,11 @@ external_d_C_ensureNotFree x cd cs =
 external_d_C_failed :: NonDet a => Cover -> ConstStore -> a
 external_d_C_failed cd _ = failCons cd defFailInfo
 
-external_d_OP_eq_eq :: Curry a => a -> a -> Cover -> ConstStore -> C_Bool
-external_d_OP_eq_eq  = (=?=)
+external_d_OP_eq_eq_dollar :: Curry a => a -> a -> Cover -> ConstStore -> C_Bool
+external_d_OP_eq_eq_dollar  = (=?=)
 
-external_d_OP_lt_eq :: Curry a => a -> a -> Cover -> ConstStore -> C_Bool
-external_d_OP_lt_eq = (<?=)
+external_d_OP_lt_eq_dollar :: Curry a => a -> a -> Cover -> ConstStore -> C_Bool
+external_d_OP_lt_eq_dollar = (<?=)
 
 -- characters
 
@@ -594,26 +594,26 @@ external_d_C_prim_chr (C_CurryInt i) _ _ = CurryChar i
 
 -- int arithmetics
 
-external_d_OP_plus :: C_Int -> C_Int -> Cover -> ConstStore -> C_Int
-external_d_OP_plus (C_Int      x) (C_Int      y) _ _  = C_Int (x +# y)
-external_d_OP_plus (C_Int      x) (C_CurryInt y) cd cs = C_CurryInt (((primint2curryint x) `d_OP_plus_hash` y) cd cs)
-external_d_OP_plus (C_CurryInt x) (C_Int      y) cd cs = C_CurryInt ((x `d_OP_plus_hash` (primint2curryint y)) cd cs)
-external_d_OP_plus (C_CurryInt x) (C_CurryInt y) cd cs = C_CurryInt ((x `d_OP_plus_hash` y) cd cs)
-external_d_OP_plus x y cd cs = ((\a cd1 cs1 -> ((\b cd2 cs2 -> ((a `external_d_OP_plus` b) cd2 cs2)) `d_OP_dollar_hash` y) cd1 cs1) `d_OP_dollar_hash` x) cd cs
+external_d_OP_plus_dollar :: C_Int -> C_Int -> Cover -> ConstStore -> C_Int
+external_d_OP_plus_dollar (C_Int      x) (C_Int      y) _ _  = C_Int (x +# y)
+external_d_OP_plus_dollar (C_Int      x) (C_CurryInt y) cd cs = C_CurryInt (((primint2curryint x) `d_OP_plus_hash` y) cd cs)
+external_d_OP_plus_dollar (C_CurryInt x) (C_Int      y) cd cs = C_CurryInt ((x `d_OP_plus_hash` (primint2curryint y)) cd cs)
+external_d_OP_plus_dollar (C_CurryInt x) (C_CurryInt y) cd cs = C_CurryInt ((x `d_OP_plus_hash` y) cd cs)
+external_d_OP_plus_dollar x y cd cs = ((\a cd1 cs1 -> ((\b cd2 cs2 -> ((a `external_d_OP_plus_dollar` b) cd2 cs2)) `d_OP_dollar_hash` y) cd1 cs1) `d_OP_dollar_hash` x) cd cs
 
-external_d_OP_minus :: C_Int -> C_Int -> Cover -> ConstStore -> C_Int
-external_d_OP_minus (C_Int      x) (C_Int      y) _ _  = C_Int (x -# y)
-external_d_OP_minus (C_Int      x) (C_CurryInt y) cd cs = C_CurryInt (((primint2curryint x) `d_OP_minus_hash` y) cd cs)
-external_d_OP_minus (C_CurryInt x) (C_Int y)      cd cs = C_CurryInt ((x `d_OP_minus_hash` (primint2curryint y)) cd cs)
-external_d_OP_minus (C_CurryInt x) (C_CurryInt y) cd cs = C_CurryInt ((x `d_OP_minus_hash` y) cd cs)
-external_d_OP_minus x y cd cs = ((\a cd1 cs1 -> ((\b cd2 cs2 -> ((a `external_d_OP_minus` b) cd2 cs2 )) `d_OP_dollar_hash` y) cd1 cs1) `d_OP_dollar_hash` x) cd cs
+external_d_OP_minus_dollar :: C_Int -> C_Int -> Cover -> ConstStore -> C_Int
+external_d_OP_minus_dollar (C_Int      x) (C_Int      y) _ _  = C_Int (x -# y)
+external_d_OP_minus_dollar (C_Int      x) (C_CurryInt y) cd cs = C_CurryInt (((primint2curryint x) `d_OP_minus_hash` y) cd cs)
+external_d_OP_minus_dollar (C_CurryInt x) (C_Int y)      cd cs = C_CurryInt ((x `d_OP_minus_hash` (primint2curryint y)) cd cs)
+external_d_OP_minus_dollar (C_CurryInt x) (C_CurryInt y) cd cs = C_CurryInt ((x `d_OP_minus_hash` y) cd cs)
+external_d_OP_minus_dollar x y cd cs = ((\a cd1 cs1 -> ((\b cd2 cs2 -> ((a `external_d_OP_minus_dollar` b) cd2 cs2 )) `d_OP_dollar_hash` y) cd1 cs1) `d_OP_dollar_hash` x) cd cs
 
-external_d_OP_star :: C_Int -> C_Int -> Cover -> ConstStore -> C_Int
-external_d_OP_star (C_Int      x) (C_Int      y) _ _  = C_Int (x *# y)
-external_d_OP_star (C_Int      x) (C_CurryInt y) cd cs = C_CurryInt (((primint2curryint x) `d_OP_star_hash` y) cd cs)
-external_d_OP_star (C_CurryInt x) (C_Int      y) cd cs = C_CurryInt ((x `d_OP_star_hash` (primint2curryint y)) cd cs)
-external_d_OP_star (C_CurryInt x) (C_CurryInt y) cd cs = C_CurryInt ((x `d_OP_star_hash` y) cd cs)
-external_d_OP_star x y cd cs = ((\a cd1 cs1 -> ((\b cd2 cs2 -> ((a `external_d_OP_star` b) cd2 cs2)) `d_OP_dollar_hash` y) cd1 cs1) `d_OP_dollar_hash` x) cd cs
+external_d_OP_star_dollar :: C_Int -> C_Int -> Cover -> ConstStore -> C_Int
+external_d_OP_star_dollar (C_Int      x) (C_Int      y) _ _  = C_Int (x *# y)
+external_d_OP_star_dollar (C_Int      x) (C_CurryInt y) cd cs = C_CurryInt (((primint2curryint x) `d_OP_star_hash` y) cd cs)
+external_d_OP_star_dollar (C_CurryInt x) (C_Int      y) cd cs = C_CurryInt ((x `d_OP_star_hash` (primint2curryint y)) cd cs)
+external_d_OP_star_dollar (C_CurryInt x) (C_CurryInt y) cd cs = C_CurryInt ((x `d_OP_star_hash` y) cd cs)
+external_d_OP_star_dollar x y cd cs = ((\a cd1 cs1 -> ((\b cd2 cs2 -> ((a `external_d_OP_star_dollar` b) cd2 cs2)) `d_OP_dollar_hash` y) cd1 cs1) `d_OP_dollar_hash` x) cd cs
 
 external_d_C_quot :: C_Int -> C_Int -> Cover -> ConstStore -> C_Int
 external_d_C_quot (C_Int      x) (C_Int      y) cd _
@@ -642,14 +642,14 @@ external_d_C_quotRem (C_CurryInt x) (C_Int      y) cd cs = (mkIntTuple `d_dollar
 external_d_C_quotRem (C_CurryInt x) (C_CurryInt y) cd cs = (mkIntTuple `d_dollar_bang` ((x `d_C_quotRemInteger` y) cd cs)) cd cs
 external_d_C_quotRem x y cd cs = ((\a cd1 cs1 -> ((\b cd2 cs2 -> ((a `external_d_C_quotRem` b) cd2 cs2)) `d_OP_dollar_hash` y) cd1 cs1) `d_OP_dollar_hash` x) cd cs
 
-external_d_C_div :: C_Int -> C_Int -> Cover -> ConstStore -> C_Int
-external_d_C_div (C_Int      x) (C_Int      y) cd _
+external_d_C_div_ :: C_Int -> C_Int -> Cover -> ConstStore -> C_Int
+external_d_C_div_ (C_Int      x) (C_Int      y) cd _
   | y ==# 0#  = Fail_C_Int cd defFailInfo
   | otherwise = C_Int (x `divInt#` y)
-external_d_C_div (C_Int      x) (C_CurryInt y) cd cs = C_CurryInt (((primint2curryint x) `d_C_divInteger` y) cd cs)
-external_d_C_div (C_CurryInt x) (C_Int      y) cd cs = C_CurryInt ((x `d_C_divInteger` (primint2curryint y)) cd cs)
-external_d_C_div (C_CurryInt x) (C_CurryInt y) cd cs = C_CurryInt ((x `d_C_divInteger` y) cd cs)
-external_d_C_div x y cd cs = ((\a cd1 cs1-> ((\b cd2 cs2-> ((a `external_d_C_div` b) cd2 cs2)) `d_OP_dollar_hash` y) cd1 cs1) `d_OP_dollar_hash` x) cd cs
+external_d_C_div_ (C_Int      x) (C_CurryInt y) cd cs = C_CurryInt (((primint2curryint x) `d_C_divInteger` y) cd cs)
+external_d_C_div_ (C_CurryInt x) (C_Int      y) cd cs = C_CurryInt ((x `d_C_divInteger` (primint2curryint y)) cd cs)
+external_d_C_div_ (C_CurryInt x) (C_CurryInt y) cd cs = C_CurryInt ((x `d_C_divInteger` y) cd cs)
+external_d_C_div_ x y cd cs = ((\a cd1 cs1-> ((\b cd2 cs2-> ((a `external_d_C_div_` b) cd2 cs2)) `d_OP_dollar_hash` y) cd1 cs1) `d_OP_dollar_hash` x) cd cs
 
 -- PrimOp taken from GHC.Base
 divInt# :: Int# -> Int# -> Int#
@@ -663,14 +663,14 @@ x# `divInt#` y#
     | (x# <# 0#) && (y# ># 0#) = ((x# +# 1#) `quotInt#` y#) -# 1#
     | otherwise                = x# `quotInt#` y#
 
-external_d_C_mod :: C_Int -> C_Int -> Cover -> ConstStore -> C_Int
-external_d_C_mod (C_Int      x) (C_Int      y) cd _
+external_d_C_mod_ :: C_Int -> C_Int -> Cover -> ConstStore -> C_Int
+external_d_C_mod_ (C_Int      x) (C_Int      y) cd _
   | y ==# 0#  = Fail_C_Int cd defFailInfo
   | otherwise = C_Int (x `modInt#` y)
-external_d_C_mod (C_Int      x) (C_CurryInt y) cd cs = C_CurryInt (((primint2curryint x) `d_C_modInteger` y) cd cs)
-external_d_C_mod (C_CurryInt x) (C_Int      y) cd cs = C_CurryInt ((x `d_C_modInteger` (primint2curryint y)) cd cs)
-external_d_C_mod (C_CurryInt x) (C_CurryInt y) cd cs = C_CurryInt ((x `d_C_modInteger` y) cd cs)
-external_d_C_mod x y cd cs = ((\a cd1 cs1 -> ((\b cd2 cs2 -> ((a `external_d_C_mod` b)) cd2 cs2) `d_OP_dollar_hash` y) cd1 cs1) `d_OP_dollar_hash` x) cd cs
+external_d_C_mod_ (C_Int      x) (C_CurryInt y) cd cs = C_CurryInt (((primint2curryint x) `d_C_modInteger` y) cd cs)
+external_d_C_mod_ (C_CurryInt x) (C_Int      y) cd cs = C_CurryInt ((x `d_C_modInteger` (primint2curryint y)) cd cs)
+external_d_C_mod_ (C_CurryInt x) (C_CurryInt y) cd cs = C_CurryInt ((x `d_C_modInteger` y) cd cs)
+external_d_C_mod_ x y cd cs = ((\a cd1 cs1 -> ((\b cd2 cs2 -> ((a `external_d_C_mod_` b)) cd2 cs2) `d_OP_dollar_hash` y) cd1 cs1) `d_OP_dollar_hash` x) cd cs
 
 -- PrimOp taken from GHC.Base
 modInt# :: Int# -> Int# -> Int#
@@ -996,7 +996,7 @@ d_C_mod2 x1 x3250 x3500 = case x1 of
      _ -> failCons x3250 defFailInfo
 
 d_C_quotRemNat :: Nat  -> Nat  -> Cover -> ConstStore -> Curry_Prelude.OP_Tuple2 BinInt BinInt
-d_C_quotRemNat x1 x2 x3250 x3500 = d_OP__casePT_23 x1 x2 (Curry_Prelude.d_OP_eq_eq x2 IHi x3250 x3500) x3250 x3500
+d_C_quotRemNat x1 x2 x3250 x3500 = d_OP__casePT_23 x1 x2 (Curry_Prelude.d_OP_eq_eq_dollar x2 IHi x3250 x3500) x3250 x3500
 
 d_OP_quotRemNat_dot_shift_dot_104 :: Nat  -> Nat  -> Cover -> ConstStore -> Nat 
 d_OP_quotRemNat_dot_shift_dot_104 x1 x2 x3250 x3500 = case x1 of
@@ -1009,7 +1009,7 @@ d_OP_quotRemNat_dot_shift_dot_104 x1 x2 x3250 x3500 = case x1 of
      _ -> failCons x3250 defFailInfo
 
 d_C_lteqInteger :: BinInt -> BinInt -> Cover -> ConstStore -> Curry_Prelude.C_Bool
-d_C_lteqInteger x1 x2 x3250 x3500 = Curry_Prelude.d_OP_slash_eq (d_C_cmpInteger x1 x2 x3250 x3500) Curry_Prelude.C_GT x3250 x3500
+d_C_lteqInteger x1 x2 x3250 x3500 = Curry_Prelude.d_OP_slash_eq_dollar (d_C_cmpInteger x1 x2 x3250 x3500) Curry_Prelude.C_GT x3250 x3500
 
 d_C_cmpInteger :: BinInt -> BinInt -> Cover -> ConstStore -> Curry_Prelude.C_Ordering
 d_C_cmpInteger x1 x2 x3250 x3500 = case x1 of
@@ -1584,7 +1584,7 @@ nd_OP__casePT_14 x2 x3000 x3250 x3500 = case x2 of
 
 d_OP__casePT_23 x1 x2 x3 x3250 x3500 = case x3 of
      Curry_Prelude.C_True -> Curry_Prelude.OP_Tuple2 (Pos x1) Zero
-     Curry_Prelude.C_False -> d_OP__casePT_22 x1 x2 (Curry_Prelude.d_OP_eq_eq x1 IHi x3250 x3500) x3250 x3500
+     Curry_Prelude.C_False -> d_OP__casePT_22 x1 x2 (Curry_Prelude.d_OP_eq_eq_dollar x1 IHi x3250 x3500) x3250 x3500
      (Curry_Prelude.Choice_C_Bool x1000 x1001 x1002 x1003) -> narrow x1000 x1001 (d_OP__casePT_23 x1 x2 x1002 x3250 x3500) (d_OP__casePT_23 x1 x2 x1003 x3250 x3500)
      (Curry_Prelude.Choices_C_Bool x1000 x1001 x1002) -> narrows x3500 x1000 x1001 (\z -> d_OP__casePT_23 x1 x2 z x3250 x3500) x1002
      (Curry_Prelude.Guard_C_Bool x1000 x1001 x1002) -> guardCons x1000 x1001 ((d_OP__casePT_23 x1 x2 x1002 x3250) $! (addCs x1001 x3500))
@@ -1595,7 +1595,7 @@ nd_OP__casePT_23 x1 x2 x3 x3000 x3250 x3500 = case x3 of
      Curry_Prelude.C_True -> Curry_Prelude.OP_Tuple2 (Pos x1) Zero
      Curry_Prelude.C_False -> let
           x2000 = x3000
-           in (seq x2000 (nd_OP__casePT_22 x1 x2 (Curry_Prelude.d_OP_eq_eq x1 IHi x3250 x3500) x2000 x3250 x3500))
+           in (seq x2000 (nd_OP__casePT_22 x1 x2 (Curry_Prelude.d_OP_eq_eq_dollar x1 IHi x3250 x3500) x2000 x3250 x3500))
      (Curry_Prelude.Choice_C_Bool x1000 x1001 x1002 x1003) -> narrow x1000 x1001 (nd_OP__casePT_23 x1 x2 x1002 x3000 x3250 x3500) (nd_OP__casePT_23 x1 x2 x1003 x3000 x3250 x3500)
      (Curry_Prelude.Choices_C_Bool x1000 x1001 x1002) -> narrows x3500 x1000 x1001 (\z -> nd_OP__casePT_23 x1 x2 z x3000 x3250 x3500) x1002
      (Curry_Prelude.Guard_C_Bool x1000 x1001 x1002) -> guardCons x1000 x1001 ((nd_OP__casePT_23 x1 x2 x1002 x3000 x3250) $! (addCs x1001 x3500))
@@ -1967,3 +1967,57 @@ nd_OP__casePT_33 x2 x3000 x3250 x3500 = case x2 of
      (Guard_Nat  x1000 x1001 x1002) -> guardCons x1000 x1001 ((nd_OP__casePT_33 x1002 x3000 x3250) $! (addCs x1001 x3500))
      (Fail_Nat  x1000 x1001) -> failCons x1000 x1001
      _ -> failCons x3250 defFailInfo
+
+d_OP_lt :: Curry t0 => t0 -> t0 -> Cover -> ConstStore -> C_Bool
+d_OP_lt = d_OP_lt_dollar
+
+-- ----------------------------------------------------------------------------
+-- Floating point externals
+-- ----------------------------------------------------------------------------
+
+external_d_C_prim_Float_plus :: C_Float -> C_Float -> Cover -> ConstStore -> C_Float
+external_d_C_prim_Float_plus y x _ _ =
+  toCurry ((fromCurry x + fromCurry y) :: Float)
+
+external_d_C_prim_Float_minus :: C_Float -> C_Float -> Cover -> ConstStore -> C_Float
+external_d_C_prim_Float_minus y x _ _ =
+  toCurry ((fromCurry x - fromCurry y) :: Float)
+
+external_d_C_prim_Float_times :: C_Float -> C_Float -> Cover -> ConstStore -> C_Float
+external_d_C_prim_Float_times y x _ _ =
+  toCurry ((fromCurry x * fromCurry y) :: Float)
+
+external_d_C_prim_Float_div :: C_Float -> C_Float -> Cover -> ConstStore -> C_Float
+external_d_C_prim_Float_div y x _ _ =
+  toCurry ((fromCurry x / fromCurry y) :: Float)
+
+external_d_C_prim_i2f :: C_Int -> Cover -> ConstStore -> C_Float
+external_d_C_prim_i2f x _ _ = toCurry (fromInteger (fromCurry x) :: Float)
+
+external_d_C_prim_truncate :: C_Float -> Cover -> ConstStore -> C_Int
+external_d_C_prim_truncate x _ _ = toCurry (truncate (fromCurry x :: Float) :: Int)
+
+external_d_C_prim_round :: C_Float -> Cover -> ConstStore -> C_Int
+external_d_C_prim_round x _ _ = toCurry (round (fromCurry x :: Float) :: Int)
+
+external_d_C_prim_sqrt :: C_Float -> Cover -> ConstStore -> C_Float
+external_d_C_prim_sqrt x _ _ = toCurry (sqrt (fromCurry x :: Float))
+
+external_d_C_prim_log :: C_Float -> Cover -> ConstStore -> C_Float
+external_d_C_prim_log x _ _ = toCurry (log (fromCurry x :: Float))
+
+external_d_C_prim_exp :: C_Float -> Cover -> ConstStore -> C_Float
+external_d_C_prim_exp x _ _ = toCurry (exp (fromCurry x :: Float))
+
+external_d_C_prim_sin :: C_Float -> Cover -> ConstStore -> C_Float
+external_d_C_prim_sin x _ _ = toCurry (sin (fromCurry x :: Float))
+
+external_d_C_prim_cos :: C_Float -> Cover -> ConstStore -> C_Float
+external_d_C_prim_cos x _ _ = toCurry (cos (fromCurry x :: Float))
+
+external_d_C_prim_tan :: C_Float -> Cover -> ConstStore -> C_Float
+external_d_C_prim_tan x _ _ = toCurry (tan (fromCurry x :: Float))
+
+external_d_C_prim_atan :: C_Float -> Cover -> ConstStore -> C_Float
+external_d_C_prim_atan x _ _ = toCurry (atan (fromCurry x :: Float))
+
