@@ -182,6 +182,7 @@ if_then_else b t f = case b of True  -> t
 
 --- Ordering type. Useful as a result of comparison functions.
 data Ordering = LT | EQ | GT
+  deriving (Eq, Ord)
 
 --- Comparison of arbitrary ground data terms.
 --- Data constructors are compared in the order of their definition
@@ -983,18 +984,6 @@ instance Eq a => Eq (Maybe a) where
   Nothing == Just _  = False
   Just x  == Just y  = x == y
 
--- TODO: use deriving instead
-instance Eq Ordering where
-  LT == LT = True
-  LT == EQ = False
-  LT == GT = False
-  EQ == LT = False
-  EQ == EQ = True
-  EQ == GT = False
-  GT == LT = False
-  GT == EQ = False
-  GT == GT = True
-
 instance Eq Success where
   _ == _ = True
 
@@ -1051,18 +1040,6 @@ instance Ord Float where
 
 instance Ord Success where
   _ <= _ = True
-
--- TODO: use deriving instead
-instance Ord Ordering where
-  LT <= LT = True
-  LT <= EQ = True
-  LT <= GT = True
-  EQ <= LT = False
-  EQ <= EQ = True
-  EQ <= GT = True
-  GT <= LT = False
-  GT <= EQ = False
-  GT <= GT = True
 
 instance Ord a => Ord (Maybe a) where
   Nothing <= Nothing = True
