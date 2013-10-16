@@ -216,7 +216,7 @@ interface.
 >   liftM2 (EnumFromTo cty) (checkExpr e1) (checkExpr e2)
 > checkExpr (EnumFromThenTo cty e1 e2 e3) =
 >   liftM3 (EnumFromThenTo cty) (checkExpr e1) (checkExpr e2) (checkExpr e3)
-> checkExpr (UnaryMinus         op e) = UnaryMinus op `liftM` (checkExpr e)
+> checkExpr (UnaryMinus cty     op e) = UnaryMinus cty op `liftM` (checkExpr e)
 > checkExpr (Apply e1 e2) =
 >   liftM2 Apply (checkExpr e1) (checkExpr e2)
 > checkExpr (InfixApply e1 op e2) = do
@@ -277,21 +277,21 @@ argument. Note that both arguments already have been checked before
 \begin{verbatim}
 
 > fixPrec :: Expression -> InfixOp -> Expression -> PCM Expression
-> fixPrec (UnaryMinus uop e1) op e2 = do
+> fixPrec (UnaryMinus cty uop e1) op e2 = do
 >   OpPrec fix pr <- getOpPrec op
 >   if pr < 6 || pr == 6 && fix == InfixL
->     then fixRPrec (UnaryMinus uop e1) op e2
+>     then fixRPrec (UnaryMinus cty uop e1) op e2
 >     else if pr > 6
 >       then fixUPrec uop e1 op e2
 >       else do
 >         report $ errAmbiguousParse "unary" (qualify uop) (opName op)
->         return $ InfixApply (UnaryMinus uop e1) op e2
+>         return $ InfixApply (UnaryMinus cty uop e1) op e2
 > fixPrec e1 op e2 = fixRPrec e1 op e2
 
 > fixUPrec :: Ident -> Expression -> InfixOp -> Expression -> PCM Expression
-> fixUPrec uop e1 op e2@(UnaryMinus _ _) = do
+> fixUPrec uop e1 op e2@(UnaryMinus cty _ _) = do
 >   report $ errAmbiguousParse "operator" (opName op) (qualify uop)
->   return $ UnaryMinus uop (InfixApply e1 op e2)
+>   return $ UnaryMinus cty uop (InfixApply e1 op e2)
 > fixUPrec uop e1 op1 e'@(InfixApply e2 op2 e3) = do
 >   OpPrec fix2 pr2 <- getOpPrec op2
 >   if pr2 < 6 || pr2 == 6 && fix2 == InfixL
@@ -301,17 +301,17 @@ argument. Note that both arguments already have been checked before
 >     else if pr2 > 6
 >       then do
 >         op <- fixRPrec e1 op1 $ InfixApply e2 op2 e3
->         return $ UnaryMinus uop op
+>         return $ UnaryMinus Nothing uop op
 >       else do
 >         report $ errAmbiguousParse "unary" (qualify uop) (opName op2)
->         return $ InfixApply (UnaryMinus uop e1) op1 e'
-> fixUPrec uop e1 op e2 = return $ UnaryMinus uop (InfixApply e1 op e2)
+>         return $ InfixApply (UnaryMinus Nothing uop e1) op1 e'
+> fixUPrec uop e1 op e2 = return $ UnaryMinus Nothing uop (InfixApply e1 op e2)
 
 > fixRPrec :: Expression -> InfixOp -> Expression -> PCM Expression
-> fixRPrec e1 op (UnaryMinus uop e2) = do
+> fixRPrec e1 op (UnaryMinus cty uop e2) = do
 >   OpPrec _ pr <- getOpPrec op
 >   unless (pr < 6) $ report $ errAmbiguousParse "operator" (opName op) (qualify uop)
->   return $ InfixApply e1 op $ UnaryMinus uop e2
+>   return $ InfixApply e1 op $ UnaryMinus cty uop e2
 > fixRPrec e1 op1 (InfixApply e2 op2 e3) = do
 >   OpPrec fix1 pr1 <- getOpPrec op1
 >   OpPrec fix2 pr2 <- getOpPrec op2
@@ -337,7 +337,7 @@ section, respectively.
 \begin{verbatim}
 
 > checkLSection :: InfixOp -> Expression -> PCM Expression
-> checkLSection op e@(UnaryMinus uop _) = do
+> checkLSection op e@(UnaryMinus _ uop _) = do
 >   OpPrec fix pr <- getOpPrec op
 >   unless (pr < 6 || pr == 6 && fix == InfixL) $
 >     report $ errAmbiguousParse "unary" (qualify uop) (opName op)
@@ -351,7 +351,7 @@ section, respectively.
 > checkLSection op e = return $ LeftSection e op
 
 > checkRSection :: InfixOp -> Expression -> PCM Expression
-> checkRSection op e@(UnaryMinus uop _) = do
+> checkRSection op e@(UnaryMinus _ uop _) = do
 >   OpPrec _ pr <- getOpPrec op
 >   unless (pr < 6) $ report $ errAmbiguousParse "unary" (qualify uop) (opName op)
 >   return $ RightSection op e

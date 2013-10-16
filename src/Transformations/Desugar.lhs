@@ -452,7 +452,7 @@ type \texttt{Bool} of the guard because the guard's type defaults to
 >   apply prelEnumFromTo `liftM` mapM (dsExpr p) [e1, e2]
 > dsExpr p (EnumFromThenTo _cty e1 e2 e3) =
 >   apply prelEnumFromThenTo `liftM` mapM (dsExpr p) [e1, e2, e3]
-> dsExpr p (UnaryMinus op e) = do
+> dsExpr p (UnaryMinus _cty op e) = do
 >   ty <- getTypeOf e
 >   Apply (unaryMinus op ty) `liftM` dsExpr p e
 >   where

@@ -381,7 +381,7 @@ gatherTSExpr (EnumFromThen _ expr1 expr2) = gatherTSExpr expr1 ++ gatherTSExpr e
 gatherTSExpr (EnumFromTo _ expr1 expr2) = gatherTSExpr expr1 ++ gatherTSExpr expr2
 gatherTSExpr (EnumFromThenTo _ expr1 expr2 expr3) = 
   gatherTSExpr expr1 ++ gatherTSExpr expr2 ++ gatherTSExpr expr3
-gatherTSExpr (UnaryMinus _ expr) = gatherTSExpr expr 
+gatherTSExpr (UnaryMinus _ _ expr) = gatherTSExpr expr 
 gatherTSExpr (Apply e1 e2) = gatherTSExpr e1 ++ gatherTSExpr e2
 gatherTSExpr (InfixApply e1 _ e2) = gatherTSExpr e1 ++ gatherTSExpr e2
 gatherTSExpr (LeftSection e _) = gatherTSExpr e
@@ -465,7 +465,7 @@ adjExpr m cEnv (EnumFromThen cty e1 e2) = EnumFromThen cty (adjExpr m cEnv e1) (
 adjExpr m cEnv (EnumFromTo cty e1 e2) = EnumFromTo cty (adjExpr m cEnv e1) (adjExpr m cEnv e2)
 adjExpr m cEnv (EnumFromThenTo cty e1 e2 e3) = 
   EnumFromThenTo cty (adjExpr m cEnv e1) (adjExpr m cEnv e2) (adjExpr m cEnv e3)
-adjExpr m cEnv (UnaryMinus i e) = UnaryMinus i (adjExpr m cEnv e)
+adjExpr m cEnv (UnaryMinus cty i e) = UnaryMinus cty i (adjExpr m cEnv e)
 adjExpr m cEnv (Apply e1 e2) = Apply (adjExpr m cEnv e1) (adjExpr m cEnv e2)
 adjExpr m cEnv (InfixApply e1 op e2) = InfixApply (adjExpr m cEnv e1) op (adjExpr m cEnv e2)
 adjExpr m cEnv (LeftSection e op) = LeftSection (adjExpr m cEnv e) op

@@ -207,7 +207,7 @@ declaration groups.
 >   liftM2 (EnumFromTo cty) (checkExpr e1) (checkExpr e2)
 > checkExpr (EnumFromThenTo cty e1 e2 e3) =
 >   liftM3 (EnumFromThenTo cty) (checkExpr e1) (checkExpr e2) (checkExpr e3)
-> checkExpr (UnaryMinus     op e) = UnaryMinus op `liftM` checkExpr e
+> checkExpr (UnaryMinus cty op e) = UnaryMinus cty op `liftM` checkExpr e
 > checkExpr (Apply         e1 e2) = liftM2 Apply (checkExpr e1) (checkExpr e2)
 > checkExpr (InfixApply e1 op e2) =
 >   liftM2 (\f1 f2 -> InfixApply f1 op f2) (checkExpr e1) (checkExpr e2)

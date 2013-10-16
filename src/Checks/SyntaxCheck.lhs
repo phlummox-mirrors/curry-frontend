@@ -820,7 +820,7 @@ checkParen
 >   liftM2 (EnumFromTo cty) (checkExpr p e1) (checkExpr p e2)
 > checkExpr p (EnumFromThenTo cty e1 e2 e3) =
 >   liftM3 (EnumFromThenTo cty) (checkExpr p e1) (checkExpr p e2) (checkExpr p e3)
-> checkExpr p (UnaryMinus         op e) = UnaryMinus op `liftM` checkExpr p e
+> checkExpr p (UnaryMinus cty     op e) = UnaryMinus cty op `liftM` checkExpr p e
 > checkExpr p (Apply             e1 e2) =
 >   liftM2 Apply (checkExpr p e1) (checkExpr p e2)
 > checkExpr p (InfixApply     e1 op e2) =

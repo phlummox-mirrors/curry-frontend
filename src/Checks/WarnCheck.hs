@@ -277,7 +277,7 @@ checkExpr (EnumFrom _            e) = checkExpr e
 checkExpr (EnumFromThen _    e1 e2) = mapM_ checkExpr [e1, e2]
 checkExpr (EnumFromTo _      e1 e2) = mapM_ checkExpr [e1, e2]
 checkExpr (EnumFromThenTo _ e1 e2 e3) = mapM_ checkExpr [e1, e2, e3]
-checkExpr (UnaryMinus          _ e) = checkExpr e
+checkExpr (UnaryMinus _        _ e) = checkExpr e
 checkExpr (Apply             e1 e2) = mapM_ checkExpr [e1, e2]
 checkExpr (InfixApply     e1 op e2) = do
   visitQId (opName op)

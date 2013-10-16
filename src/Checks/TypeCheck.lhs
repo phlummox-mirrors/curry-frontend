@@ -839,9 +839,9 @@ the maximal necessary contexts for the functions are determined.
 >   return (EnumFromThenTo cty e1' e2' e3', 
 >           cx1 ++ cx2 ++ cx3 ++ (if exts then mirrorBFCx cx else []))
 > fpExpr (EnumFromThenTo Nothing _ _ _) = internalError "fpExpr EnumFromThenTo"
-> fpExpr (UnaryMinus id0 e) = do
+> fpExpr (UnaryMinus cty id0 e) = do
 >   (e', cx) <- fpExpr e
->   return (UnaryMinus id0 e', cx)
+>   return (UnaryMinus cty id0 e', cx)
 > fpExpr (Apply e1 e2) = do
 >   (e1', cx1) <- fpExpr e1
 >   (e2', cx2) <- fpExpr e2
@@ -1001,7 +1001,7 @@ the maximal necessary contexts for the functions are determined.
 >           else return cty
 >   return $ EnumFromThenTo (Just cty') e1' e2' e3'
 > cvcExpr (EnumFromThenTo Nothing _ _ _) = internalError "cvcExpr EnumFromThenTo"
-> cvcExpr (UnaryMinus i e) = UnaryMinus i `liftM` cvcExpr e
+> cvcExpr (UnaryMinus cty i e) = UnaryMinus cty i `liftM` cvcExpr e
 > cvcExpr (Apply e1 e2) = liftM2 Apply (cvcExpr e1) (cvcExpr e2)
 > cvcExpr (InfixApply e1 op e2) = liftM3 InfixApply (cvcExpr e1) (cvcInfixOp op) (cvcExpr e2)
 > cvcExpr (LeftSection e op) = liftM2 LeftSection (cvcExpr e) (cvcInfixOp op)
@@ -1750,12 +1750,12 @@ because of possibly multiple occurrences of variables.
 >                  (cx1 ++ cx2 ++ cx3 ++ enumCx, 
 >                   TypeArrow alpha (TypeArrow alpha (TypeArrow alpha (listType alpha))))) e1' e2' e3',
 >                (cx1 ++ cx2 ++ cx3 ++ enumCx, listType alpha))
-> tcExpr p e@(UnaryMinus op e1) = do
+> tcExpr p e@(UnaryMinus cty op e1) = do
 >     opTy <- opType op
 >     (e1', cty1) <- tcExpr p e1
 >     unify p "unary negation" (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e1)
 >           opTy cty1
->     return (UnaryMinus op e1', cty1)
+>     return (UnaryMinus cty op e1', cty1)
 >   where opType op'
 >           | op' == minusId  = liftM noContext $ freshConstrained [intType,floatType]
 >           | op' == fminusId = return $ noContext floatType
@@ -2574,7 +2574,7 @@ nothing is recorded so that they are simply returned).
 >   EnumFromThenTo (Just $ subst' theta cty) (tsExpr theta e1) (tsExpr theta e2) (tsExpr theta e3)
 > tsExpr _theta (EnumFromThenTo Nothing _ _ _) = internalError "tsExpr EnumFromThenTo"
 > 
-> tsExpr theta (UnaryMinus i e) = UnaryMinus i (tsExpr theta e)
+> tsExpr theta (UnaryMinus cty i e) = UnaryMinus cty i (tsExpr theta e)
 > tsExpr theta (Apply e1 e2) = Apply (tsExpr theta e1) (tsExpr theta e2)
 > tsExpr theta (InfixApply e1 op e2) 
 >   = InfixApply (tsExpr theta e1) (tsInfixOp theta op) (tsExpr theta e2)
@@ -2659,7 +2659,7 @@ we have to use other unique ids.
 > numberExpr (EnumFromThen cty e1 e2) = liftM2 (EnumFromThen cty) (numberExpr e1) (numberExpr e2)
 > numberExpr (EnumFromTo cty e1 e2) = liftM2 (EnumFromTo cty) (numberExpr e1) (numberExpr e2)
 > numberExpr (EnumFromThenTo cty e1 e2 e3) = liftM3 (EnumFromThenTo cty) (numberExpr e1) (numberExpr e2) (numberExpr e3)
-> numberExpr (UnaryMinus i e) = UnaryMinus i `liftM` numberExpr e
+> numberExpr (UnaryMinus cty i e) = UnaryMinus cty i `liftM` numberExpr e
 > numberExpr (Apply e1 e2) = liftM2 Apply (numberExpr e1) (numberExpr e2) 
 > numberExpr (InfixApply e1 op e2) = liftM3 InfixApply (numberExpr e1) (return op) (numberExpr e2)
 > numberExpr (LeftSection e op) = flip LeftSection op `liftM` numberExpr e 

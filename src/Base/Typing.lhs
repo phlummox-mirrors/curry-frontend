@@ -217,7 +217,7 @@ environment.}
 > exprType _     (EnumFromThenTo (Just _cty) _ _ _) = return (listType intType)
 > exprType _     (EnumFromThenTo Nothing _ _ _) = internalError "exprType EnumFromThenTo"
 
-> exprType tyEnv (UnaryMinus _ e) = exprType tyEnv e
+> exprType tyEnv (UnaryMinus _ _ e) = exprType tyEnv e
 > exprType tyEnv (Apply e1 e2) = do
 >     (ty1,ty2) <- exprType tyEnv e1 >>= unifyArrow
 >     exprType tyEnv e2 >>= unify ty1
