@@ -58,8 +58,11 @@ checkDir :: Dir -> IO Result
 checkDir dir = do
   -- compile prelude before compiling test files
   compileModule 
-    (CO.defaultOptions { CO.optForce = True, CO.optTargetTypes = [CO.FlatCurry]})
-    (fn dir ++ "Prelude.curry")
+    (CO.defaultOptions { 
+      CO.optForce = True, 
+      CO.optTargetTypes = [CO.FlatCurry],
+      CO.optExtensions = [CO.TypeClassExtensions]})
+    (fn dir ++ "../modules/Prelude.curry")
   -- now check the test files
   files <- getDirectoryContents (fn dir)
   let files'  = filter (\str -> ".curry" `isSuffixOf` str && str /= ".curry") files
@@ -228,9 +231,13 @@ checkVarious :: IO Result
 checkVarious = do
   let path = "test/typeclasses/"
   compileModule 
-    (CO.defaultOptions { CO.optForce = True, CO.optTargetTypes = [CO.FlatCurry]})
-    (path ++ "Prelude.curry")
-  let opts = CO.defaultOptions { CO.optImportPaths = [path] } 
+    (CO.defaultOptions { 
+      CO.optForce = True, 
+      CO.optTargetTypes = [CO.FlatCurry],
+      CO.optExtensions = [CO.TypeClassExtensions]})
+    (path ++ "modules/Prelude.curry")
+  let opts = CO.defaultOptions { 
+        CO.optImportPaths = [path, path ++ "modules/"] } 
   mod <- loadModule opts (path ++ "TestVarious.curry") 
   result <- liftIO $ runEitherT $ checkModule' True opts mod
   case result of
