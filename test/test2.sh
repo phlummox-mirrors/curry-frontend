@@ -17,6 +17,9 @@ rm -f $errorFile
 rm -f -r typeclasses/.curry
 rm -f -r typeclasses/modules/.curry
 
+# prepare Prelude
+$cymake $exts -f typeclasses/modules/Prelude.curry > /dev/null
+
 # do the check # 1
 
 if [ "$1" != "modulesOnly" ]
@@ -114,7 +117,7 @@ fi
 
 # do the check # 2 (modules system related)
 
-for file in TestClassExports TestClassExports2 TestClassExportsImports \
+for file in Prelude TestClassExports TestClassExports2 TestClassExportsImports \
   TestClassExportsNoExportSpec \
   InstancesExports InstancesExports2 InstancesExportsImports InstancesExportBug InstancesExportBugImports \
   Dependencies1 Dependencies1Imports \
