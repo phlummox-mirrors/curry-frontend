@@ -1,11 +1,8 @@
 
-import Prelude ()
-import TCPrelude
-
-test1 = take 10 [1 .. ] == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-test2 = [1 .. 3] == [1, 2 , 3]
-test3 = [1, 4 .. 10] == [1, 4, 7, 10]
-test4 = take 5 [0, 2 ..] == [0, 2, 4, 6, 8]
+test1 = take 10 [1 :: Int .. ] == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+test2 = [1 :: Int .. 3] == [1, 2 , 3]
+test3 = [1 :: Int, 4 .. 10] == [1, 4, 7, 10]
+test4 = take 5 [0 :: Int, 2 ..] == [0, 2, 4, 6, 8]
 
 test5 = take 3 ['a' .. ] == "abc"
 test6 = take 3 ['a', 'c' ..] == "ace"

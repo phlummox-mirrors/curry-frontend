@@ -1,10 +1,7 @@
 
-import Prelude ()
-import TCPrelude
-
 import Deriving1
 
-import Assertion
+-- import Assertion
 
 test1a = (T1 False :: T Bool Bool) == T1 False
 test2a = (T1 False :: T Bool Bool) /= T1 True
@@ -22,32 +19,32 @@ test13 = (T1 False :: T Bool Bool) /= T1 True
 test14 = (T2 True :: T Bool Bool) == T2 True
 test14b = (T3 True :: T Bool Bool) == T3 True
 
-test15 = S1 True 1 'a' == S1 True 1 'a'
-test16 = S1 True 1 'a' /= S1 True 1 'b'
-test17 = S1 True 1 'a' /= S1 True 2 'a'
-test18 = S1 True 1 'a' /= S1 False 1 'a'
-test19 = S1 True 1 'a' /= S2
-test20 = S2 /= S1 True 1 'a'
+test15 = S1 True (1 :: Int) 'a' == S1 True 1 'a'
+test16 = S1 True (1 :: Int) 'a' /= S1 True 1 'b'
+test17 = S1 True (1 :: Int)'a' /= S1 True 2 'a'
+test18 = S1 True (1 :: Int) 'a' /= S1 False 1 'a'
+test19 = S1 True (1 :: Int) 'a' /= S2
+test20 = S2 /= S1 True (1 :: Int) 'a'
 test21 = (S2 :: S () () ()) == S2
 test22 = (S2 :: S Float Int Bool) == S2
 
 test23 = U True True == U True True
-test24 = U True 2 == U True 2
-test25 = U True 2 /= U False 2
-test26 = U True 2 /= U True 3
+test24 = U True (2 :: Int) == U True 2
+test25 = U True (2 :: Int) /= U False 2
+test26 = U True (2 :: Int) /= U True 3
 
-test27 = V 42 == V 42
+test27 = V (42 :: Int) == V 42
 test28 = V 'c' /= V 'd'
 
-test29 = W (T1 True) (S1 False 2 True) (U False False) == W (T1 True) (S1 False 2 True) (U False False)
-test30 = W (T1 True) (S1 False 2 True) (U False False) /= W (T1 True) (S1 False 1 True) (U False False)
-test30b = W (T2 3) (S1 False 2 True) (U False False)   /= W (T1 True) (S1 False 2 True) (U False False)
+test29 = W (T1 True) (S1 False (2 :: Int) True) (U False False) == W (T1 True) (S1 False 2 True) (U False False)
+test30 = W (T1 True) (S1 False (2 :: Int) True) (U False False) /= W (T1 True) (S1 False 1 True) (U False False)
+test30b = W (T2 (3 :: Int)) (S1 False (2 :: Int) True) (U False False)   /= W (T1 True) (S1 False 2 True) (U False False)
 
-test31 = True :=: 3 == True :=: 3
-test32 = True :=: 4 /= True :=: 3
+test31 = True :=: (3 :: Int) == True :=: 3
+test32 = True :=: (4 :: Int) /= True :=: 3
 
-test33 = Y1 True 1 == Y1 True 1
-test34 = Y1 True 1 /= Y2 False
+test33 = Y1 True (1 :: Int) == Y1 True 1
+test34 = Y1 True (1 :: Int) /= Y2 False
 
 allTests = [test1a, test2a, test3a, test4, test5, test6, test7, test8, test9
            , test10, test11, test12, test13, test14, test14b, test15, test16
@@ -57,4 +54,4 @@ allTests = [test1a, test2a, test3a, test4, test5, test6, test7, test8, test9
 
 allCorrect = and allTests
 
-test = assertTrue "allCorrect" allCorrect
+-- test = assertTrue "allCorrect" allCorrect

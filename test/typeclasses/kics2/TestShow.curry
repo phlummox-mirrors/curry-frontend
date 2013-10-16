@@ -1,10 +1,5 @@
 
-
-
-import Prelude ()
-import TCPrelude
-
-import Assertion
+-- import Assertion
 
 infixl 7 :*:
 infixl 6 :+:
@@ -12,13 +7,13 @@ infixl 6 :+:
 data Tree a = Node (Tree a) a (Tree a) | Leaf a | Empty
   deriving Show
 
-test1 = show (Leaf 1)
-test2 = show (Node (Leaf 1) 2 (Leaf 3))
-test3 = show (Node (Leaf 1) 2 (Node (Leaf 3) 4 (Leaf 5)))
+test1 = show ((Leaf 1) :: Tree Int)
+test2 = show ((Node (Leaf 1) 2 (Leaf 3)) :: Tree Int)
+test3 = show ((Node (Leaf 1) 2 (Node (Leaf 3) 4 (Leaf 5))) :: Tree Int)
 test4 = show (Empty :: Tree Int)
-test5 = show (Node Empty 2 (Leaf 1))
-test6 = show [Leaf 1, Node Empty 3 (Leaf 2)]
-test7 = show (Leaf 1, Leaf 3)
+test5 = show ((Node Empty 2 (Leaf 1)) :: Tree Int)
+test6 = show [Leaf 1 :: Tree Int, Node Empty 3 (Leaf 2)]
+test7 = show (Leaf 1 :: Tree Int, Leaf 3 :: Tree Int)
 
 data Arith = Arith :*: Arith | Arith :+: Arith | Val Int
   deriving Show
@@ -39,7 +34,7 @@ data T a = T (S a) (S a)
 data S a = S a
   deriving Show
 
-test15 = show (T (S 1) (S 2))
+test15 = show (T (S 1 :: S Int) (S 2 :: S Int))
 
 test16 = show "abc"
 
@@ -74,5 +69,5 @@ allTests' =
 allCorrect = and allTests'
 
 
-test = assertTrue "allCorrect" allCorrect
+-- test = assertTrue "allCorrect" allCorrect
 

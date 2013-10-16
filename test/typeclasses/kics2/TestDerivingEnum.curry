@@ -1,23 +1,20 @@
 
-import Prelude ()
-import TCPrelude
-
-import Assertion
+-- import Assertion
 
 import DerivingEnum
 
-test1 = (toEnum 0 :: T) == T1
-test2 = (toEnum 3 :: T) == T4
+test1 = (toEnum (0 :: Int) :: T) == T1
+test2 = (toEnum (3 :: Int) :: T) == T4
 
-test3 = (toEnum 0 :: S) == S1
+test3 = (toEnum (0 :: Int) :: S) == S1
 
 test4 = fromEnum T1 == 0
 test5 = fromEnum T4 == 3
 test6 = fromEnum S1 == 0
 
 -- errors
-test7 = toEnum 20 :: T
-test8 = toEnum 20 :: S
+test7 = toEnum (20 :: Int) :: T
+test8 = toEnum (20 :: Int) :: S
 
 test9 = succ T1 == T2
 test10 = succ T3 == T4
@@ -55,4 +52,4 @@ allTests = [test1, test2, test3, test4, test5, test6, test9, test10, test11
 
 allCorrect = and allTests
 
-test = assertTrue "allCorrect" allCorrect
+-- test = assertTrue "allCorrect" allCorrect
