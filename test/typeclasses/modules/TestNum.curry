@@ -37,3 +37,25 @@ test8 = 1 :: Int
 test9 = 5 `div` 2
 test10 = 4 `mod` 3
 
+test11 = - 1
+test12 = - 1.0
+test13 = - (1 + 2)
+test14 = - (1.2 + 1)
+
+test15 = - test2
+test16 = - (test6 1)
+
+test17 = - (1::Int)
+test18 = - (1::Float)
+
+class C a where
+  funC :: a -> a
+
+test19 x = - (funC x)
+
+instance C Int where
+  funC x = x
+
+test20 = - (funC 1)
+
+test21 = -(funC (1 :: Int))

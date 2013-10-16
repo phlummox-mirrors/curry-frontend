@@ -29,7 +29,7 @@ import Base.Types as BT
 import Base.Idents (flipQIdent, tcPreludeEnumFromQIdent, tcPreludeEnumFromThenQIdent
                    , tcPreludeEnumFromToQIdent, tcPreludeEnumFromThenToQIdent
                    , fromIntegerQIdent, fromFloatQIdent, numClsIdent
-                   , fractionalClsIdent)
+                   , fractionalClsIdent, negateQIdent)
 import CompilerOpts
 
 import Text.PrettyPrint hiding (sep)
@@ -233,7 +233,11 @@ diExpr cx (EnumFromThenTo cty e1 e2 e3) = do
   case exts of
     False -> liftM3 (EnumFromThenTo cty) (diExpr cx e1) (diExpr cx e2) (diExpr cx e3)
     True -> diExpr cx (Apply (Apply (Apply (Variable cty tcPreludeEnumFromThenToQIdent) e1) e2) e3)
-diExpr cx (UnaryMinus cty i e) = UnaryMinus i `liftM` diExpr cx e
+diExpr cx (UnaryMinus cty i e) = do
+  exts <- typeClassExtensions
+  case exts of
+    False -> UnaryMinus cty i `liftM` diExpr cx e
+    True -> diExpr cx (Apply (Variable cty negateQIdent) e)
 diExpr cx (Apply e1 e2) = liftM2 Apply (diExpr cx e1) (diExpr cx e2)
 -- adding dictionary parameters for the operator in InfixApply, Left- and RightSection
 -- expressions by transforming them into a term with Variable's and Apply's where

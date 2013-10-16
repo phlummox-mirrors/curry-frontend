@@ -54,7 +54,8 @@ expanded.
 > import Base.Utils (foldr2, findDouble, zip', zipWith', zipWith3', fromJust')
 > import Base.Idents (enumClsIdent, tcPreludeEnumFromQIdent
 >   , tcPreludeEnumFromThenQIdent, tcPreludeEnumFromToQIdent
->   , tcPreludeEnumFromThenToQIdent, numClsIdent, fractionalClsIdent)
+>   , tcPreludeEnumFromThenToQIdent, numClsIdent, fractionalClsIdent
+>   , negateQIdent)
 
 > import CompilerOpts
 
@@ -839,9 +840,11 @@ the maximal necessary contexts for the functions are determined.
 >   return (EnumFromThenTo cty e1' e2' e3', 
 >           cx1 ++ cx2 ++ cx3 ++ (if exts then mirrorBFCx cx else []))
 > fpExpr (EnumFromThenTo Nothing _ _ _) = internalError "fpExpr EnumFromThenTo"
-> fpExpr (UnaryMinus cty id0 e) = do
->   (e', cx) <- fpExpr e
->   return (UnaryMinus cty id0 e', cx)
+> fpExpr (UnaryMinus cty@(Just (cx, _ty)) id0 e) = do
+>   (e', cx1) <- fpExpr e
+>   exts <- typeClassExtensions
+>   return (UnaryMinus cty id0 e', cx1 ++ (if exts then mirrorBFCx cx else []))
+> fpExpr (UnaryMinus Nothing _ _) = internalError "fpExpr UnaryMinus"
 > fpExpr (Apply e1 e2) = do
 >   (e1', cx1) <- fpExpr e1
 >   (e2', cx2) <- fpExpr e2
@@ -1001,7 +1004,14 @@ the maximal necessary contexts for the functions are determined.
 >           else return cty
 >   return $ EnumFromThenTo (Just cty') e1' e2' e3'
 > cvcExpr (EnumFromThenTo Nothing _ _ _) = internalError "cvcExpr EnumFromThenTo"
-> cvcExpr (UnaryMinus cty i e) = UnaryMinus cty i `liftM` cvcExpr e
+> cvcExpr (UnaryMinus (Just cty) i e) = do
+>   e' <- cvcExpr e
+>   exts <- typeClassExtensions
+>   cty' <- if exts
+>           then adjustType cty negateQIdent
+>           else return cty
+>   return $ UnaryMinus (Just cty') i e'
+> cvcExpr (UnaryMinus Nothing _ _) = internalError "cvcExpr UnaryMinus"
 > cvcExpr (Apply e1 e2) = liftM2 Apply (cvcExpr e1) (cvcExpr e2)
 > cvcExpr (InfixApply e1 op e2) = liftM3 InfixApply (cvcExpr e1) (cvcInfixOp op) (cvcExpr e2)
 > cvcExpr (LeftSection e op) = liftM2 LeftSection (cvcExpr e) (cvcInfixOp op)
@@ -1750,12 +1760,23 @@ because of possibly multiple occurrences of variables.
 >                  (cx1 ++ cx2 ++ cx3 ++ enumCx, 
 >                   TypeArrow alpha (TypeArrow alpha (TypeArrow alpha (listType alpha))))) e1' e2' e3',
 >                (cx1 ++ cx2 ++ cx3 ++ enumCx, listType alpha))
-> tcExpr p e@(UnaryMinus cty op e1) = do
->     opTy <- opType op
->     (e1', cty1) <- tcExpr p e1
->     unify p "unary negation" (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e1)
->           opTy cty1
->     return (UnaryMinus cty op e1', cty1)
+> tcExpr p e@(UnaryMinus _ op e1) = do
+>     exts <- typeClassExtensions
+>     case exts of
+>       False -> do
+>         opTy <- opType op
+>         (e1', cty1) <- tcExpr p e1
+>         unify p "unary negation" (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e1)
+>               opTy cty1
+>         return (UnaryMinus (Just $ mirrorFBCT cty1) op e1', cty1)
+>       True -> do
+>         (e1', cty1@(cx1, _ty1)) <- tcExpr p e1
+>         alpha <- freshTypeVar
+>         let numCx = [(numClsIdent, alpha)]
+>         unify p "unary negation" (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e1)
+>           (numCx, alpha) cty1
+>         return (UnaryMinus (Just $ mirrorFBCT (cx1 ++ numCx, TypeArrow alpha alpha)) op e1',
+>           (cx1 ++ numCx, alpha))
 >   where opType op'
 >           | op' == minusId  = liftM noContext $ freshConstrained [intType,floatType]
 >           | op' == fminusId = return $ noContext floatType
@@ -2574,7 +2595,9 @@ nothing is recorded so that they are simply returned).
 >   EnumFromThenTo (Just $ subst' theta cty) (tsExpr theta e1) (tsExpr theta e2) (tsExpr theta e3)
 > tsExpr _theta (EnumFromThenTo Nothing _ _ _) = internalError "tsExpr EnumFromThenTo"
 > 
-> tsExpr theta (UnaryMinus cty i e) = UnaryMinus cty i (tsExpr theta e)
+> tsExpr theta (UnaryMinus (Just cty) i e) = 
+>   UnaryMinus (Just $ subst' theta cty) i (tsExpr theta e)
+> tsExpr _theta (UnaryMinus Nothing _ _) = internalError "tsExpr UnaryMinus"
 > tsExpr theta (Apply e1 e2) = Apply (tsExpr theta e1) (tsExpr theta e2)
 > tsExpr theta (InfixApply e1 op e2) 
 >   = InfixApply (tsExpr theta e1) (tsInfixOp theta op) (tsExpr theta e2)
