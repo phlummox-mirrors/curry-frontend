@@ -181,18 +181,8 @@ for file in TestClassExports TestClassExports2 TestClassExportsImports \
   ClassMethodFixities ClassMethodFixities2 ClassMethodFixities3 ClassMethodFixities4 \
   InstanceErrorBug DerivingEnum DerivingBounded1 DerivingBounded2 DerivingEnumBounded \
   PointBug DerivingAll DerivingAll2 DerivingShow \
-  EnumFromBug
-do
-  echo $file >> tmp.txt
-  if [ ! -r typeclasses/modules/$file.curry ]; then echo "*********** file doesn't exist: $file"; fi
-  $cymake $exts -f -i typeclasses/modules typeclasses/modules/$file.curry 2> stderr.txt 1> stdout.txt || \
-    (echo "===================="; echo "| Error in $file.curry:" ; echo "===================="; \
-    cat stdout.txt; cat stderr.txt; echo; touch $errorFile)
-done
-
-# check 2b (type class extensions)
-
-for file in Enums Enums2 Enums3 Enums4 TestNum
+  EnumFromBug \
+  Enums Enums2 Enums3 Enums4 TestNum
 do
   echo $file >> tmp.txt
   if [ ! -r typeclasses/modules/$file.curry ]; then echo "*********** file doesn't exist: $file"; fi
