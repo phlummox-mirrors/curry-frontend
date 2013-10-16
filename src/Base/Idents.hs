@@ -180,13 +180,13 @@ fromEnumQIdent :: QualIdent
 fromEnumQIdent = tcPreludeIdent fromEnumIdent
 
 preludeEnumFromToIdent :: Ident
-preludeEnumFromToIdent = mkIdent "enumFromTo"
+preludeEnumFromToIdent = mkIdent "enumFromTo_"
 
 preludeEnumFromToQIdent :: QualIdent
 preludeEnumFromToQIdent = preludeIdent preludeEnumFromToIdent
 
 preludeEnumFromThenToIdent :: Ident
-preludeEnumFromThenToIdent = mkIdent "enumFromThenTo"
+preludeEnumFromThenToIdent = mkIdent "enumFromThenTo_"
 
 preludeEnumFromThenToQIdent :: QualIdent
 preludeEnumFromThenToQIdent = preludeIdent preludeEnumFromThenToIdent
