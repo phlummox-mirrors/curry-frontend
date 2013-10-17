@@ -1,4 +1,8 @@
-
+----------------------------------------------------------------------------
+--- The standard prelude of Curry (with type classes).
+--- All top-level functions, data types, classes and methods defined 
+--- in this module are always available in any Curry program.
+----------------------------------------------------------------------------
 
 module Prelude
   (
@@ -16,19 +20,18 @@ module Prelude
   , Success (..), Maybe (..), Either (..), IO (..), IOError (..)
   -- functions
   , (.), id, const, curry, uncurry, flip, until, seq, ensureNotFree
-  , ensureSpine, ($), ($!), ($!!), ($#), ($##), error, prim_error
+  , ensureSpine, ($), ($!), ($!!), ($#), ($##), error
   , failed, (&&), (||), not, otherwise, if_then_else
   , fst, snd, head, tail, null, (++), length, (!!), map, foldl, foldl1
   , foldr, foldr1, filter, zip, zip3, zipWith, zipWith3, unzip, unzip3
   , concat, concatMap, iterate, repeat, replicate, take, drop, splitAt
   , takeWhile, dropWhile, span, break, lines, unlines, words, unwords
   , reverse, and, or, any, all
-  , ord, prim_ord, chr, prim_chr
-  , negateFloat, (=:=), success, (&), (&>), maybe
-  , either, (>>=), return, (>>), done, putChar, prim_putChar, getChar, readFile
-  , prim_readFile, writeFile, prim_writeFile, appendFile
-  , prim_appendFile, putStr, putStrLn, getLine, userError, ioError, showError
-  , catch, prim_show, doSolve, sequenceIO, sequenceIO_, mapIO
+  , ord, chr, negateFloat, (=:=), success, (&), (&>), maybe
+  , either, (>>=), return, (>>), done, putChar, getChar, readFile
+  , writeFile, appendFile
+  , putStr, putStrLn, getLine, userError, ioError, showError
+  , catch, doSolve, sequenceIO, sequenceIO_, mapIO
   , mapIO_, (?), unknown
   , normalForm, groundNormalForm, apply, cond, (=:<=)
   , enumFrom_, enumFromTo_, enumFromThen_, enumFromThenTo_
@@ -189,16 +192,8 @@ x /=$ y = not (x ==$ y)
 data Ordering = LT | EQ | GT
   deriving (Eq, Ord)
 
---- Comparison of arbitrary ground data terms.
---- Data constructors are compared in the order of their definition
---- in the datatype declarations and recursively in the arguments.
--- compare_ :: a -> a -> Ordering
--- compare_ x y | x ==$ y    = EQ
---              | x <=$ y    = LT
---              | otherwise  = GT
-
+-- used for comparison of standard types like Int, Float and Char
 (<=$) :: a -> a -> Bool
--- x <=$ y = compare_ x y == LT || compare_ x y == EQ
 (<=$) external
 
 (<$) :: a -> a -> Bool
