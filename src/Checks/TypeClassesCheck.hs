@@ -87,7 +87,10 @@ hasError = liftM (not . null) $ gets errors
 typeClassesCheck :: ModuleIdent -> Options -> [Decl] -> ClassEnv -> TCEnv -> OpPrecEnv 
                  -> ([Decl], ClassEnv, [Message])
 typeClassesCheck m opts decls0
-    (ClassEnv importedClassesEnv importedInstances _ _) tcEnv0 opPrecEnv = 
+    cEnvOrg@(ClassEnv importedClassesEnv importedInstances _ _) tcEnv0 opPrecEnv =
+  if (not typeClassExtensions && typeClassElemsUsed decls0)
+  then (decls0, cEnvOrg, [errTypeClassesNotEnabled])
+  else   
   case runTcc tcCheck initTccState of 
     ((newClasses, instances), []) -> 
       let -- add newly generated dictionary types to type constructor environment  
@@ -112,6 +115,7 @@ typeClassesCheck m opts decls0
       in (newDecls, cEnv, [])
     (_, errs@(_:_)) -> (decls, ClassEnv emptyTopEnv [] emptyTopEnv Map.empty, errs)
   where
+    typeClassExtensions = TypeClassExtensions `elem` optExtensions opts
     decls = runDer opPrecEnv $ expandDerivingDecls decls0
     classDecls = filter isClassDecl decls
     instDecls = filter isInstanceDecl decls
@@ -502,6 +506,92 @@ canonContext :: ModuleIdent -> ClassEnv -> Context -> Context
 canonContext m cEnv (Context cx) = 
   Context $ map 
     (\(ContextElem qid id0 tys) -> ContextElem (getCanonClassName m cEnv qid) id0 tys) cx
+
+-- ---------------------------------------------------------------------------
+-- Function for testing whether type class elements are used
+-- ---------------------------------------------------------------------------
+
+type UsingTcElems = State Bool ()
+
+none :: UsingTcElems
+none = return ()
+
+usingTcElems :: UsingTcElems
+usingTcElems = put True
+
+typeClassElemsUsed :: [Decl] -> Bool
+typeClassElemsUsed decls = execState (tcElemsDecls decls) False 
+
+tcElemsDecls :: [Decl] -> UsingTcElems
+tcElemsDecls decls = mapM_ tcElemsDecl decls
+
+tcElemsDecl :: Decl -> UsingTcElems
+tcElemsDecl (InfixDecl               _ _ _ _) = none
+tcElemsDecl (DataDecl        _ _ _ _ Nothing) = none
+tcElemsDecl (DataDecl       _ _ _ _ (Just _)) = usingTcElems
+tcElemsDecl (NewtypeDecl     _ _ _ _ Nothing) = none
+tcElemsDecl (NewtypeDecl    _ _ _ _ (Just _)) = usingTcElems
+tcElemsDecl (TypeDecl                _ _ _ _) = none
+tcElemsDecl (TypeSig _ _ _ (Context [])    _) = none
+tcElemsDecl (TypeSig _ _ _ (Context (_:_)) _) = usingTcElems
+tcElemsDecl (FunctionDecl        _ _ _ _ eqs) = mapM_ tcElemsEquat eqs
+tcElemsDecl (ForeignDecl           _ _ _ _ _) = none
+tcElemsDecl (ExternalDecl                _ _) = none
+tcElemsDecl (PatternDecl         _ _ _ _ rhs) = tcElemsRhs rhs
+tcElemsDecl (FreeDecl                    _ _) = none
+tcElemsDecl (ClassDecl             _ _ _ _ _) = usingTcElems
+tcElemsDecl (InstanceDecl        _ _ _ _ _ _) = usingTcElems
+
+tcElemsEquat :: Equation -> UsingTcElems
+tcElemsEquat (Equation _ _lhs rhs) = tcElemsRhs rhs
+
+tcElemsRhs :: Rhs -> UsingTcElems
+tcElemsRhs (SimpleRhs  _ e ds) = tcElemsExpr e >> tcElemsDecls ds
+tcElemsRhs (GuardedRhs ces ds) = mapM_ tcElemsCondExpr ces >> tcElemsDecls ds
+
+tcElemsCondExpr :: CondExpr -> UsingTcElems
+tcElemsCondExpr (CondExpr _ e1 e2) = tcElemsExpr e1 >> tcElemsExpr e2
+
+tcElemsExpr :: Expression -> UsingTcElems
+tcElemsExpr (Literal                   _) = none
+tcElemsExpr (Variable                _ _) = none
+tcElemsExpr (Constructor               _) = none
+tcElemsExpr (Paren                     e) = tcElemsExpr e
+tcElemsExpr (Typed    _ e (Context []) _) = tcElemsExpr e
+tcElemsExpr (Typed _ _ (Context (_:_)) _) = usingTcElems
+tcElemsExpr (Tuple                  _ es) = mapM_ tcElemsExpr es
+tcElemsExpr (List                   _ es) = mapM_ tcElemsExpr es
+tcElemsExpr (ListCompr            _ e ss) = tcElemsExpr e >> mapM_ tcElemsStmt ss
+tcElemsExpr (EnumFrom               _ e1) = tcElemsExpr e1
+tcElemsExpr (EnumFromThen        _ e1 e2) = tcElemsExpr e1 >> tcElemsExpr e2
+tcElemsExpr (EnumFromTo          _ e1 e2) = tcElemsExpr e1 >> tcElemsExpr e2
+tcElemsExpr (EnumFromThenTo   _ e1 e2 e3) = 
+  tcElemsExpr e1 >> tcElemsExpr e2 >> tcElemsExpr e3
+tcElemsExpr (UnaryMinus            _ _ e) = tcElemsExpr e
+tcElemsExpr (Apply                 e1 e2) = tcElemsExpr e1 >> tcElemsExpr e2
+tcElemsExpr (InfixApply        e1 _op e2) = tcElemsExpr e1 >> tcElemsExpr e2
+tcElemsExpr (LeftSection           e _op) = tcElemsExpr e
+tcElemsExpr (RightSection          _op e) = tcElemsExpr e
+tcElemsExpr (Lambda                _ _ e) = tcElemsExpr e
+tcElemsExpr (Let                    ds e) = tcElemsDecls ds >> tcElemsExpr e
+tcElemsExpr (Do                     ss e) = mapM_ tcElemsStmt ss >> tcElemsExpr e
+tcElemsExpr (IfThenElse       _ e1 e2 e3) = 
+  tcElemsExpr e1 >> tcElemsExpr e2 >> tcElemsExpr e3
+tcElemsExpr (Case             _ _ e alts) = tcElemsExpr e >> mapM_ tcElemsAlt alts
+tcElemsExpr (RecordConstr             fs) = mapM_ tcElemsField fs
+tcElemsExpr (RecordSelection         e _) = tcElemsExpr e
+tcElemsExpr (RecordUpdate           fs e) = mapM_ tcElemsField fs >> tcElemsExpr e
+
+tcElemsStmt :: Statement -> UsingTcElems
+tcElemsStmt (StmtExpr   _ e) = tcElemsExpr e
+tcElemsStmt (StmtDecl    ds) = tcElemsDecls ds
+tcElemsStmt (StmtBind _ _ e) = tcElemsExpr e
+
+tcElemsAlt :: Alt -> UsingTcElems
+tcElemsAlt (Alt _ _ rhs) = tcElemsRhs rhs
+
+tcElemsField :: Field Expression -> UsingTcElems
+tcElemsField (Field _ _ e) = tcElemsExpr e 
 
 -- ---------------------------------------------------------------------------
 -- checks
@@ -2313,3 +2403,8 @@ errEnumDeriving :: Position -> Ident -> Message
 errEnumDeriving p ty = posMessage p $
   text "Cannot derive Enum instance for type" <+> text (show ty) <>
   text ": Data type must be enumeration"
+
+errTypeClassesNotEnabled :: Message
+errTypeClassesNotEnabled = message $ text "Type classes are not enabled. " $$
+  text "Enable type classes by passing the option \"-X" <+> 
+  text (show TypeClassExtensions) <> text ("\" to the frontend! ")  
