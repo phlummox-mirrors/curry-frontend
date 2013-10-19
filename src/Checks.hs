@@ -122,10 +122,10 @@ warnCheck env mdl = WC.warnCheck (valueEnv env) mdl
 -- Changes the classes environment and removes class and instance declarations, 
 -- furthermore adds new code for them
 typeClassesCheck :: Monad m => Check m
-typeClassesCheck _ env (Module m es is ds) 
+typeClassesCheck opts env (Module m es is ds) 
   | null msgs = right (env {classEnv = clsEnv}, Module m es is decls') 
   | otherwise = left msgs
-  where (decls', clsEnv, msgs) = TCC.typeClassesCheck m ds 
+  where (decls', clsEnv, msgs) = TCC.typeClassesCheck m opts ds 
            (classEnv env) (tyConsEnv env) (opPrecEnv env)
 
 -- |Insert dictionaries where necessary. This is actually not a check, but a

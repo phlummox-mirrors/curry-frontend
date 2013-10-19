@@ -50,6 +50,8 @@ import Base.TopEnv
 import qualified Data.Map as Map  
 import Base.Idents
 
+import CompilerOpts
+
 import Checks.TypeCheck
 
 -- ---------------------------------------------------------------------------
@@ -82,9 +84,9 @@ hasError = liftM (not . null) $ gets errors
 -- |Checks class and instance declarations and removes these declarations; 
 -- adds new data types/functions for the class and instance declarations. 
 -- Also builds a corresponding class environment. 
-typeClassesCheck :: ModuleIdent -> [Decl] -> ClassEnv -> TCEnv -> OpPrecEnv 
+typeClassesCheck :: ModuleIdent -> Options -> [Decl] -> ClassEnv -> TCEnv -> OpPrecEnv 
                  -> ([Decl], ClassEnv, [Message])
-typeClassesCheck m decls0
+typeClassesCheck m opts decls0
     (ClassEnv importedClassesEnv importedInstances _ _) tcEnv0 opPrecEnv = 
   case runTcc tcCheck initTccState of 
     ((newClasses, instances), []) -> 
