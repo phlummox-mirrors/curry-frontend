@@ -519,6 +519,9 @@ none = return ()
 usingTcElems :: UsingTcElems
 usingTcElems = put True
 
+-- |returns true if type class elements (i.e. class declarations, instance 
+-- declarations, contexts or deriving clauses) are used in the given 
+-- declarations, else false is returned. 
 typeClassElemsUsed :: [Decl] -> Bool
 typeClassElemsUsed decls = execState (tcElemsDecls decls) False 
 
