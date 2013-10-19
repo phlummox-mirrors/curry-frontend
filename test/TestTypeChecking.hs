@@ -90,7 +90,9 @@ location = "test/typeclasses/automated/"
 checkTypes :: FilePath -> IO Bool -- Result
 checkTypes file = do
   putStrLn ("checking " ++ file)
-  let opts = CO.defaultOptions { CO.optImportPaths = [location] }
+  let opts = CO.defaultOptions { 
+    CO.optImportPaths = [location], 
+    CO.optExtensions = [CO.TypeClassExtensions] }
   mod <- loadModule opts (location ++ file ++ ".curry") 
   result <- liftIO $ runEitherT $ checkModule' False opts mod
   case result of
@@ -237,7 +239,8 @@ checkVarious = do
       CO.optExtensions = [CO.TypeClassExtensions]})
     (path ++ "modules/Prelude.curry")
   let opts = CO.defaultOptions { 
-        CO.optImportPaths = [path, path ++ "modules/"] } 
+        CO.optImportPaths = [path, path ++ "modules/"],
+        CO.optExtensions = [CO.TypeClassExtensions] } 
   mod <- loadModule opts (path ++ "TestVarious.curry") 
   result <- liftIO $ runEitherT $ checkModule' True opts mod
   case result of
