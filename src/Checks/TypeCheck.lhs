@@ -1147,7 +1147,7 @@ the maximal necessary contexts for the functions are determined.
 
 > unifyDecl :: Decl -> ConstrType -> ConstrType -> TCM ()
 > unifyDecl (FunctionDecl p _ _ f _) =
->   unify p "function binding" (text "Function:" <+> ppIdent f)
+>   unify p "function binding" (text "Function:" <+> ppIdent (extractOrigName f))
 > unifyDecl (PatternDecl  p _ _ t _) =
 >   unify p "pattern binding" (ppPattern 0 t)
 > unifyDecl _ = internalError "TypeCheck.unifyDecl: no pattern match"

@@ -1181,9 +1181,9 @@ transformClass2 mdl cEnv tcEnv (ClassDecl p _scx cls _tyvar _decls) =
   -- |Generates a top-level function containing the implementation of the
   -- default implementation given in the class declaration
   genDefaultMethod :: Decl -> [Decl]
-  genDefaultMethod (FunctionDecl _p cty n f eqs) = 
-    TypeSig p True [rename toTopLevel f] cx ty' : 
-      [FunctionDecl p cty n (rename toTopLevel f) (map (transEqu zeroArity toTopLevel) eqs)] 
+  genDefaultMethod (FunctionDecl p' cty n f eqs) = 
+    TypeSig p' True [rename toTopLevel f] cx ty' : 
+      [FunctionDecl p' cty n (rename toTopLevel f) (map (transEqu zeroArity toTopLevel) eqs)] 
     where
     (cx0, ty) = fromJust $ canonLookupMethodTypeSig' cEnv (theClass theClass0) f
     cx = combineContexts cx0 
