@@ -99,7 +99,7 @@ diDecl cx (FunctionDecl p (Just cty@(cx', _)) n id0 eqs) = do
   m <- getModuleIdent
   let -- we have to reduce the context before adding dictionary parameters, 
       -- because the recorded context is the "raw" context 
-      cx'' = reduceContext cEnv $ mirrorBFCx cx'
+      cx'' = reduceContext cEnv $ mirrorBF cx'
       cx''' = removeNonLocal vEnv (qualify id0) (qualLookupValue' m) cx''
   FunctionDecl p (Just cty) n id0 `liftM` (mapM (diEqu (cx ++ cx''') cx''') eqs)
 diDecl _ (FunctionDecl _ Nothing _ _ _) = internalError "no type info in diDecl"
@@ -161,16 +161,16 @@ diExpr cx e@(Literal l) = do
     False -> return e
     True -> diLiteral cx l
 diExpr cx0 v@(Variable (Just varCty0) qid) = do 
-  checkForAmbiguousInstances (qidPosition qid) (mirrorBFCx $ fst varCty0)
+  checkForAmbiguousInstances (qidPosition qid) (mirrorBF $ fst varCty0)
   cEnv <- getClassEnv
   vEnv <- getValueEnv
   m <- getModuleIdent
   
   let 
     abstrCode = do
-      let varCty = (removeNonLocal vEnv qid (qualLookupValue' m) $ mirrorBFCx $ fst varCty0, snd varCty0)
+      let varCty = (removeNonLocal vEnv qid (qualLookupValue' m) $ mirrorBF $ fst varCty0, snd varCty0)
           -- check whether we have a class method
-          cx = if isNothing $ maybeCls then fst varCty else mirrorBFCx $ fst varCty0
+          cx = if isNothing $ maybeCls then fst varCty else mirrorBF $ fst varCty0
           codes = map (concreteCode . dictCode cEnv cx0) cx 
       return codes
     maybeCls = case qualLookupValue qid vEnv of
@@ -274,7 +274,7 @@ diLiteral cx l@(Int   v _) = do
       intTy = TypeConstructor (qualifyWith preludeMIdent $ mkIdent "Int") []
       cxInt = [(numClsIdent, ty)] 
       newType = (cxInt, TypeArrow intTy ty)
-  fromInt <- diExpr cx $ Variable (Just $ mirrorFBCT newType) fromIntegerQIdent
+  fromInt <- diExpr cx $ Variable (Just $ mirrorFB newType) fromIntegerQIdent
   return $ Apply fromInt (Literal l)
 diLiteral cx l@(Float v _) = do
   vEnv <- getValueEnv
@@ -282,7 +282,7 @@ diLiteral cx l@(Float v _) = do
       floatTy = TypeConstructor (qualifyWith preludeMIdent $ mkIdent "Float") []
       cxFloat = [(fractionalClsIdent, ty)]
       newType = (cxFloat, TypeArrow floatTy ty)
-  fromFloat <- diExpr cx $ Variable (Just $ mirrorFBCT newType) fromFloatQIdent
+  fromFloat <- diExpr cx $ Variable (Just $ mirrorFB newType) fromFloatQIdent
   return $ Apply fromFloat (Literal l)
   
 
@@ -360,7 +360,7 @@ tySchemeFlip :: ConstrType
 tySchemeFlip = ([], TypeVariable 0)
 
 prelFlip :: Expression
-prelFlip = Variable (Just $ mirrorFBCT tySchemeFlip) flipQIdent
+prelFlip = Variable (Just $ mirrorFB tySchemeFlip) flipQIdent
 
 qualLookupValue' :: ModuleIdent -> QualIdent -> ValueEnv -> [ValueInfo]
 qualLookupValue' m qid tyEnv = case qualLookupValue qid tyEnv of

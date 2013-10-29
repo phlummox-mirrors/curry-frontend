@@ -683,7 +683,7 @@ either one of the basic types or \texttt{()}.
 >     tyEnv <- getValueEnv
 >     theta <- getTypeSubst
 >     let cty = subst theta $ varType f tyEnv 
->     return $ FunctionDecl p (Just (mirrorFBCx $ getContext cty, ty)) n f eqs
+>     return $ FunctionDecl p (Just (mirrorFB $ getContext cty, ty)) n f eqs
 >   updateFuncContexts' p@(PatternDecl _ _ _ _ _) = return p
 >   updateFuncContexts' _ = internalError "updateFuncContexts'"
 
@@ -739,10 +739,10 @@ the maximal necessary contexts for the functions are determined.
 > fpDeclRhs (FunctionDecl p (Just (cx0, ty0)) id0 f eqs) = do 
 >   eqsAndCxs <- mapM fpEquation eqs
 >   let cx' = concatMap snd eqsAndCxs
->   return (FunctionDecl p (Just (mirrorFBCx cx' ++ cx0, ty0)) id0 f (map fst eqsAndCxs), cx')
+>   return (FunctionDecl p (Just (mirrorFB cx' ++ cx0, ty0)) id0 f (map fst eqsAndCxs), cx')
 > fpDeclRhs (PatternDecl p (Just (cx0, ty0)) id0 t rhs) = do
 >   (rhs', cx) <- fpRhs rhs
->   return (PatternDecl p (Just (mirrorFBCx cx ++ cx0, ty0)) id0 t rhs', cx) 
+>   return (PatternDecl p (Just (mirrorFB cx ++ cx0, ty0)) id0 t rhs', cx) 
 > fpDeclRhs _ = internalError "fpDeclRhs"
 
 > fpEquation :: Equation -> TCM (Equation, BT.Context)
@@ -785,13 +785,13 @@ the maximal necessary contexts for the functions are determined.
 >   let tySig = qualLookupTypeSig m v sigs
 >   case isJust tySig of
 >     False -> do
->       let mapping = buildTypeVarsMapping (typeSchemeToType tsc) (mirrorBFTy ty0)
+>       let mapping = buildTypeVarsMapping (typeSchemeToType tsc) (mirrorBF ty0)
 >           cx' = subst mapping (getContext tsc)
->       return (Variable (Just (mirrorFBCx cx', ty0)) v, cx')
+>       return (Variable (Just (mirrorFB cx', ty0)) v, cx')
 >     True -> do
->       let mapping = buildTypeVarsMapping (subst theta $ typeSchemeToType tsc) (mirrorBFTy ty0)
+>       let mapping = buildTypeVarsMapping (subst theta $ typeSchemeToType tsc) (mirrorBF ty0)
 >           cx' = subst mapping (subst theta $ getContext tsc)  
->       return (Variable (Just (mirrorFBCx cx', ty0)) v, cx')
+>       return (Variable (Just (mirrorFB cx', ty0)) v, cx')
 > fpExpr (Variable Nothing v) = do
 >   internalError ("fpExpr Nothing: " ++ show v) 
 > fpExpr c@(Constructor _) = return (c, BT.emptyContext)
@@ -800,7 +800,7 @@ the maximal necessary contexts for the functions are determined.
 >   return (Paren e', cx)
 > fpExpr (Typed cty@(Just (cx1, _ty1)) e cx0 ty) = do
 >   (e', cx) <- fpExpr e
->   return (Typed cty e' cx0 ty, cx ++ mirrorBFCx cx1)
+>   return (Typed cty e' cx0 ty, cx ++ mirrorBF cx1)
 > fpExpr (Typed Nothing _ _ _) = internalError "fpExpr"
 > fpExpr (Tuple sref es) = do
 >   esAndCxs <- mapM fpExpr es
@@ -816,21 +816,21 @@ the maximal necessary contexts for the functions are determined.
 >   (e1', cx1) <- fpExpr e1
 >   exts <- typeClassExtensions
 >   return (EnumFrom cty e1', 
->           cx1 ++ (if exts then mirrorBFCx cx else []))
+>           cx1 ++ (if exts then mirrorBF cx else []))
 > fpExpr (EnumFrom Nothing _) = internalError "fpExpr EnumFrom"
 > fpExpr (EnumFromThen cty@(Just (cx, _ty)) e1 e2) = do
 >   (e1', cx1) <- fpExpr e1
 >   (e2', cx2) <- fpExpr e2
 >   exts <- typeClassExtensions
 >   return (EnumFromThen cty e1' e2', 
->           cx1 ++ cx2 ++ (if exts then mirrorBFCx cx else []))
+>           cx1 ++ cx2 ++ (if exts then mirrorBF cx else []))
 > fpExpr (EnumFromThen Nothing _ _) = internalError "fpExpr EnumFromThen"
 > fpExpr (EnumFromTo cty@(Just (cx, _ty)) e1 e2) = do
 >   (e1', cx1) <- fpExpr e1
 >   (e2', cx2) <- fpExpr e2
 >   exts <- typeClassExtensions
 >   return (EnumFromTo cty e1' e2', 
->           cx1 ++ cx2 ++ (if exts then mirrorBFCx cx else []))
+>           cx1 ++ cx2 ++ (if exts then mirrorBF cx else []))
 > fpExpr (EnumFromTo Nothing _ _) = internalError "fpExpr EnumFromTo"
 > fpExpr (EnumFromThenTo cty@(Just (cx, _ty)) e1 e2 e3) = do
 >   (e1', cx1) <- fpExpr e1
@@ -838,12 +838,12 @@ the maximal necessary contexts for the functions are determined.
 >   (e3', cx3) <- fpExpr e3
 >   exts <- typeClassExtensions
 >   return (EnumFromThenTo cty e1' e2' e3', 
->           cx1 ++ cx2 ++ cx3 ++ (if exts then mirrorBFCx cx else []))
+>           cx1 ++ cx2 ++ cx3 ++ (if exts then mirrorBF cx else []))
 > fpExpr (EnumFromThenTo Nothing _ _ _) = internalError "fpExpr EnumFromThenTo"
 > fpExpr (UnaryMinus cty@(Just (cx, _ty)) id0 e) = do
 >   (e', cx1) <- fpExpr e
 >   exts <- typeClassExtensions
->   return (UnaryMinus cty id0 e', cx1 ++ (if exts then mirrorBFCx cx else []))
+>   return (UnaryMinus cty id0 e', cx1 ++ (if exts then mirrorBF cx else []))
 > fpExpr (UnaryMinus Nothing _ _) = internalError "fpExpr UnaryMinus"
 > fpExpr (Apply e1 e2) = do
 >   (e1', cx1) <- fpExpr e1
@@ -1031,8 +1031,8 @@ the maximal necessary contexts for the functions are determined.
 >   m <- getModuleIdent
 >   theta <- getTypeSubst
 >   let ForAll cxInf _ tyInf = funType m v tyEnv
->   let s = either (internalError . show) id (unifyTypes m tyInf (subst theta $ mirrorBFTy ty0))
->   return (mirrorFBCx $ subst s cxInf, ty0)
+>   let s = either (internalError . show) id (unifyTypes m tyInf (subst theta $ mirrorBF ty0))
+>   return (mirrorFB $ subst s cxInf, ty0)
 
 > cvcInfixOp :: InfixOp -> TCM InfixOp
 > cvcInfixOp (InfixOp (Just (_cx0, ty0)) qid) = do
@@ -1040,8 +1040,8 @@ the maximal necessary contexts for the functions are determined.
 >   m <- getModuleIdent
 >   theta <- getTypeSubst
 >   let ForAll cxInf _ tyInf = funType m qid tyEnv
->   let s = either (internalError . show) id (unifyTypes m tyInf (subst theta $ mirrorBFTy ty0))
->   return $ InfixOp (Just (mirrorFBCx $ subst s cxInf, ty0)) qid
+>   let s = either (internalError . show) id (unifyTypes m tyInf (subst theta $ mirrorBF ty0))
+>   return $ InfixOp (Just (mirrorFB $ subst s cxInf, ty0)) qid
 > cvcInfixOp (InfixOp Nothing _) = internalError "cvcInfixOp"
 > cvcInfixOp ic@(InfixConstr _) = return ic
 
@@ -1133,7 +1133,7 @@ the maximal necessary contexts for the functions are determined.
 >   (eq', (cx0, ty0)) <- tcEquation tyEnv0 eq
 >   (eqs', (cxs, ty)) <- tcEqns ty0 [] eqs [eq']
 >   let cty = (cx0 ++ cxs, ty)
->   return (FunctionDecl p0 (Just $ mirrorFBCT cty) id0 f eqs', cty)
+>   return (FunctionDecl p0 (Just $ mirrorFB cty) id0 f eqs', cty)
 >   where tcEqns :: Type -> BT.Context -> [Equation] -> [Equation] -> TCM ([Equation], ConstrType)
 >         tcEqns ty cxs [] newEqs = return (reverse newEqs, (cxs, ty))
 >         tcEqns ty cxs (eq1@(Equation p _ _):eqs1) newEqs = do
@@ -1142,7 +1142,7 @@ the maximal necessary contexts for the functions are determined.
 >           tcEqns ty (cx' ++ cxs) eqs1 (eq1':newEqs)
 > tcDeclRhs tyEnv0 (PatternDecl p _ id0 t rhs) = do
 >   (rhs', cty) <- tcRhs tyEnv0 rhs
->   return (PatternDecl p (Just $ mirrorFBCT cty) id0 t rhs', cty)
+>   return (PatternDecl p (Just $ mirrorFB cty) id0 t rhs', cty)
 > tcDeclRhs _ _ = internalError "TypeCheck.tcDeclRhs: no pattern match"
 
 > unifyDecl :: Decl -> ConstrType -> ConstrType -> TCM ()
@@ -1581,7 +1581,7 @@ because of possibly multiple occurrences of variables.
 >       m <- getModuleIdent
 >       ty <- freshTypeVar
 >       modifyValueEnv $ bindFunOnce m v' (arrowArity ty) $ monoType ty
->       return $ (Variable (Just $ mirrorFBCT $ noContext ty) v, noContext ty)
+>       return $ (Variable (Just $ mirrorFB $ noContext ty) v, noContext ty)
 >   | otherwise    = do
 >       sigs <- getSigEnv
 >       m <- getModuleIdent
@@ -1596,10 +1596,10 @@ because of possibly multiple occurrences of variables.
 >           -- constructed from the type signature
 >           let mapping = buildTypeVarsMapping ity ty0
 >               cty' = (cx0 ++ subst mapping icx, ty0)
->           return (Variable (Just $ mirrorFBCT cty') v, cty')
+>           return (Variable (Just $ mirrorFB cty') v, cty')
 >         Nothing -> do
 >           cty <- getValueEnv >>= inst . funType m v
->           return (Variable (Just $ mirrorFBCT cty) v, cty)
+>           return (Variable (Just $ mirrorFB cty) v, cty)
 >   where v' = unqualify v
 > tcExpr _ e@(Constructor c) = do
 >  m <- getModuleIdent
@@ -1635,7 +1635,7 @@ because of possibly multiple occurrences of variables.
 >   -- Because of this we have to "substitute" the type variables "back", so
 >   -- that they correctly refer to the type variables in the inferred type.
 >   let cty1 = (cxInf ++ subst s' cxGiven, tyInf)
->   return (Typed (Just $ mirrorFBCT cty1) e' cx sig, cty1)
+>   return (Typed (Just $ mirrorFB cty1) e' cx sig, cty1)
 >   where sig' = nameSigType sig
 >         eqTypes (ForAll _cx1 _ t1) (ForAll _cx2 _ t2) = t1 == t2
 > tcExpr p (Paren e) = do
@@ -1677,13 +1677,13 @@ because of possibly multiple occurrences of variables.
 >         unify p "arithmetic sequence"
 >               (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e1) (noContext intType) cty1
 >         let cty = (cx1, listType intType)
->         return (EnumFrom (Just $ mirrorFBCT cty) e1', cty)
+>         return (EnumFrom (Just $ mirrorFB cty) e1', cty)
 >       True -> do
 >         alpha <- freshTypeVar
 >         let enumCx = [(enumClsIdent, alpha)]
 >         unify p "arithmetic sequence"
 >              (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e1) (enumCx, alpha) cty1
->         return (EnumFrom (Just $ mirrorFBCT 
+>         return (EnumFrom (Just $ mirrorFB 
 >                  (cx1 ++ enumCx, TypeArrow alpha (listType alpha))) e1',
 >                (cx1 ++ enumCx, listType alpha))
 > tcExpr p e@(EnumFromThen _ e1 e2) = do
@@ -1697,7 +1697,7 @@ because of possibly multiple occurrences of variables.
 >         unify p "arithmetic sequence"
 >               (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e2) (noContext intType) cty2
 >         let cty = (cx1 ++ cx2, listType intType)
->         return (EnumFromThen (Just $ mirrorFBCT cty) e1' e2', cty)
+>         return (EnumFromThen (Just $ mirrorFB cty) e1' e2', cty)
 >       True -> do
 >         alpha <- freshTypeVar
 >         let enumCx = [(enumClsIdent, alpha)]
@@ -1705,7 +1705,7 @@ because of possibly multiple occurrences of variables.
 >               (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e1) (enumCx, alpha) cty1
 >         unify p "arithmetic sequence"
 >               (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e2) (enumCx, alpha) cty2
->         return (EnumFromThen (Just $ mirrorFBCT
+>         return (EnumFromThen (Just $ mirrorFB
 >                  (cx1 ++ cx2 ++ enumCx, 
 >                   TypeArrow alpha (TypeArrow alpha (listType alpha)))) e1' e2', 
 >                (cx1 ++ cx2 ++ enumCx, listType alpha))  
@@ -1720,7 +1720,7 @@ because of possibly multiple occurrences of variables.
 >         unify p "arithmetic sequence"
 >               (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e2) (noContext intType) cty2
 >         let cty = (cx1 ++ cx2, listType intType)
->         return (EnumFromTo (Just $ mirrorFBCT cty) e1' e2', cty)
+>         return (EnumFromTo (Just $ mirrorFB cty) e1' e2', cty)
 >       True -> do
 >         alpha <- freshTypeVar
 >         let enumCx = [(enumClsIdent, alpha)]
@@ -1728,7 +1728,7 @@ because of possibly multiple occurrences of variables.
 >               (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e1) (enumCx, alpha) cty1
 >         unify p "arithmetic sequence"
 >               (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e2) (enumCx, alpha) cty2
->         return (EnumFromTo (Just $ mirrorFBCT 
+>         return (EnumFromTo (Just $ mirrorFB 
 >                  (cx1 ++ cx2 ++ enumCx, 
 >                   TypeArrow alpha (TypeArrow alpha (listType alpha)))) e1' e2', 
 >                (cx1 ++ cx2 ++ enumCx, listType alpha))
@@ -1746,7 +1746,7 @@ because of possibly multiple occurrences of variables.
 >         unify p "arithmetic sequence"
 >               (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e3) (noContext intType) cty3
 >         let cty = (cx1 ++ cx2 ++ cx3, listType intType)
->         return (EnumFromThenTo (Just $ mirrorFBCT cty) e1' e2' e3', cty)
+>         return (EnumFromThenTo (Just $ mirrorFB cty) e1' e2' e3', cty)
 >       True -> do
 >         alpha <- freshTypeVar
 >         let enumCx = [(enumClsIdent, alpha)]
@@ -1756,7 +1756,7 @@ because of possibly multiple occurrences of variables.
 >               (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e2) (enumCx, alpha) cty2
 >         unify p "arithmetic sequence"
 >               (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e3) (enumCx, alpha) cty3
->         return (EnumFromThenTo (Just $ mirrorFBCT
+>         return (EnumFromThenTo (Just $ mirrorFB
 >                  (cx1 ++ cx2 ++ cx3 ++ enumCx, 
 >                   TypeArrow alpha (TypeArrow alpha (TypeArrow alpha (listType alpha))))) e1' e2' e3',
 >                (cx1 ++ cx2 ++ cx3 ++ enumCx, listType alpha))
@@ -1768,14 +1768,14 @@ because of possibly multiple occurrences of variables.
 >         (e1', cty1) <- tcExpr p e1
 >         unify p "unary negation" (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e1)
 >               opTy cty1
->         return (UnaryMinus (Just $ mirrorFBCT cty1) op e1', cty1)
+>         return (UnaryMinus (Just $ mirrorFB cty1) op e1', cty1)
 >       True -> do
 >         (e1', cty1@(cx1, _ty1)) <- tcExpr p e1
 >         alpha <- freshTypeVar
 >         let numCx = [(numClsIdent, alpha)]
 >         unify p "unary negation" (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e1)
 >           (numCx, alpha) cty1
->         return (UnaryMinus (Just $ mirrorFBCT (cx1 ++ numCx, TypeArrow alpha alpha)) op e1',
+>         return (UnaryMinus (Just $ mirrorFB (cx1 ++ numCx, TypeArrow alpha alpha)) op e1',
 >           (cx1 ++ numCx, alpha))
 >   where opType op'
 >           | op' == minusId  = liftM noContext $ freshConstrained [intType,floatType]
@@ -1974,7 +1974,7 @@ because of possibly multiple occurrences of variables.
 > -- nubCx (cx, ty) = (nub $ cx, ty)
 
 > annotInfixOpType :: InfixOp -> ConstrType -> InfixOp
-> annotInfixOpType (InfixOp _ qid) cty = InfixOp (Just $ mirrorFBCT cty) qid
+> annotInfixOpType (InfixOp _ qid) cty = InfixOp (Just $ mirrorFB cty) qid
 > annotInfixOpType (InfixConstr qid) _ = (InfixConstr qid)
 
 \end{verbatim}
@@ -2632,7 +2632,7 @@ nothing is recorded so that they are simply returned).
 > tsInfixOp _theta (InfixConstr qid) = InfixConstr qid 
 
 > subst' :: TypeSubst -> ConstrType_ -> ConstrType_
-> subst' s ty = mirrorFBCT $ subst s $ mirrorBFCT ty
+> subst' s ty = mirrorFB $ subst s $ (mirrorBF ty :: ConstrType)
 
 \end{verbatim}
 The declarations are numbered, so that each declaration has a unique id. That
