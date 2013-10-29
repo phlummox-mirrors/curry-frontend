@@ -1,7 +1,8 @@
 {- |
     Module      :  $Header$
     Description :  Checks the validity of the export specification
-    Copyright   :  (c) 2013 Matthias Böhm
+    Copyright   :  (c)      Wolfgang Lux
+                   (c) 2013 Matthias Böhm
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
