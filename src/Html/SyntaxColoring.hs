@@ -466,11 +466,11 @@ importDecl2codes (ImportDecl _ mid _ mModuleIdent importSpec) =
 
 decl2codes :: Decl -> [Code]
 decl2codes (InfixDecl _ _ _ ops) = map (Function InfixFunction . qualify) ops
-decl2codes (DataDecl _ d vs cds der) =
+decl2codes (DataDecl _ d vs cds _der) =
      TypeConstructor TypeDecla (qualify d) :
      map (Identifier UnknownId . qualify) vs ++
      concatMap constrDecl2codes cds
-decl2codes (NewtypeDecl _ _ _ _ der) = []
+decl2codes (NewtypeDecl _ _ _ _ _der) = []
 decl2codes (TypeDecl _ t vs ty) =
      TypeConstructor TypeDecla (qualify t) :
      map (Identifier UnknownId . qualify) vs ++

@@ -480,16 +480,16 @@ genExpr pos env (ListCompr _ expr stmts)
   = let (env1, stmts') = mapAccumL (genStatement pos) (beginScope env) stmts
         (env2, expr' )  = genExpr pos env1 expr
     in  (endScope env2, CListComp expr' stmts')
-genExpr pos env (EnumFrom cty expr) -- TODO
+genExpr pos env (EnumFrom _cty expr) -- TODO
   = genExpr pos env (Apply (Variable Nothing qEnumFromId) expr)
-genExpr pos env (EnumFromThen cty expr1 expr2)
+genExpr pos env (EnumFromThen _cty expr1 expr2)
   = genExpr pos env (Apply (Apply (Variable Nothing qEnumFromThenId) expr1) expr2)
-genExpr pos env (EnumFromTo cty expr1 expr2)
+genExpr pos env (EnumFromTo _cty expr1 expr2)
   = genExpr pos env (Apply (Apply (Variable Nothing qEnumFromToId) expr1) expr2)
-genExpr pos env (EnumFromThenTo cty expr1 expr2 expr3)
+genExpr pos env (EnumFromThenTo _cty expr1 expr2 expr3)
   = genExpr pos env (Apply (Apply (Apply (Variable Nothing qEnumFromThenToId)
           expr1) expr2) expr3)
-genExpr pos env (UnaryMinus cty _ expr)
+genExpr pos env (UnaryMinus _cty _ expr)
   = genExpr pos env (Apply (Variable Nothing qNegateId) expr)
 genExpr pos env (Apply expr1 expr2)
   = let (env1, expr1') = genExpr pos env expr1

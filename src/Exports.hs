@@ -62,7 +62,7 @@ exportInterface env mdl tcs = exportInterface' mdl tcs
 
 exportInterface' :: Module -> Bool -> OpPrecEnv -> TCEnv -> ValueEnv 
                  -> ClassEnv -> Interface
-exportInterface' (Module m (Just (Exporting _ es)) _ _) tcs pEnv tcEnv tyEnv cEnv
+exportInterface' (Module m (Just (Exporting _ es)) _ _) _tcs pEnv tcEnv tyEnv cEnv
   = Interface m imports $ precs ++ hidden0 ++ allDecls
   where
   imports = map   (IImportDecl NoPos) $ usedModules allDecls
