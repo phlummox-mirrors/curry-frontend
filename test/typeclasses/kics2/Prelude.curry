@@ -181,7 +181,7 @@ if_then_else b t f = case b of True  -> t
                                False -> f
 
 
---- Equality on finite ground data terms.
+-- used for comparison of standard types like Int, Float and Char
 (==$)            :: a -> a -> Bool
 (==$) external
 
