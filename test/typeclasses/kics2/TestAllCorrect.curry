@@ -7,6 +7,7 @@ import TestEnumerations
 import TestList
 import TestPrelude
 import TestShow
+import TestNumbers
 
 allTests = [ TestDeriving1.allCorrect
            , TestDeriving2.allCorrect
@@ -16,6 +17,7 @@ allTests = [ TestDeriving1.allCorrect
            , TestList.allCorrect
            , TestPrelude.allCorrect
            , TestShow.allCorrect
+           , TestNumbers.allCorrect
            ]
 
 allCorrect = and allTests
