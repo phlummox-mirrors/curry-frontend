@@ -1435,7 +1435,7 @@ because of possibly multiple occurrences of variables.
 > tcPatternFP _ (VariablePattern v) = do
 >   sigs <- getSigEnv
 >   m <- getModuleIdent
->   cty@(cx, ty) <- case lookupTypeSig v sigs of
+>   cty@(_cx, ty) <- case lookupTypeSig v sigs of
 >     Nothing -> freshConstrTypeVar
 >     Just (expanded, t)  -> expandPolyType (not expanded) t >>= inst
 >   tyEnv <- getValueEnv
@@ -2193,7 +2193,7 @@ We use negative offsets for fresh type variables.
 >   return $ (cx', expandAliasType tys ty) 
 
 > skol :: ExistTypeScheme -> TCM Type
-> skol (ForAllExist cx n n' ty) = do
+> skol (ForAllExist _cx n n' ty) = do
 >   tys  <- replicateM n  freshTypeVar
 >   tys' <- replicateM n' freshSkolem
 >   -- let cx' = instContext (tys ++ tys') cx
