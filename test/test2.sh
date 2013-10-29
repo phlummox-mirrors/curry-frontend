@@ -104,6 +104,19 @@ do
   if [ -n "$internalErrs" ]; then echo "Internal error in $file"; fi
 done
 
+# errors when type classes flag is not enabled
+
+for file in InvalidTypeClassesUse1 InvalidTypeClassesUse2 InvalidTypeClassesUse3 \
+  InvalidTypeClassesUse4 InvalidTypeClassesUse5
+do
+  echo $file >> tmp.txt
+  if [ ! -r typeclasses/$file.curry ]; then echo "*********** file doesn't exist: $file"; fi
+  $cymake -f -i typeclasses -i typeclasses/modules typeclasses/$file.curry 2> stderr.txt 1> stdout.txt && \
+    (echo "===================="; echo "| No error in $file.curry:" ; echo "===================="; \
+    cat stdout.txt; cat stderr.txt; echo; touch $errorFile)
+  internalErrs=`cat stderr.txt | grep "Internal error"`
+  if [ -n "$internalErrs" ]; then echo "Internal error in $file"; fi
+done
 
 fi
 
