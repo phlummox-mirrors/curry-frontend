@@ -157,25 +157,27 @@ the same length
 
 > zip' :: [a] -> [b] -> [(a, b)]
 > zip' (x:xs) (y:ys) = (x, y) : zip' xs ys
-> zip' [] [] = []
-> zip' _ _ = error "zip': lists don't have the same length!"
+> zip' []     []     = []
+> zip' _      _      = error "zip': lists don't have the same length!"
 
 > zipWith' :: (a -> b -> c) -> [a] -> [b] -> [c]
-> zipWith' _ [] [] = []
+> zipWith' _ []     []     = []
 > zipWith' f (x:xs) (y:ys) = f x y : zipWith' f xs ys
-> zipWith' _ _ _ = error "zipWith': lists don't have same length"
+> zipWith' _ _      _      = error "zipWith': lists don't have same length"
 
 > zipWith3' :: (a -> b -> c -> d) -> [a] -> [b] -> [c] -> [d]
-> zipWith3' _ [] [] [] = []
+> zipWith3' _ []     []     []     = []
 > zipWith3' f (x:xs) (y:ys) (z:zs) = f x y z : zipWith3' f xs ys zs
-> zipWith3' _ _ _ _ = error "zipWith3': lists don't have same length"
+> zipWith3' _ _      _      _      = error "zipWith3': lists don't have same length"
 
 \end{verbatim} 
 
 \begin{verbatim}
 
+> -- |Like fromJust, only displays the given error string if applied to Nothing. 
+> -- Useful for debugging. 
 > fromJust' :: String -> Maybe a -> a
-> fromJust' _s (Just x) = x
-> fromJust' s Nothing = error ("fromJust': " ++ s)
+> fromJust' _ (Just x) = x
+> fromJust' s Nothing  = error ("fromJust': " ++ s)
 
 \end{verbatim}
