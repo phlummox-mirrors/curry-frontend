@@ -116,7 +116,7 @@ loadModule opts fn = do
           let (mdl, hdrErrs) = checkModuleHeader opts fn parsed
           unless (null hdrErrs) $ abortWithMessages hdrErrs -- TODO
           -- load the imported interfaces into an InterfaceEnv
-          (iEnv, intfErrs) <- loadInterfaces False (optImportPaths opts) mdl
+          (iEnv  , intfErrs  ) <- loadInterfaces False (optImportPaths opts) mdl
           (iEnvTc, intfErrsTc) <- loadInterfaces True (optImportPaths opts) mdl
           let errs = nub $ intfErrs ++ intfErrsTc
           unless (null errs) $ abortWithMessages errs -- TODO
@@ -124,7 +124,7 @@ loadModule opts fn = do
             CheckFailed intfImpErrs -> abortWithMessages intfImpErrs -- TODO
             _ -> do
               -- add information of imported modules
-              let (env, impErrs)     = importModules False opts mdl iEnv
+              let (env  , impErrs  ) = importModules False opts mdl iEnv
                   (envtc, impErrsTc) = importModules True opts mdl iEnvTc
                   errs' = nub $ impErrs ++ impErrsTc
               unless (null errs') $ abortWithMessages errs' -- TODO
@@ -187,7 +187,7 @@ checkInterface opts iEnv intf = interfaceCheck env intf
 checkModule :: Options -> (CompilerEnv, CompilerEnv, CS.Module)
             -> EitherT [Message] IO (CompilerEnv, CS.Module, CompilerEnv, CS.Module)
 checkModule opts (envNonTc, envTc, mdl) = do
-  doDump opts (DumpParsed       , envTc , show' CS.ppModule mdl)
+  doDump opts (DumpParsed       , envTc, show' CS.ppModule mdl)
   (env1,  kc) <- kindCheck opts envTc mdl -- should be only syntax checking ?
   doDump opts (DumpKindChecked  , env1, show' CS.ppModule kc)
   (env2,  sc) <- syntaxCheck opts env1 kc
@@ -197,15 +197,15 @@ checkModule opts (envNonTc, envTc, mdl) = do
   (env4, tcc) <- typeClassesCheck opts env3 pc
   doDump opts (DumpTypeClassesChecked, env4, show' CS.ppModule tcc)
   (env5,  tc) <- if withTypeCheck
-                   then typeCheck False opts env4 tcc
-                   else return (env4, tcc)
+                 then typeCheck False opts env4 tcc
+                 else return (env4, tcc)
   doDump opts (DumpTypeChecked  , env5, show' CS.ppModule tc)
   -- Run an export check here for exporting type class specific elements. As
   -- these are compiled out later, we already here have to set aside the
   -- export checked module and the environment 
-  (envEc1, ec1) <- if withTypeCheck 
-                   then exportCheck opts env5 tc
-                   else return (env5, tc)
+  (envEc1,   ec1) <- if withTypeCheck 
+                     then exportCheck opts env5 tc
+                     else return (env5, tc)
   (envEc1', ec1') <- if withTypeCheck
                      then return $ qual opts envEc1 ec1
                      else return (envEc1, ec1)
@@ -214,8 +214,8 @@ checkModule opts (envNonTc, envTc, mdl) = do
                      then insertDicts opts env5 tc
                      else return (env5, tc)
   let (env5c, dicts') = if withTypeCheck
-                          then typeSigs env5b dicts
-                          else (env5b, dicts)
+                        then typeSigs env5b dicts
+                        else (env5b, dicts)
   doDump opts (DumpDictionaries , env5c, show' CS.ppModule dicts')
   (env5e, tc2) <- if withTypeCheck
                     -- Take the older environment env4 instead of env5c;
@@ -231,10 +231,10 @@ checkModule opts (envNonTc, envTc, mdl) = do
                     else return (env5c, dicts')
   doDump opts (DumpTypeChecked2 , env5e, show' CS.ppModule tc2)
   (env6,  ec2) <- if withTypeCheck
-                   then exportCheck opts env5e tc2
-                   else return (env5e, tc2)
+                  then exportCheck opts env5e tc2
+                  else return (env5e, tc2)
   doDump opts (DumpExportChecked, env6, show' CS.ppModule ec2)
-  (env7,  ql) <- return $ qual opts env6 ec2
+  (env7,   ql) <- return $ qual opts env6 ec2
   doDump opts (DumpQualified    , env7, show' CS.ppModule ql)
   return (env7, ql, envEc1', ec1')
   where
