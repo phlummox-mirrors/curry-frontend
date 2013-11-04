@@ -69,17 +69,17 @@ The latter must not occur in type expressions in interfaces.
 \begin{verbatim}
 
 > bindType :: IDecl -> TypeEnv -> TypeEnv
-> bindType (IInfixDecl       _ _ _ _) = id
-> bindType (HidingDataDecl    _ tc _) = qualBindTopEnv "" tc (Data tc [])
-> bindType (IDataDecl      _ tc _ cs) = qualBindTopEnv "" tc
->                                       (Data tc (map constr (catMaybes cs)))
+> bindType (IInfixDecl          _ _ _ _) = id
+> bindType (HidingDataDecl       _ tc _) = qualBindTopEnv "" tc (Data tc [])
+> bindType (IDataDecl         _ tc _ cs) = qualBindTopEnv "" tc
+>                                          (Data tc (map constr (catMaybes cs)))
 >   where constr (ConstrDecl    _ _ c _) = c
 >         constr (ConOpDecl  _ _ _ op _) = op
-> bindType (INewtypeDecl   _ tc _ nc) = qualBindTopEnv "" tc (Data tc [nconstr nc])
+> bindType (INewtypeDecl      _ tc _ nc) = qualBindTopEnv "" tc (Data tc [nconstr nc])
 >   where nconstr (NewConstrDecl _ _ c _) = c
-> bindType (ITypeDecl       _ tc _ _) = qualBindTopEnv "" tc (Alias tc)
-> bindType (IFunctionDecl  _ _ _ _ _) = id
-> bindType (IClassDecl _ _ _ _ _ _ _ _) = id
+> bindType (ITypeDecl          _ tc _ _) = qualBindTopEnv "" tc (Alias tc)
+> bindType (IFunctionDecl     _ _ _ _ _) = id
+> bindType (IClassDecl  _ _ _ _ _ _ _ _) = id
 > bindType (IInstanceDecl _ _ _ _ _ _ _) = id
 
 \end{verbatim}
@@ -88,17 +88,17 @@ during syntax checking of type expressions.
 \begin{verbatim}
 
 > checkIDecl :: IDecl -> ISC IDecl
-> checkIDecl (IInfixDecl  p fix pr op) = return (IInfixDecl p fix pr op)
-> checkIDecl (HidingDataDecl p tc tvs) = do
+> checkIDecl (IInfixDecl    p fix pr op) = return (IInfixDecl p fix pr op)
+> checkIDecl (HidingDataDecl   p tc tvs) = do
 >   checkTypeLhs tvs
 >   return (HidingDataDecl p tc tvs)
-> checkIDecl (IDataDecl p tc tvs cs) = do
+> checkIDecl (IDataDecl     p tc tvs cs) = do
 >   checkTypeLhs tvs
 >   liftM (IDataDecl p tc tvs) (mapM (liftMaybe (checkConstrDecl tvs)) cs)
-> checkIDecl (INewtypeDecl p tc tvs nc) = do
+> checkIDecl (INewtypeDecl  p tc tvs nc) = do
 >   checkTypeLhs tvs
 >   liftM (INewtypeDecl p tc tvs) (checkNewConstrDecl tvs nc)
-> checkIDecl (ITypeDecl p tc tvs ty) = do
+> checkIDecl (ITypeDecl     p tc tvs ty) = do
 >   checkTypeLhs tvs
 >   liftM (ITypeDecl p tc tvs) (checkClosedType tvs ty)
 > checkIDecl (IFunctionDecl p f n cx ty) =
