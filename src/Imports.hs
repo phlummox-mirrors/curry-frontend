@@ -125,7 +125,7 @@ importInterface tcs m q is i env = (env'', errs)
     , classEnv  = 
       if tcs
       then (classEnv env) {
-          theClasses = importEntities' m q cs setPublicMethods mClsEnv' $ 
+          theClasses   = importEntities' m q cs setPublicMethods mClsEnv' $ 
             theClasses $ classEnv env, 
           theInstances = foldr (importInstance m) (theInstances $ classEnv env) mInstances
         }
@@ -198,14 +198,14 @@ importInterface tcs m q is i env = (env'', errs)
     getImportedClassMethods' :: Import -> [Ident]
     getImportedClassMethods' (ImportTypeWith tc fs) = 
       if tc == unqualify cls then fs else []
-    getImportedClassMethods' (Import _) = []
-    getImportedClassMethods' (ImportTypeAll _) = 
+    getImportedClassMethods' (Import             _) = []
+    getImportedClassMethods' (ImportTypeAll      _) = 
       internalError "getImportedClassMethods"
       
   -- importing dependencies; always as unqualified!
   env'' = env' 
     { tyConsEnv = importEntities m False ts' id mTCEnv $ tyConsEnv env'
-    , valueEnv = importEntities m False ts' id mTyEnv $ valueEnv env'
+    , valueEnv  = importEntities m False ts' id mTyEnv $ valueEnv env'
     }
   
   ts' = (`elem` map unqualify deps)
@@ -238,12 +238,12 @@ isVisible (Just (Importing _ _)) xs = (`Set.member`    xs)
 isVisible (Just (Hiding    _ _)) xs = (`Set.notMember` xs)
 
 isImporting :: Maybe ImportSpec -> Bool
-isImporting Nothing = True
+isImporting Nothing                = True
 isImporting (Just (Importing _ _)) = True
 isImporting (Just (Hiding    _ _)) = False
 
 isImportingAll :: Maybe ImportSpec -> Bool
-isImportingAll Nothing = True
+isImportingAll Nothing  = True
 isImportingAll (Just _) = False
 
 importEntities :: Entity a => ModuleIdent -> Bool -> (Ident -> Bool)
@@ -379,7 +379,7 @@ constrType tc tvs = ConstructorType tc $ map VariableType tvs
 bindCls :: Bool -> ModuleIdent -> IDecl -> ExpClassEnv -> ExpClassEnv
 bindCls _allClasses m (IClassDecl _ False scx cls tyvar ds defs _deps) env =
   Map.insert cls (mkClass m scx cls tyvar ds defs) env
-bindCls allClasses0 m (IClassDecl _ True scx cls tyvar ds defs _deps) env =
+bindCls allClasses0 m (IClassDecl _ True  scx cls tyvar ds defs _deps) env =
   if allClasses0
   then Map.insert cls
                   (mkClass m scx cls tyvar ds defs) env
@@ -391,7 +391,7 @@ bindCls _ _ _ env = env
 bindIdentMap :: Bool -> ModuleIdent -> IDecl -> ExpIdentMap -> ExpIdentMap
 bindIdentMap _allClasses _m (IClassDecl _ False _ cls _ _ _ _) env =
   Map.insert (unqualify cls) cls env
-bindIdentMap allClasses0 _m (IClassDecl _ True _ cls _ _ _ _) env =
+bindIdentMap allClasses0 _m (IClassDecl _ True  _ cls _ _ _ _) env =
   if allClasses0
   then Map.insert (unqualify cls) cls env
   else env
@@ -401,7 +401,7 @@ bindIdentMap _ _ _ env = env
 bindCls' :: Bool -> ModuleIdent -> IDecl -> ExpClassEnv' -> ExpClassEnv'
 bindCls' _allClasses m (IClassDecl _ False scx cls tyvar ds defs _deps) env =
   Map.insert (unqualify cls) (mkClass m scx cls tyvar ds defs) env
-bindCls' allClasses0 m (IClassDecl _ True scx cls tyvar ds defs _deps) env =
+bindCls' allClasses0 m (IClassDecl _ True  scx cls tyvar ds defs _deps) env =
   if allClasses0
   then Map.insert (unqualify cls)
                   (mkClass m scx cls tyvar ds defs) env
@@ -413,15 +413,15 @@ mkClass :: ModuleIdent -> [QualIdent] -> QualIdent -> Ident -> [(Bool, IDecl)]
         -> [Ident] -> Class
 mkClass m scx cls tyvar ds defs = 
   Class { 
-    superClasses = map (qualQualify m) scx, 
-    theClass = qualQualify m cls, 
-    CE.typeVar = tyvar, 
-    kind = -1, 
-    origMethods = [], 
-    methods = map (iFunDeclToMethod m) (map snd ds), 
-    typeSchemes = [], 
-    defaults = map toDefFun defs,
-    hidden = internalError "hidden not yet defined", 
+    superClasses  = map (qualQualify m) scx, 
+    theClass      = qualQualify m cls, 
+    CE.typeVar    = tyvar, 
+    kind          = -1, 
+    origMethods   = [], 
+    methods       = map (iFunDeclToMethod m) (map snd ds), 
+    typeSchemes   = [], 
+    defaults      = map toDefFun defs,
+    hidden        = internalError "hidden not yet defined", 
     publicMethods = map (fName . snd) $ filter fst ds }
   where
   toDefFun :: Ident -> Decl 
@@ -430,7 +430,7 @@ mkClass m scx cls tyvar ds defs =
     [Equation NoPos (FunLhs f []) (SimpleRhs NoPos (Tuple (SrcRef []) []) [])]
   fName :: IDecl -> Ident
   fName (IFunctionDecl _ f  _ _ _) = unqualify f
-  fName _ = internalError "mkClass in Imports"
+  fName _                          = internalError "mkClass in Imports"
 
 -- |convert an IFunctionDecl to the method representation used in "Class"
 iFunDeclToMethod :: ModuleIdent -> IDecl -> (Ident, CS.Context, TypeExpr)
@@ -448,7 +448,7 @@ calcDeps :: Interface -> QualIdent -> [QualIdent]
 calcDeps i cls =  
   case lookupClassIDecl cls i of
     Just (IClassDecl _ _ _ _ _ _ _ deps) -> deps
-    _ -> []
+    _                                    -> []
 
 -- |Looks up (if present) an interface class declaration. This is needed
 -- for calculating the dependencies of a given class
@@ -458,8 +458,8 @@ lookupClassIDecl cls (Interface _ _ decls) = list2Maybe $ catMaybes $ map lookup
   lookupClassIDecl' i@(IClassDecl _ _ _ cls' _ _ _ _) | cls == cls' = Just i
   -- lookupClassIDecl' i@(IHidingClassDecl _ _ cls' _ _) | cls == unqualify cls' = Just i
   lookupClassIDecl' _ = Nothing
-  list2Maybe [] = Nothing
-  list2Maybe [a] = Just a
+  list2Maybe []    = Nothing
+  list2Maybe [a]   = Just a
   list2Maybe (_:_) = internalError "lookupClassIDecl"
 
 -- |returns all imported classes from the given import list
@@ -467,14 +467,14 @@ classesInImportSpec' :: ExpClassEnv' -> [Import] -> [Ident]
 classesInImportSpec' cEnv = map importId . filter isClassImport
   where
   isClassImport :: Import -> Bool
-  isClassImport (Import _) = False
+  isClassImport (Import             _) = False
   isClassImport (ImportTypeWith cls _) = isJust $ Map.lookup cls cEnv
-  isClassImport (ImportTypeAll _) = internalError "classesInImportSpec"
+  isClassImport (ImportTypeAll      _) = internalError "classesInImportSpec"
 
 importId :: Import -> Ident
-importId (Import _) = internalError "classesInImportSpec"
+importId (Import             _) = internalError "classesInImportSpec"
 importId (ImportTypeWith cls _) = cls
-importId (ImportTypeAll _) = internalError "classesInImportSpec"
+importId (ImportTypeAll      _) = internalError "classesInImportSpec"
 
 -- |load instances from interface and return the instances as well as the
 -- class dependencies of all instances
@@ -486,12 +486,12 @@ loadInstances (Interface m _ ds) = foldr (bindInstance m) ([], []) ds
 bindInstance :: ModuleIdent -> IDecl -> ([Instance], [QualIdent]) -> ([Instance], [QualIdent])
 bindInstance m (IInstanceDecl _ maybeOrigin scx cls ty tyvars ideps) (is, deps)
   = let inst = Instance {
-          context = map (\(qid, id0) -> (qualQualify m qid, id0)) scx, 
-          iClass = qualQualify m cls, 
-          iType = qualQualify m $ specialTyConToQualIdent ty,
+          context     = map (\(qid, id0) -> (qualQualify m qid, id0)) scx, 
+          iClass      = qualQualify m cls, 
+          iType       = qualQualify m $ specialTyConToQualIdent ty,
           CE.typeVars = tyvars,
-          rules = [], 
-          origin = if isNothing maybeOrigin then m else fromJust maybeOrigin
+          rules       = [], 
+          origin      = if isNothing maybeOrigin then m else fromJust maybeOrigin
         }
     in (inst:is, deps ++ ideps)
 bindInstance _ _ iEnv = iEnv
@@ -593,9 +593,9 @@ expandHiding (ImportTypeAll     tc) =
 
 expandHelper :: Ident -> ExpandM Import -> ExpandM Import -> ExpandM [Import]
 expandHelper tc expandClass expandType = do
-  cEnv <- getClassEnv
+  cEnv  <- getClassEnv
   tyEnv <- getTyConsEnv
-  m <- getModuleIdent
+  m     <- getModuleIdent
   let isClass = tc `Map.member` cEnv
       isCons  = tc `Map.member` tyEnv
   case () of
@@ -612,7 +612,7 @@ expandThing tc = do
   case Map.lookup tc tcEnv of
     Just _  -> expandThing' tc $ Just [ImportTypeWith tc []]
     Nothing -> case Map.lookup tc cEnv of
-      Just _ -> expandThing' tc $ Just [ImportTypeWith tc []]
+      Just _  -> expandThing' tc $ Just [ImportTypeWith tc []]
       Nothing -> expandThing' tc Nothing
 
 -- try to expand as function / data constructor
@@ -641,11 +641,11 @@ expandThing' f tcImport = do
 expandHide :: Ident -> ExpandM [Import]
 expandHide tc = do
   tcEnv <- getTyConsEnv
-  cEnv <- getClassEnv
+  cEnv  <- getClassEnv
   case Map.lookup tc tcEnv of
     Just _  -> expandHide' tc $ Just [ImportTypeWith tc []]
     Nothing -> case Map.lookup tc cEnv of
-      Just _ -> expandHide' tc $ Just [ImportTypeWith tc []]
+      Just _  -> expandHide' tc $ Just [ImportTypeWith tc []]
       Nothing -> expandHide' tc Nothing
 
 -- try to hide as function / data constructor
@@ -682,12 +682,12 @@ expandTypeWith tc cs = do
 
 expandClassWith :: Ident -> [Ident] -> ExpandM Import
 expandClassWith cls fs = do
-  m <- getModuleIdent
+  m    <- getModuleIdent
   cEnv <- getClassEnv
   ImportTypeWith cls `liftM` case Map.lookup cls cEnv of
     Nothing -> report (errUndefinedEntity m cls) >> return []
-    Just c -> 
-      let publicMs = publicMethods c
+    Just c  -> 
+      let publicMs  = publicMethods c
           invalidFs = nub fs \\ publicMs
       in if null invalidFs
          then return fs
@@ -707,12 +707,12 @@ expandTypeAll tc = do
 
 expandClassAll :: Ident -> ExpandM Import
 expandClassAll cls = do
-  m <- getModuleIdent
+  m    <- getModuleIdent
   cEnv <- getClassEnv
   let theClass0 = Map.lookup cls cEnv
   ImportTypeWith cls `liftM` case theClass0 of
     Nothing -> report (errUndefinedEntity m cls) >> return []
-    Just c -> return $ publicMethods c
+    Just c  -> return $ publicMethods c
 
 errAmbiguousEntity :: ModuleIdent -> Ident -> Message
 errAmbiguousEntity m x = posMessage x $ hsep $ map text
@@ -803,14 +803,14 @@ importInterfaceIntf cEnv i@(Interface m _ _) env = env
   , tyConsEnv = importEntities m True (const True) id mTCEnv $ tyConsEnv env
   , valueEnv  = importEntities m True (const True) id mTyEnv $ valueEnv  env
   , classEnv  = (classEnv env) { 
-      theClasses = importEntities' m True (const True) id mClsEnv' $ theClasses $ classEnv env, 
+      theClasses   = importEntities' m True (const True) id mClsEnv' $ theClasses $ classEnv env, 
       theInstances = foldr (importInstance m) (theInstances $ classEnv env) mInstances
     }  
   }
   where
-  mPEnv  = intfEnv bindPrec     i -- all operator precedences
-  mTCEnv = intfEnv bindTCHidden i -- all type constructors
-  mTyEnv = intfEnv bindTy       i -- all values
+  mPEnv   = intfEnv bindPrec     i -- all operator precedences
+  mTCEnv  = intfEnv bindTCHidden i -- all type constructors
+  mTyEnv  = intfEnv bindTy       i -- all values
   mClsEnv = intfEnv (bindCls True) i -- all classes
   -- The type schemes might get lost, so we have to recompute them. We
   -- also have to set the hidden flags again, looking them up in the old 
@@ -823,7 +823,7 @@ importInterfaceIntf cEnv i@(Interface m _ _) env = env
   setHidden' :: Class -> Class
   setHidden' cls@(Class { theClass = cName}) = case Map.lookup cName canonClassMap' of
     Nothing -> cls { hidden = False }
-    Just c -> cls { hidden = hidden c }
+    Just c  -> cls { hidden = hidden c }
 
   (mInstances, _deps) = loadInstances i
 -- ---------------------------------------------------------------------------

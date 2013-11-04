@@ -65,28 +65,29 @@ exportInterface' :: Module -> Bool -> OpPrecEnv -> TCEnv -> ValueEnv
 exportInterface' (Module m (Just (Exporting _ es)) _ _) _tcs pEnv tcEnv tyEnv cEnv
   = Interface m imports $ precs ++ hidden0 ++ allDecls
   where
-  imports = map   (IImportDecl NoPos) $ usedModules allDecls
-  precs   = foldr (infixDecl m pEnv) [] es
-  hidden0  = map   (hiddenTypeDecl m tcEnv) $ hiddenTypes m allDecls
-  decls   = foldr (typeDecl m tcEnv cEnv) (foldr (funDecl m tyEnv) [] es) es
-  instances = nub $ map (instanceToIDecl m cEnv) $ 
+  imports           = map   (IImportDecl NoPos) $ usedModules allDecls
+  precs             = foldr (infixDecl m pEnv) [] es
+  hidden0           = map   (hiddenTypeDecl m tcEnv) $ hiddenTypes m allDecls
+  decls             = foldr (typeDecl m tcEnv cEnv) (foldr (funDecl m tyEnv) [] es) es
+  instances         = nub $ map (instanceToIDecl m cEnv) $ 
     concatMap (getClassAndSuperClassInstances cEnv) $ getAllInstances cEnv
-  hiddenClasses = map (classToClassDecl m cEnv True [] {- TODO -}. fromJust . canonLookupClass cEnv) $ 
-    nub dependencies \\ nub exportedClasses''
-  dependencies = calculateDependencies cEnv (getAllInstances cEnv) exportedClasses''
-  exportedClasses' = exportedClasses m cEnv es
+  hiddenClasses     = 
+    map (classToClassDecl m cEnv True [] {- TODO -}. fromJust . canonLookupClass cEnv) $ 
+      nub dependencies \\ nub exportedClasses''
+  dependencies      = calculateDependencies cEnv (getAllInstances cEnv) exportedClasses''
+  exportedClasses'  = exportedClasses m cEnv es
   exportedClasses'' = map (fromJust . canonClassName m cEnv) exportedClasses'
-  allDecls = 
+  allDecls          = 
     nub $ decls ++ dictDecls ++ instances ++ hiddenClasses ++ classElemDecls
-  dictionaries = map Export $ nub $ concatMap (getClassAndSuperClassDicts cEnv) $ 
+  dictionaries      = map Export $ nub $ concatMap (getClassAndSuperClassDicts cEnv) $ 
     getAllInstances cEnv
-  dictDecls = foldr (funDecl m tyEnv) [] dictionaries
-  allClasses0 = nub $ exportedClasses'' ++ dependencies
-  dictTypes0 = exportsForDictTypes allClasses0
-  selFuns = exportsForSelFuns cEnv allClasses0
-  defFuns = exportsForDefaultFuns cEnv allClasses0
-  classElems = dictTypes0 ++ selFuns ++ defFuns
-  classElemDecls = 
+  dictDecls         = foldr (funDecl m tyEnv) [] dictionaries
+  allClasses0       = nub $ exportedClasses'' ++ dependencies
+  dictTypes0        = exportsForDictTypes allClasses0
+  selFuns           = exportsForSelFuns cEnv allClasses0
+  defFuns           = exportsForDefaultFuns cEnv allClasses0
+  classElems        = dictTypes0 ++ selFuns ++ defFuns
+  classElemDecls    = 
     foldr (typeDecl m tcEnv cEnv) 
           (foldr (funDecl m tyEnv) [] classElems)
           classElems
@@ -134,7 +135,7 @@ typeDecl m tcEnv cEnv (ExportTypeWith tc cs) ds = case qualLookupTC tc tcEnv of
     -- (for these actually the name doesn't need to be exported, important is only 
     -- the type signature). 
     [c] -> classToClassDecl m cEnv False cs c : ds
-    _ -> internalError ("Exports.typeDecl: no class/type: " ++ show tc)
+    _   -> internalError ("Exports.typeDecl: no class/type: " ++ show tc)
   _ -> internalError "Exports.typeDecl: no type"
 typeDecl _ _ _ _ _ = internalError "Exports.typeDecl: no pattern match"
 
@@ -240,10 +241,10 @@ usedModules ds = nub' (catMaybes (map qidModule (foldr identsDecl [] ds)))
   where nub' = Set.toList . Set.fromList
 
 identsDecl :: IDecl -> [QualIdent] -> [QualIdent]
-identsDecl (IDataDecl    _ tc _ cs) xs =
+identsDecl (IDataDecl       _ tc _ cs) xs =
   tc : foldr identsConstrDecl xs (catMaybes cs)
-identsDecl (INewtypeDecl _ tc _ nc) xs = tc : identsNewConstrDecl nc xs
-identsDecl (ITypeDecl    _ tc _ ty) xs = tc : identsType ty xs
+identsDecl (INewtypeDecl    _ tc _ nc) xs = tc : identsNewConstrDecl nc xs
+identsDecl (ITypeDecl       _ tc _ ty) xs = tc : identsType ty xs
 identsDecl (IFunctionDecl _ f _ cx ty) xs = f  : identsCx cx (identsType ty xs)
 -- TODO: consider also identifiers/classes in the "depends" section of class
 -- or instance declarations? 
@@ -257,7 +258,7 @@ identsDecl _ _ = internalError "Exports.identsDecl: no pattern match"
 -- | as we gather qualified identifiers, we have to construct a dummy qualified
 -- identifier for the given module name
 qIdentFromModule :: Maybe ModuleIdent -> [QualIdent]
-qIdentFromModule Nothing = []
+qIdentFromModule Nothing  = []
 qIdentFromModule (Just m) = [qualifyWith m $ mkIdent "dummy"]
 
 identsConstrDecl :: ConstrDecl -> [QualIdent] -> [QualIdent]
@@ -308,10 +309,10 @@ usedTypes :: [IDecl] -> [QualIdent]
 usedTypes ds = foldr usedTypesDecl [] ds
 
 usedTypesDecl :: IDecl -> [QualIdent] -> [QualIdent]
-usedTypesDecl (IDataDecl     _ _ _ cs) tcs =
+usedTypesDecl (IDataDecl        _ _ _ cs) tcs =
   foldr usedTypesConstrDecl tcs (catMaybes cs)
-usedTypesDecl (INewtypeDecl  _ _ _ nc) tcs = usedTypesNewConstrDecl nc tcs
-usedTypesDecl (ITypeDecl     _ _ _ ty) tcs = usedTypesType ty tcs
+usedTypesDecl (INewtypeDecl     _ _ _ nc) tcs = usedTypesNewConstrDecl nc tcs
+usedTypesDecl (ITypeDecl        _ _ _ ty) tcs = usedTypesType ty tcs
 usedTypesDecl (IFunctionDecl _ _ _ cx ty) tcs = usedTypesContext cx (usedTypesType ty tcs)
 usedTypesDecl (IClassDecl _ _ _ _ _ sigs _ _) tcs = foldr usedTypesDecl tcs (map snd sigs)
 usedTypesDecl (IInstanceDecl _ _ _ _cls (QualTC ty) _ _) tcs = ty : tcs
@@ -381,8 +382,8 @@ exportedClasses m cEnv = concatMap exportedClass
   where
   exportedClass (ExportTypeWith qid _) = 
     if isJust $ lookupClass m cEnv qid then [qid] else [] 
-  exportedClass (Export _ ) = [] 
-  exportedClass _ = internalError "exportedClasses"
+  exportedClass (Export             _) = [] 
+  exportedClass _                      = internalError "exportedClasses"
 
 -- |calculates the *local* classes on which the given instances and classes
 -- depend
@@ -408,7 +409,7 @@ classToClassDecl m cEnv hidden' fs c =
        (map (qualUnqualify m) (classDeps ++ concatMap 
          (depsForClass cEnv) (cName : classDeps)))
   where
-  cName = theClass c
+  cName     = theClass c
   classDeps = classesFromClass False cEnv (theClass c)
   
 funName :: Decl -> [Ident]
@@ -474,9 +475,9 @@ selFunsNames :: ClassEnv -> QualIdent -> [String]
 selFunsNames cEnv cls = map (mkSelFunName (show cls)) 
     (map show scls ++ map show ms)
   where
-  scls = allSuperClasses cEnv cls
+  scls   = allSuperClasses cEnv cls
   class0 = fromJust $ canonLookupClass cEnv cls
-  ms = map fst $ typeSchemes class0
+  ms     = map fst $ typeSchemes class0
   
 -- |creates export specifications for all default functions for the given classes
 exportsForDefaultFuns :: ClassEnv -> [QualIdent] -> [Export]
@@ -495,5 +496,5 @@ defaultMethodsIdents cEnv cls =
   defaultMethods = concatMap toDef (defaults class0)
   class0 = fromJust $ canonLookupClass cEnv cls
   toDef (FunctionDecl _ _ _ f _) = [f]
-  toDef _ = []
+  toDef _                        = []
   
