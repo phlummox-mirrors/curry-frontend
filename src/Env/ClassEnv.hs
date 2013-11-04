@@ -123,21 +123,21 @@ instance Entity Class where
 -- the name of the class used in the source code. 
 lookupClass :: ModuleIdent -> ClassEnv -> QualIdent -> Maybe Class
 lookupClass m cEnv qid = case lookupNonHiddenClasses cEnv qid of
-  [] -> Nothing
+  []  -> Nothing
   [c] -> Just c
-  _ -> case lookupNonHiddenClasses cEnv (qualQualify m qid) of
-    [] -> Nothing
+  _   -> case lookupNonHiddenClasses cEnv (qualQualify m qid) of
+    []  -> Nothing
     [c] -> Just c
-    _ -> Nothing 
+    _   -> Nothing 
 
 -- |looks up a local, not hidden class from the class environment. 
 -- Takes as argument the name of the class used in the source code. 
 lookupLocalClass :: ClassEnv -> QualIdent -> Maybe Class
 lookupLocalClass (ClassEnv cEnv _ _ _) qid = 
   case qualLookupLocalTopEnv qid (nonHiddenClassEnv cEnv) of
-    [] -> Nothing
+    []  -> Nothing
     [c] -> Just c
-    _ -> Nothing
+    _   -> Nothing
 
 -- |looks up a class if it's not hidden, returning a list of candidates. Takes
 -- as argument the name of the class used in the source code. 
@@ -266,7 +266,7 @@ canonLookupMethodTypeSig' cEnv cls f =
 lookupMethodTypeSigHelper :: ClassEnv -> QualIdent -> Ident -> 
     (ClassEnv -> QualIdent ->  Maybe Class) -> Maybe (Context, TypeExpr)
 lookupMethodTypeSigHelper cEnv cls f lookupFun = do
-  theClass_ <- lookupFun cEnv cls
+  theClass_   <- lookupFun cEnv cls
   (_, cx, ty) <- find (\(id0, _, _) -> id0 == f) (methods theClass_)
   return (cx, ty)  
 
@@ -287,7 +287,7 @@ lookupMethodTypeSchemeHelper :: ClassEnv -> QualIdent -> Ident ->
     (ClassEnv -> QualIdent -> Maybe Class) -> Maybe TypeScheme
 lookupMethodTypeSchemeHelper cEnv cls f lookupFun = do
   theClass_ <- lookupFun cEnv cls
-  (_, tsc) <- find (\(id0, _) -> id0 == f) (typeSchemes theClass_)
+  (_, tsc)  <- find (\(id0, _) -> id0 == f) (typeSchemes theClass_)
   return tsc
 
 -- |returns the names of the class methods for which a default method is 
@@ -302,7 +302,7 @@ getDefaultMethods cls = map getDefaultMethod (defaults cls)
 getLocalInstances :: ClassEnv -> [Instance]
 getLocalInstances cEnv = map snd $ filter isLocal $ theInstances cEnv
   where isLocal (Local, _) = True
-        isLocal _ = False
+        isLocal _          = False
 
 -- |makes an instance a local instance
 localInst :: Instance -> (Source, Instance)
@@ -377,7 +377,7 @@ getInstanceWithOrigin cEnv m cls ty = list2Maybe $
 allSuperClasses :: ClassEnv -> QualIdent -> [QualIdent]
 allSuperClasses cEnv c = let
   theClass0 = canonLookupClass cEnv c
-  scs = maybe [] superClasses theClass0 in
+  scs       = maybe [] superClasses theClass0 in
   nub $ scs ++ concatMap (allSuperClasses cEnv) scs
   
 -- |checks whether a given class is a superclass of another class. Both class 
@@ -392,11 +392,11 @@ implies cEnv cx (qid, ty) =
   ||
   (isCons ty && 
     let (xi, tys) = splitType ty
-        inst = getInstance cEnv qid xi
-        result = fmap (\i -> 
-          let cx' = context i
-              ids = typeVars i
-              s = zip' ids tys
+        inst      = getInstance cEnv qid xi
+        result    = fmap (\i -> 
+          let cx'  = context i
+              ids  = typeVars i
+              s    = zip' ids tys
               cx'' = substContext s cx'
           in null (isValidCx cEnv cx'') && implies' cEnv cx cx'') inst
     in maybe False id result)
@@ -443,7 +443,7 @@ reduceContext cEnv cx0 = reduceContext' (toHnfs cEnv cx0)
   where 
   reduceContext' cx = 
     case searchReducible cx of
-      Nothing -> cx
+      Nothing  -> cx
       Just cx' -> reduceContext' cx'
   -- search from the back to the front for preserving the order of the context
   -- elements
@@ -468,9 +468,9 @@ toHnf :: ClassEnv -> (QualIdent, Type) -> BT.Context
 toHnf cEnv (cls, ty) 
   | isCons ty = case inst of
     Nothing -> [(cls, ty)]
-    Just i -> let 
-      ids = typeVars i
-      scon = context i
+    Just i  -> let 
+      ids     = typeVars i
+      scon    = context i
       mapping = zip' ids tys in
       toHnfs cEnv $ substContext mapping scon
   | otherwise = [(cls, ty)]
@@ -490,10 +490,10 @@ isValidCx cEnv cx = concatMap isValid' cx
   isValid' (_cls, TypeVariable _) = []
   isValid' (cls, ty) | isCons ty = 
     let (xi, tys) = splitType ty
-        inst = getInstance cEnv cls xi
-        tyVars = typeVars (fromJust inst)
-        iCx = context (fromJust inst)
-        s = zip' tyVars tys in
+        inst      = getInstance cEnv cls xi
+        tyVars    = typeVars (fromJust inst)
+        iCx       = context (fromJust inst)
+        s         = zip' tyVars tys in
     if isNothing inst then [(cls, ty)]
     else isValidCx cEnv (substContext s iCx)
   isValid' (_cls, _) = []
@@ -572,22 +572,22 @@ dictCode cEnv available (qid, ty)
         
         -- safe under the above assumptions  
         inst = fromJust $ getInstance cEnv qid xi
-        ids = typeVars inst
+        ids  = typeVars inst
         -- do context reduction of the instance context! As reduceContext
         -- wants Int's as type variables and no Ident's, we have to convert
         -- the present identifiers to numbers and after the context reduction
         -- the numbers back to identifiers again.   
-        tyVarsMapping = zip ids [0..]
-        origCx = context inst
-        cxElem (qid0, id0) = (qid0, TypeVariable $ fromJust $ lookup id0 tyVarsMapping)
-        reducedCx = reduceContext cEnv $ map cxElem origCx
+        tyVarsMapping        = zip ids [0..]
+        origCx               = context inst
+        cxElem (qid0, id0)   = (qid0, TypeVariable $ fromJust $ lookup id0 tyVarsMapping)
+        reducedCx            = reduceContext cEnv $ map cxElem origCx
         reverseTyVarsMapping = zip [0..] ids
         cxElem' (qid0, TypeVariable n) = (qid0, fromJust $ lookup n reverseTyVarsMapping)
-        cxElem' _ = internalError "cxElem'"
-        newCx = map cxElem' reducedCx
+        cxElem' _                      = internalError "cxElem'"
+        newCx                = map cxElem' reducedCx
         
         mapping = zip' ids tys
-        cx' = substContext mapping newCx
+        cx'     = substContext mapping newCx
         
         -- if we have an empty dictionary, i.e., a dictionary without any 
         -- class methods, we had to remove the context of the dictionary
@@ -603,7 +603,7 @@ dictCode cEnv available (qid, ty)
                                " from the following dictionaries:\n" ++ show available) 
  where
  equalCxElem = \(qid', ty') -> qid' == qid && ty' == ty
- subClass = \(qid', ty') -> ty == ty' && isSuperClassOf cEnv qid qid'  
+ subClass    = \(qid', ty') -> ty == ty' && isSuperClassOf cEnv qid qid'  
 
 -- |returns whether the dictionary for the given class is empty, i.e., whether
 -- it doesn't contain any class methods. The class name must be canonical. 
@@ -628,8 +628,8 @@ dictType cEnv cls = evalState (dictType' cEnv cls) initFreshVar
 
 dictType' :: ClassEnv -> QualIdent -> State Int Type
 dictType' cEnv cls  = do
-  let c = fromJust $ canonLookupClass cEnv cls
-      scs = superClasses c
+  let c        = fromJust $ canonLookupClass cEnv cls
+      scs      = superClasses c
       tschemes = map snd $ typeSchemes c
   -- get the types for all superclasses
   tsScs <- mapM (dictType' cEnv) scs
@@ -637,10 +637,10 @@ dictType' cEnv cls  = do
   funTs <- mapM transTypeScheme tschemes
   -- build the dictionary tuple (or value, if there is only one element)
   return $ case null (tsScs ++ funTs) of
-    True -> unitType
+    True  -> unitType
     False -> case length (tsScs ++ funTs) == 1 of
-      True -> case length tsScs == 1 of
-        True -> head tsScs
+      True  -> case length tsScs == 1 of
+        True  -> head tsScs
         False -> head funTs
       False -> tupleType (tsScs ++ funTs)
 
@@ -652,9 +652,9 @@ transTypeScheme (ForAll _ _ ty) = do
   -- type variable of the class (here always "0")
   let tvars = (nub $ BT.typeVars ty) \\ [0] 
   freshVars <- replicateM (length tvars) freshTyVar
-  let mapping = zip tvars (map TypeVariable freshVars)
+  let mapping   = zip tvars (map TypeVariable freshVars)
       zeroArity = arrowArity ty == 0
-      ty' = subst (listToSubst mapping) ty
+      ty'       = subst (listToSubst mapping) ty
   return $ if zeroArity then TypeArrow unitType ty' else ty'
 
 freshTyVar :: State Int Int
@@ -706,6 +706,6 @@ ppInst (Instance {context = cx, iClass = ic, iType = it, typeVars = tvs, rules =
 -- ----------------------------------------------------------------------------
 
 list2Maybe :: [a] -> Maybe a
-list2Maybe [] = Nothing
-list2Maybe [x] = Just x
+list2Maybe []    = Nothing
+list2Maybe [x]   = Just x
 list2Maybe (_:_) = Nothing
