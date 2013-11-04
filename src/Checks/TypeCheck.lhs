@@ -105,7 +105,7 @@ to True in the normal execution of the compiler.
 >     -- apply the final substitution to the type schemes in the value 
 >     -- environment and reduce still unreduced contexts
 >     tyEnv' <- getValueEnv
->     theta <- getTypeSubst
+>     theta  <- getTypeSubst
 >     modifyValueEnv $ const (fmap reduceContexts (theta `subst` tyEnv'))
 >     -- correct the contexts of variables because of the context reduction
 >     -- and apply the final type substitution to the type annotations
@@ -121,22 +121,22 @@ to True in the normal execution of the compiler.
 >     -- the second run should not produce any errors. If it does, we
 >     -- did something wrong. 
 >     secondRun0 <- isSecondRun 
->     errors0 <- getErrors
+>     errors0    <- getErrors
 >     when (secondRun0 && not (null errors0)) $ 
 >       internalError ("second type check failed: \n" ++ show (reverse errors0))
 >     
 >     -- restore the order of the declarations!
 >     return (map snd $ sortBy sorter $ tds' ++ zip (map fst vds') newDecls'')
->   (tds', vds') = partition (isTypeDecl . snd) pdecls
->   tds = map snd tds'
->   vds = map snd vds'
+>   (tds', vds')   = partition (isTypeDecl . snd) pdecls
+>   tds            = map snd tds'
+>   vds            = map snd vds'
 >   sorter (n1, _) (n2, _) = compare n1 n2
->   initState = TcState m tcEnv tyEnv cEnv doContextRed0 idSubst emptySigEnv 
+>   initState      = TcState m tcEnv tyEnv cEnv doContextRed0 idSubst emptySigEnv 
 >     0 [] 0 Map.empty sndRun (TypeClassExtensions `elem` optExtensions opts)
 >   reduceContexts = if doContextRed0 then reduceContexts' else id
 >   reduceContexts' (Value qid a (ForAll cx n ty) cls) = 
 >     Value qid a (ForAll (reduceContext cEnv cx) n ty) cls
->   reduceContexts' v = v
+>   reduceContexts' v                                  = v
 
 \end{verbatim}
 
@@ -146,18 +146,18 @@ generating fresh type variables.
 \begin{verbatim}
 
 > data TcState = TcState
->   { moduleIdent :: ModuleIdent -- read only
->   , tyConsEnv   :: TCEnv
->   , valueEnv    :: ValueEnv
->   , classEnv    :: ClassEnv
->   , doContextRed :: Bool
->   , typeSubst   :: TypeSubst
->   , sigEnv      :: SigEnv
->   , nextId      :: Int         -- automatic counter
->   , errors      :: [Message]
->   , declCounter :: Int
->   , declGroups  :: Map.Map [Int] ([Decl], BT.Context)
->   , secondRun   :: Bool
+>   { moduleIdent   :: ModuleIdent -- read only
+>   , tyConsEnv     :: TCEnv
+>   , valueEnv      :: ValueEnv
+>   , classEnv      :: ClassEnv
+>   , doContextRed  :: Bool
+>   , typeSubst     :: TypeSubst
+>   , sigEnv        :: SigEnv
+>   , nextId        :: Int         -- automatic counter
+>   , errors        :: [Message]
+>   , declCounter   :: Int
+>   , declGroups    :: Map.Map [Int] ([Decl], BT.Context)
+>   , secondRun     :: Bool
 >   , typeClassExts :: Bool
 >   }
 
@@ -287,7 +287,7 @@ and \texttt{expandMonoTypes}, respectively.
 >   free _                        = []
 
 > checkTypeDecls :: ModuleIdent -> [Decl] -> TCM ()
-> checkTypeDecls _ []                    =
+> checkTypeDecls _ []                      =
 >   internalError "TypeCheck.checkTypeDecls: empty list"
 > checkTypeDecls _ [DataDecl    _ _ _ _ _] = return ()
 > checkTypeDecls _ [NewtypeDecl _ _ _ _ _] = return ()
@@ -296,7 +296,7 @@ and \texttt{expandMonoTypes}, respectively.
 >   | otherwise            = return ()
 > checkTypeDecls _ (TypeDecl _ tc _ _ : ds) =
 >   report $ errRecursiveTypes $ tc : [tc' | TypeDecl _ tc' _ _ <- ds]
-> checkTypeDecls _ _                     =
+> checkTypeDecls _ _                       =
 >   internalError "TypeCheck.checkTypeDecls: no type synonym"
 
 > ft :: ModuleIdent -> TypeExpr -> [Ident] -> [Ident]
@@ -504,15 +504,15 @@ class methods share the same namespace!
 > bindClassMethods (ClassEnv _ _ methodEnv _) = do 
 >   vEnv <- getValueEnv
 >   let classMethods0 = allBindings methodEnv
->       vEnv' = foldr bind vEnv classMethods0
+>       vEnv'         = foldr bind vEnv classMethods0
 >   modifyValueEnv $ const vEnv'
 >   where
 >   bind :: (QualIdent, Class) -> ValueEnv -> ValueEnv
 >   bind (m, cls) = 
 >     let tsc = fromJust $ lookupTypeScheme cls (unqualify m)
->         v = Value (qualifyLike (theClass cls) $ unqualify m) 
->                   (BT.arrowArity $ typeSchemeToType tsc) tsc
->                   (Just $ theClass cls)
+>         v   = Value (qualifyLike (theClass cls) $ unqualify m) 
+>                     (BT.arrowArity $ typeSchemeToType tsc) tsc
+>                     (Just $ theClass cls)
 >     -- Here we provide a "dummy" module. This is safe because the module
 >     -- information isn't needed for class methods (but later may be?) 
 >     in qualImportTopEnv' (fromJust' "bindClassMethods" $ qidModule $ theClass cls) 
@@ -550,7 +550,7 @@ either one of the basic types or \texttt{()}.
 
 > tcDecls :: [Decl] -> TCM ([Decl], BT.Context)
 > tcDecls ds = do
->   m <- getModuleIdent
+>   m      <- getModuleIdent
 >   oldSig <- getSigEnv
 >   modifySigEnv $ \ sigs -> foldr bindTypeSigs sigs ods
 >   dsAndCxs <- mapM tcDeclGroup $ scc (bv . snd) (qfv m . snd) vds'
@@ -560,9 +560,9 @@ either one of the basic types or \texttt{()}.
 >   return $ (map snd $ sortBy sorter allDecls, concatMap snd dsAndCxs)
 >   where
 >   -- record the order of the declarations by adding a position argument
->   pds = zip [0..] ds
+>   pds          = zip [0..] ds
 >   (vds', ods') = partition (isValueDecl . snd) pds
->   ods = map snd ods'
+>   ods          = map snd ods'
 >   sorter (n1, _) (n2, _) = compare n1 n2
 
 > tcDeclGroup :: [PDecl] -> TCM ([PDecl], BT.Context)
@@ -580,7 +580,7 @@ either one of the basic types or \texttt{()}.
 >   -- store the results.
 >   declGroup <- getDeclGroup ds
 >   (ds', cx) <- case isNothing declGroup of
->     True -> do
+>     True  -> do
 >       (ds0, cx0) <- tcDeclGroup' ds 
 >       setDeclGroup ds0 cx0
 >       return (ds0, cx0)
@@ -589,24 +589,24 @@ either one of the basic types or \texttt{()}.
 
 > tcDeclGroup' :: [Decl] -> TCM ([Decl], BT.Context) 
 > tcDeclGroup' ds = do
->   tyEnv0 <- getValueEnv
->   ctysLhs <- mapM tcDeclLhs ds
+>   tyEnv0       <- getValueEnv
+>   ctysLhs      <- mapM tcDeclLhs ds
 >   dsAndCtysRhs <- mapM (tcDeclRhs tyEnv0) ds
 >   -- get all contexts
->   let cxsLhs = map fst ctysLhs
+>   let cxsLhs  = map fst ctysLhs
 >       ctysRhs = map snd dsAndCtysRhs
->       cxsRhs = map fst ctysRhs
->       cxs = zipWith (++) cxsLhs cxsRhs
+>       cxsRhs  = map fst ctysRhs
+>       cxs     = zipWith (++) cxsLhs cxsRhs
 >   sequence_ (zipWith3' unifyDecl ds ctysLhs ctysRhs)
 >   theta <- getTypeSubst
 >   let -- build the contexts of all declarations
 >       -- nubbing contexts for avoiding exponential growth of the context lists
->       cxs' = map (nub . subst theta) cxs
+>       cxs'     = map (nub . subst theta) cxs
 >
->   let freeVars = fvEnv (subst theta tyEnv0)
+>       freeVars = fvEnv (subst theta tyEnv0)
 >   
 >   -- TODO: updateContexts needed (perhaps for pattern declarations)?
->   let newDs0 = {-zipWith updateContexts cxs' -}map fst dsAndCtysRhs
+>       newDs0   = {-zipWith updateContexts cxs' -}map fst dsAndCtysRhs
 >   -- Propagate all contexts. 
 >   newDs1 <- fpIter newDs0
 >   -- Update contexts of function declarations with the contexts from the
@@ -639,15 +639,15 @@ either one of the basic types or \texttt{()}.
 >     vEnv <- getValueEnv
 >     let vs = lookupValue v vEnv
 >     m <- getModuleIdent 
->     let vs' = filter (valInMdl m) vs
+>     let vs'                   = filter (valInMdl m) vs
 >         Value _ arity tysig _ = head vs'
 >     when (length vs' /= 1) $ internalError "writeContexts" 
 >     -- update the entry
 >     let tysig' = tysig `constrainBy` cx
 >     modifyValueEnv $ rebindFun m v arity tysig'
 >   unpack (cx, FunctionDecl _ _ _ f _) = [(cx, f)]
->   unpack (cx, PatternDecl _ _ _ p _) = map (\d -> (cx, d)) (bv p)
->   unpack _ = internalError "unpack"
+>   unpack (cx, PatternDecl  _ _ _ p _) = map (\d -> (cx, d)) (bv p)
+>   unpack _                            = internalError "unpack"
 
 > {-
 > -- |after the complete contexts have been determined, update the type annotations
@@ -671,7 +671,7 @@ either one of the basic types or \texttt{()}.
 > isNotLocal :: Set.Set Int -> (QualIdent, Type) -> Bool
 > isNotLocal fvs (_qid, TypeVariable v) = v `Set.member` fvs
 > -- isNotLocal _ (qid, ty) = internalError ("isNotLocal: " ++ show qid ++ " " ++ show ty)
-> isNotLocal _ _ = False -- or True, shouldn't matter 
+> isNotLocal _   _                      = False -- or True, shouldn't matter 
 
 > -- | updates the contexts in the function/pattern declarations with the
 > -- contexts from the type environment
@@ -684,7 +684,7 @@ either one of the basic types or \texttt{()}.
 >     theta <- getTypeSubst
 >     let cty = subst theta $ varType f tyEnv 
 >     return $ FunctionDecl p (Just (mirrorFB $ getContext cty, ty)) n f eqs
->   updateFuncContexts' p@(PatternDecl _ _ _ _ _) = return p
+>   updateFuncContexts' p@(PatternDecl                 _ _ _ _ _) = return p
 >   updateFuncContexts' _ = internalError "updateFuncContexts'"
 
 \end{verbatim}
@@ -697,15 +697,15 @@ the maximal necessary contexts for the functions are determined.
 > -- is reached. 
 > fpIter :: [Decl] -> TCM [Decl]
 > fpIter ds = do
->   m <- getModuleIdent
->   vEnv <- getValueEnv
+>   m     <- getModuleIdent
+>   vEnv  <- getValueEnv
 >   theta <- getTypeSubst
 >   -- determine the very first context of a function declaration that
 >   -- is given by its type signature. This is important, because we want
 >   -- that the order of the elements in the inferred context is (roughly)
 >   -- the same as that of the elements in the type signature.  
 >   let maybeFs = map fromDecl ds 
->       ctys = map 
+>       ctys    = map 
 >         (fmap $ \v -> subst theta (funType m (qualify v) vEnv))
 >         maybeFs
 >   let firstContexts = map genContext ctys 
@@ -713,9 +713,9 @@ the maximal necessary contexts for the functions are determined.
 >   where
 >   fromDecl :: Decl -> Maybe Ident
 >   fromDecl (FunctionDecl _ _ _ f _) = Just f
->   fromDecl (PatternDecl _ _ _ _ _) = Nothing 
->   fromDecl _ = internalError "fromDecl|fpIter"
->   genContext Nothing = []
+>   fromDecl (PatternDecl  _ _ _ _ _) = Nothing 
+>   fromDecl _                        = internalError "fromDecl|fpIter"
+>   genContext Nothing    = []
 >   genContext (Just tsc) = getContext tsc
 
 > -- | Helper function for fix point iteration. The second argument is
@@ -723,12 +723,12 @@ the maximal necessary contexts for the functions are determined.
 > fpIter' :: [Decl] -> [[(QualIdent, Type)]] -> TCM [Decl]
 > fpIter' ds oldCxs = do 
 >   newDsAndCxs <- mapM fpDeclRhs ds
->   theta <- getTypeSubst
->   let cxs = map snd newDsAndCxs
->       cxs' = map (nub . subst theta) cxs
+>   theta       <- getTypeSubst
+>   let cxs   = map snd newDsAndCxs
+>       cxs'  = map (nub . subst theta) cxs
 >       cxs'' = zipWith (++) oldCxs cxs'
 >   case map Set.fromList oldCxs /= map Set.fromList cxs'' of
->     True -> do
+>     True  -> do
 >       writeContexts (zip cxs'' ds)
 >       fpIter' (map fst newDsAndCxs) cxs''
 >     False -> do
@@ -740,7 +740,7 @@ the maximal necessary contexts for the functions are determined.
 >   eqsAndCxs <- mapM fpEquation eqs
 >   let cx' = concatMap snd eqsAndCxs
 >   return (FunctionDecl p (Just (mirrorFB cx' ++ cx0, ty0)) id0 f (map fst eqsAndCxs), cx')
-> fpDeclRhs (PatternDecl p (Just (cx0, ty0)) id0 t rhs) = do
+> fpDeclRhs (PatternDecl  p (Just (cx0, ty0)) id0 t rhs) = do
 >   (rhs', cx) <- fpRhs rhs
 >   return (PatternDecl p (Just (mirrorFB cx ++ cx0, ty0)) id0 t rhs', cx) 
 > fpDeclRhs _ = internalError "fpDeclRhs"
@@ -753,7 +753,7 @@ the maximal necessary contexts for the functions are determined.
 > fpRhs :: Rhs -> TCM (Rhs, BT.Context)
 > fpRhs (SimpleRhs p e ds) = do
 >   (ds', cxDs) <- tcDecls ds
->   (e', cxE) <- fpExpr e
+>   (e', cxE)   <- fpExpr e
 >   return (SimpleRhs p e' ds', cxE ++ cxDs)
 > fpRhs (GuardedRhs es ds) = do
 >   (ds', cxDs) <- tcDecls ds
@@ -778,17 +778,17 @@ the maximal necessary contexts for the functions are determined.
 >   (l', cx) <- if sndRun then return (l, BT.emptyContext) else fpLiteral l
 >   return (Literal l', cx)
 > fpExpr (Variable (Just (_cx0, ty0)) v) = do
->   m <- getModuleIdent
+>   m     <- getModuleIdent
 >   theta <- getTypeSubst
->   sigs <- getSigEnv
->   tsc <- getValueEnv >>= \vEnv -> return (funType m v vEnv)
+>   sigs  <- getSigEnv
+>   tsc   <- getValueEnv >>= \vEnv -> return (funType m v vEnv)
 >   let tySig = qualLookupTypeSig m v sigs
 >   case isJust tySig of
 >     False -> do
 >       let mapping = buildTypeVarsMapping (typeSchemeToType tsc) (mirrorBF ty0)
 >           cx' = subst mapping (getContext tsc)
 >       return (Variable (Just (mirrorFB cx', ty0)) v, cx')
->     True -> do
+>     True  -> do
 >       let mapping = buildTypeVarsMapping (subst theta $ typeSchemeToType tsc) (mirrorBF ty0)
 >           cx' = subst mapping (subst theta $ getContext tsc)  
 >       return (Variable (Just (mirrorFB cx', ty0)) v, cx')
@@ -814,21 +814,21 @@ the maximal necessary contexts for the functions are determined.
 >   return (ListCompr sref e' (map fst ssAndCxs), cx ++ concatMap snd ssAndCxs)
 > fpExpr (EnumFrom cty@(Just (cx, _ty)) e1) = do
 >   (e1', cx1) <- fpExpr e1
->   exts <- typeClassExtensions
+>   exts       <- typeClassExtensions
 >   return (EnumFrom cty e1', 
 >           cx1 ++ (if exts then mirrorBF cx else []))
 > fpExpr (EnumFrom Nothing _) = internalError "fpExpr EnumFrom"
 > fpExpr (EnumFromThen cty@(Just (cx, _ty)) e1 e2) = do
 >   (e1', cx1) <- fpExpr e1
 >   (e2', cx2) <- fpExpr e2
->   exts <- typeClassExtensions
+>   exts       <- typeClassExtensions
 >   return (EnumFromThen cty e1' e2', 
 >           cx1 ++ cx2 ++ (if exts then mirrorBF cx else []))
 > fpExpr (EnumFromThen Nothing _ _) = internalError "fpExpr EnumFromThen"
 > fpExpr (EnumFromTo cty@(Just (cx, _ty)) e1 e2) = do
 >   (e1', cx1) <- fpExpr e1
 >   (e2', cx2) <- fpExpr e2
->   exts <- typeClassExtensions
+>   exts       <- typeClassExtensions
 >   return (EnumFromTo cty e1' e2', 
 >           cx1 ++ cx2 ++ (if exts then mirrorBF cx else []))
 > fpExpr (EnumFromTo Nothing _ _) = internalError "fpExpr EnumFromTo"
@@ -836,13 +836,13 @@ the maximal necessary contexts for the functions are determined.
 >   (e1', cx1) <- fpExpr e1
 >   (e2', cx2) <- fpExpr e2
 >   (e3', cx3) <- fpExpr e3
->   exts <- typeClassExtensions
+>   exts       <- typeClassExtensions
 >   return (EnumFromThenTo cty e1' e2' e3', 
 >           cx1 ++ cx2 ++ cx3 ++ (if exts then mirrorBF cx else []))
 > fpExpr (EnumFromThenTo Nothing _ _ _) = internalError "fpExpr EnumFromThenTo"
 > fpExpr (UnaryMinus cty@(Just (cx, _ty)) id0 e) = do
 >   (e', cx1) <- fpExpr e
->   exts <- typeClassExtensions
+>   exts      <- typeClassExtensions
 >   return (UnaryMinus cty id0 e', cx1 ++ (if exts then mirrorBF cx else []))
 > fpExpr (UnaryMinus Nothing _ _) = internalError "fpExpr UnaryMinus"
 > fpExpr (Apply e1 e2) = do
@@ -851,18 +851,18 @@ the maximal necessary contexts for the functions are determined.
 >   -- theta <- getTypeSubst
 >   return (Apply e1' e2', {-subst theta -}(cx1 ++ cx2))
 > fpExpr (InfixApply e1 op e2) = do
->   (e1', cx1) <- fpExpr e1
+>   (e1' , cx1) <- fpExpr e1
 >   (_op', cxO) <- fpExpr (infixOp op)
->   (e2', cx2) <- fpExpr e2
+>   (e2' , cx2) <- fpExpr e2
 >   -- theta <- getTypeSubst
 >   return (InfixApply e1' op e2', {-subst theta -}(cx1 ++ cxO ++ cx2))
 > fpExpr (LeftSection e1 op) = do
->   (e1', cx1) <- fpExpr e1
+>   (e1' , cx1) <- fpExpr e1
 >   (_op', cxO) <- fpExpr (infixOp op)
 >   -- theta <- getTypeSubst
 >   return (LeftSection e1' op, {-subst theta -}(cx1 ++ cxO))
 > fpExpr (RightSection op e1) = do
->   (e1', cx1) <- fpExpr e1
+>   (e1' , cx1) <- fpExpr e1
 >   (_op', cxO) <- fpExpr (infixOp op)
 >   -- theta <- getTypeSubst
 >   return (RightSection op e1', {-subst theta -}(cx1 ++ cxO))
@@ -871,7 +871,7 @@ the maximal necessary contexts for the functions are determined.
 >   return (Lambda sref ps e', cx)
 > fpExpr (Let ds e) = do
 >   (ds', cxDs) <- tcDecls ds
->   (e', cx) <- fpExpr e
+>   (e' , cx  ) <- fpExpr e
 >   return (Let ds' e', cx ++ cxDs)
 > fpExpr (Do ss e) = do
 >   ssAndCxs <- mapM fpStmt ss
@@ -883,7 +883,7 @@ the maximal necessary contexts for the functions are determined.
 >   (e3', cx3) <- fpExpr e3
 >   return (IfThenElse sref e1' e2' e3', cx1 ++ cx2 ++ cx3)
 > fpExpr (Case sref ct e alts) = do
->   (e', cxE) <- fpExpr e
+>   (e', cxE)   <- fpExpr e
 >   altsWithCxs <- mapM fpAlt alts
 >   return (Case sref ct e' (map fst altsWithCxs), cxE ++ concatMap snd altsWithCxs)
 > fpExpr (RecordConstr fs) = do
@@ -898,10 +898,10 @@ the maximal necessary contexts for the functions are determined.
 >   return (RecordUpdate (map fst fsWithCxs) e', concatMap snd fsWithCxs ++ cxE)
 
 > fpStmt :: Statement -> TCM (Statement, BT.Context)
-> fpStmt (StmtExpr sref e) = do
+> fpStmt (StmtExpr   sref e) = do
 >   (e', cxE) <- fpExpr e
 >   return (StmtExpr sref e', cxE)
-> fpStmt (StmtDecl ds) = do
+> fpStmt (StmtDecl       ds) = do
 >   (ds', cx') <- tcDecls ds
 >   return (StmtDecl ds', cx')
 > fpStmt (StmtBind sref p e) = do
@@ -920,20 +920,20 @@ the maximal necessary contexts for the functions are determined.
 
 > fpLiteral :: Literal -> TCM (Literal, BT.Context)
 > fpLiteral l@(Int    v _) = do
->   m <- getModuleIdent
+>   m    <- getModuleIdent
 >   vEnv <- getValueEnv
 >   let cty = funType m (qualify v) vEnv
 >   return (l, getContext cty) 
-> fpLiteral l@(Float v _ ) = do
+> fpLiteral l@(Float  v _) = do
 >   exts <- typeClassExtensions
 >   case exts of
->     True -> do
->       m <- getModuleIdent
+>     True  -> do
+>       m    <- getModuleIdent
 >       vEnv <- getValueEnv
 >       let cty = funType m (qualify v) vEnv
 >       return (l, getContext cty)
 >     False -> return (l, BT.emptyContext) 
-> fpLiteral l@(Char  _ _ ) = return (l, BT.emptyContext) 
+> fpLiteral l@(Char   _ _) = return (l, BT.emptyContext) 
 > fpLiteral l@(String _ _) = return (l, BT.emptyContext)
 
 > -- | This function is called after all type checking has been done. Because
@@ -946,89 +946,89 @@ the maximal necessary contexts for the functions are determined.
 
 > cvcDecl :: Decl -> TCM Decl
 > cvcDecl (FunctionDecl p cty n id0 eqs) = FunctionDecl p cty n id0 `liftM` mapM cvcEqu eqs
-> cvcDecl (PatternDecl p cty n pt rhs) = PatternDecl p cty n pt `liftM` cvcRhs rhs
+> cvcDecl (PatternDecl   p cty n pt rhs) = PatternDecl p cty n pt `liftM` cvcRhs rhs
 > cvcDecl x = return x
 
 > cvcEqu :: Equation -> TCM Equation
 > cvcEqu (Equation p lhs rhs) = Equation p lhs `liftM` cvcRhs rhs
 
 > cvcRhs :: Rhs -> TCM Rhs
-> cvcRhs (SimpleRhs p e ds) = liftM2 (SimpleRhs p) (cvcExpr e) (mapM cvcDecl ds)
+> cvcRhs (SimpleRhs  p e ds) = liftM2 (SimpleRhs p) (cvcExpr e) (mapM cvcDecl ds)
 > cvcRhs (GuardedRhs ces ds) = liftM2 GuardedRhs (mapM cvcCondExpr ces) (mapM cvcDecl ds)
 
 > cvcExpr :: Expression -> TCM Expression
-> cvcExpr l@(Literal _) = return l
+> cvcExpr l@(Literal           _) = return l
 > cvcExpr (Variable (Just cty) v) = do
 >   cty' <- adjustType cty v
 >   return $ Variable (Just cty') v
-> cvcExpr (Variable Nothing v) = internalError ("no type info for Variable " ++ show v) 
-> cvcExpr c@(Constructor _) = return c
-> cvcExpr (Paren e) = Paren `liftM` cvcExpr e
-> cvcExpr (Typed cty e cx ty) = liftM3 (Typed cty) (cvcExpr e) (return cx) (return ty)
-> cvcExpr (Tuple sref es) = Tuple sref `liftM` mapM cvcExpr es
-> cvcExpr (List sref es) = List sref `liftM` mapM cvcExpr es
-> cvcExpr (ListCompr sref e ss) = liftM2 (ListCompr sref) (cvcExpr e) (mapM cvcStmt ss)
-> cvcExpr (EnumFrom (Just cty) e1) = do
->   e1' <- cvcExpr e1
+> cvcExpr (Variable    Nothing v) = internalError ("no type info for Variable " ++ show v) 
+> cvcExpr c@(Constructor       _) = return c
+> cvcExpr (Paren               e) = Paren `liftM` cvcExpr e
+> cvcExpr (Typed     cty e cx ty) = liftM3 (Typed cty) (cvcExpr e) (return cx) (return ty)
+> cvcExpr (Tuple         sref es) = Tuple sref `liftM` mapM cvcExpr es
+> cvcExpr (List          sref es) = List sref `liftM` mapM cvcExpr es
+> cvcExpr (ListCompr   sref e ss) = liftM2 (ListCompr sref) (cvcExpr e) (mapM cvcStmt ss)
+> cvcExpr (EnumFrom        (Just cty) e1) = do
+>   e1'  <- cvcExpr e1
 >   exts <- typeClassExtensions
 >   cty' <- if exts 
 >           then adjustType cty tcPreludeEnumFromQIdent
 >           else return cty
 >   return $ EnumFrom (Just cty') e1' 
-> cvcExpr (EnumFrom Nothing _) = internalError "cvcExpr EnumFrom"
+> cvcExpr (EnumFrom            Nothing _) = internalError "cvcExpr EnumFrom"
 > cvcExpr (EnumFromThen (Just cty) e1 e2) = do
->   e1' <- cvcExpr e1
->   e2' <- cvcExpr e2
+>   e1'  <- cvcExpr e1
+>   e2'  <- cvcExpr e2
 >   exts <- typeClassExtensions
 >   cty' <- if exts
 >           then adjustType cty tcPreludeEnumFromThenQIdent
 >           else return cty
 >   return $ EnumFromThen (Just cty') e1' e2'
-> cvcExpr (EnumFromThen Nothing _ _) = internalError "cvcExpr EnumFromThen"
-> cvcExpr (EnumFromTo (Just cty) e1 e2) = do
->   e1' <- cvcExpr e1
->   e2' <- cvcExpr e2
+> cvcExpr (EnumFromThen      Nothing _ _) = internalError "cvcExpr EnumFromThen"
+> cvcExpr (EnumFromTo   (Just cty) e1 e2) = do
+>   e1'  <- cvcExpr e1
+>   e2'  <- cvcExpr e2
 >   exts <- typeClassExtensions
 >   cty' <- if exts
 >           then adjustType cty tcPreludeEnumFromToQIdent
 >           else return cty
 >   return $ EnumFromTo (Just cty') e1' e2'
-> cvcExpr (EnumFromTo Nothing _ _) = internalError "cvcExpr EnumFromTo"
+> cvcExpr (EnumFromTo        Nothing _ _) = internalError "cvcExpr EnumFromTo"
 > cvcExpr (EnumFromThenTo (Just cty) e1 e2 e3) = do
->   e1' <- cvcExpr e1
->   e2' <- cvcExpr e2
->   e3' <- cvcExpr e3
+>   e1'  <- cvcExpr e1
+>   e2'  <- cvcExpr e2
+>   e3'  <- cvcExpr e3
 >   exts <- typeClassExtensions
 >   cty' <- if exts
 >           then adjustType cty tcPreludeEnumFromThenToQIdent
 >           else return cty
 >   return $ EnumFromThenTo (Just cty') e1' e2' e3'
-> cvcExpr (EnumFromThenTo Nothing _ _ _) = internalError "cvcExpr EnumFromThenTo"
-> cvcExpr (UnaryMinus (Just cty) i e) = do
->   e' <- cvcExpr e
+> cvcExpr (EnumFromThenTo       Nothing _ _ _) = internalError "cvcExpr EnumFromThenTo"
+> cvcExpr (UnaryMinus     (Just cty) i e) = do
+>   e'   <- cvcExpr e
 >   exts <- typeClassExtensions
 >   cty' <- if exts
 >           then adjustType cty negateQIdent
 >           else return cty
 >   return $ UnaryMinus (Just cty') i e'
-> cvcExpr (UnaryMinus Nothing _ _) = internalError "cvcExpr UnaryMinus"
-> cvcExpr (Apply e1 e2) = liftM2 Apply (cvcExpr e1) (cvcExpr e2)
+> cvcExpr (UnaryMinus        Nothing _ _) = internalError "cvcExpr UnaryMinus"
+> cvcExpr (Apply         e1 e2) = liftM2 Apply (cvcExpr e1) (cvcExpr e2)
 > cvcExpr (InfixApply e1 op e2) = liftM3 InfixApply (cvcExpr e1) (cvcInfixOp op) (cvcExpr e2)
-> cvcExpr (LeftSection e op) = liftM2 LeftSection (cvcExpr e) (cvcInfixOp op)
-> cvcExpr (RightSection op e) = liftM2 RightSection (cvcInfixOp op) (cvcExpr e)
-> cvcExpr (Lambda sref ps e) = Lambda sref ps `liftM` (cvcExpr e)
-> cvcExpr (Let ds e) = liftM2 Let (mapM cvcDecl ds) (cvcExpr e)
-> cvcExpr (Do ss e) = liftM2 Do (mapM cvcStmt ss) (cvcExpr e)
+> cvcExpr (LeftSection    e op) = liftM2 LeftSection (cvcExpr e) (cvcInfixOp op)
+> cvcExpr (RightSection   op e) = liftM2 RightSection (cvcInfixOp op) (cvcExpr e)
+> cvcExpr (Lambda    sref ps e) = Lambda sref ps `liftM` (cvcExpr e)
+> cvcExpr (Let            ds e) = liftM2 Let (mapM cvcDecl ds) (cvcExpr e)
+> cvcExpr (Do             ss e) = liftM2 Do (mapM cvcStmt ss) (cvcExpr e)
 > cvcExpr (IfThenElse sref e1 e2 e3) = liftM3 (IfThenElse sref) (cvcExpr e1) (cvcExpr e2) (cvcExpr e3)
 > cvcExpr (Case sref ct e alts) = liftM2 (Case sref ct) (cvcExpr e) (mapM cvcAlt alts)
-> cvcExpr (RecordConstr fs) = RecordConstr `liftM` mapM cvcField fs
+> cvcExpr (RecordConstr     fs) = RecordConstr `liftM` mapM cvcField fs
 > cvcExpr (RecordSelection e i) = flip RecordSelection i `liftM` cvcExpr e
-> cvcExpr (RecordUpdate fs e) = liftM2 RecordUpdate (mapM cvcField fs) (cvcExpr e)
+> cvcExpr (RecordUpdate   fs e) = liftM2 RecordUpdate (mapM cvcField fs) (cvcExpr e)
 
 > adjustType :: ConstrType_ -> QualIdent -> TCM ConstrType_ 
 > adjustType (_cx0, ty0) v = do
 >   tyEnv <- getValueEnv 
->   m <- getModuleIdent
+>   m     <- getModuleIdent
 >   theta <- getTypeSubst
 >   let ForAll cxInf _ tyInf = funType m v tyEnv
 >   let s = either (internalError . show) id (unifyTypes m tyInf (subst theta $ mirrorBF ty0))
@@ -1037,20 +1037,20 @@ the maximal necessary contexts for the functions are determined.
 > cvcInfixOp :: InfixOp -> TCM InfixOp
 > cvcInfixOp (InfixOp (Just (_cx0, ty0)) qid) = do
 >   tyEnv <- getValueEnv 
->   m <- getModuleIdent
+>   m     <- getModuleIdent
 >   theta <- getTypeSubst
 >   let ForAll cxInf _ tyInf = funType m qid tyEnv
 >   let s = either (internalError . show) id (unifyTypes m tyInf (subst theta $ mirrorBF ty0))
 >   return $ InfixOp (Just (mirrorFB $ subst s cxInf, ty0)) qid
 > cvcInfixOp (InfixOp Nothing _) = internalError "cvcInfixOp"
-> cvcInfixOp ic@(InfixConstr _) = return ic
+> cvcInfixOp ic@(InfixConstr  _) = return ic
 
 > cvcCondExpr :: CondExpr -> TCM CondExpr
 > cvcCondExpr (CondExpr p e1 e2) = liftM2 (CondExpr p) (cvcExpr e1) (cvcExpr e2)
 
 > cvcStmt :: Statement -> TCM Statement
-> cvcStmt (StmtExpr sref e) = StmtExpr sref `liftM` cvcExpr e
-> cvcStmt (StmtDecl ds) = StmtDecl `liftM` mapM cvcDecl ds
+> cvcStmt (StmtExpr   sref e) = StmtExpr sref `liftM` cvcExpr e
+> cvcStmt (StmtDecl       ds) = StmtDecl `liftM` mapM cvcDecl ds
 > cvcStmt (StmtBind sref p e) = StmtBind sref p `liftM` cvcExpr e
 
 > cvcAlt :: Alt -> TCM Alt
@@ -1085,7 +1085,7 @@ the maximal necessary contexts for the functions are determined.
 
 > tcForeign :: Ident -> TypeExpr -> TCM ()
 > tcForeign f ty = do
->   m <- getModuleIdent
+>   m      <- getModuleIdent
 >   sndRun <- isSecondRun
 >   -- TODO: expanding correct?
 >   tySc@(ForAll _cx _ ty') <- expandPolyType (not sndRun) (ST.emptyContext, ty)
@@ -1095,18 +1095,18 @@ the maximal necessary contexts for the functions are determined.
 > tcExternal f = do -- TODO is the semantic correct?
 >   sigs <- getSigEnv
 >   case lookupTypeSig f sigs of
->     Nothing -> internalError "TypeCheck.tcExternal"
+>     Nothing            -> internalError "TypeCheck.tcExternal"
 >     Just (_, (cx, ty)) -> 
 >       case cx of 
 >         (ST.Context []) -> tcForeign f ty
->         _  -> internalError "TypeCheck.tcExternal doesn't have context"
+>         _               -> internalError "TypeCheck.tcExternal doesn't have context"
 
 > tcFree :: Ident -> TCM ()
 > tcFree v = do
 >   sigs <- getSigEnv
->   m  <- getModuleIdent
->   ty <- case lookupTypeSig v sigs of
->     Nothing -> freshTypeVar
+>   m    <- getModuleIdent
+>   ty   <- case lookupTypeSig v sigs of
+>     Nothing            -> freshTypeVar
 >     Just (expanded, t) -> do
 >       ForAll _cx n ty' <- expandPolyType (not expanded) t
 >       unless (n == 0) $ report $ errPolymorphicFreeVar v
@@ -1121,10 +1121,10 @@ the maximal necessary contexts for the functions are determined.
 > tcFunDecl :: Ident -> TCM ConstrType
 > tcFunDecl v = do
 >   sigs <- getSigEnv
->   m <- getModuleIdent
+>   m    <- getModuleIdent
 >   (cx, ty) <- case lookupTypeSig v sigs of
->     Nothing -> freshConstrTypeVar
->     Just (expanded, t)  -> expandPolyType (not expanded) t >>= inst
+>     Nothing            -> freshConstrTypeVar
+>     Just (expanded, t) -> expandPolyType (not expanded) t >>= inst
 >   modifyValueEnv $ bindFunOnce m v (arrowArity ty) (monoType' (cx, ty))
 >   return (cx, ty)
 
@@ -1187,24 +1187,24 @@ signature the declared type must be too general.
 > genVar :: Bool -> Set.Set Int -> TypeSubst -> Maybe Int 
 >        -> Ident -> TCM ()
 > genVar poly lvs theta ma v = do
->   sigs <- getSigEnv
->   m <- getModuleIdent
+>   sigs  <- getSigEnv
+>   m     <- getModuleIdent
 >   tyEnv <- getValueEnv
->   cEnv <- getClassEnv
+>   cEnv  <- getClassEnv
 >   doContextRed0 <- getDoContextRed
->   let sigma0 = genType poly $ subst theta $ varType v tyEnv
->       arity  = fromMaybe (varArity v tyEnv) ma
+>   let sigma0    = genType poly $ subst theta $ varType v tyEnv
+>       arity     = fromMaybe (varArity v tyEnv) ma
 >       -- apply context reduction
 >       generalizedContext = getContext sigma0
->       finalContext = (if doContextRed0 then reduceContext cEnv else id)
+>       finalContext       = (if doContextRed0 then reduceContext cEnv else id)
 >         generalizedContext
->       sigma = sigma0 `constrainBy` finalContext
->       context = finalContext
+>       sigma     = sigma0 `constrainBy` finalContext
+>       context   = finalContext
 >   -- check that the context is valid
->   let invalidCx = isValidCx cEnv context
+>       invalidCx = isValidCx cEnv context
 >   unless (null invalidCx) $ report $ errNoInstance (idPosition v) m invalidCx
 >   -- check for ambiguous context elements
->   let tyVars = typeVars (typeSchemeToType sigma)
+>   let tyVars       = typeVars (typeSchemeToType sigma)
 >       ambigCxElems = filter (isAmbiguous tyVars lvs) context 
 >   unless (null ambigCxElems) $ case lookupTypeSig v sigs of 
 >     Nothing -> report $ errAmbiguousContextElems (idPosition v) m v ambigCxElems
@@ -1214,20 +1214,20 @@ signature the declared type must be too general.
 >       -- test because we know that type signatures are unambiguous (as this
 >       -- is checked earlier) 
 >       tySig' <- expandPolyType False tySig
->       let tyVars' = typeVars (typeSchemeToType tySig')
+>       let tyVars'       = typeVars (typeSchemeToType tySig')
 >           ambigCxElems' = filter (isAmbiguous tyVars' Set.empty) (getContext tySig')
 >       unless (null ambigCxElems') $ report $ 
 >         errAmbiguousContextElems (idPosition v) m v ambigCxElems'
 >   case lookupTypeSig v sigs of
->     Nothing    -> modifyValueEnv $ rebindFun m v arity sigma
+>     Nothing                -> modifyValueEnv $ rebindFun m v arity sigma
 >     Just (expanded, sigTy) -> do
 >       sigma' <- expandPolyType (not expanded) sigTy
 >       case (eqTyScheme sigma sigma') of 
 >         False -> report  $ errTypeSigTooGeneral (idPosition v) m what sigTy sigma
->         True -> do
+>         True  -> do
 >           -- check that the given context implies the inferred (but don't 
 >           -- report an error when the inferred context is invalid)
->           let mapping = buildTypeVarsMapping (typeSchemeToType sigma') (typeSchemeToType sigma)
+>           let mapping  = buildTypeVarsMapping (typeSchemeToType sigma') (typeSchemeToType sigma)
 >               context' = subst mapping $ getContext sigma' 
 >           unless (implies' cEnv context' context) $ when (null invalidCx)
 >             $ report $ errContextImplication (idPosition v) m context' context
@@ -1271,17 +1271,17 @@ signature the declared type must be too general.
 >   injective m = isNothing $ findDouble (map snd m) 
 
 > buildTypeVarsMapping' :: Type -> Type -> [(Int, Int)]
-> buildTypeVarsMapping' (TypeVariable n1) (TypeVariable n2) = [(n1, n2)]
-> buildTypeVarsMapping' (TypeConstructor _ ts1) (TypeConstructor _ ts2)
->   = concat $ zipWith' buildTypeVarsMapping' ts1 ts2
-> buildTypeVarsMapping' (TypeArrow t11 t12) (TypeArrow t21 t22)
->   = buildTypeVarsMapping' t11 t21 ++ buildTypeVarsMapping' t12 t22
-> buildTypeVarsMapping' (TypeConstrained _ _) (TypeConstrained _ _) = [] 
-> buildTypeVarsMapping' (TypeSkolem _) (TypeSkolem _) = []
+> buildTypeVarsMapping' (TypeVariable       n1) (TypeVariable       n2) = [(n1, n2)]
+> buildTypeVarsMapping' (TypeConstructor _ ts1) (TypeConstructor _ ts2) = 
+>   concat $ zipWith' buildTypeVarsMapping' ts1 ts2
+> buildTypeVarsMapping' (TypeArrow     t11 t12) (TypeArrow     t21 t22) = 
+>   buildTypeVarsMapping' t11 t21 ++ buildTypeVarsMapping' t12 t22
+> buildTypeVarsMapping' (TypeConstrained   _ _) (TypeConstrained   _ _) = [] 
+> buildTypeVarsMapping' (TypeSkolem          _) (TypeSkolem          _) = []
 > buildTypeVarsMapping' (TypeRecord ids1 (Just i1)) (TypeRecord ids2 (Just i2))
 >   = concat (zipWith' buildTypeVarsMapping' (map snd ids1) (map snd ids2)) 
 >     ++ [(i1, i2)]
-> buildTypeVarsMapping' (TypeRecord ids1 Nothing) (TypeRecord ids2 Nothing)
+> buildTypeVarsMapping' (TypeRecord   ids1 Nothing) (TypeRecord   ids2 Nothing)
 >   = concat $ zipWith' buildTypeVarsMapping' (map snd ids1) (map snd ids2) 
 > buildTypeVarsMapping' _t1 _t2 = []
 >   -- internalError ("types do not match in buildTypeVarsMapping\n" ++ show t1 
@@ -1299,7 +1299,7 @@ signature the declared type must be too general.
 
 > tcLiteral :: Literal -> TCM ConstrType
 > tcLiteral (Char   _ _) = return (BT.emptyContext, charType)
-> tcLiteral (Int    v _)  = do --return intType
+> tcLiteral (Int    v _) = do --return intType
 >   exts <- typeClassExtensions
 >   case exts of
 >     False -> do 
@@ -1307,10 +1307,10 @@ signature the declared type must be too general.
 >       ty <- freshConstrained [intType, floatType]
 >       modifyValueEnv $ bindFunOnce m v (arrowArity ty) $ monoType ty
 >       return (BT.emptyContext, ty)
->     True -> do
+>     True  -> do
 >       sndRun <- isSecondRun
->       m <- getModuleIdent
->       alpha <- freshTypeVar
+>       m      <- getModuleIdent
+>       alpha  <- freshTypeVar
 >       let numCx = if sndRun then [] else [(numClsIdent, alpha)]
 >       modifyValueEnv $ bindFunOnce m v (arrowArity alpha) $ monoType' (numCx, alpha)
 >       return (numCx, alpha) 
@@ -1318,10 +1318,10 @@ signature the declared type must be too general.
 >   exts <- typeClassExtensions
 >   case exts of
 >     False -> return (BT.emptyContext, floatType)
->     True -> do
+>     True  -> do
 >       sndRun <- isSecondRun
->       m <- getModuleIdent
->       alpha <- freshTypeVar
+>       m      <- getModuleIdent
+>       alpha  <- freshTypeVar
 >       let fracCx = if sndRun then [] else [(fractionalClsIdent, alpha)]
 >       modifyValueEnv $ bindFunOnce m v (arrowArity alpha) $ monoType' (fracCx, alpha)
 >       return (fracCx, alpha)
@@ -1333,8 +1333,8 @@ signature the declared type must be too general.
 > tcPattern _ (VariablePattern   v) = do
 >   sigs <- getSigEnv
 >   (cx, ty) <- case lookupTypeSig v sigs of
->     Nothing -> freshConstrTypeVar
->     Just (expanded, t)  -> expandPolyType (not expanded) t >>= inst
+>     Nothing            -> freshConstrTypeVar
+>     Just (expanded, t) -> expandPolyType (not expanded) t >>= inst
 >   tyEnv <- getValueEnv
 >   m  <- getModuleIdent
 >   maybe (modifyValueEnv (bindFunOnce m v (arrowArity ty) (monoType' (cx, ty))) >> return (cx, ty))
@@ -1436,7 +1436,7 @@ because of possibly multiple occurrences of variables.
 >   sigs <- getSigEnv
 >   m <- getModuleIdent
 >   cty@(_cx, ty) <- case lookupTypeSig v sigs of
->     Nothing -> freshConstrTypeVar
+>     Nothing             -> freshConstrTypeVar
 >     Just (expanded, t)  -> expandPolyType (not expanded) t >>= inst
 >   tyEnv <- getValueEnv
 >   maybe (modifyValueEnv (bindFunOnce m v (arrowArity ty) (monoType' cty)) >> return cty)
@@ -1541,12 +1541,12 @@ because of possibly multiple occurrences of variables.
 
 > tcRhs ::ValueEnv -> Rhs -> TCM (Rhs, ConstrType)
 > tcRhs tyEnv0 (SimpleRhs p e ds) = do
->   (ds', cxs) <- tcDecls ds
+>   (ds', cxs    ) <- tcDecls ds
 >   (e', (cx, ty)) <- tcExpr p e
 >   cty <- checkSkolems p (text "Expression:" <+> ppExpr 0 e) tyEnv0 (cx ++ cxs, ty)
 >   return (SimpleRhs p e' ds', cty)
 > tcRhs tyEnv0 (GuardedRhs es ds) = do
->   (ds', cxs) <- tcDecls ds
+>   (ds', cxs       ) <- tcDecls ds
 >   (es', (cxs', ty)) <- tcCondExprs tyEnv0 es
 >   return (GuardedRhs es' ds', (cxs' ++ cxs, ty))
 
@@ -1595,7 +1595,7 @@ because of possibly multiple occurrences of variables.
 >           -- inferred contexts match the type variables in the type
 >           -- constructed from the type signature
 >           let mapping = buildTypeVarsMapping ity ty0
->               cty' = (cx0 ++ subst mapping icx, ty0)
+>               cty'    = (cx0 ++ subst mapping icx, ty0)
 >           return (Variable (Just $ mirrorFB cty') v, cty')
 >         Nothing -> do
 >           cty <- getValueEnv >>= inst . funType m v
@@ -1624,7 +1624,7 @@ because of possibly multiple occurrences of variables.
 >   cEnv <- getClassEnv
 >   -- test context implication
 >   let cxGiven = getContext sigma'
->       cxInf' = getContext sigma
+>       cxInf'  = getContext sigma
 >   unless (implies' cEnv cxGiven cxInf') $ report $
 >     errContextImplication p m cxGiven cxInf'
 >     (filter (not . implies cEnv cxGiven) cxInf')
@@ -1645,12 +1645,12 @@ because of possibly multiple occurrences of variables.
 >   | null es = return $ (t, noContext unitType)
 >   | otherwise = do 
 >      esAndCtys <- mapM (tcExpr p) es
->      let cx = concatMap (fst . snd) esAndCtys
+>      let cx  = concatMap (fst . snd) esAndCtys
 >          tys = map (snd . snd) esAndCtys
 >          es' = map fst esAndCtys
 >      return (Tuple sref es', (cx, tupleType tys))
 > tcExpr p e@(List srefs es) = do 
->   tvar <- freshConstrTypeVar
+>   tvar       <- freshConstrTypeVar
 >   (es', cty) <- tcElems (ppExpr 0 e) es tvar []
 >   return (List srefs es', cty)
 >   where tcElems :: Doc -> [Expression] -> ConstrType -> [Expression] 
@@ -1663,7 +1663,7 @@ because of possibly multiple occurrences of variables.
 >           tcElems doc es1 (cx ++ cx', ty) (e1':newEs)
 > tcExpr p (ListCompr sref e qs) = do
 >     tyEnv0 <- getValueEnv
->     ss <- mapM (tcQual p) qs
+>     ss     <- mapM (tcQual p) qs
 >     let cxs = concatMap snd ss
 >         qs' = map fst ss
 >     (e', (cx, ty)) <- tcExpr p e
@@ -1678,7 +1678,7 @@ because of possibly multiple occurrences of variables.
 >               (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e1) (noContext intType) cty1
 >         let cty = (cx1, listType intType)
 >         return (EnumFrom (Just $ mirrorFB cty) e1', cty)
->       True -> do
+>       True  -> do
 >         alpha <- freshTypeVar
 >         let enumCx = [(enumClsIdent, alpha)]
 >         unify p "arithmetic sequence"
@@ -1698,7 +1698,7 @@ because of possibly multiple occurrences of variables.
 >               (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e2) (noContext intType) cty2
 >         let cty = (cx1 ++ cx2, listType intType)
 >         return (EnumFromThen (Just $ mirrorFB cty) e1' e2', cty)
->       True -> do
+>       True  -> do
 >         alpha <- freshTypeVar
 >         let enumCx = [(enumClsIdent, alpha)]
 >         unify p "arithmetic sequence"
@@ -1721,7 +1721,7 @@ because of possibly multiple occurrences of variables.
 >               (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e2) (noContext intType) cty2
 >         let cty = (cx1 ++ cx2, listType intType)
 >         return (EnumFromTo (Just $ mirrorFB cty) e1' e2', cty)
->       True -> do
+>       True  -> do
 >         alpha <- freshTypeVar
 >         let enumCx = [(enumClsIdent, alpha)]
 >         unify p "arithmetic sequence"
@@ -1764,12 +1764,12 @@ because of possibly multiple occurrences of variables.
 >     exts <- typeClassExtensions
 >     case exts of
 >       False -> do
->         opTy <- opType op
+>         opTy        <- opType op
 >         (e1', cty1) <- tcExpr p e1
 >         unify p "unary negation" (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e1)
 >               opTy cty1
 >         return (UnaryMinus (Just $ mirrorFB cty1) op e1', cty1)
->       True -> do
+>       True  -> do
 >         (e1', cty1@(cx1, _ty1)) <- tcExpr p e1
 >         alpha <- freshTypeVar
 >         let numCx = [(numClsIdent, alpha)]
@@ -1826,7 +1826,7 @@ because of possibly multiple occurrences of variables.
 >     return (RightSection (annotInfixOpType op opTy) e1', (cx', TypeArrow alpha gamma))
 > tcExpr p expr@(Lambda sref ts e) = do
 >     tyEnv0 <- getValueEnv
->     ctys <- mapM (tcPattern p) ts
+>     ctys   <- mapM (tcPattern p) ts
 >     (e', (cx, ty)) <- tcExpr p e
 >     let cxs = concat (map fst ctys ++ [cx]) 
 >     cty <- checkSkolems p (text "Expression:" <+> ppExpr 0 expr) tyEnv0
@@ -1834,14 +1834,14 @@ because of possibly multiple occurrences of variables.
 >     return (Lambda sref ts e', cty)
 > tcExpr p (Let ds e) = do
 >     tyEnv0 <- getValueEnv
->     (ds', cxs) <- tcDecls ds
+>     (ds', cxs    ) <- tcDecls ds
 >     (e', (cx, ty)) <- tcExpr p e
 >     cty <- checkSkolems p (text "Expression:" <+> ppExpr 0 e) tyEnv0 (cx ++ cxs, ty)
 >     return (Let ds' e', cty)
 > tcExpr p (Do sts e) = do
 >     tyEnv0 <- getValueEnv
->     ss <- mapM (tcStmt p) sts
->     let cxs = concatMap snd ss
+>     ss     <- mapM (tcStmt p) sts
+>     let cxs  = concatMap snd ss
 >         sts' = map fst ss
 >     alpha <- freshTypeVar
 >     (e', cty@(cx, ty)) <- tcExpr p e
@@ -1904,7 +1904,7 @@ because of possibly multiple occurrences of variables.
 >     return (RecordSelection e' l, (cx', lty))
 > tcExpr p r@(RecordUpdate fs e) = do
 >     (e', cty) <- tcExpr p e
->     fs'AndFts   <- mapM tcFieldExpr fs
+>     fs'AndFts <- mapM tcFieldExpr fs
 >     let fts = map snd fs'AndFts
 >         fs' = map fst fs'AndFts
 >     alpha <- freshVar id
@@ -1930,12 +1930,12 @@ because of possibly multiple occurrences of variables.
 
 > tcStmt ::Position -> Statement -> TCM (Statement, BT.Context)
 > tcStmt p (StmtExpr sref e) = do
->   alpha       <- freshTypeVar
+>   alpha             <- freshTypeVar
 >   (e', cty@(cx, _)) <- tcExpr p e
 >   unify p "statement" (ppExpr 0 e) (noContext $ ioType alpha) cty
 >   return (StmtExpr sref e', cx)
 > tcStmt p st@(StmtBind sref t e) = do
->   cty1@(cx1, _) <- tcPattern p t
+>   cty1@(cx1, _)       <- tcPattern p t
 >   (e', cty2@(cx2, _)) <- tcExpr p e
 >   unify p "statement" (ppStmt st $-$ text "Term:" <+> ppExpr 0 e) (noContext $ ioType $ getType cty1) cty2
 >   return (StmtBind sref t e', cx1 ++ cx2)
@@ -2164,25 +2164,25 @@ We use negative offsets for fresh type variables.
 > instContext tys cx = map convert cx
 >   where 
 >     convert (qid, y) = (qid, convertType y)
->     convertType (TypeVariable x) 
->       = if x < 0 
->         then {-internalError "instContext" -} TypeVariable x
->         else if x >= length tys
->              -- TODO: don't throw an internal error correct?
->              -- there are situations where an internal error should not
->              -- be thrown because if the program is not type correct this
->              -- case can occur (for an example see "BugTypedExpr.curry"!) 
->              -- internalError ("instContext too big " ++ show x ++ " " ++ show tys ++ " " ++ show cx)
->              then TypeVariable x 
->              else tys !! x
->     convertType (TypeConstructor tcon ts) 
->       = TypeConstructor tcon (map convertType ts) 
->     convertType (TypeArrow t1 t2) 
->       = TypeArrow (convertType t1) (convertType t2)
->     convertType (TypeConstrained ts n) 
->       = TypeConstrained (map convertType ts) n
->     convertType (TypeSkolem n) = TypeSkolem n
->     convertType (TypeRecord ts n) = 
+>     convertType (TypeVariable          x) =  
+>       if x < 0 
+>       then {-internalError "instContext" -} TypeVariable x
+>       else if x >= length tys
+>            -- TODO: don't throw an internal error correct?
+>            -- there are situations where an internal error should not
+>            -- be thrown because if the program is not type correct this
+>            -- case can occur (for an example see "BugTypedExpr.curry"!) 
+>            -- internalError ("instContext too big " ++ show x ++ " " ++ show tys ++ " " ++ show cx)
+>            then TypeVariable x 
+>            else tys !! x
+>     convertType (TypeConstructor tcon ts) = 
+>       TypeConstructor tcon (map convertType ts) 
+>     convertType (TypeArrow         t1 t2) = 
+>       TypeArrow (convertType t1) (convertType t2)
+>     convertType (TypeConstrained    ts n) = 
+>       TypeConstrained (map convertType ts) n
+>     convertType (TypeSkolem            n) = TypeSkolem n
+>     convertType (TypeRecord         ts n) = 
 >       TypeRecord (map (\(id0, t) -> (id0, convertType t)) ts) n
    
 
@@ -2202,9 +2202,9 @@ We use negative offsets for fresh type variables.
 > genS :: Set.Set Int -> ConstrType -> (TypeScheme, TypeSubst)
 > genS gvs (cx, ty) = (ForAll (subst s cx) (length tvs)
 >                             (subst s ty), s)
->   where tvs = [tv | tv <- nub (typeVars ty), tv `Set.notMember` gvs]
+>   where tvs  = [tv | tv <- nub (typeVars ty), tv `Set.notMember` gvs]
 >         tvs' = map TypeVariable [0 ..]
->         s = foldr2 bindSubst idSubst tvs tvs'
+>         s    = foldr2 bindSubst idSubst tvs tvs'
 
 > gen :: Set.Set Int -> ConstrType -> TypeScheme
 > gen gvs = fst . genS gvs
@@ -2478,8 +2478,8 @@ The following functions implement pretty-printing for types.
 >   punctuate comma (map (\(qid, ty) -> ppQIdent qid <+> (ps ty) (ppType m ty)) cx')
 >   where cx' = nub cx
 >         ps (TypeConstructor _ (_:_)) = parens
->         ps (TypeArrow _ _) = parens
->         ps _ = id
+>         ps (TypeArrow           _ _) = parens
+>         ps _                         = id
 >            
 
 \end{verbatim}
@@ -2539,85 +2539,88 @@ nothing is recorded so that they are simply returned).
 > applyTypeSubst theta ds = map (tsDecl theta) ds
 
 > tsDecl :: TypeSubst -> Decl -> Decl
-> tsDecl _theta d@(InfixDecl _ _ _ _) = d
-> tsDecl _theta d@(DataDecl _ _ _ _ _)  = d
-> tsDecl _theta d@(NewtypeDecl _ _ _ _ _) = d
-> tsDecl _theta d@(TypeDecl _ _ _ _) = d
-> tsDecl _theta d@(TypeSig _ _ _ _ _) = d
-> tsDecl theta (FunctionDecl p (Just cty) n id0 eqs) 
->   = FunctionDecl p (Just $ subst' theta cty)  n id0 (map (tsEqu theta) eqs)
-> tsDecl _theta (FunctionDecl _ Nothing _ _ _) = internalError "tsDecl FunctionDecl"
-> tsDecl _theta d@(ForeignDecl _ _ _ _ _) = d
-> tsDecl _theta d@(ExternalDecl _ _) = d
-> tsDecl theta (PatternDecl p (Just cty) n pt rhs) 
->   = PatternDecl p (Just $ subst' theta cty) n pt (tsRhs theta rhs)
-> tsDecl _theta (PatternDecl _ Nothing _ _ _) = internalError "tsDecl PatternDecl"
-> tsDecl _theta d@(FreeDecl _ _) = d
-> tsDecl _theta d@(ClassDecl _ _ _ _ _) = d
-> tsDecl _theta d@(InstanceDecl _ _ _ _ _ _) = d
+> tsDecl _theta d@(InfixDecl                   _ _ _ _) = d
+> tsDecl _theta d@(DataDecl                  _ _ _ _ _) = d
+> tsDecl _theta d@(NewtypeDecl               _ _ _ _ _) = d
+> tsDecl _theta d@(TypeDecl                    _ _ _ _) = d
+> tsDecl _theta d@(TypeSig                   _ _ _ _ _) = d
+> tsDecl theta    (FunctionDecl p (Just cty) n id0 eqs) =
+>   FunctionDecl p (Just $ subst' theta cty)  n id0 (map (tsEqu theta) eqs)
+> tsDecl _theta   (FunctionDecl        _ Nothing _ _ _) = 
+>   internalError "tsDecl FunctionDecl"
+> tsDecl _theta d@(ForeignDecl               _ _ _ _ _) = d
+> tsDecl _theta d@(ExternalDecl                    _ _) = d
+> tsDecl theta    (PatternDecl   p (Just cty) n pt rhs) = 
+>   PatternDecl p (Just $ subst' theta cty) n pt (tsRhs theta rhs)
+> tsDecl _theta   (PatternDecl         _ Nothing _ _ _) = 
+>   internalError "tsDecl PatternDecl"
+> tsDecl _theta d@(FreeDecl                        _ _) = d
+> tsDecl _theta d@(ClassDecl                 _ _ _ _ _) = d
+> tsDecl _theta d@(InstanceDecl            _ _ _ _ _ _) = d
    
 > tsEqu :: TypeSubst -> Equation -> Equation
 > -- lhs only contains patterns, hence we do not need to include this
 > tsEqu theta (Equation p lhs rhs) = Equation p lhs (tsRhs theta rhs)
 
 > tsRhs :: TypeSubst -> Rhs -> Rhs
-> tsRhs theta (SimpleRhs p e ds) 
->   = SimpleRhs p (tsExpr theta e) (map (tsDecl theta) ds)
-> tsRhs theta (GuardedRhs ces ds)
->   = GuardedRhs (map (tsCondExpr theta) ces) (map (tsDecl theta) ds)
+> tsRhs theta (SimpleRhs  p e ds) = 
+>   SimpleRhs p (tsExpr theta e) (map (tsDecl theta) ds)
+> tsRhs theta (GuardedRhs ces ds) = 
+>   GuardedRhs (map (tsCondExpr theta) ces) (map (tsDecl theta) ds)
 
 > tsCondExpr :: TypeSubst -> CondExpr -> CondExpr
 > tsCondExpr theta (CondExpr p e1 e2) 
 >   = CondExpr p (tsExpr theta e1) (tsExpr theta e2)
 
 > tsExpr :: TypeSubst -> Expression -> Expression
-> tsExpr _theta e@(Literal _) = e
-> tsExpr theta (Variable (Just cty) i) = Variable (Just $ subst' theta cty) i
-> tsExpr _theta (Variable Nothing _) = internalError "tsExpr Variable"
-> tsExpr _theta e@(Constructor _) = e
-> tsExpr theta (Paren e) = Paren (tsExpr theta e) 
-> tsExpr theta (Typed cty e c t) = Typed cty (tsExpr theta e) c t
-> tsExpr theta (Tuple sref es) = Tuple sref (map (tsExpr theta) es)
-> tsExpr theta (List srefs es) = List srefs (map (tsExpr theta) es)
-> tsExpr theta (ListCompr sref e ss) 
->   = ListCompr sref (tsExpr theta e) (map (tsStmt theta) ss)
+> tsExpr _theta e@(Literal           _) = e
+> tsExpr theta  (Variable (Just cty) i) = Variable (Just $ subst' theta cty) i
+> tsExpr _theta (Variable Nothing    _) = internalError "tsExpr Variable"
+> tsExpr _theta e@(Constructor       _) = e
+> tsExpr theta  (Paren               e) = Paren (tsExpr theta e) 
+> tsExpr theta  (Typed       cty e c t) = Typed cty (tsExpr theta e) c t
+> tsExpr theta  (Tuple         sref es) = Tuple sref (map (tsExpr theta) es)
+> tsExpr theta  (List         srefs es) = List srefs (map (tsExpr theta) es)
+> tsExpr theta  (ListCompr   sref e ss) = 
+>   ListCompr sref (tsExpr theta e) (map (tsStmt theta) ss)
 > 
 > tsExpr theta  (EnumFrom (Just cty) e1) = 
 >   EnumFrom (Just $ subst' theta cty) (tsExpr theta e1)
-> tsExpr _theta (EnumFrom Nothing _) = internalError "tsExpr EnumFrom"
+> tsExpr _theta (EnumFrom Nothing    _ ) = internalError "tsExpr EnumFrom"
 > tsExpr theta  (EnumFromThen (Just cty) e1 e2) = 
 >   EnumFromThen (Just $ subst' theta cty) (tsExpr theta e1) (tsExpr theta e2)
-> tsExpr _theta (EnumFromThen Nothing _ _) = internalError "tsExpr EnumFromThen"
-> tsExpr theta  (EnumFromTo (Just cty) e1 e2) = 
+> tsExpr _theta (EnumFromThen Nothing    _  _ ) = internalError "tsExpr EnumFromThen"
+> tsExpr theta  (EnumFromTo (Just cty)   e1 e2) = 
 >   EnumFromTo (Just $ subst' theta cty) (tsExpr theta e1) (tsExpr theta e2)
-> tsExpr _theta (EnumFromTo Nothing _ _) = internalError "tsExpr EnumFromTo"
+> tsExpr _theta (EnumFromTo Nothing      _  _ ) = internalError "tsExpr EnumFromTo"
 > tsExpr theta  (EnumFromThenTo (Just cty) e1 e2 e3) = 
 >   EnumFromThenTo (Just $ subst' theta cty) (tsExpr theta e1) (tsExpr theta e2) (tsExpr theta e3)
-> tsExpr _theta (EnumFromThenTo Nothing _ _ _) = internalError "tsExpr EnumFromThenTo"
+> tsExpr _theta (EnumFromThenTo Nothing    _  _  _ ) = internalError "tsExpr EnumFromThenTo"
 > 
-> tsExpr theta (UnaryMinus (Just cty) i e) = 
+> tsExpr theta  (UnaryMinus (Just cty) i e) = 
 >   UnaryMinus (Just $ subst' theta cty) i (tsExpr theta e)
-> tsExpr _theta (UnaryMinus Nothing _ _) = internalError "tsExpr UnaryMinus"
-> tsExpr theta (Apply e1 e2) = Apply (tsExpr theta e1) (tsExpr theta e2)
-> tsExpr theta (InfixApply e1 op e2) 
->   = InfixApply (tsExpr theta e1) (tsInfixOp theta op) (tsExpr theta e2)
-> tsExpr theta (LeftSection e op) = LeftSection (tsExpr theta e) (tsInfixOp theta op)
-> tsExpr theta (RightSection op e) = RightSection (tsInfixOp theta op) (tsExpr theta e)
-> tsExpr theta (Lambda sref ps e) = Lambda sref ps (tsExpr theta e)
-> tsExpr theta (Let ds e) = Let (map (tsDecl theta) ds) (tsExpr theta e)
-> tsExpr theta (Do ss e) = Do (map (tsStmt theta) ss) (tsExpr theta e)
-> tsExpr theta (IfThenElse sref e1 e2 e3)
->   = IfThenElse sref (tsExpr theta e1) (tsExpr theta e2) (tsExpr theta e3)
-> tsExpr theta (Case sref ct e alts) 
->   = Case sref ct (tsExpr theta e) (map (tsAlt theta) alts)
-> tsExpr theta (RecordConstr fs) = RecordConstr (map (tsField theta) fs)
-> tsExpr theta (RecordSelection e i) = RecordSelection (tsExpr theta e) i
-> tsExpr theta (RecordUpdate fs e) 
->   = RecordUpdate (map (tsField theta) fs) (tsExpr theta e)
+> tsExpr _theta (UnaryMinus Nothing    _ _) = internalError "tsExpr UnaryMinus"
+> 
+> tsExpr theta (Apply              e1 e2) = Apply (tsExpr theta e1) (tsExpr theta e2)
+> tsExpr theta (InfixApply      e1 op e2) = 
+>   InfixApply (tsExpr theta e1) (tsInfixOp theta op) (tsExpr theta e2)
+> tsExpr theta (LeftSection         e op) = LeftSection (tsExpr theta e) (tsInfixOp theta op)
+> tsExpr theta (RightSection        op e) = RightSection (tsInfixOp theta op) (tsExpr theta e)
+> tsExpr theta (Lambda         sref ps e) = Lambda sref ps (tsExpr theta e)
+> tsExpr theta (Let                 ds e) = Let (map (tsDecl theta) ds) (tsExpr theta e)
+> tsExpr theta (Do                  ss e) = Do (map (tsStmt theta) ss) (tsExpr theta e)
+> tsExpr theta (IfThenElse sref e1 e2 e3) = 
+>   IfThenElse sref (tsExpr theta e1) (tsExpr theta e2) (tsExpr theta e3)
+> tsExpr theta (Case      sref ct e alts) =  
+>   Case sref ct (tsExpr theta e) (map (tsAlt theta) alts)
+> tsExpr theta (RecordConstr          fs) = RecordConstr (map (tsField theta) fs)
+> tsExpr theta (RecordSelection      e i) = RecordSelection (tsExpr theta e) i
+> tsExpr theta (RecordUpdate        fs e) =  
+>   RecordUpdate (map (tsField theta) fs) (tsExpr theta e)
 
 > tsStmt :: TypeSubst -> Statement -> Statement
-> tsStmt theta (StmtExpr sref e) = StmtExpr sref (tsExpr theta e)
-> tsStmt theta (StmtDecl ds) = StmtDecl (map (tsDecl theta) ds)
+> tsStmt theta (StmtExpr   sref e) = StmtExpr sref (tsExpr theta e)
+> tsStmt theta (StmtDecl       ds) = StmtDecl (map (tsDecl theta) ds)
 > tsStmt theta (StmtBind sref p e) = StmtBind sref p (tsExpr theta e)
 
 > tsAlt :: TypeSubst -> Alt -> Alt
@@ -2627,9 +2630,9 @@ nothing is recorded so that they are simply returned).
 > tsField theta (Field p i e) = Field p i (tsExpr theta e)
 
 > tsInfixOp :: TypeSubst -> InfixOp -> InfixOp
-> tsInfixOp theta (InfixOp (Just cty) qid) = InfixOp (Just $ subst' theta cty) qid
-> tsInfixOp _theta (InfixOp Nothing _) = internalError "tsInfixOp"
-> tsInfixOp _theta (InfixConstr qid) = InfixConstr qid 
+> tsInfixOp theta  (InfixOp (Just cty) qid) = InfixOp (Just $ subst' theta cty) qid
+> tsInfixOp _theta (InfixOp Nothing      _) = internalError "tsInfixOp"
+> tsInfixOp _theta (InfixConstr        qid) = InfixConstr qid 
 
 > subst' :: TypeSubst -> ConstrType_ -> ConstrType_
 > subst' s ty = mirrorFB $ subst s $ (mirrorBF ty :: ConstrType)
@@ -2650,11 +2653,11 @@ we have to use other unique ids.
 
 > numberDecl :: Decl -> TCM Decl
 > numberDecl (FunctionDecl p cty _ f eqs) = do
->   n <- getNextDeclCounter
+>   n    <- getNextDeclCounter
 >   eqs' <- mapM numberEqu eqs
 >   return $ FunctionDecl p cty n f eqs' 
 > numberDecl (PatternDecl p cty _ pt rhs) = do
->   n <- getNextDeclCounter
+>   n    <- getNextDeclCounter
 >   rhs' <- numberRhs rhs
 >   return $ PatternDecl p cty n pt rhs'
 > numberDecl d = return d 
@@ -2663,43 +2666,43 @@ we have to use other unique ids.
 > numberEqu (Equation p lhs rhs) = Equation p lhs `liftM` numberRhs rhs
 
 > numberRhs :: Rhs -> TCM Rhs
-> numberRhs (SimpleRhs p e ds) = liftM2 (SimpleRhs p) (numberExpr e) (numberDecls ds)
+> numberRhs (SimpleRhs  p e ds) = liftM2 (SimpleRhs p) (numberExpr e) (numberDecls ds)
 > numberRhs (GuardedRhs ces ds) = liftM2 GuardedRhs (mapM numberCExpr ces) (numberDecls ds)
 
 > numberCExpr :: CondExpr -> TCM CondExpr
 > numberCExpr (CondExpr p e1 e2) = liftM2 (CondExpr p) (numberExpr e1) (numberExpr e2)
 
 > numberExpr :: Expression -> TCM Expression
-> numberExpr l@(Literal _) = return l
-> numberExpr v@(Variable _ _) = return v
-> numberExpr c@(Constructor _) = return c
-> numberExpr (Paren e) = Paren `liftM` numberExpr e
-> numberExpr (Typed cty e cx ty) = liftM3 (Typed cty) (numberExpr e) (return cx) (return ty)
-> numberExpr (Tuple sref es) = Tuple sref `liftM` mapM numberExpr es
-> numberExpr (List sref es) = List sref `liftM` mapM numberExpr es
+> numberExpr l@(Literal         _) = return l
+> numberExpr v@(Variable      _ _) = return v
+> numberExpr c@(Constructor     _) = return c
+> numberExpr (Paren             e) = Paren `liftM` numberExpr e
+> numberExpr (Typed   cty e cx ty) = liftM3 (Typed cty) (numberExpr e) (return cx) (return ty)
+> numberExpr (Tuple       sref es) = Tuple sref `liftM` mapM numberExpr es
+> numberExpr (List        sref es) = List sref `liftM` mapM numberExpr es
 > numberExpr (ListCompr sref e ss) = liftM2 (ListCompr sref) (numberExpr e) (mapM numberStmt ss)
-> numberExpr (EnumFrom cty e1) = EnumFrom cty `liftM` numberExpr e1
+> numberExpr (EnumFrom     cty e1) = EnumFrom cty `liftM` numberExpr e1
 > numberExpr (EnumFromThen cty e1 e2) = liftM2 (EnumFromThen cty) (numberExpr e1) (numberExpr e2)
-> numberExpr (EnumFromTo cty e1 e2) = liftM2 (EnumFromTo cty) (numberExpr e1) (numberExpr e2)
+> numberExpr (EnumFromTo   cty e1 e2) = liftM2 (EnumFromTo cty)   (numberExpr e1) (numberExpr e2)
 > numberExpr (EnumFromThenTo cty e1 e2 e3) = liftM3 (EnumFromThenTo cty) (numberExpr e1) (numberExpr e2) (numberExpr e3)
-> numberExpr (UnaryMinus cty i e) = UnaryMinus cty i `liftM` numberExpr e
-> numberExpr (Apply e1 e2) = liftM2 Apply (numberExpr e1) (numberExpr e2) 
+> numberExpr (UnaryMinus  cty i e) = UnaryMinus cty i `liftM` numberExpr e
+> numberExpr (Apply         e1 e2) = liftM2 Apply (numberExpr e1) (numberExpr e2) 
 > numberExpr (InfixApply e1 op e2) = liftM3 InfixApply (numberExpr e1) (return op) (numberExpr e2)
-> numberExpr (LeftSection e op) = flip LeftSection op `liftM` numberExpr e 
-> numberExpr (RightSection op e) = RightSection op `liftM` numberExpr e
-> numberExpr (Lambda sref ps e) = Lambda sref ps `liftM` numberExpr e
-> numberExpr (Let ds e) = liftM2 Let (numberDecls ds) (numberExpr e) 
-> numberExpr (Do ss e) = liftM2 Do (mapM numberStmt ss) (numberExpr e)
-> numberExpr (IfThenElse sref e1 e2 e3) 
->   = liftM3 (IfThenElse sref) (numberExpr e1) (numberExpr e2) (numberExpr e3)
+> numberExpr (LeftSection    e op) = flip LeftSection op `liftM` numberExpr e 
+> numberExpr (RightSection   op e) = RightSection op `liftM` numberExpr e
+> numberExpr (Lambda    sref ps e) = Lambda sref ps `liftM` numberExpr e
+> numberExpr (Let            ds e) = liftM2 Let (numberDecls ds) (numberExpr e) 
+> numberExpr (Do             ss e) = liftM2 Do (mapM numberStmt ss) (numberExpr e)
+> numberExpr (IfThenElse sref e1 e2 e3) =  
+>   liftM3 (IfThenElse sref) (numberExpr e1) (numberExpr e2) (numberExpr e3)
 > numberExpr (Case sref cty e alts) = liftM2 (Case sref cty) (numberExpr e) (mapM numberAlt alts)
-> numberExpr (RecordConstr fs) = RecordConstr `liftM` (mapM numberField fs)
-> numberExpr (RecordSelection e i) = flip RecordSelection i `liftM` numberExpr e 
-> numberExpr (RecordUpdate fs e) = liftM2 RecordUpdate (mapM numberField fs) (numberExpr e)
+> numberExpr (RecordConstr      fs) = RecordConstr `liftM` (mapM numberField fs)
+> numberExpr (RecordSelection  e i) = flip RecordSelection i `liftM` numberExpr e 
+> numberExpr (RecordUpdate    fs e) = liftM2 RecordUpdate (mapM numberField fs) (numberExpr e)
  
 > numberStmt :: Statement -> TCM Statement
-> numberStmt (StmtExpr sref e) = StmtExpr sref `liftM` numberExpr e
-> numberStmt (StmtDecl ds) = StmtDecl `liftM` numberDecls ds
+> numberStmt (StmtExpr   sref e) = StmtExpr sref `liftM` numberExpr e
+> numberStmt (StmtDecl       ds) = StmtDecl `liftM` numberDecls ds
 > numberStmt (StmtBind sref p e) = StmtBind sref p `liftM` (numberExpr e)
 
 > numberAlt :: Alt -> TCM Alt
@@ -2711,8 +2714,8 @@ we have to use other unique ids.
 > -- |returns the unique id assigned to a function or pattern declaration
 > getUniqueId :: Decl -> Int
 > getUniqueId (FunctionDecl _ _ n _ _) = n
-> getUniqueId (PatternDecl _ _ n _ _) = n
-> getUniqueId _ = internalError "getUniqueId"
+> getUniqueId (PatternDecl  _ _ n _ _) = n
+> getUniqueId _                        = internalError "getUniqueId"
 
 \end{verbatim}
 
