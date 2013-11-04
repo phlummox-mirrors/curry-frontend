@@ -152,12 +152,12 @@ interface module only. However, this has not been implemented yet.
 >   checkValueInfo "function" check p f
 > checkImport (IClassDecl _p _h _cx (QualIdent Nothing _) _tyvar _ds _defs _) = ok
 > checkImport (IClassDecl p _h cx cls tyvar ds defs _) = do
->   m <- getModuleIdent 
+>   m    <- getModuleIdent 
 >   cEnv <- getClassEnv
 >   let theClasses0 = qualLookupTopEnv cls (theClasses cEnv)
->       theClass0 = filter (\c -> theClass c == cls) theClasses0
+>       theClass0   = filter (\c -> theClass c == cls) theClasses0
 >   case theClass0 of
->     [] -> report $ errNotExported p "class" m (unqualify cls)
+>     []  -> report $ errNotExported p "class" m (unqualify cls)
 >     [c] -> do
 >       let tscs = map (typeFunDecl m (CE.typeVar c) . snd) ds
 >       unless 
@@ -166,7 +166,7 @@ interface module only. However, this has not been implemented yet.
 >            all (uncurry tySchemeEq) (zip tscs (typeSchemes c)) &&
 >            defs == map funName (defaults c)) 
 >         (report $ errImportConflict p "class" m (unqualify cls))
->     _ -> internalError ("checkImport IClassDecl: " ++ show cls)
+>     _   -> internalError ("checkImport IClassDecl: " ++ show cls)
 >   where
 >   tySchemeEq :: (Ident, TypeScheme) -> (Ident, TypeScheme) -> Bool
 >   tySchemeEq (i, tsc) (i', tsc') = i == i' 
@@ -174,11 +174,11 @@ interface module only. However, this has not been implemented yet.
 > checkImport (IInstanceDecl _ Nothing _ _ _ _ _) = ok
 > checkImport (IInstanceDecl p (Just m) cx cls ty tyvars _) = do
 >   cEnv <- getClassEnv
->   let ty' = specialTyConToQualIdent ty
+>   let ty'  = specialTyConToQualIdent ty
 >       inst = getInstanceWithOrigin cEnv m cls ty'
 >   case inst of
 >     Nothing -> report $ errInstNotExported p "instance" m (unqualify cls) (unqualify ty')
->     Just i -> do
+>     Just i  -> do
 >       unless (origin i == m && context i == cx
 >         && iClass i == cls && iType i == ty' && CE.typeVars i == tyvars) $
 >         report $ errInstImportConflict p "instance" m (unqualify cls) (unqualify ty')
