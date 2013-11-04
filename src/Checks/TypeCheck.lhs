@@ -1683,9 +1683,9 @@ because of possibly multiple occurrences of variables.
 >         let enumCx = [(enumClsIdent, alpha)]
 >         unify p "arithmetic sequence"
 >              (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e1) (enumCx, alpha) cty1
->         return (EnumFrom (Just $ mirrorFB 
->                  (cx1 ++ enumCx, TypeArrow alpha (listType alpha))) e1',
->                (cx1 ++ enumCx, listType alpha))
+>         let enumFromType = TypeArrow alpha (listType alpha)
+>         return (EnumFrom (Just $ mirrorFB (cx1 ++ enumCx, enumFromType)) e1',
+>                 (cx1 ++ enumCx, listType alpha))
 > tcExpr p e@(EnumFromThen _ e1 e2) = do
 >     (e1', cty1@(cx1, _ty1)) <- tcExpr p e1
 >     (e2', cty2@(cx2, _ty2)) <- tcExpr p e2
@@ -1705,10 +1705,11 @@ because of possibly multiple occurrences of variables.
 >               (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e1) (enumCx, alpha) cty1
 >         unify p "arithmetic sequence"
 >               (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e2) (enumCx, alpha) cty2
->         return (EnumFromThen (Just $ mirrorFB
->                  (cx1 ++ cx2 ++ enumCx, 
->                   TypeArrow alpha (TypeArrow alpha (listType alpha)))) e1' e2', 
->                (cx1 ++ cx2 ++ enumCx, listType alpha))  
+>         let enumFromThenType = TypeArrow alpha (TypeArrow alpha (listType alpha))
+>         return (EnumFromThen
+>                    (Just $ mirrorFB (cx1 ++ cx2 ++ enumCx, enumFromThenType))
+>                    e1' e2', 
+>                 (cx1 ++ cx2 ++ enumCx, listType alpha))  
 > tcExpr p e@(EnumFromTo _ e1 e2) = do
 >     (e1', cty1@(cx1, _ty1)) <- tcExpr p e1
 >     (e2', cty2@(cx2, _ty2)) <- tcExpr p e2
@@ -1728,10 +1729,11 @@ because of possibly multiple occurrences of variables.
 >               (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e1) (enumCx, alpha) cty1
 >         unify p "arithmetic sequence"
 >               (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e2) (enumCx, alpha) cty2
->         return (EnumFromTo (Just $ mirrorFB 
->                  (cx1 ++ cx2 ++ enumCx, 
->                   TypeArrow alpha (TypeArrow alpha (listType alpha)))) e1' e2', 
->                (cx1 ++ cx2 ++ enumCx, listType alpha))
+>         let enumFromToType = TypeArrow alpha (TypeArrow alpha (listType alpha))
+>         return (EnumFromTo 
+>                    (Just $ mirrorFB (cx1 ++ cx2 ++ enumCx, enumFromToType))
+>                    e1' e2', 
+>                 (cx1 ++ cx2 ++ enumCx, listType alpha))
 > tcExpr p e@(EnumFromThenTo _ e1 e2 e3) = do
 >     (e1', cty1@(cx1, _ty1)) <- tcExpr p e1
 >     (e2', cty2@(cx2, _ty2)) <- tcExpr p e2
@@ -1756,10 +1758,11 @@ because of possibly multiple occurrences of variables.
 >               (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e2) (enumCx, alpha) cty2
 >         unify p "arithmetic sequence"
 >               (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e3) (enumCx, alpha) cty3
->         return (EnumFromThenTo (Just $ mirrorFB
->                  (cx1 ++ cx2 ++ cx3 ++ enumCx, 
->                   TypeArrow alpha (TypeArrow alpha (TypeArrow alpha (listType alpha))))) e1' e2' e3',
->                (cx1 ++ cx2 ++ cx3 ++ enumCx, listType alpha))
+>         let enumFromThenToType = TypeArrow alpha (TypeArrow alpha (TypeArrow alpha (listType alpha)))
+>         return (EnumFromThenTo
+>                    (Just $ mirrorFB (cx1 ++ cx2 ++ cx3 ++ enumCx, enumFromThenToType))
+>                    e1' e2' e3',
+>                 (cx1 ++ cx2 ++ cx3 ++ enumCx, listType alpha))
 > tcExpr p e@(UnaryMinus _ op e1) = do
 >     exts <- typeClassExtensions
 >     case exts of
@@ -1775,7 +1778,8 @@ because of possibly multiple occurrences of variables.
 >         let numCx = [(numClsIdent, alpha)]
 >         unify p "unary negation" (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e1)
 >           (numCx, alpha) cty1
->         return (UnaryMinus (Just $ mirrorFB (cx1 ++ numCx, TypeArrow alpha alpha)) op e1',
+>         let negateType = TypeArrow alpha alpha
+>         return (UnaryMinus (Just $ mirrorFB (cx1 ++ numCx, negateType)) op e1',
 >           (cx1 ++ numCx, alpha))
 >   where opType op'
 >           | op' == minusId  = liftM noContext $ freshConstrained [intType,floatType]
