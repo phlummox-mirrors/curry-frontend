@@ -43,10 +43,10 @@ transformTypeSigs :: CompilerEnv -> Module -> Module
 transformTypeSigs cEnv (Module m e i ds) = Module m e i (concatMap (tsDecl cEnv) ds)
 
 tsDecl :: CompilerEnv -> Decl -> [Decl]
-tsDecl _cEnv d@(InfixDecl     _ _ _ _) = [d]
-tsDecl _cEnv d@(DataDecl    _ _ _ _ _) = [d]
-tsDecl _cEnv d@(NewtypeDecl _ _ _ _ _) = [d]
-tsDecl _cEnv d@(TypeDecl      _ _ _ _) = [d]
+tsDecl _cEnv d@(InfixDecl               _ _ _ _) = [d]
+tsDecl _cEnv d@(DataDecl              _ _ _ _ _) = [d]
+tsDecl _cEnv d@(NewtypeDecl           _ _ _ _ _) = [d]
+tsDecl _cEnv d@(TypeDecl                _ _ _ _) = [d]
 tsDecl  cEnv   (TypeSig p _ ids (Context cx) ty) = 
   -- if null cx then [d] else [] 
   map (tsTySig cEnv) splitTySigs
@@ -54,12 +54,12 @@ tsDecl  cEnv   (TypeSig p _ ids (Context cx) ty) =
   splitTySigs :: [Decl]
   splitTySigs = map (\id0 -> TypeSig p True [id0] (Context cx) ty) ids  
 tsDecl  cEnv   (FunctionDecl p cty id0 i eqs) = [FunctionDecl p cty id0 i (map (tsEqu cEnv) eqs)]
-tsDecl _cEnv d@(ForeignDecl    _ _ _ _ _) = [d]
-tsDecl _cEnv d@(ExternalDecl         _ _) = [d]
+tsDecl _cEnv d@(ForeignDecl        _ _ _ _ _) = [d]
+tsDecl _cEnv d@(ExternalDecl             _ _) = [d]
 tsDecl  cEnv   (PatternDecl p cty id0 pt rhs) = [PatternDecl p cty id0 pt (tsRhs cEnv rhs)]
-tsDecl _cEnv d@(FreeDecl             _ _) = [d]
-tsDecl _cEnv d@(ClassDecl      _ _ _ _ _) = [d]
-tsDecl _cEnv d@(InstanceDecl _ _ _ _ _ _) = [d]
+tsDecl _cEnv d@(FreeDecl                 _ _) = [d]
+tsDecl _cEnv d@(ClassDecl          _ _ _ _ _) = [d]
+tsDecl _cEnv d@(InstanceDecl     _ _ _ _ _ _) = [d]
 
 -- | replaces a type signature with the type signature extracted from the 
 -- value environment and inserts further dictionary types
@@ -105,39 +105,39 @@ tsCondExpr :: CompilerEnv -> CondExpr -> CondExpr
 tsCondExpr cEnv (CondExpr p e1 e2) = CondExpr p (tsExpr cEnv e1) (tsExpr cEnv e2)
 
 tsExpr :: CompilerEnv -> Expression -> Expression
-tsExpr _cEnv e@(Literal _) = e
-tsExpr _cEnv e@(Variable _ _) = e
-tsExpr _cEnv e@(Constructor _) = e
-tsExpr cEnv   (Paren e) = tsExpr cEnv e
+tsExpr _cEnv e@(Literal        _) = e
+tsExpr _cEnv e@(Variable     _ _) = e
+tsExpr _cEnv e@(Constructor    _) = e
+tsExpr cEnv    (Paren          e) = tsExpr cEnv e
 -- Handle type signature in typed expression by simply removing the context
 -- (no dictionaries have to be inserted here, so the context can be ignored)
-tsExpr cEnv (Typed cty e _cx t) = Typed cty (tsExpr cEnv e) CS.emptyContext t
-tsExpr cEnv (Tuple sref es) = Tuple sref (map (tsExpr cEnv) es)
-tsExpr cEnv (List sref es) = List sref (map (tsExpr cEnv) es)
+tsExpr cEnv (Typed   cty e _cx t) = Typed cty (tsExpr cEnv e) CS.emptyContext t
+tsExpr cEnv (Tuple       sref es) = Tuple sref (map (tsExpr cEnv) es)
+tsExpr cEnv (List        sref es) = List sref (map (tsExpr cEnv) es)
 tsExpr cEnv (ListCompr sref e ss) = ListCompr sref (tsExpr cEnv e) (map (tsStmt cEnv) ss)
-tsExpr cEnv (EnumFrom cty e1) = EnumFrom cty (tsExpr cEnv e1)
+tsExpr cEnv (EnumFrom     cty e1) = EnumFrom cty (tsExpr cEnv e1)
 tsExpr cEnv (EnumFromThen cty e1 e2) = EnumFromThen cty (tsExpr cEnv e1) (tsExpr cEnv e2)
-tsExpr cEnv (EnumFromTo cty e1 e2) = EnumFromTo cty (tsExpr cEnv e1) (tsExpr cEnv e2)
+tsExpr cEnv (EnumFromTo   cty e1 e2) = EnumFromTo cty (tsExpr cEnv e1) (tsExpr cEnv e2)
 tsExpr cEnv (EnumFromThenTo cty e1 e2 e3) = EnumFromThenTo cty (tsExpr cEnv e1) (tsExpr cEnv e2) (tsExpr cEnv e3)
-tsExpr cEnv (UnaryMinus cty i e) = UnaryMinus cty i (tsExpr cEnv e)
-tsExpr cEnv (Apply e1 e2) = Apply (tsExpr cEnv e1) (tsExpr cEnv e2)
+tsExpr cEnv (UnaryMinus  cty i e) = UnaryMinus cty i (tsExpr cEnv e)
+tsExpr cEnv (Apply         e1 e2) = Apply (tsExpr cEnv e1) (tsExpr cEnv e2)
 tsExpr cEnv (InfixApply e1 op e2) = InfixApply (tsExpr cEnv e1) op (tsExpr cEnv e2)
-tsExpr cEnv (LeftSection e op) = LeftSection (tsExpr cEnv e) op
-tsExpr cEnv (RightSection op e) = RightSection op (tsExpr cEnv e)
-tsExpr cEnv (Lambda sref ps e) = Lambda sref ps (tsExpr cEnv e)
-tsExpr cEnv (Let ds e) = Let (concatMap (tsDecl cEnv) ds) (tsExpr cEnv e)
-tsExpr cEnv (Do ss e) = Do (map (tsStmt cEnv) ss) (tsExpr cEnv e)
+tsExpr cEnv (LeftSection    e op) = LeftSection (tsExpr cEnv e) op
+tsExpr cEnv (RightSection   op e) = RightSection op (tsExpr cEnv e)
+tsExpr cEnv (Lambda    sref ps e) = Lambda sref ps (tsExpr cEnv e)
+tsExpr cEnv (Let            ds e) = Let (concatMap (tsDecl cEnv) ds) (tsExpr cEnv e)
+tsExpr cEnv (Do             ss e) = Do (map (tsStmt cEnv) ss) (tsExpr cEnv e)
 tsExpr cEnv (IfThenElse sref e1 e2 e3) = 
   IfThenElse sref (tsExpr cEnv e1) (tsExpr cEnv e2) (tsExpr cEnv e3)
 tsExpr cEnv (Case sref ct e alts) = Case sref ct (tsExpr cEnv e) (map (tsAlt cEnv) alts)
-tsExpr cEnv (RecordConstr fs) = RecordConstr (map (tsField cEnv) fs)
+tsExpr cEnv (RecordConstr     fs) = RecordConstr (map (tsField cEnv) fs)
 tsExpr cEnv (RecordSelection e i) = RecordSelection (tsExpr cEnv e) i
-tsExpr cEnv (RecordUpdate fs e) = RecordUpdate (map (tsField cEnv) fs) (tsExpr cEnv e)
+tsExpr cEnv (RecordUpdate   fs e) = RecordUpdate (map (tsField cEnv) fs) (tsExpr cEnv e)
 
 
 tsStmt :: CompilerEnv -> Statement -> Statement
-tsStmt cEnv (StmtExpr sref e) = StmtExpr sref (tsExpr cEnv e)
-tsStmt cEnv (StmtDecl ds) = StmtDecl (concatMap (tsDecl cEnv) ds)
+tsStmt cEnv (StmtExpr   sref e) = StmtExpr sref (tsExpr cEnv e)
+tsStmt cEnv (StmtDecl       ds) = StmtDecl (concatMap (tsDecl cEnv) ds)
 tsStmt cEnv (StmtBind sref p e) = StmtBind sref p (tsExpr cEnv e)
 
 tsAlt :: CompilerEnv -> Alt -> Alt
@@ -166,15 +166,15 @@ valInMdl m v = fromJust (qidModule $ origName v) == m
 
 -- |converts a type to a type expression
 fromType :: Type -> TypeExpr
-fromType (TypeConstructor tc tys) = ConstructorType tc tys'
+fromType (TypeConstructor  tc tys) = ConstructorType tc tys'
   where tys' = map fromType tys
-fromType (TypeVariable tv)         = VariableType
+fromType (TypeVariable         tv) = VariableType
    (if tv >= 0 then identSupply !! tv else mkIdent ('_' : show (-tv)))
-fromType (TypeConstrained tys _)   = fromType (head tys)
-fromType (TypeArrow     ty1 ty2)   =
+fromType (TypeConstrained   tys _) = fromType (head tys)
+fromType (TypeArrow       ty1 ty2) =
   ArrowType (fromType ty1) (fromType ty2)
-fromType (TypeSkolem          k)   =
+fromType (TypeSkolem            k) =
   VariableType $ mkIdent $ "_?" ++ show k
-fromType (TypeRecord     fs rty)   = RecordType
+fromType (TypeRecord       fs rty) = RecordType
   (map (\ (l, ty) -> ([l], fromType ty)) fs)
   ((fromType . TypeVariable) `fmap` rty)
