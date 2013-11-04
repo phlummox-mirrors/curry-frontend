@@ -80,11 +80,11 @@ as well, these variables must never be quantified.
 > isTyCons (TypeConstructor _     _) = True
 > isTyCons (TypeConstrained (t:_) _) = isTyCons t
 > isTyCons (TypeConstrained []    _) = False
-> isTyCons _ = False
+> isTyCons _                         = False
 
 > isArrow :: Type -> Bool
 > isArrow (TypeArrow _ _) = True
-> isArrow _ = False
+> isArrow _               = False
 
 > -- | returns whether the given type is a constructor type, i.e. whether its head is
 > -- a constructor
@@ -94,11 +94,11 @@ as well, these variables must never be quantified.
 > -- |splits a given type (that starts with a constructor) into
 > -- the constructor and its following types 
 > splitType :: Type -> Maybe (QualIdent, [Type])
-> splitType (TypeConstructor xi tys) = Just (xi, tys)
-> splitType (TypeArrow ty1 ty2) = Just (qArrowIdP, [ty1, ty2])
+> splitType (TypeConstructor  xi tys) = Just (xi, tys)
+> splitType (TypeArrow       ty1 ty2) = Just (qArrowIdP, [ty1, ty2])
 > splitType (TypeConstrained (t:_) _) = splitType t
-> splitType (TypeConstrained [] _) = Nothing
-> splitType _ = Nothing
+> splitType (TypeConstrained    [] _) = Nothing
+> splitType _                         = Nothing
 
 \end{verbatim}
 The function \texttt{isArrowType} checks whether a type is a function
@@ -441,19 +441,21 @@ the base to the frontend mirrorBF.
 >   mirrorBF cx = map (\(qid, ty) -> (qid, mirrorBF ty)) cx
 
 > instance Mirrorable Type ST.Type_ where
->   mirrorFB (TypeVariable n) = ST.TypeVariable_ n
+>   mirrorFB (TypeVariable        n) = ST.TypeVariable_ n
 >   mirrorFB (TypeConstructor q tys) = ST.TypeConstructor_ q (map mirrorFB tys)
->   mirrorFB (TypeArrow t1 t2) = ST.TypeArrow_ (mirrorFB t1) (mirrorFB t2)
+>   mirrorFB (TypeArrow       t1 t2) = ST.TypeArrow_ (mirrorFB t1) (mirrorFB t2)
 >   mirrorFB (TypeConstrained tys n) = ST.TypeConstrained_ (map mirrorFB tys) n
->   mirrorFB (TypeSkolem n) = ST.TypeSkolem_ n
->   mirrorFB (TypeRecord tys n) = ST.TypeRecord_ (map (\(id0, ty) -> (id0, mirrorFB ty)) tys) n
+>   mirrorFB (TypeSkolem          n) = ST.TypeSkolem_ n
+>   mirrorFB (TypeRecord      tys n) = 
+>     ST.TypeRecord_ (map (\(id0, ty) -> (id0, mirrorFB ty)) tys) n
 >   
->   mirrorBF (ST.TypeVariable_ n) = TypeVariable n
+>   mirrorBF (ST.TypeVariable_        n) = TypeVariable n
 >   mirrorBF (ST.TypeConstructor_ q tys) = TypeConstructor q (map mirrorBF tys)
->   mirrorBF (ST.TypeArrow_ t1 t2) = TypeArrow (mirrorBF t1) (mirrorBF t2)
+>   mirrorBF (ST.TypeArrow_       t1 t2) = TypeArrow (mirrorBF t1) (mirrorBF t2)
 >   mirrorBF (ST.TypeConstrained_ tys n) = TypeConstrained (map mirrorBF tys) n
->   mirrorBF (ST.TypeSkolem_ n) = TypeSkolem n
->   mirrorBF (ST.TypeRecord_ tys n) = TypeRecord (map (\(id0, ty) -> (id0, mirrorBF ty)) tys) n
+>   mirrorBF (ST.TypeSkolem_          n) = TypeSkolem n
+>   mirrorBF (ST.TypeRecord_      tys n) = 
+>     TypeRecord (map (\(id0, ty) -> (id0, mirrorBF ty)) tys) n
 
 > instance Mirrorable ConstrType ST.ConstrType_ where
 >   mirrorFB (cx, ty) = (mirrorFB cx, mirrorFB ty)
