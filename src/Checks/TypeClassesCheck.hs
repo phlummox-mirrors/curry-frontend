@@ -94,49 +94,49 @@ typeClassesCheck m opts decls0
   case runTcc tcCheck initTccState of 
     ((newClasses, instances), []) -> 
       let -- add newly generated dictionary types to type constructor environment  
-          tcEnv' = foldr (bindTC m tcEnv') tcEnv0 newDecls
+          tcEnv'              = foldr (bindTC m tcEnv') tcEnv0 newDecls
           
           -- translate contexts, instances and classes:
-          newDecls = adjustContexts m cEnv $ 
+          newDecls            = adjustContexts m cEnv $ 
             concatMap (transformInstance m cEnv tcEnv') $ 
             concatMap (transformClass2 m cEnv tcEnv') decls
           
           -- build type schemes for all classes
-          newClasses' = map (buildTypeSchemes True m tcEnv 
-                          . renameTypeSigVars) newClasses
+          newClasses'         = map (buildTypeSchemes True m tcEnv 
+                                  . renameTypeSigVars) newClasses
           importedClassesEnv' = 
             fmap (buildTypeSchemes False m tcEnv . renameTypeSigVars) importedClassesEnv
           
           -- construct class environment
-          allClassesEnv = bindAll newClasses' importedClassesEnv'
-          classMethodsEnv = constructClassMethodsEnv $ allClassBindings cEnv
-          cEnv = ClassEnv allClassesEnv instances classMethodsEnv
-                          (buildCanonClassMap allClassesEnv)
+          allClassesEnv       = bindAll newClasses' importedClassesEnv'
+          classMethodsEnv     = constructClassMethodsEnv $ allClassBindings cEnv
+          cEnv                = ClassEnv allClassesEnv instances classMethodsEnv
+                                         (buildCanonClassMap allClassesEnv)
       in (newDecls, cEnv, [])
     (_, errs@(_:_)) -> (decls, ClassEnv emptyTopEnv [] emptyTopEnv Map.empty, errs)
   where
     typeClassExtensions = TypeClassExtensions `elem` optExtensions opts
-    decls = runDer opPrecEnv $ expandDerivingDecls decls0
+    decls      = runDer opPrecEnv $ expandDerivingDecls decls0
     classDecls = filter isClassDecl decls
-    instDecls = filter isInstanceDecl decls
-    dataDecls = filter (\x -> isDataDecl x || isNewtypeDecl x) decls
-    typeSigs = gatherTypeSigs decls
-    tcEnv = foldr (bindTC m tcEnv) tcEnv0 decls
-    tcCheck = do
+    instDecls  = filter isInstanceDecl decls
+    dataDecls  = filter (\x -> isDataDecl x || isNewtypeDecl x) decls
+    typeSigs   = gatherTypeSigs decls
+    tcEnv      = foldr (bindTC m tcEnv) tcEnv0 decls
+    tcCheck    = do
       phase1
       hasErr1 <- hasError
       case hasErr1 of
-        True -> return ([], [])
+        True  -> return ([], [])
         False -> do
           phase2a
           hasErr2a <- hasError
           case hasErr2a of
-            True -> return ([], [])
+            True  -> return ([], [])
             False -> do
               phase2b
               hasErr2b <- hasError
               case hasErr2b of
-                True -> return ([], [])
+                True  -> return ([], [])
                 False -> phase3
 
     -- ----------------------------------------------------------------------
@@ -174,11 +174,11 @@ typeClassesCheck m opts decls0
     -- ----------------------------------------------------------------------
     phase2a = do
       let newClasses = map (classDeclToClass m) classDecls
-          instances = map (localInst . instanceDeclToInstance m tcEnv) instDecls 
-                      ++ importedInstances
+          instances  = map (localInst . instanceDeclToInstance m tcEnv) instDecls 
+                       ++ importedInstances
           allClassesEnv = bindAll newClasses importedClassesEnv
-          newClassEnv = ClassEnv allClassesEnv instances emptyTopEnv 
-                                 (buildCanonClassMap allClassesEnv)
+          newClassEnv   = ClassEnv allClassesEnv instances emptyTopEnv 
+                                   (buildCanonClassMap allClassesEnv)
                                  
       mapM_ (checkClassesInDeriving m newClassEnv) dataDecls
     
@@ -190,11 +190,11 @@ typeClassesCheck m opts decls0
     phase2b = do 
       -- as in phase 2a
       let newClasses = map (classDeclToClass m) classDecls
-          instances = map (localInst . instanceDeclToInstance m tcEnv) instDecls 
+          instances  = map (localInst . instanceDeclToInstance m tcEnv) instDecls 
                       ++ importedInstances
           allClassesEnv = bindAll newClasses importedClassesEnv
-          newClassEnv = ClassEnv allClassesEnv instances emptyTopEnv 
-                                 (buildCanonClassMap allClassesEnv)
+          newClassEnv   = ClassEnv allClassesEnv instances emptyTopEnv 
+                                   (buildCanonClassMap allClassesEnv)
       
       -- TODO: check also contexts of (imported) classes and interfaces?
       mapM_ (checkClassesInContext m newClassEnv) classDecls
@@ -214,13 +214,13 @@ typeClassesCheck m opts decls0
     phase3 = do  
       let newClasses' = 
             map (qualifyClass m newClassEnv' . classDeclToClass m) classDecls
-          instances' =  
+          instances'  =  
             map (localInst . qualifyInstance m newClassEnv' 
                            . instanceDeclToInstance m tcEnv) instDecls 
             ++ importedInstances
           allClassesEnv = bindAll newClasses' importedClassesEnv
-          newClassEnv' = ClassEnv allClassesEnv instances' emptyTopEnv 
-                                  (buildCanonClassMap allClassesEnv)
+          newClassEnv'  = ClassEnv allClassesEnv instances' emptyTopEnv 
+                                   (buildCanonClassMap allClassesEnv)
       
       mapM_ (checkForInstanceDataTypeExistAlsoInstancesForSuperclasses newClassEnv' tcEnv m) instDecls
       mapM_ (checkInstanceContextImpliesAllInstanceContextsOfSuperClasses newClassEnv' tcEnv m) instDecls
@@ -239,15 +239,15 @@ typeClassesCheck m opts decls0
 classDeclToClass :: ModuleIdent -> Decl -> Class
 classDeclToClass m (ClassDecl _ (SContext scon) cls tyvar decls) 
   = Class { 
-    superClasses = map fst scon, -- still unqualified!
-    theClass = qualifyWith m cls, 
-    typeVar = tyvar, 
-    kind = -1, -- TODO
-    origMethods = allMethods,
-    methods = allMethods, 
-    defaults = filter isFunctionDecl decls, 
-    typeSchemes = [], 
-    hidden = False, 
+    superClasses  = map fst scon, -- still unqualified!
+    theClass      = qualifyWith m cls, 
+    typeVar       = tyvar, 
+    kind          = -1, -- TODO
+    origMethods   = allMethods,
+    methods       = allMethods, 
+    defaults      = filter isFunctionDecl decls, 
+    typeSchemes   = [], 
+    hidden        = False, 
     publicMethods = map fst3 allMethods
   }
   where
@@ -263,12 +263,13 @@ classDeclToClass _ _ = internalError "classDeclToClass"
 instanceDeclToInstance :: ModuleIdent -> TCEnv -> Decl -> Instance
 instanceDeclToInstance m tcEnv (InstanceDecl _ (SContext scon) cls tcon ids decls) = 
   Instance { 
-    context = scon, -- still unqualified!
-    iClass = cls,   -- still unqualified!
-    iType = ty,     -- still unqualified!
+    context  = scon, -- still unqualified!
+    iClass   = cls,  -- still unqualified!
+    iType    = ty,   -- still unqualified!
     typeVars = ids, 
-    rules = decls, 
-    origin = m }
+    rules    = decls, 
+    origin   = m
+  }
   where
   -- fromJust shouldn't fail here, because this function is first called
   -- after it has been checked that the given type exists
@@ -283,16 +284,16 @@ tyConToQualIdent :: ModuleIdent -> TCEnv -> TypeConstructor -> Maybe QualIdent
 tyConToQualIdent m tcEnv (QualTC qid) = qualifyQid
   where
   qualifyQid = case qualLookupTC qid tcEnv of
-    [] -> Nothing
-    [DataType tc' _ _] -> Just tc'
+    []                     -> Nothing
+    [DataType     tc' _ _] -> Just tc'
     [RenamingType tc' _ _] -> Just tc'
-    [AliasType _ _ _] -> Nothing
+    [AliasType      _ _ _] -> Nothing
     _ -> case qualLookupTC (qualQualify m qid) tcEnv of
-      [] -> Nothing
-      [DataType tc' _ _] -> Just tc'
+      []                     -> Nothing
+      [DataType     tc' _ _] -> Just tc'
       [RenamingType tc' _ _] -> Just tc'
-      [AliasType _ _ _] -> Nothing
-      _ -> Nothing
+      [AliasType      _ _ _] -> Nothing
+      _                      -> Nothing
 tyConToQualIdent _ _ c = Just $ specialTyConToQualIdent c
 
 -- |qualifies superclasses in the class context
@@ -312,14 +313,14 @@ getCanonClassName m cEnv = fromJust . canonClassName m cEnv
 qualifyInstance :: ModuleIdent -> ClassEnv -> Instance -> Instance
 qualifyInstance m cEnv i = 
   i { context = map (\(qid, id0) -> (getCanonClassName m cEnv qid, id0)) (context i)
-    , iClass = getCanonClassName m cEnv (iClass i) }   
+    , iClass  = getCanonClassName m cEnv (iClass i) }   
 
 -- |builds the canonical class map (a map from canonical class names to 
 -- the corresponding classes)
 buildCanonClassMap :: TopEnv Class -> Map.Map QualIdent Class
 buildCanonClassMap classes = Map.fromList allClasses''
   where
-  allClasses' = allClasses classes
+  allClasses'  = allClasses classes
   allClasses'' = map (\cls -> (theClass cls, cls)) allClasses'
 
 -- | constructs the environment that maps class methods to classes  
@@ -357,12 +358,12 @@ gatherTypeSigs decls =
   concatMap gatherTS decls
 
 gatherTS :: Decl -> [Decl]
-gatherTS (ClassDecl _ _ _ _ decls) = gatherTypeSigs decls
+gatherTS (ClassDecl      _ _ _ _ decls) = gatherTypeSigs decls
 gatherTS (InstanceDecl _ _ _ _ _ decls) = gatherTypeSigs decls
-gatherTS (PatternDecl _ _ _ _ rhs) = gatherTSRhs rhs
-gatherTS (FunctionDecl _ _ _ _ eqs) = concatMap gatherTSEqu eqs 
-gatherTS ts@(TypeSig _ _ _ _ _) = [ts]
-gatherTS _ = []
+gatherTS (PatternDecl      _ _ _ _ rhs) = gatherTSRhs rhs
+gatherTS (FunctionDecl     _ _ _ _ eqs) = concatMap gatherTSEqu eqs 
+gatherTS ts@(TypeSig         _ _ _ _ _) = [ts]
+gatherTS _                              = []
 
 gatherTSRhs :: Rhs -> [Decl]
 gatherTSRhs (SimpleRhs _ expr decls) = gatherTSExpr expr ++ gatherTypeSigs decls
@@ -372,38 +373,38 @@ gatherTSEqu :: Equation -> [Decl]
 gatherTSEqu (Equation _ _ rhs) = gatherTSRhs rhs
 
 gatherTSExpr :: Expression -> [Decl]
-gatherTSExpr (Literal _) = []
-gatherTSExpr (Variable _ _) = []
-gatherTSExpr (Constructor _) = []
-gatherTSExpr (Paren expr) = gatherTSExpr expr
+gatherTSExpr (Literal             _) = []
+gatherTSExpr (Variable          _ _) = []
+gatherTSExpr (Constructor         _) = []
+gatherTSExpr (Paren            expr) = gatherTSExpr expr
 -- convert typification into type signatures without position (TODO: add
 -- position somehow)
-gatherTSExpr (Typed _ expr cx texp) = gatherTSExpr expr ++ [typeSig False [] cx texp]
-gatherTSExpr (Tuple _ exps) = concatMap gatherTSExpr exps
-gatherTSExpr (List _ exps) = concatMap gatherTSExpr exps
+gatherTSExpr (Typed  _ expr cx texp) = gatherTSExpr expr ++ [typeSig False [] cx texp]
+gatherTSExpr (Tuple          _ exps) = concatMap gatherTSExpr exps
+gatherTSExpr (List           _ exps) = concatMap gatherTSExpr exps
 gatherTSExpr (ListCompr _ expr stms) = gatherTSExpr expr ++ concatMap gatherTSStm stms
-gatherTSExpr (EnumFrom _ expr) = gatherTSExpr expr
+gatherTSExpr (EnumFrom            _ expr) = gatherTSExpr expr
 gatherTSExpr (EnumFromThen _ expr1 expr2) = gatherTSExpr expr1 ++ gatherTSExpr expr2
-gatherTSExpr (EnumFromTo _ expr1 expr2) = gatherTSExpr expr1 ++ gatherTSExpr expr2
+gatherTSExpr (EnumFromTo   _ expr1 expr2) = gatherTSExpr expr1 ++ gatherTSExpr expr2
 gatherTSExpr (EnumFromThenTo _ expr1 expr2 expr3) = 
   gatherTSExpr expr1 ++ gatherTSExpr expr2 ++ gatherTSExpr expr3
-gatherTSExpr (UnaryMinus _ _ expr) = gatherTSExpr expr 
-gatherTSExpr (Apply e1 e2) = gatherTSExpr e1 ++ gatherTSExpr e2
-gatherTSExpr (InfixApply e1 _ e2) = gatherTSExpr e1 ++ gatherTSExpr e2
-gatherTSExpr (LeftSection e _) = gatherTSExpr e
-gatherTSExpr (RightSection _ e) = gatherTSExpr e
-gatherTSExpr (Lambda _ _ e) = gatherTSExpr e
-gatherTSExpr (Let decls expr) = gatherTypeSigs decls ++ gatherTSExpr expr
-gatherTSExpr (Do stms e) = concatMap gatherTSStm stms ++ gatherTSExpr e
+gatherTSExpr (UnaryMinus   _ _ expr) = gatherTSExpr expr 
+gatherTSExpr (Apply           e1 e2) = gatherTSExpr e1 ++ gatherTSExpr e2
+gatherTSExpr (InfixApply    e1 _ e2) = gatherTSExpr e1 ++ gatherTSExpr e2
+gatherTSExpr (LeftSection       e _) = gatherTSExpr e
+gatherTSExpr (RightSection      _ e) = gatherTSExpr e
+gatherTSExpr (Lambda          _ _ e) = gatherTSExpr e
+gatherTSExpr (Let        decls expr) = gatherTypeSigs decls ++ gatherTSExpr expr
+gatherTSExpr (Do             stms e) = concatMap gatherTSStm stms ++ gatherTSExpr e
 gatherTSExpr (IfThenElse _ e1 e2 e3) = 
   gatherTSExpr e1 ++ gatherTSExpr e2 ++ gatherTSExpr e3
-gatherTSExpr (Case _ _ e alts) = gatherTSExpr e ++ concatMap gatherTSAlt alts
-gatherTSExpr (RecordConstr fs) = concatMap gatherTSFieldExpr fs
-gatherTSExpr (RecordSelection e _) = gatherTSExpr e
-gatherTSExpr (RecordUpdate fs e) = concatMap gatherTSFieldExpr fs ++ gatherTSExpr e
+gatherTSExpr (Case       _ _ e alts) = gatherTSExpr e ++ concatMap gatherTSAlt alts
+gatherTSExpr (RecordConstr       fs) = concatMap gatherTSFieldExpr fs
+gatherTSExpr (RecordSelection   e _) = gatherTSExpr e
+gatherTSExpr (RecordUpdate     fs e) = concatMap gatherTSFieldExpr fs ++ gatherTSExpr e
 
 gatherTSStm :: Statement -> [Decl]
-gatherTSStm (StmtExpr _ e) = gatherTSExpr e
+gatherTSStm (StmtExpr   _ e) = gatherTSExpr e
 gatherTSStm (StmtDecl decls) = gatherTypeSigs decls
 gatherTSStm (StmtBind _ _ e) = gatherTSExpr e
 
@@ -426,18 +427,20 @@ adjustContexts :: ModuleIdent -> ClassEnv -> [Decl] -> [Decl]
 adjustContexts m cEnv ds = map (adjDecl m cEnv) ds
 
 adjDecl :: ModuleIdent -> ClassEnv -> Decl -> Decl
-adjDecl _ _    d@(InfixDecl _ _ _ _)   = d
-adjDecl _ _    d@(DataDecl _ _ _ _ _)    = d
-adjDecl _ _    d@(NewtypeDecl _ _ _ _ _) = d
-adjDecl _ _    d@(TypeDecl _ _ _ _)    = d
-adjDecl m cEnv   (TypeSig p e ids cx te) = TypeSig p e ids (canonContext m cEnv cx) te
-adjDecl m cEnv   (FunctionDecl p cty n f eqs) = 
+adjDecl _ _    d@(InfixDecl                _ _ _ _) = d
+adjDecl _ _    d@(DataDecl               _ _ _ _ _) = d
+adjDecl _ _    d@(NewtypeDecl            _ _ _ _ _) = d
+adjDecl _ _    d@(TypeDecl                 _ _ _ _) = d
+adjDecl m cEnv   (TypeSig            p e ids cx te) = 
+  TypeSig p e ids (canonContext m cEnv cx) te
+adjDecl m cEnv   (FunctionDecl       p cty n f eqs) = 
   FunctionDecl p cty n f (map (adjEqu m cEnv) eqs)
-adjDecl _ _    d@(ForeignDecl _ _ _ _ _) = d
-adjDecl _ _    d@(ExternalDecl _ _)      = d
-adjDecl m cEnv   (PatternDecl p cty n pt rhs) = PatternDecl p cty n pt (adjRhs m cEnv rhs)
-adjDecl _ _    d@(FreeDecl _ _) = d
-adjDecl m cEnv   (ClassDecl p scon cls v ds) = 
+adjDecl _ _    d@(ForeignDecl            _ _ _ _ _) = d
+adjDecl _ _    d@(ExternalDecl                 _ _) = d
+adjDecl m cEnv   (PatternDecl       p cty n pt rhs) = 
+  PatternDecl p cty n pt (adjRhs m cEnv rhs)
+adjDecl _ _    d@(FreeDecl                     _ _) = d
+adjDecl m cEnv   (ClassDecl        p scon cls v ds) = 
   ClassDecl p scon cls v (adjustContexts m cEnv ds)
 adjDecl m cEnv   (InstanceDecl p scon cls ty vs ds) = 
   InstanceDecl p scon cls ty vs (adjustContexts m cEnv ds)
@@ -446,7 +449,7 @@ adjEqu :: ModuleIdent -> ClassEnv -> Equation -> Equation
 adjEqu m cEnv (Equation p lhs rhs) = Equation p lhs (adjRhs m cEnv rhs)
 
 adjRhs :: ModuleIdent -> ClassEnv -> Rhs -> Rhs
-adjRhs m cEnv (SimpleRhs p e ds) = 
+adjRhs m cEnv (SimpleRhs  p e ds) = 
   SimpleRhs p (adjExpr m cEnv e) (adjustContexts m cEnv ds)
 adjRhs m cEnv (GuardedRhs ces ds) =
   GuardedRhs (map (adjCondExpr m cEnv) ces) (adjustContexts m cEnv ds)
@@ -456,41 +459,44 @@ adjCondExpr m cEnv (CondExpr p e1 e2) =
   CondExpr p (adjExpr m cEnv e1) (adjExpr m cEnv e2)
 
 adjExpr :: ModuleIdent -> ClassEnv -> Expression -> Expression
-adjExpr _ _    e@(Literal _) = e
-adjExpr _ _    e@(Variable _ _) = e
-adjExpr _ _    e@(Constructor _) = e
-adjExpr m cEnv (Paren e) = Paren (adjExpr m cEnv e)
-adjExpr m cEnv (Typed cty e cx ty) = 
+adjExpr _ _    e@(Literal         _) = e
+adjExpr _ _    e@(Variable      _ _) = e
+adjExpr _ _    e@(Constructor     _) = e
+adjExpr m cEnv (Paren             e) = Paren (adjExpr m cEnv e)
+adjExpr m cEnv (Typed   cty e cx ty) = 
   Typed cty (adjExpr m cEnv e) (canonContext m cEnv cx) ty
-adjExpr m cEnv (Tuple sref es) = Tuple sref (map (adjExpr m cEnv) es)
-adjExpr m cEnv (List sref es) = List sref (map (adjExpr m cEnv) es)
+adjExpr m cEnv (Tuple       sref es) = Tuple sref (map (adjExpr m cEnv) es)
+adjExpr m cEnv (List        sref es) = List sref (map (adjExpr m cEnv) es)
 adjExpr m cEnv (ListCompr sref e ss) = 
   ListCompr sref (adjExpr m cEnv e) (map (adjStmt m cEnv) ss)
-adjExpr m cEnv (EnumFrom cty e1) = EnumFrom cty (adjExpr m cEnv e1)
-adjExpr m cEnv (EnumFromThen cty e1 e2) = EnumFromThen cty (adjExpr m cEnv e1) (adjExpr m cEnv e2)
-adjExpr m cEnv (EnumFromTo cty e1 e2) = EnumFromTo cty (adjExpr m cEnv e1) (adjExpr m cEnv e2)
+adjExpr m cEnv (EnumFrom             cty e1) = 
+  EnumFrom cty (adjExpr m cEnv e1)
+adjExpr m cEnv (EnumFromThen      cty e1 e2) = 
+  EnumFromThen cty (adjExpr m cEnv e1) (adjExpr m cEnv e2)
+adjExpr m cEnv (EnumFromTo        cty e1 e2) = 
+  EnumFromTo cty (adjExpr m cEnv e1) (adjExpr m cEnv e2)
 adjExpr m cEnv (EnumFromThenTo cty e1 e2 e3) = 
   EnumFromThenTo cty (adjExpr m cEnv e1) (adjExpr m cEnv e2) (adjExpr m cEnv e3)
-adjExpr m cEnv (UnaryMinus cty i e) = UnaryMinus cty i (adjExpr m cEnv e)
-adjExpr m cEnv (Apply e1 e2) = Apply (adjExpr m cEnv e1) (adjExpr m cEnv e2)
+adjExpr m cEnv (UnaryMinus  cty i e) = UnaryMinus cty i (adjExpr m cEnv e)
+adjExpr m cEnv (Apply         e1 e2) = Apply (adjExpr m cEnv e1) (adjExpr m cEnv e2)
 adjExpr m cEnv (InfixApply e1 op e2) = InfixApply (adjExpr m cEnv e1) op (adjExpr m cEnv e2)
-adjExpr m cEnv (LeftSection e op) = LeftSection (adjExpr m cEnv e) op
-adjExpr m cEnv (RightSection op e) = RightSection op (adjExpr m cEnv e)
-adjExpr m cEnv (Lambda sref pts e) = Lambda sref pts (adjExpr m cEnv e)
-adjExpr m cEnv (Let ds e) = Let (adjustContexts m cEnv ds) (adjExpr m cEnv e)
-adjExpr m cEnv (Do ss e) = Do (map (adjStmt m cEnv) ss) (adjExpr m cEnv e)
+adjExpr m cEnv (LeftSection    e op) = LeftSection (adjExpr m cEnv e) op
+adjExpr m cEnv (RightSection   op e) = RightSection op (adjExpr m cEnv e)
+adjExpr m cEnv (Lambda   sref pts e) = Lambda sref pts (adjExpr m cEnv e)
+adjExpr m cEnv (Let            ds e) = Let (adjustContexts m cEnv ds) (adjExpr m cEnv e)
+adjExpr m cEnv (Do             ss e) = Do (map (adjStmt m cEnv) ss) (adjExpr m cEnv e)
 adjExpr m cEnv (IfThenElse sref e1 e2 e3) = IfThenElse sref
   (adjExpr m cEnv e1) (adjExpr m cEnv e2) (adjExpr m cEnv e3)
 adjExpr m cEnv (Case sref ct e alts) = 
   Case sref ct (adjExpr m cEnv e) (map (adjAlt m cEnv) alts)
-adjExpr m cEnv (RecordConstr fs) = RecordConstr (map (adjField m cEnv) fs)
+adjExpr m cEnv (RecordConstr     fs) = RecordConstr (map (adjField m cEnv) fs)
 adjExpr m cEnv (RecordSelection e i) = RecordSelection (adjExpr m cEnv e) i
-adjExpr m cEnv (RecordUpdate fs e) = 
+adjExpr m cEnv (RecordUpdate   fs e) = 
   RecordUpdate (map (adjField m cEnv) fs) (adjExpr m cEnv e)   
 
 adjStmt :: ModuleIdent -> ClassEnv -> Statement -> Statement
-adjStmt m cEnv (StmtExpr sref e) = StmtExpr sref (adjExpr m cEnv e)
-adjStmt m cEnv (StmtDecl ds) = StmtDecl (adjustContexts m cEnv ds)
+adjStmt m cEnv (StmtExpr   sref e) = StmtExpr sref (adjExpr m cEnv e)
+adjStmt m cEnv (StmtDecl       ds) = StmtDecl (adjustContexts m cEnv ds)
 adjStmt m cEnv (StmtBind sref p e) = StmtBind sref p (adjExpr m cEnv e)
 
 adjAlt :: ModuleIdent -> ClassEnv -> Alt -> Alt
@@ -615,11 +621,11 @@ typeVariableInContext _ = internalError "typeVariableInContext"
 -- |check that the classes in superclass contexts or instance contexts are 
 -- in scope and not ambiguous
 checkClassesInContext :: ModuleIdent -> ClassEnv -> Decl -> Tcc ()
-checkClassesInContext m cEnv (ClassDecl p (SContext scon) _ _ _) = 
+checkClassesInContext m cEnv (ClassDecl      p (SContext scon) _ _ _) = 
   mapM_ (checkClassOk m cEnv p) (map fst scon)
 checkClassesInContext m cEnv (InstanceDecl p (SContext scon) _ _ _ _) = 
   mapM_ (checkClassOk m cEnv p) (map fst scon)
-checkClassesInContext m cEnv (TypeSig p _ _ (Context cx) _) = 
+checkClassesInContext m cEnv (TypeSig           p _ _ (Context cx) _) = 
   mapM_ (checkClassOk m cEnv p) (map (\(ContextElem qid _ _) -> qid) cx)
 checkClassesInContext _ _ _ = internalError "TypeClassesCheck.checkClassesInContext"
     
@@ -628,9 +634,9 @@ checkClassesInContext _ _ _ = internalError "TypeClassesCheck.checkClassesInCont
 checkClassOk :: ModuleIdent -> ClassEnv -> Position -> QualIdent -> Tcc ()
 checkClassOk m cEnv p qid = 
   case lookupNonHiddenClasses cEnv qid of 
-    []    -> report (errClassNotInScope p qid)
-    [_]   -> ok
-    _     -> case lookupNonHiddenClasses cEnv (qualQualify m qid) of
+    []  -> report (errClassNotInScope p qid)
+    [_] -> ok
+    _   -> case lookupNonHiddenClasses cEnv (qualQualify m qid) of
       []  -> report (errAmbiguousClassName p qid) 
       [_] -> ok
       _   -> report (errAmbiguousClassName p qid) 
@@ -650,7 +656,7 @@ lookupClassDecl [] _cls = Nothing
 noDoubleClassMethods :: ModuleIdent -> [Decl] -> Tcc ()
 noDoubleClassMethods m classDecls = 
   let allMethods = map fst3 $ concatMap (\(Class {methods=ms}) -> ms) classes
-      theNub = nub allMethods -- nubBy (\ms1 ms2 -> fst3 ms1 == fst3 ms2) allMethods
+      theNub     = nub allMethods -- nubBy (\ms1 ms2 -> fst3 ms1 == fst3 ms2) allMethods
   in if length theNub /= length allMethods
   then report (errDoubleClassMethods NoPos NoPos (allMethods \\ theNub))
   else ok
@@ -704,14 +710,14 @@ checkRulesInInstanceOrClass m cEnv decl =
         in 
         case find eq ms of
           Nothing -> report (errFunctionNoClassMethod p f)
-          Just _ -> ok
+          Just _  -> ok
     isDefinedFunctionClassMethod (_, TypeSig _ _ _ _ _) = ok
     isDefinedFunctionClassMethod _ = internalError "isDefinedFunctionClassMethod"
 
 getDecls :: Decl -> [(QualIdent, Decl)]
 getDecls (InstanceDecl _ _ cls _ _ decls) = zip (repeat cls) decls
-getDecls (ClassDecl _ _ cls _ decls) = zip (repeat $ qualify cls) decls
-getDecls _ = internalError "getDecls"
+getDecls (ClassDecl      _ _ cls _ decls) = zip (repeat $ qualify cls) decls
+getDecls _                                = internalError "getDecls"
 
 -- |Checks that there are no cycles in the class hierarchy. 
 -- This can be determined by computing the strong connection components
@@ -752,14 +758,14 @@ checkForDuplicateClassNames classes =
   else report (errDuplicateClassNames (map head duplClassNames))
   where
   idFromCls (ClassDecl _ _ cls _ _) = cls
-  idFromCls _ = internalError "checkForDuplicateClassNames"
+  idFromCls _                       = internalError "checkForDuplicateClassNames"
 
 
 -- |Checks that there is at most one local instance for a given class and type
 checkForDuplicateInstances :: ClassEnv -> Tcc ()
 checkForDuplicateInstances cEnv
-  = let duplInstances 
-          = findMultiples $ map (\i -> (iClass i, iType i)) (getLocalInstances cEnv)
+  = let duplInstances = 
+          findMultiples $ map (\i -> (iClass i, iType i)) (getLocalInstances cEnv)
     in if null duplInstances
     then ok
     else report (errDuplicateInstances (map head duplInstances))
@@ -787,25 +793,25 @@ checkClassNameInInstance _ _ _ = internalError "checkClassNameInScope"
 checkInstanceDataTypeCorrect :: ModuleIdent -> TCEnv -> Decl -> Tcc ()
 checkInstanceDataTypeCorrect m tcEnv (InstanceDecl p _ _ (QualTC qid) ids _) = do
   tinfo <- case qualLookupTC qid tcEnv of
-    [] -> report (errDataTypeNotInScope p qid) >> return []
+    []                -> report (errDataTypeNotInScope p qid) >> return []
     [AliasType _ _ _] -> report (errTypeInInstanceDecl p qid) >> return []
-    info@[_] -> return info
-    _ -> case qualLookupTC (qualQualify m qid) tcEnv of
-      [] -> report (errDataTypeAmbiguous p qid) >> return []
+    info@[_]          -> return info
+    _                 -> case qualLookupTC (qualQualify m qid) tcEnv of
+      []                -> report (errDataTypeAmbiguous p qid)  >> return []
       [AliasType _ _ _] -> report (errTypeInInstanceDecl p qid) >> return []
-      info@[_] -> return info
-      _ -> report (errDataTypeAmbiguous p qid) >> return []
+      info@[_]          -> return info
+      _                 -> report (errDataTypeAmbiguous p qid)  >> return []
       
   when ((not $ null tinfo) && tcArity (head tinfo) /= length ids) $ 
     report (errDataTypeHasIncorrectArity p qid)  
 
-checkInstanceDataTypeCorrect _ _ (InstanceDecl p _ _ UnitTC ids _) = 
+checkInstanceDataTypeCorrect _ _ (InstanceDecl      p _ _ UnitTC ids _) = 
   unless (null ids) $ report (errDataTypeHasIncorrectArity p qUnitId)
 checkInstanceDataTypeCorrect _ _ (InstanceDecl p _ _ (TupleTC n) ids _) =
   unless (length ids == n) $ report (errDataTypeHasIncorrectArity p (qTupleId n))
-checkInstanceDataTypeCorrect _ _ (InstanceDecl p _ _ ListTC ids _) =
+checkInstanceDataTypeCorrect _ _ (InstanceDecl      p _ _ ListTC ids _) =
   unless (length ids == 1) $ report (errDataTypeHasIncorrectArity p qListId)
-checkInstanceDataTypeCorrect _ _ (InstanceDecl p _ _ ArrowTC ids _) =
+checkInstanceDataTypeCorrect _ _ (InstanceDecl     p _ _ ArrowTC ids _) =
   unless (length ids == 2) $ report (errDataTypeHasIncorrectArity p qArrowId)  
 checkInstanceDataTypeCorrect _ _ _ = internalError "checkInstanceDataTypeCorrect"
 
@@ -814,21 +820,21 @@ checkInstanceDataTypeCorrect _ _ _ = internalError "checkInstanceDataTypeCorrect
 checkTypeVarsInContext :: Decl -> Tcc ()
 checkTypeVarsInContext (TypeSig p _ _ids cx tyexp) = 
   case null wrongVars of
-    True -> ok
+    True  -> ok
     False -> report (errContextVariableNotOnTheRightSide p wrongVars "type signature")
   -- TODO: check that all context elements are in head normal form
   where
     varsInTypeExp = nub $ typeVarsInTypeExpr tyexp
     varsInContext = nub $ typeVarsInContext cx
-    wrongVars = varsInContext \\ varsInTypeExp
+    wrongVars     = varsInContext \\ varsInTypeExp
 checkTypeVarsInContext (InstanceDecl p scx _qid _ ids _decls) = 
   case null wrongVars of
-    True -> ok
+    True  -> ok
     False -> report (errContextVariableNotOnTheRightSide p wrongVars "instance declaration")
   where
     varsInTypeExp = nub $ ids
     varsInContext = nub $ typeVarsInSContext scx
-    wrongVars = varsInContext \\ varsInTypeExp
+    wrongVars     = varsInContext \\ varsInTypeExp
 checkTypeVarsInContext _ = internalError "typeSigCorrect"
 
 -- |Assuming we have an instance `instance C (T ...)`, we must verify that
@@ -839,11 +845,11 @@ checkForInstanceDataTypeExistAlsoInstancesForSuperclasses ::
 checkForInstanceDataTypeExistAlsoInstancesForSuperclasses cEnv tcEnv m
     (InstanceDecl p _scon cls ty _tyvars _)
   = let -- TODO: is it sufficient to take only direct superclasses? 
-        -- scs = superClasses (fromJust $ lookupClass cEnv cls)
-        scs = allSuperClasses cEnv (getCanonClassName m cEnv cls)
-        tyId = tyConToQualIdent m tcEnv ty
-        insts = map (\c -> getInstances cEnv c (fromJust tyId)) scs 
-        missingInsts = map fst $ filter (null . snd) $ zip scs insts 
+        -- scs         = superClasses (fromJust $ lookupClass cEnv cls)
+        scs            = allSuperClasses cEnv (getCanonClassName m cEnv cls)
+        tyId           = tyConToQualIdent m tcEnv ty
+        insts          = map (\c -> getInstances cEnv c (fromJust tyId)) scs 
+        missingInsts   = map fst $ filter (null . snd) $ zip scs insts 
         ambiguousInsts = map fst $ filter ((\xs -> length xs > 1) . snd) $ 
           zip scs insts
     in
@@ -893,22 +899,22 @@ checkInstanceContextImpliesAllInstanceContextsOfSuperClasses ::
     ClassEnv -> TCEnv -> ModuleIdent -> Decl -> Tcc ()
 checkInstanceContextImpliesAllInstanceContextsOfSuperClasses cEnv tcEnv m
     inst@(InstanceDecl p _scon cls ty _tyvars _)
-  = let inst0 = getInstance' m cEnv tcEnv inst
-        inst' = fromJust inst0
-        thisContext = getContextFromInst inst'
-        scs = allSuperClasses cEnv (getCanonClassName m cEnv cls)
-        tyId = tyConToQualIdent m tcEnv ty
+  = let inst0        = getInstance' m cEnv tcEnv inst
+        inst'        = fromJust inst0
+        thisContext  = getContextFromInst inst'
+        scs          = allSuperClasses cEnv (getCanonClassName m cEnv cls)
+        tyId         = tyConToQualIdent m tcEnv ty
         -- ignore missing/ambiguous superclass instances (those are
         -- already detected by 
         -- checkForInstanceDataTypeExistAlsoInstancesForSuperclasses)
-        insts = map fromJust $ filter isJust $ 
+        insts        = map fromJust $ filter isJust $ 
           map (\c -> getInstance cEnv c (fromJust tyId)) scs
-        instCxs = concatMap getContextFromInst insts
+        instCxs      = concatMap getContextFromInst insts
         
         thisContext' = getSContextFromContext thisContext (typeVars inst')
-        instCxs' = getSContextFromContext instCxs (typeVars inst')
-        notImplCxs = (filter (not . implies cEnv thisContext) instCxs)
-        notImplCxs' = getSContextFromContext notImplCxs (typeVars inst') in
+        instCxs'     = getSContextFromContext instCxs (typeVars inst')
+        notImplCxs   = (filter (not . implies cEnv thisContext) instCxs)
+        notImplCxs'  = getSContextFromContext notImplCxs (typeVars inst') in
     -- catch the case that there are duplicate local instances
     when (isJust tyId && isJust inst0) $ unless (implies' cEnv thisContext instCxs) $ 
       report $ errContextNotImplied p thisContext' instCxs' notImplCxs'
@@ -922,11 +928,11 @@ checkCorrectTypeVarsInTypeSigs :: Decl -> Tcc ()
 checkCorrectTypeVarsInTypeSigs (ClassDecl _ _ _ tyvar ds) = do
   mapM_ checkTypeVars tyVarsSigs
   where
-  tySigs = filter isTypeSig ds
-  tyVarsSigs = map tyVars tySigs
+  tySigs                      = filter isTypeSig ds
+  tyVarsSigs                  = map tyVars tySigs
   tyVars (TypeSig p _ _ _ te) = (p, typeVarsInTypeExpr te)
-  tyVars _ = internalError "checkTypeVarsInTypeSigs"
-  checkTypeVars (p, tyvars) = 
+  tyVars _                    = internalError "checkTypeVarsInTypeSigs"
+  checkTypeVars (p, tyvars)   = 
     when (nub tyvars /= [tyvar] && not (null $ nub tyvars)) $ 
       report $ errNotAllowedTypeVars p (nub tyvars \\ [tyvar])
 checkCorrectTypeVarsInTypeSigs _ = internalError "checkCorrectTypeVarsInTypeSigs"
@@ -934,19 +940,20 @@ checkCorrectTypeVarsInTypeSigs _ = internalError "checkCorrectTypeVarsInTypeSigs
 -- |Check that there are no contexts in the type signatures of class methods
 -- (currently not supported)  
 checkContextsInClassMethodTypeSigs :: Decl -> Tcc ()
-checkContextsInClassMethodTypeSigs (ClassDecl _ _ _ _ ds)
-  = mapM_ checkTySig tySigs
+checkContextsInClassMethodTypeSigs (ClassDecl _ _ _ _ ds) = 
+  mapM_ checkTySig tySigs
   where
   tySigs = filter isTypeSig ds
   checkTySig (TypeSig p _ ids (Context cx) _) = 
     unless (null cx) $ report $ errNonEmptyContext p ids
-  checkTySig _ = internalError "checkContextsInClassMethodTypeSigs"
+  checkTySig _                                = 
+    internalError "checkContextsInClassMethodTypeSigs"
 checkContextsInClassMethodTypeSigs _ = internalError "checkContextsInClassMethodTypeSigs"
 
 -- |checks that we don't use deriving for data types without constructors
 checkEmptyDataTypeAndDeriving :: Decl -> Tcc ()
-checkEmptyDataTypeAndDeriving (DataDecl    _ _ _ _ Nothing) = ok
-checkEmptyDataTypeAndDeriving (NewtypeDecl _ _ _ _ Nothing) = ok
+checkEmptyDataTypeAndDeriving (DataDecl                _ _ _ _ Nothing) = ok
+checkEmptyDataTypeAndDeriving (NewtypeDecl             _ _ _ _ Nothing) = ok
 checkEmptyDataTypeAndDeriving (DataDecl p ty _ cs (Just (Deriving ds))) = 
   when (null cs && not (null ds)) $ report $ errEmptyDataTypeDeriving p ty
 -- Newtype declaration has always a constructor!
@@ -957,10 +964,10 @@ checkEmptyDataTypeAndDeriving _ = internalError "checkEmptyDataTypeAndDeriving"
 -- in scope and unambiguous. It tests furtherly, whether the classes are 
 -- supported. 
 checkClassesInDeriving :: ModuleIdent -> ClassEnv -> Decl -> Tcc ()
-checkClassesInDeriving _m _cEnv (DataDecl    _ _ _ _ Nothing) = ok
-checkClassesInDeriving _m _cEnv (NewtypeDecl _ _ _ _ Nothing) = ok
-checkClassesInDeriving m cEnv (DataDecl p ty _ cs (Just (Deriving clss))) = do
-  mapM_ (checkClassOk m cEnv p) clss
+checkClassesInDeriving _m _cEnv (DataDecl                  _ _ _ _ Nothing) = ok
+checkClassesInDeriving _m _cEnv (NewtypeDecl               _ _ _ _ Nothing) = ok
+checkClassesInDeriving m  cEnv  (DataDecl p ty _ cs (Just (Deriving clss))) = do
+  mapM_ (checkClassOk      m cEnv p) clss
   mapM_ (checkSupported m cEnv p ty) clss
   when (containsClass boundedClsIdentName) $ do
     let isEnum            = checkIsEnum cs
@@ -975,7 +982,7 @@ checkClassesInDeriving m cEnv (DataDecl p ty _ cs (Just (Deriving clss))) = do
 checkClassesInDeriving m cEnv (NewtypeDecl p ty _ _ (Just (Deriving clss))) = do
   -- TODO: newtype is not supported. Implementation should be the same 
   -- as above.  
-  mapM_ (checkClassOk m cEnv p) clss
+  mapM_ (checkClassOk      m cEnv p) clss
   mapM_ (checkSupported m cEnv p ty) clss
 checkClassesInDeriving _ _ _ = internalError "checkClassesInDeriving"
 
@@ -984,14 +991,14 @@ checkSupported :: ModuleIdent -> ClassEnv -> Position -> Ident -> QualIdent -> T
 checkSupported m cEnv p ty cls = 
   case lookupClass m cEnv cls of 
     Nothing -> ok -- error message for this case already issued
-    Just c -> unless (theClass c `elem` supportedDerivingClasses) $
+    Just c  -> unless (theClass c `elem` supportedDerivingClasses) $
       report $ errNotSupportedDerivingClass p ty cls 
 
 -- |checks that all data constructors are nullary
 checkIsEnum :: [ConstrDecl] -> Bool
 checkIsEnum = all nullary
   where
-  nullary (ConOpDecl _ _ _ _ _) = False
+  nullary (ConOpDecl  _ _ _ _ _) = False
   nullary (ConstrDecl _ _ _ tys) = null tys
 
 -- |the classes for which deriving is supported
@@ -1092,10 +1099,10 @@ transformClass2 mdl cEnv tcEnv (ClassDecl p _scx cls _tyvar _decls) =
   ++ concatMap genNonDirectSuperClassDictSelMethod nonDirectSuperClasses
   ++ concatMap genDefaultMethod (defaults theClass0)
   where
-  theClass0 = fromJust $ lookupLocalClass cEnv (qualify cls)
-  superClasses0 = map show $ superClasses theClass0
-  superClasses1 = superClasses theClass0
-  methods0 = methods theClass0
+  theClass0             = fromJust $ lookupLocalClass cEnv (qualify cls)
+  superClasses0         = map show $ superClasses theClass0
+  superClasses1         = superClasses theClass0
+  methods0              = methods theClass0
   nonDirectSuperClasses = allSuperClasses cEnv (theClass theClass0) \\ superClasses1
   
   -- | Generates functions for extracting (direct) super class dictionaries 
@@ -1172,8 +1179,8 @@ transformClass2 mdl cEnv tcEnv (ClassDecl p _scx cls _tyvar _decls) =
     names (x:y:zs) = 
       (qVar $ mkIdent $ mkSelFunName (show x) (show y)) 
       : names (y:zs)
-    names [_] = []
-    names [] = internalError "genNonDirectSuperClassDictSelMethod"
+    names [_]      = []
+    names []       = internalError "genNonDirectSuperClassDictSelMethod"
     -- enchain the selector functions
     expr :: Expression
     expr = foldr1 (\e1 e2 -> InfixApply e1 pointInfixOp e2) (reverse $ names path)
@@ -1186,12 +1193,12 @@ transformClass2 mdl cEnv tcEnv (ClassDecl p _scx cls _tyvar _decls) =
       [FunctionDecl p' cty n (rename toTopLevel f) (map (transEqu zeroArity toTopLevel) eqs)] 
     where
     (cx0, ty) = fromJust $ canonLookupMethodTypeSig' cEnv (theClass theClass0) f
-    cx = combineContexts cx0 
-          (Context [ContextElem (theClass theClass0) (typeVar theClass0) []])
+    cx        = combineContexts cx0 
+                 (Context [ContextElem (theClass theClass0) (typeVar theClass0) []])
     toTopLevel :: RenameFunc
     toTopLevel f0 = defMethodName (theClass theClass0) f0
     zeroArity = arrowArityTyExpr ty == 0 
-    ty' = if zeroArity then ArrowType (expandedUnit mdl tcEnv) ty else ty
+    ty'       = if zeroArity then ArrowType (expandedUnit mdl tcEnv) ty else ty
     
   genDefaultMethod _ = internalError "genDefaultMethod"
 
@@ -1246,20 +1253,20 @@ expandedUnit mdl tcEnv = (expandTypeExpr mdl tcEnv $ TupleType [])
 dictTypeExpr :: ModuleIdent -> ClassEnv -> TCEnv -> QualIdent -> TypeExpr
 dictTypeExpr m cEnv tcEnv cls =
   case null (scsTypes ++ methodTypes) of
-    True -> TupleType [] -- unit
+    True  -> TupleType [] -- unit
     False -> case length (scsTypes ++ methodTypes) == 1 of
-      True -> case length scsTypes == 1 of
-        True -> head scsTypes
+      True  -> case length scsTypes == 1 of
+        True  -> head scsTypes
         False -> head methodTypes
       False -> TupleType (scsTypes ++ methodTypes)
   where
-  c = fromJust $ canonLookupClass cEnv cls
-  scs = superClasses c
-  theMethods = origMethods c
+  c           = fromJust $ canonLookupClass cEnv cls
+  scs         = superClasses c
+  theMethods  = origMethods c
 
-  scsTypes = map (\cls0 -> ConstructorType
-                             (qualify $ mkIdent $ mkDictTypeName $ show cls0)
-                             [VariableType $ typeVar c]) scs
+  scsTypes    = map (\cls0 -> ConstructorType
+                                (qualify $ mkIdent $ mkDictTypeName $ show cls0)
+                                [VariableType $ typeVar c]) scs
   methodTypes = map considerZeroArity theMethods
 
   considerZeroArity :: (Ident, Context, TypeExpr) -> TypeExpr
@@ -1289,10 +1296,10 @@ transformInstance m cEnv tcEnv idecl@(InstanceDecl _ _ cls tycon _ decls)
   -- create dictionary 
   ++ createDictionary2 m cEnv tcEnv idecl ity
   where
-  ity = fromJust $ tyConToQualIdent m tcEnv tycon
+  ity            = fromJust $ tyConToQualIdent m tcEnv tycon
   presentMethods = nub $ map (\(FunctionDecl _ _ _ id0 _) -> id0) decls
-  theClass0 = fromJust $ lookupClass m cEnv cls 
-  theMethods0 = nub $ map fst3 $ methods theClass0
+  theClass0      = fromJust $ lookupClass m cEnv cls 
+  theMethods0    = nub $ map fst3 $ methods theClass0
   missingMethods = theMethods0 \\ presentMethods
 transformInstance _ _ _ d = [d]
 
@@ -1305,7 +1312,7 @@ transformMethod m cEnv tcEnv idecl@(InstanceDecl _ _ cls _ _ _) ity
   -- create function rules
   : [createTopLevelFuncs m cEnv rfunc idecl decl] 
   where 
-    cls' = getCanonClassName m cEnv cls
+    cls'  = getCanonClassName m cEnv cls
     -- rename for specific instance!
     rfunc = (\s -> instMethodName cls' ity s)
 transformMethod _ _ _ _ _ _ = internalError "transformMethod"
@@ -1326,8 +1333,8 @@ createTypeSignature m rfunc cEnv tcEnv (InstanceDecl _ scx cls tcon tyvars _)
                     (FunctionDecl p _ _ f _eqs) 
   = TypeSig p True [rename rfunc f] cx' ty''
   where
-    (cx, ty) = fromJust $ lookupMethodTypeSig' m cEnv cls f 
-    theClass_ = fromJust $ lookupClass m cEnv cls
+    (cx, ty)        = fromJust $ lookupMethodTypeSig' m cEnv cls f 
+    theClass_       = fromJust $ lookupClass m cEnv cls
      
     -- Substitute class typevar with given instance type. 
     -- Rename tyvars, so that they do not equal type vars in the class
@@ -1335,19 +1342,21 @@ createTypeSignature m rfunc cEnv tcEnv (InstanceDecl _ scx cls tcon tyvars _)
     -- class C a where fun :: a -> b -> Bool
     -- instance Eq b => C (S b) where fun = ...
     -- Important: expand the type!
-    theType = expandTypeExpr m tcEnv $ 
+    theType         = expandTypeExpr m tcEnv $ 
       SpecialConstructorType tcon (map (VariableType . flip renameIdent 1) tyvars)
     
-    subst = [(typeVar theClass_, theType)]
+    subst           = [(typeVar theClass_, theType)]
     -- cx' = substInContext subst cx
-    ty' = substInTypeExpr subst ty
-    ty'' = if arrowArityTyExpr ty' == 0 then ArrowType (expandedUnit m tcEnv) ty' else ty'
+    ty'             = substInTypeExpr subst ty
+    ty''            = if arrowArityTyExpr ty' == 0 
+                      then ArrowType (expandedUnit m tcEnv) ty' 
+                      else ty'
     
     -- add instance context. The variables have to be renamed here as well
     renamedSContext = (\(SContext elems) -> 
       SContext $ map (\(qid, id0) -> (qid, renameIdent id0 1)) elems) scx
-    icx = simpleContextToContext renamedSContext
-    cx' = combineContexts icx cx
+    icx             = simpleContextToContext renamedSContext
+    cx'             = combineContexts icx cx
 createTypeSignature _ _ _ _ _ _ = internalError "createTypeSignature"    
 
 combineContexts :: ST.Context -> ST.Context -> ST.Context
@@ -1363,7 +1372,7 @@ createTopLevelFuncs m cEnv rfunc (InstanceDecl _ _ cls _ _ _)
                                (FunctionDecl p cty n id0 eqs) 
   = FunctionDecl p cty n (rename rfunc id0) (map (transEqu zeroArity rfunc) eqs)
   where
-  (_, ty) = fromJust $ lookupMethodTypeSig' m cEnv cls id0
+  (_, ty)   = fromJust $ lookupMethodTypeSig' m cEnv cls id0
   zeroArity = arrowArityTyExpr ty == 0
 createTopLevelFuncs _ _ _ _ _ = internalError "createTopLevelFuncs"
 
@@ -1383,10 +1392,10 @@ transLhs :: Bool -> RenameFunc -> Lhs -> Lhs
 -- transLhs True rfunc (FunLhs id0 []) = FunLhs (rename rfunc id0) [TuplePattern noRef []]
 -- transLhs False rfunc (OpLhs ps1 id0 ps2) = OpLhs ps1 (rename rfunc id0) ps2
 -- transLhs True _ (OpLhs _ _ _) = internalError "transLhs: zero arity with operator lhs"
-transLhs zeroArity rfunc (FunLhs id0 ps) = 
+transLhs zeroArity rfunc (FunLhs     id0 ps) = 
   FunLhs (rename rfunc id0) (if zeroArity then TuplePattern noRef [] : ps else ps)
-transLhs _ rfunc (OpLhs ps1 id0 ps2) = OpLhs ps1 (rename rfunc id0) ps2
-transLhs zeroArity rfunc (ApLhs lhs ps) = ApLhs (transLhs zeroArity rfunc lhs) ps
+transLhs _         rfunc (OpLhs ps1 id0 ps2) = OpLhs ps1 (rename rfunc id0) ps2
+transLhs zeroArity rfunc (ApLhs      lhs ps) = ApLhs (transLhs zeroArity rfunc lhs) ps
 
 rename :: RenameFunc -> Ident -> Ident
 rename rfunc = updIdentName rfunc  
@@ -1397,14 +1406,15 @@ handleMissingFunc :: ModuleIdent -> ClassEnv -> IDecl -> QualIdent -> Ident -> [
 handleMissingFunc m cEnv (InstanceDecl _ _ cls _tcon _ _) ity fun0 = 
   if not defaultMethodDefined then [ fun globalName [equ1] ] else []
   where
-  cls' = getCanonClassName m cEnv cls
-  globalName = mkIdent $ instMethodName cls' ity (show fun0)
-  equ1 = equation (FunLhs globalName []) 
+  cls'                 = getCanonClassName m cEnv cls
+  globalName           = mkIdent $ instMethodName cls' ity (show fun0)
+  equ1                 = equation (FunLhs globalName []) 
     (simpleRhs (Apply (Variable Nothing errorQIdent)
                       (Literal $ String (srcRef 0) errorString)))
-  errorString = show fun0 ++ " not given in instance declaration of class "
+  errorString          = show fun0
+    ++ " not given in instance declaration of class "
     ++ show cls' ++ " and type " ++ show ity
-  theClass0 = fromJust $ lookupClass m cEnv cls
+  theClass0            = fromJust $ lookupClass m cEnv cls
   defaultMethodDefined = fun0 `elem` getDefaultMethods theClass0
   
 handleMissingFunc _ _ _ _ _ = internalError "handleMissingFunc"
@@ -1449,22 +1459,22 @@ createDictionary2 m cEnv tcEnv (InstanceDecl _ scx cls0 tcon tvars decls) ity =
       ]
   ] 
   where
-  cls = getCanonClassName m cEnv cls0
-  dictName c = mkIdent $ mkDictName (show c) (show ity)
-  theClass0 = fromJust $ lookupClass m cEnv cls0
-  superClasses0 = superClasses theClass0
-  methods0 = methods theClass0
+  cls            = getCanonClassName m cEnv cls0
+  dictName c     = mkIdent $ mkDictName (show c) (show ity)
+  theClass0      = fromJust $ lookupClass m cEnv cls0
+  superClasses0  = superClasses theClass0
+  methods0       = methods theClass0
   defaultMethods = getDefaultMethods theClass0
-  scs = map (qVar . dictName) superClasses0
-  ms = map (qVar . mkIdent . correctName . fst3) methods0
+  scs            = map (qVar . dictName) superClasses0
+  ms             = map (qVar . mkIdent . correctName . fst3) methods0
   correctName :: Ident -> String
   correctName s
     | s `elem` defaultMethods && not (methodImplPresent s) = 
-      defMethodName cls (show s)
+        defMethodName cls (show s)
     | otherwise = instMethodName cls ity (show s)
-  all0 = scs ++ ms
+  all0           = scs ++ ms
   
-  dictType0 = expandTypeExpr m tcEnv $  
+  dictType0      = expandTypeExpr m tcEnv $  
     (ConstructorType (mkQIdent $ mkDictTypeName $ show $ theClass theClass0)
     $ [SpecialConstructorType tcon (map VariableType tvars)]) 
     
@@ -1476,7 +1486,7 @@ createDictionary2 m cEnv tcEnv (InstanceDecl _ scx cls0 tcon tvars decls) ity =
   -- context elements if we don't remove the context completely. It is 
   -- important that in the "dictCode" function of the class environment, 
   -- this removal of the whole context is reflected.
-  isEmpty = isEmptyDict cEnv cls
+  isEmpty        = isEmptyDict cEnv cls
   -- or equivalent:  
   -- isEmpty = null $ typeVarsInTypeExpr dictType0
   
@@ -1487,8 +1497,8 @@ createDictionary2 _ _ _ _ _ = internalError "createDictionary"
 -- ---------------------------------------------------------------------------
 
 data DerState = DerState
-  { counter :: Int
-  , opPrecEnv0   :: OpPrecEnv
+  { counter    :: Int
+  , opPrecEnv0 :: OpPrecEnv
   }
 
 type Der = State DerState
@@ -1530,14 +1540,14 @@ expandDerivingDecl d = if isNothing maybeDeriv
   else
     concatMapM (createInstance d) classes
   where
-  maybeDeriv = getDeriving d
+  maybeDeriv       = getDeriving d
   Deriving classes = fromJust maybeDeriv
 
 -- |retrieve the deriving part of a newtype/data declaration
 getDeriving :: Decl -> Maybe Deriving
 getDeriving (NewtypeDecl _ _ _ _ d) = d
-getDeriving (DataDecl _ _ _ _ d) = d
-getDeriving _ = internalError "getDeriving"
+getDeriving (DataDecl    _ _ _ _ d) = d
+getDeriving _                       = internalError "getDeriving"
 
 -- |creates an instance for the given data declaration and the given class
 createInstance :: Decl -> QualIdent -> Der [Decl]
@@ -1561,7 +1571,7 @@ createInstance d@(DataDecl _ _ _ cs _) cls
   -- TODO: add further instances here
 -- newtypes aren't supported
 createInstance (NewtypeDecl _ _ _ _ _) _cls = return []
-createInstance _ _ = internalError "createInstance"
+createInstance _                       _    = internalError "createInstance"
 
 -- |creates an Eq or an Ord instance for the given data declaration
 createEqOrOrdInstance :: Decl      -- ^ the data/newtype declaration 
@@ -1580,10 +1590,10 @@ createEqOrOrdInstance (DataDecl p ty dataVars cons _) op clsIdent genRhs = do
     [FunctionDecl p Nothing (-1) op eqs]
   
   where
-  scon = map (\v -> (clsIdent, v)) dataVars
-  cls = clsIdent
+  scon  = map (\v -> (clsIdent, v)) dataVars
+  cls   = clsIdent
   tycon = QualTC $ qualify ty
-  vars = dataVars
+  vars  = dataVars
   
   -- record the respective number for each constructor, because we need the order of 
   -- the constructors for the Ord instance
@@ -1705,7 +1715,7 @@ genOrdRhs p (_c, i0) (_c', i0') n _n' newVars newVars' =
       | k < i                 = InfixApply v eqInfixOp   v' -- e_k == e_k'
       | k == i && k /= numAll = InfixApply v lessInfixOp v' -- e_k <  e_k'
       | k == i && k == numAll = InfixApply v leqInfixOp  v' -- e_k <= e_k'
-      | otherwise = internalError "genOrdRhs" 
+      | otherwise             = internalError "genOrdRhs" 
       where
       v  = Variable Nothing $ qualify $ newVars  !! (k-1)
       v' = Variable Nothing $ qualify $ newVars' !! (k-1)
@@ -1750,7 +1760,7 @@ createShowInstance (DataDecl p ty vars cs _) cls = do
     cls tycon vars
     [ FunctionDecl p Nothing (-1) showsPrec' showsPrecEqs_ ]
   where
-  showsPrec' = mkIdent "showsPrec"
+  showsPrec'   = mkIdent "showsPrec"
   showsPrecEqs = mapM showsPrecEq cs
   
   showsPrecEq :: ConstrDecl -> Der Equation
@@ -1762,8 +1772,8 @@ createShowInstance (DataDecl p ty vars cs _) cls = do
       (SimpleRhs p (apply [var showStringQIdent, string $ show c ]) []) 
   -- constructor with arguments
   showsPrecEq (ConstrDecl _ _ c tys) = do
-    dId   <- newIdent "d"
-    xIds  <- mapM (\i -> newIdent ("x" ++ show i)) $ map fst $ zip [1::Int ..] tys
+    dId  <- newIdent "d"
+    xIds <- mapM (\i -> newIdent ("x" ++ show i)) $ map fst $ zip [1::Int ..] tys
     cmpExpr_ <- cmpExpr appPrec dId
     numIdent <- newIdent "numAppPrec"
     return $ Equation p
@@ -1780,18 +1790,18 @@ createShowInstance (DataDecl p ty vars cs _) cls = do
         [])
   -- operator
   showsPrecEq (ConOpDecl _ _ _ c _) = do
-    dId   <- newIdent "d"
-    x1    <- newIdent "x1"
-    x2    <- newIdent "x2"
-    num1  <- newIdent "num1"
-    num2  <- newIdent "num2"
+    dId       <- newIdent "d"
+    x1        <- newIdent "x1"
+    x2        <- newIdent "x2"
+    num1      <- newIdent "num1"
+    num2      <- newIdent "num2"
     opPrecEnv <- getOpPrecEnv
     -- find out the precendence of the given operator
     let opPrec = case lookupP c opPrecEnv of
-          []  -> (\(OpPrec _ n) -> n) defaultP
+          []   -> (\(OpPrec _ n) -> n) defaultP
           [p'] -> (\(PrecInfo _ (OpPrec _ n)) -> n) p'
-          _   -> internalError "showsPrecEq" 
-    cmpExpr_ <- cmpExpr opPrec dId
+          _    -> internalError "showsPrecEq" 
+    cmpExpr_  <- cmpExpr opPrec dId
     return $ Equation p
       (FunLhs showsPrec'
         [ VariablePattern dId, 
@@ -1824,7 +1834,7 @@ createShowInstance (DataDecl p ty vars cs _) cls = do
     where
     space = apply [var showStringQIdent, string " "]
   
-  tycon = QualTC $ qualify ty
+  tycon   = QualTC $ qualify ty
   
   appPrec :: Integer
   appPrec = 10
@@ -1887,11 +1897,11 @@ createEnumInstance (DataDecl p ty _ cs _) cls = do
     ] 
     
   where
-  tycon = QualTC $ qualify ty
-  toEnum' = mkIdent "toEnum"
-  fromEnum' = mkIdent "fromEnum"
-  succ' = mkIdent "succ"
-  pred' = mkIdent "pred"
+  tycon           = QualTC $ qualify ty
+  toEnum'         = mkIdent "toEnum"
+  fromEnum'       = mkIdent "fromEnum"
+  succ'           = mkIdent "succ"
+  pred'           = mkIdent "pred"
   enumFrom'       = mkIdent "enumFrom"
   enumFromTo'     = mkIdent "enumFromTo"
   enumFromThen'   = mkIdent "enumFromThen"
@@ -1908,7 +1918,7 @@ createEnumInstance (DataDecl p ty _ cs _) cls = do
   
   -- toEnum equations
   toEnumEqs = do
-    nIdent <- newIdent "n"
+    nIdent       <- newIdent "n"
     toEnumConds_ <- toEnumConds nIdent
     return $ [Equation p (FunLhs toEnum' [VariablePattern nIdent])
       (GuardedRhs (toEnumConds_ ++ [toEnumOtherwiseCond]) [])]
@@ -2025,10 +2035,10 @@ createBoundedInstanceForEnum (DataDecl p ty _ cs _) cls =
     [ FunctionDecl p Nothing (-1) minBound' [minBoundEq]
     , FunctionDecl p Nothing (-1) maxBound' [maxBoundEq]]
   where
-  tycon = QualTC $ qualify ty
-  minBound' = mkIdent "minBound"
-  maxBound' = mkIdent "maxBound"
-  cs' = map (\(ConstrDecl _ _ c _) -> c) cs
+  tycon      = QualTC $ qualify ty
+  minBound'  = mkIdent "minBound"
+  maxBound'  = mkIdent "maxBound"
+  cs'        = map (\(ConstrDecl _ _ c _) -> c) cs
   minBoundEq = Equation p (FunLhs minBound' []) 
     (SimpleRhs p (Constructor $ qualify $ head cs') [])
   maxBoundEq = Equation p (FunLhs maxBound' [])
@@ -2057,16 +2067,16 @@ createBoundedInstanceForOneConstructor (DataDecl p ty vars [cs] _) cls =
     [ FunctionDecl p Nothing (-1) minBound' [minBoundEq]
     , FunctionDecl p Nothing (-1) maxBound' [maxBoundEq]] 
   where
-  minBound' = mkIdent "minBound"
-  maxBound' = mkIdent "maxBound"
-  tycon = QualTC $ qualify ty
+  minBound'  = mkIdent "minBound"
+  maxBound'  = mkIdent "maxBound"
+  tycon      = QualTC $ qualify ty
   minBoundEq = Equation p (FunLhs minBound' []) 
     (SimpleRhs p minBoundExpr [])
   maxBoundEq = Equation p (FunLhs maxBound' [])
     (SimpleRhs p maxBoundExpr [])
   
-  (c, tys) = case cs of 
-    ConstrDecl _ _ c' tys' -> (c', tys')
+  (c, tys)   = case cs of 
+    ConstrDecl   _ _ c' tys' -> (c', tys')
     ConOpDecl _ _ ty1 c' ty2 -> (c', [ty1, ty2])
   
   minBoundExpr = foldl Apply (Constructor $ qualify c) 
@@ -2118,23 +2128,23 @@ expandTypeExpr m tcEnv texp =
   where
   identSupplyFromMap :: Map.Map Ident Int -> [Ident]
   identSupplyFromMap map' = map snd $ sortBy smaller $ map swap $ Map.toList map'
-  swap (x, y) = (y, x)
-  smaller (x, _) (x', _) = compare x x'
+  swap (x, y)             = (y, x)
+  smaller (x, _) (x', _)  = compare x x'
 
 -- |this is a slightly modified version of fromType' that doesn't convert
 -- TypeConstructors that are Lists/Tuples/Unit back into the corresponding
 -- TypeExpr type. 
 fromType'' :: [Ident] -> Type -> TypeExpr
-fromType'' supply (TypeConstructor tc tys) = 
+fromType'' supply (TypeConstructor  tc tys) = 
   ConstructorType tc $ map (fromType'' supply) tys
-fromType'' supply (TypeVariable tv)         = VariableType
+fromType'' supply (TypeVariable         tv) = VariableType
    (if tv >= 0 then supply !! tv else mkIdent ('_' : show (-tv)))
-fromType'' supply (TypeConstrained tys _)   = fromType'' supply (head tys)
-fromType'' supply (TypeArrow     ty1 ty2)   =
+fromType'' supply (TypeConstrained   tys _) = fromType'' supply (head tys)
+fromType'' supply (TypeArrow       ty1 ty2) =
   ArrowType (fromType'' supply ty1) (fromType'' supply ty2)
-fromType'' _supply (TypeSkolem          k)   =
+fromType'' _      (TypeSkolem            k) =
   VariableType $ mkIdent $ "_?" ++ show k
-fromType'' supply (TypeRecord     fs rty)   = RecordType
+fromType'' supply (TypeRecord       fs rty) = RecordType
   (map (\ (l, ty) -> ([l], fromType'' supply ty)) fs)
   ((fromType'' supply . TypeVariable) `fmap` rty)
 
@@ -2154,12 +2164,12 @@ renameTypeSigVars cls
   where
     renameTypeSigVars' :: Ident -> [(Ident, ST.Context, TypeExpr)] 
                       -> Int -> [(Ident, ST.Context, TypeExpr)]  
-    renameTypeSigVars' _classTyvar [] _n = []
-    renameTypeSigVars' classTyvar ((id0, cx, tyExp) : ms) n 
-      = let allTypeVars = typeVarsInTypeExpr tyExp
-            subst = buildSubst classTyvar allTypeVars n
-        in (id0, renameVarsInContext subst cx, renameVarsInTypeExpr subst tyExp)
-         : renameTypeSigVars' classTyvar ms (n+1)
+    renameTypeSigVars' _classTyvar []                      _n = []
+    renameTypeSigVars' classTyvar  ((id0, cx, tyExp) : ms) n  = 
+      let allTypeVars = typeVarsInTypeExpr tyExp
+          subst = buildSubst classTyvar allTypeVars n
+      in (id0, renameVarsInContext subst cx, renameVarsInTypeExpr subst tyExp)
+       : renameTypeSigVars' classTyvar ms (n+1)
 
 buildSubst :: Ident -> [Ident] -> Int -> (Subst Ident)
 buildSubst classTyvar ids n = map 
@@ -2198,18 +2208,18 @@ buildTypeSchemesNoExpand = buildTypeSchemes False (mkMIdent []) initTCEnv
 -- as lists and tuples have special syntactical forms, they are the only elements
 -- still unexpanded and have to be expanded. 
 expandSpecial :: Type -> Type
-expandSpecial v@(TypeVariable _) = v
+expandSpecial v@(TypeVariable      _) = v
 expandSpecial (TypeConstructor qid tys) 
   | qid == qualify unitId = TypeConstructor (qualify' qid) tys'
   | isQTupleId qid        = TypeConstructor (qualify' qid) tys'
   | qid == qualify listId = TypeConstructor (qualify' qid) tys'
   | otherwise             = TypeConstructor qid tys'
-  where tys' = map expandSpecial tys
+  where tys'     = map expandSpecial tys
         qualify' = qualifyWith preludeMIdent . unqualify
-expandSpecial (TypeArrow t1 t2) = TypeArrow (expandSpecial t1) (expandSpecial t2)
+expandSpecial (TypeArrow       t1 t2) = TypeArrow (expandSpecial t1) (expandSpecial t2)
 expandSpecial (TypeConstrained tys n) = TypeConstrained (map expandSpecial tys) n 
-expandSpecial ts@(TypeSkolem _) = ts
-expandSpecial (TypeRecord ts n) = 
+expandSpecial ts@(TypeSkolem       _) = ts
+expandSpecial (TypeRecord       ts n) = 
   TypeRecord (map (\(id0, ty) -> (id0, expandSpecial ty)) ts) n
 
 -- ---------------------------------------------------------------------------
@@ -2222,7 +2232,7 @@ type Subst a = [(Ident, a)]
 applySubst :: (Subst Ident) -> Ident -> Ident
 applySubst subst id0 = case lookup id0 subst of
   Nothing -> id0
-  Just x -> x
+  Just x  -> x
 
 -- | renames the type variables in the given context by using the given 
 -- substitution
@@ -2235,39 +2245,39 @@ renameVarsInContextElem subst (ContextElem qid i texps)
   = ContextElem qid (applySubst subst i) (map (renameVarsInTypeExpr subst) texps)
 
 renameVarsInTypeExpr :: (Subst Ident) -> TypeExpr -> TypeExpr
-renameVarsInTypeExpr subst (ConstructorType qid texps) 
-  = ConstructorType qid (map (renameVarsInTypeExpr subst) texps)
-renameVarsInTypeExpr subst (SpecialConstructorType tcon texps) 
-  = SpecialConstructorType tcon (map (renameVarsInTypeExpr subst) texps)
+renameVarsInTypeExpr subst (ConstructorType         qid texps) = 
+  ConstructorType qid (map (renameVarsInTypeExpr subst) texps)
+renameVarsInTypeExpr subst (SpecialConstructorType tcon texps) =  
+  SpecialConstructorType tcon (map (renameVarsInTypeExpr subst) texps)
 renameVarsInTypeExpr subst (VariableType id0) = VariableType $ applySubst subst id0
-renameVarsInTypeExpr subst (TupleType texps) 
-  = TupleType (map (renameVarsInTypeExpr subst) texps)
-renameVarsInTypeExpr subst (ListType texp) = ListType $ renameVarsInTypeExpr subst texp
-renameVarsInTypeExpr subst (ArrowType t1 t2) 
-  = ArrowType (renameVarsInTypeExpr subst t1) (renameVarsInTypeExpr subst t2)
-renameVarsInTypeExpr _subst (RecordType _ _) = internalError "TypeClassesCheck"
+renameVarsInTypeExpr subst (TupleType  texps) = 
+  TupleType (map (renameVarsInTypeExpr subst) texps)
+renameVarsInTypeExpr subst (ListType    texp) = ListType $ renameVarsInTypeExpr subst texp
+renameVarsInTypeExpr subst (ArrowType  t1 t2) =  
+  ArrowType (renameVarsInTypeExpr subst t1) (renameVarsInTypeExpr subst t2)
+renameVarsInTypeExpr _     (RecordType   _ _) = internalError "TypeClassesCheck"
 
 -- ---------------------------------------------------------------------------
 
 applySubst' :: (Subst TypeExpr) -> Ident -> TypeExpr
 applySubst' subst id0 = case lookup id0 subst of
   Nothing -> VariableType id0
-  Just x -> x
+  Just x  -> x
 
 -- |replaces the variables in the given type expression by type expressions, 
 -- using the given substitution
 substInTypeExpr :: (Subst TypeExpr) -> TypeExpr -> TypeExpr
-substInTypeExpr subst (ConstructorType qid texps) 
-  = ConstructorType qid (map (substInTypeExpr subst) texps)
-substInTypeExpr subst (SpecialConstructorType tcon texps) 
-  = SpecialConstructorType tcon (map (substInTypeExpr subst) texps)
+substInTypeExpr subst (ConstructorType         qid texps) = 
+  ConstructorType qid (map (substInTypeExpr subst) texps)
+substInTypeExpr subst (SpecialConstructorType tcon texps) =  
+  SpecialConstructorType tcon (map (substInTypeExpr subst) texps)
 substInTypeExpr subst (VariableType id0) = applySubst' subst id0
-substInTypeExpr subst (TupleType texps) 
-  = TupleType (map (substInTypeExpr subst) texps)
-substInTypeExpr subst (ListType texp) = ListType $ substInTypeExpr subst texp
-substInTypeExpr subst (ArrowType t1 t2) 
-  = ArrowType (substInTypeExpr subst t1) (substInTypeExpr subst t2)
-substInTypeExpr _subst (RecordType _ _) = internalError "TypeClassesCheck"
+substInTypeExpr subst (TupleType  texps) =  
+  TupleType (map (substInTypeExpr subst) texps)
+substInTypeExpr subst (ListType    texp) = ListType $ substInTypeExpr subst texp
+substInTypeExpr subst (ArrowType  t1 t2) =  
+  ArrowType (substInTypeExpr subst t1) (substInTypeExpr subst t2)
+substInTypeExpr _     (RecordType   _ _) = internalError "TypeClassesCheck"
 
 -- ---------------------------------------------------------------------------
 -- error messages
