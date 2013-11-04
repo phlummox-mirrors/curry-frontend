@@ -264,7 +264,8 @@ diExpr cx (RecordSelection e id0) =
 diExpr cx (RecordUpdate     fs e) = 
   liftM2 RecordUpdate (mapM (diField cx) fs) (diExpr cx e)
   
--- |transform literals
+-- |transform literals. Integers n are replaced by "fromInteger n", 
+-- floats f by "fromFloat f"  
 diLiteral :: BT.Context -> Literal -> DI Expression
 diLiteral _cx l@(Char   _ _) = return (Literal l)
 diLiteral _cx l@(String _ _) = return (Literal l)
