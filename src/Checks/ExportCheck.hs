@@ -115,9 +115,9 @@ expandExport :: Export -> ECM [Export]
 expandExport (Export             x) = expandThing x
 expandExport (ExportTypeWith tc cs) = do
   tcEnv <- getTyConsEnv
-  cEnv <- getClassEnv
+  cEnv  <- getClassEnv
   let isTyCons = not $ null $ qualLookupTC tc tcEnv
-      isClass = not $ null $ lookupNonHiddenClasses cEnv tc 
+      isClass  = not $ null $ lookupNonHiddenClasses cEnv tc 
   case () of
     () | isTyCons     && isClass     -> report (errAmbiguousType tc) >> return []
     () | isTyCons     && not isClass -> expandTypeWith tc cs
@@ -125,9 +125,9 @@ expandExport (ExportTypeWith tc cs) = do
     () | otherwise                   -> report (errUndefinedType tc) >> return []
 expandExport (ExportTypeAll     tc) = do
   tcEnv <- getTyConsEnv
-  cEnv <- getClassEnv
+  cEnv  <- getClassEnv
   let isTyCons = not $ null $ qualLookupTC tc tcEnv
-      isClass = not $ null $ lookupNonHiddenClasses cEnv tc 
+      isClass  = not $ null $ lookupNonHiddenClasses cEnv tc 
   case () of
     () | isTyCons     && isClass     -> report (errAmbiguousType tc) >> return []
     () | isTyCons     && not isClass -> expandTypeAll tc
@@ -139,7 +139,7 @@ expandExport (ExportModule      em) = expandModule em
 expandThing :: QualIdent -> ECM [Export]
 expandThing tc = do
   tcEnv <- getTyConsEnv
-  cEnv <- getClassEnv
+  cEnv  <- getClassEnv
   case qualLookupTC tc tcEnv of
     []  -> case lookupNonHiddenClasses cEnv tc of
       []  -> expandThing' tc Nothing
@@ -196,11 +196,11 @@ expandClassWith :: QualIdent -> [Ident] -> ECM [Export]
 expandClassWith cls fs = do
   cEnv <- getClassEnv
   case lookupNonHiddenClasses cEnv cls of
-    [] -> report (errUndefinedType cls) >> return []
+    []  -> report (errUndefinedType cls) >> return []
     [c] -> do
       mapM_ (checkIsClassMethod c) fs 
       return [ExportTypeWith (theClass c) fs]
-    _ -> report (errAmbiguousType cls) >> return []
+    _   -> report (errAmbiguousType cls) >> return []
   where
   checkIsClassMethod :: Class -> Ident -> ECM ()
   checkIsClassMethod c f = 
@@ -225,9 +225,9 @@ expandClassAll :: QualIdent -> ECM [Export]
 expandClassAll cls = do
   cEnv <- getClassEnv
   case lookupNonHiddenClasses cEnv cls of
-    [] -> report (errUndefinedType cls) >> return []
+    []  -> report (errUndefinedType cls) >> return []
     [c] -> return [ExportTypeWith (theClass c) (map fst $ typeSchemes c)]
-    _ -> report (errAmbiguousType cls) >> return []
+    _   -> report (errAmbiguousType cls) >> return []
 
 expandModule :: ModuleIdent -> ECM [Export]
 expandModule em = do
@@ -255,7 +255,7 @@ expandImportedModule :: ModuleIdent -> ECM [Export]
 expandImportedModule m = do
   tcEnv <- getTyConsEnv
   tyEnv <- getValueEnv
-  cEnv <- getClassEnv
+  cEnv  <- getClassEnv
   return $ [exportType tyEnv t | (_, t) <- moduleImports m tcEnv]
         ++ [Export f | (_, Value f _ _ Nothing) <- moduleImports m tyEnv]
         ++ [ExportTypeWith (theClass c) (map fst3 $ methods c) 
