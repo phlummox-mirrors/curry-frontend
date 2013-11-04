@@ -56,7 +56,7 @@ order of type variables in the left hand side of a type declaration.
 > toTypeAndGetMap :: [Ident] -> CS.TypeExpr -> (Type, Map.Map Ident Int)
 > toTypeAndGetMap tvs ty = (toType' theMap ty, theMap)
 >   where newInTy = [tv | tv <- nub (fv ty), tv `notElem` tvs]
->         theMap = Map.fromList $ zip (tvs ++ newInTy) [0 ..]
+>         theMap  = Map.fromList $ zip (tvs ++ newInTy) [0 ..]
 
 > toType :: [Ident] -> CS.TypeExpr -> Type
 > toType tvs ty = fst $ toTypeAndGetMap tvs ty 
@@ -64,7 +64,7 @@ order of type variables in the left hand side of a type declaration.
 > toTypesAndGetMap :: [Ident] -> [CS.TypeExpr] -> ([Type], Map.Map Ident Int)
 > toTypesAndGetMap tvs tys = (map (toType' theMap) tys, theMap)
 >   where newInTys = [tv | tv <- nub (concatMap fv tys), tv `notElem` tvs]
->         theMap = Map.fromList $ zip (tvs ++ newInTys) [0 ..]
+>         theMap   = Map.fromList $ zip (tvs ++ newInTys) [0 ..]
 
 > toTypes :: [Ident] -> [CS.TypeExpr] -> [Type]
 > toTypes tvs tys = fst $ toTypesAndGetMap tvs tys
@@ -78,7 +78,7 @@ order of type variables in the left hand side of a type declaration.
 > toConstrTypes :: [Ident] -> [(CS.Context, CS.TypeExpr)] -> [(Context, Type)]
 > toConstrTypes tvs tys = 
 >   let (theTypes, theMap) = toTypesAndGetMap tvs (map snd tys)
->       contexts = map (translateContext theMap . fst) tys
+>       contexts           = map (translateContext theMap . fst) tys
 >   in zip contexts theTypes  
 
 > translateContext :: Map.Map Ident Int -> CS.Context -> BT.Context
@@ -93,19 +93,19 @@ order of type variables in the left hand side of a type declaration.
 > toType' :: Map.Map Ident Int -> CS.TypeExpr -> Type
 > toType' tvs (CS.ConstructorType tc tys)
 >   = TypeConstructor tc (map (toType' tvs) tys)
-> toType' tvs (CS.SpecialConstructorType (CS.QualTC tc) tys)
+> toType' tvs (CS.SpecialConstructorType (CS.QualTC tc)  tys)
 >   = toType' tvs (CS.ConstructorType tc tys)
-> toType' tvs (CS.SpecialConstructorType CS.UnitTC tys)
+> toType' tvs (CS.SpecialConstructorType CS.UnitTC       tys)
 >   = toType' tvs (CS.TupleType tys)
 > toType' tvs (CS.SpecialConstructorType (CS.TupleTC _n) tys)
 >   = toType' tvs (CS.TupleType tys)
-> toType' tvs (CS.SpecialConstructorType CS.ListTC [ty])
+> toType' tvs (CS.SpecialConstructorType CS.ListTC       [ty])
 >   = toType' tvs (CS.ListType ty)
-> toType' _tvs (CS.SpecialConstructorType CS.ListTC _)
+> toType' _   (CS.SpecialConstructorType CS.ListTC       _)
 >   = internalError "toType': list"
-> toType' tvs (CS.SpecialConstructorType CS.ArrowTC [ty1, ty2])
+> toType' tvs (CS.SpecialConstructorType CS.ArrowTC      [ty1, ty2])
 >   = toType' tvs (CS.ArrowType ty1 ty2)  
-> toType' _tvs (CS.SpecialConstructorType CS.ArrowTC _)
+> toType' _   (CS.SpecialConstructorType CS.ArrowTC      _)
 >   = internalError "toType': arrow"
 > toType' tvs (CS.VariableType        tv) = case Map.lookup tv tvs of
 >   Just tv' -> TypeVariable tv'
@@ -148,14 +148,14 @@ order of type variables in the left hand side of a type declaration.
 >   | otherwise                      = CS.ConstructorType tc tys'
 >   where c    = unqualify tc
 >         tys' = map (fromType' supply) tys
-> fromType' supply (TypeVariable tv)         = CS.VariableType
+> fromType' supply (TypeVariable        tv) = CS.VariableType
 >    (if tv >= 0 then supply !! tv else mkIdent ('_' : show (-tv)))
-> fromType' supply (TypeConstrained tys _)   = fromType' supply (head tys)
-> fromType' supply (TypeArrow     ty1 ty2)   =
+> fromType' supply (TypeConstrained  tys _) = fromType' supply (head tys)
+> fromType' supply (TypeArrow      ty1 ty2) =
 >   CS.ArrowType (fromType' supply ty1) (fromType' supply ty2)
-> fromType' _supply (TypeSkolem          k)   =
+> fromType' _      (TypeSkolem           k) =
 >   CS.VariableType $ mkIdent $ "_?" ++ show k
-> fromType' supply (TypeRecord     fs rty)   = CS.RecordType
+> fromType' supply (TypeRecord      fs rty) = CS.RecordType
 >   (map (\ (l, ty) -> ([l], fromType' supply ty)) fs)
 >   ((fromType' supply . TypeVariable) `fmap` rty)
 
