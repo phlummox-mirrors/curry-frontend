@@ -35,7 +35,7 @@ Executable cymake
   else
     Build-Depends: base == 3.*
   Build-Depends:
-    curry-base == 0.3.7
+    curry-base == 0.3.8
     , containers, either, mtl, pretty, transformers
   ghc-options: -Wall
   Other-Modules:
@@ -117,7 +117,7 @@ Executable cmpPrograms
   else
     Build-Depends: base == 3.*
   Build-Depends:
-    curry-base == 0.3.7
+    curry-base == 0.3.8
   ghc-options: -Wall
 
 
@@ -127,7 +127,7 @@ Test-Suite TestTypeChecking
     test-module: TestTypeChecking
     build-depends: base, pretty, directory, curry-base, filepath, containers, mtl, syb,
       -- Cabal 1.16.0 introduces a new test suite format
-      transformers, Cabal >= 1.9.2 && <= 1.14.0, curry-base == 0.3.7
+      transformers, Cabal >= 1.9.2 && <= 1.14.0, curry-base == 0.3.8
     Other-Modules:
      Base.CurryTypes
      , Base.Expr
@@ -194,5 +194,5 @@ Test-Suite TestTypeChecking
 --     hs-source-dirs: test, src
 --     main-is:    TestTypeCheckingHpc.hs
 --     build-depends: base, pretty, directory, curry-base, filepath, containers, mtl, syb,
---       transformers, Cabal >= 1.9.2, curry-base == 0.3.7
+--       transformers, Cabal >= 1.9.2, curry-base == 0.3.8
 --     ghc-options: -Wall -fhpc
