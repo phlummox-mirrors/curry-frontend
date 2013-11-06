@@ -55,7 +55,8 @@ for file in DictTrans1 DictTrans2 DictTrans3 DictTrans4 \
   ClassInstanceTypeInScope ClassInstanceTypeInScope2 ClassInstanceTypeInScope3 ClassInstanceTypeInScope4 \
   ClassInstanceTypeInScope6 DefsInWhere \
   LocalNotLocal \
-  EnumerationsOrig
+  EnumerationsOrig \
+  bug494
 do
   echo $file >> tmp.txt
   if [ ! -r typeclasses/$file.curry ]; then echo "*********** file doesn't exist: $file"; fi
