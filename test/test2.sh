@@ -198,7 +198,8 @@ for file in Prelude TestClassExports TestClassExports2 TestClassExportsImports \
   InstanceErrorBug DerivingEnum DerivingBounded1 DerivingBounded2 DerivingEnumBounded \
   PointBug DerivingAll DerivingAll2 DerivingShow \
   EnumFromBug \
-  Enums Enums2 Enums3 Enums4 TestNum
+  Enums Enums2 Enums3 Enums4 TestNum \
+  FuncInstance FuncInstance2
 do
   echo $file >> tmp.txt
   if [ ! -r typeclasses/modules/$file.curry ]; then echo "*********** file doesn't exist: $file"; fi
