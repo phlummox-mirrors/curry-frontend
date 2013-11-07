@@ -144,11 +144,14 @@ tupleDCs = map dataInfo tupleData
 
 initDCEnv :: ValueEnv
 initDCEnv = foldr predefDC emptyTopEnv
-  [ (c, length tys, constrType (polyType ty) n' tys)
+  [ (c, length tys, constrType (polyType $ qualifyTC ty) n' tys)
   | (ty, cs) <- predefTypes, DataConstr c n' tys <- cs]
   where predefDC (c, a, ty) = predefTopEnv c' (DataConstructor c' a ty)
           where c' = qualify c
         constrType (ForAll cx n ty) n' = ForAllExist cx n n' . foldr TypeArrow ty
+        qualifyTC (TypeConstructor q ty) = 
+          TypeConstructor (qualifyWith preludeMIdent $ unqualify q) ty
+        qualifyTC v                      = v
 
 -- |Pretty-printing the types from the type environment
 ppTypes :: ModuleIdent -> ValueEnv -> Doc

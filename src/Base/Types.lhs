@@ -334,47 +334,49 @@ There are a few predefined types:
 \begin{verbatim}
 
 > unitType :: Type
-> unitType = primType qUnitId []
+> unitType = primType unitId []
 
 > boolType :: Type
-> boolType = primType qBoolId []
+> boolType = primType boolId []
 
 > charType :: Type
-> charType = primType qCharId []
+> charType = primType charId []
 
 > intType :: Type
-> intType = primType qIntId []
+> intType = primType intId []
 
 > floatType :: Type
-> floatType = primType qFloatId []
+> floatType = primType floatId []
 
 > stringType :: Type
 > stringType = listType charType
 
 > successType :: Type
-> successType = primType qSuccessId []
+> successType = primType successId []
 
 > listType :: Type -> Type
-> listType ty = primType qListId [ty]
+> listType ty = primType listId [ty]
 
 > ioType :: Type -> Type
-> ioType ty = primType qIOId [ty]
+> ioType ty = primType ioId [ty]
 
 > tupleType :: [Type] -> Type
-> tupleType tys = primType (qTupleId (length tys)) tys
+> tupleType tys = primType (tupleId (length tys)) tys
 
 > typeVar :: Int -> Type
 > typeVar = TypeVariable
 
-> primType :: QualIdent -> [Type] -> Type
-> primType = TypeConstructor --  . qualifyWith preludeMIdent
+> primType :: Ident -> [Type] -> Type
+> primType = TypeConstructor . qualifyWith preludeMIdent
 
 > predefTypes :: [(Type, [DataConstr])]
 > predefTypes = let a = typeVar 0 in
->   [ (unitType  , [ DataConstr unitId 0 [] ])
->   , (listType a, [ DataConstr nilId  0 []
->                  , DataConstr consId 0 [a, listType a]
->                  ])
+>   [ (TypeConstructor (qualify unitId) [], 
+>       [ DataConstr unitId 0 [] ])
+>   , (TypeConstructor (qualify listId) [a], 
+>       [ DataConstr nilId  0 []
+>       , DataConstr consId 0 [a, listType a]
+>       ])
 >   ]
 
 > tupleData :: [DataConstr]

@@ -110,14 +110,16 @@ lookupTupleTC tc | isTupleId tc = [tupleTCs !! (tupleArity tc - 2)]
 
 tupleTCs :: [TypeInfo]
 tupleTCs = map typeInfo tupleData
-  where typeInfo dc@(DataConstr _ n _) = DataType (qTupleId n) n [Just dc]
+  where typeInfo dc@(DataConstr _ n _) = 
+          DataType (qualifyWith preludeMIdent $ tupleId n) n [Just dc]
 
 initTCEnv :: TCEnv
 initTCEnv = foldr (uncurry predefTC) emptyTopEnv predefTypes
   where
-  predefTC (TypeConstructor tc tys) = predefTopEnv tc
-                                    . DataType tc (length tys)
-                                    . map Just
+  predefTC (TypeConstructor tc tys) = 
+      predefTopEnv tc
+    . DataType (qualifyWith preludeMIdent $ unqualify tc) (length tys)
+    . map Just
   predefTC _ = internalError "Base.initTCEnv.predefTC: no type constructor"
 
 type TypeEnv = TopEnv TypeKind
