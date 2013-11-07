@@ -1,8 +1,8 @@
 {- |
     Module      :  $Header$
     Description :  Main module
-    Copyright   :  (c) 2005, Martin Engelke  (men@informatik.uni-kiel.de)
-                       2011, Björn Peemöller (bjp@informatik.uni-kiel.de)
+    Copyright   :  (c) 2005        Martin Engelke
+                       2011 - 2013 Björn Peemöller
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
@@ -14,9 +14,9 @@
 -}
 module Main (main) where
 
-import Base.Messages (putErrsLn, abortWith)
+import Base.Messages
 import Files.CymakePath (cymakeGreeting, cymakeVersion)
-import Html.CurryHtml (source2html)
+import Html.CurryHtml   (source2html)
 
 import CurryBuilder (buildCurry)
 import CompilerOpts (Options (..), CymakeMode (..), getCompilerOpts, usage)
@@ -33,8 +33,8 @@ cymake (prog, opts, files, errs)
   | mode == ModeNumericVersion = printNumericVersion
   | not $ null errs            = badUsage prog errs
   | null files                 = badUsage prog ["no input files"]
-  | mode == ModeHtml           = mapM_ (source2html opts) files -- TODO@bjp (2012-01-16): handle errors
-  | otherwise                  = mapM_ (buildCurry  opts) files -- TODO@bjp (2012-01-16): handle errors
+  | mode == ModeHtml           = runEitherCYIO $ mapM_ (source2html opts) files
+  | otherwise                  = runEitherCYIO $ mapM_ (buildCurry  opts) files
   where mode = optMode opts
 
 -- |Print the usage information of the command line tool

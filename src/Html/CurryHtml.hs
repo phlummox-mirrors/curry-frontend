@@ -18,40 +18,39 @@ import Data.Maybe            (fromMaybe, isJust)
 
 import Curry.Base.Ident      (QualIdent (..), unqualify)
 import Curry.Base.Message    (fromIO)
+import Curry.Base.Pretty     (text)
 import Curry.Files.PathUtils
   (readModule, lookupCurryFile, dropExtension, takeFileName)
 import Curry.Syntax          (lexSource)
 
 import Html.SyntaxColoring
 
-import Base.Messages (abortWith)
+import Base.Messages
 import CompilerOpts  (Options(..), TargetType (..))
 import Frontend      (parse, fullParse)
 
 --- translate source file into HTML file with syntaxcoloring
 --- @param sourcefilename
-source2html :: Options -> FilePath -> IO ()
+source2html :: Options -> FilePath -> CYIO ()
 source2html opts f = do
   let baseName   = dropExtension f
       modulname  = takeFileName baseName
-      outFileOpt = fromMaybe "" $ optOutput opts
-      outFile    = if null outFileOpt then baseName ++ "_curry.html"
-                                      else outFileOpt
-  srcFile <- lookupCurryFile (optImportPaths opts) f
+      outFile    = baseName ++ "_curry.html"
+  srcFile <- liftIO $ lookupCurryFile (optImportPaths opts) f
   program <- filename2program opts (fromMaybe f srcFile)
-  writeFile outFile (program2html modulname program)
+  liftIO $ writeFile outFile (program2html modulname program)
 
 --- @param importpaths
 --- @param filename
 --- @return program
-filename2program :: Options -> String -> IO Program
+filename2program :: Options -> String -> CYIO Program
 filename2program opts f = do
-  mbModule <- readModule f
+  mbModule <- liftIO $ readModule f
   case mbModule of
-    Nothing  -> abortWith ["Missing file: " ++ f]
+    Nothing  -> left [message $ text $ "Missing file: " ++ f]
     Just src -> do
-      typed   <- fromIO $ fullParse opts f src
-      checked <- fromIO $ fullParse (opts { optTargetTypes = [UntypedAbstractCurry]}) f src
+      typed   <- liftIO $ fromIO $ fullParse opts f src
+      checked <- liftIO $ fromIO $ fullParse (opts { optTargetTypes = [UntypedAbstractCurry]}) f src
       let parsed = parse f src
           lexed  = lexSource f src
       return $ genProgram src [typed, checked, parsed] lexed

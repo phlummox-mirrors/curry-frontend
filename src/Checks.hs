@@ -1,8 +1,8 @@
 {- |
     Module      :  $Header$
     Description :  Different checks on a Curry module
-    Copyright   :  (c) 2011, Björn Peemöller (bjp@informatik.uni-kiel.de)
-                       2013, Matthias Böhm
+    Copyright   :  (c) 2011 - 2013, Björn Peemöller
+                              2013, Matthias Böhm
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
@@ -14,10 +14,6 @@
 -}
 module Checks where
 
-import Curry.Syntax (Module (..), Interface (..))
-import Control.Monad.Trans.Either
-import Base.Messages
-
 import qualified Checks.InterfaceCheck   as IC (interfaceCheck)
 import qualified Checks.ExportCheck      as EC (exportCheck)
 import qualified Checks.KindCheck        as KC (kindCheck)
@@ -28,39 +24,27 @@ import qualified Checks.WarnCheck        as WC (warnCheck)
 import qualified Checks.TypeClassesCheck as TCC (typeClassesCheck)
 import qualified Checks.Dictionaries     as DI (insertDicts)
 
+import Curry.Syntax (Module (..), Interface (..))
+
+import Base.Messages
 import CompilerEnv
 import CompilerOpts
 
-data CheckResult a
-  = CheckSuccess a
-  | CheckFailed [Message]
+type Check m a = Options -> CompilerEnv -> a -> CYT m (CompilerEnv, a)
 
-instance Monad CheckResult where
-  return = CheckSuccess
-  (>>=)  = thenCheck
-
-thenCheck :: CheckResult a -> (a -> CheckResult b) -> CheckResult b
-thenCheck chk cont = case chk of
-  CheckSuccess   a -> cont a
-  CheckFailed errs -> CheckFailed errs
-
-interfaceCheck :: CompilerEnv -> Interface -> CheckResult ()
-interfaceCheck env intf
-  | null errs = return ()
-  | otherwise = CheckFailed errs
-  where errs = IC.interfaceCheck (opPrecEnv env) (tyConsEnv env)
+interfaceCheck :: Monad m => Check m Interface
+interfaceCheck _ env intf
+  | null msgs = right (env, intf)
+  | otherwise = left msgs
+  where msgs = IC.interfaceCheck (opPrecEnv env) (tyConsEnv env)
                                  (valueEnv env) (classEnv env) intf
-
-
-type Check m = Options -> CompilerEnv -> Module
-            -> EitherT [Message] m (CompilerEnv, Module)
 
 -- |Check the kinds of type definitions and signatures.
 --
 -- * Declarations: Nullary type constructors and type variables are
 --                 disambiguated
 -- * Environment:  remains unchanged
-kindCheck :: Monad m => Check m
+kindCheck :: Monad m => Check m Module
 kindCheck _ env (Module m es is ds)
   | null msgs = right (env, Module m es is ds')
   | otherwise = left msgs
@@ -71,7 +55,7 @@ kindCheck _ env (Module m es is ds)
 -- * Declarations: Nullary data constructors and variables are
 --                 disambiguated, variables are renamed
 -- * Environment:  remains unchanged
-syntaxCheck :: Monad m => Check m
+syntaxCheck :: Monad m => Check m Module
 syntaxCheck opts env (Module m es is ds)
   | null msgs = right (env, Module m es is ds')
   | otherwise = left msgs
@@ -83,7 +67,7 @@ syntaxCheck opts env (Module m es is ds)
 -- * Declarations: Expressions are reordered according to the specified
 --                 precedences
 -- * Environment:  The operator precedence environment is updated
-precCheck :: Monad m => Check m
+precCheck :: Monad m => Check m Module
 precCheck _ env (Module m es is ds)
   | null msgs = right (env { opPrecEnv = pEnv' }, Module m es is ds')
   | otherwise = left msgs
@@ -92,19 +76,18 @@ precCheck _ env (Module m es is ds)
 -- |Apply the correct typing of the module.
 -- Parts of the syntax tree are annotated by their type; the type constructor
 -- and value environments are updated.
-typeCheck :: Monad m => Bool -> Check m
+typeCheck :: Monad m => Bool -> Check m Module
 typeCheck run opts env (Module m es is ds)
   | null msgs = right (env { tyConsEnv = tcEnv', valueEnv = tyEnv' }, 
-                  (Module m es is newDecls))
+                  Module m es is newDecls)
   | otherwise = left msgs
   where 
-  (tcEnv', tyEnv', newDecls, msgs) 
-    = TC.typeCheck (moduleIdent env) (tyConsEnv env) (valueEnv env) 
-                   (classEnv env) opts True run ds
-                   
+  (tcEnv', tyEnv', newDecls, msgs) = 
+    TC.typeCheck (moduleIdent env) (tyConsEnv env) (valueEnv env) 
+                 (classEnv env) opts True run ds
 
 -- |Check the export specification
-exportCheck :: Monad m => Check m
+exportCheck :: Monad m => Check m Module
 exportCheck _ env (Module m es is ds)
   | null msgs = right (env, Module m es' is ds)
   | otherwise = left msgs
@@ -115,13 +98,13 @@ exportCheck _ env (Module m es is ds)
 -- TODO: Which kind of warnings?
 
 -- |Check for warnings.
-warnCheck :: CompilerEnv -> Module -> [Message]
-warnCheck env mdl = WC.warnCheck (valueEnv env) mdl
+warnCheck :: Options -> CompilerEnv -> Module -> [Message]
+warnCheck opts env mdl = WC.warnCheck opts (valueEnv env) (tyConsEnv env) mdl
 
 -- |Check the type classes
 -- Changes the classes environment and removes class and instance declarations, 
 -- furthermore adds new code for them
-typeClassesCheck :: Monad m => Check m
+typeClassesCheck :: Monad m => Check m Module
 typeClassesCheck opts env (Module m es is ds) 
   | null msgs = right (env {classEnv = clsEnv}, Module m es is decls') 
   | otherwise = left msgs
@@ -130,9 +113,10 @@ typeClassesCheck opts env (Module m es is ds)
 
 -- |Insert dictionaries where necessary. This is actually not a check, but a
 -- transformation - but as it can produce errors, it is treated as a check  
-insertDicts :: Monad m => Check m
+insertDicts :: Monad m => Check m Module
 insertDicts opts cEnv m 
   | null msgs = right (cEnv, m')
   | otherwise = left msgs
   where (m', msgs) = DI.insertDicts m cEnv opts
   
+

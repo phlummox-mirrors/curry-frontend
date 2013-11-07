@@ -1,9 +1,9 @@
 {- |
     Module      :  $Header$
     Description :  Importing interface declarations
-    Copyright   :  (c) 2000-2003, Wolfgang Lux
-                       2011, Björn Peemöller (bjp@informatik.uni-kiel.de)
-                       2013, Matthias Böhm
+    Copyright   :  (c) 2000 - 2003, Wolfgang Lux
+                       2011       , Björn Peemöller
+                       2013       , Matthias Böhm
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
@@ -16,20 +16,21 @@
 -}
 module Imports (importInterfaces, importModules, qualifyEnv) where
 
-import Control.Monad (liftM, unless)
-import qualified Control.Monad.State as S (State, gets, modify, runState)
-import qualified Data.Map as Map
-import Data.Maybe
-import qualified Data.Set as Set
-import Text.PrettyPrint
-import Data.List (nub, (\\))
+import           Control.Monad                   (liftM, unless)
+import qualified Control.Monad.State        as S (State, gets, modify, runState)
+import           Control.Monad.Trans.Either
+import qualified Data.Map                   as Map
+import           Data.Maybe
+import qualified Data.Set                   as Set
+import           Data.List                       (nub, (\\))
+import           Text.PrettyPrint
 
 import Curry.Base.Ident
 import Curry.Base.Position
 import Curry.Syntax as CS
 
 import Base.CurryTypes (toQualType, toQualTypes, toQualConstrType)
-import Base.Messages (Message, posMessage, internalError)
+import Base.Messages (Message, posMessage, internalError, CYT)
 import Base.TopEnv
 import Base.Types as BT hiding (isCons)
 import Base.TypeSubst (expandAliasType)
@@ -51,10 +52,11 @@ import CompilerOpts
 
 -- |The function 'importModules' brings the declarations of all
 -- imported interfaces into scope for the current module.
-importModules :: Bool -> Options -> Module -> InterfaceEnv -> (CompilerEnv, [Message])
+importModules :: Monad m => Bool -> Options -> Module -> InterfaceEnv -> CYT m CompilerEnv
 importModules tcs opts (Module mid _ imps _) iEnv
-  = (\ (e, m) -> (expandTCValueEnv opts $ importUnifyData $ insertDummyIdents' e, m))
-  $ foldl importModule (initEnv, []) imps
+  = case foldl importModule (initEnv, []) imps of
+      (e, []  ) -> right $ expandTCValueEnv opts $ importUnifyData $ insertDummyIdents' e
+      (_, errs) -> left errs
   where
     initEnv = (initCompilerEnv mid)
       { aliasEnv     = importAliases     imps -- import module aliases

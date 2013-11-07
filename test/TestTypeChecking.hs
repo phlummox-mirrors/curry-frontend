@@ -57,7 +57,7 @@ instance ImpureTestable Dir where
 checkDir :: Dir -> IO Result
 checkDir dir = do
   -- compile prelude before compiling test files
-  compileModule 
+  runEitherCYIO $ compileModule 
     (CO.defaultOptions { 
       CO.optForce = True, 
       CO.optTargetTypes = [CO.FlatCurry],
@@ -93,7 +93,7 @@ checkTypes file = do
   let opts = CO.defaultOptions { 
     CO.optImportPaths = [location], 
     CO.optExtensions = [CO.TypeClassExtensions] }
-  mod <- loadModule opts (location ++ file ++ ".curry") 
+  mod <- runEitherCYIO $ loadModule opts (location ++ file ++ ".curry") 
   result <- liftIO $ runEitherT $ checkModule' False opts mod
   case result of
     Right tcEnv -> do
@@ -232,7 +232,7 @@ instance ImpureTestable Various where
 checkVarious :: IO Result
 checkVarious = do
   let path = "test/typeclasses/"
-  compileModule 
+  runEitherCYIO $ compileModule 
     (CO.defaultOptions { 
       CO.optForce = True, 
       CO.optTargetTypes = [CO.FlatCurry],
@@ -241,7 +241,7 @@ checkVarious = do
   let opts = CO.defaultOptions { 
         CO.optImportPaths = [path, path ++ "modules/"],
         CO.optExtensions = [CO.TypeClassExtensions] } 
-  mod <- loadModule opts (path ++ "TestVarious.curry") 
+  mod <- runEitherCYIO $ loadModule opts (path ++ "TestVarious.curry") 
   result <- liftIO $ runEitherT $ checkModule' True opts mod
   case result of
     Right tcEnv -> 

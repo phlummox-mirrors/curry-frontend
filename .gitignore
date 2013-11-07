@@ -12,3 +12,5 @@ hpc/
 *.fint
 Curry_Main_Goal.curry
 *~
+.cabal-sandbox/
+cabal.sandbox.config

@@ -39,7 +39,7 @@
 
 module Env.TypeConstructor
   ( TCEnv, TypeInfo (..), tcArity, bindTypeInfo, lookupTC, qualLookupTC
-  , lookupTupleTC, tupleTCs, tupleData, initTCEnv
+  , initTCEnv
   , TypeEnv, TypeKind (..), typeKind
   ) where
 
@@ -101,8 +101,8 @@ lookupTC :: Ident -> TCEnv -> [TypeInfo]
 lookupTC tc tcEnv = lookupTopEnv tc tcEnv ++! lookupTupleTC tc
 
 qualLookupTC :: QualIdent -> TCEnv -> [TypeInfo]
-qualLookupTC tc tcEnv =   qualLookupTopEnv tc tcEnv
-                      ++! lookupTupleTC (unqualify tc)
+qualLookupTC tc tcEnv = qualLookupTopEnv tc tcEnv
+                    ++! lookupTupleTC (unqualify tc)
 
 lookupTupleTC :: Ident -> [TypeInfo]
 lookupTupleTC tc | isTupleId tc = [tupleTCs !! (tupleArity tc - 2)]
@@ -110,19 +110,14 @@ lookupTupleTC tc | isTupleId tc = [tupleTCs !! (tupleArity tc - 2)]
 
 tupleTCs :: [TypeInfo]
 tupleTCs = map typeInfo tupleData
-  where typeInfo (DataConstr c _ tys) =
-          DataType (qualifyWith preludeMIdent c) (length tys)
-                   [Just (DataConstr c 0 tys)]
-
-tupleData :: [DataConstr]
-tupleData = [DataConstr (tupleId n) 0 (take n tvs) | n <- [2 ..]]
-  where tvs = map typeVar [0 ..]
+  where typeInfo dc@(DataConstr _ n _) = DataType (qTupleId n) n [Just dc]
 
 initTCEnv :: TCEnv
 initTCEnv = foldr (uncurry predefTC) emptyTopEnv predefTypes
   where
-  predefTC (TypeConstructor tc tys) = predefTopEnv (qualify (unqualify tc))
-                                    . DataType tc (length tys) . map Just
+  predefTC (TypeConstructor tc tys) = predefTopEnv tc
+                                    . DataType tc (length tys)
+                                    . map Just
   predefTC _ = internalError "Base.initTCEnv.predefTC: no type constructor"
 
 type TypeEnv = TopEnv TypeKind

@@ -19,13 +19,14 @@ module Modules
   ( compileModule, loadModule, checkModuleHeader, checkModule, writeOutput
   ) where
 
-import Control.Monad (unless, when)
-import Control.Monad.IO.Class
-import Control.Monad.Trans.Either
+import qualified Control.Exception as C (catch, IOException)
+import           Control.Monad   (unless, when)
 import qualified Data.Map as Map (elems)
-import Data.Maybe (fromMaybe)
-import Text.PrettyPrint
-import Data.List (nub)
+import           Data.Maybe      (fromMaybe)
+import           System.IO       (hClose, hGetContents, openFile, IOMode (ReadMode))
+import           Text.PrettyPrint
+-- import Control.Monad.IO.Class
+-- import Control.Monad.Trans.Either
 
 import Curry.Base.Ident
 import Curry.Base.Message (runMsg)
@@ -35,7 +36,6 @@ import Curry.Files.Filenames
 import Curry.Files.PathUtils
 
 import Base.Messages
-  (Message, message, posMessage, warn, abortWithMessages, internalError)
 import Env.Interface
 
 -- source representations
@@ -57,14 +57,14 @@ import Transformations
 
 -- The function 'compileModule' is the main entry-point of this
 -- module for compiling a Curry source module. Depending on the command
--- line options it will emit either C code or FlatCurry code (standard
--- or in XML
+-- line options, it will emit either FlatCurry code (standard or in XML
 -- representation) or AbstractCurry code (typed, untyped or with type
--- signatures) for the module. Usually the first step is to
--- check the module. Then the code is translated into the intermediate
+-- signatures) for the module
+-- Usually, the first step is to check the module.
+-- Then the code is translated into the intermediate
 -- language. If necessary, this phase will also update the module's
--- interface file. The resulting code then is either written out (in
--- FlatCurry or XML format) or translated further into C code.
+-- interface file. The resulting code then is written out (in
+-- FlatCurry or XML format) to the corresponding file.
 -- The untyped  AbstractCurry representation is written
 -- out directly after parsing and simple checking the source file.
 -- The typed AbstractCurry code is written out after checking the module.
@@ -72,76 +72,56 @@ import Transformations
 -- The compiler automatically loads the prelude when compiling any
 -- module, except for the prelude itself, by adding an appropriate import
 -- declaration to the module.
---
--- Since this modified version of the Muenster Curry Compiler is used
--- as a frontend for PAKCS, all functions for evaluating goals and generating
--- C code are obsolete and commented out.
 
-compileModule :: Options -> FilePath -> IO ()
+compileModule :: Options -> FilePath -> CYIO ()
 compileModule opts fn = do
-  loaded <- loadModule opts fn
-  -- write parsed output always if requested, also if the following checks fail
-  when (Parsed `elem` optTargetTypes opts) $ do 
-    let (_env, envtc, mdl) = loaded
-    writeParsed opts fn mdl
-    -- dump parse tree if requested
-    when (DumpParsed `elem` optDumps opts) $ 
-      doDump opts (DumpParsed, envtc, 
-        (if optDumpRaw opts then show else show . CS.ppModule) mdl)
-  -- do checks only if a different output than the parse tree is requested 
-  when (not . null $ filter (/= Parsed) (optTargetTypes opts))
-    (do
-      checked <- runEitherT $ checkModule opts loaded
-      case checked of
-        Left errs -> abortWithMessages errs
-        Right (env, mdl, tcExportEnv, tcExportMdl) -> do
-          warn opts $ warnCheck env mdl
-          writeOutput opts fn (env, mdl) (tcExportEnv, tcExportMdl))
+  (env, mdl, tcExportEnv, tcExportMdl) <- loadModule opts fn >>= checkModule opts
+  warn opts $ warnCheck opts env mdl
+  liftIO $ writeOutput opts fn (env, mdl) (tcExportEnv, tcExportMdl)
 
 -- ---------------------------------------------------------------------------
 -- Loading a module
 -- ---------------------------------------------------------------------------
 
-loadModule :: Options -> FilePath -> IO (CompilerEnv, CompilerEnv, CS.Module)
+loadModule :: Options -> FilePath -> CYIO (CompilerEnv, CompilerEnv, CS.Module)
 loadModule opts fn = do
-  mbSrc <- readModule fn
+  parsed <- parseModule fn
+  -- check module header
+  mdl    <- checkModuleHeader opts fn parsed
+  -- load the imported interfaces into an InterfaceEnv
+  iEnv   <- loadInterfaces False (optImportPaths opts) mdl
+  iEnvTc <- loadInterfaces True (optImportPaths opts) mdl
+  checkInterfaces opts iEnv >> checkInterfaces opts iEnvTc
+  -- add information of imported modules
+  env    <- importModules False opts mdl iEnv
+  envtc  <- importModules True opts mdl iEnvTc
+  return (env, envtc, mdl)
+
+parseModule :: FilePath -> CYIO CS.Module
+parseModule fn = do
+  mbSrc <- liftIO $ readModule fn
   case mbSrc of
-    Nothing  -> abortWithMessages [message $ text $ "Missing file: " ++ fn] -- TODO
+    Nothing  -> left [message $ text $ "Missing file: " ++ fn]
     Just src -> do
       -- parse module
-      case runMsg $ CS.parseModule fn src of
-        Left err -> abortWithMessages [err]
-        Right (parsed, _) -> do
-          -- check module header
-          let (mdl, hdrErrs) = checkModuleHeader opts fn parsed
-          unless (null hdrErrs) $ abortWithMessages hdrErrs -- TODO
-          -- load the imported interfaces into an InterfaceEnv
-          (iEnv  , intfErrs  ) <- loadInterfaces False (optImportPaths opts) mdl
-          (iEnvTc, intfErrsTc) <- loadInterfaces True (optImportPaths opts) mdl
-          let errs = nub $ intfErrs ++ intfErrsTc
-          unless (null errs) $ abortWithMessages errs -- TODO
-          case checkInterfaces opts iEnv >> checkInterfaces opts iEnvTc of
-            CheckFailed intfImpErrs -> abortWithMessages intfImpErrs -- TODO
-            _ -> do
-              -- add information of imported modules
-              let (env  , impErrs  ) = importModules False opts mdl iEnv
-                  (envtc, impErrsTc) = importModules True opts mdl iEnvTc
-                  errs' = nub $ impErrs ++ impErrsTc
-              unless (null errs') $ abortWithMessages errs' -- TODO
-              return (env, envtc, mdl)
+      case runMsg (CS.parseModule fn src) of
+        Left  err         -> left [err]
+        Right (parsed, _) -> right parsed
 
-checkModuleHeader :: Options -> FilePath -> CS.Module -> (CS.Module, [Message])
+checkModuleHeader :: Monad m => Options -> FilePath -> CS.Module
+                  -> CYT m CS.Module
 checkModuleHeader opts fn = checkModuleId fn
                           . importPrelude opts fn
                           . CS.patchModuleId fn
 
 -- |Check whether the 'ModuleIdent' and the 'FilePath' fit together
-checkModuleId :: FilePath -> CS.Module -> (CS.Module, [Message])
+checkModuleId :: Monad m => FilePath -> CS.Module
+              -> CYT m CS.Module
 checkModuleId fn m@(CS.Module mid _ _ _)
   | last (midQualifiers mid) == takeBaseName fn
-  = (m, [])
+  = right m
   | otherwise
-  = (m, [errModuleFileMismatch mid])
+  = left [errModuleFileMismatch mid]
 
 -- An implicit import of the prelude is added to the declarations of
 -- every module, except for the prelude itself, or when the import is disabled
@@ -166,12 +146,12 @@ importPrelude opts fn m@(CS.Module mid es is ds)
                   Nothing -- no selection of types, functions, etc.
   imported     = [imp | (CS.ImportDecl _ imp _ _ _) <- is]
 
-checkInterfaces :: Options -> InterfaceEnv -> CheckResult ()
-checkInterfaces opts iEnv = mapM_ (checkInterface opts iEnv) (Map.elems iEnv)
-
-checkInterface :: Options -> InterfaceEnv -> CS.Interface -> CheckResult ()
-checkInterface opts iEnv intf = interfaceCheck env intf
-  where env = importInterfaces opts intf iEnv
+checkInterfaces :: Monad m => Options -> InterfaceEnv -> CYT m ()
+checkInterfaces opts iEnv = mapM_ checkInterface (Map.elems iEnv)
+  where
+  checkInterface intf = do
+    _ <- interfaceCheck opts (importInterfaces opts intf iEnv) intf
+    return ()
 
 -- ---------------------------------------------------------------------------
 -- Checking a module
@@ -185,7 +165,7 @@ checkInterface opts iEnv intf = interfaceCheck env intf
 -- environments: One still with type class elements, the second without 
 -- type class elements. 
 checkModule :: Options -> (CompilerEnv, CompilerEnv, CS.Module)
-            -> EitherT [Message] IO (CompilerEnv, CS.Module, CompilerEnv, CS.Module)
+            -> CYIO (CompilerEnv, CS.Module, CompilerEnv, CS.Module)
 checkModule opts (envNonTc, envTc, mdl) = do
   doDump opts (DumpParsed       , envTc, show' CS.ppModule mdl)
   (env1,  kc) <- kindCheck opts envTc mdl -- should be only syntax checking ?
@@ -234,9 +214,10 @@ checkModule opts (envNonTc, envTc, mdl) = do
                   then exportCheck opts env5e tc2
                   else return (env5e, tc2)
   doDump opts (DumpExportChecked, env6, show' CS.ppModule ec2)
-  (env7,   ql) <- return $ qual opts env6 ec2
-  doDump opts (DumpQualified    , env7, show' CS.ppModule ql)
-  return (env7, ql, envEc1', ec1')
+  -- (env7,   ql) <- return $ qual opts env6 ec2
+  -- doDump opts (DumpQualified    , env7, show' CS.ppModule ql)
+  -- return (env7, ql, envEc1', ec1')
+  return (env6, ec2, envEc1', ec1')
   where
   withTypeCheck = any (`elem` optTargetTypes opts)
                       [FlatCurry, ExtendedFlatCurry, FlatXml, AbstractCurry]
@@ -275,21 +256,23 @@ transModule opts env mdl = (env5, ilCaseComp, dumps)
 writeOutput :: Options -> FilePath -> (CompilerEnv, CS.Module) 
             -> (CompilerEnv, CS.Module) -> IO ()
 writeOutput opts fn (env, modul) (tcExportEnv, tcExportModule) = do
-  writeParsed        opts fn     modul
-  writeAbstractCurry opts fn env modul
+  writeParsed opts fn modul
+  let (env1, qlfd) = qual opts env modul
+  doDump opts (DumpQualified, env1, show $ CS.ppModule qlfd)
+  writeAbstractCurry opts fn env1 qlfd
   when withFlat $ do
     -- checkModule checks types, and then transModule introduces new
     -- functions (by lambda lifting in 'desugar'). Consequence: The
     -- types of the newly introduced functions are not inferred (hsi)
-    let (env2, il, dumps) = transModule opts env modul
+    let (env2, il, dumps) = transModule opts env1 qlfd
     -- dump intermediate results
     mapM_ (doDump opts) dumps
     -- generate interface file
-    let intf = exportInterface env2 modul False
+    let intf = exportInterface env2 qlfd False
         tcIntf = exportInterface tcExportEnv tcExportModule True
-    writeInterfaces opts fn [intf, tcIntf]
+    writeInterface opts fn [intf, tcIntf]
     -- generate target code
-    let modSum = summarizeModule (tyConsEnv env2) intf modul
+    let modSum = summarizeModule (tyConsEnv env2) intf qlfd
     writeFlat opts fn env2 modSum il
   where
   withFlat = any (`elem` optTargetTypes opts)
@@ -305,34 +288,39 @@ writeOutput opts fn (env, modul) (tcExportEnv, tcExportModule) = do
 -- |Output the parsed 'Module' on request
 writeParsed :: Options -> FilePath -> CS.Module -> IO ()
 writeParsed opts fn modul = when srcTarget $
-  writeModule useSubDir targetFile source
+  writeModule useSubDir (sourceRepName fn) source
   where
   srcTarget  = Parsed `elem` optTargetTypes opts
   useSubDir  = optUseSubdir opts
-  targetFile = fromMaybe (sourceRepName fn) (optOutput opts)
   source     = CS.showModule modul
 
-writeInterfaces :: Options -> FilePath -> [CS.Interface] -> IO ()
-writeInterfaces opts fn [intf, intfTC]
-  | not (optInterface opts) = return () -- TODO: reasonable?
-  | optForce opts           = outputInterface
-  | otherwise               = do
-      mbOldIntf <- readModule interfaceFile
-      case mbOldIntf of
-        Nothing  -> outputInterface
-        Just src -> case runMsg (CS.parseInterface interfaceFile src) of
-          Left  _     -> outputInterface
-          Right ([i, itc], _) -> 
-            unless (intf `intfEquiv` fixInterface i 
-                 && intfTC `intfEquiv` fixInterface itc) outputInterface
-          Right (_, _) -> internalError "writeInterface"
+writeInterface :: Options -> FilePath -> [CS.Interface] -> IO ()
+writeInterface opts fn [intf, intfTC]
+  | optForce opts = outputInterface
+  | otherwise     = do
+      equal <- C.catch (matchInterface interfaceFile [intf, intfTC]) ignoreIOException
+      unless equal outputInterface
   where
+  ignoreIOException :: C.IOException -> IO Bool
+  ignoreIOException _ = return False
+
   interfaceFile   = interfName fn
   outputInterface = writeModule (optUseSubdir opts) interfaceFile
                     (show 
                       (CS.ppInterface "interface" intf
                         $$ CS.ppInterface "interfaceTypeClasses" intfTC))
-writeInterfaces _ _ _ = internalError "writeInterfaces"
+writeInterface _ _ _ = internalError "writeInterfaces"
+
+matchInterface :: FilePath -> [CS.Interface] -> IO Bool
+matchInterface ifn [i, itc] = do
+  hdl <- openFile ifn ReadMode
+  src <- hGetContents hdl
+  case runMsg (CS.parseInterface ifn src) of
+    Left _        -> hClose hdl >> return False
+    Right ([i', itc'], _) -> 
+      return (i `intfEquiv` fixInterface i' && itc `intfEquiv` fixInterface itc')
+    Right (_, _) -> internalError "matchInterface"
+matchInterface _ _ = internalError "matchInterface"
 
 writeFlat :: Options -> FilePath -> CompilerEnv -> ModuleSummary -> IL.Module
           -> IO ()

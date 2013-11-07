@@ -19,13 +19,13 @@ of the operators involved.
 
 > module Checks.PrecCheck (precCheck) where
 
-> import Control.Monad (liftM, liftM2, liftM3, unless, when)
+> import           Control.Monad            (liftM, liftM2, liftM3, unless, when)
 > import qualified Control.Monad.State as S (State, runState, gets, modify)
-> import Data.List (partition)
-> import Text.PrettyPrint
+> import           Data.List                (partition)
 
 > import Curry.Base.Ident
 > import Curry.Base.Position
+> import Curry.Base.Pretty
 > import Curry.Syntax
 
 > import Base.Expr

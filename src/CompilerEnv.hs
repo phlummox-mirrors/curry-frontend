@@ -19,7 +19,7 @@ import Text.PrettyPrint
 import Data.Maybe
 import Data.List (nub)
 
-import Curry.Base.Ident (ModuleIdent, preludeMIdent, tcPreludeMIdent, QualIdent (..))
+import Curry.Base.Ident  (ModuleIdent, preludeMIdent, tcPreludeMIdent, QualIdent (..))
 
 import Base.TopEnv
 

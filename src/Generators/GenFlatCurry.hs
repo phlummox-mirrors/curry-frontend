@@ -10,16 +10,17 @@
 module Generators.GenFlatCurry (genFlatCurry, genFlatInterface) where
 
 -- Haskell libraries
-import Control.Monad (filterM, liftM, liftM2, liftM3, mplus, when)
-import Control.Monad.State (State, runState, gets, modify)
-import Data.List (mapAccumL, nub)
-import qualified Data.Map as Map (Map, empty, insert, lookup, fromList, toList)
-import Data.Maybe (catMaybes, fromJust, fromMaybe, isJust)
-import Text.PrettyPrint
+import           Control.Monad       (filterM, liftM, liftM2, liftM3, mplus, when)
+import           Control.Monad.State (State, runState, gets, modify)
+import           Data.List           (mapAccumL, nub)
+import qualified Data.Map as Map     (Map, empty, insert, lookup, fromList, toList)
+import           Data.Maybe          (catMaybes, fromJust, fromMaybe, isJust)
 
 -- curry-base
-import Curry.Base.Message
 import Curry.Base.Ident as Id
+import Curry.Base.Message
+import Curry.Base.Pretty
+
 import Curry.ExtendedFlat.Type
 import Curry.ExtendedFlat.TypeInference
 import qualified Curry.Syntax as CS
@@ -39,7 +40,7 @@ import Env.TypeConstructor (TCEnv, TypeInfo (..), qualLookupTC)
 import Env.Value (ValueEnv, ValueInfo (..), lookupValue, qualLookupValue)
 
 -- other
-import CompilerOpts (Options (..))
+import CompilerOpts (Options (..), WarnFlag (..))
 import qualified IL as IL
 import qualified ModuleSummary
 import Transformations (transType)
@@ -517,18 +518,27 @@ isExportedQualIdent qident ((CS.ExportModule _):exps)
 
 --
 qualifyIDecl :: ModuleIdent -> CS.IDecl -> CS.IDecl
-qualifyIDecl mident (CS.IInfixDecl pos fixi prec qident)
-  = (CS.IInfixDecl pos fixi prec (qualQualify mident qident))
-qualifyIDecl mident (CS.IDataDecl pos qident idents cdecls)
-  = (CS.IDataDecl pos (qualQualify mident qident) idents cdecls)
-qualifyIDecl mident (CS.INewtypeDecl pos qident idents ncdecl)
-  = (CS.INewtypeDecl pos (qualQualify mident qident) idents ncdecl)
-qualifyIDecl mident (CS.ITypeDecl pos qident idents texpr)
-  = (CS.ITypeDecl pos (qualQualify mident qident) idents texpr)
-qualifyIDecl mident (CS.IFunctionDecl pos qident arity cx texpr)
-  = (CS.IFunctionDecl pos (qualQualify mident qident) arity cx (qualifyCSType texpr))
-  where qualifyCSType = fromType . toQualType mident []
+qualifyIDecl mid (CS.IInfixDecl   pos fixi prec qid)
+  = CS.IInfixDecl pos fixi prec (qualQualify mid qid)
+qualifyIDecl mid (CS.IDataDecl    pos qid vs cs)
+  = CS.IDataDecl pos (qualQualify mid qid) vs
+  $ map (fmap (qualifyIConstrDecl mid)) cs
+qualifyIDecl mid (CS.INewtypeDecl  pos qid vs nc)
+  = CS.INewtypeDecl pos (qualQualify mid qid) vs nc
+qualifyIDecl mid (CS.ITypeDecl     pos qid vs ty)
+  = CS.ITypeDecl pos (qualQualify mid qid) vs ty
+qualifyIDecl mid (CS.IFunctionDecl pos qid arity cx ty)
+  = CS.IFunctionDecl pos (qualQualify mid qid) arity cx (qualifyCSType mid ty)
 qualifyIDecl _ idecl = idecl
+
+qualifyIConstrDecl :: ModuleIdent -> CS.ConstrDecl -> CS.ConstrDecl
+qualifyIConstrDecl mid (CS.ConstrDecl pos vs cid tys)
+  = CS.ConstrDecl pos vs cid (map (qualifyCSType mid) tys)
+qualifyIConstrDecl mid (CS.ConOpDecl pos vs ty1 op ty2)
+  = CS.ConOpDecl pos vs (qualifyCSType mid ty1) op (qualifyCSType mid ty2)
+
+qualifyCSType :: ModuleIdent -> CS.TypeExpr -> CS.TypeExpr
+qualifyCSType mid = fromType . toQualType mid []
 
 
 --
@@ -756,9 +766,9 @@ flattenRecordTypeFields = concatMap (\ (ls, ty) -> map (\l -> (l, ty)) ls)
 
 --
 checkOverlapping :: Expr -> Expr -> FlatState ()
-checkOverlapping expr1 expr2 = do
+checkOverlapping e1 e2 = do
   opts <- compilerOpts
-  when (optOverlapWarn opts) $ checkOverlap expr1 expr2
+  when (WarnOverlapping `elem` optWarnFlags opts) $ checkOverlap e1 e2
   where
   checkOverlap (Case _ _ _ _) _ = functionId >>= genWarning . overlappingRules
   checkOverlap _ (Case _ _ _ _) = functionId >>= genWarning . overlappingRules

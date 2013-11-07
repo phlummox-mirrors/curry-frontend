@@ -48,13 +48,13 @@ interface module only. However, this has not been implemented yet.
 
 > module Checks.InterfaceCheck (interfaceCheck) where
 
-> import Control.Monad (unless)
+> import           Control.Monad            (unless)
 > import qualified Control.Monad.State as S
-> import Data.Maybe (catMaybes, fromMaybe)
-> import Text.PrettyPrint
+> import           Data.Maybe               (catMaybes, fromMaybe)
 
 > import Curry.Base.Ident
 > import Curry.Base.Position
+> import Curry.Base.Pretty
 > import Curry.Syntax
 
 > import Base.CurryTypes

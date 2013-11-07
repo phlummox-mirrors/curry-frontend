@@ -15,13 +15,13 @@
 
 module Checks.ExportCheck (exportCheck) where
 
-import Control.Monad (liftM, unless)
-import qualified Control.Monad.State as S (State, runState, gets, modify)
-import Data.List (nub, union)
-import qualified Data.Map as Map
-import Data.Maybe
-import qualified Data.Set as Set
-import Text.PrettyPrint
+import           Control.Monad              (liftM, unless)
+import qualified Control.Monad.State as S   (State, runState, gets, modify)
+import           Data.List                  (nub, union)
+import qualified Data.Map            as Map
+import           Data.Maybe                 (fromMaybe)
+import qualified Data.Set            as Set
+import           Text.PrettyPrint
 
 import Curry.Base.Ident
 import Curry.Base.Position

@@ -32,11 +32,11 @@ expanded.
 > import Control.Monad (liftM, liftM2, liftM3, replicateM, unless, when)
 > import qualified Control.Monad.State as S (State, gets, modify, runState)
 > import Data.List (nub, partition, sortBy)
-> import qualified Data.Map as Map (Map, empty, insert, lookup)
+> import qualified Data.Map as Map (Map, delete, empty, insert, lookup)
+> import Data.Maybe
+> import qualified Data.Set as Set
 > import Text.PrettyPrint
 > -- import qualified Debug.Trace as Dbg
-> import qualified Data.Set as Set
-> import Data.Maybe
 
 > import Curry.Base.Ident hiding (sep)
 > import Curry.Base.Position
@@ -91,8 +91,8 @@ to True in the normal execution of the compiler.
 >   execTCM check initState
 >   where
 >   pdecls = zip [0::Int ..] decls
->   check = do
->     checkTypeSynonyms m tds
+>   check      = checkTypeSynonyms m tds &&> checkDecls
+>   checkDecls = do
 >     bindTypes tds
 >     bindConstrs
 >     bindLabels
@@ -209,6 +209,11 @@ generating fresh type variables.
 >                     , decls
 >                     , reverse $ nub $ errors s'
 >                     )
+
+> (&&>) :: TCM () -> TCM [Decl] -> TCM [Decl]
+> pre &&> suf = do
+>   errs <- pre >> S.gets errors
+>   if null errs then suf else return []
 
 > -- hasError :: TCM Bool
 > -- hasError = liftM (not . null) (S.gets errors)
@@ -424,13 +429,16 @@ the type signature has already been expanded.
 > emptySigEnv :: SigEnv
 > emptySigEnv = Map.empty
 
+> unbindTypeSig :: Ident -> SigEnv -> SigEnv
+> unbindTypeSig = Map.delete
+
 > bindTypeSig :: Ident -> (Bool, BaseConstrType) -> SigEnv -> SigEnv
 > bindTypeSig = Map.insert
 
 > bindTypeSigs :: Decl -> SigEnv -> SigEnv
 > bindTypeSigs (TypeSig _ expanded vs cx ty) env = 
 >   foldr (flip bindTypeSig (expanded, (cx, nameSigType ty))) env vs
-> bindTypeSigs _ env = env
+> bindTypeSigs _ env                             = env
 
 > lookupTypeSig :: Ident -> SigEnv -> Maybe (Bool, BaseConstrType)
 > lookupTypeSig = Map.lookup
@@ -1106,11 +1114,15 @@ the maximal necessary contexts for the functions are determined.
 >   sigs <- getSigEnv
 >   m    <- getModuleIdent
 >   ty   <- case lookupTypeSig v sigs of
->     Nothing            -> freshTypeVar
->     Just (expanded, t) -> do
+>     Nothing             -> freshTypeVar
+>     Just (expanded, t)  -> do
 >       ForAll _cx n ty' <- expandPolyType (not expanded) t
->       unless (n == 0) $ report $ errPolymorphicFreeVar v
->       return ty'
+>       if (n == 0) then return ty' else do
+>         -- because of error aggregation, we have to fix
+>         -- the corrupt information
+>         report $ errPolymorphicFreeVar v
+>         modifySigEnv $ unbindTypeSig v
+>         freshTypeVar
 >   modifyValueEnv $ bindFunOnce m v (arrowArity ty) $ monoType ty
 
 > tcDeclLhs :: Decl -> TCM ConstrType
@@ -1409,17 +1421,15 @@ signature the declared type must be too general.
 >   tcPattern p (FunctionPattern op [t1,t2])
 > tcPattern p r@(RecordPattern fs rt)
 >   | isJust rt = do
->       m <- getModuleIdent
 >       ty <- tcPattern p (fromJust rt)
->       fts <- mapM (tcFieldPatt tcPattern m) fs
+>       fts <- mapM (tcFieldPatt tcPattern) fs
 >       let fts' = map (\(id0, ty0) -> (id0, getType ty0)) fts
 >       alpha <- freshVar id
 >       let rty = noContext $ TypeRecord fts' (Just alpha)
 >       unify p "record pattern" (ppPattern 0 r) ty rty
 >       return rty
 >   | otherwise = do
->       m <- getModuleIdent
->       fts <- mapM (tcFieldPatt tcPattern m) fs
+>       fts <- mapM (tcFieldPatt tcPattern) fs
 >       let fts' = map (\(id0, ty) -> (id0, getType ty)) fts
 >       return (noContext $ TypeRecord fts' Nothing)
 
@@ -1432,7 +1442,7 @@ because of possibly multiple occurrences of variables.
 > tcPatternFP :: Position -> Pattern -> TCM ConstrType
 > tcPatternFP _ (LiteralPattern    l) = tcLiteral l
 > tcPatternFP _ (NegativePattern _ l) = tcLiteral l
-> tcPatternFP _ (VariablePattern v) = do
+> tcPatternFP _ (VariablePattern   v) = do
 >   sigs <- getSigEnv
 >   m <- getModuleIdent
 >   cty@(_cx, ty) <- case lookupTypeSig v sigs of
@@ -1508,36 +1518,33 @@ because of possibly multiple occurrences of variables.
 >   tcPatternFP p (FunctionPattern op [t1,t2])
 > tcPatternFP p r@(RecordPattern fs rt)
 >   | isJust rt = do
->       m <- getModuleIdent
 >       ty <- tcPatternFP p (fromJust rt)
->       fts <- mapM (tcFieldPatt tcPatternFP m) fs
+>       fts <- mapM (tcFieldPatt tcPatternFP) fs
 >       let fts' = map (\(id0, ty0) -> (id0, getType ty0)) fts
 >       alpha <- freshVar id
 >       let rty = noContext $ TypeRecord fts' (Just alpha)
 >       unify p "record pattern" (ppPattern 0 r) ty rty
 >       return rty
 >   | otherwise = do
->       m <- getModuleIdent
->       fts <- mapM (tcFieldPatt tcPatternFP m) fs
+>       fts <- mapM (tcFieldPatt tcPatternFP) fs
 >       let fts' = map (\(id0, ty) -> (id0, getType ty)) fts
 >       return (noContext $ TypeRecord fts' Nothing)
 
-> tcFieldPatt :: (Position -> Pattern -> TCM ConstrType) -> ModuleIdent
->             -> Field Pattern -> TCM (Ident, ConstrType)
-> tcFieldPatt tcPatt m f@(Field _ l t) = do
->     tyEnv <- getValueEnv
->     let p = idPosition l
->     lty <- maybe (freshTypeVar
->                    >>= (\lty' ->
->                          modifyValueEnv
->                            (bindLabel l (qualifyWith m (mkIdent "#Rec"))
->                                       (polyType lty'))
->                          >> return (noContext lty')))
->                  (\ (ForAll cx _ lty') -> return (cx, lty'))
->                  (sureLabelType l tyEnv)
->     ty <- tcPatt p t
->     unify p "record" (text "Field:" <+> ppFieldPatt f) lty ty
->     return (l,ty)
+> tcFieldPatt :: (Position -> Pattern -> TCM ConstrType) -> Field Pattern
+>             -> TCM (Ident, ConstrType)
+> tcFieldPatt tcPatt f@(Field _ l t) = do
+>   m <- getModuleIdent
+>   tyEnv <- getValueEnv
+>   let p = idPosition l
+>   lty <- maybe (freshTypeVar >>= \lty' ->
+>                 modifyValueEnv
+>                 (bindLabel l (qualifyWith m (mkIdent "#Rec")) (polyType lty'))
+>                 >> return (noContext lty'))
+>                inst
+>                (sureLabelType l tyEnv)
+>   ty <- tcPatt p t
+>   unify p "record" (text "Field:" <+> ppFieldPatt f) lty ty
+>   return (l, ty)
 
 > tcRhs ::ValueEnv -> Rhs -> TCM (Rhs, ConstrType)
 > tcRhs tyEnv0 (SimpleRhs p e ds) = do
@@ -1887,25 +1894,15 @@ because of possibly multiple occurrences of variables.
 >     return (RecordConstr fs', (cxs, TypeRecord 
 >       (map (\(id0, cty) -> (id0, getType cty)) fts) Nothing))
 > tcExpr p r@(RecordSelection e l) = do
->     m <- getModuleIdent
->     (e', cty@(cx, _)) <- tcExpr p e
->     tyEnv <- getValueEnv
->     lty <- maybe (freshTypeVar
->                    >>= (\lty' ->
->                          modifyValueEnv
->                            (bindLabel l (qualifyWith m (mkIdent "#Rec"))
->                                       (monoType lty'))
->                          >> return lty'))
->                  -- TODO: ignore context?
->                  (\ (ForAll _cx _ lty') -> return lty')
->                  (sureLabelType l tyEnv)
->     alpha <- freshVar id
->     let rty = TypeRecord [(l,lty)] (Just alpha)
->     unify p "record selection" (ppExpr 0 r) cty (noContext rty)
->     -- TODO: adjusting context, because we have a situation similar to
->     -- Apply (?)
->     cx' <- adjustContext cx
->     return (RecordSelection e' l, (cx', lty))
+>   (_ , lty) <- instLabel l
+>   (e', cty@(cx, _)) <- tcExpr p e
+>   alpha <- freshVar id
+>   let rty = TypeRecord [(l, lty)] (Just alpha)
+>   unify p "record selection" (ppExpr 0 r) cty (noContext rty)
+>   -- TODO: adjusting context, because we have a situation similar to
+>   -- Apply (?)
+>   cx' <- adjustContext cx
+>   return (RecordSelection e' l, (cx', lty))
 > tcExpr p r@(RecordUpdate fs e) = do
 >     (e', cty) <- tcExpr p e
 >     fs'AndFts <- mapM tcFieldExpr fs
@@ -1949,20 +1946,11 @@ because of possibly multiple occurrences of variables.
 >   return (StmtDecl ds', cx)
 
 > tcFieldExpr :: Field Expression -> TCM (Field Expression, (Ident, ConstrType))
-> tcFieldExpr f@(Field p0 l e) = do
->   m     <- getModuleIdent
->   tyEnv <- getValueEnv
->   let p = idPosition l
->   lty <- maybe (freshTypeVar
->                >>= (\lty' ->
->                      modifyValueEnv (bindLabel l (qualifyWith m (mkIdent "#Rec"))
->                                     (monoType lty'))
->                >> (return $ noContext lty')))
->                  inst
->         (sureLabelType l tyEnv)
+> tcFieldExpr f@(Field p l e) = do
+>   (_ , lty) <- instLabel l
 >   (e', cty) <- tcExpr p e
->   unify p "record" (text "Field:" <+> ppFieldExpr f) lty cty
->   return (Field p0 l e', (l,cty))
+>   unify p "record" (text "Field:" <+> ppFieldExpr f) (noContext lty) cty
+>   return (Field p l e', (l, cty))
 
 > adjustContext :: BT.Context -> TCM BT.Context
 > adjustContext cxs = do
@@ -2195,6 +2183,16 @@ We use negative offsets for fresh type variables.
 >   tys <- replicateM (n + n') freshTypeVar
 >   let cx' = instContext tys cx
 >   return $ (cx', expandAliasType tys ty) 
+
+> instLabel :: Ident -> TCM ConstrType
+> instLabel l = do
+>   m <- getModuleIdent
+>   tyEnv <- getValueEnv
+>   maybe (freshTypeVar >>= \lty' -> modifyValueEnv
+>           (bindLabel l (qualifyWith m (mkIdent "#Rec")) (monoType lty'))
+>            >> return (noContext lty'))
+>         inst
+>         (sureLabelType l tyEnv)
 
 > skol :: ExistTypeScheme -> TCM Type
 > skol (ForAllExist _cx n n' ty) = do
@@ -2432,8 +2430,8 @@ Error functions.
 
 > errIncompatibleLabelTypes :: ModuleIdent -> Ident -> Type -> Type -> Doc
 > errIncompatibleLabelTypes m l ty1 ty2 = sep
->   [ text "Labeled types" <+> ppIdent l <> text "::" <> ppType m ty1
->   , nest 10 $ text "and" <+> ppIdent l <> text "::" <> ppType m ty2
+>   [ text "Labeled types" <+> ppIdent l <+> text "::" <+> ppType m ty1
+>   , nest 10 $ text "and" <+> ppIdent l <+> text "::" <+> ppType m ty2
 >   , text "are incompatible"
 >   ]
 
