@@ -4,7 +4,7 @@
 # 2) for files that have sematical errors that the compiler produces errors
 
 cymake=../dist/build/cymake/cymake
-exts="-X TypeClassExtensions"
+exts="-X TypeClassExtensions -X Records"
 
 rm -f tmp.txt
 
@@ -56,7 +56,7 @@ for file in DictTrans1 DictTrans2 DictTrans3 DictTrans4 \
   ClassInstanceTypeInScope6 DefsInWhere \
   LocalNotLocal \
   EnumerationsOrig \
-  bug494
+  bug494 Bug445
 do
   echo $file >> tmp.txt
   if [ ! -r typeclasses/$file.curry ]; then echo "*********** file doesn't exist: $file"; fi
@@ -94,7 +94,8 @@ for file in Ambig1 Ambiguous Ambiguous2 Ambiguous3 \
   Impl InstanceConstraints InstanceMethodsCheck \
   TestCxs TestCxs2 TypeSigs \
   EmptyDataTypeDeriving \
-  ClassInstanceTypeInScope5
+  ClassInstanceTypeInScope5 \
+  Bug480 Bug489
 do
   echo $file >> tmp.txt
   if [ ! -r typeclasses/$file.curry ]; then echo "*********** file doesn't exist: $file"; fi
