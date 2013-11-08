@@ -270,7 +270,7 @@ writeOutput opts fn (env, modul) (tcExportEnv, tcExportModule) = do
     -- generate interface file
     let intf = exportInterface env2 qlfd False
         tcIntf = exportInterface tcExportEnv tcExportModule True
-    writeInterface opts fn [intf, tcIntf]
+    writeInterfaces opts fn [intf, tcIntf]
     -- generate target code
     let modSum = summarizeModule (tyConsEnv env2) intf qlfd
     writeFlat opts fn env2 modSum il
@@ -294,8 +294,8 @@ writeParsed opts fn modul = when srcTarget $
   useSubDir  = optUseSubdir opts
   source     = CS.showModule modul
 
-writeInterface :: Options -> FilePath -> [CS.Interface] -> IO ()
-writeInterface opts fn [intf, intfTC]
+writeInterfaces :: Options -> FilePath -> [CS.Interface] -> IO ()
+writeInterfaces opts fn [intf, intfTC]
   | optForce opts = outputInterface
   | otherwise     = do
       equal <- C.catch (matchInterface interfaceFile [intf, intfTC]) ignoreIOException
@@ -309,7 +309,7 @@ writeInterface opts fn [intf, intfTC]
                     (show 
                       (CS.ppInterface "interface" intf
                         $$ CS.ppInterface "interfaceTypeClasses" intfTC))
-writeInterface _ _ _ = internalError "writeInterfaces"
+writeInterfaces _ _ _ = internalError "writeInterfaces"
 
 matchInterface :: FilePath -> [CS.Interface] -> IO Bool
 matchInterface ifn [i, itc] = do
