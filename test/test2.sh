@@ -3,7 +3,7 @@
 # 1) for files without semantical errors whether they compile
 # 2) for files that have sematical errors that the compiler produces errors
 
-cymake=../dist/build/cymake/cymake
+cymake=`readlink -f ../dist/build/cymake/cymake`
 exts="-X TypeClassExtensions -X Records"
 
 rm -f tmp.txt
@@ -61,7 +61,7 @@ do
   printf .
   echo $file >> tmp.txt
   if [ ! -r typeclasses/$file.curry ]; then echo "*********** file doesn't exist: $file"; fi
-  $cymake $exts -f -i typeclasses -i typeclasses/modules typeclasses/$file.curry 2> stderr.txt 1> stdout.txt || \
+  (cd typeclasses; $cymake $exts -f -i modules $file.curry) 2> stderr.txt 1> stdout.txt || \
     (echo; echo "===================="; echo "| Error in $file.curry:" ; echo "===================="; \
     cat stdout.txt; cat stderr.txt; echo; touch $errorFile)
 done
@@ -79,7 +79,7 @@ do
   printf .
   echo $file >> tmp.txt
   if [ ! -r typeclasses/TCCheck/$file.curry ]; then echo "*********** file doesn't exist: $file"; fi
-  $cymake $exts -f -i typeclasses/TCCheck -i typeclasses/modules typeclasses/TCCheck/$file.curry 2> stderr.txt 1> stdout.txt && \
+  (cd typeclasses/TCCheck; $cymake $exts -f -i ../modules $file.curry) 2> stderr.txt 1> stdout.txt && \
     (echo; echo "===================="; echo "| No error in $file.curry:" ; echo "===================="; \
     cat stdout.txt; cat stderr.txt; echo; touch $errorFile)
   internalErrs=`cat stderr.txt | grep "Internal error"`
@@ -102,7 +102,7 @@ do
   printf .
   echo $file >> tmp.txt
   if [ ! -r typeclasses/$file.curry ]; then echo "*********** file doesn't exist: $file"; fi
-  $cymake $exts -f -i typeclasses -i typeclasses/modules typeclasses/$file.curry 2> stderr.txt 1> stdout.txt && \
+  (cd typeclasses; $cymake $exts -f -i modules $file.curry) 2> stderr.txt 1> stdout.txt && \
     (echo; echo "===================="; echo "| No error in $file.curry:" ; echo "===================="; \
     cat stdout.txt; cat stderr.txt; echo; touch $errorFile)
   internalErrs=`cat stderr.txt | grep "Internal error"`
@@ -117,7 +117,7 @@ do
   printf .
   echo $file >> tmp.txt
   if [ ! -r typeclasses/$file.curry ]; then echo "*********** file doesn't exist: $file"; fi
-  $cymake -f -i typeclasses -i typeclasses/modules typeclasses/$file.curry 2> stderr.txt 1> stdout.txt && \
+  (cd typeclasses; $cymake -f -i modules $file.curry) 2> stderr.txt 1> stdout.txt && \
     (echo; echo "===================="; echo "| No error in $file.curry:" ; echo "===================="; \
     cat stdout.txt; cat stderr.txt; echo; touch $errorFile)
   internalErrs=`cat stderr.txt | grep "Internal error"`
@@ -210,7 +210,7 @@ do
   printf .
   echo $file >> tmp.txt
   if [ ! -r typeclasses/modules/$file.curry ]; then echo "*********** file doesn't exist: $file"; fi
-  $cymake $exts -f -i typeclasses/modules typeclasses/modules/$file.curry 2> stderr.txt 1> stdout.txt || \
+  (cd typeclasses/modules; $cymake $exts -f $file.curry) 2> stderr.txt 1> stdout.txt || \
     (echo; echo "===================="; echo "| Error in $file.curry:" ; echo "===================="; \
     cat stdout.txt; cat stderr.txt; echo; touch $errorFile)
 done
@@ -248,14 +248,14 @@ do
   printf .
   echo $file >> tmp.txt
   if [ ! -r typeclasses/modules/$file.curry ]; then echo "*********** file doesn't exist: $file"; fi
-  $cymake $exts -f -i typeclasses/modules typeclasses/modules/$file.curry 2> stderr.txt 1> stdout.txt && \
+  (cd typeclasses/modules; $cymake $exts -f $file.curry) 2> stderr.txt 1> stdout.txt && \
     (echo; echo "===================="; echo "| No error in $file.curry:" ; echo "===================="; \
     cat stdout.txt; cat stderr.txt; echo; touch $errorFile)
   internalErrs=`cat stderr.txt | grep "Internal error"`
   if [ -n "$internalErrs" ]; then echo "Internal error in $file"; fi
 done
 
-
+echo
 echo `cat tmp.txt | wc -l` files checked
 
 if [ ! -f $errorFile ]; then
