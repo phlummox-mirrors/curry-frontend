@@ -16,6 +16,7 @@ rm -f $errorFile
 # delete old files
 rm -f -r typeclasses/.curry
 rm -f -r typeclasses/modules/.curry
+rm -f -r typeclasses/TCCheck/.curry
 
 # prepare Prelude
 $cymake $exts -f typeclasses/modules/Prelude.curry > /dev/null
