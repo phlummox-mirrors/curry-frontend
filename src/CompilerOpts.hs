@@ -16,7 +16,7 @@
 -}
 module CompilerOpts
   ( Options (..), CymakeMode (..), Verbosity (..), TargetType (..)
-  , WarnFlag (..), Extension (..), DumpLevel (..)
+  , WarnFlag (..), KnownExtension (..), DumpLevel (..)
   , dumpLevel, defaultOptions, getCompilerOpts, usage
   ) where
 
@@ -26,6 +26,7 @@ import System.Environment    (getArgs, getProgName)
 import System.FilePath       (splitSearchPath)
 
 import Curry.Files.Filenames (currySubdir)
+import Curry.Syntax.Extension
 
 -- -----------------------------------------------------------------------------
 -- Option data structures
@@ -34,22 +35,22 @@ import Curry.Files.Filenames (currySubdir)
 -- |Data type for recording compiler options
 data Options = Options
   -- general
-  { optMode         :: CymakeMode   -- ^ modus operandi
-  , optVerbosity    :: Verbosity    -- ^ verbosity level
+  { optMode         :: CymakeMode       -- ^ modus operandi
+  , optVerbosity    :: Verbosity        -- ^ verbosity level
   -- compilation
-  , optForce        :: Bool         -- ^ force (re-)compilation of target
-  , optLibraryPaths :: [FilePath]   -- ^ directories to search in for libraries
-  , optImportPaths  :: [FilePath]   -- ^ directories to search in for imports
-  , optUseSubdir    :: Bool         -- ^ use subdir for output?
-  , optInterface    :: Bool         -- ^ create a FlatCurry interface file?
-  , optWarn         :: Bool         -- ^ show warnings? (legacy option)
-  , optWarnFlags    :: [WarnFlag]   -- ^ Warnings flags (see below)
-  , optWarnAsError  :: Bool         -- ^ Should warnings be treated as errors?
-  , optTargetTypes  :: [TargetType] -- ^ what to generate
-  , optExtensions   :: [Extension]  -- ^ enabled language extensions
-  , optDumps        :: [DumpLevel]  -- ^ dump levels
-  , optDumpEnv      :: Bool         -- ^ dump compilation environment
-  , optDumpRaw      :: Bool         -- ^ dump data structure
+  , optForce        :: Bool             -- ^ force (re-)compilation of target
+  , optLibraryPaths :: [FilePath]       -- ^ directories to search in for libraries
+  , optImportPaths  :: [FilePath]       -- ^ directories to search in for imports
+  , optUseSubdir    :: Bool             -- ^ use subdir for output?
+  , optInterface    :: Bool             -- ^ create a FlatCurry interface file?
+  , optWarn         :: Bool             -- ^ show warnings? (legacy option)
+  , optWarnFlags    :: [WarnFlag]       -- ^ Warnings flags (see below)
+  , optWarnAsError  :: Bool             -- ^ Should warnings be treated as errors?
+  , optTargetTypes  :: [TargetType]     -- ^ what to generate
+  , optExtensions   :: [KnownExtension] -- ^ enabled language extensions
+  , optDumps        :: [DumpLevel]      -- ^ dump levels
+  , optDumpEnv      :: Bool             -- ^ dump compilation environment
+  , optDumpRaw      :: Bool             -- ^ dump data structure
   } deriving Show
 
 -- | Default compiler options
@@ -166,30 +167,18 @@ dumpLevel = [ (DumpParsed       , "dump-parse", "parse tree"               )
             , (DumpCaseCompleted, "dump-cc"   , "case completed output"    )
             ]
 
--- |Language extensions
-data Extension
-  = Records
-  | FunctionalPatterns
-  | AnonFreeVars
-  | NoImplicitPrelude
-    deriving (Eq, Read, Show)
-
 -- |Description and flag of language extensions
-extensions :: [(Extension, String, String)]
+extensions :: [(KnownExtension, String, String)]
 extensions =
-  [ ( Records           , "Records"
-    , "enable record syntax"                )
+  [ ( AnonFreeVars      , "AnonFreeVars"
+    , "enable anonymous free variables"     )
   , ( FunctionalPatterns, "FunctionalPatterns"
     , "enable functional patterns"          )
-  , ( AnonFreeVars      , "AnonFreeVars"
-    , "enable anonymous free variables"     )
   , ( NoImplicitPrelude , "NoImplicitPrelude"
     , "do not implicitly import the Prelude")
+  , ( Records           , "Records"
+    , "enable record syntax"                )
   ]
-
--- |Language 'Extension's enabled by @-e@ flag
-curryExtensions :: [Extension]
-curryExtensions = [Records, FunctionalPatterns, AnonFreeVars]
 
 -- -----------------------------------------------------------------------------
 -- Parsing of the command line options.
@@ -310,7 +299,7 @@ options =
   -- extensions
   , Option "e"  ["extended"]
       (NoArg (onOpts $ \ opts -> opts { optExtensions =
-        nub $ curryExtensions ++ optExtensions opts }))
+        nub $ kielExtensions ++ optExtensions opts }))
       "enable extended Curry functionalities"
   , mkOptErrOption "X" [] "ext" "language extension" extDescriptions
   , mkOptErrOption "W" [] "opt" "warning option"     warnDescriptions

@@ -53,7 +53,7 @@ genUntypedAbstract = genAbstract UntypedAcy
 
 -- |Generate an AbstractCurry program term from the syntax tree
 genAbstract :: AbstractType -> CompilerEnv -> Module -> CurryProg
-genAbstract ty env mdl@(Module mid _ imps decls)
+genAbstract ty env mdl@(Module _ mid _ imps decls)
   = CurryProg mid' imps' types funcs ops
   where
   aEnv  = abstractEnv ty env mdl
@@ -566,7 +566,7 @@ genBranchExpr env (Alt p pat rhs)
       in  (env2, CGuardedBranch pat' bs')
 
 --
-genPattern :: Position -> AbstractEnv -> Pattern{--} -> (AbstractEnv, CPattern)
+genPattern :: Position -> AbstractEnv -> Pattern -> (AbstractEnv, CPattern)
 genPattern pos env (LiteralPattern l) = case l of
   String _ cs -> genPattern pos env $ ListPattern [] $ map (LiteralPattern . Char noRef) cs
   _           -> (env, CPLit $ genLiteral l)
@@ -685,7 +685,7 @@ data AbstractType
 
 -- |Initialize the AbstractCurry generator environment
 abstractEnv :: AbstractType -> CompilerEnv -> Module -> AbstractEnv
-abstractEnv absType env (Module mid exps _ decls) = AbstractEnv
+abstractEnv absType env (Module _ mid exps _ decls) = AbstractEnv
   { moduleId  = mid
   , typeEnv   = valueEnv env
   , tconsEnv  = tyConsEnv env

@@ -48,7 +48,7 @@ import CompilerOpts
 --   - overlapping case alternatives
 --   - non-adjacent function rules
 warnCheck :: Options -> ValueEnv -> TCEnv -> Module -> [Message]
-warnCheck opts valEnv tcEnv (Module mid es is ds)
+warnCheck opts valEnv tcEnv (Module _ mid es is ds)
   = runOn (initWcState mid valEnv tcEnv (optWarnFlags opts)) $ do
       checkExports   es
       checkImports   is

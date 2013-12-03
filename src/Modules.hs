@@ -112,7 +112,7 @@ checkModuleHeader opts fn = checkModuleId fn
 -- |Check whether the 'ModuleIdent' and the 'FilePath' fit together
 checkModuleId :: Monad m => FilePath -> CS.Module
               -> CYT m CS.Module
-checkModuleId fn m@(CS.Module mid _ _ _)
+checkModuleId fn m@(CS.Module _ mid _ _ _)
   | last (midQualifiers mid) == takeBaseName fn
   = right m
   | otherwise
@@ -124,7 +124,7 @@ checkModuleId fn m@(CS.Module mid _ _ _)
 -- the prelude is imported unqualified, otherwise a qualified import is added.
 
 importPrelude :: Options -> FilePath -> CS.Module -> CS.Module
-importPrelude opts fn m@(CS.Module mid es is ds)
+importPrelude opts fn m@(CS.Module ps mid es is ds)
     -- the Prelude itself
   | mid == preludeMIdent          = m
     -- disabled by compiler option
@@ -132,9 +132,10 @@ importPrelude opts fn m@(CS.Module mid es is ds)
     -- already imported
   | preludeMIdent `elem` imported = m
     -- let's add it!
-  | otherwise                     = CS.Module mid es (preludeImp : is) ds
+  | otherwise                     = CS.Module ps mid es (preludeImp : is) ds
   where
   noImpPrelude = NoImplicitPrelude `elem` optExtensions opts
+                 || m `CS.hasLanguageExtension` NoImplicitPrelude
   preludeImp   = CS.ImportDecl (first fn) preludeMIdent
                   False   -- qualified?
                   Nothing -- no alias

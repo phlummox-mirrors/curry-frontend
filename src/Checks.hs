@@ -42,8 +42,8 @@ interfaceCheck _ env intf
 --                 disambiguated
 -- * Environment:  remains unchanged
 kindCheck :: Monad m => Check m Module
-kindCheck _ env (Module m es is ds)
-  | null msgs = right (env, Module m es is ds')
+kindCheck _ env (Module ps m es is ds)
+  | null msgs = right (env, Module ps m es is ds')
   | otherwise = left msgs
   where (ds', msgs) = KC.kindCheck (moduleIdent env) (tyConsEnv env) ds
 
@@ -53,11 +53,10 @@ kindCheck _ env (Module m es is ds)
 --                 disambiguated, variables are renamed
 -- * Environment:  remains unchanged
 syntaxCheck :: Monad m => Check m Module
-syntaxCheck opts env (Module m es is ds)
-  | null msgs = right (env, Module m es is ds')
+syntaxCheck opts env mdl
+  | null msgs = right (env, mdl')
   | otherwise = left msgs
-  where (ds', msgs) = SC.syntaxCheck opts (moduleIdent env)
-                      (valueEnv env) (tyConsEnv env) ds
+  where (mdl', msgs) = SC.syntaxCheck opts (valueEnv env) (tyConsEnv env) mdl
 
 -- |Check the precedences of infix operators.
 --
@@ -65,8 +64,8 @@ syntaxCheck opts env (Module m es is ds)
 --                 precedences
 -- * Environment:  The operator precedence environment is updated
 precCheck :: Monad m => Check m Module
-precCheck _ env (Module m es is ds)
-  | null msgs = right (env { opPrecEnv = pEnv' }, Module m es is ds')
+precCheck _ env (Module ps m es is ds)
+  | null msgs = right (env { opPrecEnv = pEnv' }, Module ps m es is ds')
   | otherwise = left msgs
   where (ds', pEnv', msgs) = PC.precCheck (moduleIdent env) (opPrecEnv env) ds
 
@@ -74,7 +73,7 @@ precCheck _ env (Module m es is ds)
 -- The declarations remain unchanged; the type constructor and value
 -- environments are updated.
 typeCheck :: Monad m => Check m Module
-typeCheck _ env mdl@(Module _ _ _ ds)
+typeCheck _ env mdl@(Module _ _ _ _ ds)
   | null msgs = right (env { tyConsEnv = tcEnv', valueEnv = tyEnv' }, mdl)
   | otherwise = left msgs
   where (tcEnv', tyEnv', msgs) = TC.typeCheck (moduleIdent env)
@@ -82,8 +81,8 @@ typeCheck _ env mdl@(Module _ _ _ ds)
 
 -- |Check the export specification
 exportCheck :: Monad m => Check m Module
-exportCheck _ env (Module m es is ds)
-  | null msgs = right (env, Module m es' is ds)
+exportCheck _ env (Module ps m es is ds)
+  | null msgs = right (env, Module ps m es' is ds)
   | otherwise = left msgs
   where (es', msgs) = EC.exportCheck (moduleIdent env) (aliasEnv env)
                                      (tyConsEnv env) (valueEnv env) es

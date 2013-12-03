@@ -188,15 +188,15 @@ rights_sc es = [ x | Right x <- es]
 --- @param parse-Module
 --- @param Maybe betterParse-Module
 catIdentifiers' :: Module -> Maybe Module -> ([(ModuleIdent,ModuleIdent)],[Code])
-catIdentifiers' (Module mid maybeExportSpec is decls)
+catIdentifiers' (Module _ mid maybeExportSpec is decls)
                 Nothing =
       let impCodes = concatMap importDecl2codes (qsort lessImportDecl is)
           codes = (concatMap decl2codes (qsort lessDecl decls))
       in (concatMap renamedImports is,
       ModuleName mid :
        maybe [] exportSpec2codes maybeExportSpec ++ impCodes ++ codes)
-catIdentifiers' (Module mid maybeExportSpec1 _ _)
-                (Just (Module _ maybeExportSpec2 is decls)) =
+catIdentifiers' (Module _ mid maybeExportSpec1 _ _)
+                (Just (Module _ _ maybeExportSpec2 is decls)) =
       let impCodes = concatMap importDecl2codes (qsort lessImportDecl is)
           codes = (concatMap decl2codes (qsort lessDecl decls))
       in (concatMap renamedImports is,
@@ -648,18 +648,26 @@ showToken (Token Id_interface _) = "interface"
 showToken (Token Id_primitive _) = "primitive"
 showToken (Token Id_qualified _) = "qualified"
 showToken (Token EOF          _) = ""
+showToken (Token PragmaLanguage _) = "{-# LANGUAGE"
+showToken (Token PragmaOptions  a) = "{-# OPTIONS" ++ showAttr a
+showToken (Token PragmaEnd      _) = "#-}"
 showToken (Token LineComment   (StringAttributes sv _)) = sv
 showToken (Token LineComment   a                      ) = showAttr a
 showToken (Token NestedComment (StringAttributes sv _)) = sv
 showToken (Token NestedComment                       a) = showAttr a
 
 showAttr :: Attributes -> [Char]
-showAttr NoAttributes            = ""
-showAttr (CharAttributes   cv _) = showCharacter cv
-showAttr (IntAttributes    iv _) = show iv
-showAttr (FloatAttributes  fv _) = show fv
-showAttr (StringAttributes sv _) = showSt sv
-showAttr (IdentAttributes mid i) = intercalate "." $ mid ++ [i]
+showAttr NoAttributes             = ""
+showAttr (CharAttributes    cv _) = showCharacter cv
+showAttr (IntAttributes     iv _) = show iv
+showAttr (FloatAttributes   fv _) = show fv
+showAttr (StringAttributes  sv _) = showSt sv
+showAttr (IdentAttributes  mid i) = intercalate "." $ mid ++ [i]
+showAttr (OptionsAttributes mt s) = showTool mt ++ ' ' : s
+
+showTool :: Maybe String -> String
+showTool Nothing  = ""
+showTool (Just t) = '_' : t
 
 showCharacter :: Char -> [Char]
 showCharacter c

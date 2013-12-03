@@ -56,14 +56,13 @@ generated. Finally, all declarations are checked within the resulting
 environment. In addition, this process will also rename the local variables.
 \begin{verbatim}
 
-> syntaxCheck :: Options -> ModuleIdent -> ValueEnv -> TCEnv -> [Decl]
->             -> ([Decl], [Message])
-> syntaxCheck opts m tyEnv tcEnv decls =
+> syntaxCheck :: Options -> ValueEnv -> TCEnv -> Module -> (Module, [Message])
+> syntaxCheck opts tyEnv tcEnv mdl@(Module _ m _ _ ds) =
 >   case findMultiples $ concatMap constrs typeDecls of
->     []  -> runSC (checkModule decls) state
->     css -> (decls, map errMultipleDataConstructor css)
+>     []  -> runSC (checkModule mdl) state
+>     css -> (mdl, map errMultipleDataConstructor css)
 >   where
->     typeDecls  = filter isTypeDecl decls
+>     typeDecls  = filter isTypeDecl ds
 >     rEnv       = globalEnv $ fmap (renameInfo tcEnv) tyEnv
 >     state      = initState (optExtensions opts) m rEnv
 
@@ -80,16 +79,16 @@ renaming literals and underscore to disambiguate them.
 
 > -- |Internal state of the syntax check
 > data SCState = SCState
->   { extensions  :: [Extension] -- ^ Enabled language extensions
->   , moduleIdent :: ModuleIdent -- ^ 'ModuleIdent' of the current module
->   , renameEnv   :: RenameEnv   -- ^ Information store
->   , scopeId     :: Integer     -- ^ Identifier for the current scope
->   , nextId      :: Integer     -- ^ Next fresh identifier
->   , errors      :: [Message]   -- ^ Syntactic errors in the module
+>   { extensions  :: [KnownExtension] -- ^ Enabled language extensions
+>   , moduleIdent :: ModuleIdent      -- ^ 'ModuleIdent' of the current module
+>   , renameEnv   :: RenameEnv        -- ^ Information store
+>   , scopeId     :: Integer          -- ^ Identifier for the current scope
+>   , nextId      :: Integer          -- ^ Next fresh identifier
+>   , errors      :: [Message]        -- ^ Syntactic errors in the module
 >   }
 
 > -- |Initial syntax check state
-> initState :: [Extension] -> ModuleIdent -> RenameEnv -> SCState
+> initState :: [KnownExtension] -> ModuleIdent -> RenameEnv -> SCState
 > initState exts m rEnv = SCState exts m rEnv globalScopeId 1 []
 
 > -- |Identifier for global (top-level) declarations
@@ -101,12 +100,12 @@ renaming literals and underscore to disambiguate them.
 > runSC scm s = let (a, s') = S.runState scm s in (a, reverse $ errors s')
 
 > -- |Check for an enabled extension
-> hasExtension :: Extension -> SCM Bool
+> hasExtension :: KnownExtension -> SCM Bool
 > hasExtension ext = S.gets (elem ext . extensions)
 
 > -- |Enable an additional 'Extension' to avoid redundant complaints about
 > -- missing extensions
-> enableExtension :: Extension -> SCM ()
+> enableExtension :: KnownExtension -> SCM ()
 > enableExtension e = S.modify $ \ s -> s { extensions = e : extensions s }
 
 > -- |Retrieve the 'ModuleIdent' of the current module
@@ -316,12 +315,22 @@ a goal. Note that all declarations in the goal must be considered as
 local declarations.
 \begin{verbatim}
 
-> checkModule :: [Decl] -> SCM [Decl]
-> checkModule decls = do
+> checkModule :: Module -> SCM Module
+> checkModule (Module ps m es is decls) = do
+>   mapM_ checkPragma ps
 >   mapM_ bindTypeDecl (rds ++ dds)
->   liftM2 (++) (mapM checkTypeDecl tds) (checkTopDecls vds)
+>   decls' <- liftM2 (++) (mapM checkTypeDecl tds) (checkTopDecls vds)
+>   return $ Module ps m es is decls'
 >   where (tds, vds) = partition isTypeDecl decls
 >         (rds, dds) = partition isRecordDecl tds
+
+> checkPragma :: ModulePragma -> SCM ()
+> checkPragma (LanguagePragma _ exts) = mapM_ checkExtension exts
+> checkPragma (OptionsPragma  _  _ _) = ok
+
+> checkExtension :: Extension -> SCM ()
+> checkExtension (KnownExtension   _ e) = enableExtension e
+> checkExtension (UnknownExtension p e) = report $ errUnknownExtension p e
 
 > checkTypeDecl :: Decl -> SCM Decl
 > checkTypeDecl rec@(TypeDecl _ r _ (RecordType fs rty)) = do
@@ -980,22 +989,22 @@ Miscellaneous functions.
 \begin{verbatim}
 
 > checkFuncPatsExtension :: Position -> SCM ()
-> checkFuncPatsExtension p = checkExtension p
+> checkFuncPatsExtension p = checkUsedExtension p
 >   "Functional Patterns" FunctionalPatterns
 
 > checkRecordExtension :: Position -> SCM ()
-> checkRecordExtension p = checkExtension p "Records" Records
+> checkRecordExtension p = checkUsedExtension p "Records" Records
 
 > checkAnonFreeVarsExtension :: Position -> SCM ()
-> checkAnonFreeVarsExtension p = checkExtension p
+> checkAnonFreeVarsExtension p = checkUsedExtension p
 >   "Anonymous free variables" AnonFreeVars
 
-> checkExtension :: Position -> String -> Extension -> SCM ()
-> checkExtension pos msg ext = do
+> checkUsedExtension :: Position -> String -> KnownExtension -> SCM ()
+> checkUsedExtension pos msg ext = do
 >   enabled <- hasExtension ext
 >   unless enabled $ do
 >     report $ errMissingLanguageExtension pos msg ext
->     enableExtension ext
+>     enableExtension ext -- to avoid multiple warnings
 
 > typeArity :: TypeExpr -> Int
 > typeArity (ArrowType _ t2) = 1 + typeArity t2
@@ -1122,7 +1131,11 @@ Error messages.
 >   [ "Expexting", escName anonId, "after", escName (mkIdent "|")
 >   , "in the record pattern" ]
 
-> errMissingLanguageExtension :: Position -> String -> Extension -> Message
+> errUnknownExtension :: Position -> String -> Message
+> errUnknownExtension p e = posMessage p $
+>   text "Unknown language extension:" <+> text e
+
+> errMissingLanguageExtension :: Position -> String -> KnownExtension -> Message
 > errMissingLanguageExtension p what ext = posMessage p $
 >   text what <+> text "are not supported in standard Curry." $+$
 >   nest 2 (text "Use flag -e or -X" <> text (show ext)

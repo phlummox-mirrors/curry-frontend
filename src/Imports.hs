@@ -45,14 +45,15 @@ import CompilerOpts
 -- |The function 'importModules' brings the declarations of all
 -- imported interfaces into scope for the current module.
 importModules :: Monad m => Options -> Module -> InterfaceEnv -> CYT m CompilerEnv
-importModules opts (Module mid _ imps _) iEnv
+importModules opts mdl@(Module _ mid _ imps _) iEnv
   = case foldl importModule (initEnv, []) imps of
       (e, []  ) -> right $ expandTCValueEnv opts $ importUnifyData e
       (_, errs) -> left errs
   where
     initEnv = (initCompilerEnv mid)
-      { aliasEnv     = importAliases     imps -- import module aliases
-      , interfaceEnv = iEnv                   -- imported interfaces
+      { aliasEnv     = importAliases imps -- import module aliases
+      , interfaceEnv = iEnv               -- imported interfaces
+      , extensions   = knownExtensions mdl
       }
     importModule (env, msgs) (ImportDecl _ m q asM is) =
       case Map.lookup m iEnv of
@@ -73,7 +74,6 @@ importInterfaces opts (Interface m is _) iEnv
         Just intf -> importInterfaceIntf intf env
         Nothing   -> internalError $ "Imports.importInterfaces: no interface for "
                                     ++ show m
-
 
 -- ---------------------------------------------------------------------------
 -- Importing an interface into the module
@@ -497,7 +497,7 @@ expandTCValueEnv opts env
   | enabled   = env' { tyConsEnv = tcEnv' }
   | otherwise = env
   where
-  enabled = Records `elem` optExtensions opts
+  enabled = Records `elem` (optExtensions opts ++ extensions env)
   tcEnv'  = fmap (expandRecordTC tcEnv) tcEnv
   tcEnv   = tyConsEnv env'
   env'    = expandValueEnv opts env
@@ -520,11 +520,11 @@ expandValueEnv opts env
   | enabled   = env { valueEnv = tyEnv' }
   | otherwise = env
   where
-  tcEnv    = tyConsEnv env
-  tyEnv    = valueEnv env
-  enabled  = Records `elem` optExtensions opts
-  tyEnv'   = fmap (expandRecordTypes tcEnv) $ addImportedLabels m tyEnv
-  m        = moduleIdent env
+  tcEnv   = tyConsEnv env
+  tyEnv   = valueEnv env
+  enabled = Records `elem` (optExtensions opts ++ extensions env)
+  tyEnv'  = fmap (expandRecordTypes tcEnv) $ addImportedLabels m tyEnv
+  m       = moduleIdent env
 
 -- TODO: This is necessary as currently labels are unqualified.
 -- Without this additional import the labels would no longer be known.

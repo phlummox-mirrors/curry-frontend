@@ -55,14 +55,14 @@ exportInterface env mdl = exportInterface' mdl
   (opPrecEnv env) (tyConsEnv env) (valueEnv env)
 
 exportInterface' :: Module -> OpPrecEnv -> TCEnv -> ValueEnv -> Interface
-exportInterface' (Module m (Just (Exporting _ es)) _ _) pEnv tcEnv tyEnv
+exportInterface' (Module _ m (Just (Exporting _ es)) _ _) pEnv tcEnv tyEnv
   = Interface m imports $ precs ++ hidden ++ decls
   where
   imports = map   (IImportDecl NoPos) $ usedModules decls
   precs   = foldr (infixDecl m pEnv) [] es
   hidden  = map   (hiddenTypeDecl m tcEnv) $ hiddenTypes m decls
   decls   = foldr (typeDecl m tcEnv) (foldr (funDecl m tyEnv) [] es) es
-exportInterface' (Module _ Nothing _ _) _ _ _
+exportInterface' (Module _ _ Nothing _ _) _ _ _
   = internalError "Exports.exportInterface: no export specification"
 
 infixDecl :: ModuleIdent -> OpPrecEnv -> Export -> [IDecl] -> [IDecl]
