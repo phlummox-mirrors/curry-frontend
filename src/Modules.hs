@@ -18,11 +18,17 @@ module Modules
   ( compileModule, loadModule, checkModuleHeader, checkModule, writeOutput
   ) where
 
-import qualified Control.Exception as C (catch, IOException)
-import           Control.Monad   (unless, when)
-import qualified Data.Map as Map (elems)
-import           Data.Maybe      (fromMaybe)
-import           System.IO       (hClose, hGetContents, openFile, IOMode (ReadMode))
+import qualified Control.Exception as C   (catch, IOException)
+import           Control.Monad            (liftM, unless, when)
+import qualified Data.Map          as Map (elems)
+import           Data.Maybe               (fromMaybe)
+import           System.Directory         (getTemporaryDirectory, removeFile)
+import           System.Exit              (ExitCode (..))
+import           System.FilePath          (normalise)
+import           System.IO
+   (IOMode (ReadMode), Handle, hClose, hGetContents, hPutStr, openFile
+  , openTempFile)
+import           System.Process           (system)
 
 import Curry.Base.Ident
 import Curry.Base.Message (runMsg)
@@ -82,7 +88,7 @@ compileModule opts fn = do
 
 loadModule :: Options -> FilePath -> CYIO (CompilerEnv, CS.Module)
 loadModule opts fn = do
-  parsed <- parseModule fn
+  parsed <- parseModule opts fn
   -- check module header
   mdl    <- checkModuleHeader opts fn parsed
   -- load the imported interfaces into an InterfaceEnv
@@ -92,16 +98,46 @@ loadModule opts fn = do
   cEnv   <- importModules opts mdl iEnv
   return (cEnv, mdl)
 
-parseModule :: FilePath -> CYIO CS.Module
-parseModule fn = do
+parseModule :: Options -> FilePath -> CYIO CS.Module
+parseModule opts fn = do
   mbSrc <- liftIO $ readModule fn
   case mbSrc of
     Nothing  -> left [message $ text $ "Missing file: " ++ fn]
     Just src -> do
-      -- parse module
-      case runMsg (CS.parseModule fn src) of
-        Left  err         -> left [err]
-        Right (parsed, _) -> right parsed
+      case runMsg (CS.unlit fn src) of
+        Left err      -> left [err]
+        Right (ul, _) -> do
+        prepd <- preprocess (optPrepOpts opts) fn ul
+        -- parse module
+        case runMsg (CS.parseModule fn prepd) of
+          Left  err         -> left [err]
+          Right (parsed, _) -> right parsed
+
+preprocess :: PrepOpts -> FilePath -> String -> CYIO String
+preprocess opts fn src
+  | not (ppPreprocess opts) = return src
+  | otherwise               = do
+    res <- liftIO $ withTempFile $ \ inFn inHdl -> do
+      hPutStr inHdl src
+      hClose inHdl
+      withTempFile $ \ outFn outHdl -> do
+        hClose outHdl
+        ec <- system $ unwords $
+          [ppCmd opts, normalise fn, inFn, outFn] ++ ppOpts opts
+        case ec of
+          ExitFailure x -> return $ Left [message $ text $
+              "Preprocessor exited with exit code " ++ show x]
+          ExitSuccess   -> Right `liftM` readFile outFn
+    either left right res
+
+withTempFile :: (FilePath -> Handle -> IO a) -> IO a
+withTempFile act = do
+  tmp       <- getTemporaryDirectory
+  (fn, hdl) <- openTempFile tmp "cymake.curry"
+  res       <- act fn hdl
+  hClose hdl
+  removeFile fn
+  return res
 
 checkModuleHeader :: Monad m => Options -> FilePath -> CS.Module
                   -> CYT m CS.Module
