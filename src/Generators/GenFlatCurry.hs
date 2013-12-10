@@ -40,7 +40,7 @@ import Env.TypeConstructor (TCEnv, TypeInfo (..), qualLookupTC)
 import Env.Value (ValueEnv, ValueInfo (..), lookupValue, qualLookupValue)
 
 -- other
-import CompilerOpts (Options (..), WarnFlag (..))
+import CompilerOpts (Options (..), WarnOpts (..), WarnFlag (..))
 import qualified IL as IL
 import qualified ModuleSummary
 import Transformations (transType)
@@ -765,8 +765,8 @@ flattenRecordTypeFields = concatMap (\ (ls, ty) -> map (\l -> (l, ty)) ls)
 --
 checkOverlapping :: Expr -> Expr -> FlatState ()
 checkOverlapping e1 e2 = do
-  opts <- compilerOpts
-  when (WarnOverlapping `elem` optWarnFlags opts) $ checkOverlap e1 e2
+  warnOpts <- optWarnOpts `liftM` compilerOpts
+  when (WarnOverlapping `elem` wnWarnFlags warnOpts) $ checkOverlap e1 e2
   where
   checkOverlap (Case _ _ _ _) _ = functionId >>= genWarning . overlappingRules
   checkOverlap _ (Case _ _ _ _) = functionId >>= genWarning . overlappingRules

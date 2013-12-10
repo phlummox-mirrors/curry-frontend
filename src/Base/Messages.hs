@@ -17,7 +17,7 @@ import System.IO     (hPutStrLn, stderr)
 import System.Exit   (exitFailure)
 
 import Curry.Base.Message hiding (warn)
-import CompilerOpts (Options (..), Verbosity (..))
+import CompilerOpts (Options (..), WarnOpts (..), Verbosity (..))
 
 type CYT m a = EitherT [Message] m a
 
@@ -36,10 +36,10 @@ info opts msg = unless (optVerbosity opts < VerbInfo) (putMsg msg)
 status :: MonadIO m => Options -> String -> m ()
 status opts msg = unless (optVerbosity opts < VerbStatus) (putMsg msg)
 
-warn :: MonadIO m => Options -> [Message] -> m ()
-warn opts msgs = when (optWarn opts && not (null msgs)) $ do
+warn :: MonadIO m => WarnOpts -> [Message] -> m ()
+warn opts msgs = when (wnWarn opts && not (null msgs)) $ do
   liftIO $ putErrLn (show $ ppMessages ppWarning $ sort msgs)
-  when (optWarnAsError opts) $ liftIO $ do
+  when (wnWarnAsError opts) $ liftIO $ do
     putErrLn "Failed due to -Werror"
     exitFailure
 
