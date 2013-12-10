@@ -243,13 +243,16 @@ type OptErr = (Options, [String])
 
 -- |An 'OptErrTable' consists of a list of entries of the following form:
 --   * a flag to be recognized on the command line
---   * an explanatino text for the usage information
+--   * an explanation text for the usage information
 --   * a modification funtion adjusting the options structure
 -- The type is parametric about the option's type to adjust.
 type OptErrTable opt = [(String, String, opt -> opt)]
 
 onOpts :: (Options -> Options) -> OptErr -> OptErr
 onOpts f (opts, errs) = (f opts, errs)
+
+onPrepOpts :: (PrepOpts -> PrepOpts) -> OptErr -> OptErr
+onPrepOpts f (opts, errs) = (opts { optPrepOpts = f (optPrepOpts opts) }, errs)
 
 onWarnOpts :: (WarnOpts -> WarnOpts) -> OptErr -> OptErr
 onWarnOpts f (opts, errs) = (opts { optWarnOpts = f (optWarnOpts opts) }, errs)
@@ -258,8 +261,9 @@ onDebugOpts :: (DebugOpts -> DebugOpts) -> OptErr -> OptErr
 onDebugOpts f (opts, errs)
   = (opts { optDebugOpts = f (optDebugOpts opts) }, errs)
 
-onOptsArg :: (String -> Options -> Options) -> String -> OptErr -> OptErr
-onOptsArg f arg (opts, errs) = (f arg opts, errs)
+withArg :: ((opt -> opt) -> OptErr -> OptErr)
+        -> (String -> opt -> opt) -> String -> OptErr -> OptErr
+withArg lift f arg = lift (f arg)
 
 addErr :: String -> OptErr -> OptErr
 addErr err (opts, errs) = (opts, errs ++ [err])
@@ -316,11 +320,11 @@ options =
       (NoArg (onOpts $ \ opts -> opts { optForce = True }))
       "force compilation of target file"
   , Option "P"  ["lib-dir"]
-      (ReqArg (onOptsArg $ \ arg opts -> opts { optLibraryPaths =
+      (ReqArg (withArg onOpts $ \ arg opts -> opts { optLibraryPaths =
         nub $ optLibraryPaths opts ++ splitSearchPath arg}) "dir[:dir]")
       "search for libraries in dir[:dir]"
   , Option "i"  ["import-dir"]
-      (ReqArg (onOptsArg $ \ arg opts -> opts { optImportPaths =
+      (ReqArg (withArg onOpts $ \ arg opts -> opts { optImportPaths =
         nub $ optImportPaths opts ++ splitSearchPath arg}) "dir[:dir]")
       "search for imports in dir[:dir]"
   , Option ""   ["no-subdir"]
@@ -362,6 +366,17 @@ options =
       (NoArg (onOpts $ \ opts -> opts { optTargetTypes =
         nub $ UntypedAbstractCurry : optTargetTypes opts }))
       "generate untyped AbstractCurry code"
+  , Option "F"  []
+      (NoArg (onPrepOpts $ \ opts -> opts { ppPreprocess = True }))
+      "use custom preprocessor"
+  , Option ""   ["pgmF"]
+      (ReqArg (withArg onPrepOpts $ \ arg opts -> opts { ppCmd = arg})
+        "cmd")
+      "execute preprocessor command <cmd>"
+  , Option ""   ["optF"]
+      (ReqArg (withArg onPrepOpts $ \ arg opts ->
+        opts { ppOpts = ppOpts opts ++ [arg]}) "option")
+      "execute preprocessor with option <option>"
   -- extensions
   , Option "e"  ["extended"]
       (NoArg (onOpts $ \ opts -> opts { optExtensions =
