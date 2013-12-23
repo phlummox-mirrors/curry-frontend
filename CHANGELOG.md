@@ -1,8 +1,8 @@
 Change log for curry-frontend
 =============================
 
-Version 0.3.9 (under development)
-=================================
+Version 0.3.9
+=============
 
   * Implementation of module pragmas added. Module pragmas of the following
     types are now parsed and represented in the abstract syntax tree:
