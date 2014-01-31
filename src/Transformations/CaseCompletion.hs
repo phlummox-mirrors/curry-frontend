@@ -1,11 +1,31 @@
-{- |CaseCompletion - expands case branches with missing constructors
+{- |
+    Module      :  $Header$
+    Description :  CaseCompletion
+    Copyright   :  (c) 2005       , Martin Engelke
+                       2011 - 2014, Björn Peemöller
+    License     :  OtherLicense
 
-    The MMC translates case expressions into the intermediate language
+    Maintainer  :  bjp@informatik.uni-kiel.de
+    Stability   :  experimental
+    Portability :  non-portable (DeriveDataTypeable)
+
+    This module expands case branches with missing constructors.
+
+    The MCC translates case expressions into the intermediate language
     representation (IL) without completing them (i.e. without generating
-    case branches for missing contructors). Because they are necessary for
-    the PAKCS back end, this module expands all case expressions accordingly.
+    case branches for missing contructors), because the intermediate language
+    supports variable patterns.
+    In contrast, the FlatCurry representation of patterns only allows
+    literal and constructor patterns, which requires the expansion of
+    missing or default branches to all missing constructors.
 
-    May 2005, Martin Engelke, (men@informatik.uni-kiel.de)
+    This is only necessary for *rigid* case expressions, because any
+    *flexible* case expression with more than one branch and a variable
+    pattern is non-deterministic. In consequence, these overlapping patterns
+    have already been eliminated in the pattern matching compilation
+    process (see module CurryToIL).
+
+    To summarize, this module expands all rigid case expressions.
 -}
 module Transformations.CaseCompletion (completeCase) where
 
@@ -30,6 +50,10 @@ completeCase :: InterfaceEnv -> Module -> Module
 completeCase iEnv mdl@(Module mid is ds) = Module mid is ds'
  where ds'= S.evalState (mapM (withLocalEnv . ccDecl) ds)
                         (CCState mdl iEnv (getModuleScope mdl))
+
+-- -----------------------------------------------------------------------------
+-- Internally used state monad
+-- -----------------------------------------------------------------------------
 
 data CCState = CCState
   { modul        :: Module
@@ -61,7 +85,9 @@ withLocalEnv act = do
 inNestedScope :: CCM a -> CCM a
 inNestedScope act = modifyScopeEnv SE.beginScope >> act
 
+-- -----------------------------------------------------------------------------
 -- The following functions traverse an IL term searching for case expressions
+-- -----------------------------------------------------------------------------
 
 ccDecl :: Decl -> CCM Decl
 ccDecl dd@(DataDecl        _ _ _) = return dd
