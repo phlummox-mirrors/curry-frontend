@@ -449,12 +449,13 @@ importUnifyData' tcEnv = fmap (setInfo allTyCons) tcEnv
 
 -- |
 qualifyEnv :: Options -> CompilerEnv -> CompilerEnv
-qualifyEnv opts env = expandValueEnv opts
+qualifyEnv opts env = expandValueEnv opts'
                     $ qualifyLocal env
                     $ foldl (flip importInterfaceIntf) initEnv
                     $ Map.elems
                     $ interfaceEnv env
   where initEnv = initCompilerEnv $ moduleIdent env
+        opts' = opts { optExtensions = Records : optExtensions opts }
 
 qualifyLocal :: CompilerEnv -> CompilerEnv -> CompilerEnv
 qualifyLocal currentEnv initEnv = currentEnv
