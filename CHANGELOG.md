@@ -4,6 +4,32 @@ Change log for curry-frontend
 Version 0.3.10 (under development)
 ==================================
 
+  * Implemented support for custom preprocessors. It is now possible to run
+    a custom preprocessor command via the following options:
+
+    * `-F` enables support for a preprocessor
+    * `-pgmF <cmd>` set the preprocessor command to `<cmd>`
+    * `-optF <arg>` adds an additional argument to the preprocessor command
+      (can be repeated to add multiple arguments)
+
+    The preprocessor is applied to all source files which are (re)compiled
+    after unliterating *and after determining the import list*.
+    Consequently, adding modules via the preprocessor will results in
+    compilation errors due to missing imports.
+    On the other hand, the frontend will automatically determine changed
+    files which are then handed to the preprocessor.
+
+    The command is called with at least three arguments:
+
+     #. The (normalised) file name of the source file currently processed.
+        **This name is intended only for reference.**
+     #. The name of the file containing the (potentially unliterated)
+        contents of the original file.
+        **This is the file the preprocessor should read from.**
+     #. The name of the file where the preprocessed source code should go to.
+        **This is the file the preprocessor should write to.**
+     #. Optionally, any additional arguments specified using `-optF`.
+
 Version 0.3.9
 =============
 
