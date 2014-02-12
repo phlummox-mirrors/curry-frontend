@@ -26,7 +26,8 @@ import Curry.Files.PathUtils
 
 import Base.Messages
 
-import CompilerOpts (Options (..), TargetType (..))
+import CompilerOpts ( Options (..), DebugOpts (..), TargetType (..)
+                    , defaultDebugOpts)
 import CurryDeps    (Source (..), flatDeps)
 import Modules      (compileModule)
 
@@ -78,7 +79,8 @@ makeCurry opts srcs targetFile = mapM_ (process . snd) srcs
   process :: Source -> CYIO ()
   process (Source fn deps) = do
     let isFinalFile = dropExtension targetFile == dropExtension fn
-        isEnforced  = optForce opts || (not $ null $ optDumps opts)
+        isDump      = not $ null $ dbDumpLevels $ optDebugOpts opts
+        isEnforced  = optForce opts || isDump
 
         destFiles   = if isFinalFile then destNames fn else [getFlatName fn]
         depFiles    = fn : mapMaybe curryInterface deps
@@ -98,7 +100,8 @@ makeCurry opts srcs targetFile = mapM_ (process . snd) srcs
 
   compile f = do
     status opts $ "compiling " ++ normalise f
-    compileModule (opts { optTargetTypes = [FlatCurry], optDumps = [] }) f
+    compileModule (opts { optTargetTypes = [FlatCurry]
+                        , optDebugOpts = defaultDebugOpts }) f
 
   skipFinal f = status opts $ "skipping " ++ normalise f
   skip      f = info   opts $ "skipping " ++ normalise f

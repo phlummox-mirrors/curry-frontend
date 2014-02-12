@@ -18,11 +18,17 @@ module Modules
   ( compileModule, loadModule, checkModuleHeader, checkModule, writeOutput
   ) where
 
-import qualified Control.Exception as C (catch, IOException)
-import           Control.Monad   (unless, when)
-import qualified Data.Map as Map (elems)
-import           Data.Maybe      (fromMaybe)
-import           System.IO       (hClose, hGetContents, openFile, IOMode (ReadMode))
+import qualified Control.Exception as C   (catch, IOException)
+import           Control.Monad            (liftM, unless, when)
+import qualified Data.Map          as Map (elems)
+import           Data.Maybe               (fromMaybe)
+import           System.Directory         (getTemporaryDirectory, removeFile)
+import           System.Exit              (ExitCode (..))
+import           System.FilePath          (normalise)
+import           System.IO
+   (IOMode (ReadMode), Handle, hClose, hGetContents, hPutStr, openFile
+  , openTempFile)
+import           System.Process           (system)
 
 import Curry.Base.Ident
 import Curry.Base.Message (runMsg)
@@ -73,7 +79,7 @@ import Transformations
 compileModule :: Options -> FilePath -> CYIO ()
 compileModule opts fn = do
   (env, mdl) <- loadModule opts fn >>= checkModule opts
-  warn opts $ warnCheck opts env mdl
+  warn (optWarnOpts opts) $ warnCheck opts env mdl
   liftIO $ writeOutput opts fn (env, mdl)
 
 -- ---------------------------------------------------------------------------
@@ -82,7 +88,7 @@ compileModule opts fn = do
 
 loadModule :: Options -> FilePath -> CYIO (CompilerEnv, CS.Module)
 loadModule opts fn = do
-  parsed <- parseModule fn
+  parsed <- parseModule opts fn
   -- check module header
   mdl    <- checkModuleHeader opts fn parsed
   -- load the imported interfaces into an InterfaceEnv
@@ -92,16 +98,46 @@ loadModule opts fn = do
   cEnv   <- importModules opts mdl iEnv
   return (cEnv, mdl)
 
-parseModule :: FilePath -> CYIO CS.Module
-parseModule fn = do
+parseModule :: Options -> FilePath -> CYIO CS.Module
+parseModule opts fn = do
   mbSrc <- liftIO $ readModule fn
   case mbSrc of
     Nothing  -> left [message $ text $ "Missing file: " ++ fn]
     Just src -> do
-      -- parse module
-      case runMsg (CS.parseModule fn src) of
-        Left  err         -> left [err]
-        Right (parsed, _) -> right parsed
+      case runMsg (CS.unlit fn src) of
+        Left err      -> left [err]
+        Right (ul, _) -> do
+        prepd <- preprocess (optPrepOpts opts) fn ul
+        -- parse module
+        case runMsg (CS.parseModule fn prepd) of
+          Left  err         -> left [err]
+          Right (parsed, _) -> right parsed
+
+preprocess :: PrepOpts -> FilePath -> String -> CYIO String
+preprocess opts fn src
+  | not (ppPreprocess opts) = return src
+  | otherwise               = do
+    res <- liftIO $ withTempFile $ \ inFn inHdl -> do
+      hPutStr inHdl src
+      hClose inHdl
+      withTempFile $ \ outFn outHdl -> do
+        hClose outHdl
+        ec <- system $ unwords $
+          [ppCmd opts, normalise fn, inFn, outFn] ++ ppOpts opts
+        case ec of
+          ExitFailure x -> return $ Left [message $ text $
+              "Preprocessor exited with exit code " ++ show x]
+          ExitSuccess   -> Right `liftM` readFile outFn
+    either left right res
+
+withTempFile :: (FilePath -> Handle -> IO a) -> IO a
+withTempFile act = do
+  tmp       <- getTemporaryDirectory
+  (fn, hdl) <- openTempFile tmp "cymake.curry"
+  res       <- act fn hdl
+  hClose hdl
+  removeFile fn
+  return res
 
 checkModuleHeader :: Monad m => Options -> FilePath -> CS.Module
                   -> CYT m CS.Module
@@ -160,19 +196,20 @@ checkInterfaces opts iEnv = mapM_ checkInterface (Map.elems iEnv)
 checkModule :: Options -> (CompilerEnv, CS.Module)
             -> CYIO (CompilerEnv, CS.Module)
 checkModule opts (env, mdl) = do
-  doDump opts (DumpParsed       , env , show $ CS.ppModule mdl)
+  doDump debugOpts (DumpParsed       , env , show $ CS.ppModule mdl)
   (env1, kc) <- kindCheck   opts env mdl -- should be only syntax checking ?
-  doDump opts (DumpKindChecked  , env1, show $ CS.ppModule kc)
+  doDump debugOpts (DumpKindChecked  , env1, show $ CS.ppModule kc)
   (env2, sc) <- syntaxCheck opts env1 kc
-  doDump opts (DumpSyntaxChecked, env2, show $ CS.ppModule sc)
+  doDump debugOpts (DumpSyntaxChecked, env2, show $ CS.ppModule sc)
   (env3, pc) <- precCheck   opts env2 sc
-  doDump opts (DumpPrecChecked  , env3, show $ CS.ppModule pc)
+  doDump debugOpts (DumpPrecChecked  , env3, show $ CS.ppModule pc)
   (env4, tc) <- if withTypeCheck
                    then typeCheck opts env3 pc >>= uncurry (exportCheck opts)
                    else return (env3, pc)
-  doDump opts (DumpTypeChecked  , env4, show $ CS.ppModule tc)
+  doDump debugOpts (DumpTypeChecked  , env4, show $ CS.ppModule tc)
   return (env4, tc)
   where
+  debugOpts = optDebugOpts opts
   withTypeCheck = any (`elem` optTargetTypes opts)
                       [FlatCurry, ExtendedFlatCurry, FlatXml, AbstractCurry]
 
@@ -199,8 +236,9 @@ transModule opts env mdl = (env5, ilCaseComp, dumps)
           , (DumpTranslated   , env4, presentIL il        )
           , (DumpCaseCompleted, env5, presentIL ilCaseComp)
           ]
-  presentCS = if optDumpRaw opts then show else show . CS.ppModule
-  presentIL = if optDumpRaw opts then show else show . IL.ppModule
+  presentCS = if dumpRaw then show else show . CS.ppModule
+  presentIL = if dumpRaw then show else show . IL.ppModule
+  dumpRaw   = dbDumpRaw (optDebugOpts opts)
 
 -- ---------------------------------------------------------------------------
 -- Writing output
@@ -210,7 +248,7 @@ writeOutput :: Options -> FilePath -> (CompilerEnv, CS.Module) -> IO ()
 writeOutput opts fn (env, modul) = do
   writeParsed opts fn modul
   let (env1, qlfd) = qual opts env modul
-  doDump opts (DumpQualified, env1, show $ CS.ppModule qlfd)
+  doDump (optDebugOpts opts) (DumpQualified, env1, show $ CS.ppModule qlfd)
   writeAbstractCurry opts fn env1 qlfd
   when withFlat $ do
     -- checkModule checks types, and then transModule introduces new
@@ -218,7 +256,7 @@ writeOutput opts fn (env, modul) = do
     -- types of the newly introduced functions are not inferred (hsi)
     let (env2, il, dumps) = transModule opts env1 qlfd
     -- dump intermediate results
-    mapM_ (doDump opts) dumps
+    mapM_ (doDump (optDebugOpts opts)) dumps
     -- generate interface file
     let intf = exportInterface env2 qlfd
     writeInterface opts fn intf
@@ -283,7 +321,7 @@ writeFlat opts fn env modSum il = do
 writeFlatCurry :: Options -> FilePath -> CompilerEnv -> ModuleSummary
                -> IL.Module -> IO ()
 writeFlatCurry opts fn env modSum il = do
-  warn opts msgs
+  warn (optWarnOpts opts) msgs
   when extTarget $ EF.writeExtendedFlat useSubDir (extFlatName fn) prog
   when fcyTarget $ EF.writeFlatCurry    useSubDir (flatName    fn) prog
   where
@@ -314,7 +352,7 @@ writeFlatIntf opts fn env modSum il
   emptyIntf = EF.Prog "" [] [] [] []
   (newInterface, intMsgs) = genFlatInterface opts modSum env il
   outputInterface = do
-    warn opts intMsgs
+    warn (optWarnOpts opts) intMsgs
     EF.writeFlatCurry (optUseSubdir opts) targetFile newInterface
 
 writeAbstractCurry :: Options -> FilePath -> CompilerEnv -> CS.Module -> IO ()
@@ -329,9 +367,9 @@ writeAbstractCurry opts fname env modul = do
   useSubDir  = optUseSubdir opts
 
 -- |The 'dump' function writes the selected information to standard output.
-doDump :: MonadIO m => Options -> Dump -> m ()
-doDump opts (level, env, dump) = when (level `elem` optDumps opts) $ do
-  when (optDumpEnv opts) $ liftIO $ putStrLn $ showCompilerEnv env
+doDump :: MonadIO m => DebugOpts -> Dump -> m ()
+doDump opts (level, env, dump) = when (level `elem` dbDumpLevels opts) $ do
+  when (dbDumpEnv opts) $ liftIO $ putStrLn $ showCompilerEnv env
   liftIO $ putStrLn $ unlines [header, replicate (length header) '=', dump]
   where
   header = lookupHeader dumpLevel
