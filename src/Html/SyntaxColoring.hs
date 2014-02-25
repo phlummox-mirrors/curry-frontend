@@ -13,7 +13,7 @@ import Debug.Trace (trace)
 import Curry.Base.Ident
 import Curry.Base.Position
 import Curry.Base.Message
-import Curry.Syntax
+import Curry.Syntax hiding (isFunctionDecl)
 
 import Base.Messages
 

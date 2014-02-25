@@ -47,7 +47,7 @@ an unlimited range of integer constants in Curry programs.
 >   , Binding (..)
 >   ) where
 
-> import Data.Generics (Data(..), Typeable(..))
+> import Data.Generics       (Data, Typeable)
 
 > import Curry.Base.Ident
 > import Curry.Base.Position (SrcRef(..), SrcRefOf (..))

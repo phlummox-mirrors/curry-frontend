@@ -469,8 +469,8 @@ qualifyLocal currentEnv initEnv = currentEnv
     tyEnv = valueEnv  initEnv
     bindQual   (_, y) = qualBindTopEnv "Imports.qualifyEnv" (origName y) y
     bindGlobal (x, y)
-      | idUnique x == 0 = bindQual (x, y)
-      | otherwise       = bindTopEnv "Imports.qualifyEnv" x y
+      | hasGlobalScope x = bindQual (x, y)
+      | otherwise        = bindTopEnv "Imports.qualifyEnv" x y
 
 -- Importing an interface into another interface is somewhat simpler
 -- because all entities are imported into the environment. In addition,

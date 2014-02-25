@@ -3,7 +3,7 @@
     Description :  Proper Qualification
     Copyright   :  (c) 2001 - 2004 Wolfgang Lux
                        2005        Martin Engelke
-                       2011 - 2012 Björn Peemöller
+                       2011 - 2014 Björn Peemöller
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
@@ -25,6 +25,8 @@ module Transformations.Qual (qual) where
 
 import           Control.Monad             (liftM, liftM2, liftM3)
 import qualified Control.Monad.Reader as R (Reader, asks, runReader)
+import           Data.Traversable
+import           Prelude hiding            (mapM)
 
 import Curry.Base.Ident
 import Curry.Syntax
@@ -54,9 +56,8 @@ qDecl (TypeSig         p fs ty) = TypeSig p fs    `liftM` qTypeExpr ty
 qDecl (FunctionDecl    p f eqs) = FunctionDecl p f `liftM` mapM qEquation eqs
 qDecl (ForeignDecl  p c x n ty) = ForeignDecl p c x n `liftM` qTypeExpr ty
 qDecl e@(ExternalDecl      _ _) = return e
-qDecl (PatternDecl     p t rhs)
-  = liftM2 (PatternDecl p) (qPattern t) (qRhs rhs)
-qDecl vs@(FreeDecl   _ _) = return vs
+qDecl (PatternDecl     p t rhs) = liftM2 (PatternDecl p) (qPattern t) (qRhs rhs)
+qDecl vs@(FreeDecl         _ _) = return vs
 
 qConstrDecl :: Qual ConstrDecl
 qConstrDecl (ConstrDecl     p vs n tys)
@@ -77,11 +78,8 @@ qTypeExpr (ListType           ty) = ListType `liftM` qTypeExpr ty
 qTypeExpr (ArrowType     ty1 ty2)
   = liftM2 ArrowType (qTypeExpr ty1) (qTypeExpr ty2)
 qTypeExpr (RecordType     fs rty)
-  = liftM2 RecordType (mapM qFieldType fs) (qRecordType rty)
-  where
-  qFieldType (ls, ty)  = (\ ty' -> (ls, ty')) `liftM` qTypeExpr ty
-  qRecordType Nothing  = return Nothing
-  qRecordType (Just v) = Just `liftM` qTypeExpr v
+  = liftM2 RecordType (mapM qFieldType fs) (mapM qTypeExpr rty)
+  where qFieldType (ls, ty)  = (\ ty' -> (ls, ty')) `liftM` qTypeExpr ty
 
 qEquation :: Qual Equation
 qEquation (Equation p lhs rhs) = liftM2 (Equation p) (qLhs lhs) (qRhs rhs)
@@ -99,7 +97,7 @@ qPattern (ConstructorPattern   c ts)
   = liftM2 ConstructorPattern (qIdent c) (mapM qPattern ts)
 qPattern (InfixPattern     t1 op t2)
   = liftM3 InfixPattern (qPattern t1) (qIdent op) (qPattern t2)
-qPattern (ParenPattern            t) = ParenPattern `liftM` qPattern t
+qPattern (ParenPattern            t) = ParenPattern   `liftM` qPattern t
 qPattern (TuplePattern         p ts) = TuplePattern p `liftM` mapM qPattern ts
 qPattern (ListPattern          p ts) = ListPattern  p `liftM` mapM qPattern ts
 qPattern (AsPattern             v t) = AsPattern    v `liftM` qPattern t
@@ -109,17 +107,14 @@ qPattern (FunctionPattern      f ts)
 qPattern (InfixFuncPattern t1 op t2)
   = liftM3 InfixFuncPattern (qPattern t1) (qIdent op) (qPattern t2)
 qPattern (RecordPattern       fs rt)
-  = liftM2 RecordPattern (mapM qFieldPattern fs) (qRecordTerm rt)
-  where qRecordTerm Nothing  = return Nothing
-        qRecordTerm (Just v) = Just `liftM` qPattern v
+  = liftM2 RecordPattern (mapM qFieldPattern fs) (mapM qPattern rt)
 
 qFieldPattern :: Qual (Field Pattern)
 qFieldPattern (Field p l t) = Field p l `liftM` qPattern t
 
 qRhs :: Qual Rhs
 qRhs (SimpleRhs p e ds) = liftM2 (SimpleRhs p) (qExpr e) (mapM qDecl ds)
-qRhs (GuardedRhs es ds)
-  = liftM2 GuardedRhs (mapM qCondExpr es) (mapM qDecl ds)
+qRhs (GuardedRhs es ds) = liftM2 GuardedRhs (mapM qCondExpr es) (mapM qDecl ds)
 
 qCondExpr :: Qual CondExpr
 qCondExpr (CondExpr p g e) = liftM2 (CondExpr p) (qExpr g) (qExpr e)
@@ -173,17 +168,19 @@ qInfixOp (InfixOp     op) = InfixOp     `liftM` qIdent op
 qInfixOp (InfixConstr op) = InfixConstr `liftM` qIdent op
 
 qIdent :: Qual QualIdent
-qIdent x = do
-  m     <- R.asks moduleIdent
-  tyEnv <- R.asks valueEnv
-  return $ case isQualified x || hasGlobalScope (unqualify x) of
-    False -> x
-    True  -> case qualLookupValue x tyEnv of
+qIdent x | isQualified x                = x'
+         | hasGlobalScope (unqualify x) = x'
+         | otherwise                    = return x
+  where
+  x' = do
+    m     <- R.asks moduleIdent
+    tyEnv <- R.asks valueEnv
+    return $ case qualLookupValue x tyEnv of
       [y] -> origName y
       _   -> case qualLookupValue qmx tyEnv of
         [y] -> origName y
         _   -> qmx
-      where qmx = qualQualify m x
+        where qmx = qualQualify m x
 
 qConstr :: Qual QualIdent
 qConstr x = do
