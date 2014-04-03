@@ -713,9 +713,10 @@ checkParen
 > checkExpr p (Typed    e ty) = flip Typed ty `liftM` checkExpr p e
 > checkExpr p (Tuple  pos es) = Tuple pos     `liftM` mapM (checkExpr p) es
 > checkExpr p (List   pos es) = List pos      `liftM` mapM (checkExpr p) es
-> checkExpr p (ListCompr      pos e qs) = withLocalEnv $
->   -- Note: must be flipped to insert qs into RenameEnv first
->   liftM2 (flip (ListCompr pos)) (mapM (checkStatement p) qs) (checkExpr p e)
+> checkExpr p (ListCompr      pos e qs)
+>  = withLocalEnv $ liftM2 (flip (ListCompr pos))
+>     -- Note: must be flipped to insert qs into RenameEnv first
+>     (mapM (checkStatement "list comprehension" p) qs) (checkExpr p e)
 > checkExpr p (EnumFrom              e) = EnumFrom `liftM` checkExpr p e
 > checkExpr p (EnumFromThen      e1 e2) =
 >   liftM2 EnumFromThen (checkExpr p e1) (checkExpr p e2)
@@ -732,12 +733,12 @@ checkParen
 >   liftM2 LeftSection (checkExpr p e) (checkOp op)
 > checkExpr p (RightSection       op e) =
 >   liftM2 RightSection (checkOp op) (checkExpr p e)
-> checkExpr p (Lambda           r ts e) = inNestedScope $
->   liftM2 (Lambda r) (mapM (bindPattern p) ts) (checkExpr p e)
+> checkExpr p (Lambda           r ts e) = inNestedScope $ liftM2 (Lambda r)
+>   (mapM (bindPattern "lambda expression" p) ts) (checkExpr p e)
 > checkExpr p (Let                ds e) = inNestedScope $
 >   liftM2 Let (checkDeclGroup bindVarDecl ds) (checkExpr p e)
 > checkExpr p (Do                sts e) = withLocalEnv $
->   liftM2 Do (mapM (checkStatement p) sts) (checkExpr p e)
+>   liftM2 Do (mapM (checkStatement "do sequence" p) sts) (checkExpr p e)
 > checkExpr p (IfThenElse r e1 e2 e3) =
 >   liftM3 (IfThenElse r) (checkExpr p e1) (checkExpr p e2) (checkExpr p e3)
 > checkExpr p (Case r ct e alts) =
@@ -815,15 +816,35 @@ checkParen
 > --   scope has to be nested one level.
 > -- * Because statements are processed list-wise, inNestedEnv can not be
 > --   used as this nesting must be visible to following statements.
-> checkStatement :: Position -> Statement -> SCM Statement
-> checkStatement p (StmtExpr   pos e) = StmtExpr pos `liftM` checkExpr p e
-> checkStatement p (StmtBind pos t e) =
->   liftM2 (flip (StmtBind pos)) (checkExpr p e) (incNesting >> bindPattern p t)
-> checkStatement _ (StmtDecl      ds) =
+> checkStatement :: String -> Position -> Statement -> SCM Statement
+> checkStatement _ p (StmtExpr   pos e) = StmtExpr pos `liftM` checkExpr p e
+> checkStatement s p (StmtBind pos t e) =
+>   liftM2 (flip (StmtBind pos)) (checkExpr p e) (incNesting >> bindPattern s p t)
+> checkStatement _ _ (StmtDecl      ds) =
 >   StmtDecl `liftM` (incNesting >> checkDeclGroup bindVarDecl ds)
 
-> bindPattern :: Position -> Pattern -> SCM Pattern
-> bindPattern p t = checkPattern p t >>= addBoundVariables True
+> bindPattern :: String -> Position -> Pattern -> SCM Pattern
+> bindPattern s p t = do
+>   t' <- checkPattern p t
+>   banFPTerm s p t'
+>   addBoundVariables True t'
+
+> banFPTerm :: String -> Position -> Pattern -> SCM ()
+> banFPTerm _ _ (LiteralPattern            _) = ok
+> banFPTerm _ _ (NegativePattern         _ _) = ok
+> banFPTerm _ _ (VariablePattern           _) = ok
+> banFPTerm s p (ConstructorPattern     _ ts) = mapM_ (banFPTerm s p) ts
+> banFPTerm s p (InfixPattern        t1 _ t2) = mapM_ (banFPTerm s p) [t1, t2]
+> banFPTerm s p (ParenPattern              t) = banFPTerm s p t
+> banFPTerm s p (TuplePattern           _ ts) = mapM_ (banFPTerm s p) ts
+> banFPTerm s p (ListPattern            _ ts) = mapM_ (banFPTerm s p) ts
+> banFPTerm s p (AsPattern               _ t) = banFPTerm s p t
+> banFPTerm s p (LazyPattern             _ t) = banFPTerm s p t
+> banFPTerm s p (RecordPattern          _ mt) = maybe ok (banFPTerm s p) mt
+> banFPTerm s p pat@(FunctionPattern     _ _)
+>  = report $ errUnsupportedFuncPattern s p pat
+> banFPTerm s p pat@(InfixFuncPattern  _ _ _)
+>  = report $ errUnsupportedFuncPattern s p pat
 
 > checkOp :: InfixOp -> SCM InfixOp
 > checkOp op = do
@@ -845,7 +866,7 @@ checkParen
 
 > checkAlt :: Alt -> SCM Alt
 > checkAlt (Alt p t rhs) = inNestedScope $
->   liftM2 (Alt p) (bindPattern p t) (checkRhs rhs)
+>   liftM2 (Alt p) (bindPattern "case expression" p t) (checkRhs rhs)
 
 > addBoundVariables :: QuantExpr t => Bool -> t -> SCM t
 > addBoundVariables checkDuplicates ts = do
@@ -981,8 +1002,8 @@ to \texttt{(apply (id id) 10)}.
 > checkFPTerm p (AsPattern            _ t) = checkFPTerm p t
 > checkFPTerm p t@(LazyPattern        _ _) = report $ errUnsupportedFPTerm "Lazy"   p t
 > checkFPTerm p t@(RecordPattern      _ _) = report $ errUnsupportedFPTerm "Record" p t
-> checkFPTerm _ (FunctionPattern      _ _) = ok -- dot not check again
-> checkFPTerm _ (InfixFuncPattern   _ _ _) = ok -- dot not check again
+> checkFPTerm _ (FunctionPattern      _ _) = ok -- do not check again
+> checkFPTerm _ (InfixFuncPattern   _ _ _) = ok -- do not check again
 
 \end{verbatim}
 Miscellaneous functions.
@@ -1020,6 +1041,11 @@ Error messages.
 > errUnsupportedFPTerm :: String -> Position -> Pattern -> Message
 > errUnsupportedFPTerm s p pat = posMessage p $ text s
 >   <+> text "patterns are not supported inside a functional pattern."
+>   $+$ ppPattern 0 pat
+
+> errUnsupportedFuncPattern :: String -> Position -> Pattern -> Message
+> errUnsupportedFuncPattern s p pat = posMessage p $
+>   text "Functional patterns are not supported inside a" <+> text s <> dot
 >   $+$ ppPattern 0 pat
 
 > errPrecedenceOutOfRange :: Position -> Integer -> Message

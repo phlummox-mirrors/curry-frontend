@@ -1,3 +1,4 @@
+{-# LANGUAGE FunctionalPatterns, Records #-}
 type Foo = { foo :: Bool }
 
 f1 (id v@x) = x
