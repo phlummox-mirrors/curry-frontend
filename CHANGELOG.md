@@ -33,6 +33,11 @@ Version 0.3.10 (under development)
 Version 0.3.9
 =============
 
+  * Fixed bug when using functional patterns in `case`-expressions.
+    Functional patterns are only allowed in the patterns of a function
+    definition and forbidden elsewhere, i.e., in `case`-expressions,
+    `do`-sequences, list comprehensions or lambda expressions.
+
   * Implementation of module pragmas added. Module pragmas of the following
     types are now parsed and represented in the abstract syntax tree:
 
