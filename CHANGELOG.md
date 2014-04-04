@@ -33,6 +33,9 @@ Version 0.3.10 (under development)
 Version 0.3.9
 =============
 
+  * Fixed bug in non-exhaustive pattern matching check which occured
+    when retrieving the siblings of a constructor imported using an alias.
+
   * Fixed bug when using functional patterns in `case`-expressions.
     Functional patterns are only allowed in the patterns of a function
     definition and forbidden elsewhere, i.e., in `case`-expressions,

@@ -87,9 +87,7 @@ exportCheck _ env (Module ps m es is ds)
   where (es', msgs) = EC.exportCheck (moduleIdent env) (aliasEnv env)
                                      (tyConsEnv env) (valueEnv env) es
 
--- TODO: Which kind of warnings?
-
 -- |Check for warnings.
 warnCheck :: Options -> CompilerEnv -> Module -> [Message]
-warnCheck opts env mdl
-  = WC.warnCheck (optWarnOpts opts) (valueEnv env) (tyConsEnv env) mdl
+warnCheck opts env mdl = WC.warnCheck (optWarnOpts opts) (aliasEnv env)
+  (valueEnv env) (tyConsEnv env) mdl
