@@ -40,8 +40,6 @@ import Env.Value (ValueEnv, ValueInfo (..), qualLookupValue)
 
 import CompilerOpts
 
-import Debug.Trace
-
 -- Find potentially incorrect code in a Curry program and generate warnings
 -- for the following issues:
 --   - multiply imported modules, multiply imported/hidden values
@@ -563,9 +561,9 @@ getUnusedCons qs@(q:_) = do
 getConTy :: QualIdent -> WCM Type
 getConTy q = do
   tyEnv <- gets valueEnv
-  return $ trace ("getConTy: " ++ show q) $ case qualLookupValue q tyEnv of
-    [DataConstructor  _ _ (ForAllExist _ _ ty)] -> trace (show ty) ty
-    [NewtypeConstructor _ (ForAllExist _ _ ty)] -> trace (show ty) ty
+  return $ case qualLookupValue q tyEnv of
+    [DataConstructor  _ _ (ForAllExist _ _ ty)] -> ty
+    [NewtypeConstructor _ (ForAllExist _ _ ty)] -> ty
     _                                           -> internalError $
       "Checks.WarnCheck.getConTy: " ++ show q
 
