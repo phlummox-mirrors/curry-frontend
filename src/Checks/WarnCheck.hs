@@ -34,10 +34,13 @@ import qualified Base.ScopeEnv as SE
   , lookupWithLevel, toLevelList, currentLevel)
 
 import Base.Types
+import Env.ModuleAlias
 import Env.TypeConstructor (TCEnv, TypeInfo (..), lookupTC, qualLookupTC)
 import Env.Value (ValueEnv, ValueInfo (..), qualLookupValue)
 
 import CompilerOpts
+
+import Debug.Trace
 
 -- Find potentially incorrect code in a Curry program and generate warnings
 -- for the following issues:
@@ -47,9 +50,9 @@ import CompilerOpts
 --   - idle case alternatives
 --   - overlapping case alternatives
 --   - non-adjacent function rules
-warnCheck :: Options -> ValueEnv -> TCEnv -> Module -> [Message]
-warnCheck opts valEnv tcEnv (Module _ mid es is ds)
-  = runOn (initWcState mid valEnv tcEnv (optWarnFlags opts)) $ do
+warnCheck :: Options -> AliasEnv -> ValueEnv -> TCEnv -> Module -> [Message]
+warnCheck opts aEnv valEnv tcEnv (Module _ mid es is ds)
+  = runOn (initWcState mid aEnv valEnv tcEnv (optWarnFlags opts)) $ do
       checkExports   es
       checkImports   is
       checkDeclGroup ds
@@ -60,6 +63,7 @@ type ScopeEnv = SE.ScopeEnv QualIdent IdInfo
 data WcState = WcState
   { moduleId    :: ModuleIdent
   , scope       :: ScopeEnv
+  , aliasEnv    :: AliasEnv
   , valueEnv    :: ValueEnv
   , tyConsEnv   :: TCEnv
   , warnFlags   :: [WarnFlag]
@@ -71,8 +75,9 @@ data WcState = WcState
 -- contents.
 type WCM = State WcState
 
-initWcState :: ModuleIdent -> ValueEnv -> TCEnv -> [WarnFlag] -> WcState
-initWcState mid ve te wf = WcState mid SE.new ve te wf []
+initWcState :: ModuleIdent -> AliasEnv -> ValueEnv -> TCEnv -> [WarnFlag]
+            -> WcState
+initWcState mid ae ve te wf = WcState mid SE.new ae ve te wf []
 
 getModuleIdent :: WCM ModuleIdent
 getModuleIdent = gets moduleId
@@ -87,6 +92,15 @@ warnFor f act = do
 
 report :: Message -> WCM ()
 report w = modify $ \ s -> s { warnings = w : warnings s }
+
+unAlias :: QualIdent -> WCM QualIdent
+unAlias q = do
+  aEnv <- gets aliasEnv
+  case qidModule q of
+    Nothing -> return q
+    Just m  -> case Map.lookup m aEnv of
+      Nothing -> return q
+      Just m' -> return $ qualifyWith m' (unqualify q)
 
 ok :: WCM ()
 ok = return ()
@@ -549,23 +563,24 @@ getUnusedCons qs@(q:_) = do
 getConTy :: QualIdent -> WCM Type
 getConTy q = do
   tyEnv <- gets valueEnv
-  return $ case qualLookupValue q tyEnv of
-    [DataConstructor  _ _ (ForAllExist _ _ ty)] -> ty
-    [NewtypeConstructor _ (ForAllExist _ _ ty)] -> ty
+  return $ trace ("getConTy: " ++ show q) $ case qualLookupValue q tyEnv of
+    [DataConstructor  _ _ (ForAllExist _ _ ty)] -> trace (show ty) ty
+    [NewtypeConstructor _ (ForAllExist _ _ ty)] -> trace (show ty) ty
     _                                           -> internalError $
       "Checks.WarnCheck.getConTy: " ++ show q
 
 getTyCons :: Type -> WCM [DataConstr]
 getTyCons (TypeConstructor tc _) = do
+  tc'   <- unAlias tc
   tcEnv <- gets tyConsEnv
   return $ case lookupTC (unqualify tc) tcEnv of
     [DataType     _ _ cs] -> catMaybes cs
     [RenamingType _ _ nc] -> [nc]
-    _ -> case qualLookupTC tc tcEnv of
-      [DataType     _ _ cs] -> catMaybes cs
-      [RenamingType _ _ nc] -> [nc]
-      err                   -> internalError $
-        "Checks.WarnCheck.getTyCons: " ++ show tc ++ ' ' : show err ++ '\n' : show tcEnv
+    _ -> case qualLookupTC tc' tcEnv of
+        [DataType     _ _ cs] -> catMaybes cs
+        [RenamingType _ _ nc] -> [nc]
+        err                   -> internalError $
+          "Checks.WarnCheck.getTyCons: " ++ show tc ++ ' ' : show err ++ '\n' : show tcEnv
 getTyCons _ = internalError "Checks.WarnCheck.getTyCons"
 
 firstPat :: [Pattern] -> Pattern
