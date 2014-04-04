@@ -101,7 +101,7 @@ makeCurry opts srcs targetFile = mapM_ (process . snd) srcs
     compileModule (opts { optTargetTypes = [FlatCurry], optDumps = [] }) f
 
   skipFinal f = status opts $ "skipping " ++ normalise f
-  skip      f = info   opts $ "skipping " ++ normalise f
+  skip      f = status opts $ "skipping " ++ normalise f
 
   destNames fn = [ gen fn | (tgt, gen) <- nameGens
                  , tgt `elem` optTargetTypes opts]

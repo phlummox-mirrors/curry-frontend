@@ -4,6 +4,9 @@ Change log for curry-frontend
 Version 0.3.9
 =============
 
+  * Simplified verbosity options by merging options "-v1" and "-v2".
+    Now only "-v0" and "-v1" are supported.
+
   * Fixed bug in non-exhaustive pattern matching check which occured
     when retrieving the siblings of a constructor imported using an alias.
 

@@ -1,6 +1,6 @@
 module Base.Messages
   ( -- * Output of user information
-    info, status, warn, putErrLn, putErrsLn
+    status, warn, putErrLn, putErrsLn
     -- * program abortion
   , abortWith, abortWithMessage, abortWithMessages
   , internalError, errorMessage, errorMessages
@@ -29,9 +29,6 @@ runEitherCYIO act = do
   case res of
     Left errs -> abortWithMessages errs
     Right val -> return val
-
-info :: MonadIO m => Options -> String -> m ()
-info opts msg = unless (optVerbosity opts < VerbInfo) (putMsg msg)
 
 status :: MonadIO m => Options -> String -> m ()
 status opts msg = unless (optVerbosity opts < VerbStatus) (putMsg msg)
