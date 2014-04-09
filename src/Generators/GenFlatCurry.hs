@@ -22,7 +22,6 @@ import Curry.Base.Message
 import Curry.Base.Pretty
 
 import Curry.ExtendedFlat.Type
-import Curry.ExtendedFlat.TypeInference
 import qualified Curry.Syntax as CS
 
 -- Base
@@ -56,7 +55,7 @@ genFlatCurry :: Options -> ModuleSummary.ModuleSummary -> InterfaceEnv
 genFlatCurry opts modSum mEnv tyEnv tcEnv mdl = (prog', messages)
   where
   (prog, messages) = run opts modSum mEnv tyEnv tcEnv False (visitModule mdl)
-  prog' = {- eraseTypes $ -} adjustTypeInfo $ patchPrelude prog
+  prog' = patchPrelude prog -- eraseTypes $ adjustTypeInfo $
 
 -- transforms intermediate language code (IL) to FlatCurry interfaces
 genFlatInterface :: Options -> ModuleSummary.ModuleSummary -> InterfaceEnv
