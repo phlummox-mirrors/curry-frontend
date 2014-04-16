@@ -45,7 +45,7 @@ warn opts msgs = when (wnWarn opts && not (null msgs)) $ do
 
 -- |Print a message on 'stdout'
 putMsg :: MonadIO m => String -> m ()
-putMsg msg = liftIO $ putStrLn $ msg ++ " ..."
+putMsg = liftIO . putStrLn
 
 -- |Print an error message on 'stderr'
 putErrLn :: MonadIO m => String -> m ()
