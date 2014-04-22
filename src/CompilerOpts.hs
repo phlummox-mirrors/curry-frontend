@@ -129,14 +129,12 @@ data CymakeMode
 data Verbosity
   = VerbQuiet  -- ^ be quiet
   | VerbStatus -- ^ show status of compilation
-  | VerbInfo   -- ^ also show additional info
   deriving (Eq, Ord, Show)
 
 -- |Description and flag of verbosities
 verbosities :: [(Verbosity, String, String)]
 verbosities = [ ( VerbQuiet , "0", "quiet" )
               , ( VerbStatus, "1", "status")
-              , ( VerbInfo  , "2", "info"  )
               ]
 
 -- |Type of the target file
