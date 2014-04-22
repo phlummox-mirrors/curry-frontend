@@ -1,7 +1,7 @@
 {- |
     Module      :  $Header$
     Description :  Generating HTML documentation
-    Copyright   :  (c) 2011, Björn Peemöller (bjp@informatik.uni-kiel.de)
+    Copyright   :  (c) 2011 - 2014, Björn Peemöller
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
@@ -13,21 +13,25 @@
 -}
 module Html.CurryHtml (source2html) where
 
+import Control.Monad.Writer
+import Control.Monad.Trans.Either
+
 import Data.Char             (toLower)
 import Data.Maybe            (fromMaybe, isJust)
 
 import Curry.Base.Ident      (QualIdent (..), unqualify)
-import Curry.Base.Message    (fromIO)
+import Curry.Base.Message
 import Curry.Base.Pretty     (text)
 import Curry.Files.Filenames (dropExtension, takeFileName)
 import Curry.Files.PathUtils (readModule, lookupCurryFile)
-import Curry.Syntax          (lexSource)
+import Curry.Syntax          (Module, lexSource, parseModule)
 
 import Html.SyntaxColoring
 
 import Base.Messages
-import CompilerOpts  (Options(..), TargetType (..))
-import Frontend      (parse, fullParse)
+import CompilerOpts          (Options(..), TargetType (..), defaultOptions)
+import CurryBuilder          (buildCurry)
+import Modules               (loadAndCheckModule, checkModuleHeader)
 
 --- translate source file into HTML file with syntaxcoloring
 --- @param sourcefilename
@@ -54,6 +58,47 @@ filename2program opts f = do
       let parsed = parse f src
           lexed  = lexSource f src
       return $ genProgram src [typed, checked, parsed] lexed
+
+{- |Return the result of a syntactical analysis of the source program 'src'.
+    The result is the syntax tree of the program (type 'Module'; see Module
+    "CurrySyntax").
+-}
+parse :: FilePath -> String -> MessageM Module
+parse fn src = parseModule fn src >>= genCurrySyntax
+  where
+  genCurrySyntax mod1 = do
+    checked <- lift $ runEitherT $ checkModuleHeader defaultOptions fn mod1
+    case checked of
+      Left hdrErrs -> failWith $ show $ head hdrErrs
+      Right mdl    -> return mdl
+
+{- |Return the syntax tree of the source program 'src' (type 'Module'; see
+    Module "CurrySyntax").after inferring the types of identifiers.
+    'fullParse' always searches for standard Curry libraries in the path
+    defined in the
+    environment variable "PAKCSLIBPATH". Additional search paths can
+    be defined using the argument 'paths'.
+-}
+fullParse :: Options -> FilePath -> String -> MessageIO Module
+fullParse opts fn _ = do
+  errs <- liftIO $ makeInterfaces opts fn
+  if null errs
+    then do
+      checked <- liftIO $ runEitherT $ loadAndCheckModule opts fn
+      case checked of
+        Left errs'      -> failWith $ show $ head errs'
+        Right (_, mod') -> return mod'
+    else failWith $ show $ head errs
+
+-- Generates interface files for importes modules, if they don't exist or
+-- if they are not up-to-date.
+makeInterfaces :: Options -> FilePath -> IO [Message]
+makeInterfaces opts fn = do
+  res <- runEitherT $ buildCurry opts fn
+  case res of
+    Left  errs -> return errs
+    Right _    -> return []
+
 
 -- generates htmlcode with syntax highlighting
 -- @param modulname

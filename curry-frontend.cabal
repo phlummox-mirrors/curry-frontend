@@ -70,7 +70,6 @@ Executable cymake
     , Env.TypeConstructor
     , Env.Value
     , Exports
-    , Frontend
     , Generators
     , Generators.GenAbstractCurry
     , Generators.GenFlatCurry
