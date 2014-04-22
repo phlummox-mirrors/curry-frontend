@@ -23,7 +23,7 @@ import qualified Data.Set as Set
 import Curry.AbstractCurry
 import Curry.Base.Ident
 import Curry.Base.Position
-import Curry.Syntax
+import Curry.Syntax hiding (isFunctionDecl)
 
 import Base.CurryTypes (fromType)
 import Base.Messages (internalError)
