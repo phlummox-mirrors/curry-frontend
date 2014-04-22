@@ -15,7 +15,8 @@
 -}
 
 module Modules
-  ( compileModule, loadAndCheckModule, checkModuleHeader
+  ( compileModule, loadAndCheckModule, loadModule, checkModule
+  , parseModule, checkModuleHeader
   ) where
 
 import qualified Control.Exception as C   (catch, IOException)

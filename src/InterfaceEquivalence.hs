@@ -1,24 +1,26 @@
--- % -*- LaTeX -*-
--- % $Id: IntfEquiv.lhs 2148 2007-04-02 13:56:20Z wlux $
--- %
--- % Copyright (c) 2000-2007, Wolfgang Lux
--- % See LICENSE for the full license.
--- %
--- \nwfilename{IntfEquiv.lhs}
--- \section{Comparing Module Interfaces}
--- If a module is recompiled, the compiler has to check whether the
--- interface file must be updated. This must be done if any exported
--- entity has been changed, or an export was removed or added. The
--- function \texttt{intfEquiv} checks whether two interfaces are
--- equivalent, i.e., whether they define the same entities.
+{- |
+    Module      :  $Header$
+    Description :  Comparison of Interfaces
+    Copyright   :  (c) 2000 - 2007, Wolfgang Lux
+                       2014       , Björn Peemöller
+    License     :  OtherLicense
 
--- \textbf{Note:} There is deliberately no list instance for
--- \texttt{IntfEquiv} because the order of interface declarations is
--- irrelevant, whereas it is decisive for the constructor declarations
--- of a data type. By not providing a list instance, we cannot
--- inadvertently mix up these cases.
--- \begin{verbatim}
+    Maintainer  :  bjp@informatik.uni-kiel.de
+    Stability   :  experimental
+    Portability :  portable
 
+    If a module is recompiled, the compiler has to check whether the
+    interface file must be updated. This must be done if any exported
+    entity has been changed, or an export was removed or added. The
+    function 'intfEquiv' checks whether two interfaces are
+    equivalent, i.e., whether they define the same entities.
+
+    /Note: There is deliberately no list instance for
+    'IntfEquiv' because the order of interface declarations is
+    irrelevant, whereas it is decisive for the constructor declarations
+    of a data type. By not providing a list instance, we cannot
+    inadvertently mix up these cases.
+-}
 module InterfaceEquivalence (fixInterface, intfEquiv) where
 
 import Data.List (deleteFirstsBy)
@@ -26,10 +28,6 @@ import qualified Data.Set as Set
 
 import Curry.Base.Ident
 import Curry.Syntax
-
--- import Base
--- import List
--- import Set
 
 infix 4 =~=, `eqvList`, `eqvSet`
 
@@ -84,14 +82,10 @@ instance IntfEquiv NewConstrDecl where
   NewConstrDecl _ evs1 c1 ty1 =~= NewConstrDecl _ evs2 c2 ty2 =
     c1 == c2 && evs1 == evs2 && ty1 == ty2
 
--- \end{verbatim}
 -- If we check for a change in the interface, we do not need to check the
 -- interface declarations, but still must disambiguate (nullary) type
 -- constructors and type variables in type expressions. This is handled
--- by function \texttt{fixInterface} and the associated type class
--- \texttt{FixInterface}.
--- \begin{verbatim}
-
+-- by function 'fixInterface' and the associated type class 'FixInterface'.
 fixInterface :: Interface -> Interface
 fixInterface (Interface m is ds) = Interface m is $
   fix (Set.fromList (typeConstructors ds)) ds
@@ -137,8 +131,7 @@ instance FixInterface TypeExpr where
    where fixField (lbl, ty) = (lbl, fix tcs ty)
 
 typeConstructors :: [IDecl] -> [Ident]
-typeConstructors ds =
-  [tc | (QualIdent Nothing tc) <- foldr tyCons [] ds]
+typeConstructors ds = [tc | (QualIdent Nothing tc) <- foldr tyCons [] ds]
   where tyCons (IInfixDecl      _ _ _ _) tcs = tcs
         tyCons (HidingDataDecl   _ tc _) tcs = tc : tcs
         tyCons (IDataDecl      _ tc _ _) tcs = tc : tcs
@@ -148,5 +141,3 @@ typeConstructors ds =
 
 isPrimTypeId :: QualIdent -> Bool
 isPrimTypeId tc = tc `elem` [qUnitId, qListId] || isQTupleId tc
-
--- \end{verbatim}
