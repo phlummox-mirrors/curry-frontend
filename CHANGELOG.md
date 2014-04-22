@@ -1,8 +1,14 @@
 Change log for curry-frontend
 =============================
 
-Version 0.3.10 (under development)
-==================================
+Version 0.3.10
+==============
+
+  * Various improvements of the internal structure.
+
+  * Improved status messages. The compilation status message are now of the form
+
+        [m of n] Compiling/Skipping <Module> (<source file>, <target file>)
 
   * Implemented support for custom preprocessors. It is now possible to run
     a custom preprocessor command via the following options:
