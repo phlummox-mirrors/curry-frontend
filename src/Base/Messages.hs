@@ -13,7 +13,7 @@ import Control.Monad (unless, when)
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Either
 import Data.List     (sort)
-import System.IO     (hPutStrLn, stderr)
+import System.IO     (hFlush, hPutStrLn, stderr, stdout)
 import System.Exit   (exitFailure)
 
 import Curry.Base.Message hiding (warn)
@@ -45,11 +45,11 @@ warn opts msgs = when (wnWarn opts && not (null msgs)) $ do
 
 -- |Print a message on 'stdout'
 putMsg :: MonadIO m => String -> m ()
-putMsg = liftIO . putStrLn
+putMsg msg = liftIO (putStrLn msg >> hFlush stdout)
 
 -- |Print an error message on 'stderr'
 putErrLn :: MonadIO m => String -> m ()
-putErrLn = liftIO . hPutStrLn stderr
+putErrLn msg = liftIO (hPutStrLn stderr msg >> hFlush stderr)
 
 -- |Print a list of error messages on 'stderr'
 putErrsLn :: MonadIO m => [String] -> m ()
