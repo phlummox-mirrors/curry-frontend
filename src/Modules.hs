@@ -4,7 +4,7 @@
     Copyright   :  (c) 1999 - 2004 Wolfgang Lux
                        2005        Martin Engelke
                        2007        Sebastian Fischer
-                       2011 - 2013 Björn Peemöller
+                       2011 - 2014 Björn Peemöller
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
@@ -15,7 +15,7 @@
 -}
 
 module Modules
-  ( compileModule, loadModule, checkModuleHeader, checkModule, writeOutput
+  ( compileModule, loadAndCheckModule, checkModuleHeader
   ) where
 
 import qualified Control.Exception as C   (catch, IOException)
@@ -75,12 +75,16 @@ import Transformations
 -- The compiler automatically loads the prelude when compiling any
 -- module, except for the prelude itself, by adding an appropriate import
 -- declaration to the module.
-
 compileModule :: Options -> FilePath -> CYIO ()
 compileModule opts fn = do
+  (env, mdl) <- loadAndCheckModule opts fn
+  liftIO $ writeOutput opts fn (env, mdl)
+
+loadAndCheckModule :: Options -> FilePath -> CYIO (CompilerEnv, CS.Module)
+loadAndCheckModule opts fn = do
   (env, mdl) <- loadModule opts fn >>= checkModule opts
   warn (optWarnOpts opts) $ warnCheck opts env mdl
-  liftIO $ writeOutput opts fn (env, mdl)
+  return (env, mdl)
 
 -- ---------------------------------------------------------------------------
 -- Loading a module

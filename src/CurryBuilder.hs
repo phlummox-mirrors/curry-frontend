@@ -13,7 +13,7 @@
     This module contains functions to generate Curry representations for a
     Curry source file including all imported modules.
 -}
-module CurryBuilder (buildCurry, smake) where
+module CurryBuilder (buildCurry) where
 
 import Control.Monad   (liftM)
 import Data.Maybe      (catMaybes, mapMaybe)

@@ -19,8 +19,8 @@ import Data.Maybe            (fromMaybe, isJust)
 import Curry.Base.Ident      (QualIdent (..), unqualify)
 import Curry.Base.Message    (fromIO)
 import Curry.Base.Pretty     (text)
-import Curry.Files.PathUtils
-  (readModule, lookupCurryFile, dropExtension, takeFileName)
+import Curry.Files.Filenames (dropExtension, takeFileName)
+import Curry.Files.PathUtils (readModule, lookupCurryFile)
 import Curry.Syntax          (lexSource)
 
 import Html.SyntaxColoring

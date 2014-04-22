@@ -2,7 +2,7 @@
     Module      :  $Header$
     Description :  Main module
     Copyright   :  (c) 2005        Martin Engelke
-                       2011 - 2013 Björn Peemöller
+                       2011 - 2014 Björn Peemöller
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
