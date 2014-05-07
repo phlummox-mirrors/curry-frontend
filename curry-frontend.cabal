@@ -30,13 +30,8 @@ Flag split-syb
 Executable cymake
   hs-source-dirs: src
   Main-is:        cymake.hs
-  if flag(split-syb)
-    Build-Depends: base == 4.*, syb
-  else
-    Build-Depends: base == 3.*
-  Build-Depends:
-    curry-base == 0.3.10
-    , containers, directory, either, mtl, process, transformers
+  Build-Depends: base == 4.*, curry-base == 0.3.10
+    , containers, directory, either, mtl, process, transformers, syb
   ghc-options: -Wall
   Other-Modules:
       Base.CurryTypes
