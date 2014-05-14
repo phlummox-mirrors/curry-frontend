@@ -4,6 +4,9 @@ Change log for curry-frontend
 Version 0.3.10
 ==============
 
+  * The HTML generation now accepts an option `--htmldir=dir` to specify
+    the output directory of the generated HTML files.
+
   * Various improvements of the internal structure.
 
   * Improved status messages. The compilation status message are now of the form

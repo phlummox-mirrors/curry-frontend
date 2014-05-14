@@ -23,6 +23,7 @@ module CompilerOpts
   ) where
 
 import Data.List             (intercalate, nub)
+import Data.Maybe            (isJust)
 import System.Console.GetOpt
 import System.Environment    (getArgs, getProgName)
 import System.FilePath       (splitSearchPath)
@@ -45,6 +46,7 @@ data Options = Options
                                         --   for libraries
   , optImportPaths  :: [FilePath]       -- ^ directories to search in
                                         --   for imports
+  , optHtmlDir      :: Maybe FilePath   -- ^ output directory for HTML
   , optUseSubdir    :: Bool             -- ^ use subdir for output?
   , optInterface    :: Bool             -- ^ create a FlatCurry interface file?
   , optPrepOpts     :: PrepOpts         -- ^ preprocessor options
@@ -83,6 +85,7 @@ defaultOptions = Options
   , optForce        = False
   , optLibraryPaths = []
   , optImportPaths  = []
+  , optHtmlDir      = Nothing
   , optUseSubdir    = True
   , optInterface    = True
   , optPrepOpts     = defaultPrepOpts
@@ -287,7 +290,7 @@ parseOptErr lift what table opt = case lookup3 opt table of
 
 renderOptErrTable :: OptErrTable opt -> String
 renderOptErrTable ds
-  = intercalate "\n" $ map (\(k, d, _) -> rpad maxLen k ++ ": " ++ d) ds
+  = intercalate "\n" $ map (\(k, d, _) -> "  " ++ rpad maxLen k ++ ": " ++ d) ds
   where
   maxLen = maximum $ map (\(k, _, _) -> length k) ds
   rpad n x = x ++ replicate (n - length x) ' '
@@ -305,9 +308,6 @@ options =
   , Option ""   ["numeric-version"]
       (NoArg (onOpts $ \ opts -> opts { optMode = ModeNumericVersion }))
       "show the numeric version number and exit"
-  , Option ""   ["html"]
-      (NoArg (onOpts $ \ opts -> opts { optMode = ModeHtml }))
-      "generate html code and exit"
   -- verbosity
   , mkOptDescr onOpts "v" ["verbosity"] "n" "verbosity level" verbDescriptions
   , Option "q"  ["no-verb"]
@@ -325,6 +325,10 @@ options =
       (ReqArg (withArg onOpts $ \ arg opts -> opts { optImportPaths =
         nub $ optImportPaths opts ++ splitSearchPath arg}) "dir[:dir]")
       "search for imports in dir[:dir]"
+  , Option []  ["htmldir"]
+      (ReqArg (withArg onOpts $ \ arg opts -> opts { optHtmlDir =
+        Just arg }) "dir")
+      "write HTML documentation into directory `dir'"
   , Option ""   ["no-subdir"]
       (NoArg (onOpts $ \ opts -> opts { optUseSubdir = False }))
       ("disable writing to `" ++ currySubdir ++ "' subdirectory")
@@ -340,6 +344,9 @@ options =
         addFlag WarnOverlapping (wnWarnFlags opts) }))
       "do not print warnings for overlapping rules"
   -- target types
+  , Option ""   ["html"]
+      (NoArg (onOpts $ \ opts -> opts { optMode = ModeHtml }))
+      "generate html code and exit"
   , Option ""   ["parse-only"]
       (NoArg (onOpts $ \ opts -> opts { optTargetTypes =
         nub $ Parsed : optTargetTypes opts }))
@@ -439,10 +446,17 @@ removeFlag o opts = filter (/= o) opts
 
 -- |Parse the command line arguments
 parseOpts :: [String] -> (Options, [String], [String])
-parseOpts args = (opts, files, errs ++ errs2)
+parseOpts args = (opts, files, errs ++ errs2 ++ checkOpts opts files)
   where
   (opts, errs2) = foldl (flip ($)) (defaultOptions, []) optErrs
   (optErrs, files, errs) = getOpt Permute options args
+
+-- |Check options and files and return a list of error messages
+checkOpts :: Options -> [String] -> [String]
+checkOpts opts _
+  | isJust (optHtmlDir opts) && (optMode opts) /= ModeHtml
+  = ["The option '--htmldir' is only valid for HTML generation mode"]
+  | otherwise = []
 
 -- |Print the usage information of the command line tool.
 usage :: String -> String

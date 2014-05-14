@@ -18,11 +18,11 @@ import Control.Monad.Trans.Either
 
 import Data.Char             (toLower)
 import Data.Maybe            (fromMaybe, isJust)
+import System.FilePath       ((</>), dropFileName, takeBaseName)
 
 import Curry.Base.Ident      (QualIdent (..), unqualify)
 import Curry.Base.Message
 import Curry.Base.Pretty     (text)
-import Curry.Files.Filenames (dropExtension, takeFileName)
 import Curry.Files.PathUtils (readModule, lookupCurryFile)
 import Curry.Syntax          (Module, lexSource, parseModule)
 
@@ -37,12 +37,12 @@ import Modules               (loadAndCheckModule, checkModuleHeader)
 --- @param sourcefilename
 source2html :: Options -> FilePath -> CYIO ()
 source2html opts f = do
-  let baseName   = dropExtension f
-      modulname  = takeFileName baseName
-      outFile    = baseName ++ "_curry.html"
+  let baseName   = takeBaseName f
+      outDir     = fromMaybe (dropFileName f) $ optHtmlDir opts
+      outFile    = outDir </> baseName ++ "_curry.html"
   srcFile <- liftIO $ lookupCurryFile (optImportPaths opts) f
   program <- filename2program opts (fromMaybe f srcFile)
-  liftIO $ writeFile outFile (program2html modulname program)
+  liftIO $ writeFile outFile (program2html baseName program)
 
 --- @param importpaths
 --- @param filename
