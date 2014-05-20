@@ -4,6 +4,12 @@ Change log for curry-frontend
 Version 0.3.10
 ==============
 
+  * Refactored the source code HTML generation.
+    The generation now supports full Curry with all supported extensions,
+    i.e., it supports pragmas, record types and functional patterns.
+    Furthermore, the created HTML has been simplified, and updated towards
+    HTML 5.
+
   * The HTML generation now accepts an option `--htmldir=dir` to specify
     the output directory of the generated HTML files.
 
