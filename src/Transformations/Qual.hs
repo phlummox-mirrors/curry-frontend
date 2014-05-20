@@ -44,8 +44,25 @@ data QualEnv = QualEnv
 
 type Qual a = a -> R.Reader QualEnv a
 
-qual :: ModuleIdent -> TCEnv -> ValueEnv -> [Decl] -> [Decl]
-qual m tcEnv tyEnv ds = R.runReader (mapM qDecl ds) (QualEnv m tcEnv tyEnv)
+qual :: ModuleIdent -> TCEnv -> ValueEnv -> Module -> Module
+qual m tcEnv tyEnv mdl = R.runReader (qModule mdl) (QualEnv m tcEnv tyEnv)
+
+qModule :: Qual Module
+qModule (Module ps m es is ds) = do
+  es' <- qExportSpec es
+  ds' <- mapM qDecl  ds
+  return (Module ps m es' is ds')
+
+qExportSpec :: Qual (Maybe ExportSpec)
+qExportSpec Nothing                 = return Nothing
+qExportSpec (Just (Exporting p es)) = (Just . Exporting p)
+                                      `liftM` mapM qExport es
+
+qExport :: Qual Export
+qExport (Export            x) = Export `liftM` qIdent x
+qExport (ExportTypeWith t cs) = flip ExportTypeWith cs `liftM` qConstr t
+qExport (ExportTypeAll     t) = ExportTypeAll `liftM` qConstr t
+qExport m@(ExportModule    _) = return m
 
 qDecl :: Qual Decl
 qDecl i@(InfixDecl     _ _ _ _) = return i

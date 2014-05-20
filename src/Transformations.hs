@@ -55,12 +55,12 @@ lift :: Module -> CompilerEnv -> (Module, CompilerEnv)
 lift mdl env = (mdl', env { valueEnv = tyEnv' })
   where (mdl', tyEnv') = L.lift (valueEnv env) mdl
 
--- |Fully qualify used constructors and functions
-qual :: Options -> CompilerEnv -> Module -> (CompilerEnv, Module)
-qual opts env (Module ps m es is ds) = (qualifyEnv opts env, Module ps m es is ds')
-  where ds' = Q.qual (moduleIdent env) (tyConsEnv env) (valueEnv env) ds
+-- |Fully qualify used constructors and functions.
+qual :: Options -> CompilerEnv -> Module -> (Module, CompilerEnv)
+qual opts env mdl = (mdl', qualifyEnv opts env)
+  where mdl' = Q.qual (moduleIdent env) (tyConsEnv env) (valueEnv env) mdl
 
--- |Simplify the source code
+-- |Simplify the source code.
 simplify :: Bool -> Module -> CompilerEnv -> (Module, CompilerEnv)
 simplify flat mdl env = (mdl', env { valueEnv = tyEnv' })
   where (mdl', tyEnv') = S.simplify flat (valueEnv env) mdl

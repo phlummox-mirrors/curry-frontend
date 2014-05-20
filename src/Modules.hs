@@ -252,13 +252,10 @@ transModule opts env mdl = (env5, ilCaseComp, dumps)
 writeOutput :: Options -> FilePath -> (CompilerEnv, CS.Module) -> IO ()
 writeOutput opts fn (env, modul) = do
   writeParsed opts fn modul
-  let (env1, qlfd) = qual opts env modul
+  let (qlfd, env1) = qual opts env modul
   doDump (optDebugOpts opts) (DumpQualified, env1, show $ CS.ppModule qlfd)
   writeAbstractCurry opts fn env1 qlfd
   when withFlat $ do
-    -- checkModule checks types, and then transModule introduces new
-    -- functions (by lambda lifting in 'desugar'). Consequence: The
-    -- types of the newly introduced functions are not inferred (hsi)
     let (env2, il, dumps) = transModule opts env1 qlfd
     -- dump intermediate results
     mapM_ (doDump (optDebugOpts opts)) dumps
