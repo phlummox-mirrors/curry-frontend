@@ -15,19 +15,22 @@
 -}
 module CurryBuilder (buildCurry) where
 
-import Control.Monad   (liftM)
+import Control.Monad   (foldM, liftM)
+import Data.Char       (isSpace)
 import Data.Maybe      (catMaybes, mapMaybe)
 import System.FilePath (normalise)
 
 import Curry.Base.Ident
+import Curry.Base.Position (Position)
 import Curry.Base.Pretty
 import Curry.Files.Filenames
 import Curry.Files.PathUtils
+import Curry.Syntax (ModulePragma (..), Tool (CYMAKE))
 
 import Base.Messages
 
 import CompilerOpts ( Options (..), DebugOpts (..), TargetType (..)
-                    , defaultDebugOpts)
+                    , defaultDebugOpts, updateOpts)
 import CurryDeps    (Source (..), flatDeps)
 import Modules      (compileModule)
 
@@ -78,24 +81,65 @@ makeCurry opts srcs = mapM_ process' (zip [1 ..] srcs)
   total = length srcs
 
   process' :: (Int, (ModuleIdent, Source)) -> CYIO ()
-  process' (n, (m, Source fn is)) = process opts' (n, total) m fn deps
+  process' (n, (m, Source fn ps is)) = do
+    opts' <- processPragmas opts ps
+    process (adjustOptions (n == total) opts') (n, total) m fn deps
     where
-    opts' | n == total = opts { optForce = optForce opts || isDump }
-          | otherwise  = opts { optTargetTypes = [flatTarget]
-                              , optForce       = False
-                              , optDebugOpts   = defaultDebugOpts
-                              }
-    isDump = not $ null $ dbDumpLevels $ optDebugOpts opts
-    flatTarget = if ExtendedFlatCurry `elem` optTargetTypes opts
-                    then ExtendedFlatCurry else FlatCurry
     deps = fn : mapMaybe curryInterface is
 
     curryInterface i = case lookup i srcs of
-      Just (Source fn'  _) -> Just $ interfName fn'
-      Just (Interface fn') -> Just $ interfName fn'
-      _                   -> Nothing
+      Just (Source    fn' _ _) -> Just $ interfName fn'
+      Just (Interface fn'    ) -> Just $ interfName fn'
+      _                        -> Nothing
 
   process' _ = return ()
+
+adjustOptions :: Bool -> Options -> Options
+adjustOptions final opts
+  | final      = opts { optForce = optForce opts || isDump }
+  | otherwise  = opts { optTargetTypes = [flatTarget]
+                      , optForce       = False
+                      , optDebugOpts   = defaultDebugOpts
+                      }
+  where
+  isDump = not $ null $ dbDumpLevels $ optDebugOpts opts
+  flatTarget = if ExtendedFlatCurry `elem` optTargetTypes opts
+                  then ExtendedFlatCurry else FlatCurry
+
+
+processPragmas :: Options -> [ModulePragma] -> CYIO Options
+processPragmas opts0 ps = foldM processPragma opts0
+                          [ (p, s) | OptionsPragma p (Just CYMAKE) s <- ps ]
+  where
+  processPragma opts (p, s)
+    | not (null unknownFlags)
+    = left [errUnknownOptions p unknownFlags]
+    | optMode         opts /= optMode         opts'
+    = left [errIllegalOption p "Cannot change mode"]
+    | optLibraryPaths opts /= optLibraryPaths opts'
+    = left [errIllegalOption p "Cannot change library path"]
+    | optImportPaths  opts /= optImportPaths  opts'
+    = left [errIllegalOption p "Cannot change import path"]
+    | optTargetTypes  opts /= optTargetTypes  opts'
+    = left [errIllegalOption p "Cannot change target type"]
+    | otherwise
+    = return opts'
+    where
+    (opts', files, errs) = updateOpts opts (quotedWords s)
+    unknownFlags = files ++ errs
+
+quotedWords :: String -> [String]
+quotedWords str = case dropWhile isSpace str of
+  []        -> []
+  s@('\'' : cs) -> case break (== '\'') cs of
+    (_     , []      ) -> def s
+    (quoted, (_:rest)) -> quoted : quotedWords rest
+  s@('"'  : cs) -> case break (== '"') cs of
+    (_     , []      ) -> def s
+    (quoted, (_:rest)) -> quoted : quotedWords rest
+  s         -> def s
+  where
+  def s = let (w, rest) = break isSpace s in  w : quotedWords rest
 
 -- |Compile a single source module.
 process :: Options -> (Int, Int)
@@ -155,6 +199,15 @@ cancelMissing :: (FilePath -> IO (Maybe a)) -> FilePath -> CYIO a
 cancelMissing act f = liftIO (act f) >>= \res -> case res of
   Nothing  -> left [errModificationTime f]
   Just val -> right val
+
+errUnknownOptions :: Position -> [String] -> Message
+errUnknownOptions p errs = posMessage p $
+  text "Unknown flag(s) in {-# OPTIONS_CYMAKE #-} pragma:"
+  <+> sep (punctuate comma $ map text errs)
+
+errIllegalOption :: Position -> String -> Message
+errIllegalOption p err = posMessage p $
+  text "Illegal option in {-# OPTIONS_CYMAKE #-} pragma:" <+> text err
 
 errMissing :: String -> String -> Message
 errMissing what which = message $ sep $ map text

@@ -29,7 +29,7 @@ import Curry.Base.Pretty
 import Curry.Files.Filenames
 import Curry.Files.PathUtils
 import Curry.Syntax
-  ( Module (..), ImportDecl (..), parseHeader, patchModuleId
+  ( Module (..), ModulePragma (..), ImportDecl (..), parseHeader, patchModuleId
   , hasLanguageExtension)
 
 import Base.Messages
@@ -38,10 +38,13 @@ import CompilerOpts (Options (..), KnownExtension (..))
 
 -- |Different types of source files
 data Source
-  = Source FilePath [ModuleIdent] -- ^ A source file with module imports
-  | Interface FilePath            -- ^ An interface file
-  | Unknown                       -- ^ An unkonwn file
-    deriving (Eq, Ord, Show)
+    -- ^ A source file with pragmas and module imports
+  = Source FilePath [ModulePragma] [ModuleIdent]
+    -- ^ An interface file
+  | Interface FilePath
+    -- ^ An unkonwn file
+  | Unknown
+    deriving (Eq, Show)
 
 type SourceEnv = Map.Map ModuleIdent Source
 
@@ -91,11 +94,11 @@ sourceDeps opts sEnv fn = readHeader fn >>= moduleDeps opts sEnv fn
 
 -- |Retrieve the dependencies of a given module
 moduleDeps :: Options -> SourceEnv -> FilePath -> Module -> CYIO SourceEnv
-moduleDeps opts sEnv fn mdl@(Module _ m _ _ _) = case Map.lookup m sEnv of
+moduleDeps opts sEnv fn mdl@(Module ps m _ _ _) = case Map.lookup m sEnv of
   Just  _ -> return sEnv
   Nothing -> do
     let imps  = imports opts mdl
-        sEnv' = Map.insert m (Source fn imps) sEnv
+        sEnv' = Map.insert m (Source fn ps imps) sEnv
     foldM (moduleIdentDeps opts) sEnv' imps
 
 -- |Retrieve the imported modules and add the import of the Prelude
@@ -145,8 +148,8 @@ flattenDeps = fdeps . sortDeps
 
   idents (m, _) = [m]
 
-  imported (_, Source _ ms) = ms
-  imported (_,           _) = []
+  imported (_, Source _ _ ms) = ms
+  imported (_,             _) = []
 
   fdeps :: [[(ModuleIdent, Source)]] -> ([(ModuleIdent, Source)], [Message])
   fdeps = foldr checkdep ([], [])

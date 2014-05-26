@@ -3,7 +3,7 @@
     Description :  Compiler options
     Copyright   :  (c) 2005        Martin Engelke
                        2007        Sebastian Fischer
-                       2011 - 2013 Björn Peemöller
+                       2011 - 2014 Björn Peemöller
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
@@ -19,7 +19,7 @@ module CompilerOpts
   , CymakeMode (..), Verbosity (..), TargetType (..)
   , WarnFlag (..), KnownExtension (..), DumpLevel (..), dumpLevel
   , defaultOptions, defaultPrepOpts, defaultWarnOpts, defaultDebugOpts
-  , getCompilerOpts, usage
+  , getCompilerOpts, updateOpts, usage
   ) where
 
 import Data.List             (intercalate, nub)
@@ -444,12 +444,15 @@ addFlag o opts = nub $ o : opts
 removeFlag :: Eq a => a -> [a] -> [a]
 removeFlag o opts = filter (/= o) opts
 
+updateOpts :: Options -> [String] -> (Options, [String], [String])
+updateOpts opts args = (opts', files, errs ++ errs2 ++ checkOpts opts files)
+  where
+  (opts', errs2) = foldl (flip ($)) (opts, []) optErrs
+  (optErrs, files, errs) = getOpt Permute options args
+
 -- |Parse the command line arguments
 parseOpts :: [String] -> (Options, [String], [String])
-parseOpts args = (opts, files, errs ++ errs2 ++ checkOpts opts files)
-  where
-  (opts, errs2) = foldl (flip ($)) (defaultOptions, []) optErrs
-  (optErrs, files, errs) = getOpt Permute options args
+parseOpts = updateOpts defaultOptions
 
 -- |Check options and files and return a list of error messages
 checkOpts :: Options -> [String] -> [String]

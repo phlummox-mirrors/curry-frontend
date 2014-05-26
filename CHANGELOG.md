@@ -4,6 +4,30 @@ Change log for curry-frontend
 Version 0.3.10
 ==============
 
+  * The frontend now considers options pragmas of the following form:
+
+    ~~~ {.curry}
+    {-# OPTIONS_CYMAKE opt1 ... optn #-}
+    ~~~
+
+    The string following `OPTIONS_CYMAKE` will be split at white spaces
+    and treated like an ordinary command line argument string.
+
+    If one wishes to provide options containing spaces, e.g., directory
+    paths or alike, this can be achieved by quoting the respective argument
+    using either `'single quotes'` or `'double quotes'` (may bot be mixed).
+
+    Note that *following options are excluded*:
+
+      * A change of the current mode
+        (e.g., change from compilation to HTML generation)
+      * A change of the import  paths
+      * A change of the library paths
+      * A change of the compilation targets
+        (e.g., change from FlatCurry to AbstractCurry)
+
+    These options can only be set via the command line.
+
   * Refactored the source code HTML generation.
     The generation now supports full Curry with all supported extensions,
     i.e., it supports pragmas, record types and functional patterns.
