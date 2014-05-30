@@ -54,9 +54,10 @@ kindCheck _ env (Module ps m es is ds)
 -- * Environment:  remains unchanged
 syntaxCheck :: Monad m => Check m Module
 syntaxCheck opts env mdl
-  | null msgs = right (env, mdl')
+  | null msgs = right (env { extensions = exts }, mdl')
   | otherwise = left msgs
-  where (mdl', msgs) = SC.syntaxCheck opts (valueEnv env) (tyConsEnv env) mdl
+  where ((mdl', exts), msgs) = SC.syntaxCheck opts (valueEnv env)
+                                                   (tyConsEnv env) mdl
 
 -- |Check the precedences of infix operators.
 --

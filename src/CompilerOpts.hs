@@ -225,6 +225,8 @@ extensions =
     , "enable anonymous free variables"     )
   , ( FunctionalPatterns, "FunctionalPatterns"
     , "enable functional patterns"          )
+  , ( NegativeLiterals  , "NegativeLiterals"
+    , "desugar negated literals as negative literal")
   , ( NoImplicitPrelude , "NoImplicitPrelude"
     , "do not implicitly import the Prelude")
   , ( Records           , "Records"

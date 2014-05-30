@@ -56,15 +56,17 @@ generated. Finally, all declarations are checked within the resulting
 environment. In addition, this process will also rename the local variables.
 \begin{verbatim}
 
-> syntaxCheck :: Options -> ValueEnv -> TCEnv -> Module -> (Module, [Message])
+> syntaxCheck :: Options -> ValueEnv -> TCEnv -> Module
+>             -> ((Module, [KnownExtension]), [Message])
 > syntaxCheck opts tyEnv tcEnv mdl@(Module _ m _ _ ds) =
 >   case findMultiples $ concatMap constrs typeDecls of
 >     []  -> runSC (checkModule mdl) state
->     css -> (mdl, map errMultipleDataConstructor css)
+>     css -> ((mdl, exts), map errMultipleDataConstructor css)
 >   where
 >     typeDecls  = filter isTypeDecl ds
 >     rEnv       = globalEnv $ fmap (renameInfo tcEnv) tyEnv
->     state      = initState (optExtensions opts) m rEnv
+>     state      = initState exts m rEnv
+>     exts       = optExtensions opts
 
 \end{verbatim}
 A global state transformer is used for generating fresh integer keys with
@@ -107,6 +109,10 @@ renaming literals and underscore to disambiguate them.
 > -- missing extensions
 > enableExtension :: KnownExtension -> SCM ()
 > enableExtension e = S.modify $ \ s -> s { extensions = e : extensions s }
+
+> -- |Retrieve all enabled extensions
+> getExtensions :: SCM [KnownExtension]
+> getExtensions = S.gets extensions
 
 > -- |Retrieve the 'ModuleIdent' of the current module
 > getModuleIdent :: SCM ModuleIdent
@@ -315,12 +321,13 @@ a goal. Note that all declarations in the goal must be considered as
 local declarations.
 \begin{verbatim}
 
-> checkModule :: Module -> SCM Module
+> checkModule :: Module -> SCM (Module, [KnownExtension])
 > checkModule (Module ps m es is decls) = do
 >   mapM_ checkPragma ps
 >   mapM_ bindTypeDecl (rds ++ dds)
 >   decls' <- liftM2 (++) (mapM checkTypeDecl tds) (checkTopDecls vds)
->   return $ Module ps m es is decls'
+>   exts <- getExtensions
+>   return (Module ps m es is decls', exts)
 >   where (tds, vds) = partition isTypeDecl decls
 >         (rds, dds) = partition isRecordDecl tds
 

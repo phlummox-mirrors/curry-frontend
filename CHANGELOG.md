@@ -4,6 +4,10 @@ Change log for curry-frontend
 Under development
 =================
 
+  * Added syntax extension `NegativeLiterals` to translate negated literals
+    into negative literals instead of a call to `Prelude.negate` and
+    `Prelude.negateFloat`, respectively.
+
   * The frontend now considers options pragmas of the following form:
 
     ~~~ {.curry}

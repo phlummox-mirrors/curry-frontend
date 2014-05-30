@@ -99,8 +99,9 @@ variables.
 \begin{verbatim}
 
 > data DesugarState = DesugarState
->   { moduleIdent :: ModuleIdent -- read-only
->   , tyConsEnv   :: TCEnv       -- read-only
+>   { moduleIdent :: ModuleIdent      -- read-only
+>   , extensions  :: [KnownExtension] -- read-only
+>   , tyConsEnv   :: TCEnv            -- read-only
 >   , valueEnv    :: ValueEnv
 >   , nextId      :: Integer     -- counter
 >   }
@@ -109,6 +110,9 @@ variables.
 
 > getModuleIdent :: DsM ModuleIdent
 > getModuleIdent = S.gets moduleIdent
+
+> negativeLiterals :: DsM Bool
+> negativeLiterals = S.gets (\s -> NegativeLiterals `elem` extensions s)
 
 > getTyConsEnv :: DsM TCEnv
 > getTyConsEnv = S.gets tyConsEnv
@@ -159,10 +163,12 @@ Actually, the transformation is slightly more general than necessary
 as it allows value declarations at the top-level of a module.
 \begin{verbatim}
 
-> desugar :: ValueEnv -> TCEnv -> Module -> (Module, ValueEnv)
-> desugar tyEnv tcEnv (Module ps m es is ds) = (Module ps m es is ds', valueEnv s')
+> desugar :: [KnownExtension] -> ValueEnv -> TCEnv -> Module
+>         -> (Module, ValueEnv)
+> desugar xs tyEnv tcEnv (Module ps m es is ds) 
+>   = (Module ps m es is ds', valueEnv s')
 >   where (ds', s') = S.runState (desugarModuleDecls ds)
->                                (DesugarState m tcEnv tyEnv 1)
+>                                (DesugarState m xs tcEnv tyEnv 1)
 
 > desugarModuleDecls :: [Decl] -> DsM [Decl]
 > desugarModuleDecls ds = do
@@ -454,7 +460,11 @@ type \texttt{Bool} of the guard because the guard's type defaults to
 >   apply prelEnumFromThenTo `liftM` mapM (dsExpr p) [e1, e2, e3]
 > dsExpr p (UnaryMinus op e) = do
 >   ty <- getTypeOf e
->   Apply (unaryMinus op ty) `liftM` dsExpr p e
+>   e' <- dsExpr p e
+>   negativeLits <- negativeLiterals
+>   case e' of
+>     Literal l | negativeLits -> return (Literal $ negateLiteral l)
+>     _                        -> Apply (unaryMinus op ty) `liftM` dsExpr p e
 >   where
 >   unaryMinus op1 ty'
 >     | op1 ==  minusId = if ty' == floatType then prelNegateFloat else prelNegate
