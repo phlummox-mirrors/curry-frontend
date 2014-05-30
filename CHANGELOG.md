@@ -1,8 +1,8 @@
 Change log for curry-frontend
 =============================
 
-Version 0.3.10
-==============
+Under development
+=================
 
   * The frontend now considers options pragmas of the following form:
 
@@ -36,6 +36,9 @@ Version 0.3.10
 
   * The HTML generation now accepts an option `--htmldir=dir` to specify
     the output directory of the generated HTML files.
+
+Version 0.3.10
+==============
 
   * Various improvements of the internal structure.
 
