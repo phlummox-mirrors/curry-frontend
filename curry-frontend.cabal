@@ -33,7 +33,7 @@ Executable cymake
   Build-Depends: base == 4.*, curry-base == 0.3.10
     , containers, directory, either, mtl, process, transformers, syb
   if impl(ghc < 7.4)
-    Build-Depends: either < 4, contravariant < 0.5, semigroupoids < 3.0.3
+    Build-Depends: either < 4, contravariant < 0.5, semigroupoids < 3.0.3, transformers < 0.3
   ghc-options: -Wall
   Other-Modules:
       Base.CurryTypes
