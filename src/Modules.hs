@@ -61,14 +61,13 @@ import Transformations
 
 -- The function 'compileModule' is the main entry-point of this
 -- module for compiling a Curry source module. Depending on the command
--- line options, it will emit either FlatCurry code (standard or in XML
--- representation) or AbstractCurry code (typed, untyped or with type
--- signatures) for the module
+-- line options, it will emit either FlatCurry code or AbstractCurry code
+-- (typed, untyped or with type signatures) for the module.
 -- Usually, the first step is to check the module.
 -- Then the code is translated into the intermediate
 -- language. If necessary, this phase will also update the module's
--- interface file. The resulting code then is written out (in
--- FlatCurry or XML format) to the corresponding file.
+-- interface file. The resulting code then is written out
+-- to the corresponding file.
 -- The untyped  AbstractCurry representation is written
 -- out directly after parsing and simple checking the source file.
 -- The typed AbstractCurry code is written out after checking the module.
@@ -216,7 +215,7 @@ checkModule opts (env, mdl) = do
   where
   debugOpts = optDebugOpts opts
   withTypeCheck = any (`elem` optTargetTypes opts)
-                      [FlatCurry, ExtendedFlatCurry, FlatXml, AbstractCurry]
+                      [FlatCurry, ExtendedFlatCurry, AbstractCurry]
 
 -- ---------------------------------------------------------------------------
 -- Translating a module
@@ -266,8 +265,7 @@ writeOutput opts fn (env, modul) = do
     let modSum = summarizeModule (tyConsEnv env2) intf qlfd
     writeFlat opts fn env2 modSum il
   where
-  withFlat = any (`elem` optTargetTypes opts)
-              [FlatCurry, FlatXml, ExtendedFlatCurry]
+  withFlat = any (`elem` optTargetTypes opts) [FlatCurry, ExtendedFlatCurry]
 
 -- The functions \texttt{genFlat} and \texttt{genAbstract} generate
 -- flat and abstract curry representations depending on the specified option.
@@ -313,11 +311,9 @@ writeFlat opts fn env modSum il = do
   when (extTarget || fcyTarget) $ do
     writeFlatCurry opts fn env modSum il
     writeFlatIntf  opts fn env modSum il
-  when (xmlTarget) $ writeFlatXml opts fn modSum il
   where
   extTarget    = ExtendedFlatCurry `elem` optTargetTypes opts
   fcyTarget    = FlatCurry         `elem` optTargetTypes opts
-  xmlTarget    = FlatXml           `elem` optTargetTypes opts
 
 -- |Export an 'IL.Module' into a FlatCurry file
 writeFlatCurry :: Options -> FilePath -> CompilerEnv -> ModuleSummary
@@ -331,13 +327,6 @@ writeFlatCurry opts fn env modSum il = do
   fcyTarget    = FlatCurry         `elem` optTargetTypes opts
   useSubDir    = optUseSubdir opts
   (prog, msgs) = genFlatCurry opts modSum env il
-
--- |Export an 'IL.Module' into an XML file
-writeFlatXml :: Options -> FilePath -> ModuleSummary -> IL.Module -> IO ()
-writeFlatXml opts fn modSum il = writeModule useSubDir (xmlName fn) curryXml
-  where
-  useSubDir = optUseSubdir opts
-  curryXml  = shows (IL.xmlModule (interface modSum) (infixDecls modSum) il) "\n"
 
 writeFlatIntf :: Options -> FilePath -> CompilerEnv -> ModuleSummary
               -> IL.Module -> IO ()

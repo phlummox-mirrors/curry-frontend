@@ -158,7 +158,6 @@ process opts idx m fn deps
   nameGens  =
     [ (FlatCurry            , flatName     )
     , (ExtendedFlatCurry    , extFlatName  )
-    , (FlatXml              , xmlName      )
     , (AbstractCurry        , acyName      )
     , (UntypedAbstractCurry , uacyName     )
     , (Parsed               , sourceRepName)

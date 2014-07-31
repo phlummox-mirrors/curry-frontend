@@ -145,7 +145,6 @@ data TargetType
   = Parsed                -- ^ Parsed source code
   | FlatCurry             -- ^ FlatCurry
   | ExtendedFlatCurry     -- ^ Extended FlatCurry
-  | FlatXml               -- ^ FlatCurry as XML
   | AbstractCurry         -- ^ AbstractCurry
   | UntypedAbstractCurry  -- ^ Untyped AbstractCurry
     deriving (Eq, Show)
@@ -361,10 +360,6 @@ options =
       (NoArg (onOpts $ \ opts -> opts { optTargetTypes =
         nub $ ExtendedFlatCurry : optTargetTypes opts }))
       "generate FlatCurry code with source references"
-  , Option ""   ["xml"]
-      (NoArg (onOpts $ \ opts -> opts { optTargetTypes =
-        nub $ FlatXml : optTargetTypes opts }))
-      "generate flat xml code"
   , Option ""   ["acy"]
       (NoArg (onOpts $ \ opts -> opts { optTargetTypes =
         nub $ AbstractCurry : optTargetTypes opts }))
