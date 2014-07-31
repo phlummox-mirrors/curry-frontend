@@ -4,6 +4,8 @@ Change log for curry-frontend
 Under development
 =================
 
+  * Removed support for FlatCurry XML files.
+
   * Added syntax extension `NegativeLiterals` to translate negated literals
     into negative literals instead of a call to `Prelude.negate` and
     `Prelude.negateFloat`, respectively.
