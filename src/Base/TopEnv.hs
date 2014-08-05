@@ -10,12 +10,12 @@
     Stability   :  experimental
     Portability :  portable
 
-    The module \texttt{TopEnv} implements environments for qualified and
+    The module 'TopEnv' implements environments for qualified and
     possibly ambiguous identifiers. An identifier is ambiguous if two
     different entities are imported under the same name or if a local
     definition uses the same name as an imported entity. Following an idea
-    presented in \cite{DiatchkiJonesHallgren02:ModuleSystem}, an
-    identifier is associated with a list of entities in order to handle
+    presented in a paper by Diatchki, Jones and Hallgren (2002),
+    an identifier is associated with a list of entities in order to handle
     ambiguous names properly.
 
     In general, two entities are considered equal if the names of their
@@ -24,16 +24,15 @@
     import and export, respectively. In this case we have to merge both
     imports such that all data constructors which are visible through any
     import path are visible in the current module. The class
-    \texttt{Entity} is used to handle this merge.
+    Entity is used to handle this merge.
 
     The code in this module ensures that the list of entities returned by
-    the functions \texttt{lookupTopEnv} and \texttt{qualLookupTopEnv}
-    contains exactly one element for each imported entity regardless of
-    how many times and from which module(s) it was imported. Thus, the
-    result of these function is a list with exactly one element if and
-    only if the identifier is unambiguous. The module names associated
-    with an imported entity identify the modules from which the entity was
-    imported.
+    the functions 'lookupTopEnv' and 'qualLookupTopEnv' contains exactly one
+    element for each imported entity regardless of how many times and
+    from which module(s) it was imported. Thus, the result of these function
+    is a list with exactly one element if and only if the identifier is
+    unambiguous. The module names associated with an imported entity identify
+    the modules from which the entity was imported.
 -}
 
 module Base.TopEnv

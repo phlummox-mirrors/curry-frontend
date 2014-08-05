@@ -1,6 +1,6 @@
 {- |
     Module      :  $Header$
-    Description :  Cumputation of export interface
+    Description :  Computation of export interface
     Copyright   :  (c) 2000 - 2004, Wolfgang Lux
                        2005       , Martin Engelke
                        2011 - 2013, Björn Peemöller
