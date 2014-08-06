@@ -35,9 +35,10 @@ import Curry.Base.Ident
 import Curry.Base.Message (runMsg)
 import Curry.Base.Position
 import Curry.Base.Pretty
-import Curry.ExtendedFlat.InterfaceEquality (eqInterface)
+import Curry.ExtendedFlat.InterfaceEquivalence (eqInterface)
 import Curry.Files.Filenames
 import Curry.Files.PathUtils
+import Curry.Syntax.InterfaceEquivalence
 
 import Base.Messages
 import Env.Interface
@@ -54,7 +55,6 @@ import CompilerOpts
 import Exports
 import Generators
 import Imports
-import InterfaceEquivalence
 import Interfaces
 import ModuleSummary
 import Transformations

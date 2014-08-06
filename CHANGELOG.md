@@ -4,6 +4,9 @@ Change log for curry-frontend
 Under development
 =================
 
+  * Moved module `InterfaceEquivalence` to curry-base
+    (`Curry.Syntax.InterfaceEquivalence`)
+
   * Converted literate Haskell files into simple Haskell files
 
   * Removed support for FlatCurry XML files.

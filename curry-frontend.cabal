@@ -76,7 +76,6 @@ Executable cymake
     , IL.Pretty
     , IL.Type
     , Imports
-    , InterfaceEquivalence
     , Interfaces
     , Modules
     , ModuleSummary
