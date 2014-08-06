@@ -4,6 +4,8 @@ Change log for curry-frontend
 Under development
 =================
 
+  * Converted literate Haskell files into simple Haskell files
+
   * Removed support for FlatCurry XML files.
 
   * Added syntax extension `NegativeLiterals` to translate negated literals
