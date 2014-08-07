@@ -76,9 +76,10 @@ import Curry.Base.Position hiding (first)
 import Curry.Syntax
 
 import Base.Expr
-import Base.CurryTypes (fromType)
+import Base.CurryTypes (toType, fromType)
 import Base.Messages (internalError)
 import Base.Types
+import Base.TypeSubst (expandAliasType)
 import Base.Typing
 import Base.Utils (mapAccumM, concatMapM)
 
@@ -158,7 +159,7 @@ freshMonoTypeVar prefix t = getTypeOf t >>= \ ty ->
 
 desugar :: [KnownExtension] -> ValueEnv -> TCEnv -> Module
         -> (Module, ValueEnv)
-desugar xs tyEnv tcEnv (Module ps m es is ds) 
+desugar xs tyEnv tcEnv (Module ps m es is ds)
   = (Module ps m es is ds', valueEnv s')
   where (ds', s') = S.runState (desugarModuleDecls ds)
                                (DesugarState m xs tcEnv tyEnv 1)
@@ -425,7 +426,7 @@ dsExpr _ var@(Variable v)
   | otherwise              = return var
 dsExpr _ c@(Constructor _) = return c
 dsExpr p (Paren         e) = dsExpr p e
-dsExpr p (Typed      e ty) = flip Typed ty `liftM` dsExpr p e
+dsExpr p (Typed      e ty) = liftM2 Typed (dsExpr p e) (dsTypeExpr ty)
 dsExpr p (Tuple    pos es) =
   apply (Constructor $ tupleConstr es) `liftM` mapM (dsExpr p) es
   where tupleConstr es1 = addRef pos $ if null es1 then qUnitId else qTupleId (length es1)
@@ -518,6 +519,27 @@ dsExpr p (RecordUpdate fs rexpr)
   | otherwise = do
     r <- recordFromField (fieldLabel (head fs))
     dsRecordUpdate p r rexpr (map field2Tuple fs)
+
+dsTypeExpr :: TypeExpr -> DsM TypeExpr
+dsTypeExpr ty = do
+  tcEnv <- getTyConsEnv
+  let expType = expandType tcEnv (toType [] ty)
+  return $ fromType expType
+
+expandType :: TCEnv -> Type -> Type
+expandType tcEnv (TypeConstructor tc tys) = case qualLookupTC tc tcEnv of
+  [DataType     tc' _  _] -> TypeConstructor tc' tys'
+  [RenamingType tc' _  _] -> TypeConstructor tc' tys'
+  [AliasType    _   _ ty] -> expandAliasType tys' ty
+  _ -> internalError $ "Desugar.expandType " ++ show tc
+  where tys' = map (expandType tcEnv) tys
+expandType _     tv@(TypeVariable      _) = tv
+expandType _     tc@(TypeConstrained _ _) = tc
+expandType tcEnv (TypeArrow      ty1 ty2) =
+  TypeArrow (expandType tcEnv ty1) (expandType tcEnv ty2)
+expandType _     ts@(TypeSkolem        _) = ts
+expandType tcEnv (TypeRecord       fs rv) =
+  TypeRecord (map (\ (l, ty) -> (l, expandType tcEnv ty)) fs) rv
 
 -- If an alternative in a case expression has boolean guards and all of
 -- these guards return 'False', the enclosing case expression does

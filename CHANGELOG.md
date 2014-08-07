@@ -4,6 +4,8 @@ Change log for curry-frontend
 Under development
 =================
 
+ * Type synonyms in typed expressions are now desugared - fixes #921
+
   * Declaration of operator precedence is now optional in infix operator
     declarations
 
