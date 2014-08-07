@@ -21,6 +21,7 @@ import Curry.Syntax
 import Base.Messages (internalError)
 import Base.Types
 
+import Env.OpPrec          (mkPrec)
 import Env.TypeConstructor (TCEnv, TypeInfo (..), qualLookupTC)
 
 -- |A record containing data for a module 'm'
@@ -63,8 +64,8 @@ genInfixDecls :: ModuleIdent -> [Decl] -> [IDecl]
 genInfixDecls mident decls = concatMap genInfixDecl decls
   where
   genInfixDecl :: Decl -> [IDecl]
-  genInfixDecl (InfixDecl pos spec prec idents)
-    = map (IInfixDecl pos spec prec . qualifyWith mident) idents
+  genInfixDecl (InfixDecl pos spec mPrec idents)
+    = map (IInfixDecl pos spec (mkPrec mPrec) . qualifyWith mident) idents
   genInfixDecl _ = []
 
 -- ---------------------------------------------------------------------------
