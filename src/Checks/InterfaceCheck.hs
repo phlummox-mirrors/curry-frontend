@@ -99,7 +99,7 @@ interfaceCheck pEnv tcEnv tyEnv (Interface m _ ds) = reverse (errors s)
 checkImport :: IDecl -> IC ()
 checkImport (IInfixDecl p fix pr op) = checkPrecInfo check p op
   where check (PrecInfo op' (OpPrec fix' pr')) =
-          op == op' && fix == fix' && pr == pr'
+          op == op' && fix == fix' && (mkPrec pr) == pr'
 checkImport (HidingDataDecl p tc tvs)
   = checkTypeInfo "hidden data type" check p tc
   where check (DataType     tc' n' _)

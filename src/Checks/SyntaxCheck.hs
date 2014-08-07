@@ -382,10 +382,11 @@ checkDeclLhs (FreeDecl             p vs) =
   FreeDecl p `liftM` mapM (checkVar "free variables declaration") vs
 checkDeclLhs d                           = return d
 
-checkPrecedence :: Position -> Integer -> SCM Integer
-checkPrecedence p i = do
+checkPrecedence :: Position -> Maybe Precedence -> SCM (Maybe Precedence)
+checkPrecedence _ Nothing  = return Nothing
+checkPrecedence p (Just i) = do
   unless (0 <= i && i <= 9) $ report $ errPrecedenceOutOfRange p i
-  return i
+  return $ Just i
 
 checkVar :: String -> Ident -> SCM Ident
 checkVar _what v = do

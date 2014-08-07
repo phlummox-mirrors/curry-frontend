@@ -168,8 +168,9 @@ intfEnv bind (Interface m _ ds) = foldr (bind m) Map.empty ds
 
 -- operator precedences
 bindPrec :: ModuleIdent -> IDecl -> ExpPEnv -> ExpPEnv
-bindPrec m (IInfixDecl _ fix p op) =
-  Map.insert (unqualify op) (PrecInfo (qualQualify m op) (OpPrec fix p))
+bindPrec m (IInfixDecl _ fix mprec op) =
+  Map.insert (unqualify op) (PrecInfo (qualQualify m op)
+                                      (OpPrec fix (mkPrec mprec)))
 bindPrec _ _ = id
 
 bindTCHidden :: ModuleIdent -> IDecl -> ExpTCEnv -> ExpTCEnv

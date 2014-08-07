@@ -75,7 +75,7 @@ iInfixDecl :: ModuleIdent -> OpPrecEnv -> QualIdent -> [IDecl] -> [IDecl]
 iInfixDecl m pEnv op ds = case qualLookupP op pEnv of
   []                           -> ds
   [PrecInfo _ (OpPrec fix pr)] ->
-    IInfixDecl NoPos fix pr (qualUnqualify m op) : ds
+    IInfixDecl NoPos fix (Just pr) (qualUnqualify m op) : ds
   _                            -> internalError "Exports.infixDecl"
 
 typeDecl :: ModuleIdent -> TCEnv -> Export -> [IDecl] -> [IDecl]

@@ -36,6 +36,7 @@ import Base.Types
  -- environments
 import Env.Interface
 import Env.TypeConstructor (TCEnv, TypeInfo (..), qualLookupTC)
+import Env.OpPrec (mkPrec)
 import Env.Value (ValueEnv, ValueInfo (..), lookupValue, qualLookupValue)
 
 -- other
@@ -386,9 +387,9 @@ visitConstrIDecl mid tis (CS.ConOpDecl pos ids type1 ident type2)
 
 --
 visitOpIDecl :: CS.IDecl -> FlatState OpDecl
-visitOpIDecl (CS.IInfixDecl _ fixi prec op) = do
+visitOpIDecl (CS.IInfixDecl _ fixi mprec op) = do
   op' <- visitQualIdent op
-  return $ Op op' (genFixity fixi) prec
+  return $ Op op' (genFixity fixi) (mkPrec mprec)
 visitOpIDecl _ = internalError "GenFlatCurry.visitOpIDecl: no pattern match"
 
 -------------------------------------------------------------------------------
@@ -617,9 +618,9 @@ genOpDecls = fixities >>= mapM genOpDecl
 
 --
 genOpDecl :: CS.IDecl -> FlatState OpDecl
-genOpDecl (CS.IInfixDecl _ fixity prec qident) = do
+genOpDecl (CS.IInfixDecl _ fixity mprec qident) = do
   qname <- visitQualIdent qident
-  return $ Op qname (genFixity fixity) prec
+  return $ Op qname (genFixity fixity) (mkPrec mprec)
 genOpDecl _ = internalError "GenFlatCurry: no infix interface"
 
 genFixity :: CS.Infix -> Fixity

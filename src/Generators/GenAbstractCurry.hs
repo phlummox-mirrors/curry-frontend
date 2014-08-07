@@ -32,6 +32,7 @@ import Base.Types
 
 import Env.TypeConstructor (TCEnv, lookupTC)
 import Env.Value (ValueEnv, ValueInfo (..), lookupValue, qualLookupValue)
+import Env.OpPrec (mkPrec)
 
 import CompilerEnv
 
@@ -207,11 +208,11 @@ genTypeExpr env (RecordType fss mr) = case mr of
   ls'        = map idName ls
 
 genOpDecl :: AbstractEnv -> Decl -> [COpDecl]
-genOpDecl env (InfixDecl _ fix prec ops) = map genCOp (reverse ops)
+genOpDecl env (InfixDecl _ fix mprec ops) = map genCOp (reverse ops)
   where
   genCOp op = COp (genQName False env $ qualifyWith (moduleId env) op)
                   (genFixity fix)
-                  (fromInteger prec)
+                  (fromInteger (mkPrec mprec))
 
   genFixity InfixL = CInfixlOp
   genFixity InfixR = CInfixrOp

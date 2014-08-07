@@ -34,7 +34,7 @@ import Base.Messages (Message, posMessage)
 import Base.Utils (findDouble)
 
 import Env.OpPrec (OpPrecEnv, OpPrec (..), PrecInfo (..), defaultP, bindP
-  , qualLookupP)
+  , mkPrec, qualLookupP)
 
 precCheck :: ModuleIdent -> OpPrecEnv -> [Decl] -> ([Decl], OpPrecEnv, [Message])
 precCheck m pEnv decls = runPCM (checkDecls decls) initState
@@ -91,11 +91,11 @@ bindPrecs ds = case findDouble opFixDecls of
     bvs               = concatMap boundValues nonFixDs
 
 bindPrec :: ModuleIdent -> Decl -> OpPrecEnv -> OpPrecEnv
-bindPrec m (InfixDecl _ fix prc ops) pEnv
+bindPrec m (InfixDecl _ fix mprec ops) pEnv
   | p == defaultP = pEnv
   | otherwise     = foldr (flip (bindP m) p) pEnv ops
-  where p = OpPrec fix prc
-bindPrec _ _ pEnv = pEnv
+  where p = OpPrec fix (mkPrec mprec)
+bindPrec _ _                         pEnv = pEnv
 
 boundValues :: Decl -> [Ident]
 boundValues (DataDecl      _ _ _ cs) = map constr cs

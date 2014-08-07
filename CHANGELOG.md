@@ -4,6 +4,9 @@ Change log for curry-frontend
 Under development
 =================
 
+  * Declaration of operator precedence is now optional in infix operator
+    declarations
+
   * Moved module `InterfaceEquivalence` to curry-base
     (`Curry.Syntax.InterfaceEquivalence`)
 
