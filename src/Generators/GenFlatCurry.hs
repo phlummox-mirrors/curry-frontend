@@ -671,26 +671,25 @@ genRecordTypes = records >>= mapM genRecordType
 
 --
 genRecordType :: CS.IDecl -> FlatState TypeDecl
-genRecordType (CS.ITypeDecl _ qident params (CS.RecordType fields _))
-   = do let is = [0 .. (length params) - 1]
-	    (modid,ident) = (qidModule qident, qidIdent qident)
-	qname <- visitQualIdent ((maybe qualify qualifyWith modid)
-				 (recordExtId ident))
-	labels <- mapM (genRecordLabel modid (zip params is)) fields
-	return (Type qname Public is labels)
+genRecordType (CS.ITypeDecl _ qid params (CS.RecordType fs _)) = do
+  let is = [0 .. (length params) - 1]
+      (mid, ident) = (qidModule qid, qidIdent qid)
+  qname <- visitQualIdent ((maybe qualify qualifyWith mid) (recordExtId ident))
+  labels <- mapM (genRecordLabel mid (zip params is)) fs
+  return (Type qname Public is labels)
 genRecordType _ = internalError "GenFlatCurry.genRecordType: no pattern match"
 
 --
-genRecordLabel :: Maybe ModuleIdent -> [(Ident,Int)] -> ([Ident],CS.TypeExpr)
-	       -> FlatState ConsDecl
-genRecordLabel modid vis ([ident],typeexpr)
-   = do tyEnv <- gets typeEnvE
-        tcEnv <- gets tConsEnvE
-	let typeexpr' = elimRecordTypes tyEnv tcEnv typeexpr
-        texpr <- visitType (snd (cs2ilType vis typeexpr'))
-	qname <- visitQualIdent ((maybe qualify qualifyWith modid)
-				 (labelExtId ident))
-	return (Cons qname 1 Public [texpr])
+genRecordLabel :: Maybe ModuleIdent -> [(Ident, Int)] -> ([Ident], CS.TypeExpr)
+               -> FlatState ConsDecl
+genRecordLabel modid vis ([ident],ty) = do
+  tyEnv <- gets typeEnvE
+  tcEnv <- gets tConsEnvE
+  let ty' = elimRecordTypes tyEnv tcEnv ty
+  texpr <- visitType (snd (cs2ilType vis ty'))
+  qname <- visitQualIdent ((maybe qualify qualifyWith modid)
+                            (labelExtId ident))
+  return (Cons qname 1 Public [texpr])
 genRecordLabel _ _ _ = internalError "GenFlatCurry.genRecordLabel: no pattern match"
 
 
@@ -704,35 +703,35 @@ genRecordLabel _ _ _ = internalError "GenFlatCurry.genRecordLabel: no pattern ma
 -- record declarations are not generated from the intermediate language.
 -- So the transformation has only to be performed in these cases.
 elimRecordTypes :: ValueEnv -> TCEnv -> CS.TypeExpr -> CS.TypeExpr
-elimRecordTypes tyEnv tcEnv (CS.ConstructorType qid typeexprs)
-   = CS.ConstructorType qid (map (elimRecordTypes tyEnv tcEnv) typeexprs)
+elimRecordTypes tyEnv tcEnv (CS.ConstructorType qid tys)
+   = CS.ConstructorType qid (map (elimRecordTypes tyEnv tcEnv) tys)
 elimRecordTypes _ _ (CS.VariableType ident)
    = CS.VariableType ident
-elimRecordTypes tyEnv tcEnv (CS.TupleType typeexprs)
-   = CS.TupleType (map (elimRecordTypes tyEnv tcEnv) typeexprs)
-elimRecordTypes tyEnv tcEnv (CS.ListType typeexpr)
-   = CS.ListType (elimRecordTypes tyEnv tcEnv typeexpr)
-elimRecordTypes tyEnv tcEnv (CS.ArrowType typeexpr1 typeexpr2)
-   = CS.ArrowType (elimRecordTypes tyEnv tcEnv typeexpr1)
-                  (elimRecordTypes tyEnv tcEnv typeexpr2)
+elimRecordTypes tyEnv tcEnv (CS.TupleType tys)
+   = CS.TupleType (map (elimRecordTypes tyEnv tcEnv) tys)
+elimRecordTypes tyEnv tcEnv (CS.ListType ty)
+   = CS.ListType (elimRecordTypes tyEnv tcEnv ty)
+elimRecordTypes tyEnv tcEnv (CS.ArrowType ty1 ty2)
+   = CS.ArrowType (elimRecordTypes tyEnv tcEnv ty1)
+                  (elimRecordTypes tyEnv tcEnv ty2)
 elimRecordTypes tyEnv tcEnv (CS.RecordType fss _)
    = let fs = flattenRecordTypeFields fss
      in  case (lookupValue (fst (head fs)) tyEnv) of
-  	   [Label _ record _] ->
-	     case (qualLookupTC record tcEnv) of
-	       [AliasType _ n (TypeRecord fs' _)] ->
-	         let ms = foldl (matchTypeVars fs) Map.empty fs'
-		     types = map (\i -> maybe
-			 	          (CS.VariableType
-					     (mkIdent ("#tvar" ++ show i)))
-				          (elimRecordTypes tyEnv tcEnv)
-				          (Map.lookup i ms))
-			         [0 .. n-1]
-	         in  CS.ConstructorType record types
-	       _ -> internalError ("GenFlatCurry.elimRecordTypes: "
-		 		   ++ "no record type")
-	   _ -> internalError ("GenFlatCurry.elimRecordTypes: "
-			       ++ "no label")
+          [Label _ record _] ->
+            case (qualLookupTC record tcEnv) of
+              [AliasType _ n (TypeRecord fs' _)] ->
+                let ms = foldl (matchTypeVars fs) Map.empty fs'
+                    types = map (\i -> maybe
+                                        (CS.VariableType
+                                            (mkIdent ("#tvar" ++ show i)))
+                                        (elimRecordTypes tyEnv tcEnv)
+                                        (Map.lookup i ms))
+                                [0 .. n-1]
+                in  CS.ConstructorType record types
+              _ -> internalError ("GenFlatCurry.elimRecordTypes: "
+                                  ++ "no record type")
+          _ -> internalError ("GenFlatCurry.elimRecordTypes: "
+                              ++ "no label")
 
 matchTypeVars :: [(Ident,CS.TypeExpr)] -> Map.Map Int CS.TypeExpr
 	      -> (Ident, Type) -> Map.Map Int CS.TypeExpr
@@ -751,7 +750,7 @@ matchTypeVars fs ms (l,ty) = maybe ms (match ms ty) (lookup l fs)
      = foldl (matchTypeVars (flattenRecordTypeFields fss)) ms1 fs'
   match _ ty1 typeexpr
      = internalError ("GenFlatCurry.matchTypeVars: "
-		      ++ show ty1 ++ "\n" ++ show typeexpr)
+                      ++ show ty1 ++ "\n" ++ show typeexpr)
 
   matchList ms1 tys
      = foldl (\ms' (ty',typeexpr) -> match ms' ty' typeexpr) ms1 . zip tys
@@ -759,9 +758,6 @@ matchTypeVars fs ms (l,ty) = maybe ms (match ms ty) (lookup l fs)
 flattenRecordTypeFields :: [([Ident], CS.TypeExpr)] -> [(Ident, CS.TypeExpr)]
 flattenRecordTypeFields = concatMap (\ (ls, ty) -> map (\l -> (l, ty)) ls)
 
--------------------------------------------------------------------------------
-
---
 checkOverlapping :: Expr -> Expr -> FlatState ()
 checkOverlapping e1 e2 = do
   warnOpts <- optWarnOpts `liftM` compilerOpts
@@ -771,9 +767,6 @@ checkOverlapping e1 e2 = do
   checkOverlap _ (Case _ _ _ _) = functionId >>= genWarning . overlappingRules
   checkOverlap _ _              = return ()
 
--------------------------------------------------------------------------------
-
---
 cs2ilType :: [(Ident,Int)] -> CS.TypeExpr -> ([(Ident,Int)], IL.Type)
 cs2ilType ids (CS.ConstructorType qident typeexprs)
   = let (ids', ilTypeexprs) = mapAccumL cs2ilType ids typeexprs

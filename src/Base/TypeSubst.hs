@@ -15,14 +15,14 @@ module Base.TypeSubst
   ( module Base.TypeSubst, idSubst, singleSubst, bindSubst, compose
   ) where
 
-import Data.List (nub)
-import Data.Maybe (fromJust, isJust)
+import Data.List   (nub)
+import Data.Maybe  (fromJust)
 
 import Base.Subst
 import Base.TopEnv
 import Base.Types
 
-import Env.Value (ValueInfo (..))
+import Env.Value   (ValueInfo (..))
 
 type TypeSubst = Subst Int Type
 
