@@ -45,11 +45,11 @@ instance SubstType Type where
   subst sigma (TypeArrow      ty1 ty2) =
     TypeArrow (subst sigma ty1) (subst sigma ty2)
   subst _     ts@(TypeSkolem        _) = ts
-  subst sigma (TypeRecord       fs rv)
-    | isJust rv = case substVar sigma (fromJust rv) of
-        TypeVariable tv -> TypeRecord fs' (Just tv)
-        ty              -> ty
-    | otherwise = TypeRecord fs' Nothing
+  subst sigma (TypeRecord       fs rv) = case rv of
+    Nothing -> TypeRecord fs' Nothing
+    Just r' -> case substVar sigma r' of
+      TypeVariable tv -> TypeRecord fs' (Just tv)
+      ty              -> ty
    where fs' = map (\ (l,ty) -> (l, subst sigma ty)) fs
 
 instance SubstType TypeScheme where
@@ -80,19 +80,17 @@ instance SubstType a => SubstType (TopEnv a) where
 expandAliasType :: [Type] -> Type -> Type
 expandAliasType tys (TypeConstructor tc tys') =
   TypeConstructor tc (map (expandAliasType tys) tys')
-expandAliasType tys (TypeVariable n)
+expandAliasType tys (TypeVariable          n)
   | n >= 0    = tys !! n
   | otherwise = TypeVariable n
 expandAliasType _   (TypeConstrained   tys n) = TypeConstrained tys n
 expandAliasType tys (TypeArrow       ty1 ty2) =
   TypeArrow (expandAliasType tys ty1) (expandAliasType tys ty2)
 expandAliasType _   tsk@(TypeSkolem        _) = tsk
-expandAliasType tys (TypeRecord        fs rv)
-  | isJust rv =
-    let (TypeVariable tv) = expandAliasType tys $ TypeVariable $ fromJust rv
-    in  TypeRecord fs' (Just tv)
-  | otherwise =
-    TypeRecord fs' Nothing
+expandAliasType tys (TypeRecord        fs rv) = case rv of
+  Nothing -> TypeRecord fs' Nothing
+  Just r' -> let (TypeVariable tv) = expandAliasType tys $ TypeVariable r'
+             in  TypeRecord fs' (Just tv)
  where fs' = map (\ (l, ty) -> (l, expandAliasType tys ty)) fs
 
 normalize :: Type -> Type

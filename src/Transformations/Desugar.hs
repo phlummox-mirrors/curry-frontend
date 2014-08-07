@@ -36,7 +36,7 @@
          - let expressions, and
          - case expressions.
 
-     * Applications 'N:x' in patterns and expressions, where 'N' is a
+     * Applications 'N x' in patterns and expressions, where 'N' is a
        newtype constructor, are replaced by a 'x'. Note that neither the
        newtype declaration itself nor partial applications of newtype
        constructors are changed (It were possible to replace partial
@@ -44,7 +44,7 @@
        However, our solution yields a more accurate output when the result
        of a computation includes partial applications.).
 
-     * Function patterns are replaced by variables and are integrated
+     * Functional patterns are replaced by variables and are integrated
        in a guarded right hand side using the (=:<=) operator
 
      * Records, which currently must be declared using the keyword
