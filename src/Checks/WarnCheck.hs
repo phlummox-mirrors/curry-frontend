@@ -28,6 +28,7 @@ import Curry.Base.Pretty
 import Curry.Syntax
 import Curry.Syntax.Pretty (ppPattern, ppExpr, ppIdent)
 
+import Base.CurryTypes (ppTypeScheme)
 import Base.Messages (Message, posMessage, internalError)
 import qualified Base.ScopeEnv as SE
   ( ScopeEnv, new, beginScope, endScopeUp, insert, lookup, level, modify
@@ -36,7 +37,7 @@ import qualified Base.ScopeEnv as SE
 import Base.Types
 import Env.ModuleAlias
 import Env.TypeConstructor (TCEnv, TypeInfo (..), lookupTC, qualLookupTC)
-import Env.Value (ValueEnv, ValueInfo (..), qualLookupValue)
+import Env.Value (ValueEnv, ValueInfo (..), lookupValue, qualLookupValue)
 
 import CompilerOpts
 
@@ -54,6 +55,7 @@ warnCheck opts aEnv valEnv tcEnv (Module _ mid es is ds)
       checkExports   es
       checkImports   is
       checkDeclGroup ds
+      checkMissingTypeSignatures ds
 
 type ScopeEnv = SE.ScopeEnv QualIdent IdInfo
 
@@ -414,6 +416,32 @@ checkOverlappingAlts (alt : alts) = warnFor WarnOverlapping $ do
     = eqPattern p1 p2
   eqPattern _                           _
     = False
+
+-- -----------------------------------------------------------------------------
+-- Check for missing type signatures
+-- -----------------------------------------------------------------------------
+
+-- check if a type signature was specified for every top-level function
+-- declaration
+-- for external function declarations this check is already performed
+-- during syntax checking
+
+checkMissingTypeSignatures :: [Decl] -> WCM ()
+checkMissingTypeSignatures decls = do
+  let tys        = [t | TypeSig _ ts _ <- decls, t <- ts]
+      missingTys = [f | FunctionDecl _ f _ <- decls, f `notElem` tys]
+  unless (null missingTys) $ do
+    mid   <- getModuleIdent
+    tyScs <- mapM getTyScheme missingTys
+    mapM_ report $ zipWith (warnMissingTypeSignature mid) missingTys tyScs
+
+getTyScheme :: Ident -> WCM TypeScheme
+getTyScheme q = do
+  tyEnv <- gets valueEnv
+  return $ case lookupValue q tyEnv of
+    [Value  _ _ tys] -> tys
+    _                                           -> internalError $
+      "Checks.WarnCheck.getTyScheme: " ++ show q
 
 -- -----------------------------------------------------------------------------
 -- Check for non-exhaustive patterns
@@ -857,6 +885,11 @@ typeId = qualify . flip renameIdent 1
 -- ---------------------------------------------------------------------------
 -- Warnings messages
 -- ---------------------------------------------------------------------------
+
+warnMissingTypeSignature :: ModuleIdent -> Ident -> TypeScheme -> Message
+warnMissingTypeSignature mid i tys = posMessage i $ hsep (map text
+  ["Top-level binding with no type signature:", showIdent i, "::"])
+  <+> ppTypeScheme mid tys
 
 warnMultiplyImportedModule :: ModuleIdent -> Message
 warnMultiplyImportedModule mid = posMessage mid $ hsep $ map text

@@ -4,7 +4,11 @@ Change log for curry-frontend
 Under development
 =================
 
- * Type synonyms in typed expressions are now desugared - fixes #921
+  * Added warnings for top-level functions without type signatures - fixes #769
+
+  * Moved pretty-printing of types from Checks.TypeCheck to Base.CurryTypes
+
+  * Type synonyms in typed expressions are now desugared - fixes #921
 
   * Declaration of operator precedence is now optional in infix operator
     declarations
