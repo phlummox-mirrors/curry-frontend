@@ -157,15 +157,14 @@ data WarnFlag
   | WarnNameShadowing      -- ^ Warn for name shadowing
   | WarnOverlapping        -- ^ Warn for overlapping rules/alternatives
   | WarnIncompletePatterns -- ^ Warn for incomplete pattern matching
-  | WarnIdleAlternatives   -- ^ Warn for idle case alternatives
+  | WarnNondetPatterns     -- ^ Warn for non-deterministic pattern matching
     deriving (Eq, Bounded, Enum, Show)
 
 -- |Warning flags enabled by default
 stdWarnFlags :: [WarnFlag]
 stdWarnFlags =
   [ WarnMultipleImports , WarnDisjoinedRules, WarnUnusedBindings
-  , WarnNameShadowing   , WarnOverlapping -- , WarnIncompletePatterns
-  , WarnIdleAlternatives
+  , WarnNameShadowing   , WarnOverlapping   , WarnIncompletePatterns
   ]
 
 -- |Description and flag of warnings flags
@@ -183,8 +182,8 @@ warnFlags =
     , "overlapping function rules" )
   , ( WarnIncompletePatterns, "incomplete-patterns"
     , "incomplete pattern matching")
-  , ( WarnIdleAlternatives  , "idle-alternatives"
-    , "idle case alternatives"     )
+  , ( WarnNondetPatterns    , "nondet-patterns"
+    , "Nondeterministic patterns"  )
   ]
 
 -- |Dump level

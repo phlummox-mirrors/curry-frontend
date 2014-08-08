@@ -16,11 +16,13 @@ module Checks.WarnCheck (warnCheck) where
 
 import           Control.Monad
   (filterM, foldM_, guard, liftM, when, unless)
-import           Control.Monad.State.Strict (State, execState, gets, modify)
-import qualified Data.Map            as Map (empty, insert, lookup)
-import           Data.Maybe                 (catMaybes, isJust)
+import           Control.Monad.State.Strict    (State, execState, gets, modify)
+import qualified Data.IntSet         as IntSet
+  (IntSet, empty, insert, notMember, singleton, union, unions)
+import qualified Data.Map            as Map    (empty, insert, lookup)
+import           Data.Maybe                    (catMaybes, isJust)
 import           Data.List
-  (intersect, intersectBy, nub, partition, sort, unionBy)
+  (intersect, intersectBy, nub, sort, unionBy)
 
 import Curry.Base.Ident
 import Curry.Base.Position
@@ -243,8 +245,19 @@ checkFunctionDecl :: Position -> Ident -> [Equation] -> WCM ()
 checkFunctionDecl _ _ []  = ok
 checkFunctionDecl p f eqs = inNestedScope $ do
   mapM_ checkEquation eqs
-  checkNonExhaustivePattern ("an equation for " ++ escName f) p
-    $ map (\(Equation _ lhs _) -> snd (flatLhs lhs)) eqs
+  checkFunctionPatternMatch p f eqs
+
+checkFunctionPatternMatch :: Position -> Ident -> [Equation] -> WCM ()
+checkFunctionPatternMatch p f eqs = do
+  let pats = map (\(Equation _ lhs _) -> snd (flatLhs lhs)) eqs
+  let loc  = "an equation for " ++ escName f
+  (nonExhaustive, overlapped, nondet) <- checkPatternMatching pats
+  unless (null nonExhaustive) $ warnFor WarnNondetPatterns $ report $
+    warnMissingPattern p loc nonExhaustive
+  unless (null overlapped) $ warnFor WarnNondetPatterns $ report $
+    warnOverlapPattern p loc (idName f) "=" overlapped
+  when nondet $ warnFor WarnOverlapping $ report $
+    warnNondetOverlapping p ("Function " ++ escName f)
 
 -- Check an equation for warnings.
 -- This is done in a seperate scope as the left-hand-side may introduce
@@ -332,7 +345,7 @@ checkExpr (IfThenElse   _ e1 e2 e3) = mapM_ checkExpr [e1, e2, e3]
 checkExpr (Case        _ ct e alts) = do
   checkExpr e
   mapM_ checkAlt alts
-  checkCaseAlternatives ct alts
+  checkCaseAlts ct alts
 checkExpr (RecordConstr         fs) = mapM_ checkFieldExpression fs
 checkExpr (RecordSelection     e _) = checkExpr e -- Hier auch "visitId ident" ?
 checkExpr (RecordUpdate       fs e) = do
@@ -362,61 +375,6 @@ checkAlt (Alt _ p rhs) = inNestedScope $ do
 checkFieldExpression :: Field Expression -> WCM ()
 checkFieldExpression (Field _ _ e) = checkExpr e -- Hier auch "visitId ident" ?
 
--- Check for idle and overlapping case alternatives
-checkCaseAlternatives :: CaseType -> [Alt] -> WCM ()
-checkCaseAlternatives _  []                     = ok
-checkCaseAlternatives ct alts@(Alt pos _ _ : _) = do
-  checkIdleAlts alts
-  when (ct == Flex) (checkOverlappingAlts alts)
-  checkNonExhaustivePattern "a case alternative" pos
-    (map (\(Alt _ p _) -> [p]) alts)
-
-checkIdleAlts :: [Alt] -> WCM ()
-checkIdleAlts alts = warnFor WarnIdleAlternatives $ case idles of
-  Alt p _ _ : _ : _ -> report $ warnIdleCaseAlts p
-  _                 -> ok
-  where
-  idles = dropWhile (not . isVarAlt) alts
-
-  isVarAlt (Alt _ p _) = isVarPat' p
-
-  isVarPat' (VariablePattern _) = True
-  isVarPat' (ParenPattern    p) = isVarPat' p
-  isVarPat' (AsPattern     _ p) = isVarPat' p
-  isVarPat' _                   = False
-
-checkOverlappingAlts :: [Alt] -> WCM ()
-checkOverlappingAlts []           = ok
-checkOverlappingAlts (alt : alts) = warnFor WarnOverlapping $ do
-  let (overlapped, rest) = partition (eqAlt alt) alts
-  unless (null overlapped) $ report $ warnOverlappingCaseAlts (alt : overlapped)
-  checkOverlappingAlts rest
-  where
-  eqAlt (Alt _ p1 _) (Alt _ p2 _) = eqPattern p1 p2
-
-  eqPattern (LiteralPattern         l1) (LiteralPattern         l2)
-    = l1 == l2
-  eqPattern (NegativePattern    id1 l1) (NegativePattern    id2 l2)
-    = id1 == id2 && l1 == l2
-  eqPattern (VariablePattern         _) (VariablePattern         _)
-    = False -- treated as idle case alternative!
-  eqPattern (ConstructorPattern c1 cs1) (ConstructorPattern c2 cs2)
-    = and ((c1 == c2) : zipWith eqPattern cs1 cs2)
-  eqPattern (InfixPattern     l1 c1 r1) (InfixPattern     l2 c2 r2)
-    = and [c1 == c2, l1 `eqPattern` l2, r1 `eqPattern` r2]
-  eqPattern (ParenPattern           p1) (ParenPattern           p2)
-    = eqPattern p1 p2
-  eqPattern (TuplePattern         _ p1) (TuplePattern         _ p2)
-    = and (zipWith eqPattern p1 p2)
-  eqPattern (ListPattern          _ p1) (ListPattern          _ p2)
-    = and (zipWith eqPattern p1 p2)
-  eqPattern (AsPattern            _ p1) (AsPattern            _ p2)
-    = eqPattern p1 p2
-  eqPattern (LazyPattern          _ p1) (LazyPattern          _ p2)
-    = eqPattern p1 p2
-  eqPattern _                           _
-    = False
-
 -- -----------------------------------------------------------------------------
 -- Check for missing type signatures
 -- -----------------------------------------------------------------------------
@@ -444,25 +402,67 @@ getTyScheme q = do
       "Checks.WarnCheck.getTyScheme: " ++ show q
 
 -- -----------------------------------------------------------------------------
--- Check for non-exhaustive patterns
+-- Check for overlapping and non-exhaustive case alternatives
+-- -----------------------------------------------------------------------------
+checkCaseAlts :: CaseType -> [Alt] -> WCM ()
+checkCaseAlts _  []                   = ok
+checkCaseAlts ct alts@(Alt p _ _ : _) = do
+  let pats = map (\(Alt _ pat _) -> [pat]) alts
+  let loc  = "a fcase alternative"
+  (nonExhaustive, overlapped, nondet) <- checkPatternMatching pats
+  case ct of
+    Flex -> do
+      unless (null nonExhaustive) $ warnFor WarnNondetPatterns $ report $
+        warnMissingPattern p loc nonExhaustive
+      unless (null overlapped) $ warnFor WarnNondetPatterns $ report $
+        warnOverlapPattern p loc "" "->" overlapped
+      when nondet $ warnFor WarnOverlapping $ report $
+        warnNondetOverlapping p ("A fcase expression")
+    Rigid -> do
+      unless (null nonExhaustive) $ warnFor WarnIncompletePatterns $ report $
+        warnMissingPattern p loc nonExhaustive
+      unless (null overlapped) $ warnFor WarnOverlapping $ report $
+        warnOverlapPattern p loc "" "->" overlapped
+
+-- -----------------------------------------------------------------------------
+-- Check for non-exhaustive and overlapping patterns.
+-- For an example, consider the following function definition:
+-- @
+-- f [True]    = 0
+-- f (False:_) = 1
+-- @
+-- In this declaration, the following patterns are not matched:
+-- @
+-- [] _
+-- (True:_:_)
+-- @
+-- This is identified and reported by the following code,, both for pattern
+-- matching in function declarations and (f)case expressions.
 -- -----------------------------------------------------------------------------
 
-checkNonExhaustivePattern :: String -> Position -> [[Pattern]] -> WCM ()
-checkNonExhaustivePattern loc pos pats = warnFor WarnIncompletePatterns $ do
-  missing <- missingPattern (map (map simplifyPat) pats)
-  unless (null missing) $ report $ warnMissingPattern loc pos $
-    tidyExhaustivePats missing
+checkPatternMatching :: [[Pattern]] -> WCM ([ExhaustivePats], [[Pattern]], Bool)
+checkPatternMatching pats = do
+  -- 1. We simplify the patterns by removing syntactic sugar temporarily
+  --    for a simpler implementation.
+  let simplePats = map (map simplifyPat) pats
+  -- 2. We compute missing and used pattern matching alternatives
+  (missing, used, nondet) <- processEqs (zip [1..] simplePats)
+  -- 3. If any, we report the missing patterns, whereby we re-add the syntactic
+  --    sugar removed in step (1) for a more precise output.
+  let nonExhaustive = tidyExhaustivePats missing
+  let overlap = [ eqn | (i, eqn) <- zip [1..] pats, i `IntSet.notMember` used]
+  return (nonExhaustive , overlap, nondet)
 
-tidyExhaustivePats :: [ExhaustivePats] -> [ExhaustivePats]
-tidyExhaustivePats = map (\(xs, ys) -> (map tidyPat xs, ys))
-
--- simplify pattern to only consist of
---   * variables
---   * literals
---   * constructors
+-- |Simplify a 'Pattern' until it only consists of
+--   * Variables
+--   * Integer, Float or Char literals
+--   * Constructors
 --   * record pattern (currently ignored)
+-- All other patterns like as-patterns, list patterns and alike are desugared.
 simplifyPat :: Pattern -> Pattern
-simplifyPat l@(LiteralPattern      _) = l
+simplifyPat p@(LiteralPattern      l) = case l of
+  String r s -> simplifyListPattern $ map (LiteralPattern . Char r) s
+  _          -> p
 simplifyPat (NegativePattern     _ l) = LiteralPattern (negateLit l)
   where
   negateLit (Int   i n) = Int   i (-n)
@@ -476,125 +476,156 @@ simplifyPat (InfixPattern    p1 c p2)
 simplifyPat (ParenPattern          p) = simplifyPat p
 simplifyPat (TuplePattern       _ ps)
   = ConstructorPattern (qTupleId (length ps)) (map simplifyPat ps)
-simplifyPat (ListPattern        _ ps) =
-  foldr (\e1 e2 -> ConstructorPattern qConsId [e1, e2])
-        (ConstructorPattern qNilId []) (map simplifyPat ps)
+simplifyPat (ListPattern        _ ps) = simplifyListPattern (map simplifyPat ps)
 simplifyPat (AsPattern           _ p) = simplifyPat p
 simplifyPat (LazyPattern         _ _) = VariablePattern anonId
 simplifyPat p                         = p
 
-tidyPat :: Pattern -> Pattern
-tidyPat p@(ConstructorPattern c ps)
-  | isQTupleId c                   = TuplePattern noRef (map tidyPat ps)
-  | c == qConsId && isFiniteList p = ListPattern [] (unwrapFinite p)
-  | c == qConsId                   = unwrapInfinite p
-  where
-  isFiniteList (ConstructorPattern d [])                = d == qNilId
-  isFiniteList (ConstructorPattern d es) | d == qConsId = isFiniteList (last es)
-  isFiniteList _                                        = False
+-- |Create a simplified list pattern by applying @:@ and @[]@.
+simplifyListPattern :: [Pattern] -> Pattern
+simplifyListPattern = foldr (\p1 p2 -> ConstructorPattern qConsId [p1, p2])
+                                      (ConstructorPattern qNilId [])
 
-  unwrapInfinite (ConstructorPattern d [p1,p2])
-    = InfixPattern (tidyPat p1) d (unwrapInfinite p2)
-  unwrapInfinite p0                             = p0
+-- |'ExhaustivePats' describes those pattern missing for an exhaustive
+-- pattern matching, where a value can be thought of as a missing equation.
+-- The first component contains the unmatched patterns, while the second
+-- pattern contains an identifier and the literals matched for this identifier.
+--
+-- This is necessary when checking literal patterns because of the sheer
+-- number of possible patterns. Missing literals are therefore converted
+-- into the form @ ... x ... with x `notElem` [l1, ..., ln]@.
+type EqnPats = [Pattern]
+type EqnNo   = Int
+type EqnInfo = (EqnNo, EqnPats)
 
-  unwrapFinite (ConstructorPattern _ []     ) = []
-  unwrapFinite (ConstructorPattern _ [p1,p2]) = tidyPat p1 : unwrapFinite p2
-  unwrapFinite _                              = internalError $
-    "WarnCheck.tidyPat.unwrapFinite"
-tidyPat p = p
+type ExhaustivePats = (EqnPats, [(Ident, [Literal])])
+type EqnSet  = IntSet.IntSet
 
-type ExhaustivePats = ([Pattern], [(Ident, [Literal])])
-
-missingPattern :: [[Pattern]] -> WCM [ExhaustivePats]
-missingPattern []          = return []
-missingPattern eqs@(e:_)
-  | null e                 = return []
-  | any isLitPat firstPats = processLiterals eqs
-  | any isConPat firstPats = processCons     eqs
-  | all isVarPat firstPats = processVars     eqs
-  | otherwise              = return []
+-- |Compute the missing pattern by inspecting the first patterns and
+-- categorize them as literal, constructor or variable patterns.
+processEqs :: [EqnInfo] -> WCM ([ExhaustivePats], EqnSet, Bool)
+processEqs []              = return ([], IntSet.empty, False)
+processEqs eqs@((n, ps):_)
+  | null ps                    = return ([], IntSet.singleton n, False)
+  | any isLitPat firstPats     = processLits eqs
+  | any isConPat firstPats     = processCons eqs
+  | all isVarPat firstPats     = processVars eqs
+  | otherwise                  = error "WarnCheck.processEqs"
   where firstPats = map firstPat eqs
 
-processLiterals :: [[Pattern]] -> WCM [ExhaustivePats]
-processLiterals []       = return []
-processLiterals qs@(q:_) = do
-  missing1 <- processUsedLiterals used_lits qs
+-- |Literal patterns are checked by extracting the matched literals
+--  and constructing a pattern for any missing case.
+processLits :: [EqnInfo] -> WCM ([ExhaustivePats], EqnSet, Bool)
+processLits []       = error "WarnCheck.processLits"
+processLits qs@(q:_) = do
+  -- Check any patterns starting with the literals used
+  (missing1, used1, nd1) <- processUsedLits usedLits qs
   if null defaults
-    then return $ defaultPat : missing1
+    then return $ (defaultPat : missing1, used1, nd1)
     else do
-      missing2 <- missingPattern defaults
-      return $ [ (wildPat : ps, cs) | (ps, cs) <- missing2 ] ++ missing1
+      -- Missing patterns for the default alternatives
+      (missing2, used2, _) <- processEqs defaults
+      return ( [ (wildPat : ps, cs) | (ps, cs) <- missing2 ] ++ missing1
+             , IntSet.union used1 used2, True )
   where
-  used_lits  = nub $ concatMap (getLit . firstPat) qs
-  defaults   = [ shiftPat q' | q' <- qs, isVarPat (head q') ]
-  defaultPat = ( VariablePattern new_var : replicate (length q - 1) wildPat
-               , [(new_var, used_lits)])
-  new_var    = mkIdent "x"
+  -- The literals occurring in the patterns
+  usedLits   = nub $ concatMap (getLit . firstPat) qs
+  -- default alternatives (variable pattern)
+  defaults   = [ shiftPat q' | q' <- qs, isVarPat (firstPat q') ]
+  -- Pattern for all non-matched literals
+  defaultPat = ( VariablePattern newVar : replicate (length (snd q) - 1) wildPat
+               , [(newVar, usedLits)])
+  newVar     = mkIdent "x"
 
-processUsedLiterals :: [Literal] -> [[Pattern]] -> WCM [ExhaustivePats]
-processUsedLiterals lits qs = concat `liftM` mapM process lits
+-- |Construct exhaustive patterns starting with the used literals
+processUsedLits :: [Literal] -> [EqnInfo]
+                -> WCM ([ExhaustivePats], EqnSet, Bool)
+processUsedLits lits qs = do
+  (eps, idxs, nds) <- unzip3 `liftM` mapM process lits
+  return (concat eps, IntSet.unions idxs, or nds)
   where
   process lit = do
-    missing <- missingPattern [shiftPat q | q <- qs, isVarLit lit (firstPat q)]
-    return $ map (\(xs, ys) -> (LiteralPattern lit : xs, ys)) missing
+    (missing, used, nd) <- processEqs
+                       [shiftPat q | q <- qs, isVarLit lit (firstPat q)]
+    return (map (\(xs, ys) -> (LiteralPattern lit : xs, ys)) missing, used, nd)
 
-processCons :: [[Pattern]] -> WCM [ExhaustivePats]
-processCons []       = return []
+-- |Constructor patterns are checked by extracting the matched constructors
+--  and constructing a pattern for any missing case.
+processCons :: [EqnInfo] -> WCM ([ExhaustivePats], EqnSet, Bool)
+processCons []       = error "WarnCheck.processCons"
 processCons qs@(q:_) = do
-  missing1 <- processUsedCons used_cons qs
+  -- Compute any missing patterns starting with the used constructors
+  (missing1, used1, nd) <- processUsedCons used_cons qs
+  -- Determine unused constructors
   unused   <- getUnusedCons (map fst used_cons)
   if null unused
-    then return missing1
+    then return (missing1, used1, nd || not (null defaults))
     else if null defaults
-      then return $ map defaultPat unused ++ missing1
+      then return $ (map defaultPat unused ++ missing1, used1, nd)
       else do
-        missing2 <- missingPattern defaults
-        return $ [ (mkPattern c : ps, cs) | c <- unused, (ps, cs) <- missing2 ]
+        -- Missing patterns for the default alternatives
+        (missing2, used2, _) <- processEqs defaults
+        return ( [ (mkPattern c : ps, cs) | c <- unused, (ps, cs) <- missing2 ]
                   ++ missing1
+               , IntSet.union used1 used2, True)
   where
-  used_cons    = nub $ concatMap (getCon . head) qs
+  -- used constructors (occurring in a pattern)
+  used_cons    = nub $ concatMap (getCon . firstPat) qs
+  -- default alternatives (variable pattern)
   defaults     = [ shiftPat q' | q' <- qs, isVarPat (firstPat q') ]
-  defaultPat c = (mkPattern c : replicate (length q - 1) wildPat, [])
+  -- Pattern for a non-matched constructors
+  defaultPat c = (mkPattern c : replicate (length (snd q) - 1) wildPat, [])
   mkPattern (DataConstr c _ tys)
     = ConstructorPattern (qualifyLike (fst $ head used_cons) c)
                          (replicate (length tys) wildPat)
 
-processUsedCons :: [(QualIdent, Int)] -> [[Pattern]] -> WCM [ExhaustivePats]
-processUsedCons used qs = concat `liftM` mapM process used
+-- |Construct exhaustive patterns starting with the used constructors
+processUsedCons :: [(QualIdent, Int)] -> [EqnInfo]
+                -> WCM ([ExhaustivePats], EqnSet, Bool)
+processUsedCons cons qs = do
+  (eps, idxs, nds) <- unzip3 `liftM` mapM process cons
+  return (concat eps, IntSet.unions idxs, or nds)
   where
   process (c, a) = do
-    let qs' = [ removeFirstCon c a q | q <- qs , isVarCon c (head q)]
-    missing <- missingPattern qs'
-    return $ map (\(xs, ys) -> (makeCon c a xs, ys)) missing
+    let qs' = [ removeFirstCon c a q | q <- qs , isVarCon c (firstPat q)]
+    (missing, used, nd) <- processEqs qs'
+    return (map (\(xs, ys) -> (makeCon c a xs, ys)) missing, used, nd)
 
   makeCon c a ps = let (args, rest) = splitAt a ps
                    in ConstructorPattern c args : rest
 
-  removeFirstCon c a (p:ps)
-    | isVarPat p = replicate a wildPat ++ ps
-    | isCon c  p = patArgs p           ++ ps
+  removeFirstCon c a (n, p:ps)
+    | isVarPat p = (n, replicate a wildPat ++ ps)
+    | isCon c  p = (n, patArgs p           ++ ps)
   removeFirstCon _ _ _ = internalError "Checks.WarnCheck.removeFirstCon"
 
-processVars :: [[Pattern]] -> WCM [ExhaustivePats]
-processVars eqs = do
-  missing <- missingPattern (map shiftPat eqs)
-  return $ map (\(xs, ys) -> (wildPat : xs, ys)) missing
+-- |Variable patterns are exhaustive, so they are checked by simply
+-- checking the following patterns.
+processVars :: [EqnInfo] -> WCM ([ExhaustivePats], EqnSet, Bool)
+processVars []               = error "WarnCheck.processVars"
+processVars eqs@((n, _) : _) = do
+  (missing, used, nd) <- processEqs (map shiftPat eqs)
+  return ( map (\(xs, ys) -> (wildPat : xs, ys)) missing
+         , IntSet.insert n used, nd)
 
+-- |Return the constructors of a type not contained in the list of constructors.
 getUnusedCons :: [QualIdent] -> WCM [DataConstr]
 getUnusedCons []       = internalError "Checks.WarnCheck.getUnusedCons"
 getUnusedCons qs@(q:_) = do
   allCons <- getConTy q >>= getTyCons . arrowBase
   return [ c | c@(DataConstr q' _ _) <- allCons, q' `notElem` map unqualify qs]
 
+-- |Retrieve the type of a given constructor.
 getConTy :: QualIdent -> WCM Type
 getConTy q = do
   tyEnv <- gets valueEnv
   return $ case qualLookupValue q tyEnv of
     [DataConstructor  _ _ (ForAllExist _ _ ty)] -> ty
     [NewtypeConstructor _ (ForAllExist _ _ ty)] -> ty
-    _                                           -> internalError $
-      "Checks.WarnCheck.getConTy: " ++ show q
+    _                                           ->
+      internalError $ "Checks.WarnCheck.getConTy: " ++ show q
 
+-- |Retrieve all constructors of a given type.
 getTyCons :: Type -> WCM [DataConstr]
 getTyCons (TypeConstructor tc _) = do
   tc'   <- unAlias tc
@@ -603,60 +634,145 @@ getTyCons (TypeConstructor tc _) = do
     [DataType     _ _ cs] -> catMaybes cs
     [RenamingType _ _ nc] -> [nc]
     _ -> case qualLookupTC tc' tcEnv of
-        [DataType     _ _ cs] -> catMaybes cs
-        [RenamingType _ _ nc] -> [nc]
-        err                   -> internalError $
-          "Checks.WarnCheck.getTyCons: " ++ show tc ++ ' ' : show err ++ '\n' : show tcEnv
+      [DataType     _ _ cs] -> catMaybes cs
+      [RenamingType _ _ nc] -> [nc]
+      err                   -> internalError $ "Checks.WarnCheck.getTyCons: "
+                            ++ show tc ++ ' ' : show err ++ '\n' : show tcEnv
 getTyCons _ = internalError "Checks.WarnCheck.getTyCons"
 
-firstPat :: [Pattern] -> Pattern
-firstPat []    = internalError "Checks.WarnCheck.firstPat: empty list"
-firstPat (p:_) = p
+-- |Resugar the exhaustive patterns previously desugared at 'simplifyPat'.
+tidyExhaustivePats :: [ExhaustivePats] -> [ExhaustivePats]
+tidyExhaustivePats = map (\(xs, ys) -> (map tidyPat xs, ys))
 
-shiftPat :: [Pattern] -> [Pattern]
-shiftPat []     = internalError "Checks.WarnCheck.shiftPat: empty list"
-shiftPat (_:ps) = ps
+-- |Resugar a pattern previously desugared at 'simplifyPat', i.e.
+--   * Convert a tuple constructor pattern into a tuple pattern
+--   * Convert a list constructor pattern representing a finite list
+--     into a list pattern
+tidyPat :: Pattern -> Pattern
+tidyPat p@(ConstructorPattern c ps)
+  | isQTupleId c                   = TuplePattern noRef (map tidyPat ps)
+  | c == qConsId && isFiniteList p = ListPattern [] (unwrapFinite p)
+  | c == qConsId                   = unwrapInfinite p
+  where
+  isFiniteList (ConstructorPattern d []     )                = d == qNilId
+  isFiniteList (ConstructorPattern d [_, e2]) | d == qConsId = isFiniteList e2
+  isFiniteList _                                             = False
 
+  unwrapFinite (ConstructorPattern _ []     ) = []
+  unwrapFinite (ConstructorPattern _ [p1,p2]) = tidyPat p1 : unwrapFinite p2
+  unwrapFinite _
+    = internalError "WarnCheck.tidyPat.unwrapFinite"
+
+  unwrapInfinite (ConstructorPattern d [p1,p2]) = InfixPattern (tidyPat p1) d
+                                                  (unwrapInfinite p2)
+  unwrapInfinite p0                             = p0
+tidyPat p = p
+
+-- |Get the first pattern of a list.
+firstPat :: EqnInfo -> Pattern
+firstPat (_, []   ) = internalError "Checks.WarnCheck.firstPat: empty list"
+firstPat (_, (p:_)) = p
+
+-- |Drop the first pattern of a list.
+shiftPat :: EqnInfo -> EqnInfo
+shiftPat (_, []    ) = internalError "Checks.WarnCheck.shiftPat: empty list"
+shiftPat (n, (_:ps)) = (n, ps)
+
+-- |Wildcard pattern.
 wildPat :: Pattern
 wildPat = VariablePattern anonId
 
+-- |Retrieve any literal out of a pattern.
 getLit :: Pattern -> [Literal]
 getLit (LiteralPattern l) = [l]
 getLit _                  = []
 
+-- |Retrieve the constructor name and its arity for a pattern.
 getCon :: Pattern -> [(QualIdent, Int)]
 getCon (ConstructorPattern c ps) = [(c, length ps)]
 getCon _                         = []
 
+-- |Is a pattern a variable or literal pattern?
 isVarLit :: Literal -> Pattern -> Bool
 isVarLit l p = isVarPat p || isLit l p
 
+-- |Is a pattern a variable or a constructor pattern with the given constructor?
 isVarCon :: QualIdent -> Pattern -> Bool
 isVarCon c p = isVarPat p || isCon c p
 
+-- |Is a pattern a pattern matching for the given constructor?
 isCon :: QualIdent -> Pattern -> Bool
 isCon c (ConstructorPattern d _) = c == d
 isCon _ _                        = False
 
+-- |Is a pattern a pattern matching for the given literal?
 isLit :: Literal -> Pattern -> Bool
 isLit l (LiteralPattern m) = l == m
 isLit _ _                  = False
 
+-- |Is a pattern a literal pattern?
 isLitPat :: Pattern -> Bool
 isLitPat (LiteralPattern  _) = True
 isLitPat _                   = False
 
+-- |Is a pattern a variable pattern?
 isVarPat :: Pattern -> Bool
 isVarPat (VariablePattern _) = True
 isVarPat _                   = False
 
+-- |Is a pattern a constructor pattern?
 isConPat :: Pattern -> Bool
 isConPat (ConstructorPattern _ _) = True
 isConPat      _                   = False
 
+-- |Retrieve the arguments of a pattern.
 patArgs :: Pattern -> [Pattern]
 patArgs (ConstructorPattern _ ps) = ps
 patArgs _                         = []
+
+-- |Warning message for non-exhaustive patterns.
+-- To shorten the output only the first 'maxPattern' are printed,
+-- additional pattern are abbreviated by dots.
+warnMissingPattern :: Position -> String -> [ExhaustivePats] -> Message
+warnMissingPattern p loc pats = posMessage p
+  $   text "Pattern matches are non-exhaustive"
+  $+$ text "In a" <+> text loc <> char ':'
+  $+$ nest 2 (text "Patterns not matched:" $+$ nest 2 (vcat (ppExPats pats)))
+  where
+  ppExPats ps
+    | length ps > maxPattern = ppPats ++ [text "..."]
+    | otherwise              = ppPats
+    where ppPats = map ppExPat (take maxPattern ps)
+  ppExPat (ps, cs)
+    | null cs   = ppPats
+    | otherwise = ppPats <+> text "with" <+> hsep (map ppCons cs)
+    where ppPats = hsep (map (ppPattern 2) ps)
+  ppCons (i, lits) = ppIdent i <+> text "`notElem`"
+                 <+> ppExpr 0 (List [] (map Literal lits))
+
+-- |Warning message for non-exhaustive patterns.
+-- To shorten the output only the first 'maxPattern' are printed,
+-- additional pattern are abbreviated by dots.
+warnOverlapPattern :: Position -> String -> String -> String
+                   -> [[Pattern]] -> Message
+warnOverlapPattern p loc pre post pats = posMessage p
+  $   text "Pattern matches are overlapped"
+  $+$ text "In a" <+> text loc <> char ':'
+  $+$ nest 2 (text pre <+> vcat (ppExPats pats) <+> text post <+> text "...")
+  where
+  ppExPats ps
+    | length ps > maxPattern = ppPats ++ [text "..."]
+    | otherwise              = ppPats
+    where ppPats = map ppPat (take maxPattern ps)
+  ppPat ps = hsep (map (ppPattern 2) ps)
+
+-- |Maximum number of missing patterns to be shown.
+maxPattern :: Int
+maxPattern = 4
+
+warnNondetOverlapping :: Position -> String -> Message
+warnNondetOverlapping p loc = posMessage p $
+  text loc <+> text "is non-deterministic due to non-trivial overlapping rules"
 
 -- -----------------------------------------------------------------------------
 
@@ -922,33 +1038,3 @@ warnShadowing :: Ident -> Ident -> Message
 warnShadowing x v = posMessage x $
   text "Shadowing symbol" <+> text (escName x)
   <> comma <+> text "bound at:" <+> ppPosition (getPosition v)
-
-warnIdleCaseAlts :: Position -> Message
-warnIdleCaseAlts p = posMessage p $ text "Idle case alternative(s)"
-
-warnOverlappingCaseAlts :: [Alt] -> Message
-warnOverlappingCaseAlts [] = internalError
-  "WarnCheck.warnOverlappingCaseAlts: empty list"
-warnOverlappingCaseAlts alts@(Alt p _ _ : _) = posMessage p $ text
-  "Overlapping case alternatives" $+$ nest 2 (vcat (map myppAlt alts))
-  where myppAlt (Alt pos pat _) = ppLine pos <> text ":" <+> ppPattern 0 pat
-
-warnMissingPattern :: String -> Position -> [ExhaustivePats] -> Message
-warnMissingPattern loc p pats = posMessage p
-  $   text "Pattern matches are non-exhaustive"
-  $+$ text "In a" <+> text loc <> char ':'
-  $+$ nest 2 (text "Patterns not matched:" $+$ nest 2 (vcat (ppExPats pats)))
-  where
-  ppExPats ps
-    | length ps > maxMissingPattern = ppPats ++ [text "..."]
-    | otherwise                     = ppPats
-    where ppPats = map ppExPat (take maxMissingPattern ps)
-  ppExPat (ps, cs)
-    | null cs   = ppPats
-    | otherwise = ppPats <+> text "with" <+> hsep (map ppCons cs)
-    where ppPats = hsep (map (ppPattern 2) ps)
-  ppCons (i, lits) = ppIdent i <+> text "`notElem`"
-                 <+> ppExpr 0 (List [] (map Literal lits))
-
-maxMissingPattern :: Int
-maxMissingPattern = 4

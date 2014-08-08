@@ -10,16 +10,14 @@
 module Generators.GenFlatCurry (genFlatCurry, genFlatInterface) where
 
 -- Haskell libraries
-import           Control.Monad       (filterM, liftM, liftM2, liftM3, mplus, when)
-import           Control.Monad.State (State, runState, gets, modify)
+import           Control.Monad       (filterM, liftM, liftM2, liftM3, mplus)
+import           Control.Monad.State (State, evalState, gets, modify)
 import           Data.List           (mapAccumL, nub)
 import qualified Data.Map as Map     (Map, empty, insert, lookup, fromList, toList)
 import           Data.Maybe          (catMaybes, fromJust, fromMaybe, isJust)
 
 -- curry-base
 import Curry.Base.Ident as Id
-import Curry.Base.Message
-import Curry.Base.Pretty
 
 import Curry.ExtendedFlat.Type
 import qualified Curry.Syntax as CS
@@ -39,7 +37,6 @@ import Env.TypeConstructor (TCEnv, TypeInfo (..), qualLookupTC)
 import Env.Value (ValueEnv, ValueInfo (..), lookupValue, qualLookupValue)
 
 -- other
-import CompilerOpts (Options (..), WarnOpts (..), WarnFlag (..))
 import qualified IL as IL
 import qualified ModuleSummary
 import Transformations (transType)
@@ -50,20 +47,16 @@ trace' _ x = x
 -------------------------------------------------------------------------------
 
 -- transforms intermediate language code (IL) to FlatCurry code
-genFlatCurry :: Options -> ModuleSummary.ModuleSummary -> InterfaceEnv
-             -> ValueEnv -> TCEnv -> IL.Module -> (Prog, [Message])
-genFlatCurry opts modSum mEnv tyEnv tcEnv mdl = (prog', messages)
-  where
-  (prog, messages) = run opts modSum mEnv tyEnv tcEnv False (visitModule mdl)
-  prog' = patchPrelude prog -- eraseTypes $ adjustTypeInfo $
+genFlatCurry :: ModuleSummary.ModuleSummary -> InterfaceEnv
+             -> ValueEnv -> TCEnv -> IL.Module -> Prog
+genFlatCurry modSum mEnv tyEnv tcEnv mdl = patchPrelude $
+  run modSum mEnv tyEnv tcEnv False (visitModule mdl)
 
 -- transforms intermediate language code (IL) to FlatCurry interfaces
-genFlatInterface :: Options -> ModuleSummary.ModuleSummary -> InterfaceEnv
-                 -> ValueEnv -> TCEnv -> IL.Module -> (Prog, [Message])
-genFlatInterface opts modSum mEnv tyEnv tcEnv mdl = (intf' , messages)
-  where
-  (intf, messages) = run opts modSum mEnv tyEnv tcEnv True (visitModule mdl)
-  intf'            = patchPrelude intf
+genFlatInterface :: ModuleSummary.ModuleSummary -> InterfaceEnv
+                 -> ValueEnv -> TCEnv -> IL.Module -> Prog
+genFlatInterface modSum mEnv tyEnv tcEnv mdl = patchPrelude $
+  run modSum mEnv tyEnv tcEnv True (visitModule mdl)
 
 patchPrelude :: Prog -> Prog
 patchPrelude p@(Prog n _ types funcs ops)
@@ -108,7 +101,6 @@ type FlatState a = State FlatEnv a
 data FlatEnv = FlatEnv
   { moduleIdE     :: ModuleIdent
   , functionIdE   :: (QualIdent, [(Ident, IL.Type)])
-  , compilerOptsE :: Options
   , interfaceEnvE :: InterfaceEnv
   , typeEnvE      :: ValueEnv     -- types of defined values
   , tConsEnvE     :: TCEnv
@@ -121,7 +113,6 @@ data FlatEnv = FlatEnv
   , varIndexE     :: Int
   , varIdsE       :: ScopeEnv Ident VarIndex
   , tvarIndexE    :: Int
-  , messagesE     :: [Message]
   , genInterfaceE :: Bool
   , localTypes    :: Map.Map QualIdent IL.Type
   , constrTypes   :: Map.Map QualIdent IL.Type
@@ -133,15 +124,13 @@ data IdentExport
   | NotOnlyConstr -- constructor, function, type-constructor
 
 -- Runs a 'FlatState' action and returns the result
-run :: Options -> ModuleSummary.ModuleSummary -> InterfaceEnv -> ValueEnv -> TCEnv
-    -> Bool -> FlatState a -> (a, [Message])
-run opts modSum mEnv tyEnv tcEnv genIntf f = (result, reverse $ messagesE env)
+run :: ModuleSummary.ModuleSummary -> InterfaceEnv -> ValueEnv -> TCEnv
+    -> Bool -> FlatState a -> a
+run modSum mEnv tyEnv tcEnv genIntf f = evalState f env0
   where
-  (result, env) = runState f env0
   env0 = FlatEnv
     { moduleIdE     = ModuleSummary.moduleId modSum
     , functionIdE   = (qualify (mkIdent ""), [])
-    , compilerOptsE = opts
     , interfaceEnvE = mEnv
     , typeEnvE      = tyEnv
     , tConsEnvE     = tcEnv
@@ -155,7 +144,6 @@ run opts modSum mEnv tyEnv tcEnv genIntf f = (result, reverse $ messagesE env)
     , varIndexE     = 0
     , varIdsE       = ScopeEnv.new
     , tvarIndexE    = 0
-    , messagesE     = []
     , genInterfaceE = genIntf
     , localTypes    = Map.empty
     , constrTypes   = Map.fromList $ getConstrTypes tcEnv tyEnv
@@ -297,7 +285,7 @@ visitExpression (IL.Case  r ea e bs) =
 visitExpression (IL.Or        e1 e2) = do
   e1' <- visitExpression e1
   e2' <- visitExpression e2
-  checkOverlapping e1' e2'
+--   checkOverlapping e1' e2'
   return $ Or e1' e2'
 visitExpression (IL.Exist       v e) = do
   idx <- newVarIndex v
@@ -758,15 +746,6 @@ matchTypeVars fs ms (l,ty) = maybe ms (match ms ty) (lookup l fs)
 flattenRecordTypeFields :: [([Ident], CS.TypeExpr)] -> [(Ident, CS.TypeExpr)]
 flattenRecordTypeFields = concatMap (\ (ls, ty) -> map (\l -> (l, ty)) ls)
 
-checkOverlapping :: Expr -> Expr -> FlatState ()
-checkOverlapping e1 e2 = do
-  warnOpts <- optWarnOpts `liftM` compilerOpts
-  when (WarnOverlapping `elem` wnWarnFlags warnOpts) $ checkOverlap e1 e2
-  where
-  checkOverlap (Case _ _ _ _) _ = functionId >>= genWarning . overlappingRules
-  checkOverlap _ (Case _ _ _ _) = functionId >>= genWarning . overlappingRules
-  checkOverlap _ _              = return ()
-
 cs2ilType :: [(Ident,Int)] -> CS.TypeExpr -> ([(Ident,Int)], IL.Type)
 cs2ilType ids (CS.ConstructorType qident typeexprs)
   = let (ids', ilTypeexprs) = mapAccumL cs2ilType ids typeexprs
@@ -805,11 +784,6 @@ consArity qid = "GenFlatCurry: missing arity for constructor \""
 
 missingVarIndex :: Show a => a -> [Char]
 missingVarIndex ident = "GenFlatCurry: missing index for \"" ++ show ident ++ "\""
-
-overlappingRules :: QualIdent -> Message
-overlappingRules qid = posMessage qid $ hsep $ map text
-  [ "Function", '"' : qualName qid ++ "\""
-  , "is non-deterministic due to non-trivial overlapping rules" ]
 
 -------------------------------------------------------------------------------
 
@@ -867,16 +841,8 @@ moduleId :: FlatState ModuleIdent
 moduleId = gets moduleIdE
 
 --
-functionId :: FlatState QualIdent
-functionId = gets (fst . functionIdE)
-
---
 setFunctionId :: (QualIdent, [(Ident, IL.Type)]) -> FlatState ()
 setFunctionId qid = modify $ \ s -> s { functionIdE = qid }
-
---
-compilerOpts :: FlatState Options
-compilerOpts = gets compilerOptsE
 
 --
 exports :: FlatState [CS.Export]
@@ -1016,10 +982,6 @@ lookupVarIndex ident = do
 --
 clearVarIndices :: FlatState ()
 clearVarIndices = modify $ \ s -> s { varIndexE = 0, varIdsE = ScopeEnv.new }
-
---
-genWarning :: Message -> FlatState ()
-genWarning msg = modify $ \ s -> s { messagesE = msg : messagesE s }
 
 --
 genInterface :: FlatState Bool

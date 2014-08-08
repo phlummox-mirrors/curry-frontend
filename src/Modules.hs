@@ -319,14 +319,13 @@ writeFlat opts fn env modSum il = do
 writeFlatCurry :: Options -> FilePath -> CompilerEnv -> ModuleSummary
                -> IL.Module -> IO ()
 writeFlatCurry opts fn env modSum il = do
-  warn (optWarnOpts opts) msgs
   when extTarget $ EF.writeExtendedFlat useSubDir (extFlatName fn) prog
   when fcyTarget $ EF.writeFlatCurry    useSubDir (flatName    fn) prog
   where
-  extTarget    = ExtendedFlatCurry `elem` optTargetTypes opts
-  fcyTarget    = FlatCurry         `elem` optTargetTypes opts
-  useSubDir    = optUseSubdir opts
-  (prog, msgs) = genFlatCurry opts modSum env il
+  extTarget = ExtendedFlatCurry `elem` optTargetTypes opts
+  fcyTarget = FlatCurry         `elem` optTargetTypes opts
+  useSubDir = optUseSubdir opts
+  prog      = genFlatCurry modSum env il
 
 writeFlatIntf :: Options -> FilePath -> CompilerEnv -> ModuleSummary
               -> IL.Module -> IO ()
@@ -337,14 +336,12 @@ writeFlatIntf opts fn env modSum il
       mfint <- EF.readFlatInterface targetFile
       let oldInterface = fromMaybe emptyIntf mfint
       when (mfint == mfint) $ return () -- necessary to close file -- TODO
-      unless (oldInterface `eqInterface` newInterface) $ outputInterface
+      unless (oldInterface `eqInterface` intf) $ outputInterface
   where
   targetFile = flatIntName fn
   emptyIntf = EF.Prog "" [] [] [] []
-  (newInterface, intMsgs) = genFlatInterface opts modSum env il
-  outputInterface = do
-    warn (optWarnOpts opts) intMsgs
-    EF.writeFlatCurry (optUseSubdir opts) targetFile newInterface
+  intf = genFlatInterface modSum env il
+  outputInterface = EF.writeFlatCurry (optUseSubdir opts) targetFile intf
 
 writeAbstractCurry :: Options -> FilePath -> CompilerEnv -> CS.Module -> IO ()
 writeAbstractCurry opts fname env modul = do
