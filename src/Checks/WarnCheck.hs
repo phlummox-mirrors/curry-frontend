@@ -2,7 +2,8 @@
     Module      :  $Header$
     Description :  Checks for irregular code
     Copyright   :  (c) 2006        Martin Engelke
-                       2011 - 2012 Björn Peemöller
+                       2011 - 2014 Björn Peemöller
+                       2014        Jan Tikovsky
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
@@ -122,9 +123,8 @@ checkExports _ = ok -- TODO
 -- checkImports
 -- ---------------------------------------------------------------------------
 
--- check import declarations for multiply imported modules and multiply
+-- Check import declarations for multiply imported modules and multiply
 -- imported/hidden values.
---
 -- The function uses a map of the already imported or hidden entities to
 -- collect the entities throughout multiple import statements.
 checkImports :: [ImportDecl] -> WCM ()
@@ -169,6 +169,20 @@ checkImports = warnFor WarnMultipleImports . foldM_ checkImport Map.empty
   impName (ImportTypeAll    t) = t
   impName (ImportTypeWith t _) = t
 
+warnMultiplyImportedModule :: ModuleIdent -> Message
+warnMultiplyImportedModule mid = posMessage mid $ hsep $ map text
+  ["Module", moduleName mid, "is imported more than once"]
+
+warnMultiplyImportedSymbol :: ModuleIdent -> Ident -> Message
+warnMultiplyImportedSymbol mid ident = posMessage ident $ hsep $ map text
+  [ "Symbol", escName ident, "from module", moduleName mid
+  , "is imported more than once" ]
+
+warnMultiplyHiddenSymbol :: ModuleIdent -> Ident -> Message
+warnMultiplyHiddenSymbol mid ident = posMessage ident $ hsep $ map text
+  [ "Symbol", escName ident, "from module", moduleName mid
+  , "is hidden more than once" ]
+
 -- ---------------------------------------------------------------------------
 -- checkDeclGroup
 -- ---------------------------------------------------------------------------
@@ -179,7 +193,15 @@ checkDeclGroup ds = do
   mapM_ checkDecl    ds
   checkRuleAdjacency ds
 
--- Find function rules which are not together
+checkLocalDeclGroup :: [Decl] -> WCM ()
+checkLocalDeclGroup ds = do
+  mapM_ checkLocalDecl ds
+  checkDeclGroup       ds
+
+-- ---------------------------------------------------------------------------
+-- Find function rules which are disjoined
+-- ---------------------------------------------------------------------------
+
 checkRuleAdjacency :: [Decl] -> WCM ()
 checkRuleAdjacency decls = warnFor WarnDisjoinedRules
                          $ foldM_ check (mkIdent "", Map.empty) decls
@@ -195,10 +217,10 @@ checkRuleAdjacency decls = warnFor WarnDisjoinedRules
           return (f, env)
   check (_    , env) _                     = return (mkIdent "", env)
 
-checkLocalDeclGroup :: [Decl] -> WCM ()
-checkLocalDeclGroup ds = do
-  mapM_ checkLocalDecl ds
-  checkDeclGroup       ds
+warnDisjoinedFunctionRules :: Ident -> Position -> Message
+warnDisjoinedFunctionRules ident pos = posMessage ident $ hsep (map text
+  [ "Rules for function", escName ident, "are disjoined" ])
+  <+> parens (text "first occurrence at" <+> text (showLine pos))
 
 checkDecl :: Decl -> WCM ()
 checkDecl (DataDecl   _ _ vs cs) = inNestedScope $ do
@@ -386,20 +408,25 @@ checkFieldExpression (Field _ _ e) = checkExpr e -- Hier auch "visitId ident" ?
 
 checkMissingTypeSignatures :: [Decl] -> WCM ()
 checkMissingTypeSignatures decls = do
-  let tys        = [t | TypeSig _ ts _ <- decls, t <- ts]
-      missingTys = [f | FunctionDecl _ f _ <- decls, f `notElem` tys]
-  unless (null missingTys) $ do
+  let typedFs   = [f | TypeSig     _ fs _ <- decls, f <- fs]
+      untypedFs = [f | FunctionDecl _ f _ <- decls, f `notElem` typedFs]
+  unless (null untypedFs) $ do
     mid   <- getModuleIdent
-    tyScs <- mapM getTyScheme missingTys
-    mapM_ report $ zipWith (warnMissingTypeSignature mid) missingTys tyScs
+    tyScs <- mapM getTyScheme untypedFs
+    mapM_ report $ zipWith (warnMissingTypeSignature mid) untypedFs tyScs
 
 getTyScheme :: Ident -> WCM TypeScheme
 getTyScheme q = do
   tyEnv <- gets valueEnv
   return $ case lookupValue q tyEnv of
     [Value  _ _ tys] -> tys
-    _                                           -> internalError $
+    _                -> internalError $
       "Checks.WarnCheck.getTyScheme: " ++ show q
+
+warnMissingTypeSignature :: ModuleIdent -> Ident -> TypeScheme -> Message
+warnMissingTypeSignature mid i tys = posMessage i $ hsep (map text
+  ["Top-level binding with no type signature:", showIdent i, "::"])
+  <+> ppTypeScheme mid tys
 
 -- -----------------------------------------------------------------------------
 -- Check for overlapping and non-exhaustive case alternatives
@@ -1001,30 +1028,6 @@ typeId = qualify . flip renameIdent 1
 -- ---------------------------------------------------------------------------
 -- Warnings messages
 -- ---------------------------------------------------------------------------
-
-warnMissingTypeSignature :: ModuleIdent -> Ident -> TypeScheme -> Message
-warnMissingTypeSignature mid i tys = posMessage i $ hsep (map text
-  ["Top-level binding with no type signature:", showIdent i, "::"])
-  <+> ppTypeScheme mid tys
-
-warnMultiplyImportedModule :: ModuleIdent -> Message
-warnMultiplyImportedModule mid = posMessage mid $ hsep $ map text
-  ["Module", moduleName mid, "is imported more than once"]
-
-warnMultiplyImportedSymbol :: ModuleIdent -> Ident -> Message
-warnMultiplyImportedSymbol mid ident = posMessage ident $ hsep $ map text
-  [ "Symbol", escName ident, "from module", moduleName mid
-  , "is imported more than once" ]
-
-warnMultiplyHiddenSymbol :: ModuleIdent -> Ident -> Message
-warnMultiplyHiddenSymbol mid ident = posMessage ident $ hsep $ map text
-  [ "Symbol", escName ident, "from module", moduleName mid
-  , "is hidden more than once" ]
-
-warnDisjoinedFunctionRules :: Ident -> Position -> Message
-warnDisjoinedFunctionRules ident pos = posMessage ident $ hsep (map text
-  [ "Rules for function", escName ident, "are disjoined" ])
-  <+> parens (text "first occurrence at" <+> text (showLine pos))
 
 warnUnrefTypeVar :: Ident -> Message
 warnUnrefTypeVar v = posMessage v $ hsep $ map text

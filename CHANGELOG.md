@@ -4,6 +4,12 @@ Change log for curry-frontend
 Under development
 =================
 
+  * The check for overlapping rules has been completely refactored and
+    improved to now also handle rigid case expressions.
+
+  * The check for missing pattern matching alternatives now correctly handles
+    String literals - fixes #1048.
+
   * Added warnings for top-level functions without type signatures - fixes #769
 
   * Moved pretty-printing of types from Checks.TypeCheck to Base.CurryTypes
