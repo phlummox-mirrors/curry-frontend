@@ -38,6 +38,7 @@ import qualified Base.ScopeEnv as SE
   , lookupWithLevel, toLevelList, currentLevel)
 
 import Base.Types
+import Base.Utils (findMultiples)
 import Env.ModuleAlias
 import Env.TypeConstructor (TCEnv, TypeInfo (..), lookupTC, qualLookupTC)
 import Env.Value (ValueEnv, ValueInfo (..), lookupValue, qualLookupValue)
@@ -59,6 +60,7 @@ warnCheck opts aEnv valEnv tcEnv (Module _ mid es is ds)
       checkImports   is
       checkDeclGroup ds
       checkMissingTypeSignatures ds
+      checkModuleAlias is
 
 type ScopeEnv = SE.ScopeEnv QualIdent IdInfo
 
@@ -427,6 +429,35 @@ warnMissingTypeSignature :: ModuleIdent -> Ident -> TypeScheme -> Message
 warnMissingTypeSignature mid i tys = posMessage i $ hsep (map text
   ["Top-level binding with no type signature:", showIdent i, "::"])
   <+> ppTypeScheme mid tys
+
+-- -----------------------------------------------------------------------------
+-- Check for overlapping module alias names
+-- -----------------------------------------------------------------------------
+
+-- check if module aliases in import declarations overlap with the module name
+-- or another module alias
+
+checkModuleAlias :: [ImportDecl] -> WCM ()
+checkModuleAlias is = do
+  mid <- getModuleIdent
+  let alias      = catMaybes [a | ImportDecl _ _ _ a _ <- is]
+      modClash   = [a | a <- alias, a == mid]
+      aliasClash = findMultiples alias
+  unless (null modClash) $ mapM_ (report . warnModuleNameClash) modClash
+  unless (null aliasClash) $ mapM_ (report . warnAliasNameClash) aliasClash
+
+warnModuleNameClash :: ModuleIdent -> Message
+warnModuleNameClash mid = posMessage mid $ hsep $ map text
+  ["The module alias", escModuleName mid
+  , "overlaps with the current module name"]
+
+warnAliasNameClash :: [ModuleIdent] -> Message
+warnAliasNameClash []         = internalError
+  "WarnCheck.warnAliasNameClash: empty list"
+warnAliasNameClash mids = posMessage (head mids) $ text
+  "Overlapping module aliases" $+$ nest 2 (vcat (map myppAlias mids))
+  where myppAlias mid@(ModuleIdent pos _) =
+          ppLine pos <> text ":" <+> text (escModuleName mid)
 
 -- -----------------------------------------------------------------------------
 -- Check for overlapping and non-exhaustive case alternatives

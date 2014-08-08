@@ -4,6 +4,8 @@ Change log for curry-frontend
 Under development
 =================
 
+  * Implemented warnings for overlapping module aliases - fixes #14
+
   * The check for overlapping rules has been completely refactored and
     improved to now also handle rigid case expressions.
 
