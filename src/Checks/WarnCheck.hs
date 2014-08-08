@@ -407,7 +407,7 @@ checkFieldExpression (Field _ _ e) = checkExpr e -- Hier auch "visitId ident" ?
 -- during syntax checking
 
 checkMissingTypeSignatures :: [Decl] -> WCM ()
-checkMissingTypeSignatures decls = do
+checkMissingTypeSignatures decls = warnFor WarnMissingSignatures $ do
   let typedFs   = [f | TypeSig     _ fs _ <- decls, f <- fs]
       untypedFs = [f | FunctionDecl _ f _ <- decls, f `notElem` typedFs]
   unless (null untypedFs) $ do
