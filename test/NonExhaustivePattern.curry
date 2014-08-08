@@ -13,3 +13,8 @@ len2 [_,_] = True
 tuple (True, 1) = True
 
 tuple2 [(_,_)] = True
+
+f ""    = 0
+f (_:_) = 1
+
+g "a" = 0
