@@ -22,14 +22,17 @@
 -}
 
 module Base.CurryTypes
- ( toQualType, toQualTypes, toType, toTypes, fromQualType, fromType
+ ( toQualType, toQualTypes, toType, toTypes, fromQualType, fromType,
+   ppType, ppTypeScheme
  ) where
 
 import Data.List (nub)
 import qualified Data.Map as Map (Map, fromList, lookup)
 
 import Curry.Base.Ident
+import Curry.Base.Pretty (Doc)
 import qualified Curry.Syntax as CS
+import Curry.Syntax.Pretty (ppTypeExpr)
 
 import Base.Expr
 import Base.Messages (internalError)
@@ -95,3 +98,10 @@ fromType (TypeSkolem          k)   =
 fromType (TypeRecord     fs rty)   = CS.RecordType
   (map (\ (l, ty) -> ([l], fromType ty)) fs)
   ((fromType . TypeVariable) `fmap` rty)
+
+-- The following functions implement pretty-printing for types.
+ppType :: ModuleIdent -> Type -> Doc
+ppType m = ppTypeExpr 0 . fromQualType m
+
+ppTypeScheme :: ModuleIdent -> TypeScheme -> Doc
+ppTypeScheme m (ForAll _ ty) = ppType m ty

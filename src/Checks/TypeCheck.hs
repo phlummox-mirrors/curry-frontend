@@ -37,7 +37,7 @@ import Curry.Base.Pretty
 import Curry.Syntax
 import Curry.Syntax.Pretty
 
-import Base.CurryTypes (fromQualType, toType, toTypes)
+import Base.CurryTypes (toType, toTypes, ppType, ppTypeScheme)
 import Base.Expr
 import Base.Messages (Message, posMessage, internalError)
 import Base.SCC
@@ -1354,9 +1354,4 @@ errIncompatibleLabelTypes m l ty1 ty2 = sep
   , text "are incompatible"
   ]
 
--- The following functions implement pretty-printing for types.
-ppType :: ModuleIdent -> Type -> Doc
-ppType m = ppTypeExpr 0 . fromQualType m
 
-ppTypeScheme :: ModuleIdent -> TypeScheme -> Doc
-ppTypeScheme m (ForAll _ ty) = ppType m ty
