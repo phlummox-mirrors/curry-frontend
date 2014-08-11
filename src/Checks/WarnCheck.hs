@@ -280,8 +280,8 @@ checkFunctionPatternMatch p f eqs = do
     warnMissingPattern p loc nonExhaustive
   unless (null overlapped) $ warnFor WarnNondetPatterns $ report $
     warnOverlapPattern p loc (idName f) "=" overlapped
-  when nondet $ warnFor WarnOverlapping $ report $
-    warnNondetOverlapping p ("Function " ++ escName f)
+--   when nondet $ warnFor WarnOverlapping $ report $
+--     warnNondetOverlapping p ("Function " ++ escName f)
 
 -- Check an equation for warnings.
 -- This is done in a seperate scope as the left-hand-side may introduce
@@ -426,9 +426,10 @@ getTyScheme q = do
       "Checks.WarnCheck.getTyScheme: " ++ show q
 
 warnMissingTypeSignature :: ModuleIdent -> Ident -> TypeScheme -> Message
-warnMissingTypeSignature mid i tys = posMessage i $ hsep (map text
-  ["Top-level binding with no type signature:", showIdent i, "::"])
-  <+> ppTypeScheme mid tys
+warnMissingTypeSignature mid i tys = posMessage i $ fsep
+  [ text "Top-level binding with no type signature:"
+  , text (showIdent i) <+> text "::" <+> ppTypeScheme mid tys
+  ]
 
 -- -----------------------------------------------------------------------------
 -- Check for overlapping module alias names
@@ -474,8 +475,8 @@ checkCaseAlts ct alts@(Alt p _ _ : _) = do
         warnMissingPattern p loc nonExhaustive
       unless (null overlapped) $ warnFor WarnNondetPatterns $ report $
         warnOverlapPattern p loc "" "->" overlapped
-      when nondet $ warnFor WarnOverlapping $ report $
-        warnNondetOverlapping p ("A fcase expression")
+--       when nondet $ warnFor WarnOverlapping $ report $
+--         warnNondetOverlapping p ("A fcase expression")
     Rigid -> do
       unless (null nonExhaustive) $ warnFor WarnIncompletePatterns $ report $
         warnMissingPattern p loc nonExhaustive
