@@ -32,7 +32,6 @@ import           System.IO
 import           System.Process           (system)
 
 import Curry.Base.Ident
-import Curry.Base.Message (runMsg)
 import Curry.Base.Position
 import Curry.Base.Pretty
 import Curry.ExtendedFlat.InterfaceEquivalence (eqInterface)
@@ -108,14 +107,14 @@ parseModule opts fn = do
   case mbSrc of
     Nothing  -> left [message $ text $ "Missing file: " ++ fn]
     Just src -> do
-      case runMsg (CS.unlit fn src) of
-        Left err      -> left [err]
-        Right (ul, _) -> do
+      case CS.unlit fn src of
+        Left  err -> left [err]
+        Right ul  -> do
         prepd <- preprocess (optPrepOpts opts) fn ul
         -- parse module
-        case runMsg (CS.parseModule fn prepd) of
-          Left  err         -> left [err]
-          Right (parsed, _) -> right parsed
+        case CS.parseModule fn prepd of
+          Left  err    -> left [err]
+          Right parsed -> right parsed
 
 preprocess :: PrepOpts -> FilePath -> String -> CYIO String
 preprocess opts fn src
@@ -301,9 +300,9 @@ matchInterface :: FilePath -> CS.Interface -> IO Bool
 matchInterface ifn i = do
   hdl <- openFile ifn ReadMode
   src <- hGetContents hdl
-  case runMsg (CS.parseInterface ifn src) of
-    Left _        -> hClose hdl >> return False
-    Right (i', _) -> return (i `intfEquiv` fixInterface i')
+  case CS.parseInterface ifn src of
+    Left  _  -> hClose hdl >> return False
+    Right i' -> return (i `intfEquiv` fixInterface i')
 
 writeFlat :: Options -> FilePath -> CompilerEnv -> ModuleSummary -> IL.Module
           -> IO ()

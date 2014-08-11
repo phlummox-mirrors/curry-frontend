@@ -20,7 +20,6 @@ import Data.Maybe            (fromMaybe, isJust)
 import System.FilePath       ((</>), dropFileName, takeBaseName)
 
 import Curry.Base.Ident      (QualIdent (..), unqualify)
-import Curry.Base.Message
 import Curry.Base.Pretty     (text)
 import Curry.Files.PathUtils (readModule, lookupCurryFile)
 import Curry.Syntax          (Module, lexSource)
@@ -33,8 +32,8 @@ import CurryBuilder          (buildCurry)
 import Modules               (loadAndCheckModule)
 import Transformations       (qual)
 
---- translate source file into HTML file with syntaxcoloring
---- @param sourcefilename
+-- translate source file into HTML file with syntaxcoloring
+-- @param sourcefilename
 source2html :: Options -> FilePath -> CYIO ()
 source2html opts f = do
   let baseName   = takeBaseName f
@@ -44,18 +43,18 @@ source2html opts f = do
   program <- filename2program opts (fromMaybe f srcFile)
   liftIO $ writeFile outFile (program2html baseName program)
 
---- @param importpaths
---- @param filename
---- @return program
+-- @param importpaths
+-- @param filename
+-- @return program
 filename2program :: Options -> String -> CYIO [Code]
 filename2program opts f = do
   mbModule <- liftIO $ readModule f
   case mbModule of
     Nothing  -> left [message $ text $ "Missing file: " ++ f]
     Just src -> do
-      case runMsg (lexSource f src) of
-        Left e          -> left [e]
-        Right (toks, _) -> do
+      case lexSource f src of
+        Left  err  -> left [err]
+        Right toks -> do
           typed <- fullParse opts f src
           return (genProgram typed toks)
 

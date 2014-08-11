@@ -29,7 +29,6 @@ import qualified Control.Monad.State    as S (StateT, execStateT, gets, modify)
 import qualified Data.Map               as M (insert, member)
 
 import           Curry.Base.Ident
-import           Curry.Base.Message          (runMsg)
 import           Curry.Base.Position
 import           Curry.Base.Pretty
 import           Curry.Files.PathUtils
@@ -107,9 +106,9 @@ compileInterface ctxt (p, m) fn = do
   mbSrc <- liftIO $ readModule fn
   case mbSrc of
     Nothing  -> report $ errInterfaceNotFound p m
-    Just src -> case runMsg $ parseInterface fn src of
+    Just src -> case parseInterface fn src of
       Left err -> report err
-      Right (intf@(Interface n is _), _) ->
+      Right intf@(Interface n is _) ->
         if (m /= n)
           then report $ errWrongInterface (first fn) m n
           else do

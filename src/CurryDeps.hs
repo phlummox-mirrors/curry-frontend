@@ -24,7 +24,6 @@ import           Data.List       (isSuffixOf, nub)
 import qualified Data.Map as Map (Map, empty, insert, lookup, toList)
 
 import Curry.Base.Ident
-import Curry.Base.Message    (runMsg)
 import Curry.Base.Pretty
 import Curry.Files.Filenames
 import Curry.Files.PathUtils
@@ -133,9 +132,9 @@ readHeader fn = do
   case mbFile of
     Nothing  -> left [errMissingFile fn]
     Just src -> do
-      case runMsg $ parseHeader fn src of
-        Left  err      -> left [err]
-        Right (hdr, _) -> return $ patchModuleId fn hdr
+      case parseHeader fn src of
+        Left  err -> left [err]
+        Right hdr -> return $ patchModuleId fn hdr
 
 -- If we want to compile the program instead of generating Makefile
 -- dependencies, the environment has to be sorted topologically. Note
