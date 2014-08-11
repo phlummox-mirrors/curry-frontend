@@ -21,6 +21,7 @@ import Data.Maybe      (catMaybes, mapMaybe)
 import System.FilePath (normalise)
 
 import Curry.Base.Ident
+import Curry.Base.Monad
 import Curry.Base.Position (Position)
 import Curry.Base.Pretty
 import Curry.Files.Filenames
@@ -50,8 +51,8 @@ findCurry :: Options -> String -> CYIO FilePath
 findCurry opts s = do
   mbTarget <- findFile `orIfNotFound` findModule
   case mbTarget of
-    Nothing -> left [complaint]
-    Just fn -> right fn
+    Nothing -> failMessages [complaint]
+    Just fn -> ok fn
   where
   canBeFile    = isCurryFilePath s
   canBeModule  = isValidModuleName s
@@ -113,15 +114,15 @@ processPragmas opts0 ps = foldM processPragma opts0
   where
   processPragma opts (p, s)
     | not (null unknownFlags)
-    = left [errUnknownOptions p unknownFlags]
+    = failMessages [errUnknownOptions p unknownFlags]
     | optMode         opts /= optMode         opts'
-    = left [errIllegalOption p "Cannot change mode"]
+    = failMessages [errIllegalOption p "Cannot change mode"]
     | optLibraryPaths opts /= optLibraryPaths opts'
-    = left [errIllegalOption p "Cannot change library path"]
+    = failMessages [errIllegalOption p "Cannot change library path"]
     | optImportPaths  opts /= optImportPaths  opts'
-    = left [errIllegalOption p "Cannot change import path"]
+    = failMessages [errIllegalOption p "Cannot change import path"]
     | optTargetTypes  opts /= optTargetTypes  opts'
-    = left [errIllegalOption p "Cannot change target type"]
+    = failMessages [errIllegalOption p "Cannot change target type"]
     | otherwise
     = return opts'
     where
@@ -196,8 +197,8 @@ smake dests deps actOutdated actUpToDate = do
 
 cancelMissing :: (FilePath -> IO (Maybe a)) -> FilePath -> CYIO a
 cancelMissing act f = liftIO (act f) >>= \res -> case res of
-  Nothing  -> left [errModificationTime f]
-  Just val -> right val
+  Nothing  -> failMessages [errModificationTime f]
+  Just val -> ok val
 
 errUnknownOptions :: Position -> [String] -> Message
 errUnknownOptions p errs = posMessage p $

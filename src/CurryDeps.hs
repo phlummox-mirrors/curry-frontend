@@ -24,6 +24,7 @@ import           Data.List       (isSuffixOf, nub)
 import qualified Data.Map as Map (Map, empty, insert, lookup, toList)
 
 import Curry.Base.Ident
+import Curry.Base.Monad
 import Curry.Base.Pretty
 import Curry.Files.Filenames
 import Curry.Files.PathUtils
@@ -53,8 +54,8 @@ flatDeps :: Options -> FilePath -> CYIO [(ModuleIdent, Source)]
 flatDeps opts fn = do
   sEnv <- deps opts Map.empty fn
   case flattenDeps sEnv of
-    (env, []  ) -> right env
-    (_  , errs) -> left errs
+    (env, []  ) -> ok env
+    (_  , errs) -> failMessages errs
 
 -- |Retrieve the dependencies of a source file as a 'SourceEnv'
 deps :: Options -> SourceEnv -> FilePath -> CYIO SourceEnv
@@ -124,17 +125,16 @@ moduleIdentDeps opts sEnv m = case Map.lookup m sEnv of
         | otherwise                 -> do
             hdr@(Module _ m' _ _ _) <- readHeader fn
             if (m == m') then moduleDeps opts sEnv fn hdr
-                         else left [errWrongModule m m']
+                         else failMessages [errWrongModule m m']
 
 readHeader :: FilePath -> CYIO Module
 readHeader fn = do
   mbFile <- liftIO $ readModule fn
   case mbFile of
-    Nothing  -> left [errMissingFile fn]
+    Nothing  -> failMessages [errMissingFile fn]
     Just src -> do
-      case parseHeader fn src of
-        Left  err -> left [err]
-        Right hdr -> return $ patchModuleId fn hdr
+      hdr <- liftCYM $ parseHeader fn src
+      return $ patchModuleId fn hdr
 
 -- If we want to compile the program instead of generating Makefile
 -- dependencies, the environment has to be sorted topologically. Note

@@ -29,6 +29,7 @@ import qualified Control.Monad.State    as S (StateT, execStateT, gets, modify)
 import qualified Data.Map               as M (insert, member)
 
 import           Curry.Base.Ident
+import           Curry.Base.Monad
 import           Curry.Base.Position
 import           Curry.Base.Pretty
 import           Curry.Files.PathUtils
@@ -49,8 +50,8 @@ data LoaderState = LoaderState
   }
 
 -- Report an error.
-report :: Message -> IntfLoader ()
-report msg = S.modify $ \ s -> s { errs = msg : errs s }
+report :: [Message] -> IntfLoader ()
+report msg = S.modify $ \ s -> s { errs = msg ++ errs s }
 
 -- Check whether a module interface is already loaded.
 loaded :: ModuleIdent -> IntfLoader Bool
@@ -72,7 +73,7 @@ loadInterfaces :: [FilePath] -- ^ 'FilePath's to search in for interfaces
                -> CYIO InterfaceEnv
 loadInterfaces paths (Module _ m _ is _) = do
   res <- liftIO $ S.execStateT load (LoaderState initInterfaceEnv paths [])
-  if null (errs res) then right (iEnv res) else left (reverse $ errs res)
+  if null (errs res) then ok (iEnv res) else failMessages (reverse $ errs res)
   where load = mapM_ (loadInterface [m]) [(p, m') | ImportDecl p m' _ _ _ <- is]
 
 -- |Load an interface into the given environment.
@@ -86,14 +87,14 @@ loadInterfaces paths (Module _ m _ is _) = do
 -- for in the import paths and compiled.
 loadInterface :: [ModuleIdent] -> (Position, ModuleIdent) -> IntfLoader ()
 loadInterface ctxt imp@(p, m)
-  | m `elem` ctxt = report $ errCyclicImport p $ m : takeWhile (/= m) ctxt
+  | m `elem` ctxt = report [errCyclicImport p (m : takeWhile (/= m) ctxt)]
   | otherwise     = do
     isLoaded <- loaded m
     unless isLoaded $ do
       paths  <- searchPaths
       mbIntf <- liftIO $ lookupCurryInterface paths m
       case mbIntf of
-        Nothing -> report (errInterfaceNotFound p m)
+        Nothing -> report [errInterfaceNotFound p m]
         Just fn -> compileInterface ctxt imp fn
 
 -- |Compile an interface by recursively loading its dependencies.
@@ -105,15 +106,15 @@ compileInterface :: [ModuleIdent] -> (Position, ModuleIdent) -> FilePath
 compileInterface ctxt (p, m) fn = do
   mbSrc <- liftIO $ readModule fn
   case mbSrc of
-    Nothing  -> report $ errInterfaceNotFound p m
-    Just src -> case parseInterface fn src of
+    Nothing  -> report [errInterfaceNotFound p m]
+    Just src -> case runCYM (parseInterface fn src) of
       Left err -> report err
       Right intf@(Interface n is _) ->
         if (m /= n)
-          then report $ errWrongInterface (first fn) m n
+          then report [errWrongInterface (first fn) m n]
           else do
             let (intf', intfErrs) = intfSyntaxCheck intf
-            mapM_ report intfErrs
+            mapM_ report [intfErrs]
             mapM_ (loadInterface (m : ctxt)) [ (q, i) | IImportDecl q i <- is ]
             addInterface m intf'
 

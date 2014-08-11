@@ -20,6 +20,7 @@ import Data.Maybe            (fromMaybe, isJust)
 import System.FilePath       ((</>), dropFileName, takeBaseName)
 
 import Curry.Base.Ident      (QualIdent (..), unqualify)
+import Curry.Base.Monad
 import Curry.Base.Pretty     (text)
 import Curry.Files.PathUtils (readModule, lookupCurryFile)
 import Curry.Syntax          (Module, lexSource)
@@ -52,11 +53,9 @@ filename2program opts f = do
   case mbModule of
     Nothing  -> left [message $ text $ "Missing file: " ++ f]
     Just src -> do
-      case lexSource f src of
-        Left  err  -> left [err]
-        Right toks -> do
-          typed <- fullParse opts f src
-          return (genProgram typed toks)
+      toks <- liftCYM $ lexSource f src
+      typed <- fullParse opts f src
+      return (genProgram typed toks)
 
 -- |Return the syntax tree of the source program 'src' (type 'Module'; see
 -- Module "CurrySyntax").after inferring the types of identifiers.

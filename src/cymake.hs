@@ -14,6 +14,8 @@
 -}
 module Main (main) where
 
+import Curry.Base.Monad (runCYIO)
+
 import Base.Messages
 import Files.CymakePath (cymakeGreeting, cymakeVersion)
 import Html.CurryHtml   (source2html)
@@ -33,9 +35,12 @@ cymake (prog, opts, files, errs)
   | mode == ModeNumericVersion = printNumericVersion
   | not $ null errs            = badUsage prog errs
   | null files                 = badUsage prog ["no input files"]
-  | mode == ModeHtml           = runEitherCYIO $ mapM_ (source2html opts) files
-  | otherwise                  = runEitherCYIO $ mapM_ (buildCurry  opts) files
+  | mode == ModeHtml           =
+    runCYIO (mapM_ (source2html opts) files) >>= okOrAbort
+  | otherwise                  =
+    runCYIO (mapM_ (buildCurry  opts) files) >>= okOrAbort
   where mode = optMode opts
+        okOrAbort = either abortWithMessages return
 
 -- |Print the usage information of the command line tool
 printUsage :: String -> IO ()

@@ -4,6 +4,8 @@ Change log for curry-frontend
 Under development
 =================
 
+  * Replaced MessageM monad with CYT monads and moved CYT monads to curry-base
+
   * Implemented warnings for overlapping module aliases - fixes #14
 
   * The check for overlapping rules has been completely refactored and

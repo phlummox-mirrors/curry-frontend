@@ -21,6 +21,7 @@ import qualified Checks.SyntaxCheck    as SC (syntaxCheck)
 import qualified Checks.TypeCheck      as TC (typeCheck)
 import qualified Checks.WarnCheck      as WC (warnCheck)
 
+import Curry.Base.Monad
 import Curry.Syntax (Module (..), Interface (..))
 
 import Base.Messages
@@ -31,8 +32,8 @@ type Check m a = Options -> CompilerEnv -> a -> CYT m (CompilerEnv, a)
 
 interfaceCheck :: Monad m => Check m Interface
 interfaceCheck _ env intf
-  | null msgs = right (env, intf)
-  | otherwise = left msgs
+  | null msgs = ok (env, intf)
+  | otherwise = failMessages msgs
   where msgs = IC.interfaceCheck (opPrecEnv env) (tyConsEnv env)
                                  (valueEnv env) intf
 
@@ -43,8 +44,8 @@ interfaceCheck _ env intf
 -- * Environment:  remains unchanged
 kindCheck :: Monad m => Check m Module
 kindCheck _ env (Module ps m es is ds)
-  | null msgs = right (env, Module ps m es is ds')
-  | otherwise = left msgs
+  | null msgs = ok (env, Module ps m es is ds')
+  | otherwise = failMessages msgs
   where (ds', msgs) = KC.kindCheck (moduleIdent env) (tyConsEnv env) ds
 
 -- |Check for a correct syntax.
@@ -54,8 +55,8 @@ kindCheck _ env (Module ps m es is ds)
 -- * Environment:  remains unchanged
 syntaxCheck :: Monad m => Check m Module
 syntaxCheck opts env mdl
-  | null msgs = right (env { extensions = exts }, mdl')
-  | otherwise = left msgs
+  | null msgs = ok (env { extensions = exts }, mdl')
+  | otherwise = failMessages msgs
   where ((mdl', exts), msgs) = SC.syntaxCheck opts (valueEnv env)
                                                    (tyConsEnv env) mdl
 
@@ -66,8 +67,8 @@ syntaxCheck opts env mdl
 -- * Environment:  The operator precedence environment is updated
 precCheck :: Monad m => Check m Module
 precCheck _ env (Module ps m es is ds)
-  | null msgs = right (env { opPrecEnv = pEnv' }, Module ps m es is ds')
-  | otherwise = left msgs
+  | null msgs = ok (env { opPrecEnv = pEnv' }, Module ps m es is ds')
+  | otherwise = failMessages msgs
   where (ds', pEnv', msgs) = PC.precCheck (moduleIdent env) (opPrecEnv env) ds
 
 -- |Apply the correct typing of the module.
@@ -75,16 +76,16 @@ precCheck _ env (Module ps m es is ds)
 -- environments are updated.
 typeCheck :: Monad m => Check m Module
 typeCheck _ env mdl@(Module _ _ _ _ ds)
-  | null msgs = right (env { tyConsEnv = tcEnv', valueEnv = tyEnv' }, mdl)
-  | otherwise = left msgs
+  | null msgs = ok (env { tyConsEnv = tcEnv', valueEnv = tyEnv' }, mdl)
+  | otherwise = failMessages msgs
   where (tcEnv', tyEnv', msgs) = TC.typeCheck (moduleIdent env)
                                  (tyConsEnv env) (valueEnv env) ds
 
 -- |Check the export specification
 exportCheck :: Monad m => Check m Module
 exportCheck _ env (Module ps m es is ds)
-  | null msgs = right (env, Module ps m es' is ds)
-  | otherwise = left msgs
+  | null msgs = ok (env, Module ps m es' is ds)
+  | otherwise = failMessages msgs
   where (es', msgs) = EC.exportCheck (moduleIdent env) (aliasEnv env)
                                      (tyConsEnv env) (valueEnv env) es
 

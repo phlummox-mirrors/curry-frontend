@@ -23,6 +23,7 @@ import           Data.Maybe
 import qualified Data.Set                   as Set
 
 import Curry.Base.Ident
+import Curry.Base.Monad
 import Curry.Base.Position
 import Curry.Base.Pretty
 import Curry.Syntax

@@ -6,12 +6,11 @@ module Base.Messages
   , internalError, errorMessage, errorMessages
     -- * creating messages
   , Message, message, posMessage
-  , MonadIO (..), CYIO, CYT, left, right, runEitherCYIO
+  , MonadIO (..)
   ) where
 
 import Control.Monad              (unless, when)
 import Control.Monad.IO.Class     (MonadIO(..))
-import Control.Monad.Trans.Either (EitherT, left, right, runEitherT)
 import Data.List                  (sort)
 import System.IO                  (hFlush, hPutStrLn, stderr, stdout)
 import System.Exit                (exitFailure)
@@ -19,17 +18,6 @@ import System.Exit                (exitFailure)
 import Curry.Base.Message         ( Message, message, posMessage, ppMessage
                                   , ppMessages, ppWarning, ppError)
 import CompilerOpts               (Options (..), WarnOpts (..), Verbosity (..))
-
-type CYT m a = EitherT [Message] m a
-
-type CYIO a = EitherT [Message] IO a
-
-runEitherCYIO :: CYIO a -> IO a
-runEitherCYIO act = do
-  res <- runEitherT act
-  case res of
-    Left errs -> abortWithMessages errs
-    Right val -> return val
 
 status :: MonadIO m => Options -> String -> m ()
 status opts msg = unless (optVerbosity opts < VerbStatus) (putMsg msg)

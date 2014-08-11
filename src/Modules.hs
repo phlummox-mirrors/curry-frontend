@@ -32,6 +32,7 @@ import           System.IO
 import           System.Process           (system)
 
 import Curry.Base.Ident
+import Curry.Base.Monad
 import Curry.Base.Position
 import Curry.Base.Pretty
 import Curry.ExtendedFlat.InterfaceEquivalence (eqInterface)
@@ -105,16 +106,11 @@ parseModule :: Options -> FilePath -> CYIO CS.Module
 parseModule opts fn = do
   mbSrc <- liftIO $ readModule fn
   case mbSrc of
-    Nothing  -> left [message $ text $ "Missing file: " ++ fn]
+    Nothing  -> failMessages [message $ text $ "Missing file: " ++ fn]
     Just src -> do
-      case CS.unlit fn src of
-        Left  err -> left [err]
-        Right ul  -> do
-        prepd <- preprocess (optPrepOpts opts) fn ul
-        -- parse module
-        case CS.parseModule fn prepd of
-          Left  err    -> left [err]
-          Right parsed -> right parsed
+      ul    <- liftCYM $ CS.unlit fn src
+      prepd <- preprocess (optPrepOpts opts) fn ul
+      liftCYM $ CS.parseModule fn prepd
 
 preprocess :: PrepOpts -> FilePath -> String -> CYIO String
 preprocess opts fn src
@@ -131,7 +127,7 @@ preprocess opts fn src
           ExitFailure x -> return $ Left [message $ text $
               "Preprocessor exited with exit code " ++ show x]
           ExitSuccess   -> Right `liftM` readFile outFn
-    either left right res
+    either failMessages ok res
 
 withTempFile :: (FilePath -> Handle -> IO a) -> IO a
 withTempFile act = do
@@ -153,9 +149,9 @@ checkModuleId :: Monad m => FilePath -> CS.Module
               -> CYT m CS.Module
 checkModuleId fn m@(CS.Module _ mid _ _ _)
   | last (midQualifiers mid) == takeBaseName fn
-  = right m
+  = ok m
   | otherwise
-  = left [errModuleFileMismatch mid]
+  = failMessages [errModuleFileMismatch mid]
 
 -- An implicit import of the prelude is added to the declarations of
 -- every module, except for the prelude itself, or when the import is disabled
@@ -300,7 +296,7 @@ matchInterface :: FilePath -> CS.Interface -> IO Bool
 matchInterface ifn i = do
   hdl <- openFile ifn ReadMode
   src <- hGetContents hdl
-  case CS.parseInterface ifn src of
+  case runCYM (CS.parseInterface ifn src) of
     Left  _  -> hClose hdl >> return False
     Right i' -> return (i `intfEquiv` fixInterface i')
 
