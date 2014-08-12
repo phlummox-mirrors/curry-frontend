@@ -21,7 +21,7 @@ import           Control.Monad.State.Strict    (State, execState, gets, modify)
 import qualified Data.IntSet         as IntSet
   (IntSet, empty, insert, notMember, singleton, union, unions)
 import qualified Data.Map            as Map    (empty, insert, lookup)
-import           Data.Maybe                    (catMaybes, isJust)
+import           Data.Maybe                    (catMaybes, fromMaybe, isJust)
 import           Data.List
   (intersect, intersectBy, nub, sort, unionBy)
 
@@ -275,7 +275,7 @@ checkFunctionPatternMatch :: Position -> Ident -> [Equation] -> WCM ()
 checkFunctionPatternMatch p f eqs = do
   let pats = map (\(Equation _ lhs _) -> snd (flatLhs lhs)) eqs
   let loc  = "an equation for " ++ escName f
-  (nonExhaustive, overlapped, nondet) <- checkPatternMatching pats
+  (nonExhaustive, overlapped, _) <- checkPatternMatching pats
   unless (null nonExhaustive) $ warnFor WarnNondetPatterns $ report $
     warnMissingPattern p loc nonExhaustive
   unless (null overlapped) $ warnFor WarnNondetPatterns $ report $
@@ -468,7 +468,7 @@ checkCaseAlts _  []                   = ok
 checkCaseAlts ct alts@(Alt p _ _ : _) = do
   let pats = map (\(Alt _ pat _) -> [pat]) alts
   let loc  = "a fcase alternative"
-  (nonExhaustive, overlapped, nondet) <- checkPatternMatching pats
+  (nonExhaustive, overlapped, _) <- checkPatternMatching pats
   case ct of
     Flex -> do
       unless (null nonExhaustive) $ warnFor WarnNondetPatterns $ report $
@@ -503,7 +503,7 @@ checkPatternMatching :: [[Pattern]] -> WCM ([ExhaustivePats], [[Pattern]], Bool)
 checkPatternMatching pats = do
   -- 1. We simplify the patterns by removing syntactic sugar temporarily
   --    for a simpler implementation.
-  let simplePats = map (map simplifyPat) pats
+  simplePats <- mapM (mapM simplifyPat) pats
   -- 2. We compute missing and used pattern matching alternatives
   (missing, used, nondet) <- processEqs (zip [1..] simplePats)
   -- 3. If any, we report the missing patterns, whereby we re-add the syntactic
@@ -516,29 +516,49 @@ checkPatternMatching pats = do
 --   * Variables
 --   * Integer, Float or Char literals
 --   * Constructors
---   * record pattern (currently ignored)
 -- All other patterns like as-patterns, list patterns and alike are desugared.
-simplifyPat :: Pattern -> Pattern
-simplifyPat p@(LiteralPattern      l) = case l of
+simplifyPat :: Pattern -> WCM Pattern
+simplifyPat p@(LiteralPattern      l) = return $ case l of
   String r s -> simplifyListPattern $ map (LiteralPattern . Char r) s
   _          -> p
-simplifyPat (NegativePattern     _ l) = LiteralPattern (negateLit l)
+simplifyPat (NegativePattern     _ l) = return $ LiteralPattern (negateLit l)
   where
   negateLit (Int   i n) = Int   i (-n)
   negateLit (Float r d) = Float r (-d)
   negateLit x           = x
-simplifyPat v@(VariablePattern     _) = v
-simplifyPat (ConstructorPattern c ps)
-  = ConstructorPattern c (map simplifyPat ps)
-simplifyPat (InfixPattern    p1 c p2)
-  = ConstructorPattern c (map simplifyPat [p1, p2])
+simplifyPat v@(VariablePattern     _) = return v
+simplifyPat (ConstructorPattern c ps) = ConstructorPattern c `liftM`
+                                        mapM simplifyPat ps
+simplifyPat (InfixPattern    p1 c p2) = ConstructorPattern c `liftM`
+                                        mapM simplifyPat [p1, p2]
 simplifyPat (ParenPattern          p) = simplifyPat p
-simplifyPat (TuplePattern       _ ps)
-  = ConstructorPattern (qTupleId (length ps)) (map simplifyPat ps)
-simplifyPat (ListPattern        _ ps) = simplifyListPattern (map simplifyPat ps)
+simplifyPat (TuplePattern       _ ps) = ConstructorPattern (qTupleId (length ps))
+                                        `liftM` mapM simplifyPat ps
+simplifyPat (ListPattern        _ ps) = simplifyListPattern `liftM`
+                                        mapM simplifyPat ps
 simplifyPat (AsPattern           _ p) = simplifyPat p
-simplifyPat (LazyPattern         _ _) = VariablePattern anonId
-simplifyPat p                         = p
+simplifyPat (LazyPattern         _ _) = return $ VariablePattern anonId
+simplifyPat (FunctionPattern     _ _) = return $ VariablePattern anonId
+simplifyPat (InfixFuncPattern  _ _ _) = return $ VariablePattern anonId
+simplifyPat (RecordPattern      fs _)
+  | null fs   = internalError "Checks.WarnCheck.simplifyPat"
+  | otherwise = do
+    (r, rfs) <- getAllLabels (fieldLabel $ head fs)
+    let ps = map (getPattern (map field2Tuple fs)) rfs
+    simplifyPat (ConstructorPattern r ps)
+  where getPattern fs' l = fromMaybe (VariablePattern anonId) (lookup l fs')
+
+getAllLabels :: Ident -> WCM (QualIdent, [Ident])
+getAllLabels l = do
+  tyEnv <- gets valueEnv
+  case lookupValue l tyEnv of
+    [Label _ r _] -> do
+      tcEnv <- gets tyConsEnv
+      case qualLookupTC r tcEnv of
+        [AliasType _ _ (TypeRecord fs _)] -> return (r, map fst fs)
+        _                                 -> internalError $
+          "Checks.WarnCheck.getAllLabels: " ++ show r
+    _             -> internalError $ "Checks.WarnCheck.getAllLabels: " ++ show l
 
 -- |Create a simplified list pattern by applying @:@ and @[]@.
 simplifyListPattern :: [Pattern] -> Pattern
@@ -569,7 +589,7 @@ processEqs eqs@((n, ps):_)
   | any isLitPat firstPats     = processLits eqs
   | any isConPat firstPats     = processCons eqs
   | all isVarPat firstPats     = processVars eqs
-  | otherwise                  = error "WarnCheck.processEqs"
+  | otherwise                  = internalError "Checks.WarnCheck.processEqs"
   where firstPats = map firstPat eqs
 
 -- |Literal patterns are checked by extracting the matched literals
@@ -829,9 +849,9 @@ warnOverlapPattern p loc pre post pats = posMessage p
 maxPattern :: Int
 maxPattern = 4
 
-warnNondetOverlapping :: Position -> String -> Message
-warnNondetOverlapping p loc = posMessage p $
-  text loc <+> text "is non-deterministic due to non-trivial overlapping rules"
+-- warnNondetOverlapping :: Position -> String -> Message
+-- warnNondetOverlapping p loc = posMessage p $
+--   text loc <+> text "is non-deterministic due to non-trivial overlapping rules"
 
 -- -----------------------------------------------------------------------------
 
