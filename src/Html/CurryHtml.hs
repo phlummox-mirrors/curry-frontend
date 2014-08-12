@@ -14,7 +14,6 @@
 module Html.CurryHtml (source2html) where
 
 import Control.Monad.Writer
-import Control.Monad.Trans.Either
 
 import Data.Maybe            (fromMaybe, isJust)
 import System.FilePath       ((</>), dropFileName, takeBaseName)
@@ -51,7 +50,7 @@ filename2program :: Options -> String -> CYIO [Code]
 filename2program opts f = do
   mbModule <- liftIO $ readModule f
   case mbModule of
-    Nothing  -> left [message $ text $ "Missing file: " ++ f]
+    Nothing  -> failMessages [message $ text $ "Missing file: " ++ f]
     Just src -> do
       toks <- liftCYM $ lexSource f src
       typed <- fullParse opts f src

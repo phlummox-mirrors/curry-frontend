@@ -17,7 +17,6 @@ module Imports (importInterfaces, importModules, qualifyEnv) where
 
 import           Control.Monad                   (liftM, unless)
 import qualified Control.Monad.State        as S (State, gets, modify, runState)
-import           Control.Monad.Trans.Either
 import qualified Data.Map                   as Map
 import           Data.Maybe
 import qualified Data.Set                   as Set
@@ -48,8 +47,8 @@ import CompilerOpts
 importModules :: Monad m => Options -> Module -> InterfaceEnv -> CYT m CompilerEnv
 importModules opts mdl@(Module _ mid _ imps _) iEnv
   = case foldl importModule (initEnv, []) imps of
-      (e, []  ) -> right $ expandTCValueEnv opts $ importUnifyData e
-      (_, errs) -> left errs
+      (e, []  ) -> ok $ expandTCValueEnv opts $ importUnifyData e
+      (_, errs) -> failMessages errs
   where
     initEnv = (initCompilerEnv mid)
       { aliasEnv     = importAliases imps -- import module aliases
