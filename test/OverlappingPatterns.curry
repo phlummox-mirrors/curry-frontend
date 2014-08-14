@@ -1,12 +1,13 @@
-f []           _            = Nothing
-f (_      : _) []           = Nothing
-f ((_, _) : _) ((_, _) : _) = Nothing
+f []           _       = Nothing
+f (_      : _) []      = Nothing
+f ((_, _) : _) (_ : _) = Nothing
 
-g x = fcase x of
+g x = case x of
   "" -> 0
   [] -> 1
+  _  -> 2
 
-g x = fcase x of
+h x = fcase x of
   [_]    -> 0
   (_:[]) -> 1
   _      -> 2
@@ -16,4 +17,7 @@ i y = y
 
 j []    = 0
 j (_:_) = 0
-j x     = 1
+j _     = 1
+
+k [] = 0
+k _  = 1

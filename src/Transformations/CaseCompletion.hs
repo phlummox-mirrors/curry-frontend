@@ -14,10 +14,10 @@
     The MCC translates case expressions into the intermediate language
     representation (IL) without completing them (i.e. without generating
     case branches for missing contructors), because the intermediate language
-    supports variable patterns.
+    supports variable patterns for the fallback case.
     In contrast, the FlatCurry representation of patterns only allows
-    literal and constructor patterns, which requires the expansion of
-    missing or default branches to all missing constructors.
+    literal and constructor patterns, which requires the expansion
+    default branches to all missing constructors.
 
     This is only necessary for *rigid* case expressions, because any
     *flexible* case expression with more than one branch and a variable
@@ -45,7 +45,7 @@ import Env.Interface                        (InterfaceEnv, lookupInterface)
 import IL
 
 -- Completes case expressions by adding branches for missing constructors.
--- The interface environment 'menv' is needed to compute these constructors.
+-- The interface environment 'iEnv' is needed to compute these constructors.
 completeCase :: InterfaceEnv -> Module -> Module
 completeCase iEnv mdl@(Module mid is ds) = Module mid is ds'
  where ds'= S.evalState (mapM (withLocalEnv . ccDecl) ds)

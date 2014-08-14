@@ -157,7 +157,6 @@ data WarnFlag
   | WarnNameShadowing      -- ^ Warn for name shadowing
   | WarnOverlapping        -- ^ Warn for overlapping rules/alternatives
   | WarnIncompletePatterns -- ^ Warn for incomplete pattern matching
-  | WarnNondetPatterns     -- ^ Warn for non-deterministic pattern matching
   | WarnMissingSignatures  -- ^ Warn for missing type signatures
     deriving (Eq, Bounded, Enum, Show)
 
@@ -184,8 +183,6 @@ warnFlags =
     , "overlapping function rules" )
   , ( WarnIncompletePatterns, "incomplete-patterns"
     , "incomplete pattern matching")
-  , ( WarnNondetPatterns    , "nondet-patterns"
-    , "Nondeterministic patterns"  )
   , ( WarnMissingSignatures , "missing-signatures"
     , "missing type signatures"    )
   ]
