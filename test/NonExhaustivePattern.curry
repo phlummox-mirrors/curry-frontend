@@ -1,3 +1,4 @@
+{-# LANGUAGE Records #-}
 test x = case x of
   Just 1 -> True
   Just 2 -> True
@@ -18,3 +19,7 @@ f ""    = 0
 f (_:_) = 1
 
 g "a" = 0
+
+type Record = { list :: [Bool], int :: Int }
+
+rec { list = [] | _ } = 0

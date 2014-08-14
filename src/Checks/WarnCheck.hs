@@ -16,7 +16,7 @@
 module Checks.WarnCheck (warnCheck) where
 
 import           Control.Monad
-  (filterM, foldM_, guard, liftM, when, unless)
+  (filterM, foldM_, guard, liftM, liftM2, when, unless, zipWithM)
 import           Control.Monad.State.Strict    (State, execState, gets, modify)
 import qualified Data.IntSet         as IntSet
   (IntSet, empty, insert, notMember, singleton, union, unions)
@@ -507,7 +507,7 @@ checkPatternMatching pats = do
   (missing, used, nondet) <- processEqs (zip [1..] simplePats)
   -- 3. If any, we report the missing patterns, whereby we re-add the syntactic
   --    sugar removed in step (1) for a more precise output.
-  let nonExhaustive = tidyExhaustivePats missing
+  nonExhaustive <- mapM tidyExhaustivePats missing
   let overlap = [ eqn | (i, eqn) <- zip [1..] pats, i `IntSet.notMember` used]
   return (nonExhaustive , overlap, nondet)
 
@@ -690,22 +690,24 @@ processVars eqs@((n, _) : _) = do
 getUnusedCons :: [QualIdent] -> WCM [DataConstr]
 getUnusedCons []       = internalError "Checks.WarnCheck.getUnusedCons"
 getUnusedCons qs@(q:_) = do
-  allCons <- getConTy q >>= getTyCons . arrowBase
+  allCons <- getConTy q >>= getTyCons q . arrowBase
   return [ c | c@(DataConstr q' _ _) <- allCons, q' `notElem` map unqualify qs]
 
 -- |Retrieve the type of a given constructor.
 getConTy :: QualIdent -> WCM Type
 getConTy q = do
   tyEnv <- gets valueEnv
+  tcEnv <- gets tyConsEnv
   return $ case qualLookupValue q tyEnv of
     [DataConstructor  _ _ (ForAllExist _ _ ty)] -> ty
     [NewtypeConstructor _ (ForAllExist _ _ ty)] -> ty
-    _                                           ->
-      internalError $ "Checks.WarnCheck.getConTy: " ++ show q
+    _                                           -> case qualLookupTC q tcEnv of
+      [AliasType _ _ ty] -> ty
+      _                  -> internalError $ "Checks.WarnCheck.getConTy: " ++ show q
 
 -- |Retrieve all constructors of a given type.
-getTyCons :: Type -> WCM [DataConstr]
-getTyCons (TypeConstructor tc _) = do
+getTyCons :: QualIdent -> Type -> WCM [DataConstr]
+getTyCons _ (TypeConstructor tc _) = do
   tc'   <- unAlias tc
   tcEnv <- gets tyConsEnv
   return $ case lookupTC (unqualify tc) tcEnv of
@@ -716,35 +718,48 @@ getTyCons (TypeConstructor tc _) = do
       [RenamingType _ _ nc] -> [nc]
       err                   -> internalError $ "Checks.WarnCheck.getTyCons: "
                             ++ show tc ++ ' ' : show err ++ '\n' : show tcEnv
-getTyCons _ = internalError "Checks.WarnCheck.getTyCons"
+getTyCons q (TypeRecord fs _) = return [DataConstr (unqualify q) (length fs) (map snd fs)]
+getTyCons _ _ = internalError "Checks.WarnCheck.getTyCons"
 
 -- |Resugar the exhaustive patterns previously desugared at 'simplifyPat'.
-tidyExhaustivePats :: [ExhaustivePats] -> [ExhaustivePats]
-tidyExhaustivePats = map (\(xs, ys) -> (map tidyPat xs, ys))
+tidyExhaustivePats :: ExhaustivePats -> WCM ExhaustivePats
+tidyExhaustivePats (xs, ys) = mapM tidyPat xs >>= \xs' -> return (xs', ys)
 
 -- |Resugar a pattern previously desugared at 'simplifyPat', i.e.
 --   * Convert a tuple constructor pattern into a tuple pattern
 --   * Convert a list constructor pattern representing a finite list
 --     into a list pattern
-tidyPat :: Pattern -> Pattern
+tidyPat :: Pattern -> WCM Pattern
+tidyPat p@(LiteralPattern        _) = return p
+tidyPat p@(VariablePattern       _) = return p
 tidyPat p@(ConstructorPattern c ps)
-  | isQTupleId c                   = TuplePattern noRef (map tidyPat ps)
-  | c == qConsId && isFiniteList p = ListPattern [] (unwrapFinite p)
-  | c == qConsId                   = unwrapInfinite p
+  | isQTupleId c                    = TuplePattern noRef `liftM` mapM tidyPat ps
+  | c == qConsId && isFiniteList p  = ListPattern []     `liftM`
+                                      mapM tidyPat (unwrapFinite p)
+  | c == qConsId                    = unwrapInfinite p
+  | otherwise                       = do
+    ty <- getConTy c
+    case ty of
+      TypeRecord fs _ -> flip RecordPattern Nothing `liftM`
+                         zipWithM mkFieldPat fs ps
+      _               -> return p
   where
   isFiniteList (ConstructorPattern d []     )                = d == qNilId
   isFiniteList (ConstructorPattern d [_, e2]) | d == qConsId = isFiniteList e2
   isFiniteList _                                             = False
 
   unwrapFinite (ConstructorPattern _ []     ) = []
-  unwrapFinite (ConstructorPattern _ [p1,p2]) = tidyPat p1 : unwrapFinite p2
-  unwrapFinite _
-    = internalError "WarnCheck.tidyPat.unwrapFinite"
+  unwrapFinite (ConstructorPattern _ [p1,p2]) = p1 : unwrapFinite p2
+  unwrapFinite pat
+    = internalError $ "WarnCheck.tidyPat.unwrapFinite: " ++ show pat
 
-  unwrapInfinite (ConstructorPattern d [p1,p2]) = InfixPattern (tidyPat p1) d
+  unwrapInfinite (ConstructorPattern d [p1,p2]) = liftM2 (flip InfixPattern d)
+                                                  (tidyPat p1)
                                                   (unwrapInfinite p2)
-  unwrapInfinite p0                             = p0
-tidyPat p = p
+  unwrapInfinite p0                             = return p0
+
+  mkFieldPat (f, _) pat = Field NoPos f `liftM` tidyPat pat
+tidyPat p = internalError $ "Checks.WarnCheck.tidyPat: " ++ show p
 
 -- |Get the first pattern of a list.
 firstPat :: EqnInfo -> Pattern
