@@ -403,11 +403,9 @@ checkFieldExpression (Field _ _ e) = checkExpr e -- Hier auch "visitId ident" ?
 -- Check for missing type signatures
 -- -----------------------------------------------------------------------------
 
--- check if a type signature was specified for every top-level function
--- declaration
--- for external function declarations this check is already performed
--- during syntax checking
-
+-- |Check if every top-level function has an accompanying type signature.
+-- For external function declarations, this check is already performed
+-- during syntax checking.
 checkMissingTypeSignatures :: [Decl] -> WCM ()
 checkMissingTypeSignatures decls = warnFor WarnMissingSignatures $ do
   let typedFs   = [f | TypeSig     _ fs _ <- decls, f <- fs]
@@ -419,8 +417,9 @@ checkMissingTypeSignatures decls = warnFor WarnMissingSignatures $ do
 
 getTyScheme :: Ident -> WCM TypeScheme
 getTyScheme q = do
+  m     <- getModuleIdent
   tyEnv <- gets valueEnv
-  return $ case lookupValue q tyEnv of
+  return $ case qualLookupValue (qualifyWith m q) tyEnv of
     [Value  _ _ tys] -> tys
     _                -> internalError $
       "Checks.WarnCheck.getTyScheme: " ++ show q
