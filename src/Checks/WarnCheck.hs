@@ -424,7 +424,7 @@ getTyScheme q = do
 warnMissingTypeSignature :: ModuleIdent -> Ident -> TypeScheme -> Message
 warnMissingTypeSignature mid i tys = posMessage i $ fsep
   [ text "Top-level binding with no type signature:"
-  , text (showIdent i) <+> text "::" <+> ppTypeScheme mid tys
+  , nest 2 $ text (showIdent i) <+> text "::" <+> ppTypeScheme mid tys
   ]
 
 -- -----------------------------------------------------------------------------
@@ -440,8 +440,8 @@ checkModuleAlias is = do
   let alias      = catMaybes [a | ImportDecl _ _ _ a _ <- is]
       modClash   = [a | a <- alias, a == mid]
       aliasClash = findMultiples alias
-  unless (null modClash) $ mapM_ (report . warnModuleNameClash) modClash
-  unless (null aliasClash) $ mapM_ (report . warnAliasNameClash) aliasClash
+  unless (null   modClash) $ mapM_ (report . warnModuleNameClash) modClash
+  unless (null aliasClash) $ mapM_ (report . warnAliasNameClash ) aliasClash
 
 warnModuleNameClash :: ModuleIdent -> Message
 warnModuleNameClash mid = posMessage mid $ hsep $ map text
