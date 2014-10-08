@@ -608,7 +608,8 @@ checkDeclRhs _   d                              = return d
 
 checkLocalVar :: [Ident] -> Ident -> SCM Ident
 checkLocalVar bvs v = do
-  when (v `notElem` bvs) $ report $ errNoBody v
+  tcs <- tcCheck
+  when (v `notElem` bvs && not tcs) $ report $ errNoBody v
   return v
 
 checkEquation :: Equation -> SCM Equation

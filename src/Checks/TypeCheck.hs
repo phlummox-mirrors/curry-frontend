@@ -59,7 +59,7 @@ import Env.TypeConstructor (TCEnv, TypeInfo (..), bindTypeInfo
   , qualLookupTC)
 import Env.Value ( ValueEnv, ValueInfo (..), rebindFun
   , bindGlobalInfo, bindLabel, lookupValue, qualLookupValue
-  , tryBindFun, bindFun )
+  , tryBindFun )
 import Env.ClassEnv (ClassEnv (..), Class (..)
   , implies', implies, isValidCx, reduceContext, lookupTypeScheme)
 
@@ -1049,7 +1049,7 @@ tcForeign f ty = do
   m <- getModuleIdent
   sndRun <- isSecondRun
   tySc@(ForAll _cx _ ty') <- expandPolyType (not sndRun) (ST.emptyContext, ty)
-  modifyValueEnv $ bindFun m f (arrowArity ty') tySc
+  modifyValueEnv $ bindFunOnce m f (arrowArity ty') tySc
 
 tcExternal :: Ident -> TCM ()
 tcExternal f = do -- TODO is the semantic correct?
@@ -1075,7 +1075,7 @@ tcFree v = do
         modifySigEnv $ unbindTypeSig v
         freshTypeVar
   m  <- getModuleIdent
-  modifyValueEnv $ bindFun m v (arrowArity ty) $ monoType ty
+  modifyValueEnv $ bindFunOnce m v (arrowArity ty) $ monoType ty
 
 tcDeclLhs :: Decl -> TCM ConstrType
 tcDeclLhs (FunctionDecl _ _ _ f _) = tcFunDecl f
@@ -1539,7 +1539,7 @@ tcExpr _ (Variable _ v)
   | isAnonId v' = do -- anonymous free variable
     m <- getModuleIdent
     ty <- freshTypeVar
-    modifyValueEnv $ bindFun m v' (arrowArity ty) $ monoType ty
+    modifyValueEnv $ bindFunOnce m v' (arrowArity ty) $ monoType ty
     return $ (Variable (Just $ mirrorFB $ noContext ty) v, noContext ty)
   | otherwise   = do
     sigs <- getSigEnv
