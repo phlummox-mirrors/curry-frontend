@@ -18,7 +18,6 @@ module Imports (importInterfaces, importModules, qualifyEnv) where
 
 import           Control.Monad                   (liftM, unless)
 import qualified Control.Monad.State        as S (State, gets, modify, runState)
-import           Control.Monad.Trans.Either
 import qualified Data.Map                   as Map
 import           Data.Maybe
 import qualified Data.Set                   as Set
@@ -26,11 +25,12 @@ import           Data.List                       (nub, (\\))
 import           Text.PrettyPrint
 
 import Curry.Base.Ident
+import Curry.Base.Monad
 import Curry.Base.Position
 import Curry.Syntax as CS
 
 import Base.CurryTypes (toQualType, toQualTypes, toQualConstrType)
-import Base.Messages (Message, posMessage, internalError, CYT)
+import Base.Messages (Message, posMessage, internalError)
 import Base.TopEnv
 import Base.Types as BT hiding (isCons)
 import Base.TypeSubst (expandAliasType)
@@ -53,14 +53,15 @@ import CompilerOpts
 -- |The function 'importModules' brings the declarations of all
 -- imported interfaces into scope for the current module.
 importModules :: Monad m => Bool -> Options -> Module -> InterfaceEnv -> CYT m CompilerEnv
-importModules tcs opts (Module mid _ imps _) iEnv
+importModules tcs opts mdl@(Module _ mid _ imps _) iEnv
   = case foldl importModule (initEnv, []) imps of
-      (e, []  ) -> right $ expandTCValueEnv opts $ importUnifyData $ insertDummyIdents' e
-      (_, errs) -> left errs
+      (e, []  ) -> ok $ expandTCValueEnv opts $ importUnifyData $ insertDummyIdents' e
+      (_, errs) -> failMessages errs
   where
     initEnv = (initCompilerEnv mid)
-      { aliasEnv     = importAliases     imps -- import module aliases
-      , interfaceEnv = iEnv                   -- imported interfaces
+      { aliasEnv     = importAliases imps -- import module aliases
+      , interfaceEnv = iEnv               -- imported interfaces
+      , extensions   = knownExtensions mdl
       }
     importModule (env, msgs) (ImportDecl _ m q asM is) =
       case Map.lookup m iEnv of
@@ -81,7 +82,6 @@ importInterfaces opts (Interface m is _) iEnv
         Just intf -> importInterfaceIntf initClassEnv intf env
         Nothing   -> internalError $ "Imports.importInterfaces: no interface for "
                                     ++ show m
-
 
 -- ---------------------------------------------------------------------------
 -- Importing an interface into the module
@@ -290,8 +290,8 @@ intfEnv bind (Interface m _ ds) = foldr (bind m) Map.empty ds
 
 -- operator precedences
 bindPrec :: ModuleIdent -> IDecl -> ExpPEnv -> ExpPEnv
-bindPrec m (IInfixDecl _ fix p op) =
-  Map.insert (unqualify op) (PrecInfo (qualQualify m op) (OpPrec fix p))
+bindPrec m (IInfixDecl _ fix prec op) =
+  Map.insert (unqualify op) (PrecInfo (qualQualify m op) (OpPrec fix prec))
 bindPrec _ _ = id
 
 bindTCHidden :: ModuleIdent -> IDecl -> ExpTCEnv -> ExpTCEnv
@@ -766,12 +766,13 @@ importUnifyData' tcEnv = fmap (setInfo allTyCons) tcEnv
 
 -- |
 qualifyEnv :: Options -> CompilerEnv -> CompilerEnv
-qualifyEnv opts env = expandValueEnv opts
+qualifyEnv opts env = expandValueEnv opts'
                     $ qualifyLocal env
                     $ foldl (flip (importInterfaceIntf $ classEnv env)) initEnv
                     $ Map.elems
                     $ interfaceEnv env 
   where initEnv = initCompilerEnv $ moduleIdent env
+        opts' = opts { optExtensions = Records : optExtensions opts }
 
 qualifyLocal :: CompilerEnv -> CompilerEnv -> CompilerEnv
 qualifyLocal currentEnv initEnv = currentEnv
@@ -787,8 +788,8 @@ qualifyLocal currentEnv initEnv = currentEnv
     cEnv  = classEnv  initEnv
     bindQual   (_, y) = qualBindTopEnv "Imports.qualifyEnv" (origName y) y
     bindGlobal (x, y)
-      | idUnique x == 0 = bindQual (x, y)
-      | otherwise       = bindTopEnv "Imports.qualifyEnv" x y
+      | hasGlobalScope x = bindQual (x, y)
+      | otherwise        = bindTopEnv "Imports.qualifyEnv" x y
     
     classesInClassEnv = 
        foldr bindQual (theClasses cEnv) $ localBindings $ theClasses $ classEnv currentEnv
@@ -837,7 +838,7 @@ expandTCValueEnv opts env
   | enabled   = env' { tyConsEnv = tcEnv' }
   | otherwise = env
   where
-  enabled = Records `elem` optExtensions opts
+  enabled = Records `elem` (optExtensions opts ++ extensions env)
   tcEnv'  = fmap (expandRecordTC tcEnv) tcEnv
   tcEnv   = tyConsEnv env'
   env'    = expandValueEnv opts env
@@ -860,11 +861,11 @@ expandValueEnv opts env
   | enabled   = env { valueEnv = tyEnv' }
   | otherwise = env
   where
-  tcEnv    = tyConsEnv env
-  tyEnv    = valueEnv env
-  enabled  = Records `elem` optExtensions opts
-  tyEnv'   = fmap (expandRecordTypes tcEnv) $ addImportedLabels m tyEnv
-  m        = moduleIdent env
+  tcEnv   = tyConsEnv env
+  tyEnv   = valueEnv env
+  enabled = Records `elem` (optExtensions opts ++ extensions env)
+  tyEnv'  = fmap (expandRecordTypes tcEnv) $ addImportedLabels m tyEnv
+  m       = moduleIdent env
 
 -- TODO: This is necessary as currently labels are unqualified.
 -- Without this additional import the labels would no longer be known.

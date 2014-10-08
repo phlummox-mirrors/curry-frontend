@@ -3,7 +3,7 @@
     Description :  Compiler options
     Copyright   :  (c) 2005        Martin Engelke
                        2007        Sebastian Fischer
-                       2011 - 2013 Björn Peemöller
+                       2011 - 2014 Björn Peemöller
                        2013        Matthias Böhm
     License     :  OtherLicense
 
@@ -16,42 +16,67 @@
     help information as well as parsing the command line arguments.
 -}
 module CompilerOpts
-  ( Options (..), CymakeMode (..), Verbosity (..), TargetType (..)
-  , WarnFlag (..), Extension (..), DumpLevel (..)
-  , dumpLevel, defaultOptions, getCompilerOpts, usage
+  ( Options (..), PrepOpts (..), WarnOpts (..), DebugOpts (..)
+  , CymakeMode (..), Verbosity (..), TargetType (..)
+  , WarnFlag (..), KnownExtension (..), DumpLevel (..), dumpLevel
+  , defaultOptions, defaultPrepOpts, defaultWarnOpts, defaultDebugOpts
+  , getCompilerOpts, updateOpts, usage
   ) where
 
 import Data.List             (intercalate, nub)
+import Data.Maybe            (isJust)
 import System.Console.GetOpt
 import System.Environment    (getArgs, getProgName)
 import System.FilePath       (splitSearchPath)
 
 import Curry.Files.Filenames (currySubdir)
+import Curry.Syntax.Extension
 
 -- -----------------------------------------------------------------------------
 -- Option data structures
 -- -----------------------------------------------------------------------------
 
--- |Data type for recording compiler options
+-- |Compiler options
 data Options = Options
   -- general
-  { optMode         :: CymakeMode   -- ^ modus operandi
-  , optVerbosity    :: Verbosity    -- ^ verbosity level
+  { optMode         :: CymakeMode       -- ^ modus operandi
+  , optVerbosity    :: Verbosity        -- ^ verbosity level
   -- compilation
-  , optForce        :: Bool         -- ^ force (re-)compilation of target
-  , optLibraryPaths :: [FilePath]   -- ^ directories to search in for libraries
-  , optImportPaths  :: [FilePath]   -- ^ directories to search in for imports
-  , optUseSubdir    :: Bool         -- ^ use subdir for output?
-  , optInterface    :: Bool         -- ^ create a FlatCurry interface file?
-  , optWarn         :: Bool         -- ^ show warnings? (legacy option)
-  , optWarnFlags    :: [WarnFlag]   -- ^ Warnings flags (see below)
-  , optWarnAsError  :: Bool         -- ^ Should warnings be treated as errors?
-  , optTargetTypes  :: [TargetType] -- ^ what to generate
-  , optExtensions   :: [Extension]  -- ^ enabled language extensions
-  , optDumps        :: [DumpLevel]  -- ^ dump levels
-  , optDumpEnv      :: Bool         -- ^ dump compilation environment
-  , optDumpRaw      :: Bool         -- ^ dump data structure
-  , optDumpCompleteEnv :: Bool      -- ^ show complete environment
+  , optForce        :: Bool             -- ^ force (re-)compilation of target
+  , optLibraryPaths :: [FilePath]       -- ^ directories to search in
+                                        --   for libraries
+  , optImportPaths  :: [FilePath]       -- ^ directories to search in
+                                        --   for imports
+  , optHtmlDir      :: Maybe FilePath   -- ^ output directory for HTML
+  , optUseSubdir    :: Bool             -- ^ use subdir for output?
+  , optInterface    :: Bool             -- ^ create a FlatCurry interface file?
+  , optPrepOpts     :: PrepOpts         -- ^ preprocessor options
+  , optWarnOpts     :: WarnOpts         -- ^ warning options
+  , optTargetTypes  :: [TargetType]     -- ^ what to generate
+  , optExtensions   :: [KnownExtension] -- ^ enabled language extensions
+  , optDebugOpts    :: DebugOpts        -- ^ debug options
+  } deriving Show
+
+-- |Preprocessor options
+data PrepOpts = PrepOpts
+  { ppPreprocess :: Bool      -- ^ apply custom preprocessor
+  , ppCmd        :: String    -- ^ preprocessor command
+  , ppOpts       :: [String]  -- ^ preprocessor options
+  } deriving Show
+
+-- |Warning options
+data WarnOpts = WarnOpts
+  { wnWarn         :: Bool       -- ^ show warnings? (legacy option)
+  , wnWarnFlags    :: [WarnFlag] -- ^ Warnings flags (see below)
+  , wnWarnAsError  :: Bool       -- ^ Should warnings be treated as errors?
+  } deriving Show
+
+-- |Debug options
+data DebugOpts = DebugOpts
+  { dbDumpLevels :: [DumpLevel] -- ^ dump levels
+  , dbDumpEnv :: Bool           -- ^ dump compilation environment
+  , dbDumpRaw :: Bool           -- ^ dump data structure
+  , dbDumpCompleteEnv :: Bool   -- ^ dump complete environment
   } deriving Show
 
 -- | Default compiler options
@@ -62,17 +87,39 @@ defaultOptions = Options
   , optForce        = False
   , optLibraryPaths = []
   , optImportPaths  = []
+  , optHtmlDir      = Nothing
   , optUseSubdir    = True
   , optInterface    = True
-  , optWarn         = True
-  , optWarnFlags    = stdWarnFlags
-  , optWarnAsError  = False
+  , optPrepOpts     = defaultPrepOpts
+  , optWarnOpts     = defaultWarnOpts
   , optTargetTypes  = []
   , optExtensions   = []
-  , optDumps        = []
-  , optDumpEnv      = False
-  , optDumpRaw      = False
-  , optDumpCompleteEnv  = False
+  , optDebugOpts    = defaultDebugOpts
+
+  }
+
+defaultPrepOpts :: PrepOpts
+defaultPrepOpts = PrepOpts
+  { ppPreprocess = False
+  , ppCmd        = ""
+  , ppOpts       = []
+  }
+
+-- | Default warning options
+defaultWarnOpts :: WarnOpts
+defaultWarnOpts = WarnOpts
+  { wnWarn        = True
+  , wnWarnFlags   = stdWarnFlags
+  , wnWarnAsError = False
+  }
+
+-- | Default dump options
+defaultDebugOpts :: DebugOpts
+defaultDebugOpts = DebugOpts
+  { dbDumpLevels = []
+  , dbDumpEnv    = False
+  , dbDumpRaw    = False
+  , dbDumpCompleteEnv  = False
   }
 
 -- |Modus operandi of the program
@@ -88,14 +135,12 @@ data CymakeMode
 data Verbosity
   = VerbQuiet  -- ^ be quiet
   | VerbStatus -- ^ show status of compilation
-  | VerbInfo   -- ^ also show additional info
   deriving (Eq, Ord, Show)
 
 -- |Description and flag of verbosities
 verbosities :: [(Verbosity, String, String)]
 verbosities = [ ( VerbQuiet , "0", "quiet" )
               , ( VerbStatus, "1", "status")
-              , ( VerbInfo  , "2", "info"  )
               ]
 
 -- |Type of the target file
@@ -103,7 +148,6 @@ data TargetType
   = Parsed                -- ^ Parsed source code
   | FlatCurry             -- ^ FlatCurry
   | ExtendedFlatCurry     -- ^ Extended FlatCurry
-  | FlatXml               -- ^ FlatCurry as XML
   | AbstractCurry         -- ^ AbstractCurry
   | UntypedAbstractCurry  -- ^ Untyped AbstractCurry
     deriving (Eq, Show)
@@ -116,27 +160,34 @@ data WarnFlag
   | WarnNameShadowing      -- ^ Warn for name shadowing
   | WarnOverlapping        -- ^ Warn for overlapping rules/alternatives
   | WarnIncompletePatterns -- ^ Warn for incomplete pattern matching
-  | WarnIdleAlternatives   -- ^ Warn for idle case alternatives
+  | WarnMissingSignatures  -- ^ Warn for missing type signatures
     deriving (Eq, Bounded, Enum, Show)
 
 -- |Warning flags enabled by default
 stdWarnFlags :: [WarnFlag]
 stdWarnFlags =
-  [ WarnMultipleImports , WarnDisjoinedRules, WarnUnusedBindings
-  , WarnNameShadowing   , WarnOverlapping -- , WarnIncompletePatterns
-  , WarnIdleAlternatives
+  [ WarnMultipleImports  , WarnDisjoinedRules, WarnUnusedBindings
+  , WarnNameShadowing    , WarnOverlapping   , WarnIncompletePatterns
+  , WarnMissingSignatures
   ]
 
 -- |Description and flag of warnings flags
 warnFlags :: [(WarnFlag, String, String)]
 warnFlags =
-  [ (WarnMultipleImports   , "multiple-imports"   , "multiple imports"           )
-  , (WarnDisjoinedRules    , "disjoined-rules"    , "disjoined function rules"   )
-  , (WarnUnusedBindings    , "unused-bindings"    , "unused bindings"            )
-  , (WarnNameShadowing     , "name-shadowing"     , "name shadowing"             )
-  , (WarnOverlapping       , "overlapping"        , "overlapping function rules" )
-  , (WarnIncompletePatterns, "incomplete-patterns", "incomplete pattern matching")
-  , (WarnIdleAlternatives  , "idle-alternatives"  , "idle case alternatives"     )
+  [ ( WarnMultipleImports   , "multiple-imports"
+    , "multiple imports"           )
+  , ( WarnDisjoinedRules    , "disjoined-rules"
+    , "disjoined function rules"   )
+  , ( WarnUnusedBindings    , "unused-bindings"
+    , "unused bindings"            )
+  , ( WarnNameShadowing     , "name-shadowing"
+    , "name shadowing"             )
+  , ( WarnOverlapping       , "overlapping"
+    , "overlapping function rules" )
+  , ( WarnIncompletePatterns, "incomplete-patterns"
+    , "incomplete pattern matching")
+  , ( WarnMissingSignatures , "missing-signatures"
+    , "missing type signatures"    )
   ]
 
 -- |Dump level
@@ -177,33 +228,22 @@ dumpLevel = [ (DumpParsed       , "dump-parse", "parse tree"               )
             , (DumpCaseCompleted, "dump-cc"   , "case completed output"    )
             ]
 
--- |Language extensions
-data Extension
-  = Records
-  | FunctionalPatterns
-  | AnonFreeVars
-  | NoImplicitPrelude
-  | TypeClassExtensions
-    deriving (Eq, Read, Show)
-
 -- |Description and flag of language extensions
-extensions :: [(Extension, String, String)]
+extensions :: [(KnownExtension, String, String)]
 extensions =
-  [ ( Records           , "Records"
-    , "enable record syntax"                )
+  [ ( AnonFreeVars      , "AnonFreeVars"
+    , "enable anonymous free variables"     )
   , ( FunctionalPatterns, "FunctionalPatterns"
     , "enable functional patterns"          )
-  , ( AnonFreeVars      , "AnonFreeVars"
-    , "enable anonymous free variables"     )
+  , ( NegativeLiterals  , "NegativeLiterals"
+    , "desugar negated literals as negative literal")
   , ( NoImplicitPrelude , "NoImplicitPrelude"
     , "do not implicitly import the Prelude")
   , ( TypeClassExtensions, "TypeClassExtensions"
     , "enable type classes"                 )
+  , ( Records           , "Records"
+    , "enable record syntax"                )
   ]
-
--- |Language 'Extension's enabled by @-e@ flag
-curryExtensions :: [Extension]
-curryExtensions = [Records, FunctionalPatterns, AnonFreeVars]
 
 -- -----------------------------------------------------------------------------
 -- Parsing of the command line options.
@@ -212,29 +252,49 @@ curryExtensions = [Records, FunctionalPatterns, AnonFreeVars]
 -- more complicated to enable malformed arguments to be reported.
 -- -----------------------------------------------------------------------------
 
+-- |Instead of just returning the resulting 'Options' structure, we also
+-- collect errors from arguments passed to specific options.
 type OptErr = (Options, [String])
 
-type OptErrTable = [(String, String, Options -> Options)]
+-- |An 'OptErrTable' consists of a list of entries of the following form:
+--   * a flag to be recognized on the command line
+--   * an explanation text for the usage information
+--   * a modification funtion adjusting the options structure
+-- The type is parametric about the option's type to adjust.
+type OptErrTable opt = [(String, String, opt -> opt)]
 
 onOpts :: (Options -> Options) -> OptErr -> OptErr
 onOpts f (opts, errs) = (f opts, errs)
 
-onOptsArg :: (String -> Options -> Options) -> String -> OptErr -> OptErr
-onOptsArg f arg (opts, errs) = (f arg opts, errs)
+onPrepOpts :: (PrepOpts -> PrepOpts) -> OptErr -> OptErr
+onPrepOpts f (opts, errs) = (opts { optPrepOpts = f (optPrepOpts opts) }, errs)
+
+onWarnOpts :: (WarnOpts -> WarnOpts) -> OptErr -> OptErr
+onWarnOpts f (opts, errs) = (opts { optWarnOpts = f (optWarnOpts opts) }, errs)
+
+onDebugOpts :: (DebugOpts -> DebugOpts) -> OptErr -> OptErr
+onDebugOpts f (opts, errs)
+  = (opts { optDebugOpts = f (optDebugOpts opts) }, errs)
+
+withArg :: ((opt -> opt) -> OptErr -> OptErr)
+        -> (String -> opt -> opt) -> String -> OptErr -> OptErr
+withArg lift f arg = lift (f arg)
 
 addErr :: String -> OptErr -> OptErr
 addErr err (opts, errs) = (opts, errs ++ [err])
 
-mkOptErrOption :: String -> [String] -> String -> String -> OptErrTable
-               -> OptDescr (OptErr -> OptErr)
-mkOptErrOption flags longFlags arg what tbl = Option flags longFlags
-  (ReqArg (parseOptErr what tbl) arg)
+mkOptDescr :: ((opt -> opt) -> OptErr -> OptErr)
+           -> String -> [String] -> String -> String -> OptErrTable opt
+           -> OptDescr (OptErr -> OptErr)
+mkOptDescr lift flags longFlags arg what tbl = Option flags longFlags
+  (ReqArg (parseOptErr lift what tbl) arg)
   ("set " ++ what ++ " `" ++ arg ++ "', where `" ++ arg ++ "' is one of\n"
     ++ renderOptErrTable tbl)
 
-parseOptErr :: String -> OptErrTable -> String -> OptErr -> OptErr
-parseOptErr what table opt = case lookup3 opt table of
-  Just f  -> onOpts f
+parseOptErr :: ((opt -> opt) -> OptErr -> OptErr)
+            -> String -> OptErrTable opt -> String -> OptErr -> OptErr
+parseOptErr lift what table opt = case lookup3 opt table of
+  Just f  -> lift f
   Nothing -> addErr $ "unrecognized " ++ what ++ '`' : opt ++ "'\n"
   where
   lookup3 _ []                  = Nothing
@@ -242,9 +302,9 @@ parseOptErr what table opt = case lookup3 opt table of
     | k == k'                   = Just v2
     | otherwise                 = lookup3 k kvs
 
-renderOptErrTable :: OptErrTable -> String
+renderOptErrTable :: OptErrTable opt -> String
 renderOptErrTable ds
-  = intercalate "\n" $ map (\(k, d, _) -> rpad maxLen k ++ ": " ++ d) ds
+  = intercalate "\n" $ map (\(k, d, _) -> "  " ++ rpad maxLen k ++ ": " ++ d) ds
   where
   maxLen = maximum $ map (\(k, _, _) -> length k) ds
   rpad n x = x ++ replicate (n - length x) ' '
@@ -262,11 +322,8 @@ options =
   , Option ""   ["numeric-version"]
       (NoArg (onOpts $ \ opts -> opts { optMode = ModeNumericVersion }))
       "show the numeric version number and exit"
-  , Option ""   ["html"]
-      (NoArg (onOpts $ \ opts -> opts { optMode = ModeHtml }))
-      "generate html code and exit"
   -- verbosity
-  , mkOptErrOption "v" ["verbosity"] "n" "verbosity level" verbDescriptions
+  , mkOptDescr onOpts "v" ["verbosity"] "n" "verbosity level" verbDescriptions
   , Option "q"  ["no-verb"]
       (NoArg (onOpts $ \ opts -> opts { optVerbosity = VerbQuiet } ))
       "set verbosity level to quiet"
@@ -275,13 +332,17 @@ options =
       (NoArg (onOpts $ \ opts -> opts { optForce = True }))
       "force compilation of target file"
   , Option "P"  ["lib-dir"]
-      (ReqArg (onOptsArg $ \ arg opts -> opts { optLibraryPaths =
+      (ReqArg (withArg onOpts $ \ arg opts -> opts { optLibraryPaths =
         nub $ optLibraryPaths opts ++ splitSearchPath arg}) "dir[:dir]")
       "search for libraries in dir[:dir]"
   , Option "i"  ["import-dir"]
-      (ReqArg (onOptsArg $ \ arg opts -> opts { optImportPaths =
+      (ReqArg (withArg onOpts $ \ arg opts -> opts { optImportPaths =
         nub $ optImportPaths opts ++ splitSearchPath arg}) "dir[:dir]")
       "search for imports in dir[:dir]"
+  , Option []  ["htmldir"]
+      (ReqArg (withArg onOpts $ \ arg opts -> opts { optHtmlDir =
+        Just arg }) "dir")
+      "write HTML documentation into directory `dir'"
   , Option ""   ["no-subdir"]
       (NoArg (onOpts $ \ opts -> opts { optUseSubdir = False }))
       ("disable writing to `" ++ currySubdir ++ "' subdirectory")
@@ -290,13 +351,16 @@ options =
       "do not create an interface file"
     -- legacy warning flags
   , Option ""   ["no-warn"]
-      (NoArg (onOpts $ \ opts -> opts { optWarn = False }))
+      (NoArg (onWarnOpts $ \ opts -> opts { wnWarn = False }))
       "do not print warnings"
   , Option ""   ["no-overlap-warn"]
-      (NoArg (onOpts $ \ opts -> opts { optWarnFlags =
-          addFlag WarnOverlapping (optWarnFlags opts) }))
+      (NoArg (onWarnOpts $ \ opts -> opts {wnWarnFlags =
+        addFlag WarnOverlapping (wnWarnFlags opts) }))
       "do not print warnings for overlapping rules"
   -- target types
+  , Option ""   ["html"]
+      (NoArg (onOpts $ \ opts -> opts { optMode = ModeHtml }))
+      "generate html code and exit"
   , Option ""   ["parse-only"]
       (NoArg (onOpts $ \ opts -> opts { optTargetTypes =
         nub $ Parsed : optTargetTypes opts }))
@@ -309,10 +373,6 @@ options =
       (NoArg (onOpts $ \ opts -> opts { optTargetTypes =
         nub $ ExtendedFlatCurry : optTargetTypes opts }))
       "generate FlatCurry code with source references"
-  , Option ""   ["xml"]
-      (NoArg (onOpts $ \ opts -> opts { optTargetTypes =
-        nub $ FlatXml : optTargetTypes opts }))
-      "generate flat xml code"
   , Option ""   ["acy"]
       (NoArg (onOpts $ \ opts -> opts { optTargetTypes =
         nub $ AbstractCurry : optTargetTypes opts }))
@@ -321,63 +381,74 @@ options =
       (NoArg (onOpts $ \ opts -> opts { optTargetTypes =
         nub $ UntypedAbstractCurry : optTargetTypes opts }))
       "generate untyped AbstractCurry code"
+  , Option "F"  []
+      (NoArg (onPrepOpts $ \ opts -> opts { ppPreprocess = True }))
+      "use custom preprocessor"
+  , Option ""   ["pgmF"]
+      (ReqArg (withArg onPrepOpts $ \ arg opts -> opts { ppCmd = arg})
+        "cmd")
+      "execute preprocessor command <cmd>"
+  , Option ""   ["optF"]
+      (ReqArg (withArg onPrepOpts $ \ arg opts ->
+        opts { ppOpts = ppOpts opts ++ [arg]}) "option")
+      "execute preprocessor with option <option>"
   -- extensions
   , Option "e"  ["extended"]
       (NoArg (onOpts $ \ opts -> opts { optExtensions =
-        nub $ curryExtensions ++ optExtensions opts }))
+        nub $ kielExtensions ++ optExtensions opts }))
       "enable extended Curry functionalities"
-  , mkOptErrOption "X" [] "ext" "language extension" extDescriptions
-  , mkOptErrOption "W" [] "opt" "warning option"     warnDescriptions
-  , mkOptErrOption "d" [] "opt" "debug option"       debugDescriptions
+  , mkOptDescr onOpts      "X" [] "ext" "language extension" extDescriptions
+  , mkOptDescr onWarnOpts  "W" [] "opt" "warning option"     warnDescriptions
+  , mkOptDescr onDebugOpts "d" [] "opt" "debug option"       debugDescriptions
   ]
 
-verbDescriptions :: OptErrTable
+verbDescriptions :: OptErrTable Options
 verbDescriptions = map toDescr verbosities
   where
   toDescr (flag, name, desc)
     = (name, desc, \ opts -> opts { optVerbosity = flag })
 
-extDescriptions :: OptErrTable
+extDescriptions :: OptErrTable Options
 extDescriptions = map toDescr extensions
   where
   toDescr (flag, name, desc)
     = (name, desc,
         \ opts -> opts { optExtensions = addFlag flag (optExtensions opts)})
 
-warnDescriptions :: OptErrTable
+warnDescriptions :: OptErrTable WarnOpts
 warnDescriptions
   = [ ( "all"  , "turn on all warnings"
-        , \ opts -> opts { optWarnFlags = [minBound .. maxBound] } )
+        , \ opts -> opts { wnWarnFlags = [minBound .. maxBound] } )
     , ("none" , "turn off all warnings"
-        , \ opts -> opts { optWarnFlags = []                     } )
+        , \ opts -> opts { wnWarnFlags = []                     } )
     , ("error", "treat warnings as errors"
-        , \ opts -> opts { optWarnAsError = True                 } )
+        , \ opts -> opts { wnWarnAsError = True                 } )
     ] ++ map turnOn warnFlags ++ map turnOff warnFlags
   where
   turnOn (flag, name, desc)
     = (name, "warn for " ++ desc
-      , \ opts -> opts { optWarnFlags = addFlag flag (optWarnFlags opts)})
+      , \ opts -> opts { wnWarnFlags = addFlag flag (wnWarnFlags opts)})
   turnOff (flag, name, desc)
     = ("no-" ++ name, "do not warn for " ++ desc
-      , \ opts -> opts { optWarnFlags = removeFlag flag (optWarnFlags opts)})
+      , \ opts -> opts { wnWarnFlags = removeFlag flag (wnWarnFlags opts)})
 
-debugDescriptions :: OptErrTable
+debugDescriptions :: OptErrTable DebugOpts
 debugDescriptions =
   [ ( "dump-all", "dump everything"
-    , \ opts -> opts { optDumps = [minBound .. maxBound] })
+    , \ opts -> opts { dbDumpLevels = [minBound .. maxBound] })
   , ( "dump-none", "dump nothing"
-    , \ opts -> opts { optDumps = []                     })
+    , \ opts -> opts { dbDumpLevels = []                     })
   , ( "dump-env" , "additionally dump compiler environment"
-    , \ opts -> opts { optDumpEnv = True                 })
+    , \ opts -> opts { dbDumpEnv = True                 })
   , ( "dump-raw" , "dump as raw AST (instead of pretty printed)"
-    , \ opts -> opts { optDumpRaw = True                 })
+    , \ opts -> opts { dbDumpRaw = True                 })
   , ( "dump-complete-env", "dump the complete environment"
-    , \ opts -> opts { optDumpCompleteEnv = True         })
+    , \ opts -> opts { dbDumpCompleteEnv = True         })
   ] ++ map toDescr dumpLevel
   where
   toDescr (flag, name, desc)
     = (name , "dump " ++ desc
-        , \ opts -> opts { optDumps = addFlag flag (optDumps opts)})
+        , \ opts -> opts { dbDumpLevels = addFlag flag (dbDumpLevels opts)})
 
 addFlag :: Eq a => a -> [a] -> [a]
 addFlag o opts = nub $ o : opts
@@ -385,12 +456,22 @@ addFlag o opts = nub $ o : opts
 removeFlag :: Eq a => a -> [a] -> [a]
 removeFlag o opts = filter (/= o) opts
 
+updateOpts :: Options -> [String] -> (Options, [String], [String])
+updateOpts opts args = (opts', files, errs ++ errs2 ++ checkOpts opts files)
+  where
+  (opts', errs2) = foldl (flip ($)) (opts, []) optErrs
+  (optErrs, files, errs) = getOpt Permute options args
+
 -- |Parse the command line arguments
 parseOpts :: [String] -> (Options, [String], [String])
-parseOpts args = (opts, files, errs ++ errs2)
-  where
-  (opts, errs2) = foldl (flip ($)) (defaultOptions, []) optErrs
-  (optErrs, files, errs) = getOpt Permute options args
+parseOpts = updateOpts defaultOptions
+
+-- |Check options and files and return a list of error messages
+checkOpts :: Options -> [String] -> [String]
+checkOpts opts _
+  | isJust (optHtmlDir opts) && (optMode opts) /= ModeHtml
+  = ["The option '--htmldir' is only valid for HTML generation mode"]
+  | otherwise = []
 
 -- |Print the usage information of the command line tool.
 usage :: String -> String

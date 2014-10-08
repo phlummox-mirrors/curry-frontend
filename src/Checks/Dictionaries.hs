@@ -81,14 +81,15 @@ report err = S.modify (\ s -> s { errors = err : errors s })
 -- |The main function of this module. It descends into the syntax tree and
 -- inserts dictionary parameters (in function declarations and in expressions)
 insertDicts :: Module -> CompilerEnv -> Options -> (Module, [Message])
-insertDicts mdl'@(Module m _ _ _) cEnv opts = 
+insertDicts mdl'@(Module _ m _ _ _) cEnv opts = 
   runDI (diModule mdl') 
         (initState m (classEnv cEnv) (valueEnv cEnv) 
                      (TypeClassExtensions `elem` optExtensions opts))
 
 -- |convert a whole module
 diModule :: Module -> DI Module
-diModule (Module m e i ds) = Module m e i `liftM` (mapM (diDecl BT.emptyContext) ds)
+diModule (Module recFlag m e i ds) =
+  Module recFlag m e i `liftM` (mapM (diDecl BT.emptyContext) ds)
   
 -- |convert function declarations
 -- pass context from outer scope

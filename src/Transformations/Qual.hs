@@ -3,7 +3,7 @@
     Description :  Proper Qualification
     Copyright   :  (c) 2001 - 2004 Wolfgang Lux
                        2005        Martin Engelke
-                       2011 - 2012 Björn Peemöller
+                       2011 - 2014 Björn Peemöller
                        2013        Matthias Böhm
     License     :  OtherLicense
 
@@ -26,6 +26,8 @@ module Transformations.Qual (qual) where
 
 import           Control.Monad             (liftM, liftM2, liftM3, liftM4, liftM5)
 import qualified Control.Monad.Reader as R (Reader, asks, runReader)
+import           Data.Traversable
+import           Prelude hiding            (mapM)
 
 import Curry.Base.Ident
 import Curry.Syntax
@@ -43,8 +45,25 @@ data QualEnv = QualEnv
 
 type Qual a = a -> R.Reader QualEnv a
 
-qual :: ModuleIdent -> TCEnv -> ValueEnv -> [Decl] -> [Decl]
-qual m tcEnv tyEnv ds = R.runReader (mapM qDecl ds) (QualEnv m tcEnv tyEnv)
+qual :: ModuleIdent -> TCEnv -> ValueEnv -> Module -> Module
+qual m tcEnv tyEnv mdl = R.runReader (qModule mdl) (QualEnv m tcEnv tyEnv)
+
+qModule :: Qual Module
+qModule (Module ps m es is ds) = do
+  es' <- qExportSpec es
+  ds' <- mapM qDecl  ds
+  return (Module ps m es' is ds')
+
+qExportSpec :: Qual (Maybe ExportSpec)
+qExportSpec Nothing                 = return Nothing
+qExportSpec (Just (Exporting p es)) = (Just . Exporting p)
+                                      `liftM` mapM qExport es
+
+qExport :: Qual Export
+qExport (Export            x) = Export `liftM` qIdent x
+qExport (ExportTypeWith t cs) = flip ExportTypeWith cs `liftM` qConstr t
+qExport (ExportTypeAll     t) = ExportTypeAll `liftM` qConstr t
+qExport m@(ExportModule    _) = return m
 
 qDecl :: Qual Decl
 qDecl i@(InfixDecl     _ _ _ _) = return i
@@ -58,7 +77,7 @@ qDecl (ForeignDecl  p c x n ty) = ForeignDecl p c x n `liftM` qTypeExpr ty
 qDecl e@(ExternalDecl      _ _) = return e
 qDecl (PatternDecl p cty id0 t rhs)
   = liftM2 (PatternDecl p cty id0) (qPattern t) (qRhs rhs)
-qDecl vs@(FreeDecl   _ _) = return vs
+qDecl vs@(FreeDecl         _ _) = return vs
 qDecl (ClassDecl p scon cls ty decls) 
   = liftM4 (ClassDecl p) (qSContext scon) (return cls) (return ty) 
            (mapM qDecl decls)
@@ -89,11 +108,8 @@ qTypeExpr (ListType           ty) = ListType `liftM` qTypeExpr ty
 qTypeExpr (ArrowType     ty1 ty2)
   = liftM2 ArrowType (qTypeExpr ty1) (qTypeExpr ty2)
 qTypeExpr (RecordType     fs rty)
-  = liftM2 RecordType (mapM qFieldType fs) (qRecordType rty)
-  where
-  qFieldType (ls, ty)  = (\ ty' -> (ls, ty')) `liftM` qTypeExpr ty
-  qRecordType Nothing  = return Nothing
-  qRecordType (Just v) = Just `liftM` qTypeExpr v
+  = liftM2 RecordType (mapM qFieldType fs) (mapM qTypeExpr rty)
+  where qFieldType (ls, ty)  = (\ ty' -> (ls, ty')) `liftM` qTypeExpr ty
 
 qEquation :: Qual Equation
 qEquation (Equation p lhs rhs) = liftM2 (Equation p) (qLhs lhs) (qRhs rhs)
@@ -111,7 +127,7 @@ qPattern (ConstructorPattern   c ts)
   = liftM2 ConstructorPattern (qIdent c) (mapM qPattern ts)
 qPattern (InfixPattern     t1 op t2)
   = liftM3 InfixPattern (qPattern t1) (qIdent op) (qPattern t2)
-qPattern (ParenPattern            t) = ParenPattern `liftM` qPattern t
+qPattern (ParenPattern            t) = ParenPattern   `liftM` qPattern t
 qPattern (TuplePattern         p ts) = TuplePattern p `liftM` mapM qPattern ts
 qPattern (ListPattern          p ts) = ListPattern  p `liftM` mapM qPattern ts
 qPattern (AsPattern             v t) = AsPattern    v `liftM` qPattern t
@@ -121,17 +137,14 @@ qPattern (FunctionPattern      f ts)
 qPattern (InfixFuncPattern t1 op t2)
   = liftM3 InfixFuncPattern (qPattern t1) (qIdent op) (qPattern t2)
 qPattern (RecordPattern       fs rt)
-  = liftM2 RecordPattern (mapM qFieldPattern fs) (qRecordTerm rt)
-  where qRecordTerm Nothing  = return Nothing
-        qRecordTerm (Just v) = Just `liftM` qPattern v
+  = liftM2 RecordPattern (mapM qFieldPattern fs) (mapM qPattern rt)
 
 qFieldPattern :: Qual (Field Pattern)
 qFieldPattern (Field p l t) = Field p l `liftM` qPattern t
 
 qRhs :: Qual Rhs
 qRhs (SimpleRhs p e ds) = liftM2 (SimpleRhs p) (qExpr e) (mapM qDecl ds)
-qRhs (GuardedRhs es ds)
-  = liftM2 GuardedRhs (mapM qCondExpr es) (mapM qDecl ds)
+qRhs (GuardedRhs es ds) = liftM2 GuardedRhs (mapM qCondExpr es) (mapM qDecl ds)
 
 qCondExpr :: Qual CondExpr
 qCondExpr (CondExpr p g e) = liftM2 (CondExpr p) (qExpr g) (qExpr e)
@@ -185,17 +198,19 @@ qInfixOp (InfixOp cty op) = InfixOp cty `liftM` qIdent op
 qInfixOp (InfixConstr op) = InfixConstr `liftM` qIdent op
 
 qIdent :: Qual QualIdent
-qIdent x = do
-  m     <- R.asks moduleIdent
-  tyEnv <- R.asks valueEnv
-  return $ case isQualified x || hasGlobalScope (unqualify x) of
-    False -> x
-    True  -> case qualLookupValue x tyEnv of
+qIdent x | isQualified x                = x'
+         | hasGlobalScope (unqualify x) = x'
+         | otherwise                    = return x
+  where
+  x' = do
+    m     <- R.asks moduleIdent
+    tyEnv <- R.asks valueEnv
+    return $ case qualLookupValue x tyEnv of
       [y] -> origName y
       _   -> case qualLookupValue qmx tyEnv of
         [y] -> origName y
         _   -> qmx
-      where qmx = qualQualify m x
+        where qmx = qualQualify m x
 
 qConstr :: Qual QualIdent
 qConstr x = do

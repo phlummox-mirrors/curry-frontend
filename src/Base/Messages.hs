@@ -1,55 +1,41 @@
 module Base.Messages
   ( -- * Output of user information
-    info, status, warn, putErrLn, putErrsLn
+    status, warn, putErrLn, putErrsLn
     -- * program abortion
   , abortWith, abortWithMessage, abortWithMessages
   , internalError, errorMessage, errorMessages
     -- * creating messages
   , Message, message, posMessage
-  , MonadIO (..), CYIO, CYT, left, right, runEitherCYIO
+  , MonadIO (..)
   ) where
 
-import Control.Monad (unless, when)
-import Control.Monad.IO.Class
-import Control.Monad.Trans.Either
-import Data.List     (sort)
-import System.IO     (hPutStrLn, stderr)
-import System.Exit   (exitFailure)
+import Control.Monad              (unless, when)
+import Control.Monad.IO.Class     (MonadIO(..))
+import Data.List                  (sort)
+import System.IO                  (hFlush, hPutStrLn, stderr, stdout)
+import System.Exit                (exitFailure)
 
-import Curry.Base.Message hiding (warn)
-import CompilerOpts (Options (..), Verbosity (..))
-
-type CYT m a = EitherT [Message] m a
-
-type CYIO a = EitherT [Message] IO a
-
-runEitherCYIO :: CYIO a -> IO a
-runEitherCYIO act = do
-  res <- runEitherT act
-  case res of
-    Left errs -> abortWithMessages errs
-    Right val -> return val
-
-info :: MonadIO m => Options -> String -> m ()
-info opts msg = unless (optVerbosity opts < VerbInfo) (putMsg msg)
+import Curry.Base.Message         ( Message, message, posMessage, ppMessage
+                                  , ppMessages, ppWarning, ppError)
+import CompilerOpts               (Options (..), WarnOpts (..), Verbosity (..))
 
 status :: MonadIO m => Options -> String -> m ()
 status opts msg = unless (optVerbosity opts < VerbStatus) (putMsg msg)
 
-warn :: MonadIO m => Options -> [Message] -> m ()
-warn opts msgs = when (optWarn opts && not (null msgs)) $ do
+warn :: MonadIO m => WarnOpts -> [Message] -> m ()
+warn opts msgs = when (wnWarn opts && not (null msgs)) $ do
   liftIO $ putErrLn (show $ ppMessages ppWarning $ sort msgs)
-  when (optWarnAsError opts) $ liftIO $ do
+  when (wnWarnAsError opts) $ liftIO $ do
     putErrLn "Failed due to -Werror"
     exitFailure
 
 -- |Print a message on 'stdout'
 putMsg :: MonadIO m => String -> m ()
-putMsg msg = liftIO $ putStrLn $ msg ++ " ..."
+putMsg msg = liftIO (putStrLn msg >> hFlush stdout)
 
 -- |Print an error message on 'stderr'
 putErrLn :: MonadIO m => String -> m ()
-putErrLn = liftIO . hPutStrLn stderr
+putErrLn msg = liftIO (hPutStrLn stderr msg >> hFlush stderr)
 
 -- |Print a list of error messages on 'stderr'
 putErrsLn :: MonadIO m => [String] -> m ()

@@ -1,5 +1,5 @@
 Name:          curry-frontend
-Version:       0.3.8
+Version:       0.3.10
 Cabal-Version: >= 1.6
 Synopsis:      Compile the functional logic language Curry to several
                intermediate formats
@@ -30,13 +30,9 @@ Flag split-syb
 Executable cymake
   hs-source-dirs: src
   Main-is:        cymake.hs
-  if flag(split-syb)
-    Build-Depends: base == 4.*, syb
-  else
-    Build-Depends: base == 3.*
-  Build-Depends:
-    curry-base == 0.3.8
-    , containers, either, mtl, pretty, transformers
+  Build-Depends: base == 4.*, curry-base == 0.3.10
+    , containers, directory, mtl, process, transformers, syb
+    , either, pretty
   ghc-options: -Wall
   Other-Modules:
     Base.CurryTypes
@@ -75,7 +71,6 @@ Executable cymake
     , Env.TypeConstructor
     , Env.Value
     , Exports
-    , Frontend
     , Generators
     , Generators.GenAbstractCurry
     , Generators.GenFlatCurry
@@ -84,9 +79,7 @@ Executable cymake
     , IL
     , IL.Pretty
     , IL.Type
-    , IL.XML
     , Imports
-    , InterfaceEquivalence
     , Interfaces
     , Modules
     , ModuleSummary
@@ -117,7 +110,7 @@ Executable cmpPrograms
   else
     Build-Depends: base == 3.*
   Build-Depends:
-    curry-base == 0.3.8
+    curry-base == 0.3.10
   ghc-options: -Wall
 
 
@@ -127,7 +120,7 @@ Test-Suite TestTypeChecking
     test-module: TestTypeChecking
     build-depends: base, pretty, directory, curry-base, filepath, containers, mtl, syb,
       -- Cabal 1.16.0 introduces a new test suite format
-      transformers, Cabal >= 1.9.2 && <= 1.14.0, curry-base == 0.3.8
+      transformers, Cabal >= 1.9.2 && <= 1.14.0, curry-base == 0.3.10
     Other-Modules:
      Base.CurryTypes
      , Base.Expr
@@ -194,5 +187,5 @@ Test-Suite TestTypeChecking
 --     hs-source-dirs: test, src
 --     main-is:    TestTypeCheckingHpc.hs
 --     build-depends: base, pretty, directory, curry-base, filepath, containers, mtl, syb,
---       transformers, Cabal >= 1.9.2, curry-base == 0.3.8
+--       transformers, Cabal >= 1.9.2, curry-base == 0.3.10
 --     ghc-options: -Wall -fhpc

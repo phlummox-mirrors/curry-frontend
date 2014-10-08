@@ -69,8 +69,8 @@ instance Entity ValueInfo where
 -- because all identifiers are renamed by the compiler. Here we need
 -- special cases for handling tuple constructors.
 --
--- \emph{Note:} the function \texttt{qualLookupValue} has been extended to
--- allow the usage of the qualified list constructor \texttt{(Prelude.:)}.
+-- Note: the function 'qualLookupValue' has been extended to
+-- allow the usage of the qualified list constructor (Prelude.:).
 
 type ValueEnv = TopEnv ValueInfo
 

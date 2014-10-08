@@ -1,6 +1,6 @@
 {- |
     Module      :  $Header$
-    Description :  Cumputation of export interface
+    Description :  Computation of export interface
     Copyright   :  (c) 2000 - 2004, Wolfgang Lux
                        2005       , Martin Engelke
                        2011 - 2013, Björn Peemöller
@@ -62,7 +62,7 @@ exportInterface env mdl tcs = exportInterface' mdl tcs
 
 exportInterface' :: Module -> Bool -> OpPrecEnv -> TCEnv -> ValueEnv 
                  -> ClassEnv -> Interface
-exportInterface' (Module m (Just (Exporting _ es)) _ _) _tcs pEnv tcEnv tyEnv cEnv
+exportInterface' (Module _ m (Just (Exporting _ es)) _ _) _tcs pEnv tcEnv tyEnv cEnv
   = Interface m imports $ precs ++ hidden0 ++ allDecls
   where
   imports           = map   (IImportDecl NoPos) $ usedModules allDecls
@@ -91,7 +91,7 @@ exportInterface' (Module m (Just (Exporting _ es)) _ _) _tcs pEnv tcEnv tyEnv cE
     foldr (typeDecl m tcEnv cEnv) 
           (foldr (funDecl m tyEnv) [] classElems)
           classElems
-exportInterface' (Module _ Nothing _ _) _ _ _ _ _
+exportInterface' (Module _ _ Nothing _ _) _ _ _ _ _
   = internalError "Exports.exportInterface: no export specification"
 
 infixDecl :: ModuleIdent -> OpPrecEnv -> Export -> [IDecl] -> [IDecl]

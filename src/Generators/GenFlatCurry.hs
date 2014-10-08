@@ -10,19 +10,16 @@
 module Generators.GenFlatCurry (genFlatCurry, genFlatInterface) where
 
 -- Haskell libraries
-import           Control.Monad       (filterM, liftM, liftM2, liftM3, mplus, when)
-import           Control.Monad.State (State, runState, gets, modify)
+import           Control.Monad       (filterM, liftM, liftM2, liftM3, mplus)
+import           Control.Monad.State (State, evalState, gets, modify)
 import           Data.List           (mapAccumL, nub)
 import qualified Data.Map as Map     (Map, empty, insert, lookup, fromList, toList)
 import           Data.Maybe          (catMaybes, fromJust, fromMaybe, isJust)
 
 -- curry-base
 import Curry.Base.Ident as Id
-import Curry.Base.Message
-import Curry.Base.Pretty
 
 import Curry.ExtendedFlat.Type
-import Curry.ExtendedFlat.TypeInference
 import qualified Curry.Syntax as CS
 
 -- Base
@@ -40,7 +37,6 @@ import Env.TypeConstructor (TCEnv, TypeInfo (..), qualLookupTC)
 import Env.Value (ValueEnv, ValueInfo (..), lookupValue, qualLookupValue)
 
 -- other
-import CompilerOpts (Options (..), WarnFlag (..))
 import qualified IL as IL
 import qualified ModuleSummary
 import Transformations (transType)
@@ -51,20 +47,16 @@ trace' _ x = x
 -------------------------------------------------------------------------------
 
 -- transforms intermediate language code (IL) to FlatCurry code
-genFlatCurry :: Options -> ModuleSummary.ModuleSummary -> InterfaceEnv
-             -> ValueEnv -> TCEnv -> IL.Module -> (Prog, [Message])
-genFlatCurry opts modSum mEnv tyEnv tcEnv mdl = (prog', messages)
-  where
-  (prog, messages) = run opts modSum mEnv tyEnv tcEnv False (visitModule mdl)
-  prog' = {- eraseTypes $ -} adjustTypeInfo $ patchPrelude prog
+genFlatCurry :: ModuleSummary.ModuleSummary -> InterfaceEnv
+             -> ValueEnv -> TCEnv -> IL.Module -> Prog
+genFlatCurry modSum mEnv tyEnv tcEnv mdl = patchPrelude $
+  run modSum mEnv tyEnv tcEnv False (visitModule mdl)
 
 -- transforms intermediate language code (IL) to FlatCurry interfaces
-genFlatInterface :: Options -> ModuleSummary.ModuleSummary -> InterfaceEnv
-                 -> ValueEnv -> TCEnv -> IL.Module -> (Prog, [Message])
-genFlatInterface opts modSum mEnv tyEnv tcEnv mdl = (intf' , messages)
-  where
-  (intf, messages) = run opts modSum mEnv tyEnv tcEnv True (visitModule mdl)
-  intf'            = patchPrelude intf
+genFlatInterface :: ModuleSummary.ModuleSummary -> InterfaceEnv
+                 -> ValueEnv -> TCEnv -> IL.Module -> Prog
+genFlatInterface modSum mEnv tyEnv tcEnv mdl = patchPrelude $
+  run modSum mEnv tyEnv tcEnv True (visitModule mdl)
 
 patchPrelude :: Prog -> Prog
 patchPrelude p@(Prog n _ types funcs ops)
@@ -109,7 +101,6 @@ type FlatState a = State FlatEnv a
 data FlatEnv = FlatEnv
   { moduleIdE     :: ModuleIdent
   , functionIdE   :: (QualIdent, [(Ident, IL.Type)])
-  , compilerOptsE :: Options
   , interfaceEnvE :: InterfaceEnv
   , typeEnvE      :: ValueEnv     -- types of defined values
   , tConsEnvE     :: TCEnv
@@ -122,7 +113,6 @@ data FlatEnv = FlatEnv
   , varIndexE     :: Int
   , varIdsE       :: ScopeEnv Ident VarIndex
   , tvarIndexE    :: Int
-  , messagesE     :: [Message]
   , genInterfaceE :: Bool
   , localTypes    :: Map.Map QualIdent IL.Type
   , constrTypes   :: Map.Map QualIdent IL.Type
@@ -134,15 +124,13 @@ data IdentExport
   | NotOnlyConstr -- constructor, function, type-constructor
 
 -- Runs a 'FlatState' action and returns the result
-run :: Options -> ModuleSummary.ModuleSummary -> InterfaceEnv -> ValueEnv -> TCEnv
-    -> Bool -> FlatState a -> (a, [Message])
-run opts modSum mEnv tyEnv tcEnv genIntf f = (result, reverse $ messagesE env)
+run :: ModuleSummary.ModuleSummary -> InterfaceEnv -> ValueEnv -> TCEnv
+    -> Bool -> FlatState a -> a
+run modSum mEnv tyEnv tcEnv genIntf f = evalState f env0
   where
-  (result, env) = runState f env0
   env0 = FlatEnv
     { moduleIdE     = ModuleSummary.moduleId modSum
     , functionIdE   = (qualify (mkIdent ""), [])
-    , compilerOptsE = opts
     , interfaceEnvE = mEnv
     , typeEnvE      = tyEnv
     , tConsEnvE     = tcEnv
@@ -156,7 +144,6 @@ run opts modSum mEnv tyEnv tcEnv genIntf f = (result, reverse $ messagesE env)
     , varIndexE     = 0
     , varIdsE       = ScopeEnv.new
     , tvarIndexE    = 0
-    , messagesE     = []
     , genInterfaceE = genIntf
     , localTypes    = Map.empty
     , constrTypes   = Map.fromList $ getConstrTypes tcEnv tyEnv
@@ -298,7 +285,7 @@ visitExpression (IL.Case  r ea e bs) =
 visitExpression (IL.Or        e1 e2) = do
   e1' <- visitExpression e1
   e2' <- visitExpression e2
-  checkOverlapping e1' e2'
+--   checkOverlapping e1' e2'
   return $ Or e1' e2'
 visitExpression (IL.Exist       v e) = do
   idx <- newVarIndex v
@@ -618,9 +605,9 @@ genOpDecls = fixities >>= mapM genOpDecl
 
 --
 genOpDecl :: CS.IDecl -> FlatState OpDecl
-genOpDecl (CS.IInfixDecl _ fixity prec qident) = do
+genOpDecl (CS.IInfixDecl _ fix prec qident) = do
   qname <- visitQualIdent qident
-  return $ Op qname (genFixity fixity) prec
+  return $ Op qname (genFixity fix) prec
 genOpDecl _ = internalError "GenFlatCurry: no infix interface"
 
 genFixity :: CS.Infix -> Fixity
@@ -672,26 +659,25 @@ genRecordTypes = records >>= mapM genRecordType
 
 --
 genRecordType :: CS.IDecl -> FlatState TypeDecl
-genRecordType (CS.ITypeDecl _ qident params (CS.RecordType fields _))
-   = do let is = [0 .. (length params) - 1]
-            (modid,ident) = (qidModule qident, qidIdent qident)
-        qname <- visitQualIdent ((maybe qualify qualifyWith modid)
-                                 (recordExtId ident))
-        labels <- mapM (genRecordLabel modid (zip params is)) fields
-        return (Type qname Public is labels)
+genRecordType (CS.ITypeDecl _ qid params (CS.RecordType fs _)) = do
+  let is = [0 .. (length params) - 1]
+      (mid, ident) = (qidModule qid, qidIdent qid)
+  qname <- visitQualIdent ((maybe qualify qualifyWith mid) (recordExtId ident))
+  labels <- mapM (genRecordLabel mid (zip params is)) fs
+  return (Type qname Public is labels)
 genRecordType _ = internalError "GenFlatCurry.genRecordType: no pattern match"
 
 --
-genRecordLabel :: Maybe ModuleIdent -> [(Ident,Int)] -> ([Ident],CS.TypeExpr)
+genRecordLabel :: Maybe ModuleIdent -> [(Ident, Int)] -> ([Ident], CS.TypeExpr)
                -> FlatState ConsDecl
-genRecordLabel modid vis ([ident],typeexpr)
-   = do tyEnv <- gets typeEnvE
-        tcEnv <- gets tConsEnvE
-        let typeexpr' = elimRecordTypes tyEnv tcEnv typeexpr
-        texpr <- visitType (snd (cs2ilType vis typeexpr'))
-        qname <- visitQualIdent ((maybe qualify qualifyWith modid)
-                                 (labelExtId ident))
-        return (Cons qname 1 Public [texpr])
+genRecordLabel modid vis ([ident],ty) = do
+  tyEnv <- gets typeEnvE
+  tcEnv <- gets tConsEnvE
+  let ty' = elimRecordTypes tyEnv tcEnv ty
+  texpr <- visitType (snd (cs2ilType vis ty'))
+  qname <- visitQualIdent ((maybe qualify qualifyWith modid)
+                            (labelExtId ident))
+  return (Cons qname 1 Public [texpr])
 genRecordLabel _ _ _ = internalError "GenFlatCurry.genRecordLabel: no pattern match"
 
 
@@ -705,37 +691,37 @@ genRecordLabel _ _ _ = internalError "GenFlatCurry.genRecordLabel: no pattern ma
 -- record declarations are not generated from the intermediate language.
 -- So the transformation has only to be performed in these cases.
 elimRecordTypes :: ValueEnv -> TCEnv -> CS.TypeExpr -> CS.TypeExpr
-elimRecordTypes tyEnv tcEnv (CS.ConstructorType qid typeexprs)
-   = CS.ConstructorType qid (map (elimRecordTypes tyEnv tcEnv) typeexprs)
+elimRecordTypes tyEnv tcEnv (CS.ConstructorType qid tys)
+   = CS.ConstructorType qid (map (elimRecordTypes tyEnv tcEnv) tys)
 elimRecordTypes tyEnv tcEnv (CS.SpecialConstructorType qid typeexprs)
    = CS.SpecialConstructorType qid (map (elimRecordTypes tyEnv tcEnv) typeexprs)
 elimRecordTypes _ _ (CS.VariableType ident)
    = CS.VariableType ident
-elimRecordTypes tyEnv tcEnv (CS.TupleType typeexprs)
-   = CS.TupleType (map (elimRecordTypes tyEnv tcEnv) typeexprs)
-elimRecordTypes tyEnv tcEnv (CS.ListType typeexpr)
-   = CS.ListType (elimRecordTypes tyEnv tcEnv typeexpr)
-elimRecordTypes tyEnv tcEnv (CS.ArrowType typeexpr1 typeexpr2)
-   = CS.ArrowType (elimRecordTypes tyEnv tcEnv typeexpr1)
-                  (elimRecordTypes tyEnv tcEnv typeexpr2)
+elimRecordTypes tyEnv tcEnv (CS.TupleType tys)
+   = CS.TupleType (map (elimRecordTypes tyEnv tcEnv) tys)
+elimRecordTypes tyEnv tcEnv (CS.ListType ty)
+   = CS.ListType (elimRecordTypes tyEnv tcEnv ty)
+elimRecordTypes tyEnv tcEnv (CS.ArrowType ty1 ty2)
+   = CS.ArrowType (elimRecordTypes tyEnv tcEnv ty1)
+                  (elimRecordTypes tyEnv tcEnv ty2)
 elimRecordTypes tyEnv tcEnv (CS.RecordType fss _)
    = let fs = flattenRecordTypeFields fss
      in  case (lookupValue (fst (head fs)) tyEnv) of
-           [Label _ record _] ->
-             case (qualLookupTC record tcEnv) of
-               [AliasType _ n (TypeRecord fs' _)] ->
-                 let ms = foldl (matchTypeVars fs) Map.empty fs'
-                     types = map (\i -> maybe
-                                          (CS.VariableType
-                                             (mkIdent ("#tvar" ++ show i)))
-                                          (elimRecordTypes tyEnv tcEnv)
-                                          (Map.lookup i ms))
-                                 [0 .. n-1]
-                 in  CS.ConstructorType record types
-               _ -> internalError ("GenFlatCurry.elimRecordTypes: "
-                                   ++ "no record type")
-           _ -> internalError ("GenFlatCurry.elimRecordTypes: "
-                               ++ "no label")
+          [Label _ record _] ->
+            case (qualLookupTC record tcEnv) of
+              [AliasType _ n (TypeRecord fs' _)] ->
+                let ms = foldl (matchTypeVars fs) Map.empty fs'
+                    types = map (\i -> maybe
+                                        (CS.VariableType
+                                            (mkIdent ("#tvar" ++ show i)))
+                                        (elimRecordTypes tyEnv tcEnv)
+                                        (Map.lookup i ms))
+                                [0 .. n-1]
+                in  CS.ConstructorType record types
+              _ -> internalError ("GenFlatCurry.elimRecordTypes: "
+                                  ++ "no record type")
+          _ -> internalError ("GenFlatCurry.elimRecordTypes: "
+                              ++ "no label")
 
 matchTypeVars :: [(Ident,CS.TypeExpr)] -> Map.Map Int CS.TypeExpr
               -> (Ident, Type) -> Map.Map Int CS.TypeExpr
@@ -762,21 +748,6 @@ matchTypeVars fs ms (l,ty) = maybe ms (match ms ty) (lookup l fs)
 flattenRecordTypeFields :: [([Ident], CS.TypeExpr)] -> [(Ident, CS.TypeExpr)]
 flattenRecordTypeFields = concatMap (\ (ls, ty) -> map (\l -> (l, ty)) ls)
 
--------------------------------------------------------------------------------
-
---
-checkOverlapping :: Expr -> Expr -> FlatState ()
-checkOverlapping e1 e2 = do
-  opts <- compilerOpts
-  when (WarnOverlapping `elem` optWarnFlags opts) $ checkOverlap e1 e2
-  where
-  checkOverlap (Case _ _ _ _) _ = functionId >>= genWarning . overlappingRules
-  checkOverlap _ (Case _ _ _ _) = functionId >>= genWarning . overlappingRules
-  checkOverlap _ _              = return ()
-
--------------------------------------------------------------------------------
-
---
 cs2ilType :: [(Ident,Int)] -> CS.TypeExpr -> ([(Ident,Int)], IL.Type)
 cs2ilType ids (CS.ConstructorType qident typeexprs)
   = let (ids', ilTypeexprs) = mapAccumL cs2ilType ids typeexprs
@@ -815,11 +786,6 @@ consArity qid = "GenFlatCurry: missing arity for constructor \""
 
 missingVarIndex :: Show a => a -> [Char]
 missingVarIndex ident = "GenFlatCurry: missing index for \"" ++ show ident ++ "\""
-
-overlappingRules :: QualIdent -> Message
-overlappingRules qid = posMessage qid $ hsep $ map text
-  [ "Function", '"' : qualName qid ++ "\""
-  , "is non-deterministic due to non-trivial overlapping rules" ]
 
 -------------------------------------------------------------------------------
 
@@ -877,16 +843,8 @@ moduleId :: FlatState ModuleIdent
 moduleId = gets moduleIdE
 
 --
-functionId :: FlatState QualIdent
-functionId = gets (fst . functionIdE)
-
---
 setFunctionId :: (QualIdent, [(Ident, IL.Type)]) -> FlatState ()
 setFunctionId qid = modify $ \ s -> s { functionIdE = qid }
-
---
-compilerOpts :: FlatState Options
-compilerOpts = gets compilerOptsE
 
 --
 exports :: FlatState [CS.Export]
@@ -1026,10 +984,6 @@ lookupVarIndex ident = do
 --
 clearVarIndices :: FlatState ()
 clearVarIndices = modify $ \ s -> s { varIndexE = 0, varIdsE = ScopeEnv.new }
-
---
-genWarning :: Message -> FlatState ()
-genWarning msg = modify $ \ s -> s { messagesE = msg : messagesE s }
 
 --
 genInterface :: FlatState Bool
