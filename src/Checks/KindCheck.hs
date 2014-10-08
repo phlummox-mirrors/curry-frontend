@@ -125,7 +125,11 @@ checkDecl (PatternDecl p cty id0 t rhs) =
   PatternDecl p cty id0 t `liftM` checkRhs rhs
 checkDecl (ForeignDecl  p cc ie f ty) =
   ForeignDecl p cc ie f `liftM` checkType ty
-checkDecl d                           = return d
+checkDecl (ClassDecl p scon cls id0 decls) =
+  ClassDecl p scon cls id0 `liftM` mapM checkDecl decls
+checkDecl (InstanceDecl p scon cls ty ids decls) =
+  InstanceDecl p scon cls ty ids `liftM` mapM checkDecl decls
+checkDecl d                          = return d
 
 checkConstrDecl :: [Ident] -> ConstrDecl -> KCM ConstrDecl
 checkConstrDecl tvs (ConstrDecl p evs c tys) = do
