@@ -24,6 +24,7 @@ import qualified Checks.WarnCheck        as WC (warnCheck)
 import qualified Checks.TypeClassesCheck as TCC (typeClassesCheck)
 import qualified Checks.Dictionaries     as DI (insertDicts)
 
+import Curry.Base.Monad
 import Curry.Syntax (Module (..), Interface (..))
 
 import Base.Messages
@@ -34,8 +35,8 @@ type Check m a = Options -> CompilerEnv -> a -> CYT m (CompilerEnv, a)
 
 interfaceCheck :: Monad m => Check m Interface
 interfaceCheck _ env intf
-  | null msgs = right (env, intf)
-  | otherwise = left msgs
+  | null msgs = ok (env, intf)
+  | otherwise = failMessages msgs
   where msgs = IC.interfaceCheck (opPrecEnv env) (tyConsEnv env)
                                  (valueEnv env) (classEnv env) intf
 
@@ -45,9 +46,9 @@ interfaceCheck _ env intf
 --                 disambiguated
 -- * Environment:  remains unchanged
 kindCheck :: Monad m => Check m Module
-kindCheck _ env (Module m es is ds)
-  | null msgs = right (env, Module m es is ds')
-  | otherwise = left msgs
+kindCheck _ env (Module ps m es is ds)
+  | null msgs = ok (env, Module ps m es is ds')
+  | otherwise = failMessages msgs
   where (ds', msgs) = KC.kindCheck (moduleIdent env) (tyConsEnv env) ds
 
 -- |Check for a correct syntax.
@@ -56,11 +57,11 @@ kindCheck _ env (Module m es is ds)
 --                 disambiguated, variables are renamed
 -- * Environment:  remains unchanged
 syntaxCheck :: Monad m => Check m Module
-syntaxCheck opts env (Module m es is ds)
-  | null msgs = right (env, Module m es is ds')
-  | otherwise = left msgs
-  where (ds', msgs) = SC.syntaxCheck opts (moduleIdent env)
-                      (valueEnv env) (tyConsEnv env) (classEnv env) ds
+syntaxCheck opts env mdl
+  | null msgs = ok (env { extensions = exts }, mdl')
+  | otherwise = failMessages msgs
+  where ((mdl', exts), msgs) = SC.syntaxCheck opts
+                      (valueEnv env) (tyConsEnv env) (classEnv env) mdl
 
 -- |Check the precedences of infix operators.
 --
@@ -68,19 +69,19 @@ syntaxCheck opts env (Module m es is ds)
 --                 precedences
 -- * Environment:  The operator precedence environment is updated
 precCheck :: Monad m => Check m Module
-precCheck _ env (Module m es is ds)
-  | null msgs = right (env { opPrecEnv = pEnv' }, Module m es is ds')
-  | otherwise = left msgs
+precCheck _ env (Module ps m es is ds)
+  | null msgs = ok (env { opPrecEnv = pEnv' }, Module ps m es is ds')
+  | otherwise = failMessages msgs
   where (ds', pEnv', msgs) = PC.precCheck (moduleIdent env) (opPrecEnv env) ds
 
 -- |Apply the correct typing of the module.
 -- Parts of the syntax tree are annotated by their type; the type constructor
 -- and value environments are updated.
 typeCheck :: Monad m => Bool -> Check m Module
-typeCheck run opts env (Module m es is ds)
-  | null msgs = right (env { tyConsEnv = tcEnv', valueEnv = tyEnv' }, 
-                  Module m es is newDecls)
-  | otherwise = left msgs
+typeCheck run opts env (Module recFlag m es is ds)
+  | null msgs = ok (env { tyConsEnv = tcEnv', valueEnv = tyEnv' }
+                   , Module recFlag m es is newDecls)
+  | otherwise = failMessages msgs
   where 
   (tcEnv', tyEnv', newDecls, msgs) = 
     TC.typeCheck (moduleIdent env) (tyConsEnv env) (valueEnv env) 
@@ -88,26 +89,24 @@ typeCheck run opts env (Module m es is ds)
 
 -- |Check the export specification
 exportCheck :: Monad m => Check m Module
-exportCheck _ env (Module m es is ds)
-  | null msgs = right (env, Module m es' is ds)
-  | otherwise = left msgs
+exportCheck _ env (Module ps m es is ds)
+  | null msgs = ok (env, Module ps m es' is ds)
+  | otherwise = failMessages msgs
   where (es', msgs) = EC.exportCheck (moduleIdent env) (aliasEnv env)
                                      (tyConsEnv env) (valueEnv env) 
                                      (classEnv env) es
 
--- TODO: Which kind of warnings?
-
 -- |Check for warnings.
 warnCheck :: Options -> CompilerEnv -> Module -> [Message]
-warnCheck opts env mdl = WC.warnCheck opts (valueEnv env) (tyConsEnv env) mdl
-
+warnCheck opts env mdl = WC.warnCheck (optWarnOpts opts) (aliasEnv env)
+  (valueEnv env) (tyConsEnv env) mdl
 -- |Check the type classes
 -- Changes the classes environment and removes class and instance declarations, 
 -- furthermore adds new code for them
 typeClassesCheck :: Monad m => Check m Module
-typeClassesCheck opts env (Module m es is ds) 
-  | null msgs = right (env {classEnv = clsEnv}, Module m es is decls') 
-  | otherwise = left msgs
+typeClassesCheck opts env (Module recFlag m es is ds) 
+  | null msgs = ok (env {classEnv = clsEnv}, Module recFlag m es is decls') 
+  | otherwise = failMessages msgs
   where (decls', clsEnv, msgs) = TCC.typeClassesCheck m opts ds 
            (classEnv env) (tyConsEnv env) (opPrecEnv env)
 
@@ -115,8 +114,8 @@ typeClassesCheck opts env (Module m es is ds)
 -- transformation - but as it can produce errors, it is treated as a check  
 insertDicts :: Monad m => Check m Module
 insertDicts opts cEnv m 
-  | null msgs = right (cEnv, m')
-  | otherwise = left msgs
+  | null msgs = ok (cEnv, m')
+  | otherwise = failMessages msgs
   where (m', msgs) = DI.insertDicts m cEnv opts
   
 

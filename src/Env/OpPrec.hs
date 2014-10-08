@@ -24,7 +24,7 @@
     introduction of unlimited integer constants in the parser / lexer.
 -}
 module Env.OpPrec
-  ( OpPrec (..), defaultP
+  ( OpPrec (..), defaultP, defaultAssoc, defaultPrecedence, mkPrec
   , OpPrecEnv,  PrecInfo (..), bindP, lookupP, qualLookupP, initOpPrecEnv
   ) where
 
@@ -33,18 +33,35 @@ import Curry.Syntax     (Infix (..))
 
 import Base.TopEnv
 
--- |Operator precedence.
-data OpPrec = OpPrec Infix Integer deriving Eq
+import Data.Maybe (fromMaybe)
 
+-- |Operator precedence.
+data OpPrec = OpPrec Infix Precedence deriving Eq
+
+type Precedence = Integer
+
+-- TODO: Change to real show instance and provide Pretty instance
+-- if used anywhere.
 instance Show OpPrec where
   showsPrec _ (OpPrec fix p) = showString (assoc fix) . shows p
     where assoc InfixL = "left "
           assoc InfixR = "right "
           assoc Infix  = "non-assoc "
 
--- |Default operator precedence.
+-- |Default operator declaration (associativity and precedence).
 defaultP :: OpPrec
-defaultP = OpPrec InfixL 9
+defaultP = OpPrec defaultAssoc defaultPrecedence
+
+-- |Default operator associativity.
+defaultAssoc :: Infix
+defaultAssoc = InfixL
+
+-- |Default operator precedence.
+defaultPrecedence :: Precedence
+defaultPrecedence = 9
+
+mkPrec :: Maybe Precedence -> Precedence
+mkPrec mprec = fromMaybe defaultPrecedence mprec
 
 -- |Precedence information for an identifier.
 data PrecInfo = PrecInfo QualIdent OpPrec deriving (Eq, Show)

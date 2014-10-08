@@ -20,6 +20,7 @@ import Data.Maybe
 import Data.List (nub)
 
 import Curry.Base.Ident  (ModuleIdent, preludeMIdent, tcPreludeMIdent, QualIdent (..))
+import Curry.Syntax
 
 import Base.TopEnv
 
@@ -36,12 +37,13 @@ import CompilerOpts
 --  compiled. The information is updated during the different stages of
 --  compilation.
 data CompilerEnv = CompilerEnv
-  { moduleIdent  :: ModuleIdent  -- ^ identifier of the module
-  , interfaceEnv :: InterfaceEnv -- ^ declarations of imported interfaces
-  , aliasEnv     :: AliasEnv     -- ^ aliases for imported modules
-  , tyConsEnv    :: TCEnv        -- ^ type constructors
-  , valueEnv     :: ValueEnv     -- ^ functions and data constructors
-  , opPrecEnv    :: OpPrecEnv    -- ^ operator precedences
+  { moduleIdent  :: ModuleIdent      -- ^ identifier of the module
+  , extensions   :: [KnownExtension] -- ^ enabled language extensions
+  , interfaceEnv :: InterfaceEnv     -- ^ declarations of imported interfaces
+  , aliasEnv     :: AliasEnv         -- ^ aliases for imported modules
+  , tyConsEnv    :: TCEnv            -- ^ type constructors
+  , valueEnv     :: ValueEnv         -- ^ functions and data constructors
+  , opPrecEnv    :: OpPrecEnv        -- ^ operator precedences
   , classEnv     :: ClassEnv     -- ^ type classes environment
   }
 
@@ -49,6 +51,7 @@ data CompilerEnv = CompilerEnv
 initCompilerEnv :: ModuleIdent -> CompilerEnv
 initCompilerEnv mid = CompilerEnv
   { moduleIdent  = mid
+  , extensions   = []
   , interfaceEnv = initInterfaceEnv
   , aliasEnv     = initAliasEnv
   , tyConsEnv    = initTCEnv
@@ -59,15 +62,16 @@ initCompilerEnv mid = CompilerEnv
 
 
 -- |Show the 'CompilerEnv'
-showCompilerEnv :: Options -> CompilerEnv -> String
+showCompilerEnv :: DebugOpts -> CompilerEnv -> String
 showCompilerEnv opts env = show $ vcat
-  [ header "ModuleIdent     " $ textS  $ moduleIdent env
-  , header "Interfaces      " $ hcat   $ punctuate comma $ map textS
-                                       $ Map.keys $ interfaceEnv env
-  , header "ModuleAliases   " $ ppMap  $ aliasEnv     env
-  , header "TypeConstructors" $ ppAL (text . show) $ showLocalBindings $ tyConsEnv    env
-  , header "Values          " $ ppAL (text . show) $ showLocalBindings $ valueEnv     env
-  , header "Precedences     " $ ppAL (text . show) $ showLocalBindings $ opPrecEnv    env
+  [ header "ModuleIdent       " $ textS $ moduleIdent env
+  , header "Language Etensions" $ text  $ show $ extensions  env
+  , header "Interfaces        " $ hcat  $ punctuate comma $ map textS
+                                        $ Map.keys $ interfaceEnv env
+  , header "ModuleAliases     " $ ppMap $ aliasEnv     env
+  , header "TypeConstructors  " $ ppAL (text . show) $ allLocalBindings $ tyConsEnv env
+  , header "Values            " $ ppAL (text . show) $ allLocalBindings $ valueEnv  env
+  , header "Precedences       " $ ppAL (text . show) $ allLocalBindings $ opPrecEnv env
   , header "Classes         " $ ppAL ppClass $ showLocalBindings $ theClasses $ classEnv env
   , header "Instances       " $ vcat (map ppInst (filter filterInst $ allInstances $ theInstances $ classEnv env))
   -- , header "ClassMethodsMap " $ ppAL ppClass $ showLocalBindings $ classMethods $ classEnv env
@@ -92,7 +96,7 @@ showCompilerEnv opts env = show $ vcat
   filterCanon :: (QualIdent, Class) -> Bool
   filterCanon (qid, _) = if showAll then True
     else isNothing (qidModule qid) || (fromJust (qidModule qid)) /= tcPreludeMIdent 
-  showAll = optDumpCompleteEnv opts
+  showAll = dbDumpCompleteEnv opts
 
 -- |Pretty print a 'Map'
 ppMap :: (Show a, Show b) => Map.Map a b -> Doc

@@ -40,7 +40,7 @@ import Base.TopEnv
 -- *and* in explicitely typed expressions (!)) by removing their contexts
 -- and inserting types for the dictionaries.  
 transformTypeSigs :: CompilerEnv -> Module -> Module
-transformTypeSigs cEnv (Module m e i ds) = Module m e i (concatMap (tsDecl cEnv) ds)
+transformTypeSigs cEnv (Module c m e i ds) = Module c m e i (concatMap (tsDecl cEnv) ds)
 
 tsDecl :: CompilerEnv -> Decl -> [Decl]
 tsDecl _cEnv d@(InfixDecl               _ _ _ _) = [d]

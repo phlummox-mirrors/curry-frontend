@@ -23,7 +23,7 @@ import qualified Data.Set as Set
 import Curry.AbstractCurry
 import Curry.Base.Ident
 import Curry.Base.Position
-import Curry.Syntax
+import Curry.Syntax hiding (isFunctionDecl)
 
 import Base.CurryTypes (fromType)
 import Base.Messages (internalError)
@@ -32,6 +32,7 @@ import Base.Types
 
 import Env.TypeConstructor (TCEnv, lookupTC)
 import Env.Value (ValueEnv, ValueInfo (..), lookupValue, qualLookupValue)
+import Env.OpPrec (mkPrec)
 
 import CompilerEnv
 
@@ -53,7 +54,7 @@ genUntypedAbstract = genAbstract UntypedAcy
 
 -- |Generate an AbstractCurry program term from the syntax tree
 genAbstract :: AbstractType -> CompilerEnv -> Module -> CurryProg
-genAbstract ty env mdl@(Module mid _ imps decls)
+genAbstract ty env mdl@(Module _ mid _ imps decls)
   = CurryProg mid' imps' types funcs ops
   where
   aEnv  = abstractEnv ty env mdl
@@ -209,11 +210,11 @@ genTypeExpr env s@(SpecialConstructorType _ _) =
   genTypeExpr env (specialConsToTyExpr s) 
 
 genOpDecl :: AbstractEnv -> Decl -> [COpDecl]
-genOpDecl env (InfixDecl _ fix prec ops) = map genCOp (reverse ops)
+genOpDecl env (InfixDecl _ fix mprec ops) = map genCOp (reverse ops)
   where
   genCOp op = COp (genQName False env $ qualifyWith (moduleId env) op)
                   (genFixity fix)
-                  (fromInteger prec)
+                  (fromInteger (mkPrec mprec))
 
   genFixity InfixL = CInfixlOp
   genFixity InfixR = CInfixrOp
@@ -568,7 +569,7 @@ genBranchExpr env (Alt p pat rhs)
       in  (env2, CGuardedBranch pat' bs')
 
 --
-genPattern :: Position -> AbstractEnv -> Pattern{--} -> (AbstractEnv, CPattern)
+genPattern :: Position -> AbstractEnv -> Pattern -> (AbstractEnv, CPattern)
 genPattern pos env (LiteralPattern l) = case l of
   String _ cs -> genPattern pos env $ ListPattern [] $ map (LiteralPattern . Char noRef) cs
   _           -> (env, CPLit $ genLiteral l)
@@ -687,7 +688,7 @@ data AbstractType
 
 -- |Initialize the AbstractCurry generator environment
 abstractEnv :: AbstractType -> CompilerEnv -> Module -> AbstractEnv
-abstractEnv absType env (Module mid exps _ decls) = AbstractEnv
+abstractEnv absType env (Module _ mid exps _ decls) = AbstractEnv
   { moduleId  = mid
   , typeEnv   = valueEnv env
   , tconsEnv  = tyConsEnv env

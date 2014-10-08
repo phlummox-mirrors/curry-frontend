@@ -21,6 +21,7 @@ import Curry.Syntax
 import Base.Messages (internalError)
 import Base.Types
 
+import Env.OpPrec          (mkPrec)
 import Env.TypeConstructor (TCEnv, TypeInfo (..), qualLookupTC)
 
 -- |A record containing data for a module 'm'
@@ -38,7 +39,7 @@ data ModuleSummary = ModuleSummary
 -- |Return a 'ModuleSummary' for a module, its corresponding
 -- table of type constructors and its interface
 summarizeModule :: TCEnv -> Interface -> Module -> ModuleSummary
-summarizeModule tcEnv (Interface iid _ idecls) (Module mid mExp imps decls)
+summarizeModule tcEnv (Interface iid _ idecls) (Module _ mid mExp imps decls)
   | iid == mid = ModuleSummary
       { moduleId     = mid
       , interface    = idecls
@@ -63,8 +64,8 @@ genInfixDecls :: ModuleIdent -> [Decl] -> [IDecl]
 genInfixDecls mident decls = concatMap genInfixDecl decls
   where
   genInfixDecl :: Decl -> [IDecl]
-  genInfixDecl (InfixDecl pos spec prec idents)
-    = map (IInfixDecl pos spec prec . qualifyWith mident) idents
+  genInfixDecl (InfixDecl pos spec mPrec idents)
+    = map (IInfixDecl pos spec (mkPrec mPrec) . qualifyWith mident) idents
   genInfixDecl _ = []
 
 -- ---------------------------------------------------------------------------

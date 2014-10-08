@@ -24,23 +24,27 @@ import           Data.List       (isSuffixOf, nub)
 import qualified Data.Map as Map (Map, empty, insert, lookup, toList)
 
 import Curry.Base.Ident hiding (sep)
-import Curry.Base.Message    (runMsg)
+import Curry.Base.Monad
 import Curry.Base.Pretty
 import Curry.Files.Filenames
 import Curry.Files.PathUtils
 import Curry.Syntax
-  (Module (..),  ImportDecl (..), parseHeader, patchModuleId)
+  ( Module (..), ModulePragma (..), ImportDecl (..), parseHeader, patchModuleId
+  , hasLanguageExtension)
 
 import Base.Messages
 import Base.SCC (scc)
-import CompilerOpts (Options (..), Extension (..))
+import CompilerOpts (Options (..), KnownExtension (..))
 
 -- |Different types of source files
 data Source
-  = Source FilePath [ModuleIdent] -- ^ A source file with module imports
-  | Interface FilePath            -- ^ An interface file
-  | Unknown                       -- ^ An unkonwn file
-    deriving (Eq, Ord, Show)
+    -- ^ A source file with pragmas and module imports
+  = Source FilePath [ModulePragma] [ModuleIdent]
+    -- ^ An interface file
+  | Interface FilePath
+    -- ^ An unkonwn file
+  | Unknown
+    deriving (Eq, Show)
 
 type SourceEnv = Map.Map ModuleIdent Source
 
@@ -50,8 +54,8 @@ flatDeps :: Options -> FilePath -> CYIO [(ModuleIdent, Source)]
 flatDeps opts fn = do
   sEnv <- deps opts Map.empty fn
   case flattenDeps sEnv of
-    (env, []  ) -> right env
-    (_  , errs) -> left errs
+    (env, []  ) -> ok env
+    (_  , errs) -> failMessages errs
 
 -- |Retrieve the dependencies of a source file as a 'SourceEnv'
 deps :: Options -> SourceEnv -> FilePath -> CYIO SourceEnv
@@ -90,20 +94,21 @@ sourceDeps opts sEnv fn = readHeader fn >>= moduleDeps opts sEnv fn
 
 -- |Retrieve the dependencies of a given module
 moduleDeps :: Options -> SourceEnv -> FilePath -> Module -> CYIO SourceEnv
-moduleDeps opts sEnv fn (Module m _ is _) = case Map.lookup m sEnv of
+moduleDeps opts sEnv fn mdl@(Module ps m _ _ _) = case Map.lookup m sEnv of
   Just  _ -> return sEnv
   Nothing -> do
-    let imps  = imports opts m is
-        sEnv' = Map.insert m (Source fn imps) sEnv
+    let imps  = imports opts mdl
+        sEnv' = Map.insert m (Source fn ps imps) sEnv
     foldM (moduleIdentDeps opts) sEnv' imps
 
 -- |Retrieve the imported modules and add the import of the Prelude
 -- according to the compiler options.
-imports :: Options -> ModuleIdent -> [ImportDecl] -> [ModuleIdent]
-imports opts m ds = nub $
-     [preludeMIdent | m /= preludeMIdent && implicitPrelude]
-  ++ [m' | ImportDecl _ m' _ _ _ <- ds]
-  where implicitPrelude = NoImplicitPrelude `notElem` optExtensions opts
+imports :: Options -> Module -> [ModuleIdent]
+imports opts mdl@(Module _ m _ is _) = nub $
+     [preludeMIdent | m /= preludeMIdent && not noImplicitPrelude]
+  ++ [m' | ImportDecl _ m' _ _ _ <- is]
+  where noImplicitPrelude = NoImplicitPrelude `elem` optExtensions opts
+                              || mdl `hasLanguageExtension` NoImplicitPrelude
 
 -- |Retrieve the dependencies for a given 'ModuleIdent'
 moduleIdentDeps :: Options -> SourceEnv -> ModuleIdent -> CYIO SourceEnv
@@ -118,19 +123,18 @@ moduleIdentDeps opts sEnv m = case Map.lookup m sEnv of
         | icurryExt `isSuffixOf` fn ->
             return $ Map.insert m (Interface fn) sEnv
         | otherwise                 -> do
-            hdr@(Module m' _ _ _) <- readHeader fn
+            hdr@(Module _ m' _ _ _) <- readHeader fn
             if (m == m') then moduleDeps opts sEnv fn hdr
-                         else left [errWrongModule m m']
+                         else failMessages [errWrongModule m m']
 
 readHeader :: FilePath -> CYIO Module
 readHeader fn = do
   mbFile <- liftIO $ readModule fn
   case mbFile of
-    Nothing  -> left [errMissingFile fn]
+    Nothing  -> failMessages [errMissingFile fn]
     Just src -> do
-      case runMsg $ parseHeader fn src of
-        Left  err      -> left [err]
-        Right (hdr, _) -> return $ patchModuleId fn hdr
+      hdr <- liftCYM $ parseHeader fn src
+      return $ patchModuleId fn hdr
 
 -- If we want to compile the program instead of generating Makefile
 -- dependencies, the environment has to be sorted topologically. Note
@@ -143,8 +147,8 @@ flattenDeps = fdeps . sortDeps
 
   idents (m, _) = [m]
 
-  imported (_, Source _ ms) = ms
-  imported (_,           _) = []
+  imported (_, Source _ _ ms) = ms
+  imported (_,             _) = []
 
   fdeps :: [[(ModuleIdent, Source)]] -> ([(ModuleIdent, Source)], [Message])
   fdeps = foldr checkdep ([], [])
