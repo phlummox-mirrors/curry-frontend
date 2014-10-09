@@ -160,7 +160,7 @@ as it allows value declarations at the top-level of a module.
 \begin{verbatim}
 
 > desugar :: ValueEnv -> TCEnv -> Module -> (Module, ValueEnv)
-> desugar tyEnv tcEnv (Module m es is ds) = (Module m es is ds', valueEnv s')
+> desugar tyEnv tcEnv (Module ps m es is ds) = (Module ps m es is ds', valueEnv s')
 >   where (ds', s') = S.runState (desugarModuleDecls ds)
 >                                (DesugarState m tcEnv tyEnv 1)
 
@@ -687,19 +687,35 @@ Desugaring of Records
 >   rfuncs <- mapM (genRecordFuncs p qr rty' (map fst fs')) fs'
 >   modifyValueEnv
 >       (bindGlobalInfo (flip DataConstructor (length tys)) m r rcts')
->   return $ rdecl : concat rfuncs
+>   return $ rdecl : rfuncs
 > dsRecordDecl d = return [d]
 
 > genRecordFuncs :: Position -> QualIdent -> Type -> [Ident] -> (Ident, Type)
->                -> DsM [Decl]
+>                -> DsM Decl
 > genRecordFuncs p r rty ls (l, ty) = do
 >   m <- getModuleIdent
 >   let (selId, selFunc) = genSelectFunc p r ls l
 >       (updId, updFunc) = genUpdateFunc p r ls l
->       selType = polyType (TypeArrow rty ty)
->       updType = polyType (TypeArrow rty $ TypeArrow ty rty)
->   modifyValueEnv (bindFun m selId 1 selType . bindFun m updId 2 updType)
->   return [selFunc, updFunc]
+>       (lensId,lensFunc) = genLensFunc p r ls l
+>       lensType = polyType (tupleType [selType,updType])
+>       selType = TypeArrow rty ty
+>       updType = TypeArrow rty (TypeArrow ty rty)
+>   modifyValueEnv (bindFun m lensId 1 lensType)
+>   return lensFunc
+
+> genLensFunc :: Position -> QualIdent -> [Ident] -> Ident -> (Ident, Decl)
+> genLensFunc p r ls l = (funId, funDecl p funId [] expr)
+>  where
+>   funId = mkIdent (idName l)
+>   expr  = Tuple (SrcRef [])
+>                 [ Lambda (SrcRef []) [cpatt] (mkVar l)
+>                 , Lambda (SrcRef []) [cpatt1, cpatt2] cExpr
+>                 ]
+>   cpatt  = ConstructorPattern r (map VariablePattern ls)
+>   cpatt1 = ConstructorPattern r vs
+>   cpatt2 = VariablePattern l
+>   cExpr  = apply (Constructor r) (map mkVar ls)
+>   vs     = [ VariablePattern (if v == l then anonId else v) | v <- ls]
 
 > genSelectFunc :: Position -> QualIdent -> [Ident] -> Ident -> (Ident, Decl)
 > genSelectFunc p r ls l = (selId, funDecl p selId [cpatt] (mkVar l))
