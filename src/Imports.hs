@@ -31,7 +31,6 @@ import Base.CurryTypes (toQualType, toQualTypes)
 import Base.Messages
 import Base.TopEnv
 import Base.Types
-import Base.TypeSubst (expandAliasType)
 
 import Env.Interface
 import Env.ModuleAlias (importAliases, initAliasEnv)
@@ -558,10 +557,12 @@ expandRecordTypes tcEnv (Label qid r (ForAll n ty)) =
   Label qid r (ForAll n (expandRecords tcEnv ty))
 
 expandRecords :: TCEnv -> Type -> Type
-expandRecords tcEnv (TypeConstructor qid tys) = case qualLookupTC qid tcEnv of
-  [AliasType _ _ rty@(TypeRecord _ _)]
-    -> expandRecords tcEnv $ expandAliasType (map (expandRecords tcEnv) tys) rty
-  _ -> TypeConstructor qid $ map (expandRecords tcEnv) tys
+-- jrt 2014-10-09: Deactivated to enable (mutually) recursive record types
+-- expandRecords tcEnv (TypeConstructor qid tys) = case qualLookupTC qid tcEnv of
+--   [AliasType _ _ rty@(TypeRecord _ _)]
+--     -> expandRecords tcEnv $ expandAliasType (map (expandRecords tcEnv) tys) rty
+--   _ -> TypeConstructor qid $ map (expandRecords tcEnv) tys
+expandRecords tcEnv (TypeConstructor qid tys) = TypeConstructor qid $ map (expandRecords tcEnv) tys
 expandRecords tcEnv (TypeConstrained tys v) =
   TypeConstrained (map (expandRecords tcEnv) tys) v
 expandRecords tcEnv (TypeArrow ty1 ty2) =

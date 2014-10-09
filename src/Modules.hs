@@ -216,25 +216,23 @@ checkModule opts (env, mdl) = do
 -- Translating a module
 -- ---------------------------------------------------------------------------
 
-type Dump = (DumpLevel, CompilerEnv, String)
-
--- |Translate FlatCurry into the intermediate language 'IL'
 transModule :: Options -> CompilerEnv -> CS.Module
-            -> (CompilerEnv, IL.Module, [Dump])
-transModule opts env mdl = (env5, ilCaseComp, dumps)
+            -> IO (CompilerEnv, IL.Module)
+transModule opts env mdl = do
+  let (desugared , env1) = desugar        mdl        env
+  showDump (DumpDesugared    , env1, presentCS desugared)
+  let (simplified, env2) = simplify flat' desugared  env1
+  showDump (DumpSimplified   , env2, presentCS simplified)
+  let (lifted    , env3) = lift           simplified env2
+  showDump (DumpLifted       , env3, presentCS lifted    )
+  let (il        , env4) = ilTrans  flat' lifted     env3
+  showDump (DumpTranslated   , env4, presentIL il        )
+  let (ilCaseComp, env5) = completeCase   il         env4
+  showDump (DumpCaseCompleted, env5, presentIL ilCaseComp)
+  return (env5, ilCaseComp)
   where
-  flat' = FlatCurry `elem` optTargetTypes opts
-  (desugared , env1) = desugar        mdl        env
-  (simplified, env2) = simplify flat' desugared  env1
-  (lifted    , env3) = lift           simplified env2
-  (il        , env4) = ilTrans  flat' lifted     env3
-  (ilCaseComp, env5) = completeCase   il         env4
-  dumps = [ (DumpDesugared    , env1, presentCS desugared )
-          , (DumpSimplified   , env2, presentCS simplified)
-          , (DumpLifted       , env3, presentCS lifted    )
-          , (DumpTranslated   , env4, presentIL il        )
-          , (DumpCaseCompleted, env5, presentIL ilCaseComp)
-          ]
+  flat'     = FlatCurry `elem` optTargetTypes opts
+  showDump  = doDump (optDebugOpts opts)
   presentCS = if dumpRaw then show else show . CS.ppModule
   presentIL = if dumpRaw then show else show . IL.ppModule
   dumpRaw   = dbDumpRaw (optDebugOpts opts)
@@ -250,9 +248,7 @@ writeOutput opts fn (env, modul) = do
   doDump (optDebugOpts opts) (DumpQualified, env1, show $ CS.ppModule qlfd)
   writeAbstractCurry opts fn env1 qlfd
   when withFlat $ do
-    let (env2, il, dumps) = transModule opts env1 qlfd
-    -- dump intermediate results
-    mapM_ (doDump (optDebugOpts opts)) dumps
+    (env2, il) <- transModule opts env1 qlfd
     -- generate interface file
     let intf = exportInterface env2 qlfd
     writeInterface opts fn intf
@@ -349,6 +345,9 @@ writeAbstractCurry opts fname env modul = do
   uacyTarget = UntypedAbstractCurry `elem` optTargetTypes opts
   useSubDir  = optUseSubdir opts
 
+type Dump = (DumpLevel, CompilerEnv, String)
+
+-- |Translate FlatCurry into the intermediate language 'IL'
 -- |The 'dump' function writes the selected information to standard output.
 doDump :: MonadIO m => DebugOpts -> Dump -> m ()
 doDump opts (level, env, dump) = when (level `elem` dbDumpLevels opts) $ do
