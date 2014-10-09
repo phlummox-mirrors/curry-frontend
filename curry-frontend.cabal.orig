@@ -1,0 +1,200 @@
+Name:          curry-frontend
+Version:       0.3.10
+Cabal-Version: >= 1.6
+Synopsis:      Compile the functional logic language Curry to several
+               intermediate formats
+Description:   The Curry Frontend consists of the executable program "cymake".
+               It is used by various backends to compile Curry programs to
+               an internal representation.
+               The code is a stripped-down version of an early version of
+               the Muenster Curry Compiler
+               (<http://danae.uni-muenster.de/~lux/curry/>)
+Category:      Language
+License:       OtherLicense
+License-File:  LICENSE
+Author:        Wolfgang Lux, Martin Engelke, Bernd Brassel, Holger Siegel,
+               Bjoern Peemoeller
+Maintainer:    Bjoern Peemoeller
+Bug-Reports:   mailto:bjp@informatik.uni-kiel.de
+Homepage:      http://curry-language.org
+Build-Type:    Simple
+Stability:     experimental
+
+Extra-Source-Files: LIESMICH
+Data-Files:         src/Html/currydoc.css
+
+Flag split-syb
+  Description: Has the syb functionality been split into the package syb?
+  Default:     True
+
+Executable cymake
+  hs-source-dirs: src
+  Main-is:        cymake.hs
+<<<<<<< HEAD
+  if flag(split-syb)
+    Build-Depends: base == 4.*, syb
+  else
+    Build-Depends: base == 3.*
+  Build-Depends:
+    curry-base == 0.3.8
+    , containers, either, mtl, pretty, transformers
+=======
+  Build-Depends: base == 4.*, curry-base == 0.3.10
+    , containers, directory, mtl, process, transformers, syb
+>>>>>>> master
+  ghc-options: -Wall
+  Other-Modules:
+    Base.CurryTypes
+    , Base.Expr
+    , Base.Idents
+    , Base.Messages
+    , Base.Names
+    , Base.NestEnv
+    , Base.SCC
+    , Base.ScopeEnv
+    , Base.Subst
+    , Base.TopEnv
+    , Base.Types
+    , Base.TypeSubst
+    , Base.Typing
+    , Base.Utils
+    , Checks
+    , Checks.Dictionaries
+    , Checks.ExportCheck
+    , Checks.InterfaceCheck
+    , Checks.InterfaceSyntaxCheck
+    , Checks.KindCheck
+    , Checks.PrecCheck
+    , Checks.SyntaxCheck
+    , Checks.TypeCheck
+    , Checks.TypeClassesCheck
+    , Checks.WarnCheck
+    , CompilerEnv
+    , CompilerOpts
+    , CurryBuilder
+    , CurryDeps
+    , Env.ClassEnv
+    , Env.Interface
+    , Env.ModuleAlias
+    , Env.OpPrec
+    , Env.TypeConstructor
+    , Env.Value
+    , Exports
+    , Generators
+    , Generators.GenAbstractCurry
+    , Generators.GenFlatCurry
+    , Html.CurryHtml
+    , Html.SyntaxColoring
+    , IL
+    , IL.Pretty
+    , IL.Type
+    , Imports
+    , Interfaces
+    , Modules
+    , ModuleSummary
+    , Transformations
+    , Transformations.CaseCompletion
+    , Transformations.CurryToIL
+    , Transformations.Desugar
+    , Transformations.Lift
+    , Transformations.Qual
+    , Transformations.Simplify
+    , Transformations.TypeSigs
+Library
+  hs-source-dirs:  src
+  Build-Depends:   filepath, base
+  ghc-options: -Wall
+  Exposed-Modules:
+    Files.CymakePath
+    Base.Utils
+  Other-Modules:
+    Paths_curry_frontend
+
+
+Executable cmpPrograms
+  hs-source-dirs: src
+  Main-is:        cmpPrograms.hs
+  if flag(split-syb)
+    Build-Depends: base == 4.*, syb
+  else
+    Build-Depends: base == 3.*
+  Build-Depends:
+    curry-base == 0.3.8
+  ghc-options: -Wall
+
+
+Test-Suite TestTypeChecking
+    hs-source-dirs: test, src
+    type:       detailed-0.9
+    test-module: TestTypeChecking
+    build-depends: base, pretty, directory, curry-base, filepath, containers, mtl, syb,
+      -- Cabal 1.16.0 introduces a new test suite format
+      transformers, Cabal >= 1.9.2 && <= 1.14.0, curry-base == 0.3.8
+    Other-Modules:
+     Base.CurryTypes
+     , Base.Expr
+     , Base.Idents
+     , Base.Messages
+     , Base.Names
+     , Base.NestEnv
+     , Base.SCC
+     , Base.ScopeEnv
+     , Base.Subst
+     , Base.TopEnv
+     , Base.Types
+     , Base.TypeSubst
+     , Base.Typing
+     , Base.Utils
+     , Checks
+     , Checks.Dictionaries
+     , Checks.ExportCheck
+     , Checks.InterfaceCheck
+     , Checks.InterfaceSyntaxCheck
+     , Checks.KindCheck
+     , Checks.PrecCheck
+     , Checks.SyntaxCheck
+     , Checks.TypeCheck
+     , Checks.TypeClassesCheck
+     , Checks.WarnCheck
+     , CompilerEnv
+     , CompilerOpts
+     , CurryBuilder
+     , CurryDeps
+     , Env.ClassEnv
+     , Env.Interface
+     , Env.ModuleAlias
+     , Env.OpPrec
+     , Env.TypeConstructor
+     , Env.Value
+     , Exports
+     , Frontend
+     , Generators
+     , Generators.GenAbstractCurry
+     , Generators.GenFlatCurry
+     , Html.CurryHtml
+     , Html.SyntaxColoring
+     , IL
+     , IL.Pretty
+     , IL.Type
+     , IL.XML
+     , Imports
+     , InterfaceEquivalence
+     , Interfaces
+     , Modules
+     , ModuleSummary
+     , Transformations
+     , Transformations.CaseCompletion
+     , Transformations.CurryToIL
+     , Transformations.Desugar
+     , Transformations.Lift
+     , Transformations.Qual
+     , Transformations.Simplify
+     , Transformations.TypeSigs
+    ghc-options: -Wall 
+
+-- Executable TestTypeCheckingHpc
+--     hs-source-dirs: test, src
+--     main-is:    TestTypeCheckingHpc.hs
+--     build-depends: base, pretty, directory, curry-base, filepath, containers, mtl, syb,
+--       transformers, Cabal >= 1.9.2, curry-base == 0.3.8
+--     ghc-options: -Wall -fhpc
