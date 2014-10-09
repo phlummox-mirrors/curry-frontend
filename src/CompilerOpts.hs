@@ -195,6 +195,7 @@ data DumpLevel
   | DumpSyntaxChecked -- ^ dump source code after syntax checking
   | DumpPrecChecked   -- ^ dump source code after precedence checking
   | DumpTypeChecked   -- ^ dump source code after type checking
+  | DumpExportChecked -- ^ dump source code after export checking
   | DumpQualified     -- ^ dump source  after qualification
   | DumpDesugared     -- ^ dump source  after desugaring
   | DumpSimplified    -- ^ dump source  after simplification
@@ -210,6 +211,7 @@ dumpLevel = [ (DumpParsed       , "dump-parse", "parse tree"               )
             , (DumpSyntaxChecked, "dump-sc"   , "syntax checker output"    )
             , (DumpPrecChecked  , "dump-pc"   , "precedence checker output")
             , (DumpTypeChecked  , "dump-tc"   , "type checker output"      )
+            , (DumpExportChecked, "dump-ec"   , "export checker output"    )
             , (DumpQualified    , "dump-qual" , "qualifier output"         )
             , (DumpDesugared    , "dump-ds"   , "desugarer output"         )
             , (DumpSimplified   , "dump-simpl", "simplifier output"        )

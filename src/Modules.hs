@@ -191,28 +191,31 @@ checkInterfaces opts iEnv = mapM_ checkInterface (Map.elems iEnv)
 -- ---------------------------------------------------------------------------
 
 -- TODO: The order of the checks should be improved!
--- TODO (2012-01-05, bjp): The export specification check for untyped
---   AbstractCurry is deactivated as it requires the value information
---   collected by the type checker.
 checkModule :: Options -> (CompilerEnv, CS.Module)
             -> CYIO (CompilerEnv, CS.Module)
 checkModule opts (env, mdl) = do
-  doDump debugOpts (DumpParsed       , env , show $ CS.ppModule mdl)
-  (env1, kc) <- kindCheck   opts env mdl -- should be only syntax checking ?
-  doDump debugOpts (DumpKindChecked  , env1, show $ CS.ppModule kc)
+  showDump (DumpParsed       , env , presentCS mdl)
+   -- Should be separated into kind checking and type syntax checking (see MCC)
+  (env1, kc) <- kindCheck   opts env mdl
+  showDump (DumpKindChecked  , env1, presentCS kc)
   (env2, sc) <- syntaxCheck opts env1 kc
-  doDump debugOpts (DumpSyntaxChecked, env2, show $ CS.ppModule sc)
+  showDump (DumpSyntaxChecked, env2, presentCS sc)
   (env3, pc) <- precCheck   opts env2 sc
-  doDump debugOpts (DumpPrecChecked  , env3, show $ CS.ppModule pc)
-  (env4, tc) <- if withTypeCheck
-                   then typeCheck opts env3 pc >>= uncurry (exportCheck opts)
-                   else return (env3, pc)
-  doDump debugOpts (DumpTypeChecked  , env4, show $ CS.ppModule tc)
-  return (env4, tc)
+  showDump (DumpPrecChecked  , env3, presentCS pc)
+  (env4, tc) <- typeCheck opts env3 pc
+  showDump (DumpTypeChecked  , env4, presentCS tc)
+  -- TODO: This is a workaround to avoid the expansion of the export
+  -- specification for generating the HTML listing.
+  -- It would be better if checking and expansion are separated.
+  if null (optTargetTypes opts)
+    then return (env4, tc)
+    else do
+      (env5, ec) <- exportCheck opts env4 tc
+      showDump (DumpExportChecked, env5, presentCS ec)
+      return (env5, ec)
   where
-  debugOpts = optDebugOpts opts
-  withTypeCheck = any (`elem` optTargetTypes opts)
-                      [FlatCurry, ExtendedFlatCurry, AbstractCurry]
+  showDump  = doDump (optDebugOpts opts)
+  presentCS = if dbDumpRaw (optDebugOpts opts) then show else show . CS.ppModule
 
 -- ---------------------------------------------------------------------------
 -- Translating a module
