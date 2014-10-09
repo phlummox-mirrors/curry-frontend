@@ -115,7 +115,7 @@ moduleIdentDeps :: Options -> SourceEnv -> ModuleIdent -> CYIO SourceEnv
 moduleIdentDeps opts sEnv m = case Map.lookup m sEnv of
   Just _  -> return sEnv
   Nothing -> do
-    mFile <- liftIO $ lookupCurryModule (optImportPaths opts)
+    mFile <- liftIO $ lookupCurryModule ("." : optImportPaths opts)
                                         (optLibraryPaths opts) m
     case mFile of
       Nothing -> return $ Map.insert m Unknown sEnv

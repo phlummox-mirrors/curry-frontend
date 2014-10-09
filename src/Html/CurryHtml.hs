@@ -39,9 +39,9 @@ source2html opts f = do
   let baseName   = takeBaseName f
       outDir     = fromMaybe (dropFileName f) $ optHtmlDir opts
       outFile    = outDir </> baseName ++ "_curry.html"
-  srcFile <- liftIO $ lookupCurryFile (optImportPaths opts) f
   program <- filename2program opts (fromMaybe f srcFile)
   liftIO $ writeFile outFile (program2html baseName program)
+  srcFile <- liftIO $ lookupCurryFile ("." : optImportPaths opts) f
 
 -- @param importpaths
 -- @param filename

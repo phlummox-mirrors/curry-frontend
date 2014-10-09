@@ -96,7 +96,9 @@ loadModule opts fn = do
   -- check module header
   mdl    <- checkModuleHeader opts fn parsed
   -- load the imported interfaces into an InterfaceEnv
-  iEnv   <- loadInterfaces (optImportPaths opts) mdl
+  let paths = map (addCurrySubdir (optUseSubdir opts))
+                  ("." : optImportPaths opts)
+  iEnv   <- loadInterfaces paths mdl
   checkInterfaces opts iEnv
   -- add information of imported modules
   cEnv   <- importModules opts mdl iEnv
@@ -267,15 +269,15 @@ writeOutput opts fn (env, modul) = do
 
 -- |Output the parsed 'Module' on request
 writeParsed :: Options -> FilePath -> CS.Module -> IO ()
-writeParsed opts fn modul = when srcTarget $
-  writeModule useSubDir (sourceRepName fn) source
+writeParsed opts fn modul@(CS.Module _ m _ _ _) = when srcTarget $
+  writeModule (useSubDir $ sourceRepName fn) source
   where
   srcTarget  = Parsed `elem` optTargetTypes opts
-  useSubDir  = optUseSubdir opts
+  useSubDir  = addCurrySubdirModule (optUseSubdir opts) m
   source     = CS.showModule modul
 
 writeInterface :: Options -> FilePath -> CS.Interface -> IO ()
-writeInterface opts fn intf
+writeInterface opts fn intf@(CS.Interface m _ _)
   | optForce opts = outputInterface
   | otherwise     = do
       equal <- C.catch (matchInterface interfaceFile intf) ignoreIOException
@@ -285,7 +287,8 @@ writeInterface opts fn intf
   ignoreIOException _ = return False
 
   interfaceFile   = interfName fn
-  outputInterface = writeModule (optUseSubdir opts) interfaceFile
+  outputInterface = writeModule
+                    (addCurrySubdirModule (optUseSubdir opts) m interfaceFile)
                     (show $ CS.ppInterface intf)
 
 matchInterface :: FilePath -> CS.Interface -> IO Bool
@@ -303,19 +306,19 @@ writeFlat opts fn env modSum il = do
     writeFlatCurry opts fn env modSum il
     writeFlatIntf  opts fn env modSum il
   where
-  extTarget    = ExtendedFlatCurry `elem` optTargetTypes opts
-  fcyTarget    = FlatCurry         `elem` optTargetTypes opts
+  extTarget = ExtendedFlatCurry `elem` optTargetTypes opts
+  fcyTarget = FlatCurry         `elem` optTargetTypes opts
 
 -- |Export an 'IL.Module' into a FlatCurry file
 writeFlatCurry :: Options -> FilePath -> CompilerEnv -> ModuleSummary
                -> IL.Module -> IO ()
 writeFlatCurry opts fn env modSum il = do
-  when extTarget $ EF.writeExtendedFlat useSubDir (extFlatName fn) prog
-  when fcyTarget $ EF.writeFlatCurry    useSubDir (flatName    fn) prog
+  when extTarget $ EF.writeExtendedFlat (useSubDir $ extFlatName fn) prog
+  when fcyTarget $ EF.writeFlatCurry    (useSubDir $ flatName    fn) prog
   where
   extTarget = ExtendedFlatCurry `elem` optTargetTypes opts
   fcyTarget = FlatCurry         `elem` optTargetTypes opts
-  useSubDir = optUseSubdir opts
+  useSubDir = addCurrySubdirModule (optUseSubdir opts) (moduleIdent env)
   prog      = genFlatCurry modSum env il
 
 writeFlatIntf :: Options -> FilePath -> CompilerEnv -> ModuleSummary
@@ -329,21 +332,22 @@ writeFlatIntf opts fn env modSum il
       when (mfint == mfint) $ return () -- necessary to close file -- TODO
       unless (oldInterface `eqInterface` intf) $ outputInterface
   where
-  targetFile = flatIntName fn
-  emptyIntf = EF.Prog "" [] [] [] []
-  intf = genFlatInterface modSum env il
-  outputInterface = EF.writeFlatCurry (optUseSubdir opts) targetFile intf
+  targetFile      = flatIntName fn
+  emptyIntf       = EF.Prog "" [] [] [] []
+  intf            = genFlatInterface modSum env il
+  useSubDir       = addCurrySubdirModule (optUseSubdir opts) (moduleIdent env)
+  outputInterface = EF.writeFlatCurry (useSubDir targetFile) intf
 
 writeAbstractCurry :: Options -> FilePath -> CompilerEnv -> CS.Module -> IO ()
 writeAbstractCurry opts fname env modul = do
-  when  acyTarget $ AC.writeCurry useSubDir (acyName fname)
+  when  acyTarget $ AC.writeCurry (useSubDir $  acyName fname)
                   $ genTypedAbstractCurry env modul
-  when uacyTarget $ AC.writeCurry useSubDir (uacyName fname)
+  when uacyTarget $ AC.writeCurry (useSubDir $ uacyName fname)
                   $ genUntypedAbstractCurry env modul
   where
   acyTarget  = AbstractCurry        `elem` optTargetTypes opts
   uacyTarget = UntypedAbstractCurry `elem` optTargetTypes opts
-  useSubDir  = optUseSubdir opts
+  useSubDir  = addCurrySubdirModule (optUseSubdir opts) (moduleIdent env)
 
 type Dump = (DumpLevel, CompilerEnv, String)
 

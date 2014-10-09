@@ -57,7 +57,7 @@ findCurry opts s = do
   canBeFile    = isCurryFilePath s
   canBeModule  = isValidModuleName s
   moduleFile   = moduleNameToFile $ fromModuleName s
-  paths        = optImportPaths opts
+  paths        = "." : optImportPaths opts
   findFile     = if canBeFile
                     then liftIO $ lookupCurryFile paths s
                     else return Nothing
@@ -79,7 +79,8 @@ findCurry opts s = do
 makeCurry :: Options -> [(ModuleIdent, Source)] ->  CYIO ()
 makeCurry opts srcs = mapM_ process' (zip [1 ..] srcs)
   where
-  total = length srcs
+  total    = length srcs
+  tgtDir m = addCurrySubdirModule (optUseSubdir opts) m
 
   process' :: (Int, (ModuleIdent, Source)) -> CYIO ()
   process' (n, (m, Source fn ps is)) = do
@@ -89,8 +90,8 @@ makeCurry opts srcs = mapM_ process' (zip [1 ..] srcs)
     deps = fn : mapMaybe curryInterface is
 
     curryInterface i = case lookup i srcs of
-      Just (Source    fn' _ _) -> Just $ interfName fn'
-      Just (Interface fn'    ) -> Just $ interfName fn'
+      Just (Source    fn' _ _) -> Just $ tgtDir i $ interfName fn'
+      Just (Interface fn'    ) -> Just $ tgtDir i $ interfName fn'
       _                        -> Nothing
 
   process' _ = return ()
@@ -147,14 +148,16 @@ process :: Options -> (Int, Int)
         -> ModuleIdent -> FilePath -> [FilePath] -> CYIO ()
 process opts idx m fn deps
   | optForce opts = compile
-  | otherwise     = smake (interfName fn : destFiles) deps compile skip
+  | otherwise     = smake (tgtDir (interfName fn) : destFiles) deps compile skip
   where
   skip    = status opts $ compMessage idx "Skipping" m (fn, head destFiles)
   compile = do
     status opts $ compMessage idx "Compiling" m (fn, head destFiles)
     compileModule opts fn
 
-  destFiles = [ addCurrySubdir (optUseSubdir opts) (gen fn)
+  tgtDir = addCurrySubdirModule (optUseSubdir opts) m
+
+  destFiles = [ tgtDir (gen fn)
               | (tgt, gen) <- nameGens, tgt `elem` optTargetTypes opts]
   nameGens  =
     [ (FlatCurry            , flatName     )
