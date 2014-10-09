@@ -404,9 +404,9 @@ checkFieldExpression (Field _ _ e) = checkExpr e -- Hier auch "visitId ident" ?
 -- For external function declarations, this check is already performed
 -- during syntax checking.
 checkMissingTypeSignatures :: [Decl] -> WCM ()
-checkMissingTypeSignatures decls = warnFor WarnMissingSignatures $ do
-  let typedFs   = [f | TypeSig     _ fs _ <- decls, f <- fs]
-      untypedFs = [f | FunctionDecl _ f _ <- decls, f `notElem` typedFs]
+checkMissingTypeSignatures ds = warnFor WarnMissingSignatures $ do
+  let typedFs   = [f | TypeSig     _ fs _ <- ds, f <- fs]
+      untypedFs = [f | FunctionDecl _ f _ <- ds, f `notElem` typedFs]
   unless (null untypedFs) $ do
     mid   <- getModuleIdent
     tyScs <- mapM getTyScheme untypedFs
@@ -701,7 +701,8 @@ getConTy q = do
     [NewtypeConstructor _ (ForAllExist _ _ ty)] -> ty
     _                                           -> case qualLookupTC q tcEnv of
       [AliasType _ _ ty] -> ty
-      _                  -> internalError $ "Checks.WarnCheck.getConTy: " ++ show q
+      _                  -> internalError $
+        "Checks.WarnCheck.getConTy: " ++ show q
 
 -- |Retrieve all constructors of a given type.
 getTyCons :: QualIdent -> Type -> WCM [DataConstr]

@@ -110,7 +110,7 @@ compileInterface ctxt (p, m) fn = do
     Just src -> case runCYM (parseInterface fn src) of
       Left err -> report err
       Right intf@(Interface n is _) ->
-        if (m /= n)
+        if m /= n
           then report [errWrongInterface (first fn) m n]
           else do
             let (intf', intfErrs) = intfSyntaxCheck intf

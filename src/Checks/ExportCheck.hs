@@ -134,7 +134,8 @@ expandTypeWith tc cs = do
     [t] | isDataType   t -> do mapM_ (checkConstr $ constrs t) nubCons
                                return [ExportTypeWith (origName t) nubCons]
         | isRecordType t -> do mapM_ (checkLabel  $ labels  t) nubCons
-                               return [ExportTypeWith (origName t) (map renameLabel nubCons)]
+                               return [ExportTypeWith (origName t)
+                                        (map renameLabel nubCons)]
         | otherwise      -> report (errNonDataType tc) >> return []
     _  -> report (errAmbiguousType tc) >> return []
   where
