@@ -94,7 +94,7 @@ typeClassesCheck m opts decls0
   case runTcc tcCheck initTccState of 
     ((newClasses, instances), []) -> 
       let -- add newly generated dictionary types to type constructor environment  
-          tcEnv'  = foldr (bindTC False m tcEnv') tcEnv0 newDecls
+          tcEnv'  = foldr (bindTC m tcEnv') tcEnv0 newDecls
           -- recEnv' = foldr (bindTC True m tcEnv') tcEnv0 newDecls             
           
           -- translate contexts, instances and classes:
@@ -122,7 +122,7 @@ typeClassesCheck m opts decls0
     instDecls  = filter isInstanceDecl decls
     dataDecls  = filter (\x -> isDataDecl x || isNewtypeDecl x) decls
     typeSigs   = gatherTypeSigs decls
-    tcEnv      = foldr (bindTC False m tcEnv) tcEnv0 decls
+    tcEnv      = foldr (bindTC m tcEnv) tcEnv0 decls
     tcCheck    = do
       phase1
       hasErr1 <- hasError

@@ -408,8 +408,8 @@ checkFieldExpression (Field _ _ e) = checkExpr e -- Hier auch "visitId ident" ?
 -- during syntax checking.
 checkMissingTypeSignatures :: [Decl] -> WCM ()
 checkMissingTypeSignatures ds = warnFor WarnMissingSignatures $ do
-  let typedFs   = [f | TypeSig  _ _ fs _ _ <- decls, f <- fs]
-      untypedFs = [f | FunctionDecl _ _ _ f _ <- decls, f `notElem` typedFs]
+  let typedFs   = [f | TypeSig  _ _ fs _ _ <- ds, f <- fs]
+      untypedFs = [f | FunctionDecl _ _ _ f _ <- ds, f `notElem` typedFs]
   unless (null untypedFs) $ do
     mid   <- getModuleIdent
     tyScs <- mapM getTyScheme untypedFs

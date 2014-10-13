@@ -109,12 +109,8 @@ Library
 Executable cmpPrograms
   hs-source-dirs: src
   Main-is:        cmpPrograms.hs
-  if flag(split-syb)
-    Build-Depends: base == 4.*, syb
-  else
-    Build-Depends: base == 3.*
   Build-Depends:
-    curry-base == 0.3.10
+    curry-base == 0.3.10, base == 4.*
   ghc-options: -Wall
 
 

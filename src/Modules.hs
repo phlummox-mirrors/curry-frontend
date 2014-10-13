@@ -96,9 +96,11 @@ loadModule opts fn = do
   parsed <- parseModule opts fn
   -- check module header
   mdl    <- checkModuleHeader opts fn parsed
+  let paths = map (addCurrySubdir (optUseSubdir opts))
+              ("." : optImportPaths opts)
   -- load the imported interfaces into an InterfaceEnv
-  iEnv   <- loadInterfaces False (optImportPaths opts) mdl
-  iEnvTc <- loadInterfaces True (optImportPaths opts) mdl
+  iEnv   <- loadInterfaces False paths mdl
+  iEnvTc <- loadInterfaces True paths mdl
   checkInterfaces opts iEnv >> checkInterfaces opts iEnvTc
   -- add information of imported modules
   env    <- importModules False opts mdl iEnv
@@ -244,7 +246,7 @@ checkModule opts (envNonTc, envTc, mdl) = do
   (env6,  ec2) <- if withTypeCheck
                   then exportCheck opts env5e tc2
                   else return (env5e, tc2)
-  showDump (DumpExportChecked, env6, show' CS.ppModule ec2)
+  showDump (DumpExportChecked, env6, presentCS ec2)
   -- (env7,   ql) <- return $ qual opts env6 ec2
   -- doDump opts (DumpQualified    , env7, show' CS.ppModule ql)
   -- return (env7, ql, envEc1', ec1')
@@ -252,6 +254,8 @@ checkModule opts (envNonTc, envTc, mdl) = do
   where
   showDump  = doDump (optDebugOpts opts)
   presentCS = if dbDumpRaw (optDebugOpts opts) then show else show . CS.ppModule
+  withTypeCheck = any (`elem` optTargetTypes opts)
+                      [FlatCurry, ExtendedFlatCurry, AbstractCurry]
 
 -- ---------------------------------------------------------------------------
 -- Translating a module
@@ -318,7 +322,7 @@ writeParsed opts fn modul@(CS.Module _ m _ _ _) = when srcTarget $
   source     = CS.showModule modul
 
 writeInterfaces :: Options -> FilePath -> [CS.Interface] -> IO ()
-writeInterfaces opts fn [intf, intfTC]
+writeInterfaces opts fn [intf@(CS.Interface m _ _), intfTC]
   | optForce opts = outputInterface
   | otherwise     = do
       equal <- C.catch (matchInterface interfaceFile [intf, intfTC]) ignoreIOException
@@ -329,9 +333,10 @@ writeInterfaces opts fn [intf, intfTC]
 
   interfaceFile   = interfName fn
   outputInterface = writeModule
-                    (show 
-                      (CS.ppInterface "interface" intf
-                        $$ CS.ppInterface "interfaceTypeClasses" intfTC))
+                      (addCurrySubdirModule (optUseSubdir opts) m interfaceFile)
+                      (show 
+                         (CS.ppInterface "interface" intf
+                          $$ CS.ppInterface "interfaceTypeClasses" intfTC))
 writeInterfaces _ _ _ = internalError "writeInterfaces"
 
 matchInterface :: FilePath -> [CS.Interface] -> IO Bool
