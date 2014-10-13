@@ -121,7 +121,7 @@ compileInterface ctxt (p, m) fn = do
       Left err -> report err
       Right [intf0, intftc0] ->
         let intf@(Interface n is _) = if tcs then intftc0 else intf0 in
-        if (m /= n)
+        if m /= n
           then report [errWrongInterface (first fn) m n]
           else do
             let (intf', intfErrs) = intfSyntaxCheck intf

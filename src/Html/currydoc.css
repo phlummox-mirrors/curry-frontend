@@ -1,11 +1,15 @@
-/* Use monospace fonts for typewriter styles */
-pre, tt, code { font-family: monospace }
-
 /* Use always white background */
-body { background: white; color: black }
+body {
+  background: white;
+  color: black;
+  font-family: monospace;
+}
 
 /* Show hyperlinks without underscore */
-a:visited, a:link, a:active { text-decoration: none }
+a:visited, a:link, a:active {
+  text-decoration: none;
+  background: lightyellow;
+}
 
 .linenumbers {
   width        : 40px;
@@ -19,16 +23,16 @@ a:visited, a:link, a:active { text-decoration: none }
   padding-left: 10px;
 }
 
-.pragma  { color : green   }
-.comment { color : green   }
-.keyword { color : blue    }
-.symbol  { color : #C0C0C0 }
-.type    { color : #ff7f50 }
-.cons    { color : #ff00ff }
-.label   { color : #90EE90 }
-.func    { color : #800080 }
-.ident   { color : black   }
-.module  { color : #800000 }
-.number  { color : #008080 }
-.string  { color : #800000 }
-.char    { color : #800000 }
+.pragma  { color : green     }
+.comment { color : green     }
+.keyword { color : blue      }
+.symbol  { color : red       }
+.type    { color : orange    }
+.cons    { color : magenta   }
+.label   { color : darkgreen }
+.func    { color : purple    }
+.ident   { color : black     }
+.module  { color : brown     }
+.number  { color : teal      }
+.string  { color : maroon    }
+.char    { color : maroon    }

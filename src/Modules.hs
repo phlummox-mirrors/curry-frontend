@@ -192,28 +192,25 @@ checkInterfaces opts iEnv = mapM_ checkInterface (Map.elems iEnv)
 -- ---------------------------------------------------------------------------
 
 -- TODO: The order of the checks should be improved!
--- TODO (2012-01-05, bjp): The export specification check for untyped
---   AbstractCurry is deactivated as it requires the value information
---   collected by the type checker.
 -- CheckModule returns two export checked modules + the corresponding
 -- environments: One still with type class elements, the second without 
 -- type class elements. 
 checkModule :: Options -> (CompilerEnv, CompilerEnv, CS.Module)
             -> CYIO (CompilerEnv, CS.Module, CompilerEnv, CS.Module)
 checkModule opts (envNonTc, envTc, mdl) = do
-  doDump debugOpts (DumpParsed       , envTc, show' CS.ppModule mdl)
+  showDump (DumpParsed       , envTc, presentCS mdl)
   (env1,  kc) <- kindCheck opts envTc mdl -- should be only syntax checking ?
-  doDump debugOpts (DumpKindChecked  , env1, show' CS.ppModule kc)
+  showDump (DumpKindChecked  , env1, presentCS kc)
   (env2,  sc) <- syntaxCheck opts env1 kc
-  doDump debugOpts (DumpSyntaxChecked, env2, show $ CS.ppModule sc)
+  showDump (DumpSyntaxChecked, env2, presentCS sc)
   (env3,  pc) <- precCheck opts env2 sc
-  doDump debugOpts (DumpPrecChecked  , env3, show $ CS.ppModule pc)
+  showDump (DumpPrecChecked  , env3, presentCS pc)
   (env4, tcc) <- typeClassesCheck opts env3 pc
-  doDump debugOpts (DumpTypeClassesChecked, env4, show' CS.ppModule tcc)
+  showDump (DumpTypeClassesChecked, env4, presentCS tcc)
   (env5,  tc) <- if withTypeCheck
                  then typeCheck False opts env4 tcc
                  else return (env4, tcc)
-  doDump debugOpts (DumpTypeChecked  , env5, show' CS.ppModule tc)
+  showDump (DumpTypeChecked  , env5, presentCS tc)
   -- Run an export check here for exporting type class specific elements. As
   -- these are compiled out later, we already here have to set aside the
   -- export checked module and the environment 
@@ -230,7 +227,7 @@ checkModule opts (envNonTc, envTc, mdl) = do
   let (env5c, dicts') = if withTypeCheck
                         then typeSigs env5b dicts
                         else (env5b, dicts)
-  doDump debugOpts (DumpDictionaries , env5c, show' CS.ppModule dicts')
+  showDump (DumpDictionaries , env5c, presentCS dicts')
   (env5e, tc2) <- if withTypeCheck
                     -- Take the older environment env4 instead of env5c;
                     -- moreover, replace the value/type constructor environments with the 
@@ -243,44 +240,40 @@ checkModule opts (envNonTc, envTc, mdl) = do
                                   interfaceEnv = interfaceEnv envNonTc } 
                            dicts' 
                     else return (env5c, dicts')
-  doDump debugOpts (DumpTypeChecked2 , env5e, show' CS.ppModule tc2)
+  showDump (DumpTypeChecked2 , env5e, presentCS tc2)
   (env6,  ec2) <- if withTypeCheck
                   then exportCheck opts env5e tc2
                   else return (env5e, tc2)
-  doDump debugOpts (DumpExportChecked, env6, show' CS.ppModule ec2)
+  showDump (DumpExportChecked, env6, show' CS.ppModule ec2)
   -- (env7,   ql) <- return $ qual opts env6 ec2
   -- doDump opts (DumpQualified    , env7, show' CS.ppModule ql)
   -- return (env7, ql, envEc1', ec1')
   return (env6, ec2, envEc1', ec1')
   where
-  debugOpts = optDebugOpts opts
-  withTypeCheck = any (`elem` optTargetTypes opts)
-                      [FlatCurry, ExtendedFlatCurry, AbstractCurry]
-  show' pp = if dbDumpRaw debugOpts then show else show . pp
+  showDump  = doDump (optDebugOpts opts)
+  presentCS = if dbDumpRaw (optDebugOpts opts) then show else show . CS.ppModule
 
 -- ---------------------------------------------------------------------------
 -- Translating a module
 -- ---------------------------------------------------------------------------
 
-type Dump = (DumpLevel, CompilerEnv, String)
-
--- |Translate FlatCurry into the intermediate language 'IL'
 transModule :: Options -> CompilerEnv -> CS.Module
-            -> (CompilerEnv, IL.Module, [Dump])
-transModule opts env mdl = (env5, ilCaseComp, dumps)
+            -> IO (CompilerEnv, IL.Module)
+transModule opts env mdl = do
+  let (desugared , env1) = desugar        mdl        env
+  showDump (DumpDesugared    , env1, presentCS desugared)
+  let (simplified, env2) = simplify flat' desugared  env1
+  showDump (DumpSimplified   , env2, presentCS simplified)
+  let (lifted    , env3) = lift           simplified env2
+  showDump (DumpLifted       , env3, presentCS lifted    )
+  let (il        , env4) = ilTrans  flat' lifted     env3
+  showDump (DumpTranslated   , env4, presentIL il        )
+  let (ilCaseComp, env5) = completeCase   il         env4
+  showDump (DumpCaseCompleted, env5, presentIL ilCaseComp)
+  return (env5, ilCaseComp)
   where
-  flat' = FlatCurry `elem` optTargetTypes opts
-  (desugared , env1) = desugar        mdl        env
-  (simplified, env2) = simplify flat' desugared  env1
-  (lifted    , env3) = lift           simplified env2
-  (il        , env4) = ilTrans  flat' lifted     env3
-  (ilCaseComp, env5) = completeCase   il         env4
-  dumps = [ (DumpDesugared    , env1, presentCS desugared )
-          , (DumpSimplified   , env2, presentCS simplified)
-          , (DumpLifted       , env3, presentCS lifted    )
-          , (DumpTranslated   , env4, presentIL il        )
-          , (DumpCaseCompleted, env5, presentIL ilCaseComp)
-          ]
+  flat'     = FlatCurry `elem` optTargetTypes opts
+  showDump  = doDump (optDebugOpts opts)
   presentCS = if dumpRaw then show else show . CS.ppModule
   presentIL = if dumpRaw then show else show . IL.ppModule
   dumpRaw   = dbDumpRaw (optDebugOpts opts)
@@ -297,9 +290,7 @@ writeOutput opts fn (env, modul) (tcExportEnv, tcExportModule) = do
   doDump (optDebugOpts opts) (DumpQualified, env1, show $ CS.ppModule qlfd)
   writeAbstractCurry opts fn env1 qlfd
   when withFlat $ do
-    let (env2, il, dumps) = transModule opts env1 qlfd
-    -- dump intermediate results
-    mapM_ (doDump (optDebugOpts opts)) dumps
+    (env2, il) <- transModule opts env1 qlfd
     -- generate interface file
     let intf = exportInterface env2 qlfd False
         tcIntf = exportInterface tcExportEnv tcExportModule True
@@ -319,11 +310,11 @@ writeOutput opts fn (env, modul) (tcExportEnv, tcExportModule) = do
 
 -- |Output the parsed 'Module' on request
 writeParsed :: Options -> FilePath -> CS.Module -> IO ()
-writeParsed opts fn modul = when srcTarget $
-  writeModule useSubDir (sourceRepName fn) source
+writeParsed opts fn modul@(CS.Module _ m _ _ _) = when srcTarget $
+  writeModule (useSubDir $ sourceRepName fn) source
   where
   srcTarget  = Parsed `elem` optTargetTypes opts
-  useSubDir  = optUseSubdir opts
+  useSubDir  = addCurrySubdirModule (optUseSubdir opts) m
   source     = CS.showModule modul
 
 writeInterfaces :: Options -> FilePath -> [CS.Interface] -> IO ()
@@ -337,7 +328,7 @@ writeInterfaces opts fn [intf, intfTC]
   ignoreIOException _ = return False
 
   interfaceFile   = interfName fn
-  outputInterface = writeModule (optUseSubdir opts) interfaceFile
+  outputInterface = writeModule
                     (show 
                       (CS.ppInterface "interface" intf
                         $$ CS.ppInterface "interfaceTypeClasses" intfTC))
@@ -361,19 +352,19 @@ writeFlat opts fn env modSum il = do
     writeFlatCurry opts fn env modSum il
     writeFlatIntf  opts fn env modSum il
   where
-  extTarget    = ExtendedFlatCurry `elem` optTargetTypes opts
-  fcyTarget    = FlatCurry         `elem` optTargetTypes opts
+  extTarget = ExtendedFlatCurry `elem` optTargetTypes opts
+  fcyTarget = FlatCurry         `elem` optTargetTypes opts
 
 -- |Export an 'IL.Module' into a FlatCurry file
 writeFlatCurry :: Options -> FilePath -> CompilerEnv -> ModuleSummary
                -> IL.Module -> IO ()
 writeFlatCurry opts fn env modSum il = do
-  when extTarget $ EF.writeExtendedFlat useSubDir (extFlatName fn) prog
-  when fcyTarget $ EF.writeFlatCurry    useSubDir (flatName    fn) prog
+  when extTarget $ EF.writeExtendedFlat (useSubDir $ extFlatName fn) prog
+  when fcyTarget $ EF.writeFlatCurry    (useSubDir $ flatName    fn) prog
   where
   extTarget = ExtendedFlatCurry `elem` optTargetTypes opts
   fcyTarget = FlatCurry         `elem` optTargetTypes opts
-  useSubDir = optUseSubdir opts
+  useSubDir = addCurrySubdirModule (optUseSubdir opts) (moduleIdent env)
   prog      = genFlatCurry modSum env il
 
 writeFlatIntf :: Options -> FilePath -> CompilerEnv -> ModuleSummary
@@ -387,22 +378,26 @@ writeFlatIntf opts fn env modSum il
       when (mfint == mfint) $ return () -- necessary to close file -- TODO
       unless (oldInterface `eqInterface` intf) $ outputInterface
   where
-  targetFile = flatIntName fn
-  emptyIntf = EF.Prog "" [] [] [] []
-  intf = genFlatInterface modSum env il
-  outputInterface = EF.writeFlatCurry (optUseSubdir opts) targetFile intf
+  targetFile      = flatIntName fn
+  emptyIntf       = EF.Prog "" [] [] [] []
+  intf            = genFlatInterface modSum env il
+  useSubDir       = addCurrySubdirModule (optUseSubdir opts) (moduleIdent env)
+  outputInterface = EF.writeFlatCurry (useSubDir targetFile) intf
 
 writeAbstractCurry :: Options -> FilePath -> CompilerEnv -> CS.Module -> IO ()
 writeAbstractCurry opts fname env modul = do
-  when  acyTarget $ AC.writeCurry useSubDir (acyName fname)
+  when  acyTarget $ AC.writeCurry (useSubDir $  acyName fname)
                   $ genTypedAbstractCurry env modul
-  when uacyTarget $ AC.writeCurry useSubDir (uacyName fname)
+  when uacyTarget $ AC.writeCurry (useSubDir $ uacyName fname)
                   $ genUntypedAbstractCurry env modul
   where
   acyTarget  = AbstractCurry        `elem` optTargetTypes opts
   uacyTarget = UntypedAbstractCurry `elem` optTargetTypes opts
-  useSubDir  = optUseSubdir opts
+  useSubDir  = addCurrySubdirModule (optUseSubdir opts) (moduleIdent env)
 
+type Dump = (DumpLevel, CompilerEnv, String)
+
+-- |Translate FlatCurry into the intermediate language 'IL'
 -- |The 'dump' function writes the selected information to standard output.
 doDump :: MonadIO m => DebugOpts -> Dump -> m ()
 doDump opts (level, env, dump) = when (level `elem` dbDumpLevels opts) $ do

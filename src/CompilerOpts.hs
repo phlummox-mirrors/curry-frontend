@@ -27,7 +27,8 @@ import Data.List             (intercalate, nub)
 import Data.Maybe            (isJust)
 import System.Console.GetOpt
 import System.Environment    (getArgs, getProgName)
-import System.FilePath       (splitSearchPath)
+import System.FilePath
+  (addTrailingPathSeparator, normalise, splitSearchPath)
 
 import Curry.Files.Filenames (currySubdir)
 import Curry.Syntax.Extension
@@ -337,7 +338,9 @@ options =
       "search for libraries in dir[:dir]"
   , Option "i"  ["import-dir"]
       (ReqArg (withArg onOpts $ \ arg opts -> opts { optImportPaths =
-        nub $ optImportPaths opts ++ splitSearchPath arg}) "dir[:dir]")
+        nub $ optImportPaths opts ++
+              map (normalise . addTrailingPathSeparator) (splitSearchPath arg)
+              }) "dir[:dir]")
       "search for imports in dir[:dir]"
   , Option []  ["htmldir"]
       (ReqArg (withArg onOpts $ \ arg opts -> opts { optHtmlDir =

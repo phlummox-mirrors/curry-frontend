@@ -15,19 +15,22 @@ module Html.CurryHtml (source2html) where
 
 import Control.Monad.Writer
 
+import Data.List             (mapAccumL)
 import Data.Maybe            (fromMaybe, isJust)
-import System.FilePath       ((</>), dropFileName, takeBaseName)
+import Network.URI           (escapeURIString, isUnreserved)
+import System.FilePath       ((</>), dropFileName, joinPath, takeBaseName)
 
-import Curry.Base.Ident      (QualIdent (..), unqualify)
+import Curry.Base.Ident      (ModuleIdent (..), QualIdent (..), unqualify)
 import Curry.Base.Monad
 import Curry.Base.Pretty     (text)
+import Curry.Files.Filenames (moduleNameToFile)
 import Curry.Files.PathUtils (readModule, lookupCurryFile)
-import Curry.Syntax          (Module, lexSource)
+import Curry.Syntax          (Module (..), lexSource)
 
 import Html.SyntaxColoring
 
 import Base.Messages
-import CompilerOpts          (Options (..))
+import CompilerOpts          (Options (..), WarnOpts (..))
 import CurryBuilder          (buildCurry)
 import Modules               (loadAndCheckModule)
 import Transformations       (qual)
@@ -39,22 +42,22 @@ source2html opts f = do
   let baseName   = takeBaseName f
       outDir     = fromMaybe (dropFileName f) $ optHtmlDir opts
       outFile    = outDir </> baseName ++ "_curry.html"
-  srcFile <- liftIO $ lookupCurryFile (optImportPaths opts) f
-  program <- filename2program opts (fromMaybe f srcFile)
-  liftIO $ writeFile outFile (program2html baseName program)
+  srcFile <- liftIO $ lookupCurryFile ("." : optImportPaths opts) f
+  (m, program) <- filename2program opts (fromMaybe f srcFile)
+  liftIO $ writeFile outFile (program2html m program)
 
 -- @param importpaths
 -- @param filename
 -- @return program
-filename2program :: Options -> String -> CYIO [Code]
+filename2program :: Options -> String -> CYIO (ModuleIdent, [Code])
 filename2program opts f = do
   mbModule <- liftIO $ readModule f
   case mbModule of
     Nothing  -> failMessages [message $ text $ "Missing file: " ++ f]
     Just src -> do
-      toks <- liftCYM $ lexSource f src
-      typed <- fullParse opts f src
-      return (genProgram typed toks)
+      toks  <- liftCYM $ lexSource f src
+      typed@(Module _ m _ _ _) <- fullParse opts f src
+      return (m, genProgram typed toks)
 
 -- |Return the syntax tree of the source program 'src' (type 'Module'; see
 -- Module "CurrySyntax").after inferring the types of identifiers.
@@ -65,20 +68,26 @@ filename2program opts f = do
 fullParse :: Options -> FilePath -> String -> CYIO Module
 fullParse opts fn _ = do
   buildCurry (opts { optTargetTypes = []}) fn
-  (env, mdl) <- loadAndCheckModule opts fn
+  (env, mdl) <- loadAndCheckModule opts' fn
   return (fst $ qual opts env mdl)
+  where
+  opts' = opts { optWarnOpts    = (optWarnOpts opts) { wnWarn = False }
+               , optTargetTypes = []
+               }
 
 -- generates htmlcode with syntax highlighting
 -- @param modulname
 -- @param a program
 -- @return HTMLcode
-program2html :: String -> [Code] -> String
-program2html modulname codes = unlines
+program2html :: ModuleIdent -> [Code] -> String
+program2html m codes = unlines
   [ "<!DOCTYPE html>"
-  , "<html>", "<head>", "<title>Module " ++ modulname ++ "</title>"
-  , "<link rel=\"stylesheet\" type=\"text/css\" href=\"currydoc.css\"/>"
+  , "<html>", "<head>"
+  , "<meta http-equiv=\"Content-Type\" content=\"text/html;charset=utf-8\" />"
+  , "<title>" ++ titleHtml ++ "</title>"
+  , "<link rel=\"stylesheet\" type=\"text/css\" href=\"" ++ styleLink ++ "\"/>"
   , "</head>"
-  , "<body style=\"font-family:'Courier New', Arial;\">"
+  , "<body>"
   , "<table><tbody><tr>"
   , "<td class=\"linenumbers\"><pre>" ++ lineHtml ++ "</pre></td>"
   , "<td class=\"sourcecode\"><pre>" ++ codeHtml ++ "</pre></td>"
@@ -87,21 +96,35 @@ program2html modulname codes = unlines
   , "</html>"
   ]
   where
-  lineHtml = unlines $ map show [1 .. length (lines codeHtml)]
-  codeHtml = concatMap code2html codes
+  titleHtml = "Module " ++ show m
+  styleLink = makeTopPath m </> "currydoc.css"
+  lineHtml  = unlines $ map show [1 .. length (lines codeHtml)]
+  codeHtml  = concat $ snd $ mapAccumL (code2html m) [] codes
 
-code2html :: Code -> String
-code2html code@(Commentary _) =
-  spanTag (code2class code) (replace '<' "<span>&lt</span>" (code2string code))
-code2html c
-  | isCall c  = maybe tag (addHtmlLink   tag) (getQualIdent c)
-  | isDecl c  = maybe tag (addHtmlAnchor tag) (getQualIdent c)
-  | otherwise = tag
-  where tag = spanTag (code2class c) (htmlQuote (code2string c))
+code2html :: ModuleIdent -> [QualIdent] -> Code -> ([QualIdent], String)
+code2html m defs c
+  | isCall c  = (defs, maybe tag (addHtmlLink m tag) (getQualIdent c))
+  | isDecl c  = case getQualIdent c of
+      Just i | i `notElem` defs
+        -> (i:defs, spanTag (code2class c) (escIdent i) (escCode c))
+      _ -> (defs, tag)
+  | otherwise = (defs, tag)
+  where tag = spanTag (code2class c) "" (escCode c)
 
-spanTag :: String -> String -> String
-spanTag [] str = str
-spanTag cl str = "<span class=\"" ++ cl ++ "\">" ++ str ++ "</span>"
+escCode :: Code -> String
+escCode = htmlQuote . code2string
+
+escIdent :: QualIdent -> String
+escIdent = string2urlencoded . show . unqualify
+
+spanTag :: String -> String -> String -> String
+spanTag clV idV str
+  | null clV && null idV = str
+  | otherwise            = "<span" ++ codeclass ++ idValue ++ ">"
+                           ++ str ++ "</span>"
+  where
+  codeclass = if null clV then "" else " class=\"" ++ clV ++ "\""
+  idValue   = if null idV then "" else " id=\"" ++ idV ++ "\""
 
 -- which code has which css class
 -- @param code
@@ -123,23 +146,21 @@ code2class (NumberCode   _) = "number"
 code2class (StringCode   _) = "string"
 code2class (CharCode     _) = "char"
 
-replace :: Char -> String -> String -> String
-replace old new = foldr (\ x -> if x == old then (new ++) else ([x] ++)) ""
+addHtmlLink :: ModuleIdent -> String -> QualIdent -> String
+addHtmlLink m str qid =
+  "<a href=\"" ++ modPath ++ "#" ++ fragment  ++ "\">" ++ str ++ "</a>"
+  where
+  modPath       = maybe "" (makeRelativePath m) mmid
+  fragment      = string2urlencoded (show ident)
+  (mmid, ident) = (qidModule qid, qidIdent qid)
 
-addHtmlAnchor :: String -> QualIdent -> String
-addHtmlAnchor str qid = "<a name=\"" ++ anchor ++ "\"></a>" ++ str
-  where anchor = string2urlencoded (show (unqualify qid))
+makeRelativePath :: ModuleIdent -> ModuleIdent -> String
+makeRelativePath cur new
+  | cur == new = ""
+  | otherwise  = makeTopPath cur </> moduleNameToFile new ++ "_curry.html"
 
-addHtmlLink :: String -> QualIdent -> String
-addHtmlLink str qid =
-   let (maybeModIdent, ident) = (qidModule qid, qidIdent qid) in
-   "<a href=\"" ++
-   maybe "" (\ x -> show x ++ "_curry.html") maybeModIdent ++
-   "#" ++
-   string2urlencoded (show ident) ++
-   "\">" ++
-   str ++
-   "</a>"
+makeTopPath :: ModuleIdent -> String
+makeTopPath m = joinPath $ replicate (length (midQualifiers m) - 1) ".."
 
 isCall :: Code -> Bool
 isCall (TypeCons TypeExport _) = True
@@ -150,27 +171,28 @@ isCall (Identifier        _ _) = False
 isCall c                       = not (isDecl c) && isJust (getQualIdent c)
 
 isDecl :: Code -> Bool
-isDecl (DataCons ConsDeclare _) = True
-isDecl (Function FuncDeclare _) = True
-isDecl (TypeCons TypeDeclare _) = True
-isDecl _                        = False
+isDecl (DataCons ConsDeclare  _) = True
+isDecl (Function FuncDeclare  _) = True
+isDecl (TypeCons TypeDeclare  _) = True
+isDecl (Label    LabelDeclare _) = True
+isDecl _                         = False
 
 -- Translates arbitrary strings into equivalent urlencoded string.
 string2urlencoded :: String -> String
-string2urlencoded = id
+string2urlencoded = escapeURIString isUnreserved
 
 htmlQuote :: String -> String
 htmlQuote [] = []
 htmlQuote (c : cs)
-  | c == '<'    = "&lt;"    ++ htmlQuote cs
-  | c == '>'    = "&gt;"    ++ htmlQuote cs
-  | c == '&'    = "&amp;"   ++ htmlQuote cs
-  | c == '"'    = "&quot;"  ++ htmlQuote cs
-  | c == '\228' = "&auml;"  ++ htmlQuote cs
-  | c == '\246' = "&ouml;"  ++ htmlQuote cs
-  | c == '\252' = "&uuml;"  ++ htmlQuote cs
-  | c == '\196' = "&Auml;"  ++ htmlQuote cs
-  | c == '\214' = "&Ouml;"  ++ htmlQuote cs
-  | c == '\220' = "&Uuml;"  ++ htmlQuote cs
-  | c == '\223' = "&szlig;" ++ htmlQuote cs
-  | otherwise   = c : htmlQuote cs
+  | c == '<'  = "&lt;"    ++ htmlQuote cs
+  | c == '>'  = "&gt;"    ++ htmlQuote cs
+  | c == '&'  = "&amp;"   ++ htmlQuote cs
+  | c == '"'  = "&quot;"  ++ htmlQuote cs
+  | c == 'ä'  = "&auml;"  ++ htmlQuote cs
+  | c == 'ö'  = "&ouml;"  ++ htmlQuote cs
+  | c == 'ü'  = "&uuml;"  ++ htmlQuote cs
+  | c == 'Ä'  = "&Auml;"  ++ htmlQuote cs
+  | c == 'Ö'  = "&Ouml;"  ++ htmlQuote cs
+  | c == 'Ü'  = "&Uuml;"  ++ htmlQuote cs
+  | c == 'ß'  = "&szlig;" ++ htmlQuote cs
+  | otherwise = c : htmlQuote cs

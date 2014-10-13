@@ -1,11 +1,27 @@
+{- |
+    Module      :  $Header$
+    Description :  Split module into code fragments
+    Copyright   :  (c)  ??  , someone else
+                        2014, Björn Peemöller
+    License     :  OtherLicense
+
+    Maintainer  :  bjp@informatik.uni-kiel.de
+    Stability   :  experimental
+    Portability :  portable
+
+    This module arranges the tokens of the module into different code
+    categories for HTML presentation. The parsed and typechecked module
+    is used to establish links between used identifiers and their definitions.
+-}
+
 module Html.SyntaxColoring
   ( Code (..), TypeUsage (..), ConsUsage (..)
-  , IdentUsage (..), FuncUsage (..)
+  , IdentUsage (..), FuncUsage (..), LabelUsage (..)
   , genProgram, code2string, getQualIdent
   ) where
 
 import Data.Function (on)
-import Data.List     (intercalate)
+import Data.List     (intercalate, sortBy)
 
 import Curry.Base.Ident
 import Curry.Base.Position
@@ -13,6 +29,7 @@ import Curry.Syntax
 
 import Base.Messages
 
+-- |Type of codes which are distinguished for HTML output
 data Code
   = Keyword     String
   | Space       Int
@@ -67,7 +84,6 @@ data LabelUsage
   | LabelRefer
     deriving Show
 
-
 -- @param list with parse-Results with descending quality,
 --        e.g. [typingParse, fullParse, parse]
 -- @param lex-Result
@@ -82,6 +98,7 @@ getQualIdent (DataCons    _ qid) = Just qid
 getQualIdent (Function    _ qid) = Just qid
 getQualIdent (Identifier  _ qid) = Just qid
 getQualIdent (TypeCons    _ qid) = Just qid
+getQualIdent (Label       _ qid) = Just qid
 getQualIdent  _                  = Nothing
 
 tokenToCodes :: Position -> [Code] -> [(Position, Token)] -> [Code]
@@ -95,8 +112,8 @@ tokenToCodes curPos ids toks@((pos, tok) : ts)
   = Space colDiff   : tokenToCodes (incr curPos colDiff) ids toks
   | isPragmaToken tok
   = let (pragmas, (end:rest)) = break (isPragmaEnd . snd) toks
-        pragmaStr       = intercalate " " $ map (showToken . snd) (pragmas ++ [end])
-    in  Pragma pragmaStr : tokenToCodes (incr curPos (length pragmaStr)) ids rest
+        str = intercalate " " $ map (showToken . snd) (pragmas ++ [end])
+    in  Pragma str : tokenToCodes (incr curPos (length str)) ids rest
   -- no identifier token
   | not (isTokenIdentifier tok)
   = tokenToCode tok : tokenToCodes newPos ids ts
@@ -115,7 +132,7 @@ tokenToCodes curPos ids toks@((pos, tok) : ts)
 
 code2string :: Code -> String
 code2string (Keyword         s) = s
-code2string (Space           i) = concat (replicate i " ")
+code2string (Space           i) = replicate i ' '
 code2string NewLine             = "\n"
 code2string (Pragma          s) = s
 code2string (DataCons    _ qid) = idName $ unqualify qid
@@ -144,7 +161,8 @@ tokenToCode tok@(Token cat _)
                                       $ showToken tok
   | cat `elem` whiteSpaceCategories   = Space 0
   | cat `elem` pragmaCategories       = Pragma     (showToken tok)
-  | otherwise = error $ "SyntaxColoring.tokenToCode: " ++ showToken tok
+  | otherwise                         = internalError $
+    "SyntaxColoring.tokenToCode: Unknown token" ++ showToken tok
 
 numCategories :: [Category]
 numCategories = [IntTok, FloatTok]
@@ -212,26 +230,24 @@ declPos (FreeDecl         p _      ) = p
 declPos (ClassDecl        p _ _ _ _) = p
 declPos (InstanceDecl   p _ _ _ _ _) = p
 
-lessDecl :: Decl -> Decl -> Bool
-lessDecl = (<) `on` declPos
+cmpDecl :: Decl -> Decl -> Ordering
+cmpDecl = compare `on` declPos
 
-lessImportDecl :: ImportDecl -> ImportDecl -> Bool
-lessImportDecl = (<) `on` (\ (ImportDecl p _ _ _ _) -> p)
-
-qsort :: (a -> a -> Bool) -> [a] -> [a]
-qsort _    []     = []
-qsort less (x:xs) = concat [ qsort less [y | y <- xs, less y x]
-                           , [x], qsort less [y | y <- xs, not $ less y x]]
+cmpImportDecl :: ImportDecl -> ImportDecl -> Ordering
+cmpImportDecl = compare `on` (\ (ImportDecl p _ _ _ _) -> p)
 
 -- -----------------------------------------------------------------------------
 -- Extract all identifiers mentioned in the source code as a Code entity
+-- in the order of their occurrence. The extracted information is then used
+-- to enrich the identifier tokens with additional information, e.g., for
+-- link generation.
 -- -----------------------------------------------------------------------------
 
 idsModule :: Module -> [Code]
 idsModule (Module _ mid es is ds) =
   let hdrCodes = ModuleName mid : idsExportSpec es
-      impCodes = concatMap idsImportDecl (qsort lessImportDecl is)
-      dclCodes = concatMap idsDecl       (qsort lessDecl ds)
+      impCodes = concatMap idsImportDecl (sortBy cmpImportDecl is)
+      dclCodes = concatMap idsDecl       (sortBy cmpDecl ds)
   in  map (addModuleIdent mid) $ hdrCodes ++ impCodes ++ dclCodes
 
 addModuleIdent :: ModuleIdent -> Code -> Code
@@ -323,14 +339,16 @@ idsTypeExpr (SpecialConstructorType _tcon _tys) = []
 
 
 idsFieldType :: ([Ident], TypeExpr) -> [Code]
-idsFieldType (fs, ty) = map (Label LabelDeclare . qualify) fs ++ idsTypeExpr ty
+idsFieldType (fs, ty) = map (Label LabelDeclare . qualify . unRenameIdent) fs
+                          ++ idsTypeExpr ty
 
 idsEquation :: Equation -> [Code]
 idsEquation (Equation _ lhs rhs) = idsLhs lhs ++ idsRhs rhs
 
 idsLhs :: Lhs -> [Code]
 idsLhs (FunLhs    f ps) = Function FuncDeclare (qualify f) : concatMap idsPat ps
-idsLhs (OpLhs p1 op p2) = idsPat p1 ++ [Function FuncDeclare $ qualify op] ++ idsPat p2
+idsLhs (OpLhs p1 op p2) = idsPat p1 ++ [Function FuncDeclare $ qualify op]
+                                    ++ idsPat p2
 idsLhs (ApLhs   lhs ps) = idsLhs lhs ++ concatMap idsPat ps
 
 idsRhs :: Rhs -> [Code]
@@ -346,7 +364,8 @@ idsPat (NegativePattern       _ _) = []
 idsPat (VariablePattern         v) = [Identifier IdDeclare (qualify v)]
 idsPat (ConstructorPattern qid ps) = DataCons ConsPattern qid
                                       : concatMap idsPat ps
-idsPat (InfixPattern    p1 qid p2) = idsPat p1 ++ DataCons ConsPattern qid : idsPat p2
+idsPat (InfixPattern    p1 qid p2) = idsPat p1 ++
+                                       DataCons ConsPattern qid : idsPat p2
 idsPat (ParenPattern            p) = idsPat p
 idsPat (TuplePattern         _ ps) = concatMap idsPat ps
 idsPat (ListPattern          _ ps) = concatMap idsPat ps
@@ -354,9 +373,9 @@ idsPat (AsPattern             v p) = Identifier IdDeclare (qualify v) : idsPat p
 idsPat (LazyPattern           _ p) = idsPat p
 idsPat (FunctionPattern    qid ps) = Function FuncCall qid
                                       : concatMap idsPat ps
-idsPat (InfixFuncPattern  p1 f p2) = idsPat p1 ++ Function FuncInfix f : idsPat p2
-idsPat (RecordPattern         _ _) =
-  internalError "SyntaxColoring.idsPat: record pattern"
+idsPat (InfixFuncPattern  p1 f p2) = idsPat p1 ++
+                                      Function FuncInfix f : idsPat p2
+idsPat (RecordPattern        fs _) = concatMap (idsField idsPat) fs
 
 idsExpr :: Expression -> [Code]
 idsExpr (Literal                _) = []
@@ -384,11 +403,14 @@ idsExpr (Let                 ds e) = concatMap idsDecl ds ++ idsExpr e
 idsExpr (Do               stmts e) = concatMap idsStmt stmts ++ idsExpr e
 idsExpr (IfThenElse    _ e1 e2 e3) = concatMap idsExpr [e1, e2, e3]
 idsExpr (Case          _ _ e alts) = idsExpr e ++ concatMap idsAlt alts
-idsExpr (RecordConstr          fs) = concatMap idsField fs
-  where idsField (Field _ l e) = Label LabelRefer (qualify l) : idsExpr e
-idsExpr (RecordSelection      e l) = idsExpr e ++ [Label LabelRefer (qualify l)]
-idsExpr (RecordUpdate        fs e) = concatMap idsField fs ++ idsExpr e
-  where idsField (Field _ l e') = Label LabelRefer (qualify l) : idsExpr e'
+idsExpr (RecordConstr          fs) = concatMap (idsField idsExpr) fs
+idsExpr (RecordSelection      e l)
+  = idsExpr e ++ [Label LabelRefer (qualify $ unRenameIdent l)]
+idsExpr (RecordUpdate        fs e) = concatMap (idsField idsExpr) fs
+                                     ++ idsExpr e
+
+idsField :: (a -> [Code]) -> Field a -> [Code]
+idsField f (Field _ l x) = Label LabelRefer (qualify $ unRenameIdent l) : f x
 
 idsInfix :: InfixOp -> [Code]
 idsInfix (InfixOp   _ qid) = [Function FuncInfix qid]

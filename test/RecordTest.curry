@@ -12,6 +12,8 @@ full = { intField := 1, boolField := True }
 
 expr = empty :> intField + 1 == 0
 
+match { intField = i | _ } = i
+
 -- int :: { intField :: Int | a }
 -- int = { intField := 0 }
 
@@ -20,4 +22,4 @@ type Record2 =
   , boolField2 :: Bool
   }
 
-test = { intField := 0, boolField2 := True }
+test = { intField2 := 0, boolField2 := True }
