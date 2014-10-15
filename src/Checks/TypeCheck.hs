@@ -267,17 +267,12 @@ checkTypeSynonyms m = mapM_ (checkTypeDecls m) . scc bound free
 checkTypeDecls :: ModuleIdent -> [Decl] -> TCM ()
 checkTypeDecls _ []                    =
   internalError "TypeCheck.checkTypeDecls: empty list"
-checkTypeDecls _ [DataDecl    _ _ _ _ _] = return ()
-checkTypeDecls _ [NewtypeDecl _ _ _ _ _] = return ()
-checkTypeDecls m [t@(TypeDecl  _ tc _ ty)]
-  -- allow recursive record declarations
-  | isRecordDecl t       = return ()
+checkTypeDecls _ [DataDecl    _ _ _ _] = return ()
+checkTypeDecls _ [NewtypeDecl _ _ _ _] = return ()
+checkTypeDecls m [TypeDecl  _ tc _ ty]
   | tc `elem` ft m ty [] = report $ errRecursiveTypes [tc]
   | otherwise            = return ()
-checkTypeDecls _ (t@(TypeDecl _ tc _ _) : ds)
-  -- allow mutually recursive record declarations
-  | isRecordDecl t || any isRecordDecl ds = return ()
-  | otherwise                             =
+checkTypeDecls _ (TypeDecl _ tc _ _ : ds) =
     report $ errRecursiveTypes $ tc : [tc' | TypeDecl _ tc' _ _ <- ds]
 checkTypeDecls _ _                     =
   internalError "TypeCheck.checkTypeDecls: no type synonym"
@@ -1355,22 +1350,20 @@ tcPattern p t@(FunctionPattern f ts) = do
         unifyArgs _ _ ty = internalError $ "TypeCheck.tcPattern: " ++ show ty
 tcPattern p (InfixFuncPattern t1 op t2) =
   tcPattern p (FunctionPattern op [t1,t2])
-tcPattern p r@(RecordPattern fs _) = do
-  recInfo <- getFieldIdent fs >>= getRecordInfo
-  case recInfo of
-    [AliasType qi n rty@(TypeRecord _ _)] -> do
-      (rty'@(TypeRecord fts' _), tys) <- inst' (ForAll BT.emptyContext n rty)
+tcPattern p r@(RecordPattern fs rt) =
+  case rt of
+    Just ty -> do
+      ty' <- tcPattern p ty
       fts <- mapM (tcFieldPatt tcPattern) fs
-      unifyLabels p
-                  "record pattern"
-                  (ppPattern 0 r)
-                  fts'
-                  rty'
-                  (map (\(id0, ty0) -> (id0, getType ty0)) fts)
-      theta <- getTypeSubst
-      return (noContext $ subst theta $ TypeConstructor qi tys)
-    info -> internalError $ "TypeCheck.tcExpr: Expected record type but got "
-              ++ show info
+      alpha <- freshVar id
+      let fts' = map (\(id0, ty0) -> (id0, getType ty0)) fts
+          rty = noContext $ TypeRecord fts' (Just alpha)
+      unify p "record pattern" (ppPattern 0 r) ty' rty
+      return rty
+    Nothing -> do
+      fts <- mapM (tcFieldPatt tcPattern) fs
+      let fts' = map (\(id0, ty) -> (id0, getType ty)) fts
+      return (noContext $ TypeRecord fts' Nothing)
 
 -- In contrast to usual patterns, the type checking routine for arguments of
 -- function patterns 'tcPatternFP' differs from 'tcPattern'
@@ -1453,22 +1446,20 @@ tcPatternFP p t@(FunctionPattern f ts) = do
         unifyArgs _ _ _ = internalError "TypeCheck.tcPatternFP"
 tcPatternFP p (InfixFuncPattern t1 op t2) =
   tcPatternFP p (FunctionPattern op [t1,t2])
-tcPatternFP p r@(RecordPattern fs _) = do
-  recInfo <- getFieldIdent fs >>= getRecordInfo
-  case recInfo of
-    [AliasType qi n rty@(TypeRecord _ _)] -> do
-      (rty'@(TypeRecord fts' _), tys) <- inst' (ForAll BT.emptyContext n rty)
-      fts <- mapM (tcFieldPatt tcPattern) fs
-      unifyLabels p
-                  "record pattern"
-                  (ppPattern 0 r)
-                  fts'
-                  rty'
-                  (map (\(id0, ty0) -> (id0, getType ty0)) fts)
-      theta <- getTypeSubst
-      return (noContext $ subst theta $ TypeConstructor qi tys)
-    info -> internalError $ "TypeCheck.tcExpr: Expected record type but got "
-              ++ show info
+tcPatternFP p r@(RecordPattern fs rt) =
+  case rt of
+    Just ty -> do
+      ty' <- tcPatternFP p ty
+      fts <- mapM (tcFieldPatt tcPatternFP) fs
+      alpha <- freshVar id
+      let fts' = map (\(id0, ty0) -> (id0, getType ty0)) fts
+          rty = noContext $ TypeRecord fts' (Just alpha)
+      unify p "record pattern" (ppPattern 0 r) ty' rty
+      return rty
+    Nothing -> do
+      fts <- mapM (tcFieldPatt tcPatternFP) fs
+      let fts' = map (\(id0, ty) -> (id0, getType ty)) fts
+      return (noContext $ TypeRecord fts Nothing)
 
 tcFieldPatt :: (Position -> Pattern -> TCM ConstrType) -> Field Pattern
             -> TCM (Ident, ConstrType)
@@ -1825,62 +1816,32 @@ tcExpr p (Case sref ct e alts) = do
           (rhs', ctyRhs@(cxRhs, _)) <- tcRhs tyEnv0 rhs
           unify p1 "case branch" doc ty2 ctyRhs
           return (Alt p1 t rhs', cxP ++ cxRhs)
-tcExpr p r@(RecordConstr fs) = do
-  recInfo <- getFieldIdent fs >>= getRecordInfo
-  case recInfo of
-    [AliasType qi n rty@(TypeRecord _ _)] -> do
-      (rty'@(TypeRecord fts' _), tys) <- inst' (ForAll BT.emptyContext n rty)
-      fts     <- mapM tcFieldExpr fs
-      let cxs = concatMap (fst . snd) (map snd fts)
-          fs' = map fst fts
-      unifyLabels p
-                  "record construction"
-                  (ppExpr 0 r)
-                  fts'
-                  rty'
-                  (map (\(id0, cty0) -> (id0, getType cty0)) (map snd fts))
-      theta <- getTypeSubst
-      return (RecordConstr fs' ,(cxs, subst theta $ TypeConstructor qi tys))
-    info -> internalError $ "TypeCheck.tcExpr: Expected record type but got "
-           ++ show info
+tcExpr _ (RecordConstr fs) = do
+    fs'AndFts <- mapM tcFieldExpr fs 
+    let fts = map snd fs'AndFts 
+        cxs = concatMap (fst . snd) fts
+        fs' = map fst fs'AndFts
+    return (RecordConstr fs', (cxs, TypeRecord 
+      (map (\(id0, cty) -> (id0, getType cty)) fts) Nothing))
 tcExpr p r@(RecordSelection e l) = do
-  recInfo <- getRecordInfo l
-  case recInfo of
-       [AliasType qi n rty@(TypeRecord _ _)] -> do
-         (ety,cty@(cx,_)) <- tcExpr p e
-         (TypeRecord fts _, tys) <- inst' (ForAll BT.emptyContext n rty)
-         let rtc = TypeConstructor qi tys
-         case lookup l fts of
-              Just lty -> do
-                unify p "record selection" (ppExpr 0 r) cty (noContext rtc)
-                theta <- getTypeSubst
-                cx' <- adjustContext cx
-                return (RecordSelection ety l, (cx',subst theta lty))
-              Nothing -> internalError "TypeCheck.tcExpr: Field not found."
-       info -> internalError $ "TypeCheck.tcExpr: Expected record type but got "
-                 ++ show info
+  (_ , lty) <- instLabel l
+  (e', cty@(cx, _)) <- tcExpr p e
+  alpha <- freshVar id
+  let rty = TypeRecord [(l, lty)] (Just alpha)
+  unify p "record selection" (ppExpr 0 r) cty (noContext rty)
+  -- TODO: adjusting context, because we have a situation similar to
+  -- Apply (?)
+  cx' <- adjustContext cx
+  return (RecordSelection e' l, (cx', lty))
 tcExpr p r@(RecordUpdate fs e) = do
-  recInfo <- getFieldIdent fs >>= getRecordInfo
-  case recInfo of
-    [AliasType qi n rty@(TypeRecord _ _)] -> do
-      (rty'@(TypeRecord fts' _), tys) <- inst' (ForAll BT.emptyContext n rty)
-      -- Type check field updates
-      fts <- mapM tcFieldExpr fs
-      unifyLabels p
-                  "record update"
-                  (ppExpr 0 r)
-                  fts'
-                  rty'
-                  (map (\(id0, cty0) -> (id0, getType cty0)) (map snd fts))
-      -- Type check record expression to be updated
-      (ety,cty) <- tcExpr p e
-      let rtc = TypeConstructor qi tys
-      unify p "record update" (ppExpr 0 r) cty (noContext rtc)
-      -- Return inferred type
-      theta <- getTypeSubst
-      return (RecordUpdate (map fst fts) ety,noContext $ subst theta rtc)
-    info -> internalError $ "TypeCheck.tcExpr: Expected record type but got "
-              ++ show info
+    (e', cty) <- tcExpr p e
+    fs'AndFts <- mapM tcFieldExpr fs
+    let fts = map snd fs'AndFts
+        fs' = map fst fs'AndFts
+    alpha <- freshVar id
+    let rty = TypeRecord (map (\(id0, cty0) -> (id0, getType cty0)) fts) (Just alpha)
+    unify p "record update" (ppExpr 0 r) cty (noContext rty)
+    return (RecordUpdate fs' e', cty)
 
 tcQual :: Position -> Statement -> TCM (Statement, BT.Context)
 tcQual p (StmtExpr  sref e) = do
@@ -2024,39 +1985,34 @@ unifyTypes _ _ (TypeSkolem k1) (TypeSkolem k2)
 unifyTypes m tcEnv (TypeRecord fs1 Nothing) tr2@(TypeRecord fs2 Nothing)
   | length fs1 == length fs2 = unifyTypedLabels m tcEnv fs1 tr2
 unifyTypes m _ ty1 ty2 = Left (errIncompatibleTypes m ty1 ty2)
-
--- bjp 2014-10-08: Deactivated because the parser can not parse
--- record extensions, thus, these cases should never occur. If they do,
--- there must be an error somewhere ...
-
--- unifyTypes m tcEnv tr1@(TypeRecord _ Nothing) (TypeRecord fs2 (Just a2)) =
---   either Left
---          (\res -> either Left
--- 	                   (Right . compose res)
---                          (unifyTypes m tcEnv (TypeVariable a2) tr1))
---          (unifyTypedLabels m tcEnv fs2 tr1)
--- unifyTypes m tcEnv tr1@(TypeRecord _ (Just _)) tr2@(TypeRecord _ Nothing) =
---   unifyTypes m tcEnv tr2 tr1
--- unifyTypes m tcEnv (TypeRecord fs1 (Just a1)) tr2@(TypeRecord fs2 (Just a2)) =
---   let (fs1', rs1, rs2) = splitFields fs1 fs2
---   in  either
---         Left
---         (\res ->
---           either
---             Left
--- 	      (\res' -> Right (compose res res'))
--- 	      (unifyTypeLists m tcEnv [TypeVariable a1,
--- 			         TypeRecord (fs1 ++ rs2) Nothing]
--- 	                        [TypeVariable a2,
--- 			         TypeRecord (fs2 ++ rs1) Nothing]))
---         (unifyTypedLabels m tcEnv fs1' tr2)
---   where
---   splitFields fsx fsy = split' [] [] fsy fsx
---   split' fs1' rs1 rs2 [] = (fs1',rs1,rs2)
---   split' fs1' rs1 rs2 ((l,ty):ltys) =
---     maybe (split' fs1' ((l,ty):rs1) rs2 ltys)
---           (const (split' ((l,ty):fs1') rs1 (remove l rs2) ltys))
---           (lookup l rs2)
+unifyTypes m tcEnv tr1@(TypeRecord _ Nothing) (TypeRecord fs2 (Just a2)) =
+  either Left
+         (\res -> either Left
+	                   (Right . compose res)
+                         (unifyTypes m tcEnv (TypeVariable a2) tr1))
+         (unifyTypedLabels m tcEnv fs2 tr1)
+unifyTypes m tcEnv tr1@(TypeRecord _ (Just _)) tr2@(TypeRecord _ Nothing) =
+  unifyTypes m tcEnv tr2 tr1
+unifyTypes m tcEnv (TypeRecord fs1 (Just a1)) tr2@(TypeRecord fs2 (Just a2)) =
+  let (fs1', rs1, rs2) = splitFields fs1 fs2
+  in  either
+        Left
+        (\res ->
+          either
+            Left
+	      (\res' -> Right (compose res res'))
+	      (unifyTypeLists m tcEnv [TypeVariable a1,
+			         TypeRecord (fs1 ++ rs2) Nothing]
+	                        [TypeVariable a2,
+			         TypeRecord (fs2 ++ rs1) Nothing]))
+        (unifyTypedLabels m tcEnv fs1' tr2)
+  where
+  splitFields fsx fsy = split' [] [] fsy fsx
+  split' fs1' rs1 rs2 [] = (fs1',rs1,rs2)
+  split' fs1' rs1 rs2 ((l,ty):ltys) =
+    maybe (split' fs1' ((l,ty):rs1) rs2 ltys)
+          (const (split' ((l,ty):fs1') rs1 (remove l rs2) ltys))
+          (lookup l rs2)
 
 unifyTypeLists :: ModuleIdent -> TCEnv -> [Type] -> [Type] -> Either Doc TypeSubst
 unifyTypeLists _ _      []           _            = Right idSubst
@@ -2067,15 +2023,15 @@ unifyTypeLists m tcEnv (ty1 : tys1) (ty2 : tys2) =
           either Left (Right . flip compose theta)
                  (unifyTypes m tcEnv (subst theta ty1) (subst theta ty2))
 
-unifyLabels :: Position -> String -> Doc -> [(Ident, Type)] -> Type -> [(Ident, Type)] -> TCM ()
-unifyLabels p what doc fs rty fs1 = mapM_ (unifyLabel p what doc fs rty) fs1
-
-unifyLabel :: Position -> String -> Doc -> [(Ident, Type)] -> Type -> (Ident, Type) -> TCM ()
-unifyLabel p what doc fs rty (l, ty) = case lookup l fs of
-  Nothing  -> do
-    m <- getModuleIdent
-    report $ posMessage p $ errMissingLabel m l rty
-  Just ty' -> unify p what doc (noContext ty') (noContext ty)
+-- unifyLabels :: Position -> String -> Doc -> [(Ident, Type)] -> Type -> [(Ident, Type)] -> TCM ()
+-- unifyLabels p what doc fs rty fs1 = mapM_ (unifyLabel p what doc fs rty) fs1
+--
+-- unifyLabel :: Position -> String -> Doc -> [(Ident, Type)] -> Type -> (Ident, Type) -> TCM ()
+-- unifyLabel p what doc fs rty (l, ty) = case lookup l fs of
+--   Nothing  -> do
+--     m <- getModuleIdent
+--     report $ posMessage p $ errMissingLabel m l rty
+--   Just ty' -> unify p what doc ty' ty
 
 unifyTypedLabels :: ModuleIdent -> TCEnv -> [(Ident,Type)] -> Type
                  -> Either Doc TypeSubst
@@ -2128,10 +2084,10 @@ freshConstrTypeVar = do
 freshSkolem :: TCM Type
 freshSkolem = fresh TypeSkolem
 
-inst' :: TypeScheme -> TCM (Type, [Type])
-inst' (ForAll _ n ty) = do
-  tys <- replicateM n freshTypeVar
-  return (expandAliasType tys ty, tys)
+-- inst' :: TypeScheme -> TCM (Type, [Type])
+-- inst' (ForAll n ty) = do
+--   tys <- replicateM n freshTypeVar
+--   return (expandAliasType tys ty, tys)
 
 inst :: TypeScheme -> TCM ConstrType
 inst (ForAll cx n ty) = do
@@ -2291,12 +2247,12 @@ expandType :: ModuleIdent -> TCEnv -> Type -> Type
 expandType m tcEnv (TypeConstructor tc tys) = case qualLookupTC tc tcEnv of
   [DataType     tc' _  _] -> TypeConstructor tc' tys'
   [RenamingType tc' _  _] -> TypeConstructor tc' tys'
-  [AliasType    tc' _ (TypeRecord _ _)] -> TypeConstructor tc' tys'
+--   [AliasType    tc' _ (TypeRecord _ _)] -> TypeConstructor tc' tys'
   [AliasType    _   _ ty] -> expandAliasType tys' ty
   _ -> case qualLookupTC (qualQualify m tc) tcEnv of
     [DataType     tc' _ _ ] -> TypeConstructor tc' tys'
     [RenamingType tc' _ _ ] -> TypeConstructor tc' tys'
-    [AliasType    tc' _ (TypeRecord _ _)] -> TypeConstructor tc' tys'
+--     [AliasType    tc' _ (TypeRecord _ _)] -> TypeConstructor tc' tys'
     [AliasType    _   _ ty] -> expandAliasType tys' ty
     _ -> internalError $ "TypeCheck.expandType " ++ show tc
   where tys' = map (expandType m tcEnv) tys
@@ -2322,29 +2278,29 @@ fsEnv = Set.unions . map (Set.fromList . typeSkolems) . localTypes
 localTypes :: ValueEnv -> [Type]
 localTypes tyEnv = [ty | (_, Value _ _ (ForAll _cx _ ty) _) <- localBindings tyEnv]
 
-getFieldIdent :: [Field a] -> TCM Ident
-getFieldIdent [] = internalError "TypeCheck.getFieldIdent: empty field"
-getFieldIdent (Field _ i _ : _) = return i
+-- getFieldIdent :: [Field a] -> TCM Ident
+-- getFieldIdent [] = internalError "TypeCheck.getFieldIdent: empty field"
+-- getFieldIdent (Field _ i _ : _) = return i
 
 -- Lookup record type for given field identifier
-getRecordInfo :: Ident -> TCM [TypeInfo]
-getRecordInfo i = do
-  tyEnv <- getValueEnv
-  tcEnv <- getTyConsEnv
-  case lookupValue i tyEnv of
-       [Label _ r _] -> return (qualLookupTC r tcEnv)
-       _             -> internalError $
-        "TypeCheck.getRecordInfo: No record found for identifier " ++ show i
+-- getRecordInfo :: Ident -> TCM [TypeInfo]
+-- getRecordInfo i = do
+--   tyEnv <- getValueEnv
+--   tcEnv <- getTyConsEnv
+--   case lookupValue i tyEnv of
+--        [Label _ r _] -> return (qualLookupTC r tcEnv)
+--        _             -> internalError $
+--         "TypeCheck.getRecordInfo: No record found for identifier " ++ show i
 
 -- ---------------------------------------------------------------------------
 -- Miscellaneous functions
 -- ---------------------------------------------------------------------------
 
--- remove :: Eq a => a -> [(a, b)] -> [(a, b)]
--- remove _ []         = []
--- remove k (kv : kvs)
---   | k == fst kv     = kvs
---   | otherwise       = kv : remove k kvs
+remove :: Eq a => a -> [(a, b)] -> [(a, b)]
+remove _ []         = []
+remove k (kv : kvs)
+  | k == fst kv     = kvs
+  | otherwise       = kv : remove k kvs
 
 -- ---------------------------------------------------------------------------
 -- Error functions
