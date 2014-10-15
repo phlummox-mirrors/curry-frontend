@@ -1062,7 +1062,6 @@ unifyTypes _ _ (TypeSkolem k1) (TypeSkolem k2)
   | k1 == k2 = Right idSubst
 unifyTypes m tcEnv (TypeRecord fs1 Nothing) tr2@(TypeRecord fs2 Nothing)
   | length fs1 == length fs2 = unifyTypedLabels m tcEnv fs1 tr2
-unifyTypes m _ ty1 ty2 = Left (errIncompatibleTypes m ty1 ty2)
 unifyTypes m tcEnv tr1@(TypeRecord _ Nothing) (TypeRecord fs2 (Just a2)) =
   either Left
          (\res -> either Left
@@ -1091,6 +1090,7 @@ unifyTypes m tcEnv (TypeRecord fs1 (Just a1)) tr2@(TypeRecord fs2 (Just a2)) =
     maybe (split' fs1' ((l,ty):rs1) rs2 ltys)
           (const (split' ((l,ty):fs1') rs1 (remove l rs2) ltys))
           (lookup l rs2)
+unifyTypes m _ ty1 ty2 = Left (errIncompatibleTypes m ty1 ty2)
 
 unifyTypeLists :: ModuleIdent -> TCEnv -> [Type] -> [Type] -> Either Doc TypeSubst
 unifyTypeLists _ _      []           _            = Right idSubst
