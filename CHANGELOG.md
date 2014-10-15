@@ -4,10 +4,6 @@ Change log for curry-frontend
 Under development
 =================
 
-  * Enabled declaration of (mutually) recursive record types
-
-  * Removed expansion of record types in type error messages
-
   * Replaced MessageM monad with CYT monads and moved CYT monads to curry-base
 
   * Implemented warnings for overlapping module aliases - fixes #14
