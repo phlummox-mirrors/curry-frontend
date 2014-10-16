@@ -76,10 +76,6 @@ bindType (IDataDecl      _ tc _ cs) = qualBindTopEnv "" tc
         constr (ConOpDecl  _ _ _ op _) = op
 bindType (INewtypeDecl   _ tc _ nc) = qualBindTopEnv "" tc (Data tc [nconstr nc])
   where nconstr (NewConstrDecl _ _ c _) = c
--- jrt 2014-10-16: record types are handled like data declarations; this is
--- necessary because type constructors of record types are not expanded anymore
--- and can occur in interfaces
-bindType (ITypeDecl _ tc _ (RecordType _ _)) = qualBindTopEnv "" tc (Data tc [])
 bindType (ITypeDecl       _ tc _ _) = qualBindTopEnv "" tc (Alias tc)
 bindType (IFunctionDecl    _ _ _ _) = id
 

@@ -179,11 +179,11 @@ identsType (RecordType      fs rty) xs =
 
 hiddenTypeDecl :: ModuleIdent -> TCEnv -> QualIdent -> IDecl
 hiddenTypeDecl m tcEnv tc = case qualLookupTC (qualQualify m tc) tcEnv of
-  [DataType     _  n _ ] -> hidingDataDecl tc n
-  [RenamingType _  n _ ] -> hidingDataDecl tc n
+  [DataType     _ n _] -> hidingDataDecl tc n
+  [RenamingType _ n _] -> hidingDataDecl tc n
   -- jrt 2014-10-16: Added for support of record types
-  [AliasType    qi n ty] -> iTypeDecl ITypeDecl m qi n (fromQualType m ty)
-  _                      -> internalError "Exports.hiddenTypeDecl"
+  [AliasType    _ n _] -> hidingDataDecl tc n
+  _                    -> internalError "Exports.hiddenTypeDecl"
   where hidingDataDecl tc1 n = HidingDataDecl NoPos tc1 $ take n identSupply
 
 hiddenTypes :: ModuleIdent -> [IDecl] -> [QualIdent]
