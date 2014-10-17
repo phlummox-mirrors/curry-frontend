@@ -48,7 +48,7 @@ transType = IL.transType
 -- |Remove syntactic sugar
 desugar :: Module -> CompilerEnv -> (Module, CompilerEnv)
 desugar mdl env = (mdl', env { valueEnv = tyEnv' })
-  where (mdl', tyEnv') = DS.desugar (extensions env) (valueEnv env) 
+  where (mdl', tyEnv') = DS.desugar (extensions env) (valueEnv env)
                                     (tyConsEnv env) mdl
 
 -- |Lift local declarations
@@ -64,4 +64,4 @@ qual opts env mdl = (mdl', qualifyEnv opts env)
 -- |Simplify the source code.
 simplify :: Bool -> Module -> CompilerEnv -> (Module, CompilerEnv)
 simplify flat mdl env = (mdl', env { valueEnv = tyEnv' })
-  where (mdl', tyEnv') = S.simplify flat (valueEnv env) mdl
+  where (mdl', tyEnv') = S.simplify flat (valueEnv env) (tyConsEnv env) mdl

@@ -31,7 +31,6 @@ import Base.CurryTypes (toQualType, toQualTypes)
 import Base.Messages
 import Base.TopEnv
 import Base.Types
-import Base.TypeSubst (expandAliasType)
 
 import Env.Interface
 import Env.ModuleAlias (importAliases, initAliasEnv)

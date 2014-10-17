@@ -130,7 +130,10 @@ getNextId = do
 -- ---------------------------------------------------------------------------
 
 getTypeOf :: Typeable t => t -> DsM Type
-getTypeOf t = getValueEnv >>= \ tyEnv -> return (typeOf tyEnv t)
+getTypeOf t = do
+  tyEnv <- getValueEnv
+  tcEnv <- getTyConsEnv
+  return (typeOf tyEnv tcEnv t)
 
 freshIdent :: String -> Int -> TypeScheme -> DsM Ident
 freshIdent prefix arity ty = do
@@ -336,10 +339,13 @@ dsPattern p ds (RecordPattern fs _)
 
 dsLiteral :: Literal -> DsM (Either Literal ([SrcRef], [Literal]))
 dsLiteral c@(Char             _ _) = return $ Left c
-dsLiteral (Int                v i) = (Left . fixType) `liftM` getValueEnv
-  where fixType tyEnv
-          | typeOf tyEnv v == floatType
-          = Float (srcRefOf $ idPosition v) (fromIntegral i)
+dsLiteral (Int                v i) = do
+  tyEnv <- getValueEnv
+  tcEnv <- getTyConsEnv
+  return (Left (fixType tyEnv tcEnv))
+  where fixType tyEnv' tcEnv'
+          | typeOf tyEnv' tcEnv' v == floatType =
+              Float (srcRefOf $ idPosition v) (fromIntegral i)
           | otherwise = Int v i
 dsLiteral f@(Float            _ _) = return $ Left f
 dsLiteral (String (SrcRef [i]) cs) = return $ Right
@@ -398,7 +404,8 @@ expandRhs e0 f (GuardedRhs es ds) = (Let ds . f) `liftM` expandGuards e0 es
 expandGuards :: Expression -> [CondExpr] -> DsM Expression
 expandGuards e0 es = do
   tyEnv <- getValueEnv
-  return $ if booleanGuards tyEnv es
+  tcEnv <- getTyConsEnv
+  return $ if booleanGuards tyEnv tcEnv es
               then foldr mkIfThenElse e0 es
               else mkCond es
   where mkIfThenElse (CondExpr p g e) = IfThenElse (srcRefOf p) g e
@@ -410,10 +417,10 @@ addConstraints cs e
   | null cs   = e
   | otherwise = apply prelCond [foldr1 (&) cs, e]
 
-booleanGuards :: ValueEnv -> [CondExpr] -> Bool
-booleanGuards _     []                    = False
-booleanGuards tyEnv (CondExpr _ g _ : es) =
-  not (null es) || typeOf tyEnv g == boolType
+booleanGuards :: ValueEnv -> TCEnv -> [CondExpr] -> Bool
+booleanGuards _     _     []                    = False
+booleanGuards tyEnv tcEnv (CondExpr _ g _ : es) =
+  not (null es) || typeOf tyEnv tcEnv g == boolType
 
 dsExpr :: Position -> Expression -> DsM Expression
 dsExpr p (Literal l) =
