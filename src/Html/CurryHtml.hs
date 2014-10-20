@@ -106,13 +106,16 @@ code2html m defs c
   | isCall c  = (defs, maybe tag (addHtmlLink m tag) (getQualIdent c))
   | isDecl c  = case getQualIdent c of
       Just i | i `notElem` defs
-        -> (i:defs, spanTag (code2class c) (show $ unqualify i) (escCode c))
+        -> (i:defs, spanTag (code2class c) (escIdent i) (escCode c))
       _ -> (defs, tag)
   | otherwise = (defs, tag)
   where tag = spanTag (code2class c) "" (escCode c)
 
 escCode :: Code -> String
 escCode = htmlQuote . code2string
+
+escIdent :: QualIdent -> String
+escIdent = htmlQuote . show . unqualify
 
 spanTag :: String -> String -> String -> String
 spanTag clV idV str
