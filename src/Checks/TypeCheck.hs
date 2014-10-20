@@ -185,11 +185,16 @@ checkTypeDecls _ []                    =
   internalError "TypeCheck.checkTypeDecls: empty list"
 checkTypeDecls _ [DataDecl    _ _ _ _] = return ()
 checkTypeDecls _ [NewtypeDecl _ _ _ _] = return ()
-checkTypeDecls m [TypeDecl  _ tc _ ty]
+checkTypeDecls m [t@(TypeDecl  _ tc _ ty)]
+  -- enable declaration of recursive record types
+  | isRecordDecl t       = return ()
   | tc `elem` ft m ty [] = report $ errRecursiveTypes [tc]
   | otherwise            = return ()
-checkTypeDecls _ (TypeDecl _ tc _ _ : ds) =
-    report $ errRecursiveTypes $ tc : [tc' | TypeDecl _ tc' _ _ <- ds]
+checkTypeDecls _ ts@(TypeDecl _ tc _ _ : ds)
+  -- enable declaration of mutually recursive record types
+  | any isRecordDecl ts = return ()
+  | otherwise           =
+      report $ errRecursiveTypes $ tc : [tc' | TypeDecl _ tc' _ _ <- ds]
 checkTypeDecls _ _                     =
   internalError "TypeCheck.checkTypeDecls: no type synonym"
 
