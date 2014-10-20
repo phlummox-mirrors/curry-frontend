@@ -194,16 +194,6 @@ argType (FunctionPattern f ts) = do
   where flatten (TypeArrow ty1 ty2) = ty1 : flatten ty2
         flatten ty = [ty]
 argType (InfixFuncPattern t1 op t2) = argType (FunctionPattern op [t1,t2])
--- argType (RecordPattern fs r) = case r of
---   Just rty -> do
---     tys  <- mapM fieldPattType fs
---     rty' <- argType rty
---     (TypeVariable i) <- freshTypeVar
---     unify rty' (TypeRecord tys (Just i))
---     return rty'
---   Nothing -> do
---     tys <- mapM fieldPattType fs
---     return (TypeRecord tys Nothing)
 argType (RecordPattern fs _) = do
   recInfo <- getFieldIdent fs >>= getRecordInfo
   case recInfo of
@@ -280,9 +270,6 @@ exprType (Case _ _ _ alts) = freshTypeVar >>= flip altType alts
   where altType ty [] = return ty
         altType ty (Alt _ _ rhs:alts1) =
           rhsType rhs >>= unify ty >> altType ty alts1
--- exprType (RecordConstr fs) = do
---   tys <- mapM fieldExprType fs
---   return (TypeRecord tys Nothing)
 exprType (RecordConstr fs) = do
   recInfo <- getFieldIdent fs >>= getRecordInfo
   case recInfo of
@@ -295,13 +282,6 @@ exprType (RecordConstr fs) = do
       return (subst theta' $ TypeConstructor qi tys)
     info -> internalError $
       "Base.Typing.exprType: Expected record type but got " ++ show info
--- exprType (RecordSelection r l) = do
---   tyEnv            <- getValueEnv
---   lty              <- instUniv (labelType l tyEnv)
---   rty              <- exprType r
---   (TypeVariable i) <- freshTypeVar
---   unify rty (TypeRecord [(l,lty)] (Just i))
---   return lty
 exprType (RecordSelection e l) = do
   recInfo <- getRecordInfo l
   case recInfo of
@@ -317,12 +297,6 @@ exprType (RecordSelection e l) = do
         Nothing -> internalError "Base.Typing.exprType: Field not found."
     info -> internalError $
       "Base.Typing.exprType: Expected record type but got " ++ show info
--- exprType (RecordUpdate fs r) = do
---   tys              <- mapM fieldExprType fs
---   rty              <- exprType r
---   (TypeVariable i) <- freshTypeVar
---   unify rty (TypeRecord tys (Just i))
---   return rty
 exprType (RecordUpdate fs e) = do
   recInfo <- getFieldIdent fs >>= getRecordInfo
   case recInfo of
@@ -430,18 +404,22 @@ unifyTypes (TypeSkolem k1) (TypeSkolem k2) theta
   | k1 == k2 = theta
 unifyTypes (TypeRecord fs1 Nothing) (TypeRecord fs2 Nothing) theta
   | length fs1 == length fs2 = foldr (unifyTypedLabels fs1) theta fs2
-unifyTypes tr1@(TypeRecord fs1 Nothing) (TypeRecord fs2 (Just a2)) theta =
-  unifyTypes (TypeVariable a2)
-             tr1
-             (foldr (unifyTypedLabels fs1) theta fs2)
-unifyTypes tr1@(TypeRecord _ (Just _)) tr2@(TypeRecord _ Nothing) theta =
-  unifyTypes tr2 tr1 theta
-unifyTypes (TypeRecord fs1 (Just a1)) (TypeRecord fs2 (Just a2)) theta =
-  unifyTypes (TypeVariable a1)
-             (TypeVariable a2)
-             (foldr (unifyTypedLabels fs1) theta fs2)
 unifyTypes ty1 ty2 _ = internalError $
   "Base.Typing.unify: (" ++ show ty1 ++ ") (" ++ show ty2 ++ ")"
+
+-- jrt 2014-10-20: Deactivated because the parser can not parse
+-- record extensions, thus, these cases should never occur. If they do,
+-- there must be an error somewhere ...
+-- unifyTypes tr1@(TypeRecord fs1 Nothing) (TypeRecord fs2 (Just a2)) theta =
+--   unifyTypes (TypeVariable a2)
+--              tr1
+--              (foldr (unifyTypedLabels fs1) theta fs2)
+-- unifyTypes tr1@(TypeRecord _ (Just _)) tr2@(TypeRecord _ Nothing) theta =
+--   unifyTypes tr2 tr1 theta
+-- unifyTypes (TypeRecord fs1 (Just a1)) (TypeRecord fs2 (Just a2)) theta =
+--   unifyTypes (TypeVariable a1)
+--              (TypeVariable a2)
+--              (foldr (unifyTypedLabels fs1) theta fs2)
 
 unifyTypedLabels :: [(Ident,Type)] -> (Ident,Type) -> TypeSubst -> TypeSubst
 unifyTypedLabels fs1 (l,ty) theta =

@@ -1077,35 +1077,39 @@ unifyTypes _ (TypeSkolem k1) (TypeSkolem k2)
   | k1 == k2 = Right idSubst
 unifyTypes m (TypeRecord fs1 Nothing) tr2@(TypeRecord fs2 Nothing)
   | length fs1 == length fs2 = unifyTypedLabels m fs1 tr2
-unifyTypes m tr1@(TypeRecord _ Nothing) (TypeRecord fs2 (Just a2)) =
-  either Left
-         (\res -> either Left
-	                   (Right . compose res)
-                         (unifyTypes m (TypeVariable a2) tr1))
-         (unifyTypedLabels m fs2 tr1)
-unifyTypes m tr1@(TypeRecord _ (Just _)) tr2@(TypeRecord _ Nothing) =
-  unifyTypes m tr2 tr1
-unifyTypes m (TypeRecord fs1 (Just a1)) tr2@(TypeRecord fs2 (Just a2)) =
-  let (fs1', rs1, rs2) = splitFields fs1 fs2
-  in  either
-        Left
-        (\res ->
-          either
-            Left
-	      (\res' -> Right (compose res res'))
-	      (unifyTypeLists m [TypeVariable a1,
-			         TypeRecord (fs1 ++ rs2) Nothing]
-	                        [TypeVariable a2,
-			         TypeRecord (fs2 ++ rs1) Nothing]))
-        (unifyTypedLabels m fs1' tr2)
-  where
-  splitFields fsx fsy = split' [] [] fsy fsx
-  split' fs1' rs1 rs2 [] = (fs1',rs1,rs2)
-  split' fs1' rs1 rs2 ((l,ty):ltys) =
-    maybe (split' fs1' ((l,ty):rs1) rs2 ltys)
-          (const (split' ((l,ty):fs1') rs1 (remove l rs2) ltys))
-          (lookup l rs2)
 unifyTypes m ty1 ty2 = Left (errIncompatibleTypes m ty1 ty2)
+
+-- bjp 2014-10-08: Deactivated because the parser can not parse
+-- record extensions, thus, these cases should never occur. If they do,
+-- there must be an error somewhere ...
+-- unifyTypes m tr1@(TypeRecord _ Nothing) (TypeRecord fs2 (Just a2)) =
+--   either Left
+--          (\res -> either Left
+-- 	                   (Right . compose res)
+--                          (unifyTypes m (TypeVariable a2) tr1))
+--          (unifyTypedLabels m fs2 tr1)
+-- unifyTypes m tr1@(TypeRecord _ (Just _)) tr2@(TypeRecord _ Nothing) =
+--   unifyTypes m tr2 tr1
+-- unifyTypes m (TypeRecord fs1 (Just a1)) tr2@(TypeRecord fs2 (Just a2)) =
+--   let (fs1', rs1, rs2) = splitFields fs1 fs2
+--   in  either
+--         Left
+--         (\res ->
+--           either
+--             Left
+-- 	      (\res' -> Right (compose res res'))
+-- 	      (unifyTypeLists m [TypeVariable a1,
+-- 			         TypeRecord (fs1 ++ rs2) Nothing]
+-- 	                        [TypeVariable a2,
+-- 			         TypeRecord (fs2 ++ rs1) Nothing]))
+--         (unifyTypedLabels m fs1' tr2)
+--   where
+--   splitFields fsx fsy = split' [] [] fsy fsx
+--   split' fs1' rs1 rs2 [] = (fs1',rs1,rs2)
+--   split' fs1' rs1 rs2 ((l,ty):ltys) =
+--     maybe (split' fs1' ((l,ty):rs1) rs2 ltys)
+--           (const (split' ((l,ty):fs1') rs1 (remove l rs2) ltys))
+--           (lookup l rs2)
 
 unifyTypeLists :: ModuleIdent -> [Type] -> [Type] -> Either Doc TypeSubst
 unifyTypeLists _ []           _            = Right idSubst
@@ -1328,11 +1332,11 @@ getRecordInfo i = do
 -- Miscellaneous functions
 -- ---------------------------------------------------------------------------
 
-remove :: Eq a => a -> [(a, b)] -> [(a, b)]
-remove _ []         = []
-remove k (kv : kvs)
-  | k == fst kv     = kvs
-  | otherwise       = kv : remove k kvs
+-- remove :: Eq a => a -> [(a, b)] -> [(a, b)]
+-- remove _ []         = []
+-- remove k (kv : kvs)
+--   | k == fst kv     = kvs
+--   | otherwise       = kv : remove k kvs
 
 -- ---------------------------------------------------------------------------
 -- Error functions
