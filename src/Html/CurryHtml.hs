@@ -34,6 +34,10 @@ import CompilerOpts          (Options (..), WarnOpts (..))
 import CurryBuilder          (buildCurry)
 import Modules               (loadAndCheckModule)
 import Transformations       (qual)
+import Paths_curry_frontend  (getDataFileName)
+
+cssFile :: FilePath
+cssFile = "currysource.css"
 
 -- translate source file into HTML file with syntaxcoloring
 -- @param sourcefilename
@@ -97,7 +101,7 @@ program2html m codes = unlines
   ]
   where
   titleHtml = "Module " ++ show m
-  styleLink = makeTopPath m </> "currydoc.css"
+  styleLink = makeTopPath m </> cssFile
   lineHtml  = unlines $ map show [1 .. length (lines codeHtml)]
   codeHtml  = concat $ snd $ mapAccumL (code2html m) [] codes
 

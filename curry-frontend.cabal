@@ -21,7 +21,9 @@ Build-Type:    Simple
 Stability:     experimental
 
 Extra-Source-Files: LIESMICH
-Data-Files:         src/Html/currydoc.css
+
+Data-Dir:   data
+Data-Files: currysource.css
 
 Flag network-uri
    description: Get Network.URI from the network-uri package

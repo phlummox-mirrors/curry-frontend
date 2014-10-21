@@ -1,16 +1,17 @@
 /* Use always white background */
 body {
-  background: white;
-  color: black;
+  background : white;
+  color      : black;
   font-family: monospace;
 }
 
-/* Show hyperlinks without underscore */
+/* Show hyperlinks without text decoration, but in light yellow */
 a:visited, a:link, a:active {
   text-decoration: none;
-  background: lightyellow;
+  background     : lightyellow;
 }
 
+/* Line numbers */
 .linenumbers {
   width        : 40px;
   text-align   : right;
@@ -19,10 +20,12 @@ a:visited, a:link, a:active {
   border-right : 1px solid grey;
 }
 
+/* Source code */
 .sourcecode  {
   padding-left: 10px;
 }
 
+/* Code highlighting */
 .pragma  { color : green     }
 .comment { color : green     }
 .keyword { color : blue      }
