@@ -258,14 +258,11 @@ checkType (TupleType     tys) = TupleType `liftM` mapM checkType tys
 checkType (ListType       ty) = ListType  `liftM` checkType ty
 checkType (ArrowType ty1 ty2) =
   liftM2 ArrowType (checkType ty1) (checkType ty2)
-checkType (RecordType   fs r) = do
+checkType (RecordType     fs) = do
   fs' <- forM fs $ \ (l, ty) -> do
     ty' <- checkType ty
     return (l, ty')
-  r'  <- case r of
-    Nothing -> return Nothing
-    Just ar -> Just `liftM` checkType ar
-  return $ RecordType fs' r'
+  return $ RecordType fs'
 
 checkClosed :: [Ident] -> TypeExpr -> KCM TypeExpr
 checkClosed tvs (ConstructorType tc tys) =
@@ -279,14 +276,11 @@ checkClosed tvs (ListType       ty) =
   ListType `liftM` checkClosed tvs ty
 checkClosed tvs (ArrowType ty1 ty2) =
   liftM2 ArrowType (checkClosed tvs ty1) (checkClosed tvs ty2)
-checkClosed tvs (RecordType   fs r) = do
+checkClosed tvs (RecordType     fs) = do
   fs' <- forM fs $ \ (l, ty) -> do
     ty' <- checkClosed tvs ty
     return (l, ty')
-  r'  <- case r of
-    Nothing -> return Nothing
-    Just ar -> Just `liftM` checkClosed tvs ar
-  return $ RecordType fs' r'
+  return $ RecordType fs'
 
 -- ---------------------------------------------------------------------------
 -- Auxiliary definitions

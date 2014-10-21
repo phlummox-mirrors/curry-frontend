@@ -180,7 +180,7 @@ instance Expr TypeExpr where
   fv (TupleType         tys) = fv tys
   fv (ListType           ty) = fv ty
   fv (ArrowType     ty1 ty2) = fv ty1 ++ fv ty2
-  fv (RecordType     fs rty) = maybe [] fv rty ++ fv (map snd fs)
+  fv (RecordType         fs) = fv (map snd fs)
 
 filterBv :: QuantExpr e => e -> [Ident] -> [Ident]
 filterBv e = filter (`Set.notMember` Set.fromList (bv e))

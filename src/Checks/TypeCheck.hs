@@ -31,7 +31,7 @@ import qualified Control.Monad.State as S   (State, execState, gets, modify)
 import           Data.List                  (nub, partition)
 import qualified Data.Map            as Map (Map, delete, empty, insert, lookup)
 import           Data.Maybe
-  (catMaybes, fromMaybe, listToMaybe, maybeToList)
+  (catMaybes, fromMaybe)
 import qualified Data.Set            as Set
   (Set, fromList, member, notMember, unions)
 
@@ -205,8 +205,7 @@ ft _ (VariableType         _) tcs = tcs
 ft m (TupleType          tys) tcs = foldr (ft m) tcs tys
 ft m (ListType            ty) tcs = ft m ty tcs
 ft m (ArrowType      ty1 ty2) tcs = ft m ty1 $ ft m ty2 $ tcs
-ft m (RecordType      fs rty) tcs =
-  foldr (ft m) (maybe tcs (\ty -> ft m ty tcs) rty) (map snd fs)
+ft m (RecordType          fs) tcs = foldr (ft m) tcs (map snd fs)
 
 -- The type constructor environment 'tcEnv' maintains all types
 -- in fully expanded form (except for record types).
@@ -282,7 +281,7 @@ bindLabels' :: TCEnv -> ValueEnv -> ValueEnv
 bindLabels' tcEnv tyEnv = foldr (bindFieldLabels . snd) tyEnv
                         $ localBindings tcEnv
   where
-  bindFieldLabels (AliasType r _ (TypeRecord fs _)) env =
+  bindFieldLabels (AliasType r _ (TypeRecord fs)) env =
     foldr (bindField r) env fs
   bindFieldLabels _ env = env
 
@@ -341,11 +340,10 @@ nameType (ListType ty) tvs = (ListType ty', tvs')
 nameType (ArrowType ty1 ty2) tvs = (ArrowType ty1' ty2', tvs'')
   where (ty1', tvs' ) = nameType ty1 tvs
         (ty2', tvs'') = nameType ty2 tvs'
-nameType (RecordType fs rty) tvs =
-  (RecordType (zip ls tys') (listToMaybe rty'), tvs)
+nameType (RecordType     fs) tvs =
+  (RecordType (zip ls tys'), tvs)
   where (ls  , tys) = unzip fs
         (tys', _  ) = nameTypes tys tvs
-        (rty', _  ) = nameTypes (maybeToList rty) tvs
 nameType (VariableType _) [] = internalError
  "TypeCheck.nameType: empty ident list"
 
@@ -624,8 +622,8 @@ tcPattern p (InfixFuncPattern t1 op t2) =
 tcPattern p r@(RecordPattern fs _) = do
   recInfo <- getFieldIdent fs >>= getRecordInfo
   case recInfo of
-    [AliasType qi n rty@(TypeRecord _ _)] -> do
-      (rty'@(TypeRecord fts' _), tys) <- inst' (ForAll n rty)
+    [AliasType qi n rty@(TypeRecord _)] -> do
+      (rty'@(TypeRecord fts'), tys) <- inst' (ForAll n rty)
       fts <- mapM (tcFieldPatt tcPattern) fs
       unifyLabels p "record pattern" (ppPattern 0 r) fts' rty' fts
       theta <- getTypeSubst
@@ -717,8 +715,8 @@ tcPatternFP p (InfixFuncPattern t1 op t2) =
 tcPatternFP p r@(RecordPattern fs _) = do
   recInfo <- getFieldIdent fs >>= getRecordInfo
   case recInfo of
-    [AliasType qi n rty@(TypeRecord _ _)] -> do
-      (rty'@(TypeRecord fts' _), tys) <- inst' (ForAll n rty)
+    [AliasType qi n rty@(TypeRecord _)] -> do
+      (rty'@(TypeRecord fts'), tys) <- inst' (ForAll n rty)
       fts <- mapM (tcFieldPatt tcPattern) fs
       unifyLabels p "record pattern" (ppPattern 0 r) fts' rty' fts
       theta <- getTypeSubst
@@ -935,8 +933,8 @@ tcExpr p (Case _ _ e alts) = do
 tcExpr p r@(RecordConstr fs) = do
   recInfo <- getFieldIdent fs >>= getRecordInfo
   case recInfo of
-    [AliasType qi n rty@(TypeRecord _ _)] -> do
-      (rty'@(TypeRecord fts' _), tys) <- inst' (ForAll n rty)
+    [AliasType qi n rty@(TypeRecord _)] -> do
+      (rty'@(TypeRecord fts'), tys) <- inst' (ForAll n rty)
       fts     <- mapM tcFieldExpr fs
       unifyLabels p "record construction" (ppExpr 0 r) fts' rty' fts
       theta <- getTypeSubst
@@ -946,9 +944,9 @@ tcExpr p r@(RecordConstr fs) = do
 tcExpr p r@(RecordSelection e l) = do
   recInfo <- getRecordInfo l
   case recInfo of
-    [AliasType qi n rty@(TypeRecord _ _)] -> do
+    [AliasType qi n rty@(TypeRecord _)] -> do
       ety <- tcExpr p e
-      (TypeRecord fts _, tys) <- inst' (ForAll n rty)
+      (TypeRecord fts, tys) <- inst' (ForAll n rty)
       let rtc = TypeConstructor qi tys
       case lookup l fts of
         Just lty -> do
@@ -961,8 +959,8 @@ tcExpr p r@(RecordSelection e l) = do
 tcExpr p r@(RecordUpdate fs e) = do
   recInfo <- getFieldIdent fs >>= getRecordInfo
   case recInfo of
-    [AliasType qi n rty@(TypeRecord _ _)] -> do
-      (rty'@(TypeRecord fts' _), tys) <- inst' (ForAll n rty)
+    [AliasType qi n rty@(TypeRecord _)] -> do
+      (rty'@(TypeRecord fts'), tys) <- inst' (ForAll n rty)
       -- Type check field updates
       fts <- mapM tcFieldExpr fs
       unifyLabels p "record update" (ppExpr 0 r) fts' rty' fts
@@ -1080,7 +1078,7 @@ unifyTypes m (TypeArrow ty11 ty12) (TypeArrow ty21 ty22) =
   unifyTypeLists m [ty11, ty12] [ty21, ty22]
 unifyTypes _ (TypeSkolem k1) (TypeSkolem k2)
   | k1 == k2 = Right idSubst
-unifyTypes m (TypeRecord fs1 Nothing) tr2@(TypeRecord fs2 Nothing)
+unifyTypes m (TypeRecord fs1) tr2@(TypeRecord fs2)
   | length fs1 == length fs2 = unifyTypedLabels m fs1 tr2
 unifyTypes m ty1 ty2 = Left (errIncompatibleTypes m ty1 ty2)
 
@@ -1137,8 +1135,8 @@ unifyLabel p what doc fs rty (l, ty) = case lookup l fs of
 
 unifyTypedLabels :: ModuleIdent -> [(Ident,Type)] -> Type
                  -> Either Doc TypeSubst
-unifyTypedLabels _ []           (TypeRecord _ _)      = Right idSubst
-unifyTypedLabels m ((l,ty):fs1) tr@(TypeRecord fs2 _) =
+unifyTypedLabels _ []           (TypeRecord _)      = Right idSubst
+unifyTypedLabels m ((l,ty):fs1) tr@(TypeRecord fs2) =
   either Left
          (\r ->
            maybe (Left (errMissingLabel m l tr))
@@ -1288,12 +1286,12 @@ expandType :: ModuleIdent -> TCEnv -> Type -> Type
 expandType m tcEnv (TypeConstructor tc tys) = case qualLookupTC tc tcEnv of
   [DataType     tc' _  _] -> TypeConstructor tc' tys'
   [RenamingType tc' _  _] -> TypeConstructor tc' tys'
-  [AliasType    tc' _ (TypeRecord _ _)] -> TypeConstructor tc' tys'
+  [AliasType    tc' _ (TypeRecord _)] -> TypeConstructor tc' tys'
   [AliasType    _   _ ty] -> expandAliasType tys' ty
   _ -> case qualLookupTC (qualQualify m tc) tcEnv of
     [DataType     tc' _ _ ] -> TypeConstructor tc' tys'
     [RenamingType tc' _ _ ] -> TypeConstructor tc' tys'
-    [AliasType    tc' _ (TypeRecord _ _)] -> TypeConstructor tc' tys'
+    [AliasType    tc' _ (TypeRecord _)] -> TypeConstructor tc' tys'
     [AliasType    _   _ ty] -> expandAliasType tys' ty
     _ -> internalError $ "TypeCheck.expandType " ++ show tc
   where tys' = map (expandType m tcEnv) tys
@@ -1302,8 +1300,8 @@ expandType _ _     tc@(TypeConstrained _ _) = tc
 expandType m tcEnv (TypeArrow      ty1 ty2) =
   TypeArrow (expandType m tcEnv ty1) (expandType m tcEnv ty2)
 expandType _ _     ts@(TypeSkolem        _) = ts
-expandType m tcEnv (TypeRecord       fs rv) =
-  TypeRecord (map (\ (l, ty) -> (l, expandType m tcEnv ty)) fs) rv
+expandType m tcEnv (TypeRecord          fs) =
+  TypeRecord (map (\ (l, ty) -> (l, expandType m tcEnv ty)) fs)
 
 -- The functions 'fvEnv' and 'fsEnv' compute the set of free type variables
 -- and free skolems of a type environment, respectively. We ignore the types

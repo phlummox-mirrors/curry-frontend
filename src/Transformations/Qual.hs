@@ -94,8 +94,7 @@ qTypeExpr (TupleType         tys) = TupleType `liftM` mapM qTypeExpr tys
 qTypeExpr (ListType           ty) = ListType `liftM` qTypeExpr ty
 qTypeExpr (ArrowType     ty1 ty2)
   = liftM2 ArrowType (qTypeExpr ty1) (qTypeExpr ty2)
-qTypeExpr (RecordType     fs rty)
-  = liftM2 RecordType (mapM qFieldType fs) (mapM qTypeExpr rty)
+qTypeExpr (RecordType         fs) = liftM RecordType (mapM qFieldType fs)
   where qFieldType (ls, ty)  = (\ ty' -> (ls, ty')) `liftM` qTypeExpr ty
 
 qEquation :: Qual Equation

@@ -77,8 +77,8 @@ genTypeSyns tcEnv mident decls
 
 isTypeSyn :: Decl -> Bool
 isTypeSyn (TypeDecl _ _ _ texpr) = case texpr of
-  RecordType _ _ -> False
-  _              -> True
+  RecordType _ -> False
+  _            -> True
 isTypeSyn _ = False
 
 --
@@ -103,10 +103,8 @@ modifyTypeExpr tcEnv (TupleType tys)
                                 (map (modifyTypeExpr tcEnv) tys)
 modifyTypeExpr tcEnv (ListType ty)
   = ConstructorType (qualify listId) [modifyTypeExpr tcEnv ty]
-modifyTypeExpr tcEnv (RecordType fields mty)
-  = RecordType
-    (map (\ (lbls, lty) -> (lbls, modifyTypeExpr tcEnv lty)) fields)
-    (maybe Nothing (Just . modifyTypeExpr tcEnv) mty)
+modifyTypeExpr tcEnv (RecordType fields)
+  = RecordType (map (\ (lbls, lty) -> (lbls, modifyTypeExpr tcEnv lty)) fields)
 
 --
 genTypeSynDeref :: [(Int, TypeExpr)] -> Type -> TypeExpr
@@ -117,10 +115,9 @@ genTypeSynDeref its (TypeConstructor qid tys)
   = ConstructorType qid $ map (genTypeSynDeref its) tys
 genTypeSynDeref its (TypeArrow ty1 ty2)
   = ArrowType (genTypeSynDeref its ty1) (genTypeSynDeref its ty2)
-genTypeSynDeref its (TypeRecord fields ri)
+genTypeSynDeref its (TypeRecord fields)
   = RecordType
     (map (\ (lab, texpr) -> ([lab], genTypeSynDeref its texpr)) fields)
-    (fmap (genTypeSynDeref its . TypeVariable) ri)
 genTypeSynDeref _ (TypeConstrained _ _) = internalError
   "ModuleSummary.genTypeSynDeref: illegal constrained type occured"
 genTypeSynDeref _ (TypeSkolem _) = internalError

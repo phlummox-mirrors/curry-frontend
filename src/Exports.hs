@@ -91,8 +91,8 @@ typeDecl m tcEnv (ExportTypeWith tc cs) ds = case qualLookupTC tc tcEnv of
     where tvs = take n' (drop n identSupply)
           ty' = fromQualType m ty
   [AliasType tc' n ty] -> case ty of
-    TypeRecord fs _ ->
-        let ty' = TypeRecord (filter (\ (l,_) -> elem l cs) fs) Nothing
+    TypeRecord fs ->
+        let ty' = TypeRecord (filter (\ (l,_) -> elem l cs) fs)
         in  iTypeDecl ITypeDecl m tc' n (fromQualType m ty') : ds
     _ -> iTypeDecl ITypeDecl m tc' n (fromQualType m ty) : ds
   _ -> internalError "Exports.typeDecl"
@@ -168,8 +168,7 @@ identsType (VariableType         _) xs = xs
 identsType (TupleType          tys) xs = foldr identsType xs tys
 identsType (ListType            ty) xs = identsType ty xs
 identsType (ArrowType      ty1 ty2) xs = identsType ty1 (identsType ty2 xs)
-identsType (RecordType      fs rty) xs =
-  foldr identsType (maybe xs (\ty -> identsType ty xs) rty) (map snd fs)
+identsType (RecordType          fs) xs = foldr identsType xs (map snd fs)
 
 -- After the interface declarations have been computed, the compiler
 -- eventually must add hidden (data) type declarations to the interface
@@ -220,8 +219,8 @@ usedTypesType (TupleType          tys) tcs = foldr usedTypesType tcs tys
 usedTypesType (ListType            ty) tcs = usedTypesType ty tcs
 usedTypesType (ArrowType      ty1 ty2) tcs =
   usedTypesType ty1 (usedTypesType ty2 tcs)
-usedTypesType (RecordType      fs rty) tcs = foldr usedTypesType
-  (maybe tcs (\ty -> usedTypesType ty tcs) rty) (map snd fs)
+usedTypesType (RecordType          fs) tcs = foldr usedTypesType
+  tcs (map snd fs)
 
 definedTypes :: [IDecl] -> [QualIdent]
 definedTypes ds = foldr definedType [] ds

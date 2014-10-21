@@ -192,16 +192,7 @@ genTypeExpr env (ListType       ty)
 genTypeExpr env (ArrowType ty1 ty2) = (env2, CFuncType ty1' ty2')
   where (env1, ty1') = genTypeExpr env  ty1
         (env2, ty2') = genTypeExpr env1 ty2
-genTypeExpr env (RecordType fss mr) = case mr of
-  Nothing -> (env1, CRecordType (zip ls' ts') Nothing)
-  Just tvar@(VariableType _) ->
-    let (env2, CTVar iname) = genTypeExpr env1 tvar
-    in  (env2, CRecordType (zip ls' ts') (Just iname))
-  Just r@(RecordType _ _) ->
-    let (env2, CRecordType fields rbase) = genTypeExpr env1 r
-        fields' = foldr (uncurry insertEntry) fields (zip ls' ts')
-    in  (env2, CRecordType fields' rbase)
-  _ -> internalError "GenAbstractCurry.gegnTypeExpr: illegal record base"
+genTypeExpr env (RecordType    fss) = (env1, CRecordType (zip ls' ts'))
   where
   (ls  , ts ) = unzip $ concatMap (\ (ls1,ty) -> map (\l -> (l,ty)) ls1) fss
   (env1, ts') = mapAccumL genTypeExpr env ts
@@ -284,7 +275,7 @@ genFuncDecl isLocal env (ident, decls)
   compArityFromType (CTVar         _) = 0
   compArityFromType (CFuncType  _ t2) = 1 + compArityFromType t2
   compArityFromType (CTCons      _ _) = 0
-  compArityFromType (CRecordType _ _) =
+  compArityFromType (CRecordType   _) =
     internalError "GenAbstractCurry.genFuncDecl.compArityFromType: record type"
 
   compRule _  [] Nothing  = internalError $ "GenAbstractCurry.compRule: "
@@ -912,11 +903,11 @@ simplifyRhsLocals (GuardedRhs  _ locals) = locals
 
 -- Insert a value under a key into an association list. If the list
 -- already contains a value for that key, the old value is replaced.
-insertEntry :: Eq a => a -> b -> [(a, b)] -> [(a, b)]
-insertEntry k v []             = [(k, v)]
-insertEntry k v ((l, w) : kvs)
-  | k == l    = (k, v) : kvs
-  | otherwise = (l, w) : insertEntry k v kvs
+-- insertEntry :: Eq a => a -> b -> [(a, b)] -> [(a, b)]
+-- insertEntry k v []             = [(k, v)]
+-- insertEntry k v ((l, w) : kvs)
+--   | k == l    = (k, v) : kvs
+--   | otherwise = (l, w) : insertEntry k v kvs
 
 -- Return 'True' iff a list is a singleton list (contains exactly one element)
 isSingleton :: [a] -> Bool

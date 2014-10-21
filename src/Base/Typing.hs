@@ -197,8 +197,8 @@ argType (InfixFuncPattern t1 op t2) = argType (FunctionPattern op [t1,t2])
 argType (RecordPattern fs _) = do
   recInfo <- getFieldIdent fs >>= getRecordInfo
   case recInfo of
-    [AliasType qi n rty@(TypeRecord _ _)] -> do
-      (TypeRecord fts' _, tys) <- instType' n rty
+    [AliasType qi n rty@(TypeRecord _)] -> do
+      (TypeRecord fts', tys) <- instType' n rty
       fts   <- mapM fieldPattType fs
       theta <- getTypeSubst
       let theta' = foldr (unifyTypedLabels fts') theta fts
@@ -273,8 +273,8 @@ exprType (Case _ _ _ alts) = freshTypeVar >>= flip altType alts
 exprType (RecordConstr fs) = do
   recInfo <- getFieldIdent fs >>= getRecordInfo
   case recInfo of
-    [AliasType qi n rty@(TypeRecord _ _)] -> do
-      (TypeRecord fts' _, tys) <- instType' n rty
+    [AliasType qi n rty@(TypeRecord _)] -> do
+      (TypeRecord fts', tys) <- instType' n rty
       fts   <- mapM fieldExprType fs
       theta <- getTypeSubst
       let theta' = foldr (unifyTypedLabels fts') theta fts
@@ -285,8 +285,8 @@ exprType (RecordConstr fs) = do
 exprType (RecordSelection e l) = do
   recInfo <- getRecordInfo l
   case recInfo of
-    [AliasType qi n rty@(TypeRecord _ _)] -> do
-      (TypeRecord fts _, tys) <- instType' n rty
+    [AliasType qi n rty@(TypeRecord _)] -> do
+      (TypeRecord fts, tys) <- instType' n rty
       ety <- exprType e
       let rtc = TypeConstructor qi tys
       case lookup l fts of
@@ -300,8 +300,8 @@ exprType (RecordSelection e l) = do
 exprType (RecordUpdate fs e) = do
   recInfo <- getFieldIdent fs >>= getRecordInfo
   case recInfo of
-    [AliasType qi n rty@(TypeRecord _ _)] -> do
-      (TypeRecord fts' _, tys) <- instType' n rty
+    [AliasType qi n rty@(TypeRecord _)] -> do
+      (TypeRecord fts', tys) <- instType' n rty
       -- Type check field updates
       fts <- mapM fieldExprType fs
       modifyTypeSubst (\s -> foldr (unifyTypedLabels fts') s fts)
@@ -402,7 +402,7 @@ unifyTypes (TypeArrow ty11 ty12) (TypeArrow ty21 ty22) theta =
   unifyTypes ty11 ty21 (unifyTypes ty12 ty22 theta)
 unifyTypes (TypeSkolem k1) (TypeSkolem k2) theta
   | k1 == k2 = theta
-unifyTypes (TypeRecord fs1 Nothing) (TypeRecord fs2 Nothing) theta
+unifyTypes (TypeRecord fs1) (TypeRecord fs2) theta
   | length fs1 == length fs2 = foldr (unifyTypedLabels fs1) theta fs2
 unifyTypes ty1 ty2 _ = internalError $
   "Base.Typing.unify: (" ++ show ty1 ++ ") (" ++ show ty2 ++ ")"

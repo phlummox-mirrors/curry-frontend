@@ -545,8 +545,8 @@ expandType _     tc@(TypeConstrained _ _) = tc
 expandType tcEnv (TypeArrow      ty1 ty2) =
   TypeArrow (expandType tcEnv ty1) (expandType tcEnv ty2)
 expandType _     ts@(TypeSkolem        _) = ts
-expandType tcEnv (TypeRecord       fs rv) =
-  TypeRecord (map (\ (l, ty) -> (l, expandType tcEnv ty)) fs) rv
+expandType tcEnv (TypeRecord          fs) =
+  TypeRecord (map (\ (l, ty) -> (l, expandType tcEnv ty)) fs)
 
 -- If an alternative in a case expression has boolean guards and all of
 -- these guards return 'False', the enclosing case expression does
@@ -685,12 +685,12 @@ lookupRecord :: QualIdent -> DsM (Int, [(Ident, Type)])
 lookupRecord r = do
   tcEnv <- getTyConsEnv
   case qualLookupTC r tcEnv of
-    [AliasType _ n (TypeRecord fs _)] -> return (n, fs)
+    [AliasType _ n (TypeRecord fs)] -> return (n, fs)
     _                                 ->
       internalError $ "Desugar.lookupRecord: no record: " ++ show r
 
 dsRecordDecl :: Decl -> DsM [Decl]
-dsRecordDecl (TypeDecl p r vs (RecordType fss _)) = do
+dsRecordDecl (TypeDecl p r vs (RecordType fss)) = do
   m     <- getModuleIdent
   let qr = qualifyWith m r
   (n, fs') <- lookupRecord qr

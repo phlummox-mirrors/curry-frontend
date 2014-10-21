@@ -106,7 +106,7 @@ checkImport (HidingDataDecl p tc tvs)
           | tc == tc' && length tvs == n' = Just ok
         check (RenamingType tc' n' _)
           | tc == tc' && length tvs == n' = Just ok
-        check (AliasType tc' n' (TypeRecord _ _))
+        check (AliasType tc' n' (TypeRecord _))
           | tc == tc' && length tvs == n' = Just ok
         check _                           = Nothing
 checkImport (IDataDecl p tc tvs cs) = checkTypeInfo "data type" check p tc

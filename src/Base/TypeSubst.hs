@@ -45,11 +45,7 @@ instance SubstType Type where
   subst sigma (TypeArrow      ty1 ty2) =
     TypeArrow (subst sigma ty1) (subst sigma ty2)
   subst _     ts@(TypeSkolem        _) = ts
-  subst sigma (TypeRecord       fs rv) = case rv of
-    Nothing -> TypeRecord fs' Nothing
-    Just r' -> case substVar sigma r' of
-      TypeVariable tv -> TypeRecord fs' (Just tv)
-      ty              -> ty
+  subst sigma (TypeRecord          fs) = TypeRecord fs'
    where fs' = map (\ (l,ty) -> (l, subst sigma ty)) fs
 
 instance SubstType TypeScheme where
@@ -87,10 +83,7 @@ expandAliasType _   (TypeConstrained   tys n) = TypeConstrained tys n
 expandAliasType tys (TypeArrow       ty1 ty2) =
   TypeArrow (expandAliasType tys ty1) (expandAliasType tys ty2)
 expandAliasType _   tsk@(TypeSkolem        _) = tsk
-expandAliasType tys (TypeRecord        fs rv) = case rv of
-  Nothing -> TypeRecord fs' Nothing
-  Just r' -> let (TypeVariable tv) = expandAliasType tys $ TypeVariable r'
-             in  TypeRecord fs' (Just tv)
+expandAliasType tys (TypeRecord           fs) = TypeRecord fs'
  where fs' = map (\ (l, ty) -> (l, expandAliasType tys ty)) fs
 
 normalize :: Type -> Type

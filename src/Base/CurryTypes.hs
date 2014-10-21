@@ -67,15 +67,10 @@ toType' tvs (CS.ListType            ty)
   = TypeConstructor (qualify listId) [toType' tvs ty]
 toType' tvs (CS.ArrowType      ty1 ty2)
   = TypeArrow (toType' tvs ty1) (toType' tvs ty2)
-toType' tvs (CS.RecordType      fs rty)
-  = TypeRecord fs' rty'
+toType' tvs (CS.RecordType          fs)
+  = TypeRecord fs'
   where
     fs'  = concatMap (\ (ls, ty) -> map (\ l -> (l, toType' tvs ty)) ls) fs
-    rty' = case rty of
-      Nothing -> Nothing
-      Just ty -> case toType' tvs ty of
-        TypeVariable tv -> Just tv
-        _ -> internalError $ "Base.CurryTypes.toType' " ++ show ty
 
 fromQualType :: ModuleIdent -> Type -> CS.TypeExpr
 fromQualType m = fromType . unqualifyType m
@@ -95,9 +90,8 @@ fromType (TypeArrow     ty1 ty2)   =
   CS.ArrowType (fromType ty1) (fromType ty2)
 fromType (TypeSkolem          k)   =
   CS.VariableType $ mkIdent $ "_?" ++ show k
-fromType (TypeRecord     fs rty)   = CS.RecordType
+fromType (TypeRecord         fs)   = CS.RecordType
   (map (\ (l, ty) -> ([l], fromType ty)) fs)
-  ((fromType . TypeVariable) `fmap` rty)
 
 -- The following functions implement pretty-printing for types.
 ppType :: ModuleIdent -> Type -> Doc

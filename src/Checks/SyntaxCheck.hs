@@ -206,7 +206,7 @@ renameInfo _     (DataConstructor    qid a _) = Constr    qid a
 renameInfo _     (NewtypeConstructor qid   _) = Constr    qid 1
 renameInfo _     (Value              qid a _) = GlobalVar qid a
 renameInfo tcEnv (Label              _   r _) = case qualLookupTC r tcEnv of
-  [AliasType _ _ (TypeRecord fs _)] -> RecordLabel r $ map fst fs
+  [AliasType _ _ (TypeRecord fs)] -> RecordLabel r $ map fst fs
   _ -> internalError $ "SyntaxCheck.renameInfo: ambiguous record " ++ show r
 
 bindGlobal :: ModuleIdent -> Ident -> RenameInfo -> RenameEnv -> RenameEnv
@@ -221,7 +221,7 @@ bindLocal = bindNestEnv
 bindTypeDecl :: Decl -> SCM ()
 bindTypeDecl (DataDecl    _ _ _ cs) = mapM_ bindConstr cs
 bindTypeDecl (NewtypeDecl _ _ _ nc) = bindNewConstr nc
-bindTypeDecl (TypeDecl _ t _ (RecordType fs _)) = do
+bindTypeDecl (TypeDecl _ t _ (RecordType fs)) = do
   m <- getModuleIdent
   others <- qualLookupVar (qualifyWith m t) `liftM` getRenameEnv
   when (any isConstr others) $ report $ errIllegalRecordId t
@@ -332,10 +332,8 @@ checkExtension (KnownExtension   _ e) = enableExtension e
 checkExtension (UnknownExtension p e) = report $ errUnknownExtension p e
 
 checkTypeDecl :: Decl -> SCM Decl
-checkTypeDecl rec@(TypeDecl _ r _ (RecordType fs rty)) = do
+checkTypeDecl rec@(TypeDecl _ r _ (RecordType fs)) = do
   checkRecordExtension $ idPosition r
-  when (isJust  rty) $ internalError
-                       "SyntaxCheck.checkTypeDecl: illegal record type"
   when (null     fs) $ report $ errEmptyRecord $ idPosition r
   return rec
 checkTypeDecl d = return d

@@ -213,7 +213,7 @@ bindTy m (IDataDecl _ tc tvs cs) env =
 bindTy m (INewtypeDecl _ tc tvs nc) env =
   bindNewConstr m tc' tvs (constrType tc' tvs) nc env
   where tc' = qualQualify m tc
-bindTy m (ITypeDecl _ rtc tvs (RecordType fs _)) env =
+bindTy m (ITypeDecl _ rtc tvs (RecordType fs)) env =
   foldr (bindRecordLabels m rtc') env' fs
   where urtc = fromRecordExtId $ unqualify rtc
         rtc' = qualifyWith m urtc
@@ -383,7 +383,7 @@ expandTypeWith tc cs = do
       mapM (checkConstr [c | Just (DataConstr c _ _) <- cs']) cs
     Just (RenamingType _ _ (DataConstr c _ _)) ->
       mapM (checkConstr [c]) cs
-    Just (AliasType    _ _ (TypeRecord  fs _)) ->
+    Just (AliasType    _ _ (TypeRecord    fs)) ->
       mapM (checkLabel [l | (l, _) <- fs] . renameLabel) cs
     Just (AliasType _ _ _) -> report (errNonDataType       tc) >> return []
     Nothing                -> report (errUndefinedEntity m tc) >> return []
@@ -403,7 +403,7 @@ expandTypeAll tc = do
     Just (DataType     _ _                 cs) ->
       return [c | Just (DataConstr c _ _) <- cs]
     Just (RenamingType _ _ (DataConstr c _ _)) -> return [c]
-    Just (AliasType    _ _ (TypeRecord  fs _)) -> return [l | (l, _) <- fs]
+    Just (AliasType    _ _ (TypeRecord    fs)) -> return [l | (l, _) <- fs]
     Just (AliasType _ _ _) -> report (errNonDataType       tc) >> return []
     Nothing                -> report (errUndefinedEntity m tc) >> return []
 
@@ -568,8 +568,8 @@ expandRecords tcEnv (TypeConstrained tys v) =
   TypeConstrained (map (expandRecords tcEnv) tys) v
 expandRecords tcEnv (TypeArrow ty1 ty2) =
   TypeArrow (expandRecords tcEnv ty1) (expandRecords tcEnv ty2)
-expandRecords tcEnv (TypeRecord fs rv) =
-  TypeRecord (map (\ (l, ty) -> (l, expandRecords tcEnv ty)) fs) rv
+expandRecords tcEnv (TypeRecord fs) =
+  TypeRecord (map (\ (l, ty) -> (l, expandRecords tcEnv ty)) fs)
 expandRecords _ ty = ty
 
 -- Unlike usual identifiers like in functions, types etc., identifiers

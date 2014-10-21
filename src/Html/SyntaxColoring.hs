@@ -323,8 +323,7 @@ idsTypeExpr (VariableType          v) = [Identifier IdRefer (qualify v)]
 idsTypeExpr (TupleType           tys) = concatMap idsTypeExpr tys
 idsTypeExpr (ListType             ty) = idsTypeExpr ty
 idsTypeExpr (ArrowType       ty1 ty2) = concatMap idsTypeExpr [ty1, ty2]
-idsTypeExpr (RecordType       fs mty) = concatMap idsFieldType fs
-                                          ++ maybe [] idsTypeExpr mty
+idsTypeExpr (RecordType           fs) = concatMap idsFieldType fs
 
 idsFieldType :: ([Ident], TypeExpr) -> [Code]
 idsFieldType (fs, ty) = map (Label LabelDeclare . qualify . unRenameIdent) fs

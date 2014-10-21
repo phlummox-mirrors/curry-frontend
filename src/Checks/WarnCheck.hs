@@ -253,9 +253,7 @@ checkTypeExpr (VariableType          v) = visitTypeId v
 checkTypeExpr (TupleType           tys) = mapM_ checkTypeExpr tys
 checkTypeExpr (ListType             ty) = checkTypeExpr ty
 checkTypeExpr (ArrowType       ty1 ty2) = mapM_ checkTypeExpr [ty1, ty2]
-checkTypeExpr (RecordType       fs rty) = do
-  mapM_ checkTypeExpr (map snd fs)
-  maybe ok checkTypeExpr rty
+checkTypeExpr (RecordType           fs) = mapM_ checkTypeExpr (map snd fs)
 
 -- Checks locally declared identifiers (i.e. functions and logic variables)
 -- for shadowing
@@ -549,8 +547,8 @@ getAllLabels l = do
     [Label _ r _] -> do
       tcEnv <- gets tyConsEnv
       case qualLookupTC r tcEnv of
-        [AliasType _ _ (TypeRecord fs _)] -> return (r, map fst fs)
-        _                                 -> internalError $
+        [AliasType _ _ (TypeRecord fs)] -> return (r, map fst fs)
+        _                               -> internalError $
           "Checks.WarnCheck.getAllLabels: " ++ show r
     _             -> internalError $ "Checks.WarnCheck.getAllLabels: " ++ show l
 
@@ -717,7 +715,7 @@ getTyCons _ (TypeConstructor tc _) = do
       [RenamingType _ _ nc] -> [nc]
       err                   -> internalError $ "Checks.WarnCheck.getTyCons: "
                             ++ show tc ++ ' ' : show err ++ '\n' : show tcEnv
-getTyCons q (TypeRecord fs _) = return [DataConstr (unqualify q) (length fs) (map snd fs)]
+getTyCons q (TypeRecord fs) = return [DataConstr (unqualify q) (length fs) (map snd fs)]
 getTyCons _ _ = internalError "Checks.WarnCheck.getTyCons"
 
 -- |Resugar the exhaustive patterns previously desugared at 'simplifyPat'.
@@ -739,9 +737,9 @@ tidyPat p@(ConstructorPattern c ps)
   | otherwise                       = do
     ty <- getConTy c
     case ty of
-      TypeRecord fs _ -> flip RecordPattern Nothing `liftM`
-                         zipWithM mkFieldPat fs ps
-      _               -> return p
+      TypeRecord fs -> flip RecordPattern Nothing `liftM`
+                       zipWithM mkFieldPat fs ps
+      _             -> return p
   where
   isFiniteList (ConstructorPattern d []     )                = d == qNilId
   isFiniteList (ConstructorPattern d [_, e2]) | d == qConsId = isFiniteList e2
@@ -908,9 +906,9 @@ insertTypeExpr (ConstructorType _ tys) = mapM_ insertTypeExpr tys
 insertTypeExpr (TupleType         tys) = mapM_ insertTypeExpr tys
 insertTypeExpr (ListType           ty) = insertTypeExpr ty
 insertTypeExpr (ArrowType     ty1 ty2) = mapM_ insertTypeExpr [ty1,ty2]
-insertTypeExpr (RecordType      _ rty) = do
+insertTypeExpr (RecordType          _) = ok
   --mapM_ insertVar (concatMap fst fs)
-  maybe (return ()) insertTypeExpr rty
+  --maybe (return ()) insertTypeExpr rty
 
 insertConstrDecl :: ConstrDecl -> WCM ()
 insertConstrDecl (ConstrDecl _ _    c _) = insertConsId c
