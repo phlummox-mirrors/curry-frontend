@@ -13,11 +13,12 @@
 -}
 module Html.CurryHtml (source2html) where
 
+import Control.Applicative   ((<$>), (<*>))
 import Control.Monad.Writer
-
 import Data.List             (mapAccumL)
 import Data.Maybe            (fromMaybe, isJust)
 import Network.URI           (escapeURIString, isUnreserved)
+import System.Directory      (copyFile, doesFileExist)
 import System.FilePath       ((</>), dropFileName, joinPath, takeBaseName)
 
 import Curry.Base.Ident      (ModuleIdent (..), QualIdent (..), unqualify)
@@ -49,6 +50,18 @@ source2html opts f = do
   srcFile <- liftIO $ lookupCurryFile ("." : optImportPaths opts) f
   (m, program) <- filename2program opts (fromMaybe f srcFile)
   liftIO $ writeFile outFile (program2html m program)
+  liftIO $ updateCSSFile outDir
+
+updateCSSFile :: FilePath -> IO ()
+updateCSSFile dir = do
+  src <- getDataFileName cssFile
+  let target = dir </> cssFile
+  exists  <- doesFileExist target
+  if not exists
+    then copyFile src target
+    else do
+      same <- (==) <$> readFile src <*> readFile target
+      unless same $ copyFile src target
 
 -- @param importpaths
 -- @param filename
