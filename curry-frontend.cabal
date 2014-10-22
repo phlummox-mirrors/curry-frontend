@@ -106,14 +106,6 @@ Library
     Paths_curry_frontend
 
 
-Executable cmpPrograms
-  hs-source-dirs: src
-  Main-is:        cmpPrograms.hs
-  Build-Depends:
-    curry-base == 0.3.10, base == 4.*
-  ghc-options: -Wall
-
-
 Test-Suite TestTypeChecking
     hs-source-dirs: test, src
     type:       detailed-0.9
