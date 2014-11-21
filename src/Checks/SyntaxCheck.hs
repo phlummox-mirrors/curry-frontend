@@ -24,11 +24,11 @@
 
 module Checks.SyntaxCheck (syntaxCheck) where
 
-import Control.Monad (liftM, liftM2, liftM3, unless, when)
+import           Control.Monad            (liftM, liftM2, liftM3, unless, when)
 import qualified Control.Monad.State as S (State, runState, gets, modify)
-import Data.List ((\\), insertBy, nub, partition)
-import Data.Maybe (fromJust, isJust, isNothing, maybeToList)
-import qualified Data.Set as Set (empty, insert, member)
+import           Data.List                ((\\), insertBy, nub, partition)
+import           Data.Maybe               (isJust, isNothing, maybeToList)
+import qualified Data.Set          as Set (empty, insert, member)
 
 import Curry.Base.Ident
 import Curry.Base.Position
@@ -659,21 +659,21 @@ checkRecordPattern p fs t = do
     env <- getRenameEnv
     case lookupVar l env of
       [RecordLabel r ls] -> do
-        when (isJust duplicate) $ report $ errDuplicateLabel
-                                         $ fromJust duplicate
-        if isNothing t
-          then do
+        case findDouble ls' of
+          Just l' -> report $ errDuplicateLabel l'
+          _       -> ok
+        case t of
+          Nothing -> do
             when (not $ null missings) $ report $ errMissingLabel
               (idPosition l) (head missings) r "record pattern"
             flip RecordPattern t `liftM` mapM (checkFieldPatt r) fs
-          else if t == Just (VariablePattern anonId)
-            then liftM2 RecordPattern
-                        (mapM (checkFieldPatt r) fs)
-                        (Just `liftM` checkPattern p (fromJust t))
-            else do report (errIllegalRecordPattern p)
-                    return $ RecordPattern fs t
+          Just pat | pat == VariablePattern anonId -> do
+            liftM2 RecordPattern (mapM (checkFieldPatt r) fs)
+                                 (Just `liftM` checkPattern p pat)
+          _ -> do
+            report (errIllegalRecordPattern p)
+            return $ RecordPattern fs t
         where ls'       = map fieldLabel fs
-              duplicate = findDouble ls'
               missings  = ls \\ ls'
       [] -> report (errUndefinedLabel l) >> return (RecordPattern fs t)
       [_] -> report (errNotALabel l) >> return (RecordPattern fs t)

@@ -15,11 +15,11 @@
 -}
 module Imports (importInterfaces, importModules, qualifyEnv) where
 
-import           Control.Monad                   (liftM, unless)
-import qualified Control.Monad.State        as S (State, gets, modify, runState)
-import qualified Data.Map                   as Map
-import           Data.Maybe
-import qualified Data.Set                   as Set
+import           Control.Monad              (liftM, unless)
+import qualified Control.Monad.State as S   (State, gets, modify, runState)
+import qualified Data.Map            as Map
+import           Data.Maybe                 (catMaybes, fromMaybe)
+import qualified Data.Set            as Set
 
 import Curry.Base.Ident
 import Curry.Base.Monad
@@ -438,11 +438,16 @@ importUnifyData cEnv = cEnv { tyConsEnv = importUnifyData' $ tyConsEnv cEnv }
 importUnifyData' :: TCEnv -> TCEnv
 importUnifyData' tcEnv = fmap (setInfo allTyCons) tcEnv
   where
-  setInfo tcs t   = fromJust $ Map.lookup (origName t) tcs
+  setInfo tcs t   = case Map.lookup (origName t) tcs of
+                         Nothing -> error "Imports.importUnifyData'"
+                         Just ty -> ty
   allTyCons       = foldr (mergeData . snd) Map.empty $ allImports tcEnv
   mergeData t tcs =
-    Map.insert tc (maybe t (fromJust . merge t) $ Map.lookup tc tcs) tcs
+    Map.insert tc (maybe t (sureMerge t) $ Map.lookup tc tcs) tcs
     where tc = origName t
+  sureMerge x y = case merge x y of
+                       Nothing -> error "Imports.importUnifyData'.sureMerge"
+                       Just z  -> z
 
 -- ---------------------------------------------------------------------------
 

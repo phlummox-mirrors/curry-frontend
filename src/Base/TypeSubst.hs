@@ -16,7 +16,6 @@ module Base.TypeSubst
   ) where
 
 import Data.List   (nub)
-import Data.Maybe  (fromJust)
 
 import Base.Subst
 import Base.TopEnv
@@ -89,4 +88,6 @@ expandAliasType tys (TypeRecord           fs) = TypeRecord fs'
 normalize :: Type -> Type
 normalize ty = expandAliasType [TypeVariable (occur tv) | tv <- [0 ..]] ty
   where tvs = zip (nub (filter (>= 0) (typeVars ty))) [0 ..]
-        occur tv = fromJust (lookup tv tvs)
+        occur tv = case lookup tv tvs of
+                        Just t  -> t
+                        Nothing -> error "Base.TypeSubst.normalize"
