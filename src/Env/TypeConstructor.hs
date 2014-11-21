@@ -70,12 +70,16 @@ instance Entity TypeInfo where
           mergeData (d : ds) (d' : ds') = d `mplus` d' : mergeData ds ds'
   merge (DataType tc n _) (RenamingType tc' _ nc)
     | tc == tc' = Just (RenamingType tc n nc)
-  merge (RenamingType tc n nc) (DataType tc' _ _)
-    | tc == tc' = Just (RenamingType tc n nc)
-  merge (RenamingType tc n nc) (RenamingType tc' _ _)
-    | tc == tc' = Just (RenamingType tc n nc)
-  merge (AliasType tc n ty) (AliasType tc' _ _)
-    | tc == tc' = Just (AliasType tc n ty)
+  merge l@(RenamingType tc _ _) (DataType tc' _ _)
+    | tc == tc' = Just l
+  merge l@(RenamingType tc _ _) (RenamingType tc' _ _)
+    | tc == tc' = Just l
+  merge l@(AliasType tc _ _) (AliasType tc' _ _)
+    | tc == tc' = Just l
+  merge l@(AliasType tc _ (TypeRecord _)) (DataType tc' _ _)
+    | tc == tc' = Just l
+  merge (DataType tc' _ _) r@(AliasType tc _ (TypeRecord _))
+    | tc == tc' = Just r
   merge _ _ = Nothing
 
 tcArity :: TypeInfo -> Int
