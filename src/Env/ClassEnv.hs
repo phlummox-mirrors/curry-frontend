@@ -16,7 +16,7 @@
 module Env.ClassEnv ( 
   -- * class environment
   -- ** the environment data types
-  ClassEnv (..), Class (..), Instance (..), initClassEnv
+  ClassEnv (..), Class (..), Instance (..), initClassEnv, defaultTypes, splitType
   -- ** various functions for retrieving specific data from the environment 
   , lookupClass, canonLookupClass, canonClassName
   , allClasses, allLocalClasses, getInstance
@@ -67,14 +67,16 @@ import Base.TopEnv
 -- plus a map from class methods to their defining classes
 data ClassEnv = ClassEnv 
   -- | environment that maps class identifiers to classes
-  { theClasses    :: TopEnv Class
+  { theClasses        :: TopEnv Class
   -- | all instances (with canonical class and type names)
-  , theInstances  :: [(Source, Instance)] 
+  , theInstances      :: [(Source, Instance)]
   -- | environment that maps class methods to their corresponding classes
-  , classMethods  :: TopEnv Class
+  , classMethods      :: TopEnv Class
   -- | maps canonical (!) class names to the corresponding classes
-  , canonClassMap :: Map.Map QualIdent Class
-  } 
+  , canonClassMap     :: Map.Map QualIdent Class
+  -- | list of types that can be defaulted in case of class ambiguities
+  , defaultingTypes :: [Type]
+  }
   deriving Show
 
 data Source = Local | Imported ModuleIdent
@@ -105,7 +107,10 @@ data Instance = Instance
   deriving (Eq, Show)
   
 initClassEnv :: ClassEnv 
-initClassEnv = ClassEnv emptyTopEnv [] emptyTopEnv Map.empty
+initClassEnv = ClassEnv emptyTopEnv [] emptyTopEnv Map.empty defaultTypes
+
+defaultTypes :: [Type]
+defaultTypes = [intType,floatType]
 
 instance Entity Class where
   origName = theClass
@@ -133,7 +138,7 @@ lookupClass m cEnv qid = case lookupNonHiddenClasses cEnv qid of
 -- |looks up a local, not hidden class from the class environment. 
 -- Takes as argument the name of the class used in the source code. 
 lookupLocalClass :: ClassEnv -> QualIdent -> Maybe Class
-lookupLocalClass (ClassEnv cEnv _ _ _) qid = 
+lookupLocalClass (ClassEnv cEnv _ _ _ _) qid =
   case qualLookupLocalTopEnv qid (nonHiddenClassEnv cEnv) of
     []  -> Nothing
     [c] -> Just c
@@ -142,7 +147,7 @@ lookupLocalClass (ClassEnv cEnv _ _ _) qid =
 -- |looks up a class if it's not hidden, returning a list of candidates. Takes
 -- as argument the name of the class used in the source code. 
 lookupNonHiddenClasses :: ClassEnv -> QualIdent -> [Class]
-lookupNonHiddenClasses (ClassEnv cEnv _ _ _) c = 
+lookupNonHiddenClasses (ClassEnv cEnv _ _ _ _) c =
   qualLookupTopEnv c (nonHiddenClassEnv cEnv)
 
 -- |returns the class environment without hidden classes
@@ -345,11 +350,11 @@ allInstances = map snd
 
 -- |returns all bindings with classes that are not hidden
 allNonHiddenClassBindings :: ClassEnv -> [(QualIdent, Class)]
-allNonHiddenClassBindings (ClassEnv cEnv _ _ _) = allBindings $ nonHiddenClassEnv cEnv
+allNonHiddenClassBindings (ClassEnv cEnv _ _ _ _) = allBindings $ nonHiddenClassEnv cEnv
 
 -- |returns all bindings
 allClassBindings :: ClassEnv -> [(QualIdent, Class)]
-allClassBindings (ClassEnv cEnv _ _ _) = allBindings cEnv 
+allClassBindings (ClassEnv cEnv _ _ _ _) = allBindings cEnv
 
 -- |looks up a type scheme in the given class
 lookupTypeScheme :: Class -> Ident -> Maybe TypeScheme

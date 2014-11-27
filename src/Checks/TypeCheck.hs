@@ -27,7 +27,7 @@ module Checks.TypeCheck (typeCheck, bindTC, expandType) where
 
 import Control.Monad (liftM, liftM2, liftM3, replicateM, unless, when)
 import qualified Control.Monad.State as S (State, gets, modify, runState)
-import Data.List (nub, partition, sortBy)
+import Data.List (nub, partition, sortBy, (\\))
 import qualified Data.Map            as Map (Map, delete, empty, insert, lookup)
 import Data.Maybe (catMaybes, fromJust, fromMaybe, isJust, listToMaybe, maybeToList
                   , isNothing)
@@ -44,7 +44,7 @@ import Base.Expr
 import Base.Messages (Message, posMessage, internalError)
 import Base.SCC
 import Base.TopEnv
-import Base.Types as BT
+import Base.Types as BT hiding (splitType)
 import Base.TypeSubst
 import Base.Subst (listToSubst, substToList)
 import Base.Utils (foldr2, findDouble, zip', zipWith', zipWith3', fromJust')
@@ -60,7 +60,10 @@ import Env.Value ( ValueEnv, ValueInfo (..), rebindFun
   , bindGlobalInfo, bindLabel, lookupValue, qualLookupValue
   , tryBindFun )
 import Env.ClassEnv (ClassEnv (..), Class (..)
-  , implies', implies, isValidCx, reduceContext, lookupTypeScheme)
+  , implies', implies, isValidCx, reduceContext, lookupTypeScheme
+  , {- canonClassName, isSuperClassOf, -} getInstances, splitType )
+
+import Debug.Trace
 
 infixl 5 $-$
 
@@ -442,7 +445,7 @@ nameType (VariableType _) [] = internalError
 
 -- |binds all class methods into the value environment
 bindClassMethods :: ClassEnv -> TCM ()
-bindClassMethods (ClassEnv _ _ methodEnv _) = do 
+bindClassMethods (ClassEnv _ _ methodEnv _ _) = do
   vEnv <- getValueEnv
   let classMethods0 = allBindings methodEnv
       vEnv'         = foldr bind vEnv classMethods0
@@ -1197,6 +1200,84 @@ isAmbiguous :: [Int]             -- ^ the type variables from T
 isAmbiguous tyVarsType freeVars (_qid, ty0) = 
   let tyVarsCxElem = typeVars ty0
   in any (\ty -> ty `notElem` tyVarsType && not (ty `Set.member` freeVars)) tyVarsCxElem
+
+type Ambiguity = (Int, BT.Context)
+
+ambiguities :: Set.Set Int -> [Int] -> BT.Context -> [Ambiguity]
+ambiguities freeVars tyVars cx =
+  -- [ (v , filter (isAmbiguous tyVars freeVars) cx)
+  [ (v, filter (\(_,ty) -> v `elem` typeVars ty || v `Set.member` freeVars) cx)
+    | v <- concatMap typeVars ps \\ tyVars, not (v `Set.member` freeVars)
+   ]
+ where
+  ps = map snd cx
+
+numClasses :: [QualIdent]
+numClasses = map preludeClass ["Num","Integral","Floating"
+                              ,"Fractional","Real","RealFloat","RealFrac"]
+
+stdClasses :: [QualIdent]
+stdClasses = map preludeClass ["Eq", "Ord", "Show", "Read", "Bounded", "Enum"]
+               ++ numClasses
+
+preludeClass :: String -> QualIdent
+preludeClass className = QualIdent (Just preludeMIdent) (Ident NoPos className 0)
+
+candidates :: ClassEnv -> Ambiguity -> [Type]
+candidates cEnv (var,cx) = trace ("res: " ++ show res ++
+                                  "\ninstances: " ++ show (map (\ty' -> map (\i -> getInstances cEnv i (fst (splitType ty'))) is) (defaultingTypes cEnv)))
+                                 res
+ where
+  -- canonClass aClass = canonClassName preludeMIdent cEnv aClass
+  (is,ts) = unzip cx
+  res = trace ("is: " ++ show is ++ "\nts:" ++ show ts)
+        $      [ ty' | all (TypeVariable var ==) ts
+                                 , any (`elem` numClasses) is
+                                 , all (`elem` stdClasses) is
+                                 , ty' <- defaultingTypes cEnv
+                                 , any (\i -> not $ null $ getInstances cEnv i $ fst (splitType ty'))
+                                       is
+                           ]
+
+-- entail :: ClassEnv -> BT.Context -> (QualIdent,Type) -> Bool
+-- entail cEnv cx (qId,ty) = maybe False (any (p `elem`)
+--  where
+--    case lookupClass preludeMIdent cEnv qId of
+--         Just qId' -> superClasses qId'
+--         Nothing   -> False
+-- bySuper :: ClassEnv -> (QualIdent,Type) -> BT.Context
+-- bySuper cEnv c@(qId,ty) = c : concat [ bySuper cEnv (qId',ty) | qId' <- superClasses cEnv theClass
+--                                                               , isJust (lookupClass preludeMIdent cEnv qId)
+--                                      ]
+-- byInst :: ClassEnv -> (QualIdent,Type) -> Maybe BT.Context
+-- byInst cEnv c@(qId,ty) = msum [ tryInst it | it <- getInstances classEnv qId
+
+defaultedContext :: ClassEnv
+                 -> Set.Set Int
+                 -> [Int]
+                 -> BT.Context
+                 -> Either BT.Context BT.Context
+defaultedContext cEnv freeVars vars cx
+  | any null tss = Left vps'
+  | otherwise    = Right vps'
+ where
+  vps' = trace ("candidates: " ++ show tss ++ "\nambiguities: " ++ show vps) $ concatMap snd vps
+  vps  = ambiguities freeVars vars cx
+  tss  = map (candidates cEnv) vps
+
+defaultedSubst :: ClassEnv
+                 -> Set.Set Int
+                 -> [Int]
+                 -> BT.Context
+                 -> TypeSubst
+defaultedSubst cEnv freeVars vars cx
+  | any null tss = error "DOOF"
+  | otherwise    = vps'
+ where
+  vps' = trace ("candidates: " ++ show tss ++ "\nambiguities: " ++ show vps) $ listToSubst $ zip (map fst vps) (map head tss)
+  vps  = ambiguities freeVars vars cx
+  tss  = map (candidates cEnv) vps
+
 
 -- | builds a mapping from type variables in the left type to the type variables
 -- in the right type. Assumes that the types are alpha equivalent. 

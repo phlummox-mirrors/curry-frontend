@@ -321,7 +321,7 @@ concreteCode (BuildDict (cls,ty) ops) =
        (map concreteCode ops) 
   where 
   ty' = if not $ isCons ty then internalError "concreteCode"
-        else fst $ fromJust $ splitType ty 
+        else fst $ fromJust $ BT.splitType ty
 
 -- |looks whether there are context elements for which exist more than one
 -- possible instance that could be applied

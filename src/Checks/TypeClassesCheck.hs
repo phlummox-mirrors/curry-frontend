@@ -87,7 +87,7 @@ hasError = liftM (not . null) $ gets errors
 typeClassesCheck :: ModuleIdent -> Options -> [Decl] -> ClassEnv -> TCEnv -> OpPrecEnv 
                  -> ([Decl], ClassEnv, [Message])
 typeClassesCheck m opts decls0
-    cEnvOrg@(ClassEnv importedClassesEnv importedInstances _ _) tcEnv0 opPrecEnv =
+    cEnvOrg@(ClassEnv importedClassesEnv importedInstances _ _ _) tcEnv0 opPrecEnv =
   if (not typeClassExtensions && typeClassElemsUsed decls0)
   then (decls0, cEnvOrg, [errTypeClassesNotEnabled])
   else   
@@ -113,8 +113,9 @@ typeClassesCheck m opts decls0
           classMethodsEnv     = constructClassMethodsEnv $ allClassBindings cEnv
           cEnv                = ClassEnv allClassesEnv instances classMethodsEnv
                                          (buildCanonClassMap allClassesEnv)
+                                         defaultTypes
       in (newDecls, cEnv, [])
-    (_, errs@(_:_)) -> (decls, ClassEnv emptyTopEnv [] emptyTopEnv Map.empty, errs)
+    (_, errs@(_:_)) -> (decls, initClassEnv, errs)
   where
     typeClassExtensions = TypeClassExtensions `elem` optExtensions opts
     decls      = runDer opPrecEnv $ expandDerivingDecls decls0
@@ -180,6 +181,7 @@ typeClassesCheck m opts decls0
           allClassesEnv = bindAll newClasses importedClassesEnv
           newClassEnv   = ClassEnv allClassesEnv instances emptyTopEnv 
                                    (buildCanonClassMap allClassesEnv)
+                                   defaultTypes
                                  
       mapM_ (checkClassesInDeriving m newClassEnv) dataDecls
     
@@ -196,6 +198,7 @@ typeClassesCheck m opts decls0
           allClassesEnv = bindAll newClasses importedClassesEnv
           newClassEnv   = ClassEnv allClassesEnv instances emptyTopEnv 
                                    (buildCanonClassMap allClassesEnv)
+                                   defaultTypes
       
       -- TODO: check also contexts of (imported) classes and interfaces?
       mapM_ (checkClassesInContext m newClassEnv) classDecls
@@ -222,6 +225,7 @@ typeClassesCheck m opts decls0
           allClassesEnv = bindAll newClasses' importedClassesEnv
           newClassEnv'  = ClassEnv allClassesEnv instances' emptyTopEnv 
                                    (buildCanonClassMap allClassesEnv)
+                                   defaultTypes
       
       mapM_ (checkForInstanceDataTypeExistAlsoInstancesForSuperclasses newClassEnv' tcEnv m) instDecls
       mapM_ (checkInstanceContextImpliesAllInstanceContextsOfSuperClasses newClassEnv' tcEnv m) instDecls
@@ -724,7 +728,7 @@ getDecls _                                = internalError "getDecls"
 -- This can be determined by computing the strong connection components
 -- and checking that each has only one element
 checkForCyclesInClassHierarchy :: ClassEnv -> Tcc ()
-checkForCyclesInClassHierarchy cEnv@(ClassEnv classes _ _ _) = 
+checkForCyclesInClassHierarchy cEnv@(ClassEnv classes _ _ _ _) =
   if all (==1) (map length sccs)
   then ok
   else mapM_ (report . errCyclesInClassHierarchy) (filter (\xs -> length xs > 1) sccs)
