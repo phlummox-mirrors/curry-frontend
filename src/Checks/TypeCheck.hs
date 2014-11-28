@@ -1141,42 +1141,64 @@ genVar poly lvs theta ma v = do
       generalizedContext = getContext sigma0
       finalContext       = (if doContextRed0 then reduceContext cEnv else id)
         generalizedContext
-      sigma     = sigma0 `constrainBy` finalContext
+      -- sigma     = sigma0 `constrainBy` finalContext
       context   = finalContext
   -- check that the context is valid
       invalidCx = isValidCx cEnv context
   unless (null invalidCx) $ report $ errNoInstance (idPosition v) m invalidCx
   -- check for ambiguous context elements
-  let tyVars       = typeVars (typeSchemeToType sigma)
-      ambigCxElems = filter (isAmbiguous tyVars lvs) context 
-  unless (null ambigCxElems) $ case lookupTypeSig v sigs of 
-    Nothing -> report $ errAmbiguousContextElems (idPosition v) m v ambigCxElems
-    Just (_, tySig) -> do
-      -- check whether there are ambiguous type variables in the 
-      -- unexpanded (!) type signature. TODO: Actually we could do without this
-      -- test because we know that type signatures are unambiguous (as this
-      -- is checked earlier) 
-      tySig' <- expandPolyType False tySig
-      let tyVars'       = typeVars (typeSchemeToType tySig')
-          ambigCxElems' = filter (isAmbiguous tyVars' Set.empty) (getContext tySig')
-      unless (null ambigCxElems') $ report $ 
-        errAmbiguousContextElems (idPosition v) m v ambigCxElems'
+  let sigma        = sigma0 `constrainBy` context
+      tyVars       = typeVars (typeSchemeToType sigma)
+      ambigCxElems = filter (isAmbiguous tyVars lvs) context
+      newSubst     = if null ambigCxElems then idSubst else defaultedSubst cEnv lvs tyVars context
+      eDefaultedContext = defaultedContext cEnv lvs tyVars context
+      newContext   =  if null ambigCxElems then context else case eDefaultedContext of
+                          Left  cElems -> cElems
+                          Right cElems -> cElems
+      newSigma = sigma `constrainBy` newContext
+  unless (null ambigCxElems || not (isLeft eDefaultedContext))
+         $ report $ errAmbiguousContextElems (idPosition v) m v (newContext ++ ambigCxElems)
+         -- unless (null ambigCxElems) $ case lookupTypeSig v sigs of
+         --   Nothing -> report $ errAmbiguousContextElems (idPosition v) m v ambigCxElems
+         --   Just (_, tySig) -> do
+         --     -- check whether there are ambiguous type variables in the
+         --     -- unexpanded (!) type signature. TODO: Actually we could do without this
+         --     -- test because we know that type signatures are unambiguous (as this
+         --     -- is checked earlier)
+         --     tySig' <- expandPolyType False tySig
+         --     let tyVars'       = typeVars (typeSchemeToType tySig')
+         --         ambigCxElems' = filter (isAmbiguous tyVars' Set.empty) (getContext tySig')
+         --     unless (null ambigCxElems') $ report $
+         --       errAmbiguousContextElems (idPosition v) m v ambigCxElems'
   case lookupTypeSig v sigs of
-    Nothing                -> modifyValueEnv $ rebindFun m v arity sigma
+    Nothing                -> trace ("<<<<< NOTHING >>>>>>" ++
+                                     "\nvarName: " ++ show (idName v) ++
+                                     "\nvarType: " ++ show (varType v tyEnv) ++
+                                     "\nsigma0: " ++ show sigma ++
+                                     "\ncontext: " ++ show context ++
+                                     "\nnewContext: " ++ show newContext ++
+                                     "\nsigma: " ++ show newSigma)
+                                    $ (modifyValueEnv $ rebindFun m v arity newSigma) >> modifyTypeSubst (compose newSubst)
     Just (expanded, sigTy) -> do
       sigma' <- expandPolyType (not expanded) sigTy
-      case (eqTyScheme sigma sigma') of 
-        False -> report  $ errTypeSigTooGeneral (idPosition v) m what sigTy sigma
+      case (eqTyScheme newSigma sigma') of
+        False -> report  $ errTypeSigTooGeneral (idPosition v) m what sigTy newSigma
         True  -> do
-          -- check that the given context implies the inferred (but don't 
+          -- check that the given context implies the inferred (but don't
           -- report an error when the inferred context is invalid)
-          let mapping  = buildTypeVarsMapping (typeSchemeToType sigma') (typeSchemeToType sigma)
-              context' = subst mapping $ getContext sigma' 
-          unless (implies' cEnv context' context) $ when (null invalidCx)
-            $ report $ errContextImplication (idPosition v) m context' context
-              (filter (not . implies cEnv context') context)  
+          let mapping  = buildTypeVarsMapping (typeSchemeToType sigma') (typeSchemeToType newSigma)
+              context' = subst mapping $ getContext sigma'
+          unless (implies' cEnv context' newContext) $ when (null invalidCx)
+            $ report $ errContextImplication (idPosition v) m context' newContext
+              (filter (not . implies cEnv context') newContext)
               v
-      modifyValueEnv $ rebindFun m v arity sigma
+      trace ("<<<<< Just >>>>>>" ++
+                                     "\nvarName: " ++ show (idName v) ++
+                                     "\nvarType: " ++ show (varType v tyEnv) ++
+                                     "\nsigma0: " ++ show sigma ++
+                                     "\ncontext: " ++ show newContext ++
+                                     "\nsigma: " ++ show newSigma)
+           $ (modifyValueEnv $ rebindFun m v arity newSigma) >> modifyTypeSubst (compose newSubst)
  where
   what = text (if poly then "Function:" else "Variable:") <+> ppIdent v
   genType poly' (ForAll cx0 n ty)
@@ -1187,17 +1209,19 @@ genVar poly lvs theta ma v = do
     | poly' = gen lvs (cx0, ty)
     | otherwise = monoType' (cx0, ty)
   eqTyScheme (ForAll _cx1 _ t1) (ForAll _cx2 _ t2) = equTypes t1 t2
+  isLeft (Left _) = True
+  isLeft _        = False
 
 -- | Returns whether the given context element is ambiguous.
--- |  A context element in the type signature C => T is exactly then ambiguous 
--- |  if it contains a type variable that does not appear in T and which 
--- |  is not free in the current type environment (definition from 
+-- |  A context element in the type signature C => T is exactly then ambiguous
+-- |  if it contains a type variable that does not appear in T and which
+-- |  is not free in the current type environment (definition from
 -- |  "Implementing Haskell Type Classes", K. Hammond and S. Blott)
-isAmbiguous :: [Int]             -- ^ the type variables from T 
+isAmbiguous :: [Int]             -- ^ the type variables from T
             -> Set.Set Int       -- ^ the free type vars in the current type environment
             -> (QualIdent, Type) -- ^ the context elem to be examined
             -> Bool
-isAmbiguous tyVarsType freeVars (_qid, ty0) = 
+isAmbiguous tyVarsType freeVars (_qid, ty0) =
   let tyVarsCxElem = typeVars ty0
   in any (\ty -> ty `notElem` tyVarsType && not (ty `Set.member` freeVars)) tyVarsCxElem
 
@@ -1205,10 +1229,10 @@ type Ambiguity = (Int, BT.Context)
 
 ambiguities :: Set.Set Int -> [Int] -> BT.Context -> [Ambiguity]
 ambiguities freeVars tyVars cx =
-  -- [ (v , filter (isAmbiguous tyVars freeVars) cx)
-  [ (v, filter (\(_,ty) -> v `elem` typeVars ty || v `Set.member` freeVars) cx)
-    | v <- concatMap typeVars ps \\ tyVars, not (v `Set.member` freeVars)
-   ]
+  let as = [ (v, filter (\(_,ty) -> v `elem` typeVars ty || v `Set.member` freeVars) cx)
+           | v <- concatMap typeVars ps \\ tyVars, not (v `Set.member` freeVars)
+           ]
+  in trace ("ambiguities: " ++ show as ++ "\ncxs: " ++ show cx ++ "\ntyVars: " ++ show tyVars ++ "\vs: " ++ show (concatMap typeVars ps)) as
  where
   ps = map snd cx
 
@@ -1224,20 +1248,18 @@ preludeClass :: String -> QualIdent
 preludeClass className = QualIdent (Just preludeMIdent) (Ident NoPos className 0)
 
 candidates :: ClassEnv -> Ambiguity -> [Type]
-candidates cEnv (var,cx) = trace ("res: " ++ show res ++
-                                  "\ninstances: " ++ show (map (\ty' -> map (\i -> getInstances cEnv i (fst (splitType ty'))) is) (defaultingTypes cEnv)))
-                                 res
- where
-  -- canonClass aClass = canonClassName preludeMIdent cEnv aClass
-  (is,ts) = unzip cx
-  res = trace ("is: " ++ show is ++ "\nts:" ++ show ts)
-        $      [ ty' | all (TypeVariable var ==) ts
+candidates cEnv (var,cx) =
+    let cs = [ ty' | all (TypeVariable var ==) ts
                                  , any (`elem` numClasses) is
                                  , all (`elem` stdClasses) is
                                  , ty' <- defaultingTypes cEnv
                                  , any (\i -> not $ null $ getInstances cEnv i $ fst (splitType ty'))
                                        is
                            ]
+    in trace ("candidates: " ++ show cs ++ "\ntheAmb: " ++ show (var,cx) ++ "\nis: " ++ show is ++ "\nts: " ++ show ts) cs
+ where
+  -- canonClass aClass = canonClassName preludeMIdent cEnv aClass
+  (is,ts) = unzip cx
 
 -- entail :: ClassEnv -> BT.Context -> (QualIdent,Type) -> Bool
 -- entail cEnv cx (qId,ty) = maybe False (any (p `elem`)
@@ -1261,7 +1283,7 @@ defaultedContext cEnv freeVars vars cx
   | any null tss = Left vps'
   | otherwise    = Right vps'
  where
-  vps' = trace ("candidates: " ++ show tss ++ "\nambiguities: " ++ show vps) $ concatMap snd vps
+  vps' = trace ("tss: " ++ show tss ++ "\nvps: " ++ show vps) $ concatMap snd vps
   vps  = ambiguities freeVars vars cx
   tss  = map (candidates cEnv) vps
 
@@ -1271,10 +1293,10 @@ defaultedSubst :: ClassEnv
                  -> BT.Context
                  -> TypeSubst
 defaultedSubst cEnv freeVars vars cx
-  | any null tss = error "DOOF"
+  | any null tss = idSubst
   | otherwise    = vps'
  where
-  vps' = trace ("candidates: " ++ show tss ++ "\nambiguities: " ++ show vps) $ listToSubst $ zip (map fst vps) (map head tss)
+  vps' = listToSubst $ zip (map fst vps) (map head tss)
   vps  = ambiguities freeVars vars cx
   tss  = map (candidates cEnv) vps
 
