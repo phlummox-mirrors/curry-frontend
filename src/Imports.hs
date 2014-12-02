@@ -16,11 +16,11 @@
 -}
 module Imports (importInterfaces, importModules, qualifyEnv) where
 
-import           Control.Monad                   (liftM, unless)
-import qualified Control.Monad.State        as S (State, gets, modify, runState)
-import qualified Data.Map                   as Map
-import           Data.Maybe
-import qualified Data.Set                   as Set
+import           Control.Monad              (liftM, unless)
+import qualified Control.Monad.State as S   (State, gets, modify, runState)
+import qualified Data.Map            as Map
+import           Data.Maybe                 (catMaybes, fromMaybe)
+import qualified Data.Set            as Set
 import           Data.List                       (nub, (\\))
 import           Text.PrettyPrint
 
@@ -32,6 +32,7 @@ import Curry.Syntax as CS
 import Base.CurryTypes (toQualType, toQualTypes, toQualConstrType)
 import Base.Messages (Message, posMessage, internalError)
 import Base.TopEnv
+
 import Base.Types as BT hiding (isCons)
 import Base.TypeSubst (expandAliasType)
 import Base.Utils (fromJust') 
@@ -336,7 +337,7 @@ bindTy m (IDataDecl _ tc tvs cs) env =
 bindTy m (INewtypeDecl _ tc tvs nc) env =
   bindNewConstr m tc' tvs (constrType tc' tvs) nc env
   where tc' = qualQualify m tc
-bindTy m (ITypeDecl _ rtc tvs (RecordType fs _)) env =
+bindTy m (ITypeDecl _ rtc tvs (RecordType fs)) env =
   foldr (bindRecordLabels m rtc') env' fs
   where urtc = fromRecordExtId $ unqualify rtc
         rtc' = qualifyWith m urtc
@@ -670,7 +671,7 @@ expandTypeWith tc cs = do
       mapM (checkConstr [c | Just (DataConstr c _ _) <- cs']) cs
     Just (RenamingType _ _ (DataConstr c _ _)) ->
       mapM (checkConstr [c]) cs
-    Just (AliasType    _ _ (TypeRecord  fs _)) ->
+    Just (AliasType    _ _ (TypeRecord    fs)) ->
       mapM (checkLabel [l | (l, _) <- fs] . renameLabel) cs
     Just (AliasType _ _ _) -> report (errNonDataType       tc) >> return []
     Nothing                -> report (errUndefinedEntity m tc) >> return []
@@ -703,7 +704,7 @@ expandTypeAll tc = do
     Just (DataType     _ _                 cs) ->
       return [c | Just (DataConstr c _ _) <- cs]
     Just (RenamingType _ _ (DataConstr c _ _)) -> return [c]
-    Just (AliasType    _ _ (TypeRecord  fs _)) -> return [l | (l, _) <- fs]
+    Just (AliasType    _ _ (TypeRecord    fs)) -> return [l | (l, _) <- fs]
     Just (AliasType _ _ _) -> report (errNonDataType       tc) >> return []
     Nothing                -> report (errUndefinedEntity m tc) >> return []
 
@@ -756,11 +757,16 @@ importUnifyData cEnv = cEnv { tyConsEnv = importUnifyData' $ tyConsEnv cEnv }
 importUnifyData' :: TCEnv -> TCEnv
 importUnifyData' tcEnv = fmap (setInfo allTyCons) tcEnv
   where
-  setInfo tcs t   = fromJust $ Map.lookup (origName t) tcs
+  setInfo tcs t   = case Map.lookup (origName t) tcs of
+                         Nothing -> error "Imports.importUnifyData'"
+                         Just ty -> ty
   allTyCons       = foldr (mergeData . snd) Map.empty $ allImports tcEnv
   mergeData t tcs =
-    Map.insert tc (maybe t (fromJust . merge t) $ Map.lookup tc tcs) tcs
+    Map.insert tc (maybe t (sureMerge t) $ Map.lookup tc tcs) tcs
     where tc = origName t
+  sureMerge x y = case merge x y of
+                       Nothing -> error "Imports.importUnifyData'.sureMerge"
+                       Just z  -> z
 
 -- ---------------------------------------------------------------------------
 
@@ -898,16 +904,19 @@ expandRecordTypes tcEnv (Label qid r (ForAll con n ty)) =
   Label qid r (ForAll con n (expandRecords tcEnv ty))
 
 expandRecords :: TCEnv -> Type -> Type
-expandRecords tcEnv (TypeConstructor qid tys) = case qualLookupTC qid tcEnv of
-  [AliasType _ _ rty@(TypeRecord _ _)]
-    -> expandRecords tcEnv $ expandAliasType (map (expandRecords tcEnv) tys) rty
-  _ -> TypeConstructor qid $ map (expandRecords tcEnv) tys
+-- jrt 2014-10-16: Deactivated to enable declaration of recursive record types
+-- expandRecords tcEnv (TypeConstructor qid tys) = case qualLookupTC qid tcEnv of
+--   [AliasType _ _ rty@(TypeRecord _ _)]
+--     -> expandRecords tcEnv $ expandAliasType (map (expandRecords tcEnv) tys) rty
+--   _ -> TypeConstructor qid $ map (expandRecords tcEnv) tys
+expandRecords tcEnv (TypeConstructor qid tys) =
+  TypeConstructor qid $ map (expandRecords tcEnv) tys
 expandRecords tcEnv (TypeConstrained tys v) =
   TypeConstrained (map (expandRecords tcEnv) tys) v
 expandRecords tcEnv (TypeArrow ty1 ty2) =
   TypeArrow (expandRecords tcEnv ty1) (expandRecords tcEnv ty2)
-expandRecords tcEnv (TypeRecord fs rv) =
-  TypeRecord (map (\ (l, ty) -> (l, expandRecords tcEnv ty)) fs) rv
+expandRecords tcEnv (TypeRecord fs) =
+  TypeRecord (map (\ (l, ty) -> (l, expandRecords tcEnv ty)) fs)
 expandRecords _ ty = ty
 
 -- Unlike usual identifiers like in functions, types etc., identifiers

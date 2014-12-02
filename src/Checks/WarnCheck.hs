@@ -254,11 +254,9 @@ checkTypeExpr (VariableType          v) = visitTypeId v
 checkTypeExpr (TupleType           tys) = mapM_ checkTypeExpr tys
 checkTypeExpr (ListType             ty) = checkTypeExpr ty
 checkTypeExpr (ArrowType       ty1 ty2) = mapM_ checkTypeExpr [ty1, ty2]
-checkTypeExpr (RecordType       fs rty) = do
-  mapM_ checkTypeExpr (map snd fs)
-  maybe ok checkTypeExpr rty
 checkTypeExpr s@(SpecialConstructorType _ _) = 
   checkTypeExpr $ specialConsToTyExpr s
+checkTypeExpr (RecordType           fs) = mapM_ checkTypeExpr (map snd fs)
 
 -- Checks locally declared identifiers (i.e. functions and logic variables)
 -- for shadowing
@@ -543,8 +541,10 @@ simplifyPat (ConstructorPattern c ps) = ConstructorPattern c `liftM`
 simplifyPat (InfixPattern    p1 c p2) = ConstructorPattern c `liftM`
                                         mapM simplifyPat [p1, p2]
 simplifyPat (ParenPattern          p) = simplifyPat p
-simplifyPat (TuplePattern       _ ps) = ConstructorPattern (qTupleId (length ps))
-                                        `liftM` mapM simplifyPat ps
+simplifyPat (TuplePattern       _ ps)
+  | null ps   = return $ ConstructorPattern qUnitId []
+  | otherwise = ConstructorPattern (qTupleId (length ps))
+                `liftM` mapM simplifyPat ps
 simplifyPat (ListPattern        _ ps) = simplifyListPattern `liftM`
                                         mapM simplifyPat ps
 simplifyPat (AsPattern           _ p) = simplifyPat p
@@ -566,8 +566,8 @@ getAllLabels l = do
     [Label _ r _] -> do
       tcEnv <- gets tyConsEnv
       case qualLookupTC r tcEnv of
-        [AliasType _ _ (TypeRecord fs _)] -> return (r, map fst fs)
-        _                                 -> internalError $
+        [AliasType _ _ (TypeRecord fs)] -> return (r, map fst fs)
+        _                               -> internalError $
           "Checks.WarnCheck.getAllLabels: " ++ show r
     _             -> internalError $ "Checks.WarnCheck.getAllLabels: " ++ show l
 
@@ -734,7 +734,7 @@ getTyCons _ (TypeConstructor tc _) = do
       [RenamingType _ _ nc] -> [nc]
       err                   -> internalError $ "Checks.WarnCheck.getTyCons: "
                             ++ show tc ++ ' ' : show err ++ '\n' : show tcEnv
-getTyCons q (TypeRecord fs _) = return [DataConstr (unqualify q) (length fs) (map snd fs)]
+getTyCons q (TypeRecord fs) = return [DataConstr (unqualify q) (length fs) (map snd fs)]
 getTyCons _ _ = internalError "Checks.WarnCheck.getTyCons"
 
 -- |Resugar the exhaustive patterns previously desugared at 'simplifyPat'.
@@ -749,6 +749,7 @@ tidyPat :: Pattern -> WCM Pattern
 tidyPat p@(LiteralPattern        _) = return p
 tidyPat p@(VariablePattern       _) = return p
 tidyPat p@(ConstructorPattern c ps)
+  | c == qUnitId && null ps         = return $ TuplePattern noRef []
   | isQTupleId c                    = TuplePattern noRef `liftM` mapM tidyPat ps
   | c == qConsId && isFiniteList p  = ListPattern []     `liftM`
                                       mapM tidyPat (unwrapFinite p)
@@ -756,9 +757,9 @@ tidyPat p@(ConstructorPattern c ps)
   | otherwise                       = do
     ty <- getConTy c
     case ty of
-      TypeRecord fs _ -> flip RecordPattern Nothing `liftM`
-                         zipWithM mkFieldPat fs ps
-      _               -> return p
+      TypeRecord fs -> flip RecordPattern Nothing `liftM`
+                       zipWithM mkFieldPat fs ps
+      _             -> return p
   where
   isFiniteList (ConstructorPattern d []     )                = d == qNilId
   isFiniteList (ConstructorPattern d [_, e2]) | d == qConsId = isFiniteList e2
@@ -925,9 +926,8 @@ insertTypeExpr (ConstructorType _ tys) = mapM_ insertTypeExpr tys
 insertTypeExpr (TupleType         tys) = mapM_ insertTypeExpr tys
 insertTypeExpr (ListType           ty) = insertTypeExpr ty
 insertTypeExpr (ArrowType     ty1 ty2) = mapM_ insertTypeExpr [ty1,ty2]
-insertTypeExpr (RecordType      _ rty) = do
+insertTypeExpr (RecordType          _) = ok
   --mapM_ insertVar (concatMap fst fs)
-  maybe (return ()) insertTypeExpr rty
 insertTypeExpr s@(SpecialConstructorType _ _) = 
   insertTypeExpr $ specialConsToTyExpr s 
 

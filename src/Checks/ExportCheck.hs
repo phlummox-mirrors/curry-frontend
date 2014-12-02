@@ -304,8 +304,8 @@ constrs (RenamingType _ _ (DataConstr c _ _)) = [c]
 constrs (AliasType _ _ _)  = []
 
 labels :: TypeInfo -> [Ident]
-labels (AliasType _ _ (TypeRecord fs _)) = map fst fs
-labels _                                 = []
+labels (AliasType _ _ (TypeRecord fs)) = map fst fs
+labels _                               = []
 
 isDataType :: TypeInfo -> Bool
 isDataType (DataType     _ _ _) = True
@@ -313,8 +313,8 @@ isDataType (RenamingType _ _ _) = True
 isDataType (AliasType    _ _ _) = False
 
 isRecordType :: TypeInfo -> Bool
-isRecordType (AliasType _ _ (TypeRecord _ _)) = True
-isRecordType _                                = False
+isRecordType (AliasType _ _ (TypeRecord _)) = True
+isRecordType _                              = False
 
 -- ---------------------------------------------------------------------------
 -- Error messages

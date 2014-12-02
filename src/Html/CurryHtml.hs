@@ -13,11 +13,12 @@
 -}
 module Html.CurryHtml (source2html) where
 
+import Control.Applicative   ((<$>), (<*>))
 import Control.Monad.Writer
-
 import Data.List             (mapAccumL)
 import Data.Maybe            (fromMaybe, isJust)
 import Network.URI           (escapeURIString, isUnreserved)
+import System.Directory      (copyFile, doesFileExist)
 import System.FilePath       ((</>), dropFileName, joinPath, takeBaseName)
 
 import Curry.Base.Ident      (ModuleIdent (..), QualIdent (..), unqualify)
@@ -34,6 +35,10 @@ import CompilerOpts          (Options (..), WarnOpts (..))
 import CurryBuilder          (buildCurry)
 import Modules               (loadAndCheckModule)
 import Transformations       (qual)
+import Paths_curry_frontend  (getDataFileName)
+
+cssFile :: FilePath
+cssFile = "currysource.css"
 
 -- translate source file into HTML file with syntaxcoloring
 -- @param sourcefilename
@@ -45,6 +50,18 @@ source2html opts f = do
   srcFile <- liftIO $ lookupCurryFile ("." : optImportPaths opts) f
   (m, program) <- filename2program opts (fromMaybe f srcFile)
   liftIO $ writeFile outFile (program2html m program)
+  liftIO $ updateCSSFile outDir
+
+updateCSSFile :: FilePath -> IO ()
+updateCSSFile dir = do
+  src <- getDataFileName cssFile
+  let target = dir </> cssFile
+  exists  <- doesFileExist target
+  if not exists
+    then copyFile src target
+    else do
+      same <- (==) <$> readFile src <*> readFile target
+      unless same $ copyFile src target
 
 -- @param importpaths
 -- @param filename
@@ -97,7 +114,7 @@ program2html m codes = unlines
   ]
   where
   titleHtml = "Module " ++ show m
-  styleLink = makeTopPath m </> "currydoc.css"
+  styleLink = makeTopPath m </> cssFile
   lineHtml  = unlines $ map show [1 .. length (lines codeHtml)]
   codeHtml  = concat $ snd $ mapAccumL (code2html m) [] codes
 
@@ -115,7 +132,7 @@ escCode :: Code -> String
 escCode = htmlQuote . code2string
 
 escIdent :: QualIdent -> String
-escIdent = string2urlencoded . show . unqualify
+escIdent = htmlQuote . show . unqualify
 
 spanTag :: String -> String -> String -> String
 spanTag clV idV str

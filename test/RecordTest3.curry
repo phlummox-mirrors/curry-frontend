@@ -1,17 +1,25 @@
-type R1 a b = { f1 :: a, f2 :: b }
-type R2 = { f3 :: Int }
+import RecursiveRecords
+import RecordTest2
 
-type R3 a b = { f5 :: a, f4 :: Maybe b }
+r :: R Int
+r = { f1 := 4, f2 := "hello" }
 
-type Person = { name :: String, age :: Int }
+e = showR r
 
-type Address = { person :: Person, street :: String, city :: String }
-
-smith :: Person
-smith = { name := "Smith", age := 20 }
-
-a :: Address
-a = { person := smith, street := "Main Street", city := "New York" }
+-- type R1 a b = { f1 :: a, f2 :: b }
+-- type R2 = { f3 :: Int }
+--
+-- type R3 a b = { f5 :: a, f4 :: Maybe b }
+--
+-- type Person = { name :: String, age :: Int }
+--
+-- type Address = { person :: Person, street :: String, city :: String }
+--
+-- smith :: Person
+-- smith = { name := "Smith", age := 20 }
+--
+-- a :: Address
+-- a = { person := smith, street := "Main Street", city := "New York" }
 
 -- p2 = { name := "Doe" }
 

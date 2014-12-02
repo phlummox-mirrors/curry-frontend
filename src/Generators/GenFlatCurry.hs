@@ -14,7 +14,7 @@ import           Control.Monad       (filterM, liftM, liftM2, liftM3, mplus)
 import           Control.Monad.State (State, evalState, gets, modify)
 import           Data.List           (mapAccumL, nub)
 import qualified Data.Map as Map     (Map, empty, insert, lookup, fromList, toList)
-import           Data.Maybe          (catMaybes, fromJust, fromMaybe, isJust)
+import           Data.Maybe          (catMaybes, fromMaybe, isJust)
 
 -- curry-base
 import Curry.Base.Ident as Id
@@ -659,7 +659,7 @@ genRecordTypes = records >>= mapM genRecordType
 
 --
 genRecordType :: CS.IDecl -> FlatState TypeDecl
-genRecordType (CS.ITypeDecl _ qid params (CS.RecordType fs _)) = do
+genRecordType (CS.ITypeDecl _ qid params (CS.RecordType fs)) = do
   let is = [0 .. (length params) - 1]
       (mid, ident) = (qidModule qid, qidIdent qid)
   qname <- visitQualIdent ((maybe qualify qualifyWith mid) (recordExtId ident))
@@ -704,12 +704,12 @@ elimRecordTypes tyEnv tcEnv (CS.ListType ty)
 elimRecordTypes tyEnv tcEnv (CS.ArrowType ty1 ty2)
    = CS.ArrowType (elimRecordTypes tyEnv tcEnv ty1)
                   (elimRecordTypes tyEnv tcEnv ty2)
-elimRecordTypes tyEnv tcEnv (CS.RecordType fss _)
+elimRecordTypes tyEnv tcEnv (CS.RecordType fss)
    = let fs = flattenRecordTypeFields fss
      in  case (lookupValue (fst (head fs)) tyEnv) of
           [Label _ record _] ->
             case (qualLookupTC record tcEnv) of
-              [AliasType _ n (TypeRecord fs' _)] ->
+              [AliasType _ n (TypeRecord fs')] ->
                 let ms = foldl (matchTypeVars fs) Map.empty fs'
                     types = map (\i -> maybe
                                         (CS.VariableType
@@ -736,7 +736,7 @@ matchTypeVars fs ms (l,ty) = maybe ms (match ms ty) (lookup l fs)
      = matchList ms1 tys typeexprs
   match ms1 (TypeArrow ty1 ty2) (CS.ArrowType typeexpr1 typeexpr2)
      = matchList ms1 [ty1,ty2] [typeexpr1,typeexpr2]
-  match ms1 (TypeRecord fs' _) (CS.RecordType fss _)
+  match ms1 (TypeRecord fs') (CS.RecordType fss)
      = foldl (matchTypeVars (flattenRecordTypeFields fss)) ms1 fs'
   match _ ty1 typeexpr
      = internalError ("GenFlatCurry.matchTypeVars: "
@@ -752,13 +752,10 @@ cs2ilType :: [(Ident,Int)] -> CS.TypeExpr -> ([(Ident,Int)], IL.Type)
 cs2ilType ids (CS.ConstructorType qident typeexprs)
   = let (ids', ilTypeexprs) = mapAccumL cs2ilType ids typeexprs
     in  (ids', IL.TypeConstructor qident ilTypeexprs)
-cs2ilType ids (CS.VariableType ident)
-  = let mid        = lookup ident ids
-        nid        | null ids  = 0
-                   | otherwise = 1 + snd (head ids)
-        (ident1, ids') | isJust mid = (fromJust mid, ids)
-                       | otherwise  = (nid, (ident, nid):ids)
-    in  (ids', IL.TypeVariable ident1)
+cs2ilType ids (CS.VariableType ident) = case lookup ident ids of
+  Just i  -> (ids, IL.TypeVariable i)
+  Nothing -> let nid = 1 + case ids of { [] -> 0; (_, j):_ -> j }
+             in  ((ident, nid):ids, IL.TypeVariable nid)
 cs2ilType ids (CS.ArrowType type1 type2)
   = let (ids',  ilType1) = cs2ilType ids type1
         (ids'', ilType2) = cs2ilType ids' type2
@@ -819,8 +816,8 @@ isTypeIDecl _                      = False
 
 --
 isRecordIDecl :: CS.IDecl -> Bool
-isRecordIDecl (CS.ITypeDecl _ _ _ (CS.RecordType (_:_) _)) = True
-isRecordIDecl _                                            = False
+isRecordIDecl (CS.ITypeDecl _ _ _ (CS.RecordType (_:_))) = True
+isRecordIDecl _                                          = False
 
 --
 isFuncIDecl :: CS.IDecl -> Bool
@@ -902,11 +899,11 @@ ttrans _     _     (TypeConstrained    [] v) = IL.TypeVariable v
 ttrans tcEnv tyEnv (TypeConstrained (v:_) _) = ttrans tcEnv tyEnv v
 ttrans _     _     (TypeSkolem            k) = internalError $
   "Generators.GenFlatCurry.ttrans: skolem type " ++ show k
-ttrans _     _     (TypeRecord         [] _) = internalError $
+ttrans _     _     (TypeRecord           []) = internalError $
   "Generators.GenFlatCurry.ttrans: empty type record"
-ttrans tcEnv tyEnv (TypeRecord ((l, _):_) _) = case lookupValue l tyEnv of
+ttrans tcEnv tyEnv (TypeRecord   ((l, _):_)) = case lookupValue l tyEnv of
   [Label _ rec _ ] -> case qualLookupTC rec tcEnv of
-    [AliasType _ n (TypeRecord _ _)] ->
+    [AliasType _ n (TypeRecord _)] ->
       IL.TypeConstructor rec (map IL.TypeVariable [0 .. n - 1])
     _ -> internalError $ "Generators.GenFlatCurry.ttrans: unknown record type " ++ show rec
   _ -> internalError $ "Generators.GenFlatCurry.ttrans: ambigous record label " ++ show l
@@ -1042,7 +1039,7 @@ bindEnvIDecl _ env _ = env
 --
 bindEnvITypeDecl :: Map.Map Ident IdentExport -> Ident -> CS.TypeExpr
                  -> Map.Map Ident IdentExport
-bindEnvITypeDecl env ident (CS.RecordType fs _)
+bindEnvITypeDecl env ident (CS.RecordType fs)
   = bindIdentExport ident False (foldl (bindEnvRecordLabel ident) env fs)
 bindEnvITypeDecl env ident _ = bindIdentExport ident False env
 

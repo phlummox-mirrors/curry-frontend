@@ -40,11 +40,13 @@ import Base.Types
 import Base.Typing
 import Base.Utils (concatMapM)
 
+import Env.TypeConstructor (TCEnv)
 import Env.Value (ValueEnv, ValueInfo (..), bindFun, qualLookupValue)
 
 data SimplifyState = SimplifyState
   { moduleIdent :: ModuleIdent -- read-only!
   , valueEnv    :: ValueEnv
+  , tyConsEnv   :: TCEnv
   , nextId      :: Int         -- counter
   , flat        :: Bool        -- read-only!
   }
@@ -67,13 +69,16 @@ modifyValueEnv f = S.modify $ \ s -> s { valueEnv = f $ valueEnv s }
 getValueEnv :: SIM ValueEnv
 getValueEnv = S.gets valueEnv
 
+getTyConsEnv :: SIM TCEnv
+getTyConsEnv = S.gets tyConsEnv
+
 isFlat :: SIM Bool
 isFlat = S.gets flat
 
-simplify :: Bool -> ValueEnv ->Module -> (Module, ValueEnv)
-simplify flags tyEnv mdl@(Module _ m _ _ _) = (mdl', valueEnv s')
+simplify :: Bool -> ValueEnv -> TCEnv -> Module -> (Module, ValueEnv)
+simplify flags tyEnv tcEnv mdl@(Module _ m _ _ _) = (mdl', valueEnv s')
   where (mdl', s') = S.runState (simModule mdl)
-                                (SimplifyState m tyEnv 1 flags)
+                                (SimplifyState m tyEnv tcEnv 1 flags)
 
 simModule :: Module -> SIM (Module)
 simModule (Module ps m es is ds)
@@ -88,15 +93,15 @@ simDecl _   d                      = return d
 
 -- After simplifying the right hand side of an equation, the compiler
 -- transforms declarations of the form
--- 
+--
 --   f t_1 ... t_{k-k'} x_{k-k'+1} ... x_k =
 --     let f' t'_1 ... t'_k' = e
 --     in f' x_1 ... x_k'
--- 
+--
 -- into the equivalent definition
--- 
+--
 --   f t_1 ... t_{k-k'} (x_{k-k'+1}@t'_1) ... (x_k@t'_k' = e
--- 
+--
 -- where the arities of 'f' and 'f'' are 'k' and 'k'', respectively, and
 -- 'x_{k-k'+1}, ... ,x_k' are variables. This optimization was
 -- introduced in order to avoid an auxiliary function being generated for
@@ -116,14 +121,14 @@ simDecl _   d                      = return d
 -- We have to be careful with this optimization in conjunction with
 -- newtype constructors. It is possible that the local function is
 -- applied only partially, e.g., for
--- 
+--
 --   newtype ST s a = ST (s -> (a,s))
 --   returnST x = ST (\s -> (x,s))
--- 
+--
 -- the desugared code is equivalent to
--- 
+--
 --   returnST x = let lambda1 s = (x,s) in lambda1
--- 
+--
 -- We must not optimize this into 'returnST x s = (x,s)'
 -- because the compiler assumes that 'returnST' is a unary
 -- function.
@@ -258,11 +263,12 @@ hoistDecls d ds = d : ds
 simplifyLet :: InlineEnv -> [[Decl]] -> Expression -> SIM Expression
 simplifyLet env []       e = simExpr env e
 simplifyLet env (ds:dss) e = do
-  m <- getModuleIdent
-  ds' <- mapM (simDecl env) ds
+  m     <- getModuleIdent
+  ds'   <- mapM (simDecl env) ds
   tyEnv <- getValueEnv
-  e' <- simplifyLet (inlineVars m tyEnv ds' env) dss e
-  dss'' <- mapM (expandPatternBindings tyEnv (qfv m ds' ++ qfv m e')) ds'
+  tcEnv <- getTyConsEnv
+  e'    <- simplifyLet (inlineVars m tyEnv ds' env) dss e
+  dss'' <- mapM (expandPatternBindings tyEnv tcEnv (qfv m ds' ++ qfv m e')) ds'
   return (foldr (mkLet m) e' (scc bv (qfv m) (concat dss'')))
 
 inlineVars :: ModuleIdent -> ValueEnv -> [Decl] -> InlineEnv -> InlineEnv
@@ -354,9 +360,9 @@ mkLet m ds e
 -- is used, we assume that the projection declarations -- ignoring the
 -- additional arguments to prevent the space leak -- are actually defined
 -- by 'f_i t = I v_i', using a private renaming type
--- 
+--
 --   newtype Identity a = I a
--- 
+--
 -- As newtype constructors are completely transparent to the compiler,
 -- this does not change the generated code, but only the types of the
 -- selector functions.
@@ -365,7 +371,8 @@ sharePatternRhs :: ValueEnv -> Decl -> SIM [Decl]
 sharePatternRhs tyEnv (PatternDecl p _ _ t rhs) = case t of
   VariablePattern _ -> return [PatternDecl p Nothing (-1) t rhs]
   _ -> do
-    v0 <- freshIdent patternId (monoType (typeOf tyEnv t))
+    tcEnv <- getTyConsEnv
+    v0    <- freshIdent patternId (monoType (typeOf tyEnv tcEnv t))
     let v = addRefId (srcRefOf p) v0
     return [ PatternDecl p Nothing (-1) t (SimpleRhs p (mkVar v) [])
            , PatternDecl p Nothing (-1) (VariablePattern v) rhs
@@ -387,8 +394,8 @@ expandPatternBindings tyEnv fvs (PatternDecl p cty id0 t (SimpleRhs p' e _)) = d
           return (zipWith (projectionDecl p t e) fs (shuffle vs))
   where
   vs  = filter (`elem` fvs) (bv t)
-  ty  = typeOf tyEnv t
-  tys = map (typeOf tyEnv) vs
+  ty  = typeOf tyEnv tcEnv t
+  tys = map (typeOf tyEnv tcEnv) vs
 
   getId t1 v = freshIdent (\ i -> updIdentName (++ '#' : idName v) (fpSelectorId i))
                            (flatSelectorType ty t1)
@@ -406,7 +413,7 @@ expandPatternBindings tyEnv fvs (PatternDecl p cty id0 t (SimpleRhs p' e _)) = d
     Let [selectorDecl p1 f t1 (v:vs1)] (foldl applyVar (Apply (mkVar f) e1) vs1)
   projectionDecl _ _ _ _ [] = error "Simplify.expandPatternBindings.projectionDecl: empty list"
 
-expandPatternBindings _ _ d = return [d]
+expandPatternBindings _ _ _ d = return [d]
 
 -- ---------------------------------------------------------------------------
 -- Auxiliary functions

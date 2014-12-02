@@ -120,8 +120,8 @@ typeDecl m tcEnv cEnv (ExportTypeWith tc cs) ds = case qualLookupTC tc tcEnv of
     where tvs = take n' (drop n identSupply)
           ty' = fromQualType m ty
   [AliasType tc' n ty] -> case ty of
-    TypeRecord fs _ ->
-        let ty' = TypeRecord (filter (\ (l,_) -> elem l cs) fs) Nothing
+    TypeRecord fs ->
+        let ty' = TypeRecord (filter (\ (l,_) -> elem l cs) fs)
         in  iTypeDecl ITypeDecl m tc' n (fromQualType m ty') : ds
     _ -> iTypeDecl ITypeDecl m tc' n (fromQualType m ty) : ds
   [] -> case lookupNonHiddenClasses cEnv tc of
@@ -275,8 +275,7 @@ identsType (VariableType         _) xs = xs
 identsType (TupleType          tys) xs = foldr identsType xs tys
 identsType (ListType            ty) xs = identsType ty xs
 identsType (ArrowType      ty1 ty2) xs = identsType ty1 (identsType ty2 xs)
-identsType (RecordType      fs rty) xs =
-  foldr identsType (maybe xs (\ty -> identsType ty xs) rty) (map snd fs)
+identsType (RecordType          fs) xs = foldr identsType xs (map snd fs)
 identsType s@(SpecialConstructorType _ _) xs = 
   identsType (specialConsToTyExpr s) xs
 
@@ -296,7 +295,9 @@ hiddenTypeDecl :: ModuleIdent -> TCEnv -> QualIdent -> IDecl
 hiddenTypeDecl m tcEnv tc = case qualLookupTC (qualQualify m tc) tcEnv of
   [DataType     _ n _] -> hidingDataDecl tc n
   [RenamingType _ n _] -> hidingDataDecl tc n
-  _                    -> internalError ("Exports.hiddenTypeDecl: " ++ show tc)
+  -- jrt 2014-10-16: Added for support of record types
+  [AliasType    _ n _] -> hidingDataDecl tc n
+  _                    -> internalError "Exports.hiddenTypeDecl"
   where hidingDataDecl tc1 n = HidingDataDecl NoPos tc1 $ take n identSupply
 
 hiddenTypes :: ModuleIdent -> [IDecl] -> [QualIdent]
@@ -336,8 +337,8 @@ usedTypesType (TupleType          tys) tcs = foldr usedTypesType tcs tys
 usedTypesType (ListType            ty) tcs = usedTypesType ty tcs
 usedTypesType (ArrowType      ty1 ty2) tcs =
   usedTypesType ty1 (usedTypesType ty2 tcs)
-usedTypesType (RecordType      fs rty) tcs = foldr usedTypesType
-  (maybe tcs (\ty -> usedTypesType ty tcs) rty) (map snd fs)
+usedTypesType (RecordType          fs) tcs = foldr usedTypesType
+  tcs (map snd fs)
 usedTypesType s@(SpecialConstructorType _ _) tcs = 
   usedTypesType (specialConsToTyExpr s) tcs
 

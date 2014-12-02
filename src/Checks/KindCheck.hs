@@ -272,14 +272,11 @@ checkType (SpecialConstructorType ListTC tys)
   = SpecialConstructorType ListTC `liftM` mapM checkType tys
 checkType (SpecialConstructorType ArrowTC tys) 
   = SpecialConstructorType ArrowTC `liftM` mapM checkType tys
-checkType (RecordType   fs r) = do
+checkType (RecordType     fs) = do
   fs' <- forM fs $ \ (l, ty) -> do
     ty' <- checkType ty
     return (l, ty')
-  r'  <- case r of
-    Nothing -> return Nothing
-    Just ar -> Just `liftM` checkType ar
-  return $ RecordType fs' r'
+  return $ RecordType fs'
 
 checkClosed :: [Ident] -> TypeExpr -> KCM TypeExpr
 checkClosed tvs (ConstructorType tc tys) =
@@ -303,14 +300,11 @@ checkClosed tvs (SpecialConstructorType ListTC tys) =
   SpecialConstructorType ListTC `liftM` mapM (checkClosed tvs) tys
 checkClosed tvs (SpecialConstructorType ArrowTC tys) = 
   SpecialConstructorType ArrowTC `liftM` mapM (checkClosed tvs) tys
-checkClosed tvs (RecordType   fs r) = do
+checkClosed tvs (RecordType     fs) = do
   fs' <- forM fs $ \ (l, ty) -> do
     ty' <- checkClosed tvs ty
     return (l, ty')
-  r'  <- case r of
-    Nothing -> return Nothing
-    Just ar -> Just `liftM` checkClosed tvs ar
-  return $ RecordType fs' r'
+  return $ RecordType fs'
 
 -- ---------------------------------------------------------------------------
 -- Auxiliary definitions

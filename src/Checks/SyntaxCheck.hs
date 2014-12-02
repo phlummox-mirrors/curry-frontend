@@ -24,12 +24,11 @@
 
 module Checks.SyntaxCheck (syntaxCheck) where
 
-import Control.Monad (liftM, liftM2, liftM3, unless, when)
-import qualified Control.Monad.State as S (State, runState, gets, modify
-                                          , withState)
-import Data.List ((\\), insertBy, nub, partition, intersect)
-import Data.Maybe (fromJust, isJust, isNothing, maybeToList)
-import qualified Data.Set as Set (empty, insert, member)
+import           Control.Monad            (liftM, liftM2, liftM3, unless, when)
+import qualified Control.Monad.State as S (State, runState, gets, modify)
+import           Data.List                ((\\), insertBy, nub, partition, intersect)
+import           Data.Maybe               (isJust, isNothing, maybeToList)
+import qualified Data.Set          as Set (empty, insert, member)
 
 import Curry.Base.Ident
 import Curry.Base.Position
@@ -224,7 +223,7 @@ renameInfo _     (DataConstructor    qid a _) = Constr    qid a
 renameInfo _     (NewtypeConstructor qid   _) = Constr    qid 1
 renameInfo _     (Value            qid a _ _) = GlobalVar qid a
 renameInfo tcEnv (Label              _   r _) = case qualLookupTC r tcEnv of
-  [AliasType _ _ (TypeRecord fs _)] -> RecordLabel r $ map fst fs
+  [AliasType _ _ (TypeRecord fs)] -> RecordLabel r $ map fst fs
   _ -> internalError $ "SyntaxCheck.renameInfo: ambiguous record " ++ show r
 
 bindGlobal :: Bool -> ModuleIdent -> Ident -> RenameInfo -> RenameEnv -> RenameEnv
@@ -244,7 +243,7 @@ bindLocal = bindNestEnv
 bindTypeDecl :: Decl -> SCM ()
 bindTypeDecl (DataDecl    _ _ _ cs _) = mapM_ bindConstr cs
 bindTypeDecl (NewtypeDecl _ _ _ nc _) = bindNewConstr nc
-bindTypeDecl (TypeDecl _ t _ (RecordType fs _)) = do
+bindTypeDecl (TypeDecl _ t _ (RecordType fs)) = do
   m <- getModuleIdent
   others <- qualLookupVar (qualifyWith m t) `liftM` getRenameEnv
   when (any isConstr others) $ report $ errIllegalRecordId t
@@ -409,10 +408,8 @@ checkExtension (KnownExtension   _ e) = enableExtension e
 checkExtension (UnknownExtension p e) = report $ errUnknownExtension p e
 
 checkTypeDecl :: Decl -> SCM Decl
-checkTypeDecl rec@(TypeDecl _ r _ (RecordType fs rty)) = do
+checkTypeDecl rec@(TypeDecl _ r _ (RecordType fs)) = do
   checkRecordExtension $ idPosition r
-  when (isJust  rty) $ internalError
-                       "SyntaxCheck.checkTypeDecl: illegal record type"
   when (null     fs) $ report $ errEmptyRecord $ idPosition r
   return rec
 checkTypeDecl d = return d
@@ -769,21 +766,21 @@ checkRecordPattern p fs t = do
     env <- getRenameEnv
     case lookupVar l env of
       [RecordLabel r ls] -> do
-        when (isJust duplicate) $ report $ errDuplicateLabel
-                                         $ fromJust duplicate
-        if isNothing t
-          then do
+        case findDouble ls' of
+          Just l' -> report $ errDuplicateLabel l'
+          _       -> ok
+        case t of
+          Nothing -> do
             when (not $ null missings) $ report $ errMissingLabel
               (idPosition l) (head missings) r "record pattern"
             flip RecordPattern t `liftM` mapM (checkFieldPatt r) fs
-          else if t == Just (VariablePattern anonId)
-            then liftM2 RecordPattern
-                        (mapM (checkFieldPatt r) fs)
-                        (Just `liftM` checkPattern p (fromJust t))
-            else do report (errIllegalRecordPattern p)
-                    return $ RecordPattern fs t
+          Just pat | pat == VariablePattern anonId -> do
+            liftM2 RecordPattern (mapM (checkFieldPatt r) fs)
+                                 (Just `liftM` checkPattern p pat)
+          _ -> do
+            report (errIllegalRecordPattern p)
+            return $ RecordPattern fs t
         where ls'       = map fieldLabel fs
-              duplicate = findDouble ls'
               missings  = ls \\ ls'
       [] -> report (errUndefinedLabel l) >> return (RecordPattern fs t)
       [_] -> report (errNotALabel l) >> return (RecordPattern fs t)

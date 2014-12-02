@@ -15,10 +15,10 @@
 module Generators.GenAbstractCurry
   ( genTypedAbstract, genUntypedAbstract ) where
 
-import Data.List (find, mapAccumL)
-import qualified Data.Map as Map
-import Data.Maybe (fromJust, fromMaybe, isJust)
-import qualified Data.Set as Set
+import           Data.List         (find, mapAccumL)
+import qualified Data.Map   as Map
+import           Data.Maybe        (fromMaybe, isJust)
+import qualified Data.Set   as Set
 
 import Curry.AbstractCurry
 import Curry.Base.Ident
@@ -192,16 +192,7 @@ genTypeExpr env (ListType       ty)
 genTypeExpr env (ArrowType ty1 ty2) = (env2, CFuncType ty1' ty2')
   where (env1, ty1') = genTypeExpr env  ty1
         (env2, ty2') = genTypeExpr env1 ty2
-genTypeExpr env (RecordType fss mr) = case mr of
-  Nothing -> (env1, CRecordType (zip ls' ts') Nothing)
-  Just tvar@(VariableType _) ->
-    let (env2, CTVar iname) = genTypeExpr env1 tvar
-    in  (env2, CRecordType (zip ls' ts') (Just iname))
-  Just r@(RecordType _ _) ->
-    let (env2, CRecordType fields rbase) = genTypeExpr env1 r
-        fields' = foldr (uncurry insertEntry) fields (zip ls' ts')
-    in  (env2, CRecordType fields' rbase)
-  _ -> internalError "GenAbstractCurry.gegnTypeExpr: illegal record base"
+genTypeExpr env (RecordType    fss) = (env1, CRecordType (zip ls' ts'))
   where
   (ls  , ts ) = unzip $ concatMap (\ (ls1,ty) -> map (\l -> (l,ty)) ls1) fss
   (env1, ts') = mapAccumL genTypeExpr env ts
@@ -286,7 +277,7 @@ genFuncDecl isLocal env (ident, decls)
   compArityFromType (CTVar         _) = 0
   compArityFromType (CFuncType  _ t2) = 1 + compArityFromType t2
   compArityFromType (CTCons      _ _) = 0
-  compArityFromType (CRecordType _ _) =
+  compArityFromType (CRecordType   _) =
     internalError "GenAbstractCurry.genFuncDecl.compArityFromType: record type"
 
   compRule _  [] Nothing  = internalError $ "GenAbstractCurry.compRule: "
@@ -459,18 +450,16 @@ genExpr :: Position -> AbstractEnv -> Expression -> (AbstractEnv, CExpr)
 genExpr pos env (Literal l) = case l of
   String _ cs -> genExpr pos env $ List [] $ map (Literal . Char noRef) cs
   _           -> (env, CLit $ genLiteral l)
-genExpr _ env   (Variable _ v)
-  | isJust midx     = (env, CVar (fromJust midx, idName ident))
-  | v == qSuccessId = (env, CSymbol $ genQName False env qSuccessFunId)
-  | otherwise       = (env, CSymbol $ genQName False env v)
-  where
-  ident = unqualify v
-  midx  = getVarIndex env ident
-genExpr _   env (Constructor  c) = (env, CSymbol $ genQName False env c)
-genExpr pos env (Paren     expr) = genExpr pos env expr
-genExpr pos env (Typed _ expr _ _) = genExpr pos env expr
-genExpr pos env (Tuple   _ args) = genExpr pos env $ case args of
-  []  -> Variable Nothing qUnitId
+genExpr _ env   (Variable v) = case getVarIndex env ident of
+    Just idx -> (env, CVar (idx, idName ident))
+    _ | v == qSuccessId -> (env, CSymbol $ genQName False env qSuccessFunId)
+      | otherwise       -> (env, CSymbol $ genQName False env v)
+  where ident = unqualify v
+genExpr _   env (Constructor c) = (env, CSymbol $ genQName False env c)
+genExpr pos env (Paren    expr) = genExpr pos env expr
+genExpr pos env (Typed  expr _) = genExpr pos env expr
+genExpr pos env (Tuple  _ args) = genExpr pos env $ case args of
+  []  -> Variable qUnitId
   [x] -> x
   _   -> foldl Apply (Variable Nothing $ qTupleId $ length args) args
 genExpr pos env (List _ args)
@@ -733,15 +722,11 @@ buildExportTable mid _ exptab (ExportTypeWith qident ids)
           (insertExportedIdent exptab (unqualify qident))
           ids
   | otherwise  = exptab
-buildExportTable mid decls exptab (ExportTypeAll qident)
-  | isJust ident'
-  = foldl insertExportedIdent
-          (insertExportedIdent exptab ident)
-          (maybe [] getConstrIdents (find (isDataDeclOf ident) decls))
-  | otherwise = exptab
-  where
-  ident' = localIdent mid qident
-  ident  = fromJust ident'
+buildExportTable mid ds exptab (ExportTypeAll qid) = case localIdent mid qid of
+  Just ident -> foldl insertExportedIdent
+                (insertExportedIdent exptab ident)
+                (maybe [] getConstrIdents (find (isDataDeclOf ident) ds))
+  Nothing    -> exptab
 buildExportTable _ _ exptab (ExportModule _) = exptab
 
 --
@@ -875,10 +860,10 @@ isDataDeclOf _ _                    = False
 -- Checks, whether a symbol is defined in the Prelude.
 isPreludeSymbol :: QualIdent -> Bool
 isPreludeSymbol qident
-   = let (mmid, ident) = (qidModule qident, qidIdent qident)
-     in (isJust mmid && preludeMIdent == fromJust mmid)
-        || elem ident [unitId, listId, nilId, consId]
-        || isTupleId ident
+  = let (mmid, ident) = (qidModule qident, qidIdent qident)
+    in   mmid == Just preludeMIdent
+      || elem ident [unitId, listId, nilId, consId]
+      || isTupleId ident
 
 -- Converts an infix operator to an expression
 opToExpr :: InfixOp -> Expression
@@ -914,11 +899,11 @@ simplifyRhsLocals (GuardedRhs  _ locals) = locals
 
 -- Insert a value under a key into an association list. If the list
 -- already contains a value for that key, the old value is replaced.
-insertEntry :: Eq a => a -> b -> [(a, b)] -> [(a, b)]
-insertEntry k v []             = [(k, v)]
-insertEntry k v ((l, w) : kvs)
-  | k == l    = (k, v) : kvs
-  | otherwise = (l, w) : insertEntry k v kvs
+-- insertEntry :: Eq a => a -> b -> [(a, b)] -> [(a, b)]
+-- insertEntry k v []             = [(k, v)]
+-- insertEntry k v ((l, w) : kvs)
+--   | k == l    = (k, v) : kvs
+--   | otherwise = (l, w) : insertEntry k v kvs
 
 -- Return 'True' iff a list is a singleton list (contains exactly one element)
 isSingleton :: [a] -> Bool

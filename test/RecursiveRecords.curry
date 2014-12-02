@@ -1,3 +1,6 @@
+type R a = { f1 :: a, f2 :: String }
+
+
 type Person = { name :: String, age :: Int, friends :: [Person] }
 
 john = { name := "John", age := 21, friends := [tim] }
@@ -23,5 +26,5 @@ type R2 = { r1 :: R1 }
 rec1 = { r2 := rec2 }
 rec2 = { r1 := rec1 }
 
-type R3 = { f1 :: TSR3 }
+type R3 = { r3 :: TSR3 }
 type TSR3 = R3

@@ -25,7 +25,6 @@ import           Control.Monad               (liftM, liftM2)
 import qualified Control.Monad.Reader as R
 import           Data.List                   (nub, partition)
 import qualified Data.Map             as Map (Map, empty, insert, lookup)
-import           Data.Maybe                  (fromJust)
 import qualified Data.Set             as Set (Set, empty, insert, delete, toList)
 
 import Curry.Base.Position
@@ -176,7 +175,7 @@ trType ty = trTy `liftM` elimRecordTypes (maximum $ 0 : typeVars ty) ty
   trTy (TypeArrow      ty1 ty2) = IL.TypeArrow (trTy ty1) (trTy ty2)
   trTy (TypeSkolem           k) = IL.TypeConstructor
                                     (qualify (mkIdent ("_" ++ show k))) []
-  trTy rec@(TypeRecord     _ _)
+  trTy rec@(TypeRecord       _)
    = internalError $ "Translation of record not defined: " ++ show rec
 
 elimRecordTypes :: Int -> Type -> TransM Type
@@ -188,7 +187,7 @@ elimRecordTypes n (TypeConstrained tys v)
 elimRecordTypes n (TypeArrow       t1 t2)
   = liftM2 TypeArrow (elimRecordTypes n t1) (elimRecordTypes n t2)
 elimRecordTypes _ s@(TypeSkolem        _) = return s
-elimRecordTypes n (TypeRecord       fs _)
+elimRecordTypes n (TypeRecord         fs)
   | null fs   = internalError "CurryToIL.elimRecordTypes: empty record type"
   | otherwise = do
     (r, n', fs') <- recordInfo (fst $ head fs)
@@ -212,7 +211,7 @@ matchTypeVars fs vs (l, ty) = maybe vs (match' vs ty) (lookup l fs)
   match' vs' (TypeArrow     ty1 ty2) (TypeArrow    ty1' ty2')
     = matchList vs' [ty1,ty2] [ty1',ty2']
   match' vs' (TypeSkolem          _) (TypeSkolem           _) = vs'
-  match' vs' (TypeRecord      fs1 _) (TypeRecord       fs2 _)
+  match' vs' (TypeRecord        fs1) (TypeRecord         fs2)
     = foldl (matchTypeVars fs2) vs' fs1
   match' _   ty1                     ty2
     = internalError ("CurryToIL.matchTypeVars: " ++ show ty1 ++ "\n" ++ show ty2)
@@ -270,7 +269,9 @@ trArgs :: [Equation] -> [Ident] -> [Ident]
 trArgs [Equation _ (FunLhs _ (t:ts)) _] (v:_) =
   v : map (translArg (bindRenameEnv v t Map.empty)) ts
   where
-    translArg env (VariablePattern v') = fromJust (Map.lookup v' env)
+    translArg env (VariablePattern v') = case Map.lookup v' env of
+      Just x  -> x
+      Nothing -> internalError "Transformations.CurryToIL.trArgs"
     translArg _ _ = internalError "Translation of arguments not defined"
 trArgs _ _ = internalError "Translation of arguments not defined" -- TODO
 
@@ -580,7 +581,7 @@ recordInfo f = do
     [Label _ r _] -> do
       tcEnv <- getTCEnv
       case qualLookupTC r tcEnv of
-        [AliasType _ n (TypeRecord fs _)] -> return (r, n, fs)
+        [AliasType _ n (TypeRecord fs)] -> return (r, n, fs)
         _ -> internalError $ "CurryToIL.recordInfo: " ++ show f
     _ -> internalError $ "CurryToIL.recordInfo: " ++ show f
 

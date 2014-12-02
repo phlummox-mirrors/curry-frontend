@@ -112,15 +112,10 @@ toType' tvs (CS.ListType            ty)
   = TypeConstructor (qualify listId) [toType' tvs ty]
 toType' tvs (CS.ArrowType      ty1 ty2)
   = TypeArrow (toType' tvs ty1) (toType' tvs ty2)
-toType' tvs (CS.RecordType      fs rty)
-  = TypeRecord fs' rty'
+toType' tvs (CS.RecordType          fs)
+  = TypeRecord fs'
   where
     fs'  = concatMap (\ (ls, ty) -> map (\ l -> (l, toType' tvs ty)) ls) fs
-    rty' = case rty of
-      Nothing -> Nothing
-      Just ty -> case toType' tvs ty of
-        TypeVariable tv -> Just tv
-        _ -> internalError $ "Base.CurryTypes.toType' " ++ show ty
 
 fromQualType :: ModuleIdent -> Type -> CS.TypeExpr
 fromQualType = fromQualType' identSupply
@@ -149,9 +144,8 @@ fromType' supply (TypeArrow      ty1 ty2) =
   CS.ArrowType (fromType' supply ty1) (fromType' supply ty2)
 fromType' _      (TypeSkolem           k) =
   CS.VariableType $ mkIdent $ "_?" ++ show k
-fromType' supply (TypeRecord      fs rty) = CS.RecordType
-  (map (\ (l, ty) -> ([l], fromType' supply ty)) fs)
-  ((fromType' supply . TypeVariable) `fmap` rty)
+fromType (TypeRecord         fs)   = CS.RecordType
+  (map (\ (l, ty) -> ([l], fromType ty)) fs)
 
 fromContext :: BT.Context -> CS.Context
 fromContext cx = CS.Context $ map fromCx cx

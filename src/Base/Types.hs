@@ -73,7 +73,7 @@ data Type
   | TypeArrow Type Type
   | TypeConstrained [Type] Int
   | TypeSkolem Int
-  | TypeRecord [(Ident, Type)] (Maybe Int)
+  | TypeRecord [(Ident, Type)]
   deriving (Eq, Ord)
 
 isTyCons :: Type -> Bool
@@ -100,13 +100,10 @@ splitType (TypeConstrained (t:_) _) = splitType t
 splitType (TypeConstrained    [] _) = Nothing
 splitType _                         = Nothing
 
-{-
-The function \texttt{isArrowType} checks whether a type is a function
-type $t_1 \rightarrow t_2 \rightarrow \dots \rightarrow t_n$ . The
-function \texttt{arrowArity} computes the arity $n$ of a function type,
-\texttt{arrowArgs} computes the types $t_1 \dots t_{n-1}$
-and \texttt{arrowBase} returns the type $t_n$.
--}
+-- The function 'isArrowType' checks whether a type is a function
+-- type t_1 -> t_2 -> ... -> t_n . The function 'arrowArity' computes the arity
+-- n of a function type, 'arrowArgs' computes the types t_1 ... t_n-1
+-- and 'arrowBase' returns the type t_n.
 
 isArrowType :: Type -> Bool
 isArrowType (TypeArrow _ _) = True
@@ -139,8 +136,7 @@ typeVars ty = vars ty [] where
   vars (TypeConstrained   _ _) tvs = tvs
   vars (TypeArrow     ty1 ty2) tvs = vars ty1 (vars ty2 tvs)
   vars (TypeSkolem          _) tvs = tvs
-  vars (TypeRecord     fs rtv) tvs =
-    foldr vars (maybe tvs (:tvs) rtv) (map snd fs)
+  vars (TypeRecord         fs) tvs = foldr vars tvs (map snd fs)
 
 typeConstrs :: Type -> [QualIdent]
 typeConstrs ty = constrs ty [] where
@@ -149,7 +145,7 @@ typeConstrs ty = constrs ty [] where
   constrs (TypeConstrained    _ _) tcs = tcs
   constrs (TypeArrow      ty1 ty2) tcs = constrs ty1 (constrs ty2 tcs)
   constrs (TypeSkolem           _) tcs = tcs
-  constrs (TypeRecord        fs _) tcs = foldr constrs tcs (map snd fs)
+  constrs (TypeRecord          fs) tcs = foldr constrs tcs (map snd fs)
 
 typeSkolems :: Type -> [Int]
 typeSkolems ty = skolems ty [] where
@@ -158,7 +154,7 @@ typeSkolems ty = skolems ty [] where
   skolems (TypeConstrained   _ _) sks = sks
   skolems (TypeArrow     ty1 ty2) sks = skolems ty1 (skolems ty2 sks)
   skolems (TypeSkolem          k) sks = k : sks
-  skolems (TypeRecord       fs _) sks = foldr skolems sks (map snd fs)
+  skolems (TypeRecord         fs) sks = foldr skolems sks (map snd fs)
 
 {-
 The function \texttt{equTypes} computes whether two types are equal modulo
@@ -184,14 +180,10 @@ equTypes t1 t2 = fst (equ [] t1 t2)
      in  (res1 && res2, is2)
  equ is (TypeSkolem            i1) (TypeSkolem            i2)
   = equVar is i1 i2
- equ is (TypeRecord fs1 (Just r1)) (TypeRecord fs2 (Just r2))
-   = let (res1, is1) = equVar     is  r1  r2
-         (res2, is2) = equRecords is1 fs1 fs2
-     in  (res1 && res2, is2)
- equ is (TypeRecord fs1   Nothing) (TypeRecord fs2   Nothing)
-   = equRecords is fs1 fs2
- equ is _                         _
-   = (False, is)
+ equ is (TypeRecord fs1)           (TypeRecord fs2)
+  = equRecords is fs1 fs2
+ equ is _                          _
+  = (False, is)
 
  equVar is i1 i2 = case lookup i1 is of
    Nothing  -> (True, (i1, i2) : is)
@@ -233,8 +225,8 @@ qualifyType m (TypeConstrained tys tv) =
 qualifyType m (TypeArrow      ty1 ty2) =
   TypeArrow (qualifyType m ty1) (qualifyType m ty2)
 qualifyType _ skol@(TypeSkolem      _) = skol
-qualifyType m (TypeRecord      fs rty) =
-  TypeRecord (map (\ (l, ty) -> (l, qualifyType m ty)) fs) rty
+qualifyType m (TypeRecord          fs) =
+  TypeRecord (map (\ (l, ty) -> (l, qualifyType m ty)) fs)
 
 unqualifyType :: ModuleIdent -> Type -> Type
 unqualifyType m (TypeConstructor tc tys) =
@@ -245,8 +237,8 @@ unqualifyType m (TypeConstrained tys tv) =
 unqualifyType m (TypeArrow      ty1 ty2) =
   TypeArrow (unqualifyType m ty1) (unqualifyType m ty2)
 unqualifyType _ skol@(TypeSkolem      _) = skol
-unqualifyType m (TypeRecord      fs rty) =
-  TypeRecord (map (\ (l, ty) -> (l, unqualifyType m ty)) fs) rty
+unqualifyType m (TypeRecord          fs) =
+  TypeRecord (map (\ (l, ty) -> (l, unqualifyType m ty)) fs)
 
 qualifyContext :: ModuleIdent -> Context -> Context
 qualifyContext m cx = map qualifyContext' cx

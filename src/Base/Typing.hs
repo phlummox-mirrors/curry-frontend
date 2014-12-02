@@ -2,6 +2,7 @@
     Module      :  $Header$
     Description :  Type computation of Curry expressions
     Copyright   :  (c) 2003 - 2006 Wolfgang Lux
+                       2014        Jan Tikovsky
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
@@ -13,8 +14,7 @@
 module Base.Typing (Typeable (..)) where
 
 import Control.Monad
-import Control.Monad.State as S
-import Data.Maybe
+import qualified Control.Monad.State as S (State, evalState, gets, modify)
 
 import Curry.Base.Ident
 import Curry.Syntax
@@ -25,6 +25,7 @@ import Base.Types
 import Base.TypeSubst
 import Base.Utils (foldr2)
 
+import Env.TypeConstructor (TCEnv, TypeInfo (..), qualLookupTC)
 import Env.Value (ValueEnv, ValueInfo (..), lookupValue, qualLookupValue)
 
 -- During the transformation of Curry source code into the intermediate
@@ -88,13 +89,39 @@ import Env.Value (ValueEnv, ValueInfo (..), lookupValue, qualLookupValue)
 -- qualified and expanded or we need access to the type constructor
 -- environment.
 
-type TyState a = S.StateT TypeSubst (S.State Int) a
+data TcState = TcState
+  { valueEnv  :: ValueEnv
+  , tyConsEnv :: TCEnv
+  , typeSubst :: TypeSubst
+  , nextId    :: Int
+  }
 
-run :: TyState a -> ValueEnv -> a
-run m _ = S.evalState (S.evalStateT m idSubst) 0
+type TCM = S.State TcState
+
+getTyConsEnv :: TCM TCEnv
+getTyConsEnv = S.gets tyConsEnv
+
+getValueEnv :: TCM ValueEnv
+getValueEnv = S.gets valueEnv
+
+getTypeSubst :: TCM TypeSubst
+getTypeSubst = S.gets typeSubst
+
+modifyTypeSubst :: (TypeSubst -> TypeSubst) -> TCM ()
+modifyTypeSubst f = S.modify $ \s -> s { typeSubst = f $ typeSubst s }
+
+getNextId :: TCM Int
+getNextId = do
+  nid <- S.gets nextId
+  S.modify $ \ s -> s { nextId = succ nid }
+  return nid
+
+run :: TCM a -> ValueEnv -> TCEnv -> a
+run m tyEnv tcEnv = S.evalState m initState
+  where initState = TcState tyEnv tcEnv idSubst 0
 
 class Typeable a where
-  typeOf :: ValueEnv -> a -> Type
+  typeOf :: ValueEnv -> TCEnv -> a -> Type
 
 instance Typeable Ident where
   typeOf = computeType identType
@@ -108,16 +135,13 @@ instance Typeable Expression where
 instance Typeable Rhs where
   typeOf = computeType rhsType
 
-computeType :: (ValueEnv -> a -> StateT TypeSubst (State Int) Type)
-            -> ValueEnv
-            -> a
-            -> Type
-computeType f tyEnv x = normalize (run doComputeType tyEnv)
-  where doComputeType =
-          do
-            ty <- f tyEnv x
-            theta <- S.get
-            return (fixTypeVars tyEnv (subst theta ty))
+computeType :: (a -> TCM Type) -> ValueEnv -> TCEnv -> a -> Type
+computeType f tyEnv tcEnv x = normalize (run doComputeType tyEnv tcEnv)
+  where
+    doComputeType = do
+      ty    <- f x
+      theta <- getTypeSubst
+      return (fixTypeVars tyEnv (subst theta ty))
 
 fixTypeVars :: ValueEnv -> Type -> Type
 fixTypeVars tyEnv ty = subst (foldr2 bindSubst idSubst tvs tvs') ty
@@ -126,69 +150,71 @@ fixTypeVars tyEnv ty = subst (foldr2 bindSubst idSubst tvs tvs') ty
         n = minimum (0 : concatMap typeVars tys)
         tys = [ty1 | (_,Value _ _ (ForAll _ _ ty1) _) <- localBindings tyEnv]
 
-identType :: ValueEnv -> Ident -> TyState Type
-identType tyEnv x = instUniv (varType x tyEnv)
+identType :: Ident -> TCM Type
+identType x = do
+  tyEnv <- getValueEnv
+  instUniv (varType x tyEnv)
 
-litType :: ValueEnv -> Literal -> TyState Type
-litType _ (Char _ _)    = return charType
-litType tyEnv (Int v _) = identType tyEnv v
-litType _ (Float _ _)   = return floatType
-litType _ (String _ _)  = return stringType
+litType :: Literal -> TCM Type
+litType (Char _ _)   = return charType
+litType (Int v _)    = identType v
+litType (Float _ _)  = return floatType
+litType (String _ _) = return stringType
 
-argType :: ValueEnv -> Pattern -> TyState Type
-argType tyEnv (LiteralPattern l) = litType tyEnv l
-argType tyEnv (NegativePattern _ l) = litType tyEnv l
-argType tyEnv (VariablePattern v) = identType tyEnv v
-argType tyEnv (ConstructorPattern c ts) =
-  do
-    ty <- instUnivExist (constrType c tyEnv)
-    tys <- mapM (argType tyEnv) ts
-    unifyList (init (flatten ty)) tys
-    return (last (flatten ty))
+argType :: Pattern -> TCM Type
+argType (LiteralPattern l) = litType l
+argType (NegativePattern _ l) = litType l
+argType (VariablePattern v) = identType v
+argType (ConstructorPattern c ts) = do
+  tyEnv <- getValueEnv
+  ty    <- instUnivExist (constrType c tyEnv)
+  tys   <- mapM argType ts
+  unifyList (init (flatten ty)) tys
+  return (last (flatten ty))
   where flatten (TypeArrow ty1 ty2) = ty1 : flatten ty2
         flatten ty = [ty]
-argType tyEnv (InfixPattern t1 op t2) =
-  argType tyEnv (ConstructorPattern op [t1,t2])
-argType tyEnv (ParenPattern t) = argType tyEnv t
-argType tyEnv (TuplePattern _ ts)
+argType (InfixPattern t1 op t2) =
+  argType (ConstructorPattern op [t1,t2])
+argType (ParenPattern t) = argType t
+argType (TuplePattern _ ts)
   | null ts = return unitType
-  | otherwise = liftM tupleType $ mapM (argType tyEnv) ts
-argType tyEnv (ListPattern _ ts) = freshTypeVar >>= flip elemType ts
+  | otherwise = liftM tupleType $ mapM argType ts
+argType (ListPattern _ ts) = freshTypeVar >>= flip elemType ts
   where elemType ty [] = return (listType ty)
         elemType ty (t:ts1) =
-          argType tyEnv t >>= unify ty >> elemType ty ts1
-argType tyEnv (AsPattern v _) = argType tyEnv (VariablePattern v)
-argType tyEnv (LazyPattern _ t) = argType tyEnv t
-argType tyEnv (FunctionPattern f ts) =
-  do
-    ty <- instUniv (funType f tyEnv)
-    tys <- mapM (argType tyEnv) ts
-    unifyList (init (flatten ty)) tys
-    return (last (flatten ty))
+          argType t >>= unify ty >> elemType ty ts1
+argType (AsPattern v _) = argType (VariablePattern v)
+argType (LazyPattern _ t) = argType t
+argType (FunctionPattern f ts) = do
+  tyEnv <- getValueEnv
+  ty    <- instUniv (funType f tyEnv)
+  tys   <- mapM argType ts
+  unifyList (init (flatten ty)) tys
+  return (last (flatten ty))
   where flatten (TypeArrow ty1 ty2) = ty1 : flatten ty2
         flatten ty = [ty]
 argType tyEnv (InfixFuncPattern t1 op t2) =
   argType tyEnv (FunctionPattern op [t1,t2])
-argType tyEnv (RecordPattern fs r)
-  | isJust r =
-    do
-      tys <- mapM (fieldPattType tyEnv) fs
-      rty <- argType tyEnv (fromJust r)
-      (TypeVariable i) <- freshTypeVar
-      unify rty (TypeRecord tys (Just i))
-      return rty
-  | otherwise =
-    do
-      tys <- mapM (fieldPattType tyEnv) fs
-      return (TypeRecord tys Nothing)
+argType _ (RecordPattern fs _) = do
+  recInfo <- getFieldIdent fs >>= getRecordInfo
+  case recInfo of
+    [AliasType qi n rty@(TypeRecord _)] -> do
+      (TypeRecord fts', tys) <- instType' n rty
+      fts   <- mapM fieldPattType fs
+      theta <- getTypeSubst
+      let theta' = foldr (unifyTypedLabels fts') theta fts
+      modifyTypeSubst (const theta')
+      return (subst theta' $ TypeConstructor qi tys)
+    info -> internalError $ "Base.Typing.argType: Expected record type but got "
+              ++ show info
 
-fieldPattType :: ValueEnv -> Field Pattern -> TyState (Ident,Type)
-fieldPattType tyEnv (Field _ l t) =
-  do
-    lty <- instUniv (labelType l tyEnv)
-    ty <- argType tyEnv t
-    unify lty ty
-    return (l,lty)
+fieldPattType :: Field Pattern -> TCM (Ident,Type)
+fieldPattType (Field _ l t) = do
+  tyEnv <- getValueEnv
+  lty   <- instUniv (labelType l tyEnv)
+  ty    <- argType t
+  unify lty ty
+  return (l,lty)
 
 exprType :: ValueEnv -> Expression -> TyState Type
 exprType tyEnv (Literal l) = litType tyEnv l
@@ -249,48 +275,83 @@ exprType tyEnv (IfThenElse _ e1 e2 e3) = do
 exprType tyEnv (Case _ _ _ alts) = freshTypeVar >>= flip altType alts
   where altType ty [] = return ty
         altType ty (Alt _ _ rhs:alts1) =
-          rhsType tyEnv rhs >>= unify ty >> altType ty alts1
-exprType tyEnv (RecordConstr fs) = do
-    tys <- mapM (fieldExprType tyEnv) fs
-    return (TypeRecord tys Nothing)
-exprType tyEnv (RecordSelection r l) = do
-    lty <- instUniv (labelType l tyEnv)
-    rty <- exprType tyEnv r
-    (TypeVariable i) <- freshTypeVar
-    unify rty (TypeRecord [(l,lty)] (Just i))
-    return lty
-exprType tyEnv (RecordUpdate fs r) = do
-    tys <- mapM (fieldExprType tyEnv) fs
-    rty <- exprType tyEnv r
-    (TypeVariable i) <- freshTypeVar
-    unify rty (TypeRecord tys (Just i))
-    return rty
+          rhsType rhs >>= unify ty >> altType ty alts1
+exprType (RecordConstr fs) = do
+  recInfo <- getFieldIdent fs >>= getRecordInfo
+  case recInfo of
+    [AliasType qi n rty@(TypeRecord _)] -> do
+      (TypeRecord fts', tys) <- instType' n rty
+      fts   <- mapM fieldExprType fs
+      theta <- getTypeSubst
+      let theta' = foldr (unifyTypedLabels fts') theta fts
+      modifyTypeSubst (const theta')
+      return (subst theta' $ TypeConstructor qi tys)
+    info -> internalError $
+      "Base.Typing.exprType: Expected record type but got " ++ show info
+exprType (RecordSelection e l) = do
+  recInfo <- getRecordInfo l
+  case recInfo of
+    [AliasType qi n rty@(TypeRecord _)] -> do
+      (TypeRecord fts, tys) <- instType' n rty
+      ety <- exprType e
+      let rtc = TypeConstructor qi tys
+      case lookup l fts of
+        Just lty -> do
+          unify ety rtc
+          theta <- getTypeSubst
+          return (subst theta lty)
+        Nothing -> internalError "Base.Typing.exprType: Field not found."
+    info -> internalError $
+      "Base.Typing.exprType: Expected record type but got " ++ show info
+exprType (RecordUpdate fs e) = do
+  recInfo <- getFieldIdent fs >>= getRecordInfo
+  case recInfo of
+    [AliasType qi n rty@(TypeRecord _)] -> do
+      (TypeRecord fts', tys) <- instType' n rty
+      -- Type check field updates
+      fts <- mapM fieldExprType fs
+      modifyTypeSubst (\s -> foldr (unifyTypedLabels fts') s fts)
+      -- Type check record expression to be updated
+      ety <- exprType e
+      let rtc = TypeConstructor qi tys
+      unify ety rtc
+      -- Return inferred type
+      theta <- getTypeSubst
+      return (subst theta rtc)
+    info -> internalError $
+      "Base.Typing.exprType: Expected record type but got " ++ show info
 
-rhsType :: ValueEnv -> Rhs -> TyState Type
-rhsType tyEnv (SimpleRhs _ e _) = exprType tyEnv e
-rhsType tyEnv (GuardedRhs es _) = freshTypeVar >>= flip condExprType es
+rhsType :: Rhs -> TCM Type
+rhsType (SimpleRhs _ e _) = exprType e
+rhsType (GuardedRhs es _) = freshTypeVar >>= flip condExprType es
   where condExprType ty [] = return ty
         condExprType ty (CondExpr _ _ e:es1) =
-          exprType tyEnv e >>= unify ty >> condExprType ty es1
+          exprType e >>= unify ty >> condExprType ty es1
 
-fieldExprType :: ValueEnv -> Field Expression -> TyState (Ident,Type)
-fieldExprType tyEnv (Field _ l e) = do
-    lty <- instUniv (labelType l tyEnv)
-    ty <- exprType tyEnv e
-    unify lty ty
-    return (l,lty)
+fieldExprType :: Field Expression -> TCM (Ident,Type)
+fieldExprType (Field _ l e) = do
+  tyEnv <- getValueEnv
+  lty   <- instUniv (labelType l tyEnv)
+  ty    <- exprType e
+  unify lty ty
+  return (l,lty)
 
 -- In order to avoid name conflicts with non-generalized type variables
 -- in a type we instantiate quantified type variables using non-negative
 -- offsets here.
 
-freshTypeVar :: TyState Type
-freshTypeVar = liftM TypeVariable $ S.lift (S.modify succ >> S.get)
+freshTypeVar :: TCM Type
+freshTypeVar = TypeVariable `liftM` getNextId
 
-instType :: Int -> Type -> TyState Type
+instType :: Int -> Type -> TCM Type
 instType n ty = do
-    tys <- sequence (replicate n freshTypeVar)
-    return (expandAliasType tys ty)
+  tys <- replicateM n freshTypeVar
+  return (expandAliasType tys ty)
+
+instType' :: Int -> Type -> TCM (Type,[Type])
+instType' n ty = do
+  tys <- replicateM n freshTypeVar
+  return (expandAliasType tys ty, tys)
 
 instUniv :: TypeScheme -> TyState Type
 instUniv (ForAll _cx n ty) = instType n ty
@@ -303,33 +364,34 @@ instUnivExist (ForAllExist _cx n n' ty) = instType (n + n') ty
 -- the unification algorithm is identical to the one used by the type
 -- checker.
 
-unify :: Type -> Type -> TyState ()
-unify ty1 ty2 =
-  S.modify (\theta -> unifyTypes (subst theta ty1) (subst theta ty2) theta)
+unify :: Type -> Type -> TCM ()
+unify ty1 ty2 = do
+  theta <- getTypeSubst
+  let ty1' = subst theta ty1
+      ty2' = subst theta ty2
+  modifyTypeSubst $ unifyTypes ty1' ty2'
 
-unifyList :: [Type] -> [Type] -> TyState ()
-unifyList tys1 tys2 = sequence_ (zipWith unify tys1 tys2)
+unifyList :: [Type] -> [Type] -> TCM ()
+unifyList tys1 tys2 = zipWithM_ unify tys1 tys2
 
-unifyArrow :: Type -> TyState (Type,Type)
+unifyArrow :: Type -> TCM (Type,Type)
 unifyArrow ty = do
-    theta <- S.get
-    case subst theta ty of
-      TypeVariable tv
-        | tv >= 0 ->
-            do
-              ty1 <- freshTypeVar
-              ty2 <- freshTypeVar
-              S.modify (bindVar tv (TypeArrow ty1 ty2))
-              return (ty1,ty2)
-      TypeArrow ty1 ty2 -> return (ty1,ty2)
-      ty' -> internalError ("Base.Typing.unifyArrow (" ++ show ty' ++ ")")
+  theta <- getTypeSubst
+  case subst theta ty of
+    TypeVariable tv
+      | tv >= 0 -> do
+        ty1 <- freshTypeVar
+        ty2 <- freshTypeVar
+        modifyTypeSubst (bindVar tv (TypeArrow ty1 ty2))
+        return (ty1,ty2)
+    TypeArrow ty1 ty2 -> return (ty1,ty2)
+    ty' -> internalError ("Base.Typing.unifyArrow (" ++ show ty' ++ ")")
 
-unifyArrow2 :: Type -> TyState (Type,Type,Type)
-unifyArrow2 ty =
-  do
-    (ty1,ty2) <- unifyArrow ty
-    (ty21,ty22) <- unifyArrow ty2
-    return (ty1,ty21,ty22)
+unifyArrow2 :: Type -> TCM (Type,Type,Type)
+unifyArrow2 ty = do
+  (ty1,ty2)   <- unifyArrow ty
+  (ty21,ty22) <- unifyArrow ty2
+  return (ty1,ty21,ty22)
 
 unifyTypes :: Type -> Type -> TypeSubst -> TypeSubst
 unifyTypes (TypeVariable tv1) (TypeVariable tv2) theta
@@ -346,24 +408,42 @@ unifyTypes (TypeArrow ty11 ty12) (TypeArrow ty21 ty22) theta =
   unifyTypes ty11 ty21 (unifyTypes ty12 ty22 theta)
 unifyTypes (TypeSkolem k1) (TypeSkolem k2) theta
   | k1 == k2 = theta
-unifyTypes (TypeRecord fs1 Nothing) (TypeRecord fs2 Nothing) theta
+unifyTypes (TypeRecord fs1) (TypeRecord fs2) theta
   | length fs1 == length fs2 = foldr (unifyTypedLabels fs1) theta fs2
-unifyTypes tr1@(TypeRecord fs1 Nothing) (TypeRecord fs2 (Just a2)) theta =
-  unifyTypes (TypeVariable a2)
-             tr1
-             (foldr (unifyTypedLabels fs1) theta fs2)
-unifyTypes tr1@(TypeRecord _ (Just _)) tr2@(TypeRecord _ Nothing) theta =
-  unifyTypes tr2 tr1 theta
-unifyTypes (TypeRecord fs1 (Just a1)) (TypeRecord fs2 (Just a2)) theta =
-  unifyTypes (TypeVariable a1)
-             (TypeVariable a2)
-             (foldr (unifyTypedLabels fs1) theta fs2)
 unifyTypes ty1 ty2 _ = internalError $
   "Base.Typing.unify: (" ++ show ty1 ++ ") (" ++ show ty2 ++ ")"
+
+-- jrt 2014-10-20: Deactivated because the parser can not parse
+-- record extensions, thus, these cases should never occur. If they do,
+-- there must be an error somewhere ...
+-- unifyTypes tr1@(TypeRecord fs1 Nothing) (TypeRecord fs2 (Just a2)) theta =
+--   unifyTypes (TypeVariable a2)
+--              tr1
+--              (foldr (unifyTypedLabels fs1) theta fs2)
+-- unifyTypes tr1@(TypeRecord _ (Just _)) tr2@(TypeRecord _ Nothing) theta =
+--   unifyTypes tr2 tr1 theta
+-- unifyTypes (TypeRecord fs1 (Just a1)) (TypeRecord fs2 (Just a2)) theta =
+--   unifyTypes (TypeVariable a1)
+--              (TypeVariable a2)
+--              (foldr (unifyTypedLabels fs1) theta fs2)
 
 unifyTypedLabels :: [(Ident,Type)] -> (Ident,Type) -> TypeSubst -> TypeSubst
 unifyTypedLabels fs1 (l,ty) theta =
   maybe theta (\ty1 -> unifyTypes ty1 ty theta) (lookup l fs1)
+
+getFieldIdent :: [Field a] -> TCM Ident
+getFieldIdent [] = internalError "Base.Typing.getFieldIdent: empty field"
+getFieldIdent (Field _ i _ : _) = return i
+
+-- Lookup record type for given field identifier
+getRecordInfo :: Ident -> TCM [TypeInfo]
+getRecordInfo i = do
+  tyEnv <- getValueEnv
+  tcEnv <- getTyConsEnv
+  case lookupValue i tyEnv of
+       [Label _ r _] -> return (qualLookupTC r tcEnv)
+       _             -> internalError $
+        "Base.Typing.getRecordInfo: No record found for identifier " ++ show i
 
 -- The functions 'constrType', 'varType', and 'funType' are used for computing
 -- the type of constructors, pattern variables, and variables.

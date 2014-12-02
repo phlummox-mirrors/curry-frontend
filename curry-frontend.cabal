@@ -21,7 +21,9 @@ Build-Type:    Simple
 Stability:     experimental
 
 Extra-Source-Files: LIESMICH
-Data-Files:         src/Html/currydoc.css
+
+Data-Dir:   data
+Data-Files: currysource.css
 
 Flag network-uri
    description: Get Network.URI from the network-uri package
@@ -39,7 +41,8 @@ Executable cymake
     build-depends: network < 2.6
   ghc-options: -Wall
   Other-Modules:
-    Base.CurryTypes
+      Paths_curry_frontend
+    , Base.CurryTypes
     , Base.Expr
     , Base.Idents
     , Base.Messages
