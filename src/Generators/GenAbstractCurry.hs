@@ -561,8 +561,10 @@ genPattern pos env (LiteralPattern l) = case l of
   String _ cs -> genPattern pos env $ ListPattern [] $ map (LiteralPattern . Char noRef) cs
   _           -> (env, CPLit $ genLiteral l)
 genPattern _ env (VariablePattern v)
-  = let (env', idx) = genVarIndex env v
-    in  (env', CPVar (idx, idName v))
+  = case getVarIndex env v of
+      Just idx -> (env, CPVar (idx, idName v))
+      Nothing  -> let (env', idx') = genVarIndex env v
+                  in  (env', CPVar (idx', idName v))
 genPattern pos env (ConstructorPattern qident args)
   = let (env', args') = mapAccumL (genPattern pos) env args
     in  (env', CPComb (genQName False env qident) args')
