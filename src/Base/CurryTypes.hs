@@ -144,7 +144,7 @@ fromType' supply (TypeArrow      ty1 ty2) =
   CS.ArrowType (fromType' supply ty1) (fromType' supply ty2)
 fromType' _      (TypeSkolem           k) =
   CS.VariableType $ mkIdent $ "_?" ++ show k
-fromType (TypeRecord         fs)   = CS.RecordType
+fromType' _ (TypeRecord         fs)   = CS.RecordType
   (map (\ (l, ty) -> ([l], fromType ty)) fs)
 
 fromContext :: BT.Context -> CS.Context

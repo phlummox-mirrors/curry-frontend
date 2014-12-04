@@ -76,9 +76,10 @@ import Curry.Base.Position hiding (first)
 import Curry.Syntax hiding (emptyContext)
 
 import Base.Expr
-import Base.CurryTypes (fromType)
+import Base.CurryTypes (toType, fromType)
 import Base.Messages (internalError)
 import Base.Types
+import Base.TypeSubst (expandAliasType)
 import Base.Typing
 import Base.Utils (mapAccumM, concatMapM)
 
@@ -344,7 +345,7 @@ dsLiteral (Int                v i) = do
   return (Left (fixType tyEnv tcEnv))
   where fixType tyEnv' tcEnv'
           | typeOf tyEnv' tcEnv' v == floatType =
-              Float (srcRefOf $ idPosition v) (fromIntegral i)
+              Float v (fromIntegral i)
           | otherwise = Int v i
 dsLiteral f@(Float            _ _) = return $ Left f
 dsLiteral (String (SrcRef [i]) cs) = return $ Right
@@ -432,7 +433,7 @@ dsExpr _ var@(Variable _ v)
   | otherwise              = return var
 dsExpr _ c@(Constructor _) = return c
 dsExpr p (Paren         e) = dsExpr p e
-dsExpr p (Typed cty e cx ty) = liftM3 (Typed cty) (dsExpr p e) (return cx) (return ty)
+dsExpr p (Typed cty e cx ty) = liftM3 (Typed cty) (dsExpr p e) (return cx) (dsTypeExpr ty)
 dsExpr p (Tuple    pos es) =
   apply (Constructor $ tupleConstr es) `liftM` mapM (dsExpr p) es
   where tupleConstr es1 = addRef pos $ if null es1 then qUnitId else qTupleId (length es1)

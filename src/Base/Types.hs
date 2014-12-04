@@ -405,8 +405,8 @@ ppType (TypeArrow t1 t2) = parens $ ppType t1 <+> text "->" <+> ppType t2
 ppType (TypeConstrained ts n) 
   = text "constr" <> text (show n) <> parens (hsep (map ppType ts))
 ppType (TypeSkolem n) = text "skolem" <+> text (show n)
-ppType (TypeRecord r n) 
-  = text "record" <+> parens (text (show r) <+> text (show n))
+ppType (TypeRecord r)
+  = text "record" <+> parens (text (show r))
 
 {-
 Functions for converting between the context/type data type used in curry-frontend
@@ -438,16 +438,16 @@ instance Mirrorable Type ST.Type_ where
   mirrorFB (TypeArrow       t1 t2) = ST.TypeArrow_ (mirrorFB t1) (mirrorFB t2)
   mirrorFB (TypeConstrained tys n) = ST.TypeConstrained_ (map mirrorFB tys) n
   mirrorFB (TypeSkolem          n) = ST.TypeSkolem_ n
-  mirrorFB (TypeRecord      tys n) = 
-    ST.TypeRecord_ (map (\(id0, ty) -> (id0, mirrorFB ty)) tys) n
+  mirrorFB (TypeRecord        tys) =
+    ST.TypeRecord_ (map (\(id0, ty) -> (id0, mirrorFB ty)) tys)
   
   mirrorBF (ST.TypeVariable_        n) = TypeVariable n
   mirrorBF (ST.TypeConstructor_ q tys) = TypeConstructor q (map mirrorBF tys)
   mirrorBF (ST.TypeArrow_       t1 t2) = TypeArrow (mirrorBF t1) (mirrorBF t2)
   mirrorBF (ST.TypeConstrained_ tys n) = TypeConstrained (map mirrorBF tys) n
   mirrorBF (ST.TypeSkolem_          n) = TypeSkolem n
-  mirrorBF (ST.TypeRecord_      tys n) = 
-    TypeRecord (map (\(id0, ty) -> (id0, mirrorBF ty)) tys) n
+  mirrorBF (ST.TypeRecord_        tys) =
+    TypeRecord (map (\(id0, ty) -> (id0, mirrorBF ty)) tys)
 
 instance Mirrorable ConstrType ST.ConstrType_ where
   mirrorFB (cx, ty) = (mirrorFB cx, mirrorFB ty)

@@ -123,10 +123,10 @@ without xs n =
 
 -- Zipping lists as with zip/zipWith, but throw an error if the lists don't have 
 --  the same length
-zip' :: [a] -> [b] -> [(a, b)]
+zip' :: (Show a, Show b) => [a] -> [b] -> [(a, b)]
 zip' (x:xs) (y:ys) = (x, y) : zip' xs ys
 zip' []     []     = []
-zip' _      _      = error "zip': lists don't have the same length!"
+zip' xs      ys    = error ("zip': lists don't have the same length!\nxs: " ++ show xs ++ "\nys: " ++ show ys)
 
 zipWith' :: (a -> b -> c) -> [a] -> [b] -> [c]
 zipWith' _ []     []     = []

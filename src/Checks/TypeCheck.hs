@@ -32,7 +32,7 @@ import qualified Data.Map            as Map (Map, delete, empty, insert, lookup)
 import           Data.Maybe
   (catMaybes, fromMaybe, fromJust, isNothing)
 import qualified Data.Set            as Set
-  (Set, fromList, member, notMember, unions)
+  (Set, fromList, member, notMember, unions, empty)
 import Text.PrettyPrint
 
 import Curry.Base.Ident hiding (sep)
@@ -63,9 +63,7 @@ import Env.Value ( ValueEnv, ValueInfo (..), rebindFun
 import Env.ClassEnv (ClassEnv (..), Class (..)
   , implies', implies, isValidCx, reduceContext, lookupTypeScheme
   , {- canonClassName, isSuperClassOf, -} getInstances, splitType )
-
 import Debug.Trace
-
 infixl 5 $-$
 
 ($-$) :: Doc -> Doc -> Doc
@@ -273,7 +271,6 @@ checkTypeDecls _ []                    =
   internalError "TypeCheck.checkTypeDecls: empty list"
 checkTypeDecls _ [DataDecl    _ _ _ _ _] = return ()
 checkTypeDecls _ [NewtypeDecl _ _ _ _ _] = return ()
-checkTypeDecls m [TypeDecl  _ tc _ ty]
 checkTypeDecls m [t@(TypeDecl  _ tc _ ty)]
   -- enable declaration of recursive record types
   | isRecordDecl t       = return ()
@@ -969,25 +966,23 @@ cvcExpr (RecordUpdate   fs e) = liftM2 RecordUpdate (mapM cvcField fs) (cvcExpr 
 adjustType :: ConstrType_ -> QualIdent -> TCM ConstrType_ 
 adjustType (_cx0, ty0) v = do
   vEnv  <- getValueEnv
-  tyEnv <- getTyConsEnv
   m     <- getModuleIdent
   theta <- getTypeSubst
   let ForAll cxInf _ tyInf = funType m v vEnv
   let s = either (internalError . show)
                  id
-                 (unifyTypes m tyEnv tyInf (subst theta $ mirrorBF ty0))
+                 (unifyTypes m tyInf (subst theta $ mirrorBF ty0))
   return (mirrorFB $ subst s cxInf, ty0)
 
 cvcInfixOp :: InfixOp -> TCM InfixOp
 cvcInfixOp (InfixOp (Just (_cx0, ty0)) qid) = do
   vEnv   <- getValueEnv
-  tyEnv  <- getTyConsEnv
   m      <- getModuleIdent
   theta  <- getTypeSubst
   let ForAll cxInf _ tyInf = funType m qid vEnv
   let s = either (internalError . show)
                  id
-                 (unifyTypes m tyEnv tyInf (subst theta $ mirrorBF ty0))
+                 (unifyTypes m tyInf (subst theta $ mirrorBF ty0))
   return $ InfixOp (Just (mirrorFB $ subst s cxInf, ty0)) qid
 cvcInfixOp (InfixOp Nothing _) = internalError "cvcInfixOp"
 cvcInfixOp ic@(InfixConstr  _) = return ic
@@ -1140,7 +1135,7 @@ genVar poly lvs theta ma v = do
   tyEnv <- getValueEnv
   cEnv  <- getClassEnv
   doContextRed0 <- getDoContextRed
-  let sigma0    = genType poly $ subst theta $ varType v tyEnv
+  let sigma0    = trace ("<<<<< ValueEnv for " ++ show v ++ " >>>>>\n" ++ show tyEnv) $ genType poly $ subst theta $ varType v tyEnv
       arity     = fromMaybe (varArity v tyEnv) ma
       -- apply context reduction
       generalizedContext = getContext sigma0
@@ -1151,57 +1146,118 @@ genVar poly lvs theta ma v = do
   -- check that the context is valid
       invalidCx = isValidCx cEnv context
   unless (null invalidCx) $ report $ errNoInstance (idPosition v) m invalidCx
-  -- check for ambiguous context elements
+  -- check for ambiguous context elements and use defaulting if possible
   let sigma        = sigma0 `constrainBy` context
       tyVars       = typeVars (typeSchemeToType sigma)
+      ambigCxElems = filter (isAmbiguous tyVars lvs) context
+      -- newSubst     = if null ambigCxElems then idSubst else defaultedSubst cEnv lvs tyVars context
       eDefaultedContext = defaultedContext cEnv lvs tyVars context
-  case eDefaultedContext of
-       Left ambigCxElems -> errAmbiguousContextElems (idPosition v)
-                                                     m
-                                                     v
-                                                     ambigCxElems
-       Right (newContext,newSubst) -> do
-         let newSigma = sigma `constrainBy` newContext
-         case lookupTypeSig v sigs of
-           Nothing                ->
-             modifyValueEnv (rebindFun m v arity newSigma)
-               >> modifyTypeSubst (compose newSubst)
-           Just (expanded, sigTy) -> do
-             sigma' <- expandPolyType (not expanded) sigTy
-             case (eqTyScheme newSigma sigma') of
-               False -> report $
-                  errTypeSigTooGeneral (idPosition v) m what sigTy newSigma
-               True  -> do
-                 -- check that the given context implies the inferred (but don't
-                 -- report an error when the inferred context is invalid)
-                 let mapping  = buildTypeVarsMapping (typeSchemeToType sigma')
-                                                     (typeSchemeToType newSigma)
-                     context' = subst mapping $ getContext sigma'
-                     notImpliedContext = filter (not . implies cEnv context')
-                                                newContext
-                 unless (implies' cEnv context' newContext) $
-                        when (null invalidCx)
-                               (report $
-                                 errContextImplication (idPosition v)
-                                                       m
-                                                       context'
-                                                       newContext
-                                                       notImpliedContext
-                                                       v)
-                 modifyValueEnv (rebindFun m v arity newSigma)
-                 modifyTypeSubst (compose newSubst)
- where
-  what = text (if poly then "Function:" else "Variable:") <+> ppIdent v
-  genType poly' (ForAll cx0 n ty)
-    | n > 0 = internalError $
-                "TypeCheck.genVar: "
-                 ++ showLine (idPosition v)
-                 ++ show v ++ " :: " ++ show ty
-    | poly' = gen lvs (cx0, ty)
-    | otherwise = monoType' (cx0, ty)
-  eqTyScheme (ForAll _cx1 _ t1) (ForAll _cx2 _ t2) = equTypes t1 t2
-  isLeft (Left _) = True
-  isLeft _        = False
+      (newContext,newSubst) = trace ("<<<< name >>>>: " ++ show v ++ "\nvarType: " ++ show (varType v tyEnv) ++ "\ntheta: " ++ show theta ++ "\ncontext: " ++ show context ++ "\nambs: " ++ show (ambiguities lvs tyVars context) ++ "\ntypeVars: " ++ show (concatMap (typeVars . snd) context) ++ "\ntyVars " ++ show tyVars ++ "\nfreeVars: " ++ show lvs ++ "ambigCx: " ++ show ambigCxElems) $
+                                 if null ambigCxElems then (context,idSubst) else case eDefaultedContext of
+                          Left  cElems -> trace ("<<<< LEFT >>>>" ++ "\ncElems: " ++ show cElems) (context,idSubst)
+                          Right (cElems,newSubst) -> trace "<<<< RIGHT >>>>\n" (context,newSubst)
+      newSigma = sigma --sigma `constrainBy` newContext
+  -- unless (null ambigCxElems || not (isLeft eDefaultedContext))
+         -- $ report $ errAmbiguousContextElems (idPosition v) m v (newContext ++ ambigCxElems)
+  unless (null ambigCxElems) $ case lookupTypeSig v sigs of
+           Nothing -> trace "<<<< Nothing >>>>\n" $ report $ errAmbiguousContextElems (idPosition v) m v ambigCxElems
+           Just (_, tySig) -> do
+             -- check whether there are ambiguous type variables in the
+             -- unexpanded (!) type signature. TODO: Actually we could do without this
+             -- test because we know that type signatures are unambiguous (as this
+             -- is checked earlier)
+             tySig' <- expandPolyType False tySig
+             let tyVars'       = typeVars (typeSchemeToType tySig')
+                 ambigCxElems' = filter (isAmbiguous tyVars' Set.empty) (getContext tySig')
+             trace ("<<<< Just >>>>\nambigCx': " ++ show ambigCxElems' ++ "\ntySig': " ++ show tySig' ++ "\ntySig: " ++ show tySig) $ unless (null ambigCxElems') $ report $
+               errAmbiguousContextElems (idPosition v) m v ambigCxElems'
+  case lookupTypeSig v sigs of
+    Nothing                -> (modifyValueEnv $ rebindFun m v arity newSigma) -- >> modifyTypeSubst (compose newSubst)
+    Just (expanded, sigTy) -> do
+      sigma' <- expandPolyType (not expanded) sigTy
+      case (eqTyScheme newSigma sigma') of
+        False -> report  $ errTypeSigTooGeneral (idPosition v) m what sigTy newSigma
+        True  -> do
+          -- check that the given context implies the inferred (but don't
+          -- report an error when the inferred context is invalid)
+          let mapping  = buildTypeVarsMapping (typeSchemeToType sigma') (typeSchemeToType newSigma)
+              context' = subst mapping $ getContext sigma'
+          unless (implies' cEnv context' newContext) $ when (null invalidCx)
+            $ report $ errContextImplication (idPosition v) m context' newContext
+              (filter (not . implies cEnv context') newContext)
+              v
+      (modifyValueEnv $ rebindFun m v arity newSigma) -- >> modifyTypeSubst (compose newSubst)
+  where
+   what = text (if poly then "Function:" else "Variable:") <+> ppIdent v
+   genType poly' (ForAll cx0 n ty)
+     | poly' = gen lvs (cx0, ty)
+     | otherwise = monoType' (cx0, ty)
+   eqTyScheme (ForAll _cx1 _ t1) (ForAll _cx2 _ t2) = equTypes t1 t2
+   isLeft (Left _) = True
+   isLeft _        = False
+ 
+-- | Returns whether the given context element is ambiguous.
+-- |  A context element in the type signature C => T is exactly then ambiguous
+-- |  if it contains a type variable that does not appear in T and which
+-- |  is not free in the current type environment (definition from
+-- |  "Implementing Haskell Type Classes", K. Hammond and S. Blott)
+isAmbiguous :: [Int]             -- ^ the type variables from T
+             -> Set.Set Int       -- ^ the free type vars in the current type environment
+             -> (QualIdent, Type) -- ^ the context elem to be examined
+             -> Bool
+isAmbiguous tyVarsType freeVars (_qid, ty0) =
+   let tyVarsCxElem = typeVars ty0
+   in any (\ty -> ty `notElem` tyVarsType && not (ty `Set.member` freeVars)) tyVarsCxElem
+
+ --      eDefaultedContext = defaultedContext cEnv lvs tyVars context
+ --  case eDefaultedContext of
+ --     -- defaulting failed, report ambiguity
+ --       Left ambigCxElems -> report $
+ --          errAmbiguousContextElems (idPosition v)
+ --                                   m
+ --                                   v
+ --                                   ambigCxElems
+ --     -- defaulting succeeded, go on with reduced context and corresponding substitution
+ --       Right (newContext,newSubst) -> do
+ --         let newSigma = sigma `constrainBy` newContext
+ --         case lookupTypeSig v sigs of
+ --           Nothing                ->
+ --             modifyValueEnv (rebindFun m v arity newSigma)
+ --               >> modifyTypeSubst (compose newSubst)
+ --           Just (expanded, sigTy) -> do
+ --             sigma' <- expandPolyType (not expanded) sigTy
+ --             case eqTyScheme newSigma sigma' of
+ --               False -> report $
+ --                  errTypeSigTooGeneral (idPosition v) m what sigTy newSigma
+ --               True  -> do
+ --                 -- check that the given context implies the inferred (but don't
+ --                 -- report an error when the inferred context is invalid)
+ --                 let mapping  = buildTypeVarsMapping (typeSchemeToType sigma')
+ --                                                     (typeSchemeToType newSigma)
+ --                     context' = subst mapping $ getContext sigma'
+ --                     notImpliedContext = filter (not . implies cEnv context')
+ --                                                newContext
+ --                 unless (implies' cEnv context' newContext) $
+ --                        when (null invalidCx)
+ --                               (report $
+ --                                 errContextImplication (idPosition v)
+ --                                                       m
+ --                                                       context'
+ --                                                       newContext
+ --                                                       notImpliedContext
+ --                                                       v)
+ --                 modifyValueEnv (rebindFun m v arity newSigma)
+ --                 modifyTypeSubst (compose newSubst)
+ -- where
+ --  what = text (if poly then "Function:" else "Variable:") <+> ppIdent v
+ --  genType poly' (ForAll cx0 n ty)
+ --    | n > 0 = internalError $
+ --                "TypeCheck.genVar: "
+ --                 ++ showLine (idPosition v)
+ --                 ++ show v ++ " :: " ++ show ty
+ --    | poly' = gen lvs (cx0, ty)
+ --    | otherwise = monoType' (cx0, ty)
+ --  eqTyScheme (ForAll _cx1 _ t1) (ForAll _cx2 _ t2) = equTypes t1 t2
 
 -- | Checks if the given context elements are ambiguous and applies
 -- |   defaulting if necessary.
@@ -1221,9 +1277,9 @@ defaultedContext :: ClassEnv
                  -> Either BT.Context (BT.Context,TypeSubst)
 defaultedContext cEnv freeVars vars cx
   | any null tss = Left newContext
-  | otherwise    = Right (newContext,newSubst)
+  | otherwise    = trace ("newContext: " ++ show newContext ++ "\nnewSubst: " ++ show newSubst) $ Right (cx \\ newContext,newSubst)
  where
-  newContext = cx \\ concatMap snd vps
+  newContext = trace ("cx: " ++ show cx ++ "\nvps: " ++ show vps ++ "\ntss: " ++ show tss) $ concatMap snd vps
   newSubst   = listToSubst $ zip (map fst vps) (map head tss)
   vps        = ambiguities freeVars vars cx
   tss        = map (candidates cEnv) vps
@@ -1237,7 +1293,7 @@ type Ambiguity = (Int, BT.Context)
 ambiguities :: Set.Set Int -> [Int] -> BT.Context -> [Ambiguity]
 ambiguities freeVars tyVars cx =
   [ (v, filter (\(_,ty) -> v `elem` typeVars ty || v `Set.member` freeVars) cx)
-    | v <- concatMap typeVars ps \\ tyVars, not (v `Set.member` freeVars)
+    | v <- nub (concatMap typeVars ps) \\ tyVars
   ]
  where
   ps = map snd cx
@@ -1255,7 +1311,7 @@ ambiguities freeVars tyVars cx =
 -- |        enclosing module that is an instance of all of the classes mentioned
 -- |        in cs. The first such type will be selected as the default.
 candidates :: ClassEnv -> Ambiguity -> [Type]
-candidates cEnv (var,cx) =
+candidates cEnv (var,cx) = trace ("is: " ++ show is ++ "\nts: " ++ show ts) $
   [ ty' | all (TypeVariable var ==) ts
         , any (`elem` numClasses) is
         , all (`elem` stdClasses) is
@@ -1305,11 +1361,8 @@ buildTypeVarsMapping' (TypeArrow     t11 t12) (TypeArrow     t21 t22) =
   buildTypeVarsMapping' t11 t21 ++ buildTypeVarsMapping' t12 t22
 buildTypeVarsMapping' (TypeConstrained   _ _) (TypeConstrained   _ _) = [] 
 buildTypeVarsMapping' (TypeSkolem          _) (TypeSkolem          _) = []
-buildTypeVarsMapping' (TypeRecord ids1 (Just i1)) (TypeRecord ids2 (Just i2))
-  = concat (zipWith' buildTypeVarsMapping' (map snd ids1) (map snd ids2)) 
-    ++ [(i1, i2)]
-buildTypeVarsMapping' (TypeRecord   ids1 Nothing) (TypeRecord   ids2 Nothing)
-  = concat $ zipWith' buildTypeVarsMapping' (map snd ids1) (map snd ids2) 
+buildTypeVarsMapping' (TypeRecord ids1) (TypeRecord ids2)
+  = concat (zipWith' buildTypeVarsMapping' (map snd ids1) (map snd ids2))
 buildTypeVarsMapping' _t1 _t2 = []
   -- internalError ("types do not match in buildTypeVarsMapping\n" ++ show t1 
   --   ++ "\n" ++ show t2)
@@ -1438,11 +1491,11 @@ tcPattern p r@(RecordPattern fs _) = do
   recInfo <- getFieldIdent fs >>= getRecordInfo
   case recInfo of
     [AliasType qi n rty@(TypeRecord _)] -> do
-      (rty'@(TypeRecord fts'), tys) <- inst' (ForAll n rty)
+      (rty'@(TypeRecord fts'), tys) <- inst' (ForAll BT.emptyContext n rty)
       fts <- mapM (tcFieldPatt tcPattern) fs
-      unifyLabels p "record pattern" (ppPattern 0 r) fts' rty' fts
+      unifyLabels p "record pattern" (ppPattern 0 r) fts' rty' (map (\(is,ts) -> (is,getType ts)) fts)
       theta <- getTypeSubst
-      return (subst theta $ TypeConstructor qi tys)
+      return (noContext (subst theta $ TypeConstructor qi tys))
     info -> internalError $ "TypeCheck.tcExpr: Expected record type but got "
               ++ show info
 
@@ -1531,11 +1584,11 @@ tcPatternFP p r@(RecordPattern fs _) = do
   recInfo <- getFieldIdent fs >>= getRecordInfo
   case recInfo of
     [AliasType qi n rty@(TypeRecord _)] -> do
-      (rty'@(TypeRecord fts'), tys) <- inst' (ForAll n rty)
+      (rty'@(TypeRecord fts'), tys) <- inst' (ForAll BT.emptyContext n rty)
       fts <- mapM (tcFieldPatt tcPattern) fs
-      unifyLabels p "record pattern" (ppPattern 0 r) fts' rty' fts
+      unifyLabels p "record pattern" (ppPattern 0 r) fts' rty' (map (\(is,ts) -> (is,getType ts)) fts)
       theta <- getTypeSubst
-      return (subst theta $ TypeConstructor qi tys)
+      return (noContext (subst theta $ TypeConstructor qi tys))
     info -> internalError $ "TypeCheck.tcExpr: Expected record type but got "
               ++ show info
 
@@ -1898,25 +1951,29 @@ tcExpr p r@(RecordConstr fs) = do
   recInfo <- getFieldIdent fs >>= getRecordInfo
   case recInfo of
     [AliasType qi n rty@(TypeRecord _)] -> do
-      (rty'@(TypeRecord fts'), tys) <- inst' (ForAll n rty)
-      fts     <- mapM tcFieldExpr fs
-      unifyLabels p "record construction" (ppExpr 0 r) fts' rty' fts
+      (rty'@(TypeRecord fts'), tys) <- inst' (ForAll BT.emptyContext n rty)
+      fts <- mapM tcFieldExpr fs
+      let cxs = concatMap (fst . snd) (map snd fts)
+          ftsWithoutFieldExprs = map (\(_,(is,ts)) -> (is,getType ts)) fts
+      unifyLabels p "record construction" (ppExpr 0 r) fts' rty' ftsWithoutFieldExprs
       theta <- getTypeSubst
-      return (subst theta $ TypeConstructor qi tys)
+      return (RecordConstr (map fst fts),
+              (cxs, subst theta $ TypeConstructor qi tys))
     info -> internalError $ "TypeCheck.tcExpr: Expected record type but got "
            ++ show info
 tcExpr p r@(RecordSelection e l) = do
   recInfo <- getRecordInfo l
   case recInfo of
     [AliasType qi n rty@(TypeRecord _)] -> do
-      ety <- tcExpr p e
-      (TypeRecord fts, tys) <- inst' (ForAll n rty)
+      (e',cty@(cx,_)) <- tcExpr p e
+      (TypeRecord fts, tys) <- inst' (ForAll BT.emptyContext n rty)
       let rtc = TypeConstructor qi tys
       case lookup l fts of
         Just lty -> do
-          unify p "record selection" (ppExpr 0 r) ety rtc
+          unify p "record selection" (ppExpr 0 r) cty (noContext rtc)
           theta <- getTypeSubst
-          return (subst theta lty)
+          cx' <- adjustContext cx
+          return (RecordSelection e' l, (cx',subst theta lty))
         Nothing -> internalError "TypeCheck.tcExpr: Field not found."
     info -> internalError $ "TypeCheck.tcExpr: Expected record type but got "
               ++ show info
@@ -1924,17 +1981,17 @@ tcExpr p r@(RecordUpdate fs e) = do
   recInfo <- getFieldIdent fs >>= getRecordInfo
   case recInfo of
     [AliasType qi n rty@(TypeRecord _)] -> do
-      (rty'@(TypeRecord fts'), tys) <- inst' (ForAll n rty)
+      (rty'@(TypeRecord fts'), tys) <- inst' (ForAll BT.emptyContext n rty)
       -- Type check field updates
       fts <- mapM tcFieldExpr fs
-      unifyLabels p "record update" (ppExpr 0 r) fts' rty' fts
+      unifyLabels p "record update" (ppExpr 0 r) fts' rty' (map (\(_,(is,ts)) -> (is,getType ts)) fts)
       -- Type check record expression to be updated
-      ety <- tcExpr p e
+      (e',cty@(cx,_)) <- tcExpr p e
       let rtc = TypeConstructor qi tys
-      unify p "record update" (ppExpr 0 r) ety rtc
+      unify p "record update" (ppExpr 0 r) cty (noContext rtc)
       -- Return inferred type
       theta <- getTypeSubst
-      return (subst theta rtc)
+      return (RecordUpdate (map fst fts) e', (cx,subst theta rtc))
     info -> internalError $ "TypeCheck.tcExpr: Expected record type but got "
               ++ show info
 
@@ -2121,7 +2178,7 @@ unifyLabel p what doc fs rty (l, ty) = case lookup l fs of
   Nothing  -> do
     m <- getModuleIdent
     report $ posMessage p $ errMissingLabel m l rty
-  Just ty' -> unify p what doc ty' ty
+  Just ty' -> unify p what doc (noContext ty') (noContext ty)
 
 unifyTypedLabels :: ModuleIdent -> [(Ident,Type)] -> Type
                  -> Either Doc TypeSubst
@@ -2175,7 +2232,7 @@ freshSkolem :: TCM Type
 freshSkolem = fresh TypeSkolem
 
 inst' :: TypeScheme -> TCM (Type, [Type])
-inst' (ForAll n ty) = do
+inst' (ForAll _ n ty) = do
   tys <- replicateM n freshTypeVar
   return (expandAliasType tys ty, tys)
 
@@ -2207,8 +2264,8 @@ instContext tys cx = map convert cx
     convertType (TypeConstrained    ts n) = 
       TypeConstrained (map convertType ts) n
     convertType (TypeSkolem            n) = TypeSkolem n
-    convertType (TypeRecord         ts n) = 
-      TypeRecord (map (\(id0, t) -> (id0, convertType t)) ts) n
+    convertType (TypeRecord           ts) =
+      TypeRecord (map (\(id0, t) -> (id0, convertType t)) ts)
 
 instExist :: ExistTypeScheme -> TCM ConstrType
 instExist (ForAllExist cx n n' ty) = do
@@ -2274,7 +2331,7 @@ varArity v tyEnv = case lookupValue v tyEnv of
 
 varType :: Ident -> ValueEnv -> TypeScheme
 varType v tyEnv = case lookupValue v tyEnv of
-  Value _ _ sigma _ : _ -> sigma
+  Value _ _ sigma _ : _ -> trace ("<<< varType >>> \nsigma: " ++ show sigma) sigma
   _ -> internalError $ "TypeCheck.varType " ++ show v
 
 sureVarType :: Ident -> ValueEnv -> Maybe TypeScheme

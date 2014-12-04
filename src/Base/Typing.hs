@@ -193,9 +193,8 @@ argType (FunctionPattern f ts) = do
   return (last (flatten ty))
   where flatten (TypeArrow ty1 ty2) = ty1 : flatten ty2
         flatten ty = [ty]
-argType tyEnv (InfixFuncPattern t1 op t2) =
-  argType tyEnv (FunctionPattern op [t1,t2])
-argType _ (RecordPattern fs _) = do
+argType (InfixFuncPattern t1 op t2) = argType (FunctionPattern op [t1,t2])
+argType (RecordPattern fs _) = do
   recInfo <- getFieldIdent fs >>= getRecordInfo
   case recInfo of
     [AliasType qi n rty@(TypeRecord _)] -> do
@@ -216,63 +215,62 @@ fieldPattType (Field _ l t) = do
   unify lty ty
   return (l,lty)
 
-exprType :: ValueEnv -> Expression -> TyState Type
-exprType tyEnv (Literal l) = litType tyEnv l
-exprType tyEnv (Variable _ v) = instUniv (funType v tyEnv)
-exprType tyEnv (Constructor c) = instUnivExist (constrType c tyEnv)
-exprType tyEnv (Typed _ e _ _) = exprType tyEnv e
-exprType tyEnv (Paren e) = exprType tyEnv e
-exprType tyEnv (Tuple _ es)
-  | null es = return unitType
-  | otherwise = liftM tupleType $ mapM (exprType tyEnv) es
-exprType tyEnv (List _ es) = freshTypeVar >>= flip elemType es
-  where elemType ty [] = return (listType ty)
-        elemType ty (e:es1) =
-          exprType tyEnv e >>= unify ty >> elemType ty es1
-exprType tyEnv (ListCompr _ e _) = liftM listType $ exprType tyEnv e
+exprType :: Expression -> TCM Type
+exprType (Literal l) = litType l
+exprType (Variable _ v) = do
+  tyEnv <- getValueEnv
+  instUniv (funType v tyEnv)
+exprType (Constructor c) = do
+  tyEnv <- getValueEnv
+  instUnivExist (constrType c tyEnv)
+exprType (Typed _ e _ _) = exprType e
+exprType (Paren e) = exprType e
+exprType (Tuple _ es)
+  | null es   = return unitType
+  | otherwise = liftM tupleType $ mapM exprType es
+exprType (List _ es) = freshTypeVar >>= flip elemType es
+  where elemType ty []      = return (listType ty)
+        elemType ty (e:es1) = exprType e >>= unify ty >> elemType ty es1
+exprType (ListCompr _ e _) = liftM listType $ exprType e
 -- the following equations for exprType should never be needed when the
 -- type class extensions are enabled, because the dictionaries transformation
 -- removes the Enum* data constructors from the AST, hence it should be 
 -- OK to return only the type [Int] 
-exprType _     (EnumFrom (Just _cty) _) = return (listType intType)
-exprType _     (EnumFrom Nothing _) = internalError "exprType EnumFrom"
-exprType _     (EnumFromThen (Just _cty) _ _) = return (listType intType)
-exprType _     (EnumFromThen Nothing _ _) = internalError "exprType EnumFromThen"
-exprType _     (EnumFromTo (Just _cty) _ _) = return (listType intType)
-exprType _     (EnumFromTo Nothing _ _) = internalError "exprType EnumFromTo"
-exprType _     (EnumFromThenTo (Just _cty) _ _ _) = return (listType intType)
-exprType _     (EnumFromThenTo Nothing _ _ _) = internalError "exprType EnumFromThenTo"
-exprType tyEnv (UnaryMinus _ _ e) = exprType tyEnv e
-exprType tyEnv (Apply e1 e2) = do
-    (ty1,ty2) <- exprType tyEnv e1 >>= unifyArrow
-    exprType tyEnv e2 >>= unify ty1
-    return ty2
-exprType tyEnv (InfixApply e1 op e2) = do
-    (ty1,ty2,ty3) <- exprType tyEnv (infixOp op) >>= unifyArrow2
-    exprType tyEnv e1 >>= unify ty1
-    exprType tyEnv e2 >>= unify ty2
-    return ty3
-exprType tyEnv (LeftSection e op) = do
-    (ty1,ty2,ty3) <- exprType tyEnv (infixOp op) >>= unifyArrow2
-    exprType tyEnv e >>= unify ty1
-    return (TypeArrow ty2 ty3)
-exprType tyEnv (RightSection op e) = do
-    (ty1,ty2,ty3) <- exprType tyEnv (infixOp op) >>= unifyArrow2
-    exprType tyEnv e >>= unify ty2
-    return (TypeArrow ty1 ty3)
-exprType tyEnv (Lambda _ args e) = do
-    tys <- mapM (argType tyEnv) args
-    ty <- exprType tyEnv e
-    return (foldr TypeArrow ty tys)
-exprType tyEnv (Let _ e) = exprType tyEnv e
-exprType tyEnv (Do _ e) = exprType tyEnv e
-exprType tyEnv (IfThenElse _ e1 e2 e3) = do
-    exprType tyEnv e1 >>= unify boolType
-    ty2 <- exprType tyEnv e2
-    ty3 <- exprType tyEnv e3
-    unify ty2 ty3
-    return ty3
-exprType tyEnv (Case _ _ _ alts) = freshTypeVar >>= flip altType alts
+exprType (EnumFrom _ _) = return (listType intType)
+exprType (EnumFromThen _ _ _) = return (listType intType)
+exprType (EnumFromTo _ _ _) = return (listType intType)
+exprType (EnumFromThenTo _ _ _ _) = return (listType intType)
+exprType (UnaryMinus _ _ e) = exprType e
+exprType (Apply e1 e2) = do
+  (ty1,ty2) <- exprType e1 >>= unifyArrow
+  exprType e2 >>= unify ty1
+  return ty2
+exprType (InfixApply e1 op e2) = do
+  (ty1,ty2,ty3) <- exprType (infixOp op) >>= unifyArrow2
+  exprType e1 >>= unify ty1
+  exprType e2 >>= unify ty2
+  return ty3
+exprType (LeftSection e op) = do
+  (ty1,ty2,ty3) <- exprType (infixOp op) >>= unifyArrow2
+  exprType e >>= unify ty1
+  return (TypeArrow ty2 ty3)
+exprType (RightSection op e) = do
+  (ty1,ty2,ty3) <- exprType (infixOp op) >>= unifyArrow2
+  exprType e >>= unify ty2
+  return (TypeArrow ty1 ty3)
+exprType (Lambda _ args e) = do
+  tys <- mapM argType args
+  ty  <- exprType e
+  return (foldr TypeArrow ty tys)
+exprType (Let _ e) = exprType e
+exprType (Do _ e) = exprType e
+exprType (IfThenElse _ e1 e2 e3) = do
+  exprType e1 >>= unify boolType
+  ty2 <- exprType e2
+  ty3 <- exprType e3
+  unify ty2 ty3
+  return ty3
+exprType (Case _ _ _ alts) = freshTypeVar >>= flip altType alts
   where altType ty [] = return ty
         altType ty (Alt _ _ rhs:alts1) =
           rhsType rhs >>= unify ty >> altType ty alts1
@@ -353,10 +351,10 @@ instType' n ty = do
   tys <- replicateM n freshTypeVar
   return (expandAliasType tys ty, tys)
 
-instUniv :: TypeScheme -> TyState Type
+instUniv :: TypeScheme -> TCM Type
 instUniv (ForAll _cx n ty) = instType n ty
 
-instUnivExist :: ExistTypeScheme -> TyState Type
+instUnivExist :: ExistTypeScheme -> TCM Type
 instUnivExist (ForAllExist _cx n n' ty) = instType (n + n') ty
 
 -- When unifying two types, the non-generalized variables, i.e.,

@@ -67,3 +67,9 @@ qual opts env mdl = (mdl', qualifyEnv opts env)
 simplify :: Bool -> Module -> CompilerEnv -> (Module, CompilerEnv)
 simplify flat mdl env = (mdl', env { valueEnv = tyEnv' })
   where (mdl', tyEnv') = S.simplify flat (valueEnv env) (tyConsEnv env) mdl
+
+-- |Removes all contexts in the explicit type signatures, so that the resulting
+-- program is free of type class elements
+typeSigs :: CompilerEnv -> Module -> (CompilerEnv, Module)
+typeSigs cEnv m = (cEnv, m')
+  where m' = TS.transformTypeSigs cEnv m

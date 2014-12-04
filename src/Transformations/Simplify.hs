@@ -380,8 +380,8 @@ sharePatternRhs tyEnv (PatternDecl p _ _ t rhs) = case t of
   where patternId n = mkIdent ("_#pat" ++ show n)
 sharePatternRhs _ d = return [d]
 
-expandPatternBindings :: ValueEnv -> [Ident] -> Decl -> SIM [Decl]
-expandPatternBindings tyEnv fvs (PatternDecl p cty id0 t (SimpleRhs p' e _)) = do
+expandPatternBindings :: ValueEnv -> TCEnv -> [Ident] -> Decl -> SIM [Decl]
+expandPatternBindings tyEnv tcEnv fvs (PatternDecl p cty id0 t (SimpleRhs p' e _)) = do
   flags <- isFlat
   case t of
     VariablePattern _ -> return [PatternDecl p cty id0 t (SimpleRhs p' e [])]

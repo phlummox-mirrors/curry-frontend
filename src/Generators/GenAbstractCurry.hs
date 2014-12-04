@@ -450,16 +450,16 @@ genExpr :: Position -> AbstractEnv -> Expression -> (AbstractEnv, CExpr)
 genExpr pos env (Literal l) = case l of
   String _ cs -> genExpr pos env $ List [] $ map (Literal . Char noRef) cs
   _           -> (env, CLit $ genLiteral l)
-genExpr _ env   (Variable v) = case getVarIndex env ident of
+genExpr _ env (Variable _ v) = case getVarIndex env ident of
     Just idx -> (env, CVar (idx, idName ident))
     _ | v == qSuccessId -> (env, CSymbol $ genQName False env qSuccessFunId)
       | otherwise       -> (env, CSymbol $ genQName False env v)
   where ident = unqualify v
 genExpr _   env (Constructor c) = (env, CSymbol $ genQName False env c)
 genExpr pos env (Paren    expr) = genExpr pos env expr
-genExpr pos env (Typed  expr _) = genExpr pos env expr
+genExpr pos env (Typed _ expr _ _) = genExpr pos env expr
 genExpr pos env (Tuple  _ args) = genExpr pos env $ case args of
-  []  -> Variable qUnitId
+  []  -> Variable Nothing qUnitId
   [x] -> x
   _   -> foldl Apply (Variable Nothing $ qTupleId $ length args) args
 genExpr pos env (List _ args)

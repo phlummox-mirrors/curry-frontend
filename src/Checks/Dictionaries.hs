@@ -341,7 +341,7 @@ checkForAmbiguousInstances p = mapM_ check
   check (_cls, TypeConstrained []    _) = internalError "typeconstrained empty"
   check (cls , TypeArrow     _ty1 _ty2) = check (cls, TypeConstructor qArrowIdP [])
   check (_cls, TypeSkolem            _) = internalError "typeSklolem"
-  check (_cls, TypeRecord          _ _) = internalError "typerecord"
+  check (_cls, TypeRecord            _) = internalError "typerecord"
       
 
 

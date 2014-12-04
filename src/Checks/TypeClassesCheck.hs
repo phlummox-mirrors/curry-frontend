@@ -2149,9 +2149,8 @@ fromType'' supply (TypeArrow       ty1 ty2) =
   ArrowType (fromType'' supply ty1) (fromType'' supply ty2)
 fromType'' _      (TypeSkolem            k) =
   VariableType $ mkIdent $ "_?" ++ show k
-fromType'' supply (TypeRecord       fs rty) = RecordType
+fromType'' supply (TypeRecord           fs) = RecordType
   (map (\ (l, ty) -> ([l], fromType'' supply ty)) fs)
-  ((fromType'' supply . TypeVariable) `fmap` rty)
 
 -- ---------------------------------------------------------------------------
 -- other transformations
@@ -2224,8 +2223,8 @@ expandSpecial (TypeConstructor qid tys)
 expandSpecial (TypeArrow       t1 t2) = TypeArrow (expandSpecial t1) (expandSpecial t2)
 expandSpecial (TypeConstrained tys n) = TypeConstrained (map expandSpecial tys) n 
 expandSpecial ts@(TypeSkolem       _) = ts
-expandSpecial (TypeRecord       ts n) = 
-  TypeRecord (map (\(id0, ty) -> (id0, expandSpecial ty)) ts) n
+expandSpecial (TypeRecord         ts) = 
+  TypeRecord (map (\(id0, ty) -> (id0, expandSpecial ty)) ts)
 
 -- ---------------------------------------------------------------------------
 -- various substitutions
@@ -2260,7 +2259,7 @@ renameVarsInTypeExpr subst (TupleType  texps) =
 renameVarsInTypeExpr subst (ListType    texp) = ListType $ renameVarsInTypeExpr subst texp
 renameVarsInTypeExpr subst (ArrowType  t1 t2) =  
   ArrowType (renameVarsInTypeExpr subst t1) (renameVarsInTypeExpr subst t2)
-renameVarsInTypeExpr _     (RecordType   _ _) = internalError "TypeClassesCheck"
+renameVarsInTypeExpr _     (RecordType     _) = internalError "TypeClassesCheck"
 
 -- ---------------------------------------------------------------------------
 
@@ -2282,7 +2281,7 @@ substInTypeExpr subst (TupleType  texps) =
 substInTypeExpr subst (ListType    texp) = ListType $ substInTypeExpr subst texp
 substInTypeExpr subst (ArrowType  t1 t2) =  
   ArrowType (substInTypeExpr subst t1) (substInTypeExpr subst t2)
-substInTypeExpr _     (RecordType   _ _) = internalError "TypeClassesCheck"
+substInTypeExpr _     (RecordType     _) = internalError "TypeClassesCheck"
 
 -- ---------------------------------------------------------------------------
 -- error messages

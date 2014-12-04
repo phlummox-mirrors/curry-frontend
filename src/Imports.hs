@@ -19,7 +19,8 @@ module Imports (importInterfaces, importModules, qualifyEnv) where
 import           Control.Monad              (liftM, unless)
 import qualified Control.Monad.State as S   (State, gets, modify, runState)
 import qualified Data.Map            as Map
-import           Data.Maybe                 (catMaybes, fromMaybe)
+import           Data.Maybe                 (catMaybes, fromMaybe, fromJust
+                                            , isJust, isNothing)
 import qualified Data.Set            as Set
 import           Data.List                       (nub, (\\))
 import           Text.PrettyPrint
@@ -34,7 +35,6 @@ import Base.Messages (Message, posMessage, internalError)
 import Base.TopEnv
 
 import Base.Types as BT hiding (isCons)
-import Base.TypeSubst (expandAliasType)
 import Base.Utils (fromJust') 
 import Base.Idents
 import Base.Names

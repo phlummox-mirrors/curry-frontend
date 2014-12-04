@@ -175,6 +175,5 @@ fromType (TypeArrow       ty1 ty2) =
   ArrowType (fromType ty1) (fromType ty2)
 fromType (TypeSkolem            k) =
   VariableType $ mkIdent $ "_?" ++ show k
-fromType (TypeRecord       fs rty) = RecordType
+fromType (TypeRecord       fs) = RecordType
   (map (\ (l, ty) -> ([l], fromType ty)) fs)
-  ((fromType . TypeVariable) `fmap` rty)

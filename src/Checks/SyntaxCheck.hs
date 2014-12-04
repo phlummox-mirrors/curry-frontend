@@ -25,7 +25,7 @@
 module Checks.SyntaxCheck (syntaxCheck) where
 
 import           Control.Monad            (liftM, liftM2, liftM3, unless, when)
-import qualified Control.Monad.State as S (State, runState, gets, modify)
+import qualified Control.Monad.State as S (State, runState, gets, modify, withState)
 import           Data.List                ((\\), insertBy, nub, partition, intersect)
 import           Data.Maybe               (isJust, isNothing, maybeToList)
 import qualified Data.Set          as Set (empty, insert, member)
