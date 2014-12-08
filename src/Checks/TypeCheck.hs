@@ -63,8 +63,6 @@ import Env.ClassEnv (ClassEnv (..), Class (..)
   , implies', implies, isValidCx, reduceContext, lookupTypeScheme
   , {- canonClassName, isSuperClassOf, -} getInstances, splitType )
 
-import Debug.Trace
-
 infixl 5 $-$
 
 ($-$) :: Doc -> Doc -> Doc
@@ -660,16 +658,16 @@ fpIter' :: [Decl] -> [[(QualIdent, Type)]] -> TCM [Decl]
 fpIter' ds oldCxs = do 
   newDsAndCxs <- mapM fpDeclRhs ds
   theta       <- getTypeSubst
+  classEnv    <- getClassEnv
   let cxs   = map snd newDsAndCxs
       cxs'  = map (nub . subst theta) cxs
-      cxs'' = zipWith (++) oldCxs cxs'
+      cxs'' = map (reduceContext classEnv) $ zipWith (++) oldCxs cxs'
   case map Set.fromList oldCxs /= map Set.fromList cxs'' of
     True  -> do
       writeContexts (zip cxs'' ds)
       fpIter' (map fst newDsAndCxs) cxs''
     False -> do
-      return ds 
-    
+      return ds
 
 fpDeclRhs :: Decl -> TCM (Decl, BT.Context)
 fpDeclRhs (FunctionDecl p (Just (cx0, ty0)) id0 f eqs) = do 
@@ -678,7 +676,7 @@ fpDeclRhs (FunctionDecl p (Just (cx0, ty0)) id0 f eqs) = do
   return (FunctionDecl p (Just (mirrorFB cx' ++ cx0, ty0)) id0 f (map fst eqsAndCxs), cx')
 fpDeclRhs (PatternDecl  p (Just (cx0, ty0)) id0 t rhs) = do
   (rhs', cx) <- fpRhs rhs
-  return (PatternDecl p (Just (mirrorFB cx ++ cx0, ty0)) id0 t rhs', cx) 
+  return (PatternDecl p (Just (mirrorFB cx ++ cx0, ty0)) id0 t rhs', cx)
 fpDeclRhs _ = internalError "fpDeclRhs"
 
 fpEquation :: Equation -> TCM (Equation, BT.Context)
@@ -1151,7 +1149,8 @@ genVar poly lvs theta ma v = do
       tyVars       = typeVars (typeSchemeToType sigma)
       eDefaultedContext = defaultedContext cEnv lvs tyVars context
   case eDefaultedContext of
-       Left ambigCxElems -> errAmbiguousContextElems (idPosition v)
+       Left ambigCxElems -> report $
+                            errAmbiguousContextElems (idPosition v)
                                                      m
                                                      v
                                                      ambigCxElems
@@ -1232,7 +1231,7 @@ type Ambiguity = (Int, BT.Context)
 ambiguities :: Set.Set Int -> [Int] -> BT.Context -> [Ambiguity]
 ambiguities freeVars tyVars cx =
   [ (v, filter (\(_,ty) -> v `elem` typeVars ty || v `Set.member` freeVars) cx)
-    | v <- concatMap typeVars ps \\ tyVars, not (v `Set.member` freeVars)
+    | v <- nub (concatMap typeVars ps) \\ tyVars, not (v `Set.member` freeVars)
   ]
  where
   ps = map snd cx
