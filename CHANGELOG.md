@@ -4,6 +4,12 @@ Change log for curry-frontend
 Under development
 =================
 
+  * added type class extensions (`-X TypeClassExtensions`) to the
+    front-end (merge branch `masterThesisBoehm`), including:
+    * adaption of case completion: pass corresponding dictionaries for
+      literals in order to use the new type class method `(==)`
+	*  a simple defaulting mechanism for numeric literals
+
   * Removed record type extensions
 
   * Enabled declaration of (mutually) recursive record types
