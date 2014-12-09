@@ -82,10 +82,10 @@ report err = S.modify (\ s -> s { errors = err : errors s })
 type KindEnv = TopEnv Int
 
 bindKind :: ModuleIdent -> Decl -> KindEnv -> KindEnv
-bindKind m (DataDecl    _ tc tvs _) = bindKind' m tc tvs
-bindKind m (NewtypeDecl _ tc tvs _) = bindKind' m tc tvs
-bindKind m (TypeDecl    _ tc tvs _) = bindKind' m tc tvs
-bindKind _ _                        = id
+bindKind m (DataDecl    _ tc tvs _ _) = bindKind' m tc tvs
+bindKind m (NewtypeDecl _ tc tvs _ _) = bindKind' m tc tvs
+bindKind m (TypeDecl      _ tc tvs _) = bindKind' m tc tvs
+bindKind _ _                          = id
 
 bindKind' :: ModuleIdent -> Ident -> [Ident] -> KindEnv -> KindEnv
 bindKind' m tc tvs = bindTopEnv     "KindCheck.bindKind'"  tc arity
@@ -105,26 +105,30 @@ qualLookupKind = qualLookupTopEnv
 -- traversed because they can contain local type signatures.
 
 checkDecl :: Decl -> KCM Decl
-checkDecl (DataDecl     p tc tvs cs) = do
+checkDecl (DataDecl    p tc tvs cs d) = do
   tvs' <- checkTypeLhs tvs
   cs'  <- mapM (checkConstrDecl tvs') cs
-  return $ DataDecl p tc tvs' cs'
-checkDecl (NewtypeDecl  p tc tvs nc) = do
+  return $ DataDecl p tc tvs' cs' d
+checkDecl (NewtypeDecl p tc tvs nc d) = do
   tvs' <- checkTypeLhs tvs
   nc'  <- checkNewConstrDecl tvs' nc
-  return $ NewtypeDecl p tc tvs' nc'
-checkDecl (TypeDecl     p tc tvs ty) = do
+  return $ NewtypeDecl p tc tvs' nc' d
+checkDecl (TypeDecl      p tc tvs ty) = do
   tvs' <- checkTypeLhs tvs
   ty'  <- checkClosedType tvs' ty
   return $ TypeDecl p tc tvs' ty'
-checkDecl (TypeSig          p vs ty) =
-  TypeSig p vs `liftM` checkType ty
-checkDecl (FunctionDecl     p f eqs) =
-  FunctionDecl p f `liftM` mapM checkEquation eqs
-checkDecl (PatternDecl      p t rhs) =
-  PatternDecl p t `liftM` checkRhs rhs
-checkDecl (ForeignDecl p cc ie f ty) =
+checkDecl (TypeSig      p b vs cx ty) =
+  TypeSig p b vs cx `liftM` checkType ty
+checkDecl (FunctionDecl p cty id0 f eqs) =
+  FunctionDecl p cty id0 f `liftM` mapM checkEquation eqs
+checkDecl (PatternDecl p cty id0 t rhs) =
+  PatternDecl p cty id0 t `liftM` checkRhs rhs
+checkDecl (ForeignDecl  p cc ie f ty) =
   ForeignDecl p cc ie f `liftM` checkType ty
+checkDecl (ClassDecl p scon cls id0 decls) =
+  ClassDecl p scon cls id0 `liftM` mapM checkDecl decls
+checkDecl (InstanceDecl p scon cls ty ids decls) =
+  InstanceDecl p scon cls ty ids `liftM` mapM checkDecl decls
 checkDecl d                          = return d
 
 checkConstrDecl :: [Ident] -> ConstrDecl -> KCM ConstrDecl
@@ -177,22 +181,22 @@ checkCondExpr (CondExpr p g e) =
 
 checkExpr :: Expression -> KCM Expression
 checkExpr l@(Literal         _) = return l
-checkExpr v@(Variable        _) = return v
+checkExpr v@(Variable      _ _) = return v
 checkExpr c@(Constructor     _) = return c
 checkExpr (Paren             e) = Paren `liftM` checkExpr e
-checkExpr (Typed          e ty) = liftM2 Typed (checkExpr e) (checkType ty)
+checkExpr (Typed   cty e cx ty) = liftM3 (Typed cty) (checkExpr e) (return cx) (checkType ty)
 checkExpr (Tuple          p es) = Tuple p `liftM` mapM checkExpr es
 checkExpr (List           p es) = List  p `liftM` mapM checkExpr es
 checkExpr (ListCompr    p e qs) =
   liftM2 (ListCompr p) (checkExpr e) (mapM checkStmt qs)
-checkExpr (EnumFrom         e) = EnumFrom `liftM` checkExpr e
-checkExpr (EnumFromThen  e1 e2) =
-  liftM2 EnumFromThen (checkExpr e1) (checkExpr e2)
-checkExpr (EnumFromTo    e1 e2) =
-  liftM2 EnumFromTo (checkExpr e1) (checkExpr e2)
-checkExpr (EnumFromThenTo e1 e2 e3) =
-  liftM3 EnumFromThenTo (checkExpr e1) (checkExpr e2) (checkExpr e3)
-checkExpr (UnaryMinus     op e) = UnaryMinus op `liftM` checkExpr e
+checkExpr (EnumFrom cty      e) = EnumFrom cty `liftM` checkExpr e
+checkExpr (EnumFromThen cty e1 e2) =
+  liftM2 (EnumFromThen cty) (checkExpr e1) (checkExpr e2)
+checkExpr (EnumFromTo cty e1 e2) =
+  liftM2 (EnumFromTo cty) (checkExpr e1) (checkExpr e2)
+checkExpr (EnumFromThenTo cty e1 e2 e3) =
+  liftM3 (EnumFromThenTo cty) (checkExpr e1) (checkExpr e2) (checkExpr e3)
+checkExpr (UnaryMinus cty op e) = UnaryMinus cty op `liftM` checkExpr e
 checkExpr (Apply         e1 e2) = liftM2 Apply (checkExpr e1) (checkExpr e2)
 checkExpr (InfixApply e1 op e2) =
   liftM2 (\f1 f2 -> InfixApply f1 op f2) (checkExpr e1) (checkExpr e2)
@@ -258,6 +262,16 @@ checkType (TupleType     tys) = TupleType `liftM` mapM checkType tys
 checkType (ListType       ty) = ListType  `liftM` checkType ty
 checkType (ArrowType ty1 ty2) =
   liftM2 ArrowType (checkType ty1) (checkType ty2)
+checkType (SpecialConstructorType (QualTC tc) tys) 
+  = checkType (ConstructorType tc tys)
+checkType (SpecialConstructorType UnitTC tys) 
+  = SpecialConstructorType UnitTC `liftM` mapM checkType tys
+checkType (SpecialConstructorType (TupleTC n) tys) 
+  = SpecialConstructorType (TupleTC n) `liftM` mapM checkType tys
+checkType (SpecialConstructorType ListTC tys) 
+  = SpecialConstructorType ListTC `liftM` mapM checkType tys
+checkType (SpecialConstructorType ArrowTC tys) 
+  = SpecialConstructorType ArrowTC `liftM` mapM checkType tys
 checkType (RecordType     fs) = do
   fs' <- forM fs $ \ (l, ty) -> do
     ty' <- checkType ty
@@ -276,6 +290,16 @@ checkClosed tvs (ListType       ty) =
   ListType `liftM` checkClosed tvs ty
 checkClosed tvs (ArrowType ty1 ty2) =
   liftM2 ArrowType (checkClosed tvs ty1) (checkClosed tvs ty2)
+checkClosed tvs (SpecialConstructorType (QualTC tc) tys) = 
+  checkClosed tvs (ConstructorType tc tys)
+checkClosed tvs (SpecialConstructorType UnitTC tys) = 
+  SpecialConstructorType UnitTC `liftM` mapM (checkClosed tvs) tys
+checkClosed tvs (SpecialConstructorType (TupleTC n) tys) = 
+  SpecialConstructorType (TupleTC n) `liftM` mapM (checkClosed tvs) tys
+checkClosed tvs (SpecialConstructorType ListTC tys) = 
+  SpecialConstructorType ListTC `liftM` mapM (checkClosed tvs) tys
+checkClosed tvs (SpecialConstructorType ArrowTC tys) = 
+  SpecialConstructorType ArrowTC `liftM` mapM (checkClosed tvs) tys
 checkClosed tvs (RecordType     fs) = do
   fs' <- forM fs $ \ (l, ty) -> do
     ty' <- checkClosed tvs ty
@@ -287,9 +311,9 @@ checkClosed tvs (RecordType     fs) = do
 -- ---------------------------------------------------------------------------
 
 typeConstr :: Decl -> Ident
-typeConstr (DataDecl    _ tc _ _) = tc
-typeConstr (NewtypeDecl _ tc _ _) = tc
-typeConstr (TypeDecl    _ tc _ _) = tc
+typeConstr (DataDecl    _ tc _ _ _) = tc
+typeConstr (NewtypeDecl _ tc _ _ _) = tc
+typeConstr (TypeDecl      _ tc _ _) = tc
 typeConstr _ = internalError "KindCheck.typeConstr: no type declaration"
 
 -- ---------------------------------------------------------------------------

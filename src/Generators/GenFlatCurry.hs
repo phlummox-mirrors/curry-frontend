@@ -341,7 +341,7 @@ visitBinding (IL.Binding v e) = liftM2 (,) (lookupVarIndex v) (visitExpression e
 
 --
 visitFuncIDecl :: CS.IDecl -> FlatState FuncDecl
-visitFuncIDecl (CS.IFunctionDecl _ f a ty) = do
+visitFuncIDecl (CS.IFunctionDecl _ f a _ ty) = do
   texpr <- visitType $ snd $ cs2ilType [] ty
   qname <- visitQualIdent f
   return $ Func qname a Public texpr (Rule [] (Var $ mkIdx 0))
@@ -433,7 +433,7 @@ getExportedImports = do
 
 --
 getExpImports :: ModuleIdent -> Map.Map ModuleIdent [CS.Export] -> [CS.Export]
-		 -> Map.Map ModuleIdent [CS.Export]
+                 -> Map.Map ModuleIdent [CS.Export]
 getExpImports _      expenv [] = expenv
 getExpImports mident expenv ((CS.Export qident):exps)
   = getExpImports mident
@@ -452,7 +452,7 @@ getExpImports mident expenv ((CS.ExportModule mident'):exps)
 
 --
 bindExpImport :: ModuleIdent -> QualIdent -> CS.Export
-	         -> Map.Map ModuleIdent [CS.Export] -> Map.Map ModuleIdent [CS.Export]
+                 -> Map.Map ModuleIdent [CS.Export] -> Map.Map ModuleIdent [CS.Export]
 bindExpImport mident qident export expenv
   | isJust (localIdent mident qident)
   = expenv
@@ -487,7 +487,7 @@ isExportedIDecl exprts (CS.IDataDecl _ qident _ _)
   = isExportedQualIdent qident exprts
 isExportedIDecl exprts (CS.ITypeDecl _ qident _ _)
   = isExportedQualIdent qident exprts
-isExportedIDecl exprts (CS.IFunctionDecl _ qident _ _)
+isExportedIDecl exprts (CS.IFunctionDecl _ qident _ _ _)
   = isExportedQualIdent qident exprts
 isExportedIDecl _ _ = False
 
@@ -514,8 +514,8 @@ qualifyIDecl mid (CS.INewtypeDecl  pos qid vs nc)
   = CS.INewtypeDecl pos (qualQualify mid qid) vs nc
 qualifyIDecl mid (CS.ITypeDecl     pos qid vs ty)
   = CS.ITypeDecl pos (qualQualify mid qid) vs ty
-qualifyIDecl mid (CS.IFunctionDecl pos qid arity ty)
-  = CS.IFunctionDecl pos (qualQualify mid qid) arity (qualifyCSType mid ty)
+qualifyIDecl mid (CS.IFunctionDecl pos qid arity cx ty)
+  = CS.IFunctionDecl pos (qualQualify mid qid) arity cx (qualifyCSType mid ty)
 qualifyIDecl _ idecl = idecl
 
 qualifyIConstrDecl :: ModuleIdent -> CS.ConstrDecl -> CS.ConstrDecl
@@ -577,8 +577,8 @@ genConsCall qname arity args
      = genComb qname args (ConsPartCall (arity - cnt))
    | arity < cnt
      = do let (funcargs, applicargs) = splitAt arity args
-	  conscall <- genComb qname funcargs ConsCall
-	  genApplicComb conscall applicargs
+          conscall <- genComb qname funcargs ConsCall
+          genApplicComb conscall applicargs
    | otherwise
      = genComb qname args ConsCall
  where cnt = length args
@@ -587,7 +587,7 @@ genConsCall qname arity args
 genComb :: QName -> [IL.Expression] -> CombType -> FlatState Expr
 genComb qname args combtype
    = do exprs <- mapM visitExpression args
-	return (Comb combtype qname exprs)
+        return (Comb combtype qname exprs)
 
 --
 genApplicComb :: Expr -> [IL.Expression] -> FlatState Expr
@@ -693,6 +693,8 @@ genRecordLabel _ _ _ = internalError "GenFlatCurry.genRecordLabel: no pattern ma
 elimRecordTypes :: ValueEnv -> TCEnv -> CS.TypeExpr -> CS.TypeExpr
 elimRecordTypes tyEnv tcEnv (CS.ConstructorType qid tys)
    = CS.ConstructorType qid (map (elimRecordTypes tyEnv tcEnv) tys)
+elimRecordTypes tyEnv tcEnv (CS.SpecialConstructorType qid typeexprs)
+   = CS.SpecialConstructorType qid (map (elimRecordTypes tyEnv tcEnv) typeexprs)
 elimRecordTypes _ _ (CS.VariableType ident)
    = CS.VariableType ident
 elimRecordTypes tyEnv tcEnv (CS.TupleType tys)
@@ -722,7 +724,7 @@ elimRecordTypes tyEnv tcEnv (CS.RecordType fss)
                               ++ "no label")
 
 matchTypeVars :: [(Ident,CS.TypeExpr)] -> Map.Map Int CS.TypeExpr
-	      -> (Ident, Type) -> Map.Map Int CS.TypeExpr
+              -> (Ident, Type) -> Map.Map Int CS.TypeExpr
 matchTypeVars fs ms (l,ty) = maybe ms (match ms ty) (lookup l fs)
   where
   match ms1 (TypeVariable i) typeexpr = Map.insert i typeexpr ms1
@@ -819,8 +821,8 @@ isRecordIDecl _                                          = False
 
 --
 isFuncIDecl :: CS.IDecl -> Bool
-isFuncIDecl (CS.IFunctionDecl _ _ _ _) = True
-isFuncIDecl _                          = False
+isFuncIDecl (CS.IFunctionDecl _ _ _ _ _) = True
+isFuncIDecl _                            = False
 
 --
 isOpIDecl :: CS.IDecl -> Bool
@@ -881,11 +883,11 @@ lookupIdArity qid = gets (lookupA . typeEnvE)
   lookupA tyEnv = case qualLookupValue qid tyEnv of
     [DataConstructor  _ a _] -> Just a
     [NewtypeConstructor _ _] -> Just 1
-    [Value            _ a _] -> Just a
+    [Value          _ a _ _] -> Just a
     []                       -> case lookupValue (unqualify qid) tyEnv of
       [DataConstructor  _ a _] -> Just a
       [NewtypeConstructor _ _] -> Just 1
-      [Value            _ a _] -> Just a
+      [Value          _ a _ _] -> Just a
       _                        -> Nothing
     _                        -> Nothing
 
@@ -934,7 +936,7 @@ lookupIdType qid = do
   tcEnv <- gets tConsEnvE
   case Map.lookup qid lt `mplus` Map.lookup qid ct of
     Just t  -> trace' ("lookupIdType local " ++ show (qid, t)) $ liftM Just (visitType t)  -- local name or constructor
-    Nothing -> case [ t | Value _ _ (ForAll _ t) <- qualLookupValue qid aEnv ] of
+    Nothing -> case [ t | Value _ _ (ForAll _ _ t) _ <- qualLookupValue qid aEnv ] of
       t : _ -> liftM Just (visitType (transType m tyEnv tcEnv t))  -- imported name
       []    -> case qidModule qid of
         Nothing -> trace' ("no type for "  ++ show qid) $ return Nothing  -- no known type
@@ -955,11 +957,11 @@ getTypeOf ident = do
   valEnv <- gets typeEnvE
   tcEnv  <- gets tConsEnvE
   case lookupValue ident valEnv of
-    Value _ _ (ForAll _ t) : _ -> do
+    Value _ _ (ForAll _ _ t) _ : _ -> do
       t1 <- visitType (ttrans tcEnv valEnv t)
       trace' ("getTypeOf(" ++ show ident ++ ") = " ++ show t1) $
         return (Just t1)
-    DataConstructor _ _ (ForAllExist _ _ t) : _ -> do
+    DataConstructor _ _ (ForAllExist _ _ _ t) : _ -> do
       t1 <- visitType (ttrans tcEnv valEnv t)
       trace' ("getTypeOfDataCon(" ++ show ident ++ ") = " ++ show t1) $
         return (Just t1)
@@ -1030,7 +1032,7 @@ bindEnvIDecl mid env (CS.INewtypeDecl _ qid _ ncdecl)
     (localIdent mid qid)
 bindEnvIDecl mid env (CS.ITypeDecl _ qid _ texpr)
   = maybe env (\ident -> bindEnvITypeDecl env ident texpr) (localIdent mid qid)
-bindEnvIDecl mid env (CS.IFunctionDecl _ qid _ _)
+bindEnvIDecl mid env (CS.IFunctionDecl _ qid _ _ _)
   = maybe env (\ident -> bindIdentExport ident False env) (localIdent mid qid)
 bindEnvIDecl _ env _ = env
 

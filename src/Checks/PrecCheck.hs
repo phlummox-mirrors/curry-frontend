@@ -98,15 +98,18 @@ bindPrec m (InfixDecl _ fix mprec ops) pEnv
 bindPrec _ _                         pEnv = pEnv
 
 boundValues :: Decl -> [Ident]
-boundValues (DataDecl      _ _ _ cs) = map constr cs
+boundValues (DataDecl      _ _ _ cs _) = map constr cs
   where constr (ConstrDecl _ _   c  _) = c
         constr (ConOpDecl  _ _ _ op _) = op
-boundValues (NewtypeDecl _ _ _ (NewConstrDecl _ _ c _)) = [c]
-boundValues (FunctionDecl     _ f _) = [f]
+boundValues (NewtypeDecl _ _ _ (NewConstrDecl _ _ c _) _) = [c]
+boundValues (FunctionDecl _ _ _ f _) = [f]
 boundValues (ForeignDecl  _ _ _ f _) = [f]
 boundValues (ExternalDecl      _ fs) = fs
-boundValues (PatternDecl      _ t _) = bv t
+boundValues (PatternDecl  _ _ _ t _) = bv t
 boundValues (FreeDecl          _ vs) = vs
+boundValues (ClassDecl   _ _ _ _ ds) = concatMap tysig ds
+  where tysig (TypeSig _ _ ids _ _) = ids
+        tysig _                     = [] 
 boundValues _                        = []
 
 -- With the help of the precedence environment, the compiler checks all
@@ -122,10 +125,14 @@ checkDecls :: [Decl] -> PCM [Decl]
 checkDecls decls = bindPrecs decls >> mapM checkDecl decls
 
 checkDecl :: Decl -> PCM Decl
-checkDecl (FunctionDecl p f eqs) =
-  FunctionDecl p f `liftM` mapM checkEquation eqs
-checkDecl (PatternDecl p  t rhs) =
-  liftM2 (PatternDecl p) (checkPattern t) (checkRhs rhs)
+checkDecl (FunctionDecl p cty id0 f eqs) =
+  FunctionDecl p cty id0 f `liftM` mapM checkEquation eqs
+checkDecl (PatternDecl p cty id0 t rhs) =
+  liftM2 (PatternDecl p cty id0) (checkPattern t) (checkRhs rhs)
+checkDecl (ClassDecl p scon cls tyvar decls) = 
+  ClassDecl p scon cls tyvar `liftM` mapM checkDecl decls
+checkDecl (InstanceDecl p scon cls tycon ids decls) = 
+  InstanceDecl p scon cls tycon ids `liftM` mapM checkDecl decls
 checkDecl d                      = return d
 
 checkEquation :: Equation -> PCM Equation
@@ -187,22 +194,22 @@ checkCondExpr (CondExpr p g e) =
 
 checkExpr :: Expression -> PCM Expression
 checkExpr l@(Literal     _) = return l
-checkExpr v@(Variable    _) = return v
+checkExpr v@(Variable  _ _) = return v
 checkExpr c@(Constructor _) = return c
 checkExpr (Paren    e) = Paren `liftM` checkExpr e
-checkExpr (Typed e ty) = flip Typed ty `liftM` checkExpr e
+checkExpr (Typed cty e cx ty) = liftM3 (Typed cty) (checkExpr e) (return cx) (return ty)
 checkExpr (Tuple p es) = Tuple p `liftM` mapM checkExpr es
 checkExpr (List  p es) = List  p `liftM` mapM checkExpr es
 checkExpr (ListCompr p e qs) = withLocalPrecEnv $
   liftM2 (flip (ListCompr p)) (mapM checkStmt qs) (checkExpr e)
-checkExpr (EnumFrom              e) = EnumFrom `liftM` checkExpr e
-checkExpr (EnumFromThen      e1 e2) =
-  liftM2 EnumFromThen (checkExpr e1) (checkExpr e2)
-checkExpr (EnumFromTo        e1 e2) =
-  liftM2 EnumFromTo (checkExpr e1) (checkExpr e2)
-checkExpr (EnumFromThenTo e1 e2 e3) =
-  liftM3 EnumFromThenTo (checkExpr e1) (checkExpr e2) (checkExpr e3)
-checkExpr (UnaryMinus         op e) = UnaryMinus op `liftM` (checkExpr e)
+checkExpr (EnumFrom cty          e) = EnumFrom cty `liftM` checkExpr e
+checkExpr (EnumFromThen cty  e1 e2) =
+  liftM2 (EnumFromThen cty) (checkExpr e1) (checkExpr e2)
+checkExpr (EnumFromTo cty    e1 e2) =
+  liftM2 (EnumFromTo cty) (checkExpr e1) (checkExpr e2)
+checkExpr (EnumFromThenTo cty e1 e2 e3) =
+  liftM3 (EnumFromThenTo cty) (checkExpr e1) (checkExpr e2) (checkExpr e3)
+checkExpr (UnaryMinus cty     op e) = UnaryMinus cty op `liftM` (checkExpr e)
 checkExpr (Apply e1 e2) =
   liftM2 Apply (checkExpr e1) (checkExpr e2)
 checkExpr (InfixApply e1 op e2) = do
@@ -259,21 +266,21 @@ checkAlt (Alt p t rhs) = liftM2 (Alt p) (checkPattern t) (checkRhs rhs)
 -- is called.
 
 fixPrec :: Expression -> InfixOp -> Expression -> PCM Expression
-fixPrec (UnaryMinus uop e1) op e2 = do
+fixPrec (UnaryMinus cty uop e1) op e2 = do
   OpPrec fix pr <- getOpPrec op
   if pr < 6 || pr == 6 && fix == InfixL
-    then fixRPrec (UnaryMinus uop e1) op e2
+    then fixRPrec (UnaryMinus cty uop e1) op e2
     else if pr > 6
       then fixUPrec uop e1 op e2
       else do
         report $ errAmbiguousParse "unary" (qualify uop) (opName op)
-        return $ InfixApply (UnaryMinus uop e1) op e2
+        return $ InfixApply (UnaryMinus cty uop e1) op e2
 fixPrec e1 op e2 = fixRPrec e1 op e2
 
 fixUPrec :: Ident -> Expression -> InfixOp -> Expression -> PCM Expression
-fixUPrec uop e1 op e2@(UnaryMinus _ _) = do
+fixUPrec uop e1 op e2@(UnaryMinus cty _ _) = do
   report $ errAmbiguousParse "operator" (opName op) (qualify uop)
-  return $ UnaryMinus uop (InfixApply e1 op e2)
+  return $ UnaryMinus cty uop (InfixApply e1 op e2)
 fixUPrec uop e1 op1 e'@(InfixApply e2 op2 e3) = do
   OpPrec fix2 pr2 <- getOpPrec op2
   if pr2 < 6 || pr2 == 6 && fix2 == InfixL
@@ -283,17 +290,17 @@ fixUPrec uop e1 op1 e'@(InfixApply e2 op2 e3) = do
     else if pr2 > 6
       then do
         op <- fixRPrec e1 op1 $ InfixApply e2 op2 e3
-        return $ UnaryMinus uop op
+        return $ UnaryMinus Nothing uop op
       else do
         report $ errAmbiguousParse "unary" (qualify uop) (opName op2)
-        return $ InfixApply (UnaryMinus uop e1) op1 e'
-fixUPrec uop e1 op e2 = return $ UnaryMinus uop (InfixApply e1 op e2)
+        return $ InfixApply (UnaryMinus Nothing uop e1) op1 e'
+fixUPrec uop e1 op e2 = return $ UnaryMinus Nothing uop (InfixApply e1 op e2)
 
 fixRPrec :: Expression -> InfixOp -> Expression -> PCM Expression
-fixRPrec e1 op (UnaryMinus uop e2) = do
+fixRPrec e1 op (UnaryMinus cty uop e2) = do
   OpPrec _ pr <- getOpPrec op
   unless (pr < 6) $ report $ errAmbiguousParse "operator" (opName op) (qualify uop)
-  return $ InfixApply e1 op $ UnaryMinus uop e2
+  return $ InfixApply e1 op $ UnaryMinus cty uop e2
 fixRPrec e1 op1 (InfixApply e2 op2 e3) = do
   OpPrec fix1 pr1 <- getOpPrec op1
   OpPrec fix2 pr2 <- getOpPrec op2
@@ -317,7 +324,7 @@ fixRPrec e1 op e2 = return $ InfixApply e1 op e2
 -- section, respectively.
 
 checkLSection :: InfixOp -> Expression -> PCM Expression
-checkLSection op e@(UnaryMinus uop _) = do
+checkLSection op e@(UnaryMinus _ uop _) = do
   OpPrec fix pr <- getOpPrec op
   unless (pr < 6 || pr == 6 && fix == InfixL) $
     report $ errAmbiguousParse "unary" (qualify uop) (opName op)
@@ -331,7 +338,7 @@ checkLSection op1 e@(InfixApply _ op2 _) = do
 checkLSection op e = return $ LeftSection e op
 
 checkRSection :: InfixOp -> Expression -> PCM Expression
-checkRSection op e@(UnaryMinus uop _) = do
+checkRSection op e@(UnaryMinus _ uop _) = do
   OpPrec _ pr <- getOpPrec op
   unless (pr < 6) $ report $ errAmbiguousParse "unary" (qualify uop) (opName op)
   return $ RightSection op e

@@ -1,0 +1,28 @@
+#!/bin/sh
+# script to execute unit test for KiCS2
+
+if [ ! $1 ]; then
+  echo "Usage: doTest <Kics home> [--gui]"
+  exit 1
+fi
+
+KiCS2HOME=$1
+KICS2BIN=$KiCS2HOME/bin
+
+TESTPARAMS=""
+if [ "$2" = "--gui" ] ; then
+  TESTPARAMS="--window"
+fi
+
+
+ALLTESTS="TestPrelude TestDeriving1 TestDeriving2 TestDerivingEnum TestDerivingBounded TestShow"
+
+# clean up before
+$KICS2BIN/cleancurry
+
+# add kics2-bin-dir to the path
+PATH=$PATH:$KICS2BIN
+export PATH
+
+# execute all unit tests:
+$KICS2BIN/currytest $TESTPARAMS $ALLTESTS

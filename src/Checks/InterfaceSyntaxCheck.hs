@@ -21,7 +21,7 @@
 
 module Checks.InterfaceSyntaxCheck (intfSyntaxCheck) where
 
-import           Control.Monad            (liftM, liftM2)
+import           Control.Monad            (liftM, liftM2, liftM3)
 import qualified Control.Monad.State as S
 import           Data.List                (nub, partition)
 import           Data.Maybe               (catMaybes)
@@ -81,7 +81,9 @@ bindType (INewtypeDecl   _ tc _ nc) = qualBindTopEnv "" tc (Data tc [nconstr nc]
 -- and can occur in interfaces
 bindType (ITypeDecl _ tc _ (RecordType _)) = qualBindTopEnv "" tc (Data tc [])
 bindType (ITypeDecl       _ tc _ _) = qualBindTopEnv "" tc (Alias tc)
-bindType (IFunctionDecl    _ _ _ _) = id
+bindType (IFunctionDecl  _ _ _ _ _) = id
+bindType (IClassDecl  _ _ _ _ _ _ _ _) = id
+bindType (IInstanceDecl _ _ _ _ _ _ _) = id
 
 -- The checks applied to the interface are similar to those performed
 -- during syntax checking of type expressions.
@@ -100,8 +102,13 @@ checkIDecl (INewtypeDecl p tc tvs nc) = do
 checkIDecl (ITypeDecl p tc tvs ty) = do
   checkTypeLhs tvs
   liftM (ITypeDecl p tc tvs) (checkClosedType tvs ty)
-checkIDecl (IFunctionDecl p f n ty) =
-  liftM (IFunctionDecl p f n) (checkType ty)
+checkIDecl (IFunctionDecl p f n cx ty) =
+  liftM (IFunctionDecl p f n cx) (checkType ty)
+checkIDecl (IClassDecl p h scls cls var tySigs defs deps) = 
+  liftM3 (IClassDecl p h scls cls var) 
+         (mapM (\(b, sig) -> checkIDecl sig >>= \sig' -> return (b, sig')) tySigs)
+         (return defs) (return deps)
+checkIDecl i@(IInstanceDecl _ _ _ _ _ _ _) = return i 
 
 checkTypeLhs :: [Ident] -> ISC ()
 checkTypeLhs tvs = do
@@ -143,6 +150,8 @@ checkType (ListType            ty) = liftM ListType (checkType ty)
 checkType (ArrowType      ty1 ty2) = liftM2 ArrowType (checkType ty1) (checkType ty2)
 checkType (RecordType          fs) = liftM RecordType (mapM checkField fs)
  where checkField (l, ty) = checkType ty >>= \ty' -> return (l, ty')
+checkType s@(SpecialConstructorType _ _) = 
+  checkType $ specialConsToTyExpr s
 
 checkTypeConstructor :: QualIdent -> [TypeExpr] -> ISC TypeExpr
 checkTypeConstructor tc tys = do

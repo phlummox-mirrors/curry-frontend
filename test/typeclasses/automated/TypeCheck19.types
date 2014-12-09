@@ -1,0 +1,4 @@
+test1: (C (TypeCheck19.T 0 1 2)) => (0 -> (1 -> (2 -> TypeCheck19.T 0 1 2)))
+test2: (C (TypeCheck19.T 0 Prelude.Bool 1)) => (0 -> (1 -> TypeCheck19.T 0 Prelude.Bool 1))
+test3: (C (TypeCheck19.T 0 (TypeCheck19.T 0 1 2) 2)) => (0 -> (1 -> (2 -> TypeCheck19.T 0 (TypeCheck19.T 0 1 2) 2)))
+

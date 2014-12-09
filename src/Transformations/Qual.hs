@@ -4,6 +4,7 @@
     Copyright   :  (c) 2001 - 2004 Wolfgang Lux
                        2005        Martin Engelke
                        2011 - 2014 Björn Peemöller
+                       2013        Matthias Böhm
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
@@ -23,7 +24,7 @@
 
 module Transformations.Qual (qual) where
 
-import           Control.Monad             (liftM, liftM2, liftM3)
+import           Control.Monad             (liftM, liftM2, liftM3, liftM4, liftM5)
 import qualified Control.Monad.Reader as R (Reader, asks, runReader)
 import           Data.Traversable
 import           Prelude hiding            (mapM)
@@ -66,15 +67,23 @@ qExport m@(ExportModule    _) = return m
 
 qDecl :: Qual Decl
 qDecl i@(InfixDecl     _ _ _ _) = return i
-qDecl (DataDecl      p n vs cs) = DataDecl p n vs `liftM` mapM qConstrDecl cs
-qDecl (NewtypeDecl   p n vs nc) = NewtypeDecl p n vs `liftM` qNewConstrDecl nc
+qDecl (DataDecl    p n vs cs d) = flip (DataDecl p n vs) d `liftM` mapM qConstrDecl cs
+qDecl (NewtypeDecl p n vs nc d) = flip (NewtypeDecl p n vs) d `liftM` qNewConstrDecl nc
 qDecl (TypeDecl      p n vs ty) = TypeDecl p n vs `liftM` qTypeExpr ty
-qDecl (TypeSig         p fs ty) = TypeSig p fs    `liftM` qTypeExpr ty
-qDecl (FunctionDecl    p f eqs) = FunctionDecl p f `liftM` mapM qEquation eqs
+qDecl (TypeSig    p expanded fs cx ty) = 
+  TypeSig p expanded fs cx `liftM` (if expanded then return ty else qTypeExpr ty)
+qDecl (FunctionDecl p cty id0 f eqs) = FunctionDecl p cty id0 f `liftM` mapM qEquation eqs
 qDecl (ForeignDecl  p c x n ty) = ForeignDecl p c x n `liftM` qTypeExpr ty
 qDecl e@(ExternalDecl      _ _) = return e
-qDecl (PatternDecl     p t rhs) = liftM2 (PatternDecl p) (qPattern t) (qRhs rhs)
+qDecl (PatternDecl p cty id0 t rhs)
+  = liftM2 (PatternDecl p cty id0) (qPattern t) (qRhs rhs)
 qDecl vs@(FreeDecl         _ _) = return vs
+qDecl (ClassDecl p scon cls ty decls) 
+  = liftM4 (ClassDecl p) (qSContext scon) (return cls) (return ty) 
+           (mapM qDecl decls)
+qDecl (InstanceDecl p scon cls ty ids decls) 
+  = liftM5 (InstanceDecl p) (qSContext scon) (qIdent cls) (qTConstr ty) 
+           (return ids) (mapM qDecl decls) 
 
 qConstrDecl :: Qual ConstrDecl
 qConstrDecl (ConstrDecl     p vs n tys)
@@ -89,6 +98,10 @@ qNewConstrDecl (NewConstrDecl p vs n ty)
 qTypeExpr :: Qual TypeExpr
 qTypeExpr (ConstructorType c tys)
   = liftM2 ConstructorType (qConstr c) (mapM qTypeExpr tys)
+qTypeExpr (SpecialConstructorType (QualTC c) tys)
+  = liftM2 SpecialConstructorType (QualTC `liftM` qConstr c) (mapM qTypeExpr tys)
+qTypeExpr (SpecialConstructorType c tys)
+  = liftM (SpecialConstructorType c) (mapM qTypeExpr tys) 
 qTypeExpr v@(VariableType      _) = return v
 qTypeExpr (TupleType         tys) = TupleType `liftM` mapM qTypeExpr tys
 qTypeExpr (ListType           ty) = ListType `liftM` qTypeExpr ty
@@ -137,20 +150,20 @@ qCondExpr (CondExpr p g e) = liftM2 (CondExpr p) (qExpr g) (qExpr e)
 
 qExpr :: Qual Expression
 qExpr l@(Literal             _) = return l
-qExpr (Variable              v) = Variable `liftM` qIdent v
+qExpr (Variable          cty v) = Variable cty `liftM` qIdent v
 qExpr (Constructor           c) = Constructor `liftM` qIdent c
 qExpr (Paren                 e) = Paren `liftM` qExpr e
-qExpr (Typed              e ty) = liftM2 Typed (qExpr e) (qTypeExpr ty)
+qExpr (Typed       cty e cx ty) = liftM3 (Typed cty) (qExpr e) (return cx) (qTypeExpr ty)
 qExpr (Tuple              p es) = Tuple p `liftM` mapM qExpr es
 qExpr (List               p es) = List p `liftM` mapM qExpr es
 qExpr (ListCompr        p e qs) = liftM2 (ListCompr p) (qExpr e)
                                                        (mapM qStmt qs)
-qExpr (EnumFrom              e) = EnumFrom `liftM` qExpr e
-qExpr (EnumFromThen      e1 e2) = liftM2 EnumFromThen   (qExpr e1) (qExpr e2)
-qExpr (EnumFromTo        e1 e2) = liftM2 EnumFromTo     (qExpr e1) (qExpr e2)
-qExpr (EnumFromThenTo e1 e2 e3) = liftM3 EnumFromThenTo (qExpr e1) (qExpr e2)
+qExpr (EnumFrom cty          e) = EnumFrom cty `liftM` qExpr e
+qExpr (EnumFromThen cty  e1 e2) = liftM2 (EnumFromThen cty)  (qExpr e1) (qExpr e2)
+qExpr (EnumFromTo cty    e1 e2) = liftM2 (EnumFromTo cty)    (qExpr e1) (qExpr e2)
+qExpr (EnumFromThenTo cty e1 e2 e3) = liftM3 (EnumFromThenTo cty) (qExpr e1) (qExpr e2)
                                                         (qExpr e3)
-qExpr (UnaryMinus         op e) = UnaryMinus op `liftM` qExpr e
+qExpr (UnaryMinus cty     op e) = UnaryMinus cty op `liftM` qExpr e
 qExpr (Apply             e1 e2) = liftM2 Apply (qExpr e1) (qExpr e2)
 qExpr (InfixApply     e1 op e2) = liftM3 InfixApply (qExpr e1) (qInfixOp op)
                                                                (qExpr e2)
@@ -180,7 +193,7 @@ qFieldExpr :: Qual (Field Expression)
 qFieldExpr (Field p l e) = Field p l `liftM` qExpr e
 
 qInfixOp :: Qual InfixOp
-qInfixOp (InfixOp     op) = InfixOp     `liftM` qIdent op
+qInfixOp (InfixOp cty op) = InfixOp cty `liftM` qIdent op
 qInfixOp (InfixConstr op) = InfixConstr `liftM` qIdent op
 
 qIdent :: Qual QualIdent
@@ -208,3 +221,16 @@ qConstr x = do
       [y] -> origName y
       _   -> qmx
       where qmx = qualQualify m x
+
+      
+qSContext :: Qual SContext
+qSContext (SContext cs) = do
+  list <- mapM (\(qid, id0) -> do qid' <- qIdent qid; return (qid', id0)) cs 
+  return $ SContext list 
+  
+qTConstr :: Qual TypeConstructor
+qTConstr (QualTC qid) = do
+  qid' <- qIdent qid 
+  return $ QualTC qid'
+qTConstr con = return con
+

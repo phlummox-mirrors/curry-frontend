@@ -4,6 +4,7 @@
     Copyright   :   1999 - 2003 Wolfgang Lux
                     2005        Martin Engelke
                     2011 - 2012 Björn Peemöller
+                    2013        Matthias Böhm
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
@@ -42,12 +43,20 @@ module Base.TopEnv
   , emptyTopEnv, predefTopEnv, importTopEnv, qualImportTopEnv
   , bindTopEnv, qualBindTopEnv, rebindTopEnv
   , qualRebindTopEnv, unbindTopEnv, lookupTopEnv, qualLookupTopEnv
-  , allImports, moduleImports, localBindings, allLocalBindings
+  , allImports, moduleImports, localBindings, allLocalBindings 
+  , allBindings, allBoundElems
+  , tryBindTopEnv, tryQualBindTopEnv, tryRebindTopEnv, tryQualRebindTopEnv
+  , filterEnv
+  , allBindingsWithOrigNames
+  , qualImportTopEnvNoMerge, qualImportTopEnv'
+  , qualLookupLocalTopEnv
   ) where
 
 import           Control.Arrow        (second)
 import qualified Data.Map      as Map
-  (Map, empty, insert, findWithDefault, lookup, toList)
+  (Map, empty, insert, findWithDefault, lookup, toList, map)
+
+import Control.Monad
 
 import Curry.Base.Ident
 import Base.Messages (internalError)
@@ -92,6 +101,16 @@ qualImportTopEnv :: Entity a => ModuleIdent -> Ident -> a -> TopEnv a
                  -> TopEnv a
 qualImportTopEnv m x y env = addImport m (qualifyWith m x) y env
 
+qualImportTopEnv' :: Entity a => ModuleIdent -> QualIdent -> a -> TopEnv a
+                     -> TopEnv a
+qualImportTopEnv' m x y env = addImport m x y env
+
+-- TODO: remove this again (?)
+qualImportTopEnvNoMerge :: QualIdent -> a -> TopEnv a -> TopEnv a
+qualImportTopEnvNoMerge x y (TopEnv env) = 
+  let current = Map.findWithDefault [] x env
+  in TopEnv $ Map.insert x ((Import [], y) : current) env
+
 -- local helper
 addImport :: Entity a => ModuleIdent -> QualIdent -> a -> TopEnv a
           -> TopEnv a
@@ -105,28 +124,58 @@ addImport m k v (TopEnv env) = TopEnv $
     Just y'' -> (Import (m : ms), y'') : xs
     Nothing  -> imp : mergeImport y xs
 
-bindTopEnv :: String -> Ident -> a -> TopEnv a -> TopEnv a
-bindTopEnv fun x y env = qualBindTopEnv fun (qualify x) y env
+-- various binds
 
-qualBindTopEnv :: String -> QualIdent -> a -> TopEnv a -> TopEnv a
-qualBindTopEnv fun x y (TopEnv env) =
-  TopEnv $ Map.insert x (bindLocal y (entities x env)) env
+tryBindTopEnv :: String -> Ident -> a -> TopEnv a -> (Maybe (TopEnv a))
+tryBindTopEnv fun x y env = tryQualBindTopEnv fun (qualify x) y env
+
+tryQualBindTopEnv :: String -> QualIdent -> a -> TopEnv a -> (Maybe (TopEnv a))
+tryQualBindTopEnv _fun x y (TopEnv env) = do
+  local <- bindLocal y (entities x env)
+  return $ TopEnv $ Map.insert x local env
   where
   bindLocal y' ys
-    | null [ y'' | (Local, y'') <- ys ] = (Local, y') : ys
-    | otherwise = internalError $ "\"qualBindTopEnv " ++ show x
-                      ++ "\" failed in function \"" ++ fun
+    | null [ y'' | (Local, y'') <- ys ] = Just $ (Local, y') : ys
+    | otherwise = Nothing
 
-rebindTopEnv :: Ident -> a -> TopEnv a -> TopEnv a
-rebindTopEnv = qualRebindTopEnv . qualify
+bindTopEnv :: String -> Ident -> a -> TopEnv a -> (TopEnv a)
+bindTopEnv fun x y env = 
+  dontTry "bindTopEnv" (qualify x) fun $ tryBindTopEnv fun x y env
+
+qualBindTopEnv :: String -> QualIdent -> a -> TopEnv a -> (TopEnv a)
+qualBindTopEnv fun x y env = 
+  dontTry "qualBindTopEnv" x fun $ tryQualBindTopEnv fun x y env
+
+dontTry :: String -> QualIdent -> String -> Maybe a -> a 
+dontTry name x fun = 
+  maybe (internalError $ "\"" ++ show name ++ " " ++ show x
+    ++ "\" failed in function \"" ++ fun ++ "\"") id 
+
+-- various rebinds
+
+tryRebindTopEnv :: Ident -> a -> TopEnv a -> Maybe (TopEnv a)
+tryRebindTopEnv = tryQualRebindTopEnv . qualify
+
+tryQualRebindTopEnv :: QualIdent -> a -> TopEnv a -> Maybe (TopEnv a)
+tryQualRebindTopEnv x y (TopEnv env) = do
+  local <- rebindLocal (entities x env)
+  return $ TopEnv $ Map.insert x local env
+  where
+  rebindLocal []                = Nothing -- internalError "TopEnv.qualRebindTopEnv"
+  rebindLocal ((Local, _) : ys) = Just $ (Local, y) : ys
+  rebindLocal (imported   : ys) = liftM (imported   :) $ rebindLocal ys
 
 qualRebindTopEnv :: QualIdent -> a -> TopEnv a -> TopEnv a
-qualRebindTopEnv x y (TopEnv env) =
-  TopEnv $ Map.insert x (rebindLocal (entities x env)) env
-  where
-  rebindLocal []                = internalError "TopEnv.qualRebindTopEnv"
-  rebindLocal ((Local, _) : ys) = (Local, y) : ys
-  rebindLocal (imported   : ys) = imported   : rebindLocal ys
+qualRebindTopEnv x y env = dontTry' "qualRebindTopEnv"  $ tryQualRebindTopEnv x y env 
+
+rebindTopEnv :: Ident -> a -> TopEnv a -> TopEnv a
+rebindTopEnv x y env = dontTry' "rebindTopEnv" $ tryRebindTopEnv x y env
+
+dontTry' :: String -> Maybe a -> a
+dontTry' fun = maybe (internalError fun) id
+
+
+
 
 unbindTopEnv :: Ident -> TopEnv a -> TopEnv a
 unbindTopEnv x (TopEnv env) =
@@ -141,6 +190,12 @@ lookupTopEnv = qualLookupTopEnv . qualify
 
 qualLookupTopEnv :: QualIdent -> TopEnv a -> [a]
 qualLookupTopEnv x (TopEnv env) = map snd (entities x env)
+
+qualLookupLocalTopEnv :: QualIdent -> TopEnv a -> [a]
+qualLookupLocalTopEnv x (TopEnv env) = map snd $ filter isLocal $ (entities x env)
+  where
+  isLocal (Local, _) = True
+  isLocal _ = False
 
 allImports :: TopEnv a -> [(QualIdent, a)]
 allImports (TopEnv env) =
@@ -161,3 +216,25 @@ localBindings env = [ (x, y) | (x, (Local, y)) <- unqualBindings env ]
 allLocalBindings :: TopEnv a -> [(QualIdent, a)]
 allLocalBindings (TopEnv env) = [ (x, y) | (x, ys)    <- Map.toList env
                                          , (Local, y) <- ys ]
+
+allBindings :: TopEnv a -> [(QualIdent, a)]
+allBindings (TopEnv env) = [ (x, y) | (x, ys) <- Map.toList env
+                                    , (_, y)  <- ys ]
+
+allBoundElems :: TopEnv a -> [a]
+allBoundElems (TopEnv env) = [ y | (_, ys) <- Map.toList env
+                                 , (_, y) <- ys ]
+
+-- |returns all bindings together with the original names
+allBindingsWithOrigNames :: Entity a => TopEnv a -> [(QualIdent, QualIdent, a)]
+allBindingsWithOrigNames (TopEnv env) = 
+  [ (x, origName y, y) | (x, ys) <- Map.toList env
+                       , (_, y) <- ys]
+
+filterEnv :: (a -> Bool) -> TopEnv a -> TopEnv a
+filterEnv p (TopEnv env) = TopEnv $ Map.map filter' env
+  where
+  -- filter' :: [(Source, a)] -> [(Source, a)]
+  filter' = filter p' 
+  -- p' :: (Source, a) -> Bool
+  p' (_src, x) = p x

@@ -1,11 +1,12 @@
-{- |ScopeEnv - provides functions and data types for dealing with nested
-               scope environments to store data from nested scopes
-
+{- |
+    Module      : $Header$
+    Description : Provides functions and data types for dealing with nested
+                  scope environments to store data from nested scopes
+    Copyright   : November 2005,
+                  Martin Engelke (men@informatik.uni-kiel.de)
+    
     This module should be imported using "import qualified" to avoid name
     clashes
-
-    November 2005,
-    Martin Engelke (men@informatik.uni-kiel.de)
 -}
 module Base.ScopeEnv
   ( Level, ScopeEnv

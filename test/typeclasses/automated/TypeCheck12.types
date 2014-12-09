@@ -1,0 +1,85 @@
+testA1: () => Prelude.Bool
+testA3: () => Prelude.Bool
+
+testB1: () => (0 -> Prelude.Bool)
+testB2: () => (0 -> Prelude.Bool)
+
+testC1: (C Prelude.Bool, E Prelude.Bool) => (0 -> Prelude.Bool)
+testC2: (C Prelude.Bool, E Prelude.Bool) => (0 -> Prelude.Bool)
+
+testD1: (C 0, E 0, F 0, G 0) => (0 -> 0)
+testD2: (C 0, E 0, F 0, G 0) => (0 -> 0)
+
+testE1: (C 1, E 1) => (0 -> 1)
+testE2: (C 1, E 1) => (0 -> 1)
+
+testF1: (C 0, E 0, F 0, G 0) => (0 -> 0)
+testF2: (C 0, E 0, F 0, G 0) => (0 -> 0)
+
+testG1: (C 0, E 0) => (0 -> 0)
+testG2: (C 0, E 0) => (0 -> 0)
+
+testH1: (C 0, E 0, J 0) => (0 -> 0)
+testH2: (C 0, E 0, J 0) => (0 -> 0)
+
+testI1: () => Prelude.Int
+testI2: () => Prelude.Bool
+
+testJ1: (C 0, E 0, Eq 0, J 0, Ord 0, Show 0) => (0 -> 0)
+testJ2: (C 0, E 0, Eq 0, J 0, Ord 0, Show 0) => (0 -> 0)
+
+testJ1b: (C 0, E 0, Eq 0, J 0, Ord 0, Show 0) => (0 -> (1 -> 0))
+testJ2b: (C 0, E 0, Eq 0, J 0, Ord 0, Show 0) => (0 -> (1 -> 0))
+
+testK1: (Eq 0) => (0 -> (0 -> Prelude.Bool))
+
+testL1: (C 0, E 0, Eq 0, J 0, Ord 0, Show 0) => (0 -> 0)
+testL2: (C 0, E 0, Eq 0, J 0, Ord 0, Show 0) => (0 -> 0)
+
+testM1: (C 0, E 0, J 0) => (0 -> 0)
+testM2: (C 0, E 0, J 0) => (0 -> 0)
+
+testN1: (C 0, E 0, J 0, Ord 1) => (0 -> (1 -> 0))
+testN2: (C 0, E 0, J 0, Ord 1) => (0 -> (1 -> 0))
+
+testO1: (F 0, G 0) => (0 -> 0)
+testO2: (F 0, G 0) => (0 -> 0)
+
+testP1: (F 0) => (0 -> 0)
+testP2: (F 0) => (0 -> 0)
+
+testQ1: (C 0) => (0 -> 0)
+testQ2: (C 0) => (0 -> 0)
+
+testR1: (C 0, F 0, G 0) => (0 -> 1)
+testR2: (C 0, F 0, G 0) => (0 -> 1)
+
+testS1: (F 0, G 0) => (0 -> (1 -> 2))
+testS2: (F 1, G 1) => (0 -> (1 -> 2))
+
+testT1: (F 0, F 1, G 0, G 1) => (0 -> (1 -> 2))
+testT2: (F 0, F 1, G 0, G 1) => (0 -> (1 -> 2))
+
+testU1: (F 0, F 1, G 0, G 1) => (0 -> (1 -> 2))
+testU2: (F 0, F 1, G 0, G 1) => (0 -> (1 -> 2))
+
+testV1: (F 0, F 1) => (0 -> (1 -> 2))
+testV2: (F 0, F 1) => (0 -> (1 -> 2))
+
+testW1: (F 0) => (0 -> (1 -> 2))
+testW2: (F 0) => (0 -> (1 -> 2))
+
+testX1: (C 0, F 0, G 1) => (0 -> (1 -> Prelude.Bool))
+testX2: (C 0, F 0, G 1) => (0 -> (1 -> Prelude.Bool))
+
+testY1: (F 0, F 1, G 0, G 1) => (0 -> (1 -> 2))
+testY2: (F 0, F 1, G 0, G 1) => (0 -> (1 -> 2))
+
+testZ1: (F 0, G 0) => (0 -> Prelude.Bool)
+testZ2: (F 0, G 0, G 1) => (0 -> (1 -> Prelude.Bool))
+
+
+test2A1: (I (Prelude.[] 0)) => (0 -> Prelude.[] 0)
+test2A2: (I 0, I (Prelude.[] 0)) => (0 -> Prelude.[] 0)
+test2A3: (I (Prelude.[] 0)) => (0 -> Prelude.[] 0)
+

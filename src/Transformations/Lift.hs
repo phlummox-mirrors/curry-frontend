@@ -20,7 +20,7 @@
 
 module Transformations.Lift (lift) where
 
-import           Control.Monad              (liftM, liftM2)
+import           Control.Monad              (liftM, liftM2, liftM3)
 import qualified Control.Monad.State as S   (State, runState, gets, modify)
 import           Data.List
 import qualified Data.Map            as Map (Map, empty, insert, lookup)
@@ -83,10 +83,10 @@ withLocalAbstractEnv ae act = do
   return res
 
 abstractDecl :: String -> [Ident] -> Decl -> LiftM Decl
-abstractDecl _   lvs (FunctionDecl p f eqs) =
-  FunctionDecl p f `liftM` mapM (abstractEquation lvs) eqs
-abstractDecl pre lvs (PatternDecl  p t rhs) =
-  PatternDecl p t `liftM` abstractRhs pre lvs rhs
+abstractDecl _   lvs (FunctionDecl p cty id0 f eqs) =
+  FunctionDecl p cty id0 f `liftM` mapM (abstractEquation lvs) eqs
+abstractDecl pre lvs (PatternDecl  p cty id0 t rhs) =
+  PatternDecl p cty id0 t `liftM` abstractRhs pre lvs rhs
 abstractDecl _   _   d                      = return d
 
 abstractEquation :: [Ident] -> Equation -> LiftM Equation
@@ -193,8 +193,8 @@ abstractFunTypes m pre fvs fs tyEnv = foldr abstractFunType tyEnv fs
           where ty = foldr TypeArrow (varType tyEnv' f) tys
 
 abstractFunDecl :: String -> [Ident] -> [Ident] -> Decl -> LiftM Decl
-abstractFunDecl pre fvs lvs (FunctionDecl p f eqs) =
-  abstractDecl pre lvs (FunctionDecl p f' (map (addVars f') eqs))
+abstractFunDecl pre fvs lvs (FunctionDecl p cty id0 f eqs) =
+  abstractDecl pre lvs (FunctionDecl p cty id0 f' (map (addVars f') eqs))
   where
   f' = liftIdent pre f
   addVars f1 (Equation p1 (FunLhs _ ts) rhs) =
@@ -206,7 +206,7 @@ abstractFunDecl _ _ _ _ = error "Lift.abstractFunDecl: no pattern match"
 
 abstractExpr :: String -> [Ident] -> Expression -> LiftM Expression
 abstractExpr _   _   l@(Literal      _) = return l
-abstractExpr pre lvs var@(Variable   v)
+abstractExpr pre lvs var@(Variable _ v)
   | isQualified v = return var
   | otherwise     = do
     env <- getAbstractEnv
@@ -220,9 +220,11 @@ abstractExpr pre lvs (Let         ds e) = abstractDeclGroup pre lvs ds e
 abstractExpr pre lvs (Case r ct e alts) =
   liftM2 (Case r ct) (abstractExpr pre lvs e)
                      (mapM (abstractAlt pre lvs) alts)
-abstractExpr pre lvs (Typed       e ty) = flip Typed ty `liftM`
-                                          abstractExpr pre lvs e
-abstractExpr _   _   _                  = internalError "Lift.abstractExpr"
+abstractExpr pre lvs (Typed cty e cx ty) =
+  liftM3 (Typed cty)
+         (abstractExpr pre lvs e)
+         (return cx) (return ty)
+abstractExpr _   _   _                   = internalError "Lift.abstractExpr"
 
 abstractAlt :: String -> [Ident] -> Alt -> LiftM Alt
 abstractAlt pre lvs (Alt p t rhs) =
@@ -233,12 +235,13 @@ abstractAlt pre lvs (Alt p t rhs) =
 -- to the top-level.
 
 liftFunDecl :: Decl -> [Decl]
-liftFunDecl (FunctionDecl p f eqs) = (FunctionDecl p f eqs' : concat dss')
-  where (eqs', dss') = unzip $ map liftEquation eqs
+liftFunDecl (FunctionDecl p cty id0 f eqs) =
+  FunctionDecl p cty id0 f eqs' : concat dss'
+ where (eqs', dss') = unzip $ map liftEquation eqs
 liftFunDecl d = [d]
 
 liftVarDecl :: Decl -> (Decl, [Decl])
-liftVarDecl (PatternDecl   p t rhs) = (PatternDecl p t rhs', ds')
+liftVarDecl (PatternDecl p cty id0 t rhs) = (PatternDecl p cty id0 t rhs', ds')
   where (rhs', ds') = liftRhs rhs
 liftVarDecl ex@(FreeDecl _ _) = (ex, [])
 liftVarDecl _ = error "Lift.liftVarDecl: no pattern match"
@@ -259,19 +262,20 @@ liftDeclGroup ds = (vds', concat $ map liftFunDecl fds ++ dss')
 
 liftExpr :: Expression -> (Expression, [Decl])
 liftExpr l@(Literal      _) = (l, [])
-liftExpr v@(Variable     _) = (v, [])
+liftExpr v@(Variable   _ _) = (v, [])
 liftExpr c@(Constructor  _) = (c, [])
 liftExpr (Apply      e1 e2) = (Apply e1' e2', ds' ++ ds'')
-  where (e1', ds' ) = liftExpr e1
-        (e2', ds'') = liftExpr e2
+ where (e1', ds' ) = liftExpr e1
+       (e2', ds'') = liftExpr e2
 liftExpr (Let         ds e) = (mkLet ds' e', ds'' ++ ds''')
-  where (ds', ds'' ) = liftDeclGroup ds
-        (e' , ds''') = liftExpr e
-        mkLet ds1 e1 = if null ds1 then e1 else Let ds1 e1
+ where (ds', ds'' ) = liftDeclGroup ds
+       (e' , ds''') = liftExpr e
+       mkLet ds1 e1 = if null ds1 then e1 else Let ds1 e1
 liftExpr (Case r ct e alts) = (Case r ct e' alts', concat $ ds' : dss')
-  where (e'   ,ds' ) = liftExpr e
-        (alts',dss') = unzip $ map liftAlt alts
-liftExpr (Typed       e ty) = (Typed e' ty, ds) where (e', ds) = liftExpr e
+ where (e'   ,ds' ) = liftExpr e
+       (alts',dss') = unzip $ map liftAlt alts
+liftExpr (Typed cty e cx ty) = (Typed cty e' cx ty, ds)
+ where (e', ds) = liftExpr e
 liftExpr _ = internalError "Lift.liftExpr"
 
 liftAlt :: Alt -> (Alt, [Decl])
@@ -282,27 +286,27 @@ liftAlt (Alt p t rhs) = (Alt p t rhs', ds') where (rhs', ds') = liftRhs rhs
 -- ---------------------------------------------------------------------------
 
 isFunDecl :: Decl -> Bool
-isFunDecl (FunctionDecl     _ _ _) = True
+isFunDecl (FunctionDecl _ _ _ _ _) = True
 isFunDecl (ForeignDecl  _ _ _ _ _) = True
 isFunDecl _                        = False
 
 mkFun :: ModuleIdent -> String -> Ident -> Expression
-mkFun m pre f = Variable $ qualifyWith m $ liftIdent pre f
+mkFun m pre f = Variable Nothing $ qualifyWith m $ liftIdent pre f
 
 mkVar :: Ident -> Expression
-mkVar v = Variable $ qualify v
+mkVar v = Variable Nothing $ qualify v
 
 apply :: Expression -> [Expression] -> Expression
 apply = foldl Apply
 
 varArity :: ValueEnv -> Ident -> Int
 varArity tyEnv v = case lookupValue v tyEnv of
-  [Value _ a _] -> a
+  [Value _ a _ _] -> a
   _ -> internalError $ "Lift.varArity: " ++ show v
 
 varType :: ValueEnv -> Ident -> Type
 varType tyEnv v = case lookupValue v tyEnv of
-  [Value _ _ (ForAll _ ty)] -> ty
+  [Value _ _ (ForAll _ _ ty) _] -> ty
   _ -> internalError $ "Lift.varType: " ++ show v
 
 liftIdent :: String -> Ident -> Ident

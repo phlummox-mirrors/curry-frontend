@@ -103,6 +103,8 @@ modifyTypeExpr tcEnv (TupleType tys)
                                 (map (modifyTypeExpr tcEnv) tys)
 modifyTypeExpr tcEnv (ListType ty)
   = ConstructorType (qualify listId) [modifyTypeExpr tcEnv ty]
+modifyTypeExpr tcEnv s@(SpecialConstructorType _ _) = 
+  modifyTypeExpr tcEnv $ specialConsToTyExpr s
 modifyTypeExpr tcEnv (RecordType fields)
   = RecordType (map (\ (lbls, lty) -> (lbls, modifyTypeExpr tcEnv lty)) fields)
 

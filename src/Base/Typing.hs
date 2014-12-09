@@ -148,7 +148,7 @@ fixTypeVars tyEnv ty = subst (foldr2 bindSubst idSubst tvs tvs') ty
   where tvs = filter (>= 0) (typeVars ty)
         tvs' = map TypeVariable [n - 1,n - 2 ..]
         n = minimum (0 : concatMap typeVars tys)
-        tys = [ty1 | (_,Value _ _ (ForAll _ ty1)) <- localBindings tyEnv]
+        tys = [ty1 | (_,Value _ _ (ForAll _ _ ty1) _) <- localBindings tyEnv]
 
 identType :: Ident -> TCM Type
 identType x = do
@@ -217,13 +217,13 @@ fieldPattType (Field _ l t) = do
 
 exprType :: Expression -> TCM Type
 exprType (Literal l) = litType l
-exprType (Variable v) = do
+exprType (Variable _ v) = do
   tyEnv <- getValueEnv
   instUniv (funType v tyEnv)
 exprType (Constructor c) = do
   tyEnv <- getValueEnv
   instUnivExist (constrType c tyEnv)
-exprType (Typed e _) = exprType e
+exprType (Typed _ e _ _) = exprType e
 exprType (Paren e) = exprType e
 exprType (Tuple _ es)
   | null es   = return unitType
@@ -232,11 +232,15 @@ exprType (List _ es) = freshTypeVar >>= flip elemType es
   where elemType ty []      = return (listType ty)
         elemType ty (e:es1) = exprType e >>= unify ty >> elemType ty es1
 exprType (ListCompr _ e _) = liftM listType $ exprType e
-exprType (EnumFrom _) = return (listType intType)
-exprType (EnumFromThen _ _) = return (listType intType)
-exprType (EnumFromTo _ _) = return (listType intType)
-exprType (EnumFromThenTo _ _ _) = return (listType intType)
-exprType (UnaryMinus _ e) = exprType e
+-- the following equations for exprType should never be needed when the
+-- type class extensions are enabled, because the dictionaries transformation
+-- removes the Enum* data constructors from the AST, hence it should be 
+-- OK to return only the type [Int] 
+exprType (EnumFrom _ _) = return (listType intType)
+exprType (EnumFromThen _ _ _) = return (listType intType)
+exprType (EnumFromTo _ _ _) = return (listType intType)
+exprType (EnumFromThenTo _ _ _ _) = return (listType intType)
+exprType (UnaryMinus _ _ e) = exprType e
 exprType (Apply e1 e2) = do
   (ty1,ty2) <- exprType e1 >>= unifyArrow
   exprType e2 >>= unify ty1
@@ -348,10 +352,10 @@ instType' n ty = do
   return (expandAliasType tys ty, tys)
 
 instUniv :: TypeScheme -> TCM Type
-instUniv (ForAll n ty) = instType n ty
+instUniv (ForAll _cx n ty) = instType n ty
 
 instUnivExist :: ExistTypeScheme -> TCM Type
-instUnivExist (ForAllExist n n' ty) = instType (n + n') ty
+instUnivExist (ForAllExist _cx n n' ty) = instType (n + n') ty
 
 -- When unifying two types, the non-generalized variables, i.e.,
 -- variables with negative offsets, must not be substituted. Otherwise,
@@ -452,12 +456,12 @@ constrType c tyEnv = case qualLookupValue c tyEnv of
 
 varType :: Ident -> ValueEnv -> TypeScheme
 varType v tyEnv = case lookupValue v tyEnv of
-  [Value _ _ sigma] -> sigma
+  [Value _ _ sigma _] -> sigma
   _ -> internalError $ "Base.Typing.varType: " ++ show v
 
 funType :: QualIdent -> ValueEnv -> TypeScheme
 funType f tyEnv = case qualLookupValue f tyEnv of
-  [Value _ _ sigma] -> sigma
+  [Value _ _ sigma _] -> sigma
   _ -> internalError $ "Base.Typing.funType: " ++ show f
 
 labelType :: Ident -> ValueEnv -> TypeScheme

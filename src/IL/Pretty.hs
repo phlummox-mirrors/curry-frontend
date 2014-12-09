@@ -17,7 +17,7 @@
 
 module IL.Pretty (ppModule) where
 
-import Curry.Base.Ident
+import Curry.Base.Ident hiding (sep)
 import Curry.Base.Pretty
 import IL.Type
 

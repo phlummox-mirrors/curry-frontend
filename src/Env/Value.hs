@@ -3,6 +3,7 @@
     Description :  Environment for functions, constructors and labels
     Copyright   :  (c) 2001 - 2004, Wolfgang Lux
                        2011       , Björn Peemöller
+                       2013       , Matthias Böhm
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
@@ -25,17 +26,18 @@ module Env.Value
   , bindGlobalInfo, bindFun, qualBindFun, rebindFun, unbindFun, bindLabel
   , lookupValue, qualLookupValue
   , initDCEnv, ppTypes
+  , tryBindFun, tryRebindFun
   ) where
 
 import Curry.Base.Ident
 import Curry.Base.Position
 import Curry.Base.Pretty (Doc, vcat)
-import Curry.Syntax
+import Curry.Syntax as CS
 
-import Base.CurryTypes (fromQualType)
+import Base.CurryTypes (fromQualType, fromContext)
 import Base.Messages (internalError)
 import Base.TopEnv
-import Base.Types
+import Base.Types as BT
 import Base.Utils ((++!))
 
 data ValueInfo
@@ -43,16 +45,16 @@ data ValueInfo
   = DataConstructor    QualIdent Int       ExistTypeScheme
   -- |Newtype constructor with original name and type (arity is always 1)
   | NewtypeConstructor QualIdent           ExistTypeScheme
-  -- |Value with original name, arity and type
-  | Value              QualIdent Int       TypeScheme
+  -- |Value with original name, arity, type and (perhaps) the defining class
+  | Value              QualIdent Int       TypeScheme (Maybe QualIdent)
   -- |Record label with original name, record name and type
   | Label              QualIdent QualIdent TypeScheme
-    deriving Show
+    deriving (Eq, Show)
 
 instance Entity ValueInfo where
   origName (DataConstructor    orgName _ _) = orgName
   origName (NewtypeConstructor orgName   _) = orgName
-  origName (Value              orgName _ _) = orgName
+  origName (Value              orgName _ _ _) = orgName
   origName (Label              orgName _ _) = orgName
 
   merge (Label l r ty) (Label l' r' _)
@@ -79,26 +81,43 @@ bindGlobalInfo f m c ty = bindTopEnv fun c v . qualBindTopEnv fun qc v
         v   = f qc ty
         fun = "Env.Value.bindGlobalInfo"
 
-bindFun :: ModuleIdent -> Ident -> Int -> TypeScheme -> ValueEnv -> ValueEnv
-bindFun m f a ty
-  | idUnique f == 0 = bindTopEnv fun f v . qualBindTopEnv fun qf v
-  | otherwise       = bindTopEnv fun f v
+-- various binds
+
+tryBindFun :: ModuleIdent -> Ident -> Int -> TypeScheme -> ValueEnv -> Maybe (ValueEnv)
+tryBindFun m f a ty env
+  | idUnique f == 0 = tryQualBindTopEnv fun qf v env >>= tryBindTopEnv fun f v 
+  | otherwise       = tryBindTopEnv fun f v env
   where qf  = qualifyWith m f
-        v   = Value qf a ty
+        v   = Value qf a ty Nothing
         fun = "Env.Value.bindFun"
 
-qualBindFun :: ModuleIdent -> Ident -> Int -> TypeScheme -> ValueEnv -> ValueEnv
-qualBindFun m f a ty = qualBindTopEnv "Env.Value.qualBindFun" qf $
-  Value qf a ty
+tryQualBindFun :: ModuleIdent -> Ident -> Int -> TypeScheme -> ValueEnv -> Maybe ValueEnv
+tryQualBindFun m f a ty = tryQualBindTopEnv "Env.Value.qualBindFun" qf $
+  Value qf a ty Nothing
   where qf = qualifyWith m f
 
-rebindFun :: ModuleIdent -> Ident -> Int -> TypeScheme -> ValueEnv
-          -> ValueEnv
-rebindFun m f a ty
-  | idUnique f == 0 = rebindTopEnv f v . qualRebindTopEnv qf v
-  | otherwise       = rebindTopEnv f v
+
+bindFun :: ModuleIdent -> Ident -> Int -> TypeScheme -> ValueEnv -> ValueEnv
+bindFun m x n tsc env = 
+  maybe (internalError "Value.bindFun") id $ tryBindFun m x n tsc env
+
+qualBindFun :: ModuleIdent -> Ident -> Int -> TypeScheme -> ValueEnv -> ValueEnv
+qualBindFun m x n tsc env = 
+  maybe (internalError "Value.qualBindFun") id $ tryQualBindFun m x n tsc env
+    
+-- various rebinds
+
+tryRebindFun :: ModuleIdent -> Ident -> Int -> TypeScheme -> ValueEnv
+             -> Maybe ValueEnv
+tryRebindFun m f a ty env
+  | idUnique f == 0 = tryQualRebindTopEnv qf v env >>= tryRebindTopEnv f v 
+  | otherwise       = tryRebindTopEnv f v env
   where qf = qualifyWith m f
-        v = Value qf a ty
+        v = Value qf a ty Nothing
+
+rebindFun :: ModuleIdent -> Ident -> Int -> TypeScheme -> ValueEnv -> ValueEnv
+rebindFun m x n tsc env = 
+  maybe (internalError "Value.rebindFun") id $ tryRebindFun m x n tsc env
 
 unbindFun :: Ident -> ValueEnv -> ValueEnv
 unbindFun = unbindTopEnv
@@ -121,15 +140,18 @@ lookupTuple c | isTupleId c = [tupleDCs !! (tupleArity c - 2)]
 tupleDCs :: [ValueInfo]
 tupleDCs = map dataInfo tupleData
   where dataInfo (DataConstr _ n tys) = DataConstructor (qTupleId n) n
-          (ForAllExist n 0 $ foldr TypeArrow (tupleType tys) tys)
+          (ForAllExist BT.emptyContext n 0 $ foldr TypeArrow (tupleType tys) tys)
 
 initDCEnv :: ValueEnv
 initDCEnv = foldr predefDC emptyTopEnv
-  [ (c, length tys, constrType (polyType ty) n' tys)
+  [ (c, length tys, constrType (polyType $ qualifyTC ty) n' tys)
   | (ty, cs) <- predefTypes, DataConstr c n' tys <- cs]
   where predefDC (c, a, ty) = predefTopEnv c' (DataConstructor c' a ty)
           where c' = qualify c
-        constrType (ForAll n ty) n' = ForAllExist n n' . foldr TypeArrow ty
+        constrType (ForAll cx n ty) n' = ForAllExist cx n n' . foldr TypeArrow ty
+        qualifyTC (TypeConstructor q ty) = 
+          TypeConstructor (qualifyWith preludeMIdent $ unqualify q) ty
+        qualifyTC v                      = v
 
 -- |Pretty-printing the types from the type environment
 ppTypes :: ModuleIdent -> ValueEnv -> Doc
@@ -138,8 +160,8 @@ ppTypes mid valueEnv = ppTypes' mid $ localBindings valueEnv
   ppTypes' :: ModuleIdent -> [(Ident, ValueInfo)] -> Doc
   ppTypes' m = vcat . map (ppIDecl . mkDecl) . filter (isValue . snd)
     where
-    mkDecl (v, Value _ a (ForAll _ ty)) =
-      IFunctionDecl NoPos (qualify v) a (fromQualType m ty)
+    mkDecl (v, Value _ a (ForAll cx _ ty) _) =
+      IFunctionDecl NoPos (qualify v) a (fromContext cx) (fromQualType m ty)
     mkDecl _ = internalError "Env.Value.ppTypes: no value"
-    isValue (Value _ _ _) = True
-    isValue _             = False
+    isValue (Value _ _ _ _) = True
+    isValue _               = False

@@ -20,6 +20,7 @@
 module Base.Subst
   ( Subst (..), IntSubst (..), idSubst, singleSubst, bindSubst, unbindSubst
   , substToList, compose, substVar', isubstVar, restrictSubstTo
+  , listToSubst, reverseSubst
   ) where
 
 import qualified Data.Map as Map
@@ -40,6 +41,13 @@ bindSubst v e (Subst comp sigma) = Subst comp $ Map.insert v e sigma
 
 unbindSubst :: Ord v => v -> Subst v e -> Subst v e
 unbindSubst v (Subst comp sigma) = Subst comp $ Map.delete v sigma
+
+listToSubst :: Ord v => [(v, e)] -> Subst v e
+listToSubst lst = Subst False (Map.fromList lst)
+
+reverseSubst :: (Ord v, Ord e) => Subst v e -> Subst e v
+reverseSubst = listToSubst . map swap . substToList
+  where swap (x, y) = (y, x)
 
 -- For any substitution we have the following definitions:
 --     sigma(x)     = t_i   if x = x_i

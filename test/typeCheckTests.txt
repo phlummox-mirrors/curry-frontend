@@ -1,0 +1,1 @@
+test/typeclasses/automated/

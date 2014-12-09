@@ -5,6 +5,7 @@
                        2005        Martin Engelke
                        2007        Sebastian Fischer
                        2011 - 2014 Björn Peemöller
+                       2013        Matthias Böhm
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
@@ -24,6 +25,7 @@ import           Control.Monad            (liftM, unless, when)
 import qualified Data.Map          as Map (elems)
 import           Data.Maybe               (fromMaybe)
 import           System.Directory         (getTemporaryDirectory, removeFile)
+import           Text.PrettyPrint
 import           System.Exit              (ExitCode (..))
 import           System.FilePath          (normalise)
 import           System.IO
@@ -34,7 +36,6 @@ import           System.Process           (system)
 import Curry.Base.Ident
 import Curry.Base.Monad
 import Curry.Base.Position
-import Curry.Base.Pretty
 import Curry.ExtendedFlat.InterfaceEquivalence (eqInterface)
 import Curry.Files.Filenames
 import Curry.Files.PathUtils
@@ -77,12 +78,12 @@ import Transformations
 -- declaration to the module.
 compileModule :: Options -> FilePath -> CYIO ()
 compileModule opts fn = do
-  (env, mdl) <- loadAndCheckModule opts fn
-  liftIO $ writeOutput opts fn (env, mdl)
+  (env, mdl, tcExportEnv, tcExportMdl) <- loadModule opts fn >>= checkModule opts
+  liftIO $ writeOutput opts fn (env, mdl) (tcExportEnv, tcExportMdl)
 
 loadAndCheckModule :: Options -> FilePath -> CYIO (CompilerEnv, CS.Module)
 loadAndCheckModule opts fn = do
-  (env, mdl) <- loadModule opts fn >>= checkModule opts
+  (env, mdl, _, _) <- loadModule opts fn >>= checkModule opts
   warn (optWarnOpts opts) $ warnCheck opts env mdl
   return (env, mdl)
 
@@ -90,19 +91,21 @@ loadAndCheckModule opts fn = do
 -- Loading a module
 -- ---------------------------------------------------------------------------
 
-loadModule :: Options -> FilePath -> CYIO (CompilerEnv, CS.Module)
+loadModule :: Options -> FilePath -> CYIO (CompilerEnv, CompilerEnv, CS.Module)
 loadModule opts fn = do
   parsed <- parseModule opts fn
   -- check module header
   mdl    <- checkModuleHeader opts fn parsed
-  -- load the imported interfaces into an InterfaceEnv
   let paths = map (addCurrySubdir (optUseSubdir opts))
-                  ("." : optImportPaths opts)
-  iEnv   <- loadInterfaces paths mdl
-  checkInterfaces opts iEnv
+              ("." : optImportPaths opts)
+  -- load the imported interfaces into an InterfaceEnv
+  iEnv   <- loadInterfaces False paths mdl
+  iEnvTc <- loadInterfaces True paths mdl
+  checkInterfaces opts iEnv >> checkInterfaces opts iEnvTc
   -- add information of imported modules
-  cEnv   <- importModules opts mdl iEnv
-  return (cEnv, mdl)
+  env    <- importModules False opts mdl iEnv
+  envtc  <- importModules True opts mdl iEnvTc
+  return (env, envtc, mdl)
 
 parseModule :: Options -> FilePath -> CYIO CS.Module
 parseModule opts fn = do
@@ -191,31 +194,68 @@ checkInterfaces opts iEnv = mapM_ checkInterface (Map.elems iEnv)
 -- ---------------------------------------------------------------------------
 
 -- TODO: The order of the checks should be improved!
-checkModule :: Options -> (CompilerEnv, CS.Module)
-            -> CYIO (CompilerEnv, CS.Module)
-checkModule opts (env, mdl) = do
-  showDump (DumpParsed       , env , presentCS mdl)
-   -- Should be separated into kind checking and type syntax checking (see MCC)
-  (env1, kc) <- kindCheck   opts env mdl
+-- CheckModule returns two export checked modules + the corresponding
+-- environments: One still with type class elements, the second without 
+-- type class elements. 
+checkModule :: Options -> (CompilerEnv, CompilerEnv, CS.Module)
+            -> CYIO (CompilerEnv, CS.Module, CompilerEnv, CS.Module)
+checkModule opts (envNonTc, envTc, mdl) = do
+  showDump (DumpParsed       , envTc, presentCS mdl)
+  (env1,  kc) <- kindCheck opts envTc mdl -- should be only syntax checking ?
   showDump (DumpKindChecked  , env1, presentCS kc)
-  (env2, sc) <- syntaxCheck opts env1 kc
+  (env2,  sc) <- syntaxCheck opts env1 kc
   showDump (DumpSyntaxChecked, env2, presentCS sc)
-  (env3, pc) <- precCheck   opts env2 sc
+  (env3,  pc) <- precCheck opts env2 sc
   showDump (DumpPrecChecked  , env3, presentCS pc)
-  (env4, tc) <- typeCheck opts env3 pc
-  showDump (DumpTypeChecked  , env4, presentCS tc)
-  -- TODO: This is a workaround to avoid the expansion of the export
-  -- specification for generating the HTML listing.
-  -- It would be better if checking and expansion are separated.
-  if null (optTargetTypes opts)
-    then return (env4, tc)
-    else do
-      (env5, ec) <- exportCheck opts env4 tc
-      showDump (DumpExportChecked, env5, presentCS ec)
-      return (env5, ec)
+  (env4, tcc) <- typeClassesCheck opts env3 pc
+  showDump (DumpTypeClassesChecked, env4, presentCS tcc)
+  (env5,  tc) <- if withTypeCheck
+                 then typeCheck False opts env4 tcc
+                 else return (env4, tcc)
+  showDump (DumpTypeChecked  , env5, presentCS tc)
+  -- Run an export check here for exporting type class specific elements. As
+  -- these are compiled out later, we already here have to set aside the
+  -- export checked module and the environment 
+  (envEc1,   ec1) <- if withTypeCheck 
+                     then exportCheck opts env5 tc
+                     else return (env5, tc)
+  (ec1',envEc1') <- if withTypeCheck
+                     then return $ qual opts envEc1 ec1
+                     else return (ec1, envEc1)
+  -- Continue with the compile process
+  (env5b,  dicts) <- if withTypeCheck
+                     then insertDicts opts env5 tc
+                     else return (env5, tc)
+  let (env5c, dicts') = if withTypeCheck
+                        then typeSigs env5b dicts
+                        else (env5b, dicts)
+  showDump (DumpDictionaries , env5c, presentCS dicts')
+  (env5e, tc2) <- if withTypeCheck
+                    -- Take the older environment env4 instead of env5c;
+                    -- moreover, replace the value/type constructor environments with the 
+                    -- value/type constructor environments that contain only *compiled* 
+                    -- type class elements (dictionaries, types, selection 
+                    -- methods) that are exported from other modules
+                    then typeCheck True opts
+                           env4 { valueEnv = valueEnv envNonTc, 
+                                  tyConsEnv = tyConsEnv envNonTc,
+                                  interfaceEnv = interfaceEnv envNonTc } 
+                           dicts' 
+                    else return (env5c, dicts')
+  showDump (DumpTypeChecked2 , env5e, presentCS tc2)
+  (env6,  ec2) <- if withTypeCheck
+                  then exportCheck opts env5e tc2
+                  else return (env5e, tc2)
+  showDump (DumpExportChecked, env6, presentCS ec2)
+  -- (env7,   ql) <- return $ qual opts env6 ec2
+  -- doDump opts (DumpQualified    , env7, show' CS.ppModule ql)
+  -- return (env7, ql, envEc1', ec1')
+  return (env6, ec2, envEc1', ec1')
   where
   showDump  = doDump (optDebugOpts opts)
   presentCS = if dbDumpRaw (optDebugOpts opts) then show else show . CS.ppModule
+  withTypeCheck = any (`elem` optTargetTypes opts)
+                      [FlatCurry, ExtendedFlatCurry, AbstractCurry]
 
 -- ---------------------------------------------------------------------------
 -- Translating a module
@@ -246,8 +286,9 @@ transModule opts env mdl = do
 -- Writing output
 -- ---------------------------------------------------------------------------
 
-writeOutput :: Options -> FilePath -> (CompilerEnv, CS.Module) -> IO ()
-writeOutput opts fn (env, modul) = do
+writeOutput :: Options -> FilePath -> (CompilerEnv, CS.Module) 
+            -> (CompilerEnv, CS.Module) -> IO ()
+writeOutput opts fn (env, modul) (tcExportEnv, tcExportModule) = do
   writeParsed opts fn modul
   let (qlfd, env1) = qual opts env modul
   doDump (optDebugOpts opts) (DumpQualified, env1, show $ CS.ppModule qlfd)
@@ -255,8 +296,9 @@ writeOutput opts fn (env, modul) = do
   when withFlat $ do
     (env2, il) <- transModule opts env1 qlfd
     -- generate interface file
-    let intf = exportInterface env2 qlfd
-    writeInterface opts fn intf
+    let intf = exportInterface env2 qlfd False
+        tcIntf = exportInterface tcExportEnv tcExportModule True
+    writeInterfaces opts fn [intf, tcIntf]
     -- generate target code
     let modSum = summarizeModule (tyConsEnv env2) intf qlfd
     writeFlat opts fn env2 modSum il
@@ -279,11 +321,11 @@ writeParsed opts fn modul@(CS.Module _ m _ _ _) = when srcTarget $
   useSubDir  = addCurrySubdirModule (optUseSubdir opts) m
   source     = CS.showModule modul
 
-writeInterface :: Options -> FilePath -> CS.Interface -> IO ()
-writeInterface opts fn intf@(CS.Interface m _ _)
+writeInterfaces :: Options -> FilePath -> [CS.Interface] -> IO ()
+writeInterfaces opts fn [intf@(CS.Interface m _ _), intfTC]
   | optForce opts = outputInterface
   | otherwise     = do
-      equal <- C.catch (matchInterface interfaceFile intf) ignoreIOException
+      equal <- C.catch (matchInterface interfaceFile [intf, intfTC]) ignoreIOException
       unless equal outputInterface
   where
   ignoreIOException :: C.IOException -> IO Bool
@@ -291,16 +333,22 @@ writeInterface opts fn intf@(CS.Interface m _ _)
 
   interfaceFile   = interfName fn
   outputInterface = writeModule
-                    (addCurrySubdirModule (optUseSubdir opts) m interfaceFile)
-                    (show $ CS.ppInterface intf)
+                      (addCurrySubdirModule (optUseSubdir opts) m interfaceFile)
+                      (show 
+                         (CS.ppInterface "interface" intf
+                          $$ CS.ppInterface "interfaceTypeClasses" intfTC))
+writeInterfaces _ _ _ = internalError "writeInterfaces"
 
-matchInterface :: FilePath -> CS.Interface -> IO Bool
-matchInterface ifn i = do
+matchInterface :: FilePath -> [CS.Interface] -> IO Bool
+matchInterface ifn [i, itc] = do
   hdl <- openFile ifn ReadMode
   src <- hGetContents hdl
   case runCYM (CS.parseInterface ifn src) of
-    Left  _  -> hClose hdl >> return False
-    Right i' -> return (i `intfEquiv` fixInterface i')
+    Left _        -> hClose hdl >> return False
+    Right [i', itc'] -> 
+      return (i `intfEquiv` fixInterface i' && itc `intfEquiv` fixInterface itc')
+    Right _ -> internalError "matchInterface"
+matchInterface _ _ = internalError "matchInterface"
 
 writeFlat :: Options -> FilePath -> CompilerEnv -> ModuleSummary -> IL.Module
           -> IO ()
@@ -358,7 +406,7 @@ type Dump = (DumpLevel, CompilerEnv, String)
 -- |The 'dump' function writes the selected information to standard output.
 doDump :: MonadIO m => DebugOpts -> Dump -> m ()
 doDump opts (level, env, dump) = when (level `elem` dbDumpLevels opts) $ do
-  when (dbDumpEnv opts) $ liftIO $ putStrLn $ showCompilerEnv env
+  when (dbDumpEnv opts) $ liftIO $ putStrLn $ showCompilerEnv opts env
   liftIO $ putStrLn $ unlines [header, replicate (length header) '=', dump]
   where
   header = lookupHeader dumpLevel

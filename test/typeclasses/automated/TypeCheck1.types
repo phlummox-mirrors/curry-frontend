@@ -1,0 +1,75 @@
+test1: (C constr(Prelude.Int Prelude.Float)) => Prelude.Bool
+test2: (C Prelude.Bool) => Prelude.Bool
+test3: (C Prelude.Char) => Prelude.Bool
+test4: (C 0) => (0 -> Prelude.Bool)
+test5: (C 0) => (0 -> Prelude.Bool)
+test6: (C 0) => (0 -> Prelude.Bool)
+test7: (C 0) => (0 -> (1 -> Prelude.Bool))
+test8: (C 0, D 1) => (0 -> (1 -> Prelude.Bool))
+test9: (C 0, D 1) => (0 -> (1 -> Prelude.Bool))
+test10: (C 0) => (0 -> 0)
+test11: (C 0) => (0 -> 0)
+test12: (C 0, E 0) => (0 -> Prelude.Bool)
+test13: (D 0) => (0 -> (0 -> Prelude.Bool))
+test14: (C 0, D Prelude.Bool) => (0 -> (Prelude.Bool -> Prelude.Bool))
+test15: (C 0, D 0, E 0) => (0 -> (0 -> Prelude.Bool))
+test16: (C 0, D 0, E 1) => (0 -> (1 -> Prelude.Bool))
+test17: (C 0, D 0) => (0 -> (1 -> Prelude.Bool))
+
+testTuple1: (C 0, E 1) => (0 -> (1 -> Prelude.(,) Prelude.Bool 1))
+testTuple2: (C 0) => (0 -> (1 -> Prelude.(,) Prelude.Bool 1))
+testTuple3: (C 0, C 1) => (0 -> (1 -> Prelude.(,) Prelude.Bool 1))
+
+testList1: (C 0, D 0, D 1) => (0 -> (1 -> Prelude.[] Prelude.Bool))
+testList2: () => (0 -> (1 -> Prelude.[] Prelude.Bool))
+testList3: (C 0) => (0 -> Prelude.[] Prelude.Bool)
+
+testITE1: (C 0) => (0 -> constr(Prelude.Int Prelude.Float))
+testITE2: (C 0, D 0) => (0 -> Prelude.Bool)
+testITE3: (C Prelude.Char) => (0 -> Prelude.Char)
+testITE4: (C 0) => (0 -> 0)
+testITE5: (C 0, E Prelude.Bool) => (0 -> (Prelude.Bool -> 0))
+testITE6: (C 0, G 1) => (0 -> (1 -> 0))
+
+testAppl: (C 1, D 0) => (0 -> (1 -> Prelude.Bool))
+testAppl1: (C 1, D 0) => (0 -> (1 -> Prelude.Bool))
+testAppl2: (C Prelude.Char, D constr(Prelude.Int Prelude.Float)) => Prelude.Bool
+testAppl3: (C 0, D constr(Prelude.Int Prelude.Float)) => (0 -> Prelude.Bool)
+testAppl4: (C 1, D 0) => (0 -> (1 -> Prelude.Bool))
+testAppl5: (C (Prelude.[] (Prelude.[] 1)), D (Prelude.[] 0)) => (0 -> (1 -> Prelude.Bool))
+
+testOp1: (C 0, D 0) => (0 -> Prelude.Bool)
+testOp2: (C 0, D 1) => (0 -> (1 -> Prelude.Bool))
+testOp3: (C 0, D 0) => (0 -> (0 -> Prelude.Bool))
+testOp4: (C 0, C 1, C 2) => (0 -> (1 -> (2 -> Prelude.Bool)))
+
+testLambda1: (C 0) => (0 -> Prelude.Bool)
+testLambda2: (C Prelude.Char) => (0 -> Prelude.Bool)
+testLambda3: (C 0, G 0) => (0 -> Prelude.Bool)
+testLambda4: (C 0) => (0 -> Prelude.Bool)
+
+testMultiple: (C 0, E 0, F 0) => (0 -> 0)
+
+testCase1: (C Prelude.Bool, E Prelude.Bool) => (Prelude.Bool -> Prelude.Bool)
+testCase2: (C 0, E 0) => (constr(Prelude.Int Prelude.Float) -> (0 -> (0 -> 0)))
+testCase3: (C 0) => (0 -> Prelude.Bool)
+testCase4: (C 0, D 1) => (0 -> (1 -> Prelude.Bool))
+testCase5: () => (Prelude.Bool -> Prelude.Bool)
+testCase6: (C Prelude.Char) => (Prelude.Bool -> Prelude.Bool)
+testCase7: (C Prelude.Char, E Prelude.Bool) => (Prelude.Bool -> (Prelude.Bool -> Prelude.Bool))
+testCase8: (C 0, E Prelude.Char) => (0 -> (1 -> Prelude.Char))
+
+testExplTyped1: (C 0) => (0 -> Prelude.Bool)
+testExplTyped2: (C 0, D 1) => (0 -> (1 -> Prelude.Bool))
+testExplTyped3: () => (Prelude.Bool -> Prelude.Bool)
+
+testMinus1: (C constr(Prelude.Int Prelude.Float)) => constr(Prelude.Int Prelude.Float)
+testMinus2: (C Prelude.Int, E Prelude.Int) => Prelude.Int
+testMinus3: (C Prelude.Int, E Prelude.Int) => Prelude.Int
+testMinus4: (H 0) => (0 -> Prelude.Int)
+
+testEnum1: (C Prelude.Int) => (Prelude.[] Prelude.Int)
+testEnum2: (C Prelude.Int, E Prelude.Int) => (Prelude.[] Prelude.Int)
+testEnum3: (C Prelude.Int, E Prelude.Int) => (Prelude.[] Prelude.Int)
+testEnum4: (C Prelude.Int, E Prelude.Int) => (Prelude.[] Prelude.Int)
+testEnum5: (H 0) => (0 -> Prelude.[] Prelude.Int)

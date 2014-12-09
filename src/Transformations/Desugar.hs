@@ -65,7 +65,7 @@
 module Transformations.Desugar (desugar) where
 
 import           Control.Arrow              (first, second)
-import           Control.Monad              (liftM, liftM2, mplus)
+import           Control.Monad              (liftM, liftM2, liftM3, mplus)
 import qualified Control.Monad.State as S   (State, runState, gets, modify)
 import           Data.List                  ((\\), nub, tails)
 import           Data.Maybe                 (fromMaybe)
@@ -73,7 +73,7 @@ import qualified Data.Set            as Set (Set, empty, member, insert)
 
 import Curry.Base.Ident
 import Curry.Base.Position hiding (first)
-import Curry.Syntax
+import Curry.Syntax hiding (emptyContext)
 
 import Base.Expr
 import Base.CurryTypes (toType, fromType)
@@ -107,8 +107,8 @@ type DsM a = S.State DesugarState a
 getModuleIdent :: DsM ModuleIdent
 getModuleIdent = S.gets moduleIdent
 
-negativeLiterals :: DsM Bool
-negativeLiterals = S.gets (\s -> NegativeLiterals `elem` extensions s)
+-- negativeLiterals :: DsM Bool
+-- negativeLiterals = S.gets (\s -> NegativeLiterals `elem` extensions s)
 
 getTyConsEnv :: DsM TCEnv
 getTyConsEnv = S.gets tyConsEnv
@@ -183,17 +183,17 @@ dsDeclGroup ds = concatMapM dsDeclLhs valDecls >>= mapM dsDeclRhs
  where valDecls = filter isValueDecl ds
 
 dsDeclLhs :: Decl -> DsM [Decl]
-dsDeclLhs (PatternDecl p t rhs) = do
+dsDeclLhs (PatternDecl p cty id0 t rhs) = do
   (ds', t') <- dsPattern p [] t
   dss'      <- mapM dsDeclLhs ds'
-  return $ PatternDecl p t' rhs : concat dss'
+  return $ PatternDecl p cty id0 t' rhs : concat dss'
 dsDeclLhs (ExternalDecl   p fs) = mapM (genForeignDecl p) fs
 dsDeclLhs d                     = return [d]
 
 genForeignDecl :: Position -> Ident -> DsM Decl
 genForeignDecl p f = do
   m     <- getModuleIdent
-  ty    <- fromType `liftM` (getTypeOf $ Variable $ qual m f)
+  ty    <- fromType `liftM` (getTypeOf $ Variable Nothing $ qual m f)
   return $ ForeignDecl p CallConvPrimitive (Just $ idName f) f ty
   where qual m f'
          | hasGlobalScope f' = qualifyWith m f'
@@ -209,10 +209,10 @@ genForeignDecl p f = do
 -- and a record label belongs to only one record declaration.
 
 dsDeclRhs :: Decl -> DsM Decl
-dsDeclRhs (FunctionDecl     p f eqs) =
-  FunctionDecl p f `liftM` mapM dsEquation eqs
-dsDeclRhs (PatternDecl      p t rhs) =
-  PatternDecl p t `liftM` dsRhs p id rhs
+dsDeclRhs (FunctionDecl p cty id0 f eqs) =
+  FunctionDecl p cty id0 f `liftM` mapM dsEquation eqs
+dsDeclRhs (PatternDecl p cty id0 t rhs) =
+  PatternDecl p cty id0 t `liftM` dsRhs p id rhs
 dsDeclRhs (ForeignDecl p cc ie f ty) =
   return $ ForeignDecl p cc (ie `mplus` Just (idName f)) f ty
 dsDeclRhs vars@(FreeDecl        _ _) = return vars
@@ -345,7 +345,7 @@ dsLiteral (Int                v i) = do
   return (Left (fixType tyEnv tcEnv))
   where fixType tyEnv' tcEnv'
           | typeOf tyEnv' tcEnv' v == floatType =
-              Float (srcRefOf $ idPosition v) (fromIntegral i)
+              Float v (fromIntegral i)
           | otherwise = Int v i
 dsLiteral f@(Float            _ _) = return $ Left f
 dsLiteral (String (SrcRef [i]) cs) = return $ Right
@@ -426,14 +426,14 @@ dsExpr :: Position -> Expression -> DsM Expression
 dsExpr p (Literal l) =
   dsLiteral l >>=
   either (return . Literal) (\ (pos, ls) -> dsExpr p $ List pos $ map Literal ls)
-dsExpr _ var@(Variable v)
+dsExpr _ var@(Variable _ v)
   | isAnonId (unqualify v) = return prelUnknown
       -- v' <- getValueEnv >>= freshIdent "_#anonfree" . polyType . flip typeOf var
       -- dsExpr p $ Let [ExtraVariables p [v']] $ mkVar v'
   | otherwise              = return var
 dsExpr _ c@(Constructor _) = return c
 dsExpr p (Paren         e) = dsExpr p e
-dsExpr p (Typed      e ty) = liftM2 Typed (dsExpr p e) (dsTypeExpr ty)
+dsExpr p (Typed cty e cx ty) = liftM3 (Typed cty) (dsExpr p e) (return cx) (dsTypeExpr ty)
 dsExpr p (Tuple    pos es) =
   apply (Constructor $ tupleConstr es) `liftM` mapM (dsExpr p) es
   where tupleConstr es1 = addRef pos $ if null es1 then qUnitId else qTupleId (length es1)
@@ -443,21 +443,17 @@ dsExpr p (List pos es) =
         cons p' = Apply . Apply (Constructor $ addRef p' qConsId)
 dsExpr p (ListCompr r e []    ) = dsExpr p (List [r,r] [e])
 dsExpr p (ListCompr r e (q:qs)) = dsQual p q (ListCompr r e qs)
-dsExpr p (EnumFrom e) =
+dsExpr p (EnumFrom _cty e) = 
   Apply prelEnumFrom `liftM` dsExpr p e
-dsExpr p (EnumFromThen e1 e2) =
+dsExpr p (EnumFromThen _cty e1 e2) =
   apply prelEnumFromThen `liftM` mapM (dsExpr p) [e1, e2]
-dsExpr p (EnumFromTo e1 e2) =
+dsExpr p (EnumFromTo _cty e1 e2) =
   apply prelEnumFromTo `liftM` mapM (dsExpr p) [e1, e2]
-dsExpr p (EnumFromThenTo e1 e2 e3) =
+dsExpr p (EnumFromThenTo _cty e1 e2 e3) =
   apply prelEnumFromThenTo `liftM` mapM (dsExpr p) [e1, e2, e3]
-dsExpr p (UnaryMinus op e) = do
+dsExpr p (UnaryMinus _cty op e) = do
   ty <- getTypeOf e
-  e' <- dsExpr p e
-  negativeLits <- negativeLiterals
-  case e' of
-    Literal l | negativeLits -> return (Literal $ negateLiteral l)
-    _                        -> Apply (unaryMinus op ty) `liftM` dsExpr p e
+  Apply (unaryMinus op ty) `liftM` dsExpr p e
   where
   unaryMinus op1 ty'
     | op1 ==  minusId = if ty' == floatType then prelNegateFloat else prelNegate
@@ -520,7 +516,7 @@ dsExpr p (RecordConstr fs)
 dsExpr p (RecordSelection e l) = do
   m <- getModuleIdent
   r <- recordFromField l
-  dsExpr p (Apply (Variable (qualRecSelectorId m r l)) e)
+  dsExpr p (Apply (Variable Nothing (qualRecSelectorId m r l)) e)
 dsExpr p (RecordUpdate fs rexpr)
   | null fs   = internalError "Desugar.dsExpr: empty record update"
   | otherwise = do
@@ -659,11 +655,11 @@ fp2Expr (ListPattern         rs ts) =
   in  (List rs ts', concat ess)
 fp2Expr (FunctionPattern      f ts) =
   let (ts', ess) = unzip $ map fp2Expr ts
-  in  (apply (Variable f) ts', concat ess)
+  in  (apply (Variable Nothing f) ts', concat ess)
 fp2Expr (InfixFuncPattern t1 op t2) =
   let (t1', es1) = fp2Expr t1
       (t2', es2) = fp2Expr t2
-  in  (InfixApply t1' (InfixOp op) t2', es1 ++ es2)
+  in  (InfixApply t1' (InfixOp Nothing op) t2', es1 ++ es2)
 fp2Expr (AsPattern             v t) =
   let (t', es) = fp2Expr t
   in  (mkVar v, (t' =:<= mkVar v):es)
@@ -696,9 +692,9 @@ dsRecordDecl (TypeDecl p r vs (RecordType fss)) = do
   (n, fs') <- lookupRecord qr
   let tys   = concatMap (\ (ls, ty) -> replicate (length ls) ty) fss
       --tys' = map (elimRecordTypes tyEnv) tys
-      rdecl = DataDecl p r vs [ConstrDecl p [] r tys]
+      rdecl = DataDecl p r vs [ConstrDecl p [] r tys] Nothing
       rty'  = TypeConstructor qr (map TypeVariable [0 .. n - 1])
-      rcts' = ForAllExist 0 n (foldr TypeArrow rty' (map snd fs'))
+      rcts' = ForAllExist emptyContext 0 n (foldr TypeArrow rty' (map snd fs'))
   rfuncs <- mapM (genRecordFuncs p qr rty' (map fst fs')) fs'
   modifyValueEnv
       (bindGlobalInfo (flip DataConstructor (length tys)) m r rcts')
@@ -746,7 +742,7 @@ dsRecordUpdate p r rexpr fs = do
   dsExpr p (foldl (genRecordUpdate m r) rexpr fs)
   where
   genRecordUpdate m1 r1 rexpr1 (l,e) =
-   apply (Variable $ qualRecUpdateId m1 r1 l) [rexpr1, e]
+   apply (Variable Nothing $ qualRecUpdateId m1 r1 l) [rexpr1, e]
 
 -- In general, a list comprehension of the form
 -- '[e | t <- l, qs]'
@@ -808,28 +804,28 @@ prelBind_ :: SrcRef -> Expression
 prelBind_ = prel ">>"
 
 prelFlip :: Expression
-prelFlip = Variable $ preludeIdent "flip"
+prelFlip = Variable Nothing $ preludeIdent "flip"
 
 prelEnumFrom :: Expression
-prelEnumFrom = Variable $ preludeIdent "enumFrom"
+prelEnumFrom = Variable Nothing $ preludeIdent "enumFrom"
 
 prelEnumFromTo :: Expression
-prelEnumFromTo = Variable $ preludeIdent "enumFromTo"
+prelEnumFromTo = Variable Nothing $ preludeIdent "enumFromTo"
 
 prelEnumFromThen :: Expression
-prelEnumFromThen = Variable $ preludeIdent "enumFromThen"
+prelEnumFromThen = Variable Nothing $ preludeIdent "enumFromThen"
 
 prelEnumFromThenTo :: Expression
-prelEnumFromThenTo = Variable $ preludeIdent "enumFromThenTo"
+prelEnumFromThenTo = Variable Nothing $ preludeIdent "enumFromThenTo"
 
 prelFailed :: Expression
-prelFailed = Variable $ preludeIdent "failed"
+prelFailed = Variable Nothing $ preludeIdent "failed"
 
 prelUnknown :: Expression
-prelUnknown = Variable $ preludeIdent "unknown"
+prelUnknown = Variable Nothing $ preludeIdent "unknown"
 
 prelMap :: SrcRef -> Expression
-prelMap r = Variable $ addRef r $ preludeIdent "map"
+prelMap r = Variable Nothing $ addRef r $ preludeIdent "map"
 
 prelFoldr :: SrcRef -> Expression
 prelFoldr = prel "foldr"
@@ -841,34 +837,34 @@ prelConcatMap :: SrcRef -> Expression
 prelConcatMap = prel "concatMap"
 
 prelNegate :: Expression
-prelNegate = Variable $ preludeIdent "negate"
+prelNegate = Variable Nothing $ preludeIdent "negate"
 
 prelNegateFloat :: Expression
-prelNegateFloat = Variable $ preludeIdent "negateFloat"
+prelNegateFloat = Variable Nothing $ preludeIdent "negateFloat"
 
 prelCond :: Expression
-prelCond = Variable $ preludeIdent "cond"
+prelCond = Variable Nothing $ preludeIdent "cond"
 
 (=:<=) :: Expression -> Expression -> Expression
 e1 =:<= e2 = apply prelFPEq [e1, e2]
 
 prelFPEq :: Expression
-prelFPEq = Variable $ preludeIdent "=:<="
+prelFPEq = Variable Nothing $ preludeIdent "=:<="
 
 prelConj :: Expression
-prelConj = Variable $ preludeIdent "&"
+prelConj = Variable Nothing $ preludeIdent "&"
 
 (=:=) :: Expression -> Expression -> Expression
 e1 =:= e2 = apply prelSEq [e1, e2]
 
 prelSEq :: Expression
-prelSEq = Variable $ preludeIdent "=:="
+prelSEq = Variable Nothing $ preludeIdent "=:="
 
 (&) :: Expression -> Expression -> Expression
 e1 & e2 = apply prelConj [e1, e2]
 
 prel :: String -> SrcRef -> Expression
-prel s r = Variable $ addRef r $ preludeIdent s
+prel s r = Variable Nothing $ addRef r $ preludeIdent s
 
 truePattern :: Pattern
 truePattern = ConstructorPattern qTrueId []
@@ -898,11 +894,11 @@ isVarPattern (LazyPattern   _ _) = True
 isVarPattern _                   = False
 
 funDecl :: Position -> Ident -> [Pattern] -> Expression -> Decl
-funDecl p f ts e = FunctionDecl p f
+funDecl p f ts e = FunctionDecl p Nothing (-1) f
   [Equation p (FunLhs f ts) (SimpleRhs p e [])]
 
 patDecl :: Position -> Pattern -> Expression -> Decl
-patDecl p t e = PatternDecl p t (SimpleRhs p e [])
+patDecl p t e = PatternDecl p Nothing (-1) t (SimpleRhs p e [])
 
 varDecl :: Position -> Ident -> Expression -> Decl
 varDecl p = patDecl p . VariablePattern
@@ -918,4 +914,4 @@ apply :: Expression -> [Expression] -> Expression
 apply = foldl Apply
 
 mkVar :: Ident -> Expression
-mkVar = Variable . qualify
+mkVar = Variable Nothing . qualify

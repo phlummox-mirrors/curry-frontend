@@ -20,7 +20,7 @@ import Data.Char       (isSpace)
 import Data.Maybe      (catMaybes, mapMaybe)
 import System.FilePath (normalise)
 
-import Curry.Base.Ident
+import Curry.Base.Ident hiding (sep)
 import Curry.Base.Monad
 import Curry.Base.Position (Position)
 import Curry.Base.Pretty

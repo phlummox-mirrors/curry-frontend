@@ -4,6 +4,7 @@
     Copyright   :  (c) 2005        Martin Engelke
                        2007        Sebastian Fischer
                        2011 - 2014 Björn Peemöller
+                       2013        Matthias Böhm
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
@@ -76,6 +77,7 @@ data DebugOpts = DebugOpts
   { dbDumpLevels :: [DumpLevel] -- ^ dump levels
   , dbDumpEnv :: Bool           -- ^ dump compilation environment
   , dbDumpRaw :: Bool           -- ^ dump data structure
+  , dbDumpCompleteEnv :: Bool   -- ^ dump complete environment
   } deriving Show
 
 -- | Default compiler options
@@ -94,9 +96,9 @@ defaultOptions = Options
   , optTargetTypes  = []
   , optExtensions   = []
   , optDebugOpts    = defaultDebugOpts
+
   }
 
--- | Default preprocessor options
 defaultPrepOpts :: PrepOpts
 defaultPrepOpts = PrepOpts
   { ppPreprocess = False
@@ -118,6 +120,7 @@ defaultDebugOpts = DebugOpts
   { dbDumpLevels = []
   , dbDumpEnv    = False
   , dbDumpRaw    = False
+  , dbDumpCompleteEnv  = False
   }
 
 -- |Modus operandi of the program
@@ -190,18 +193,21 @@ warnFlags =
 
 -- |Dump level
 data DumpLevel
-  = DumpParsed        -- ^ dump source code after parsing
-  | DumpKindChecked   -- ^ dump source code after kind checking
-  | DumpSyntaxChecked -- ^ dump source code after syntax checking
-  | DumpPrecChecked   -- ^ dump source code after precedence checking
-  | DumpTypeChecked   -- ^ dump source code after type checking
-  | DumpExportChecked -- ^ dump source code after export checking
-  | DumpQualified     -- ^ dump source  after qualification
-  | DumpDesugared     -- ^ dump source  after desugaring
-  | DumpSimplified    -- ^ dump source  after simplification
-  | DumpLifted        -- ^ dump source  after lambda-lifting
-  | DumpTranslated    -- ^ dump IL code after translation
-  | DumpCaseCompleted -- ^ dump IL code after case completion
+  = DumpParsed             -- ^ dump source code after parsing
+  | DumpTypeClassesChecked -- ^ dump source code after type class checking
+  | DumpKindChecked        -- ^ dump source code after kind checking
+  | DumpSyntaxChecked      -- ^ dump source code after syntax checking
+  | DumpPrecChecked        -- ^ dump source code after precedence checking
+  | DumpTypeChecked        -- ^ dump source code after type checking
+  | DumpDictionaries       -- ^ dump source code after dictionaries have been inserted
+  | DumpTypeChecked2       -- ^ dump source code after second type checking
+  | DumpExportChecked      -- ^ dump source code after export checking
+  | DumpQualified          -- ^ dump source  after qualification
+  | DumpDesugared          -- ^ dump source  after desugaring
+  | DumpSimplified         -- ^ dump source  after simplification
+  | DumpLifted             -- ^ dump source  after lambda-lifting
+  | DumpTranslated         -- ^ dump IL code after translation
+  | DumpCaseCompleted      -- ^ dump IL code after case completion
     deriving (Eq, Bounded, Enum, Show)
 
 -- |Description and flag of dump levels
@@ -210,7 +216,10 @@ dumpLevel = [ (DumpParsed       , "dump-parse", "parse tree"               )
             , (DumpKindChecked  , "dump-kc"   , "kind checker output"      )
             , (DumpSyntaxChecked, "dump-sc"   , "syntax checker output"    )
             , (DumpPrecChecked  , "dump-pc"   , "precedence checker output")
+            , (DumpTypeClassesChecked, "dump-tcc", "type classes checker output")
             , (DumpTypeChecked  , "dump-tc"   , "type checker output"      )
+            , (DumpDictionaries , "dump-dict" , "dictionaries inserter output")
+            , (DumpTypeChecked2 , "dump-tc2"  , "second type checker output")
             , (DumpExportChecked, "dump-ec"   , "export checker output"    )
             , (DumpQualified    , "dump-qual" , "qualifier output"         )
             , (DumpDesugared    , "dump-ds"   , "desugarer output"         )
@@ -231,6 +240,8 @@ extensions =
     , "desugar negated literals as negative literal")
   , ( NoImplicitPrelude , "NoImplicitPrelude"
     , "do not implicitly import the Prelude")
+  , ( TypeClassExtensions, "TypeClassExtensions"
+    , "enable type classes"                 )
   , ( Records           , "Records"
     , "enable record syntax"                )
   ]
@@ -434,6 +445,8 @@ debugDescriptions =
     , \ opts -> opts { dbDumpEnv = True                 })
   , ( "dump-raw" , "dump as raw AST (instead of pretty printed)"
     , \ opts -> opts { dbDumpRaw = True                 })
+  , ( "dump-complete-env", "dump the complete environment"
+    , \ opts -> opts { dbDumpCompleteEnv = True         })
   ] ++ map toDescr dumpLevel
   where
   toDescr (flag, name, desc)

@@ -1,0 +1,7 @@
+test1: (A 0) => (0 -> TypeCheck15.T 0 0)
+test2: (B 0) => (0 -> TypeCheck15.T 0 1)
+test3: (C 0) => (0 -> (1 -> TypeCheck15.T 0 1))
+test4: (C 0) => (0 -> TypeCheck15.T 0 0)
+test5: (D 0, E 1) => (0 -> (1 -> TypeCheck15.T 0 1))
+test6: (C 0) => (0 -> (1 -> TypeCheck15.T 0 1))
+test7: (C2 0) => (0 -> (0 -> TypeCheck15.T 0 0))

@@ -62,12 +62,14 @@ import Base.Types
 import Env.OpPrec
 import Env.TypeConstructor
 import Env.Value
+import Env.ClassEnv as CE
 
 data ICState = ICState
   { moduleIdent :: ModuleIdent
   , precEnv     :: OpPrecEnv
   , tyConsEnv   :: TCEnv
   , valueEnv    :: ValueEnv
+  , classEnv    :: ClassEnv
   , errors      :: [Message]
   }
 
@@ -85,6 +87,9 @@ getTCEnv = S.gets tyConsEnv
 getValueEnv :: IC ValueEnv
 getValueEnv = S.gets valueEnv
 
+getClassEnv :: IC ClassEnv
+getClassEnv = S.gets classEnv
+
 -- |Report a syntax error
 report :: Message -> IC ()
 report msg = S.modify $ \ s -> s { errors = msg : errors s }
@@ -92,9 +97,9 @@ report msg = S.modify $ \ s -> s { errors = msg : errors s }
 ok :: IC ()
 ok = return ()
 
-interfaceCheck :: OpPrecEnv -> TCEnv -> ValueEnv -> Interface -> [Message]
-interfaceCheck pEnv tcEnv tyEnv (Interface m _ ds) = reverse (errors s)
-  where s = S.execState (mapM_ checkImport ds) (ICState m pEnv tcEnv tyEnv [])
+interfaceCheck :: OpPrecEnv -> TCEnv -> ValueEnv -> ClassEnv -> Interface -> [Message]
+interfaceCheck pEnv tcEnv tyEnv cEnv (Interface m _ ds) = reverse (errors s)
+  where s = S.execState (mapM_ checkImport ds) (ICState m pEnv tcEnv tyEnv cEnv [])
 
 checkImport :: IDecl -> IC ()
 checkImport (IInfixDecl p fix pr op) = checkPrecInfo check p op
@@ -137,18 +142,62 @@ checkImport (ITypeDecl p tc tvs ty) = do
         = Just ok
       check _ = Nothing
   checkTypeInfo "synonym type" check p tc
-checkImport (IFunctionDecl p f n ty) = do
+checkImport (IFunctionDecl p f n _cx ty) = do
   m <- getModuleIdent
-  let check (Value f' n' (ForAll _ ty')) =
+  let check (Value f' n' (ForAll _cx' _ ty') _) =
         f == f' && n' == n && toQualType m [] ty == ty'
       check _ = False
   checkValueInfo "function" check p f
+checkImport (IClassDecl _p _h _cx (QualIdent Nothing _) _tyvar _ds _defs _) = ok
+checkImport (IClassDecl p _h cx cls tyvar ds defs _) = do
+  m    <- getModuleIdent 
+  cEnv <- getClassEnv
+  let theClasses0 = qualLookupTopEnv cls (theClasses cEnv)
+      theClass0   = filter (\c -> theClass c == cls) theClasses0
+  case theClass0 of
+    []  -> report $ errNotExported p "class" m (unqualify cls)
+    [c] -> do
+      let tscs = map (typeFunDecl m (CE.typeVar c) . snd) ds
+      unless 
+        (cx == superClasses c && cls == theClass c && 
+           tyvar == CE.typeVar c && length tscs == length (typeSchemes c) &&
+           all (uncurry tySchemeEq) (zip tscs (typeSchemes c)) &&
+           defs == map funName (defaults c)) 
+        (report $ errImportConflict p "class" m (unqualify cls))
+    _   -> internalError ("checkImport IClassDecl: " ++ show cls)
+  where
+  tySchemeEq :: (Ident, TypeScheme) -> (Ident, TypeScheme) -> Bool
+  tySchemeEq (i, tsc) (i', tsc') = i == i' 
+    && typeSchemeToType tsc == typeSchemeToType tsc'
+checkImport (IInstanceDecl _ Nothing _ _ _ _ _) = ok
+checkImport (IInstanceDecl p (Just m) cx cls ty tyvars _) = do
+  cEnv <- getClassEnv
+  let ty'  = specialTyConToQualIdent ty
+      inst = getInstanceWithOrigin cEnv m cls ty'
+  case inst of
+    Nothing -> report $ errInstNotExported p "instance" m (unqualify cls) (unqualify ty')
+    Just i  -> do
+      unless (origin i == m && context i == cx
+        && iClass i == cls && iType i == ty' && CE.typeVars i == tyvars) $
+        report $ errInstImportConflict p "instance" m (unqualify cls) (unqualify ty')
+
+funName :: Decl -> Ident
+funName (FunctionDecl _ _ _ f _) = f
+funName _ = internalError "funName"
+
+-- | returns the type of the given class method 
+typeFunDecl :: ModuleIdent -> Ident -> IDecl -> (Ident, TypeScheme)
+typeFunDecl m tyvar (IFunctionDecl _p method n cx ty) = 
+  (unqualify method, ForAll cx' n ty')
+  where
+  (cx', ty') = toQualConstrType m [tyvar] (cx, ty) 
+typeFunDecl _ _ _ = internalError "typeFunDecl"
 
 checkConstrImport :: QualIdent -> [Ident] -> ConstrDecl -> IC ()
 checkConstrImport tc tvs (ConstrDecl p evs c tys) = do
   m <- getModuleIdent
   let qc = qualifyLike tc c
-      checkConstr (DataConstructor c' _ (ForAllExist uqvs eqvs ty')) =
+      checkConstr (DataConstructor c' _ (ForAllExist _cx uqvs eqvs ty')) =
         qc == c' && length evs == eqvs && length tvs == uqvs &&
         toQualTypes m tvs tys == arrowArgs ty'
       checkConstr _ = False
@@ -156,7 +205,7 @@ checkConstrImport tc tvs (ConstrDecl p evs c tys) = do
 checkConstrImport tc tvs (ConOpDecl p evs ty1 op ty2) = do
   m <- getModuleIdent
   let qc = qualifyLike tc op
-      checkConstr (DataConstructor c' _ (ForAllExist uqvs eqvs ty')) =
+      checkConstr (DataConstructor c' _ (ForAllExist _cx uqvs eqvs ty')) =
         qc == c' && length evs == eqvs && length tvs == uqvs &&
         toQualTypes m tvs [ty1,ty2] == arrowArgs ty'
       checkConstr _ = False
@@ -166,7 +215,7 @@ checkNewConstrImport :: QualIdent -> [Ident] -> NewConstrDecl -> IC ()
 checkNewConstrImport tc tvs (NewConstrDecl p evs c ty) = do
   m <- getModuleIdent
   let qc = qualifyLike tc c
-      checkNewConstr (NewtypeConstructor c' (ForAllExist uqvs eqvs ty')) =
+      checkNewConstr (NewtypeConstructor c' (ForAllExist _cx uqvs eqvs ty')) =
           qc == c' && length evs == eqvs && length tvs == uqvs &&
           toQualType m tvs ty == head (arrowArgs ty')
       checkNewConstr _ = False
@@ -216,6 +265,13 @@ errNotExported p what m x = posMessage p $
   $+$ text "Module" <+> text (moduleName m)
   <+> text "does not export"<+> text what <+> text (escName x)
 
+errInstNotExported :: Position -> String -> ModuleIdent -> Ident -> Ident -> Message
+errInstNotExported p what m x y = posMessage p $
+  text "Inconsistent module interfaces"
+  $+$ text "Module" <+> text (moduleName m)
+  <+> text "does not export" <+> text what <+> text "for" 
+  <+> text (escName x) <+> text "and" <+> text (escName y)  
+
 errNoPrecedence :: Position -> ModuleIdent -> Ident -> Message
 errNoPrecedence p m x = posMessage p $
   text "Inconsistent module interfaces"
@@ -226,4 +282,11 @@ errImportConflict :: Position -> String -> ModuleIdent -> Ident -> Message
 errImportConflict p what m x = posMessage p $
   text "Inconsistent module interfaces"
   $+$ text "Declaration of" <+> text what <+> text (escName x)
+  <+> text "does not match its definition in module" <+> text (moduleName m)
+
+errInstImportConflict :: Position -> String -> ModuleIdent -> Ident -> Ident -> Message
+errInstImportConflict p what m x y = posMessage p $
+  text "Inconsistent module interfaces"
+  $+$ text "Declaration of" <+> text what <+> text "for" <+> text (escName x)
+  <+> text "and" <+> text (escName y)
   <+> text "does not match its definition in module" <+> text (moduleName m)

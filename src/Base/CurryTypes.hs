@@ -22,21 +22,20 @@
 -}
 
 module Base.CurryTypes
- ( toQualType, toQualTypes, toType, toTypes, fromQualType, fromType,
-   ppType, ppTypeScheme
- ) where
+  ( toQualType, toQualTypes, toType, toTypes, fromQualType, fromType
+  , toTypeAndGetMap, toConstrType, toConstrTypes, fromContext
+  , fromType', fromQualType', toQualConstrType
+  ) where
 
 import Data.List (nub)
 import qualified Data.Map as Map (Map, fromList, lookup)
 
 import Curry.Base.Ident
-import Curry.Base.Pretty (Doc)
 import qualified Curry.Syntax as CS
-import Curry.Syntax.Pretty (ppTypeExpr)
 
 import Base.Expr
 import Base.Messages (internalError)
-import Base.Types
+import Base.Types as BT
 
 toQualType :: ModuleIdent -> [Ident] -> CS.TypeExpr -> Type
 toQualType m tvs = qualifyType m . toType tvs
@@ -44,18 +43,64 @@ toQualType m tvs = qualifyType m . toType tvs
 toQualTypes :: ModuleIdent -> [Ident] -> [CS.TypeExpr] -> [Type]
 toQualTypes m tvs = map (qualifyType m) . toTypes tvs
 
-toType :: [Ident] -> CS.TypeExpr -> Type
-toType tvs ty = toType' (Map.fromList $ zip (tvs ++ newInTy) [0 ..]) ty
+toQualConstrType :: ModuleIdent -> [Ident] -> (CS.Context, CS.TypeExpr) -> (BT.Context, Type)
+toQualConstrType m tvs =  
+  qualifyConstrType m . toConstrType tvs
+
+toTypeAndGetMap :: [Ident] -> CS.TypeExpr -> (Type, Map.Map Ident Int)
+toTypeAndGetMap tvs ty = (toType' theMap ty, theMap)
   where newInTy = [tv | tv <- nub (fv ty), tv `notElem` tvs]
+        theMap  = Map.fromList $ zip (tvs ++ newInTy) [0 ..]
+
+toType :: [Ident] -> CS.TypeExpr -> Type
+toType tvs ty = fst $ toTypeAndGetMap tvs ty 
+
+toTypesAndGetMap :: [Ident] -> [CS.TypeExpr] -> ([Type], Map.Map Ident Int)
+toTypesAndGetMap tvs tys = (map (toType' theMap) tys, theMap)
+  where newInTys = [tv | tv <- nub (concatMap fv tys), tv `notElem` tvs]
+        theMap   = Map.fromList $ zip (tvs ++ newInTys) [0 ..]
 
 toTypes :: [Ident] -> [CS.TypeExpr] -> [Type]
-toTypes tvs tys = map
-   (toType' (Map.fromList $ zip (tvs ++ newInTys) [0 ..])) tys
-  where newInTys = [tv | tv <- nub (concatMap fv tys), tv `notElem` tvs]
+toTypes tvs tys = fst $ toTypesAndGetMap tvs tys
+
+toConstrType :: [Ident] -> (CS.Context, CS.TypeExpr) -> (Context, Type)
+toConstrType tvs (cx, ty) = 
+  let (theType, theMap) = toTypeAndGetMap tvs ty
+      translatedContext = translateContext theMap cx
+  in (translatedContext, theType)
+
+toConstrTypes :: [Ident] -> [(CS.Context, CS.TypeExpr)] -> [(Context, Type)]
+toConstrTypes tvs tys = 
+  let (theTypes, theMap) = toTypesAndGetMap tvs (map snd tys)
+      contexts           = map (translateContext theMap . fst) tys
+  in zip contexts theTypes  
+
+translateContext :: Map.Map Ident Int -> CS.Context -> BT.Context
+translateContext theMap (CS.Context elems) 
+  -- TODO: translate also texps!
+  = map (\(CS.ContextElem qid id0 _texps) -> 
+         -- TODO: handle the case better that we have in the context 
+         -- variables that don't appear in the type
+         (qid, TypeVariable (case Map.lookup id0 theMap of Just x -> x; Nothing -> (-42))))
+        elems
 
 toType' :: Map.Map Ident Int -> CS.TypeExpr -> Type
 toType' tvs (CS.ConstructorType tc tys)
   = TypeConstructor tc (map (toType' tvs) tys)
+toType' tvs (CS.SpecialConstructorType (CS.QualTC tc)  tys)
+  = toType' tvs (CS.ConstructorType tc tys)
+toType' tvs (CS.SpecialConstructorType CS.UnitTC       tys)
+  = toType' tvs (CS.TupleType tys)
+toType' tvs (CS.SpecialConstructorType (CS.TupleTC _n) tys)
+  = toType' tvs (CS.TupleType tys)
+toType' tvs (CS.SpecialConstructorType CS.ListTC       [ty])
+  = toType' tvs (CS.ListType ty)
+toType' _   (CS.SpecialConstructorType CS.ListTC       _)
+  = internalError "toType': list"
+toType' tvs (CS.SpecialConstructorType CS.ArrowTC      [ty1, ty2])
+  = toType' tvs (CS.ArrowType ty1 ty2)  
+toType' _   (CS.SpecialConstructorType CS.ArrowTC      _)
+  = internalError "toType': arrow"
 toType' tvs (CS.VariableType        tv) = case Map.lookup tv tvs of
   Just tv' -> TypeVariable tv'
   Nothing  -> internalError $ "Base.CurryTypes.toType': " ++ show tv
@@ -73,29 +118,41 @@ toType' tvs (CS.RecordType          fs)
     fs'  = concatMap (\ (ls, ty) -> map (\ l -> (l, toType' tvs ty)) ls) fs
 
 fromQualType :: ModuleIdent -> Type -> CS.TypeExpr
-fromQualType m = fromType . unqualifyType m
+fromQualType = fromQualType' identSupply
 
+fromQualType' :: [Ident] -> ModuleIdent -> Type -> CS.TypeExpr
+fromQualType' supply m = fromType' supply . unqualifyType m
+
+-- |converts a "Type" into a "TypeExpr"
 fromType :: Type -> CS.TypeExpr
-fromType (TypeConstructor tc tys)
+fromType = fromType' identSupply
+
+-- |converts a "Type" into a "TypeExpr", using the given identifier supply. 
+-- each variable @i@ is replaced by @supply !! i@  
+fromType' :: [Ident] -> Type -> CS.TypeExpr
+fromType' supply (TypeConstructor tc tys)
   | isTupleId c                    = CS.TupleType tys'
   | c == unitId && null tys        = CS.TupleType []
   | c == listId && length tys == 1 = CS.ListType (head tys')
   | otherwise                      = CS.ConstructorType tc tys'
   where c    = unqualify tc
-        tys' = map fromType tys
-fromType (TypeVariable tv)         = CS.VariableType
-   (if tv >= 0 then identSupply !! tv else mkIdent ('_' : show (-tv)))
-fromType (TypeConstrained tys _)   = fromType (head tys)
-fromType (TypeArrow     ty1 ty2)   =
-  CS.ArrowType (fromType ty1) (fromType ty2)
-fromType (TypeSkolem          k)   =
+        tys' = map (fromType' supply) tys
+fromType' supply (TypeVariable        tv) = CS.VariableType
+   (if tv >= 0 then supply !! tv else mkIdent ('_' : show (-tv)))
+fromType' supply (TypeConstrained  tys _) = fromType' supply (head tys)
+fromType' supply (TypeArrow      ty1 ty2) =
+  CS.ArrowType (fromType' supply ty1) (fromType' supply ty2)
+fromType' _      (TypeSkolem           k) =
   CS.VariableType $ mkIdent $ "_?" ++ show k
-fromType (TypeRecord         fs)   = CS.RecordType
+fromType' _ (TypeRecord         fs)   = CS.RecordType
   (map (\ (l, ty) -> ([l], fromType ty)) fs)
 
--- The following functions implement pretty-printing for types.
-ppType :: ModuleIdent -> Type -> Doc
-ppType m = ppTypeExpr 0 . fromQualType m
-
-ppTypeScheme :: ModuleIdent -> TypeScheme -> Doc
-ppTypeScheme m (ForAll _ ty) = ppType m ty
+fromContext :: BT.Context -> CS.Context
+fromContext cx = CS.Context $ map fromCx cx
+  where
+  -- assumes that context elements are in head normal form!
+  fromCx :: (QualIdent, Type) -> CS.ContextElem
+  fromCx (qid, TypeVariable i) = CS.ContextElem qid (supply i) [] 
+  fromCx _ = internalError "fromContext"
+  supply i | i >= 0 = identSupply !! i
+           | otherwise = mkIdent ('_' : show (-i))

@@ -124,10 +124,11 @@ tokenToCodes curPos ids toks@((pos, tok) : ts)
   = head ids        : tokenToCodes newPos (tail ids) ts
   | otherwise
   = tokenToCodes curPos (tail ids) toks
-  where
+ where
   colDiff  = column pos - column curPos
   tokenStr = showToken tok
   newPos   = incr curPos (length tokenStr)
+
 
 code2string :: Code -> String
 code2string (Keyword         s) = s
@@ -168,14 +169,18 @@ numCategories = [IntTok, FloatTok]
 
 keywordCategories :: [Category]
 keywordCategories =
-  [ KW_case, KW_data, KW_do, KW_else, KW_external, KW_fcase, KW_foreign
+  [ KW_class
+  , KW_data,KW_do,KW_else,KW_external
+  , KW_case, KW_fcase, KW_foreign
   , KW_free, KW_if, KW_import, KW_in, KW_infix, KW_infixl, KW_infixr
+  , KW_instance
   , KW_let, KW_module, KW_newtype, KW_of, KW_then, KW_type, KW_where
   ]
 
 specialIdentCategories :: [Category]
 specialIdentCategories =
   [ Id_as, Id_ccall, Id_forall, Id_hiding
+  , Tilde, DoubleArrow
   , Id_interface, Id_primitive, Id_qualified ]
 
 punctuationCategories :: [Category]
@@ -213,15 +218,17 @@ pragmaCategories = [PragmaLanguage, PragmaOptions, PragmaEnd]
 
 declPos :: Decl -> Position
 declPos (InfixDecl        p _ _ _  ) = p
-declPos (DataDecl         p _ _ _  ) = p
-declPos (NewtypeDecl      p _ _ _  ) = p
+declPos (DataDecl         p _ _ _ _) = p
+declPos (NewtypeDecl      p _ _ _ _) = p
 declPos (TypeDecl         p _ _ _  ) = p
-declPos (TypeSig          p _ _    ) = p
-declPos (FunctionDecl     p _ _    ) = p
+declPos (TypeSig          p _ _ _ _) = p
+declPos (FunctionDecl     p _ _ _ _) = p
 declPos (ForeignDecl      p _ _ _ _) = p
 declPos (ExternalDecl     p _      ) = p
-declPos (PatternDecl      p _ _    ) = p
+declPos (PatternDecl      p _ _ _ _) = p
 declPos (FreeDecl         p _      ) = p
+declPos (ClassDecl        p _ _ _ _) = p
+declPos (InstanceDecl   p _ _ _ _ _) = p
 
 cmpDecl :: Decl -> Decl -> Ordering
 cmpDecl = compare `on` declPos
@@ -291,24 +298,27 @@ idsImport mid (ImportTypeWith t cs) =
 idsImport mid (ImportTypeAll     t) =
   [TypeCons TypeImport $ qualifyWith mid t]
 
+
 -- Declarations
 
 idsDecl :: Decl -> [Code]
 idsDecl (InfixDecl _   _ _ ops) = map (Function FuncInfix . qualify) ops
-idsDecl (DataDecl   _ d vs cds) = TypeCons TypeDeclare (qualify d)
+idsDecl (DataDecl  _ d vs cds _) = TypeCons TypeDeclare (qualify d)
                                     :  map (Identifier IdDeclare . qualify) vs
                                     ++ concatMap idsConstrDecl cds
-idsDecl (NewtypeDecl   _ _ _ _) = []
+idsDecl (NewtypeDecl _ _ _ _ _der) = []
 idsDecl (TypeDecl    _ t vs ty) = TypeCons TypeDeclare (qualify t)
                                     :  map (Identifier IdDeclare . qualify) vs
                                     ++ idsTypeExpr ty
-idsDecl (TypeSig       _ fs ty) = map (Function FuncTypeSig . qualify) fs
+idsDecl (TypeSig _ _ fs _cx ty) = map (Function FuncTypeSig . qualify) fs
                                     ++ idsTypeExpr ty
-idsDecl (FunctionDecl  _ _ eqs) = concatMap idsEquation eqs
+idsDecl (FunctionDecl _ _ _ _ eqs) = concatMap idsEquation eqs
 idsDecl (ForeignDecl _ _ _ _ _) = []
 idsDecl (ExternalDecl     _ fs) = map (Function FuncDeclare . qualify) fs
-idsDecl (PatternDecl   _ p rhs) = idsPat p ++ idsRhs rhs
+idsDecl (PatternDecl _ _ _ p rhs) = idsPat p ++ idsRhs rhs
 idsDecl (FreeDecl         _ vs) = map (Identifier IdDeclare . qualify) vs
+idsDecl (ClassDecl _ _scx _cls _tyvar _decls) = []
+idsDecl (InstanceDecl _ _scx _cls _tycon _tyvars _decls) = [] 
 
 idsConstrDecl :: ConstrDecl -> [Code]
 idsConstrDecl (ConstrDecl     _ _ c tys)
@@ -323,6 +333,7 @@ idsTypeExpr (VariableType          v) = [Identifier IdRefer (qualify v)]
 idsTypeExpr (TupleType           tys) = concatMap idsTypeExpr tys
 idsTypeExpr (ListType             ty) = idsTypeExpr ty
 idsTypeExpr (ArrowType       ty1 ty2) = concatMap idsTypeExpr [ty1, ty2]
+idsTypeExpr (SpecialConstructorType _tcon _tys) = []
 idsTypeExpr (RecordType           fs) = concatMap idsFieldType fs
 
 idsFieldType :: ([Ident], TypeExpr) -> [Code]
@@ -366,21 +377,21 @@ idsPat (RecordPattern        fs _) = concatMap (idsField idsPat) fs
 
 idsExpr :: Expression -> [Code]
 idsExpr (Literal                _) = []
-idsExpr (Variable             qid)
+idsExpr (Variable           _ qid)
   | isQualified qid                = [Function FuncCall qid]
   | hasGlobalScope (unqualify qid) = [Function FuncCall qid]
   | otherwise                      = [Identifier IdRefer qid]
 idsExpr (Constructor          qid) = [DataCons ConsCall qid]
 idsExpr (Paren                  e) = idsExpr e
-idsExpr (Typed               e ty) = idsExpr e ++ idsTypeExpr ty
+idsExpr (Typed         _ e _cx ty) = idsExpr e ++ idsTypeExpr ty
 idsExpr (Tuple               _ es) = concatMap idsExpr es
 idsExpr (List                _ es) = concatMap idsExpr es
 idsExpr (ListCompr      _ e stmts) = idsExpr e ++ concatMap idsStmt stmts
-idsExpr (EnumFrom               e) = idsExpr e
-idsExpr (EnumFromThen       e1 e2) = concatMap idsExpr [e1, e2]
-idsExpr (EnumFromTo         e1 e2) = concatMap idsExpr [e1, e2]
-idsExpr (EnumFromThenTo  e1 e2 e3) = concatMap idsExpr [e1, e2, e3]
-idsExpr (UnaryMinus       ident e) = Symbol (idName ident) : idsExpr e
+idsExpr (EnumFrom _             e) = idsExpr e
+idsExpr (EnumFromThen _     e1 e2) = concatMap idsExpr [e1, e2]
+idsExpr (EnumFromTo _       e1 e2) = concatMap idsExpr [e1, e2]
+idsExpr (EnumFromThenTo _ e1 e2 e3) = concatMap idsExpr [e1, e2, e3]
+idsExpr (UnaryMinus _     ident e) = Symbol (idName ident) : idsExpr e
 idsExpr (Apply              e1 e2) = idsExpr e1 ++ idsExpr e2
 idsExpr (InfixApply      e1 op e2) = idsExpr e1 ++ idsInfix op ++ idsExpr e2
 idsExpr (LeftSection         e op) = idsExpr e ++ idsInfix op
@@ -400,7 +411,7 @@ idsField :: (a -> [Code]) -> Field a -> [Code]
 idsField f (Field _ l x) = Label LabelRefer (qualify $ unRenameIdent l) : f x
 
 idsInfix :: InfixOp -> [Code]
-idsInfix (InfixOp     qid) = [Function FuncInfix qid]
+idsInfix (InfixOp   _ qid) = [Function FuncInfix qid]
 idsInfix (InfixConstr qid) = [DataCons ConsInfix qid]
 
 idsStmt :: Statement -> [Code]
@@ -452,8 +463,11 @@ showToken (Token Select             _) = ":>"
 showToken (Token SymDot             _) = "."
 showToken (Token SymMinus           _) = "-"
 showToken (Token SymMinusDot        _) = "-."
+showToken (Token DoubleArrow  _) = "=>" 
 showToken (Token KW_case            _) = "case"
+showToken (Token KW_class     _) = "class"
 showToken (Token KW_data            _) = "data"
+showToken (Token KW_deriving  _) = "deriving"
 showToken (Token KW_do              _) = "do"
 showToken (Token KW_else            _) = "else"
 showToken (Token KW_external        _) = "external"
@@ -466,6 +480,7 @@ showToken (Token KW_in              _) = "in"
 showToken (Token KW_infix           _) = "infix"
 showToken (Token KW_infixl          _) = "infixl"
 showToken (Token KW_infixr          _) = "infixr"
+showToken (Token KW_instance  _) = "instance"
 showToken (Token KW_let             _) = "let"
 showToken (Token KW_module          _) = "module"
 showToken (Token KW_newtype         _) = "newtype"
@@ -478,7 +493,9 @@ showToken (Token Id_ccall           _) = "ccall"
 showToken (Token Id_forall          _) = "forall"
 showToken (Token Id_hiding          _) = "hiding"
 showToken (Token Id_interface       _) = "interface"
+showToken (Token Id_interfaceTypeClasses _) = "interfaceTypeClasses"
 showToken (Token Id_primitive       _) = "primitive"
+showToken (Token Id_public    _) = "public"
 showToken (Token Id_qualified       _) = "qualified"
 showToken (Token EOF                _) = ""
 showToken (Token PragmaLanguage     _) = "{-# LANGUAGE"

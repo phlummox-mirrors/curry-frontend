@@ -25,8 +25,8 @@
 module Checks.SyntaxCheck (syntaxCheck) where
 
 import           Control.Monad            (liftM, liftM2, liftM3, unless, when)
-import qualified Control.Monad.State as S (State, runState, gets, modify)
-import           Data.List                ((\\), insertBy, nub, partition)
+import qualified Control.Monad.State as S (State, runState, gets, modify, withState)
+import           Data.List                ((\\), insertBy, nub, partition, intersect)
 import           Data.Maybe               (isJust, isNothing, maybeToList)
 import qualified Data.Set          as Set (empty, insert, member)
 
@@ -37,13 +37,14 @@ import Curry.Syntax
 import Curry.Syntax.Pretty (ppPattern)
 
 import Base.Expr
-import Base.Messages (Message, posMessage, internalError)
+import Base.Messages (Message, posMessage, internalError, message)
 import Base.NestEnv
 import Base.Types
-import Base.Utils ((++!), findDouble, findMultiples)
+import Base.Utils ((++!), findDouble, findMultiples, fst3, fromJust')
 
 import Env.TypeConstructor (TCEnv, TypeInfo (..), qualLookupTC)
 import Env.Value (ValueEnv, ValueInfo (..))
+import Env.ClassEnv hiding (classMethods, bindClassMethods)
 
 import CompilerOpts
 
@@ -56,16 +57,16 @@ import CompilerOpts
 -- generated. Finally, all declarations are checked within the resulting
 -- environment. In addition, this process will also rename the local variables.
 
-syntaxCheck :: Options -> ValueEnv -> TCEnv -> Module
+syntaxCheck :: Options -> ValueEnv -> TCEnv -> ClassEnv -> Module
             -> ((Module, [KnownExtension]), [Message])
-syntaxCheck opts tyEnv tcEnv mdl@(Module _ m _ _ ds) =
+syntaxCheck opts tyEnv tcEnv cEnv mdl@(Module _ m _ _ ds) =
   case findMultiples $ concatMap constrs typeDecls of
     []  -> runSC (checkModule mdl) state
     css -> ((mdl, exts), map errMultipleDataConstructor css)
   where
     typeDecls  = filter isTypeDecl ds
     rEnv       = globalEnv $ fmap (renameInfo tcEnv) tyEnv
-    state      = initState exts m rEnv
+    state      = initState exts m rEnv cEnv
     exts       = optExtensions opts
 
 -- A global state transformer is used for generating fresh integer keys with
@@ -79,17 +80,21 @@ type SCM = S.State SCState
 
 -- |Internal state of the syntax check
 data SCState = SCState
-  { extensions  :: [KnownExtension] -- ^ Enabled language extensions
-  , moduleIdent :: ModuleIdent      -- ^ 'ModuleIdent' of the current module
-  , renameEnv   :: RenameEnv        -- ^ Information store
-  , scopeId     :: Integer          -- ^ Identifier for the current scope
-  , nextId      :: Integer          -- ^ Next fresh identifier
-  , errors      :: [Message]        -- ^ Syntactic errors in the module
+  { extensions       :: [KnownExtension] -- ^ Enabled language extensions
+  , moduleIdent      :: ModuleIdent      -- ^ 'ModuleIdent' of the current module
+  , renameEnv        :: RenameEnv        -- ^ Information store
+  , scopeId          :: Integer          -- ^ Identifier for the current scope
+  , nextId           :: Integer          -- ^ Next fresh identifier
+  , errors           :: [Message]        -- ^ Syntactic errors in the module
+  , typeClassesCheck :: Bool             -- ^ Disable some checks when declarations in classes
+                                         -- are checked, like checking for missing function bodies
+  , classMethods     :: [Ident]          -- ^ the class methods defined by class declarations
+  , classEnv         :: ClassEnv         -- ^ the class environment with imported classes
   }
 
 -- |Initial syntax check state
-initState :: [KnownExtension] -> ModuleIdent -> RenameEnv -> SCState
-initState exts m rEnv = SCState exts m rEnv globalScopeId 1 []
+initState :: [KnownExtension] -> ModuleIdent -> RenameEnv -> ClassEnv -> SCState
+initState exts m rEnv cEnv = SCState exts m rEnv globalScopeId 1 [] False [] cEnv
 
 -- |Identifier for global (top-level) declarations
 globalScopeId :: Integer
@@ -162,6 +167,18 @@ report msg = S.modify $ \ s -> s { errors = msg : errors s }
 ok :: SCM ()
 ok = return ()
 
+tcCheck :: SCM Bool
+tcCheck = S.gets typeClassesCheck
+
+setClassMethods :: [Ident] -> SCM ()
+setClassMethods cms = S.modify $ \s -> s { classMethods = cms }
+
+getClassMethods :: SCM [Ident]
+getClassMethods = S.gets classMethods
+
+getClassEnv :: SCM ClassEnv
+getClassEnv = S.gets classEnv
+
 -- A nested environment is used for recording information about the data
 -- constructors and variables in the module. For every data constructor
 -- its arity is saved. This is used for checking that all constructor
@@ -204,14 +221,19 @@ ppRenameInfo (LocalVar     n _) = text (escName      n)
 renameInfo :: TCEnv -> ValueInfo -> RenameInfo
 renameInfo _     (DataConstructor    qid a _) = Constr    qid a
 renameInfo _     (NewtypeConstructor qid   _) = Constr    qid 1
-renameInfo _     (Value              qid a _) = GlobalVar qid a
+renameInfo _     (Value            qid a _ _) = GlobalVar qid a
 renameInfo tcEnv (Label              _   r _) = case qualLookupTC r tcEnv of
   [AliasType _ _ (TypeRecord fs)] -> RecordLabel r $ map fst fs
   _ -> internalError $ "SyntaxCheck.renameInfo: ambiguous record " ++ show r
 
-bindGlobal :: ModuleIdent -> Ident -> RenameInfo -> RenameEnv -> RenameEnv
-bindGlobal m c r = bindNestEnv c r . qualBindNestEnv (qualifyWith m c) r
-
+bindGlobal :: Bool -> ModuleIdent -> Ident -> RenameInfo -> RenameEnv -> RenameEnv
+bindGlobal tcCheck0 m c r =
+  -- Disable binding completely when checking type classes or instances. 
+  -- This can be done because at the beginning of the syntax checking
+  -- all class methods are already bound. 
+  if not tcCheck0
+    then bindNestEnv c r . qualBindNestEnv (qualifyWith m c) r
+    else id
 bindLocal :: Ident -> RenameInfo -> RenameEnv -> RenameEnv
 bindLocal = bindNestEnv
 
@@ -219,8 +241,8 @@ bindLocal = bindNestEnv
 
 -- |Bind type constructor information
 bindTypeDecl :: Decl -> SCM ()
-bindTypeDecl (DataDecl    _ _ _ cs) = mapM_ bindConstr cs
-bindTypeDecl (NewtypeDecl _ _ _ nc) = bindNewConstr nc
+bindTypeDecl (DataDecl    _ _ _ cs _) = mapM_ bindConstr cs
+bindTypeDecl (NewtypeDecl _ _ _ nc _) = bindNewConstr nc
 bindTypeDecl (TypeDecl _ t _ (RecordType fs)) = do
   m <- getModuleIdent
   others <- qualLookupVar (qualifyWith m t) `liftM` getRenameEnv
@@ -232,54 +254,80 @@ bindTypeDecl _ = return ()
 bindConstr :: ConstrDecl -> SCM ()
 bindConstr (ConstrDecl _ _ c tys) = do
   m <- getModuleIdent
-  modifyRenameEnv $ bindGlobal m c (Constr (qualifyWith m c) $ length tys)
+  tcc <- tcCheck
+  modifyRenameEnv $ bindGlobal tcc m c (Constr (qualifyWith m c) $ length tys)
 bindConstr (ConOpDecl _ _ _ op _) = do
   m <- getModuleIdent
-  modifyRenameEnv $ bindGlobal m op (Constr (qualifyWith m op) 2)
+  tcc <- tcCheck
+  modifyRenameEnv $ bindGlobal tcc m op (Constr (qualifyWith m op) 2)
 
 bindNewConstr :: NewConstrDecl -> SCM ()
 bindNewConstr (NewConstrDecl _ _ c _) = do
   m <- getModuleIdent
-  modifyRenameEnv $ bindGlobal m c (Constr (qualifyWith m c) 1)
+  tcc <- tcCheck
+  modifyRenameEnv $ bindGlobal tcc m c (Constr (qualifyWith m c) 1)
 
 bindRecordLabel :: Ident -> [Ident] -> Ident -> SCM ()
 bindRecordLabel t allLabels l = do
   m <- getModuleIdent
   new <- (null . lookupVar l) `liftM` getRenameEnv
   unless new $ report $ errDuplicateDefinition l
-  modifyRenameEnv $ bindGlobal m l (RecordLabel (qualifyWith m t) allLabels)
+  tcc <- tcCheck
+  modifyRenameEnv $ bindGlobal tcc m l (RecordLabel (qualifyWith m t) allLabels)
 
 -- ------------------------------------------------------------------------------
 
 -- |Bind a global function declaration in the 'RenameEnv'
-bindFuncDecl :: ModuleIdent -> Decl -> RenameEnv -> RenameEnv
-bindFuncDecl _ (FunctionDecl _ _ []) _
+bindFuncDecl :: Bool -> ModuleIdent -> Decl -> RenameEnv -> RenameEnv
+bindFuncDecl _ _ (FunctionDecl _ _ _ _ []) _
   = internalError "SyntaxCheck.bindFuncDecl: no equations"
-bindFuncDecl m (FunctionDecl _ f (eq:_)) env
+bindFuncDecl tcc m (FunctionDecl _ _ _ f (eq:_)) env
   = let arty = length $ snd $ getFlatLhs eq
-    in  bindGlobal m f (GlobalVar (qualifyWith m f) arty) env
-bindFuncDecl m (ForeignDecl _ _ _ f ty) env
+    in  bindGlobal tcc m f (GlobalVar (qualifyWith m f) arty) env
+bindFuncDecl tcc m (ForeignDecl _ _ _ f ty) env
   = let arty = typeArity ty
-    in bindGlobal m f (GlobalVar (qualifyWith m f) arty) env
-bindFuncDecl m (TypeSig _ fs ty) env
+    in bindGlobal tcc m f (GlobalVar (qualifyWith m f) arty) env
+bindFuncDecl tcc m (TypeSig _ _ fs _cx ty) env
   = foldr bindTS env $ map (qualifyWith m) fs
  where
  bindTS qf env'
   | null $ qualLookupVar qf env'
-  = bindGlobal m (unqualify qf) (GlobalVar qf (typeArity ty)) env'
+  = bindGlobal tcc m (unqualify qf) (GlobalVar qf (typeArity ty)) env'
   | otherwise
   = env'
-bindFuncDecl _ _ env = env
+bindFuncDecl _ _ _ env = env
+
+bindClassMethods :: ModuleIdent -> [Decl] -> SCM ()
+bindClassMethods m decls = do
+  modifyRenameEnv $ \env -> foldr (bindFuncDecl False m) env decls
+
+instance Entity RenameInfo where
+  origName _x = qualify $ mkIdent ""
+  -- do no merging
+  merge _x _y = Nothing
+
+-- |binds imported class methods. All class methods are qualified with
+-- the module name under which the containing class is imported.  
+bindImportedClassMethods :: [(QualIdent, Class, Ident, Int)] -> SCM ()
+bindImportedClassMethods ms = do
+  modifyRenameEnv $ \env -> foldr bind env ms
+  where
+  bind :: (QualIdent, Class, Ident, Int) -> RenameEnv -> RenameEnv
+  bind (c, cls, m, n) env = globalEnv $ 
+      qualImportTopEnv' 
+        (fromJust' "bindImportedClassMethods" $ qidModule $ theClass cls) 
+        m' (GlobalVar m' n) $ toplevelEnv env
+    where m' = qualifyLike c m
 
 -- ------------------------------------------------------------------------------
 
 -- |Bind a local declaration (function, variables) in the 'RenameEnv'
 bindVarDecl :: Decl -> RenameEnv -> RenameEnv
-bindVarDecl (FunctionDecl _ f eqs) env
+bindVarDecl (FunctionDecl _ _ _ f eqs) env
   | null eqs  = internalError "SyntaxCheck.bindVarDecl: no equations"
   | otherwise = let arty = length $ snd $ getFlatLhs $ head eqs
                 in  bindLocal (unRenameIdent f) (LocalVar f arty) env
-bindVarDecl (PatternDecl         _ t _) env = foldr bindVar env (bv t)
+bindVarDecl (PatternDecl     _ _ _ t _) env = foldr bindVar env (bv t)
 bindVarDecl (FreeDecl             _ vs) env = foldr bindVar env vs
 bindVarDecl _                           env = env
 
@@ -317,11 +365,39 @@ checkModule :: Module -> SCM (Module, [KnownExtension])
 checkModule (Module ps m es is decls) = do
   mapM_ checkPragma ps
   mapM_ bindTypeDecl (rds ++ dds)
-  decls' <- liftM2 (++) (mapM checkTypeDecl tds) (checkTopDecls vds)
   exts <- getExtensions
-  return (Module ps m es is decls', exts)
+  cEnv <- getClassEnv
+  -- bind class methods so that references to class methods do not
+  -- cause errors
+  let classTypeSigs = extractTypeDeclsFromClasses decls
+      importedClassMethods = classMethodsFromClassEnv cEnv
+  bindClassMethods m classTypeSigs
+  bindImportedClassMethods importedClassMethods
+  -- now reserve class methods so that they cannot be redefined as top level 
+  -- functions... 
+  let classMethods0 = concatMap (\(TypeSig _ _ ids _ _) -> ids) classTypeSigs 
+  setClassMethods classMethods0
+  -- ... and type check the top declaration group
+  decls0 <- liftM2 (++) (mapM checkTypeDecl tds) (checkTopDecls vds)
+
+  -- check the declarations in classes and instances as well
+  theRenameEnv <- getRenameEnv
+  let classDecls = map extractCDecls $ filter isClassDecl decls0
+      instanceDecls = map extractIDecls $ filter isInstanceDecl decls0
+  -- reset the rename environment before checking each class or instance, so that
+  -- there will be no errors with multiple instance definitions that contain
+  -- implementations of the same function
+  cDecls <- typeClassesCheck_ $ mapM (declsCheck' theRenameEnv) classDecls
+  iDecls <- typeClassesCheck_ $ mapM (declsCheck' theRenameEnv) instanceDecls
+  let decls1 = updateClassDecls decls0 cDecls
+      decls2 = updateInstanceDecls decls1 iDecls
+  return (Module ps m es is decls2, exts)
   where (tds, vds) = partition isTypeDecl decls
         (rds, dds) = partition isRecordDecl tds
+        typeClassesCheck_ = S.withState (\s -> s { typeClassesCheck = True })
+        resetEnv re = S.modify (\s -> s { scopeId = 0, renameEnv = re})
+        declsCheck' theRenameEnv =
+          (\ds -> resetEnv theRenameEnv >> checkClassOrInstanceDecls ds)
 
 checkPragma :: ModulePragma -> SCM ()
 checkPragma (LanguagePragma _ exts) = mapM_ checkExtension exts
@@ -338,10 +414,40 @@ checkTypeDecl rec@(TypeDecl _ r _ (RecordType fs)) = do
   return rec
 checkTypeDecl d = return d
 
+checkClassOrInstanceDecls :: [Decl] -> SCM [Decl]
+checkClassOrInstanceDecls decls = do
+  m <- getModuleIdent
+  tcc <- tcCheck
+  checkDeclGroup (bindFuncDecl tcc m) decls
+
 checkTopDecls :: [Decl] -> SCM [Decl]
 checkTopDecls decls = do
   m <- getModuleIdent
-  checkDeclGroup (bindFuncDecl m) decls
+  tcc <- tcCheck
+  -- check that there are no class methods redefinitions on top level 
+  let vs = concatMap vars decls
+  cms <- getClassMethods
+  let intersection = intersect cms vs
+  case null intersection of
+    True -> checkDeclGroup (bindFuncDecl tcc m) decls
+    False -> report (errRedefiningClassMethods intersection) >> return decls  
+
+-- | returns all class methods from the class environment in the following
+-- form: (The name under which the class containing the methods is imported, 
+-- a name of a method, its arity)
+classMethodsFromClassEnv :: ClassEnv -> [(QualIdent, Class, Ident, Int)]
+classMethodsFromClassEnv cEnv =
+  -- return only class methods that are not hidden! 
+  concatMap 
+    (\(c, cls) -> 
+      zipWith3 (\x x2 (y, z) -> (x, x2, y, z))
+        (repeat c)
+        (repeat cls)
+        (map (\(m, _, ty) -> (m, typeArity ty)) $
+           filter (( `elem` publicMethods cls) . fst3) (methods cls)))
+    clss
+  where
+  clss = allClassBindings cEnv
 
 -- Each declaration group opens a new scope and uses a distinct key
 -- for renaming the variables in this scope. In a declaration group,
@@ -364,21 +470,21 @@ checkDeclGroup bindDecl ds = do
   joinEquations checkedLhs >>= checkDecls bindDecl
 
 checkDeclLhs :: Decl -> SCM Decl
-checkDeclLhs (InfixDecl   p fix' pr ops) =
+checkDeclLhs (InfixDecl     p fix' pr ops) =
   liftM2 (InfixDecl p fix') (checkPrecedence p pr) (mapM renameVar ops)
-checkDeclLhs (TypeSig           p vs ty) =
-  (\vs' -> TypeSig p vs' ty) `liftM` mapM (checkVar "type signature") vs
-checkDeclLhs (FunctionDecl      p _ eqs) =
+checkDeclLhs (TypeSig        p e vs cx ty) =
+  (\vs' -> TypeSig p e vs' cx ty) `liftM` mapM (checkVar "type signature") vs
+checkDeclLhs (FunctionDecl    p _ _ _ eqs) =
   checkEquationsLhs p eqs
-checkDeclLhs (ForeignDecl  p cc ie f ty) =
+checkDeclLhs (ForeignDecl    p cc ie f ty) =
   (\f' -> ForeignDecl p cc ie f' ty) `liftM` checkVar "foreign declaration" f
-checkDeclLhs (    ExternalDecl     p fs) =
+checkDeclLhs (ExternalDecl           p fs) =
   ExternalDecl p `liftM` mapM (checkVar "external declaration") fs
-checkDeclLhs (PatternDecl       p t rhs) =
-    (\t' -> PatternDecl p t' rhs) `liftM` checkPattern p t
-checkDeclLhs (FreeDecl             p vs) =
+checkDeclLhs (PatternDecl p cty id0 t rhs) =
+    (\t' -> PatternDecl p cty id0 t' rhs) `liftM` checkPattern p t
+checkDeclLhs (FreeDecl               p vs) =
   FreeDecl p `liftM` mapM (checkVar "free variables declaration") vs
-checkDeclLhs d                           = return d
+checkDeclLhs d                             = return d
 
 checkPrecedence :: Position -> Maybe Precedence -> SCM (Maybe Precedence)
 checkPrecedence _ Nothing  = return Nothing
@@ -401,11 +507,11 @@ checkEquationsLhs p [Equation p' lhs rhs] = do
   case lhs' of
     Left  l -> return $ funDecl l
     Right r -> patDecl r >>= checkDeclLhs
-  where funDecl (f, lhs') = FunctionDecl p f [Equation p' lhs' rhs]
+  where funDecl (f, lhs') = FunctionDecl p Nothing (-1) f [Equation p' lhs' rhs]
         patDecl t = do
           k <- getScopeId
           when (k == globalScopeId) $ report $ errToplevelPattern p
-          return $ PatternDecl p' t rhs
+          return $ PatternDecl p' Nothing (-1) t rhs
 checkEquationsLhs _ _ = internalError "SyntaxCheck.checkEquationsLhs"
 
 checkEqLhs :: Position -> Lhs -> SCM (Either (Ident, Lhs) Pattern)
@@ -460,10 +566,10 @@ checkOpLhs _ _ f t = Right (f t)
 
 joinEquations :: [Decl] -> SCM [Decl]
 joinEquations [] = return []
-joinEquations (FunctionDecl p f eqs : FunctionDecl _ f' [eq] : ds)
+joinEquations (FunctionDecl p _ _ f eqs : FunctionDecl _ _ _ f' [eq] : ds)
   | f == f' = do
     when (getArity (head eqs) /= getArity eq) $ report $ errDifferentArity [f, f']
-    joinEquations (FunctionDecl p f (eqs ++ [eq]) : ds)
+    joinEquations (FunctionDecl p Nothing (-1) f (eqs ++ [eq]) : ds)
   where getArity = length . snd . getFlatLhs
 joinEquations (d : ds) = (d :) `liftM` joinEquations ds
 
@@ -489,17 +595,18 @@ checkDecls bindDecl ds = do
 -- -- ---------------------------------------------------------------------------
 
 checkDeclRhs :: [Ident] -> Decl -> SCM Decl
-checkDeclRhs bvs (TypeSig      p vs ty) =
-  (\vs' -> TypeSig p vs' ty) `liftM` mapM (checkLocalVar bvs) vs
-checkDeclRhs _   (FunctionDecl p f eqs) =
-  FunctionDecl p f `liftM` mapM checkEquation eqs
-checkDeclRhs _   (PatternDecl  p t rhs) =
-  PatternDecl p t `liftM` checkRhs rhs
-checkDeclRhs _   d                      = return d
+checkDeclRhs bvs (TypeSig         p e vs cx ty) =
+  (\vs' -> TypeSig p e vs' cx ty) `liftM` mapM (checkLocalVar bvs) vs
+checkDeclRhs _   (FunctionDecl p cty id0 f eqs) =
+  FunctionDecl p cty id0 f `liftM` mapM checkEquation eqs
+checkDeclRhs _   (PatternDecl  p cty id0 t rhs) =
+  PatternDecl p cty id0 t `liftM` checkRhs rhs
+checkDeclRhs _   d                              = return d
 
 checkLocalVar :: [Ident] -> Ident -> SCM Ident
 checkLocalVar bvs v = do
-  when (v `notElem` bvs) $ report $ errNoBody v
+  tcs <- tcCheck
+  when (v `notElem` bvs && not tcs) $ report $ errNoBody v
   return v
 
 checkEquation :: Equation -> SCM Equation
@@ -702,24 +809,25 @@ checkCondExpr (CondExpr p g e) =
 
 checkExpr :: Position -> Expression -> SCM Expression
 checkExpr _ (Literal     l) = Literal       `liftM` renameLiteral l
-checkExpr _ (Variable    v) = checkVariable v
+checkExpr _ (Variable  _ v) = checkVariable v
 checkExpr _ (Constructor c) = checkVariable c
 checkExpr p (Paren       e) = Paren         `liftM` checkExpr p e
-checkExpr p (Typed    e ty) = flip Typed ty `liftM` checkExpr p e
+checkExpr p (Typed cty e cx ty) =
+  liftM3 (Typed cty) (checkExpr p e) (return cx) (return ty)
 checkExpr p (Tuple  pos es) = Tuple pos     `liftM` mapM (checkExpr p) es
 checkExpr p (List   pos es) = List pos      `liftM` mapM (checkExpr p) es
 checkExpr p (ListCompr      pos e qs)
  = withLocalEnv $ liftM2 (flip (ListCompr pos))
     -- Note: must be flipped to insert qs into RenameEnv first
     (mapM (checkStatement "list comprehension" p) qs) (checkExpr p e)
-checkExpr p (EnumFrom              e) = EnumFrom `liftM` checkExpr p e
-checkExpr p (EnumFromThen      e1 e2) =
-  liftM2 EnumFromThen (checkExpr p e1) (checkExpr p e2)
-checkExpr p (EnumFromTo        e1 e2) =
-  liftM2 EnumFromTo (checkExpr p e1) (checkExpr p e2)
-checkExpr p (EnumFromThenTo e1 e2 e3) =
-  liftM3 EnumFromThenTo (checkExpr p e1) (checkExpr p e2) (checkExpr p e3)
-checkExpr p (UnaryMinus         op e) = UnaryMinus op `liftM` checkExpr p e
+checkExpr p (EnumFrom cty          e) = EnumFrom cty `liftM` checkExpr p e
+checkExpr p (EnumFromThen cty  e1 e2) =
+  liftM2 (EnumFromThen cty) (checkExpr p e1) (checkExpr p e2)
+checkExpr p (EnumFromTo cty    e1 e2) =
+  liftM2 (EnumFromTo cty) (checkExpr p e1) (checkExpr p e2)
+checkExpr p (EnumFromThenTo cty e1 e2 e3) =
+  liftM3 (EnumFromThenTo cty) (checkExpr p e1) (checkExpr p e2) (checkExpr p e3)
+checkExpr p (UnaryMinus cty     op e) = UnaryMinus cty op `liftM` checkExpr p e
 checkExpr p (Apply             e1 e2) =
   liftM2 Apply (checkExpr p e1) (checkExpr p e2)
 checkExpr p (InfixApply     e1 op e2) =
@@ -785,27 +893,27 @@ checkVariable v
     -- anonymous free variable
   | isAnonId (unqualify v) = do
     checkAnonFreeVarsExtension $ qidPosition v
-    (\n -> Variable $ updQualIdent id (flip renameIdent n) v) `liftM` newId
+    (\n -> Variable Nothing $ updQualIdent id (flip renameIdent n) v) `liftM` newId
     -- return $ Variable v
     -- normal variable
   | otherwise             = do
     env <- getRenameEnv
     case qualLookupVar v env of
       []              -> do report $ errUndefinedVariable v
-                            return $ Variable v
+                            return $ Variable Nothing v
       [Constr _ _]    -> return $ Constructor v
-      [GlobalVar _ _] -> return $ Variable v
-      [LocalVar v' _] -> return $ Variable $ qualify v'
+      [GlobalVar _ _] -> return $ Variable Nothing v
+      [LocalVar v' _] -> return $ Variable Nothing $ qualify v'
       rs -> do
         m <- getModuleIdent
         case qualLookupVar (qualQualify m v) env of
           []              -> do report $ errAmbiguousIdent rs v
-                                return $ Variable v
+                                return $ Variable Nothing v
           [Constr _ _]    -> return $ Constructor v
-          [GlobalVar _ _] -> return $ Variable v
-          [LocalVar v' _] -> return $ Variable $ qualify v'
+          [GlobalVar _ _] -> return $ Variable Nothing v
+          [LocalVar v' _] -> return $ Variable Nothing $ qualify v'
           rs'             -> do report $ errAmbiguousIdent rs' v
-                                return $ Variable v
+                                return $ Variable Nothing v
 
 -- * Because patterns or decls eventually introduce new variables, the
 --   scope has to be nested one level.
@@ -847,15 +955,15 @@ checkOp op = do
   case qualLookupVar v env of
     []              -> report (errUndefinedVariable v) >> return op
     [Constr _ _]    -> return $ InfixConstr v
-    [GlobalVar _ _] -> return $ InfixOp v
-    [LocalVar v' _] -> return $ InfixOp $ qualify v'
+    [GlobalVar _ _] -> return $ InfixOp Nothing v
+    [LocalVar v' _] -> return $ InfixOp Nothing $ qualify v'
     rs              -> do
       m <- getModuleIdent
       case qualLookupVar (qualQualify m v) env of
         []              -> report (errAmbiguousIdent rs v) >> return op
         [Constr _ _]    -> return $ InfixConstr v
-        [GlobalVar _ _] -> return $ InfixOp v
-        [LocalVar v' _] -> return $ InfixOp $ qualify v'
+        [GlobalVar _ _] -> return $ InfixOp Nothing v
+        [LocalVar v' _] -> return $ InfixOp Nothing $ qualify v'
         rs'             -> report (errAmbiguousIdent rs' v) >> return op
   where v = opName op
 
@@ -886,18 +994,19 @@ checkFieldExpr r (Field p l e) = do
 -- ---------------------------------------------------------------------------
 
 constrs :: Decl -> [Ident]
-constrs (DataDecl _ _ _ cs) = map constr cs
-  where constr (ConstrDecl   _ _ c _) = c
-        constr (ConOpDecl _ _ _ op _) = op
-constrs (NewtypeDecl _ _ _ (NewConstrDecl _ _ c _)) = [c]
+constrs (DataDecl _ _ _ cs _) = map constr cs
+ where
+  constr (ConstrDecl   _ _ c _) = c
+  constr (ConOpDecl _ _ _ op _) = op
+constrs (NewtypeDecl _ _ _ (NewConstrDecl _ _ c _) _) = [c]
 constrs _ = []
 
 vars :: Decl -> [Ident]
-vars (TypeSig         _ fs _) = fs
-vars (FunctionDecl     _ f _) = [f]
+vars (TypeSig     _ _ fs _ _) = fs
+vars (FunctionDecl _ _ _ f _) = [f]
 vars (ForeignDecl  _ _ _ f _) = [f]
 vars (ExternalDecl      _ fs) = fs
-vars (PatternDecl      _ t _) = bv t
+vars (PatternDecl  _ _ _ t _) = bv t
 vars (FreeDecl          _ vs) = vs
 vars _ = []
 
@@ -913,7 +1022,7 @@ sortFuncDecls decls = sortFD Set.empty [] decls
  where
  sortFD _   res []              = reverse res
  sortFD env res (decl : decls') = case decl of
-   FunctionDecl _ ident _
+   FunctionDecl _ _ _ ident _
     | ident `Set.member` env
     -> sortFD env (insertBy cmpFuncDecl decl res) decls'
     | otherwise
@@ -921,7 +1030,7 @@ sortFuncDecls decls = sortFD Set.empty [] decls
    _    -> sortFD env (decl:res) decls'
 
 cmpFuncDecl :: Decl -> Decl -> Ordering
-cmpFuncDecl (FunctionDecl _ id1 _) (FunctionDecl _ id2 _)
+cmpFuncDecl (FunctionDecl _ _ _ id1 _) (FunctionDecl _ _ _ id2 _)
    | id1 == id2 = EQ
    | otherwise  = GT
 cmpFuncDecl _ _ = GT
@@ -1167,3 +1276,38 @@ errInfixWithoutParens p calls = posMessage p $
   showCall (q1, q2) = showWithPos q1 <+> text "calls" <+> showWithPos q2
   showWithPos q =  text (qualName q)
                <+> parens (text $ showLine $ qidPosition q)
+
+-- TODO: a position would be nice...
+errRedefiningClassMethods :: [Ident] -> Message
+errRedefiningClassMethods ids = message $
+  text "Redefining the following class methods: " 
+  <+> (hsep $ punctuate comma (map (text . escName) ids))
+
+
+-- type classes specific stuff
+updateClassDecls :: [Decl] -> [[Decl]] -> [Decl]
+updateClassDecls (ClassDecl p scon cls id0 _ : decls) (cDecls : cDeclss) 
+  = ClassDecl p scon cls id0 cDecls : updateClassDecls decls cDeclss
+updateClassDecls (d : decls) cDeclss = d : updateClassDecls decls cDeclss
+updateClassDecls [] [] = []
+updateClassDecls _ _ = internalError "updateClassDecls" 
+
+updateInstanceDecls :: [Decl] -> [[Decl]] -> [Decl]
+updateInstanceDecls (InstanceDecl p scon cls tc ids _ : decls) (iDecls : iDeclss) 
+  = InstanceDecl p scon cls tc ids iDecls : updateInstanceDecls decls iDeclss
+updateInstanceDecls (d : decls) iDeclss = d : updateInstanceDecls decls iDeclss
+updateInstanceDecls [] [] = [] 
+updateInstanceDecls _ _ = internalError "updateInstanceDecls"
+
+extractTypeDeclsFromClasses :: [Decl] -> [Decl]
+extractTypeDeclsFromClasses decls = 
+  filter isTypeSig $ concatMap extractCDecls $ filter isClassDecl decls
+
+
+extractCDecls :: Decl -> [Decl]
+extractCDecls (ClassDecl _ _ _ _ ds) = ds
+extractCDecls _ = internalError "extractCDecl"
+
+extractIDecls :: Decl -> [Decl]
+extractIDecls (InstanceDecl _ _ _ _ _ ds) = ds
+extractIDecls _ = internalError "extractIDecl"

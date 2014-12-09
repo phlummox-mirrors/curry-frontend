@@ -84,11 +84,11 @@ trQualify i = getModuleIdent >>= \m -> return $ qualifyWith m i
 -- alias types.
 
 trDecl :: Decl -> TransM [IL.Decl]
-trDecl (DataDecl     _ tc tvs cs) = (:[]) `liftM` trData    tc tvs cs
-trDecl (NewtypeDecl  _ tc tvs nc) = (:[]) `liftM` trNewtype tc tvs nc
-trDecl (FunctionDecl     p f eqs) = (:[]) `liftM` trFunction  p f eqs
-trDecl (ForeignDecl  _ cc ie f _) = (:[]) `liftM` trForeign  f cc ie
-trDecl _                          = return []
+trDecl (DataDecl    _ tc tvs cs _) = (:[]) `liftM` trData    tc tvs cs
+trDecl (NewtypeDecl _ tc tvs nc _) = (:[]) `liftM` trNewtype tc tvs nc
+trDecl (FunctionDecl  p _ _ f eqs) = (:[]) `liftM` trFunction  p f eqs
+trDecl (ForeignDecl   _ cc ie f _) = (:[]) `liftM` trForeign  f cc ie
+trDecl _                           = return []
 
 trData :: Ident -> [Ident] -> [ConstrDecl] -> TransM IL.Decl
 trData tc tvs cs = do
@@ -317,7 +317,7 @@ bindRenameEnv _ _                         _   = internalError "CurryToIL.bindRen
 
 trExpr :: [Ident] -> RenameEnv -> Expression -> TransM IL.Expression
 trExpr _  _   (Literal     l) = return $ IL.Literal (trLiteral l)
-trExpr _  env (Variable    v)
+trExpr _  env (Variable  _ v)
   | isQualified v = fun
   | otherwise     = case Map.lookup (unqualify v) env of
       Nothing -> fun
@@ -338,7 +338,7 @@ trExpr vs env (Let      ds e) = do
   where
   env' = foldr2 Map.insert env bvs bvs
   bvs  = bv ds
-  trBinding (PatternDecl _ (VariablePattern v) rhs)
+  trBinding (PatternDecl _ _ _ (VariablePattern v) rhs)
     = IL.Binding v `liftM` trRhs vs env' rhs
   trBinding p = error $ "unexpected binding: " ++ show p
 trExpr (v:vs) env (Case r ct e alts) = do
@@ -355,8 +355,8 @@ trExpr (v:vs) env (Case r ct e alts) = do
         -- subject is referenced -> introduce binding for v as subject
       | v `elem` fv expr                -> IL.Let (IL.Binding v e') expr
       | otherwise                       -> expr
-trExpr  vs env (Typed e ty) = liftM2 IL.Typed (trExpr vs env e)
-                                              (trType $ toType [] ty)
+trExpr  vs env (Typed _ e _cx ty) =
+  liftM2 IL.Typed (trExpr vs env e) (trType $ toType [] ty)
 trExpr _ _ _ = internalError "CurryToIL.trExpr"
 
 trAlt :: [Ident] -> RenameEnv -> Alt -> TransM Match
@@ -373,9 +373,9 @@ arguments :: NestedTerm -> [NestedTerm]
 arguments (NestedTerm _ ts) = ts
 
 trLiteral :: Literal -> IL.Literal
-trLiteral (Char    p c) = IL.Char p c
-trLiteral (Int ident i) = IL.Int (srcRefOf (idPosition ident)) i
-trLiteral (Float   p f) = IL.Float p f
+trLiteral (Char      p c) = IL.Char p c
+trLiteral (Int ident   i) = IL.Int (srcRefOf (idPosition ident)) i
+trLiteral (Float ident f) = IL.Float (srcRefOf (idPosition ident)) f
 trLiteral _             = internalError "CurryToIL.trLiteral"
 
 trPattern :: Ident -> Pattern -> NestedTerm
@@ -563,15 +563,15 @@ varType :: QualIdent -> TransM Type
 varType f = do
   tyEnv <- getValueEnv
   case qualLookupValue f tyEnv of
-    [Value _ _ (ForAll _ ty)] -> return ty
+    [Value _ _ (ForAll _ _ ty) _] -> return ty
     _ -> internalError $ "CurryToIL.varType: " ++ show f
 
 constrType :: QualIdent -> TransM Type
 constrType c = do
   tyEnv <- getValueEnv
   case qualLookupValue c tyEnv of
-    [DataConstructor  _ _ (ForAllExist _ _ ty)] -> return ty
-    [NewtypeConstructor _ (ForAllExist _ _ ty)] -> return ty
+    [DataConstructor  _ _ (ForAllExist _ _ _ ty)] -> return ty
+    [NewtypeConstructor _ (ForAllExist _ _ _ ty)] -> return ty
     _ -> internalError $ "CurryToIL.constrType: " ++ show c
 
 recordInfo :: Ident -> TransM (QualIdent, Int, [(Ident, Type)])

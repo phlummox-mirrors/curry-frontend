@@ -11,6 +11,8 @@
    This module implements substitutions on types.
 -}
 
+{-# LANGUAGE TypeSynonymInstances, FlexibleInstances #-}
+
 module Base.TypeSubst
   ( module Base.TypeSubst, idSubst, singleSubst, bindSubst, compose
   ) where
@@ -48,21 +50,34 @@ instance SubstType Type where
    where fs' = map (\ (l,ty) -> (l, subst sigma ty)) fs
 
 instance SubstType TypeScheme where
-  subst sigma (ForAll n ty) =
-    ForAll n (subst (foldr unbindSubst sigma [0..n-1]) ty)
+  subst sigma (ForAll cx n ty) =
+    ForAll (substContext newSigma cx) n (subst newSigma ty)
+   where
+     newSigma = foldr unbindSubst sigma [0..n-1]
 
 instance SubstType ExistTypeScheme where
-  subst sigma (ForAllExist n n' ty) =
-    ForAllExist n n' (subst (foldr unbindSubst sigma [0..n+n'-1]) ty)
+  subst sigma (ForAllExist cx n n' ty) =
+    ForAllExist (substContext newSigma cx) n n' (subst newSigma ty)
+   where
+     newSigma = foldr unbindSubst sigma [0..n+n'-1]
 
 instance SubstType ValueInfo where
   subst _     dc@(DataConstructor  _ _ _) = dc
   subst _     nc@(NewtypeConstructor _ _) = nc
-  subst theta (Value              v a ty) = Value v a (subst theta ty)
+  subst theta (Value           v a ty mc) = Value v a (subst theta ty) mc
   subst theta (Label              l r ty) = Label l r (subst theta ty)
+
+instance SubstType Context where
+  subst = substContext
 
 instance SubstType a => SubstType (TopEnv a) where
   subst = fmap . subst
+
+instance (SubstType a, SubstType b) => SubstType (a, b) where
+  subst sigma (x, y) = (subst sigma x, subst sigma y)
+
+substContext :: TypeSubst -> Context -> Context
+substContext s cx = map (\(qid, ty) -> (qid, subst s ty)) cx  
 
 -- The function 'expandAliasType' expands all occurrences of a
 -- type synonym in a type. After the expansion we have to reassign the

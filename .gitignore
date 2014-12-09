@@ -1,5 +1,16 @@
 cabal-dev/
 dist/
 .curry/
+.dist-buildwrapper/
+.project
+.settings
+*.hi
+*.o
+.hpc/
+hpc/
+*.tix
+*.fint
+Curry_Main_Goal.curry
+*~
 .cabal-sandbox/
 cabal.sandbox.config

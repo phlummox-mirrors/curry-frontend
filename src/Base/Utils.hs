@@ -15,6 +15,7 @@
 
 module Base.Utils
   ( thd3, (++!), foldr2, mapAccumM, findDouble, concatMapM, findMultiples
+  , without, zip', zipWith3', zipWith', fromJust', fst3
   ) where
 
 import Data.List (partition)
@@ -24,8 +25,8 @@ infixr 5 ++!
 -- The Prelude does not contain standard functions for triples.
 -- We provide projection, (un-)currying, and mapping for triples here.
 
--- fst3 :: (a, b, c) -> a
--- fst3 (x, _, _) = x
+fst3 :: (a, b, c) -> a
+fst3 (x, _, _) = x
 
 -- snd3 :: (a, b, c) -> b
 -- snd3 (_, y, _) = y
@@ -108,3 +109,38 @@ findMultiples (x : xs)
   | otherwise = (x : same) : multiples
   where (same, other) = partition (==x) xs
         multiples     = findMultiples other
+
+-- A function that returns the given list without the nth element
+without :: [a] -> Int -> [a]
+without xs n = 
+  if n >= length xs || n < 0
+  then error "without: index out of range" 
+  else without' 0 xs
+  where
+  without' n' (y:ys) | n' == n   = without' (n' + 1) ys
+                     | otherwise = y : without' (n' + 1) ys 
+  without' _ [] = []
+
+-- Zipping lists as with zip/zipWith, but throw an error if the lists don't have 
+--  the same length
+zip' :: (Show a, Show b) => [a] -> [b] -> [(a, b)]
+zip' (x:xs) (y:ys) = (x, y) : zip' xs ys
+zip' []     []     = []
+zip' xs      ys    = error ("zip': lists don't have the same length!\nxs: " ++ show xs ++ "\nys: " ++ show ys)
+
+zipWith' :: (a -> b -> c) -> [a] -> [b] -> [c]
+zipWith' _ []     []     = []
+zipWith' f (x:xs) (y:ys) = f x y : zipWith' f xs ys
+zipWith' _ _      _      = error "zipWith': lists don't have same length"
+
+zipWith3' :: (a -> b -> c -> d) -> [a] -> [b] -> [c] -> [d]
+zipWith3' _ []     []     []     = []
+zipWith3' f (x:xs) (y:ys) (z:zs) = f x y z : zipWith3' f xs ys zs
+zipWith3' _ _      _      _      = error "zipWith3': lists don't have same length"
+
+
+-- |Like fromJust, only displays the given error string if applied to Nothing. 
+-- Useful for debugging. 
+fromJust' :: String -> Maybe a -> a
+fromJust' _ (Just x) = x
+fromJust' s Nothing  = error ("fromJust': " ++ s)

@@ -1,0 +1,3 @@
+
+instance NotExistent Bool where
+

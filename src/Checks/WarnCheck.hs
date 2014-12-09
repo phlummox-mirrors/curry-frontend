@@ -3,6 +3,7 @@
     Description :  Checks for irregular code
     Copyright   :  (c) 2006        Martin Engelke
                        2011 - 2014 Björn Peemöller
+                       2013        Matthias Böhm
                        2014        Jan Tikovsky
     License     :  OtherLicense
 
@@ -21,23 +22,23 @@ import           Control.Monad.State.Strict    (State, execState, gets, modify)
 import qualified Data.IntSet         as IntSet
   (IntSet, empty, insert, notMember, singleton, union, unions)
 import qualified Data.Map            as Map    (empty, insert, lookup)
+import Text.PrettyPrint
 import           Data.Maybe                    (catMaybes, fromMaybe, isJust)
 import           Data.List
-  (intersect, intersectBy, nub, sort, unionBy)
+  (intersect, intersectBy, nub, sort, unionBy, isPrefixOf)
 
 import Curry.Base.Ident
 import Curry.Base.Position
-import Curry.Base.Pretty
-import Curry.Syntax
-import Curry.Syntax.Pretty (ppPattern, ppExpr, ppIdent)
+import Curry.Syntax hiding (Context(..))
+import Curry.Syntax.Pretty (ppPattern, ppExpr, ppIdent, ppTypeExpr, ppQIdent)
 
-import Base.CurryTypes (ppTypeScheme)
+import Base.CurryTypes (fromQualType)
 import Base.Messages (Message, posMessage, internalError)
 import qualified Base.ScopeEnv as SE
   ( ScopeEnv, new, beginScope, endScopeUp, insert, lookup, level, modify
   , lookupWithLevel, toLevelList, currentLevel)
 
-import Base.Types
+import Base.Types hiding (isCons)
 import Base.Utils (findMultiples)
 import Env.ModuleAlias
 import Env.TypeConstructor (TCEnv, TypeInfo (..), lookupTC, qualLookupTC)
@@ -208,7 +209,7 @@ checkRuleAdjacency :: [Decl] -> WCM ()
 checkRuleAdjacency decls = warnFor WarnDisjoinedRules
                          $ foldM_ check (mkIdent "", Map.empty) decls
   where
-  check (prevId, env) (FunctionDecl p f _) = do
+  check (prevId, env) (FunctionDecl p _ _ f _) = do
     cons <- isConsId f
     if cons || prevId == f
       then return (f, env)
@@ -225,7 +226,7 @@ warnDisjoinedFunctionRules ident pos = posMessage ident $ hsep (map text
   <+> parens (text "first occurrence at" <+> text (showLine pos))
 
 checkDecl :: Decl -> WCM ()
-checkDecl (DataDecl   _ _ vs cs) = inNestedScope $ do
+checkDecl (DataDecl   _ _ vs cs _) = inNestedScope $ do
   mapM_ insertTypeVar   vs
   mapM_ checkConstrDecl cs
   reportUnusedTypeVars  vs
@@ -233,8 +234,8 @@ checkDecl (TypeDecl   _ _ vs ty) = inNestedScope $ do
   mapM_ insertTypeVar  vs
   checkTypeExpr ty
   reportUnusedTypeVars vs
-checkDecl (FunctionDecl p f eqs) = checkFunctionDecl p f eqs
-checkDecl (PatternDecl  _ p rhs) = checkPattern p >> checkRhs rhs
+checkDecl (FunctionDecl p _ _ f eqs) = checkFunctionDecl p f eqs
+checkDecl (PatternDecl  _ _ _ p rhs) = checkPattern p >> checkRhs rhs
 checkDecl _                      = ok
 
 checkConstrDecl :: ConstrDecl -> WCM ()
@@ -253,14 +254,16 @@ checkTypeExpr (VariableType          v) = visitTypeId v
 checkTypeExpr (TupleType           tys) = mapM_ checkTypeExpr tys
 checkTypeExpr (ListType             ty) = checkTypeExpr ty
 checkTypeExpr (ArrowType       ty1 ty2) = mapM_ checkTypeExpr [ty1, ty2]
+checkTypeExpr s@(SpecialConstructorType _ _) = 
+  checkTypeExpr $ specialConsToTyExpr s
 checkTypeExpr (RecordType           fs) = mapM_ checkTypeExpr (map snd fs)
 
 -- Checks locally declared identifiers (i.e. functions and logic variables)
 -- for shadowing
 checkLocalDecl :: Decl -> WCM ()
-checkLocalDecl (FunctionDecl _ f _) = checkShadowing f
+checkLocalDecl (FunctionDecl _ _ _ f _) = checkShadowing f
 checkLocalDecl (FreeDecl      _ vs) = mapM_ checkShadowing vs
-checkLocalDecl (PatternDecl  _ p _) = checkPattern p
+checkLocalDecl (PatternDecl _ _ _ p _) = checkPattern p
 checkLocalDecl _                    = ok
 
 checkFunctionDecl :: Position -> Ident -> [Equation] -> WCM ()
@@ -333,17 +336,17 @@ checkCondExpr :: CondExpr -> WCM ()
 checkCondExpr (CondExpr _ c e) = checkExpr c >> checkExpr e
 
 checkExpr :: Expression -> WCM ()
-checkExpr (Variable              v) = visitQId v
+checkExpr (Variable            _ v) = visitQId v
 checkExpr (Paren                 e) = checkExpr e
-checkExpr (Typed               e _) = checkExpr e
+checkExpr (Typed           _ e _ _) = checkExpr e
 checkExpr (Tuple              _ es) = mapM_ checkExpr es
 checkExpr (List               _ es) = mapM_ checkExpr es
 checkExpr (ListCompr       _ e sts) = checkStatements sts e
-checkExpr (EnumFrom              e) = checkExpr e
-checkExpr (EnumFromThen      e1 e2) = mapM_ checkExpr [e1, e2]
-checkExpr (EnumFromTo        e1 e2) = mapM_ checkExpr [e1, e2]
-checkExpr (EnumFromThenTo e1 e2 e3) = mapM_ checkExpr [e1, e2, e3]
-checkExpr (UnaryMinus          _ e) = checkExpr e
+checkExpr (EnumFrom _            e) = checkExpr e
+checkExpr (EnumFromThen _    e1 e2) = mapM_ checkExpr [e1, e2]
+checkExpr (EnumFromTo _      e1 e2) = mapM_ checkExpr [e1, e2]
+checkExpr (EnumFromThenTo _ e1 e2 e3) = mapM_ checkExpr [e1, e2, e3]
+checkExpr (UnaryMinus _        _ e) = checkExpr e
 checkExpr (Apply             e1 e2) = mapM_ checkExpr [e1, e2]
 checkExpr (InfixApply     e1 op e2) = do
   visitQId (opName op)
@@ -403,8 +406,8 @@ checkFieldExpression (Field _ _ e) = checkExpr e -- Hier auch "visitId ident" ?
 -- during syntax checking.
 checkMissingTypeSignatures :: [Decl] -> WCM ()
 checkMissingTypeSignatures ds = warnFor WarnMissingSignatures $ do
-  let typedFs   = [f | TypeSig     _ fs _ <- ds, f <- fs]
-      untypedFs = [f | FunctionDecl _ f _ <- ds, f `notElem` typedFs]
+  let typedFs   = [f | TypeSig  _ _ fs _ _ <- ds, f <- fs]
+      untypedFs = [f | FunctionDecl _ _ _ f _ <- ds, f `notElem` typedFs]
   unless (null untypedFs) $ do
     mid   <- getModuleIdent
     tyScs <- mapM getTyScheme untypedFs
@@ -414,9 +417,9 @@ getTyScheme :: Ident -> WCM TypeScheme
 getTyScheme q = do
   m     <- getModuleIdent
   tyEnv <- gets valueEnv
-  return $ case qualLookupValue (qualifyWith m q) tyEnv of
-    [Value  _ _ tys] -> tys
-    _                -> internalError $
+  case qualLookupValue (qualifyWith m q) tyEnv of
+    [Value  _ _ tys _] -> return tys
+    _                  -> internalError $
       "Checks.WarnCheck.getTyScheme: " ++ show q
 
 warnMissingTypeSignature :: ModuleIdent -> Ident -> TypeScheme -> Message
@@ -424,6 +427,20 @@ warnMissingTypeSignature mid i tys = posMessage i $ fsep
   [ text "Top-level binding with no type signature:"
   , nest 2 $ text (showIdent i) <+> text "::" <+> ppTypeScheme mid tys
   ]
+
+ppType :: ModuleIdent -> Type -> Doc
+ppType m = ppTypeExpr 0 . fromQualType m
+
+ppTypeScheme :: ModuleIdent -> TypeScheme -> Doc
+ppTypeScheme m (ForAll cx _ ty) = ppContext' m cx <+> text "=>" <+> ppType m ty
+
+ppContext' :: ModuleIdent -> Context -> Doc
+ppContext' m cx = parens $ hsep $ 
+  punctuate comma (map (\(qid, ty) -> ppQIdent qid <+> (ps ty) (ppType m ty)) cx')
+  where cx' = nub cx
+        ps (TypeConstructor _ (_:_)) = parens
+        ps (TypeArrow           _ _) = parens
+        ps _                         = id           
 
 -- -----------------------------------------------------------------------------
 -- Check for overlapping module alias names
@@ -697,8 +714,8 @@ getConTy q = do
   tyEnv <- gets valueEnv
   tcEnv <- gets tyConsEnv
   return $ case qualLookupValue q tyEnv of
-    [DataConstructor  _ _ (ForAllExist _ _ ty)] -> ty
-    [NewtypeConstructor _ (ForAllExist _ _ ty)] -> ty
+    [DataConstructor  _ _ (ForAllExist _ _ _ ty)] -> ty
+    [NewtypeConstructor _ (ForAllExist _ _ _ ty)] -> ty
     _                                           -> case qualLookupTC q tcEnv of
       [AliasType _ _ ty] -> ty
       _                  -> internalError $
@@ -888,18 +905,18 @@ reportUnusedTypeVars vs = warnFor WarnUnusedBindings $ do
 -- sides.
 
 insertDecl :: Decl -> WCM ()
-insertDecl (DataDecl     _ d _ cs) = do
+insertDecl (DataDecl   _ d _ cs _) = do
   insertTypeConsId d
   mapM_ insertConstrDecl cs
 insertDecl (TypeDecl     _ t _ ty) = do
   insertTypeConsId t
   insertTypeExpr ty
-insertDecl (FunctionDecl    _ f _) = do
+insertDecl (FunctionDecl _ _ _ f _) = do
   cons <- isConsId f
   unless cons $ insertVar f
 insertDecl (ForeignDecl _ _ _ f _) = insertVar f
 insertDecl (ExternalDecl     _ vs) = mapM_ insertVar vs
-insertDecl (PatternDecl     _ p _) = insertPattern False p
+insertDecl (PatternDecl _ _ _ p _) = insertPattern False p
 insertDecl (FreeDecl         _ vs) = mapM_ insertVar vs
 insertDecl _                       = ok
 
@@ -911,7 +928,8 @@ insertTypeExpr (ListType           ty) = insertTypeExpr ty
 insertTypeExpr (ArrowType     ty1 ty2) = mapM_ insertTypeExpr [ty1,ty2]
 insertTypeExpr (RecordType          _) = ok
   --mapM_ insertVar (concatMap fst fs)
-  --maybe (return ()) insertTypeExpr rty
+insertTypeExpr s@(SpecialConstructorType _ _) = 
+  insertTypeExpr $ specialConsToTyExpr s 
 
 insertConstrDecl :: ConstrDecl -> WCM ()
 insertConstrDecl (ConstrDecl _ _    c _) = insertConsId c
@@ -1042,7 +1060,12 @@ returnUnrefVars :: WCM [Ident]
 returnUnrefVars = gets (\s ->
   let ids = map fst (SE.toLevelList (scope s))
       unrefs = filter (isUnref s) ids
-  in  map unqualify unrefs )
+      -- Issue the "variable unreferenced" warning only for variables 
+      -- that are given in the initial source code; 
+      -- all variables that start with "identPrefix" are constructed by the
+      -- compiler and no warning should be issued for these variables.  
+      unrefs' = filter (not . isPrefixOf identPrefix . idName . qidIdent) unrefs
+  in  map unqualify unrefs' )
 
 inNestedScope :: WCM a -> WCM ()
 inNestedScope m = beginScope >> m >> endScope

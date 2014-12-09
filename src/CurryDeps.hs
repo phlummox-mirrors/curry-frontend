@@ -23,7 +23,7 @@ import           Control.Monad   (foldM)
 import           Data.List       (isSuffixOf, nub)
 import qualified Data.Map as Map (Map, empty, insert, lookup, toList)
 
-import Curry.Base.Ident
+import Curry.Base.Ident hiding (sep)
 import Curry.Base.Monad
 import Curry.Base.Pretty
 import Curry.Files.Filenames

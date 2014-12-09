@@ -43,7 +43,7 @@ import qualified Base.ScopeEnv       as SE
   (ScopeEnv, new, beginScope, insert, exists)
 import Env.Interface                        (InterfaceEnv, lookupInterface)
 import IL
-
+    
 -- Completes case expressions by adding branches for missing constructors.
 -- The interface environment 'iEnv' is needed to compute these constructors.
 completeCase :: InterfaceEnv -> Module -> Module
@@ -207,7 +207,7 @@ completeLitAlts r ea ce alts = do
   where
   nestedCases _ []              = failedExpr
   nestedCases x (Alt p ae : as) = case p of
-    LiteralPattern l  -> Case r ea (Variable x `eqExpr` Literal l)
+    LiteralPattern l  -> Case r ea (Variable x `eqExpr` l)
                           [ Alt truePatt  ae
                           , Alt falsePatt (nestedCases x as)
                           ]
@@ -299,9 +299,17 @@ occursInBinding v (Binding w _) = v == w
 failedExpr :: Expression
 failedExpr = Function (qualifyWith preludeMIdent (mkIdent "failed")) 0
 
-eqExpr :: Expression -> Expression -> Expression
-eqExpr e1 e2 = Apply (Apply eq e1) e2
-  where eq = Function (qualifyWith preludeMIdent (mkIdent "==")) 2
+-- (==) is a type class method, so we have to apply information about the
+--  specific dictonary
+eqExpr :: Expression -> Literal -> Expression
+eqExpr e1 e2 = Apply (Apply eq e1) (Literal e2)
+ where
+  eq = Apply (Function (qualifyWith preludeMIdent (mkIdent "sel:_Prelude.Eq:_==")) 1)
+             (Function (qualifyWith preludeMIdent (mkIdent dict)) 0)
+  dict = case e2 of
+              Char _ _  -> "dict:_Prelude.Eq:_Prelude.Char"
+              Int _ _   -> "dict:_Prelude.Eq:_Prelude.Int"
+              Float _ _ -> "dict:_Prelude.Eq:_Prelude.Float"
 
 truePatt :: ConstrTerm
 truePatt = ConstructorPattern qTrueId []

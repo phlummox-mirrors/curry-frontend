@@ -58,16 +58,16 @@ instance QuantExpr e => QuantExpr [e] where
 -- prelude.
 
 instance QualExpr Decl where
-  qfv m (FunctionDecl _ _ eqs) = qfv m eqs
-  qfv m (PatternDecl  _ _ rhs) = qfv m rhs
-  qfv _ _                      = []
+  qfv m (FunctionDecl _ _ _ _ eqs) = qfv m eqs
+  qfv m (PatternDecl  _ _ _ _ rhs) = qfv m rhs
+  qfv _ _                          = []
 
 instance QuantExpr Decl where
-  bv (TypeSig        _ vs _) = vs
-  bv (FunctionDecl    _ f _) = [f]
+  bv (TypeSig    _ _ vs _ _) = vs
+  bv (FunctionDecl _ _ _ f _) = [f]
   bv (ForeignDecl _ _ _ f _) = [f]
   bv (ExternalDecl     _ fs) = fs
-  bv (PatternDecl     _ t _) = bv t
+  bv (PatternDecl _ _ _ t _) = bv t
   bv (FreeDecl         _ vs) = vs
   bv _                       = []
 
@@ -89,18 +89,18 @@ instance QualExpr CondExpr where
 
 instance QualExpr Expression where
   qfv _ (Literal               _) = []
-  qfv m (Variable              v) = maybe [] return $ localIdent m v
+  qfv m (Variable            _ v) = maybe [] return $ localIdent m v
   qfv _ (Constructor           _) = []
   qfv m (Paren                 e) = qfv m e
-  qfv m (Typed               e _) = qfv m e
+  qfv m (Typed          _  e _ _) = qfv m e
   qfv m (Tuple              _ es) = qfv m es
   qfv m (List               _ es) = qfv m es
   qfv m (ListCompr        _ e qs) = foldr (qfvStmt m) (qfv m e) qs
-  qfv m (EnumFrom              e) = qfv m e
-  qfv m (EnumFromThen      e1 e2) = qfv m e1 ++ qfv m e2
-  qfv m (EnumFromTo        e1 e2) = qfv m e1 ++ qfv m e2
-  qfv m (EnumFromThenTo e1 e2 e3) = qfv m e1 ++ qfv m e2 ++ qfv m e3
-  qfv m (UnaryMinus          _ e) = qfv m e
+  qfv m (EnumFrom _            e) = qfv m e
+  qfv m (EnumFromThen _    e1 e2) = qfv m e1 ++ qfv m e2
+  qfv m (EnumFromTo _      e1 e2) = qfv m e1 ++ qfv m e2
+  qfv m (EnumFromThenTo _ e1 e2 e3) = qfv m e1 ++ qfv m e2 ++ qfv m e3
+  qfv m (UnaryMinus _        _ e) = qfv m e
   qfv m (Apply             e1 e2) = qfv m e1 ++ qfv m e2
   qfv m (InfixApply     e1 op e2) = qfv m op ++ qfv m e1 ++ qfv m e2
   qfv m (LeftSection        e op) = qfv m op ++ qfv m e
@@ -137,7 +137,7 @@ instance QuantExpr Statement where
   bv (StmtDecl    ds) = bv ds
 
 instance QualExpr InfixOp where
-  qfv m (InfixOp    op) = qfv m $ Variable op
+  qfv m (InfixOp  _ op) = qfv m $ Variable Nothing op
   qfv _ (InfixConstr _) = []
 
 instance QuantExpr Pattern where
@@ -174,6 +174,7 @@ instance QualExpr Pattern where
 
 instance Expr TypeExpr where
   fv (ConstructorType _ tys) = fv tys
+  fv (SpecialConstructorType _ tys) = fv tys
   fv (VariableType       tv)
     | isAnonId tv            = []
     | otherwise              = [tv]

@@ -3,6 +3,7 @@
     Description :  Loading interfaces
     Copyright   :  (c) 2000 - 2004, Wolfgang Lux
                        2011 - 2013, Björn Peemöller
+                       2013       , Matthias Böhm
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
@@ -47,6 +48,8 @@ data LoaderState = LoaderState
   { iEnv   :: InterfaceEnv
   , spaths :: [FilePath]
   , errs   :: [Message]
+  -- | should we load the type classes or the non-type-classes interfaces?
+  , tcs0   :: Bool 
   }
 
 -- Report an error.
@@ -61,6 +64,9 @@ loaded m = S.gets $ \ s -> m `M.member` iEnv s
 searchPaths :: IntfLoader [FilePath]
 searchPaths = S.gets spaths
 
+isTypeClasses :: IntfLoader Bool
+isTypeClasses = S.gets tcs0
+
 -- Add an interface to the environment.
 addInterface :: ModuleIdent -> Interface -> IntfLoader ()
 addInterface m intf = S.modify $ \ s -> s { iEnv = M.insert m intf $ iEnv s }
@@ -68,13 +74,16 @@ addInterface m intf = S.modify $ \ s -> s { iEnv = M.insert m intf $ iEnv s }
 -- |Load the interfaces needed by a given module.
 -- This function returns an 'InterfaceEnv' containing the 'Interface's which
 -- were successfully loaded.
-loadInterfaces :: [FilePath] -- ^ 'FilePath's to search in for interfaces
+loadInterfaces :: Bool       -- ^ should we load type class interfaces or non-type-classes interfaces
+               -> [FilePath] -- ^ 'FilePath's to search in for interfaces
                -> Module     -- ^ 'Module' header with import declarations
                -> CYIO InterfaceEnv
-loadInterfaces paths (Module _ m _ is _) = do
-  res <- liftIO $ S.execStateT load (LoaderState initInterfaceEnv paths [])
-  if null (errs res) then ok (iEnv res) else failMessages (reverse $ errs res)
-  where load = mapM_ (loadInterface [m]) [(p, m') | ImportDecl p m' _ _ _ <- is]
+loadInterfaces tcs paths (Module _ m _ is _) = do
+  res <- liftIO $ S.execStateT load (LoaderState initInterfaceEnv paths [] tcs)
+  if null (errs res)
+    then ok (iEnv res)
+    else failMessages (reverse $ errs res)
+ where load = mapM_ (loadInterface [m]) [(p, m') | ImportDecl p m' _ _ _ <- is]
 
 -- |Load an interface into the given environment.
 --
@@ -105,11 +114,13 @@ compileInterface :: [ModuleIdent] -> (Position, ModuleIdent) -> FilePath
                  -> IntfLoader ()
 compileInterface ctxt (p, m) fn = do
   mbSrc <- liftIO $ readModule fn
+  tcs <- isTypeClasses
   case mbSrc of
     Nothing  -> report [errInterfaceNotFound p m]
     Just src -> case runCYM (parseInterface fn src) of
       Left err -> report err
-      Right intf@(Interface n is _) ->
+      Right [intf0, intftc0] ->
+        let intf@(Interface n is _) = if tcs then intftc0 else intf0 in
         if m /= n
           then report [errWrongInterface (first fn) m n]
           else do
@@ -117,6 +128,7 @@ compileInterface ctxt (p, m) fn = do
             mapM_ report [intfErrs]
             mapM_ (loadInterface (m : ctxt)) [ (q, i) | IImportDecl q i <- is ]
             addInterface m intf'
+      Right _ -> internalError "compileInterface"
 
 -- Error message for required interface that could not be found.
 errInterfaceNotFound :: Position -> ModuleIdent -> Message

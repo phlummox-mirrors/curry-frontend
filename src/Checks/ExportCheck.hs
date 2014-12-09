@@ -1,3 +1,18 @@
+{- |
+    Module      :  $Header$
+    Description :  Checks the validity of the export specification
+    Copyright   :  (c)      Wolfgang Lux
+                   (c) 2013 Matthias Böhm
+    License     :  OtherLicense
+
+    Maintainer  :  bjp@informatik.uni-kiel.de
+    Stability   :  experimental
+    Portability :  portable
+
+    The validity of the export specification is checked, and all 
+    occuring exports are brought into a canonical form for the actual export
+-}
+
 module Checks.ExportCheck (exportCheck) where
 
 import           Control.Monad              (liftM, unless)
@@ -6,33 +21,34 @@ import           Data.List                  (nub, union)
 import qualified Data.Map            as Map
 import           Data.Maybe                 (fromMaybe)
 import qualified Data.Set            as Set
+import           Text.PrettyPrint
 
 import Curry.Base.Ident
 import Curry.Base.Position
-import Curry.Base.Pretty
 import Curry.Syntax
 
 import Base.Messages (Message, internalError, posMessage)
 import Base.TopEnv
-import Base.Types
-import Base.Utils (findMultiples)
+import Base.Types hiding (isTyCons)
+import Base.Utils (findMultiples, fst3)
 
 import Env.ModuleAlias (AliasEnv)
 import Env.TypeConstructor
 import Env.Value
+import Env.ClassEnv
 
 -- ---------------------------------------------------------------------------
 -- Check and expansion of the export statement
 -- ---------------------------------------------------------------------------
 
-exportCheck :: ModuleIdent -> AliasEnv -> TCEnv -> ValueEnv
+exportCheck :: ModuleIdent -> AliasEnv -> TCEnv -> ValueEnv -> ClassEnv
             -> Maybe ExportSpec -> (Maybe ExportSpec, [Message])
-exportCheck m aEnv tcEnv tyEnv spec = case expErrs of
+exportCheck m aEnv tcEnv tyEnv cEnv spec = case expErrs of
   [] -> (Just $ Exporting NoPos exports, ambiErrs)
   ms -> (spec, ms)
   where
   (exports, expErrs) = runECM (joinExports `liftM` expandSpec spec) initState
-  initState          = ECState m imported tcEnv tyEnv []
+  initState          = ECState m imported tcEnv tyEnv cEnv []
   imported           = Set.fromList $ Map.elems aEnv
 
   ambiErrs = map errMultipleExportType  (findMultiples exportedTypes)
@@ -47,7 +63,8 @@ data ECState = ECState
   , importedMods :: Set.Set ModuleIdent
   , tyConsEnv    :: TCEnv
   , valueEnv     :: ValueEnv
-  , errors       :: [Message]
+  , classEnv     :: ClassEnv
+  , errors       :: [Message]   
   }
 
 type ECM a = S.State ECState a
@@ -66,6 +83,9 @@ getTyConsEnv = S.gets tyConsEnv
 
 getValueEnv :: ECM ValueEnv
 getValueEnv = S.gets valueEnv
+
+getClassEnv :: ECM ClassEnv
+getClassEnv = S.gets classEnv
 
 report :: Message -> ECM ()
 report err = S.modify (\ s -> s { errors = err : errors s })
@@ -93,17 +113,42 @@ expandSpec (Just (Exporting _ es)) = concat `liftM` mapM expandExport es
 -- |Expand single export
 expandExport :: Export -> ECM [Export]
 expandExport (Export             x) = expandThing x
-expandExport (ExportTypeWith tc cs) = expandTypeWith tc cs
-expandExport (ExportTypeAll     tc) = expandTypeAll tc
+expandExport (ExportTypeWith tc cs) = do
+  tcEnv <- getTyConsEnv
+  cEnv  <- getClassEnv
+  let isTyCons = not $ null $ qualLookupTC tc tcEnv
+      isClass  = not $ null $ lookupNonHiddenClasses cEnv tc 
+  case () of
+    () | isTyCons     && isClass     -> report (errAmbiguousType tc) >> return []
+    () | isTyCons     && not isClass -> expandTypeWith tc cs
+    () | not isTyCons && isClass     -> expandClassWith tc cs
+    () | otherwise                   -> report (errUndefinedType tc) >> return []
+expandExport (ExportTypeAll     tc) = do
+  tcEnv <- getTyConsEnv
+  cEnv  <- getClassEnv
+  let isTyCons = not $ null $ qualLookupTC tc tcEnv
+      isClass  = not $ null $ lookupNonHiddenClasses cEnv tc 
+  case () of
+    () | isTyCons     && isClass     -> report (errAmbiguousType tc) >> return []
+    () | isTyCons     && not isClass -> expandTypeAll tc
+    () | not isTyCons && isClass     -> expandClassAll tc
+    () | otherwise                   -> report (errUndefinedType tc) >> return []
 expandExport (ExportModule      em) = expandModule em
 
--- |Expand export of type cons / data cons / function
+-- |Expand export of type cons / class / data cons / function
 expandThing :: QualIdent -> ECM [Export]
 expandThing tc = do
   tcEnv <- getTyConsEnv
+  cEnv  <- getClassEnv
   case qualLookupTC tc tcEnv of
-    []  -> expandThing' tc Nothing
-    [t] -> expandThing' tc (Just [ExportTypeWith (origName t) []])
+    []  -> case lookupNonHiddenClasses cEnv tc of
+      []  -> expandThing' tc Nothing
+      [c] -> expandThing' tc (Just [ExportTypeWith (theClass c) []])
+      _   -> report (errAmbiguousType tc) >> return [] 
+    [t] -> case lookupNonHiddenClasses cEnv tc of
+      [] -> expandThing' tc (Just [ExportTypeWith (origName t) []])
+      -- TODO: export both class and type constructor?
+      _  -> report (errAmbiguousType tc) >> return []  
     _   -> report (errAmbiguousType tc) >> return []
 
 -- |Expand export of data cons / function
@@ -112,13 +157,15 @@ expandThing' f tcExport = do
   tyEnv <- getValueEnv
   case qualLookupValue f tyEnv of
     []             -> justTcOr errUndefinedEntity
-    [Value f' _ _] -> return $ Export f' : fromMaybe [] tcExport
+    [Value f' _ _ Nothing] -> return $ Export f' : fromMaybe [] tcExport
+    [Value _ _ _ (Just _)] -> justTcOr errExportClassMethod
     [_]            -> justTcOr errExportDataConstr
     _              -> do
       m <- getModuleIdent
       case qualLookupValue (qualQualify m f) tyEnv of
         []             -> justTcOr errUndefinedEntity
-        [Value f' _ _] -> return $ Export f' : fromMaybe [] tcExport
+        [Value f' _ _ Nothing] -> return $ Export f' : fromMaybe [] tcExport
+        [Value _ _ _ (Just _)] -> justTcOr errExportClassMethod
         [_]            -> justTcOr errExportDataConstr
         _              -> report (errAmbiguousName f) >> return []
   where justTcOr errFun = case tcExport of
@@ -145,6 +192,22 @@ expandTypeWith tc cs = do
   checkLabel ls l   = unless (renameLabel l `elem` ls)
                       (report $ errUndefinedLabel tc l)
 
+-- |Expands class with explicitely given methods for exporting
+expandClassWith :: QualIdent -> [Ident] -> ECM [Export]
+expandClassWith cls fs = do
+  cEnv <- getClassEnv
+  case lookupNonHiddenClasses cEnv cls of
+    []  -> report (errUndefinedType cls) >> return []
+    [c] -> do
+      mapM_ (checkIsClassMethod c) fs 
+      return [ExportTypeWith (theClass c) fs]
+    _   -> report (errAmbiguousType cls) >> return []
+  where
+  checkIsClassMethod :: Class -> Ident -> ECM ()
+  checkIsClassMethod c f = 
+    unless (f `elem` (map fst $ typeSchemes c)) $ 
+      report (errNotAClassMethod (theClass c) f)
+
 -- |Expand type constructor with all data constructors
 expandTypeAll :: QualIdent -> ECM [Export]
 expandTypeAll tc = do
@@ -157,6 +220,15 @@ expandTypeAll tc = do
         then return [exportType tyEnv t]
         else report (errNonDataType tc) >> return []
     _   -> report (errAmbiguousType tc) >> return []
+
+-- |Expands class with all class methods
+expandClassAll :: QualIdent -> ECM [Export]
+expandClassAll cls = do
+  cEnv <- getClassEnv
+  case lookupNonHiddenClasses cEnv cls of
+    []  -> report (errUndefinedType cls) >> return []
+    [c] -> return [ExportTypeWith (theClass c) (map fst $ typeSchemes c)]
+    _   -> report (errAmbiguousType cls) >> return []
 
 expandModule :: ModuleIdent -> ECM [Export]
 expandModule em = do
@@ -171,16 +243,24 @@ expandLocalModule :: ECM [Export]
 expandLocalModule = do
   tcEnv <- getTyConsEnv
   tyEnv <- getValueEnv
+  cEnv  <- getClassEnv
   return $ [exportType tyEnv t | (_, t) <- localBindings tcEnv] ++
-    [Export f' | (f, Value f' _ _) <- localBindings tyEnv, f == unRenameIdent f]
+    [Export f' | (f, Value f' _ _ Nothing) <- localBindings tyEnv, 
+                  f == unRenameIdent f] ++
+    [ExportTypeWith cName ms | cls <- allLocalClasses (theClasses cEnv), 
+                               let cName = theClass cls
+                                   ms = map fst (typeSchemes cls)]
 
 -- |Expand a module export
 expandImportedModule :: ModuleIdent -> ECM [Export]
 expandImportedModule m = do
   tcEnv <- getTyConsEnv
   tyEnv <- getValueEnv
+  cEnv  <- getClassEnv
   return $ [exportType tyEnv t | (_, t) <- moduleImports m tcEnv]
-        ++ [Export f | (_, Value f _ _) <- moduleImports m tyEnv]
+        ++ [Export f | (_, Value f _ _ Nothing) <- moduleImports m tyEnv]
+        ++ [ExportTypeWith (theClass c) (map fst3 $ methods c) 
+             | (_, c) <- moduleImports m (nonHiddenClassEnv $ theClasses cEnv)] 
 
 exportType :: ValueEnv -> TypeInfo -> Export
 exportType tyEnv t
@@ -280,6 +360,10 @@ errExportDataConstr :: QualIdent -> Message
 errExportDataConstr c = posMessage c $ hsep $ map text
   ["Data constructor", qualName c, "in export list"]
 
+errExportClassMethod :: QualIdent -> Message
+errExportClassMethod c = posMessage c $ hsep $ map text
+  ["Class method", qualName c, "in export list"]
+
 errNonDataType :: QualIdent -> Message
 errNonDataType tc = posMessage tc $ hsep $ map text
   [qualName tc, "is not a data type"]
@@ -291,3 +375,7 @@ errUndefinedDataConstr tc c = posMessage c $ hsep $ map text
 errUndefinedLabel :: QualIdent -> Ident -> Message
 errUndefinedLabel r l = posMessage l $ hsep $ map text
   [idName l, "is not a label of the record", qualName r]
+
+errNotAClassMethod :: QualIdent -> Ident -> Message
+errNotAClassMethod cls f = posMessage f $ 
+  text (show f ++ " is not a class method of " ++ show cls)
