@@ -43,10 +43,10 @@ interfaceCheck _ env intf
 --                 disambiguated
 -- * Environment:  remains unchanged
 kindCheck :: Monad m => Check m Module
-kindCheck _ env (Module ps m es is ds)
-  | null msgs = ok (env, Module ps m es is ds')
+kindCheck _ env mdl
+  | null msgs = ok (env, mdl')
   | otherwise = failMessages msgs
-  where (ds', msgs) = KC.kindCheck (moduleIdent env) (tyConsEnv env) ds
+  where (mdl', msgs) = KC.kindCheck (tyConsEnv env) mdl
 
 -- |Check for a correct syntax.
 --

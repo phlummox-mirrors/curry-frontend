@@ -24,7 +24,7 @@
 
 module Checks.SyntaxCheck (syntaxCheck) where
 
-import           Control.Monad            (liftM, liftM2, liftM3, unless, when)
+import           Control.Monad            (forM_, liftM, liftM2, liftM3, unless, when)
 import qualified Control.Monad.State as S (State, runState, gets, modify)
 import           Data.List                ((\\), insertBy, nub, partition)
 import           Data.Maybe               (isJust, isNothing, maybeToList)
@@ -40,10 +40,10 @@ import Base.Expr
 import Base.Messages (Message, posMessage, internalError)
 import Base.NestEnv
 import Base.Types
-import Base.Utils ((++!), findDouble, findMultiples)
+import Base.Utils    ((++!), findDouble, findMultiples)
 
 import Env.TypeConstructor (TCEnv, TypeInfo (..), qualLookupTC)
-import Env.Value (ValueEnv, ValueInfo (..))
+import Env.Value           (ValueEnv, ValueInfo (..))
 
 import CompilerOpts
 
@@ -59,14 +59,14 @@ import CompilerOpts
 syntaxCheck :: Options -> ValueEnv -> TCEnv -> Module
             -> ((Module, [KnownExtension]), [Message])
 syntaxCheck opts tyEnv tcEnv mdl@(Module _ m _ _ ds) =
-  case findMultiples $ concatMap constrs typeDecls of
+  case findMultiples $ concatMap constrs tds of
     []  -> runSC (checkModule mdl) state
     css -> ((mdl, exts), map errMultipleDataConstructor css)
   where
-    typeDecls  = filter isTypeDecl ds
-    rEnv       = globalEnv $ fmap (renameInfo tcEnv) tyEnv
-    state      = initState exts m rEnv
-    exts       = optExtensions opts
+    tds   = filter isTypeDecl ds
+    rEnv  = globalEnv $ fmap (renameInfo tcEnv) tyEnv
+    state = initState exts m rEnv
+    exts  = optExtensions opts
 
 -- A global state transformer is used for generating fresh integer keys with
 -- which the variables are renamed.
@@ -159,6 +159,7 @@ inNestedScope act = withLocalEnv (incNesting >> act)
 report :: Message -> SCM ()
 report msg = S.modify $ \ s -> s { errors = msg : errors s }
 
+-- |Everything is checked.
 ok :: SCM ()
 ok = return ()
 
@@ -182,13 +183,13 @@ type RenameEnv = NestEnv RenameInfo
 
 data RenameInfo
   -- |Arity of data constructor
-  = Constr QualIdent Int
+  = Constr      QualIdent Int
   -- |Record type and all labels for a single record label
   | RecordLabel QualIdent [Ident]
   -- |Arity of global function
-  | GlobalVar QualIdent Int
+  | GlobalVar   QualIdent Int
   -- |Arity of local function
-  | LocalVar Ident Int
+  | LocalVar    Ident     Int
     deriving (Eq, Show)
 
 ppRenameInfo :: RenameInfo -> Doc
@@ -219,15 +220,11 @@ bindLocal = bindNestEnv
 
 -- |Bind type constructor information
 bindTypeDecl :: Decl -> SCM ()
-bindTypeDecl (DataDecl    _ _ _ cs) = mapM_ bindConstr cs
-bindTypeDecl (NewtypeDecl _ _ _ nc) = bindNewConstr nc
-bindTypeDecl (TypeDecl _ t _ (RecordType fs)) = do
-  m <- getModuleIdent
-  others <- qualLookupVar (qualifyWith m t) `liftM` getRenameEnv
-  when (any isConstr others) $ report $ errIllegalRecordId t
-  mapM_ (bindRecordLabel t allLabels) allLabels
-  where allLabels = concatMap fst fs
-bindTypeDecl _ = return ()
+bindTypeDecl (DataDecl    _ _ _              cs) = mapM_ bindConstr cs
+bindTypeDecl (NewtypeDecl _ _ _              nc) = bindNewConstr nc
+bindTypeDecl (TypeDecl    _ t _ (RecordType fs)) = bindRecordLabels t
+                                                   (concatMap fst fs)
+bindTypeDecl _                                   = return ()
 
 bindConstr :: ConstrDecl -> SCM ()
 bindConstr (ConstrDecl _ _ c tys) = do
@@ -242,12 +239,13 @@ bindNewConstr (NewConstrDecl _ _ c _) = do
   m <- getModuleIdent
   modifyRenameEnv $ bindGlobal m c (Constr (qualifyWith m c) 1)
 
-bindRecordLabel :: Ident -> [Ident] -> Ident -> SCM ()
-bindRecordLabel t allLabels l = do
+bindRecordLabels :: Ident -> [Ident] -> SCM ()
+bindRecordLabels t labels = do
   m <- getModuleIdent
-  new <- (null . lookupVar l) `liftM` getRenameEnv
-  unless new $ report $ errDuplicateDefinition l
-  modifyRenameEnv $ bindGlobal m l (RecordLabel (qualifyWith m t) allLabels)
+  forM_ labels $ \l -> do
+    new <- (null . lookupVar l) `liftM` getRenameEnv
+    unless new $ report $ errDuplicateDefinition l
+    modifyRenameEnv $ bindGlobal m l (RecordLabel (qualifyWith m t) labels)
 
 -- ------------------------------------------------------------------------------
 
@@ -314,14 +312,13 @@ qualLookupListCons v env
 -- local declarations.
 
 checkModule :: Module -> SCM (Module, [KnownExtension])
-checkModule (Module ps m es is decls) = do
-  mapM_ checkPragma ps
-  mapM_ bindTypeDecl (rds ++ dds)
-  decls' <- liftM2 (++) (mapM checkTypeDecl tds) (checkTopDecls vds)
+checkModule (Module ps m es is ds) = do
+  mapM_ checkPragma  ps
+  mapM_ bindTypeDecl tds
+  ds' <- liftM2 (++) (mapM checkTypeDecl tds) (checkTopDecls vds)
   exts <- getExtensions
-  return (Module ps m es is decls', exts)
-  where (tds, vds) = partition isTypeDecl decls
-        (rds, dds) = partition isRecordDecl tds
+  return (Module ps m es is ds', exts)
+  where (tds, vds) = partition isTypeDecl ds
 
 checkPragma :: ModulePragma -> SCM ()
 checkPragma (LanguagePragma _ exts) = mapM_ checkExtension exts
@@ -334,14 +331,14 @@ checkExtension (UnknownExtension p e) = report $ errUnknownExtension p e
 checkTypeDecl :: Decl -> SCM Decl
 checkTypeDecl rec@(TypeDecl _ r _ (RecordType fs)) = do
   checkRecordExtension $ idPosition r
-  when (null     fs) $ report $ errEmptyRecord $ idPosition r
+  when (null fs) $ report $ errEmptyRecord $ idPosition r
   return rec
 checkTypeDecl d = return d
 
 checkTopDecls :: [Decl] -> SCM [Decl]
-checkTopDecls decls = do
+checkTopDecls ds = do
   m <- getModuleIdent
-  checkDeclGroup (bindFuncDecl m) decls
+  checkDeclGroup (bindFuncDecl m) ds
 
 -- Each declaration group opens a new scope and uses a distinct key
 -- for renaming the variables in this scope. In a declaration group,
@@ -793,7 +790,7 @@ checkVariable v
     case qualLookupVar v env of
       []              -> do report $ errUndefinedVariable v
                             return $ Variable v
-      [Constr _ _]    -> return $ Constructor v
+      [Constr    _ _] -> return $ Constructor v
       [GlobalVar _ _] -> return $ Variable v
       [LocalVar v' _] -> return $ Variable $ qualify v'
       rs -> do
@@ -801,7 +798,7 @@ checkVariable v
         case qualLookupVar (qualQualify m v) env of
           []              -> do report $ errAmbiguousIdent rs v
                                 return $ Variable v
-          [Constr _ _]    -> return $ Constructor v
+          [Constr    _ _] -> return $ Constructor v
           [GlobalVar _ _] -> return $ Variable v
           [LocalVar v' _] -> return $ Variable $ qualify v'
           rs'             -> do report $ errAmbiguousIdent rs' v
@@ -886,11 +883,12 @@ checkFieldExpr r (Field p l e) = do
 -- ---------------------------------------------------------------------------
 
 constrs :: Decl -> [Ident]
-constrs (DataDecl _ _ _ cs) = map constr cs
+constrs (DataDecl    _ _ _ cs                     ) = map constr cs
   where constr (ConstrDecl   _ _ c _) = c
         constr (ConOpDecl _ _ _ op _) = op
 constrs (NewtypeDecl _ _ _ (NewConstrDecl _ _ c _)) = [c]
-constrs _ = []
+constrs (TypeDecl    _ r _ (RecordType          _)) = [r]
+constrs _                                           = []
 
 vars :: Decl -> [Ident]
 vars (TypeSig         _ fs _) = fs
@@ -903,7 +901,7 @@ vars _ = []
 
 renameLiteral :: Literal -> SCM Literal
 renameLiteral (Int v i) = liftM (flip Int i . renameIdent v) newId
-renameLiteral l = return l
+renameLiteral l         = return l
 
 -- Since the compiler expects all rules of the same function to be together,
 -- it is necessary to sort the list of declarations.
@@ -1078,7 +1076,7 @@ errMultipleDataConstructor :: [Ident] -> Message
 errMultipleDataConstructor [] = internalError
   "SyntaxCheck.errMultipleDataDeclaration: empty list"
 errMultipleDataConstructor (i:is) = posMessage i $
-  text "Multiple definitions for data constructor" <+> text (escName i)
+  text "Multiple definitions for data/record constructor" <+> text (escName i)
   <+> text "at:" $+$
   nest 2 (vcat (map (ppPosition . getPosition) (i:is)))
 
@@ -1101,10 +1099,6 @@ errMissingLabel p l r what = posMessage p $ hsep $ map text
 errIllegalLabel :: Ident -> QualIdent -> Message
 errIllegalLabel l r = posMessage l $ hsep $ map text
   ["Label", escName l, "is not defined in record", escQualName r]
-
-errIllegalRecordId :: Ident -> Message
-errIllegalRecordId r = posMessage r $ hsep $ map text
-  ["Record identifier", escName r, "already assigned to a data constructor"]
 
 errNonVariable :: String -> Ident -> Message
 errNonVariable what c = posMessage c $ hsep $ map text

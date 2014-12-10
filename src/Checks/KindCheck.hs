@@ -49,21 +49,25 @@ import Env.TypeConstructor (TCEnv, tcArity)
 -- defined type constructors are inserted into the environment, and,
 -- finally, the declarations are checked within this environment.
 
-kindCheck :: ModuleIdent -> TCEnv -> [Decl] -> ([Decl], [Message])
-kindCheck m tcEnv decls = case findMultiples $ map typeConstr tds of
-  [] -> runKCM (mapM checkDecl decls) initState
-  ms -> (decls, map errMultipleDeclaration ms)
-  where tds       = filter isTypeDecl decls
-        kEnv      = foldr (bindKind m) (fmap tcArity tcEnv) tds
-        initState = KCState m kEnv []
+kindCheck :: TCEnv -> Module -> (Module, [Message])
+kindCheck tcEnv mdl@(Module _ m _ _ ds) =
+  case findMultiples $ map typeConstr tds of
+    []  -> runKCM (checkModule mdl) state
+    tss -> (mdl, map errMultipleDeclaration tss)
+  where
+    tds   = filter isTypeDecl ds
+    kEnv  = foldr (bindKind m) (fmap tcArity tcEnv) tds
+    state = KCState m kEnv []
 
+-- Kind Check Monad
+type KCM = S.State KCState
+
+-- |Internal state of the kind check
 data KCState = KCState
   { moduleIdent :: ModuleIdent
   , kindEnv     :: KindEnv
   , errors      :: [Message]
   }
-
-type KCM = S.State KCState -- the Kind Check Monad
 
 runKCM :: KCM a -> KCState -> (a, [Message])
 runKCM kcm s = let (a, s') = S.runState kcm s in (a, reverse $ errors s')
@@ -98,6 +102,9 @@ lookupKind = lookupTopEnv
 
 qualLookupKind :: QualIdent -> KindEnv -> [Int]
 qualLookupKind = qualLookupTopEnv
+
+checkModule :: Module -> KCM Module
+checkModule (Module ps m es is ds) = Module ps m es is `liftM` mapM checkDecl ds
 
 -- When type declarations are checked, the compiler will allow anonymous
 -- type variables on the left hand side of the declaration, but not on
