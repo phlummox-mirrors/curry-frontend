@@ -24,11 +24,13 @@
 
 module Checks.SyntaxCheck (syntaxCheck) where
 
-import           Control.Monad            (forM_, liftM, liftM2, liftM3, unless, when)
+import Control.Monad                      ( forM_, liftM, liftM2, liftM3, unless
+                                          , when)
 import qualified Control.Monad.State as S (State, runState, gets, modify)
-import           Data.List                ((\\), insertBy, nub, partition)
-import           Data.Maybe               (isJust, isNothing, maybeToList)
-import qualified Data.Set          as Set (empty, insert, member)
+import Data.List                          ((\\), insertBy, nub, partition)
+import Data.Maybe                         ( fromJust, isJust, isNothing
+                                          , maybeToList)
+import qualified Data.Set as Set          (empty, insert, member)
 
 import Curry.Base.Ident
 import Curry.Base.Position
@@ -159,7 +161,7 @@ inNestedScope act = withLocalEnv (incNesting >> act)
 report :: Message -> SCM ()
 report msg = S.modify $ \ s -> s { errors = msg : errors s }
 
--- |Everything is checked.
+-- |Everything is checked
 ok :: SCM ()
 ok = return ()
 
@@ -189,7 +191,7 @@ data RenameInfo
   -- |Arity of global function
   | GlobalVar   QualIdent Int
   -- |Arity of local function
-  | LocalVar    Ident     Int
+  | LocalVar    Ident Int
     deriving (Eq, Show)
 
 ppRenameInfo :: RenameInfo -> Doc
@@ -222,7 +224,7 @@ bindLocal = bindNestEnv
 bindTypeDecl :: Decl -> SCM ()
 bindTypeDecl (DataDecl    _ _ _              cs) = mapM_ bindConstr cs
 bindTypeDecl (NewtypeDecl _ _ _              nc) = bindNewConstr nc
-bindTypeDecl (TypeDecl    _ t _ (RecordType fs)) = bindRecordLabels t
+bindTypeDecl (TypeDecl    _ t _ (RecordType fs)) = bindRecordLabel t
                                                    (concatMap fst fs)
 bindTypeDecl _                                   = return ()
 
@@ -233,14 +235,26 @@ bindConstr (ConstrDecl _ _ c tys) = do
 bindConstr (ConOpDecl _ _ _ op _) = do
   m <- getModuleIdent
   modifyRenameEnv $ bindGlobal m op (Constr (qualifyWith m op) 2)
+-- jrt: Added for support of Haskell's record syntax
+bindConstr (RecordDecl _ _ c fs)  = do
+  mapM_ (bindRecordLabel c allLabels) allLabels
+  m <- getModuleIdent
+  modifyRenameEnv $ bindGlobal m c (Constr (qualifyWith m c) arity)
+    where allLabels = concatMap fst fs
+          arity     = foldr (\f a -> a + length (fst f)) 0 fs
 
 bindNewConstr :: NewConstrDecl -> SCM ()
 bindNewConstr (NewConstrDecl _ _ c _) = do
   m <- getModuleIdent
   modifyRenameEnv $ bindGlobal m c (Constr (qualifyWith m c) 1)
+-- jrt: Added for support of Haskell's record syntax
+bindNewConstr (NewRecordDecl _ _ c (l,_)) = do
+  bindRecordLabel c [l] l
+  m <- getModuleIdent
+  modifyRenameEnv $ bindGlobal m c (Constr (qualifyWith m c) 1)
 
-bindRecordLabels :: Ident -> [Ident] -> SCM ()
-bindRecordLabels t labels = do
+bindRecordLabel :: Ident -> [Ident] -> SCM ()
+bindRecordLabel t labels = do
   m <- getModuleIdent
   forM_ labels $ \l -> do
     new <- (null . lookupVar l) `liftM` getRenameEnv
@@ -313,12 +327,12 @@ qualLookupListCons v env
 
 checkModule :: Module -> SCM (Module, [KnownExtension])
 checkModule (Module ps m es is ds) = do
-  mapM_ checkPragma  ps
+  mapM_ checkPragma ps
   mapM_ bindTypeDecl tds
   ds' <- liftM2 (++) (mapM checkTypeDecl tds) (checkTopDecls vds)
   exts <- getExtensions
   return (Module ps m es is ds', exts)
-  where (tds, vds) = partition isTypeDecl ds
+  where (tds, vds) = partition isTypeDecl decls
 
 checkPragma :: ModulePragma -> SCM ()
 checkPragma (LanguagePragma _ exts) = mapM_ checkExtension exts
@@ -656,21 +670,21 @@ checkRecordPattern p fs t = do
     env <- getRenameEnv
     case lookupVar l env of
       [RecordLabel r ls] -> do
-        case findDouble ls' of
-          Just l' -> report $ errDuplicateLabel l'
-          _       -> ok
-        case t of
-          Nothing -> do
+        when (isJust duplicate) $ report $ errDuplicateLabel
+                                         $ fromJust duplicate
+        if isNothing t
+          then do
             when (not $ null missings) $ report $ errMissingLabel
               (idPosition l) (head missings) r "record pattern"
             flip RecordPattern t `liftM` mapM (checkFieldPatt r) fs
-          Just pat | pat == VariablePattern anonId -> do
-            liftM2 RecordPattern (mapM (checkFieldPatt r) fs)
-                                 (Just `liftM` checkPattern p pat)
-          _ -> do
-            report (errIllegalRecordPattern p)
-            return $ RecordPattern fs t
+          else if t == Just (VariablePattern anonId)
+            then liftM2 RecordPattern
+                        (mapM (checkFieldPatt r) fs)
+                        (Just `liftM` checkPattern p (fromJust t))
+            else do report (errIllegalRecordPattern p)
+                    return $ RecordPattern fs t
         where ls'       = map fieldLabel fs
+              duplicate = findDouble ls'
               missings  = ls \\ ls'
       [] -> report (errUndefinedLabel l) >> return (RecordPattern fs t)
       [_] -> report (errNotALabel l) >> return (RecordPattern fs t)
@@ -883,7 +897,7 @@ checkFieldExpr r (Field p l e) = do
 -- ---------------------------------------------------------------------------
 
 constrs :: Decl -> [Ident]
-constrs (DataDecl    _ _ _ cs                     ) = map constr cs
+constrs (DataDecl    _ _ _                      cs) = map constr cs
   where constr (ConstrDecl   _ _ c _) = c
         constr (ConOpDecl _ _ _ op _) = op
 constrs (NewtypeDecl _ _ _ (NewConstrDecl _ _ c _)) = [c]

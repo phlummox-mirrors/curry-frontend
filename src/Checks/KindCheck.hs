@@ -4,6 +4,7 @@
     Copyright   :  (c) 2000 - 2007 Wolfgang Lux
                                    Martin Engelke
                                    Björn Peemöller
+                       2014        Jan Rasmus Tikovsky
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
@@ -53,17 +54,16 @@ import Env.TypeConstructor (TCEnv, tcArity)
 kindCheck :: TCEnv -> Module -> (Module, [Message])
 kindCheck tcEnv mdl@(Module _ m _ _ ds) =
   case findMultiples $ map typeConstr tds of
-    []  -> runKCM (checkModule mdl) state
+    []  -> runKCM (mapM checkModule mdl) state
     tss -> (mdl, map errMultipleDeclaration tss)
-  where
-    tds   = filter isTypeDecl ds
-    kEnv  = foldr (bindKind m) (fmap tcArity tcEnv) tds
-    state = KCState m kEnv []
+  where tds   = filter isTypeDecl ds
+        kEnv  = foldr (bindKind m) (fmap tcArity tcEnv) tds
+        state = KCState m kEnv []
 
 -- Kind Check Monad
 type KCM = S.State KCState
 
--- |Internal state of the kind check
+-- |Internal state of the Kind Check
 data KCState = KCState
   { moduleIdent :: ModuleIdent
   , kindEnv     :: KindEnv
@@ -143,12 +143,22 @@ checkConstrDecl tvs (ConOpDecl p evs ty1 op ty2) = do
   ty1' <- checkClosedType tvs' ty1
   ty2' <- checkClosedType tvs' ty2
   return $ ConOpDecl p evs' ty1' op ty2'
+-- jrt: Added for support of Haskell's record syntax
+checkConstrDecl tvs (RecordDecl p evs c fs) = do
+  evs' <- checkTypeLhs evs
+  fs'  <- mapM (\ (i, ty) -> (i, checkClosedType (evs' ++ tvs) ty)) fs
+  return $ RecordDecl p evs' c fs'
 
 checkNewConstrDecl :: [Ident] -> NewConstrDecl -> KCM NewConstrDecl
 checkNewConstrDecl tvs (NewConstrDecl p evs c ty) = do
   evs' <- checkTypeLhs evs
   ty'  <- checkClosedType (evs' ++ tvs) ty
   return $ NewConstrDecl p evs' c ty'
+-- jrt: Added for support of Haskell's record syntax
+checkNewConstrDecl tvs (NewRecordDecl p evs c (i, ty))
+  evs' <- checkTypeLhs evs
+  ty'  <- checkClosedType (evs' ++ tvs) ty
+  return $ NewRecordDecl p evs' c (i, ty')
 
 -- |Check the left-hand-side of a type declaration for
 -- * Anonymous type variables are allowed
@@ -210,6 +220,10 @@ checkExpr (RecordConstr     fs) = RecordConstr <$> mapM checkFieldExpr fs
 checkExpr (RecordSelection e l) = flip RecordSelection l <$> checkExpr e
 checkExpr (RecordUpdate   fs e) = RecordUpdate <$> mapM checkFieldExpr fs 
                                                <*> checkExpr e
+-- jrt: Added for support of Haskell's record syntax
+checkExpr (HsRecordConstr c fs) = HsRecordConstr c <$> mapM checkFieldExpr fs
+checkExpr (HsRecordUpdate e fs) = HsRecordUpdate <$> checkExpr e
+                                                 <*> mapM checkFieldExpr fs
 
 checkStmt :: Statement -> KCM Statement
 checkStmt (StmtExpr   p e) = StmtExpr p   <$> checkExpr e
