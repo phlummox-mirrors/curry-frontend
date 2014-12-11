@@ -4,6 +4,12 @@ Change log for curry-frontend
 Under development
 =================
 
+  * Removed record type extensions
+
+  * Enabled declaration of (mutually) recursive record types
+
+  * Removed expansion of record types in type error messages
+
   * Replaced `MessageM` monad with `CYT` monads and moved `CYT` monads
     to package `curry-base`
 

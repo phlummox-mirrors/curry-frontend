@@ -25,7 +25,6 @@ import           Control.Monad               (liftM, liftM2)
 import qualified Control.Monad.Reader as R
 import           Data.List                   (nub, partition)
 import qualified Data.Map             as Map (Map, empty, insert, lookup)
-import           Data.Maybe                  (fromJust)
 import qualified Data.Set             as Set (Set, empty, insert, delete, toList)
 
 import Curry.Base.Position
@@ -270,7 +269,9 @@ trArgs :: [Equation] -> [Ident] -> [Ident]
 trArgs [Equation _ (FunLhs _ (t:ts)) _] (v:_) =
   v : map (translArg (bindRenameEnv v t Map.empty)) ts
   where
-    translArg env (VariablePattern v') = fromJust (Map.lookup v' env)
+    translArg env (VariablePattern v') = case Map.lookup v' env of
+      Just x  -> x
+      Nothing -> internalError "Transformations.CurryToIL.trArgs"
     translArg _ _ = internalError "Translation of arguments not defined"
 trArgs _ _ = internalError "Translation of arguments not defined" -- TODO
 

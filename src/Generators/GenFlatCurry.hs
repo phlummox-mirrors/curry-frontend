@@ -14,7 +14,7 @@ import           Control.Monad       (filterM, liftM, liftM2, liftM3, mplus)
 import           Control.Monad.State (State, evalState, gets, modify)
 import           Data.List           (mapAccumL, nub)
 import qualified Data.Map as Map     (Map, empty, insert, lookup, fromList, toList)
-import           Data.Maybe          (catMaybes, fromJust, fromMaybe, isJust)
+import           Data.Maybe          (catMaybes, fromMaybe, isJust)
 
 -- curry-base
 import Curry.Base.Ident as Id
@@ -750,13 +750,10 @@ cs2ilType :: [(Ident,Int)] -> CS.TypeExpr -> ([(Ident,Int)], IL.Type)
 cs2ilType ids (CS.ConstructorType qident typeexprs)
   = let (ids', ilTypeexprs) = mapAccumL cs2ilType ids typeexprs
     in  (ids', IL.TypeConstructor qident ilTypeexprs)
-cs2ilType ids (CS.VariableType ident)
-  = let mid        = lookup ident ids
-        nid        | null ids  = 0
-                   | otherwise = 1 + snd (head ids)
-        (ident1, ids') | isJust mid = (fromJust mid, ids)
-                       | otherwise  = (nid, (ident, nid):ids)
-    in  (ids', IL.TypeVariable ident1)
+cs2ilType ids (CS.VariableType ident) = case lookup ident ids of
+  Just i  -> (ids, IL.TypeVariable i)
+  Nothing -> let nid = 1 + case ids of { [] -> 0; (_, j):_ -> j }
+             in  ((ident, nid):ids, IL.TypeVariable nid)
 cs2ilType ids (CS.ArrowType type1 type2)
   = let (ids',  ilType1) = cs2ilType ids type1
         (ids'', ilType2) = cs2ilType ids' type2

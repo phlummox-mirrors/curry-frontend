@@ -15,10 +15,10 @@
 module Generators.GenAbstractCurry
   ( genTypedAbstract, genUntypedAbstract ) where
 
-import Data.List (find, mapAccumL)
-import qualified Data.Map as Map
-import Data.Maybe (fromJust, fromMaybe, isJust)
-import qualified Data.Set as Set
+import           Data.List         (find, mapAccumL)
+import qualified Data.Map   as Map
+import           Data.Maybe        (fromMaybe, isJust)
+import qualified Data.Set   as Set
 
 import Curry.AbstractCurry
 import Curry.Base.Ident
@@ -448,13 +448,11 @@ genExpr :: Position -> AbstractEnv -> Expression -> (AbstractEnv, CExpr)
 genExpr pos env (Literal l) = case l of
   String _ cs -> genExpr pos env $ List [] $ map (Literal . Char noRef) cs
   _           -> (env, CLit $ genLiteral l)
-genExpr _ env   (Variable v)
-  | isJust midx     = (env, CVar (fromJust midx, idName ident))
-  | v == qSuccessId = (env, CSymbol $ genQName False env qSuccessFunId)
-  | otherwise       = (env, CSymbol $ genQName False env v)
-  where
-  ident = unqualify v
-  midx  = getVarIndex env ident
+genExpr _ env   (Variable v) = case getVarIndex env ident of
+    Just idx -> (env, CVar (idx, idName ident))
+    _ | v == qSuccessId -> (env, CSymbol $ genQName False env qSuccessFunId)
+      | otherwise       -> (env, CSymbol $ genQName False env v)
+  where ident = unqualify v
 genExpr _   env (Constructor c) = (env, CSymbol $ genQName False env c)
 genExpr pos env (Paren    expr) = genExpr pos env expr
 genExpr pos env (Typed  expr _) = genExpr pos env expr
@@ -563,8 +561,10 @@ genPattern pos env (LiteralPattern l) = case l of
   String _ cs -> genPattern pos env $ ListPattern [] $ map (LiteralPattern . Char noRef) cs
   _           -> (env, CPLit $ genLiteral l)
 genPattern _ env (VariablePattern v)
-  = let (env', idx) = genVarIndex env v
-    in  (env', CPVar (idx, idName v))
+  = case getVarIndex env v of
+      Just idx -> (env, CPVar (idx, idName v))
+      Nothing  -> let (env', idx') = genVarIndex env v
+                  in  (env', CPVar (idx', idName v))
 genPattern pos env (ConstructorPattern qident args)
   = let (env', args') = mapAccumL (genPattern pos) env args
     in  (env', CPComb (genQName False env qident) args')
@@ -722,15 +722,11 @@ buildExportTable mid _ exptab (ExportTypeWith qident ids)
           (insertExportedIdent exptab (unqualify qident))
           ids
   | otherwise  = exptab
-buildExportTable mid decls exptab (ExportTypeAll qident)
-  | isJust ident'
-  = foldl insertExportedIdent
-          (insertExportedIdent exptab ident)
-          (maybe [] getConstrIdents (find (isDataDeclOf ident) decls))
-  | otherwise = exptab
-  where
-  ident' = localIdent mid qident
-  ident  = fromJust ident'
+buildExportTable mid ds exptab (ExportTypeAll qid) = case localIdent mid qid of
+  Just ident -> foldl insertExportedIdent
+                (insertExportedIdent exptab ident)
+                (maybe [] getConstrIdents (find (isDataDeclOf ident) ds))
+  Nothing    -> exptab
 buildExportTable _ _ exptab (ExportModule _) = exptab
 
 --
@@ -864,10 +860,10 @@ isDataDeclOf _ _                  = False
 -- Checks, whether a symbol is defined in the Prelude.
 isPreludeSymbol :: QualIdent -> Bool
 isPreludeSymbol qident
-   = let (mmid, ident) = (qidModule qident, qidIdent qident)
-     in (isJust mmid && preludeMIdent == fromJust mmid)
-        || elem ident [unitId, listId, nilId, consId]
-        || isTupleId ident
+  = let (mmid, ident) = (qidModule qident, qidIdent qident)
+    in   mmid == Just preludeMIdent
+      || elem ident [unitId, listId, nilId, consId]
+      || isTupleId ident
 
 -- Converts an infix operator to an expression
 opToExpr :: InfixOp -> Expression

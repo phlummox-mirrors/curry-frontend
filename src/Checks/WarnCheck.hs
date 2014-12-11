@@ -524,8 +524,10 @@ simplifyPat (ConstructorPattern c ps) = ConstructorPattern c `liftM`
 simplifyPat (InfixPattern    p1 c p2) = ConstructorPattern c `liftM`
                                         mapM simplifyPat [p1, p2]
 simplifyPat (ParenPattern          p) = simplifyPat p
-simplifyPat (TuplePattern       _ ps) = ConstructorPattern (qTupleId (length ps))
-                                        `liftM` mapM simplifyPat ps
+simplifyPat (TuplePattern       _ ps)
+  | null ps   = return $ ConstructorPattern qUnitId []
+  | otherwise = ConstructorPattern (qTupleId (length ps))
+                `liftM` mapM simplifyPat ps
 simplifyPat (ListPattern        _ ps) = simplifyListPattern `liftM`
                                         mapM simplifyPat ps
 simplifyPat (AsPattern           _ p) = simplifyPat p
@@ -730,6 +732,7 @@ tidyPat :: Pattern -> WCM Pattern
 tidyPat p@(LiteralPattern        _) = return p
 tidyPat p@(VariablePattern       _) = return p
 tidyPat p@(ConstructorPattern c ps)
+  | c == qUnitId && null ps         = return $ TuplePattern noRef []
   | isQTupleId c                    = TuplePattern noRef `liftM` mapM tidyPat ps
   | c == qConsId && isFiniteList p  = ListPattern []     `liftM`
                                       mapM tidyPat (unwrapFinite p)
