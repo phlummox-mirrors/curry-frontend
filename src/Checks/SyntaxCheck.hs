@@ -1011,7 +1011,8 @@ vars (FreeDecl          _ vs) = vs
 vars _ = []
 
 renameLiteral :: Literal -> SCM Literal
-renameLiteral (Int v i) = liftM (flip Int i . renameIdent v) newId
+renameLiteral (Int   v i) = liftM (flip Int i . renameIdent v) newId
+renameLiteral (Float v i) = liftM (flip Float i . renameIdent v) newId
 renameLiteral l = return l
 
 -- Since the compiler expects all rules of the same function to be together,
