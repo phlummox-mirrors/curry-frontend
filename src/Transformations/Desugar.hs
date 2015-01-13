@@ -64,8 +64,9 @@
 
 module Transformations.Desugar (desugar) where
 
+import           Control.Applicative
 import           Control.Arrow              (first, second)
-import           Control.Monad              (liftM, liftM2, mplus)
+import           Control.Monad              (mplus)
 import qualified Control.Monad.State as S   (State, runState, gets, modify)
 import           Data.List                  ((\\), nub, tails)
 import           Data.Maybe                 (fromMaybe)
@@ -138,7 +139,7 @@ getTypeOf t = do
 freshIdent :: String -> Int -> TypeScheme -> DsM Ident
 freshIdent prefix arity ty = do
   m <- getModuleIdent
-  x <- mkName prefix `liftM` getNextId
+  x <- mkName prefix <$> getNextId
   modifyValueEnv $ bindFun m x arity ty
   return x
   where mkName pre n = mkIdent $ pre ++ show n
@@ -193,7 +194,7 @@ dsDeclLhs d                     = return [d]
 genForeignDecl :: Position -> Ident -> DsM Decl
 genForeignDecl p f = do
   m     <- getModuleIdent
-  ty    <- fromType `liftM` (getTypeOf $ Variable $ qual m f)
+  ty    <- fromType <$> (getTypeOf $ Variable $ qual m f)
   return $ ForeignDecl p CallConvPrimitive (Just $ idName f) f ty
   where qual m f'
          | hasGlobalScope f' = qualifyWith m f'
@@ -210,9 +211,9 @@ genForeignDecl p f = do
 
 dsDeclRhs :: Decl -> DsM Decl
 dsDeclRhs (FunctionDecl     p f eqs) =
-  FunctionDecl p f `liftM` mapM dsEquation eqs
+  FunctionDecl p f <$> mapM dsEquation eqs
 dsDeclRhs (PatternDecl      p t rhs) =
-  PatternDecl p t `liftM` dsRhs p id rhs
+  PatternDecl p t <$> dsRhs p id rhs
 dsDeclRhs (ForeignDecl p cc ie f ty) =
   return $ ForeignDecl p cc (ie `mplus` Just (idName f)) f ty
 dsDeclRhs vars@(FreeDecl        _ _) = return vars
@@ -306,11 +307,11 @@ dsPattern p ds (NegativePattern      _ l) =
 dsPattern _ ds v@(VariablePattern      _) = return (ds, v)
 dsPattern p ds (ConstructorPattern c [t]) = do
     tyEnv <- getValueEnv
-    liftM (if isNewtypeConstr tyEnv c then id else second (constrPat c))
+    (if isNewtypeConstr tyEnv c then id else second (constrPat c)) <$>
           (dsPattern p ds t)
   where constrPat c' t' = ConstructorPattern c' [t']
 dsPattern p ds (ConstructorPattern c ts) =
-  liftM (second (ConstructorPattern c)) (mapAccumM (dsPattern p) ds ts)
+  second (ConstructorPattern c) <$> mapAccumM (dsPattern p) ds ts
 dsPattern p ds (InfixPattern t1 op t2) =
   dsPattern p ds (ConstructorPattern op [t1,t2])
 dsPattern p ds (ParenPattern      t) = dsPattern p ds t
@@ -319,20 +320,20 @@ dsPattern p ds (TuplePattern pos ts) =
   where tupleConstr ts' = addRef pos $
                          if null ts' then qUnitId else qTupleId (length ts')
 dsPattern p ds (ListPattern pos ts) =
-  liftM (second (dsList pos cons nil)) (mapAccumM (dsPattern p) ds ts)
+  second (dsList pos cons nil) <$> mapAccumM (dsPattern p) ds ts
   where nil  p' = ConstructorPattern (addRef p' qNilId) []
         cons p' t ts' = ConstructorPattern (addRef p' qConsId) [t,ts']
-dsPattern p ds (AsPattern   v t) = liftM (dsAs p v) (dsPattern p ds t)
+dsPattern p ds (AsPattern   v t) = dsAs p v <$> dsPattern p ds t
 dsPattern p ds (LazyPattern r t) = dsLazy r p ds t
 dsPattern p ds (FunctionPattern f ts) =
-  liftM (second (FunctionPattern f)) (mapAccumM (dsPattern p) ds ts)
+  second (FunctionPattern f) <$> mapAccumM (dsPattern p) ds ts
 dsPattern p ds (InfixFuncPattern t1 f t2) =
   dsPattern p ds (FunctionPattern f [t1,t2])
 dsPattern p ds (RecordPattern fs _)
   | null fs   = internalError "Desugar.dsPattern: empty record"
   | otherwise = do
     r   <- recordFromField (fieldLabel (head fs))
-    fs' <- (map fst . snd) `liftM` lookupRecord r
+    fs' <- (map fst . snd) <$> lookupRecord r
     let ts = map (dsLabel (map field2Tuple fs)) fs'
     dsPattern p ds (ConstructorPattern r ts)
   where dsLabel fs' l = fromMaybe (VariablePattern anonId) (lookup l fs')
@@ -373,10 +374,10 @@ dsLazy :: SrcRef -> Position -> [Decl] -> Pattern -> DsM ([Decl], Pattern)
 dsLazy pos p ds t = case t of
   VariablePattern   _ -> return (ds, t)
   ParenPattern     t' -> dsLazy pos p ds t'
-  AsPattern      v t' -> dsAs p v `liftM` dsLazy pos p ds t'
+  AsPattern      v t' -> dsAs p v <$> dsLazy pos p ds t'
   LazyPattern pos' t' -> dsLazy pos' p ds t'
   _                   -> do
-   v' <- addPositionIdent (AST pos) `liftM` freshMonoTypeVar "_#lazy" t
+   v' <- addPositionIdent (AST pos) <$> freshMonoTypeVar "_#lazy" t
    return (patDecl p { astRef = pos } t (mkVar v') : ds, VariablePattern v')
 
 negateLiteral :: Literal -> Literal
@@ -399,7 +400,7 @@ dsRhs p f rhs = do
 
 expandRhs :: Expression -> (Expression -> Expression) -> Rhs -> DsM Expression
 expandRhs _  f (SimpleRhs _ e ds) = return $ Let ds (f e)
-expandRhs e0 f (GuardedRhs es ds) = (Let ds . f) `liftM` expandGuards e0 es
+expandRhs e0 f (GuardedRhs es ds) = (Let ds . f) <$> expandGuards e0 es
 
 expandGuards :: Expression -> [CondExpr] -> DsM Expression
 expandGuards e0 es = do
@@ -433,31 +434,31 @@ dsExpr _ var@(Variable v)
   | otherwise              = return var
 dsExpr _ c@(Constructor _) = return c
 dsExpr p (Paren         e) = dsExpr p e
-dsExpr p (Typed      e ty) = liftM2 Typed (dsExpr p e) (dsTypeExpr ty)
+dsExpr p (Typed      e ty) = Typed <$> dsExpr p e <*> dsTypeExpr ty
 dsExpr p (Tuple    pos es) =
-  apply (Constructor $ tupleConstr es) `liftM` mapM (dsExpr p) es
+  apply (Constructor $ tupleConstr es) <$> mapM (dsExpr p) es
   where tupleConstr es1 = addRef pos $ if null es1 then qUnitId else qTupleId (length es1)
 dsExpr p (List pos es) =
-  dsList pos cons nil `liftM` mapM (dsExpr p) es
+  dsList pos cons nil <$> mapM (dsExpr p) es
   where nil p'  = Constructor (addRef p' qNilId)
         cons p' = Apply . Apply (Constructor $ addRef p' qConsId)
 dsExpr p (ListCompr r e []    ) = dsExpr p (List [r,r] [e])
 dsExpr p (ListCompr r e (q:qs)) = dsQual p q (ListCompr r e qs)
 dsExpr p (EnumFrom e) =
-  Apply prelEnumFrom `liftM` dsExpr p e
+  Apply prelEnumFrom <$> dsExpr p e
 dsExpr p (EnumFromThen e1 e2) =
-  apply prelEnumFromThen `liftM` mapM (dsExpr p) [e1, e2]
+  apply prelEnumFromThen <$> mapM (dsExpr p) [e1, e2]
 dsExpr p (EnumFromTo e1 e2) =
-  apply prelEnumFromTo `liftM` mapM (dsExpr p) [e1, e2]
+  apply prelEnumFromTo <$> mapM (dsExpr p) [e1, e2]
 dsExpr p (EnumFromThenTo e1 e2 e3) =
-  apply prelEnumFromThenTo `liftM` mapM (dsExpr p) [e1, e2, e3]
+  apply prelEnumFromThenTo <$> mapM (dsExpr p) [e1, e2, e3]
 dsExpr p (UnaryMinus op e) = do
   ty <- getTypeOf e
   e' <- dsExpr p e
   negativeLits <- negativeLiterals
   case e' of
     Literal l | negativeLits -> return (Literal $ negateLiteral l)
-    _                        -> Apply (unaryMinus op ty) `liftM` dsExpr p e
+    _                        -> Apply (unaryMinus op ty) <$> dsExpr p e
   where
   unaryMinus op1 ty'
     | op1 ==  minusId = if ty' == floatType then prelNegateFloat else prelNegate
@@ -465,17 +466,15 @@ dsExpr p (UnaryMinus op e) = do
     | otherwise       = internalError "Desugar.unaryMinus"
 dsExpr p (Apply (Constructor c) e) = do
   tyEnv <- getValueEnv
-  liftM (if isNewtypeConstr tyEnv c then id else (Apply (Constructor c)))
-        (dsExpr p e)
-dsExpr p (Apply e1 e2) = do
-  liftM2 Apply (dsExpr p e1) (dsExpr p e2)
+  (if isNewtypeConstr tyEnv c then id else (Apply (Constructor c))) <$>
+    dsExpr p e
+dsExpr p (Apply e1 e2) = Apply <$> dsExpr p e1 <*> dsExpr p e2
 dsExpr p (InfixApply e1 op e2) = do
   op' <- dsExpr p (infixOp op)
   e1' <- dsExpr p e1
   e2' <- dsExpr p e2
   return $ apply op' [e1', e2']
-dsExpr p (LeftSection e op) = do
-  liftM2 Apply (dsExpr p (infixOp op)) (dsExpr p e)
+dsExpr p (LeftSection e op) = Apply <$> dsExpr p (infixOp op) <*> dsExpr p e
 dsExpr p (RightSection op e) = do
   op' <- dsExpr p (infixOp op)
   e' <- dsExpr p e
@@ -562,11 +561,11 @@ dsAltLhs (Alt p t rhs) = do
   return $ Alt p t' (addDecls ds' rhs)
 
 dsAltRhs :: Alt -> DsM Alt
-dsAltRhs (Alt p t rhs) = Alt p t `liftM` dsRhs p id rhs
+dsAltRhs (Alt p t rhs) = Alt p t <$> dsRhs p id rhs
 
 expandAlt :: Ident -> CaseType -> [Alt] -> DsM Alt
 expandAlt _ _  []                   = error "Desugar.expandAlt: empty list"
-expandAlt v ct (Alt p t rhs : alts) = caseAlt p t `liftM` expandRhs e0 id rhs
+expandAlt v ct (Alt p t rhs : alts) = caseAlt p t <$> expandRhs e0 id rhs
   where
   e0 | ct == Flex = prelFailed
      | otherwise  = Case (srcRefOf p) ct (mkVar v)
@@ -591,7 +590,8 @@ isCompatible _                    _                  = False
 -- * functional patterns
 -- * records
 
-dsFunctionalPatterns :: Position -> [Pattern] -> DsM ([Decl], [Expression], [Pattern])
+dsFunctionalPatterns :: Position -> [Pattern]
+                     -> DsM ([Decl], [Expression], [Pattern])
 dsFunctionalPatterns p ts = do
   (bs, ts') <- mapAccumM elimFP [] ts
   let (ds, cs) = genFPExpr p (bv ts') (reverse bs)
@@ -603,30 +603,27 @@ elimFP :: [LazyBinding] -> Pattern -> DsM ([LazyBinding], Pattern)
 elimFP bs p@(LiteralPattern        _) = return (bs, p)
 elimFP bs p@(NegativePattern     _ _) = return (bs, p)
 elimFP bs p@(VariablePattern       _) = return (bs, p)
-elimFP bs (ConstructorPattern   c ts)
-  = second (ConstructorPattern c) `liftM` mapAccumM elimFP bs ts
+elimFP bs (ConstructorPattern   c ts) = second (ConstructorPattern c)
+                                        <$> mapAccumM elimFP bs ts
 elimFP bs (InfixPattern     t1 op t2) = do
   (bs', [t1',t2']) <- mapAccumM elimFP bs [t1,t2]
   return (bs', InfixPattern t1' op t2')
-elimFP bs (ParenPattern            t)
- = second ParenPattern `liftM` elimFP bs t
-elimFP bs (TuplePattern       pos ts)
-  = second (TuplePattern pos) `liftM` mapAccumM elimFP bs ts
-elimFP bs (ListPattern        pos ts)
-  = second (ListPattern pos) `liftM` mapAccumM elimFP bs ts
-elimFP bs (AsPattern             v t)
- = second (AsPattern v) `liftM` elimFP bs t
-elimFP bs (LazyPattern           r t)
- = second (LazyPattern r) `liftM` elimFP bs t
+elimFP bs (ParenPattern            t) = second ParenPattern <$> elimFP bs t
+elimFP bs (TuplePattern       pos ts) = second (TuplePattern pos)
+                                        <$> mapAccumM elimFP bs ts
+elimFP bs (ListPattern        pos ts) = second (ListPattern pos)
+                                        <$> mapAccumM elimFP bs ts
+elimFP bs (AsPattern             v t) = second (AsPattern v) <$> elimFP bs t
+elimFP bs (LazyPattern           r t) = second (LazyPattern r) <$> elimFP bs t
 elimFP bs p@(FunctionPattern     _ _) = do
  v <- freshMonoTypeVar "_#funpatt" p
  return ((p, v) : bs, VariablePattern v)
 elimFP bs p@(InfixFuncPattern  _ _ _) = do
  v <- freshMonoTypeVar "_#funpatt" p
  return ((p, v) : bs, VariablePattern v)
-elimFP bs (RecordPattern        fs r) = do
-  second (flip RecordPattern r) `liftM` mapAccumM elimField bs fs
-  where elimField b (Field p i t) = second (Field p i) `liftM` elimFP b t
+elimFP bs (RecordPattern        fs r) = second (flip RecordPattern r)
+                                        <$> mapAccumM elimField bs fs
+  where elimField b (Field p i t) = second (Field p i) <$> elimFP b t
 
 genFPExpr :: Position -> [Ident] -> [LazyBinding] -> ([Decl], [Expression])
 genFPExpr p vs bs
@@ -734,7 +731,7 @@ genUpdateFunc p r ls l = (updId, funDecl p updId [cpatt1, cpatt2] cexpr)
 dsRecordConstr :: Position -> QualIdent -> [(Ident, Expression)]
                -> DsM Expression
 dsRecordConstr p r fs = do
-  fs' <- (map fst . snd) `liftM` lookupRecord r
+  fs' <- (map fst . snd) <$> lookupRecord r
   let cts = map (\ l -> fromMaybe (internalError "Desugar.dsRecordConstr")
                             (lookup l fs)) fs'
   dsExpr p (apply (Constructor r) cts)
@@ -779,8 +776,8 @@ dsQual p (StmtDecl    ds) e = dsExpr p (Let ds e)
 dsQual p (StmtBind r t l) e
   | isVarPattern t = dsExpr p (qualExpr t e l)
   | otherwise      = do
-    v   <- addRefId r `liftM` freshMonoTypeVar "_#var" t
-    l'  <- addRefId r `liftM` freshMonoTypeVar "_#var" e
+    v   <- addRefId r <$> freshMonoTypeVar "_#var" t
+    l'  <- addRefId r <$> freshMonoTypeVar "_#var" e
     dsExpr p (apply (prelFoldr r) [foldFunct v l' e, List [r] [], l])
   where
   qualExpr v (ListCompr _ e1 []) l1
