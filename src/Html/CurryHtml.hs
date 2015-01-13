@@ -11,9 +11,14 @@
     This module defines a function for generating HTML documentation pages
     for Curry source modules.
 -}
+{-# LANGUAGE CPP #-}
 module Html.CurryHtml (source2html) where
 
+#if __GLASGOW_HASKELL__ >= 710
+import Control.Applicative   ((<$>))
+#else
 import Control.Applicative   ((<$>), (<*>))
+#endif
 import Control.Monad.Writer
 import Data.List             (mapAccumL)
 import Data.Maybe            (fromMaybe, isJust)

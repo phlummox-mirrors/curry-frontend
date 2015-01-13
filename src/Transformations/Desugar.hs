@@ -59,10 +59,14 @@
    As we are going to insert references to real prelude entities,
    all names must be properly qualified before calling this module.
 -}
-
+{-# LANGUAGE CPP #-}
 module Transformations.Desugar (desugar) where
 
+#if __GLASGOW_HASKELL__ >= 710
+import           Control.Applicative        ((<$>))
+#else
 import           Control.Applicative        ((<$>), (<*>))
+#endif
 import           Control.Arrow              (first, second)
 import           Control.Monad              (mplus)
 import qualified Control.Monad.State as S   (State, runState, gets, modify)
