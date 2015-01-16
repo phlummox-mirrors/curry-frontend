@@ -28,10 +28,10 @@ import Base.Messages
 import CompilerEnv
 import CompilerOpts
 
-type Check m a = Options -> CompilerEnv -> a -> CYT m (CompilerEnv, a)
+type Check m a = Options -> CompEnv a -> CYT m (CompEnv a)
 
 interfaceCheck :: Monad m => Check m Interface
-interfaceCheck _ env intf
+interfaceCheck _ (env, intf)
   | null msgs = ok (env, intf)
   | otherwise = failMessages msgs
   where msgs = IC.interfaceCheck (opPrecEnv env) (tyConsEnv env)
@@ -43,7 +43,7 @@ interfaceCheck _ env intf
 --                 disambiguated
 -- * Environment:  remains unchanged
 kindCheck :: Monad m => Check m Module
-kindCheck _ env mdl
+kindCheck _ (env, mdl)
   | null msgs = ok (env, mdl')
   | otherwise = failMessages msgs
   where (mdl', msgs) = KC.kindCheck (tyConsEnv env) mdl
@@ -54,7 +54,7 @@ kindCheck _ env mdl
 --                 disambiguated, variables are renamed
 -- * Environment:  remains unchanged
 syntaxCheck :: Monad m => Check m Module
-syntaxCheck opts env mdl
+syntaxCheck opts (env, mdl)
   | null msgs = ok (env { extensions = exts }, mdl')
   | otherwise = failMessages msgs
   where ((mdl', exts), msgs) = SC.syntaxCheck opts (valueEnv env)
@@ -66,7 +66,7 @@ syntaxCheck opts env mdl
 --                 precedences
 -- * Environment:  The operator precedence environment is updated
 precCheck :: Monad m => Check m Module
-precCheck _ env (Module ps m es is ds)
+precCheck _ (env, Module ps m es is ds)
   | null msgs = ok (env { opPrecEnv = pEnv' }, Module ps m es is ds')
   | otherwise = failMessages msgs
   where (ds', pEnv', msgs) = PC.precCheck (moduleIdent env) (opPrecEnv env) ds
@@ -75,7 +75,7 @@ precCheck _ env (Module ps m es is ds)
 -- The declarations remain unchanged; the type constructor and value
 -- environments are updated.
 typeCheck :: Monad m => Check m Module
-typeCheck _ env mdl@(Module _ _ _ _ ds)
+typeCheck _ (env, mdl@(Module _ _ _ _ ds))
   | null msgs = ok (env { tyConsEnv = tcEnv', valueEnv = tyEnv' }, mdl)
   | otherwise = failMessages msgs
   where (tcEnv', tyEnv', msgs) = TC.typeCheck (moduleIdent env)
@@ -83,7 +83,7 @@ typeCheck _ env mdl@(Module _ _ _ _ ds)
 
 -- |Check the export specification
 exportCheck :: Monad m => Check m Module
-exportCheck _ env (Module ps m es is ds)
+exportCheck _ (env, Module ps m es is ds)
   | null msgs = ok (env, Module ps m es' is ds)
   | otherwise = failMessages msgs
   where (es', msgs) = EC.exportCheck (moduleIdent env) (aliasEnv env)

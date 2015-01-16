@@ -103,6 +103,7 @@ data DesugarState = DesugarState
   , tyConsEnv   :: TCEnv            -- read-only
   , valueEnv    :: ValueEnv
   , nextId      :: Integer     -- counter
+  , desugarFP   :: Bool
   }
 
 type DsM a = S.State DesugarState a
@@ -121,6 +122,9 @@ getValueEnv = S.gets valueEnv
 
 modifyValueEnv :: (ValueEnv -> ValueEnv) -> DsM ()
 modifyValueEnv f = S.modify $ \ s -> s { valueEnv = f $ valueEnv s }
+
+desugarFunPats :: DsM Bool
+desugarFunPats = S.gets desugarFP
 
 getNextId :: DsM Integer
 getNextId = do
@@ -163,12 +167,12 @@ freshMonoTypeVar prefix t = getTypeOf t >>= \ ty ->
 -- Actually, the transformation is slightly more general than necessary
 -- as it allows value declarations at the top-level of a module.
 
-desugar :: [KnownExtension] -> ValueEnv -> TCEnv -> Module
+desugar :: Bool -> [KnownExtension] -> ValueEnv -> TCEnv -> Module
         -> (Module, ValueEnv)
-desugar xs tyEnv tcEnv (Module ps m es is ds)
+desugar dsFunPats xs tyEnv tcEnv (Module ps m es is ds)
   = (Module ps m es is ds', valueEnv s')
   where (ds', s') = S.runState (desugarModuleDecls ds)
-                               (DesugarState m xs tcEnv tyEnv 1)
+                               (DesugarState m xs tcEnv tyEnv 1 dsFunPats)
 
 desugarModuleDecls :: [Decl] -> DsM [Decl]
 desugarModuleDecls ds = do
@@ -212,19 +216,19 @@ genForeignDecl p f = do
 -- and a record label belongs to only one record declaration.
 
 dsDeclRhs :: Decl -> DsM Decl
-dsDeclRhs (FunctionDecl     p f eqs) =
-  FunctionDecl p f <$> mapM dsEquation eqs
-dsDeclRhs (PatternDecl      p t rhs) =
-  PatternDecl p t <$> dsRhs p id rhs
-dsDeclRhs (ForeignDecl p cc ie f ty) =
-  return $ ForeignDecl p cc (ie `mplus` Just (idName f)) f ty
-dsDeclRhs vars@(FreeDecl        _ _) = return vars
+dsDeclRhs (FunctionDecl     p f eqs) = FunctionDecl p f <$> mapM dsEquation eqs
+dsDeclRhs (PatternDecl      p t rhs) = PatternDecl p t <$> dsRhs p id rhs
+dsDeclRhs (ForeignDecl p cc ie f ty) = return $ ForeignDecl p cc ie' f ty
+  where ie' = ie `mplus` Just (idName f)
+dsDeclRhs fs@(FreeDecl          _ _) = return fs
 dsDeclRhs _ = error "Desugar.dsDeclRhs: no pattern match"
 
 dsEquation :: Equation -> DsM Equation
 dsEquation (Equation p lhs rhs) = do
   (cs1     , ts1) <- dsNonLinearity             ts
-  (ds2, cs2, ts2) <- dsFunctionalPatterns p     ts1
+  funpats         <- desugarFunPats
+  (ds2, cs2, ts2) <- if funpats then dsFunctionalPatterns p ts1
+                                else return ([], [], ts1)
   (ds3     , ts3) <- mapAccumM (dsPattern p) [] ts2
   rhs'            <- dsRhs p (addConstraints (cs2 ++ cs1))
                    $ addDecls (ds2 ++ ds3) $ rhs
@@ -239,7 +243,7 @@ dsEquation (Equation p lhs rhs) = do
 -- all variables. If it encounters a variable which has been previously
 -- introduced, the second occurrence is changed to a fresh variable
 -- and a new pair (newvar, oldvar) is saved to generate constraints later.
--- Non-linear patterns in functional patterns are not desugared,
+-- Non-linear patterns inside single functional patterns are not desugared,
 -- as this special case is handled later.
 dsNonLinearity :: [Pattern] -> DsM ([Expression], [Pattern])
 dsNonLinearity ts = do
@@ -430,6 +434,7 @@ fp2Expr t                           = internalError $
 -- with a local declaration for 'v'.
 
 dsPattern :: Position -> [Decl] -> Pattern -> DsM ([Decl], Pattern)
+dsPattern _ ds v@(VariablePattern      _) = return (ds, v)
 dsPattern p ds (LiteralPattern         l) = do
   dl <- dsLiteral l
   case dl of
@@ -437,7 +442,6 @@ dsPattern p ds (LiteralPattern         l) = do
     Right (rs,ls) -> dsPattern p ds $ ListPattern rs $ map LiteralPattern ls
 dsPattern p ds (NegativePattern      _ l) =
   dsPattern p ds (LiteralPattern (negateLiteral l))
-dsPattern _ ds v@(VariablePattern      _) = return (ds, v)
 dsPattern p ds (ConstructorPattern c [t]) = do
     tyEnv <- getValueEnv
     (if isNewtypeConstr tyEnv c then id else second (constrPat c)) <$>

@@ -60,7 +60,7 @@ lift tyEnv (Module ps m es is ds) = (lifted, valueEnv s')
 -- each local function declaration onto its replacement expression,
 -- i.e. the function applied to its free variables.
 
-type AbstractEnv = Map.Map Ident Expression
+type AbstractEnv = Map.Map Ident (QualIdent, [Ident])
 
 data LiftState = LiftState
   { moduleIdent :: ModuleIdent
@@ -98,8 +98,10 @@ absDecl _   _   d                      = return d
 
 absEquation :: [Ident] -> Equation -> LiftM Equation
 absEquation lvs (Equation p lhs@(FunLhs f ts) rhs) =
-  Equation p lhs <$> absRhs (idName f ++ ".") (lvs ++ bv ts) rhs
+  Equation p <$> absLhs lhs <*> absRhs (idName f ++ ".") (lvs ++ bv ts) rhs
 absEquation _ _ = error "Lift.absEquation: no pattern match"
+
+absLhs (FunLhs f ts) = FunLhs f <$> mapM absPattern ts
 
 absRhs :: String -> [Ident] -> Rhs -> LiftM Rhs
 absRhs pre lvs (SimpleRhs p e _) = flip (SimpleRhs p) [] <$> absExpr pre lvs e
@@ -172,10 +174,11 @@ absFunDecls pre lvs (fds:fdss) vds e = do
   env <- getAbstractEnv
   let fs     = bv fds
       fvs    = filter (`elem` lvs) (Set.toList fvsRhs)
-      env'   = foldr (bindF (map mkVar fvs)) env fs
+      env'   = foldr (bindF fvs) env fs
       fvsRhs = Set.unions
-        [Set.fromList (maybe [v] (qfv m) (Map.lookup v env)) | v <- qfv m fds]
-      bindF fvs' f = Map.insert f (apply (mkFun m pre f) fvs')
+          [ Set.fromList (maybe [v] (qfv m . asFunCall) (Map.lookup v env))
+          | v <- qfv m fds]
+      bindF fvs' f = Map.insert f (qualifyWith m $ liftIdent pre f, fvs')
       isLifted tyEnv f = null $ lookupValue f tyEnv
   fs' <- (\tyEnv -> filter (not . isLifted tyEnv) fs) <$> getValueEnv
   modifyValueEnv $ absFunTypes m pre fvs fs'
@@ -216,7 +219,7 @@ absExpr pre lvs var@(Variable  v)
   | otherwise     = do
     getAbstractEnv >>= \env -> case Map.lookup (unqualify v) env of
       Nothing -> return var
-      Just v' -> absExpr pre lvs v'
+      Just v' -> absExpr pre lvs (asFunCall v')
 absExpr _   _   c@(Constructor _) = return c
 absExpr pre lvs (Apply     e1 e2) = Apply         <$> absExpr pre lvs e1
                                                   <*> absExpr pre lvs e2
@@ -228,6 +231,18 @@ absExpr _   _   e                 = internalError $ "Lift.absExpr: " ++ show e
 
 absAlt :: String -> [Ident] -> Alt -> LiftM Alt
 absAlt pre lvs (Alt p t rhs) = Alt p t <$> absRhs pre (lvs ++ bv t) rhs
+
+absPattern :: Pattern -> LiftM Pattern
+absPattern v@(VariablePattern _) = return v
+absPattern l@(LiteralPattern  _) = return l
+absPattern (ConstructorPattern c ps) = ConstructorPattern c <$> mapM absPattern ps
+absPattern (AsPattern v p) = AsPattern v <$> absPattern p
+absPattern (FunctionPattern f ps) = do
+  getAbstractEnv >>= \env -> case Map.lookup (unqualify f) env of
+    Nothing       -> FunctionPattern f  <$> mapM absPattern ps
+    Just (f', vs) -> (FunctionPattern f' . (map VariablePattern vs ++))
+                     <$> mapM absPattern ps
+absPattern _ = error "Lift.absPattern"
 
 -- -----------------------------------------------------------------------------
 -- Lifting
@@ -289,6 +304,9 @@ isFunDecl :: Decl -> Bool
 isFunDecl (FunctionDecl     _ _ _) = True
 isFunDecl (ForeignDecl  _ _ _ _ _) = True
 isFunDecl _                        = False
+
+asFunCall :: (QualIdent, [Ident]) -> Expression
+asFunCall (f, vs) = apply (Variable f) (map mkVar vs)
 
 mkFun :: ModuleIdent -> String -> Ident -> Expression
 mkFun m pre f = Variable $ qualifyWith m $ liftIdent pre f

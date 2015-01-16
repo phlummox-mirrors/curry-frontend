@@ -27,7 +27,6 @@
 module Transformations.Simplify (simplify) where
 
 import           Control.Applicative
-import           Control.Monad              (zipWithM)
 import           Control.Monad.State as S   (State, runState, gets, modify)
 import qualified Data.Map            as Map (Map, empty, insert, lookup)
 
@@ -50,7 +49,6 @@ data SimplifyState = SimplifyState
   , valueEnv    :: ValueEnv
   , tyConsEnv   :: TCEnv       -- read-only!
   , nextId      :: Int         -- counter
-  , flat        :: Bool        -- read-only!
   }
 
 type SIM = S.State SimplifyState
@@ -82,13 +80,9 @@ getValueEnv = S.gets valueEnv
 getTyConsEnv :: SIM TCEnv
 getTyConsEnv = S.gets tyConsEnv
 
-isFlat :: SIM Bool
-isFlat = S.gets flat
-
-simplify :: Bool -> ValueEnv -> TCEnv -> Module -> (Module, ValueEnv)
-simplify flags tyEnv tcEnv mdl@(Module _ m _ _ _) = (mdl', valueEnv s')
-  where (mdl', s') = S.runState (simModule mdl)
-                                (SimplifyState m tyEnv tcEnv 1 flags)
+simplify :: ValueEnv -> TCEnv -> Module -> (Module, ValueEnv)
+simplify tyEnv tcEnv mdl@(Module _ m _ _ _) = (mdl', valueEnv s')
+  where (mdl', s') = S.runState (simModule mdl) (SimplifyState m tyEnv tcEnv 1)
 
 simModule :: Module -> SIM Module
 simModule (Module ps m es is ds) = Module ps m es is
@@ -391,50 +385,22 @@ sharePatternRhs (PatternDecl p t rhs) = case t of
   where patternId n = mkIdent ("_#pat" ++ show n)
 sharePatternRhs d                     = return [d]
 
--- fvs contains all variables used in the declarations and the body of
--- the let expression.
+-- fvs contains all variables used in the declarations and the body
+-- of the let expression.
 expandPatternBindings :: [Ident] -> Decl -> SIM [Decl]
 expandPatternBindings fvs (PatternDecl p t (SimpleRhs p' e _)) = case t of
   VariablePattern _ -> return [PatternDecl p t (SimpleRhs p' e [])]
   _                 -> do
-    let vs = filter (`elem` fvs) (bv t)
-    pty   <- getTypeOf t       -- type of pattern
-    vtys  <- mapM getTypeOf vs -- types of pattern variables
-    flags <- isFlat
-    if flags
-      then do
-        sels <- zipWithM (getId pty) vs vtys -- generate selector names
-        return (zipWith flatProjectionDecl sels vs)
-      else do
-        sels <- mapM (freshIdent fpSelectorId . selectorType pty) (shuffle vtys)
-        return (zipWith projectionDecl     sels (shuffle vs))
-  where
-  -- flat selectors, with space leak
-  getId pty v vty = freshIdent (updIdentName (++ '#' : idName v) . fpSelectorId)
-                               (flatSelectorType pty vty)
-  flatSelectorType pty vty = polyType (TypeArrow pty (identityType vty))
-
-  -- @flatProjectionDecl f v@ -> @v = let f t = v in f e@
-  flatProjectionDecl f v = varDecl p v
-                         $ Let [funDecl p f [t] (mkVar v)] (Apply (mkVar f) e)
-
-  -- complex selectors, without space leak
-  selectorType pty (vty:tys) = polyType (foldr TypeArrow (identityType vty) (pty:tys))
-  selectorType _   []        = error "Simplify.expandPatternBindings.selectorType: empty list"
-
-  -- @projectionDecl f (v:vs)@ -> @v = let f t vs = v in f e vs@
-  projectionDecl f (v:vs) = varDecl p v
-                          $ Let [funDecl p f (t : map VariablePattern vs) (mkVar v)]
-                          $ foldl applyVar (Apply (mkVar f) e) vs
-  projectionDecl _ []     = error "Simplify.expandPatternBindings.projectionDecl: empty list"
-
+  pty   <- getTypeOf t            -- type of pattern
+  mapM (mkSelectorDecl pty) vs
+ where
+  vs = filter (`elem` fvs) (bv t) -- used variables
+  mkSelectorDecl pty v = do
+    vty <- getTypeOf v
+    f   <- freshIdent (updIdentName (++ '#' : idName v) . fpSelectorId)
+                      (polyType (TypeArrow pty (identityType vty)))
+    return $ varDecl p v $ Let [funDecl p f [t] (mkVar v)] (Apply (mkVar f) e)
 expandPatternBindings _ d = return [d]
-
-shuffle :: [a] -> [[a]]
-shuffle xs = shuffle' id xs
-  where
-  shuffle' _ []       = []
-  shuffle' f (x1:xs1) = (x1 : f xs1) : shuffle' (f . (x1:)) xs1
 
 -- ---------------------------------------------------------------------------
 -- Auxiliary functions
@@ -470,9 +436,6 @@ freshIdent f ty@(ForAll _ t) = do
 
 mkVar :: Ident -> Expression
 mkVar = Variable . qualify
-
-applyVar :: Expression -> Ident -> Expression
-applyVar e v = Apply e (mkVar v)
 
 varDecl :: Position -> Ident -> Expression -> Decl
 varDecl p v e = PatternDecl p (VariablePattern v) (SimpleRhs p e [])

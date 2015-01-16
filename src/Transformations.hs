@@ -32,36 +32,36 @@ import CompilerOpts
 import Imports (qualifyEnv)
 import qualified IL
 
--- |Add missing case branches
-completeCase :: IL.Module -> CompilerEnv -> (IL.Module, CompilerEnv)
-completeCase mdl env = (CC.completeCase (interfaceEnv env) mdl, env)
+-- |Fully qualify used constructors and functions.
+qual :: Options -> CompEnv Module -> CompEnv Module
+qual opts (env, mdl) = (qualifyEnv opts env, mdl')
+  where mdl' = Q.qual (moduleIdent env) (tyConsEnv env) (valueEnv env) mdl
+
+-- |Remove syntactic sugar
+desugar :: Bool -> CompEnv Module -> CompEnv Module
+desugar dsfp (env, mdl) = (env { valueEnv = tyEnv' }, mdl')
+  where (mdl', tyEnv') = DS.desugar dsfp (extensions env) (valueEnv env)
+                                         (tyConsEnv env) mdl
+
+-- |Simplify the source code.
+simplify :: CompEnv Module -> CompEnv Module
+simplify (env, mdl) = (env { valueEnv = tyEnv' }, mdl')
+  where (mdl', tyEnv') = S.simplify (valueEnv env) (tyConsEnv env) mdl
+
+-- |Lift local declarations
+lift :: CompEnv Module -> CompEnv Module
+lift (env, mdl) = (env { valueEnv = tyEnv' }, mdl')
+  where (mdl', tyEnv') = L.lift (valueEnv env) mdl
 
 -- |Translate into the intermediate language
-ilTrans :: Bool -> Module -> CompilerEnv -> (IL.Module, CompilerEnv)
-ilTrans flat mdl env = (il, env)
-  where il = IL.ilTrans flat (valueEnv env) (tyConsEnv env) mdl
+ilTrans :: CompEnv Module -> CompEnv IL.Module
+ilTrans (env, mdl) = (env, il)
+  where il = IL.ilTrans (valueEnv env) (tyConsEnv env) mdl
 
 -- |Translate a type into its representation in the intermediate language
 transType :: ModuleIdent -> ValueEnv -> TCEnv -> Type -> IL.Type
 transType = IL.transType
 
--- |Remove syntactic sugar
-desugar :: Module -> CompilerEnv -> (Module, CompilerEnv)
-desugar mdl env = (mdl', env { valueEnv = tyEnv' })
-  where (mdl', tyEnv') = DS.desugar (extensions env) (valueEnv env)
-                                    (tyConsEnv env) mdl
-
--- |Lift local declarations
-lift :: Module -> CompilerEnv -> (Module, CompilerEnv)
-lift mdl env = (mdl', env { valueEnv = tyEnv' })
-  where (mdl', tyEnv') = L.lift (valueEnv env) mdl
-
--- |Fully qualify used constructors and functions.
-qual :: Options -> CompilerEnv -> Module -> (Module, CompilerEnv)
-qual opts env mdl = (mdl', qualifyEnv opts env)
-  where mdl' = Q.qual (moduleIdent env) (tyConsEnv env) (valueEnv env) mdl
-
--- |Simplify the source code.
-simplify :: Bool -> Module -> CompilerEnv -> (Module, CompilerEnv)
-simplify flat mdl env = (mdl', env { valueEnv = tyEnv' })
-  where (mdl', tyEnv') = S.simplify flat (valueEnv env) (tyConsEnv env) mdl
+-- |Add missing case branches
+completeCase :: CompEnv IL.Module -> CompEnv IL.Module
+completeCase (env, mdl) = (env, CC.completeCase (interfaceEnv env) mdl)

@@ -91,7 +91,7 @@ fullParse :: Options -> FilePath -> String -> CYIO Module
 fullParse opts fn _ = do
   buildCurry (opts { optTargetTypes = []}) fn
   (env, mdl) <- loadAndCheckModule opts' fn
-  return (fst $ qual opts env mdl)
+  return (snd $ qual opts (env, mdl))
   where
   opts' = opts { optWarnOpts    = (optWarnOpts opts) { wnWarn = False }
                , optTargetTypes = []
