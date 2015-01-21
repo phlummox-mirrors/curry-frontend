@@ -1,7 +1,7 @@
 {- |
     Module      :  $Header$
     Description :  Generating HTML documentation
-    Copyright   :  (c) 2011 - 2014, Björn Peemöller
+    Copyright   :  (c) 2011 - 2015, Björn Peemöller
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
@@ -11,75 +11,68 @@
     This module defines a function for generating HTML documentation pages
     for Curry source modules.
 -}
-{-# LANGUAGE CPP #-}
 module Html.CurryHtml (source2html) where
 
-#if __GLASGOW_HASKELL__ >= 710
-import Control.Applicative   ((<$>))
-#else
-import Control.Applicative   ((<$>), (<*>))
-#endif
 import Control.Monad.Writer
 import Data.List             (mapAccumL)
 import Data.Maybe            (fromMaybe, isJust)
 import Network.URI           (escapeURIString, isUnreserved)
 import System.Directory      (copyFile, doesFileExist)
-import System.FilePath       ((</>), dropFileName, joinPath, takeBaseName)
+import System.FilePath       ((</>))
 
 import Curry.Base.Ident      (ModuleIdent (..), QualIdent (..), unqualify)
-import Curry.Base.Monad
-import Curry.Base.Pretty     (text)
-import Curry.Files.Filenames (moduleNameToFile)
-import Curry.Files.PathUtils (readModule, lookupCurryFile)
+import Curry.Base.Monad      (CYIO, liftCYM, failMessages)
+import Curry.Base.Pretty     ((<+>), text, vcat)
+import Curry.Files.PathUtils (readModule)
 import Curry.Syntax          (Module (..), lexSource)
 
 import Html.SyntaxColoring
 
-import Base.Messages
+import Base.Messages         (warn, message)
 import CompilerOpts          (Options (..), WarnOpts (..))
-import CurryBuilder          (buildCurry)
+import CurryBuilder          (buildCurry, findCurry)
 import Modules               (loadAndCheckModule)
 import Transformations       (qual)
 import Paths_curry_frontend  (getDataFileName)
 
+-- |'FilePath' of the CSS style file to be added to the documentation.
 cssFile :: FilePath
 cssFile = "currysource.css"
 
--- translate source file into HTML file with syntaxcoloring
--- @param sourcefilename
-source2html :: Options -> FilePath -> CYIO ()
-source2html opts f = do
-  let baseName   = takeBaseName f
-      outDir     = fromMaybe (dropFileName f) $ optHtmlDir opts
-      outFile    = outDir </> baseName ++ "_curry.html"
-  srcFile <- liftIO $ lookupCurryFile ("." : optImportPaths opts) f
-  (m, program) <- filename2program opts (fromMaybe f srcFile)
-  liftIO $ writeFile outFile (program2html m program)
-  liftIO $ updateCSSFile outDir
+-- |Translate source file into HTML file with syntaxcoloring
+source2html :: Options -> String -> CYIO ()
+source2html opts s = do
+  srcFile    <- findCurry opts s
+  (mid, doc) <- docModule opts srcFile
+  let outDir  = fromMaybe "." $ optHtmlDir opts
+      outFile = outDir </> htmlFile mid
+  liftIO $ writeFile outFile doc
+  updateCSSFile opts outDir
 
-updateCSSFile :: FilePath -> IO ()
-updateCSSFile dir = do
-  src <- getDataFileName cssFile
+-- |Update the CSS file
+updateCSSFile :: Options -> FilePath -> CYIO ()
+updateCSSFile opts dir = do
+  src <- liftIO $ getDataFileName cssFile
   let target = dir </> cssFile
-  exists  <- doesFileExist target
-  if not exists
-    then copyFile src target
-    else do
-      same <- (==) <$> readFile src <*> readFile target
-      unless same $ copyFile src target
+  srcExists <- liftIO $ doesFileExist src
+  if srcExists then liftIO $ copyFile src target
+               else warn (optWarnOpts opts) [message $ missingStyleFile src ]
+  where
+  missingStyleFile f = vcat
+    [ text "Could not copy CSS style file:"
+    , text "File" <+> text ("`" ++ f ++ "'") <+> text "does not exist"
+    ]
 
--- @param importpaths
--- @param filename
--- @return program
-filename2program :: Options -> String -> CYIO (ModuleIdent, [Code])
-filename2program opts f = do
+-- |Create the documentation for the module
+docModule :: Options -> String -> CYIO (ModuleIdent, String)
+docModule opts f = do
   mbModule <- liftIO $ readModule f
   case mbModule of
     Nothing  -> failMessages [message $ text $ "Missing file: " ++ f]
     Just src -> do
       toks  <- liftCYM $ lexSource f src
       typed@(Module _ m _ _ _) <- fullParse opts f src
-      return (m, genProgram typed toks)
+      return (m, program2html m $ genProgram typed toks)
 
 -- |Return the syntax tree of the source program 'src' (type 'Module'; see
 -- Module "CurrySyntax").after inferring the types of identifiers.
@@ -107,7 +100,7 @@ program2html m codes = unlines
   , "<html>", "<head>"
   , "<meta http-equiv=\"Content-Type\" content=\"text/html;charset=utf-8\" />"
   , "<title>" ++ titleHtml ++ "</title>"
-  , "<link rel=\"stylesheet\" type=\"text/css\" href=\"" ++ styleLink ++ "\"/>"
+  , "<link rel=\"stylesheet\" type=\"text/css\" href=\"" ++ cssFile ++ "\"/>"
   , "</head>"
   , "<body>"
   , "<table><tbody><tr>"
@@ -119,7 +112,6 @@ program2html m codes = unlines
   ]
   where
   titleHtml = "Module " ++ show m
-  styleLink = makeTopPath m </> cssFile
   lineHtml  = unlines $ map show [1 .. length (lines codeHtml)]
   codeHtml  = concat $ snd $ mapAccumL (code2html m) [] codes
 
@@ -177,12 +169,11 @@ addHtmlLink m str qid =
   (mmid, ident) = (qidModule qid, qidIdent qid)
 
 makeRelativePath :: ModuleIdent -> ModuleIdent -> String
-makeRelativePath cur new
-  | cur == new = ""
-  | otherwise  = makeTopPath cur </> moduleNameToFile new ++ "_curry.html"
+makeRelativePath cur new  | cur == new = ""
+                          | otherwise  = htmlFile new
 
-makeTopPath :: ModuleIdent -> String
-makeTopPath m = joinPath $ replicate (length (midQualifiers m) - 1) ".."
+htmlFile :: ModuleIdent -> String
+htmlFile m = show m ++ "_curry.html"
 
 isCall :: Code -> Bool
 isCall (TypeCons TypeExport _) = True
