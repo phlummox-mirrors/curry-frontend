@@ -101,7 +101,9 @@ absEquation lvs (Equation p lhs@(FunLhs f ts) rhs) =
   Equation p <$> absLhs lhs <*> absRhs (idName f ++ ".") (lvs ++ bv ts) rhs
 absEquation _ _ = error "Lift.absEquation: no pattern match"
 
+absLhs :: Lhs -> LiftM Lhs
 absLhs (FunLhs f ts) = FunLhs f <$> mapM absPattern ts
+absLhs _             = error "Lift.absLhs: no simple LHS"
 
 absRhs :: String -> [Ident] -> Rhs -> LiftM Rhs
 absRhs pre lvs (SimpleRhs p e _) = flip (SimpleRhs p) [] <$> absExpr pre lvs e
@@ -307,9 +309,6 @@ isFunDecl _                        = False
 
 asFunCall :: (QualIdent, [Ident]) -> Expression
 asFunCall (f, vs) = apply (Variable f) (map mkVar vs)
-
-mkFun :: ModuleIdent -> String -> Ident -> Expression
-mkFun m pre f = Variable $ qualifyWith m $ liftIdent pre f
 
 mkVar :: Ident -> Expression
 mkVar v = Variable $ qualify v
