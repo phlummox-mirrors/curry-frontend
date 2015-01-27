@@ -416,9 +416,8 @@ genTVarIndex :: Ident -> GAC CTVarIName
 genTVarIndex i = do
   env <- S.get
   let idx = tvarIndex env
-  S.put $ env {tvarIndex = idx + 1, tvarEnv = bindTopEnv f i idx (tvarEnv env)}
+  S.put $ env {tvarIndex = idx + 1, tvarEnv = bindTopEnv i idx (tvarEnv env)}
   return (idx, idName i)
-  where f = "GenAbstractCurry.genTVarIndex"
 
 withLocalEnv :: GAC a -> GAC a
 withLocalEnv act = do

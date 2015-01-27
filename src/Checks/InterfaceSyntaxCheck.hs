@@ -2,7 +2,7 @@
     Module      :  $Header$
     Description :  Checks interface declarations
     Copyright   :  (c) 2000 - 2007 Wolfgang Lux
-                                   Björn Peemöller
+                       2011 - 2015 Björn Peemöller
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
@@ -69,18 +69,18 @@ intfSyntaxCheck (Interface n is ds) = (Interface n is ds', reverse $ errors s')
 
 bindType :: IDecl -> TypeEnv -> TypeEnv
 bindType (IInfixDecl       _ _ _ _) = id
-bindType (HidingDataDecl    _ tc _) = qualBindTopEnv "" tc (Data tc [])
-bindType (IDataDecl      _ tc _ cs) = qualBindTopEnv "" tc
+bindType (HidingDataDecl    _ tc _) = qualBindTopEnv tc (Data tc [])
+bindType (IDataDecl      _ tc _ cs) = qualBindTopEnv tc
                                       (Data tc (map constr (catMaybes cs)))
   where constr (ConstrDecl    _ _ c _) = c
         constr (ConOpDecl  _ _ _ op _) = op
-bindType (INewtypeDecl   _ tc _ nc) = qualBindTopEnv "" tc (Data tc [nconstr nc])
+bindType (INewtypeDecl   _ tc _ nc) = qualBindTopEnv tc (Data tc [nconstr nc])
   where nconstr (NewConstrDecl _ _ c _) = c
 -- jrt 2014-10-16: record types are handled like data declarations; this is
 -- necessary because type constructors of record types are not expanded anymore
 -- and can occur in interfaces
-bindType (ITypeDecl _ tc _ (RecordType _)) = qualBindTopEnv "" tc (Data tc [])
-bindType (ITypeDecl       _ tc _ _) = qualBindTopEnv "" tc (Alias tc)
+bindType (ITypeDecl _ tc _ (RecordType _)) = qualBindTopEnv tc (Data tc [])
+bindType (ITypeDecl       _ tc _ _) = qualBindTopEnv tc (Alias tc)
 bindType (IFunctionDecl    _ _ _ _) = id
 
 -- The checks applied to the interface are similar to those performed

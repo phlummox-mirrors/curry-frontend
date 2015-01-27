@@ -48,19 +48,17 @@ toplevelEnv (GlobalEnv   env) = env
 toplevelEnv (LocalEnv genv _) = toplevelEnv genv
 
 bindNestEnv :: Ident -> a -> NestEnv a -> NestEnv a
-bindNestEnv x y (GlobalEnv     env) = GlobalEnv $
-  bindTopEnv "NestEnv.bindNestEnv" x y env
+bindNestEnv x y (GlobalEnv     env) = GlobalEnv $ bindTopEnv x y env
 bindNestEnv x y (LocalEnv genv env) = case Map.lookup x env of
-  Just  _ -> internalError $ "NestEnv.bindNestEnv " ++ show x ++ " failed"
+  Just  _ -> internalError $ "NestEnv.bindNestEnv " ++ show x
   Nothing -> LocalEnv genv $ Map.insert x y env
 
 qualBindNestEnv :: QualIdent -> a -> NestEnv a -> NestEnv a
-qualBindNestEnv x y (GlobalEnv     env)
-  = GlobalEnv $ qualBindTopEnv "NestEnv.qualBindNestEnv" x y env
+qualBindNestEnv x y (GlobalEnv     env) = GlobalEnv $ qualBindTopEnv x y env
 qualBindNestEnv x y (LocalEnv genv env)
-  | isQualified x = internalError "NestEnv.qualBindNestEnv"
+  | isQualified x = internalError $ "NestEnv.qualBindNestEnv " ++ show x
   | otherwise     = case Map.lookup x' env of
-      Just  _ -> internalError "NestEnv.qualBindNestEnv"
+      Just  _ -> internalError $ "NestEnv.qualBindNestEnv " ++ show x
       Nothing -> LocalEnv genv $ Map.insert x' y env
     where x' = unqualify x
 

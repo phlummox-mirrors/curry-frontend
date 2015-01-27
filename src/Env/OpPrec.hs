@@ -44,9 +44,10 @@ type Precedence = Integer
 -- if used anywhere.
 instance Show OpPrec where
   showsPrec _ (OpPrec fix p) = showString (assoc fix) . shows p
-    where assoc InfixL = "left "
-          assoc InfixR = "right "
-          assoc Infix  = "non-assoc "
+    where
+    assoc InfixL = "left "
+    assoc InfixR = "right "
+    assoc Infix  = "non-assoc "
 
 -- |Default operator declaration (associativity and precedence).
 defaultP :: OpPrec
@@ -83,11 +84,10 @@ consPrec = PrecInfo qConsId (OpPrec InfixR 5)
 -- |Bind an operator precedence.
 bindP :: ModuleIdent -> Ident -> OpPrec -> OpPrecEnv -> OpPrecEnv
 bindP m op p
-  | hasGlobalScope op = bindTopEnv fun op info . qualBindTopEnv fun qop info
-  | otherwise         = bindTopEnv fun op info
+  | hasGlobalScope op = bindTopEnv op info . qualBindTopEnv qop info
+  | otherwise         = bindTopEnv op info
   where qop  = qualifyWith m op
         info = PrecInfo qop p
-        fun  = "Env.OpPrec.bindP"
 
 -- The lookup functions for the environment which maintains the operator
 -- precedences are simpler than for the type and value environments
