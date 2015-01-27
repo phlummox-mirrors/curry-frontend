@@ -25,6 +25,7 @@ import           Control.Monad            (liftM, liftM2)
 import qualified Control.Monad.State as S
 import           Data.List                (nub, partition)
 import           Data.Maybe               (catMaybes)
+import qualified Data.Traversable    as T (mapM)
 
 import Base.Expr
 import Base.Messages (Message, posMessage, internalError)
@@ -35,13 +36,6 @@ import Env.TypeConstructor
 import Curry.Base.Ident
 import Curry.Base.Pretty
 import Curry.Syntax
-
--- import Base
--- import Error
--- import List
--- import Maybe
--- import Monad
--- import TopEnv
 
 data ISCState = ISCState
   { typeEnv :: TypeEnv
@@ -93,7 +87,7 @@ checkIDecl (HidingDataDecl p tc tvs) = do
   return (HidingDataDecl p tc tvs)
 checkIDecl (IDataDecl p tc tvs cs) = do
   checkTypeLhs tvs
-  liftM (IDataDecl p tc tvs) (mapM (liftMaybe (checkConstrDecl tvs)) cs)
+  liftM (IDataDecl p tc tvs) (mapM (T.mapM (checkConstrDecl tvs)) cs)
 checkIDecl (INewtypeDecl p tc tvs nc) = do
   checkTypeLhs tvs
   liftM (INewtypeDecl p tc tvs) (checkNewConstrDecl tvs nc)
@@ -157,14 +151,6 @@ checkTypeConstructor tc tys = do
                   report (errBadTypeSynonym tc)
                   ConstructorType tc `liftM` mapM checkType tys
     _          -> internalError "checkTypeConstructor"
-
--- ---------------------------------------------------------------------------
--- Auxiliary functions
--- ---------------------------------------------------------------------------
-
-liftMaybe :: Monad m => (a -> m b) -> Maybe a -> m (Maybe b)
-liftMaybe f (Just x) = liftM Just (f x)
-liftMaybe _ Nothing  = return Nothing
 
 -- ---------------------------------------------------------------------------
 -- Error messages
