@@ -147,7 +147,6 @@ data TargetType
   | FlatCurry             -- ^ FlatCurry
   | ExtendedFlatCurry     -- ^ Extended FlatCurry
   | AbstractCurry         -- ^ AbstractCurry
-  | UntypedAbstractCurry  -- ^ Untyped AbstractCurry
     deriving (Eq, Show)
 
 -- |Warnings flags
@@ -369,10 +368,6 @@ options =
       (NoArg (onOpts $ \ opts -> opts { optTargetTypes =
         nub $ AbstractCurry : optTargetTypes opts }))
       "generate (type infered) AbstractCurry code"
-  , Option ""   ["uacy"]
-      (NoArg (onOpts $ \ opts -> opts { optTargetTypes =
-        nub $ UntypedAbstractCurry : optTargetTypes opts }))
-      "generate untyped AbstractCurry code"
   , Option "F"  []
       (NoArg (onPrepOpts $ \ opts -> opts { ppPreprocess = True }))
       "use custom preprocessor"
