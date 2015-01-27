@@ -2,6 +2,7 @@
     Module      :  $Header$
     Description :  Nested Environments
     Copyright   :  (c) 1999 - 2003 Wolfgang Lux
+                       2011 - 2015 Björn Peemöller
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
@@ -18,18 +19,18 @@
 module Base.NestEnv
   ( module Base.TopEnv
   , NestEnv, bindNestEnv, qualBindNestEnv, lookupNestEnv, qualLookupNestEnv
-  , toplevelEnv, globalEnv, nestEnv
+  , toplevelEnv, globalEnv, nestEnv, elemNestEnv
   ) where
 
-import qualified Data.Map as Map
-import Curry.Base.Ident
+import qualified Data.Map         as Map
+import           Curry.Base.Ident
 
 import Base.Messages (internalError)
 import Base.TopEnv
 
 data NestEnv a
-  = GlobalEnv (TopEnv a)
-  | LocalEnv (NestEnv a) (Map.Map Ident a)
+  = GlobalEnv (TopEnv  a)
+  | LocalEnv  (NestEnv a) (Map.Map Ident a)
     deriving Show
 
 instance Functor NestEnv where
@@ -47,14 +48,14 @@ toplevelEnv (GlobalEnv   env) = env
 toplevelEnv (LocalEnv genv _) = toplevelEnv genv
 
 bindNestEnv :: Ident -> a -> NestEnv a -> NestEnv a
-bindNestEnv x y (GlobalEnv env)
-  = GlobalEnv $ bindTopEnv "NestEnv.bindNestEnv" x y env
+bindNestEnv x y (GlobalEnv     env) = GlobalEnv $
+  bindTopEnv "NestEnv.bindNestEnv" x y env
 bindNestEnv x y (LocalEnv genv env) = case Map.lookup x env of
   Just  _ -> internalError $ "NestEnv.bindNestEnv " ++ show x ++ " failed"
   Nothing -> LocalEnv genv $ Map.insert x y env
 
 qualBindNestEnv :: QualIdent -> a -> NestEnv a -> NestEnv a
-qualBindNestEnv x y (GlobalEnv env)
+qualBindNestEnv x y (GlobalEnv     env)
   = GlobalEnv $ qualBindTopEnv "NestEnv.qualBindNestEnv" x y env
 qualBindNestEnv x y (LocalEnv genv env)
   | isQualified x = internalError "NestEnv.qualBindNestEnv"
@@ -73,3 +74,6 @@ qualLookupNestEnv :: QualIdent -> NestEnv a -> [a]
 qualLookupNestEnv x env
   | isQualified x = qualLookupTopEnv x $ toplevelEnv env
   | otherwise     = lookupNestEnv (unqualify x) env
+
+elemNestEnv :: Ident -> NestEnv a -> Bool
+elemNestEnv x env = not (null (lookupNestEnv x env))
