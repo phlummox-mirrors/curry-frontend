@@ -116,36 +116,31 @@ trFuncDecl :: Decl -> GAC [CFuncDecl]
 trFuncDecl (FunctionDecl   _ f eqs) = (\f' a v ty rs -> [CFunc f' a v ty rs])
   <$> trLocalIdent f <*> getArity f <*> getVisibility f
   <*> (getType f >>= trTypeExpr)
-  <*> (CRules CFlex <$> mapM trEquation eqs)
+  <*> mapM trEquation eqs
 trFuncDecl (ForeignDecl  _ _ _ f _) = (\f' a v ty rs -> [CFunc f' a v ty rs])
   <$> trLocalIdent f <*> getArity f <*> getVisibility f
   <*> (getType f >>= trTypeExpr)
-  <*> return (CExternal (idName f))
+  <*> return []
 trFuncDecl (ExternalDecl      _ fs) = T.forM fs $ \f -> CFunc
   <$> trLocalIdent f <*> getArity f <*> getVisibility f
   <*> (getType f >>= trTypeExpr)
-  <*> return (CExternal (idName f))
+  <*> return []
 trFuncDecl _                        = return []
 
 trEquation :: Equation -> GAC CRule
-trEquation (Equation _ lhs rhs) = inNestedScope $
-  (\ps (es, ds) -> CRule ps es ds) <$> trLhs lhs <*> trRhs rhs
+trEquation (Equation _ lhs rhs) = inNestedScope
+                                $ CRule <$> trLhs lhs <*> trRhs rhs
 
 trLhs :: Lhs -> GAC [CPattern]
 trLhs = mapM trPat . snd . flatLhs
 
-trRhs :: Rhs -> GAC ([(CExpr, CExpr)], [CLocalDecl])
+trRhs :: Rhs -> GAC CRhs
 trRhs (SimpleRhs _ e ds) = inNestedScope $ do
   mapM_ insertDeclLhs ds
-  g'  <- trQual qSuccessFunId
-  e'  <- trExpr e
-  ds' <- concat <$> mapM trLocalDecl ds
-  return ([(CSymbol g', e')], ds')
+  CSimpleRhs <$> trExpr e <*> (concat <$> mapM trLocalDecl ds)
 trRhs (GuardedRhs gs ds) = inNestedScope $ do
   mapM_ insertDeclLhs ds
-  gs' <- mapM trCondExpr gs
-  ds' <- concat <$> mapM trLocalDecl ds
-  return (gs', ds')
+  CGuardedRhs <$> mapM trCondExpr gs <*> (concat <$> mapM trLocalDecl ds)
 
 trCondExpr :: CondExpr -> GAC (CExpr, CExpr)
 trCondExpr (CondExpr _ g e) = (,) <$> trExpr g <*> trExpr e
@@ -164,22 +159,14 @@ trLocalDecl :: Decl -> GAC [CLocalDecl]
 trLocalDecl f@(FunctionDecl     _ _ _) = map CLocalFunc <$> trFuncDecl f
 trLocalDecl f@(ForeignDecl  _ _ _ _ _) = map CLocalFunc <$> trFuncDecl f
 trLocalDecl f@(ExternalDecl       _ _) = map CLocalFunc <$> trFuncDecl f
-trLocalDecl (PatternDecl      _ p rhs) = (\p' (e',ds') -> [CLocalPat p' e' ds'])
-                                         <$> trPat p <*> trLocalPatRhs rhs
-trLocalDecl (FreeDecl            _ vs) = map CLocalVar  <$> mapM getVarIndex vs
+trLocalDecl (PatternDecl      _ p rhs) = (\p' rhs' -> [CLocalPat p' rhs'])
+                                         <$> trPat p <*> trRhs rhs
+trLocalDecl (FreeDecl            _ vs) = (\vs' -> [CLocalVars vs'])
+                                         <$> mapM getVarIndex vs
 trLocalDecl _                          = return [] -- can not occur (types etc.)
 
-trLocalPatRhs :: Rhs -> GAC (CExpr, [CLocalDecl])
-trLocalPatRhs (SimpleRhs _ e ds) = inNestedScope $ do
-  ds' <- concat <$> mapM trLocalDecl ds
-  e'  <- trExpr e
-  return (e', ds')
-trLocalPatRhs _  = unsupported $ "guarded expressions in pattern declarations"
-
 trExpr :: Expression -> GAC CExpr
-trExpr (Literal     l) = case l of
-  String _ cs -> trExpr $ List [] $ map (Literal . Char noRef) cs -- TODO
-  _           -> return (CLit $ cvLiteral l)
+trExpr (Literal     l) = return (CLit $ cvLiteral l)
 trExpr (Variable    v)
   | isQualified v = CSymbol <$> trQual v
   | otherwise     = lookupVarIndex v' >>= \mvi -> case mvi of
@@ -188,7 +175,7 @@ trExpr (Variable    v)
   where v' = unqualify v
 trExpr (Constructor c) = CSymbol <$> trQual c
 trExpr (Paren       e) = trExpr e
-trExpr (Typed  e    _) = trExpr e -- TODO
+trExpr (Typed    e ty) = CTyped <$> trExpr e <*> trTypeExpr ty
 trExpr (Tuple    _ es) = trExpr $ case es of
   []  -> Variable qUnitId
   [x] -> x
@@ -225,11 +212,16 @@ trExpr (Do                 ss e) = inNestedScope $
                                    <$> mapM trStatement ss <*> trExpr e
 trExpr (IfThenElse   _ e1 e2 e3) = trExpr
                                  $ apply (Variable qIfThenElseId) [e1,e2,e3]
-trExpr (Case           _ _ e bs) = CCase <$> trExpr e <*> mapM trAlt bs -- TODO
+trExpr (Case          _ ct e bs) = CCase (cvCaseType ct)
+                                   <$> trExpr e <*> mapM trAlt bs
 trExpr (RecordConstr         fs) = CRecConstr <$> mapM (trField trExpr) fs
 trExpr (RecordSelection     e l) = CRecSelect <$> trExpr e <*> return (idName l)
 trExpr (RecordUpdate       fs e) = CRecUpdate <$> mapM (trField trExpr) fs
                                               <*> trExpr e
+
+cvCaseType :: CaseType -> CCaseType
+cvCaseType Flex  = CFlex
+cvCaseType Rigid = CRigid
 
 apply :: Expression -> [Expression] -> Expression
 apply = foldl Apply
@@ -239,19 +231,11 @@ trStatement (StmtExpr   _ e) = CSExpr     <$> trExpr e
 trStatement (StmtDecl    ds) = CSLet      <$> trLocalDecls ds
 trStatement (StmtBind _ p e) = flip CSPat <$> trExpr e <*> trPat p
 
-trAlt :: Alt -> GAC CBranchExpr
-trAlt (Alt _ p rhs) = inNestedScope $ trBranch <$> trPat p <*> trRhs rhs
-  where
-  trBranch p' ([(g', e')], [])
-    | g' == CSymbol ("Prelude", "success") = CBranch p' e'
-  trBranch p' (gs', ds)
-    | null ds   = CGuardedBranch p' gs'
-    | otherwise = unsupported "local declarations in case branches"
+trAlt :: Alt -> GAC (CPattern, CRhs)
+trAlt (Alt _ p rhs) = inNestedScope $ (,) <$> trPat p <*> trRhs rhs
 
 trPat :: Pattern -> GAC CPattern
-trPat (LiteralPattern         l) = case l of
-  String _ cs -> trPat $ ListPattern [] $ map (LiteralPattern . Char noRef) cs -- TODO
-  _           -> return (CPLit $ cvLiteral l)
+trPat (LiteralPattern         l) = return (CPLit $ cvLiteral l)
 trPat (VariablePattern        v) = CPVar <$> getVarIndex v
 trPat (ConstructorPattern  c ps) = CPComb <$> trQual c <*> mapM trPat ps
 trPat (InfixPattern    p1 op p2) = trPat $ ConstructorPattern op [p1, p2]
@@ -264,7 +248,7 @@ trPat (ListPattern         _ ps) = trPat $
   foldr (\x1 x2 -> ConstructorPattern qConsId [x1, x2])
         (ConstructorPattern qNilId [])
         ps
-trPat (NegativePattern      _ _) = unsupported "negative patterns" -- TODO
+trPat (NegativePattern      _ l) = trPat $ LiteralPattern $ negateLiteral l
 trPat (AsPattern            v p) = flip CPAs <$> trPat p <*> genVarIndex v
 trPat (LazyPattern          _ p) = CPLazy <$> trPat p
 trPat (FunctionPattern     f ps) = CPFuncComb <$> trQual f <*> mapM trPat ps
@@ -275,11 +259,16 @@ trPat (RecordPattern      fs mr) = CPRecord <$> mapM (trField trPat) fs
 trField :: (a -> GAC b) -> Field a -> GAC (CField b)
 trField act (Field _ l x) = (,) <$> return (idName l) <*> act x
 
+negateLiteral :: Literal -> Literal
+negateLiteral (Int    v i) = Int   v  (-i)
+negateLiteral (Float p' f) = Float p' (-f)
+negateLiteral _            = internalError "GenAbstractCurry.negateLiteral"
+
 cvLiteral :: Literal -> CLiteral
-cvLiteral (Char  _ c) = CCharc  c
-cvLiteral (Int   _ i) = CIntc   i
-cvLiteral (Float _ f) = CFloatc f
-cvLiteral _           = internalError "GenAbstractCurry.cvLiteral" -- TODO
+cvLiteral (Char   _ c) = CCharc   c
+cvLiteral (Int    _ i) = CIntc    i
+cvLiteral (Float  _ f) = CFloatc  f
+cvLiteral (String _ s) = CStringc s
 
 trQual :: QualIdent -> GAC QName
 trQual qid
@@ -321,9 +310,6 @@ qNegateId = qualifyWith preludeMIdent (mkIdent "negate")
 
 qIfThenElseId :: QualIdent
 qIfThenElseId = qualifyWith preludeMIdent (mkIdent "if_then_else")
-
-qSuccessFunId :: QualIdent
-qSuccessFunId = qualifyWith preludeMIdent (mkIdent "success")
 
 -- Checks, whether a symbol is defined in the Prelude.
 isPreludeSymbol :: QualIdent -> Bool
@@ -458,6 +444,3 @@ getType f = do
 getVisibility :: Ident -> GAC CVisibility
 getVisibility i = S.gets $ \env -> if Set.member i (exports env) then Public
                                                                  else Private
-
-unsupported :: String -> a
-unsupported feature = error $ "AbstractCurry does not support " ++ feature
