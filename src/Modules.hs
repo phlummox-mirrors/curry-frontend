@@ -199,8 +199,11 @@ checkModule opts mdl = do
   pc <- precCheck   opts sc  >>= dumpCS DumpPrecChecked
   tc <- typeCheck   opts pc  >>= dumpCS DumpTypeChecked
   -- TODO: This is a workaround to avoid the expansion of the export
-  -- specification for generating the HTML listing.
-  -- It would be better if checking and expansion are separated.
+  -- specification for generating the HTML listing. If a module does not
+  -- contain an export specification, the check generates one which leads
+  -- to a mismatch between the identifiers from the lexer and those in the
+  -- resulting module.
+  -- Therefore, it would be better if checking and expansion are separated.
   if null (optTargetTypes opts)
     then return tc
     else exportCheck opts tc >>= dumpCS DumpExportChecked
@@ -327,9 +330,9 @@ writeFlatIntf opts fn env modSum il
 writeAbstractCurry :: Options -> FilePath -> CompilerEnv -> CS.Module -> IO ()
 writeAbstractCurry opts fname env modul = do
   when  acyTarget $ AC.writeCurry (useSubDir $  acyName fname)
-                  $ genTypedAbstractCurry env modul
+                  $ genAbstractCurry env modul
   when uacyTarget $ AC.writeCurry (useSubDir $ uacyName fname)
-                  $ genUntypedAbstractCurry env modul
+                  $ genAbstractCurry env modul
   where
   acyTarget  = AbstractCurry        `elem` optTargetTypes opts
   uacyTarget = UntypedAbstractCurry `elem` optTargetTypes opts
