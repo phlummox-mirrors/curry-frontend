@@ -11,12 +11,11 @@
 
    After desugaring and simplifying the code, the compiler lifts all local
    function declarations to the top-level keeping only local variable
-   declarations. The algorithm used here is similar to
-   Johnsson's. It consists of two phases, first we abstract each local
-   function declaration, adding its free variables as initial parameters
-   and update all calls to take these variables into account.
-   Then all local function declarations are collected and lifted to the
-   top-level.
+   declarations. The algorithm used here is similar to Johnsson's, consisting
+   of two phases. First, we abstract each local function declaration,
+   adding its free variables as initial parameters and update all calls
+   to take these variables into account. Second, all local function
+   declarations are collected and lifted to the top-level.
 -}
 {-# LANGUAGE CPP #-}
 module Transformations.Lift (lift) where
@@ -102,7 +101,7 @@ absEquation lvs (Equation p lhs@(FunLhs f ts) rhs) =
 absEquation _ _ = error "Lift.absEquation: no pattern match"
 
 absLhs :: Lhs -> LiftM Lhs
-absLhs (FunLhs f ts) = FunLhs f <$> mapM absPattern ts
+absLhs (FunLhs f ts) = FunLhs f <$> mapM absPat ts
 absLhs _             = error "Lift.absLhs: no simple LHS"
 
 absRhs :: String -> [Ident] -> Rhs -> LiftM Rhs
@@ -234,17 +233,17 @@ absExpr _   _   e                 = internalError $ "Lift.absExpr: " ++ show e
 absAlt :: String -> [Ident] -> Alt -> LiftM Alt
 absAlt pre lvs (Alt p t rhs) = Alt p t <$> absRhs pre (lvs ++ bv t) rhs
 
-absPattern :: Pattern -> LiftM Pattern
-absPattern v@(VariablePattern _) = return v
-absPattern l@(LiteralPattern  _) = return l
-absPattern (ConstructorPattern c ps) = ConstructorPattern c <$> mapM absPattern ps
-absPattern (AsPattern v p) = AsPattern v <$> absPattern p
-absPattern (FunctionPattern f ps) = do
+absPat :: Pattern -> LiftM Pattern
+absPat v@(VariablePattern     _) = return v
+absPat l@(LiteralPattern      _) = return l
+absPat (ConstructorPattern c ps) = ConstructorPattern c <$> mapM absPat ps
+absPat (AsPattern           v p) = AsPattern v <$> absPat p
+absPat (FunctionPattern    f ps) = do
   getAbstractEnv >>= \env -> case Map.lookup (unqualify f) env of
-    Nothing       -> FunctionPattern f  <$> mapM absPattern ps
+    Nothing       -> FunctionPattern f  <$> mapM absPat ps
     Just (f', vs) -> (FunctionPattern f' . (map VariablePattern vs ++))
-                     <$> mapM absPattern ps
-absPattern _ = error "Lift.absPattern"
+                     <$> mapM absPat ps
+absPat p = error $ "Lift.absPat: " ++ show p
 
 -- -----------------------------------------------------------------------------
 -- Lifting
@@ -327,5 +326,4 @@ varType tyEnv v = case lookupValue v tyEnv of
   _ -> internalError $ "Lift.varType: " ++ show v
 
 liftIdent :: String -> Ident -> Ident
-liftIdent prefix x = renameIdent (mkIdent $ prefix ++ showIdent x)
-                   $ idUnique x
+liftIdent prefix x = renameIdent (mkIdent $ prefix ++ showIdent x) $ idUnique x
