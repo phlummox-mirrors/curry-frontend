@@ -1,63 +1,60 @@
 {- |
-    Module      :  $Header$
-    Description :  Desugaring Curry Expressions
-    Copyright   :  (c) 2001 - 2004 Wolfgang Lux
-                                   Martin Engelke
-                       2011 - 2015 Björn Peemöller
-    License     :  OtherLicense
+  Module      :  $Header$
+  Description :  Desugaring Curry Expressions
+  Copyright   :  (c) 2001 - 2004 Wolfgang Lux
+                                 Martin Engelke
+                     2011 - 2015 Björn Peemöller
+  License     :  OtherLicense
 
-    Maintainer  :  bjp@informatik.uni-kiel.de
-    Stability   :  experimental
-    Portability :  portable
+  Maintainer  :  bjp@informatik.uni-kiel.de
+  Stability   :  experimental
+  Portability :  portable
 
-   The desugaring pass removes all syntactic sugar from the module. In
-   particular, the output of the desugarer will have the following
-   properties.
+  The desugaring pass removes all syntactic sugar from the module. In
+  particular, the output of the desugarer will have the following
+  properties.
 
-     * All function definitions are eta-expanded.
-       Note: Since this version is used as a frontend for PAKCS, the
-       eta-expansion had been disabled.
+  * No guarded right hand sides occur in equations, pattern
+    declarations, and case alternatives. In addition, the declaration
+    lists of the right hand sides are empty; local declarations are
+    transformed into let expressions.
 
-     * No guarded right hand sides occur in equations, pattern
-       declarations, and case alternatives. In addition, the declaration
-       lists of the right hand sides are empty; local declarations are
-       transformed into let expressions.
+  * Patterns in equations and case alternatives are composed only of
+    - literals,
+    - variables,
+    - constructor applications, and
+    - as patterns.
 
-     * Patterns in equations and case alternatives are composed only of
-         - literals,
-         - variables,
-         - constructor applications, and
-         - as patterns.
+  * Expressions are composed only of
+    - literals,
+    - variables,
+    - constructors,
+    - (binary) applications,
+    - let expressions, and
+    - case expressions.
 
-     * Expressions are composed only of
-         - literals,
-         - variables,
-         - constructors,
-         - (binary) applications,
-         - let expressions, and
-         - case expressions.
+  * Applications 'N x' in patterns and expressions, where 'N' is a
+    newtype constructor, are replaced by a 'x'. Note that neither the
+    newtype declaration itself nor partial applications of newtype
+    constructors are changed.
+    It were possible to replace partial applications of newtype constructor
+    by 'Prelude.id'.
+    However, our solution yields a more accurate output when the result
+    of a computation includes partial applications.
 
-     * Applications 'N x' in patterns and expressions, where 'N' is a
-       newtype constructor, are replaced by a 'x'. Note that neither the
-       newtype declaration itself nor partial applications of newtype
-       constructors are changed (It were possible to replace partial
-       applications of newtype constructor by 'prelude.id'.
-       However, our solution yields a more accurate output when the result
-       of a computation includes partial applications.).
+  * Functional patterns are replaced by variables and are integrated
+    in a guarded right hand side using the (=:<=) operator
 
-     * Functional patterns are replaced by variables and are integrated
-       in a guarded right hand side using the (=:<=) operator
+  * Records, which currently must be declared using the keyword 'type',
+    are transformed into data types with one constructor.
+    Record construction and pattern matching are represented using the
+    record constructor. Selection and update are represented using selector
+    and update functions which are generated for each record declaration.
+    The record constructor must be entered into the type environment as well
+    as the selector functions and the update functions.
 
-     * Records, which currently must be declared using the keyword
-       'type', are transformed into data types with one constructor.
-       Record construction and pattern matching are represented using the
-       record constructor. Selection and update are represented using selector
-       and update functions which are generated for each record declaration.
-       The record constructor must be entered into the type environment as well
-       as the selector functions and the update functions.
-
-   As we are going to insert references to real prelude entities,
-   all names must be properly qualified before calling this module.
+  As we are going to insert references to real prelude entities,
+  all names must be properly qualified before calling this module.
 -}
 {-# LANGUAGE CPP #-}
 module Transformations.Desugar (desugar) where
@@ -145,10 +142,22 @@ getTypeOf t = do
 freshIdent :: String -> Int -> TypeScheme -> DsM Ident
 freshIdent prefix arity ty = do
   m <- getModuleIdent
-  x <- mkName prefix <$> getNextId
+  x <- freeIdent
   modifyValueEnv $ bindFun m x arity ty
   return x
-  where mkName pre n = mkIdent $ pre ++ show n
+  where
+  mkName pre n = mkIdent $ pre ++ show n
+  -- TODO: This loop is only necessary because a combination of desugaring,
+  -- simplification and a repeated desugaring, as currently needed for
+  -- non-linear and functional patterns, may reintroduce identifiers removed
+  -- during desugaring. The better solution would be to move the translation
+  -- of non-linear and functional pattern into a separate module.
+  freeIdent = do
+    x <- mkName prefix <$> getNextId
+    tyEnv <- getValueEnv
+    case lookupValue x tyEnv of
+      [] -> return x
+      _  -> freeIdent
 
 freshMonoTypeVar :: Typeable t => String -> t -> DsM Ident
 freshMonoTypeVar prefix t = getTypeOf t >>= \ ty ->
@@ -217,7 +226,7 @@ genForeignDecl p f = do
 
 dsDeclRhs :: Decl -> DsM Decl
 dsDeclRhs (FunctionDecl     p f eqs) = FunctionDecl p f <$> mapM dsEquation eqs
-dsDeclRhs (PatternDecl      p t rhs) = PatternDecl p t <$> dsRhs p id rhs
+dsDeclRhs (PatternDecl      p t rhs) = PatternDecl  p t <$> dsRhs p id rhs
 dsDeclRhs (ForeignDecl p cc ie f ty) = return $ ForeignDecl p cc ie' f ty
   where ie' = ie `mplus` Just (idName f)
 dsDeclRhs fs@(FreeDecl          _ _) = return fs
@@ -225,14 +234,15 @@ dsDeclRhs _ = error "Desugar.dsDeclRhs: no pattern match"
 
 dsEquation :: Equation -> DsM Equation
 dsEquation (Equation p lhs rhs) = do
-  (cs1     , ts1) <- dsNonLinearity             ts
-  funpats         <- desugarFunPats
-  (ds2, cs2, ts2) <- if funpats then dsFunctionalPatterns p ts1
-                                else return ([], [], ts1)
-  (ds3     , ts3) <- mapAccumM (dsPattern p) [] ts2
-  rhs'            <- dsRhs p (addConstraints (cs2 ++ cs1))
-                   $ addDecls (ds2 ++ ds3) $ rhs
-  return $ Equation p (FunLhs f ts3) rhs'
+  funpats        <- desugarFunPats
+  (ds1, cs, ts1) <- if funpats then do
+                                  (     cs1, ts1) <- dsNonLinearity         ts
+                                  (ds2, cs2, ts2) <- dsFunctionalPatterns p ts1
+                                  return (ds2, cs2 ++ cs1, ts2)
+                                else return ([], [], ts)
+  (ds2    , ts2) <- mapAccumM (dsPattern p) [] ts1
+  rhs'           <- dsRhs p (addConstraints cs) $ addDecls (ds1 ++ ds2) $ rhs
+  return $ Equation p (FunLhs f ts2) rhs'
   where (f, ts) = flatLhs lhs
 
 -- -----------------------------------------------------------------------------
