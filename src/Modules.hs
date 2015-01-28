@@ -233,10 +233,9 @@ transModule opts mdl = do
 -- ---------------------------------------------------------------------------
 
 writeOutput :: Options -> FilePath -> CompEnv CS.Module -> IO ()
-writeOutput opts fn (env, modul) = do
+writeOutput opts fn mdl@(_, modul) = do
   writeParsed opts fn modul
-  let (env1, qlfd) = qual opts (env, modul)
-  doDump (optDebugOpts opts) (DumpQualified, env1, show $ CS.ppModule qlfd)
+  (env1, qlfd) <- dumpWith opts CS.ppModule DumpQualified $ qual opts mdl
   writeAbstractCurry opts fn env1 qlfd
   when withFlat $ do
     (env2, il) <- transModule opts (env1, qlfd)
