@@ -265,7 +265,7 @@ trPat (ListPattern         _ ps) = trPat $
         (ConstructorPattern qNilId [])
         ps
 trPat (NegativePattern      _ _) = unsupported "negative patterns" -- TODO
-trPat (AsPattern            v p) = flip CPAs <$> trPat p <*> genVarIndex v
+trPat (AsPattern            v p) = CPAs <$> getVarIndex v<*> trPat p
 trPat (LazyPattern          _ p) = CPLazy <$> trPat p
 trPat (FunctionPattern     f ps) = CPFuncComb <$> trQual f <*> mapM trPat ps
 trPat (InfixFuncPattern p1 f p2) = trPat (FunctionPattern f [p1, p2])
