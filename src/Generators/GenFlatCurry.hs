@@ -171,18 +171,21 @@ visitModule (IL.Module mid imps decls) = do
   ops     <- genOpDecls
   whenFlatCurry
     ( do
-      datas   <- mapM visitDataDecl (filter isDataDecl decls)
+      datas   <- mapM visitDataDecl    (filter isDataDecl    decls)
+      newtys  <- mapM visitNewtypeDecl (filter isNewtypeDecl decls)
       types   <- genTypeSynonyms
       recrds  <- genRecordTypes
       funcs   <- mapM visitFuncDecl (filter isFuncDecl decls)
       modid   <- visitModuleIdent mid
       imps'   <- imports
       is      <- mapM visitModuleIdent $ nub $ imps ++ (map extractMid imps')
-      return $ Prog modid is (recrds ++ types ++ datas) funcs ops
+      return $ Prog modid is (recrds ++ types ++ datas ++ newtys) funcs ops
     )
     ( do
       ds      <- filterM isPublicDataDecl decls
+      nts     <- filterM isPublicNewtypeDecl decls
       datas   <- mapM visitDataDecl ds
+      newtys  <- mapM visitNewtypeDecl nts
       types   <- genTypeSynonyms
       recrds  <- genRecordTypes
       fs      <- filterM isPublicFuncDecl decls
@@ -194,7 +197,7 @@ visitModule (IL.Module mid imps decls) = do
       modid   <- visitModuleIdent mid
       imps'   <- imports
       is      <- mapM visitModuleIdent $ nub $ imps ++ (map extractMid imps')
-      return $ Prog modid is (itypes ++ recrds ++ types ++ datas) (ifuncs ++ funcs) (iops ++ ops)
+      return $ Prog modid is (itypes ++ recrds ++ types ++ datas ++ newtys) (ifuncs ++ funcs) (iops ++ ops)
     )
   where extractMid (CS.IImportDecl _ mid1) = mid1
 
@@ -206,6 +209,14 @@ visitDataDecl (IL.DataDecl qid arity constrs) = do
   vis    <- getVisibility False qid
   return $ Type qname vis [0 .. arity - 1] (concat cdecls)
 visitDataDecl _ = internalError "GenFlatCurry: no data declaration"
+
+visitNewtypeDecl :: IL.Decl -> FlatState TypeDecl
+visitNewtypeDecl (IL.NewtypeDecl qid arity (IL.ConstrDecl _ ty)) = do
+  qname <- visitQualTypeIdent qid
+  vis   <- getVisibility False qid
+  ty'   <- visitType ty
+  return $ TypeSyn qname vis [0 .. arity - 1] ty'
+visitNewtypeDecl _ = internalError "GenFlatCurry: no newtype declaration"
 
 --
 visitConstrDecl :: IL.ConstrDecl [IL.Type] -> FlatState [ConsDecl]
@@ -783,6 +794,10 @@ isDataDecl :: IL.Decl -> Bool
 isDataDecl (IL.DataDecl _ _ _) = True
 isDataDecl _                   = False
 
+isNewtypeDecl :: IL.Decl -> Bool
+isNewtypeDecl (IL.NewtypeDecl _ _ _) = True
+isNewtypeDecl _                      = False
+
 --
 isFuncDecl :: IL.Decl -> Bool
 isFuncDecl (IL.FunctionDecl _ _ _ _) = True
@@ -792,7 +807,12 @@ isFuncDecl _                         = False
 --
 isPublicDataDecl :: IL.Decl -> FlatState Bool
 isPublicDataDecl (IL.DataDecl qid _ _) = isPublic False qid
-isPublicDataDecl _                        = return False
+isPublicDataDecl _                     = return False
+
+isPublicNewtypeDecl :: IL.Decl -> FlatState Bool
+isPublicNewtypeDecl (IL.NewtypeDecl qid _ _) = isPublic False qid
+isPublicNewtypeDecl _                        = return False
+
 
 --
 isPublicFuncDecl :: IL.Decl -> FlatState Bool

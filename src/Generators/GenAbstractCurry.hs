@@ -26,6 +26,7 @@ import Curry.Base.Position
 import Curry.Syntax
 
 import Base.CurryTypes (fromType)
+import Base.Expr       (bv)
 import Base.Messages   (internalError)
 import Base.NestEnv
 import Base.Types      (TypeScheme (..))
@@ -150,7 +151,8 @@ trLocalDecls ds = do
   concat <$> mapM trLocalDecl ds
 
 insertDeclLhs :: Decl -> GAC ()
-insertDeclLhs (PatternDecl      _ p _) = trPat p >> return ()
+-- Insert all variables declared in local declarations
+insertDeclLhs (PatternDecl      _ p _) = mapM_ genVarIndex (bv p)
 insertDeclLhs (FreeDecl          _ vs) = mapM_ genVarIndex vs
 insertDeclLhs _                        = return ()
 
