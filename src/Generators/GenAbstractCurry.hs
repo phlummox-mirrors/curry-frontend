@@ -26,6 +26,7 @@ import Curry.Base.Position
 import Curry.Syntax
 
 import Base.CurryTypes (fromType)
+import Base.Expr       (bv)
 import Base.Messages   (internalError)
 import Base.NestEnv
 import Base.Types      (TypeScheme (..))
