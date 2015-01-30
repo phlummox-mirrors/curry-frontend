@@ -69,9 +69,9 @@ trTypeDecl (DataDecl    _ t vs cs) = (\t' v vs' cs' -> [CType t' v vs' cs'])
 trTypeDecl (TypeDecl    _ t vs ty) = (\t' v vs' ty' -> [CTypeSyn t' v vs' ty'])
   <$> trLocalIdent t <*> getVisibility t
   <*> mapM genTVarIndex vs <*> trTypeExpr ty
-trTypeDecl (NewtypeDecl _ t vs nc) = (\t' v vs' cs' -> [CType t' v vs' cs'])
+trTypeDecl (NewtypeDecl _ t vs nc) = (\t' v vs' nc' -> [CNewType t' v vs' nc'])
   <$> trLocalIdent t <*> getVisibility t
-  <*> mapM genTVarIndex vs <*> mapM trNewConsDecl [nc]
+  <*> mapM genTVarIndex vs <*> trNewConsDecl nc
 trTypeDecl _                       = return []
 
 trConsDecl :: ConstrDecl -> GAC CConsDecl
@@ -81,10 +81,9 @@ trConsDecl (ConstrDecl      _ _ c tys) = CCons
 trConsDecl (ConOpDecl p vs ty1 op ty2) = trConsDecl $
   ConstrDecl p vs op [ty1, ty2]
 
-trNewConsDecl :: NewConstrDecl -> GAC CConsDecl
-trNewConsDecl (NewConstrDecl _ _ nc ty) = CCons
-  <$> trLocalIdent nc  <*> return 1
-  <*> getVisibility nc <*> mapM trTypeExpr [ty]
+trNewConsDecl :: NewConstrDecl -> GAC CNewConsDecl
+trNewConsDecl (NewConstrDecl _ _ nc ty) = CNewCons
+  <$> trLocalIdent nc <*> getVisibility nc <*> trTypeExpr ty
 
 trTypeExpr :: TypeExpr -> GAC CTypeExpr
 trTypeExpr (ConstructorType  q ts) = CTCons <$> trQual q
