@@ -9,21 +9,21 @@
 -- ---------------------------------------------------------------------------
 module Generators.GenFlatCurry (genFlatCurry, genFlatInterface) where
 
-import           Control.Monad       (filterM, liftM, liftM2, liftM3, mplus)
+import Control.Applicative
+import           Control.Monad       (filterM, mplus)
 import           Control.Monad.State (State, evalState, gets, modify)
 import           Data.List           (mapAccumL, nub)
 import qualified Data.Map as Map     (Map, empty, insert, lookup, fromList, toList)
 import           Data.Maybe          (catMaybes, fromMaybe, isJust)
 
-import           Curry.Base.Ident        as Id
+import           Curry.Base.Ident
 import           Curry.ExtendedFlat.Type
-import qualified Curry.Syntax            as CS
+import qualified Curry.Syntax as CS
 
 import Base.CurryTypes
 import Base.Messages (internalError)
 import Base.ScopeEnv (ScopeEnv)
-import qualified Base.ScopeEnv as ScopeEnv
-  (new, insert, lookup, beginScope, endScope)
+import qualified Base.ScopeEnv as SE (new, insert, lookup, beginScope, endScope)
 import Base.TopEnv (topEnvMap)
 import Base.Types
 
@@ -47,7 +47,7 @@ genFlatCurry modSum mEnv tyEnv tcEnv mdl = patchPrelude $
 genFlatInterface :: ModuleSummary.ModuleSummary -> InterfaceEnv
                  -> ValueEnv -> TCEnv -> IL.Module -> Prog
 genFlatInterface modSum mEnv tyEnv tcEnv mdl = patchPrelude $
-  run modSum mEnv tyEnv tcEnv True (trModule mdl)
+  run modSum mEnv tyEnv tcEnv True (trInterface mdl)
 
 patchPrelude :: Prog -> Prog
 patchPrelude p@(Prog n _ types funcs ops)
@@ -91,7 +91,6 @@ type FlatState a = State FlatEnv a
 -- for generating FlatCurry code.
 data FlatEnv = FlatEnv
   { moduleIdE     :: ModuleIdent
-  , functionIdE   :: (QualIdent, [(Ident, IL.Type)])
   , interfaceEnvE :: InterfaceEnv
   , typeEnvE      :: ValueEnv     -- types of defined values
   , tConsEnvE     :: TCEnv
@@ -103,7 +102,6 @@ data FlatEnv = FlatEnv
   , interfaceE    :: [CS.IDecl]
   , varIndexE     :: Int
   , varIdsE       :: ScopeEnv Ident VarIndex
-  , tvarIndexE    :: Int
   , genInterfaceE :: Bool
   , localTypes    :: Map.Map QualIdent IL.Type
   , constrTypes   :: Map.Map QualIdent IL.Type
@@ -121,7 +119,6 @@ run modSum mEnv tyEnv tcEnv genIntf f = evalState f env0
   where
   env0 = FlatEnv
     { moduleIdE     = ModuleSummary.moduleId modSum
-    , functionIdE   = (qualify (mkIdent ""), [])
     , interfaceEnvE = mEnv
     , typeEnvE      = tyEnv
     , tConsEnvE     = tcEnv
@@ -133,8 +130,7 @@ run modSum mEnv tyEnv tcEnv genIntf f = evalState f env0
     , exportsE      = ModuleSummary.exports      modSum
     , interfaceE    = ModuleSummary.interface    modSum
     , varIndexE     = 0
-    , varIdsE       = ScopeEnv.new
-    , tvarIndexE    = 0
+    , varIdsE       = SE.new
     , genInterfaceE = genIntf
     , localTypes    = Map.empty
     , constrTypes   = Map.fromList $ getConstrTypes tcEnv tyEnv
@@ -150,59 +146,53 @@ getConstrTypes tcEnv tyEnv =
   mkConstrType tqid conid argtypes targnum = (conname, contype)
     where
     conname    = QualIdent (qidModule tqid) conid
-    resulttype = IL.TypeConstructor tqid (map IL.TypeVariable [0 .. targnum - 1])
-    contype    = foldr IL.TypeArrow resulttype $ map (ttrans tcEnv tyEnv) argtypes
+    resty = IL.TypeConstructor tqid (map IL.TypeVariable [0 .. targnum - 1])
+    contype    = foldr IL.TypeArrow resty $ map (ttrans tcEnv tyEnv) argtypes
 
 trModule :: IL.Module -> FlatState Prog
-trModule (IL.Module mid imps decls) = do
+trModule (IL.Module mid imps ds) = do
   -- insert local decls into localDecls
-  let ts = [ (qn, t) | IL.FunctionDecl qn _ t _ <- decls ]
-  modify $ \ s -> s { localTypes = Map.fromList ts }
+  modify $ \ s -> s { localTypes = Map.fromList [ (qn, t) | IL.FunctionDecl qn _ t _ <- ds ] }
+  is      <- (\is -> map moduleName $ nub $ imps ++ map extractMid is) <$> imports
+  recrds  <- genRecordTypes
+  types   <- genTypeSynonyms
+  tyds    <- concat <$> mapM trTypeDecl ds
+  funcs   <- concat <$> mapM trFuncDecl ds
   ops     <- genOpDecls
-  whenFlatCurry
-    ( do
-      datas   <- mapM trDataDecl    (filter isDataDecl    decls)
-      newtys  <- mapM trNewtypeDecl (filter isNewtypeDecl decls)
-      types   <- genTypeSynonyms
-      recrds  <- genRecordTypes
-      funcs   <- mapM trFuncDecl (filter isFuncDecl decls)
-      modid   <- trModuleIdent mid
-      imps'   <- imports
-      is      <- mapM trModuleIdent $ nub $ imps ++ (map extractMid imps')
-      return $ Prog modid is (recrds ++ types ++ datas ++ newtys) funcs ops
-    )
-    ( do
-      ds      <- filterM isPublicDataDecl decls
-      nts     <- filterM isPublicNewtypeDecl decls
-      datas   <- mapM trDataDecl    ds
-      newtys  <- mapM trNewtypeDecl nts
-      types   <- genTypeSynonyms
-      recrds  <- genRecordTypes
-      fs      <- filterM isPublicFuncDecl decls
-      funcs   <- mapM trFuncDecl fs
-      expimps <- getExportedImports
-      itypes  <- mapM trITypeDecl (filter isTypeIDecl expimps)
-      ifuncs  <- mapM trIFuncDecl (filter isFuncIDecl expimps)
-      iops    <- mapM trIOpDecl (filter isOpIDecl expimps)
-      modid   <- trModuleIdent mid
-      imps'   <- imports
-      is      <- mapM trModuleIdent $ nub $ imps ++ (map extractMid imps')
-      return $ Prog modid is (itypes ++ recrds ++ types ++ datas ++ newtys)
-                             (ifuncs ++ funcs) (iops ++ ops)
-    )
+  return $ Prog (moduleName mid) is (recrds ++ types ++ tyds) funcs ops
   where extractMid (CS.IImportDecl _ mid1) = mid1
 
-trDataDecl :: IL.Decl -> FlatState TypeDecl
-trDataDecl (IL.DataDecl qid arity cs) = Type <$> trTypeIdent qid
-  <*> getVisibility False qid <*> return [0 .. arity - 1]
-  <*> (concat <$> mapM trConstrDecl cs)
-trDataDecl _ = internalError "GenFlatCurry: no data declaration"
+trInterface :: IL.Module -> FlatState Prog
+trInterface (IL.Module mid imps decls) = do
+  -- insert local decls into localDecls
+  modify $ \ s -> s { localTypes = Map.fromList [ (qn, t) | IL.FunctionDecl qn _ t _ <- decls ] }
+  is      <- (\is -> map moduleName $ nub $ imps ++ map extractMid is) <$> imports
+  recrds  <- genRecordTypes
+  expimps <- getExportedImports
+  itypes  <- mapM trITypeDecl (filter isTypeIDecl expimps)
+  types   <- genTypeSynonyms
+  datas   <- filterM isPublicDataDecl    decls >>= concatMapM trTypeDecl
+  newtys  <- filterM isPublicNewtypeDecl decls >>= concatMapM trTypeDecl
+  ifuncs  <- mapM trIFuncDecl (filter isFuncIDecl expimps)
+  funcs   <- filterM isPublicFuncDecl    decls >>= concatMapM trFuncDecl
+  iops    <- mapM trIOpDecl (filter isOpIDecl expimps)
+  ops     <- genOpDecls
+  return $ Prog (moduleName mid) is (itypes ++ recrds ++ types ++ datas ++ newtys)
+                          (ifuncs ++ funcs) (iops ++ ops)
+  where extractMid (CS.IImportDecl _ mid1) = mid1
 
-trNewtypeDecl :: IL.Decl -> FlatState TypeDecl
-trNewtypeDecl (IL.NewtypeDecl qid arity (IL.ConstrDecl _ ty)) = TypeSyn
-  <$> trTypeIdent qid <*> getVisibility False qid <*> return [0 .. arity - 1]
-  <*> trType ty
-trNewtypeDecl _ = internalError "GenFlatCurry: no newtype declaration"
+concatMapM :: (Functor m, Monad m) => (a -> m [b]) -> [a] -> m [b]
+concatMapM act xs = concat <$> mapM act xs
+
+trTypeDecl :: IL.Decl -> FlatState [TypeDecl]
+trTypeDecl (IL.DataDecl qid arity cs) = ((:[]) <$>) $
+  Type  <$> trTypeIdent qid
+        <*> getVisibility False qid <*> return [0 .. arity - 1]
+        <*> (concat <$> mapM trConstrDecl cs)
+trTypeDecl (IL.NewtypeDecl qid arity (IL.ConstrDecl _ ty)) = ((:[]) <$>) $
+  TypeSyn <$> trTypeIdent qid <*> getVisibility False qid
+          <*> return [0 .. arity - 1] <*> trType ty
+trTypeDecl _ = return []
 
 trConstrDecl :: IL.ConstrDecl [IL.Type] -> FlatState [ConsDecl]
 trConstrDecl (IL.ConstrDecl qid tys) = do
@@ -219,71 +209,61 @@ trType (IL.TypeConstructor t tys) = TCons <$> trTypeIdent t <*> mapM trType tys
 trType (IL.TypeVariable      idx) = return $ TVar $ abs idx
 trType (IL.TypeArrow     ty1 ty2) = FuncType <$> trType ty1 <*> trType ty2
 
-trFuncDecl :: IL.Decl -> FlatState FuncDecl
+trFuncDecl :: IL.Decl -> FlatState [FuncDecl]
 trFuncDecl (IL.FunctionDecl qid vs ty e) = do
-  let argtypes = splitoffArgTypes ty vs
-  setFunctionId (qid, argtypes)
   qname <- trQualIdent qid
   arity <- getArity qid
+  texpr <- trType ty
   whenFlatCurry
-    (do is    <- mapM newVarIndex vs
-        texpr <- trType ty
+    (do vis   <- getVisibility False qid
+        is    <- mapM newVarIndex vs
         expr  <- trExpr e
-        vis   <- getVisibility False qid
         clearVarIndices
-        return (Func qname arity vis texpr (Rule is expr))
+        return [Func qname arity vis texpr (Rule is expr)]
     )
-    (do texpr <- trType ty
-        clearVarIndices
-        return (Func qname arity Public texpr (Rule [] (Var $ mkIdx 0)))
-    )
+    (return [Func qname arity Public texpr (Rule [] (Var $ mkIdx 0))])
 trFuncDecl (IL.ExternalDecl qid _ extname ty) = do
-  setFunctionId (qid, [])
   texpr <- trType ty
   qname <- trQualIdent qid
   arity <- getArity qid
   vis   <- getVisibility False qid
   xname <- trExternal extname
-  return $ Func qname arity vis texpr (External xname)
-trFuncDecl (IL.NewtypeDecl _ _ _) = do
-  mid <- getModuleIdent
-  internalError $ "\"" ++ Id.moduleName mid
-    ++ "\": newtype declarations are not supported"
-trFuncDecl _ = internalError "GenFlatCurry: no function declaration"
+  return [Func qname arity vis texpr (External xname)]
+trFuncDecl _ = return []
 
 trExpr :: IL.Expression -> FlatState Expr
 trExpr (IL.Literal       l) = Lit <$> trLiteral l
 trExpr (IL.Variable      v) = Var <$> lookupVarIndex v
 trExpr (IL.Function    f _) = do
-  arity <- getArity f
   qname <- trQualIdent f
+  arity <- getArity    f
   genFuncCall qname arity []
 trExpr (IL.Constructor c _) = do
-  arity <- getArity c
   qname <- trQualIdent c
+  arity <- getArity    c
   genConsCall qname arity []
 trExpr (IL.Apply     e1 e2) = trApply e1 e2
-trExpr (IL.Case   r t e bs) = Case r <$> trEval t <*> trExpr e <*> mapM trAlt bs
+trExpr (IL.Case   r t e bs) = Case r (cvEval t) <$> trExpr e <*> mapM trAlt bs
 trExpr (IL.Or        e1 e2) = Or <$> trExpr e1 <*> trExpr e2
 trExpr (IL.Exist       v e) = do
   idx <- newVarIndex v
   e'  <- trExpr e
   return $ case e' of
     Free is e'' -> Free (idx : is) e''
-    _           -> Free [idx] e'
-trExpr (IL.Let        bd e) = inNewScope $ do
-  _ <- newVarIndex $ bindingIdent bd
-  bind <- trBinding bd
+    _           -> Free (idx : []) e'
+trExpr (IL.Let (IL.Binding v b) e) = inNewScope $ do
+  v' <- newVarIndex v
+  b' <- trExpr b
   e' <- trExpr e
-  return $ case e' of -- TODO bjp(2011-09-21): maybe remove again
-    (Let binds e'') -> Let (bind:binds) e''
-    _               -> Let [bind] e'
-  -- is it correct that there is no endScope? (hsi): bjp: Just added, but no reasoning about
-trExpr (IL.Letrec    bds e) = inNewScope $ do
-  mapM_ (newVarIndex . bindingIdent) bds
-  bds' <- mapM trBinding bds
-  e' <- trExpr e
-  return $ Let bds' e'
+  return $ case e' of -- TODO bjp(2011-09-21): maybe remove again, ask @MH
+    Let bs e'' -> Let ((v', b'):bs) e''
+    _          -> Let ((v', b'):[]) e'
+trExpr (IL.Letrec   bs e) = inNewScope $ do
+  let (vs, es) = unzip [ (v, b) | IL.Binding v b <- bs]
+  vs' <- mapM newVarIndex vs
+  es' <- mapM trExpr es
+  e'  <- trExpr e
+  return $ Let (zip vs' es') e'
 trExpr (IL.Typed e ty) = Typed <$> trExpr e <*> trType ty
 
 trLiteral :: IL.Literal -> FlatState Literal
@@ -300,12 +280,9 @@ trPat (IL.ConstructorPattern c vs) = Pattern  <$> trQualIdent c
                                               <*> mapM newVarIndex vs
 trPat (IL.VariablePattern       _) = internalError "GenFlatCurry.trPat"
 
-trEval :: IL.Eval -> FlatState CaseType
-trEval IL.Rigid = return Rigid
-trEval IL.Flex  = return Flex
-
-trBinding :: IL.Binding -> FlatState (VarIndex, Expr)
-trBinding (IL.Binding v e) = (,) <$> lookupVarIndex v <*> trExpr e
+cvEval :: IL.Eval -> CaseType
+cvEval IL.Rigid = Rigid
+cvEval IL.Flex  = Flex
 
 -------------------------------------------------------------------------------
 
@@ -347,17 +324,14 @@ trIOpDecl _ = internalError "GenFlatCurry.trIOpDecl: no pattern match"
 
 -------------------------------------------------------------------------------
 
-trModuleIdent :: ModuleIdent -> FlatState String
-trModuleIdent = return . Id.moduleName
-
 trQualIdent :: QualIdent -> FlatState QName
 trQualIdent qid = do
   mid <- getModuleIdent
   let (mmod, ident) = (qidModule qid, qidIdent qid)
       modid | elem ident [listId, consId, nilId, unitId] || isTupleId ident
-            = Id.moduleName preludeMIdent
+            = moduleName preludeMIdent
             | otherwise
-            = maybe (Id.moduleName mid) Id.moduleName mmod
+            = maybe (moduleName mid) moduleName mmod
   ftype <- lookupIdType qid
   return (QName Nothing ftype modid $ idName ident)
 
@@ -369,14 +343,14 @@ trTypeIdent qid = do
   mid <- getModuleIdent
   let (mmod, ident) = (qidModule qid, qidIdent qid)
       modid | elem ident [listId, consId, nilId, unitId] || isTupleId ident
-            = Id.moduleName preludeMIdent
+            = moduleName preludeMIdent
             | otherwise
-            = maybe (Id.moduleName mid) Id.moduleName mmod
+            = maybe (moduleName mid) moduleName mmod
   return (QName Nothing Nothing modid $ idName ident)
 
 trExternal :: String -> FlatState String
 trExternal extname
-  = getModuleIdent >>= \mid -> return (Id.moduleName mid ++ "." ++ extname)
+  = getModuleIdent >>= \mid -> return (moduleName mid ++ "." ++ extname)
 
 getVisibility :: Bool -> QualIdent -> FlatState Visibility
 getVisibility isConstr qid = do
@@ -479,11 +453,6 @@ qualifyIConstrDecl mid (CS.ConOpDecl pos vs ty1 op ty2)
 qualifyCSType :: ModuleIdent -> CS.TypeExpr -> CS.TypeExpr
 qualifyCSType mid = fromType . toQualType mid []
 
-typeArity :: IL.Type -> Int
-typeArity (IL.TypeArrow _ t)       = 1 + (typeArity t)
-typeArity (IL.TypeConstructor _ _) = 0
-typeArity (IL.TypeVariable _)      = 0
-
 trApply :: IL.Expression -> IL.Expression -> FlatState Expr
 trApply e1 e2 = genFlatApplic [e2] e1
   where
@@ -499,41 +468,37 @@ trApply e1 e2 = genFlatApplic [e2] e1
       genConsCall qname arity es
     _ -> do
       expr <- trExpr e
-      genApplicComb expr args
+      genApplicComb expr es
 
 genFuncCall :: QName -> Int -> [IL.Expression] -> FlatState Expr
-genFuncCall qname arity args
-  | arity > cnt = genComb qname args $ FuncPartCall $ arity - cnt
-  | arity < cnt = do
-      let (funcargs, applicargs) = splitAt arity args
-      funccall <- genComb qname funcargs FuncCall
-      genApplicComb funccall applicargs
-   | otherwise  = genComb qname args FuncCall
- where cnt = length args
+genFuncCall qname arity es
+  | cnt <  arity = genComb qname es (FuncPartCall (arity - cnt))
+  | cnt == arity = genComb qname es FuncCall
+  | otherwise    = do
+    let (es1, es2) = splitAt arity es
+    funccall <- genComb qname es1 FuncCall
+    genApplicComb funccall es2
+ where cnt = length es
 
 genConsCall :: QName -> Int -> [IL.Expression] -> FlatState Expr
-genConsCall qname arity args
-  | arity > cnt
-  = genComb qname args (ConsPartCall (arity - cnt))
-  | arity < cnt = do
-    let (funcargs, applicargs) = splitAt arity args
-    conscall <- genComb qname funcargs ConsCall
-    genApplicComb conscall applicargs
-  | otherwise
-  = genComb qname args ConsCall
- where cnt = length args
+genConsCall qname arity es
+  | cnt <  arity = genComb qname es (ConsPartCall (arity - cnt))
+  | cnt == arity = genComb qname es ConsCall
+  | otherwise    = do
+    let (es1, es2) = splitAt arity es
+    conscall <- genComb qname es1 ConsCall
+    genApplicComb conscall es2
+ where cnt = length es
 
 genComb :: QName -> [IL.Expression] -> CombType -> FlatState Expr
-genComb qname args combtype = do
-  exprs <- mapM trExpr args
-  return (Comb combtype qname exprs)
+genComb qid es ct = Comb ct qid <$> mapM trExpr es
 
 genApplicComb :: Expr -> [IL.Expression] -> FlatState Expr
-genApplicComb expr [] = return expr
-genApplicComb expr (e1:es) = do
+genApplicComb e []      = return e
+genApplicComb e (e1:es) = do
   expr1 <- trExpr e1
   qname <- trQualIdent qidApply
-  genApplicComb (Comb FuncCall qname [expr, expr1]) es
+  genApplicComb (Comb FuncCall qname [e, expr1]) es
   where
   qidApply = qualifyWith preludeMIdent (mkIdent "apply")
 
@@ -560,15 +525,12 @@ genTypeSynonyms ::  FlatState [TypeDecl]
 genTypeSynonyms = typeSynonyms >>= mapM genTypeSynonym
 
 genTypeSynonym :: CS.IDecl -> FlatState TypeDecl
-genTypeSynonym (CS.ITypeDecl _ qid params ty) = do
-  let is = [0 .. (length params) - 1]
-  tyEnv <- gets typeEnvE
-  tcEnv <- gets tConsEnvE
-  let ty' = elimRecordTypes tyEnv tcEnv ty
-  texpr <- trType $ snd $ cs2ilType (zip params is) ty'
+genTypeSynonym (CS.ITypeDecl _ qid tvs ty) = do
   qname <- trTypeIdent qid
   vis   <- getVisibility False qid
-  return $ TypeSyn qname vis is texpr
+  let is = [0 .. (length tvs) - 1]
+  ty'   <- elimRecordTypes ty >>= trType . snd . cs2ilType (zip tvs is)
+  return $ TypeSyn qname vis is ty'
 genTypeSynonym _ = internalError "GenFlatCurry: no type synonym interface"
 
 -- In order to provide an interface for record declarations, 'genRecordTypes'
@@ -604,9 +566,7 @@ genRecordType _ = internalError "GenFlatCurry.genRecordType: no pattern match"
 genRecordLabel :: Maybe ModuleIdent -> [(Ident, Int)] -> ([Ident], CS.TypeExpr)
                -> FlatState ConsDecl
 genRecordLabel modid vis ([ident],ty) = do
-  tyEnv <- gets typeEnvE
-  tcEnv <- gets tConsEnvE
-  let ty' = elimRecordTypes tyEnv tcEnv ty
+  ty'   <- elimRecordTypes ty
   texpr <- trType (snd (cs2ilType vis ty'))
   qname <- trQualIdent ((maybe qualify qualifyWith modid)
                             (labelExtId ident))
@@ -620,36 +580,28 @@ genRecordLabel _ _ _ = internalError "GenFlatCurry.genRecordLabel: no pattern ma
 -- Unlike data declarations or function type annotations, type synonyms and
 -- record declarations are not generated from the intermediate language.
 -- So the transformation has only to be performed in these cases.
-elimRecordTypes :: ValueEnv -> TCEnv -> CS.TypeExpr -> CS.TypeExpr
-elimRecordTypes tyEnv tcEnv (CS.ConstructorType qid tys)
-   = CS.ConstructorType qid (map (elimRecordTypes tyEnv tcEnv) tys)
-elimRecordTypes _ _ (CS.VariableType ident)
-   = CS.VariableType ident
-elimRecordTypes tyEnv tcEnv (CS.TupleType tys)
-   = CS.TupleType (map (elimRecordTypes tyEnv tcEnv) tys)
-elimRecordTypes tyEnv tcEnv (CS.ListType ty)
-   = CS.ListType (elimRecordTypes tyEnv tcEnv ty)
-elimRecordTypes tyEnv tcEnv (CS.ArrowType ty1 ty2)
-   = CS.ArrowType (elimRecordTypes tyEnv tcEnv ty1)
-                  (elimRecordTypes tyEnv tcEnv ty2)
-elimRecordTypes tyEnv tcEnv (CS.RecordType fss)
-   = let fs = flattenRecordTypeFields fss
-     in  case (lookupValue (fst (head fs)) tyEnv) of
-          [Label _ record _] ->
-            case (qualLookupTC record tcEnv) of
-              [AliasType _ n (TypeRecord fs')] ->
-                let ms = foldl (matchTypeVars fs) Map.empty fs'
-                    types = map (\i -> maybe
-                                        (CS.VariableType
-                                            (mkIdent ("#tvar" ++ show i)))
-                                        (elimRecordTypes tyEnv tcEnv)
-                                        (Map.lookup i ms))
-                                [0 .. n-1]
-                in  CS.ConstructorType record types
-              _ -> internalError ("GenFlatCurry.elimRecordTypes: "
-                                  ++ "no record type")
-          _ -> internalError ("GenFlatCurry.elimRecordTypes: "
-                              ++ "no label")
+elimRecordTypes :: CS.TypeExpr -> FlatState CS.TypeExpr
+elimRecordTypes (CS.ConstructorType c tys) = CS.ConstructorType c <$> mapM elimRecordTypes tys
+elimRecordTypes v@(CS.VariableType      _) = return v
+elimRecordTypes (CS.TupleType         tys) = CS.TupleType <$> mapM elimRecordTypes tys
+elimRecordTypes (CS.ListType           ty) = CS.ListType  <$> elimRecordTypes ty
+elimRecordTypes (CS.ArrowType     ty1 ty2) = CS.ArrowType <$> elimRecordTypes ty1 <*> elimRecordTypes ty2
+elimRecordTypes (CS.RecordType        fss) = do
+  tyEnv <- gets typeEnvE
+  tcEnv <- gets tConsEnvE
+  case lookupValue (fst (head fs)) tyEnv of
+    [Label _ record _] -> case (qualLookupTC record tcEnv) of
+      [AliasType _ n (TypeRecord fs')] ->
+          let ms = foldl (matchTypeVars fs) Map.empty fs'
+              types = mapM (\i -> maybe
+                                  (return $ CS.VariableType (mkIdent ("#tvar" ++ show i)))
+                                  elimRecordTypes
+                                  (Map.lookup i ms))
+                           [0 .. n-1]
+          in  CS.ConstructorType record <$> types
+      _ -> internalError "GenFlatCurry.elimRecordTypes: no record type"
+    _ -> internalError "GenFlatCurry.elimRecordTypes: no label"
+  where fs = flattenRecordTypeFields fss
 
 matchTypeVars :: [(Ident,CS.TypeExpr)] -> Map.Map Int CS.TypeExpr
               -> (Ident, Type) -> Map.Map Int CS.TypeExpr
@@ -674,7 +626,7 @@ matchTypeVars fs ms (l,ty) = maybe ms (match ms ty) (lookup l fs)
      = foldl (\ms' (ty',typeexpr) -> match ms' ty' typeexpr) ms1 . zip tys
 
 flattenRecordTypeFields :: [([Ident], CS.TypeExpr)] -> [(Ident, CS.TypeExpr)]
-flattenRecordTypeFields = concatMap (\ (ls, ty) -> map (\l -> (l, ty)) ls)
+flattenRecordTypeFields fss = [ (l, ty) | (ls, ty) <- fss, l <- ls]
 
 cs2ilType :: [(Ident,Int)] -> CS.TypeExpr -> ([(Ident,Int)], IL.Type)
 cs2ilType ids (CS.ConstructorType qid typeexprs)
@@ -700,33 +652,6 @@ cs2ilType ids (CS.TupleType typeexprs)
            in  (ids', IL.TypeConstructor (qTupleId tuplen) ilTypeexprs)
 cs2ilType _ typeexpr = internalError $ "GenFlatCurry.cs2ilType: " ++ show typeexpr
 
--------------------------------------------------------------------------------
--- Messages for internal errors and warnings
-funcArity :: Show a => a -> [Char]
-funcArity qid = "GenFlatCurry: missing arity for function \"" ++ show qid ++ "\""
-
-consArity :: Show a => a -> [Char]
-consArity qid = "GenFlatCurry: missing arity for constructor \""
-  ++ show qid ++ "\""
-
-missingVarIndex :: Show a => a -> [Char]
-missingVarIndex ident = "GenFlatCurry: missing index for \"" ++ show ident ++ "\""
-
--------------------------------------------------------------------------------
-
-isDataDecl :: IL.Decl -> Bool
-isDataDecl (IL.DataDecl _ _ _) = True
-isDataDecl _                   = False
-
-isNewtypeDecl :: IL.Decl -> Bool
-isNewtypeDecl (IL.NewtypeDecl _ _ _) = True
-isNewtypeDecl _                      = False
-
-isFuncDecl :: IL.Decl -> Bool
-isFuncDecl (IL.FunctionDecl _ _ _ _) = True
-isFuncDecl (IL.ExternalDecl _ _ _ _) = True
-isFuncDecl _                         = False
-
 isPublicDataDecl :: IL.Decl -> FlatState Bool
 isPublicDataDecl (IL.DataDecl qid _ _) = isPublic False qid
 isPublicDataDecl _                     = return False
@@ -735,11 +660,10 @@ isPublicNewtypeDecl :: IL.Decl -> FlatState Bool
 isPublicNewtypeDecl (IL.NewtypeDecl qid _ _) = isPublic False qid
 isPublicNewtypeDecl _                        = return False
 
-
 isPublicFuncDecl :: IL.Decl -> FlatState Bool
 isPublicFuncDecl (IL.FunctionDecl qid _ _ _) = isPublic False qid
 isPublicFuncDecl (IL.ExternalDecl qid _ _ _) = isPublic False qid
-isPublicFuncDecl _                              = return False
+isPublicFuncDecl _                           = return False
 
 isTypeIDecl :: CS.IDecl -> Bool
 isTypeIDecl (CS.IDataDecl _ _ _ _) = True
@@ -758,16 +682,8 @@ isOpIDecl :: CS.IDecl -> Bool
 isOpIDecl (CS.IInfixDecl _ _ _ _) = True
 isOpIDecl _                       = False
 
-bindingIdent :: IL.Binding -> Ident
-bindingIdent (IL.Binding ident _) = ident
-
--- ---------------------------------------------------------------------------
-
 getModuleIdent :: FlatState ModuleIdent
 getModuleIdent = gets moduleIdE
-
-setFunctionId :: (QualIdent, [(Ident, IL.Type)]) -> FlatState ()
-setFunctionId qid = modify $ \ s -> s { functionIdE = qid }
 
 exports :: FlatState [CS.Export]
 exports = gets exportsE
@@ -852,9 +768,9 @@ lookupIdType qid = do
   tyEnv <- gets typeEnvE
   tcEnv <- gets tConsEnvE
   case Map.lookup qid lt `mplus` Map.lookup qid ct of
-    Just t  -> liftM Just (trType t)  -- local name or constructor
+    Just t  -> Just <$> trType t  -- local name or constructor
     Nothing -> case [ t | Value _ _ (ForAll _ t) <- qualLookupValue qid aEnv ] of
-      t : _ -> liftM Just (trType (transType m tyEnv tcEnv t))  -- imported name
+      t : _ -> Just <$> trType (transType m tyEnv tcEnv t)  -- imported name
       []    -> case qidModule qid of
         Nothing -> return Nothing  -- no known type
         Just _ -> lookupIdType qid {qidModule = Nothing}
@@ -865,7 +781,7 @@ newVarIndex ident = do
   idx <- (+1) <$> gets varIndexE
   ty  <- getTypeOf ident
   let vid = VarIndex ty idx
-  modify $ \ s -> s { varIndexE = idx, varIdsE = ScopeEnv.insert ident vid (varIdsE s) }
+  modify $ \ s -> s { varIndexE = idx, varIdsE = SE.insert ident vid (varIdsE s) }
   return vid
 
 getTypeOf :: Ident -> FlatState (Maybe TypeExpr)
@@ -879,25 +795,21 @@ getTypeOf ident = do
     DataConstructor _ _ (ForAllExist _ _ t) : _ -> do
       t1 <- trType (ttrans tcEnv valEnv t)
       return (Just t1)
-    _ -> do
-    (_, ats) <- gets functionIdE
-    case lookup ident ats of
-      Just t -> liftM Just (trType t)
-      Nothing -> return Nothing
+    _ -> return Nothing
 
 lookupVarIndex :: Ident -> FlatState VarIndex
 lookupVarIndex ident = do
-  index_ <- gets (ScopeEnv.lookup ident . varIdsE)
-  maybe (internalError $ missingVarIndex ident) return index_
+  index_ <- gets (SE.lookup ident . varIdsE)
+  maybe (internalError $ "GenFlatCurry: missing index for \"" ++ show ident ++ "\"") return index_
 
 clearVarIndices :: FlatState ()
-clearVarIndices = modify $ \ s -> s { varIndexE = 0, varIdsE = ScopeEnv.new }
+clearVarIndices = modify $ \ s -> s { varIndexE = 0, varIdsE = SE.new }
 
 inNewScope :: FlatState a -> FlatState a
 inNewScope act = do
-  modify $ \ s -> s { varIdsE  = ScopeEnv.beginScope $ varIdsE s }
+  modify $ \ s -> s { varIdsE = SE.beginScope $ varIdsE s }
   res <- act
-  modify $ \ s -> s { varIdsE  = ScopeEnv.endScope $ varIdsE s }
+  modify $ \ s -> s { varIdsE = SE.endScope $ varIdsE s }
   return res
 
 whenFlatCurry :: FlatState a -> FlatState a -> FlatState a
@@ -958,8 +870,3 @@ bindEnvRecordLabel :: Ident -> Map.Map Ident IdentExport -> ([Ident],CS.TypeExpr
 bindEnvRecordLabel r env ([lab], _) = bindIdentExport (recSelectorId (qualify r) lab) False expo
   where expo = (bindIdentExport (recUpdateId (qualify r) lab) False env)
 bindEnvRecordLabel _ _ _ = internalError "GenFlatCurry.bindEnvRecordLabel: no pattern match"
-
-splitoffArgTypes :: IL.Type -> [Ident] -> [(Ident, IL.Type)]
-splitoffArgTypes (IL.TypeArrow l r) (i:is) = (i, l):splitoffArgTypes r is
-splitoffArgTypes _ [] = []
-splitoffArgTypes _ _  = internalError "splitoffArgTypes"
