@@ -77,14 +77,13 @@ trTypeDecl _                       = return []
 
 trConsDecl :: ConstrDecl -> GAC CConsDecl
 trConsDecl (ConstrDecl      _ _ c tys) = CCons
-  <$> trLocalIdent c  <*> return (length tys)
-  <*> getVisibility c <*> mapM trTypeExpr tys
+  <$> trLocalIdent c <*> getVisibility c <*> mapM trTypeExpr tys
 trConsDecl (ConOpDecl p vs ty1 op ty2) = trConsDecl $
   ConstrDecl p vs op [ty1, ty2]
 
-trNewConsDecl :: NewConstrDecl -> GAC CNewConsDecl
-trNewConsDecl (NewConstrDecl _ _ nc ty) = CNewCons
-  <$> trLocalIdent nc <*> getVisibility nc <*> trTypeExpr ty
+trNewConsDecl :: NewConstrDecl -> GAC CConsDecl
+trNewConsDecl (NewConstrDecl _ _ nc ty) = CCons
+  <$> trLocalIdent nc <*> getVisibility nc <*> ((:[]) <$> trTypeExpr ty)
 
 trTypeExpr :: TypeExpr -> GAC CTypeExpr
 trTypeExpr (ConstructorType  q ts) = CTCons <$> trQual q
