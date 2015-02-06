@@ -76,10 +76,9 @@ type ValueEnv = TopEnv ValueInfo
 
 bindGlobalInfo :: (QualIdent -> a -> ValueInfo) -> ModuleIdent -> Ident -> a
                -> ValueEnv -> ValueEnv
-bindGlobalInfo f m c ty = bindTopEnv fun c v . qualBindTopEnv fun qc v
-  where qc  = qualifyWith m c
-        v   = f qc ty
-        fun = "Env.Value.bindGlobalInfo"
+bindGlobalInfo f m c ty = bindTopEnv c v . qualBindTopEnv qc v
+  where qc = qualifyWith m c
+        v  = f qc ty
 
 -- various binds
 
@@ -119,12 +118,30 @@ rebindFun :: ModuleIdent -> Ident -> Int -> TypeScheme -> ValueEnv -> ValueEnv
 rebindFun m x n tsc env = 
   maybe (internalError "Value.rebindFun") id $ tryRebindFun m x n tsc env
 
+-- bindFun :: ModuleIdent -> Ident -> Int -> TypeScheme -> ValueEnv -> ValueEnv
+-- bindFun m f a ty
+--   | hasGlobalScope f = bindTopEnv f v . qualBindTopEnv qf v
+--   | otherwise        = bindTopEnv f v
+--   where qf = qualifyWith m f
+--         v  = Value qf a ty
+
+-- qualBindFun :: ModuleIdent -> Ident -> Int -> TypeScheme -> ValueEnv -> ValueEnv
+-- qualBindFun m f a ty = qualBindTopEnv qf $ Value qf a ty
+--   where qf = qualifyWith m f
+
+-- rebindFun :: ModuleIdent -> Ident -> Int -> TypeScheme -> ValueEnv
+--           -> ValueEnv
+-- rebindFun m f a ty
+--   | hasGlobalScope f = rebindTopEnv f v . qualRebindTopEnv qf v
+--   | otherwise        = rebindTopEnv f v
+--   where qf = qualifyWith m f
+--         v  = Value qf a ty
+
 unbindFun :: Ident -> ValueEnv -> ValueEnv
 unbindFun = unbindTopEnv
 
 bindLabel :: Ident -> QualIdent -> TypeScheme -> ValueEnv -> ValueEnv
-bindLabel l r ty tyEnv = bindTopEnv "Env.Value.bindLabel" l v tyEnv
-  where v  = Label (qualify l) r ty
+bindLabel l r ty tyEnv = bindTopEnv l (Label (qualify l) r ty) tyEnv
 
 lookupValue :: Ident -> ValueEnv -> [ValueInfo]
 lookupValue x tyEnv = lookupTopEnv x tyEnv ++! lookupTuple x

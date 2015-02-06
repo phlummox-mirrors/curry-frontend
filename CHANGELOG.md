@@ -4,11 +4,19 @@ Change log for curry-frontend
 Under development
 =================
 
+<<<<<<< HEAD
   * added type class extensions (`-X TypeClassExtensions`) to the
     front-end (merge branch `masterThesisBoehm`), including:
     * adaption of case completion: pass corresponding dictionaries for
       literals in order to use the new type class method `(==)`
 	*  a simple defaulting mechanism for numeric literals
+=======
+  * HTML generation now places HTML files for hierarchical modules into
+    files named `<Module>_curry.html`, i.e., no sub-folders reflecting
+    the the module name hierarchy are generated. In addition, if the option
+    `--html-dir` is not given, the current directory is used as the output
+    directory.
+>>>>>>> d1b912faca0552d15dd1bd34713c0dbe0b151df5
 
   * Removed record type extensions
 

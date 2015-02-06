@@ -2,7 +2,7 @@
     Module      :  $Header$
     Description :  Checks interface declarations
     Copyright   :  (c) 2000 - 2007 Wolfgang Lux
-                                   Björn Peemöller
+                       2011 - 2015 Björn Peemöller
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
@@ -25,6 +25,7 @@ import           Control.Monad            (liftM, liftM2, liftM3)
 import qualified Control.Monad.State as S
 import           Data.List                (nub, partition)
 import           Data.Maybe               (catMaybes)
+import qualified Data.Traversable    as T (mapM)
 
 import Base.Expr
 import Base.Messages (Message, posMessage, internalError)
@@ -35,13 +36,6 @@ import Env.TypeConstructor
 import Curry.Base.Ident
 import Curry.Base.Pretty
 import Curry.Syntax
-
--- import Base
--- import Error
--- import List
--- import Maybe
--- import Monad
--- import TopEnv
 
 data ISCState = ISCState
   { typeEnv :: TypeEnv
@@ -69,18 +63,18 @@ intfSyntaxCheck (Interface n is ds) = (Interface n is ds', reverse $ errors s')
 
 bindType :: IDecl -> TypeEnv -> TypeEnv
 bindType (IInfixDecl       _ _ _ _) = id
-bindType (HidingDataDecl    _ tc _) = qualBindTopEnv "" tc (Data tc [])
-bindType (IDataDecl      _ tc _ cs) = qualBindTopEnv "" tc
+bindType (HidingDataDecl    _ tc _) = qualBindTopEnv tc (Data tc [])
+bindType (IDataDecl      _ tc _ cs) = qualBindTopEnv tc
                                       (Data tc (map constr (catMaybes cs)))
   where constr (ConstrDecl    _ _ c _) = c
         constr (ConOpDecl  _ _ _ op _) = op
-bindType (INewtypeDecl   _ tc _ nc) = qualBindTopEnv "" tc (Data tc [nconstr nc])
+bindType (INewtypeDecl   _ tc _ nc) = qualBindTopEnv tc (Data tc [nconstr nc])
   where nconstr (NewConstrDecl _ _ c _) = c
 -- jrt 2014-10-16: record types are handled like data declarations; this is
 -- necessary because type constructors of record types are not expanded anymore
 -- and can occur in interfaces
-bindType (ITypeDecl _ tc _ (RecordType _)) = qualBindTopEnv "" tc (Data tc [])
-bindType (ITypeDecl       _ tc _ _) = qualBindTopEnv "" tc (Alias tc)
+bindType (ITypeDecl _ tc _ (RecordType _)) = qualBindTopEnv tc (Data tc [])
+bindType (ITypeDecl       _ tc _ _) = qualBindTopEnv tc (Alias tc)
 bindType (IFunctionDecl  _ _ _ _ _) = id
 bindType (IClassDecl  _ _ _ _ _ _ _ _) = id
 bindType (IInstanceDecl _ _ _ _ _ _ _) = id
@@ -95,7 +89,7 @@ checkIDecl (HidingDataDecl p tc tvs) = do
   return (HidingDataDecl p tc tvs)
 checkIDecl (IDataDecl p tc tvs cs) = do
   checkTypeLhs tvs
-  liftM (IDataDecl p tc tvs) (mapM (liftMaybe (checkConstrDecl tvs)) cs)
+  liftM (IDataDecl p tc tvs) (mapM (T.mapM (checkConstrDecl tvs)) cs)
 checkIDecl (INewtypeDecl p tc tvs nc) = do
   checkTypeLhs tvs
   liftM (INewtypeDecl p tc tvs) (checkNewConstrDecl tvs nc)
@@ -166,14 +160,6 @@ checkTypeConstructor tc tys = do
                   report (errBadTypeSynonym tc)
                   ConstructorType tc `liftM` mapM checkType tys
     _          -> internalError "checkTypeConstructor"
-
--- ---------------------------------------------------------------------------
--- Auxiliary functions
--- ---------------------------------------------------------------------------
-
-liftMaybe :: Monad m => (a -> m b) -> Maybe a -> m (Maybe b)
-liftMaybe f (Just x) = liftM Just (f x)
-liftMaybe _ Nothing  = return Nothing
 
 -- ---------------------------------------------------------------------------
 -- Error messages

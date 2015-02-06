@@ -18,10 +18,15 @@
    Because of name conflicts between the source and intermediate language
    data structures, we can use only a qualified import for the 'IL' module.
 -}
-
+{-# LANGUAGE CPP #-}
 module Transformations.CurryToIL (ilTrans, transType) where
 
-import           Control.Monad               (liftM, liftM2)
+#if __GLASGOW_HASKELL__ >= 710
+import           Control.Applicative        ((<$>))
+#else
+import           Control.Applicative        ((<$>), (<*>))
+#endif
+
 import qualified Control.Monad.Reader as R
 import           Data.List                   (nub, partition)
 import qualified Data.Map             as Map (Map, empty, insert, lookup)
@@ -42,26 +47,20 @@ import Env.Value (ValueEnv, ValueInfo (..), lookupValue, qualLookupValue)
 
 import qualified IL as IL
 
-ilTrans :: Bool -> ValueEnv -> TCEnv -> Module -> IL.Module
-ilTrans flat tyEnv tcEnv (Module _ m _ _ ds) = IL.Module m (imports m ds') ds'
-  where ds' = R.runReader (concatMapM trDecl ds)
-                          (TransEnv flat m tyEnv tcEnv)
+ilTrans :: ValueEnv -> TCEnv -> Module -> IL.Module
+ilTrans tyEnv tcEnv (Module _ m _ _ ds) = IL.Module m (imports m ds') ds'
+  where ds' = R.runReader (concatMapM trDecl ds) (TransEnv m tyEnv tcEnv)
 
 transType :: ModuleIdent -> ValueEnv -> TCEnv -> Type -> IL.Type
-transType m tyEnv tcEnv ty = R.runReader (trType ty)
-                                         (TransEnv True m tyEnv tcEnv)
+transType m tyEnv tcEnv ty = R.runReader (trType ty) (TransEnv m tyEnv tcEnv)
 
 data TransEnv = TransEnv
-  { flatTrans   :: Bool
-  , moduleIdent :: ModuleIdent
+  { moduleIdent :: ModuleIdent
   , valueEnv    :: ValueEnv
   , tyConsEnv   :: TCEnv
   }
 
 type TransM a = R.Reader TransEnv a
-
-isFlat :: TransM Bool
-isFlat = R.asks flatTrans
 
 getModuleIdent :: TransM ModuleIdent
 getModuleIdent = R.asks moduleIdent
@@ -84,22 +83,22 @@ trQualify i = getModuleIdent >>= \m -> return $ qualifyWith m i
 -- alias types.
 
 trDecl :: Decl -> TransM [IL.Decl]
-trDecl (DataDecl    _ tc tvs cs _) = (:[]) `liftM` trData    tc tvs cs
-trDecl (NewtypeDecl _ tc tvs nc _) = (:[]) `liftM` trNewtype tc tvs nc
-trDecl (FunctionDecl  p _ _ f eqs) = (:[]) `liftM` trFunction  p f eqs
-trDecl (ForeignDecl   _ cc ie f _) = (:[]) `liftM` trForeign  f cc ie
+trDecl (DataDecl    _ tc tvs cs _) = (:[]) <$> trData    tc tvs cs
+trDecl (NewtypeDecl _ tc tvs nc _) = (:[]) <$> trNewtype tc tvs nc
+trDecl (FunctionDecl  p _ _ f eqs) = (:[]) <$> trFunction  p f eqs
+trDecl (ForeignDecl   _ cc ie f _) = (:[]) <$> trForeign  f cc ie
 trDecl _                           = return []
 
 trData :: Ident -> [Ident] -> [ConstrDecl] -> TransM IL.Decl
 trData tc tvs cs = do
   tc' <- trQualify tc
-  IL.DataDecl tc' (length tvs) `liftM` mapM trConstrDecl cs
+  IL.DataDecl tc' (length tvs) <$> mapM trConstrDecl cs
 
 trConstrDecl :: ConstrDecl -> TransM (IL.ConstrDecl [IL.Type])
 trConstrDecl d = do
   c' <- trQualify (constr d)
-  ty' <- arrowArgs `liftM` constrType c'
-  IL.ConstrDecl c' `liftM` mapM trType ty'
+  ty' <- arrowArgs <$> constrType c'
+  IL.ConstrDecl c' <$> mapM trType ty'
   where
   constr (ConstrDecl    _ _ c _) = c
   constr (ConOpDecl  _ _ _ op _) = op
@@ -108,8 +107,8 @@ trNewtype :: Ident -> [Ident] -> NewConstrDecl -> TransM IL.Decl
 trNewtype tc tvs (NewConstrDecl _ _ c _) = do
   tc' <- trQualify tc
   c'  <- trQualify c
-  [ty] <- arrowArgs `liftM` constrType c'
-  (IL.NewtypeDecl tc' (length tvs) . IL.ConstrDecl c') `liftM` trType ty
+  [ty] <- arrowArgs <$> constrType c'
+  (IL.NewtypeDecl tc' (length tvs) . IL.ConstrDecl c') <$> trType ty
 
 trForeign :: Ident -> CallConv -> Maybe String -> TransM IL.Decl
 trForeign _ _  Nothing   = internalError "CurryToIL.trForeign: no target"
@@ -135,7 +134,7 @@ trForeign f cc (Just ie) = do
 
 -- translIntfDecl ::IDecl -> TransM [IL.Decl]
 -- translIntfDecl (IDataDecl _ tc tvs cs)
---   | not (isQualified tc) = (:[]) `liftM`
+--   | not (isQualified tc) = (:[]) <$>
 --                            translIntfData (unqualify tc) tvs cs
 -- translIntfDecl _         = return []
 
@@ -151,11 +150,11 @@ trForeign f cc (Just ie) = do
 -- translIntfConstrDecl tvs (ConstrDecl     _ _ c tys) = do
 --   m <- getModuleIdent
 --   c' <- trQualify c
---   IL.ConstrDecl c' `liftM` mapM trType (toQualTypes m tvs tys)
+--   IL.ConstrDecl c' <$> mapM trType (toQualTypes m tvs tys)
 -- translIntfConstrDecl tvs (ConOpDecl _ _ ty1 op ty2) = do
 --   m <- getModuleIdent
 --   op' <- trQualify op
---   IL.ConstrDecl op' `liftM` mapM trType (toQualTypes m tvs [ty1, ty2])
+--   IL.ConstrDecl op' <$> mapM trType (toQualTypes m tvs [ty1, ty2])
 
 -- Types:
 -- The type representation in the intermediate language is the same as
@@ -167,7 +166,7 @@ trForeign f cc (Just ie) = do
 -- them back into their corresponding type constructors first.
 
 trType :: Type -> TransM IL.Type
-trType ty = trTy `liftM` elimRecordTypes (maximum $ 0 : typeVars ty) ty
+trType ty = trTy <$> elimRecordTypes (maximum $ 0 : typeVars ty) ty
   where
   trTy (TypeConstructor tc tys) = IL.TypeConstructor tc (map trTy tys)
   trTy (TypeVariable        tv) = IL.TypeVariable tv
@@ -180,12 +179,12 @@ trType ty = trTy `liftM` elimRecordTypes (maximum $ 0 : typeVars ty) ty
 
 elimRecordTypes :: Int -> Type -> TransM Type
 elimRecordTypes n (TypeConstructor t tys)
-  = TypeConstructor t `liftM` mapM (elimRecordTypes n) tys
+  = TypeConstructor t <$> mapM (elimRecordTypes n) tys
 elimRecordTypes _ v@(TypeVariable      _) = return v
 elimRecordTypes n (TypeConstrained tys v)
-  = flip TypeConstrained v `liftM` mapM (elimRecordTypes n) tys
+  = flip TypeConstrained v <$> mapM (elimRecordTypes n) tys
 elimRecordTypes n (TypeArrow       t1 t2)
-  = liftM2 TypeArrow (elimRecordTypes n t1) (elimRecordTypes n t2)
+  = TypeArrow <$> elimRecordTypes n t1 <*> elimRecordTypes n t2
 elimRecordTypes _ s@(TypeSkolem        _) = return s
 elimRecordTypes n (TypeRecord         fs)
   | null fs   = internalError "CurryToIL.elimRecordTypes: empty record type"
@@ -196,7 +195,7 @@ elimRecordTypes n (TypeRecord         fs)
                                 (elimRecordTypes n)
                                 (Map.lookup i vs))
                    [0 .. n'-1]
-    TypeConstructor r `liftM` tys
+    TypeConstructor r <$> tys
 
 matchTypeVars :: [(Ident, Type)] -> Map.Map Int Type -> (Ident, Type)
               -> Map.Map Int Type
@@ -246,34 +245,20 @@ matchTypeVars fs vs (l, ty) = maybe vs (match' vs ty) (lookup l fs)
 
 trFunction :: Position -> Ident -> [Equation] -> TransM IL.Decl
 trFunction p f eqs = do
-  f' <- trQualify f
-  ty' <- varType f' >>= trType
-  flat <- isFlat
-  let vs = if not flat && isFpSelectorId f then trArgs eqs funVars else funVars
-  alts <-mapM (trEquation vs addVars) eqs
+  f'   <- trQualify f
+  ty'  <- varType f' >>= trType
+  alts <-mapM (trEquation vs ws) eqs
   let expr = flexMatch (srcRefOf p) vs alts
   return $ IL.FunctionDecl f' vs ty' expr
   where
-  -- funVars are the variables needed for the function: _1, _2, etc.
-  -- addVars is an infinite list for introducing additional variables later
-  (funVars, addVars) = splitAt (equationArity (head eqs))
-                               (argNames (mkIdent ""))
+  -- vs are the variables needed for the function: _1, _2, etc.
+  -- ws is an infinite list for introducing additional variables later
+  (vs, ws) = splitAt (equationArity (head eqs)) (argNames (mkIdent ""))
   equationArity (Equation _ lhs _) = p_equArity lhs
     where
     p_equArity (FunLhs _ ts) = length ts
     p_equArity (OpLhs _ _ _) = 2
     p_equArity _             = internalError "ILTrans - illegal equation"
-
--- TODO: What is this for?
-trArgs :: [Equation] -> [Ident] -> [Ident]
-trArgs [Equation _ (FunLhs _ (t:ts)) _] (v:_) =
-  v : map (translArg (bindRenameEnv v t Map.empty)) ts
-  where
-    translArg env (VariablePattern v') = case Map.lookup v' env of
-      Just x  -> x
-      Nothing -> internalError "Transformations.CurryToIL.trArgs"
-    translArg _ _ = internalError "Translation of arguments not defined"
-trArgs _ _ = internalError "Translation of arguments not defined" -- TODO
 
 trEquation :: [Ident]      -- identifiers for the function's parameters
            -> [Ident]      -- infinite list of additional identifiers
@@ -322,31 +307,31 @@ trExpr _  env (Variable  _ v)
   | otherwise     = case Map.lookup (unqualify v) env of
       Nothing -> fun
       Just v' -> return $ IL.Variable v' -- apply renaming
-  where fun = (IL.Function v . arrowArity) `liftM` varType v
+  where fun = (IL.Function v . arrowArity) <$> varType v
 trExpr _  _   (Constructor c)
-  = (IL.Constructor c . arrowArity) `liftM` constrType c
+  = (IL.Constructor c . arrowArity) <$> constrType c
 trExpr vs env (Apply   e1 e2)
-  = liftM2 IL.Apply (trExpr vs env e1) (trExpr vs env e2)
+  = IL.Apply <$> trExpr vs env e1 <*> trExpr vs env e2
 trExpr vs env (Let      ds e) = do
   e' <- trExpr vs env' e
   case ds of
     [FreeDecl _ vs']
        -> return $ foldr IL.Exist e' vs'
     [d] | all (`notElem` bv d) (qfv emptyMIdent d)
-      -> flip IL.Let    e' `liftM`      trBinding d
-    _ -> flip IL.Letrec e' `liftM` mapM trBinding ds
+      -> flip IL.Let    e' <$>      trBinding d
+    _ -> flip IL.Letrec e' <$> mapM trBinding ds
   where
   env' = foldr2 Map.insert env bvs bvs
   bvs  = bv ds
   trBinding (PatternDecl _ _ _ (VariablePattern v) rhs)
-    = IL.Binding v `liftM` trRhs vs env' rhs
+    = IL.Binding v <$> trRhs vs env' rhs
   trBinding p = error $ "unexpected binding: " ++ show p
 trExpr (v:vs) env (Case r ct e alts) = do
   -- the ident v is used for the case expression subject, as this could
   -- be referenced in the case alternatives by a variable pattern
   e' <- trExpr vs env e
   let matcher = if ct == Flex then flexMatch else rigidMatch
-  expr <- matcher r [v] `liftM` mapM (trAlt (v:vs) env) alts
+  expr <- matcher r [v] <$> mapM (trAlt (v:vs) env) alts
   return $ case expr of
     IL.Case r' mode (IL.Variable v') alts'
         -- subject is not referenced -> forget v and insert subject
@@ -356,7 +341,7 @@ trExpr (v:vs) env (Case r ct e alts) = do
       | v `elem` fv expr                -> IL.Let (IL.Binding v e') expr
       | otherwise                       -> expr
 trExpr  vs env (Typed _ e _cx ty) =
-  liftM2 IL.Typed (trExpr vs env e) (trType $ toType [] ty)
+  IL.Typed <$> trExpr vs env e <*> trType (toType [] ty)
 trExpr _ _ _ = internalError "CurryToIL.trExpr"
 
 trAlt :: [Ident] -> RenameEnv -> Alt -> TransM Match

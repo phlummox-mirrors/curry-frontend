@@ -171,7 +171,7 @@ canonLookupClass cEnv qid = Map.lookup qid (canonClassMap cEnv)
 -- classes imported from elsewhere
 bindClass :: ModuleIdent -> TopEnv Class -> Ident -> Class -> TopEnv Class
 bindClass m cEnv c cls = 
-  qualBindTopEnv "cEnv" qc cls $ bindTopEnv "cEnv" c cls cEnv
+  qualBindTopEnv qc cls $ bindTopEnv c cls cEnv
   where
   qc = qualifyWith m c
   
@@ -250,7 +250,7 @@ bindClassMethods' :: ModuleIdent -> Class -> TopEnv Class -> TopEnv Class
 bindClassMethods' m cls vEnv = 
   let classMethods0 = map fst $ typeSchemes cls in
   foldr (\id0 env -> 
-          qualBindTopEnv "bcm" (qualifyWith m id0) cls $ bindTopEnv "bcm" id0 cls env)
+          qualBindTopEnv (qualifyWith m id0) cls $ bindTopEnv id0 cls env)
     vEnv
     classMethods0
 

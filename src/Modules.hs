@@ -81,7 +81,7 @@ compileModule opts fn = do
   (env, mdl, tcExportEnv, tcExportMdl) <- loadModule opts fn >>= checkModule opts
   liftIO $ writeOutput opts fn (env, mdl) (tcExportEnv, tcExportMdl)
 
-loadAndCheckModule :: Options -> FilePath -> CYIO (CompilerEnv, CS.Module)
+loadAndCheckModule :: Options -> FilePath -> CYIO (CompEnv CS.Module)
 loadAndCheckModule opts fn = do
   (env, mdl, _, _) <- loadModule opts fn >>= checkModule opts
   warn (optWarnOpts opts) $ warnCheck opts env mdl
@@ -91,7 +91,7 @@ loadAndCheckModule opts fn = do
 -- Loading a module
 -- ---------------------------------------------------------------------------
 
-loadModule :: Options -> FilePath -> CYIO (CompilerEnv, CompilerEnv, CS.Module)
+loadModule :: Options -> FilePath -> CYIO (CompEnv CS.Module, CompilerEnv CS.Module)
 loadModule opts fn = do
   parsed <- parseModule opts fn
   -- check module header
@@ -105,7 +105,7 @@ loadModule opts fn = do
   -- add information of imported modules
   env    <- importModules False opts mdl iEnv
   envtc  <- importModules True opts mdl iEnvTc
-  return (env, envtc, mdl)
+  return ((env, mdl), (envtc, mdl))
 
 parseModule :: Options -> FilePath -> CYIO CS.Module
 parseModule opts fn = do
@@ -185,9 +185,8 @@ importPrelude opts fn m@(CS.Module ps mid es is ds)
 checkInterfaces :: Monad m => Options -> InterfaceEnv -> CYT m ()
 checkInterfaces opts iEnv = mapM_ checkInterface (Map.elems iEnv)
   where
-  checkInterface intf = do
-    _ <- interfaceCheck opts (importInterfaces opts intf iEnv) intf
-    return ()
+  checkInterface intf
+    = interfaceCheck opts (importInterfaces opts intf iEnv, intf) >> return ()
 
 -- ---------------------------------------------------------------------------
 -- Checking a module
@@ -198,26 +197,22 @@ checkInterfaces opts iEnv = mapM_ checkInterface (Map.elems iEnv)
 -- environments: One still with type class elements, the second without 
 -- type class elements. 
 checkModule :: Options -> (CompilerEnv, CompilerEnv, CS.Module)
-            -> CYIO (CompilerEnv, CS.Module, CompilerEnv, CS.Module)
+            -> CYIO (CompEnv CS.Module, CompEnv CS.Module)
 checkModule opts (envNonTc, envTc, mdl) = do
-  showDump (DumpParsed       , envTc, presentCS mdl)
-  (env1,  kc) <- kindCheck opts envTc mdl -- should be only syntax checking ?
-  showDump (DumpKindChecked  , env1, presentCS kc)
-  (env2,  sc) <- syntaxCheck opts env1 kc
-  showDump (DumpSyntaxChecked, env2, presentCS sc)
-  (env3,  pc) <- precCheck opts env2 sc
-  showDump (DumpPrecChecked  , env3, presentCS pc)
-  (env4, tcc) <- typeClassesCheck opts env3 pc
-  showDump (DumpTypeClassesChecked, env4, presentCS tcc)
+  _ <- dumpCS DumpParsed mdl
+  -- Should be separated into kind checking and type syntax checking (see MCC)
+  (env1,  kc) <- kindCheck opts envTc mdl      >>= dumpCS DumpExportChecked
+  (env2,  sc) <- syntaxCheck opts env1 kc      >>= dumpCS DumpSyntaxChecked
+  (env3,  pc) <- precCheck opts env2 sc        >>= dumpCS DumpPrecChecked
+  (env4, tcc) <- typeClassesCheck opts env3 pc >>= dumpCS DumpTypeClassesChecked
   (env5,  tc) <- if withTypeCheck
-                 then typeCheck False opts env4 tcc
+                 then typeCheck False opts env4 tcc >>= dumpCS DumpTypeChecked
                  else return (env4, tcc)
-  showDump (DumpTypeChecked  , env5, presentCS tc)
   -- Run an export check here for exporting type class specific elements. As
   -- these are compiled out later, we already here have to set aside the
   -- export checked module and the environment 
   (envEc1,   ec1) <- if withTypeCheck 
-                     then exportCheck opts env5 tc
+                     then exportCheck opts env5 tc >>= dumpCS DumpExportChecked
                      else return (env5, tc)
   (ec1',envEc1') <- if withTypeCheck
                      then return $ qual opts envEc1 ec1
@@ -227,9 +222,8 @@ checkModule opts (envNonTc, envTc, mdl) = do
                      then insertDicts opts env5 tc
                      else return (env5, tc)
   let (env5c, dicts') = if withTypeCheck
-                        then typeSigs env5b dicts
+                        then typeSigs env5b dicts >>= dumpCS DumpDictionaries
                         else (env5b, dicts)
-  showDump (DumpDictionaries , env5c, presentCS dicts')
   (env5e, tc2) <- if withTypeCheck
                     -- Take the older environment env4 instead of env5c;
                     -- moreover, replace the value/type constructor environments with the 
@@ -240,20 +234,13 @@ checkModule opts (envNonTc, envTc, mdl) = do
                            env4 { valueEnv = valueEnv envNonTc, 
                                   tyConsEnv = tyConsEnv envNonTc,
                                   interfaceEnv = interfaceEnv envNonTc } 
-                           dicts' 
+                           dicts' >>= dumpCS DumpTypeChecked2
                     else return (env5c, dicts')
-  showDump (DumpTypeChecked2 , env5e, presentCS tc2)
   (env6,  ec2) <- if withTypeCheck
-                  then exportCheck opts env5e tc2
+                  then exportCheck opts env5e tc2 >>= dumpCS DumpExportChecked
                   else return (env5e, tc2)
-  showDump (DumpExportChecked, env6, presentCS ec2)
-  -- (env7,   ql) <- return $ qual opts env6 ec2
-  -- doDump opts (DumpQualified    , env7, show' CS.ppModule ql)
-  -- return (env7, ql, envEc1', ec1')
-  return (env6, ec2, envEc1', ec1')
-  where
-  showDump  = doDump (optDebugOpts opts)
-  presentCS = if dbDumpRaw (optDebugOpts opts) then show else show . CS.ppModule
+ where
+  dumpCS = dumpWith opts CS.ppModule
   withTypeCheck = any (`elem` optTargetTypes opts)
                       [FlatCurry, ExtendedFlatCurry, AbstractCurry]
 
@@ -261,40 +248,33 @@ checkModule opts (envNonTc, envTc, mdl) = do
 -- Translating a module
 -- ---------------------------------------------------------------------------
 
-transModule :: Options -> CompilerEnv -> CS.Module
-            -> IO (CompilerEnv, IL.Module)
-transModule opts env mdl = do
-  let (desugared , env1) = desugar        mdl        env
-  showDump (DumpDesugared    , env1, presentCS desugared)
-  let (simplified, env2) = simplify flat' desugared  env1
-  showDump (DumpSimplified   , env2, presentCS simplified)
-  let (lifted    , env3) = lift           simplified env2
-  showDump (DumpLifted       , env3, presentCS lifted    )
-  let (il        , env4) = ilTrans  flat' lifted     env3
-  showDump (DumpTranslated   , env4, presentIL il        )
-  let (ilCaseComp, env5) = completeCase   il         env4
-  showDump (DumpCaseCompleted, env5, presentIL ilCaseComp)
-  return (env5, ilCaseComp)
+transModule :: Options -> CompEnv CS.Module -> IO (CompEnv IL.Module)
+transModule opts mdl = do
+  desugared   <- dumpCS DumpDesugared     $ desugar False mdl
+  simplified  <- dumpCS DumpSimplified    $ simplify      desugared
+  lifted      <- dumpCS DumpLifted        $ lift          simplified
+  desugared2  <- dumpCS DumpDesugared     $ desugar True  lifted
+  simplified2 <- dumpCS DumpSimplified    $ simplify      desugared2
+  lifted2     <- dumpCS DumpLifted        $ lift          simplified2
+  il          <- dumpIL DumpTranslated    $ ilTrans       lifted2
+  ilCaseComp  <- dumpIL DumpCaseCompleted $ completeCase  il
+  return ilCaseComp
   where
-  flat'     = FlatCurry `elem` optTargetTypes opts
-  showDump  = doDump (optDebugOpts opts)
-  presentCS = if dumpRaw then show else show . CS.ppModule
-  presentIL = if dumpRaw then show else show . IL.ppModule
-  dumpRaw   = dbDumpRaw (optDebugOpts opts)
+  dumpCS = dumpWith opts CS.ppModule
+  dumpIL = dumpWith opts IL.ppModule
 
 -- ---------------------------------------------------------------------------
 -- Writing output
 -- ---------------------------------------------------------------------------
 
-writeOutput :: Options -> FilePath -> (CompilerEnv, CS.Module) 
-            -> (CompilerEnv, CS.Module) -> IO ()
+writeOutput :: Options -> FilePath -> CompEnv CS.Module
+            -> CompEnv CS.Module -> IO ()
 writeOutput opts fn (env, modul) (tcExportEnv, tcExportModule) = do
   writeParsed opts fn modul
-  let (qlfd, env1) = qual opts env modul
-  doDump (optDebugOpts opts) (DumpQualified, env1, show $ CS.ppModule qlfd)
+  (env1, qlfd) <- dumpWith opts CS.ppModule DumpQualified $ qual opts mdl
   writeAbstractCurry opts fn env1 qlfd
   when withFlat $ do
-    (env2, il) <- transModule opts env1 qlfd
+    (env2, il) <- transModule opts (env1, qlfd)
     -- generate interface file
     let intf = exportInterface env2 qlfd False
         tcIntf = exportInterface tcExportEnv tcExportModule True
@@ -390,17 +370,21 @@ writeFlatIntf opts fn env modSum il
   outputInterface = EF.writeFlatCurry (useSubDir targetFile) intf
 
 writeAbstractCurry :: Options -> FilePath -> CompilerEnv -> CS.Module -> IO ()
-writeAbstractCurry opts fname env modul = do
-  when  acyTarget $ AC.writeCurry (useSubDir $  acyName fname)
-                  $ genTypedAbstractCurry env modul
-  when uacyTarget $ AC.writeCurry (useSubDir $ uacyName fname)
-                  $ genUntypedAbstractCurry env modul
+writeAbstractCurry opts fn env mdl = do
+  when acyTarget $ AC.writeCurry (useSubDir $ acyName fn)
+                 $ genAbstractCurry env mdl
   where
   acyTarget  = AbstractCurry        `elem` optTargetTypes opts
-  uacyTarget = UntypedAbstractCurry `elem` optTargetTypes opts
   useSubDir  = addCurrySubdirModule (optUseSubdir opts) (moduleIdent env)
 
 type Dump = (DumpLevel, CompilerEnv, String)
+
+dumpWith :: (MonadIO m, Show a)
+         => Options -> (a -> Doc) -> DumpLevel -> CompEnv a -> m (CompEnv a)
+dumpWith opts view lvl res@(env, mdl) = do
+  let str = if dbDumpRaw (optDebugOpts opts) then show mdl else show (view mdl)
+  doDump (optDebugOpts opts) (lvl, env, str)
+  return res
 
 -- |Translate FlatCurry into the intermediate language 'IL'
 -- |The 'dump' function writes the selected information to standard output.

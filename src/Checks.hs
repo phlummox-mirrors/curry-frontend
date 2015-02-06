@@ -31,10 +31,10 @@ import Base.Messages
 import CompilerEnv
 import CompilerOpts
 
-type Check m a = Options -> CompilerEnv -> a -> CYT m (CompilerEnv, a)
+type Check m a = Options -> CompEnv a -> CYT m (CompEnv a)
 
 interfaceCheck :: Monad m => Check m Interface
-interfaceCheck _ env intf
+interfaceCheck _ (env, intf)
   | null msgs = ok (env, intf)
   | otherwise = failMessages msgs
   where msgs = IC.interfaceCheck (opPrecEnv env) (tyConsEnv env)
@@ -46,10 +46,10 @@ interfaceCheck _ env intf
 --                 disambiguated
 -- * Environment:  remains unchanged
 kindCheck :: Monad m => Check m Module
-kindCheck _ env (Module ps m es is ds)
-  | null msgs = ok (env, Module ps m es is ds')
+kindCheck _ (env, mdl)
+  | null msgs = ok (env, mdl')
   | otherwise = failMessages msgs
-  where (ds', msgs) = KC.kindCheck (moduleIdent env) (tyConsEnv env) ds
+  where (mdl', msgs) = KC.kindCheck (tyConsEnv env) mdl
 
 -- |Check for a correct syntax.
 --
@@ -57,7 +57,7 @@ kindCheck _ env (Module ps m es is ds)
 --                 disambiguated, variables are renamed
 -- * Environment:  remains unchanged
 syntaxCheck :: Monad m => Check m Module
-syntaxCheck opts env mdl
+syntaxCheck opts (env, mdl)
   | null msgs = ok (env { extensions = exts }, mdl')
   | otherwise = failMessages msgs
   where ((mdl', exts), msgs) = SC.syntaxCheck opts
@@ -69,7 +69,7 @@ syntaxCheck opts env mdl
 --                 precedences
 -- * Environment:  The operator precedence environment is updated
 precCheck :: Monad m => Check m Module
-precCheck _ env (Module ps m es is ds)
+precCheck _ (env, Module ps m es is ds)
   | null msgs = ok (env { opPrecEnv = pEnv' }, Module ps m es is ds')
   | otherwise = failMessages msgs
   where (ds', pEnv', msgs) = PC.precCheck (moduleIdent env) (opPrecEnv env) ds
@@ -89,7 +89,7 @@ typeCheck run opts env (Module recFlag m es is ds)
 
 -- |Check the export specification
 exportCheck :: Monad m => Check m Module
-exportCheck _ env (Module ps m es is ds)
+exportCheck _ (env, Module ps m es is ds)
   | null msgs = ok (env, Module ps m es' is ds)
   | otherwise = failMessages msgs
   where (es', msgs) = EC.exportCheck (moduleIdent env) (aliasEnv env)

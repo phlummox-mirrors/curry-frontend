@@ -96,10 +96,9 @@ type TCEnv = TopEnv TypeInfo
 
 bindTypeInfo :: (QualIdent -> Int -> a -> TypeInfo) -> ModuleIdent
              -> Ident -> [Ident] -> a -> TCEnv -> TCEnv
-bindTypeInfo f m tc tvs x = bindTopEnv fun tc ty . qualBindTopEnv fun qtc ty
+bindTypeInfo f m tc tvs x = bindTopEnv tc ty . qualBindTopEnv qtc ty
   where qtc = qualifyWith m tc
         ty  = f qtc (length tvs) x
-        fun = "Base.bindTypeInfo"
 
 lookupTC :: Ident -> TCEnv -> [TypeInfo]
 lookupTC tc tcEnv = lookupTopEnv tc tcEnv ++! lookupTupleTC tc

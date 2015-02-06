@@ -3,7 +3,7 @@
     Description :  Type checking Curry programs
     Copyright   :  (c) 1999 - 2004 Wolfgang Lux
                                    Martin Engelke
-                                   Björn Peemöller
+                       2011 - 2015 Björn Peemöller
                                    Jan Tikovsky
     License     :  OtherLicense
 
@@ -23,11 +23,17 @@
    for polymorphic recursion when a type annotation is present.
 -}
 
+{-# LANGUAGE CPP #-}
 module Checks.TypeCheck (typeCheck, bindTC, expandType) where
 
-import Control.Monad (liftM, liftM2, liftM3, replicateM, unless, when)
-import qualified Control.Monad.State as S (State, gets, modify, runState)
-import Data.List (nub, partition, sortBy, (\\))
+#if __GLASGOW_HASKELL__ >= 710
+import           Control.Applicative        ((<$>))
+#else
+import           Control.Applicative        ((<$>), (<*>))
+#endif
+import           Control.Monad              (replicateM, unless)
+import qualified Control.Monad.State as S   (State, execState, gets, modify, runState)
+import           Data.List                  (nub, partition, sortBy, (\\))
 import qualified Data.Map            as Map (Map, delete, empty, insert, lookup)
 import           Data.Maybe
   (catMaybes, fromMaybe, fromJust, isNothing)
@@ -886,16 +892,16 @@ correctVariableContexts :: [Decl] -> TCM [Decl]
 correctVariableContexts ds = mapM cvcDecl ds
 
 cvcDecl :: Decl -> TCM Decl
-cvcDecl (FunctionDecl p cty n id0 eqs) = FunctionDecl p cty n id0 `liftM` mapM cvcEqu eqs
-cvcDecl (PatternDecl   p cty n pt rhs) = PatternDecl p cty n pt `liftM` cvcRhs rhs
+cvcDecl (FunctionDecl p cty n id0 eqs) = FunctionDecl p cty n id0 <$> mapM cvcEqu eqs
+cvcDecl (PatternDecl   p cty n pt rhs) = PatternDecl p cty n pt <$> cvcRhs rhs
 cvcDecl x = return x
 
 cvcEqu :: Equation -> TCM Equation
-cvcEqu (Equation p lhs rhs) = Equation p lhs `liftM` cvcRhs rhs
+cvcEqu (Equation p lhs rhs) = Equation p lhs <$> cvcRhs rhs
 
 cvcRhs :: Rhs -> TCM Rhs
-cvcRhs (SimpleRhs  p e ds) = liftM2 (SimpleRhs p) (cvcExpr e) (mapM cvcDecl ds)
-cvcRhs (GuardedRhs ces ds) = liftM2 GuardedRhs (mapM cvcCondExpr ces) (mapM cvcDecl ds)
+cvcRhs (SimpleRhs  p e ds) = SimpleRhs p <$> cvcExpr e <*> mapM cvcDecl ds
+cvcRhs (GuardedRhs ces ds) = GuardedRhs <$> mapM cvcCondExpr ces <*> mapM cvcDecl ds
 
 cvcExpr :: Expression -> TCM Expression
 cvcExpr l@(Literal           _) = return l
@@ -904,11 +910,11 @@ cvcExpr (Variable (Just cty) v) = do
   return $ Variable (Just cty') v
 cvcExpr (Variable    Nothing v) = internalError ("no type info for Variable " ++ show v) 
 cvcExpr c@(Constructor       _) = return c
-cvcExpr (Paren               e) = Paren `liftM` cvcExpr e
-cvcExpr (Typed     cty e cx ty) = liftM3 (Typed cty) (cvcExpr e) (return cx) (return ty)
-cvcExpr (Tuple         sref es) = Tuple sref `liftM` mapM cvcExpr es
-cvcExpr (List          sref es) = List sref `liftM` mapM cvcExpr es
-cvcExpr (ListCompr   sref e ss) = liftM2 (ListCompr sref) (cvcExpr e) (mapM cvcStmt ss)
+cvcExpr (Paren               e) = Paren <$> cvcExpr e
+cvcExpr (Typed     cty e cx ty) = Typed cty <$> cvcExpr e <*> return cx <*> return ty)
+cvcExpr (Tuple         sref es) = Tuple sref <$> mapM cvcExpr es
+cvcExpr (List          sref es) = List sref <$> mapM cvcExpr es
+cvcExpr (ListCompr   sref e ss) = ListCompr sref <$> cvcExpr e <*> mapM cvcStmt ss
 cvcExpr (EnumFrom        (Just cty) e1) = do
   e1'  <- cvcExpr e1
   exts <- typeClassExtensions
@@ -953,18 +959,18 @@ cvcExpr (UnaryMinus     (Just cty) i e) = do
           else return cty
   return $ UnaryMinus (Just cty') i e'
 cvcExpr (UnaryMinus        Nothing _ _) = internalError "cvcExpr UnaryMinus"
-cvcExpr (Apply         e1 e2) = liftM2 Apply (cvcExpr e1) (cvcExpr e2)
-cvcExpr (InfixApply e1 op e2) = liftM3 InfixApply (cvcExpr e1) (cvcInfixOp op) (cvcExpr e2)
-cvcExpr (LeftSection    e op) = liftM2 LeftSection (cvcExpr e) (cvcInfixOp op)
-cvcExpr (RightSection   op e) = liftM2 RightSection (cvcInfixOp op) (cvcExpr e)
-cvcExpr (Lambda    sref ps e) = Lambda sref ps `liftM` (cvcExpr e)
-cvcExpr (Let            ds e) = liftM2 Let (mapM cvcDecl ds) (cvcExpr e)
-cvcExpr (Do             ss e) = liftM2 Do (mapM cvcStmt ss) (cvcExpr e)
-cvcExpr (IfThenElse sref e1 e2 e3) = liftM3 (IfThenElse sref) (cvcExpr e1) (cvcExpr e2) (cvcExpr e3)
-cvcExpr (Case sref ct e alts) = liftM2 (Case sref ct) (cvcExpr e) (mapM cvcAlt alts)
-cvcExpr (RecordConstr     fs) = RecordConstr `liftM` mapM cvcField fs
-cvcExpr (RecordSelection e i) = flip RecordSelection i `liftM` cvcExpr e
-cvcExpr (RecordUpdate   fs e) = liftM2 RecordUpdate (mapM cvcField fs) (cvcExpr e)
+cvcExpr (Apply         e1 e2) = Apply <$> cvcExpr e1 <*> cvcExpr e2
+cvcExpr (InfixApply e1 op e2) = InfixApply <$> cvcExpr e1 <*> cvcInfixOp op <*> cvcExpr e2
+cvcExpr (LeftSection    e op) = LeftSection <$> cvcExpr e <*> cvcInfixOp op
+cvcExpr (RightSection   op e) = RightSection <$> cvcInfixOp op <*> cvcExpr e
+cvcExpr (Lambda    sref ps e) = Lambda sref ps <$> (cvcExpr e)
+cvcExpr (Let            ds e) = Let <$> mapM cvcDecl ds <*> cvcExpr e
+cvcExpr (Do             ss e) = Do <$> mapM cvcStmt ss <*> cvcExpr e
+cvcExpr (IfThenElse sref e1 e2 e3) = IfThenElse sref <$> cvcExpr e1 <*> cvcExpr e2 <*> cvcExpr e3
+cvcExpr (Case sref ct e alts) = Case sref ct <$> cvcExpr e <*> mapM cvcAlt alts
+cvcExpr (RecordConstr     fs) = RecordConstr <$> mapM cvcField fs
+cvcExpr (RecordSelection e i) = flip RecordSelection i <$> cvcExpr e
+cvcExpr (RecordUpdate   fs e) = RecordUpdate <$> mapM cvcField fs <*> cvcExpr e
 
 adjustType :: ConstrType_ -> QualIdent -> TCM ConstrType_ 
 adjustType (_cx0, ty0) v = do
@@ -991,18 +997,18 @@ cvcInfixOp (InfixOp Nothing _) = internalError "cvcInfixOp"
 cvcInfixOp ic@(InfixConstr  _) = return ic
 
 cvcCondExpr :: CondExpr -> TCM CondExpr
-cvcCondExpr (CondExpr p e1 e2) = liftM2 (CondExpr p) (cvcExpr e1) (cvcExpr e2)
+cvcCondExpr (CondExpr p e1 e2) = CondExpr p <$> cvcExpr e1 <*> cvcExpr e2
 
 cvcStmt :: Statement -> TCM Statement
-cvcStmt (StmtExpr   sref e) = StmtExpr sref `liftM` cvcExpr e
-cvcStmt (StmtDecl       ds) = StmtDecl `liftM` mapM cvcDecl ds
-cvcStmt (StmtBind sref p e) = StmtBind sref p `liftM` cvcExpr e
+cvcStmt (StmtExpr   sref e) = StmtExpr sref <$> cvcExpr e
+cvcStmt (StmtDecl       ds) = StmtDecl <$> mapM cvcDecl ds
+cvcStmt (StmtBind sref p e) = StmtBind sref p <$> cvcExpr e
 
 cvcAlt :: Alt -> TCM Alt
-cvcAlt (Alt p pt rhs) = Alt p pt `liftM` cvcRhs rhs
+cvcAlt (Alt p pt rhs) = Alt p pt <$> cvcRhs rhs
 
 cvcField :: Field Expression -> TCM (Field Expression)
-cvcField (Field p i e) = Field p i `liftM` cvcExpr e  
+cvcField (Field p i e) = Field p i <$> cvcExpr e  
 
 --tcDeclGroup m tcEnv _ [ForeignDecl p cc _ f ty] =
 --  tcForeign m tcEnv p cc f ty
@@ -1461,7 +1467,7 @@ tcPatternFP p t@(ConstructorPattern c ts) = do
   m <- getModuleIdent
   tyEnv <- getValueEnv
   ty <- skol (constrType m c tyEnv)
-  liftM noContext $ unifyArgs (ppPattern 0 t) ts ty
+  noContext <$> unifyArgs (ppPattern 0 t) ts ty
   where unifyArgs _ [] ty = return ty
         unifyArgs doc (t1:ts1) (TypeArrow ty1 ty2) = do
           tcPatternFP p t1 >>=
@@ -1473,7 +1479,7 @@ tcPatternFP p t@(InfixPattern t1 op t2) = do
   m <- getModuleIdent
   tyEnv <- getValueEnv
   ty <- skol (constrType m op tyEnv)
-  liftM noContext $ unifyArgs (ppPattern 0 t) [t1,t2] ty
+  noContext <$> unifyArgs (ppPattern 0 t) [t1,t2] ty
   where unifyArgs _ [] ty = return ty
         unifyArgs doc (t':ts') (TypeArrow ty1 ty2) = do
           tcPatternFP p t' >>=
@@ -1484,7 +1490,7 @@ tcPatternFP p t@(InfixPattern t1 op t2) = do
 tcPatternFP p (ParenPattern t) = tcPatternFP p t
 tcPatternFP p (TuplePattern _ ts)
  | null ts = return $ noContext unitType
- | otherwise = liftM (noContext . tupleType) $ mapM (\t -> liftM getType $ tcPatternFP p t) ts
+ | otherwise = (noContext . tupleType) <$> mapM (\t -> getType <$> tcPatternFP p t) ts
 tcPatternFP p t@(ListPattern _ ts) =
   freshTypeVar >>= flip (tcElems (ppPattern 0 t)) ts
   where tcElems _ ty [] = return (noContext $ listType ty)
@@ -1563,7 +1569,7 @@ tcRhs tyEnv0 (GuardedRhs es ds) = do
 tcCondExprs :: ValueEnv -> [CondExpr] -> TCM ([CondExpr], ConstrType)
 tcCondExprs tyEnv0 es = do
   gty <- if length es > 1 then return $ noContext boolType
-                          else liftM noContext $ freshConstrained [successType,boolType]
+                          else noContext <$> freshConstrained [successType,boolType]
   cty <- freshConstrTypeVar
   tcCondExprs' gty cty [] es []
   where tcCondExprs' :: ConstrType -> ConstrType -> BT.Context -> [CondExpr] 
@@ -1791,7 +1797,7 @@ tcExpr p e@(UnaryMinus _ op e1) = do
         return (UnaryMinus (Just $ mirrorFB (cx1 ++ numCx, negateType)) op e1',
           (cx1 ++ numCx, alpha))
   where opType op'
-          | op' == minusId  = liftM noContext $ freshConstrained [intType,floatType]
+          | op' == minusId  = noContext <$> freshConstrained [intType,floatType]
           | op' == fminusId = return $ noContext floatType
           | otherwise = internalError $ "TypeCheck.tcExpr unary " ++ idName op'
 tcExpr p e@(Apply e1 e2) = do
@@ -1916,7 +1922,7 @@ tcExpr p r@(RecordSelection e l) = do
           cx' <- adjustContext cx
           return (RecordSelection e' l, (cx',subst theta lty))
         Nothing -> internalError "TypeCheck.tcExpr: Field not found."
-    info -> internalError $ "TypeCheck.tcExpr: Expected record type but got "
+    info -> internalError $ "TypeCheck.tcExpr: Expected record type, but got "
               ++ show info
 tcExpr p r@(RecordUpdate fs e) = do
   recInfo <- getFieldIdent fs >>= getRecordInfo
@@ -1991,10 +1997,7 @@ annotInfixOpType (InfixConstr qid) _ = (InfixConstr qid)
 
 
 -- The function 'tcArrow' checks that its argument can be used as
--- an arrow type a -> b and returns the pair (a,b). Similarly,
--- the function 'tcBinary' checks that its argument can be used as an arrow type
--- a -> b -> c and returns the triple (a,b,c).
-
+-- an arrow type a -> b and returns the pair (a,b).
 tcArrow :: Position -> String -> Doc -> Type -> TCM (Type, Type)
 tcArrow p what doc ty = do
   theta <- getTypeSubst
@@ -2009,8 +2012,10 @@ tcArrow p what doc ty = do
   unaryArrow ty'                 = do
     m <- getModuleIdent
     report $ errNonFunctionType p what doc m ty'
-    liftM2 (,) freshTypeVar freshTypeVar
+    (,) <$> freshTypeVar <*> freshTypeVar
 
+-- The function 'tcBinary' checks that its argument can be used as an arrow type
+-- a -> b -> c and returns the triple (a,b,c).
 tcBinary :: Position -> String -> Doc -> Type -> TCM (Type, Type, Type)
 tcBinary p what doc ty = tcArrow p what doc ty >>= uncurry binaryArrow
   where
@@ -2020,10 +2025,10 @@ tcBinary p what doc ty = tcArrow p what doc ty >>= uncurry binaryArrow
     gamma <- freshTypeVar
     modifyTypeSubst $ bindVar tv $ TypeArrow beta gamma
     return (ty1, beta, gamma)
-  binaryArrow ty1 ty2 = do
+  binaryArrow ty1 ty2                 = do
     m <- getModuleIdent
     report $ errNonBinaryOp p what doc m (TypeArrow ty1 ty2)
-    liftM3 (,,) (return ty1) freshTypeVar freshTypeVar
+    (,,) <$> return ty1 <*> freshTypeVar <*> freshTypeVar
 
 -- Unification:
 -- The unification uses Robinson's algorithm
@@ -2101,20 +2106,28 @@ unifyTypes m ty1 ty2 = Left (errIncompatibleTypes m ty1 ty2)
 --     maybe (split' fs1' ((l,ty):rs1) rs2 ltys)
 --           (const (split' ((l,ty):fs1') rs1 (remove l rs2) ltys))
 --           (lookup l rs2)
+--
+-- remove :: Eq a => a -> [(a, b)] -> [(a, b)]
+-- remove _ []         = []
+-- remove k (kv : kvs)
+--   | k == fst kv     = kvs
+--   | otherwise       = kv : remove k kvs
 
 unifyTypeLists :: ModuleIdent -> [Type] -> [Type] -> Either Doc TypeSubst
 unifyTypeLists _ []           _            = Right idSubst
 unifyTypeLists _ _            []           = Right idSubst
 unifyTypeLists m (ty1 : tys1) (ty2 : tys2) =
   either Left unifyTypesTheta (unifyTypeLists m tys1 tys2)
-  where unifyTypesTheta theta =
-          either Left (Right . flip compose theta)
-                 (unifyTypes m (subst theta ty1) (subst theta ty2))
+  where
+  unifyTypesTheta theta = either Left (Right . flip compose theta)
+                          (unifyTypes m (subst theta ty1) (subst theta ty2))
 
-unifyLabels :: Position -> String -> Doc -> [(Ident, Type)] -> Type -> [(Ident, Type)] -> TCM ()
+unifyLabels :: Position -> String -> Doc -> [(Ident, Type)] -> Type
+            -> [(Ident, Type)] -> TCM ()
 unifyLabels p what doc fs rty fs1 = mapM_ (unifyLabel p what doc fs rty) fs1
 
-unifyLabel :: Position -> String -> Doc -> [(Ident, Type)] -> Type -> (Ident, Type) -> TCM ()
+unifyLabel :: Position -> String -> Doc -> [(Ident, Type)] -> Type
+           -> (Ident, Type) -> TCM ()
 unifyLabel p what doc fs rty (l, ty) = case lookup l fs of
   Nothing  -> do
     m <- getModuleIdent
@@ -2124,16 +2137,16 @@ unifyLabel p what doc fs rty (l, ty) = case lookup l fs of
 unifyTypedLabels :: ModuleIdent -> [(Ident,Type)] -> Type
                  -> Either Doc TypeSubst
 unifyTypedLabels _ []           (TypeRecord _)      = Right idSubst
-unifyTypedLabels m ((l,ty):fs1) tr@(TypeRecord fs2) =
-  either Left
-         (\r ->
-           maybe (Left (errMissingLabel m l tr))
-                 (\ty' ->
-		     either (const (Left (errIncompatibleLabelTypes m l ty ty')))
-	                    (Right . flip compose r)
-	                    (unifyTypes m ty ty'))
-                 (lookup l fs2))
-         (unifyTypedLabels m fs1 tr)
+unifyTypedLabels m ((l,ty):fs1) tr@(TypeRecord fs2)
+  = either Left
+    (\r ->
+      maybe (Left (errMissingLabel m l tr))
+            (\ty' ->
+              either (const (Left (errIncompatibleLabelTypes m l ty ty')))
+                      (Right . flip compose r)
+                      (unifyTypes m ty ty'))
+            (lookup l fs2))
+    (unifyTypedLabels m fs1 tr)
 unifyTypedLabels _ _ _ = internalError "TypeCheck.unifyTypedLabels"
 
 -- For each declaration group, the type checker has to ensure that no
@@ -2153,7 +2166,7 @@ checkSkolems p what tyEnv (cx, ty) = do
 -- We use negative offsets for fresh type variables.
 
 fresh :: (Int -> a) -> TCM a
-fresh f = f `liftM` getNextId
+fresh f = f <$> getNextId
 
 freshVar :: (Int -> a) -> TCM a
 freshVar f = fresh $ \ n -> f (- n - 1)
@@ -2282,10 +2295,11 @@ sureVarType v tyEnv = case lookupValue v tyEnv of
 
 funType :: ModuleIdent -> QualIdent -> ValueEnv -> TypeScheme
 funType m f tyEnv = case qualLookupValue f tyEnv of
-  [Value _ _ sigma _] -> sigma
-  _ -> case qualLookupValue (qualQualify m f) tyEnv of
-    [Value _ _ sigma _] -> sigma
-    _ -> internalError $ "TypeCheck.funType " ++ show f ++ ", more precisely " ++ show (unqualify f)
+  [Value _ _ sigma] -> sigma
+  _                 -> case qualLookupValue (qualQualify m f) tyEnv of
+    [Value _ _ sigma] -> sigma
+    _                 -> internalError $ "TypeCheck.funType " ++ show f
+                          ++ ", more precisely " ++ show (unqualify f)
 
 sureLabelType :: Ident -> ValueEnv -> Maybe TypeScheme
 sureLabelType l tyEnv = case lookupValue l tyEnv of
@@ -2312,8 +2326,8 @@ getType (_cx, type0) = type0
 
 expandPolyType :: Bool -> BaseConstrType -> TCM TypeScheme
 expandPolyType expType ty =
-  liftM (\(cx, ty0) -> (polyType (normalize ty0) `constrainBy` cx))
-        (expandMonoType expType [] ty)
+  (\(cx, ty0) -> (polyType (normalize ty0) `constrainBy` cx))
+      <$> expandMonoType expType [] ty
 
 expandMonoType :: Bool -> [Ident] -> BaseConstrType -> TCM ConstrType
 expandMonoType expType tvs ty = do
@@ -2376,19 +2390,9 @@ getRecordInfo i = do
   tyEnv <- getValueEnv
   tcEnv <- getTyConsEnv
   case lookupValue i tyEnv of
-       [Label _ r _] -> return (qualLookupTC r tcEnv)
-       _             -> internalError $
-        "TypeCheck.getRecordInfo: No record found for identifier " ++ show i
-
--- ---------------------------------------------------------------------------
--- Miscellaneous functions
--- ---------------------------------------------------------------------------
-
--- remove :: Eq a => a -> [(a, b)] -> [(a, b)]
--- remove _ []         = []
--- remove k (kv : kvs)
---   | k == fst kv     = kvs
---   | otherwise       = kv : remove k kvs
+    [Label _ r _] -> return (qualLookupTC r tcEnv)
+    _             -> internalError $
+      "TypeCheck.getRecordInfo: No record found for identifier " ++ show i
 
 -- ---------------------------------------------------------------------------
 -- Error functions
@@ -2421,7 +2425,8 @@ errTypeSigTooGeneral p m what (cx,ty) sigma = posMessage p $ vcat
   , text "Type signature:" <+> ppContext cx <+> ppTypeExpr 0 ty
   ]
 
-errNonFunctionType :: Position -> String -> Doc -> ModuleIdent -> Type -> Message
+errNonFunctionType :: Position -> String -> Doc -> ModuleIdent -> Type
+                   -> Message
 errNonFunctionType p what doc m ty = posMessage p $ vcat
   [ text "Type error in" <+> text what, doc
   , text "Type:" <+> ppType m ty
@@ -2435,8 +2440,8 @@ errNonBinaryOp p what doc m ty = posMessage p $ vcat
   , text "Cannot be used as binary operator"
   ]
 
-errTypeMismatch :: Position -> String -> Doc -> ModuleIdent -> Type -> Type -> Doc
-                -> Message
+errTypeMismatch :: Position -> String -> Doc -> ModuleIdent -> Type -> Type
+                -> Doc -> Message
 errTypeMismatch p what doc m ty1 ty2 reason = posMessage p $ vcat
   [ text "Type error in"  <+> text what, doc
   , text "Inferred type:" <+> ppType m ty2
@@ -2679,53 +2684,53 @@ numberDecl (PatternDecl p cty _ pt rhs) = do
 numberDecl d = return d
 
 numberEqu :: Equation -> TCM Equation
-numberEqu (Equation p lhs rhs) = Equation p lhs `liftM` numberRhs rhs
+numberEqu (Equation p lhs rhs) = Equation p lhs <$> numberRhs rhs
 
 numberRhs :: Rhs -> TCM Rhs
-numberRhs (SimpleRhs  p e ds) = liftM2 (SimpleRhs p) (numberExpr e) (numberDecls ds)
-numberRhs (GuardedRhs ces ds) = liftM2 GuardedRhs (mapM numberCExpr ces) (numberDecls ds)
+numberRhs (SimpleRhs  p e ds) = SimpleRhs p <$> numberExpr e <*> numberDecls ds
+numberRhs (GuardedRhs ces ds) = GuardedRhs <$> mapM numberCExpr ces <*> numberDecls ds
 
 numberCExpr :: CondExpr -> TCM CondExpr
-numberCExpr (CondExpr p e1 e2) = liftM2 (CondExpr p) (numberExpr e1) (numberExpr e2)
+numberCExpr (CondExpr p e1 e2) = liftM2 <$> CondExpr p <*>numberExpr e1 <*> numberExpr e2
 
 numberExpr :: Expression -> TCM Expression
 numberExpr l@(Literal         _) = return l
 numberExpr v@(Variable      _ _) = return v
 numberExpr c@(Constructor     _) = return c
-numberExpr (Paren             e) = Paren `liftM` numberExpr e
-numberExpr (Typed   cty e cx ty) = liftM3 (Typed cty) (numberExpr e) (return cx) (return ty)
-numberExpr (Tuple       sref es) = Tuple sref `liftM` mapM numberExpr es
-numberExpr (List        sref es) = List sref `liftM` mapM numberExpr es
-numberExpr (ListCompr sref e ss) = liftM2 (ListCompr sref) (numberExpr e) (mapM numberStmt ss)
-numberExpr (EnumFrom     cty e1) = EnumFrom cty `liftM` numberExpr e1
-numberExpr (EnumFromThen cty e1 e2) = liftM2 (EnumFromThen cty) (numberExpr e1) (numberExpr e2)
-numberExpr (EnumFromTo   cty e1 e2) = liftM2 (EnumFromTo cty)   (numberExpr e1) (numberExpr e2)
-numberExpr (EnumFromThenTo cty e1 e2 e3) = liftM3 (EnumFromThenTo cty) (numberExpr e1) (numberExpr e2) (numberExpr e3)
-numberExpr (UnaryMinus  cty i e) = UnaryMinus cty i `liftM` numberExpr e
-numberExpr (Apply         e1 e2) = liftM2 Apply (numberExpr e1) (numberExpr e2)
-numberExpr (InfixApply e1 op e2) = liftM3 InfixApply (numberExpr e1) (return op) (numberExpr e2)
-numberExpr (LeftSection    e op) = flip LeftSection op `liftM` numberExpr e
-numberExpr (RightSection   op e) = RightSection op `liftM` numberExpr e
-numberExpr (Lambda    sref ps e) = Lambda sref ps `liftM` numberExpr e
-numberExpr (Let            ds e) = liftM2 Let (numberDecls ds) (numberExpr e)
-numberExpr (Do             ss e) = liftM2 Do (mapM numberStmt ss) (numberExpr e)
+numberExpr (Paren             e) = Paren <$> numberExpr e
+numberExpr (Typed   cty e cx ty) = Typed cty <$> numberExpr e <*> return cx <*> return ty
+numberExpr (Tuple       sref es) = Tuple sref <$> mapM numberExpr es
+numberExpr (List        sref es) = List sref <$> mapM numberExpr es
+numberExpr (ListCompr sref e ss) = ListCompr sref <$> numberExpr e <*> mapM numberStmt ss
+numberExpr (EnumFrom     cty e1) = EnumFrom cty <$> numberExpr e1
+numberExpr (EnumFromThen cty e1 e2) = EnumFromThen cty <$> numberExpr e1 <*> numberExpr e2
+numberExpr (EnumFromTo   cty e1 e2) = EnumFromTo cty <$> numberExpr e1 <*> numberExpr e2
+numberExpr (EnumFromThenTo cty e1 e2 e3) = EnumFromThenTo cty <$> numberExpr e1 <*> numberExpr e2 <*> numberExpr e3
+numberExpr (UnaryMinus  cty i e) = UnaryMinus cty i <$> numberExpr e
+numberExpr (Apply         e1 e2) = Apply <$> numberExpr e1 <*> numberExpr e2
+numberExpr (InfixApply e1 op e2) = InfixApply <$> numberExpr e1 <*> return op <*> numberExpr e2
+numberExpr (LeftSection    e op) = flip LeftSection op <$> numberExpr e
+numberExpr (RightSection   op e) = RightSection op <$> numberExpr e
+numberExpr (Lambda    sref ps e) = Lambda sref ps <$> numberExpr e
+numberExpr (Let            ds e) = Let <$> numberDecls ds <*> numberExpr e
+numberExpr (Do             ss e) = Do <$> mapM numberStmt ss <*> numberExpr e
 numberExpr (IfThenElse sref e1 e2 e3) =
-  liftM3 (IfThenElse sref) (numberExpr e1) (numberExpr e2) (numberExpr e3)
-numberExpr (Case sref cty e alts) = liftM2 (Case sref cty) (numberExpr e) (mapM numberAlt alts)
-numberExpr (RecordConstr      fs) = RecordConstr `liftM` (mapM numberField fs)
-numberExpr (RecordSelection  e i) = flip RecordSelection i `liftM` numberExpr e
-numberExpr (RecordUpdate    fs e) = liftM2 RecordUpdate (mapM numberField fs) (numberExpr e)
+  IfThenElse sref <$> numberExpr e1 <*> numberExpr e2 <*> numberExpr e3
+numberExpr (Case sref cty e alts) = Case sref cty <$> numberExpr e <*> mapM numberAlt alts
+numberExpr (RecordConstr      fs) = RecordConstr <$> mapM numberField fs
+numberExpr (RecordSelection  e i) = flip RecordSelection i <$> numberExpr e
+numberExpr (RecordUpdate    fs e) = RecordUpdate <$> mapM numberField fs <*> numberExpr e
 
 numberStmt :: Statement -> TCM Statement
-numberStmt (StmtExpr   sref e) = StmtExpr sref `liftM` numberExpr e
-numberStmt (StmtDecl       ds) = StmtDecl `liftM` numberDecls ds
-numberStmt (StmtBind sref p e) = StmtBind sref p `liftM` (numberExpr e)
+numberStmt (StmtExpr   sref e) = StmtExpr sref <$> numberExpr e
+numberStmt (StmtDecl       ds) = StmtDecl <$> numberDecls ds
+numberStmt (StmtBind sref p e) = StmtBind sref p <$> numberExpr e
 
 numberAlt :: Alt -> TCM Alt
-numberAlt (Alt p pt rhs) = Alt p pt `liftM` numberRhs rhs
+numberAlt (Alt p pt rhs) = Alt p pt <$> numberRhs rhs
 
 numberField :: Field Expression -> TCM (Field Expression)
-numberField (Field p i e) = Field p i `liftM` numberExpr e
+numberField (Field p i e) = Field p i <$> numberExpr e
 
 -- |returns the unique id assigned to a function or pattern declaration
 getUniqueId :: Decl -> Int

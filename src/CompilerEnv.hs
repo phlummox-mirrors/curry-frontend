@@ -33,6 +33,8 @@ import Env.ClassEnv
 
 import CompilerOpts
 
+type CompEnv a = (CompilerEnv, a)
+
 -- |A compiler environment contains information about the module currently
 --  compiled. The information is updated during the different stages of
 --  compilation.

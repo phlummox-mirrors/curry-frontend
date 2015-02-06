@@ -1,8 +1,9 @@
 {- |
     Module      :  $Header$
     Description :  Optimizing the Desugared Code
-    Copyright   :  (c) 2003 Wolfgang Lux
-                            Martin Engelke
+    Copyright   :  (c) 2003        Wolfgang Lux
+                                   Martin Engelke
+                       2011 - 2015 Björn Peemöller
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
@@ -25,9 +26,9 @@
 
 module Transformations.Simplify (simplify) where
 
-import Control.Monad (liftM, liftM2, liftM3)
-import Control.Monad.State as S (State, runState, gets, modify)
-import qualified Data.Map as Map (Map, empty, insert, lookup)
+import           Control.Applicative
+import           Control.Monad.State as S   (State, runState, gets, modify)
+import qualified Data.Map            as Map (Map, empty, insert, lookup)
 
 import Curry.Base.Position
 import Curry.Base.Ident
@@ -46,12 +47,13 @@ import Env.Value (ValueEnv, ValueInfo (..), bindFun, qualLookupValue)
 data SimplifyState = SimplifyState
   { moduleIdent :: ModuleIdent -- read-only!
   , valueEnv    :: ValueEnv
-  , tyConsEnv   :: TCEnv
+  , tyConsEnv   :: TCEnv       -- read-only!
   , nextId      :: Int         -- counter
-  , flat        :: Bool        -- read-only!
   }
 
 type SIM = S.State SimplifyState
+
+-- Inline an expression for a variable
 type InlineEnv = Map.Map Ident Expression
 
 getModuleIdent :: SIM ModuleIdent
@@ -63,6 +65,12 @@ getNextId = do
   S.modify $ \s -> s { nextId = succ nid }
   return nid
 
+getTypeOf :: Typeable t => t -> SIM Type
+getTypeOf t = do
+  tyEnv <- getValueEnv
+  tcEnv <- getTyConsEnv
+  return (typeOf tyEnv tcEnv t)
+
 modifyValueEnv :: (ValueEnv -> ValueEnv) -> SIM ()
 modifyValueEnv f = S.modify $ \ s -> s { valueEnv = f $ valueEnv s }
 
@@ -72,23 +80,19 @@ getValueEnv = S.gets valueEnv
 getTyConsEnv :: SIM TCEnv
 getTyConsEnv = S.gets tyConsEnv
 
-isFlat :: SIM Bool
-isFlat = S.gets flat
+simplify :: ValueEnv -> TCEnv -> Module -> (Module, ValueEnv)
+simplify tyEnv tcEnv mdl@(Module _ m _ _ _) = (mdl', valueEnv s')
+  where (mdl', s') = S.runState (simModule mdl) (SimplifyState m tyEnv tcEnv 1)
 
-simplify :: Bool -> ValueEnv -> TCEnv -> Module -> (Module, ValueEnv)
-simplify flags tyEnv tcEnv mdl@(Module _ m _ _ _) = (mdl', valueEnv s')
-  where (mdl', s') = S.runState (simModule mdl)
-                                (SimplifyState m tyEnv tcEnv 1 flags)
-
-simModule :: Module -> SIM (Module)
-simModule (Module ps m es is ds)
-  = Module ps m es is `liftM` mapM (simDecl Map.empty) ds
+simModule :: Module -> SIM Module
+simModule (Module ps m es is ds) = Module ps m es is
+                                   <$> mapM (simDecl Map.empty) ds
 
 simDecl :: InlineEnv -> Decl -> SIM Decl
 simDecl env (FunctionDecl p cty id0 f eqs) =
-  FunctionDecl p cty id0 f `liftM` concatMapM (simEquation env) eqs
+  FunctionDecl p cty id0 f <$> concatMapM (simEquation env) eqs
 simDecl env (PatternDecl p cty id0 t rhs) =
-  PatternDecl p cty id0 t `liftM` simRhs env rhs
+  PatternDecl p cty id0 t <$> simRhs env rhs
 simDecl _   d                      = return d
 
 -- After simplifying the right hand side of an equation, the compiler
@@ -169,26 +173,27 @@ simEquation env (Equation p lhs rhs) = do
   return $ inlineFun m tyEnv p lhs rhs'
 
 inlineFun :: ModuleIdent -> ValueEnv -> Position -> Lhs -> Rhs -> [Equation]
-inlineFun m tyEnv p (FunLhs f ts)
-          (SimpleRhs _ (Let [FunctionDecl _ _ _ f' eqs'] e) _)
+inlineFun m tyEnv p (FunLhs f ts) (SimpleRhs _ (Let [FunctionDecl _ f' eqs'] e) _)
+-- TODO: understand this
   | True -- False -- inlining of functions is deactivated (hsi)
    && f' `notElem` qfv m eqs' && e' == Variable Nothing (qualify f') &&
     n == arrowArity (funType m tyEnv (qualify f')) &&
-     and [all isVarPattern ts1 | Equation _ (FunLhs _ ts1) _ <- eqs'] =
-    map (mergeEqns p f ts' vs') eqs'
-  where n :: Int                      -- type signature necessary for nhc
-        (n,vs',ts',e') = etaReduce 0 [] (reverse ts) e
-        mergeEqns p1 f1 ts1 vs (Equation _ (FunLhs _ ts2) rhs) =
-          Equation p1 (FunLhs f1 (ts1 ++ zipWith AsPattern vs ts2)) rhs
-        mergeEqns _ _ _ _ _ = error "Simplify.inlineFun.mergeEqns: no pattern match"
-        etaReduce n1 vs (VariablePattern v : ts1) (Apply e1 (Variable _ v'))
-          | qualify v == v' = etaReduce (n1+1) (v:vs) ts1 e1
-        etaReduce n1 vs ts1 e1 = (n1,vs,reverse ts1,e1)
+     and [all isVarPattern ts1 | Equation _ (FunLhs _ ts1) _ <- eqs']
+  = map (mergeEqns p f ts' vs') eqs'
+  where
+  (n,vs',ts',e') = etaReduce 0 [] (reverse ts) e
+
+  etaReduce n1 vs (VariablePattern v : ts1) (Apply e1 (Variable v'))
+    | qualify v == v' = etaReduce (n1 + 1) (v:vs) ts1 e1
+  etaReduce n1 vs ts1 e1 = (n1,vs,reverse ts1,e1)
+
+  mergeEqns p1 f1 ts1 vs (Equation _ (FunLhs _ ts2) rhs) =
+    Equation p1 (FunLhs f1 (ts1 ++ zipWith AsPattern vs ts2)) rhs
+  mergeEqns _ _ _ _ _ = error "Simplify.inlineFun.mergeEqns: no pattern match"
 inlineFun _ _ p lhs rhs = [Equation p lhs rhs]
 
 simRhs :: InlineEnv -> Rhs -> SIM Rhs
-simRhs env (SimpleRhs p e _) =
-  (\ e' -> SimpleRhs p e' []) `liftM` simExpr env e
+simRhs env (SimpleRhs p e _) = (\ e' -> SimpleRhs p e' []) <$> simExpr env e
 simRhs _   (GuardedRhs  _ _) = error "Simplify.simRhs: guarded rhs"
 
 -- Variables that are bound to (simple) constants and aliases to other
@@ -209,32 +214,31 @@ simRhs _   (GuardedRhs  _ _) = error "Simplify.simRhs: guarded rhs"
 
 simExpr :: InlineEnv -> Expression -> SIM Expression
 simExpr _   l@(Literal     _) = return l
-simExpr env v@(Variable  _ x)
-  | isQualified x = return v
-  | otherwise     = maybe (return v) (simExpr env)
-                          (Map.lookup (unqualify x) env)
 simExpr _   c@(Constructor _) = return c
-simExpr env (Apply (Let ds e1) e2) = simExpr env (Let ds (Apply e1 e2))
-simExpr env (Apply (Case r ct e1 alts) e2)
-  = simExpr env (Case r ct e1 (map (applyToAlt e2) alts))
-  where applyToAlt e (Alt p t rhs) = Alt p t (applyRhs rhs e)
-        applyRhs (SimpleRhs p e1' _) e2' = SimpleRhs p (Apply e1' e2') []
-        applyRhs (GuardedRhs _ _) _ = error "Simplify.simExpr.applyRhs: Guarded rhs"
-simExpr env (Apply e1 e2) = liftM2 Apply (simExpr env e1) (simExpr env e2)
-simExpr env (Let ds e) = do
-    m <- getModuleIdent
-    tyEnv <- getValueEnv
-    dss' <- mapM (sharePatternRhs tyEnv) ds
-    simplifyLet env (scc bv (qfv m) (foldr hoistDecls [] (concat dss'))) e
-simExpr env (Case r ct e alts) =
-  liftM2 (Case r ct) (simExpr env e) (mapM (simplifyAlt env) alts)
-simExpr env (Typed cty e cx ty) =
-  liftM3 (Typed cty) (simExpr env e) (return cx) (return ty)
-simExpr _ _ = error "Simplify.simExpr: no pattern match"
+simExpr env v@(Variable    x)
+  | isQualified x = return v
+  | otherwise     = maybe (return v) (simExpr env) (Map.lookup (unqualify x) env)
+simExpr env (Apply     e1 e2) = case e1 of
+  Let ds e'       -> simExpr env $ Let ds (Apply e' e2)
+  Case r ct e' bs -> simExpr env $ Case r ct e' (map (applyToAlt e2) bs)
+  _               -> Apply <$> simExpr env e1 <*> simExpr env e2
+  where
+  applyToAlt e (Alt       p t rhs) = Alt p t (applyToRhs e rhs)
+  applyToRhs e (SimpleRhs p e1' _) = SimpleRhs p (Apply e1' e) []
+  applyToRhs _ (GuardedRhs    _ _) = error "Simplify.simExpr.applyRhs: Guarded rhs"
+simExpr env (Let        ds e) = do
+  m    <- getModuleIdent
+  dss' <- mapM sharePatternRhs ds
+  simplifyLet env (scc bv (qfv m) (foldr hoistDecls [] (concat dss'))) e
+simExpr env (Case  r ct e bs) = Case r ct     <$> simExpr env e
+                                              <*> mapM (simplifyAlt env) bs
+simExpr env (Typed      e ty) = flip Typed ty <$> simExpr env e
+simExpr _   _                 = error "Simplify.simExpr: no pattern match"
 
 simplifyAlt :: InlineEnv -> Alt -> SIM Alt
-simplifyAlt env (Alt p t rhs) = Alt p t `liftM` simRhs env rhs
+simplifyAlt env (Alt p t rhs) = Alt p t <$> simRhs env rhs
 
+-- Lift up nested let declarations.
 hoistDecls :: Decl -> [Decl] -> [Decl]
 hoistDecls (PatternDecl p cty id0 t (SimpleRhs p' (Let ds e) _)) ds'
  = foldr hoistDecls ds' (PatternDecl p cty id0 t (SimpleRhs p' e []) : ds)
@@ -247,58 +251,55 @@ hoistDecls d ds = d : ds
 -- simple if it is either a literal, a constructor, or a non-nullary
 -- function. Note that it is not possible to define nullary functions in
 -- local declarations in Curry. Thus, an unqualified name always refers
--- to either a variable or a non-nullary function.  Applications of
+-- to either a variable or a non-nullary function. Applications of
 -- constructors and partial applications of functions to at least one
 -- argument are not inlined because the compiler has to allocate space
 -- for them, anyway. In order to prevent non-termination, recursive
--- binding groups are not processed.
+-- binding groups are not processed for inlining.
 
 -- With the list of inlineable expressions, the body of the let is
 -- simplified and then the declaration groups are processed from inside
 -- to outside to construct the simplified, nested let expression. In
--- doing so unused bindings are discarded. In addition, all pattern
+-- doing so, unused bindings are discarded. In addition, all pattern
 -- bindings are replaced by simple variable declarations using selector
 -- functions to access the pattern variables.
 
 simplifyLet :: InlineEnv -> [[Decl]] -> Expression -> SIM Expression
 simplifyLet env []       e = simExpr env e
 simplifyLet env (ds:dss) e = do
+  ds'   <- mapM (simDecl env) ds  -- simplify right-hand sides
+  env'  <- inlineVars  ds'  env   -- inline a simple variable binding
+  e'    <- simplifyLet env' dss e -- simplify remaining bindings
   m     <- getModuleIdent
-  ds'   <- mapM (simDecl env) ds
-  tyEnv <- getValueEnv
-  tcEnv <- getTyConsEnv
-  e'    <- simplifyLet (inlineVars m tyEnv ds' env) dss e
-  dss'' <- mapM (expandPatternBindings tyEnv tcEnv (qfv m ds' ++ qfv m e')) ds'
-  return (foldr (mkLet m) e' (scc bv (qfv m) (concat dss'')))
+  ds''  <- concat <$> mapM (expandPatternBindings (qfv m ds' ++ qfv m e')) ds'
+  return $ foldr (mkLet m) e' (scc bv (qfv m) ds'')
 
-inlineVars :: ModuleIdent -> ValueEnv -> [Decl] -> InlineEnv -> InlineEnv
-inlineVars m tyEnv [PatternDecl _ _ _ (VariablePattern v) (SimpleRhs _ e _)] env
-  | canInline e = Map.insert v e env
+inlineVars :: [Decl] -> InlineEnv -> SIM InlineEnv
+inlineVars ds env = return $ case ds of
+   [PatternDecl _ (VariablePattern v) (SimpleRhs _ e _)]
+     | canInlineVar v e -> Map.insert v e env
+   _ -> env
   where
-  canInline (Literal     _) = True
-  canInline (Constructor _) = True
-  -- inlining of variables is deactivated (hsi) -- TODO (bjp, 2012-01-03)
-  canInline (Variable _ v')
-    | isQualified v' = arrowArity (funType m tyEnv v') > 0
-    | otherwise = v /= unqualify v'
-  canInline _               = False
-inlineVars _ _ _ env = env
+  canInlineVar _ (Literal     _) = True
+  canInlineVar _ (Constructor _) = getFunArity v' > 0
+    | otherwise                  = v /= unqualify v'
+  canInlineVar _ _               = False
 
 mkLet :: ModuleIdent -> [Decl] -> Expression -> Expression
 mkLet m [FreeDecl p vs] e
   | null vs'  = e
-  | otherwise = Let [FreeDecl p vs'] e
+  | otherwise = Let [FreeDecl p vs'] e -- remove unused free variables
   where vs' = filter (`elem` qfv m e) vs
 mkLet m [PatternDecl _ _ _ (VariablePattern v) (SimpleRhs _ e _)] (Variable _ v')
   | v' == qualify v && v `notElem` qfv m e = e
 mkLet m ds e
-  | null (filter (`elem` qfv m e) (bv ds)) = e
-  | otherwise = Let ds e
+  | null (filter (`elem` qfv m e) (bv ds)) = e -- removed unused bindings
+  | otherwise                              = Let ds e
 
 -- In order to implement lazy pattern matching in local declarations,
 -- pattern declarations 't = e' where 't' is not a variable
 -- are transformed into a list of declarations
--- 'v_0 = e; v_1 = f_1 v_0; ... v_n = f_n v_0' where 'v_0' is a fresh
+-- 'v_0 = e; v_1 = f_1 v_0; ...; v_n = f_n v_0' where 'v_0' is a fresh
 -- variable, 'v_1,...,v_n' are the variables occurring in 't' and the
 -- auxiliary functions 'f_i' are defined by 'f_i t = v_i' (see also
 -- appendix D.8 of the Curry report). The bindings 'v_0 = e' are introduced
@@ -323,7 +324,7 @@ mkLet m ds e
 
 -- In order to avoid this space leak we use the approach
 -- from (Sparud93:Leaks) and update all pattern variables when one
--- of the selector functions has been evaluated. Therefore all pattern
+-- of the selector functions has been evaluated. Therefore, all pattern
 -- variables except for the matched one are passed as additional
 -- arguments to each of the selector functions. Thus, each of these
 -- variables occurs twice in the argument list of a selector function,
@@ -367,6 +368,7 @@ mkLet m ds e
 -- this does not change the generated code, but only the types of the
 -- selector functions.
 
+<<<<<<< HEAD
 sharePatternRhs :: ValueEnv -> Decl -> SIM [Decl]
 sharePatternRhs tyEnv (PatternDecl p _ _ t rhs) = case t of
   VariablePattern _ -> return [PatternDecl p Nothing (-1) t rhs]
@@ -380,40 +382,37 @@ sharePatternRhs tyEnv (PatternDecl p _ _ t rhs) = case t of
   where patternId n = mkIdent ("_#pat" ++ show n)
 sharePatternRhs _ d = return [d]
 
-expandPatternBindings :: ValueEnv -> TCEnv -> [Ident] -> Decl -> SIM [Decl]
-expandPatternBindings tyEnv tcEnv fvs (PatternDecl p cty id0 t (SimpleRhs p' e _)) = do
-  flags <- isFlat
-  case t of
-    VariablePattern _ -> return [PatternDecl p cty id0 t (SimpleRhs p' e [])]
-    _
-      | flags -> do
-          fs <- sequence (zipWith getId tys vs)
-          return (zipWith (flatProjectionDecl p t e) fs vs)
-      | otherwise -> do
-          fs <- mapM (freshIdent fpSelectorId . selectorType ty) (shuffle tys)
-          return (zipWith (projectionDecl p t e) fs (shuffle vs))
-  where
-  vs  = filter (`elem` fvs) (bv t)
-  ty  = typeOf tyEnv tcEnv t
-  tys = map (typeOf tyEnv tcEnv) vs
+-- Transform a pattern declaration @t = e@ into two declarations
+-- @t = v, v = e@ whenever @t@ is not a variable. This is used to share
+-- the expression @e@.
+sharePatternRhs :: Decl -> SIM [Decl]
+sharePatternRhs (PatternDecl p t rhs) = case t of
+  VariablePattern _ -> return [PatternDecl p t rhs]
+  _                 -> do
+    ty <- monoType <$> getTypeOf t
+    v  <- addRefId (srcRefOf p) <$> freshIdent patternId ty
+    return [ PatternDecl p t                   (SimpleRhs p (mkVar v) [])
+           , PatternDecl p (VariablePattern v) rhs
+           ]
+  where patternId n = mkIdent ("_#pat" ++ show n)
+sharePatternRhs d                     = return [d]
 
-  getId t1 v = freshIdent (\ i -> updIdentName (++ '#' : idName v) (fpSelectorId i))
-                           (flatSelectorType ty t1)
-  flatSelectorType ty0 ty1          = polyType (TypeArrow ty0 (identityType ty1))
-  flatSelectorDecl p1 f1 t1 v1      = funDecl p1 f1 [t1] (mkVar v1)
-  flatProjectionDecl p1 t1 e1 f1 v1 = varDecl p1 v1 (Let [flatSelectorDecl p1 f1 t1 v1] (Apply (mkVar f1) e1))
-
-  selectorType ty0 (ty1:tys1) = polyType (foldr TypeArrow (identityType ty1) (ty0:tys1))
-  selectorType _   []         = error "Simplify.expandPatternBindings.selectorType: empty list"
-
-  selectorDecl p1 f t1 (v:vs1) = funDecl p1 f (t1 : map VariablePattern vs1) (mkVar v)
-  selectorDecl _  _ _  []      = error "Simplify.expandPatternBindings.selectorDecl: empty list"
-
-  projectionDecl p1 t1 e1 f (v:vs1) = varDecl p1 v $
-    Let [selectorDecl p1 f t1 (v:vs1)] (foldl applyVar (Apply (mkVar f) e1) vs1)
-  projectionDecl _ _ _ _ [] = error "Simplify.expandPatternBindings.projectionDecl: empty list"
-
-expandPatternBindings _ _ _ d = return [d]
+-- fvs contains all variables used in the declarations and the body
+-- of the let expression.
+expandPatternBindings :: [Ident] -> Decl -> SIM [Decl]
+expandPatternBindings fvs (PatternDecl p t (SimpleRhs p' e _)) = case t of
+  VariablePattern _ -> return [PatternDecl p t (SimpleRhs p' e [])]
+  _                 -> do
+  pty   <- getTypeOf t            -- type of pattern
+  mapM (mkSelectorDecl pty) vs
+ where
+  vs = filter (`elem` fvs) (bv t) -- used variables
+  mkSelectorDecl pty v = do
+    vty <- getTypeOf v
+    f   <- freshIdent (updIdentName (++ '#' : idName v) . fpSelectorId)
+                      (polyType (TypeArrow pty (identityType vty)))
+    return $ varDecl p v $ Let [funDecl p f [t] (mkVar v)] (Apply (mkVar f) e)
+expandPatternBindings _ d = return [d]
 
 -- ---------------------------------------------------------------------------
 -- Auxiliary functions
@@ -426,31 +425,29 @@ isVarPattern (ConstructorPattern _ _) = False
 isVarPattern (LiteralPattern       _) = False
 isVarPattern _ = error "Simplify.isVarPattern: no pattern match"
 
+getFunArity :: QualIdent -> SIM Int
+getFunArity f = do
+  m     <- getModuleIdent
+  tyEnv <- getValueEnv
+  return (arrowArity (funType m tyEnv f))
+
 funType :: ModuleIdent -> ValueEnv -> QualIdent -> Type
 funType m tyEnv f = case qualLookupValue f tyEnv of
-  [Value _ _ (ForAll _ _ ty) _] -> ty
-  _ -> case qualLookupValue (qualQualify m f) tyEnv of
-    [Value _ _ (ForAll _ _ ty) _] -> ty
-    _ -> internalError $ "Simplify.funType " ++ show f
+  [Value _ _ (ForAll _ ty)] -> ty
+  _                         -> case qualLookupValue (qualQualify m f) tyEnv of
+    [Value _ _ (ForAll _ ty)] -> ty
+    _                         -> internalError $ "Simplify.funType " ++ show f
 
 freshIdent :: (Int -> Ident) -> TypeScheme -> SIM Ident
 freshIdent f ty@(ForAll _ _ t) = do
   m <- getModuleIdent
-  x <- f `liftM` getNextId
+  x <- f <$> getNextId
   modifyValueEnv $ bindFun m x arity ty
   return x
   where arity = arrowArity t
 
-shuffle :: [a] -> [[a]]
-shuffle xs = shuffle' id xs
-  where shuffle' _ []       = []
-        shuffle' f (x1:xs1) = (x1 : f xs1) : shuffle' (f . (x1:)) xs1
-
 mkVar :: Ident -> Expression
 mkVar = Variable Nothing . qualify
-
-applyVar :: Expression -> Ident -> Expression
-applyVar e v = Apply e (mkVar v)
 
 varDecl :: Position -> Ident -> Expression -> Decl
 varDecl p v e = PatternDecl p Nothing (-1) (VariablePattern v) (SimpleRhs p e [])

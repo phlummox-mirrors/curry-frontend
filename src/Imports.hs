@@ -792,11 +792,10 @@ qualifyLocal currentEnv initEnv = currentEnv
     tcEnv = tyConsEnv initEnv
     tyEnv = valueEnv  initEnv
     cEnv  = classEnv  initEnv
-    bindQual   (_, y) = qualBindTopEnv "Imports.qualifyEnv" (origName y) y
+    bindQual   (_, y) = qualBindTopEnv (origName y) y
     bindGlobal (x, y)
       | hasGlobalScope x = bindQual (x, y)
-      | otherwise        = bindTopEnv "Imports.qualifyEnv" x y
-    
+      | otherwise        = bindTopEnv x y    
     classesInClassEnv = 
        foldr bindQual (theClasses cEnv) $ localBindings $ theClasses $ classEnv currentEnv
 
