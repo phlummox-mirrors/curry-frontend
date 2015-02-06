@@ -3,7 +3,7 @@
     Description :  Build tool for compiling multiple Curry modules
     Copyright   :  (c) 2005        Martin Engelke
                        2007        Sebastian Fischer
-                       2011 - 2014 Björn Peemöller
+                       2011 - 2015 Björn Peemöller
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
@@ -13,7 +13,7 @@
     This module contains functions to generate Curry representations for a
     Curry source file including all imported modules.
 -}
-module CurryBuilder (buildCurry) where
+module CurryBuilder (buildCurry, findCurry) where
 
 import Control.Monad   (foldM, liftM)
 import Data.Char       (isSpace)

@@ -93,8 +93,7 @@ bindKind m (TypeDecl    _ tc tvs _) = bindKind' m tc tvs
 bindKind _ _                        = id
 
 bindKind' :: ModuleIdent -> Ident -> [Ident] -> KindEnv -> KindEnv
-bindKind' m tc tvs = bindTopEnv     "KindCheck.bindKind'"  tc arity
-                   . qualBindTopEnv "KindCheck.bindKind'" qtc arity
+bindKind' m tc tvs = bindTopEnv tc arity . qualBindTopEnv qtc arity
   where arity = length tvs
         qtc   = qualifyWith m tc
 

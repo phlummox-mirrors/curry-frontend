@@ -27,6 +27,8 @@ import Env.OpPrec
 import Env.TypeConstructor
 import Env.Value
 
+type CompEnv a = (CompilerEnv, a)
+
 -- |A compiler environment contains information about the module currently
 --  compiled. The information is updated during the different stages of
 --  compilation.

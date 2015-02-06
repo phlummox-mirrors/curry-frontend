@@ -171,18 +171,21 @@ visitModule (IL.Module mid imps decls) = do
   ops     <- genOpDecls
   whenFlatCurry
     ( do
-      datas   <- mapM visitDataDecl (filter isDataDecl decls)
+      datas   <- mapM visitDataDecl    (filter isDataDecl    decls)
+      newtys  <- mapM visitNewtypeDecl (filter isNewtypeDecl decls)
       types   <- genTypeSynonyms
       recrds  <- genRecordTypes
       funcs   <- mapM visitFuncDecl (filter isFuncDecl decls)
       modid   <- visitModuleIdent mid
       imps'   <- imports
       is      <- mapM visitModuleIdent $ nub $ imps ++ (map extractMid imps')
-      return $ Prog modid is (recrds ++ types ++ datas) funcs ops
+      return $ Prog modid is (recrds ++ types ++ datas ++ newtys) funcs ops
     )
     ( do
       ds      <- filterM isPublicDataDecl decls
+      nts     <- filterM isPublicNewtypeDecl decls
       datas   <- mapM visitDataDecl ds
+      newtys  <- mapM visitNewtypeDecl nts
       types   <- genTypeSynonyms
       recrds  <- genRecordTypes
       fs      <- filterM isPublicFuncDecl decls
@@ -194,25 +197,33 @@ visitModule (IL.Module mid imps decls) = do
       modid   <- visitModuleIdent mid
       imps'   <- imports
       is      <- mapM visitModuleIdent $ nub $ imps ++ (map extractMid imps')
-      return $ Prog modid is (itypes ++ recrds ++ types ++ datas) (ifuncs ++ funcs) (iops ++ ops)
+      return $ Prog modid is (itypes ++ recrds ++ types ++ datas ++ newtys) (ifuncs ++ funcs) (iops ++ ops)
     )
   where extractMid (CS.IImportDecl _ mid1) = mid1
 
 --
 visitDataDecl :: IL.Decl -> FlatState TypeDecl
-visitDataDecl (IL.DataDecl qident arity constrs) = do
+visitDataDecl (IL.DataDecl qid arity constrs) = do
   cdecls <- mapM visitConstrDecl constrs
-  qname  <- visitQualTypeIdent qident
-  vis    <- getVisibility False qident
+  qname  <- visitQualTypeIdent qid
+  vis    <- getVisibility False qid
   return $ Type qname vis [0 .. arity - 1] (concat cdecls)
 visitDataDecl _ = internalError "GenFlatCurry: no data declaration"
 
+visitNewtypeDecl :: IL.Decl -> FlatState TypeDecl
+visitNewtypeDecl (IL.NewtypeDecl qid arity (IL.ConstrDecl _ ty)) = do
+  qname <- visitQualTypeIdent qid
+  vis   <- getVisibility False qid
+  ty'   <- visitType ty
+  return $ TypeSyn qname vis [0 .. arity - 1] ty'
+visitNewtypeDecl _ = internalError "GenFlatCurry: no newtype declaration"
+
 --
 visitConstrDecl :: IL.ConstrDecl [IL.Type] -> FlatState [ConsDecl]
-visitConstrDecl (IL.ConstrDecl qident types) = do
+visitConstrDecl (IL.ConstrDecl qid types) = do
   texprs  <- mapM visitType types
-  qname   <- visitQualIdent qident
-  vis     <- getVisibility True qident
+  qname   <- visitQualIdent qid
+  vis     <- getVisibility True qid
   genFint <- genInterface
   return $ if genFint && vis == Private
     then []
@@ -232,16 +243,16 @@ visitType (IL.TypeArrow       ty1 ty2) = liftM2 FuncType
 
 --
 visitFuncDecl :: IL.Decl -> FlatState FuncDecl
-visitFuncDecl (IL.FunctionDecl qident params typeexpr expression) = do
+visitFuncDecl (IL.FunctionDecl qid params typeexpr expression) = do
   let argtypes = splitoffArgTypes typeexpr params
-  setFunctionId (qident, argtypes)
-  qname <- visitQualIdent qident
-  arity <- fromMaybe (length params) `liftM` lookupIdArity qident
+  setFunctionId (qid, argtypes)
+  qname <- visitQualIdent qid
+  arity <- fromMaybe (length params) `liftM` lookupIdArity qid
   whenFlatCurry
     (do is    <- mapM newVarIndex params
         texpr <- visitType typeexpr
         expr  <- visitExpression expression
-        vis   <- getVisibility False qident
+        vis   <- getVisibility False qid
         clearVarIndices
         return (Func qname arity vis texpr (Rule is expr))
     )
@@ -249,12 +260,12 @@ visitFuncDecl (IL.FunctionDecl qident params typeexpr expression) = do
         clearVarIndices
         return (Func qname arity Public texpr (Rule [] (Var $ mkIdx 0)))
     )
-visitFuncDecl (IL.ExternalDecl qident _ extname typeexpr) = do
-  setFunctionId (qident, [])
+visitFuncDecl (IL.ExternalDecl qid _ extname typeexpr) = do
+  setFunctionId (qid, [])
   texpr <- visitType typeexpr
-  qname <- visitQualIdent qident
-  arity <- fromMaybe (typeArity typeexpr) `liftM` lookupIdArity qident
-  vis   <- getVisibility False qident
+  qname <- visitQualIdent qid
+  arity <- fromMaybe (typeArity typeexpr) `liftM` lookupIdArity qid
+  vis   <- getVisibility False qid
   xname <- visitExternalName extname
   return $ Func qname arity vis texpr (External xname)
 visitFuncDecl (IL.NewtypeDecl _ _ _) = do
@@ -387,23 +398,23 @@ visitModuleIdent = return . Id.moduleName
 
 --
 visitQualIdent :: QualIdent -> FlatState QName
-visitQualIdent qident = do
+visitQualIdent qid = do
   mid <- moduleId
-  let (mmod, ident) = (qidModule qident, qidIdent qident)
+  let (mmod, ident) = (qidModule qid, qidIdent qid)
       modid | elem ident [listId, consId, nilId, unitId] || isTupleId ident
             = Id.moduleName preludeMIdent
             | otherwise
             = maybe (Id.moduleName mid) Id.moduleName mmod
-  ftype <- lookupIdType qident
+  ftype <- lookupIdType qid
   return (QName Nothing ftype modid $ idName ident)
 
 -- This variant of visitQualIdent does not look up the type of the identifier,
 -- which is wise when the identifier is bound to a type, because looking up
 -- the type of a type via lookupIdType will get stuck in an endless loop. (hsi)
 visitQualTypeIdent :: QualIdent -> FlatState QName
-visitQualTypeIdent qident = do
+visitQualTypeIdent qid = do
   mid <- moduleId
-  let (mmod, ident) = (qidModule qident, qidIdent qident)
+  let (mmod, ident) = (qidModule qid, qidIdent qid)
       modid | elem ident [listId, consId, nilId, unitId] || isTupleId ident
             = Id.moduleName preludeMIdent
             | otherwise
@@ -415,13 +426,10 @@ visitExternalName :: String -> FlatState String
 visitExternalName extname
   = moduleId >>= \mid -> return (Id.moduleName mid ++ "." ++ extname)
 
-
--------------------------------------------------------------------------------
-
 --
 getVisibility :: Bool -> QualIdent -> FlatState Visibility
-getVisibility isConstr qident = do
-  public <- isPublic isConstr qident
+getVisibility isConstr qid = do
+  public <- isPublic isConstr qid
   return $ if public then Public else Private
 
 --
@@ -433,31 +441,32 @@ getExportedImports = do
 
 --
 getExpImports :: ModuleIdent -> Map.Map ModuleIdent [CS.Export] -> [CS.Export]
-		 -> Map.Map ModuleIdent [CS.Export]
+              -> Map.Map ModuleIdent [CS.Export]
 getExpImports _      expenv [] = expenv
-getExpImports mident expenv ((CS.Export qident):exps)
+getExpImports mident expenv ((CS.Export qid):exps)
   = getExpImports mident
-    (bindExpImport mident qident (CS.Export qident) expenv)
+    (bindExpImport mident qid (CS.Export qid) expenv)
     exps
-getExpImports mident expenv ((CS.ExportTypeWith qident idents):exps)
+getExpImports mident expenv ((CS.ExportTypeWith qid idents):exps)
   = getExpImports mident
-    (bindExpImport mident qident (CS.ExportTypeWith qident idents) expenv)
+    (bindExpImport mident qid (CS.ExportTypeWith qid idents) expenv)
     exps
-getExpImports mident expenv ((CS.ExportTypeAll qident):exps)
+getExpImports mident expenv ((CS.ExportTypeAll qid):exps)
   = getExpImports mident
-    (bindExpImport mident qident (CS.ExportTypeAll qident) expenv)
+    (bindExpImport mident qid (CS.ExportTypeAll qid) expenv)
     exps
 getExpImports mident expenv ((CS.ExportModule mident'):exps)
   = getExpImports mident (Map.insert mident' [] expenv) exps
 
 --
 bindExpImport :: ModuleIdent -> QualIdent -> CS.Export
-	         -> Map.Map ModuleIdent [CS.Export] -> Map.Map ModuleIdent [CS.Export]
-bindExpImport mident qident export expenv
-  | isJust (localIdent mident qident)
+              -> Map.Map ModuleIdent [CS.Export]
+              -> Map.Map ModuleIdent [CS.Export]
+bindExpImport mident qid export expenv
+  | isJust (localIdent mident qid)
   = expenv
   | otherwise
-  = let (Just modid) = qidModule qident
+  = let (Just modid) = qidModule qid
     in  maybe (Map.insert modid [export] expenv)
               (\es -> Map.insert modid (export:es) expenv)
               (Map.lookup modid expenv)
@@ -481,27 +490,27 @@ genExpIDecls idecls ((mid,exps):mes) = do
 
 --
 isExportedIDecl :: [CS.Export] -> CS.IDecl -> Bool
-isExportedIDecl exprts (CS.IInfixDecl _ _ _ qident)
-  = isExportedQualIdent qident exprts
-isExportedIDecl exprts (CS.IDataDecl _ qident _ _)
-  = isExportedQualIdent qident exprts
-isExportedIDecl exprts (CS.ITypeDecl _ qident _ _)
-  = isExportedQualIdent qident exprts
-isExportedIDecl exprts (CS.IFunctionDecl _ qident _ _)
-  = isExportedQualIdent qident exprts
+isExportedIDecl exprts (CS.IInfixDecl _ _ _ qid)
+  = isExportedQualIdent qid exprts
+isExportedIDecl exprts (CS.IDataDecl _ qid _ _)
+  = isExportedQualIdent qid exprts
+isExportedIDecl exprts (CS.ITypeDecl _ qid _ _)
+  = isExportedQualIdent qid exprts
+isExportedIDecl exprts (CS.IFunctionDecl _ qid _ _)
+  = isExportedQualIdent qid exprts
 isExportedIDecl _ _ = False
 
 --
 isExportedQualIdent :: QualIdent -> [CS.Export] -> Bool
 isExportedQualIdent _ [] = False
-isExportedQualIdent qident ((CS.Export qident'):exps)
-  = qident == qident' || isExportedQualIdent qident exps
-isExportedQualIdent qident ((CS.ExportTypeWith qident' _):exps)
-  = qident == qident' || isExportedQualIdent qident exps
-isExportedQualIdent qident ((CS.ExportTypeAll qident'):exps)
-  = qident == qident' || isExportedQualIdent qident exps
-isExportedQualIdent qident ((CS.ExportModule _):exps)
-  = isExportedQualIdent qident exps
+isExportedQualIdent qid ((CS.Export qid'):exps)
+  = qid == qid' || isExportedQualIdent qid exps
+isExportedQualIdent qid ((CS.ExportTypeWith qid' _):exps)
+  = qid == qid' || isExportedQualIdent qid exps
+isExportedQualIdent qid ((CS.ExportTypeAll qid'):exps)
+  = qid == qid' || isExportedQualIdent qid exps
+isExportedQualIdent qid ((CS.ExportModule _):exps)
+  = isExportedQualIdent qid exps
 
 --
 qualifyIDecl :: ModuleIdent -> CS.IDecl -> CS.IDecl
@@ -535,24 +544,22 @@ typeArity (IL.TypeConstructor _ _) = 0
 typeArity (IL.TypeVariable _)      = 0
 
 
--------------------------------------------------------------------------------
-
 --
 genFlatApplication :: IL.Expression -> IL.Expression -> FlatState Expr
 genFlatApplication e1 e2 = genFlatApplic [e2] e1
   where
   genFlatApplic args expression = case expression of
     (IL.Apply expr1 expr2) -> genFlatApplic (expr2:args) expr1
-    (IL.Function qident _) -> do
-      arity_ <- lookupIdArity qident
-      qname <- visitQualIdent qident
-      maybe (internalError (funcArity qident))
+    (IL.Function qid _) -> do
+      arity_ <- lookupIdArity qid
+      qname <- visitQualIdent qid
+      maybe (internalError (funcArity qid))
             (\arity -> genFuncCall qname arity args)
             arity_
-    (IL.Constructor qident _) -> do
-      arity_ <- lookupIdArity qident
-      qname <- visitQualIdent qident
-      maybe (internalError (consArity qident))
+    (IL.Constructor qid _) -> do
+      arity_ <- lookupIdArity qid
+      qname <- visitQualIdent qid
+      maybe (internalError (consArity qid))
             (\arity -> genConsCall qname arity args)
             arity_
     _ -> do
@@ -573,21 +580,21 @@ genFuncCall qname arity args
 --
 genConsCall :: QName -> Int -> [IL.Expression] -> FlatState Expr
 genConsCall qname arity args
-   | arity > cnt
-     = genComb qname args (ConsPartCall (arity - cnt))
-   | arity < cnt
-     = do let (funcargs, applicargs) = splitAt arity args
-	  conscall <- genComb qname funcargs ConsCall
-	  genApplicComb conscall applicargs
-   | otherwise
-     = genComb qname args ConsCall
+  | arity > cnt
+  = genComb qname args (ConsPartCall (arity - cnt))
+  | arity < cnt = do
+    let (funcargs, applicargs) = splitAt arity args
+    conscall <- genComb qname funcargs ConsCall
+    genApplicComb conscall applicargs
+  | otherwise
+  = genComb qname args ConsCall
  where cnt = length args
 
 --
 genComb :: QName -> [IL.Expression] -> CombType -> FlatState Expr
-genComb qname args combtype
-   = do exprs <- mapM visitExpression args
-	return (Comb combtype qname exprs)
+genComb qname args combtype = do
+  exprs <- mapM visitExpression args
+  return (Comb combtype qname exprs)
 
 --
 genApplicComb :: Expr -> [IL.Expression] -> FlatState Expr
@@ -605,8 +612,8 @@ genOpDecls = fixities >>= mapM genOpDecl
 
 --
 genOpDecl :: CS.IDecl -> FlatState OpDecl
-genOpDecl (CS.IInfixDecl _ fix prec qident) = do
-  qname <- visitQualIdent qident
+genOpDecl (CS.IInfixDecl _ fix prec qid) = do
+  qname <- visitQualIdent qid
   return $ Op qname (genFixity fix) prec
 genOpDecl _ = internalError "GenFlatCurry: no infix interface"
 
@@ -625,14 +632,14 @@ genTypeSynonyms = typeSynonyms >>= mapM genTypeSynonym
 
 --
 genTypeSynonym :: CS.IDecl -> FlatState TypeDecl
-genTypeSynonym (CS.ITypeDecl _ qident params ty) = do
+genTypeSynonym (CS.ITypeDecl _ qid params ty) = do
   let is = [0 .. (length params) - 1]
   tyEnv <- gets typeEnvE
   tcEnv <- gets tConsEnvE
   let ty' = elimRecordTypes tyEnv tcEnv ty
   texpr <- visitType $ snd $ cs2ilType (zip params is) ty'
-  qname <- visitQualTypeIdent qident
-  vis   <- getVisibility False qident
+  qname <- visitQualTypeIdent qid
+  vis   <- getVisibility False qid
   return $ TypeSyn qname vis is texpr
 genTypeSynonym _ = internalError "GenFlatCurry: no type synonym interface"
 
@@ -681,8 +688,6 @@ genRecordLabel modid vis ([ident],ty) = do
 genRecordLabel _ _ _ = internalError "GenFlatCurry.genRecordLabel: no pattern match"
 
 
--------------------------------------------------------------------------------
-
 -- FlatCurry provides no possibility of representing record types like
 -- {l_1::t_1, l_2::t_2, ..., l_n::t_n}. So they have to be transformed to
 -- to the corresponding type constructors which are defined in the record
@@ -722,7 +727,7 @@ elimRecordTypes tyEnv tcEnv (CS.RecordType fss)
                               ++ "no label")
 
 matchTypeVars :: [(Ident,CS.TypeExpr)] -> Map.Map Int CS.TypeExpr
-	      -> (Ident, Type) -> Map.Map Int CS.TypeExpr
+              -> (Ident, Type) -> Map.Map Int CS.TypeExpr
 matchTypeVars fs ms (l,ty) = maybe ms (match ms ty) (lookup l fs)
   where
   match ms1 (TypeVariable i) typeexpr = Map.insert i typeexpr ms1
@@ -747,9 +752,9 @@ flattenRecordTypeFields :: [([Ident], CS.TypeExpr)] -> [(Ident, CS.TypeExpr)]
 flattenRecordTypeFields = concatMap (\ (ls, ty) -> map (\l -> (l, ty)) ls)
 
 cs2ilType :: [(Ident,Int)] -> CS.TypeExpr -> ([(Ident,Int)], IL.Type)
-cs2ilType ids (CS.ConstructorType qident typeexprs)
+cs2ilType ids (CS.ConstructorType qid typeexprs)
   = let (ids', ilTypeexprs) = mapAccumL cs2ilType ids typeexprs
-    in  (ids', IL.TypeConstructor qident ilTypeexprs)
+    in  (ids', IL.TypeConstructor qid ilTypeexprs)
 cs2ilType ids (CS.VariableType ident) = case lookup ident ids of
   Just i  -> (ids, IL.TypeVariable i)
   Nothing -> let nid = 1 + case ids of { [] -> 0; (_, j):_ -> j }
@@ -789,6 +794,10 @@ isDataDecl :: IL.Decl -> Bool
 isDataDecl (IL.DataDecl _ _ _) = True
 isDataDecl _                   = False
 
+isNewtypeDecl :: IL.Decl -> Bool
+isNewtypeDecl (IL.NewtypeDecl _ _ _) = True
+isNewtypeDecl _                      = False
+
 --
 isFuncDecl :: IL.Decl -> Bool
 isFuncDecl (IL.FunctionDecl _ _ _ _) = True
@@ -797,13 +806,18 @@ isFuncDecl _                         = False
 
 --
 isPublicDataDecl :: IL.Decl -> FlatState Bool
-isPublicDataDecl (IL.DataDecl qident _ _) = isPublic False qident
-isPublicDataDecl _                        = return False
+isPublicDataDecl (IL.DataDecl qid _ _) = isPublic False qid
+isPublicDataDecl _                     = return False
+
+isPublicNewtypeDecl :: IL.Decl -> FlatState Bool
+isPublicNewtypeDecl (IL.NewtypeDecl qid _ _) = isPublic False qid
+isPublicNewtypeDecl _                        = return False
+
 
 --
 isPublicFuncDecl :: IL.Decl -> FlatState Bool
-isPublicFuncDecl (IL.FunctionDecl qident _ _ _) = isPublic False qident
-isPublicFuncDecl (IL.ExternalDecl qident _ _ _) = isPublic False qident
+isPublicFuncDecl (IL.FunctionDecl qid _ _ _) = isPublic False qid
+isPublicFuncDecl (IL.ExternalDecl qid _ _ _) = isPublic False qid
 isPublicFuncDecl _                              = return False
 
 --

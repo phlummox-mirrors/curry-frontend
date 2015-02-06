@@ -80,7 +80,7 @@ emptyTopEnv = TopEnv Map.empty
 -- |Insert an 'Entity' into a 'TopEnv' as a predefined 'Entity'
 predefTopEnv :: Entity a => QualIdent -> a -> TopEnv a -> TopEnv a
 predefTopEnv k v (TopEnv env) = case Map.lookup k env of
-  Just  _ -> internalError "TopEnv.predefTopEnv"
+  Just  _ -> internalError $ "TopEnv.predefTopEnv " ++ show k
   Nothing -> TopEnv $ Map.insert k [(Import [], v)] env
 
 -- |Insert an 'Entity' as unqualified into a 'TopEnv'
@@ -106,17 +106,16 @@ addImport m k v (TopEnv env) = TopEnv $
     Just y'' -> (Import (m : ms), y'') : xs
     Nothing  -> imp : mergeImport y xs
 
-bindTopEnv :: String -> Ident -> a -> TopEnv a -> TopEnv a
-bindTopEnv fun x y env = qualBindTopEnv fun (qualify x) y env
+bindTopEnv :: Ident -> a -> TopEnv a -> TopEnv a
+bindTopEnv x y env = qualBindTopEnv (qualify x) y env
 
-qualBindTopEnv :: String -> QualIdent -> a -> TopEnv a -> TopEnv a
-qualBindTopEnv fun x y (TopEnv env) =
-  TopEnv $ Map.insert x (bindLocal y (entities x env)) env
+qualBindTopEnv :: QualIdent -> a -> TopEnv a -> TopEnv a
+qualBindTopEnv x y (TopEnv env)
+  = TopEnv $ Map.insert x (bindLocal y (entities x env)) env
   where
   bindLocal y' ys
     | null [ y'' | (Local, y'') <- ys ] = (Local, y') : ys
-    | otherwise = internalError $ "\"qualBindTopEnv " ++ show x
-                      ++ "\" failed in function \"" ++ fun
+    | otherwise = internalError $ "qualBindTopEnv " ++ show x
 
 rebindTopEnv :: Ident -> a -> TopEnv a -> TopEnv a
 rebindTopEnv = qualRebindTopEnv . qualify
@@ -125,7 +124,8 @@ qualRebindTopEnv :: QualIdent -> a -> TopEnv a -> TopEnv a
 qualRebindTopEnv x y (TopEnv env) =
   TopEnv $ Map.insert x (rebindLocal (entities x env)) env
   where
-  rebindLocal []                = internalError "TopEnv.qualRebindTopEnv"
+  rebindLocal []                = internalError
+                                $ "TopEnv.qualRebindTopEnv " ++ show x
   rebindLocal ((Local, _) : ys) = (Local, y) : ys
   rebindLocal (imported   : ys) = imported   : rebindLocal ys
 
@@ -133,7 +133,7 @@ unbindTopEnv :: Ident -> TopEnv a -> TopEnv a
 unbindTopEnv x (TopEnv env) =
   TopEnv $ Map.insert x' (unbindLocal (entities x' env)) env
   where x' = qualify x
-        unbindLocal [] = internalError "TopEnv.unbindTopEnv"
+        unbindLocal [] = internalError $ "TopEnv.unbindTopEnv " ++ show x
         unbindLocal ((Local, _) : ys) = ys
         unbindLocal (imported   : ys) = imported : unbindLocal ys
 

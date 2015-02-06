@@ -4,6 +4,12 @@ Change log for curry-frontend
 Under development
 =================
 
+  * HTML generation now places HTML files for hierarchical modules into
+    files named `<Module>_curry.html`, i.e., no sub-folders reflecting
+    the the module name hierarchy are generated. In addition, if the option
+    `--html-dir` is not given, the current directory is used as the output
+    directory.
+
   * Removed record type extensions
 
   * Enabled declaration of (mutually) recursive record types
