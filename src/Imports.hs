@@ -3,6 +3,7 @@
     Description :  Importing interface declarations
     Copyright   :  (c) 2000 - 2003, Wolfgang Lux
                        2011       , Björn Peemöller
+                       2015       , Jan Tikovsky
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
@@ -17,6 +18,7 @@ module Imports (importInterfaces, importModules, qualifyEnv) where
 
 import           Control.Monad              (liftM, unless)
 import qualified Control.Monad.State as S   (State, gets, modify, runState)
+import           Data.List                  (notElem, nubBy)
 import qualified Data.Map            as Map
 import           Data.Maybe                 (catMaybes, fromMaybe)
 import qualified Data.Set            as Set
@@ -46,7 +48,7 @@ import CompilerOpts
 importModules :: Monad m => Options -> Module -> InterfaceEnv -> CYT m CompilerEnv
 importModules opts mdl@(Module _ mid _ imps _) iEnv
   = case foldl importModule (initEnv, []) imps of
-      (e, []  ) -> ok $ expandTCValueEnv opts $ importUnifyData e
+      (e, []  ) -> ok $ importUnifyData e
       (_, errs) -> failMessages errs
   where
     initEnv = (initCompilerEnv mid)
@@ -65,8 +67,7 @@ importModules opts mdl@(Module _ mid _ imps _) iEnv
 -- imported interfaces into scope for the current 'Interface'.
 importInterfaces :: Options -> Interface -> InterfaceEnv -> CompilerEnv
 importInterfaces opts (Interface m is _) iEnv
-  = (expandTCValueEnv opts . importUnifyData)
-  $ foldl importModule initEnv is
+  = importUnifyData $ foldl importModule initEnv is
   where
     initEnv = (initCompilerEnv m) { aliasEnv = initAliasEnv, interfaceEnv = iEnv }
     importModule env (IImportDecl _ i) = case Map.lookup i iEnv of
@@ -177,26 +178,35 @@ bindTCHidden m d                         = bindTC m d
 
 -- type constructors
 bindTC :: ModuleIdent -> IDecl -> ExpTCEnv -> ExpTCEnv
-bindTC m (IDataDecl _ tc tvs cs) mTCEnv
+bindTC m (IDataDecl _ tc tvs cs hs) mTCEnv
   | unqualify tc `Map.member` mTCEnv = mTCEnv
-  | otherwise = bindType DataType m tc tvs (map (fmap mkData) cs) mTCEnv
+  | otherwise = bindType DataType m tc tvs (map mkData cs) mTCEnv
   where
-   mkData (ConstrDecl _ evs c tys) =
-     DataConstr c (length evs) (toQualTypes m tvs tys)
-   mkData (ConOpDecl _ evs ty1 c ty2) =
-     DataConstr c (length evs) (toQualTypes m tvs [ty1,ty2])
+   mkData (ConstrDecl _ evs c tys)
+     | c `elem` hs = Nothing
+     | otherwise   = Just $ DataConstr c (length evs) (toQualTypes m tvs tys)
+   mkData (ConOpDecl _ evs ty1 c ty2)
+     | c `elem` hs = Nothing
+     | otherwise   = Just $
+         DataConstr c (length evs) (toQualTypes m tvs [ty1,ty2])
+   mkData (RecordDecl _ evs c fs)
+     | c `elem` hs = Nothing
+     | otherwise   = Just $ RecordConstr c (length evs) labels' tys'
+     where
+       (labels, tys) = unzip [(l, ty) | FieldDecl _ ls ty <- fs, l <- ls]
+       labels'       = filter (`notElem` hs) labels
+       tys'          = toQualTypes m tvs tys
 
-bindTC m (INewtypeDecl _ tc tvs (NewConstrDecl _ evs c ty)) mTCEnv =
-  bindType RenamingType m tc tvs
- (DataConstr c (length evs) [toQualType m tvs ty]) mTCEnv
+bindTC m (INewtypeDecl _ tc tvs newCons _) mTCEnv =
+  bindType RenamingType m tc tvs (mkData newCons) mTCEnv
+  where
+   mkData (NewConstrDecl _ evs c ty) =
+     DataConstr c (length evs) [toQualType m tvs ty]
+   mkData (NewRecordDecl _ evs c (l, ty)) =
+     RecordConstr c (length evs) [l] [toQualType m tvs ty]
 
-bindTC m (ITypeDecl _ tc tvs ty) mTCEnv
-  | isRecordExtId tc' =
-    bindType AliasType m (qualify (fromRecordExtId tc')) tvs
-   (toQualType m tvs ty) mTCEnv
-  | otherwise =
-    bindType AliasType m tc tvs (toQualType m tvs ty) mTCEnv
-  where tc' = unqualify tc
+bindTC m (ITypeDecl _ tc tvs ty) mTCEnv =
+  bindType AliasType m tc tvs (toQualType m tvs ty) mTCEnv
 
 bindTC _ _ mTCEnv = mTCEnv
 
@@ -205,20 +215,30 @@ bindType :: (QualIdent -> Int -> a -> TypeInfo) -> ModuleIdent -> QualIdent
 bindType f m tc tvs = Map.insert (unqualify tc)
                     . f (qualQualify m tc) (length tvs)
 
--- functions and data constructors
+-- data constructors, record labels, and functions
 bindTy :: ModuleIdent -> IDecl -> ExpValueEnv -> ExpValueEnv
-bindTy m (IDataDecl _ tc tvs cs) env =
-  foldr (bindConstr m tc' tvs $ constrType tc' tvs) env $ catMaybes cs
+bindTy m (IDataDecl _ tc tvs cs hs) env =
+  let env' = foldr (bindConstr m tc' tvs ty') env $
+    filter ((`notElem` hs) . constrId) cs
+  in foldr (bindLabel m tc' tvs ty') env' $ nubBy sameLabel clabels
+  where tc'      = qualQualify m tc
+        ty'      = constrType tc' tvs
+        labels   = [ (l, lty) | RecordDecl _ _ _ fs <- cs
+                   , FieldDecl _ ls lty <- fs, l <- ls, l `notElem` hs
+                   ]
+        clabels  = [(l, constr l, ty) | (l, ty) <- labels]
+        constr l = [constrId c | c <- cs, l `elem` recordLabels c]
+        sameLabel (l1,_,_) (l2,_,_) = l1 == l2
+bindTy m (INewtypeDecl _ tc tvs nc hs) env
+  | (nconstrId nc) `notElem` hs = mBindLabel nc $
+      bindNewConstr m tc' tvs ty' nc env
+  | otherwise                   = mBindLabel nc env 
   where tc' = qualQualify m tc
-bindTy m (INewtypeDecl _ tc tvs nc) env =
-  bindNewConstr m tc' tvs (constrType tc' tvs) nc env
-  where tc' = qualQualify m tc
-bindTy m (ITypeDecl _ rtc tvs (RecordType fs)) env =
-  foldr (bindRecordLabels m rtc') env' fs
-  where urtc = fromRecordExtId $ unqualify rtc
-        rtc' = qualifyWith m urtc
-        env' = bindConstr m rtc' tvs (constrType rtc' tvs)
-               (ConstrDecl NoPos [] urtc (map snd fs)) env
+        ty' = constrType tc' tvs
+        mBindLabel (NewConstrDecl _ _ _ _) env' = env'
+        mBindLabel (NewRecordDecl _ _ c (l, lty)) env'
+          | l `notElem` hs = bindLabel m tc tvs ty' (l, [c], lty) env'
+          | otherwise      = env'
 bindTy m (IFunctionDecl _ f a ty) env = Map.insert (unqualify f)
   (Value (qualQualify m f) a (polyType (toQualType m [] ty))) env
 bindTy _ _ env = env
@@ -226,29 +246,40 @@ bindTy _ _ env = env
 bindConstr :: ModuleIdent -> QualIdent -> [Ident] -> TypeExpr -> ConstrDecl
            -> ExpValueEnv -> ExpValueEnv
 bindConstr m tc tvs ty0 (ConstrDecl     _ evs c tys) = Map.insert c $
-  DataConstructor (qualifyLike tc c) (length tys) $
+  DataConstructor (qualifyLike tc c) arity labels $
   constrType' m tvs evs (foldr ArrowType ty0 tys)
+  where arity  = length tys
+        labels = replicate arity anonId
 bindConstr m tc tvs ty0 (ConOpDecl _ evs ty1 op ty2) = Map.insert op $
-  DataConstructor (qualifyLike tc op) 2 $
+  DataConstructor (qualifyLike tc op) 2 [anonId, anonId] $
   constrType' m tvs evs (ArrowType ty1 (ArrowType ty2 ty0))
+bindConstr m tc tvs ty0 (RecordDecl _ evs c fs) = Map.insert c $
+  DataConstructor (qualifyLike tc c) arity labels $
+  constrType' m tvs evs (foldr ArrowType ty0 tys)
+  where fields        = [(l, ty) | FieldDecl _ ls ty <- fs, l <- ls]
+        (labels, tys) = unzip fields
+        arity         = length labels
 
 bindNewConstr :: ModuleIdent -> QualIdent -> [Ident] -> TypeExpr
               -> NewConstrDecl -> ExpValueEnv -> ExpValueEnv
 bindNewConstr m tc tvs ty0 (NewConstrDecl _ evs c ty1) = Map.insert c $
-  NewtypeConstructor (qualifyLike tc c) $
+  NewtypeConstructor (qualifyLike tc c) anonId $
+  constrType' m tvs evs (ArrowType ty1 ty0)
+bindNewConstr m tc tvs ty0 (NewRecordDecl _ evs c (l, ty1)) = Map.insert c $
+  NewtypeConstructor (qualifyLike tc c) l $
   constrType' m tvs evs (ArrowType ty1 ty0)
 
 constrType' :: ModuleIdent -> [Ident] -> [Ident] -> TypeExpr -> ExistTypeScheme
 constrType' m tvs evs ty = ForAllExist (length tvs) (length evs)
                                        (toQualType m tvs ty)
 
-bindRecordLabels :: ModuleIdent -> QualIdent -> ([Ident], TypeExpr)
-                 -> ExpValueEnv -> ExpValueEnv
-bindRecordLabels m r (ls, ty) env = foldr bindLbl env ls
-  where
-  bindLbl l = Map.insert l (lblInfo l)
-  lblInfo l = Label (qualify l) r (polyType $ toQualType m [] ty)
-
+bindLabel :: ModuleIdent -> QualIdent -> [Ident] -> TypeExpr
+          -> (Ident, [Ident], TypeExpr) -> ExpValueEnv -> ExpValueEnv
+bindLabel m tc tvs ty (l, cs, lty) = Map.insert l $ Label ql qcs tysc
+  where ql   = qualifyLike tc l
+        qcs  = map (qualifyLike tc) cs
+        tysc = (polyType (toQualType m tvs (ArrowType ty lty)))
+  
 constrType :: QualIdent -> [Ident] -> TypeExpr
 constrType tc tvs = ConstructorType tc $ map VariableType tvs
 
@@ -350,10 +381,10 @@ expandThing' f tcImport = do
         Just tc -> return tc
     | otherwise  = return [Import e]
 
-  isConstr (DataConstructor  _ _ _) = True
-  isConstr (NewtypeConstructor _ _) = True
-  isConstr (Value            _ _ _) = False
-  isConstr (Label            _ _ _) = False
+  isConstr (DataConstructor  _ _ _ _) = True
+  isConstr (NewtypeConstructor _ _ _) = True
+  isConstr (Value              _ _ _) = False
+  isConstr (Label                _ _) = False
 
 -- try to hide as type constructor
 expandHide :: Ident -> ExpandM [Import]
@@ -380,44 +411,48 @@ expandTypeWith tc cs = do
   tcEnv <- getTyConsEnv
   ImportTypeWith tc `liftM` case Map.lookup tc tcEnv of
     Just (DataType     _ _                cs') ->
-      mapM (checkConstr [c | Just (DataConstr c _ _) <- cs']) cs
-    Just (RenamingType _ _ (DataConstr c _ _)) ->
-      mapM (checkConstr [c]) cs
-    Just (AliasType    _ _ (TypeRecord    fs)) ->
-      mapM (checkLabel [l | (l, _) <- fs] . renameLabel) cs
+      mapM (checkElement (concatMap visibleElems (catMaybes cs'))) cs
+    Just (RenamingType _ _ c) ->
+      mapM (checkElement (visibleElems c)) cs
     Just (AliasType _ _ _) -> report (errNonDataType       tc) >> return []
     Nothing                -> report (errUndefinedEntity m tc) >> return []
   where
-  checkConstr cs' c = do
-    unless (c `elem` cs') $ report $ errUndefinedDataConstr tc c
+  -- check if given identifier is constructor or label of type tc
+  checkElement cs' c = do
+    unless (c `elem` cs') $ report $ errUndefinedElement tc c
     return c
-  checkLabel ls' l  = do
-    unless (l `elem` ls') $ report $ errUndefinedLabel tc l
-    return l
 
 expandTypeAll :: Ident -> ExpandM Import
 expandTypeAll tc = do
   m     <- getModuleIdent
   tcEnv <- getTyConsEnv
   ImportTypeWith tc `liftM` case Map.lookup tc tcEnv of
-    Just (DataType     _ _                 cs) ->
-      return [c | Just (DataConstr c _ _) <- cs]
-    Just (RenamingType _ _ (DataConstr c _ _)) -> return [c]
-    Just (AliasType    _ _ (TypeRecord    fs)) -> return [l | (l, _) <- fs]
+    Just (DataType _ _  cs) -> return (concatMap visibleElems (catMaybes cs))
+    Just (RenamingType _ _ c) -> return (visibleElems c)
     Just (AliasType _ _ _) -> report (errNonDataType       tc) >> return []
     Nothing                -> report (errUndefinedEntity m tc) >> return []
 
+-- get visible constructor and label identifiers for given constructor
+visibleElems :: DataConstr -> [Ident]
+visibleElems (DataConstr c _ _) = [c]
+visibleElems (RecordConstr c _ ls _) = c : ls
+
+errUndefinedElement :: Ident -> Ident -> Message
+errUndefinedElement tc c = posMessage c $ hsep $ map text
+  [ idName c, "is not a constructor or label of type ", idName tc ]
+    
 errUndefinedEntity :: ModuleIdent -> Ident -> Message
 errUndefinedEntity m x = posMessage x $ hsep $ map text
   [ "Module", moduleName m, "does not export", idName x ]
 
-errUndefinedDataConstr :: Ident -> Ident -> Message
-errUndefinedDataConstr tc c = posMessage c $ hsep $ map text
-  [ idName c, "is not a data constructor of type", idName tc ]
-
-errUndefinedLabel :: Ident -> Ident -> Message
-errUndefinedLabel tc c = posMessage c $ hsep $ map text
-  [ idName c, "is not a label of record type", idName tc ]
+-- jrt 2015-01-26 no longer needed
+-- errUndefinedDataConstr :: Ident -> Ident -> Message
+-- errUndefinedDataConstr tc c = posMessage c $ hsep $ map text
+--   [ idName c, "is not a data constructor of type", idName tc ]
+-- 
+-- errUndefinedLabel :: Ident -> Ident -> Message
+-- errUndefinedLabel tc c = posMessage c $ hsep $ map text
+--   [ idName c, "is not a label of record type", idName tc ]
 
 errNonDataType :: Ident -> Message
 errNonDataType tc = posMessage tc $ hsep $ map text
@@ -453,13 +488,11 @@ importUnifyData' tcEnv = fmap (setInfo allTyCons) tcEnv
 
 -- |
 qualifyEnv :: Options -> CompilerEnv -> CompilerEnv
-qualifyEnv opts env = expandValueEnv opts'
-                    $ qualifyLocal env
+qualifyEnv opts env = qualifyLocal env
                     $ foldl (flip importInterfaceIntf) initEnv
                     $ Map.elems
                     $ interfaceEnv env
   where initEnv = initCompilerEnv $ moduleIdent env
-        opts' = opts { optExtensions = Records : optExtensions opts }
 
 qualifyLocal :: CompilerEnv -> CompilerEnv -> CompilerEnv
 qualifyLocal currentEnv initEnv = currentEnv
@@ -497,85 +530,87 @@ importInterfaceIntf i@(Interface m _ _) env = env
 -- Record stuff
 -- ---------------------------------------------------------------------------
 
-expandTCValueEnv :: Options -> CompilerEnv -> CompilerEnv
-expandTCValueEnv opts env
-  | enabled   = env' { tyConsEnv = tcEnv' }
-  | otherwise = env
-  where
-  enabled = Records `elem` (optExtensions opts ++ extensions env)
-  tcEnv'  = fmap (expandRecordTC tcEnv) tcEnv
-  tcEnv   = tyConsEnv env'
-  env'    = expandValueEnv opts env
+-- jrt 2015-01-26: no longer needed for Haskell's record syntax
 
-expandRecordTC :: TCEnv -> TypeInfo -> TypeInfo
-expandRecordTC tcEnv (DataType qid n args) =
-  DataType qid n $ map (fmap expandData) args
-  where
-  expandData (DataConstr c m tys) =
-    DataConstr c m $ map (expandRecords tcEnv) tys
-expandRecordTC tcEnv (RenamingType qid n (DataConstr c m [ty])) =
-  RenamingType qid n (DataConstr c m [expandRecords tcEnv ty])
-expandRecordTC _     (RenamingType _   _ (DataConstr    _ _ _)) =
-  internalError "Imports.expandRecordTC"
-expandRecordTC tcEnv (AliasType qid n ty) =
-  AliasType qid n (expandRecords tcEnv ty)
-
-expandValueEnv :: Options -> CompilerEnv -> CompilerEnv
-expandValueEnv opts env
-  | enabled   = env { valueEnv = tyEnv' }
-  | otherwise = env
-  where
-  tcEnv   = tyConsEnv env
-  tyEnv   = valueEnv env
-  enabled = Records `elem` (optExtensions opts ++ extensions env)
-  tyEnv'  = fmap (expandRecordTypes tcEnv) $ addImportedLabels m tyEnv
-  m       = moduleIdent env
-
--- TODO: This is necessary as currently labels are unqualified.
--- Without this additional import the labels would no longer be known.
-addImportedLabels :: ModuleIdent -> ValueEnv -> ValueEnv
-addImportedLabels m tyEnv = foldr addLabelType tyEnv (allImports tyEnv)
-  where
-  addLabelType (_, lbl@(Label l r ty))
-    = importTopEnv mid l' lbl
-    -- the following is necessary to be available during generation
-    -- of flat curry.
-    . importTopEnv     mid (recSelectorId r l') sel
-    . qualImportTopEnv mid (recSelectorId r l') sel
-    . importTopEnv     mid (recUpdateId   r l') upd
-    . qualImportTopEnv mid (recUpdateId   r l') upd
-    where
-    l' = unqualify l
-    mid = fromMaybe m (qidModule r)
-    sel = Value (qualRecSelectorId m r l') 1 ty
-    upd = Value (qualRecUpdateId   m r l') 2 ty
-  addLabelType _                       = id
-
-expandRecordTypes :: TCEnv -> ValueInfo -> ValueInfo
-expandRecordTypes tcEnv (DataConstructor  qid a (ForAllExist n m ty)) =
-  DataConstructor qid a (ForAllExist n m (expandRecords tcEnv ty))
-expandRecordTypes tcEnv (NewtypeConstructor qid (ForAllExist n m ty)) =
-  NewtypeConstructor qid (ForAllExist n m (expandRecords tcEnv ty))
-expandRecordTypes tcEnv (Value qid a (ForAll n ty)) =
-  Value qid a (ForAll n (expandRecords tcEnv ty))
-expandRecordTypes tcEnv (Label qid r (ForAll n ty)) =
-  Label qid r (ForAll n (expandRecords tcEnv ty))
-
-expandRecords :: TCEnv -> Type -> Type
+-- expandTCValueEnv :: Options -> CompilerEnv -> CompilerEnv
+-- expandTCValueEnv opts env
+--   | enabled   = env' { tyConsEnv = tcEnv' }
+--   | otherwise = env
+--   where
+--   enabled = Records `elem` (optExtensions opts ++ extensions env)
+--   tcEnv'  = fmap (expandRecordTC tcEnv) tcEnv
+--   tcEnv   = tyConsEnv env'
+--   env'    = expandValueEnv opts env
+-- 
+-- expandRecordTC :: TCEnv -> TypeInfo -> TypeInfo
+-- expandRecordTC tcEnv (DataType qid n args) =
+--   DataType qid n $ map (fmap expandData) args
+--   where
+--   expandData (DataConstr c m tys) =
+--     DataConstr c m $ map (expandRecords tcEnv) tys
+-- expandRecordTC tcEnv (RenamingType qid n (DataConstr c m [ty])) =
+--   RenamingType qid n (DataConstr c m [expandRecords tcEnv ty])
+-- expandRecordTC _     (RenamingType _   _ (DataConstr    _ _ _)) =
+--   internalError "Imports.expandRecordTC"
+-- expandRecordTC tcEnv (AliasType qid n ty) =
+--   AliasType qid n (expandRecords tcEnv ty)
+-- 
+-- expandValueEnv :: Options -> CompilerEnv -> CompilerEnv
+-- expandValueEnv opts env
+--   | enabled   = env { valueEnv = tyEnv' }
+--   | otherwise = env
+--   where
+--   tcEnv   = tyConsEnv env
+--   tyEnv   = valueEnv env
+--   enabled = Records `elem` (optExtensions opts ++ extensions env)
+--   tyEnv'  = fmap (expandRecordTypes tcEnv) $ addImportedLabels m tyEnv
+--   m       = moduleIdent env
+-- 
+-- -- TODO: This is necessary as currently labels are unqualified.
+-- -- Without this additional import the labels would no longer be known.
+-- addImportedLabels :: ModuleIdent -> ValueEnv -> ValueEnv
+-- addImportedLabels m tyEnv = foldr addLabelType tyEnv (allImports tyEnv)
+--   where
+--   addLabelType (_, lbl@(Label l r ty))
+--     = importTopEnv mid l' lbl
+--     -- the following is necessary to be available during generation
+--     -- of flat curry.
+--     . importTopEnv     mid (recSelectorId r l') sel
+--     . qualImportTopEnv mid (recSelectorId r l') sel
+--     . importTopEnv     mid (recUpdateId   r l') upd
+--     . qualImportTopEnv mid (recUpdateId   r l') upd
+--     where
+--     l' = unqualify l
+--     mid = fromMaybe m (qidModule r)
+--     sel = Value (qualRecSelectorId m r l') 1 ty
+--     upd = Value (qualRecUpdateId   m r l') 2 ty
+--   addLabelType _                       = id
+-- 
+-- expandRecordTypes :: TCEnv -> ValueInfo -> ValueInfo
+-- expandRecordTypes tcEnv (DataConstructor  qid a (ForAllExist n m ty)) =
+--   DataConstructor qid a (ForAllExist n m (expandRecords tcEnv ty))
+-- expandRecordTypes tcEnv (NewtypeConstructor qid (ForAllExist n m ty)) =
+--   NewtypeConstructor qid (ForAllExist n m (expandRecords tcEnv ty))
+-- expandRecordTypes tcEnv (Value qid a (ForAll n ty)) =
+--   Value qid a (ForAll n (expandRecords tcEnv ty))
+-- expandRecordTypes tcEnv (Label qid r (ForAll n ty)) =
+--   Label qid r (ForAll n (expandRecords tcEnv ty))
+-- 
+-- expandRecords :: TCEnv -> Type -> Type
 -- jrt 2014-10-16: Deactivated to enable declaration of recursive record types
 -- expandRecords tcEnv (TypeConstructor qid tys) = case qualLookupTC qid tcEnv of
 --   [AliasType _ _ rty@(TypeRecord _ _)]
 --     -> expandRecords tcEnv $ expandAliasType (map (expandRecords tcEnv) tys) rty
 --   _ -> TypeConstructor qid $ map (expandRecords tcEnv) tys
-expandRecords tcEnv (TypeConstructor qid tys) =
-  TypeConstructor qid $ map (expandRecords tcEnv) tys
-expandRecords tcEnv (TypeConstrained tys v) =
-  TypeConstrained (map (expandRecords tcEnv) tys) v
-expandRecords tcEnv (TypeArrow ty1 ty2) =
-  TypeArrow (expandRecords tcEnv ty1) (expandRecords tcEnv ty2)
-expandRecords tcEnv (TypeRecord fs) =
-  TypeRecord (map (\ (l, ty) -> (l, expandRecords tcEnv ty)) fs)
-expandRecords _ ty = ty
+-- expandRecords tcEnv (TypeConstructor qid tys) =
+--   TypeConstructor qid $ map (expandRecords tcEnv) tys
+-- expandRecords tcEnv (TypeConstrained tys v) =
+--   TypeConstrained (map (expandRecords tcEnv) tys) v
+-- expandRecords tcEnv (TypeArrow ty1 ty2) =
+--   TypeArrow (expandRecords tcEnv ty1) (expandRecords tcEnv ty2)
+-- expandRecords tcEnv (TypeRecord fs) =
+--   TypeRecord (map (\ (l, ty) -> (l, expandRecords tcEnv ty)) fs)
+-- expandRecords _ ty = ty
 
 -- Unlike usual identifiers like in functions, types etc., identifiers
 -- of labels are always represented unqualified within the whole context

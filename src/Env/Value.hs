@@ -3,6 +3,7 @@
     Description :  Environment for functions, constructors and labels
     Copyright   :  (c) 2001 - 2004, Wolfgang Lux
                        2011       , Björn Peemöller
+                       2015       , Jan Tikovsky
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
@@ -10,19 +11,20 @@
     Portability :  portable
 
     In order to test the type correctness of a module, the compiler needs
-    to determine the type of every data constructor, function,
-    variable, record and label in the module.
+    to determine the type of every data constructor, function and
+    variable in the module.
     For the purpose of type checking there is no
     need for distinguishing between variables and functions. For all objects
-    their original names and their types are saved. Functions also
-    contain arity information. Labels currently contain the name of their
-    defining record. On import two values
-    are considered equal if their original names match.
+    their original names and their types are saved. In addition, the compiler
+    also saves the (optional) list of field labels for data and newtype
+    constructors. Data constructors and functions also contain arity
+    information. On import two values are considered equal if their original
+    names match.
 -}
 
 module Env.Value
   ( ValueEnv, ValueInfo (..)
-  , bindGlobalInfo, bindFun, qualBindFun, rebindFun, unbindFun, bindLabel
+  , bindGlobalInfo, bindFun, qualBindFun, rebindFun, unbindFun
   , lookupValue, qualLookupValue
   , initDCEnv, ppTypes
   ) where
@@ -39,28 +41,44 @@ import Base.Types
 import Base.Utils ((++!))
 
 data ValueInfo
-  -- |Data constructor with original name, arity and type
-  = DataConstructor    QualIdent Int       ExistTypeScheme
-  -- |Newtype constructor with original name and type (arity is always 1)
-  | NewtypeConstructor QualIdent           ExistTypeScheme
+  -- |Data constructor with original name, arity, list of record labels and type
+  = DataConstructor    QualIdent Int [Ident] ExistTypeScheme
+  -- |Newtype constructor with original name, record label and type
+  -- (arity is always 1)
+  | NewtypeConstructor QualIdent     Ident   ExistTypeScheme
   -- |Value with original name, arity and type
-  | Value              QualIdent Int       TypeScheme
-  -- |Record label with original name, record name and type
-  | Label              QualIdent QualIdent TypeScheme
+  | Value              QualIdent Int         TypeScheme
+  -- |Record label with original name, list of constructors for which label
+  -- is valid field and type
+  | Label              QualIdent [QualIdent] TypeScheme
     deriving Show
 
 instance Entity ValueInfo where
-  origName (DataConstructor    orgName _ _) = orgName
-  origName (NewtypeConstructor orgName   _) = orgName
-  origName (Value              orgName _ _) = orgName
-  origName (Label              orgName _ _) = orgName
+  origName (DataConstructor    orgName _ _ _) = orgName
+  origName (NewtypeConstructor orgName   _ _) = orgName
+  origName (Value              orgName   _ _) = orgName
+  origName (Label              orgName   _ _) = orgName
 
-  merge (Label l r ty) (Label l' r' _)
-    | l == l' && r == r' = Just $ Label l r ty
-    | otherwise          = Nothing
-  merge x y
-    | origName x == origName y = Just x
-    | otherwise                = Nothing
+  merge (DataConstructor c1 ar1 ls1 ty1) (DataConstructor c2 ar2 ls2 ty2)
+    | c1 == c2 && ar1 == ar2 && ty1 == ty2 = do
+      ls' <- sequence (zipWith mergeLabel ls1 ls2)
+      Just (DataConstructor c1 ar1 ls' ty1)
+  merge (NewtypeConstructor c1 l1 ty1) (NewtypeConstructor c2 l2 ty2)
+    | c1 == c2 && ty1 == ty2 = do
+      l' <- mergeLabel l1 l2
+      Just (NewtypeConstructor c1 l' ty1)
+  merge (Value x1 ar1 ty1) (Value x2 ar2 ty2)
+    | x1 == x2 && ar1 == ar2 && ty1 == ty2 = Just (Value x1 ar1 ty1)
+  merge (Label l1 cs1 ty1) (Label l2 cs2 ty2)
+    | l1 == l2 && cs1 == cs2 && ty1 == ty2 = Just (Label l1 cs1 ty1)
+  merge _ _ = Nothing
+
+mergeLabel :: Ident -> Ident -> Maybe Ident
+mergeLabel l1 l2
+  | l1 == anonId = Just l2
+  | l2 == anonId = Just l1
+  | l1 == l2     = Just 1
+  | otherwise    = Nothing
 
 -- Even though value declarations may be nested, the compiler uses only
 -- flat environments for saving type information. This is possible
@@ -102,10 +120,6 @@ rebindFun m f a ty
 
 unbindFun :: Ident -> ValueEnv -> ValueEnv
 unbindFun = unbindTopEnv
-
-bindLabel :: Ident -> QualIdent -> TypeScheme -> ValueEnv -> ValueEnv
-bindLabel l r ty tyEnv = bindTopEnv "Env.Value.bindLabel" l v tyEnv
-  where v  = Label (qualify l) r ty
 
 lookupValue :: Ident -> ValueEnv -> [ValueInfo]
 lookupValue x tyEnv = lookupTopEnv x tyEnv ++! lookupTuple x

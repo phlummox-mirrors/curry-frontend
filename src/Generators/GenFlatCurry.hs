@@ -644,7 +644,7 @@ genTypeSynonym _ = internalError "GenFlatCurry: no type synonym interface"
 --
 -- the following data declaration will be generated:
 --
---      data Rec' = l_1' t_1 | ... | l_n' :: t_n
+--      data Rec' = l_1' t_1 | ... | l_n' t_n
 --
 -- Rec' and l_i' are unique idenfifiers which encode the original names
 -- Rec and l_i.

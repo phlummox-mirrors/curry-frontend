@@ -81,10 +81,17 @@ qConstrDecl (ConstrDecl     p vs n tys)
   = ConstrDecl p vs n `liftM` mapM qTypeExpr tys
 qConstrDecl (ConOpDecl p vs ty1 op ty2)
   = liftM2 (flip (ConOpDecl p vs) op) (qTypeExpr ty1) (qTypeExpr ty2)
+qConstrDecl (RecordDecl p vs c fs)
+  = RecordDecl p vs c `liftM` mapM qFieldDecl fs
 
 qNewConstrDecl :: Qual NewConstrDecl
 qNewConstrDecl (NewConstrDecl p vs n ty)
   = NewConstrDecl p vs n `liftM` qTypeExpr ty
+qNewConstrDecl (NewRecordDecl p vs n (f, ty))
+  = (\ty' -> NewRecordDecl p vs n (f, ty')) `liftM` qTypeExpr ty
+
+qFieldDecl :: Qual FieldDecl
+qFieldDecl (FieldDecl p fs ty) = FieldDecl p fs `liftM` qTypeExpr ty
 
 qTypeExpr :: Qual TypeExpr
 qTypeExpr (ConstructorType c tys)
@@ -94,8 +101,6 @@ qTypeExpr (TupleType         tys) = TupleType `liftM` mapM qTypeExpr tys
 qTypeExpr (ListType           ty) = ListType `liftM` qTypeExpr ty
 qTypeExpr (ArrowType     ty1 ty2)
   = liftM2 ArrowType (qTypeExpr ty1) (qTypeExpr ty2)
-qTypeExpr (RecordType         fs) = liftM RecordType (mapM qFieldType fs)
-  where qFieldType (ls, ty)  = (\ ty' -> (ls, ty')) `liftM` qTypeExpr ty
 
 qEquation :: Qual Equation
 qEquation (Equation p lhs rhs) = liftM2 (Equation p) (qLhs lhs) (qRhs rhs)
@@ -114,6 +119,8 @@ qPattern (ConstructorPattern   c ts)
 qPattern (InfixPattern     t1 op t2)
   = liftM3 InfixPattern (qPattern t1) (qIdent op) (qPattern t2)
 qPattern (ParenPattern            t) = ParenPattern   `liftM` qPattern t
+qPattern (RecordPattern        c fs)
+  = liftM2 RecordPattern (qIdent c) (mapM (qField qPattern) fs)
 qPattern (TuplePattern         p ts) = TuplePattern p `liftM` mapM qPattern ts
 qPattern (ListPattern          p ts) = ListPattern  p `liftM` mapM qPattern ts
 qPattern (AsPattern             v t) = AsPattern    v `liftM` qPattern t
@@ -122,11 +129,6 @@ qPattern (FunctionPattern      f ts)
   = liftM2 FunctionPattern (qIdent f) (mapM qPattern ts)
 qPattern (InfixFuncPattern t1 op t2)
   = liftM3 InfixFuncPattern (qPattern t1) (qIdent op) (qPattern t2)
-qPattern (RecordPattern       fs rt)
-  = liftM2 RecordPattern (mapM qFieldPattern fs) (mapM qPattern rt)
-
-qFieldPattern :: Qual (Field Pattern)
-qFieldPattern (Field p l t) = Field p l `liftM` qPattern t
 
 qRhs :: Qual Rhs
 qRhs (SimpleRhs p e ds) = liftM2 (SimpleRhs p) (qExpr e) (mapM qDecl ds)
@@ -141,6 +143,8 @@ qExpr (Variable              v) = Variable `liftM` qIdent v
 qExpr (Constructor           c) = Constructor `liftM` qIdent c
 qExpr (Paren                 e) = Paren `liftM` qExpr e
 qExpr (Typed              e ty) = liftM2 Typed (qExpr e) (qTypeExpr ty)
+qExpr (Record             c fs) = liftM2 Record (qIdent c) (mapM (qField qExpr) fs)
+qExpr (RecordUpdate       e fs) = liftM2 RecordUpdate (qExpr e) (mapM (qField qExpr) fs)
 qExpr (Tuple              p es) = Tuple p `liftM` mapM qExpr es
 qExpr (List               p es) = List p `liftM` mapM qExpr es
 qExpr (ListCompr        p e qs) = liftM2 (ListCompr p) (qExpr e)
@@ -163,10 +167,6 @@ qExpr (Do                sts e) = liftM2 Do (mapM qStmt sts) (qExpr e)
 qExpr (IfThenElse   r e1 e2 e3) = liftM3 (IfThenElse r) (qExpr e1)
                                          (qExpr e2) (qExpr e3)
 qExpr (Case          r ct e as) = liftM2 (Case r ct) (qExpr e) (mapM qAlt as)
-qExpr (RecordConstr         fs) = RecordConstr `liftM` mapM qFieldExpr fs
-qExpr (RecordSelection     e l) = flip RecordSelection l `liftM` qExpr e
-qExpr (RecordUpdate       fs e) = liftM2 RecordUpdate (mapM qFieldExpr fs)
-                                                      (qExpr e)
 
 qStmt :: Qual Statement
 qStmt (StmtExpr p   e) = StmtExpr p `liftM` qExpr e
@@ -178,6 +178,9 @@ qAlt (Alt p t rhs) = liftM2 (Alt p) (qPattern t) (qRhs rhs)
 
 qFieldExpr :: Qual (Field Expression)
 qFieldExpr (Field p l e) = Field p l `liftM` qExpr e
+
+qField :: Qual a -> Qual (Field a)
+qField q (Field p l x) = Field p l `liftM` q x
 
 qInfixOp :: Qual InfixOp
 qInfixOp (InfixOp     op) = InfixOp     `liftM` qIdent op

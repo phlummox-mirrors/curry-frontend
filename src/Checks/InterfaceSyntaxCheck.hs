@@ -3,6 +3,7 @@
     Description :  Checks interface declarations
     Copyright   :  (c) 2000 - 2007 Wolfgang Lux
                                    Björn Peemöller
+                       2015        Jan Tikovsky
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
@@ -76,10 +77,6 @@ bindType (IDataDecl      _ tc _ cs) = qualBindTopEnv "" tc
         constr (ConOpDecl  _ _ _ op _) = op
 bindType (INewtypeDecl   _ tc _ nc) = qualBindTopEnv "" tc (Data tc [nconstr nc])
   where nconstr (NewConstrDecl _ _ c _) = c
--- jrt 2014-10-16: record types are handled like data declarations; this is
--- necessary because type constructors of record types are not expanded anymore
--- and can occur in interfaces
-bindType (ITypeDecl _ tc _ (RecordType _)) = qualBindTopEnv "" tc (Data tc [])
 bindType (ITypeDecl       _ tc _ _) = qualBindTopEnv "" tc (Alias tc)
 bindType (IFunctionDecl    _ _ _ _) = id
 
@@ -122,11 +119,24 @@ checkConstrDecl tvs (ConOpDecl p evs ty1 op ty2) = do
          (checkClosedType tvs' ty1)
          (checkClosedType tvs' ty2)
   where tvs' = evs ++ tvs
+checkConstrDecl tvs (RecordDecl p evs c fs) = do
+  checkTypeLhs evs
+  liftM (RecordDecl p evs c) (mapM (checkFieldDecl tvs') fs)
+  where tvs' = evs ++ tvs
+
+checkFieldDecl :: [Ident] -> FieldDecl -> ISC FieldDecl
+checkFieldDecl tvs (FieldDecl p ls ty) =
+  liftM (FieldDecl p ls ty) (checkClosedType tvs ty)
 
 checkNewConstrDecl :: [Ident] -> NewConstrDecl -> ISC NewConstrDecl
 checkNewConstrDecl tvs (NewConstrDecl p evs c ty) = do
   checkTypeLhs evs
   liftM (NewConstrDecl p evs c) (checkClosedType tvs' ty)
+  where tvs' = evs ++ tvs
+checkNewConstrDecl tvs (NewRecordDecl p evs c (l,ty)) = do
+  checkTypeLhs evs
+  ty' <- checkClosedType tvs' ty
+  return $ NewRecordDecl p evs c (l,ty')
   where tvs' = evs ++ tvs
 
 checkClosedType :: [Ident] -> TypeExpr -> ISC TypeExpr
@@ -141,8 +151,6 @@ checkType (VariableType        tv) = checkType (ConstructorType (qualify tv) [])
 checkType (TupleType          tys) = liftM TupleType (mapM checkType tys)
 checkType (ListType            ty) = liftM ListType (checkType ty)
 checkType (ArrowType      ty1 ty2) = liftM2 ArrowType (checkType ty1) (checkType ty2)
-checkType (RecordType          fs) = liftM RecordType (mapM checkField fs)
- where checkField (l, ty) = checkType ty >>= \ty' -> return (l, ty')
 
 checkTypeConstructor :: QualIdent -> [TypeExpr] -> ISC TypeExpr
 checkTypeConstructor tc tys = do

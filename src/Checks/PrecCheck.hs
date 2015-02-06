@@ -4,6 +4,7 @@
     Copyright   :  (c) 2001 - 2004 Wolfgang Lux
                                    Martin Engelke
                                    Björn Peemöller
+                       2015        Jan Tikovsky
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
@@ -20,7 +21,8 @@
 
 module Checks.PrecCheck (precCheck) where
 
-import           Control.Monad            (liftM, liftM2, liftM3, unless, when)
+import           Control.Applicative      ((<$>), (<*>))
+import           Control.Monad            (unless, when)
 import qualified Control.Monad.State as S (State, runState, gets, modify)
 import           Data.List                (partition)
 
@@ -31,7 +33,7 @@ import Curry.Syntax
 
 import Base.Expr
 import Base.Messages (Message, posMessage)
-import Base.Utils (findDouble)
+import Base.Utils (constrId, findDouble)
 
 import Env.OpPrec (OpPrecEnv, OpPrec (..), PrecInfo (..), defaultP, bindP
   , mkPrec, qualLookupP)
@@ -98,9 +100,7 @@ bindPrec m (InfixDecl _ fix mprec ops) pEnv
 bindPrec _ _                         pEnv = pEnv
 
 boundValues :: Decl -> [Ident]
-boundValues (DataDecl      _ _ _ cs) = map constr cs
-  where constr (ConstrDecl _ _   c  _) = c
-        constr (ConOpDecl  _ _ _ op _) = op
+boundValues (DataDecl      _ _ _ cs) = map constrId cs
 boundValues (NewtypeDecl _ _ _ (NewConstrDecl _ _ c _)) = [c]
 boundValues (FunctionDecl     _ f _) = [f]
 boundValues (ForeignDecl  _ _ _ f _) = [f]
@@ -123,88 +123,84 @@ checkDecls decls = bindPrecs decls >> mapM checkDecl decls
 
 checkDecl :: Decl -> PCM Decl
 checkDecl (FunctionDecl p f eqs) =
-  FunctionDecl p f `liftM` mapM checkEquation eqs
+  FunctionDecl p f <$> mapM checkEquation eqs
 checkDecl (PatternDecl p  t rhs) =
-  liftM2 (PatternDecl p) (checkPattern t) (checkRhs rhs)
+  PatternDecl p <$> checkPattern t <*> checkRhs rhs
 checkDecl d                      = return d
 
 checkEquation :: Equation -> PCM Equation
 checkEquation (Equation p lhs rhs) =
-  liftM2 (Equation p) (checkLhs lhs) (checkRhs rhs)
+  Equation p <$> checkLhs lhs <*> checkRhs rhs
 
 checkLhs :: Lhs -> PCM Lhs
-checkLhs (FunLhs    f ts) = FunLhs f `liftM` mapM checkPattern ts
+checkLhs (FunLhs    f ts) = FunLhs f <$> mapM checkPattern ts
 checkLhs (OpLhs t1 op t2) =
-  liftM2 (flip OpLhs op) (checkPattern t1 >>= checkOpL op)
-                         (checkPattern t2 >>= checkOpR op)
+  flip OpLhs op <$> (checkPattern t1 >>= checkOpL op)
+                <*> (checkPattern t2 >>= checkOpR op)
 checkLhs (ApLhs   lhs ts) =
-  liftM2 ApLhs (checkLhs lhs) (mapM checkPattern ts)
+  ApLhs <$> checkLhs lhs <*> mapM checkPattern ts
 
 checkPattern :: Pattern -> PCM Pattern
 checkPattern l@(LiteralPattern      _) = return l
 checkPattern n@(NegativePattern   _ _) = return n
 checkPattern v@(VariablePattern     _) = return v
 checkPattern (ConstructorPattern c ts) =
-  ConstructorPattern c `liftM` mapM checkPattern ts
+  ConstructorPattern c <$> mapM checkPattern ts
 checkPattern (InfixPattern   t1 op t2) = do
   t1' <- checkPattern t1
   t2' <- checkPattern t2
   fixPrecT InfixPattern t1' op t2'
 checkPattern (ParenPattern          t) =
-  ParenPattern `liftM` checkPattern t
+  ParenPattern <$> checkPattern t
 checkPattern (TuplePattern       p ts) =
-  TuplePattern p `liftM` mapM checkPattern ts
+  TuplePattern p <$> mapM checkPattern ts
 checkPattern (ListPattern        p ts) =
-  ListPattern p `liftM` mapM checkPattern ts
+  ListPattern p <$> mapM checkPattern ts
 checkPattern (AsPattern           v t) =
-  AsPattern v `liftM` checkPattern t
+  AsPattern v <$> checkPattern t
 checkPattern (LazyPattern         p t) =
-  LazyPattern p `liftM` checkPattern t
+  LazyPattern p <$> checkPattern t
 checkPattern (FunctionPattern    f ts) =
-  FunctionPattern f `liftM` mapM checkPattern ts
+  FunctionPattern f <$> mapM checkPattern ts
 checkPattern (InfixFuncPattern t1 op t2) = do
   t1' <- checkPattern t1
   t2' <- checkPattern t2
   fixPrecT InfixFuncPattern t1' op t2'
-checkPattern (RecordPattern       fs r) =
-  liftM2 RecordPattern (mapM checkFieldPattern fs) $
-    case r of
-      Nothing -> return Nothing
-      Just r' -> Just `fmap` checkPattern r'
-
-checkFieldPattern :: Field Pattern -> PCM (Field Pattern)
-checkFieldPattern (Field p l e) = Field p l `liftM` checkPattern e
+checkPattern (RecordPattern c fs) =
+  RecordPattern c <$> mapM (checkField checkPattern) fs
 
 checkRhs :: Rhs -> PCM Rhs
 checkRhs (SimpleRhs p e ds) = withLocalPrecEnv $
-  liftM2 (flip (SimpleRhs p)) (checkDecls ds) (checkExpr e)
+  flip (SimpleRhs p) <$> checkDecls ds <*> checkExpr e
 checkRhs (GuardedRhs es ds) = withLocalPrecEnv $
-  liftM2 (flip GuardedRhs) (checkDecls ds) (mapM checkCondExpr es)
+  (flip GuardedRhs) <$> checkDecls ds <*> mapM checkCondExpr es
 
 checkCondExpr :: CondExpr -> PCM CondExpr
-checkCondExpr (CondExpr p g e) =
-  liftM2 (CondExpr p) (checkExpr g) (checkExpr e)
+checkCondExpr (CondExpr p g e) = CondExpr p <$> checkExpr g <*> checkExpr e
 
 checkExpr :: Expression -> PCM Expression
-checkExpr l@(Literal     _) = return l
-checkExpr v@(Variable    _) = return v
-checkExpr c@(Constructor _) = return c
-checkExpr (Paren    e) = Paren `liftM` checkExpr e
-checkExpr (Typed e ty) = flip Typed ty `liftM` checkExpr e
-checkExpr (Tuple p es) = Tuple p `liftM` mapM checkExpr es
-checkExpr (List  p es) = List  p `liftM` mapM checkExpr es
+checkExpr l@(Literal       _) = return l
+checkExpr v@(Variable      _) = return v
+checkExpr c@(Constructor   _) = return c
+checkExpr (Paren           e) = Paren <$> checkExpr e
+checkExpr (Typed        e ty) = flip Typed ty <$> checkExpr e
+checkExpr (Record       c fs) = Record c <$> mapM (checkField checkExpr) fs
+checkExpr (RecordUpdate e fs) = RecordUpdate <$> (checkExpr e)
+                                             <*> mapM (checkField checkExpr) fs
+checkExpr (Tuple p es) = Tuple p <$> mapM checkExpr es
+checkExpr (List  p es) = List  p <$> mapM checkExpr es
 checkExpr (ListCompr p e qs) = withLocalPrecEnv $
-  liftM2 (flip (ListCompr p)) (mapM checkStmt qs) (checkExpr e)
-checkExpr (EnumFrom              e) = EnumFrom `liftM` checkExpr e
+  flip (ListCompr p) <$> mapM checkStmt qs <*> checkExpr e
+checkExpr (EnumFrom              e) = EnumFrom <$> checkExpr e
 checkExpr (EnumFromThen      e1 e2) =
-  liftM2 EnumFromThen (checkExpr e1) (checkExpr e2)
+  EnumFromThen <$> checkExpr e1 <*> checkExpr e2
 checkExpr (EnumFromTo        e1 e2) =
-  liftM2 EnumFromTo (checkExpr e1) (checkExpr e2)
+  EnumFromTo <$> checkExpr e1 <*> checkExpr e2
 checkExpr (EnumFromThenTo e1 e2 e3) =
-  liftM3 EnumFromThenTo (checkExpr e1) (checkExpr e2) (checkExpr e3)
-checkExpr (UnaryMinus         op e) = UnaryMinus op `liftM` (checkExpr e)
+  EnumFromThenTo <$> checkExpr e1 <*> checkExpr e2 <*> checkExpr e3
+checkExpr (UnaryMinus         op e) = UnaryMinus op <$> checkExpr e
 checkExpr (Apply e1 e2) =
-  liftM2 Apply (checkExpr e1) (checkExpr e2)
+  Apply <$> checkExpr e1 <*> checkExpr e2
 checkExpr (InfixApply e1 op e2) = do
   e1' <- checkExpr e1
   e2' <- checkExpr e2
@@ -212,33 +208,26 @@ checkExpr (InfixApply e1 op e2) = do
 checkExpr (LeftSection      e op) = checkExpr e >>= checkLSection op
 checkExpr (RightSection     op e) = checkExpr e >>= checkRSection op
 checkExpr (Lambda         r ts e) =
-  liftM2 (Lambda r) (mapM checkPattern ts) (checkExpr e)
+  (Lambda r) <$> mapM checkPattern ts <*> checkExpr e
 checkExpr (Let              ds e) = withLocalPrecEnv $
-  liftM2 Let (checkDecls ds) (checkExpr e)
+  Let <$> checkDecls ds <*> checkExpr e
 checkExpr (Do              sts e) = withLocalPrecEnv $
-  liftM2 Do  (mapM checkStmt sts) (checkExpr e)
+  Do <$>  mapM checkStmt sts <*> checkExpr e
 checkExpr (IfThenElse r e1 e2 e3) =
-  liftM3 (IfThenElse r) (checkExpr e1) (checkExpr e2) (checkExpr e3)
+  IfThenElse r <$> checkExpr e1 <*> checkExpr e2 <*> checkExpr e3
 checkExpr (Case      r ct e alts) =
-  liftM2 (Case r ct) (checkExpr e) (mapM checkAlt alts)
-checkExpr (RecordConstr       fs) =
-  RecordConstr `liftM` mapM checkFieldExpr fs
-checkExpr (RecordSelection   e l) =
-  flip RecordSelection l `liftM` checkExpr e
-checkExpr (RecordUpdate     fs e) =
-  liftM2 RecordUpdate (mapM checkFieldExpr fs) (checkExpr e)
-
-checkFieldExpr :: Field Expression -> PCM (Field Expression)
-checkFieldExpr (Field p l e) = Field p l `liftM` checkExpr e
+  Case r ct <$> checkExpr e <*> mapM checkAlt alts
 
 checkStmt :: Statement -> PCM Statement
-checkStmt (StmtExpr   p e) = StmtExpr p `liftM` checkExpr e
-checkStmt (StmtDecl    ds) = StmtDecl `liftM` checkDecls ds
-checkStmt (StmtBind p t e) =
-  liftM2 (StmtBind p) (checkPattern t) (checkExpr e)
+checkStmt (StmtExpr   p e) = StmtExpr p <$> checkExpr e
+checkStmt (StmtDecl    ds) = StmtDecl   <$> checkDecls ds
+checkStmt (StmtBind p t e) = StmtBind p <$> checkPattern t <*> checkExpr e
 
 checkAlt :: Alt -> PCM Alt
-checkAlt (Alt p t rhs) = liftM2 (Alt p) (checkPattern t) (checkRhs rhs)
+checkAlt (Alt p t rhs) = Alt p <$> checkPattern t <*> checkRhs rhs
+
+checkField :: (a -> PCM a) -> Field a -> PCM (Field a)
+checkField check (Field p l x) = Field p l <$> check x
 
 -- The functions 'fixPrec', 'fixUPrec', and 'fixRPrec' check the relative
 -- precedences of adjacent infix operators in nested infix applications
@@ -356,7 +345,7 @@ checkRSection op e = return $ RightSection op e
 fixPrecT :: (Pattern -> QualIdent -> Pattern -> Pattern)
          -> Pattern -> QualIdent -> Pattern -> PCM Pattern
 fixPrecT infixpatt t1@(NegativePattern uop _) op t2 = do
-  OpPrec fix pr <- prec op `liftM` getPrecEnv
+  OpPrec fix pr <- prec op <$> getPrecEnv
   unless (pr < 6 || pr == 6 && fix == InfixL) $
     report $ errInvalidParse "unary" uop op
   fixRPrecT infixpatt t1 op t2
@@ -365,12 +354,12 @@ fixPrecT infixpatt t1 op t2 = fixRPrecT infixpatt t1 op t2
 fixRPrecT :: (Pattern -> QualIdent -> Pattern -> Pattern)
           -> Pattern  -> QualIdent -> Pattern -> PCM Pattern
 fixRPrecT infixpatt t1 op t2@(NegativePattern uop _) = do
-  OpPrec _ pr <- prec op `liftM` getPrecEnv
+  OpPrec _ pr <- prec op <$> getPrecEnv
   unless (pr < 6) $ report $ errInvalidParse "unary" uop op
   return $ infixpatt t1 op t2
 fixRPrecT infixpatt t1 op1 (InfixPattern t2 op2 t3) = do
-  OpPrec fix1 pr1 <- prec op1 `liftM` getPrecEnv
-  OpPrec fix2 pr2 <- prec op2 `liftM` getPrecEnv
+  OpPrec fix1 pr1 <- prec op1 <$> getPrecEnv
+  OpPrec fix2 pr2 <- prec op2 <$> getPrecEnv
   if pr1 < pr2 || pr1 == pr2 && fix1 == InfixR && fix2 == InfixR
     then return $ infixpatt t1 op1 (InfixPattern t2 op2 t3)
     else if pr1 > pr2 || pr1 == pr2 && fix1 == InfixL && fix2 == InfixL
@@ -381,8 +370,8 @@ fixRPrecT infixpatt t1 op1 (InfixPattern t2 op2 t3) = do
         report $ errAmbiguousParse "operator" op1 op2
         return $ infixpatt t1 op1 (InfixPattern t2 op2 t3)
 fixRPrecT infixpatt t1 op1 (InfixFuncPattern t2 op2 t3) = do
-  OpPrec fix1 pr1 <- prec op1 `liftM` getPrecEnv
-  OpPrec fix2 pr2 <- prec op2 `liftM` getPrecEnv
+  OpPrec fix1 pr1 <- prec op1 <$> getPrecEnv
+  OpPrec fix2 pr2 <- prec op2 <$> getPrecEnv
   if pr1 < pr2 || pr1 == pr2 && fix1 == InfixR && fix2 == InfixR
     then return $ infixpatt t1 op1 (InfixFuncPattern t2 op2 t3)
     else if pr1 > pr2 || pr1 == pr2 && fix1 == InfixL && fix2 == InfixL
@@ -425,13 +414,13 @@ fixRPrecT _ _ t1 op t2 = InfixPattern t1 op t2-}
 
 checkOpL :: Ident -> Pattern -> PCM Pattern
 checkOpL op t@(NegativePattern uop _) = do
-  OpPrec fix pr <- prec (qualify op) `liftM` getPrecEnv
+  OpPrec fix pr <- prec (qualify op) <$> getPrecEnv
   unless (pr < 6 || pr == 6 && fix == InfixL) $
     report $ errInvalidParse "unary" uop (qualify op)
   return t
 checkOpL op1 t@(InfixPattern _ op2 _) = do
-  OpPrec fix1 pr1 <- prec (qualify op1) `liftM` getPrecEnv
-  OpPrec fix2 pr2 <- prec op2 `liftM` getPrecEnv
+  OpPrec fix1 pr1 <- prec (qualify op1) <$> getPrecEnv
+  OpPrec fix2 pr2 <- prec op2 <$> getPrecEnv
   unless (pr1 < pr2 || pr1 == pr2 && fix1 == InfixL && fix2 == InfixL) $
     report $ errInvalidParse "operator" op1 op2
   return t
@@ -439,12 +428,12 @@ checkOpL _ t = return t
 
 checkOpR :: Ident -> Pattern -> PCM Pattern
 checkOpR op t@(NegativePattern uop _) = do
-  OpPrec _ pr <- prec (qualify op)  `liftM` getPrecEnv
+  OpPrec _ pr <- prec (qualify op)  <$> getPrecEnv
   when (pr >= 6) $ report $ errInvalidParse "unary" uop (qualify op)
   return t
 checkOpR op1 t@(InfixPattern _ op2 _) = do
-  OpPrec fix1 pr1 <- prec (qualify op1)  `liftM` getPrecEnv
-  OpPrec fix2 pr2 <- prec op2  `liftM` getPrecEnv
+  OpPrec fix1 pr1 <- prec (qualify op1)  <$> getPrecEnv
+  OpPrec fix2 pr2 <- prec op2  <$> getPrecEnv
   unless (pr1 < pr2 || pr1 == pr2 && fix1 == InfixR && fix2 == InfixR) $
     report $ errInvalidParse "operator" op1 op2
   return t
@@ -457,7 +446,7 @@ checkOpR _ t = return t
 -- shadows an imported definition.
 
 getOpPrec :: InfixOp -> PCM OpPrec
-getOpPrec op = opPrec op `liftM` getPrecEnv
+getOpPrec op = opPrec op <$> getPrecEnv
 
 opPrec :: InfixOp -> OpPrecEnv -> OpPrec
 opPrec op = prec (opName op)

@@ -3,6 +3,7 @@
     Description :  Conversion of type representation
     Copyright   :  (c)         Wolfgang Lux
                    2011 - 2012 Björn Peemöller
+                   2015        Jan Tikovsky
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
@@ -67,10 +68,6 @@ toType' tvs (CS.ListType            ty)
   = TypeConstructor (qualify listId) [toType' tvs ty]
 toType' tvs (CS.ArrowType      ty1 ty2)
   = TypeArrow (toType' tvs ty1) (toType' tvs ty2)
-toType' tvs (CS.RecordType          fs)
-  = TypeRecord fs'
-  where
-    fs'  = concatMap (\ (ls, ty) -> map (\ l -> (l, toType' tvs ty)) ls) fs
 
 fromQualType :: ModuleIdent -> Type -> CS.TypeExpr
 fromQualType m = fromType . unqualifyType m
@@ -90,8 +87,6 @@ fromType (TypeArrow     ty1 ty2)   =
   CS.ArrowType (fromType ty1) (fromType ty2)
 fromType (TypeSkolem          k)   =
   CS.VariableType $ mkIdent $ "_?" ++ show k
-fromType (TypeRecord         fs)   = CS.RecordType
-  (map (\ (l, ty) -> ([l], fromType ty)) fs)
 
 -- The following functions implement pretty-printing for types.
 ppType :: ModuleIdent -> Type -> Doc

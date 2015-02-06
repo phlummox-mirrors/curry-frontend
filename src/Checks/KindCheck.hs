@@ -4,7 +4,7 @@
     Copyright   :  (c) 2000 - 2007 Wolfgang Lux
                                    Martin Engelke
                                    Björn Peemöller
-                       2014        Jan Rasmus Tikovsky
+                       2014 - 2015 Jan Tikovsky
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
@@ -143,22 +143,24 @@ checkConstrDecl tvs (ConOpDecl p evs ty1 op ty2) = do
   ty1' <- checkClosedType tvs' ty1
   ty2' <- checkClosedType tvs' ty2
   return $ ConOpDecl p evs' ty1' op ty2'
--- jrt: Added for support of Haskell's record syntax
 checkConstrDecl tvs (RecordDecl p evs c fs) = do
   evs' <- checkTypeLhs evs
-  fs'  <- mapM (\ (i, ty) -> (i, checkClosedType (evs' ++ tvs) ty)) fs
+  fs'  <- mapM (checkFieldDecl (evs' ++ tvs)) fs
   return $ RecordDecl p evs' c fs'
+
+checkFieldDecl :: [Ident] -> FieldDecl -> KCM FieldDecl
+checkFieldDecl tvs (FieldDecl p ls ty) =
+  FieldDecl p ls <$> checkClosedType tvs ty
 
 checkNewConstrDecl :: [Ident] -> NewConstrDecl -> KCM NewConstrDecl
 checkNewConstrDecl tvs (NewConstrDecl p evs c ty) = do
   evs' <- checkTypeLhs evs
   ty'  <- checkClosedType (evs' ++ tvs) ty
   return $ NewConstrDecl p evs' c ty'
--- jrt: Added for support of Haskell's record syntax
-checkNewConstrDecl tvs (NewRecordDecl p evs c (i, ty))
+checkNewConstrDecl tvs (NewRecordDecl p evs c (l, ty))
   evs' <- checkTypeLhs evs
   ty'  <- checkClosedType (evs' ++ tvs) ty
-  return $ NewRecordDecl p evs' c (i, ty')
+  return $ NewRecordDecl p evs' c (l, ty')
 
 -- |Check the left-hand-side of a type declaration for
 -- * Anonymous type variables are allowed
@@ -194,6 +196,9 @@ checkExpr v@(Variable        _) = return v
 checkExpr c@(Constructor     _) = return c
 checkExpr (Paren             e) = Paren <$> checkExpr e
 checkExpr (Typed          e ty) = Typed <$> checkExpr e <*> checkType ty
+checkExpr (Record         c fs) = Record c <$> mapM checkFieldExpr fs
+checkExpr (RecordUpdate   e fs) = RecordUpdate <$> checkExpr e
+                                               <*> mapM checkFieldExpr fs
 checkExpr (Tuple          p es) = Tuple p <$> mapM checkExpr es
 checkExpr (List           p es) = List  p <$> mapM checkExpr es
 checkExpr (ListCompr    p e qs) = ListCompr p <$> checkExpr e 
@@ -216,14 +221,6 @@ checkExpr (IfThenElse r e1 e2 e3) = IfThenElse r <$> checkExpr e1
                                      <*> checkExpr e2 <*> checkExpr e3
 checkExpr (Case    r ct e alts) = Case r ct <$> checkExpr e 
                                             <*> mapM checkAlt alts
-checkExpr (RecordConstr     fs) = RecordConstr <$> mapM checkFieldExpr fs
-checkExpr (RecordSelection e l) = flip RecordSelection l <$> checkExpr e
-checkExpr (RecordUpdate   fs e) = RecordUpdate <$> mapM checkFieldExpr fs 
-                                               <*> checkExpr e
--- jrt: Added for support of Haskell's record syntax
-checkExpr (HsRecordConstr c fs) = HsRecordConstr c <$> mapM checkFieldExpr fs
-checkExpr (HsRecordUpdate e fs) = HsRecordUpdate <$> checkExpr e
-                                                 <*> mapM checkFieldExpr fs
 
 checkStmt :: Statement -> KCM Statement
 checkStmt (StmtExpr   p e) = StmtExpr p   <$> checkExpr e
@@ -271,10 +268,6 @@ checkType v@(VariableType tv)
 checkType (TupleType     tys) = TupleType  <$> mapM checkType tys
 checkType (ListType       ty) = ListType   <$> checkType ty
 checkType (ArrowType ty1 ty2) = ArrowType  <$> checkType ty1 <*> checkType ty2
-checkType (RecordType     fs) = RecordType <$> mapM checkLabelType fs
-  where checkLabelType (l, ty) = do
-          ty' <- checkType ty
-          return (l, ty')
 
 checkClosed :: [Ident] -> TypeExpr -> KCM ()
 checkClosed tvs (ConstructorType _ tys) = mapM_ (checkClosed tvs) tys
@@ -283,7 +276,6 @@ checkClosed tvs (VariableType       tv) = do
 checkClosed tvs (TupleType         tys) = mapM_ (checkClosed tvs) tys
 checkClosed tvs (ListType           ty) = checkClosed tvs ty
 checkClosed tvs (ArrowType     ty1 ty2) = mapM_ (checkClosed tvs) [ty1, ty2]
-checkClosed tvs (RecordType         fs) = mapM_ (checkClosed tvs . snd) fs
 
 -- ---------------------------------------------------------------------------
 -- Auxiliary definitions
