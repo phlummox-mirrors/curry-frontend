@@ -496,7 +496,7 @@ isExportedIDecl exprts (CS.IDataDecl _ qid _ _)
   = isExportedQualIdent qid exprts
 isExportedIDecl exprts (CS.ITypeDecl _ qid _ _)
   = isExportedQualIdent qid exprts
-isExportedIDecl exprts (CS.IFunctionDecl _ qid _ _)
+isExportedIDecl exprts (CS.IFunctionDecl _ qid _ _ _)
   = isExportedQualIdent qid exprts
 isExportedIDecl _ _ = False
 

@@ -78,20 +78,20 @@ import Transformations
 -- declaration to the module.
 compileModule :: Options -> FilePath -> CYIO ()
 compileModule opts fn = do
-  (env, mdl, tcExportEnv, tcExportMdl) <- loadModule opts fn >>= checkModule opts
+  ((env, mdl), (tcExportEnv, tcExportMdl)) <- loadModule opts fn >>= checkModule opts
   liftIO $ writeOutput opts fn (env, mdl) (tcExportEnv, tcExportMdl)
 
 loadAndCheckModule :: Options -> FilePath -> CYIO (CompEnv CS.Module)
 loadAndCheckModule opts fn = do
-  (env, mdl, _, _) <- loadModule opts fn >>= checkModule opts
-  warn (optWarnOpts opts) $ warnCheck opts env mdl
+  ((env, mdl), _) <- loadModule opts fn >>= checkModule opts
+  warn (optWarnOpts opts) $ warnCheck opts (env, mdl)
   return (env, mdl)
 
 -- ---------------------------------------------------------------------------
 -- Loading a module
 -- ---------------------------------------------------------------------------
 
-loadModule :: Options -> FilePath -> CYIO (CompEnv CS.Module, CompilerEnv CS.Module)
+loadModule :: Options -> FilePath -> CYIO (CompilerEnv, CompilerEnv, CS.Module)
 loadModule opts fn = do
   parsed <- parseModule opts fn
   -- check module header
@@ -105,7 +105,7 @@ loadModule opts fn = do
   -- add information of imported modules
   env    <- importModules False opts mdl iEnv
   envtc  <- importModules True opts mdl iEnvTc
-  return ((env, mdl), (envtc, mdl))
+  return (env, envtc, mdl)
 
 parseModule :: Options -> FilePath -> CYIO CS.Module
 parseModule opts fn = do
@@ -199,31 +199,35 @@ checkInterfaces opts iEnv = mapM_ checkInterface (Map.elems iEnv)
 checkModule :: Options -> (CompilerEnv, CompilerEnv, CS.Module)
             -> CYIO (CompEnv CS.Module, CompEnv CS.Module)
 checkModule opts (envNonTc, envTc, mdl) = do
-  _ <- dumpCS DumpParsed mdl
+  _ <- dumpCS DumpParsed (envTc,mdl)
+  _ <- dumpCS DumpParsed (envNonTc,mdl)
   -- Should be separated into kind checking and type syntax checking (see MCC)
-  (env1,  kc) <- kindCheck opts envTc mdl      >>= dumpCS DumpExportChecked
-  (env2,  sc) <- syntaxCheck opts env1 kc      >>= dumpCS DumpSyntaxChecked
-  (env3,  pc) <- precCheck opts env2 sc        >>= dumpCS DumpPrecChecked
-  (env4, tcc) <- typeClassesCheck opts env3 pc >>= dumpCS DumpTypeClassesChecked
+  (env1,  kc) <- kindCheck opts   (envTc, mdl) >>= dumpCS DumpExportChecked
+  (env2,  sc) <- syntaxCheck opts (env1, kc)   >>= dumpCS DumpSyntaxChecked
+  (env3,  pc) <- precCheck opts   (env2, sc)   >>= dumpCS DumpPrecChecked
+  (env4, tcc) <- typeClassesCheck opts (env3, pc)
+                   >>= dumpCS DumpTypeClassesChecked
   (env5,  tc) <- if withTypeCheck
-                 then typeCheck False opts env4 tcc >>= dumpCS DumpTypeChecked
+                 then typeCheck False opts (env4, tcc)
+                        >>= dumpCS DumpTypeChecked
                  else return (env4, tcc)
   -- Run an export check here for exporting type class specific elements. As
   -- these are compiled out later, we already here have to set aside the
   -- export checked module and the environment 
   (envEc1,   ec1) <- if withTypeCheck 
-                     then exportCheck opts env5 tc >>= dumpCS DumpExportChecked
+                     then exportCheck opts (env5, tc) >>= dumpCS DumpExportChecked
                      else return (env5, tc)
-  (ec1',envEc1') <- if withTypeCheck
-                     then return $ qual opts envEc1 ec1
-                     else return (ec1, envEc1)
+  (envEc1', ec1') <- if withTypeCheck
+                     then return $ qual opts (envEc1, ec1)
+                     else return (envEc1,ec1)
   -- Continue with the compile process
   (env5b,  dicts) <- if withTypeCheck
-                     then insertDicts opts env5 tc
+                     then insertDicts opts (env5, tc)
                      else return (env5, tc)
-  let (env5c, dicts') = if withTypeCheck
-                        then typeSigs env5b dicts >>= dumpCS DumpDictionaries
-                        else (env5b, dicts)
+  (env5c, dicts') <- if withTypeCheck
+                        then return (typeSigs env5b dicts)
+                              >>= dumpCS DumpDictionaries
+                        else return (env5b, dicts)
   (env5e, tc2) <- if withTypeCheck
                     -- Take the older environment env4 instead of env5c;
                     -- moreover, replace the value/type constructor environments with the 
@@ -231,14 +235,15 @@ checkModule opts (envNonTc, envTc, mdl) = do
                     -- type class elements (dictionaries, types, selection 
                     -- methods) that are exported from other modules
                     then typeCheck True opts
-                           env4 { valueEnv = valueEnv envNonTc, 
-                                  tyConsEnv = tyConsEnv envNonTc,
-                                  interfaceEnv = interfaceEnv envNonTc } 
-                           dicts' >>= dumpCS DumpTypeChecked2
+                           ( env4 { valueEnv = valueEnv envNonTc, 
+                                    tyConsEnv = tyConsEnv envNonTc,
+                                    interfaceEnv = interfaceEnv envNonTc } 
+                           , dicts') >>= dumpCS DumpTypeChecked2
                     else return (env5c, dicts')
   (env6,  ec2) <- if withTypeCheck
-                  then exportCheck opts env5e tc2 >>= dumpCS DumpExportChecked
+                  then exportCheck opts (env5e,tc2) >>= dumpCS DumpExportChecked
                   else return (env5e, tc2)
+  return ((env6, ec2), (envEc1', ec1'))
  where
   dumpCS = dumpWith opts CS.ppModule
   withTypeCheck = any (`elem` optTargetTypes opts)
@@ -269,9 +274,9 @@ transModule opts mdl = do
 
 writeOutput :: Options -> FilePath -> CompEnv CS.Module
             -> CompEnv CS.Module -> IO ()
-writeOutput opts fn (env, modul) (tcExportEnv, tcExportModule) = do
-  writeParsed opts fn modul
-  (env1, qlfd) <- dumpWith opts CS.ppModule DumpQualified $ qual opts mdl
+writeOutput opts fn cEnv@(_, mdl) (tcExportEnv, tcExportModule) = do
+  writeParsed opts fn mdl
+  (env1, qlfd) <- dumpWith opts CS.ppModule DumpQualified $ qual opts cEnv
   writeAbstractCurry opts fn env1 qlfd
   when withFlat $ do
     (env2, il) <- transModule opts (env1, qlfd)

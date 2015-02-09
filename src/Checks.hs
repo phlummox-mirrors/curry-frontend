@@ -78,7 +78,7 @@ precCheck _ (env, Module ps m es is ds)
 -- Parts of the syntax tree are annotated by their type; the type constructor
 -- and value environments are updated.
 typeCheck :: Monad m => Bool -> Check m Module
-typeCheck run opts env (Module recFlag m es is ds)
+typeCheck run opts (env,Module recFlag m es is ds)
   | null msgs = ok (env { tyConsEnv = tcEnv', valueEnv = tyEnv' }
                    , Module recFlag m es is newDecls)
   | otherwise = failMessages msgs
@@ -97,25 +97,30 @@ exportCheck _ (env, Module ps m es is ds)
                                      (classEnv env) es
 
 -- |Check for warnings.
-warnCheck :: Options -> CompilerEnv -> Module -> [Message]
-warnCheck opts env mdl = WC.warnCheck (optWarnOpts opts) (aliasEnv env)
-  (valueEnv env) (tyConsEnv env) mdl
+warnCheck :: Options -> CompEnv Module -> [Message]
+warnCheck opts (env,mdl) = WC.warnCheck (optWarnOpts opts)
+                                        (aliasEnv env)
+                                        (valueEnv env)
+                                        (tyConsEnv env)
+                                        mdl
+
 -- |Check the type classes
 -- Changes the classes environment and removes class and instance declarations, 
 -- furthermore adds new code for them
 typeClassesCheck :: Monad m => Check m Module
-typeClassesCheck opts env (Module recFlag m es is ds) 
+typeClassesCheck opts (env,Module recFlag m es is ds)
   | null msgs = ok (env {classEnv = clsEnv}, Module recFlag m es is decls') 
   | otherwise = failMessages msgs
-  where (decls', clsEnv, msgs) = TCC.typeClassesCheck m opts ds 
+ where
+  (decls', clsEnv, msgs) = TCC.typeClassesCheck m opts ds 
            (classEnv env) (tyConsEnv env) (opPrecEnv env)
 
 -- |Insert dictionaries where necessary. This is actually not a check, but a
 -- transformation - but as it can produce errors, it is treated as a check  
 insertDicts :: Monad m => Check m Module
-insertDicts opts cEnv m 
-  | null msgs = ok (cEnv, m')
+insertDicts opts (cEnv,mdl) 
+  | null msgs = ok (cEnv, mdl')
   | otherwise = failMessages msgs
-  where (m', msgs) = DI.insertDicts m cEnv opts
+  where (mdl', msgs) = DI.insertDicts mdl cEnv opts
   
 

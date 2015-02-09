@@ -242,11 +242,11 @@ bindLocal = bindNestEnv
 
 -- |Bind type constructor information
 bindTypeDecl :: Decl -> SCM ()
-bindTypeDecl (DataDecl    _ _ _              cs) = mapM_ bindConstr cs
-bindTypeDecl (NewtypeDecl _ _ _              nc) = bindNewConstr nc
-bindTypeDecl (TypeDecl    _ t _ (RecordType fs)) = bindRecordLabels t
-                                                   (concatMap fst fs)
-bindTypeDecl _                                   = return ()
+bindTypeDecl (DataDecl    _ _ _              cs _) = mapM_ bindConstr cs
+bindTypeDecl (NewtypeDecl _ _ _              nc _) = bindNewConstr nc
+bindTypeDecl (TypeDecl    _ t _ (RecordType fs)  ) =
+ bindRecordLabels t (concatMap fst fs)
+bindTypeDecl _                                     = return ()
 
 bindConstr :: ConstrDecl -> SCM ()
 bindConstr (ConstrDecl _ _ c tys) = do
@@ -267,10 +267,11 @@ bindNewConstr (NewConstrDecl _ _ c _) = do
 bindRecordLabels :: Ident -> [Ident] -> SCM ()
 bindRecordLabels t labels = do
   m <- getModuleIdent
+  tcc <- tcCheck
   forM_ labels $ \l -> do
     new <- (null . lookupVar l) `liftM` getRenameEnv
     unless new $ report $ errDuplicateDefinition l
-    modifyRenameEnv $ bindGlobal m l (RecordLabel (qualifyWith m t) labels)
+    modifyRenameEnv $ bindGlobal tcc m l (RecordLabel (qualifyWith m t) labels)
 
 -- ------------------------------------------------------------------------------
 
@@ -422,12 +423,12 @@ checkTopDecls ds = do
   m <- getModuleIdent
   tcc <- tcCheck
   -- check that there are no class methods redefinitions on top level 
-  let vs = concatMap vars decls
+  let vs = concatMap vars ds
   cms <- getClassMethods
   let intersection = intersect cms vs
   case null intersection of
-    True -> checkDeclGroup (bindFuncDecl tcc m) decls
-    False -> report (errRedefiningClassMethods intersection) >> return decls  
+    True -> checkDeclGroup (bindFuncDecl tcc m) ds
+    False -> report (errRedefiningClassMethods intersection) >> return ds 
 
 -- | returns all class methods from the class environment in the following
 -- form: (The name under which the class containing the methods is imported, 
@@ -991,12 +992,12 @@ checkFieldExpr r (Field p l e) = do
 -- ---------------------------------------------------------------------------
 
 constrs :: Decl -> [Ident]
-constrs (DataDecl    _ _ _ cs                     ) = map constr cs
+constrs (DataDecl    _ _ _ cs _                     ) = map constr cs
   where constr (ConstrDecl   _ _ c _) = c
         constr (ConOpDecl _ _ _ op _) = op
-constrs (NewtypeDecl _ _ _ (NewConstrDecl _ _ c _)) = [c]
-constrs (TypeDecl    _ r _ (RecordType          _)) = [r]
-constrs _                                           = []
+constrs (NewtypeDecl _ _ _ (NewConstrDecl _ _ c _) _) = [c]
+constrs (TypeDecl    _ r _ (RecordType          _))   = [r]
+constrs _                                             = []
 
 vars :: Decl -> [Ident]
 vars (TypeSig     _ _ fs _ _) = fs

@@ -31,7 +31,7 @@ import           Control.Applicative        ((<$>))
 #else
 import           Control.Applicative        ((<$>), (<*>))
 #endif
-import           Control.Monad              (replicateM, unless)
+import           Control.Monad              (replicateM, unless, when)
 import qualified Control.Monad.State as S   (State, execState, gets, modify, runState)
 import           Data.List                  (nub, partition, sortBy, (\\))
 import qualified Data.Map            as Map (Map, delete, empty, insert, lookup)
@@ -911,7 +911,7 @@ cvcExpr (Variable (Just cty) v) = do
 cvcExpr (Variable    Nothing v) = internalError ("no type info for Variable " ++ show v) 
 cvcExpr c@(Constructor       _) = return c
 cvcExpr (Paren               e) = Paren <$> cvcExpr e
-cvcExpr (Typed     cty e cx ty) = Typed cty <$> cvcExpr e <*> return cx <*> return ty)
+cvcExpr (Typed     cty e cx ty) = Typed cty <$> cvcExpr e <*> return cx <*> return ty
 cvcExpr (Tuple         sref es) = Tuple sref <$> mapM cvcExpr es
 cvcExpr (List          sref es) = List sref <$> mapM cvcExpr es
 cvcExpr (ListCompr   sref e ss) = ListCompr sref <$> cvcExpr e <*> mapM cvcStmt ss
@@ -2295,9 +2295,9 @@ sureVarType v tyEnv = case lookupValue v tyEnv of
 
 funType :: ModuleIdent -> QualIdent -> ValueEnv -> TypeScheme
 funType m f tyEnv = case qualLookupValue f tyEnv of
-  [Value _ _ sigma] -> sigma
+  [Value _ _ sigma _] -> sigma
   _                 -> case qualLookupValue (qualQualify m f) tyEnv of
-    [Value _ _ sigma] -> sigma
+    [Value _ _ sigma _] -> sigma
     _                 -> internalError $ "TypeCheck.funType " ++ show f
                           ++ ", more precisely " ++ show (unqualify f)
 
@@ -2691,7 +2691,7 @@ numberRhs (SimpleRhs  p e ds) = SimpleRhs p <$> numberExpr e <*> numberDecls ds
 numberRhs (GuardedRhs ces ds) = GuardedRhs <$> mapM numberCExpr ces <*> numberDecls ds
 
 numberCExpr :: CondExpr -> TCM CondExpr
-numberCExpr (CondExpr p e1 e2) = liftM2 <$> CondExpr p <*>numberExpr e1 <*> numberExpr e2
+numberCExpr (CondExpr p e1 e2) = CondExpr p <$> numberExpr e1 <*> numberExpr e2
 
 numberExpr :: Expression -> TCM Expression
 numberExpr l@(Literal         _) = return l
