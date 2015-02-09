@@ -337,105 +337,6 @@ substPat s (RecordPattern        fs p) = RecordPattern    (map substField fs)
   where substField (Field pos i t) = Field pos i (substPat s t)
 
 -- -----------------------------------------------------------------------------
--- Desugaring of functional patterns
--- -----------------------------------------------------------------------------
-
--- Desugaring of functional patterns works in the following way:
---  1. The patterns are recursively traversed from left to right
---     to extract every functional pattern (note that functional patterns
---     can not be nested).
---     Each pattern is replaced by a fresh variable and a pair
---     (variable, functional pattern) is generated.
---  2. The variable-pattern pairs of the form @(v, p)@ are collected and
---     transformed into additional constraints of the form @p =:<= v@,
---     where the pattern @p@ is converted to the corresponding expression.
---     In addition, any variable occurring in @p@ is declared as a fresh
---     free variable.
---     Multiple constraints will later be combined using the @&>@-operator
---     such that the patterns are evaluated from left to right.
-
-dsFunctionalPatterns :: Position -> [Pattern]
-                     -> DsM ([Decl], [Expression], [Pattern])
-dsFunctionalPatterns p ts = do
-  -- extract functional patterns
-  (bs, ts') <- mapAccumM elimFP [] ts
-  -- generate declarations of free variables and constraints
-  let (ds, cs) = genFPExpr p (bv ts') (reverse bs)
-  -- return (declarations, constraints, desugared patterns)
-  return (ds, cs, ts')
-
-type LazyBinding = (Pattern, Ident)
-
-elimFP :: [LazyBinding] -> Pattern -> DsM ([LazyBinding], Pattern)
-elimFP bs p@(LiteralPattern        _) = return (bs, p)
-elimFP bs p@(NegativePattern     _ _) = return (bs, p)
-elimFP bs p@(VariablePattern       _) = return (bs, p)
-elimFP bs (ConstructorPattern   c ts) = second (ConstructorPattern c)
-                                        <$> mapAccumM elimFP bs ts
-elimFP bs (InfixPattern     t1 op t2) = do
-  (bs1, t1') <- elimFP bs  t1
-  (bs2, t2') <- elimFP bs1 t2
-  return (bs2, InfixPattern t1' op t2')
-elimFP bs (ParenPattern            t) = second ParenPattern <$> elimFP bs t
-elimFP bs (TuplePattern       pos ts) = second (TuplePattern pos)
-                                        <$> mapAccumM elimFP bs ts
-elimFP bs (ListPattern        pos ts) = second (ListPattern pos)
-                                        <$> mapAccumM elimFP bs ts
-elimFP bs (AsPattern             v t) = second (AsPattern v) <$> elimFP bs t
-elimFP bs (LazyPattern           r t) = second (LazyPattern r) <$> elimFP bs t
-elimFP bs p@(FunctionPattern     _ _) = do
- v <- freshMonoTypeVar "_#funpatt" p
- return ((p, v) : bs, VariablePattern v)
-elimFP bs p@(InfixFuncPattern  _ _ _) = do
- v <- freshMonoTypeVar "_#funpatt" p
- return ((p, v) : bs, VariablePattern v)
-elimFP bs (RecordPattern        fs r) = second (flip RecordPattern r)
-                                        <$> mapAccumM elimField bs fs
-  where elimField b (Field p i t) = second (Field p i) <$> elimFP b t
-
-genFPExpr :: Position -> [Ident] -> [LazyBinding] -> ([Decl], [Expression])
-genFPExpr p vs bs
-  | null bs   = ([]               , [])
-  | null free = ([]               , cs)
-  | otherwise = ([FreeDecl p free], cs)
-  where
-  mkLB (t, v) = let (t', es) = fp2Expr t
-                in  (t' =:<= mkVar v) : es
-  cs       = concatMap mkLB bs
-  free     = nub $ filter (not . isAnonId) $ bv (map fst bs) \\ vs
-
-fp2Expr :: Pattern -> (Expression, [Expression])
-fp2Expr (LiteralPattern          l) = (Literal l, [])
-fp2Expr (NegativePattern       _ l) = (Literal (negateLiteral l), [])
-fp2Expr (VariablePattern         v) = (mkVar v, [])
-fp2Expr (ConstructorPattern   c ts) =
-  let (ts', ess) = unzip $ map fp2Expr ts
-  in  (apply (Constructor c) ts', concat ess)
-fp2Expr (InfixPattern     t1 op t2) =
-  let (t1', es1) = fp2Expr t1
-      (t2', es2) = fp2Expr t2
-  in  (InfixApply t1' (InfixConstr op) t2', es1 ++ es2)
-fp2Expr (ParenPattern            t) = first Paren (fp2Expr t)
-fp2Expr (TuplePattern         r ts) =
-  let (ts', ess) = unzip $ map fp2Expr ts
-  in  (Tuple r ts', concat ess)
-fp2Expr (ListPattern         rs ts) =
-  let (ts', ess) = unzip $ map fp2Expr ts
-  in  (List rs ts', concat ess)
-fp2Expr (FunctionPattern      f ts) =
-  let (ts', ess) = unzip $ map fp2Expr ts
-  in  (apply (Variable f) ts', concat ess)
-fp2Expr (InfixFuncPattern t1 op t2) =
-  let (t1', es1) = fp2Expr t1
-      (t2', es2) = fp2Expr t2
-  in  (InfixApply t1' (InfixOp op) t2', es1 ++ es2)
-fp2Expr (AsPattern             v t) =
-  let (t', es) = fp2Expr t
-  in  (mkVar v, (t' =:<= mkVar v):es)
-fp2Expr t                           = internalError $
-  "Desugar.fp2Expr: Unexpected constructor term: " ++ show t
-
--- -----------------------------------------------------------------------------
 -- Desugaring of remaining patterns
 -- -----------------------------------------------------------------------------
 
@@ -606,7 +507,11 @@ dsExpr p (EnumFromThenTo _cty e1 e2 e3) =
   apply prelEnumFromThenTo <$> mapM (dsExpr p) [e1, e2, e3]
 dsExpr p (UnaryMinus _cty op e) = do
   ty <- getTypeOf e
-  Apply (unaryMinus op ty) <$> dsExpr p e
+  e' <- dsExpr p e
+  negativeLitsEnabled <- checkNegativeLitsExtension
+  return $ case e' of
+    Literal l | negativeLitsEnabled -> Literal $ negateLiteral l
+    _                               -> Apply (unaryMinus op ty) e'
  where
   unaryMinus op1 ty'
     | op1 ==  minusId = if ty' == floatType then prelNegateFloat else prelNegate
@@ -731,15 +636,33 @@ isCompatible (LiteralPattern         l1) (LiteralPattern         l2)
         canon l         = l
 isCompatible _                    _                  = False
 
--- The frontend provides several extensions of the Curry functionality, which
--- have to be desugared as well. This part transforms the following extensions:
--- * functional patterns
--- * records
+-- -----------------------------------------------------------------------------
+-- Desugaring of functional patterns
+-- -----------------------------------------------------------------------------
 
-dsFunctionalPatterns :: Position -> [Pattern] -> DsM ([Decl], [Expression], [Pattern])
+-- Desugaring of functional patterns works in the following way:
+--  1. The patterns are recursively traversed from left to right
+--     to extract every functional pattern (note that functional patterns
+--     can not be nested).
+--     Each pattern is replaced by a fresh variable and a pair
+--     (variable, functional pattern) is generated.
+--  2. The variable-pattern pairs of the form @(v, p)@ are collected and
+--     transformed into additional constraints of the form @p =:<= v@,
+--     where the pattern @p@ is converted to the corresponding expression.
+--     In addition, any variable occurring in @p@ is declared as a fresh
+--     free variable.
+--     Multiple constraints will later be combined using the @&>@-operator
+--     such that the patterns are evaluated from left to right.
+
+dsFunctionalPatterns :: Position
+                     -> [Pattern]
+                     -> DsM ([Decl], [Expression], [Pattern])
 dsFunctionalPatterns p ts = do
+  -- extract functional patterns
   (bs, ts') <- mapAccumM elimFP [] ts
+  -- generate declarations of free variables and constraints
   let (ds, cs) = genFPExpr p (bv ts') (reverse bs)
+  -- return (declarations, constraints, desugared patterns)
   return (ds, cs, ts')
 
 type LazyBinding = (Pattern, Ident)
@@ -748,30 +671,32 @@ elimFP :: [LazyBinding] -> Pattern -> DsM ([LazyBinding], Pattern)
 elimFP bs p@(LiteralPattern        _) = return (bs, p)
 elimFP bs p@(NegativePattern     _ _) = return (bs, p)
 elimFP bs p@(VariablePattern       _) = return (bs, p)
-elimFP bs (ConstructorPattern   c ts)
-  = second (ConstructorPattern c) `liftM` mapAccumM elimFP bs ts
+elimFP bs (ConstructorPattern   c ts) =
+  second (ConstructorPattern c) <$> mapAccumM elimFP bs ts
 elimFP bs (InfixPattern     t1 op t2) = do
-  (bs', [t1',t2']) <- mapAccumM elimFP bs [t1,t2]
-  return (bs', InfixPattern t1' op t2')
-elimFP bs (ParenPattern            t)
- = second ParenPattern `liftM` elimFP bs t
-elimFP bs (TuplePattern       pos ts)
-  = second (TuplePattern pos) `liftM` mapAccumM elimFP bs ts
-elimFP bs (ListPattern        pos ts)
-  = second (ListPattern pos) `liftM` mapAccumM elimFP bs ts
-elimFP bs (AsPattern             v t)
- = second (AsPattern v) `liftM` elimFP bs t
-elimFP bs (LazyPattern           r t)
- = second (LazyPattern r) `liftM` elimFP bs t
+  (bs1, t1') <- elimFP bs t1
+  (bs2, t2') <- elimFP bs t2
+  return (bs1 ++ bs2, InfixPattern t1' op t2')
+elimFP bs (ParenPattern            t) =
+  second ParenPattern <$> elimFP bs t
+elimFP bs (TuplePattern       pos ts) =
+  second (TuplePattern pos) <$> mapAccumM elimFP bs ts
+elimFP bs (ListPattern        pos ts) =
+  second (ListPattern pos) <$> mapAccumM elimFP bs ts
+elimFP bs (AsPattern             v t) =
+  second (AsPattern v) <$> elimFP bs t
+elimFP bs (LazyPattern           r t) =
+  second (LazyPattern r) <$> elimFP bs t
 elimFP bs p@(FunctionPattern     _ _) = do
- v <- freshMonoTypeVar "_#funpatt" p
- return ((p, v) : bs, VariablePattern v)
+  v <- freshMonoTypeVar "_#funpatt" p
+  return ((p, v) : bs, VariablePattern v)
 elimFP bs p@(InfixFuncPattern  _ _ _) = do
- v <- freshMonoTypeVar "_#funpatt" p
- return ((p, v) : bs, VariablePattern v)
+  v <- freshMonoTypeVar "_#funpatt" p
+  return ((p, v) : bs, VariablePattern v)
 elimFP bs (RecordPattern        fs r) = do
-  second (flip RecordPattern r) `liftM` mapAccumM elimField bs fs
-  where elimField b (Field p i t) = second (Field p i) `liftM` elimFP b t
+  second (flip RecordPattern r) <$> mapAccumM elimField bs fs
+ where
+  elimField b (Field p i t) = second (Field p i) <$> elimFP b t
 
 genFPExpr :: Position -> [Ident] -> [LazyBinding] -> ([Decl], [Expression])
 genFPExpr p vs bs

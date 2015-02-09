@@ -173,7 +173,7 @@ simEquation env (Equation p lhs rhs) = do
   return $ inlineFun m tyEnv p lhs rhs'
 
 inlineFun :: ModuleIdent -> ValueEnv -> Position -> Lhs -> Rhs -> [Equation]
-inlineFun m tyEnv p (FunLhs f ts) (SimpleRhs _ (Let [FunctionDecl _ f' eqs'] e) _)
+inlineFun m tyEnv p (FunLhs f ts) (SimpleRhs _ (Let [FunctionDecl _ _ _ f' eqs'] e) _)
 -- TODO: understand this
   | True -- False -- inlining of functions is deactivated (hsi)
    && f' `notElem` qfv m eqs' && e' == Variable Nothing (qualify f') &&
@@ -183,7 +183,7 @@ inlineFun m tyEnv p (FunLhs f ts) (SimpleRhs _ (Let [FunctionDecl _ f' eqs'] e) 
   where
   (n,vs',ts',e') = etaReduce 0 [] (reverse ts) e
 
-  etaReduce n1 vs (VariablePattern v : ts1) (Apply e1 (Variable v'))
+  etaReduce n1 vs (VariablePattern v : ts1) (Apply e1 (Variable _ v'))
     | qualify v == v' = etaReduce (n1 + 1) (v:vs) ts1 e1
   etaReduce n1 vs ts1 e1 = (n1,vs,reverse ts1,e1)
 
@@ -215,7 +215,7 @@ simRhs _   (GuardedRhs  _ _) = error "Simplify.simRhs: guarded rhs"
 simExpr :: InlineEnv -> Expression -> SIM Expression
 simExpr _   l@(Literal     _) = return l
 simExpr _   c@(Constructor _) = return c
-simExpr env v@(Variable    x)
+simExpr env v@(Variable  _ x)
   | isQualified x = return v
   | otherwise     = maybe (return v) (simExpr env) (Map.lookup (unqualify x) env)
 simExpr env (Apply     e1 e2) = case e1 of
@@ -227,13 +227,15 @@ simExpr env (Apply     e1 e2) = case e1 of
   applyToRhs e (SimpleRhs p e1' _) = SimpleRhs p (Apply e1' e) []
   applyToRhs _ (GuardedRhs    _ _) = error "Simplify.simExpr.applyRhs: Guarded rhs"
 simExpr env (Let        ds e) = do
-  m    <- getModuleIdent
-  dss' <- mapM sharePatternRhs ds
+  m     <- getModuleIdent
+  tyEnv <- getValueEnv
+  dss'  <- mapM (sharePatternRhs tyEnv) ds
   simplifyLet env (scc bv (qfv m) (foldr hoistDecls [] (concat dss'))) e
 simExpr env (Case  r ct e bs) = Case r ct     <$> simExpr env e
                                               <*> mapM (simplifyAlt env) bs
-simExpr env (Typed      e ty) = flip Typed ty <$> simExpr env e
-simExpr _   _                 = error "Simplify.simExpr: no pattern match"
+simExpr env (Typed cty e cx ty) =
+  Typed cty <$> simExpr env e <*> return cx <*> return ty
+simExpr _   _                   = error "Simplify.simExpr: no pattern match"
 
 simplifyAlt :: InlineEnv -> Alt -> SIM Alt
 simplifyAlt env (Alt p t rhs) = Alt p t <$> simRhs env rhs
@@ -275,15 +277,18 @@ simplifyLet env (ds:dss) e = do
   return $ foldr (mkLet m) e' (scc bv (qfv m) ds'')
 
 inlineVars :: [Decl] -> InlineEnv -> SIM InlineEnv
-inlineVars ds env = return $ case ds of
-   [PatternDecl _ (VariablePattern v) (SimpleRhs _ e _)]
-     | canInlineVar v e -> Map.insert v e env
-   _ -> env
-  where
-  canInlineVar _ (Literal     _) = True
-  canInlineVar _ (Constructor _) = getFunArity v' > 0
-    | otherwise                  = v /= unqualify v'
-  canInlineVar _ _               = False
+inlineVars ds env = case ds of
+  [PatternDecl _ _ _ (VariablePattern v) (SimpleRhs _ e _)] -> do
+    allowed <- canInlineVar v e
+    return $ if allowed then Map.insert v e env else env
+  _ -> return env
+ where
+  canInlineVar _ (Literal     _) = return True
+  canInlineVar _ (Constructor _) = return True
+  canInlineVar v (Variable _ v')
+    | isQualified v'             = (> 0) <$> getFunArity v'
+    | otherwise                  = return $ v /= unqualify v'
+  canInlineVar _ _               = return False
 
 mkLet :: ModuleIdent -> [Decl] -> Expression -> Expression
 mkLet m [FreeDecl p vs] e
@@ -368,7 +373,9 @@ mkLet m ds e
 -- this does not change the generated code, but only the types of the
 -- selector functions.
 
-<<<<<<< HEAD
+-- Transform a pattern declaration @t = e@ into two declarations
+-- @t = v, v = e@ whenever @t@ is not a variable. This is used to share
+-- the expression @e@.
 sharePatternRhs :: ValueEnv -> Decl -> SIM [Decl]
 sharePatternRhs tyEnv (PatternDecl p _ _ t rhs) = case t of
   VariablePattern _ -> return [PatternDecl p Nothing (-1) t rhs]
@@ -382,29 +389,15 @@ sharePatternRhs tyEnv (PatternDecl p _ _ t rhs) = case t of
   where patternId n = mkIdent ("_#pat" ++ show n)
 sharePatternRhs _ d = return [d]
 
--- Transform a pattern declaration @t = e@ into two declarations
--- @t = v, v = e@ whenever @t@ is not a variable. This is used to share
--- the expression @e@.
-sharePatternRhs :: Decl -> SIM [Decl]
-sharePatternRhs (PatternDecl p t rhs) = case t of
-  VariablePattern _ -> return [PatternDecl p t rhs]
-  _                 -> do
-    ty <- monoType <$> getTypeOf t
-    v  <- addRefId (srcRefOf p) <$> freshIdent patternId ty
-    return [ PatternDecl p t                   (SimpleRhs p (mkVar v) [])
-           , PatternDecl p (VariablePattern v) rhs
-           ]
-  where patternId n = mkIdent ("_#pat" ++ show n)
-sharePatternRhs d                     = return [d]
-
 -- fvs contains all variables used in the declarations and the body
 -- of the let expression.
 expandPatternBindings :: [Ident] -> Decl -> SIM [Decl]
-expandPatternBindings fvs (PatternDecl p t (SimpleRhs p' e _)) = case t of
-  VariablePattern _ -> return [PatternDecl p t (SimpleRhs p' e [])]
-  _                 -> do
-  pty   <- getTypeOf t            -- type of pattern
-  mapM (mkSelectorDecl pty) vs
+expandPatternBindings fvs (PatternDecl p cty id0 t (SimpleRhs p' e _)) =
+  case t of
+    VariablePattern _ -> return [PatternDecl p cty id0 t (SimpleRhs p' e [])]
+    _                 -> do
+      pty   <- getTypeOf t            -- type of pattern
+      mapM (mkSelectorDecl pty) vs
  where
   vs = filter (`elem` fvs) (bv t) -- used variables
   mkSelectorDecl pty v = do
@@ -433,10 +426,10 @@ getFunArity f = do
 
 funType :: ModuleIdent -> ValueEnv -> QualIdent -> Type
 funType m tyEnv f = case qualLookupValue f tyEnv of
-  [Value _ _ (ForAll _ ty)] -> ty
-  _                         -> case qualLookupValue (qualQualify m f) tyEnv of
-    [Value _ _ (ForAll _ ty)] -> ty
-    _                         -> internalError $ "Simplify.funType " ++ show f
+  [Value _ _ (ForAll _ _ ty) _] -> ty
+  _ -> case qualLookupValue (qualQualify m f) tyEnv of
+            [Value _ _ (ForAll _ _ ty) _] -> ty
+            _  -> internalError $ "Simplify.funType " ++ show f
 
 freshIdent :: (Int -> Ident) -> TypeScheme -> SIM Ident
 freshIdent f ty@(ForAll _ _ t) = do
