@@ -162,7 +162,6 @@ Test-Suite TestTypeChecking
      , IL
      , IL.Pretty
      , IL.Type
-     , IL.XML
      , Imports
      , InterfaceEquivalence
      , Interfaces
