@@ -327,14 +327,11 @@ writeFlatIntf opts fn env modSum il
   outputInterface = EF.writeFlatCurry (useSubDir targetFile) intf
 
 writeAbstractCurry :: Options -> FilePath -> CompilerEnv -> CS.Module -> IO ()
-writeAbstractCurry opts fname env modul = do
-  when  acyTarget $ AC.writeCurry (useSubDir $  acyName fname)
-                  $ genAbstractCurry env modul
-  when uacyTarget $ AC.writeCurry (useSubDir $ uacyName fname)
-                  $ genAbstractCurry env modul
+writeAbstractCurry opts fn env mdl = do
+  when acyTarget $ AC.writeCurry (useSubDir $ acyName fn)
+                 $ genAbstractCurry env mdl
   where
   acyTarget  = AbstractCurry        `elem` optTargetTypes opts
-  uacyTarget = UntypedAbstractCurry `elem` optTargetTypes opts
   useSubDir  = addCurrySubdirModule (optUseSubdir opts) (moduleIdent env)
 
 type Dump = (DumpLevel, CompilerEnv, String)
