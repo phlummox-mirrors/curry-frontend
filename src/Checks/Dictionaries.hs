@@ -49,8 +49,8 @@ data DIState = DIState
   , errors        :: [Message]
   }
 
-initState :: ModuleIdent -> ClassEnv -> ValueEnv -> Bool -> DIState
-initState m cEnv vEnv repl = DIState m cEnv vEnv repl []
+initState :: ModuleIdent -> ClassEnv -> ValueEnv -> DIState
+initState m cEnv vEnv = DIState m cEnv vEnv []
 
 runDI :: DI a -> DIState -> (a, [Message])
 runDI comp init0 = let (a, s) = S.runState comp init0 in (a, reverse $ errors s)
@@ -79,13 +79,13 @@ report err = S.modify (\ s -> s { errors = err : errors s })
 insertDicts :: Module -> CompilerEnv -> Options -> (Module, [Message])
 insertDicts mdl'@(Module _ m _ _ _) cEnv opts = 
   runDI (diModule mdl') 
-        (initState m (classEnv cEnv) (valueEnv cEnv) 
+        (initState m (classEnv cEnv) (valueEnv cEnv)) 
 
 -- |convert a whole module
 diModule :: Module -> DI Module
 diModule (Module recFlag m e i ds) =
   Module recFlag m e i `liftM` (mapM (diDecl BT.emptyContext) ds)
-  
+
 -- |convert function declarations
 -- pass context from outer scope
 diDecl :: BT.Context -> Decl -> DI Decl
