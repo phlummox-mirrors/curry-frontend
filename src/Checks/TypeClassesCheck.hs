@@ -88,9 +88,6 @@ typeClassesCheck :: ModuleIdent -> Options -> [Decl] -> ClassEnv -> TCEnv -> OpP
                  -> ([Decl], ClassEnv, [Message])
 typeClassesCheck m opts decls0
     cEnvOrg@(ClassEnv importedClassesEnv importedInstances _ _ _) tcEnv0 opPrecEnv =
-  if (not typeClassExtensions && typeClassElemsUsed decls0)
-  then (decls0, cEnvOrg, [errTypeClassesNotEnabled])
-  else   
   case runTcc tcCheck initTccState of 
     ((newClasses, instances), []) -> 
       let -- add newly generated dictionary types to type constructor environment  
@@ -117,7 +114,6 @@ typeClassesCheck m opts decls0
       in (newDecls, cEnv, [])
     (_, errs@(_:_)) -> (decls, initClassEnv, errs)
   where
-    typeClassExtensions = TypeClassExtensions `elem` optExtensions opts
     decls      = runDer opPrecEnv $ expandDerivingDecls decls0
     classDecls = filter isClassDecl decls
     instDecls  = filter isInstanceDecl decls
@@ -2420,8 +2416,3 @@ errEnumDeriving :: Position -> Ident -> Message
 errEnumDeriving p ty = posMessage p $
   text "Cannot derive Enum instance for type" <+> text (show ty) <>
   text ": Data type must be enumeration"
-
-errTypeClassesNotEnabled :: Message
-errTypeClassesNotEnabled = message $ text "Type classes are not enabled. " $$
-  text "Enable type classes by passing the option \"-X" <+> 
-  text (show TypeClassExtensions) <> text ("\" to the frontend! ")  

@@ -126,7 +126,7 @@ typeCheck m tcEnv tyEnv cEnv opts doContextRed0 sndRun decls =
   vds            = map snd vds'
   sorter (n1, _) (n2, _) = compare n1 n2
   initState      = TcState m tcEnv tyEnv cEnv doContextRed0 idSubst emptySigEnv 
-    0 [] 0 Map.empty sndRun (TypeClassExtensions `elem` optExtensions opts)
+    0 [] 0 Map.empty sndRun
   reduceContexts = if doContextRed0 then reduceContexts' else id
   reduceContexts' (Value qid a (ForAll cx n ty) cls) = 
     Value qid a (ForAll (reduceContext cEnv cx) n ty) cls
@@ -149,7 +149,6 @@ data TcState = TcState
   , declCounter   :: Int
   , declGroups    :: Map.Map [Int] ([Decl], BT.Context)
   , secondRun     :: Bool
-  , typeClassExts :: Bool
   }
 
 type TCM = S.State TcState
@@ -232,9 +231,6 @@ getDeclGroup ds = S.gets (Map.lookup (map getUniqueId ds) . declGroups)
 
 isSecondRun :: TCM Bool
 isSecondRun = S.gets secondRun
-
-typeClassExtensions :: TCM Bool
-typeClassExtensions = S.gets typeClassExts
 
 -- Defining Types:
 -- Before type checking starts, the types defined in the local module
@@ -761,36 +757,31 @@ fpExpr (ListCompr sref e ss) = do
   return (ListCompr sref e' (map fst ssAndCxs), cx ++ concatMap snd ssAndCxs)
 fpExpr (EnumFrom cty@(Just (cx, _ty)) e1) = do
   (e1', cx1) <- fpExpr e1
-  exts       <- typeClassExtensions
   return (EnumFrom cty e1', 
-          cx1 ++ (if exts then mirrorBF cx else []))
+          cx1 ++ mirrorBF cx)
 fpExpr (EnumFrom Nothing _) = internalError "fpExpr EnumFrom"
 fpExpr (EnumFromThen cty@(Just (cx, _ty)) e1 e2) = do
   (e1', cx1) <- fpExpr e1
   (e2', cx2) <- fpExpr e2
-  exts       <- typeClassExtensions
   return (EnumFromThen cty e1' e2', 
-          cx1 ++ cx2 ++ (if exts then mirrorBF cx else []))
+          cx1 ++ cx2 ++ mirrorBF cx)
 fpExpr (EnumFromThen Nothing _ _) = internalError "fpExpr EnumFromThen"
 fpExpr (EnumFromTo cty@(Just (cx, _ty)) e1 e2) = do
   (e1', cx1) <- fpExpr e1
   (e2', cx2) <- fpExpr e2
-  exts       <- typeClassExtensions
   return (EnumFromTo cty e1' e2', 
-          cx1 ++ cx2 ++ (if exts then mirrorBF cx else []))
+          cx1 ++ cx2 ++ mirrorBF cx)
 fpExpr (EnumFromTo Nothing _ _) = internalError "fpExpr EnumFromTo"
 fpExpr (EnumFromThenTo cty@(Just (cx, _ty)) e1 e2 e3) = do
   (e1', cx1) <- fpExpr e1
   (e2', cx2) <- fpExpr e2
   (e3', cx3) <- fpExpr e3
-  exts       <- typeClassExtensions
   return (EnumFromThenTo cty e1' e2' e3', 
-          cx1 ++ cx2 ++ cx3 ++ (if exts then mirrorBF cx else []))
+          cx1 ++ cx2 ++ cx3 ++ mirrorBF cx)
 fpExpr (EnumFromThenTo Nothing _ _ _) = internalError "fpExpr EnumFromThenTo"
 fpExpr (UnaryMinus cty@(Just (cx, _ty)) id0 e) = do
   (e', cx1) <- fpExpr e
-  exts      <- typeClassExtensions
-  return (UnaryMinus cty id0 e', cx1 ++ (if exts then mirrorBF cx else []))
+  return (UnaryMinus cty id0 e', cx1 ++ mirrorBF cx)
 fpExpr (UnaryMinus Nothing _ _) = internalError "fpExpr UnaryMinus"
 fpExpr (Apply e1 e2) = do
   (e1', cx1) <- fpExpr e1
@@ -872,14 +863,10 @@ fpLiteral l@(Int    v _) = do
   let cty = funType m (qualify v) vEnv
   return (l, getContext cty) 
 fpLiteral l@(Float  v _) = do
-  exts <- typeClassExtensions
-  case exts of
-    True  -> do
-      m    <- getModuleIdent
-      vEnv <- getValueEnv
-      let cty = funType m (qualify v) vEnv
-      return (l, getContext cty)
-    False -> return (l, BT.emptyContext) 
+  m    <- getModuleIdent
+  vEnv <- getValueEnv
+  let cty = funType m (qualify v) vEnv
+  return (l, getContext cty)
 fpLiteral l@(Char   _ _) = return (l, BT.emptyContext) 
 fpLiteral l@(String _ _) = return (l, BT.emptyContext)
 
@@ -917,46 +904,31 @@ cvcExpr (List          sref es) = List sref <$> mapM cvcExpr es
 cvcExpr (ListCompr   sref e ss) = ListCompr sref <$> cvcExpr e <*> mapM cvcStmt ss
 cvcExpr (EnumFrom        (Just cty) e1) = do
   e1'  <- cvcExpr e1
-  exts <- typeClassExtensions
-  cty' <- if exts 
-          then adjustType cty tcPreludeEnumFromQIdent
-          else return cty
+  cty' <- adjustType cty tcPreludeEnumFromQIdent
   return $ EnumFrom (Just cty') e1' 
 cvcExpr (EnumFrom            Nothing _) = internalError "cvcExpr EnumFrom"
 cvcExpr (EnumFromThen (Just cty) e1 e2) = do
   e1'  <- cvcExpr e1
   e2'  <- cvcExpr e2
-  exts <- typeClassExtensions
-  cty' <- if exts
-          then adjustType cty tcPreludeEnumFromThenQIdent
-          else return cty
+  cty' <- adjustType cty tcPreludeEnumFromThenQIdent
   return $ EnumFromThen (Just cty') e1' e2'
 cvcExpr (EnumFromThen      Nothing _ _) = internalError "cvcExpr EnumFromThen"
 cvcExpr (EnumFromTo   (Just cty) e1 e2) = do
   e1'  <- cvcExpr e1
   e2'  <- cvcExpr e2
-  exts <- typeClassExtensions
-  cty' <- if exts
-          then adjustType cty tcPreludeEnumFromToQIdent
-          else return cty
+  cty' <- adjustType cty tcPreludeEnumFromToQIdent
   return $ EnumFromTo (Just cty') e1' e2'
 cvcExpr (EnumFromTo        Nothing _ _) = internalError "cvcExpr EnumFromTo"
 cvcExpr (EnumFromThenTo (Just cty) e1 e2 e3) = do
   e1'  <- cvcExpr e1
   e2'  <- cvcExpr e2
   e3'  <- cvcExpr e3
-  exts <- typeClassExtensions
-  cty' <- if exts
-          then adjustType cty tcPreludeEnumFromThenToQIdent
-          else return cty
+  cty' <- adjustType cty tcPreludeEnumFromThenToQIdent
   return $ EnumFromThenTo (Just cty') e1' e2' e3'
 cvcExpr (EnumFromThenTo       Nothing _ _ _) = internalError "cvcExpr EnumFromThenTo"
 cvcExpr (UnaryMinus     (Just cty) i e) = do
   e'   <- cvcExpr e
-  exts <- typeClassExtensions
-  cty' <- if exts
-          then adjustType cty negateQIdent
-          else return cty
+  cty' <- adjustType cty negateQIdent
   return $ UnaryMinus (Just cty') i e'
 cvcExpr (UnaryMinus        Nothing _ _) = internalError "cvcExpr UnaryMinus"
 cvcExpr (Apply         e1 e2) = Apply <$> cvcExpr e1 <*> cvcExpr e2
@@ -1327,31 +1299,19 @@ tcEquation tyEnv0 (Equation p lhs rhs) = do
 tcLiteral :: Literal -> TCM ConstrType
 tcLiteral (Char   _ _) = return (BT.emptyContext, charType)
 tcLiteral (Int    v _) = do --return intType
-  exts <- typeClassExtensions
-  case exts of
-    False -> do 
-      m  <- getModuleIdent
-      ty <- freshConstrained [intType, floatType]
-      modifyValueEnv $ bindFunOnce m v (arrowArity ty) $ monoType ty
-      return (BT.emptyContext, ty)
-    True  -> do
-      sndRun <- isSecondRun
-      m      <- getModuleIdent
-      alpha  <- freshTypeVar
-      let numCx = if sndRun then [] else [(numClsIdent, alpha)]
-      modifyValueEnv $ bindFunOnce m v (arrowArity alpha) $ monoType' (numCx, alpha)
-      return (numCx, alpha) 
+  sndRun <- isSecondRun
+  m      <- getModuleIdent
+  alpha  <- freshTypeVar
+  let numCx = if sndRun then [] else [(numClsIdent, alpha)]
+  modifyValueEnv $ bindFunOnce m v (arrowArity alpha) $ monoType' (numCx, alpha)
+  return (numCx, alpha) 
 tcLiteral (Float  v _) = do
-  exts <- typeClassExtensions
-  case exts of
-    False -> return (BT.emptyContext, floatType)
-    True  -> do
-      sndRun <- isSecondRun
-      m      <- getModuleIdent
-      alpha  <- freshTypeVar
-      let fracCx = if sndRun then [] else [(fractionalClsIdent, alpha)]
-      modifyValueEnv $ bindFunOnce m v (arrowArity alpha) $ monoType' (fracCx, alpha)
-      return (fracCx, alpha)
+  sndRun <- isSecondRun
+  m      <- getModuleIdent
+  alpha  <- freshTypeVar
+  let fracCx = if sndRun then [] else [(fractionalClsIdent, alpha)]
+  modifyValueEnv $ bindFunOnce m v (arrowArity alpha) $ monoType' (fracCx, alpha)
+  return (fracCx, alpha)
 tcLiteral (String _ _) = return (BT.emptyContext, stringType)
 
 tcPattern :: Position -> Pattern -> TCM ConstrType
@@ -1686,116 +1646,67 @@ tcExpr p (ListCompr sref e qs) = do
     return (ListCompr sref e' qs', cty) 
 tcExpr p e@(EnumFrom _ e1) = do
     (e1', cty1@(cx1, _ty1)) <- tcExpr p e1
-    exts <- typeClassExtensions
-    case exts of 
-      False -> do
-        unify p "arithmetic sequence"
-              (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e1) (noContext intType) cty1
-        let cty = (cx1, listType intType)
-        return (EnumFrom (Just $ mirrorFB cty) e1', cty)
-      True  -> do
-        alpha <- freshTypeVar
-        let enumCx = [(enumClsIdent, alpha)]
-        unify p "arithmetic sequence"
-             (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e1) (enumCx, alpha) cty1
-        let enumFromType = TypeArrow alpha (listType alpha)
-        return (EnumFrom (Just $ mirrorFB (cx1 ++ enumCx, enumFromType)) e1',
-                (cx1 ++ enumCx, listType alpha))
+    alpha <- freshTypeVar
+    let enumCx = [(enumClsIdent, alpha)]
+    unify p "arithmetic sequence"
+         (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e1) (enumCx, alpha) cty1
+    let enumFromType = TypeArrow alpha (listType alpha)
+    return (EnumFrom (Just $ mirrorFB (cx1 ++ enumCx, enumFromType)) e1',
+            (cx1 ++ enumCx, listType alpha))
 tcExpr p e@(EnumFromThen _ e1 e2) = do
     (e1', cty1@(cx1, _ty1)) <- tcExpr p e1
     (e2', cty2@(cx2, _ty2)) <- tcExpr p e2
-    exts <- typeClassExtensions
-    case exts of
-      False -> do
-        unify p "arithmetic sequence"
-              (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e1) (noContext intType) cty1
-        unify p "arithmetic sequence"
-              (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e2) (noContext intType) cty2
-        let cty = (cx1 ++ cx2, listType intType)
-        return (EnumFromThen (Just $ mirrorFB cty) e1' e2', cty)
-      True  -> do
-        alpha <- freshTypeVar
-        let enumCx = [(enumClsIdent, alpha)]
-        unify p "arithmetic sequence"
-              (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e1) (enumCx, alpha) cty1
-        unify p "arithmetic sequence"
-              (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e2) (enumCx, alpha) cty2
-        let enumFromThenType = TypeArrow alpha (TypeArrow alpha (listType alpha))
-        return (EnumFromThen
-                   (Just $ mirrorFB (cx1 ++ cx2 ++ enumCx, enumFromThenType))
-                   e1' e2', 
-                (cx1 ++ cx2 ++ enumCx, listType alpha))  
+    alpha <- freshTypeVar
+    let enumCx = [(enumClsIdent, alpha)]
+    unify p "arithmetic sequence"
+          (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e1) (enumCx, alpha) cty1
+    unify p "arithmetic sequence"
+          (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e2) (enumCx, alpha) cty2
+    let enumFromThenType = TypeArrow alpha (TypeArrow alpha (listType alpha))
+    return (EnumFromThen
+               (Just $ mirrorFB (cx1 ++ cx2 ++ enumCx, enumFromThenType))
+               e1' e2', 
+            (cx1 ++ cx2 ++ enumCx, listType alpha))  
 tcExpr p e@(EnumFromTo _ e1 e2) = do
     (e1', cty1@(cx1, _ty1)) <- tcExpr p e1
     (e2', cty2@(cx2, _ty2)) <- tcExpr p e2
-    exts <- typeClassExtensions
-    case exts of
-      False -> do
-        unify p "arithmetic sequence"
-              (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e1) (noContext intType) cty1
-        unify p "arithmetic sequence"
-              (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e2) (noContext intType) cty2
-        let cty = (cx1 ++ cx2, listType intType)
-        return (EnumFromTo (Just $ mirrorFB cty) e1' e2', cty)
-      True  -> do
-        alpha <- freshTypeVar
-        let enumCx = [(enumClsIdent, alpha)]
-        unify p "arithmetic sequence"
-              (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e1) (enumCx, alpha) cty1
-        unify p "arithmetic sequence"
-              (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e2) (enumCx, alpha) cty2
-        let enumFromToType = TypeArrow alpha (TypeArrow alpha (listType alpha))
-        return (EnumFromTo 
-                   (Just $ mirrorFB (cx1 ++ cx2 ++ enumCx, enumFromToType))
-                   e1' e2', 
-                (cx1 ++ cx2 ++ enumCx, listType alpha))
+    alpha <- freshTypeVar
+    let enumCx = [(enumClsIdent, alpha)]
+    unify p "arithmetic sequence"
+          (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e1) (enumCx, alpha) cty1
+    unify p "arithmetic sequence"
+          (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e2) (enumCx, alpha) cty2
+    let enumFromToType = TypeArrow alpha (TypeArrow alpha (listType alpha))
+    return (EnumFromTo 
+               (Just $ mirrorFB (cx1 ++ cx2 ++ enumCx, enumFromToType))
+               e1' e2', 
+            (cx1 ++ cx2 ++ enumCx, listType alpha))
 tcExpr p e@(EnumFromThenTo _ e1 e2 e3) = do
     (e1', cty1@(cx1, _ty1)) <- tcExpr p e1
     (e2', cty2@(cx2, _ty2)) <- tcExpr p e2
     (e3', cty3@(cx3, _ty3)) <- tcExpr p e3
-    exts <- typeClassExtensions
-    case exts of
-      False -> do
-        unify p "arithmetic sequence"
-              (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e1) (noContext intType) cty1
-        unify p "arithmetic sequence"
-              (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e2) (noContext intType) cty2
-        unify p "arithmetic sequence"
-              (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e3) (noContext intType) cty3
-        let cty = (cx1 ++ cx2 ++ cx3, listType intType)
-        return (EnumFromThenTo (Just $ mirrorFB cty) e1' e2' e3', cty)
-      True -> do
-        alpha <- freshTypeVar
-        let enumCx = [(enumClsIdent, alpha)]
-        unify p "arithmetic sequence"
-              (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e1) (enumCx, alpha) cty1
-        unify p "arithmetic sequence"
-              (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e2) (enumCx, alpha) cty2
-        unify p "arithmetic sequence"
-              (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e3) (enumCx, alpha) cty3
-        let enumFromThenToType = TypeArrow alpha (TypeArrow alpha (TypeArrow alpha (listType alpha)))
-        return (EnumFromThenTo
-                   (Just $ mirrorFB (cx1 ++ cx2 ++ cx3 ++ enumCx, enumFromThenToType))
-                   e1' e2' e3',
-                (cx1 ++ cx2 ++ cx3 ++ enumCx, listType alpha))
+    alpha <- freshTypeVar
+    let enumCx = [(enumClsIdent, alpha)]
+    unify p "arithmetic sequence"
+          (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e1) (enumCx, alpha) cty1
+    unify p "arithmetic sequence"
+          (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e2) (enumCx, alpha) cty2
+    unify p "arithmetic sequence"
+          (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e3) (enumCx, alpha) cty3
+    let enumFromThenToType = TypeArrow alpha (TypeArrow alpha (TypeArrow alpha (listType alpha)))
+    return (EnumFromThenTo
+               (Just $ mirrorFB (cx1 ++ cx2 ++ cx3 ++ enumCx, enumFromThenToType))
+               e1' e2' e3',
+            (cx1 ++ cx2 ++ cx3 ++ enumCx, listType alpha))
 tcExpr p e@(UnaryMinus _ op e1) = do
-    exts <- typeClassExtensions
-    case exts of
-      False -> do
-        opTy        <- opType op
-        (e1', cty1) <- tcExpr p e1
-        unify p "unary negation" (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e1)
-              opTy cty1
-        return (UnaryMinus (Just $ mirrorFB cty1) op e1', cty1)
-      True  -> do
-        (e1', cty1@(cx1, _ty1)) <- tcExpr p e1
-        alpha <- freshTypeVar
-        let numCx = [(numClsIdent, alpha)]
-        unify p "unary negation" (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e1)
-          (numCx, alpha) cty1
-        let negateType = TypeArrow alpha alpha
-        return (UnaryMinus (Just $ mirrorFB (cx1 ++ numCx, negateType)) op e1',
-          (cx1 ++ numCx, alpha))
+    (e1', cty1@(cx1, _ty1)) <- tcExpr p e1
+    alpha <- freshTypeVar
+    let numCx = [(numClsIdent, alpha)]
+    unify p "unary negation" (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e1)
+      (numCx, alpha) cty1
+    let negateType = TypeArrow alpha alpha
+    return (UnaryMinus (Just $ mirrorFB (cx1 ++ numCx, negateType)) op e1',
+      (cx1 ++ numCx, alpha))
   where opType op'
           | op' == minusId  = noContext <$> freshConstrained [intType,floatType]
           | op' == fminusId = return $ noContext floatType

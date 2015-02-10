@@ -46,7 +46,6 @@ data DIState = DIState
   { mdl           :: ModuleIdent
   , theClassEnv   :: ClassEnv
   , theValueEnv   :: ValueEnv
-  , typeClassExts :: Bool
   , errors        :: [Message]
   }
 
@@ -65,9 +64,6 @@ getValueEnv = S.gets theValueEnv
 getModuleIdent :: DI ModuleIdent
 getModuleIdent = S.gets mdl
 
-typeClassExtensions :: DI Bool
-typeClassExtensions = S.gets typeClassExts
-
 ok :: DI ()
 ok = return ()
 
@@ -84,7 +80,6 @@ insertDicts :: Module -> CompilerEnv -> Options -> (Module, [Message])
 insertDicts mdl'@(Module _ m _ _ _) cEnv opts = 
   runDI (diModule mdl') 
         (initState m (classEnv cEnv) (valueEnv cEnv) 
-                     (TypeClassExtensions `elem` optExtensions opts))
 
 -- |convert a whole module
 diModule :: Module -> DI Module
@@ -156,11 +151,7 @@ diLhs cx a@(ApLhs     _ _) =
 
 -- | transform expressions
 diExpr :: BT.Context -> Expression -> DI Expression
-diExpr cx e@(Literal l) = do
-  exts <- typeClassExtensions
-  case exts of
-    False -> return e
-    True  -> diLiteral cx l
+diExpr cx e@(Literal l) = diLiteral cx l
 diExpr cx0 v@(Variable (Just varCty0) qid) = do 
   checkForAmbiguousInstances (qidPosition qid) (mirrorBF $ fst varCty0)
   cEnv <- getClassEnv
@@ -214,31 +205,16 @@ diExpr cx (Tuple       sref es) = Tuple sref `liftM` (mapM (diExpr cx) es)
 diExpr cx (List       srefs es) = List srefs `liftM` (mapM (diExpr cx) es)
 diExpr cx (ListCompr sref e ss) = 
   liftM2 (ListCompr sref) (diExpr cx e) (mapM (diStmt cx) ss) 
-diExpr cx (EnumFrom             cty e1) = do
-  exts <- typeClassExtensions
-  case exts of
-    False -> EnumFrom cty `liftM` (diExpr cx e1) 
-    True  -> diExpr cx (Apply (Variable cty tcPreludeEnumFromQIdent) e1)
-diExpr cx (EnumFromThen      cty e1 e2) = do
-  exts <- typeClassExtensions
-  case exts of
-    False -> liftM2 (EnumFromThen cty) (diExpr cx e1) (diExpr cx e2)
-    True  -> diExpr cx (Apply (Apply (Variable cty tcPreludeEnumFromThenQIdent) e1) e2)
-diExpr cx (EnumFromTo        cty e1 e2) = do
-  exts <- typeClassExtensions
-  case exts of
-    False -> liftM2 (EnumFromTo cty) (diExpr cx e1) (diExpr cx e2)
-    True  -> diExpr cx (Apply (Apply (Variable cty tcPreludeEnumFromToQIdent) e1) e2)
-diExpr cx (EnumFromThenTo cty e1 e2 e3) = do
-  exts <- typeClassExtensions
-  case exts of
-    False -> liftM3 (EnumFromThenTo cty) (diExpr cx e1) (diExpr cx e2) (diExpr cx e3)
-    True  -> diExpr cx (Apply (Apply (Apply (Variable cty tcPreludeEnumFromThenToQIdent) e1) e2) e3)
-diExpr cx (UnaryMinus          cty i e) = do
-  exts <- typeClassExtensions
-  case exts of
-    False -> UnaryMinus cty i `liftM` diExpr cx e
-    True  -> diExpr cx (Apply (Variable cty negateQIdent) e)
+diExpr cx (EnumFrom             cty e1) =
+  diExpr cx (Apply (Variable cty tcPreludeEnumFromQIdent) e1)
+diExpr cx (EnumFromThen      cty e1 e2) =
+  diExpr cx (Apply (Apply (Variable cty tcPreludeEnumFromThenQIdent) e1) e2)
+diExpr cx (EnumFromTo        cty e1 e2) =
+  diExpr cx (Apply (Apply (Variable cty tcPreludeEnumFromToQIdent) e1) e2)
+diExpr cx (EnumFromThenTo cty e1 e2 e3) =
+  diExpr cx (Apply (Apply (Apply (Variable cty tcPreludeEnumFromThenToQIdent) e1) e2) e3)
+diExpr cx (UnaryMinus          cty i e) =
+  diExpr cx (Apply (Variable cty negateQIdent) e)
 diExpr cx (Apply           e1 e2) = liftM2 Apply (diExpr cx e1) (diExpr cx e2)
 -- adding dictionary parameters for the operator in InfixApply, Left- and RightSection
 -- expressions by transforming them into a term with Variable's and Apply's where

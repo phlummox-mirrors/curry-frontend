@@ -60,8 +60,7 @@ checkDir dir = do
   runEitherCYIO $ compileModule 
     (CO.defaultOptions { 
       CO.optForce = True, 
-      CO.optTargetTypes = [CO.FlatCurry],
-      CO.optExtensions = [CO.TypeClassExtensions]})
+      CO.optTargetTypes = [CO.FlatCurry]})
     (fn dir ++ "../modules/Prelude.curry")
   -- now check the test files
   files <- getDirectoryContents (fn dir)
@@ -91,8 +90,7 @@ checkTypes :: FilePath -> IO Bool -- Result
 checkTypes file = do
   putStrLn ("checking " ++ file)
   let opts = CO.defaultOptions { 
-    CO.optImportPaths = [location], 
-    CO.optExtensions = [CO.TypeClassExtensions] }
+    CO.optImportPaths = [location] }
   mod <- runEitherCYIO $ loadModule opts (location ++ file ++ ".curry") 
   result <- liftIO $ runEitherT $ checkModule' False opts mod
   case result of
@@ -235,12 +233,10 @@ checkVarious = do
   runEitherCYIO $ compileModule 
     (CO.defaultOptions { 
       CO.optForce = True, 
-      CO.optTargetTypes = [CO.FlatCurry],
-      CO.optExtensions = [CO.TypeClassExtensions]})
+      CO.optTargetTypes = [CO.FlatCurry]})
     (path ++ "modules/Prelude.curry")
   let opts = CO.defaultOptions { 
-        CO.optImportPaths = [path, path ++ "modules/"],
-        CO.optExtensions = [CO.TypeClassExtensions] } 
+        CO.optImportPaths = [path, path ++ "modules/"]} 
   mod <- runEitherCYIO $ loadModule opts (path ++ "TestVarious.curry") 
   result <- liftIO $ runEitherT $ checkModule' True opts mod
   case result of
