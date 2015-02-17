@@ -3,6 +3,7 @@
     Description :  Translation of Curry into IL
     Copyright   :  (c) 1999 - 2003 Wolfgang Lux
                                    Martin Engelke
+                       2015        Jan Tikovsky
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
@@ -162,61 +163,13 @@ trForeign f cc (Just ie) = do
 -- constrained type variables and skolem types. The former are fixed and
 -- the later are replaced by fresh type constructors.
 
--- Due to possible occurrence of record types, it is necessary to transform
--- them back into their corresponding type constructors first.
-
 trType :: Type -> TransM IL.Type
-trType ty = trTy <$> elimRecordTypes (maximum $ 0 : typeVars ty) ty
-  where
-  trTy (TypeConstructor tc tys) = IL.TypeConstructor tc (map trTy tys)
-  trTy (TypeVariable        tv) = IL.TypeVariable tv
-  trTy (TypeConstrained  tys _) = trTy (head tys)
-  trTy (TypeArrow      ty1 ty2) = IL.TypeArrow (trTy ty1) (trTy ty2)
-  trTy (TypeSkolem           k) = IL.TypeConstructor
+trType (TypeConstructor tc tys) = IL.TypeConstructor tc (map trTy tys)
+trType (TypeVariable        tv) = IL.TypeVariable tv
+trType (TypeConstrained  tys _) = trTy (head tys)
+trType (TypeArrow      ty1 ty2) = IL.TypeArrow (trTy ty1) (trTy ty2)
+trType (TypeSkolem           k) = IL.TypeConstructor
                                     (qualify (mkIdent ("_" ++ show k))) []
-  trTy rec@(TypeRecord       _)
-   = internalError $ "Translation of record not defined: " ++ show rec
-
-elimRecordTypes :: Int -> Type -> TransM Type
-elimRecordTypes n (TypeConstructor t tys)
-  = TypeConstructor t <$> mapM (elimRecordTypes n) tys
-elimRecordTypes _ v@(TypeVariable      _) = return v
-elimRecordTypes n (TypeConstrained tys v)
-  = flip TypeConstrained v <$> mapM (elimRecordTypes n) tys
-elimRecordTypes n (TypeArrow       t1 t2)
-  = TypeArrow <$> elimRecordTypes n t1 <*> elimRecordTypes n t2
-elimRecordTypes _ s@(TypeSkolem        _) = return s
-elimRecordTypes n (TypeRecord         fs)
-  | null fs   = internalError "CurryToIL.elimRecordTypes: empty record type"
-  | otherwise = do
-    (r, n', fs') <- recordInfo (fst $ head fs)
-    let vs  = foldl (matchTypeVars fs) Map.empty fs'
-        tys = mapM (\i -> maybe (return $ TypeVariable (i+n))
-                                (elimRecordTypes n)
-                                (Map.lookup i vs))
-                   [0 .. n'-1]
-    TypeConstructor r <$> tys
-
-matchTypeVars :: [(Ident, Type)] -> Map.Map Int Type -> (Ident, Type)
-              -> Map.Map Int Type
-matchTypeVars fs vs (l, ty) = maybe vs (match' vs ty) (lookup l fs)
-  where
-  match' vs' (TypeVariable        i) ty'
-    = Map.insert i ty' vs'
-  match' vs' (TypeConstructor _ tys) (TypeConstructor _ tys')
-    = matchList vs' tys tys'
-  match' vs' (TypeConstrained tys _) (TypeConstrained tys' _)
-    = matchList vs' tys tys'
-  match' vs' (TypeArrow     ty1 ty2) (TypeArrow    ty1' ty2')
-    = matchList vs' [ty1,ty2] [ty1',ty2']
-  match' vs' (TypeSkolem          _) (TypeSkolem           _) = vs'
-  match' vs' (TypeRecord        fs1) (TypeRecord         fs2)
-    = foldl (matchTypeVars fs2) vs' fs1
-  match' _   ty1                     ty2
-    = internalError ("CurryToIL.matchTypeVars: " ++ show ty1 ++ "\n" ++ show ty2)
-
-  matchList vs1 tys tys' =
-    foldl (\vs' (ty1,ty2) -> match' vs' ty1 ty2) vs1 (zip tys tys')
 
 -- Functions:
 -- Each function in the program is translated into a function of the
@@ -558,17 +511,6 @@ constrType c = do
     [DataConstructor  _ _ (ForAllExist _ _ ty)] -> return ty
     [NewtypeConstructor _ (ForAllExist _ _ ty)] -> return ty
     _ -> internalError $ "CurryToIL.constrType: " ++ show c
-
-recordInfo :: Ident -> TransM (QualIdent, Int, [(Ident, Type)])
-recordInfo f = do
-  tyEnv <- getValueEnv
-  case lookupValue f tyEnv of
-    [Label _ r _] -> do
-      tcEnv <- getTCEnv
-      case qualLookupTC r tcEnv of
-        [AliasType _ n (TypeRecord fs)] -> return (r, n, fs)
-        _ -> internalError $ "CurryToIL.recordInfo: " ++ show f
-    _ -> internalError $ "CurryToIL.recordInfo: " ++ show f
 
 -- The list of import declarations in the intermediate language code is
 -- determined by collecting all module qualifiers used in the current

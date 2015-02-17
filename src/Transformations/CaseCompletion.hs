@@ -3,6 +3,7 @@
     Description :  CaseCompletion
     Copyright   :  (c) 2005       , Martin Engelke
                        2011 - 2014, Björn Peemöller
+                       2015       , Jan Tikovsky
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
@@ -371,14 +372,18 @@ getCCFromIDecls mid cs (CS.Interface _ _ ds) = complementary cs cinfos
 
   declaresConstr (CS.ConstrDecl  _ _ cid _) qid = unqualify qid == cid
   declaresConstr (CS.ConOpDecl _ _ _ oid _) qid = unqualify qid == oid
+  declaresConstr (CS.RecordDecl  _ _ cid _) qid = unqualify qid == cid
 
   isNewConstrDecl qid (CS.NewConstrDecl _ _ cid _) = unqualify qid == cid
+  isNewConstrDecl qid (CS.NewRecordDecl _ _ cid _) = unqualify qid == cid
 
   extractConstrDecls (CS.IDataDecl _ _ _ cs') = catMaybes cs'
   extractConstrDecls _                        = []
 
   constrInfo (CS.ConstrDecl _ _ cid tys) = (qualifyWith mid cid, length tys)
   constrInfo (CS.ConOpDecl  _ _ _ oid _) = (qualifyWith mid oid, 2)
+  constrInfo (CS.RecordDecl _ _ cid  fs) = (qualifyWith mid cid, length ls)
+    where ls = [l | FieldDecl _ ls _ <- fs, l <- ls]
 
 -- Compute complementary constructors
 complementary :: [QualIdent] -> [(QualIdent, Int)] -> [(QualIdent, Int)]
