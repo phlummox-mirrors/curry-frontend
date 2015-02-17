@@ -2,6 +2,7 @@
     Module      :  $Header$
     Description :  Summarized information of a module
     Copyright   :  (c) 2005, Martin Engelke (men@informatik.uni-kiel.de)
+                       2015, Jan Tikovsky
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
@@ -76,10 +77,8 @@ genTypeSyns tcEnv mident decls
   = concatMap (genTypeSynDecl mident tcEnv) $ filter isTypeSyn decls
 
 isTypeSyn :: Decl -> Bool
-isTypeSyn (TypeDecl _ _ _ texpr) = case texpr of
-  RecordType _ -> False
-  _            -> True
-isTypeSyn _ = False
+isTypeSyn (TypeDecl _ _ _ _) = True
+isTypeSyn _                  = False
 
 --
 genTypeSynDecl :: ModuleIdent -> TCEnv -> Decl -> [IDecl]
@@ -103,8 +102,6 @@ modifyTypeExpr tcEnv (TupleType tys)
                                 (map (modifyTypeExpr tcEnv) tys)
 modifyTypeExpr tcEnv (ListType ty)
   = ConstructorType (qualify listId) [modifyTypeExpr tcEnv ty]
-modifyTypeExpr tcEnv (RecordType fields)
-  = RecordType (map (\ (lbls, lty) -> (lbls, modifyTypeExpr tcEnv lty)) fields)
 
 --
 genTypeSynDeref :: [(Int, TypeExpr)] -> Type -> TypeExpr
@@ -115,9 +112,6 @@ genTypeSynDeref its (TypeConstructor qid tys)
   = ConstructorType qid $ map (genTypeSynDeref its) tys
 genTypeSynDeref its (TypeArrow ty1 ty2)
   = ArrowType (genTypeSynDeref its ty1) (genTypeSynDeref its ty2)
-genTypeSynDeref its (TypeRecord fields)
-  = RecordType
-    (map (\ (lab, texpr) -> ([lab], genTypeSynDeref its texpr)) fields)
 genTypeSynDeref _ (TypeConstrained _ _) = internalError
   "ModuleSummary.genTypeSynDeref: illegal constrained type occured"
 genTypeSynDeref _ (TypeSkolem _) = internalError

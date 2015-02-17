@@ -18,8 +18,8 @@
 
 module Base.Types
   ( -- * Representation of Types
-    Type (..), isArrowType, arrowArity, arrowArgs, arrowBase, typeVars
-  , typeConstrs, typeSkolems, equTypes, qualifyType, unqualifyType
+    Type (..), isArrowType, arrowArity, arrowArgs, arrowBase, arrowUnapply
+  , typeVars, typeConstrs, typeSkolems, equTypes, qualifyType, unqualifyType
     -- * Representation of Data Constructors
   , DataConstr (..), constrIdent, tupleData
     -- * Representation of Quantification
@@ -41,7 +41,6 @@ import Curry.Base.Ident
 -- from the constraint list.
 -- The case 'TypeSkolem' is used for handling skolem types, which
 -- result from the use of existentially quantified data constructors.
--- Finally, 'TypeRecord' is used for records.
 
 -- Type variables are represented with deBruijn style indices. Universally
 -- quantified type variables are assigned indices in the order of their
@@ -80,6 +79,11 @@ arrowArgs _                   = []
 arrowBase :: Type -> Type
 arrowBase (TypeArrow _ ty) = arrowBase ty
 arrowBase ty               = ty
+
+arrowUnapply :: Type -> ([Type], Type)
+arrowUnapply (TypeArrow ty1 ty2) = (ty1 : tys, ty)
+  where (tys, ty) = arrowUnapply ty2
+arrowUnapply ty                  = ([], ty)
 
 -- The functions 'typeVars', 'typeConstrs', 'typeSkolems' return a list of all
 -- type variables, type constructors, or skolems occurring in a type t,

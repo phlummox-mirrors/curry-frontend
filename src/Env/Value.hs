@@ -27,6 +27,7 @@ module Env.Value
   , bindGlobalInfo, bindFun, qualBindFun, rebindFun, unbindFun
   , lookupValue, qualLookupValue
   , initDCEnv, ppTypes
+  , conType
   ) where
 
 import Curry.Base.Ident
@@ -154,3 +155,10 @@ ppTypes mid valueEnv = ppTypes' mid $ localBindings valueEnv
     mkDecl _ = internalError "Env.Value.ppTypes: no value"
     isValue (Value _ _ _) = True
     isValue _             = False
+
+conType :: QualIdent -> ValueEnv -> ([Ident], ExistTypeScheme)
+conType c tyEnv = case qualLookupTopEnv c tyEnv of
+  [DataConstructor _ _ ls ty] -> (ls, ty)
+  [NewtypeConstructor _ l ty] -> ([l], ty)
+  _                           -> internalError $ "Env.Value.conType: " ++ show c
+    

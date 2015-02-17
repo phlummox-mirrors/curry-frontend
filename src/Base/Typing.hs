@@ -2,7 +2,7 @@
     Module      :  $Header$
     Description :  Type computation of Curry expressions
     Copyright   :  (c) 2003 - 2006 Wolfgang Lux
-                       2014        Jan Tikovsky
+                       2014 - 2015 Jan Tikovsky
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
@@ -11,7 +11,7 @@
 
 -}
 
-module Base.Typing (Typeable (..)) where
+module Base.Typing (Typeable (..), argumentTypes) where
 
 import Control.Monad
 import qualified Control.Monad.State as S (State, evalState, gets, modify)
@@ -26,7 +26,8 @@ import Base.TypeSubst
 import Base.Utils (foldr2)
 
 import Env.TypeConstructor (TCEnv, TypeInfo (..), qualLookupTC)
-import Env.Value (ValueEnv, ValueInfo (..), lookupValue, qualLookupValue)
+import Env.Value ( ValueEnv, ValueInfo (..), lookupValue, qualLookupValue
+                 , conType)
 
 -- During the transformation of Curry source code into the intermediate
 -- language, the compiler has to recompute the types of expressions. This
@@ -176,6 +177,11 @@ argType (ConstructorPattern c ts) = do
 argType (InfixPattern t1 op t2) =
   argType (ConstructorPattern op [t1,t2])
 argType (ParenPattern t) = argType t
+argType (RecordPattern c fs) = do
+  tyEnv <- getValueEnv
+  ty    <- liftM arrowBase $ instUnivExist $ constrType c tyEnv
+  mapM_ (fieldType argType ty) fs
+  return ty
 argType (TuplePattern _ ts)
   | null ts = return unitType
   | otherwise = liftM tupleType $ mapM argType ts
@@ -194,26 +200,6 @@ argType (FunctionPattern f ts) = do
   where flatten (TypeArrow ty1 ty2) = ty1 : flatten ty2
         flatten ty = [ty]
 argType (InfixFuncPattern t1 op t2) = argType (FunctionPattern op [t1,t2])
-argType (RecordPattern fs _) = do
-  recInfo <- getFieldIdent fs >>= getRecordInfo
-  case recInfo of
-    [AliasType qi n rty@(TypeRecord _)] -> do
-      (TypeRecord fts', tys) <- instType' n rty
-      fts   <- mapM fieldPattType fs
-      theta <- getTypeSubst
-      let theta' = foldr (unifyTypedLabels fts') theta fts
-      modifyTypeSubst (const theta')
-      return (subst theta' $ TypeConstructor qi tys)
-    info -> internalError $ "Base.Typing.argType: Expected record type but got "
-              ++ show info
-
-fieldPattType :: Field Pattern -> TCM (Ident,Type)
-fieldPattType (Field _ l t) = do
-  tyEnv <- getValueEnv
-  lty   <- instUniv (labelType l tyEnv)
-  ty    <- argType t
-  unify lty ty
-  return (l,lty)
 
 exprType :: Expression -> TCM Type
 exprType (Literal l) = litType l
@@ -225,6 +211,15 @@ exprType (Constructor c) = do
   instUnivExist (constrType c tyEnv)
 exprType (Typed e _) = exprType e
 exprType (Paren e) = exprType e
+exprType (Record c fs) = do
+  tyEnv <- getValueEnv
+  ty    <- liftM arrowBase $ instUnivExist $ constrType c tyEnv
+  mapM_ (fieldType exprType ty) fs
+  return ty
+exprType (RecordUpdate e fs) = do
+  ty <- exprType e
+  mapM_ (fieldType exprType ty) fs
+  return ty
 exprType (Tuple _ es)
   | null es   = return unitType
   | otherwise = liftM tupleType $ mapM exprType es
@@ -270,50 +265,6 @@ exprType (Case _ _ _ alts) = freshTypeVar >>= flip altType alts
   where altType ty [] = return ty
         altType ty (Alt _ _ rhs:alts1) =
           rhsType rhs >>= unify ty >> altType ty alts1
-exprType (RecordConstr fs) = do
-  recInfo <- getFieldIdent fs >>= getRecordInfo
-  case recInfo of
-    [AliasType qi n rty@(TypeRecord _)] -> do
-      (TypeRecord fts', tys) <- instType' n rty
-      fts   <- mapM fieldExprType fs
-      theta <- getTypeSubst
-      let theta' = foldr (unifyTypedLabels fts') theta fts
-      modifyTypeSubst (const theta')
-      return (subst theta' $ TypeConstructor qi tys)
-    info -> internalError $
-      "Base.Typing.exprType: Expected record type but got " ++ show info
-exprType (RecordSelection e l) = do
-  recInfo <- getRecordInfo l
-  case recInfo of
-    [AliasType qi n rty@(TypeRecord _)] -> do
-      (TypeRecord fts, tys) <- instType' n rty
-      ety <- exprType e
-      let rtc = TypeConstructor qi tys
-      case lookup l fts of
-        Just lty -> do
-          unify ety rtc
-          theta <- getTypeSubst
-          return (subst theta lty)
-        Nothing -> internalError "Base.Typing.exprType: Field not found."
-    info -> internalError $
-      "Base.Typing.exprType: Expected record type but got " ++ show info
-exprType (RecordUpdate fs e) = do
-  recInfo <- getFieldIdent fs >>= getRecordInfo
-  case recInfo of
-    [AliasType qi n rty@(TypeRecord _)] -> do
-      (TypeRecord fts', tys) <- instType' n rty
-      -- Type check field updates
-      fts <- mapM fieldExprType fs
-      modifyTypeSubst (\s -> foldr (unifyTypedLabels fts') s fts)
-      -- Type check record expression to be updated
-      ety <- exprType e
-      let rtc = TypeConstructor qi tys
-      unify ety rtc
-      -- Return inferred type
-      theta <- getTypeSubst
-      return (subst theta rtc)
-    info -> internalError $
-      "Base.Typing.exprType: Expected record type but got " ++ show info
 
 rhsType :: Rhs -> TCM Type
 rhsType (SimpleRhs _ e _) = exprType e
@@ -322,13 +273,14 @@ rhsType (GuardedRhs es _) = freshTypeVar >>= flip condExprType es
         condExprType ty (CondExpr _ _ e:es1) =
           exprType e >>= unify ty >> condExprType ty es1
 
-fieldExprType :: Field Expression -> TCM (Ident,Type)
-fieldExprType (Field _ l e) = do
+fieldType :: (a -> TCM Type) -> Type -> Field a -> TCM Type
+fieldType tcheck ty (Field _ l x) = do
   tyEnv <- getValueEnv
-  lty   <- instUniv (labelType l tyEnv)
-  ty    <- exprType e
-  unify lty ty
-  return (l,lty)
+  TypeArrow ty1 ty2 <- instType (labelType l tyEnv)
+  unify ty ty1
+  lty <- tcheck x
+  unify ty2 lty
+  return lty
 
 -- In order to avoid name conflicts with non-generalized type variables
 -- in a type we instantiate quantified type variables using non-negative
@@ -402,43 +354,27 @@ unifyTypes (TypeArrow ty11 ty12) (TypeArrow ty21 ty22) theta =
   unifyTypes ty11 ty21 (unifyTypes ty12 ty22 theta)
 unifyTypes (TypeSkolem k1) (TypeSkolem k2) theta
   | k1 == k2 = theta
-unifyTypes (TypeRecord fs1) (TypeRecord fs2) theta
-  | length fs1 == length fs2 = foldr (unifyTypedLabels fs1) theta fs2
 unifyTypes ty1 ty2 _ = internalError $
   "Base.Typing.unify: (" ++ show ty1 ++ ") (" ++ show ty2 ++ ")"
 
--- jrt 2014-10-20: Deactivated because the parser can not parse
--- record extensions, thus, these cases should never occur. If they do,
--- there must be an error somewhere ...
--- unifyTypes tr1@(TypeRecord fs1 Nothing) (TypeRecord fs2 (Just a2)) theta =
---   unifyTypes (TypeVariable a2)
---              tr1
---              (foldr (unifyTypedLabels fs1) theta fs2)
--- unifyTypes tr1@(TypeRecord _ (Just _)) tr2@(TypeRecord _ Nothing) theta =
---   unifyTypes tr2 tr1 theta
--- unifyTypes (TypeRecord fs1 (Just a1)) (TypeRecord fs2 (Just a2)) theta =
---   unifyTypes (TypeVariable a1)
---              (TypeVariable a2)
---              (foldr (unifyTypedLabels fs1) theta fs2)
+-- The function argumentTypes returns the labels and the argument types
+-- of a data constructor instantiated at a particular type. This
+-- function is useful for desugaring record patterns and expressions,
+-- where the compiler must compute the types of the omitted arguments.
+-- Since the type annotation of record patterns and expressions applies
+-- to the pattern or expression as a whole, the instance type is
+-- unified with the constructor's result type and the resulting
+-- substitution is applied to all argument types. Note that this is
+-- sound because record fields cannot have existentially quantified
+-- types and therefore all type variables appearing in their
+-- types occur in the constructor's result type as well.
 
-unifyTypedLabels :: [(Ident,Type)] -> (Ident,Type) -> TypeSubst -> TypeSubst
-unifyTypedLabels fs1 (l,ty) theta =
-  maybe theta (\ty1 -> unifyTypes ty1 ty theta) (lookup l fs1)
-
-getFieldIdent :: [Field a] -> TCM Ident
-getFieldIdent [] = internalError "Base.Typing.getFieldIdent: empty field"
-getFieldIdent (Field _ i _ : _) = return i
-
--- Lookup record type for given field identifier
-getRecordInfo :: Ident -> TCM [TypeInfo]
-getRecordInfo i = do
-  tyEnv <- getValueEnv
-  tcEnv <- getTyConsEnv
-  case lookupValue i tyEnv of
-       [Label _ r _] -> return (qualLookupTC r tcEnv)
-       _             -> internalError $
-        "Base.Typing.getRecordInfo: No record found for identifier " ++ show i
-
+argumentTypes :: TCEnv -> Type -> QualIdent -> ValueEnv -> ([Ident],[Type])
+argumentTypes tcEnv ty c tyEnv =
+  (ls, map (subst (unifyTypes rty ty idSubst)) tys)
+  where (ls, ForAllExist _ _ ty') = conType c tyEnv
+        (tys, rty) = arrowUnapply ty'
+        
 -- The functions 'constrType', 'varType', and 'funType' are used for computing
 -- the type of constructors, pattern variables, and variables.
 
@@ -446,8 +382,8 @@ getRecordInfo i = do
 
 constrType :: QualIdent -> ValueEnv -> ExistTypeScheme
 constrType c tyEnv = case qualLookupValue c tyEnv of
-  [DataConstructor  _ _ sigma] -> sigma
-  [NewtypeConstructor _ sigma] -> sigma
+  [DataConstructor  _ _ _ sigma] -> sigma
+  [NewtypeConstructor _ _ sigma] -> sigma
   _ -> internalError $ "Base.Typing.constrType: " ++ show c
 
 varType :: Ident -> ValueEnv -> TypeScheme

@@ -4,6 +4,7 @@
     Copyright   :  (c) 2000 - 2004, Wolfgang Lux
                        2005       , Martin Engelke
                        2011 - 2013, Björn Peemöller
+                       2015       , Jan Tikovsky
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
@@ -78,23 +79,31 @@ iInfixDecl m pEnv op ds = case qualLookupP op pEnv of
     IInfixDecl NoPos fix pr (qualUnqualify m op) : ds
   _                            -> internalError "Exports.infixDecl"
 
+-- Data types and renaming types whose constructors and field labels are
+-- not exported are exported as abstract types, i.e., their constructors
+-- do not appear in the interface. If only some constructors or field
+-- labels of a type are not exported all constructors appear in the
+-- interface, but a pragma marks the constructors and field labels which
+-- are not exported as hidden to prevent their use in user code.
+
 typeDecl :: ModuleIdent -> TCEnv -> Export -> [IDecl] -> [IDecl]
 typeDecl _ _     (Export             _) ds = ds
-typeDecl m tcEnv (ExportTypeWith tc cs) ds = case qualLookupTC tc tcEnv of
-  [DataType tc' n cs'] ->
-    iTypeDecl IDataDecl m tc' n
-       (constrDecls m (drop n identSupply) cs cs') : ds
-  [RenamingType tc' n (DataConstr c n' [ty])]
-    | c `elem` cs ->
-        iTypeDecl INewtypeDecl m tc' n (NewConstrDecl NoPos tvs c ty') : ds
-    | otherwise -> iTypeDecl IDataDecl m tc' n [] : ds
-    where tvs = take n' (drop n identSupply)
-          ty' = fromQualType m ty
-  [AliasType tc' n ty] -> case ty of
-    TypeRecord fs ->
-        let ty' = TypeRecord (filter (\ (l,_) -> elem l cs) fs)
-        in  iTypeDecl ITypeDecl m tc' n (fromQualType m ty') : ds
-    _ -> iTypeDecl ITypeDecl m tc' n (fromQualType m ty) : ds
+typeDecl m tcEnv (ExportTypeWith tc xs) ds = case qualLookupTC tc tcEnv of
+  [DataType tc' n cs]
+    | null xs   -> iTypeDecl IDataDecl m tc' n []  []  : ds
+    | otherwise -> iTypeDecl IDataDecl m tc' n cs' hs : ds
+    where hs    = filter (`notElem` xs) (csIds ++ ls)
+          cs'   = map constrDecl m (drop n identSupply) cs
+          ls    = nub (concatMap recordLabels cs')
+          csIds = map constrIdent cs
+  [RenamingType tc' n c]
+    | null xs   -> iTypeDecl IDataDecl tc' n [] [] : ds
+    | otherwise -> iTypeDecl INewtypeDecl tc' n nc hs : ds
+    where hs  = filter (`notElem` xs) (cId : ls)
+          nc  = newConstrDecl m (drop n identSupply) c
+          ls  = nrecordLabels nc
+          cId = constrIdent c
+  [AliasType tc' n ty] -> iTypeDecl ITypeDecl m tc' n (fromQualType m ty) : ds
   _ -> internalError "Exports.typeDecl"
 typeDecl _ _ _ _ = internalError "Exports.typeDecl: no pattern match"
 
@@ -102,19 +111,27 @@ iTypeDecl :: (Position -> QualIdent -> [Ident] -> a -> IDecl)
            -> ModuleIdent -> QualIdent -> Int -> a -> IDecl
 iTypeDecl f m tc n = f NoPos (qualUnqualify m tc) (take n identSupply)
 
-constrDecls :: ModuleIdent -> [Ident] -> [Ident] -> [Maybe DataConstr]
-            -> [Maybe ConstrDecl]
-constrDecls m tvs cs = clean . map (>>= constrDecl m tvs)
-  where clean = reverse . dropWhile isNothing . reverse
-        constrDecl m' tvs' (DataConstr c n tys)
-          | c `elem` cs =
-              Just (iConstrDecl (take n tvs') c (map (fromQualType m') tys))
-          | otherwise = Nothing
+constrDecl :: ModuleIdent -> [Ident] -> DataConstr -> ConstrDecl
+constrDecl m tvs (DataConstr c n [ty1,ty2])
+  | isInfixOp c = ConOpDecl NoPos evs (fromQualType m ty1) c (fromQualType m ty2)
+  where evs = take n tvs
+constrDecl m tvs (DataConstr c n tys) = ConstrDecl NoPos evs c tys'
+  where evs  = take n tvs
+        tys' = map (fromQualType m) tys
+constrDecl m tvs (RecordConstr c n ls tys) = RecordDecl NoPos evs c fs
+  where
+    evs  = take n tvs
+    tys' = map (fromQualType m) tys
+    fs   = zipWith (FieldDecl NoPos . return) ls tys'
 
-iConstrDecl :: [Ident] -> Ident -> [TypeExpr] -> ConstrDecl
-iConstrDecl tvs op [ty1,ty2]
-  | isInfixOp op = ConOpDecl NoPos tvs ty1 op ty2
-iConstrDecl tvs c tys = ConstrDecl NoPos tvs c tys
+newConstrDecl :: ModuleIdent -> [Ident] -> DataConstr -> NewConstrDecl
+newConstrDecl m tvs (DataConstr c n [ty]) = NewConstrDecl NoPos evs c ty'
+  where evs = take n tvs
+        ty' = fromQualType m ty
+newConstrDecl m tvs (RecordConstr c n [l] [ty])
+  = NewRecordDecl NoPos evs c (l,ty')
+  where evs = take n tvs
+        ty' = fromQualType m ty
 
 funDecl :: ModuleIdent -> ValueEnv -> Export -> [IDecl] -> [IDecl]
 funDecl m tyEnv (Export f) ds = case qualLookupValue f tyEnv of
@@ -147,20 +164,25 @@ usedModules ds = nub' (catMaybes (map qidModule (foldr identsDecl [] ds)))
   where nub' = Set.toList . Set.fromList
 
 identsDecl :: IDecl -> [QualIdent] -> [QualIdent]
-identsDecl (IDataDecl    _ tc _ cs) xs =
-  tc : foldr identsConstrDecl xs (catMaybes cs)
-identsDecl (INewtypeDecl _ tc _ nc) xs = tc : identsNewConstrDecl nc xs
-identsDecl (ITypeDecl    _ tc _ ty) xs = tc : identsType ty xs
-identsDecl (IFunctionDecl _ f _ ty) xs = f  : identsType ty xs
+identsDecl (IDataDecl    _ tc _ cs _) xs =
+  tc : foldr identsConstrDecl xs cs
+identsDecl (INewtypeDecl _ tc _ nc _) xs = tc : identsNewConstrDecl nc xs
+identsDecl (ITypeDecl      _ tc _ ty) xs = tc : identsType ty xs
+identsDecl (IFunctionDecl   _ f _ ty) xs = f  : identsType ty xs
 identsDecl _ _ = internalError "Exports.identsDecl: no pattern match"
 
 identsConstrDecl :: ConstrDecl -> [QualIdent] -> [QualIdent]
 identsConstrDecl (ConstrDecl    _ _ _ tys) xs = foldr identsType xs tys
 identsConstrDecl (ConOpDecl _ _ ty1 _ ty2) xs =
   identsType ty1 (identsType ty2 xs)
+identsConstrDecl (RecordDecl     _ _ _ fs) xs = foldr identsFieldDecl xs fs
+
+identsFieldDecl :: FieldDecl -> [QualIdent] -> [QualIdent]
+identsFieldDecl (FieldDecl _ _ ty) xs = identsType ty xs
 
 identsNewConstrDecl :: NewConstrDecl -> [QualIdent] -> [QualIdent]
 identsNewConstrDecl (NewConstrDecl _ _ _ ty) xs = identsType ty xs
+identsNewConstrDecl (NewRecordDecl _ _ _ (_,ty)) xs = identsType ty xs
 
 identsType :: TypeExpr -> [QualIdent] -> [QualIdent]
 identsType (ConstructorType tc tys) xs = tc : foldr identsType xs tys
@@ -168,7 +190,6 @@ identsType (VariableType         _) xs = xs
 identsType (TupleType          tys) xs = foldr identsType xs tys
 identsType (ListType            ty) xs = identsType ty xs
 identsType (ArrowType      ty1 ty2) xs = identsType ty1 (identsType ty2 xs)
-identsType (RecordType          fs) xs = foldr identsType xs (map snd fs)
 
 -- After the interface declarations have been computed, the compiler
 -- eventually must add hidden (data) type declarations to the interface
@@ -180,8 +201,6 @@ hiddenTypeDecl :: ModuleIdent -> TCEnv -> QualIdent -> IDecl
 hiddenTypeDecl m tcEnv tc = case qualLookupTC (qualQualify m tc) tcEnv of
   [DataType     _ n _] -> hidingDataDecl tc n
   [RenamingType _ n _] -> hidingDataDecl tc n
-  -- jrt 2014-10-16: Added for support of record types
-  [AliasType    _ n _] -> hidingDataDecl tc n
   _                    -> internalError "Exports.hiddenTypeDecl"
   where hidingDataDecl tc1 n = HidingDataDecl NoPos tc1 $ take n identSupply
 
@@ -195,12 +214,12 @@ usedTypes :: [IDecl] -> [QualIdent]
 usedTypes ds = foldr usedTypesDecl [] ds
 
 usedTypesDecl :: IDecl -> [QualIdent] -> [QualIdent]
-usedTypesDecl (IDataDecl     _ _ _ cs) tcs =
-  foldr usedTypesConstrDecl tcs (catMaybes cs)
-usedTypesDecl (INewtypeDecl  _ _ _ nc) tcs = usedTypesNewConstrDecl nc tcs
-usedTypesDecl (ITypeDecl     _ _ _ ty) tcs = usedTypesType ty tcs
-usedTypesDecl (IFunctionDecl _ _ _ ty) tcs = usedTypesType ty tcs
-usedTypesDecl _                        _   = internalError
+usedTypesDecl (IDataDecl     _ _ _ cs _) tcs =
+  foldr usedTypesConstrDecl tcs cs
+usedTypesDecl (INewtypeDecl  _ _ _ nc _) tcs = usedTypesNewConstrDecl nc tcs
+usedTypesDecl (ITypeDecl     _ _ _ ty  ) tcs = usedTypesType ty tcs
+usedTypesDecl (IFunctionDecl _ _ _ ty  ) tcs = usedTypesType ty tcs
+usedTypesDecl _                          _   = internalError
   "Exports.usedTypesDecl: no pattern match" -- TODO
 
 usedTypesConstrDecl :: ConstrDecl -> [QualIdent] -> [QualIdent]
@@ -208,9 +227,15 @@ usedTypesConstrDecl (ConstrDecl    _ _ _ tys) tcs =
   foldr usedTypesType tcs tys
 usedTypesConstrDecl (ConOpDecl _ _ ty1 _ ty2) tcs =
   usedTypesType ty1 (usedTypesType ty2 tcs)
+usedTypesConstrDecl (RecordDecl     _ _ _ fs) tcs =
+  foldr usedTypesFieldDecl tcs fs
+
+usedTypesFieldDecl :: FieldDecl -> [QualIdent] -> [QualIdent]
+usedTypesFieldDecl (FieldDecl _ _ ty) tcs = usedTypesType tcs ty
 
 usedTypesNewConstrDecl :: NewConstrDecl -> [QualIdent] -> [QualIdent]
-usedTypesNewConstrDecl (NewConstrDecl _ _ _ ty) tcs = usedTypesType ty tcs
+usedTypesNewConstrDecl (NewConstrDecl     _ _ _ ty) tcs = usedTypesType ty tcs
+usedTypesNewConstrDecl (NewRecordDecl _ _ _ (_,ty)) tcs = usedTypesType ty tcs
 
 usedTypesType :: TypeExpr -> [QualIdent] -> [QualIdent]
 usedTypesType (ConstructorType tc tys) tcs = tc : foldr usedTypesType tcs tys
@@ -219,14 +244,12 @@ usedTypesType (TupleType          tys) tcs = foldr usedTypesType tcs tys
 usedTypesType (ListType            ty) tcs = usedTypesType ty tcs
 usedTypesType (ArrowType      ty1 ty2) tcs =
   usedTypesType ty1 (usedTypesType ty2 tcs)
-usedTypesType (RecordType          fs) tcs = foldr usedTypesType
-  tcs (map snd fs)
 
 definedTypes :: [IDecl] -> [QualIdent]
 definedTypes ds = foldr definedType [] ds
   where
   definedType :: IDecl -> [QualIdent] -> [QualIdent]
-  definedType (IDataDecl    _ tc _ _) tcs = tc : tcs
-  definedType (INewtypeDecl _ tc _ _) tcs = tc : tcs
-  definedType (ITypeDecl    _ tc _ _) tcs = tc : tcs
-  definedType _                       tcs = tcs
+  definedType (IDataDecl    _ tc _ _ _) tcs = tc : tcs
+  definedType (INewtypeDecl _ tc _ _ _) tcs = tc : tcs
+  definedType (ITypeDecl    _ tc _ _  ) tcs = tc : tcs
+  definedType _                         tcs = tcs
