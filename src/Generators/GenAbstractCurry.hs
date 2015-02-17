@@ -3,6 +3,7 @@
     Description :  Generation of AbstractCurry program terms
     Copyright   :  (c) 2005       , Martin Engelke
                        2011 - 2015, Björn Peemöller
+                              2015, Jan Tikovsky
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
@@ -80,10 +81,18 @@ trConsDecl (ConstrDecl      _ _ c tys) = CCons
   <$> trLocalIdent c <*> getVisibility c <*> mapM trTypeExpr tys
 trConsDecl (ConOpDecl p vs ty1 op ty2) = trConsDecl $
   ConstrDecl p vs op [ty1, ty2]
+trConsDecl (RecordDecl       _ _ c fs) = CRecord
+  <$> trLocalIdent c <*> getVisibility c <*> (concat <$> mapM trFieldDecl fs)
+
+trFieldDecl :: FieldDecl -> GAC [CFieldDecl]
+trFieldDecl (FieldDecl _ ls ty) = T.forM ls $ \l ->
+  CFieldDecl <$> trLocalIdent l <*> getVisibility l <*> trTypeExpr ty
 
 trNewConsDecl :: NewConstrDecl -> GAC CConsDecl
-trNewConsDecl (NewConstrDecl _ _ nc ty) = CCons
+trNewConsDecl (NewConstrDecl _ _ nc      ty) = CCons
   <$> trLocalIdent nc <*> getVisibility nc <*> ((:[]) <$> trTypeExpr ty)
+trNewConsDecl (NewRecordDecl p _ nc (l, ty)) = CRecord
+  <$> trLocalIdent nc <*> getVisibility nc <*> trFieldDecl (FieldDecl p [l] ty)
 
 trTypeExpr :: TypeExpr -> GAC CTypeExpr
 trTypeExpr (ConstructorType  q ts) = CTCons <$> trQual q
@@ -96,10 +105,6 @@ trTypeExpr (TupleType         tys) = trTypeExpr $ case tys of
 trTypeExpr (ListType           ty) = trTypeExpr $ ConstructorType qListId [ty]
 trTypeExpr (ArrowType     ty1 ty2) = CFuncType   <$> trTypeExpr ty1
                                                  <*> trTypeExpr ty2
-trTypeExpr (RecordType        fss) = CRecordType <$> mapM trFieldType fs
-  where
-  trFieldType (l, ty) = (,) <$> return (idName l) <*> trTypeExpr ty
-  fs = [ (l, ty) | (ls, ty) <- fss, l <- ls ]
 
 trInfixDecl :: Decl -> GAC [COpDecl]
 trInfixDecl (InfixDecl _ fix mprec ops) = mapM trInfix (reverse ops)
@@ -166,23 +171,27 @@ trLocalDecl (FreeDecl            _ vs) = (\vs' -> [CLocalVars vs'])
 trLocalDecl _                          = return [] -- can not occur (types etc.)
 
 trExpr :: Expression -> GAC CExpr
-trExpr (Literal     l) = return (CLit $ cvLiteral l)
-trExpr (Variable    v)
+trExpr (Literal         l) = return (CLit $ cvLiteral l)
+trExpr (Variable        v)
   | isQualified v = CSymbol <$> trQual v
   | otherwise     = lookupVarIndex v' >>= \mvi -> case mvi of
     Just vi -> return (CVar vi)
     _       -> CSymbol <$> trLocalIdent v'
   where v' = unqualify v
-trExpr (Constructor c) = CSymbol <$> trQual c
-trExpr (Paren       e) = trExpr e
-trExpr (Typed    e ty) = CTyped <$> trExpr e <*> trTypeExpr ty
-trExpr (Tuple    _ es) = trExpr $ case es of
+trExpr (Constructor     c) = CSymbol <$> trQual c
+trExpr (Paren           e) = trExpr e
+trExpr (Typed        e ty) = CTyped <$> trExpr e <*> trTypeExpr ty
+trExpr (Record       c fs) = CRecConstr <$> trQual c
+                                        <*> mapM (trField trExpr) fs
+trExpr (RecordUpdate e fs) = CRecUpdate <$> trExpr e
+                                        <*> mapM (trField trExpr) fs
+trExpr (Tuple        _ es) = trExpr $ case es of
   []  -> Variable qUnitId
   [x] -> x
   _   -> foldl Apply (Variable $ qTupleId $ length es) es
-trExpr (List        _ es) = trExpr $
+trExpr (List         _ es) = trExpr $
   foldr (Apply . Apply (Constructor qConsId)) (Constructor qNilId) es
-trExpr (ListCompr _ e ds) = inNestedScope $ flip CListComp
+trExpr (ListCompr  _ e ds) = inNestedScope $ flip CListComp
                             <$> mapM trStatement ds <*> trExpr e
 trExpr (EnumFrom              e) = trExpr
                                  $ apply (Variable qEnumFromId      ) [e]
@@ -214,10 +223,6 @@ trExpr (IfThenElse   _ e1 e2 e3) = trExpr
                                  $ apply (Variable qIfThenElseId) [e1,e2,e3]
 trExpr (Case          _ ct e bs) = CCase (cvCaseType ct)
                                    <$> trExpr e <*> mapM trAlt bs
-trExpr (RecordConstr         fs) = CRecConstr <$> mapM (trField trExpr) fs
-trExpr (RecordSelection     e l) = CRecSelect <$> trExpr e <*> return (idName l)
-trExpr (RecordUpdate       fs e) = CRecUpdate <$> mapM (trField trExpr) fs
-                                              <*> trExpr e
 
 cvCaseType :: CaseType -> CCaseType
 cvCaseType Flex  = CFlex
@@ -240,6 +245,8 @@ trPat (VariablePattern        v) = CPVar <$> getVarIndex v
 trPat (ConstructorPattern  c ps) = CPComb <$> trQual c <*> mapM trPat ps
 trPat (InfixPattern    p1 op p2) = trPat $ ConstructorPattern op [p1, p2]
 trPat (ParenPattern           p) = trPat p
+trPat (RecordPattern       c fs) = CPRecord <$> trQual c
+                                            <*> mapM (trField trPat) fs
 trPat (TuplePattern        _ ps) = trPat $ case ps of
   []   -> ConstructorPattern qUnitId []
   [ty] -> ty
@@ -253,8 +260,6 @@ trPat (AsPattern            v p) = CPAs <$> getVarIndex v<*> trPat p
 trPat (LazyPattern          _ p) = CPLazy <$> trPat p
 trPat (FunctionPattern     f ps) = CPFuncComb <$> trQual f <*> mapM trPat ps
 trPat (InfixFuncPattern p1 f p2) = trPat (FunctionPattern f [p1, p2])
-trPat (RecordPattern      fs mr) = CPRecord <$> mapM (trField trPat) fs
-                                            <*> T.mapM trPat mr
 
 trField :: (a -> GAC b) -> Field a -> GAC (CField b)
 trField act (Field _ l x) = (,) <$> return (idName l) <*> act x
