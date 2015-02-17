@@ -706,10 +706,10 @@ getTyCons _ (TypeConstructor tc _) = do
   tc'   <- unAlias tc
   tcEnv <- gets tyConsEnv
   return $ case lookupTC (unqualify tc) tcEnv of
-    [DataType     _ _ cs] -> catMaybes cs
+    [DataType     _ _ cs] -> cs
     [RenamingType _ _ nc] -> [nc]
     _ -> case qualLookupTC tc' tcEnv of
-      [DataType     _ _ cs] -> catMaybes cs
+      [DataType     _ _ cs] -> cs
       [RenamingType _ _ nc] -> [nc]
       err                   -> internalError $ "Checks.WarnCheck.getTyCons: "
                             ++ show tc ++ ' ' : show err ++ '\n' : show tcEnv

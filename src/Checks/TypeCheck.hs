@@ -254,7 +254,7 @@ bindTypes ds = do
 
 bindTC :: ModuleIdent -> TCEnv -> Decl -> TCEnv -> TCEnv
 bindTC m tcEnv (DataDecl _ tc tvs cs) =
-  bindTypeInfo DataType m tc tvs (map (Just . mkData) cs)
+  bindTypeInfo DataType m tc tvs (map mkData cs)
   where
   mkData (ConstrDecl _ evs     c  tys) = mkData' evs c  tys
   mkData (ConOpDecl  _ evs ty1 op ty2) = mkData' evs op [ty1, ty2]
@@ -330,11 +330,6 @@ bindLabels = do
   tcEnv <- getTyConsEnv
   modifyValueEnv $ bindLabels' m tcEnv
 
--- bindLabels :: TCM ()
--- bindLabels = do
---   tcEnv <- getTyConsEnv
---   modifyValueEnv $ bindLabels' tcEnv
-
 bindLabels' :: ModuleIdent -> TCEnv -> ValueEnv -> ValueEnv
 bindLabels' m tcEnv tyEnv = foldr (bindData . snd) tyEnv
                           $ localBindings tcEnv
@@ -358,18 +353,6 @@ bindLabels' m tcEnv tyEnv = foldr (bindData . snd) tyEnv
     bindGlobalInfo (\qc tyScheme -> Label qc lcs tyScheme) m' l
                    (ForAll n (TypeArrow lty ty))
   constrType' tc n = TypeConstructor tc $ map TypeVariable [0 .. n - 1]
-
--- bindLabels' :: TCEnv -> ValueEnv -> ValueEnv
--- bindLabels' tcEnv tyEnv = foldr (bindFieldLabels . snd) tyEnv
---                         $ localBindings tcEnv
---   where
---   bindFieldLabels (AliasType r _ (TypeRecord fs)) env =
---     foldr (bindField r) env fs
---   bindFieldLabels _ env = env
--- 
---   bindField r (l, ty) env = case lookupValue l env of
---     [] -> bindLabel l r (polyType ty) env
---     _  -> env
 
 -- Type Signatures:
 -- The type checker collects type signatures in a flat environment. All
@@ -1071,11 +1054,11 @@ gen gvs ty = ForAll (length tvs)
 
 constrType :: ModuleIdent -> QualIdent -> ValueEnv -> ExistTypeScheme
 constrType m c tyEnv = case qualLookupValue c tyEnv of
-  [DataConstructor  _ _ sigma] -> sigma
-  [NewtypeConstructor _ sigma] -> sigma
+  [DataConstructor  _ _ _ sigma] -> sigma
+  [NewtypeConstructor _ _ sigma] -> sigma
   _ -> case qualLookupValue (qualQualify m c) tyEnv of
-    [DataConstructor  _ _ sigma] -> sigma
-    [NewtypeConstructor _ sigma] -> sigma
+    [DataConstructor  _ _ _ sigma] -> sigma
+    [NewtypeConstructor _ _ sigma] -> sigma
     _ -> internalError $ "TypeCheck.constrType " ++ show c
 
 varArity :: Ident -> ValueEnv -> Int
@@ -1106,7 +1089,8 @@ labelType m l tyEnv = case qualLookupValue l tyEnv of
   [Label _ _ sigma] -> sigma
   _ -> case qualLookupValue (qualQualify m l) tyEnv of
     [Label _ _ sigma] -> sigma
-    _ -> internalError $ "TypeCheck.labelType " ++ show l ++ ", more precisely " ++ show (unqualify l)
+    _ -> internalError $ "TypeCheck.labelType " ++ show l
+          ++ ", more precisely " ++ show (unqualify l)
 
 -- The function 'expandType' expands all type synonyms in a type
 -- and also qualifies all type constructors with the name of the module

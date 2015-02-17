@@ -53,7 +53,7 @@ import Base.Types
 import Base.Utils ((++!))
 
 data TypeInfo
-  = DataType     QualIdent Int [Maybe DataConstr]
+  = DataType     QualIdent Int [DataConstr]
   | RenamingType QualIdent Int DataConstr
   | AliasType    QualIdent Int Type
     deriving Show
@@ -64,10 +64,8 @@ instance Entity TypeInfo where
   origName (AliasType    tc _ _) = tc
 
   merge (DataType tc n cs) (DataType tc' _ cs')
-    | tc == tc' = Just $ DataType tc n $ mergeData cs cs'
-    where mergeData ds       []         = ds
-          mergeData []       ds         = ds
-          mergeData (d : ds) (d' : ds') = d `mplus` d' : mergeData ds ds'
+    | tc == tc' && (null cs || null cs' || cs == cs') =
+        Just $ DataType tc n (if null cs then cs' else cs)
   merge (DataType tc n _) (RenamingType tc' _ nc)
     | tc == tc' = Just (RenamingType tc n nc)
   merge l@(RenamingType tc _ _) (DataType tc' _ _)
@@ -76,10 +74,6 @@ instance Entity TypeInfo where
     | tc == tc' = Just l
   merge l@(AliasType tc _ _) (AliasType tc' _ _)
     | tc == tc' = Just l
-  merge l@(AliasType tc _ (TypeRecord _)) (DataType tc' _ _)
-    | tc == tc' = Just l
-  merge (DataType tc' _ _) r@(AliasType tc _ (TypeRecord _))
-    | tc == tc' = Just r
   merge _ _ = Nothing
 
 tcArity :: TypeInfo -> Int
@@ -126,12 +120,12 @@ initTCEnv = foldr (uncurry predefTC) emptyTopEnv predefTypes
 type TypeEnv = TopEnv TypeKind
 
 data TypeKind
-  =  Data QualIdent [Ident]
+  = Data QualIdent [Ident]
   | Alias QualIdent
   deriving (Eq, Show)
 
 typeKind :: TypeInfo -> TypeKind
-typeKind (DataType     tc _ cs) = Data tc [ c | Just (DataConstr c _ _) <- cs ]
+typeKind (DataType     tc _ cs) = Data tc (map constrIdent cs)
 typeKind (RenamingType tc _ (DataConstr c _ _)) = Data tc [c]
 typeKind (AliasType    tc _ _) = Alias tc
 

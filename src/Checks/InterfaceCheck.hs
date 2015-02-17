@@ -108,17 +108,14 @@ checkImport (HidingDataDecl p tc tvs)
         check (RenamingType tc' n' _)
           | tc == tc' && length tvs == n' = Just ok
         check _                           = Nothing
-checkImport (IDataDecl p tc tvs cs hs) = checkTypeInfo "data type" check p tc
+checkImport (IDataDecl p tc tvs cs _) = checkTypeInfo "data type" check p tc
   where check (DataType     tc' n' cs')
           | tc == tc' && length tvs == n' &&
-            (null cs || length cs == length cs') &&
-            and (zipWith isVisible cs (fmap (fmap constrIdent) cs'))
+            (null cs || map constrId cs == map constrIdent cs')
           = Just (mapM_ (checkConstrImport tc tvs) cs)
         check (RenamingType tc' n'   _)
           | tc == tc' && length tvs == n' && null cs = Just ok
         check _ = Nothing
-        isVisible c (Just c') = constrId c == c'
-        isVisible c Nothing   = (constrId c) `elem` hs
 checkImport (INewtypeDecl p tc tvs nc _)
   = checkTypeInfo "newtype" check p tc
   where check (RenamingType tc' n' nc')

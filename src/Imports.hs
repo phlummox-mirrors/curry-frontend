@@ -178,24 +178,18 @@ bindTCHidden m d                         = bindTC m d
 
 -- type constructors
 bindTC :: ModuleIdent -> IDecl -> ExpTCEnv -> ExpTCEnv
-bindTC m (IDataDecl _ tc tvs cs hs) mTCEnv
+bindTC m (IDataDecl _ tc tvs cs _) mTCEnv
   | unqualify tc `Map.member` mTCEnv = mTCEnv
   | otherwise = bindType DataType m tc tvs (map mkData cs) mTCEnv
   where
-   mkData (ConstrDecl _ evs c tys)
-     | c `elem` hs = Nothing
-     | otherwise   = Just $ DataConstr c (length evs) (toQualTypes m tvs tys)
-   mkData (ConOpDecl _ evs ty1 c ty2)
-     | c `elem` hs = Nothing
-     | otherwise   = Just $
-         DataConstr c (length evs) (toQualTypes m tvs [ty1,ty2])
-   mkData (RecordDecl _ evs c fs)
-     | c `elem` hs = Nothing
-     | otherwise   = Just $ RecordConstr c (length evs) labels' tys'
+   mkData (ConstrDecl _ evs c tys) =
+     DataConstr c (length evs) (toQualTypes m tvs tys)
+   mkData (ConOpDecl _ evs ty1 c ty2) =
+     DataConstr c (length evs) (toQualTypes m tvs [ty1,ty2])
+   mkData (RecordDecl _ evs c fs) =
+     RecordConstr c (length evs) labels (toQualTypes m tvs tys)
      where
        (labels, tys) = unzip [(l, ty) | FieldDecl _ ls ty <- fs, l <- ls]
-       labels'       = filter (`notElem` hs) labels
-       tys'          = toQualTypes m tvs tys
 
 bindTC m (INewtypeDecl _ tc tvs newCons _) mTCEnv =
   bindType RenamingType m tc tvs (mkData newCons) mTCEnv
