@@ -220,8 +220,8 @@ absExpr pre lvs var@(Variable _ v)
   | isQualified v = return var
   | otherwise     = do
     getAbstractEnv >>= \env -> case Map.lookup (unqualify v) env of
-      Nothing     -> return var
-      Just (v',_) -> absExpr pre lvs (Variable Nothing v')
+      Nothing -> return var
+      Just v' -> absExpr pre lvs (asFunCall v')
 absExpr _   _   c@(Constructor  _) = return c
 absExpr pre lvs (Apply      e1 e2) =
   Apply <$> absExpr pre lvs e1 <*> absExpr pre lvs e2
