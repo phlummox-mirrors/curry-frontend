@@ -200,12 +200,12 @@ checkExpr (RecordUpdate   e fs) = RecordUpdate <$> checkExpr e
                                                <*> mapM checkFieldExpr fs
 checkExpr (Tuple          p es) = Tuple p <$> mapM checkExpr es
 checkExpr (List           p es) = List  p <$> mapM checkExpr es
-checkExpr (ListCompr    p e qs) = ListCompr p <$> checkExpr e 
+checkExpr (ListCompr    p e qs) = ListCompr p <$> checkExpr e
                                               <*> mapM checkStmt qs
 checkExpr (EnumFrom          e) = EnumFrom     <$> checkExpr e
 checkExpr (EnumFromThen  e1 e2) = EnumFromThen <$> checkExpr e1 <*> checkExpr e2
 checkExpr (EnumFromTo    e1 e2) = EnumFromTo   <$> checkExpr e1 <*> checkExpr e2
-checkExpr (EnumFromThenTo e1 e2 e3) = EnumFromThenTo <$> checkExpr e1 
+checkExpr (EnumFromThenTo e1 e2 e3) = EnumFromThenTo <$> checkExpr e1
                                       <*> checkExpr e2 <*> checkExpr e3
 checkExpr (UnaryMinus     op e) = UnaryMinus op <$> checkExpr e
 checkExpr (Apply         e1 e2) = Apply <$> checkExpr e1 <*> checkExpr e2
@@ -216,9 +216,9 @@ checkExpr (RightSection   op e) = RightSection op <$> checkExpr e
 checkExpr (Lambda       r ts e) = Lambda r ts <$> checkExpr e
 checkExpr (Let            ds e) = Let <$> mapM checkDecl ds <*> checkExpr e
 checkExpr (Do            sts e) = Do  <$> mapM checkStmt sts <*> checkExpr e
-checkExpr (IfThenElse r e1 e2 e3) = IfThenElse r <$> checkExpr e1 
+checkExpr (IfThenElse r e1 e2 e3) = IfThenElse r <$> checkExpr e1
                                      <*> checkExpr e2 <*> checkExpr e3
-checkExpr (Case    r ct e alts) = Case r ct <$> checkExpr e 
+checkExpr (Case    r ct e alts) = Case r ct <$> checkExpr e
                                             <*> mapM checkAlt alts
 
 checkStmt :: Statement -> KCM Statement

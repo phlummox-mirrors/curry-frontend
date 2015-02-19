@@ -224,7 +224,7 @@ bindTy m (IDataDecl _ tc tvs cs hs) env =
 bindTy m (INewtypeDecl _ tc tvs nc hs) env
   | (nconstrId nc) `notElem` hs = mBindLabel nc $
       bindNewConstr m tc' tvs ty' nc env
-  | otherwise                   = mBindLabel nc env 
+  | otherwise                   = mBindLabel nc env
   where tc' = qualQualify m tc
         ty' = constrType tc' tvs
         mBindLabel (NewConstrDecl _ _ _ _) env' = env'
@@ -271,7 +271,7 @@ bindLabel m tc tvs ty (l, cs, lty) = Map.insert l $ Label ql qcs tysc
   where ql   = qualifyLike tc l
         qcs  = map (qualifyLike tc) cs
         tysc = (polyType (toQualType m tvs (ArrowType ty lty)))
-  
+
 constrType :: QualIdent -> [Ident] -> TypeExpr
 constrType tc tvs = ConstructorType tc $ map VariableType tvs
 
@@ -432,19 +432,10 @@ visibleElems (RecordConstr c _ ls _) = c : ls
 errUndefinedElement :: Ident -> Ident -> Message
 errUndefinedElement tc c = posMessage c $ hsep $ map text
   [ idName c, "is not a constructor or label of type ", idName tc ]
-    
+
 errUndefinedEntity :: ModuleIdent -> Ident -> Message
 errUndefinedEntity m x = posMessage x $ hsep $ map text
   [ "Module", moduleName m, "does not export", idName x ]
-
--- jrt 2015-01-26 no longer needed
--- errUndefinedDataConstr :: Ident -> Ident -> Message
--- errUndefinedDataConstr tc c = posMessage c $ hsep $ map text
---   [ idName c, "is not a data constructor of type", idName tc ]
--- 
--- errUndefinedLabel :: Ident -> Ident -> Message
--- errUndefinedLabel tc c = posMessage c $ hsep $ map text
---   [ idName c, "is not a label of record type", idName tc ]
 
 errNonDataType :: Ident -> Message
 errNonDataType tc = posMessage tc $ hsep $ map text
@@ -517,128 +508,3 @@ importInterfaceIntf i@(Interface m _ _) env = env
   mPEnv  = intfEnv bindPrec     i -- all operator precedences
   mTCEnv = intfEnv bindTCHidden i -- all type constructors
   mTyEnv = intfEnv bindTy       i -- all values
-
--- ---------------------------------------------------------------------------
--- Record stuff
--- ---------------------------------------------------------------------------
-
--- jrt 2015-01-26: no longer needed for Haskell's record syntax
-
--- expandTCValueEnv :: Options -> CompilerEnv -> CompilerEnv
--- expandTCValueEnv opts env
---   | enabled   = env' { tyConsEnv = tcEnv' }
---   | otherwise = env
---   where
---   enabled = Records `elem` (optExtensions opts ++ extensions env)
---   tcEnv'  = fmap (expandRecordTC tcEnv) tcEnv
---   tcEnv   = tyConsEnv env'
---   env'    = expandValueEnv opts env
--- 
--- expandRecordTC :: TCEnv -> TypeInfo -> TypeInfo
--- expandRecordTC tcEnv (DataType qid n args) =
---   DataType qid n $ map (fmap expandData) args
---   where
---   expandData (DataConstr c m tys) =
---     DataConstr c m $ map (expandRecords tcEnv) tys
--- expandRecordTC tcEnv (RenamingType qid n (DataConstr c m [ty])) =
---   RenamingType qid n (DataConstr c m [expandRecords tcEnv ty])
--- expandRecordTC _     (RenamingType _   _ (DataConstr    _ _ _)) =
---   internalError "Imports.expandRecordTC"
--- expandRecordTC tcEnv (AliasType qid n ty) =
---   AliasType qid n (expandRecords tcEnv ty)
--- 
--- expandValueEnv :: Options -> CompilerEnv -> CompilerEnv
--- expandValueEnv opts env
---   | enabled   = env { valueEnv = tyEnv' }
---   | otherwise = env
---   where
---   tcEnv   = tyConsEnv env
---   tyEnv   = valueEnv env
---   enabled = Records `elem` (optExtensions opts ++ extensions env)
---   tyEnv'  = fmap (expandRecordTypes tcEnv) $ addImportedLabels m tyEnv
---   m       = moduleIdent env
--- 
--- -- TODO: This is necessary as currently labels are unqualified.
--- -- Without this additional import the labels would no longer be known.
--- addImportedLabels :: ModuleIdent -> ValueEnv -> ValueEnv
--- addImportedLabels m tyEnv = foldr addLabelType tyEnv (allImports tyEnv)
---   where
---   addLabelType (_, lbl@(Label l r ty))
---     = importTopEnv mid l' lbl
---     -- the following is necessary to be available during generation
---     -- of flat curry.
---     . importTopEnv     mid (recSelectorId r l') sel
---     . qualImportTopEnv mid (recSelectorId r l') sel
---     . importTopEnv     mid (recUpdateId   r l') upd
---     . qualImportTopEnv mid (recUpdateId   r l') upd
---     where
---     l' = unqualify l
---     mid = fromMaybe m (qidModule r)
---     sel = Value (qualRecSelectorId m r l') 1 ty
---     upd = Value (qualRecUpdateId   m r l') 2 ty
---   addLabelType _                       = id
--- 
--- expandRecordTypes :: TCEnv -> ValueInfo -> ValueInfo
--- expandRecordTypes tcEnv (DataConstructor  qid a (ForAllExist n m ty)) =
---   DataConstructor qid a (ForAllExist n m (expandRecords tcEnv ty))
--- expandRecordTypes tcEnv (NewtypeConstructor qid (ForAllExist n m ty)) =
---   NewtypeConstructor qid (ForAllExist n m (expandRecords tcEnv ty))
--- expandRecordTypes tcEnv (Value qid a (ForAll n ty)) =
---   Value qid a (ForAll n (expandRecords tcEnv ty))
--- expandRecordTypes tcEnv (Label qid r (ForAll n ty)) =
---   Label qid r (ForAll n (expandRecords tcEnv ty))
--- 
--- expandRecords :: TCEnv -> Type -> Type
--- jrt 2014-10-16: Deactivated to enable declaration of recursive record types
--- expandRecords tcEnv (TypeConstructor qid tys) = case qualLookupTC qid tcEnv of
---   [AliasType _ _ rty@(TypeRecord _ _)]
---     -> expandRecords tcEnv $ expandAliasType (map (expandRecords tcEnv) tys) rty
---   _ -> TypeConstructor qid $ map (expandRecords tcEnv) tys
--- expandRecords tcEnv (TypeConstructor qid tys) =
---   TypeConstructor qid $ map (expandRecords tcEnv) tys
--- expandRecords tcEnv (TypeConstrained tys v) =
---   TypeConstrained (map (expandRecords tcEnv) tys) v
--- expandRecords tcEnv (TypeArrow ty1 ty2) =
---   TypeArrow (expandRecords tcEnv ty1) (expandRecords tcEnv ty2)
--- expandRecords tcEnv (TypeRecord fs) =
---   TypeRecord (map (\ (l, ty) -> (l, expandRecords tcEnv ty)) fs)
--- expandRecords _ ty = ty
-
--- Unlike usual identifiers like in functions, types etc., identifiers
--- of labels are always represented unqualified within the whole context
--- of compilation. Since the common type environment (type \texttt{ValueEnv})
--- has some problems with handling imported unqualified identifiers, it is
--- necessary to add the type information for labels seperately. For this reason
--- the function \texttt{importLabels} generates an environment containing
--- all imported labels and the function \texttt{addImportedLabels} adds this
--- content to a value environment.
-
--- importLabels :: InterfaceEnv -> [ImportDecl] -> LabelEnv
--- importLabels mEnv ds = foldl importLabelTypes initLabelEnv ds
---   where
---   importLabelTypes :: LabelEnv -> ImportDecl -> LabelEnv
---   importLabelTypes lEnv (ImportDecl _ m _ asM is) = case Map.lookup m mEnv of
---     Just (Interface _ _ ds') ->
---       foldl (importLabelType (fromMaybe m asM) is) lEnv ds'
---     Nothing  ->
---       internalError "Records.importLabels"
---
---   importLabelType m is lEnv (ITypeDecl _ r _ (RecordType fs _)) =
---     foldl (insertLabelType r' (getImportSpec r' is)) lEnv fs
---     where r' = qualifyWith m $ fromRecordExtId $ unqualify r
---   importLabelType _ _  lEnv _ = lEnv
---
---   insertLabelType r (Just (ImportTypeAll     _)) lEnv ([l], ty) =
---     bindLabelType l r (toType [] ty) lEnv
---   insertLabelType r (Just (ImportTypeWith _ ls)) lEnv ([l], ty)
---     | l `elem` ls = bindLabelType l r (toType [] ty) lEnv
---     | otherwise   = lEnv
---   insertLabelType _ _ lEnv _ = lEnv
---
---   getImportSpec r (Just (Importing _ is')) = find (isImported (unqualify r)) is'
---   getImportSpec r Nothing                  = Just $ ImportTypeAll $ unqualify r
---   getImportSpec _ _                        = Nothing
---
---   isImported r (Import         r'  ) = r == r'
---   isImported r (ImportTypeWith r' _) = r == r'
---   isImported r (ImportTypeAll  r'  ) = r == r'

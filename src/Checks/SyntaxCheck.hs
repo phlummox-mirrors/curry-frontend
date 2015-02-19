@@ -488,7 +488,6 @@ checkDecls bindDecl ds = do
 -- -- ---------------------------------------------------------------------------
 
 checkDeclRhs :: [Ident] -> Decl -> SCM Decl
--- jrt: added for Haskell's record syntax
 checkDeclRhs _   (DataDecl p tc tvs cs) =
   DataDecl p tc tvs <$> mapM checkDeclLabels cs
 checkDeclRhs bvs (TypeSig      p vs ty) =
@@ -499,7 +498,6 @@ checkDeclRhs _   (PatternDecl  p t rhs) =
   PatternDecl p t <$> checkRhs rhs
 checkDeclRhs _   d                      = return d
 
--- jrt: added for Haskell's record syntax
 checkDeclLabels :: ConstrDecl -> SCM ConstrDecl
 checkDeclLabels rd@(RecordDecl _ _ _ fs) = do
   onJust (report . errDuplicateLabel "declaration")
