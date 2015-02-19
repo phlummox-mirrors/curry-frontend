@@ -266,6 +266,7 @@ dsNonLinear :: NonLinearEnv -> Pattern -> DsM (NonLinearEnv, Pattern)
 dsNonLinear env l@(LiteralPattern        _) = return (env, l)
 dsNonLinear env n@(NegativePattern     _ _) = return (env, n)
 dsNonLinear env t@(VariablePattern       v)
+  | isAnonId v         = return (env, t)
   | v `Set.member` vis = do
     v' <- freshMonoTypeVar "_#nonlinear" t
     return ((vis, mkStrictEquality v v' : eqs), VariablePattern v')

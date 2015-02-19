@@ -1,44 +1,16 @@
--- record declarations
-data R1 = R1 { f11, f13 :: Int, f12 :: Bool }
+module HaskellRecords (R (C)) where
 
-data R2 = R2 { f21 :: String, f22 :: R2 }
+data R a = C { l :: Int, x :: a }
 
-newtype R3 = R3 { f31 :: Char }
+-- construction
+r1 = C { l = 42, x = True }
 
--- record constructions
+r2 = C {}
 
-r1 :: R1
-r1 = R1 { f11 = 42, f12 = True, f13 = 4 }
+-- pattern matching
+fun C { l = 42 } = True
 
-r2 :: R2
-r2 = R2 { f21 = "hello", f22 = r2 }
+fun2 C {} = False
 
-r3 = R3 'c'
-
--- record selection
-
-answer :: Int
-answer = f11 r1
-
-innerRecord :: R2
-innerRecord = f22 r2
-
-c :: Char
-c = f31 r3
-
--- record update
-
-r1' :: R1
-r1' = R1 { f12 = False }
-
-r2' :: R2
-r2' = R2 { f21 = "bye" }
-
--- pattern matching on records
-
-isAnswer :: R1 -> Bool
-isAnswer (R1 { f11 = 42, f12 = b }) = b
-
-firstLetter :: R2 -> Char
-firstLetter (R2 { f21 = (c:cs) }) = c
-firstLetter _                     = 'f'
+-- update
+upd r = r { x = False, l = 0 }
