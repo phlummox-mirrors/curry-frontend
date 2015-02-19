@@ -34,8 +34,7 @@ import           Control.Monad              (replicateM, unless)
 import qualified Control.Monad.State as S   (State, execState, gets, modify)
 import           Data.List                  (nub, nubBy, partition)
 import qualified Data.Map            as Map (Map, delete, empty, insert, lookup)
-import           Data.Maybe
-  (catMaybes, fromMaybe)
+import           Data.Maybe                 (fromMaybe)
 import qualified Data.Set            as Set
   (Set, fromList, member, notMember, unions)
 
@@ -56,7 +55,7 @@ import Base.Utils (foldr2)
 
 import Env.TypeConstructor (TCEnv, TypeInfo (..), bindTypeInfo, qualLookupTC)
 import Env.Value ( ValueEnv, ValueInfo (..), bindFun, rebindFun
-  , bindGlobalInfo, bindLabel, lookupValue, qualLookupValue )
+  , bindGlobalInfo, lookupValue, qualLookupValue )
 
 infixl 5 $-$
 
@@ -215,33 +214,41 @@ ft m (ArrowType      ty1 ty2) tcs = ft m ty1 $ ft m ty2 $ tcs
 -- the field label.
 
 checkFieldLabel :: Decl -> TCM ()
-checkFieldLabel (DataDecl p tc tvs cs) = do
-  ls' <- mapM (tcFieldLabel tvs) ls
+checkFieldLabel (DataDecl _ _ tvs cs) = do
+  ls' <- mapM (tcFieldLabel tvs) labels
   mapM_ tcFieldLabels (groupLabels ls')
-  where ls = [(l, p, ty) | RecordDecl _ _ _ fs <- cs,
-                           FieldDecl p ls ty <- fs, l <- ls]
+  where labels = [(l, p, ty) | RecordDecl _ _ _ fs <- cs,
+                               FieldDecl p ls ty <- fs, l <- ls]
+checkFieldLabel (NewtypeDecl _ _ tvs (NewRecordDecl p _ _ (l,ty))) = do
+  _ <- tcFieldLabel tvs (l, p, ty)
+  return ()
+checkFieldLabel _ = return ()
 
-tcFieldLabel :: [Ident] -> (Ident, Position, TypeExpr) -> TCM (Ident, Type)
-tcFieldLabel tvs (l, p, ty)
-  | n <= length tvs = return (l, ty')
-  | otherwise       = do
-      m <- getModuleIdent
-      report $ errSkolemEscapingScope p m "record selection" ty'
-      return (l, ty')
-  where
-    Forall n ty' = polyType $ expandMonoType tvs ty
+tcFieldLabel :: [Ident] -> (Ident, Position, TypeExpr)
+             -> TCM (Ident, Position, Type)
+tcFieldLabel tvs (l, p, ty) = do
+  m     <- getModuleIdent
+  tcEnv <- getTyConsEnv
+  let ForAll n ty' = polyType $ expandMonoType' m tcEnv tvs ty
+      what         = text "record selection"
+  if n <= length tvs then return (l, p, ty')
+                     else do report $ errSkolemEscapingScope p m what ty'
+                             return (l, p, ty')
 
-groupLabels :: Eq a => [(a,b)] -> [(a,[b])]
+groupLabels :: Eq a => [(a,b,c)] -> [(a,b,[c])]
 groupLabels []             = []
-groupLabels ((x,y):xys) =
-  (x,y:map snd xys') : groupLabels xys''
-  where (xys',xys'') = partition ((x ==) . fst) xys
+groupLabels ((x,y,z):xyzs) =
+  (x,y,z:map thrd3 xyzs') : groupLabels xyzs''
+  where (xyzs',xyzs'') = partition ((x ==) . fst3) xyzs
+        fst3  (a,_,_) = a
+        thrd3 (_,_,c) = c
 
-tcFieldLabels :: (Ident, [Type]) -> TCM ()
-tcFieldLabels (l,ty:tys) = do
+tcFieldLabels :: (Ident, Position, [Type]) -> TCM ()
+tcFieldLabels (_,_,[])     = return ()
+tcFieldLabels (l,p,ty:tys) = do
   m <- getModuleIdent
   unless (null (filter (ty /=) tys)) $
-    report $ errIncompatibleLabelTypes m l ty (head tys)
+    report $ errIncompatibleLabelTypes p m l ty (head tys)
 
 -- The type constructor environment 'tcEnv' maintains all types
 -- in fully expanded form.
@@ -269,7 +276,7 @@ bindTC m tcEnv (NewtypeDecl _ tc tvs (NewConstrDecl _ evs c ty)) =
   bindTypeInfo RenamingType m tc tvs (DataConstr c (length evs) [ty'])
   where ty' = expandMonoType' m tcEnv (cleanTVars tvs evs) ty
 bindTC m tcEnv (NewtypeDecl _ tc tvs (NewRecordDecl _ evs c (l, ty))) =
-  bindTypeInfo RenamingType m tc tvs (RecordConstr c (length evs) [l] [ty']
+  bindTypeInfo RenamingType m tc tvs (RecordConstr c (length evs) [l] [ty'])
   where ty' = expandMonoType' m tcEnv (cleanTVars tvs evs) ty
 bindTC m tcEnv (TypeDecl _ tc tvs ty) =
   bindTypeInfo AliasType m tc tvs (expandMonoType' m tcEnv tvs ty)
@@ -295,7 +302,7 @@ bindConstrs' m tcEnv tyEnv = foldr (bindData . snd) tyEnv
                            $ localBindings tcEnv
   where
   bindData (DataType tc n cs) tyEnv' =
-    foldr (bindConstr m n (constrType' tc n)) tyEnv' (catMaybes cs)
+    foldr (bindConstr m n (constrType' tc n)) tyEnv' cs
   bindData (RenamingType tc n c) tyEnv' =
     bindNewConstr m n (constrType' tc n) c tyEnv'
   bindData (AliasType _ _ _) tyEnv' = tyEnv'
@@ -314,7 +321,7 @@ bindConstrs' m tcEnv tyEnv = foldr (bindData . snd) tyEnv
   bindNewConstr m' n cty (RecordConstr c n' [l] [lty]) =
     bindGlobalInfo (\qc tyScheme -> NewtypeConstructor qc l tyScheme) m' c
                    (ForAllExist n n' (TypeArrow lty cty))
-  bindNewConstr m' n cty ncons =
+  bindNewConstr _ _ _ _ =
     internalError "TypeCheck.bindConstrs: newtype with illegal constructors"
   constrType' tc n = TypeConstructor tc $ map TypeVariable [0 .. n - 1]
 
@@ -337,21 +344,22 @@ bindLabels' m tcEnv tyEnv = foldr (bindData . snd) tyEnv
   bindData (DataType tc n cs) tyEnv' =
     foldr (bindLabel m n (constrType' tc n)) tyEnv' $ nubBy sameLabel clabels
     where
-      labels   = [ (l, lty) | RecordDecl _ _ _ fs <- cs
-                 , FieldDecl _ ls lty <- fs, l <- ls
-                 ]
+      labels   = zip (concatMap recLabels cs) (concatMap recLabelTypes cs)
       clabels  = [(l, constr l, ty) | (l, ty) <- labels]
       constr l = map (qualifyLike tc) $
-        [constrId c | c <- cs, l `elem` recordLabels c]
+        [constrIdent c | c <- cs, l `elem` recLabels c]
       sameLabel (l1,_,_) (l2,_,_) = l1 == l2
-  bindData (RenamingType tc n (RecordConstr c n' [l] [lty])) tyEnv' =
+  bindData (RenamingType tc n (RecordConstr c _ [l] [lty])) tyEnv' =
     bindLabel m n (constrType' tc n) (l, [qc], lty) tyEnv'
     where
       qc = qualifyLike tc c
+  bindData (RenamingType _ _ (RecordConstr _ _ _ _)) _ = internalError $
+    "Checks.TypeCheck.bindLabels: RenamingType with more than one record label"
+  bindData (RenamingType _ _ (DataConstr _ _ _)) tyEnv' = tyEnv'
   bindData (AliasType _ _ _) tyEnv' = tyEnv'
   bindLabel m' n ty (l, lcs, lty) =
     bindGlobalInfo (\qc tyScheme -> Label qc lcs tyScheme) m' l
-                   (ForAll n (TypeArrow lty ty))
+                   (ForAll n (TypeArrow ty lty))
   constrType' tc n = TypeConstructor tc $ map TypeVariable [0 .. n - 1]
 
 -- Type Signatures:
@@ -633,10 +641,10 @@ tcPattern p t@(ConstructorPattern c ts) = do
 tcPattern p (InfixPattern t1 op t2) = tcPattern p
                                     $ ConstructorPattern op [t1, t2]
 tcPattern p (ParenPattern        t) = tcPattern p t
-tcPattern p r@(RecordPattern  c fs) = do
+tcPattern _ r@(RecordPattern  c fs) = do
   m     <- getModuleIdent
   tyEnv <- getValueEnv
-  ty    <- liftM arrowBase $ skol $ constrType m c tyEnv
+  ty    <- arrowBase <$> skol (constrType m c tyEnv)
   mapM_ (tcField tcPattern "pattern" doc ty) fs
   return ty
   where doc t1 = ppPattern 0 r $-$ text "Term:" <+> ppPattern 0 t1
@@ -730,10 +738,10 @@ tcExpr p (Typed   e sig) = do
   return ty
   where sig' = nameSigType sig
 tcExpr p (Paren       e) = tcExpr p e
-tcExpr p r@(Record c fs) = do
+tcExpr _ r@(Record c fs) = do
   m     <- getModuleIdent
   tyEnv <- getValueEnv
-  ty    <- liftM arrowBase $ instExist $ constrType m c tyEnv
+  ty    <- arrowBase <$> instExist (constrType m c tyEnv)
   mapM_ (tcField tcExpr "construction" doc ty) fs
   return ty
   where doc e1 = ppExpr 0 r $-$ text "Term:" <+> ppExpr 0 e1
@@ -891,8 +899,9 @@ tcStmt _ (StmtDecl ds) = tcDecls ds
 tcField :: (Position -> a -> TCM Type) -> String -> (a -> Doc) -> Type
         -> Field a -> TCM Type
 tcField tcheck what doc ty (Field p l x) = do
+  m     <- getModuleIdent
   tyEnv <- getValueEnv
-  TypeArrow ty1 ty2 <- inst (labelType l tyEnv)
+  TypeArrow ty1 ty2 <- inst (labelType m l tyEnv)
   unify p "field label" empty ty ty1
   lty <- tcheck p x
   unify p ("record " ++ what) (doc x) ty2 lty
@@ -1013,11 +1022,6 @@ freshConstrained = freshVar . TypeConstrained
 freshSkolem :: TCM Type
 freshSkolem = fresh TypeSkolem
 
-inst' :: TypeScheme -> TCM (Type, [Type])
-inst' (ForAll n ty) = do
-  tys <- replicateM n freshTypeVar
-  return (expandAliasType tys ty, tys)
-
 inst :: TypeScheme -> TCM Type
 inst (ForAll n ty) = do
   tys <- replicateM n freshTypeVar
@@ -1087,10 +1091,11 @@ funType m f tyEnv = case qualLookupValue f tyEnv of
 labelType :: ModuleIdent -> QualIdent -> ValueEnv -> TypeScheme
 labelType m l tyEnv = case qualLookupValue l tyEnv of
   [Label _ _ sigma] -> sigma
-  _ -> case qualLookupValue (qualQualify m l) tyEnv of
+  _ -> case qualLookupValue ql tyEnv of
     [Label _ _ sigma] -> sigma
-    _ -> internalError $ "TypeCheck.labelType " ++ show l
-          ++ ", more precisely " ++ show (unqualify l)
+    _ -> internalError $ "TypeCheck.labelType " ++ show ql
+          ++ ", more precisely " ++ show l
+  where ql = qualQualify m l
 
 -- The function 'expandType' expands all type synonyms in a type
 -- and also qualifies all type constructors with the name of the module
@@ -1213,8 +1218,8 @@ errIncompatibleTypes m ty1 ty2 = sep
   , text "are incompatible"
   ]
 
-errIncompatibleLabelTypes :: ModuleIdent -> Ident -> Type -> Type -> Doc
-errIncompatibleLabelTypes m l ty1 ty2 = sep
+errIncompatibleLabelTypes :: Position -> ModuleIdent -> Ident -> Type -> Type -> Message
+errIncompatibleLabelTypes p m l ty1 ty2 = posMessage p $ sep
   [ text "Labeled types" <+> ppIdent l <+> text "::" <+> ppType m ty1
   , nest 10 $ text "and" <+> ppIdent l <+> text "::" <+> ppType m ty2
   , text "are incompatible"

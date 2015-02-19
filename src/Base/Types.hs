@@ -21,7 +21,8 @@ module Base.Types
     Type (..), isArrowType, arrowArity, arrowArgs, arrowBase, arrowUnapply
   , typeVars, typeConstrs, typeSkolems, equTypes, qualifyType, unqualifyType
     -- * Representation of Data Constructors
-  , DataConstr (..), constrIdent, tupleData
+  , DataConstr (..), constrIdent, constrTypes, recLabels, recLabelTypes
+  , tupleData
     -- * Representation of Quantification
   , TypeScheme (..), ExistTypeScheme (..), monoType, polyType
     -- * Predefined types
@@ -180,13 +181,25 @@ unqualifyType _ skol@(TypeSkolem      _) = skol
 
 -- The type 'DataConstr' is used to represent value or record constructors
 -- introduced by data or newtype declarations.
-data DataConstr = DataConstr Ident Int [Type]
+data DataConstr = DataConstr   Ident Int [Type]
                 | RecordConstr Ident Int [Ident] [Type]
     deriving (Eq, Show)
 
 constrIdent :: DataConstr -> Ident
 constrIdent (DataConstr     c _ _) = c
 constrIdent (RecordConstr c _ _ _) = c
+
+constrTypes :: DataConstr -> [Type]
+constrTypes (DataConstr     _ _ ty) = ty
+constrTypes (RecordConstr _ _ _ ty) = ty
+
+recLabels :: DataConstr -> [Ident]
+recLabels (DataConstr      _ _ _) = []
+recLabels (RecordConstr _ _ ls _) = ls
+
+recLabelTypes :: DataConstr -> [Type]
+recLabelTypes (DataConstr       _ _ _) = []
+recLabelTypes (RecordConstr _ _ _ tys) = tys
 
 -- We support two kinds of quantifications of types here, universally
 -- quantified type schemes (forall alpha . tau(alpha)) and universally

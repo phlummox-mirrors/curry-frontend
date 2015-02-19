@@ -16,7 +16,7 @@
 module Checks.WarnCheck (warnCheck) where
 
 import           Control.Monad
-  (filterM, foldM_, guard, liftM, liftM2, when, unless, zipWithM)
+  (filterM, foldM_, guard, liftM, liftM2, when, unless)
 import           Control.Monad.State.Strict    (State, execState, gets, modify)
 import qualified Data.IntSet         as IntSet
   (IntSet, empty, insert, notMember, singleton, union, unions)
@@ -41,7 +41,7 @@ import Base.Types
 import Base.Utils (findMultiples)
 import Env.ModuleAlias
 import Env.TypeConstructor (TCEnv, TypeInfo (..), lookupTC, qualLookupTC)
-import Env.Value (ValueEnv, ValueInfo (..), lookupValue, qualLookupValue)
+import Env.Value (ValueEnv, ValueInfo (..), qualLookupValue)
 
 import CompilerOpts
 
@@ -526,11 +526,12 @@ simplifyPat (InfixPattern    p1 c p2) = ConstructorPattern c `liftM`
                                         mapM simplifyPat [p1, p2]
 simplifyPat (ParenPattern          p) = simplifyPat p
 simplifyPat (RecordPattern      c fs) = do
-  (qc, ls) <- getAllLabels c
+  (_, ls) <- getAllLabels c
   let ps = map (getPattern (map field2Tuple fs)) ls
-  simplePat (ConstructorPattern c ps)
+  simplifyPat (ConstructorPattern c ps)
   where
-    getPattern fs' l = fromMaybe (VariablePattern anonId) (lookup l fs')
+    getPattern fs' l' = fromMaybe (VariablePattern anonId)
+                                  (lookup l' [(unqualify l, p) | (l, p) <- fs'])
 simplifyPat (TuplePattern       _ ps)
   | null ps   = return $ ConstructorPattern qUnitId []
   | otherwise = ConstructorPattern (qTupleId (length ps))
@@ -545,7 +546,7 @@ simplifyPat (InfixFuncPattern  _ _ _) = return $ VariablePattern anonId
 getAllLabels :: QualIdent -> WCM (QualIdent, [Ident])
 getAllLabels c = do
   tyEnv <- gets valueEnv
-  case lookupValue c tyEnv of
+  case qualLookupValue c tyEnv of
     [DataConstructor qc _ ls _] -> return (qc, ls)
     _                           -> internalError $
           "Checks.WarnCheck.getAllLabels: " ++ show c
@@ -645,9 +646,9 @@ processCons qs@(q:_) = do
   defaults     = [ shiftPat q' | q' <- qs, isVarPat (firstPat q') ]
   -- Pattern for a non-matched constructors
   defaultPat c = (mkPattern c : replicate (length (snd q) - 1) wildPat, [])
-  mkPattern (DataConstr c _ tys)
-    = ConstructorPattern (qualifyLike (fst $ head used_cons) c)
-                         (replicate (length tys) wildPat)
+  mkPattern  c = ConstructorPattern
+                  (qualifyLike (fst $ head used_cons) (constrIdent c))
+                  (replicate (length $ constrTypes c) wildPat)
 
 -- |Construct exhaustive patterns starting with the used constructors
 processUsedCons :: [(QualIdent, Int)] -> [EqnInfo]
@@ -692,11 +693,11 @@ getConTy :: QualIdent -> WCM Type
 getConTy q = do
   tyEnv <- gets valueEnv
   tcEnv <- gets tyConsEnv
-  return $ case qualLookupValue q tyEnv of
-    [DataConstructor  _ _ (ForAllExist _ _ ty)] -> ty
-    [NewtypeConstructor _ (ForAllExist _ _ ty)] -> ty
+  case qualLookupValue q tyEnv of
+    [DataConstructor  _ _ _ (ForAllExist _ _ ty)] -> return ty
+    [NewtypeConstructor _ _ (ForAllExist _ _ ty)] -> return ty
     _                                           -> case qualLookupTC q tcEnv of
-      [AliasType _ _ ty] -> ty
+      [AliasType _ _ ty] -> return ty
       _                  -> internalError $
         "Checks.WarnCheck.getConTy: " ++ show q
 
@@ -923,7 +924,7 @@ insertPattern fp (ConstructorPattern  c ps) = do
 insertPattern fp (InfixPattern p1 c p2)
   = insertPattern fp (ConstructorPattern c [p1, p2])
 insertPattern fp (ParenPattern           p) = insertPattern fp p
-insertPattern fp (RecordPattern       c fs) = mapM_ (insertFieldPattern fp) fs
+insertPattern fp (RecordPattern       _ fs) = mapM_ (insertFieldPattern fp) fs
 insertPattern fp (TuplePattern        _ ps) = mapM_ (insertPattern fp) ps
 insertPattern fp (ListPattern         _ ps) = mapM_ (insertPattern fp) ps
 insertPattern fp (AsPattern            v p) = insertVar v >> insertPattern fp p
@@ -1062,9 +1063,9 @@ isCons qid s = maybe (isImportedCons s qid)
                       isConstructor
                       (SE.lookup qid (scope s))
  where isImportedCons s' qid' = case qualLookupValue qid' (valueEnv s') of
-          (DataConstructor  _ _ _) : _ -> True
-          (NewtypeConstructor _ _) : _ -> True
-          _                            -> False
+          (DataConstructor  _ _ _ _) : _ -> True
+          (NewtypeConstructor _ _ _) : _ -> True
+          _                              -> False
 
 -- Since type identifiers and normal identifiers (e.g. functions, variables
 -- or constructors) don't share the same namespace, it is necessary

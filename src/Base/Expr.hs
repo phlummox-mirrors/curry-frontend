@@ -94,6 +94,8 @@ instance QualExpr Expression where
   qfv _ (Constructor           _) = []
   qfv m (Paren                 e) = qfv m e
   qfv m (Typed               e _) = qfv m e
+  qfv m (Record             _ fs) = qfv m fs
+  qfv m (RecordUpdate       e fs) = qfv m e ++ qfv m fs
   qfv m (Tuple              _ es) = qfv m es
   qfv m (List               _ es) = qfv m es
   qfv m (ListCompr        _ e qs) = foldr (qfvStmt m) (qfv m e) qs
@@ -111,8 +113,6 @@ instance QualExpr Expression where
   qfv m (Do                sts e) = foldr (qfvStmt m) (qfv m e) sts
   qfv m (IfThenElse   _ e1 e2 e3) = qfv m e1 ++ qfv m e2 ++ qfv m e3
   qfv m (Case         _ _ e alts) = qfv m e ++ qfv m alts
-  qfv m (RecordConstr       _ fs) = qfv m fs
-  qfv m (RecordUpdate       e fs) = qfv m e ++ qfv m fs
 
 qfvStmt :: ModuleIdent -> Statement -> [Ident] -> [Ident]
 qfvStmt m st fvs = qfv m st ++ filterBv st fvs
@@ -147,13 +147,13 @@ instance QuantExpr Pattern where
   bv (ConstructorPattern  _ ts) = bv ts
   bv (InfixPattern     t1 _ t2) = bv t1 ++ bv t2
   bv (ParenPattern           t) = bv t
+  bv (RecordPattern       _ fs) = bv fs
   bv (TuplePattern        _ ts) = bv ts
   bv (ListPattern         _ ts) = bv ts
   bv (AsPattern            v t) = v : bv t
   bv (LazyPattern          _ t) = bv t
   bv (FunctionPattern     _ ts) = nub $ bv ts
   bv (InfixFuncPattern t1 _ t2) = nub $ bv t1 ++ bv t2
-  bv (RecordPattern       _ fs) = bv fs
 
 instance QualExpr Pattern where
   qfv _ (LiteralPattern          _) = []
@@ -162,6 +162,7 @@ instance QualExpr Pattern where
   qfv m (ConstructorPattern   _ ts) = qfv m ts
   qfv m (InfixPattern      t1 _ t2) = qfv m [t1, t2]
   qfv m (ParenPattern            t) = qfv m t
+  qfv m (RecordPattern        _ fs) = qfv m fs
   qfv m (TuplePattern         _ ts) = qfv m ts
   qfv m (ListPattern          _ ts) = qfv m ts
   qfv m (AsPattern            _ ts) = qfv m ts
@@ -170,7 +171,6 @@ instance QualExpr Pattern where
     = maybe [] return (localIdent m f) ++ qfv m ts
   qfv m (InfixFuncPattern t1 op t2)
     = maybe [] return (localIdent m op) ++ qfv m [t1, t2]
-  qfv m (RecordPattern        _ fs) = qfv m fs
 
 instance Expr TypeExpr where
   fv (ConstructorType _ tys) = fv tys

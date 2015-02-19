@@ -94,7 +94,7 @@ qNewConstrDecl (NewRecordDecl p vs n (f, ty))
   = (\ty' -> NewRecordDecl p vs n (f, ty')) <$> qTypeExpr ty
 
 qFieldDecl :: Qual FieldDecl
-qFieldDecl (FieldDecl p fs ty) = FieldDecl p fs `liftM` qTypeExpr ty
+qFieldDecl (FieldDecl p fs ty) = FieldDecl p fs <$> qTypeExpr ty
 
 qTypeExpr :: Qual TypeExpr
 qTypeExpr (ConstructorType c tys) = ConstructorType <$> qConstr c
@@ -179,7 +179,7 @@ qAlt :: Qual Alt
 qAlt (Alt p t rhs) = Alt p <$> qPattern t <*> qRhs rhs
 
 qField :: Qual a -> Qual (Field a)
-qField q (Field p l x) = Field p l <$> q x
+qField q (Field p l x) = Field p <$> qIdent l <*> q x
 
 qInfixOp :: Qual InfixOp
 qInfixOp (InfixOp     op) = InfixOp     <$> qIdent op

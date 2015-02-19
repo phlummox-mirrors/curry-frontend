@@ -33,7 +33,7 @@ module Transformations.CaseCompletion (completeCase) where
 import           Control.Monad              (liftM, liftM2)
 import qualified Control.Monad.State as S   (State, evalState, gets, modify)
 import           Data.List                  (find)
-import           Data.Maybe                 (catMaybes, fromMaybe)
+import           Data.Maybe                 (fromMaybe)
 
 import           Curry.Base.Ident
 import           Curry.Base.Position        (SrcRef)
@@ -366,9 +366,9 @@ getCCFromIDecls mid cs (CS.Interface _ _ ds) = complementary cs cinfos
          $ maybe [] extractConstrDecls (find (`declares` head cs) ds)
 
   decl `declares` qid = case decl of
-    CS.IDataDecl    _ _ _ cs' -> any (`declaresConstr` qid) $ catMaybes cs'
-    CS.INewtypeDecl _ _ _ nc  -> isNewConstrDecl qid nc
-    _                         -> False
+    CS.IDataDecl    _ _ _ cs' _ -> any (`declaresConstr` qid) cs'
+    CS.INewtypeDecl _ _ _ nc  _ -> isNewConstrDecl qid nc
+    _                           -> False
 
   declaresConstr (CS.ConstrDecl  _ _ cid _) qid = unqualify qid == cid
   declaresConstr (CS.ConOpDecl _ _ _ oid _) qid = unqualify qid == oid
@@ -377,13 +377,13 @@ getCCFromIDecls mid cs (CS.Interface _ _ ds) = complementary cs cinfos
   isNewConstrDecl qid (CS.NewConstrDecl _ _ cid _) = unqualify qid == cid
   isNewConstrDecl qid (CS.NewRecordDecl _ _ cid _) = unqualify qid == cid
 
-  extractConstrDecls (CS.IDataDecl _ _ _ cs') = catMaybes cs'
-  extractConstrDecls _                        = []
+  extractConstrDecls (CS.IDataDecl _ _ _ cs' _) = cs'
+  extractConstrDecls _                          = []
 
   constrInfo (CS.ConstrDecl _ _ cid tys) = (qualifyWith mid cid, length tys)
   constrInfo (CS.ConOpDecl  _ _ _ oid _) = (qualifyWith mid oid, 2)
-  constrInfo (CS.RecordDecl _ _ cid  fs) = (qualifyWith mid cid, length ls)
-    where ls = [l | FieldDecl _ ls _ <- fs, l <- ls]
+  constrInfo (CS.RecordDecl _ _ cid  fs) = (qualifyWith mid cid, length labels)
+    where labels = [l | CS.FieldDecl _ ls _ <- fs, l <- ls]
 
 -- Compute complementary constructors
 complementary :: [QualIdent] -> [(QualIdent, Int)] -> [(QualIdent, Int)]

@@ -18,14 +18,13 @@ module Imports (importInterfaces, importModules, qualifyEnv) where
 
 import           Control.Monad              (liftM, unless)
 import qualified Control.Monad.State as S   (State, gets, modify, runState)
-import           Data.List                  (notElem, nubBy)
+import           Data.List                  (nubBy)
 import qualified Data.Map            as Map
 import           Data.Maybe                 (catMaybes, fromMaybe)
 import qualified Data.Set            as Set
 
 import Curry.Base.Ident
 import Curry.Base.Monad
-import Curry.Base.Position
 import Curry.Base.Pretty
 import Curry.Syntax
 
@@ -41,12 +40,11 @@ import Env.TypeConstructor
 import Env.Value
 
 import CompilerEnv
-import CompilerOpts
 
 -- |The function 'importModules' brings the declarations of all
 -- imported interfaces into scope for the current module.
-importModules :: Monad m => Options -> Module -> InterfaceEnv -> CYT m CompilerEnv
-importModules opts mdl@(Module _ mid _ imps _) iEnv
+importModules :: Monad m => Module -> InterfaceEnv -> CYT m CompilerEnv
+importModules mdl@(Module _ mid _ imps _) iEnv
   = case foldl importModule (initEnv, []) imps of
       (e, []  ) -> ok $ importUnifyData e
       (_, errs) -> failMessages errs
@@ -65,8 +63,8 @@ importModules opts mdl@(Module _ mid _ imps _) iEnv
 
 -- |The function 'importInterfaces' brings the declarations of all
 -- imported interfaces into scope for the current 'Interface'.
-importInterfaces :: Options -> Interface -> InterfaceEnv -> CompilerEnv
-importInterfaces opts (Interface m is _) iEnv
+importInterfaces :: Interface -> InterfaceEnv -> CompilerEnv
+importInterfaces (Interface m is _) iEnv
   = importUnifyData $ foldl importModule initEnv is
   where
     initEnv = (initCompilerEnv m) { aliasEnv = initAliasEnv, interfaceEnv = iEnv }
@@ -143,15 +141,15 @@ importEntities m q isVisible' f mEnv env =
 
 importData :: (Ident -> Bool) -> TypeInfo -> TypeInfo
 importData isVisible' (DataType tc n cs) =
-  DataType tc n (map (>>= importConstr isVisible') cs)
+  DataType tc n (catMaybes $ map (importConstr isVisible') cs)
 importData isVisible' (RenamingType tc n nc) =
   maybe (DataType tc n []) (RenamingType tc n) (importConstr isVisible' nc)
 importData _ (AliasType tc n ty) = AliasType tc n ty
 
 importConstr :: (Ident -> Bool) -> DataConstr -> Maybe DataConstr
-importConstr isVisible' dc@(DataConstr c _ _)
-  | isVisible' c = Just dc
-  | otherwise    = Nothing
+importConstr isVisible' dc
+  | isVisible' (constrIdent dc) = Just dc
+  | otherwise                   = Nothing
 
 -- ---------------------------------------------------------------------------
 -- Building the initial environment
@@ -213,7 +211,7 @@ bindType f m tc tvs = Map.insert (unqualify tc)
 bindTy :: ModuleIdent -> IDecl -> ExpValueEnv -> ExpValueEnv
 bindTy m (IDataDecl _ tc tvs cs hs) env =
   let env' = foldr (bindConstr m tc' tvs ty') env $
-    filter ((`notElem` hs) . constrId) cs
+             filter ((`notElem` hs) . constrId) cs
   in foldr (bindLabel m tc' tvs ty') env' $ nubBy sameLabel clabels
   where tc'      = qualQualify m tc
         ty'      = constrType tc' tvs
@@ -378,7 +376,7 @@ expandThing' f tcImport = do
   isConstr (DataConstructor  _ _ _ _) = True
   isConstr (NewtypeConstructor _ _ _) = True
   isConstr (Value              _ _ _) = False
-  isConstr (Label                _ _) = False
+  isConstr (Label              _ _ _) = False
 
 -- try to hide as type constructor
 expandHide :: Ident -> ExpandM [Import]
@@ -405,7 +403,7 @@ expandTypeWith tc cs = do
   tcEnv <- getTyConsEnv
   ImportTypeWith tc `liftM` case Map.lookup tc tcEnv of
     Just (DataType     _ _                cs') ->
-      mapM (checkElement (concatMap visibleElems (catMaybes cs'))) cs
+      mapM (checkElement (concatMap visibleElems cs')) cs
     Just (RenamingType _ _ c) ->
       mapM (checkElement (visibleElems c)) cs
     Just (AliasType _ _ _) -> report (errNonDataType       tc) >> return []
@@ -421,7 +419,7 @@ expandTypeAll tc = do
   m     <- getModuleIdent
   tcEnv <- getTyConsEnv
   ImportTypeWith tc `liftM` case Map.lookup tc tcEnv of
-    Just (DataType _ _  cs) -> return (concatMap visibleElems (catMaybes cs))
+    Just (DataType _ _  cs) -> return (concatMap visibleElems cs)
     Just (RenamingType _ _ c) -> return (visibleElems c)
     Just (AliasType _ _ _) -> report (errNonDataType       tc) >> return []
     Nothing                -> report (errUndefinedEntity m tc) >> return []
@@ -481,11 +479,11 @@ importUnifyData' tcEnv = fmap (setInfo allTyCons) tcEnv
 -- ---------------------------------------------------------------------------
 
 -- |
-qualifyEnv :: Options -> CompilerEnv -> CompilerEnv
-qualifyEnv opts env = qualifyLocal env
-                    $ foldl (flip importInterfaceIntf) initEnv
-                    $ Map.elems
-                    $ interfaceEnv env
+qualifyEnv :: CompilerEnv -> CompilerEnv
+qualifyEnv env = qualifyLocal env
+               $ foldl (flip importInterfaceIntf) initEnv
+               $ Map.elems
+               $ interfaceEnv env
   where initEnv = initCompilerEnv $ moduleIdent env
 
 qualifyLocal :: CompilerEnv -> CompilerEnv -> CompilerEnv

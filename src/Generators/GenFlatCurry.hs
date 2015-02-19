@@ -14,7 +14,7 @@ import           Control.Monad       (filterM, liftM, liftM2, liftM3, mplus)
 import           Control.Monad.State (State, evalState, gets, modify)
 import           Data.List           (mapAccumL, nub)
 import qualified Data.Map as Map     (Map, empty, insert, lookup, fromList, toList)
-import           Data.Maybe          (catMaybes, fromMaybe, isJust)
+import           Data.Maybe          (fromMaybe, isJust)
 
 -- curry-base
 import Curry.Base.Ident as Id
@@ -33,7 +33,7 @@ import Base.Types
 
  -- environments
 import Env.Interface
-import Env.TypeConstructor (TCEnv, TypeInfo (..), qualLookupTC)
+import Env.TypeConstructor (TCEnv, TypeInfo (..))
 import Env.Value (ValueEnv, ValueInfo (..), lookupValue, qualLookupValue)
 
 -- other
@@ -115,7 +115,7 @@ data FlatEnv = FlatEnv
   , tvarIndexE    :: Int
   , genInterfaceE :: Bool
   , localTypes    :: Map.Map QualIdent IL.Type
-  , constrTypes   :: Map.Map QualIdent IL.Type
+  , consTypes     :: Map.Map QualIdent IL.Type
   }
 
 data IdentExport
@@ -146,7 +146,7 @@ run modSum mEnv tyEnv tcEnv genIntf f = evalState f env0
     , tvarIndexE    = 0
     , genInterfaceE = genIntf
     , localTypes    = Map.empty
-    , constrTypes   = Map.fromList $ getConstrTypes tcEnv tyEnv
+    , consTypes     = Map.fromList $ getConstrTypes tcEnv tyEnv
     }
 
 getConstrTypes :: TCEnv -> ValueEnv -> [(QualIdent, IL.Type)]
@@ -361,7 +361,8 @@ visitTypeIDecl :: CS.IDecl -> FlatState TypeDecl
 visitTypeIDecl (CS.IDataDecl _ t vs cs hs) = do
   let mid = fromMaybe (internalError "GenFlatCurry: no module name") (qidModule t)
       is  = [0 .. length vs - 1]
-  cdecls <- mapM (visitConstrIDecl mid $ zip vs is) [c | c <- cs, constrId c `notElem` hs]
+  cdecls <- mapM (visitConstrIDecl mid $ zip vs is)
+                 [c | c <- cs, CS.constrId c `notElem` hs]
   qname  <- visitQualTypeIdent t
   return $ Type qname Public is cdecls
 visitTypeIDecl (CS.ITypeDecl _ t vs ty) = do
@@ -380,6 +381,11 @@ visitConstrIDecl mid tis (CS.ConstrDecl _ _ ident typeexprs) = do
   return (Cons qname (length typeexprs) Public texprs)
 visitConstrIDecl mid tis (CS.ConOpDecl pos ids type1 ident type2)
   = visitConstrIDecl mid tis (CS.ConstrDecl pos ids ident [type1,type2])
+visitConstrIDecl mid tis (CS.RecordDecl _ _ ident fs) = do
+  texprs <- mapM (visitType . (snd . cs2ilType tis)) tys
+  qname  <- visitQualIdent (qualifyWith mid ident)
+  return (Cons qname (length tys) Public texprs)
+  where tys = [ty | CS.FieldDecl _ ls ty <- fs, _ <- ls]
 
 --
 visitOpIDecl :: CS.IDecl -> FlatState OpDecl
@@ -490,7 +496,7 @@ genExpIDecls idecls ((mid,exps):mes) = do
 isExportedIDecl :: [CS.Export] -> CS.IDecl -> Bool
 isExportedIDecl exprts (CS.IInfixDecl _ _ _ qid)
   = isExportedQualIdent qid exprts
-isExportedIDecl exprts (CS.IDataDecl _ qid _ _)
+isExportedIDecl exprts (CS.IDataDecl _ qid _ _ _)
   = isExportedQualIdent qid exprts
 isExportedIDecl exprts (CS.ITypeDecl _ qid _ _)
   = isExportedQualIdent qid exprts
@@ -514,11 +520,11 @@ isExportedQualIdent qid ((CS.ExportModule _):exps)
 qualifyIDecl :: ModuleIdent -> CS.IDecl -> CS.IDecl
 qualifyIDecl mid (CS.IInfixDecl   pos fixi prec qid)
   = CS.IInfixDecl pos fixi prec (qualQualify mid qid)
-qualifyIDecl mid (CS.IDataDecl    pos qid vs cs)
+qualifyIDecl mid (CS.IDataDecl    pos qid vs cs hs)
   = CS.IDataDecl pos (qualQualify mid qid) vs
-  $ map (fmap (qualifyIConstrDecl mid)) cs
-qualifyIDecl mid (CS.INewtypeDecl  pos qid vs nc)
-  = CS.INewtypeDecl pos (qualQualify mid qid) vs nc
+    (map (qualifyIConstrDecl mid) cs) hs
+qualifyIDecl mid (CS.INewtypeDecl  pos qid vs nc hs)
+  = CS.INewtypeDecl pos (qualQualify mid qid) vs nc hs
 qualifyIDecl mid (CS.ITypeDecl     pos qid vs ty)
   = CS.ITypeDecl pos (qualQualify mid qid) vs ty
 qualifyIDecl mid (CS.IFunctionDecl pos qid arity ty)
@@ -530,6 +536,11 @@ qualifyIConstrDecl mid (CS.ConstrDecl pos vs cid tys)
   = CS.ConstrDecl pos vs cid (map (qualifyCSType mid) tys)
 qualifyIConstrDecl mid (CS.ConOpDecl pos vs ty1 op ty2)
   = CS.ConOpDecl pos vs (qualifyCSType mid ty1) op (qualifyCSType mid ty2)
+qualifyIConstrDecl mid (CS.RecordDecl pos vs cid fs)
+  = CS.RecordDecl pos vs cid (map (qualifyFieldDecl mid) fs)
+
+qualifyFieldDecl :: ModuleIdent -> CS.FieldDecl -> CS.FieldDecl
+qualifyFieldDecl m (CS.FieldDecl p l ty) = CS.FieldDecl p l (qualifyCSType m ty)
 
 qualifyCSType :: ModuleIdent -> CS.TypeExpr -> CS.TypeExpr
 qualifyCSType mid = fromType . toQualType mid []
@@ -632,8 +643,6 @@ genTypeSynonyms = typeSynonyms >>= mapM genTypeSynonym
 genTypeSynonym :: CS.IDecl -> FlatState TypeDecl
 genTypeSynonym (CS.ITypeDecl _ qid params ty) = do
   let is = [0 .. (length params) - 1]
-  tyEnv <- gets typeEnvE
-  tcEnv <- gets tConsEnvE
   texpr <- visitType $ snd $ cs2ilType (zip params is) ty
   qname <- visitQualTypeIdent qid
   vis   <- getVisibility False qid
@@ -662,7 +671,6 @@ cs2ilType ids (CS.TupleType typeexprs)
     _   -> let (ids', ilTypeexprs) = mapAccumL cs2ilType ids typeexprs
                tuplen = length ilTypeexprs
            in  (ids', IL.TypeConstructor (qTupleId tuplen) ilTypeexprs)
-cs2ilType _ typeexpr = internalError $ "GenFlatCurry.cs2ilType: " ++ show typeexpr
 
 -------------------------------------------------------------------------------
 -- Messages for internal errors and warnings
@@ -711,9 +719,9 @@ isPublicFuncDecl _                              = return False
 
 --
 isTypeIDecl :: CS.IDecl -> Bool
-isTypeIDecl (CS.IDataDecl _ _ _ _) = True
-isTypeIDecl (CS.ITypeDecl _ _ _ _) = True
-isTypeIDecl _                      = False
+isTypeIDecl (CS.IDataDecl _ _ _ _ _) = True
+isTypeIDecl (CS.ITypeDecl   _ _ _ _) = True
+isTypeIDecl _                        = False
 
 --
 isFuncIDecl :: CS.IDecl -> Bool
@@ -816,14 +824,11 @@ lookupIdType (QualIdent Nothing (Ident _ t@('(':',':r) _))
 lookupIdType qid = do
   aEnv <- gets typeEnvE
   lt <- gets localTypes
-  ct <- gets constrTypes
-  m  <- gets moduleIdE
-  tyEnv <- gets typeEnvE
-  tcEnv <- gets tConsEnvE
+  ct <- gets consTypes
   case Map.lookup qid lt `mplus` Map.lookup qid ct of
     Just t  -> trace' ("lookupIdType local " ++ show (qid, t)) $ liftM Just (visitType t)  -- local name or constructor
     Nothing -> case [ t | Value _ _ (ForAll _ t) <- qualLookupValue qid aEnv ] of
-      t : _ -> liftM Just (visitType (transType m tyEnv tcEnv t))  -- imported name
+      t : _ -> liftM Just (visitType (transType t))  -- imported name
       []    -> case qidModule qid of
         Nothing -> trace' ("no type for "  ++ show qid) $ return Nothing  -- no known type
         Just _ -> lookupIdType qid {qidModule = Nothing}
@@ -847,7 +852,7 @@ getTypeOf ident = do
       t1 <- visitType (ttrans tcEnv valEnv t)
       trace' ("getTypeOf(" ++ show ident ++ ") = " ++ show t1) $
         return (Just t1)
-    DataConstructor _ _ (ForAllExist _ _ t) : _ -> do
+    DataConstructor _ _ _ (ForAllExist _ _ t) : _ -> do
       t1 <- visitType (ttrans tcEnv valEnv t)
       trace' ("getTypeOfDataCon(" ++ show ident ++ ") = " ++ show t1) $
         return (Just t1)
@@ -911,22 +916,23 @@ bindEnvIDecl mid env (CS.IDataDecl _ qid _ cdecls hs)
   = maybe env
     (\ident -> let env'  = bindIdentExport ident False env
                    env'' = foldl bindEnvConstrDecl env'
-                     [c | c <- cdecls, constrId c `notElem` hs]
+                     [c | c <- cdecls, CS.constrId c `notElem` hs]
                in foldl bindEnvLabel env'' [l | l <- labels, l `notElem` hs])
     (localIdent mid qid)
   where
-    labels = nub $ concatMap recordLabels cdecls
+    labels = nub $ concatMap CS.recordLabels cdecls
 bindEnvIDecl mid env (CS.INewtypeDecl _ qid _ ncdecl hs)
   = maybe env
     (\ident -> let env'  = bindIdentExport ident False env
-                   env'' = if ncId `notElem` hs then bindEnvNewConstrDecl env' ncdecl
-                                                else env'
-               in foldl bindEnvLabel env'' [l | l <- labels, l `notElem` hs]
+                   env'' = if ncId `notElem` hs
+                              then bindEnvNewConstrDecl env' ncdecl
+                              else env'
+               in foldl bindEnvLabel env'' [l | l <- labels, l `notElem` hs])
     (localIdent mid qid)
   where
-    ncId   = nconstrId ncdecl
-    labels = nrecordLabels ncdecl
-bindEnvIDecl mid env (CS.ITypeDecl _ qid _ texpr)
+    ncId   = CS.nconstrId ncdecl
+    labels = CS.nrecordLabels ncdecl
+bindEnvIDecl mid env (CS.ITypeDecl _ qid _ _)
   = maybe env (\ident -> bindIdentExport ident False env) (localIdent mid qid)
 bindEnvIDecl mid env (CS.IFunctionDecl _ qid _ _)
   = maybe env (\ident -> bindIdentExport ident False env) (localIdent mid qid)

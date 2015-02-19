@@ -54,10 +54,10 @@ instance SubstType ExistTypeScheme where
     ForAllExist n n' (subst (foldr unbindSubst sigma [0..n+n'-1]) ty)
 
 instance SubstType ValueInfo where
-  subst _     dc@(DataConstructor  _ _ _) = dc
-  subst _     nc@(NewtypeConstructor _ _) = nc
-  subst theta (Value              v a ty) = Value v a (subst theta ty)
-  subst theta (Label              l r ty) = Label l r (subst theta ty)
+  subst _     dc@(DataConstructor  _ _ _ _) = dc
+  subst _     nc@(NewtypeConstructor _ _ _) = nc
+  subst theta (Value                v a ty) = Value v a (subst theta ty)
+  subst theta (Label                l r ty) = Label l r (subst theta ty)
 
 instance SubstType a => SubstType (TopEnv a) where
   subst = fmap . subst

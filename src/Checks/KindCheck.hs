@@ -54,7 +54,7 @@ import Env.TypeConstructor (TCEnv, tcArity)
 kindCheck :: TCEnv -> Module -> (Module, [Message])
 kindCheck tcEnv mdl@(Module _ m _ _ ds) =
   case findMultiples $ map typeConstr tds of
-    []  -> runKCM (mapM checkModule mdl) state
+    []  -> runKCM (checkModule mdl) state
     tss -> (mdl, map errMultipleDeclaration tss)
   where tds   = filter isTypeDecl ds
         kEnv  = foldr (bindKind m) (fmap tcArity tcEnv) tds
@@ -104,7 +104,7 @@ qualLookupKind :: QualIdent -> KindEnv -> [Int]
 qualLookupKind = qualLookupTopEnv
 
 checkModule :: Module -> KCM Module
-checkModule (Module ps m es is ds) = Module ps m es is `liftM` mapM checkDecl ds
+checkModule (Module ps m es is ds) = Module ps m es is <$> mapM checkDecl ds
 
 -- When type declarations are checked, the compiler will allow anonymous
 -- type variables on the left hand side of the declaration, but not on
@@ -156,7 +156,7 @@ checkNewConstrDecl tvs (NewConstrDecl p evs c ty) = do
   evs' <- checkTypeLhs evs
   ty'  <- checkClosedType (evs' ++ tvs) ty
   return $ NewConstrDecl p evs' c ty'
-checkNewConstrDecl tvs (NewRecordDecl p evs c (l, ty))
+checkNewConstrDecl tvs (NewRecordDecl p evs c (l, ty)) = do
   evs' <- checkTypeLhs evs
   ty'  <- checkClosedType (evs' ++ tvs) ty
   return $ NewRecordDecl p evs' c (l, ty')

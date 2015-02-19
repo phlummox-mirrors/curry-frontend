@@ -49,7 +49,7 @@ module Checks.InterfaceCheck (interfaceCheck) where
 
 import           Control.Monad            (unless)
 import qualified Control.Monad.State as S
-import           Data.Maybe               (catMaybes, fromMaybe)
+import           Data.Maybe               (fromMaybe)
 
 import Curry.Base.Ident
 import Curry.Base.Position
@@ -156,7 +156,7 @@ checkConstrImport tc tvs (ConOpDecl p evs ty1 op ty2) = do
 checkConstrImport tc tvs (RecordDecl p evs c fs) = do
   m <- getModuleIdent
   let qc = qualifyLike tc c
-      (ls, tys) = unzip [(l, ty) | FieldDecl _ ls ty <- fs, l <- ls]
+      (ls, tys) = unzip [(l, ty) | FieldDecl _ labels ty <- fs, l <- labels]
       checkConstr (DataConstructor c' _ ls' (ForAllExist uqvs eqvs ty')) =
         qc == c' && length evs == eqvs && length tvs == uqvs && ls == ls' &&
         toQualTypes m tvs tys == arrowArgs ty'

@@ -18,7 +18,8 @@
 -}
 module Exports (exportInterface) where
 
-import           Data.Maybe        (isNothing, catMaybes)
+import           Data.List         (nub)
+import           Data.Maybe        (catMaybes)
 import qualified Data.Set   as Set (delete, fromList, toList)
 
 import Curry.Base.Position
@@ -93,23 +94,26 @@ typeDecl m tcEnv (ExportTypeWith tc xs) ds = case qualLookupTC tc tcEnv of
     | null xs   -> iTypeDecl IDataDecl m tc' n []  []  : ds
     | otherwise -> iTypeDecl IDataDecl m tc' n cs' hs : ds
     where hs    = filter (`notElem` xs) (csIds ++ ls)
-          cs'   = map constrDecl m (drop n identSupply) cs
+          cs'   = map (constrDecl m (drop n identSupply)) cs
           ls    = nub (concatMap recordLabels cs')
           csIds = map constrIdent cs
   [RenamingType tc' n c]
-    | null xs   -> iTypeDecl IDataDecl tc' n [] [] : ds
-    | otherwise -> iTypeDecl INewtypeDecl tc' n nc hs : ds
+    | null xs   -> iTypeDecl IDataDecl m tc' n [] [] : ds
+    | otherwise -> iTypeDecl INewtypeDecl m tc' n nc hs : ds
     where hs  = filter (`notElem` xs) (cId : ls)
           nc  = newConstrDecl m (drop n identSupply) c
           ls  = nrecordLabels nc
           cId = constrIdent c
-  [AliasType tc' n ty] -> iTypeDecl ITypeDecl m tc' n (fromQualType m ty) : ds
+  [AliasType tc' n ty] -> ITypeDecl NoPos tc'' tvs ty' : ds
+    where tc'' = qualUnqualify m tc'
+          tvs  = take n identSupply
+          ty'  = fromQualType m ty
   _ -> internalError "Exports.typeDecl"
 typeDecl _ _ _ _ = internalError "Exports.typeDecl: no pattern match"
 
-iTypeDecl :: (Position -> QualIdent -> [Ident] -> a -> IDecl)
-           -> ModuleIdent -> QualIdent -> Int -> a -> IDecl
-iTypeDecl f m tc n = f NoPos (qualUnqualify m tc) (take n identSupply)
+iTypeDecl :: (Position -> QualIdent -> [Ident] -> a -> [Ident] -> IDecl)
+           -> ModuleIdent -> QualIdent -> Int -> a -> [Ident] -> IDecl
+iTypeDecl f m tc n x hs = f NoPos (qualUnqualify m tc) (take n identSupply) x hs
 
 constrDecl :: ModuleIdent -> [Ident] -> DataConstr -> ConstrDecl
 constrDecl m tvs (DataConstr c n [ty1,ty2])
@@ -125,13 +129,13 @@ constrDecl m tvs (RecordConstr c n ls tys) = RecordDecl NoPos evs c fs
     fs   = zipWith (FieldDecl NoPos . return) ls tys'
 
 newConstrDecl :: ModuleIdent -> [Ident] -> DataConstr -> NewConstrDecl
-newConstrDecl m tvs (DataConstr c n [ty]) = NewConstrDecl NoPos evs c ty'
+newConstrDecl m tvs (DataConstr c n tys) = NewConstrDecl NoPos evs c ty'
   where evs = take n tvs
-        ty' = fromQualType m ty
-newConstrDecl m tvs (RecordConstr c n [l] [ty])
-  = NewRecordDecl NoPos evs c (l,ty')
+        ty' = fromQualType m (head tys)
+newConstrDecl m tvs (RecordConstr c n ls tys)
+  = NewRecordDecl NoPos evs c (head ls,ty')
   where evs = take n tvs
-        ty' = fromQualType m ty
+        ty' = fromQualType m (head tys)
 
 funDecl :: ModuleIdent -> ValueEnv -> Export -> [IDecl] -> [IDecl]
 funDecl m tyEnv (Export f) ds = case qualLookupValue f tyEnv of
@@ -231,7 +235,7 @@ usedTypesConstrDecl (RecordDecl     _ _ _ fs) tcs =
   foldr usedTypesFieldDecl tcs fs
 
 usedTypesFieldDecl :: FieldDecl -> [QualIdent] -> [QualIdent]
-usedTypesFieldDecl (FieldDecl _ _ ty) tcs = usedTypesType tcs ty
+usedTypesFieldDecl (FieldDecl _ _ ty) tcs = usedTypesType ty tcs
 
 usedTypesNewConstrDecl :: NewConstrDecl -> [QualIdent] -> [QualIdent]
 usedTypesNewConstrDecl (NewConstrDecl     _ _ _ ty) tcs = usedTypesType ty tcs

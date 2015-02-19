@@ -26,11 +26,10 @@
 module Checks.SyntaxCheck (syntaxCheck) where
 
 import Control.Applicative                ((<$>), (<*>))
-import Control.Monad                      ( forM_, unless, when)
+import Control.Monad                      (unless, when)
 import qualified Control.Monad.State as S (State, runState, gets, modify)
-import Data.List                          ((\\), insertBy, intersect, nub, partition)
-import Data.Maybe                         ( fromJust, isJust, isNothing
-                                          , maybeToList)
+import Data.List                          (insertBy, intersect, nub, partition)
+import Data.Maybe                         (isJust, isNothing)
 import qualified Data.Set as Set          (empty, insert, member)
 
 import Curry.Base.Ident
@@ -42,10 +41,8 @@ import Curry.Syntax.Pretty (ppPattern)
 import Base.Expr
 import Base.Messages (Message, posMessage, internalError)
 import Base.NestEnv
-import Base.Types
 import Base.Utils    ((++!), findDouble, findMultiples)
 
-import Env.TypeConstructor (TCEnv, TypeInfo (..), qualLookupTC)
 import Env.Value           (ValueEnv, ValueInfo (..))
 
 import CompilerOpts
@@ -59,15 +56,15 @@ import CompilerOpts
 -- generated. Finally, all declarations are checked within the resulting
 -- environment. In addition, this process will also rename the local variables.
 
-syntaxCheck :: Options -> ValueEnv -> TCEnv -> Module
+syntaxCheck :: Options -> ValueEnv -> Module
             -> ((Module, [KnownExtension]), [Message])
-syntaxCheck opts tyEnv tcEnv mdl@(Module _ m _ _ ds) =
-  case findMultiples $ concatMap constrId tds of
+syntaxCheck opts tyEnv mdl@(Module _ m _ _ ds) =
+  case findMultiples $ concatMap constrs tds of
     []  -> runSC (checkModule mdl) state
     css -> ((mdl, exts), map errMultipleDataConstructor css)
   where
     tds   = filter isTypeDecl ds
-    rEnv  = globalEnv $ fmap (renameInfo tcEnv) tyEnv
+    rEnv  = globalEnv $ fmap renameInfo tyEnv
     state = initState exts m rEnv
     exts  = optExtensions opts
 
@@ -206,10 +203,10 @@ ppRenameInfo (LocalVar     n _) = text (escName      n)
 -- Furthermore, it is not allowed to declare a label more than once.
 
 renameInfo :: ValueInfo -> RenameInfo
-renameInfo (DataConstructor    qid a  _) = Constr      qid a
-renameInfo (NewtypeConstructor qid    _) = Constr      qid 1
-renameInfo (Value              qid a  _) = GlobalVar   qid a
-renameInfo (Label              qid cs _) = RecordLabel qid cs
+renameInfo (DataConstructor    qid a  _ _) = Constr      qid a
+renameInfo (NewtypeConstructor qid    _ _) = Constr      qid 1
+renameInfo (Value              qid a    _) = GlobalVar   qid a
+renameInfo (Label              qid cs   _) = RecordLabel qid cs
 
 bindGlobal :: ModuleIdent -> Ident -> RenameInfo -> RenameEnv -> RenameEnv
 bindGlobal m c r = bindNestEnv c r . qualBindNestEnv (qualifyWith m c) r
@@ -221,7 +218,7 @@ bindLocal = bindNestEnv
 
 -- |Bind type constructor information and record label information
 bindTypeDecl :: Decl -> SCM ()
-bindTypeDecl (DataDecl    _ _ _ cs) = mapM_ bindConstr cs >> bindLabels cs
+bindTypeDecl (DataDecl    _ _ _ cs) = mapM_ bindConstr cs >> bindRecordLabels cs
 bindTypeDecl (NewtypeDecl _ _ _ nc) = bindNewConstr nc
 bindTypeDecl _                      = return ()
 
@@ -234,7 +231,6 @@ bindConstr (ConOpDecl _ _ _ op _) = do
   modifyRenameEnv $ bindGlobal m op (Constr (qualifyWith m op) 2)
 bindConstr (RecordDecl _ _ c fs)  = do
   m <- getModuleIdent
-  mapM_ bindRecordLabel labels
   modifyRenameEnv $ bindGlobal m c (Constr (qualifyWith m c) (length labels))
     where labels = [l | FieldDecl _ ls _ <- fs, l <- ls]
 
@@ -251,10 +247,10 @@ bindRecordLabels :: [ConstrDecl] -> SCM ()
 bindRecordLabels cs =
   mapM_ bindRecordLabel [(l, constr l) | l <- nub (concatMap recordLabels cs)]
   where constr l = [constrId c | c <- cs, l `elem` recordLabels c]
-  
+
 bindRecordLabel :: (Ident, [Ident]) -> SCM ()
 bindRecordLabel (l, cs) = do
-  m <- getModuleIdent
+  m   <- getModuleIdent
   new <- (null . lookupVar l) <$> getRenameEnv
   unless new $ report $ errDuplicateDefinition l
   modifyRenameEnv $ bindGlobal m l $
@@ -331,7 +327,7 @@ checkModule (Module ps m es is ds) = do
   ds' <- (tds ++) <$> checkTopDecls vds
   exts <- getExtensions
   return (Module ps m es is ds', exts)
-  where (tds, vds) = partition isTypeDecl decls
+  where (tds, vds) = partition isTypeDecl ds
 
 checkPragma :: ModulePragma -> SCM ()
 checkPragma (LanguagePragma _ exts) = mapM_ checkExtension exts
@@ -505,8 +501,9 @@ checkDeclRhs _   d                      = return d
 
 -- jrt: added for Haskell's record syntax
 checkDeclLabels :: ConstrDecl -> SCM ConstrDecl
-checkDeclLabels rd@(RecordDecl p evs c fs) = do
-  onJust (report . errDuplicateLabel "declaration") (findDouble labels)
+checkDeclLabels rd@(RecordDecl _ _ _ fs) = do
+  onJust (report . errDuplicateLabel "declaration")
+         (findDouble $ map qualify labels)
   return rd
   where
     onJust = maybe (return ())
@@ -550,6 +547,8 @@ checkParenPattern o (InfixPattern     t1 op t2) =
   ++ checkParenPattern Nothing t1 ++ checkParenPattern Nothing t2
 checkParenPattern _ (ParenPattern            t) =
   checkParenPattern Nothing t
+checkParenPattern _ (RecordPattern        _ fs) =
+  concatMap (\(Field _ _ t) -> checkParenPattern Nothing t) fs
 checkParenPattern _ (TuplePattern         _ ts) =
   concatMap (checkParenPattern Nothing) ts
 checkParenPattern _ (ListPattern          _ ts) =
@@ -563,8 +562,6 @@ checkParenPattern _ (FunctionPattern      _ ts) =
 checkParenPattern o (InfixFuncPattern t1 op t2) =
   maybe [] (\c -> [(c, op)]) o
   ++ checkParenPattern Nothing t1 ++ checkParenPattern Nothing t2
-checkParenPattern _ (RecordPattern        _ fs) =
-  concatMap (\(Field _ _ t) -> checkParenPattern Nothing t) fs
 
 checkPattern :: Position -> Pattern -> SCM Pattern
 checkPattern _ (LiteralPattern        l) =
@@ -580,6 +577,8 @@ checkPattern p (InfixPattern   t1 op t2) =
   checkInfixPattern p t1 op t2
 checkPattern p (ParenPattern          t) =
   ParenPattern <$> checkPattern p t
+checkPattern p (RecordPattern      c fs) =
+  checkRecordPattern p c fs
 checkPattern p (TuplePattern     pos ts) =
   TuplePattern pos <$> mapM (checkPattern p) ts
 checkPattern p (ListPattern      pos ts) =
@@ -588,8 +587,6 @@ checkPattern p (AsPattern           v t) = do
   AsPattern <$> checkVar "@ pattern" v <*> checkPattern p t
 checkPattern p (LazyPattern       pos t) =
   LazyPattern pos <$> checkPattern p t
-checkPattern p (RecordPattern      c fs) =
-  checkRecordPattern p c fs
 checkPattern _ (FunctionPattern     _ _) = internalError $
   "SyntaxCheck.checkPattern: function pattern not defined"
 checkPattern _ (InfixFuncPattern  _ _ _) = internalError $
@@ -669,7 +666,7 @@ checkRecordPattern p c fs = do
   case qualLookupVar c env of
     [Constr c' _] -> processRecPat (Just c') fs
     rs            -> case qualLookupVar (qualQualify m c) env of
-      [Constr c' n] -> processRecPat (Just c') fs
+      [Constr c' _] -> processRecPat (Just c') fs
       rs'           -> if (null rs && null rs')
                           then do report $ errUndefinedData c
                                   processRecPat Nothing fs
@@ -677,8 +674,8 @@ checkRecordPattern p c fs = do
                                   processRecPat Nothing fs
   where
   processRecPat mcon fields = do
-    fs' <- checkField (checkPattern p) fields
-    mapM_ checkFieldLabels "pattern" p mcon fs'
+    fs' <- mapM (checkField (checkPattern p)) fields
+    checkFieldLabels "pattern" p mcon fs'
     return $ RecordPattern c fs'
 
 -- Note: process decls first
@@ -760,16 +757,19 @@ checkVariable v
                                 return $ Variable v
 
 checkRecordExpr :: Position -> QualIdent -> [Field Expression] -> SCM Expression
-checkRecordExpr p c [] = case qualLookupVar c env of
-  [Constr _ _] -> return $ Record c []
-  rs           -> case qualLookupVar (qualQualify m c) env of
+checkRecordExpr _ c [] = do
+  m   <- getModuleIdent
+  env <- getRenameEnv
+  case qualLookupVar c env of
     [Constr _ _] -> return $ Record c []
-    rs'          -> if (null rs && null rs')
-                       then do report $ errUndefinedData c
-                               return $ Record c []
-                       else do report $ errAmbiguousData rs c
-                               return $ Record c []
-checkRecordExpr p c fs = checkRecordUpdExpr p (RecordUpdate (Constructor c) fs)
+    rs           -> case qualLookupVar (qualQualify m c) env of
+      [Constr _ _] -> return $ Record c []
+      rs'          -> if (null rs && null rs')
+                         then do report $ errUndefinedData c
+                                 return $ Record c []
+                         else do report $ errAmbiguousData rs c
+                                 return $ Record c []
+checkRecordExpr p c fs = checkExpr p (RecordUpdate (Constructor c) fs)
 
 checkRecordUpdExpr :: Position -> Expression -> [Field Expression]
                    -> SCM Expression
@@ -806,11 +806,12 @@ banFPTerm _ _ (VariablePattern           _) = ok
 banFPTerm s p (ConstructorPattern     _ ts) = mapM_ (banFPTerm s p) ts
 banFPTerm s p (InfixPattern        t1 _ t2) = mapM_ (banFPTerm s p) [t1, t2]
 banFPTerm s p (ParenPattern              t) = banFPTerm s p t
+banFPTerm s p (RecordPattern          _ fs) = mapM_ banFPTermField fs
+  where banFPTermField (Field _ _ x) = banFPTerm s p x
 banFPTerm s p (TuplePattern           _ ts) = mapM_ (banFPTerm s p) ts
 banFPTerm s p (ListPattern            _ ts) = mapM_ (banFPTerm s p) ts
 banFPTerm s p (AsPattern               _ t) = banFPTerm s p t
 banFPTerm s p (LazyPattern             _ t) = banFPTerm s p t
-banFPTerm s p (RecordPattern          _ mt) = maybe ok (banFPTerm s p) mt
 banFPTerm s p pat@(FunctionPattern     _ _)
  = report $ errUnsupportedFuncPattern s p pat
 banFPTerm s p pat@(InfixFuncPattern  _ _ _)
@@ -854,17 +855,18 @@ addBoundVariables checkDuplicates ts = do
 -- are always looked up in the global environment since they cannot be
 -- shadowed by local variables (cf.\ Sect.~3.15.1 of the revised
 -- Haskell'98 report~\cite{PeytonJones03:Haskell}).
-  
+
 checkFieldLabels :: String -> Position -> Maybe QualIdent -> [Field a] -> SCM ()
 checkFieldLabels what p c fs = do
   mapM checkFieldLabel ls' >>= checkLabels p c ls'
-  onJust (report . errDuplicateLabel what) (findDouble labels)
+  onJust (report . errDuplicateLabel what) (findDouble ls)
   where ls  = [l | Field _ l _ <- fs]
         ls' = nub ls
         onJust = maybe (return ())
 
-checkFieldLabel :: Ident -> SCM [QualIdent]
+checkFieldLabel :: QualIdent -> SCM [QualIdent]
 checkFieldLabel l = do
+  m   <- getModuleIdent
   env <- getRenameEnv
   case qualLookupVar l env of
     [RecordLabel _ cs] -> processLabel cs
@@ -873,7 +875,8 @@ checkFieldLabel l = do
       rs'                -> if (null rs && null rs')
                                then do report $ errUndefinedLabel l
                                        return []
-                               else do report $ errAmbiguousIdent rs (qualQualify m l)
+                               else do report $
+                                         errAmbiguousIdent rs (qualQualify m l)
                                        return []
   where
   processLabel cs' = do
@@ -882,11 +885,15 @@ checkFieldLabel l = do
 
 checkLabels :: Position -> Maybe QualIdent -> [QualIdent] -> [[QualIdent]]
             -> SCM ()
-checkLabels _ (Just c) ls css =
-  unless (null noLabels) $ mapM_ (report . errNoLabel c) noLabels
-  where noLabels = [l | (l, cs) <- zip ls css, c `notElem` cs]
+checkLabels _ (Just c) ls css = do
+  env <- getRenameEnv
+  case qualLookupVar c env of
+    [Constr c' _] -> mapM_ (report . errNoLabel c)
+                           [l | (l, cs) <- zip ls css, c' `notElem` cs]
+    _             -> internalError $
+                       "Checks.SyntaxCheck.checkLabels: " ++ show c
 checkLabels p Nothing ls css =
-  when (null (foldr1 intersect css)) report $ errNoCommonCons p ls
+  when (null (foldr1 intersect css)) $ report $ errNoCommonCons p ls
 
 checkField :: (a -> SCM a) -> Field a -> SCM (Field a)
 checkField check (Field p l x) = Field p l <$> check x
@@ -894,6 +901,11 @@ checkField check (Field p l x) = Field p l <$> check x
 -- ---------------------------------------------------------------------------
 -- Auxiliary definitions
 -- ---------------------------------------------------------------------------
+
+constrs :: Decl -> [Ident]
+constrs (DataDecl    _ _ _ cs) = map constrId cs
+constrs (NewtypeDecl _ _ _ nc) = [nconstrId nc]
+constrs _                      = []
 
 vars :: Decl -> [Ident]
 vars (TypeSig         _ fs _) = fs
@@ -1055,9 +1067,9 @@ errUndefinedData :: QualIdent -> Message
 errUndefinedData c = posMessage c $ hsep $ map text
   ["Undefined data constructor", escQualName c]
 
-errUndefinedLabel :: Ident -> Message
+errUndefinedLabel :: QualIdent -> Message
 errUndefinedLabel l = posMessage l $  hsep $ map text
-  ["Undefined record label", escName l]
+  ["Undefined record label", escQualName l]
 
 errAmbiguousIdent :: [RenameInfo] -> QualIdent -> Message
 errAmbiguousIdent rs qn | any isConstr rs = errAmbiguousData rs qn
@@ -1100,21 +1112,9 @@ errDuplicateTypeSig (v:vs) = posMessage v $
   <+> text "at:" $+$
   nest 2 (vcat (map (ppPosition . getPosition) (v:vs)))
 
-errDuplicateLabel :: String -> Ident -> Message
+errDuplicateLabel :: String -> QualIdent -> Message
 errDuplicateLabel what l = posMessage l $ hsep $ map text
-  ["Field label", escName l, "occurs more than once in record", what]
-  
--- errDuplicateLabel :: Ident -> Message
--- errDuplicateLabel l = posMessage l $ hsep $ map text
---   ["Multiple occurrence of record label", escName l]
-
--- errMissingLabel :: Position -> Ident -> QualIdent -> String -> Message
--- errMissingLabel p l r what = posMessage p $ hsep $ map text
---   ["Missing label", escName l, "in the", what, "of", escQualName r]
-
--- errIllegalLabel :: Ident -> QualIdent -> Message
--- errIllegalLabel l r = posMessage l $ hsep $ map text
---   ["Label", escName l, "is not defined in record", escQualName r]
+  ["Field label", escQualName l, "occurs more than once in record", what]
 
 errNonVariable :: String -> Ident -> Message
 errNonVariable what c = posMessage c $ hsep $ map text
@@ -1124,9 +1124,9 @@ errNoBody :: Ident -> Message
 errNoBody v = posMessage v $  hsep $ map text ["No body for", escName v]
 
 errNoCommonCons :: Position -> [QualIdent] -> Message
-errNoCommonCons p ls = posMessage p $ hsep $ 
+errNoCommonCons p ls = posMessage p $
   text "No constructor has all of these fields:"
-  <+> list map (text . escQualName) ls
+  $+$ nest 2 (vcat (map (text . escQualName) ls))
 
 errNoLabel :: QualIdent -> QualIdent -> Message
 errNoLabel c l = posMessage l $ hsep $ map text
@@ -1139,10 +1139,6 @@ errNoTypeSig f = posMessage f $ hsep $ map text
 errToplevelPattern :: Position -> Message
 errToplevelPattern p = posMessage p $ text
   "Pattern declaration not allowed at top-level"
-
--- errNotALabel :: Ident -> Message
--- errNotALabel l = posMessage l $
---   text (escName l) <+> text "is not a record label"
 
 errDifferentArity :: [Ident] -> Message
 errDifferentArity [] = internalError
@@ -1160,11 +1156,6 @@ errWrongArity c arity' argc = posMessage c $ hsep (map text
         arguments 1 = "1 argument"
         arguments n = show n ++ " arguments"
 
--- errIllegalRecordPattern :: Position -> Message
--- errIllegalRecordPattern p = posMessage p $ hsep $ map text
---   [ "Expexting", escName anonId, "after", escName (mkIdent "|")
---   , "in the record pattern" ]
-
 errUnknownExtension :: Position -> String -> Message
 errUnknownExtension p e = posMessage p $
   text "Unknown language extension:" <+> text e
@@ -1174,9 +1165,6 @@ errMissingLanguageExtension p what ext = posMessage p $
   text what <+> text "are not supported in standard Curry." $+$
   nest 2 (text "Use flag -e or -X" <> text (show ext)
           <+> text "to enable this extension.")
-
--- errEmptyRecord :: Position -> Message
--- errEmptyRecord p = posMessage p $ text "Empty records are not allowed"
 
 errInfixWithoutParens :: Position -> [(QualIdent, QualIdent)] -> Message
 errInfixWithoutParens p calls = posMessage p $

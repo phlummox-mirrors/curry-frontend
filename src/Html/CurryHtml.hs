@@ -84,7 +84,7 @@ fullParse :: Options -> FilePath -> String -> CYIO Module
 fullParse opts fn _ = do
   buildCurry (opts { optTargetTypes = []}) fn
   (env, mdl) <- loadAndCheckModule opts' fn
-  return (snd $ qual opts (env, mdl))
+  return (snd $ qual (env, mdl))
   where
   opts' = opts { optWarnOpts    = (optWarnOpts opts) { wnWarn = False }
                , optTargetTypes = []
@@ -151,7 +151,6 @@ code2class (Pragma       _) = "pragma"
 code2class (Symbol       _) = "symbol"
 code2class (TypeCons   _ _) = "type"
 code2class (DataCons   _ _) = "cons"
-code2class (Label      _ _) = "label"
 code2class (Function   _ _) = "func"
 code2class (Identifier _ _) = "ident"
 code2class (ModuleName   _) = "module"
@@ -187,7 +186,6 @@ isDecl :: Code -> Bool
 isDecl (DataCons ConsDeclare  _) = True
 isDecl (Function FuncDeclare  _) = True
 isDecl (TypeCons TypeDeclare  _) = True
-isDecl (Label    LabelDeclare _) = True
 isDecl _                         = False
 
 -- Translates arbitrary strings into equivalent urlencoded string.

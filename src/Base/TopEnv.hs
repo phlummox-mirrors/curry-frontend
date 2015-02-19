@@ -163,5 +163,5 @@ allLocalBindings :: TopEnv a -> [(QualIdent, a)]
 allLocalBindings (TopEnv env) = [ (x, y) | (x, ys)    <- Map.toList env
                                          , (Local, y) <- ys ]
 
-allEntities :: TopEnv a -> [(QualIdent, a)]
-allEntities env = [ (x, y) | (x, ys) <- Map.toList env, (_, y) <- ys]
+allEntities :: TopEnv a -> [a]
+allEntities (TopEnv env) = [ y | (_, ys) <- Map.toList env, (_, y) <- ys]

@@ -11,7 +11,7 @@
 
 -}
 
-module Base.Typing (Typeable (..), argumentTypes) where
+module Base.Typing (Typeable (..)) where
 
 import Control.Monad
 import qualified Control.Monad.State as S (State, evalState, gets, modify)
@@ -25,9 +25,7 @@ import Base.Types
 import Base.TypeSubst
 import Base.Utils (foldr2)
 
-import Env.TypeConstructor (TCEnv, TypeInfo (..), qualLookupTC)
-import Env.Value ( ValueEnv, ValueInfo (..), lookupValue, qualLookupValue
-                 , conType)
+import Env.Value ( ValueEnv, ValueInfo (..), lookupValue, qualLookupValue)
 
 -- During the transformation of Curry source code into the intermediate
 -- language, the compiler has to recompute the types of expressions. This
@@ -92,15 +90,11 @@ import Env.Value ( ValueEnv, ValueInfo (..), lookupValue, qualLookupValue
 
 data TcState = TcState
   { valueEnv  :: ValueEnv
-  , tyConsEnv :: TCEnv
   , typeSubst :: TypeSubst
   , nextId    :: Int
   }
 
 type TCM = S.State TcState
-
-getTyConsEnv :: TCM TCEnv
-getTyConsEnv = S.gets tyConsEnv
 
 getValueEnv :: TCM ValueEnv
 getValueEnv = S.gets valueEnv
@@ -117,12 +111,12 @@ getNextId = do
   S.modify $ \ s -> s { nextId = succ nid }
   return nid
 
-run :: TCM a -> ValueEnv -> TCEnv -> a
-run m tyEnv tcEnv = S.evalState m initState
-  where initState = TcState tyEnv tcEnv idSubst 0
+run :: TCM a -> ValueEnv -> a
+run m tyEnv = S.evalState m initState
+  where initState = TcState tyEnv idSubst 0
 
 class Typeable a where
-  typeOf :: ValueEnv -> TCEnv -> a -> Type
+  typeOf :: ValueEnv -> a -> Type
 
 instance Typeable Ident where
   typeOf = computeType identType
@@ -136,8 +130,8 @@ instance Typeable Expression where
 instance Typeable Rhs where
   typeOf = computeType rhsType
 
-computeType :: (a -> TCM Type) -> ValueEnv -> TCEnv -> a -> Type
-computeType f tyEnv tcEnv x = normalize (run doComputeType tyEnv tcEnv)
+computeType :: (a -> TCM Type) -> ValueEnv -> a -> Type
+computeType f tyEnv x = normalize (run doComputeType tyEnv)
   where
     doComputeType = do
       ty    <- f x
@@ -276,7 +270,7 @@ rhsType (GuardedRhs es _) = freshTypeVar >>= flip condExprType es
 fieldType :: (a -> TCM Type) -> Type -> Field a -> TCM Type
 fieldType tcheck ty (Field _ l x) = do
   tyEnv <- getValueEnv
-  TypeArrow ty1 ty2 <- instType (labelType l tyEnv)
+  TypeArrow ty1 ty2 <- instUniv (labelType l tyEnv)
   unify ty ty1
   lty <- tcheck x
   unify ty2 lty
@@ -293,11 +287,6 @@ instType :: Int -> Type -> TCM Type
 instType n ty = do
   tys <- replicateM n freshTypeVar
   return (expandAliasType tys ty)
-
-instType' :: Int -> Type -> TCM (Type,[Type])
-instType' n ty = do
-  tys <- replicateM n freshTypeVar
-  return (expandAliasType tys ty, tys)
 
 instUniv :: TypeScheme -> TCM Type
 instUniv (ForAll n ty) = instType n ty
@@ -357,24 +346,6 @@ unifyTypes (TypeSkolem k1) (TypeSkolem k2) theta
 unifyTypes ty1 ty2 _ = internalError $
   "Base.Typing.unify: (" ++ show ty1 ++ ") (" ++ show ty2 ++ ")"
 
--- The function argumentTypes returns the labels and the argument types
--- of a data constructor instantiated at a particular type. This
--- function is useful for desugaring record patterns and expressions,
--- where the compiler must compute the types of the omitted arguments.
--- Since the type annotation of record patterns and expressions applies
--- to the pattern or expression as a whole, the instance type is
--- unified with the constructor's result type and the resulting
--- substitution is applied to all argument types. Note that this is
--- sound because record fields cannot have existentially quantified
--- types and therefore all type variables appearing in their
--- types occur in the constructor's result type as well.
-
-argumentTypes :: TCEnv -> Type -> QualIdent -> ValueEnv -> ([Ident],[Type])
-argumentTypes tcEnv ty c tyEnv =
-  (ls, map (subst (unifyTypes rty ty idSubst)) tys)
-  where (ls, ForAllExist _ _ ty') = conType c tyEnv
-        (tys, rty) = arrowUnapply ty'
-        
 -- The functions 'constrType', 'varType', and 'funType' are used for computing
 -- the type of constructors, pattern variables, and variables.
 
@@ -396,7 +367,7 @@ funType f tyEnv = case qualLookupValue f tyEnv of
   [Value _ _ sigma] -> sigma
   _ -> internalError $ "Base.Typing.funType: " ++ show f
 
-labelType :: Ident -> ValueEnv -> TypeScheme
-labelType l tyEnv = case lookupValue l tyEnv of
+labelType :: QualIdent -> ValueEnv -> TypeScheme
+labelType l tyEnv = case qualLookupValue l tyEnv of
   [Label _ _ sigma] -> sigma
   _ -> internalError $ "Base.Typing.labelType: " ++ show l

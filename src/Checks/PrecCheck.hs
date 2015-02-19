@@ -33,7 +33,7 @@ import Curry.Syntax
 
 import Base.Expr
 import Base.Messages (Message, posMessage)
-import Base.Utils (constrId, findDouble)
+import Base.Utils (findDouble)
 
 import Env.OpPrec (OpPrecEnv, OpPrec (..), PrecInfo (..), defaultP, bindP
   , mkPrec, qualLookupP)

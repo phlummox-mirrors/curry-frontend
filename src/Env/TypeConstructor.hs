@@ -43,8 +43,6 @@ module Env.TypeConstructor
   , TypeEnv, TypeKind (..), typeKind
   ) where
 
-import Control.Monad (mplus)
-
 import Curry.Base.Ident
 
 import Base.Messages (internalError)
@@ -107,14 +105,15 @@ lookupTupleTC tc | isTupleId tc = [tupleTCs !! (tupleArity tc - 2)]
 
 tupleTCs :: [TypeInfo]
 tupleTCs = map typeInfo tupleData
-  where typeInfo dc@(DataConstr _ n _) = DataType (qTupleId n) n [Just dc]
+  where typeInfo dc@(DataConstr _ n _)  = DataType (qTupleId n) n [dc]
+        typeInfo (RecordConstr _ _ _ _) =
+          internalError $ "Env.TypeConstructor.tupleTCs: " ++ show tupleData
 
 initTCEnv :: TCEnv
 initTCEnv = foldr (uncurry predefTC) emptyTopEnv predefTypes
   where
   predefTC (TypeConstructor tc tys) = predefTopEnv tc
                                     . DataType tc (length tys)
-                                    . map Just
   predefTC _ = internalError "Base.initTCEnv.predefTC: no type constructor"
 
 type TypeEnv = TopEnv TypeKind
@@ -126,8 +125,8 @@ data TypeKind
 
 typeKind :: TypeInfo -> TypeKind
 typeKind (DataType     tc _ cs) = Data tc (map constrIdent cs)
-typeKind (RenamingType tc _ (DataConstr c _ _)) = Data tc [c]
-typeKind (AliasType    tc _ _) = Alias tc
+typeKind (RenamingType tc _ nc) = Data tc [constrIdent nc]
+typeKind (AliasType    tc _ _)  = Alias tc
 
 instance Entity TypeKind where
   origName (Data tc _) = tc

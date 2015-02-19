@@ -5,7 +5,7 @@ import           Control.Monad              (unless)
 import qualified Control.Monad.State as S   (State, runState, gets, modify)
 import           Data.List                  (nub, union)
 import qualified Data.Map            as Map
-import           Data.Maybe                 (catMaybes, fromMaybe)
+import           Data.Maybe                 (fromMaybe)
 import qualified Data.Set            as Set
 
 import Curry.Base.Ident
@@ -136,7 +136,7 @@ expandTypeWith tc xs = do
   case qualLookupTC tc tcEnv of
     [] -> report (errUndefinedType tc) >> return []
     [t@(DataType _ _ cs)]    -> do
-      mapM_ (checkElement (concatMap visibleElems (catMaybes cs))) xs'
+      mapM_ (checkElement (concatMap visibleElems cs)) xs'
       return [ExportTypeWith (origName t) xs']
     [t@(RenamingType _ _ c)] -> do
       mapM_ (checkElement (visibleElems c)) xs'
@@ -250,21 +250,25 @@ exportType t = ExportTypeWith tc xs
 -- in the interface, we convert an individual export of a label @l@ into
 -- the form @T(l)@ whenever its type @T@ occurs in the export list as well.
 
-canonExports ::  [Export] -> [Export]
-canonExports es = map (canonExport (canonLabels tcEnv es)) es
+canonExports :: TCEnv -> [Export] -> [Export]
+canonExports tcEnv es = map (canonExport (canonLabels tcEnv es)) es
 
 canonExport :: Map.Map QualIdent Export -> Export -> Export
 canonExport ls (Export x)             = fromMaybe (Export x) (Map.lookup x ls)
 canonExport _  (ExportTypeWith tc xs) = ExportTypeWith tc xs
+canonExport _  e                      = internalError $
+  "Checks.ExportCheck.canonExport: " ++ show e
 
 canonLabels :: TCEnv -> [Export] -> Map.Map QualIdent Export
 canonLabels tcEnv es = foldr bindLabels Map.empty (allEntities tcEnv)
-  where tcs = [tc | ExportTypeWith tc _ <- es]
-        bindLabels t ls
-          | tc `elem` tcs = foldr (bindLabel tc) ls (elements t)
-          | otherwise     = ls
-        where tc = origName t
-        bindLabel tc x = Map.insert (qualifyLike tc x) (ExportTypeWith tc [x])
+  where
+    tcs = [tc | ExportTypeWith tc _ <- es]
+    bindLabels t ls
+      | tc' `elem` tcs = foldr (bindLabel tc') ls (elements t)
+      | otherwise     = ls
+        where
+          tc'            = origName t
+          bindLabel tc x = Map.insert (qualifyLike tc x) (ExportTypeWith tc [x])
 
 -- The expanded list of exported entities may contain duplicates. These
 -- are removed by the function joinExports. In particular, this
@@ -299,7 +303,7 @@ joinFun export                _ = internalError $
 -- constrs (AliasType _ _ _)  = []
 
 elements :: TypeInfo -> [Ident]
-elements (DataType    _ _ cs) = concatMap visibleElems $ catMaybes cs
+elements (DataType    _ _ cs) = concatMap visibleElems cs
 elements (RenamingType _ _ c) = visibleElems c
 elements (AliasType    _ _ _) = []
 
@@ -320,9 +324,9 @@ errUndefinedType :: QualIdent -> Message
 errUndefinedType tc = posMessage tc $ hsep $ map text
   ["Type", qualName tc, "in export list is not defined"]
   
-errUndefinedElement :: Ident -> Ident -> Message
+errUndefinedElement :: QualIdent -> Ident -> Message
 errUndefinedElement tc c = posMessage c $ hsep $ map text
-  [ idName c, "is not a constructor or label of type ", idName tc ]
+  [ idName c, "is not a constructor or label of type ", qualName tc ]
 
 errModuleNotImported :: ModuleIdent -> Message
 errModuleNotImported m = posMessage m $ hsep $ map text

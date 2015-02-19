@@ -230,8 +230,6 @@ extensions =
     , "desugar negated literals as negative literal")
   , ( NoImplicitPrelude , "NoImplicitPrelude"
     , "do not implicitly import the Prelude")
-  , ( Records           , "Records"
-    , "enable record syntax"                )
   ]
 
 -- -----------------------------------------------------------------------------

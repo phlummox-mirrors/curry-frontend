@@ -78,7 +78,7 @@ mergeLabel :: Ident -> Ident -> Maybe Ident
 mergeLabel l1 l2
   | l1 == anonId = Just l2
   | l2 == anonId = Just l1
-  | l1 == l2     = Just 1
+  | l1 == l2     = Just l1
   | otherwise    = Nothing
 
 -- Even though value declarations may be nested, the compiler uses only
@@ -132,15 +132,19 @@ lookupTuple c | isTupleId c = [tupleDCs !! (tupleArity c - 2)]
 
 tupleDCs :: [ValueInfo]
 tupleDCs = map dataInfo tupleData
-  where dataInfo (DataConstr _ n tys) = DataConstructor (qTupleId n) n
-          (ForAllExist n 0 $ foldr TypeArrow (tupleType tys) tys)
+  where dataInfo (DataConstr _ n tys) =
+          DataConstructor (qTupleId n) n (replicate n anonId)
+            (ForAllExist n 0 $ foldr TypeArrow (tupleType tys) tys)
+        dataInfo (RecordConstr _ _ _ _) = internalError $ "Env.Value.tupleDCs: "
+                                            ++ show tupleDCs
 
 initDCEnv :: ValueEnv
 initDCEnv = foldr predefDC emptyTopEnv
   [ (c, length tys, constrType (polyType ty) n' tys)
   | (ty, cs) <- predefTypes, DataConstr c n' tys <- cs]
-  where predefDC (c, a, ty) = predefTopEnv c' (DataConstructor c' a ty)
-          where c' = qualify c
+  where predefDC (c, a, ty) = predefTopEnv c' (DataConstructor c' a ls ty)
+          where ls = replicate a anonId
+                c' = qualify c
         constrType (ForAll n ty) n' = ForAllExist n n' . foldr TypeArrow ty
 
 -- |Pretty-printing the types from the type environment
@@ -161,4 +165,3 @@ conType c tyEnv = case qualLookupTopEnv c tyEnv of
   [DataConstructor _ _ ls ty] -> (ls, ty)
   [NewtypeConstructor _ l ty] -> ([l], ty)
   _                           -> internalError $ "Env.Value.conType: " ++ show c
-    

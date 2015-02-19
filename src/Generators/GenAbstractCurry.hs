@@ -19,7 +19,7 @@ import           Control.Applicative
 import qualified Control.Monad.State as S   (State, evalState, get, gets, modify
                                             , put)
 import qualified Data.Set            as Set (Set, empty, insert, member)
-import qualified Data.Traversable    as T   (forM, mapM)
+import qualified Data.Traversable    as T   (forM)
 
 import Curry.AbstractCurry
 import Curry.Base.Ident
@@ -86,7 +86,7 @@ trConsDecl (RecordDecl       _ _ c fs) = CRecord
 
 trFieldDecl :: FieldDecl -> GAC [CFieldDecl]
 trFieldDecl (FieldDecl _ ls ty) = T.forM ls $ \l ->
-  CFieldDecl <$> trLocalIdent l <*> getVisibility l <*> trTypeExpr ty
+  CField <$> trLocalIdent l <*> getVisibility l <*> trTypeExpr ty
 
 trNewConsDecl :: NewConstrDecl -> GAC CConsDecl
 trNewConsDecl (NewConstrDecl _ _ nc      ty) = CCons
@@ -262,7 +262,7 @@ trPat (FunctionPattern     f ps) = CPFuncComb <$> trQual f <*> mapM trPat ps
 trPat (InfixFuncPattern p1 f p2) = trPat (FunctionPattern f [p1, p2])
 
 trField :: (a -> GAC b) -> Field a -> GAC (CField b)
-trField act (Field _ l x) = (,) <$> return (idName l) <*> act x
+trField act (Field _ l x) = (,) <$> trQual l <*> act x
 
 negateLiteral :: Literal -> Literal
 negateLiteral (Int    v i) = Int   v  (-i)
