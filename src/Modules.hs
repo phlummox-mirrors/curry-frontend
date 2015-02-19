@@ -235,13 +235,13 @@ transModule opts mdl = do
 writeOutput :: Options -> FilePath -> CompEnv CS.Module -> IO ()
 writeOutput opts fn mdl@(_, modul) = do
   writeParsed opts fn modul
-  (env1, qlfd) <- dumpWith opts CS.ppModule DumpQualified $ qual mdl
-  writeAbstractCurry opts fn env1 qlfd
+  qmdl@(env1, qlfd) <- dumpWith opts CS.ppModule DumpQualified $ qual mdl
+  writeAbstractCurry opts fn qmdl
+  -- generate interface file
+  let intf = uncurry exportInterface qmdl
+  writeInterface opts fn intf
   when withFlat $ do
     (env2, il) <- transModule opts (env1, qlfd)
-    -- generate interface file
-    let intf = exportInterface env2 qlfd
-    writeInterface opts fn intf
     -- generate target code
     let modSum = summarizeModule (tyConsEnv env2) intf qlfd
     writeFlat opts fn env2 modSum il
@@ -326,10 +326,10 @@ writeFlatIntf opts fn env modSum il
   useSubDir       = addCurrySubdirModule (optUseSubdir opts) (moduleIdent env)
   outputInterface = EF.writeFlatCurry (useSubDir targetFile) intf
 
-writeAbstractCurry :: Options -> FilePath -> CompilerEnv -> CS.Module -> IO ()
-writeAbstractCurry opts fn env mdl = do
-  when acyTarget $ AC.writeCurry (useSubDir $ acyName fn)
-                 $ genAbstractCurry env mdl
+writeAbstractCurry :: Options -> FilePath -> CompEnv CS.Module -> IO ()
+writeAbstractCurry opts fname (env, modul) = do
+  when acyTarget $ AC.writeCurry (useSubDir $ acyName fname)
+                 $ genAbstractCurry env modul
   where
   acyTarget  = AbstractCurry        `elem` optTargetTypes opts
   useSubDir  = addCurrySubdirModule (optUseSubdir opts) (moduleIdent env)

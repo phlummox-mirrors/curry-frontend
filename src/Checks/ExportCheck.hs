@@ -1,26 +1,41 @@
+{- |
+    Module      :  $Header$
+    Description :  Check the export specification of a module
+    Copyright   :  (c) 1999 - 2004 Wolfgang Lux
+                       2011 - 2015 Björn Peemöller
+    License     :  OtherLicense
+
+    Maintainer  :  bjp@informatik.uni-kiel.de
+    Stability   :  experimental
+    Portability :  portable
+
+    This module implements a check of the export specification.
+-}
 module Checks.ExportCheck (exportCheck) where
 
 import           Control.Applicative        ((<$>))
 import           Control.Monad              (unless)
 import qualified Control.Monad.State as S   (State, runState, gets, modify)
 import           Data.List                  (nub, union)
-import qualified Data.Map            as Map
+import qualified Data.Map            as Map (Map, elems, empty, insert
+                                            , insertWith, lookup, toList)
 import           Data.Maybe                 (fromMaybe)
-import qualified Data.Set            as Set
+import qualified Data.Set            as Set (Set, empty, fromList, insert
+                                            , member, toList)
 
 import Curry.Base.Ident
 import Curry.Base.Position
 import Curry.Base.Pretty
 import Curry.Syntax
 
-import Base.Messages (Message, internalError, posMessage)
-import Base.TopEnv
-import Base.Types
-import Base.Utils (findMultiples)
+import Base.Messages       (Message, internalError, posMessage)
+import Base.TopEnv         (allEntities, origName, localBindings, moduleImports)
+import Base.Types          (DataConstr (..))
+import Base.Utils          (findMultiples)
 
-import Env.ModuleAlias (AliasEnv)
-import Env.TypeConstructor
-import Env.Value
+import Env.ModuleAlias     (AliasEnv)
+import Env.TypeConstructor (TCEnv, TypeInfo (..), qualLookupTC)
+import Env.Value           (ValueEnv, ValueInfo (..), qualLookupValue)
 
 -- ---------------------------------------------------------------------------
 -- Check and expansion of the export statement
@@ -37,8 +52,8 @@ exportCheck m aEnv tcEnv tyEnv spec = case expErrs of
   initState          = ECState m imported tcEnv tyEnv []
   imported           = Set.fromList $ Map.elems aEnv
 
-  ambiErrs = map errMultipleExportType  (findMultiples exportedTypes)
-          ++ map errMultipleExportValue (findMultiples exportedValues)
+  ambiErrs = map errMultipleType  (findMultiples exportedTypes)
+          ++ map errMultipleName (findMultiples exportedValues)
 
   exportedTypes  = [unqualify tc | ExportTypeWith tc _ <- exports]
   exportedValues = [c | ExportTypeWith _ cs <- exports, c <- cs]
@@ -99,36 +114,36 @@ expandExport (ExportTypeWith tc cs) = expandTypeWith tc cs
 expandExport (ExportTypeAll     tc) = expandTypeAll tc
 expandExport (ExportModule      em) = expandModule em
 
--- |Expand export of type cons / data cons / function
+-- |Expand export of type constructor / function
 expandThing :: QualIdent -> ECM [Export]
 expandThing tc = do
   tcEnv <- getTyConsEnv
   case qualLookupTC tc tcEnv of
     []  -> expandThing' tc Nothing
     [t] -> expandThing' tc (Just [ExportTypeWith (origName t) []])
-    _   -> report (errAmbiguousType tc) >> return []
+    ts  -> report (errAmbiguousType tc ts) >> return []
 
 -- |Expand export of data cons / function
 expandThing' :: QualIdent -> Maybe [Export] -> ECM [Export]
 expandThing' f tcExport = do
   tyEnv <- getValueEnv
   case qualLookupValue f tyEnv of
-    []             -> justTcOr errUndefinedEntity
+    []             -> justTcOr errUndefinedName
     [Value f' _ _] -> return $ Export f' : fromMaybe [] tcExport
     [Label l  _ _] -> return $ Export l  : fromMaybe [] tcExport
     [_]            -> justTcOr errExportDataConstr
     _              -> do
       m <- getModuleIdent
       case qualLookupValue (qualQualify m f) tyEnv of
-        []             -> justTcOr errUndefinedEntity
+        []             -> justTcOr errUndefinedName
         [Value f' _ _] -> return $ Export f' : fromMaybe [] tcExport
         [Label l  _ _] -> return $ Export l  : fromMaybe [] tcExport
         [_]            -> justTcOr errExportDataConstr
-        _              -> report (errAmbiguousName f) >> return []
+        fs             -> report (errAmbiguousName f fs) >> return []
   where justTcOr errFun = case tcExport of
           Nothing -> report (errFun f) >> return []
           Just tc -> return tc
-          
+
 -- |Expand type constructor with explicit data constructors and record labels
 expandTypeWith :: QualIdent -> [Ident] -> ECM [Export]
 expandTypeWith tc xs = do
@@ -141,34 +156,14 @@ expandTypeWith tc xs = do
     [t@(RenamingType _ _ c)] -> do
       mapM_ (checkElement (visibleElems c)) xs'
       return [ExportTypeWith (origName t) xs']
-    [_] -> report (errNonDataType tc)   >> return []
-    _   -> report (errAmbiguousType tc) >> return []
+    [_] -> report (errNonDataType tc)      >> return []
+    ts  -> report (errAmbiguousType tc ts) >> return []
   where
   xs' = nub xs
   -- check if given identifier is constructor or label of type tc
   checkElement cs' c = do
     unless (c `elem` cs') $ report $ errUndefinedElement tc c
     return c
-
--- |Expand type constructor with explicit data constructors
--- expandTypeWith :: QualIdent -> [Ident] -> ECM [Export]
--- expandTypeWith tc cs = do
---   tcEnv <- getTyConsEnv
---   case qualLookupTC tc tcEnv of
---     [] -> report (errUndefinedType tc) >> return []
---     [t] | isDataType   t -> do mapM_ (checkConstr $ constrs t) nubCons
---                                return [ExportTypeWith (origName t) nubCons]
---         | isRecordType t -> do mapM_ (checkLabel  $ labels  t) nubCons
---                                return [ExportTypeWith (origName t)
---                                         (map renameLabel nubCons)]
---         | otherwise      -> report (errNonDataType tc) >> return []
---     _  -> report (errAmbiguousType tc) >> return []
---   where
---   nubCons = nub cs
---   checkConstr cs' c = unless (c `elem` cs')
---                       (report $ errUndefinedDataConstr tc c)
---   checkLabel ls l   = unless (renameLabel l `elem` ls)
---                       (report $ errUndefinedLabel tc l)
 
 -- |Expand type constructor with all data constructors and record labels
 expandTypeAll :: QualIdent -> ECM [Export]
@@ -178,21 +173,8 @@ expandTypeAll tc = do
     [] -> report (errUndefinedType tc) >> return []
     [t@(DataType     _ _ _)] -> return $ [exportType t]
     [t@(RenamingType _ _ _)] -> return $ [exportType t]
-    [_] -> report (errNonDataType tc)   >> return []
-    _   -> report (errAmbiguousType tc) >> return []
-
--- |Expand type constructor with all data constructors
--- expandTypeAll :: QualIdent -> ECM [Export]
--- expandTypeAll tc = do
---   tcEnv <- getTyConsEnv
---   case qualLookupTC tc tcEnv of
---     []  -> report (errUndefinedType tc) >> return []
---     [t] -> do
---       tyEnv <- getValueEnv
---       if isDataType t || isRecordType t
---         then return [exportType tyEnv t]
---         else report (errNonDataType tc) >> return []
---     _   -> report (errAmbiguousType tc) >> return []
+    [_] -> report (errNonDataType tc)      >> return []
+    ts  -> report (errAmbiguousType tc ts) >> return []
 
 expandModule :: ModuleIdent -> ECM [Export]
 expandModule em = do
@@ -226,17 +208,6 @@ exportType :: TypeInfo -> Export
 exportType t = ExportTypeWith tc xs
   where tc = origName t
         xs = elements t
-
--- exportType :: ValueEnv -> TypeInfo -> Export
--- exportType tyEnv t
---   | isRecordType t
---   = let ls = labels t
---         r  = origName t
---     in  case lookupValue (head ls) tyEnv of
---       [Label _ r' _]  -> if r == r' then ExportTypeWith r ls
---                                     else ExportTypeWith r []
---       _               -> internalError "Exports.exportType"
---   | otherwise      = ExportTypeWith (origName t) (constrs t)
 
 -- For compatibility with Haskell, we allow exporting field labels but
 -- not constructors individually as well as together with their types.
@@ -297,11 +268,6 @@ joinFun export                _ = internalError $
 -- Auxiliary definitions
 -- ---------------------------------------------------------------------------
 
--- constrs :: TypeInfo -> [Ident]
--- constrs (DataType _ _ cs)  = [c | Just (DataConstr c _ _) <- cs]
--- constrs (RenamingType _ _ (DataConstr c _ _)) = [c]
--- constrs (AliasType _ _ _)  = []
-
 elements :: TypeInfo -> [Ident]
 elements (DataType    _ _ cs) = concatMap visibleElems cs
 elements (RenamingType _ _ c) = visibleElems c
@@ -316,58 +282,54 @@ visibleElems (RecordConstr c _ ls _) = c : ls
 -- Error messages
 -- ---------------------------------------------------------------------------
 
-errUndefinedEntity :: QualIdent -> Message
-errUndefinedEntity x = posMessage x $ hsep $ map text
-  ["Entity", qualName x, "in export list is not defined"]
+errModuleNotImported :: ModuleIdent -> Message
+errModuleNotImported m = posMessage m $ hsep $ map text
+  ["Module", escModuleName m, "not imported"]
 
 errUndefinedType :: QualIdent -> Message
-errUndefinedType tc = posMessage tc $ hsep $ map text
-  ["Type", qualName tc, "in export list is not defined"]
-  
+errUndefinedType = errUndefined "Type"
+
 errUndefinedElement :: QualIdent -> Ident -> Message
 errUndefinedElement tc c = posMessage c $ hsep $ map text
   [ idName c, "is not a constructor or label of type ", qualName tc ]
 
-errModuleNotImported :: ModuleIdent -> Message
-errModuleNotImported m = posMessage m $ hsep $ map text
-  ["Module", moduleName m, "not imported"]
+errUndefinedName :: QualIdent -> Message
+errUndefinedName = errUndefined "Name"
 
-errMultipleExportType :: [Ident] -> Message
-errMultipleExportType []     = internalError
-  "Checks.ExportCheck.errMultipleExportType: empty list"
-errMultipleExportType (i:is) = posMessage i $
-  text "Multiple exports of type" <+> text (idName i) <+> text "at:" $+$
-  nest 2 (vcat (map showPos (i:is)))
+errUndefined :: String -> QualIdent -> Message
+errUndefined what tc = posMessage tc $ hsep $ map text
+  ["Undefined", what, escQualName tc, "in export list"]
+
+errMultipleType :: [Ident] -> Message
+errMultipleType = errMultiple "type"
+
+errMultipleName :: [Ident] -> Message
+errMultipleName = errMultiple "name"
+
+errMultiple :: String -> [Ident] -> Message
+errMultiple _    []     = internalError
+  "Checks.ExportCheck.errMultiple: empty list"
+errMultiple what (i:is) = posMessage i $
+  text "Multiple exports of" <+> text what <+> text (escName i) <+> text "at:"
+  $+$ nest 2 (vcat (map showPos (i:is)))
   where showPos = text . showLine . idPosition
 
-errMultipleExportValue :: [Ident] -> Message
-errMultipleExportValue []     = internalError
-  "Checks.ExportCheck.errMultipleExportValue: empty list"
-errMultipleExportValue (i:is) = posMessage i $
-  text "Multiple exports of" <+> text (idName i) <+> text "at:" $+$
-  nest 2 (vcat (map showPos (i:is)))
-  where showPos = text . showLine . idPosition
+errAmbiguousType :: QualIdent -> [TypeInfo] -> Message
+errAmbiguousType tc tcs = errAmbiguous "type" tc (map origName tcs)
 
-errAmbiguousType :: QualIdent -> Message
-errAmbiguousType tc = posMessage tc $ hsep $ map text
-  ["Ambiguous type", qualName tc]
+errAmbiguousName :: QualIdent -> [ValueInfo] -> Message
+errAmbiguousName x vs = errAmbiguous "name" x (map origName vs)
 
-errAmbiguousName :: QualIdent -> Message
-errAmbiguousName x = posMessage x $ hsep $ map text
-  ["Ambiguous name", qualName x]
+errAmbiguous :: String -> QualIdent -> [QualIdent] -> Message
+errAmbiguous what qn qns = posMessage qn
+  $   text "Ambiguous" <+> text what <+> text (escQualName qn)
+  $+$ text "It could refer to:"
+  $+$ nest 2 (vcat (map (text . escQualName) qns))
 
 errExportDataConstr :: QualIdent -> Message
 errExportDataConstr c = posMessage c $ hsep $ map text
-  ["Data constructor", qualName c, "in export list"]
+  ["Data constructor", escQualName c, "outside type export in export list"]
 
 errNonDataType :: QualIdent -> Message
 errNonDataType tc = posMessage tc $ hsep $ map text
-  [qualName tc, "is not a data type"]
-
--- errUndefinedDataConstr :: QualIdent -> Ident -> Message
--- errUndefinedDataConstr tc c = posMessage c $ hsep $ map text
---   [idName c, "is not a data constructor of type", qualName tc]
-
--- errUndefinedLabel :: QualIdent -> Ident -> Message
--- errUndefinedLabel r l = posMessage l $ hsep $ map text
---   [idName l, "is not a label of the record", qualName r]
+  [escQualName tc, "is not a data type"]
