@@ -30,7 +30,7 @@ import Curry.Syntax
 
 import Base.Messages       (Message, internalError, posMessage)
 import Base.TopEnv         (allEntities, origName, localBindings, moduleImports)
-import Base.Types          (DataConstr (..))
+import Base.Types          (DataConstr (..), constrIdent, recLabels)
 import Base.Utils          (findMultiples)
 
 import Env.ModuleAlias     (AliasEnv)
@@ -151,10 +151,10 @@ expandTypeWith tc xs = do
   case qualLookupTC tc tcEnv of
     [] -> report (errUndefinedType tc) >> return []
     [t@(DataType _ _ cs)]    -> do
-      mapM_ (checkElement (concatMap visibleElems cs)) xs'
+      mapM_ (checkElement (visibleElems cs)) xs'
       return [ExportTypeWith (origName t) xs']
     [t@(RenamingType _ _ c)] -> do
-      mapM_ (checkElement (visibleElems c)) xs'
+      mapM_ (checkElement (visibleElems [c])) xs'
       return [ExportTypeWith (origName t) xs']
     [_] -> report (errNonDataType tc)      >> return []
     ts  -> report (errAmbiguousType tc ts) >> return []
@@ -269,14 +269,13 @@ joinFun export                _ = internalError $
 -- ---------------------------------------------------------------------------
 
 elements :: TypeInfo -> [Ident]
-elements (DataType    _ _ cs) = concatMap visibleElems cs
-elements (RenamingType _ _ c) = visibleElems c
+elements (DataType    _ _ cs) = visibleElems cs
+elements (RenamingType _ _ c) = visibleElems [c]
 elements (AliasType    _ _ _) = []
 
 -- get visible constructor and label identifiers for given constructor
-visibleElems :: DataConstr -> [Ident]
-visibleElems (DataConstr      c _ _) = [c]
-visibleElems (RecordConstr c _ ls _) = c : ls
+visibleElems :: [DataConstr] -> [Ident]
+visibleElems cs = map constrIdent cs ++ (nub (concatMap recLabels cs))
 
 -- ---------------------------------------------------------------------------
 -- Error messages

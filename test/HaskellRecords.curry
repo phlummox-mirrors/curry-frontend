@@ -1,6 +1,7 @@
-module HaskellRecords (R (C), getL) where
+module HaskellRecords where
 
 data R a = C { l :: Int, x :: a }
+         | D { l :: Int }
 
 -- construction
 r1 :: R Bool
