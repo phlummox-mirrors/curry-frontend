@@ -76,7 +76,7 @@ genTypeSyns tcEnv mident decls
   = concatMap (genTypeSynDecl mident tcEnv) $ filter isTypeSyn decls
 
 isTypeSyn :: Decl -> Bool
-isTypeSyn (TypeDecl _ _ _ texpr) = case texpr of
+isTypeSyn (TypeDecl _ _ _ ty) = case ty of
   RecordType _ -> False
   _            -> True
 isTypeSyn _ = False

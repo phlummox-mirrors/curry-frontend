@@ -37,18 +37,18 @@ qual :: Options -> CompEnv Module -> CompEnv Module
 qual opts (env, mdl) = (qualifyEnv opts env, mdl')
   where mdl' = Q.qual (moduleIdent env) (tyConsEnv env) (valueEnv env) mdl
 
--- |Remove syntactic sugar
+-- |Remove any syntactic sugar, changes the value environment.
 desugar :: Bool -> CompEnv Module -> CompEnv Module
 desugar dsfp (env, mdl) = (env { valueEnv = tyEnv' }, mdl')
   where (mdl', tyEnv') = DS.desugar dsfp (extensions env) (valueEnv env)
                                          (tyConsEnv env) mdl
 
--- |Simplify the source code.
+-- |Simplify the source code, changes the value environment.
 simplify :: CompEnv Module -> CompEnv Module
 simplify (env, mdl) = (env { valueEnv = tyEnv' }, mdl')
   where (mdl', tyEnv') = S.simplify (valueEnv env) (tyConsEnv env) mdl
 
--- |Lift local declarations
+-- |Lift local declarations, changes the value environment.
 lift :: CompEnv Module -> CompEnv Module
 lift (env, mdl) = (env { valueEnv = tyEnv' }, mdl')
   where (mdl', tyEnv') = L.lift (valueEnv env) mdl
