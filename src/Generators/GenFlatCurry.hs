@@ -154,12 +154,11 @@ trModule (IL.Module mid imps ds) = do
   -- insert local decls into localDecls
   modify $ \ s -> s { localTypes = Map.fromList [ (qn, t) | IL.FunctionDecl qn _ t _ <- ds ] }
   is      <- (\is -> map moduleName $ nub $ imps ++ map extractMid is) <$> imports
-  recrds  <- genRecordTypes
   types   <- genTypeSynonyms
   tyds    <- concat <$> mapM trTypeDecl ds
   funcs   <- concat <$> mapM trFuncDecl ds
   ops     <- genOpDecls
-  return $ Prog (moduleName mid) is (recrds ++ types ++ tyds) funcs ops
+  return $ Prog (moduleName mid) is (types ++ tyds) funcs ops
   where extractMid (CS.IImportDecl _ mid1) = mid1
 
 trInterface :: IL.Module -> FlatState Prog
@@ -167,7 +166,6 @@ trInterface (IL.Module mid imps decls) = do
   -- insert local decls into localDecls
   modify $ \ s -> s { localTypes = Map.fromList [ (qn, t) | IL.FunctionDecl qn _ t _ <- decls ] }
   is      <- (\is -> map moduleName $ nub $ imps ++ map extractMid is) <$> imports
-  recrds  <- genRecordTypes
   expimps <- getExportedImports
   itypes  <- mapM trITypeDecl (filter isTypeIDecl expimps)
   types   <- genTypeSynonyms
@@ -177,7 +175,7 @@ trInterface (IL.Module mid imps decls) = do
   funcs   <- filterM isPublicFuncDecl    decls >>= concatMapM trFuncDecl
   iops    <- mapM trIOpDecl (filter isOpIDecl expimps)
   ops     <- genOpDecls
-  return $ Prog (moduleName mid) is (itypes ++ recrds ++ types ++ datas ++ newtys)
+  return $ Prog (moduleName mid) is (itypes ++ types ++ datas ++ newtys)
                           (ifuncs ++ funcs) (iops ++ ops)
   where extractMid (CS.IImportDecl _ mid1) = mid1
 
@@ -516,9 +514,8 @@ genFixity CS.InfixL = InfixlOp
 genFixity CS.InfixR = InfixrOp
 genFixity CS.Infix  = InfixOp
 
--- The intermediate language (IL) does not represent type synonyms
--- (and also no record declarations). For this reason an interface
--- representation of all type synonyms is generated (see "ModuleSummary")
+-- The intermediate language (IL) does not represent type synonyms.
+-- For this reason an interface representation of all type synonyms is generated
 -- from the abstract syntax representation of the Curry program.
 -- The function 'typeSynonyms' returns this list of type synonyms.
 genTypeSynonyms ::  FlatState [TypeDecl]
@@ -528,50 +525,10 @@ genTypeSynonym :: CS.IDecl -> FlatState TypeDecl
 genTypeSynonym (CS.ITypeDecl _ qid tvs ty) = do
   qname <- trTypeIdent qid
   vis   <- getVisibility False qid
-  let is = [0 .. (length tvs) - 1]
-  ty'   <- elimRecordTypes ty >>= trType . snd . cs2ilType (zip tvs is)
-  return $ TypeSyn qname vis is ty'
+  let vs = [0 .. length tvs - 1]
+  ty'   <- elimRecordTypes ty >>= trType . snd . cs2ilType (zip tvs vs)
+  return $ TypeSyn qname vis vs ty'
 genTypeSynonym _ = internalError "GenFlatCurry: no type synonym interface"
-
--- In order to provide an interface for record declarations, 'genRecordTypes'
--- generates dummy data declarations representing records together
--- with their typed labels. For the record declaration
---
---      type Rec = {l_1 :: t_1,..., l_n :: t_n}
---
--- the following data declaration will be generated:
---
---      data Rec' = l_1' t_1 | ... | l_n' :: t_n
---
--- Rec' and l_i' are unique idenfifiers which encode the original names
--- Rec and l_i.
--- When reading an interface file containing such declarations, it is
--- now possible to reconstruct the original record declaration. Since
--- usual FlatCurry code is used, these declaration should not have any
--- effects on the behaviour of the Curry program. But to ensure correctness,
--- these dummies should be generated for the interface file as well as for
--- the corresponding FlatCurry file.
-genRecordTypes :: FlatState [TypeDecl]
-genRecordTypes = records >>= mapM genRecordType
-
-genRecordType :: CS.IDecl -> FlatState TypeDecl
-genRecordType (CS.ITypeDecl _ qid params (CS.RecordType fs)) = do
-  let is = [0 .. (length params) - 1]
-      (mid, ident) = (qidModule qid, qidIdent qid)
-  qname <- trQualIdent ((maybe qualify qualifyWith mid) (recordExtId ident))
-  labels <- mapM (genRecordLabel mid (zip params is)) fs
-  return (Type qname Public is labels)
-genRecordType _ = internalError "GenFlatCurry.genRecordType: no pattern match"
-
-genRecordLabel :: Maybe ModuleIdent -> [(Ident, Int)] -> ([Ident], CS.TypeExpr)
-               -> FlatState ConsDecl
-genRecordLabel modid vis ([ident],ty) = do
-  ty'   <- elimRecordTypes ty
-  texpr <- trType (snd (cs2ilType vis ty'))
-  qname <- trQualIdent ((maybe qualify qualifyWith modid)
-                            (labelExtId ident))
-  return (Cons qname 1 Public [texpr])
-genRecordLabel _ _ _ = internalError "GenFlatCurry.genRecordLabel: no pattern match"
 
 -- FlatCurry provides no possibility of representing record types like
 -- {l_1::t_1, l_2::t_2, ..., l_n::t_n}. So they have to be transformed to
@@ -670,10 +627,6 @@ isTypeIDecl (CS.IDataDecl _ _ _ _) = True
 isTypeIDecl (CS.ITypeDecl _ _ _ _) = True
 isTypeIDecl _                      = False
 
-isRecordIDecl :: CS.IDecl -> Bool
-isRecordIDecl (CS.ITypeDecl _ _ _ (CS.RecordType (_:_))) = True
-isRecordIDecl _                                          = False
-
 isFuncIDecl :: CS.IDecl -> Bool
 isFuncIDecl (CS.IFunctionDecl _ _ _ _) = True
 isFuncIDecl _                          = False
@@ -690,9 +643,6 @@ exports = gets exportsE
 
 imports :: FlatState [CS.IImportDecl]
 imports = gets importsE
-
-records :: FlatState [CS.IDecl]
-records = gets (filter isRecordIDecl . interfaceE)
 
 fixities :: FlatState [CS.IDecl]
 fixities = gets fixitiesE
