@@ -14,3 +14,7 @@ fun2 C {} = False
 
 -- update
 upd r = r { x = False, l = 0 }
+
+-- selection
+getL :: R a -> Int
+getL r = l r

@@ -1083,8 +1083,10 @@ sureVarType v tyEnv = case lookupValue v tyEnv of
 funType :: ModuleIdent -> QualIdent -> ValueEnv -> TypeScheme
 funType m f tyEnv = case qualLookupValue f tyEnv of
   [Value _ _ sigma] -> sigma
+  [Label _ _ sigma] -> sigma
   _                 -> case qualLookupValue (qualQualify m f) tyEnv of
     [Value _ _ sigma] -> sigma
+    [Label _ _ sigma] -> sigma
     _                 -> internalError $ "TypeCheck.funType " ++ show f
                           ++ ", more precisely " ++ show (unqualify f)
 
