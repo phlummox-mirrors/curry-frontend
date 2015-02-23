@@ -74,12 +74,11 @@ typeCheck :: ModuleIdent -> TCEnv -> ValueEnv -> [Decl]
           -> (TCEnv, ValueEnv, [Message])
 typeCheck m tcEnv tyEnv decls = execTCM check initState
   where
-  check      = checkTypeSynonyms m tds &&> mapM_ checkFieldLabel tds
-                                       &&> checkDecls
+  check      = checkTypeSynonyms m tds &&> checkDecls
   checkDecls = do
     bindTypes tds
     bindConstrs
-    bindLabels
+    mapM_ checkFieldLabel tds &&> bindLabels
     tcDecls vds
   (tds, vds) = partition isTypeDecl decls
   initState  = TcState m tcEnv tyEnv idSubst emptySigEnv 0 []
