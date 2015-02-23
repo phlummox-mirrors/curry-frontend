@@ -360,6 +360,7 @@ constrType c tyEnv = case qualLookupValue c tyEnv of
 varType :: Ident -> ValueEnv -> TypeScheme
 varType v tyEnv = case lookupValue v tyEnv of
   [Value _ _ sigma] -> sigma
+  [Label _ _ sigma] -> sigma
   _ -> internalError $ "Base.Typing.varType: " ++ show v
 
 funType :: QualIdent -> ValueEnv -> TypeScheme
