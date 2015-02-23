@@ -365,6 +365,7 @@ varType v tyEnv = case lookupValue v tyEnv of
 funType :: QualIdent -> ValueEnv -> TypeScheme
 funType f tyEnv = case qualLookupValue f tyEnv of
   [Value _ _ sigma] -> sigma
+  [Label _ _ sigma] -> sigma
   _ -> internalError $ "Base.Typing.funType: " ++ show f
 
 labelType :: QualIdent -> ValueEnv -> TypeScheme
