@@ -609,13 +609,13 @@ dsExpr p (RecordUpdate e fs) = do
   where
     ls = map fieldLabel fs
     updateAlt _   (DataConstr          _ _ _)          = return []
-    updateAlt tc' (RecordConstr c _ labels _)
+    updateAlt tc' (RecordConstr c _ labels tys)
       | all (`elem` (map (qualifyLike tc') labels)) ls = do
-          vs <- mapM (freshMonoTypeVar "_#rec" . VariablePattern) labels
-          let qls = map (qualifyLike tc') labels
+          vs <- mapM (freshIdent "_#rec" 0 . polyType) tys
+          let qc  = qualifyLike tc' c
+              qls = map (qualifyLike tc') labels
               es  = zipWith (\v l -> dsLabel (mkVar v) (map field2Tuple fs) l)
                       vs qls
-              qc  = qualifyLike tc' c
           return [(constrPat qc vs, apply (Constructor qc) es)]
       | otherwise                             = return []
     constrPat qc' vs' = ConstructorPattern qc' (map VariablePattern vs')
@@ -787,26 +787,19 @@ dsRecordDecl d = return [d]
 -- Generate selection function for a record label
 genSelectFunc :: Position -> [QualIdent] -> Ident -> DsM Decl
 genSelectFunc p qcs l = do
---   m     <- getModuleIdent
---   tyEnv <- getValueEnv
-  eqs   <- concat <$> mapM (selectorEqn l) qcs
---   let (_, ty)    = conType (head qcs) tyEnv
---       (tys, rty) = arrowUnapply (instType ty)
---       selType    = polyType (TypeArrow rty (tys !! n))
---   let selId = qualifyWith m l
---   modifyValueEnv $ bindFun m selId 1 selType
+  eqs <- concat <$> mapM (selectorEqn l) qcs
   return $ FunctionDecl p l [funEqn l [pat] e | (pat, e) <- eqs]
   where
     funEqn f ps e = Equation p (FunLhs f ps) (SimpleRhs p e [])
 
--- Generate pattern and rhs for selection function and
--- add its type to the value environment
+-- Generate pattern and rhs for selection function
 selectorEqn :: Ident -> QualIdent -> DsM [(Pattern, Expression)]
 selectorEqn l qc = do
   tyEnv <- getValueEnv
-  let (ls, _) = conType qc tyEnv
+  let (ls, ty) = conType qc tyEnv
+      (tys, _) = arrowUnapply (instType ty)
   case elemIndex l ls of
-    Just n  -> do vs <- mapM (freshMonoTypeVar "_#rec" . VariablePattern) ls
+    Just n  -> do vs <- mapM (freshIdent "_#rec" 0 . polyType) tys
                   let pvs = map VariablePattern vs
                       v   = qualify (vs !! n)
                   return [(ConstructorPattern qc pvs, Variable v)]
@@ -1002,11 +995,12 @@ mkVar = Variable . qualify
 -- variables are allowed for records), the compiler can reuse the same
 -- monomorphic type variables for every instantiated type.
 
--- instType :: ExistTypeScheme -> Type
--- instType (ForAllExist _ _ ty) = inst ty
---   where inst (TypeConstructor tc tys) = TypeConstructor tc (map inst tys)
---         inst (TypeVariable tv) = TypeVariable (-1 - tv)
---         inst (TypeArrow ty1 ty2) = TypeArrow (inst ty1) (inst ty2)
+instType :: ExistTypeScheme -> Type
+instType (ForAllExist _ _ ty) = inst ty
+  where inst (TypeConstructor tc tys) = TypeConstructor tc (map inst tys)
+        inst (TypeVariable        tv) = TypeVariable (-1 - tv)
+        inst (TypeArrow      ty1 ty2) = TypeArrow (inst ty1) (inst ty2)
+        inst ty'                      = ty'
 
 constructors :: QualIdent -> TCEnv -> [DataConstr]
 constructors c tcEnv = case qualLookupTC c tcEnv of
