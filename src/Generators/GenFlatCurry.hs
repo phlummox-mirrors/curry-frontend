@@ -133,11 +133,11 @@ run modSum mEnv tyEnv tcEnv genIntf f = evalState f env0
     , varIdsE       = SE.new
     , genInterfaceE = genIntf
     , localTypes    = Map.empty
-    , consTypes     = Map.fromList $ getConstrTypes tcEnv tyEnv
+    , consTypes     = Map.fromList $ getConstrTypes tcEnv
     }
 
-getConstrTypes :: TCEnv -> ValueEnv -> [(QualIdent, IL.Type)]
-getConstrTypes tcEnv tyEnv =
+getConstrTypes :: TCEnv -> [(QualIdent, IL.Type)]
+getConstrTypes tcEnv =
   [ mkConstrType tqid conid argtys argc
   | (_, (_, DataType tqid argc dts):_) <- Map.toList $ topEnvMap tcEnv
   , (DataConstr conid _ argtys) <- dts
@@ -147,7 +147,7 @@ getConstrTypes tcEnv tyEnv =
     where
     conname    = QualIdent (qidModule tqid) conid
     resty = IL.TypeConstructor tqid (map IL.TypeVariable [0 .. targnum - 1])
-    contype    = foldr IL.TypeArrow resty $ map (ttrans tcEnv tyEnv) argtypes
+    contype    = foldr IL.TypeArrow resty $ map ttrans argtypes
 
 trModule :: IL.Module -> FlatState Prog
 trModule (IL.Module mid imps ds) = do
@@ -631,13 +631,13 @@ getArity qid = gets (lookupA . typeEnvE)
       [Label              _ _ _] -> 1
       _                          -> internalError $ "GenFlatCurry.getArity: " ++ show qid
 
-ttrans :: TCEnv -> ValueEnv -> Type -> IL.Type
-ttrans _     _     (TypeVariable          v) = IL.TypeVariable v
-ttrans tcEnv tyEnv (TypeConstructor    i ts) = IL.TypeConstructor i (map (ttrans tcEnv tyEnv) ts)
-ttrans tcEnv tyEnv (TypeArrow           f x) = IL.TypeArrow (ttrans tcEnv tyEnv f) (ttrans tcEnv tyEnv x)
-ttrans _     _     (TypeConstrained    [] v) = IL.TypeVariable v
-ttrans tcEnv tyEnv (TypeConstrained (v:_) _) = ttrans tcEnv tyEnv v
-ttrans _     _     (TypeSkolem            k) = internalError $
+ttrans :: Type -> IL.Type
+ttrans (TypeVariable          v) = IL.TypeVariable v
+ttrans (TypeConstructor    i ts) = IL.TypeConstructor i (map ttrans ts)
+ttrans (TypeArrow           f x) = IL.TypeArrow (ttrans f) (ttrans x)
+ttrans (TypeConstrained    [] v) = IL.TypeVariable v
+ttrans (TypeConstrained (v:_) _) = ttrans v
+ttrans (TypeSkolem            k) = internalError $
   "Generators.GenFlatCurry.ttrans: skolem type " ++ show k
 
 -- Constructor (:) receives special treatment throughout the
@@ -683,13 +683,12 @@ newVarIndex ident = do
 getTypeOf :: Ident -> FlatState (Maybe TypeExpr)
 getTypeOf ident = do
   valEnv <- gets typeEnvE
-  tcEnv  <- gets tConsEnvE
   case lookupValue ident valEnv of
     Value _ _ (ForAll _ t) : _ -> do
-      t1 <- trType (ttrans tcEnv valEnv t)
+      t1 <- trType (ttrans t)
       return (Just t1)
     DataConstructor _ _ _ (ForAllExist _ _ t) : _ -> do
-      t1 <- trType (ttrans tcEnv valEnv t)
+      t1 <- trType (ttrans t)
       return (Just t1)
     _ -> return Nothing
 
