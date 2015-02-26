@@ -574,7 +574,7 @@ booleanGuards tyEnv (CondExpr _ g _ : es) =
 
 -- Record construction expressions are transformed into normal
 -- constructor applications by rearranging fields in the order of the
--- record's declaration, passing `Prelude.undefined` in place of
+-- record's declaration, passing `Prelude.unknown` in place of
 -- omitted fields, and discarding the field labels. The transformation of
 -- record update expressions is a bit more involved as we must match the
 -- updated expression with all valid constructors of the expression's
@@ -598,7 +598,7 @@ dsExpr p (Typed        e ty) = Typed <$> dsExpr p e <*> dsTypeExpr ty
 dsExpr p (Record       c fs) = do
   tyEnv <- getValueEnv
   let ls = map (qualifyLike c) $ fst $ conType c tyEnv
-      es = map (dsLabel prelFailed (map field2Tuple fs)) ls
+      es = map (dsLabel prelUnknown (map field2Tuple fs)) ls
   dsExpr p $ apply (Constructor c) es
 dsExpr p (RecordUpdate e fs) = do
   tcEnv <- getTyConsEnv
