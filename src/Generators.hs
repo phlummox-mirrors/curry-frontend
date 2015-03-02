@@ -23,9 +23,13 @@ import CompilerEnv
 import IL (Module)
 import ModuleSummary
 
--- |Generate AbstractCurry
-genAbstractCurry :: CompilerEnv -> CS.Module -> AC.CurryProg
-genAbstractCurry = GAC.genAbstractCurry
+-- |Generate typed AbstractCurry
+genTypedAbstractCurry :: CompilerEnv -> CS.Module -> AC.CurryProg
+genTypedAbstractCurry = GAC.genAbstractCurry False
+
+-- |Generate untyped AbstractCurry
+genUntypedAbstractCurry :: CompilerEnv -> CS.Module -> AC.CurryProg
+genUntypedAbstractCurry = GAC.genAbstractCurry True
 
 -- |Generate FlatCurry
 genFlatCurry :: ModuleSummary -> CompilerEnv -> IL.Module -> EF.Prog

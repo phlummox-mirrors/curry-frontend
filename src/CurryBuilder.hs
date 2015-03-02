@@ -163,6 +163,7 @@ process opts idx m fn deps
     [ (FlatCurry            , flatName     )
     , (ExtendedFlatCurry    , extFlatName  )
     , (AbstractCurry        , acyName      )
+    , (UntypedAbstractCurry , uacyName     )
     , (Parsed               , sourceRepName)
     ]
 

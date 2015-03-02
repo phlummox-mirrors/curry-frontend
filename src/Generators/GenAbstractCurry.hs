@@ -16,10 +16,13 @@
 module Generators.GenAbstractCurry (genAbstractCurry) where
 
 import           Control.Applicative
-import qualified Control.Monad.State as S   (State, evalState, get, gets, modify
-                                            , put)
-import qualified Data.Set            as Set (Set, empty, insert, member)
-import qualified Data.Traversable    as T   (forM)
+import qualified Control.Monad.State as S     (State, evalState, get, gets
+                                              , modify, put, when)
+import qualified Data.Map            as Map   (Map, empty, fromList, lookup
+                                              , union)
+import qualified Data.Maybe          as Maybe (fromMaybe)
+import qualified Data.Set            as Set   (Set, empty, insert, member)
+import qualified Data.Traversable    as T     (forM)
 
 import Curry.AbstractCurry
 import Curry.Base.Ident
@@ -44,8 +47,10 @@ type GAC a = S.State AbstractEnv a
 -- ---------------------------------------------------------------------------
 
 -- |Generate an AbstractCurry program term from the syntax tree
-genAbstractCurry :: CompilerEnv -> Module -> CurryProg
-genAbstractCurry env mdl = S.evalState (trModule mdl) (abstractEnv env mdl)
+--  when uacy flag is set untype AbstractCurry is generated
+genAbstractCurry :: Bool -> CompilerEnv -> Module -> CurryProg
+genAbstractCurry uacy env mdl
+  = S.evalState (trModule mdl) (abstractEnv uacy env mdl)
 
 -- ---------------------------------------------------------------------------
 -- Conversion from Curry to AbstractCurry
@@ -168,7 +173,18 @@ trLocalDecl (PatternDecl      _ p rhs) = (\p' rhs' -> [CLocalPat p' rhs'])
                                          <$> trPat p <*> trRhs rhs
 trLocalDecl (FreeDecl            _ vs) = (\vs' -> [CLocalVars vs'])
                                          <$> mapM getVarIndex vs
+trLocalDecl s@(TypeSig          _ _ _) = do
+  uacy <- S.gets untypedAcy
+  S.when uacy (insertSig s)
+  return []
 trLocalDecl _                          = return [] -- can not occur (types etc.)
+
+insertSig :: Decl -> GAC ()
+insertSig (TypeSig _ fs ty) = do
+  sigs <- S.gets typeSigs
+  let lsigs = Map.fromList [(f, ty) | f <- fs]
+  S.modify $ \env -> env { typeSigs = sigs `Map.union` lsigs }
+insertSig _                 = return ()
 
 trExpr :: Expression -> GAC CExpr
 trExpr (Literal         l) = return (CLit $ cvLiteral l)
@@ -316,6 +332,9 @@ qNegateId = qualifyWith preludeMIdent (mkIdent "negate")
 qIfThenElseId :: QualIdent
 qIfThenElseId = qualifyWith preludeMIdent (mkIdent "if_then_else")
 
+prelUntyped :: QualIdent
+prelUntyped = qualifyWith preludeMIdent $ mkIdent "untyped"
+
 -- Checks, whether a symbol is defined in the Prelude.
 isPreludeSymbol :: QualIdent -> Bool
 isPreludeSymbol qid
@@ -330,25 +349,32 @@ isPreludeSymbol qid
 
 -- |Data type for representing an AbstractCurry generator environment
 data AbstractEnv = AbstractEnv
-  { moduleId   :: ModuleIdent         -- ^name of the module
-  , typeEnv    :: ValueEnv            -- ^known values
-  , exports    :: Set.Set Ident       -- ^exported symbols
-  , varIndex   :: Int                 -- ^counter for variable indices
-  , tvarIndex  :: Int                 -- ^counter for type variable indices
-  , varEnv     :: NestEnv Int         -- ^stack of variable tables
-  , tvarEnv    :: TopEnv Int          -- ^stack of type variable tables
+  { moduleId   :: ModuleIdent            -- ^name of the module
+  , typeEnv    :: ValueEnv               -- ^known values
+  , exports    :: Set.Set Ident          -- ^exported symbols
+  , varIndex   :: Int                    -- ^counter for variable indices
+  , tvarIndex  :: Int                    -- ^counter for type variable indices
+  , varEnv     :: NestEnv Int            -- ^stack of variable tables
+  , tvarEnv    :: TopEnv Int             -- ^stack of type variable tables
+  , untypedAcy :: Bool                   -- ^flag to indicate whether untyped
+                                         --  AbstractCurry is generated
+  , typeSigs   :: Map.Map Ident TypeExpr -- ^map of user defined type signatures
   } deriving Show
 
 -- |Initialize the AbstractCurry generator environment
-abstractEnv :: CompilerEnv -> Module -> AbstractEnv
-abstractEnv env (Module _ mid es _ _) = AbstractEnv
-  { moduleId  = mid
-  , typeEnv   = valueEnv env
-  , exports   = foldr (buildExportTable mid) Set.empty es'
-  , varIndex  = 0
-  , tvarIndex = 0
-  , varEnv  = globalEnv emptyTopEnv
-  , tvarEnv = emptyTopEnv
+abstractEnv :: Bool -> CompilerEnv -> Module -> AbstractEnv
+abstractEnv uacy env (Module _ mid es _ ds) = AbstractEnv
+  { moduleId   = mid
+  , typeEnv    = valueEnv env
+  , exports    = foldr (buildExportTable mid) Set.empty es'
+  , varIndex   = 0
+  , tvarIndex  = 0
+  , varEnv     = globalEnv emptyTopEnv
+  , tvarEnv    = emptyTopEnv
+  , untypedAcy = uacy
+  , typeSigs   = if uacy then Map.fromList [ (f, ty) | TypeSig _ fs ty <- ds
+                                           , f <- fs]
+                         else Map.empty
   }
   where es' = case es of
           Just (Exporting _ e) -> e
@@ -436,7 +462,13 @@ getArity f = do
       _             -> internalError $ "GenAbstractCurry.getArity: " ++ show f
 
 getType :: Ident -> GAC TypeExpr
-getType f = do
+getType f = S.gets untypedAcy >>= getType' f
+
+getType' :: Ident -> Bool -> GAC TypeExpr
+getType' f True  = do
+  sigs <- S.gets typeSigs
+  return $ Maybe.fromMaybe (ConstructorType prelUntyped []) (Map.lookup f sigs)
+getType' f False = do
   m     <- S.gets moduleId
   tyEnv <- S.gets typeEnv
   return $ case lookupValue f tyEnv of
