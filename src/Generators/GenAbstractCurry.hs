@@ -161,9 +161,12 @@ trLocalDecls ds = do
 
 insertDeclLhs :: Decl -> GAC ()
 -- Insert all variables declared in local declarations
-insertDeclLhs (PatternDecl      _ p _) = mapM_ genVarIndex (bv p)
-insertDeclLhs (FreeDecl          _ vs) = mapM_ genVarIndex vs
-insertDeclLhs _                        = return ()
+insertDeclLhs   (PatternDecl      _ p _) = mapM_ genVarIndex (bv p)
+insertDeclLhs   (FreeDecl          _ vs) = mapM_ genVarIndex vs
+insertDeclLhs s@(TypeSig          _ _ _) = do
+  uacy <- S.gets untypedAcy
+  S.when uacy (insertSig s)
+insertDeclLhs _                          = return ()
 
 trLocalDecl :: Decl -> GAC [CLocalDecl]
 trLocalDecl f@(FunctionDecl     _ _ _) = map CLocalFunc <$> trFuncDecl f
@@ -173,10 +176,6 @@ trLocalDecl (PatternDecl      _ p rhs) = (\p' rhs' -> [CLocalPat p' rhs'])
                                          <$> trPat p <*> trRhs rhs
 trLocalDecl (FreeDecl            _ vs) = (\vs' -> [CLocalVars vs'])
                                          <$> mapM getVarIndex vs
-trLocalDecl s@(TypeSig          _ _ _) = do
-  uacy <- S.gets untypedAcy
-  S.when uacy (insertSig s)
-  return []
 trLocalDecl _                          = return [] -- can not occur (types etc.)
 
 insertSig :: Decl -> GAC ()
