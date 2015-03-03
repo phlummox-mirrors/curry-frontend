@@ -30,7 +30,8 @@ import Curry.Syntax
 
 import Base.Messages       (Message, internalError, posMessage)
 import Base.TopEnv         (allEntities, origName, localBindings, moduleImports)
-import Base.Types          (DataConstr (..), constrIdent, recLabels)
+import Base.Types          ( DataConstr (..), ExistTypeScheme (..), Type (..)
+                           , TypeScheme (..), arrowBase, constrIdent, recLabels)
 import Base.Utils          (findMultiples)
 
 import Env.ModuleAlias     (AliasEnv)
@@ -130,19 +131,29 @@ expandThing' f tcExport = do
   case qualLookupValue f tyEnv of
     []             -> justTcOr errUndefinedName
     [Value f' _ _] -> return $ Export f' : fromMaybe [] tcExport
-    [Label l  _ _] -> return $ Export l  : fromMaybe [] tcExport
-    [_]            -> justTcOr errExportDataConstr
+    [Label l  _ (ForAll _ (TypeArrow (TypeConstructor tc _) _))] -> do
+      report $ errExportLabel f tc
+      return $ Export l  : fromMaybe [] tcExport
+    [c]            -> justTcOr $ flip errExportDataConstr $ getTc c
     _              -> do
       m <- getModuleIdent
       case qualLookupValue (qualQualify m f) tyEnv of
         []             -> justTcOr errUndefinedName
         [Value f' _ _] -> return $ Export f' : fromMaybe [] tcExport
-        [Label l  _ _] -> return $ Export l  : fromMaybe [] tcExport
-        [_]            -> justTcOr errExportDataConstr
+        [Label l  _ (ForAll _ (TypeArrow (TypeConstructor tc _) _))] -> do
+          report $ errExportLabel f tc
+          return $ Export l  : fromMaybe [] tcExport
+        [c]            -> justTcOr $ flip errExportDataConstr $ getTc c
         fs             -> report (errAmbiguousName f fs) >> return []
   where justTcOr errFun = case tcExport of
           Nothing -> report (errFun f) >> return []
           Just tc -> return tc
+        getTc (DataConstructor _ _ _ (ForAllExist _ _ ty)) = getTc' ty
+        getTc (NewtypeConstructor _ _ (ForAllExist _ _ ty)) = getTc' ty
+        getTc (Label _ _ (ForAll _ (TypeArrow (TypeConstructor tc _) _))) = tc
+        getTc _ = internalError "ExportCheck.getTc"
+        getTc' ty' = let (TypeConstructor tc _) = arrowBase ty'
+                     in tc
 
 -- |Expand type constructor with explicit data constructors and record labels
 expandTypeWith :: QualIdent -> [Ident] -> ECM [Export]
@@ -325,10 +336,19 @@ errAmbiguous what qn qns = posMessage qn
   $+$ text "It could refer to:"
   $+$ nest 2 (vcat (map (text . escQualName) qns))
 
-errExportDataConstr :: QualIdent -> Message
-errExportDataConstr c = posMessage c $ hsep $ map text
-  ["Data constructor", escQualName c, "outside type export in export list"]
+errExportDataConstr :: QualIdent -> QualIdent -> Message
+errExportDataConstr c tc = errOutsideTypeExport "Data constructor" c tc
 
 errNonDataType :: QualIdent -> Message
 errNonDataType tc = posMessage tc $ hsep $ map text
   [escQualName tc, "is not a data type"]
+
+errExportLabel :: QualIdent -> QualIdent -> Message
+errExportLabel l tc = errOutsideTypeExport "Label" l tc
+
+errOutsideTypeExport :: String -> QualIdent -> QualIdent -> Message
+errOutsideTypeExport what q tc = posMessage q
+  $   text what <+> text (escQualName q)
+         <+> text "outside type export in export list"
+  $+$ text "Use `" <> text (qualName tc) <+> parens (text (qualName q))
+  <>  text "' instead"
