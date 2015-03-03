@@ -162,6 +162,6 @@ ppTypes mid valueEnv = ppTypes' mid $ localBindings valueEnv
 
 conType :: QualIdent -> ValueEnv -> ([Ident], ExistTypeScheme)
 conType c tyEnv = case qualLookupTopEnv c tyEnv of
-  [DataConstructor _ _ ls ty] -> (ls, ty)
+  [DataConstructor _ _ ls ty] -> (ls , ty)
   [NewtypeConstructor _ l ty] -> ([l], ty)
   _                           -> internalError $ "Env.Value.conType: " ++ show c

@@ -211,7 +211,8 @@ bindType f m tc tvs = Map.insert (unqualify tc)
 bindTy :: ModuleIdent -> IDecl -> ExpValueEnv -> ExpValueEnv
 bindTy m (IDataDecl _ tc tvs cs hs) env =
   let env' = foldr (bindConstr m tc' tvs ty') env $
-             filter ((`notElem` hs) . constrId) cs
+             filter ((\con -> con `notElem` hs || isHiddenButNeeded con)
+                    . constrId) cs
   in foldr (bindLabel m tc' tvs ty') env' $ nubBy sameLabel clabels
   where tc'      = qualQualify m tc
         ty'      = constrType tc' tvs
@@ -220,6 +221,9 @@ bindTy m (IDataDecl _ tc tvs cs hs) env =
                    ]
         clabels  = [(l, constr l, ty) | (l, ty) <- labels]
         constr l = [constrId c | c <- cs, l `elem` recordLabels c]
+        -- hidden constructors needed for record updates with visible labels
+        hiddenCs = [c | (l, _) <- labels, c <- constr l, c `elem` hs]
+        isHiddenButNeeded = flip elem hiddenCs
         sameLabel (l1,_,_) (l2,_,_) = l1 == l2
 bindTy m (INewtypeDecl _ tc tvs nc hs) env
   | (nconstrId nc) `notElem` hs = mBindLabel nc $
