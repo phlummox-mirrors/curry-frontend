@@ -3,6 +3,7 @@
     Description :  Checks interface declarations
     Copyright   :  (c) 2000 - 2007 Wolfgang Lux
                        2011 - 2015 Björn Peemöller
+                       2015        Jan Tikovsky
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
@@ -24,8 +25,6 @@ module Checks.InterfaceSyntaxCheck (intfSyntaxCheck) where
 import           Control.Monad            (liftM, liftM2)
 import qualified Control.Monad.State as S
 import           Data.List                (nub, partition)
-import           Data.Maybe               (catMaybes)
-import qualified Data.Traversable    as T (mapM)
 
 import Base.Expr
 import Base.Messages (Message, posMessage, internalError)
@@ -62,20 +61,13 @@ intfSyntaxCheck (Interface n is ds) = (Interface n is ds', reverse $ errors s')
 -- The latter must not occur in type expressions in interfaces.
 
 bindType :: IDecl -> TypeEnv -> TypeEnv
-bindType (IInfixDecl       _ _ _ _) = id
-bindType (HidingDataDecl    _ tc _) = qualBindTopEnv tc (Data tc [])
-bindType (IDataDecl      _ tc _ cs) = qualBindTopEnv tc
-                                      (Data tc (map constr (catMaybes cs)))
-  where constr (ConstrDecl    _ _ c _) = c
-        constr (ConOpDecl  _ _ _ op _) = op
-bindType (INewtypeDecl   _ tc _ nc) = qualBindTopEnv tc (Data tc [nconstr nc])
-  where nconstr (NewConstrDecl _ _ c _) = c
--- jrt 2014-10-16: record types are handled like data declarations; this is
--- necessary because type constructors of record types are not expanded anymore
--- and can occur in interfaces
-bindType (ITypeDecl _ tc _ (RecordType _)) = qualBindTopEnv tc (Data tc [])
-bindType (ITypeDecl       _ tc _ _) = qualBindTopEnv tc (Alias tc)
-bindType (IFunctionDecl    _ _ _ _) = id
+bindType (IInfixDecl         _ _ _ _) = id
+bindType (HidingDataDecl      _ tc _) = qualBindTopEnv tc (Data tc [])
+bindType (IDataDecl      _ tc _ cs _) = qualBindTopEnv tc
+                                      (Data tc (map constrId cs))
+bindType (INewtypeDecl   _ tc _ nc _) = qualBindTopEnv tc (Data tc [nconstrId nc])
+bindType (ITypeDecl         _ tc _ _) = qualBindTopEnv tc (Alias tc)
+bindType (IFunctionDecl      _ _ _ _) = id
 
 -- The checks applied to the interface are similar to those performed
 -- during syntax checking of type expressions.
@@ -85,17 +77,29 @@ checkIDecl (IInfixDecl  p fix pr op) = return (IInfixDecl p fix pr op)
 checkIDecl (HidingDataDecl p tc tvs) = do
   checkTypeLhs tvs
   return (HidingDataDecl p tc tvs)
-checkIDecl (IDataDecl p tc tvs cs) = do
+checkIDecl (IDataDecl p tc tvs cs hs) = do
   checkTypeLhs tvs
-  liftM (IDataDecl p tc tvs) (mapM (T.mapM (checkConstrDecl tvs)) cs)
-checkIDecl (INewtypeDecl p tc tvs nc) = do
+  checkHidden tc (cons ++ labels) hs
+  cs' <- mapM (checkConstrDecl tvs) cs
+  return $ IDataDecl p tc tvs cs' hs
+  where cons   = map constrId cs
+        labels = nub $ concatMap recordLabels cs
+checkIDecl (INewtypeDecl p tc tvs nc hs) = do
   checkTypeLhs tvs
-  liftM (INewtypeDecl p tc tvs) (checkNewConstrDecl tvs nc)
+  checkHidden tc (con : labels) hs
+  nc' <- checkNewConstrDecl tvs nc
+  return $ INewtypeDecl p tc tvs nc' hs
+  where con    = nconstrId nc
+        labels = nrecordLabels nc
 checkIDecl (ITypeDecl p tc tvs ty) = do
   checkTypeLhs tvs
   liftM (ITypeDecl p tc tvs) (checkClosedType tvs ty)
 checkIDecl (IFunctionDecl p f n ty) =
   liftM (IFunctionDecl p f n) (checkType ty)
+
+checkHidden :: QualIdent -> [Ident] -> [Ident] -> ISC ()
+checkHidden tc csls hs =
+  mapM_ (report . errNoElement tc) $ nub $ filter (`notElem` csls) hs
 
 checkTypeLhs :: [Ident] -> ISC ()
 checkTypeLhs tvs = do
@@ -116,11 +120,24 @@ checkConstrDecl tvs (ConOpDecl p evs ty1 op ty2) = do
          (checkClosedType tvs' ty1)
          (checkClosedType tvs' ty2)
   where tvs' = evs ++ tvs
+checkConstrDecl tvs (RecordDecl p evs c fs) = do
+  checkTypeLhs evs
+  liftM (RecordDecl p evs c) (mapM (checkFieldDecl tvs') fs)
+  where tvs' = evs ++ tvs
+
+checkFieldDecl :: [Ident] -> FieldDecl -> ISC FieldDecl
+checkFieldDecl tvs (FieldDecl p ls ty) =
+  liftM (FieldDecl p ls) (checkClosedType tvs ty)
 
 checkNewConstrDecl :: [Ident] -> NewConstrDecl -> ISC NewConstrDecl
 checkNewConstrDecl tvs (NewConstrDecl p evs c ty) = do
   checkTypeLhs evs
   liftM (NewConstrDecl p evs c) (checkClosedType tvs' ty)
+  where tvs' = evs ++ tvs
+checkNewConstrDecl tvs (NewRecordDecl p evs c (l,ty)) = do
+  checkTypeLhs evs
+  ty' <- checkClosedType tvs' ty
+  return $ NewRecordDecl p evs c (l,ty')
   where tvs' = evs ++ tvs
 
 checkClosedType :: [Ident] -> TypeExpr -> ISC TypeExpr
@@ -135,8 +152,6 @@ checkType (VariableType        tv) = checkType (ConstructorType (qualify tv) [])
 checkType (TupleType          tys) = liftM TupleType (mapM checkType tys)
 checkType (ListType            ty) = liftM ListType (checkType ty)
 checkType (ArrowType      ty1 ty2) = liftM2 ArrowType (checkType ty1) (checkType ty2)
-checkType (RecordType          fs) = liftM RecordType (mapM checkField fs)
- where checkField (l, ty) = checkType ty >>= \ty' -> return (l, ty')
 
 checkTypeConstructor :: QualIdent -> [TypeExpr] -> ISC TypeExpr
 checkTypeConstructor tc tys = do
@@ -179,3 +194,9 @@ errUnboundVariable tv = posMessage tv $
 errBadTypeSynonym :: QualIdent -> Message
 errBadTypeSynonym tc = posMessage tc $ text "Synonym type"
                     <+> text (qualName tc) <+> text "in interface"
+
+errNoElement :: QualIdent -> Ident -> Message
+errNoElement tc x = posMessage tc $ hsep $ map text
+  [ "Hidden constructor or label ", escName x
+  , " is not defined for type ", qualName tc
+  ]

@@ -12,13 +12,9 @@
 -}
 module Transformations where
 
-import Curry.Base.Ident
 import Curry.Syntax
 
 import Base.Types
-
-import Env.Value
-import Env.TypeConstructor
 
 import Transformations.CaseCompletion as CC (completeCase)
 import Transformations.CurryToIL      as IL (ilTrans, transType)
@@ -28,27 +24,26 @@ import Transformations.Qual           as Q  (qual)
 import Transformations.Simplify       as S  (simplify)
 
 import CompilerEnv
-import CompilerOpts
 import Imports (qualifyEnv)
 import qualified IL
 
 -- |Fully qualify used constructors and functions.
-qual :: Options -> CompEnv Module -> CompEnv Module
-qual opts (env, mdl) = (qualifyEnv opts env, mdl')
+qual :: CompEnv Module -> CompEnv Module
+qual (env, mdl) = (qualifyEnv env, mdl')
   where mdl' = Q.qual (moduleIdent env) (tyConsEnv env) (valueEnv env) mdl
 
--- |Remove syntactic sugar
+-- |Remove any syntactic sugar, changes the value environment.
 desugar :: Bool -> CompEnv Module -> CompEnv Module
 desugar dsfp (env, mdl) = (env { valueEnv = tyEnv' }, mdl')
   where (mdl', tyEnv') = DS.desugar dsfp (extensions env) (valueEnv env)
                                          (tyConsEnv env) mdl
 
--- |Simplify the source code.
+-- |Simplify the source code, changes the value environment.
 simplify :: CompEnv Module -> CompEnv Module
 simplify (env, mdl) = (env { valueEnv = tyEnv' }, mdl')
-  where (mdl', tyEnv') = S.simplify (valueEnv env) (tyConsEnv env) mdl
+  where (mdl', tyEnv') = S.simplify (valueEnv env) mdl
 
--- |Lift local declarations
+-- |Lift local declarations, changes the value environment.
 lift :: CompEnv Module -> CompEnv Module
 lift (env, mdl) = (env { valueEnv = tyEnv' }, mdl')
   where (mdl', tyEnv') = L.lift (valueEnv env) mdl
@@ -56,10 +51,10 @@ lift (env, mdl) = (env { valueEnv = tyEnv' }, mdl')
 -- |Translate into the intermediate language
 ilTrans :: CompEnv Module -> CompEnv IL.Module
 ilTrans (env, mdl) = (env, il)
-  where il = IL.ilTrans (valueEnv env) (tyConsEnv env) mdl
+  where il = IL.ilTrans (valueEnv env) mdl
 
 -- |Translate a type into its representation in the intermediate language
-transType :: ModuleIdent -> ValueEnv -> TCEnv -> Type -> IL.Type
+transType :: Type -> IL.Type
 transType = IL.transType
 
 -- |Add missing case branches

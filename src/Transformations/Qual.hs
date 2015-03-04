@@ -80,13 +80,21 @@ qDecl (PatternDecl     p t rhs) = PatternDecl p <$> qPattern t <*> qRhs rhs
 qDecl vs@(FreeDecl         _ _) = return vs
 
 qConstrDecl :: Qual ConstrDecl
-qConstrDecl (ConstrDecl     p vs n tys) = ConstrDecl p vs n
+qConstrDecl (ConstrDecl p vs      n tys) = ConstrDecl p vs n
                                           <$> mapM qTypeExpr tys
-qConstrDecl (ConOpDecl p vs ty1 op ty2) = flip (ConOpDecl p vs) op
+qConstrDecl (ConOpDecl  p vs ty1 op ty2) = flip (ConOpDecl p vs) op
                                           <$> qTypeExpr ty1 <*> qTypeExpr ty2
+qConstrDecl (RecordDecl p vs       c fs) = RecordDecl p vs c
+                                          <$> mapM qFieldDecl fs
 
 qNewConstrDecl :: Qual NewConstrDecl
-qNewConstrDecl (NewConstrDecl p vs n ty) = NewConstrDecl p vs n <$> qTypeExpr ty
+qNewConstrDecl (NewConstrDecl p vs n ty)
+  = NewConstrDecl p vs n <$> qTypeExpr ty
+qNewConstrDecl (NewRecordDecl p vs n (f, ty))
+  = (\ty' -> NewRecordDecl p vs n (f, ty')) <$> qTypeExpr ty
+
+qFieldDecl :: Qual FieldDecl
+qFieldDecl (FieldDecl p fs ty) = FieldDecl p fs <$> qTypeExpr ty
 
 qTypeExpr :: Qual TypeExpr
 qTypeExpr (ConstructorType c tys) = ConstructorType <$> qConstr c
@@ -96,8 +104,6 @@ qTypeExpr (TupleType         tys) = TupleType <$> mapM qTypeExpr tys
 qTypeExpr (ListType           ty) = ListType  <$> qTypeExpr ty
 qTypeExpr (ArrowType     ty1 ty2) = ArrowType <$> qTypeExpr ty1
                                               <*> qTypeExpr ty2
-qTypeExpr (RecordType         fs) = RecordType <$> mapM qFieldType fs
-  where qFieldType (ls, ty) = (\ ty' -> (ls, ty')) <$> qTypeExpr ty
 
 qEquation :: Qual Equation
 qEquation (Equation p lhs rhs) = Equation p <$> qLhs lhs <*> qRhs rhs
@@ -116,6 +122,8 @@ qPattern (ConstructorPattern   c ts) = ConstructorPattern
 qPattern (InfixPattern     t1 op t2) = InfixPattern <$> qPattern t1
                                        <*> qIdent op <*> qPattern t2
 qPattern (ParenPattern            t) = ParenPattern   <$> qPattern t
+qPattern (RecordPattern        c fs) = RecordPattern  <$> qIdent c
+                                       <*> mapM (qField qPattern) fs
 qPattern (TuplePattern         p ts) = TuplePattern p <$> mapM qPattern ts
 qPattern (ListPattern          p ts) = ListPattern  p <$> mapM qPattern ts
 qPattern (AsPattern             v t) = AsPattern    v <$> qPattern t
@@ -124,11 +132,6 @@ qPattern (FunctionPattern      f ts) = FunctionPattern <$> qIdent f
                                                        <*> mapM qPattern ts
 qPattern (InfixFuncPattern t1 op t2) = InfixFuncPattern <$> qPattern t1
                                        <*> qIdent op <*> qPattern t2
-qPattern (RecordPattern       fs rt) = RecordPattern <$> mapM qFieldPattern fs
-                                                     <*> mapM qPattern rt
-
-qFieldPattern :: Qual (Field Pattern)
-qFieldPattern (Field p l t) = Field p l <$> qPattern t
 
 qRhs :: Qual Rhs
 qRhs (SimpleRhs p e ds) = SimpleRhs p <$> qExpr e           <*> mapM qDecl ds
@@ -143,6 +146,9 @@ qExpr (Variable              v) = Variable       <$> qIdent v
 qExpr (Constructor           c) = Constructor    <$> qIdent c
 qExpr (Paren                 e) = Paren          <$> qExpr e
 qExpr (Typed              e ty) = Typed          <$> qExpr e <*> qTypeExpr ty
+qExpr (Record             c fs) = Record <$> qIdent c <*> mapM (qField qExpr) fs
+qExpr (RecordUpdate       e fs) = RecordUpdate   <$> qExpr e
+                                                 <*> mapM (qField qExpr) fs
 qExpr (Tuple              p es) = Tuple p        <$> mapM qExpr es
 qExpr (List               p es) = List p         <$> mapM qExpr es
 qExpr (ListCompr        p e qs) = ListCompr p    <$> qExpr e <*> mapM qStmt qs
@@ -163,10 +169,6 @@ qExpr (Do                sts e) = Do <$>  mapM qStmt sts <*> qExpr e
 qExpr (IfThenElse   r e1 e2 e3) = IfThenElse r <$> qExpr e1 <*> qExpr e2
                                                             <*> qExpr e3
 qExpr (Case          r ct e as) = Case r ct    <$> qExpr e <*> mapM qAlt as
-qExpr (RecordConstr         fs) = RecordConstr <$> mapM qFieldExpr fs
-qExpr (RecordSelection     e l) = flip RecordSelection l <$> qExpr e
-qExpr (RecordUpdate       fs e) = RecordUpdate <$> mapM qFieldExpr fs
-                                               <*> qExpr e
 
 qStmt :: Qual Statement
 qStmt (StmtExpr p   e) = StmtExpr p <$> qExpr e
@@ -176,8 +178,8 @@ qStmt (StmtDecl    ds) = StmtDecl   <$> mapM qDecl ds
 qAlt :: Qual Alt
 qAlt (Alt p t rhs) = Alt p <$> qPattern t <*> qRhs rhs
 
-qFieldExpr :: Qual (Field Expression)
-qFieldExpr (Field p l e) = Field p l <$> qExpr e
+qField :: Qual a -> Qual (Field a)
+qField q (Field p l x) = Field p <$> qIdent l <*> q x
 
 qInfixOp :: Qual InfixOp
 qInfixOp (InfixOp     op) = InfixOp     <$> qIdent op

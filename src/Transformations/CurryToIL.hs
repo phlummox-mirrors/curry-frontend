@@ -3,6 +3,7 @@
     Description :  Translation of Curry into IL
     Copyright   :  (c) 1999 - 2003 Wolfgang Lux
                                    Martin Engelke
+                       2015        Jan Tikovsky
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
@@ -42,22 +43,20 @@ import Base.Messages (internalError)
 import Base.Types
 import Base.Utils (foldr2, concatMapM)
 
-import Env.TypeConstructor (TCEnv, TypeInfo (..), qualLookupTC)
-import Env.Value (ValueEnv, ValueInfo (..), lookupValue, qualLookupValue)
+import Env.Value (ValueEnv, ValueInfo (..), qualLookupValue)
 
 import qualified IL as IL
 
-ilTrans :: ValueEnv -> TCEnv -> Module -> IL.Module
-ilTrans tyEnv tcEnv (Module _ m _ _ ds) = IL.Module m (imports m ds') ds'
-  where ds' = R.runReader (concatMapM trDecl ds) (TransEnv m tyEnv tcEnv)
+ilTrans :: ValueEnv -> Module -> IL.Module
+ilTrans tyEnv (Module _ m _ _ ds) = IL.Module m (imports m ds') ds'
+  where ds' = R.runReader (concatMapM trDecl ds) (TransEnv m tyEnv)
 
-transType :: ModuleIdent -> ValueEnv -> TCEnv -> Type -> IL.Type
-transType m tyEnv tcEnv ty = R.runReader (trType ty) (TransEnv m tyEnv tcEnv)
+-- transType :: ModuleIdent -> ValueEnv -> TCEnv -> Type -> IL.Type
+-- transType m tyEnv tcEnv ty = R.runReader (trType ty) (TransEnv m tyEnv tcEnv)
 
 data TransEnv = TransEnv
   { moduleIdent :: ModuleIdent
   , valueEnv    :: ValueEnv
-  , tyConsEnv   :: TCEnv
   }
 
 type TransM a = R.Reader TransEnv a
@@ -67,9 +66,6 @@ getModuleIdent = R.asks moduleIdent
 
 getValueEnv :: TransM ValueEnv
 getValueEnv = R.asks valueEnv
-
-getTCEnv :: TransM TCEnv
-getTCEnv = R.asks tyConsEnv
 
 trQualify :: Ident -> TransM QualIdent
 trQualify i = getModuleIdent >>= \m -> return $ qualifyWith m i
@@ -98,23 +94,24 @@ trConstrDecl :: ConstrDecl -> TransM (IL.ConstrDecl [IL.Type])
 trConstrDecl d = do
   c' <- trQualify (constr d)
   ty' <- arrowArgs <$> constrType c'
-  IL.ConstrDecl c' <$> mapM trType ty'
+  return $ IL.ConstrDecl c' (map transType ty')
   where
   constr (ConstrDecl    _ _ c _) = c
   constr (ConOpDecl  _ _ _ op _) = op
+  constr (RecordDecl    _ _ c _) = c
 
 trNewtype :: Ident -> [Ident] -> NewConstrDecl -> TransM IL.Decl
-trNewtype tc tvs (NewConstrDecl _ _ c _) = do
+trNewtype tc tvs newDecl = do
   tc' <- trQualify tc
-  c'  <- trQualify c
+  c'  <- trQualify (nconstrId newDecl)
   [ty] <- arrowArgs <$> constrType c'
-  (IL.NewtypeDecl tc' (length tvs) . IL.ConstrDecl c') <$> trType ty
+  return $ (IL.NewtypeDecl tc' (length tvs) . IL.ConstrDecl c') (transType ty)
 
 trForeign :: Ident -> CallConv -> Maybe String -> TransM IL.Decl
 trForeign _ _  Nothing   = internalError "CurryToIL.trForeign: no target"
 trForeign f cc (Just ie) = do
   f'  <- trQualify f
-  ty' <- varType f' >>= trType
+  ty' <- varType f' >>= (return . transType)
   return $ IL.ExternalDecl f' (callConv cc) ie ty'
   where
   callConv CallConvPrimitive = IL.Primitive
@@ -162,61 +159,13 @@ trForeign f cc (Just ie) = do
 -- constrained type variables and skolem types. The former are fixed and
 -- the later are replaced by fresh type constructors.
 
--- Due to possible occurrence of record types, it is necessary to transform
--- them back into their corresponding type constructors first.
-
-trType :: Type -> TransM IL.Type
-trType ty = trTy <$> elimRecordTypes (maximum $ 0 : typeVars ty) ty
-  where
-  trTy (TypeConstructor tc tys) = IL.TypeConstructor tc (map trTy tys)
-  trTy (TypeVariable        tv) = IL.TypeVariable tv
-  trTy (TypeConstrained  tys _) = trTy (head tys)
-  trTy (TypeArrow      ty1 ty2) = IL.TypeArrow (trTy ty1) (trTy ty2)
-  trTy (TypeSkolem           k) = IL.TypeConstructor
+transType :: Type -> IL.Type
+transType (TypeConstructor tc tys) = IL.TypeConstructor tc (map transType tys)
+transType (TypeVariable        tv) = IL.TypeVariable tv
+transType (TypeConstrained  tys _) = transType (head tys)
+transType (TypeArrow      ty1 ty2) = IL.TypeArrow (transType ty1) (transType ty2)
+transType (TypeSkolem           k) = IL.TypeConstructor
                                     (qualify (mkIdent ("_" ++ show k))) []
-  trTy rec@(TypeRecord       _)
-   = internalError $ "Translation of record not defined: " ++ show rec
-
-elimRecordTypes :: Int -> Type -> TransM Type
-elimRecordTypes n (TypeConstructor t tys)
-  = TypeConstructor t <$> mapM (elimRecordTypes n) tys
-elimRecordTypes _ v@(TypeVariable      _) = return v
-elimRecordTypes n (TypeConstrained tys v)
-  = flip TypeConstrained v <$> mapM (elimRecordTypes n) tys
-elimRecordTypes n (TypeArrow       t1 t2)
-  = TypeArrow <$> elimRecordTypes n t1 <*> elimRecordTypes n t2
-elimRecordTypes _ s@(TypeSkolem        _) = return s
-elimRecordTypes n (TypeRecord         fs)
-  | null fs   = internalError "CurryToIL.elimRecordTypes: empty record type"
-  | otherwise = do
-    (r, n', fs') <- recordInfo (fst $ head fs)
-    let vs  = foldl (matchTypeVars fs) Map.empty fs'
-        tys = mapM (\i -> maybe (return $ TypeVariable (i+n))
-                                (elimRecordTypes n)
-                                (Map.lookup i vs))
-                   [0 .. n'-1]
-    TypeConstructor r <$> tys
-
-matchTypeVars :: [(Ident, Type)] -> Map.Map Int Type -> (Ident, Type)
-              -> Map.Map Int Type
-matchTypeVars fs vs (l, ty) = maybe vs (match' vs ty) (lookup l fs)
-  where
-  match' vs' (TypeVariable        i) ty'
-    = Map.insert i ty' vs'
-  match' vs' (TypeConstructor _ tys) (TypeConstructor _ tys')
-    = matchList vs' tys tys'
-  match' vs' (TypeConstrained tys _) (TypeConstrained tys' _)
-    = matchList vs' tys tys'
-  match' vs' (TypeArrow     ty1 ty2) (TypeArrow    ty1' ty2')
-    = matchList vs' [ty1,ty2] [ty1',ty2']
-  match' vs' (TypeSkolem          _) (TypeSkolem           _) = vs'
-  match' vs' (TypeRecord        fs1) (TypeRecord         fs2)
-    = foldl (matchTypeVars fs2) vs' fs1
-  match' _   ty1                     ty2
-    = internalError ("CurryToIL.matchTypeVars: " ++ show ty1 ++ "\n" ++ show ty2)
-
-  matchList vs1 tys tys' =
-    foldl (\vs' (ty1,ty2) -> match' vs' ty1 ty2) vs1 (zip tys tys')
 
 -- Functions:
 -- Each function in the program is translated into a function of the
@@ -246,7 +195,7 @@ matchTypeVars fs vs (l, ty) = maybe vs (match' vs ty) (lookup l fs)
 trFunction :: Position -> Ident -> [Equation] -> TransM IL.Decl
 trFunction p f eqs = do
   f'   <- trQualify f
-  ty'  <- varType f' >>= trType
+  ty'  <- varType f' >>= (return . transType)
   alts <-mapM (trEquation vs ws) eqs
   let expr = flexMatch (srcRefOf p) vs alts
   return $ IL.FunctionDecl f' vs ty' expr
@@ -340,8 +289,8 @@ trExpr (v:vs) env (Case r ct e alts) = do
         -- subject is referenced -> introduce binding for v as subject
       | v `elem` fv expr                -> IL.Let (IL.Binding v e') expr
       | otherwise                       -> expr
-trExpr  vs env (Typed e ty) = IL.Typed <$> trExpr vs env e
-                                       <*> trType (toType [] ty)
+trExpr  vs env (Typed e ty) = flip IL.Typed ty' <$> trExpr vs env e
+  where ty' = transType (toType [] ty)
 trExpr _ _ _ = internalError "CurryToIL.trExpr"
 
 trAlt :: [Ident] -> RenameEnv -> Alt -> TransM Match
@@ -549,26 +498,16 @@ varType f = do
   tyEnv <- getValueEnv
   case qualLookupValue f tyEnv of
     [Value _ _ (ForAll _ ty)] -> return ty
+    [Label _ _ (ForAll _ ty)] -> return ty
     _ -> internalError $ "CurryToIL.varType: " ++ show f
 
 constrType :: QualIdent -> TransM Type
 constrType c = do
   tyEnv <- getValueEnv
   case qualLookupValue c tyEnv of
-    [DataConstructor  _ _ (ForAllExist _ _ ty)] -> return ty
-    [NewtypeConstructor _ (ForAllExist _ _ ty)] -> return ty
+    [DataConstructor  _ _ _ (ForAllExist _ _ ty)] -> return ty
+    [NewtypeConstructor _ _ (ForAllExist _ _ ty)] -> return ty
     _ -> internalError $ "CurryToIL.constrType: " ++ show c
-
-recordInfo :: Ident -> TransM (QualIdent, Int, [(Ident, Type)])
-recordInfo f = do
-  tyEnv <- getValueEnv
-  case lookupValue f tyEnv of
-    [Label _ r _] -> do
-      tcEnv <- getTCEnv
-      case qualLookupTC r tcEnv of
-        [AliasType _ n (TypeRecord fs)] -> return (r, n, fs)
-        _ -> internalError $ "CurryToIL.recordInfo: " ++ show f
-    _ -> internalError $ "CurryToIL.recordInfo: " ++ show f
 
 -- The list of import declarations in the intermediate language code is
 -- determined by collecting all module qualifiers used in the current

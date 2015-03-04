@@ -57,8 +57,7 @@ syntaxCheck :: Monad m => Check m Module
 syntaxCheck opts (env, mdl)
   | null msgs = ok (env { extensions = exts }, mdl')
   | otherwise = failMessages msgs
-  where ((mdl', exts), msgs) = SC.syntaxCheck opts (valueEnv env)
-                                                   (tyConsEnv env) mdl
+  where ((mdl', exts), msgs) = SC.syntaxCheck opts (valueEnv env) mdl
 
 -- |Check the precedences of infix operators.
 --

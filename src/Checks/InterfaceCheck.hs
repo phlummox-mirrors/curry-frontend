@@ -2,6 +2,7 @@
     Module      :  $Header$
     Description :  Checks consistency of interface files
     Copyright   :  (c) 2000 - 2007 Wolfgang Lux
+                       2015        Jan Tikovsky
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
@@ -48,7 +49,7 @@ module Checks.InterfaceCheck (interfaceCheck) where
 
 import           Control.Monad            (unless)
 import qualified Control.Monad.State as S
-import           Data.Maybe               (catMaybes, fromMaybe)
+import           Data.Maybe               (fromMaybe)
 
 import Curry.Base.Ident
 import Curry.Base.Position
@@ -106,30 +107,21 @@ checkImport (HidingDataDecl p tc tvs)
           | tc == tc' && length tvs == n' = Just ok
         check (RenamingType tc' n' _)
           | tc == tc' && length tvs == n' = Just ok
-        check (AliasType tc' n' (TypeRecord _))
-          | tc == tc' && length tvs == n' = Just ok
         check _                           = Nothing
-checkImport (IDataDecl p tc tvs cs) = checkTypeInfo "data type" check p tc
+checkImport (IDataDecl p tc tvs cs _) = checkTypeInfo "data type" check p tc
   where check (DataType     tc' n' cs')
           | tc == tc' && length tvs == n' &&
-            (null cs || length cs == length cs') &&
-            and (zipWith isVisible cs (fmap (fmap constrIdent) cs'))
-          = Just (mapM_ (checkConstrImport tc tvs) (catMaybes cs))
+            (null cs || map constrId cs == map constrIdent cs')
+          = Just (mapM_ (checkConstrImport tc tvs) cs)
         check (RenamingType tc' n'   _)
           | tc == tc' && length tvs == n' && null cs = Just ok
         check _ = Nothing
-        isVisible (Just c) (Just c') = constr c == c'
-        isVisible (Just _) Nothing   = False
-        isVisible Nothing  _         = True
-        constr (ConstrDecl    _ _ c _) = c
-        constr (ConOpDecl  _ _ _ op _) = op
-checkImport (INewtypeDecl p tc tvs nc)
+checkImport (INewtypeDecl p tc tvs nc _)
   = checkTypeInfo "newtype" check p tc
   where check (RenamingType tc' n' nc')
-          | tc == tc' && length tvs == n' && nconstr nc == constrIdent nc'
+          | tc == tc' && length tvs == n' && nconstrId nc == constrIdent nc'
           = Just (checkNewConstrImport tc tvs nc)
         check _ = Nothing
-        nconstr (NewConstrDecl _ _ c _) = c
 checkImport (ITypeDecl p tc tvs ty) = do
   m <- getModuleIdent
   let check (AliasType tc' n' ty')
@@ -148,7 +140,7 @@ checkConstrImport :: QualIdent -> [Ident] -> ConstrDecl -> IC ()
 checkConstrImport tc tvs (ConstrDecl p evs c tys) = do
   m <- getModuleIdent
   let qc = qualifyLike tc c
-      checkConstr (DataConstructor c' _ (ForAllExist uqvs eqvs ty')) =
+      checkConstr (DataConstructor c' _ _ (ForAllExist uqvs eqvs ty')) =
         qc == c' && length evs == eqvs && length tvs == uqvs &&
         toQualTypes m tvs tys == arrowArgs ty'
       checkConstr _ = False
@@ -156,9 +148,18 @@ checkConstrImport tc tvs (ConstrDecl p evs c tys) = do
 checkConstrImport tc tvs (ConOpDecl p evs ty1 op ty2) = do
   m <- getModuleIdent
   let qc = qualifyLike tc op
-      checkConstr (DataConstructor c' _ (ForAllExist uqvs eqvs ty')) =
+      checkConstr (DataConstructor c' _ _ (ForAllExist uqvs eqvs ty')) =
         qc == c' && length evs == eqvs && length tvs == uqvs &&
         toQualTypes m tvs [ty1,ty2] == arrowArgs ty'
+      checkConstr _ = False
+  checkValueInfo "data constructor" checkConstr p qc
+checkConstrImport tc tvs (RecordDecl p evs c fs) = do
+  m <- getModuleIdent
+  let qc = qualifyLike tc c
+      (ls, tys) = unzip [(l, ty) | FieldDecl _ labels ty <- fs, l <- labels]
+      checkConstr (DataConstructor c' _ ls' (ForAllExist uqvs eqvs ty')) =
+        qc == c' && length evs == eqvs && length tvs == uqvs && ls == ls' &&
+        toQualTypes m tvs tys == arrowArgs ty'
       checkConstr _ = False
   checkValueInfo "data constructor" checkConstr p qc
 
@@ -166,9 +167,17 @@ checkNewConstrImport :: QualIdent -> [Ident] -> NewConstrDecl -> IC ()
 checkNewConstrImport tc tvs (NewConstrDecl p evs c ty) = do
   m <- getModuleIdent
   let qc = qualifyLike tc c
-      checkNewConstr (NewtypeConstructor c' (ForAllExist uqvs eqvs ty')) =
-          qc == c' && length evs == eqvs && length tvs == uqvs &&
-          toQualType m tvs ty == head (arrowArgs ty')
+      checkNewConstr (NewtypeConstructor c' _ (ForAllExist uqvs eqvs ty')) =
+        qc == c' && length evs == eqvs && length tvs == uqvs &&
+        toQualType m tvs ty == head (arrowArgs ty')
+      checkNewConstr _ = False
+  checkValueInfo "newtype constructor" checkNewConstr p qc
+checkNewConstrImport tc tvs (NewRecordDecl p evs c (l, ty)) = do
+  m <- getModuleIdent
+  let qc = qualifyLike tc c
+      checkNewConstr (NewtypeConstructor c' l' (ForAllExist uqvs eqvs ty')) =
+        qc == c' && length evs == eqvs && length tvs == uqvs && l == l' &&
+        toQualType m tvs ty == head (arrowArgs ty')
       checkNewConstr _ = False
   checkValueInfo "newtype constructor" checkNewConstr p qc
 

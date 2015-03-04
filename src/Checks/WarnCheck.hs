@@ -3,7 +3,7 @@
     Description :  Checks for irregular code
     Copyright   :  (c) 2006        Martin Engelke
                        2011 - 2014 Björn Peemöller
-                       2014        Jan Tikovsky
+                       2014 - 2015 Jan Tikovsky
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
@@ -16,7 +16,7 @@
 module Checks.WarnCheck (warnCheck) where
 
 import           Control.Monad
-  (filterM, foldM_, guard, liftM, liftM2, when, unless, zipWithM)
+  (filterM, foldM_, guard, liftM, liftM2, when, unless)
 import           Control.Monad.State.Strict    (State, execState, gets, modify)
 import qualified Data.IntSet         as IntSet
   (IntSet, empty, insert, notMember, singleton, union, unions)
@@ -41,7 +41,7 @@ import Base.Types
 import Base.Utils (findMultiples)
 import Env.ModuleAlias
 import Env.TypeConstructor (TCEnv, TypeInfo (..), lookupTC, qualLookupTC)
-import Env.Value (ValueEnv, ValueInfo (..), lookupValue, qualLookupValue)
+import Env.Value (ValueEnv, ValueInfo (..), qualLookupValue)
 
 import CompilerOpts
 
@@ -244,6 +244,11 @@ checkConstrDecl (ConstrDecl     _ _ c tys) = do
 checkConstrDecl (ConOpDecl _ _ ty1 op ty2) = do
   visitId op
   mapM_ checkTypeExpr [ty1, ty2]
+checkConstrDecl (RecordDecl _ _ c fs) = do
+  visitId c
+  mapM_ checkTypeExpr tys
+  where
+    tys = [ty | FieldDecl _ _ ty <- fs]
 
 checkTypeExpr :: TypeExpr -> WCM ()
 checkTypeExpr (ConstructorType qid tys) = do
@@ -253,7 +258,6 @@ checkTypeExpr (VariableType          v) = visitTypeId v
 checkTypeExpr (TupleType           tys) = mapM_ checkTypeExpr tys
 checkTypeExpr (ListType             ty) = checkTypeExpr ty
 checkTypeExpr (ArrowType       ty1 ty2) = mapM_ checkTypeExpr [ty1, ty2]
-checkTypeExpr (RecordType           fs) = mapM_ checkTypeExpr (map snd fs)
 
 -- Checks locally declared identifiers (i.e. functions and logic variables)
 -- for shadowing
@@ -304,6 +308,7 @@ checkPattern (ConstructorPattern  _ ps) = mapM_ checkPattern ps
 checkPattern (InfixPattern     p1 f p2) = checkPattern
                                           (ConstructorPattern f [p1, p2])
 checkPattern (ParenPattern           p) = checkPattern p
+checkPattern (RecordPattern       _ fs) = mapM_ (checkField checkPattern) fs
 checkPattern (TuplePattern        _ ps) = mapM_ checkPattern ps
 checkPattern (ListPattern         _ ps) = mapM_ checkPattern ps
 checkPattern (AsPattern            v p) = checkShadowing v >> checkPattern p
@@ -311,9 +316,6 @@ checkPattern (LazyPattern          _ p) = checkPattern p
 checkPattern (FunctionPattern     _ ps) = mapM_ checkPattern ps
 checkPattern (InfixFuncPattern p1 f p2) = checkPattern
                                           (FunctionPattern f [p1, p2])
-checkPattern  (RecordPattern      fs r) = do
-  mapM_ (\ (Field _ _ p) -> checkPattern p) fs
-  maybe ok checkPattern r
 checkPattern _                          = ok
 
 -- Check the right-hand-side of an equation.
@@ -336,6 +338,10 @@ checkExpr :: Expression -> WCM ()
 checkExpr (Variable              v) = visitQId v
 checkExpr (Paren                 e) = checkExpr e
 checkExpr (Typed               e _) = checkExpr e
+checkExpr (Record             _ fs) = mapM_ (checkField checkExpr) fs
+checkExpr (RecordUpdate       e fs) = do
+  checkExpr e
+  mapM_ (checkField checkExpr) fs
 checkExpr (Tuple              _ es) = mapM_ checkExpr es
 checkExpr (List               _ es) = mapM_ checkExpr es
 checkExpr (ListCompr       _ e sts) = checkStatements sts e
@@ -365,11 +371,6 @@ checkExpr (Case        _ ct e alts) = do
   checkExpr e
   mapM_ checkAlt alts
   checkCaseAlts ct alts
-checkExpr (RecordConstr         fs) = mapM_ checkFieldExpression fs
-checkExpr (RecordSelection     e _) = checkExpr e -- Hier auch "visitId ident" ?
-checkExpr (RecordUpdate       fs e) = do
-  mapM_ checkFieldExpression fs
-  checkExpr e
 checkExpr _                       = ok
 
 checkStatements :: [Statement] -> Expression -> WCM ()
@@ -391,8 +392,8 @@ checkAlt (Alt _ p rhs) = inNestedScope $ do
   checkRhs rhs
   reportUnusedVars
 
-checkFieldExpression :: Field Expression -> WCM ()
-checkFieldExpression (Field _ _ e) = checkExpr e -- Hier auch "visitId ident" ?
+checkField :: (a -> WCM ()) -> Field a -> WCM ()
+checkField check (Field _ _ x) = check x
 
 -- -----------------------------------------------------------------------------
 -- Check for missing type signatures
@@ -524,6 +525,13 @@ simplifyPat (ConstructorPattern c ps) = ConstructorPattern c `liftM`
 simplifyPat (InfixPattern    p1 c p2) = ConstructorPattern c `liftM`
                                         mapM simplifyPat [p1, p2]
 simplifyPat (ParenPattern          p) = simplifyPat p
+simplifyPat (RecordPattern      c fs) = do
+  (_, ls) <- getAllLabels c
+  let ps = map (getPattern (map field2Tuple fs)) ls
+  simplifyPat (ConstructorPattern c ps)
+  where
+    getPattern fs' l' = fromMaybe (VariablePattern anonId)
+                                  (lookup l' [(unqualify l, p) | (l, p) <- fs'])
 simplifyPat (TuplePattern       _ ps)
   | null ps   = return $ ConstructorPattern qUnitId []
   | otherwise = ConstructorPattern (qTupleId (length ps))
@@ -534,25 +542,14 @@ simplifyPat (AsPattern           _ p) = simplifyPat p
 simplifyPat (LazyPattern         _ _) = return $ VariablePattern anonId
 simplifyPat (FunctionPattern     _ _) = return $ VariablePattern anonId
 simplifyPat (InfixFuncPattern  _ _ _) = return $ VariablePattern anonId
-simplifyPat (RecordPattern      fs _)
-  | null fs   = internalError "Checks.WarnCheck.simplifyPat"
-  | otherwise = do
-    (r, rfs) <- getAllLabels (fieldLabel $ head fs)
-    let ps = map (getPattern (map field2Tuple fs)) rfs
-    simplifyPat (ConstructorPattern r ps)
-  where getPattern fs' l = fromMaybe (VariablePattern anonId) (lookup l fs')
 
-getAllLabels :: Ident -> WCM (QualIdent, [Ident])
-getAllLabels l = do
+getAllLabels :: QualIdent -> WCM (QualIdent, [Ident])
+getAllLabels c = do
   tyEnv <- gets valueEnv
-  case lookupValue l tyEnv of
-    [Label _ r _] -> do
-      tcEnv <- gets tyConsEnv
-      case qualLookupTC r tcEnv of
-        [AliasType _ _ (TypeRecord fs)] -> return (r, map fst fs)
-        _                               -> internalError $
-          "Checks.WarnCheck.getAllLabels: " ++ show r
-    _             -> internalError $ "Checks.WarnCheck.getAllLabels: " ++ show l
+  case qualLookupValue c tyEnv of
+    [DataConstructor qc _ ls _] -> return (qc, ls)
+    _                           -> internalError $
+          "Checks.WarnCheck.getAllLabels: " ++ show c
 
 -- |Create a simplified list pattern by applying @:@ and @[]@.
 simplifyListPattern :: [Pattern] -> Pattern
@@ -649,9 +646,9 @@ processCons qs@(q:_) = do
   defaults     = [ shiftPat q' | q' <- qs, isVarPat (firstPat q') ]
   -- Pattern for a non-matched constructors
   defaultPat c = (mkPattern c : replicate (length (snd q) - 1) wildPat, [])
-  mkPattern (DataConstr c _ tys)
-    = ConstructorPattern (qualifyLike (fst $ head used_cons) c)
-                         (replicate (length tys) wildPat)
+  mkPattern  c = ConstructorPattern
+                  (qualifyLike (fst $ head used_cons) (constrIdent c))
+                  (replicate (length $ constrTypes c) wildPat)
 
 -- |Construct exhaustive patterns starting with the used constructors
 processUsedCons :: [(QualIdent, Int)] -> [EqnInfo]
@@ -689,18 +686,18 @@ getUnusedCons :: [QualIdent] -> WCM [DataConstr]
 getUnusedCons []       = internalError "Checks.WarnCheck.getUnusedCons"
 getUnusedCons qs@(q:_) = do
   allCons <- getConTy q >>= getTyCons q . arrowBase
-  return [ c | c@(DataConstr q' _ _) <- allCons, q' `notElem` map unqualify qs]
+  return [ c | c <- allCons, (constrIdent c) `notElem` map unqualify qs]
 
 -- |Retrieve the type of a given constructor.
 getConTy :: QualIdent -> WCM Type
 getConTy q = do
   tyEnv <- gets valueEnv
   tcEnv <- gets tyConsEnv
-  return $ case qualLookupValue q tyEnv of
-    [DataConstructor  _ _ (ForAllExist _ _ ty)] -> ty
-    [NewtypeConstructor _ (ForAllExist _ _ ty)] -> ty
+  case qualLookupValue q tyEnv of
+    [DataConstructor  _ _ _ (ForAllExist _ _ ty)] -> return ty
+    [NewtypeConstructor _ _ (ForAllExist _ _ ty)] -> return ty
     _                                           -> case qualLookupTC q tcEnv of
-      [AliasType _ _ ty] -> ty
+      [AliasType _ _ ty] -> return ty
       _                  -> internalError $
         "Checks.WarnCheck.getConTy: " ++ show q
 
@@ -710,14 +707,13 @@ getTyCons _ (TypeConstructor tc _) = do
   tc'   <- unAlias tc
   tcEnv <- gets tyConsEnv
   return $ case lookupTC (unqualify tc) tcEnv of
-    [DataType     _ _ cs] -> catMaybes cs
+    [DataType     _ _ cs] -> cs
     [RenamingType _ _ nc] -> [nc]
     _ -> case qualLookupTC tc' tcEnv of
-      [DataType     _ _ cs] -> catMaybes cs
+      [DataType     _ _ cs] -> cs
       [RenamingType _ _ nc] -> [nc]
       err                   -> internalError $ "Checks.WarnCheck.getTyCons: "
                             ++ show tc ++ ' ' : show err ++ '\n' : show tcEnv
-getTyCons q (TypeRecord fs) = return [DataConstr (unqualify q) (length fs) (map snd fs)]
 getTyCons _ _ = internalError "Checks.WarnCheck.getTyCons"
 
 -- |Resugar the exhaustive patterns previously desugared at 'simplifyPat'.
@@ -737,12 +733,7 @@ tidyPat p@(ConstructorPattern c ps)
   | c == qConsId && isFiniteList p  = ListPattern []     `liftM`
                                       mapM tidyPat (unwrapFinite p)
   | c == qConsId                    = unwrapInfinite p
-  | otherwise                       = do
-    ty <- getConTy c
-    case ty of
-      TypeRecord fs -> flip RecordPattern Nothing `liftM`
-                       zipWithM mkFieldPat fs ps
-      _             -> return p
+  | otherwise                       = ConstructorPattern c `liftM` mapM tidyPat ps
   where
   isFiniteList (ConstructorPattern d []     )                = d == qNilId
   isFiniteList (ConstructorPattern d [_, e2]) | d == qConsId = isFiniteList e2
@@ -758,7 +749,6 @@ tidyPat p@(ConstructorPattern c ps)
                                                   (unwrapInfinite p2)
   unwrapInfinite p0                             = return p0
 
-  mkFieldPat (f, _) pat = Field NoPos f `liftM` tidyPat pat
 tidyPat p = internalError $ "Checks.WarnCheck.tidyPat: " ++ show p
 
 -- |Get the first pattern of a list.
@@ -909,13 +899,13 @@ insertTypeExpr (ConstructorType _ tys) = mapM_ insertTypeExpr tys
 insertTypeExpr (TupleType         tys) = mapM_ insertTypeExpr tys
 insertTypeExpr (ListType           ty) = insertTypeExpr ty
 insertTypeExpr (ArrowType     ty1 ty2) = mapM_ insertTypeExpr [ty1,ty2]
-insertTypeExpr (RecordType          _) = ok
   --mapM_ insertVar (concatMap fst fs)
   --maybe (return ()) insertTypeExpr rty
 
 insertConstrDecl :: ConstrDecl -> WCM ()
 insertConstrDecl (ConstrDecl _ _    c _) = insertConsId c
 insertConstrDecl (ConOpDecl  _ _ _ op _) = insertConsId op
+insertConstrDecl (RecordDecl _ _    c _) = insertConsId c
 
 -- 'fp' indicates whether 'checkPattern' deals with the arguments
 -- of a function pattern or not.
@@ -934,6 +924,7 @@ insertPattern fp (ConstructorPattern  c ps) = do
 insertPattern fp (InfixPattern p1 c p2)
   = insertPattern fp (ConstructorPattern c [p1, p2])
 insertPattern fp (ParenPattern           p) = insertPattern fp p
+insertPattern fp (RecordPattern       _ fs) = mapM_ (insertFieldPattern fp) fs
 insertPattern fp (TuplePattern        _ ps) = mapM_ (insertPattern fp) ps
 insertPattern fp (ListPattern         _ ps) = mapM_ (insertPattern fp) ps
 insertPattern fp (AsPattern            v p) = insertVar v >> insertPattern fp p
@@ -941,9 +932,6 @@ insertPattern fp (LazyPattern          _ p) = insertPattern fp p
 insertPattern _  (FunctionPattern     _ ps) = mapM_ (insertPattern True) ps
 insertPattern _  (InfixFuncPattern p1 f p2)
   = insertPattern True (FunctionPattern f [p1, p2])
-insertPattern fp (RecordPattern      fs r) = do
-  mapM_ (insertFieldPattern fp) fs
-  maybe (return ()) (insertPattern fp) r
 insertPattern _ _ = ok
 
 insertFieldPattern :: Bool -> Field Pattern -> WCM ()
@@ -1075,9 +1063,9 @@ isCons qid s = maybe (isImportedCons s qid)
                       isConstructor
                       (SE.lookup qid (scope s))
  where isImportedCons s' qid' = case qualLookupValue qid' (valueEnv s') of
-          (DataConstructor  _ _ _) : _ -> True
-          (NewtypeConstructor _ _) : _ -> True
-          _                            -> False
+          (DataConstructor  _ _ _ _) : _ -> True
+          (NewtypeConstructor _ _ _) : _ -> True
+          _                              -> False
 
 -- Since type identifiers and normal identifiers (e.g. functions, variables
 -- or constructors) don't share the same namespace, it is necessary

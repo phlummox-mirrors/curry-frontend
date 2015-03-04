@@ -41,13 +41,11 @@ import Base.Types
 import Base.Typing
 import Base.Utils (concatMapM)
 
-import Env.TypeConstructor (TCEnv)
 import Env.Value (ValueEnv, ValueInfo (..), bindFun, qualLookupValue)
 
 data SimplifyState = SimplifyState
   { moduleIdent :: ModuleIdent -- read-only!
   , valueEnv    :: ValueEnv
-  , tyConsEnv   :: TCEnv       -- read-only!
   , nextId      :: Int         -- counter
   }
 
@@ -68,8 +66,7 @@ getNextId = do
 getTypeOf :: Typeable t => t -> SIM Type
 getTypeOf t = do
   tyEnv <- getValueEnv
-  tcEnv <- getTyConsEnv
-  return (typeOf tyEnv tcEnv t)
+  return (typeOf tyEnv t)
 
 modifyValueEnv :: (ValueEnv -> ValueEnv) -> SIM ()
 modifyValueEnv f = S.modify $ \ s -> s { valueEnv = f $ valueEnv s }
@@ -77,12 +74,9 @@ modifyValueEnv f = S.modify $ \ s -> s { valueEnv = f $ valueEnv s }
 getValueEnv :: SIM ValueEnv
 getValueEnv = S.gets valueEnv
 
-getTyConsEnv :: SIM TCEnv
-getTyConsEnv = S.gets tyConsEnv
-
-simplify :: ValueEnv -> TCEnv -> Module -> (Module, ValueEnv)
-simplify tyEnv tcEnv mdl@(Module _ m _ _ _) = (mdl', valueEnv s')
-  where (mdl', s') = S.runState (simModule mdl) (SimplifyState m tyEnv tcEnv 1)
+simplify :: ValueEnv -> Module -> (Module, ValueEnv)
+simplify tyEnv mdl@(Module _ m _ _ _) = (mdl', valueEnv s')
+  where (mdl', s') = S.runState (simModule mdl) (SimplifyState m tyEnv 1)
 
 simModule :: Module -> SIM Module
 simModule (Module ps m es is ds) = Module ps m es is

@@ -16,7 +16,7 @@
 
 module Html.SyntaxColoring
   ( Code (..), TypeUsage (..), ConsUsage (..)
-  , IdentUsage (..), FuncUsage (..), LabelUsage (..)
+  , IdentUsage (..), FuncUsage (..)
   , genProgram, code2string, getQualIdent
   ) where
 
@@ -39,7 +39,6 @@ data Code
   | DataCons    ConsUsage  QualIdent
   | Function    FuncUsage  QualIdent
   | Identifier  IdentUsage QualIdent
-  | Label       LabelUsage QualIdent
   | ModuleName  ModuleIdent
   | Commentary  String
   | NumberCode  String
@@ -79,11 +78,6 @@ data IdentUsage
   | IdUnknown -- unknown usage
     deriving Show
 
-data LabelUsage
-  = LabelDeclare
-  | LabelRefer
-    deriving Show
-
 -- @param list with parse-Results with descending quality,
 --        e.g. [typingParse, fullParse, parse]
 -- @param lex-Result
@@ -98,7 +92,6 @@ getQualIdent (DataCons    _ qid) = Just qid
 getQualIdent (Function    _ qid) = Just qid
 getQualIdent (Identifier  _ qid) = Just qid
 getQualIdent (TypeCons    _ qid) = Just qid
-getQualIdent (Label       _ qid) = Just qid
 getQualIdent  _                  = Nothing
 
 tokenToCodes :: Position -> [Code] -> [(Position, Token)] -> [Code]
@@ -138,7 +131,6 @@ code2string (DataCons    _ qid) = idName $ unqualify qid
 code2string (TypeCons    _ qid) = idName $ unqualify qid
 code2string (Function    _ qid) = idName $ unqualify qid
 code2string (Identifier  _ qid) = idName $ unqualify qid
-code2string (Label       _ qid) = idName $ unqualify qid
 code2string (ModuleName    mid) = moduleName mid
 code2string (Commentary      s) = s
 code2string (NumberCode      s) = s
@@ -253,9 +245,6 @@ addModuleIdent mid cn@(DataCons x qid)
 addModuleIdent mid tc@(TypeCons x qid)
   | not $ isQualified qid          = TypeCons x (qualQualify mid qid)
   | otherwise                      = tc
-addModuleIdent mid lb@(Label x qid)
-  | not $ isQualified qid          = Label    x (qualQualify mid qid)
-  | otherwise                      = lb
 addModuleIdent _   c               = c
 
 -- Exports
@@ -298,7 +287,9 @@ idsDecl (InfixDecl _   _ _ ops) = map (Function FuncInfix . qualify) ops
 idsDecl (DataDecl   _ d vs cds) = TypeCons TypeDeclare (qualify d)
                                     :  map (Identifier IdDeclare . qualify) vs
                                     ++ concatMap idsConstrDecl cds
-idsDecl (NewtypeDecl   _ _ _ _) = []
+idsDecl (NewtypeDecl _ t vs nc) = TypeCons TypeDeclare (qualify t)
+                                    :  map (Identifier IdDeclare . qualify) vs
+                                    ++ idsNewConstrDecl nc
 idsDecl (TypeDecl    _ t vs ty) = TypeCons TypeDeclare (qualify t)
                                     :  map (Identifier IdDeclare . qualify) vs
                                     ++ idsTypeExpr ty
@@ -315,6 +306,15 @@ idsConstrDecl (ConstrDecl     _ _ c tys)
   = DataCons ConsDeclare (qualify c) : concatMap idsTypeExpr tys
 idsConstrDecl (ConOpDecl _ _ ty1 op ty2)
   = idsTypeExpr ty1 ++ (DataCons ConsDeclare $ qualify op) : idsTypeExpr ty2
+idsConstrDecl (RecordDecl _ _ c fs)
+  = DataCons ConsDeclare (qualify c) : concatMap idsFieldDecl fs
+
+idsNewConstrDecl :: NewConstrDecl -> [Code]
+idsNewConstrDecl (NewConstrDecl _ _ c ty)
+  = DataCons ConsDeclare (qualify c) : idsTypeExpr ty
+idsNewConstrDecl (NewRecordDecl _ _ c (l,ty))
+  = DataCons ConsDeclare (qualify c) : (Function FuncDeclare $ qualify l)
+  : idsTypeExpr ty
 
 idsTypeExpr :: TypeExpr -> [Code]
 idsTypeExpr (ConstructorType qid tys) = TypeCons TypeRefer qid :
@@ -323,11 +323,10 @@ idsTypeExpr (VariableType          v) = [Identifier IdRefer (qualify v)]
 idsTypeExpr (TupleType           tys) = concatMap idsTypeExpr tys
 idsTypeExpr (ListType             ty) = idsTypeExpr ty
 idsTypeExpr (ArrowType       ty1 ty2) = concatMap idsTypeExpr [ty1, ty2]
-idsTypeExpr (RecordType           fs) = concatMap idsFieldType fs
 
-idsFieldType :: ([Ident], TypeExpr) -> [Code]
-idsFieldType (fs, ty) = map (Label LabelDeclare . qualify . unRenameIdent) fs
-                          ++ idsTypeExpr ty
+idsFieldDecl :: FieldDecl -> [Code]
+idsFieldDecl (FieldDecl _ ls ty) =
+  map (Function FuncDeclare . qualify . unRenameIdent) ls ++ idsTypeExpr ty
 
 idsEquation :: Equation -> [Code]
 idsEquation (Equation _ lhs rhs) = idsLhs lhs ++ idsRhs rhs
@@ -354,6 +353,8 @@ idsPat (ConstructorPattern qid ps) = DataCons ConsPattern qid
 idsPat (InfixPattern    p1 qid p2) = idsPat p1 ++
                                        DataCons ConsPattern qid : idsPat p2
 idsPat (ParenPattern            p) = idsPat p
+idsPat (RecordPattern      qid fs) = DataCons ConsPattern qid
+                                      : concatMap (idsField idsPat) fs
 idsPat (TuplePattern         _ ps) = concatMap idsPat ps
 idsPat (ListPattern          _ ps) = concatMap idsPat ps
 idsPat (AsPattern             v p) = Identifier IdDeclare (qualify v) : idsPat p
@@ -362,7 +363,6 @@ idsPat (FunctionPattern    qid ps) = Function FuncCall qid
                                       : concatMap idsPat ps
 idsPat (InfixFuncPattern  p1 f p2) = idsPat p1 ++
                                       Function FuncInfix f : idsPat p2
-idsPat (RecordPattern        fs _) = concatMap (idsField idsPat) fs
 
 idsExpr :: Expression -> [Code]
 idsExpr (Literal                _) = []
@@ -373,6 +373,10 @@ idsExpr (Variable             qid)
 idsExpr (Constructor          qid) = [DataCons ConsCall qid]
 idsExpr (Paren                  e) = idsExpr e
 idsExpr (Typed               e ty) = idsExpr e ++ idsTypeExpr ty
+idsExpr (Record            qid fs) = DataCons ConsCall qid
+                                      : concatMap (idsField idsExpr) fs
+idsExpr (RecordUpdate        e fs) = idsExpr e
+                                      ++ concatMap (idsField idsExpr) fs
 idsExpr (Tuple               _ es) = concatMap idsExpr es
 idsExpr (List                _ es) = concatMap idsExpr es
 idsExpr (ListCompr      _ e stmts) = idsExpr e ++ concatMap idsStmt stmts
@@ -390,14 +394,9 @@ idsExpr (Let                 ds e) = concatMap idsDecl ds ++ idsExpr e
 idsExpr (Do               stmts e) = concatMap idsStmt stmts ++ idsExpr e
 idsExpr (IfThenElse    _ e1 e2 e3) = concatMap idsExpr [e1, e2, e3]
 idsExpr (Case          _ _ e alts) = idsExpr e ++ concatMap idsAlt alts
-idsExpr (RecordConstr          fs) = concatMap (idsField idsExpr) fs
-idsExpr (RecordSelection      e l)
-  = idsExpr e ++ [Label LabelRefer (qualify $ unRenameIdent l)]
-idsExpr (RecordUpdate        fs e) = concatMap (idsField idsExpr) fs
-                                     ++ idsExpr e
 
 idsField :: (a -> [Code]) -> Field a -> [Code]
-idsField f (Field _ l x) = Label LabelRefer (qualify $ unRenameIdent l) : f x
+idsField f (Field _ l x) = Function FuncCall l : f x
 
 idsInfix :: InfixOp -> [Code]
 idsInfix (InfixOp     qid) = [Function FuncInfix qid]
@@ -481,6 +480,7 @@ showToken (Token Id_interface       _) = "interface"
 showToken (Token Id_primitive       _) = "primitive"
 showToken (Token Id_qualified       _) = "qualified"
 showToken (Token EOF                _) = ""
+showToken (Token PragmaHiding       _) = "{-# HIDING"
 showToken (Token PragmaLanguage     _) = "{-# LANGUAGE"
 showToken (Token PragmaOptions      a) = "{-# OPTIONS" ++ showAttr a
 showToken (Token PragmaEnd          _) = "#-}"

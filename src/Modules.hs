@@ -101,7 +101,7 @@ loadModule opts fn = do
   iEnv   <- loadInterfaces paths mdl
   checkInterfaces opts iEnv
   -- add information of imported modules
-  cEnv   <- importModules opts mdl iEnv
+  cEnv   <- importModules mdl iEnv
   return (cEnv, mdl)
 
 parseModule :: Options -> FilePath -> CYIO CS.Module
@@ -183,7 +183,7 @@ checkInterfaces :: Monad m => Options -> InterfaceEnv -> CYT m ()
 checkInterfaces opts iEnv = mapM_ checkInterface (Map.elems iEnv)
   where
   checkInterface intf
-    = interfaceCheck opts (importInterfaces opts intf iEnv, intf) >> return ()
+    = interfaceCheck opts (importInterfaces intf iEnv, intf) >> return ()
 
 -- ---------------------------------------------------------------------------
 -- Checking a module
@@ -235,7 +235,7 @@ transModule opts mdl = do
 writeOutput :: Options -> FilePath -> CompEnv CS.Module -> IO ()
 writeOutput opts fn mdl@(_, modul) = do
   writeParsed opts fn modul
-  qmdl@(env1, qlfd) <- dumpWith opts CS.ppModule DumpQualified $ qual opts mdl
+  qmdl@(env1, qlfd) <- dumpWith opts CS.ppModule DumpQualified $ qual mdl
   writeAbstractCurry opts fn qmdl
   -- generate interface file
   let intf = uncurry exportInterface qmdl
@@ -328,10 +328,10 @@ writeFlatIntf opts fn env modSum il
 
 writeAbstractCurry :: Options -> FilePath -> CompEnv CS.Module -> IO ()
 writeAbstractCurry opts fname (env, modul) = do
-  when  acyTarget $ AC.writeCurry (useSubDir $  acyName fname)
-                  $ genAbstractCurry env modul
+  when acyTarget  $ AC.writeCurry (useSubDir $ acyName fname)
+                  $ genTypedAbstractCurry env modul
   when uacyTarget $ AC.writeCurry (useSubDir $ uacyName fname)
-                  $ genAbstractCurry env modul
+                  $ genUntypedAbstractCurry env modul
   where
   acyTarget  = AbstractCurry        `elem` optTargetTypes opts
   uacyTarget = UntypedAbstractCurry `elem` optTargetTypes opts

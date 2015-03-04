@@ -3,6 +3,7 @@
     Description :  Internal representation of types
     Copyright   :  (c) 2002 - 2004 Wolfgang Lux
                                    Martin Engelke
+                       2015        Jan Tikovsky
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
@@ -17,10 +18,11 @@
 
 module Base.Types
   ( -- * Representation of Types
-    Type (..), isArrowType, arrowArity, arrowArgs, arrowBase, typeVars
-  , typeConstrs, typeSkolems, equTypes, qualifyType, unqualifyType
+    Type (..), isArrowType, arrowArity, arrowArgs, arrowBase, arrowUnapply
+  , typeVars, typeConstrs, typeSkolems, equTypes, qualifyType, unqualifyType
     -- * Representation of Data Constructors
-  , DataConstr (..), constrIdent, tupleData
+  , DataConstr (..), constrIdent, constrTypes, recLabels, recLabelTypes
+  , tupleData
     -- * Representation of Quantification
   , TypeScheme (..), ExistTypeScheme (..), monoType, polyType
     -- * Predefined types
@@ -40,7 +42,6 @@ import Curry.Base.Ident
 -- from the constraint list.
 -- The case 'TypeSkolem' is used for handling skolem types, which
 -- result from the use of existentially quantified data constructors.
--- Finally, 'TypeRecord' is used for records.
 
 -- Type variables are represented with deBruijn style indices. Universally
 -- quantified type variables are assigned indices in the order of their
@@ -57,7 +58,6 @@ data Type
   | TypeArrow Type Type
   | TypeConstrained [Type] Int
   | TypeSkolem Int
-  | TypeRecord [(Ident, Type)]
   deriving (Eq, Show)
 
 -- The function 'isArrowType' checks whether a type is a function
@@ -81,6 +81,11 @@ arrowBase :: Type -> Type
 arrowBase (TypeArrow _ ty) = arrowBase ty
 arrowBase ty               = ty
 
+arrowUnapply :: Type -> ([Type], Type)
+arrowUnapply (TypeArrow ty1 ty2) = (ty1 : tys, ty)
+  where (tys, ty) = arrowUnapply ty2
+arrowUnapply ty                  = ([], ty)
+
 -- The functions 'typeVars', 'typeConstrs', 'typeSkolems' return a list of all
 -- type variables, type constructors, or skolems occurring in a type t,
 -- respectively. Note that 'TypeConstrained' variables are not included in the
@@ -93,7 +98,6 @@ typeVars ty = vars ty [] where
   vars (TypeConstrained   _ _) tvs = tvs
   vars (TypeArrow     ty1 ty2) tvs = vars ty1 (vars ty2 tvs)
   vars (TypeSkolem          _) tvs = tvs
-  vars (TypeRecord         fs) tvs = foldr vars tvs (map snd fs)
 
 typeConstrs :: Type -> [QualIdent]
 typeConstrs ty = constrs ty [] where
@@ -102,7 +106,6 @@ typeConstrs ty = constrs ty [] where
   constrs (TypeConstrained    _ _) tcs = tcs
   constrs (TypeArrow      ty1 ty2) tcs = constrs ty1 (constrs ty2 tcs)
   constrs (TypeSkolem           _) tcs = tcs
-  constrs (TypeRecord          fs) tcs = foldr constrs tcs (map snd fs)
 
 typeSkolems :: Type -> [Int]
 typeSkolems ty = skolems ty [] where
@@ -111,7 +114,6 @@ typeSkolems ty = skolems ty [] where
   skolems (TypeConstrained   _ _) sks = sks
   skolems (TypeArrow     ty1 ty2) sks = skolems ty1 (skolems ty2 sks)
   skolems (TypeSkolem          k) sks = k : sks
-  skolems (TypeRecord         fs) sks = foldr skolems sks (map snd fs)
 
 -- The function 'equTypes' computes whether two types are equal modulo
 -- renaming of type variables.
@@ -134,23 +136,12 @@ equTypes t1 t2 = fst (equ [] t1 t2)
      in  (res1 && res2, is2)
  equ is (TypeSkolem            i1) (TypeSkolem            i2)
   = equVar is i1 i2
- equ is (TypeRecord fs1)           (TypeRecord fs2)
-  = equRecords is fs1 fs2
  equ is _                          _
   = (False, is)
 
  equVar is i1 i2 = case lookup i1 is of
    Nothing  -> (True, (i1, i2) : is)
    Just i2' -> (i2 == i2', is)
-
- equRecords is fs1 fs2 | length fs1 == length fs2 = equrec is fs1 fs2
-                       | otherwise                = (False, is)
-
- equrec is []               _   = (True, is)
- equrec is ((l1, ty1) : fs1) fs2
-   = let (res1, is1) = maybe (False, is) (equ is ty1) (lookup l1 fs2)
-         (res2, is2) = equrec is1 fs1 fs2
-     in  (res1 && res2, is2)
 
  equs is []        []        = (True , is)
  equs is (t1':ts1) (t2':ts2)
@@ -177,8 +168,6 @@ qualifyType m (TypeConstrained tys tv) =
 qualifyType m (TypeArrow      ty1 ty2) =
   TypeArrow (qualifyType m ty1) (qualifyType m ty2)
 qualifyType _ skol@(TypeSkolem      _) = skol
-qualifyType m (TypeRecord          fs) =
-  TypeRecord (map (\ (l, ty) -> (l, qualifyType m ty)) fs)
 
 unqualifyType :: ModuleIdent -> Type -> Type
 unqualifyType m (TypeConstructor tc tys) =
@@ -189,16 +178,28 @@ unqualifyType m (TypeConstrained tys tv) =
 unqualifyType m (TypeArrow      ty1 ty2) =
   TypeArrow (unqualifyType m ty1) (unqualifyType m ty2)
 unqualifyType _ skol@(TypeSkolem      _) = skol
-unqualifyType m (TypeRecord          fs) =
-  TypeRecord (map (\ (l, ty) -> (l, unqualifyType m ty)) fs)
 
--- The type 'DataConstr' is used to represent value constructors introduced
--- by data or newtype declarations.
-data DataConstr = DataConstr Ident Int [Type]
+-- The type 'DataConstr' is used to represent value or record constructors
+-- introduced by data or newtype declarations.
+data DataConstr = DataConstr   Ident Int [Type]
+                | RecordConstr Ident Int [Ident] [Type]
     deriving (Eq, Show)
 
 constrIdent :: DataConstr -> Ident
-constrIdent (DataConstr c _ _) = c
+constrIdent (DataConstr     c _ _) = c
+constrIdent (RecordConstr c _ _ _) = c
+
+constrTypes :: DataConstr -> [Type]
+constrTypes (DataConstr     _ _ ty) = ty
+constrTypes (RecordConstr _ _ _ ty) = ty
+
+recLabels :: DataConstr -> [Ident]
+recLabels (DataConstr      _ _ _) = []
+recLabels (RecordConstr _ _ ls _) = ls
+
+recLabelTypes :: DataConstr -> [Type]
+recLabelTypes (DataConstr       _ _ _) = []
+recLabelTypes (RecordConstr _ _ _ tys) = tys
 
 -- We support two kinds of quantifications of types here, universally
 -- quantified type schemes (forall alpha . tau(alpha)) and universally
