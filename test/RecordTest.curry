@@ -1,5 +1,7 @@
-module RecordTest where
+module RecordTest (Agent, lastName, trueIdentity, mike) where
 
-import HaskellRecords
+data Person = Person { firstName :: String, lastName :: String }
+            | Agent  { lastName :: String, trueIdentity :: Person }
 
-r = C 73 False
+mike :: Person
+mike = Person { firstName = "Mike", lastName = "Smith" }
