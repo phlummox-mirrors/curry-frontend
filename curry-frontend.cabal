@@ -25,6 +25,10 @@ Extra-Source-Files: LIESMICH
 Data-Dir:   data
 Data-Files: currysource.css
 
+source-repository head
+  type:     git
+  location: git://git-ps.informatik.uni-kiel.de/curry/curry-frontend.git
+
 Flag network-uri
    description: Get Network.URI from the network-uri package
    default: True
