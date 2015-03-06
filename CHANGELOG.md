@@ -4,6 +4,19 @@ Change log for curry-frontend
 Under development
 =================
 
+Version 0.4.0
+=============
+
+  * Refactored AbstractCurry generation
+
+  * Complete refactoring of FlatCurry generation
+
+  * Removed support for Curry's record syntax and introduced Haskell's record
+    syntax instead
+
+  * During desugaring record updates are translated to fcase-expressions instead
+    of introducing explicit update functions
+
   * HTML generation now places HTML files for hierarchical modules into
     files named `<Module>_curry.html`, i.e., no sub-folders reflecting
     the the module name hierarchy are generated. In addition, if the option
