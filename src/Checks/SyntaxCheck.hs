@@ -60,10 +60,15 @@ syntaxCheck :: Options -> ValueEnv -> Module
             -> ((Module, [KnownExtension]), [Message])
 syntaxCheck opts tyEnv mdl@(Module _ m _ _ ds) =
   case findMultiples $ concatMap constrs tds of
-    []  -> runSC (checkModule mdl) state
+    []  -> case findMultiples (ls ++ fs) of
+             []  -> runSC (checkModule mdl) state
+             iss -> ((mdl, exts), map (errMultipleDeclarations m) iss)
     css -> ((mdl, exts), map errMultipleDataConstructor css)
   where
     tds   = filter isTypeDecl ds
+    vds   = filter isValueDecl ds
+    ls    = nub $ concatMap recLabels tds
+    fs    = nub $ concatMap vars vds
     rEnv  = globalEnv $ fmap renameInfo tyEnv
     state = initState exts m rEnv
     exts  = optExtensions opts
@@ -914,7 +919,12 @@ vars (ForeignDecl  _ _ _ f _) = [f]
 vars (ExternalDecl      _ fs) = fs
 vars (PatternDecl      _ t _) = bv t
 vars (FreeDecl          _ vs) = vs
-vars _ = []
+vars _                        = []
+
+recLabels :: Decl -> [Ident]
+recLabels (DataDecl      _ _ _ cs) = concatMap recordLabels cs
+recLabels (NewtypeDecl   _ _ _ nc) = nrecordLabels nc
+recLabels _                        = []
 
 renameLiteral :: Literal -> SCM Literal
 renameLiteral (Int v i) = (flip Int i . renameIdent v) <$> newId
@@ -1104,6 +1114,14 @@ errMultipleDataConstructor (i:is) = posMessage i $
   <+> text "at:" $+$
   nest 2 (vcat (map (ppPosition . getPosition) (i:is)))
 
+errMultipleDeclarations :: ModuleIdent -> [Ident] -> Message
+errMultipleDeclarations _ [] = internalError
+  "SyntaxCheck.errMultipleDeclarations: empty list"
+errMultipleDeclarations m (i:is) = posMessage i $
+  text "Multiple declarations of" <+> text (escQualName (qualifyWith m i))
+  $+$ text "Declared at:" $+$
+  nest 2 (vcat (map (ppPosition . getPosition) (i:is)))
+  
 errDuplicateTypeSig :: [Ident] -> Message
 errDuplicateTypeSig [] = internalError
   "SyntaxCheck.errDuplicateTypeSig: empty list"
