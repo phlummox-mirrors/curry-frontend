@@ -88,6 +88,9 @@ simDecl env (FunctionDecl p f eqs) = FunctionDecl p f
 simDecl env (PatternDecl  p t rhs) = PatternDecl  p t <$> simRhs env rhs
 simDecl _   d                      = return d
 
+-- Simplification of Equations
+-- ---------------------------
+--
 -- After simplifying the right hand side of an equation, the compiler
 -- transforms declarations of the form
 --
@@ -160,25 +163,28 @@ simDecl _   d                      = return d
 
 simEquation :: InlineEnv -> Equation -> SIM [Equation]
 simEquation env (Equation p lhs rhs) = do
-  m     <- getModuleIdent
   rhs'  <- simRhs env rhs
+  m     <- getModuleIdent
   tyEnv <- getValueEnv
   return $ inlineFun m tyEnv p lhs rhs'
 
 inlineFun :: ModuleIdent -> ValueEnv -> Position -> Lhs -> Rhs -> [Equation]
 inlineFun m tyEnv p (FunLhs f ts) (SimpleRhs _ (Let [FunctionDecl _ f' eqs'] e) _)
--- TODO: understand this
-  | True -- False -- inlining of functions is deactivated (hsi)
-   && f' `notElem` qfv m eqs' && e' == Variable (qualify f') &&
-    n == arrowArity (funType m tyEnv (qualify f')) &&
-     and [all isVarPattern ts1 | Equation _ (FunLhs _ ts1) _ <- eqs']
+  |    -- f' is not recursive
+       f' `notElem` qfv m eqs'
+       -- the eta-reduced rhs equals the local function
+    && e' == Variable (qualify f')
+       -- f' has been fully applied before
+    && n  == arrowArity (funType m tyEnv (qualify f'))
+       -- f' does not perform any pattern matching
+    && and [all isVarPattern ts1 | Equation _ (FunLhs _ ts1) _ <- eqs']
   = map (mergeEqns p f ts' vs') eqs'
   where
-  (n,vs',ts',e') = etaReduce 0 [] (reverse ts) e
+  (n, vs', ts', e') = etaReduce 0 [] (reverse ts) e
 
   etaReduce n1 vs (VariablePattern v : ts1) (Apply e1 (Variable v'))
     | qualify v == v' = etaReduce (n1 + 1) (v:vs) ts1 e1
-  etaReduce n1 vs ts1 e1 = (n1,vs,reverse ts1,e1)
+  etaReduce n1 vs ts1 e1 = (n1, vs, reverse ts1, e1)
 
   mergeEqns p1 f1 ts1 vs (Equation _ (FunLhs _ ts2) rhs) =
     Equation p1 (FunLhs f1 (ts1 ++ zipWith AsPattern vs ts2)) rhs
