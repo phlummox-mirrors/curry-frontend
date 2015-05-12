@@ -197,9 +197,20 @@ absFunTypes m pre fvs fs tyEnv = foldr abstractFunType tyEnv fs
         abstractFunType f tyEnv' =
           qualBindFun m (liftIdent pre f)
                         (length fvs + varArity tyEnv' f) -- (arrowArity ty)
-                        (polyType ty)
+                        (polyType (normType ty))
                         (unbindFun f tyEnv')
           where ty = foldr TypeArrow (varType tyEnv' f) tys
+
+normType :: Type -> Type
+normType ty = norm (zip (nub $ typeVars ty) [0..]) ty
+  where
+  norm vs (TypeVariable n) = case lookup n vs of
+    Just m  -> TypeVariable m
+    Nothing -> error "Lift.normType"
+  norm vs (TypeConstructor tc tys) = TypeConstructor tc (map (norm vs) tys)
+  norm vs (TypeArrow      ty1 ty2) = TypeArrow (norm vs ty1) (norm vs ty2)
+  norm _  tc@(TypeConstrained _ _) = tc
+  norm _  tsk@(TypeSkolem       _) = tsk
 
 absFunDecl :: String -> [Ident] -> [Ident] -> Decl -> LiftM Decl
 absFunDecl pre fvs lvs (FunctionDecl p f eqs) =
