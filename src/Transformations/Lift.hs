@@ -20,9 +20,7 @@
 {-# LANGUAGE CPP #-}
 module Transformations.Lift (lift) where
 
-#if __GLASGOW_HASKELL__ >= 710
-import           Control.Applicative        ((<$>))
-#else
+#if __GLASGOW_HASKELL__ < 710
 import           Control.Applicative        ((<$>), (<*>))
 #endif
 import qualified Control.Monad.State as S   (State, runState, gets, modify)

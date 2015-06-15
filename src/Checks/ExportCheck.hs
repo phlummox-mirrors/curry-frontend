@@ -11,9 +11,12 @@
 
     This module implements a check of the export specification.
 -}
+{-# LANGUAGE CPP #-}
 module Checks.ExportCheck (exportCheck) where
 
+#if __GLASGOW_HASKELL__ < 710
 import           Control.Applicative        ((<$>))
+#endif
 import           Control.Monad              (unless)
 import qualified Control.Monad.State as S   (State, runState, gets, modify)
 import           Data.List                  (nub, union)

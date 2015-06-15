@@ -22,10 +22,12 @@
    can be recognized. Finally, all (adjacent) equations of a function are
    merged into a single definition.
 -}
-
+{-# LANGUAGE CPP #-}
 module Checks.SyntaxCheck (syntaxCheck) where
 
-import Control.Applicative                ((<$>), (<*>))
+#if __GLASGOW_HASKELL__ < 710
+import           Control.Applicative        ((<$>), (<*>))
+#endif
 import Control.Monad                      (unless, when)
 import qualified Control.Monad.State as S (State, runState, gets, modify)
 import Data.List                          (insertBy, intersect, nub, partition)
@@ -1121,7 +1123,7 @@ errMultipleDeclarations m (i:is) = posMessage i $
   text "Multiple declarations of" <+> text (escQualName (qualifyWith m i))
   $+$ text "Declared at:" $+$
   nest 2 (vcat (map (ppPosition . getPosition) (i:is)))
-  
+
 errDuplicateTypeSig :: [Ident] -> Message
 errDuplicateTypeSig [] = internalError
   "SyntaxCheck.errDuplicateTypeSig: empty list"

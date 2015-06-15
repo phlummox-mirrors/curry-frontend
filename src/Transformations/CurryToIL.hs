@@ -22,9 +22,7 @@
 {-# LANGUAGE CPP #-}
 module Transformations.CurryToIL (ilTrans, transType) where
 
-#if __GLASGOW_HASKELL__ >= 710
-import           Control.Applicative        ((<$>))
-#else
+#if __GLASGOW_HASKELL__ < 710
 import           Control.Applicative        ((<$>), (<*>))
 #endif
 

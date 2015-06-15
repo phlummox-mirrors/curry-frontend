@@ -25,10 +25,12 @@
    hand side of a type declaration are actually defined and no identifier
    is defined more than once.
 -}
-
+{-# LANGUAGE CPP #-}
 module Checks.KindCheck (kindCheck) where
 
+#if __GLASGOW_HASKELL__ < 710
 import           Control.Applicative      ((<$>), (<*>))
+#endif
 import           Control.Monad            (unless, when)
 import qualified Control.Monad.State as S (State, runState, gets, modify)
 

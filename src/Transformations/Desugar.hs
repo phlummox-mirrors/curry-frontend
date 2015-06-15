@@ -60,9 +60,7 @@
 {-# LANGUAGE CPP #-}
 module Transformations.Desugar (desugar) where
 
-#if __GLASGOW_HASKELL__ >= 710
-import           Control.Applicative        ((<$>))
-#else
+#if __GLASGOW_HASKELL__ < 710
 import           Control.Applicative        ((<$>), (<*>))
 #endif
 import           Control.Arrow              (first, second)

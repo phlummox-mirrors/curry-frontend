@@ -7,9 +7,12 @@
 -- Martin Engelke (men@informatik.uni-kiel.de)
 --
 -- ---------------------------------------------------------------------------
+{-# LANGUAGE CPP #-}
 module Generators.GenFlatCurry (genFlatCurry, genFlatInterface) where
 
-import Control.Applicative
+#if __GLASGOW_HASKELL__ < 710
+import           Control.Applicative ((<$>), (<*>))
+#endif
 import           Control.Monad       (filterM, mplus)
 import           Control.Monad.State (State, evalState, gets, modify)
 import           Data.List           (mapAccumL, nub)

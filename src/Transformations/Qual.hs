@@ -23,9 +23,7 @@
 {-# LANGUAGE CPP #-}
 module Transformations.Qual (qual) where
 
-#if __GLASGOW_HASKELL__ >= 710
-import           Control.Applicative        ((<$>))
-#else
+#if __GLASGOW_HASKELL__ < 710
 import           Control.Applicative        ((<$>), (<*>))
 #endif
 import qualified Control.Monad.Reader as R (Reader, asks, runReader)
