@@ -235,15 +235,15 @@ transModule opts mdl = do
 writeOutput :: Options -> FilePath -> CompEnv CS.Module -> IO ()
 writeOutput opts fn mdl@(_, modul) = do
   writeParsed opts fn modul
-  qmdl@(env1, qlfd) <- dumpWith opts CS.ppModule DumpQualified $ qual mdl
+  qmdl <- dumpWith opts CS.ppModule DumpQualified $ qual mdl
   writeAbstractCurry opts fn qmdl
   -- generate interface file
   let intf = uncurry exportInterface qmdl
   writeInterface opts fn intf
   when withFlat $ do
-    (env2, il) <- transModule opts (env1, qlfd)
+    (env2, il) <- transModule opts qmdl
     -- generate target code
-    let modSum = summarizeModule (tyConsEnv env2) intf qlfd
+    let modSum = summarizeModule (tyConsEnv env2) intf (snd qmdl)
     writeFlat opts fn env2 modSum il
   where
   withFlat = any (`elem` optTargetTypes opts) [FlatCurry, ExtendedFlatCurry]
