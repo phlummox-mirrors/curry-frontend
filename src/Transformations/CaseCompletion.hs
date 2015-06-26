@@ -2,7 +2,7 @@
     Module      :  $Header$
     Description :  CaseCompletion
     Copyright   :  (c) 2005       , Martin Engelke
-                       2011 - 2014, Björn Peemöller
+                       2011 - 2015, Björn Peemöller
                        2015       , Jan Tikovsky
     License     :  OtherLicense
 
@@ -28,9 +28,12 @@
 
     To summarize, this module expands all rigid case expressions.
 -}
+{-# LANGUAGE CPP #-}
 module Transformations.CaseCompletion (completeCase) where
 
-import           Control.Monad              (liftM, liftM2)
+#if __GLASGOW_HASKELL__ < 710
+import           Control.Applicative        ((<$>), (<*>))
+#endif
 import qualified Control.Monad.State as S   (State, evalState, gets, modify)
 import           Data.List                  (find)
 import           Data.Maybe                 (fromMaybe)
@@ -39,6 +42,7 @@ import           Curry.Base.Ident
 import           Curry.Base.Position        (SrcRef)
 import qualified Curry.Syntax        as CS
 
+import Base.Expr
 import Base.Messages                        (internalError)
 import qualified Base.ScopeEnv       as SE
   (ScopeEnv, new, beginScope, insert, exists)
@@ -95,7 +99,7 @@ ccDecl dd@(DataDecl        _ _ _) = return dd
 ccDecl nt@(NewtypeDecl     _ _ _) = return nt
 ccDecl (FunctionDecl qid vs ty e) = inNestedScope $ do
   modifyScopeEnv (flip (foldr insertIdent) vs)
-  FunctionDecl qid vs ty `liftM` ccExpr e
+  FunctionDecl qid vs ty <$> ccExpr e
 ccDecl ed@(ExternalDecl  _ _ _ _) = return ed
 
 ccExpr :: Expression -> CCM Expression
@@ -103,83 +107,109 @@ ccExpr l@(Literal       _) = return l
 ccExpr v@(Variable      _) = return v
 ccExpr f@(Function    _ _) = return f
 ccExpr c@(Constructor _ _) = return c
-ccExpr (Apply       e1 e2) = liftM2 Apply (ccExpr e1) (ccExpr e2)
+ccExpr (Apply       e1 e2) = Apply <$> ccExpr e1 <*> ccExpr e2
 ccExpr (Case    r ea e bs) = do
   e'  <- ccExpr e
   bs' <- mapM ccAlt bs
   ccCase r ea e' bs'
-ccExpr (Or          e1 e2) = liftM2 Or (ccExpr e1) (ccExpr e2)
+ccExpr (Or          e1 e2) = Or <$> ccExpr e1 <*> ccExpr e2
 ccExpr (Exist         v e) = inNestedScope $ do
   modifyScopeEnv $ insertIdent v
-  Exist v `liftM` ccExpr e
+  Exist v <$> ccExpr e
 ccExpr (Let           b e) = inNestedScope $ do
   modifyScopeEnv $ insertBinding b
-  liftM2 (flip Let) (ccExpr e) (ccBinding b)
+  flip Let <$> ccExpr e <*> ccBinding b
 ccExpr (Letrec       bs e) = inNestedScope $ do
   modifyScopeEnv $ flip (foldr insertBinding) bs
-  liftM2 (flip Letrec) (ccExpr e) (mapM ccBinding bs)
-ccExpr (Typed        e ty) = flip Typed ty `liftM` ccExpr e
+  flip Letrec <$> ccExpr e <*> mapM ccBinding bs
+ccExpr (Typed        e ty) = flip Typed ty <$> ccExpr e
 
 ccAlt :: Alt -> CCM Alt
 ccAlt (Alt p e) = inNestedScope $ do
   modifyScopeEnv $ insertConstrTerm p
-  Alt p `liftM` ccExpr e
+  Alt p <$> ccExpr e
 
 ccBinding :: Binding -> CCM Binding
-ccBinding (Binding v e) = Binding v `liftM` ccExpr e
+ccBinding (Binding v e) = Binding v <$> ccExpr e
 
 -- ---------------------------------------------------------------------------
 -- Functions for completing case alternatives
 -- ---------------------------------------------------------------------------
 ccCase :: SrcRef -> Eval -> Expression -> [Alt] -> CCM Expression
-ccCase _ _     _ []
-  = internalError "CaseCompletion.ccCase: empty alternative list"
 -- flexible cases are not completed
-ccCase r Flex  e alts = return $ Case r Flex e alts
-ccCase r Rigid e alts
-  | isConstrAlt a     = completeConsAlts r Rigid e as
-  | isLitAlt    a     = completeLitAlts  r Rigid e as
-  | isVarAlt    a     = completeVarAlts          e as
-  | otherwise
-  = internalError "CaseCompletion.ccExpr: illegal alternative list"
-  where as@(a:_) = alts -- removeRedundantAlts alts
+ccCase r Flex  e alts     = return $ Case r Flex e alts
+ccCase _ Rigid _ []       = internalError $ "CaseCompletion.ccCase: "
+                                         ++ "empty alternative list"
+ccCase r Rigid e as@(a:_)
+  | isConstrAlt a         = completeConsAlts r Rigid e as
+  | isLitAlt    a         = completeLitAlts  r Rigid e as
+  | isVarAlt    a         = completeVarAlts          e as
+  | otherwise             = internalError $ "CaseCompletion.ccCase: "
+                                         ++ "illegal alternative list"
 
 -- Completes a case alternative list which branches via constructor patterns
--- by adding alternatives of the form
---
---      comp_pattern -> default_expr
---
--- where "comp_pattern" is a complementary constructor pattern and
--- "default_expr" is the expression from the first alternative containing
--- a variable pattern. If there is no such alternative, the default expression
--- is set to the prelude function 'failed'.
---
--- This funtions uses a scope environment ('ScopeEnv') to generate fresh
--- variables for the arguments of the new constructors.
+-- by adding alternatives. Thus, case expressions of the form
+--     case <ce> of
+--       <C_1> -> <expr_1>
+--              :
+--       <C_n> -> <expr_n>
+--      [<var> -> <default_expr>]
+-- are in general extended to
+--     let x = <ce> in
+--     let y = <default_expr>[<var>/x] in
+--     case x of
+--       <C_1>  -> <expr_1>
+--               :
+--       <C_n>  -> <expr_n>
+--       <C'_1> -> y
+--               :
+--       <C'_m> -> y
+-- where the C'_j are the complementary constructor patterns of the C_i,
+-- @x@ and @y@ are fresh variables, and "default_expr" is the expression
+-- from the first alternative containing a variable pattern. If there is no such
+-- alternative, the default expression is set to the prelude function 'failed'.
+-- In addition, there are a few optimizations performed to avoid the
+-- construction of unnecessary let-bindings:
+--   - If there are no complementary patterns, the expression remains unchanged.
+--   - If there is only one complementary pattern,
+--     the binding for @y@ is avoided (see @bindDefVar@).
+--   - If the variable @<var>@ does not occur in the default expression,
+--     the binding for @x@ is avoided (see @mkCase@).
 completeConsAlts :: SrcRef -> Eval -> Expression -> [Alt] -> CCM Expression
-completeConsAlts r ea expr alts = do
+completeConsAlts r ea ce alts = do
   mdl       <- getModule
   menv      <- getInterfaceEnv
-  -- complementary constructors
-  complCons <- mapM genConstrTerm $ getComplConstrs mdl menv
+  -- complementary constructor patterns
+  complPats <- mapM genPat $ getComplConstrs mdl menv
                [ c | (Alt (ConstructorPattern c _) _) <- consAlts ]
-  -- complementary alternatives
-  let complAlts = map (\c -> Alt c $ replaceVar v (pattern2Expr c) de)
-                  complCons
-  return $ Case r ea expr (consAlts ++ complAlts)
+  [v, w] <- newIdentList 2 "x"
+  let e' = getDefaultAlt v
+  return $ case complPats of
+    [] -> Case r ea ce consAlts
+    ps -> bindDefVar v ce w e' ps
   where
   -- existing contructor pattern alternatives
   consAlts = filter isConstrAlt alts
 
-  -- default alternative
-  -- Note: the newly generated variable 'x!' is just a dummy and will never
-  -- occur in the transformed program
-  (Alt (VariablePattern v) de)
-    = fromMaybe (Alt (VariablePattern (mkIdent "x!")) failedExpr)
-    $ find isVarAlt alts
+  -- generate a new constructor pattern
+  genPat (qid, arity) = ConstructorPattern qid <$> newIdentList arity "x"
 
-  genConstrTerm (qid, arity)
-    = ConstructorPattern qid `liftM` newIdentList arity "x"
+  -- default alternative
+  getDefaultAlt v = case find isVarAlt alts of
+    Just (Alt (VariablePattern x) de) -> replaceVar x (Variable v) de
+    _                                 -> failedExpr
+
+  -- create a binding for @v = e@ if needed
+  bindDefVar v e w e' ps
+    | v `elem` fv e' = mkBinding v e $ mkCase (Variable v) w e' ps
+    | otherwise      = mkCase e w e' ps
+
+  -- create a binding for @w = e'@ if needed, and a case expression
+  -- @case e of { consAlts ++ (ps -> w) }@
+  mkCase e w e' ps = case ps of
+    [p] -> Case r ea e (consAlts ++ [Alt p e'])
+    _   -> mkBinding w e'
+         $ Case r ea e (consAlts ++ [Alt p (Variable w) | p <- ps])
 
 -- If the alternatives' branches contain literal patterns, a complementary
 -- constructor list cannot be generated because it would become potentially
@@ -201,10 +231,11 @@ completeConsAlts r ea expr alts = do
 --                               -> case (x == <lit_n>) of
 --                                    True  -> <expr_n>
 --                                    False -> <default_expr>
+-- If the default expression is missing, @failed@ is used instead.
 completeLitAlts :: SrcRef -> Eval -> Expression -> [Alt] -> CCM Expression
 completeLitAlts r ea ce alts = do
   [x] <- newIdentList 1 "x"
-  return $ Let (Binding x ce) $ nestedCases x alts
+  return $ mkBinding x ce $ nestedCases x alts
   where
   nestedCases _ []              = failedExpr
   nestedCases x (Alt p ae : as) = case p of
@@ -225,7 +256,7 @@ completeLitAlts r ea ce alts = do
 completeVarAlts :: Expression -> [Alt] -> CCM Expression
 completeVarAlts _  []             = return failedExpr
 completeVarAlts ce (Alt p ae : _) = case p of
-  VariablePattern x -> return $ Let (Binding x ce) ae
+  VariablePattern x -> return $ mkBinding x ce ae
   _                 -> internalError $
     "CaseCompletion.completeVarAlts: variable pattern expected"
 
@@ -244,6 +275,13 @@ isConstrAlt _                                = False
 isLitAlt :: Alt -> Bool
 isLitAlt (Alt (LiteralPattern _) _) = True
 isLitAlt _                          = False
+
+-- Smart constructor for non-recursive let-binding. @mkBinding v e e'@
+-- evaluates to @e'[v/e]@ if @e@ is a variable, or @let v = e in e'@ otherwise.
+mkBinding :: Ident -> Expression -> Expression -> Expression
+mkBinding v e e' = case e of
+  Variable _ -> replaceVar v e e'
+  _          -> Let (Binding v e) e'
 
 -- ---------------------------------------------------------------------------
 -- This part of the module contains functions for replacing variables
@@ -309,12 +347,6 @@ truePatt = ConstructorPattern qTrueId []
 
 falsePatt :: ConstrTerm
 falsePatt = ConstructorPattern qFalseId []
-
-pattern2Expr :: ConstrTerm -> Expression
-pattern2Expr (LiteralPattern        l) = Literal l
-pattern2Expr (VariablePattern       v) = Variable v
-pattern2Expr (ConstructorPattern c ts) = foldl Apply
-  (Constructor c (length ts)) (map Variable ts)
 
 -- ---------------------------------------------------------------------------
 -- The following functions compute the missing constructors for generating
@@ -450,48 +482,3 @@ insertBinding (Binding v _) = insertIdent v
 
 insertQIdent :: QualIdent -> ScopeEnv -> ScopeEnv
 insertQIdent q = insertIdent (unqualify q)
-
--- DEACTIVATED, as the CurryToIL transformation should already have
--- eliminated redundant alternatives.
-
--- The function 'removeRedundantAlts' removes case branches which are
--- either unreachable or multiply declared.
--- Note: unlike the PAKCS frontend, MCC does not support warnings. So
--- there will be no messages if alternatives have been removed.
--- removeRedundantAlts :: [Alt] -> [Alt]
--- removeRedundantAlts = removeMultipleAlts . removeIdleAlts
-
--- An alternative is idle if it occurs anywhere behind another alternative
--- which contains a variable pattern. Example:
---    case x of
---      (y:ys) -> e1
---      z      -> e2
---      []     -> e3
--- Here all alternatives behind (z  -> e2) are idle and will be removed.
--- removeIdleAlts ::[Alt] -> [Alt]
--- removeIdleAlts = fst . splitAfter isVarAlt
---   where
---   -- Splits a list behind the first element which satifies 'p'
---   splitAfter :: (a -> Bool) -> [a] -> ([a], [a])
---   splitAfter p xs = go [] xs
---     where
---     go fs []                 = (reverse fs    , [])
---     go fs (y:ys) | p y       = (reverse (y:fs), ys)
---                  | otherwise = go (y:fs) ys
-
--- An alternative occurs multiply if at least two alternatives
--- use the same pattern. Example:
---    case x of
---      []     -> e1
---      (y:ys) -> e2
---      []     -> e3
--- Here, the last alternative occures multiply because its pattern is already
--- used in the first alternative. All multiple alternatives will be
--- removed except for the first occurrence.
--- removeMultipleAlts :: [Alt] -> [Alt]
--- removeMultipleAlts = nubBy eqAlt where
---   eqAlt (Alt p1 _) (Alt p2 _) = case (p1, p2) of
---     (LiteralPattern       l1, LiteralPattern       l2) -> l1 == l2
---     (ConstructorPattern c1 _, ConstructorPattern c2 _) -> c1 == c2
---     (VariablePattern       _, VariablePattern       _) -> True
---     _                                                  -> False
