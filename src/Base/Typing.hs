@@ -118,6 +118,9 @@ run m tyEnv = S.evalState m initState
 class Typeable a where
   typeOf :: ValueEnv -> a -> Type
 
+instance Typeable Type where
+  typeOf _ ty = ty
+
 instance Typeable Ident where
   typeOf = computeType identType
 

@@ -11,28 +11,29 @@
   Stability   :  experimental
   Portability :  portable
 
-  The desugaring pass removes all syntactic sugar from the module. In
-  particular, the output of the desugarer will have the following
+  The desugaring pass removes all syntactic sugar from the module.
+  In particular, the output of the desugarer will have the following
   properties.
 
-  * No guarded right hand sides occur in equations, pattern
-    declarations, and case alternatives. In addition, the declaration
-    lists of the right hand sides are empty; local declarations are
-    transformed into let expressions.
+  * No guarded right hand sides occur in equations, pattern declarations,
+    and case alternatives. In addition, the declaration lists (`where`-blocks)
+    of the right hand sides are empty; local declarations are transformed
+    into let expressions.
 
   * Patterns in equations and case alternatives are composed only of
     - literals,
     - variables,
     - constructor applications, and
-    - as patterns.
+    - as patterns applied to literals or constructor applications.
 
   * Expressions are composed only of
     - literals,
     - variables,
     - constructors,
     - (binary) applications,
+    - case expressions,
     - let expressions, and
-    - case expressions.
+    - expressions with a type signature.
 
   * Applications 'N x' in patterns and expressions, where 'N' is a
     newtype constructor, are replaced by a 'x'. Note that neither the
@@ -44,15 +45,17 @@
     of a computation includes partial applications.
 
   * Functional patterns are replaced by variables and are integrated
-    in a guarded right hand side using the (=:<=) operator
+    in a guarded right hand side using the (=:<=) operator.
 
-  * Records, which currently must be declared using the keyword 'type',
-    are transformed into data types with one constructor.
-    Record construction and pattern matching are represented using the
-    record constructor. Selection and update are represented using selector
-    and update functions which are generated for each record declaration.
-    The record constructor must be entered into the type environment as well
-    as the selector functions and the update functions.
+  * Records are transformed into ordinary data types by removing the fields.
+    Record construction and pattern matching are represented using solely the
+    record constructor. Record selections are represented using selector
+    functions which are generated for each record declaration, and record
+    updated are represented using case-expressions that perform the update.
+
+  * The type environment will be extended by new function declarations for:
+    - Record selections, and
+    - Converted lambda expressions.
 
   As we are going to insert references to real prelude entities,
   all names must be properly qualified before calling this module.
@@ -86,10 +89,29 @@ import Env.TypeConstructor (TCEnv, TypeInfo (..), qualLookupTC)
 import Env.Value (ValueEnv, ValueInfo (..), bindFun, lookupValue
                  , qualLookupValue, conType)
 
--- New identifiers may be introduced while desugaring pattern
--- declarations, case and lambda-expressions, and list comprehensions.
--- As usual, we use a state monad transformer for generating unique
--- names. In addition, the state is also used for passing through the
+-- The desugaring phase keeps only the type, function, and value
+-- declarations of the module, i.e., type signatures are discarded.
+-- While record declarations are transformed into ordinary data/newtype
+-- declarations, the remaining type declarations are not desugared.
+-- Sicne they cannot occur in local declaration groups, they are filtered
+-- out separately. Actually, the transformation is slightly more general than
+-- necessary as it allows value declarations at the top-level of a module.
+
+desugar :: Bool -> [KnownExtension] -> ValueEnv -> TCEnv -> Module
+        -> (Module, ValueEnv)
+desugar dsFunPats xs tyEnv tcEnv (Module ps m es is ds)
+  = (Module ps m es is ds', valueEnv s')
+  where (ds', s') = S.runState (desugarModuleDecls ds)
+                               (DesugarState m xs tcEnv tyEnv 1 dsFunPats)
+
+-- ---------------------------------------------------------------------------
+-- Desugaring monad and accessor functions
+-- ---------------------------------------------------------------------------
+
+-- New identifiers may be introduced while desugaring pattern declarations,
+-- case and lambda-expressions, list comprehensions, and record selections
+-- and updates. As usual, we use a state monad transformer for generating
+-- unique names. In addition, the state is also used for passing through the
 -- type environment, which must be augmented with the types of these new
 -- variables.
 
@@ -97,9 +119,9 @@ data DesugarState = DesugarState
   { moduleIdent :: ModuleIdent      -- read-only
   , extensions  :: [KnownExtension] -- read-only
   , tyConsEnv   :: TCEnv            -- read-only
-  , valueEnv    :: ValueEnv
-  , nextId      :: Integer     -- counter
-  , desugarFP   :: Bool
+  , valueEnv    :: ValueEnv         -- will be extended
+  , nextId      :: Integer          -- counter
+  , desugarFP   :: Bool             -- flat if to desugar functional patterns
   }
 
 type DsM a = S.State DesugarState a
@@ -132,11 +154,13 @@ getNextId = do
 -- Generation of fresh names
 -- ---------------------------------------------------------------------------
 
+-- Retrieve the type of a typeable entity
 getTypeOf :: Typeable t => t -> DsM Type
 getTypeOf t = do
   tyEnv <- getValueEnv
   return (typeOf tyEnv t)
 
+-- Create a fresh identifier using prefix, arity, and type scheme
 freshIdent :: String -> Int -> TypeScheme -> DsM Ident
 freshIdent prefix arity ty = do
   m <- getModuleIdent
@@ -144,42 +168,26 @@ freshIdent prefix arity ty = do
   modifyValueEnv $ bindFun m x arity ty
   return x
   where
-  mkName pre n = mkIdent $ pre ++ show n
-  -- TODO: This loop is only necessary because a combination of desugaring,
+  -- TODO: This nasty loop is only necessary because a combination of desugaring,
   -- simplification and a repeated desugaring, as currently needed for
   -- non-linear and functional patterns, may reintroduce identifiers removed
   -- during desugaring. The better solution would be to move the translation
   -- of non-linear and functional pattern into a separate module.
   freeIdent = do
-    x <- mkName prefix <$> getNextId
+    x <- (\n -> mkIdent (prefix ++ show n)) <$> getNextId
     tyEnv <- getValueEnv
     case lookupValue x tyEnv of
       [] -> return x
       _  -> freeIdent
 
+-- Create a fresh variable ident for a given prefix with a monomorphic type
 freshMonoTypeVar :: Typeable t => String -> t -> DsM Ident
 freshMonoTypeVar prefix t = getTypeOf t >>= \ ty ->
   freshIdent prefix (arrowArity ty) (monoType ty)
 
--- The desugaring phase keeps only the type, function, and value
--- declarations of the module. In the current version, record declarations
--- are transformed into data types. The remaining type declarations are
--- not desugared and cannot occur in local declaration groups.
--- They are filtered out separately.
-
--- In order to use records within other modules, the export specification
--- of the module has to be extended with the selector and update functions of
--- all exported labels.
-
--- Actually, the transformation is slightly more general than necessary
--- as it allows value declarations at the top-level of a module.
-
-desugar :: Bool -> [KnownExtension] -> ValueEnv -> TCEnv -> Module
-        -> (Module, ValueEnv)
-desugar dsFunPats xs tyEnv tcEnv (Module ps m es is ds)
-  = (Module ps m es is ds', valueEnv s')
-  where (ds', s') = S.runState (desugarModuleDecls ds)
-                               (DesugarState m xs tcEnv tyEnv 1 dsFunPats)
+-- ---------------------------------------------------------------------------
+-- Desugaring
+-- ---------------------------------------------------------------------------
 
 desugarModuleDecls :: [Decl] -> DsM [Decl]
 desugarModuleDecls ds = do
@@ -187,18 +195,73 @@ desugarModuleDecls ds = do
   ds'' <- dsDeclGroup ds'
   return $ filter isTypeDecl ds' ++ ds''
 
--- Within a declaration group, all type signatures and evaluation
--- annotations are discarded. First, the patterns occurring in the left
--- hand sides are desugared. Due to lazy patterns, this may add further
--- declarations to the group that must be desugared as well.
+-- -----------------------------------------------------------------------------
+-- Desugaring of type declarations: records
+-- -----------------------------------------------------------------------------
 
+-- As an extension to the Curry language, the compiler supports Haskell's
+-- record syntax, which introduces field labels for data and renaming types.
+-- Field labels can be used in constructor declarations, patterns,
+-- and expressions. For further convenience, an implicit selector
+-- function is introduced for each field label.
+
+-- Generate selector functions for record labels and replace record
+-- constructor declarations by ordinary constructor declarations.
+dsRecordDecl :: Decl -> DsM [Decl]
+dsRecordDecl (DataDecl    p tc tvs cs) = do
+  m <- getModuleIdent
+  let qcs = map (qualifyWith m . constrId) cs
+  selFuns <- mapM (genSelFun p qcs) (nub $ concatMap recordLabels cs)
+  return $ DataDecl p tc tvs (map unlabelConstr cs) : selFuns
+dsRecordDecl (NewtypeDecl p tc tvs nc) = do
+  m <- getModuleIdent
+  let qc = qualifyWith m (nconstrId nc)
+  selFun <- mapM (genSelFun p [qc]) (nrecordLabels nc)
+  return $ NewtypeDecl p tc tvs (unlabelNewConstr nc) : selFun
+dsRecordDecl d                         = return [d]
+
+-- Generate a selector function for a single record label
+genSelFun :: Position -> [QualIdent] -> Ident -> DsM Decl
+genSelFun p qcs l = FunctionDecl p l <$> concatMapM (genSelEqn p l) qcs
+
+-- Generate a selector equation for a label and a constructor if the label
+-- is applicable, otherwise the empty list is returned.
+genSelEqn :: Position -> Ident -> QualIdent -> DsM [Equation]
+genSelEqn p l qc = do
+  tyEnv <- getValueEnv
+  let (ls, ty) = conType qc tyEnv
+      (tys, _) = arrowUnapply (instType ty)
+  case elemIndex l ls of
+    Just n  -> do vs <- mapM (freshMonoTypeVar "_#rec") tys
+                  let pat = ConstructorPattern qc (map VariablePattern vs)
+                  return [mkEquation p l [pat] (mkVar (vs !! n))]
+    Nothing -> return []
+
+-- Remove any labels from a data constructor declaration
+unlabelConstr :: ConstrDecl -> ConstrDecl
+unlabelConstr (RecordDecl p evs c fs) = ConstrDecl p evs c tys
+  where tys = [ty | FieldDecl _ ls ty <- fs, _ <- ls]
+unlabelConstr c                       = c
+
+-- Remove any labels from a newtype constructor declaration
+unlabelNewConstr :: NewConstrDecl -> NewConstrDecl
+unlabelNewConstr (NewRecordDecl p evs nc (_, ty)) = NewConstrDecl p evs nc ty
+unlabelNewConstr c                                = c
+
+-- -----------------------------------------------------------------------------
+-- Desugaring of value declarations
+-- -----------------------------------------------------------------------------
+
+-- Within a declaration group, all type signatures are discarded. First,
+-- the patterns occurring in the left hand sides of pattern declarations
+-- and external declarations are desugared. Due to lazy patterns, the former
+-- may add further declarations to the group that must be desugared as well.
 dsDeclGroup :: [Decl] -> DsM [Decl]
-dsDeclGroup ds = concatMapM dsDeclLhs valDecls >>= mapM dsDeclRhs
- where valDecls = filter isValueDecl ds
+dsDeclGroup ds = concatMapM dsDeclLhs (filter isValueDecl ds) >>= mapM dsDeclRhs
 
 dsDeclLhs :: Decl -> DsM [Decl]
 dsDeclLhs (PatternDecl p t rhs) = do
-  (ds', t') <- dsPattern p [] t
+  (ds', t') <- dsPat p [] t
   dss'      <- mapM dsDeclLhs ds'
   return $ PatternDecl p t' rhs : concat dss'
 dsDeclLhs (ExternalDecl   p fs) = mapM (genForeignDecl p) fs
@@ -209,10 +272,12 @@ genForeignDecl p f = do
   m     <- getModuleIdent
   ty    <- fromType <$> (getTypeOf $ Variable $ qual m f)
   return $ ForeignDecl p CallConvPrimitive (Just $ idName f) f ty
-  where qual m f'
-         | hasGlobalScope f' = qualifyWith m f'
-         | otherwise         = qualify f'
+  where
+  qual m f'
+    | hasGlobalScope f' = qualifyWith m f'
+    | otherwise         = qualify f'
 
+-- TODO: Check if obsolete and remove
 -- After desugaring its right hand side, each equation is eta-expanded
 -- by adding as many variables as necessary to the argument list and
 -- applying the right hand side to those variables (Note: eta-expansion
@@ -222,6 +287,7 @@ genForeignDecl p f = do
 -- declaration. This is possible because currently records must not be empty
 -- and a record label belongs to only one record declaration.
 
+-- Desugaring of the right-hand-side of declarations
 dsDeclRhs :: Decl -> DsM Decl
 dsDeclRhs (FunctionDecl     p f eqs) = FunctionDecl p f <$> mapM dsEquation eqs
 dsDeclRhs (PatternDecl      p t rhs) = PatternDecl  p t <$> dsRhs p id rhs
@@ -230,6 +296,7 @@ dsDeclRhs (ForeignDecl p cc ie f ty) = return $ ForeignDecl p cc ie' f ty
 dsDeclRhs fs@(FreeDecl          _ _) = return fs
 dsDeclRhs _ = error "Desugar.dsDeclRhs: no pattern match"
 
+-- Desugaring of an equation
 dsEquation :: Equation -> DsM Equation
 dsEquation (Equation p lhs rhs) = do
   funpats        <- desugarFunPats
@@ -238,10 +305,52 @@ dsEquation (Equation p lhs rhs) = do
                                   (ds2, cs2, ts2) <- dsFunctionalPatterns p ts1
                                   return (ds2, cs2 ++ cs1, ts2)
                                 else return ([], [], ts)
-  (ds2    , ts2) <- mapAccumM (dsPattern p) [] ts1
+  (ds2    , ts2) <- mapAccumM (dsPat p) [] ts1
   rhs'           <- dsRhs p (addConstraints cs) $ addDecls (ds1 ++ ds2) $ rhs
   return $ Equation p (FunLhs f ts2) rhs'
   where (f, ts) = flatLhs lhs
+
+addConstraints :: [Expression] -> Expression -> Expression
+addConstraints cs e | null cs   = e
+                    | otherwise = apply prelCond [foldr1 (&>) cs, e]
+
+-- -----------------------------------------------------------------------------
+-- Desugaring of right-hand sides
+-- -----------------------------------------------------------------------------
+
+-- A list of boolean guards is expanded into a nested if-then-else
+-- expression, whereas a constraint guard is replaced by a case
+-- expression. Note that if the guard type is 'Success' only a
+-- single guard is allowed for each equation (This change was
+-- introduced in version 0.8 of the Curry report.). We check for the
+-- type 'Bool' of the guard because the guard's type defaults to
+-- 'Success' if it is not restricted by the guard expression.
+
+dsRhs :: Position -> (Expression -> Expression) -> Rhs -> DsM Rhs
+dsRhs p f rhs = expandRhs prelFailed f rhs >>= dsExpr p >>= return . simpleRhs p
+
+expandRhs :: Expression -> (Expression -> Expression) -> Rhs -> DsM Expression
+expandRhs _  f (SimpleRhs _ e ds) = return $ Let ds (f e)
+expandRhs e0 f (GuardedRhs es ds) = (Let ds . f) <$> expandGuards e0 es
+
+expandGuards :: Expression -> [CondExpr] -> DsM Expression
+expandGuards e0 es = do
+  tyEnv <- getValueEnv
+  return $ if boolGuards tyEnv es then foldr mkIfThenElse e0 es else mkCond es
+  where
+  mkIfThenElse (CondExpr p g e) = IfThenElse (srcRefOf p) g e
+  mkCond [CondExpr _ g e] = apply prelCond [g, e]
+  mkCond _                = error "Desugar.expandGuards.mkCond: non-unary list"
+
+boolGuards :: ValueEnv -> [CondExpr] -> Bool
+boolGuards _     []                    = False
+boolGuards tyEnv (CondExpr _ g _ : es) = not (null es) ||
+                                         typeOf tyEnv g == boolType
+
+-- Add additional declarations to a right-hand side
+addDecls :: [Decl] -> Rhs -> Rhs
+addDecls ds (SimpleRhs p e ds') = SimpleRhs p e (ds ++ ds')
+addDecls ds (GuardedRhs es ds') = GuardedRhs es (ds ++ ds')
 
 -- -----------------------------------------------------------------------------
 -- Desugaring of non-linear patterns
@@ -367,13 +476,13 @@ elimFP bs (InfixPattern     t1 op t2) = do
   (bs2, t2') <- elimFP bs1 t2
   return (bs2, InfixPattern t1' op t2')
 elimFP bs (ParenPattern            t) = second ParenPattern <$> elimFP bs t
-elimFP bs (RecordPattern        c fs) =
-  second (RecordPattern c) <$> mapAccumM (dsField elimFP) bs fs
+elimFP bs (RecordPattern        c fs) = second (RecordPattern c)
+                                        <$> mapAccumM (dsField elimFP) bs fs
 elimFP bs (TuplePattern       pos ts) = second (TuplePattern pos)
                                         <$> mapAccumM elimFP bs ts
 elimFP bs (ListPattern        pos ts) = second (ListPattern pos)
                                         <$> mapAccumM elimFP bs ts
-elimFP bs (AsPattern             v t) = second (AsPattern v) <$> elimFP bs t
+elimFP bs (AsPattern             v t) = second (AsPattern   v) <$> elimFP bs t
 elimFP bs (LazyPattern           r t) = second (LazyPattern r) <$> elimFP bs t
 elimFP bs p@(FunctionPattern     _ _) = do
  v <- freshMonoTypeVar "_#funpatt" p
@@ -420,12 +529,12 @@ fp2Expr (InfixFuncPattern t1 op t2) =
   in  (InfixApply t1' (InfixOp op) t2', es1 ++ es2)
 fp2Expr (AsPattern             v t) =
   let (t', es) = fp2Expr t
-  in  (mkVar v, (t' =:<= mkVar v):es)
+  in  (mkVar v, (t' =:<= mkVar v) : es)
 fp2Expr t                           = internalError $
   "Desugar.fp2Expr: Unexpected constructor term: " ++ show t
 
 -- -----------------------------------------------------------------------------
--- Desugaring of remaining patterns
+-- Desugaring of ordinary patterns
 -- -----------------------------------------------------------------------------
 
 -- The transformation of patterns is straight forward except for lazy
@@ -448,69 +557,40 @@ fp2Expr t                           = internalError $
 -- left to right, which is not the case in Curry except for rigid case
 -- expressions.
 
-dsPattern :: Position -> [Decl] -> Pattern -> DsM ([Decl], Pattern)
-dsPattern _ ds v@(VariablePattern      _) = return (ds, v)
-dsPattern p ds (LiteralPattern         l) = do
-  dl <- dsLiteral l
-  case dl of
-    Left  l'     -> return (ds, LiteralPattern l')
-    Right (rs,ls) -> dsPattern p ds $ ListPattern rs $ map LiteralPattern ls
-dsPattern p ds (NegativePattern      _ l) =
-  dsPattern p ds (LiteralPattern (negateLiteral l))
-dsPattern p ds (ConstructorPattern c [t]) = do
-    tyEnv <- getValueEnv
-    (if isNewtypeConstr tyEnv c then id else second (constrPat c)) <$>
-          (dsPattern p ds t)
+dsPat :: Position -> [Decl] -> Pattern -> DsM ([Decl], Pattern)
+dsPat _ ds v@(VariablePattern      _) = return (ds, v)
+dsPat p ds (LiteralPattern         l) = dsLiteral l >>= \dl -> case dl of
+  Left  l'       -> return (ds, LiteralPattern l')
+  Right (rs, ls) -> dsPat p ds $ ListPattern rs $ map LiteralPattern ls
+dsPat p ds (NegativePattern      _ l) = dsPat p ds
+                                        (LiteralPattern (negateLiteral l))
+dsPat p ds (ConstructorPattern c [t]) = do
+  isNc <- isNewtypeConstr c
+  if isNc then dsPat p ds t else second (constrPat c) <$> dsPat p ds t
   where constrPat c' t' = ConstructorPattern c' [t']
-dsPattern p ds (ConstructorPattern  c ts) =
-  second (ConstructorPattern c) <$> mapAccumM (dsPattern p) ds ts
-dsPattern p ds (InfixPattern    t1 op t2) =
-  dsPattern p ds (ConstructorPattern op [t1,t2])
-dsPattern p ds (ParenPattern           t) = dsPattern p ds t
-dsPattern p ds (RecordPattern      c  fs) = do
+dsPat p ds (ConstructorPattern  c ts) =
+  second (ConstructorPattern c) <$> mapAccumM (dsPat p) ds ts
+dsPat p ds (InfixPattern    t1 op t2) =
+  dsPat p ds (ConstructorPattern op [t1, t2])
+dsPat p ds (ParenPattern           t) = dsPat p ds t
+dsPat p ds (RecordPattern      c  fs) = do
   tyEnv <- getValueEnv
   let ls = map (qualifyLike c) $ fst $ conType c tyEnv
       ts = map (dsLabel (VariablePattern anonId) (map field2Tuple fs)) ls
-  dsPattern p ds (ConstructorPattern c ts)
-dsPattern p ds (TuplePattern      pos ts) =
-  dsPattern p ds (ConstructorPattern (tupleConstr ts) ts)
+  dsPat p ds (ConstructorPattern c ts)
+dsPat p ds (TuplePattern      pos ts) =
+  dsPat p ds (ConstructorPattern (tupleConstr ts) ts)
   where tupleConstr ts' = addRef pos $
                          if null ts' then qUnitId else qTupleId (length ts')
-dsPattern p ds (ListPattern       pos ts) =
-  second (dsList pos cons nil) <$> mapAccumM (dsPattern p) ds ts
+dsPat p ds (ListPattern       pos ts) =
+  second (dsList pos cons nil) <$> mapAccumM (dsPat p) ds ts
   where nil  p' = ConstructorPattern (addRef p' qNilId) []
         cons p' t ts' = ConstructorPattern (addRef p' qConsId) [t,ts']
-dsPattern p ds (AsPattern            v t) = dsAs p v <$> dsPattern p ds t
-dsPattern p ds (LazyPattern          r t) = dsLazy r p ds t
-dsPattern p ds (FunctionPattern     f ts) =
-  second (FunctionPattern f) <$> mapAccumM (dsPattern p) ds ts
-dsPattern p ds (InfixFuncPattern t1 f t2) =
-  dsPattern p ds (FunctionPattern f [t1,t2])
-
-dsLiteral :: Literal -> DsM (Either Literal ([SrcRef], [Literal]))
-dsLiteral c@(Char             _ _) = return $ Left c
-dsLiteral (Int                v i) = do
-  tyEnv <- getValueEnv
-  return (Left (fixType tyEnv))
-  where fixType tyEnv'
-          | typeOf tyEnv' v == floatType =
-              Float (srcRefOf $ idPosition v) (fromIntegral i)
-          | otherwise = Int v i
-dsLiteral f@(Float            _ _) = return $ Left f
-dsLiteral (String (SrcRef [i]) cs) = return $ Right
-  (consRefs i cs, zipWith (Char . SrcRef . (:[])) [i, i + 2 ..] cs)
-  where consRefs r []     = [SrcRef [r]]
-        consRefs r (_:xs) = let r' = r + 2
-                            in  r' `seq` (SrcRef [r'] : consRefs r' xs)
-dsLiteral (String is _) = internalError $
-  "Desugar.dsLiteral: " ++ "wrong source ref for string "  ++ show is
-
-dsList :: [SrcRef] -> (SrcRef -> b -> b -> b) -> (SrcRef -> b) -> [b] -> b
-dsList pos cons nil xs = snd (foldr cons' nil' xs)
-  where rNil : rCs = reverse pos
-        nil'                 = (rCs , nil rNil)
-        cons' t (rC:rCs',ts) = (rCs', cons rC t ts)
-        cons' _ ([],_) = error "Desugar.dsList.cons': empty list"
+dsPat p ds (AsPattern            v t) = dsAs p v <$> dsPat p ds t
+dsPat p ds (LazyPattern          r t) = dsLazy r p ds t
+dsPat p ds (FunctionPattern     f ts) = second (FunctionPattern f)
+                                        <$> mapAccumM (dsPat p) ds ts
+dsPat p ds (InfixFuncPattern t1 f t2) = dsPat p ds (FunctionPattern f [t1,t2])
 
 dsAs :: Position -> Ident -> ([Decl], Pattern) -> ([Decl], Pattern)
 dsAs p v (ds, t) = case t of
@@ -525,50 +605,12 @@ dsLazy pos p ds t = case t of
   AsPattern      v t' -> dsAs p v <$> dsLazy pos p ds t'
   LazyPattern pos' t' -> dsLazy pos' p ds t'
   _                   -> do
-   v' <- addPositionIdent (AST pos) <$> freshMonoTypeVar "_#lazy" t
-   return (patDecl p { astRef = pos } t (mkVar v') : ds, VariablePattern v')
+    v' <- addPositionIdent (AST pos) <$> freshMonoTypeVar "_#lazy" t
+    return (patDecl p { astRef = pos } t (mkVar v') : ds, VariablePattern v')
 
-negateLiteral :: Literal -> Literal
-negateLiteral (Int    v i) = Int   v  (-i)
-negateLiteral (Float p' f) = Float p' (-f)
-negateLiteral _            = internalError "Desugar.negateLiteral"
-
--- A list of boolean guards is expanded into a nested if-then-else
--- expression, whereas a constraint guard is replaced by a case
--- expression. Note that if the guard type is 'Success' only a
--- single guard is allowed for each equation (This change was
--- introduced in version 0.8 of the Curry report.). We check for the
--- type 'Bool' of the guard because the guard's type defaults to
--- 'Success' if it is not restricted by the guard expression.
-
-dsRhs :: Position -> (Expression -> Expression) -> Rhs -> DsM Rhs
-dsRhs p f rhs = do
-  e' <- expandRhs prelFailed f rhs >>= dsExpr p
-  return (SimpleRhs p e' [])
-
-expandRhs :: Expression -> (Expression -> Expression) -> Rhs -> DsM Expression
-expandRhs _  f (SimpleRhs _ e ds) = return $ Let ds (f e)
-expandRhs e0 f (GuardedRhs es ds) = (Let ds . f) <$> expandGuards e0 es
-
-expandGuards :: Expression -> [CondExpr] -> DsM Expression
-expandGuards e0 es = do
-  tyEnv <- getValueEnv
-  return $ if booleanGuards tyEnv es
-              then foldr mkIfThenElse e0 es
-              else mkCond es
-  where mkIfThenElse (CondExpr p g e) = IfThenElse (srcRefOf p) g e
-        mkCond       [CondExpr _ g e] = apply prelCond [g, e]
-        mkCond _ = error "Desugar.expandGuards.mkCond: non-unary list"
-
-addConstraints :: [Expression] -> Expression -> Expression
-addConstraints cs e
-  | null cs   = e
-  | otherwise = apply prelCond [foldr1 (&>) cs, e]
-
-booleanGuards :: ValueEnv -> [CondExpr] -> Bool
-booleanGuards _     []                    = False
-booleanGuards tyEnv (CondExpr _ g _ : es) =
-  not (null es) || typeOf tyEnv g == boolType
+-- -----------------------------------------------------------------------------
+-- Desugaring of expressions
+-- -----------------------------------------------------------------------------
 
 -- Record construction expressions are transformed into normal
 -- constructor applications by rearranging fields in the order of the
@@ -579,14 +621,13 @@ booleanGuards tyEnv (CondExpr _ g _ : es) =
 -- type. As stipulated by the Haskell 98 Report, a record update
 -- expression @e { l_1 = e_1, ..., l_k = e_k }@ succeeds only if @e@ reduces to
 -- a value @C e'_1 ... e'_n@ such that @C@'s declaration contains all
--- field labels @l_1,...,l_k@. In contrast to Haskell we do not report
--- an error if this is not the case but rather fail only the current
--- solution.
+-- field labels @l_1,...,l_k@. In contrast to Haskell, we do not report
+-- an error if this is not the case, but call failed instead.
 
 dsExpr :: Position -> Expression -> DsM Expression
 dsExpr p (Literal         l) =
   dsLiteral l >>=
-  either (return . Literal) (\ (pos, ls) -> dsExpr p $ List pos $ map Literal ls)
+  either (return . Literal) (\ (rs, ls) -> dsExpr p $ List rs $ map Literal ls)
 dsExpr _ var@(Variable v)
   | isAnonId (unqualify v)   = return prelUnknown
   | otherwise                = return var
@@ -599,33 +640,27 @@ dsExpr p (Record       c fs) = do
       es = map (dsLabel prelUnknown (map field2Tuple fs)) ls
   dsExpr p $ apply (Constructor c) es
 dsExpr p (RecordUpdate e fs) = do
-  tcEnv <- getTyConsEnv
-  ty    <- getTypeOf e
-  let (TypeConstructor tc _) = arrowBase ty
-  alts  <- mapM (updateAlt tc) (constructors tc tcEnv)
-  dsExpr p $ Case (srcRefOf p) Flex e (map (uncurry (caseAlt p)) (concat alts))
+  TypeConstructor tc _ <- arrowBase <$> getTypeOf e
+  alts  <- constructors tc >>= concatMapM (updateAlt tc)
+  dsExpr p $ Case (srcRefOf p) Flex e (map (uncurry (caseAlt p)) alts)
   where
-    ls = map fieldLabel fs
-    updateAlt _   (DataConstr          _ _ _)          = return []
-    updateAlt tc' (RecordConstr c _ labels tys)
-      | all (`elem` (map (qualifyLike tc') labels)) ls = do
-          vs <- mapM (freshIdent "_#rec" 0 . polyType) tys
-          let qc  = qualifyLike tc' c
-              qls = map (qualifyLike tc') labels
-              es  = zipWith (\v l -> dsLabel (mkVar v) (map field2Tuple fs) l)
-                      vs qls
-          return [(constrPat qc vs, apply (Constructor qc) es)]
-      | otherwise                             = return []
-    constrPat qc' vs' = ConstructorPattern qc' (map VariablePattern vs')
+  updateAlt tc' (RecordConstr c _ labels tys)
+    | all (`elem` qls) (map fieldLabel fs)    = do
+      vs <- mapM (freshMonoTypeVar "_#rec") tys
+      let qc = qualifyLike tc' c
+          pat = ConstructorPattern qc (map VariablePattern vs)
+          es = zipWith (\v l -> dsLabel (mkVar v) (map field2Tuple fs) l) vs qls
+      return [(pat, apply (Constructor qc) es)]
+    where qls = map (qualifyLike tc') labels
+  updateAlt _   _                             = return []
 dsExpr p (Tuple      pos es) = apply (Constructor $ tupleConstr es)
-                             <$> mapM (dsExpr p) es
+                               <$> mapM (dsExpr p) es
   where tupleConstr es1 = addRef pos
                         $ if null es1 then qUnitId else qTupleId (length es1)
 dsExpr p (List       pos es) = dsList pos cons nil <$> mapM (dsExpr p) es
-  where nil p'  = Constructor (addRef p' qNilId)
-        cons p' = Apply . Apply (Constructor $ addRef p' qConsId)
-dsExpr p (ListCompr    r e []    ) = dsExpr p (List [r,r] [e])
-dsExpr p (ListCompr    r e (q:qs)) = dsQual p q (ListCompr r e qs)
+  where nil  p' = Constructor (addRef p' qNilId)
+        cons p' = Apply . Apply (Constructor (addRef p' qConsId))
+dsExpr p (ListCompr        r e qs) = dsListComp p r e qs
 dsExpr p (EnumFrom              e) = Apply prelEnumFrom <$> dsExpr p e
 dsExpr p (EnumFromThen      e1 e2) = apply prelEnumFromThen
                                      <$> mapM (dsExpr p) [e1, e2]
@@ -646,9 +681,8 @@ dsExpr p (UnaryMinus         op e) = do
     | op1 == fminusId = prelNegateFloat
     | otherwise       = internalError "Desugar.unaryMinus"
 dsExpr p (Apply (Constructor c) e) = do
-  tyEnv <- getValueEnv
-  (if isNewtypeConstr tyEnv c then id else (Apply (Constructor c))) <$>
-    dsExpr p e
+  isNc <- isNewtypeConstr c
+  if isNc then dsExpr p e else Apply (Constructor c) <$> dsExpr p e
 dsExpr p (Apply e1 e2) = Apply <$> dsExpr p e1 <*> dsExpr p e2
 dsExpr p (InfixApply e1 op e2) = do
   op' <- dsExpr p (infixOp op)
@@ -668,54 +702,22 @@ dsExpr p (Let ds e) = do
   ds' <- dsDeclGroup ds
   e'  <- dsExpr p e
   return (if null ds' then e' else Let ds' e')
-dsExpr p (Do sts e) = dsExpr p (foldr desugarStmt e sts)
-  where desugarStmt (StmtExpr r e1) e' = apply (prelBind_ r) [e1,e']
-        desugarStmt (StmtBind r t e1) e' = apply (prelBind r) [e1,Lambda r [t] e']
-        desugarStmt (StmtDecl ds) e' = Let ds e'
+dsExpr p (Do              sts e) = dsExpr p (dsDo sts e)
 dsExpr p (IfThenElse r e1 e2 e3) = do
   e1' <- dsExpr p e1
   e2' <- dsExpr p e2
   e3' <- dsExpr p e3
   return $ Case r Rigid e1' [caseAlt p truePat e2', caseAlt p falsePat e3']
-dsExpr p (Case r ct e alts)
-  | null alts = return prelFailed
-  | otherwise = do
-    m  <- getModuleIdent
-    e' <- dsExpr p e
-    v  <- freshMonoTypeVar "_#case" e
-    alts'  <- mapM dsAltLhs alts
-    alts'' <- mapM (expandAlt v ct) (init (tails alts')) >>= mapM dsAltRhs
-    return (mkCase m v e' alts'')
-  where
-  mkCase m1 v e1 alts1
-    | v `elem` qfv m1 alts1 = Let [varDecl p v e1] (Case r ct (mkVar v) alts1)
-    | otherwise             = Case r ct e1 alts1
-
-dsLabel :: a -> [(QualIdent, a)] -> QualIdent -> a
-dsLabel def fs l = fromMaybe def (lookup l fs)
-
-dsField :: (a -> b -> DsM (a, b)) -> a -> Field b -> DsM (a, Field b)
-dsField ds z (Field p l x) = do (z', x') <- ds z x
-                                return (z', Field p l x')
+dsExpr p (Case r ct e alts) = dsCase p r ct e alts
 
 dsTypeExpr :: TypeExpr -> DsM TypeExpr
 dsTypeExpr ty = do
   tcEnv <- getTyConsEnv
-  let expType = expandType tcEnv (toType [] ty)
-  return $ fromType expType
+  return $ fromType (expandType tcEnv (toType [] ty))
 
-expandType :: TCEnv -> Type -> Type
-expandType tcEnv (TypeConstructor tc tys) = case qualLookupTC tc tcEnv of
-  [DataType     tc' _  _] -> TypeConstructor tc' tys'
-  [RenamingType tc' _  _] -> TypeConstructor tc' tys'
-  [AliasType    _   _ ty] -> expandAliasType tys' ty
-  _ -> internalError $ "Desugar.expandType " ++ show tc
-  where tys' = map (expandType tcEnv) tys
-expandType _     tv@(TypeVariable      _) = tv
-expandType _     tc@(TypeConstrained _ _) = tc
-expandType tcEnv (TypeArrow      ty1 ty2) =
-  TypeArrow (expandType tcEnv ty1) (expandType tcEnv ty2)
-expandType _     ts@(TypeSkolem        _) = ts
+-- -----------------------------------------------------------------------------
+-- Desugaring of case expressions
+-- -----------------------------------------------------------------------------
 
 -- If an alternative in a case expression has boolean guards and all of
 -- these guards return 'False', the enclosing case expression does
@@ -725,9 +727,24 @@ expandType _     ts@(TypeSkolem        _) = ts
 -- such that it evaluates a case expression with the remaining cases that
 -- are compatible with the matched pattern when the guards fail.
 
+dsCase :: Position -> SrcRef -> CaseType -> Expression -> [Alt] -> DsM Expression
+dsCase p r ct e alts
+  | null alts = return prelFailed
+  | otherwise = do
+    m  <- getModuleIdent
+    e' <- dsExpr p e
+    v  <- freshMonoTypeVar "_#case" e
+    alts'  <- mapM dsAltLhs alts
+    alts'' <- mapM (expandAlt v ct) (init (tails alts')) >>= mapM dsAltRhs
+    return (mkCase m v e' alts'')
+  where
+  mkCase m v e' bs
+    | v `elem` qfv m bs = Let [varDecl p v e'] (Case r ct (mkVar v) bs)
+    | otherwise         = Case r ct e' bs
+
 dsAltLhs :: Alt -> DsM Alt
 dsAltLhs (Alt p t rhs) = do
-  (ds', t') <- dsPattern p [] t
+  (ds', t') <- dsPat p [] t
   return $ Alt p t' (addDecls ds' rhs)
 
 dsAltRhs :: Alt -> DsM Alt
@@ -756,65 +773,24 @@ isCompatible (LiteralPattern         l1) (LiteralPattern         l2)
 isCompatible _                    _                  = False
 
 -- -----------------------------------------------------------------------------
--- Desugaring of Records
+-- Desugaring of do-Notation
 -- -----------------------------------------------------------------------------
 
--- As an extension to the Curry language the compiler supports Haskell's
--- record syntax, which introduces field labels for data and renaming
--- types. Field labels can be used in constructor declarations, patterns,
--- and expressions. For further convenience, an implicit selector
--- function is introduced for each field label.
-
--- Generate selection functions for record labels and replace record
--- constructor declarations by normal constructor declarations
-dsRecordDecl :: Decl -> DsM [Decl]
-dsRecordDecl (DataDecl p tc tvs cs) = do
-  m  <- getModuleIdent
-  let qcs = map (qualifyWith m . constrId) cs
-  selFuns <- mapM (genSelectFunc p qcs) labels
-  return $ DataDecl p tc tvs (map unlabelConstr cs) : selFuns
+-- The do-notation is desugared in the following way:
+--
+-- `dsDo([]         , e)` -> `e`
+-- `dsDo(e'     ; ss, e)` -> `e' >>        dsDo(ss, e)`
+-- `dsDo(p <- e'; ss, e)` -> `e' >>= \p -> dsDo(ss, e)`
+-- `dsDo(let ds ; ss, e)` -> `let ds in    dsDo(ss, e)`
+dsDo :: [Statement] -> Expression -> Expression
+dsDo sts e = foldr dsStmt e sts
   where
-    labels = nub $ concatMap recordLabels cs
-dsRecordDecl (NewtypeDecl p tc tvs nc) = do
-  m <- getModuleIdent
-  let qc = qualifyWith m (nconstrId nc)
-  selFun <- mapM (genSelectFunc p [qc]) (nrecordLabels nc)
-  return $ NewtypeDecl p tc tvs (unlabelNewConstr nc) : selFun
-dsRecordDecl d = return [d]
-
--- Generate selection function for a record label
-genSelectFunc :: Position -> [QualIdent] -> Ident -> DsM Decl
-genSelectFunc p qcs l = do
-  eqs <- concat <$> mapM (selectorEqn l) qcs
-  return $ FunctionDecl p l [funEqn l [pat] e | (pat, e) <- eqs]
-  where
-    funEqn f ps e = Equation p (FunLhs f ps) (SimpleRhs p e [])
-
--- Generate pattern and rhs for selection function
-selectorEqn :: Ident -> QualIdent -> DsM [(Pattern, Expression)]
-selectorEqn l qc = do
-  tyEnv <- getValueEnv
-  let (ls, ty) = conType qc tyEnv
-      (tys, _) = arrowUnapply (instType ty)
-  case elemIndex l ls of
-    Just n  -> do vs <- mapM (freshIdent "_#rec" 0 . polyType) tys
-                  let pvs = map VariablePattern vs
-                      v   = qualify (vs !! n)
-                  return [(ConstructorPattern qc pvs, Variable v)]
-    Nothing -> return []
-
--- Transform record constructor declarations into normal declarations
-unlabelConstr :: ConstrDecl -> ConstrDecl
-unlabelConstr (RecordDecl p evs c fs) = ConstrDecl p evs c tys
-  where tys = [ty | FieldDecl _ ls ty <- fs, _ <- ls]
-unlabelConstr c                       = c
-
-unlabelNewConstr :: NewConstrDecl -> NewConstrDecl
-unlabelNewConstr (NewRecordDecl p evs nc (_, ty)) = NewConstrDecl p evs nc ty
-unlabelNewConstr c                                = c
+  dsStmt (StmtExpr r   e1) e' = apply (prelBind_ r) [e1, e']
+  dsStmt (StmtBind r t e1) e' = apply (prelBind  r) [e1, Lambda r [t] e']
+  dsStmt (StmtDecl     ds) e' = Let ds e'
 
 -- -----------------------------------------------------------------------------
--- Desugaring of List Comprehension
+-- Desugaring of List Comprehensions
 -- -----------------------------------------------------------------------------
 
 -- In general, a list comprehension of the form
@@ -831,6 +807,7 @@ unlabelNewConstr c                                = c
 -- whereas the translation given in the Curry report is flexible.
 -- However, it does not seem very useful to have the comprehension
 -- generate instances of 't' which do not contribute to the list.
+-- TODO: Unfortunately, this is incorrect.
 
 -- Actually, we generate slightly better code in a few special cases.
 -- When 't' is a plain variable, the 'case' expression degenerates
@@ -841,6 +818,10 @@ unlabelNewConstr c                                = c
 -- no qualifiers -- i.e., if it is equivalent to '[e]' -- we
 -- avoid the construction of the singleton list by calling '(:)'
 -- instead of '(++)' and 'map' in place of 'concatMap', respectively.
+
+dsListComp :: Position -> SrcRef -> Expression -> [Statement] -> DsM Expression
+dsListComp p r e []     = dsExpr p (List [r,r] [e])
+dsListComp p r e (q:qs) = dsQual p q (ListCompr r e qs)
 
 dsQual :: Position -> Statement -> Expression -> DsM Expression
 dsQual p (StmtExpr   r b) e = dsExpr p (IfThenElse r b e (List [r] []))
@@ -865,6 +846,46 @@ dsQual p (StmtBind r t l) e
   append (ListCompr _ e1 []) l1 = apply prelCons       [e1, l1]
   append e1                  l1 = apply (prelAppend r) [e1, l1]
   prelCons                      = Constructor $ addRef r $ qConsId
+
+-- -----------------------------------------------------------------------------
+-- Desugaring of Lists, labels, fields, and literals
+-- -----------------------------------------------------------------------------
+
+dsList :: [SrcRef] -> (SrcRef -> b -> b -> b) -> (SrcRef -> b) -> [b] -> b
+dsList pos cons nil xs = snd (foldr cons' nil' xs)
+  where rNil : rCs = reverse pos
+        nil'                 = (rCs , nil rNil)
+        cons' t (rC:rCs',ts) = (rCs', cons rC t ts)
+        cons' _ ([],_) = error "Desugar.dsList.cons': empty list"
+
+dsLabel :: a -> [(QualIdent, a)] -> QualIdent -> a
+dsLabel def fs l = fromMaybe def (lookup l fs)
+
+dsField :: (a -> b -> DsM (a, b)) -> a -> Field b -> DsM (a, Field b)
+dsField ds z (Field p l x) = second (Field p l) <$> (ds z x)
+
+dsLiteral :: Literal -> DsM (Either Literal ([SrcRef], [Literal]))
+dsLiteral c@(Char             _ _) = return $ Left c
+dsLiteral (Int                v i) = do
+  tyEnv <- getValueEnv
+  return (Left (fixType tyEnv))
+  where
+  fixType tyEnv | typeOf tyEnv v == floatType = Float (srcRefOf $ idPosition v)
+                                                      (fromIntegral i)
+                | otherwise                   = Int v i
+dsLiteral f@(Float            _ _) = return $ Left f
+dsLiteral (String (SrcRef [i]) cs) = return $ Right
+  (consRefs i cs, zipWith (Char . SrcRef . (:[])) [i, i + 2 ..] cs)
+  where consRefs r []     = [SrcRef [r]]
+        consRefs r (_:xs) = let r' = r + 2
+                            in  r' `seq` (SrcRef [r'] : consRefs r' xs)
+dsLiteral (String is _) = internalError $
+  "Desugar.dsLiteral: " ++ "wrong source ref for string "  ++ show is
+
+negateLiteral :: Literal -> Literal
+negateLiteral (Int    v i) = Int   v  (-i)
+negateLiteral (Float p' f) = Float p' (-f)
+negateLiteral _            = internalError "Desugar.negateLiteral"
 
 -- ---------------------------------------------------------------------------
 -- Prelude entities
@@ -949,12 +970,13 @@ preludeIdent = qualifyWith preludeMIdent . mkIdent
 -- Auxiliary definitions
 -- ---------------------------------------------------------------------------
 
-isNewtypeConstr :: ValueEnv -> QualIdent -> Bool
-isNewtypeConstr tyEnv c = case qualLookupValue c tyEnv of
-  [NewtypeConstructor _ _ _] -> True
-  [DataConstructor  _ _ _ _] -> False
-  x -> internalError $ "Transformations.Desugar.isNewtypeConstr: "
-                        ++ show c ++ " is " ++ show x
+isNewtypeConstr :: QualIdent -> DsM Bool
+isNewtypeConstr c = getValueEnv >>= \tyEnv -> return $
+  case qualLookupValue c tyEnv of
+    [NewtypeConstructor _ _ _] -> True
+    [DataConstructor  _ _ _ _] -> False
+    x -> internalError $ "Transformations.Desugar.isNewtypeConstr: "
+                          ++ show c ++ " is " ++ show x
 
 isVarPattern :: Pattern -> Bool
 isVarPattern (VariablePattern _) = True
@@ -964,21 +986,22 @@ isVarPattern (LazyPattern   _ _) = True
 isVarPattern _                   = False
 
 funDecl :: Position -> Ident -> [Pattern] -> Expression -> Decl
-funDecl p f ts e = FunctionDecl p f
-  [Equation p (FunLhs f ts) (SimpleRhs p e [])]
+funDecl p f ts e = FunctionDecl p f [mkEquation p f ts e]
+
+mkEquation :: Position -> Ident -> [Pattern] -> Expression -> Equation
+mkEquation p f ts e = Equation p (FunLhs f ts) (simpleRhs p e)
 
 patDecl :: Position -> Pattern -> Expression -> Decl
-patDecl p t e = PatternDecl p t (SimpleRhs p e [])
+patDecl p t e = PatternDecl p t (simpleRhs p e)
 
 varDecl :: Position -> Ident -> Expression -> Decl
 varDecl p = patDecl p . VariablePattern
 
-addDecls :: [Decl] -> Rhs -> Rhs
-addDecls ds (SimpleRhs p e ds') = SimpleRhs p e (ds ++ ds')
-addDecls ds (GuardedRhs es ds') = GuardedRhs es (ds ++ ds')
-
 caseAlt :: Position -> Pattern -> Expression -> Alt
-caseAlt p t e = Alt p t (SimpleRhs p e [])
+caseAlt p t e = Alt p t (simpleRhs p e)
+
+simpleRhs :: Position -> Expression -> Rhs
+simpleRhs p e = SimpleRhs p e []
 
 apply :: Expression -> [Expression] -> Expression
 apply = foldl Apply
@@ -989,10 +1012,9 @@ mkVar = Variable . qualify
 -- The function 'instType' instantiates the universally quantified
 -- type variables of a type scheme with fresh type variables. Since this
 -- function is used only to instantiate the closed types of record
--- constructors (Recall that no existentially quantified type
+-- constructors (recall that no existentially quantified type
 -- variables are allowed for records), the compiler can reuse the same
 -- monomorphic type variables for every instantiated type.
-
 instType :: ExistTypeScheme -> Type
 instType (ForAllExist _ _ ty) = inst ty
   where inst (TypeConstructor tc tys) = TypeConstructor tc (map inst tys)
@@ -1000,9 +1022,25 @@ instType (ForAllExist _ _ ty) = inst ty
         inst (TypeArrow      ty1 ty2) = TypeArrow (inst ty1) (inst ty2)
         inst ty'                      = ty'
 
-constructors :: QualIdent -> TCEnv -> [DataConstr]
-constructors c tcEnv = case qualLookupTC c tcEnv of
-  [DataType     _ _ cs] -> cs
-  [RenamingType _ _ nc] -> [nc]
-  _                     -> internalError $
-    "Transformations.Desugar.constructors: " ++ show c
+-- Expand all type synonyms in a type
+expandType :: TCEnv -> Type -> Type
+expandType tcEnv (TypeConstructor tc tys) = case qualLookupTC tc tcEnv of
+  [DataType     tc' _  _] -> TypeConstructor tc' tys'
+  [RenamingType tc' _  _] -> TypeConstructor tc' tys'
+  [AliasType    _   _ ty] -> expandAliasType tys' ty
+  _ -> internalError $ "Desugar.expandType " ++ show tc
+  where tys' = map (expandType tcEnv) tys
+expandType _     tv@(TypeVariable      _) = tv
+expandType _     tc@(TypeConstrained _ _) = tc
+expandType tcEnv (TypeArrow      ty1 ty2) = TypeArrow (expandType tcEnv ty1)
+                                                      (expandType tcEnv ty2)
+expandType _     ts@(TypeSkolem        _) = ts
+
+-- Retrieve all constructors of a type
+constructors :: QualIdent -> DsM [DataConstr]
+constructors c = getTyConsEnv >>= \tcEnv -> return $
+  case qualLookupTC c tcEnv of
+    [DataType     _ _ cs] -> cs
+    [RenamingType _ _ nc] -> [nc]
+    _                     -> internalError $
+      "Transformations.Desugar.constructors: " ++ show c
