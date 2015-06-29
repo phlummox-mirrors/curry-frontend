@@ -1,7 +1,8 @@
 {- |
     Module      :  $Header$
-    Description :  Auxiliary functions 
+    Description :  Auxiliary functions
     Copyright   :  (c) 2001 - 2003 Wolfgang Lux
+                       2011 - 2015 Björn Peemöler
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
@@ -24,29 +25,8 @@ infixr 5 ++!
 -- The Prelude does not contain standard functions for triples.
 -- We provide projection, (un-)currying, and mapping for triples here.
 
--- fst3 :: (a, b, c) -> a
--- fst3 (x, _, _) = x
-
--- snd3 :: (a, b, c) -> b
--- snd3 (_, y, _) = y
-
 thd3 :: (a, b, c) -> c
 thd3 (_, _, z) = z
-
--- apFst3 :: (a -> d) -> (a, b, c) -> (d, b, c)
--- apFst3 f (x, y, z) = (f x, y, z)
-
--- apSnd3 :: (b -> d) -> (a, b, c) -> (a, d, c)
--- apSnd3 f (x, y, z) = (x, f y, z)
-
--- apThd3 :: (c -> d) -> (a, b, c) -> (a, b, d)
--- apThd3 f (x, y, z) = (x, y, f z)
-
--- curry3 :: ((a, b, c) -> d) -> a -> b -> c -> d
--- curry3 f x y z = f (x, y, z)
-
--- uncurry3 :: (a -> b -> c -> d) -> (a, b, c) -> d
--- uncurry3 f (x, y, z) = f x y z
 
 -- The function (++!) is variant of the list concatenation operator (++)
 -- that ignores the second argument if the first is a non-empty list.
@@ -56,14 +36,6 @@ thd3 (_, _, z) = z
 
 (++!) :: [a] -> [a] -> [a]
 xs ++! ys = if null xs then ys else xs
-
--- The function 'foldl_strict' is a strict version of foldl,
--- i.e., it evaluates the binary applications before the recursion.
--- This has the advantage that 'foldl_strict' does not construct a
--- large application which is then evaluated in the base case of
--- the recursion.
--- foldl_strict :: (a -> b -> a) -> a -> [b] -> a
--- foldl_strict = foldl'
 
 -- Fold operations with two arguments lists can be defined using
 -- zip and foldl or foldr, resp. Our definitions are unfolded for

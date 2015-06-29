@@ -2,7 +2,7 @@
     Module      :  $Header$
     Description :  Extraction of free and bound variables
     Copyright   :  (c)             Wolfgang Lux
-                       2011 - 2012 Björn Peemöller
+                       2011 - 2015 Björn Peemöller
                        2015        Jan Tikovsky
     License     :  OtherLicense
 
@@ -183,33 +183,3 @@ instance Expr TypeExpr where
 
 filterBv :: QuantExpr e => e -> [Ident] -> [Ident]
 filterBv e = filter (`Set.notMember` Set.fromList (bv e))
-
--- Since multiple variable occurrences are allowed in function patterns,
--- it is necessary to compute the list of bound variables in a different way:
--- Each variable occuring in the function pattern will be unique in the result
--- list.
-
---  bv (FunctionPattern      f ts) = bvFuncPatt $ FunctionPattern f ts
---  bv (InfixFuncPattern t1 op t2) = bvFuncPatt $ InfixFuncPattern t1 op t2
-
--- bvFuncPatt :: Pattern -> [Ident]
--- bvFuncPatt = bvfp []
---  where
---  bvfp bvs (LiteralPattern         _) = bvs
---  bvfp bvs (NegativePattern      _ _) = bvs
---  bvfp bvs (VariablePattern        v)
---     | v `elem` bvs                   = bvs
---     | otherwise                      = v : bvs
---  bvfp bvs (ConstructorPattern  _ ts) = foldl bvfp bvs ts
---  bvfp bvs (InfixPattern     t1 _ t2) = foldl bvfp bvs [t1, t2]
---  bvfp bvs (ParenPattern           t) = bvfp bvs t
---  bvfp bvs (TuplePattern        _ ts) = foldl bvfp bvs ts
---  bvfp bvs (ListPattern         _ ts) = foldl bvfp bvs ts
---  bvfp bvs (AsPattern            v t)
---     | v `elem` bvs                   = bvfp bvs t
---     | otherwise                      = bvfp (v : bvs) t
---  bvfp bvs (LazyPattern          _ t) = bvfp bvs t
---  bvfp bvs (FunctionPattern     _ ts) = foldl bvfp bvs ts
---  bvfp bvs (InfixFuncPattern t1 _ t2) = foldl bvfp bvs [t1, t2]
---  bvfp bvs (RecordPattern       fs r)
---     = foldl bvfp (maybe bvs (bvfp bvs) r) (map fieldTerm fs)
