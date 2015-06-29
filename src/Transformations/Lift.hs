@@ -23,16 +23,18 @@ module Transformations.Lift (lift) where
 #if __GLASGOW_HASKELL__ < 710
 import           Control.Applicative        ((<$>), (<*>))
 #endif
+import           Control.Arrow              (first)
 import qualified Control.Monad.State as S   (State, runState, gets, modify)
 import           Data.List
 import qualified Data.Map            as Map (Map, empty, insert, lookup)
 import qualified Data.Set            as Set (toList, fromList, unions)
 
 import Curry.Base.Ident
+import Curry.Base.Position                  (Position)
 import Curry.Syntax
 
 import Base.Expr
-import Base.Messages (internalError)
+import Base.Messages                        (internalError)
 import Base.SCC
 import Base.Types
 
@@ -103,7 +105,7 @@ absLhs (FunLhs f ts) = FunLhs f <$> mapM absPat ts
 absLhs _             = error "Lift.absLhs: no simple LHS"
 
 absRhs :: String -> [Ident] -> Rhs -> LiftM Rhs
-absRhs pre lvs (SimpleRhs p e _) = flip (SimpleRhs p) [] <$> absExpr pre lvs e
+absRhs pre lvs (SimpleRhs p e _) = simpleRhs p <$> absExpr pre lvs e
 absRhs _   _   _                 = error "Lift.absRhs: no simple RHS"
 
 -- Within a declaration group we have to split the list of declarations
@@ -118,13 +120,13 @@ absRhs _   _   _                 = error "Lift.absRhs: no simple RHS"
 -- call each other.
 --
 --   f = g True
---     where x = f 1
---           f z = y + z
+--     where x = h 1
+--           h z = y + z
 --           y = g False
 --           g z = if z then x else 0
 --
--- Because of this fact, f and g can be abstracted separately by adding
--- only 'y' to 'f' and 'x' to 'g'. On the other hand, in the following example
+-- Because of this fact, 'g' and 'h' can be abstracted separately by adding
+-- only 'y' to 'h' and 'x' to 'g'. On the other hand, in the following example
 --
 --   f x y = g 4
 --     where g p = h p + x
@@ -161,7 +163,6 @@ absDeclGroup pre lvs ds e = do
   absFunDecls pre (lvs ++ bv vds) (scc bv (qfv m) fds) vds e
   where (fds, vds) = partition isFunDecl ds
 
--- TODO: too complicated?
 absFunDecls :: String -> [Ident] -> [[Decl]] -> [Decl] -> Expression
             -> LiftM Expression
 absFunDecls pre lvs []         vds e = do
@@ -169,32 +170,40 @@ absFunDecls pre lvs []         vds e = do
   e' <- absExpr pre lvs e
   return (Let vds' e')
 absFunDecls pre lvs (fds:fdss) vds e = do
-  m   <- getModuleIdent
-  env <- getAbstractEnv
-  let fs     = bv fds
-      fvs    = filter (`elem` lvs) (Set.toList fvsRhs)
-      env'   = foldr (bindF fvs) env fs
+  m     <- getModuleIdent
+  env   <- getAbstractEnv
+  tyEnv <- getValueEnv
+  let -- defined functions
+      fs     = bv fds
+      -- free variables on the right-hand sides
       fvsRhs = Set.unions
           [ Set.fromList (maybe [v] (qfv m . asFunCall) (Map.lookup v env))
           | v <- qfv m fds]
+      -- free variables that are local
+      fvs    = filter (`elem` lvs) (Set.toList fvsRhs)
+      -- extended abstraction environment
+      env'   = foldr (bindF fvs) env fs
       bindF fvs' f = Map.insert f (qualifyWith m $ liftIdent pre f, fvs')
-      isLifted tyEnv f = null $ lookupValue f tyEnv
-  fs' <- (\tyEnv -> filter (not . isLifted tyEnv) fs) <$> getValueEnv
+      -- newly abstracted functions
+      fs'    = filter (\f -> not $ null $ lookupValue f tyEnv) fs
+  -- update environment
   modifyValueEnv $ absFunTypes m pre fvs fs'
-  (fds', e') <- withLocalAbstractEnv env' $ do
-    fds'' <- mapM (absFunDecl pre fvs lvs)
-               [d | d <- fds, any (`elem` fs') (bv d)]
-    e''   <- absFunDecls pre lvs fdss vds e
-    return (fds'', e'')
-  return (Let fds' e')
+  withLocalAbstractEnv env' $ do
+    -- add variables to functions
+    fds' <- mapM (absFunDecl pre fvs lvs) [d | d <- fds, any (`elem` fs') (bv d)]
+    -- abstract remaining declarations
+    e'   <- absFunDecls pre lvs fdss vds e
+    return (Let fds' e')
 
+-- Add the additional variables to the types of the functions and rebind
+-- the functions in the value environment
 absFunTypes :: ModuleIdent -> String -> [Ident] -> [Ident]
             -> ValueEnv -> ValueEnv
 absFunTypes m pre fvs fs tyEnv = foldr abstractFunType tyEnv fs
   where tys = map (varType tyEnv) fvs
         abstractFunType f tyEnv' =
           qualBindFun m (liftIdent pre f)
-                        (length fvs + varArity tyEnv' f) -- (arrowArity ty)
+                        (length fvs + varArity tyEnv' f)
                         (polyType (normType ty))
                         (unbindFun f tyEnv')
           where ty = foldr TypeArrow (varType tyEnv' f) tys
@@ -242,6 +251,8 @@ absExpr _   _   e                 = internalError $ "Lift.absExpr: " ++ show e
 absAlt :: String -> [Ident] -> Alt -> LiftM Alt
 absAlt pre lvs (Alt p t rhs) = Alt p t <$> absRhs pre (lvs ++ bv t) rhs
 
+-- TODO: Remove since functional patterns should not be abstracted
+
 absPat :: Pattern -> LiftM Pattern
 absPat v@(VariablePattern     _) = return v
 absPat l@(LiteralPattern      _) = return l
@@ -262,14 +273,14 @@ absPat p = error $ "Lift.absPat: " ++ show p
 -- to the top-level.
 
 liftFunDecl :: Decl -> [Decl]
-liftFunDecl (FunctionDecl p f eqs) = (FunctionDecl p f eqs' : concat dss')
+liftFunDecl (FunctionDecl p f eqs) = FunctionDecl p f eqs' : concat dss'
   where (eqs', dss') = unzip $ map liftEquation eqs
 liftFunDecl d                      = [d]
 
 liftVarDecl :: Decl -> (Decl, [Decl])
 liftVarDecl (PatternDecl   p t rhs) = (PatternDecl p t rhs', ds')
   where (rhs', ds') = liftRhs rhs
-liftVarDecl ex@(FreeDecl _ _) = (ex, [])
+liftVarDecl ex@(FreeDecl       _ _) = (ex, [])
 liftVarDecl _ = error "Lift.liftVarDecl: no pattern match"
 
 liftEquation :: Equation -> (Equation, [Decl])
@@ -277,12 +288,11 @@ liftEquation (Equation p lhs rhs) = (Equation p lhs rhs', ds')
   where (rhs', ds') = liftRhs rhs
 
 liftRhs :: Rhs -> (Rhs, [Decl])
-liftRhs (SimpleRhs p e _) = (SimpleRhs p e' [], ds')
-  where (e', ds') = liftExpr e
-liftRhs _ = error "Lift.liftRhs: no pattern match"
+liftRhs (SimpleRhs p e _) = first (simpleRhs p) (liftExpr e)
+liftRhs _                 = error "Lift.liftRhs: no pattern match"
 
 liftDeclGroup :: [Decl] -> ([Decl],[Decl])
-liftDeclGroup ds = (vds', concat $ map liftFunDecl fds ++ dss')
+liftDeclGroup ds = (vds', concat (map liftFunDecl fds ++ dss'))
   where (fds , vds ) = partition isFunDecl ds
         (vds', dss') = unzip $ map liftVarDecl vds
 
@@ -290,13 +300,12 @@ liftExpr :: Expression -> (Expression, [Decl])
 liftExpr l@(Literal      _) = (l, [])
 liftExpr v@(Variable     _) = (v, [])
 liftExpr c@(Constructor  _) = (c, [])
-liftExpr (Apply      e1 e2) = (Apply e1' e2', ds' ++ ds'')
-  where (e1', ds' ) = liftExpr e1
-        (e2', ds'') = liftExpr e2
-liftExpr (Let         ds e) = (mkLet ds' e', ds'' ++ ds''')
-  where (ds', ds'' ) = liftDeclGroup ds
-        (e' , ds''') = liftExpr e
-        mkLet ds1 e1 = if null ds1 then e1 else Let ds1 e1
+liftExpr (Apply      e1 e2) = (Apply e1' e2', ds1 ++ ds2)
+  where (e1', ds1) = liftExpr e1
+        (e2', ds2) = liftExpr e2
+liftExpr (Let         ds e) = (mkLet ds' e', ds1 ++ ds2)
+  where (ds', ds1) = liftDeclGroup ds
+        (e' , ds2) = liftExpr e
 liftExpr (Case r ct e alts) = (Case r ct e' alts', concat $ ds' : dss')
   where (e'   ,ds' ) = liftExpr e
         (alts',dss') = unzip $ map liftAlt alts
@@ -321,8 +330,14 @@ asFunCall (f, vs) = apply (Variable f) (map mkVar vs)
 mkVar :: Ident -> Expression
 mkVar v = Variable $ qualify v
 
+mkLet :: [Decl] -> Expression -> Expression
+mkLet ds e = if null ds then e else Let ds e
+
 apply :: Expression -> [Expression] -> Expression
 apply = foldl Apply
+
+simpleRhs :: Position -> Expression -> Rhs
+simpleRhs p e = SimpleRhs p e []
 
 varArity :: ValueEnv -> Ident -> Int
 varArity tyEnv v = case lookupValue v tyEnv of
