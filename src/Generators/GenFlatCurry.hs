@@ -204,8 +204,6 @@ trConstrDecl (IL.ConstrDecl qid tys) = do
   whenFlatCurry (return [flatCons]) (return [flatCons | vis == Public]) -- TODO: whenFlatCurry
 
 trType :: IL.Type -> FlatState TypeExpr
-trType (IL.TypeConstructor t [ty])
-  | qualName t == "Identity" = trType ty -- TODO: documentation
 trType (IL.TypeConstructor t tys) = TCons <$> trTypeIdent t <*> mapM trType tys
 trType (IL.TypeVariable      idx) = return $ TVar $ abs idx
 trType (IL.TypeArrow     ty1 ty2) = FuncType <$> trType ty1 <*> trType ty2
