@@ -590,8 +590,10 @@ checkPattern p (ListPattern      pos ts) =
   ListPattern pos <$> mapM (checkPattern p) ts
 checkPattern p (AsPattern           v t) = do
   AsPattern <$> checkVar "@ pattern" v <*> checkPattern p t
-checkPattern p (LazyPattern       pos t) =
-  LazyPattern pos <$> checkPattern p t
+checkPattern p (LazyPattern       pos t) = do
+  t' <- checkPattern p t
+  banFPTerm "lazy pattern" p t'
+  return (LazyPattern pos t')
 checkPattern _ (FunctionPattern     _ _) = internalError $
   "SyntaxCheck.checkPattern: function pattern not defined"
 checkPattern _ (InfixFuncPattern  _ _ _) = internalError $
@@ -1022,8 +1024,8 @@ checkFPTerm p (ParenPattern           t) = checkFPTerm p t
 checkFPTerm p (TuplePattern        _ ts) = mapM_ (checkFPTerm p) ts
 checkFPTerm p (ListPattern         _ ts) = mapM_ (checkFPTerm p) ts
 checkFPTerm p (AsPattern            _ t) = checkFPTerm p t
-checkFPTerm p t@(LazyPattern        _ _) = report $ errUnsupportedFPTerm "Lazy"   p t
 checkFPTerm p t@(RecordPattern      _ _) = report $ errUnsupportedFPTerm "Record" p t
+checkFPTerm p t@(LazyPattern        _ _) = report $ errUnsupportedFPTerm "Lazy" p t
 checkFPTerm _ (FunctionPattern      _ _) = ok -- do not check again
 checkFPTerm _ (InfixFuncPattern   _ _ _) = ok -- do not check again
 
