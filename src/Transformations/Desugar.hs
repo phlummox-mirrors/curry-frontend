@@ -530,6 +530,10 @@ fp2Expr (InfixFuncPattern t1 op t2) =
 fp2Expr (AsPattern             v t) =
   let (t', es) = fp2Expr t
   in  (mkVar v, (t' =:<= mkVar v) : es)
+fp2Expr (RecordPattern        c fs) =
+  let (fs', ess) = unzip [ (Field p f e, es) | Field p f t <- fs
+                                             , let (e, es) = fp2Expr t]
+  in  (Record c fs', concat ess)
 fp2Expr t                           = internalError $
   "Desugar.fp2Expr: Unexpected constructor term: " ++ show t
 

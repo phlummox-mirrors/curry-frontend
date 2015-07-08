@@ -1024,8 +1024,9 @@ checkFPTerm p (ParenPattern           t) = checkFPTerm p t
 checkFPTerm p (TuplePattern        _ ts) = mapM_ (checkFPTerm p) ts
 checkFPTerm p (ListPattern         _ ts) = mapM_ (checkFPTerm p) ts
 checkFPTerm p (AsPattern            _ t) = checkFPTerm p t
-checkFPTerm p t@(RecordPattern      _ _) = report $ errUnsupportedFPTerm "Record" p t
 checkFPTerm p t@(LazyPattern        _ _) = report $ errUnsupportedFPTerm "Lazy" p t
+checkFPTerm p (RecordPattern       _ fs) = mapM_ (checkFPTerm p)
+                                           [ t | Field _ _ t <- fs ]
 checkFPTerm _ (FunctionPattern      _ _) = ok -- do not check again
 checkFPTerm _ (InfixFuncPattern   _ _ _) = ok -- do not check again
 
