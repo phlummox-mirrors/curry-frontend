@@ -51,6 +51,49 @@ ilTrans tyEnv (Module _ m _ _ ds) = IL.Module m (imports m ds') ds'
   where ds' = R.runReader (concatMapM trDecl ds) (TransEnv m tyEnv)
 
 -- -----------------------------------------------------------------------------
+-- Computation of necessary imports
+-- -----------------------------------------------------------------------------
+
+-- The list of import declarations in the intermediate language code is
+-- determined by collecting all module qualifiers used in the current module.
+
+imports :: ModuleIdent -> [IL.Decl] -> [ModuleIdent]
+imports m = Set.toList . Set.delete m . foldr mdlsDecl Set.empty
+
+mdlsDecl :: IL.Decl -> Set.Set ModuleIdent -> Set.Set ModuleIdent
+mdlsDecl (IL.DataDecl       _ _ cs) ms = foldr mdlsConstrsDecl ms cs
+  where mdlsConstrsDecl (IL.ConstrDecl _ tys) ms' = foldr mdlsType ms' tys
+mdlsDecl (IL.NewtypeDecl _ _ (IL.ConstrDecl _ ty)) ms = mdlsType ty ms
+mdlsDecl (IL.FunctionDecl _ _ ty e) ms = mdlsType ty (mdlsExpr e ms)
+mdlsDecl (IL.ExternalDecl _ _ _ ty) ms = mdlsType ty ms
+
+mdlsType :: IL.Type -> Set.Set ModuleIdent -> Set.Set ModuleIdent
+mdlsType (IL.TypeConstructor tc tys) ms = modules tc (foldr mdlsType ms tys)
+mdlsType (IL.TypeVariable         _) ms = ms
+mdlsType (IL.TypeArrow      ty1 ty2) ms = mdlsType ty1 (mdlsType ty2 ms)
+
+mdlsExpr :: IL.Expression -> Set.Set ModuleIdent -> Set.Set ModuleIdent
+mdlsExpr (IL.Function    f _) ms = modules f ms
+mdlsExpr (IL.Constructor c _) ms = modules c ms
+mdlsExpr (IL.Apply     e1 e2) ms = mdlsExpr e1 (mdlsExpr e2 ms)
+mdlsExpr (IL.Case   _ _ e as) ms = mdlsExpr e (foldr mdlsAlt ms as)
+  where
+  mdlsAlt     (IL.Alt               t e') = mdlsPattern t . mdlsExpr e'
+  mdlsPattern (IL.ConstructorPattern c _) = modules c
+  mdlsPattern _                           = id
+mdlsExpr (IL.Or        e1 e2) ms = mdlsExpr e1 (mdlsExpr e2 ms)
+mdlsExpr (IL.Exist       _ e) ms = mdlsExpr e ms
+mdlsExpr (IL.Let         b e) ms = mdlsBinding b (mdlsExpr e ms)
+mdlsExpr (IL.Letrec     bs e) ms = foldr mdlsBinding (mdlsExpr e ms) bs
+mdlsExpr _                    ms = ms
+
+mdlsBinding :: IL.Binding -> Set.Set ModuleIdent -> Set.Set ModuleIdent
+mdlsBinding (IL.Binding _ e) = mdlsExpr e
+
+modules :: QualIdent -> Set.Set ModuleIdent -> Set.Set ModuleIdent
+modules x ms = maybe ms (`Set.insert` ms) (qidModule x)
+
+-- -----------------------------------------------------------------------------
 -- Internal reader monad
 -- -----------------------------------------------------------------------------
 
@@ -300,13 +343,6 @@ argNames :: Ident -> [Ident]
 argNames v = [mkIdent (prefix ++ show i) | i <- [1 :: Integer ..] ]
   where prefix = idName v ++ "_"
 
-isVarPattern :: IL.ConstrTerm -> Bool
-isVarPattern (IL.VariablePattern _) = True
-isVarPattern _                      = False
-
-isVarMatch :: (IL.ConstrTerm, a) -> Bool
-isVarMatch = isVarPattern . fst
-
 -- -----------------------------------------------------------------------------
 -- Flexible Pattern Matching Algorithm
 -- -----------------------------------------------------------------------------
@@ -314,7 +350,7 @@ isVarMatch = isVarPattern . fst
 -- The pattern matching code searches for the left-most inductive
 -- argument position in the left hand sides of all rules defining an
 -- equation. An inductive position is a position where all rules have a
--- constructor rooted term. If such a position is found, a 'case'
+-- constructor rooted term. If such a position is found, a flexible 'case'
 -- expression is generated for the argument at that position. The
 -- matching code is then computed recursively for all of the alternatives
 -- independently. If no inductive position is found, the algorithm looks
@@ -331,83 +367,75 @@ isVarMatch = isVarPattern . fst
 -- demanded positions. The function 'flexMatch' scans the argument
 -- lists for the left-most demanded position. If this turns out to be
 -- also an inductive position, the function 'flexMatchInductive' is
--- called in order to generate a 'case' expression. Otherwise, the
+-- called in order to generate a flexible 'case' expression. Otherwise, the
 -- function 'optFlexMatch' is called that tries to find an inductive
 -- position in the remaining arguments. If one is found,
 -- 'flexMatchInductive' is called, otherwise the function
 -- 'optFlexMatch' uses the demanded argument position found by 'flexMatch'.
 
--- a @Matc@' is a list of patterns and the respective expression, thus
--- corresponds to an equation.
+-- a @Match@ is a list of patterns and the respective expression.
 type Match  = ([NestedTerm], IL.Expression)
--- a @Match'@ is a @Match@ with deferred patterns to be matched after
--- the next inductive position.
-type Match' = ([NestedTerm] -> [NestedTerm], [NestedTerm], IL.Expression)
+-- a @Match'@ is a @Match@ with skipped patterns during the search for an
+-- inductive position.
+type Match' = (FunList NestedTerm, [NestedTerm], IL.Expression)
+-- Functional lists
+type FunList a = [a] -> [a]
 
 flexMatch :: SrcRef       -- source reference
-         -> [Ident]       -- new function variables
-         -> [Match]       -- translated equations
+         -> [Ident]       -- variables to be matched
+         -> [Match]       -- alternatives
          -> IL.Expression -- result expression
 flexMatch _ []     alts = foldl1 IL.Or (map snd alts)
 flexMatch r (v:vs) alts
-  | isInductive  = e1
-  | notDemanded  = e2
-  | otherwise    = optFlexMatch r (IL.Or e1 e2) (v:) vs (map skipArg alts)
+  | notDemanded = varExp
+  | isInductive = conExp
+  | otherwise   = optFlexMatch r (IL.Or conExp varExp) (v:) vs (map skipPat alts)
   where
-  isInductive       = null vars
-  notDemanded       = null nonVars
-  -- seperate variable and inductive patterns
-  (vars, nonVars)   = partition isVarMatch (map tagAlt alts)
-  e1                = flexMatchInductive r id v vs (map prep nonVars)
-  -- match next variables
-  e2                = flexMatch          r      vs (map snd vars)
-  prep (p, (ts, e)) = (p, (id, ts, e))
-  -- tagAlt extracts the constructor of the first pattern
-  tagAlt  (t:ts, e) = (pattern t, (arguments t ++ ts, e))
-  tagAlt  ([]  , _) = error "CurryToIL.flexMatch.tagAlt: empty list"
-  -- skipArg skips the current argument for later matching
-  skipArg (t:ts, e) = ((t:), ts, e)
-  skipArg ([]  , _) = error "CurryToIL.flexMatch.skipArg: empty list"
+  isInductive        = null varAlts
+  notDemanded        = null conAlts
+  -- separate variable and constructor patterns
+  (varAlts, conAlts) = partition isVarMatch (map tagAlt alts)
+  -- match variables
+  varExp             = flexMatch          r      vs (map snd  varAlts)
+  -- match constructors
+  conExp             = flexMatchInductive r id v vs (map prep conAlts)
+  prep (p, (ts, e))  = (p, (id, ts, e))
 
-optFlexMatch :: SrcRef              -- source reference
-            -> IL.Expression        -- default expression
-            -> ([Ident] -> [Ident]) -- variables to be matched next
-            -> [Ident]              -- variables to be matched afterwards
-            -> [Match']             -- translated equations
+-- Search for the next inductive position
+optFlexMatch :: SrcRef       -- source reference
+            -> IL.Expression -- default expression
+            -> FunList Ident -- skipped variables
+            -> [Ident]       -- next variables
+            -> [Match']      -- alternatives
             -> IL.Expression
--- if there are no variables left: return the default expression
 optFlexMatch _ def _      []     _    = def
 optFlexMatch r def prefix (v:vs) alts
   | isInductive = flexMatchInductive r prefix v vs alts'
-  | otherwise   = optFlexMatch r def (prefix . (v:)) vs (map skipArg alts)
+  | otherwise   = optFlexMatch r def (prefix . (v:)) vs (map skipPat' alts)
   where
-  isInductive              = not (any isVarMatch alts')
-  alts'                    = map tagAlt alts
-  -- tagAlt extracts the next pattern and reinserts the skipped ones
-  tagAlt  (pref, t:ts, e') = (pattern t, (pref, arguments t ++ ts, e'))
-  tagAlt  (_   , []  , _ ) = error "CurryToIL.optFlexMatch.tagAlt: empty list"
-  -- again, skipArg skips the current argument for later matching
-  skipArg (pref, t:ts, e') = (pref . (t:), ts, e')
-  skipArg (_   , []  , _ ) = error "CurryToIL.optFlexMatch.skipArg: empty list"
+  isInductive   = not (any isVarMatch alts')
+  alts'         = map tagAlt' alts
 
 -- Generate a case expression matching the inductive position
-flexMatchInductive :: SrcRef -> ([Ident] -> [Ident]) -> Ident
-               -> [Ident] ->[(IL.ConstrTerm, Match')] -> IL.Expression
-flexMatchInductive r prefix v vs as = IL.Case r IL.Flex (IL.Variable v) $
-  flexMatchAlts as
+flexMatchInductive :: SrcRef                    -- source reference
+                   -> FunList Ident             -- skipped variables
+                   -> Ident                     -- current variable
+                   -> [Ident]                   -- next variables
+                   -> [(IL.ConstrTerm, Match')] -- alternatives
+                   -> IL.Expression
+flexMatchInductive r prefix v vs as
+  = IL.Case r IL.Flex (IL.Variable v) (flexMatchAlts as)
   where
   -- create alternatives for the different constructors
   flexMatchAlts []              = []
   flexMatchAlts ((t, e) : alts) = IL.Alt t expr : flexMatchAlts others
     where
     -- match nested patterns for same constructors
-    expr = flexMatch (srcRefOf t) (prefix $ vars t ++ vs) matchingCases
-    matchingCases = map expandVars (e : map snd same)
+    expr = flexMatch (srcRefOf t) (prefix (vars t ++ vs))
+                                (map expandVars (e : map snd same))
     expandVars (pref, ts1, e') = (pref ts1, e')
     -- split into same and other constructors
     (same, others) = partition ((t ==) . fst) alts
-    vars (IL.ConstructorPattern _ vs') = vs'
-    vars _                             = []
 
 -- -----------------------------------------------------------------------------
 -- Rigid Pattern Matching Algorithm
@@ -427,87 +455,88 @@ rigidMatch r vs alts = rigidOptMatch r (snd $ head alts) id vs
                        (map prepare alts)
   where prepare (ts, e) = (id, ts, e)
 
-rigidOptMatch :: SrcRef               -- source reference
-              -> IL.Expression        -- default expression
-              -> ([Ident] -> [Ident]) -- variables to be matched next
-              -> [Ident]              -- variables to be matched afterwards
-              -> [Match']             -- translated equations
+rigidOptMatch :: SrcRef        -- source reference
+              -> IL.Expression -- default expression
+              -> FunList Ident -- variables to be matched next
+              -> [Ident]       -- variables to be matched afterwards
+              -> [Match']      -- translated equations
               -> IL.Expression
 -- if there are no variables left: return the default expression
 rigidOptMatch _ def _      []       _    = def
 rigidOptMatch r def prefix (v : vs) alts
-  | isInductive = rigidMatchInductive r prefix v vs alts'
-  | otherwise   = rigidOptMatch r def (prefix . (v:)) vs (map skipArg alts)
+  | isDemanded = rigidMatchDemanded r prefix v vs alts'
+  | otherwise  = rigidOptMatch r def (prefix . (v:)) vs (map skipPat' alts)
   where
-  isInductive              = not $ isVarMatch (head alts')
-  alts'                    = map tagAlt alts
-  -- tagAlt extracts the next pattern
-  tagAlt  (pref, t:ts, e') = (pattern t, (pref, arguments t ++ ts, e'))
-  tagAlt  (_   , []  , _ ) = error "CurryToIL.rigidOptMatch.tagAlt: empty list"
-  -- skipArg skips the current argument for later matching
-  skipArg (pref, t:ts, e') = (pref . (t:), ts, e')
-  skipArg (_   , []  , _ ) = error "CurryToIL.rigidOptMatch.skipArg: empty list"
+  isDemanded   = not $ isVarMatch (head alts')
+  alts'        = map tagAlt' alts
 
--- Generate a case expression matching the inductive position
-rigidMatchInductive :: SrcRef -> ([Ident] -> [Ident]) -> Ident
-                   -> [Ident] ->[(IL.ConstrTerm, Match')] -> IL.Expression
-rigidMatchInductive r prefix v vs alts = IL.Case r IL.Rigid (IL.Variable v)
-  $ map caseAlt (nonVarPats ++ varPats)
+-- Generate a case expression matching the demanded position.
+-- This algorithm constructs a branch for all contained patterns, where
+-- the right-hand side then respects the order of the patterns.
+-- Thus, the expression
+--    case x of
+--      []   -> []
+--      ys   -> ys
+--      y:ys -> [y]
+-- gets translated to
+--    case x of
+--      []   -> []
+--      y:ys -> x
+--      x    -> x
+rigidMatchDemanded :: SrcRef                    -- source reference
+                   -> FunList Ident             -- skipped variables
+                   -> Ident                     -- current variable
+                   -> [Ident]                   -- next variables
+                   -> [(IL.ConstrTerm, Match')] -- alternatives
+                   -> IL.Expression
+rigidMatchDemanded r prefix v vs alts = IL.Case r IL.Rigid (IL.Variable v)
+  $ map caseAlt (consPats ++ varPats)
   where
-  (varPats, nonVarPats) = partition isVarPattern $ nub $ map fst alts
-  caseAlt t = IL.Alt t expr
+  -- N.B.: @varPats@ is either empty or a singleton list due to nub
+  (varPats, consPats) = partition isVarPattern $ nub $ map fst alts
+  caseAlt t           = IL.Alt t expr
     where
     expr = rigidMatch (srcRefOf t) (prefix $ vars t ++ vs) (matchingCases alts)
-    -- matchingCases selects the matching branches and recursively
-    -- matches the remaining patterns
-    matchingCases = map (expandVars $ vars t) . filter (matches . fst)
+    -- matchingCases selects the matching alternatives
+    --  and recursively matches the remaining patterns
+    matchingCases a = map (expandVars (vars t)) $ filter (matches . fst) a
     matches t' = t == t' || isVarPattern t'
     expandVars vs' (p, (pref, ts1, e)) = (pref ts2, e)
       where ts2 | isVarPattern p = map var2Pattern vs' ++ ts1
                 | otherwise      = ts1
             var2Pattern v' = NestedTerm (IL.VariablePattern v') []
-    vars (IL.ConstructorPattern _ vs') = vs'
-    vars _                             = []
 
 -- -----------------------------------------------------------------------------
--- Computation of necessary imports
+-- Pattern Matching Auxiliaries
 -- -----------------------------------------------------------------------------
 
--- The list of import declarations in the intermediate language code is
--- determined by collecting all module qualifiers used in the current module.
+isVarPattern :: IL.ConstrTerm -> Bool
+isVarPattern (IL.VariablePattern _) = True
+isVarPattern _                      = False
 
-imports :: ModuleIdent -> [IL.Decl] -> [ModuleIdent]
-imports m = Set.toList . Set.delete m . foldr mdlsDecl Set.empty
+isVarMatch :: (IL.ConstrTerm, a) -> Bool
+isVarMatch = isVarPattern . fst
 
-mdlsDecl :: IL.Decl -> Set.Set ModuleIdent -> Set.Set ModuleIdent
-mdlsDecl (IL.DataDecl       _ _ cs) ms = foldr mdlsConstrsDecl ms cs
-  where mdlsConstrsDecl (IL.ConstrDecl _ tys) ms' = foldr mdlsType ms' tys
-mdlsDecl (IL.NewtypeDecl _ _ (IL.ConstrDecl _ ty)) ms = mdlsType ty ms
-mdlsDecl (IL.FunctionDecl _ _ ty e) ms = mdlsType ty (mdlsExpr e ms)
-mdlsDecl (IL.ExternalDecl _ _ _ ty) ms = mdlsType ty ms
+vars :: IL.ConstrTerm -> [Ident]
+vars (IL.ConstructorPattern _ vs) = vs
+vars _                            = []
 
-mdlsType :: IL.Type -> Set.Set ModuleIdent -> Set.Set ModuleIdent
-mdlsType (IL.TypeConstructor tc tys) ms = modules tc (foldr mdlsType ms tys)
-mdlsType (IL.TypeVariable         _) ms = ms
-mdlsType (IL.TypeArrow      ty1 ty2) ms = mdlsType ty1 (mdlsType ty2 ms)
+-- tagAlt extracts the structure of the first pattern
+tagAlt :: Match -> (IL.ConstrTerm, Match)
+tagAlt (t:ts, e) = (pattern t, (arguments t ++ ts, e))
+tagAlt ([]  , _) = error "CurryToIL.tagAlt: empty pattern list"
 
-mdlsExpr :: IL.Expression -> Set.Set ModuleIdent -> Set.Set ModuleIdent
-mdlsExpr (IL.Function    f _) ms = modules f ms
-mdlsExpr (IL.Constructor c _) ms = modules c ms
-mdlsExpr (IL.Apply     e1 e2) ms = mdlsExpr e1 (mdlsExpr e2 ms)
-mdlsExpr (IL.Case   _ _ e as) ms = mdlsExpr e (foldr mdlsAlt ms as)
-  where
-  mdlsAlt     (IL.Alt               t e') = mdlsPattern t . mdlsExpr e'
-  mdlsPattern (IL.ConstructorPattern c _) = modules c
-  mdlsPattern _                           = id
-mdlsExpr (IL.Or        e1 e2) ms = mdlsExpr e1 (mdlsExpr e2 ms)
-mdlsExpr (IL.Exist       _ e) ms = mdlsExpr e ms
-mdlsExpr (IL.Let         b e) ms = mdlsBinding b (mdlsExpr e ms)
-mdlsExpr (IL.Letrec     bs e) ms = foldr mdlsBinding (mdlsExpr e ms) bs
-mdlsExpr _                    ms = ms
+-- skipPat skips the current pattern position for later matching
+skipPat :: Match -> Match'
+skipPat (t:ts, e) = ((t:), ts, e)
+skipPat ([]  , _) = error "CurryToIL.skipPat: empty pattern list"
 
-mdlsBinding :: IL.Binding -> Set.Set ModuleIdent -> Set.Set ModuleIdent
-mdlsBinding (IL.Binding _ e) = mdlsExpr e
+-- tagAlt' extracts the next pattern
+tagAlt' :: Match' -> (IL.ConstrTerm, Match')
+tagAlt' (pref, t:ts, e') = (pattern t, (pref, arguments t ++ ts, e'))
+tagAlt' (_   , []  , _ ) = error "CurryToIL.tagAlt': empty pattern list"
 
-modules :: QualIdent -> Set.Set ModuleIdent -> Set.Set ModuleIdent
-modules x ms = maybe ms (`Set.insert` ms) (qidModule x)
+-- skipPat' skips the current argument for later matching
+skipPat' :: Match' -> Match'
+skipPat' (pref, t:ts, e') = (pref . (t:), ts, e')
+skipPat' (_   , []  , _ ) = error "CurryToIL.skipPat': empty pattern list"
