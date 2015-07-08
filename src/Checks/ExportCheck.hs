@@ -9,7 +9,17 @@
     Stability   :  experimental
     Portability :  portable
 
-    This module implements a check of the export specification.
+    This module implements a check and expansion of the export specification.
+    Any errors in the specification are reported, and if there are no errors,
+    the specification is expanded. The expansion does the following:
+      * If there is no export specification, a specification exporting the
+        entire module is generated.
+      * Otherwise, (re)exports of modules are replaced by an export of all
+        respective entities.
+      * The export of a type with all constructors and fields is replaced
+        by an enumeration of all constructors and fields.
+      * The export of types without sub-entities is extended with an empty
+        list of sub-entities.
 -}
 {-# LANGUAGE CPP #-}
 module Checks.ExportCheck (exportCheck) where
