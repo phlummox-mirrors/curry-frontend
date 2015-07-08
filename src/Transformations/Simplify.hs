@@ -289,8 +289,8 @@ simplifyLet :: InlineEnv -> [[Decl]] -> Expression -> SIM Expression
 simplifyLet env []       e = simExpr env e
 simplifyLet env (ds:dss) e = do
   m     <- getModuleIdent
-  ds'   <- mapM (simDecl env) ds                     -- simplify declarations
-  env'  <- inlineVars (qfv m dss ++ qfv m e) env ds' -- inline a simple variable binding
+  ds'   <- mapM (simDecl env) ds  -- simplify declarations
+  env'  <- inlineVars env ds'     -- inline a simple variable binding
   e'    <- simplifyLet env' dss e -- simplify remaining bindings
   ds''  <- concatMapM (expandPatternBindings (qfv m ds' ++ qfv m e')) ds'
   return $ foldr (mkLet m) e' (scc bv (qfv m) ds'')
@@ -307,7 +307,7 @@ inlineVars fvs env ds = case ds of
   canInlineVar v (Variable   v')
     | isQualified v'             = (> 0) <$> getFunArity v'
     | otherwise                  = return $ v /= unqualify v'
-  canInlineVar v _               = return (length (filter (== v) fvs) <= 1)
+  canInlineVar _ _               = return False
 
 mkLet :: ModuleIdent -> [Decl] -> Expression -> Expression
 mkLet m [FreeDecl p vs] e
