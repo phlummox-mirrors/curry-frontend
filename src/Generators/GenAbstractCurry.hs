@@ -162,8 +162,8 @@ trLocalDecls ds = do
   mapM_ insertDeclLhs ds
   concat <$> mapM trLocalDecl ds
 
-insertDeclLhs :: Decl -> GAC ()
 -- Insert all variables declared in local declarations
+insertDeclLhs :: Decl -> GAC ()
 insertDeclLhs   (PatternDecl      _ p _) = mapM_ genVarIndex (bv p)
 insertDeclLhs   (FreeDecl          _ vs) = mapM_ genVarIndex vs
 insertDeclLhs s@(TypeSig          _ _ _) = do
@@ -294,22 +294,10 @@ cvLiteral (Float  _ f) = CFloatc  f
 cvLiteral (String _ s) = CStringc s
 
 trQual :: QualIdent -> GAC QName
-trQual qid
-  | isPreludeSymbol qid = return $ cvQualIdent $ qualQualify preludeMIdent qid
-  | isQualified     qid = return $ cvQualIdent $ qid
-  | otherwise           = S.gets $ \env -> cvQualIdent $
-                          case lookupValue i (typeEnv env) of
-                            [info] -> origName info
-                            _      -> qualifyWith (moduleId env) i
-  where i = unqualify qid
+trQual qid = return (maybe "" moduleName (qidModule qid), idName (qidIdent qid))
 
 trLocalIdent :: Ident -> GAC QName
-trLocalIdent i = S.get >>= \env -> return (moduleName $ moduleId env, idName i)
-
-cvQualIdent :: QualIdent -> QName
-cvQualIdent qid = case qidModule qid of
-  Just m -> (moduleName m, idName $ qidIdent qid)
-  _      -> internalError $ "GenAbstractCurry.cvQualIdent: " ++ show qid
+trLocalIdent i = return ("", idName i)
 
 -- Converts an infix operator to an expression
 opToExpr :: InfixOp -> Expression
@@ -336,14 +324,6 @@ qIfThenElseId = qualifyWith preludeMIdent (mkIdent "if_then_else")
 
 prelUntyped :: QualIdent
 prelUntyped = qualifyWith preludeMIdent $ mkIdent "untyped"
-
--- Checks, whether a symbol is defined in the Prelude.
-isPreludeSymbol :: QualIdent -> Bool
-isPreludeSymbol qid
-  = let (mmid, ident) = (qidModule qid, qidIdent qid)
-    in   mmid == Just preludeMIdent
-      || elem ident [unitId, listId, nilId, consId]
-      || isTupleId ident
 
 -------------------------------------------------------------------------------
 -- This part defines an environment containing all necessary information
@@ -374,9 +354,9 @@ abstractEnv uacy env (Module _ mid es _ ds) = AbstractEnv
   , varEnv     = globalEnv emptyTopEnv
   , tvarEnv    = emptyTopEnv
   , untypedAcy = uacy
-  , typeSigs   = if uacy then Map.fromList [ (f, ty) | TypeSig _ fs ty <- ds
-                                           , f <- fs]
-                         else Map.empty
+  , typeSigs   = if uacy
+                  then Map.fromList [ (f, ty) | TypeSig _ fs ty <- ds, f <- fs]
+                  else Map.empty
   }
   where es' = case es of
           Just (Exporting _ e) -> e
