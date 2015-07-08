@@ -295,8 +295,8 @@ simplifyLet env (ds:dss) e = do
   ds''  <- concatMapM (expandPatternBindings (qfv m ds' ++ qfv m e')) ds'
   return $ foldr (mkLet m) e' (scc bv (qfv m) ds'')
 
-inlineVars :: [Ident] -> InlineEnv -> [Decl] -> SIM InlineEnv
-inlineVars fvs env ds = case ds of
+inlineVars :: InlineEnv -> [Decl] -> SIM InlineEnv
+inlineVars env ds = case ds of
   [PatternDecl _ (VariablePattern v) (SimpleRhs _ e _)] -> do
     allowed <- canInlineVar v e
     return $ if allowed then Map.insert v e env else env
