@@ -4,7 +4,7 @@
     Copyright   :  (c) 1999 - 2004 Wolfgang Lux
                        2005        Martin Engelke
                        2007        Sebastian Fischer
-                       2011 - 2014 Björn Peemöller
+                       2011 - 2015 Björn Peemöller
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
@@ -45,9 +45,9 @@ import Env.Interface
 
 -- source representations
 import qualified Curry.AbstractCurry as AC
-import qualified Curry.ExtendedFlat.Type as EF
-import qualified Curry.Syntax as CS
-import qualified IL as IL
+import qualified Curry.ExtendedFlat  as EF
+import qualified Curry.Syntax        as CS
+import qualified IL                  as IL
 
 import Checks
 import CompilerEnv
@@ -301,8 +301,9 @@ writeFlat opts fn env modSum il = do
 writeFlatCurry :: Options -> FilePath -> CompilerEnv -> ModuleSummary
                -> IL.Module -> IO ()
 writeFlatCurry opts fn env modSum il = do
-  when extTarget $ EF.writeExtendedFlat (useSubDir $ extFlatName fn) prog
-  when fcyTarget $ EF.writeFlatCurry    (useSubDir $ flatName    fn) prog
+  (_, fc) <- dumpWith opts EF.ppProg DumpFlatCurry (env, prog)
+  when extTarget $ EF.writeExtendedFlat (useSubDir $ extFlatName fn) fc
+  when fcyTarget $ EF.writeFlatCurry    (useSubDir $ flatName    fn) fc
   where
   extTarget = ExtendedFlatCurry `elem` optTargetTypes opts
   fcyTarget = FlatCurry         `elem` optTargetTypes opts

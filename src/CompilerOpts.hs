@@ -202,6 +202,7 @@ data DumpLevel
   | DumpLifted        -- ^ dump source  after lambda-lifting
   | DumpTranslated    -- ^ dump IL code after translation
   | DumpCaseCompleted -- ^ dump IL code after case completion
+  | DumpFlatCurry     -- ^ dump FlatCurry code (pretty-printed)
     deriving (Eq, Bounded, Enum, Show)
 
 -- |Description and flag of dump levels
@@ -218,6 +219,7 @@ dumpLevel = [ (DumpParsed       , "dump-parse", "parse tree"               )
             , (DumpLifted       , "dump-lift" , "lifting output"           )
             , (DumpTranslated   , "dump-trans", "translated output"        )
             , (DumpCaseCompleted, "dump-cc"   , "case completed output"    )
+            , (DumpFlatCurry    , "dump-flat" , "FlatCurry code"           )
             ]
 
 -- |Description and flag of language extensions
