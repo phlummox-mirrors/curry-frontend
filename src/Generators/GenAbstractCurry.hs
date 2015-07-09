@@ -66,7 +66,7 @@ trModule (Module _ mid _ is ds) = do
   mid'  = moduleName mid
   is'   = map cvImportDecl is
   ts'   = concat <$> mapM (withLocalEnv . trTypeDecl ) ds
-  fs'   = concat <$> mapM (withLocalEnv . trFuncDecl ) ds
+  fs'   = concat <$> mapM (withLocalEnv . trFuncDecl True) ds
   os'   = concat <$> mapM (withLocalEnv . trInfixDecl) ds
 
 cvImportDecl :: ImportDecl -> String
@@ -74,33 +74,33 @@ cvImportDecl (ImportDecl _ mid _ _ _) = moduleName mid
 
 trTypeDecl :: Decl -> GAC [CTypeDecl]
 trTypeDecl (DataDecl    _ t vs cs) = (\t' v vs' cs' -> [CType t' v vs' cs'])
-  <$> trLocalIdent t <*> getVisibility t
+  <$> trGlobalIdent t <*> getVisibility t
   <*> mapM genTVarIndex vs <*> mapM trConsDecl cs
 trTypeDecl (TypeDecl    _ t vs ty) = (\t' v vs' ty' -> [CTypeSyn t' v vs' ty'])
-  <$> trLocalIdent t <*> getVisibility t
+  <$> trGlobalIdent t <*> getVisibility t
   <*> mapM genTVarIndex vs <*> trTypeExpr ty
 trTypeDecl (NewtypeDecl _ t vs nc) = (\t' v vs' nc' -> [CNewType t' v vs' nc'])
-  <$> trLocalIdent t <*> getVisibility t
+  <$> trGlobalIdent t <*> getVisibility t
   <*> mapM genTVarIndex vs <*> trNewConsDecl nc
 trTypeDecl _                       = return []
 
 trConsDecl :: ConstrDecl -> GAC CConsDecl
 trConsDecl (ConstrDecl      _ _ c tys) = CCons
-  <$> trLocalIdent c <*> getVisibility c <*> mapM trTypeExpr tys
+  <$> trGlobalIdent c <*> getVisibility c <*> mapM trTypeExpr tys
 trConsDecl (ConOpDecl p vs ty1 op ty2) = trConsDecl $
   ConstrDecl p vs op [ty1, ty2]
 trConsDecl (RecordDecl       _ _ c fs) = CRecord
-  <$> trLocalIdent c <*> getVisibility c <*> (concat <$> mapM trFieldDecl fs)
+  <$> trGlobalIdent c <*> getVisibility c <*> (concat <$> mapM trFieldDecl fs)
 
 trFieldDecl :: FieldDecl -> GAC [CFieldDecl]
 trFieldDecl (FieldDecl _ ls ty) = T.forM ls $ \l ->
-  CField <$> trLocalIdent l <*> getVisibility l <*> trTypeExpr ty
+  CField <$> trGlobalIdent l <*> getVisibility l <*> trTypeExpr ty
 
 trNewConsDecl :: NewConstrDecl -> GAC CConsDecl
 trNewConsDecl (NewConstrDecl _ _ nc      ty) = CCons
-  <$> trLocalIdent nc <*> getVisibility nc <*> ((:[]) <$> trTypeExpr ty)
+  <$> trGlobalIdent nc <*> getVisibility nc <*> ((:[]) <$> trTypeExpr ty)
 trNewConsDecl (NewRecordDecl p _ nc (l, ty)) = CRecord
-  <$> trLocalIdent nc <*> getVisibility nc <*> trFieldDecl (FieldDecl p [l] ty)
+  <$> trGlobalIdent nc <*> getVisibility nc <*> trFieldDecl (FieldDecl p [l] ty)
 
 trTypeExpr :: TypeExpr -> GAC CTypeExpr
 trTypeExpr (ConstructorType  q ts) = CTCons <$> trQual q
@@ -117,27 +117,29 @@ trTypeExpr (ArrowType     ty1 ty2) = CFuncType   <$> trTypeExpr ty1
 trInfixDecl :: Decl -> GAC [COpDecl]
 trInfixDecl (InfixDecl _ fix mprec ops) = mapM trInfix (reverse ops)
   where
-  trInfix op = COp <$> trLocalIdent op <*> return (cvFixity fix)
-                  <*> return (fromInteger (mkPrec mprec))
+  trInfix op = COp <$> trGlobalIdent op <*> return (cvFixity fix)
+                   <*> return (fromInteger (mkPrec mprec))
   cvFixity InfixL = CInfixlOp
   cvFixity InfixR = CInfixrOp
   cvFixity Infix  = CInfixOp
 trInfixDecl _ = return []
 
-trFuncDecl :: Decl -> GAC [CFuncDecl]
-trFuncDecl (FunctionDecl   _ f eqs) = (\f' a v ty rs -> [CFunc f' a v ty rs])
-  <$> trLocalIdent f <*> getArity f <*> getVisibility f
-  <*> (getType f >>= trTypeExpr)
-  <*> mapM trEquation eqs
-trFuncDecl (ForeignDecl  _ _ _ f _) = (\f' a v ty rs -> [CFunc f' a v ty rs])
-  <$> trLocalIdent f <*> getArity f <*> getVisibility f
-  <*> (getType f >>= trTypeExpr)
-  <*> return []
-trFuncDecl (ExternalDecl      _ fs) = T.forM fs $ \f -> CFunc
-  <$> trLocalIdent f <*> getArity f <*> getVisibility f
-  <*> (getType f >>= trTypeExpr)
-  <*> return []
-trFuncDecl _                        = return []
+trFuncDecl :: Bool -> Decl -> GAC [CFuncDecl]
+trFuncDecl global (FunctionDecl   _ f eqs)
+  =   (\f' a v ty rs -> [CFunc f' a v ty rs])
+  <$> trFuncName global f <*> getArity f <*> getVisibility f
+  <*> getType f  <*> mapM trEquation eqs
+trFuncDecl global (ForeignDecl  _ _ _ f _)
+  =   (\f' a v ty rs -> [CFunc f' a v ty rs])
+  <$> trFuncName global f <*> getArity f <*> getVisibility f
+  <*> getType f  <*> return []
+trFuncDecl global (ExternalDecl      _ fs) = T.forM fs $ \f -> CFunc
+  <$> trFuncName global f <*> getArity f <*> getVisibility f
+  <*> getType f <*> return []
+trFuncDecl _      _                        = return []
+
+trFuncName :: Bool -> Ident -> GAC QName
+trFuncName global = if global then trGlobalIdent else trLocalIdent
 
 trEquation :: Equation -> GAC CRule
 trEquation (Equation _ lhs rhs) = inNestedScope
@@ -172,9 +174,9 @@ insertDeclLhs s@(TypeSig          _ _ _) = do
 insertDeclLhs _                          = return ()
 
 trLocalDecl :: Decl -> GAC [CLocalDecl]
-trLocalDecl f@(FunctionDecl     _ _ _) = map CLocalFunc <$> trFuncDecl f
-trLocalDecl f@(ForeignDecl  _ _ _ _ _) = map CLocalFunc <$> trFuncDecl f
-trLocalDecl f@(ExternalDecl       _ _) = map CLocalFunc <$> trFuncDecl f
+trLocalDecl f@(FunctionDecl     _ _ _) = map CLocalFunc <$> trFuncDecl False f
+trLocalDecl f@(ForeignDecl  _ _ _ _ _) = map CLocalFunc <$> trFuncDecl False f
+trLocalDecl f@(ExternalDecl       _ _) = map CLocalFunc <$> trFuncDecl False f
 trLocalDecl (PatternDecl      _ p rhs) = (\p' rhs' -> [CLocalPat p' rhs'])
                                          <$> trPat p <*> trRhs rhs
 trLocalDecl (FreeDecl            _ vs) = (\vs' -> [CLocalVars vs'])
@@ -192,10 +194,9 @@ trExpr :: Expression -> GAC CExpr
 trExpr (Literal         l) = return (CLit $ cvLiteral l)
 trExpr (Variable        v)
   | isQualified v = CSymbol <$> trQual v
-  | otherwise     = lookupVarIndex v' >>= \mvi -> case mvi of
+  | otherwise     = lookupVarIndex (unqualify v) >>= \mvi -> case mvi of
     Just vi -> return (CVar vi)
-    _       -> CSymbol <$> trLocalIdent v'
-  where v' = unqualify v
+    _       -> CSymbol <$> trQual v
 trExpr (Constructor     c) = CSymbol <$> trQual c
 trExpr (Paren           e) = trExpr e
 trExpr (Typed        e ty) = CTyped <$> trExpr e <*> trTypeExpr ty
@@ -294,7 +295,15 @@ cvLiteral (Float  _ f) = CFloatc  f
 cvLiteral (String _ s) = CStringc s
 
 trQual :: QualIdent -> GAC QName
-trQual qid = return (maybe "" moduleName (qidModule qid), idName (qidIdent qid))
+trQual qid
+  | n `elem` [unitId, listId, nilId, consId] = return ("Prelude", idName n)
+  | isTupleId n                              = return ("Prelude", idName n)
+  | otherwise
+  = return (maybe "" moduleName (qidModule qid), idName n)
+  where n = qidIdent qid
+
+trGlobalIdent :: Ident -> GAC QName
+trGlobalIdent i = S.gets moduleId >>= \m -> return (moduleName m, idName i)
 
 trLocalIdent :: Ident -> GAC QName
 trLocalIdent i = return ("", idName i)
@@ -443,8 +452,8 @@ getArity f = do
       [Value _ a _] -> a
       _             -> internalError $ "GenAbstractCurry.getArity: " ++ show f
 
-getType :: Ident -> GAC TypeExpr
-getType f = S.gets untypedAcy >>= getType' f
+getType :: Ident -> GAC CTypeExpr
+getType f = S.gets untypedAcy >>= getType' f >>= trTypeExpr
 
 getType' :: Ident -> Bool -> GAC TypeExpr
 getType' f True  = do
