@@ -3,6 +3,7 @@
     Description :  Pretty printer for IL
     Copyright   :  (c) 1999 - 2003 Wolfgang Lux
                                    Martin Engelke
+                       2011 - 2015 Björn Peemöller
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
@@ -80,12 +81,12 @@ ppType p (TypeConstructor tc tys)
   | isQTupleId tc         = parens
     (fsep (punctuate comma (map (ppType 0) tys)))
   | unqualify tc == nilId = brackets (ppType 0 (head tys))
-  | otherwise             = ppParen (p > 1 && not (null tys))
+  | otherwise             = parenIf (p > 1 && not (null tys))
                             (ppQIdent tc <+> fsep (map (ppType 2) tys))
 ppType _ (TypeVariable    n)
   | n >= 0    = text (typeVars !! n)
   | otherwise = text ('_':show (-n))
-ppType p (TypeArrow ty1 ty2) = ppParen (p > 0)
+ppType p (TypeArrow ty1 ty2) = parenIf (p > 0)
                                (fsep (ppArrow (TypeArrow ty1 ty2)))
   where
   ppArrow (TypeArrow ty1' ty2') = ppType 1 ty1' <+> text "->" : ppArrow ty2'
@@ -122,27 +123,27 @@ ppExpr p (Apply (Apply (Function   f _) e1) e2)
   | isQInfixOp f = ppInfixApp p e1 f e2
 ppExpr p (Apply (Apply (Constructor c _) e1) e2)
   | isQInfixOp c = ppInfixApp p e1 c e2
-ppExpr p (Apply      e1 e2) = ppParen (p > 2) $ sep
+ppExpr p (Apply      e1 e2) = parenIf (p > 2) $ sep
   [ppExpr 2 e1, nest exprIndent (ppExpr 3 e2)]
-ppExpr p (Case _ ev e alts) = ppParen (p > 0) $
+ppExpr p (Case _ ev e alts) = parenIf (p > 0) $
   text "case" <+> ppEval ev <+> ppExpr 0 e <+> text "of"
   $$ nest caseIndent (vcat $ map ppAlt alts)
   where ppEval Rigid = text "rigid"
         ppEval Flex  = text "flex"
-ppExpr p (Or         e1 e2) = ppParen (p > 0) $ sep
+ppExpr p (Or         e1 e2) = parenIf (p > 0) $ sep
   [nest orIndent (ppExpr 0 e1), char '|', nest orIndent (ppExpr 0 e2)]
-ppExpr p (Exist        v e) = ppParen (p > 0) $ sep
+ppExpr p (Exist        v e) = parenIf (p > 0) $ sep
   [text "let" <+> ppIdent v <+> text "free" <+> text "in", ppExpr 0 e]
-ppExpr p (Let          b e) = ppParen (p > 0) $ sep
+ppExpr p (Let          b e) = parenIf (p > 0) $ sep
   [text "let" <+> ppBinding b <+> text "in",ppExpr 0 e]
-ppExpr p (Letrec      bs e) = ppParen (p > 0) $ sep
+ppExpr p (Letrec      bs e) = parenIf (p > 0) $ sep
   [text "letrec" <+> vcat (map ppBinding bs) <+> text "in", ppExpr 0 e]
-ppExpr p (Typed       e ty) = ppParen (p > 0) $ sep
+ppExpr p (Typed       e ty) = parenIf (p > 0) $ sep
   [ppExpr 0 e, text "::", ppType 0 ty]
 
 
 ppInfixApp :: Int -> Expression -> QualIdent -> Expression -> Doc
-ppInfixApp p e1 op e2 = ppParen (p > 1) $ sep
+ppInfixApp p e1 op e2 = parenIf (p > 1) $ sep
   [ppExpr 2 e1 <+> ppQInfixOp op, nest exprIndent (ppExpr 2 e2)]
 
 ppIdent :: Ident -> Doc
@@ -170,6 +171,3 @@ typeVars :: [String]
 typeVars = [mkTypeVar c i | i <- [0 .. ], c <- ['a' .. 'z']] where
   mkTypeVar :: Char -> Int -> String
   mkTypeVar c i = c : if i == 0 then [] else show i
-
-ppParen :: Bool -> Doc -> Doc
-ppParen p = if p then parens else id
