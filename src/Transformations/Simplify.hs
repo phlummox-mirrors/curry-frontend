@@ -85,10 +85,10 @@ getFunArity f = do
   m     <- getModuleIdent
   tyEnv <- getValueEnv
   return $ case qualLookupValue f tyEnv of
-    [Value _ _ (ForAll _ ty)] -> arrowArity ty
-    _                         -> case qualLookupValue (qualQualify m f) tyEnv of
-      [Value _ _ (ForAll _ ty)] -> arrowArity ty
-      _                         -> internalError $ "Simplify.funType " ++ show f
+    [Value _ a _] -> a
+    _             -> case qualLookupValue (qualQualify m f) tyEnv of
+      [Value _ a _] -> a
+      _             -> internalError $ "Simplify.funType " ++ show f
 
 modifyValueEnv :: (ValueEnv -> ValueEnv) -> SIM ()
 modifyValueEnv f = S.modify $ \ s -> s { valueEnv = f $ valueEnv s }
@@ -96,11 +96,11 @@ modifyValueEnv f = S.modify $ \ s -> s { valueEnv = f $ valueEnv s }
 getValueEnv :: SIM ValueEnv
 getValueEnv = S.gets valueEnv
 
-freshIdent :: (Int -> Ident) -> TypeScheme -> SIM Ident
-freshIdent f ty@(ForAll _ t) = do
+freshIdent :: (Int -> Ident) -> Int -> TypeScheme -> SIM Ident
+freshIdent f arity ty = do
   m <- getModuleIdent
   x <- f <$> getNextId
-  modifyValueEnv $ bindFun m x (arrowArity t) ty
+  modifyValueEnv $ bindFun m x arity ty
   return x
 
 -- -----------------------------------------------------------------------------
@@ -245,13 +245,13 @@ simplifyAlt env (Alt p t rhs) = Alt p t <$> simRhs env rhs
 
 -- Transform a pattern declaration @t = e@ into two declarations
 -- @t = v, v = e@ whenever @t@ is not a variable. This is used to share
--- the expression @e@.
+-- the expression @e@ using the fresh variable @v@.
 sharePatternRhs :: Decl -> SIM [Decl]
 sharePatternRhs (PatternDecl p t rhs) = case t of
   VariablePattern _ -> return [PatternDecl p t rhs]
   _                 -> do
     ty <- monoType <$> getTypeOf t
-    v  <- addRefId (srcRefOf p) <$> freshIdent patternId ty
+    v  <- addRefId (srcRefOf p) <$> freshIdent patternId 0 ty
     return [ PatternDecl p t                   (simpleRhs p (mkVar v))
            , PatternDecl p (VariablePattern v) rhs
            ]
@@ -343,7 +343,7 @@ expandPatternBindings fvs d@(PatternDecl p t (SimpleRhs _ e _)) = case t of
  where
   mkSelectorDecl pty v = do
     vty <- getTypeOf v
-    f   <- freshIdent (updIdentName (++ '#' : idName v) . fpSelectorId)
+    f   <- freshIdent (updIdentName (++ '#' : idName v) . fpSelectorId) 1
                       (polyType (TypeArrow pty vty))
     return $ varDecl p v $ Let [funDecl p f [t] (mkVar v)] (Apply (mkVar f) e)
 expandPatternBindings _ d = return [d]
@@ -372,7 +372,7 @@ funDecl :: Position -> Ident -> [Pattern] -> Expression -> Decl
 funDecl p f ts e = FunctionDecl p f [Equation p (FunLhs f ts) (simpleRhs p e)]
 
 -- ---------------------------------------------------------------------------
--- Additional information
+-- Additional (obsolete) information
 -- ---------------------------------------------------------------------------
 
 -- Unfortunately, the transformation of pattern declarations introduces a

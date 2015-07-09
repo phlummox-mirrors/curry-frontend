@@ -50,7 +50,7 @@ data ValueInfo
   -- |Value with original name, arity and type
   | Value              QualIdent Int         TypeScheme
   -- |Record label with original name, list of constructors for which label
-  -- is valid field and type
+  -- is valid field and type (arity is always 1)
   | Label              QualIdent [QualIdent] TypeScheme
     deriving Show
 
