@@ -1,7 +1,7 @@
 {- |
     Module      :  $Header$
     Description :  Environment containing the module's information
-    Copyright   :  (c) 2011 - 2013 Björn Peemöller
+    Copyright   :  (c) 2011 - 2015 Björn Peemöller
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
@@ -57,14 +57,14 @@ initCompilerEnv mid = CompilerEnv
 -- |Show the 'CompilerEnv'
 showCompilerEnv :: CompilerEnv -> String
 showCompilerEnv env = show $ vcat
-  [ header "ModuleIdent       " $ textS $ moduleIdent env
-  , header "Language Etensions" $ text  $ show $ extensions  env
-  , header "Interfaces        " $ hcat  $ punctuate comma $ map textS
-                                        $ Map.keys $ interfaceEnv env
-  , header "ModuleAliases     " $ ppMap $ aliasEnv     env
-  , header "TypeConstructors  " $ ppAL $ allLocalBindings $ tyConsEnv env
-  , header "Values            " $ ppAL $ allLocalBindings $ valueEnv  env
-  , header "Precedences       " $ ppAL $ allLocalBindings $ opPrecEnv env
+  [ header "Module Identifier  " $ textS $ moduleIdent env
+  , header "Language Extensions" $ text  $ show $ extensions  env
+  , header "Interfaces         " $ hcat  $ punctuate comma $ map textS
+                                         $ Map.keys $ interfaceEnv env
+  , header "Module Aliases     " $ ppMap $ aliasEnv     env
+  , header "Precedences        " $ ppAL $ allLocalBindings $ opPrecEnv env
+  , header "Type Constructors  " $ ppAL $ allLocalBindings $ tyConsEnv env
+  , header "Values             " $ ppAL $ allLocalBindings $ valueEnv  env
   ]
   where
   header hdr content = hang (text hdr <+> colon) 4 content
@@ -76,7 +76,8 @@ ppMap = ppAL . Map.toList
 
 -- |Pretty print an association list
 ppAL :: (Show a, Show b) => [(a, b)] -> Doc
-ppAL xs = vcat $ map (\(a,b) -> text (pad a keyWidth) <+> equals <+> text b) showXs
+ppAL xs = vcat
+        $ map (\(a,b) -> text (pad a keyWidth) <+> equals <+> text b) showXs
   where showXs   = map (\(a,b) -> (show a, show b)) xs
         keyWidth = maximum (0 : map (length .fst) showXs)
         pad s n  = take n (s ++ repeat ' ')

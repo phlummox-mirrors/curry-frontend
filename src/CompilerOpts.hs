@@ -207,19 +207,19 @@ data DumpLevel
 
 -- |Description and flag of dump levels
 dumpLevel :: [(DumpLevel, String, String)]
-dumpLevel = [ (DumpParsed       , "dump-parse", "parse tree"               )
-            , (DumpKindChecked  , "dump-kc"   , "kind checker output"      )
-            , (DumpSyntaxChecked, "dump-sc"   , "syntax checker output"    )
-            , (DumpPrecChecked  , "dump-pc"   , "precedence checker output")
-            , (DumpTypeChecked  , "dump-tc"   , "type checker output"      )
-            , (DumpExportChecked, "dump-ec"   , "export checker output"    )
-            , (DumpQualified    , "dump-qual" , "qualifier output"         )
-            , (DumpDesugared    , "dump-ds"   , "desugarer output"         )
-            , (DumpSimplified   , "dump-simpl", "simplifier output"        )
-            , (DumpLifted       , "dump-lift" , "lifting output"           )
-            , (DumpTranslated   , "dump-trans", "translated output"        )
-            , (DumpCaseCompleted, "dump-cc"   , "case completed output"    )
-            , (DumpFlatCurry    , "dump-flat" , "FlatCurry code"           )
+dumpLevel = [ (DumpParsed       , "dump-parse", "parsing"                     )
+            , (DumpKindChecked  , "dump-kc"   , "kind checking"               )
+            , (DumpSyntaxChecked, "dump-sc"   , "syntax checking"             )
+            , (DumpPrecChecked  , "dump-pc"   , "precedence checking"         )
+            , (DumpTypeChecked  , "dump-tc"   , "type checking"               )
+            , (DumpExportChecked, "dump-ec"   , "export checking"             )
+            , (DumpQualified    , "dump-qual" , "qualification"               )
+            , (DumpDesugared    , "dump-ds"   , "desugaring"                  )
+            , (DumpLifted       , "dump-lift" , "lifting"                     )
+            , (DumpSimplified   , "dump-simpl", "simplification"              )
+            , (DumpTranslated   , "dump-trans", "pattern matching compilation")
+            , (DumpCaseCompleted, "dump-cc"   , "case completion"             )
+            , (DumpFlatCurry    , "dump-flat" , "translation into FlatCurry"  )
             ]
 
 -- |Description and flag of language extensions
@@ -432,12 +432,12 @@ debugDescriptions =
     , \ opts -> opts { dbDumpLevels = []                     })
   , ( "dump-env" , "additionally dump compiler environment"
     , \ opts -> opts { dbDumpEnv = True                 })
-  , ( "dump-raw" , "dump as raw AST (instead of pretty printed)"
+  , ( "dump-raw" , "dump as raw AST (instead of pretty printing)"
     , \ opts -> opts { dbDumpRaw = True                 })
   ] ++ map toDescr dumpLevel
   where
   toDescr (flag, name, desc)
-    = (name , "dump " ++ desc
+    = (name , "dump code after " ++ desc
         , \ opts -> opts { dbDumpLevels = addFlag flag (dbDumpLevels opts)})
 
 addFlag :: Eq a => a -> [a] -> [a]

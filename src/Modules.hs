@@ -21,6 +21,7 @@ module Modules
 
 import qualified Control.Exception as C   (catch, IOException)
 import           Control.Monad            (liftM, unless, when)
+import           Data.Char                (toUpper)
 import qualified Data.Map          as Map (elems)
 import           Data.Maybe               (fromMaybe)
 import           System.Directory         (getTemporaryDirectory, removeFile)
@@ -350,15 +351,23 @@ dumpWith opts view lvl res@(env, mdl) = do
 -- |Translate FlatCurry into the intermediate language 'IL'
 -- |The 'dump' function writes the selected information to standard output.
 doDump :: MonadIO m => DebugOpts -> Dump -> m ()
-doDump opts (level, env, dump) = when (level `elem` dbDumpLevels opts) $ do
-  when (dbDumpEnv opts) $ liftIO $ putStrLn $ showCompilerEnv env
-  liftIO $ putStrLn $ unlines [header, replicate (length header) '=', dump]
+doDump opts (level, env, dump)
+  = when (level `elem` dbDumpLevels opts) $ liftIO $ do
+      putStrLn (heading (capitalize $ lookupHeader dumpLevel) '=')
+      when (dbDumpEnv opts) $ do
+        putStrLn (heading "Environment" '-')
+        putStrLn (showCompilerEnv env)
+      putStrLn (heading "Source Code" '-')
+      putStrLn dump
   where
-  header = lookupHeader dumpLevel
+  heading h s = '\n' : h ++ '\n' : replicate (length h) s
   lookupHeader []            = "Unknown dump level " ++ show level
   lookupHeader ((l,_,h):lhs)
     | level == l = h
     | otherwise  = lookupHeader lhs
+  capitalize = unwords . map firstUpper . words
+  firstUpper ""     = ""
+  firstUpper (c:cs) = toUpper c : cs
 
 errModuleFileMismatch :: ModuleIdent -> Message
 errModuleFileMismatch mid = posMessage mid $ hsep $ map text
