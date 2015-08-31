@@ -74,13 +74,13 @@ cvImportDecl (ImportDecl _ mid _ _ _) = moduleName mid
 
 trTypeDecl :: Decl -> GAC [CTypeDecl]
 trTypeDecl (DataDecl    _ t vs cs) = (\t' v vs' cs' -> [CType t' v vs' cs'])
-  <$> trGlobalIdent t <*> getVisibility t
+  <$> trGlobalIdent t <*> getTypeVisibility t
   <*> mapM genTVarIndex vs <*> mapM trConsDecl cs
 trTypeDecl (TypeDecl    _ t vs ty) = (\t' v vs' ty' -> [CTypeSyn t' v vs' ty'])
-  <$> trGlobalIdent t <*> getVisibility t
+  <$> trGlobalIdent t <*> getTypeVisibility t
   <*> mapM genTVarIndex vs <*> trTypeExpr ty
 trTypeDecl (NewtypeDecl _ t vs nc) = (\t' v vs' nc' -> [CNewType t' v vs' nc'])
-  <$> trGlobalIdent t <*> getVisibility t
+  <$> trGlobalIdent t <*> getTypeVisibility t
   <*> mapM genTVarIndex vs <*> trNewConsDecl nc
 trTypeDecl _                       = return []
 
@@ -342,7 +342,8 @@ prelUntyped = qualifyWith preludeMIdent $ mkIdent "untyped"
 data AbstractEnv = AbstractEnv
   { moduleId   :: ModuleIdent            -- ^name of the module
   , typeEnv    :: ValueEnv               -- ^known values
-  , exports    :: Set.Set Ident          -- ^exported symbols
+  , tyExports  :: Set.Set Ident          -- ^exported type symbols
+  , valExports :: Set.Set Ident          -- ^exported value symbols
   , varIndex   :: Int                    -- ^counter for variable indices
   , tvarIndex  :: Int                    -- ^counter for type variable indices
   , varEnv     :: NestEnv Int            -- ^stack of variable tables
@@ -357,7 +358,8 @@ abstractEnv :: Bool -> CompilerEnv -> Module -> AbstractEnv
 abstractEnv uacy env (Module _ mid es _ ds) = AbstractEnv
   { moduleId   = mid
   , typeEnv    = valueEnv env
-  , exports    = foldr (buildExportTable mid) Set.empty es'
+  , tyExports  = foldr (buildTypeExports  mid) Set.empty es'
+  , valExports = foldr (buildValueExports mid) Set.empty es'
   , varIndex   = 0
   , tvarIndex  = 0
   , varEnv     = globalEnv emptyTopEnv
@@ -372,12 +374,18 @@ abstractEnv uacy env (Module _ mid es _ ds) = AbstractEnv
           _                    -> internalError "GenAbstractCurry.abstractEnv"
 
 -- Builds a table containing all exported identifiers from a module.
-buildExportTable :: ModuleIdent -> Export -> Set.Set Ident -> Set.Set Ident
-buildExportTable mid (Export             q)
+buildTypeExports :: ModuleIdent -> Export -> Set.Set Ident -> Set.Set Ident
+buildTypeExports mid (ExportTypeWith tc _)
+  | isLocalIdent mid tc = Set.insert (unqualify tc)
+buildTypeExports _   _  = id
+
+-- Builds a table containing all exported identifiers from a module.
+buildValueExports :: ModuleIdent -> Export -> Set.Set Ident -> Set.Set Ident
+buildValueExports mid (Export             q)
   | isLocalIdent mid q  = Set.insert (unqualify q)
-buildExportTable mid (ExportTypeWith tc cs)
-  | isLocalIdent mid tc = flip (foldr Set.insert) (unqualify tc : cs)
-buildExportTable _   _  = id
+buildValueExports mid (ExportTypeWith tc cs)
+  | isLocalIdent mid tc = flip (foldr Set.insert) cs
+buildValueExports _   _  = id
 
 -- Looks up the unique index for the variable 'ident' in the
 -- variable table of the current scope.
@@ -469,6 +477,10 @@ getType' f False = do
       _                         -> internalError $ "GenAbstractCurry.getType: "
                                                   ++ show f
 
+getTypeVisibility :: Ident -> GAC CVisibility
+getTypeVisibility i = S.gets $ \env -> 
+  if Set.member i (tyExports env) then Public else Private
+
 getVisibility :: Ident -> GAC CVisibility
-getVisibility i = S.gets $ \env -> if Set.member i (exports env) then Public
-                                                                 else Private
+getVisibility i = S.gets $ \env -> 
+  if Set.member i (valExports env) then Public else Private
