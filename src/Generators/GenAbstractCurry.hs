@@ -29,7 +29,6 @@ import qualified Data.Traversable    as T     (forM)
 
 import Curry.AbstractCurry
 import Curry.Base.Ident
-import Curry.Base.Position
 import Curry.Syntax
 
 import Base.CurryTypes (fromType)
@@ -223,14 +222,9 @@ trExpr (EnumFromThenTo e1 e2 e3) = trExpr
 trExpr (UnaryMinus          _ e) = trExpr $ apply (Variable qNegateId) [e]
 trExpr (Apply             e1 e2) = CApply <$> trExpr e1 <*> trExpr e2
 trExpr (InfixApply     e1 op e2) = trExpr $ apply (opToExpr op) [e1, e2]
-trExpr (LeftSection        e op) = do
-  v <- freshVar "x"
-  trExpr $ Lambda noRef [VariablePattern v]
-         $ Apply (Apply (opToExpr op) e) (Variable $ qualify v)
-trExpr (RightSection       op e) = do
-  v <- freshVar "x"
-  trExpr $ Lambda noRef [VariablePattern v]
-         $ Apply (Apply (opToExpr op) (Variable $ qualify v)) e
+trExpr (LeftSection        e op) = trExpr $ apply (opToExpr op) [e]
+trExpr (RightSection       op e) = trExpr
+                                 $ apply (Variable qFlip) [opToExpr op, e]
 trExpr (Lambda           _ ps e) = inNestedScope $
                                    CLambda <$> mapM trPat ps <*> trExpr e
 trExpr (Let                ds e) = inNestedScope $
@@ -312,6 +306,9 @@ trLocalIdent i = return ("", idName i)
 opToExpr :: InfixOp -> Expression
 opToExpr (InfixOp    op) = Variable    op
 opToExpr (InfixConstr c) = Constructor c
+
+qFlip :: QualIdent
+qFlip = qualifyWith preludeMIdent (mkIdent "flip")
 
 qEnumFromId :: QualIdent
 qEnumFromId = qualifyWith preludeMIdent (mkIdent "enumFrom")
@@ -408,17 +405,6 @@ genVarIndex i = do
   S.put $ env { varIndex = idx + 1, varEnv = bindNestEnv i idx (varEnv env) }
   return (idx, idName i)
 
--- Generates an identifier which doesn't occur in the variable table
--- of the current scope.
-freshVar :: String -> GAC Ident
-freshVar vname = S.gets $ genFreshVar 0 . varEnv
-  where
-  genFreshVar :: Int -> NestEnv a -> Ident
-  genFreshVar idx vs
-    | elemNestEnv ident vs = genFreshVar (idx + 1) vs
-    | otherwise            = ident
-    where ident = mkIdent $ vname ++ show idx
-
 -- Looks up the unique index for the type variable 'ident' in the type
 -- variable table of the current scope.
 getTVarIndex :: Ident -> GAC CTVarIName
@@ -478,9 +464,9 @@ getType' f False = do
                                                   ++ show f
 
 getTypeVisibility :: Ident -> GAC CVisibility
-getTypeVisibility i = S.gets $ \env -> 
+getTypeVisibility i = S.gets $ \env ->
   if Set.member i (tyExports env) then Public else Private
 
 getVisibility :: Ident -> GAC CVisibility
-getVisibility i = S.gets $ \env -> 
+getVisibility i = S.gets $ \env ->
   if Set.member i (valExports env) then Public else Private
