@@ -126,6 +126,7 @@ data CymakeMode
   | ModeVersion        -- ^ Show version and exit
   | ModeNumericVersion -- ^ Show numeric version, suitable for later processing
   | ModeHtml           -- ^ Create HTML documentation
+  | ModeToken          -- ^ Create stream of positions and token
   | ModeMake           -- ^ Compile with dependencies
   deriving (Eq, Show)
 
@@ -353,6 +354,9 @@ options =
   , Option ""   ["html"]
       (NoArg (onOpts $ \ opts -> opts { optMode = ModeHtml }))
       "generate html code and exit"
+  , Option ""   ["token"]
+      (NoArg (onOpts $ \ opts -> opts { optMode = ModeToken }))
+	  "generate token stream and exit"
   , Option ""   ["parse-only"]
       (NoArg (onOpts $ \ opts -> opts { optTargetTypes =
         nub $ Parsed : optTargetTypes opts }))
