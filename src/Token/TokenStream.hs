@@ -8,11 +8,17 @@
 
 module TokenStream (source2token) where
 
-
-import Curry.Base.Message (showError)
-import Curry.Base.Monad   (runCYM)
-import Curry.Syntax
+import Curry.Base.Message    (showError)
+import Curry.Base.Ident      (ModuleIdent (..), QualIdent (..), unqualify)
+import Curry.Base.Monad      (CYIO, liftCYM, failMessages, runCYM)
 import Curry.Base.Position
+import Curry.Base.Pretty     (text)
+import Curry.Files.PathUtils (readModule)
+import Curry.Syntax          (Module (..), lexSource)
+
+import Base.Messages         (warn, message)
+import CompilerOpts          (Options (..), WarnOpts (..))
+import CurryBuilder          (findCurry)
 
 -- |Write list of Tokens and Positions into a file
 source2token :: Options -> String -> CYIO()
@@ -31,7 +37,7 @@ formatToken opts f = do
     Just src -> do
     case runCYM (lexSource f src) of
       Left errs -> putStrLn "ERROR" >> mapM_ (putStrLn . showError) errs
-      Right toks -> return ({-moduleIdent m - woher?-}, show $ map (\(p, t) -> (p, showToken t)) toks
+      Right toks -> return ({-moduleIdent m - woher?-}, show $ map (\(p, t) -> (p, showToken t)) toks)
 
 -- |Generate filename for output from ModuleIdent
 tokenFile :: ModuleIdent -> String
