@@ -14,11 +14,11 @@ import Curry.Base.Monad      (CYIO, liftCYM, failMessages, runCYM)
 import Curry.Base.Position
 import Curry.Base.Pretty     (text)
 import Curry.Files.PathUtils (readModule)
-import Curry.Syntax          (Module (..), lexSource)
+import Curry.Syntax          --(Module (..), lexSource)
 
-import Base.Messages         (warn, message)
-import CompilerOpts          (Options (..), WarnOpts (..))
-import CurryBuilder          (findCurry)
+--import Base.Messages         (warn, message)
+--import CompilerOpts          (Options (..), WarnOpts (..))
+--import CurryBuilder          (findCurry)
 
 --inFile :: String
 --inFile = "testAllTokens.curry"
