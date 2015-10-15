@@ -16,9 +16,9 @@ import Curry.Base.Pretty     (text)
 import Curry.Files.PathUtils (readModule)
 import Curry.Syntax          --(Module (..), lexSource)
 
---import Base.Messages         (warn, message)
---import CompilerOpts          (Options (..), WarnOpts (..))
---import CurryBuilder          (findCurry)
+import Base.Messages         (warn, message)
+import CompilerOpts          (Options (..), WarnOpts (..))
+import CurryBuilder          (findCurry)
 
 
 -- |Write list of Tokens and Positions into a file

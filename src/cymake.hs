@@ -19,7 +19,7 @@ import Curry.Base.Monad (runCYIO)
 import Base.Messages
 import Files.CymakePath (cymakeGreeting, cymakeVersion)
 import Html.CurryHtml   (source2html)
-import Token.WriteToken.hs (source2token)
+--import Token.WriteToken.hs (source2token)
 
 import CurryBuilder (buildCurry)
 import CompilerOpts (Options (..), CymakeMode (..), getCompilerOpts, usage)
@@ -38,8 +38,8 @@ cymake (prog, opts, files, errs)
   | null files                 = badUsage prog ["no input files"]
   | mode == ModeHtml           =
     runCYIO (mapM_ (source2html opts) files) >>= okOrAbort
-  | mode == ModeToken          =
-    runCYIO (mapM_ (source2token opts) files) >>= okOrAbort
+  -- | mode == ModeToken          =
+  --  runCYIO (mapM_ (source2token opts) files) >>= okOrAbort
   | otherwise                  =
     runCYIO (mapM_ (buildCurry  opts) files) >>= okOrAbort
   where mode = optMode opts
