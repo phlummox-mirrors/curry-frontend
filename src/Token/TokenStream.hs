@@ -6,15 +6,19 @@
     and positions of a Curry source module into a separate file.
 -}
 
-module TokenStream (source2token) where
+module Token.TokenStream (source2token) where
 
-import Curry.Base.Message    (showError)
+import Control.Monad.Writer (liftIO)
+
+import Curry.Base.Message    (showError, Message)
 import Curry.Base.Ident      (ModuleIdent (..), QualIdent (..), unqualify)
 import Curry.Base.Monad      (CYIO, liftCYM, failMessages, runCYM)
 import Curry.Base.Position
 import Curry.Base.Pretty     (text)
 import Curry.Files.PathUtils (readModule)
 import Curry.Syntax          --(Module (..), lexSource)
+
+import System.FilePath       ((</>))
 
 import Base.Messages         (warn, message)
 import CompilerOpts          (Options (..), WarnOpts (..))
@@ -28,21 +32,25 @@ import CurryBuilder          (findCurry)
 source2token :: Options -> String -> CYIO()
 source2token opts s = do
   srcFile              <- findCurry opts s
-  (Module _ mid _ _ _) <- patchModuleId $ parseHeader srcFile s
-  tok                  <- formatToken opts srcFile
-  outFile              <- tokenFile mid
-  liftIO $ writeFile outFile tok
+  parse                <- (liftCYM $ parseHeader srcFile s)
+  (Module _ mid _ _ _) <- return $ patchModuleId srcFile parse
+  either                  <- formatToken opts srcFile
+  outFile              <- return $ "." </> tokenFile mid
+  case either of
+       Left errs -> liftIO $ putStrLn "ERROR" >> mapM_ (putStrLn . showError) errs
+       Right toks -> do let content = show $ map (\(p, t) -> (p, showToken t)) toks
+                        liftIO $ writeFile outFile content
 
 -- |Create TokenStream
-formatToken :: Options -> String -> CYIO (ModuleIdent, String)
+formatToken :: Options -> String -> CYIO (Either [Message] [(Position, Token)])
 formatToken opts f = do
   mbModule <- liftIO $ readModule f
   case mbModule of
     Nothing  -> failMessages [message $ text $ "Missing file: " ++ f]
     Just src -> do
-    case runCYM (lexSource f src) of
-      Left errs -> putStrLn "ERROR" >> mapM_ (putStrLn . showError) errs
-      Right toks -> return $ show $ map (\(p, t) -> (p, showToken t)) toks
+    return $ runCYM (lexSource f src)
+      -- Left errs -> liftIO $ putStrLn "ERROR" >> mapM_ (putStrLn . showError) errs
+      -- Right toks -> return $ show $ map (\(p, t) -> (p, showToken t)) toks
 
 
 -- |Generate filename for output from ModuleIdent

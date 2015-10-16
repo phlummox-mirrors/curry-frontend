@@ -354,7 +354,7 @@ options =
   , Option ""   ["html"]
       (NoArg (onOpts $ \ opts -> opts { optMode = ModeHtml }))
       "generate html code and exit"
-  , Option ""   ["token"]
+   , Option ""   ["token"]
       (NoArg (onOpts $ \ opts -> opts { optMode = ModeToken }))
 	  "generate token stream and exit"
   , Option ""   ["parse-only"]
