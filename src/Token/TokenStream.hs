@@ -15,10 +15,11 @@ import Curry.Base.Ident      (ModuleIdent (..), QualIdent (..), unqualify)
 import Curry.Base.Monad      (CYIO, liftCYM, failMessages, runCYM)
 import Curry.Base.Position
 import Curry.Base.Pretty     (text)
+import Curry.Files.Filenames
 import Curry.Files.PathUtils (readModule)
 import Curry.Syntax          --(Module (..), lexSource)
 
-import System.FilePath       ((</>))
+import System.FilePath       (replaceExtension)
 
 import Base.Messages         (warn, message)
 import CompilerOpts          (Options (..), WarnOpts (..))
@@ -34,8 +35,9 @@ source2token opts s = do
   srcFile              <- findCurry opts s
   parse                <- (liftCYM $ parseHeader srcFile s)
   (Module _ mid _ _ _) <- return $ patchModuleId srcFile parse
-  either                  <- formatToken opts srcFile
-  outFile              <- return $ "." </> tokenFile mid
+  either               <- formatToken opts srcFile
+  outFile              <- return $ replaceExtension (addCurrySubdirModule (optUseSubdir opts) mid srcFile) ".token"
+  --return $ "." </> tokenFile mid
   case either of
        Left errs -> liftIO $ putStrLn "ERROR" >> mapM_ (putStrLn . showError) errs
        Right toks -> do let content = show $ map (\(p, t) -> (p, showToken t)) toks
