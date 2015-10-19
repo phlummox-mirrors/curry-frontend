@@ -37,11 +37,10 @@ source2token opts s = do
   (Module _ mid _ _ _) <- return $ patchModuleId srcFile parse
   eitherErrsToks       <- formatToken srcFile
   outFile              <- return $ replaceExtension (addCurrySubdirModule (optUseSubdir opts) mid srcFile) ".token"
-  --return $ "." </> tokenFile mid
   case eitherErrsToks of
-       Left errs -> liftIO $ putStrLn "ERROR" >> mapM_ (putStrLn . showError) errs
-       Right toks -> do let content = show $ map (\(p, t) -> (p, showToken t)) toks
-                        liftIO $ writeFile outFile content
+    Left errs -> liftIO $ putStrLn "ERROR" >> mapM_ (putStrLn . showError) errs
+    Right toks -> do let content = show $ map (\(p, t) -> (p, showToken t)) toks
+                       liftIO $ writeFile outFile content
 
 -- |Create TokenStream
 formatToken :: String -> CYIO (Either [Message] [(Position, Token)])
@@ -49,10 +48,7 @@ formatToken f = do
   mbModule <- liftIO $ readModule f
   case mbModule of
     Nothing  -> failMessages [message $ text $ "Missing file: " ++ f]
-    Just src -> do
-    return $ runCYM (lexSource f src)
-      -- Left errs -> liftIO $ putStrLn "ERROR" >> mapM_ (putStrLn . showError) errs
-      -- Right toks -> return $ show $ map (\(p, t) -> (p, showToken t)) toks
+    Just src -> return $ runCYM (lexSource f src)
 
 -- |Show tokens and their value if needed
 showToken :: Token -> String
@@ -137,10 +133,10 @@ showToken t =
     Token SymMinusDot (IdentAttributes _ _) -> "SymMinusDot"
 
 -- pragmas
-    Token PragmaLanguage NoAttributes                        -> "PragmaLanguage"
-    Token PragmaOptions (OptionsAttributes _ toolArgs_)      -> "PragmaOptions " ++ show toolArgs_
-    Token PragmaHiding NoAttributes                          -> "PragmaHiding" 
-    Token PragmaEnd NoAttributes                             -> "PragmaEnd" 
+    Token PragmaLanguage NoAttributes                   -> "PragmaLanguage"
+    Token PragmaOptions (OptionsAttributes _ toolArgs_) -> "PragmaOptions " ++ show toolArgs_
+    Token PragmaHiding NoAttributes                     -> "PragmaHiding" 
+    Token PragmaEnd NoAttributes                        -> "PragmaEnd" 
 
 -- comments
     Token LineComment (StringAttributes svalue _)   -> "LineComment "   ++ show svalue
