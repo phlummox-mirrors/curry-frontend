@@ -16,7 +16,8 @@ import Curry.Base.Position
 import Curry.Base.Pretty     (text)
 import Curry.Files.Filenames
 import Curry.Files.PathUtils (readModule)
-import Curry.Syntax          --(Module (..), lexSource)
+import Curry.Syntax          -- import data constructors for all tokens
+
 
 import System.FilePath       (replaceExtension)
 
@@ -58,16 +59,16 @@ showToken :: Token -> String
 showToken t =
   case t of 
 -- literals
-    Token CharTok (CharAttributes cval original)     -> "CharTok "   ++ show cval
-    Token IntTok  (IntAttributes  ival original)     -> "IntTok "    ++ show ival
-    Token FloatTok (FloatAttributes fval original)   -> "FloatTok "  ++ show fval
-    Token StringTok (StringAttributes sval original) -> "StringTok " ++ show sval
+    Token CharTok (CharAttributes cvalue _)     -> "CharTok "   ++ show cvalue
+    Token IntTok  (IntAttributes  ivalue _)     -> "IntTok "    ++ show ivalue
+    Token FloatTok (FloatAttributes fvalue _)   -> "FloatTok "  ++ show fvalue
+    Token StringTok (StringAttributes svalue _) -> "StringTok " ++ show svalue
 
 -- identifiers
-    Token Id (IdentAttributes modulVal sval)   -> "Id "   ++ show sval
-    Token QId (IdentAttributes modulVal sval)  -> "QId "  ++ show sval
-    Token Sym (IdentAttributes modulVal sval)  -> "Sym "  ++ show sval
-    Token QSym (IdentAttributes modulVal sval) -> "QSym " ++ show sval
+    Token Id (IdentAttributes _ svalue)   -> "Id "   ++ show svalue
+    Token QId (IdentAttributes _ svalue)  -> "QId "  ++ show svalue
+    Token Sym (IdentAttributes _ svalue)  -> "Sym "  ++ show svalue
+    Token QSym (IdentAttributes _ svalue) -> "QSym " ++ show svalue
 
 -- punctuation symbols
     Token LeftParen NoAttributes  -> "LeftParen"
@@ -85,65 +86,65 @@ showToken t =
     Token VRightBrace NoAttributes        -> "VRightBrace"
 
 -- reserved keywords
-    Token KW_case (IdentAttributes modulVal sval)     -> "KW_case"
-    Token KW_data (IdentAttributes modulVal sval)     -> "KW_data"
-    Token KW_do (IdentAttributes modulVal sval)       -> "KW_do"
-    Token KW_else (IdentAttributes modulVal sval)     -> "KW_else"
-    Token KW_external (IdentAttributes modulVal sval) -> "KW_external"
-    Token KW_fcase (IdentAttributes modulVal sval)    -> "KW_fcase"
-    Token KW_foreign (IdentAttributes modulVal sval)  -> "KW_foreign"
-    Token KW_free (IdentAttributes modulVal sval)     -> "KW_free"
-    Token KW_if (IdentAttributes modulVal sval)       -> "KW_if"
-    Token KW_import (IdentAttributes modulVal sval)   -> "KW_import"
-    Token KW_in (IdentAttributes modulVal sval)       -> "KW_in"
-    Token KW_infix (IdentAttributes modulVal sval)    -> "KW_infix"
-    Token KW_infixl (IdentAttributes modulVal sval)   -> "KW_infixl"
-    Token KW_infixr (IdentAttributes modulVal sval)   -> "KW_infixr"
-    Token KW_let (IdentAttributes modulVal sval)      -> "KW_let"
-    Token KW_module (IdentAttributes modulVal sval)   -> "KW_module"
-    Token KW_newtype (IdentAttributes modulVal sval)  -> "KW_newtype"
-    Token KW_of (IdentAttributes modulVal sval)       -> "KW_of"
-    Token KW_then (IdentAttributes modulVal sval)     -> "KW_then"
-    Token KW_type (IdentAttributes modulVal sval)     -> "KW_type"
-    Token KW_where (IdentAttributes modulVal sval)    -> "KW_where"
+    Token KW_case (IdentAttributes _ _)     -> "KW_case"
+    Token KW_data (IdentAttributes _ _)     -> "KW_data"
+    Token KW_do (IdentAttributes _ _)       -> "KW_do"
+    Token KW_else (IdentAttributes _ _)     -> "KW_else"
+    Token KW_external (IdentAttributes _ _) -> "KW_external"
+    Token KW_fcase (IdentAttributes _ _)    -> "KW_fcase"
+    Token KW_foreign (IdentAttributes _ _)  -> "KW_foreign"
+    Token KW_free (IdentAttributes _ _)     -> "KW_free"
+    Token KW_if (IdentAttributes _ _)       -> "KW_if"
+    Token KW_import (IdentAttributes _ _)   -> "KW_import"
+    Token KW_in (IdentAttributes _ _)       -> "KW_in"
+    Token KW_infix (IdentAttributes _ _)    -> "KW_infix"
+    Token KW_infixl (IdentAttributes _ _)   -> "KW_infixl"
+    Token KW_infixr (IdentAttributes _ _)   -> "KW_infixr"
+    Token KW_let (IdentAttributes _ _)      -> "KW_let"
+    Token KW_module (IdentAttributes _ _)   -> "KW_module"
+    Token KW_newtype (IdentAttributes _ _)  -> "KW_newtype"
+    Token KW_of (IdentAttributes _ _)       -> "KW_of"
+    Token KW_then (IdentAttributes _ _)     -> "KW_then"
+    Token KW_type (IdentAttributes _ _)     -> "KW_type"
+    Token KW_where (IdentAttributes _ _)    -> "KW_where"
 
 -- reserved operators
-    Token At (IdentAttributes modulVal sval)          -> "At"
-    Token Colon (IdentAttributes modulVal sval)       -> "Colon"
-    Token DotDot (IdentAttributes modulVal sval)      -> "DotDot"
-    Token DoubleColon (IdentAttributes modulVal sval) -> "DoubleColon" 
-    Token Equals (IdentAttributes modulVal sval)      -> "Equals"
-    Token Backslash (IdentAttributes modulVal sval)   -> "Backslash"
-    Token Bar (IdentAttributes modulVal sval)         -> "Bar"
-    Token LeftArrow (IdentAttributes modulVal sval)   -> "LeftArrow"
-    Token RightArrow (IdentAttributes modulVal sval)  -> "RightArrow"
-    Token Tilde (IdentAttributes modulVal sval)       -> "Tilde"
-    Token Bind (IdentAttributes modulVal sval)        -> "Bind"
-    Token Select (IdentAttributes modulVal sval)      -> "Select"
+    Token At (IdentAttributes _ _)          -> "At"
+    Token Colon (IdentAttributes _ _)       -> "Colon"
+    Token DotDot (IdentAttributes _ _)      -> "DotDot"
+    Token DoubleColon (IdentAttributes _ _) -> "DoubleColon" 
+    Token Equals (IdentAttributes _ _)      -> "Equals"
+    Token Backslash (IdentAttributes _ _)   -> "Backslash"
+    Token Bar (IdentAttributes _ _)         -> "Bar"
+    Token LeftArrow (IdentAttributes _ _)   -> "LeftArrow"
+    Token RightArrow (IdentAttributes _ _)  -> "RightArrow"
+    Token Tilde (IdentAttributes _ _)       -> "Tilde"
+    Token Bind (IdentAttributes _ _)        -> "Bind"
+    Token Select (IdentAttributes _ _)      -> "Select"
 
 -- special identifiers
-    Token Id_as (IdentAttributes modulVal sval)        -> "Id_as"
-    Token Id_ccall (IdentAttributes modulVal sval)     -> "Id_ccall"
-    Token Id_forall (IdentAttributes modulVal sval)    -> "Id_forall"
-    Token Id_hiding (IdentAttributes modulVal sval)    -> "Id_hiding"
-    Token Id_interface (IdentAttributes modulVal sval) -> "Id_interface" 
-    Token Id_primitive (IdentAttributes modulVal sval) -> "Id_primitive"
-    Token Id_qualified (IdentAttributes modulVal sval) -> "Id_qualified"
+    Token Id_as (IdentAttributes _ _)        -> "Id_as"
+    Token Id_ccall (IdentAttributes _ _)     -> "Id_ccall"
+    Token Id_forall (IdentAttributes _ _)    -> "Id_forall"
+    Token Id_hiding (IdentAttributes _ _)    -> "Id_hiding"
+    Token Id_interface (IdentAttributes _ _) -> "Id_interface" 
+    Token Id_primitive (IdentAttributes _ _) -> "Id_primitive"
+    Token Id_qualified (IdentAttributes _ _) -> "Id_qualified"
 
 -- special operators
-    Token SymDot (IdentAttributes modulVal sval)      -> "SymDot"
-    Token SymMinus (IdentAttributes modulVal sval)    -> "SymMinus"
-    Token SymMinusDot (IdentAttributes modulVal sval) -> "SymMinusDot"
+    Token SymDot (IdentAttributes _ _)      -> "SymDot"
+    Token SymMinus (IdentAttributes _ _)    -> "SymMinus"
+    Token SymMinusDot (IdentAttributes _ _) -> "SymMinusDot"
 
 -- pragmas
     Token PragmaLanguage NoAttributes                        -> "PragmaLanguage"
-    Token PragmaOptions (OptionsAttributes toolVal toolArgs) -> "PragmaOptions " ++ show toolArgs
+    Token PragmaOptions (OptionsAttributes _ toolArgs_)      -> "PragmaOptions " ++ show toolArgs_
     Token PragmaHiding NoAttributes                          -> "PragmaHiding" 
     Token PragmaEnd NoAttributes                             -> "PragmaEnd" 
 
 -- comments
-    Token LineComment (StringAttributes sval original)   -> "LineComment "   ++ show sval
-    Token NestedComment (StringAttributes sval original) -> "NestedComment " ++ show sval
+    Token LineComment (StringAttributes svalue _)   -> "LineComment "   ++ show svalue
+    Token NestedComment (StringAttributes svalue _) -> "NestedComment " ++ show svalue
 
 -- end-of-file token
     Token EOF NoAttributes -> "EOF"
