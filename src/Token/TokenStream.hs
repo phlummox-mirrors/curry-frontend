@@ -11,7 +11,6 @@ module Token.TokenStream (source2token) where
 import Control.Monad.Writer (liftIO)
 
 import Curry.Base.Message    (showError, Message)
-import Curry.Base.Ident      (ModuleIdent (..), QualIdent (..), unqualify)
 import Curry.Base.Monad      (CYIO, liftCYM, failMessages, runCYM)
 import Curry.Base.Position
 import Curry.Base.Pretty     (text)
@@ -21,8 +20,8 @@ import Curry.Syntax          --(Module (..), lexSource)
 
 import System.FilePath       (replaceExtension)
 
-import Base.Messages         (warn, message)
-import CompilerOpts          (Options (..), WarnOpts (..))
+import Base.Messages         (message)
+import CompilerOpts          (Options (..))
 import CurryBuilder          (findCurry)
 
 
@@ -35,17 +34,17 @@ source2token opts s = do
   srcFile              <- findCurry opts s
   parse                <- (liftCYM $ parseHeader srcFile s)
   (Module _ mid _ _ _) <- return $ patchModuleId srcFile parse
-  either               <- formatToken opts srcFile
+  eitherErrsToks       <- formatToken srcFile
   outFile              <- return $ replaceExtension (addCurrySubdirModule (optUseSubdir opts) mid srcFile) ".token"
   --return $ "." </> tokenFile mid
-  case either of
+  case eitherErrsToks of
        Left errs -> liftIO $ putStrLn "ERROR" >> mapM_ (putStrLn . showError) errs
        Right toks -> do let content = show $ map (\(p, t) -> (p, showToken t)) toks
                         liftIO $ writeFile outFile content
 
 -- |Create TokenStream
-formatToken :: Options -> String -> CYIO (Either [Message] [(Position, Token)])
-formatToken opts f = do
+formatToken :: String -> CYIO (Either [Message] [(Position, Token)])
+formatToken f = do
   mbModule <- liftIO $ readModule f
   case mbModule of
     Nothing  -> failMessages [message $ text $ "Missing file: " ++ f]
@@ -53,11 +52,6 @@ formatToken opts f = do
     return $ runCYM (lexSource f src)
       -- Left errs -> liftIO $ putStrLn "ERROR" >> mapM_ (putStrLn . showError) errs
       -- Right toks -> return $ show $ map (\(p, t) -> (p, showToken t)) toks
-
-
--- |Generate filename for output from ModuleIdent
-tokenFile :: ModuleIdent -> String
-tokenFile m = show m ++ ".token"
 
 -- |Show tokens and their value if needed
 showToken :: Token -> String
