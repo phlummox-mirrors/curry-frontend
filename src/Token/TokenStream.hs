@@ -11,7 +11,6 @@ module Token.TokenStream (source2token) where
 import Control.Monad.Writer  (liftIO)
 import System.FilePath       (replaceExtension)
 
-import Curry.Base.Message    (showError, Message)
 import Curry.Base.Monad      (CYIO, liftCYM, failMessages, runCYM)
 import Curry.Base.Position   (Position)
 import Curry.Base.Pretty     (text)
@@ -19,11 +18,11 @@ import Curry.Files.Filenames (addCurrySubdirModule)
 import Curry.Files.PathUtils (readModule)
 import Curry.Syntax          -- import data constructors for all tokens
 
-import Base.Messages         (message)
+import Base.Messages         (abortWithMessages, message, Message)
 import CompilerOpts          (Options (..))
 import CurryBuilder          (findCurry)
 
--- |Write list of tokens and oositions into a file
+-- |Write list of tokens and positions into a file
 -- TODO: To get the name of the module its header is getting parsed. 
 --       This should be improved because there shouldn't be done any 
 --       parsing when extracting only the TokenStream.
@@ -35,11 +34,11 @@ source2token opts s = do
   eitherErrsToks       <- formatToken srcFile
   outFile              <- return $ replaceExtension (addCurrySubdirModule (optUseSubdir opts) mid srcFile) ".token"
   case eitherErrsToks of
-    Left errs -> liftIO $ putStrLn "ERROR" >> mapM_ (putStrLn . showError) errs
+    Left errs -> liftIO $ abortWithMessages errs
     Right toks -> do let content = show $ map (\(p, t) -> (p, showToken t)) toks
                      liftIO $ writeFile outFile content
 
--- |Create TokenStream from curry source file
+-- |Create list of tokens and their positions from curry source file
 formatToken :: String -> CYIO (Either [Message] [(Position, Token)])
 formatToken f = do
   mbModule <- liftIO $ readModule f
