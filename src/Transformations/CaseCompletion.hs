@@ -183,33 +183,35 @@ completeConsAlts r ea ce alts = do
   complPats <- mapM genPat $ getComplConstrs mdl menv
                [ c | (Alt (ConstructorPattern c _) _) <- consAlts ]
   [v, w] <- newIdentList 2 "x"
-  let e' = getDefaultAlt v
-  return $ case complPats of
-    [] -> Case r ea ce consAlts
-    ps -> bindDefVar v ce w e' ps
+  let me = lookupDefaultAlt v
+  return $ let c = Case r ea ce consAlts
+           in  case (complPats, me) of
+                    ([] , _)       -> c
+                    (_:_, Nothing) -> c
+                    (ps , Just e') -> bindDefVar v ce w e' ps
   where
-  -- existing contructor pattern alternatives
-  consAlts = filter isConstrAlt alts
+    -- existing contructor pattern alternatives
+    consAlts = filter isConstrAlt alts
 
-  -- generate a new constructor pattern
-  genPat (qid, arity) = ConstructorPattern qid <$> newIdentList arity "x"
+    -- generate a new constructor pattern
+    genPat (qid, arity) = ConstructorPattern qid <$> newIdentList arity "x"
 
-  -- default alternative
-  getDefaultAlt v = case find isVarAlt alts of
-    Just (Alt (VariablePattern x) de) -> replaceVar x (Variable v) de
-    _                                 -> failedExpr
+    -- default alternative, if there is one
+    lookupDefaultAlt v =
+        fmap (\(Alt (VariablePattern x) de) -> replaceVar x (Variable v) de)
+      $ find isVarAlt alts
 
-  -- create a binding for @v = e@ if needed
-  bindDefVar v e w e' ps
-    | v `elem` fv e' = mkBinding v e $ mkCase (Variable v) w e' ps
-    | otherwise      = mkCase e w e' ps
+    -- create a binding for @v = e@ if needed
+    bindDefVar v e w e' ps
+        | v `elem` fv e' = mkBinding v e $ mkCase (Variable v) w e' ps
+        | otherwise      = mkCase e w e' ps
 
-  -- create a binding for @w = e'@ if needed, and a case expression
-  -- @case e of { consAlts ++ (ps -> w) }@
-  mkCase e w e' ps = case ps of
-    [p] -> Case r ea e (consAlts ++ [Alt p e'])
-    _   -> mkBinding w e'
-         $ Case r ea e (consAlts ++ [Alt p (Variable w) | p <- ps])
+    -- create a binding for @w = e'@ if needed, and a case expression
+    -- @case e of { consAlts ++ (ps -> w) }@
+    mkCase e w e' ps = case ps of
+        [p] -> Case r ea e (consAlts ++ [Alt p e'])
+        _   -> mkBinding w e'
+            $ Case r ea e (consAlts ++ [Alt p (Variable w) | p <- ps])
 
 -- If the alternatives' branches contain literal patterns, a complementary
 -- constructor list cannot be generated because it would become potentially
