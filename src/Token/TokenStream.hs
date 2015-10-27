@@ -9,6 +9,7 @@
 module Token.TokenStream (source2token) where
 
 import Control.Monad.Writer  (liftIO)
+import Data.List             (intercalate)
 import System.FilePath       (replaceExtension)
 
 import Curry.Base.Monad      (CYIO, liftCYM, failMessages, runCYM)
@@ -35,8 +36,15 @@ source2token opts s = do
   outFile              <- return $ replaceExtension (addCurrySubdirModule (optUseSubdir opts) mid srcFile) ".token"
   case eitherErrsToks of
     Left errs -> liftIO $ abortWithMessages errs
-    Right toks -> do let content = show $ map (\(p, t) -> (p, showToken t)) toks
+    Right toks -> do let content = showTokenStream toks -- $ map (\(p, t) -> (p, showToken t)) toks
                      liftIO $ writeFile outFile content
+
+showTokenStream :: [(Position, Token)] -> String
+showTokenStream [] = "[]"
+showTokenStream ts = "[ " ++ intercalate "\n, " (map showPosToken ts) ++ "\n]\n"
+  where showPosToken (p, t) = "(" ++ show p ++
+                              ", " ++ showToken t ++ ")"
+
 
 -- |Create list of tokens and their positions from curry source file
 formatToken :: String -> CYIO (Either [Message] [(Position, Token)])
