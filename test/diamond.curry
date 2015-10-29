@@ -1,3 +1,13 @@
+module Diamond (diamond, tab, size) where
+
+import List
+import List
+
+import List
+
+
+test = ["string", "string1", "string4"]
+
 -- Curry's solution to the "diamond" problem of the
 -- Prolog programming contest at JICSLP'98 in Manchester
 
