@@ -71,14 +71,16 @@ showToken t =
     Token QSym (IdentAttributes _ svalue) -> "QSym " ++ show svalue
 
 -- punctuation symbols
-    Token LeftParen NoAttributes  -> "LeftParen"
-    Token RightParen NoAttributes -> "RightParen"
-    Token Semicolon NoAttributes  -> "Semicolon"
-    Token LeftBrace NoAttributes  -> "LeftBrace"
-    Token RightBrace NoAttributes -> "RightBrace"
-    Token Comma NoAttributes      -> "Comma"
-    Token Underscore NoAttributes -> "Underscore"
-    Token Backquote NoAttributes  -> "Backquote"
+    Token LeftParen NoAttributes    -> "LeftParen"
+    Token RightParen NoAttributes   -> "RightParen"
+    Token Semicolon NoAttributes    -> "Semicolon"
+    Token LeftBrace NoAttributes    -> "LeftBrace"
+    Token RightBrace NoAttributes   -> "RightBrace"
+    Token LeftBracket NoAttributes  -> "LeftBracket"
+    Token RightBracket NoAttributes -> "RightBracket"
+    Token Comma NoAttributes        -> "Comma"
+    Token Underscore NoAttributes   -> "Underscore"
+    Token Backquote NoAttributes    -> "Backquote"
 
 -- layout
     Token LeftBraceSemicolon NoAttributes -> "LeftBracketSemicolon"
