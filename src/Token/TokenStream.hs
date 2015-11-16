@@ -13,7 +13,7 @@ import Data.List             (intercalate)
 import System.FilePath       (replaceExtension)
 
 import Curry.Base.Monad      (CYIO, liftCYM, failMessages, runCYM)
-import Curry.Base.Position   (Position)
+import Curry.Base.Position   (Position (..))
 import Curry.Base.Pretty     (text)
 import Curry.Files.Filenames (addCurrySubdirModule)
 import Curry.Files.PathUtils (readModule)
@@ -24,8 +24,8 @@ import CompilerOpts          (Options (..))
 import CurryBuilder          (findCurry)
 
 -- |Write list of tokens and positions into a file
--- TODO: To get the name of the module its header is getting parsed. 
---       This should be improved because there shouldn't be done any 
+-- TODO: To get the name of the module its header is getting parsed.
+--       This should be improved because there shouldn't be done any
 --       parsing when extracting only the TokenStream.
 source2token :: Options -> String -> CYIO()
 source2token opts s = do
@@ -42,9 +42,12 @@ source2token opts s = do
 showTokenStream :: [(Position, Token)] -> String
 showTokenStream [] = "[]"
 showTokenStream ts = "[ " ++ intercalate "\n, " (map showPosToken ts) ++ "\n]\n"
-  where showPosToken (p, t) = "(" ++ show p ++
+  where showPosToken (p, t) = "(" ++ showPosition p ++
                               ", " ++ showToken t ++ ")"
 
+-- show position as "(line, column)"
+showPosition :: Position -> String
+showPosition p = "(" ++ (show $ line p) ++ ", " ++ (show $ column p) ++ ")"
 
 -- |Create list of tokens and their positions from curry source file
 formatToken :: String -> CYIO (Either [Message] [(Position, Token)])
@@ -57,7 +60,7 @@ formatToken f = do
 -- |Show tokens and their value if needed
 showToken :: Token -> String
 showToken t =
-  case t of 
+  case t of
 -- literals
     Token CharTok (CharAttributes cvalue _)     -> "CharTok "   ++ show cvalue
     Token IntTok  (IntAttributes  ivalue _)     -> "IntTok "    ++ show ivalue
@@ -114,7 +117,7 @@ showToken t =
     Token At (IdentAttributes _ _)          -> "At"
     Token Colon (IdentAttributes _ _)       -> "Colon"
     Token DotDot (IdentAttributes _ _)      -> "DotDot"
-    Token DoubleColon (IdentAttributes _ _) -> "DoubleColon" 
+    Token DoubleColon (IdentAttributes _ _) -> "DoubleColon"
     Token Equals (IdentAttributes _ _)      -> "Equals"
     Token Backslash (IdentAttributes _ _)   -> "Backslash"
     Token Bar (IdentAttributes _ _)         -> "Bar"
@@ -129,7 +132,7 @@ showToken t =
     Token Id_ccall (IdentAttributes _ _)     -> "Id_ccall"
     Token Id_forall (IdentAttributes _ _)    -> "Id_forall"
     Token Id_hiding (IdentAttributes _ _)    -> "Id_hiding"
-    Token Id_interface (IdentAttributes _ _) -> "Id_interface" 
+    Token Id_interface (IdentAttributes _ _) -> "Id_interface"
     Token Id_primitive (IdentAttributes _ _) -> "Id_primitive"
     Token Id_qualified (IdentAttributes _ _) -> "Id_qualified"
 
@@ -141,8 +144,8 @@ showToken t =
 -- pragmas
     Token PragmaLanguage NoAttributes                   -> "PragmaLanguage"
     Token PragmaOptions (OptionsAttributes _ toolArgs_) -> "PragmaOptions " ++ show toolArgs_
-    Token PragmaHiding NoAttributes                     -> "PragmaHiding" 
-    Token PragmaEnd NoAttributes                        -> "PragmaEnd" 
+    Token PragmaHiding NoAttributes                     -> "PragmaHiding"
+    Token PragmaEnd NoAttributes                        -> "PragmaEnd"
 
 -- comments
     Token LineComment (StringAttributes svalue _)   -> "LineComment "   ++ show svalue
