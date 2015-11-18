@@ -356,7 +356,7 @@ options =
       "generate html code and exit"
    , Option ""   ["token"]
       (NoArg (onOpts $ \ opts -> opts { optMode = ModeToken }))
-	  "generate token stream and exit"
+      "generate token stream and exit"
   , Option ""   ["parse-only"]
       (NoArg (onOpts $ \ opts -> opts { optTargetTypes =
         nub $ Parsed : optTargetTypes opts }))
