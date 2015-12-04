@@ -72,7 +72,7 @@ docModule opts f = do
     Just src -> do
       toks  <- liftCYM $ lexSource f src
       typed@(Module _ m _ _ _) <- fullParse opts f src
-      return (m, program2html m $ genProgram typed toks)
+      return (m, program2html m $ genProgram f typed toks)
 
 -- |Return the syntax tree of the source program 'src' (type 'Module'; see
 -- Module "CurrySyntax").after inferring the types of identifiers.
