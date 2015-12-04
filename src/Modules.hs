@@ -144,7 +144,7 @@ withTempFile act = do
 checkModuleHeader :: Monad m => Options -> FilePath -> CS.Module
                   -> CYT m CS.Module
 checkModuleHeader opts fn = checkModuleId fn
-                          . importPrelude opts fn
+                          . importPrelude opts
                           . CS.patchModuleId fn
 
 -- |Check whether the 'ModuleIdent' and the 'FilePath' fit together
@@ -161,8 +161,8 @@ checkModuleId fn m@(CS.Module _ mid _ _ _)
 -- by a compiler option. If no explicit import for the prelude is present,
 -- the prelude is imported unqualified, otherwise a qualified import is added.
 
-importPrelude :: Options -> FilePath -> CS.Module -> CS.Module
-importPrelude opts fn m@(CS.Module ps mid es is ds)
+importPrelude :: Options -> CS.Module -> CS.Module
+importPrelude opts m@(CS.Module ps mid es is ds)
     -- the Prelude itself
   | mid == preludeMIdent          = m
     -- disabled by compiler option
@@ -174,7 +174,7 @@ importPrelude opts fn m@(CS.Module ps mid es is ds)
   where
   noImpPrelude = NoImplicitPrelude `elem` optExtensions opts
                  || m `CS.hasLanguageExtension` NoImplicitPrelude
-  preludeImp   = CS.ImportDecl (first fn) preludeMIdent
+  preludeImp   = CS.ImportDecl NoPos preludeMIdent
                   False   -- qualified?
                   Nothing -- no alias
                   Nothing -- no selection of types, functions, etc.
