@@ -58,9 +58,12 @@ import Env.Value           (ValueEnv, ValueInfo (..), qualLookupValue)
 exportCheck :: ModuleIdent -> AliasEnv -> TCEnv -> ValueEnv
             -> Maybe ExportSpec -> (Maybe ExportSpec, [Message])
 exportCheck m aEnv tcEnv tyEnv spec = case expErrs of
-  [] -> (Just $ Exporting NoPos exports, ambiErrs)
+  [] -> (Just $ Exporting (exportPos spec) exports, ambiErrs)
   ms -> (spec, ms)
   where
+  exportPos (Just (Exporting p _)) = p
+  exportPos Nothing                = NoPos
+
   (exports, expErrs) = runECM ((joinExports . canonExports tcEnv)
                          <$> expandSpec spec) initState
   initState          = ECState m imported tcEnv tyEnv []
@@ -233,17 +236,15 @@ exportType t = ExportTypeWith tc xs
   where tc = origName t
         xs = elements t
 
--- For compatibility with Haskell, we allow exporting field labels but
--- not constructors individually as well as together with their types.
+-- In contrast to Haskell, the export of field labels and record constructors
+-- without their types is NOT allowed.
 -- Thus, given the declaration @data T a = C { l :: a }@
--- the export lists @(T(C,l))@ and @(T(C),l)@ are equivalent and both
--- export the constructor @C@ and the field label @l@ together with the
--- type @T@. However, it is also possible to export the label @l@
--- without exporting its type @T@. In this case, the label is exported
--- just like a top-level function (namely the implicit record selection
--- function corresponding to the label). In order to avoid ambiguities
--- in the interface, we convert an individual export of a label @l@ into
--- the form @T(l)@ whenever its type @T@ occurs in the export list as well.
+-- the label @l@ and the constructor @C@ can only be exported together with the
+-- type @T@, i.e., @(T(C,l))@.
+-- Since record update operations are desugared to case expressions matching the
+-- corresponding constructors of the record, the export of a label without its
+-- type could result in a type error, when it is used for an update operation in
+-- another module.
 
 canonExports :: TCEnv -> [Export] -> [Export]
 canonExports tcEnv es = map (canonExport (canonLabels tcEnv es)) es
