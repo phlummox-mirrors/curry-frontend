@@ -56,7 +56,7 @@ import CompilerOpts
 import Exports
 import Generators
 import Imports
-import Interfaces
+import Interfaces (loadInterfaces)
 import ModuleSummary
 import Transformations
 
