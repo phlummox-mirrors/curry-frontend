@@ -82,8 +82,8 @@ data IdentUsage
 --        e.g. [typingParse, fullParse, parse]
 -- @param lex-Result
 -- @return program
-genProgram :: Module -> [(Position, Token)] -> [Code]
-genProgram m toks = tokenToCodes (first "") (idsModule m) toks
+genProgram :: String -> Module -> [(Position, Token)] -> [Code]
+genProgram fn m toks = tokenToCodes (first fn) (idsModule m) toks
 
 -- @param code
 -- @return qid if available
