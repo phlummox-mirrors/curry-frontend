@@ -161,8 +161,8 @@ checkModuleId fn m@(CS.Module _ mid _ _ _)
 -- by a compiler option. If no explicit import for the prelude is present,
 -- the prelude is imported unqualified, otherwise a qualified import is added.
 
-genProgram :: String -> Module -> [(Position, Token)] -> [Code]
-genProgram fn m toks = tokenToCodes (first fn) (idsModule m) toks
+importPrelude :: Options -> CS.Module -> CS.Module
+importPrelude opts m@(CS.Module ps mid es is ds)
     -- the Prelude itself
   | mid == preludeMIdent          = m
     -- disabled by compiler option
