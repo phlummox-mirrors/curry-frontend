@@ -58,9 +58,12 @@ import Env.Value           (ValueEnv, ValueInfo (..), qualLookupValue)
 exportCheck :: ModuleIdent -> AliasEnv -> TCEnv -> ValueEnv
             -> Maybe ExportSpec -> (Maybe ExportSpec, [Message])
 exportCheck m aEnv tcEnv tyEnv spec = case expErrs of
-  [] -> (Just $ Exporting NoPos exports, ambiErrs)
+  [] -> (Just $ Exporting (exportPos spec) exports, ambiErrs)
   ms -> (spec, ms)
   where
+  exportPos (Just (Exporting p _)) = p
+  exportPos Nothing                = NoPos
+
   (exports, expErrs) = runECM ((joinExports . canonExports tcEnv)
                          <$> expandSpec spec) initState
   initState          = ECState m imported tcEnv tyEnv []
