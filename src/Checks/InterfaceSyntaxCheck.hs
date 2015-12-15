@@ -152,6 +152,7 @@ checkType (VariableType        tv) = checkType (ConstructorType (qualify tv) [])
 checkType (TupleType          tys) = liftM TupleType (mapM checkType tys)
 checkType (ListType            ty) = liftM ListType (checkType ty)
 checkType (ArrowType      ty1 ty2) = liftM2 ArrowType (checkType ty1) (checkType ty2)
+checkType (ParenType           ty) = liftM ParenType (checkType ty)
 
 checkTypeConstructor :: QualIdent -> [TypeExpr] -> ISC TypeExpr
 checkTypeConstructor tc tys = do

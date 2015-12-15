@@ -201,6 +201,7 @@ ft _ (VariableType         _) tcs = tcs
 ft m (TupleType          tys) tcs = foldr (ft m) tcs tys
 ft m (ListType            ty) tcs = ft m ty tcs
 ft m (ArrowType      ty1 ty2) tcs = ft m ty1 $ ft m ty2 $ tcs
+ft m (ParenType           ty) tcs = ft m ty tcs
 
 -- When a field label occurs in more than one constructor declaration of
 -- a data type, the compiler ensures that the label is defined
@@ -412,6 +413,8 @@ nameType (ArrowType ty1 ty2) tvs = (ArrowType ty1' ty2', tvs'')
         (ty2', tvs'') = nameType ty2 tvs'
 nameType (VariableType _) [] = internalError
  "TypeCheck.nameType: empty ident list"
+nameType (ParenType ty) tvs = (ParenType ty', tvs')
+  where (ty', tvs') = nameType ty tvs
 
 -- Type Inference:
 -- Before type checking a group of declarations, a dependency analysis is

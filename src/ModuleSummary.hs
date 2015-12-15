@@ -102,6 +102,7 @@ modifyTypeExpr tcEnv (TupleType tys)
                                 (map (modifyTypeExpr tcEnv) tys)
 modifyTypeExpr tcEnv (ListType ty)
   = ConstructorType (qualify listId) [modifyTypeExpr tcEnv ty]
+modifyTypeExpr tcEnv (ParenType ty) = modifyTypeExpr tcEnv ty
 
 --
 genTypeSynDeref :: [(Int, TypeExpr)] -> Type -> TypeExpr

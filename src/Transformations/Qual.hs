@@ -102,6 +102,7 @@ qTypeExpr (TupleType         tys) = TupleType <$> mapM qTypeExpr tys
 qTypeExpr (ListType           ty) = ListType  <$> qTypeExpr ty
 qTypeExpr (ArrowType     ty1 ty2) = ArrowType <$> qTypeExpr ty1
                                               <*> qTypeExpr ty2
+qTypeExpr (ParenType          ty) = ParenType <$> qTypeExpr ty
 
 qEquation :: Qual Equation
 qEquation (Equation p lhs rhs) = Equation p <$> qLhs lhs <*> qRhs rhs
