@@ -11,7 +11,8 @@
     This module is a simple re-export of the definition of the AST of IL
     and the pretty-printing of IL modules.
 -}
-module IL ( module IL.Type, ppModule ) where
+module IL ( module IL.Type, ppModule, showModule ) where
 
-import IL.Pretty (ppModule)
+import IL.Pretty     (ppModule)
+import IL.ShowModule (showModule)
 import IL.Type

@@ -57,22 +57,22 @@ import Curry.Base.Position (SrcRef(..), SrcRefOf (..))
 import Base.Expr
 
 data Module = Module ModuleIdent [ModuleIdent] [Decl]
-    deriving (Eq, Show)
+    deriving (Eq, Show, Data, Typeable)
 
 data Decl
   = DataDecl     QualIdent Int [ConstrDecl [Type]]
   | NewtypeDecl  QualIdent Int (ConstrDecl Type)
   | FunctionDecl QualIdent [Ident] Type Expression
   | ExternalDecl QualIdent CallConv String Type
-    deriving (Eq, Show)
+    deriving (Eq, Show, Data, Typeable)
 
 data ConstrDecl a = ConstrDecl QualIdent a
-    deriving (Eq, Show)
+    deriving (Eq, Show, Data, Typeable)
 
 data CallConv
   = Primitive
   | CCall
-    deriving (Eq, Show)
+    deriving (Eq, Show, Data, Typeable)
 
 data Type
   = TypeConstructor QualIdent [Type]
@@ -84,7 +84,7 @@ data Literal
   = Char  SrcRef Char
   | Int   SrcRef Integer
   | Float SrcRef Double
-    deriving (Eq, Show)
+    deriving (Eq, Show, Data, Typeable)
 
 data ConstrTerm
     -- |literal patterns
@@ -93,7 +93,7 @@ data ConstrTerm
   | ConstructorPattern QualIdent [Ident]
     -- |default
   | VariablePattern Ident
-  deriving (Eq, Show)
+  deriving (Eq, Show, Data, Typeable)
 
 data Expression
     -- |literal constants
@@ -118,18 +118,18 @@ data Expression
   | Letrec [Binding] Expression
     -- |typed expression
   | Typed Expression Type
-  deriving (Eq, Show)
+  deriving (Eq, Show, Data, Typeable)
 
 data Eval
   = Rigid
   | Flex
-    deriving (Eq, Show)
+    deriving (Eq, Show, Data, Typeable)
 
 data Alt = Alt ConstrTerm Expression
-    deriving (Eq, Show)
+    deriving (Eq, Show, Data, Typeable)
 
 data Binding = Binding Ident Expression
-    deriving (Eq, Show)
+    deriving (Eq, Show, Data, Typeable)
 
 instance Expr Expression where
   fv (Variable            v) = [v]
