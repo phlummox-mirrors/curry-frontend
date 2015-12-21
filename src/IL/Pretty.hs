@@ -141,7 +141,6 @@ ppExpr p (Letrec      bs e) = parenIf (p > 0) $ sep
 ppExpr p (Typed       e ty) = parenIf (p > 0) $ sep
   [ppExpr 0 e, text "::", ppType 0 ty]
 
-
 ppInfixApp :: Int -> Expression -> QualIdent -> Expression -> Doc
 ppInfixApp p e1 op e2 = parenIf (p > 1) $ sep
   [ppExpr 2 e1 <+> ppQInfixOp op, nest exprIndent (ppExpr 2 e2)]

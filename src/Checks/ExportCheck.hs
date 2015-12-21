@@ -22,7 +22,7 @@
         list of sub-entities.
 -}
 {-# LANGUAGE CPP #-}
-module Checks.ExportCheck (exportCheck) where
+module Checks.ExportCheck (exportCheck, expandExports) where
 
 #if __GLASGOW_HASKELL__ < 710
 import           Control.Applicative        ((<$>))
@@ -48,33 +48,64 @@ import Base.Types          ( DataConstr (..), ExistTypeScheme (..), Type (..)
 import Base.Utils          (findMultiples)
 
 import Env.ModuleAlias     (AliasEnv)
-import Env.TypeConstructor (TCEnv, TypeInfo (..), qualLookupTC)
-import Env.Value           (ValueEnv, ValueInfo (..), qualLookupValue)
+import Env.TypeConstructor (TCEnv, TypeInfo (..), qualLookupTCUnique)
+import Env.Value           (ValueEnv, ValueInfo (..), qualLookupValueUnique)
 
 -- ---------------------------------------------------------------------------
 -- Check and expansion of the export statement
 -- ---------------------------------------------------------------------------
 
-exportCheck :: ModuleIdent -> AliasEnv -> TCEnv -> ValueEnv
-            -> Maybe ExportSpec -> (Maybe ExportSpec, [Message])
-exportCheck m aEnv tcEnv tyEnv spec = case expErrs of
-  [] -> (Just $ Exporting (exportPos spec) exports, ambiErrs)
-  ms -> (spec, ms)
+expandExports :: ModuleIdent -> AliasEnv -> TCEnv -> ValueEnv
+              -> Maybe ExportSpec -> ExportSpec
+expandExports m aEnv tcEnv tyEnv spec = Exporting (exportPos spec) es
   where
   exportPos (Just (Exporting p _)) = p
   exportPos Nothing                = NoPos
 
-  (exports, expErrs) = runECM ((joinExports . canonExports tcEnv)
-                         <$> expandSpec spec) initState
-  initState          = ECState m imported tcEnv tyEnv []
-  imported           = Set.fromList $ Map.elems aEnv
+  es = fst (checkAndExpand m aEnv tcEnv tyEnv spec)
 
-  ambiErrs = map errMultipleType  (findMultiples exportedTypes)
-          ++ map errMultipleName (findMultiples exportedValues)
+exportCheck :: ModuleIdent -> AliasEnv -> TCEnv -> ValueEnv
+            -> Maybe ExportSpec -> [Message]
+exportCheck m aEnv tcEnv tyEnv spec = case errs of
+  [] -> checkNonUniqueness es
+  ms -> ms
+  where
+  (es, errs) = checkAndExpand m aEnv tcEnv tyEnv spec
 
-  exportedTypes  = [unqualify tc | ExportTypeWith tc _ <- exports]
-  exportedValues = [c | ExportTypeWith _ cs <- exports, c <- cs]
-                ++ [unqualify f | Export f <- exports]
+checkAndExpand :: ModuleIdent -> AliasEnv -> TCEnv -> ValueEnv
+               -> Maybe ExportSpec -> ([Export], [Message])
+checkAndExpand m aEnv tcEnv tyEnv spec
+  = runECM ((joinExports . canonExports tcEnv) <$> expandSpec spec) initState
+  where
+  initState  = ECState m imported tcEnv tyEnv []
+  imported   = Set.fromList (Map.elems aEnv)
+
+-- Check whether two entities of the same kind (type or constructor/function)
+-- share the same unqualified name, which is not allowed since they could
+-- not be uniquely resolved at their usage.
+-- For instance, consider the following module
+-- @
+-- module M (Bool, Prelude.Bool) where
+-- data Bool = False | True
+-- @
+-- If this export would be allowed, in a module @M1@ as follows
+-- @
+-- module M1 where
+-- import M (Bool)
+-- @
+-- the type @Bool@ could not be resolved uniquely to its definition.
+-- Naturally, the same applies for constructors or functions.
+checkNonUniqueness :: [Export] -> [Message]
+checkNonUniqueness es = map errMultipleType (findMultiples types )
+                     ++ map errMultipleName (findMultiples values)
+  where
+  types  = [ unqualify tc | ExportTypeWith tc _  <- es ]
+  values = [ c            | ExportTypeWith _  cs <- es, c <- cs ]
+        ++ [ unqualify f  | Export f <- es ]
+
+-- -----------------------------------------------------------------------------
+-- Expansion + Check
+-- -----------------------------------------------------------------------------
 
 data ECState = ECState
   { moduleIdent  :: ModuleIdent
@@ -134,8 +165,9 @@ expandExport (ExportModule      em) = expandModule em
 -- |Expand export of type constructor / function
 expandThing :: QualIdent -> ECM [Export]
 expandThing tc = do
+  m     <- getModuleIdent
   tcEnv <- getTyConsEnv
-  case qualLookupTC tc tcEnv of
+  case qualLookupTCUnique m tc tcEnv of
     []  -> expandThing' tc Nothing
     [t] -> expandThing' tc (Just [ExportTypeWith (origName t) []])
     ts  -> report (errAmbiguousType tc ts) >> return []
@@ -143,39 +175,34 @@ expandThing tc = do
 -- |Expand export of data cons / function
 expandThing' :: QualIdent -> Maybe [Export] -> ECM [Export]
 expandThing' f tcExport = do
+  m     <- getModuleIdent
   tyEnv <- getValueEnv
-  case qualLookupValue f tyEnv of
+  case qualLookupValueUnique m f tyEnv of
     []             -> justTcOr errUndefinedName
     [Value f' _ _] -> return $ Export f' : fromMaybe [] tcExport
     [Label l  _ (ForAll _ (TypeArrow (TypeConstructor tc _) _))] -> do
       report $ errExportLabel f tc
       return $ Export l  : fromMaybe [] tcExport
     [c]            -> justTcOr $ flip errExportDataConstr $ getTc c
-    _              -> do
-      m <- getModuleIdent
-      case qualLookupValue (qualQualify m f) tyEnv of
-        []             -> justTcOr errUndefinedName
-        [Value f' _ _] -> return $ Export f' : fromMaybe [] tcExport
-        [Label l  _ (ForAll _ (TypeArrow (TypeConstructor tc _) _))] -> do
-          report $ errExportLabel f tc
-          return $ Export l  : fromMaybe [] tcExport
-        [c]            -> justTcOr $ flip errExportDataConstr $ getTc c
-        fs             -> report (errAmbiguousName f fs) >> return []
-  where justTcOr errFun = case tcExport of
-          Nothing -> report (errFun f) >> return []
-          Just tc -> return tc
-        getTc (DataConstructor _ _ _ (ForAllExist _ _ ty)) = getTc' ty
-        getTc (NewtypeConstructor _ _ (ForAllExist _ _ ty)) = getTc' ty
-        getTc (Label _ _ (ForAll _ (TypeArrow (TypeConstructor tc _) _))) = tc
-        getTc _ = internalError "ExportCheck.getTc"
-        getTc' ty' = let (TypeConstructor tc _) = arrowBase ty'
-                     in tc
+    fs             -> report (errAmbiguousName f fs) >> return []
+  where
+  justTcOr errFun = case tcExport of
+    Nothing -> report (errFun f) >> return []
+    Just tc -> return tc
+
+  getTc (DataConstructor  _ _ _ (ForAllExist _ _ ty)) = getTc' ty
+  getTc (NewtypeConstructor _ _ (ForAllExist _ _ ty)) = getTc' ty
+  getTc (Label _ _ (ForAll _ (TypeArrow (TypeConstructor tc _) _))) = tc
+  getTc _ = internalError "ExportCheck.getTc"
+
+  getTc' ty = let (TypeConstructor tc _) = arrowBase ty in tc
 
 -- |Expand type constructor with explicit data constructors and record labels
 expandTypeWith :: QualIdent -> [Ident] -> ECM [Export]
 expandTypeWith tc xs = do
+  m     <- getModuleIdent
   tcEnv <- getTyConsEnv
-  case qualLookupTC tc tcEnv of
+  case qualLookupTCUnique m tc tcEnv of
     [] -> report (errUndefinedType tc) >> return []
     [t@(DataType _ _ cs)]    -> do
       mapM_ (checkElement (visibleElems cs)) xs'
@@ -195,8 +222,9 @@ expandTypeWith tc xs = do
 -- |Expand type constructor with all data constructors and record labels
 expandTypeAll :: QualIdent -> ECM [Export]
 expandTypeAll tc = do
+  m     <- getModuleIdent
   tcEnv <- getTyConsEnv
-  case qualLookupTC tc tcEnv of
+  case qualLookupTCUnique m tc tcEnv of
     [] -> report (errUndefinedType tc) >> return []
     [t@(DataType     _ _ _)] -> return $ [exportType t]
     [t@(RenamingType _ _ _)] -> return $ [exportType t]
@@ -216,11 +244,10 @@ expandLocalModule :: ECM [Export]
 expandLocalModule = do
   tcEnv <- getTyConsEnv
   tyEnv <- getValueEnv
-  return $ [exportType t | (_, t) <- localBindings tcEnv] ++
-    [ Export f' | (f, Value f' _ _) <- localBindings tyEnv
-    , f == unRenameIdent f] ++
-    [ Export l' | (l, Label l' _ _) <- localBindings tyEnv
-    , l == unRenameIdent l]
+  return $
+       [ exportType t | (_, t) <- localBindings tcEnv ]
+    ++ [ Export f' | (f, Value f' _ _) <- localBindings tyEnv, hasGlobalScope f ]
+    ++ [ Export l' | (l, Label l' _ _) <- localBindings tyEnv, hasGlobalScope l ]
 
 -- |Expand a module export
 expandImportedModule :: ModuleIdent -> ECM [Export]
@@ -235,6 +262,10 @@ exportType :: TypeInfo -> Export
 exportType t = ExportTypeWith tc xs
   where tc = origName t
         xs = elements t
+
+-- -----------------------------------------------------------------------------
+-- Canonicalization and joining of exports
+-- -----------------------------------------------------------------------------
 
 -- In contrast to Haskell, the export of field labels and record constructors
 -- without their types is NOT allowed.

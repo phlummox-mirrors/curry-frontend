@@ -14,7 +14,7 @@
 module Checks where
 
 import qualified Checks.InterfaceCheck as IC (interfaceCheck)
-import qualified Checks.ExportCheck    as EC (exportCheck)
+import qualified Checks.ExportCheck    as EC (exportCheck, expandExports)
 import qualified Checks.KindCheck      as KC (kindCheck)
 import qualified Checks.PrecCheck      as PC (precCheck)
 import qualified Checks.SyntaxCheck    as SC (syntaxCheck)
@@ -82,11 +82,18 @@ typeCheck _ (env, mdl@(Module _ _ _ _ ds))
 
 -- |Check the export specification
 exportCheck :: Monad m => Check m Module
-exportCheck _ (env, Module ps m es is ds)
-  | null msgs = ok (env, Module ps m es' is ds)
+exportCheck _ (env, mdl@(Module _ _ es _ _))
+  | null msgs = ok (env, mdl)
   | otherwise = failMessages msgs
-  where (es', msgs) = EC.exportCheck (moduleIdent env) (aliasEnv env)
-                                     (tyConsEnv env) (valueEnv env) es
+  where msgs = EC.exportCheck (moduleIdent env) (aliasEnv env)
+                              (tyConsEnv env) (valueEnv env) es
+
+-- |Check the export specification
+expandExports :: Monad m => Options -> CompEnv Module -> m (CompEnv Module)
+expandExports _ (env, Module ps m es is ds)
+  = return (env, Module ps m (Just es') is ds)
+  where es' = EC.expandExports (moduleIdent env) (aliasEnv env)
+                               (tyConsEnv env) (valueEnv env) es
 
 -- |Check for warnings.
 warnCheck :: Options -> CompilerEnv -> Module -> [Message]

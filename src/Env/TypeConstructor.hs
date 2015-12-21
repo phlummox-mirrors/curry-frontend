@@ -38,8 +38,8 @@
 -}
 
 module Env.TypeConstructor
-  ( TCEnv, TypeInfo (..), tcArity, bindTypeInfo, lookupTC, qualLookupTC
-  , initTCEnv
+  ( TCEnv, TypeInfo (..), initTCEnv, tcArity, bindTypeInfo
+  , lookupTC, qualLookupTC, qualLookupTCUnique
   , TypeEnv, TypeKind (..), typeKind
   ) where
 
@@ -98,6 +98,12 @@ lookupTC tc tcEnv = lookupTopEnv tc tcEnv ++! lookupTupleTC tc
 qualLookupTC :: QualIdent -> TCEnv -> [TypeInfo]
 qualLookupTC tc tcEnv = qualLookupTopEnv tc tcEnv
                     ++! lookupTupleTC (unqualify tc)
+
+qualLookupTCUnique :: ModuleIdent -> QualIdent -> TCEnv -> [TypeInfo]
+qualLookupTCUnique m x tyEnv = case qualLookupTC x tyEnv of
+  []  -> []
+  [v] -> [v]
+  _   -> qualLookupTC (qualQualify m x) tyEnv
 
 lookupTupleTC :: Ident -> [TypeInfo]
 lookupTupleTC tc | isTupleId tc = [tupleTCs !! (tupleArity tc - 2)]

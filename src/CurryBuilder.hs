@@ -173,7 +173,7 @@ compMessage :: (Int, Int) -> String -> ModuleIdent
             -> (FilePath, FilePath) -> String
 compMessage (curNum, maxNum) what m (src, dst)
   =  '[' : lpad (length sMaxNum) (show curNum) ++ " of " ++ sMaxNum  ++ "]"
-  ++ ' ' : rpad 9 what ++ ' ' : rpad 16 (show m)
+  ++ ' ' : rpad 9 what ++ ' ' : rpad 16 (moduleName m)
   ++ " ( " ++ normalise src ++ ", " ++ normalise dst ++ " )"
   where
   sMaxNum  = show maxNum

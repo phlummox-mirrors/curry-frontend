@@ -900,8 +900,6 @@ insertTypeExpr (ConstructorType _ tys) = mapM_ insertTypeExpr tys
 insertTypeExpr (TupleType         tys) = mapM_ insertTypeExpr tys
 insertTypeExpr (ListType           ty) = insertTypeExpr ty
 insertTypeExpr (ArrowType     ty1 ty2) = mapM_ insertTypeExpr [ty1,ty2]
-  --mapM_ insertVar (concatMap fst fs)
-  --maybe (return ()) insertTypeExpr rty
 insertTypeExpr (ParenType          ty) = insertTypeExpr ty
 
 insertConstrDecl :: ConstrDecl -> WCM ()

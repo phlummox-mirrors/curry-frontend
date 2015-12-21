@@ -25,7 +25,7 @@
 module Env.Value
   ( ValueEnv, ValueInfo (..)
   , bindGlobalInfo, bindFun, qualBindFun, rebindFun, unbindFun
-  , lookupValue, qualLookupValue
+  , lookupValue, qualLookupValue, qualLookupValueUnique
   , initDCEnv, ppTypes
   , conType
   ) where
@@ -125,6 +125,12 @@ lookupValue x tyEnv = lookupTopEnv x tyEnv ++! lookupTuple x
 qualLookupValue :: QualIdent -> ValueEnv -> [ValueInfo]
 qualLookupValue x tyEnv = qualLookupTopEnv x tyEnv
                       ++! lookupTuple (unqualify x)
+
+qualLookupValueUnique :: ModuleIdent -> QualIdent -> ValueEnv -> [ValueInfo]
+qualLookupValueUnique m x tyEnv = case qualLookupValue x tyEnv of
+  []  -> []
+  [v] -> [v]
+  _   -> qualLookupValue (qualQualify m x) tyEnv
 
 lookupTuple :: Ident -> [ValueInfo]
 lookupTuple c | isTupleId c = [tupleDCs !! (tupleArity c - 2)]

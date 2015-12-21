@@ -199,16 +199,9 @@ checkModule opts mdl = do
   sc <- syntaxCheck opts kc  >>= dumpCS DumpSyntaxChecked
   pc <- precCheck   opts sc  >>= dumpCS DumpPrecChecked
   tc <- typeCheck   opts pc  >>= dumpCS DumpTypeChecked
-  -- TODO: This is a workaround to avoid the expansion of the export
-  -- specification for generating the HTML listing. If a module does not
-  -- contain an export specification, the check generates one which leads
-  -- to a mismatch between the identifiers from the lexer and those in the
-  -- resulting module.
-  -- Therefore, it would be better if checking and expansion are separated.
-  if null (optTargetTypes opts)
-    then return tc
-    else exportCheck opts tc >>= dumpCS DumpExportChecked
-  where dumpCS = dumpWith opts CS.ppModule
+  ec <- exportCheck opts tc  >>= dumpCS DumpExportChecked
+  return ec
+  where dumpCS = dumpWith opts CS.showModule CS.ppModule
 
 -- ---------------------------------------------------------------------------
 -- Translating a module
@@ -226,8 +219,8 @@ transModule opts mdl = do
   ilCaseComp  <- dumpIL DumpCaseCompleted $ completeCase  il
   return ilCaseComp
   where
-  dumpCS = dumpWith opts CS.ppModule
-  dumpIL = dumpWith opts IL.ppModule
+  dumpCS = dumpWith opts CS.showModule CS.ppModule
+  dumpIL = dumpWith opts IL.showModule IL.ppModule
 
 -- ---------------------------------------------------------------------------
 -- Writing output
@@ -236,7 +229,8 @@ transModule opts mdl = do
 writeOutput :: Options -> FilePath -> CompEnv CS.Module -> IO ()
 writeOutput opts fn mdl@(_, modul) = do
   writeParsed opts fn modul
-  qmdl <- dumpWith opts CS.ppModule DumpQualified $ qual mdl
+  mdl' <- expandExports opts mdl
+  qmdl <- dumpWith opts CS.showModule CS.ppModule DumpQualified $ qual mdl'
   writeAbstractCurry opts fn qmdl
   -- generate interface file
   let intf = uncurry exportInterface qmdl
@@ -302,7 +296,7 @@ writeFlat opts fn env modSum il = do
 writeFlatCurry :: Options -> FilePath -> CompilerEnv -> ModuleSummary
                -> IL.Module -> IO ()
 writeFlatCurry opts fn env modSum il = do
-  (_, fc) <- dumpWith opts EF.ppProg DumpFlatCurry (env, prog)
+  (_, fc) <- dumpWith opts show EF.ppProg DumpFlatCurry (env, prog)
   when extTarget $ EF.writeExtendedFlat (useSubDir $ extFlatName fn) fc
   when fcyTarget $ EF.writeFlatCurry    (useSubDir $ flatName    fn) fc
   where
@@ -342,9 +336,11 @@ writeAbstractCurry opts fname (env, modul) = do
 type Dump = (DumpLevel, CompilerEnv, String)
 
 dumpWith :: (MonadIO m, Show a)
-         => Options -> (a -> Doc) -> DumpLevel -> CompEnv a -> m (CompEnv a)
-dumpWith opts view lvl res@(env, mdl) = do
-  let str = if dbDumpRaw (optDebugOpts opts) then show mdl else show (view mdl)
+         => Options -> (a -> String) -> (a -> Doc) -> DumpLevel
+         -> CompEnv a -> m (CompEnv a)
+dumpWith opts rawView view lvl res@(env, mdl) = do
+  let str = if dbDumpRaw (optDebugOpts opts) then rawView mdl
+                                             else show (view mdl)
   doDump (optDebugOpts opts) (lvl, env, str)
   return res
 

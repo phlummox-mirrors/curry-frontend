@@ -68,7 +68,7 @@ toType' tvs (CS.ListType            ty)
   = TypeConstructor (qualify listId) [toType' tvs ty]
 toType' tvs (CS.ArrowType      ty1 ty2)
   = TypeArrow (toType' tvs ty1) (toType' tvs ty2)
-toType' tvs (CS.ParenType ty) = toType' tvs ty
+toType' tvs (CS.ParenType           ty) = toType' tvs ty
 
 fromQualType :: ModuleIdent -> Type -> CS.TypeExpr
 fromQualType m = fromType . unqualifyType m
