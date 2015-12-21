@@ -4,6 +4,8 @@ Change log for curry-frontend
 Under development
 =================
 
+  * Consider parenthesized type expressions in the Curry AST (by Katharina Rahf)
+
 Version 0.4.0
 =============
 

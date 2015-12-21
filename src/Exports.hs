@@ -194,6 +194,7 @@ identsType (VariableType         _) xs = xs
 identsType (TupleType          tys) xs = foldr identsType xs tys
 identsType (ListType            ty) xs = identsType ty xs
 identsType (ArrowType      ty1 ty2) xs = identsType ty1 (identsType ty2 xs)
+identsType (ParenType           ty) xs = identsType ty xs
 
 -- After the interface declarations have been computed, the compiler
 -- eventually must add hidden (data) type declarations to the interface
@@ -248,6 +249,7 @@ usedTypesType (TupleType          tys) tcs = foldr usedTypesType tcs tys
 usedTypesType (ListType            ty) tcs = usedTypesType ty tcs
 usedTypesType (ArrowType      ty1 ty2) tcs =
   usedTypesType ty1 (usedTypesType ty2 tcs)
+usedTypesType (ParenType           ty) tcs = usedTypesType ty tcs
 
 definedTypes :: [IDecl] -> [QualIdent]
 definedTypes ds = foldr definedType [] ds

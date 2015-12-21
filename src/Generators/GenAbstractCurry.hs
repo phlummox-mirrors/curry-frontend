@@ -112,6 +112,7 @@ trTypeExpr (TupleType         tys) = trTypeExpr $ case tys of
 trTypeExpr (ListType           ty) = trTypeExpr $ ConstructorType qListId [ty]
 trTypeExpr (ArrowType     ty1 ty2) = CFuncType   <$> trTypeExpr ty1
                                                  <*> trTypeExpr ty2
+trTypeExpr (ParenType          ty) = trTypeExpr ty
 
 trInfixDecl :: Decl -> GAC [COpDecl]
 trInfixDecl (InfixDecl _ fix mprec ops) = mapM trInfix (reverse ops)

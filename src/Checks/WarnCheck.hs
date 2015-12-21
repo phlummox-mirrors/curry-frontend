@@ -258,6 +258,7 @@ checkTypeExpr (VariableType          v) = visitTypeId v
 checkTypeExpr (TupleType           tys) = mapM_ checkTypeExpr tys
 checkTypeExpr (ListType             ty) = checkTypeExpr ty
 checkTypeExpr (ArrowType       ty1 ty2) = mapM_ checkTypeExpr [ty1, ty2]
+checkTypeExpr (ParenType            ty) = checkTypeExpr ty
 
 -- Checks locally declared identifiers (i.e. functions and logic variables)
 -- for shadowing
@@ -899,8 +900,7 @@ insertTypeExpr (ConstructorType _ tys) = mapM_ insertTypeExpr tys
 insertTypeExpr (TupleType         tys) = mapM_ insertTypeExpr tys
 insertTypeExpr (ListType           ty) = insertTypeExpr ty
 insertTypeExpr (ArrowType     ty1 ty2) = mapM_ insertTypeExpr [ty1,ty2]
-  --mapM_ insertVar (concatMap fst fs)
-  --maybe (return ()) insertTypeExpr rty
+insertTypeExpr (ParenType          ty) = insertTypeExpr ty
 
 insertConstrDecl :: ConstrDecl -> WCM ()
 insertConstrDecl (ConstrDecl _ _    c _) = insertConsId c

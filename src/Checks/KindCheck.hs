@@ -269,6 +269,7 @@ checkType v@(VariableType tv)
 checkType (TupleType     tys) = TupleType  <$> mapM checkType tys
 checkType (ListType       ty) = ListType   <$> checkType ty
 checkType (ArrowType ty1 ty2) = ArrowType  <$> checkType ty1 <*> checkType ty2
+checkType (ParenType      ty) = ParenType  <$> checkType ty
 
 checkClosed :: [Ident] -> TypeExpr -> KCM ()
 checkClosed tvs (ConstructorType _ tys) = mapM_ (checkClosed tvs) tys
@@ -277,6 +278,7 @@ checkClosed tvs (VariableType       tv) = do
 checkClosed tvs (TupleType         tys) = mapM_ (checkClosed tvs) tys
 checkClosed tvs (ListType           ty) = checkClosed tvs ty
 checkClosed tvs (ArrowType     ty1 ty2) = mapM_ (checkClosed tvs) [ty1, ty2]
+checkClosed tvs (ParenType          ty) = checkClosed tvs ty
 
 -- ---------------------------------------------------------------------------
 -- Auxiliary definitions

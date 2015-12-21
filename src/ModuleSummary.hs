@@ -93,15 +93,16 @@ modifyTypeExpr tcEnv (ConstructorType q tys) = case qualLookupTC q tcEnv of
                         (genTypeSynDeref (zip [0 .. ar - 1] tys) ty)
   _                   -> ConstructorType (fromMaybe q (lookupTCId q tcEnv))
                                          (map (modifyTypeExpr tcEnv) tys)
-modifyTypeExpr _ v@(VariableType _) = v
-modifyTypeExpr tcEnv (ArrowType ty1 ty2)
+modifyTypeExpr _     v@(VariableType      _) = v
+modifyTypeExpr tcEnv (ArrowType     ty1 ty2)
   = ArrowType (modifyTypeExpr tcEnv ty1) (modifyTypeExpr tcEnv ty2)
-modifyTypeExpr tcEnv (TupleType tys)
+modifyTypeExpr tcEnv (TupleType         tys)
   | null tys  = ConstructorType qUnitId []
   | otherwise = ConstructorType (qTupleId $ length tys)
                                 (map (modifyTypeExpr tcEnv) tys)
-modifyTypeExpr tcEnv (ListType ty)
+modifyTypeExpr tcEnv (ListType           ty)
   = ConstructorType (qualify listId) [modifyTypeExpr tcEnv ty]
+modifyTypeExpr tcEnv (ParenType          ty) = modifyTypeExpr tcEnv ty
 
 --
 genTypeSynDeref :: [(Int, TypeExpr)] -> Type -> TypeExpr

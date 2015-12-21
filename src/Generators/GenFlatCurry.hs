@@ -564,6 +564,7 @@ cs2ilType ids (CS.TupleType typeexprs)
     _   -> let (ids', ilTypeexprs) = mapAccumL cs2ilType ids typeexprs
                tuplen = length ilTypeexprs
            in  (ids', IL.TypeConstructor (qTupleId tuplen) ilTypeexprs)
+cs2ilType ids (CS.ParenType ty) = cs2ilType ids ty
 
 isPublicDataDecl :: IL.Decl -> FlatState Bool
 isPublicDataDecl (IL.DataDecl qid _ _) = isPublic False qid
