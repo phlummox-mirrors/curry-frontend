@@ -22,7 +22,7 @@
         list of sub-entities.
 -}
 {-# LANGUAGE CPP #-}
-module Checks.ExportCheck (exportCheck) where
+module Checks.ExportCheck (exportCheck, expandExports) where
 
 #if __GLASGOW_HASKELL__ < 710
 import           Control.Applicative        ((<$>))
@@ -55,17 +55,28 @@ import Env.Value           (ValueEnv, ValueInfo (..), qualLookupValueUnique)
 -- Check and expansion of the export statement
 -- ---------------------------------------------------------------------------
 
-exportCheck :: ModuleIdent -> AliasEnv -> TCEnv -> ValueEnv
-            -> Maybe ExportSpec -> (Maybe ExportSpec, [Message])
-exportCheck m aEnv tcEnv tyEnv spec = case errs of
-  [] -> (Just $ Exporting (exportPos spec) es, checkNonUniqueness es)
-  ms -> (spec, ms)
+expandExports :: ModuleIdent -> AliasEnv -> TCEnv -> ValueEnv
+              -> Maybe ExportSpec -> ExportSpec
+expandExports m aEnv tcEnv tyEnv spec = Exporting (exportPos spec) es
   where
   exportPos (Just (Exporting p _)) = p
   exportPos Nothing                = NoPos
 
-  (es, errs) = runECM ((joinExports . canonExports tcEnv) <$> expandSpec spec)
-                      initState
+  es = fst (checkAndExpand m aEnv tcEnv tyEnv spec)
+
+exportCheck :: ModuleIdent -> AliasEnv -> TCEnv -> ValueEnv
+            -> Maybe ExportSpec -> [Message]
+exportCheck m aEnv tcEnv tyEnv spec = case errs of
+  [] -> checkNonUniqueness es
+  ms -> ms
+  where
+  (es, errs) = checkAndExpand m aEnv tcEnv tyEnv spec
+
+checkAndExpand :: ModuleIdent -> AliasEnv -> TCEnv -> ValueEnv
+               -> Maybe ExportSpec -> ([Export], [Message])
+checkAndExpand m aEnv tcEnv tyEnv spec
+  = runECM ((joinExports . canonExports tcEnv) <$> expandSpec spec) initState
+  where
   initState  = ECState m imported tcEnv tyEnv []
   imported   = Set.fromList (Map.elems aEnv)
 

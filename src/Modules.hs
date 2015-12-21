@@ -199,15 +199,8 @@ checkModule opts mdl = do
   sc <- syntaxCheck opts kc  >>= dumpCS DumpSyntaxChecked
   pc <- precCheck   opts sc  >>= dumpCS DumpPrecChecked
   tc <- typeCheck   opts pc  >>= dumpCS DumpTypeChecked
-  -- TODO: This is a workaround to avoid the expansion of the export
-  -- specification for generating the HTML listing. If a module does not
-  -- contain an export specification, the check generates one which leads
-  -- to a mismatch between the identifiers from the lexer and those in the
-  -- resulting module.
-  -- Therefore, it would be better if checking and expansion are separated.
-  if null (optTargetTypes opts)
-    then return tc
-    else exportCheck opts tc >>= dumpCS DumpExportChecked
+  ec <- exportCheck opts tc  >>= dumpCS DumpExportChecked
+  return ec
   where dumpCS = dumpWith opts CS.ppModule
 
 -- ---------------------------------------------------------------------------
@@ -236,7 +229,8 @@ transModule opts mdl = do
 writeOutput :: Options -> FilePath -> CompEnv CS.Module -> IO ()
 writeOutput opts fn mdl@(_, modul) = do
   writeParsed opts fn modul
-  qmdl <- dumpWith opts CS.ppModule DumpQualified $ qual mdl
+  mdl' <- expandExports opts mdl
+  qmdl <- dumpWith opts CS.ppModule DumpQualified $ qual mdl'
   writeAbstractCurry opts fn qmdl
   -- generate interface file
   let intf = uncurry exportInterface qmdl
