@@ -34,8 +34,8 @@ import Curry.Base.Pretty
 import Curry.Syntax
 
 import Base.Expr
-import Base.Messages (Message, posMessage)
-import Base.Utils (findDouble)
+import Base.Messages (Message, posMessage, internalError)
+import Base.Utils    (findMultiples)
 
 import Env.OpPrec (OpPrecEnv, OpPrec (..), PrecInfo (..), defaultP, bindP
   , mkPrec, qualLookupP)
@@ -82,13 +82,13 @@ report err = S.modify (\ s -> s { errors = err : errors s })
 -- imported precedence environment.
 
 bindPrecs :: [Decl] -> PCM ()
-bindPrecs ds = case findDouble opFixDecls of
-  Just op -> report $ errDuplicatePrecedence op
-  Nothing -> case filter (`notElem` bvs) opFixDecls of
-    []     -> do
+bindPrecs ds = case findMultiples opFixDecls of
+  [] -> case filter (`notElem` bvs) opFixDecls of
+    []  -> do
       m <- getModuleIdent
       modifyPrecEnv $ \ env -> foldr (bindPrec m) env fixDs
     ops -> mapM_ (report . errUndefinedOperator) ops
+  opss -> mapM_ (report . errMultiplePrecedence) opss
   where
     (fixDs, nonFixDs) = partition isInfixDecl ds
     opFixDecls        = [ op | InfixDecl _ _ _ ops <- fixDs, op <- ops ]
@@ -467,9 +467,12 @@ errUndefinedOperator :: Ident -> Message
 errUndefinedOperator op = posMessage op $ hsep $ map text
   ["No definition for", escName op, "in this scope"]
 
-errDuplicatePrecedence :: Ident -> Message
-errDuplicatePrecedence op = posMessage op $ hsep $ map text
-  ["More than one fixity declaration for", escName op]
+errMultiplePrecedence :: [Ident] -> Message
+errMultiplePrecedence []       = internalError
+  "PrecCheck.errMultiplePrecedence: empty list"
+errMultiplePrecedence (op:ops) = posMessage op $
+  (hsep $ map text ["More than one fixity declaration for", escName op, "at"])
+  $+$ nest 2 (vcat (map (ppPosition . getPosition) (op:ops)))
 
 errInvalidParse :: String -> Ident -> QualIdent -> Message
 errInvalidParse what op1 op2 = posMessage op1 $ hsep $ map text
