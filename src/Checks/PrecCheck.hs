@@ -91,7 +91,7 @@ bindPrecs ds = case findDouble opFixDecls of
     ops -> mapM_ (report . errUndefinedOperator) ops
   where
     (fixDs, nonFixDs) = partition isInfixDecl ds
-    opFixDecls        = [ op | InfixDecl _ _ _ ops <- fixDs, op <- ops]
+    opFixDecls        = [ op | InfixDecl _ _ _ ops <- fixDs, op <- ops ]
     bvs               = concatMap boundValues nonFixDs
 
 bindPrec :: ModuleIdent -> Decl -> OpPrecEnv -> OpPrecEnv
@@ -99,11 +99,12 @@ bindPrec m (InfixDecl _ fix mprec ops) pEnv
   | p == defaultP = pEnv
   | otherwise     = foldr (flip (bindP m) p) pEnv ops
   where p = OpPrec fix (mkPrec mprec)
-bindPrec _ _                         pEnv = pEnv
+bindPrec _ _                           pEnv = pEnv
 
 boundValues :: Decl -> [Ident]
-boundValues (DataDecl      _ _ _ cs) = map constrId cs
-boundValues (NewtypeDecl _ _ _ (NewConstrDecl _ _ c _)) = [c]
+boundValues (DataDecl      _ _ _ cs) = [ v | c <- cs
+                                           , v <- constrId c : recordLabels c]
+boundValues (NewtypeDecl   _ _ _ nc) = nconstrId nc : nrecordLabels nc
 boundValues (FunctionDecl     _ f _) = [f]
 boundValues (ForeignDecl  _ _ _ f _) = [f]
 boundValues (ExternalDecl      _ fs) = fs
