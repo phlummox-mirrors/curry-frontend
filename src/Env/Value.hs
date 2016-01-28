@@ -130,7 +130,10 @@ qualLookupValueUnique :: ModuleIdent -> QualIdent -> ValueEnv -> [ValueInfo]
 qualLookupValueUnique m x tyEnv = case qualLookupValue x tyEnv of
   []  -> []
   [v] -> [v]
-  _   -> qualLookupValue (qualQualify m x) tyEnv
+  vs  -> case qualLookupValue (qualQualify m x) tyEnv of
+    []  -> vs
+    [v] -> [v]
+    qvs -> qvs
 
 lookupTuple :: Ident -> [ValueInfo]
 lookupTuple c | isTupleId c = [tupleDCs !! (tupleArity c - 2)]

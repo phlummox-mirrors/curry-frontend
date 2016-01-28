@@ -102,8 +102,11 @@ qualLookupTC tc tcEnv = qualLookupTopEnv tc tcEnv
 qualLookupTCUnique :: ModuleIdent -> QualIdent -> TCEnv -> [TypeInfo]
 qualLookupTCUnique m x tyEnv = case qualLookupTC x tyEnv of
   []  -> []
-  [v] -> [v]
-  _   -> qualLookupTC (qualQualify m x) tyEnv
+  [t] -> [t]
+  ts  -> case qualLookupTC (qualQualify m x) tyEnv of
+    []  -> ts
+    [t] -> [t]
+    qts -> qts
 
 lookupTupleTC :: Ident -> [TypeInfo]
 lookupTupleTC tc | isTupleId tc = [tupleTCs !! (tupleArity tc - 2)]
