@@ -20,8 +20,8 @@ import Base.Messages
 import Files.CymakePath (cymakeGreeting, cymakeVersion)
 import Html.CurryHtml   (source2html)
 
-import CurryBuilder (buildCurry)
-import CompilerOpts (Options (..), CymakeMode (..), getCompilerOpts, usage)
+import CurryBuilder     (buildCurry)
+import CompilerOpts     (Options (..), CymakeMode (..), getCompilerOpts, usage)
 
 -- |The command line tool cymake
 main :: IO ()

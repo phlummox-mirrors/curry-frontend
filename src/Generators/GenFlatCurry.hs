@@ -463,6 +463,7 @@ qualifyFieldDecl m (CS.FieldDecl p l ty) = CS.FieldDecl p l (qualifyCSType m ty)
 qualifyCSType :: ModuleIdent -> CS.TypeExpr -> CS.TypeExpr
 qualifyCSType mid = fromType . toQualType mid []
 
+-- TODO: Refactor
 trApply :: IL.Expression -> IL.Expression -> FlatState Expr
 trApply e1 e2 = genFlatApplic [e2] e1
   where
