@@ -38,11 +38,11 @@ import CompilerOpts (Options (..), KnownExtension (..))
 
 -- |Different types of source files
 data Source
-    -- ^ A source file with pragmas and module imports
+    -- | A source file with pragmas and module imports
   = Source FilePath [ModulePragma] [ModuleIdent]
-    -- ^ An interface file
+    -- | An interface file
   | Interface FilePath
-    -- ^ An unkonwn file
+    -- | An unknown file
   | Unknown
     deriving (Eq, Show)
 
