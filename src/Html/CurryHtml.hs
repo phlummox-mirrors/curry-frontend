@@ -20,7 +20,8 @@ import Network.URI           (escapeURIString, isUnreserved)
 import System.Directory      (copyFile, doesFileExist)
 import System.FilePath       ((</>))
 
-import Curry.Base.Ident      (ModuleIdent (..), QualIdent (..), unqualify)
+import Curry.Base.Ident      ( ModuleIdent (..), QualIdent (..), unqualify
+                             , moduleName)
 import Curry.Base.Monad      (CYIO, liftCYM, failMessages)
 import Curry.Base.Pretty     ((<+>), text, vcat)
 import Curry.Files.PathUtils (readModule)
