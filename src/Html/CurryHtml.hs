@@ -172,7 +172,7 @@ makeRelativePath cur new  | cur == new = ""
                           | otherwise  = htmlFile new
 
 htmlFile :: ModuleIdent -> String
-htmlFile m = show m ++ "_curry.html"
+htmlFile m = moduleName m ++ "_curry.html"
 
 isCall :: Code -> Bool
 isCall (TypeCons TypeExport _) = True
