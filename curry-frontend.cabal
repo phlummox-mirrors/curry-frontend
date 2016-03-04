@@ -67,6 +67,7 @@ Library
     , Checks.ExportCheck
     , Checks.InterfaceCheck
     , Checks.InterfaceSyntaxCheck
+    , Checks.ImportSyntaxCheck
     , Checks.KindCheck
     , Checks.PrecCheck
     , Checks.SyntaxCheck

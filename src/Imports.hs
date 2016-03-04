@@ -3,7 +3,7 @@
     Description :  Importing interface declarations
     Copyright   :  (c) 2000 - 2003, Wolfgang Lux
                        2011       , Björn Peemöller
-                       2015       , Jan Tikovsky
+                       2016       , Jan Tikovsky
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
@@ -16,8 +16,6 @@
 -}
 module Imports (importInterfaces, importModules, qualifyEnv) where
 
-import           Control.Monad              (liftM, unless)
-import qualified Control.Monad.State as S   (State, gets, modify, runState)
 import           Data.List                  (nubBy)
 import qualified Data.Map            as Map
 import           Data.Maybe                 (catMaybes, fromMaybe)
@@ -25,7 +23,6 @@ import qualified Data.Set            as Set
 
 import Curry.Base.Ident
 import Curry.Base.Monad
-import Curry.Base.Pretty
 import Curry.Syntax
 
 import Base.CurryTypes (toQualType, toQualTypes)
@@ -41,23 +38,19 @@ import Env.Value
 
 import CompilerEnv
 
--- |The function 'importModules' brings the declarations of all
--- imported interfaces into scope for the current module.
-importModules :: Monad m => Module -> InterfaceEnv -> CYT m CompilerEnv
-importModules mdl@(Module _ mid _ imps _) iEnv
-  = case foldl importModule (initEnv, []) imps of
-      (e, []  ) -> ok $ importUnifyData e
-      (_, errs) -> failMessages errs
+importModules :: Monad m => Module -> InterfaceEnv -> [ImportDecl]
+              -> CYT m CompilerEnv
+importModules mdl@(Module _ mid _ _ _) iEnv expImps
+  = ok $ foldl importModule initEnv expImps
   where
     initEnv = (initCompilerEnv mid)
-      { aliasEnv     = importAliases imps -- import module aliases
-      , interfaceEnv = iEnv               -- imported interfaces
+      { aliasEnv     = importAliases expImps -- import module aliases
+      , interfaceEnv = iEnv                  -- imported interfaces
       , extensions   = knownExtensions mdl
       }
-    importModule (env, msgs) (ImportDecl _ m q asM is) =
+    importModule env (ImportDecl _ m q asM is) =
       case Map.lookup m iEnv of
-        Just intf -> let (env', msgs') = importInterface (fromMaybe m asM) q is intf env
-                     in  (env', msgs ++ msgs')
+        Just intf -> importInterface (fromMaybe m asM) q is intf env
         Nothing   -> internalError $ "Imports.importModules: no interface for "
                                     ++ show m
 
@@ -86,12 +79,6 @@ importInterfaces (Interface m is _) iEnv
 -- Note that the original names of all entities defined in the imported module
 -- are qualified appropriately. The same is true for type expressions.
 
-type IdentMap    = Map.Map Ident
-
-type ExpPEnv     = IdentMap PrecInfo
-type ExpTCEnv    = IdentMap TypeInfo
-type ExpValueEnv = IdentMap ValueInfo
-
 -- When an interface is imported, the compiler first transforms the
 -- interface into these environments. If an import specification is
 -- present, the environments are restricted to only those entities which
@@ -101,21 +88,16 @@ type ExpValueEnv = IdentMap ValueInfo
 -- or both a qualified and an unqualified import (non-qualified import).
 
 importInterface :: ModuleIdent -> Bool -> Maybe ImportSpec -> Interface
-                -> CompilerEnv -> (CompilerEnv, [Message])
-importInterface m q is i env = (env', errs)
+                -> CompilerEnv -> CompilerEnv
+importInterface m q is (Interface mid _ ds) env = env'
   where
   env' = env
-    { opPrecEnv = importEntities m q vs id              mPEnv  $ opPrecEnv env
-    , tyConsEnv = importEntities m q ts (importData vs) mTCEnv $ tyConsEnv env
-    , valueEnv  = importEntities m q vs id              mTyEnv $ valueEnv  env
+    { opPrecEnv = importEntities (precs  mid) m q vs id              ds $ opPrecEnv env
+    , tyConsEnv = importEntities (types  mid) m q ts (importData vs) ds $ tyConsEnv env
+    , valueEnv  = importEntities (values mid) m q vs id              ds $ valueEnv  env
     }
-  mPEnv  = intfEnv bindPrec i -- all operator precedences
-  mTCEnv = intfEnv bindTC   i -- all type constructors
-  mTyEnv = intfEnv bindTy   i -- all values
-  -- all imported type constructors / values
-  (expandedSpec, errs) = runExpand (expandSpecs is) m mTCEnv mTyEnv
-  ts = isVisible is (Set.fromList $ foldr addType  [] expandedSpec)
-  vs = isVisible is (Set.fromList $ foldr addValue [] expandedSpec)
+  ts = isVisible addType  is
+  vs = isVisible addValue is
 
 addType :: Import -> [Ident] -> [Ident]
 addType (Import            _) tcs = tcs
@@ -127,16 +109,19 @@ addValue (Import            f) fs = f : fs
 addValue (ImportTypeWith _ cs) fs = cs ++ fs
 addValue (ImportTypeAll     _) _  = internalError "Imports.addValue"
 
-isVisible :: Maybe ImportSpec -> Set.Set Ident -> Ident -> Bool
-isVisible Nothing                _  = const True
-isVisible (Just (Importing _ _)) xs = (`Set.member`    xs)
-isVisible (Just (Hiding    _ _)) xs = (`Set.notMember` xs)
+isVisible :: (Import -> [Ident] -> [Ident]) -> Maybe ImportSpec
+          -> Ident -> Bool
+isVisible _   Nothing                 = const True
+isVisible add (Just (Importing _ xs)) = (`Set.member`    Set.fromList (foldr add [] xs))
+isVisible add (Just (Hiding    _ xs)) = (`Set.notMember` Set.fromList (foldr add [] xs))
 
-importEntities :: Entity a => ModuleIdent -> Bool -> (Ident -> Bool)
-               -> (a -> a) -> IdentMap a -> TopEnv a -> TopEnv a
-importEntities m q isVisible' f mEnv env =
+importEntities :: Entity a => (IDecl -> [a]) -> ModuleIdent -> Bool
+               -> (Ident -> Bool) -> (a -> a) -> [IDecl] -> TopEnv a -> TopEnv a
+importEntities ents m q isVisible' f ds env =
   foldr (uncurry (if q then qualImportTopEnv m else importUnqual m)) env
-        [(x,f y) | (x,y) <- Map.toList mEnv, isVisible' x]
+        [ (x,f y) | y <- concatMap ents ds
+        , let x = unqualify (origName y), isVisible' x
+        ]
   where importUnqual m' x y = importTopEnv m' x y . qualImportTopEnv m' x y
 
 importData :: (Ident -> Bool) -> TypeInfo -> TypeInfo
@@ -156,29 +141,20 @@ importConstr isVisible' dc
 -- ---------------------------------------------------------------------------
 
 -- In a first step, the four export environments are initialized from
--- the interface's declarations. This step also qualifies the names of
--- all entities defined in (but not imported into) the interface with its
--- module name.
-
-intfEnv :: (ModuleIdent -> IDecl -> IdentMap a -> IdentMap a)
-        -> Interface -> IdentMap a
-intfEnv bind (Interface m _ ds) = foldr (bind m) Map.empty ds
+-- the interface's declarations.
 
 -- operator precedences
-bindPrec :: ModuleIdent -> IDecl -> ExpPEnv -> ExpPEnv
-bindPrec m (IInfixDecl _ fix prec op) =
-  Map.insert (unqualify op) (PrecInfo (qualQualify m op) (OpPrec fix prec))
-bindPrec _ _ = id
+precs :: ModuleIdent -> IDecl -> [PrecInfo]
+precs m (IInfixDecl _ fix prec op) = [PrecInfo (qualQualify m op) (OpPrec fix prec)]
+precs _ _                          = []
 
-bindTCHidden :: ModuleIdent -> IDecl -> ExpTCEnv -> ExpTCEnv
-bindTCHidden m (HidingDataDecl _ tc tvs) = bindType DataType m tc tvs []
-bindTCHidden m d                         = bindTC m d
+hiddenTypes :: ModuleIdent -> IDecl -> [TypeInfo]
+hiddenTypes _ (HidingDataDecl _ tc tvs) = [DataType tc (length tvs) []]
+hiddenTypes m d                         = types m d
 
 -- type constructors
-bindTC :: ModuleIdent -> IDecl -> ExpTCEnv -> ExpTCEnv
-bindTC m (IDataDecl _ tc tvs cs _) mTCEnv
-  | unqualify tc `Map.member` mTCEnv = mTCEnv
-  | otherwise = bindType DataType m tc tvs (map mkData cs) mTCEnv
+types :: ModuleIdent -> IDecl -> [TypeInfo]
+types m (IDataDecl _ tc tvs cs _) = [typeCon DataType m tc tvs (map mkData cs)]
   where
    mkData (ConstrDecl _ evs c tys) =
      DataConstr c (length evs) (toQualTypes m tvs tys)
@@ -189,33 +165,28 @@ bindTC m (IDataDecl _ tc tvs cs _) mTCEnv
      where
        (labels, tys) = unzip [(l, ty) | FieldDecl _ ls ty <- fs, l <- ls]
 
-bindTC m (INewtypeDecl _ tc tvs newCons _) mTCEnv =
-  bindType RenamingType m tc tvs (mkData newCons) mTCEnv
+types m (INewtypeDecl _ tc tvs nc _) = [typeCon RenamingType m tc tvs (mkData nc)]
   where
    mkData (NewConstrDecl _ evs c ty) =
      DataConstr c (length evs) [toQualType m tvs ty]
    mkData (NewRecordDecl _ evs c (l, ty)) =
      RecordConstr c (length evs) [l] [toQualType m tvs ty]
 
-bindTC m (ITypeDecl _ tc tvs ty) mTCEnv =
-  bindType AliasType m tc tvs (toQualType m tvs ty) mTCEnv
+types m (ITypeDecl _ tc tvs ty) = [typeCon AliasType m tc tvs (toQualType m tvs ty)]
+types _ _                       = []
 
-bindTC _ _ mTCEnv = mTCEnv
-
-bindType :: (QualIdent -> Int -> a -> TypeInfo) -> ModuleIdent -> QualIdent
-         -> [Ident] -> a -> ExpTCEnv -> ExpTCEnv
-bindType f m tc tvs = Map.insert (unqualify tc)
-                    . f (qualQualify m tc) (length tvs)
+typeCon :: (QualIdent -> Int -> a) -> ModuleIdent -> QualIdent -> [Ident] -> a
+typeCon f m tc tvs = f (qualQualify m tc) (length tvs)
 
 -- data constructors, record labels, and functions
-bindTy :: ModuleIdent -> IDecl -> ExpValueEnv -> ExpValueEnv
-bindTy m (IDataDecl _ tc tvs cs hs) env =
-  let env' = foldr (bindConstr m tc' tvs ty') env $
-             filter ((\con -> con `notElem` hs || isHiddenButNeeded con)
-                    . constrId) cs
-  in foldr (bindLabel m tc' tvs ty') env' $ nubBy sameLabel clabels
-  where tc'      = qualQualify m tc
-        ty'      = constrType tc' tvs
+values :: ModuleIdent -> IDecl -> [ValueInfo]
+values m (IDataDecl _ tc tvs cs hs) =
+  map (dataConstr m tc' tvs ty')
+      (filter ((\con -> con `notElem` hs || isHiddenButNeeded con)
+              . constrId) cs) ++
+  map (recLabel m tc' tvs ty') (nubBy sameLabel clabels)
+  where tc' = qualQualify m tc
+        ty' = constrType tc' tvs
         labels   = [ (l, lty) | RecordDecl _ _ _ fs <- cs
                    , FieldDecl _ ls lty <- fs, l <- ls, l `notElem` hs
                    ]
@@ -225,229 +196,54 @@ bindTy m (IDataDecl _ tc tvs cs hs) env =
         hiddenCs = [c | (l, _) <- labels, c <- constr l, c `elem` hs]
         isHiddenButNeeded = flip elem hiddenCs
         sameLabel (l1,_,_) (l2,_,_) = l1 == l2
-bindTy m (INewtypeDecl _ tc tvs nc hs) env
-  | (nconstrId nc) `notElem` hs = mBindLabel nc $
-      bindNewConstr m tc' tvs ty' nc env
-  | otherwise                   = mBindLabel nc env
+values m (INewtypeDecl _ tc tvs nc hs) =
+  map (newConstr m tc' tvs ty') [nc | nconstrId nc `notElem` hs] ++
+  case nc of
+    NewConstrDecl _ _ _ _        -> []
+    NewRecordDecl _ _ c (l, lty) -> [recLabel m tc tvs ty' (l, [c], lty) | l `notElem` hs]
   where tc' = qualQualify m tc
         ty' = constrType tc' tvs
-        mBindLabel (NewConstrDecl _ _ _ _) env' = env'
-        mBindLabel (NewRecordDecl _ _ c (l, lty)) env'
-          | l `notElem` hs = bindLabel m tc tvs ty' (l, [c], lty) env'
-          | otherwise      = env'
-bindTy m (IFunctionDecl _ f a ty) env = Map.insert (unqualify f)
-  (Value (qualQualify m f) a (polyType (toQualType m [] ty))) env
-bindTy _ _ env = env
+values m (IFunctionDecl _ f a ty) = [Value (qualQualify m f) a (polyType (toQualType m [] ty))]
+values _ _                        = []
 
-bindConstr :: ModuleIdent -> QualIdent -> [Ident] -> TypeExpr -> ConstrDecl
-           -> ExpValueEnv -> ExpValueEnv
-bindConstr m tc tvs ty0 (ConstrDecl     _ evs c tys) = Map.insert c $
+
+dataConstr :: ModuleIdent -> QualIdent -> [Ident] -> TypeExpr -> ConstrDecl -> ValueInfo
+dataConstr m tc tvs ty0 (ConstrDecl _ evs c tys) =
   DataConstructor (qualifyLike tc c) arity labels $
   constrType' m tvs evs (foldr ArrowType ty0 tys)
   where arity  = length tys
         labels = replicate arity anonId
-bindConstr m tc tvs ty0 (ConOpDecl _ evs ty1 op ty2) = Map.insert op $
+dataConstr m tc tvs ty0 (ConOpDecl _ evs ty1 op ty2) =
   DataConstructor (qualifyLike tc op) 2 [anonId, anonId] $
   constrType' m tvs evs (ArrowType ty1 (ArrowType ty2 ty0))
-bindConstr m tc tvs ty0 (RecordDecl _ evs c fs) = Map.insert c $
+dataConstr m tc tvs ty0 (RecordDecl _ evs c fs) =
   DataConstructor (qualifyLike tc c) arity labels $
   constrType' m tvs evs (foldr ArrowType ty0 tys)
   where fields        = [(l, ty) | FieldDecl _ ls ty <- fs, l <- ls]
         (labels, tys) = unzip fields
         arity         = length labels
 
-bindNewConstr :: ModuleIdent -> QualIdent -> [Ident] -> TypeExpr
-              -> NewConstrDecl -> ExpValueEnv -> ExpValueEnv
-bindNewConstr m tc tvs ty0 (NewConstrDecl _ evs c ty1) = Map.insert c $
+newConstr :: ModuleIdent -> QualIdent -> [Ident] -> TypeExpr -> NewConstrDecl -> ValueInfo
+newConstr m tc tvs ty0 (NewConstrDecl _ evs c ty1) =
   NewtypeConstructor (qualifyLike tc c) anonId $
   constrType' m tvs evs (ArrowType ty1 ty0)
-bindNewConstr m tc tvs ty0 (NewRecordDecl _ evs c (l, ty1)) = Map.insert c $
+newConstr m tc tvs ty0 (NewRecordDecl _ evs c (l, ty1)) =
   NewtypeConstructor (qualifyLike tc c) l $
   constrType' m tvs evs (ArrowType ty1 ty0)
+
+recLabel :: ModuleIdent -> QualIdent -> [Ident] -> TypeExpr
+           -> (Ident, [Ident], TypeExpr) -> ValueInfo
+recLabel m tc tvs ty0 (l, cs, lty) = Label ql qcs tysc
+  where ql   = qualifyLike tc l
+        qcs  = map (qualifyLike tc) cs
+        tysc = (polyType (toQualType m tvs (ArrowType ty0 lty)))
 
 constrType' :: ModuleIdent -> [Ident] -> [Ident] -> TypeExpr -> ExistTypeScheme
 constrType' m tvs evs ty = ForAllExist (length tvs) (length evs)
                                        (toQualType m tvs ty)
 
-bindLabel :: ModuleIdent -> QualIdent -> [Ident] -> TypeExpr
-          -> (Ident, [Ident], TypeExpr) -> ExpValueEnv -> ExpValueEnv
-bindLabel m tc tvs ty (l, cs, lty) = Map.insert l $ Label ql qcs tysc
-  where ql   = qualifyLike tc l
-        qcs  = map (qualifyLike tc) cs
-        tysc = (polyType (toQualType m tvs (ArrowType ty lty)))
-
 constrType :: QualIdent -> [Ident] -> TypeExpr
 constrType tc tvs = ConstructorType tc $ map VariableType tvs
-
--- ---------------------------------------------------------------------------
--- Expansion of the import specification
--- ---------------------------------------------------------------------------
-
--- After the environments have been initialized, the optional import
--- specifications can be checked. There are two kinds of import
--- specifications, a ``normal'' one, which names the entities that shall
--- be imported, and a hiding specification, which lists those entities
--- that shall not be imported.
---
--- There is a subtle difference between both kinds of
--- specifications: While it is not allowed to list a data constructor
--- outside of its type in a ``normal'' specification, it is allowed to
--- hide a data constructor explicitly. E.g., if module \texttt{A} exports
--- the data type \texttt{T} with constructor \texttt{C}, the data
--- constructor can be imported with one of the two specifications
---
--- import A (T(C))
--- import A (T(..))
---
--- but can be hidden in three different ways:
---
--- import A hiding (C)
--- import A hiding (T (C))
--- import A hiding (T (..))
---
--- The functions \texttt{expandImport} and \texttt{expandHiding} check
--- that all entities in an import specification are actually exported
--- from the module. In addition, all imports of type constructors are
--- changed into a \texttt{T()} specification and explicit imports for the
--- data constructors are added.
-
-data ExpandState = ExpandState
-  { expModIdent :: ModuleIdent
-  , expTCEnv    :: ExpTCEnv
-  , expValueEnv :: ExpValueEnv
-  , errors      :: [Message]
-  }
-
-type ExpandM a = S.State ExpandState a
-
-getModuleIdent :: ExpandM ModuleIdent
-getModuleIdent = S.gets expModIdent
-
-getTyConsEnv :: ExpandM ExpTCEnv
-getTyConsEnv = S.gets expTCEnv
-
-getValueEnv :: ExpandM ExpValueEnv
-getValueEnv = S.gets expValueEnv
-
-report :: Message -> ExpandM ()
-report msg = S.modify $ \ s -> s { errors = msg : errors s }
-
-runExpand :: ExpandM a -> ModuleIdent -> ExpTCEnv -> ExpValueEnv -> (a, [Message])
-runExpand expand m tcEnv tyEnv =
-  let (r, s) = S.runState expand (ExpandState m tcEnv tyEnv [])
-  in (r, reverse $ errors s)
-
-expandSpecs :: Maybe ImportSpec -> ExpandM [Import]
-expandSpecs Nothing                 = return []
-expandSpecs (Just (Importing _ is)) = concat `liftM` mapM expandImport is
-expandSpecs (Just (Hiding    _ is)) = concat `liftM` mapM expandHiding is
-
-expandImport :: Import -> ExpandM [Import]
-expandImport (Import             x) =               expandThing    x
-expandImport (ImportTypeWith tc cs) = (:[]) `liftM` expandTypeWith tc cs
-expandImport (ImportTypeAll     tc) = (:[]) `liftM` expandTypeAll  tc
-
-expandHiding :: Import -> ExpandM [Import]
-expandHiding (Import             x) = expandHide x
-expandHiding (ImportTypeWith tc cs) = (:[]) `liftM` expandTypeWith tc cs
-expandHiding (ImportTypeAll     tc) = (:[]) `liftM` expandTypeAll  tc
-
--- try to expand as type constructor
-expandThing :: Ident -> ExpandM [Import]
-expandThing tc = do
-  tcEnv <- getTyConsEnv
-  case Map.lookup tc tcEnv of
-    Just _  -> expandThing' tc $ Just [ImportTypeWith tc []]
-    Nothing -> expandThing' tc Nothing
-
--- try to expand as function / data constructor
-expandThing' :: Ident -> Maybe [Import] -> ExpandM [Import]
-expandThing' f tcImport = do
-  m     <- getModuleIdent
-  tyEnv <- getValueEnv
-  expand m f (Map.lookup f tyEnv) tcImport
-  where
-  expand :: ModuleIdent -> Ident
-         -> Maybe ValueInfo -> Maybe [Import] -> ExpandM [Import]
-  expand m e Nothing  Nothing   = report (errUndefinedEntity m e) >> return []
-  expand _ _ Nothing  (Just tc) = return tc
-  expand m e (Just v) maybeTc
-    | isConstr v = case maybeTc of
-        Nothing -> report (errImportDataConstr m e) >> return []
-        Just tc -> return tc
-    | otherwise  = return [Import e]
-
-  isConstr (DataConstructor  _ _ _ _) = True
-  isConstr (NewtypeConstructor _ _ _) = True
-  isConstr (Value              _ _ _) = False
-  isConstr (Label              _ _ _) = False
-
--- try to hide as type constructor
-expandHide :: Ident -> ExpandM [Import]
-expandHide tc = do
-  tcEnv <- getTyConsEnv
-  case Map.lookup tc tcEnv of
-    Just _  -> expandHide' tc $ Just [ImportTypeWith tc []]
-    Nothing -> expandHide' tc Nothing
-
--- try to hide as function / data constructor
-expandHide' :: Ident -> Maybe [Import] -> ExpandM [Import]
-expandHide' f tcImport = do
-  m     <- getModuleIdent
-  tyEnv <- getValueEnv
-  case Map.lookup f tyEnv of
-    Just _  -> return $ Import f : fromMaybe [] tcImport
-    Nothing -> case tcImport of
-      Nothing -> report (errUndefinedEntity m f) >> return []
-      Just tc -> return tc
-
-expandTypeWith ::  Ident -> [Ident] -> ExpandM Import
-expandTypeWith tc cs = do
-  m     <- getModuleIdent
-  tcEnv <- getTyConsEnv
-  ImportTypeWith tc `liftM` case Map.lookup tc tcEnv of
-    Just (DataType     _ _                cs') ->
-      mapM (checkElement (concatMap visibleElems cs')) cs
-    Just (RenamingType _ _ c) ->
-      mapM (checkElement (visibleElems c)) cs
-    Just (AliasType _ _ _) -> report (errNonDataType       tc) >> return []
-    Nothing                -> report (errUndefinedEntity m tc) >> return []
-  where
-  -- check if given identifier is constructor or label of type tc
-  checkElement cs' c = do
-    unless (c `elem` cs') $ report $ errUndefinedElement tc c
-    return c
-
-expandTypeAll :: Ident -> ExpandM Import
-expandTypeAll tc = do
-  m     <- getModuleIdent
-  tcEnv <- getTyConsEnv
-  ImportTypeWith tc `liftM` case Map.lookup tc tcEnv of
-    Just (DataType _ _  cs) -> return (concatMap visibleElems cs)
-    Just (RenamingType _ _ c) -> return (visibleElems c)
-    Just (AliasType _ _ _) -> report (errNonDataType       tc) >> return []
-    Nothing                -> report (errUndefinedEntity m tc) >> return []
-
--- get visible constructor and label identifiers for given constructor
-visibleElems :: DataConstr -> [Ident]
-visibleElems (DataConstr c _ _) = [c]
-visibleElems (RecordConstr c _ ls _) = c : ls
-
-errUndefinedElement :: Ident -> Ident -> Message
-errUndefinedElement tc c = posMessage c $ hsep $ map text
-  [ idName c, "is not a constructor or label of type ", idName tc ]
-
-errUndefinedEntity :: ModuleIdent -> Ident -> Message
-errUndefinedEntity m x = posMessage x $ hsep $ map text
-  [ "Module", moduleName m, "does not export", idName x ]
-
-errNonDataType :: Ident -> Message
-errNonDataType tc = posMessage tc $ hsep $ map text
-  [ idName tc, "is not a data type" ]
-
-errImportDataConstr :: ModuleIdent -> Ident -> Message
-errImportDataConstr _ c = posMessage c $ hsep $ map text
-  [ "Explicit import for data constructor", idName c ]
 
 -- ---------------------------------------------------------------------------
 
@@ -503,12 +299,14 @@ qualifyLocal currentEnv initEnv = currentEnv
 -- an interface.
 
 importInterfaceIntf :: Interface -> CompilerEnv -> CompilerEnv
-importInterfaceIntf i@(Interface m _ _) env = env
-  { opPrecEnv = importEntities m True (const True) id mPEnv  $ opPrecEnv env
-  , tyConsEnv = importEntities m True (const True) id mTCEnv $ tyConsEnv env
-  , valueEnv  = importEntities m True (const True) id mTyEnv $ valueEnv  env
+importInterfaceIntf (Interface m _ ds) env = env
+  { opPrecEnv = importEntitiesIntf m (precs  m) ds $ opPrecEnv env
+  , tyConsEnv = importEntitiesIntf m (hiddenTypes  m) ds $ tyConsEnv env
+  , valueEnv  = importEntitiesIntf m (values m) ds $ valueEnv  env
   }
-  where
-  mPEnv  = intfEnv bindPrec     i -- all operator precedences
-  mTCEnv = intfEnv bindTCHidden i -- all type constructors
-  mTyEnv = intfEnv bindTy       i -- all values
+
+importEntitiesIntf :: Entity a => ModuleIdent -> (IDecl -> [a]) -> [IDecl]
+                    -> TopEnv a -> TopEnv a
+importEntitiesIntf m ents ds env = foldr importEntity env (concatMap ents ds)
+  where importEntity x = qualImportTopEnv (fromMaybe m (qidModule (origName x)))
+                                          (unqualify (origName x)) x
