@@ -2,6 +2,8 @@
 --- The standard prelude of Curry.
 --- All top-level functions defined in this module
 --- are always available in any Curry program.
+---
+--- @category general
 ----------------------------------------------------------------------------
 
 {-# OPTIONS_CYMAKE -Wno-incomplete-patterns -Wno-overlapping #-}
@@ -25,7 +27,7 @@ infix  4  `elem`, `notElem`
 infixr 3 &&
 infixr 2 ||
 infixl 1 >>, >>=
-infixr 0 $, $!, $!!, $#, $##, `seq`, &&>, &, &>, ?
+infixr 0 $, $!, $!!, $#, $##, `seq`, &, &>, ?
 
 
 -- externally defined types for numbers and characters
@@ -158,11 +160,11 @@ solve :: Bool -> Bool
 solve True = True
 
 --- Conditional expression.
---- An expression like `(c &&> e)` is evaluated by evaluating the first
+--- An expression like `(c &> e)` is evaluated by evaluating the first
 --- argument to `True` and then evaluating `e`.
 --- The expression has no value if the condition does not evaluate to `True`.
-(&&>) :: Bool -> a -> a
-True &&> x = x
+(&>) :: Bool -> a -> a
+True &> x = x
 
 --- Equality on finite ground data terms.
 (==)            :: a -> a -> Bool
@@ -171,6 +173,20 @@ True &&> x = x
 --- Disequality.
 (/=)            :: a -> a -> Bool
 x /= y          = not (x==y)
+
+--- The equational constraint.
+--- `(e1 =:= e2)` is satisfiable if both sides `e1` and `e2` can be
+--- reduced to a unifiable data term (i.e., a term without defined
+--- function symbols).
+(=:=)   :: a -> a -> Bool
+(=:=) external
+
+--- Concurrent conjunction.
+--- An expression like `(c1 & c2)` is evaluated by evaluating
+--- the `c1` and `c2` in a concurrent manner.
+(&)     :: Bool -> Bool -> Bool
+(&) external
+
 
 --- Ordering type. Useful as a result of comparison functions.
 data Ordering = LT | EQ | GT
@@ -564,32 +580,12 @@ negateFloat :: Float -> Float
 negateFloat external
 
 
--- Constraints
-data Success -- = Success
-
---- The equational constraint.
---- (e1 =:= e2) is satisfiable if both sides e1 and e2 can be
---- reduced to a unifiable data term (i.e., a term without defined
---- function symbols).
-(=:=)   :: a -> a -> Success
-(=:=) external
+-- Constraints (included for backwar compatibility)
+type Success = Bool
 
 --- The always satisfiable constraint.
 success :: Success
-success external
-
---- Concurrent conjunction on constraints.
---- An expression like (c1 & c2) is evaluated by evaluating
---- the constraints c1 and c2 in a concurrent manner.
-(&)     :: Success -> Success -> Success
-(&) external
-
---- Constrained expression.
---- An expression like (c &> e) is evaluated by first solving
---- constraint c and then evaluating e.
-(&>)          :: Success -> a -> a
-c &> x | c = x
-
+success = True
 
 -- Maybe type
 
@@ -748,8 +744,8 @@ print t = putStrLn (show t)
 
 --- Solves a constraint as an I/O action.
 --- Note: the constraint should be always solvable in a deterministic way
-doSolve :: Success -> IO ()
-doSolve constraint | constraint = done
+doSolve :: Bool -> IO ()
+doSolve b | b = done
 
 
 -- IO monad auxiliary functions:
@@ -831,6 +827,9 @@ unknown :: _
 unknown = let x free in x
 
 ----------------------------------------------------------------
+--- Identity type synonym used to mark deterministic operations.
+type DET a = a
+
 --- Identity function used by the partial evaluator
 --- to mark expressions to be partially evaluated.
 PEVAL   :: a -> a
@@ -852,11 +851,11 @@ apply external
 
 -- Only for internal use:
 -- Representation of conditional rules in FlatCurry.
-cond :: Success -> a -> a
+cond :: Bool -> a -> a
 cond external
 
 --- Non-strict equational constraint. Used to implement functional patterns.
-(=:<=) :: a -> a -> Success
+(=:<=) :: a -> a -> Bool
 (=:<=) external
 
 -- the end of the standard prelude
