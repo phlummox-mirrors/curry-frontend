@@ -220,14 +220,11 @@ checkModule opts mdl = do
 
 transModule :: Options -> CompEnv CS.Module -> IO (CompEnv IL.Module)
 transModule opts mdl = do
-  desugared   <- dumpCS DumpDesugared     $ desugar False mdl
-  simplified  <- dumpCS DumpSimplified    $ simplify      desugared
-  lifted      <- dumpCS DumpLifted        $ lift          simplified
-  desugared2  <- dumpCS DumpDesugared     $ desugar True  lifted
-  simplified2 <- dumpCS DumpSimplified    $ simplify      desugared2
-  lifted2     <- dumpCS DumpLifted        $ lift          simplified2
-  il          <- dumpIL DumpTranslated    $ ilTrans       lifted2
-  ilCaseComp  <- dumpIL DumpCaseCompleted $ completeCase  il
+  desugared   <- dumpCS DumpDesugared     $ desugar      mdl
+  simplified  <- dumpCS DumpSimplified    $ simplify     desugared
+  lifted      <- dumpCS DumpLifted        $ lift         simplified
+  il          <- dumpIL DumpTranslated    $ ilTrans      lifted
+  ilCaseComp  <- dumpIL DumpCaseCompleted $ completeCase il
   return ilCaseComp
   where
   dumpCS = dumpWith opts CS.showModule CS.ppModule
