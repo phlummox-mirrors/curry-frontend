@@ -29,7 +29,7 @@ import Curry.Syntax          (Module (..), lexSource)
 
 import Html.SyntaxColoring
 
-import Base.Messages         (warn, message)
+import Base.Messages         (message)
 import CompilerOpts          (Options (..), WarnOpts (..))
 import CurryBuilder          (buildCurry, findCurry)
 import Modules               (loadAndCheckModule)
@@ -48,16 +48,16 @@ source2html opts s = do
   let outDir  = fromMaybe "." $ optHtmlDir opts
       outFile = outDir </> htmlFile mid
   liftIO $ writeFile outFile doc
-  updateCSSFile opts outDir
+  updateCSSFile outDir
 
 -- |Update the CSS file
-updateCSSFile :: Options -> FilePath -> CYIO ()
-updateCSSFile opts dir = do
+updateCSSFile :: FilePath -> CYIO ()
+updateCSSFile dir = do
   src <- liftIO $ getDataFileName cssFile
   let target = dir </> cssFile
   srcExists <- liftIO $ doesFileExist src
   if srcExists then liftIO $ copyFile src target
-               else warn (optWarnOpts opts) [message $ missingStyleFile src ]
+               else failMessages [message $ missingStyleFile src]
   where
   missingStyleFile f = vcat
     [ text "Could not copy CSS style file:"

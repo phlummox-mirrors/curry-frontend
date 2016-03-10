@@ -17,17 +17,20 @@ import System.Exit                (exitFailure)
 
 import Curry.Base.Message         ( Message, message, posMessage, ppMessage
                                   , ppMessages, ppWarning, ppError)
+import Curry.Base.Monad           (CYIO, failMessages)
+import Curry.Base.Pretty          (text)
 import CompilerOpts               (Options (..), WarnOpts (..), Verbosity (..))
 
 status :: MonadIO m => Options -> String -> m ()
 status opts msg = unless (optVerbosity opts < VerbStatus) (putMsg msg)
 
-warn :: MonadIO m => WarnOpts -> [Message] -> m ()
+-- TODO: bad code: Extend Curry monads (CYT / CYIO) to also track warnings
+-- (see ticket 1246)
+warn :: WarnOpts -> [Message] -> CYIO ()
 warn opts msgs = when (wnWarn opts && not (null msgs)) $ do
-  liftIO $ putErrLn (show $ ppMessages ppWarning $ sort msgs)
-  when (wnWarnAsError opts) $ liftIO $ do
-    putErrLn "Failed due to -Werror"
-    exitFailure
+  if wnWarnAsError opts
+    then failMessages (msgs ++ [message $ text "Failed due to -Werror"])
+    else liftIO $ putErrLn (show $ ppMessages ppWarning $ sort msgs)
 
 -- |Print a message on 'stdout'
 putMsg :: MonadIO m => String -> m ()
