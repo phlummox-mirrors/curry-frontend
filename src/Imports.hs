@@ -149,7 +149,7 @@ precs m (IInfixDecl _ fix prec op) = [PrecInfo (qualQualify m op) (OpPrec fix pr
 precs _ _                          = []
 
 hiddenTypes :: ModuleIdent -> IDecl -> [TypeInfo]
-hiddenTypes _ (HidingDataDecl _ tc tvs) = [DataType tc (length tvs) []]
+hiddenTypes m (HidingDataDecl _ tc tvs) = [typeCon DataType m tc tvs []]
 hiddenTypes m d                         = types m d
 
 -- type constructors
