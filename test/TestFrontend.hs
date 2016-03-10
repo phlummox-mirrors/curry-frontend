@@ -19,7 +19,12 @@
 --    the Curry module to be tested and expected warning/failure message(s))
 -- 3) Run 'cabal test'
 
+{-# LANGUAGE CPP #-}
 module TestFrontend (tests) where
+
+#if __GLASGOW_HASKELL__ < 710
+import Control.Applicative          ((<$>))
+#endif
 
 import Data.List                    (isInfixOf, sort)
 import Distribution.TestSuite
