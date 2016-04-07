@@ -42,23 +42,25 @@ tests = return [passingTests, warningTests, failingTests]
 
 -- Execute a test by calling cymake
 runTest :: CO.Options -> String -> [String] -> IO Progress
-runTest opts test [] = runCYIO (buildCurry opts test) >>= passOrFail
+runTest opts test [] = runCYIO (buildCurry opts' test) >>= passOrFail
  where
-  passOrFail = (Finished <$>) . either fail pass
+  opts'         = opts { CO.optForce = True }
+  passOrFail    = (Finished <$>) . either fail pass
   fail msgs
     | null msgs = return Pass
-    | otherwise = return $ Fail $ "An unexpected failure occurred"
-  pass _     = return Pass
+    | otherwise = let errorStr = showMessages msgs
+                   in return $ Fail $ "An unexpected failure occurred: " ++ errorStr
+  pass _        = return Pass
 runTest opts test errorMsgs = runCYIO (buildCurry opts' test) >>= catchE
  where
-   opts'     = opts { CO.optWarnOpts = 
-                 CO.defaultWarnOpts { CO.wnWarnAsError = True } }
-   catchE    = (Finished <$>) . either pass fail
-   pass msgs = let errorStr = showMessages msgs
-               in if all (`isInfixOf` errorStr) errorMsgs
-                    then return Pass
-                    else return $ Fail $ "Expected warning/failure did not occur: " ++ errorStr
-   fail _    = return $ Fail "Expected warning/failure did not occur"
+  opts'         = opts { CO.optForce = True }
+  catchE        = (Finished <$>) . either pass fail
+  pass msgs     = let errorStr = showMessages msgs
+                   in if all (`isInfixOf` errorStr) errorMsgs
+                        then return Pass
+                        else return $ Fail $ "Expected warning/failure did not occur: "
+                                             ++ errorStr
+  fail           = pass . snd
 
 showMessages :: [Message] -> String
 showMessages = show . ppMessages ppError . sort
@@ -275,4 +277,6 @@ warnInfos = map (uncurry mkFailTest)
     )
   , ("ShadowingSymbols",
       [ "Unused declaration of variable `x'", "Shadowing symbol `x'"])
+  , ("TabCharacter",
+      [ "Tab character"])
   ]
