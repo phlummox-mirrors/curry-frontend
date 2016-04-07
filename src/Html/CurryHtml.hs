@@ -20,8 +20,8 @@ import Network.URI           (escapeURIString, isUnreserved)
 import System.Directory      (copyFile, doesFileExist)
 import System.FilePath       ((</>))
 
-import Curry.Base.Ident      ( ModuleIdent (..), QualIdent (..), unqualify
-                             , moduleName)
+import Curry.Base.Ident      ( ModuleIdent (..), Ident (..), QualIdent (..)
+                             , unqualify, moduleName)
 import Curry.Base.Monad      (CYIO, liftCYM, failMessages)
 import Curry.Base.Pretty     ((<+>), text, vcat)
 import Curry.Files.PathUtils (readModule)
@@ -112,25 +112,27 @@ program2html m codes = unlines
   , "</html>"
   ]
   where
-  titleHtml = "Module " ++ show m
+  titleHtml = "Module " ++ moduleName m
   lineHtml  = unlines $ map show [1 .. length (lines codeHtml)]
   codeHtml  = concat $ snd $ mapAccumL (code2html m) [] codes
 
 code2html :: ModuleIdent -> [QualIdent] -> Code -> ([QualIdent], String)
 code2html m defs c
-  | isCall c  = (defs, maybe tag (addHtmlLink m tag) (getQualIdent c))
+  | isCall c  = (defs, maybe tag (addEntityLink m tag) (getQualIdent c))
   | isDecl c  = case getQualIdent c of
       Just i | i `notElem` defs
         -> (i:defs, spanTag (code2class c) (escIdent i) (escCode c))
       _ -> (defs, tag)
-  | otherwise = (defs, tag)
+  | otherwise = case c of
+      ModuleName m' -> (defs, addModuleLink m m' tag)
+      _             -> (defs, tag)
   where tag = spanTag (code2class c) "" (escCode c)
 
 escCode :: Code -> String
 escCode = htmlQuote . code2string
 
 escIdent :: QualIdent -> String
-escIdent = htmlQuote . show . unqualify
+escIdent = htmlQuote . idName . unqualify
 
 spanTag :: String -> String -> String -> String
 spanTag clV idV str
@@ -160,12 +162,16 @@ code2class (NumberCode   _) = "number"
 code2class (StringCode   _) = "string"
 code2class (CharCode     _) = "char"
 
-addHtmlLink :: ModuleIdent -> String -> QualIdent -> String
-addHtmlLink m str qid =
+addModuleLink :: ModuleIdent -> ModuleIdent -> String -> String
+addModuleLink m m' str 
+  = "<a href=\"" ++ makeRelativePath m m' ++ "\">" ++ str ++ "</a>"
+
+addEntityLink :: ModuleIdent -> String -> QualIdent -> String
+addEntityLink m str qid =
   "<a href=\"" ++ modPath ++ "#" ++ fragment  ++ "\">" ++ str ++ "</a>"
   where
   modPath       = maybe "" (makeRelativePath m) mmid
-  fragment      = string2urlencoded (show ident)
+  fragment      = string2urlencoded (idName ident)
   (mmid, ident) = (qidModule qid, qidIdent qid)
 
 makeRelativePath :: ModuleIdent -> ModuleIdent -> String

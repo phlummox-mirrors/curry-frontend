@@ -21,7 +21,7 @@ module Html.SyntaxColoring
   ) where
 
 import Data.Function (on)
-import Data.List     (intercalate, sortBy)
+import Data.List     (sortBy)
 
 import Curry.Base.Ident
 import Curry.Base.Position
@@ -83,7 +83,7 @@ data IdentUsage
 -- @param lex-Result
 -- @return program
 genProgram :: String -> Module -> [(Position, Token)] -> [Code]
-genProgram fn m toks = tokenToCodes (first fn) (idsModule m) toks
+genProgram fn m toks = encodeToks (first fn) (idsModule m) toks
 
 -- @param code
 -- @return qid if available
@@ -94,43 +94,38 @@ getQualIdent (Identifier  _ qid) = Just qid
 getQualIdent (TypeCons    _ qid) = Just qid
 getQualIdent  _                  = Nothing
 
-tokenToCodes :: Position -> [Code] -> [(Position, Token)] -> [Code]
-tokenToCodes _      _   []                     = []
-tokenToCodes curPos ids toks@((pos, tok) : ts)
+encodeToks :: Position -> [Code] -> [(Position, Token)] -> [Code]
+encodeToks _   _   []                     = []
+encodeToks cur ids toks@((pos, tok) : ts)
   -- advance line
-  | line curPos < line pos
-  = NewLine         : tokenToCodes (nl curPos) ids toks
+  | line cur   < line   pos = NewLine : encodeToks (nl cur) ids toks
   -- advance column
-  | column curPos < column pos
-  = Space colDiff   : tokenToCodes (incr curPos colDiff) ids toks
-  | isPragmaToken tok
-  = let (pragmas, (end:rest)) = break (isPragmaEnd . snd) toks
-        str = intercalate " " $ map (showToken . snd) (pragmas ++ [end])
-    in  Pragma str : tokenToCodes (incr curPos (length str)) ids rest
-  -- no identifier token
-  | not (isTokenIdentifier tok)
-  = tokenToCode tok : tokenToCodes newPos ids ts
-  -- identifier, but no more information
-  | null ids
-  = tokenToCode tok : tokenToCodes newPos ids ts
-  | tokenStr == code2string (head ids)
-  = head ids        : tokenToCodes newPos (tail ids) ts
-  | otherwise
-  = tokenToCodes curPos (tail ids) toks
+  | column cur < column pos = let d = column pos - column cur
+                              in  Space d : encodeToks (incr cur d) ids toks
+  -- pragma token
+  | isPragmaToken tok       = let (ps, (end:rest)) = break (isPragmaEnd . snd) toks
+                                  s = unwords $ map (showToken . snd) (ps ++ [end])
+                              in  Pragma s : encodeToks (incr cur (length s)) ids rest
+  -- identifier token
+  | isIdentTok tok          = case ids of
+    []                                 -> encodeTok tok : encodeToks newPos [] ts
+    (i:is) | tokenStr == code2string i -> i : encodeToks newPos is ts
+           | otherwise                 -> encodeToks cur is toks
+  -- other token
+  | otherwise               = encodeTok tok : encodeToks newPos ids ts
   where
-  colDiff  = column pos - column curPos
   tokenStr = showToken tok
-  newPos   = incr curPos (length tokenStr)
+  newPos   = incr cur (length tokenStr)
 
 code2string :: Code -> String
 code2string (Keyword         s) = s
 code2string (Space           i) = replicate i ' '
 code2string NewLine             = "\n"
 code2string (Pragma          s) = s
-code2string (DataCons    _ qid) = idName $ unqualify qid
-code2string (TypeCons    _ qid) = idName $ unqualify qid
-code2string (Function    _ qid) = idName $ unqualify qid
-code2string (Identifier  _ qid) = idName $ unqualify qid
+code2string (DataCons    _ qid) = qualName   qid
+code2string (TypeCons    _ qid) = qualName   qid
+code2string (Function    _ qid) = qualName   qid
+code2string (Identifier  _ qid) = qualName   qid
 code2string (ModuleName    mid) = moduleName mid
 code2string (Commentary      s) = s
 code2string (NumberCode      s) = s
@@ -138,22 +133,22 @@ code2string (StringCode      s) = s
 code2string (CharCode        s) = s
 code2string (Symbol          s) = s
 
-tokenToCode :: Token -> Code
-tokenToCode tok@(Token cat _)
-  | cat `elem` numCategories          = NumberCode (showToken tok)
-  | cat == CharTok                    = CharCode   (showToken tok)
-  | cat == StringTok                  = StringCode (showToken tok)
-  | cat `elem` keywordCategories      = Keyword    (showToken tok)
-  | cat `elem` specialIdentCategories = Keyword    (showToken tok)
-  | cat `elem` punctuationCategories  = Symbol     (showToken tok)
-  | cat `elem` reservedOpsCategories  = Symbol     (showToken tok)
-  | cat `elem` commentCategories      = Commentary (showToken tok)
-  | cat `elem` identCategories        = Identifier IdUnknown $ qualify $ mkIdent
+encodeTok :: Token -> Code
+encodeTok tok@(Token c _)
+  | c `elem` numCategories          = NumberCode (showToken tok)
+  | c == CharTok                    = CharCode   (showToken tok)
+  | c == StringTok                  = StringCode (showToken tok)
+  | c `elem` keywordCategories      = Keyword    (showToken tok)
+  | c `elem` specialIdentCategories = Keyword    (showToken tok)
+  | c `elem` punctuationCategories  = Symbol     (showToken tok)
+  | c `elem` reservedOpsCategories  = Symbol     (showToken tok)
+  | c `elem` commentCategories      = Commentary (showToken tok)
+  | c `elem` identCategories        = Identifier IdUnknown $ qualify $ mkIdent
                                       $ showToken tok
-  | cat `elem` whiteSpaceCategories   = Space 0
-  | cat `elem` pragmaCategories       = Pragma     (showToken tok)
+  | c `elem` whiteSpaceCategories   = Space 0
+  | c `elem` pragmaCategories       = Pragma     (showToken tok)
   | otherwise                         = internalError $
-    "SyntaxColoring.tokenToCode: Unknown token" ++ showToken tok
+    "SyntaxColoring.encodeTok: Unknown token" ++ showToken tok
 
 numCategories :: [Category]
 numCategories = [IntTok, FloatTok]
@@ -187,13 +182,13 @@ identCategories :: [Category]
 identCategories = [Id, QId, Sym, QSym, SymDot, SymMinus, SymMinusDot]
 
 isPragmaToken :: Token -> Bool
-isPragmaToken (Token cat _) = cat `elem` pragmaCategories
+isPragmaToken (Token c _) = c `elem` pragmaCategories
 
 isPragmaEnd :: Token -> Bool
-isPragmaEnd (Token cat _) = cat == PragmaEnd
+isPragmaEnd (Token c _) = c == PragmaEnd
 
-isTokenIdentifier :: Token -> Bool
-isTokenIdentifier (Token cat _) = cat `elem` identCategories
+isIdentTok :: Token -> Bool
+isIdentTok (Token c _) = c `elem` identCategories
 
 whiteSpaceCategories :: [Category]
 whiteSpaceCategories = [EOF, VSemicolon, VRightBrace]
@@ -233,19 +228,7 @@ idsModule (Module _ mid es is ds) =
   let hdrCodes = ModuleName mid : idsExportSpec es
       impCodes = concatMap idsImportDecl (sortBy cmpImportDecl is)
       dclCodes = concatMap idsDecl       (sortBy cmpDecl ds)
-  in  map (addModuleIdent mid) $ hdrCodes ++ impCodes ++ dclCodes
-
-addModuleIdent :: ModuleIdent -> Code -> Code
-addModuleIdent mid c@(Function x qid)
-  | hasGlobalScope (unqualify qid) = Function x (qualQualify mid qid)
-  | otherwise                      = c
-addModuleIdent mid cn@(DataCons x qid)
-  | not $ isQualified qid          = DataCons x (qualQualify mid qid)
-  | otherwise                      = cn
-addModuleIdent mid tc@(TypeCons x qid)
-  | not $ isQualified qid          = TypeCons x (qualQualify mid qid)
-  | otherwise                      = tc
-addModuleIdent _   c               = c
+  in  hdrCodes ++ impCodes ++ dclCodes
 
 -- Exports
 
@@ -496,8 +479,8 @@ showAttr (IntAttributes      i _) = show i
 showAttr (FloatAttributes    f _) = show f
 showAttr (StringAttributes   s _) = show s
 showAttr (IdentAttributes    m i)
-  | null m    = show $ qualify                  (mkIdent i)
-  | otherwise = show $ qualifyWith (mkMIdent m) (mkIdent i)
+  | null m    = idName   $                          (mkIdent i)
+  | otherwise = qualName $ qualifyWith (mkMIdent m) (mkIdent i)
 showAttr (OptionsAttributes mt s) = showTool mt ++ ' ' : s
 
 showTool :: Maybe String -> String
