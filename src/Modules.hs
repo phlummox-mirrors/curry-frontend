@@ -85,7 +85,7 @@ compileModule opts fn = do
 loadAndCheckModule :: Options -> FilePath -> CYIO (CompEnv CS.Module)
 loadAndCheckModule opts fn = do
   (env, mdl) <- loadModule opts fn >>= checkModule opts
-  warn (optWarnOpts opts) $ warnCheck opts env mdl
+  warnMessages $ warnCheck opts env mdl
   return (env, mdl)
 
 -- ---------------------------------------------------------------------------
@@ -286,7 +286,7 @@ matchInterface :: FilePath -> CS.Interface -> IO Bool
 matchInterface ifn i = do
   hdl <- openFile ifn ReadMode
   src <- hGetContents hdl
-  case runCYM (CS.parseInterface ifn src) of
+  case runCYMIgnWarn (CS.parseInterface ifn src) of
     Left  _  -> hClose hdl >> return False
     Right i' -> return (i `intfEquiv` fixInterface i')
 
