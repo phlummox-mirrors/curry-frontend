@@ -1,7 +1,8 @@
 {- |
     Module      :  $Header$
     Description :  Generating HTML documentation
-    Copyright   :  (c) 2011 - 2015, Björn Peemöller
+    Copyright   :  (c) 2011 - 2016, Björn Peemöller
+                       2016       , Jan Tikovsky
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
@@ -73,7 +74,7 @@ docModule opts f = do
     Just src -> do
       toks  <- liftCYM $ lexSource f src
       typed@(Module _ m _ _ _) <- fullParse opts f src
-      return (m, program2html m $ genProgram f typed toks)
+      return (m, program2html m $ genProgram typed toks)
 
 -- |Return the syntax tree of the source program 'src' (type 'Module'; see
 -- Module "CurrySyntax").after inferring the types of identifiers.
@@ -147,20 +148,20 @@ spanTag clV idV str
 -- @param code
 -- @return css class of the code
 code2class :: Code -> String
-code2class (Space        _) = ""
-code2class NewLine          = ""
-code2class (Keyword      _) = "keyword"
-code2class (Pragma       _) = "pragma"
-code2class (Symbol       _) = "symbol"
-code2class (TypeCons   _ _) = "type"
-code2class (DataCons   _ _) = "cons"
-code2class (Function   _ _) = "func"
-code2class (Identifier _ _) = "ident"
-code2class (ModuleName   _) = "module"
-code2class (Commentary   _) = "comment"
-code2class (NumberCode   _) = "number"
-code2class (StringCode   _) = "string"
-code2class (CharCode     _) = "char"
+code2class (Space          _) = ""
+code2class NewLine            = ""
+code2class (Keyword        _) = "keyword"
+code2class (Pragma         _) = "pragma"
+code2class (Symbol         _) = "symbol"
+code2class (TypeCons   _ _ _) = "type"
+code2class (DataCons   _ _ _) = "cons"
+code2class (Function   _ _ _) = "func"
+code2class (Identifier _ _ _) = "ident"
+code2class (ModuleName     _) = "module"
+code2class (Commentary     _) = "comment"
+code2class (NumberCode     _) = "number"
+code2class (StringCode     _) = "string"
+code2class (CharCode       _) = "char"
 
 addModuleLink :: ModuleIdent -> ModuleIdent -> String -> String
 addModuleLink m m' str 
@@ -182,18 +183,18 @@ htmlFile :: ModuleIdent -> String
 htmlFile m = moduleName m ++ "_curry.html"
 
 isCall :: Code -> Bool
-isCall (TypeCons TypeExport _) = True
-isCall (TypeCons TypeImport _) = True
-isCall (TypeCons TypeRefer  _) = True
-isCall (TypeCons          _ _) = False
-isCall (Identifier        _ _) = False
+isCall (TypeCons   TypeExport _ _) = True
+isCall (TypeCons   TypeImport _ _) = True
+isCall (TypeCons   TypeRefer  _ _) = True
+isCall (TypeCons   _          _ _) = False
+isCall (Identifier _          _ _) = False
 isCall c                       = not (isDecl c) && isJust (getQualIdent c)
 
 isDecl :: Code -> Bool
-isDecl (DataCons ConsDeclare  _) = True
-isDecl (Function FuncDeclare  _) = True
-isDecl (TypeCons TypeDeclare  _) = True
-isDecl _                         = False
+isDecl (DataCons ConsDeclare _ _) = True
+isDecl (Function FuncDeclare _ _) = True
+isDecl (TypeCons TypeDeclare _ _) = True
+isDecl _                          = False
 
 -- Translates arbitrary strings into equivalent urlencoded string.
 string2urlencoded :: String -> String
