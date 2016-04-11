@@ -152,6 +152,7 @@ setQualified b (Function   u _ f) = Function u b f
 setQualified b (Identifier u _ i) = Identifier u b i
 setQualified b (TypeCons   u _ t) = TypeCons u b t
 setQualified _ m@(ModuleName   _) = m
+setQualified _ s@(Symbol       _) = s
 setQualified _ c                  = internalError $ "Html.SyntaxColoring.setQualified: " ++ show c
 
 code2string :: Code -> String
