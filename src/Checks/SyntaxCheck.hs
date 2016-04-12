@@ -751,7 +751,7 @@ checkVariable v
                             return $ Variable v
       [Constr    _ _]   -> return $ Constructor v
       [GlobalVar _ _]   -> return $ Variable v
-      [LocalVar v' _]   -> return $ Variable $ qualify v'
+      [LocalVar v' _]   -> return $ Variable $ qualify v' @> v
       [RecordLabel _ _] -> return $ Variable v
       rs -> do
         m <- getModuleIdent
@@ -760,7 +760,7 @@ checkVariable v
                                 return $ Variable v
           [Constr    _ _]   -> return $ Constructor v
           [GlobalVar _ _]   -> return $ Variable v
-          [LocalVar v' _]   -> return $ Variable $ qualify v'
+          [LocalVar v' _]   -> return $ Variable $ qualify v' @> v
           [RecordLabel _ _] -> return $ Variable v
           rs'               -> do report $ errAmbiguousIdent rs' v
                                   return $ Variable v
