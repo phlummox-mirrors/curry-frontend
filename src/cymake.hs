@@ -39,8 +39,11 @@ cymake (prog, opts, files, errs)
     runCYIO (mapM_ (source2html opts) files) >>= okOrAbort
   | otherwise                  =
     runCYIO (mapM_ (buildCurry  opts) files) >>= okOrAbort
-  where mode = optMode opts
-        okOrAbort = either abortWithMessages return
+  where
+  mode                 = optMode opts
+  warnOpts             = optWarnOpts opts
+  okOrAbort            = either abortWithMessages continueWithMessages
+  continueWithMessages = warnOrAbort warnOpts . snd
 
 -- |Print the usage information of the command line tool
 printUsage :: String -> IO ()
