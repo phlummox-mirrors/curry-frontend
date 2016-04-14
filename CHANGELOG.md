@@ -11,6 +11,8 @@ Under development (0.4.1)
   * Split checking and expansion of export specification into two
     subsequent steps (by Yannik Potdevin, fixes #1335)
   * Consider parenthesized type expressions in the Curry AST (by Katharina Rahf)
+  * Added syntax extension `ExistentialQuantification` that allows the use
+    of existentially quantified types in data and newtype constructors
 
 Version 0.4.0
 =============

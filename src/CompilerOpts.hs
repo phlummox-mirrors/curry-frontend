@@ -233,6 +233,8 @@ extensions =
     , "desugar negated literals as negative literal")
   , ( NoImplicitPrelude , "NoImplicitPrelude"
     , "do not implicitly import the Prelude")
+  , ( ExistentialQuantification , "ExistentialQuantification"
+    , "enable existentially quantified types")
   ]
 
 -- -----------------------------------------------------------------------------

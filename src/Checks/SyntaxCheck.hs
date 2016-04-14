@@ -28,7 +28,7 @@ module Checks.SyntaxCheck (syntaxCheck) where
 #if __GLASGOW_HASKELL__ < 710
 import           Control.Applicative        ((<$>), (<*>))
 #endif
-import Control.Monad                      (unless, when)
+import Control.Monad                      ((>=>), unless, when)
 import qualified Control.Monad.State as S (State, runState, gets, modify)
 import Data.List                          (insertBy, intersect, nub, partition)
 import Data.Maybe                         (isJust, isNothing)
@@ -495,15 +495,30 @@ checkDecls bindDecl ds = do
 -- -- ---------------------------------------------------------------------------
 
 checkDeclRhs :: [Ident] -> Decl -> SCM Decl
-checkDeclRhs _   (DataDecl p tc tvs cs) =
-  DataDecl p tc tvs <$> mapM checkDeclLabels cs
-checkDeclRhs bvs (TypeSig      p vs ty) =
+checkDeclRhs _   (DataDecl   p tc tvs cs) =
+  DataDecl p tc tvs <$> mapM (checkConstrDecl >=> checkDeclLabels) cs
+checkDeclRhs _   (NewtypeDecl p tc tvs c) =
+  NewtypeDecl p tc tvs <$> checkNewconstrDecl c
+checkDeclRhs bvs (TypeSig        p vs ty) =
   (\vs' -> TypeSig p vs' ty) <$> mapM (checkLocalVar bvs) vs
-checkDeclRhs _   (FunctionDecl p f eqs) =
+checkDeclRhs _   (FunctionDecl   p f eqs) =
   FunctionDecl p f <$> mapM checkEquation eqs
-checkDeclRhs _   (PatternDecl  p t rhs) =
+checkDeclRhs _   (PatternDecl    p t rhs) =
   PatternDecl p t <$> checkRhs rhs
-checkDeclRhs _   d                      = return d
+checkDeclRhs _   d                        = return d
+
+checkConstrDecl :: ConstrDecl -> SCM ConstrDecl
+checkConstrDecl c@(ConstrDecl _ evs   _ _) = checkExistVars evs >> return c
+checkConstrDecl c@(ConOpDecl  _ evs _ _ _) = checkExistVars evs >> return c
+checkConstrDecl c@(RecordDecl _ evs   _ _) = checkExistVars evs >> return c
+
+checkNewconstrDecl :: NewConstrDecl -> SCM NewConstrDecl
+checkNewconstrDecl c@(NewConstrDecl _ evs _ _) = checkExistVars evs >> return c
+checkNewConstrDecl c@(NewRecordDecl _ evs _ _) = checkExistVars evs >> return c
+
+checkExistVars :: [Ident] -> SCM ()
+checkExistVars []     = ok
+checkExistVars (ev:_) = checkExistentialQuantificationExtension $ idPosition ev
 
 checkDeclLabels :: ConstrDecl -> SCM ConstrDecl
 checkDeclLabels rd@(RecordDecl _ _ _ fs) = do
@@ -1033,6 +1048,10 @@ checkFPTerm _ (InfixFuncPattern   _ _ _) = ok -- do not check again
 -- ---------------------------------------------------------------------------
 -- Miscellaneous functions
 -- ---------------------------------------------------------------------------
+
+checkExistentialQuantificationExtension :: Position -> SCM ()
+checkExistentialQuantificationExtension p = checkUsedExtension p
+  "Existentially quantified types" ExistentialQuantification
 
 checkFuncPatsExtension :: Position -> SCM ()
 checkFuncPatsExtension p = checkUsedExtension p
