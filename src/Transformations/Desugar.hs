@@ -321,7 +321,11 @@ constrain cs e = if null cs then e else foldr1 (&) cs &> e
 -- 'Success' if it is not restricted by the guard expression.
 
 dsRhs :: Position -> (Expression -> Expression) -> Rhs -> DsM Rhs
-dsRhs p f rhs = expandRhs prelFailed f rhs >>= dsExpr p >>= return . simpleRhs p
+dsRhs p f rhs =     expandRhs prelFailed f rhs
+                >>= dsExpr pRhs
+                >>= return . simpleRhs pRhs
+  where
+  pRhs = fromMaybe p (getRhsPosition rhs)
 
 expandRhs :: Expression -> (Expression -> Expression) -> Rhs -> DsM Expression
 expandRhs _  f (SimpleRhs _ e ds) = return $ Let ds (f e)
@@ -345,6 +349,10 @@ boolGuards tyEnv (CondExpr _ g _ : es) = not (null es) ||
 addDecls :: [Decl] -> Rhs -> Rhs
 addDecls ds (SimpleRhs p e ds') = SimpleRhs p e (ds ++ ds')
 addDecls ds (GuardedRhs es ds') = GuardedRhs es (ds ++ ds')
+
+getRhsPosition :: Rhs -> Maybe Position
+getRhsPosition (SimpleRhs p _ _) = Just p
+getRhsPosition (GuardedRhs _ _)  = Nothing
 
 -- -----------------------------------------------------------------------------
 -- Desugaring of non-linear patterns
