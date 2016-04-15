@@ -13,6 +13,7 @@ Under development (0.4.1)
   * Consider parenthesized type expressions in the Curry AST (by Katharina Rahf)
   * Added syntax extension `ExistentialQuantification` that allows the use
     of existentially quantified types in data and newtype constructors
+  * Fixed bug that type declarations weren't syntax checked
 
 Version 0.4.0
 =============

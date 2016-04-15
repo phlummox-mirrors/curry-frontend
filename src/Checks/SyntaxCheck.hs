@@ -331,10 +331,10 @@ checkModule :: Module -> SCM (Module, [KnownExtension])
 checkModule (Module ps m es is ds) = do
   mapM_ checkPragma ps
   mapM_ bindTypeDecl tds
-  ds' <- (tds ++) <$> checkTopDecls vds
+  ds' <- checkTopDecls ds
   exts <- getExtensions
   return (Module ps m es is ds', exts)
-  where (tds, vds) = partition isTypeDecl ds
+  where tds = filter isTypeDecl ds
 
 checkPragma :: ModulePragma -> SCM ()
 checkPragma (LanguagePragma _ exts) = mapM_ checkExtension exts
