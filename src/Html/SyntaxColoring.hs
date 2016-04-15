@@ -215,7 +215,7 @@ punctuationCategories =
 reservedOpsCategories :: [Category]
 reservedOpsCategories =
   [ At, Colon, DotDot, DoubleColon, Equals, Backslash, Bar
-  , LeftArrow, RightArrow, Tilde, Bind, Select ]
+  , LeftArrow, RightArrow, Tilde ]
 
 commentCategories :: [Category]
 commentCategories = [LineComment, NestedComment]
@@ -474,8 +474,6 @@ showToken (Token Bar                _) = "|"
 showToken (Token LeftArrow          _) = "<-"
 showToken (Token RightArrow         _) = "->"
 showToken (Token Tilde              _) = "~"
-showToken (Token Bind               _) = ":="
-showToken (Token Select             _) = ":>"
 showToken (Token SymDot             _) = "."
 showToken (Token SymMinus           _) = "-"
 showToken (Token SymMinusDot        _) = "-."
