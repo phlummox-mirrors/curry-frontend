@@ -204,13 +204,13 @@ importSyntaxCheck iEnv (CS.Module _ _ _ imps _) = mapM checkImportDecl imps
 -- TODO: The order of the checks should be improved!
 checkModule :: Options -> CompEnv CS.Module -> CYIO (CompEnv CS.Module)
 checkModule opts mdl = do
-  _  <- dumpCS DumpParsed mdl
-   -- Should be separated into kind checking and type syntax checking (see MCC)
-  kc <- kindCheck   opts mdl >>= dumpCS DumpKindChecked
-  sc <- syntaxCheck opts kc  >>= dumpCS DumpSyntaxChecked
-  pc <- precCheck   opts sc  >>= dumpCS DumpPrecChecked
-  tc <- typeCheck   opts pc  >>= dumpCS DumpTypeChecked
-  ec <- exportCheck opts tc  >>= dumpCS DumpExportChecked
+  _   <- dumpCS DumpParsed mdl
+  tsc <- typeSyntaxCheck opts mdl >>= dumpCS DumpTypeSyntaxChecked
+  kc  <- kindCheck       opts tsc >>= dumpCS DumpKindChecked
+  sc  <- syntaxCheck     opts kc  >>= dumpCS DumpSyntaxChecked
+  pc  <- precCheck       opts sc  >>= dumpCS DumpPrecChecked
+  tc  <- typeCheck       opts pc  >>= dumpCS DumpTypeChecked
+  ec  <- exportCheck     opts tc  >>= dumpCS DumpExportChecked
   return ec
   where dumpCS = dumpWith opts CS.showModule CS.ppModule
 

@@ -190,36 +190,38 @@ warnFlags =
 
 -- |Dump level
 data DumpLevel
-  = DumpParsed        -- ^ dump source code after parsing
-  | DumpKindChecked   -- ^ dump source code after kind checking
-  | DumpSyntaxChecked -- ^ dump source code after syntax checking
-  | DumpPrecChecked   -- ^ dump source code after precedence checking
-  | DumpTypeChecked   -- ^ dump source code after type checking
-  | DumpExportChecked -- ^ dump source code after export checking
-  | DumpQualified     -- ^ dump source  after qualification
-  | DumpDesugared     -- ^ dump source  after desugaring
-  | DumpSimplified    -- ^ dump source  after simplification
-  | DumpLifted        -- ^ dump source  after lambda-lifting
-  | DumpTranslated    -- ^ dump IL code after translation
-  | DumpCaseCompleted -- ^ dump IL code after case completion
-  | DumpFlatCurry     -- ^ dump FlatCurry code (pretty-printed)
+  = DumpParsed            -- ^ dump source code after parsing
+  | DumpTypeSyntaxChecked -- ^ dump source code after type syntax checking
+  | DumpKindChecked       -- ^ dump source code after kind checking
+  | DumpSyntaxChecked     -- ^ dump source code after syntax checking
+  | DumpPrecChecked       -- ^ dump source code after precedence checking
+  | DumpTypeChecked       -- ^ dump source code after type checking
+  | DumpExportChecked     -- ^ dump source code after export checking
+  | DumpQualified         -- ^ dump source  after qualification
+  | DumpDesugared         -- ^ dump source  after desugaring
+  | DumpSimplified        -- ^ dump source  after simplification
+  | DumpLifted            -- ^ dump source  after lambda-lifting
+  | DumpTranslated        -- ^ dump IL code after translation
+  | DumpCaseCompleted     -- ^ dump IL code after case completion
+  | DumpFlatCurry         -- ^ dump FlatCurry code (pretty-printed)
     deriving (Eq, Bounded, Enum, Show)
 
 -- |Description and flag of dump levels
 dumpLevel :: [(DumpLevel, String, String)]
-dumpLevel = [ (DumpParsed       , "dump-parse", "parsing"                     )
-            , (DumpKindChecked  , "dump-kc"   , "kind checking"               )
-            , (DumpSyntaxChecked, "dump-sc"   , "syntax checking"             )
-            , (DumpPrecChecked  , "dump-pc"   , "precedence checking"         )
-            , (DumpTypeChecked  , "dump-tc"   , "type checking"               )
-            , (DumpExportChecked, "dump-ec"   , "export checking"             )
-            , (DumpQualified    , "dump-qual" , "qualification"               )
-            , (DumpDesugared    , "dump-ds"   , "desugaring"                  )
-            , (DumpLifted       , "dump-lift" , "lifting"                     )
-            , (DumpSimplified   , "dump-simpl", "simplification"              )
-            , (DumpTranslated   , "dump-trans", "pattern matching compilation")
-            , (DumpCaseCompleted, "dump-cc"   , "case completion"             )
-            , (DumpFlatCurry    , "dump-flat" , "translation into FlatCurry"  )
+dumpLevel = [ (DumpParsed           , "dump-parse", "parsing"                     )
+            , (DumpTypeSyntaxChecked, "dump-tsc"  , "type syntax checking"        )
+            , (DumpKindChecked      , "dump-kc"   , "kind checking"               )
+            , (DumpSyntaxChecked    , "dump-sc"   , "syntax checking"             )
+            , (DumpPrecChecked      , "dump-pc"   , "precedence checking"         )
+            , (DumpTypeChecked      , "dump-tc"   , "type checking"               )
+            , (DumpExportChecked    , "dump-ec"   , "export checking"             )
+            , (DumpQualified        , "dump-qual" , "qualification"               )
+            , (DumpDesugared        , "dump-ds"   , "desugaring"                  )
+            , (DumpLifted           , "dump-lift" , "lifting"                     )
+            , (DumpSimplified       , "dump-simpl", "simplification"              )
+            , (DumpTranslated       , "dump-trans", "pattern matching compilation")
+            , (DumpCaseCompleted    , "dump-cc"   , "case completion"             )
+            , (DumpFlatCurry        , "dump-flat" , "translation into FlatCurry"  )
             ]
 
 -- |Description and flag of language extensions
