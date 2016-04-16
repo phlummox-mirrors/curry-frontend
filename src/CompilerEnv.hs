@@ -37,7 +37,7 @@ data CompilerEnv = CompilerEnv
   , extensions   :: [KnownExtension] -- ^ enabled language extensions
   , interfaceEnv :: InterfaceEnv     -- ^ declarations of imported interfaces
   , aliasEnv     :: AliasEnv         -- ^ aliases for imported modules
-  , tyConsEnv    :: TCEnv            -- ^ type constructors
+  , tyConsEnv    :: TCEnv            -- ^ type constructors and type classes
   , valueEnv     :: ValueEnv         -- ^ functions and data constructors
   , opPrecEnv    :: OpPrecEnv        -- ^ operator precedences
   }
