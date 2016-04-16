@@ -59,14 +59,13 @@ typeSyntaxCheck _ (env, mdl)
 
 -- |Check the kinds of type definitions and signatures.
 --
--- * Declarations: Nullary type constructors and type variables are
---                 disambiguated
--- * Environment:  remains unchanged
+-- * Declarations: remains unchanged
+-- * Environment:  The type constructor environment is updated
 kindCheck :: Monad m => Check m Module
 kindCheck _ (env, mdl)
-  | null msgs = ok (env, mdl')
+  | null msgs = ok (env { tyConsEnv = tcEnv }, mdl)
   | otherwise = failMessages msgs
-  where (mdl', msgs) = KC.kindCheck (tyConsEnv env) mdl
+  where (tcEnv, msgs) = KC.kindCheck (tyConsEnv env) mdl
 
 -- |Check for a correct syntax.
 --
