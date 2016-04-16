@@ -1,7 +1,8 @@
 {- |
     Module      :  $Header$
     Description :  Different checks on a Curry module
-    Copyright   :  (c) 2011 - 2013, Björn Peemöller
+    Copyright   :  (c) 2011 - 2013 Björn Peemöller
+                       2016        Finn Teegen
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
@@ -20,6 +21,7 @@ import qualified Checks.KindCheck         as KC  (kindCheck)
 import qualified Checks.PrecCheck         as PC  (precCheck)
 import qualified Checks.SyntaxCheck       as SC  (syntaxCheck)
 import qualified Checks.TypeCheck         as TC  (typeCheck)
+import qualified Checks.TypeSyntaxCheck   as TSC (typeSyntaxCheck)
 import qualified Checks.WarnCheck         as WC  (warnCheck)
 
 import Curry.Base.Monad
@@ -43,6 +45,17 @@ importCheck intf is
   | null msgs = ok is'
   | otherwise = failMessages msgs
   where (is', msgs) = ISC.importCheck intf is
+
+-- |Check the type syntax of type definitions and signatures.
+--
+-- * Declarations: Nullary type constructors and type variables are
+--                 disambiguated
+-- * Environment:  remains unchanged
+typeSyntaxCheck :: Monad m => Check m Module
+typeSyntaxCheck _ (env, mdl)
+  | null msgs = ok (env, mdl')
+  | otherwise = failMessages msgs
+  where (mdl', msgs) = TSC.typeSyntaxCheck (tyConsEnv env) mdl
 
 -- |Check the kinds of type definitions and signatures.
 --
