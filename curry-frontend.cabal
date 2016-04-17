@@ -43,6 +43,7 @@ Library
     , directory
     , filepath
     , mtl
+    , multimap
     , process
     , syb
     , transformers
@@ -120,6 +121,7 @@ Executable cymake
     , directory
     , filepath
     , mtl
+    , multimap
     , process
     , syb
     , transformers

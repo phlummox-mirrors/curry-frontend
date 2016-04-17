@@ -135,7 +135,7 @@ errCyclicImport _ []  = internalError "Interfaces.errCyclicImport: empty list"
 errCyclicImport p [m] = posMessage p $
   text "Recursive import for module" <+> text (moduleName m)
 errCyclicImport p ms  = posMessage p $
-  text "Cylic import dependency between modules"
+  text "Cyclic import dependency between modules"
   <+> hsep (punctuate comma (map text inits)) <+> text "and" <+> text lastm
   where
   (inits, lastm)         = splitLast $ map moduleName ms
