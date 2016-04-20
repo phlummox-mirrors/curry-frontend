@@ -27,7 +27,7 @@ module Base.Types
     -- * Representation of Quantification
   , TypeScheme (..), ExistTypeScheme (..), monoType, polyType
     -- * Predefined types
-  , unitType, boolType, charType, intType, floatType, stringType
+  , arrowType, unitType, boolType, charType, intType, floatType, stringType
   , listType, ioType, tupleType, typeVar, predefTypes
     -- * Helper functions
   , applyType, unapplyType
@@ -265,6 +265,9 @@ polyType ty = ForAll (maximum (-1 : typeVars ty) + 1) ty
 
 -- There are a few predefined types:
 
+arrowType :: Type
+arrowType = primType qArrowId []
+
 unitType :: Type
 unitType = primType qUnitId []
 
@@ -296,11 +299,12 @@ typeVar :: Int -> Type
 typeVar = TypeVariable
 
 primType :: QualIdent -> [Type] -> Type
-primType = TypeConstructor --  . qualifyWith preludeMIdent
+primType = applyType . TypeConstructor
 
 predefTypes :: [(Type, [DataConstr])]
 predefTypes = let a = typeVar 0 in
-  [ (unitType  , [ DataConstr unitId 0 [] ])
+  [ (arrowType , [])
+  , (unitType  , [ DataConstr unitId 0 [] ])
   , (listType a, [ DataConstr nilId  0 []
                  , DataConstr consId 0 [a, listType a]
                  ])
