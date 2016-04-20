@@ -122,7 +122,12 @@ varKind tv tcEnv = case lookupTypeInfo tv tcEnv of
 type TCEnv = TopEnv TypeInfo
 
 initTCEnv :: TCEnv
-initTCEnv = emptyTopEnv
+initTCEnv = foldr (uncurry $ predefTC . unapplyType) emptyTopEnv predefTypes
+  where
+    predefTC (TypeConstructor tc, tys) =
+      predefTopEnv tc . DataType tc (simpleKind $ length tys)
+    predefTC _                        =
+      internalError "Env.TypeConstructor.initTCEnv.predefTC: no type constructor"
 
 bindTypeInfo :: ModuleIdent -> Ident -> TypeInfo -> TCEnv -> TCEnv
 bindTypeInfo m ident ti = bindTopEnv ident ti . qualBindTopEnv qident ti
