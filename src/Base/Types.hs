@@ -4,6 +4,7 @@
     Copyright   :  (c) 2002 - 2004 Wolfgang Lux
                                    Martin Engelke
                        2015        Jan Tikovsky
+                       2016        Finn Teegen
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
@@ -28,17 +29,23 @@ module Base.Types
     -- * Predefined types
   , unitType, boolType, charType, intType, floatType, stringType
   , listType, ioType, tupleType, typeVar, predefTypes
+    -- * Helper functions
+  , applyType, unapplyType
   ) where
 
 import Curry.Base.Ident
 
--- A type is either a type variable, an application of a type constructor
--- to a list of arguments, or an arrow type. The 'TypeConstrained'
--- case is used for representing type variables that are restricted to a
--- particular set of types. At present, this is used for typing
--- integer literals, which are restricted to types 'Int' and
+-- A type is either a type constructor, a type variable, an application
+-- of a type to another type, or an arrow type. Although the latter could
+-- be expressed by using 'TypeApply' with the function type constructor,
+-- we currently use 'TypeArrow' because arrow types are used so frequently.
+
+-- The 'TypeConstrained' case is used for representing type variables that
+-- are restricted to a particular set of types. At present, this is used
+-- for typing integer literals, which are restricted to types 'Int' and
 -- 'Float'. If the type is not restricted, it defaults to the first type
 -- from the constraint list.
+
 -- The case 'TypeSkolem' is used for handling skolem types, which
 -- result from the use of existentially quantified data constructors.
 
@@ -52,12 +59,36 @@ import Curry.Base.Ident
 -- as well, these variables must never be quantified.
 
 data Type
-  = TypeVariable Int
-  | TypeConstructor QualIdent [Type]
+  = TypeConstructor QualIdent
+  | TypeApply Type Type
+  | TypeVariable Int
   | TypeArrow Type Type
   | TypeConstrained [Type] Int
   | TypeSkolem Int
   deriving (Eq, Show)
+
+-- The function 'applyType' applies a type to a list of argument types,
+-- whereas applications of the function type constructor to two arguments
+-- are converted into an arrow type. The function 'unapplyType' decomposes
+-- a type into a root type and a list of argument types.
+
+applyType :: Type -> [Type] -> Type
+applyType (TypeConstructor tc) tys
+  | tc == qArrowId && length tys == 2 = TypeArrow (tys !! 0) (tys !! 1)
+applyType (TypeApply (TypeConstructor tc) ty) tys
+  | tc == qArrowId && length tys == 1 = TypeArrow ty (head tys)
+applyType ty tys = foldl TypeApply ty tys
+
+unapplyType :: Type -> (Type, [Type])
+unapplyType ty = unapply ty []
+  where
+    unapply (TypeConstructor     tc) tys  = (TypeConstructor tc, tys)
+    unapply (TypeApply      ty1 ty2) tys  = unapply ty1 (ty2:tys)
+    unapply (TypeVariable        tv) tys  = (TypeVariable tv, tys)
+    unapply (TypeArrow      ty1 ty2) tys  =
+      (TypeConstructor qArrowId, ty1:ty2:tys)
+    unapply (TypeConstrained tys tv) tys' = (TypeConstrained tys tv, tys')
+    unapply (TypeSkolem           k) tys  = (TypeSkolem k, tys)
 
 -- The function 'isArrowType' checks whether a type is a function
 -- type t_1 -> t_2 -> ... -> t_n . The function 'arrowArity' computes the arity
@@ -92,62 +123,69 @@ arrowUnapply ty                  = ([], ty)
 
 typeVars :: Type -> [Int]
 typeVars ty = vars ty [] where
-  vars (TypeConstructor _ tys) tvs = foldr vars tvs tys
-  vars (TypeVariable       tv) tvs = tv : tvs
-  vars (TypeConstrained   _ _) tvs = tvs
-  vars (TypeArrow     ty1 ty2) tvs = vars ty1 (vars ty2 tvs)
-  vars (TypeSkolem          _) tvs = tvs
+  vars (TypeConstructor   _) tvs = tvs
+  vars (TypeApply   ty1 ty2) tvs = vars ty1 (vars ty2 tvs)
+  vars (TypeVariable     tv) tvs = tv : tvs
+  vars (TypeConstrained _ _) tvs = tvs
+  vars (TypeArrow   ty1 ty2) tvs = vars ty1 (vars ty2 tvs)
+  vars (TypeSkolem        _) tvs = tvs
 
 typeConstrs :: Type -> [QualIdent]
 typeConstrs ty = constrs ty [] where
-  constrs (TypeConstructor tc tys) tcs = tc : foldr constrs tcs tys
-  constrs (TypeVariable         _) tcs = tcs
-  constrs (TypeConstrained    _ _) tcs = tcs
-  constrs (TypeArrow      ty1 ty2) tcs = constrs ty1 (constrs ty2 tcs)
-  constrs (TypeSkolem           _) tcs = tcs
+  constrs (TypeConstructor  tc) tcs = tc : tcs
+  constrs (TypeApply   ty1 ty2) tcs = constrs ty1 (constrs ty2 tcs)
+  constrs (TypeVariable      _) tcs = tcs
+  constrs (TypeConstrained _ _) tcs = tcs
+  constrs (TypeArrow   ty1 ty2) tcs = constrs ty1 (constrs ty2 tcs)
+  constrs (TypeSkolem        _) tcs = tcs
 
 typeSkolems :: Type -> [Int]
 typeSkolems ty = skolems ty [] where
-  skolems (TypeConstructor _ tys) sks = foldr skolems sks tys
-  skolems (TypeVariable        _) sks = sks
-  skolems (TypeConstrained   _ _) sks = sks
-  skolems (TypeArrow     ty1 ty2) sks = skolems ty1 (skolems ty2 sks)
-  skolems (TypeSkolem          k) sks = k : sks
+  skolems (TypeConstructor   _) sks = sks
+  skolems (TypeApply   ty1 ty2) sks = skolems ty1 (skolems ty2 sks)
+  skolems (TypeVariable      _) sks = sks
+  skolems (TypeConstrained _ _) sks = sks
+  skolems (TypeArrow   ty1 ty2) sks = skolems ty1 (skolems ty2 sks)
+  skolems (TypeSkolem        k) sks = k : sks
 
 -- The function 'equTypes' computes whether two types are equal modulo
 -- renaming of type variables.
 equTypes :: Type -> Type -> Bool
 equTypes t1 t2 = fst (equ [] t1 t2)
- where
- -- @is@ is an AssocList of type variable indices
- equ is (TypeConstructor qid1 ts1) (TypeConstructor qid2 ts2)
-   | qid1 == qid2 = equs is ts1 ts2
-   | otherwise    = (False, is)
- equ is (TypeVariable          i1) (TypeVariable          i2)
-   = equVar is i1 i2
- equ is (TypeConstrained   ts1 i1) (TypeConstrained   ts2 i2)
-   = let (res , is1) = equs   is  ts1 ts2
-         (res2, is2) = equVar is1 i1  i2
-     in  (res && res2, is2)
- equ is (TypeArrow        tf1 tt1) (TypeArrow        tf2 tt2)
-   = let (res1, is1) = equ is  tf1 tf2
-         (res2, is2) = equ is1 tt1 tt2
-     in  (res1 && res2, is2)
- equ is (TypeSkolem            i1) (TypeSkolem            i2)
-  = equVar is i1 i2
- equ is _                          _
-  = (False, is)
+  where
+    -- @is@ is an AssocList of type variable indices
+    equ is (TypeConstructor qid1) (TypeConstructor qid2)
+      | qid1 == qid2 = (True,  is)
+      | otherwise    = (False, is)
+    equ is (TypeApply        tf1 tt1) (TypeArrow        tf2 tt2)
+      = let (res1, is1) = equ is  tf1 tf2
+            (res2, is2) = equ is1 tt1 tt2
+        in  (res1 && res2, is2)
+    equ is (TypeVariable          i1) (TypeVariable          i2)
+      = equVar is i1 i2
+    equ is (TypeConstrained   ts1 i1) (TypeConstrained   ts2 i2)
+      = let (res , is1) = equs   is  ts1 ts2
+            (res2, is2) = equVar is1 i1  i2
+        in  (res && res2, is2)
+    equ is (TypeArrow        tf1 tt1) (TypeArrow        tf2 tt2)
+      = let (res1, is1) = equ is  tf1 tf2
+            (res2, is2) = equ is1 tt1 tt2
+        in  (res1 && res2, is2)
+    equ is (TypeSkolem            i1) (TypeSkolem            i2)
+      = equVar is i1 i2
+    equ is _                          _
+      = (False, is)
 
- equVar is i1 i2 = case lookup i1 is of
-   Nothing  -> (True, (i1, i2) : is)
-   Just i2' -> (i2 == i2', is)
+    equVar is i1 i2 = case lookup i1 is of
+      Nothing  -> (True, (i1, i2) : is)
+      Just i2' -> (i2 == i2', is)
 
- equs is []        []        = (True , is)
- equs is (t1':ts1) (t2':ts2)
-    = let (res1, is1) = equ  is t1'  t2'
-          (res2, is2) = equs is1 ts1 ts2
-      in  (res1 && res2, is2)
- equs is _         _         = (False, is)
+    equs is []        []        = (True , is)
+    equs is (t1':ts1) (t2':ts2)
+        = let (res1, is1) = equ  is t1'  t2'
+              (res2, is2) = equs is1 ts1 ts2
+          in  (res1 && res2, is2)
+    equs is _         _         = (False, is)
 
 -- The functions 'qualifyType' and 'unqualifyType' add/remove the
 -- qualification with a module identifier for type constructors.
