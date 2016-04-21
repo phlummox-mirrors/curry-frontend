@@ -42,6 +42,8 @@ import Base.Utils (findMultiples, findDouble)
 import Env.TypeConstructor (TCEnv)
 import Env.TypeEnv
 
+import CompilerOpts
+
 -- In order to check type constructor applications, the compiler
 -- maintains an environment containing all known type constructors and
 -- type classes. The function 'typeSyntaxCheck' expects a type constructor
@@ -51,15 +53,16 @@ import Env.TypeEnv
 -- type classes are added to this environment and the declarations are checked
 -- within this environment.
 
-typeSyntaxCheck :: TCEnv -> Module -> (Module, [Message])
-typeSyntaxCheck tcEnv mdl@(Module _ m _ _ ds) =
+typeSyntaxCheck :: [KnownExtension] -> TCEnv -> Module
+                -> ((Module, [KnownExtension]), [Message])
+typeSyntaxCheck exts tcEnv mdl@(Module _ m _ _ ds) =
   case findMultiples $ map getIdent tcds of
     [] -> runTSCM (checkModule mdl) state
-    tss -> (mdl, map errMultipleDeclaration tss)
+    tss -> ((mdl, exts), map errMultipleDeclaration tss)
   where
     tcds = filter isTypeOrClassDecl ds
-    tEnv' = foldr (bindType m) (fmap toTypeKind tcEnv) tcds
-    state = TSCState tEnv' []
+    tEnv = foldr (bindType m) (fmap toTypeKind tcEnv) tcds
+    state = TSCState tEnv exts []
 
 -- Type Syntax Check Monad
 type TSCM = S.State TSCState
@@ -67,6 +70,7 @@ type TSCM = S.State TSCState
 -- |Internal state of the Type Syntax Check
 data TSCState = TSCState
   { typeEnv     :: TypeEnv
+  , extensions  :: [KnownExtension]
   , errors      :: [Message]
   }
 
@@ -75,6 +79,15 @@ runTSCM kcm s = let (a, s') = S.runState kcm s in (a, reverse $ errors s')
 
 getTypeEnv :: TSCM TypeEnv
 getTypeEnv = S.gets typeEnv
+
+hasExtension :: KnownExtension -> TSCM Bool
+hasExtension ext = S.gets (elem ext . extensions)
+
+enableExtension :: KnownExtension -> TSCM ()
+enableExtension e = S.modify $ \s -> s { extensions = e : extensions s }
+
+getExtensions :: TSCM [KnownExtension]
+getExtensions = S.gets extensions
 
 report :: Message -> TSCM ()
 report err = S.modify (\s -> s { errors = err : errors s })
@@ -105,8 +118,11 @@ bindType _ _ = id
 -- the right hand side. Function and pattern declarations must be
 -- traversed because they can contain local type signatures.
 
-checkModule :: Module -> TSCM Module
-checkModule (Module ps m es is ds) = Module ps m es is <$> mapM checkDecl ds
+checkModule :: Module -> TSCM (Module, [KnownExtension])
+checkModule (Module ps m es is ds) = do
+  ds' <- mapM checkDecl ds
+  exts <- getExtensions
+  return (Module ps m es is ds', exts)
 
 checkDecl :: Decl -> TSCM Decl
 checkDecl (DataDecl p tc tvs cs) = do
@@ -226,7 +242,10 @@ checkTypeLhs :: [Ident] -> TSCM ()
 checkTypeLhs = checkTypeVars "left hand side of type declaration"
 
 checkExistVars :: [Ident] -> TSCM ()
-checkExistVars = checkTypeVars "list of existentially quantified type variables"
+checkExistVars evs = do
+  unless (null evs) $ checkUsedExtension (idPosition $ head evs)
+    "Existentially quantified types" ExistentialQuantification
+  checkTypeVars "list of existentially quantified type variables" evs
 
 -- |Checks a list of type variables for
 -- * Anonymous type variables are allowed
@@ -344,6 +363,13 @@ checkClosed tvs (ListType       ty) = checkClosed tvs ty
 checkClosed tvs (ArrowType ty1 ty2) = mapM_ (checkClosed tvs) [ty1, ty2]
 checkClosed tvs (ParenType      ty) = checkClosed tvs ty
 
+checkUsedExtension :: Position -> String -> KnownExtension -> TSCM ()
+checkUsedExtension pos msg ext = do
+  enabled <- hasExtension ext
+  unless enabled $ do
+    report $ errMissingLanguageExtension pos msg ext
+    enableExtension ext
+
 -- ---------------------------------------------------------------------------
 -- Auxiliary definitions
 -- ---------------------------------------------------------------------------
@@ -390,6 +416,12 @@ errMultipleDeclaration (i:is) = posMessage i $
     nest 2 (vcat (map showPos (i:is)))
   where
     showPos = text . showLine . idPosition
+
+errMissingLanguageExtension :: Position -> String -> KnownExtension -> Message
+errMissingLanguageExtension p what ext = posMessage p $
+  text what <+> text "are not supported in standard Curry." $+$
+  nest 2 (text "Use flag -X" <+> text (show ext)
+          <+> text "to enable this extension.")
 
 errUndefined :: String -> QualIdent -> Message
 errUndefined what qident = posMessage qident $ hsep $ map text
