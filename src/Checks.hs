@@ -17,6 +17,7 @@ module Checks where
 import qualified Checks.InterfaceCheck    as IC  (interfaceCheck)
 import qualified Checks.ImportSyntaxCheck as ISC (importCheck)
 import qualified Checks.ExportCheck       as EC  (exportCheck, expandExports)
+import qualified Checks.ExtensionCheck    as EXC (extensionCheck)
 import qualified Checks.KindCheck         as KC  (kindCheck)
 import qualified Checks.PrecCheck         as PC  (precCheck)
 import qualified Checks.SyntaxCheck       as SC  (syntaxCheck)
@@ -45,6 +46,16 @@ importCheck intf is
   | null msgs = ok is'
   | otherwise = failMessages msgs
   where (is', msgs) = ISC.importCheck intf is
+
+-- |Check for enabled language extensions.
+--
+-- * Declarations: remain unchanged
+-- * Environment:  The enabled language extensions are updated
+extensionCheck :: Monad m => Check m Module
+extensionCheck opts (env, mdl)
+  | null msgs = ok (env { extensions = exts }, mdl)
+  | otherwise = failMessages msgs
+  where (exts, msgs) = EXC.extensionCheck opts mdl
 
 -- |Check the type syntax of type definitions and signatures.
 --

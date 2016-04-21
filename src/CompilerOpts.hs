@@ -191,6 +191,7 @@ warnFlags =
 -- |Dump level
 data DumpLevel
   = DumpParsed            -- ^ dump source code after parsing
+  | DumpExtensionChecked  -- ^ dump source code after extension checking
   | DumpTypeSyntaxChecked -- ^ dump source code after type syntax checking
   | DumpKindChecked       -- ^ dump source code after kind checking
   | DumpSyntaxChecked     -- ^ dump source code after syntax checking
@@ -209,6 +210,7 @@ data DumpLevel
 -- |Description and flag of dump levels
 dumpLevel :: [(DumpLevel, String, String)]
 dumpLevel = [ (DumpParsed           , "dump-parse", "parsing"                     )
+            , (DumpExtensionChecked , "dump-exc"  , "extension checking"          )
             , (DumpTypeSyntaxChecked, "dump-tsc"  , "type syntax checking"        )
             , (DumpKindChecked      , "dump-kc"   , "kind checking"               )
             , (DumpSyntaxChecked    , "dump-sc"   , "syntax checking"             )

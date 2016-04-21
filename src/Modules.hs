@@ -205,7 +205,8 @@ importSyntaxCheck iEnv (CS.Module _ _ _ imps _) = mapM checkImportDecl imps
 checkModule :: Options -> CompEnv CS.Module -> CYIO (CompEnv CS.Module)
 checkModule opts mdl = do
   _   <- dumpCS DumpParsed mdl
-  tsc <- typeSyntaxCheck opts mdl >>= dumpCS DumpTypeSyntaxChecked
+  exc <- extensionCheck  opts mdl >>= dumpCS DumpExtensionChecked
+  tsc <- typeSyntaxCheck opts exc >>= dumpCS DumpTypeSyntaxChecked
   kc  <- kindCheck       opts tsc >>= dumpCS DumpKindChecked
   sc  <- syntaxCheck     opts kc  >>= dumpCS DumpSyntaxChecked
   pc  <- precCheck       opts sc  >>= dumpCS DumpPrecChecked
