@@ -130,20 +130,19 @@ instance HasType a => HasType (Maybe a) where
   fts m = maybe id $ fts m
 
 instance HasType Decl where
-  fts _ (InfixDecl              _ _ _ _) = id
-  fts m (DataDecl              _ _ _ cs) = fts m cs
-  fts m (NewtypeDecl           _ _ _ nc) = fts m nc
-  fts m (TypeDecl              _ _ _ ty) = fts m ty
-  fts m (TypeSig                 _ _ ty) = fts m ty
-  fts m (FunctionDecl           _ _ eqs) = fts m eqs
-  fts m (ForeignDecl         _ _ _ _ ty) = fts m ty
-  fts _ (ExternalDecl               _ _) = id
-  fts m (PatternDecl            _ _ rhs) = fts m rhs
-  fts _ (FreeDecl                   _ _) = id
-  fts m (ClassDecl         _ scx _ _ ds) = fts m scx . fts m ds
-  fts m (InstanceDecl _ scx cls inst ds) =
-    -- TODO: fts m inst
-    fts m scx . fts m cls . fts m ds
+  fts _ (InfixDecl             _ _ _ _) = id
+  fts m (DataDecl             _ _ _ cs) = fts m cs
+  fts m (NewtypeDecl          _ _ _ nc) = fts m nc
+  fts m (TypeDecl             _ _ _ ty) = fts m ty
+  fts m (TypeSig                _ _ ty) = fts m ty
+  fts m (FunctionDecl          _ _ eqs) = fts m eqs
+  fts m (ForeignDecl        _ _ _ _ ty) = fts m ty
+  fts _ (ExternalDecl              _ _) = id
+  fts m (PatternDecl           _ _ rhs) = fts m rhs
+  fts _ (FreeDecl                  _ _) = id
+  fts m (ClassDecl         _ cx _ _ ds) = fts m cx . fts m ds
+  fts m (InstanceDecl _ cx cls inst ds) =
+    fts m cx . fts m cls . fts m inst . fts m ds
 
 instance HasType ConstrDecl where
   fts m (ConstrDecl     _ _ _ tys) = fts m tys
@@ -157,12 +156,8 @@ instance HasType NewConstrDecl where
   fts m (NewConstrDecl      _ _ _ ty) = fts m ty
   fts m (NewRecordDecl _ _ _ (_, ty)) = fts m ty
 
-instance HasType SimpleContext where
-  fts m (SimpleContext       sc) = fts m sc
-  fts m (ParenSimpleContext scs) = fts m scs
-
-instance HasType SimpleConstraint where
-  fts m (SimpleConstraint (qcls, _)) = fts m qcls
+instance HasType Constraint where
+  fts m (Constraint qcls _) = fts m qcls
 
 instance HasType TypeExpr where
   fts m (ConstructorType      tc) = fts m tc
@@ -247,17 +242,15 @@ checkTypeDecls _ =
 -- The function 'checkSuperClasses' checks that the super class hierarchy
 -- is acyclic.
 
-fc :: ModuleIdent -> Maybe SimpleContext -> [Ident]
-fc m = maybe [] fc'
+fc :: ModuleIdent -> Context -> [Ident]
+fc m = foldr fc' []
   where
-    fc' (SimpleContext       sc) = fc'' sc
-    fc' (ParenSimpleContext scs) = concatMap fc'' scs
-    fc'' (SimpleConstraint (qcls, _)) = maybe id (:) (localIdent m qcls) []
+    fc' (Constraint qcls _) = maybe id (:) (localIdent m qcls)
 
 checkSuperClasses :: [Decl] -> KCM ()
 checkSuperClasses ds = do
   m <- getModuleIdent
-  mapM_ checkClassDecl $ scc bt (\(ClassDecl _ scx _ _ _) -> fc m scx) ds
+  mapM_ checkClassDecl $ scc bt (\(ClassDecl _ cx _ _ _) -> fc m cx) ds
 
 checkClassDecl :: [Decl] -> KCM ()
 checkClassDecl [] =
@@ -290,9 +283,9 @@ bindKind tcEnv (DataDecl _ tc tvs cs) =
       let (labels, tys) = unzip [(l, ty) | FieldDecl _ ls ty <- fs, l <- ls]
       in  mkRec evs c labels tys
     mkData' evs c tys =
-      DataConstr c (length evs) $ map (toType (evs ++ tvs)) tys
+      DataConstr c (length evs) $ map (toType $ tvs ++ evs) tys
     mkRec evs c ls tys =
-      RecordConstr c (length evs) ls $ map (toType (evs ++ tvs)) tys
+      RecordConstr c (length evs) ls $ map (toType $ tvs ++ evs) tys
 bindKind tcEnv (NewtypeDecl _ tc tvs nc) =
   bindTypeConstructor RenamingType tc tvs (Just KindStar) (mkData nc) tcEnv
   where
@@ -304,12 +297,10 @@ bindKind tcEnv (TypeDecl _ tc tvs ty) =
   bindTypeConstructor aliasType tc tvs Nothing (toType tvs ty) tcEnv
   where
     aliasType tc' k = AliasType tc' k $ length tvs
-bindKind tcEnv (ClassDecl _ scx cls _ ds) =
-  bindTypeClass cls (maybe [] superclasses scx) (maybe [] (concatMap methods) ds) tcEnv
+bindKind tcEnv (ClassDecl _ cx cls _ ds) =
+  bindTypeClass cls (superclasses cx) (concatMap methods ds) tcEnv
   where
-    superclasses cx = [qcls | SimpleConstraint (qcls, _) <- constraints cx]
-    constraints (SimpleContext sc) = [sc]
-    constraints (ParenSimpleContext scs) = scs
+    superclasses = map (\(Constraint qcls _) -> qcls)
 bindKind tcEnv _                     = return tcEnv
 
 bindTypeConstructor :: (QualIdent -> Kind -> a -> TypeInfo) -> Ident
@@ -394,13 +385,19 @@ kcDecl tcEnv (FunctionDecl _ _ eqs) = mapM_ (kcEquation tcEnv) eqs
 kcDecl tcEnv (ForeignDecl p _ _ _ ty) = kcTypeSig tcEnv p ty
 kcDecl tcEnv (PatternDecl _ _ rhs) = kcRhs tcEnv rhs
 kcDecl _     (FreeDecl _ _) = ok
-kcDecl tcEnv (ClassDecl p scx cls tv ds) = do
+kcDecl tcEnv (ClassDecl p cx cls tv ds) = do
   m <- getModuleIdent
   let tcEnv' = bindTypeVar tv (classKind (qualifyWith m cls) tcEnv) tcEnv
-  maybe ok (kcSimpleContext tcEnv' p) scx
-  maybe ok (mapM_ (kcDecl tcEnv')) ds
-kcDecl _ _ =
-  internalError "Checks.KindCheck.kcDecl: not yet implemented"
+  kcContext tcEnv' p cx
+  mapM_ (kcDecl tcEnv') ds
+kcDecl tcEnv (InstanceDecl p cx qcls inst ds) = do
+  tcEnv' <- foldM bindFreshKind tcEnv $ fv inst
+  kcContext tcEnv' p cx
+  kcType tcEnv' p what doc (classKind qcls tcEnv) inst
+  mapM_ (kcDecl tcEnv') ds
+    where
+      what = "instance declaration"
+      doc = ppDecl (InstanceDecl p cx qcls inst [])
 
 kcConstrDecl :: TCEnv -> ConstrDecl -> KCM ()
 kcConstrDecl tcEnv d@(ConstrDecl p evs _ tys) = do
@@ -509,16 +506,14 @@ kcAlt tcEnv (Alt _ _ rhs) = kcRhs tcEnv rhs
 kcField :: TCEnv -> Position -> Field Expression -> KCM ()
 kcField tcEnv p (Field _ _ e) = kcExpr tcEnv p e
 
-kcSimpleContext :: TCEnv -> Position -> SimpleContext -> KCM ()
-kcSimpleContext tcEnv p (SimpleContext sc) = kcSimpleConstraint tcEnv p sc
-kcSimpleContext tcEnv p (ParenSimpleContext scs) =
-  mapM_ (kcSimpleConstraint tcEnv p) scs
+kcContext :: TCEnv -> Position -> Context -> KCM ()
+kcContext tcEnv p = mapM_ (kcConstraint tcEnv p)
 
-kcSimpleConstraint :: TCEnv -> Position -> SimpleConstraint -> KCM ()
-kcSimpleConstraint tcEnv p sc@(SimpleConstraint (qcls, tv)) =
-  kcType tcEnv p "class constraint" doc (classKind qcls tcEnv) (VariableType tv)
+kcConstraint :: TCEnv -> Position -> Constraint -> KCM ()
+kcConstraint tcEnv p sc@(Constraint qcls ty) =
+  kcType tcEnv p "class constraint" doc (classKind qcls tcEnv) ty
   where
-    doc = ppSimpleConstraint sc
+    doc = ppConstraint sc
 
 kcTypeSig :: TCEnv -> Position -> TypeExpr -> KCM ()
 kcTypeSig tcEnv p ty = do
