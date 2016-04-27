@@ -53,7 +53,7 @@ kindCheck :: TCEnv -> Module -> (TCEnv, [Message])
 kindCheck tcEnv (Module _ m _ _ ds) = runKCM check initState
   where
     check = do
-      checkTypeSynonyms tds &&> checkSuperClasses cds
+      checkNonRecursiveTypes tds &&> checkAcyclicSuperClasses cds
       errs <- S.gets errors
       if null errs
          then checkDecls
@@ -221,50 +221,57 @@ instance HasType a => HasType (Field a) where
 instance HasType QualIdent where
   fts m qident = maybe id (:) (localIdent m qident)
 
--- Curry does not allow (mutually) recursive type synonyms, which is checked
--- in the function 'checkTypeSynonyms' below.
+-- Curry does not allow (mutually) recursive type synonyms or newtypes,
+-- which is checked in the function 'checkNonRecursiveTypes' below.
 
-checkTypeSynonyms :: [Decl] -> KCM ()
-checkTypeSynonyms ds = do
+ft' :: ModuleIdent -> Decl -> [Ident]
+ft' _ (DataDecl     _ _ _ _) = []
+ft' m (NewtypeDecl _ _ _ nc) = fts m nc []
+ft' m (TypeDecl    _ _ _ ty) = fts m ty []
+ft' _ _                      = []
+
+checkNonRecursiveTypes :: [Decl] -> KCM ()
+checkNonRecursiveTypes ds = do
   m <- getModuleIdent
-  mapM_ checkTypeDecls $ scc bt (ft m) ds
+  mapM_ checkTypeAndNewtypeDecls $ scc bt (ft' m) ds
 
-checkTypeDecls :: [Decl] -> KCM ()
-checkTypeDecls [] =
-  internalError "KindCheck.checkTypeDecls: empty list"
-checkTypeDecls [DataDecl _ _ _ _] = ok
-checkTypeDecls [NewtypeDecl _ _ _ _] = ok
-checkTypeDecls [TypeDecl _ tc _ ty] = do
+checkTypeAndNewtypeDecls :: [Decl] -> KCM ()
+checkTypeAndNewtypeDecls [] =
+  internalError "Checks.KindCheck.checkTypeAndNewtypeDecls: empty list"
+checkTypeAndNewtypeDecls [DataDecl _ _ _ _] = ok
+checkTypeAndNewtypeDecls [d] | isTypeOrNewtypeDecl d = do
   m <- getModuleIdent
-  when (tc `elem` fts m ty []) $ report $ errRecursiveTypes [tc]
-checkTypeDecls (TypeDecl _ tc _ _ : ds) =
-  report $ errRecursiveTypes $ tc : [tc' | TypeDecl _ tc' _ _ <- ds]
-checkTypeDecls _ =
-  internalError "KindCheck.checkTypeDecls: no type declaration"
+  let tc = typeConstr d
+  when (tc `elem` ft m d) $ report $ errRecursiveTypes [tc]
+checkTypeAndNewtypeDecls (d:ds) | isTypeOrNewtypeDecl d =
+  report $ errRecursiveTypes $
+    typeConstr d : [typeConstr d' | d' <- ds, isTypeOrNewtypeDecl d']
+checkTypeAndNewtypeDecls _ = internalError
+  "Checks.KindCheck.checkTypeAndNewtypeDecls: no type or newtype declarations"
 
--- The function 'checkSuperClasses' checks that the super class hierarchy
--- is acyclic.
+-- The function 'checkAcyclicSuperClasses' checks that the super class
+-- hierarchy is acyclic.
 
 fc :: ModuleIdent -> Context -> [Ident]
 fc m = foldr fc' []
   where
     fc' (Constraint qcls _) = maybe id (:) (localIdent m qcls)
 
-checkSuperClasses :: [Decl] -> KCM ()
-checkSuperClasses ds = do
+checkAcyclicSuperClasses :: [Decl] -> KCM ()
+checkAcyclicSuperClasses ds = do
   m <- getModuleIdent
   mapM_ checkClassDecl $ scc bt (\(ClassDecl _ cx _ _ _) -> fc m cx) ds
 
 checkClassDecl :: [Decl] -> KCM ()
 checkClassDecl [] =
-  internalError "KindCheck.checkClassDecl: empty list"
+  internalError "Checks.KindCheck.checkClassDecl: empty list"
 checkClassDecl [ClassDecl _ cx cls _ _] = do
   m <- getModuleIdent
   when (cls `elem` fc m cx) $ report $ errRecursiveClasses [cls]
 checkClassDecl (ClassDecl _ _ cls _ _ : ds) =
   report $ errRecursiveClasses $ cls : [cls' | ClassDecl _ _ cls' _ _ <- ds]
 checkClassDecl _ =
-  internalError "KindCheck.checkClassDecl: no class declaration"
+  internalError "Checks.KindCheck.checkClassDecl: no class declaration"
 
 -- For each declaration group, the kind checker first enters new
 -- assumptions into the type constructor environment. For a type
@@ -621,6 +628,21 @@ freshKindVar :: KCM Kind
 freshKindVar = fresh KindVariable
 
 -- ---------------------------------------------------------------------------
+-- Auxiliary definitions
+-- ---------------------------------------------------------------------------
+
+typeConstr :: Decl -> Ident
+typeConstr (DataDecl    _ tc _ _) = tc
+typeConstr (NewtypeDecl _ tc _ _) = tc
+typeConstr (TypeDecl    _ tc _ _) = tc
+typeConstr _ = internalError "Checks.KindCheck.typeConstr: no type declaration"
+
+isTypeOrNewtypeDecl :: Decl -> Bool
+isTypeOrNewtypeDecl (NewtypeDecl _ _ _ _) = True
+isTypeOrNewtypeDecl (TypeDecl    _ _ _ _) = True
+isTypeOrNewtypeDecl _                     = False
+
+-- ---------------------------------------------------------------------------
 -- Error messages
 -- ---------------------------------------------------------------------------
 
@@ -628,9 +650,9 @@ errRecursiveTypes :: [Ident] -> Message
 errRecursiveTypes []       = internalError
   "KindCheck.errRecursiveTypes: empty list"
 errRecursiveTypes [tc]     = posMessage tc $ hsep $ map text
-  ["Recursive synonym type", idName tc]
+  ["Recursive synonym or renaming type", idName tc]
 errRecursiveTypes (tc:tcs) = posMessage tc $
-  text "Mutually recursive synonym types" <+> text (idName tc) <>
+  text "Mutually recursive synonym and/or renaming types" <+> text (idName tc) <>
     types empty tcs
   where
     types _   []         = empty
