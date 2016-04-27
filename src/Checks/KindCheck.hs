@@ -159,6 +159,9 @@ instance HasType NewConstrDecl where
 instance HasType Constraint where
   fts m (Constraint qcls _) = fts m qcls
 
+instance HasType QualTypeExpr where
+  fts m (QualTypeExpr cx ty) = fts m cx . fts m ty
+
 instance HasType TypeExpr where
   fts m (ConstructorType      tc) = fts m tc
   fts m (ApplyType       ty1 ty2) = fts m ty1 . fts m ty2
@@ -380,9 +383,9 @@ kcDecl tcEnv (NewtypeDecl _ tc tvs nc) = do
 kcDecl tcEnv t@(TypeDecl p tc tvs ty) = do
   (k, tcEnv') <- bindTypeVars tc tvs tcEnv
   kcType tcEnv' p "type declaration" (ppDecl t) k ty
-kcDecl tcEnv (TypeSig p _ ty) = kcTypeSig tcEnv p ty
+kcDecl tcEnv (TypeSig p _ qty) = kcTypeSig tcEnv p qty
 kcDecl tcEnv (FunctionDecl _ _ eqs) = mapM_ (kcEquation tcEnv) eqs
-kcDecl tcEnv (ForeignDecl p _ _ _ ty) = kcTypeSig tcEnv p ty
+kcDecl tcEnv (ForeignDecl p _ _ _ ty) = kcTypeSig tcEnv p (QualTypeExpr [] ty)
 kcDecl tcEnv (PatternDecl _ _ rhs) = kcRhs tcEnv rhs
 kcDecl _     (FreeDecl _ _) = ok
 kcDecl tcEnv (ClassDecl p cx cls tv ds) = do
@@ -448,9 +451,9 @@ kcExpr _     _ (Literal _) = ok
 kcExpr _     _ (Variable _) = ok
 kcExpr _     _ (Constructor _) = ok
 kcExpr tcEnv p (Paren e) = kcExpr tcEnv p e
-kcExpr tcEnv p (Typed e ty) = do
+kcExpr tcEnv p (Typed e qty) = do
   kcExpr tcEnv p e
-  kcTypeSig tcEnv p ty
+  kcTypeSig tcEnv p qty
 kcExpr tcEnv p (Record _ fs) = mapM_ (kcField tcEnv p) fs
 kcExpr tcEnv p (RecordUpdate e fs) = do
   kcExpr tcEnv p e
@@ -515,9 +518,10 @@ kcConstraint tcEnv p sc@(Constraint qcls ty) =
   where
     doc = ppConstraint sc
 
-kcTypeSig :: TCEnv -> Position -> TypeExpr -> KCM ()
-kcTypeSig tcEnv p ty = do
+kcTypeSig :: TCEnv -> Position -> QualTypeExpr -> KCM ()
+kcTypeSig tcEnv p (QualTypeExpr cx ty) = do
   tcEnv' <- foldM bindFreshKind tcEnv free
+  kcContext tcEnv' p cx
   kcValueType tcEnv' p "type signature" doc ty
   where
     free = filter (null . flip lookupTypeInfo tcEnv) $ nub $ fv ty
