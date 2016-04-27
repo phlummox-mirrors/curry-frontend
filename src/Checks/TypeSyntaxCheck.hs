@@ -40,8 +40,6 @@ import Base.TopEnv
 import Base.Utils (findMultiples, findDouble)
 
 import Env.TypeConstructor (TCEnv)
-
-import CompilerOpts
 import Env.Type
 
 -- In order to check type constructor applications, the compiler
@@ -58,7 +56,7 @@ typeSyntaxCheck :: [KnownExtension] -> TCEnv -> Module
 typeSyntaxCheck exts tcEnv mdl@(Module _ m _ _ ds) =
   case findMultiples $ map getIdent tcds of
     [] -> runTSCM (checkModule mdl) state
-    tss -> ((mdl, exts), map errMultipleDeclaration tss)
+    tss -> ((mdl, exts), map errMultipleDeclarations tss)
   where
     tcds = filter isTypeOrClassDecl ds
     tEnv = foldr (bindType m) (fmap toTypeKind tcEnv) tcds
@@ -75,7 +73,7 @@ data TSCState = TSCState
   }
 
 runTSCM :: TSCM a -> TSCState -> (a, [Message])
-runTSCM kcm s = let (a, s') = S.runState kcm s in (a, reverse $ errors s')
+runTSCM tscm s = let (a, s') = S.runState tscm s in (a, reverse $ errors s')
 
 getTypeEnv :: TSCM TypeEnv
 getTypeEnv = S.gets typeEnv
@@ -137,8 +135,8 @@ checkDecl (TypeDecl p tc tvs ty) = do
   checkTypeLhs tvs
   ty'  <- checkClosedType tvs ty
   return $ TypeDecl p tc tvs ty'
-checkDecl (TypeSig p vs ty) =
-  TypeSig p vs <$> checkType ty
+checkDecl (TypeSig p vs qty) =
+  TypeSig p vs <$> checkQualType qty
 checkDecl (FunctionDecl p f eqs) =
   FunctionDecl p f <$> mapM checkEquation eqs
 checkDecl (PatternDecl p t rhs) =
@@ -154,10 +152,9 @@ checkDecl (ClassDecl p cx cls clsvar ds) = do
   return $ ClassDecl p cx' cls clsvar ds'
 checkDecl (InstanceDecl p cx qcls inst ds) = do
   checkClass qcls
-  cx' <- checkContext cx
+  QualTypeExpr cx' inst' <- checkQualType $ QualTypeExpr cx inst
   checkSimpleContext cx'
-  inst' <- checkInstanceType p inst
-  --TODO: check context and instance type as qualified type
+  checkInstanceType p inst'
   InstanceDecl p cx' qcls inst' <$> mapM checkDecl ds
 checkDecl d = return d
 
@@ -191,29 +188,6 @@ checkNewConstrDecl tvs (NewRecordDecl p evs c (l, ty)) = do
   ty'  <- checkClosedType (evs ++ tvs) ty
   return $ NewRecordDecl p evs c (l, ty')
 
-checkClass :: QualIdent -> TSCM ()
-checkClass qcls = do
-  tEnv <- getTypeEnv
-  case qualLookupTypeKind qcls tEnv of
-    [] -> report $ errUndefinedClass qcls
-    [Class _ _] -> ok
-    [_] -> report $ errUndefinedClass qcls
-    tks -> report $ errAmbiguousIdent qcls $ map origName tks
-
-checkClosedContext :: [Ident] -> Context -> TSCM Context
-checkClosedContext tvs cx = do
-  cx' <- checkContext cx
-  mapM_ (\(Constraint _ ty) -> checkClosed tvs ty) cx'
-  return cx'
-
-checkContext :: Context -> TSCM Context
-checkContext = mapM checkConstraint
-
-checkConstraint :: Constraint -> TSCM Constraint
-checkConstraint (Constraint qcls ty) = do
-  checkClass qcls
-  Constraint qcls <$> checkType ty
-
 checkSimpleContext :: Context -> TSCM ()
 checkSimpleContext = mapM_ checkSimpleConstraint
 
@@ -221,22 +195,25 @@ checkSimpleConstraint :: Constraint -> TSCM ()
 checkSimpleConstraint c@(Constraint _ ty) =
   unless (isVariableType ty) $ report $ errIllegalSimpleConstraint c
 
+-- Class method's type signatures have to obey a few additional restrictions.
+-- The class variable must appear in the method's type and the method's
+-- context must not contain any additional constraints for that class variable.
+
 checkClassMethod :: Ident -> Decl -> TSCM ()
-checkClassMethod tv (TypeSig _ _ ty) =
-  unless (tv `elem` fv ty) $ report $ errAmbiguousType tv
-  --TODO: check that the class variable is not constrained by the method's context
+checkClassMethod tv (TypeSig p _ qty) = do
+  unless (tv `elem` fv qty) $ report $ errAmbiguousType p tv
+  let QualTypeExpr cx _ = qty
+  when (tv `elem` fv cx) $ report $ errConstrainedClassVariable p tv
 checkClassMethod _ _ = ok
 
-checkInstanceType :: Position -> InstanceType -> TSCM InstanceType
+checkInstanceType :: Position -> InstanceType -> TSCM ()
 checkInstanceType p inst = do
   tEnv <- getTypeEnv
-  inst' <- checkType inst
-  unless (isSimpleType inst' &&
+  unless (isSimpleType inst &&
     not (isTypeSyn (typeConstr inst) tEnv) &&
-    null (filter isAnonId $ typeVars inst') &&
-    isNothing (findDouble $ fv inst')) $
-      report $ errIllegalInstanceType p inst'
-  return inst'
+    null (filter isAnonId $ typeVars inst) &&
+    isNothing (findDouble $ fv inst)) $
+      report $ errIllegalInstanceType p inst
 
 checkTypeLhs :: [Ident] -> TSCM ()
 checkTypeLhs = checkTypeVars "left hand side of type declaration"
@@ -255,8 +232,8 @@ checkTypeVars :: String -> [Ident] -> TSCM ()
 checkTypeVars _    []         = ok
 checkTypeVars what (tv : tvs) = do
   unless (isAnonId tv) $ do
-    isTyCons <- (not . null . lookupTypeKind tv) <$> getTypeEnv
-    when isTyCons $ report $ errNoVariable tv what
+    isTypeConstrOrClass <- (not . null . lookupTypeKind tv) <$> getTypeEnv
+    when isTypeConstrOrClass $ report $ errNoVariable tv what
     when (tv `elem` tvs) $ report $ errNonLinear tv what
   checkTypeVars what tvs
 
@@ -280,7 +257,8 @@ checkExpr l@(Literal             _) = return l
 checkExpr v@(Variable            _) = return v
 checkExpr c@(Constructor         _) = return c
 checkExpr (Paren                 e) = Paren <$> checkExpr e
-checkExpr (Typed              e ty) = Typed <$> checkExpr e <*> checkType ty
+checkExpr (Typed             e qty) = Typed <$> checkExpr e
+                                            <*> checkQualType qty
 checkExpr (Record             c fs) = Record c <$> mapM checkFieldExpr fs
 checkExpr (RecordUpdate       e fs) = RecordUpdate <$> checkExpr e
                                                    <*> mapM checkFieldExpr fs
@@ -327,6 +305,35 @@ checkFieldExpr (Field p l e) = Field p l <$> checkExpr e
 -- and type variables. Therefore, if the compiler finds an unbound
 -- identifier in a position where a type variable is admissible, it will
 -- interpret the identifier as such.
+
+checkQualType :: QualTypeExpr -> TSCM QualTypeExpr
+checkQualType (QualTypeExpr cx ty) = do
+  ty' <- checkType ty
+  cx' <- checkClosedContext (fv ty') cx
+  return $ QualTypeExpr cx' ty'
+
+checkClosedContext :: [Ident] -> Context -> TSCM Context
+checkClosedContext tvs cx = do
+  cx' <- checkContext cx
+  mapM_ (\(Constraint _ ty) -> checkClosed tvs ty) cx'
+  return cx'
+
+checkContext :: Context -> TSCM Context
+checkContext = mapM checkConstraint
+
+checkConstraint :: Constraint -> TSCM Constraint
+checkConstraint (Constraint qcls ty) = do
+  checkClass qcls
+  Constraint qcls <$> checkType ty
+
+checkClass :: QualIdent -> TSCM ()
+checkClass qcls = do
+  tEnv <- getTypeEnv
+  case qualLookupTypeKind qcls tEnv of
+    [] -> report $ errUndefinedClass qcls
+    [Class _ _] -> ok
+    [_] -> report $ errUndefinedClass qcls
+    tks -> report $ errAmbiguousIdent qcls $ map origName tks
 
 checkClosedType :: [Ident] -> TypeExpr -> TSCM TypeExpr
 checkClosedType tvs ty = do
@@ -380,11 +387,13 @@ getIdent (NewtypeDecl    _ tc _ _) = tc
 getIdent (TypeDecl       _ tc _ _) = tc
 getIdent (ClassDecl   _ _ cls _ _) = cls
 getIdent _                         =
-  internalError "TypeSyntaxCheck.getIdent: no type or class declaration"
+  internalError "Checks.TypeSyntaxCheck.getIdent: no type or class declaration"
 
 typeConstr :: TypeExpr -> QualIdent
 typeConstr (ConstructorType   tc) = tc
 typeConstr (ApplyType       ty _) = typeConstr ty
+typeConstr (VariableType       _) =
+  internalError "Checks.TypeSyntaxCheck.typeConstr: variable type"
 typeConstr (TupleType        tys) = qTupleId (length tys)
 typeConstr (ListType           _) = qListId
 typeConstr (ArrowType        _ _) = qArrowId
@@ -408,10 +417,10 @@ isTypeSyn tc tEnv = case qualLookupTypeKind tc tEnv of
 -- Error messages
 -- ---------------------------------------------------------------------------
 
-errMultipleDeclaration :: [Ident] -> Message
-errMultipleDeclaration []     = internalError
-  "TypeSyntaxCheck.errMultipleDeclaration: empty list"
-errMultipleDeclaration (i:is) = posMessage i $
+errMultipleDeclarations :: [Ident] -> Message
+errMultipleDeclarations []     = internalError
+  "Checks.TypeSyntaxCheck.errMultipleDeclarations: empty list"
+errMultipleDeclarations (i:is) = posMessage i $
   text "Multiple declarations of" <+> text (escName i) <+> text "at:" $+$
     nest 2 (vcat (map showPos (i:is)))
   where
@@ -438,9 +447,13 @@ errAmbiguousIdent qident qidents = posMessage qident $
   text "Ambiguous identifier" <+> text (escQualName qident) $+$
     text "It could refer to:" $+$ nest 2 (vcat (map (text . qualName) qidents))
 
-errAmbiguousType :: Ident -> Message
-errAmbiguousType ident = posMessage ident $ hsep $ map text
+errAmbiguousType :: Position -> Ident -> Message
+errAmbiguousType p ident = posMessage p $ hsep $ map text
   [ "Method type does not mention class variable", idName ident ]
+
+errConstrainedClassVariable :: Position -> Ident -> Message
+errConstrainedClassVariable p ident = posMessage p $ hsep $ map text
+  [ "Method context must not constrain class variable", idName ident ]
 
 errNonLinear :: Ident -> String -> Message
 errNonLinear tv what = posMessage tv $ hsep $ map text
@@ -448,7 +461,7 @@ errNonLinear tv what = posMessage tv $ hsep $ map text
 
 errNoVariable :: Ident -> String -> Message
 errNoVariable tv what = posMessage tv $ hsep $ map text $
-  [ "Type constructor", idName tv, "used in", what ]
+  [ "Type constructor or type class identifier", idName tv, "used in", what ]
 
 errUnboundVariable :: Ident -> Message
 errUnboundVariable tv = posMessage tv $ hsep $ map text
@@ -466,5 +479,5 @@ errIllegalInstanceType p inst = posMessage p $ vcat
   [ text "Illegal instance type" <+> ppInstanceType inst
   , text "The instance type must be of the form (T u_1 ... u_n),"
   , text "where T is not a type synonym and u_1, ..., u_n are"
-  , text "mutually distinct type variables."
+  , text "mutually distinct, non-anonymous type variables."
   ]
