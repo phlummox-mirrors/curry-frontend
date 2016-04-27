@@ -14,7 +14,7 @@
     no type synonyms are used in type expressions in interface files.
 -}
 
-module Env.TypeEnv
+module Env.Type
   ( TypeKind (..), toTypeKind,
     TypeEnv, bindTypeKind, lookupTypeKind, qualLookupTypeKind
   ) where

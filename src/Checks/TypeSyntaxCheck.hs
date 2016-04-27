@@ -40,9 +40,9 @@ import Base.TopEnv
 import Base.Utils (findMultiples, findDouble)
 
 import Env.TypeConstructor (TCEnv)
-import Env.TypeEnv
 
 import CompilerOpts
+import Env.Type
 
 -- In order to check type constructor applications, the compiler
 -- maintains an environment containing all known type constructors and
