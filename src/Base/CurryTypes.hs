@@ -4,6 +4,7 @@
     Copyright   :  (c)         Wolfgang Lux
                    2011 - 2012 Björn Peemöller
                    2015        Jan Tikovsky
+                   2016        Finn Teegen
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
@@ -23,17 +24,19 @@
 -}
 
 module Base.CurryTypes
- ( toQualType, toQualTypes, toType, toTypes, fromQualType, fromType,
-   ppType, ppTypeScheme
- ) where
+  ( toQualType, toQualTypes, toType, toTypes, fromQualType, fromType
+  , toPredType, toPredSet, toPred, fromPredType, fromPredSet, fromPred
+  , ppType, ppPred, ppTypeScheme
+  ) where
 
 import Data.List (nub)
 import qualified Data.Map as Map (Map, fromList, lookup)
+import qualified Data.Set as Set
 
 import Curry.Base.Ident
 import Curry.Base.Pretty (Doc)
 import qualified Curry.Syntax as CS
-import Curry.Syntax.Pretty (ppTypeExpr)
+import Curry.Syntax.Pretty (ppConstraint, ppTypeExpr)
 
 import Base.Expr
 import Base.Messages (internalError)
@@ -46,52 +49,83 @@ toQualTypes :: ModuleIdent -> [Ident] -> [CS.TypeExpr] -> [Type]
 toQualTypes m tvs = map (qualifyType m) . toTypes tvs
 
 toType :: [Ident] -> CS.TypeExpr -> Type
-toType tvs ty = toType' (Map.fromList $ zip (tvs ++ newInTy) [0 ..]) ty
-  where newInTy = [tv | tv <- nub (fv ty), tv `notElem` tvs]
+toType tvs ty = toType' (enumTypeVars tvs ty) ty []
 
 toTypes :: [Ident] -> [CS.TypeExpr] -> [Type]
-toTypes tvs tys = map
-   (toType' (Map.fromList $ zip (tvs ++ newInTys) [0 ..])) tys
-  where newInTys = [tv | tv <- nub (concatMap fv tys), tv `notElem` tvs]
+toTypes tvs tys = map ((flip $ toType' $ enumTypeVars tvs tys) []) tys
 
-toType' :: Map.Map Ident Int -> CS.TypeExpr -> Type
-toType' tvs (CS.ConstructorType tc tys)
-  = TypeConstructor tc (map (toType' tvs) tys)
-toType' tvs (CS.VariableType        tv) = case Map.lookup tv tvs of
-  Just tv' -> TypeVariable tv'
-  Nothing  -> internalError $ "Base.CurryTypes.toType': " ++ show tv
-toType' tvs (CS.TupleType          tys)
-  | null tys  = TypeConstructor (qualify unitId) []
-  | otherwise = TypeConstructor (qualify $ tupleId $ length tys') tys'
-  where tys' = map (toType' tvs) tys
-toType' tvs (CS.ListType            ty)
-  = TypeConstructor (qualify listId) [toType' tvs ty]
-toType' tvs (CS.ArrowType      ty1 ty2)
-  = TypeArrow (toType' tvs ty1) (toType' tvs ty2)
-toType' tvs (CS.ParenType           ty) = toType' tvs ty
+toPredType :: [Ident] -> CS.QualTypeExpr -> PredType
+toPredType tvs (CS.QualTypeExpr cx ty) =
+  PredType (toPredSet tvs cx) (toType tvs ty)
+
+toPredSet :: [Ident] -> CS.Context -> PredSet
+toPredSet tvs = Set.fromList . map (toPred tvs)
+
+toPred :: [Ident] -> CS.Constraint -> Pred
+toPred tvs (CS.Constraint qcls ty) = Pred qcls (toType tvs ty)
+
+enumTypeVars :: Expr a => [Ident] -> a -> Map.Map Ident Int
+enumTypeVars tvs ty = Map.fromList $ zip (tvs ++ tvs') [0..]
+  where
+    tvs' = [tv | tv <- nub (fv ty), tv `notElem` tvs]
+
+toType' :: Map.Map Ident Int -> CS.TypeExpr -> [Type] -> Type
+toType' _   (CS.ConstructorType tc) tys = applyType (TypeConstructor tc) tys
+toType' tvs (CS.ApplyType  ty1 ty2) tys =
+  toType' tvs ty1 (toType' tvs ty2 [] : tys)
+toType' tvs (CS.VariableType    tv) tys = case Map.lookup tv tvs of
+  Just tv' -> applyType (TypeVariable tv') tys
+  Nothing  -> internalError "Base.CurryTypes.toType': unknown type variable"
+toType' tvs (CS.TupleType      tys) tys'
+  | null tys  = internalError "Base.CurryTypes.toType': zero-element tuple"
+  | null tys' = tupleType $ map ((flip $ toType' tvs) []) tys
+  | otherwise = internalError "Base.CurryTypes.toType': tuple type application"
+toType' tvs (CS.ListType        ty) tys
+  | null tys  = listType $ toType' tvs ty []
+  | otherwise = internalError "Base.CurryTypes.toType': list type application"
+toType' tvs (CS.ArrowType  ty1 ty2) tys
+  | null tys = TypeArrow (toType' tvs ty1 []) (toType' tvs ty2 [])
+  | otherwise = internalError "Base.CurryTypes.toType': arrow type application"
+toType' tvs (CS.ParenType       ty) tys = toType' tvs ty tys
 
 fromQualType :: ModuleIdent -> Type -> CS.TypeExpr
 fromQualType m = fromType . unqualifyType m
 
 fromType :: Type -> CS.TypeExpr
-fromType (TypeConstructor tc tys)
-  | isTupleId c                    = CS.TupleType tys'
-  | c == unitId && null tys        = CS.TupleType []
-  | c == listId && length tys == 1 = CS.ListType (head tys')
-  | otherwise                      = CS.ConstructorType tc tys'
-  where c    = unqualify tc
-        tys' = map fromType tys
-fromType (TypeVariable tv)         = CS.VariableType
-   (if tv >= 0 then identSupply !! tv else mkIdent ('_' : show (-tv)))
-fromType (TypeConstrained tys _)   = fromType (head tys)
-fromType (TypeArrow     ty1 ty2)   =
-  CS.ArrowType (fromType ty1) (fromType ty2)
-fromType (TypeSkolem          k)   =
-  CS.VariableType $ mkIdent $ "_?" ++ show k
+fromType ty = fromType' ty []
+
+fromType' :: Type -> [CS.TypeExpr] -> CS.TypeExpr
+fromType' (TypeConstructor    tc) tys
+  | isQTupleId tc && qTupleArity tc == length tys = CS.TupleType tys
+  | tc == qListId && length tys == 1              = CS.ListType (head tys)
+  | otherwise
+  = foldl CS.ApplyType (CS.ConstructorType tc) tys
+fromType' (TypeApply     ty1 ty2) tys = fromType' ty1 (fromType ty2 : tys)
+fromType' (TypeVariable       tv) tys =
+  foldl CS.ApplyType (CS.VariableType tv') tys
+  where
+    tv' = if tv >= 0 then identSupply !! tv else mkIdent ('_' : show (-tv))
+fromType' (TypeArrow     ty1 ty2) tys =
+  foldl CS.ApplyType (CS.ArrowType (fromType ty1) (fromType ty2)) tys
+fromType' (TypeConstrained tys _) tys' = fromType' (head tys) tys'
+fromType' (TypeSkolem          k) tys =
+  foldl CS.ApplyType (CS.VariableType $ mkIdent $ "_?" ++ show k) tys
+
+fromPredType :: PredType -> CS.QualTypeExpr
+fromPredType (PredType ps ty) = CS.QualTypeExpr (fromPredSet ps) (fromType ty)
+
+fromPredSet :: PredSet -> CS.Context
+fromPredSet = map fromPred . Set.toAscList
+
+fromPred :: Pred -> CS.Constraint
+fromPred (Pred qcls ty) = CS.Constraint qcls (fromType ty)
 
 -- The following functions implement pretty-printing for types.
 ppType :: ModuleIdent -> Type -> Doc
 ppType m = ppTypeExpr 0 . fromQualType m
+
+ppPred :: Pred -> Doc
+ppPred = ppConstraint . fromPred
 
 ppTypeScheme :: ModuleIdent -> TypeScheme -> Doc
 ppTypeScheme m (ForAll _ ty) = ppType m ty
