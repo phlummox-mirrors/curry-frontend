@@ -21,6 +21,8 @@ module Base.Types
   ( -- * Representation of Types
     Type (..), isArrowType, arrowArity, arrowArgs, arrowBase, arrowUnapply
   , typeVars, typeConstrs, typeSkolems, equTypes, qualifyType, unqualifyType
+    -- * Representation of Predicated Types
+  , PredType (..), PredSet, Pred (..), predType, unpredType
     -- * Representation of Data Constructors
   , DataConstr (..), constrIdent, constrTypes, recLabels, recLabelTypes
   , tupleData
@@ -32,6 +34,8 @@ module Base.Types
     -- * Helper functions
   , applyType, unapplyType
   ) where
+
+import qualified Data.Set as Set
 
 import Curry.Base.Ident
 
@@ -65,7 +69,7 @@ data Type
   | TypeArrow Type Type
   | TypeConstrained [Type] Int
   | TypeSkolem Int
-  deriving (Eq, Show)
+  deriving (Eq, Ord, Show)
 
 -- The function 'applyType' applies a type to a list of argument types,
 -- whereas applications of the function type constructor to two arguments
@@ -215,6 +219,28 @@ unqualifyType m (TypeConstrained tys tv) =
 unqualifyType m (TypeArrow      ty1 ty2) =
   TypeArrow (unqualifyType m ty1) (unqualifyType m ty2)
 unqualifyType _ skol@(TypeSkolem      _) = skol
+
+data PredType = PredType PredSet Type
+  deriving (Eq, Show)
+
+type PredSet = Set.Set Pred
+
+emptyPredSet = Set.empty
+
+data Pred = Pred QualIdent Type
+  deriving (Eq, Show)
+
+instance Ord Pred where
+  Pred qcls1 ty1 `compare` Pred qcls2 ty2 = case ty1 `compare` ty2 of
+    LT -> LT
+    EQ -> qcls1 `compare` qcls2
+    GT -> GT
+
+predType :: Type -> PredType
+predType ty = PredType emptyPredSet ty
+
+unpredType :: PredType -> Type
+unpredType (PredType _ ty) = ty
 
 -- The type 'DataConstr' is used to represent value or record constructors
 -- introduced by data or newtype declarations.
