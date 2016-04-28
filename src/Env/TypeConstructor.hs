@@ -49,9 +49,12 @@
 
 module Env.TypeConstructor
   ( TypeInfo (..), tcKind, classKind, varKind
+  , superClasses, allSuperClasses
   , TCEnv, initTCEnv, bindTypeInfo
   , lookupTypeInfo, qualLookupTypeInfo, qualLookupTypeInfoUnique
   ) where
+
+import Data.List (nub)
 
 import Curry.Base.Ident
 
@@ -113,6 +116,23 @@ varKind :: Ident -> TCEnv -> Kind
 varKind tv tcEnv = case lookupTypeInfo tv tcEnv of
   [TypeVar k] -> k
   _           -> internalError "Env.TypeConstructor.varKind: no type variable"
+
+-- The function 'superClasses' returns a list of all immediate super classes
+-- of a type class. The function 'allSuperClasses' returns a list of
+-- all direct and indirect super classes of a type class including the class
+-- itself, i.e., it computes the reflexive transitive closure of 'superClasses'.
+
+superClasses :: QualIdent -> TCEnv -> [QualIdent]
+superClasses qcls tcEnv =
+  case qualLookupTypeInfo qcls tcEnv of
+    [TypeClass _ _ sclss _] -> sclss
+    _                       ->
+      internalError $ "Env.TypeConstructor.superClasses: " ++ show qcls
+
+allSuperClasses :: QualIdent -> TCEnv -> [QualIdent]
+allSuperClasses qcls tcEnv = nub $ classes qcls
+  where
+    classes qcls' = qcls' : concatMap classes (superClasses qcls' tcEnv)
 
 -- Types can only be defined on the top-level; no nested environments are
 -- needed for them. Tuple types must be handled as a special case because
