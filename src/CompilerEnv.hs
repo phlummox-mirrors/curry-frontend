@@ -21,6 +21,7 @@ import Curry.Syntax
 
 import Base.TopEnv (allLocalBindings)
 
+import Env.InstEnv
 import Env.Interface
 import Env.ModuleAlias (AliasEnv, initAliasEnv)
 import Env.OpPrec
@@ -38,6 +39,7 @@ data CompilerEnv = CompilerEnv
   , interfaceEnv :: InterfaceEnv     -- ^ declarations of imported interfaces
   , aliasEnv     :: AliasEnv         -- ^ aliases for imported modules
   , tyConsEnv    :: TCEnv            -- ^ type constructors and type classes
+  , instEnv      :: InstEnv          -- ^ instances
   , valueEnv     :: ValueEnv         -- ^ functions and data constructors
   , opPrecEnv    :: OpPrecEnv        -- ^ operator precedences
   }
@@ -50,6 +52,7 @@ initCompilerEnv mid = CompilerEnv
   , interfaceEnv = initInterfaceEnv
   , aliasEnv     = initAliasEnv
   , tyConsEnv    = initTCEnv
+  , instEnv      = initInstEnv
   , valueEnv     = initDCEnv
   , opPrecEnv    = initOpPrecEnv
   }

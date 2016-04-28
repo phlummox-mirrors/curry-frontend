@@ -4,6 +4,7 @@
     Copyright   :  (c) 2005        Martin Engelke
                        2007        Sebastian Fischer
                        2011 - 2014 Björn Peemöller
+                       2016        Finn Teegen
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
@@ -196,6 +197,7 @@ data DumpLevel
   | DumpKindChecked       -- ^ dump source code after kind checking
   | DumpSyntaxChecked     -- ^ dump source code after syntax checking
   | DumpPrecChecked       -- ^ dump source code after precedence checking
+  | DumpInstanceChecked   -- ^ dump source code after instance checking
   | DumpTypeChecked       -- ^ dump source code after type checking
   | DumpExportChecked     -- ^ dump source code after export checking
   | DumpQualified         -- ^ dump source  after qualification
@@ -215,6 +217,7 @@ dumpLevel = [ (DumpParsed           , "dump-parse", "parsing"                   
             , (DumpKindChecked      , "dump-kc"   , "kind checking"               )
             , (DumpSyntaxChecked    , "dump-sc"   , "syntax checking"             )
             , (DumpPrecChecked      , "dump-pc"   , "precedence checking"         )
+            , (DumpInstanceChecked  , "dump-inc"  , "instance checking"           )
             , (DumpTypeChecked      , "dump-tc"   , "type checking"               )
             , (DumpExportChecked    , "dump-ec"   , "export checking"             )
             , (DumpQualified        , "dump-qual" , "qualification"               )

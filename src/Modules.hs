@@ -6,6 +6,7 @@
                        2007        Sebastian Fischer
                        2011 - 2015 Björn Peemöller
                        2016        Jan Tikovsky
+                       2016        Finn Teegen
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
@@ -210,7 +211,8 @@ checkModule opts mdl = do
   kc  <- kindCheck       opts tsc >>= dumpCS DumpKindChecked
   sc  <- syntaxCheck     opts kc  >>= dumpCS DumpSyntaxChecked
   pc  <- precCheck       opts sc  >>= dumpCS DumpPrecChecked
-  tc  <- typeCheck       opts pc  >>= dumpCS DumpTypeChecked
+  inc <- instanceCheck   opts pc  >>= dumpCS DumpInstanceChecked
+  tc  <- typeCheck       opts inc >>= dumpCS DumpTypeChecked
   ec  <- exportCheck     opts tc  >>= dumpCS DumpExportChecked
   return ec
   where dumpCS = dumpWith opts CS.showModule CS.ppModule

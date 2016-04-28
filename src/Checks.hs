@@ -14,6 +14,7 @@
 -}
 module Checks where
 
+import qualified Checks.InstanceCheck     as INC (instanceCheck)
 import qualified Checks.InterfaceCheck    as IC  (interfaceCheck)
 import qualified Checks.ImportSyntaxCheck as ISC (importCheck)
 import qualified Checks.ExportCheck       as EC  (exportCheck, expandExports)
@@ -100,6 +101,17 @@ precCheck _ (env, Module ps m es is ds)
   | null msgs = ok (env { opPrecEnv = pEnv' }, Module ps m es is ds')
   | otherwise = failMessages msgs
   where (ds', pEnv', msgs) = PC.precCheck (moduleIdent env) (opPrecEnv env) ds
+
+-- |Check the instances.
+--
+-- * Declarations: remain unchanged
+-- * Environment:  The instance environment is updated
+instanceCheck :: Monad m => Check m Module
+instanceCheck _ (env, Module ps m es is ds)
+  | null msgs = ok (env { instEnv = inEnv' }, Module ps m es is ds)
+  | otherwise = failMessages msgs
+  where (inEnv', msgs) = INC.instanceCheck (moduleIdent env) (tyConsEnv env)
+                                           (instEnv env) ds
 
 -- |Apply the correct typing of the module.
 -- The declarations remain unchanged; the type constructor and value
