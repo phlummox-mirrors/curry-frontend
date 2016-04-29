@@ -34,8 +34,8 @@ import Curry.Base.Pretty
 import Curry.Syntax
 
 import Base.Expr
-import Base.Messages (Message, posMessage)
-import Base.Utils (findDouble)
+import Base.Messages (Message, posMessage, internalError)
+import Base.Utils    (findMultiples)
 
 import Env.OpPrec (OpPrecEnv, OpPrec (..), PrecInfo (..), defaultP, bindP
   , mkPrec, qualLookupP)
@@ -82,16 +82,16 @@ report err = S.modify (\ s -> s { errors = err : errors s })
 -- imported precedence environment.
 
 bindPrecs :: [Decl] -> PCM ()
-bindPrecs ds = case findDouble opFixDecls of
-  Just op -> report $ errDuplicatePrecedence op
-  Nothing -> case filter (`notElem` bvs) opFixDecls of
-    op : _ -> report $ errUndefinedOperator op
-    []     -> do
+bindPrecs ds = case findMultiples opFixDecls of
+  [] -> case filter (`notElem` bvs) opFixDecls of
+    []  -> do
       m <- getModuleIdent
       modifyPrecEnv $ \ env -> foldr (bindPrec m) env fixDs
+    ops -> mapM_ (report . errUndefinedOperator) ops
+  opss -> mapM_ (report . errMultiplePrecedence) opss
   where
     (fixDs, nonFixDs) = partition isInfixDecl ds
-    opFixDecls        = [ op | InfixDecl _ _ _ ops <- fixDs, op <- ops]
+    opFixDecls        = [ op | InfixDecl _ _ _ ops <- fixDs, op <- ops ]
     bvs               = concatMap boundValues nonFixDs
 
 bindPrec :: ModuleIdent -> Decl -> OpPrecEnv -> OpPrecEnv
@@ -99,11 +99,12 @@ bindPrec m (InfixDecl _ fix mprec ops) pEnv
   | p == defaultP = pEnv
   | otherwise     = foldr (flip (bindP m) p) pEnv ops
   where p = OpPrec fix (mkPrec mprec)
-bindPrec _ _                         pEnv = pEnv
+bindPrec _ _                           pEnv = pEnv
 
 boundValues :: Decl -> [Ident]
-boundValues (DataDecl      _ _ _ cs) = map constrId cs
-boundValues (NewtypeDecl _ _ _ (NewConstrDecl _ _ c _)) = [c]
+boundValues (DataDecl      _ _ _ cs) = [ v | c <- cs
+                                           , v <- constrId c : recordLabels c]
+boundValues (NewtypeDecl   _ _ _ nc) = nconstrId nc : nrecordLabels nc
 boundValues (FunctionDecl     _ f _) = [f]
 boundValues (ForeignDecl  _ _ _ f _) = [f]
 boundValues (ExternalDecl      _ fs) = fs
@@ -349,7 +350,7 @@ fixPrecT :: (Pattern -> QualIdent -> Pattern -> Pattern)
 fixPrecT infixpatt t1@(NegativePattern uop _) op t2 = do
   OpPrec fix pr <- prec op <$> getPrecEnv
   unless (pr < 6 || pr == 6 && fix == InfixL) $
-    report $ errInvalidParse "unary" uop op
+    report $ errInvalidParse "unary operator" uop op
   fixRPrecT infixpatt t1 op t2
 fixPrecT infixpatt t1 op t2 = fixRPrecT infixpatt t1 op t2
 
@@ -357,7 +358,7 @@ fixRPrecT :: (Pattern -> QualIdent -> Pattern -> Pattern)
           -> Pattern  -> QualIdent -> Pattern -> PCM Pattern
 fixRPrecT infixpatt t1 op t2@(NegativePattern uop _) = do
   OpPrec _ pr <- prec op <$> getPrecEnv
-  unless (pr < 6) $ report $ errInvalidParse "unary" uop op
+  unless (pr < 6) $ report $ errInvalidParse "unary operator" uop op
   return $ infixpatt t1 op t2
 fixRPrecT infixpatt t1 op1 (InfixPattern t2 op2 t3) = do
   OpPrec fix1 pr1 <- prec op1 <$> getPrecEnv
@@ -418,7 +419,7 @@ checkOpL :: Ident -> Pattern -> PCM Pattern
 checkOpL op t@(NegativePattern uop _) = do
   OpPrec fix pr <- prec (qualify op) <$> getPrecEnv
   unless (pr < 6 || pr == 6 && fix == InfixL) $
-    report $ errInvalidParse "unary" uop (qualify op)
+    report $ errInvalidParse "unary operator" uop (qualify op)
   return t
 checkOpL op1 t@(InfixPattern _ op2 _) = do
   OpPrec fix1 pr1 <- prec (qualify op1) <$> getPrecEnv
@@ -431,7 +432,7 @@ checkOpL _ t = return t
 checkOpR :: Ident -> Pattern -> PCM Pattern
 checkOpR op t@(NegativePattern uop _) = do
   OpPrec _ pr <- prec (qualify op)  <$> getPrecEnv
-  when (pr >= 6) $ report $ errInvalidParse "unary" uop (qualify op)
+  when (pr >= 6) $ report $ errInvalidParse "unary operator" uop (qualify op)
   return t
 checkOpR op1 t@(InfixPattern _ op2 _) = do
   OpPrec fix1 pr1 <- prec (qualify op1)  <$> getPrecEnv
@@ -464,18 +465,21 @@ prec op env = case qualLookupP op env of
 
 errUndefinedOperator :: Ident -> Message
 errUndefinedOperator op = posMessage op $ hsep $ map text
-  ["No definition for", idName op, "in this scope"]
+  ["No definition for", escName op, "in this scope"]
 
-errDuplicatePrecedence :: Ident -> Message
-errDuplicatePrecedence op = posMessage op $ hsep $ map text
-  ["More than one fixity declaration for", idName op]
+errMultiplePrecedence :: [Ident] -> Message
+errMultiplePrecedence []       = internalError
+  "PrecCheck.errMultiplePrecedence: empty list"
+errMultiplePrecedence (op:ops) = posMessage op $
+  (hsep $ map text ["More than one fixity declaration for", escName op, "at"])
+  $+$ nest 2 (vcat (map (ppPosition . getPosition) (op:ops)))
 
 errInvalidParse :: String -> Ident -> QualIdent -> Message
 errInvalidParse what op1 op2 = posMessage op1 $ hsep $ map text
-  [ "Invalid use of", what, idName op1, "with", qualName op2
+  [ "Invalid use of", what, escName op1, "with", escQualName op2, "in"
   , showLine $ qidPosition op2]
 
 errAmbiguousParse :: String -> QualIdent -> QualIdent -> Message
 errAmbiguousParse what op1 op2 = posMessage op1 $ hsep $ map text
-  ["Ambiguous use of", what, qualName op1, "with", qualName op2
+  ["Ambiguous use of", what, escQualName op1, "with", escQualName op2, "in"
   , showLine $ qidPosition op2]

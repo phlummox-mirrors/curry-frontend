@@ -33,10 +33,10 @@ qual (env, mdl) = (qualifyEnv env, mdl')
   where mdl' = Q.qual (moduleIdent env) (tyConsEnv env) (valueEnv env) mdl
 
 -- |Remove any syntactic sugar, changes the value environment.
-desugar :: Bool -> CompEnv Module -> CompEnv Module
-desugar dsfp (env, mdl) = (env { valueEnv = tyEnv' }, mdl')
-  where (mdl', tyEnv') = DS.desugar dsfp (extensions env) (valueEnv env)
-                                         (tyConsEnv env) mdl
+desugar :: CompEnv Module -> CompEnv Module
+desugar (env, mdl) = (env { valueEnv = tyEnv' }, mdl')
+  where (mdl', tyEnv') = DS.desugar (extensions env) (valueEnv env)
+                                    (tyConsEnv env) mdl
 
 -- |Simplify the source code, changes the value environment.
 simplify :: CompEnv Module -> CompEnv Module

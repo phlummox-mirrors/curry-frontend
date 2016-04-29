@@ -1,8 +1,9 @@
 {- |
     Module      :  $Header$
     Description :  Split module into code fragments
-    Copyright   :  (c)  ??  , someone else
-                        2014, Björn Peemöller
+    Copyright   :  (c)  ??         , someone else
+                        2014 - 2016, Björn Peemöller
+                        2016       , Jan Tikovsky
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
@@ -10,8 +11,22 @@
     Portability :  portable
 
     This module arranges the tokens of the module into different code
-    categories for HTML presentation. The parsed and typechecked module
+    categories for HTML presentation. The parsed and qualified module
     is used to establish links between used identifiers and their definitions.
+
+    The fully qualified module is traversed to generate a list of code elements.
+    Code elements representing identifiers are distinguished by their kind
+    (type constructor, data constructor, function, (type) variable).
+    They include information about their usage (i.e., declaration, call etc.)
+    and whether the identifier occurs fully qualified in
+    the source code or not. Initially, all identifier codes are fully qualified.
+
+    In a next step, the token stream of the given program and the code list are
+    traversed sequentially (see `encodeToks`). The information in the token
+    stream is used to:
+
+      * add code elements for newlines, spaces and pragmas
+      * update the qualification information of identifiers in the code list.
 -}
 
 module Html.SyntaxColoring
@@ -21,7 +36,7 @@ module Html.SyntaxColoring
   ) where
 
 import Data.Function (on)
-import Data.List     (intercalate, sortBy)
+import Data.List     (sortBy)
 
 import Curry.Base.Ident
 import Curry.Base.Position
@@ -30,15 +45,17 @@ import Curry.Syntax
 import Base.Messages
 
 -- |Type of codes which are distinguished for HTML output
+-- the boolean flags indicate whether the corresponding identifier
+-- occurs qualified in the source module
 data Code
   = Keyword     String
   | Space       Int
   | NewLine
   | Pragma      String
-  | TypeCons    TypeUsage  QualIdent
-  | DataCons    ConsUsage  QualIdent
-  | Function    FuncUsage  QualIdent
-  | Identifier  IdentUsage QualIdent
+  | TypeCons    TypeUsage  Bool QualIdent
+  | DataCons    ConsUsage  Bool QualIdent
+  | Function    FuncUsage  Bool QualIdent
+  | Identifier  IdentUsage Bool QualIdent
   | ModuleName  ModuleIdent
   | Commentary  String
   | NumberCode  String
@@ -78,82 +95,102 @@ data IdentUsage
   | IdUnknown -- unknown usage
     deriving Show
 
--- @param list with parse-Results with descending quality,
---        e.g. [typingParse, fullParse, parse]
+-- @param fully qualified module
 -- @param lex-Result
--- @return program
-genProgram :: String -> Module -> [(Position, Token)] -> [Code]
-genProgram fn m toks = tokenToCodes (first fn) (idsModule m) toks
+-- @return code list
+genProgram :: Module -> [(Position, Token)] -> [Code]
+genProgram m pts = encodeToks (first "") (filter validCode (idsModule m)) pts
+
+-- predicate to remove identifier codes for primitives
+-- because they do not form valid link targets
+validCode :: Code -> Bool
+validCode (TypeCons   _ _ t) = t `notElem` [qUnitId, qListId]         && not (isQTupleId t)
+validCode (DataCons   _ _ c) = c `notElem` [qUnitId, qNilId, qConsId] && not (isQTupleId c)
+validCode (Identifier _ _ i) = not $ isAnonId $ unqualify i
+validCode _                  = True
 
 -- @param code
 -- @return qid if available
 getQualIdent :: Code -> Maybe QualIdent
-getQualIdent (DataCons    _ qid) = Just qid
-getQualIdent (Function    _ qid) = Just qid
-getQualIdent (Identifier  _ qid) = Just qid
-getQualIdent (TypeCons    _ qid) = Just qid
-getQualIdent  _                  = Nothing
+getQualIdent (DataCons   _ _ qid) = Just qid
+getQualIdent (Function   _ _ qid) = Just qid
+getQualIdent (Identifier _ _ qid) = Just qid
+getQualIdent (TypeCons   _ _ qid) = Just qid
+getQualIdent _                    = Nothing
 
-tokenToCodes :: Position -> [Code] -> [(Position, Token)] -> [Code]
-tokenToCodes _      _   []                     = []
-tokenToCodes curPos ids toks@((pos, tok) : ts)
+encodeToks :: Position -> [Code] -> [(Position, Token)] -> [Code]
+encodeToks _   _   []                     = []
+encodeToks cur ids toks@((pos, tok) : ts)
   -- advance line
-  | line curPos < line pos
-  = NewLine         : tokenToCodes (nl curPos) ids toks
+  | line cur   < line   pos = NewLine : encodeToks (nl cur) ids toks
   -- advance column
-  | column curPos < column pos
-  = Space colDiff   : tokenToCodes (incr curPos colDiff) ids toks
-  | isPragmaToken tok
-  = let (pragmas, (end:rest)) = break (isPragmaEnd . snd) toks
-        str = intercalate " " $ map (showToken . snd) (pragmas ++ [end])
-    in  Pragma str : tokenToCodes (incr curPos (length str)) ids rest
-  -- no identifier token
-  | not (isTokenIdentifier tok)
-  = tokenToCode tok : tokenToCodes newPos ids ts
-  -- identifier, but no more information
-  | null ids
-  = tokenToCode tok : tokenToCodes newPos ids ts
-  | tokenStr == code2string (head ids)
-  = head ids        : tokenToCodes newPos (tail ids) ts
-  | otherwise
-  = tokenToCodes curPos (tail ids) toks
+  | column cur < column pos = let d = column pos - column cur
+                              in  Space d : encodeToks (incr cur d) ids toks
+  -- pragma token
+  | isPragmaToken tok       = let (ps, (end:rest)) = break (isPragmaEnd . snd) toks
+                                  s = unwords $ map (showToken . snd) (ps ++ [end])
+                              in  Pragma s : encodeToks (incr cur (length s)) ids rest
+  -- identifier token
+  | isIdentTok tok          = case ids of
+    []     -> encodeTok tok : encodeToks newPos [] ts
+    (i:is)
+      | tokenStr == code2string i' -> i' : encodeToks newPos is ts
+  -- the 'otherwise' case should never occur if the token stream and
+  -- the qualified AST which was used to generate the code list correspond to
+  -- the same module
+      | otherwise                  -> encodeToks cur is toks
+      where i' = setQualified (isQualIdentTok tok) i
+  -- other token
+  | otherwise               = encodeTok tok : encodeToks newPos ids ts
   where
-  colDiff  = column pos - column curPos
   tokenStr = showToken tok
-  newPos   = incr curPos (length tokenStr)
+  newPos   = incr cur (length tokenStr)
+
+setQualified :: Bool -> Code -> Code
+setQualified b (DataCons   u _ c) = DataCons u b c
+setQualified b (Function   u _ f) = Function u b f
+setQualified b (Identifier u _ i) = Identifier u b i
+setQualified b (TypeCons   u _ t) = TypeCons u b t
+setQualified _ m@(ModuleName   _) = m
+setQualified _ s@(Symbol       _) = s
+setQualified _ c                  = internalError $ "Html.SyntaxColoring.setQualified: " ++ show c
 
 code2string :: Code -> String
-code2string (Keyword         s) = s
-code2string (Space           i) = replicate i ' '
-code2string NewLine             = "\n"
-code2string (Pragma          s) = s
-code2string (DataCons    _ qid) = idName $ unqualify qid
-code2string (TypeCons    _ qid) = idName $ unqualify qid
-code2string (Function    _ qid) = idName $ unqualify qid
-code2string (Identifier  _ qid) = idName $ unqualify qid
-code2string (ModuleName    mid) = moduleName mid
-code2string (Commentary      s) = s
-code2string (NumberCode      s) = s
-code2string (StringCode      s) = s
-code2string (CharCode        s) = s
-code2string (Symbol          s) = s
+code2string (Keyword           s) = s
+code2string (Space             i) = replicate i ' '
+code2string NewLine               = "\n"
+code2string (Pragma            s) = s
+code2string (DataCons    _ b qid) = ident2string b qid
+code2string (TypeCons    _ b qid) = ident2string b qid
+code2string (Function    _ b qid) = ident2string b qid
+code2string (Identifier  _ b qid) = ident2string b qid
+code2string (ModuleName      mid) = moduleName mid
+code2string (Commentary        s) = s
+code2string (NumberCode        s) = s
+code2string (StringCode        s) = s
+code2string (CharCode          s) = s
+code2string (Symbol            s) = s
 
-tokenToCode :: Token -> Code
-tokenToCode tok@(Token cat _)
-  | cat `elem` numCategories          = NumberCode (showToken tok)
-  | cat == CharTok                    = CharCode   (showToken tok)
-  | cat == StringTok                  = StringCode (showToken tok)
-  | cat `elem` keywordCategories      = Keyword    (showToken tok)
-  | cat `elem` specialIdentCategories = Keyword    (showToken tok)
-  | cat `elem` punctuationCategories  = Symbol     (showToken tok)
-  | cat `elem` reservedOpsCategories  = Symbol     (showToken tok)
-  | cat `elem` commentCategories      = Commentary (showToken tok)
-  | cat `elem` identCategories        = Identifier IdUnknown $ qualify $ mkIdent
+ident2string :: Bool -> QualIdent -> String
+ident2string False q = idName $ unqualify q
+ident2string True  q = qualName q
+
+encodeTok :: Token -> Code
+encodeTok tok@(Token c _)
+  | c `elem` numCategories          = NumberCode (showToken tok)
+  | c == CharTok                    = CharCode   (showToken tok)
+  | c == StringTok                  = StringCode (showToken tok)
+  | c `elem` keywordCategories      = Keyword    (showToken tok)
+  | c `elem` specialIdentCategories = Keyword    (showToken tok)
+  | c `elem` punctuationCategories  = Symbol     (showToken tok)
+  | c `elem` reservedOpsCategories  = Symbol     (showToken tok)
+  | c `elem` commentCategories      = Commentary (showToken tok)
+  | c `elem` identCategories        = Identifier IdUnknown False $ qualify $ mkIdent
                                       $ showToken tok
-  | cat `elem` whiteSpaceCategories   = Space 0
-  | cat `elem` pragmaCategories       = Pragma     (showToken tok)
+  | c `elem` whiteSpaceCategories   = Space 0
+  | c `elem` pragmaCategories       = Pragma     (showToken tok)
   | otherwise                         = internalError $
-    "SyntaxColoring.tokenToCode: Unknown token" ++ showToken tok
+    "SyntaxColoring.encodeTok: Unknown token" ++ showToken tok
 
 numCategories :: [Category]
 numCategories = [IntTok, FloatTok]
@@ -187,13 +224,16 @@ identCategories :: [Category]
 identCategories = [Id, QId, Sym, QSym, SymDot, SymMinus, SymMinusDot]
 
 isPragmaToken :: Token -> Bool
-isPragmaToken (Token cat _) = cat `elem` pragmaCategories
+isPragmaToken (Token c _) = c `elem` pragmaCategories
 
 isPragmaEnd :: Token -> Bool
-isPragmaEnd (Token cat _) = cat == PragmaEnd
+isPragmaEnd (Token c _) = c == PragmaEnd
 
-isTokenIdentifier :: Token -> Bool
-isTokenIdentifier (Token cat _) = cat `elem` identCategories
+isIdentTok :: Token -> Bool
+isIdentTok (Token c _) = c `elem` identCategories
+
+isQualIdentTok :: Token -> Bool
+isQualIdentTok (Token c _) = c `elem` [QId, QSym]
 
 whiteSpaceCategories :: [Category]
 whiteSpaceCategories = [EOF, VSemicolon, VRightBrace]
@@ -233,19 +273,7 @@ idsModule (Module _ mid es is ds) =
   let hdrCodes = ModuleName mid : idsExportSpec es
       impCodes = concatMap idsImportDecl (sortBy cmpImportDecl is)
       dclCodes = concatMap idsDecl       (sortBy cmpDecl ds)
-  in  map (addModuleIdent mid) $ hdrCodes ++ impCodes ++ dclCodes
-
-addModuleIdent :: ModuleIdent -> Code -> Code
-addModuleIdent mid c@(Function x qid)
-  | hasGlobalScope (unqualify qid) = Function x (qualQualify mid qid)
-  | otherwise                      = c
-addModuleIdent mid cn@(DataCons x qid)
-  | not $ isQualified qid          = DataCons x (qualQualify mid qid)
-  | otherwise                      = cn
-addModuleIdent mid tc@(TypeCons x qid)
-  | not $ isQualified qid          = TypeCons x (qualQualify mid qid)
-  | otherwise                      = tc
-addModuleIdent _   c               = c
+  in  hdrCodes ++ impCodes ++ dclCodes
 
 -- Exports
 
@@ -254,10 +282,10 @@ idsExportSpec Nothing                 = []
 idsExportSpec (Just (Exporting _ es)) = concatMap idsExport es
 
 idsExport :: Export -> [Code]
-idsExport (Export            qid) = [Function FuncExport qid]
-idsExport (ExportTypeWith qid cs) = TypeCons TypeExport qid :
-  map (DataCons ConsExport . qualify) cs
-idsExport (ExportTypeAll     qid) = [TypeCons TypeExport qid]
+idsExport (Export            qid) = [Function FuncExport False qid]
+idsExport (ExportTypeWith qid cs) = TypeCons TypeExport False qid :
+  map (DataCons ConsExport False . qualify) cs
+idsExport (ExportTypeAll     qid) = [TypeCons TypeExport False qid]
 idsExport (ExportModule      mid) = [ModuleName mid]
 
 -- Imports
@@ -273,53 +301,53 @@ idsImportSpec mid (Hiding    _ is) = concatMap (idsImport mid) is
 
 idsImport :: ModuleIdent -> Import -> [Code]
 idsImport mid (Import            i) =
-  [Function FuncImport $ qualifyWith mid i]
+  [Function FuncImport False $ qualifyWith mid i]
 idsImport mid (ImportTypeWith t cs) =
-  TypeCons TypeImport (qualifyWith mid t) :
-    map (DataCons ConsImport . qualifyWith mid) cs
+  TypeCons TypeImport False (qualifyWith mid t) :
+    map (DataCons ConsImport False . qualifyWith mid) cs
 idsImport mid (ImportTypeAll     t) =
-  [TypeCons TypeImport $ qualifyWith mid t]
+  [TypeCons TypeImport False $ qualifyWith mid t]
 
 -- Declarations
 
 idsDecl :: Decl -> [Code]
-idsDecl (InfixDecl _   _ _ ops) = map (Function FuncInfix . qualify) ops
-idsDecl (DataDecl   _ d vs cds) = TypeCons TypeDeclare (qualify d)
-                                    :  map (Identifier IdDeclare . qualify) vs
+idsDecl (InfixDecl _   _ _ ops) = map (Function FuncInfix False . qualify) ops
+idsDecl (DataDecl   _ d vs cds) = TypeCons TypeDeclare False (qualify d)
+                                    :  map (Identifier IdDeclare False . qualify) vs
                                     ++ concatMap idsConstrDecl cds
-idsDecl (NewtypeDecl _ t vs nc) = TypeCons TypeDeclare (qualify t)
-                                    :  map (Identifier IdDeclare . qualify) vs
+idsDecl (NewtypeDecl _ t vs nc) = TypeCons TypeDeclare False (qualify t)
+                                    :  map (Identifier IdDeclare False . qualify) vs
                                     ++ idsNewConstrDecl nc
-idsDecl (TypeDecl    _ t vs ty) = TypeCons TypeDeclare (qualify t)
-                                    :  map (Identifier IdDeclare . qualify) vs
+idsDecl (TypeDecl    _ t vs ty) = TypeCons TypeDeclare False (qualify t)
+                                    :  map (Identifier IdDeclare False . qualify) vs
                                     ++ idsTypeExpr ty
-idsDecl (TypeSig       _ fs ty) = map (Function FuncTypeSig . qualify) fs
+idsDecl (TypeSig       _ fs ty) = map (Function FuncTypeSig False . qualify) fs
                                     ++ idsTypeExpr ty
 idsDecl (FunctionDecl  _ _ eqs) = concatMap idsEquation eqs
 idsDecl (ForeignDecl _ _ _ _ _) = []
-idsDecl (ExternalDecl     _ fs) = map (Function FuncDeclare . qualify) fs
+idsDecl (ExternalDecl     _ fs) = map (Function FuncDeclare False . qualify) fs
 idsDecl (PatternDecl   _ p rhs) = idsPat p ++ idsRhs rhs
-idsDecl (FreeDecl         _ vs) = map (Identifier IdDeclare . qualify) vs
+idsDecl (FreeDecl         _ vs) = map (Identifier IdDeclare False . qualify) vs
 
 idsConstrDecl :: ConstrDecl -> [Code]
 idsConstrDecl (ConstrDecl     _ _ c tys)
-  = DataCons ConsDeclare (qualify c) : concatMap idsTypeExpr tys
+  = DataCons ConsDeclare False (qualify c) : concatMap idsTypeExpr tys
 idsConstrDecl (ConOpDecl _ _ ty1 op ty2)
-  = idsTypeExpr ty1 ++ (DataCons ConsDeclare $ qualify op) : idsTypeExpr ty2
+  = idsTypeExpr ty1 ++ (DataCons ConsDeclare False $ qualify op) : idsTypeExpr ty2
 idsConstrDecl (RecordDecl _ _ c fs)
-  = DataCons ConsDeclare (qualify c) : concatMap idsFieldDecl fs
+  = DataCons ConsDeclare False (qualify c) : concatMap idsFieldDecl fs
 
 idsNewConstrDecl :: NewConstrDecl -> [Code]
 idsNewConstrDecl (NewConstrDecl _ _ c ty)
-  = DataCons ConsDeclare (qualify c) : idsTypeExpr ty
+  = DataCons ConsDeclare False (qualify c) : idsTypeExpr ty
 idsNewConstrDecl (NewRecordDecl _ _ c (l,ty))
-  = DataCons ConsDeclare (qualify c) : (Function FuncDeclare $ qualify l)
+  = DataCons ConsDeclare False (qualify c) : (Function FuncDeclare False $ qualify l)
   : idsTypeExpr ty
 
 idsTypeExpr :: TypeExpr -> [Code]
-idsTypeExpr (ConstructorType qid tys) = TypeCons TypeRefer qid :
+idsTypeExpr (ConstructorType qid tys) = TypeCons TypeRefer False qid :
                                            concatMap idsTypeExpr tys
-idsTypeExpr (VariableType          v) = [Identifier IdRefer (qualify v)]
+idsTypeExpr (VariableType          v) = [Identifier IdRefer False (qualify v)]
 idsTypeExpr (TupleType           tys) = concatMap idsTypeExpr tys
 idsTypeExpr (ListType             ty) = idsTypeExpr ty
 idsTypeExpr (ArrowType       ty1 ty2) = concatMap idsTypeExpr [ty1, ty2]
@@ -327,14 +355,14 @@ idsTypeExpr (ParenType            ty) = idsTypeExpr ty
 
 idsFieldDecl :: FieldDecl -> [Code]
 idsFieldDecl (FieldDecl _ ls ty) =
-  map (Function FuncDeclare . qualify . unRenameIdent) ls ++ idsTypeExpr ty
+  map (Function FuncDeclare False . qualify . unRenameIdent) ls ++ idsTypeExpr ty
 
 idsEquation :: Equation -> [Code]
 idsEquation (Equation _ lhs rhs) = idsLhs lhs ++ idsRhs rhs
 
 idsLhs :: Lhs -> [Code]
-idsLhs (FunLhs    f ps) = Function FuncDeclare (qualify f) : concatMap idsPat ps
-idsLhs (OpLhs p1 op p2) = idsPat p1 ++ [Function FuncDeclare $ qualify op]
+idsLhs (FunLhs    f ps) = Function FuncDeclare False (qualify f) : concatMap idsPat ps
+idsLhs (OpLhs p1 op p2) = idsPat p1 ++ [Function FuncDeclare False $ qualify op]
                                     ++ idsPat p2
 idsLhs (ApLhs   lhs ps) = idsLhs lhs ++ concatMap idsPat ps
 
@@ -348,33 +376,33 @@ idsCondExpr (CondExpr _ e1 e2) = idsExpr e1 ++ idsExpr e2
 idsPat :: Pattern -> [Code]
 idsPat (LiteralPattern          _) = []
 idsPat (NegativePattern       _ _) = []
-idsPat (VariablePattern         v) = [Identifier IdDeclare (qualify v)]
-idsPat (ConstructorPattern qid ps) = DataCons ConsPattern qid
+idsPat (VariablePattern         v) = [Identifier IdDeclare False (qualify v)]
+idsPat (ConstructorPattern qid ps) = DataCons ConsPattern False qid
                                       : concatMap idsPat ps
 idsPat (InfixPattern    p1 qid p2) = idsPat p1 ++
-                                       DataCons ConsPattern qid : idsPat p2
+                                       DataCons ConsPattern False qid : idsPat p2
 idsPat (ParenPattern            p) = idsPat p
-idsPat (RecordPattern      qid fs) = DataCons ConsPattern qid
+idsPat (RecordPattern      qid fs) = DataCons ConsPattern False qid
                                       : concatMap (idsField idsPat) fs
 idsPat (TuplePattern         _ ps) = concatMap idsPat ps
 idsPat (ListPattern          _ ps) = concatMap idsPat ps
-idsPat (AsPattern             v p) = Identifier IdDeclare (qualify v) : idsPat p
+idsPat (AsPattern             v p) = Identifier IdDeclare False (qualify v) : idsPat p
 idsPat (LazyPattern           _ p) = idsPat p
-idsPat (FunctionPattern    qid ps) = Function FuncCall qid
+idsPat (FunctionPattern    qid ps) = Function FuncCall False qid
                                       : concatMap idsPat ps
 idsPat (InfixFuncPattern  p1 f p2) = idsPat p1 ++
-                                      Function FuncInfix f : idsPat p2
+                                      Function FuncInfix False f : idsPat p2
 
 idsExpr :: Expression -> [Code]
 idsExpr (Literal                _) = []
 idsExpr (Variable             qid)
-  | isQualified qid                = [Function FuncCall qid]
-  | hasGlobalScope (unqualify qid) = [Function FuncCall qid]
-  | otherwise                      = [Identifier IdRefer qid]
-idsExpr (Constructor          qid) = [DataCons ConsCall qid]
+  | isQualified qid                = [Function FuncCall False qid]
+  | hasGlobalScope (unqualify qid) = [Function FuncCall False qid]
+  | otherwise                      = [Identifier IdRefer False qid]
+idsExpr (Constructor          qid) = [DataCons ConsCall False qid]
 idsExpr (Paren                  e) = idsExpr e
 idsExpr (Typed               e ty) = idsExpr e ++ idsTypeExpr ty
-idsExpr (Record            qid fs) = DataCons ConsCall qid
+idsExpr (Record            qid fs) = DataCons ConsCall False qid
                                       : concatMap (idsField idsExpr) fs
 idsExpr (RecordUpdate        e fs) = idsExpr e
                                       ++ concatMap (idsField idsExpr) fs
@@ -397,11 +425,11 @@ idsExpr (IfThenElse    _ e1 e2 e3) = concatMap idsExpr [e1, e2, e3]
 idsExpr (Case          _ _ e alts) = idsExpr e ++ concatMap idsAlt alts
 
 idsField :: (a -> [Code]) -> Field a -> [Code]
-idsField f (Field _ l x) = Function FuncCall l : f x
+idsField f (Field _ l x) = Function FuncCall False l : f x
 
 idsInfix :: InfixOp -> [Code]
-idsInfix (InfixOp     qid) = [Function FuncInfix qid]
-idsInfix (InfixConstr qid) = [DataCons ConsInfix qid]
+idsInfix (InfixOp     qid) = [Function FuncInfix False qid]
+idsInfix (InfixConstr qid) = [DataCons ConsInfix False qid]
 
 idsStmt :: Statement -> [Code]
 idsStmt (StmtExpr   _ e) = idsExpr e
@@ -435,7 +463,6 @@ showToken (Token Comma              _) = ","
 showToken (Token Underscore         _) = "_"
 showToken (Token Backquote          _) = "`"
 showToken (Token VSemicolon         _) = ""
-showToken (Token LeftBraceSemicolon _) = "{;"
 showToken (Token VRightBrace        _) = ""
 showToken (Token At                 _) = "@"
 showToken (Token Colon              _) = ":"
@@ -497,8 +524,8 @@ showAttr (IntAttributes      i _) = show i
 showAttr (FloatAttributes    f _) = show f
 showAttr (StringAttributes   s _) = show s
 showAttr (IdentAttributes    m i)
-  | null m    = show $ qualify                  (mkIdent i)
-  | otherwise = show $ qualifyWith (mkMIdent m) (mkIdent i)
+  | null m    = idName   $                          (mkIdent i)
+  | otherwise = qualName $ qualifyWith (mkMIdent m) (mkIdent i)
 showAttr (OptionsAttributes mt s) = showTool mt ++ ' ' : s
 
 showTool :: Maybe String -> String

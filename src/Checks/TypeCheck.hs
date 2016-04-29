@@ -696,8 +696,7 @@ tcRhs tyEnv0 (GuardedRhs es ds) = do
 
 tcCondExprs :: ValueEnv -> [CondExpr] -> TCM Type
 tcCondExprs tyEnv0 es = do
-  gty <- if length es > 1 then return boolType
-                          else freshConstrained [successType, boolType]
+  let gty = boolType -- the type of conditions
   ty <- freshTypeVar
   mapM_ (tcCondExpr gty ty) es
   return ty

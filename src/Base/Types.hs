@@ -27,7 +27,7 @@ module Base.Types
   , TypeScheme (..), ExistTypeScheme (..), monoType, polyType
     -- * Predefined types
   , unitType, boolType, charType, intType, floatType, stringType
-  , successType, listType, ioType, tupleType, typeVar, predefTypes
+  , listType, ioType, tupleType, typeVar, predefTypes
   ) where
 
 import Curry.Base.Ident
@@ -35,9 +35,8 @@ import Curry.Base.Ident
 -- A type is either a type variable, an application of a type constructor
 -- to a list of arguments, or an arrow type. The 'TypeConstrained'
 -- case is used for representing type variables that are restricted to a
--- particular set of types. At present, this is used for typing guard
--- expressions, which are restricted to be either of type 'Bool' or of type
--- 'Success', and integer literals, which are restricted to types 'Int' and
+-- particular set of types. At present, this is used for typing
+-- integer literals, which are restricted to types 'Int' and
 -- 'Float'. If the type is not restricted, it defaults to the first type
 -- from the constraint list.
 -- The case 'TypeSkolem' is used for handling skolem types, which
@@ -245,9 +244,6 @@ floatType = primType qFloatId []
 
 stringType :: Type
 stringType = listType charType
-
-successType :: Type
-successType = primType qSuccessId []
 
 listType :: Type -> Type
 listType ty = primType qListId [ty]

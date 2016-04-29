@@ -21,8 +21,8 @@ import Files.CymakePath (cymakeGreeting, cymakeVersion)
 import Html.CurryHtml   (source2html)
 import Token.TokenStream (source2token)
 
-import CurryBuilder (buildCurry)
-import CompilerOpts (Options (..), CymakeMode (..), getCompilerOpts, usage)
+import CurryBuilder     (buildCurry)
+import CompilerOpts     (Options (..), CymakeMode (..), getCompilerOpts, usage)
 
 -- |The command line tool cymake
 main :: IO ()
@@ -42,8 +42,11 @@ cymake (prog, opts, files, errs)
     runCYIO (mapM_ (source2token opts) files) >>= okOrAbort
   | otherwise                  =
     runCYIO (mapM_ (buildCurry  opts) files) >>= okOrAbort
-  where mode = optMode opts
-        okOrAbort = either abortWithMessages return
+  where
+  mode                 = optMode opts
+  warnOpts             = optWarnOpts opts
+  okOrAbort            = either abortWithMessages continueWithMessages
+  continueWithMessages = warnOrAbort warnOpts . snd
 
 -- |Print the usage information of the command line tool
 printUsage :: String -> IO ()

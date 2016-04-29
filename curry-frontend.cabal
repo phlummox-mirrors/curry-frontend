@@ -1,6 +1,6 @@
 Name:          curry-frontend
 Version:       0.4.1
-Cabal-Version: >= 1.6
+Cabal-Version: >= 1.10
 Synopsis:      Compile the functional logic language Curry to several
                intermediate formats
 Description:   The Curry Frontend consists of the executable program "cymake".
@@ -33,19 +33,25 @@ Flag network-uri
    description: Get Network.URI from the network-uri package
    default: True
 
-Executable cymake
-  hs-source-dirs: src
-  Main-is:        cymake.hs
-  Build-Depends: base == 4.*, curry-base == 0.4.1
-    , containers, directory, mtl, process, transformers, syb
+Library
+  hs-source-dirs:   src
+  default-language:  Haskell2010
+  Build-Depends:
+      base == 4.*
+    , containers
+    , curry-base == 0.4.1
+    , directory
+    , filepath
+    , mtl
+    , process
+    , syb
+    , transformers
   if flag(network-uri)
     build-depends: network-uri >= 2.6
   else
     build-depends: network < 2.6
-  ghc-options: -Wall
-  Other-Modules:
-      Paths_curry_frontend
-    , Base.CurryTypes
+  Exposed-Modules:
+      Base.CurryTypes
     , Base.Expr
     , Base.Messages
     , Base.NestEnv
@@ -61,6 +67,7 @@ Executable cymake
     , Checks.ExportCheck
     , Checks.InterfaceCheck
     , Checks.InterfaceSyntaxCheck
+    , Checks.ImportSyntaxCheck
     , Checks.KindCheck
     , Checks.PrecCheck
     , Checks.SyntaxCheck
@@ -76,6 +83,7 @@ Executable cymake
     , Env.TypeConstructor
     , Env.Value
     , Exports
+    , Files.CymakePath
     , Generators
     , Generators.GenAbstractCurry
     , Generators.GenFlatCurry
@@ -97,10 +105,35 @@ Executable cymake
     , Transformations.Lift
     , Transformations.Qual
     , Transformations.Simplify
-Library
-  hs-source-dirs:  src
-  Build-Depends:   filepath
-  Exposed-Modules:
-    Files.CymakePath
   Other-Modules:
     Paths_curry_frontend
+  ghc-options:       -Wall
+
+Executable cymake
+  hs-source-dirs: src
+  Main-is:        cymake.hs
+  default-language:  Haskell2010
+  Build-Depends:
+      base == 4.*
+    , containers
+    , curry-base == 0.4.1
+    , curry-frontend
+    , directory
+    , filepath
+    , mtl
+    , process
+    , syb
+    , transformers
+  if flag(network-uri)
+    build-depends: network-uri >= 2.6
+  else
+    build-depends: network < 2.6
+  ghc-options: -Wall
+
+Test-Suite test-frontend
+  type:           detailed-0.9
+  hs-source-dirs: test
+  default-language:  Haskell2010
+  test-module:    TestFrontend
+  build-depends:  base == 4.*, Cabal >= 1.20, curry-base == 0.4.1
+    , curry-frontend == 0.4.1, filepath

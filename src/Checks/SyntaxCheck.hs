@@ -1072,7 +1072,7 @@ errUnsupportedFuncPattern s p pat = posMessage p $
 
 errPrecedenceOutOfRange :: Position -> Integer -> Message
 errPrecedenceOutOfRange p i = posMessage p $ hsep $ map text
-  ["Precedence of out range:", show i]
+  ["Precedence out of range:", show i]
 
 errUndefinedVariable :: QualIdent -> Message
 errUndefinedVariable v = posMessage v $ hsep $ map text

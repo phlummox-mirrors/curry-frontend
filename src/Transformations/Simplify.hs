@@ -338,8 +338,8 @@ expandPatternBindings :: [Ident] -> Decl -> SIM [Decl]
 expandPatternBindings fvs d@(PatternDecl p t (SimpleRhs _ e _)) = case t of
   VariablePattern _ -> return [d]
   _                 -> do
-  pty <- getTypeOf t -- type of pattern
-  mapM (mkSelectorDecl pty) (filter (`elem` fvs) (bv t)) -- used variables
+    pty <- getTypeOf t -- type of pattern
+    mapM (mkSelectorDecl pty) (filter (`elem` fvs) (bv t)) -- used variables
  where
   mkSelectorDecl pty v = do
     vty <- getTypeOf v

@@ -5,6 +5,7 @@
                        2005        Martin Engelke
                        2007        Sebastian Fischer
                        2011 - 2015 Björn Peemöller
+                       2016        Jan Tikovsky
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
@@ -22,7 +23,7 @@ module Modules
 import qualified Control.Exception as C   (catch, IOException)
 import           Control.Monad            (liftM, unless, when)
 import           Data.Char                (toUpper)
-import qualified Data.Map          as Map (elems)
+import qualified Data.Map          as Map (elems, lookup)
 import           Data.Maybe               (fromMaybe)
 import           System.Directory         (getTemporaryDirectory, removeFile)
 import           System.Exit              (ExitCode (..))
@@ -84,7 +85,7 @@ compileModule opts fn = do
 loadAndCheckModule :: Options -> FilePath -> CYIO (CompEnv CS.Module)
 loadAndCheckModule opts fn = do
   (env, mdl) <- loadModule opts fn >>= checkModule opts
-  warn (optWarnOpts opts) $ warnCheck opts env mdl
+  warnMessages $ warnCheck opts env mdl
   return (env, mdl)
 
 -- ---------------------------------------------------------------------------
@@ -101,8 +102,9 @@ loadModule opts fn = do
                   ("." : optImportPaths opts)
   iEnv   <- loadInterfaces paths mdl
   checkInterfaces opts iEnv
+  is     <- importSyntaxCheck iEnv mdl
   -- add information of imported modules
-  cEnv   <- importModules mdl iEnv
+  cEnv   <- importModules mdl iEnv is
   return (cEnv, mdl)
 
 parseModule :: Options -> FilePath -> CYIO CS.Module
@@ -183,8 +185,17 @@ importPrelude opts m@(CS.Module ps mid es is ds)
 checkInterfaces :: Monad m => Options -> InterfaceEnv -> CYT m ()
 checkInterfaces opts iEnv = mapM_ checkInterface (Map.elems iEnv)
   where
-  checkInterface intf
-    = interfaceCheck opts (importInterfaces intf iEnv, intf) >> return ()
+  checkInterface intf = do
+    let env = importInterfaces intf iEnv
+    interfaceCheck opts (env, intf)
+
+importSyntaxCheck :: Monad m => InterfaceEnv -> CS.Module -> CYT m [CS.ImportDecl]
+importSyntaxCheck iEnv (CS.Module _ _ _ imps _) = mapM checkImportDecl imps
+  where
+  checkImportDecl (CS.ImportDecl p m q asM is) = case Map.lookup m iEnv of
+    Just intf -> CS.ImportDecl p m q asM `liftM` importCheck intf is
+    Nothing   -> internalError $ "Modules.importModules: no interface for "
+                                    ++ show m
 
 -- ---------------------------------------------------------------------------
 -- Checking a module
@@ -209,14 +220,11 @@ checkModule opts mdl = do
 
 transModule :: Options -> CompEnv CS.Module -> IO (CompEnv IL.Module)
 transModule opts mdl = do
-  desugared   <- dumpCS DumpDesugared     $ desugar False mdl
-  simplified  <- dumpCS DumpSimplified    $ simplify      desugared
-  lifted      <- dumpCS DumpLifted        $ lift          simplified
-  desugared2  <- dumpCS DumpDesugared     $ desugar True  lifted
-  simplified2 <- dumpCS DumpSimplified    $ simplify      desugared2
-  lifted2     <- dumpCS DumpLifted        $ lift          simplified2
-  il          <- dumpIL DumpTranslated    $ ilTrans       lifted2
-  ilCaseComp  <- dumpIL DumpCaseCompleted $ completeCase  il
+  desugared   <- dumpCS DumpDesugared     $ desugar      mdl
+  simplified  <- dumpCS DumpSimplified    $ simplify     desugared
+  lifted      <- dumpCS DumpLifted        $ lift         simplified
+  il          <- dumpIL DumpTranslated    $ ilTrans      lifted
+  ilCaseComp  <- dumpIL DumpCaseCompleted $ completeCase il
   return ilCaseComp
   where
   dumpCS = dumpWith opts CS.showModule CS.ppModule
@@ -278,7 +286,7 @@ matchInterface :: FilePath -> CS.Interface -> IO Bool
 matchInterface ifn i = do
   hdl <- openFile ifn ReadMode
   src <- hGetContents hdl
-  case runCYM (CS.parseInterface ifn src) of
+  case runCYMIgnWarn (CS.parseInterface ifn src) of
     Left  _  -> hClose hdl >> return False
     Right i' -> return (i `intfEquiv` fixInterface i')
 

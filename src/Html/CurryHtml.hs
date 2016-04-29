@@ -1,7 +1,8 @@
 {- |
     Module      :  $Header$
     Description :  Generating HTML documentation
-    Copyright   :  (c) 2011 - 2015, Björn Peemöller
+    Copyright   :  (c) 2011 - 2016, Björn Peemöller
+                       2016       , Jan Tikovsky
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
@@ -20,7 +21,8 @@ import Network.URI           (escapeURIString, isUnreserved)
 import System.Directory      (copyFile, doesFileExist)
 import System.FilePath       ((</>))
 
-import Curry.Base.Ident      (ModuleIdent (..), QualIdent (..), unqualify)
+import Curry.Base.Ident      ( ModuleIdent (..), Ident (..), QualIdent (..)
+                             , unqualify, moduleName)
 import Curry.Base.Monad      (CYIO, liftCYM, failMessages)
 import Curry.Base.Pretty     ((<+>), text, vcat)
 import Curry.Files.PathUtils (readModule)
@@ -28,7 +30,7 @@ import Curry.Syntax          (Module (..), lexSource)
 
 import Html.SyntaxColoring
 
-import Base.Messages         (warn, message)
+import Base.Messages         (message)
 import CompilerOpts          (Options (..), WarnOpts (..))
 import CurryBuilder          (buildCurry, findCurry)
 import Modules               (loadAndCheckModule)
@@ -47,16 +49,16 @@ source2html opts s = do
   let outDir  = fromMaybe "." $ optHtmlDir opts
       outFile = outDir </> htmlFile mid
   liftIO $ writeFile outFile doc
-  updateCSSFile opts outDir
+  updateCSSFile outDir
 
 -- |Update the CSS file
-updateCSSFile :: Options -> FilePath -> CYIO ()
-updateCSSFile opts dir = do
+updateCSSFile :: FilePath -> CYIO ()
+updateCSSFile dir = do
   src <- liftIO $ getDataFileName cssFile
   let target = dir </> cssFile
   srcExists <- liftIO $ doesFileExist src
   if srcExists then liftIO $ copyFile src target
-               else warn (optWarnOpts opts) [message $ missingStyleFile src ]
+               else failMessages [message $ missingStyleFile src]
   where
   missingStyleFile f = vcat
     [ text "Could not copy CSS style file:"
@@ -72,7 +74,7 @@ docModule opts f = do
     Just src -> do
       toks  <- liftCYM $ lexSource f src
       typed@(Module _ m _ _ _) <- fullParse opts f src
-      return (m, program2html m $ genProgram f typed toks)
+      return (m, program2html m $ genProgram typed toks)
 
 -- |Return the syntax tree of the source program 'src' (type 'Module'; see
 -- Module "CurrySyntax").after inferring the types of identifiers.
@@ -111,25 +113,27 @@ program2html m codes = unlines
   , "</html>"
   ]
   where
-  titleHtml = "Module " ++ show m
+  titleHtml = "Module " ++ moduleName m
   lineHtml  = unlines $ map show [1 .. length (lines codeHtml)]
   codeHtml  = concat $ snd $ mapAccumL (code2html m) [] codes
 
 code2html :: ModuleIdent -> [QualIdent] -> Code -> ([QualIdent], String)
 code2html m defs c
-  | isCall c  = (defs, maybe tag (addHtmlLink m tag) (getQualIdent c))
+  | isCall c  = (defs, maybe tag (addEntityLink m tag) (getQualIdent c))
   | isDecl c  = case getQualIdent c of
       Just i | i `notElem` defs
         -> (i:defs, spanTag (code2class c) (escIdent i) (escCode c))
       _ -> (defs, tag)
-  | otherwise = (defs, tag)
+  | otherwise = case c of
+      ModuleName m' -> (defs, addModuleLink m m' tag)
+      _             -> (defs, tag)
   where tag = spanTag (code2class c) "" (escCode c)
 
 escCode :: Code -> String
 escCode = htmlQuote . code2string
 
 escIdent :: QualIdent -> String
-escIdent = htmlQuote . show . unqualify
+escIdent = htmlQuote . idName . unqualify
 
 spanTag :: String -> String -> String -> String
 spanTag clV idV str
@@ -144,27 +148,31 @@ spanTag clV idV str
 -- @param code
 -- @return css class of the code
 code2class :: Code -> String
-code2class (Space        _) = ""
-code2class NewLine          = ""
-code2class (Keyword      _) = "keyword"
-code2class (Pragma       _) = "pragma"
-code2class (Symbol       _) = "symbol"
-code2class (TypeCons   _ _) = "type"
-code2class (DataCons   _ _) = "cons"
-code2class (Function   _ _) = "func"
-code2class (Identifier _ _) = "ident"
-code2class (ModuleName   _) = "module"
-code2class (Commentary   _) = "comment"
-code2class (NumberCode   _) = "number"
-code2class (StringCode   _) = "string"
-code2class (CharCode     _) = "char"
+code2class (Space          _) = ""
+code2class NewLine            = ""
+code2class (Keyword        _) = "keyword"
+code2class (Pragma         _) = "pragma"
+code2class (Symbol         _) = "symbol"
+code2class (TypeCons   _ _ _) = "type"
+code2class (DataCons   _ _ _) = "cons"
+code2class (Function   _ _ _) = "func"
+code2class (Identifier _ _ _) = "ident"
+code2class (ModuleName     _) = "module"
+code2class (Commentary     _) = "comment"
+code2class (NumberCode     _) = "number"
+code2class (StringCode     _) = "string"
+code2class (CharCode       _) = "char"
 
-addHtmlLink :: ModuleIdent -> String -> QualIdent -> String
-addHtmlLink m str qid =
+addModuleLink :: ModuleIdent -> ModuleIdent -> String -> String
+addModuleLink m m' str 
+  = "<a href=\"" ++ makeRelativePath m m' ++ "\">" ++ str ++ "</a>"
+
+addEntityLink :: ModuleIdent -> String -> QualIdent -> String
+addEntityLink m str qid =
   "<a href=\"" ++ modPath ++ "#" ++ fragment  ++ "\">" ++ str ++ "</a>"
   where
   modPath       = maybe "" (makeRelativePath m) mmid
-  fragment      = string2urlencoded (show ident)
+  fragment      = string2urlencoded (idName ident)
   (mmid, ident) = (qidModule qid, qidIdent qid)
 
 makeRelativePath :: ModuleIdent -> ModuleIdent -> String
@@ -172,21 +180,21 @@ makeRelativePath cur new  | cur == new = ""
                           | otherwise  = htmlFile new
 
 htmlFile :: ModuleIdent -> String
-htmlFile m = show m ++ "_curry.html"
+htmlFile m = moduleName m ++ "_curry.html"
 
 isCall :: Code -> Bool
-isCall (TypeCons TypeExport _) = True
-isCall (TypeCons TypeImport _) = True
-isCall (TypeCons TypeRefer  _) = True
-isCall (TypeCons          _ _) = False
-isCall (Identifier        _ _) = False
+isCall (TypeCons   TypeExport _ _) = True
+isCall (TypeCons   TypeImport _ _) = True
+isCall (TypeCons   TypeRefer  _ _) = True
+isCall (TypeCons   _          _ _) = False
+isCall (Identifier _          _ _) = False
 isCall c                       = not (isDecl c) && isJust (getQualIdent c)
 
 isDecl :: Code -> Bool
-isDecl (DataCons ConsDeclare  _) = True
-isDecl (Function FuncDeclare  _) = True
-isDecl (TypeCons TypeDeclare  _) = True
-isDecl _                         = False
+isDecl (DataCons ConsDeclare _ _) = True
+isDecl (Function FuncDeclare _ _) = True
+isDecl (TypeCons TypeDeclare _ _) = True
+isDecl _                          = False
 
 -- Translates arbitrary strings into equivalent urlencoded string.
 string2urlencoded :: String -> String

@@ -36,7 +36,7 @@ import           Control.Applicative        ((<$>), (<*>))
 #endif
 import qualified Control.Monad.State as S   (State, evalState, gets, modify)
 import           Data.List                  (find)
-import           Data.Maybe                 (fromMaybe)
+import           Data.Maybe                 (fromMaybe, listToMaybe)
 
 import           Curry.Base.Ident
 import           Curry.Base.Position        (SrcRef)
@@ -140,12 +140,10 @@ ccCase :: SrcRef -> Eval -> Expression -> [Alt] -> CCM Expression
 ccCase r Flex  e alts     = return $ Case r Flex e alts
 ccCase _ Rigid _ []       = internalError $ "CaseCompletion.ccCase: "
                                          ++ "empty alternative list"
-ccCase r Rigid e as@(a:_)
-  | isConstrAlt a         = completeConsAlts r Rigid e as
-  | isLitAlt    a         = completeLitAlts  r Rigid e as
-  | isVarAlt    a         = completeVarAlts          e as
-  | otherwise             = internalError $ "CaseCompletion.ccCase: "
-                                         ++ "illegal alternative list"
+ccCase r Rigid e as@(Alt p _:_) = case p of
+  ConstructorPattern _ _ -> completeConsAlts r Rigid e as
+  LiteralPattern     _   -> completeLitAlts  r Rigid e as
+  VariablePattern    _   -> completeVarAlts          e as
 
 -- Completes a case alternative list which branches via constructor patterns
 -- by adding alternatives. Thus, case expressions of the form
@@ -183,35 +181,31 @@ completeConsAlts r ea ce alts = do
   complPats <- mapM genPat $ getComplConstrs mdl menv
                [ c | (Alt (ConstructorPattern c _) _) <- consAlts ]
   [v, w] <- newIdentList 2 "x"
-  let me = lookupDefaultAlt v
-  return $ let c = Case r ea ce consAlts
-           in  case (complPats, me) of
-                    ([] , _)       -> c
-                    (_:_, Nothing) -> c
-                    (ps , Just e') -> bindDefVar v ce w e' ps
+  return $ case (complPats, defaultAlt v) of
+            (_:_, Just e') -> bindDefVar v ce w e' complPats
+            _              -> Case r ea ce consAlts
   where
-    -- existing contructor pattern alternatives
-    consAlts = filter isConstrAlt alts
+  -- existing contructor pattern alternatives
+  consAlts = [ a | a@(Alt (ConstructorPattern _ _) _) <- alts ]
 
-    -- generate a new constructor pattern
-    genPat (qid, arity) = ConstructorPattern qid <$> newIdentList arity "x"
+  -- generate a new constructor pattern
+  genPat (qid, arity) = ConstructorPattern qid <$> newIdentList arity "x"
 
-    -- default alternative, if there is one
-    lookupDefaultAlt v =
-        fmap (\(Alt (VariablePattern x) de) -> replaceVar x (Variable v) de)
-      $ find isVarAlt alts
+  -- default alternative, if there is one
+  defaultAlt v = listToMaybe [ replaceVar x (Variable v) e
+                             | Alt (VariablePattern x) e <- alts ]
 
-    -- create a binding for @v = e@ if needed
-    bindDefVar v e w e' ps
-        | v `elem` fv e' = mkBinding v e $ mkCase (Variable v) w e' ps
-        | otherwise      = mkCase e w e' ps
+  -- create a binding for @v = e@ if needed
+  bindDefVar v e w e' ps
+    | v `elem` fv e' = mkBinding v e $ mkCase (Variable v) w e' ps
+    | otherwise      = mkCase e w e' ps
 
-    -- create a binding for @w = e'@ if needed, and a case expression
-    -- @case e of { consAlts ++ (ps -> w) }@
-    mkCase e w e' ps = case ps of
-        [p] -> Case r ea e (consAlts ++ [Alt p e'])
-        _   -> mkBinding w e'
-            $ Case r ea e (consAlts ++ [Alt p (Variable w) | p <- ps])
+  -- create a binding for @w = e'@ if needed, and a case expression
+  -- @case e of { consAlts ++ (ps -> w) }@
+  mkCase e w e' ps = case ps of
+    [p] -> Case r ea e (consAlts ++ [Alt p e'])
+    _   -> mkBinding w e'
+         $ Case r ea e (consAlts ++ [Alt p (Variable w) | p <- ps])
 
 -- If the alternatives' branches contain literal patterns, a complementary
 -- constructor list cannot be generated because it would become potentially
@@ -262,22 +256,6 @@ completeVarAlts ce (Alt p ae : _) = case p of
   _                 -> internalError $
     "CaseCompletion.completeVarAlts: variable pattern expected"
 
--- ---------------------------------------------------------------------------
--- Some functions for testing case alternatives
--- ---------------------------------------------------------------------------
-
-isVarAlt :: Alt -> Bool
-isVarAlt (Alt (VariablePattern _) _) = True
-isVarAlt _                           = False
-
-isConstrAlt :: Alt -> Bool
-isConstrAlt (Alt (ConstructorPattern _ _) _) = True
-isConstrAlt _                                = False
-
-isLitAlt :: Alt -> Bool
-isLitAlt (Alt (LiteralPattern _) _) = True
-isLitAlt _                          = False
-
 -- Smart constructor for non-recursive let-binding. @mkBinding v e e'@
 -- evaluates to @e'[v/e]@ if @e@ is a variable, or @let v = e in e'@ otherwise.
 mkBinding :: Ident -> Expression -> Expression -> Expression
@@ -304,12 +282,12 @@ replaceVar v e (Case r ev e' bs)
 replaceVar v e (Or        e1 e2)
   = Or (replaceVar v e e1) (replaceVar v e e2)
 replaceVar v e (Exist      w e')
-   | v == w                        = Exist w e'
-   | otherwise                     = Exist w (replaceVar v e e')
+   | v == w                     = Exist w e'
+   | otherwise                  = Exist w (replaceVar v e e')
 replaceVar v e (Let        b e')
-   | v `occursInBinding` b         = Let b e'
-   | otherwise                     = Let (replaceVarInBinding v e b)
-                                         (replaceVar v e e')
+   | v `occursInBinding` b      = Let b e'
+   | otherwise                  = Let (replaceVarInBinding v e b)
+                                      (replaceVar v e e')
 replaceVar v e (Letrec    bs e')
    | any (occursInBinding v) bs = Letrec bs e'
    | otherwise                     = Letrec (map (replaceVarInBinding v e) bs)

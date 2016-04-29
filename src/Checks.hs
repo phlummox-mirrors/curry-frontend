@@ -13,16 +13,17 @@
 -}
 module Checks where
 
-import qualified Checks.InterfaceCheck as IC (interfaceCheck)
-import qualified Checks.ExportCheck    as EC (exportCheck, expandExports)
-import qualified Checks.KindCheck      as KC (kindCheck)
-import qualified Checks.PrecCheck      as PC (precCheck)
-import qualified Checks.SyntaxCheck    as SC (syntaxCheck)
-import qualified Checks.TypeCheck      as TC (typeCheck)
-import qualified Checks.WarnCheck      as WC (warnCheck)
+import qualified Checks.InterfaceCheck    as IC  (interfaceCheck)
+import qualified Checks.ImportSyntaxCheck as ISC (importCheck)
+import qualified Checks.ExportCheck       as EC  (exportCheck, expandExports)
+import qualified Checks.KindCheck         as KC  (kindCheck)
+import qualified Checks.PrecCheck         as PC  (precCheck)
+import qualified Checks.SyntaxCheck       as SC  (syntaxCheck)
+import qualified Checks.TypeCheck         as TC  (typeCheck)
+import qualified Checks.WarnCheck         as WC  (warnCheck)
 
 import Curry.Base.Monad
-import Curry.Syntax (Module (..), Interface (..))
+import Curry.Syntax (Module (..), Interface (..), ImportSpec)
 
 import Base.Messages
 import CompilerEnv
@@ -36,6 +37,12 @@ interfaceCheck _ (env, intf)
   | otherwise = failMessages msgs
   where msgs = IC.interfaceCheck (opPrecEnv env) (tyConsEnv env)
                                  (valueEnv env) intf
+
+importCheck :: Monad m => Interface -> Maybe ImportSpec -> CYT m (Maybe ImportSpec)
+importCheck intf is
+  | null msgs = ok is'
+  | otherwise = failMessages msgs
+  where (is', msgs) = ISC.importCheck intf is
 
 -- |Check the kinds of type definitions and signatures.
 --

@@ -97,12 +97,11 @@ import Env.Value (ValueEnv, ValueInfo (..), bindFun, lookupValue
 -- out separately. Actually, the transformation is slightly more general than
 -- necessary as it allows value declarations at the top-level of a module.
 
-desugar :: Bool -> [KnownExtension] -> ValueEnv -> TCEnv -> Module
-        -> (Module, ValueEnv)
-desugar dsFunPats xs tyEnv tcEnv (Module ps m es is ds)
+desugar :: [KnownExtension] -> ValueEnv -> TCEnv -> Module -> (Module, ValueEnv)
+desugar xs tyEnv tcEnv (Module ps m es is ds)
   = (Module ps m es is ds', valueEnv s')
   where (ds', s') = S.runState (desugarModuleDecls ds)
-                               (DesugarState m xs tcEnv tyEnv 1 dsFunPats)
+                               (DesugarState m xs tcEnv tyEnv 1)
 
 -- ---------------------------------------------------------------------------
 -- Desugaring monad and accessor functions
@@ -121,7 +120,6 @@ data DesugarState = DesugarState
   , tyConsEnv   :: TCEnv            -- read-only
   , valueEnv    :: ValueEnv         -- will be extended
   , nextId      :: Integer          -- counter
-  , desugarFP   :: Bool             -- flat if to desugar functional patterns
   }
 
 type DsM a = S.State DesugarState a
@@ -140,9 +138,6 @@ getValueEnv = S.gets valueEnv
 
 modifyValueEnv :: (ValueEnv -> ValueEnv) -> DsM ()
 modifyValueEnv f = S.modify $ \ s -> s { valueEnv = f $ valueEnv s }
-
-desugarFunPats :: DsM Bool
-desugarFunPats = S.gets desugarFP
 
 getNextId :: DsM Integer
 getNextId = do
@@ -299,20 +294,19 @@ dsDeclRhs _ = error "Desugar.dsDeclRhs: no pattern match"
 -- Desugaring of an equation
 dsEquation :: Equation -> DsM Equation
 dsEquation (Equation p lhs rhs) = do
-  funpats        <- desugarFunPats
-  (ds1, cs, ts1) <- if funpats then do
-                                  (     cs1, ts1) <- dsNonLinearity         ts
-                                  (ds2, cs2, ts2) <- dsFunctionalPatterns p ts1
-                                  return (ds2, cs2 ++ cs1, ts2)
-                                else return ([], [], ts)
-  (ds2    , ts2) <- mapAccumM (dsPat p) [] ts1
-  rhs'           <- dsRhs p (addConstraints cs) $ addDecls (ds1 ++ ds2) $ rhs
-  return $ Equation p (FunLhs f ts2) rhs'
+  (     cs1, ts1) <- dsNonLinearity         ts
+  (ds1, cs2, ts2) <- dsFunctionalPatterns p ts1
+  (ds2,      ts3) <- mapAccumM (dsPat p) [] ts2
+  rhs'            <- dsRhs p (constrain cs2 . constrain cs1)
+                             (addDecls (ds1 ++ ds2) rhs)
+  return $ Equation p (FunLhs f ts3) rhs'
   where (f, ts) = flatLhs lhs
 
-addConstraints :: [Expression] -> Expression -> Expression
-addConstraints cs e | null cs   = e
-                    | otherwise = apply prelCond [foldr1 (&>) cs, e]
+-- Constrain an expression by a list of constraints.
+-- @constrain []  e  ==  e@
+-- @constrain c_n e  ==  (c_1 & ... & c_n) &> e@
+constrain :: [Expression] -> Expression -> Expression
+constrain cs e = if null cs then e else foldr1 (&) cs &> e
 
 -- -----------------------------------------------------------------------------
 -- Desugaring of right-hand sides
@@ -339,7 +333,7 @@ expandGuards e0 es = do
   return $ if boolGuards tyEnv es then foldr mkIfThenElse e0 es else mkCond es
   where
   mkIfThenElse (CondExpr p g e) = IfThenElse (srcRefOf p) g e
-  mkCond [CondExpr _ g e] = apply prelCond [g, e]
+  mkCond [CondExpr _ g e] = g &> e
   mkCond _                = error "Desugar.expandGuards.mkCond: non-unary list"
 
 boolGuards :: ValueEnv -> [CondExpr] -> Bool
@@ -895,6 +889,15 @@ negateLiteral _            = internalError "Desugar.negateLiteral"
 -- Prelude entities
 -- ---------------------------------------------------------------------------
 
+prel :: String -> SrcRef -> Expression
+prel s r = Variable $ addRef r $ preludeIdent s
+
+prelude :: String -> Expression
+prelude = Variable . preludeIdent
+
+preludeIdent :: String -> QualIdent
+preludeIdent = qualifyWith preludeMIdent . mkIdent
+
 prelBind :: SrcRef -> Expression
 prelBind = prel ">>="
 
@@ -902,28 +905,28 @@ prelBind_ :: SrcRef -> Expression
 prelBind_ = prel ">>"
 
 prelFlip :: Expression
-prelFlip = Variable $ preludeIdent "flip"
+prelFlip = prelude "flip"
 
 prelEnumFrom :: Expression
-prelEnumFrom = Variable $ preludeIdent "enumFrom"
+prelEnumFrom = prelude "enumFrom"
 
 prelEnumFromTo :: Expression
-prelEnumFromTo = Variable $ preludeIdent "enumFromTo"
+prelEnumFromTo = prelude "enumFromTo"
 
 prelEnumFromThen :: Expression
-prelEnumFromThen = Variable $ preludeIdent "enumFromThen"
+prelEnumFromThen = prelude "enumFromThen"
 
 prelEnumFromThenTo :: Expression
-prelEnumFromThenTo = Variable $ preludeIdent "enumFromThenTo"
+prelEnumFromThenTo = prelude "enumFromThenTo"
 
 prelFailed :: Expression
-prelFailed = Variable $ preludeIdent "failed"
+prelFailed = prelude "failed"
 
 prelUnknown :: Expression
-prelUnknown = Variable $ preludeIdent "unknown"
+prelUnknown = prelude "unknown"
 
 prelMap :: SrcRef -> Expression
-prelMap r = Variable $ addRef r $ preludeIdent "map"
+prelMap = prel "map"
 
 prelFoldr :: SrcRef -> Expression
 prelFoldr = prel "foldr"
@@ -935,40 +938,28 @@ prelConcatMap :: SrcRef -> Expression
 prelConcatMap = prel "concatMap"
 
 prelNegate :: Expression
-prelNegate = Variable $ preludeIdent "negate"
+prelNegate = prelude "negate"
 
 prelNegateFloat :: Expression
-prelNegateFloat = Variable $ preludeIdent "negateFloat"
-
-prelCond :: Expression
-prelCond = Variable $ preludeIdent "cond"
+prelNegateFloat = prelude "negateFloat"
 
 (=:<=) :: Expression -> Expression -> Expression
-e1 =:<= e2 = apply prelFPEq [e1, e2]
-
-prelFPEq :: Expression
-prelFPEq = Variable $ preludeIdent "=:<="
+e1 =:<= e2 = apply (prelude "=:<=") [e1, e2]
 
 (=:=) :: Expression -> Expression -> Expression
-e1 =:= e2 = apply prelSEq [e1, e2]
-
-prelSEq :: Expression
-prelSEq = Variable $ preludeIdent "=:="
+e1 =:= e2 = apply (prelude "=:=") [e1, e2]
 
 (&>) :: Expression -> Expression -> Expression
-e1 &> e2 = apply prelCond [e1, e2]
+e1 &> e2 = apply (prelude "cond") [e1, e2]
 
-prel :: String -> SrcRef -> Expression
-prel s r = Variable $ addRef r $ preludeIdent s
+(&) :: Expression -> Expression -> Expression
+e1 & e2 = apply (prelude "&") [e1, e2]
 
 truePat :: Pattern
 truePat = ConstructorPattern qTrueId []
 
 falsePat :: Pattern
 falsePat = ConstructorPattern qFalseId []
-
-preludeIdent :: String -> QualIdent
-preludeIdent = qualifyWith preludeMIdent . mkIdent
 
 -- ---------------------------------------------------------------------------
 -- Auxiliary definitions
