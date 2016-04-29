@@ -18,18 +18,23 @@
     constructor involved.
 -}
 
-module Env.InstEnv
-  ( InstIdent, InstInfo
+module Env.Instance
+  ( InstIdent, ppInstIdent, InstInfo
   , InstEnv, initInstEnv, bindInstInfo, lookupInstInfo
   ) where
 
+import qualified Data.Map as Map (Map, empty, insert, lookup)
+
 import Curry.Base.Ident
+import Curry.Base.Pretty
+import Curry.Syntax.Pretty
 
 import Base.Types
 
-import qualified Data.Map as Map (Map, empty, insert, lookup)
-
 type InstIdent = (QualIdent, QualIdent)
+
+ppInstIdent :: InstIdent -> Doc
+ppInstIdent (qcls, qtc) = ppQIdent qcls <+> ppQIdent qtc
 
 type InstInfo = (ModuleIdent, PredSet)
 

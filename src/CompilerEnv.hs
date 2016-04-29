@@ -21,7 +21,7 @@ import Curry.Syntax
 
 import Base.TopEnv (allLocalBindings)
 
-import Env.InstEnv
+import Env.Instance
 import Env.Interface
 import Env.ModuleAlias (AliasEnv, initAliasEnv)
 import Env.OpPrec

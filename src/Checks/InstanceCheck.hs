@@ -30,7 +30,7 @@ import Base.TopEnv
 import Base.Types
 import Base.Utils (findMultiples)
 
-import Env.InstEnv
+import Env.Instance
 import Env.TypeConstructor
 
 instanceCheck :: ModuleIdent -> TCEnv -> InstEnv -> [Decl]
@@ -182,8 +182,6 @@ errMultipleInstances [] = internalError
 errMultipleInstances is = message $
   text "Multiple instances for the same class and type" $+$
     nest 2 (vcat (map ppInstIdent is))
-  where
-    ppInstIdent (qcls, qtc) = ppQIdent qcls <+> ppQIdent qtc
 
 errMissingInstance :: Position -> Pred -> Message
 errMissingInstance pos p = posMessage pos $ hsep
