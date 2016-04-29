@@ -12,7 +12,7 @@ import Control.Monad.Writer  (liftIO)
 import Data.List             (intercalate)
 import System.FilePath       (replaceExtension)
 
-import Curry.Base.Monad      (CYIO, liftCYM, failMessages, runCYM)
+import Curry.Base.Monad      (CYIO, liftCYM, failMessages, runCYMIgnWarn)
 import Curry.Base.Position   (Position (..))
 import Curry.Base.Pretty     (text)
 import Curry.Files.Filenames (addCurrySubdirModule)
@@ -55,7 +55,7 @@ formatToken f = do
   mbModule <- liftIO $ readModule f
   case mbModule of
     Nothing  -> failMessages [message $ text $ "Missing file: " ++ f]
-    Just src -> return $ runCYM (lexSource f src)
+    Just src -> return $ runCYMIgnWarn (lexSource f src)
 
 -- |Show tokens and their value if needed
 showToken :: Token -> String
@@ -86,7 +86,6 @@ showToken t =
     Token Backquote NoAttributes    -> "Backquote"
 
 -- layout
-    Token LeftBraceSemicolon NoAttributes -> "LeftBracketSemicolon"
     Token VSemicolon NoAttributes         -> "VSemicolon"
     Token VRightBrace NoAttributes        -> "VRightBrace"
 
