@@ -184,10 +184,10 @@ ok = return ()
 -- currently being checked, if any.
 -- data X = X
 -- f = let g = lookup 42 in g [1,2,3]
--- While `X' is being checked `curGlobalFunc' should be `Nothing', while `lookup'
--- is being checked is should be `f's identifier.
+-- While `X' is being checked `curGlobalFunc' should be `Nothing',
+-- while `lookup' is being checked is should be `f's identifier.
 -- globalDeps collects all dependencies (other functions) of global functions
--- funcPats collects all functional patterns and and the global function they're
+-- funcPats collects all functional patterns and the global function they're
 -- used in
 data FuncDeps = FuncDeps
   { curGlobalFunc :: Maybe QualIdent
