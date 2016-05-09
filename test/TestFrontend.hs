@@ -133,6 +133,7 @@ passInfos = map mkPassTest
   , "ExplicitLayout"
   , "FCase"
   , "FP_Lifting"
+  , "FP_NonCyclic"
   , "FP_NonLinearity"
   , "FunctionalPatterns"
   , "HaskellRecords"
@@ -186,6 +187,7 @@ failInfos = map (uncurry mkFailTest)
   , ("ExportCheck/UndefinedElement", ["`foo' is not a constructor or label of type `Bool'"])
   , ("ExportCheck/UndefinedName", ["Undefined name `foo' in export list"])
   , ("ExportCheck/UndefinedType", ["Undefined type `Foo' in export list"])
+  , ("FP_Cyclic", ["Function `g' used in functional pattern depends on `f'  causing a cyclic dependency"])
   , ("FP_Restrictions",
       [ "Functional patterns are not supported inside a case expression"
       , "Functional patterns are not supported inside a case expression"
@@ -193,6 +195,7 @@ failInfos = map (uncurry mkFailTest)
       , "Functional patterns are not supported inside a do sequence"
       ]
     )
+  , ("FP_NonGlobal", ["Function `f1' in functional pattern is not global"])
   , ("ImportError",
       [ "Module Prelude does not export foo"
       , "Module Prelude does not export bar"
