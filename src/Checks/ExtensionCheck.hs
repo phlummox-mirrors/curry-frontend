@@ -23,7 +23,7 @@ import Base.Messages (Message, posMessage)
 
 import CompilerOpts
 
-extensionCheck :: Options -> Module -> ([KnownExtension], [Message])
+extensionCheck :: Options -> Module a -> ([KnownExtension], [Message])
 extensionCheck opts mdl = execEXC (checkModule mdl) initState
   where
     initState = EXCState (optExtensions opts) []
@@ -52,7 +52,7 @@ ok = return ()
 -- gathers all extensions mentioned in a language pragma. An error is reported
 -- if an extension is unkown.
 
-checkModule :: Module -> EXCM ()
+checkModule :: Module a -> EXCM ()
 checkModule (Module ps _ _ _ _) = mapM_ checkPragma ps
 
 checkPragma :: ModulePragma -> EXCM ()
