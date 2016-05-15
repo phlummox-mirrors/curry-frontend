@@ -51,8 +51,8 @@ import Env.Type
 -- type classes are added to this environment and the declarations are checked
 -- within this environment.
 
-typeSyntaxCheck :: [KnownExtension] -> TCEnv -> Module
-                -> ((Module, [KnownExtension]), [Message])
+typeSyntaxCheck :: [KnownExtension] -> TCEnv -> Module a
+                -> ((Module a, [KnownExtension]), [Message])
 typeSyntaxCheck exts tcEnv mdl@(Module _ m _ _ ds) =
   case findMultiples $ map getIdent tcds of
     [] -> runTSCM (checkModule mdl) state
@@ -93,7 +93,7 @@ report err = S.modify (\s -> s { errors = err : errors s })
 ok :: TSCM ()
 ok = return ()
 
-bindType :: ModuleIdent -> Decl -> TypeEnv -> TypeEnv
+bindType :: ModuleIdent -> Decl a -> TypeEnv -> TypeEnv
 bindType m (DataDecl _ tc _ cs) = bindTypeKind m tc (Data qtc ids)
   where
     qtc = qualifyWith m tc
@@ -116,13 +116,13 @@ bindType _ _ = id
 -- the right hand side. Function and pattern declarations must be
 -- traversed because they can contain local type signatures.
 
-checkModule :: Module -> TSCM (Module, [KnownExtension])
+checkModule :: Module a -> TSCM (Module a, [KnownExtension])
 checkModule (Module ps m es is ds) = do
   ds' <- mapM checkDecl ds
   exts <- getExtensions
   return (Module ps m es is ds', exts)
 
-checkDecl :: Decl -> TSCM Decl
+checkDecl :: Decl a -> TSCM (Decl a)
 checkDecl (DataDecl p tc tvs cs) = do
   checkTypeLhs tvs
   cs'  <- mapM (checkConstrDecl tvs) cs
@@ -137,12 +137,12 @@ checkDecl (TypeDecl p tc tvs ty) = do
   return $ TypeDecl p tc tvs ty'
 checkDecl (TypeSig p vs qty) =
   TypeSig p vs <$> checkQualType qty
-checkDecl (FunctionDecl p f eqs) =
-  FunctionDecl p f <$> mapM checkEquation eqs
+checkDecl (FunctionDecl a p f eqs) =
+  FunctionDecl a p f <$> mapM checkEquation eqs
 checkDecl (PatternDecl p t rhs) =
   PatternDecl p t <$> checkRhs rhs
-checkDecl (ForeignDecl p cc ie f ty) =
-  ForeignDecl p cc ie f <$> checkType ty
+checkDecl (ForeignDecl p cc ie a f ty) =
+  ForeignDecl p cc ie a f <$> checkType ty
 checkDecl (ClassDecl p cx cls clsvar ds) = do
   checkTypeVars "class declaration" [clsvar]
   cx' <- checkClosedContext [clsvar] cx
@@ -199,7 +199,7 @@ checkSimpleConstraint c@(Constraint _ ty) =
 -- The class variable must appear in the method's type and the method's
 -- context must not contain any additional constraints for that class variable.
 
-checkClassMethod :: Ident -> Decl -> TSCM ()
+checkClassMethod :: Ident -> Decl a -> TSCM ()
 checkClassMethod tv (TypeSig p _ qty) = do
   unless (tv `elem` fv qty) $ report $ errAmbiguousType p tv
   let QualTypeExpr cx _ = qty
@@ -241,29 +241,29 @@ checkTypeVars what (tv : tvs) = do
 -- only traverse the structure of expressions in order to find local
 -- declaration groups.
 
-checkEquation :: Equation -> TSCM Equation
+checkEquation :: Equation a -> TSCM (Equation a)
 checkEquation (Equation p lhs rhs) = Equation p lhs <$> checkRhs rhs
 
-checkRhs :: Rhs -> TSCM Rhs
+checkRhs :: Rhs a -> TSCM (Rhs a)
 checkRhs (SimpleRhs p e ds) = SimpleRhs p <$> checkExpr e <*> mapM checkDecl ds
 checkRhs (GuardedRhs es ds) = GuardedRhs  <$> mapM checkCondExpr es
                                           <*> mapM checkDecl ds
 
-checkCondExpr :: CondExpr -> TSCM CondExpr
+checkCondExpr :: CondExpr a -> TSCM (CondExpr a)
 checkCondExpr (CondExpr p g e) = CondExpr p <$> checkExpr g <*> checkExpr e
 
-checkExpr :: Expression -> TSCM Expression
-checkExpr l@(Literal             _) = return l
-checkExpr v@(Variable            _) = return v
-checkExpr c@(Constructor         _) = return c
+checkExpr :: Expression a -> TSCM (Expression a)
+checkExpr l@(Literal           _ _) = return l
+checkExpr v@(Variable          _ _) = return v
+checkExpr c@(Constructor       _ _) = return c
 checkExpr (Paren                 e) = Paren <$> checkExpr e
 checkExpr (Typed             e qty) = Typed <$> checkExpr e
                                             <*> checkQualType qty
-checkExpr (Record             c fs) = Record c <$> mapM checkFieldExpr fs
+checkExpr (Record           a c fs) = Record a c <$> mapM checkFieldExpr fs
 checkExpr (RecordUpdate       e fs) = RecordUpdate <$> checkExpr e
                                                    <*> mapM checkFieldExpr fs
 checkExpr (Tuple              p es) = Tuple p <$> mapM checkExpr es
-checkExpr (List               p es) = List  p <$> mapM checkExpr es
+checkExpr (List             a p es) = List a p <$> mapM checkExpr es
 checkExpr (ListCompr        p e qs) = ListCompr p <$> checkExpr e
                                                  <*> mapM checkStmt qs
 checkExpr (EnumFrom              e) = EnumFrom <$> checkExpr e
@@ -290,15 +290,15 @@ checkExpr (IfThenElse   r e1 e2 e3) = IfThenElse r <$> checkExpr e1
 checkExpr (Case        r ct e alts) = Case r ct <$> checkExpr e
                                                 <*> mapM checkAlt alts
 
-checkStmt :: Statement -> TSCM Statement
+checkStmt :: Statement a -> TSCM (Statement a)
 checkStmt (StmtExpr   p e) = StmtExpr p <$> checkExpr e
 checkStmt (StmtBind p t e) = StmtBind p t <$> checkExpr e
 checkStmt (StmtDecl    ds) = StmtDecl <$> mapM checkDecl ds
 
-checkAlt :: Alt -> TSCM Alt
+checkAlt :: Alt a -> TSCM (Alt a)
 checkAlt (Alt p t rhs) = Alt p t <$> checkRhs rhs
 
-checkFieldExpr :: Field Expression -> TSCM (Field Expression)
+checkFieldExpr :: Field (Expression a) -> TSCM (Field (Expression a))
 checkFieldExpr (Field p l e) = Field p l <$> checkExpr e
 
 -- The parser cannot distinguish unqualified nullary type constructors
@@ -381,7 +381,7 @@ checkUsedExtension pos msg ext = do
 -- Auxiliary definitions
 -- ---------------------------------------------------------------------------
 
-getIdent :: Decl -> Ident
+getIdent :: Decl a -> Ident
 getIdent (DataDecl       _ tc _ _) = tc
 getIdent (NewtypeDecl    _ tc _ _) = tc
 getIdent (TypeDecl       _ tc _ _) = tc
