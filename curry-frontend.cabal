@@ -97,7 +97,7 @@ Library
     , Interfaces
     , Modules
     , ModuleSummary
-    , Token.TokenStream
+    , TokenStream
     , Transformations
     , Transformations.CaseCompletion
     , Transformations.CurryToIL
