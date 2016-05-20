@@ -121,7 +121,6 @@ Executable cymake
     , directory
     , filepath
     , mtl
-    , multimap
     , process
     , syb
     , transformers
