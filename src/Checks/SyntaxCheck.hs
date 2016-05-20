@@ -28,13 +28,14 @@ module Checks.SyntaxCheck (syntaxCheck) where
 #if __GLASGOW_HASKELL__ < 710
 import           Control.Applicative        ((<$>), (<*>))
 #endif
-import Control.Monad                      (unless, when)
+import           Control.Monad            (unless, when)
 import qualified Control.Monad.State as S (State, runState, gets, modify)
-import Data.List                          (insertBy, intersect, nub, partition)
-import qualified Data.Map as Map          (fromList, lookup)
-import Data.Maybe                         (isJust, isNothing, fromMaybe)
-import qualified Data.Set as Set          (empty, insert, member, toList)
-import qualified Data.SetMap as SMap      (SetMap, (!), empty, insert, keys)
+import           Data.List                (insertBy, intersect, nub, partition)
+import qualified Data.Map  as Map         (Map, empty, findWithDefault, fromList
+                                          , insertWith, keys)
+import           Data.Maybe               (isJust, isNothing)
+import qualified Data.Set as Set          (Set, empty, insert, member, singleton
+                                          , union, toList)
 
 import Curry.Base.Ident
 import Curry.Base.Position
@@ -194,41 +195,39 @@ data FuncDeps = FuncDeps
   , globalDeps    :: GlobalDeps
   , funcPats      :: [(QualIdent, QualIdent)]
   }
-type GlobalDeps = SMap.SetMap QualIdent QualIdent
+type GlobalDeps = Map.Map QualIdent (Set.Set QualIdent)
 
 -- |Initial state for FuncDeps
 noFuncDeps :: FuncDeps
-noFuncDeps = FuncDeps Nothing SMap.empty []
+noFuncDeps = FuncDeps Nothing Map.empty []
 
 -- |Perform an action inside a function, settìng `curGlobalFunc' to that function
 inFunc :: Ident -> SCM a -> SCM a
 inFunc i scm = do
-  m        <- getModuleIdent
-  let f = qualifyWith m i
+  m      <- getModuleIdent
   global <- isNothing <$> S.gets (curGlobalFunc . funcDeps)
-  when global $ modifyFuncDeps $ \ fd -> fd { curGlobalFunc = Just f }
-  ret      <- scm
+  when global $ modifyFuncDeps $ \ fd -> fd { curGlobalFunc = Just (qualifyWith m i) }
+  res    <- scm
   when global $ modifyFuncDeps $ \ fd -> fd { curGlobalFunc = Nothing }
-  return ret
+  return res
 
 -- |Add a dependency to `curGlobalFunction'
 addGlobalDep :: QualIdent -> SCM ()
 addGlobalDep dep = do
   maybeF <- S.gets (curGlobalFunc . funcDeps)
-  when (isNothing maybeF) $
-    internalError "SyntaxCheck.addGlobalDep: no global function set"
-  let Just f = maybeF
-  modifyFuncDeps $ \ fd -> fd { globalDeps = SMap.insert f dep (globalDeps fd) }
+  case maybeF of
+    Nothing -> internalError "SyntaxCheck.addFuncPat: no global function set"
+    Just  f -> modifyFuncDeps $ \ fd -> fd
+                { globalDeps = Map.insertWith (Set.union) f
+                              (Set.singleton dep) (globalDeps fd) }
 
 -- |Add a functional pattern to `curGlobalFunction'
 addFuncPat :: QualIdent -> SCM ()
 addFuncPat fp = do
   maybeF <- S.gets (curGlobalFunc . funcDeps)
-  when (isNothing maybeF) $
-    internalError "SyntaxCheck.addFuncPat: no global function set"
-  let Just f = maybeF
-  modifyFuncDeps $ \ fd ->
-                       fd { funcPats = (fp, f) : funcPats fd }
+  case maybeF of
+    Nothing -> internalError "SyntaxCheck.addFuncPat: no global function set"
+    Just  f -> modifyFuncDeps $ \ fd -> fd { funcPats = (fp, f) : funcPats fd }
 
 -- |Return dependencies of global functions
 getGlobalDeps :: SCM GlobalDeps
@@ -418,16 +417,17 @@ checkExtension (UnknownExtension p e) = report $ errUnknownExtension p e
 -- |(depends on its own global function)
 checkFuncPatDeps :: SCM ()
 checkFuncPatDeps = do
-    fps  <- getFuncPats
-    deps <- getGlobalDeps
-    let depLists    = scc (:[]) (Set.toList . (SMap.!) deps) (SMap.keys deps)
-        levelList   = concat $ zipWith (\l n -> zip l (repeat n)) depLists [1..]
-        levels      = Map.fromList levelList
-        funcLevel f = fromMaybe 0 $ Map.lookup f levels :: Integer
-    mapM_ (checkFuncPatDep funcLevel) fps
+  fps  <- getFuncPats
+  deps <- getGlobalDeps
+  let levels   = scc (:[])
+                     (\k -> Set.toList (Map.findWithDefault (Set.empty) k deps))
+                     (Map.keys deps)
+      levelMap = Map.fromList [ (f, l) | (fs, l) <- zip levels [1 ..], f <- fs ]
+      level f  = Map.findWithDefault (0 :: Int) f levelMap
+  mapM_ (checkFuncPatDep level) fps
 
 checkFuncPatDep :: Ord a => (QualIdent -> a) -> (QualIdent, QualIdent) -> SCM ()
-checkFuncPatDep funcLevel (fp, f) = unless (funcLevel fp < funcLevel f) $
+checkFuncPatDep level (fp, f) = unless (level fp < level f) $
   report $ errFuncPatCyclic fp f
 
 checkTopDecls :: [Decl] -> SCM [Decl]
