@@ -9,47 +9,12 @@
     and positions of a Curry source module into a separate file.
 -}
 
-module TokenStream (source2token) where
+module TokenStream (showTokenStream) where
 
-import Control.Monad.Writer  (liftIO)
 import Data.List             (intercalate)
-import System.FilePath       (replaceExtension)
 
-import Curry.Base.Ident      (ModuleIdent)
-import Curry.Base.Monad      (CYIO, liftCYM, failMessages)
 import Curry.Base.Position   (Position (..))
-import Curry.Base.Pretty     (text)
-import Curry.Files.Filenames (addCurrySubdirModule)
-import Curry.Files.PathUtils (readModule)
-import Curry.Syntax          ( Module (..)
-                             , Token (..), Category (..), Attributes (..)
-                             , lexSource, parseHeader, patchModuleId
-                             )
-import Base.Messages         (message)
-import CompilerOpts          (Options (..))
-import CurryBuilder          (findCurry)
-
--- |Write list of positions and tokens into a file.
--- TODO: To get the name of the module its header is getting parsed.
---       This should be improved because there shouldn't be done any
---       parsing when extracting only the TokenStream.
-source2token :: Options -> String -> CYIO ()
-source2token opts s = do
-  srcFile <- findCurry opts s
-  mModule <- liftIO (readModule srcFile)
-  case mModule of
-    Nothing  -> failMessages [message $ text $ "Missing file: " ++ srcFile]
-    Just src -> do
-      posToks <- liftCYM (lexSource   srcFile src)
-      header  <- liftCYM (parseHeader srcFile src)
-      let Module _ mid _ _ _ = patchModuleId srcFile header
-          outFile = tokenFile (optUseSubdir opts) mid srcFile
-      liftIO $ writeFile outFile (showTokenStream posToks)
-
-tokenFile :: Bool -> ModuleIdent -> FilePath -> FilePath
-tokenFile useSubdir m fn = replaceExtension
-                           (addCurrySubdirModule useSubdir m fn)
-                           ".token"
+import Curry.Syntax          (Token (..), Category (..), Attributes (..))
 
 -- Show a list of 'Position' and 'Token' tuples.
 -- The list is split into one tuple on each line to increase readability.

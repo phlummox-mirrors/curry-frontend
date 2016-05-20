@@ -17,8 +17,8 @@ module CurryBuilder (buildCurry, findCurry) where
 
 import Control.Monad   (foldM, liftM)
 import Data.Char       (isSpace)
-import Data.Maybe      (catMaybes, mapMaybe)
-import System.FilePath (normalise)
+import Data.Maybe      (catMaybes, fromMaybe, mapMaybe)
+import System.FilePath ((</>), normalise)
 
 import Curry.Base.Ident
 import Curry.Base.Monad
@@ -153,18 +153,19 @@ process opts idx m fn deps
   skip    = status opts $ compMessage idx "Skipping" m (fn, head destFiles)
   compile = do
     status opts $ compMessage idx "Compiling" m (fn, head destFiles)
-    compileModule opts fn
+    compileModule opts m fn
 
   tgtDir = addCurrySubdirModule (optUseSubdir opts) m
 
-  destFiles = [ tgtDir (gen fn)
-              | (tgt, gen) <- nameGens, tgt `elem` optTargetTypes opts]
+  destFiles = [ gen fn | (t, gen) <- nameGens, t `elem` optTargetTypes opts]
   nameGens  =
-    [ (FlatCurry            , flatName     )
-    , (ExtendedFlatCurry    , extFlatName  )
-    , (AbstractCurry        , acyName      )
-    , (UntypedAbstractCurry , uacyName     )
-    , (Parsed               , sourceRepName)
+    [ (Tokens               , tgtDir . tokensName   )
+    , (Parsed               , tgtDir . sourceRepName)
+    , (FlatCurry            , tgtDir . flatName     )
+    , (ExtendedFlatCurry    , tgtDir . extFlatName  )
+    , (AbstractCurry        , tgtDir . acyName      )
+    , (UntypedAbstractCurry , tgtDir . uacyName     )
+    , (Html                 , const (fromMaybe "." (optHtmlDir opts) </> htmlName m))
     ]
 
 -- |Create a status message like

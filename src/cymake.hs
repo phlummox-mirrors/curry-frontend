@@ -2,7 +2,7 @@
     Module      :  $Header$
     Description :  Main module
     Copyright   :  (c) 2005        Martin Engelke
-                       2011 - 2014 Björn Peemöller
+                       2011 - 2016 Björn Peemöller
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
@@ -18,8 +18,6 @@ import Curry.Base.Monad (runCYIO)
 
 import Base.Messages
 import Files.CymakePath (cymakeGreeting, cymakeVersion)
-import Html.CurryHtml   (source2html)
-import TokenStream      (source2token)
 
 import CurryBuilder     (buildCurry)
 import CompilerOpts     (Options (..), CymakeMode (..), getCompilerOpts, usage)
@@ -30,23 +28,15 @@ main = getCompilerOpts >>= cymake
 
 -- |Invoke the curry builder w.r.t the command line arguments
 cymake :: (String, Options, [String], [String]) -> IO ()
-cymake (prog, opts, files, errs)
-  | mode == ModeHelp           = printUsage prog
-  | mode == ModeVersion        = printVersion
-  | mode == ModeNumericVersion = printNumericVersion
-  | not $ null errs            = badUsage prog errs
-  | null files                 = badUsage prog ["no input files"]
-  | mode == ModeHtml           =
-    runCYIO (mapM_ (source2html  opts) files) >>= okOrAbort
-  | mode == ModeToken          =
-    runCYIO (mapM_ (source2token opts) files) >>= okOrAbort
-  | otherwise                  =
-    runCYIO (mapM_ (buildCurry   opts) files) >>= okOrAbort
-  where
-  mode                 = optMode opts
-  warnOpts             = optWarnOpts opts
-  okOrAbort            = either abortWithMessages continueWithMessages
-  continueWithMessages = warnOrAbort warnOpts . snd
+cymake (prog, opts, files, errs) = case optMode opts of
+  ModeHelp             -> printUsage prog
+  ModeVersion          -> printVersion
+  ModeNumericVersion   -> printNumericVersion
+  ModeMake | not (null errs) -> badUsage prog errs
+           | null files      -> badUsage prog ["No input files"]
+           | otherwise       -> runCYIO (mapM_ (buildCurry opts) files) >>=
+                                either abortWithMessages continueWithMessages
+  where continueWithMessages = warnOrAbort (optWarnOpts opts) . snd
 
 -- |Print the usage information of the command line tool
 printUsage :: String -> IO ()

@@ -56,9 +56,11 @@ import CompilerEnv
 import CompilerOpts
 import Exports
 import Generators
+import Html.CurryHtml (source2html)
 import Imports
 import Interfaces (loadInterfaces)
 import ModuleSummary
+import TokenStream (showTokenStream)
 import Transformations
 
 -- The function 'compileModule' is the main entry-point of this
@@ -77,26 +79,41 @@ import Transformations
 -- The compiler automatically loads the prelude when compiling any
 -- module, except for the prelude itself, by adding an appropriate import
 -- declaration to the module.
-compileModule :: Options -> FilePath -> CYIO ()
-compileModule opts fn = do
-  (env, mdl) <- loadAndCheckModule opts fn
-  liftIO $ writeOutput opts fn (env, mdl)
+compileModule :: Options -> ModuleIdent -> FilePath -> CYIO ()
+compileModule opts m fn = do
+  mdl <- loadAndCheckModule opts m fn
+  writeTokens opts (fst mdl)
+  writeParsed opts mdl
+  writeHtml   opts (qual mdl)
+  mdl' <- expandExports opts mdl
+  qmdl <- dumpWith opts CS.showModule CS.ppModule DumpQualified $ qual mdl'
+  writeAbstractCurry opts qmdl
+  -- generate interface file
+  let intf = uncurry exportInterface qmdl
+  writeInterface opts (fst mdl') intf
+  when withFlat $ do
+    (env2, il) <- transModule opts qmdl
+    -- generate target code
+    let modSum = summarizeModule (tyConsEnv env2) intf (snd qmdl)
+    writeFlat opts env2 modSum il
+  where
+  withFlat = any (`elem` optTargetTypes opts) [FlatCurry, ExtendedFlatCurry]
 
-loadAndCheckModule :: Options -> FilePath -> CYIO (CompEnv CS.Module)
-loadAndCheckModule opts fn = do
-  (env, mdl) <- loadModule opts fn >>= checkModule opts
-  warnMessages $ warnCheck opts env mdl
-  return (env, mdl)
+loadAndCheckModule :: Options -> ModuleIdent -> FilePath
+                   -> CYIO (CompEnv CS.Module)
+loadAndCheckModule opts m fn = do
+  ce <- loadModule opts m fn >>= checkModule opts
+  warnMessages $ uncurry (warnCheck opts) ce
+  return ce
 
 -- ---------------------------------------------------------------------------
 -- Loading a module
 -- ---------------------------------------------------------------------------
 
-loadModule :: Options -> FilePath -> CYIO (CompEnv CS.Module)
-loadModule opts fn = do
-  parsed <- parseModule opts fn
-  -- check module header
-  mdl    <- checkModuleHeader opts fn parsed
+loadModule :: Options -> ModuleIdent -> FilePath -> CYIO (CompEnv CS.Module)
+loadModule opts m fn = do
+  -- parse and check module header
+  (toks, mdl) <- parseModule opts m fn
   -- load the imported interfaces into an InterfaceEnv
   let paths = map (addCurrySubdir (optUseSubdir opts))
                   ("." : optImportPaths opts)
@@ -105,17 +122,21 @@ loadModule opts fn = do
   is     <- importSyntaxCheck iEnv mdl
   -- add information of imported modules
   cEnv   <- importModules mdl iEnv is
-  return (cEnv, mdl)
+  return (cEnv { filePath = fn, tokens = toks }, mdl)
 
-parseModule :: Options -> FilePath -> CYIO CS.Module
-parseModule opts fn = do
+parseModule :: Options -> ModuleIdent -> FilePath
+            -> CYIO ([(Position, CS.Token)], CS.Module)
+parseModule opts m fn = do
   mbSrc <- liftIO $ readModule fn
   case mbSrc of
     Nothing  -> failMessages [message $ text $ "Missing file: " ++ fn]
     Just src -> do
-      ul    <- liftCYM $ CS.unlit fn src
-      prepd <- preprocess (optPrepOpts opts) fn ul
-      liftCYM $ CS.parseModule fn prepd
+      ul      <- liftCYM $ CS.unlit     fn src
+      posToks <- liftCYM $ CS.lexSource fn ul
+      prepd   <- preprocess (optPrepOpts opts) fn ul
+      ast     <- liftCYM $ CS.parseModule fn prepd
+      checked <- checkModuleHeader opts m fn ast
+      return (posToks, checked)
 
 preprocess :: PrepOpts -> FilePath -> String -> CYIO String
 preprocess opts fn src
@@ -143,26 +164,22 @@ withTempFile act = do
   removeFile fn
   return res
 
-checkModuleHeader :: Monad m => Options -> FilePath -> CS.Module
+checkModuleHeader :: Monad m => Options -> ModuleIdent -> FilePath -> CS.Module
                   -> CYT m CS.Module
-checkModuleHeader opts fn = checkModuleId fn
-                          . importPrelude opts
-                          . CS.patchModuleId fn
+checkModuleHeader opts m fn = checkModuleId m
+                            . importPrelude opts
+                            . CS.patchModuleId fn
 
 -- |Check whether the 'ModuleIdent' and the 'FilePath' fit together
-checkModuleId :: Monad m => FilePath -> CS.Module
-              -> CYT m CS.Module
-checkModuleId fn m@(CS.Module _ mid _ _ _)
-  | last (midQualifiers mid) == takeBaseName fn
-  = ok m
-  | otherwise
-  = failMessages [errModuleFileMismatch mid]
+checkModuleId :: Monad m => ModuleIdent -> CS.Module -> CYT m CS.Module
+checkModuleId mid m@(CS.Module _ mid' _ _ _)
+  | mid == mid' = ok m
+  | otherwise   = failMessages [errModuleFileMismatch mid']
 
 -- An implicit import of the prelude is added to the declarations of
 -- every module, except for the prelude itself, or when the import is disabled
 -- by a compiler option. If no explicit import for the prelude is present,
 -- the prelude is imported unqualified, otherwise a qualified import is added.
-
 importPrelude :: Options -> CS.Module -> CS.Module
 importPrelude opts m@(CS.Module ps mid es is ds)
     -- the Prelude itself
@@ -218,7 +235,7 @@ checkModule opts mdl = do
 -- Translating a module
 -- ---------------------------------------------------------------------------
 
-transModule :: Options -> CompEnv CS.Module -> IO (CompEnv IL.Module)
+transModule :: Options -> CompEnv CS.Module -> CYIO (CompEnv IL.Module)
 transModule opts mdl = do
   desugared   <- dumpCS DumpDesugared     $ desugar      mdl
   simplified  <- dumpCS DumpSimplified    $ simplify     desugared
@@ -234,23 +251,6 @@ transModule opts mdl = do
 -- Writing output
 -- ---------------------------------------------------------------------------
 
-writeOutput :: Options -> FilePath -> CompEnv CS.Module -> IO ()
-writeOutput opts fn mdl@(_, modul) = do
-  writeParsed opts fn modul
-  mdl' <- expandExports opts mdl
-  qmdl <- dumpWith opts CS.showModule CS.ppModule DumpQualified $ qual mdl'
-  writeAbstractCurry opts fn qmdl
-  -- generate interface file
-  let intf = uncurry exportInterface qmdl
-  writeInterface opts fn intf
-  when withFlat $ do
-    (env2, il) <- transModule opts qmdl
-    -- generate target code
-    let modSum = summarizeModule (tyConsEnv env2) intf (snd qmdl)
-    writeFlat opts fn env2 modSum il
-  where
-  withFlat = any (`elem` optTargetTypes opts) [FlatCurry, ExtendedFlatCurry]
-
 -- The functions \texttt{genFlat} and \texttt{genAbstract} generate
 -- flat and abstract curry representations depending on the specified option.
 -- If the interface of a modified Curry module did not change, the
@@ -258,27 +258,40 @@ writeOutput opts fn mdl@(_, modul) = do
 -- (depending on the compiler flag "force") and other modules importing this
 -- module won't be dependent on it any longer.
 
+writeTokens :: Options -> CompilerEnv -> CYIO ()
+writeTokens opts env = when tokTarget $ liftIO $
+  writeModule (useSubDir $ tokensName (filePath env))
+              (showTokenStream (tokens env))
+  where
+  tokTarget  = Tokens `elem` optTargetTypes opts
+  useSubDir  = addCurrySubdirModule (optUseSubdir opts) (moduleIdent env)
+
 -- |Output the parsed 'Module' on request
-writeParsed :: Options -> FilePath -> CS.Module -> IO ()
-writeParsed opts fn modul@(CS.Module _ m _ _ _) = when srcTarget $
-  writeModule (useSubDir $ sourceRepName fn) source
+writeParsed :: Options -> CompEnv CS.Module -> CYIO ()
+writeParsed opts (env, mdl) = when srcTarget $ liftIO $
+  writeModule (useSubDir $ sourceRepName (filePath env)) (CS.showModule mdl)
   where
   srcTarget  = Parsed `elem` optTargetTypes opts
-  useSubDir  = addCurrySubdirModule (optUseSubdir opts) m
-  source     = CS.showModule modul
+  useSubDir  = addCurrySubdirModule (optUseSubdir opts) (moduleIdent env)
 
-writeInterface :: Options -> FilePath -> CS.Interface -> IO ()
-writeInterface opts fn intf@(CS.Interface m _ _)
+writeHtml :: Options -> CompEnv CS.Module -> CYIO ()
+writeHtml opts (env, mdl) = when htmlTarget $
+  source2html opts (moduleIdent env) (tokens env) mdl
+  where htmlTarget = Html `elem` optTargetTypes opts
+
+writeInterface :: Options -> CompilerEnv -> CS.Interface -> CYIO ()
+writeInterface opts env intf@(CS.Interface m _ _)
   | optForce opts = outputInterface
   | otherwise     = do
-      equal <- C.catch (matchInterface interfaceFile intf) ignoreIOException
+      equal <- liftIO $ C.catch (matchInterface interfaceFile intf)
+                        ignoreIOException
       unless equal outputInterface
   where
   ignoreIOException :: C.IOException -> IO Bool
   ignoreIOException _ = return False
 
-  interfaceFile   = interfName fn
-  outputInterface = writeModule
+  interfaceFile   = interfName (filePath env)
+  outputInterface = liftIO $ writeModule
                     (addCurrySubdirModule (optUseSubdir opts) m interfaceFile)
                     (show $ CS.ppInterface intf)
 
@@ -290,52 +303,53 @@ matchInterface ifn i = do
     Left  _  -> hClose hdl >> return False
     Right i' -> return (i `intfEquiv` fixInterface i')
 
-writeFlat :: Options -> FilePath -> CompilerEnv -> ModuleSummary -> IL.Module
-          -> IO ()
-writeFlat opts fn env modSum il = do
+writeFlat :: Options -> CompilerEnv -> ModuleSummary -> IL.Module -> CYIO ()
+writeFlat opts env modSum il = do
   when (extTarget || fcyTarget) $ do
-    writeFlatCurry opts fn env modSum il
-    writeFlatIntf  opts fn env modSum il
+    writeFlatCurry opts env modSum il
+    writeFlatIntf  opts env modSum il
   where
   extTarget = ExtendedFlatCurry `elem` optTargetTypes opts
   fcyTarget = FlatCurry         `elem` optTargetTypes opts
 
 -- |Export an 'IL.Module' into a FlatCurry file
-writeFlatCurry :: Options -> FilePath -> CompilerEnv -> ModuleSummary
-               -> IL.Module -> IO ()
-writeFlatCurry opts fn env modSum il = do
+writeFlatCurry :: Options -> CompilerEnv -> ModuleSummary -> IL.Module -> CYIO ()
+writeFlatCurry opts env modSum il = do
   (_, fc) <- dumpWith opts show EF.ppProg DumpFlatCurry (env, prog)
-  when extTarget $ EF.writeExtendedFlat (useSubDir $ extFlatName fn) fc
-  when fcyTarget $ EF.writeFlatCurry    (useSubDir $ flatName    fn) fc
+  when extTarget $ liftIO
+                 $ EF.writeExtendedFlat (useSubDir $ extFlatName (filePath env)) fc
+  when fcyTarget $ liftIO
+                 $ EF.writeFlatCurry    (useSubDir $ flatName    (filePath env)) fc
   where
   extTarget = ExtendedFlatCurry `elem` optTargetTypes opts
   fcyTarget = FlatCurry         `elem` optTargetTypes opts
   useSubDir = addCurrySubdirModule (optUseSubdir opts) (moduleIdent env)
   prog      = genFlatCurry modSum env il
 
-writeFlatIntf :: Options -> FilePath -> CompilerEnv -> ModuleSummary
-              -> IL.Module -> IO ()
-writeFlatIntf opts fn env modSum il
+writeFlatIntf :: Options -> CompilerEnv -> ModuleSummary -> IL.Module -> CYIO ()
+writeFlatIntf opts env modSum il
   | not (optInterface opts) = return ()
   | optForce opts           = outputInterface
   | otherwise               = do
-      mfint <- EF.readFlatInterface targetFile
+      mfint <- liftIO $ EF.readFlatInterface targetFile
       let oldInterface = fromMaybe emptyIntf mfint
       when (mfint == mfint) $ return () -- necessary to close file -- TODO
       unless (oldInterface `eqInterface` intf) $ outputInterface
   where
-  targetFile      = flatIntName fn
+  targetFile      = flatIntName (filePath env)
   emptyIntf       = EF.Prog "" [] [] [] []
   intf            = genFlatInterface modSum env il
   useSubDir       = addCurrySubdirModule (optUseSubdir opts) (moduleIdent env)
-  outputInterface = EF.writeFlatCurry (useSubDir targetFile) intf
+  outputInterface = liftIO $ EF.writeFlatCurry (useSubDir targetFile) intf
 
-writeAbstractCurry :: Options -> FilePath -> CompEnv CS.Module -> IO ()
-writeAbstractCurry opts fname (env, modul) = do
-  when acyTarget  $ AC.writeCurry (useSubDir $ acyName fname)
-                  $ genTypedAbstractCurry env modul
-  when uacyTarget $ AC.writeCurry (useSubDir $ uacyName fname)
-                  $ genUntypedAbstractCurry env modul
+writeAbstractCurry :: Options -> CompEnv CS.Module -> CYIO ()
+writeAbstractCurry opts (env, mdl) = do
+  when acyTarget  $ liftIO
+                  $ AC.writeCurry (useSubDir $ acyName (filePath env))
+                  $ genTypedAbstractCurry env mdl
+  when uacyTarget $ liftIO
+                  $ AC.writeCurry (useSubDir $ uacyName (filePath env))
+                  $ genUntypedAbstractCurry env mdl
   where
   acyTarget  = AbstractCurry        `elem` optTargetTypes opts
   uacyTarget = UntypedAbstractCurry `elem` optTargetTypes opts

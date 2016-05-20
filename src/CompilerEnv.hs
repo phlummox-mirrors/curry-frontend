@@ -15,7 +15,8 @@ module CompilerEnv where
 
 import qualified Data.Map as Map (Map, keys, toList)
 
-import Curry.Base.Ident  (ModuleIdent)
+import Curry.Base.Ident    (ModuleIdent)
+import Curry.Base.Position (Position)
 import Curry.Base.Pretty
 import Curry.Syntax
 
@@ -33,20 +34,24 @@ type CompEnv a = (CompilerEnv, a)
 --  compiled. The information is updated during the different stages of
 --  compilation.
 data CompilerEnv = CompilerEnv
-  { moduleIdent  :: ModuleIdent      -- ^ identifier of the module
-  , extensions   :: [KnownExtension] -- ^ enabled language extensions
-  , interfaceEnv :: InterfaceEnv     -- ^ declarations of imported interfaces
-  , aliasEnv     :: AliasEnv         -- ^ aliases for imported modules
-  , tyConsEnv    :: TCEnv            -- ^ type constructors
-  , valueEnv     :: ValueEnv         -- ^ functions and data constructors
-  , opPrecEnv    :: OpPrecEnv        -- ^ operator precedences
+  { moduleIdent  :: ModuleIdent         -- ^ identifier of the module
+  , filePath     :: FilePath            -- ^ 'FilePath' of compilation target
+  , extensions   :: [KnownExtension]    -- ^ enabled language extensions
+  , tokens       :: [(Position, Token)] -- ^ token list of module
+  , interfaceEnv :: InterfaceEnv        -- ^ declarations of imported interfaces
+  , aliasEnv     :: AliasEnv            -- ^ aliases for imported modules
+  , tyConsEnv    :: TCEnv               -- ^ type constructors
+  , valueEnv     :: ValueEnv            -- ^ functions and data constructors
+  , opPrecEnv    :: OpPrecEnv           -- ^ operator precedences
   }
 
 -- |Initial 'CompilerEnv'
 initCompilerEnv :: ModuleIdent -> CompilerEnv
 initCompilerEnv mid = CompilerEnv
   { moduleIdent  = mid
+  , filePath     = []
   , extensions   = []
+  , tokens       = []
   , interfaceEnv = initInterfaceEnv
   , aliasEnv     = initAliasEnv
   , tyConsEnv    = initTCEnv
@@ -58,6 +63,7 @@ initCompilerEnv mid = CompilerEnv
 showCompilerEnv :: CompilerEnv -> String
 showCompilerEnv env = show $ vcat
   [ header "Module Identifier  " $ textS $ moduleIdent env
+  , header "FilePath"            $ text  $ filePath    env
   , header "Language Extensions" $ text  $ show $ extensions  env
   , header "Interfaces         " $ hcat  $ punctuate comma $ map textS
                                          $ Map.keys $ interfaceEnv env
