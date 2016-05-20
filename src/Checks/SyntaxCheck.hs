@@ -31,8 +31,10 @@ import           Control.Applicative        ((<$>), (<*>))
 import Control.Monad                      (unless, when)
 import qualified Control.Monad.State as S (State, runState, gets, modify)
 import Data.List                          (insertBy, intersect, nub, partition)
-import Data.Maybe                         (isJust, isNothing)
-import qualified Data.Set as Set          (empty, insert, member)
+import qualified Data.Map as Map          (fromList, lookup)
+import Data.Maybe                         (isJust, isNothing, fromMaybe)
+import qualified Data.Set as Set          (empty, insert, member, toList)
+import qualified Data.SetMap as SMap      (SetMap, (!), empty, insert, keys)
 
 import Curry.Base.Ident
 import Curry.Base.Position
@@ -43,6 +45,7 @@ import Curry.Syntax.Pretty (ppPattern)
 import Base.Expr
 import Base.Messages (Message, posMessage, internalError)
 import Base.NestEnv
+import Base.SCC      (scc)
 import Base.Utils    ((++!), findDouble, findMultiples)
 
 import Env.Value           (ValueEnv, ValueInfo (..))
@@ -91,12 +94,13 @@ data SCState = SCState
   , renameEnv   :: RenameEnv        -- ^ Information store
   , scopeId     :: Integer          -- ^ Identifier for the current scope
   , nextId      :: Integer          -- ^ Next fresh identifier
+  , funcDeps    :: FuncDeps         -- ^ Stores data about functions dependencies
   , errors      :: [Message]        -- ^ Syntactic errors in the module
   }
 
 -- |Initial syntax check state
 initState :: [KnownExtension] -> ModuleIdent -> RenameEnv -> SCState
-initState exts m rEnv = SCState exts m rEnv globalScopeId 1 []
+initState exts m rEnv = SCState exts m rEnv globalScopeId 1 noFuncDeps []
 
 -- |Identifier for global (top-level) declarations
 globalScopeId :: Integer
@@ -162,6 +166,10 @@ withLocalEnv act = do
 inNestedScope :: SCM a -> SCM a
 inNestedScope act = withLocalEnv (incNesting >> act)
 
+-- |Modify the `FuncDeps'
+modifyFuncDeps :: (FuncDeps -> FuncDeps) -> SCM ()
+modifyFuncDeps f = S.modify $ \ s -> s { funcDeps = f $ funcDeps s }
+
 -- |Report a syntax error
 report :: Message -> SCM ()
 report msg = S.modify $ \ s -> s { errors = msg : errors s }
@@ -169,6 +177,67 @@ report msg = S.modify $ \ s -> s { errors = msg : errors s }
 -- |Everything is checked
 ok :: SCM ()
 ok = return ()
+
+-- FuncDeps contains information to deal with dependencies between functions.
+-- This is used for checking whether functional patterns are cyclic.
+-- curGlobalFunc contains the identifier of the global function that is
+-- currently being checked, if any.
+-- data X = X
+-- f = let g = lookup 42 in g [1,2,3]
+-- While `X' is being checked `curGlobalFunc' should be `Nothing',
+-- while `lookup' is being checked is should be `f's identifier.
+-- globalDeps collects all dependencies (other functions) of global functions
+-- funcPats collects all functional patterns and the global function they're
+-- used in
+data FuncDeps = FuncDeps
+  { curGlobalFunc :: Maybe QualIdent
+  , globalDeps    :: GlobalDeps
+  , funcPats      :: [(QualIdent, QualIdent)]
+  }
+type GlobalDeps = SMap.SetMap QualIdent QualIdent
+
+-- |Initial state for FuncDeps
+noFuncDeps :: FuncDeps
+noFuncDeps = FuncDeps Nothing SMap.empty []
+
+-- |Perform an action inside a function, settìng `curGlobalFunc' to that function
+inFunc :: Ident -> SCM a -> SCM a
+inFunc i scm = do
+  m        <- getModuleIdent
+  let f = qualifyWith m i
+  global <- isNothing <$> S.gets (curGlobalFunc . funcDeps)
+  when global $ modifyFuncDeps $ \ fd -> fd { curGlobalFunc = Just f }
+  ret      <- scm
+  when global $ modifyFuncDeps $ \ fd -> fd { curGlobalFunc = Nothing }
+  return ret
+
+-- |Add a dependency to `curGlobalFunction'
+addGlobalDep :: QualIdent -> SCM ()
+addGlobalDep dep = do
+  maybeF <- S.gets (curGlobalFunc . funcDeps)
+  when (isNothing maybeF) $
+    internalError "SyntaxCheck.addGlobalDep: no global function set"
+  let Just f = maybeF
+  modifyFuncDeps $ \ fd -> fd { globalDeps = SMap.insert f dep (globalDeps fd) }
+
+-- |Add a functional pattern to `curGlobalFunction'
+addFuncPat :: QualIdent -> SCM ()
+addFuncPat fp = do
+  maybeF <- S.gets (curGlobalFunc . funcDeps)
+  when (isNothing maybeF) $
+    internalError "SyntaxCheck.addFuncPat: no global function set"
+  let Just f = maybeF
+  modifyFuncDeps $ \ fd ->
+                       fd { funcPats = (fp, f) : funcPats fd }
+
+-- |Return dependencies of global functions
+getGlobalDeps :: SCM GlobalDeps
+getGlobalDeps = globalDeps <$> S.gets funcDeps
+
+-- |Return used functional patterns
+getFuncPats :: SCM [(QualIdent, QualIdent)]
+getFuncPats = funcPats <$> S.gets funcDeps
+
 
 -- A nested environment is used for recording information about the data
 -- constructors and variables in the module. For every data constructor
@@ -332,6 +401,7 @@ checkModule (Module ps m es is ds) = do
   mapM_ checkPragma ps
   mapM_ bindTypeDecl tds
   ds' <- (tds ++) <$> checkTopDecls vds
+  checkFuncPatDeps
   exts <- getExtensions
   return (Module ps m es is ds', exts)
   where (tds, vds) = partition isTypeDecl ds
@@ -343,6 +413,22 @@ checkPragma (OptionsPragma  _  _ _) = ok
 checkExtension :: Extension -> SCM ()
 checkExtension (KnownExtension   _ e) = enableExtension e
 checkExtension (UnknownExtension p e) = report $ errUnknownExtension p e
+
+-- |Checks whether a function in a functional pattern contains cycles
+-- |(depends on its own global function)
+checkFuncPatDeps :: SCM ()
+checkFuncPatDeps = do
+    fps  <- getFuncPats
+    deps <- getGlobalDeps
+    let depLists    = scc (:[]) (Set.toList . (SMap.!) deps) (SMap.keys deps)
+        levelList   = concat $ zipWith (\l n -> zip l (repeat n)) depLists [1..]
+        levels      = Map.fromList levelList
+        funcLevel f = fromMaybe 0 $ Map.lookup f levels :: Integer
+    mapM_ (checkFuncPatDep funcLevel) fps
+
+checkFuncPatDep :: Ord a => (QualIdent -> a) -> (QualIdent, QualIdent) -> SCM ()
+checkFuncPatDep funcLevel (fp, f) = unless (funcLevel fp < funcLevel f) $
+  report $ errFuncPatCyclic fp f
 
 checkTopDecls :: [Decl] -> SCM [Decl]
 checkTopDecls ds = do
@@ -374,8 +460,8 @@ checkDeclLhs (InfixDecl   p fix' pr ops) =
   InfixDecl p fix' <$> checkPrecedence p pr <*> mapM renameVar ops
 checkDeclLhs (TypeSig           p vs ty) =
   (\vs' -> TypeSig p vs' ty) <$> mapM (checkVar "type signature") vs
-checkDeclLhs (FunctionDecl      p _ eqs) =
-  checkEquationsLhs p eqs
+checkDeclLhs (FunctionDecl      p f eqs) =
+  inFunc f $ checkEquationsLhs p eqs
 checkDeclLhs (ForeignDecl  p cc ie f ty) =
   (\f' -> ForeignDecl p cc ie f' ty) <$> checkVar "foreign declaration" f
 checkDeclLhs (    ExternalDecl     p fs) =
@@ -500,7 +586,7 @@ checkDeclRhs _   (DataDecl p tc tvs cs) =
 checkDeclRhs bvs (TypeSig      p vs ty) =
   (\vs' -> TypeSig p vs' ty) <$> mapM (checkLocalVar bvs) vs
 checkDeclRhs _   (FunctionDecl p f eqs) =
-  FunctionDecl p f <$> mapM checkEquation eqs
+  FunctionDecl p f <$> inFunc f (mapM checkEquation eqs)
 checkDeclRhs _   (PatternDecl  p t rhs) =
   PatternDecl p t <$> checkRhs rhs
 checkDeclRhs _   d                      = return d
@@ -632,6 +718,7 @@ checkConstructorPattern p c ts = do
     | otherwise = do
       let n = arity r
       checkFuncPatsExtension p
+      checkFuncPatCall r c
       ts' <- mapM (checkPattern p) ts
       mapM_ (checkFPTerm p) ts'
       return $ if n' > n
@@ -647,10 +734,10 @@ checkInfixPattern p t1 op t2 = do
   env <- getRenameEnv
   case qualLookupVar op env of
     [Constr _ n] -> infixPattern op n
-    [_]          -> funcPattern  op
+    [r]          -> funcPattern r op
     rs           -> case qualLookupVar (qualQualify m op) env of
       [Constr _ n] -> infixPattern (qualQualify m op) n
-      [_]          -> funcPattern  (qualQualify m op)
+      [r]          -> funcPattern r (qualQualify m op)
       rs'          -> do if (null rs && null rs')
                             then report $ errUndefinedData op
                             else report $ errAmbiguousData rs op
@@ -660,8 +747,9 @@ checkInfixPattern p t1 op t2 = do
   infixPattern qop n = do
     when (n /= 2) $ report $ errWrongArity op n 2
     flip InfixPattern qop <$> checkPattern p t1 <*> checkPattern p t2
-  funcPattern qop = do
+  funcPattern r qop = do
     checkFuncPatsExtension p
+    checkFuncPatCall r qop
     ts'@[t1',t2'] <- mapM (checkPattern p) [t1,t2]
     mapM_ (checkFPTerm p) ts'
     return $ InfixFuncPattern t1' qop t2'
@@ -684,6 +772,13 @@ checkRecordPattern p c fs = do
     fs' <- mapM (checkField (checkPattern p)) fields
     checkFieldLabels "pattern" p mcon fs'
     return $ RecordPattern c fs'
+
+checkFuncPatCall :: RenameInfo -> QualIdent -> SCM ()
+checkFuncPatCall r f = case r of
+  GlobalVar dep _ -> do
+    addGlobalDep dep
+    addFuncPat (dep @> f)
+  _           -> report $ errFuncPatNotGlobal f
 
 -- Note: process decls first
 checkRhs :: Rhs -> SCM Rhs
@@ -750,8 +845,8 @@ checkVariable v
       []              -> do report $ errUndefinedVariable v
                             return $ Variable v
       [Constr    _ _]   -> return $ Constructor v
-      [GlobalVar _ _]   -> return $ Variable v
-      [LocalVar v' _]   -> return $ Variable $ qualify v'
+      [GlobalVar f _]   -> addGlobalDep f >> return (Variable v)
+      [LocalVar v' _]   -> return $ Variable $ qualify v' @> v
       [RecordLabel _ _] -> return $ Variable v
       rs -> do
         m <- getModuleIdent
@@ -759,8 +854,8 @@ checkVariable v
           []              -> do report $ errAmbiguousIdent rs v
                                 return $ Variable v
           [Constr    _ _]   -> return $ Constructor v
-          [GlobalVar _ _]   -> return $ Variable v
-          [LocalVar v' _]   -> return $ Variable $ qualify v'
+          [GlobalVar f _]   -> addGlobalDep f >> return (Variable v)
+          [LocalVar v' _]   -> return $ Variable $ qualify v' @> v
           [RecordLabel _ _] -> return $ Variable v
           rs'               -> do report $ errAmbiguousIdent rs' v
                                   return $ Variable v
@@ -832,14 +927,14 @@ checkOp op = do
   case qualLookupVar v env of
     []              -> report (errUndefinedVariable v) >> return op
     [Constr _ _]    -> return $ InfixConstr v
-    [GlobalVar _ _] -> return $ InfixOp v
+    [GlobalVar f _] -> addGlobalDep f >> return (InfixOp v)
     [LocalVar v' _] -> return $ InfixOp $ qualify v'
     rs              -> do
       m <- getModuleIdent
       case qualLookupVar (qualQualify m v) env of
         []              -> report (errAmbiguousIdent rs v) >> return op
         [Constr _ _]    -> return $ InfixConstr v
-        [GlobalVar _ _] -> return $ InfixOp v
+        [GlobalVar f _] -> addGlobalDep f >> return (InfixOp v)
         [LocalVar v' _] -> return $ InfixOp $ qualify v'
         rs'             -> report (errAmbiguousIdent rs' v) >> return op
   where v = opName op
@@ -1069,6 +1164,15 @@ errUnsupportedFuncPattern :: String -> Position -> Pattern -> Message
 errUnsupportedFuncPattern s p pat = posMessage p $
   text "Functional patterns are not supported inside a" <+> text s <> dot
   $+$ ppPattern 0 pat
+
+errFuncPatNotGlobal :: QualIdent -> Message
+errFuncPatNotGlobal f = posMessage f $ hsep $ map text
+  ["Function", escQualName f, "in functional pattern is not global"]
+
+errFuncPatCyclic :: QualIdent -> QualIdent -> Message
+errFuncPatCyclic fp f = posMessage fp $ hsep $ map text
+  [ "Function", escName $ unqualify fp, "used in functional pattern depends on"
+  , escName $ unqualify f, " causing a cyclic dependency"]
 
 errPrecedenceOutOfRange :: Position -> Integer -> Message
 errPrecedenceOutOfRange p i = posMessage p $ hsep $ map text

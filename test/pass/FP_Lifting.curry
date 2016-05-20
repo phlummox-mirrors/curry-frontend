@@ -3,7 +3,9 @@
 f x = g x &> x
  where
   g (h y) = success
-  h y = x
+-- causes an error since h is not global
+--h y = x
+h y = error "undefined"
 
 main = f z
  where z free
