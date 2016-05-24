@@ -15,18 +15,12 @@
 -}
 
 module Base.Utils
-  ( thd3, (++!), foldr2, mapAccumM, findDouble, concatMapM, findMultiples
+  ( (++!), foldr2, mapAccumM, findDouble, concatMapM, findMultiples
   ) where
 
 import Data.List (partition)
 
 infixr 5 ++!
-
--- The Prelude does not contain standard functions for triples.
--- We provide projection, (un-)currying, and mapping for triples here.
-
-thd3 :: (a, b, c) -> c
-thd3 (_, _, z) = z
 
 -- The function (++!) is variant of the list concatenation operator (++)
 -- that ignores the second argument if the first is a non-empty list.

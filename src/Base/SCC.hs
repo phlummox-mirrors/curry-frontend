@@ -35,6 +35,7 @@ instance Eq (Node a b) where
 instance Ord (Node b a) where
   n1 `compare` n2 = key n1 `compare` key n2
 
+-- |Computation of strongly connected components
 scc :: Eq b => (a -> [b]) -- ^entities defined by node
             -> (a -> [b]) -- ^entities used by node
             -> [a]        -- ^list of nodes

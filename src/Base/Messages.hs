@@ -1,12 +1,23 @@
+{- |
+    Module      :  $Header$
+    Description :  Construction and output of compiler messages
+    Copyright   :  (c) 2011 - 2016 Björn Peemöller
+    License     :  OtherLicense
+
+    Maintainer  :  bjp@informatik.uni-kiel.de
+    Stability   :  experimental
+    Portability :  portable
+
+    This module defines several operations to construct and emit compiler
+    messages to the user.
+-}
 module Base.Messages
   ( -- * Output of user information
-    status, putErrLn, putErrsLn
+    MonadIO (..), status, putMsg, putErrLn, putErrsLn
     -- * program abortion
-  , abortWith, abortWithMessage, abortWithMessages, warnOrAbort
-  , internalError, errorMessage, errorMessages
+  , abortWith, abortWithMessage, abortWithMessages, warnOrAbort, internalError
     -- * creating messages
   , Message, message, posMessage
-  , MonadIO (..)
   ) where
 
 import Control.Monad              (unless, when)
@@ -20,6 +31,7 @@ import Curry.Base.Message         ( Message, message, posMessage, ppWarning
 import Curry.Base.Pretty          (Doc, text)
 import CompilerOpts               (Options (..), WarnOpts (..), Verbosity (..))
 
+-- |Print a status message, depending on the current verbosity
 status :: MonadIO m => Options -> String -> m ()
 status opts msg = unless (optVerbosity opts < VerbStatus) (putMsg msg)
 
@@ -64,9 +76,3 @@ printMessages msgType msgs
 -- |Raise an internal error
 internalError :: String -> a
 internalError msg = error $ "Internal error: " ++ msg
-
-errorMessage :: Message -> a
-errorMessage = error . show . ppError
-
-errorMessages :: [Message] -> a
-errorMessages = error . show . ppMessages ppError . sort

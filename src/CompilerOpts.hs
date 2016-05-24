@@ -443,6 +443,7 @@ addFlag o opts = nub $ o : opts
 removeFlag :: Eq a => a -> [a] -> [a]
 removeFlag o opts = filter (/= o) opts
 
+-- |Update the 'Options' record by the parsed and processed arguments
 updateOpts :: Options -> [String] -> (Options, [String], [String])
 updateOpts opts args = (opts', files, errs ++ errs2 ++ checkOpts opts files)
   where

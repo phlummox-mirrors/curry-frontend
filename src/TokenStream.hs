@@ -16,7 +16,7 @@ import Data.List             (intercalate)
 import Curry.Base.Position   (Position (..))
 import Curry.Syntax          (Token (..), Category (..), Attributes (..))
 
--- Show a list of 'Position' and 'Token' tuples.
+-- |Show a list of 'Position' and 'Token' tuples.
 -- The list is split into one tuple on each line to increase readability.
 showTokenStream :: [(Position, Token)] -> String
 showTokenStream [] = "[]\n"
