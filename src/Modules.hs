@@ -132,8 +132,8 @@ parseModule opts m fn = do
     Nothing  -> failMessages [message $ text $ "Missing file: " ++ fn]
     Just src -> do
       ul      <- liftCYM $ CS.unlit     fn src
-      posToks <- liftCYM $ CS.lexSource fn ul
       prepd   <- preprocess (optPrepOpts opts) fn ul
+      posToks <- liftCYM $ CS.lexSource   fn prepd
       ast     <- liftCYM $ CS.parseModule fn prepd
       checked <- checkModuleHeader opts m fn ast
       return (posToks, checked)
