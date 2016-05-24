@@ -117,8 +117,8 @@ showAttributes (CharAttributes    c _) = show c
 showAttributes (IntAttributes     i _) = show i
 showAttributes (FloatAttributes   f _) = show f
 showAttributes (StringAttributes  s _) = show s
-showAttributes (IdentAttributes   m i) = intercalate "." (m ++ [i])
-showAttributes (OptionsAttributes t a) = show t ++ ' ' : show a
+showAttributes (IdentAttributes   m i) = "\"" ++ (intercalate "." (m ++ [i])) ++ "\""
+showAttributes (OptionsAttributes t a) = "\"" ++ (show t ++ ' ' : show a)  ++ "\""
 
 -- Concatenate two 'String's with a smart space in between,
 -- which is only added if both 'String's are non-empty
@@ -126,3 +126,4 @@ showAttributes (OptionsAttributes t a) = show t ++ ' ' : show a
 [] +++ t  = t
 s  +++ [] = s
 s  +++ t  = s ++ ' ' : t
+
