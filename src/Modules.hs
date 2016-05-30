@@ -357,7 +357,7 @@ writeAbstractCurry opts (env, mdl) = do
 
 type Dump = (DumpLevel, CompilerEnv, String)
 
-dumpWith :: (MonadIO m, Show a)
+dumpWith :: MonadIO m
          => Options -> (a -> String) -> (a -> Doc) -> DumpLevel
          -> CompEnv a -> m (CompEnv a)
 dumpWith opts rawView view lvl res@(env, mdl) = do

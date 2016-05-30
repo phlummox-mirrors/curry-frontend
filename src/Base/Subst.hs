@@ -29,11 +29,11 @@ data Subst a b = Subst Bool (Map.Map a b)
   deriving Show
 
 -- |Identity substitution
-idSubst :: Ord a => Subst a b
+idSubst :: Subst a b
 idSubst = Subst False Map.empty
 
 -- |Convert a substitution to a list of replacements
-substToList :: Ord v => Subst v e -> [(v, e)]
+substToList :: Subst v e -> [(v, e)]
 substToList (Subst _ sigma) = Map.toList sigma
 
 -- |Create a substitution for a single replacement
@@ -88,7 +88,7 @@ unbindSubst v (Subst comp sigma) = Subst comp $ Map.delete v sigma
 --   where subst' = if comp then subst (Subst comp sigma) else id
 
 -- |Compose two substitutions
-compose :: (Ord v, Show v ,Show e) => Subst v e -> Subst v e -> Subst v e
+compose :: Ord v => Subst v e -> Subst v e -> Subst v e
 compose sigma sigma' =
   composed (foldr (uncurry bindSubst) sigma' (substToList sigma))
   where composed (Subst _ sigma'') = Subst True sigma''

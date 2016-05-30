@@ -78,7 +78,7 @@ emptyTopEnv :: TopEnv a
 emptyTopEnv = TopEnv Map.empty
 
 -- |Insert an 'Entity' into a 'TopEnv' as a predefined 'Entity'
-predefTopEnv :: Entity a => QualIdent -> a -> TopEnv a -> TopEnv a
+predefTopEnv :: QualIdent -> a -> TopEnv a -> TopEnv a
 predefTopEnv k v (TopEnv env) = case Map.lookup k env of
   Just  _ -> internalError $ "TopEnv.predefTopEnv " ++ show k
   Nothing -> TopEnv $ Map.insert k [(Import [], v)] env

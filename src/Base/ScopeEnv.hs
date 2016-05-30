@@ -24,7 +24,7 @@ data ScopeEnv a b = ScopeEnv Level (LevelMap a b) [LevelMap a b]
   deriving Show
 
 -- |Returns an empty scope environment
-new :: Ord a => ScopeEnv a b
+new :: ScopeEnv a b
 new = ScopeEnv 0 Map.empty []
 
 -- |Inserts a value under a key into the environment of the current scope
@@ -60,13 +60,13 @@ exists k = selectSE existsLev
 
 -- Switches to the next scope (i.e. pushes the environment of the current
 -- scope onto the top of an scope stack and increments the level counter)
-beginScope :: Ord a => ScopeEnv a b -> ScopeEnv a b
+beginScope :: ScopeEnv a b -> ScopeEnv a b
 beginScope (ScopeEnv lev top []    ) = ScopeEnv (lev + 1) top [top]
 beginScope (ScopeEnv lev top (l:ls)) = ScopeEnv (lev + 1) top (l:l:ls)
 
 -- Switches to the previous scope (i.e. pops the environment from the top
 -- of the scope stack and decrements the level counter)
-endScope :: Ord a => ScopeEnv a b -> ScopeEnv a b
+endScope :: ScopeEnv a b -> ScopeEnv a b
 endScope (ScopeEnv _   top []    ) = ScopeEnv 0         top []
 endScope (ScopeEnv lev top (_:ls)) = ScopeEnv (lev - 1) top ls
 
@@ -81,13 +81,13 @@ endScopeUp (ScopeEnv lev top (l:l':ls)) = ScopeEnv (lev - 1) top
 
 -- Return all (key, value) pairs from the environment of the current scope
 -- which have been inserted in the current level
-toLevelList :: Ord a => ScopeEnv a b -> [(a, b)]
+toLevelList :: ScopeEnv a b -> [(a, b)]
 toLevelList = selectSE toList
  where toList lev local
         = [ (k, v) | (k, (v, lev')) <- Map.toList local, lev' == lev ]
 
 -- Return the current level
-currentLevel :: Ord a => ScopeEnv a b -> Level
+currentLevel :: ScopeEnv a b -> Level
 currentLevel = selectSE const
 
 -- ---------------------------------------------------------------------------

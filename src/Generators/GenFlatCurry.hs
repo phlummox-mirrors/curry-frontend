@@ -29,6 +29,7 @@ import Base.ScopeEnv (ScopeEnv)
 import qualified Base.ScopeEnv as SE (new, insert, lookup, beginScope, endScope)
 import Base.TopEnv (topEnvMap)
 import Base.Types
+import Base.Utils (concatMapM)
 
 import Env.Interface
 import Env.TypeConstructor (TCEnv, TypeInfo (..))
@@ -181,9 +182,6 @@ trInterface (IL.Module mid imps decls) = do
   return $ Prog (moduleName mid) is (itypes ++ types ++ datas ++ newtys)
                           (ifuncs ++ funcs) (iops ++ ops)
   where extractMid (CS.IImportDecl _ mid1) = mid1
-
-concatMapM :: (Functor m, Monad m) => (a -> m [b]) -> [a] -> m [b]
-concatMapM act xs = concat <$> mapM act xs
 
 trTypeDecl :: IL.Decl -> FlatState [TypeDecl]
 trTypeDecl (IL.DataDecl qid arity cs) = ((:[]) <$>) $
