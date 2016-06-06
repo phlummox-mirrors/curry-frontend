@@ -21,7 +21,8 @@ import           Control.Monad.State.Strict    (State, execState, gets, modify)
 import qualified Data.IntSet         as IntSet
   (IntSet, empty, insert, notMember, singleton, union, unions)
 import qualified Data.Map            as Map    (empty, insert, lookup)
-import           Data.Maybe                    (catMaybes, fromMaybe, isJust)
+import           Data.Maybe
+  (catMaybes, fromMaybe, listToMaybe)
 import           Data.List
   (intersect, intersectBy, nub, sort, unionBy)
 
@@ -33,9 +34,9 @@ import Curry.Syntax.Pretty (ppPattern, ppExpr, ppIdent)
 
 import Base.CurryTypes (ppTypeScheme)
 import Base.Messages (Message, posMessage, internalError)
-import qualified Base.ScopeEnv as SE
-  ( ScopeEnv, new, beginScope, endScopeUp, insert, lookup, level, modify
-  , lookupWithLevel, toLevelList, currentLevel)
+import Base.NestEnv ( NestEnv, emptyTopEnv, globalEnv, localNestEnv
+                    , nestEnv, nestedEnv, qualBindNestEnv
+                    , qualInLocalNestEnv, qualLookupNestEnv, qualModifyNestEnv)
 
 import Base.Types
 import Base.Utils (findMultiples)
@@ -62,7 +63,7 @@ warnCheck opts aEnv valEnv tcEnv (Module _ mid es is ds)
       checkMissingTypeSignatures ds
       checkModuleAlias is
 
-type ScopeEnv = SE.ScopeEnv QualIdent IdInfo
+type ScopeEnv = NestEnv IdInfo
 
 -- Current state of generating warnings
 data WcState = WcState
@@ -82,7 +83,9 @@ type WCM = State WcState
 
 initWcState :: ModuleIdent -> AliasEnv -> ValueEnv -> TCEnv -> [WarnFlag]
             -> WcState
-initWcState mid ae ve te wf = WcState mid SE.new ae ve te wf []
+initWcState mid ae ve te wf = WcState mid newEnv ae ve te wf []
+  where
+    newEnv = globalEnv emptyTopEnv
 
 getModuleIdent :: WCM ModuleIdent
 getModuleIdent = gets moduleId
@@ -968,7 +971,7 @@ visitVariable (VarInfo v _) = VarInfo v True
 visitVariable  info         = info
 
 insertScope :: QualIdent -> IdInfo -> WCM ()
-insertScope qid info = modifyScope $ SE.insert qid info
+insertScope qid info = modifyScope $ qualBindNestEnv qid info
 
 insertVar :: Ident -> WCM ()
 insertVar v = unless (isAnonId v) $ do
@@ -999,13 +1002,13 @@ shadowsVar v = gets (shadows $ commonId v)
   where
   shadows :: QualIdent -> WcState -> Maybe Ident
   shadows qid s = do
-    (info, l) <- SE.lookupWithLevel qid sc
-    guard (l < SE.currentLevel sc)
+    guard $ not (qualInLocalNestEnv qid sc)
+    info      <- listToMaybe $ qualLookupNestEnv qid sc
     getVariable info
     where sc = scope s
 
 visitId :: Ident -> WCM ()
-visitId v = modifyScope (SE.modify visitVariable (commonId v))
+visitId v = modifyScope (qualModifyNestEnv visitVariable (commonId v))
 
 visitQId :: QualIdent -> WCM ()
 visitQId v = do
@@ -1013,7 +1016,7 @@ visitQId v = do
   maybe ok visitId (localIdent mid v)
 
 visitTypeId :: Ident -> WCM ()
-visitTypeId v = modifyScope (SE.modify visitVariable (typeId v))
+visitTypeId v = modifyScope (qualModifyNestEnv visitVariable (typeId v))
 
 visitQTypeId :: QualIdent -> WCM ()
 visitQTypeId v = do
@@ -1028,40 +1031,38 @@ isUnrefTypeVar v = gets (\s -> isUnref s (typeId v))
 
 returnUnrefVars :: WCM [Ident]
 returnUnrefVars = gets (\s ->
-  let ids = map fst (SE.toLevelList (scope s))
-      unrefs = filter (isUnref s) ids
-  in  map unqualify unrefs )
+  let ids    = map fst (localNestEnv (scope s))
+      unrefs = filter (isUnref s . qualify) ids
+  in  unrefs )
 
 inNestedScope :: WCM a -> WCM ()
 inNestedScope m = beginScope >> m >> endScope
 
 beginScope :: WCM ()
-beginScope = modifyScope SE.beginScope
+beginScope = modifyScope nestEnv
 
 endScope :: WCM ()
-endScope = modifyScope SE.endScopeUp
+endScope = modifyScope nestedEnv
 
 ------------------------------------------------------------------------------
 
 isKnown :: WcState -> QualIdent -> Bool
-isKnown s qid = let sc = scope s
-                in  isJust (SE.lookup qid sc)
-                    && SE.level qid sc == SE.currentLevel sc
+isKnown s qid = qualInLocalNestEnv qid (scope s)
 
 isUnref :: WcState -> QualIdent -> Bool
 isUnref s qid = let sc = scope s
-                in  maybe False (not . variableVisited) (SE.lookup qid sc)
-                    && SE.level qid sc == SE.currentLevel sc
+                in  (any (not . variableVisited) (qualLookupNestEnv qid sc))
+                    && qualInLocalNestEnv qid sc
 
 isVar :: QualIdent -> WcState -> Bool
 isVar qid s = maybe (isAnonId (unqualify qid))
                     isVariable
-                    (SE.lookup qid (scope s))
+                    (listToMaybe (qualLookupNestEnv qid (scope s)))
 
 isCons :: QualIdent -> WcState -> Bool
 isCons qid s = maybe (isImportedCons s qid)
                       isConstructor
-                      (SE.lookup qid (scope s))
+                      (listToMaybe (qualLookupNestEnv qid (scope s)))
  where isImportedCons s' qid' = case qualLookupValue qid' (valueEnv s') of
           (DataConstructor  _ _ _ _) : _ -> True
           (NewtypeConstructor _ _ _) : _ -> True

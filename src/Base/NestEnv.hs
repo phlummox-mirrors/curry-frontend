@@ -19,7 +19,9 @@
 module Base.NestEnv
   ( module Base.TopEnv
   , NestEnv, bindNestEnv, qualBindNestEnv, lookupNestEnv, qualLookupNestEnv
-  , toplevelEnv, globalEnv, nestEnv, elemNestEnv
+  , rebindNestEnv, qualRebindNestEnv
+  , nestedEnv, toplevelEnv, globalEnv, nestEnv, elemNestEnv
+  , qualModifyNestEnv, modifyNestEnv, localNestEnv, qualInLocalNestEnv
   ) where
 
 import qualified Data.Map         as Map
@@ -43,6 +45,10 @@ globalEnv = GlobalEnv
 nestEnv :: NestEnv a -> NestEnv a
 nestEnv env = LocalEnv env Map.empty
 
+nestedEnv :: NestEnv a -> NestEnv a
+nestedEnv (GlobalEnv _)     = internalError "NestedEnv.nestedEnv environment is top environment"
+nestedEnv (LocalEnv genv _) = genv
+
 toplevelEnv :: NestEnv a -> TopEnv a
 toplevelEnv (GlobalEnv   env) = env
 toplevelEnv (LocalEnv genv _) = toplevelEnv genv
@@ -62,6 +68,19 @@ qualBindNestEnv x y (LocalEnv genv env)
       Nothing -> LocalEnv genv $ Map.insert x' y env
     where x' = unqualify x
 
+-- Rebinds a value to a variable, failes if the variable was unbound before
+rebindNestEnv :: Ident -> a -> NestEnv a -> NestEnv a
+rebindNestEnv = qualRebindNestEnv . qualify
+
+qualRebindNestEnv :: QualIdent -> a -> NestEnv a -> NestEnv a
+qualRebindNestEnv x y (GlobalEnv     env) = GlobalEnv $ qualRebindTopEnv x y env
+qualRebindNestEnv x y (LocalEnv genv env)
+  | isQualified x = internalError $ "NestEnv.qualRebindNestEnv " ++ show x
+  | otherwise     = case Map.lookup x' env of
+      Just  _ -> LocalEnv genv $ Map.insert x' y env
+      Nothing -> LocalEnv (qualRebindNestEnv x y genv) env
+    where x' = unqualify x
+
 lookupNestEnv :: Ident -> NestEnv a -> [a]
 lookupNestEnv x (GlobalEnv     env) = lookupTopEnv x env
 lookupNestEnv x (LocalEnv genv env) = case Map.lookup x env of
@@ -75,3 +94,23 @@ qualLookupNestEnv x env
 
 elemNestEnv :: Ident -> NestEnv a -> Bool
 elemNestEnv x env = not (null (lookupNestEnv x env))
+
+-- Applies a function to a value binding, does nothing if the variable is unbound
+modifyNestEnv :: (a -> a) -> Ident -> NestEnv a -> NestEnv a
+modifyNestEnv f = qualModifyNestEnv f . qualify
+
+qualModifyNestEnv :: (a -> a) -> QualIdent -> NestEnv a -> NestEnv a
+qualModifyNestEnv f x env = case qualLookupNestEnv x env of
+  []    -> env
+  y : _ -> qualRebindNestEnv x (f y) env
+
+-- Returns the variables and values bound on the bottom (meaning non-top) scope
+localNestEnv :: NestEnv a -> [(Ident, a)]
+localNestEnv (GlobalEnv env)  = localBindings env
+localNestEnv (LocalEnv _ env) = Map.toList env
+
+-- Returns wether the variable is bound on the bottom (meaning non-top) scope
+qualInLocalNestEnv :: QualIdent -> NestEnv a -> Bool
+qualInLocalNestEnv x (GlobalEnv  env) = qualElemTopEnv x env
+qualInLocalNestEnv x (LocalEnv _ env) =    (not (isQualified x))
+                                        && Map.member (unqualify x) env
