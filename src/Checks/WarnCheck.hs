@@ -937,7 +937,9 @@ insertPattern fp (TuplePattern        _ ps) = mapM_ (insertPattern fp) ps
 insertPattern fp (ListPattern         _ ps) = mapM_ (insertPattern fp) ps
 insertPattern fp (AsPattern            v p) = insertVar v >> insertPattern fp p
 insertPattern fp (LazyPattern          _ p) = insertPattern fp p
-insertPattern _  (FunctionPattern     _ ps) = mapM_ (insertPattern True) ps
+insertPattern _  (FunctionPattern     f ps) = do
+  visitQId f
+  mapM_ (insertPattern True) ps
 insertPattern _  (InfixFuncPattern p1 f p2)
   = insertPattern True (FunctionPattern f [p1, p2])
 insertPattern _ _ = ok
