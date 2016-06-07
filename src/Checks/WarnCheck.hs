@@ -57,9 +57,9 @@ import CompilerOpts
 warnCheck :: WarnOpts -> AliasEnv -> ValueEnv -> TCEnv -> Module -> [Message]
 warnCheck opts aEnv valEnv tcEnv (Module _ mid es is ds)
   = runOn (initWcState mid aEnv valEnv tcEnv (wnWarnFlags opts)) $ do
-      checkExports   es
       checkImports   is
       checkDeclGroup ds
+      checkExports   es
       checkMissingTypeSignatures ds
       checkModuleAlias is
 
@@ -121,8 +121,14 @@ runOn s f = sort $ warnings $ execState f s
 -- checkExports
 -- ---------------------------------------------------------------------------
 
-checkExports :: Maybe ExportSpec -> WCM ()
-checkExports _ = ok -- TODO
+checkExports :: Maybe ExportSpec -> WCM () -- TODO checks
+checkExports Nothing                      = ok
+checkExports (Just (Exporting _ exports)) = do
+  mapM_ visitExport exports
+  reportUnusedVars
+    where
+      visitExport (Export qid) = visitQId qid
+      visitExport _            = ok
 
 -- ---------------------------------------------------------------------------
 -- checkImports
@@ -296,8 +302,7 @@ checkEquation (Equation _ lhs rhs) = inNestedScope $ do
   reportUnusedVars
 
 checkLhs :: Lhs -> WCM ()
-checkLhs (FunLhs    f ts) = do
-  visitId f
+checkLhs (FunLhs    _ ts) = do
   mapM_ checkPattern ts
   mapM_ (insertPattern False) ts
 checkLhs (OpLhs t1 op t2) = checkLhs (FunLhs op [t1, t2])
