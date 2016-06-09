@@ -131,9 +131,11 @@ parseModule opts m fn = do
   case mbSrc of
     Nothing  -> failMessages [message $ text $ "Missing file: " ++ fn]
     Just src -> do
-      ul      <- liftCYM $ CS.unlit     fn src
+      ul      <- liftCYM $ CS.unlit fn src
       prepd   <- preprocess (optPrepOpts opts) fn ul
-      posToks <- liftCYM $ CS.lexSource   fn prepd
+      -- We ignore the warnings issued by the lexer because
+      -- they will be issued a second time during parsing.
+      posToks <- liftCYM $ silent $ CS.lexSource fn prepd
       ast     <- liftCYM $ CS.parseModule fn prepd
       checked <- checkModuleHeader opts m fn ast
       return (posToks, checked)
