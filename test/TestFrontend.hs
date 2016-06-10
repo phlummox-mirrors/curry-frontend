@@ -23,28 +23,28 @@
 module TestFrontend (tests) where
 
 #if __GLASGOW_HASKELL__ < 710
-import Control.Applicative          ((<$>))
+import           Control.Applicative    ((<$>))
 #endif
-import Control.Exception            (SomeException, catch)
+import qualified Control.Exception as E (SomeException, catch)
 
-import Data.List                    (isInfixOf, sort)
-import Distribution.TestSuite
-import System.FilePath              (FilePath, (</>), (<.>))
+import           Data.List              (isInfixOf, sort)
+import           Distribution.TestSuite
+import           System.FilePath        (FilePath, (</>), (<.>))
 
-import Curry.Base.Message           (Message, message, ppMessages, ppError)
-import Curry.Base.Monad             (CYIO, runCYIO)
-import Curry.Base.Pretty            (text)
-import qualified CompilerOpts as CO ( Options (..), WarnOpts (..)
-                                    , Verbosity (VerbQuiet)
-                                    , defaultOptions, defaultWarnOpts)
-import CurryBuilder                 (buildCurry)
+import           Curry.Base.Message     (Message, message, ppMessages, ppError)
+import           Curry.Base.Monad       (CYIO, runCYIO)
+import           Curry.Base.Pretty      (text)
+import qualified CompilerOpts as CO     ( Options (..), WarnOpts (..)
+                                        , Verbosity (VerbQuiet)
+                                        , defaultOptions, defaultWarnOpts)
+import CurryBuilder                     (buildCurry)
 
 tests :: IO [Test]
 tests = return [passingTests, warningTests, failingTests]
 
 runSecure :: CYIO a -> IO (Either [Message] (a, [Message]))
-runSecure act = runCYIO act `catch` handler
-  where handler e = return (Left [message $ text $ show (e :: SomeException)])
+runSecure act = runCYIO act `E.catch` handler
+  where handler e = return (Left [message $ text $ show (e :: E.SomeException)])
 
 -- Execute a test by calling cymake
 runTest :: CO.Options -> String -> [String] -> IO Progress
