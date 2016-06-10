@@ -1,15 +1,15 @@
 --------------------------------------------------------------------------------
 -- Test Suite for the Curry Frontend
 --------------------------------------------------------------------------------
--- 
+--
 -- This Test Suite supports three kinds of tests:
--- 
+--
 -- 1) tests which should pass
 -- 2) tests which should pass with a specific warning
 -- 3) tests which should fail yielding a specific error message
--- 
+--
 -- In order to add a test to this suite, proceed as follows:
--- 
+--
 -- 1) Store your test code in a file (please use descriptive names) and put it
 --    in the corresponding subfolder (i.e. test/pass for passing tests,
 --    test/fail for failing tests and test/warning for passing tests producing
@@ -25,13 +25,15 @@ module TestFrontend (tests) where
 #if __GLASGOW_HASKELL__ < 710
 import Control.Applicative          ((<$>))
 #endif
+import Control.Exception            (SomeException, catch)
 
 import Data.List                    (isInfixOf, sort)
 import Distribution.TestSuite
 import System.FilePath              (FilePath, (</>), (<.>))
 
-import Curry.Base.Message           (Message, ppMessages, ppError)
-import Curry.Base.Monad             (runCYIO)
+import Curry.Base.Message           (Message, message, ppMessages, ppError)
+import Curry.Base.Monad             (CYIO, runCYIO)
+import Curry.Base.Pretty            (text)
 import qualified CompilerOpts as CO ( Options (..), WarnOpts (..)
                                     , Verbosity (VerbQuiet)
                                     , defaultOptions, defaultWarnOpts)
@@ -40,27 +42,30 @@ import CurryBuilder                 (buildCurry)
 tests :: IO [Test]
 tests = return [passingTests, warningTests, failingTests]
 
+runSecure :: CYIO a -> IO (Either [Message] (a, [Message]))
+runSecure act = runCYIO act `catch` handler
+  where handler e = return (Left [message $ text $ show (e :: SomeException)])
+
 -- Execute a test by calling cymake
 runTest :: CO.Options -> String -> [String] -> IO Progress
-runTest opts test [] = runCYIO (buildCurry opts' test) >>= passOrFail
+runTest opts test [] = passOrFail <$> runSecure (buildCurry opts' test)
  where
   opts'         = opts { CO.optForce = True }
-  passOrFail    = (Finished <$>) . either fail pass
+  passOrFail    = Finished . either fail pass
   fail msgs
-    | null msgs = return Pass
-    | otherwise = let errorStr = showMessages msgs
-                   in return $ Fail $ "An unexpected failure occurred: " ++ errorStr
-  pass _        = return Pass
-runTest opts test errorMsgs = runCYIO (buildCurry opts' test) >>= catchE
+    | null msgs = Pass
+    | otherwise = Fail $ "An unexpected failure occurred: " ++ showMessages msgs
+  pass _        = Pass
+runTest opts test errorMsgs = catchE <$> runSecure (buildCurry opts' test)
  where
   opts'         = opts { CO.optForce = True }
-  catchE        = (Finished <$>) . either pass fail
+  catchE        = Finished . either pass fail
   pass msgs     = let errorStr = showMessages msgs
                    in if all (`isInfixOf` errorStr) errorMsgs
-                        then return Pass
-                        else return $ Fail $ "Expected warning/failure did not occur: "
+                        then Pass
+                        else Fail $ "Expected warning/failure did not occur: "
                                              ++ errorStr
-  fail           = pass . snd
+  fail          = pass . snd
 
 showMessages :: [Message] -> String
 showMessages = show . ppMessages ppError . sort
@@ -240,7 +245,7 @@ failInfos = map (uncurry mkFailTest)
 -- test code and the expected warning message(s) to the following list
 warnInfos :: [TestInfo]
 warnInfos = map (uncurry mkFailTest)
-  [ 
+  [
     ("AliasClash",
       [ "The module alias `AliasClash' overlaps with the current module name"
       , "Overlapping module aliases"
