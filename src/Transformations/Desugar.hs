@@ -86,8 +86,7 @@ import Base.Typing
 import Base.Utils      (mapAccumM, concatMapM)
 
 import Env.TypeConstructor (TCEnv, TypeInfo (..), qualLookupTC)
-import Env.Value (ValueEnv, ValueInfo (..), bindFun, lookupValue
-                 , qualLookupValue, conType)
+import Env.Value (ValueEnv, ValueInfo (..), bindFun, qualLookupValue, conType)
 
 -- The desugaring phase keeps only the type, function, and value
 -- declarations of the module, i.e., type signatures are discarded.
@@ -159,21 +158,9 @@ getTypeOf t = do
 freshIdent :: String -> Int -> TypeScheme -> DsM Ident
 freshIdent prefix arity ty = do
   m <- getModuleIdent
-  x <- freeIdent
+  x <- (mkIdent . (prefix ++) . show) <$> getNextId
   modifyValueEnv $ bindFun m x arity ty
   return x
-  where
-  -- TODO: This nasty loop is only necessary because a combination of desugaring,
-  -- simplification and a repeated desugaring, as currently needed for
-  -- non-linear and functional patterns, may reintroduce identifiers removed
-  -- during desugaring. The better solution would be to move the translation
-  -- of non-linear and functional pattern into a separate module.
-  freeIdent = do
-    x <- (\n -> mkIdent (prefix ++ show n)) <$> getNextId
-    tyEnv <- getValueEnv
-    case lookupValue x tyEnv of
-      [] -> return x
-      _  -> freeIdent
 
 -- Create a fresh variable ident for a given prefix with a monomorphic type
 freshMonoTypeVar :: Typeable t => String -> t -> DsM Ident

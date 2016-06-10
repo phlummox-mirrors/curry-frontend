@@ -282,4 +282,8 @@ warnInfos = map (uncurry mkFailTest)
       [ "Unused declaration of variable `x'", "Shadowing symbol `x'"])
   , ("TabCharacter",
       [ "Tab character"])
+  , ("UnexportedFunction",
+      [ "Unused declaration of variable `q'"
+      , "Unused declaration of variable `g'" ]
+    )
   ]
