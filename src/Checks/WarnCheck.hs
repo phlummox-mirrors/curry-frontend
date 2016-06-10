@@ -33,10 +33,10 @@ import Curry.Syntax
 import Curry.Syntax.Pretty (ppPattern, ppExpr, ppIdent)
 
 import Base.CurryTypes (ppTypeScheme)
-import Base.Messages (Message, posMessage, internalError)
-import Base.NestEnv ( NestEnv, emptyTopEnv, globalEnv, localNestEnv
-                    , nestEnv, nestedEnv, qualBindNestEnv
-                    , qualInLocalNestEnv, qualLookupNestEnv, qualModifyNestEnv)
+import Base.Messages   (Message, posMessage, internalError)
+import Base.NestEnv    ( NestEnv, emptyEnv, localNestEnv, nestEnv, unnestEnv
+                       , qualBindNestEnv, qualInLocalNestEnv, qualLookupNestEnv
+                       , qualModifyNestEnv)
 
 import Base.Types
 import Base.Utils (findMultiples)
@@ -83,9 +83,7 @@ type WCM = State WcState
 
 initWcState :: ModuleIdent -> AliasEnv -> ValueEnv -> TCEnv -> [WarnFlag]
             -> WcState
-initWcState mid ae ve te wf = WcState mid newEnv ae ve te wf []
-  where
-    newEnv = globalEnv emptyTopEnv
+initWcState mid ae ve te wf = WcState mid emptyEnv ae ve te wf []
 
 getModuleIdent :: WCM ModuleIdent
 getModuleIdent = gets moduleId
@@ -1049,7 +1047,7 @@ beginScope :: WCM ()
 beginScope = modifyScope nestEnv
 
 endScope :: WCM ()
-endScope = modifyScope nestedEnv
+endScope = modifyScope unnestEnv
 
 ------------------------------------------------------------------------------
 

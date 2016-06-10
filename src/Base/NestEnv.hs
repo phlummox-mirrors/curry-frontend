@@ -18,9 +18,10 @@
 
 module Base.NestEnv
   ( module Base.TopEnv
-  , NestEnv, bindNestEnv, qualBindNestEnv, lookupNestEnv, qualLookupNestEnv
+  , NestEnv, emptyEnv, bindNestEnv, qualBindNestEnv
+  , lookupNestEnv, qualLookupNestEnv
   , rebindNestEnv, qualRebindNestEnv
-  , nestedEnv, toplevelEnv, globalEnv, nestEnv, elemNestEnv
+  , unnestEnv, toplevelEnv, globalEnv, nestEnv, elemNestEnv
   , qualModifyNestEnv, modifyNestEnv, localNestEnv, qualInLocalNestEnv
   ) where
 
@@ -42,12 +43,15 @@ instance Functor NestEnv where
 globalEnv :: TopEnv a -> NestEnv a
 globalEnv = GlobalEnv
 
+emptyEnv :: NestEnv a
+emptyEnv = globalEnv emptyTopEnv
+
 nestEnv :: NestEnv a -> NestEnv a
 nestEnv env = LocalEnv env Map.empty
 
-nestedEnv :: NestEnv a -> NestEnv a
-nestedEnv (GlobalEnv _)     = internalError "NestedEnv.nestedEnv environment is top environment"
-nestedEnv (LocalEnv genv _) = genv
+unnestEnv :: NestEnv a -> NestEnv a
+unnestEnv g@(GlobalEnv   _) = g
+unnestEnv (LocalEnv genv _) = genv
 
 toplevelEnv :: NestEnv a -> TopEnv a
 toplevelEnv (GlobalEnv   env) = env
@@ -56,7 +60,7 @@ toplevelEnv (LocalEnv genv _) = toplevelEnv genv
 bindNestEnv :: Ident -> a -> NestEnv a -> NestEnv a
 bindNestEnv x y (GlobalEnv     env) = GlobalEnv $ bindTopEnv x y env
 bindNestEnv x y (LocalEnv genv env) = case Map.lookup x env of
-  Just  _ -> internalError $ "NestEnv.bindNestEnv " ++ show x
+  Just  _ -> internalError $ "NestEnv.bindNestEnv: " ++ show x ++ " is already bound"
   Nothing -> LocalEnv genv $ Map.insert x y env
 
 qualBindNestEnv :: QualIdent -> a -> NestEnv a -> NestEnv a
