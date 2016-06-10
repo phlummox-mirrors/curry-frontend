@@ -56,7 +56,6 @@ Library
     , Base.Messages
     , Base.NestEnv
     , Base.SCC
-    , Base.ScopeEnv
     , Base.Subst
     , Base.TopEnv
     , Base.Types
