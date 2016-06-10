@@ -25,11 +25,11 @@ import qualified Curry.Syntax as CS
 
 import Base.CurryTypes
 import Base.Messages (internalError)
-import Base.ScopeEnv (ScopeEnv)
-import qualified Base.ScopeEnv as SE (new, insert, lookup, beginScope, endScope)
-import Base.TopEnv (topEnvMap)
+import Base.NestEnv  (NestEnv, emptyEnv, bindNestEnv, lookupNestEnv, nestEnv
+                     , unnestEnv)
+import Base.TopEnv   (topEnvMap)
 import Base.Types
-import Base.Utils (concatMapM)
+import Base.Utils    (concatMapM)
 
 import Env.Interface
 import Env.TypeConstructor (TCEnv, TypeInfo (..))
@@ -105,7 +105,7 @@ data FlatEnv = FlatEnv
   , exportsE      :: [CS.Export]
   , interfaceE    :: [CS.IDecl]
   , varIndexE     :: Int
-  , varIdsE       :: ScopeEnv Ident VarIndex
+  , varIdsE       :: NestEnv VarIndex
   , genInterfaceE :: Bool
   , localTypes    :: Map.Map QualIdent IL.Type
   , consTypes     :: Map.Map QualIdent IL.Type
@@ -115,6 +115,8 @@ data IdentExport
   = NotConstr     -- function, type-constructor
   | OnlyConstr    -- constructor
   | NotOnlyConstr -- constructor, function, type-constructor
+
+data Call = Fun | Con
 
 -- Runs a 'FlatState' action and returns the result
 run :: ModuleSummary.ModuleSummary -> InterfaceEnv -> ValueEnv -> TCEnv
@@ -134,7 +136,7 @@ run modSum mEnv tyEnv tcEnv genIntf f = evalState f env0
     , exportsE      = ModuleSummary.exports      modSum
     , interfaceE    = ModuleSummary.interface    modSum
     , varIndexE     = 0
-    , varIdsE       = SE.new
+    , varIdsE       = emptyEnv
     , genInterfaceE = genIntf
     , localTypes    = Map.empty
     , consTypes     = Map.fromList $ getConstrTypes tcEnv
@@ -212,11 +214,13 @@ trFuncDecl (IL.FunctionDecl qid vs ty e) = do
   arity <- getArity qid
   texpr <- trType ty
   whenFlatCurry
-    (do vis   <- getVisibility False qid
-        is    <- mapM newVarIndex vs
-        expr  <- trExpr e
-        clearVarIndices
-        return [Func qname arity vis texpr (Rule is expr)]
+    -- reset var index in order to use var indices starting from 0
+    -- for every rule of a function
+    (withFreshVarIndex $ inNestedScope $ do
+      vis <- getVisibility False qid
+      vs' <- mapM newVarIndex vs
+      e'  <- trExpr e
+      return [Func qname arity vis texpr (Rule vs' e')]
     )
     (return [Func qname arity Public texpr (Rule [] (Var $ mkIdx 0))])
 trFuncDecl (IL.ExternalDecl qid _ extname ty) = do
@@ -230,32 +234,27 @@ trFuncDecl _ = return []
 
 trExpr :: IL.Expression -> FlatState Expr
 trExpr (IL.Literal       l) = Lit <$> trLiteral l
-trExpr (IL.Variable      v) = Var <$> lookupVarIndex v
-trExpr (IL.Function    f _) = do
-  qname <- trQualIdent f
-  arity <- getArity    f
-  genFuncCall qname arity []
-trExpr (IL.Constructor c _) = do
-  qname <- trQualIdent c
-  arity <- getArity    c
-  genConsCall qname arity []
+trExpr (IL.Variable      v) = Var <$> getVarIndex v
+trExpr (IL.Function    f _) = genCall Fun f []
+trExpr (IL.Constructor c _) = genCall Con c []
 trExpr (IL.Apply     e1 e2) = trApply e1 e2
-trExpr (IL.Case   r t e bs) = Case r (cvEval t) <$> trExpr e <*> mapM trAlt bs
+trExpr (IL.Case   r t e bs) = Case r (cvEval t) <$> trExpr e
+                              <*> mapM (inNestedScope . trAlt) bs
 trExpr (IL.Or        e1 e2) = Or <$> trExpr e1 <*> trExpr e2
-trExpr (IL.Exist       v e) = do
+trExpr (IL.Exist       v e) = inNestedScope $ do
   idx <- newVarIndex v
   e'  <- trExpr e
   return $ case e' of
     Free is e'' -> Free (idx : is) e''
     _           -> Free (idx : []) e'
-trExpr (IL.Let (IL.Binding v b) e) = inNewScope $ do
+trExpr (IL.Let (IL.Binding v b) e) = inNestedScope $ do
   v' <- newVarIndex v
   b' <- trExpr b
   e' <- trExpr e
   return $ case e' of -- TODO bjp(2011-09-21): maybe remove again, ask @MH
     Let bs e'' -> Let ((v', b'):bs) e''
     _          -> Let ((v', b'):[]) e'
-trExpr (IL.Letrec   bs e) = inNewScope $ do
+trExpr (IL.Letrec   bs e) = inNestedScope $ do
   let (vs, es) = unzip [ (v, b) | IL.Binding v b <- bs]
   vs' <- mapM newVarIndex vs
   es' <- mapM trExpr es
@@ -267,6 +266,18 @@ trLiteral :: IL.Literal -> FlatState Literal
 trLiteral (IL.Char  rs c) = return $ Charc  rs c
 trLiteral (IL.Int   rs i) = return $ Intc   rs i
 trLiteral (IL.Float rs f) = return $ Floatc rs f
+
+-- TODO: Refactor
+trApply :: IL.Expression -> IL.Expression -> FlatState Expr
+trApply e1 e2 = genFlatApplic e1 [e2]
+  where
+  genFlatApplic e es = case e of
+    IL.Apply     ea eb -> genFlatApplic ea (eb:es)
+    IL.Function    f _ -> genCall Fun f es
+    IL.Constructor c _ -> genCall Con c es
+    _ -> do
+      expr <- trExpr e
+      genApply expr es
 
 trAlt :: IL.Alt -> FlatState BranchExpr
 trAlt (IL.Alt p e) = Branch <$> trPat p <*> trExpr e
@@ -461,55 +472,32 @@ qualifyFieldDecl m (CS.FieldDecl p l ty) = CS.FieldDecl p l (qualifyCSType m ty)
 qualifyCSType :: ModuleIdent -> CS.TypeExpr -> CS.TypeExpr
 qualifyCSType mid = fromType . toQualType mid []
 
--- TODO: Refactor
-trApply :: IL.Expression -> IL.Expression -> FlatState Expr
-trApply e1 e2 = genFlatApplic [e2] e1
-  where
-  genFlatApplic es e = case e of
-    (IL.Apply     ea eb) -> genFlatApplic (eb:es) ea
-    (IL.Function    f _) -> do
-      qname <- trQualIdent f
-      arity <- getArity f
-      genFuncCall qname arity es
-    (IL.Constructor c _) -> do
-      qname <- trQualIdent c
-      arity <- getArity c
-      genConsCall qname arity es
-    _ -> do
-      expr <- trExpr e
-      genApplicComb expr es
-
-genFuncCall :: QName -> Int -> [IL.Expression] -> FlatState Expr
-genFuncCall qname arity es
-  | cnt <  arity = genComb qname es (FuncPartCall (arity - cnt))
-  | cnt == arity = genComb qname es FuncCall
-  | otherwise    = do
-    let (es1, es2) = splitAt arity es
-    funccall <- genComb qname es1 FuncCall
-    genApplicComb funccall es2
- where cnt = length es
-
-genConsCall :: QName -> Int -> [IL.Expression] -> FlatState Expr
-genConsCall qname arity es
-  | cnt <  arity = genComb qname es (ConsPartCall (arity - cnt))
-  | cnt == arity = genComb qname es ConsCall
-  | otherwise    = do
-    let (es1, es2) = splitAt arity es
-    conscall <- genComb qname es1 ConsCall
-    genApplicComb conscall es2
- where cnt = length es
+genCall :: Call -> QualIdent -> [IL.Expression] -> FlatState Expr
+genCall call f es = do
+  f'    <- trQualIdent f
+  arity <- getArity f
+  case compare cnt arity of
+    LT -> genComb f' es (part call (arity - cnt))
+    EQ -> genComb f' es (full call)
+    GT -> do
+      let (es1, es2) = splitAt arity es
+      funccall <- genComb f' es1 (full call)
+      genApply funccall es2
+ where
+   cnt = length es
+   full Fun = FuncCall
+   full Con = ConsCall
+   part Fun = FuncPartCall
+   part Con = ConsPartCall
 
 genComb :: QName -> [IL.Expression] -> CombType -> FlatState Expr
 genComb qid es ct = Comb ct qid <$> mapM trExpr es
 
-genApplicComb :: Expr -> [IL.Expression] -> FlatState Expr
-genApplicComb e []      = return e
-genApplicComb e (e1:es) = do
-  expr1 <- trExpr e1
-  qname <- trQualIdent qidApply
-  genApplicComb (Comb FuncCall qname [e, expr1]) es
-  where
-  qidApply = qualifyWith preludeMIdent (mkIdent "apply")
+genApply :: Expr -> [IL.Expression] -> FlatState Expr
+genApply e es = do
+  es' <- mapM trExpr es
+  ap  <- trQualIdent $ qualifyWith preludeMIdent (mkIdent "apply")
+  return $ foldl (\e1 e2 -> Comb FuncCall ap [e1, e2]) e es'
 
 genOpDecls :: FlatState [OpDecl]
 genOpDecls = fixities >>= mapM genOpDecl
@@ -678,7 +666,7 @@ newVarIndex ident = do
   idx <- (+1) <$> gets varIndexE
   ty  <- getTypeOf ident
   let vid = VarIndex ty idx
-  modify $ \ s -> s { varIndexE = idx, varIdsE = SE.insert ident vid (varIdsE s) }
+  modify $ \ s -> s { varIndexE = idx, varIdsE = bindNestEnv ident vid (varIdsE s) }
   return vid
 
 getTypeOf :: Ident -> FlatState (Maybe TypeExpr)
@@ -693,20 +681,23 @@ getTypeOf ident = do
       return (Just t1)
     _ -> return Nothing
 
-lookupVarIndex :: Ident -> FlatState VarIndex
-lookupVarIndex ident = do
-  index_ <- gets (SE.lookup ident . varIdsE)
-  maybe (internalError $ "GenFlatCurry: missing index for \"" ++ show ident ++ "\"") return index_
+getVarIndex :: Ident -> FlatState VarIndex
+getVarIndex ident = do
+  varEnv <- gets varIdsE
+  case lookupNestEnv ident varEnv of
+    [i] -> return i
+    _   -> internalError $ "GenFlatCurry: missing or multiple index for " ++ escName ident
 
-clearVarIndices :: FlatState ()
-clearVarIndices = modify $ \ s -> s { varIndexE = 0, varIdsE = SE.new }
-
-inNewScope :: FlatState a -> FlatState a
-inNewScope act = do
-  modify $ \ s -> s { varIdsE = SE.beginScope $ varIdsE s }
+inNestedScope :: FlatState a -> FlatState a
+inNestedScope act = do
+  modify $ \ s -> s { varIdsE = nestEnv $ varIdsE s }
   res <- act
-  modify $ \ s -> s { varIdsE = SE.endScope $ varIdsE s }
+  modify $ \ s -> s { varIdsE = unnestEnv $ varIdsE s }
   return res
+
+-- resets var index
+withFreshVarIndex :: FlatState a -> FlatState a
+withFreshVarIndex act = modify (\ s -> s { varIndexE = 0 }) >> act
 
 whenFlatCurry :: FlatState a -> FlatState a -> FlatState a
 whenFlatCurry genFlat genIntf
@@ -737,9 +728,9 @@ bindEnvIDecl :: ModuleIdent -> Map.Map Ident IdentExport -> CS.IDecl -> Map.Map 
 bindEnvIDecl mid env (CS.IDataDecl _ qid _ cdecls hs)
   = maybe env
     (\ident -> let env'  = bindIdentExport ident False env
-                   env'' = foldl bindEnvConstrDecl env'
+                   env'' = foldr bindEnvConstrDecl env'
                      [c | c <- cdecls, CS.constrId c `notElem` hs]
-               in foldl bindEnvLabel env'' [l | l <- labels, l `notElem` hs])
+               in foldr bindEnvLabel env'' [l | l <- labels, l `notElem` hs])
     (localIdent mid qid)
   where
     labels = nub $ concatMap CS.recordLabels cdecls
@@ -747,9 +738,9 @@ bindEnvIDecl mid env (CS.INewtypeDecl _ qid _ ncdecl hs)
   = maybe env
     (\ident -> let env'  = bindIdentExport ident False env
                    env'' = if ncId `notElem` hs
-                              then bindEnvNewConstrDecl env' ncdecl
+                              then bindEnvNewConstrDecl ncdecl env'
                               else env'
-               in foldl bindEnvLabel env'' [l | l <- labels, l `notElem` hs])
+               in foldr bindEnvLabel env'' [l | l <- labels, l `notElem` hs])
     (localIdent mid qid)
   where
     ncId   = CS.nconstrId ncdecl
@@ -760,14 +751,14 @@ bindEnvIDecl mid env (CS.IFunctionDecl _ qid _ _)
   = maybe env (\ident -> bindIdentExport ident False env) (localIdent mid qid)
 bindEnvIDecl _ env _ = env
 
-bindEnvConstrDecl :: Map.Map Ident IdentExport -> CS.ConstrDecl -> Map.Map Ident IdentExport
-bindEnvConstrDecl env (CS.ConstrDecl  _ _ ident _) = bindIdentExport ident True env
-bindEnvConstrDecl env (CS.ConOpDecl _ _ _ ident _) = bindIdentExport ident True env
-bindEnvConstrDecl env (CS.RecordDecl  _ _ ident _) = bindIdentExport ident True env
+bindEnvConstrDecl :: CS.ConstrDecl -> Map.Map Ident IdentExport -> Map.Map Ident IdentExport
+bindEnvConstrDecl (CS.ConstrDecl  _ _ c _) = bindIdentExport c True
+bindEnvConstrDecl (CS.ConOpDecl _ _ _ c _) = bindIdentExport c True
+bindEnvConstrDecl (CS.RecordDecl  _ _ c _) = bindIdentExport c True
 
-bindEnvLabel :: Map.Map Ident IdentExport -> Ident -> Map.Map Ident IdentExport
-bindEnvLabel env l = bindIdentExport l False env
+bindEnvLabel :: Ident -> Map.Map Ident IdentExport -> Map.Map Ident IdentExport
+bindEnvLabel l = bindIdentExport l False
 
-bindEnvNewConstrDecl :: Map.Map Ident IdentExport -> CS.NewConstrDecl -> Map.Map Ident IdentExport
-bindEnvNewConstrDecl env (CS.NewConstrDecl _ _ ident _) = bindIdentExport ident False env
-bindEnvNewConstrDecl env (CS.NewRecordDecl _ _ ident _) = bindIdentExport ident False env
+bindEnvNewConstrDecl :: CS.NewConstrDecl -> Map.Map Ident IdentExport -> Map.Map Ident IdentExport
+bindEnvNewConstrDecl (CS.NewConstrDecl _ _ nc _) = bindIdentExport nc False
+bindEnvNewConstrDecl (CS.NewRecordDecl _ _ nc _) = bindIdentExport nc False
