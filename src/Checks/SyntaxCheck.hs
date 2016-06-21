@@ -28,9 +28,11 @@ module Checks.SyntaxCheck (syntaxCheck) where
 #if __GLASGOW_HASKELL__ < 710
 import           Control.Applicative        ((<$>), (<*>))
 #endif
+import           Control.Applicative        ((<|>))
 import           Control.Monad            (unless, when)
 import qualified Control.Monad.State as S (State, runState, gets, modify)
-import           Data.List                (insertBy, intersect, nub, partition)
+import           Data.List                (delete, find, insertBy, intersect
+                                          , nub, partition)
 import qualified Data.Map  as Map         (Map, empty, findWithDefault, fromList
                                           , insertWith, keys)
 import           Data.Maybe               (isJust, isNothing)
@@ -821,7 +823,7 @@ checkExpr p (LeftSection        e op) =
 checkExpr p (RightSection       op e) =
   RightSection <$> checkOp op <*> checkExpr p e
 checkExpr p (Lambda           r ts e) = inNestedScope $
-  Lambda r <$> mapM (bindPattern "lambda expression" p) ts <*> checkExpr p e
+  checkLambda Nothing p r ts e
 checkExpr p (Let                ds e) = inNestedScope $
   Let <$> checkDeclGroup bindVarDecl ds <*> checkExpr p e
 checkExpr p (Do                sts e) = withLocalEnv $
@@ -830,6 +832,18 @@ checkExpr p (IfThenElse r e1 e2 e3) =
   IfThenElse r <$> checkExpr p e1 <*> checkExpr p e2 <*> checkExpr p e3
 checkExpr p (Case r ct e alts) =
   Case r ct <$> checkExpr p e <*> mapM checkAlt alts
+
+checkLambda :: Maybe [Pattern] -> Position -> SrcRef -> [Pattern] -> Expression -> SCM Expression
+checkLambda errPat p r ts e = case findDouble (bv ts) of
+  Nothing -> do
+    ts' <- mapM (bindPattern "lambda expression" p) ts
+    case errPat of
+      Nothing -> Lambda r ts' <$> checkExpr p e
+      Just ps -> Lambda r ps  <$> checkExpr p e
+  Just d  -> do
+    let Just tD = find (elem d . bv) ts
+    report $ errDuplicateVariable d
+    checkLambda (errPat <|> Just ts) p r (delete tD ts) e
 
 checkVariable :: QualIdent -> SCM Expression
 checkVariable v
