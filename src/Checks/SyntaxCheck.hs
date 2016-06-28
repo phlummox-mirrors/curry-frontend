@@ -28,11 +28,11 @@ module Checks.SyntaxCheck (syntaxCheck) where
 #if __GLASGOW_HASKELL__ < 710
 import           Control.Applicative        ((<$>), (<*>))
 #endif
-import           Control.Applicative        ((<|>))
 import           Control.Monad            (unless, when)
 import qualified Control.Monad.State as S (State, runState, gets, modify)
-import           Data.List                (delete, find, insertBy, intersect
-                                          , nub, partition)
+import           Data.Function            (on)
+import           Data.List                (insertBy, intersect, nub, nubBy
+                                          , partition)
 import qualified Data.Map  as Map         (Map, empty, findWithDefault, fromList
                                           , insertWith, keys)
 import           Data.Maybe               (isJust, isNothing)
@@ -823,7 +823,7 @@ checkExpr p (LeftSection        e op) =
 checkExpr p (RightSection       op e) =
   RightSection <$> checkOp op <*> checkExpr p e
 checkExpr p (Lambda           r ts e) = inNestedScope $
-  checkLambda Nothing p r ts e
+  checkLambda p r ts e
 checkExpr p (Let                ds e) = inNestedScope $
   Let <$> checkDeclGroup bindVarDecl ds <*> checkExpr p e
 checkExpr p (Do                sts e) = withLocalEnv $
@@ -833,17 +833,18 @@ checkExpr p (IfThenElse r e1 e2 e3) =
 checkExpr p (Case r ct e alts) =
   Case r ct <$> checkExpr p e <*> mapM checkAlt alts
 
-checkLambda :: Maybe [Pattern] -> Position -> SrcRef -> [Pattern] -> Expression -> SCM Expression
-checkLambda errPat p r ts e = case findDouble (bv ts) of
-  Nothing -> do
+checkLambda :: Position -> SrcRef -> [Pattern] -> Expression -> SCM Expression
+checkLambda p r ts e = case map head (findMultiples (bvNoAnon ts)) of
+  []      -> do
     ts' <- mapM (bindPattern "lambda expression" p) ts
-    case errPat of
-      Nothing -> Lambda r ts' <$> checkExpr p e
-      Just ps -> Lambda r ps  <$> checkExpr p e
-  Just d  -> do
-    let Just tD = find (elem d . bv) ts
-    report $ errDuplicateVariable d
-    checkLambda (errPat <|> Just ts) p r (delete tD ts) e
+    Lambda r ts' <$> checkExpr p e
+  errVars -> do
+    mapM_ (report . errDuplicateVariable) errVars
+    let nubTs = nubBy (\t1 t2 -> (not . null) (on intersect bvNoAnon t1 t2)) ts
+    mapM_ (bindPattern "lambda expression" p) nubTs
+    Lambda r ts <$> checkExpr p e
+  where
+    bvNoAnon t = filter (not . isAnonId) $ bv t
 
 checkVariable :: QualIdent -> SCM Expression
 checkVariable v
@@ -957,7 +958,7 @@ checkAlt :: Alt -> SCM Alt
 checkAlt (Alt p t rhs) = inNestedScope $
   Alt p <$> bindPattern "case expression" p t <*> checkRhs rhs
 
-addBoundVariables :: QuantExpr t => Bool -> t -> SCM t
+addBoundVariables :: (QuantExpr t, Show t) => Bool -> t -> SCM t
 addBoundVariables checkDuplicates ts = do
   when checkDuplicates $ maybe (return ()) (report . errDuplicateVariable)
                        $ findDouble bvs
