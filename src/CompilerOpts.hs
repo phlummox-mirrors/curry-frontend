@@ -165,7 +165,7 @@ data WarnFlag
 -- |Warning flags enabled by default
 stdWarnFlags :: [WarnFlag]
 stdWarnFlags =
-  [ WarnMultipleImports  , WarnDisjoinedRules, WarnUnusedBindings
+  [ WarnMultipleImports  , WarnDisjoinedRules --, WarnUnusedBindings
   , WarnNameShadowing    , WarnOverlapping   , WarnIncompletePatterns
   , WarnMissingSignatures
   ]
