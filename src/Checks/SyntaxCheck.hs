@@ -834,12 +834,12 @@ checkExpr p (Case r ct e alts) =
   Case r ct <$> checkExpr p e <*> mapM checkAlt alts
 
 checkLambda :: Position -> SrcRef -> [Pattern] -> Expression -> SCM Expression
-checkLambda p r ts e = case map head (findMultiples (bvNoAnon ts)) of
+checkLambda p r ts e = case findMultiples (bvNoAnon ts) of
   []      -> do
     ts' <- mapM (bindPattern "lambda expression" p) ts
     Lambda r ts' <$> checkExpr p e
   errVars -> do
-    mapM_ (report . errDuplicateVariable) errVars
+    mapM_ (report . errDuplicateVariables) errVars
     let nubTs = nubBy (\t1 t2 -> (not . null) (on intersect bvNoAnon t1 t2)) ts
     mapM_ (bindPattern "lambda expression" p) nubTs
     Lambda r ts <$> checkExpr p e
@@ -960,8 +960,8 @@ checkAlt (Alt p t rhs) = inNestedScope $
 
 addBoundVariables :: (QuantExpr t, Show t) => Bool -> t -> SCM t
 addBoundVariables checkDuplicates ts = do
-  when checkDuplicates $ maybe (return ()) (report . errDuplicateVariable)
-                       $ findDouble bvs
+  when checkDuplicates $ mapM_ (report . errDuplicateVariables)
+                               (findMultiples bvs)
   modifyRenameEnv $ \ env -> foldr bindVar env (nub bvs)
   return ts
   where bvs = bv ts
@@ -1226,9 +1226,12 @@ errDuplicateDefinition :: Ident -> Message
 errDuplicateDefinition v = posMessage v $ hsep $ map text
   ["More than one definition for", escName v]
 
-errDuplicateVariable :: Ident -> Message
-errDuplicateVariable v = posMessage v $ hsep $ map text
-  [escName v, "occurs more than once in pattern"]
+errDuplicateVariables :: [Ident] -> Message
+errDuplicateVariables [] = internalError
+  "SyntaxCheck.errDuplicateVariables: empty list"
+errDuplicateVariables (v:vs) = posMessage v $
+  text (escName v) <+> text "occurs more than one in pattern at:" $+$
+  nest 2 (vcat (map (ppPosition . getPosition) (v:vs)))
 
 errMultipleDataConstructor :: [Ident] -> Message
 errMultipleDataConstructor [] = internalError
