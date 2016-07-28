@@ -153,39 +153,42 @@ data TargetType
 
 -- |Warnings flags
 data WarnFlag
-  = WarnMultipleImports    -- ^ Warn for multiple imports
-  | WarnDisjoinedRules     -- ^ Warn for disjoined function rules
-  | WarnUnusedBindings     -- ^ Warn for unused bindings
-  | WarnNameShadowing      -- ^ Warn for name shadowing
-  | WarnOverlapping        -- ^ Warn for overlapping rules/alternatives
-  | WarnIncompletePatterns -- ^ Warn for incomplete pattern matching
-  | WarnMissingSignatures  -- ^ Warn for missing type signatures
+  = WarnMultipleImports      -- ^ Warn for multiple imports
+  | WarnDisjoinedRules       -- ^ Warn for disjoined function rules
+  | WarnUnusedGlobalBindings -- ^ Warn for unused global bindings
+  | WarnUnusedBindings       -- ^ Warn for unused local bindings
+  | WarnNameShadowing        -- ^ Warn for name shadowing
+  | WarnOverlapping          -- ^ Warn for overlapping rules/alternatives
+  | WarnIncompletePatterns   -- ^ Warn for incomplete pattern matching
+  | WarnMissingSignatures    -- ^ Warn for missing type signatures
     deriving (Eq, Bounded, Enum, Show)
 
 -- |Warning flags enabled by default
 stdWarnFlags :: [WarnFlag]
 stdWarnFlags =
-  [ WarnMultipleImports  , WarnDisjoinedRules --, WarnUnusedBindings
-  , WarnNameShadowing    , WarnOverlapping   , WarnIncompletePatterns
-  , WarnMissingSignatures
+  [ WarnMultipleImports   , WarnDisjoinedRules   --, WarnUnusedGlobalBindings
+  , WarnUnusedBindings    , WarnNameShadowing    , WarnOverlapping
+  , WarnIncompletePatterns, WarnMissingSignatures
   ]
 
 -- |Description and flag of warnings flags
 warnFlags :: [(WarnFlag, String, String)]
 warnFlags =
-  [ ( WarnMultipleImports   , "multiple-imports"
+  [ ( WarnMultipleImports     , "multiple-imports"
     , "multiple imports"           )
-  , ( WarnDisjoinedRules    , "disjoined-rules"
+  , ( WarnDisjoinedRules      , "disjoined-rules"
     , "disjoined function rules"   )
-  , ( WarnUnusedBindings    , "unused-bindings"
+  , ( WarnUnusedGlobalBindings, "unused-global-bindings"
     , "unused bindings"            )
-  , ( WarnNameShadowing     , "name-shadowing"
+  , ( WarnUnusedBindings      , "unused-bindings"
+    , "unused bindings"            )
+  , ( WarnNameShadowing       , "name-shadowing"
     , "name shadowing"             )
-  , ( WarnOverlapping       , "overlapping"
+  , ( WarnOverlapping         , "overlapping"
     , "overlapping function rules" )
-  , ( WarnIncompletePatterns, "incomplete-patterns"
+  , ( WarnIncompletePatterns  , "incomplete-patterns"
     , "incomplete pattern matching")
-  , ( WarnMissingSignatures , "missing-signatures"
+  , ( WarnMissingSignatures   , "missing-signatures"
     , "missing type signatures"    )
   ]
 

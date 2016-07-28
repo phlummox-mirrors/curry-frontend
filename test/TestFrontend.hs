@@ -51,7 +51,9 @@ runTest :: CO.Options -> String -> [String] -> IO Progress
 runTest opts test [] = passOrFail <$> runSecure (buildCurry opts' test)
  where
   wOpts         = CO.optWarnOpts opts
-  wFlags        = CO.WarnUnusedBindings : CO.wnWarnFlags wOpts
+  wFlags        =   CO.WarnUnusedBindings
+                  : CO.WarnUnusedGlobalBindings
+                  : CO.wnWarnFlags wOpts
   opts'         = opts { CO.optForce    = True
                        , CO.optWarnOpts = wOpts { CO.wnWarnFlags = wFlags }
                        }
@@ -63,7 +65,9 @@ runTest opts test [] = passOrFail <$> runSecure (buildCurry opts' test)
 runTest opts test errorMsgs = catchE <$> runSecure (buildCurry opts' test)
  where
   wOpts         = CO.optWarnOpts opts
-  wFlags        = CO.WarnUnusedBindings : CO.wnWarnFlags wOpts
+  wFlags        =   CO.WarnUnusedBindings
+                  : CO.WarnUnusedGlobalBindings
+                  : CO.wnWarnFlags wOpts
   opts'         = opts { CO.optForce    = True
                        , CO.optWarnOpts = wOpts { CO.wnWarnFlags = wFlags }
                        }

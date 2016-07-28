@@ -123,7 +123,7 @@ checkExports :: Maybe ExportSpec -> WCM () -- TODO checks
 checkExports Nothing                      = ok
 checkExports (Just (Exporting _ exports)) = do
   mapM_ visitExport exports
-  reportUnusedVars
+  reportUnusedGlobalVars
     where
       visitExport (Export qid) = visitQId qid
       visitExport _            = ok
@@ -870,7 +870,13 @@ checkShadowing x = warnFor WarnNameShadowing $
   shadowsVar x >>= maybe ok (report . warnShadowing x)
 
 reportUnusedVars :: WCM ()
-reportUnusedVars = warnFor WarnUnusedBindings $ do
+reportUnusedVars = reportAllUnusedVars WarnUnusedBindings
+
+reportUnusedGlobalVars :: WCM ()
+reportUnusedGlobalVars = reportAllUnusedVars WarnUnusedGlobalBindings
+
+reportAllUnusedVars :: WarnFlag -> WCM ()
+reportAllUnusedVars wFlag = warnFor wFlag $ do
   unused <- returnUnrefVars
   unless (null unused) $ mapM_ report $ map warnUnrefVar unused
 
