@@ -35,7 +35,7 @@ import           Curry.Base.Message     (Message, message, ppMessages, ppError)
 import           Curry.Base.Monad       (CYIO, runCYIO)
 import           Curry.Base.Pretty      (text)
 import qualified CompilerOpts as CO     ( Options (..), WarnOpts (..)
-                                        , Verbosity (VerbQuiet)
+                                        , WarnFlag (..), Verbosity (VerbQuiet)
                                         , defaultOptions, defaultWarnOpts)
 import CurryBuilder                     (buildCurry)
 
@@ -50,7 +50,13 @@ runSecure act = runCYIO act `E.catch` handler
 runTest :: CO.Options -> String -> [String] -> IO Progress
 runTest opts test [] = passOrFail <$> runSecure (buildCurry opts' test)
  where
-  opts'         = opts { CO.optForce = True }
+  wOpts         = CO.optWarnOpts opts
+  wFlags        =   CO.WarnUnusedBindings
+                  : CO.WarnUnusedGlobalBindings
+                  : CO.wnWarnFlags wOpts
+  opts'         = opts { CO.optForce    = True
+                       , CO.optWarnOpts = wOpts { CO.wnWarnFlags = wFlags }
+                       }
   passOrFail    = Finished . either fail pass
   fail msgs
     | null msgs = Pass
@@ -58,8 +64,14 @@ runTest opts test [] = passOrFail <$> runSecure (buildCurry opts' test)
   pass _        = Pass
 runTest opts test errorMsgs = catchE <$> runSecure (buildCurry opts' test)
  where
-  opts'     = opts { CO.optForce = True }
-  catchE    = Finished . either pass fail
+  wOpts         = CO.optWarnOpts opts
+  wFlags        =   CO.WarnUnusedBindings
+                  : CO.WarnUnusedGlobalBindings
+                  : CO.wnWarnFlags wOpts
+  opts'         = opts { CO.optForce    = True
+                       , CO.optWarnOpts = wOpts { CO.wnWarnFlags = wFlags }
+                       }
+  catchE        = Finished . either pass fail
   pass msgs = let errorStr     = showMessages msgs
                   leftOverMsgs = filter (not . flip isInfixOf errorStr) errorMsgs
                in if null leftOverMsgs
