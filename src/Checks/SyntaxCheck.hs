@@ -30,7 +30,9 @@ import           Control.Applicative        ((<$>), (<*>))
 #endif
 import           Control.Monad            (unless, when)
 import qualified Control.Monad.State as S (State, runState, gets, modify)
-import           Data.List                (insertBy, intersect, nub, partition)
+import           Data.Function            (on)
+import           Data.List                (insertBy, intersect, nub, nubBy
+                                          , partition)
 import qualified Data.Map  as Map         (Map, empty, findWithDefault, fromList
                                           , insertWith, keys)
 import           Data.Maybe               (isJust, isNothing)
@@ -821,7 +823,7 @@ checkExpr p (LeftSection        e op) =
 checkExpr p (RightSection       op e) =
   RightSection <$> checkOp op <*> checkExpr p e
 checkExpr p (Lambda           r ts e) = inNestedScope $
-  Lambda r <$> mapM (bindPattern "lambda expression" p) ts <*> checkExpr p e
+  checkLambda p r ts e
 checkExpr p (Let                ds e) = inNestedScope $
   Let <$> checkDeclGroup bindVarDecl ds <*> checkExpr p e
 checkExpr p (Do                sts e) = withLocalEnv $
@@ -830,6 +832,19 @@ checkExpr p (IfThenElse r e1 e2 e3) =
   IfThenElse r <$> checkExpr p e1 <*> checkExpr p e2 <*> checkExpr p e3
 checkExpr p (Case r ct e alts) =
   Case r ct <$> checkExpr p e <*> mapM checkAlt alts
+
+checkLambda :: Position -> SrcRef -> [Pattern] -> Expression -> SCM Expression
+checkLambda p r ts e = case findMultiples (bvNoAnon ts) of
+  []      -> do
+    ts' <- mapM (bindPattern "lambda expression" p) ts
+    Lambda r ts' <$> checkExpr p e
+  errVars -> do
+    mapM_ (report . errDuplicateVariables) errVars
+    let nubTs = nubBy (\t1 t2 -> (not . null) (on intersect bvNoAnon t1 t2)) ts
+    mapM_ (bindPattern "lambda expression" p) nubTs
+    Lambda r ts <$> checkExpr p e
+  where
+    bvNoAnon t = filter (not . isAnonId) $ bv t
 
 checkVariable :: QualIdent -> SCM Expression
 checkVariable v
@@ -943,10 +958,10 @@ checkAlt :: Alt -> SCM Alt
 checkAlt (Alt p t rhs) = inNestedScope $
   Alt p <$> bindPattern "case expression" p t <*> checkRhs rhs
 
-addBoundVariables :: QuantExpr t => Bool -> t -> SCM t
+addBoundVariables :: (QuantExpr t, Show t) => Bool -> t -> SCM t
 addBoundVariables checkDuplicates ts = do
-  when checkDuplicates $ maybe (return ()) (report . errDuplicateVariable)
-                       $ findDouble bvs
+  when checkDuplicates $ mapM_ (report . errDuplicateVariables)
+                               (findMultiples bvs)
   modifyRenameEnv $ \ env -> foldr bindVar env (nub bvs)
   return ts
   where bvs = bv ts
@@ -1211,9 +1226,12 @@ errDuplicateDefinition :: Ident -> Message
 errDuplicateDefinition v = posMessage v $ hsep $ map text
   ["More than one definition for", escName v]
 
-errDuplicateVariable :: Ident -> Message
-errDuplicateVariable v = posMessage v $ hsep $ map text
-  [escName v, "occurs more than once in pattern"]
+errDuplicateVariables :: [Ident] -> Message
+errDuplicateVariables [] = internalError
+  "SyntaxCheck.errDuplicateVariables: empty list"
+errDuplicateVariables (v:vs) = posMessage v $
+  text (escName v) <+> text "occurs more than one in pattern at:" $+$
+  nest 2 (vcat (map (ppPosition . getPosition) (v:vs)))
 
 errMultipleDataConstructor :: [Ident] -> Message
 errMultipleDataConstructor [] = internalError
