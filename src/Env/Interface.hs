@@ -1,8 +1,8 @@
 {- |
     Module      :  $Header$
     Description :  Environment of imported interfaces
-    Copyright   :  (c) 2002 - 2004, Wolfgang Lux
-                       2011 - 20113, Björn Peemöller
+    Copyright   :  (c) 2002 - 2004 Wolfgang Lux
+                       2011 - 2013 Björn Peemöller
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
