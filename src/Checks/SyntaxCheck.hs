@@ -958,7 +958,7 @@ checkAlt :: Alt -> SCM Alt
 checkAlt (Alt p t rhs) = inNestedScope $
   Alt p <$> bindPattern "case expression" p t <*> checkRhs rhs
 
-addBoundVariables :: (QuantExpr t, Show t) => Bool -> t -> SCM t
+addBoundVariables :: (QuantExpr t) => Bool -> t -> SCM t
 addBoundVariables checkDuplicates ts = do
   when checkDuplicates $ mapM_ (report . errDuplicateVariables)
                                (findMultiples bvs)
