@@ -49,3 +49,7 @@ defaultKind _                 = KindStar
 -- constructor with arity n whose arguments all have kind *.
 simpleKind :: Int -> Kind
 simpleKind n = foldr KindArrow KindStar $ replicate n KindStar
+
+-- |The function 'isSimpleKind' returns whether a kind is simple or not.
+isSimpleKind :: Kind -> Bool
+isSimpleKind k = k == simpleKind (kindArity k)
