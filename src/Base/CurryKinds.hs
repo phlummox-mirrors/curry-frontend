@@ -16,7 +16,7 @@
 -}
 
 module Base.CurryKinds
-  ( toKind, fromKind, ppKind
+  ( toKind, toKind', fromKind, fromKind', ppKind
   ) where
 
 import Curry.Base.Pretty (Doc)
@@ -29,10 +29,17 @@ toKind :: KindExpr -> Kind
 toKind Star              = KindStar
 toKind (ArrowKind k1 k2) = KindArrow (toKind k1) (toKind k2)
 
+toKind' :: Maybe KindExpr -> Int -> Kind
+toKind' k n = maybe (simpleKind n) toKind k
+
 fromKind :: Kind -> KindExpr
 fromKind KindStar          = Star
 fromKind (KindVariable  _) = Star
 fromKind (KindArrow k1 k2) = ArrowKind (fromKind k1) (fromKind k2)
+
+fromKind' :: Kind -> Int -> Maybe KindExpr
+fromKind' k n | k == simpleKind n = Nothing
+              | otherwise         = Just (fromKind k)
 
 ppKind :: Kind -> Doc
 ppKind = ppKindExpr 0 . fromKind
