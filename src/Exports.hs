@@ -141,6 +141,8 @@ funDecl :: ModuleIdent -> ValueEnv -> Export -> [IDecl] -> [IDecl]
 funDecl m tyEnv (Export f) ds = case qualLookupValue f tyEnv of
   [Value _ a (ForAll _ ty)] ->
     IFunctionDecl NoPos (qualUnqualify m f) a (fromQualType m ty) : ds
+  [Label _ _ (ForAll _ ty)] ->
+    IFunctionDecl NoPos (qualUnqualify m f) 1 (fromQualType m ty) : ds
   _ -> internalError $ "Exports.funDecl: " ++ show f
 funDecl _ _     (ExportTypeWith _ _) ds = ds
 funDecl _ _ _ _ = internalError "Exports.funDecl: no pattern match"
