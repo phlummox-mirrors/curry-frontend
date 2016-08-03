@@ -1,70 +1,78 @@
--- ---------------------------------------------------------------------------
---
--- GenFlatCurry - Generates FlatCurry program terms and FlatCurry interfaces
---                (type 'FlatCurry.Prog')
---
--- November 2005,
--- Martin Engelke (men@informatik.uni-kiel.de)
---
--- ---------------------------------------------------------------------------
+{- |
+    Module      :  $Header$
+    Description :  Generation of FlatCurry program and interface terms
+    Copyright   :  (c) 2005       , Martin Engelke
+                       2011 - 2016, Björn Peemöller
+    License     :  OtherLicense
+
+    Maintainer  :  bjp@informatik.uni-kiel.de
+    Stability   :  experimental
+    Portability :  portable
+
+    This module contains the generation of a 'FlatCurry' program term
+    for a given module in the intermediate language, and the generation
+    of a 'FlatCurry' interface for a given 'Curry' interface.
+-}
 {-# LANGUAGE CPP #-}
 module Generators.GenFlatCurry (genFlatCurry, genFlatInterface) where
 
 #if __GLASGOW_HASKELL__ < 710
-import           Control.Applicative ((<$>), (<*>))
+import           Control.Applicative        ((<$>), (<*>))
 #endif
-import           Control.Monad       (filterM, mplus)
-import           Control.Monad.State (State, evalState, gets, modify)
-import           Data.List           (mapAccumL, nub)
-import qualified Data.Map as Map     (Map, empty, insert, lookup, fromList, toList)
-import           Data.Maybe          (fromMaybe, isJust)
+import qualified Control.Monad.State as S   (State, evalState, gets, modify)
+import           Data.Function              (on)
+import           Data.List                  ((\\), nub, sort, sortBy)
+import           Data.Maybe                 (fromMaybe)
+import qualified Data.Set            as Set (Set, empty, insert, member)
 
 import           Curry.Base.Ident
+import           Curry.Base.Position
+import           Curry.ExtendedFlat.Goodies (funcName, opName, typeName)
 import           Curry.ExtendedFlat.Type
 import qualified Curry.Syntax as CS
 
-import Base.CurryTypes
-import Base.Messages (internalError)
-import Base.NestEnv  (NestEnv, emptyEnv, bindNestEnv, lookupNestEnv, nestEnv
-                     , unnestEnv)
-import Base.TopEnv   (topEnvMap)
+import Base.CurryTypes     (toType)
+import Base.Messages       (internalError)
+import Base.NestEnv        (NestEnv, emptyEnv, bindNestEnv, lookupNestEnv
+                           , nestEnv, unnestEnv)
 import Base.Types
-import Base.Utils    (concatMapM)
+import Base.TypeSubst      (expandType)
+import Base.Utils          (concatMapM)
 
-import Env.Interface
-import Env.TypeConstructor (TCEnv, TypeInfo (..))
-import Env.Value (ValueEnv, ValueInfo (..), lookupValue, qualLookupValue)
+import CompilerEnv
+import Env.OpPrec          (mkPrec)
+import Env.TypeConstructor (TCEnv)
+import Env.Value           (ValueEnv, ValueInfo (..), qualLookupValue)
 
 import qualified IL as IL
-import qualified ModuleSummary
-import Transformations (transType)
-
--------------------------------------------------------------------------------
+import Transformations     (transType)
 
 -- transforms intermediate language code (IL) to FlatCurry code
-genFlatCurry :: ModuleSummary.ModuleSummary -> InterfaceEnv
-             -> ValueEnv -> TCEnv -> IL.Module -> Prog
-genFlatCurry modSum mEnv tyEnv tcEnv mdl = patchPrelude $
-  run modSum mEnv tyEnv tcEnv False (trModule mdl)
+genFlatCurry :: CompilerEnv -> CS.Interface -> CS.Module -> IL.Module -> Prog
+genFlatCurry env i mdl il = patchPrelude False $ run env i mdl (trModule il)
 
 -- transforms intermediate language code (IL) to FlatCurry interfaces
-genFlatInterface :: ModuleSummary.ModuleSummary -> InterfaceEnv
-                 -> ValueEnv -> TCEnv -> IL.Module -> Prog
-genFlatInterface modSum mEnv tyEnv tcEnv mdl = patchPrelude $
-  run modSum mEnv tyEnv tcEnv True (trInterface mdl)
+genFlatInterface :: CompilerEnv -> CS.Interface -> CS.Module -> IL.Module -> Prog
+genFlatInterface env i mdl (IL.Module _ is _)
+  = patchPrelude True $ run env i mdl (trInterface is i)
 
-patchPrelude :: Prog -> Prog
-patchPrelude p@(Prog n _ types funcs ops)
-  | n == prelude = Prog n [] (preludeTypes ++ types) funcs ops
+-- -----------------------------------------------------------------------------
+-- Addition of primitive types for lists and tuples to the Prelude
+-- -----------------------------------------------------------------------------
+
+patchPrelude :: Bool -> Prog -> Prog
+patchPrelude genInt p@(Prog n _ ts fs os)
+  | n == prelude = Prog n [] ts' fs os
   | otherwise    = p
+  where ts' = if genInt then sortBy (compare `on` typeName) pts else pts
+        pts = primTypes ++ ts
 
-preludeTypes :: [TypeDecl]
-preludeTypes =
+primTypes :: [TypeDecl]
+primTypes =
   [ Type unit Public [] [(Cons unit 0 Public [])]
-  , Type nil Public [0]
-    [ Cons nil  0 Public []
-    , Cons cons 2 Public [TVar 0, TCons nil [TVar 0]]
-    ]
+  , Type nil Public [0] [ Cons nil  0 Public []
+                        , Cons cons 2 Public [TVar 0, TCons nil [TVar 0]]
+                        ]
   ] ++ map mkTupleType [2 .. maxTupleArity]
   where unit = mkPreludeQName "()"
         nil  = mkPreludeQName "[]"
@@ -85,153 +93,304 @@ prelude = "Prelude"
 maxTupleArity :: Int
 maxTupleArity = 15
 
--- ---------------------------------------------------------------------------
+-- -----------------------------------------------------------------------------
 
 -- The environment 'FlatEnv' is embedded in the monadic representation
 -- 'FlatState' which allows the usage of 'do' expressions.
-type FlatState a = State FlatEnv a
+type FlatState a = S.State FlatEnv a
 
 -- Data type for representing an environment which contains information needed
 -- for generating FlatCurry code.
 data FlatEnv = FlatEnv
-  { moduleIdE     :: ModuleIdent
-  , interfaceEnvE :: InterfaceEnv
-  , typeEnvE      :: ValueEnv     -- types of defined values
-  , tConsEnvE     :: TCEnv
-  , publicEnvE    :: Map.Map Ident IdentExport
-  , fixitiesE     :: [CS.IDecl]
-  , typeSynonymsE :: [CS.IDecl]
-  , importsE      :: [CS.IImportDecl]
-  , exportsE      :: [CS.Export]
-  , interfaceE    :: [CS.IDecl]
-  , varIndexE     :: Int
-  , varIdsE       :: NestEnv VarIndex
-  , genInterfaceE :: Bool
-  , localTypes    :: Map.Map QualIdent IL.Type
-  , consTypes     :: Map.Map QualIdent IL.Type
+  { modIdent     :: ModuleIdent      -- current module
+  -- for visibility calculation
+  , publicTys    :: Set.Set Ident    -- exported types
+  , publicVals   :: Set.Set Ident    -- exported values (functions + constructors)
+  , tcEnv        :: TCEnv            -- type constructor environment
+  , tyEnv        :: ValueEnv         -- type environment
+  , fixities     :: [CS.IDecl]       -- fixity declarations
+  , typeSynonyms :: [CS.Decl]        -- type synonyms
+  , imports      :: [ModuleIdent]    -- module imports
+  -- state for mapping identifiers to indexes
+  , nextVar      :: Int              -- fresh variable index counter
+  , varMap       :: NestEnv VarIndex -- map of identifier to variable index
   }
 
-data IdentExport
-  = NotConstr     -- function, type-constructor
-  | OnlyConstr    -- constructor
-  | NotOnlyConstr -- constructor, function, type-constructor
-
-data Call = Fun | Con
-
 -- Runs a 'FlatState' action and returns the result
-run :: ModuleSummary.ModuleSummary -> InterfaceEnv -> ValueEnv -> TCEnv
-    -> Bool -> FlatState a -> a
-run modSum mEnv tyEnv tcEnv genIntf f = evalState f env0
+run :: CompilerEnv -> CS.Interface -> CS.Module -> FlatState a -> a
+run env (CS.Interface _ _ ids) (CS.Module _ mid _ is ds) act
+  = S.evalState act env0
   where
-  env0 = FlatEnv
-    { moduleIdE     = ModuleSummary.moduleId modSum
-    , interfaceEnvE = mEnv
-    , typeEnvE      = tyEnv
-    , tConsEnvE     = tcEnv
-    , publicEnvE    = genPubEnv (ModuleSummary.moduleId  modSum)
-                                (ModuleSummary.interface modSum)
-    , fixitiesE     = ModuleSummary.infixDecls   modSum
-    , typeSynonymsE = ModuleSummary.typeSynonyms modSum
-    , importsE      = ModuleSummary.imports      modSum
-    , exportsE      = ModuleSummary.exports      modSum
-    , interfaceE    = ModuleSummary.interface    modSum
-    , varIndexE     = 0
-    , varIdsE       = emptyEnv
-    , genInterfaceE = genIntf
-    , localTypes    = Map.empty
-    , consTypes     = Map.fromList $ getConstrTypes tcEnv
+  locals = filter (isLocalIDecl mid) ids
+  env0   = FlatEnv
+    { modIdent     = mid
+     -- for visibility calculation
+    , publicTys    = foldr buildTypeExports  Set.empty locals
+    , publicVals   = foldr buildValueExports Set.empty locals
+    -- This includes *all* imports, even unused ones
+    , imports      = nub [ m | CS.ImportDecl _ m _ _ _ <- is ]
+    -- Environment to retrieve the type of identifiers
+    , tyEnv        = valueEnv env
+    , tcEnv        = tyConsEnv env
+    -- Fixity declarations
+    , fixities     = [ CS.IInfixDecl p fix (mkPrec mPrec) (qualifyWith mid o)
+                     |  CS.InfixDecl p fix mPrec os <- ds, o <- os
+                     ]
+    -- Type synonyms in the module
+    , typeSynonyms = [ d | d@CS.TypeDecl{} <- ds ]
+    , nextVar      = 0
+    , varMap       = emptyEnv
     }
 
-getConstrTypes :: TCEnv -> [(QualIdent, IL.Type)]
-getConstrTypes tcEnv =
-  [ mkConstrType tqid conid argtys argc
-  | (_, (_, DataType tqid argc dts):_) <- Map.toList $ topEnvMap tcEnv
-  , (DataConstr conid _ argtys) <- dts
-  ]
+isLocalIDecl :: ModuleIdent -> CS.IDecl -> Bool
+isLocalIDecl mid (CS.IInfixDecl     _ _ _ q  ) = isLocalIdent mid q
+isLocalIDecl mid (CS.HidingDataDecl _ q _    ) = isLocalIdent mid q
+isLocalIDecl mid (CS.IDataDecl      _ q _ _ _) = isLocalIdent mid q
+isLocalIDecl mid (CS.INewtypeDecl   _ q _ _ _) = isLocalIdent mid q
+isLocalIDecl mid (CS.ITypeDecl      _ q _ _  ) = isLocalIdent mid q
+isLocalIDecl mid (CS.IFunctionDecl  _ q _ _  ) = isLocalIdent mid q
+
+-- Builds a set containing all exported types from a module.
+buildTypeExports :: CS.IDecl -> Set.Set Ident -> Set.Set Ident
+buildTypeExports (CS.IDataDecl    _ tc _ _ _) = Set.insert (unqualify tc)
+buildTypeExports (CS.INewtypeDecl _ tc _ _ _) = Set.insert (unqualify tc)
+buildTypeExports (CS.ITypeDecl    _ tc _ _  ) = Set.insert (unqualify tc)
+buildTypeExports _                            = id
+
+-- Builds a set containing all exported values from a module.
+buildValueExports :: CS.IDecl -> Set.Set Ident -> Set.Set Ident
+buildValueExports (CS.IDataDecl _ _ _ cs hs)    = flip (foldr Set.insert) vs
+  where vs = nub $ (map CS.constrId cs ++ concatMap CS.recordLabels cs) \\ hs
+buildValueExports (CS.INewtypeDecl _ _ _ nd hs) = flip (foldr Set.insert) vs
+  where vs = nub $ (CS.nconstrId nd : CS.nrecordLabels nd) \\ hs
+buildValueExports (CS.IFunctionDecl    _ f _ _) = Set.insert (unqualify f)
+buildValueExports _                             = id
+
+getModuleIdent :: FlatState ModuleIdent
+getModuleIdent = S.gets modIdent
+
+lookupType :: QualIdent -> FlatState (Maybe TypeExpr)
+lookupType qid = S.gets tyEnv >>= \ env -> case qualLookupValue qid env of
+  Value _ _ (ForAll _ t)                    : _ -> Just <$> trType (transType t)
+  DataConstructor _ _ _ (ForAllExist _ _ t) : _ -> Just <$> trType (transType t)
+  _                                             -> return Nothing
+
+getArity :: QualIdent -> FlatState Int
+getArity qid = S.gets tyEnv >>= \ env -> return $ case qualLookupValue qid env of
+  [DataConstructor  _ a _ _] -> a
+  [NewtypeConstructor _ _ _] -> 1
+  [Value              _ a _] -> a
+  [Label              _ _ _] -> 1
+  _                          -> internalError
+                                ("GenFlatCurry.getArity: " ++ qualName qid)
+
+getFixities :: FlatState [CS.IDecl]
+getFixities = S.gets fixities
+
+-- The function 'typeSynonyms' returns the list of type synonyms.
+getTypeSynonyms :: FlatState [CS.Decl]
+getTypeSynonyms = S.gets typeSynonyms
+
+-- Retrieve imports
+getImports :: [ModuleIdent] -> FlatState [String]
+getImports imps = (nub . map moduleName . (imps ++)) <$> S.gets imports
+
+-- -----------------------------------------------------------------------------
+-- Stateful part, used for translation of rules and expressions
+-- -----------------------------------------------------------------------------
+
+-- resets var index and environment
+withFreshEnv :: FlatState a -> FlatState a
+withFreshEnv act = S.modify (\ s -> s { nextVar = 0, varMap = emptyEnv }) >> act
+
+-- Execute an action in a nested variable mapping
+inNestedEnv :: FlatState a -> FlatState a
+inNestedEnv act = do
+  S.modify $ \ s -> s { varMap = nestEnv   $ varMap s }
+  res <- act
+  S.modify $ \ s -> s { varMap = unnestEnv $ varMap s }
+  return res
+
+-- Generates a new variable index for an identifier
+newVar :: Ident -> FlatState VarIndex
+newVar i = do
+  ty  <- lookupType (qualify i)
+  idx <- (+1) <$> S.gets nextVar
+  let vid = VarIndex ty idx
+  S.modify $ \ s -> s { nextVar = idx, varMap = bindNestEnv i vid (varMap s) }
+  return vid
+
+-- Retrieve the variable index assigned to an identifier
+getVarIndex :: Ident -> FlatState VarIndex
+getVarIndex i = S.gets varMap >>= \ varEnv -> case lookupNestEnv i varEnv of
+  [v] -> return v
+  _   -> internalError $ "GenFlatCurry.getVarIndex: " ++ escName i
+
+-- -----------------------------------------------------------------------------
+-- Translation of an interface
+-- -----------------------------------------------------------------------------
+
+trInterface :: [ModuleIdent] -> CS.Interface -> FlatState Prog
+trInterface is (CS.Interface mid _ ds) = do
+  is' <- getImports is
+  tds <- concatMapM trITypeDecl ds
+  lds <- concatMapM trLabelDecl ds
+  fds <- concatMapM trIFuncDecl ds
+  ops <- concatMapM trIOpDecl   ds
+  return $ Prog (moduleName mid)
+                (sort is')
+                (sortBy (compare `on` typeName) tds)
+                (sortBy (compare `on` funcName) (lds ++ fds))
+                (sortBy (compare `on`   opName) ops)
+
+trITypeDecl :: CS.IDecl -> FlatState [TypeDecl]
+trITypeDecl (CS.IDataDecl _ qid tvs cs hs) = do
+  mid <- getModuleIdent
+  t'  <- trTypeIdent qid
+  cs' <- mapM (trConsIDecl (fromMaybe mid $ qidModule qid) tvs)
+         [c | c <- cs, CS.constrId c `notElem` hs]
+  return [Type t' Public vs cs']
+  where vs = [0 .. length tvs - 1]
+trITypeDecl (CS.ITypeDecl _ qid tvs ty) = do
+  t'  <- trTypeIdent qid
+  ty' <- trType (transType $ toType tvs ty)
+  return [TypeSyn t' Public vs ty']
+  where vs = [0 .. length tvs - 1]
+trITypeDecl _ = return []
+
+trConsIDecl :: ModuleIdent -> [Ident] -> CS.ConstrDecl -> FlatState ConsDecl
+trConsIDecl mid tvs (CS.ConstrDecl _ _ c tys) = do
+  c'   <- trQIdent (qualifyWith mid c)
+  tys' <- mapM (trType . transType . toType tvs) tys
+  return (Cons c' (length tys) Public tys')
+trConsIDecl mid tis (CS.ConOpDecl p vs ty1 op ty2)
+  = trConsIDecl mid tis (CS.ConstrDecl p vs op [ty1, ty2])
+trConsIDecl mid tis (CS.RecordDecl p vs c fs) =
+  trConsIDecl mid tis (CS.ConstrDecl p vs c tys)
+  where tys = [ty | CS.FieldDecl _ ls ty <- fs, _ <- ls]
+
+-- Translate record types into label selector functions
+trLabelDecl :: CS.IDecl -> FlatState [FuncDecl]
+trLabelDecl (CS.IDataDecl _ qid tvs cs hs) = do
+  mid <- getModuleIdent
+  concatMapM (trLD mid) cs
   where
-  mkConstrType tqid conid argtypes targnum = (conname, contype)
-    where
-    conname    = QualIdent (qidModule tqid) conid
-    resty = IL.TypeConstructor tqid (map IL.TypeVariable [0 .. targnum - 1])
-    contype    = foldr IL.TypeArrow resty $ map ttrans argtypes
+  trLD mid (CS.RecordDecl _ _ _ fs) = concatMapM trIFuncDecl
+    [ CS.IFunctionDecl NoPos (qualifyWith mid l) 1 (mkType ty)
+    | CS.FieldDecl _ ls ty <- fs, l <- ls, l `notElem` hs
+    ]
+  trLD _   _                        = return []
+  mkType ty = CS.ArrowType (CS.ConstructorType qid (map CS.VariableType tvs)) ty
+trLabelDecl (CS.INewtypeDecl _ qid tvs nc hs) = do
+  mid <- getModuleIdent
+  trNC mid nc
+  where
+  trNC mid (CS.NewRecordDecl _ _ _ (l, ty))
+    | l `notElem` hs = trIFuncDecl
+                     $ CS.IFunctionDecl NoPos (qualifyWith mid l) 1 (mkType ty)
+  trNC _   _                                = return []
+  mkType ty = CS.ArrowType (CS.ConstructorType qid (map CS.VariableType tvs)) ty
+trLabelDecl _ = return []
+
+-- Translate an interface function declaration
+trIFuncDecl :: CS.IDecl -> FlatState [FuncDecl]
+trIFuncDecl (CS.IFunctionDecl _ f a ty) = do
+  f'  <- trQIdent f
+  ty' <- trType $ transType $ toType [] ty
+  return [Func f' a Public ty' (Rule [] (Var $ mkIdx 0))]
+trIFuncDecl _ = return []
+
+-- Translate an operator declaration
+trIOpDecl :: CS.IDecl -> FlatState [OpDecl]
+trIOpDecl (CS.IInfixDecl _ fix prec op)
+  = (\op' -> [Op op' (cvFixity fix) prec]) <$> trQIdent op
+trIOpDecl _ = return []
+
+-- -----------------------------------------------------------------------------
+-- Translation of a module
+-- -----------------------------------------------------------------------------
 
 trModule :: IL.Module -> FlatState Prog
-trModule (IL.Module mid imps ds) = do
-  -- insert local decls into localDecls
-  modify $ \ s -> s { localTypes = Map.fromList [ (qn, t) | IL.FunctionDecl qn _ t _ <- ds ] }
-  is      <- (\is -> map moduleName $ nub $ imps ++ map extractMid is) <$> imports
-  types   <- genTypeSynonyms
-  tyds    <- concat <$> mapM trTypeDecl ds
-  funcs   <- concat <$> mapM trFuncDecl ds
-  ops     <- genOpDecls
-  return $ Prog (moduleName mid) is (types ++ tyds) funcs ops
-  where extractMid (CS.IImportDecl _ mid1) = mid1
+trModule (IL.Module mid is ds) = do
+  is' <- getImports is
+  sns <- getTypeSynonyms >>= concatMapM trTypeSynonym
+  tds <- concatMapM trTypeDecl ds
+  fds <- concatMapM trFuncDecl ds
+  ops <- getFixities     >>= concatMapM trIOpDecl
+  return $ Prog (moduleName mid) is' (sns ++ tds) fds ops
 
-trInterface :: IL.Module -> FlatState Prog
-trInterface (IL.Module mid imps decls) = do
-  -- insert local decls into localDecls
-  modify $ \ s -> s { localTypes = Map.fromList [ (qn, t) | IL.FunctionDecl qn _ t _ <- decls ] }
-  is      <- (\is -> map moduleName $ nub $ imps ++ map extractMid is) <$> imports
-  expimps <- getExportedImports
-  itypes  <- mapM trITypeDecl (filter isTypeIDecl expimps)
-  types   <- genTypeSynonyms
-  datas   <- filterM isPublicDataDecl    decls >>= concatMapM trTypeDecl
-  newtys  <- filterM isPublicNewtypeDecl decls >>= concatMapM trTypeDecl
-  ifuncs  <- mapM trIFuncDecl (filter isFuncIDecl expimps)
-  funcs   <- filterM isPublicFuncDecl    decls >>= concatMapM trFuncDecl
-  iops    <- mapM trIOpDecl (filter isOpIDecl expimps)
-  ops     <- genOpDecls
-  return $ Prog (moduleName mid) is (itypes ++ types ++ datas ++ newtys)
-                          (ifuncs ++ funcs) (iops ++ ops)
-  where extractMid (CS.IImportDecl _ mid1) = mid1
+-- Translate a type synonym
+trTypeSynonym :: CS.Decl -> FlatState [TypeDecl]
+trTypeSynonym (CS.TypeDecl _ t tvs ty) = do
+  qid  <- flip qualifyWith t <$> getModuleIdent
+  t'   <- trTypeIdent qid
+  vis  <- getTypeVisibility qid
+  tEnv <- S.gets tcEnv
+  ty'  <- trType (transType $ expandType tEnv $ toType tvs ty)
+  return [TypeSyn t' vis [0 .. length tvs - 1] ty']
+trTypeSynonym _                        = return []
 
+-- Translate a data/newtype declaration
 trTypeDecl :: IL.Decl -> FlatState [TypeDecl]
-trTypeDecl (IL.DataDecl qid arity cs) = ((:[]) <$>) $
-  Type  <$> trTypeIdent qid
-        <*> getVisibility False qid <*> return [0 .. arity - 1]
-        <*> (concat <$> mapM trConstrDecl cs)
-trTypeDecl (IL.NewtypeDecl qid arity (IL.ConstrDecl _ ty)) = ((:[]) <$>) $
-  TypeSyn <$> trTypeIdent qid <*> getVisibility False qid
-          <*> return [0 .. arity - 1] <*> trType ty
+trTypeDecl (IL.DataDecl qid a cs) = do
+  q'  <- trTypeIdent qid
+  vis <-getTypeVisibility qid
+  cs' <- mapM trConstrDecl cs
+  return [Type q' vis [0 .. a - 1] cs']
+trTypeDecl (IL.NewtypeDecl qid a (IL.ConstrDecl _ ty)) = do
+  q'  <- trTypeIdent qid
+  vis <- getTypeVisibility qid
+  ty' <- trType ty
+  return [TypeSyn q' vis [0 .. a - 1] ty']
 trTypeDecl _ = return []
 
-trConstrDecl :: IL.ConstrDecl [IL.Type] -> FlatState [ConsDecl]
-trConstrDecl (IL.ConstrDecl qid tys) = do
-  qid' <- trQualIdent qid
-  vis  <- getVisibility True qid
-  tys' <- mapM trType tys
-  let flatCons = Cons qid' (length tys) vis tys'
-  whenFlatCurry (return [flatCons]) (return [flatCons | vis == Public]) -- TODO: whenFlatCurry
+-- Translate a constructor declaration
+trConstrDecl :: IL.ConstrDecl [IL.Type] -> FlatState ConsDecl
+trConstrDecl (IL.ConstrDecl qid tys) = flip Cons (length tys)
+  <$> trQIdent qid
+  <*> getVisibility qid
+  <*> mapM trType tys
 
+-- Translate a type expression
 trType :: IL.Type -> FlatState TypeExpr
 trType (IL.TypeConstructor t tys) = TCons <$> trTypeIdent t <*> mapM trType tys
 trType (IL.TypeVariable      idx) = return $ TVar $ abs idx
 trType (IL.TypeArrow     ty1 ty2) = FuncType <$> trType ty1 <*> trType ty2
 
+-- Convert a fixity
+cvFixity :: CS.Infix -> Fixity
+cvFixity CS.InfixL = InfixlOp
+cvFixity CS.InfixR = InfixrOp
+cvFixity CS.Infix  = InfixOp
+
+-- -----------------------------------------------------------------------------
+-- Function declarations
+-- -----------------------------------------------------------------------------
+
+-- Translate a function declaration
 trFuncDecl :: IL.Decl -> FlatState [FuncDecl]
-trFuncDecl (IL.FunctionDecl qid vs ty e) = do
-  qname <- trQualIdent qid
-  arity <- getArity qid
-  texpr <- trType ty
-  whenFlatCurry
-    -- reset var index in order to use var indices starting from 0
-    -- for every rule of a function
-    (withFreshVarIndex $ inNestedScope $ do
-      vis <- getVisibility False qid
-      vs' <- mapM newVarIndex vs
-      e'  <- trExpr e
-      return [Func qname arity vis texpr (Rule vs' e')]
-    )
-    (return [Func qname arity Public texpr (Rule [] (Var $ mkIdx 0))])
-trFuncDecl (IL.ExternalDecl qid _ extname ty) = do
-  texpr <- trType ty
-  qname <- trQualIdent qid
-  arity <- getArity qid
-  vis   <- getVisibility False qid
-  xname <- trExternal extname
-  return [Func qname arity vis texpr (External xname)]
+trFuncDecl (IL.FunctionDecl f vs ty e) = do
+  f'  <- trQIdent f
+  a   <- getArity f
+  vis <- getVisibility f
+  ty' <- trType ty
+  r'  <- uncurry Rule <$> trRule (vs, e)
+  return [Func f' a vis ty' r']
+trFuncDecl (IL.ExternalDecl f _ e ty) = do
+  f'   <- trQIdent f
+  a    <- getArity f
+  vis  <- getVisibility f
+  ty'  <- trType ty
+  e'   <- (\mid -> moduleName mid ++ "." ++ e) <$> getModuleIdent
+  return [Func f' a vis ty' (External e')]
 trFuncDecl _ = return []
 
+-- Translate a function rule.
+-- Resets variable index so that for every rule variables start with index 1
+trRule :: ([Ident], IL.Expression) -> FlatState ([VarIndex], Expr)
+trRule (vs, e) = withFreshEnv $ (,) <$> mapM newVar vs <*> trExpr e
+
+-- Translate an expression
 trExpr :: IL.Expression -> FlatState Expr
 trExpr (IL.Literal       l) = Lit <$> trLiteral l
 trExpr (IL.Variable      v) = Var <$> getVarIndex v
@@ -239,35 +398,32 @@ trExpr (IL.Function    f _) = genCall Fun f []
 trExpr (IL.Constructor c _) = genCall Con c []
 trExpr (IL.Apply     e1 e2) = trApply e1 e2
 trExpr (IL.Case   r t e bs) = Case r (cvEval t) <$> trExpr e
-                              <*> mapM (inNestedScope . trAlt) bs
+                              <*> mapM (inNestedEnv . trAlt) bs
 trExpr (IL.Or        e1 e2) = Or <$> trExpr e1 <*> trExpr e2
-trExpr (IL.Exist       v e) = inNestedScope $ do
-  idx <- newVarIndex v
-  e'  <- trExpr e
-  return $ case e' of
-    Free is e'' -> Free (idx : is) e''
-    _           -> Free (idx : []) e'
-trExpr (IL.Let (IL.Binding v b) e) = inNestedScope $ do
-  v' <- newVarIndex v
+trExpr (IL.Exist       v e) = inNestedEnv $ do
+  v' <- newVar v
+  e' <- trExpr e
+  return $ case e' of Free vs e'' -> Free (v' : vs) e''
+                      _           -> Free (v' : []) e'
+trExpr (IL.Let (IL.Binding v b) e) = inNestedEnv $ do
+  v' <- newVar v
   b' <- trExpr b
   e' <- trExpr e
-  return $ case e' of -- TODO bjp(2011-09-21): maybe remove again, ask @MH
-    Let bs e'' -> Let ((v', b'):bs) e''
-    _          -> Let ((v', b'):[]) e'
-trExpr (IL.Letrec   bs e) = inNestedScope $ do
+  return $ case e' of Let bs e'' -> Let ((v', b'):bs) e''
+                      _          -> Let ((v', b'):[]) e'
+trExpr (IL.Letrec   bs e) = inNestedEnv $ do
   let (vs, es) = unzip [ (v, b) | IL.Binding v b <- bs]
-  vs' <- mapM newVarIndex vs
-  es' <- mapM trExpr es
-  e'  <- trExpr e
-  return $ Let (zip vs' es') e'
+  Let <$> (zip <$> mapM newVar vs <*> mapM trExpr es)
+      <*> trExpr e
 trExpr (IL.Typed e ty) = Typed <$> trExpr e <*> trType ty
 
+-- Translate a literal
 trLiteral :: IL.Literal -> FlatState Literal
 trLiteral (IL.Char  rs c) = return $ Charc  rs c
 trLiteral (IL.Int   rs i) = return $ Intc   rs i
 trLiteral (IL.Float rs f) = return $ Floatc rs f
 
--- TODO: Refactor
+-- Translate a higher-order application
 trApply :: IL.Expression -> IL.Expression -> FlatState Expr
 trApply e1 e2 = genFlatApplic e1 [e2]
   where
@@ -279,486 +435,78 @@ trApply e1 e2 = genFlatApplic e1 [e2]
       expr <- trExpr e
       genApply expr es
 
+-- Translate an alternative
 trAlt :: IL.Alt -> FlatState BranchExpr
 trAlt (IL.Alt p e) = Branch <$> trPat p <*> trExpr e
 
+-- Translate a pattern
 trPat :: IL.ConstrTerm -> FlatState Pattern
 trPat (IL.LiteralPattern        l) = LPattern <$> trLiteral l
-trPat (IL.ConstructorPattern c vs) = Pattern  <$> trQualIdent c
-                                              <*> mapM newVarIndex vs
+trPat (IL.ConstructorPattern c vs) = Pattern  <$> trQIdent c <*> mapM newVar vs
 trPat (IL.VariablePattern       _) = internalError "GenFlatCurry.trPat"
 
+-- Convert a case type
 cvEval :: IL.Eval -> CaseType
 cvEval IL.Rigid = Rigid
 cvEval IL.Flex  = Flex
 
--------------------------------------------------------------------------------
+data Call = Fun | Con
 
-trIFuncDecl :: CS.IDecl -> FlatState FuncDecl
-trIFuncDecl (CS.IFunctionDecl _ f a ty) = do
-  texpr <- trType $ snd $ cs2ilType [] ty
-  qname <- trQualIdent f
-  return $ Func qname a Public texpr (Rule [] (Var $ mkIdx 0))
-trIFuncDecl _ = internalError "GenFlatCurry: no function interface"
-
-trITypeDecl :: CS.IDecl -> FlatState TypeDecl
-trITypeDecl (CS.IDataDecl _ t vs cs hs) = do
-  let mid = fromMaybe (internalError "GenFlatCurry: no module name") (qidModule t)
-      is  = [0 .. length vs - 1]
-  cdecls <- mapM (visitConstrIDecl mid $ zip vs is)
-                 [c | c <- cs, CS.constrId c `notElem` hs]
-  qname  <- trTypeIdent t
-  return $ Type qname Public is cdecls
-trITypeDecl (CS.ITypeDecl _ t vs ty) = do
-  let is = [0 .. length vs - 1]
-  ty'   <- trType $ snd $ cs2ilType (zip vs is) ty
-  qname <- trTypeIdent t
-  return $ TypeSyn qname Public is ty'
-trITypeDecl _ = internalError "GenFlatCurry: no type interface"
-
-visitConstrIDecl :: ModuleIdent -> [(Ident, Int)] -> CS.ConstrDecl
-                 -> FlatState ConsDecl
-visitConstrIDecl mid tis (CS.ConstrDecl _ _ ident typeexprs) = do
-  texprs <- mapM (trType . (snd . cs2ilType tis)) typeexprs
-  qname  <- trQualIdent (qualifyWith mid ident)
-  return (Cons qname (length typeexprs) Public texprs)
-visitConstrIDecl mid tis (CS.ConOpDecl pos ids type1 ident type2)
-  = visitConstrIDecl mid tis (CS.ConstrDecl pos ids ident [type1,type2])
-visitConstrIDecl mid tis (CS.RecordDecl _ _ ident fs) = do
-  texprs <- mapM (trType . (snd . cs2ilType tis)) tys
-  qname  <- trQualIdent (qualifyWith mid ident)
-  return (Cons qname (length tys) Public texprs)
-  where tys = [ty | CS.FieldDecl _ ls ty <- fs, _ <- ls]
-
-trIOpDecl :: CS.IDecl -> FlatState OpDecl
-trIOpDecl (CS.IInfixDecl _ fixi prec op) = do
-  op' <- trQualIdent op
-  return $ Op op' (genFixity fixi) prec
-trIOpDecl _ = internalError "GenFlatCurry.trIOpDecl: no pattern match"
-
--------------------------------------------------------------------------------
-
-trQualIdent :: QualIdent -> FlatState QName
-trQualIdent qid = do
-  mid <- getModuleIdent
-  let (mmod, ident) = (qidModule qid, qidIdent qid)
-      modid | elem ident [listId, consId, nilId, unitId] || isTupleId ident
-            = moduleName preludeMIdent
-            | otherwise
-            = maybe (moduleName mid) moduleName mmod
-  ftype <- lookupIdType qid
-  return (QName Nothing ftype modid $ idName ident)
-
--- This variant of trQualIdent does not look up the type of the identifier,
--- which is wise when the identifier is bound to a type, because looking up
--- the type of a type via lookupIdType will get stuck in an endless loop. (hsi)
-trTypeIdent :: QualIdent -> FlatState QName
-trTypeIdent qid = do
-  mid <- getModuleIdent
-  let (mmod, ident) = (qidModule qid, qidIdent qid)
-      modid | elem ident [listId, consId, nilId, unitId] || isTupleId ident
-            = moduleName preludeMIdent
-            | otherwise
-            = maybe (moduleName mid) moduleName mmod
-  return (QName Nothing Nothing modid $ idName ident)
-
-trExternal :: String -> FlatState String
-trExternal extname
-  = getModuleIdent >>= \mid -> return (moduleName mid ++ "." ++ extname)
-
-getVisibility :: Bool -> QualIdent -> FlatState Visibility
-getVisibility isConstr qid = do
-  public <- isPublic isConstr qid
-  return $ if public then Public else Private
-
-getExportedImports :: FlatState [CS.IDecl]
-getExportedImports = do
-  mid  <- getModuleIdent
-  exps <- exports
-  genExportedIDecls $ Map.toList $ getExpImports mid Map.empty exps
-
-getExpImports :: ModuleIdent -> Map.Map ModuleIdent [CS.Export] -> [CS.Export]
-              -> Map.Map ModuleIdent [CS.Export]
-getExpImports _      expenv [] = expenv
-getExpImports mident expenv ((CS.Export qid):exps)
-  = getExpImports mident
-    (bindExpImport mident qid (CS.Export qid) expenv)
-    exps
-getExpImports mident expenv ((CS.ExportTypeWith qid idents):exps)
-  = getExpImports mident
-    (bindExpImport mident qid (CS.ExportTypeWith qid idents) expenv)
-    exps
-getExpImports mident expenv ((CS.ExportTypeAll qid):exps)
-  = getExpImports mident
-    (bindExpImport mident qid (CS.ExportTypeAll qid) expenv)
-    exps
-getExpImports mident expenv ((CS.ExportModule mident'):exps)
-  = getExpImports mident (Map.insert mident' [] expenv) exps
-
-bindExpImport :: ModuleIdent -> QualIdent -> CS.Export
-              -> Map.Map ModuleIdent [CS.Export]
-              -> Map.Map ModuleIdent [CS.Export]
-bindExpImport mident qid export expenv
-  | isJust (localIdent mident qid)
-  = expenv
-  | otherwise
-  = let (Just modid) = qidModule qid
-    in  maybe (Map.insert modid [export] expenv)
-              (\es -> Map.insert modid (export:es) expenv)
-              (Map.lookup modid expenv)
-
-genExportedIDecls :: [(ModuleIdent,[CS.Export])] -> FlatState [CS.IDecl]
-genExportedIDecls mes = genExpIDecls [] mes
-
-genExpIDecls :: [CS.IDecl] -> [(ModuleIdent,[CS.Export])] -> FlatState [CS.IDecl]
-genExpIDecls idecls [] = return idecls
-genExpIDecls idecls ((mid,exps):mes) = do
-  intf_ <- lookupModuleIntf mid
-  let idecls' = maybe idecls (p_genExpIDecls mid idecls exps) intf_
-  genExpIDecls idecls' mes
- where
-  p_genExpIDecls mid1 idecls1 exps1 (CS.Interface _ _ ds)
-    | null exps1 = (map (qualifyIDecl mid1) ds) ++ idecls1
-    | otherwise = filter (isExportedIDecl exps1) (map (qualifyIDecl mid1) ds)
-                  ++ idecls1
-
-isExportedIDecl :: [CS.Export] -> CS.IDecl -> Bool
-isExportedIDecl exprts (CS.IInfixDecl _ _ _ qid)
-  = isExportedQualIdent qid exprts
-isExportedIDecl exprts (CS.IDataDecl _ qid _ _ _)
-  = isExportedQualIdent qid exprts
-isExportedIDecl exprts (CS.ITypeDecl _ qid _ _)
-  = isExportedQualIdent qid exprts
-isExportedIDecl exprts (CS.IFunctionDecl _ qid _ _)
-  = isExportedQualIdent qid exprts
-isExportedIDecl _ _ = False
-
-isExportedQualIdent :: QualIdent -> [CS.Export] -> Bool
-isExportedQualIdent _ [] = False
-isExportedQualIdent qid ((CS.Export qid'):exps)
-  = qid == qid' || isExportedQualIdent qid exps
-isExportedQualIdent qid ((CS.ExportTypeWith qid' _):exps)
-  = qid == qid' || isExportedQualIdent qid exps
-isExportedQualIdent qid ((CS.ExportTypeAll qid'):exps)
-  = qid == qid' || isExportedQualIdent qid exps
-isExportedQualIdent qid ((CS.ExportModule _):exps)
-  = isExportedQualIdent qid exps
-
-qualifyIDecl :: ModuleIdent -> CS.IDecl -> CS.IDecl
-qualifyIDecl mid (CS.IInfixDecl   pos fixi prec qid)
-  = CS.IInfixDecl pos fixi prec (qualQualify mid qid)
-qualifyIDecl mid (CS.IDataDecl    pos qid vs cs hs)
-  = CS.IDataDecl pos (qualQualify mid qid) vs
-    (map (qualifyIConstrDecl mid) cs) hs
-qualifyIDecl mid (CS.INewtypeDecl  pos qid vs nc hs)
-  = CS.INewtypeDecl pos (qualQualify mid qid) vs nc hs
-qualifyIDecl mid (CS.ITypeDecl     pos qid vs ty)
-  = CS.ITypeDecl pos (qualQualify mid qid) vs ty
-qualifyIDecl mid (CS.IFunctionDecl pos qid arity ty)
-  = CS.IFunctionDecl pos (qualQualify mid qid) arity (qualifyCSType mid ty)
-qualifyIDecl _ idecl = idecl
-
-qualifyIConstrDecl :: ModuleIdent -> CS.ConstrDecl -> CS.ConstrDecl
-qualifyIConstrDecl mid (CS.ConstrDecl pos vs cid tys)
-  = CS.ConstrDecl pos vs cid (map (qualifyCSType mid) tys)
-qualifyIConstrDecl mid (CS.ConOpDecl pos vs ty1 op ty2)
-  = CS.ConOpDecl pos vs (qualifyCSType mid ty1) op (qualifyCSType mid ty2)
-qualifyIConstrDecl mid (CS.RecordDecl pos vs cid fs)
-  = CS.RecordDecl pos vs cid (map (qualifyFieldDecl mid) fs)
-
-qualifyFieldDecl :: ModuleIdent -> CS.FieldDecl -> CS.FieldDecl
-qualifyFieldDecl m (CS.FieldDecl p l ty) = CS.FieldDecl p l (qualifyCSType m ty)
-
-qualifyCSType :: ModuleIdent -> CS.TypeExpr -> CS.TypeExpr
-qualifyCSType mid = fromType . toQualType mid []
-
+-- Generate a function or constructor call
 genCall :: Call -> QualIdent -> [IL.Expression] -> FlatState Expr
 genCall call f es = do
-  f'    <- trQualIdent f
+  f'    <- trQIdent f
   arity <- getArity f
-  case compare cnt arity of
-    LT -> genComb f' es (part call (arity - cnt))
+  case compare supplied arity of
+    LT -> genComb f' es (part call (arity - supplied))
     EQ -> genComb f' es (full call)
     GT -> do
       let (es1, es2) = splitAt arity es
       funccall <- genComb f' es1 (full call)
       genApply funccall es2
- where
-   cnt = length es
-   full Fun = FuncCall
-   full Con = ConsCall
-   part Fun = FuncPartCall
-   part Con = ConsPartCall
+  where
+  supplied = length es
+  full Fun = FuncCall
+  full Con = ConsCall
+  part Fun = FuncPartCall
+  part Con = ConsPartCall
 
 genComb :: QName -> [IL.Expression] -> CombType -> FlatState Expr
 genComb qid es ct = Comb ct qid <$> mapM trExpr es
 
 genApply :: Expr -> [IL.Expression] -> FlatState Expr
 genApply e es = do
+  ap  <- trQIdent $ qualifyWith preludeMIdent (mkIdent "apply")
   es' <- mapM trExpr es
-  ap  <- trQualIdent $ qualifyWith preludeMIdent (mkIdent "apply")
   return $ foldl (\e1 e2 -> Comb FuncCall ap [e1, e2]) e es'
 
-genOpDecls :: FlatState [OpDecl]
-genOpDecls = fixities >>= mapM genOpDecl
+-- -----------------------------------------------------------------------------
+-- Helper functions
+-- -----------------------------------------------------------------------------
 
-genOpDecl :: CS.IDecl -> FlatState OpDecl
-genOpDecl (CS.IInfixDecl _ fix prec qid) = do
-  qname <- trQualIdent qid
-  return $ Op qname (genFixity fix) prec
-genOpDecl _ = internalError "GenFlatCurry: no infix interface"
+trQIdent :: QualIdent -> FlatState QName
+trQIdent = trQualdent True
 
-genFixity :: CS.Infix -> Fixity
-genFixity CS.InfixL = InfixlOp
-genFixity CS.InfixR = InfixrOp
-genFixity CS.Infix  = InfixOp
+-- This variant of trQIdent does not look up the type of the identifier
+trTypeIdent :: QualIdent -> FlatState QName
+trTypeIdent = trQualdent False
 
--- The intermediate language (IL) does not represent type synonyms.
--- For this reason an interface representation of all type synonyms is generated
--- from the abstract syntax representation of the Curry program.
--- The function 'typeSynonyms' returns this list of type synonyms.
-genTypeSynonyms ::  FlatState [TypeDecl]
-genTypeSynonyms = typeSynonyms >>= mapM genTypeSynonym
-
-genTypeSynonym :: CS.IDecl -> FlatState TypeDecl
-genTypeSynonym (CS.ITypeDecl _ qid tvs ty) = do
-  qname <- trTypeIdent qid
-  vis   <- getVisibility False qid
-  let vs = [0 .. length tvs - 1]
-  ty'   <- trType $ snd $ cs2ilType (zip tvs vs) ty
-  return $ TypeSyn qname vis vs ty'
-genTypeSynonym _ = internalError "GenFlatCurry: no type synonym interface"
-
-cs2ilType :: [(Ident,Int)] -> CS.TypeExpr -> ([(Ident,Int)], IL.Type)
-cs2ilType ids (CS.ConstructorType qid typeexprs)
-  = let (ids', ilTypeexprs) = mapAccumL cs2ilType ids typeexprs
-    in  (ids', IL.TypeConstructor qid ilTypeexprs)
-cs2ilType ids (CS.VariableType ident) = case lookup ident ids of
-  Just i  -> (ids, IL.TypeVariable i)
-  Nothing -> let nid = 1 + case ids of { [] -> 0; (_, j):_ -> j }
-             in  ((ident, nid):ids, IL.TypeVariable nid)
-cs2ilType ids (CS.ArrowType type1 type2)
-  = let (ids',  ilType1) = cs2ilType ids type1
-        (ids'', ilType2) = cs2ilType ids' type2
-    in  (ids'', IL.TypeArrow ilType1 ilType2)
-cs2ilType ids (CS.ListType typeexpr)
-  = let (ids', ilTypeexpr) = cs2ilType ids typeexpr
-    in  (ids', IL.TypeConstructor (qualify listId) [ilTypeexpr])
-cs2ilType ids (CS.TupleType typeexprs)
-  = case typeexprs of
-    []  -> (ids, IL.TypeConstructor qUnitId [])
-    [t] -> cs2ilType ids t
-    _   -> let (ids', ilTypeexprs) = mapAccumL cs2ilType ids typeexprs
-               tuplen = length ilTypeexprs
-           in  (ids', IL.TypeConstructor (qTupleId tuplen) ilTypeexprs)
-cs2ilType ids (CS.ParenType ty) = cs2ilType ids ty
-
-isPublicDataDecl :: IL.Decl -> FlatState Bool
-isPublicDataDecl (IL.DataDecl qid _ _) = isPublic False qid
-isPublicDataDecl _                     = return False
-
-isPublicNewtypeDecl :: IL.Decl -> FlatState Bool
-isPublicNewtypeDecl (IL.NewtypeDecl qid _ _) = isPublic False qid
-isPublicNewtypeDecl _                        = return False
-
-isPublicFuncDecl :: IL.Decl -> FlatState Bool
-isPublicFuncDecl (IL.FunctionDecl qid _ _ _) = isPublic False qid
-isPublicFuncDecl (IL.ExternalDecl qid _ _ _) = isPublic False qid
-isPublicFuncDecl _                           = return False
-
-isTypeIDecl :: CS.IDecl -> Bool
-isTypeIDecl (CS.IDataDecl _ _ _ _ _) = True
-isTypeIDecl (CS.ITypeDecl   _ _ _ _) = True
-isTypeIDecl _                        = False
-
-isFuncIDecl :: CS.IDecl -> Bool
-isFuncIDecl (CS.IFunctionDecl _ _ _ _) = True
-isFuncIDecl _                          = False
-
-isOpIDecl :: CS.IDecl -> Bool
-isOpIDecl (CS.IInfixDecl _ _ _ _) = True
-isOpIDecl _                       = False
-
-getModuleIdent :: FlatState ModuleIdent
-getModuleIdent = gets moduleIdE
-
-exports :: FlatState [CS.Export]
-exports = gets exportsE
-
-imports :: FlatState [CS.IImportDecl]
-imports = gets importsE
-
-fixities :: FlatState [CS.IDecl]
-fixities = gets fixitiesE
-
-typeSynonyms :: FlatState [CS.IDecl]
-typeSynonyms = gets typeSynonymsE
-
-isPublic :: Bool -> QualIdent -> FlatState Bool
-isPublic isConstr qid = gets $ \ s -> maybe False isP
-  (Map.lookup (unqualify qid) $ publicEnvE s)
+trQualdent :: Bool -> QualIdent -> FlatState QName
+trQualdent withType qid = do
+  mid <- getModuleIdent
+  mty <- if withType then lookupType qid else return Nothing
+  return $ QName Nothing mty (moduleName $ fromMaybe mid mid') (idName i)
   where
-  isP NotConstr     = not isConstr
-  isP OnlyConstr    = isConstr
-  isP NotOnlyConstr = True
+  mid' | i `elem` [listId, consId, nilId, unitId] || isTupleId i
+       = Just preludeMIdent
+       | otherwise
+       = qidModule qid
+  i = qidIdent qid
 
-lookupModuleIntf :: ModuleIdent -> FlatState (Maybe CS.Interface)
-lookupModuleIntf mid = gets (Map.lookup mid . interfaceEnvE)
+getTypeVisibility :: QualIdent -> FlatState Visibility
+getTypeVisibility i = S.gets $ \s ->
+  if Set.member (unqualify i) (publicTys s) then Public else Private
 
-getArity :: QualIdent -> FlatState Int
-getArity qid = gets (lookupA . typeEnvE)
-  where
-  lookupA tyEnv = case qualLookupValue qid tyEnv of
-    [DataConstructor  _ a _ _] -> a
-    [NewtypeConstructor _ _ _] -> 1
-    [Value              _ a _] -> a
-    [Label              _ _ _] -> 1
-    _                          -> case lookupValue (unqualify qid) tyEnv of
-      [DataConstructor  _ a _ _] -> a
-      [NewtypeConstructor _ _ _] -> 1
-      [Value              _ a _] -> a
-      [Label              _ _ _] -> 1
-      _                          -> internalError $ "GenFlatCurry.getArity: " ++ show qid
-
-ttrans :: Type -> IL.Type
-ttrans (TypeVariable          v) = IL.TypeVariable v
-ttrans (TypeConstructor    i ts) = IL.TypeConstructor i (map ttrans ts)
-ttrans (TypeArrow           f x) = IL.TypeArrow (ttrans f) (ttrans x)
-ttrans (TypeConstrained    [] v) = IL.TypeVariable v
-ttrans (TypeConstrained (v:_) _) = ttrans v
-ttrans (TypeSkolem            k) = internalError $
-  "Generators.GenFlatCurry.ttrans: skolem type " ++ show k
-
--- Constructor (:) receives special treatment throughout the
--- whole implementation. We won't depart from that for mere
--- aesthetic reasons. (hsi)
-lookupIdType :: QualIdent -> FlatState (Maybe TypeExpr)
-lookupIdType (QualIdent Nothing (Ident _ "[]" _))
-  = return (Just l0)
-  where l0 = TCons (mkQName ("Prelude", "[]")) [TVar 0]
-lookupIdType (QualIdent Nothing (Ident _ ":" _))
-  = return (Just (FuncType (TVar 0) (FuncType (l0) (l0))))
-  where l0 = TCons (mkQName ("Prelude", "[]")) [TVar 0]
-lookupIdType (QualIdent Nothing (Ident _ "()" _))
-  = return (Just l0)
-  where l0 = TCons (mkQName ("Prelude", "()")) []
-lookupIdType (QualIdent Nothing (Ident _ t@('(':',':r) _))
-  = return $ Just funtype
-  where tupArity   = length r + 1
-        argTypes   = map TVar [1 .. tupArity]
-        contype    = TCons (mkQName ("Prelude", t)) argTypes
-        funtype    = foldr FuncType contype argTypes
-lookupIdType qid = do
-  aEnv <- gets typeEnvE
-  lt <- gets localTypes
-  ct <- gets consTypes
-  case Map.lookup qid lt `mplus` Map.lookup qid ct of
-    Just t  -> Just <$> trType t  -- local name or constructor
-    Nothing -> case [ t | Value _ _ (ForAll _ t) <- qualLookupValue qid aEnv ] of
-      t : _ -> Just <$> trType (transType t)  -- imported name
-      []    -> case qidModule qid of
-        Nothing -> return Nothing  -- no known type
-        Just _ -> lookupIdType qid {qidModule = Nothing}
-
--- Generates a new index for a variable
-newVarIndex :: Ident -> FlatState VarIndex
-newVarIndex ident = do
-  idx <- (+1) <$> gets varIndexE
-  ty  <- getTypeOf ident
-  let vid = VarIndex ty idx
-  modify $ \ s -> s { varIndexE = idx, varIdsE = bindNestEnv ident vid (varIdsE s) }
-  return vid
-
-getTypeOf :: Ident -> FlatState (Maybe TypeExpr)
-getTypeOf ident = do
-  valEnv <- gets typeEnvE
-  case lookupValue ident valEnv of
-    Value _ _ (ForAll _ t) : _ -> do
-      t1 <- trType (ttrans t)
-      return (Just t1)
-    DataConstructor _ _ _ (ForAllExist _ _ t) : _ -> do
-      t1 <- trType (ttrans t)
-      return (Just t1)
-    _ -> return Nothing
-
-getVarIndex :: Ident -> FlatState VarIndex
-getVarIndex ident = do
-  varEnv <- gets varIdsE
-  case lookupNestEnv ident varEnv of
-    [i] -> return i
-    _   -> internalError $ "GenFlatCurry: missing or multiple index for " ++ escName ident
-
-inNestedScope :: FlatState a -> FlatState a
-inNestedScope act = do
-  modify $ \ s -> s { varIdsE = nestEnv $ varIdsE s }
-  res <- act
-  modify $ \ s -> s { varIdsE = unnestEnv $ varIdsE s }
-  return res
-
--- resets var index
-withFreshVarIndex :: FlatState a -> FlatState a
-withFreshVarIndex act = modify (\ s -> s { varIndexE = 0 }) >> act
-
-whenFlatCurry :: FlatState a -> FlatState a -> FlatState a
-whenFlatCurry genFlat genIntf
-  = gets genInterfaceE >>= (\intf -> if intf then genIntf else genFlat)
-
--------------------------------------------------------------------------------
-
--- Generates an evironment containing all public identifiers from the module
--- Note: Currently the record functions (selection and update) for all public
--- record labels are inserted into the environment, though they are not
--- explicitly declared in the export specifications.
-genPubEnv :: ModuleIdent -> [CS.IDecl] -> Map.Map Ident IdentExport
-genPubEnv mid idecls = foldl (bindEnvIDecl mid) Map.empty idecls
-
-bindIdentExport :: Ident -> Bool -> Map.Map Ident IdentExport -> Map.Map Ident IdentExport
-bindIdentExport ident isConstr env =
-  maybe (Map.insert ident (if isConstr then OnlyConstr else NotConstr) env)
-        (\ ie -> Map.insert ident (updateIdentExport ie isConstr) env)
-        (Map.lookup ident env)
-  where
-  updateIdentExport OnlyConstr    True   = OnlyConstr
-  updateIdentExport OnlyConstr    False  = NotOnlyConstr
-  updateIdentExport NotConstr     True   = NotOnlyConstr
-  updateIdentExport NotConstr     False  = NotConstr
-  updateIdentExport NotOnlyConstr _      = NotOnlyConstr
-
-bindEnvIDecl :: ModuleIdent -> Map.Map Ident IdentExport -> CS.IDecl -> Map.Map Ident IdentExport
-bindEnvIDecl mid env (CS.IDataDecl _ qid _ cdecls hs)
-  = maybe env
-    (\ident -> let env'  = bindIdentExport ident False env
-                   env'' = foldr bindEnvConstrDecl env'
-                     [c | c <- cdecls, CS.constrId c `notElem` hs]
-               in foldr bindEnvLabel env'' [l | l <- labels, l `notElem` hs])
-    (localIdent mid qid)
-  where
-    labels = nub $ concatMap CS.recordLabels cdecls
-bindEnvIDecl mid env (CS.INewtypeDecl _ qid _ ncdecl hs)
-  = maybe env
-    (\ident -> let env'  = bindIdentExport ident False env
-                   env'' = if ncId `notElem` hs
-                              then bindEnvNewConstrDecl ncdecl env'
-                              else env'
-               in foldr bindEnvLabel env'' [l | l <- labels, l `notElem` hs])
-    (localIdent mid qid)
-  where
-    ncId   = CS.nconstrId ncdecl
-    labels = CS.nrecordLabels ncdecl
-bindEnvIDecl mid env (CS.ITypeDecl _ qid _ _)
-  = maybe env (\ident -> bindIdentExport ident False env) (localIdent mid qid)
-bindEnvIDecl mid env (CS.IFunctionDecl _ qid _ _)
-  = maybe env (\ident -> bindIdentExport ident False env) (localIdent mid qid)
-bindEnvIDecl _ env _ = env
-
-bindEnvConstrDecl :: CS.ConstrDecl -> Map.Map Ident IdentExport -> Map.Map Ident IdentExport
-bindEnvConstrDecl (CS.ConstrDecl  _ _ c _) = bindIdentExport c True
-bindEnvConstrDecl (CS.ConOpDecl _ _ _ c _) = bindIdentExport c True
-bindEnvConstrDecl (CS.RecordDecl  _ _ c _) = bindIdentExport c True
-
-bindEnvLabel :: Ident -> Map.Map Ident IdentExport -> Map.Map Ident IdentExport
-bindEnvLabel l = bindIdentExport l False
-
-bindEnvNewConstrDecl :: CS.NewConstrDecl -> Map.Map Ident IdentExport -> Map.Map Ident IdentExport
-bindEnvNewConstrDecl (CS.NewConstrDecl _ _ nc _) = bindIdentExport nc False
-bindEnvNewConstrDecl (CS.NewRecordDecl _ _ nc _) = bindIdentExport nc False
+getVisibility :: QualIdent -> FlatState Visibility
+getVisibility i = S.gets $ \s ->
+  if Set.member (unqualify i) (publicVals s) then Public else Private
