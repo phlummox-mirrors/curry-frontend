@@ -580,7 +580,7 @@ negateFloat :: Float -> Float
 negateFloat external
 
 
--- Constraints (included for backwar compatibility)
+-- Constraints (included for backward compatibility)
 type Success = Bool
 
 --- The always satisfiable constraint.
@@ -821,6 +821,9 @@ when p act = if p then act else done
 x ? _ = x
 _ ? y = y
 
+-- Returns non-deterministically any element of a list.
+anyOf :: [a] -> a
+anyOf = foldr1 (?)
 
 --- Evaluates to a fresh free variable.
 unknown :: _
