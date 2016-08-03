@@ -48,7 +48,7 @@ import Base.Messages (Message, posMessage, internalError)
 import Base.SCC
 import Base.TopEnv
 import Base.Types
-import Base.TypeSubst
+import Base.TypeSubst hiding (expandType)
 import Base.Utils (foldr2)
 
 import Env.TypeConstructor (TCEnv, TypeInfo (..), bindTypeInfo, qualLookupTC)

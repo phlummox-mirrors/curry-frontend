@@ -17,11 +17,13 @@ module Base.TypeSubst
 
 import Data.List   (nub)
 
+import Base.Messages       (internalError)
 import Base.Subst
 import Base.TopEnv
 import Base.Types
 
-import Env.Value   (ValueInfo (..))
+import Env.TypeConstructor (TCEnv, TypeInfo (..), qualLookupTC)
+import Env.Value           (ValueInfo (..))
 
 type TypeSubst = Subst Int Type
 
@@ -61,6 +63,20 @@ instance SubstType ValueInfo where
 
 instance SubstType a => SubstType (TopEnv a) where
   subst = fmap . subst
+
+-- Expand all type synonyms in a type
+expandType :: TCEnv -> Type -> Type
+expandType tcEnv (TypeConstructor tc tys) = case qualLookupTC tc tcEnv of
+  [DataType     tc' _  _] -> TypeConstructor tc' tys'
+  [RenamingType tc' _  _] -> TypeConstructor tc' tys'
+  [AliasType    _   _ ty] -> expandAliasType tys' ty
+  _ -> internalError $ "Desugar.expandType " ++ show tc
+  where tys' = map (expandType tcEnv) tys
+expandType _     tv@(TypeVariable      _) = tv
+expandType _     tc@(TypeConstrained _ _) = tc
+expandType tcEnv (TypeArrow      ty1 ty2) = TypeArrow (expandType tcEnv ty1)
+                                                      (expandType tcEnv ty2)
+expandType _     ts@(TypeSkolem        _) = ts
 
 -- The function 'expandAliasType' expands all occurrences of a
 -- type synonym in a type. After the expansion we have to reassign the

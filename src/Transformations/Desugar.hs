@@ -81,7 +81,7 @@ import Base.Expr
 import Base.CurryTypes (toType, fromType)
 import Base.Messages   (internalError)
 import Base.Types
-import Base.TypeSubst  (expandAliasType)
+import Base.TypeSubst  (expandType)
 import Base.Typing
 import Base.Utils      (mapAccumM, concatMapM)
 
@@ -1011,20 +1011,6 @@ instType (ForAllExist _ _ ty) = inst ty
         inst (TypeVariable        tv) = TypeVariable (-1 - tv)
         inst (TypeArrow      ty1 ty2) = TypeArrow (inst ty1) (inst ty2)
         inst ty'                      = ty'
-
--- Expand all type synonyms in a type
-expandType :: TCEnv -> Type -> Type
-expandType tcEnv (TypeConstructor tc tys) = case qualLookupTC tc tcEnv of
-  [DataType     tc' _  _] -> TypeConstructor tc' tys'
-  [RenamingType tc' _  _] -> TypeConstructor tc' tys'
-  [AliasType    _   _ ty] -> expandAliasType tys' ty
-  _ -> internalError $ "Desugar.expandType " ++ show tc
-  where tys' = map (expandType tcEnv) tys
-expandType _     tv@(TypeVariable      _) = tv
-expandType _     tc@(TypeConstrained _ _) = tc
-expandType tcEnv (TypeArrow      ty1 ty2) = TypeArrow (expandType tcEnv ty1)
-                                                      (expandType tcEnv ty2)
-expandType _     ts@(TypeSkolem        _) = ts
 
 -- Retrieve all constructors of a type
 constructors :: QualIdent -> DsM [DataConstr]
