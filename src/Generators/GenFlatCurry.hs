@@ -21,7 +21,7 @@ import           Control.Applicative        ((<$>), (<*>))
 #endif
 import qualified Control.Monad.State as S   (State, evalState, gets, modify)
 import           Data.Function              (on)
-import           Data.List                  ((\\), nub, sort, sortBy)
+import           Data.List                  (nub, sort, sortBy)
 import           Data.Maybe                 (fromMaybe)
 import qualified Data.Set            as Set (Set, empty, insert, member)
 
@@ -48,13 +48,13 @@ import qualified IL as IL
 import Transformations     (transType)
 
 -- transforms intermediate language code (IL) to FlatCurry code
-genFlatCurry :: CompilerEnv -> CS.Interface -> CS.Module -> IL.Module -> Prog
-genFlatCurry env i mdl il = patchPrelude False $ run env i mdl (trModule il)
+genFlatCurry :: CompilerEnv -> CS.Module -> IL.Module -> Prog
+genFlatCurry env mdl il = patchPrelude False $ run env mdl (trModule il)
 
 -- transforms intermediate language code (IL) to FlatCurry interfaces
 genFlatInterface :: CompilerEnv -> CS.Interface -> CS.Module -> IL.Module -> Prog
 genFlatInterface env i mdl (IL.Module _ is _)
-  = patchPrelude True $ run env i mdl (trInterface is i)
+  = patchPrelude True $ run env mdl (trInterface is i)
 
 -- -----------------------------------------------------------------------------
 -- Addition of primitive types for lists and tuples to the Prelude
@@ -104,8 +104,8 @@ type FlatState a = S.State FlatEnv a
 data FlatEnv = FlatEnv
   { modIdent     :: ModuleIdent      -- current module
   -- for visibility calculation
-  , publicTys    :: Set.Set Ident    -- exported types
-  , publicVals   :: Set.Set Ident    -- exported values (functions + constructors)
+  , tyExports    :: Set.Set Ident    -- exported types
+  , valExports   :: Set.Set Ident    -- exported values (functions + constructors)
   , tcEnv        :: TCEnv            -- type constructor environment
   , tyEnv        :: ValueEnv         -- type environment
   , fixities     :: [CS.IDecl]       -- fixity declarations
@@ -117,16 +117,16 @@ data FlatEnv = FlatEnv
   }
 
 -- Runs a 'FlatState' action and returns the result
-run :: CompilerEnv -> CS.Interface -> CS.Module -> FlatState a -> a
-run env (CS.Interface _ _ ids) (CS.Module _ mid _ is ds) act
-  = S.evalState act env0
+run :: CompilerEnv -> CS.Module -> FlatState a -> a
+run env (CS.Module _ mid es is ds) act = S.evalState act env0
   where
-  locals = filter (isLocalIDecl mid) ids
-  env0   = FlatEnv
+  es'  = case es of Just (CS.Exporting _ e) -> e
+                    _                       -> []
+  env0 = FlatEnv
     { modIdent     = mid
      -- for visibility calculation
-    , publicTys    = foldr buildTypeExports  Set.empty locals
-    , publicVals   = foldr buildValueExports Set.empty locals
+    , tyExports  = foldr (buildTypeExports  mid) Set.empty es'
+    , valExports = foldr (buildValueExports mid) Set.empty es'
     -- This includes *all* imports, even unused ones
     , imports      = nub [ m | CS.ImportDecl _ m _ _ _ <- is ]
     -- Environment to retrieve the type of identifiers
@@ -142,29 +142,19 @@ run env (CS.Interface _ _ ids) (CS.Module _ mid _ is ds) act
     , varMap       = emptyEnv
     }
 
-isLocalIDecl :: ModuleIdent -> CS.IDecl -> Bool
-isLocalIDecl mid (CS.IInfixDecl     _ _ _ q  ) = isLocalIdent mid q
-isLocalIDecl mid (CS.HidingDataDecl _ q _    ) = isLocalIdent mid q
-isLocalIDecl mid (CS.IDataDecl      _ q _ _ _) = isLocalIdent mid q
-isLocalIDecl mid (CS.INewtypeDecl   _ q _ _ _) = isLocalIdent mid q
-isLocalIDecl mid (CS.ITypeDecl      _ q _ _  ) = isLocalIdent mid q
-isLocalIDecl mid (CS.IFunctionDecl  _ q _ _  ) = isLocalIdent mid q
+-- Builds a table containing all exported identifiers from a module.
+buildTypeExports :: ModuleIdent -> CS.Export -> Set.Set Ident -> Set.Set Ident
+buildTypeExports mid (CS.ExportTypeWith tc _)
+  | isLocalIdent mid tc = Set.insert (unqualify tc)
+buildTypeExports _   _  = id
 
--- Builds a set containing all exported types from a module.
-buildTypeExports :: CS.IDecl -> Set.Set Ident -> Set.Set Ident
-buildTypeExports (CS.IDataDecl    _ tc _ _ _) = Set.insert (unqualify tc)
-buildTypeExports (CS.INewtypeDecl _ tc _ _ _) = Set.insert (unqualify tc)
-buildTypeExports (CS.ITypeDecl    _ tc _ _  ) = Set.insert (unqualify tc)
-buildTypeExports _                            = id
-
--- Builds a set containing all exported values from a module.
-buildValueExports :: CS.IDecl -> Set.Set Ident -> Set.Set Ident
-buildValueExports (CS.IDataDecl _ _ _ cs hs)    = flip (foldr Set.insert) vs
-  where vs = nub $ (map CS.constrId cs ++ concatMap CS.recordLabels cs) \\ hs
-buildValueExports (CS.INewtypeDecl _ _ _ nd hs) = flip (foldr Set.insert) vs
-  where vs = nub $ (CS.nconstrId nd : CS.nrecordLabels nd) \\ hs
-buildValueExports (CS.IFunctionDecl    _ f _ _) = Set.insert (unqualify f)
-buildValueExports _                             = id
+-- Builds a table containing all exported identifiers from a module.
+buildValueExports :: ModuleIdent -> CS.Export -> Set.Set Ident -> Set.Set Ident
+buildValueExports mid (CS.Export             q)
+  | isLocalIdent mid q  = Set.insert (unqualify q)
+buildValueExports mid (CS.ExportTypeWith tc cs)
+  | isLocalIdent mid tc = flip (foldr Set.insert) cs
+buildValueExports _   _  = id
 
 getModuleIdent :: FlatState ModuleIdent
 getModuleIdent = S.gets modIdent
@@ -374,21 +364,25 @@ trFuncDecl (IL.FunctionDecl f vs ty e) = do
   a   <- getArity f
   vis <- getVisibility f
   ty' <- trType ty
-  r'  <- uncurry Rule <$> trRule (vs, e)
+  r'  <- trRule vs e
   return [Func f' a vis ty' r']
-trFuncDecl (IL.ExternalDecl f _ e ty) = do
+trFuncDecl (IL.ExternalDecl  f _ e ty) = do
   f'   <- trQIdent f
   a    <- getArity f
   vis  <- getVisibility f
   ty'  <- trType ty
-  e'   <- (\mid -> moduleName mid ++ "." ++ e) <$> getModuleIdent
-  return [Func f' a vis ty' (External e')]
-trFuncDecl _ = return []
+  r'   <- trExternal e
+  return [Func f' a vis ty' r']
+trFuncDecl _                           = return []
 
 -- Translate a function rule.
 -- Resets variable index so that for every rule variables start with index 1
-trRule :: ([Ident], IL.Expression) -> FlatState ([VarIndex], Expr)
-trRule (vs, e) = withFreshEnv $ (,) <$> mapM newVar vs <*> trExpr e
+trRule :: [Ident] -> IL.Expression -> FlatState Rule
+trRule vs e = withFreshEnv $ Rule <$> mapM newVar vs <*> trExpr e
+
+trExternal :: String -> FlatState Rule
+trExternal e = do mid <- getModuleIdent
+                  return (External $ moduleName mid ++ "." ++ e)
 
 -- Translate an expression
 trExpr :: IL.Expression -> FlatState Expr
@@ -505,8 +499,8 @@ trQualdent withType qid = do
 
 getTypeVisibility :: QualIdent -> FlatState Visibility
 getTypeVisibility i = S.gets $ \s ->
-  if Set.member (unqualify i) (publicTys s) then Public else Private
+  if Set.member (unqualify i) (tyExports s) then Public else Private
 
 getVisibility :: QualIdent -> FlatState Visibility
 getVisibility i = S.gets $ \s ->
-  if Set.member (unqualify i) (publicVals s) then Public else Private
+  if Set.member (unqualify i) (valExports s) then Public else Private

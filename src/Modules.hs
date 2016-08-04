@@ -305,15 +305,15 @@ matchInterface ifn i = do
 writeFlat :: Options -> CompilerEnv -> CS.Interface -> CS.Module -> IL.Module -> CYIO ()
 writeFlat opts env intf mdl il = do
   when (extTarget || fcyTarget) $ do
-    writeFlatCurry opts env intf mdl il
+    writeFlatCurry opts env      mdl il
     writeFlatIntf  opts env intf mdl il
   where
   extTarget = ExtendedFlatCurry `elem` optTargetTypes opts
   fcyTarget = FlatCurry         `elem` optTargetTypes opts
 
 -- |Export an 'IL.Module' into a FlatCurry file
-writeFlatCurry :: Options -> CompilerEnv -> CS.Interface -> CS.Module -> IL.Module -> CYIO ()
-writeFlatCurry opts env intf mdl il = do
+writeFlatCurry :: Options -> CompilerEnv -> CS.Module -> IL.Module -> CYIO ()
+writeFlatCurry opts env mdl il = do
   (_, fc) <- dumpWith opts show EF.ppProg DumpFlatCurry (env, prog)
   when extTarget $ liftIO
                  $ EF.writeExtendedFlat (useSubDir $ extFlatName (filePath env)) fc
@@ -323,7 +323,7 @@ writeFlatCurry opts env intf mdl il = do
   extTarget = ExtendedFlatCurry `elem` optTargetTypes opts
   fcyTarget = FlatCurry         `elem` optTargetTypes opts
   useSubDir = addCurrySubdirModule (optUseSubdir opts) (moduleIdent env)
-  prog      = genFlatCurry env intf mdl il
+  prog      = genFlatCurry env mdl il
 
 writeFlatIntf :: Options -> CompilerEnv -> CS.Interface -> CS.Module -> IL.Module -> CYIO ()
 writeFlatIntf opts env intf mdl il

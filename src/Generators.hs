@@ -31,7 +31,7 @@ genUntypedAbstractCurry :: CompilerEnv -> CS.Module -> AC.CurryProg
 genUntypedAbstractCurry = GAC.genAbstractCurry True
 
 -- |Generate FlatCurry
-genFlatCurry :: CompilerEnv -> CS.Interface -> CS.Module -> IL.Module -> EF.Prog
+genFlatCurry :: CompilerEnv -> CS.Module -> IL.Module -> EF.Prog
 genFlatCurry = GFC.genFlatCurry
 
 -- |Generate a FlatCurry interface
