@@ -5,6 +5,7 @@
                                    Martin Engelke
                                    Björn Peemöller
                        2015        Jan Tikovsky
+                       2016        Finn Teegen
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
@@ -40,7 +41,7 @@ import Base.Utils    (findMultiples)
 import Env.OpPrec (OpPrecEnv, OpPrec (..), PrecInfo (..), defaultP, bindP
   , mkPrec, qualLookupP)
 
-precCheck :: ModuleIdent -> OpPrecEnv -> [Decl] -> ([Decl], OpPrecEnv, [Message])
+precCheck :: ModuleIdent -> OpPrecEnv -> [Decl a] -> ([Decl a], OpPrecEnv, [Message])
 precCheck m pEnv decls = runPCM (checkDecls decls) initState
  where initState = PCState m pEnv []
 
@@ -81,36 +82,42 @@ report err = S.modify (\ s -> s { errors = err : errors s })
 -- group. The fixity declarations are then used for extending the
 -- imported precedence environment.
 
-bindPrecs :: [Decl] -> PCM ()
-bindPrecs ds = case findMultiples opFixDecls of
+bindPrecs :: [Decl a] -> PCM ()
+bindPrecs ds0 = case findMultiples opFixDecls of
   [] -> case filter (`notElem` bvs) opFixDecls of
     []  -> do
       m <- getModuleIdent
-      modifyPrecEnv $ \ env -> foldr (bindPrec m) env fixDs
+      modifyPrecEnv $ \env -> foldr (bindPrec m) env fixDs
     ops -> mapM_ (report . errUndefinedOperator) ops
   opss -> mapM_ (report . errMultiplePrecedence) opss
   where
+    ds                = concatMap decls ds0
     (fixDs, nonFixDs) = partition isInfixDecl ds
     opFixDecls        = [ op | InfixDecl _ _ _ ops <- fixDs, op <- ops ]
-    bvs               = concatMap boundValues nonFixDs
+    -- Unrenaming is necessary here, because operators within class
+    -- declarations have been renamed during syntax checking.
+    bvs               = map unRenameIdent $ concatMap boundValues nonFixDs
+    decls (ClassDecl _ _ _ _ innerDs) = innerDs
+    decls d                           = [d]
 
-bindPrec :: ModuleIdent -> Decl -> OpPrecEnv -> OpPrecEnv
+bindPrec :: ModuleIdent -> Decl a -> OpPrecEnv -> OpPrecEnv
 bindPrec m (InfixDecl _ fix mprec ops) pEnv
   | p == defaultP = pEnv
   | otherwise     = foldr (flip (bindP m) p) pEnv ops
   where p = OpPrec fix (mkPrec mprec)
 bindPrec _ _                           pEnv = pEnv
 
-boundValues :: Decl -> [Ident]
-boundValues (DataDecl      _ _ _ cs) = [ v | c <- cs
-                                           , v <- constrId c : recordLabels c]
-boundValues (NewtypeDecl   _ _ _ nc) = nconstrId nc : nrecordLabels nc
-boundValues (FunctionDecl     _ f _) = [f]
-boundValues (ForeignDecl  _ _ _ f _) = [f]
-boundValues (ExternalDecl      _ fs) = fs
-boundValues (PatternDecl      _ t _) = bv t
-boundValues (FreeDecl          _ vs) = vs
-boundValues _                        = []
+boundValues :: Decl a -> [Ident]
+boundValues (DataDecl       _ _ _ cs) = [ v | c <- cs
+                                            , v <- constrId c : recordLabels c]
+boundValues (NewtypeDecl    _ _ _ nc) = nconstrId nc : nrecordLabels nc
+boundValues (TypeSig          _ fs _) = fs
+boundValues (FunctionDecl    _ _ f _) = [f]
+boundValues (ForeignDecl _ _ _ _ f _) = [f]
+boundValues (ExternalDecl       _ vs) = bv vs
+boundValues (PatternDecl       _ t _) = bv t
+boundValues (FreeDecl           _ vs) = bv vs
+boundValues _                         = []
 
 -- With the help of the precedence environment, the compiler checks all
 -- infix applications and sections in the program. This pass will modify
@@ -121,21 +128,25 @@ boundValues _                        = []
 -- be returned because it is needed for constructing the module's
 -- interface.
 
-checkDecls :: [Decl] -> PCM [Decl]
+checkDecls :: [Decl a] -> PCM [Decl a]
 checkDecls decls = bindPrecs decls >> mapM checkDecl decls
 
-checkDecl :: Decl -> PCM Decl
-checkDecl (FunctionDecl p f eqs) =
-  FunctionDecl p f <$> mapM checkEquation eqs
-checkDecl (PatternDecl p  t rhs) =
+checkDecl :: Decl a -> PCM (Decl a)
+checkDecl (FunctionDecl p a f           eqs) =
+  FunctionDecl p a f <$> mapM checkEquation eqs
+checkDecl (PatternDecl  p t             rhs) =
   PatternDecl p <$> checkPattern t <*> checkRhs rhs
-checkDecl d                      = return d
+checkDecl (ClassDecl    p cx cls    tv   ds) =
+  ClassDecl p cx cls tv <$> mapM checkDecl ds
+checkDecl (InstanceDecl p cx qcls   inst ds) =
+  InstanceDecl p cx qcls inst <$> mapM checkDecl ds
+checkDecl d                                  = return d
 
-checkEquation :: Equation -> PCM Equation
+checkEquation :: Equation a -> PCM (Equation a)
 checkEquation (Equation p lhs rhs) =
   Equation p <$> checkLhs lhs <*> checkRhs rhs
 
-checkLhs :: Lhs -> PCM Lhs
+checkLhs :: Lhs a -> PCM (Lhs a)
 checkLhs (FunLhs    f ts) = FunLhs f <$> mapM checkPattern ts
 checkLhs (OpLhs t1 op t2) =
   flip OpLhs op <$> (checkPattern t1 >>= checkOpL op)
@@ -143,55 +154,55 @@ checkLhs (OpLhs t1 op t2) =
 checkLhs (ApLhs   lhs ts) =
   ApLhs <$> checkLhs lhs <*> mapM checkPattern ts
 
-checkPattern :: Pattern -> PCM Pattern
-checkPattern l@(LiteralPattern      _) = return l
-checkPattern n@(NegativePattern   _ _) = return n
-checkPattern v@(VariablePattern     _) = return v
-checkPattern (ConstructorPattern c ts) =
-  ConstructorPattern c <$> mapM checkPattern ts
-checkPattern (InfixPattern   t1 op t2) = do
+checkPattern :: Pattern a -> PCM (Pattern a)
+checkPattern l@(LiteralPattern        _ _) = return l
+checkPattern n@(NegativePattern     _ _ _) = return n
+checkPattern v@(VariablePattern       _ _) = return v
+checkPattern (ConstructorPattern   a c ts) =
+  ConstructorPattern a c <$> mapM checkPattern ts
+checkPattern (InfixPattern     a t1 op t2) = do
   t1' <- checkPattern t1
   t2' <- checkPattern t2
-  fixPrecT InfixPattern t1' op t2'
-checkPattern (ParenPattern          t) =
+  fixPrecT (InfixPattern a) t1' op t2'
+checkPattern (ParenPattern              t) =
   ParenPattern <$> checkPattern t
-checkPattern (TuplePattern       p ts) =
+checkPattern (TuplePattern           p ts) =
   TuplePattern p <$> mapM checkPattern ts
-checkPattern (ListPattern        p ts) =
-  ListPattern p <$> mapM checkPattern ts
-checkPattern (AsPattern           v t) =
+checkPattern (ListPattern          a p ts) =
+  ListPattern a p <$> mapM checkPattern ts
+checkPattern (AsPattern               v t) =
   AsPattern v <$> checkPattern t
-checkPattern (LazyPattern         p t) =
+checkPattern (LazyPattern             p t) =
   LazyPattern p <$> checkPattern t
-checkPattern (FunctionPattern    f ts) =
-  FunctionPattern f <$> mapM checkPattern ts
-checkPattern (InfixFuncPattern t1 op t2) = do
+checkPattern (FunctionPattern      a f ts) =
+  FunctionPattern a f <$> mapM checkPattern ts
+checkPattern (InfixFuncPattern a t1 op t2) = do
   t1' <- checkPattern t1
   t2' <- checkPattern t2
-  fixPrecT InfixFuncPattern t1' op t2'
-checkPattern (RecordPattern c fs) =
-  RecordPattern c <$> mapM (checkField checkPattern) fs
+  fixPrecT (InfixFuncPattern a) t1' op t2'
+checkPattern (RecordPattern       a c fs) =
+  RecordPattern a c <$> mapM (checkField checkPattern) fs
 
-checkRhs :: Rhs -> PCM Rhs
+checkRhs :: Rhs a -> PCM (Rhs a)
 checkRhs (SimpleRhs p e ds) = withLocalPrecEnv $
   flip (SimpleRhs p) <$> checkDecls ds <*> checkExpr e
 checkRhs (GuardedRhs es ds) = withLocalPrecEnv $
   (flip GuardedRhs) <$> checkDecls ds <*> mapM checkCondExpr es
 
-checkCondExpr :: CondExpr -> PCM CondExpr
+checkCondExpr :: CondExpr a -> PCM (CondExpr a)
 checkCondExpr (CondExpr p g e) = CondExpr p <$> checkExpr g <*> checkExpr e
 
-checkExpr :: Expression -> PCM Expression
-checkExpr l@(Literal       _) = return l
-checkExpr v@(Variable      _) = return v
-checkExpr c@(Constructor   _) = return c
-checkExpr (Paren           e) = Paren <$> checkExpr e
-checkExpr (Typed        e ty) = flip Typed ty <$> checkExpr e
-checkExpr (Record       c fs) = Record c <$> mapM (checkField checkExpr) fs
-checkExpr (RecordUpdate e fs) = RecordUpdate <$> (checkExpr e)
+checkExpr :: Expression a -> PCM (Expression a)
+checkExpr l@(Literal       _ _) = return l
+checkExpr v@(Variable      _ _) = return v
+checkExpr c@(Constructor   _ _) = return c
+checkExpr (Paren             e) = Paren <$> checkExpr e
+checkExpr (Typed          e ty) = flip Typed ty <$> checkExpr e
+checkExpr (Record       a c fs) = Record a c <$> mapM (checkField checkExpr) fs
+checkExpr (RecordUpdate   e fs) = RecordUpdate <$> (checkExpr e)
                                              <*> mapM (checkField checkExpr) fs
-checkExpr (Tuple p es) = Tuple p <$> mapM checkExpr es
-checkExpr (List  p es) = List  p <$> mapM checkExpr es
+checkExpr (Tuple   p es) = Tuple p <$> mapM checkExpr es
+checkExpr (List  a p es) = List a p <$> mapM checkExpr es
 checkExpr (ListCompr p e qs) = withLocalPrecEnv $
   flip (ListCompr p) <$> mapM checkStmt qs <*> checkExpr e
 checkExpr (EnumFrom              e) = EnumFrom <$> checkExpr e
@@ -201,7 +212,7 @@ checkExpr (EnumFromTo        e1 e2) =
   EnumFromTo <$> checkExpr e1 <*> checkExpr e2
 checkExpr (EnumFromThenTo e1 e2 e3) =
   EnumFromThenTo <$> checkExpr e1 <*> checkExpr e2 <*> checkExpr e3
-checkExpr (UnaryMinus         op e) = UnaryMinus op <$> checkExpr e
+checkExpr (UnaryMinus          r e) = UnaryMinus r <$> checkExpr e
 checkExpr (Apply e1 e2) =
   Apply <$> checkExpr e1 <*> checkExpr e2
 checkExpr (InfixApply e1 op e2) = do
@@ -221,12 +232,12 @@ checkExpr (IfThenElse r e1 e2 e3) =
 checkExpr (Case      r ct e alts) =
   Case r ct <$> checkExpr e <*> mapM checkAlt alts
 
-checkStmt :: Statement -> PCM Statement
+checkStmt :: Statement a -> PCM (Statement a)
 checkStmt (StmtExpr   p e) = StmtExpr p <$> checkExpr e
 checkStmt (StmtDecl    ds) = StmtDecl   <$> checkDecls ds
 checkStmt (StmtBind p t e) = StmtBind p <$> checkPattern t <*> checkExpr e
 
-checkAlt :: Alt -> PCM Alt
+checkAlt :: Alt a -> PCM (Alt a)
 checkAlt (Alt p t rhs) = Alt p <$> checkPattern t <*> checkRhs rhs
 
 checkField :: (a -> PCM a) -> Field a -> PCM (Field a)
@@ -250,42 +261,43 @@ checkField check (Field p l x) = Field p l <$> check x
 -- Note that both arguments already have been checked before 'fixPrec'
 -- is called.
 
-fixPrec :: Expression -> InfixOp -> Expression -> PCM Expression
-fixPrec (UnaryMinus uop e1) op e2 = do
+fixPrec :: Expression a -> InfixOp a -> Expression a -> PCM (Expression a)
+fixPrec (UnaryMinus ref e1) op e2 = do
   OpPrec fix pr <- getOpPrec op
   if pr < 6 || pr == 6 && fix == InfixL
-    then fixRPrec (UnaryMinus uop e1) op e2
+    then fixRPrec (UnaryMinus ref e1) op e2
     else if pr > 6
-      then fixUPrec uop e1 op e2
+      then fixUPrec ref e1 op e2
       else do
-        report $ errAmbiguousParse "unary" (qualify uop) (opName op)
-        return $ InfixApply (UnaryMinus uop e1) op e2
+        report $ errAmbiguousParse "unary" (qualify minusId) (opName op)
+        return $ InfixApply (UnaryMinus ref e1) op e2
 fixPrec e1 op e2 = fixRPrec e1 op e2
 
-fixUPrec :: Ident -> Expression -> InfixOp -> Expression -> PCM Expression
-fixUPrec uop e1 op e2@(UnaryMinus _ _) = do
-  report $ errAmbiguousParse "operator" (opName op) (qualify uop)
-  return $ UnaryMinus uop (InfixApply e1 op e2)
-fixUPrec uop e1 op1 e'@(InfixApply e2 op2 e3) = do
+fixUPrec :: SrcRef -> Expression a -> InfixOp a -> Expression a
+         -> PCM (Expression a)
+fixUPrec ref e1 op e2@(UnaryMinus _ _) = do
+  report $ errAmbiguousParse "operator" (opName op) (qualify minusId)
+  return $ UnaryMinus ref (InfixApply e1 op e2)
+fixUPrec ref e1 op1 e'@(InfixApply e2 op2 e3) = do
   OpPrec fix2 pr2 <- getOpPrec op2
   if pr2 < 6 || pr2 == 6 && fix2 == InfixL
     then do
-      left <- fixUPrec uop e1 op1 e2
+      left <- fixUPrec ref e1 op1 e2
       return $ InfixApply left op2 e3
     else if pr2 > 6
       then do
         op <- fixRPrec e1 op1 $ InfixApply e2 op2 e3
-        return $ UnaryMinus uop op
+        return $ UnaryMinus ref op
       else do
-        report $ errAmbiguousParse "unary" (qualify uop) (opName op2)
-        return $ InfixApply (UnaryMinus uop e1) op1 e'
-fixUPrec uop e1 op e2 = return $ UnaryMinus uop (InfixApply e1 op e2)
+        report $ errAmbiguousParse "unary" (qualify minusId) (opName op2)
+        return $ InfixApply (UnaryMinus ref e1) op1 e'
+fixUPrec ref e1 op e2 = return $ UnaryMinus ref (InfixApply e1 op e2)
 
-fixRPrec :: Expression -> InfixOp -> Expression -> PCM Expression
-fixRPrec e1 op (UnaryMinus uop e2) = do
+fixRPrec :: Expression a -> InfixOp a -> Expression a -> PCM (Expression a)
+fixRPrec e1 op (UnaryMinus ref e2) = do
   OpPrec _ pr <- getOpPrec op
-  unless (pr < 6) $ report $ errAmbiguousParse "operator" (opName op) (qualify uop)
-  return $ InfixApply e1 op $ UnaryMinus uop e2
+  unless (pr < 6) $ report $ errAmbiguousParse "operator" (opName op) (qualify minusId)
+  return $ InfixApply e1 op $ UnaryMinus ref e2
 fixRPrec e1 op1 (InfixApply e2 op2 e3) = do
   OpPrec fix1 pr1 <- getOpPrec op1
   OpPrec fix2 pr2 <- getOpPrec op2
@@ -308,11 +320,11 @@ fixRPrec e1 op e2 = return $ InfixApply e1 op e2
 -- associative for a left section and right associative for a right
 -- section, respectively.
 
-checkLSection :: InfixOp -> Expression -> PCM Expression
-checkLSection op e@(UnaryMinus uop _) = do
+checkLSection :: InfixOp a -> Expression a -> PCM (Expression a)
+checkLSection op e@(UnaryMinus _ _) = do
   OpPrec fix pr <- getOpPrec op
   unless (pr < 6 || pr == 6 && fix == InfixL) $
-    report $ errAmbiguousParse "unary" (qualify uop) (opName op)
+    report $ errAmbiguousParse "unary" (qualify minusId) (opName op)
   return $ LeftSection e op
 checkLSection op1 e@(InfixApply _ op2 _) = do
   OpPrec fix1 pr1 <- getOpPrec op1
@@ -322,10 +334,10 @@ checkLSection op1 e@(InfixApply _ op2 _) = do
   return $ LeftSection e op1
 checkLSection op e = return $ LeftSection e op
 
-checkRSection :: InfixOp -> Expression -> PCM Expression
-checkRSection op e@(UnaryMinus uop _) = do
+checkRSection :: InfixOp a -> Expression a -> PCM (Expression a)
+checkRSection op e@(UnaryMinus _ _) = do
   OpPrec _ pr <- getOpPrec op
-  unless (pr < 6) $ report $ errAmbiguousParse "unary" (qualify uop) (opName op)
+  unless (pr < 6) $ report $ errAmbiguousParse "unary" (qualify minusId) (opName op)
   return $ RightSection op e
 checkRSection op1 e@(InfixApply _ op2 _) = do
   OpPrec fix1 pr1 <- getOpPrec op1
@@ -345,45 +357,45 @@ checkRSection op e = return $ RightSection op e
 -- literals. In this case, the negation must bind more tightly than the
 -- operator for the pattern to be accepted.
 
-fixPrecT :: (Pattern -> QualIdent -> Pattern -> Pattern)
-         -> Pattern -> QualIdent -> Pattern -> PCM Pattern
-fixPrecT infixpatt t1@(NegativePattern uop _) op t2 = do
+fixPrecT :: (Pattern a -> QualIdent -> Pattern a -> Pattern a)
+         -> Pattern a -> QualIdent -> Pattern a -> PCM (Pattern a)
+fixPrecT infixpatt t1@(NegativePattern _ _ _) op t2 = do
   OpPrec fix pr <- prec op <$> getPrecEnv
   unless (pr < 6 || pr == 6 && fix == InfixL) $
-    report $ errInvalidParse "unary operator" uop op
+    report $ errInvalidParse "unary operator" minusId op
   fixRPrecT infixpatt t1 op t2
 fixPrecT infixpatt t1 op t2 = fixRPrecT infixpatt t1 op t2
 
-fixRPrecT :: (Pattern -> QualIdent -> Pattern -> Pattern)
-          -> Pattern  -> QualIdent -> Pattern -> PCM Pattern
-fixRPrecT infixpatt t1 op t2@(NegativePattern uop _) = do
+fixRPrecT :: (Pattern a -> QualIdent -> Pattern a -> Pattern a)
+          -> Pattern a -> QualIdent -> Pattern a -> PCM (Pattern a)
+fixRPrecT infixpatt t1 op t2@(NegativePattern _ _ _) = do
   OpPrec _ pr <- prec op <$> getPrecEnv
-  unless (pr < 6) $ report $ errInvalidParse "unary operator" uop op
+  unless (pr < 6) $ report $ errInvalidParse "unary operator" minusId op
   return $ infixpatt t1 op t2
-fixRPrecT infixpatt t1 op1 (InfixPattern t2 op2 t3) = do
+fixRPrecT infixpatt t1 op1 (InfixPattern a t2 op2 t3) = do
   OpPrec fix1 pr1 <- prec op1 <$> getPrecEnv
   OpPrec fix2 pr2 <- prec op2 <$> getPrecEnv
   if pr1 < pr2 || pr1 == pr2 && fix1 == InfixR && fix2 == InfixR
-    then return $ infixpatt t1 op1 (InfixPattern t2 op2 t3)
+    then return $ infixpatt t1 op1 (InfixPattern a t2 op2 t3)
     else if pr1 > pr2 || pr1 == pr2 && fix1 == InfixL && fix2 == InfixL
       then do
         left <- fixPrecT infixpatt t1 op1 t2
-        return $ InfixPattern left op2 t3
+        return $ InfixPattern a left op2 t3
       else do
         report $ errAmbiguousParse "operator" op1 op2
-        return $ infixpatt t1 op1 (InfixPattern t2 op2 t3)
-fixRPrecT infixpatt t1 op1 (InfixFuncPattern t2 op2 t3) = do
+        return $ infixpatt t1 op1 (InfixPattern a t2 op2 t3)
+fixRPrecT infixpatt t1 op1 (InfixFuncPattern a t2 op2 t3) = do
   OpPrec fix1 pr1 <- prec op1 <$> getPrecEnv
   OpPrec fix2 pr2 <- prec op2 <$> getPrecEnv
   if pr1 < pr2 || pr1 == pr2 && fix1 == InfixR && fix2 == InfixR
-    then return $ infixpatt t1 op1 (InfixFuncPattern t2 op2 t3)
+    then return $ infixpatt t1 op1 (InfixFuncPattern a t2 op2 t3)
     else if pr1 > pr2 || pr1 == pr2 && fix1 == InfixL && fix2 == InfixL
       then do
         left <- fixPrecT infixpatt t1 op1 t2
-        return $ InfixFuncPattern left op2 t3
+        return $ InfixFuncPattern a left op2 t3
       else do
         report $ errAmbiguousParse "operator" op1 op2
-        return $ infixpatt t1 op1 (InfixFuncPattern t2 op2 t3)
+        return $ infixpatt t1 op1 (InfixFuncPattern a t2 op2 t3)
 fixRPrecT infixpatt t1 op t2 = return $ infixpatt t1 op t2
 
 {-fixPrecT :: Position -> OpPrecEnv -> Pattern -> QualIdent -> Pattern
@@ -415,13 +427,13 @@ fixRPrecT _ _ t1 op t2 = InfixPattern t1 op t2-}
 -- more tightly than the operator, otherwise the left-hand side of the
 -- declaration is invalid.
 
-checkOpL :: Ident -> Pattern -> PCM Pattern
-checkOpL op t@(NegativePattern uop _) = do
+checkOpL :: Ident -> Pattern a -> PCM (Pattern a)
+checkOpL op t@(NegativePattern _ _ _) = do
   OpPrec fix pr <- prec (qualify op) <$> getPrecEnv
   unless (pr < 6 || pr == 6 && fix == InfixL) $
-    report $ errInvalidParse "unary operator" uop (qualify op)
+    report $ errInvalidParse "unary operator" minusId (qualify op)
   return t
-checkOpL op1 t@(InfixPattern _ op2 _) = do
+checkOpL op1 t@(InfixPattern _ _ op2 _) = do
   OpPrec fix1 pr1 <- prec (qualify op1) <$> getPrecEnv
   OpPrec fix2 pr2 <- prec op2 <$> getPrecEnv
   unless (pr1 < pr2 || pr1 == pr2 && fix1 == InfixL && fix2 == InfixL) $
@@ -429,12 +441,12 @@ checkOpL op1 t@(InfixPattern _ op2 _) = do
   return t
 checkOpL _ t = return t
 
-checkOpR :: Ident -> Pattern -> PCM Pattern
-checkOpR op t@(NegativePattern uop _) = do
+checkOpR :: Ident -> Pattern a -> PCM (Pattern a)
+checkOpR op t@(NegativePattern _ _ _) = do
   OpPrec _ pr <- prec (qualify op)  <$> getPrecEnv
-  when (pr >= 6) $ report $ errInvalidParse "unary operator" uop (qualify op)
+  when (pr >= 6) $ report $ errInvalidParse "unary operator" minusId (qualify op)
   return t
-checkOpR op1 t@(InfixPattern _ op2 _) = do
+checkOpR op1 t@(InfixPattern _ _ op2 _) = do
   OpPrec fix1 pr1 <- prec (qualify op1)  <$> getPrecEnv
   OpPrec fix2 pr2 <- prec op2  <$> getPrecEnv
   unless (pr1 < pr2 || pr1 == pr2 && fix1 == InfixR && fix2 == InfixR) $
@@ -448,10 +460,10 @@ checkOpR _ t = return t
 -- This may happen while checking the root of an operator definition that
 -- shadows an imported definition.
 
-getOpPrec :: InfixOp -> PCM OpPrec
+getOpPrec :: InfixOp a -> PCM OpPrec
 getOpPrec op = opPrec op <$> getPrecEnv
 
-opPrec :: InfixOp -> OpPrecEnv -> OpPrec
+opPrec :: InfixOp a -> OpPrecEnv -> OpPrec
 opPrec op = prec (opName op)
 
 prec :: QualIdent -> OpPrecEnv -> OpPrec
@@ -478,6 +490,8 @@ errInvalidParse :: String -> Ident -> QualIdent -> Message
 errInvalidParse what op1 op2 = posMessage op1 $ hsep $ map text
   [ "Invalid use of", what, escName op1, "with", escQualName op2, "in"
   , showLine $ qidPosition op2]
+
+-- FIXME: Messages may have missing positions for minus operators
 
 errAmbiguousParse :: String -> QualIdent -> QualIdent -> Message
 errAmbiguousParse what op1 op2 = posMessage op1 $ hsep $ map text
