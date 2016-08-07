@@ -3,376 +3,185 @@
     Description :  Type computation of Curry expressions
     Copyright   :  (c) 2003 - 2006 Wolfgang Lux
                        2014 - 2015 Jan Tikovsky
+                       2016        Finn Teegen
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
     Stability   :  experimental
     Portability :  portable
 
+    After the compiler has attributed patterns and expressions with type
+    information during type inference, it is straightforward to recompute
+    the type of every pattern and expression. Since all annotated types
+    are monomorphic, there is no need to instantiate any variables or
+    perform any (non-trivial) unifications.
 -}
 
-module Base.Typing (Typeable (..)) where
+module Base.Typing
+  ( Typeable (..)
+  , withType, matchType
+  , bindDecls, bindDecl, bindPatterns, bindPattern, declVars, patternVars
+  ) where
 
-import Control.Monad
-import qualified Control.Monad.State as S (State, evalState, gets, modify)
+import Data.List (nub)
+import Data.Maybe (fromMaybe)
 
 import Curry.Base.Ident
 import Curry.Syntax
 
 import Base.Messages (internalError)
-import Base.TopEnv
 import Base.Types
 import Base.TypeSubst
-import Base.Utils (foldr2)
+import Base.Utils (fst3)
 
-import Env.Value ( ValueEnv, ValueInfo (..), lookupValue, qualLookupValue)
-
--- During the transformation of Curry source code into the intermediate
--- language, the compiler has to recompute the types of expressions. This
--- is simpler than type checking because the types of all variables are
--- known. Yet, the compiler still must handle functions and constructors
--- with polymorphic types and instantiate their type schemes using fresh
--- type variables. Since all types computed by 'typeOf' are monomorphic,
--- we can use type variables with non-negative offsets for the instantiation
--- of type schemes here without risk of name conflicts.
--- Using non-negative offsets also makes it easy to distinguish these
--- fresh variables from free type variables introduced during type
--- inference, which must be regarded as constants here.
-
--- However, using non-negative offsets for fresh type variables gives
--- rise to two problems when those types are entered back into the type
--- environment, e.g., while introducing auxiliary variables during
--- desugaring. The first is that those type variables now appear to be
--- universally quantified variables, but with indices greater than the
--- number of quantified type variables (To be precise, this can
--- happen only for auxiliary variables, which have monomorphic types,
--- whereas auxiliary functions will be assigned polymorphic types and
--- these type variables will be properly quantified. However, in this
--- case the assigned types may be too general.).
--- This results in an internal error (Prelude.!!: index too large)
--- whenever such a type is instantiated.
--- The second problem is that there may be inadvertent name captures
--- because computeType always uses indices starting at 0 for the fresh
--- type variables. In order to avoid these problems, 'computeType' renames
--- all type variables with non-negative offsets after the final type has
--- been computed, using negative indices below the one with the smallest
--- value occurring in the type environment. Computing the minimum index
--- of all type variables in the type environment seems prohibitively
--- inefficient. However, recall that, thanks to laziness, the minimum is
--- computed only when the final type contains any type variables with
--- non-negative indices. This happens, for instance, 36 times while
--- compiling the prelude (for 159 evaluated applications of 'typeOf') and
--- only twice while compiling the standard IO module (for 21 applications
--- of 'typeOf') (These numbers were obtained for version 0.9.9.).
-
--- A careful reader will note that inadvertent name captures are still
--- possible if one computes the types of two or more auxiliary variables
--- before actually entering their types into the environment. Therefore,
--- make sure that you enter the types of these auxiliary variables
--- immediately into the type environment, unless you are sure that those
--- types cannot contain fresh type variables. One such case are the free
--- variables of a goal.
-
--- TODO: In the long run, this module should be made obsolete by adding
--- attributes to the abstract syntax tree -- e.g., along the lines of
--- Chap.~6 in~\cite{PeytonJonesLester92:Book} -- and returning an
--- abstract syntax tree attributed with type information together with
--- the type environment from type inference. This also would allow
--- getting rid of the identifiers in the representation of integer
--- literals, which are used in order to implement overloading of
--- integer constants.
-
--- TODO: When computing the type of an expression with a type signature
--- make use of the annotation instead of recomputing its type. In order
--- to do this, we must either ensure that the types are properly
--- qualified and expanded or we need access to the type constructor
--- environment.
-
-data TcState = TcState
-  { valueEnv  :: ValueEnv
-  , typeSubst :: TypeSubst
-  , nextId    :: Int
-  }
-
-type TCM = S.State TcState
-
-getValueEnv :: TCM ValueEnv
-getValueEnv = S.gets valueEnv
-
-getTypeSubst :: TCM TypeSubst
-getTypeSubst = S.gets typeSubst
-
-modifyTypeSubst :: (TypeSubst -> TypeSubst) -> TCM ()
-modifyTypeSubst f = S.modify $ \s -> s { typeSubst = f $ typeSubst s }
-
-getNextId :: TCM Int
-getNextId = do
-  nid <- S.gets nextId
-  S.modify $ \ s -> s { nextId = succ nid }
-  return nid
-
-run :: TCM a -> ValueEnv -> a
-run m tyEnv = S.evalState m initState
-  where initState = TcState tyEnv idSubst 0
+import Env.Value
 
 class Typeable a where
-  typeOf :: ValueEnv -> a -> Type
+  typeOf :: a -> Type
 
 instance Typeable Type where
-  typeOf _ ty = ty
+  typeOf = id
 
-instance Typeable Ident where
-  typeOf = computeType identType
+instance Typeable PredType where
+  typeOf = unpredType
 
-instance Typeable Pattern where
-  typeOf = computeType argType
+instance Typeable a => Typeable (Rhs a) where
+  typeOf (SimpleRhs _ e _) = typeOf e
+  typeOf (GuardedRhs es _) = head [typeOf e | CondExpr _ _ e <- es]
 
-instance Typeable Expression where
-  typeOf = computeType exprType
+instance Typeable a => Typeable (Pattern a) where
+  typeOf (LiteralPattern a _) = typeOf a
+  typeOf (NegativePattern a _ _) = typeOf a
+  typeOf (VariablePattern a _) = typeOf a
+  typeOf (ConstructorPattern a _ _) = typeOf a
+  typeOf (InfixPattern a _ _ _) = typeOf a
+  typeOf (ParenPattern t) = typeOf t
+  typeOf (RecordPattern a _ _) = typeOf a
+  typeOf (TuplePattern _ ts) = tupleType $ map typeOf ts
+  typeOf (ListPattern a _ _) = typeOf a
+  typeOf (AsPattern _ t) = typeOf t
+  typeOf (LazyPattern _ t) = typeOf t
+  typeOf (FunctionPattern a _ _) = typeOf a
+  typeOf (InfixFuncPattern a _ _ _) = typeOf a
 
-instance Typeable Rhs where
-  typeOf = computeType rhsType
+instance Typeable a => Typeable (Expression a) where
+  typeOf (Literal a _) = typeOf a
+  typeOf (Variable a _) = typeOf a
+  typeOf (Constructor a _) = typeOf a
+  typeOf (Paren e) = typeOf e
+  typeOf (Typed e _) = typeOf e
+  typeOf (Record a _ _) = typeOf a
+  typeOf (RecordUpdate e _) = typeOf e
+  typeOf (Tuple _ es) = tupleType (map typeOf es)
+  typeOf (List a _ _) = typeOf a
+  typeOf (ListCompr _ e _) = listType (typeOf e)
+  typeOf (EnumFrom e) = listType (typeOf e)
+  typeOf (EnumFromThen e _) = listType (typeOf e)
+  typeOf (EnumFromTo e _) = listType (typeOf e)
+  typeOf (EnumFromThenTo e _ _) = listType (typeOf e)
+  typeOf (UnaryMinus _ e) = typeOf e
+  typeOf (Apply e _) = case typeOf e of
+    TypeArrow _ ty -> ty
+    _ -> internalError "Base.Typing.typeOf: application"
+  typeOf (InfixApply _ op _) = case typeOf (infixOp op) of
+    TypeArrow _ (TypeArrow _ ty) -> ty
+    _ -> internalError "Base.Typing.typeOf: infix application"
+  typeOf (LeftSection _ op) = case typeOf (infixOp op) of
+    TypeArrow _ ty -> ty
+    _ -> internalError "Base.Typing.typeOf: left section"
+  typeOf (RightSection op _) = case typeOf (infixOp op) of
+    TypeArrow ty1 (TypeArrow _ ty2) -> TypeArrow ty1 ty2
+    _ -> internalError "Base.Typing.typeOf: right section"
+  typeOf (Lambda _ ts e) = foldr (TypeArrow . typeOf) (typeOf e) ts
+  typeOf (Let _ e) = typeOf e
+  typeOf (Do _ e) = typeOf e
+  typeOf (IfThenElse _ _ e _) = typeOf e
+  typeOf (Case _ _ _ as) = head [typeOf rhs | Alt _ _ rhs <- as]
 
-computeType :: (a -> TCM Type) -> ValueEnv -> a -> Type
-computeType f tyEnv x = normalize (run doComputeType tyEnv)
+-- When inlining variable and function definitions, the compiler must
+-- eventually update the type annotations of the inlined expression. To
+-- that end, the variable or function's annotated type and the type of
+-- the inlined expression must be unified. Since the program is type
+-- correct, this unification is just a simple one way matching where we
+-- only need to match the type variables in the inlined expression's type
+-- with the corresponding types in the variable or function's annotated
+-- type.
+
+withType :: (Functor f, Typeable (f Type)) => Type -> f Type -> f Type
+withType ty e = fmap (subst (matchType (typeOf e) ty idSubst)) e
+
+matchType :: Type -> Type -> TypeSubst -> TypeSubst
+matchType ty1 ty2 = fromMaybe noMatch (matchType' ty1 ty2)
   where
-    doComputeType = do
-      ty    <- f x
-      theta <- getTypeSubst
-      return (fixTypeVars tyEnv (subst theta ty))
+    noMatch = internalError $ "Base.Typing.matchType: " ++
+                                showsPrec 11 ty1 " " ++ showsPrec 11 ty2 ""
 
-fixTypeVars :: ValueEnv -> Type -> Type
-fixTypeVars tyEnv ty = subst (foldr2 bindSubst idSubst tvs tvs') ty
-  where tvs = filter (>= 0) (typeVars ty)
-        tvs' = map TypeVariable [n - 1,n - 2 ..]
-        n = minimum (0 : concatMap typeVars tys)
-        tys = [ty1 | (_,Value _ _ (ForAll _ ty1)) <- localBindings tyEnv]
+matchType' :: Type -> Type -> Maybe (TypeSubst -> TypeSubst)
+matchType' (TypeVariable tv) ty
+  | ty == TypeVariable tv = Just id
+  | otherwise = Just (bindSubst tv ty)
+matchType' (TypeConstructor tc1) (TypeConstructor tc2)
+  | tc1 == tc2 = Just id
+matchType' (TypeConstrained _ tv1) (TypeConstrained _ tv2)
+  | tv1 == tv2 = Just id
+matchType' (TypeSkolem k1) (TypeSkolem k2)
+  | k1 == k2 = Just id
+matchType' (TypeApply ty11 ty12) (TypeApply ty21 ty22) =
+  fmap (. matchType ty12 ty22) (matchType' ty11 ty21)
+matchType' (TypeArrow ty11 ty12) (TypeArrow ty21 ty22) =
+  Just (matchType ty11 ty21 . matchType ty12 ty22)
+matchType' (TypeApply ty11 ty12) (TypeArrow ty21 ty22) =
+  fmap (. matchType ty12 ty22)
+       (matchType' ty11 (TypeApply (TypeConstructor qArrowId) ty21))
+matchType' (TypeArrow ty11 ty12) (TypeApply ty21 ty22) =
+  fmap (. matchType ty12 ty22)
+       (matchType' (TypeApply (TypeConstructor qArrowId) ty11) ty21)
+matchType' _ _ = Nothing
 
-identType :: Ident -> TCM Type
-identType x = do
-  tyEnv <- getValueEnv
-  instUniv (varType x tyEnv)
+-- The functions 'bindDecls', 'bindDecl', 'bindPatterns' and 'bindPattern'
+-- augment the value environment with the types of the entities defined in
+-- local declaration groups and patterns, respectively, using the types from
+-- their type annotations.
 
-litType :: Literal -> TCM Type
-litType (Char _ _)   = return charType
-litType (Int v _)    = identType v
-litType (Float _ _)  = return floatType
-litType (String _ _) = return stringType
+bindDecls :: (Eq t, Typeable t, ValueType t) => [Decl t] -> ValueEnv -> ValueEnv
+bindDecls = flip $ foldr bindDecl
 
-argType :: Pattern -> TCM Type
-argType (LiteralPattern l) = litType l
-argType (NegativePattern _ l) = litType l
-argType (VariablePattern v) = identType v
-argType (ConstructorPattern c ts) = do
-  tyEnv <- getValueEnv
-  ty    <- instUnivExist (constrType c tyEnv)
-  tys   <- mapM argType ts
-  unifyList (init (flatten ty)) tys
-  return (last (flatten ty))
-  where flatten (TypeArrow ty1 ty2) = ty1 : flatten ty2
-        flatten ty = [ty]
-argType (InfixPattern t1 op t2) =
-  argType (ConstructorPattern op [t1,t2])
-argType (ParenPattern t) = argType t
-argType (RecordPattern c fs) = do
-  tyEnv <- getValueEnv
-  ty    <- liftM arrowBase $ instUnivExist $ constrType c tyEnv
-  mapM_ (fieldType argType ty) fs
-  return ty
-argType (TuplePattern _ ts)
-  | null ts = return unitType
-  | otherwise = liftM tupleType $ mapM argType ts
-argType (ListPattern _ ts) = freshTypeVar >>= flip elemType ts
-  where elemType ty [] = return (listType ty)
-        elemType ty (t:ts1) =
-          argType t >>= unify ty >> elemType ty ts1
-argType (AsPattern v _) = argType (VariablePattern v)
-argType (LazyPattern _ t) = argType t
-argType (FunctionPattern f ts) = do
-  tyEnv <- getValueEnv
-  ty    <- instUniv (funType f tyEnv)
-  tys   <- mapM argType ts
-  unifyList (init (flatten ty)) tys
-  return (last (flatten ty))
-  where flatten (TypeArrow ty1 ty2) = ty1 : flatten ty2
-        flatten ty = [ty]
-argType (InfixFuncPattern t1 op t2) = argType (FunctionPattern op [t1,t2])
+bindDecl :: (Eq t, Typeable t, ValueType t) => Decl t -> ValueEnv -> ValueEnv
+bindDecl d vEnv = bindLocalVars (filter unbound $ declVars d) vEnv
+  where unbound v = null $ lookupValue (fst3 v) vEnv
 
-exprType :: Expression -> TCM Type
-exprType (Literal l) = litType l
-exprType (Variable v) = do
-  tyEnv <- getValueEnv
-  instUniv (funType v tyEnv)
-exprType (Constructor c) = do
-  tyEnv <- getValueEnv
-  instUnivExist (constrType c tyEnv)
-exprType (Typed e _) = exprType e
-exprType (Paren e) = exprType e
-exprType (Record c fs) = do
-  tyEnv <- getValueEnv
-  ty    <- liftM arrowBase $ instUnivExist $ constrType c tyEnv
-  mapM_ (fieldType exprType ty) fs
-  return ty
-exprType (RecordUpdate e fs) = do
-  ty <- exprType e
-  mapM_ (fieldType exprType ty) fs
-  return ty
-exprType (Tuple _ es)
-  | null es   = return unitType
-  | otherwise = liftM tupleType $ mapM exprType es
-exprType (List _ es) = freshTypeVar >>= flip elemType es
-  where elemType ty []      = return (listType ty)
-        elemType ty (e:es1) = exprType e >>= unify ty >> elemType ty es1
-exprType (ListCompr _ e _) = liftM listType $ exprType e
-exprType (EnumFrom _) = return (listType intType)
-exprType (EnumFromThen _ _) = return (listType intType)
-exprType (EnumFromTo _ _) = return (listType intType)
-exprType (EnumFromThenTo _ _ _) = return (listType intType)
-exprType (UnaryMinus _ e) = exprType e
-exprType (Apply e1 e2) = do
-  (ty1,ty2) <- exprType e1 >>= unifyArrow
-  exprType e2 >>= unify ty1
-  return ty2
-exprType (InfixApply e1 op e2) = do
-  (ty1,ty2,ty3) <- exprType (infixOp op) >>= unifyArrow2
-  exprType e1 >>= unify ty1
-  exprType e2 >>= unify ty2
-  return ty3
-exprType (LeftSection e op) = do
-  (ty1,ty2,ty3) <- exprType (infixOp op) >>= unifyArrow2
-  exprType e >>= unify ty1
-  return (TypeArrow ty2 ty3)
-exprType (RightSection op e) = do
-  (ty1,ty2,ty3) <- exprType (infixOp op) >>= unifyArrow2
-  exprType e >>= unify ty2
-  return (TypeArrow ty1 ty3)
-exprType (Lambda _ args e) = do
-  tys <- mapM argType args
-  ty  <- exprType e
-  return (foldr TypeArrow ty tys)
-exprType (Let _ e) = exprType e
-exprType (Do _ e) = exprType e
-exprType (IfThenElse _ e1 e2 e3) = do
-  exprType e1 >>= unify boolType
-  ty2 <- exprType e2
-  ty3 <- exprType e3
-  unify ty2 ty3
-  return ty3
-exprType (Case _ _ _ alts) = freshTypeVar >>= flip altType alts
-  where altType ty [] = return ty
-        altType ty (Alt _ _ rhs:alts1) =
-          rhsType rhs >>= unify ty >> altType ty alts1
+bindPatterns :: (Eq t, Typeable t, ValueType t) => [Pattern t] -> ValueEnv
+             -> ValueEnv
+bindPatterns = flip $ foldr bindPattern
 
-rhsType :: Rhs -> TCM Type
-rhsType (SimpleRhs _ e _) = exprType e
-rhsType (GuardedRhs es _) = freshTypeVar >>= flip condExprType es
-  where condExprType ty [] = return ty
-        condExprType ty (CondExpr _ _ e:es1) =
-          exprType e >>= unify ty >> condExprType ty es1
+bindPattern :: (Eq t, Typeable t, ValueType t) => Pattern t -> ValueEnv
+            -> ValueEnv
+bindPattern t vEnv = bindLocalVars (filter unbound $ patternVars t) vEnv
+  where unbound v = null $ lookupValue (fst3 v) vEnv
 
-fieldType :: (a -> TCM Type) -> Type -> Field a -> TCM Type
-fieldType tcheck ty (Field _ l x) = do
-  tyEnv <- getValueEnv
-  TypeArrow ty1 ty2 <- instUniv (labelType l tyEnv)
-  unify ty ty1
-  lty <- tcheck x
-  unify ty2 lty
-  return lty
+declVars :: (Eq t, Typeable t, ValueType t) => Decl t -> [(Ident, Int, t)]
+declVars (InfixDecl        _ _ _ _) = []
+declVars (TypeSig            _ _ _) = []
+declVars (FunctionDecl  _ ty f eqs) = [(f, eqnArity $ head eqs, ty)]
+declVars (ForeignDecl _ _ _ ty f _) = [(f, arrowArity $ typeOf ty, ty)]
+declVars (PatternDecl        _ t _) = patternVars t
+declVars (FreeDecl            _ vs) = [(v, 0, ty) | Var ty v <- vs]
+declVars _                          = internalError "Base.Typing.declVars"
 
--- In order to avoid name conflicts with non-generalized type variables
--- in a type we instantiate quantified type variables using non-negative
--- offsets here.
-
-freshTypeVar :: TCM Type
-freshTypeVar = TypeVariable `liftM` getNextId
-
-instType :: Int -> Type -> TCM Type
-instType n ty = do
-  tys <- replicateM n freshTypeVar
-  return (expandAliasType tys ty)
-
-instUniv :: TypeScheme -> TCM Type
-instUniv (ForAll n ty) = instType n ty
-
-instUnivExist :: ExistTypeScheme -> TCM Type
-instUnivExist (ForAllExist n n' ty) = instType (n + n') ty
-
--- When unifying two types, the non-generalized variables, i.e.,
--- variables with negative offsets, must not be substituted. Otherwise,
--- the unification algorithm is identical to the one used by the type
--- checker.
-
-unify :: Type -> Type -> TCM ()
-unify ty1 ty2 = do
-  theta <- getTypeSubst
-  let ty1' = subst theta ty1
-      ty2' = subst theta ty2
-  modifyTypeSubst $ unifyTypes ty1' ty2'
-
-unifyList :: [Type] -> [Type] -> TCM ()
-unifyList tys1 tys2 = zipWithM_ unify tys1 tys2
-
-unifyArrow :: Type -> TCM (Type,Type)
-unifyArrow ty = do
-  theta <- getTypeSubst
-  case subst theta ty of
-    TypeVariable tv
-      | tv >= 0 -> do
-        ty1 <- freshTypeVar
-        ty2 <- freshTypeVar
-        modifyTypeSubst (bindVar tv (TypeArrow ty1 ty2))
-        return (ty1,ty2)
-    TypeArrow ty1 ty2 -> return (ty1,ty2)
-    ty' -> internalError ("Base.Typing.unifyArrow (" ++ show ty' ++ ")")
-
-unifyArrow2 :: Type -> TCM (Type,Type,Type)
-unifyArrow2 ty = do
-  (ty1,ty2)   <- unifyArrow ty
-  (ty21,ty22) <- unifyArrow ty2
-  return (ty1,ty21,ty22)
-
-unifyTypes :: Type -> Type -> TypeSubst -> TypeSubst
-unifyTypes (TypeVariable tv1) (TypeVariable tv2) theta
-  | tv1 == tv2 = theta
-unifyTypes (TypeVariable tv) ty theta
-  | tv >= 0 = bindVar tv ty theta
-unifyTypes ty (TypeVariable tv) theta
-  | tv >= 0 = bindVar tv ty theta
-unifyTypes (TypeConstructor tc1 tys1) (TypeConstructor tc2 tys2) theta
-  | tc1 == tc2 = foldr2 unifyTypes theta tys1 tys2
-unifyTypes (TypeConstrained _ tv1) (TypeConstrained _ tv2) theta
-  | tv1 == tv2 = theta
-unifyTypes (TypeArrow ty11 ty12) (TypeArrow ty21 ty22) theta =
-  unifyTypes ty11 ty21 (unifyTypes ty12 ty22 theta)
-unifyTypes (TypeSkolem k1) (TypeSkolem k2) theta
-  | k1 == k2 = theta
-unifyTypes ty1 ty2 _ = internalError $
-  "Base.Typing.unify: (" ++ show ty1 ++ ") (" ++ show ty2 ++ ")"
-
--- The functions 'constrType', 'varType', and 'funType' are used for computing
--- the type of constructors, pattern variables, and variables.
-
--- TODO: These functions should be shared with the type checker.
-
-constrType :: QualIdent -> ValueEnv -> ExistTypeScheme
-constrType c tyEnv = case qualLookupValue c tyEnv of
-  [DataConstructor  _ _ _ sigma] -> sigma
-  [NewtypeConstructor _ _ sigma] -> sigma
-  _ -> internalError $ "Base.Typing.constrType: " ++ show c
-
-varType :: Ident -> ValueEnv -> TypeScheme
-varType v tyEnv = case lookupValue v tyEnv of
-  [Value _ _ sigma] -> sigma
-  [Label _ _ sigma] -> sigma
-  _ -> internalError $ "Base.Typing.varType: " ++ show v
-
-funType :: QualIdent -> ValueEnv -> TypeScheme
-funType f tyEnv = case qualLookupValue f tyEnv of
-  [Value _ _ sigma] -> sigma
-  [Label _ _ sigma] -> sigma
-  _ -> internalError $ "Base.Typing.funType: " ++ show f
-
-labelType :: QualIdent -> ValueEnv -> TypeScheme
-labelType l tyEnv = case qualLookupValue l tyEnv of
-  [Label _ _ sigma] -> sigma
-  _ -> internalError $ "Base.Typing.labelType: " ++ show l
+patternVars :: (Eq t, Typeable t, ValueType t) => Pattern t -> [(Ident, Int, t)]
+patternVars (LiteralPattern         _ _) = []
+patternVars (NegativePattern      _ _ _) = []
+patternVars (VariablePattern       ty v) = [(v, 0, ty)]
+patternVars (ConstructorPattern  _ _ ts) = concatMap patternVars ts
+patternVars (InfixPattern     _ t1 _ t2) = patternVars t1 ++ patternVars t2
+patternVars (ParenPattern             t) = patternVars t
+patternVars (RecordPattern       _ _ fs) =
+  concat [patternVars t | Field _ _ t <- fs]
+patternVars (TuplePattern          _ ts) = concatMap patternVars ts
+patternVars (ListPattern         _ _ ts) = concatMap patternVars ts
+patternVars (AsPattern              v t) =
+  (v, 0, toValueType $ typeOf t) : patternVars t
+patternVars (LazyPattern            _ t) = patternVars t
+patternVars (FunctionPattern     _ _ ts) = nub $ concatMap patternVars ts
+patternVars (InfixFuncPattern _ t1 _ t2) =
+  nub $ patternVars t1 ++ patternVars t2
