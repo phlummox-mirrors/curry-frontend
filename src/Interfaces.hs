@@ -69,7 +69,7 @@ addInterface m intf = S.modify $ \ s -> s { iEnv = M.insert m intf $ iEnv s }
 -- This function returns an 'InterfaceEnv' containing the 'Interface's which
 -- were successfully loaded.
 loadInterfaces :: [FilePath] -- ^ 'FilePath's to search in for interfaces
-               -> Module     -- ^ 'Module' header with import declarations
+               -> Module a   -- ^ 'Module' header with import declarations
                -> CYIO InterfaceEnv
 loadInterfaces paths (Module _ m _ is _) = do
   res <- liftIO $ S.execStateT load (LoaderState initInterfaceEnv paths [])

@@ -5,6 +5,7 @@
                        2005        Martin Engelke
                        2007        Sebastian Fischer
                        2011 - 2013 Björn Peemöller
+                       2016        Finn Teegen
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
@@ -93,7 +94,7 @@ sourceDeps :: Options -> SourceEnv -> FilePath -> CYIO SourceEnv
 sourceDeps opts sEnv fn = readHeader fn >>= moduleDeps opts sEnv fn
 
 -- |Retrieve the dependencies of a given module
-moduleDeps :: Options -> SourceEnv -> FilePath -> Module -> CYIO SourceEnv
+moduleDeps :: Options -> SourceEnv -> FilePath -> Module a -> CYIO SourceEnv
 moduleDeps opts sEnv fn mdl@(Module ps m _ _ _) = case Map.lookup m sEnv of
   Just  _ -> return sEnv
   Nothing -> do
@@ -103,7 +104,7 @@ moduleDeps opts sEnv fn mdl@(Module ps m _ _ _) = case Map.lookup m sEnv of
 
 -- |Retrieve the imported modules and add the import of the Prelude
 -- according to the compiler options.
-imports :: Options -> Module -> [ModuleIdent]
+imports :: Options -> Module a -> [ModuleIdent]
 imports opts mdl@(Module _ m _ is _) = nub $
      [preludeMIdent | m /= preludeMIdent && not noImplicitPrelude]
   ++ [m' | ImportDecl _ m' _ _ _ <- is]
@@ -127,7 +128,7 @@ moduleIdentDeps opts sEnv m = case Map.lookup m sEnv of
             if (m == m') then moduleDeps opts sEnv fn hdr
                          else failMessages [errWrongModule m m']
 
-readHeader :: FilePath -> CYIO Module
+readHeader :: FilePath -> CYIO (Module ())
 readHeader fn = do
   mbFile <- liftIO $ readModule fn
   case mbFile of
