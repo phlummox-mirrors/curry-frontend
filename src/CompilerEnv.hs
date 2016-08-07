@@ -67,10 +67,11 @@ showCompilerEnv env = show $ vcat
   , header "Language Extensions" $ text  $ show $ extensions  env
   , header "Interfaces         " $ hcat  $ punctuate comma $ map textS
                                          $ Map.keys $ interfaceEnv env
-  , header "Module Aliases     " $ ppMap $ aliasEnv     env
+  , header "Module Aliases     " $ ppMap $ aliasEnv env
   , header "Precedences        " $ ppAL $ allLocalBindings $ opPrecEnv env
   , header "Type Constructors  " $ ppAL $ allLocalBindings $ tyConsEnv env
   , header "Classes            " $ ppMap $ classEnv env
+  , header "Instances          " $ ppMap $ instEnv env
   , header "Values             " $ ppAL $ allLocalBindings $ valueEnv  env
   ]
   where
