@@ -4,6 +4,7 @@
     Copyright   :   1999 - 2003 Wolfgang Lux
                     2005        Martin Engelke
                     2011 - 2012 Björn Peemöller
+                    2016        Finn Teegen
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
@@ -41,9 +42,11 @@ module Base.TopEnv
     -- * creation and insertion
   , emptyTopEnv, predefTopEnv, importTopEnv, qualImportTopEnv
   , bindTopEnv, qualBindTopEnv, rebindTopEnv
-  , qualRebindTopEnv, unbindTopEnv, lookupTopEnv, qualLookupTopEnv
-  , allImports, moduleImports, localBindings, allLocalBindings
+  , qualRebindTopEnv, unbindTopEnv, qualUnbindTopEnv
+  , lookupTopEnv, qualLookupTopEnv
+  , allImports, moduleImports, localBindings, allLocalBindings, allBindings
   , allEntities
+  , getOrigName, reverseLookupByOrigName
   ) where
 
 import           Control.Arrow        (second)
@@ -137,6 +140,12 @@ unbindTopEnv x (TopEnv env) =
         unbindLocal ((Local, _) : ys) = ys
         unbindLocal (imported   : ys) = imported : unbindLocal ys
 
+qualUnbindTopEnv :: QualIdent -> TopEnv a -> TopEnv a
+qualUnbindTopEnv x (TopEnv env) =
+  TopEnv $ Map.insert x (unbind (entities x env)) env
+  where unbind [] = internalError $ "TopEnv.qualUnbindTopEnv " ++ show x
+        unbind _  = []
+
 lookupTopEnv :: Ident -> TopEnv a -> [a]
 lookupTopEnv = qualLookupTopEnv . qualify
 
@@ -163,5 +172,19 @@ allLocalBindings :: TopEnv a -> [(QualIdent, a)]
 allLocalBindings (TopEnv env) = [ (x, y) | (x, ys)    <- Map.toList env
                                          , (Local, y) <- ys ]
 
+allBindings :: TopEnv a -> [(QualIdent, a)]
+allBindings (TopEnv env) = [(x, y) | (x, ys) <- Map.toList env, (_, y) <- ys]
+
 allEntities :: TopEnv a -> [a]
 allEntities (TopEnv env) = [ y | (_, ys) <- Map.toList env, (_, y) <- ys]
+
+getOrigName :: Entity a => ModuleIdent -> QualIdent -> TopEnv a -> QualIdent
+getOrigName m x topEnv = case qualLookupTopEnv x topEnv of
+  [y] -> origName y
+  _ -> case qualLookupTopEnv (qualQualify m x) topEnv of
+    [y] -> origName y
+    _ -> internalError $ "TopEnv.getOrigName: " ++ show x
+
+reverseLookupByOrigName :: Entity a => QualIdent -> TopEnv a -> [QualIdent]
+reverseLookupByOrigName on =
+  map fst . filter ((== on) . origName . snd) . allBindings
