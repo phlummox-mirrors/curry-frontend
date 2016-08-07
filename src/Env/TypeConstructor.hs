@@ -23,14 +23,13 @@
     considered equal if their original names match.
 
     The information for a data constructor comprises the number of
-    existentially quantified type variables and the list of the argument
-    types. Note that renaming type constructors have only one type
-    argument.
+    existentially quantified type variables, the context and the list
+    of the argument types. Note that renaming type constructors have only
+    one type argument.
 
-    For type classes the names of their immediate super classes and
-    their methods are saved. Type classes are recorded in the type
-    constructor environment because type constructors and type classes
-    share a common name space.
+    For type classes the all their methods are saved. Type classes are
+    recorded in the type constructor environment because type constructors
+    and type classes share a common name space.
 
     For type variables only their kind is recorded in the environment.
 
@@ -48,13 +47,10 @@
 -}
 
 module Env.TypeConstructor
-  ( TypeInfo (..), tcKind, classKind, varKind
-  , superClasses, allSuperClasses
-  , TCEnv, initTCEnv, bindTypeInfo
+  ( TypeInfo (..), tcKind, clsKind, varKind, clsMethods
+  , TCEnv, initTCEnv, bindTypeInfo, rebindTypeInfo
   , lookupTypeInfo, qualLookupTypeInfo, qualLookupTypeInfoUnique
   ) where
-
-import Data.List (nub)
 
 import Curry.Base.Ident
 
@@ -68,7 +64,7 @@ data TypeInfo
   = DataType     QualIdent Kind [DataConstr]
   | RenamingType QualIdent Kind DataConstr
   | AliasType    QualIdent Kind Int Type
-  | TypeClass    QualIdent Kind [QualIdent] [Ident]
+  | TypeClass    QualIdent Kind [ClassMethod]
   | TypeVar      Kind
     deriving Show
 
@@ -76,63 +72,59 @@ instance Entity TypeInfo where
   origName (DataType     tc    _ _) = tc
   origName (RenamingType tc    _ _) = tc
   origName (AliasType    tc  _ _ _) = tc
-  origName (TypeClass    cls _ _ _) = cls
+  origName (TypeClass    cls   _ _) = cls
   origName (TypeVar              _) =
     internalError "Env.TypeConstructor.origName: type variable"
 
-  -- TODO: merge only if kind is equal?
-  merge (DataType tc k cs) (DataType tc' _ cs')
-    | tc == tc' && (null cs || null cs' || cs == cs') =
+  merge (DataType tc k cs) (DataType tc' k' cs')
+    | tc == tc' && k == k' && (null cs || null cs' || cs == cs') =
     Just $ DataType tc k $ if null cs then cs' else cs
-  merge (DataType tc k _) (RenamingType tc' _ nc)
-    | tc == tc' = Just (RenamingType tc k nc)
-  merge l@(RenamingType tc _ _) (DataType tc' _ _)
-    | tc == tc' = Just l
-  merge l@(RenamingType tc _ _) (RenamingType tc' _ _)
-    | tc == tc' = Just l
-  merge l@(AliasType tc _ _ _) (AliasType tc' _ _ _)
-    | tc == tc' = Just l
-  -- TODO: merge only if super classes are equal?
-  merge (TypeClass cls k sclss ms) (TypeClass cls' _ _ ms')
-    | cls == cls' && (null ms || null ms' || ms == ms') =
-    Just $ TypeClass cls k sclss $ if null ms then ms' else ms
+  merge (DataType tc k _) (RenamingType tc' k' nc)
+    | tc == tc' && k == k' = Just (RenamingType tc k nc)
+  merge l@(RenamingType tc k _) (DataType tc' k' _)
+    | tc == tc' && k == k' = Just l
+  merge l@(RenamingType tc k _) (RenamingType tc' k' _)
+    | tc == tc' && k == k' = Just l
+  merge l@(AliasType tc k _ _) (AliasType tc' k' _ _)
+    | tc == tc' && k == k' = Just l
+  merge (TypeClass cls k ms) (TypeClass cls' k' ms')
+    | cls == cls' && k == k' && (null ms || null ms' || ms == ms') =
+    Just $ TypeClass cls k $ if null ms then ms' else ms
   merge _ _ = Nothing
 
-tcKind :: QualIdent -> TCEnv -> Kind
-tcKind qtc tcEnv = case qualLookupTypeInfo qtc tcEnv of
+tcKind :: ModuleIdent -> QualIdent -> TCEnv -> Kind
+tcKind m tc tcEnv = case qualLookupTypeInfo tc tcEnv of
   [DataType     _ k   _] -> k
   [RenamingType _ k   _] -> k
   [AliasType    _ k _ _] -> k
-  _                      ->
-    internalError "Env.TypeConstructor.tcKind: no type constructor"
+  _ -> case qualLookupTypeInfo (qualQualify m tc) tcEnv of
+    [DataType     _ k   _] -> k
+    [RenamingType _ k   _] -> k
+    [AliasType    _ k _ _] -> k
+    _ -> internalError $
+           "Env.TypeConstructor.tcKind: no type constructor: " ++ show tc
 
-classKind :: QualIdent -> TCEnv -> Kind
-classKind qcls tcEnv = case qualLookupTypeInfo qcls tcEnv of
-  [TypeClass _ k _ _] -> k
-  _                   ->
-    internalError "Env.TypeConstructor.classKind: no type class"
+clsKind :: ModuleIdent -> QualIdent -> TCEnv -> Kind
+clsKind m cls tcEnv = case qualLookupTypeInfo cls tcEnv of
+  [TypeClass _ k _] -> k
+  _ -> case qualLookupTypeInfo (qualQualify m cls) tcEnv of
+    [TypeClass _ k _] -> k
+    _ -> internalError $
+           "Env.TypeConstructor.clsKind: no type class: " ++ show cls
 
 varKind :: Ident -> TCEnv -> Kind
-varKind tv tcEnv = case lookupTypeInfo tv tcEnv of
-  [TypeVar k] -> k
-  _           -> internalError "Env.TypeConstructor.varKind: no type variable"
+varKind tv tcEnv
+  | isAnonId tv = KindStar
+  | otherwise = case lookupTypeInfo tv tcEnv of
+    [TypeVar k] -> k
+    _ -> internalError "Env.TypeConstructor.varKind: no type variable"
 
--- The function 'superClasses' returns a list of all immediate super classes
--- of a type class. The function 'allSuperClasses' returns a list of
--- all direct and indirect super classes of a type class including the class
--- itself, i.e., it computes the reflexive transitive closure of 'superClasses'.
-
-superClasses :: QualIdent -> TCEnv -> [QualIdent]
-superClasses qcls tcEnv =
-  case qualLookupTypeInfo qcls tcEnv of
-    [TypeClass _ _ sclss _] -> sclss
-    _                       ->
-      internalError $ "Env.TypeConstructor.superClasses: " ++ show qcls
-
-allSuperClasses :: QualIdent -> TCEnv -> [QualIdent]
-allSuperClasses qcls tcEnv = nub $ classes qcls
-  where
-    classes qcls' = qcls' : concatMap classes (superClasses qcls' tcEnv)
+clsMethods :: ModuleIdent -> QualIdent -> TCEnv -> [Ident]
+clsMethods m cls tcEnv = case qualLookupTypeInfo cls tcEnv of
+  [TypeClass _ _ ms] -> map methodName ms
+  _ -> case qualLookupTypeInfo (qualQualify m cls) tcEnv of
+    [TypeClass _ _ ms] -> map methodName ms
+    _ -> internalError $ "Env.TypeConstructor.clsMethods: " ++ show cls
 
 -- Types can only be defined on the top-level; no nested environments are
 -- needed for them. Tuple types must be handled as a special case because
@@ -142,7 +134,7 @@ allSuperClasses qcls tcEnv = nub $ classes qcls
 type TCEnv = TopEnv TypeInfo
 
 initTCEnv :: TCEnv
-initTCEnv = foldr (uncurry $ predefTC . unapplyType) emptyTopEnv predefTypes
+initTCEnv = foldr (uncurry $ predefTC . unapplyType False) emptyTopEnv predefTypes
   where
     predefTC (TypeConstructor tc, tys) =
       predefTopEnv tc . DataType tc (simpleKind $ length tys)
@@ -151,6 +143,11 @@ initTCEnv = foldr (uncurry $ predefTC . unapplyType) emptyTopEnv predefTypes
 
 bindTypeInfo :: ModuleIdent -> Ident -> TypeInfo -> TCEnv -> TCEnv
 bindTypeInfo m ident ti = bindTopEnv ident ti . qualBindTopEnv qident ti
+  where
+    qident = qualifyWith m ident
+
+rebindTypeInfo :: ModuleIdent -> Ident -> TypeInfo -> TCEnv -> TCEnv
+rebindTypeInfo m ident ti = rebindTopEnv ident ti . qualRebindTopEnv qident ti
   where
     qident = qualifyWith m ident
 
@@ -178,6 +175,7 @@ lookupTupleTC tc | isTupleId tc = [tupleTCs !! (tupleArity tc - 2)]
 tupleTCs :: [TypeInfo]
 tupleTCs = map typeInfo tupleData
   where
-    typeInfo dc@(DataConstr _ n _)  = DataType (qTupleId n) (simpleKind n) [dc]
-    typeInfo (RecordConstr _ _ _ _) =
+    typeInfo dc@(DataConstr _ _ _ tys) =
+      let n = length tys in DataType (qTupleId n) (simpleKind n) [dc]
+    typeInfo (RecordConstr  _ _ _ _ _) =
       internalError "Env.TypeConstructor.tupleTCs: record constructor"
