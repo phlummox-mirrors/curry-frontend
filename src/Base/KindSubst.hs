@@ -38,11 +38,11 @@ instance SubstKind Kind where
   subst sigma (KindArrow    k1 k2) = KindArrow (subst sigma k1) (subst sigma k2)
 
 instance SubstKind TypeInfo where
-  subst theta (DataType tc k cs) = DataType tc (subst theta k) cs
+  subst theta (DataType     tc k cs) = DataType tc (subst theta k) cs
   subst theta (RenamingType tc k nc) = RenamingType tc (subst theta k) nc
-  subst theta (AliasType tc k n ty) = AliasType tc (subst theta k) n ty
-  subst theta (TypeClass cls k sclss ms) = TypeClass cls (subst theta k) sclss ms
-  subst theta (TypeVar k) = TypeVar (subst theta k)
+  subst theta (AliasType  tc k n ty) = AliasType tc (subst theta k) n ty
+  subst theta (TypeClass   cls k ms) = TypeClass cls (subst theta k) ms
+  subst theta (TypeVar            k) = TypeVar (subst theta k)
 
 instance SubstKind a => SubstKind (TopEnv a) where
   subst = fmap . subst
