@@ -78,11 +78,11 @@ ppTypeSig f ty = ppQIdent f <+> text "::" <+> ppType 0 ty
 
 ppType :: Int -> Type -> Doc
 ppType p (TypeConstructor tc tys)
-  | isQTupleId tc         = parens
+  | isQTupleId tc                    = parens
     (fsep (punctuate comma (map (ppType 0) tys)))
-  | unqualify tc == nilId = brackets (ppType 0 (head tys))
-  | otherwise             = parenIf (p > 1 && not (null tys))
-                            (ppQIdent tc <+> fsep (map (ppType 2) tys))
+  | tc == qListId && length tys == 1 = brackets (ppType 0 (head tys))
+  | otherwise                        = parenIf (p > 1 && not (null tys))
+    (ppQIdent tc <+> fsep (map (ppType 2) tys))
 ppType _ (TypeVariable    n)
   | n >= 0    = text (typeVars !! n)
   | otherwise = text ('_':show (-n))
