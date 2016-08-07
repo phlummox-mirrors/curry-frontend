@@ -1,9 +1,10 @@
 {- |
     Module      :  $Header$
     Description :  Environment for functions, constructors and labels
-    Copyright   :  (c) 2001 - 2004, Wolfgang Lux
-                       2011       , Björn Peemöller
-                       2015       , Jan Tikovsky
+    Copyright   :  (c) 2001 - 2004 Wolfgang Lux
+                       2011        Björn Peemöller
+                       2015        Jan Tikovsky
+                       2016        Finn Teegen
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
@@ -26,16 +27,12 @@ module Env.Value
   ( ValueEnv, ValueInfo (..)
   , bindGlobalInfo, bindFun, qualBindFun, rebindFun, unbindFun
   , lookupValue, qualLookupValue, qualLookupValueUnique
-  , initDCEnv, ppTypes
-  , conType
+  , initDCEnv
+  , ValueType (..), bindLocalVars, bindLocalVar
   ) where
 
 import Curry.Base.Ident
-import Curry.Base.Position
-import Curry.Base.Pretty (Doc, vcat)
-import Curry.Syntax
 
-import Base.CurryTypes (fromQualType)
 import Base.Messages (internalError)
 import Base.TopEnv
 import Base.Types
@@ -43,21 +40,21 @@ import Base.Utils ((++!))
 
 data ValueInfo
   -- |Data constructor with original name, arity, list of record labels and type
-  = DataConstructor    QualIdent Int [Ident] ExistTypeScheme
+  = DataConstructor    QualIdent      Int [Ident] ExistTypeScheme
   -- |Newtype constructor with original name, record label and type
   -- (arity is always 1)
-  | NewtypeConstructor QualIdent     Ident   ExistTypeScheme
-  -- |Value with original name, arity and type
-  | Value              QualIdent Int         TypeScheme
+  | NewtypeConstructor QualIdent          Ident   ExistTypeScheme
+  -- |Value with original name, class method flag, arity and type
+  | Value              QualIdent Bool Int         TypeScheme
   -- |Record label with original name, list of constructors for which label
   -- is valid field and type (arity is always 1)
-  | Label              QualIdent [QualIdent] TypeScheme
+  | Label              QualIdent [QualIdent]      TypeScheme
     deriving Show
 
 instance Entity ValueInfo where
   origName (DataConstructor    orgName _ _ _) = orgName
   origName (NewtypeConstructor orgName   _ _) = orgName
-  origName (Value              orgName   _ _) = orgName
+  origName (Value              orgName _ _ _) = orgName
   origName (Label              orgName   _ _) = orgName
 
   merge (DataConstructor c1 ar1 ls1 ty1) (DataConstructor c2 ar2 ls2 ty2)
@@ -68,8 +65,9 @@ instance Entity ValueInfo where
     | c1 == c2 && ty1 == ty2 = do
       l' <- mergeLabel l1 l2
       Just (NewtypeConstructor c1 l' ty1)
-  merge (Value x1 ar1 ty1) (Value x2 ar2 ty2)
-    | x1 == x2 && ar1 == ar2 && ty1 == ty2 = Just (Value x1 ar1 ty1)
+  merge (Value x1 ar1 cm1 ty1) (Value x2 ar2 cm2 ty2)
+    | x1 == x2 && ar1 == ar2 && cm1 == cm2 && ty1 == ty2 =
+      Just (Value x1 ar1 cm1 ty1)
   merge (Label l1 cs1 ty1) (Label l2 cs2 ty2)
     | l1 == l2 && cs1 == cs2 && ty1 == ty2 = Just (Label l1 cs1 ty1)
   merge _ _ = Nothing
@@ -97,24 +95,26 @@ bindGlobalInfo f m c ty = bindTopEnv c v . qualBindTopEnv qc v
   where qc = qualifyWith m c
         v  = f qc ty
 
-bindFun :: ModuleIdent -> Ident -> Int -> TypeScheme -> ValueEnv -> ValueEnv
-bindFun m f a ty
+bindFun :: ModuleIdent -> Ident -> Bool -> Int -> TypeScheme -> ValueEnv
+        -> ValueEnv
+bindFun m f cm a ty
   | hasGlobalScope f = bindTopEnv f v . qualBindTopEnv qf v
   | otherwise        = bindTopEnv f v
   where qf = qualifyWith m f
-        v  = Value qf a ty
+        v  = Value qf cm a ty
 
-qualBindFun :: ModuleIdent -> Ident -> Int -> TypeScheme -> ValueEnv -> ValueEnv
-qualBindFun m f a ty = qualBindTopEnv qf $ Value qf a ty
+qualBindFun :: ModuleIdent -> Ident -> Bool -> Int -> TypeScheme -> ValueEnv
+            -> ValueEnv
+qualBindFun m f cm a ty = qualBindTopEnv qf $ Value qf cm a ty
   where qf = qualifyWith m f
 
-rebindFun :: ModuleIdent -> Ident -> Int -> TypeScheme -> ValueEnv
+rebindFun :: ModuleIdent -> Ident -> Bool -> Int -> TypeScheme -> ValueEnv
           -> ValueEnv
-rebindFun m f a ty
+rebindFun m f cm a ty
   | hasGlobalScope f = rebindTopEnv f v . qualRebindTopEnv qf v
   | otherwise        = rebindTopEnv f v
   where qf = qualifyWith m f
-        v  = Value qf a ty
+        v  = Value qf cm a ty
 
 unbindFun :: Ident -> ValueEnv -> ValueEnv
 unbindFun = unbindTopEnv
@@ -141,36 +141,47 @@ lookupTuple c | isTupleId c = [tupleDCs !! (tupleArity c - 2)]
 
 tupleDCs :: [ValueInfo]
 tupleDCs = map dataInfo tupleData
-  where dataInfo (DataConstr _ n tys) =
-          DataConstructor (qTupleId n) n (replicate n anonId)
-            (ForAllExist n 0 $ foldr TypeArrow (tupleType tys) tys)
-        dataInfo (RecordConstr _ _ _ _) = internalError $ "Env.Value.tupleDCs: "
-                                            ++ show tupleDCs
+  where dataInfo (DataConstr _ _ _ tys) =
+          let n = length tys
+          in  DataConstructor (qTupleId n) 0 (replicate n anonId) $
+                ForAllExist n 0 $ predType $ foldr TypeArrow (tupleType tys) tys
+        dataInfo (RecordConstr _ _ _ _ _) =
+          internalError $ "Env.Value.tupleDCs: " ++ show tupleDCs
+
+-- Since all predefined types are free of existentially quantified type
+-- variables and have an empty predicate set, we can ignore both of them
+-- when entering the types into the value environment.
 
 initDCEnv :: ValueEnv
 initDCEnv = foldr predefDC emptyTopEnv
-  [ (c, length tys, constrType (polyType ty) n' tys)
-  | (ty, cs) <- predefTypes, DataConstr c n' tys <- cs]
+  [ (c, length tys, constrType (polyType ty) tys)
+  | (ty, cs) <- predefTypes, DataConstr c _ _ tys <- cs ]
   where predefDC (c, a, ty) = predefTopEnv c' (DataConstructor c' a ls ty)
           where ls = replicate a anonId
                 c' = qualify c
-        constrType (ForAll n ty) n' = ForAllExist n n' . foldr TypeArrow ty
+        constrType (ForAll n (PredType ps ty)) =
+          ForAllExist n 0 . PredType ps . foldr TypeArrow ty
 
--- |Pretty-printing the types from the type environment
-ppTypes :: ModuleIdent -> ValueEnv -> Doc
-ppTypes mid valueEnv = ppTypes' mid $ localBindings valueEnv
-  where
-  ppTypes' :: ModuleIdent -> [(Ident, ValueInfo)] -> Doc
-  ppTypes' m = vcat . map (ppIDecl . mkDecl) . filter (isValue . snd)
-    where
-    mkDecl (v, Value _ a (ForAll _ ty)) =
-      IFunctionDecl NoPos (qualify v) a (fromQualType m ty)
-    mkDecl _ = internalError "Env.Value.ppTypes: no value"
-    isValue (Value _ _ _) = True
-    isValue _             = False
+-- The functions 'bindLocalVar' and 'bindLocalVars' add the type of one or
+-- many local variables or functions to the value environment. In contrast
+-- to global functions, we do not care about the name of the module containing
+-- the variable or function's definition.
 
-conType :: QualIdent -> ValueEnv -> ([Ident], ExistTypeScheme)
-conType c tyEnv = case qualLookupTopEnv c tyEnv of
-  [DataConstructor _ _ ls ty] -> (ls , ty)
-  [NewtypeConstructor _ l ty] -> ([l], ty)
-  _                           -> internalError $ "Env.Value.conType: " ++ show c
+class ValueType t where
+  toValueType :: Type -> t
+  fromValueType :: t -> PredType
+
+instance ValueType Type where
+  toValueType = id
+  fromValueType = predType
+
+instance ValueType PredType where
+  toValueType = predType
+  fromValueType = id
+
+bindLocalVars :: ValueType t => [(Ident, Int, t)] -> ValueEnv -> ValueEnv
+bindLocalVars = flip $ foldr bindLocalVar
+
+bindLocalVar :: ValueType t => (Ident, Int, t) -> ValueEnv -> ValueEnv
+bindLocalVar (v, a, ty) =
+  bindTopEnv v $ Value (qualify v) False a $ typeScheme $ fromValueType ty
