@@ -2,6 +2,7 @@
     Module      :  $Header$
     Description :  Checking import specifications
     Copyright   :  (c) 2016       Jan Tikovsky
+                       2016       Finn Teegen
     License     :  OtherLicense
 
     Maintainer  :  jrt@informatik.uni-kiel.de
@@ -15,18 +16,16 @@ module Checks.ImportSyntaxCheck(importCheck) where
 
 import           Control.Monad              (liftM, unless)
 import qualified Control.Monad.State as S   (State, gets, modify, runState)
-import Data.List                            (nub, union)
+import           Data.List                  (nub, union)
 import qualified Data.Map            as Map
 import           Data.Maybe                 (fromMaybe)
 
 import Curry.Base.Ident
 import Curry.Base.Pretty
-import Curry.Syntax
+import Curry.Syntax hiding (Var (..))
 
 import Base.Messages
 import Base.TopEnv
-
-
 
 importCheck :: Interface -> Maybe ImportSpec -> (Maybe ImportSpec, [Message])
 importCheck (Interface m _ ds) is = runExpand (expandSpecs is) m mTCEnv mTyEnv
@@ -36,17 +35,22 @@ importCheck (Interface m _ ds) is = runExpand (expandSpecs is) m mTCEnv mTyEnv
 
 data ITypeInfo = Data  QualIdent [Ident]
                | Alias QualIdent
+               | Class QualIdent [Ident]
  deriving Show
 
 instance Entity ITypeInfo where
-  origName (Data tc _) = tc
-  origName (Alias  tc) = tc
+  origName (Data  tc  _) = tc
+  origName (Alias tc   ) = tc
+  origName (Class cls _) = cls
 
   merge (Data tc1 cs1) (Data tc2 cs2)
     | tc1 == tc2 && (null cs1 || null cs2 || cs1 == cs2) =
         Just $ Data tc1 (if null cs1 then cs2 else cs1)
   merge l@(Alias tc1) (Alias tc2)
     | tc1 == tc2 = Just l
+  merge (Class cls1 ms1) (Class cls2 ms2)
+    | cls1 == cls2 && (null ms1 || null ms2 || ms1 == ms2) =
+        Just $ Class cls1 (if null ms1 then ms2 else ms1)
   merge _ _ = Nothing
 
 data IValueInfo = Constr QualIdent
@@ -69,23 +73,26 @@ intfEnv idents ds = foldr bindId Map.empty (concatMap idents ds)
   where bindId x = Map.insert (unqualify (origName x)) x
 
 types :: IDecl -> [ITypeInfo]
-types (IDataDecl    _ tc _ cs hs) = [Data tc (filter (`notElem` hs) xs)]
+types (IDataDecl     _ tc _ _ cs hs) = [Data tc (filter (`notElem` hs) xs)]
   where xs = map constrId cs ++ nub (concatMap recordLabels cs)
-types (INewtypeDecl _ tc _ nc hs) = [Data tc (filter (`notElem` hs) xs)]
+types (INewtypeDecl  _ tc _ _ nc hs) = [Data tc (filter (`notElem` hs) xs)]
   where xs = nconstrId nc : nrecordLabels nc
-types (ITypeDecl        _ tc _ _) = [Alias tc]
-types _                           = []
+types (ITypeDecl         _ tc _ _ _) = [Alias tc]
+types (IClassDecl _ _ cls _ _ ms hs) = [Class cls (filter (`notElem` hs) xs)]
+  where xs = map imethod ms
+types _                              = []
 
 values :: IDecl -> [IValueInfo]
-values (IDataDecl    _ tc _ cs hs) =
+values (IDataDecl     _ tc _ _ cs hs) =
   cidents tc (map constrId cs) hs ++
   lidents tc [(l, lconstrs cs l) | l <- nub (concatMap recordLabels cs)] hs
   where lconstrs cons l = [constrId c | c <- cons, l `elem` recordLabels c]
-values (INewtypeDecl _ tc _ nc hs) =
+values (INewtypeDecl  _ tc _ _ nc hs) =
   cidents tc [nconstrId nc] hs ++
-  lidents tc [(l, [c]) | NewRecordDecl _ _ c (l, _) <- [nc]] hs
-values (IFunctionDecl     _ f _ _) = [Var f []]
-values _                           = []
+  lidents tc [(l, [c]) | NewRecordDecl _ c (l, _) <- [nc]] hs
+values (IFunctionDecl      _ f _ _ _) = [Var f []]
+values (IClassDecl _ _ cls _ _ ms hs) = midents cls (map imethod ms) hs
+values _                              = []
 
 cidents :: QualIdent -> [Ident] -> [Ident] -> [IValueInfo]
 cidents tc cs hs = [Constr (qualifyLike tc c) | c <- cs, c `notElem` hs]
@@ -94,6 +101,9 @@ lidents :: QualIdent -> [(Ident, [Ident])] -> [Ident] -> [IValueInfo]
 lidents tc ls hs = [ Var (qualifyLike tc l) (map (qualifyLike tc) cs)
                    | (l, cs) <- ls, l `notElem` hs
                    ]
+
+midents :: QualIdent -> [Ident] -> [Ident] -> [IValueInfo]
+midents cls fs hs = [Var (qualifyLike cls f) [] | f <- fs, f `notElem` hs]
 
 -- ---------------------------------------------------------------------------
 -- Expansion of the import specification
@@ -225,13 +235,14 @@ expandTypeWith tc cs = do
   m     <- getModuleIdent
   tcEnv <- getTyConsEnv
   ImportTypeWith tc `liftM` case Map.lookup tc tcEnv of
-    Just (Data _ xs) -> mapM (checkElement xs) cs
-    Just (Alias   _) -> report (errNonDataType       tc) >> return []
-    Nothing          -> report (errUndefinedEntity m tc) >> return []
+    Just (Data  _ xs) -> mapM (checkElement errUndefinedElement xs) cs
+    Just (Class _ xs) -> mapM (checkElement errUndefinedMethod  xs) cs
+    Just (Alias    _) -> report (errNonDataTypeOrTypeClass tc) >> return []
+    Nothing           -> report (errUndefinedEntity      m tc) >> return []
   where
   -- check if given identifier is constructor or label of type tc
-  checkElement cs' c = do
-    unless (c `elem` cs') $ report $ errUndefinedElement tc c
+  checkElement err cs' c = do
+    unless (c `elem` cs') $ report $ err tc c
     return c
 
 expandTypeAll :: Ident -> ExpandM Import
@@ -239,9 +250,10 @@ expandTypeAll tc = do
   m     <- getModuleIdent
   tcEnv <- getTyConsEnv
   ImportTypeWith tc `liftM` case Map.lookup tc tcEnv of
-    Just (Data _ xs) -> return xs
-    Just (Alias   _) -> report (errNonDataType       tc) >> return []
-    Nothing          -> report (errUndefinedEntity m tc) >> return []
+    Just (Data _  xs) -> return xs
+    Just (Class _ xs) -> return xs
+    Just (Alias    _) -> report (errNonDataTypeOrTypeClass tc) >> return []
+    Nothing           -> report (errUndefinedEntity      m tc) >> return []
 
 -- error messages
 
@@ -249,13 +261,17 @@ errUndefinedElement :: Ident -> Ident -> Message
 errUndefinedElement tc c = posMessage c $ hsep $ map text
   [ idName c, "is not a constructor or label of type ", idName tc ]
 
+errUndefinedMethod :: Ident -> Ident -> Message
+errUndefinedMethod cls f = posMessage f $ hsep $ map text
+  [ idName f, "is not a method of class", idName cls ]
+
 errUndefinedEntity :: ModuleIdent -> Ident -> Message
 errUndefinedEntity m x = posMessage x $ hsep $ map text
   [ "Module", moduleName m, "does not export", idName x ]
 
-errNonDataType :: Ident -> Message
-errNonDataType tc = posMessage tc $ hsep $ map text
-  [ idName tc, "is not a data type" ]
+errNonDataTypeOrTypeClass :: Ident -> Message
+errNonDataTypeOrTypeClass tc = posMessage tc $ hsep $ map text
+  [ idName tc, "is not a data type or type class" ]
 
 errImportDataConstr :: ModuleIdent -> Ident -> Message
 errImportDataConstr _ c = posMessage c $ hsep $ map text
