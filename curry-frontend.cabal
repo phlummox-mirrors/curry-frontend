@@ -41,7 +41,7 @@ Library
     , containers
     , curry-base == 0.4.1
     , directory
-    , extra
+    , extra >= 1.4.6
     , filepath
     , monadlist
     , mtl
@@ -121,7 +121,7 @@ Executable cymake
     , curry-base == 0.4.1
     , curry-frontend
     , directory
-    , extra
+    , extra >= 1.4.6
     , filepath
     , monadlist
     , mtl
