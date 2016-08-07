@@ -10,11 +10,12 @@
 
    Before type checking, the compiler checks for every instance declaration
    that all necessary super class instances exist. It is also checked that
-   there are no duplicate instance declarations.
+   there are no duplicate instances and that all types specified in a default
+   declaration are instances of the Num class.
 -}
 module Checks.InstanceCheck (instanceCheck) where
 
-import qualified Control.Monad.State as S (State, execState, gets, modify)
+import qualified Control.Monad.State as S   (State, execState, gets, modify)
 import qualified Data.Map            as Map
 import qualified Data.Set.Extra      as Set
 
@@ -27,24 +28,35 @@ import Curry.Syntax.Pretty
 import Base.CurryTypes
 import Base.Messages (Message, posMessage, message, internalError)
 import Base.TopEnv
+import Base.TypeExpansion
 import Base.Types
-import Base.Utils (findMultiples)
+import Base.TypeSubst
+import Base.Utils (fst3, snd3, findMultiples)
 
+import Env.Class
 import Env.Instance
 import Env.TypeConstructor
 
-instanceCheck :: ModuleIdent -> TCEnv -> InstEnv -> [Decl]
+instanceCheck :: ModuleIdent -> TCEnv -> ClassEnv -> InstEnv -> [Decl a]
               -> (InstEnv, [Message])
-instanceCheck m tcEnv inEnv ds =
+instanceCheck m tcEnv clsEnv inEnv ds =
   case findMultiples (local ++ imported) of
-    [] -> execINCM (checkDecls tcEnv ds) state
-    iss -> (inEnv, map (errMultipleInstances . map (unqualInstIdent tcEnv)) iss)
+    [] -> execINCM (checkDecls tcEnv clsEnv ds) state
+    iss -> (inEnv, map (errMultipleInstances tcEnv) iss)
   where
-    local = concatMap (genInstIdents tcEnv) ds
-    imported = Map.keys inEnv
+    local = map (flip InstSource m) $ concatMap (genInstIdents tcEnv) ds
+    imported = map (uncurry InstSource) $ map (fmap fst3) $ Map.toList inEnv
     state = INCState m inEnv []
 
--- Instance Check Monad
+-- In order to provide better error messages, we use the following data type
+-- to keep track of an instance's source, i.e., the module it was defined in.
+
+data InstSource = InstSource InstIdent ModuleIdent
+
+instance Eq InstSource where
+  InstSource i1 _ == InstSource i2 _ = i1 == i2
+
+-- |Instance Check Monad
 type INCM = S.State INCState
 
 -- |Internal state of the Instance Check
@@ -73,116 +85,146 @@ report err = S.modify (\s -> s { errors = err : errors s })
 ok :: INCM ()
 ok = return ()
 
-checkDecls :: TCEnv -> [Decl] -> INCM ()
-checkDecls tcEnv ds = do
-  mapM_ (bindInstance tcEnv) ds
-  --TODO: bind derived instances
-  mapM_ (checkDecl tcEnv) ds
+-- First, the compiler adds all explicit instance declarations to the
+-- instance environment.
 
-bindInstance :: TCEnv -> Decl -> INCM ()
-bindInstance tcEnv (InstanceDecl _ cx qcls inst ds) = do
+bindInstance :: TCEnv -> ClassEnv -> Decl a -> INCM ()
+bindInstance tcEnv clsEnv (InstanceDecl _ cx qcls inst ds) = do
   m <- getModuleIdent
+  let PredType ps _ = expandPolyType m tcEnv clsEnv $ QualTypeExpr cx inst
   modifyInstEnv $
-    bindInstInfo (genInstIdent tcEnv qcls inst) (m, toPredSet [] cx)
-bindInstance _     _                                = ok
+    bindInstInfo (genInstIdent tcEnv qcls inst) (m, ps, impls [] ds)
+  where impls is [] = is
+        impls is (FunctionDecl _ _ f eqs:ds')
+          | f' `elem` map fst is = impls is ds'
+          | otherwise            = impls ((f', eqnArity $ head eqs) : is) ds'
+          where f' = unRenameIdent f
+        impls _ _ = internalError "InstanceCheck.bindInstance.impls"
+bindInstance _     _      _                                = ok
 
-checkDecl :: TCEnv -> Decl -> INCM ()
-checkDecl tcEnv (InstanceDecl pos cx qcls inst _) = do
-  ps'' <- reducePredSet pos tcEnv ps'
-  Set.mapM_ (report . errMissingInstance pos) $
-    ps'' `Set.difference` (maxPredSet tcEnv ps)
-  where
-    PredType ps ty = toPredType [] $ QualTypeExpr cx inst
-    ps' = Set.fromList [Pred qcls' ty | qcls' <- superClasses qcls tcEnv]
-checkDecl _ _ = ok
+-- Then, the compiler checks the contexts of all explicit instance
+-- declarations to detect missing super class instances. For an instance
+-- declaration
+--
+-- instance cx => C (T u_1 ... u_k) where ...
+--
+-- the compiler ensures that T is an instance of all of C's super classes
+-- and also that the contexts of the corresponding instance declarations are
+-- satisfied by cx.
 
-reducePredSet :: Position -> TCEnv -> PredSet -> INCM PredSet
-reducePredSet pos tcEnv ps = do
+checkDecls :: TCEnv -> ClassEnv -> [Decl a] -> INCM ()
+checkDecls tcEnv clsEnv ds = do
+  mapM_ (bindInstance tcEnv clsEnv) ids
+  mapM_ (checkInstance tcEnv clsEnv) ids
+  mapM_ (checkDefault tcEnv clsEnv) dds
+  where ids = filter isInstanceDecl ds
+        dds = filter isDefaultDecl ds
+
+checkInstance :: TCEnv -> ClassEnv -> Decl a -> INCM ()
+checkInstance tcEnv clsEnv (InstanceDecl p cx cls inst _) = do
+  m <- getModuleIdent
+  let PredType ps ty = expandPolyType m tcEnv clsEnv $ QualTypeExpr cx inst
+      ocls = getOrigName m cls tcEnv
+      ps' = Set.fromList [ Pred scls ty | scls <- superClasses ocls clsEnv ]
+      doc = ppPred m $ Pred cls ty
+      what = "instance declaration"
+  ps'' <- reducePredSet p what doc tcEnv clsEnv ps'
+  Set.mapM_ (report . errMissingInstance m p what doc) $
+    ps'' `Set.difference` (maxPredSet clsEnv ps)
+checkInstance _ _ _ = ok
+
+-- All types specified in the optional default declaration of a module
+-- must be instances of the Num class. Since these types are used to resolve
+-- ambiguous type variables, the predicate sets of the respective instances
+-- must be empty.
+
+checkDefault :: TCEnv -> ClassEnv -> Decl a -> INCM ()
+checkDefault tcEnv clsEnv (DefaultDecl p tys) =
+  mapM_ (checkDefaultType p tcEnv clsEnv) tys
+checkDefault _ _ _ = ok
+
+checkDefaultType :: Position -> TCEnv -> ClassEnv -> TypeExpr -> INCM ()
+checkDefaultType p tcEnv clsEnv ty = do
+  m <- getModuleIdent
+  let PredType _ ty' = expandPolyType m tcEnv clsEnv $ QualTypeExpr [] ty
+  ps <- reducePredSet p what empty tcEnv clsEnv (Set.singleton $ Pred qNumId ty')
+  Set.mapM_ (report . errMissingInstance m p what empty) ps
+  where what = "default declaration"
+
+-- The function 'reducePredSet' simplifies a predicate set of the form
+-- (C_1 tau_1,..,C_n tau_n) where the tau_i are arbitrary types into a
+-- predicate set where all predicates are of the form C u with u being
+-- a type variable. An error is reported if the predicate set cannot
+-- be transformed into this form. In addition, we remove all predicates
+-- that are implied by others within the same set.
+
+reducePredSet :: Position -> String -> Doc -> TCEnv -> ClassEnv -> PredSet
+              -> INCM PredSet
+reducePredSet p what doc tcEnv clsEnv ps = do
+  m <- getModuleIdent
   inEnv <- getInstEnv
-  let (ps1, ps2) = partitionPredSet $ minPredSet tcEnv $ reducePreds inEnv ps
-  Set.mapM_ (report . errMissingInstance pos) ps2
+  let (ps1, ps2) = partitionPredSet $ minPredSet clsEnv $ reducePreds inEnv ps
+  Set.mapM_ (report . errMissingInstance m p what doc) ps2
   return ps1
   where
     reducePreds inEnv = Set.concatMap $ reducePred inEnv
-    reducePred inEnv p@(Pred qcls ty) =
-      case lookupInstInfo (genInstIdent tcEnv qcls $ fromType ty) inEnv of
-       Just (_, ps) -> reducePreds inEnv ps
-       _ -> Set.singleton p
+    reducePred inEnv predicate = maybe (Set.singleton predicate)
+                                       (reducePreds inEnv)
+                                       (instPredSet tcEnv inEnv predicate)
 
---TODO: check derived instances
-
--- ---------------------------------------------------------------------------
--- Miscellaneous functions
--- ---------------------------------------------------------------------------
-
-minPredSet :: TCEnv -> PredSet -> PredSet
-minPredSet tcEnv ps =
-  ps `Set.difference` Set.concatMap implied ps
-  where
-    implied (Pred qcls ty) =
-      Set.fromList [Pred qcls' ty | qcls' <- tail (allSuperClasses qcls tcEnv)]
-
-maxPredSet :: TCEnv -> PredSet -> PredSet
-maxPredSet tcEnv ps = Set.concatMap implied ps
-  where
-    implied (Pred qcls ty) =
-      Set.fromList [Pred qcls' ty | qcls' <- allSuperClasses qcls tcEnv]
-
-partitionPredSet :: PredSet -> (PredSet, PredSet)
-partitionPredSet = Set.partition $ \(Pred _ ty) -> isTypeVariable ty
-  where
-    --TODO: check if TypeApply has to be considered
-    isTypeVariable (TypeVariable _) = True
-    isTypeVariable _                = False
+instPredSet :: TCEnv -> InstEnv -> Pred -> Maybe PredSet
+instPredSet tcEnv inEnv (Pred qcls ty) =
+  case unapplyType False ty of
+    (TypeConstructor tc, tys) ->
+      fmap (expandAliasType tys . snd3)
+           (lookupInstInfo (qualInstIdent tcEnv (qcls, tc)) inEnv)
+    _ -> Nothing
 
 -- ---------------------------------------------------------------------------
 -- Auxiliary definitions
 -- ---------------------------------------------------------------------------
 
-genInstIdents :: TCEnv -> Decl -> [InstIdent]
---TODO: add derived instances from data type and newtype declarations
+genInstIdents :: TCEnv -> Decl a -> [InstIdent]
 genInstIdents tcEnv (InstanceDecl _ _ qcls ty _) = [genInstIdent tcEnv qcls ty]
 genInstIdents _     _                            = []
 
 genInstIdent :: TCEnv -> QualIdent -> TypeExpr -> InstIdent
 genInstIdent tcEnv qcls = qualInstIdent tcEnv . (,) qcls . typeConstr
 
-originalName :: TCEnv -> QualIdent -> QualIdent
-originalName tcEnv = origName . head . flip qualLookupTypeInfo tcEnv
+-- When qualifiying an instance identifier, we replace both the class and
+-- type constructor with their original names as found in the type constructor
+-- environment. However, the lookup may fail, e.g., when a module is imported
+-- with an alias. If this happens, we can assume that the given qualified
+-- identifier was already its own original name (in fact, that's why the
+-- lookup failed).
 
 qualInstIdent :: TCEnv -> InstIdent -> InstIdent
-qualInstIdent tcEnv (cls, tc) = (originalName tcEnv cls, originalName tcEnv tc)
+qualInstIdent tcEnv (cls, tc) = (qual cls, qual tc)
+  where
+    qual x = case qualLookupTypeInfo x tcEnv of
+      [] -> x
+      (y:_)  -> origName y
 
 unqualInstIdent :: TCEnv -> InstIdent -> InstIdent
 unqualInstIdent tcEnv (qcls, tc) = (unqual qcls, unqual tc)
   where
-    unqual x = case lookupTypeInfo x' tcEnv of
-                 [y] | origName y == x -> qualify x'
-                 _ -> x
-      where
-        x' = unqualify x
-
-typeConstr :: TypeExpr -> QualIdent
-typeConstr (ConstructorType   tc) = tc
-typeConstr (ApplyType       ty _) = typeConstr ty
-typeConstr (VariableType       _) = internalError
-  "Checks.InstanceCheck.typeConstr: variable type"
-typeConstr (TupleType        tys) = qTupleId (length tys)
-typeConstr (ListType           _) = qListId
-typeConstr (ArrowType        _ _) = qArrowId
-typeConstr (ParenType         ty) = typeConstr ty
+    unqual = head . flip reverseLookupByOrigName tcEnv
 
 -- ---------------------------------------------------------------------------
 -- Error messages
 -- ---------------------------------------------------------------------------
 
-errMultipleInstances :: [InstIdent] -> Message
-errMultipleInstances [] = internalError
-  "Checks.InstanceCheck.errMultipleInstances: empty list"
-errMultipleInstances is = message $
+errMultipleInstances :: TCEnv -> [InstSource] -> Message
+errMultipleInstances tcEnv iss = message $
   text "Multiple instances for the same class and type" $+$
-    nest 2 (vcat (map ppInstIdent is))
+    nest 2 (vcat (map ppInstSource iss))
+  where
+    ppInstSource (InstSource i m) = ppInstIdent (unqualInstIdent tcEnv i) <+>
+      parens (text "defined in" <+> ppMIdent m)
 
-errMissingInstance :: Position -> Pred -> Message
-errMissingInstance pos p = posMessage pos $ hsep
-  [ text "Missing instance for", ppPred p, text "in instance declaration" ]
+errMissingInstance :: ModuleIdent -> Position -> String -> Doc -> Pred
+                   -> Message
+errMissingInstance m p what doc predicate = posMessage p $ hsep
+  [ text "Missing instance for", ppPred m predicate
+  , text "in", text what, doc
+  ]
