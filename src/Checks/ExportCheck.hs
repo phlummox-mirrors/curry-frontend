@@ -4,6 +4,7 @@
     Copyright   :  (c) 1999 - 2004 Wolfgang Lux
                        2011 - 2016 Björn Peemöller
                        2015 - 2016 Yannik Potdevin
+                       2016        Finn Teegen
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
@@ -31,11 +32,11 @@ import           Control.Applicative        ((<$>))
 import           Control.Monad              (unless)
 import qualified Control.Monad.State as S   (State, runState, gets, modify)
 import           Data.List                  (nub, union)
-import qualified Data.Map            as Map (Map, elems, empty, insert
-                                            , insertWith, lookup, toList)
+import qualified Data.Map            as Map ( Map, elems, empty, insert
+                                            , insertWith, lookup, toList )
 import           Data.Maybe                 (fromMaybe)
-import qualified Data.Set            as Set (Set, empty, fromList, insert
-                                            , member, toList)
+import qualified Data.Set            as Set ( Set, empty, fromList, insert
+                                            , member, toList )
 
 import Curry.Base.Ident
 import Curry.Base.Position
@@ -44,12 +45,14 @@ import Curry.Syntax
 
 import Base.Messages       (Message, internalError, posMessage)
 import Base.TopEnv         (allEntities, origName, localBindings, moduleImports)
-import Base.Types          ( DataConstr (..), ExistTypeScheme (..), Type (..)
-                           , TypeScheme (..), arrowBase, constrIdent, recLabels)
+import Base.Types          ( Type (..), unapplyType, arrowBase, PredType (..)
+                           , DataConstr (..), constrIdent, recLabels
+                           , ClassMethod, methodName
+                           , TypeScheme (..), ExistTypeScheme (..) )
 import Base.Utils          (findMultiples)
 
 import Env.ModuleAlias     (AliasEnv)
-import Env.TypeConstructor (TCEnv, TypeInfo (..), qualLookupTCUnique)
+import Env.TypeConstructor (TCEnv, TypeInfo (..), qualLookupTypeInfoUnique)
 import Env.Value           (ValueEnv, ValueInfo (..), qualLookupValueUnique)
 
 currentModuleName :: String
@@ -138,7 +141,7 @@ checkThing :: QualIdent -> ECM ()
 checkThing tc = do
   m     <- getModuleIdent
   tcEnv <- getTyConsEnv
-  case qualLookupTCUnique m tc tcEnv of
+  case qualLookupTypeInfoUnique m tc tcEnv of
     []  -> checkThing' tc Nothing
     [t] -> checkThing' tc (Just [ExportTypeWith (origName t) []])
     ts  -> report (errAmbiguousType tc ts)
@@ -151,45 +154,51 @@ checkThing' f tcExport = do
   case qualLookupValueUnique m f tyEnv of
     []  -> justTcOr errUndefinedName
     [v] -> case v of
-      Value _ _ _ -> ok
-      Label _ _ _ -> report $ errOutsideTypeLabel f (getTc v)
-      _           -> justTcOr $ flip errOutsideTypeConstructor (getTc v)
+      Value _ _ _ _ -> ok
+      Label   _ _ _ -> report $ errOutsideTypeLabel f (getTc v)
+      _             -> justTcOr $ flip errOutsideTypeConstructor (getTc v)
     fs  -> report (errAmbiguousName f fs)
   where
   justTcOr errFun = maybe (report $ errFun f) (const ok) tcExport
 
-  getTc (DataConstructor  _ _ _ (ForAllExist _ _ ty)) = getTc' ty
-  getTc (NewtypeConstructor _ _ (ForAllExist _ _ ty)) = getTc' ty
-  getTc (Label _ _ (ForAll _ (TypeArrow (TypeConstructor tc _) _))) = tc
+  getTc (DataConstructor  _ _ _ (ForAllExist _ _ (PredType _ ty))) = getTc' ty
+  getTc (NewtypeConstructor _ _ (ForAllExist _ _ (PredType _ ty))) = getTc' ty
+  getTc (Label _ _ (ForAll _ (PredType _ (TypeArrow tc' _)))) =
+    let (TypeConstructor tc, _) = unapplyType False tc' in tc
   getTc err = internalError $ currentModuleName ++ ".checkThing'.getTc: " ++ show err
 
-  getTc' ty = let (TypeConstructor tc _) = arrowBase ty in tc
+  getTc' ty = let (TypeConstructor tc) = arrowBase ty in tc
 
 checkTypeWith :: QualIdent -> [Ident] -> ECM ()
 checkTypeWith tc xs = do
   m     <- getModuleIdent
   tcEnv <- getTyConsEnv
-  case qualLookupTCUnique m tc tcEnv of
-    []                   -> report (errUndefinedType tc)
-    [DataType _ _ cs]    -> mapM_ (checkElement (visibleElems cs )) xs'
-    [RenamingType _ _ c] -> mapM_ (checkElement (visibleElems [c])) xs'
-    [_]                  -> report (errNonDataType tc)
+  case qualLookupTypeInfoUnique m tc tcEnv of
+    []                   -> report (errUndefinedTypeOrClass tc)
+    [DataType _ _ cs]    ->
+      mapM_ (checkElement errUndefinedElement (visibleElems cs )) xs'
+    [RenamingType _ _ c] ->
+      mapM_ (checkElement errUndefinedElement (visibleElems [c])) xs'
+    [TypeClass   _ _ ms] ->
+      mapM_ (checkElement errUndefinedMethod (visibleMethods ms)) xs'
+    [_]                  -> report (errNonDataTypeOrTypeClass tc)
     ts                   -> report (errAmbiguousType tc ts)
   where
   xs' = nub xs
-  -- check if given identifier is constructor or label of type tc
-  checkElement cs' c = unless (c `elem` cs') $ report $ errUndefinedElement tc c
+  -- check if given identifier is constructor/label/method of type/class tc
+  checkElement err cs' c = unless (c `elem` cs') $ report $ err tc c
 
 -- |Check type constructor with all data constructors and record labels.
 checkTypeAll :: QualIdent -> ECM ()
 checkTypeAll tc = do
   m     <- getModuleIdent
   tcEnv <- getTyConsEnv
-  case qualLookupTCUnique m tc tcEnv of
-    []                   -> report (errUndefinedType tc)
+  case qualLookupTypeInfoUnique m tc tcEnv of
+    []                   -> report (errUndefinedTypeOrClass tc)
     [DataType     _ _ _] -> ok
     [RenamingType _ _ _] -> ok
-    [_]                  -> report (errNonDataType tc)
+    [TypeClass    _ _ _] -> ok
+    [_]                  -> report (errNonDataTypeOrTypeClass tc)
     ts                   -> report (errAmbiguousType tc ts)
 
 checkModule :: ModuleIdent -> ECM ()
@@ -263,7 +272,7 @@ expandThing :: QualIdent -> ECM [Export]
 expandThing tc = do
   m     <- getModuleIdent
   tcEnv <- getTyConsEnv
-  case qualLookupTCUnique m tc tcEnv of
+  case qualLookupTypeInfoUnique m tc tcEnv of
     []  -> expandThing' tc Nothing
     [t] -> expandThing' tc (Just [ExportTypeWith (origName t @> tc) []])
     err -> internalError $ currentModuleName ++ ".expandThing: " ++ show err
@@ -274,15 +283,15 @@ expandThing' f tcExport = do
   m     <- getModuleIdent
   tyEnv <- getValueEnv
   case qualLookupValueUnique m f tyEnv of
-    [Value f' _ _] -> return $ Export (f' @> f) : fromMaybe [] tcExport
-    _              -> return $ fromMaybe [] tcExport
+    [Value f' _ _ _] -> return $ Export (f' @> f) : fromMaybe [] tcExport
+    _                -> return $ fromMaybe [] tcExport
 
 -- |Expand type constructor with explicit data constructors and record labels
 expandTypeWith :: QualIdent -> [Ident] -> ECM [Export]
 expandTypeWith tc xs = do
   m     <- getModuleIdent
   tcEnv <- getTyConsEnv
-  case qualLookupTCUnique m tc tcEnv of
+  case qualLookupTypeInfoUnique m tc tcEnv of
     [t] -> return [ExportTypeWith (origName t @> tc) $ nub xs]
     err -> internalError $ currentModuleName ++ ".expandTypeWith: " ++ show err
 
@@ -291,7 +300,7 @@ expandTypeAll :: QualIdent -> ECM [Export]
 expandTypeAll tc = do
   m     <- getModuleIdent
   tcEnv <- getTyConsEnv
-  case qualLookupTCUnique m tc tcEnv of
+  case qualLookupTypeInfoUnique m tc tcEnv of
     [t] -> return [exportType t]
     err -> internalError $ currentModuleName ++ ".expandTypeAll: " ++ show err
 
@@ -309,7 +318,7 @@ expandLocalModule = do
   tyEnv <- getValueEnv
   return $
        [ exportType t | (_, t) <- localBindings tcEnv ]
-    ++ [ Export f' | (f, Value f' _ _) <- localBindings tyEnv, hasGlobalScope f ]
+    ++ [ Export f' | (f, Value f' _ _ _) <- localBindings tyEnv, hasGlobalScope f ]
     ++ [ Export l' | (l, Label l' _ _) <- localBindings tyEnv, hasGlobalScope l ]
 
 -- |Expand a module export
@@ -318,7 +327,7 @@ expandImportedModule m = do
   tcEnv <- getTyConsEnv
   tyEnv <- getValueEnv
   return $ [exportType t |       (_, t) <- moduleImports m tcEnv]
-        ++ [Export f | (_, Value f _ _) <- moduleImports m tyEnv]
+        ++ [Export f | (_, Value f _ _ _) <- moduleImports m tyEnv]
         ++ [Export l | (_, Label l _ _) <- moduleImports m tyEnv]
 
 exportType :: TypeInfo -> Export
@@ -388,13 +397,20 @@ joinFun export                _ = internalError $
 -- ---------------------------------------------------------------------------
 
 elements :: TypeInfo -> [Ident]
-elements (DataType    _ _ cs) = visibleElems cs
-elements (RenamingType _ _ c) = visibleElems [c]
-elements (AliasType    _ _ _) = []
+elements (DataType      _ _ cs) = visibleElems cs
+elements (RenamingType   _ _ c) = visibleElems [c]
+elements (AliasType    _ _ _ _) = []
+elements (TypeClass     _ _ ms) = visibleMethods ms
+elements (TypeVar            _) =
+  error "Checks.ExportCheck.elements: type variable"
 
 -- get visible constructor and label identifiers for given constructor
 visibleElems :: [DataConstr] -> [Ident]
 visibleElems cs = map constrIdent cs ++ (nub (concatMap recLabels cs))
+
+-- get class method names
+visibleMethods :: [ClassMethod] -> [Ident]
+visibleMethods = map methodName
 
 -- ---------------------------------------------------------------------------
 -- Error messages
@@ -430,9 +446,9 @@ errMultiple what (i:is) = posMessage i $
   $+$ nest 2 (vcat (map showPos (i:is)))
   where showPos = text . showLine . idPosition
 
-errNonDataType :: QualIdent -> Message
-errNonDataType tc = posMessage tc $ hsep $ map text
-  [escQualName tc, "is not a data type"]
+errNonDataTypeOrTypeClass :: QualIdent -> Message
+errNonDataTypeOrTypeClass tc = posMessage tc $ hsep $ map text
+  [escQualName tc, "is not a data type or type class"]
 
 errOutsideTypeConstructor :: QualIdent -> QualIdent -> Message
 errOutsideTypeConstructor c tc = errOutsideTypeExport "Data constructor" c tc
@@ -451,11 +467,15 @@ errUndefinedElement :: QualIdent -> Ident -> Message
 errUndefinedElement tc c = posMessage c $ hsep $ map text
   [ escName c, "is not a constructor or label of type", escQualName tc ]
 
+errUndefinedMethod :: QualIdent -> Ident -> Message
+errUndefinedMethod cls f = posMessage f $ hsep $ map text
+  [ escName f, "is not a method of class", escQualName cls ]
+
 errUndefinedName :: QualIdent -> Message
 errUndefinedName = errUndefined "name"
 
-errUndefinedType :: QualIdent -> Message
-errUndefinedType = errUndefined "type"
+errUndefinedTypeOrClass :: QualIdent -> Message
+errUndefinedTypeOrClass = errUndefined "type or class"
 
 errUndefined :: String -> QualIdent -> Message
 errUndefined what tc = posMessage tc $ hsep $ map text
