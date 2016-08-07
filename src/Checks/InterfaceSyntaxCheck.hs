@@ -74,11 +74,11 @@ bindType (IDataDecl      _ tc _ _ cs _) =
 bindType (INewtypeDecl   _ tc _ _ nc _) =
   qualBindTopEnv tc (Data tc [nconstrId nc])
 bindType (ITypeDecl         _ tc _ _ _) = qualBindTopEnv tc (Alias tc)
-bindType (IFunctionDecl        _ _ _ _) = id
+bindType (IFunctionDecl      _ _ _ _ _) = id
 bindType (HidingClassDecl  _ _ cls _ _) = qualBindTopEnv cls (Class cls [])
 bindType (IClassDecl _ _ cls _ _ ms hs) =
   qualBindTopEnv cls (Class cls (filter (`notElem` hs) (map imethod ms)))
-bindType (IInstanceDecl      _ _ _ _ _) = id
+bindType (IInstanceDecl    _ _ _ _ _ _) = id
 
 -- The checks applied to the interface are similar to those performed
 -- during syntax checking of type expressions.
@@ -105,8 +105,8 @@ checkIDecl (INewtypeDecl p tc k tvs nc hs) = do
 checkIDecl (ITypeDecl p tc k tvs ty) = do
   checkTypeLhs tvs
   liftM (ITypeDecl p tc k tvs) (checkClosedType tvs ty)
-checkIDecl (IFunctionDecl p f n qty) =
-  liftM (IFunctionDecl p f n) (checkQualType qty)
+checkIDecl (IFunctionDecl p f cm n qty) =
+  liftM (IFunctionDecl p f cm n) (checkQualType qty)
 checkIDecl (HidingClassDecl p cx qcls k clsvar) = do
   checkTypeVars "hiding class declaration" [clsvar]
   cx' <- checkClosedContext [clsvar] cx
@@ -119,12 +119,13 @@ checkIDecl (IClassDecl p cx qcls k clsvar ms hs) = do
   ms' <- mapM (checkIMethodDecl clsvar) ms
   checkHidden (errNoElement "method" "class") qcls (map imethod ms') hs
   return $ IClassDecl p cx' qcls k clsvar ms' hs
-checkIDecl (IInstanceDecl p cx qcls inst m) = do
+checkIDecl (IInstanceDecl p cx qcls inst is m) = do
   checkClass qcls
   QualTypeExpr cx' inst' <- checkQualType $ QualTypeExpr cx inst
   checkSimpleContext cx'
   checkInstanceType p inst'
-  return $ IInstanceDecl p cx' qcls inst' m
+  mapM_ (report . errMultipleImplementation . head) $ findMultiples $ map fst is
+  return $ IInstanceDecl p cx' qcls inst' is m
 
 checkHiddenType :: QualIdent -> [Ident] -> [Ident] -> ISC ()
 checkHiddenType = checkHidden $ errNoElement "constructor or label" "type"
@@ -149,19 +150,22 @@ checkTypeVars what tvs = do
   mapM_ (report . flip errNonLinear what . head) (findMultiples tvs')
 
 checkConstrDecl :: [Ident] -> ConstrDecl -> ISC ConstrDecl
-checkConstrDecl tvs (ConstrDecl p evs c tys) = do
+checkConstrDecl tvs (ConstrDecl p evs cx c tys) = do
   checkExistVars evs
-  liftM (ConstrDecl p evs c) (mapM (checkClosedType tvs') tys)
+  cx' <- checkClosedContext tvs' cx
+  liftM (ConstrDecl p evs cx' c) (mapM (checkClosedType tvs') tys)
   where tvs' = evs ++ tvs
-checkConstrDecl tvs (ConOpDecl p evs ty1 op ty2) = do
+checkConstrDecl tvs (ConOpDecl p evs cx ty1 op ty2) = do
   checkExistVars evs
-  liftM2 (\t1 t2 -> ConOpDecl p evs t1 op t2)
+  cx' <- checkClosedContext tvs' cx
+  liftM2 (\t1 t2 -> ConOpDecl p evs cx' t1 op t2)
          (checkClosedType tvs' ty1)
          (checkClosedType tvs' ty2)
   where tvs' = evs ++ tvs
-checkConstrDecl tvs (RecordDecl p evs c fs) = do
+checkConstrDecl tvs (RecordDecl p evs cx c fs) = do
   checkExistVars evs
-  liftM (RecordDecl p evs c) (mapM (checkFieldDecl tvs') fs)
+  cx' <- checkClosedContext tvs' cx
+  liftM (RecordDecl p evs cx' c) (mapM (checkFieldDecl tvs') fs)
   where tvs' = evs ++ tvs
 
 checkFieldDecl :: [Ident] -> FieldDecl -> ISC FieldDecl
@@ -169,15 +173,11 @@ checkFieldDecl tvs (FieldDecl p ls ty) =
   liftM (FieldDecl p ls) (checkClosedType tvs ty)
 
 checkNewConstrDecl :: [Ident] -> NewConstrDecl -> ISC NewConstrDecl
-checkNewConstrDecl tvs (NewConstrDecl p evs c ty) = do
-  checkExistVars evs
-  liftM (NewConstrDecl p evs c) (checkClosedType tvs' ty)
-  where tvs' = evs ++ tvs
-checkNewConstrDecl tvs (NewRecordDecl p evs c (l,ty)) = do
-  checkExistVars evs
-  ty' <- checkClosedType tvs' ty
-  return $ NewRecordDecl p evs c (l,ty')
-  where tvs' = evs ++ tvs
+checkNewConstrDecl tvs (NewConstrDecl p c ty) =
+  liftM (NewConstrDecl p c) (checkClosedType tvs ty)
+checkNewConstrDecl tvs (NewRecordDecl p c (l, ty)) = do
+  ty' <- checkClosedType tvs ty
+  return $ NewRecordDecl p c (l, ty')
 
 checkSimpleContext :: Context -> ISC ()
 checkSimpleContext = mapM_ checkSimpleConstraint
@@ -187,12 +187,12 @@ checkSimpleConstraint c@(Constraint _ ty) =
   unless (isVariableType ty) $ report $ errIllegalSimpleConstraint c
 
 checkIMethodDecl :: Ident -> IMethodDecl -> ISC IMethodDecl
-checkIMethodDecl tv (IMethodDecl p f qty) = do
+checkIMethodDecl tv (IMethodDecl p f a qty) = do
   qty' <- checkQualType qty
   unless (tv `elem` fv qty') $ report $ errAmbiguousType p tv
   let QualTypeExpr cx _ = qty'
   when (tv `elem` fv cx) $ report $ errConstrainedClassVariable p tv
-  return $ IMethodDecl p f qty'
+  return $ IMethodDecl p f a qty'
 
 checkInstanceType :: Position -> InstanceType -> ISC ()
 checkInstanceType p inst = do
@@ -277,16 +277,6 @@ checkTypeConstructor tc = do
 -- Auxiliary definitions
 -- ---------------------------------------------------------------------------
 
-typeConstr :: TypeExpr -> QualIdent
-typeConstr (ConstructorType   tc) = tc
-typeConstr (ApplyType       ty _) = typeConstr ty
-typeConstr (VariableType       _) =
-  internalError "Checks.InterfaceSyntaxCheck.typeConstr: variable type"
-typeConstr (TupleType        tys) = qTupleId (length tys)
-typeConstr (ListType           _) = qListId
-typeConstr (ArrowType        _ _) = qArrowId
-typeConstr (ParenType         ty) = typeConstr ty
-
 typeVars :: TypeExpr -> [Ident]
 typeVars (ConstructorType       _) = []
 typeVars (ApplyType       ty1 ty2) = typeVars ty1 ++ typeVars ty2
@@ -314,6 +304,10 @@ errUndefinedClass = errUndefined "class"
 
 errUndefinedType :: QualIdent -> Message
 errUndefinedType = errUndefined "type"
+
+errMultipleImplementation :: Ident -> Message
+errMultipleImplementation f = posMessage f $ hsep $ map text
+  ["Arity information for method", idName f, "occurs more than once"]
 
 errAmbiguousType :: Position -> Ident -> Message
 errAmbiguousType p ident = posMessage p $ hsep $ map text
