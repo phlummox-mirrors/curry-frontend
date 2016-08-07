@@ -23,7 +23,7 @@ import Curry.Base.Ident
 
 import Base.Messages (internalError)
 import Base.TopEnv
-import Base.Types (constrIdent)
+import Base.Types (constrIdent, methodName)
 
 import Env.TypeConstructor (TypeInfo (..))
 
@@ -52,9 +52,9 @@ toTypeKind :: TypeInfo -> TypeKind
 toTypeKind (DataType     tc    _ cs) = Data tc (map constrIdent cs)
 toTypeKind (RenamingType tc    _ nc) = Data tc [constrIdent nc]
 toTypeKind (AliasType    tc  _ _  _) = Alias tc
-toTypeKind (TypeClass    cls _ _ ms) = Class cls ms
+toTypeKind (TypeClass    cls   _ ms) = Class cls (map methodName ms)
 toTypeKind (TypeVar               _) =
-  internalError "Env.TypeEnv.toTypeKind: type variable"
+  internalError "Env.Type.toTypeKind: type variable"
 
 type TypeEnv = TopEnv TypeKind
 
