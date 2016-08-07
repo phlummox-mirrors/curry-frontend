@@ -44,6 +44,8 @@ import Curry.Files.PathUtils
 import Curry.Syntax.InterfaceEquivalence
 
 import Base.Messages
+import Base.Types
+
 import Env.Interface
 
 -- source representations
@@ -83,7 +85,7 @@ compileModule opts fn = do
   (env, mdl) <- loadAndCheckModule opts fn
   liftIO $ writeOutput opts fn (env, mdl)
 
-loadAndCheckModule :: Options -> FilePath -> CYIO (CompEnv CS.Module)
+loadAndCheckModule :: Options -> FilePath -> CYIO (CompEnv (CS.Module PredType))
 loadAndCheckModule opts fn = do
   (env, mdl) <- loadModule opts fn >>= checkModule opts
   warn (optWarnOpts opts) $ warnCheck opts env mdl
@@ -93,7 +95,7 @@ loadAndCheckModule opts fn = do
 -- Loading a module
 -- ---------------------------------------------------------------------------
 
-loadModule :: Options -> FilePath -> CYIO (CompEnv CS.Module)
+loadModule :: Options -> FilePath -> CYIO (CompEnv (CS.Module ()))
 loadModule opts fn = do
   parsed <- parseModule opts fn
   -- check module header
@@ -108,7 +110,7 @@ loadModule opts fn = do
   cEnv   <- importModules mdl iEnv is
   return (cEnv, mdl)
 
-parseModule :: Options -> FilePath -> CYIO CS.Module
+parseModule :: Options -> FilePath -> CYIO (CS.Module ())
 parseModule opts fn = do
   mbSrc <- liftIO $ readModule fn
   case mbSrc of
@@ -144,15 +146,15 @@ withTempFile act = do
   removeFile fn
   return res
 
-checkModuleHeader :: Monad m => Options -> FilePath -> CS.Module
-                  -> CYT m CS.Module
+checkModuleHeader :: Monad m => Options -> FilePath -> CS.Module ()
+                  -> CYT m (CS.Module ())
 checkModuleHeader opts fn = checkModuleId fn
                           . importPrelude opts
                           . CS.patchModuleId fn
 
 -- |Check whether the 'ModuleIdent' and the 'FilePath' fit together
-checkModuleId :: Monad m => FilePath -> CS.Module
-              -> CYT m CS.Module
+checkModuleId :: Monad m => FilePath -> CS.Module ()
+              -> CYT m (CS.Module ())
 checkModuleId fn m@(CS.Module _ mid _ _ _)
   | last (midQualifiers mid) == takeBaseName fn
   = ok m
@@ -164,7 +166,7 @@ checkModuleId fn m@(CS.Module _ mid _ _ _)
 -- by a compiler option. If no explicit import for the prelude is present,
 -- the prelude is imported unqualified, otherwise a qualified import is added.
 
-importPrelude :: Options -> CS.Module -> CS.Module
+importPrelude :: Options -> CS.Module () -> CS.Module ()
 importPrelude opts m@(CS.Module ps mid es is ds)
     -- the Prelude itself
   | mid == preludeMIdent          = m
@@ -190,7 +192,7 @@ checkInterfaces opts iEnv = mapM_ checkInterface (Map.elems iEnv)
     let env = importInterfaces intf iEnv
     interfaceCheck opts (env, intf)
 
-importSyntaxCheck :: Monad m => InterfaceEnv -> CS.Module -> CYT m [CS.ImportDecl]
+importSyntaxCheck :: Monad m => InterfaceEnv -> CS.Module a -> CYT m [CS.ImportDecl]
 importSyntaxCheck iEnv (CS.Module _ _ _ imps _) = mapM checkImportDecl imps
   where
   checkImportDecl (CS.ImportDecl p m q asM is) = case Map.lookup m iEnv of
@@ -203,7 +205,8 @@ importSyntaxCheck iEnv (CS.Module _ _ _ imps _) = mapM checkImportDecl imps
 -- ---------------------------------------------------------------------------
 
 -- TODO: The order of the checks should be improved!
-checkModule :: Options -> CompEnv CS.Module -> CYIO (CompEnv CS.Module)
+checkModule :: Options -> CompEnv (CS.Module ())
+            -> CYIO (CompEnv (CS.Module PredType))
 checkModule opts mdl = do
   _   <- dumpCS DumpParsed mdl
   exc <- extensionCheck  opts mdl >>= dumpCS DumpExtensionChecked
@@ -215,21 +218,28 @@ checkModule opts mdl = do
   tc  <- typeCheck       opts inc >>= dumpCS DumpTypeChecked
   ec  <- exportCheck     opts tc  >>= dumpCS DumpExportChecked
   return ec
-  where dumpCS = dumpWith opts CS.showModule CS.ppModule
+  where
+  dumpCS :: (MonadIO m, Show a) => DumpLevel -> CompEnv (CS.Module a)
+         -> m (CompEnv (CS.Module a))
+  dumpCS = dumpWith opts CS.showModule CS.ppModule
 
 -- ---------------------------------------------------------------------------
 -- Translating a module
 -- ---------------------------------------------------------------------------
 
-transModule :: Options -> CompEnv CS.Module -> IO (CompEnv IL.Module)
+transModule :: Options -> CompEnv (CS.Module PredType)
+            -> IO (CompEnv IL.Module, CompEnv (CS.Module Type))
 transModule opts mdl = do
-  desugared   <- dumpCS DumpDesugared     $ desugar      mdl
-  simplified  <- dumpCS DumpSimplified    $ simplify     desugared
-  lifted      <- dumpCS DumpLifted        $ lift         simplified
-  il          <- dumpIL DumpTranslated    $ ilTrans      lifted
-  ilCaseComp  <- dumpIL DumpCaseCompleted $ completeCase il
-  return ilCaseComp
+  desugared  <- dumpCS DumpDesugared     $ desugar      mdl
+  dicts      <- dumpCS DumpDictionaries  $ insertDicts  desugared
+  simplified <- dumpCS DumpSimplified    $ simplify     dicts
+  lifted     <- dumpCS DumpLifted        $ lift         simplified
+  il         <- dumpIL DumpTranslated    $ ilTrans      lifted
+  ilCaseComp <- dumpIL DumpCaseCompleted $ completeCase il
+  return (ilCaseComp, dicts)
   where
+  dumpCS :: Show a => DumpLevel -> CompEnv (CS.Module a)
+         -> IO (CompEnv (CS.Module a))
   dumpCS = dumpWith opts CS.showModule CS.ppModule
   dumpIL = dumpWith opts IL.showModule IL.ppModule
 
@@ -237,7 +247,7 @@ transModule opts mdl = do
 -- Writing output
 -- ---------------------------------------------------------------------------
 
-writeOutput :: Options -> FilePath -> CompEnv CS.Module -> IO ()
+writeOutput :: Options -> FilePath -> CompEnv (CS.Module PredType) -> IO ()
 writeOutput opts fn mdl@(_, modul) = do
   writeParsed opts fn modul
   mdl' <- expandExports opts mdl
@@ -247,10 +257,11 @@ writeOutput opts fn mdl@(_, modul) = do
   let intf = uncurry exportInterface qmdl
   writeInterface opts fn intf
   when withFlat $ do
-    (env2, il) <- transModule opts qmdl
+    ((env, il), (_, modul')) <- transModule opts qmdl
     -- generate target code
-    let modSum = summarizeModule (tyConsEnv env2) intf (snd qmdl)
-    writeFlat opts fn env2 modSum il
+    let intf'  = dictTransInterface env intf
+        modSum = summarizeModule (tyConsEnv env) intf' modul'
+    writeFlat opts fn env modSum il
   where
   withFlat = any (`elem` optTargetTypes opts) [FlatCurry, ExtendedFlatCurry]
 
@@ -262,7 +273,7 @@ writeOutput opts fn mdl@(_, modul) = do
 -- module won't be dependent on it any longer.
 
 -- |Output the parsed 'Module' on request
-writeParsed :: Options -> FilePath -> CS.Module -> IO ()
+writeParsed :: Options -> FilePath -> CS.Module a -> IO ()
 writeParsed opts fn modul@(CS.Module _ m _ _ _) = when srcTarget $
   writeModule (useSubDir $ sourceRepName fn) source
   where
@@ -333,7 +344,7 @@ writeFlatIntf opts fn env modSum il
   useSubDir       = addCurrySubdirModule (optUseSubdir opts) (moduleIdent env)
   outputInterface = EF.writeFlatCurry (useSubDir targetFile) intf
 
-writeAbstractCurry :: Options -> FilePath -> CompEnv CS.Module -> IO ()
+writeAbstractCurry :: Options -> FilePath -> CompEnv (CS.Module a) -> IO ()
 writeAbstractCurry opts fname (env, modul) = do
   when acyTarget  $ AC.writeCurry (useSubDir $ acyName fname)
                   $ genTypedAbstractCurry env modul
