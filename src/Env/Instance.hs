@@ -12,10 +12,10 @@
     environment that maps pairs of type classes and type constructors
     to the name of the module where the instance is declared, the context
     as given in the instance declaration, and a list of the class methods
-    implemented in the specific instance. A flat environment is sufficient
-    because instances are visible globally and cannot be hidden. Instances
-    are recorded only with the original names of the type class and type
-    constructor involved.
+    implemented in the specific instance along with their arity. A flat
+    environment is sufficient because instances are visible globally and
+    cannot be hidden. Instances are recorded only with the original names
+    of the type class and type constructor involved.
 -}
 
 module Env.Instance
@@ -36,7 +36,7 @@ type InstIdent = (QualIdent, QualIdent)
 ppInstIdent :: InstIdent -> Doc
 ppInstIdent (qcls, qtc) = ppQIdent qcls <+> ppQIdent qtc
 
-type InstInfo = (ModuleIdent, PredSet)
+type InstInfo = (ModuleIdent, PredSet, [(Ident, Int)])
 
 type InstEnv = Map.Map InstIdent InstInfo
 
