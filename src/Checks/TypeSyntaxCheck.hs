@@ -26,7 +26,8 @@ import           Control.Applicative      ((<$>), (<*>))
 import           Control.Monad            (unless, when)
 import qualified Control.Monad.State as S (State, runState, gets, modify)
 import           Data.List                (nub)
-import           Data.Maybe               (isNothing)
+import qualified Data.Map as Map
+import           Data.Maybe               (fromMaybe, isNothing)
 
 import Curry.Base.Ident
 import Curry.Base.Position
@@ -34,7 +35,7 @@ import Curry.Base.Pretty
 import Curry.Syntax
 import Curry.Syntax.Pretty
 
-import Base.Expr (fv)
+import Base.Expr (Expr (fv))
 import Base.Messages (Message, posMessage, internalError)
 import Base.TopEnv
 import Base.Utils (findMultiples, findDouble)
@@ -55,25 +56,35 @@ typeSyntaxCheck :: [KnownExtension] -> TCEnv -> Module a
                 -> ((Module a, [KnownExtension]), [Message])
 typeSyntaxCheck exts tcEnv mdl@(Module _ m _ _ ds) =
   case findMultiples $ map getIdent tcds of
-    [] -> runTSCM (checkModule mdl) state
+    [] -> if length dfds <= 1
+            then runTSCM (checkModule mdl) state
+            else ((mdl, exts), [errMultipleDefaultDeclarations dfps])
     tss -> ((mdl, exts), map errMultipleDeclarations tss)
   where
     tcds = filter isTypeOrClassDecl ds
+    dfds = filter isDefaultDecl ds
+    dfps = map (\(DefaultDecl p _) -> p) dfds
     tEnv = foldr (bindType m) (fmap toTypeKind tcEnv) tcds
-    state = TSCState tEnv exts []
+    state = TSCState m tEnv exts Map.empty 1 []
 
 -- Type Syntax Check Monad
 type TSCM = S.State TSCState
 
 -- |Internal state of the Type Syntax Check
 data TSCState = TSCState
-  { typeEnv     :: TypeEnv
+  { moduleIdent :: ModuleIdent
+  , typeEnv     :: TypeEnv
   , extensions  :: [KnownExtension]
+  , renameEnv   :: RenameEnv
+  , nextId      :: Integer
   , errors      :: [Message]
   }
 
 runTSCM :: TSCM a -> TSCState -> (a, [Message])
 runTSCM tscm s = let (a, s') = S.runState tscm s in (a, reverse $ errors s')
+
+getModuleIdent :: TSCM ModuleIdent
+getModuleIdent = S.gets moduleIdent
 
 getTypeEnv :: TSCM TypeEnv
 getTypeEnv = S.gets typeEnv
@@ -86,6 +97,28 @@ enableExtension e = S.modify $ \s -> s { extensions = e : extensions s }
 
 getExtensions :: TSCM [KnownExtension]
 getExtensions = S.gets extensions
+
+getRenameEnv :: TSCM RenameEnv
+getRenameEnv = S.gets renameEnv
+
+modifyRenameEnv :: (RenameEnv -> RenameEnv) -> TSCM ()
+modifyRenameEnv f = S.modify $ \s -> s { renameEnv = f $ renameEnv s }
+
+withLocalEnv :: TSCM a -> TSCM a
+withLocalEnv act = do
+  oldEnv <- getRenameEnv
+  res <- act
+  modifyRenameEnv $ const oldEnv
+  return res
+
+resetEnv :: TSCM ()
+resetEnv = modifyRenameEnv $ const Map.empty
+
+newId :: TSCM Integer
+newId = do
+  curId <- S.gets nextId
+  S.modify $ \s -> s { nextId = succ curId }
+  return curId
 
 report :: Message -> TSCM ()
 report err = S.modify (\s -> s { errors = err : errors s })
@@ -111,6 +144,159 @@ bindType m (ClassDecl _ _ cls _ ds) = bindTypeKind m cls (Class qcls ms)
     ms = concatMap methods ds
 bindType _ _ = id
 
+-- As preparation for the kind check, type variables within type declarations
+-- have to be renamed since existentially quantified type variable may shadow
+-- a universally quantified variable from the left hand side of a type
+-- declaration.
+
+-- TODO: This renaming may be used to support scoped type variables in future.
+
+-- TODO: In the long run, this renaming may be merged with the syntax check
+-- renaming and moved into a separate module.
+
+type RenameEnv = Map.Map Ident Ident
+
+class Rename a where
+  rename :: a -> TSCM a
+
+renameTypeSig :: (Expr a, Rename a) => a -> TSCM a
+renameTypeSig x = withLocalEnv $ do
+  env <- getRenameEnv
+  bindVars (filter (`notElem` Map.keys env) $ fv x)
+  rename x
+
+renameReset :: Rename a => a -> TSCM a
+renameReset x = withLocalEnv $ resetEnv >> rename x
+
+instance Rename a => Rename [a] where
+  rename = mapM rename
+
+instance Rename (Decl a) where
+  rename (InfixDecl p fix pr ops) = return $ InfixDecl p fix pr ops
+  rename (DataDecl p tc tvs cs) = withLocalEnv $ do
+    bindVars tvs
+    DataDecl p tc <$> rename tvs <*> rename cs
+  rename (NewtypeDecl p tc tvs nc) = withLocalEnv $ do
+    bindVars tvs
+    NewtypeDecl p tc <$> rename tvs <*> rename nc
+  rename (TypeDecl p tc tvs ty) = withLocalEnv $ do
+    bindVars tvs
+    TypeDecl p tc <$> rename tvs <*> rename ty
+  rename (TypeSig p fs qty) = TypeSig p fs <$> renameTypeSig qty
+  rename (FunctionDecl p a f eqs) = FunctionDecl p a f <$> renameReset eqs
+  rename (ForeignDecl p cc ie a f ty) =
+    ForeignDecl p cc ie a f <$> renameTypeSig ty
+  rename (ExternalDecl p fs) = return $ ExternalDecl p fs
+  rename (PatternDecl p ts rhs) = PatternDecl p ts <$> renameReset rhs
+  rename (FreeDecl p fvs) = return $ FreeDecl p fvs
+  rename (DefaultDecl p tys) = DefaultDecl p <$> mapM renameTypeSig tys
+  rename (ClassDecl p cx cls tv ds) = withLocalEnv $ do
+    bindVar tv
+    ClassDecl p <$> rename cx <*> pure cls <*> rename tv <*> rename ds
+  rename (InstanceDecl p cx cls ty ds) = withLocalEnv $ do
+    bindVars (fv ty)
+    InstanceDecl p <$> rename cx <*> pure cls <*> rename ty <*> renameReset ds
+
+instance Rename ConstrDecl where
+  rename (ConstrDecl p evs cx c tys) = withLocalEnv $ do
+    bindVars evs
+    ConstrDecl p <$> rename evs <*> rename cx <*> pure c <*> rename tys
+  rename (ConOpDecl p evs cx ty1 op ty2) = withLocalEnv $ do
+    bindVars evs
+    ConOpDecl p <$> rename evs <*> rename cx <*> rename ty1 <*> pure op
+                <*> rename ty2
+  rename (RecordDecl p evs cx c fs) = withLocalEnv $ do
+    bindVars evs
+    RecordDecl p <$> rename evs <*> rename cx <*> pure c <*> rename fs
+
+instance Rename FieldDecl where
+  rename (FieldDecl p ls ty) = FieldDecl p ls <$> rename ty
+
+instance Rename NewConstrDecl where
+  rename (NewConstrDecl p c ty) = NewConstrDecl p c <$> rename ty
+  rename (NewRecordDecl p c (l, ty)) = NewRecordDecl p c . (,) l <$> rename ty
+
+instance Rename Constraint where
+  rename (Constraint cls ty) = Constraint cls <$> rename ty
+
+instance Rename QualTypeExpr where
+  rename (QualTypeExpr cx ty) = QualTypeExpr <$> rename cx <*> rename ty
+
+instance Rename TypeExpr where
+  rename (ConstructorType tc) = return $ ConstructorType tc
+  rename (ApplyType ty1 ty2) = ApplyType <$> rename ty1 <*> rename ty2
+  rename (VariableType tv) = VariableType <$> rename tv
+  rename (TupleType tys) = TupleType <$> rename tys
+  rename (ListType ty) = ListType <$> rename ty
+  rename (ArrowType ty1 ty2) = ArrowType <$> rename ty1 <*> rename ty2
+  rename (ParenType ty) = ParenType <$> rename ty
+
+instance Rename (Equation a) where
+  rename (Equation p lhs rhs) = Equation p lhs <$> rename rhs
+
+instance Rename (Rhs a) where
+  rename (SimpleRhs p e ds) = SimpleRhs p <$> rename e <*> rename ds
+  rename (GuardedRhs es ds) = GuardedRhs <$> rename es <*> rename ds
+
+instance Rename (CondExpr a) where
+  rename (CondExpr p c e) = CondExpr p <$> rename c <*> rename e
+
+instance Rename (Expression a) where
+  rename (Literal a l) = return $ Literal a l
+  rename (Variable a v) = return $ Variable a v
+  rename (Constructor a c) = return $ Constructor a c
+  rename (Paren e) = Paren <$> rename e
+  rename (Typed e qty) = Typed <$> rename e <*> renameTypeSig qty
+  rename (Record a c fs) = Record a c <$> rename fs
+  rename (RecordUpdate e fs) = RecordUpdate <$> rename e <*> rename fs
+  rename (Tuple ref es) = Tuple ref <$> rename es
+  rename (List a refs es) = List a refs <$> rename es
+  rename (ListCompr ref e stmts) = ListCompr ref <$> rename e <*> rename stmts
+  rename (EnumFrom e) = EnumFrom <$> rename e
+  rename (EnumFromThen e1 e2) = EnumFromThen <$> rename e1 <*> rename e2
+  rename (EnumFromTo e1 e2) = EnumFromTo <$> rename e1 <*> rename e2
+  rename (EnumFromThenTo e1 e2 e3) =
+    EnumFromThenTo <$> rename e1 <*> rename e2 <*> rename e3
+  rename (UnaryMinus ref e) = UnaryMinus ref <$> rename e
+  rename (Apply e1 e2) = Apply <$> rename e1 <*> rename e2
+  rename (InfixApply e1 op e2) = flip InfixApply op <$> rename e1 <*> rename e2
+  rename (LeftSection e op) = flip LeftSection op <$> rename e
+  rename (RightSection op e) = RightSection op <$> rename e
+  rename (Lambda ref ts e) = Lambda ref ts <$> rename e
+  rename (Let ds e) = Let <$> rename ds <*> rename e
+  rename (Do stmts e) = Do <$> rename stmts <*> rename e
+  rename (IfThenElse ref c e1 e2) =
+    IfThenElse ref <$> rename c <*> rename e1 <*> rename e2
+  rename (Case ref ct e alts) = Case ref ct <$> rename e <*> rename alts
+
+instance Rename (Statement a) where
+  rename (StmtExpr ref e) = StmtExpr ref <$> rename e
+  rename (StmtDecl ds) = StmtDecl <$> rename ds
+  rename (StmtBind ref t e) = StmtBind ref t <$> rename e
+
+instance Rename (Alt a) where
+  rename (Alt p t rhs) = Alt p t <$> rename rhs
+
+instance Rename a => Rename (Field a) where
+  rename (Field p l x) = Field p l <$> rename x
+
+instance Rename Ident where
+  rename tv | isAnonId tv = renameIdent tv <$> newId
+            | otherwise   = fromMaybe tv <$> lookupVar tv
+
+bindVar :: Ident -> TSCM ()
+bindVar tv = do
+  k <- newId
+  modifyRenameEnv $ Map.insert tv (renameIdent tv k)
+
+bindVars :: [Ident] -> TSCM ()
+bindVars = mapM_ bindVar
+
+lookupVar :: Ident -> TSCM (Maybe Ident)
+lookupVar tv = do
+  env <- getRenameEnv
+  return $ Map.lookup tv env
+
 -- When type declarations are checked, the compiler will allow anonymous
 -- type variables on the left hand side of the declaration, but not on
 -- the right hand side. Function and pattern declarations must be
@@ -119,8 +305,9 @@ bindType _ _ = id
 checkModule :: Module a -> TSCM (Module a, [KnownExtension])
 checkModule (Module ps m es is ds) = do
   ds' <- mapM checkDecl ds
+  ds'' <- rename ds'
   exts <- getExtensions
-  return (Module ps m es is ds', exts)
+  return (Module ps m es is ds'', exts)
 
 checkDecl :: Decl a -> TSCM (Decl a)
 checkDecl (DataDecl p tc tvs cs) = do
@@ -143,6 +330,7 @@ checkDecl (PatternDecl p t rhs) =
   PatternDecl p t <$> checkRhs rhs
 checkDecl (ForeignDecl p cc ie a f ty) =
   ForeignDecl p cc ie a f <$> checkType ty
+checkDecl (DefaultDecl p tys) = DefaultDecl p <$> mapM checkType tys
 checkDecl (ClassDecl p cx cls clsvar ds) = do
   checkTypeVars "class declaration" [clsvar]
   cx' <- checkClosedContext [clsvar] cx
@@ -159,34 +347,37 @@ checkDecl (InstanceDecl p cx qcls inst ds) = do
 checkDecl d = return d
 
 checkConstrDecl :: [Ident] -> ConstrDecl -> TSCM ConstrDecl
-checkConstrDecl tvs (ConstrDecl p evs c tys) = do
-  checkExistVars evs
-  tys' <- mapM (checkClosedType (evs ++ tvs)) tys
-  return $ ConstrDecl p evs c tys'
-checkConstrDecl tvs (ConOpDecl p evs ty1 op ty2) = do
+checkConstrDecl tvs (ConstrDecl p evs cx c tys) = do
   checkExistVars evs
   let tvs' = evs ++ tvs
+  cx' <- checkClosedContext tvs' cx
+  tys' <- mapM (checkClosedType tvs') tys
+  return $ ConstrDecl p evs cx' c tys'
+checkConstrDecl tvs (ConOpDecl p evs cx ty1 op ty2) = do
+  checkExistVars evs
+  let tvs' = evs ++ tvs
+  cx' <- checkClosedContext tvs' cx
   ty1' <- checkClosedType tvs' ty1
   ty2' <- checkClosedType tvs' ty2
-  return $ ConOpDecl p evs ty1' op ty2'
-checkConstrDecl tvs (RecordDecl p evs c fs) = do
+  return $ ConOpDecl p evs cx' ty1' op ty2'
+checkConstrDecl tvs (RecordDecl p evs cx c fs) = do
   checkExistVars evs
-  fs'  <- mapM (checkFieldDecl (evs ++ tvs)) fs
-  return $ RecordDecl p evs c fs'
+  let tvs' = evs ++ tvs
+  cx' <- checkClosedContext tvs' cx
+  fs'  <- mapM (checkFieldDecl tvs') fs
+  return $ RecordDecl p evs cx' c fs'
 
 checkFieldDecl :: [Ident] -> FieldDecl -> TSCM FieldDecl
 checkFieldDecl tvs (FieldDecl p ls ty) =
   FieldDecl p ls <$> checkClosedType tvs ty
 
 checkNewConstrDecl :: [Ident] -> NewConstrDecl -> TSCM NewConstrDecl
-checkNewConstrDecl tvs (NewConstrDecl p evs c ty) = do
-  checkExistVars evs
-  ty'  <- checkClosedType (evs ++ tvs) ty
-  return $ NewConstrDecl p evs c ty'
-checkNewConstrDecl tvs (NewRecordDecl p evs c (l, ty)) = do
-  checkExistVars evs
-  ty'  <- checkClosedType (evs ++ tvs) ty
-  return $ NewRecordDecl p evs c (l, ty')
+checkNewConstrDecl tvs (NewConstrDecl p c ty) = do
+  ty'  <- checkClosedType tvs ty
+  return $ NewConstrDecl p c ty'
+checkNewConstrDecl tvs (NewRecordDecl p c (l, ty)) = do
+  ty'  <- checkClosedType tvs ty
+  return $ NewRecordDecl p c (l, ty')
 
 checkSimpleContext :: Context -> TSCM ()
 checkSimpleContext = mapM_ checkSimpleConstraint
@@ -211,7 +402,7 @@ checkInstanceType p inst = do
   tEnv <- getTypeEnv
   unless (isSimpleType inst &&
     not (isTypeSyn (typeConstr inst) tEnv) &&
-    null (filter isAnonId $ typeVars inst) &&
+    null (filter isAnonId $ typeVariables inst) &&
     isNothing (findDouble $ fv inst)) $
       report $ errIllegalInstanceType p inst
 
@@ -322,18 +513,27 @@ checkContext :: Context -> TSCM Context
 checkContext = mapM checkConstraint
 
 checkConstraint :: Constraint -> TSCM Constraint
-checkConstraint (Constraint qcls ty) = do
+checkConstraint c@(Constraint qcls ty) = do
   checkClass qcls
-  Constraint qcls <$> checkType ty
+  ty' <- checkType ty
+  unless (isVariableType $ rootType ty') $ report $ errIllegalConstraint c
+  return $ Constraint qcls ty'
+  where
+    rootType (ApplyType ty' _) = ty'
+    rootType ty'               = ty'
 
 checkClass :: QualIdent -> TSCM ()
 checkClass qcls = do
+  m <- getModuleIdent
   tEnv <- getTypeEnv
   case qualLookupTypeKind qcls tEnv of
     [] -> report $ errUndefinedClass qcls
     [Class _ _] -> ok
     [_] -> report $ errUndefinedClass qcls
-    tks -> report $ errAmbiguousIdent qcls $ map origName tks
+    tks -> case qualLookupTypeKind (qualQualify m qcls) tEnv of
+      [Class _ _] -> ok
+      [_] -> report $ errUndefinedClass qcls
+      _ -> report $ errAmbiguousIdent qcls $ map origName tks
 
 checkClosedType :: [Ident] -> TypeExpr -> TSCM TypeExpr
 checkClosedType tvs ty = do
@@ -343,14 +543,19 @@ checkClosedType tvs ty = do
 
 checkType :: TypeExpr -> TSCM TypeExpr
 checkType c@(ConstructorType tc) = do
+  m <- getModuleIdent
   tEnv <- getTypeEnv
   case qualLookupTypeKind tc tEnv of
     []
+      | isQTupleId tc -> return c
       | not (isQualified tc) -> return $ VariableType $ unqualify tc
       | otherwise -> report (errUndefinedType tc) >> return c
     [Class _ _] -> report (errUndefinedType tc) >> return c
     [_] -> return c
-    tks -> report (errAmbiguousIdent tc $ map origName tks) >> return c
+    tks -> case qualLookupTypeKind (qualQualify m tc) tEnv of
+      [Class _ _] -> report (errUndefinedType tc) >> return c
+      [_] -> return c
+      _ -> report (errAmbiguousIdent tc $ map origName tks) >> return c
 checkType (ApplyType ty1 ty2) = ApplyType  <$> checkType ty1 <*> checkType ty2
 checkType v@(VariableType tv)
   | isAnonId tv = return v
@@ -389,25 +594,6 @@ getIdent (ClassDecl   _ _ cls _ _) = cls
 getIdent _                         =
   internalError "Checks.TypeSyntaxCheck.getIdent: no type or class declaration"
 
-typeConstr :: TypeExpr -> QualIdent
-typeConstr (ConstructorType   tc) = tc
-typeConstr (ApplyType       ty _) = typeConstr ty
-typeConstr (VariableType       _) =
-  internalError "Checks.TypeSyntaxCheck.typeConstr: variable type"
-typeConstr (TupleType        tys) = qTupleId (length tys)
-typeConstr (ListType           _) = qListId
-typeConstr (ArrowType        _ _) = qArrowId
-typeConstr (ParenType         ty) = typeConstr ty
-
-typeVars :: TypeExpr -> [Ident]
-typeVars (ConstructorType       _) = []
-typeVars (ApplyType       ty1 ty2) = typeVars ty1 ++ typeVars ty2
-typeVars (VariableType         tv) = [tv]
-typeVars (TupleType           tys) = concatMap typeVars tys
-typeVars (ListType             ty) = typeVars ty
-typeVars (ArrowType       ty1 ty2) = typeVars ty1 ++ typeVars ty2
-typeVars (ParenType            ty) = typeVars ty
-
 isTypeSyn :: QualIdent -> TypeEnv -> Bool
 isTypeSyn tc tEnv = case qualLookupTypeKind tc tEnv of
   [Alias _] -> True
@@ -417,14 +603,18 @@ isTypeSyn tc tEnv = case qualLookupTypeKind tc tEnv of
 -- Error messages
 -- ---------------------------------------------------------------------------
 
+errMultipleDefaultDeclarations :: [Position] -> Message
+errMultipleDefaultDeclarations ps = posMessage (head ps) $
+  text "More than one default declaration:" $+$
+    nest 2 (vcat $ map showPos ps)
+  where showPos = text . showLine
+
 errMultipleDeclarations :: [Ident] -> Message
-errMultipleDeclarations []     = internalError
-  "Checks.TypeSyntaxCheck.errMultipleDeclarations: empty list"
-errMultipleDeclarations (i:is) = posMessage i $
+errMultipleDeclarations is = posMessage i $
   text "Multiple declarations of" <+> text (escName i) <+> text "at:" $+$
-    nest 2 (vcat (map showPos (i:is)))
-  where
-    showPos = text . showLine . idPosition
+    nest 2 (vcat $ map showPos is)
+  where i = head is
+        showPos = text . showLine . idPosition
 
 errMissingLanguageExtension :: Position -> String -> KnownExtension -> Message
 errMissingLanguageExtension p what ext = posMessage p $
@@ -466,6 +656,13 @@ errNoVariable tv what = posMessage tv $ hsep $ map text $
 errUnboundVariable :: Ident -> Message
 errUnboundVariable tv = posMessage tv $ hsep $ map text
   [ "Unbound type variable", idName tv ]
+
+errIllegalConstraint :: Constraint -> Message
+errIllegalConstraint c@(Constraint qcls _) = posMessage qcls $ vcat
+  [ text "Illegal class constraint" <+> ppConstraint c
+  , text "Constraints must be of the form C u or C (u t1 ... tn),"
+  , text "where C is a type class, u is a type variable and t1, ..., tn are types."
+  ]
 
 errIllegalSimpleConstraint :: Constraint -> Message
 errIllegalSimpleConstraint c@(Constraint qcls _) = posMessage qcls $ vcat
