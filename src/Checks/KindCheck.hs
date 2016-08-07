@@ -20,6 +20,7 @@ module Checks.KindCheck (kindCheck) where
 import           Control.Applicative      ((<$>), (<*>))
 #endif
 import           Control.Monad            (when, foldM)
+import           Control.Monad.Fix        (mfix)
 import qualified Control.Monad.State as S (State, runState, gets, modify)
 import           Data.List                (partition, nub)
 
@@ -30,7 +31,6 @@ import Curry.Syntax
 import Curry.Syntax.Pretty
 
 import Base.CurryKinds
-import Base.CurryTypes
 import Base.Expr
 import Base.Kinds
 import Base.KindSubst
@@ -38,7 +38,9 @@ import Base.Messages (Message, posMessage, internalError)
 import Base.SCC
 import Base.TopEnv
 import Base.Types
+import Base.TypeExpansion
 
+import Env.Class
 import Env.TypeConstructor
 
 -- In order to infer kinds for type constructors and type classes, the
@@ -47,21 +49,22 @@ import Env.TypeConstructor
 -- declaration group. Besides inferring kinds for the type constructors
 -- and type classes of a group, the compiler also checks that there are
 -- no mutually recursive type synonym definitions and that the super class
--- hierarchy is acyclic.
+-- hierarchy is acyclic. The former allows entering fully expanded type
+-- synonyms into the type constructor environment.
 
-kindCheck :: TCEnv -> Module -> (TCEnv, [Message])
-kindCheck tcEnv (Module _ m _ _ ds) = runKCM check initState
+kindCheck :: TCEnv -> ClassEnv -> Module a -> ((TCEnv, ClassEnv), [Message])
+kindCheck tcEnv clsEnv (Module _ m _ _ ds) = runKCM check initState
   where
     check = do
       checkNonRecursiveTypes tds &&> checkAcyclicSuperClasses cds
       errs <- S.gets errors
       if null errs
          then checkDecls
-         else return tcEnv
+         else return (tcEnv, clsEnv)
     checkDecls = do
-      tcEnv' <- kcDecls tcEnv tcds
+      (tcEnv', clsEnv') <- kcDecls tcEnv clsEnv tcds
       mapM_ (kcDecl tcEnv') ods
-      return tcEnv'
+      return (tcEnv', clsEnv')
     tds = filter isTypeDecl tcds
     cds = filter isClassDecl tcds
     (tcds, ods) = partition isTypeOrClassDecl ds
@@ -110,14 +113,14 @@ ok = return ()
 -- Minimal recursive declaration groups are computed using the sets of bound
 -- and free type constructor and type class identifiers of the declarations.
 
-bt :: Decl -> [Ident]
+bt :: Decl a -> [Ident]
 bt (DataDecl       _ tc _ _) = [tc]
 bt (NewtypeDecl    _ tc _ _) = [tc]
 bt (TypeDecl       _ tc _ _) = [tc]
 bt (ClassDecl   _ _ cls _ _) = [cls]
 bt _                         = []
 
-ft :: ModuleIdent -> Decl -> [Ident]
+ft :: ModuleIdent -> Decl a -> [Ident]
 ft m d = fts m d []
 
 class HasType a where
@@ -129,32 +132,33 @@ instance HasType a => HasType [a] where
 instance HasType a => HasType (Maybe a) where
   fts m = maybe id $ fts m
 
-instance HasType Decl where
+instance HasType (Decl a) where
   fts _ (InfixDecl             _ _ _ _) = id
   fts m (DataDecl             _ _ _ cs) = fts m cs
   fts m (NewtypeDecl          _ _ _ nc) = fts m nc
   fts m (TypeDecl             _ _ _ ty) = fts m ty
   fts m (TypeSig                _ _ ty) = fts m ty
-  fts m (FunctionDecl          _ _ eqs) = fts m eqs
-  fts m (ForeignDecl        _ _ _ _ ty) = fts m ty
+  fts m (FunctionDecl        _ _ _ eqs) = fts m eqs
+  fts m (ForeignDecl      _ _ _ _ _ ty) = fts m ty
   fts _ (ExternalDecl              _ _) = id
   fts m (PatternDecl           _ _ rhs) = fts m rhs
   fts _ (FreeDecl                  _ _) = id
+  fts m (DefaultDecl             _ tys) = fts m tys
   fts m (ClassDecl         _ cx _ _ ds) = fts m cx . fts m ds
   fts m (InstanceDecl _ cx cls inst ds) =
     fts m cx . fts m cls . fts m inst . fts m ds
 
 instance HasType ConstrDecl where
-  fts m (ConstrDecl     _ _ _ tys) = fts m tys
-  fts m (ConOpDecl  _ _ ty1 _ ty2) = fts m ty1 . fts m ty2
-  fts m (RecordDecl      _ _ _ fs) = fts m fs
+  fts m (ConstrDecl     _ _ cx _ tys) = fts m cx . fts m tys
+  fts m (ConOpDecl  _ _ cx ty1 _ ty2) = fts m cx . fts m ty1 . fts m ty2
+  fts m (RecordDecl      _ _ cx _ fs) = fts m cx . fts m fs
 
 instance HasType FieldDecl where
   fts m (FieldDecl _ _ ty) = fts m ty
 
 instance HasType NewConstrDecl where
-  fts m (NewConstrDecl      _ _ _ ty) = fts m ty
-  fts m (NewRecordDecl _ _ _ (_, ty)) = fts m ty
+  fts m (NewConstrDecl      _ _ ty) = fts m ty
+  fts m (NewRecordDecl _ _ (_, ty)) = fts m ty
 
 instance HasType Constraint where
   fts m (Constraint qcls _) = fts m qcls
@@ -168,29 +172,29 @@ instance HasType TypeExpr where
   fts _ (VariableType          _) = id
   fts m (TupleType           tys) = (tupleId (length tys) :) . fts m tys
   fts m (ListType             ty) = (listId :) . fts m ty
-  fts m (ArrowType       ty1 ty2) = fts m ty1 . fts m ty2
+  fts m (ArrowType       ty1 ty2) = (arrowId :) . fts m ty1 . fts m ty2
   fts m (ParenType            ty) = fts m ty
 
-instance HasType Equation where
+instance HasType (Equation a) where
   fts m (Equation _ _ rhs) = fts m rhs
 
-instance HasType Rhs where
+instance HasType (Rhs a) where
   fts m (SimpleRhs  _ e ds) = fts m e . fts m ds
   fts m (GuardedRhs  es ds) = fts m es . fts m ds
 
-instance HasType CondExpr where
+instance HasType (CondExpr a) where
   fts m (CondExpr _ g e) = fts m g . fts m e
 
-instance HasType Expression where
-  fts _ (Literal               _) = id
-  fts _ (Variable              _) = id
-  fts _ (Constructor           _) = id
+instance HasType (Expression a) where
+  fts _ (Literal             _ _) = id
+  fts _ (Variable            _ _) = id
+  fts _ (Constructor         _ _) = id
   fts m (Paren                 e) = fts m e
   fts m (Typed              e ty) = fts m e . fts m ty
-  fts m (Record             _ fs) = fts m fs
+  fts m (Record           _ _ fs) = fts m fs
   fts m (RecordUpdate       e fs) = fts m e . fts m fs
   fts m (Tuple              _ es) = fts m es
-  fts m (List               _ es) = fts m es
+  fts m (List             _ _ es) = fts m es
   fts m (ListCompr      _ e stms) = fts m e . fts m stms
   fts m (EnumFrom              e) = fts m e
   fts m (EnumFromThen      e1 e2) = fts m e1 . fts m e2
@@ -207,12 +211,12 @@ instance HasType Expression where
   fts m (IfThenElse   _ e1 e2 e3) = fts m e1 . fts m e2 . fts m e3
   fts m (Case           _ _ e as) = fts m e . fts m as
 
-instance HasType Statement where
+instance HasType (Statement a) where
   fts m (StmtExpr   _ e) = fts m e
   fts m (StmtDecl    ds) = fts m ds
   fts m (StmtBind _ _ e) = fts m e
 
-instance HasType Alt where
+instance HasType (Alt a) where
   fts m (Alt _ _ rhs) = fts m rhs
 
 instance HasType a => HasType (Field a) where
@@ -221,31 +225,35 @@ instance HasType a => HasType (Field a) where
 instance HasType QualIdent where
   fts m qident = maybe id (:) (localIdent m qident)
 
--- Curry does not allow (mutually) recursive type synonyms or newtypes,
--- which is checked in the function 'checkNonRecursiveTypes' below.
+-- When types are entered into the type constructor environment, all type
+-- synonyms occuring in the definitions are fully expanded (except for
+-- record types) and all type constructors and type classes are qualified
+-- with the name of the module in which they are defined. This is possible
+-- because Curry does not allow (mutually) recursive type synonyms or
+-- newtypes, which is checked in the function 'checkNonRecursiveTypes' below.
 
-ft' :: ModuleIdent -> Decl -> [Ident]
+ft' :: ModuleIdent -> Decl a -> [Ident]
 ft' _ (DataDecl     _ _ _ _) = []
 ft' m (NewtypeDecl _ _ _ nc) = fts m nc []
 ft' m (TypeDecl    _ _ _ ty) = fts m ty []
 ft' _ _                      = []
 
-checkNonRecursiveTypes :: [Decl] -> KCM ()
+checkNonRecursiveTypes :: [Decl a] -> KCM ()
 checkNonRecursiveTypes ds = do
   m <- getModuleIdent
   mapM_ checkTypeAndNewtypeDecls $ scc bt (ft' m) ds
 
-checkTypeAndNewtypeDecls :: [Decl] -> KCM ()
+checkTypeAndNewtypeDecls :: [Decl a] -> KCM ()
 checkTypeAndNewtypeDecls [] =
   internalError "Checks.KindCheck.checkTypeAndNewtypeDecls: empty list"
 checkTypeAndNewtypeDecls [DataDecl _ _ _ _] = ok
 checkTypeAndNewtypeDecls [d] | isTypeOrNewtypeDecl d = do
   m <- getModuleIdent
-  let tc = typeConstr d
+  let tc = typeConstructor d
   when (tc `elem` ft m d) $ report $ errRecursiveTypes [tc]
 checkTypeAndNewtypeDecls (d:ds) | isTypeOrNewtypeDecl d =
   report $ errRecursiveTypes $
-    typeConstr d : [typeConstr d' | d' <- ds, isTypeOrNewtypeDecl d']
+    typeConstructor d : [typeConstructor d' | d' <- ds, isTypeOrNewtypeDecl d']
 checkTypeAndNewtypeDecls _ = internalError
   "Checks.KindCheck.checkTypeAndNewtypeDecls: no type or newtype declarations"
 
@@ -257,12 +265,12 @@ fc m = foldr fc' []
   where
     fc' (Constraint qcls _) = maybe id (:) (localIdent m qcls)
 
-checkAcyclicSuperClasses :: [Decl] -> KCM ()
+checkAcyclicSuperClasses :: [Decl a] -> KCM ()
 checkAcyclicSuperClasses ds = do
   m <- getModuleIdent
   mapM_ checkClassDecl $ scc bt (\(ClassDecl _ cx _ _ _) -> fc m cx) ds
 
-checkClassDecl :: [Decl] -> KCM ()
+checkClassDecl :: [Decl a] -> KCM ()
 checkClassDecl [] =
   internalError "Checks.KindCheck.checkClassDecl: empty list"
 checkClassDecl [ClassDecl _ cx cls _ _] = do
@@ -279,39 +287,63 @@ checkClassDecl _ =
 -- where k_i are fresh kind variables and k is * for data and newtype
 -- type constructors and a fresh kind variable for type synonym type
 -- constructors. For a type class we enter kind k, where k is a fresh
--- kind variable. Next, the kind checker checks the declarations of the
--- group within the extended environment, and finally the kind checker
--- instantiates all remaining free kind variables to *.
+-- kind variable. We also add a type class to the class environment.
+-- Next, the kind checker checks the declarations of the group within
+-- the extended environment, and finally the kind checker instantiates
+-- all remaining free kind variables to *.
 
-bindKind :: TCEnv -> Decl -> KCM TCEnv
-bindKind tcEnv (DataDecl _ tc tvs cs) =
+-- As noted above, type synonyms are fully expanded while types are
+-- entered into the type constructor environment. Furthermore, we uses
+-- original names for classes and super classes in the class environment.
+-- Unfortunately, both of this requires either sorting type declarations
+-- properly or using the final type constructor environment for the expansion
+-- and original names. We have chosen the latter option here, which requires
+-- recursive monadic bindings which are supported using the 'mfix' method
+-- from the 'MonadFix' type class.
+
+bindKind :: ModuleIdent -> TCEnv -> ClassEnv -> TCEnv -> Decl a -> KCM TCEnv
+bindKind m tcEnv' clsEnv tcEnv (DataDecl _ tc tvs cs) = do
   bindTypeConstructor DataType tc tvs (Just KindStar) (map mkData cs) tcEnv
   where
-    mkData (ConstrDecl _ evs     c  tys) = mkData' evs c  tys
-    mkData (ConOpDecl  _ evs ty1 op ty2) = mkData' evs op [ty1, ty2]
-    mkData (RecordDecl _ evs     c   fs) =
+    mkData (ConstrDecl _ evs cx     c  tys) = mkData' evs cx c  tys
+    mkData (ConOpDecl  _ evs cx ty1 op ty2) = mkData' evs cx op [ty1, ty2]
+    mkData (RecordDecl _ evs cx     c   fs) =
       let (labels, tys) = unzip [(l, ty) | FieldDecl _ ls ty <- fs, l <- ls]
-      in  mkRec evs c labels tys
-    mkData' evs c tys =
-      DataConstr c (length evs) $ map (toType $ tvs ++ evs) tys
-    mkRec evs c ls tys =
-      RecordConstr c (length evs) ls $ map (toType $ tvs ++ evs) tys
-bindKind tcEnv (NewtypeDecl _ tc tvs nc) =
+      in  mkRec evs cx c labels tys
+    mkData' evs cx c tys = DataConstr c (length evs) ps tys'
+      where qtc = qualifyWith m tc
+            tvs' = tvs ++ evs
+            PredType ps ty = expandConstrType m tcEnv' clsEnv qtc tvs' cx tys
+            tys' = arrowArgs ty
+    mkRec evs cx c ls tys =
+      RecordConstr c (length evs) ps ls tys'
+      where qtc = qualifyWith m tc
+            tvs' = tvs ++ evs
+            PredType ps ty = expandConstrType m tcEnv' clsEnv qtc tvs' cx tys
+            tys' = arrowArgs ty
+bindKind m tcEnv' _      tcEnv (NewtypeDecl _ tc tvs nc) =
   bindTypeConstructor RenamingType tc tvs (Just KindStar) (mkData nc) tcEnv
   where
-    mkData (NewConstrDecl _ evs c      ty) =
-      DataConstr c (length evs) [toType (tvs ++ evs) ty]
-    mkData (NewRecordDecl _ evs c (l, ty)) =
-      RecordConstr c (length evs) [l] [toType (tvs ++ evs) ty]
-bindKind tcEnv (TypeDecl _ tc tvs ty) =
-  bindTypeConstructor aliasType tc tvs Nothing (toType tvs ty) tcEnv
+    mkData (NewConstrDecl _ c      ty) = DataConstr c 0 emptyPredSet [ty']
+      where ty'  = expandMonoType m tcEnv' tvs ty
+    mkData (NewRecordDecl _ c (l, ty)) = RecordConstr c 0 emptyPredSet [l] [ty']
+      where ty'  = expandMonoType m tcEnv' tvs ty
+bindKind m tcEnv' _      tcEnv (TypeDecl _ tc tvs ty) =
+  bindTypeConstructor aliasType tc tvs Nothing ty' tcEnv
   where
     aliasType tc' k = AliasType tc' k $ length tvs
-bindKind tcEnv (ClassDecl _ cx cls _ ds) =
-  bindTypeClass cls (superclasses cx) (concatMap methods ds) tcEnv
+    ty' = expandMonoType m tcEnv' tvs ty
+bindKind m tcEnv' clsEnv tcEnv (ClassDecl _ _ cls tv ds) =
+  bindTypeClass cls (concatMap mkMethods ds) tcEnv
   where
-    superclasses = map (\(Constraint qcls _) -> qcls)
-bindKind tcEnv _                     = return tcEnv
+    mkMethods (TypeSig _ fs qty) = map (mkMethod qty) fs
+    mkMethods _                  = []
+    mkMethod qty f = ClassMethod f (findArity f ds) $
+                       expandMethodType m tcEnv' clsEnv (qualify cls) tv qty
+    findArity _ []                                    = 0
+    findArity f (FunctionDecl _ _ f' eqs:_) | f == f' = eqnArity $ head eqs
+    findArity f (_:ds')                               = findArity f ds'
+bindKind _ _      _      tcEnv _                          = return tcEnv
 
 bindTypeConstructor :: (QualIdent -> Kind -> a -> TypeInfo) -> Ident
                     -> [Ident] -> Maybe Kind -> a -> TCEnv -> KCM TCEnv
@@ -323,12 +355,12 @@ bindTypeConstructor f tc tvs k x tcEnv = do
       ti = f qtc (foldr KindArrow k' ks) x
   return $ bindTypeInfo m tc ti tcEnv
 
-bindTypeClass :: Ident -> [QualIdent] -> [Ident] -> TCEnv -> KCM TCEnv
-bindTypeClass cls sclss ms tcEnv = do
+bindTypeClass :: Ident -> [ClassMethod] -> TCEnv -> KCM TCEnv
+bindTypeClass cls ms tcEnv = do
   m <- getModuleIdent
   k <- freshKindVar
   let qcls = qualifyWith m cls
-      ti = TypeClass qcls k sclss ms
+      ti = TypeClass qcls k ms
   return $ bindTypeInfo m cls ti tcEnv
 
 bindFreshKind :: TCEnv -> Ident -> KCM TCEnv
@@ -341,11 +373,19 @@ bindTypeVars tc tvs tcEnv = do
   m <- getModuleIdent
   return $ foldl (\(KindArrow k1 k2, tcEnv') tv ->
                    (k2, bindTypeVar tv k1 tcEnv'))
-                 (tcKind (qualifyWith m tc) tcEnv, tcEnv)
+                 (tcKind m (qualifyWith m tc) tcEnv, tcEnv)
                  tvs
 
 bindTypeVar :: Ident -> Kind -> TCEnv -> TCEnv
 bindTypeVar ident k = bindTopEnv ident (TypeVar k)
+
+bindClass :: ModuleIdent -> TCEnv -> ClassEnv -> Decl a -> ClassEnv
+bindClass m tcEnv clsEnv (ClassDecl _  cx cls _ ds) =
+  bindClassInfo qcls (sclss, ms) clsEnv
+  where qcls = qualifyWith m cls
+        ms = concatMap methods ds
+        sclss = nub $ map (\(Constraint cls' _) -> getOrigName m cls' tcEnv) cx
+bindClass _ _ clsEnv _ = clsEnv
 
 instantiateWithDefaultKind :: TypeInfo -> TypeInfo
 instantiateWithDefaultKind (DataType tc k cs) =
@@ -354,22 +394,25 @@ instantiateWithDefaultKind (RenamingType tc k nc) =
   RenamingType tc (defaultKind k) nc
 instantiateWithDefaultKind (AliasType tc k n ty) =
   AliasType tc (defaultKind k) n ty
-instantiateWithDefaultKind (TypeClass cls k sclss ms) =
-  TypeClass cls (defaultKind k) sclss ms
+instantiateWithDefaultKind (TypeClass cls k ms) =
+  TypeClass cls (defaultKind k) ms
 instantiateWithDefaultKind (TypeVar _) =
   internalError "Checks.KindCheck.instantiateWithDefaultKind: type variable"
 
-kcDecls :: TCEnv -> [Decl] -> KCM TCEnv
-kcDecls tcEnv ds = do
+kcDecls :: TCEnv -> ClassEnv -> [Decl a] -> KCM (TCEnv, ClassEnv)
+kcDecls tcEnv clsEnv ds = do
   m <- getModuleIdent
-  foldM kcDeclGroup tcEnv $ scc bt (ft m) ds
+  foldM (uncurry kcDeclGroup) (tcEnv, clsEnv) $ scc bt (ft m) ds
 
-kcDeclGroup :: TCEnv -> [Decl] -> KCM TCEnv
-kcDeclGroup tcEnv ds = do
-  tcEnv' <- foldM bindKind tcEnv ds
+kcDeclGroup :: TCEnv -> ClassEnv -> [Decl a] -> KCM (TCEnv, ClassEnv)
+kcDeclGroup tcEnv clsEnv ds = do
+  m <- getModuleIdent
+  (tcEnv', clsEnv') <- mfix (\ ~(tcEnv', clsEnv') ->
+    flip (,) (foldl (bindClass m tcEnv') clsEnv ds) <$>
+      foldM (bindKind m tcEnv' clsEnv') tcEnv ds)
   mapM_ (kcDecl tcEnv') ds
   theta <- getKindSubst
-  return $ fmap (instantiateWithDefaultKind . subst theta) tcEnv'
+  return (fmap (instantiateWithDefaultKind . subst theta) tcEnv', clsEnv')
 
 -- After adding new assumptions to the environment, kind inference is
 -- applied to all declarations. The type environment may be extended
@@ -379,7 +422,7 @@ kcDeclGroup tcEnv ds = do
 -- the kinds of their type constructors and type classes, respectively,
 -- fresh kind variables are added for the latter.
 
-kcDecl :: TCEnv -> Decl -> KCM ()
+kcDecl :: TCEnv -> Decl a -> KCM ()
 kcDecl _     (InfixDecl _ _ _ _) = ok
 kcDecl tcEnv (DataDecl _ tc tvs cs) = do
   (_, tcEnv') <- bindTypeVars tc tvs tcEnv
@@ -391,40 +434,48 @@ kcDecl tcEnv t@(TypeDecl p tc tvs ty) = do
   (k, tcEnv') <- bindTypeVars tc tvs tcEnv
   kcType tcEnv' p "type declaration" (ppDecl t) k ty
 kcDecl tcEnv (TypeSig p _ qty) = kcTypeSig tcEnv p qty
-kcDecl tcEnv (FunctionDecl _ _ eqs) = mapM_ (kcEquation tcEnv) eqs
-kcDecl tcEnv (ForeignDecl p _ _ _ ty) = kcTypeSig tcEnv p (QualTypeExpr [] ty)
+kcDecl tcEnv (FunctionDecl _ _ _ eqs) = mapM_ (kcEquation tcEnv) eqs
+kcDecl tcEnv (ForeignDecl p _ _ _ _ ty) = kcTypeSig tcEnv p (QualTypeExpr [] ty)
+kcDecl _     (ExternalDecl _ _) = ok
 kcDecl tcEnv (PatternDecl _ _ rhs) = kcRhs tcEnv rhs
 kcDecl _     (FreeDecl _ _) = ok
+kcDecl tcEnv (DefaultDecl p tys) = do
+  tcEnv' <- foldM bindFreshKind tcEnv $ nub $ fv tys
+  mapM_ (kcValueType tcEnv' p "default declaration" empty) tys
 kcDecl tcEnv (ClassDecl p cx cls tv ds) = do
   m <- getModuleIdent
-  let tcEnv' = bindTypeVar tv (classKind (qualifyWith m cls) tcEnv) tcEnv
+  let tcEnv' = bindTypeVar tv (clsKind m (qualifyWith m cls) tcEnv) tcEnv
   kcContext tcEnv' p cx
   mapM_ (kcDecl tcEnv') ds
 kcDecl tcEnv (InstanceDecl p cx qcls inst ds) = do
+  m <- getModuleIdent
   tcEnv' <- foldM bindFreshKind tcEnv $ fv inst
   kcContext tcEnv' p cx
-  kcType tcEnv' p what doc (classKind qcls tcEnv) inst
+  kcType tcEnv' p what doc (clsKind m qcls tcEnv) inst
   mapM_ (kcDecl tcEnv') ds
     where
       what = "instance declaration"
       doc = ppDecl (InstanceDecl p cx qcls inst [])
 
 kcConstrDecl :: TCEnv -> ConstrDecl -> KCM ()
-kcConstrDecl tcEnv d@(ConstrDecl p evs _ tys) = do
+kcConstrDecl tcEnv d@(ConstrDecl p evs cx _ tys) = do
   tcEnv' <- foldM bindFreshKind tcEnv evs
+  kcContext tcEnv' p cx
   mapM_ (kcValueType tcEnv' p what doc) tys
     where
       what = "data constructor declaration"
       doc = ppConstr d
-kcConstrDecl tcEnv d@(ConOpDecl p evs ty1 _ ty2) = do
+kcConstrDecl tcEnv d@(ConOpDecl p evs cx ty1 _ ty2) = do
   tcEnv' <- foldM bindFreshKind tcEnv evs
+  kcContext tcEnv' p cx
   kcValueType tcEnv' p what doc ty1
   kcValueType tcEnv' p what doc ty2
     where
       what = "data constructor declaration"
       doc = ppConstr d
-kcConstrDecl tcEnv (RecordDecl _ evs _ fs) = do
+kcConstrDecl tcEnv (RecordDecl p evs cx _ fs) = do
   tcEnv' <- foldM bindFreshKind tcEnv evs
+  kcContext tcEnv' p cx
   mapM_ (kcFieldDecl tcEnv') fs
 
 kcFieldDecl :: TCEnv -> FieldDecl -> KCM ()
@@ -432,17 +483,15 @@ kcFieldDecl tcEnv d@(FieldDecl p _ ty) =
   kcValueType tcEnv p "field declaration" (ppFieldDecl d) ty
 
 kcNewConstrDecl :: TCEnv -> NewConstrDecl -> KCM ()
-kcNewConstrDecl tcEnv d@(NewConstrDecl p evs _ ty) = do
-  tcEnv' <- foldM bindFreshKind tcEnv evs
-  kcValueType tcEnv' p "newtype constructor declaration" (ppNewConstr d) ty
-kcNewConstrDecl tcEnv (NewRecordDecl p evs _ (l, ty)) = do
-  tcEnv' <- foldM bindFreshKind tcEnv evs
-  kcFieldDecl tcEnv' (FieldDecl p [l] ty)
+kcNewConstrDecl tcEnv d@(NewConstrDecl p _ ty) =
+  kcValueType tcEnv p "newtype constructor declaration" (ppNewConstr d) ty
+kcNewConstrDecl tcEnv (NewRecordDecl p _ (l, ty)) =
+  kcFieldDecl tcEnv (FieldDecl p [l] ty)
 
-kcEquation :: TCEnv -> Equation -> KCM ()
+kcEquation :: TCEnv -> Equation a -> KCM ()
 kcEquation tcEnv (Equation _ _ rhs) = kcRhs tcEnv rhs
 
-kcRhs :: TCEnv -> Rhs -> KCM ()
+kcRhs :: TCEnv -> Rhs a -> KCM ()
 kcRhs tcEnv (SimpleRhs p e ds) = do
   kcExpr tcEnv p e
   mapM_ (kcDecl tcEnv) ds
@@ -450,23 +499,23 @@ kcRhs tcEnv (GuardedRhs es ds) = do
   mapM_ (kcCondExpr tcEnv) es
   mapM_ (kcDecl tcEnv) ds
 
-kcCondExpr :: TCEnv -> CondExpr -> KCM ()
+kcCondExpr :: TCEnv -> CondExpr a -> KCM ()
 kcCondExpr tcEnv (CondExpr p g e) = kcExpr tcEnv p g >> kcExpr tcEnv p e
 
-kcExpr :: TCEnv -> Position -> Expression -> KCM ()
-kcExpr _     _ (Literal _) = ok
-kcExpr _     _ (Variable _) = ok
-kcExpr _     _ (Constructor _) = ok
+kcExpr :: TCEnv -> Position -> Expression a -> KCM ()
+kcExpr _     _ (Literal _ _) = ok
+kcExpr _     _ (Variable _ _) = ok
+kcExpr _     _ (Constructor _ _) = ok
 kcExpr tcEnv p (Paren e) = kcExpr tcEnv p e
 kcExpr tcEnv p (Typed e qty) = do
   kcExpr tcEnv p e
   kcTypeSig tcEnv p qty
-kcExpr tcEnv p (Record _ fs) = mapM_ (kcField tcEnv p) fs
+kcExpr tcEnv p (Record _ _ fs) = mapM_ (kcField tcEnv p) fs
 kcExpr tcEnv p (RecordUpdate e fs) = do
   kcExpr tcEnv p e
   mapM_ (kcField tcEnv p) fs
 kcExpr tcEnv p (Tuple _ es) = mapM_ (kcExpr tcEnv p) es
-kcExpr tcEnv p (List _ es) = mapM_ (kcExpr tcEnv p) es
+kcExpr tcEnv p (List _ _ es) = mapM_ (kcExpr tcEnv p) es
 kcExpr tcEnv p (ListCompr _ e stms) = do
   kcExpr tcEnv p e
   mapM_ (kcStmt tcEnv p) stms
@@ -505,23 +554,24 @@ kcExpr tcEnv p (Case _ _ e alts) = do
   kcExpr tcEnv p e
   mapM_ (kcAlt tcEnv) alts
 
-kcStmt :: TCEnv -> Position -> Statement -> KCM ()
+kcStmt :: TCEnv -> Position -> Statement a -> KCM ()
 kcStmt tcEnv p (StmtExpr _ e) = kcExpr tcEnv p e
 kcStmt tcEnv _ (StmtDecl ds) = mapM_ (kcDecl tcEnv) ds
 kcStmt tcEnv p (StmtBind _ _ e) = kcExpr tcEnv p e
 
-kcAlt :: TCEnv -> Alt -> KCM ()
+kcAlt :: TCEnv -> Alt a -> KCM ()
 kcAlt tcEnv (Alt _ _ rhs) = kcRhs tcEnv rhs
 
-kcField :: TCEnv -> Position -> Field Expression -> KCM ()
+kcField :: TCEnv -> Position -> Field (Expression a) -> KCM ()
 kcField tcEnv p (Field _ _ e) = kcExpr tcEnv p e
 
 kcContext :: TCEnv -> Position -> Context -> KCM ()
 kcContext tcEnv p = mapM_ (kcConstraint tcEnv p)
 
 kcConstraint :: TCEnv -> Position -> Constraint -> KCM ()
-kcConstraint tcEnv p sc@(Constraint qcls ty) =
-  kcType tcEnv p "class constraint" doc (classKind qcls tcEnv) ty
+kcConstraint tcEnv p sc@(Constraint qcls ty) = do
+  m <- getModuleIdent
+  kcType tcEnv p "class constraint" doc (clsKind m qcls tcEnv) ty
   where
     doc = ppConstraint sc
 
@@ -545,14 +595,15 @@ kcType tcEnv p what doc k ty = do
     doc' = ppTypeExpr 0 ty
 
 kcTypeExpr :: TCEnv -> Position -> String -> Doc -> Int -> TypeExpr -> KCM Kind
-kcTypeExpr tcEnv p _ _ n (ConstructorType tc) =
+kcTypeExpr tcEnv p _ _ n (ConstructorType tc) = do
+  m <- getModuleIdent
   case qualLookupTypeInfo tc tcEnv of
     [AliasType _ _ n' _] -> case n >= n' of
-      True -> return $ tcKind tc tcEnv
+      True -> return $ tcKind m tc tcEnv
       False -> do
         report $ errPartialAlias p tc n' n
         freshKindVar
-    _ -> return $ tcKind tc tcEnv
+    _ -> return $ tcKind m tc tcEnv
 kcTypeExpr tcEnv p what doc n (ApplyType ty1 ty2) = do
   (alpha, beta) <- kcTypeExpr tcEnv p what doc (n + 1) ty1 >>=
     kcArrow p what (doc $-$ text "Type:" <+> ppTypeExpr 0 ty1)
@@ -631,13 +682,14 @@ freshKindVar = fresh KindVariable
 -- Auxiliary definitions
 -- ---------------------------------------------------------------------------
 
-typeConstr :: Decl -> Ident
-typeConstr (DataDecl    _ tc _ _) = tc
-typeConstr (NewtypeDecl _ tc _ _) = tc
-typeConstr (TypeDecl    _ tc _ _) = tc
-typeConstr _ = internalError "Checks.KindCheck.typeConstr: no type declaration"
+typeConstructor :: Decl a -> Ident
+typeConstructor (DataDecl    _ tc _ _) = tc
+typeConstructor (NewtypeDecl _ tc _ _) = tc
+typeConstructor (TypeDecl    _ tc _ _) = tc
+typeConstructor _                      =
+  internalError "Checks.KindCheck.typeConstructor: no type declaration"
 
-isTypeOrNewtypeDecl :: Decl -> Bool
+isTypeOrNewtypeDecl :: Decl a -> Bool
 isTypeOrNewtypeDecl (NewtypeDecl _ _ _ _) = True
 isTypeOrNewtypeDecl (TypeDecl    _ _ _ _) = True
 isTypeOrNewtypeDecl _                     = False
@@ -652,8 +704,8 @@ errRecursiveTypes []       = internalError
 errRecursiveTypes [tc]     = posMessage tc $ hsep $ map text
   ["Recursive synonym or renaming type", idName tc]
 errRecursiveTypes (tc:tcs) = posMessage tc $
-  text "Mutually recursive synonym and/or renaming types" <+> text (idName tc) <>
-    types empty tcs
+  text "Mutually recursive synonym and/or renaming types" <+>
+    text (idName tc) <> types empty tcs
   where
     types _   []         = empty
     types del [tc']      = del <> space <> text "and" <+> typePos tc'
