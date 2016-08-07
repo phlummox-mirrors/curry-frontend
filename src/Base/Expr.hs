@@ -4,6 +4,7 @@
     Copyright   :  (c)             Wolfgang Lux
                        2011 - 2015 Björn Peemöller
                        2015        Jan Tikovsky
+                       2016        Finn Teegen
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
@@ -53,51 +54,51 @@ instance QuantExpr e => QuantExpr [e] where
 -- variables on the right hand side, regardless of whether they are bound
 -- on the left hand side. This is more convenient as declarations are
 -- usually processed in a declaration group where the set of free
--- variables cannot be computed independently for each declaration. Also
--- note that the operator in a unary minus expression is not a free
--- variable. This operator always refers to a global function from the
--- prelude.
+-- variables cannot be computed independently for each declaration.
 
-instance QualExpr Decl where
-  qfv m (FunctionDecl _ _ eqs) = qfv m eqs
-  qfv m (PatternDecl  _ _ rhs) = qfv m rhs
-  qfv _ _                      = []
+instance QualExpr (Decl a) where
+  qfv m (FunctionDecl  _ _ _ eqs) = qfv m eqs
+  qfv m (PatternDecl     _ _ rhs) = qfv m rhs
+  qfv m (ClassDecl    _ _ _ _ ds) = qfv m ds
+  qfv m (InstanceDecl _ _ _ _ ds) = qfv m ds
+  qfv _ _                         = []
 
-instance QuantExpr Decl where
-  bv (TypeSig        _ vs _) = vs
-  bv (FunctionDecl    _ f _) = [f]
-  bv (ForeignDecl _ _ _ f _) = [f]
-  bv (ExternalDecl     _ fs) = fs
-  bv (PatternDecl     _ t _) = bv t
-  bv (FreeDecl         _ vs) = vs
-  bv _                       = []
+instance QuantExpr (Decl a) where
+  bv (TypeSig          _ vs _) = vs
+  bv (FunctionDecl    _ _ f _) = [f]
+  bv (ForeignDecl _ _ _ _ f _) = [f]
+  bv (ExternalDecl       _ vs) = bv vs
+  bv (PatternDecl       _ t _) = bv t
+  bv (FreeDecl           _ vs) = bv vs
+  bv (ClassDecl    _ _ _ _ ds) = concatMap methods ds
+  bv _                         = []
 
-instance QualExpr Equation where
+instance QualExpr (Equation a) where
   qfv m (Equation _ lhs rhs) = filterBv lhs $ qfv m lhs ++ qfv m rhs
 
-instance QuantExpr Lhs where
+instance QuantExpr (Lhs a) where
   bv = bv . snd . flatLhs
 
-instance QualExpr Lhs where
+instance QualExpr (Lhs a) where
   qfv m lhs = qfv m $ snd $ flatLhs lhs
 
-instance QualExpr Rhs where
+instance QualExpr (Rhs a) where
   qfv m (SimpleRhs _ e ds) = filterBv ds $ qfv m e  ++ qfv m ds
   qfv m (GuardedRhs es ds) = filterBv ds $ qfv m es ++ qfv m ds
 
-instance QualExpr CondExpr where
+instance QualExpr (CondExpr a) where
   qfv m (CondExpr _ g e) = qfv m g ++ qfv m e
 
-instance QualExpr Expression where
-  qfv _ (Literal               _) = []
-  qfv m (Variable              v) = maybe [] return $ localIdent m v
-  qfv _ (Constructor           _) = []
+instance QualExpr (Expression a) where
+  qfv _ (Literal             _ _) = []
+  qfv m (Variable            _ v) = maybe [] return $ localIdent m v
+  qfv _ (Constructor         _ _) = []
   qfv m (Paren                 e) = qfv m e
   qfv m (Typed               e _) = qfv m e
-  qfv m (Record             _ fs) = qfv m fs
+  qfv m (Record           _ _ fs) = qfv m fs
   qfv m (RecordUpdate       e fs) = qfv m e ++ qfv m fs
   qfv m (Tuple              _ es) = qfv m es
-  qfv m (List               _ es) = qfv m es
+  qfv m (List             _ _ es) = qfv m es
   qfv m (ListCompr        _ e qs) = foldr (qfvStmt m) (qfv m e) qs
   qfv m (EnumFrom              e) = qfv m e
   qfv m (EnumFromThen      e1 e2) = qfv m e1 ++ qfv m e2
@@ -114,16 +115,19 @@ instance QualExpr Expression where
   qfv m (IfThenElse   _ e1 e2 e3) = qfv m e1 ++ qfv m e2 ++ qfv m e3
   qfv m (Case         _ _ e alts) = qfv m e ++ qfv m alts
 
-qfvStmt :: ModuleIdent -> Statement -> [Ident] -> [Ident]
+qfvStmt :: ModuleIdent -> (Statement a) -> [Ident] -> [Ident]
 qfvStmt m st fvs = qfv m st ++ filterBv st fvs
 
-instance QualExpr Statement where
+instance QualExpr (Statement a) where
   qfv m (StmtExpr   _ e) = qfv m e
   qfv m (StmtDecl    ds) = filterBv ds $ qfv m ds
   qfv m (StmtBind _ _ e) = qfv m e
 
-instance QualExpr Alt where
+instance QualExpr (Alt a) where
   qfv m (Alt _ t rhs) = filterBv t $ qfv m rhs
+
+instance QuantExpr (Var a) where
+  bv (Var _ v) = [v]
 
 instance QuantExpr a => QuantExpr (Field a) where
   bv (Field _ _ t) = bv t
@@ -131,52 +135,57 @@ instance QuantExpr a => QuantExpr (Field a) where
 instance QualExpr a => QualExpr (Field a) where
   qfv m (Field _ _ t) = qfv m t
 
-instance QuantExpr Statement where
+instance QuantExpr (Statement a) where
   bv (StmtExpr   _ _) = []
   bv (StmtBind _ t _) = bv t
   bv (StmtDecl    ds) = bv ds
 
-instance QualExpr InfixOp where
-  qfv m (InfixOp    op) = qfv m $ Variable op
-  qfv _ (InfixConstr _) = []
+instance QualExpr (InfixOp a) where
+  qfv m (InfixOp     a op) = qfv m $ Variable a op
+  qfv _ (InfixConstr _ _ ) = []
 
-instance QuantExpr Pattern where
-  bv (LiteralPattern         _) = []
-  bv (NegativePattern      _ _) = []
-  bv (VariablePattern        v) = [v]
-  bv (ConstructorPattern  _ ts) = bv ts
-  bv (InfixPattern     t1 _ t2) = bv t1 ++ bv t2
-  bv (ParenPattern           t) = bv t
-  bv (RecordPattern       _ fs) = bv fs
-  bv (TuplePattern        _ ts) = bv ts
-  bv (ListPattern         _ ts) = bv ts
-  bv (AsPattern            v t) = v : bv t
-  bv (LazyPattern          _ t) = bv t
-  bv (FunctionPattern     _ ts) = nub $ bv ts
-  bv (InfixFuncPattern t1 _ t2) = nub $ bv t1 ++ bv t2
+instance QuantExpr (Pattern a) where
+  bv (LiteralPattern         _ _) = []
+  bv (NegativePattern      _ _ _) = []
+  bv (VariablePattern        _ v) = [v]
+  bv (ConstructorPattern  _ _ ts) = bv ts
+  bv (InfixPattern     _ t1 _ t2) = bv t1 ++ bv t2
+  bv (ParenPattern             t) = bv t
+  bv (RecordPattern       _ _ fs) = bv fs
+  bv (TuplePattern          _ ts) = bv ts
+  bv (ListPattern         _ _ ts) = bv ts
+  bv (AsPattern              v t) = v : bv t
+  bv (LazyPattern            _ t) = bv t
+  bv (FunctionPattern     _ _ ts) = nub $ bv ts
+  bv (InfixFuncPattern _ t1 _ t2) = nub $ bv t1 ++ bv t2
 
-instance QualExpr Pattern where
-  qfv _ (LiteralPattern          _) = []
-  qfv _ (NegativePattern       _ _) = []
-  qfv _ (VariablePattern         _) = []
-  qfv m (ConstructorPattern   _ ts) = qfv m ts
-  qfv m (InfixPattern      t1 _ t2) = qfv m [t1, t2]
-  qfv m (ParenPattern            t) = qfv m t
-  qfv m (RecordPattern        _ fs) = qfv m fs
-  qfv m (TuplePattern         _ ts) = qfv m ts
-  qfv m (ListPattern          _ ts) = qfv m ts
-  qfv m (AsPattern            _ ts) = qfv m ts
-  qfv m (LazyPattern           _ t) = qfv m t
-  qfv m (FunctionPattern      f ts)
+instance QualExpr (Pattern a) where
+  qfv _ (LiteralPattern          _ _) = []
+  qfv _ (NegativePattern       _ _ _) = []
+  qfv _ (VariablePattern         _ _) = []
+  qfv m (ConstructorPattern   _ _ ts) = qfv m ts
+  qfv m (InfixPattern      _ t1 _ t2) = qfv m [t1, t2]
+  qfv m (ParenPattern              t) = qfv m t
+  qfv m (RecordPattern        _ _ fs) = qfv m fs
+  qfv m (TuplePattern           _ ts) = qfv m ts
+  qfv m (ListPattern          _ _ ts) = qfv m ts
+  qfv m (AsPattern              _ ts) = qfv m ts
+  qfv m (LazyPattern             _ t) = qfv m t
+  qfv m (FunctionPattern      _ f ts)
     = maybe [] return (localIdent m f) ++ qfv m ts
-  qfv m (InfixFuncPattern t1 op t2)
+  qfv m (InfixFuncPattern _ t1 op t2)
     = maybe [] return (localIdent m op) ++ qfv m [t1, t2]
 
+instance Expr Constraint where
+  fv (Constraint _ ty) = fv ty
+
+instance Expr QualTypeExpr where
+  fv (QualTypeExpr _ ty) = fv ty
+
 instance Expr TypeExpr where
-  fv (ConstructorType _ tys) = fv tys
-  fv (VariableType       tv)
-    | isAnonId tv            = []
-    | otherwise              = [tv]
+  fv (ConstructorType     _) = []
+  fv (ApplyType     ty1 ty2) = fv ty1 ++ fv ty2
+  fv (VariableType       tv) = [tv]
   fv (TupleType         tys) = fv tys
   fv (ListType           ty) = fv ty
   fv (ArrowType     ty1 ty2) = fv ty1 ++ fv ty2
