@@ -166,7 +166,7 @@ desugarModuleDecls ds = do
   ds'   <- concatMapM dsRecordDecl ds -- convert record decls to data decls
   ds''  <- mapM dsClassAndInstanceDecl ds'
   ds''' <- dsDeclGroup ds''
-  return $ filter (liftM2 (||) isTypeOrClassDecl isInstanceDecl) ds'' ++ ds'''
+  return $ filter (not . liftM2 (||) isValueDecl isTypeSig) ds'' ++ ds'''
 
 -- -----------------------------------------------------------------------------
 -- Desugaring of class and instance declarations
