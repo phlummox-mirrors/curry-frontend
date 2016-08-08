@@ -541,10 +541,8 @@ simplifyPat (RecordPattern      _ c fs) = do
   where
     getPattern fs' l' =
       fromMaybe wildPat (lookup l' [(unqualify l, p) | (l, p) <- fs'])
-simplifyPat (TuplePattern         _ ps)
-  | null ps   = return $ ConstructorPattern () qUnitId []
-  | otherwise =
-    ConstructorPattern () (qTupleId (length ps)) `liftM` mapM simplifyPat ps
+simplifyPat (TuplePattern         _ ps) =
+  ConstructorPattern () (qTupleId (length ps)) `liftM` mapM simplifyPat ps
 simplifyPat (ListPattern       () _ ps) =
   simplifyListPattern `liftM` mapM simplifyPat ps
 simplifyPat (AsPattern             _ p) = simplifyPat p
@@ -741,7 +739,6 @@ tidyPat :: Pattern () -> WCM (Pattern ())
 tidyPat p@(LiteralPattern        _ _) = return p
 tidyPat p@(VariablePattern       _ _) = return p
 tidyPat p@(ConstructorPattern _ c ps)
-  | c == qUnitId && null ps           = return $ TuplePattern noRef []
   | isQTupleId c                      =
     TuplePattern noRef `liftM` mapM tidyPat ps
   | c == qConsId && isFiniteList p    =
