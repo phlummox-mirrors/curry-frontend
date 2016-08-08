@@ -1,15 +1,15 @@
 --------------------------------------------------------------------------------
 -- Test Suite for the Curry Frontend
 --------------------------------------------------------------------------------
--- 
+--
 -- This Test Suite supports three kinds of tests:
--- 
+--
 -- 1) tests which should pass
 -- 2) tests which should pass with a specific warning
 -- 3) tests which should fail yielding a specific error message
--- 
+--
 -- In order to add a test to this suite, proceed as follows:
--- 
+--
 -- 1) Store your test code in a file (please use descriptive names) and put it
 --    in the corresponding subfolder (i.e. test/pass for passing tests,
 --    test/fail for failing tests and test/warning for passing tests producing
@@ -23,42 +23,61 @@
 module TestFrontend (tests) where
 
 #if __GLASGOW_HASKELL__ < 710
-import Control.Applicative          ((<$>))
+import           Control.Applicative    ((<$>))
 #endif
+import qualified Control.Exception as E (SomeException, catch)
 
-import Data.List                    (isInfixOf, sort)
-import Distribution.TestSuite
-import System.FilePath              (FilePath, (</>), (<.>))
+import           Data.List              (isInfixOf, sort)
+import           Distribution.TestSuite
+import           System.FilePath        (FilePath, (</>), (<.>))
 
-import Curry.Base.Message           (Message, ppMessages, ppError)
-import Curry.Base.Monad             (runCYIO)
-import qualified CompilerOpts as CO ( Options (..), WarnOpts (..)
-                                    , Verbosity (VerbQuiet)
-                                    , defaultOptions, defaultWarnOpts)
-import CurryBuilder                 (buildCurry)
+import           Curry.Base.Message     (Message, message, ppMessages, ppError)
+import           Curry.Base.Monad       (CYIO, runCYIO)
+import           Curry.Base.Pretty      (text)
+import qualified CompilerOpts as CO     ( Options (..), WarnOpts (..)
+                                        , WarnFlag (..), Verbosity (VerbQuiet)
+                                        , defaultOptions, defaultWarnOpts)
+import CurryBuilder                     (buildCurry)
 
 tests :: IO [Test]
 tests = return [passingTests, warningTests, failingTests]
 
+runSecure :: CYIO a -> IO (Either [Message] (a, [Message]))
+runSecure act = runCYIO act `E.catch` handler
+  where handler e = return (Left [message $ text $ show (e :: E.SomeException)])
+
 -- Execute a test by calling cymake
 runTest :: CO.Options -> String -> [String] -> IO Progress
-runTest opts test [] = runCYIO (buildCurry opts test) >>= passOrFail
+runTest opts test [] = passOrFail <$> runSecure (buildCurry opts' test)
  where
-  passOrFail = (Finished <$>) . either fail pass
+  wOpts         = CO.optWarnOpts opts
+  wFlags        =   CO.WarnUnusedBindings
+                  : CO.WarnUnusedGlobalBindings
+                  : CO.wnWarnFlags wOpts
+  opts'         = opts { CO.optForce    = True
+                       , CO.optWarnOpts = wOpts { CO.wnWarnFlags = wFlags }
+                       }
+  passOrFail    = Finished . either fail pass
   fail msgs
-    | null msgs = return Pass
-    | otherwise = return $ Fail $ "An unexpected failure occurred"
-  pass _     = return Pass
-runTest opts test errorMsgs = runCYIO (buildCurry opts' test) >>= catchE
+    | null msgs = Pass
+    | otherwise = Fail $ "An unexpected failure occurred: " ++ showMessages msgs
+  pass _        = Pass
+runTest opts test errorMsgs = catchE <$> runSecure (buildCurry opts' test)
  where
-   opts'     = opts { CO.optWarnOpts = 
-                 CO.defaultWarnOpts { CO.wnWarnAsError = True } }
-   catchE    = (Finished <$>) . either pass fail
-   pass msgs = let errorStr = showMessages msgs
-               in if all (`isInfixOf` errorStr) errorMsgs
-                    then return Pass
-                    else return $ Fail $ "Expected warning/failure did not occur: " ++ errorStr
-   fail _    = return $ Fail "Expected warning/failure did not occur"
+  wOpts         = CO.optWarnOpts opts
+  wFlags        =   CO.WarnUnusedBindings
+                  : CO.WarnUnusedGlobalBindings
+                  : CO.wnWarnFlags wOpts
+  opts'         = opts { CO.optForce    = True
+                       , CO.optWarnOpts = wOpts { CO.wnWarnFlags = wFlags }
+                       }
+  catchE        = Finished . either pass fail
+  pass msgs = let errorStr     = showMessages msgs
+                  leftOverMsgs = filter (not . flip isInfixOf errorStr) errorMsgs
+               in if null leftOverMsgs
+                 then Pass
+                 else Fail $ "Expected warnings/failures did not occur: " ++ unwords leftOverMsgs
+  fail          = pass . snd
 
 showMessages :: [Message] -> String
 showMessages = show . ppMessages ppError . sort
@@ -131,6 +150,7 @@ passInfos = map mkPassTest
   , "ExplicitLayout"
   , "FCase"
   , "FP_Lifting"
+  , "FP_NonCyclic"
   , "FP_NonLinearity"
   , "FunctionalPatterns"
   , "HaskellRecords"
@@ -184,6 +204,7 @@ failInfos = map (uncurry mkFailTest)
   , ("ExportCheck/UndefinedElement", ["`foo' is not a constructor or label of type `Bool'"])
   , ("ExportCheck/UndefinedName", ["Undefined name `foo' in export list"])
   , ("ExportCheck/UndefinedType", ["Undefined type `Foo' in export list"])
+  , ("FP_Cyclic", ["Function `g' used in functional pattern depends on `f'  causing a cyclic dependency"])
   , ("FP_Restrictions",
       [ "Functional patterns are not supported inside a case expression"
       , "Functional patterns are not supported inside a case expression"
@@ -191,6 +212,7 @@ failInfos = map (uncurry mkFailTest)
       , "Functional patterns are not supported inside a do sequence"
       ]
     )
+  , ("FP_NonGlobal", ["Function `f1' in functional pattern is not global"])
   , ("ImportError",
       [ "Module Prelude does not export foo"
       , "Module Prelude does not export bar"
@@ -235,7 +257,7 @@ failInfos = map (uncurry mkFailTest)
 -- test code and the expected warning message(s) to the following list
 warnInfos :: [TestInfo]
 warnInfos = map (uncurry mkFailTest)
-  [ 
+  [
     ("AliasClash",
       [ "The module alias `AliasClash' overlaps with the current module name"
       , "Overlapping module aliases"
@@ -275,4 +297,10 @@ warnInfos = map (uncurry mkFailTest)
     )
   , ("ShadowingSymbols",
       [ "Unused declaration of variable `x'", "Shadowing symbol `x'"])
+  , ("TabCharacter",
+      [ "Tab character"])
+  , ("UnexportedFunction",
+      [ "Unused declaration of variable `q'"
+      , "Unused declaration of variable `g'" ]
+    )
   ]

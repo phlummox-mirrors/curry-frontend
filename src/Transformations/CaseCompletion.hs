@@ -3,7 +3,7 @@
     Description :  CaseCompletion
     Copyright   :  (c) 2005       , Martin Engelke
                        2011 - 2015, Björn Peemöller
-                       2015       , Jan Tikovsky
+                       2016       , Jan Tikovsky
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
@@ -34,6 +34,7 @@ module Transformations.CaseCompletion (completeCase) where
 #if __GLASGOW_HASKELL__ < 710
 import           Control.Applicative        ((<$>), (<*>))
 #endif
+import           Control.Monad              (replicateM)
 import qualified Control.Monad.State as S   (State, evalState, gets, modify)
 import           Data.List                  (find)
 import           Data.Maybe                 (fromMaybe, listToMaybe)
@@ -44,8 +45,6 @@ import qualified Curry.Syntax        as CS
 
 import Base.Expr
 import Base.Messages                        (internalError)
-import qualified Base.ScopeEnv       as SE
-  (ScopeEnv, new, beginScope, insert, exists)
 import Env.Interface                        (InterfaceEnv, lookupInterface)
 import IL
 
@@ -53,8 +52,7 @@ import IL
 -- The interface environment 'iEnv' is needed to compute these constructors.
 completeCase :: InterfaceEnv -> Module -> Module
 completeCase iEnv mdl@(Module mid is ds) = Module mid is ds'
- where ds'= S.evalState (mapM (withLocalEnv . ccDecl) ds)
-                        (CCState mdl iEnv (getModuleScope mdl))
+ where ds'= S.evalState (mapM ccDecl ds) (CCState mdl iEnv 0)
 
 -- -----------------------------------------------------------------------------
 -- Internally used state monad
@@ -63,7 +61,7 @@ completeCase iEnv mdl@(Module mid is ds) = Module mid is ds'
 data CCState = CCState
   { modul        :: Module
   , interfaceEnv :: InterfaceEnv
-  , scopeEnv     :: ScopeEnv
+  , nextId       :: Int
   }
 
 type CCM a = S.State CCState a
@@ -74,21 +72,12 @@ getModule = S.gets modul
 getInterfaceEnv :: CCM InterfaceEnv
 getInterfaceEnv = S.gets interfaceEnv
 
-modifyScopeEnv :: (ScopeEnv -> ScopeEnv) -> CCM ()
-modifyScopeEnv f = S.modify $ \ s -> s { scopeEnv = f $ scopeEnv s }
-
-getScopeEnv :: CCM ScopeEnv
-getScopeEnv = S.gets scopeEnv
-
-withLocalEnv :: CCM a -> CCM a
-withLocalEnv act = do
-  oldEnv <- getScopeEnv
-  res <- act
-  modifyScopeEnv $ const oldEnv
-  return res
-
-inNestedScope :: CCM a -> CCM a
-inNestedScope act = modifyScopeEnv SE.beginScope >> act
+-- Create a fresh identifier
+freshIdent :: CCM Ident
+freshIdent = do
+  nid <- S.gets nextId
+  S.modify $ \s -> s { nextId = succ nid }
+  return $ mkIdent $ "_#comp" ++ show nid
 
 -- -----------------------------------------------------------------------------
 -- The following functions traverse an IL term searching for case expressions
@@ -97,9 +86,7 @@ inNestedScope act = modifyScopeEnv SE.beginScope >> act
 ccDecl :: Decl -> CCM Decl
 ccDecl dd@(DataDecl        _ _ _) = return dd
 ccDecl nt@(NewtypeDecl     _ _ _) = return nt
-ccDecl (FunctionDecl qid vs ty e) = inNestedScope $ do
-  modifyScopeEnv (flip (foldr insertIdent) vs)
-  FunctionDecl qid vs ty <$> ccExpr e
+ccDecl (FunctionDecl qid vs ty e) = FunctionDecl qid vs ty <$> ccExpr e
 ccDecl ed@(ExternalDecl  _ _ _ _) = return ed
 
 ccExpr :: Expression -> CCM Expression
@@ -113,21 +100,13 @@ ccExpr (Case    r ea e bs) = do
   bs' <- mapM ccAlt bs
   ccCase r ea e' bs'
 ccExpr (Or          e1 e2) = Or <$> ccExpr e1 <*> ccExpr e2
-ccExpr (Exist         v e) = inNestedScope $ do
-  modifyScopeEnv $ insertIdent v
-  Exist v <$> ccExpr e
-ccExpr (Let           b e) = inNestedScope $ do
-  modifyScopeEnv $ insertBinding b
-  flip Let <$> ccExpr e <*> ccBinding b
-ccExpr (Letrec       bs e) = inNestedScope $ do
-  modifyScopeEnv $ flip (foldr insertBinding) bs
-  flip Letrec <$> ccExpr e <*> mapM ccBinding bs
+ccExpr (Exist         v e) = Exist v <$> ccExpr e
+ccExpr (Let           b e) = Let <$> ccBinding b <*> ccExpr e
+ccExpr (Letrec       bs e) = Letrec <$> mapM ccBinding bs <*> ccExpr e
 ccExpr (Typed        e ty) = flip Typed ty <$> ccExpr e
 
 ccAlt :: Alt -> CCM Alt
-ccAlt (Alt p e) = inNestedScope $ do
-  modifyScopeEnv $ insertConstrTerm p
-  Alt p <$> ccExpr e
+ccAlt (Alt p e) = Alt p <$> ccExpr e
 
 ccBinding :: Binding -> CCM Binding
 ccBinding (Binding v e) = Binding v <$> ccExpr e
@@ -180,7 +159,8 @@ completeConsAlts r ea ce alts = do
   -- complementary constructor patterns
   complPats <- mapM genPat $ getComplConstrs mdl menv
                [ c | (Alt (ConstructorPattern c _) _) <- consAlts ]
-  [v, w] <- newIdentList 2 "x"
+  v <- freshIdent
+  w <- freshIdent
   return $ case (complPats, defaultAlt v) of
             (_:_, Just e') -> bindDefVar v ce w e' complPats
             _              -> Case r ea ce consAlts
@@ -189,7 +169,7 @@ completeConsAlts r ea ce alts = do
   consAlts = [ a | a@(Alt (ConstructorPattern _ _) _) <- alts ]
 
   -- generate a new constructor pattern
-  genPat (qid, arity) = ConstructorPattern qid <$> newIdentList arity "x"
+  genPat (qid, arity) = ConstructorPattern qid <$> replicateM arity freshIdent
 
   -- default alternative, if there is one
   defaultAlt v = listToMaybe [ replaceVar x (Variable v) e
@@ -230,7 +210,7 @@ completeConsAlts r ea ce alts = do
 -- If the default expression is missing, @failed@ is used instead.
 completeLitAlts :: SrcRef -> Eval -> Expression -> [Alt] -> CCM Expression
 completeLitAlts r ea ce alts = do
-  [x] <- newIdentList 1 "x"
+  x <- freshIdent
   return $ mkBinding x ce $ nestedCases x alts
   where
   nestedCases _ []              = failedExpr
@@ -400,65 +380,3 @@ getCCFromIDecls mid cs (CS.Interface _ _ ds) = complementary cs cinfos
 -- Compute complementary constructors
 complementary :: [QualIdent] -> [(QualIdent, Int)] -> [(QualIdent, Int)]
 complementary known others = filter ((`notElem` known) . fst) others
-
--- ---------------------------------------------------------------------------
--- ScopeEnv stuff
--- ---------------------------------------------------------------------------
-
--- Type for representing an environment containing identifiers in several
--- scope levels
-type ScopeEnv = SE.ScopeEnv (Either String Integer) ()
-
-insertIdent :: Ident -> ScopeEnv -> ScopeEnv
-insertIdent i = SE.insert (Left  (idName   i)) ()
-              . SE.insert (Right (idUnique i)) ()
-
-newIdentList :: Int -> String -> CCM [Ident]
-newIdentList num str = genIdentList num (0 :: Integer)
-  where
-  -- Generates a list of new identifiers where each identifier has
-  -- the prefix 'name' followed by an index (i.e., "var3" if 'name' was "var").
-  -- All returned identifiers are unique within the current scope.
-  genIdentList s i
-    | s == 0    = return []
-    | otherwise = do
-      env <- getScopeEnv
-      case genIdent (str ++ show i) env of
-        Nothing    -> genIdentList s (i + 1)
-        Just ident -> do
-          modifyScopeEnv $ insertIdent ident
-          idents <- genIdentList (s - 1) (i + 1)
-          return (ident : idents)
-
-  -- Generates a new identifier for the specified name. The new identifier is
-  -- unique within the current scope. If no identifier can be generated for
-  -- 'name', then 'Nothing' will be returned
-  genIdent n env | SE.exists (Left  n) env = Nothing
-                 | otherwise               = Just (try 0)
-    where try i  | SE.exists (Right i) env = try (i + 1)
-                 | otherwise               = renameIdent (mkIdent n) i
-
-getModuleScope :: Module -> ScopeEnv
-getModuleScope (Module _ _ ds) = foldr insertDecl SE.new ds
-
-insertDecl :: Decl -> ScopeEnv -> ScopeEnv
-insertDecl (DataDecl      qid _ cs) = flip (foldr insertConstrDecl) cs
-                                    . insertQIdent qid
-insertDecl (NewtypeDecl    qid _ c) = insertConstrDecl c
-                                    . insertQIdent qid
-insertDecl (FunctionDecl qid _ _ _) = insertQIdent qid
-insertDecl (ExternalDecl qid _ _ _) = insertQIdent qid
-
-insertConstrDecl :: ConstrDecl a -> ScopeEnv -> ScopeEnv
-insertConstrDecl (ConstrDecl qid _) = insertQIdent qid
-
-insertConstrTerm :: ConstrTerm -> ScopeEnv -> ScopeEnv
-insertConstrTerm (LiteralPattern        _) = id
-insertConstrTerm (ConstructorPattern _ vs) = flip (foldr insertIdent) vs
-insertConstrTerm (VariablePattern       v) = insertIdent v
-
-insertBinding :: Binding -> ScopeEnv -> ScopeEnv
-insertBinding (Binding v _) = insertIdent v
-
-insertQIdent :: QualIdent -> ScopeEnv -> ScopeEnv
-insertQIdent q = insertIdent (unqualify q)

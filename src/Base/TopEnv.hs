@@ -43,7 +43,7 @@ module Base.TopEnv
   , emptyTopEnv, predefTopEnv, importTopEnv, qualImportTopEnv
   , bindTopEnv, qualBindTopEnv, rebindTopEnv
   , qualRebindTopEnv, unbindTopEnv, qualUnbindTopEnv
-  , lookupTopEnv, qualLookupTopEnv
+  , lookupTopEnv, qualLookupTopEnv, qualElemTopEnv
   , allImports, moduleImports, localBindings, allLocalBindings, allBindings
   , allEntities
   , getOrigName, reverseLookupByOrigName
@@ -81,7 +81,7 @@ emptyTopEnv :: TopEnv a
 emptyTopEnv = TopEnv Map.empty
 
 -- |Insert an 'Entity' into a 'TopEnv' as a predefined 'Entity'
-predefTopEnv :: Entity a => QualIdent -> a -> TopEnv a -> TopEnv a
+predefTopEnv :: QualIdent -> a -> TopEnv a -> TopEnv a
 predefTopEnv k v (TopEnv env) = case Map.lookup k env of
   Just  _ -> internalError $ "TopEnv.predefTopEnv " ++ show k
   Nothing -> TopEnv $ Map.insert k [(Import [], v)] env
@@ -151,6 +151,9 @@ lookupTopEnv = qualLookupTopEnv . qualify
 
 qualLookupTopEnv :: QualIdent -> TopEnv a -> [a]
 qualLookupTopEnv x (TopEnv env) = map snd (entities x env)
+
+qualElemTopEnv :: QualIdent -> TopEnv a -> Bool
+qualElemTopEnv x env = not (null (qualLookupTopEnv x env))
 
 allImports :: TopEnv a -> [(QualIdent, a)]
 allImports (TopEnv env) =

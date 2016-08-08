@@ -83,7 +83,7 @@ import Curry.Syntax
 
 import Base.Expr
 import Base.CurryTypes
-import Base.Messages      (internalError)
+import Base.Messages (internalError)
 import Base.TypeExpansion
 import Base.Types
 import Base.TypeSubst
@@ -91,7 +91,7 @@ import Base.Typing
 import Base.Utils (fst3)
 
 import Env.TypeConstructor (TCEnv, TypeInfo (..), qualLookupTypeInfo)
-import Env.Value ( ValueEnv, ValueInfo (..), qualLookupValue )
+import Env.Value (ValueEnv, ValueInfo (..), qualLookupValue)
 
 -- The desugaring phase keeps only the type, function, and value
 -- declarations of the module, i.e., type signatures are discarded.
@@ -315,8 +315,11 @@ constrain cs e = if null cs then e else foldr1 (&) cs &> e
 
 dsRhs :: Position -> (Expression PredType -> Expression PredType)
       -> Rhs PredType -> DsM (Rhs PredType)
-dsRhs p f rhs =
-  expandRhs (prelFailed (typeOf rhs)) f rhs >>= dsExpr p >>= return . simpleRhs p
+dsRhs p f rhs =     expandRhs (prelFailed (typeOf rhs)) f rhs
+                >>= dsExpr pRhs
+                >>= return . simpleRhs pRhs
+  where
+  pRhs = fromMaybe p (getRhsPosition rhs)
 
 expandRhs :: Expression PredType -> (Expression PredType -> Expression PredType)
           -> Rhs PredType -> DsM (Expression PredType)
@@ -340,6 +343,10 @@ boolGuards (CondExpr _ g _ : es) = not (null es) || typeOf g == boolType
 addDecls :: [Decl PredType] -> Rhs PredType -> Rhs PredType
 addDecls ds (SimpleRhs p e ds') = SimpleRhs p e (ds ++ ds')
 addDecls ds (GuardedRhs es ds') = GuardedRhs es (ds ++ ds')
+
+getRhsPosition :: Rhs a -> Maybe Position
+getRhsPosition (SimpleRhs p _ _) = Just p
+getRhsPosition (GuardedRhs  _ _) = Nothing
 
 -- -----------------------------------------------------------------------------
 -- Desugaring of non-linear patterns

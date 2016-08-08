@@ -3,7 +3,7 @@
     Description :  Compiler options
     Copyright   :  (c) 2005        Martin Engelke
                        2007        Sebastian Fischer
-                       2011 - 2014 Björn Peemöller
+                       2011 - 2016 Björn Peemöller
                        2016        Finn Teegen
     License     :  OtherLicense
 
@@ -126,7 +126,6 @@ data CymakeMode
   = ModeHelp           -- ^ Show help information and exit
   | ModeVersion        -- ^ Show version and exit
   | ModeNumericVersion -- ^ Show numeric version, suitable for later processing
-  | ModeHtml           -- ^ Create HTML documentation
   | ModeMake           -- ^ Compile with dependencies
   deriving (Eq, Show)
 
@@ -144,48 +143,53 @@ verbosities = [ ( VerbQuiet , "0", "quiet" )
 
 -- |Type of the target file
 data TargetType
-  = Parsed                -- ^ Parsed source code
+  = Tokens                -- ^ Source code tokens
+  | Parsed                -- ^ Parsed source code
   | FlatCurry             -- ^ FlatCurry
   | ExtendedFlatCurry     -- ^ Extended FlatCurry
   | AbstractCurry         -- ^ AbstractCurry
   | UntypedAbstractCurry  -- ^ Untyped AbstractCurry
+  | Html                  -- ^ HTML documentation
     deriving (Eq, Show)
 
 -- |Warnings flags
 data WarnFlag
-  = WarnMultipleImports    -- ^ Warn for multiple imports
-  | WarnDisjoinedRules     -- ^ Warn for disjoined function rules
-  | WarnUnusedBindings     -- ^ Warn for unused bindings
-  | WarnNameShadowing      -- ^ Warn for name shadowing
-  | WarnOverlapping        -- ^ Warn for overlapping rules/alternatives
-  | WarnIncompletePatterns -- ^ Warn for incomplete pattern matching
-  | WarnMissingSignatures  -- ^ Warn for missing type signatures
+  = WarnMultipleImports      -- ^ Warn for multiple imports
+  | WarnDisjoinedRules       -- ^ Warn for disjoined function rules
+  | WarnUnusedGlobalBindings -- ^ Warn for unused global bindings
+  | WarnUnusedBindings       -- ^ Warn for unused local bindings
+  | WarnNameShadowing        -- ^ Warn for name shadowing
+  | WarnOverlapping          -- ^ Warn for overlapping rules/alternatives
+  | WarnIncompletePatterns   -- ^ Warn for incomplete pattern matching
+  | WarnMissingSignatures    -- ^ Warn for missing type signatures
     deriving (Eq, Bounded, Enum, Show)
 
 -- |Warning flags enabled by default
 stdWarnFlags :: [WarnFlag]
 stdWarnFlags =
-  [ WarnMultipleImports  , WarnDisjoinedRules, WarnUnusedBindings
-  , WarnNameShadowing    , WarnOverlapping   , WarnIncompletePatterns
-  , WarnMissingSignatures
+  [ WarnMultipleImports   , WarnDisjoinedRules   --, WarnUnusedGlobalBindings
+  , WarnUnusedBindings    , WarnNameShadowing    , WarnOverlapping
+  , WarnIncompletePatterns, WarnMissingSignatures
   ]
 
 -- |Description and flag of warnings flags
 warnFlags :: [(WarnFlag, String, String)]
 warnFlags =
-  [ ( WarnMultipleImports   , "multiple-imports"
+  [ ( WarnMultipleImports     , "multiple-imports"
     , "multiple imports"           )
-  , ( WarnDisjoinedRules    , "disjoined-rules"
+  , ( WarnDisjoinedRules      , "disjoined-rules"
     , "disjoined function rules"   )
-  , ( WarnUnusedBindings    , "unused-bindings"
+  , ( WarnUnusedGlobalBindings, "unused-global-bindings"
     , "unused bindings"            )
-  , ( WarnNameShadowing     , "name-shadowing"
+  , ( WarnUnusedBindings      , "unused-bindings"
+    , "unused bindings"            )
+  , ( WarnNameShadowing       , "name-shadowing"
     , "name shadowing"             )
-  , ( WarnOverlapping       , "overlapping"
+  , ( WarnOverlapping         , "overlapping"
     , "overlapping function rules" )
-  , ( WarnIncompletePatterns, "incomplete-patterns"
+  , ( WarnIncompletePatterns  , "incomplete-patterns"
     , "incomplete pattern matching")
-  , ( WarnMissingSignatures , "missing-signatures"
+  , ( WarnMissingSignatures   , "missing-signatures"
     , "missing type signatures"    )
   ]
 
@@ -361,29 +365,20 @@ options =
         addFlag WarnOverlapping (wnWarnFlags opts) }))
       "do not print warnings for overlapping rules"
   -- target types
-  , Option ""   ["html"]
-      (NoArg (onOpts $ \ opts -> opts { optMode = ModeHtml }))
-      "generate html code and exit"
-  , Option ""   ["parse-only"]
-      (NoArg (onOpts $ \ opts -> opts { optTargetTypes =
-        nub $ Parsed : optTargetTypes opts }))
+  , targetOption Tokens               "tokens"
+      "generate token stream"
+  , targetOption Parsed               "parse-only"
       "generate source representation"
-  , Option ""   ["flat"]
-      (NoArg (onOpts $ \ opts -> opts { optTargetTypes =
-        nub $ FlatCurry : optTargetTypes opts }))
+  , targetOption FlatCurry            "flat"
       "generate FlatCurry code"
-  , Option ""   ["extended-flat"]
-      (NoArg (onOpts $ \ opts -> opts { optTargetTypes =
-        nub $ ExtendedFlatCurry : optTargetTypes opts }))
+  , targetOption ExtendedFlatCurry    "extended-flat"
       "generate FlatCurry code with source references"
-  , Option ""   ["acy"]
-      (NoArg (onOpts $ \ opts -> opts { optTargetTypes =
-        nub $ AbstractCurry : optTargetTypes opts }))
-      "generate (type infered) AbstractCurry code"
-  , Option ""   ["uacy"]
-      (NoArg (onOpts $ \ opts -> opts { optTargetTypes =
-        nub $ UntypedAbstractCurry : optTargetTypes opts }))
-      "generate untyped AbstractCurry code"
+  , targetOption AbstractCurry        "acy"
+      "generate typed AbstractCurry"
+  , targetOption UntypedAbstractCurry "uacy"
+      "generate untyped AbstractCurry"
+  , targetOption Html                 "html"
+      "generate html documentation"
   , Option "F"  []
       (NoArg (onPrepOpts $ \ opts -> opts { ppPreprocess = True }))
       "use custom preprocessor"
@@ -404,6 +399,11 @@ options =
   , mkOptDescr onWarnOpts  "W" [] "opt" "warning option"     warnDescriptions
   , mkOptDescr onDebugOpts "d" [] "opt" "debug option"       debugDescriptions
   ]
+
+targetOption :: TargetType -> String -> String -> OptDescr (OptErr -> OptErr)
+targetOption ty flag desc
+  = Option "" [flag] (NoArg (onOpts $ \ opts -> opts { optTargetTypes =
+      nub $ ty : optTargetTypes opts })) desc
 
 verbDescriptions :: OptErrTable Options
 verbDescriptions = map toDescr verbosities
@@ -457,6 +457,7 @@ addFlag o opts = nub $ o : opts
 removeFlag :: Eq a => a -> [a] -> [a]
 removeFlag o opts = filter (/= o) opts
 
+-- |Update the 'Options' record by the parsed and processed arguments
 updateOpts :: Options -> [String] -> (Options, [String], [String])
 updateOpts opts args = (opts', files, errs ++ errs2 ++ checkOpts opts files)
   where
@@ -470,9 +471,8 @@ parseOpts = updateOpts defaultOptions
 -- |Check options and files and return a list of error messages
 checkOpts :: Options -> [String] -> [String]
 checkOpts opts _
-  | isJust (optHtmlDir opts) && (optMode opts) /= ModeHtml
-  = ["The option '--htmldir' is only valid for HTML generation mode"]
-  | otherwise = []
+  = [ "The option '--htmldir' is only valid for HTML generation mode"
+    | isJust (optHtmlDir opts) && Html `notElem` optTargetTypes opts ]
 
 -- |Print the usage information of the command line tool.
 usage :: String -> String

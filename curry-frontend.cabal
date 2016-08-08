@@ -59,7 +59,6 @@ Library
     , Base.Messages
     , Base.NestEnv
     , Base.SCC
-    , Base.ScopeEnv
     , Base.Subst
     , Base.TopEnv
     , Base.Types
@@ -99,7 +98,7 @@ Library
     , Imports
     , Interfaces
     , Modules
-    , ModuleSummary
+    , TokenStream
     , Transformations
     , Transformations.CaseCompletion
     , Transformations.CurryToIL

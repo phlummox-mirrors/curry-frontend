@@ -15,7 +15,8 @@ module CompilerEnv where
 
 import qualified Data.Map as Map (Map, keys, toList)
 
-import Curry.Base.Ident  (ModuleIdent)
+import Curry.Base.Ident    (ModuleIdent, moduleName)
+import Curry.Base.Position (Position)
 import Curry.Base.Pretty
 import Curry.Syntax
 
@@ -35,22 +36,26 @@ type CompEnv a = (CompilerEnv, a)
 --  compiled. The information is updated during the different stages of
 --  compilation.
 data CompilerEnv = CompilerEnv
-  { moduleIdent  :: ModuleIdent      -- ^ identifier of the module
-  , extensions   :: [KnownExtension] -- ^ enabled language extensions
-  , interfaceEnv :: InterfaceEnv     -- ^ declarations of imported interfaces
-  , aliasEnv     :: AliasEnv         -- ^ aliases for imported modules
-  , tyConsEnv    :: TCEnv            -- ^ type constructors and type classes
-  , classEnv     :: ClassEnv         -- ^ all type classes with their super classes
-  , instEnv      :: InstEnv          -- ^ instances
-  , valueEnv     :: ValueEnv         -- ^ functions and data constructors
-  , opPrecEnv    :: OpPrecEnv        -- ^ operator precedences
+  { moduleIdent  :: ModuleIdent         -- ^ identifier of the module
+  , filePath     :: FilePath            -- ^ 'FilePath' of compilation target
+  , extensions   :: [KnownExtension]    -- ^ enabled language extensions
+  , tokens       :: [(Position, Token)] -- ^ token list of module
+  , interfaceEnv :: InterfaceEnv        -- ^ declarations of imported interfaces
+  , aliasEnv     :: AliasEnv            -- ^ aliases for imported modules
+  , tyConsEnv    :: TCEnv               -- ^ type constructors and type classes
+  , classEnv     :: ClassEnv            -- ^ all type classes with their super classes
+  , instEnv      :: InstEnv             -- ^ instances
+  , valueEnv     :: ValueEnv            -- ^ functions and data constructors
+  , opPrecEnv    :: OpPrecEnv           -- ^ operator precedences
   }
 
 -- |Initial 'CompilerEnv'
 initCompilerEnv :: ModuleIdent -> CompilerEnv
 initCompilerEnv mid = CompilerEnv
   { moduleIdent  = mid
+  , filePath     = []
   , extensions   = []
+  , tokens       = []
   , interfaceEnv = initInterfaceEnv
   , aliasEnv     = initAliasEnv
   , tyConsEnv    = initTCEnv
@@ -63,9 +68,11 @@ initCompilerEnv mid = CompilerEnv
 -- |Show the 'CompilerEnv'
 showCompilerEnv :: CompilerEnv -> String
 showCompilerEnv env = show $ vcat
-  [ header "Module Identifier  " $ textS $ moduleIdent env
+  [ header "Module Identifier  " $ text  $ moduleName $ moduleIdent env
+  , header "FilePath"            $ text  $ filePath    env
   , header "Language Extensions" $ text  $ show $ extensions  env
-  , header "Interfaces         " $ hcat  $ punctuate comma $ map textS
+  , header "Interfaces         " $ hcat  $ punctuate comma
+                                         $ map (text . moduleName)
                                          $ Map.keys $ interfaceEnv env
   , header "Module Aliases     " $ ppMap $ aliasEnv env
   , header "Precedences        " $ ppAL $ allLocalBindings $ opPrecEnv env
@@ -76,7 +83,6 @@ showCompilerEnv env = show $ vcat
   ]
   where
   header hdr content = hang (text hdr <+> colon) 4 content
-  textS = text . show
 
 -- |Pretty print a 'Map'
 ppMap :: (Show a, Show b) => Map.Map a b -> Doc

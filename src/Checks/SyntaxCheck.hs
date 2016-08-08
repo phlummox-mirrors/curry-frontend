@@ -29,12 +29,17 @@ module Checks.SyntaxCheck (syntaxCheck) where
 #if __GLASGOW_HASKELL__ < 710
 import           Control.Applicative        ((<$>), (<*>))
 #endif
+-- <<<<<<< HEAD
 import Control.Monad                      (unless, when)
 import qualified Control.Monad.State as S ( State, runState, gets, modify
                                           , withState )
-import Data.List                          (insertBy, intersect, nub)
-import Data.Maybe                         (isJust, isNothing)
-import qualified Data.Set as Set          (empty, insert, member)
+import           Data.Function            (on)
+import           Data.List                (insertBy, intersect, nub, nubBy)
+import qualified Data.Map  as Map         ( Map, empty, findWithDefault
+                                          , fromList, insertWith, keys )
+import           Data.Maybe               (isJust, isNothing)
+import qualified Data.Set as Set          ( Set, empty, insert, member
+                                          , singleton, toList, union)
 
 import Curry.Base.Ident
 import Curry.Base.Position
@@ -45,6 +50,7 @@ import Curry.Syntax.Pretty (ppPattern)
 import Base.Expr
 import Base.Messages (Message, posMessage, internalError)
 import Base.NestEnv
+import Base.SCC      (scc)
 import Base.Utils    ((++!), findDouble, findMultiples)
 
 import Env.TypeConstructor (TCEnv, clsMethods)
@@ -96,13 +102,15 @@ data SCState = SCState
   , renameEnv        :: RenameEnv        -- ^ Information store
   , scopeId          :: Integer          -- ^ Identifier for the current scope
   , nextId           :: Integer          -- ^ Next fresh identifier
+  , funcDeps         :: FuncDeps         -- ^ Stores data about functions dependencies
   , typeClassesCheck :: Bool
   , errors           :: [Message]        -- ^ Syntactic errors in the module
   }
 
 -- |Initial syntax check state
 initState :: [KnownExtension] -> ModuleIdent -> TCEnv -> RenameEnv -> SCState
-initState exts m tcEnv rEnv = SCState exts m tcEnv rEnv globalScopeId 1 False []
+initState exts m tcEnv rEnv =
+  SCState exts m tcEnv rEnv globalScopeId 1 noFuncDeps False []
 
 -- |Identifier for global (top-level) declarations
 globalScopeId :: Integer
@@ -181,6 +189,10 @@ withLocalEnv act = do
 inNestedScope :: SCM a -> SCM a
 inNestedScope act = withLocalEnv (incNesting >> act)
 
+-- |Modify the `FuncDeps'
+modifyFuncDeps :: (FuncDeps -> FuncDeps) -> SCM ()
+modifyFuncDeps f = S.modify $ \ s -> s { funcDeps = f $ funcDeps s }
+
 -- |Report a syntax error
 report :: Message -> SCM ()
 report msg = S.modify $ \s -> s { errors = msg : errors s }
@@ -188,6 +200,65 @@ report msg = S.modify $ \s -> s { errors = msg : errors s }
 -- |Everything is checked
 ok :: SCM ()
 ok = return ()
+
+-- FuncDeps contains information to deal with dependencies between functions.
+-- This is used for checking whether functional patterns are cyclic.
+-- curGlobalFunc contains the identifier of the global function that is
+-- currently being checked, if any.
+-- data X = X
+-- f = let g = lookup 42 in g [1,2,3]
+-- While `X' is being checked `curGlobalFunc' should be `Nothing',
+-- while `lookup' is being checked is should be `f's identifier.
+-- globalDeps collects all dependencies (other functions) of global functions
+-- funcPats collects all functional patterns and the global function they're
+-- used in
+data FuncDeps = FuncDeps
+  { curGlobalFunc :: Maybe QualIdent
+  , globalDeps    :: GlobalDeps
+  , funcPats      :: [(QualIdent, QualIdent)]
+  }
+type GlobalDeps = Map.Map QualIdent (Set.Set QualIdent)
+
+-- |Initial state for FuncDeps
+noFuncDeps :: FuncDeps
+noFuncDeps = FuncDeps Nothing Map.empty []
+
+-- |Perform an action inside a function, settìng `curGlobalFunc' to that function
+inFunc :: Ident -> SCM a -> SCM a
+inFunc i scm = do
+  m      <- getModuleIdent
+  global <- isNothing <$> S.gets (curGlobalFunc . funcDeps)
+  when global $ modifyFuncDeps $ \ fd -> fd { curGlobalFunc = Just (qualifyWith m i) }
+  res    <- scm
+  when global $ modifyFuncDeps $ \ fd -> fd { curGlobalFunc = Nothing }
+  return res
+
+-- |Add a dependency to `curGlobalFunction'
+addGlobalDep :: QualIdent -> SCM ()
+addGlobalDep dep = do
+  maybeF <- S.gets (curGlobalFunc . funcDeps)
+  case maybeF of
+    Nothing -> internalError "SyntaxCheck.addFuncPat: no global function set"
+    Just  f -> modifyFuncDeps $ \ fd -> fd
+                { globalDeps = Map.insertWith (Set.union) f
+                              (Set.singleton dep) (globalDeps fd) }
+
+-- |Add a functional pattern to `curGlobalFunction'
+addFuncPat :: QualIdent -> SCM ()
+addFuncPat fp = do
+  maybeF <- S.gets (curGlobalFunc . funcDeps)
+  case maybeF of
+    Nothing -> internalError "SyntaxCheck.addFuncPat: no global function set"
+    Just  f -> modifyFuncDeps $ \ fd -> fd { funcPats = (fp, f) : funcPats fd }
+
+-- |Return dependencies of global functions
+getGlobalDeps :: SCM GlobalDeps
+getGlobalDeps = globalDeps <$> S.gets funcDeps
+
+-- |Return used functional patterns
+getFuncPats :: SCM [(QualIdent, QualIdent)]
+getFuncPats = funcPats <$> S.gets funcDeps
+
 
 -- A nested environment is used for recording information about the data
 -- constructors and variables in the module. For every data constructor
@@ -376,11 +447,29 @@ checkModule (Module ps m es is ds) = do
   cds' <- mapM (performTypeClassesCheck . checkClassDecl) cds
   ids' <- mapM (performTypeClassesCheck . checkInstanceDecl) ids
   let ds'' = updateClassAndInstanceDecls cds' ids' ds'
+  checkFuncPatDeps
   exts <- getExtensions
   return (Module ps m es is ds'', exts)
   where tds = filter isTypeDecl ds
         cds = filter isClassDecl ds
         ids = filter isInstanceDecl ds
+
+-- |Checks whether a function in a functional pattern contains cycles
+-- |(depends on its own global function)
+checkFuncPatDeps :: SCM ()
+checkFuncPatDeps = do
+  fps  <- getFuncPats
+  deps <- getGlobalDeps
+  let levels   = scc (:[])
+                     (\k -> Set.toList (Map.findWithDefault (Set.empty) k deps))
+                     (Map.keys deps)
+      levelMap = Map.fromList [ (f, l) | (fs, l) <- zip levels [1 ..], f <- fs ]
+      level f  = Map.findWithDefault (0 :: Int) f levelMap
+  mapM_ (checkFuncPatDep level) fps
+
+checkFuncPatDep :: Ord a => (QualIdent -> a) -> (QualIdent, QualIdent) -> SCM ()
+checkFuncPatDep level (fp, f) = unless (level fp < level f) $
+  report $ errFuncPatCyclic fp f
 
 checkTopDecls :: [Decl ()] -> SCM [Decl ()]
 checkTopDecls ds = do
@@ -445,8 +534,8 @@ checkDeclLhs (InfixDecl    p fix' pr ops) =
   InfixDecl p fix' <$> checkPrecedence p pr <*> mapM renameVar ops
 checkDeclLhs (TypeSig            p vs ty) =
   (\vs' -> TypeSig p vs' ty) <$> mapM (checkVar "type signature") vs
-checkDeclLhs (FunctionDecl     p _ _ eqs) =
-  checkEquationsLhs p eqs
+checkDeclLhs (FunctionDecl     p _ f eqs) =
+  inFunc f $ checkEquationsLhs p eqs
 checkDeclLhs (ForeignDecl p cc ie a f ty) =
   (\f' -> ForeignDecl p cc ie a f' ty) <$> checkVar "foreign declaration" f
 checkDeclLhs (ExternalDecl          p vs) =
@@ -574,7 +663,7 @@ checkDeclRhs _   (DataDecl   p tc tvs cs) =
 checkDeclRhs bvs (TypeSig        p vs ty) =
   (\vs' -> TypeSig p vs' ty) <$> mapM (checkLocalVar bvs) vs
 checkDeclRhs _   (FunctionDecl a p f eqs) =
-  FunctionDecl a p f <$> mapM checkEquation eqs
+  FunctionDecl a p f <$> inFunc f (mapM checkEquation eqs)
 checkDeclRhs _   (PatternDecl    p t rhs) =
   PatternDecl p t <$> checkRhs rhs
 checkDeclRhs _   d                        = return d
@@ -707,6 +796,7 @@ checkConstructorPattern p c ts = do
     | otherwise = do
       let n = arity r
       checkFuncPatsExtension p
+      checkFuncPatCall r c
       ts' <- mapM (checkPattern p) ts
       mapM_ (checkFPTerm p) ts'
       return $ if n' > n
@@ -722,10 +812,10 @@ checkInfixPattern p t1 op t2 = do
   env <- getRenameEnv
   case qualLookupVar op env of
     [Constr _ n] -> infixPattern op n
-    [_]          -> funcPattern  op
+    [r]          -> funcPattern r op
     rs           -> case qualLookupVar (qualQualify m op) env of
       [Constr _ n] -> infixPattern (qualQualify m op) n
-      [_]          -> funcPattern  (qualQualify m op)
+      [r]          -> funcPattern r (qualQualify m op)
       rs'          -> do if (null rs && null rs')
                             then report $ errUndefinedData op
                             else report $ errAmbiguousData rs op
@@ -735,8 +825,9 @@ checkInfixPattern p t1 op t2 = do
   infixPattern qop n = do
     when (n /= 2) $ report $ errWrongArity op n 2
     flip (InfixPattern ()) qop <$> checkPattern p t1 <*> checkPattern p t2
-  funcPattern qop = do
+  funcPattern r qop = do
     checkFuncPatsExtension p
+    checkFuncPatCall r qop
     ts'@[t1',t2'] <- mapM (checkPattern p) [t1,t2]
     mapM_ (checkFPTerm p) ts'
     return $ InfixFuncPattern () t1' qop t2'
@@ -760,6 +851,13 @@ checkRecordPattern p c fs = do
     fs' <- mapM (checkField (checkPattern p)) fields
     checkFieldLabels "pattern" p mcon fs'
     return $ RecordPattern () c fs'
+
+checkFuncPatCall :: RenameInfo -> QualIdent -> SCM ()
+checkFuncPatCall r f = case r of
+  GlobalVar dep _ -> do
+    addGlobalDep dep
+    addFuncPat (dep @> f)
+  _           -> report $ errFuncPatNotGlobal f
 
 -- Note: process decls first
 checkRhs :: Rhs () -> SCM (Rhs ())
@@ -802,7 +900,7 @@ checkExpr p (LeftSection        e op) =
 checkExpr p (RightSection       op e) =
   RightSection <$> checkOp op <*> checkExpr p e
 checkExpr p (Lambda           r ts e) = inNestedScope $
-  Lambda r <$> mapM (bindPattern "lambda expression" p) ts <*> checkExpr p e
+  checkLambda p r ts e
 checkExpr p (Let                ds e) = inNestedScope $
   Let <$> checkDeclGroup bindVarDecl ds <*> checkExpr p e
 checkExpr p (Do                sts e) = withLocalEnv $
@@ -811,6 +909,20 @@ checkExpr p (IfThenElse r e1 e2 e3) =
   IfThenElse r <$> checkExpr p e1 <*> checkExpr p e2 <*> checkExpr p e3
 checkExpr p (Case r ct e alts) =
   Case r ct <$> checkExpr p e <*> mapM checkAlt alts
+
+checkLambda :: Position -> SrcRef -> [Pattern ()] -> Expression ()
+            -> SCM (Expression ())
+checkLambda p r ts e = case findMultiples (bvNoAnon ts) of
+  []      -> do
+    ts' <- mapM (bindPattern "lambda expression" p) ts
+    Lambda r ts' <$> checkExpr p e
+  errVars -> do
+    mapM_ (report . errDuplicateVariables) errVars
+    let nubTs = nubBy (\t1 t2 -> (not . null) (on intersect bvNoAnon t1 t2)) ts
+    mapM_ (bindPattern "lambda expression" p) nubTs
+    Lambda r ts <$> checkExpr p e
+  where
+    bvNoAnon t = filter (not . isAnonId) $ bv t
 
 checkVariable :: a -> QualIdent -> SCM (Expression a)
 checkVariable a v
@@ -826,8 +938,8 @@ checkVariable a v
       []              -> do report $ errUndefinedVariable v
                             return $ Variable a v
       [Constr    _ _]   -> return $ Constructor a v
-      [GlobalVar _ _]   -> return $ Variable a v
-      [LocalVar v' _]   -> return $ Variable a $ qualify v'
+      [GlobalVar f _]   -> addGlobalDep f >> return (Variable a v)
+      [LocalVar v' _]   -> return $ Variable a $ qualify v' @> v
       [RecordLabel _ _] -> return $ Variable a v
       rs -> do
         m <- getModuleIdent
@@ -835,8 +947,8 @@ checkVariable a v
           []              -> do report $ errAmbiguousIdent rs v
                                 return $ Variable a v
           [Constr    _ _]   -> return $ Constructor a v
-          [GlobalVar _ _]   -> return $ Variable a v
-          [LocalVar v' _]   -> return $ Variable a $ qualify v'
+          [GlobalVar f _]   -> addGlobalDep f >> return (Variable a v)
+          [LocalVar v' _]   -> return $ Variable a $ qualify v' @> v
           [RecordLabel _ _] -> return $ Variable a v
           rs'               -> do report $ errAmbiguousIdent rs' v
                                   return $ Variable a v
@@ -909,14 +1021,14 @@ checkOp op = do
   case qualLookupVar v env of
     []              -> report (errUndefinedVariable v) >> return op
     [Constr _ _]    -> return $ InfixConstr a v
-    [GlobalVar _ _] -> return $ InfixOp a v
+    [GlobalVar f _] -> addGlobalDep f >> return (InfixOp a v)
     [LocalVar v' _] -> return $ InfixOp a $ qualify v'
     rs              -> do
       m <- getModuleIdent
       case qualLookupVar (qualQualify m v) env of
         []              -> report (errAmbiguousIdent rs v) >> return op
         [Constr _ _]    -> return $ InfixConstr a v
-        [GlobalVar _ _] -> return $ InfixOp a v
+        [GlobalVar f _] -> addGlobalDep f >> return (InfixOp a v)
         [LocalVar v' _] -> return $ InfixOp a $ qualify v'
         rs'             -> report (errAmbiguousIdent rs' v) >> return op
   where v = opName op
@@ -926,10 +1038,10 @@ checkAlt :: Alt () -> SCM (Alt ())
 checkAlt (Alt p t rhs) = inNestedScope $
   Alt p <$> bindPattern "case expression" p t <*> checkRhs rhs
 
-addBoundVariables :: QuantExpr t => Bool -> t -> SCM t
+addBoundVariables :: (QuantExpr t) => Bool -> t -> SCM t
 addBoundVariables checkDuplicates ts = do
-  when checkDuplicates $ maybe ok (report . errDuplicateVariable)
-                       $ findDouble bvs
+  when checkDuplicates $ mapM_ (report . errDuplicateVariables)
+                               (findMultiples bvs)
   modifyRenameEnv $ \ env -> foldr bindVar env (nub bvs)
   return ts
   where bvs = bv ts
@@ -1148,6 +1260,15 @@ errUnsupportedFuncPattern s p pat = posMessage p $
   text "Functional patterns are not supported inside a" <+> text s <> dot
   $+$ ppPattern 0 pat
 
+errFuncPatNotGlobal :: QualIdent -> Message
+errFuncPatNotGlobal f = posMessage f $ hsep $ map text
+  ["Function", escQualName f, "in functional pattern is not global"]
+
+errFuncPatCyclic :: QualIdent -> QualIdent -> Message
+errFuncPatCyclic fp f = posMessage fp $ hsep $ map text
+  [ "Function", escName $ unqualify fp, "used in functional pattern depends on"
+  , escName $ unqualify f, " causing a cyclic dependency"]
+
 errPrecedenceOutOfRange :: Position -> Integer -> Message
 errPrecedenceOutOfRange p i = posMessage p $ hsep $ map text
   ["Precedence out of range:", show i]
@@ -1189,9 +1310,12 @@ errDuplicateDefinition :: Ident -> Message
 errDuplicateDefinition v = posMessage v $ hsep $ map text
   ["More than one definition for", escName v]
 
-errDuplicateVariable :: Ident -> Message
-errDuplicateVariable v = posMessage v $ hsep $ map text
-  [escName v, "occurs more than once in pattern"]
+errDuplicateVariables :: [Ident] -> Message
+errDuplicateVariables [] = internalError
+  "SyntaxCheck.errDuplicateVariables: empty list"
+errDuplicateVariables (v:vs) = posMessage v $
+  text (escName v) <+> text "occurs more than one in pattern at:" $+$
+  nest 2 (vcat (map (ppPosition . getPosition) (v:vs)))
 
 errMultipleDataConstructor :: [Ident] -> Message
 errMultipleDataConstructor [] = internalError

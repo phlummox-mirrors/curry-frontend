@@ -24,20 +24,27 @@ module Base.Subst
 
 import qualified Data.Map as Map
 
-data Subst a b = Subst Bool (Map.Map a b) deriving Show
+-- |Data type for substitution
+data Subst a b = Subst Bool (Map.Map a b)
+  deriving Show
 
-idSubst :: Ord a => Subst a b
+-- |Identity substitution
+idSubst :: Subst a b
 idSubst = Subst False Map.empty
 
-substToList :: Ord v => Subst v e -> [(v, e)]
+-- |Convert a substitution to a list of replacements
+substToList :: Subst v e -> [(v, e)]
 substToList (Subst _ sigma) = Map.toList sigma
 
+-- |Create a substitution for a single replacement
 singleSubst :: Ord v => v -> e -> Subst v e
 singleSubst v e = bindSubst v e idSubst
 
+-- |Extend a substitution with a single replacement
 bindSubst :: Ord v => v -> e -> Subst v e -> Subst v e
 bindSubst v e (Subst comp sigma) = Subst comp $ Map.insert v e sigma
 
+-- |Remove a single replacement from a substitution
 unbindSubst :: Ord v => v -> Subst v e -> Subst v e
 unbindSubst v (Subst comp sigma) = Subst comp $ Map.delete v sigma
 
@@ -80,7 +87,8 @@ unbindSubst v (Subst comp sigma) = Subst comp $ Map.delete v sigma
 -- substVar (Subst comp sigma) v = maybe (var v) subst' (Map.lookup v sigma)
 --   where subst' = if comp then subst (Subst comp sigma) else id
 
-compose :: (Ord v, Show v ,Show e) => Subst v e -> Subst v e -> Subst v e
+-- |Compose two substitutions
+compose :: Ord v => Subst v e -> Subst v e -> Subst v e
 compose sigma sigma' =
   composed (foldr (uncurry bindSubst) sigma' (substToList sigma))
   where composed (Subst _ sigma'') = Subst True sigma''
@@ -93,22 +101,26 @@ compose sigma sigma' =
 -- module includes a class 'IntSubst' for substitution whose
 -- domain are integer numbers.
 
+-- |Apply a substitution to a variable
 substVar' :: Ord v => (v -> e) -> (Subst v e -> e -> e)
           -> Subst v e -> v -> e
 substVar' var subst (Subst comp sigma) v =
   maybe (var v) subst' (Map.lookup v sigma)
   where subst' = if comp then subst (Subst comp sigma) else id
 
+-- |Type class for terms where variables are represented as 'Int's
 class IntSubst e where
+  -- |Construct a variable from an 'Int'
   ivar :: Int -> e
+  -- |Apply a substitution to a term
   isubst :: Subst Int e -> e -> e
 
+-- |Apply a substitution to a term with variables represented as 'Int's
 isubstVar :: IntSubst e => Subst Int e -> Int -> e
 isubstVar = substVar' ivar isubst
 
--- The function 'restrictSubstTo' implements the restriction of a
+-- |The function 'restrictSubstTo' implements the restriction of a
 -- substitution to a given subset of its domain.
-
 restrictSubstTo :: Ord v => [v] -> Subst v e -> Subst v e
 restrictSubstTo vs (Subst comp sigma) =
   foldr (uncurry bindSubst) (Subst comp Map.empty)

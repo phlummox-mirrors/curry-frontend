@@ -3,7 +3,7 @@
     Description :  Computation of export interface
     Copyright   :  (c) 2000 - 2004 Wolfgang Lux
                        2005        Martin Engelke
-                       2011 - 2013 Björn Peemöller
+                       2011 - 2016 Björn Peemöller
                        2015        Jan Tikovsky
                        2016        Finn Teegen
     License     :  OtherLicense
@@ -90,10 +90,9 @@ infixDecl _ _ _ _ = internalError "Exports.infixDecl: no pattern match"
 
 iInfixDecl :: ModuleIdent -> OpPrecEnv -> QualIdent -> [IDecl] -> [IDecl]
 iInfixDecl m pEnv op ds = case qualLookupP op pEnv of
-  []                           -> ds
-  [PrecInfo _ (OpPrec fix pr)] ->
-    IInfixDecl NoPos fix pr (qualUnqualify m op) : ds
-  _                            -> internalError "Exports.infixDecl"
+  []                        -> ds
+  [PrecInfo _ (OpPrec f p)] -> IInfixDecl NoPos f p (qualUnqualify m op) : ds
+  _                         -> internalError "Exports.infixDecl"
 
 -- Data types and renaming types whose constructors and field labels are
 -- not exported are exported as abstract types, i.e., their constructors
@@ -108,7 +107,7 @@ typeDecl _ _     _      _   (Export             _) ds = ds
 typeDecl m tcEnv clsEnv tvs (ExportTypeWith tc xs) ds =
   case qualLookupTypeInfo tc tcEnv of
     [DataType tc' k cs]
-      | null xs   -> iTypeDecl IDataDecl m tvs tc' k []  []  : ds
+      | null xs   -> iTypeDecl IDataDecl m tvs tc' k []  [] : ds
       | otherwise -> iTypeDecl IDataDecl m tvs tc' k cs' hs : ds
       where hs    = filter (`notElem` xs) (csIds ++ ls)
             cs'   = map (constrDecl m n tvs) cs
@@ -116,7 +115,7 @@ typeDecl m tcEnv clsEnv tvs (ExportTypeWith tc xs) ds =
             csIds = map constrIdent cs
             n = kindArity k
     [RenamingType tc' k c]
-      | null xs   -> iTypeDecl IDataDecl m tvs tc' k [] [] : ds
+      | null xs   -> iTypeDecl IDataDecl    m tvs tc' k [] [] : ds
       | otherwise -> iTypeDecl INewtypeDecl m tvs tc' k nc hs : ds
       where hs  = filter (`notElem` xs) (cId : ls)
             nc  = newConstrDecl m tvs c
@@ -163,11 +162,10 @@ constrDecl m n tvs (RecordConstr c n' ps ls tys) = RecordDecl NoPos evs cx c fs
     fs   = zipWith (FieldDecl NoPos . return) ls tys'
 
 newConstrDecl :: ModuleIdent -> [Ident] -> DataConstr -> NewConstrDecl
-newConstrDecl m tvs (DataConstr c _ _ tys) = NewConstrDecl NoPos c ty'
-  where ty' = fromQualType m tvs (head tys)
+newConstrDecl m tvs (DataConstr c _ _ tys)
+  = NewConstrDecl NoPos c (fromQualType m tvs (head tys))
 newConstrDecl m tvs (RecordConstr c _ _ ls tys)
-  = NewRecordDecl NoPos c (head ls,ty')
-  where ty' = fromQualType m tvs (head tys)
+  = NewRecordDecl NoPos c (head ls, fromQualType m tvs (head tys))
 
 -- When exporting a class method, we have to remove the implicit class context.
 -- Due to the sorting of the predicate set, this is fortunatly very easy. The
@@ -179,7 +177,7 @@ methodDecl m tvs (ClassMethod f a (PredType ps ty)) = IMethodDecl NoPos f a $
   fromQualPredType m tvs $ PredType (Set.deleteMin ps) ty
 
 valueDecl :: ModuleIdent -> ValueEnv -> [Ident] -> Export -> [IDecl] -> [IDecl]
-valueDecl m vEnv tvs (Export f) ds = case qualLookupValue f vEnv of
+valueDecl m vEnv tvs (Export      f) ds = case qualLookupValue f vEnv of
   [Value _ cm a (ForAll _ pty)] ->
     IFunctionDecl NoPos (qualUnqualify m f) cm a (fromQualPredType m tvs pty) : ds
   _ -> internalError $ "Exports.valueDecl: " ++ show f

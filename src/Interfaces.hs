@@ -107,7 +107,7 @@ compileInterface ctxt (p, m) fn = do
   mbSrc <- liftIO $ readModule fn
   case mbSrc of
     Nothing  -> report [errInterfaceNotFound p m]
-    Just src -> case runCYM (parseInterface fn src) of
+    Just src -> case runCYMIgnWarn (parseInterface fn src) of
       Left err -> report err
       Right intf@(Interface n is _) ->
         if m /= n
@@ -135,7 +135,7 @@ errCyclicImport _ []  = internalError "Interfaces.errCyclicImport: empty list"
 errCyclicImport p [m] = posMessage p $
   text "Recursive import for module" <+> text (moduleName m)
 errCyclicImport p ms  = posMessage p $
-  text "Cylic import dependency between modules"
+  text "Cyclic import dependency between modules"
   <+> hsep (punctuate comma (map text inits)) <+> text "and" <+> text lastm
   where
   (inits, lastm)         = splitLast $ map moduleName ms

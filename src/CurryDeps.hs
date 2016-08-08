@@ -172,7 +172,7 @@ errCyclicImport []  = internalError "CurryDeps.errCyclicImport: empty list"
 errCyclicImport [m] = message $ sep $ map text
   [ "Recursive import for module", moduleName m ]
 errCyclicImport ms  = message $ sep $
-  text "Cylic import dependency between modules" : punctuate comma inits
+  text "Cyclic import dependency between modules" : punctuate comma inits
   ++ [text "and", lastm]
   where
   (inits, lastm)     = splitLast $ map (text . moduleName) ms
