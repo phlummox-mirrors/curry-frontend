@@ -41,7 +41,8 @@ import Base.NestEnv    ( NestEnv, emptyEnv, localNestEnv, nestEnv, unnestEnv
 import Base.Types
 import Base.Utils (findMultiples)
 import Env.ModuleAlias
-import Env.TypeConstructor (TCEnv, TypeInfo (..), lookupTC, qualLookupTC)
+import Env.TypeConstructor ( TCEnv, TypeInfo (..), lookupTypeInfo
+                           , qualLookupTypeInfo )
 import Env.Value (ValueEnv, ValueInfo (..), qualLookupValue)
 
 import CompilerOpts
@@ -54,14 +55,15 @@ import CompilerOpts
 --   - idle case alternatives
 --   - overlapping case alternatives
 --   - non-adjacent function rules
-warnCheck :: WarnOpts -> AliasEnv -> ValueEnv -> TCEnv -> Module -> [Message]
-warnCheck opts aEnv valEnv tcEnv (Module _ mid es is ds)
+warnCheck :: WarnOpts -> AliasEnv -> ValueEnv -> TCEnv -> Module a -> [Message]
+warnCheck opts aEnv valEnv tcEnv mdl
   = runOn (initWcState mid aEnv valEnv tcEnv (wnWarnFlags opts)) $ do
       checkImports   is
       checkDeclGroup ds
       checkExports   es
       checkMissingTypeSignatures ds
       checkModuleAlias is
+  where Module _ mid es is ds = fmap (const ()) mdl
 
 type ScopeEnv = NestEnv IdInfo
 
@@ -196,13 +198,13 @@ warnMultiplyHiddenSymbol mid ident = posMessage ident $ hsep $ map text
 -- checkDeclGroup
 -- ---------------------------------------------------------------------------
 
-checkDeclGroup :: [Decl] -> WCM ()
+checkDeclGroup :: [Decl ()] -> WCM ()
 checkDeclGroup ds = do
   mapM_ insertDecl   ds
   mapM_ checkDecl    ds
   checkRuleAdjacency ds
 
-checkLocalDeclGroup :: [Decl] -> WCM ()
+checkLocalDeclGroup :: [Decl ()] -> WCM ()
 checkLocalDeclGroup ds = do
   mapM_ checkLocalDecl ds
   checkDeclGroup       ds
@@ -211,11 +213,11 @@ checkLocalDeclGroup ds = do
 -- Find function rules which are disjoined
 -- ---------------------------------------------------------------------------
 
-checkRuleAdjacency :: [Decl] -> WCM ()
+checkRuleAdjacency :: [Decl a] -> WCM ()
 checkRuleAdjacency decls = warnFor WarnDisjoinedRules
                          $ foldM_ check (mkIdent "", Map.empty) decls
   where
-  check (prevId, env) (FunctionDecl p f _) = do
+  check (prevId, env) (FunctionDecl p _ f _) = do
     cons <- isConsId f
     if cons || prevId == f
       then return (f, env)
@@ -231,36 +233,36 @@ warnDisjoinedFunctionRules ident pos = posMessage ident $ hsep (map text
   [ "Rules for function", escName ident, "are disjoined" ])
   <+> parens (text "first occurrence at" <+> text (showLine pos))
 
-checkDecl :: Decl -> WCM ()
-checkDecl (DataDecl   _ _ vs cs) = inNestedScope $ do
+checkDecl :: Decl () -> WCM ()
+checkDecl (DataDecl     _ _ vs cs) = inNestedScope $ do
   mapM_ insertTypeVar   vs
   mapM_ checkConstrDecl cs
   reportUnusedTypeVars  vs
-checkDecl (TypeDecl   _ _ vs ty) = inNestedScope $ do
+checkDecl (TypeDecl     _ _ vs ty) = inNestedScope $ do
   mapM_ insertTypeVar  vs
   checkTypeExpr ty
   reportUnusedTypeVars vs
-checkDecl (FunctionDecl p f eqs) = checkFunctionDecl p f eqs
-checkDecl (PatternDecl  _ p rhs) = checkPattern p >> checkRhs rhs
-checkDecl _                      = ok
+checkDecl (FunctionDecl p _ f eqs) = checkFunctionDecl p f eqs
+checkDecl (PatternDecl    _ p rhs) = checkPattern p >> checkRhs rhs
+checkDecl _                        = ok
 
+--TODO: shadowing und context etc.
 checkConstrDecl :: ConstrDecl -> WCM ()
-checkConstrDecl (ConstrDecl     _ _ c tys) = do
+checkConstrDecl (ConstrDecl     _ _ _ c tys) = do
   visitId c
   mapM_ checkTypeExpr tys
-checkConstrDecl (ConOpDecl _ _ ty1 op ty2) = do
+checkConstrDecl (ConOpDecl _ _ _ ty1 op ty2) = do
   visitId op
   mapM_ checkTypeExpr [ty1, ty2]
-checkConstrDecl (RecordDecl _ _ c fs) = do
+checkConstrDecl (RecordDecl      _ _ _ c fs) = do
   visitId c
   mapM_ checkTypeExpr tys
   where
     tys = [ty | FieldDecl _ _ ty <- fs]
 
 checkTypeExpr :: TypeExpr -> WCM ()
-checkTypeExpr (ConstructorType qid tys) = do
-  visitQTypeId qid
-  mapM_ checkTypeExpr tys
+checkTypeExpr (ConstructorType     qid) = visitQTypeId qid
+checkTypeExpr (ApplyType       ty1 ty2) = mapM_ checkTypeExpr [ty1, ty2]
 checkTypeExpr (VariableType          v) = visitTypeId v
 checkTypeExpr (TupleType           tys) = mapM_ checkTypeExpr tys
 checkTypeExpr (ListType             ty) = checkTypeExpr ty
@@ -269,19 +271,19 @@ checkTypeExpr (ParenType            ty) = checkTypeExpr ty
 
 -- Checks locally declared identifiers (i.e. functions and logic variables)
 -- for shadowing
-checkLocalDecl :: Decl -> WCM ()
-checkLocalDecl (FunctionDecl _ f _) = checkShadowing f
-checkLocalDecl (FreeDecl      _ vs) = mapM_ checkShadowing vs
-checkLocalDecl (PatternDecl  _ p _) = checkPattern p
-checkLocalDecl _                    = ok
+checkLocalDecl :: Decl a -> WCM ()
+checkLocalDecl (FunctionDecl _ _ f _) = checkShadowing f
+checkLocalDecl (FreeDecl        _ vs) = mapM_ (checkShadowing . varIdent) vs
+checkLocalDecl (PatternDecl    _ p _) = checkPattern p
+checkLocalDecl _                      = ok
 
-checkFunctionDecl :: Position -> Ident -> [Equation] -> WCM ()
+checkFunctionDecl :: Position -> Ident -> [Equation ()] -> WCM ()
 checkFunctionDecl _ _ []  = ok
 checkFunctionDecl p f eqs = inNestedScope $ do
   mapM_ checkEquation eqs
   checkFunctionPatternMatch p f eqs
 
-checkFunctionPatternMatch :: Position -> Ident -> [Equation] -> WCM ()
+checkFunctionPatternMatch :: Position -> Ident -> [Equation ()] -> WCM ()
 checkFunctionPatternMatch p f eqs = do
   let pats = map (\(Equation _ lhs _) -> snd (flatLhs lhs)) eqs
   (nonExhaustive, overlapped, nondet) <- checkPatternMatching pats
@@ -293,13 +295,13 @@ checkFunctionPatternMatch p f eqs = do
 -- Check an equation for warnings.
 -- This is done in a seperate scope as the left-hand-side may introduce
 -- new variables.
-checkEquation :: Equation -> WCM ()
+checkEquation :: Equation () -> WCM ()
 checkEquation (Equation _ lhs rhs) = inNestedScope $ do
   checkLhs lhs
   checkRhs rhs
   reportUnusedVars
 
-checkLhs :: Lhs -> WCM ()
+checkLhs :: Lhs a -> WCM ()
 checkLhs (FunLhs    _ ts) = do
   mapM_ checkPattern ts
   mapM_ (insertPattern False) ts
@@ -309,26 +311,26 @@ checkLhs (ApLhs   lhs ts) = do
   mapM_ checkPattern ts
   mapM_ (insertPattern False) ts
 
-checkPattern :: Pattern -> WCM ()
-checkPattern (VariablePattern        v) = checkShadowing v
-checkPattern (ConstructorPattern  _ ps) = mapM_ checkPattern ps
-checkPattern (InfixPattern     p1 f p2) = checkPattern
-                                          (ConstructorPattern f [p1, p2])
-checkPattern (ParenPattern           p) = checkPattern p
-checkPattern (RecordPattern       _ fs) = mapM_ (checkField checkPattern) fs
-checkPattern (TuplePattern        _ ps) = mapM_ checkPattern ps
-checkPattern (ListPattern         _ ps) = mapM_ checkPattern ps
-checkPattern (AsPattern            v p) = checkShadowing v >> checkPattern p
-checkPattern (LazyPattern          _ p) = checkPattern p
-checkPattern (FunctionPattern     _ ps) = mapM_ checkPattern ps
-checkPattern (InfixFuncPattern p1 f p2) = checkPattern
-                                          (FunctionPattern f [p1, p2])
-checkPattern _                          = ok
+checkPattern :: Pattern a -> WCM ()
+checkPattern (VariablePattern        _ v) = checkShadowing v
+checkPattern (ConstructorPattern  _ _ ps) = mapM_ checkPattern ps
+checkPattern (InfixPattern     a p1 f p2) = checkPattern
+                                            (ConstructorPattern a f [p1, p2])
+checkPattern (ParenPattern             p) = checkPattern p
+checkPattern (RecordPattern       _ _ fs) = mapM_ (checkField checkPattern) fs
+checkPattern (TuplePattern          _ ps) = mapM_ checkPattern ps
+checkPattern (ListPattern         _ _ ps) = mapM_ checkPattern ps
+checkPattern (AsPattern              v p) = checkShadowing v >> checkPattern p
+checkPattern (LazyPattern            _ p) = checkPattern p
+checkPattern (FunctionPattern     _ _ ps) = mapM_ checkPattern ps
+checkPattern (InfixFuncPattern a p1 f p2) = checkPattern
+                                            (FunctionPattern a f [p1, p2])
+checkPattern _                            = ok
 
 -- Check the right-hand-side of an equation.
 -- Because local declarations may introduce new variables, we need
 -- another scope nesting.
-checkRhs :: Rhs -> WCM ()
+checkRhs :: Rhs () -> WCM ()
 checkRhs (SimpleRhs _ e ds) = inNestedScope $ do
   checkLocalDeclGroup ds
   checkExpr e
@@ -338,19 +340,19 @@ checkRhs (GuardedRhs ce ds) = inNestedScope $ do
   mapM_ checkCondExpr ce
   reportUnusedVars
 
-checkCondExpr :: CondExpr -> WCM ()
+checkCondExpr :: CondExpr () -> WCM ()
 checkCondExpr (CondExpr _ c e) = checkExpr c >> checkExpr e
 
-checkExpr :: Expression -> WCM ()
-checkExpr (Variable              v) = visitQId v
+checkExpr :: Expression () -> WCM ()
+checkExpr (Variable            _ v) = visitQId v
 checkExpr (Paren                 e) = checkExpr e
 checkExpr (Typed               e _) = checkExpr e
-checkExpr (Record             _ fs) = mapM_ (checkField checkExpr) fs
+checkExpr (Record           _ _ fs) = mapM_ (checkField checkExpr) fs
 checkExpr (RecordUpdate       e fs) = do
   checkExpr e
   mapM_ (checkField checkExpr) fs
 checkExpr (Tuple              _ es) = mapM_ checkExpr es
-checkExpr (List               _ es) = mapM_ checkExpr es
+checkExpr (List             _ _ es) = mapM_ checkExpr es
 checkExpr (ListCompr       _ e sts) = checkStatements sts e
 checkExpr (EnumFrom              e) = checkExpr e
 checkExpr (EnumFromThen      e1 e2) = mapM_ checkExpr [e1, e2]
@@ -380,20 +382,20 @@ checkExpr (Case        _ ct e alts) = do
   checkCaseAlts ct alts
 checkExpr _                       = ok
 
-checkStatements :: [Statement] -> Expression -> WCM ()
+checkStatements :: [Statement ()] -> Expression () -> WCM ()
 checkStatements []     e = checkExpr e
 checkStatements (s:ss) e = inNestedScope $ do
   checkStatement s >> checkStatements ss e
   reportUnusedVars
 
-checkStatement :: Statement -> WCM ()
+checkStatement :: Statement () -> WCM ()
 checkStatement (StmtExpr   _ e) = checkExpr e
 checkStatement (StmtDecl    ds) = checkLocalDeclGroup ds
 checkStatement (StmtBind _ p e) = do
   checkPattern p >> insertPattern False p
   checkExpr e
 
-checkAlt :: Alt -> WCM ()
+checkAlt :: Alt () -> WCM ()
 checkAlt (Alt _ p rhs) = inNestedScope $ do
   checkPattern p >> insertPattern False p
   checkRhs rhs
@@ -409,10 +411,10 @@ checkField check (Field _ _ x) = check x
 -- |Check if every top-level function has an accompanying type signature.
 -- For external function declarations, this check is already performed
 -- during syntax checking.
-checkMissingTypeSignatures :: [Decl] -> WCM ()
+checkMissingTypeSignatures :: [Decl a] -> WCM ()
 checkMissingTypeSignatures ds = warnFor WarnMissingSignatures $ do
-  let typedFs   = [f | TypeSig     _ fs _ <- ds, f <- fs]
-      untypedFs = [f | FunctionDecl _ f _ <- ds, f `notElem` typedFs]
+  let typedFs   = [f | TypeSig       _ fs _ <- ds, f <- fs]
+      untypedFs = [f | FunctionDecl _ _ f _ <- ds, f `notElem` typedFs]
   unless (null untypedFs) $ do
     mid   <- getModuleIdent
     tyScs <- mapM getTyScheme untypedFs
@@ -423,9 +425,8 @@ getTyScheme q = do
   m     <- getModuleIdent
   tyEnv <- gets valueEnv
   return $ case qualLookupValue (qualifyWith m q) tyEnv of
-    [Value  _ _ tys] -> tys
-    _                -> internalError $
-      "Checks.WarnCheck.getTyScheme: " ++ show q
+    [Value  _ _ _ tys] -> tys
+    _ -> internalError $ "Checks.WarnCheck.getTyScheme: " ++ show q
 
 warnMissingTypeSignature :: ModuleIdent -> Ident -> TypeScheme -> Message
 warnMissingTypeSignature mid i tys = posMessage i $ fsep
@@ -466,7 +467,7 @@ warnAliasNameClash mids = posMessage (head mids) $ text
 -- Check for overlapping/unreachable and non-exhaustive case alternatives
 -- -----------------------------------------------------------------------------
 
-checkCaseAlts :: CaseType -> [Alt] -> WCM ()
+checkCaseAlts :: CaseType -> [Alt ()] -> WCM ()
 checkCaseAlts _  []                   = ok
 checkCaseAlts ct alts@(Alt p _ _ : _) = do
   let pats = map (\(Alt _ pat _) -> [pat]) alts
@@ -499,7 +500,8 @@ checkCaseAlts ct alts@(Alt p _ _ : _) = do
 -- matching in function declarations and (f)case expressions.
 -- -----------------------------------------------------------------------------
 
-checkPatternMatching :: [[Pattern]] -> WCM ([ExhaustivePats], [[Pattern]], Bool)
+checkPatternMatching :: [[Pattern ()]]
+                     -> WCM ([ExhaustivePats], [[Pattern ()]], Bool)
 checkPatternMatching pats = do
   -- 1. We simplify the patterns by removing syntactic sugar temporarily
   --    for a simpler implementation.
@@ -517,38 +519,38 @@ checkPatternMatching pats = do
 --   * Integer, Float or Char literals
 --   * Constructors
 -- All other patterns like as-patterns, list patterns and alike are desugared.
-simplifyPat :: Pattern -> WCM Pattern
-simplifyPat p@(LiteralPattern      l) = return $ case l of
-  String r s -> simplifyListPattern $ map (LiteralPattern . Char r) s
+simplifyPat :: Pattern () -> WCM (Pattern ())
+simplifyPat p@(LiteralPattern      _ l) = return $ case l of
+  String r s -> simplifyListPattern $ map (LiteralPattern () . Char r) s
   _          -> p
-simplifyPat (NegativePattern     _ l) = return $ LiteralPattern (negateLit l)
+simplifyPat (NegativePattern     a _ l) = return $ LiteralPattern a (negateLit l)
   where
   negateLit (Int   i n) = Int   i (-n)
   negateLit (Float r d) = Float r (-d)
   negateLit x           = x
-simplifyPat v@(VariablePattern     _) = return v
-simplifyPat (ConstructorPattern c ps) = ConstructorPattern c `liftM`
-                                        mapM simplifyPat ps
-simplifyPat (InfixPattern    p1 c p2) = ConstructorPattern c `liftM`
-                                        mapM simplifyPat [p1, p2]
-simplifyPat (ParenPattern          p) = simplifyPat p
-simplifyPat (RecordPattern      c fs) = do
+simplifyPat v@(VariablePattern     _ _) = return v
+simplifyPat (ConstructorPattern a c ps) =
+  ConstructorPattern a c `liftM` mapM simplifyPat ps
+simplifyPat (InfixPattern    a p1 c p2) =
+  ConstructorPattern a c `liftM` mapM simplifyPat [p1, p2]
+simplifyPat (ParenPattern            p) = simplifyPat p
+simplifyPat (RecordPattern      _ c fs) = do
   (_, ls) <- getAllLabels c
   let ps = map (getPattern (map field2Tuple fs)) ls
-  simplifyPat (ConstructorPattern c ps)
+  simplifyPat (ConstructorPattern () c ps)
   where
-    getPattern fs' l' = fromMaybe (VariablePattern anonId)
-                                  (lookup l' [(unqualify l, p) | (l, p) <- fs'])
-simplifyPat (TuplePattern       _ ps)
-  | null ps   = return $ ConstructorPattern qUnitId []
-  | otherwise = ConstructorPattern (qTupleId (length ps))
-                `liftM` mapM simplifyPat ps
-simplifyPat (ListPattern        _ ps) = simplifyListPattern `liftM`
-                                        mapM simplifyPat ps
-simplifyPat (AsPattern           _ p) = simplifyPat p
-simplifyPat (LazyPattern         _ _) = return $ VariablePattern anonId
-simplifyPat (FunctionPattern     _ _) = return $ VariablePattern anonId
-simplifyPat (InfixFuncPattern  _ _ _) = return $ VariablePattern anonId
+    getPattern fs' l' =
+      fromMaybe wildPat (lookup l' [(unqualify l, p) | (l, p) <- fs'])
+simplifyPat (TuplePattern         _ ps)
+  | null ps   = return $ ConstructorPattern () qUnitId []
+  | otherwise =
+    ConstructorPattern () (qTupleId (length ps)) `liftM` mapM simplifyPat ps
+simplifyPat (ListPattern       () _ ps) =
+  simplifyListPattern `liftM` mapM simplifyPat ps
+simplifyPat (AsPattern             _ p) = simplifyPat p
+simplifyPat (LazyPattern           _ _) = return wildPat
+simplifyPat (FunctionPattern     _ _ _) = return wildPat
+simplifyPat (InfixFuncPattern  _ _ _ _) = return wildPat
 
 getAllLabels :: QualIdent -> WCM (QualIdent, [Ident])
 getAllLabels c = do
@@ -559,9 +561,9 @@ getAllLabels c = do
           "Checks.WarnCheck.getAllLabels: " ++ show c
 
 -- |Create a simplified list pattern by applying @:@ and @[]@.
-simplifyListPattern :: [Pattern] -> Pattern
-simplifyListPattern = foldr (\p1 p2 -> ConstructorPattern qConsId [p1, p2])
-                                      (ConstructorPattern qNilId [])
+simplifyListPattern :: [Pattern ()] -> Pattern ()
+simplifyListPattern = foldr (\p1 p2 -> ConstructorPattern () qConsId [p1, p2])
+                            (ConstructorPattern () qNilId [])
 
 -- |'ExhaustivePats' describes those pattern missing for an exhaustive
 -- pattern matching, where a value can be thought of as a missing equation.
@@ -571,7 +573,7 @@ simplifyListPattern = foldr (\p1 p2 -> ConstructorPattern qConsId [p1, p2])
 -- This is necessary when checking literal patterns because of the sheer
 -- number of possible patterns. Missing literals are therefore converted
 -- into the form @ ... x ... with x `notElem` [l1, ..., ln]@.
-type EqnPats = [Pattern]
+type EqnPats = [Pattern ()]
 type EqnNo   = Int
 type EqnInfo = (EqnNo, EqnPats)
 
@@ -610,8 +612,10 @@ processLits qs@(q:_) = do
   -- default alternatives (variable pattern)
   defaults   = [ shiftPat q' | q' <- qs, isVarPat (firstPat q') ]
   -- Pattern for all non-matched literals
-  defaultPat = ( VariablePattern newVar : replicate (length (snd q) - 1) wildPat
-               , [(newVar, usedLits)])
+  defaultPat = ( VariablePattern () newVar :
+                   replicate (length (snd q) - 1) wildPat
+               , [(newVar, usedLits)]
+               )
   newVar     = mkIdent "x"
 
 -- |Construct exhaustive patterns starting with the used literals
@@ -625,7 +629,10 @@ processUsedLits lits qs = do
     let qs' = [shiftPat q | q <- qs, isVarLit lit (firstPat q)]
         ovlp = length qs' > 1
     (missing, used, nd) <- processEqs qs'
-    return (map (\(xs, ys) -> (LiteralPattern lit : xs, ys)) missing, used, nd && ovlp)
+    return ( map (\(xs, ys) -> (LiteralPattern () lit : xs, ys)) missing
+           , used
+           , nd && ovlp
+           )
 
 -- |Constructor patterns are checked by extracting the matched constructors
 --  and constructing a pattern for any missing case.
@@ -653,7 +660,7 @@ processCons qs@(q:_) = do
   defaults     = [ shiftPat q' | q' <- qs, isVarPat (firstPat q') ]
   -- Pattern for a non-matched constructors
   defaultPat c = (mkPattern c : replicate (length (snd q) - 1) wildPat, [])
-  mkPattern  c = ConstructorPattern
+  mkPattern  c = ConstructorPattern ()
                   (qualifyLike (fst $ head used_cons) (constrIdent c))
                   (replicate (length $ constrTypes c) wildPat)
 
@@ -671,7 +678,7 @@ processUsedCons cons qs = do
     return (map (\(xs, ys) -> (makeCon c a xs, ys)) missing, used, nd && ovlp)
 
   makeCon c a ps = let (args, rest) = splitAt a ps
-                   in ConstructorPattern c args : rest
+                   in ConstructorPattern () c args : rest
 
   removeFirstCon c a (n, p:ps)
     | isVarPat p = (n, replicate a wildPat ++ ps)
@@ -692,8 +699,8 @@ processVars eqs@((n, _) : _) = do
 getUnusedCons :: [QualIdent] -> WCM [DataConstr]
 getUnusedCons []       = internalError "Checks.WarnCheck.getUnusedCons"
 getUnusedCons qs@(q:_) = do
-  allCons <- getConTy q >>= getTyCons q . arrowBase
-  return [ c | c <- allCons, (constrIdent c) `notElem` map unqualify qs]
+  allCons <- getConTy q >>= getTyCons . rootOfType . arrowBase
+  return [c | c <- allCons, (constrIdent c) `notElem` map unqualify qs]
 
 -- |Retrieve the type of a given constructor.
 getConTy :: QualIdent -> WCM Type
@@ -701,27 +708,26 @@ getConTy q = do
   tyEnv <- gets valueEnv
   tcEnv <- gets tyConsEnv
   case qualLookupValue q tyEnv of
-    [DataConstructor  _ _ _ (ForAllExist _ _ ty)] -> return ty
-    [NewtypeConstructor _ _ (ForAllExist _ _ ty)] -> return ty
-    _                                           -> case qualLookupTC q tcEnv of
-      [AliasType _ _ ty] -> return ty
-      _                  -> internalError $
-        "Checks.WarnCheck.getConTy: " ++ show q
+    [DataConstructor  _ _ _ (ForAllExist _ _ (PredType _ ty))] -> return ty
+    [NewtypeConstructor _ _ (ForAllExist _ _ (PredType _ ty))] -> return ty
+    _ -> case qualLookupTypeInfo q tcEnv of
+      [AliasType _ _ _ ty] -> return ty
+      _ -> internalError $ "Checks.WarnCheck.getConTy: " ++ show q
 
 -- |Retrieve all constructors of a given type.
-getTyCons :: QualIdent -> Type -> WCM [DataConstr]
-getTyCons _ (TypeConstructor tc _) = do
+getTyCons :: QualIdent -> WCM [DataConstr]
+getTyCons tc = do
   tc'   <- unAlias tc
   tcEnv <- gets tyConsEnv
-  return $ case lookupTC (unqualify tc) tcEnv of
+  return $ case lookupTypeInfo (unqualify tc) tcEnv of
     [DataType     _ _ cs] -> cs
     [RenamingType _ _ nc] -> [nc]
-    _ -> case qualLookupTC tc' tcEnv of
+    _ -> case qualLookupTypeInfo tc' tcEnv of
       [DataType     _ _ cs] -> cs
       [RenamingType _ _ nc] -> [nc]
-      err                   -> internalError $ "Checks.WarnCheck.getTyCons: "
-                            ++ show tc ++ ' ' : show err ++ '\n' : show tcEnv
-getTyCons _ _ = internalError "Checks.WarnCheck.getTyCons"
+      err -> internalError $ "Checks.WarnCheck.getTyCons: " ++
+                               show tc ++ ' ' : show err ++ '\n' : show tcEnv
+getTyCons _ = internalError $ "Checks.WarnCheck.getTyCons"
 
 -- |Resugar the exhaustive patterns previously desugared at 'simplifyPat'.
 tidyExhaustivePats :: ExhaustivePats -> WCM ExhaustivePats
@@ -731,35 +737,36 @@ tidyExhaustivePats (xs, ys) = mapM tidyPat xs >>= \xs' -> return (xs', ys)
 --   * Convert a tuple constructor pattern into a tuple pattern
 --   * Convert a list constructor pattern representing a finite list
 --     into a list pattern
-tidyPat :: Pattern -> WCM Pattern
-tidyPat p@(LiteralPattern        _) = return p
-tidyPat p@(VariablePattern       _) = return p
-tidyPat p@(ConstructorPattern c ps)
-  | c == qUnitId && null ps         = return $ TuplePattern noRef []
-  | isQTupleId c                    = TuplePattern noRef `liftM` mapM tidyPat ps
-  | c == qConsId && isFiniteList p  = ListPattern []     `liftM`
-                                      mapM tidyPat (unwrapFinite p)
-  | c == qConsId                    = unwrapInfinite p
-  | otherwise                       = ConstructorPattern c `liftM` mapM tidyPat ps
+tidyPat :: Pattern () -> WCM (Pattern ())
+tidyPat p@(LiteralPattern        _ _) = return p
+tidyPat p@(VariablePattern       _ _) = return p
+tidyPat p@(ConstructorPattern _ c ps)
+  | c == qUnitId && null ps           = return $ TuplePattern noRef []
+  | isQTupleId c                      =
+    TuplePattern noRef `liftM` mapM tidyPat ps
+  | c == qConsId && isFiniteList p    =
+    ListPattern () [] `liftM` mapM tidyPat (unwrapFinite p)
+  | c == qConsId                      = unwrapInfinite p
+  | otherwise                         =
+    ConstructorPattern () c `liftM` mapM tidyPat ps
   where
-  isFiniteList (ConstructorPattern d []     )                = d == qNilId
-  isFiniteList (ConstructorPattern d [_, e2]) | d == qConsId = isFiniteList e2
-  isFiniteList _                                             = False
+  isFiniteList (ConstructorPattern _ d []     )                = d == qNilId
+  isFiniteList (ConstructorPattern _ d [_, e2]) | d == qConsId = isFiniteList e2
+  isFiniteList _                                               = False
 
-  unwrapFinite (ConstructorPattern _ []     ) = []
-  unwrapFinite (ConstructorPattern _ [p1,p2]) = p1 : unwrapFinite p2
+  unwrapFinite (ConstructorPattern _ _ []     ) = []
+  unwrapFinite (ConstructorPattern _ _ [p1,p2]) = p1 : unwrapFinite p2
   unwrapFinite pat
     = internalError $ "WarnCheck.tidyPat.unwrapFinite: " ++ show pat
 
-  unwrapInfinite (ConstructorPattern d [p1,p2]) = liftM2 (flip InfixPattern d)
-                                                  (tidyPat p1)
-                                                  (unwrapInfinite p2)
-  unwrapInfinite p0                             = return p0
+  unwrapInfinite (ConstructorPattern a d [p1,p2]) =
+    liftM2 (flip (InfixPattern a) d) (tidyPat p1) (unwrapInfinite p2)
+  unwrapInfinite p0                               = return p0
 
 tidyPat p = internalError $ "Checks.WarnCheck.tidyPat: " ++ show p
 
 -- |Get the first pattern of a list.
-firstPat :: EqnInfo -> Pattern
+firstPat :: EqnInfo -> Pattern ()
 firstPat (_, []   ) = internalError "Checks.WarnCheck.firstPat: empty list"
 firstPat (_, (p:_)) = p
 
@@ -769,56 +776,56 @@ shiftPat (_, []    ) = internalError "Checks.WarnCheck.shiftPat: empty list"
 shiftPat (n, (_:ps)) = (n, ps)
 
 -- |Wildcard pattern.
-wildPat :: Pattern
-wildPat = VariablePattern anonId
+wildPat :: Pattern ()
+wildPat = VariablePattern () anonId
 
 -- |Retrieve any literal out of a pattern.
-getLit :: Pattern -> [Literal]
-getLit (LiteralPattern l) = [l]
-getLit _                  = []
+getLit :: Pattern a -> [Literal]
+getLit (LiteralPattern _ l) = [l]
+getLit _                    = []
 
 -- |Retrieve the constructor name and its arity for a pattern.
-getCon :: Pattern -> [(QualIdent, Int)]
-getCon (ConstructorPattern c ps) = [(c, length ps)]
-getCon _                         = []
+getCon :: Pattern a -> [(QualIdent, Int)]
+getCon (ConstructorPattern _ c ps) = [(c, length ps)]
+getCon _                           = []
 
 -- |Is a pattern a variable or literal pattern?
-isVarLit :: Literal -> Pattern -> Bool
+isVarLit :: Literal -> Pattern a -> Bool
 isVarLit l p = isVarPat p || isLit l p
 
 -- |Is a pattern a variable or a constructor pattern with the given constructor?
-isVarCon :: QualIdent -> Pattern -> Bool
+isVarCon :: QualIdent -> Pattern a -> Bool
 isVarCon c p = isVarPat p || isCon c p
 
 -- |Is a pattern a pattern matching for the given constructor?
-isCon :: QualIdent -> Pattern -> Bool
-isCon c (ConstructorPattern d _) = c == d
-isCon _ _                        = False
+isCon :: QualIdent -> Pattern a -> Bool
+isCon c (ConstructorPattern _ d _) = c == d
+isCon _ _                          = False
 
 -- |Is a pattern a pattern matching for the given literal?
-isLit :: Literal -> Pattern -> Bool
-isLit l (LiteralPattern m) = l == m
-isLit _ _                  = False
+isLit :: Literal -> Pattern a -> Bool
+isLit l (LiteralPattern _ m) = l == m
+isLit _ _                    = False
 
 -- |Is a pattern a literal pattern?
-isLitPat :: Pattern -> Bool
-isLitPat (LiteralPattern  _) = True
-isLitPat _                   = False
+isLitPat :: Pattern a -> Bool
+isLitPat (LiteralPattern  _ _) = True
+isLitPat _                     = False
 
 -- |Is a pattern a variable pattern?
-isVarPat :: Pattern -> Bool
-isVarPat (VariablePattern _) = True
-isVarPat _                   = False
+isVarPat :: Pattern a -> Bool
+isVarPat (VariablePattern _ _) = True
+isVarPat _                     = False
 
 -- |Is a pattern a constructor pattern?
-isConPat :: Pattern -> Bool
-isConPat (ConstructorPattern _ _) = True
-isConPat      _                   = False
+isConPat :: Pattern a -> Bool
+isConPat (ConstructorPattern _ _ _) = True
+isConPat _                          = False
 
 -- |Retrieve the arguments of a pattern.
-patArgs :: Pattern -> [Pattern]
-patArgs (ConstructorPattern _ ps) = ps
-patArgs _                         = []
+patArgs :: Pattern a -> [Pattern a]
+patArgs (ConstructorPattern _ _ ps) = ps
+patArgs _                           = []
 
 -- |Warning message for non-exhaustive patterns.
 -- To shorten the output only the first 'maxPattern' are printed,
@@ -838,12 +845,12 @@ warnMissingPattern p loc pats = posMessage p
     | otherwise = ppPats <+> text "with" <+> hsep (map ppCons cs)
     where ppPats = hsep (map (ppPattern 2) ps)
   ppCons (i, lits) = ppIdent i <+> text "`notElem`"
-                 <+> ppExpr 0 (List [] (map Literal lits))
+                 <+> ppExpr 0 (List () [] (map (Literal ()) lits))
 
 -- |Warning message for unreachable patterns.
 -- To shorten the output only the first 'maxPattern' are printed,
 -- additional pattern are abbreviated by dots.
-warnUnreachablePattern :: Position  -> [[Pattern]] -> Message
+warnUnreachablePattern :: Position  -> [[Pattern a]] -> Message
 warnUnreachablePattern p pats = posMessage p
   $   text "Pattern matches are unreachable"
   $+$ text "In a case alternative:"
@@ -890,65 +897,66 @@ reportUnusedTypeVars vs = warnFor WarnUnusedBindings $ do
 -- current check state by adding identifiers occuring in declaration left hand
 -- sides.
 
-insertDecl :: Decl -> WCM ()
-insertDecl (DataDecl     _ d _ cs) = do
+insertDecl :: Decl a -> WCM ()
+insertDecl (DataDecl       _ d _ cs) = do
   insertTypeConsId d
   mapM_ insertConstrDecl cs
-insertDecl (TypeDecl     _ t _ ty) = do
+insertDecl (TypeDecl       _ t _ ty) = do
   insertTypeConsId t
   insertTypeExpr ty
-insertDecl (FunctionDecl    _ f _) = do
+insertDecl (FunctionDecl    _ _ f _) = do
   cons <- isConsId f
   unless cons $ insertVar f
-insertDecl (ForeignDecl _ _ _ f _) = insertVar f
-insertDecl (ExternalDecl     _ vs) = mapM_ insertVar vs
-insertDecl (PatternDecl     _ p _) = insertPattern False p
-insertDecl (FreeDecl         _ vs) = mapM_ insertVar vs
-insertDecl _                       = ok
+insertDecl (ForeignDecl _ _ _ _ f _) = insertVar f
+insertDecl (ExternalDecl       _ vs) = mapM_ (insertVar . varIdent) vs
+insertDecl (PatternDecl       _ p _) = insertPattern False p
+insertDecl (FreeDecl           _ vs) = mapM_ (insertVar . varIdent) vs
+insertDecl _                         = ok
 
 insertTypeExpr :: TypeExpr -> WCM ()
 insertTypeExpr (VariableType        _) = ok
-insertTypeExpr (ConstructorType _ tys) = mapM_ insertTypeExpr tys
+insertTypeExpr (ConstructorType     _) = ok
+insertTypeExpr (ApplyType     ty1 ty2) = mapM_ insertTypeExpr [ty1,ty2]
 insertTypeExpr (TupleType         tys) = mapM_ insertTypeExpr tys
 insertTypeExpr (ListType           ty) = insertTypeExpr ty
 insertTypeExpr (ArrowType     ty1 ty2) = mapM_ insertTypeExpr [ty1,ty2]
 insertTypeExpr (ParenType          ty) = insertTypeExpr ty
 
 insertConstrDecl :: ConstrDecl -> WCM ()
-insertConstrDecl (ConstrDecl _ _    c _) = insertConsId c
-insertConstrDecl (ConOpDecl  _ _ _ op _) = insertConsId op
-insertConstrDecl (RecordDecl _ _    c _) = insertConsId c
+insertConstrDecl (ConstrDecl _ _ _    c _) = insertConsId c
+insertConstrDecl (ConOpDecl  _ _ _ _ op _) = insertConsId op
+insertConstrDecl (RecordDecl _ _ _    c _) = insertConsId c
 
 -- 'fp' indicates whether 'checkPattern' deals with the arguments
 -- of a function pattern or not.
 -- Since function patterns are not recognized before syntax check, it is
 -- necessary to determine whether a constructor pattern represents a
 -- constructor or a function.
-insertPattern :: Bool -> Pattern -> WCM ()
-insertPattern fp (VariablePattern        v) = do
+insertPattern :: Bool -> Pattern a -> WCM ()
+insertPattern fp (VariablePattern        _ v) = do
   cons <- isConsId v
   unless cons $ do
     var <- isVarId v
     if and [fp, var, not (isAnonId v)] then visitId v else insertVar v
-insertPattern fp (ConstructorPattern  c ps) = do
+insertPattern fp (ConstructorPattern  _ c ps) = do
   cons <- isQualConsId c
   mapM_ (insertPattern (not cons || fp)) ps
-insertPattern fp (InfixPattern p1 c p2)
-  = insertPattern fp (ConstructorPattern c [p1, p2])
-insertPattern fp (ParenPattern           p) = insertPattern fp p
-insertPattern fp (RecordPattern       _ fs) = mapM_ (insertFieldPattern fp) fs
-insertPattern fp (TuplePattern        _ ps) = mapM_ (insertPattern fp) ps
-insertPattern fp (ListPattern         _ ps) = mapM_ (insertPattern fp) ps
-insertPattern fp (AsPattern            v p) = insertVar v >> insertPattern fp p
-insertPattern fp (LazyPattern          _ p) = insertPattern fp p
-insertPattern _  (FunctionPattern     f ps) = do
+insertPattern fp (InfixPattern     a p1 c p2)
+  = insertPattern fp (ConstructorPattern a c [p1, p2])
+insertPattern fp (ParenPattern             p) = insertPattern fp p
+insertPattern fp (RecordPattern       _ _ fs) = mapM_ (insertFieldPattern fp) fs
+insertPattern fp (TuplePattern          _ ps) = mapM_ (insertPattern fp) ps
+insertPattern fp (ListPattern         _ _ ps) = mapM_ (insertPattern fp) ps
+insertPattern fp (AsPattern              v p) = insertVar v >> insertPattern fp p
+insertPattern fp (LazyPattern            _ p) = insertPattern fp p
+insertPattern _  (FunctionPattern     _ f ps) = do
   visitQId f
   mapM_ (insertPattern True) ps
-insertPattern _  (InfixFuncPattern p1 f p2)
-  = insertPattern True (FunctionPattern f [p1, p2])
+insertPattern _  (InfixFuncPattern a p1 f p2)
+  = insertPattern True (FunctionPattern a f [p1, p2])
 insertPattern _ _ = ok
 
-insertFieldPattern :: Bool -> Field Pattern -> WCM ()
+insertFieldPattern :: Bool -> Field (Pattern a) -> WCM ()
 insertFieldPattern fp (Field _ _ p) = insertPattern fp p
 
 -- ---------------------------------------------------------------------------
