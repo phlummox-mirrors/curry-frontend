@@ -113,8 +113,8 @@ unapplyType dflt ty = unapply ty []
     unapply (TypeVariable        tv) tys  = (TypeVariable tv, tys)
     unapply (TypeArrow      ty1 ty2) tys  =
       (TypeConstructor qArrowId, ty1 : ty2 : tys)
-    unapply t@(TypeConstrained tys tv) tys'
-      | dflt = unapply (head tys) tys'
+    unapply (TypeConstrained tys tv) tys'
+      | dflt      = unapply (head tys) tys'
       | otherwise = (TypeConstrained tys tv, tys')
     unapply (TypeSkolem           k) tys  = (TypeSkolem k, tys)
 

@@ -1069,19 +1069,19 @@ dictTransInterface vEnv clsEnv (Interface m is ds) =
   Interface m is $ concatMap (dictTransIDecl m vEnv clsEnv) ds
 
 dictTransIDecl :: ModuleIdent -> ValueEnv -> ClassEnv -> IDecl -> [IDecl]
-dictTransIDecl m vEnv _      d@(IInfixDecl           _ _ _ op)
+dictTransIDecl m vEnv _      d@(IInfixDecl         _ _ _ op)
   | arrowArity (rawType $ opType (qualQualify m op) vEnv) /= 2 = []
   | otherwise = [d]
-dictTransIDecl _ _    _      d@(HidingDataDecl        _ _ _ _) = [d]
-dictTransIDecl m _    _      (IDataDecl      p tc k tvs cs hs) =
+dictTransIDecl _ _    _      d@(HidingDataDecl      _ _ _ _) = [d]
+dictTransIDecl m _    _      (IDataDecl    p tc k tvs cs hs) =
   [IDataDecl p tc k tvs (map (dictTransIConstrDecl m tvs) cs) hs]
-dictTransIDecl _ _    _      d@(INewtypeDecl      _ _ _ _ _ _) = [d]
-dictTransIDecl _ _    _      d@(ITypeDecl           _ _ _ _ _) = [d]
-dictTransIDecl m vEnv _      (IFunctionDecl         _ f _ _ _) =
+dictTransIDecl _ _    _      d@(INewtypeDecl    _ _ _ _ _ _) = [d]
+dictTransIDecl _ _    _      d@(ITypeDecl         _ _ _ _ _) = [d]
+dictTransIDecl m vEnv _      (IFunctionDecl       _ f _ _ _) =
   [iFunctionDeclFromValue m vEnv (qualQualify m f)]
-dictTransIDecl _ _    _      (HidingClassDecl    p _ cls k tv) =
+dictTransIDecl _ _    _      (HidingClassDecl  p _ cls k tv) =
   [HidingDataDecl p (qDictTypeId cls) (fmap (flip ArrowKind Star) k) [tv]]
-dictTransIDecl m vEnv clsEnv (IClassDecl     p _ cls k _ _ hs) =
+dictTransIDecl m vEnv clsEnv (IClassDecl   p _ cls k _ _ hs) =
   dictDecl : defaults ++ methodStubs ++ superDictStubs
   where qcls  = qualQualify m cls
         sclss = superClasses qcls clsEnv
@@ -1096,7 +1096,7 @@ dictTransIDecl m vEnv clsEnv (IClassDecl     p _ cls k _ _ hs) =
                         filter (`notElem` hs) ms
         superDictStubs = map (iFunctionDeclFromValue m vEnv .
                                qSuperDictStubId qcls) sclss
-dictTransIDecl m vEnv clsEnv (IInstanceDecl p cx cls ty is mm) =
+dictTransIDecl m vEnv clsEnv (IInstanceDecl _ _ cls ty _ mm) =
   iFunctionDeclFromValue m vEnv (qInstFunId m' qcls ty') :
     map (iFunctionDeclFromValue m vEnv . qImplMethodId m' qcls ty') ms
   where m'   = fromMaybe m mm
