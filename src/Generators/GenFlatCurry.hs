@@ -19,6 +19,7 @@ module Generators.GenFlatCurry (genFlatCurry, genFlatInterface) where
 #if __GLASGOW_HASKELL__ < 710
 import           Control.Applicative        ((<$>), (<*>))
 #endif
+import           Control.Monad.Extra        (concatMapM)
 import qualified Control.Monad.State as S   (State, evalState, gets, modify)
 import           Data.Function              (on)
 import           Data.List                  (nub, sort, sortBy)
@@ -33,11 +34,10 @@ import qualified Curry.Syntax as CS
 
 import Base.CurryTypes     (toType)
 import Base.Messages       (internalError)
-import Base.NestEnv        (NestEnv, emptyEnv, bindNestEnv, lookupNestEnv
-                           , nestEnv, unnestEnv)
+import Base.NestEnv        ( NestEnv, emptyEnv, bindNestEnv, lookupNestEnv
+                           , nestEnv, unnestEnv )
+import Base.TypeExpansion
 import Base.Types
-import Base.TypeSubst      (expandType)
-import Base.Utils          (concatMapM)
 
 import CompilerEnv
 import Env.OpPrec          (mkPrec)
@@ -48,11 +48,12 @@ import qualified IL as IL
 import Transformations     (transType)
 
 -- transforms intermediate language code (IL) to FlatCurry code
-genFlatCurry :: CompilerEnv -> CS.Module -> IL.Module -> Prog
+genFlatCurry :: CompilerEnv -> CS.Module Type -> IL.Module -> Prog
 genFlatCurry env mdl il = patchPrelude False $ run env mdl (trModule il)
 
 -- transforms intermediate language code (IL) to FlatCurry interfaces
-genFlatInterface :: CompilerEnv -> CS.Interface -> CS.Module -> IL.Module -> Prog
+genFlatInterface :: CompilerEnv -> CS.Interface -> CS.Module Type -> IL.Module
+                 -> Prog
 genFlatInterface env i mdl (IL.Module _ is _)
   = patchPrelude True $ run env mdl (trInterface is i)
 
@@ -69,14 +70,16 @@ patchPrelude genInt p@(Prog n _ ts fs os)
 
 primTypes :: [TypeDecl]
 primTypes =
-  [ Type unit Public [] [(Cons unit 0 Public [])]
+  [ Type arrow Public [0, 1] []
+  , Type unit Public [] [(Cons unit 0 Public [])]
   , Type nil Public [0] [ Cons nil  0 Public []
                         , Cons cons 2 Public [TVar 0, TCons nil [TVar 0]]
                         ]
   ] ++ map mkTupleType [2 .. maxTupleArity]
-  where unit = mkPreludeQName "()"
-        nil  = mkPreludeQName "[]"
-        cons = mkPreludeQName ":"
+  where arrow = mkPreludeQName "(->)"
+        unit  = mkPreludeQName "()"
+        nil   = mkPreludeQName "[]"
+        cons  = mkPreludeQName ":"
 
 mkTupleType :: Int -> TypeDecl
 mkTupleType arity = Type tuple Public [0 .. arity - 1]
@@ -109,7 +112,7 @@ data FlatEnv = FlatEnv
   , tcEnv        :: TCEnv            -- type constructor environment
   , tyEnv        :: ValueEnv         -- type environment
   , fixities     :: [CS.IDecl]       -- fixity declarations
-  , typeSynonyms :: [CS.Decl]        -- type synonyms
+  , typeSynonyms :: [CS.Decl Type]      -- type synonyms
   , imports      :: [ModuleIdent]    -- module imports
   -- state for mapping identifiers to indexes
   , nextVar      :: Int              -- fresh variable index counter
@@ -117,7 +120,7 @@ data FlatEnv = FlatEnv
   }
 
 -- Runs a 'FlatState' action and returns the result
-run :: CompilerEnv -> CS.Module -> FlatState a -> a
+run :: CompilerEnv -> CS.Module Type -> FlatState a -> a
 run env (CS.Module _ mid es is ds) act = S.evalState act env0
   where
   es'  = case es of Just (CS.Exporting _ e) -> e
@@ -134,7 +137,7 @@ run env (CS.Module _ mid es is ds) act = S.evalState act env0
     , tcEnv        = tyConsEnv env
     -- Fixity declarations
     , fixities     = [ CS.IInfixDecl p fix (mkPrec mPrec) (qualifyWith mid o)
-                     |  CS.InfixDecl p fix mPrec os <- ds, o <- os
+                     | CS.InfixDecl p fix mPrec os <- ds, o <- os
                      ]
     -- Type synonyms in the module
     , typeSynonyms = [ d | d@CS.TypeDecl{} <- ds ]
@@ -161,15 +164,17 @@ getModuleIdent = S.gets modIdent
 
 lookupType :: QualIdent -> FlatState (Maybe TypeExpr)
 lookupType qid = S.gets tyEnv >>= \ env -> case qualLookupValue qid env of
-  Value _ _ (ForAll _ t)                    : _ -> Just <$> trType (transType t)
-  DataConstructor _ _ _ (ForAllExist _ _ t) : _ -> Just <$> trType (transType t)
-  _                                             -> return Nothing
+  Value _ _ _ (ForAll _ (PredType _ t))                  : _ ->
+    Just <$> trType (transType t)
+  DataConstructor _ _ _ (ForAllExist _ _ (PredType _ t)) : _ ->
+    Just <$> trType (transType t)
+  _                                                          -> return Nothing
 
 getArity :: QualIdent -> FlatState Int
 getArity qid = S.gets tyEnv >>= \ env -> return $ case qualLookupValue qid env of
   [DataConstructor  _ a _ _] -> a
   [NewtypeConstructor _ _ _] -> 1
-  [Value              _ a _] -> a
+  [Value            _ _ a _] -> a
   [Label              _ _ _] -> 1
   _                          -> internalError
                                 ("GenFlatCurry.getArity: " ++ qualName qid)
@@ -178,7 +183,7 @@ getFixities :: FlatState [CS.IDecl]
 getFixities = S.gets fixities
 
 -- The function 'typeSynonyms' returns the list of type synonyms.
-getTypeSynonyms :: FlatState [CS.Decl]
+getTypeSynonyms :: FlatState [CS.Decl Type]
 getTypeSynonyms = S.gets typeSynonyms
 
 -- Retrieve imports
@@ -234,14 +239,14 @@ trInterface is (CS.Interface mid _ ds) = do
                 (sortBy (compare `on`   opName) ops)
 
 trITypeDecl :: CS.IDecl -> FlatState [TypeDecl]
-trITypeDecl (CS.IDataDecl _ qid tvs cs hs) = do
+trITypeDecl (CS.IDataDecl _ qid _ tvs cs hs) = do
   mid <- getModuleIdent
   t'  <- trTypeIdent qid
   cs' <- mapM (trConsIDecl (fromMaybe mid $ qidModule qid) tvs)
          [c | c <- cs, CS.constrId c `notElem` hs]
   return [Type t' Public vs cs']
   where vs = [0 .. length tvs - 1]
-trITypeDecl (CS.ITypeDecl _ qid tvs ty) = do
+trITypeDecl (CS.ITypeDecl _ qid _ tvs ty) = do
   t'  <- trTypeIdent qid
   ty' <- trType (transType $ toType tvs ty)
   return [TypeSyn t' Public vs ty']
@@ -249,42 +254,46 @@ trITypeDecl (CS.ITypeDecl _ qid tvs ty) = do
 trITypeDecl _ = return []
 
 trConsIDecl :: ModuleIdent -> [Ident] -> CS.ConstrDecl -> FlatState ConsDecl
-trConsIDecl mid tvs (CS.ConstrDecl _ _ c tys) = do
+trConsIDecl mid tvs (CS.ConstrDecl _ _ _ c tys) = do
   c'   <- trQIdent (qualifyWith mid c)
   tys' <- mapM (trType . transType . toType tvs) tys
   return (Cons c' (length tys) Public tys')
-trConsIDecl mid tis (CS.ConOpDecl p vs ty1 op ty2)
-  = trConsIDecl mid tis (CS.ConstrDecl p vs op [ty1, ty2])
-trConsIDecl mid tis (CS.RecordDecl p vs c fs) =
-  trConsIDecl mid tis (CS.ConstrDecl p vs c tys)
+trConsIDecl mid tis (CS.ConOpDecl p vs cx ty1 op ty2) =
+  trConsIDecl mid tis (CS.ConstrDecl p vs cx op [ty1, ty2])
+trConsIDecl mid tis (CS.RecordDecl p vs cx c fs) =
+  trConsIDecl mid tis (CS.ConstrDecl p vs cx c tys)
   where tys = [ty | CS.FieldDecl _ ls ty <- fs, _ <- ls]
 
 -- Translate record types into label selector functions
 trLabelDecl :: CS.IDecl -> FlatState [FuncDecl]
-trLabelDecl (CS.IDataDecl _ qid tvs cs hs) = do
+trLabelDecl (CS.IDataDecl _ qid _ tvs cs hs) = do
   mid <- getModuleIdent
   concatMapM (trLD mid) cs
   where
-  trLD mid (CS.RecordDecl _ _ _ fs) = concatMapM trIFuncDecl
-    [ CS.IFunctionDecl NoPos (qualifyWith mid l) 1 (mkType ty)
+  trLD mid (CS.RecordDecl _ _ _ _ fs) = concatMapM trIFuncDecl
+    [ CS.IFunctionDecl NoPos (qualifyWith mid l) False 1 (mkType ty)
     | CS.FieldDecl _ ls ty <- fs, l <- ls, l `notElem` hs
     ]
-  trLD _   _                        = return []
-  mkType ty = CS.ArrowType (CS.ConstructorType qid (map CS.VariableType tvs)) ty
-trLabelDecl (CS.INewtypeDecl _ qid tvs nc hs) = do
+  trLD _   _                          = return []
+  mkType = CS.QualTypeExpr [] . CS.ArrowType (foldl CS.ApplyType
+                                                    (CS.ConstructorType qid)
+                                                    (map CS.VariableType tvs))
+trLabelDecl (CS.INewtypeDecl _ qid _ tvs nc hs) = do
   mid <- getModuleIdent
   trNC mid nc
   where
-  trNC mid (CS.NewRecordDecl _ _ _ (l, ty))
-    | l `notElem` hs = trIFuncDecl
-                     $ CS.IFunctionDecl NoPos (qualifyWith mid l) 1 (mkType ty)
-  trNC _   _                                = return []
-  mkType ty = CS.ArrowType (CS.ConstructorType qid (map CS.VariableType tvs)) ty
+  trNC mid (CS.NewRecordDecl _ _ (l, ty))
+    | l `notElem` hs =
+      trIFuncDecl $ CS.IFunctionDecl NoPos (qualifyWith mid l) False 1 (mkType ty)
+  trNC _   _                              = return []
+  mkType = CS.QualTypeExpr [] . CS.ArrowType (foldl CS.ApplyType
+                                                    (CS.ConstructorType qid)
+                                                    (map CS.VariableType tvs))
 trLabelDecl _ = return []
 
 -- Translate an interface function declaration
 trIFuncDecl :: CS.IDecl -> FlatState [FuncDecl]
-trIFuncDecl (CS.IFunctionDecl _ f a ty) = do
+trIFuncDecl (CS.IFunctionDecl _ f _ a (CS.QualTypeExpr _ ty)) = do
   f'  <- trQIdent f
   ty' <- trType $ transType $ toType [] ty
   return [Func f' a Public ty' (Rule [] (Var $ mkIdx 0))]
@@ -310,13 +319,14 @@ trModule (IL.Module mid is ds) = do
   return $ Prog (moduleName mid) is' (sns ++ tds) fds ops
 
 -- Translate a type synonym
-trTypeSynonym :: CS.Decl -> FlatState [TypeDecl]
+trTypeSynonym :: CS.Decl a -> FlatState [TypeDecl]
 trTypeSynonym (CS.TypeDecl _ t tvs ty) = do
+  m    <- getModuleIdent
   qid  <- flip qualifyWith t <$> getModuleIdent
   t'   <- trTypeIdent qid
   vis  <- getTypeVisibility qid
   tEnv <- S.gets tcEnv
-  ty'  <- trType (transType $ expandType tEnv $ toType tvs ty)
+  ty'  <- trType (transType $ expandType m tEnv $ toType tvs ty)
   return [TypeSyn t' vis [0 .. length tvs - 1] ty']
 trTypeSynonym _                        = return []
 

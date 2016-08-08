@@ -316,8 +316,8 @@ matchInterface ifn i = do
     Left  _  -> hClose hdl >> return False
     Right i' -> return (i `intfEquiv` fixInterface i')
 
-writeFlat :: Options -> CompilerEnv -> CS.Interface -> CS.Module a -> IL.Module
-          -> CYIO ()
+writeFlat :: Options -> CompilerEnv -> CS.Interface -> CS.Module Type
+          -> IL.Module -> CYIO ()
 writeFlat opts env intf mdl il = do
   when (extTarget || fcyTarget) $ do
     writeFlatCurry opts env      mdl il
@@ -327,7 +327,8 @@ writeFlat opts env intf mdl il = do
   fcyTarget = FlatCurry         `elem` optTargetTypes opts
 
 -- |Export an 'IL.Module' into a FlatCurry file
-writeFlatCurry :: Options -> CompilerEnv -> CS.Module a -> IL.Module -> CYIO ()
+writeFlatCurry :: Options -> CompilerEnv -> CS.Module Type -> IL.Module
+               -> CYIO ()
 writeFlatCurry opts env mdl il = do
   (_, fc) <- dumpWith opts show EF.ppProg DumpFlatCurry (env, prog)
   when extTarget $ liftIO
@@ -340,7 +341,7 @@ writeFlatCurry opts env mdl il = do
   useSubDir = addCurrySubdirModule (optUseSubdir opts) (moduleIdent env)
   prog      = genFlatCurry env mdl il
 
-writeFlatIntf :: Options -> CompilerEnv -> CS.Interface -> CS.Module a
+writeFlatIntf :: Options -> CompilerEnv -> CS.Interface -> CS.Module Type
               -> IL.Module -> CYIO ()
 writeFlatIntf opts env intf mdl il
   | not (optInterface opts) = return ()

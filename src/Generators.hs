@@ -19,6 +19,8 @@ import qualified Curry.Syntax                as CS  (Module, Interface)
 import qualified Generators.GenAbstractCurry as GAC (genAbstractCurry)
 import qualified Generators.GenFlatCurry     as GFC (genFlatCurry, genFlatInterface)
 
+import           Base.Types                         (Type)
+
 import           CompilerEnv                        (CompilerEnv (..))
 import qualified IL                                 (Module)
 
@@ -31,9 +33,10 @@ genUntypedAbstractCurry :: CompilerEnv -> CS.Module a -> AC.CurryProg
 genUntypedAbstractCurry = GAC.genAbstractCurry True
 
 -- |Generate FlatCurry
-genFlatCurry :: CompilerEnv -> CS.Module -> IL.Module -> EF.Prog
+genFlatCurry :: CompilerEnv -> CS.Module Type -> IL.Module -> EF.Prog
 genFlatCurry = GFC.genFlatCurry
 
 -- |Generate a FlatCurry interface
-genFlatInterface :: CompilerEnv -> CS.Interface -> CS.Module -> IL.Module -> EF.Prog
+genFlatInterface :: CompilerEnv -> CS.Interface -> CS.Module Type -> IL.Module
+                 -> EF.Prog
 genFlatInterface = GFC.genFlatInterface
