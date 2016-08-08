@@ -40,7 +40,8 @@ cssFile :: FilePath
 cssFile = "currysource.css"
 
 -- |Translate source file into HTML file with syntaxcoloring
-source2html :: Options -> ModuleIdent -> [(Position, Token)] -> Module -> CYIO ()
+source2html :: Options -> ModuleIdent -> [(Position, Token)] -> Module a
+            -> CYIO ()
 source2html opts mid toks mdl = do
   liftIO $ writeFile (outDir </> htmlName mid) doc
   updateCSSFile outDir
