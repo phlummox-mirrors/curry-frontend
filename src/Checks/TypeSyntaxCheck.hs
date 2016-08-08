@@ -349,22 +349,18 @@ checkDecl d = return d
 checkConstrDecl :: [Ident] -> ConstrDecl -> TSCM ConstrDecl
 checkConstrDecl tvs (ConstrDecl p evs cx c tys) = do
   checkExistVars evs
-  let tvs' = evs ++ tvs
-  cx' <- checkClosedContext tvs' cx
-  tys' <- mapM (checkClosedType tvs') tys
+  tys' <- mapM (checkClosedType (evs ++ tvs)) tys
+  cx' <- checkClosedContext (fv tys') cx
   return $ ConstrDecl p evs cx' c tys'
 checkConstrDecl tvs (ConOpDecl p evs cx ty1 op ty2) = do
   checkExistVars evs
-  let tvs' = evs ++ tvs
-  cx' <- checkClosedContext tvs' cx
-  ty1' <- checkClosedType tvs' ty1
-  ty2' <- checkClosedType tvs' ty2
+  [ty1', ty2'] <- mapM (checkClosedType (evs ++ tvs)) [ty1, ty2]
+  cx' <- checkClosedContext (fv ty1' ++ fv ty2') cx
   return $ ConOpDecl p evs cx' ty1' op ty2'
 checkConstrDecl tvs (RecordDecl p evs cx c fs) = do
   checkExistVars evs
-  let tvs' = evs ++ tvs
-  cx' <- checkClosedContext tvs' cx
-  fs'  <- mapM (checkFieldDecl tvs') fs
+  fs' <- mapM (checkFieldDecl (evs ++ tvs)) fs
+  cx' <- checkClosedContext (concatMap fv [ty | FieldDecl _ _ ty <- fs]) cx
   return $ RecordDecl p evs cx' c fs'
 
 checkFieldDecl :: [Ident] -> FieldDecl -> TSCM FieldDecl
