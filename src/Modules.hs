@@ -37,6 +37,7 @@ import Curry.Base.Ident
 import Curry.Base.Monad
 import Curry.Base.Position
 import Curry.Base.Pretty
+import Curry.Base.Span
 import Curry.ExtendedFlat.InterfaceEquivalence (eqInterface)
 import Curry.Files.Filenames
 import Curry.Files.PathUtils
@@ -125,7 +126,7 @@ loadModule opts m fn = do
   return (cEnv { filePath = fn, tokens = toks }, mdl)
 
 parseModule :: Options -> ModuleIdent -> FilePath
-            -> CYIO ([(Position, CS.Token)], CS.Module)
+            -> CYIO ([(Span, CS.Token)], CS.Module)
 parseModule opts m fn = do
   mbSrc <- liftIO $ readModule fn
   case mbSrc of
@@ -135,10 +136,10 @@ parseModule opts m fn = do
       prepd   <- preprocess (optPrepOpts opts) fn ul
       -- We ignore the warnings issued by the lexer because
       -- they will be issued a second time during parsing.
-      posToks <- liftCYM $ silent $ CS.lexSource fn prepd
-      ast     <- liftCYM $ CS.parseModule fn prepd
-      checked <- checkModuleHeader opts m fn ast
-      return (posToks, checked)
+      spanToks <- liftCYM $ silent $ CS.lexSource fn prepd
+      ast      <- liftCYM $ CS.parseModule fn prepd
+      checked  <- checkModuleHeader opts m fn ast
+      return (spanToks, checked)
 
 preprocess :: PrepOpts -> FilePath -> String -> CYIO String
 preprocess opts fn src
@@ -278,7 +279,7 @@ writeParsed opts (env, mdl) = when srcTarget $ liftIO $
 
 writeHtml :: Options -> CompEnv CS.Module -> CYIO ()
 writeHtml opts (env, mdl) = when htmlTarget $
-  source2html opts (moduleIdent env) (tokens env) mdl
+  source2html opts (moduleIdent env) (map (\(sp, tok) -> (span2Pos sp, tok)) (tokens env)) mdl
   where htmlTarget = Html `elem` optTargetTypes opts
 
 writeInterface :: Options -> CompilerEnv -> CS.Interface -> CYIO ()

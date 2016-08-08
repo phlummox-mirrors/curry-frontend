@@ -1,12 +1,12 @@
 {- |
     Module      :  $Header$
-    Description :  Generating List of Tokens and Positions
+    Description :  Generating List of Tokens and Spans
     Copyright   :  (c) 2015 - 2016, Katharina Rahf
                        2015 - 2016, Björn Peemöller
                        2015 - 2016, Jan Tikovsky
 
     This module defines a function for writing the list of tokens
-    and positions of a Curry source module into a separate file.
+    and spans of a Curry source module into a separate file.
 -}
 
 module TokenStream (showTokenStream) where
@@ -14,18 +14,27 @@ module TokenStream (showTokenStream) where
 import Data.List             (intercalate)
 
 import Curry.Base.Position   (Position (..))
+import Curry.Base.Span       (Span (..))
 import Curry.Syntax          (Token (..), Category (..), Attributes (..))
 
--- |Show a list of 'Position' and 'Token' tuples.
+-- |Show a list of 'Span' and 'Token' tuples.
 -- The list is split into one tuple on each line to increase readability.
-showTokenStream :: [(Position, Token)] -> String
+showTokenStream :: [(Span, Token)] -> String
 showTokenStream [] = "[]\n"
-showTokenStream ts = "[ " ++ intercalate "\n, " (map showPT ts) ++ "\n]\n"
-  where showPT (p, t) = "(" ++ showPosition p ++ ", " ++ showToken t ++ ")"
+showTokenStream ts = "[ " ++ intercalate "\n, " (map showST filteredTs) ++ "\n]\n"
+  where filteredTs     = filter (not . isVirtual) ts
+        showST (sp, t) = "(" ++ showSpan sp ++ ", " ++ showToken t ++ ")"
+
+isVirtual :: (Span, Token) -> Bool
+isVirtual (_, Token cat _) = cat `elem` [EOF, VRightBrace, VSemicolon]
+
+-- show 'span' as "((startLine, startColumn), (endLine, endColumn))"
+showSpan :: Span -> String
+showSpan sp = "(" ++ showPos (start sp) ++ ", " ++ showPos (end sp) ++ ")"
 
 -- show 'Position' as "(line, column)"
-showPosition :: Position -> String
-showPosition p = "(" ++ show (line p) ++ ", " ++ show (column p) ++ ")"
+showPos :: Position -> String
+showPos p = "(" ++ show (line p) ++ ", " ++ show (column p) ++ ")"
 
 -- |Show tokens and their value if needed
 showToken :: Token -> String
@@ -86,8 +95,6 @@ showToken (Token Bar            _) = "Bar"
 showToken (Token LeftArrow      _) = "LeftArrow"
 showToken (Token RightArrow     _) = "RightArrow"
 showToken (Token Tilde          _) = "Tilde"
-showToken (Token Bind           _) = "Bind"
-showToken (Token Select         _) = "Select"
 -- special identifiers
 showToken (Token Id_as          _) = "Id_as"
 showToken (Token Id_ccall       _) = "Id_ccall"
