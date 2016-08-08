@@ -55,7 +55,9 @@ showToken (Token VSemicolon     _) = "VSemicolon"
 showToken (Token VRightBrace    _) = "VRightBrace"
 -- reserved keywords
 showToken (Token KW_case        _) = "KW_case"
+showToken (Token KW_class       _) = "KW_class"
 showToken (Token KW_data        _) = "KW_data"
+showToken (Token KW_default     _) = "KW_default"
 showToken (Token KW_do          _) = "KW_do"
 showToken (Token KW_else        _) = "KW_else"
 showToken (Token KW_external    _) = "KW_external"
@@ -68,6 +70,7 @@ showToken (Token KW_in          _) = "KW_in"
 showToken (Token KW_infix       _) = "KW_infix"
 showToken (Token KW_infixl      _) = "KW_infixl"
 showToken (Token KW_infixr      _) = "KW_infixr"
+showToken (Token KW_instance    _) = "KW_instance"
 showToken (Token KW_let         _) = "KW_let"
 showToken (Token KW_module      _) = "KW_module"
 showToken (Token KW_newtype     _) = "KW_newtype"
@@ -86,8 +89,7 @@ showToken (Token Bar            _) = "Bar"
 showToken (Token LeftArrow      _) = "LeftArrow"
 showToken (Token RightArrow     _) = "RightArrow"
 showToken (Token Tilde          _) = "Tilde"
-showToken (Token Bind           _) = "Bind"
-showToken (Token Select         _) = "Select"
+showToken (Token DoubleArrow    _) = "DoubleArrow"
 -- special identifiers
 showToken (Token Id_as          _) = "Id_as"
 showToken (Token Id_ccall       _) = "Id_ccall"
@@ -99,11 +101,14 @@ showToken (Token Id_qualified   _) = "Id_qualified"
 -- special operators
 showToken (Token SymDot         _) = "SymDot"
 showToken (Token SymMinus       _) = "SymMinus"
-showToken (Token SymMinusDot    _) = "SymMinusDot"
+-- special symbols
+showToken (Token SymStar        _) = "SymStar"
 -- pragmas
 showToken (Token PragmaLanguage _) = "PragmaLanguage"
 showToken (Token PragmaOptions  a) = "PragmaOptions" +++ showAttributes a
 showToken (Token PragmaHiding   _) = "PragmaHiding"
+showToken (Token PragmaMethod   _) = "PragmaMethod"
+showToken (Token PragmaModule   _) = "PragmaModule"
 showToken (Token PragmaEnd      _) = "PragmaEnd"
 -- comments
 showToken (Token LineComment    a) = "LineComment"   +++ showAttributes a
