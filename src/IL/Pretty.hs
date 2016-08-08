@@ -45,10 +45,10 @@ ppModule (Module m is ds) = sepByBlankLine
   [ppHeader m, vcat (map ppImport is), sepByBlankLine (map ppDecl ds)]
 
 ppHeader :: ModuleIdent -> Doc
-ppHeader m = text "module" <+> text (show m) <+> text "where"
+ppHeader m = text "module" <+> text (moduleName m) <+> text "where"
 
 ppImport :: ModuleIdent -> Doc
-ppImport m = text "import" <+> text (show m)
+ppImport m = text "import" <+> text (moduleName m)
 
 ppDecl :: Decl -> Doc
 ppDecl (DataDecl                   tc n cs) = sep $

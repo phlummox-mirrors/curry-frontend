@@ -12,16 +12,15 @@
 -}
 module Generators where
 
-import qualified Curry.AbstractCurry         as AC (CurryProg)
-import qualified Curry.ExtendedFlat.Type     as EF (Prog)
-import qualified Curry.Syntax                as CS (Module)
+import qualified Curry.AbstractCurry         as AC  (CurryProg)
+import qualified Curry.ExtendedFlat.Type     as EF  (Prog)
+import qualified Curry.Syntax                as CS  (Module, Interface)
 
-import qualified Generators.GenAbstractCurry as GAC
-import qualified Generators.GenFlatCurry     as GFC
+import qualified Generators.GenAbstractCurry as GAC (genAbstractCurry)
+import qualified Generators.GenFlatCurry     as GFC (genFlatCurry, genFlatInterface)
 
-import CompilerEnv
-import IL (Module)
-import ModuleSummary
+import           CompilerEnv                        (CompilerEnv (..))
+import qualified IL                                 (Module)
 
 -- |Generate typed AbstractCurry
 genTypedAbstractCurry :: CompilerEnv -> CS.Module -> AC.CurryProg
@@ -32,11 +31,9 @@ genUntypedAbstractCurry :: CompilerEnv -> CS.Module -> AC.CurryProg
 genUntypedAbstractCurry = GAC.genAbstractCurry True
 
 -- |Generate FlatCurry
-genFlatCurry :: ModuleSummary -> CompilerEnv -> IL.Module -> EF.Prog
-genFlatCurry ms env = GFC.genFlatCurry ms
-  (interfaceEnv env) (valueEnv env) (tyConsEnv env)
+genFlatCurry :: CompilerEnv -> CS.Module -> IL.Module -> EF.Prog
+genFlatCurry = GFC.genFlatCurry
 
 -- |Generate a FlatCurry interface
-genFlatInterface :: ModuleSummary -> CompilerEnv -> IL.Module -> EF.Prog
-genFlatInterface ms env = GFC.genFlatInterface ms
-  (interfaceEnv env) (valueEnv env) (tyConsEnv env)
+genFlatInterface :: CompilerEnv -> CS.Interface -> CS.Module -> IL.Module -> EF.Prog
+genFlatInterface = GFC.genFlatInterface

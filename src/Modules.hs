@@ -60,7 +60,6 @@ import Generators
 import Html.CurryHtml (source2html)
 import Imports
 import Interfaces (loadInterfaces)
-import ModuleSummary
 import TokenStream (showTokenStream)
 import Transformations
 
@@ -94,9 +93,7 @@ compileModule opts m fn = do
   writeInterface opts (fst mdl') intf
   when withFlat $ do
     (env2, il) <- transModule opts qmdl
-    -- generate target code
-    let modSum = summarizeModule (tyConsEnv env2) intf (snd qmdl)
-    writeFlat opts env2 modSum il
+    writeFlat opts env2 intf (snd qmdl) il
   where
   withFlat = any (`elem` optTargetTypes opts) [FlatCurry, ExtendedFlatCurry]
 
@@ -306,18 +303,18 @@ matchInterface ifn i = do
     Left  _  -> hClose hdl >> return False
     Right i' -> return (i `intfEquiv` fixInterface i')
 
-writeFlat :: Options -> CompilerEnv -> ModuleSummary -> IL.Module -> CYIO ()
-writeFlat opts env modSum il = do
+writeFlat :: Options -> CompilerEnv -> CS.Interface -> CS.Module -> IL.Module -> CYIO ()
+writeFlat opts env intf mdl il = do
   when (extTarget || fcyTarget) $ do
-    writeFlatCurry opts env modSum il
-    writeFlatIntf  opts env modSum il
+    writeFlatCurry opts env      mdl il
+    writeFlatIntf  opts env intf mdl il
   where
   extTarget = ExtendedFlatCurry `elem` optTargetTypes opts
   fcyTarget = FlatCurry         `elem` optTargetTypes opts
 
 -- |Export an 'IL.Module' into a FlatCurry file
-writeFlatCurry :: Options -> CompilerEnv -> ModuleSummary -> IL.Module -> CYIO ()
-writeFlatCurry opts env modSum il = do
+writeFlatCurry :: Options -> CompilerEnv -> CS.Module -> IL.Module -> CYIO ()
+writeFlatCurry opts env mdl il = do
   (_, fc) <- dumpWith opts show EF.ppProg DumpFlatCurry (env, prog)
   when extTarget $ liftIO
                  $ EF.writeExtendedFlat (useSubDir $ extFlatName (filePath env)) fc
@@ -327,23 +324,23 @@ writeFlatCurry opts env modSum il = do
   extTarget = ExtendedFlatCurry `elem` optTargetTypes opts
   fcyTarget = FlatCurry         `elem` optTargetTypes opts
   useSubDir = addCurrySubdirModule (optUseSubdir opts) (moduleIdent env)
-  prog      = genFlatCurry modSum env il
+  prog      = genFlatCurry env mdl il
 
-writeFlatIntf :: Options -> CompilerEnv -> ModuleSummary -> IL.Module -> CYIO ()
-writeFlatIntf opts env modSum il
+writeFlatIntf :: Options -> CompilerEnv -> CS.Interface -> CS.Module -> IL.Module -> CYIO ()
+writeFlatIntf opts env intf mdl il
   | not (optInterface opts) = return ()
   | optForce opts           = outputInterface
   | otherwise               = do
       mfint <- liftIO $ EF.readFlatInterface targetFile
       let oldInterface = fromMaybe emptyIntf mfint
       when (mfint == mfint) $ return () -- necessary to close file -- TODO
-      unless (oldInterface `eqInterface` intf) $ outputInterface
+      unless (oldInterface `eqInterface` fint) $ outputInterface
   where
   targetFile      = flatIntName (filePath env)
   emptyIntf       = EF.Prog "" [] [] [] []
-  intf            = genFlatInterface modSum env il
+  fint            = genFlatInterface env intf mdl il
   useSubDir       = addCurrySubdirModule (optUseSubdir opts) (moduleIdent env)
-  outputInterface = liftIO $ EF.writeFlatCurry (useSubDir targetFile) intf
+  outputInterface = liftIO $ EF.writeFlatCurry (useSubDir targetFile) fint
 
 writeAbstractCurry :: Options -> CompEnv CS.Module -> CYIO ()
 writeAbstractCurry opts (env, mdl) = do

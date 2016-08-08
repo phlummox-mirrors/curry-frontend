@@ -95,7 +95,6 @@ Library
     , Imports
     , Interfaces
     , Modules
-    , ModuleSummary
     , TokenStream
     , Transformations
     , Transformations.CaseCompletion

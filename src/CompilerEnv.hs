@@ -15,7 +15,7 @@ module CompilerEnv where
 
 import qualified Data.Map as Map (Map, keys, toList)
 
-import Curry.Base.Ident  (ModuleIdent)
+import Curry.Base.Ident    (ModuleIdent, moduleName)
 import Curry.Base.Pretty
 import Curry.Base.Span   (Span)
 import Curry.Syntax
@@ -62,10 +62,11 @@ initCompilerEnv mid = CompilerEnv
 -- |Show the 'CompilerEnv'
 showCompilerEnv :: CompilerEnv -> String
 showCompilerEnv env = show $ vcat
-  [ header "Module Identifier  " $ textS $ moduleIdent env
+  [ header "Module Identifier  " $ text  $ moduleName $ moduleIdent env
   , header "FilePath"            $ text  $ filePath    env
   , header "Language Extensions" $ text  $ show $ extensions  env
-  , header "Interfaces         " $ hcat  $ punctuate comma $ map textS
+  , header "Interfaces         " $ hcat  $ punctuate comma
+                                         $ map (text . moduleName)
                                          $ Map.keys $ interfaceEnv env
   , header "Module Aliases     " $ ppMap $ aliasEnv     env
   , header "Precedences        " $ ppAL $ allLocalBindings $ opPrecEnv env
@@ -74,7 +75,6 @@ showCompilerEnv env = show $ vcat
   ]
   where
   header hdr content = hang (text hdr <+> colon) 4 content
-  textS = text . show
 
 -- |Pretty print a 'Map'
 ppMap :: (Show a, Show b) => Map.Map a b -> Doc
