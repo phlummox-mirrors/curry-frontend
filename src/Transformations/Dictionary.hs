@@ -1010,14 +1010,16 @@ instance Specialize Alt where
 -- -----------------------------------------------------------------------------
 
 -- After we have transformed the module we have to remove class exports from
--- the export lis and type classes from the type constructor environment.
--- Furthermore, we may have to remove some operators from the precedence
--- environment as functions with class constraint have been supplemented
--- with addiontal dictionary arguments during the dictionary transformation.
+-- the export list and type classes from the type constructor environment.
+-- Furthermore, we may have to remove some infix declarations and operators
+-- from the precedence environment as functions with class constraint have
+-- been supplemented with addiontal dictionary arguments during the dictionary
+-- transformation.
 
 cleanup :: Module a -> DTM (Module a)
 cleanup (Module ps m es is ds) = do
   cleanedEs <- mapM cleanupExportSpec es
+  cleanedDs <- concatMapM cleanupInfixDecl ds
   cleanupTyConsEnv
   cleanupPrecEnv
   return $ Module ps m cleanedEs is ds
@@ -1034,6 +1036,15 @@ cleanupExport e@(ExportTypeWith tc cs) = do
     _                 -> return [e]
 cleanupExport e                        =
   internalError $ "Dictionary.cleanupExport: " ++ show e
+
+cleanupInfixDecl :: Decl a -> DTM [Decl a]
+cleanupInfixDecl (InfixDecl p fix pr ops) = do
+  m <- getModuleIdent
+  vEnv <- getValueEnv
+  let opArity = arrowArity . rawType . flip funType vEnv . qualifyWith m
+      ops' = filter ((== 2) . opArity) ops
+  return [InfixDecl p fix pr ops' | not (null ops')]
+cleanupInfixDecl d                        = return [d]
 
 cleanupTyConsEnv :: DTM ()
 cleanupTyConsEnv = getTyConsEnv >>= mapM_ (cleanupTyCons . fst) . allBindings
