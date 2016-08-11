@@ -4,6 +4,7 @@
     Copyright   :  (c) 2005       , Martin Engelke
                        2011 - 2015, Björn Peemöller
                        2016       , Jan Tikovsky
+                       2016       , Finn Teegen
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
@@ -45,7 +46,12 @@ import qualified Curry.Syntax        as CS
 
 import Base.Expr
 import Base.Messages                        (internalError)
+import Base.Types                           (charType, floatType, intType)
+
 import Env.Interface                        (InterfaceEnv, lookupInterface)
+
+import Transformations.Dictionary           (qImplMethodId)
+
 import IL
 
 -- Completes case expressions by adding branches for missing constructors.
@@ -299,8 +305,14 @@ failedExpr :: Expression
 failedExpr = Function (qualifyWith preludeMIdent (mkIdent "failed")) 0
 
 eqExpr :: Expression -> Expression -> Expression
-eqExpr e1 e2 = Apply (Apply eq e1) e2
-  where eq = Function (qualifyWith preludeMIdent (mkIdent "==")) 2
+eqExpr e1 e2 = Apply (Apply (Function eq 2) e1) e2
+  where eq = qImplMethodId preludeMIdent qEqId ty $ mkIdent "=="
+        ty = case e2 of
+               Literal l -> case l of
+                              Char  _ _ -> charType
+                              Int   _ _ -> intType
+                              Float _ _ -> floatType
+               _ -> internalError "CaseCompletion.eqExpr: no literal"
 
 truePatt :: ConstrTerm
 truePatt = ConstructorPattern qTrueId []

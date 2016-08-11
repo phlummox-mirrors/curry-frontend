@@ -12,7 +12,12 @@
 -}
 
 {-# LANGUAGE CPP #-}
-module Transformations.Dictionary (insertDicts, dictTransInterface) where
+module Transformations.Dictionary
+  ( insertDicts, dictTransInterface
+  , dictTypeId, qDictTypeId, dictConstrId, qDictConstrId
+  , defaultMethodId, qDefaultMethodId, superDictStubId, qSuperDictStubId
+  , instFunId, qInstFunId, implMethodId, qImplMethodId
+  ) where
 
 import           Control.Monad.Extra      ( concatMapM, liftM, maybeM, when
                                           , zipWithM )
