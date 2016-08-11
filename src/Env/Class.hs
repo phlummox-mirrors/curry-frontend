@@ -22,7 +22,7 @@ module Env.Class
   ) where
 
 import           Data.List       (nub)
-import qualified Data.Map as Map (Map, empty, insert, lookup)
+import qualified Data.Map as Map (Map, empty, insertWith, lookup)
 
 import Curry.Base.Ident
 
@@ -36,7 +36,16 @@ initClassEnv :: ClassEnv
 initClassEnv = Map.empty
 
 bindClassInfo :: QualIdent -> ClassInfo -> ClassEnv -> ClassEnv
-bindClassInfo = Map.insert
+bindClassInfo = Map.insertWith mergeClassInfo
+
+-- We have to be careful when merging two class infos into one as hidden class
+-- declarations in interfaces provide no information about class methods. If
+-- one of the method lists is empty, we simply take the other one. This way,
+-- we do overwrite the list of class methods that may have been entered into
+-- the class environment before with an empty list.
+
+mergeClassInfo :: ClassInfo -> ClassInfo -> ClassInfo
+mergeClassInfo (sclss1, ms1) (_, ms2) = (sclss1, if null ms1 then ms2 else ms1)
 
 lookupClassInfo :: QualIdent -> ClassEnv -> Maybe ClassInfo
 lookupClassInfo = Map.lookup
