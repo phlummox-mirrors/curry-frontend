@@ -1022,7 +1022,7 @@ cleanup (Module ps m es is ds) = do
   cleanedDs <- concatMapM cleanupInfixDecl ds
   cleanupTyConsEnv
   cleanupPrecEnv
-  return $ Module ps m cleanedEs is ds
+  return $ Module ps m cleanedEs is cleanedDs
 
 cleanupExportSpec :: ExportSpec -> DTM ExportSpec
 cleanupExportSpec (Exporting p es) = Exporting p <$> concatMapM cleanupExport es
