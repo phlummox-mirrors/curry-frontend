@@ -1626,6 +1626,7 @@ varType v vEnv = case lookupValue v vEnv of
 varArity :: Ident -> ValueEnv -> Int
 varArity v vEnv = case lookupValue v vEnv of
   Value _ _ n _ : _ -> n
+  Label   _ _ _ : _ -> 1
   _ -> internalError $ "TypeCheck.varArity: " ++ show v
 
 funType :: ModuleIdent -> QualIdent -> ValueEnv -> TypeScheme
