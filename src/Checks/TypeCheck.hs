@@ -719,10 +719,10 @@ isNonExpansive' n (Variable        _ v)
   | v' == anonId = return False
   | isRenamed v' = do
     vEnv <- getValueEnv
-    return $ n == 0 || n < varArity v' vEnv
+    return $ n == 0 || n < varArity v vEnv
   | otherwise = do
     vEnv <- getValueEnv
-    return $ n < varArity v' vEnv
+    return $ n < varArity v vEnv
   where v' = unqualify v
 isNonExpansive' _ (Constructor     _ _) = return True
 isNonExpansive' n (Paren             e) = isNonExpansive' n e
@@ -1623,8 +1623,8 @@ varType v vEnv = case lookupValue v vEnv of
   Value _ _ _ tySc : _ -> tySc
   _ -> internalError $ "TypeCheck.varType: " ++ show v
 
-varArity :: Ident -> ValueEnv -> Int
-varArity v vEnv = case lookupValue v vEnv of
+varArity :: QualIdent -> ValueEnv -> Int
+varArity v vEnv = case qualLookupValue v vEnv of
   Value _ _ n _ : _ -> n
   Label   _ _ _ : _ -> 1
   _ -> internalError $ "TypeCheck.varArity: " ++ show v
