@@ -34,7 +34,6 @@ import           Control.Applicative        ((<$>), (<*>))
 import           Control.Monad.Extra        (concatMapM)
 import           Control.Monad.State as S   (State, runState, gets, modify)
 import qualified Data.Map            as Map (Map, empty, insert, lookup)
-import           Data.Maybe                 (fromMaybe)
 
 import Curry.Base.Position
 import Curry.Base.Ident
@@ -44,11 +43,10 @@ import Base.Expr
 import Base.Messages (internalError)
 import Base.SCC
 import Base.Types
-import Base.TypeSubst
 import Base.Typing
 import Base.Utils
 
-import Env.Value (ValueEnv, ValueInfo (..), bindFun, qualLookupValue)
+import Env.Value (ValueEnv, ValueInfo (..), qualLookupValue)
 
 -- -----------------------------------------------------------------------------
 -- Simplification
@@ -86,9 +84,6 @@ getFunArity f = do
     [Value _ _ a _] -> a
     [Label   _ _ _] -> 1
     _               -> internalError $ "Simplify.funType " ++ show f
-
-modifyValueEnv :: (ValueEnv -> ValueEnv) -> SIM ()
-modifyValueEnv f = S.modify $ \ s -> s { valueEnv = f $ valueEnv s }
 
 getValueEnv :: SIM ValueEnv
 getValueEnv = S.gets valueEnv
@@ -173,7 +168,7 @@ inlineFun env p lhs rhs = do
           else return [Equation p lhs rhs]
     _ -> return [Equation p lhs rhs]
   where
-  etaReduce n1 vs (VariablePattern ty v : ts1) (Apply e1 (Variable ty' v'))
+  etaReduce n1 vs (VariablePattern ty v : ts1) (Apply e1 (Variable _ v'))
     | qualify v == v' = etaReduce (n1 + 1) ((ty, v) : vs) ts1 e1
   etaReduce n1 vs _ e1 = (n1, vs, e1)
 
@@ -303,7 +298,7 @@ inlineVars env ds = case ds of
   where
   canInlineVar _ (Literal     _ _) = return True
   canInlineVar _ (Constructor _ _) = return True
-  canInlineVar v (Variable  ty v')
+  canInlineVar v (Variable   _ v')
     | isQualified v'             = (> 0) <$> getFunArity v'
     | otherwise                  = return $ v /= unqualify v'
   canInlineVar _ _               = return False
@@ -338,10 +333,10 @@ expandPatternBindings fvs d@(PatternDecl p t (SimpleRhs _ e _)) = case t of
   VariablePattern _ _ -> return [d]
   _                   ->
     -- used variables
-    mapM (mkSelectorDecl pty) (filter ((`elem` fvs) . fst3) (patternVars t))
+    mapM mkSelectorDecl (filter ((`elem` fvs) . fst3) (patternVars t))
   where
     pty = typeOf t -- type of pattern
-    mkSelectorDecl pty (v, _, vty) = do
+    mkSelectorDecl (v, _, vty) = do
       let fty = TypeArrow pty vty
       f <- freshIdent (updIdentName (++ '#' : idName v) . fpSelectorId)
       return $ varDecl p vty v $
