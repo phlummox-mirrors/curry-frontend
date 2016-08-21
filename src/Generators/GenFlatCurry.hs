@@ -271,7 +271,7 @@ trLabelDecl (CS.IDataDecl _ qid _ tvs cs hs) = do
   concatMapM (trLD mid) cs
   where
   trLD mid (CS.RecordDecl _ _ _ _ fs) = concatMapM trIFuncDecl
-    [ CS.IFunctionDecl NoPos (qualifyWith mid l) False 1 (mkType ty)
+    [ CS.IFunctionDecl NoPos (qualifyWith mid l) Nothing 1 (mkType ty)
     | CS.FieldDecl _ ls ty <- fs, l <- ls, l `notElem` hs
     ]
   trLD _   _                          = return []
@@ -284,7 +284,7 @@ trLabelDecl (CS.INewtypeDecl _ qid _ tvs nc hs) = do
   where
   trNC mid (CS.NewRecordDecl _ _ (l, ty))
     | l `notElem` hs =
-      trIFuncDecl $ CS.IFunctionDecl NoPos (qualifyWith mid l) False 1 (mkType ty)
+      trIFuncDecl $ CS.IFunctionDecl NoPos (qualifyWith mid l) Nothing 1 (mkType ty)
   trNC _   _                              = return []
   mkType = CS.QualTypeExpr [] . CS.ArrowType (foldl CS.ApplyType
                                                     (CS.ConstructorType qid)

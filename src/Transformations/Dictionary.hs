@@ -1137,7 +1137,7 @@ transformIContext m tvs cx =
 iFunctionDeclFromValue :: ModuleIdent -> ValueEnv -> QualIdent -> IDecl
 iFunctionDeclFromValue m vEnv f = case qualLookupValue f vEnv of
   [Value _ _ a (ForAll _ pty)] ->
-    IFunctionDecl NoPos (qualUnqualify m f) False a $
+    IFunctionDecl NoPos (qualUnqualify m f) Nothing a $
       fromQualPredType m identSupply pty
   _ -> internalError $ "Dictionary.iFunctionDeclFromValue: " ++ show f
 

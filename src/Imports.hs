@@ -267,8 +267,10 @@ values m (INewtypeDecl _ tc _ tvs nc hs) =
       [recLabel m tc tvs ty' (l, [c], lty) | l `notElem` hs]
   where tc' = qualQualify m tc
         ty' = constrType tc' tvs
-values m (IFunctionDecl _ f cm a qty) =
-  [Value (qualQualify m f) cm a (typeScheme (toQualPredType m [] qty))]
+values m (IFunctionDecl _ f Nothing a qty) =
+  [Value (qualQualify m f) False a (typeScheme (toQualPredType m [] qty))]
+values m (IFunctionDecl _ f (Just tv) _ qty) =
+  [Value (qualQualify m f) True 0 (typeScheme (toQualPredType m [tv] qty))]
 values m (IClassDecl _ _ qcls _ tv ds hs) =
   map (classMethod m qcls' tv) (filter ((`notElem` hs) . imethod) ds)
   where qcls' = qualQualify m qcls
