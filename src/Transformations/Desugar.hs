@@ -811,9 +811,9 @@ expandAlt :: (PredType, Ident) -> CaseType -> [Alt PredType]
 expandAlt _ _  []                   = error "Desugar.expandAlt: empty list"
 expandAlt v ct (Alt p t rhs : alts) = caseAlt p t <$> expandRhs e0 id rhs
   where
-  e0 | ct == Flex = prelFailed (typeOf rhs)
-     | otherwise  = Case (srcRefOf p) ct (uncurry mkVar v)
-                         (filter (isCompatible t . altPattern) alts)
+  e0 | ct == Flex || null compAlts = prelFailed (typeOf rhs)
+     | otherwise = Case (srcRefOf p) ct (uncurry mkVar v) compAlts
+  compAlts = filter (isCompatible t . altPattern) alts
   altPattern (Alt _ t1 _) = t1
 
 isCompatible :: Pattern a -> Pattern a -> Bool
