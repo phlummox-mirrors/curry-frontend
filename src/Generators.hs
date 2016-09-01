@@ -19,17 +19,17 @@ import qualified Curry.Syntax                as CS  (Module, Interface)
 import qualified Generators.GenAbstractCurry as GAC (genAbstractCurry)
 import qualified Generators.GenFlatCurry     as GFC (genFlatCurry, genFlatInterface)
 
-import           Base.Types                         (Type)
+import           Base.Types                         (Type, PredType)
 
 import           CompilerEnv                        (CompilerEnv (..))
 import qualified IL                                 (Module)
 
 -- |Generate typed AbstractCurry
-genTypedAbstractCurry :: CompilerEnv -> CS.Module a -> AC.CurryProg
+genTypedAbstractCurry :: CompilerEnv -> CS.Module PredType -> AC.CurryProg
 genTypedAbstractCurry = GAC.genAbstractCurry False
 
 -- |Generate untyped AbstractCurry
-genUntypedAbstractCurry :: CompilerEnv -> CS.Module a -> AC.CurryProg
+genUntypedAbstractCurry :: CompilerEnv -> CS.Module PredType -> AC.CurryProg
 genUntypedAbstractCurry = GAC.genAbstractCurry True
 
 -- |Generate FlatCurry

@@ -358,7 +358,7 @@ writeFlatIntf opts env intf mdl il
   useSubDir       = addCurrySubdirModule (optUseSubdir opts) (moduleIdent env)
   outputInterface = liftIO $ EF.writeFlatCurry (useSubDir targetFile) fint
 
-writeAbstractCurry :: Options -> CompEnv (CS.Module a) -> CYIO ()
+writeAbstractCurry :: Options -> CompEnv (CS.Module PredType) -> CYIO ()
 writeAbstractCurry opts (env, mdl) = do
   when acyTarget  $ liftIO
                   $ AC.writeCurry (useSubDir $ acyName (filePath env))
