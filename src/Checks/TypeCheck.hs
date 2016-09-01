@@ -657,7 +657,8 @@ checkPDeclType _ _ _ _ = internalError "TypeCheck.checkPDeclType"
 checkTypeSig :: PredType -> TypeScheme -> TCM Bool
 checkTypeSig (PredType sigPs sigTy) (ForAll _ (PredType ps ty)) = do
   clsEnv <- getClassEnv
-  return $ sigTy == ty && all (`elem` maxPredSet clsEnv sigPs) ps
+  return $
+    sigTy == ty && all (`Set.member` maxPredSet clsEnv sigPs) (Set.toList ps)
 
 -- In Curry, a non-expansive expression is either
 --
@@ -1389,7 +1390,8 @@ reducePredSet p what doc ps = do
   inEnv <- (fmap $ fmap $ subst theta) <$> getInstEnv
   let ps' = subst theta ps
       (ps1, ps2) = partitionPredSet $ minPredSet clsEnv $ reducePreds inEnv ps'
-  theta' <- foldM (reportMissingInstance m p what doc inEnv) idSubst ps2
+  theta' <-
+    foldM (reportMissingInstance m p what doc inEnv) idSubst $ Set.toList ps2
   modifyTypeSubst $ compose theta'
   return ps1
   where
@@ -1467,7 +1469,7 @@ applyDefaults p what doc fvs ps ty = do
 
 bindDefault :: [Type] -> InstEnv' -> PredSet -> Int -> TypeSubst -> TypeSubst
 bindDefault defs inEnv ps tv =
-  case foldr (defaultType inEnv tv) defs ps of
+  case foldr (defaultType inEnv tv) defs (Set.toList ps) of
     [] -> id
     ty:_ -> bindSubst tv ty
 
@@ -1499,7 +1501,7 @@ checkSkolems p what pp fs ps ty x = do
   m <- getModuleIdent
   vEnv <- getValueEnv
   theta <- getTypeSubst
-  let escape = any (`notElem` fs) . typeSkolems . snd
+  let escape = any (`Set.notMember` fs) . typeSkolems . snd
       esc    = filter escape $ [ (v, subst theta pty)
                                | (v, pty) <- (empty, PredType ps ty) : ptys ]
       ptys   = [ (text "Variable:" <+> ppIdent v, pty)
@@ -1569,7 +1571,7 @@ skol (ForAllExist n n' (PredType ps ty)) = do
   modifyInstEnv $
     fmap $ bindSkolemInsts $ expandAliasType tys'' $ maxPredSet clsEnv ps
   return (emptyPredSet, expandAliasType tys'' ty)
-  where bindSkolemInsts = flip $ foldr bindSkolemInst
+  where bindSkolemInsts = flip (foldr bindSkolemInst) . Set.toList
         bindSkolemInst (Pred qcls ty') dInEnv =
           Map.insert qcls (ty' : fromMaybe [] (Map.lookup qcls dInEnv)) dInEnv
 

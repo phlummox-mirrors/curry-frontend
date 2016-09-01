@@ -23,7 +23,7 @@ import           Data.List         (nub)
 import qualified Data.Map   as Map (foldrWithKey, toList)
 import           Data.Maybe        (catMaybes)
 import qualified Data.Set   as Set ( Set, empty, insert, deleteMin, fromList
-                                   , toList )
+                                   , member, toList )
 
 import Curry.Base.Position
 import Curry.Base.Ident
@@ -310,9 +310,10 @@ closeInterface :: ModuleIdent -> TCEnv -> ClassEnv -> InstEnv -> [Ident]
                -> Set.Set IInfo -> [IDecl] -> [IDecl]
 closeInterface _ _ _ _ _ _ [] = []
 closeInterface m tcEnv clsEnv inEnv tvs is (d:ds)
-  | i == IOther = d : closeInterface m tcEnv clsEnv inEnv tvs is (ds ++ ds')
-  | i `elem` is = closeInterface m tcEnv clsEnv inEnv tvs is ds
-  | otherwise   =
+  | i == IOther       =
+    d : closeInterface m tcEnv clsEnv inEnv tvs is (ds ++ ds')
+  | i `Set.member` is = closeInterface m tcEnv clsEnv inEnv tvs is ds
+  | otherwise         =
     d : closeInterface m tcEnv clsEnv inEnv tvs (Set.insert i is) (ds ++ ds')
   where i   = iInfo d
         ds' = hiddenTypes m tcEnv clsEnv tvs d ++
@@ -345,7 +346,7 @@ instances m tcEnv inEnv tvs is (IType tc) =
   [ iInstDecl m tcEnv tvs ident info
   | (ident@(cls, tc'), info@(m', _, _)) <- Map.toList inEnv,
     qualQualify m tc == tc',
-    if qidModule cls == Just m' then elem (IClass (qualUnqualify m cls)) is
+    if qidModule cls == Just m' then Set.member (IClass (qualUnqualify m cls)) is
                                 else qidModule tc' == Just m' ]
 instances m tcEnv inEnv tvs is (IClass cls) =
   [ iInstDecl m tcEnv tvs ident info
@@ -354,7 +355,7 @@ instances m tcEnv inEnv tvs is (IClass cls) =
     qidModule cls' == Just m',
     m /= m' || isPrimTypeId tc
             || qidModule tc /= Just m
-            || elem (IType (qualUnqualify m tc)) is ]
+            || Set.member (IType (qualUnqualify m tc)) is ]
 instances _ _ _ _ _ (IInst _) = []
 
 definedTypes :: [IDecl] -> [QualIdent]

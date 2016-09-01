@@ -28,7 +28,7 @@ import           Control.Arrow              (first)
 import qualified Control.Monad.State as S   (State, runState, gets, modify)
 import           Data.List
 import qualified Data.Map            as Map (Map, empty, insert, lookup)
-import qualified Data.Set            as Set (fromList, unions)
+import qualified Data.Set            as Set (fromList, member, unions)
 
 import Curry.Base.Ident
 import Curry.Syntax
@@ -183,7 +183,7 @@ absFunDecls pre lvs (fds:fdss) vds e = do
                 [ Set.fromList (maybe [v] (qfv m) (Map.lookup v env))
                 | v <- qfv m fds ]
       -- free variables that are local
-      fvs    = filter ((`elem` fvsRhs) . snd) lvs
+      fvs    = filter ((`Set.member` fvsRhs) . snd) lvs
       -- extended abstraction environment
       env'   = foldr (bindF (map (uncurry mkVar) fvs)) env fs
       bindF fvs' f = Map.insert f (apply (mkFun m pre undefined f) fvs')

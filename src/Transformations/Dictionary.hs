@@ -19,6 +19,9 @@ module Transformations.Dictionary
   , instFunId, qInstFunId, implMethodId, qImplMethodId
   ) where
 
+#if __GLASGOW_HASKELL__ < 710
+import           Control.Applicative      ((<$>), (<*>))
+#endif
 import           Control.Monad.Extra      ( concatMapM, liftM, maybeM, when
                                           , zipWithM )
 import qualified Control.Monad.State as S (State, runState, gets, modify)
@@ -28,7 +31,8 @@ import qualified Data.Map   as Map ( Map, empty, insert, lookup, mapWithKey
                                    , toList )
 import           Data.Maybe        (fromMaybe)
 import qualified Data.Set   as Set ( deleteMin, fromList, null, size, toAscList
-                                   , union )
+                                   , toList, union )
+import           Data.Traversable  (traverse)
 
 import Curry.Base.Ident
 import Curry.Base.Position
@@ -1023,7 +1027,7 @@ instance Specialize Alt where
 
 cleanup :: Module a -> DTM (Module a)
 cleanup (Module ps m es is ds) = do
-  cleanedEs <- mapM cleanupExportSpec es
+  cleanedEs <- traverse cleanupExportSpec es
   cleanedDs <- concatMapM cleanupInfixDecl ds
   cleanupTyConsEnv
   cleanupPrecEnv
@@ -1214,7 +1218,8 @@ dictType (Pred cls ty) = TypeApply (TypeConstructor $ qDictTypeId cls) ty
 -- dictionary type argument.
 
 transformPredType :: PredType -> Type
-transformPredType (PredType ps ty) = foldr (TypeArrow . dictType) ty ps
+transformPredType (PredType ps ty) =
+  foldr (TypeArrow . dictType) ty $ Set.toList ps
 
 -- The function 'transformMethodPredType' first deletes the implicit class
 -- constraint and then transforms the resulting predicated type as above.

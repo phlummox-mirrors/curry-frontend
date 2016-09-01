@@ -21,7 +21,7 @@
 module Checks.TypeSyntaxCheck (typeSyntaxCheck) where
 
 #if __GLASGOW_HASKELL__ < 710
-import           Control.Applicative      ((<$>), (<*>))
+import           Control.Applicative      ((<$>), (<*>), pure)
 #endif
 import           Control.Monad            (unless, when)
 import qualified Control.Monad.State as S (State, runState, gets, modify)

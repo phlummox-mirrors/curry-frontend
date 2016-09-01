@@ -221,7 +221,7 @@ checkContext = mapM checkConstraint
 checkConstraint :: Constraint -> ISC Constraint
 checkConstraint (Constraint qcls ty) = do
   checkClass qcls
-  Constraint qcls <$> checkType ty
+  Constraint qcls `liftM` checkType ty
 
 checkClass :: QualIdent -> ISC ()
 checkClass qcls = do

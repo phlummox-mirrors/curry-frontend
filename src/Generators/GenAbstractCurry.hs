@@ -18,7 +18,7 @@
 module Generators.GenAbstractCurry (genAbstractCurry) where
 
 #if __GLASGOW_HASKELL__ < 710
-import           Control.Applicative          ((<$>), (<*>))
+import           Control.Applicative          ((<$>), (<*>), pure)
 #endif
 import           Control.Monad.Extra
 import qualified Control.Monad.State as S     (State, evalState, get, gets
