@@ -265,8 +265,8 @@ unqualifyPred m (Pred qcls ty) =
 type PredSet = Set.Set Pred
 
 instance IsType a => IsType (Set.Set a) where
-  typeVars = concat . Set.map typeVars
-  typeSkolems = concat . Set.map typeSkolems
+  typeVars = concat . Set.toList . Set.map typeVars
+  typeSkolems = concat . Set.toList . Set.map typeSkolems
 
 emptyPredSet :: PredSet
 emptyPredSet = Set.empty
