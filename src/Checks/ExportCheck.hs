@@ -50,7 +50,10 @@ import Base.Utils          (findMultiples)
 
 import Env.ModuleAlias     (AliasEnv)
 import Env.TypeConstructor (TCEnv, TypeInfo (..), qualLookupTCUnique)
-import Env.Value           (ValueEnv, ValueInfo (..), qualLookupValueUnique)
+import Env.Value           ( ValueEnv, ValueInfo (..), lookupValue
+                           , qualLookupValueUnique)
+
+import Debug.Trace
 
 currentModuleName :: String
 currentModuleName = "Checks.ExportCheck"
@@ -169,16 +172,21 @@ checkTypeWith :: QualIdent -> [Ident] -> ECM ()
 checkTypeWith tc xs = do
   m     <- getModuleIdent
   tcEnv <- getTyConsEnv
+  tyEnv <- getValueEnv
   case qualLookupTCUnique m tc tcEnv of
     []                   -> report (errUndefinedType tc)
-    [DataType _ _ cs]    -> mapM_ (checkElement (visibleElems cs )) xs'
-    [RenamingType _ _ c] -> mapM_ (checkElement (visibleElems [c])) xs'
+    [DataType _ _ cs]    -> mapM_ (checkElement (visibleElems cs ) tyEnv) xs'
+    [RenamingType _ _ c] -> mapM_ (checkElement (visibleElems [c]) tyEnv) xs'
     [_]                  -> report (errNonDataType tc)
     ts                   -> report (errAmbiguousType tc ts)
   where
   xs' = nub xs
   -- check if given identifier is constructor or label of type tc
-  checkElement cs' c = unless (c `elem` cs') $ report $ errUndefinedElement tc c
+  checkElement cs' tyEnv c  = unless (c `elem` cs' || loneLabel tyEnv c) $
+                                    report $ errUndefinedElement tc c
+  loneLabel tyEnv c         = any checkLabel $ lookupValue c tyEnv
+  checkLabel (Label _ cs _) = trace ("@" ++ show (cs) ++ "\n") $ False
+  checkLabel _              = False
 
 -- |Check type constructor with all data constructors and record labels.
 checkTypeAll :: QualIdent -> ECM ()
