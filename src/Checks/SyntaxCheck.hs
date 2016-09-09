@@ -1197,8 +1197,6 @@ genFuncPattAppl :: Pattern () -> [Pattern ()] -> Pattern ()
 genFuncPattAppl term []     = term
 genFuncPattAppl term (t:ts)
    = FunctionPattern () qApplyId [genFuncPattAppl term ts, t]
- where
- qApplyId = qualifyWith preludeMIdent (mkIdent "apply")
 
 checkFPTerm :: Position -> Pattern a -> SCM ()
 checkFPTerm _ (LiteralPattern        _ _) = ok

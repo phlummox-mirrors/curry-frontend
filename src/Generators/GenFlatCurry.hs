@@ -480,7 +480,7 @@ genComb qid es ct = Comb ct qid <$> mapM trExpr es
 
 genApply :: Expr -> [IL.Expression] -> FlatState Expr
 genApply e es = do
-  ap  <- trQIdent $ qualifyWith preludeMIdent (mkIdent "apply")
+  ap  <- trQIdent $ qApplyId
   es' <- mapM trExpr es
   return $ foldl (\e1 e2 -> Comb FuncCall ap [e1, e2]) e es'
 
