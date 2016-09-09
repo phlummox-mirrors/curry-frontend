@@ -178,7 +178,7 @@ augmentValues = fmap augmentValueInfo
 
 augmentValueInfo :: ValueInfo -> ValueInfo
 augmentValueInfo (Value f True a (ForAll n (PredType ps ty)))
-  | arrowArity ty == 0 = Value f True (a + 1) $ ForAll n $ PredType ps ty'
+  | arrowArity ty == 0 = Value f True a $ ForAll n $ PredType ps ty'
   where ty' = augmentType ty
 augmentValueInfo vi = vi
 
