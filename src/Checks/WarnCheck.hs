@@ -234,7 +234,7 @@ warnDisjoinedFunctionRules ident pos = posMessage ident $ hsep (map text
   <+> parens (text "first occurrence at" <+> text (showLine pos))
 
 checkDecl :: Decl () -> WCM ()
-checkDecl (DataDecl     _ _ vs cs) = inNestedScope $ do
+checkDecl (DataDecl   _ _ vs cs _) = inNestedScope $ do
   mapM_ insertTypeVar   vs
   mapM_ checkConstrDecl cs
   reportUnusedTypeVars  vs
@@ -895,7 +895,7 @@ reportUnusedTypeVars vs = warnFor WarnUnusedBindings $ do
 -- sides.
 
 insertDecl :: Decl a -> WCM ()
-insertDecl (DataDecl       _ d _ cs) = do
+insertDecl (DataDecl     _ d _ cs _) = do
   insertTypeConsId d
   mapM_ insertConstrDecl cs
 insertDecl (TypeDecl       _ t _ ty) = do

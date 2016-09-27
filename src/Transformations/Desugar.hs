@@ -193,16 +193,16 @@ dsClassAndInstanceDecl d = return d
 -- Generate selector functions for record labels and replace record
 -- constructor declarations by ordinary constructor declarations.
 dsRecordDecl :: Decl PredType -> DsM [Decl PredType]
-dsRecordDecl (DataDecl p tc tvs cs) = do
+dsRecordDecl (DataDecl p tc tvs cs clss) = do
   m <- getModuleIdent
   let qcs = map (qualifyWith m . constrId) cs
   selFuns <- mapM (genSelFun p qcs) (nub $ concatMap recordLabels cs)
-  return $ DataDecl p tc tvs (map unlabelConstr cs) : selFuns
-dsRecordDecl (NewtypeDecl p tc tvs nc) = do
+  return $ DataDecl p tc tvs (map unlabelConstr cs) clss : selFuns
+dsRecordDecl (NewtypeDecl p tc tvs nc clss) = do
   m <- getModuleIdent
   let qc = qualifyWith m (nconstrId nc)
   selFun <- mapM (genSelFun p [qc]) (nrecordLabels nc)
-  return $ NewtypeDecl p tc tvs (unlabelNewConstr nc) : selFun
+  return $ NewtypeDecl p tc tvs (unlabelNewConstr nc) clss : selFun
 dsRecordDecl d = return [d]
 
 -- Generate a selector function for a single record label

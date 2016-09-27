@@ -127,11 +127,11 @@ ok :: TSCM ()
 ok = return ()
 
 bindType :: ModuleIdent -> Decl a -> TypeEnv -> TypeEnv
-bindType m (DataDecl _ tc _ cs) = bindTypeKind m tc (Data qtc ids)
+bindType m (DataDecl _ tc _ cs _) = bindTypeKind m tc (Data qtc ids)
   where
     qtc = qualifyWith m tc
     ids = map constrId cs ++ nub (concatMap recordLabels cs)
-bindType m (NewtypeDecl _ tc _ nc) = bindTypeKind m tc (Data qtc ids)
+bindType m (NewtypeDecl _ tc _ nc _) = bindTypeKind m tc (Data qtc ids)
   where
     qtc = qualifyWith m tc
     ids = nconstrId nc : nrecordLabels nc
@@ -173,12 +173,12 @@ instance Rename a => Rename [a] where
 
 instance Rename (Decl a) where
   rename (InfixDecl p fix pr ops) = return $ InfixDecl p fix pr ops
-  rename (DataDecl p tc tvs cs) = withLocalEnv $ do
+  rename (DataDecl p tc tvs cs clss) = withLocalEnv $ do
     bindVars tvs
-    DataDecl p tc <$> rename tvs <*> rename cs
-  rename (NewtypeDecl p tc tvs nc) = withLocalEnv $ do
+    DataDecl p tc <$> rename tvs <*> rename cs <*> pure clss
+  rename (NewtypeDecl p tc tvs nc clss) = withLocalEnv $ do
     bindVars tvs
-    NewtypeDecl p tc <$> rename tvs <*> rename nc
+    NewtypeDecl p tc <$> rename tvs <*> rename nc <*> pure clss
   rename (TypeDecl p tc tvs ty) = withLocalEnv $ do
     bindVars tvs
     TypeDecl p tc <$> rename tvs <*> rename ty
@@ -310,17 +310,19 @@ checkModule (Module ps m es is ds) = do
   return (Module ps m es is ds'', exts)
 
 checkDecl :: Decl a -> TSCM (Decl a)
-checkDecl (DataDecl p tc tvs cs) = do
+checkDecl (DataDecl p tc tvs cs clss) = do
   checkTypeLhs tvs
-  cs'  <- mapM (checkConstrDecl tvs) cs
-  return $ DataDecl p tc tvs cs'
-checkDecl (NewtypeDecl p tc tvs nc) = do
+  cs' <- mapM (checkConstrDecl tvs) cs
+  mapM_ checkClass clss
+  return $ DataDecl p tc tvs cs' clss
+checkDecl (NewtypeDecl p tc tvs nc clss) = do
   checkTypeLhs tvs
-  nc'  <- checkNewConstrDecl tvs nc
-  return $ NewtypeDecl p tc tvs nc'
+  nc' <- checkNewConstrDecl tvs nc
+  mapM_ checkClass clss
+  return $ NewtypeDecl p tc tvs nc' clss
 checkDecl (TypeDecl p tc tvs ty) = do
   checkTypeLhs tvs
-  ty'  <- checkClosedType tvs ty
+  ty' <- checkClosedType tvs ty
   return $ TypeDecl p tc tvs ty'
 checkDecl (TypeSig p vs qty) =
   TypeSig p vs <$> checkQualType qty
@@ -583,8 +585,8 @@ checkUsedExtension pos msg ext = do
 -- ---------------------------------------------------------------------------
 
 getIdent :: Decl a -> Ident
-getIdent (DataDecl       _ tc _ _) = tc
-getIdent (NewtypeDecl    _ tc _ _) = tc
+getIdent (DataDecl     _ tc _ _ _) = tc
+getIdent (NewtypeDecl  _ tc _ _ _) = tc
 getIdent (TypeDecl       _ tc _ _) = tc
 getIdent (ClassDecl   _ _ cls _ _) = cls
 getIdent _                         =

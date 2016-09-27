@@ -137,15 +137,19 @@ trInstanceMethodType ity (QualTypeExpr cx ty) =
       toPredType (take 1 identSupply) $ QualTypeExpr (drop 1 cx) ty
 
 trTypeDecl :: Decl a -> GAC [CTypeDecl]
-trTypeDecl (DataDecl    _ t vs cs) = (\t' v vs' cs' -> [CType t' v vs' cs'])
+trTypeDecl (DataDecl    _ t vs cs clss) =
+  (\t' v vs' cs' clss' -> [CType t' v vs' cs' clss'])
   <$> trGlobalIdent t <*> getTypeVisibility t
   <*> mapM genTVarIndex vs <*> mapM trConsDecl cs
+  <*> mapM trQual clss
 trTypeDecl (TypeDecl    _ t vs ty) = (\t' v vs' ty' -> [CTypeSyn t' v vs' ty'])
   <$> trGlobalIdent t <*> getTypeVisibility t
   <*> mapM genTVarIndex vs <*> trTypeExpr ty
-trTypeDecl (NewtypeDecl _ t vs nc) = (\t' v vs' nc' -> [CNewType t' v vs' nc'])
+trTypeDecl (NewtypeDecl _ t vs nc clss) =
+  (\t' v vs' nc' clss' -> [CNewType t' v vs' nc' clss'])
   <$> trGlobalIdent t <*> getTypeVisibility t
   <*> mapM genTVarIndex vs <*> trNewConsDecl nc
+  <*> mapM trQual clss
 trTypeDecl _                       = return []
 
 trConsDecl :: ConstrDecl -> GAC CConsDecl

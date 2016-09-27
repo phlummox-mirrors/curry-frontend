@@ -247,8 +247,8 @@ pragmaCategories = [PragmaLanguage, PragmaOptions, PragmaEnd]
 
 declPos :: Decl a -> Position
 declPos (InfixDecl    p _ _ _    ) = p
-declPos (DataDecl     p _ _ _    ) = p
-declPos (NewtypeDecl  p _ _ _    ) = p
+declPos (DataDecl     p _ _ _ _  ) = p
+declPos (NewtypeDecl  p _ _ _ _  ) = p
 declPos (TypeDecl     p _ _ _    ) = p
 declPos (TypeSig      p _ _      ) = p
 declPos (FunctionDecl p _ _ _    ) = p
@@ -316,31 +316,33 @@ idsImport mid (ImportTypeAll     t) =
 -- Declarations
 
 idsDecl :: Decl a -> [Code]
-idsDecl (InfixDecl       _ _ _ ops) =
+idsDecl (InfixDecl        _ _ _ ops) =
   map (Function FuncInfix False . qualify) ops
-idsDecl (DataDecl       _ d vs cds) =
+idsDecl (DataDecl   _ d vs cds clss) =
   TypeCons TypeDeclare False (qualify d) :
-    map (Identifier IdDeclare False . qualify) vs ++ concatMap idsConstrDecl cds
-idsDecl (NewtypeDecl     _ t vs nc) =
-  TypeCons TypeDeclare False (qualify t)
-    : map (Identifier IdDeclare False . qualify) vs ++ idsNewConstrDecl nc
-idsDecl (TypeDecl        _ t vs ty) =
+    map (Identifier IdDeclare False . qualify) vs ++
+      concatMap idsConstrDecl cds ++ map (TypeCons TypeRefer False) clss
+idsDecl (NewtypeDecl _ t vs nc clss) =
+  TypeCons TypeDeclare False (qualify t) :
+    map (Identifier IdDeclare False . qualify) vs ++ idsNewConstrDecl nc ++
+      map (TypeCons TypeRefer False) clss
+idsDecl (TypeDecl         _ t vs ty) =
   TypeCons TypeDeclare False (qualify t) :
     map (Identifier IdDeclare False . qualify) vs ++ idsTypeExpr ty
-idsDecl (TypeSig          _ fs qty) =
+idsDecl (TypeSig           _ fs qty) =
   map (Function FuncTypeSig False . qualify) fs ++ idsQualTypeExpr qty
-idsDecl (FunctionDecl    _ _ _ eqs) = concatMap idsEquation eqs
-idsDecl (ForeignDecl   _ _ _ _ _ _) = []
-idsDecl (ExternalDecl         _ fs) =
+idsDecl (FunctionDecl     _ _ _ eqs) = concatMap idsEquation eqs
+idsDecl (ForeignDecl    _ _ _ _ _ _) = []
+idsDecl (ExternalDecl          _ fs) =
   map (Function FuncDeclare False . qualify . varIdent) fs
-idsDecl (PatternDecl       _ p rhs) = idsPat p ++ idsRhs rhs
-idsDecl (FreeDecl             _ vs) =
+idsDecl (PatternDecl        _ p rhs) = idsPat p ++ idsRhs rhs
+idsDecl (FreeDecl              _ vs) =
   map (Identifier IdDeclare False . qualify . varIdent) vs
-idsDecl (DefaultDecl         _ tys) = concatMap idsTypeExpr tys
-idsDecl (ClassDecl     _ cx c v ds) =
+idsDecl (DefaultDecl          _ tys) = concatMap idsTypeExpr tys
+idsDecl (ClassDecl      _ cx c v ds) =
   idsContext cx ++ TypeCons TypeDeclare False (qualify c) :
     Identifier IdDeclare False (qualify v) : concatMap idsClassDecl ds
-idsDecl (InstanceDecl _ cx c ty ds) = idsContext cx ++
+idsDecl (InstanceDecl  _ cx c ty ds) = idsContext cx ++
   TypeCons TypeRefer False c : idsTypeExpr ty ++ concatMap idsInstanceDecl ds
 
 idsConstrDecl :: ConstrDecl -> [Code]

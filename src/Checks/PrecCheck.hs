@@ -108,9 +108,9 @@ bindPrec m (InfixDecl _ fix mprec ops) pEnv
 bindPrec _ _                           pEnv = pEnv
 
 boundValues :: Decl a -> [Ident]
-boundValues (DataDecl       _ _ _ cs) = [ v | c <- cs
+boundValues (DataDecl     _ _ _ cs _) = [ v | c <- cs
                                             , v <- constrId c : recordLabels c]
-boundValues (NewtypeDecl    _ _ _ nc) = nconstrId nc : nrecordLabels nc
+boundValues (NewtypeDecl  _ _ _ nc _) = nconstrId nc : nrecordLabels nc
 boundValues (TypeSig          _ fs _) = fs
 boundValues (FunctionDecl    _ _ f _) = [f]
 boundValues (ForeignDecl _ _ _ _ f _) = [f]

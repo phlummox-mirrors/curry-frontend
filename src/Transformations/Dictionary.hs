@@ -357,7 +357,7 @@ methodMap ds = [(unRenameIdent f, d) | d@(FunctionDecl _ _ f _) <- ds]
 createClassDictDecl :: QualIdent -> Ident -> [Decl a] -> DTM (Decl a)
 createClassDictDecl cls tv ds = do
   c <- createClassDictConstrDecl cls tv ds
-  return $ DataDecl NoPos (dictTypeId cls) [tv] [c]
+  return $ DataDecl NoPos (dictTypeId cls) [tv] [c] []
 
 createClassDictConstrDecl :: QualIdent -> Ident -> [Decl a] -> DTM ConstrDecl
 createClassDictConstrDecl cls tv ds = do
@@ -749,12 +749,13 @@ instance DictTrans Module where
 
 instance DictTrans Decl where
   dictTrans (InfixDecl      p fix prec ops) = return $ InfixDecl p fix prec ops
-  dictTrans (DataDecl          p tc tvs cs) = do
+  dictTrans (DataDecl        p tc tvs cs _) = do
     m <- getModuleIdent
     tcEnv <- getTyConsEnv
     let DataType _ _ cs' = head $ qualLookupTypeInfo (qualifyWith m tc) tcEnv
-    return $ DataDecl p tc tvs $ zipWith (dictTransConstrDecl tvs) cs cs'
-  dictTrans (NewtypeDecl       p tc tvs nc) = return $ NewtypeDecl p tc tvs nc
+    return $ DataDecl p tc tvs (zipWith (dictTransConstrDecl tvs) cs cs') []
+  dictTrans (NewtypeDecl     p tc tvs nc _) =
+    return $ NewtypeDecl p tc tvs nc []
   dictTrans (TypeDecl          p tc tvs ty) = return $ TypeDecl p tc tvs ty
   dictTrans (FunctionDecl p      pty f eqs) =
     FunctionDecl p (transformPredType pty) f <$> mapM dictTrans eqs

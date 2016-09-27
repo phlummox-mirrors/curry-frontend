@@ -68,8 +68,10 @@ qExport m@(ExportModule    _) = return m
 
 qDecl :: Qual (Decl a)
 qDecl i@(InfixDecl          _ _ _ _) = return i
-qDecl (DataDecl           p n vs cs) = DataDecl p n vs <$> mapM qConstrDecl cs
-qDecl (NewtypeDecl        p n vs nc) = NewtypeDecl p n vs <$> qNewConstrDecl nc
+qDecl (DataDecl      p n vs cs clss) = DataDecl p n vs <$>
+  mapM qConstrDecl cs <*> mapM qClass clss
+qDecl (NewtypeDecl   p n vs nc clss) = NewtypeDecl p n vs <$>
+  qNewConstrDecl nc <*> mapM qClass clss
 qDecl (TypeDecl           p n vs ty) = TypeDecl p n vs <$> qTypeExpr ty
 qDecl (TypeSig             p fs qty) = TypeSig p fs <$> qQualTypeExpr qty
 qDecl (FunctionDecl       a p f eqs) = FunctionDecl a p f <$> mapM qEquation eqs

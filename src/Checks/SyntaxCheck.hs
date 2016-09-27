@@ -318,9 +318,10 @@ bindLocal = bindNestEnv
 
 -- |Bind type constructor information and record label information
 bindTypeDecl :: Decl a -> SCM ()
-bindTypeDecl (DataDecl    _ _ _ cs) = mapM_ bindConstr cs >> bindRecordLabels cs
-bindTypeDecl (NewtypeDecl _ _ _ nc) = bindNewConstr nc
-bindTypeDecl _                      = ok
+bindTypeDecl (DataDecl    _ _ _ cs _) =
+  mapM_ bindConstr cs >> bindRecordLabels cs
+bindTypeDecl (NewtypeDecl _ _ _ nc _) = bindNewConstr nc
+bindTypeDecl _                        = ok
 
 bindConstr :: ConstrDecl -> SCM ()
 bindConstr (ConstrDecl _ _ _ c tys) = do
@@ -658,8 +659,8 @@ checkDecls bindDecl ds = do
 -- -- ---------------------------------------------------------------------------
 
 checkDeclRhs :: [Ident] -> Decl () -> SCM (Decl ())
-checkDeclRhs _   (DataDecl   p tc tvs cs) =
-  DataDecl p tc tvs <$> mapM checkDeclLabels cs
+checkDeclRhs _   (DataDecl   p tc tvs cs clss) =
+  flip (DataDecl p tc tvs) clss <$> mapM checkDeclLabels cs
 checkDeclRhs bvs (TypeSig        p vs ty) =
   (\vs' -> TypeSig p vs' ty) <$> mapM (checkLocalVar bvs) vs
 checkDeclRhs _   (FunctionDecl a p f eqs) =
@@ -1102,9 +1103,9 @@ checkField check (Field p l x) = Field p l <$> check x
 -- ---------------------------------------------------------------------------
 
 constrs :: Decl a -> [Ident]
-constrs (DataDecl    _ _ _ cs) = map constrId cs
-constrs (NewtypeDecl _ _ _ nc) = [nconstrId nc]
-constrs _                      = []
+constrs (DataDecl    _ _ _ cs _) = map constrId cs
+constrs (NewtypeDecl _ _ _ nc _) = [nconstrId nc]
+constrs _                        = []
 
 vars :: Decl a -> [Ident]
 vars (TypeSig          _ fs _) = fs
@@ -1116,8 +1117,8 @@ vars (FreeDecl           _ vs) = bv vs
 vars _                         = []
 
 recLabels :: Decl a -> [Ident]
-recLabels (DataDecl      _ _ _ cs) = concatMap recordLabels cs
-recLabels (NewtypeDecl   _ _ _ nc) = nrecordLabels nc
+recLabels (DataDecl    _ _ _ cs _) = concatMap recordLabels cs
+recLabels (NewtypeDecl _ _ _ nc _) = nrecordLabels nc
 recLabels _                        = []
 
 -- Since the compiler expects all rules of the same function to be together,

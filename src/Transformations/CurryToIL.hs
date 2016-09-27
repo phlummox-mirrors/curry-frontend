@@ -142,8 +142,8 @@ constrType c = do
 -- alias types.
 
 trDecl :: Decl Type -> TransM [IL.Decl]
-trDecl (DataDecl       _ tc tvs cs) = (:[]) <$> trData     tc tvs cs
-trDecl (NewtypeDecl    _ tc tvs nc) = (:[]) <$> trNewtype  tc tvs nc
+trDecl (DataDecl     _ tc tvs cs _) = (:[]) <$> trData     tc tvs cs
+trDecl (NewtypeDecl  _ tc tvs nc _) = (:[]) <$> trNewtype  tc tvs nc
 trDecl (ForeignDecl _ cc ie ty f _) = (:[]) <$> trForeign  f cc ie ty
 trDecl (FunctionDecl    p ty f eqs) = (:[]) <$> trFunction p f ty eqs
 trDecl _                            = return []

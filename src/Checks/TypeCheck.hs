@@ -286,12 +286,12 @@ constrType' tc n =
 -- the field label.
 
 checkFieldLabel :: Decl a -> TCM ()
-checkFieldLabel (DataDecl _ _ tvs cs) = do
+checkFieldLabel (DataDecl _ _ tvs cs _) = do
   ls' <- mapM (tcFieldLabel tvs) labels
   mapM_ tcFieldLabels (groupLabels ls')
   where labels = [(l, p, ty) | RecordDecl _ _ _ _ fs <- cs,
                                FieldDecl p ls ty <- fs, l <- ls]
-checkFieldLabel (NewtypeDecl _ _ tvs (NewRecordDecl p _ (l, ty))) = do
+checkFieldLabel (NewtypeDecl _ _ tvs (NewRecordDecl p _ (l, ty)) _) = do
   _ <- tcFieldLabel tvs (l, p, ty)
   ok
 checkFieldLabel _ = ok
@@ -808,8 +808,10 @@ bindArity v n = bindTopEnv v (Value (qualify v) False n undefined)
 -- signature.
 
 tcTopPDecl :: PDecl a -> TCM (PDecl PredType)
-tcTopPDecl (i, DataDecl p tc tvs cs) = return (i, DataDecl p tc tvs cs)
-tcTopPDecl (i, NewtypeDecl p tc tvs nc) = return (i, NewtypeDecl p tc tvs nc)
+tcTopPDecl (i, DataDecl p tc tvs cs clss) =
+  return (i, DataDecl p tc tvs cs clss)
+tcTopPDecl (i, NewtypeDecl p tc tvs nc clss) =
+  return (i, NewtypeDecl p tc tvs nc clss)
 tcTopPDecl (i, TypeDecl p tc tvs ty) = return (i, TypeDecl p tc tvs ty)
 tcTopPDecl (i, DefaultDecl p tys) = return (i, DefaultDecl p tys)
 tcTopPDecl (i, ClassDecl p cx cls tv ds) = withLocalSigEnv $ do

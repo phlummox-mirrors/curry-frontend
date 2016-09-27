@@ -114,8 +114,8 @@ ok = return ()
 -- and free type constructor and type class identifiers of the declarations.
 
 bt :: Decl a -> [Ident]
-bt (DataDecl       _ tc _ _) = [tc]
-bt (NewtypeDecl    _ tc _ _) = [tc]
+bt (DataDecl     _ tc _ _ _) = [tc]
+bt (NewtypeDecl  _ tc _ _ _) = [tc]
 bt (TypeDecl       _ tc _ _) = [tc]
 bt (ClassDecl   _ _ cls _ _) = [cls]
 bt _                         = []
@@ -134,8 +134,8 @@ instance HasType a => HasType (Maybe a) where
 
 instance HasType (Decl a) where
   fts _ (InfixDecl             _ _ _ _) = id
-  fts m (DataDecl             _ _ _ cs) = fts m cs
-  fts m (NewtypeDecl          _ _ _ nc) = fts m nc
+  fts m (DataDecl        _ _ _ cs clss) = fts m cs . fts m clss
+  fts m (NewtypeDecl     _ _ _ nc clss) = fts m nc . fts m clss
   fts m (TypeDecl             _ _ _ ty) = fts m ty
   fts m (TypeSig                _ _ ty) = fts m ty
   fts m (FunctionDecl        _ _ _ eqs) = fts m eqs
@@ -233,10 +233,10 @@ instance HasType QualIdent where
 -- newtypes, which is checked in the function 'checkNonRecursiveTypes' below.
 
 ft' :: ModuleIdent -> Decl a -> [Ident]
-ft' _ (DataDecl     _ _ _ _) = []
-ft' m (NewtypeDecl _ _ _ nc) = fts m nc []
-ft' m (TypeDecl    _ _ _ ty) = fts m ty []
-ft' _ _                      = []
+ft' _ (DataDecl     _ _ _ _ _) = []
+ft' m (NewtypeDecl _ _ _ nc _) = fts m nc []
+ft' m (TypeDecl      _ _ _ ty) = fts m ty []
+ft' _ _                        = []
 
 checkNonRecursiveTypes :: [Decl a] -> KCM ()
 checkNonRecursiveTypes ds = do
@@ -246,7 +246,7 @@ checkNonRecursiveTypes ds = do
 checkTypeAndNewtypeDecls :: [Decl a] -> KCM ()
 checkTypeAndNewtypeDecls [] =
   internalError "Checks.KindCheck.checkTypeAndNewtypeDecls: empty list"
-checkTypeAndNewtypeDecls [DataDecl _ _ _ _] = ok
+checkTypeAndNewtypeDecls [DataDecl _ _ _ _ _] = ok
 checkTypeAndNewtypeDecls [d] | isTypeOrNewtypeDecl d = do
   m <- getModuleIdent
   let tc = typeConstructor d
@@ -302,7 +302,7 @@ checkClassDecl _ =
 -- from the 'MonadFix' type class.
 
 bindKind :: ModuleIdent -> TCEnv -> ClassEnv -> TCEnv -> Decl a -> KCM TCEnv
-bindKind m tcEnv' clsEnv tcEnv (DataDecl _ tc tvs cs) = do
+bindKind m tcEnv' clsEnv tcEnv (DataDecl _ tc tvs cs _) = do
   bindTypeConstructor DataType tc tvs (Just KindStar) (map mkData cs) tcEnv
   where
     mkData (ConstrDecl _ evs cx     c  tys) = mkData' evs cx c  tys
@@ -321,7 +321,7 @@ bindKind m tcEnv' clsEnv tcEnv (DataDecl _ tc tvs cs) = do
             tvs' = tvs ++ evs
             PredType ps ty = expandConstrType m tcEnv' clsEnv qtc tvs' cx tys
             tys' = arrowArgs ty
-bindKind m tcEnv' _      tcEnv (NewtypeDecl _ tc tvs nc) =
+bindKind m tcEnv' _      tcEnv (NewtypeDecl _ tc tvs nc _) =
   bindTypeConstructor RenamingType tc tvs (Just KindStar) (mkData nc) tcEnv
   where
     mkData (NewConstrDecl _ c      ty) = DataConstr c 0 emptyPredSet [ty']
@@ -424,10 +424,10 @@ kcDeclGroup tcEnv clsEnv ds = do
 
 kcDecl :: TCEnv -> Decl a -> KCM ()
 kcDecl _     (InfixDecl _ _ _ _) = ok
-kcDecl tcEnv (DataDecl _ tc tvs cs) = do
+kcDecl tcEnv (DataDecl _ tc tvs cs _) = do
   (_, tcEnv') <- bindTypeVars tc tvs tcEnv
   mapM_ (kcConstrDecl tcEnv') cs
-kcDecl tcEnv (NewtypeDecl _ tc tvs nc) = do
+kcDecl tcEnv (NewtypeDecl _ tc tvs nc _) = do
   (_, tcEnv') <- bindTypeVars tc tvs tcEnv
   kcNewConstrDecl tcEnv' nc
 kcDecl tcEnv t@(TypeDecl p tc tvs ty) = do
@@ -683,16 +683,16 @@ freshKindVar = fresh KindVariable
 -- ---------------------------------------------------------------------------
 
 typeConstructor :: Decl a -> Ident
-typeConstructor (DataDecl    _ tc _ _) = tc
-typeConstructor (NewtypeDecl _ tc _ _) = tc
-typeConstructor (TypeDecl    _ tc _ _) = tc
-typeConstructor _                      =
+typeConstructor (DataDecl    _ tc _ _ _) = tc
+typeConstructor (NewtypeDecl _ tc _ _ _) = tc
+typeConstructor (TypeDecl    _ tc _ _  ) = tc
+typeConstructor _                        =
   internalError "Checks.KindCheck.typeConstructor: no type declaration"
 
 isTypeOrNewtypeDecl :: Decl a -> Bool
-isTypeOrNewtypeDecl (NewtypeDecl _ _ _ _) = True
-isTypeOrNewtypeDecl (TypeDecl    _ _ _ _) = True
-isTypeOrNewtypeDecl _                     = False
+isTypeOrNewtypeDecl (NewtypeDecl _ _ _ _ _) = True
+isTypeOrNewtypeDecl (TypeDecl      _ _ _ _) = True
+isTypeOrNewtypeDecl _                       = False
 
 -- ---------------------------------------------------------------------------
 -- Error messages
