@@ -5,7 +5,14 @@
 ---         Bernd Brassel (sequence, mapM)
 --- @version April 2005
 ------------------------------------------------------------------------------
+{- nested comment in one line -}
+{- This
+       is
+   a
+     nested
 
+     commend
+               -}
 module Maybe(
     isJust, isNothing,
     fromJust, fromMaybe, listToMaybe, maybeToList,
@@ -41,7 +48,7 @@ maybeToList (Just a) = [a]
 listToMaybe :: [a] -> Maybe a
 listToMaybe []     = Nothing
 listToMaybe (a:_) = Just a
- 
+
 catMaybes :: [Maybe a] -> [a]
 catMaybes ms = [ m | (Just m) <- ms ]
 

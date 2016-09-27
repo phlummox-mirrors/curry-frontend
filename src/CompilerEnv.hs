@@ -16,8 +16,8 @@ module CompilerEnv where
 import qualified Data.Map as Map (Map, keys, toList)
 
 import Curry.Base.Ident    (ModuleIdent, moduleName)
-import Curry.Base.Position (Position)
 import Curry.Base.Pretty
+import Curry.Base.Span   (Span)
 import Curry.Syntax
 
 import Base.TopEnv (allLocalBindings)
@@ -39,7 +39,7 @@ data CompilerEnv = CompilerEnv
   { moduleIdent  :: ModuleIdent         -- ^ identifier of the module
   , filePath     :: FilePath            -- ^ 'FilePath' of compilation target
   , extensions   :: [KnownExtension]    -- ^ enabled language extensions
-  , tokens       :: [(Position, Token)] -- ^ token list of module
+  , tokens       :: [(Span, Token)]     -- ^ token list of module
   , interfaceEnv :: InterfaceEnv        -- ^ declarations of imported interfaces
   , aliasEnv     :: AliasEnv            -- ^ aliases for imported modules
   , tyConsEnv    :: TCEnv               -- ^ type constructors and type classes
