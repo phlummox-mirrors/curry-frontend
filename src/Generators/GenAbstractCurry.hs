@@ -40,7 +40,7 @@ import Base.NestEnv
 import Base.Types      (arrowArity, PredType, unpredType, TypeScheme (..))
 import Base.TypeSubst
 
-import Env.Value       (ValueEnv, ValueInfo (..), lookupValue, qualLookupValue)
+import Env.Value       (ValueEnv, ValueInfo (..), qualLookupValue)
 import Env.OpPrec      (mkPrec)
 
 import CompilerEnv
