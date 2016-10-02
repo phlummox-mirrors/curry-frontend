@@ -44,7 +44,7 @@ instanceCheck m tcEnv clsEnv inEnv ds =
     [] -> execINCM (checkDecls tcEnv clsEnv ds) state
     iss -> (inEnv, map (errMultipleInstances tcEnv) iss)
   where
-    local = map (flip InstSource m) $ concatMap (genInstIdents tcEnv) ds
+    local = map (flip InstSource m) $ concatMap (genInstIdents m tcEnv) ds
     imported = map (uncurry InstSource) $ map (fmap fst3) $ Map.toList inEnv
     state = INCState m inEnv []
 
@@ -93,7 +93,7 @@ bindInstance tcEnv clsEnv (InstanceDecl _ cx qcls inst ds) = do
   m <- getModuleIdent
   let PredType ps _ = expandPolyType m tcEnv clsEnv $ QualTypeExpr cx inst
   modifyInstEnv $
-    bindInstInfo (genInstIdent tcEnv qcls inst) (m, ps, impls [] ds)
+    bindInstInfo (genInstIdent m tcEnv qcls inst) (m, ps, impls [] ds)
   where impls is [] = is
         impls is (FunctionDecl _ _ f eqs:ds')
           | f' `elem` map fst is = impls is ds'
@@ -176,34 +176,29 @@ instPredSet :: TCEnv -> InstEnv -> Pred -> Maybe PredSet
 instPredSet tcEnv inEnv (Pred qcls ty) =
   case unapplyType False ty of
     (TypeConstructor tc, tys) ->
-      fmap (expandAliasType tys . snd3)
-           (lookupInstInfo (qualInstIdent tcEnv (qcls, tc)) inEnv)
+      fmap (expandAliasType tys . snd3) (lookupInstInfo (qcls, tc) inEnv)
     _ -> Nothing
 
 -- ---------------------------------------------------------------------------
 -- Auxiliary definitions
 -- ---------------------------------------------------------------------------
 
-genInstIdents :: TCEnv -> Decl a -> [InstIdent]
-genInstIdents tcEnv (InstanceDecl _ _ qcls ty _) = [genInstIdent tcEnv qcls ty]
-genInstIdents _     _                            = []
+genInstIdents :: ModuleIdent -> TCEnv -> Decl a -> [InstIdent]
+genInstIdents m tcEnv (InstanceDecl _ _ qcls ty _) =
+  [genInstIdent m tcEnv qcls ty]
+genInstIdents _ _     _                            = []
 
-genInstIdent :: TCEnv -> QualIdent -> TypeExpr -> InstIdent
-genInstIdent tcEnv qcls = qualInstIdent tcEnv . (,) qcls . typeConstr
+genInstIdent :: ModuleIdent -> TCEnv -> QualIdent -> TypeExpr -> InstIdent
+genInstIdent m tcEnv qcls = qualInstIdent m tcEnv . (,) qcls . typeConstr
 
 -- When qualifiying an instance identifier, we replace both the class and
 -- type constructor with their original names as found in the type constructor
--- environment. However, the lookup may fail, e.g., when a module is imported
--- with an alias. If this happens, we can assume that the given qualified
--- identifier was already its own original name (in fact, that's why the
--- lookup failed).
+-- environment.
 
-qualInstIdent :: TCEnv -> InstIdent -> InstIdent
-qualInstIdent tcEnv (cls, tc) = (qual cls, qual tc)
+qualInstIdent :: ModuleIdent -> TCEnv -> InstIdent -> InstIdent
+qualInstIdent m tcEnv (cls, tc) = (qual cls, qual tc)
   where
-    qual x = case qualLookupTypeInfo x tcEnv of
-      [] -> x
-      (y:_)  -> origName y
+    qual = flip (getOrigName m) tcEnv
 
 unqualInstIdent :: TCEnv -> InstIdent -> InstIdent
 unqualInstIdent tcEnv (qcls, tc) = (unqual qcls, unqual tc)
