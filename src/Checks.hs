@@ -17,6 +17,7 @@ module Checks where
 import qualified Checks.InstanceCheck     as INC (instanceCheck)
 import qualified Checks.InterfaceCheck    as IC  (interfaceCheck)
 import qualified Checks.ImportSyntaxCheck as ISC (importCheck)
+import qualified Checks.DeriveCheck       as DC  (deriveCheck)
 import qualified Checks.ExportCheck       as EC  (exportCheck, expandExports)
 import qualified Checks.ExtensionCheck    as EXC (extensionCheck)
 import qualified Checks.KindCheck         as KC  (kindCheck)
@@ -106,6 +107,15 @@ precCheck _ (env, Module ps m es is ds)
   | null msgs = ok (env { opPrecEnv = pEnv' }, Module ps m es is ds')
   | otherwise = failMessages msgs
   where (ds', pEnv', msgs) = PC.precCheck (moduleIdent env) (opPrecEnv env) ds
+
+-- |Check the deriving clauses.
+--
+-- * Declarations: remain unchanged
+-- * Environment:  remain unchanged
+deriveCheck :: Monad m => Check m (Module a)
+deriveCheck _ (env, mdl) = case DC.deriveCheck mdl of
+  msgs | null msgs -> ok (env, mdl)
+       | otherwise -> failMessages msgs
 
 -- |Check the instances.
 --

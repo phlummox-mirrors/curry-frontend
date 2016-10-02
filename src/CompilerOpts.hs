@@ -201,6 +201,7 @@ data DumpLevel
   | DumpKindChecked       -- ^ dump source code after kind checking
   | DumpSyntaxChecked     -- ^ dump source code after syntax checking
   | DumpPrecChecked       -- ^ dump source code after precedence checking
+  | DumpDeriveChecked     -- ^ dump source code after derive checking
   | DumpInstanceChecked   -- ^ dump source code after instance checking
   | DumpTypeChecked       -- ^ dump source code after type checking
   | DumpExportChecked     -- ^ dump source code after export checking
@@ -222,6 +223,7 @@ dumpLevel = [ (DumpParsed           , "dump-parse", "parsing"                   
             , (DumpKindChecked      , "dump-kc"   , "kind checking"               )
             , (DumpSyntaxChecked    , "dump-sc"   , "syntax checking"             )
             , (DumpPrecChecked      , "dump-pc"   , "precedence checking"         )
+            , (DumpDeriveChecked    , "dump-dc"   , "derive checking"             )
             , (DumpInstanceChecked  , "dump-inc"  , "instance checking"           )
             , (DumpTypeChecked      , "dump-tc"   , "type checking"               )
             , (DumpExportChecked    , "dump-ec"   , "export checking"             )

@@ -234,7 +234,8 @@ checkModule opts mdl = do
   kc  <- kindCheck       opts tsc >>= dumpCS DumpKindChecked
   sc  <- syntaxCheck     opts kc  >>= dumpCS DumpSyntaxChecked
   pc  <- precCheck       opts sc  >>= dumpCS DumpPrecChecked
-  inc <- instanceCheck   opts pc  >>= dumpCS DumpInstanceChecked
+  dc  <- deriveCheck     opts pc  >>= dumpCS DumpDeriveChecked
+  inc <- instanceCheck   opts dc  >>= dumpCS DumpInstanceChecked
   tc  <- typeCheck       opts inc >>= dumpCS DumpTypeChecked
   ec  <- exportCheck     opts tc  >>= dumpCS DumpExportChecked
   return ec
