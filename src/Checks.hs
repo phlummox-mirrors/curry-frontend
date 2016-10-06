@@ -113,7 +113,7 @@ precCheck _ (env, Module ps m es is ds)
 -- * Declarations: remain unchanged
 -- * Environment:  remain unchanged
 deriveCheck :: Monad m => Check m (Module a)
-deriveCheck _ (env, mdl) = case DC.deriveCheck mdl of
+deriveCheck _ (env, mdl) = case DC.deriveCheck (tyConsEnv env) mdl of
   msgs | null msgs -> ok (env, mdl)
        | otherwise -> failMessages msgs
 
