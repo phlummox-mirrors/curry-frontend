@@ -348,7 +348,7 @@ errMultipleInstances tcEnv iss = message $
 
 errMissingInstance :: ModuleIdent -> Position -> String -> Doc -> Pred
                    -> Message
-errMissingInstance m p what doc predicate = posMessage p $ hsep
-  [ text "Missing instance for", ppPred m predicate
-  , text "in", text what, doc
+errMissingInstance m p what doc predicate = posMessage p $ vcat
+  [ text "Missing instance for" <+> ppPred m predicate
+  , text "in" <+> text what <+> doc
   ]
