@@ -21,7 +21,7 @@ module Checks.InstanceCheck (instanceCheck) where
 
 import           Control.Monad.Extra        (concatMapM, whileM)
 import qualified Control.Monad.State as S   (State, execState, gets, modify)
-import           Data.List                  (partition, sortBy)
+import           Data.List                  (nub, partition, sortBy)
 import qualified Data.Map            as Map
 import qualified Data.Set.Extra      as Set
 
@@ -75,7 +75,7 @@ data INCState = INCState
 
 execINCM :: INCM a -> INCState -> (InstEnv, [Message])
 execINCM incm s =
-  let s' = S.execState incm s in (instEnv s', reverse $ errors s')
+  let s' = S.execState incm s in (instEnv s', reverse $ nub $ errors s')
 
 getModuleIdent :: INCM ModuleIdent
 getModuleIdent = S.gets moduleIdent
