@@ -9,13 +9,19 @@
     Portability :  portable
 
    Before type checking, the compiler checks for every instance declaration
-   that all necessary super class instances exist. It is also checked that
-   there are no duplicate instances and that all types specified in a default
-   declaration are instances of the Num class.
+   that all necessary super class instances exist. Furthermore, the compiler
+   infers the contexts of the implicit instance declarations introduced by
+   deriving clauses in data and newtype declarations. The instances declared
+   explicitly and automatically derived by the compiler are added to the
+   instance environment . It is also checked that there are no duplicate
+   instances and that all types specified in a default declaration are
+   instances of the Num class.
 -}
 module Checks.InstanceCheck (instanceCheck) where
 
+import           Control.Monad.Extra        (concatMapM, whileM)
 import qualified Control.Monad.State as S   (State, execState, gets, modify)
+import           Data.List                  (partition, sortBy)
 import qualified Data.Map            as Map
 import qualified Data.Set.Extra      as Set
 
@@ -27,6 +33,7 @@ import Curry.Syntax.Pretty
 
 import Base.CurryTypes
 import Base.Messages (Message, posMessage, message, internalError)
+import Base.SCC (scc)
 import Base.TopEnv
 import Base.TypeExpansion
 import Base.Types
@@ -85,6 +92,17 @@ report err = S.modify (\s -> s { errors = err : errors s })
 ok :: INCM ()
 ok = return ()
 
+checkDecls :: TCEnv -> ClassEnv -> [Decl a] -> INCM ()
+checkDecls tcEnv clsEnv ds = do
+  mapM_ (bindInstance tcEnv clsEnv) ids
+  mapM (declDeriveInfo tcEnv clsEnv) (filter hasDerivedInstances tds) >>=
+    mapM_ (bindDerivedInstances tcEnv clsEnv) . groupDeriveInfos
+  mapM_ (checkInstance tcEnv clsEnv) ids
+  mapM_ (checkDefault tcEnv clsEnv) dds
+  where (tds, ods) = partition isTypeDecl ds
+        ids = filter isInstanceDecl ods
+        dds = filter isDefaultDecl ods
+
 -- First, the compiler adds all explicit instance declarations to the
 -- instance environment.
 
@@ -102,6 +120,121 @@ bindInstance tcEnv clsEnv (InstanceDecl _ cx qcls inst ds) = do
         impls _ _ = internalError "InstanceCheck.bindInstance.impls"
 bindInstance _     _      _                                = ok
 
+-- Next, the compiler sorts the data and newtype declarations with non-empty
+-- deriving clauses into minimal binding groups and infers contexts for their
+-- instance declarations. In the case of (mutually) recursive data types,
+-- inference of the appropriate contexts may require a fixpoint calculation.
+
+hasDerivedInstances :: Decl a -> Bool
+hasDerivedInstances (DataDecl    _ _ _ _ clss) = not $ null clss
+hasDerivedInstances (NewtypeDecl _ _ _ _ clss) = not $ null clss
+hasDerivedInstances _                          = False
+
+-- For the purposes of derived instances, a newtype declaration is treated
+-- as a data declaration with a single constructor. The compiler also sorts
+-- derived classes with respect to the super class hierarchy so that subclass
+-- instances are added to the instance environment after their super classes.
+
+data DeriveInfo = DeriveInfo Position QualIdent PredType [Type] [QualIdent]
+
+declDeriveInfo :: TCEnv -> ClassEnv -> Decl a -> INCM DeriveInfo
+declDeriveInfo tcEnv clsEnv (DataDecl p tc tvs cs clss) =
+  mkDeriveInfo tcEnv clsEnv p tc tvs (concat cxs) (concat tyss) clss
+  where (cxs, tyss) = unzip (map constrTypes cs)
+        constrTypes (ConstrDecl     _ _ cx _ tys) = (cx, tys)
+        constrTypes (ConOpDecl  _ _ cx ty1 _ ty2) = (cx, [ty1, ty2])
+        constrTypes (RecordDecl      _ _ cx _ fs) = (cx, tys)
+          where tys = [ty | FieldDecl _ ls ty <- fs, _ <- ls]
+declDeriveInfo tcEnv clsEnv (NewtypeDecl p tc tvs nc clss) =
+  mkDeriveInfo tcEnv clsEnv p tc tvs [] [nconstrType nc] clss
+  where nconstrType (NewConstrDecl      _ _ ty) = ty
+        nconstrType (NewRecordDecl _ _ (_, ty)) = ty
+declDeriveInfo _ _ _ =
+  internalError "InstanceCheck.declDeriveInfo: no data or newtype declaration"
+
+mkDeriveInfo :: TCEnv -> ClassEnv -> Position -> Ident -> [Ident] -> Context
+           -> [TypeExpr] -> [QualIdent] -> INCM DeriveInfo
+mkDeriveInfo tcEnv clsEnv p tc tvs cx tys clss = do
+  m <- getModuleIdent
+  let otc = qualifyWith m tc
+      oclss = map (flip (getOrigName m) tcEnv) clss
+      PredType ps ty = expandConstrType m tcEnv clsEnv otc tvs cx tys
+      (tys', ty') = arrowUnapply ty
+  return $ DeriveInfo p otc (PredType ps ty') tys' $ sortClasses clsEnv oclss
+
+sortClasses :: ClassEnv -> [QualIdent] -> [QualIdent]
+sortClasses clsEnv clss = map fst $ sortBy compareDepth $ map adjoinDepth clss
+  where (_, d1) `compareDepth` (_, d2) = d1 `compare` d2
+        adjoinDepth cls = (cls, length $ allSuperClasses cls clsEnv)
+
+groupDeriveInfos :: [DeriveInfo] -> [[DeriveInfo]]
+groupDeriveInfos ds = scc bound free ds
+  where bound (DeriveInfo _ tc _ _ _) = [tc]
+        free (DeriveInfo _ _ _ tys _) = concatMap typeConstrs tys
+
+bindDerivedInstances :: TCEnv -> ClassEnv -> [DeriveInfo] -> INCM ()
+bindDerivedInstances tcEnv clsEnv dis = do
+  mapM_ (enterInitialPredSet tcEnv clsEnv) dis
+  whileM $ concatMapM (inferPredSets tcEnv clsEnv) dis >>= updatePredSets
+
+enterInitialPredSet :: TCEnv -> ClassEnv -> DeriveInfo -> INCM ()
+enterInitialPredSet tcEnv clsEnv (DeriveInfo p tc pty _ clss) =
+  mapM_ (bindDerivedInstance tcEnv clsEnv p tc pty []) clss
+
+-- Note: The methods and arities entered into the instance environment have
+-- to match methods and arities of the later generated instance declarations.
+
+bindDerivedInstance :: TCEnv -> ClassEnv -> Position -> QualIdent -> PredType
+                    -> [Type] -> QualIdent -> INCM ()
+bindDerivedInstance tcEnv clsEnv p tc pty tys cls = do
+  m <- getModuleIdent
+  (i, ps) <- inferPredSet tcEnv clsEnv p tc pty tys cls
+  modifyInstEnv $ bindInstInfo i (m, ps, impls cls)
+  where impls cls | cls == qEqId = []
+                  | cls == qOrdId = []
+                  | cls == qEnumId = []
+                  | cls == qBoundedId = []
+                  | cls == qShowId = []
+        impls _ = internalError "InstanceCheck.bindDerivedInstance.impls"
+
+inferPredSets :: TCEnv -> ClassEnv -> DeriveInfo -> INCM [(InstIdent, PredSet)]
+inferPredSets tcEnv clsEnv (DeriveInfo p tc pty tys clss) =
+  mapM (inferPredSet tcEnv clsEnv p tc pty tys) clss
+
+inferPredSet :: TCEnv -> ClassEnv -> Position -> QualIdent -> PredType -> [Type]
+             -> QualIdent -> INCM (InstIdent, PredSet)
+inferPredSet tcEnv clsEnv p tc (PredType ps ty) tys cls = do
+  m <- getModuleIdent
+  let doc = ppPred m $ Pred cls ty
+      sclss = superClasses cls clsEnv
+      ps'   = Set.fromList [Pred cls ty | ty <- tys]
+      ps''  = Set.fromList [Pred scls ty | scls <- sclss]
+      ps''' = ps `Set.union` ps' `Set.union` ps''
+  ps'''' <- reducePredSet p "derived instance" doc tcEnv clsEnv ps'''
+  mapM_ (reportUndecidable p "derived instance" doc) ps''''
+  return ((cls, tc), ps'''')
+
+updatePredSets :: [(InstIdent, PredSet)] -> INCM Bool
+updatePredSets = (=<<) (return . or) . mapM (uncurry updatePredSet)
+
+updatePredSet :: InstIdent -> PredSet -> INCM Bool
+updatePredSet i ps = do
+  inEnv <- getInstEnv
+  case lookupInstInfo i inEnv of
+    Just (m, ps', is)
+      | ps == ps' -> return False
+      | otherwise -> do
+        modifyInstEnv $ bindInstInfo i (m, ps, is)
+        return True
+    Nothing -> internalError "InstanceCheck.updatePredSet"
+
+reportUndecidable :: Position -> String -> Doc -> Pred -> INCM ()
+reportUndecidable p what doc predicate@(Pred _ ty) = do
+  m <- getModuleIdent
+  case ty of
+    TypeVariable _ -> return ()
+    _ -> report $ errMissingInstance m p what doc predicate
+
 -- Then, the compiler checks the contexts of all explicit instance
 -- declarations to detect missing super class instances. For an instance
 -- declaration
@@ -111,14 +244,6 @@ bindInstance _     _      _                                = ok
 -- the compiler ensures that T is an instance of all of C's super classes
 -- and also that the contexts of the corresponding instance declarations are
 -- satisfied by cx.
-
-checkDecls :: TCEnv -> ClassEnv -> [Decl a] -> INCM ()
-checkDecls tcEnv clsEnv ds = do
-  mapM_ (bindInstance tcEnv clsEnv) ids
-  mapM_ (checkInstance tcEnv clsEnv) ids
-  mapM_ (checkDefault tcEnv clsEnv) dds
-  where ids = filter isInstanceDecl ds
-        dds = filter isDefaultDecl ds
 
 checkInstance :: TCEnv -> ClassEnv -> Decl a -> INCM ()
 checkInstance tcEnv clsEnv (InstanceDecl p cx cls inst _) = do
@@ -184,6 +309,10 @@ instPredSet tcEnv inEnv (Pred qcls ty) =
 -- ---------------------------------------------------------------------------
 
 genInstIdents :: ModuleIdent -> TCEnv -> Decl a -> [InstIdent]
+genInstIdents m tcEnv (DataDecl    _ tc _ _ qclss) =
+  map (flip (genInstIdent m tcEnv) $ ConstructorType $ qualify tc) qclss
+genInstIdents m tcEnv (NewtypeDecl _ tc _ _ qclss) =
+  map (flip (genInstIdent m tcEnv) $ ConstructorType $ qualify tc) qclss
 genInstIdents m tcEnv (InstanceDecl _ _ qcls ty _) =
   [genInstIdent m tcEnv qcls ty]
 genInstIdents _ _     _                            = []
