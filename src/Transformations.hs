@@ -18,6 +18,7 @@ import Base.Types
 
 import Transformations.CaseCompletion as CC (completeCase)
 import Transformations.CurryToIL      as IL (ilTrans, transType)
+import Transformations.Derive         as DV (derive)
 import Transformations.Desugar        as DS (desugar)
 import Transformations.Dictionary     as DI (insertDicts, dictTransInterface)
 import Transformations.Lift           as L  (lift)
@@ -32,6 +33,11 @@ import qualified IL
 qual :: CompEnv (Module a) -> CompEnv (Module a)
 qual (env, mdl) = (qualifyEnv env, mdl')
   where mdl' = Q.qual (moduleIdent env) (tyConsEnv env) (valueEnv env) mdl
+
+-- |Automatically derive instances.
+derive :: CompEnv (Module PredType) -> CompEnv (Module PredType)
+derive (env, mdl) = (env, mdl')
+  where mdl' = DV.derive mdl
 
 -- |Remove any syntactic sugar, changes the value environment.
 desugar :: CompEnv (Module PredType) -> CompEnv (Module PredType)

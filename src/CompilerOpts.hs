@@ -206,6 +206,7 @@ data DumpLevel
   | DumpTypeChecked       -- ^ dump source code after type checking
   | DumpExportChecked     -- ^ dump source code after export checking
   | DumpQualified         -- ^ dump source  after qualification
+  | DumpDerived           -- ^ dump source  after deriving
   | DumpDesugared         -- ^ dump source  after desugaring
   | DumpDictionaries      -- ^ dump source  after dictionary transformation
   | DumpSimplified        -- ^ dump source  after simplification
@@ -228,6 +229,7 @@ dumpLevel = [ (DumpParsed           , "dump-parse", "parsing"                   
             , (DumpTypeChecked      , "dump-tc"   , "type checking"               )
             , (DumpExportChecked    , "dump-ec"   , "export checking"             )
             , (DumpQualified        , "dump-qual" , "qualification"               )
+            , (DumpDerived          , "dump-deriv", "deriving"                    )
             , (DumpDesugared        , "dump-ds"   , "desugaring"                  )
             , (DumpDictionaries     , "dump-dict" , "dictionary insertion"        )
             , (DumpLifted           , "dump-lift" , "lifting"                     )
