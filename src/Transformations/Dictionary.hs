@@ -1203,7 +1203,7 @@ qImplMethodId m cls ty = qualifyWith m . implMethodId cls ty
 -- -----------------------------------------------------------------------------
 
 freshVar :: String -> Type -> DTM (Type, Ident)
-freshVar name ty = ((,) ty) . mkIdent. (name ++) .  show <$> getNextId
+freshVar name ty = ((,) ty) . mkIdent . (name ++) .  show <$> getNextId
 
 -- -----------------------------------------------------------------------------
 -- Auxiliary functions
