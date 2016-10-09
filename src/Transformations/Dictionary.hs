@@ -505,8 +505,7 @@ computeMethodDictTypes cls f ty = do
   where tys = arrowArgs ty
 
 createDictPattern :: a -> QualIdent -> [(a, Ident)] -> Pattern a
-createDictPattern a cls vs =
-  ConstructorPattern a (qDictConstrId cls) $ map (uncurry VariablePattern) vs
+createDictPattern a cls = constrPattern a (qDictConstrId cls)
 
 createSuperDictStubDecl :: Pattern a -> QualIdent -> a -> QualIdent
                         -> (a, Ident) -> Decl a

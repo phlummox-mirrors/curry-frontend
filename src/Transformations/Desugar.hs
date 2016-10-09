@@ -1074,9 +1074,6 @@ elemType :: Type -> Type
 elemType (TypeApply (TypeConstructor tc) ty) | tc == qListId = ty
 elemType ty = internalError $ "Base.Types.elemType " ++ show ty
 
-constrPattern :: a -> QualIdent -> [(a, Ident)] -> Pattern a
-constrPattern ty c = ConstructorPattern ty c . map (uncurry VariablePattern)
-
 applyConstr :: PredType -> QualIdent -> [Type] -> [Expression PredType]
             -> Expression PredType
 applyConstr pty c tys =
