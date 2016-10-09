@@ -96,7 +96,7 @@ checkDecls :: TCEnv -> ClassEnv -> [Decl a] -> INCM ()
 checkDecls tcEnv clsEnv ds = do
   mapM_ (bindInstance tcEnv clsEnv) ids
   mapM (declDeriveInfo tcEnv clsEnv) (filter hasDerivedInstances tds) >>=
-    mapM_ (bindDerivedInstances tcEnv clsEnv) . groupDeriveInfos
+    mapM_ (bindDerivedInstances clsEnv) . groupDeriveInfos
   mapM_ (checkInstance tcEnv clsEnv) ids
   mapM_ (checkDefault tcEnv clsEnv) dds
   where (tds, ods) = partition isTypeDecl ds
@@ -140,10 +140,10 @@ data DeriveInfo = DeriveInfo Position QualIdent PredType [Type] [QualIdent]
 declDeriveInfo :: TCEnv -> ClassEnv -> Decl a -> INCM DeriveInfo
 declDeriveInfo tcEnv clsEnv (DataDecl p tc tvs cs clss) =
   mkDeriveInfo tcEnv clsEnv p tc tvs (concat cxs) (concat tyss) clss
-  where (cxs, tyss) = unzip (map constrTypes cs)
-        constrTypes (ConstrDecl     _ _ cx _ tys) = (cx, tys)
-        constrTypes (ConOpDecl  _ _ cx ty1 _ ty2) = (cx, [ty1, ty2])
-        constrTypes (RecordDecl      _ _ cx _ fs) = (cx, tys)
+  where (cxs, tyss) = unzip (map constrDeclTypes cs)
+        constrDeclTypes (ConstrDecl     _ _ cx _ tys) = (cx, tys)
+        constrDeclTypes (ConOpDecl  _ _ cx ty1 _ ty2) = (cx, [ty1, ty2])
+        constrDeclTypes (RecordDecl      _ _ cx _ fs) = (cx, tys)
           where tys = [ty | FieldDecl _ ls ty <- fs, _ <- ls]
 declDeriveInfo tcEnv clsEnv (NewtypeDecl p tc tvs nc clss) =
   mkDeriveInfo tcEnv clsEnv p tc tvs [] [nconstrType nc] clss
@@ -172,45 +172,46 @@ groupDeriveInfos ds = scc bound free ds
   where bound (DeriveInfo _ tc _ _ _) = [tc]
         free (DeriveInfo _ _ _ tys _) = concatMap typeConstrs tys
 
-bindDerivedInstances :: TCEnv -> ClassEnv -> [DeriveInfo] -> INCM ()
-bindDerivedInstances tcEnv clsEnv dis = do
-  mapM_ (enterInitialPredSet tcEnv clsEnv) dis
-  whileM $ concatMapM (inferPredSets tcEnv clsEnv) dis >>= updatePredSets
+bindDerivedInstances :: ClassEnv -> [DeriveInfo] -> INCM ()
+bindDerivedInstances clsEnv dis = do
+  mapM_ (enterInitialPredSet clsEnv) dis
+  whileM $ concatMapM (inferPredSets clsEnv) dis >>= updatePredSets
 
-enterInitialPredSet :: TCEnv -> ClassEnv -> DeriveInfo -> INCM ()
-enterInitialPredSet tcEnv clsEnv (DeriveInfo p tc pty _ clss) =
-  mapM_ (bindDerivedInstance tcEnv clsEnv p tc pty []) clss
+enterInitialPredSet :: ClassEnv -> DeriveInfo -> INCM ()
+enterInitialPredSet clsEnv (DeriveInfo p tc pty _ clss) =
+  mapM_ (bindDerivedInstance clsEnv p tc pty []) clss
 
 -- Note: The methods and arities entered into the instance environment have
 -- to match methods and arities of the later generated instance declarations.
 
-bindDerivedInstance :: TCEnv -> ClassEnv -> Position -> QualIdent -> PredType
-                    -> [Type] -> QualIdent -> INCM ()
-bindDerivedInstance tcEnv clsEnv p tc pty tys cls = do
+bindDerivedInstance :: ClassEnv -> Position -> QualIdent -> PredType -> [Type]
+                    -> QualIdent -> INCM ()
+bindDerivedInstance clsEnv p tc pty tys cls = do
   m <- getModuleIdent
-  (i, ps) <- inferPredSet tcEnv clsEnv p tc pty tys cls
-  modifyInstEnv $ bindInstInfo i (m, ps, impls cls)
-  where impls cls | cls == qEqId = []
-                  | cls == qOrdId = []
-                  | cls == qEnumId = []
-                  | cls == qBoundedId = []
-                  | cls == qShowId = []
-        impls _ = internalError "InstanceCheck.bindDerivedInstance.impls"
+  (i, ps) <- inferPredSet clsEnv p tc pty tys cls
+  modifyInstEnv $ bindInstInfo i (m, ps, impls)
+  where impls | cls == qEqId = []
+              | cls == qOrdId = []
+              | cls == qEnumId = []
+              | cls == qBoundedId = []
+              | cls == qShowId = []
+              | otherwise =
+                internalError "InstanceCheck.bindDerivedInstance.impls"
 
-inferPredSets :: TCEnv -> ClassEnv -> DeriveInfo -> INCM [(InstIdent, PredSet)]
-inferPredSets tcEnv clsEnv (DeriveInfo p tc pty tys clss) =
-  mapM (inferPredSet tcEnv clsEnv p tc pty tys) clss
+inferPredSets :: ClassEnv -> DeriveInfo -> INCM [(InstIdent, PredSet)]
+inferPredSets clsEnv (DeriveInfo p tc pty tys clss) =
+  mapM (inferPredSet clsEnv p tc pty tys) clss
 
-inferPredSet :: TCEnv -> ClassEnv -> Position -> QualIdent -> PredType -> [Type]
+inferPredSet :: ClassEnv -> Position -> QualIdent -> PredType -> [Type]
              -> QualIdent -> INCM (InstIdent, PredSet)
-inferPredSet tcEnv clsEnv p tc (PredType ps ty) tys cls = do
+inferPredSet clsEnv p tc (PredType ps inst) tys cls = do
   m <- getModuleIdent
-  let doc = ppPred m $ Pred cls ty
+  let doc = ppPred m $ Pred cls inst
       sclss = superClasses cls clsEnv
       ps'   = Set.fromList [Pred cls ty | ty <- tys]
-      ps''  = Set.fromList [Pred scls ty | scls <- sclss]
+      ps''  = Set.fromList [Pred scls inst | scls <- sclss]
       ps''' = ps `Set.union` ps' `Set.union` ps''
-  ps'''' <- reducePredSet p "derived instance" doc tcEnv clsEnv ps'''
+  ps'''' <- reducePredSet p "derived instance" doc clsEnv ps'''
   mapM_ (reportUndecidable p "derived instance" doc) ps''''
   return ((cls, tc), ps'''')
 
@@ -253,7 +254,7 @@ checkInstance tcEnv clsEnv (InstanceDecl p cx cls inst _) = do
       ps' = Set.fromList [ Pred scls ty | scls <- superClasses ocls clsEnv ]
       doc = ppPred m $ Pred cls ty
       what = "instance declaration"
-  ps'' <- reducePredSet p what doc tcEnv clsEnv ps'
+  ps'' <- reducePredSet p what doc clsEnv ps'
   Set.mapM_ (report . errMissingInstance m p what doc) $
     ps'' `Set.difference` (maxPredSet clsEnv ps)
 checkInstance _ _ _ = ok
@@ -272,7 +273,7 @@ checkDefaultType :: Position -> TCEnv -> ClassEnv -> TypeExpr -> INCM ()
 checkDefaultType p tcEnv clsEnv ty = do
   m <- getModuleIdent
   let PredType _ ty' = expandPolyType m tcEnv clsEnv $ QualTypeExpr [] ty
-  ps <- reducePredSet p what empty tcEnv clsEnv (Set.singleton $ Pred qNumId ty')
+  ps <- reducePredSet p what empty clsEnv (Set.singleton $ Pred qNumId ty')
   Set.mapM_ (report . errMissingInstance m p what empty) ps
   where what = "default declaration"
 
@@ -283,9 +284,9 @@ checkDefaultType p tcEnv clsEnv ty = do
 -- be transformed into this form. In addition, we remove all predicates
 -- that are implied by others within the same set.
 
-reducePredSet :: Position -> String -> Doc -> TCEnv -> ClassEnv -> PredSet
+reducePredSet :: Position -> String -> Doc -> ClassEnv -> PredSet
               -> INCM PredSet
-reducePredSet p what doc tcEnv clsEnv ps = do
+reducePredSet p what doc clsEnv ps = do
   m <- getModuleIdent
   inEnv <- getInstEnv
   let (ps1, ps2) = partitionPredSet $ minPredSet clsEnv $ reducePreds inEnv ps
@@ -295,10 +296,10 @@ reducePredSet p what doc tcEnv clsEnv ps = do
     reducePreds inEnv = Set.concatMap $ reducePred inEnv
     reducePred inEnv predicate = maybe (Set.singleton predicate)
                                        (reducePreds inEnv)
-                                       (instPredSet tcEnv inEnv predicate)
+                                       (instPredSet inEnv predicate)
 
-instPredSet :: TCEnv -> InstEnv -> Pred -> Maybe PredSet
-instPredSet tcEnv inEnv (Pred qcls ty) =
+instPredSet :: InstEnv -> Pred -> Maybe PredSet
+instPredSet inEnv (Pred qcls ty) =
   case unapplyType False ty of
     (TypeConstructor tc, tys) ->
       fmap (expandAliasType tys . snd3) (lookupInstInfo (qcls, tc) inEnv)
