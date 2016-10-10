@@ -29,7 +29,7 @@ import qualified Control.Monad.State as S (State, runState, gets, modify)
 import           Data.List         (inits, nub, partition, tails, zipWith4)
 import qualified Data.Map   as Map ( Map, empty, insert, lookup, mapWithKey
                                    , toList )
-import           Data.Maybe        (fromMaybe)
+import           Data.Maybe        (fromMaybe, isJust)
 import qualified Data.Set   as Set ( deleteMin, fromList, null, size, toAscList
                                    , toList, union )
 import           Data.Traversable  (traverse)
@@ -217,51 +217,57 @@ instance Augment Module where
     modifyValueEnv $ augmentValues
     modifyTyConsEnv $ augmentTypes
     modifyInstEnv $ augmentInstances augEnv
-    Module ps m es is <$> mapM (augmentDecl False) ds
+    Module ps m es is <$> mapM (augmentDecl Nothing) ds
 
--- The boolean parameter of the functions 'augmentDecl', 'augmentEquation' and
+-- The first parameter of the functions 'augmentDecl', 'augmentEquation' and
 -- 'augmentLhs' determines whether we have to unrename the function identifiers
--- before checking if the function has to augmented or not. The unrenaming is
--- necessary for both class and instance declarations as all identifiers within
--- these have been renamed during the syntax check.
+-- before checking if the function has to augmented or not. Furthermore, it
+-- specifies the module unqualified identifiers have to be qualified with.
+-- The unrenaming is necessary for both class and instance declarations as all
+-- identifiers within these have been renamed during the syntax check, while the
+-- qualifying is needed for function declarations within instance declarations
+-- as the implemented class methods can originate from another module. If not
+-- qualified properly, the lookup in the augmentation environment would fail.
 
 -- Since type signatures remain only in class declarations due to desugaring,
 -- we can always perform the unrenaming and it is safe to assume that all other
 -- functions mentioned in a type signature have to be augmented as well if the
 -- first one is affected.
 
-augmentDecl :: Bool -> Decl PredType -> DTM (Decl PredType)
-augmentDecl _ d@(TypeSig          p fs qty) = do
+augmentDecl :: Maybe ModuleIdent -> Decl PredType -> DTM (Decl PredType)
+augmentDecl _  d@(TypeSig          p fs qty) = do
   m <- getModuleIdent
   augEnv <- getAugEnv
   return $ if isAugmented augEnv (qualifyWith m $ unRenameIdent $ head fs)
               then TypeSig p fs $ augmentQualTypeExpr qty
               else d
-augmentDecl b (FunctionDecl    p pty f eqs) = do
-    eqs' <- mapM (augmentEquation b) eqs
-    m <- getModuleIdent
+augmentDecl mm (FunctionDecl    p pty f eqs) = do
+    eqs' <- mapM (augmentEquation mm) eqs
+    m <- maybe getModuleIdent return mm
     augEnv <- getAugEnv
-    return $ if isAugmented augEnv (qualifyWith m $ unRenameIdentIf b f)
-               then FunctionDecl p (augmentPredType pty) f eqs'
-               else FunctionDecl p pty f eqs'
-augmentDecl _ (PatternDecl         p t rhs) = PatternDecl p t <$> augment rhs
-augmentDecl _ (ClassDecl    p cx cls tv ds) =
-  ClassDecl p cx cls tv <$> mapM (augmentDecl True) ds
-augmentDecl _ (InstanceDecl p cx cls ty ds) =
-  InstanceDecl p cx cls ty <$> mapM (augmentDecl True) ds
+    if isAugmented augEnv (qualifyWith m $ unRenameIdentIf (isJust mm) f)
+      then return $ FunctionDecl p (augmentPredType pty) f eqs'
+      else return $ FunctionDecl p pty f eqs'
+augmentDecl _  (PatternDecl         p t rhs) = PatternDecl p t <$> augment rhs
+augmentDecl _  (ClassDecl    p cx cls tv ds) = do
+  m <- getModuleIdent
+  ClassDecl p cx cls tv <$> mapM (augmentDecl $ Just m) ds
+augmentDecl _  (InstanceDecl p cx cls ty ds) =
+  InstanceDecl p cx cls ty <$> mapM (augmentDecl $ qidModule cls) ds
 augmentDecl _ d                             = return d
 
-augmentEquation :: Bool -> Equation PredType -> DTM (Equation PredType)
-augmentEquation b (Equation p lhs rhs) =
-  Equation p <$> augmentLhs b lhs <*> augment rhs
+augmentEquation :: Maybe ModuleIdent -> Equation PredType
+                -> DTM (Equation PredType)
+augmentEquation mm (Equation p lhs rhs) =
+  Equation p <$> augmentLhs mm lhs <*> augment rhs
 
-augmentLhs :: Bool -> Lhs PredType -> DTM (Lhs PredType)
-augmentLhs b lhs@(FunLhs f ts) = do
-    m <- getModuleIdent
+augmentLhs :: Maybe ModuleIdent -> Lhs PredType -> DTM (Lhs PredType)
+augmentLhs mm lhs@(FunLhs f ts) = do
+    m <- maybe getModuleIdent return mm
     augEnv <- getAugEnv
-    return $ if isAugmented augEnv (qualifyWith m $ unRenameIdentIf b f)
-               then FunLhs f $ ConstructorPattern predUnitType qUnitId [] : ts
-               else lhs
+    if isAugmented augEnv (qualifyWith m $ unRenameIdentIf (isJust mm) f)
+      then return $ FunLhs f $ ConstructorPattern predUnitType qUnitId [] : ts
+      else return lhs
 augmentLhs _ lhs               =
   internalError $ "Dictionary.augmentLhs" ++ show lhs
 
@@ -283,7 +289,7 @@ instance Augment Expression where
   augment (Apply       e1 e2) = Apply <$> augment e1 <*> augment e2
   augment (Lambda     p ts e) = Lambda p ts <$> augment e
   augment (Let          ds e) =
-    Let <$> mapM (augmentDecl False) ds <*> augment e
+    Let <$> mapM (augmentDecl Nothing) ds <*> augment e
   augment (Case  ref ct e as) = Case ref ct <$> augment e <*> mapM augment as
   augment e                   = internalError $ "Dictionary.augment: " ++ show e
 
