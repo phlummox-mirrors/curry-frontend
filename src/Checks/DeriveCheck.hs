@@ -32,6 +32,7 @@ deriveCheck tcEnv (Module _ m _ _ ds) = concatMap (checkDecl m tcEnv) ds
 
 checkDecl :: ModuleIdent -> TCEnv -> Decl a -> [Message]
 checkDecl m tcEnv (DataDecl   _ tc _ cs clss)
+  | null clss                       = []
   | null cs                         = [errNoAbstractDerive tc]
   | any (not . null . existVars) cs = [errNoExistentialDerive tc]
   | otherwise                       = concatMap (checkDerivable m tcEnv cs) clss
