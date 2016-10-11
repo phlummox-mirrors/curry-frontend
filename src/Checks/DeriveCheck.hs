@@ -55,7 +55,6 @@ derivableClasses = [qEqId, qOrdId, qEnumId, qBoundedId, qShowId]
 -- where all data constructors are constants.
 
 isEnum :: [ConstrDecl] -> Bool
-isEnum [] = False
 isEnum cs = all ((0 ==) . constrArity) cs
 
 -- Instances of 'Bounded' can be derived only for enumerations and for single
