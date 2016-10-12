@@ -19,7 +19,6 @@ import Curry.Base.Position
 import Curry.Base.Pretty
 import Curry.Syntax
 
-import Base.TopEnv (getOrigName)
 import Base.Messages (Message, posMessage)
 
 import Env.TypeConstructor

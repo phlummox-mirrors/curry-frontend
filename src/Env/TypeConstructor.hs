@@ -49,7 +49,7 @@
 module Env.TypeConstructor
   ( TypeInfo (..), tcKind, clsKind, varKind, clsMethods
   , TCEnv, initTCEnv, bindTypeInfo, rebindTypeInfo
-  , lookupTypeInfo, qualLookupTypeInfo, qualLookupTypeInfoUnique
+  , lookupTypeInfo, qualLookupTypeInfo, qualLookupTypeInfoUnique, getOrigName
   ) where
 
 import Curry.Base.Ident
@@ -167,6 +167,13 @@ qualLookupTypeInfoUnique m qident tcEnv =
       []  -> tis
       [ti] -> [ti]
       tis' -> tis'
+
+getOrigName :: ModuleIdent -> QualIdent -> TCEnv -> QualIdent
+getOrigName m tc tcEnv = case qualLookupTypeInfo tc tcEnv of
+  [y] -> origName y
+  _ -> case qualLookupTypeInfo (qualQualify m tc) tcEnv of
+    [y] -> origName y
+    _ -> internalError $ "Env.TypeConstructor.getOrigName: " ++ show tc
 
 lookupTupleTC :: Ident -> [TypeInfo]
 lookupTupleTC tc | isTupleId tc = [tupleTCs !! (tupleArity tc - 2)]
