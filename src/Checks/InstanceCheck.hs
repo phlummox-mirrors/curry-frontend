@@ -197,6 +197,7 @@ bindDerivedInstance clsEnv p tc pty tys cls = do
                                     , (enumFromThenId, 2)
                                     ]
               | cls == qBoundedId = [(maxBoundId, 1), (minBoundId, 1)]
+              | cls == qReadId    = []
               | cls == qShowId    = [(showsPrecId, 2)]
               | otherwise         =
                 internalError "InstanceCheck.bindDerivedInstance.impls"

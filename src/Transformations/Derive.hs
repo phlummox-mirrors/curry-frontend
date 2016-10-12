@@ -112,6 +112,7 @@ deriveMethods cls
   | cls == qOrdId     = deriveOrdMethods
   | cls == qEnumId    = deriveEnumMethods
   | cls == qBoundedId = deriveBoundedMethods
+  | cls == qReadId    = deriveReadMethods
   | cls == qShowId    = deriveShowMethods
   | otherwise         = internalError $ "Derive.deriveMethods: " ++ show cls
 
@@ -277,6 +278,11 @@ maxOrMinBoundExpr f c ty tys =
   apply (Constructor pty c) $ map (flip Variable f . predType) instTys
   where instTy:instTys = map instType $ ty : tys
         pty = predType $ foldr TypeArrow instTy instTys
+
+-- Read:
+
+deriveReadMethods :: Type -> [ConstrInfo] -> PredSet -> DVM [Decl PredType]
+deriveReadMethods _ _ _ = sequence []
 
 -- Show:
 

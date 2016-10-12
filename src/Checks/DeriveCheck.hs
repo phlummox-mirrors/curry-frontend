@@ -49,7 +49,7 @@ checkDerivable m tcEnv cs cls
   where ocls = getOrigName m cls tcEnv
 
 derivableClasses :: [QualIdent]
-derivableClasses = [qEqId, qOrdId, qEnumId, qBoundedId, qShowId]
+derivableClasses = [qEqId, qOrdId, qEnumId, qBoundedId, qReadId, qShowId]
 
 -- Instances of 'Enum' can be derived only for enumeration types, i.e., types
 -- where all data constructors are constants.
