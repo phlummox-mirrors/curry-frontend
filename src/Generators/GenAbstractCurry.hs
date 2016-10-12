@@ -382,18 +382,6 @@ trLocalIdent i = return ("", idName i)
 qFlip :: QualIdent
 qFlip = qualifyWith preludeMIdent (mkIdent "flip")
 
-qEnumFromId :: QualIdent
-qEnumFromId = qualifyWith preludeMIdent (mkIdent "enumFrom")
-
-qEnumFromThenId :: QualIdent
-qEnumFromThenId = qualifyWith preludeMIdent (mkIdent "enumFromThen")
-
-qEnumFromToId :: QualIdent
-qEnumFromToId = qualifyWith preludeMIdent (mkIdent "enumFromTo")
-
-qEnumFromThenToId :: QualIdent
-qEnumFromThenToId = qualifyWith preludeMIdent (mkIdent "enumFromThenTo")
-
 qNegateId :: QualIdent
 qNegateId = qualifyWith preludeMIdent (mkIdent "negate")
 
