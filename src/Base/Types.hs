@@ -38,7 +38,7 @@ module Base.Types
   , rawType
     -- * Predefined types
   , arrowType, unitType, predUnitType, boolType, predBoolType, charType
-  , intType, predIntType, floatType, predFloatType, stringType
+  , intType, predIntType, floatType, predFloatType, stringType, predStringType
   , listType, consType, ioType, tupleType
   , numTypes, fractionalTypes
   , predefTypes
@@ -467,6 +467,9 @@ predFloatType = predType floatType
 
 stringType :: Type
 stringType = listType charType
+
+predStringType :: PredType
+predStringType = predType stringType
 
 listType :: Type -> Type
 listType ty = primType qListId [ty]
