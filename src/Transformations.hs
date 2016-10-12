@@ -37,7 +37,8 @@ qual (env, mdl) = (qualifyEnv env, mdl')
 -- |Automatically derive instances.
 derive :: CompEnv (Module PredType) -> CompEnv (Module PredType)
 derive (env, mdl) = (env, mdl')
-  where mdl' = DV.derive mdl
+  where mdl' = DV.derive (tyConsEnv env) (valueEnv env) (instEnv env)
+                         (opPrecEnv env) mdl
 
 -- |Remove any syntactic sugar, changes the value environment.
 desugar :: CompEnv (Module PredType) -> CompEnv (Module PredType)

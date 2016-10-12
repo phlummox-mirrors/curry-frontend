@@ -190,12 +190,15 @@ bindDerivedInstance clsEnv p tc pty tys cls = do
   m <- getModuleIdent
   (i, ps) <- inferPredSet clsEnv p tc pty tys cls
   modifyInstEnv $ bindInstInfo i (m, ps, impls)
-  where impls | cls == qEqId = []
-              | cls == qOrdId = []
-              | cls == qEnumId = []
-              | cls == qBoundedId = []
-              | cls == qShowId = []
-              | otherwise =
+  where impls | cls == qEqId      = [(eqOpId, 2)]
+              | cls == qOrdId     = [(leqOpId, 2)]
+              | cls == qEnumId    = [ (succId, 1), (predId, 1), (toEnumId, 1)
+                                    , (fromEnumId, 1), (enumFromId, 1)
+                                    , (enumFromThenId, 2)
+                                    ]
+              | cls == qBoundedId = [(maxBoundId, 1), (minBoundId, 1)]
+              | cls == qShowId    = [(showsPrecId, 2)]
+              | otherwise         =
                 internalError "InstanceCheck.bindDerivedInstance.impls"
 
 inferPredSets :: ClassEnv -> DeriveInfo -> INCM [(InstIdent, PredSet)]
