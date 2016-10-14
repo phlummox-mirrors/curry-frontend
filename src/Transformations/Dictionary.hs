@@ -1056,7 +1056,7 @@ cleanupInfixDecl :: Decl a -> DTM [Decl a]
 cleanupInfixDecl (InfixDecl p fix pr ops) = do
   m <- getModuleIdent
   vEnv <- getValueEnv
-  let opArity = arrowArity . rawType . flip funType vEnv . qualifyWith m
+  let opArity = arrowArity . rawType . flip opType vEnv . qualifyWith m
       ops' = filter ((== 2) . opArity) ops
   return [InfixDecl p fix pr ops' | not (null ops')]
 cleanupInfixDecl d                        = return [d]
