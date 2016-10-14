@@ -13,7 +13,7 @@
 module Transformations.Derive (derive) where
 
 import qualified Control.Monad.State as S (State, evalState, gets, modify)
-import           Data.List         (intersperse)
+import           Data.List         (intercalate, intersperse)
 import           Data.Maybe        (fromJust, isJust)
 import qualified Data.Set   as Set (deleteMin, union)
 
@@ -308,43 +308,42 @@ deriveShowsPrecEquation ty (_, c, ls, tys) = do
 showsPrecExpr :: Ident -> Precedence -> Maybe [Ident] -> Expression PredType
               -> [Expression PredType] -> Expression PredType
 showsPrecExpr c p ls d vs
-  | null vs                       = preludeShowString $ showsConstr c ""
+  | null vs                       = showsPrecNullaryConstrExpr c
   | isJust ls                     = showsPrecShowParenExpr d 10 $
-    showsPrecShowRecordConstrExpr c (fromJust ls) vs
+    showsPrecRecordConstrExpr c (fromJust ls) vs
   | isInfixOp c && length vs == 2 = showsPrecShowParenExpr d p $
-    showsPrecShowInfixConstrExpr c p vs
+    showsPrecInfixConstrExpr c p vs
   | otherwise                     = showsPrecShowParenExpr d 10 $
-    showsPrecShowConstrExpr c vs
+    showsPrecConstrExpr c vs
+
+showsPrecNullaryConstrExpr :: Ident -> Expression PredType
+showsPrecNullaryConstrExpr c = preludeShowString $ showsConstr c ""
 
 showsPrecShowParenExpr :: Expression PredType -> Precedence
                        -> Expression PredType -> Expression PredType
 showsPrecShowParenExpr d p =
   prelShowParen $ prelLt (Literal predIntType $ Int noRef p) d
 
-showsPrecShowRecordConstrExpr :: Ident -> [Ident] -> [Expression PredType]
-                              -> Expression PredType
-showsPrecShowRecordConstrExpr c ls vs =
-  foldr ($)
-        (preludeShowString "}")
-        (zipWith3 showsPrecShowFieldExpr pres ls vs)
-  where pres = showsConstr c " {" : repeat ", "
+showsPrecRecordConstrExpr :: Ident -> [Ident] -> [Expression PredType]
+                          -> Expression PredType
+showsPrecRecordConstrExpr c ls vs = foldr prelDot (preludeShowString "}") $
+  (:) (preludeShowString $ showsConstr c " {") $
+    intercalate [preludeShowString ", "] $ zipWith showsPrecFieldExpr ls vs
 
-showsPrecShowFieldExpr :: String -> Ident -> Expression PredType
-                       -> Expression PredType -> Expression PredType
-showsPrecShowFieldExpr pre l v =
-  (preludeShowString (pre ++ showsConstr l " = ") `prelDot`) .
-    (preludeShowsPrec 0 v `prelDot`)
+showsPrecFieldExpr :: Ident -> Expression PredType -> [Expression PredType]
+showsPrecFieldExpr l v =
+  [preludeShowString $ showsConstr l " = ", preludeShowsPrec 0 v]
 
-showsPrecShowInfixConstrExpr :: Ident -> Precedence -> [Expression PredType]
-                             -> Expression PredType
-showsPrecShowInfixConstrExpr c p vs = foldr1 prelDot
+showsPrecInfixConstrExpr :: Ident -> Precedence -> [Expression PredType]
+                         -> Expression PredType
+showsPrecInfixConstrExpr c p vs = foldr1 prelDot
   [ preludeShowsPrec (p + 1) $ head vs
   , preludeShowString $ ' ' : idName c ++ " "
   , preludeShowsPrec (p + 1) $ head $ tail vs
   ]
 
-showsPrecShowConstrExpr :: Ident -> [Expression PredType] -> Expression PredType
-showsPrecShowConstrExpr c vs = foldr1 prelDot $
+showsPrecConstrExpr :: Ident -> [Expression PredType] -> Expression PredType
+showsPrecConstrExpr c vs = foldr1 prelDot $
   preludeShowString (showsConstr c " ") :
     intersperse (preludeShowString " ") (map (preludeShowsPrec 11) vs)
 
