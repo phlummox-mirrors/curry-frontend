@@ -392,7 +392,7 @@ deriveReadsPrecLexStmt str r = do
                [ LiteralPattern predStringType $ mkString str
                , uncurry VariablePattern s
                ]
-      stmt = StmtBind noRef pat $ preludeLex stringType $ uncurry mkVar r
+      stmt = StmtBind noRef pat $ preludeLex $ uncurry mkVar r
   return (s, stmt)
 
 deriveReadsPrecReadsPrecStmt  :: Precedence -> (PredType, Ident) -> Type
@@ -607,10 +607,10 @@ prelShowParen e1 e2 = apply (Variable pty qShowParenId) [e1, e2]
                                           , stringType, stringType
                                           ]
 
-preludeLex :: Type -> Expression PredType -> Expression PredType
-preludeLex ty e = Apply (Variable pty qLexId) e
+preludeLex :: Expression PredType -> Expression PredType
+preludeLex e = Apply (Variable pty qLexId) e
   where pty = predType $ TypeArrow stringType $
-                listType $ tupleType [ty, stringType]
+                listType $ tupleType [stringType, stringType]
 
 preludeReadsPrec :: Type -> Integer -> Expression PredType
                  -> Expression PredType
