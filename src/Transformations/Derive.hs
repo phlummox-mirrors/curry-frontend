@@ -12,6 +12,7 @@
 -}
 module Transformations.Derive (derive) where
 
+import           Control.Monad.ListM      (mapAccumM)
 import qualified Control.Monad.State as S (State, evalState, gets, modify)
 import           Data.List         (intercalate, intersperse)
 import           Data.Maybe        (fromJust, isJust)
@@ -282,7 +283,127 @@ maxOrMinBoundExpr f c ty tys =
 -- Read:
 
 deriveReadMethods :: Type -> [ConstrInfo] -> PredSet -> DVM [Decl PredType]
-deriveReadMethods _ _ _ = sequence []
+deriveReadMethods ty cis ps = sequence [deriveReadsPrec ty cis ps]
+
+deriveReadsPrec :: Type -> [ConstrInfo] -> PredSet -> DVM (Decl PredType)
+deriveReadsPrec ty cis ps = do
+  pty <- getInstMethodType ps qReadId ty $ readsPrecId
+  d <- freshArgument intType
+  r <- freshArgument stringType
+  let pats = map (uncurry VariablePattern) [d, r]
+  funDecl NoPos pty readsPrecId pats <$>
+    deriveReadsPrecExpr ty cis (uncurry mkVar d) (uncurry mkVar r)
+
+deriveReadsPrecExpr :: Type -> [ConstrInfo] -> Expression PredType
+                    -> Expression PredType -> DVM (Expression PredType)
+deriveReadsPrecExpr ty cis d r = do
+  es <- mapM (deriveReadsPrecReadParenExpr ty d) cis
+  return $ foldr1 prelAppend $ map (flip Apply r) $ es
+
+deriveReadsPrecReadParenExpr :: Type -> Expression PredType -> ConstrInfo
+                             -> DVM (Expression PredType)
+deriveReadsPrecReadParenExpr ty d ci@(_, c, _, _) = do
+  pEnv <- getPrecEnv
+  let p = precedence c pEnv
+  e <- deriveReadsPrecLambdaExpr ty ci p
+  return $ prelReadParen (readsPrecReadParenCondExpr ci d p) e
+
+readsPrecReadParenCondExpr :: ConstrInfo -> Expression PredType -> Precedence
+                           -> Expression PredType
+readsPrecReadParenCondExpr (_, c, _, tys) d p
+  | null tys                        = prelFalse
+  | isQInfixOp c && length tys == 2 =
+    prelLt (Literal predIntType $ Int noRef p) d
+  | otherwise                       =
+    prelLt (Literal predIntType $ Int noRef 10) d
+
+deriveReadsPrecLambdaExpr :: Type -> ConstrInfo -> Precedence
+                      -> DVM (Expression PredType)
+deriveReadsPrecLambdaExpr ty (_, c, ls, tys) p = do
+  r <- freshArgument stringType
+  (stmts, vs, s) <- deriveReadsPrecStmts (unqualify c) (p + 1) r ls tys
+  let pty = predType $ foldr TypeArrow (instType ty) $ map instType tys
+      e = Tuple noRef [ apply (Constructor pty c) $ map (uncurry mkVar) vs
+                      , uncurry mkVar s
+                      ]
+  return $ Lambda noRef [uncurry VariablePattern r] $ ListCompr noRef e stmts
+
+deriveReadsPrecStmts
+  :: Ident -> Precedence -> (PredType, Ident) -> Maybe [Ident] -> [Type]
+  -> DVM ([Statement PredType], [(PredType, Ident)], (PredType, Ident))
+deriveReadsPrecStmts c p r ls tys
+  | null tys                       = deriveReadsPrecNullaryConstrStmts c r
+  | isJust ls                      =
+    deriveReadsPrecRecordConstrStmts c r (fromJust ls) tys
+  | isInfixOp c && length tys == 2 = deriveReadsPrecInfixConstrStmts c p r tys
+  | otherwise                      = deriveReadsPrecConstrStmts c r tys
+
+deriveReadsPrecNullaryConstrStmts
+  :: Ident -> (PredType, Ident)
+  -> DVM ([Statement PredType], [(PredType, Ident)], (PredType, Ident))
+deriveReadsPrecNullaryConstrStmts c r = do
+  (s, stmt) <- deriveReadsPrecLexStmt (idName c) r
+  return ([stmt], [], s)
+
+deriveReadsPrecRecordConstrStmts
+  :: Ident -> (PredType, Ident) -> [Ident] -> [Type]
+  -> DVM ([Statement PredType], [(PredType, Ident)], (PredType, Ident))
+deriveReadsPrecRecordConstrStmts c r ls tys = do
+  (s, stmt1) <- deriveReadsPrecLexStmt (idName c) r
+  (t, ress) <-
+    mapAccumM deriveReadsPrecFieldStmts s $ zip3 ("{" : repeat ",") ls tys
+  let (stmtss, vs) = unzip ress
+  (u, stmt2) <- deriveReadsPrecLexStmt "}" t
+  return (stmt1 : concat stmtss ++ [stmt2], vs, u)
+
+deriveReadsPrecFieldStmts
+  :: (PredType, Ident) -> (String, Ident, Type)
+  -> DVM ((PredType, Ident), ([Statement PredType], (PredType, Ident)))
+deriveReadsPrecFieldStmts r (pre, l, ty) = do
+  (s, stmt1) <- deriveReadsPrecLexStmt pre r
+  (t, stmt2) <- deriveReadsPrecLexStmt (idName l) s
+  (u, stmt3) <- deriveReadsPrecLexStmt "=" t
+  (w, (stmt4, v)) <- deriveReadsPrecReadsPrecStmt 0 u ty
+  return (w, ([stmt1, stmt2, stmt3, stmt4], v))
+
+deriveReadsPrecInfixConstrStmts
+  :: Ident -> Precedence -> (PredType, Ident) -> [Type]
+  -> DVM ([Statement PredType], [(PredType, Ident)], (PredType, Ident))
+deriveReadsPrecInfixConstrStmts c p r tys = do
+  (s, (stmt1, v1)) <- deriveReadsPrecReadsPrecStmt (p + 1) r $ head tys
+  (t, stmt2) <- deriveReadsPrecLexStmt (idName c) s
+  (u, (stmt3, v2)) <- deriveReadsPrecReadsPrecStmt (p + 1) t $ head $ tail tys
+  return ([stmt1, stmt2, stmt3], [v1, v2], u)
+
+deriveReadsPrecConstrStmts
+  :: Ident -> (PredType, Ident) -> [Type]
+  -> DVM ([Statement PredType], [(PredType, Ident)], (PredType, Ident))
+deriveReadsPrecConstrStmts c r tys = do
+    (s, stmt) <- deriveReadsPrecLexStmt (idName c) r
+    (t, ress) <- mapAccumM (deriveReadsPrecReadsPrecStmt 11) s tys
+    let (stmts, vs) = unzip ress
+    return (stmt : stmts, vs, t)
+
+deriveReadsPrecLexStmt :: String -> (PredType, Ident)
+                      -> DVM ((PredType, Ident), Statement PredType)
+deriveReadsPrecLexStmt str r = do
+  s <- freshArgument $ stringType
+  let pat  = TuplePattern noRef
+               [ LiteralPattern predStringType $ mkString str
+               , uncurry VariablePattern s
+               ]
+      stmt = StmtBind noRef pat $ preludeLex stringType $ uncurry mkVar r
+  return (s, stmt)
+
+deriveReadsPrecReadsPrecStmt  :: Precedence -> (PredType, Ident) -> Type
+      -> DVM ((PredType, Ident), (Statement PredType, (PredType, Ident)))
+deriveReadsPrecReadsPrecStmt p r ty = do
+  v <- freshArgument $ instType ty
+  s <- freshArgument $ stringType
+  let pat  = TuplePattern noRef $ map (uncurry VariablePattern) [v, s]
+      stmt = StmtBind noRef pat $ preludeReadsPrec (instType ty) p $
+               uncurry mkVar r
+  return (s, (stmt, v))
 
 -- Show:
 
@@ -422,6 +543,10 @@ prelTrue = Constructor predBoolType qTrueId
 prelFalse :: Expression PredType
 prelFalse = Constructor predBoolType qFalseId
 
+prelAppend :: Expression PredType -> Expression PredType -> Expression PredType
+prelAppend e1 e2 = foldl1 Apply [Variable pty qAppendOpId, e1, e2]
+  where pty = predType $ foldr1 TypeArrow $ replicate 3 $ typeOf e1
+
 prelDot :: Expression PredType -> Expression PredType -> Expression PredType
 prelDot e1 e2 = foldl1 Apply [Variable pty qDotOpId, e1, e2]
   where ty1@(TypeArrow _    ty12) = typeOf e1
@@ -468,12 +593,33 @@ prelEnumFromThenTo e1 e2 e3 =
   where ty = typeOf e1
         pty = predType $ foldr1 TypeArrow [ty, ty, ty, listType ty]
 
+prelReadParen :: Expression PredType -> Expression PredType
+              -> Expression PredType
+prelReadParen e1 e2 = apply (Variable pty qShowParenId) [e1, e2]
+  where ty = typeOf e2
+        pty = predType $ foldr1 TypeArrow [boolType, ty, ty]
+
 prelShowParen :: Expression PredType -> Expression PredType
               -> Expression PredType
 prelShowParen e1 e2 = apply (Variable pty qShowParenId) [e1, e2]
   where pty = predType $ foldr1 TypeArrow [ boolType
                                           , TypeArrow stringType stringType
                                           , stringType, stringType
+                                          ]
+
+preludeLex :: Type -> Expression PredType -> Expression PredType
+preludeLex ty e = Apply (Variable pty qLexId) e
+  where pty = predType $ TypeArrow stringType $
+                listType $ tupleType [ty, stringType]
+
+preludeReadsPrec :: Type -> Integer -> Expression PredType
+                 -> Expression PredType
+preludeReadsPrec ty p e = flip Apply e $
+  Apply (Variable pty qReadsPrecId) $ Literal predIntType $ Int noRef p
+  where pty = predType $ foldr1 TypeArrow [ intType, stringType
+                                          , listType $ tupleType [ ty
+                                                                 , stringType
+                                                                 ]
                                           ]
 
 preludeShowsPrec :: Integer -> Expression PredType -> Expression PredType
