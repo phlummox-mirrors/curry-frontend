@@ -595,7 +595,7 @@ prelEnumFromThenTo e1 e2 e3 =
 
 prelReadParen :: Expression PredType -> Expression PredType
               -> Expression PredType
-prelReadParen e1 e2 = apply (Variable pty qShowParenId) [e1, e2]
+prelReadParen e1 e2 = apply (Variable pty qReadParenId) [e1, e2]
   where ty = typeOf e2
         pty = predType $ foldr1 TypeArrow [boolType, ty, ty]
 
