@@ -216,7 +216,7 @@ inferPredSet clsEnv p tc (PredType ps inst) tys cls = do
       ps''  = Set.fromList [Pred scls inst | scls <- sclss]
       ps''' = ps `Set.union` ps' `Set.union` ps''
   ps'''' <- reducePredSet p "derived instance" doc clsEnv ps'''
-  mapM_ (reportUndecidable p "derived instance" doc) ps''''
+  mapM_ (reportUndecidable p "derived instance" doc) $ Set.toList ps''''
   return ((cls, tc), ps'''')
 
 updatePredSets :: [(InstIdent, PredSet)] -> INCM Bool

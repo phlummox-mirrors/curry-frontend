@@ -10,8 +10,12 @@
 
   TODO
 -}
+{-# LANGUAGE CPP #-}
 module Transformations.Derive (derive) where
 
+#if __GLASGOW_HASKELL__ < 710
+import           Control.Applicative      ((<$>))
+#endif
 import           Control.Monad.ListM      (mapAccumM)
 import qualified Control.Monad.State as S (State, evalState, gets, modify)
 import           Data.List         (intercalate, intersperse)
