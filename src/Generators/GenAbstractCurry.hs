@@ -177,7 +177,7 @@ trTypeExpr (ConstructorType q) = CTCons <$> trQual q
 trTypeExpr (ApplyType ty1 ty2) = CTApply <$> trTypeExpr ty1 <*> trTypeExpr ty2
 trTypeExpr (VariableType    v) = CTVar  <$> getTVarIndex v
 trTypeExpr (TupleType     tys) =
-  trTypeExpr $ foldr ApplyType (ConstructorType $ qTupleId $ length tys) tys
+  trTypeExpr $ foldl ApplyType (ConstructorType $ qTupleId $ length tys) tys
 trTypeExpr (ListType       ty) =
   trTypeExpr $ ApplyType (ConstructorType qListId) ty
 trTypeExpr (ArrowType ty1 ty2) = CFuncType <$> trTypeExpr ty1 <*> trTypeExpr ty2
