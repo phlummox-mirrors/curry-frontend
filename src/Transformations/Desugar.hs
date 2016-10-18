@@ -895,7 +895,7 @@ dsQual p (StmtBind r t l) e
     --TODO: Add SrcRefs (old version below)
     --v   <- addRefId r <$> freshVar "_#var" t
     --l'  <- addRefId r <$> freshVar "_#var" e
-    dsExpr p (apply (prelFoldr (typeOf t) (elemType $ typeOf l) r)
+    dsExpr p (apply (prelFoldr (typeOf t) (typeOf l) r)
       [foldFunct v l' e, List (predType $ elemType $ typeOf l) [r] [], l])
   where
   qualExpr v (ListCompr _ e1 []) l1
