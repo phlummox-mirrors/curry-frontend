@@ -122,7 +122,7 @@ trInstanceMethodDecl qcls ty (FunctionDecl _ _ f eqs) = do
   uacy <- S.gets untypedAcy
   qty <- if uacy
            then return $ QualTypeExpr [] $ ConstructorType prelUntyped
-           else getQualType (qualifyLike qcls $ unRenameIdent f) uacy
+           else getQualType' (qualifyLike qcls $ unRenameIdent f)
   CFunc <$> trLocalIdent f <*> pure (eqnArity $ head eqs) <*> pure Public
         <*> trInstanceMethodType ty qty <*> mapM trEquation eqs
 trInstanceMethodDecl _ _ _ = internalError "GenAbstractCurry.trInstanceMethodDecl"
@@ -207,15 +207,15 @@ trFuncDecl :: Bool -> Decl PredType -> GAC [CFuncDecl]
 trFuncDecl global (FunctionDecl  _ pty f eqs)
   =   (\f' a v ty rs -> [CFunc f' a v ty rs])
   <$> trFuncName global f <*> pure (eqnArity $ head eqs) <*> getVisibility f
-  <*> toQualType pty <*> mapM trEquation eqs
+  <*> getQualType f pty <*> mapM trEquation eqs
 trFuncDecl global (ForeignDecl _ _ _ pty f _)
   =   (\f' a v ty rs -> [CFunc f' a v ty rs])
   <$> trFuncName global f <*> pure (arrowArity $ unpredType pty)
-  <*> getVisibility f <*> toQualType pty <*> return []
+  <*> getVisibility f <*> getQualType f pty <*> return []
 trFuncDecl global (ExternalDecl         _ vs)
   =   T.forM vs $ \(Var pty f) -> CFunc
   <$> trFuncName global f <*> pure (arrowArity $ unpredType pty)
-  <*> getVisibility f <*> toQualType pty <*> return []
+  <*> getVisibility f <*> getQualType f pty <*> return []
 trFuncDecl _      _                           = return []
 
 trFuncName :: Bool -> Ident -> GAC QName
@@ -504,18 +504,17 @@ inNestedTScope act = do
   S.modify $ \e -> e { varEnv = vo, tvarEnv = to }
   return res
 
-toQualType :: PredType -> GAC CQualTypeExpr
-toQualType pty = do
+getQualType :: Ident -> PredType -> GAC CQualTypeExpr
+getQualType f pty = do
   uacy <- S.gets untypedAcy
-  trQualTypeExpr $ if uacy then (QualTypeExpr [] $ ConstructorType prelUntyped)
-                           else fromPredType identSupply pty
-
-getQualType :: QualIdent -> Bool -> GAC QualTypeExpr
-getQualType f True  = do
   sigs <- S.gets typeSigs
-  return $ Maybe.fromMaybe (QualTypeExpr [] $ ConstructorType prelUntyped)
-                           (Map.lookup (unqualify f) sigs)
-getQualType f False = do
+  trQualTypeExpr $ case uacy of
+    True  -> Maybe.fromMaybe (QualTypeExpr [] $ ConstructorType prelUntyped)
+                             (Map.lookup f sigs)
+    False -> fromPredType identSupply pty
+
+getQualType' :: QualIdent -> GAC QualTypeExpr
+getQualType' f = do
   m     <- S.gets moduleId
   tyEnv <- S.gets typeEnv
   return $ case qualLookupValue f tyEnv of
@@ -523,7 +522,7 @@ getQualType f False = do
     _                          -> case qualLookupValue (qualQualify m f) tyEnv of
       [Value _ _ _ (ForAll _ pty)] -> fromPredType identSupply pty
       _                          ->
-        internalError $ "GenAbstractCurry.getQualType: " ++ show f
+        internalError $ "GenAbstractCurry.getQualType': " ++ show f
 
 getTypeVisibility :: Ident -> GAC CVisibility
 getTypeVisibility i = S.gets $ \env ->
