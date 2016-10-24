@@ -188,8 +188,7 @@ absFunDecls pre lvs (fds:fdss) vds e = do
       env'   = foldr (bindF (map (uncurry mkVar) fvs)) env fs
       bindF fvs' f = Map.insert f (apply (mkFun m pre undefined f) fvs')
       -- newly abstracted functions
-      fs'    = filter (not . isLifted) fs
-      isLifted f = not $ null $ lookupValue (liftIdent pre f) vEnv
+      fs'    = filter (\f -> null $ lookupValue (liftIdent pre f) vEnv) fs
   withLocalAbstractEnv env' $ do
     -- add variables to functions
     fds' <- mapM (absFunDecl pre fvs lvs) [d | d <- fds, any (`elem` fs') (bv d)]
@@ -204,7 +203,8 @@ absFunDecl :: String -> [(Type, Ident)] -> [(Type, Ident)] -> Decl Type
            -> LiftM (Decl Type)
 absFunDecl pre fvs lvs (FunctionDecl p ty f eqs) = do
   m <- getModuleIdent
-  modifyValueEnv $ qualBindFun m f' False (eqnArity (head eqs')) (polyType ty')
+  modifyValueEnv $ bindGlobalInfo
+    (\qf tySc -> Value qf False (eqnArity $ head eqs') tySc) m f' $ polyType ty'
   absDecl pre lvs $ FunctionDecl p ty' f' eqs'
   where f' = liftIdent pre f
         ty' = genType (foldr (TypeArrow . fst) ty fvs)
@@ -217,7 +217,8 @@ absFunDecl pre fvs lvs (FunctionDecl p ty f eqs) = do
         addVars' _ _ = error "Lift.absFunDecl.addVars': no pattern match"
 absFunDecl pre _ _ (ForeignDecl p cc ie ty f ty') = do
   m <- getModuleIdent
-  modifyValueEnv $ qualBindFun m f' False (arrowArity ty) (polyType ty)
+  modifyValueEnv $ bindGlobalInfo
+    (\qf tySc -> Value qf False (arrowArity ty) tySc) m f' $ polyType ty
   return $ ForeignDecl p cc ie ty f' ty'
   where f' = liftIdent pre f
 absFunDecl _ _ _ _ = error "Lift.absFunDecl: no pattern match"
