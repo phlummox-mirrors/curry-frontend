@@ -46,7 +46,6 @@ module Base.TopEnv
   , lookupTopEnv, qualLookupTopEnv, qualElemTopEnv
   , allImports, moduleImports, localBindings, allLocalBindings, allBindings
   , allEntities
-  , reverseLookupByOrigName
   ) where
 
 import           Control.Arrow        (second)
@@ -180,7 +179,3 @@ allBindings (TopEnv env) = [(x, y) | (x, ys) <- Map.toList env, (_, y) <- ys]
 
 allEntities :: TopEnv a -> [a]
 allEntities (TopEnv env) = [ y | (_, ys) <- Map.toList env, (_, y) <- ys]
-
-reverseLookupByOrigName :: Entity a => QualIdent -> TopEnv a -> [QualIdent]
-reverseLookupByOrigName on =
-  map fst . filter ((== on) . origName . snd) . allBindings
