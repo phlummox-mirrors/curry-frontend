@@ -191,16 +191,16 @@ encodeTok tok@(Token c _)
   | c `elem` whiteSpaceCategories   = Space 0
   | c `elem` pragmaCategories       = Pragma     (showToken tok)
   | otherwise                       = internalError $
-    "SyntaxColoring.encodeTok: Unknown token" ++ showToken tok
+    "SyntaxColoring.encodeTok: Unknown token " ++ showToken tok
 
 numCategories :: [Category]
 numCategories = [IntTok, FloatTok]
 
 keywordCategories :: [Category]
 keywordCategories =
-  [ KW_case, KW_class, KW_data, KW_default, KW_do, KW_else, KW_external
-  , KW_fcase, KW_foreign, KW_free, KW_if, KW_import, KW_in, KW_infix
-  , KW_infixl, KW_infixr, KW_instance, KW_let, KW_module, KW_newtype
+  [ KW_case, KW_class, KW_data, KW_default, KW_deriving, KW_do, KW_else
+  , KW_external, KW_fcase, KW_foreign, KW_free, KW_if, KW_import, KW_in
+  , KW_infix, KW_infixl, KW_infixr, KW_instance, KW_let, KW_module, KW_newtype
   , KW_of, KW_then, KW_type, KW_where
   ]
 
