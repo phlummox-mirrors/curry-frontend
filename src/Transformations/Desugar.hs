@@ -72,6 +72,7 @@ import           Control.Monad              (liftM2, mplus)
 import           Control.Monad.Extra        (concatMapM)
 import           Control.Monad.ListM        (mapAccumM)
 import qualified Control.Monad.State as S   (State, runState, gets, modify)
+import           Data.Foldable              (foldrM)
 import           Data.List                  ( (\\), elemIndex, nub, partition
                                             , tails )
 import           Data.Maybe                 (fromMaybe)
@@ -748,7 +749,7 @@ dsExpr p (Let ds e) = do
   ds' <- dsDeclGroup ds
   e'  <- dsExpr p e
   return (if null ds' then e' else Let ds' e')
-dsExpr p (Do              sts e) = dsExpr p (dsDo sts e)
+dsExpr p (Do              sts e) = dsDo sts e >>= dsExpr p
 dsExpr p (IfThenElse r e1 e2 e3) = do
   e1' <- dsExpr p e1
   e2' <- dsExpr p e2
@@ -834,17 +835,29 @@ isCompatible _ _ = False
 --
 -- `dsDo([]         , e)` -> `e`
 -- `dsDo(e'     ; ss, e)` -> `e' >>        dsDo(ss, e)`
--- `dsDo(p <- e'; ss, e)` -> `e' >>= \p -> dsDo(ss, e)`
+-- `dsDo(p <- e'; ss, e)` -> `e' >>= \v -> case v of
+--                                           p -> dsDo(ss, e)
+--                                           _ -> fail "..."`
 -- `dsDo(let ds ; ss, e)` -> `let ds in    dsDo(ss, e)`
-dsDo :: [Statement PredType] -> Expression PredType -> Expression PredType
-dsDo sts e = foldr dsStmt e sts
+dsDo :: [Statement PredType] -> Expression PredType -> DsM (Expression PredType)
+dsDo sts e = foldrM dsStmt e sts
 
-dsStmt :: Statement PredType -> Expression PredType -> Expression PredType
+dsStmt :: Statement PredType -> Expression PredType -> DsM (Expression PredType)
 dsStmt (StmtExpr r   e1) e' =
-  apply (prelBind_ (typeOf e1) (typeOf e') r) [e1, e']
-dsStmt (StmtBind r t e1) e' =
-  apply (prelBind (typeOf e1) (typeOf t) (typeOf e') r) [e1, Lambda r [t] e']
-dsStmt (StmtDecl     ds) e' = Let ds e'
+  return $ apply (prelBind_ (typeOf e1) (typeOf e') r) [e1, e']
+dsStmt (StmtBind r t e1) e' = do
+  v <- freshVar "_#var" t
+  let func = Lambda r [uncurry VariablePattern v] $
+               Case noRef Rigid (uncurry mkVar v)
+                 [ caseAlt NoPos t e'
+                 , caseAlt NoPos (uncurry VariablePattern v)
+                     (failedPatternMatch $ typeOf e')
+                 ]
+  return $ apply (prelBind (typeOf e1) (typeOf t) (typeOf e') r) [e1, func]
+  where failedPatternMatch ty = --TODO: Fix wrong SrcRef
+          apply (prelFail ty)
+            [Literal predStringType $ String (srcRef 0) "Pattern match failed!"]
+dsStmt (StmtDecl     ds) e' = return $ Let ds e'
 
 -- -----------------------------------------------------------------------------
 -- Desugaring of List Comprehensions
@@ -1009,6 +1022,9 @@ prelEnumFromThenTo a = preludeFun [a, a, a] (listType a) "enumFromThenTo"
 
 prelNegate :: Type -> Expression PredType
 prelNegate a = preludeFun [a] a "negate"
+
+prelFail :: Type -> Expression PredType
+prelFail ma = preludeFun [stringType] ma "fail"
 
 prelFailed :: Type -> Expression PredType
 prelFailed a = preludeFun [] a "failed"
