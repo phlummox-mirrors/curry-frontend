@@ -143,7 +143,7 @@ tupleDCs :: [ValueInfo]
 tupleDCs = map dataInfo tupleData
   where dataInfo (DataConstr _ _ _ tys) =
           let n = length tys
-          in  DataConstructor (qTupleId n) 0 (replicate n anonId) $
+          in  DataConstructor (qTupleId n) n (replicate n anonId) $
                 ForAllExist n 0 $ predType $ foldr TypeArrow (tupleType tys) tys
         dataInfo (RecordConstr _ _ _ _ _) =
           internalError $ "Env.Value.tupleDCs: " ++ show tupleDCs
