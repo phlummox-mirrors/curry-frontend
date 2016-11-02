@@ -865,7 +865,7 @@ maxPattern = 4
 
 warnNondetOverlapping :: Position -> String -> Message
 warnNondetOverlapping p loc = posMessage p $
-  text loc <+> text "is non-deterministic due to overlapping rules"
+  text loc <+> text "is potentially non-deterministic due to overlapping rules"
 
 -- -----------------------------------------------------------------------------
 
