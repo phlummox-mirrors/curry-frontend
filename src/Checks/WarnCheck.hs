@@ -249,6 +249,9 @@ checkDecl (TypeDecl      _ _ vs ty) = inNestedScope $ do
   reportUnusedTypeVars vs
 checkDecl (FunctionDecl  p _ f eqs) = checkFunctionDecl p f eqs
 checkDecl (PatternDecl     _ p rhs) = checkPattern p >> checkRhs rhs
+checkDecl (DefaultDecl       _ tys) = mapM_ checkTypeExpr tys
+checkDecl (ClassDecl    _ _ _ _ ds) = mapM_ checkDecl ds
+checkDecl (InstanceDecl _ _ _ _ ds) = mapM_ checkDecl ds
 checkDecl _                        = ok
 
 --TODO: shadowing und context etc.
@@ -937,6 +940,9 @@ insertDecl (ForeignDecl _ _ _ _ f _) = insertVar f
 insertDecl (ExternalDecl       _ vs) = mapM_ (insertVar . varIdent) vs
 insertDecl (PatternDecl       _ p _) = insertPattern False p
 insertDecl (FreeDecl           _ vs) = mapM_ (insertVar . varIdent) vs
+insertDecl (ClassDecl _ _ cls _  ds) = do
+  insertTypeConsId cls
+  mapM_ insertVar $ concatMap methods ds
 insertDecl _                         = ok
 
 insertTypeExpr :: TypeExpr -> WCM ()
