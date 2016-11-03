@@ -253,15 +253,24 @@ checkDecl _                        = ok
 
 --TODO: shadowing und context etc.
 checkConstrDecl :: ConstrDecl -> WCM ()
-checkConstrDecl (ConstrDecl     _ _ _ c tys) = do
+checkConstrDecl (ConstrDecl     _ vs _ c tys) = inNestedScope $ do
+  mapM_ checkTypeShadowing vs
+  mapM_ insertTypeVar vs
   visitId c
   mapM_ checkTypeExpr tys
-checkConstrDecl (ConOpDecl _ _ _ ty1 op ty2) = do
+  reportUnusedTypeVars vs
+checkConstrDecl (ConOpDecl _ vs _ ty1 op ty2) = inNestedScope $ do
+  mapM_ checkTypeShadowing vs
+  mapM_ insertTypeVar vs
   visitId op
   mapM_ checkTypeExpr [ty1, ty2]
-checkConstrDecl (RecordDecl      _ _ _ c fs) = do
+  reportUnusedTypeVars vs
+checkConstrDecl (RecordDecl      _ vs _ c fs) = inNestedScope $ do
+  mapM_ checkTypeShadowing vs
+  mapM_ insertTypeVar vs
   visitId c
   mapM_ checkTypeExpr tys
+  reportUnusedTypeVars vs
   where
     tys = [ty | FieldDecl _ _ ty <- fs]
 
@@ -886,6 +895,10 @@ checkShadowing :: Ident -> WCM ()
 checkShadowing x = warnFor WarnNameShadowing $
   shadowsVar x >>= maybe ok (report . warnShadowing x)
 
+checkTypeShadowing :: Ident -> WCM ()
+checkTypeShadowing x = warnFor WarnNameShadowing $
+  shadowsTypeVar x >>= maybe ok (report . warnTypeShadowing x)
+
 reportUnusedVars :: WCM ()
 reportUnusedVars = reportAllUnusedVars WarnUnusedBindings
 
@@ -1033,15 +1046,18 @@ isConsId c = gets (isCons $ qualify c)
 isQualConsId :: QualIdent -> WCM Bool
 isQualConsId qid = gets (isCons qid)
 
+shadows :: QualIdent -> WcState -> Maybe Ident
+shadows qid s = do
+  guard $ not (qualInLocalNestEnv qid sc)
+  info      <- listToMaybe $ qualLookupNestEnv qid sc
+  getVariable info
+  where sc = scope s
+
 shadowsVar :: Ident -> WCM (Maybe Ident)
 shadowsVar v = gets (shadows $ commonId v)
-  where
-  shadows :: QualIdent -> WcState -> Maybe Ident
-  shadows qid s = do
-    guard $ not (qualInLocalNestEnv qid sc)
-    info      <- listToMaybe $ qualLookupNestEnv qid sc
-    getVariable info
-    where sc = scope s
+
+shadowsTypeVar :: Ident -> WCM (Maybe Ident)
+shadowsTypeVar v = gets (shadows $ typeId v)
 
 visitId :: Ident -> WCM ()
 visitId v = modifyScope (qualModifyNestEnv visitVariable (commonId v))
@@ -1130,4 +1146,9 @@ warnUnrefVar v = posMessage v $ hsep $ map text
 warnShadowing :: Ident -> Ident -> Message
 warnShadowing x v = posMessage x $
   text "Shadowing symbol" <+> text (escName x)
+  <> comma <+> text "bound at:" <+> ppPosition (getPosition v)
+
+warnTypeShadowing :: Ident -> Ident -> Message
+warnTypeShadowing x v = posMessage x $
+  text "Shadowing type variable" <+> text (escName x)
   <> comma <+> text "bound at:" <+> ppPosition (getPosition v)
