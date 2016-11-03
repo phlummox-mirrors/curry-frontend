@@ -4,6 +4,7 @@
     Copyright   :  (c) 2006        Martin Engelke
                        2011 - 2014 Björn Peemöller
                        2014 - 2015 Jan Tikovsky
+                       2016        Finn Teegen
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
@@ -234,16 +235,20 @@ warnDisjoinedFunctionRules ident pos = posMessage ident $ hsep (map text
   <+> parens (text "first occurrence at" <+> text (showLine pos))
 
 checkDecl :: Decl () -> WCM ()
-checkDecl (DataDecl   _ _ vs cs _) = inNestedScope $ do
+checkDecl (DataDecl    _ _ vs cs _) = inNestedScope $ do
   mapM_ insertTypeVar   vs
   mapM_ checkConstrDecl cs
   reportUnusedTypeVars  vs
-checkDecl (TypeDecl     _ _ vs ty) = inNestedScope $ do
+checkDecl (NewtypeDecl _ _ vs nc _) = inNestedScope $ do
+  mapM_ insertTypeVar   vs
+  checkNewConstrDecl nc
+  reportUnusedTypeVars vs
+checkDecl (TypeDecl      _ _ vs ty) = inNestedScope $ do
   mapM_ insertTypeVar  vs
   checkTypeExpr ty
   reportUnusedTypeVars vs
-checkDecl (FunctionDecl p _ f eqs) = checkFunctionDecl p f eqs
-checkDecl (PatternDecl    _ p rhs) = checkPattern p >> checkRhs rhs
+checkDecl (FunctionDecl  p _ f eqs) = checkFunctionDecl p f eqs
+checkDecl (PatternDecl     _ p rhs) = checkPattern p >> checkRhs rhs
 checkDecl _                        = ok
 
 --TODO: shadowing und context etc.
@@ -259,6 +264,14 @@ checkConstrDecl (RecordDecl      _ _ _ c fs) = do
   mapM_ checkTypeExpr tys
   where
     tys = [ty | FieldDecl _ _ ty <- fs]
+
+checkNewConstrDecl :: NewConstrDecl -> WCM ()
+checkNewConstrDecl (NewConstrDecl _ c      ty) = do
+  visitId c
+  checkTypeExpr ty
+checkNewConstrDecl (NewRecordDecl _ c (_, ty)) = do
+  visitId c
+  checkTypeExpr ty
 
 checkTypeExpr :: TypeExpr -> WCM ()
 checkTypeExpr (ConstructorType     qid) = visitQTypeId qid
@@ -898,6 +911,9 @@ insertDecl :: Decl a -> WCM ()
 insertDecl (DataDecl     _ d _ cs _) = do
   insertTypeConsId d
   mapM_ insertConstrDecl cs
+insertDecl (NewtypeDecl  _ d _ nc _) = do
+  insertTypeConsId d
+  insertNewConstrDecl nc
 insertDecl (TypeDecl       _ t _ ty) = do
   insertTypeConsId t
   insertTypeExpr ty
@@ -923,6 +939,10 @@ insertConstrDecl :: ConstrDecl -> WCM ()
 insertConstrDecl (ConstrDecl _ _ _    c _) = insertConsId c
 insertConstrDecl (ConOpDecl  _ _ _ _ op _) = insertConsId op
 insertConstrDecl (RecordDecl _ _ _    c _) = insertConsId c
+
+insertNewConstrDecl :: NewConstrDecl -> WCM ()
+insertNewConstrDecl (NewConstrDecl _ c _) = insertConsId c
+insertNewConstrDecl (NewRecordDecl _ c _) = insertConsId c
 
 -- 'fp' indicates whether 'checkPattern' deals with the arguments
 -- of a function pattern or not.
