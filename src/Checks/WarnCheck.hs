@@ -31,7 +31,7 @@ import Curry.Base.Ident
 import Curry.Base.Position
 import Curry.Base.Pretty
 import Curry.Syntax
-import Curry.Syntax.Pretty (ppPattern, ppExpr, ppIdent)
+import Curry.Syntax.Pretty (ppDecl, ppPattern, ppExpr, ppIdent)
 
 import Base.CurryTypes (ppTypeScheme)
 import Base.Messages   (Message, posMessage, internalError)
@@ -43,7 +43,7 @@ import Base.Types
 import Base.Utils (findMultiples)
 import Env.ModuleAlias
 import Env.TypeConstructor ( TCEnv, TypeInfo (..), lookupTypeInfo
-                           , qualLookupTypeInfo )
+                           , qualLookupTypeInfo, getOrigName )
 import Env.Value (ValueEnv, ValueInfo (..), qualLookupValue)
 
 import CompilerOpts
@@ -235,24 +235,26 @@ warnDisjoinedFunctionRules ident pos = posMessage ident $ hsep (map text
   <+> parens (text "first occurrence at" <+> text (showLine pos))
 
 checkDecl :: Decl () -> WCM ()
-checkDecl (DataDecl    _ _ vs cs _) = inNestedScope $ do
+checkDecl (DataDecl        _ _ vs cs _) = inNestedScope $ do
   mapM_ insertTypeVar   vs
   mapM_ checkConstrDecl cs
   reportUnusedTypeVars  vs
-checkDecl (NewtypeDecl _ _ vs nc _) = inNestedScope $ do
+checkDecl (NewtypeDecl     _ _ vs nc _) = inNestedScope $ do
   mapM_ insertTypeVar   vs
   checkNewConstrDecl nc
   reportUnusedTypeVars vs
-checkDecl (TypeDecl      _ _ vs ty) = inNestedScope $ do
+checkDecl (TypeDecl          _ _ vs ty) = inNestedScope $ do
   mapM_ insertTypeVar  vs
   checkTypeExpr ty
   reportUnusedTypeVars vs
-checkDecl (FunctionDecl  p _ f eqs) = checkFunctionDecl p f eqs
-checkDecl (PatternDecl     _ p rhs) = checkPattern p >> checkRhs rhs
-checkDecl (DefaultDecl       _ tys) = mapM_ checkTypeExpr tys
-checkDecl (ClassDecl    _ _ _ _ ds) = mapM_ checkDecl ds
-checkDecl (InstanceDecl _ _ _ _ ds) = mapM_ checkDecl ds
-checkDecl _                        = ok
+checkDecl (FunctionDecl      p _ f eqs) = checkFunctionDecl p f eqs
+checkDecl (PatternDecl         _ p rhs) = checkPattern p >> checkRhs rhs
+checkDecl (DefaultDecl           _ tys) = mapM_ checkTypeExpr tys
+checkDecl (ClassDecl        _ _ _ _ ds) = mapM_ checkDecl ds
+checkDecl (InstanceDecl p cx cls ty ds) = do
+  checkOrphanInstance p cx cls ty
+  mapM_ checkDecl ds
+checkDecl _                             = ok
 
 --TODO: shadowing und context etc.
 checkConstrDecl :: ConstrDecl -> WCM ()
@@ -428,6 +430,23 @@ checkAlt (Alt _ p rhs) = inNestedScope $ do
 
 checkField :: (a -> WCM ()) -> Field a -> WCM ()
 checkField check (Field _ _ x) = check x
+
+-- -----------------------------------------------------------------------------
+-- Check for orphan instances
+-- -----------------------------------------------------------------------------
+
+checkOrphanInstance :: Position -> Context -> QualIdent -> TypeExpr -> WCM ()
+checkOrphanInstance p cx cls ty = warnFor WarnOrphanInstances $ do
+  m <- getModuleIdent
+  tcEnv <- gets tyConsEnv
+  let ocls = getOrigName m cls tcEnv
+      otc  = getOrigName m tc  tcEnv
+  unless (isLocalIdent m ocls || isLocalIdent m otc) $ report $
+    warnOrphanInstance p $ ppDecl $ InstanceDecl p cx cls ty []
+  where tc = typeConstr ty
+
+warnOrphanInstance :: Position -> Doc -> Message
+warnOrphanInstance p doc = posMessage p $ text "Orphan instance:" <+> doc
 
 -- -----------------------------------------------------------------------------
 -- Check for missing type signatures

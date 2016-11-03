@@ -162,6 +162,7 @@ data WarnFlag
   | WarnOverlapping          -- ^ Warn for overlapping rules/alternatives
   | WarnIncompletePatterns   -- ^ Warn for incomplete pattern matching
   | WarnMissingSignatures    -- ^ Warn for missing type signatures
+  | WarnOrphanInstances      -- ^ Warn for orphan instances
     deriving (Eq, Bounded, Enum, Show)
 
 -- |Warning flags enabled by default
@@ -191,6 +192,8 @@ warnFlags =
     , "incomplete pattern matching")
   , ( WarnMissingSignatures   , "missing-signatures"
     , "missing type signatures"    )
+  , ( WarnOrphanInstances     , "orphan-instances"
+    , "orphan instances"           )
   ]
 
 -- |Dump level
