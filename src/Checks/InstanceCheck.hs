@@ -34,7 +34,6 @@ import Curry.Syntax.Pretty
 import Base.CurryTypes
 import Base.Messages (Message, posMessage, message, internalError)
 import Base.SCC (scc)
-import Base.TopEnv
 import Base.TypeExpansion
 import Base.Types
 import Base.TypeSubst
