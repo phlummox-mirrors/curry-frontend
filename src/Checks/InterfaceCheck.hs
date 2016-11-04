@@ -172,7 +172,8 @@ checkImport (IClassDecl p cx cls k clsvar ms _) = do
   let check (TypeClass cls' k' fs)
         | cls == cls' && toKind' k 0 == k' &&
           [cls'' | Constraint cls'' _ <- cx] == superClasses cls' clsEnv &&
-          map imethod ms == map methodName fs
+          map (\m -> (imethod m, imethodArity m)) ms ==
+            map (\f -> (methodName f, methodArity f)) fs
         = Just $ mapM_ (checkMethodImport cls clsvar) ms
       check _ = Nothing
   checkTypeInfo "type class" check p cls

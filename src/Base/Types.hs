@@ -367,16 +367,16 @@ tupleData = [DataConstr (tupleId n) 0 emptyPredSet (take n tvs) | n <- [2 ..]]
 -- ---------------------------------------------------------------------------
 
 -- The type 'ClassMethod' is used to represent class methods introduced
--- by class declarations. The 'Int' denotes the arity of the provided
+-- by class declarations. The 'Maybe Int' denotes the arity of the provided
 -- default implementation.
 
-data ClassMethod = ClassMethod Ident Int PredType
+data ClassMethod = ClassMethod Ident (Maybe Int) PredType
   deriving (Eq, Show)
 
 methodName :: ClassMethod -> Ident
 methodName (ClassMethod f _ _) = f
 
-methodArity :: ClassMethod -> Int
+methodArity :: ClassMethod -> Maybe Int
 methodArity (ClassMethod _ a _) = a
 
 methodType :: ClassMethod -> PredType

@@ -25,7 +25,7 @@ import qualified Data.Map            as Map    (empty, insert, lookup)
 import           Data.Maybe
   (catMaybes, fromMaybe, listToMaybe)
 import           Data.List
-  (intersect, intersectBy, nub, sort, unionBy)
+  ((\\), intersect, intersectBy, nub, sort, unionBy)
 
 import Curry.Base.Ident
 import Curry.Base.Position
@@ -42,6 +42,7 @@ import Base.NestEnv    ( NestEnv, emptyEnv, localNestEnv, nestEnv, unnestEnv
 import Base.Types
 import Base.Utils (findMultiples)
 import Env.ModuleAlias
+import Env.Class (ClassEnv, classMethods, hasDefaultImpl)
 import Env.TypeConstructor ( TCEnv, TypeInfo (..), lookupTypeInfo
                            , qualLookupTypeInfo, getOrigName )
 import Env.Value (ValueEnv, ValueInfo (..), qualLookupValue)
@@ -56,9 +57,10 @@ import CompilerOpts
 --   - idle case alternatives
 --   - overlapping case alternatives
 --   - non-adjacent function rules
-warnCheck :: WarnOpts -> AliasEnv -> ValueEnv -> TCEnv -> Module a -> [Message]
-warnCheck opts aEnv valEnv tcEnv mdl
-  = runOn (initWcState mid aEnv valEnv tcEnv (wnWarnFlags opts)) $ do
+warnCheck :: WarnOpts -> AliasEnv -> ValueEnv -> TCEnv -> ClassEnv -> Module a
+          -> [Message]
+warnCheck opts aEnv valEnv tcEnv clsEnv mdl
+  = runOn (initWcState mid aEnv valEnv tcEnv clsEnv (wnWarnFlags opts)) $ do
       checkImports   is
       checkDeclGroup ds
       checkExports   es
@@ -75,6 +77,7 @@ data WcState = WcState
   , aliasEnv    :: AliasEnv
   , valueEnv    :: ValueEnv
   , tyConsEnv   :: TCEnv
+  , classEnv    :: ClassEnv
   , warnFlags   :: [WarnFlag]
   , warnings    :: [Message]
   }
@@ -84,9 +87,9 @@ data WcState = WcState
 -- contents.
 type WCM = State WcState
 
-initWcState :: ModuleIdent -> AliasEnv -> ValueEnv -> TCEnv -> [WarnFlag]
-            -> WcState
-initWcState mid ae ve te wf = WcState mid emptyEnv ae ve te wf []
+initWcState :: ModuleIdent -> AliasEnv -> ValueEnv -> TCEnv -> ClassEnv
+            -> [WarnFlag] -> WcState
+initWcState mid ae ve te ce wf = WcState mid emptyEnv ae ve te ce wf []
 
 getModuleIdent :: WCM ModuleIdent
 getModuleIdent = gets moduleId
@@ -253,6 +256,7 @@ checkDecl (DefaultDecl           _ tys) = mapM_ checkTypeExpr tys
 checkDecl (ClassDecl        _ _ _ _ ds) = mapM_ checkDecl ds
 checkDecl (InstanceDecl p cx cls ty ds) = do
   checkOrphanInstance p cx cls ty
+  checkMissingMethodImplementations p cls ds
   mapM_ checkDecl ds
 checkDecl _                             = ok
 
@@ -447,6 +451,25 @@ checkOrphanInstance p cx cls ty = warnFor WarnOrphanInstances $ do
 
 warnOrphanInstance :: Position -> Doc -> Message
 warnOrphanInstance p doc = posMessage p $ text "Orphan instance:" <+> doc
+
+-- -----------------------------------------------------------------------------
+-- Check for missing method implementations
+-- -----------------------------------------------------------------------------
+
+checkMissingMethodImplementations :: Position -> QualIdent -> [Decl a] -> WCM ()
+checkMissingMethodImplementations p cls ds = warnFor WarnMissingMethods $ do
+  m <- getModuleIdent
+  tcEnv <- gets tyConsEnv
+  clsEnv <- gets classEnv
+  let ocls = getOrigName m cls tcEnv
+      ms   = classMethods ocls clsEnv
+  mapM_ (report . warnMissingMethodImplementation p) $
+    filter (not . flip (hasDefaultImpl ocls) clsEnv) $ ms \\ fs
+  where fs = map unRenameIdent $ concatMap impls ds
+
+warnMissingMethodImplementation :: Position -> Ident -> Message
+warnMissingMethodImplementation p f = posMessage p $ hsep $ map text
+  ["No explicit implementation for method", escName f]
 
 -- -----------------------------------------------------------------------------
 -- Check for missing type signatures

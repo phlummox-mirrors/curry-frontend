@@ -340,8 +340,9 @@ bindKind m tcEnv' clsEnv tcEnv (ClassDecl _ _ cls tv ds) =
     mkMethods _                  = []
     mkMethod qty f = ClassMethod f (findArity f ds) $
                        expandMethodType m tcEnv' clsEnv (qualify cls) tv qty
-    findArity _ []                                    = 0
-    findArity f (FunctionDecl _ _ f' eqs:_) | f == f' = eqnArity $ head eqs
+    findArity _ []                                    = Nothing
+    findArity f (FunctionDecl _ _ f' eqs:_) | f == f' =
+      Just $ eqnArity $ head eqs
     findArity f (_:ds')                               = findArity f ds'
 bindKind _ _      _      tcEnv _                          = return tcEnv
 
@@ -383,7 +384,8 @@ bindClass :: ModuleIdent -> TCEnv -> ClassEnv -> Decl a -> ClassEnv
 bindClass m tcEnv clsEnv (ClassDecl _  cx cls _ ds) =
   bindClassInfo qcls (sclss, ms) clsEnv
   where qcls = qualifyWith m cls
-        ms = concatMap methods ds
+        ms = map (\f -> (f, f `elem` fs)) $ concatMap methods ds
+        fs = concatMap impls ds
         sclss = nub $ map (\(Constraint cls' _) -> getOrigName m cls' tcEnv) cx
 bindClass _ _ clsEnv _ = clsEnv
 

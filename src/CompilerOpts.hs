@@ -162,6 +162,7 @@ data WarnFlag
   | WarnOverlapping          -- ^ Warn for overlapping rules/alternatives
   | WarnIncompletePatterns   -- ^ Warn for incomplete pattern matching
   | WarnMissingSignatures    -- ^ Warn for missing type signatures
+  | WarnMissingMethods       -- ^ Warn for missing method implementations
   | WarnOrphanInstances      -- ^ Warn for orphan instances
     deriving (Eq, Bounded, Enum, Show)
 
@@ -170,30 +171,32 @@ stdWarnFlags :: [WarnFlag]
 stdWarnFlags =
   [ WarnMultipleImports   , WarnDisjoinedRules   --, WarnUnusedGlobalBindings
   , WarnUnusedBindings    , WarnNameShadowing    , WarnOverlapping
-  , WarnIncompletePatterns, WarnMissingSignatures
+  , WarnIncompletePatterns, WarnMissingSignatures, WarnMissingMethods
   ]
 
 -- |Description and flag of warnings flags
 warnFlags :: [(WarnFlag, String, String)]
 warnFlags =
   [ ( WarnMultipleImports     , "multiple-imports"
-    , "multiple imports"           )
+    , "multiple imports"               )
   , ( WarnDisjoinedRules      , "disjoined-rules"
-    , "disjoined function rules"   )
+    , "disjoined function rules"       )
   , ( WarnUnusedGlobalBindings, "unused-global-bindings"
-    , "unused bindings"            )
+    , "unused bindings"                )
   , ( WarnUnusedBindings      , "unused-bindings"
-    , "unused bindings"            )
+    , "unused bindings"                )
   , ( WarnNameShadowing       , "name-shadowing"
-    , "name shadowing"             )
+    , "name shadowing"                 )
   , ( WarnOverlapping         , "overlapping"
-    , "overlapping function rules" )
+    , "overlapping function rules"     )
   , ( WarnIncompletePatterns  , "incomplete-patterns"
-    , "incomplete pattern matching")
+    , "incomplete pattern matching"    )
   , ( WarnMissingSignatures   , "missing-signatures"
-    , "missing type signatures"    )
+    , "missing type signatures"        )
+  , ( WarnMissingMethods      , "missing-methods"
+    , "missing method implementations" )
   , ( WarnOrphanInstances     , "orphan-instances"
-    , "orphan instances"           )
+    , "orphan instances"               )
   ]
 
 -- |Dump level

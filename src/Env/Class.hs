@@ -10,15 +10,17 @@
 
     The compiler maintains information about all type classes in an
     environment that maps type classes to a list of their direct
-    superclasses and all their associated class methods. For both
-    the type class identifier and the list of super classes original
-    names are used. Thus, the use of a flat environment is sufficient.
+    superclasses and all their associated class methods with an
+    additional boolean flag stating whether an default implementation
+    has been provided or not. For both the type class identifier and
+    the list of super classes original names are used. Thus, the use
+    of a flat environment is sufficient.
 -}
 
 module Env.Class
   ( ClassEnv, initClassEnv
   , ClassInfo, bindClassInfo, lookupClassInfo
-  , superClasses, allSuperClasses, classMethods
+  , superClasses, allSuperClasses, classMethods, hasDefaultImpl
   ) where
 
 import           Data.List       (nub)
@@ -28,7 +30,7 @@ import Curry.Base.Ident
 
 import Base.Messages (internalError)
 
-type ClassInfo = ([QualIdent], [Ident])
+type ClassInfo = ([QualIdent], [(Ident, Bool)])
 
 type ClassEnv = Map.Map QualIdent ClassInfo
 
@@ -62,5 +64,12 @@ allSuperClasses cls clsEnv = nub $ classes cls
 
 classMethods :: QualIdent -> ClassEnv -> [Ident]
 classMethods cls clsEnv = case lookupClassInfo cls clsEnv of
-  Just (_, ms) -> ms
+  Just (_, ms) -> map fst ms
   _ -> internalError $ "Env.Classes.classMethods: " ++ show cls
+
+hasDefaultImpl :: QualIdent -> Ident -> ClassEnv -> Bool
+hasDefaultImpl cls f clsEnv = case lookupClassInfo cls clsEnv of
+  Just (_, ms) -> case lookup f ms of
+    Just dflt -> dflt
+    Nothing -> internalError $ "Env.Classes.hasDefaultImpl: " ++ show f
+  _ -> internalError $ "Env.Classes.hasDefaultImpl: " ++ show cls

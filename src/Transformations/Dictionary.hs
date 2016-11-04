@@ -192,7 +192,8 @@ augmentTypeInfo ti = ti
 
 augmentClassMethod :: ClassMethod -> ClassMethod
 augmentClassMethod mthd@(ClassMethod f a (PredType ps ty))
-  | arrowArity ty == 0 = ClassMethod f (a + 1) $ PredType ps $ augmentType ty
+  | arrowArity ty == 0 =
+    ClassMethod f (Just $ fromMaybe 0 a + 1) $ PredType ps $ augmentType ty
   | otherwise = mthd
 
 augmentInstances :: AugmentEnv -> InstEnv -> InstEnv
@@ -558,11 +559,17 @@ bindClassDecls :: ModuleIdent -> TCEnv -> ClassEnv -> ValueEnv -> ValueEnv
 bindClassDecls m tcEnv clsEnv =
   flip (foldr $ bindClassEntities m clsEnv) $ allEntities tcEnv
 
+-- It is safe to use 'fromMaybe 0' in 'bindClassEntities', because the
+-- augmentation has already replaced the 'Nothing' value for the arity
+-- of a method's implementation with 'Just 1' (despite the fact that
+-- maybe no default implementation has been provided) if the method has
+-- been augmented.
+
 bindClassEntities :: ModuleIdent -> ClassEnv -> TypeInfo -> ValueEnv -> ValueEnv
 bindClassEntities m clsEnv (TypeClass cls _ ms) =
   bindClassDict m clsEnv cls . bindSuperStubs m cls sclss .
     bindDefaultMethods m cls fs
-  where fs    = zip (map methodName ms) (map methodArity ms)
+  where fs    = zip (map methodName ms) (map (fromMaybe 0 . methodArity) ms)
         sclss = superClasses cls clsEnv
 bindClassEntities _ _ _ = id
 
@@ -661,9 +668,13 @@ dictTransDataConstr (DataConstr c n ps tys) =
 dictTransDataConstr (RecordConstr c n ps _ tys) =
   dictTransDataConstr $ DataConstr c n ps tys
 
+-- For the same reason as in 'bindClassEntities' it is safe to use 'fromMaybe 0'
+-- in 'dictTransClassMethod'. Note that type classes are removed anyway in the
+-- cleanup phase.
+
 dictTransClassMethod :: ClassMethod -> ClassMethod
 dictTransClassMethod (ClassMethod f a pty) = ClassMethod f a' $ predType ty
-  where a' = a + arrowArity ty - arrowArity (unpredType pty)
+  where a' = Just $ fromMaybe 0 a + arrowArity ty - arrowArity (unpredType pty)
         ty = transformPredType pty
 
 dictTransValues :: ValueEnv -> ValueEnv

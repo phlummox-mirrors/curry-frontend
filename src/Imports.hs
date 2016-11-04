@@ -19,7 +19,7 @@ module Imports (importInterfaces, importModules, qualifyEnv) where
 
 import           Data.List                  (nubBy)
 import qualified Data.Map            as Map
-import           Data.Maybe                 (catMaybes, fromMaybe)
+import           Data.Maybe                 (catMaybes, fromMaybe, isJust)
 import qualified Data.Set            as Set
 
 import Curry.Base.Ident
@@ -166,7 +166,7 @@ bindClass m (HidingClassDecl p cx cls k tv) =
 bindClass m (IClassDecl _ cx cls _ _ ds _) =
   bindClassInfo (qualQualify m cls) (sclss, ms)
   where sclss = map (\(Constraint scls _) -> qualQualify m scls) cx
-        ms = map imethod ds
+        ms = map (\d -> (imethod d, isJust $ imethodArity d)) ds
 bindClass _ _ = id
 
 importInstances :: ModuleIdent -> [IDecl] -> InstEnv -> InstEnv
