@@ -28,7 +28,7 @@ import qualified Data.Set.Extra      as Set
 import Curry.Base.Ident
 import Curry.Base.Position
 import Curry.Base.Pretty
-import Curry.Syntax
+import Curry.Syntax hiding (impls)
 import Curry.Syntax.Pretty
 
 import Base.CurryTypes
