@@ -414,7 +414,7 @@ defaultClassMethodDecl :: QualIdent -> Ident -> DTM (Decl PredType)
 defaultClassMethodDecl cls f = do
   pty@(PredType _ ty) <- getClassMethodType cls f
   return $ funDecl NoPos pty f [] $ preludeError (instType ty) $
-    "No instance or default method for class operation " ++ idName f
+    "No instance or default method for class operation " ++ escName f
 
 getClassMethodType :: QualIdent -> Ident -> DTM PredType
 getClassMethodType cls f = do
