@@ -792,7 +792,6 @@ getTyCons tc = do
       [RenamingType _ _ nc] -> [nc]
       err -> internalError $ "Checks.WarnCheck.getTyCons: " ++
                                show tc ++ ' ' : show err ++ '\n' : show tcEnv
-getTyCons _ = internalError $ "Checks.WarnCheck.getTyCons"
 
 -- |Resugar the exhaustive patterns previously desugared at 'simplifyPat'.
 tidyExhaustivePats :: ExhaustivePats -> WCM ExhaustivePats
