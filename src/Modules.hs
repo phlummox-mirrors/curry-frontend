@@ -95,9 +95,9 @@ compileModule opts m fn = do
   let intf = uncurry exportInterface qmdl
   writeInterface opts (fst mdl') intf
   when withFlat $ do
-    ((env, il), mdl') <- transModule opts qmdl
+    ((env, il), mdl'') <- transModule opts qmdl
     let intf' = dictTransInterface env intf
-    writeFlat opts env intf' (snd mdl') il
+    writeFlat opts env intf' (snd mdl'') il
   where
   withFlat = any (`elem` optTargetTypes opts) [FlatCurry, ExtendedFlatCurry]
 

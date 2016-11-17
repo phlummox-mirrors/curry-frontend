@@ -21,6 +21,7 @@ module Transformations.Dictionary
 
 #if __GLASGOW_HASKELL__ < 710
 import           Control.Applicative      ((<$>), (<*>))
+import           Data.Traversable         (traverse)
 #endif
 import           Control.Monad.Extra      ( concatMapM, liftM, maybeM, when
                                           , zipWithM )
@@ -32,7 +33,6 @@ import qualified Data.Map   as Map ( Map, empty, insert, lookup, mapWithKey
 import           Data.Maybe        (fromMaybe, isJust)
 import qualified Data.Set   as Set ( deleteMin, fromList, null, size, toAscList
                                    , toList, union )
-import           Data.Traversable  (traverse)
 
 import Curry.Base.Ident
 import Curry.Base.Position
