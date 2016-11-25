@@ -202,7 +202,8 @@ transType' (TypeArrow     ty1 ty2) =
   foldl applyType' (IL.TypeArrow (transType ty1) (transType ty2))
 
 applyType' :: IL.Type -> IL.Type -> IL.Type
-applyType' ty1 ty2 = IL.TypeConstructor (qualify (mkIdent "@")) [ty1, ty2]
+applyType' ty1 ty2 =
+  IL.TypeConstructor (qualifyWith preludeMIdent (mkIdent "Apply")) [ty1, ty2]
 
 -- Each function in the program is translated into a function of the
 -- intermediate language. The arguments of the function are renamed such
