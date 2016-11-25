@@ -271,6 +271,7 @@ instance HasModule TypeExpr where
   modules (ListType        ty) = modules ty
   modules (ArrowType  ty1 ty2) = modules ty1 . modules ty2
   modules (ParenType       ty) = modules ty
+  modules (ForallType    _ ty) = modules ty
 
 instance HasModule QualTypeExpr where
   modules (QualTypeExpr cx ty) = modules cx . modules ty
@@ -418,6 +419,7 @@ instance HasType TypeExpr where
   usedTypes (ListType        ty) = usedTypes ty
   usedTypes (ArrowType  ty1 ty2) = usedTypes ty1 . usedTypes ty2
   usedTypes (ParenType       ty) = usedTypes ty
+  usedTypes (ForallType    _ ty) = usedTypes ty
 
 instance HasType QualTypeExpr where
   usedTypes (QualTypeExpr cx ty) = usedTypes cx . usedTypes ty

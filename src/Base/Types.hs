@@ -91,6 +91,7 @@ data Type
   | TypeSkolem Int
   | TypeApply Type Type
   | TypeArrow Type Type
+  | TypeForall [Int] Type
   deriving (Eq, Ord, Show)
 
 -- The function 'applyType' applies a type to a list of argument types,
@@ -117,6 +118,7 @@ unapplyType dflt ty = unapply ty []
       | dflt      = unapply (head tys) tys'
       | otherwise = (TypeConstrained tys tv, tys')
     unapply (TypeSkolem           k) tys  = (TypeSkolem k, tys)
+    unapply (TypeForall     tvs ty') tys  = (TypeForall tvs ty', tys)
 
 -- The function 'rootOfType' returns the name of the type constructor at the
 -- root of a type. This function must not be applied to a type whose root is
@@ -162,6 +164,7 @@ typeConstrs ty = constrs ty [] where
   constrs (TypeConstrained _ _) tcs = tcs
   constrs (TypeArrow   ty1 ty2) tcs = constrs ty1 (constrs ty2 tcs)
   constrs (TypeSkolem        _) tcs = tcs
+  constrs (TypeForall    _ ty') tcs = constrs ty' tcs
 
 -- The methods 'typeVars' and 'typeSkolems' return a list of all type
 -- variables and skolems occurring in a type t, respectively. Note that
@@ -184,6 +187,7 @@ typeVars' ty = vars ty [] where
   vars (TypeConstrained _ _) tvs = tvs
   vars (TypeArrow   ty1 ty2) tvs = vars ty1 (vars ty2 tvs)
   vars (TypeSkolem        _) tvs = tvs
+  vars (TypeForall tvs' ty') tvs = filter (`notElem` tvs') (typeVars' ty') ++ tvs
 
 typeSkolems' :: Type -> [Int]
 typeSkolems' ty = skolems ty [] where
@@ -193,6 +197,7 @@ typeSkolems' ty = skolems ty [] where
   skolems (TypeConstrained _ _) sks = sks
   skolems (TypeArrow   ty1 ty2) sks = skolems ty1 (skolems ty2 sks)
   skolems (TypeSkolem        k) sks = k : sks
+  skolems (TypeForall    _ ty') sks = skolems ty' sks
 
 -- The functions 'qualifyType' and 'unqualifyType' add/remove the
 -- qualification with a module identifier for type constructors.
@@ -207,6 +212,7 @@ qualifyType m (TypeConstrained tys tv) =
 qualifyType m (TypeArrow      ty1 ty2) =
   TypeArrow (qualifyType m ty1) (qualifyType m ty2)
 qualifyType _ ts@(TypeSkolem        _) = ts
+qualifyType m (TypeForall      tvs ty) = TypeForall tvs (qualifyType m ty)
 
 unqualifyType :: ModuleIdent -> Type -> Type
 unqualifyType m (TypeConstructor     tc) = TypeConstructor (qualUnqualify m tc)
@@ -218,6 +224,7 @@ unqualifyType m (TypeConstrained tys tv) =
 unqualifyType m (TypeArrow      ty1 ty2) =
   TypeArrow (unqualifyType m ty1) (unqualifyType m ty2)
 unqualifyType _ ts@(TypeSkolem        _) = ts
+unqualifyType m (TypeForall      tvs ty) = TypeForall tvs (unqualifyType m ty)
 
 qualifyTC :: ModuleIdent -> QualIdent -> QualIdent
 qualifyTC m tc | isPrimTypeId tc = tc

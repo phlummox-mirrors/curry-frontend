@@ -174,6 +174,7 @@ instance HasType TypeExpr where
   fts m (ListType             ty) = (listId :) . fts m ty
   fts m (ArrowType       ty1 ty2) = (arrowId :) . fts m ty1 . fts m ty2
   fts m (ParenType            ty) = fts m ty
+  fts m (ForallType         _ ty) = fts m ty
 
 instance HasType (Equation a) where
   fts m (Equation _ _ rhs) = fts m rhs
@@ -624,6 +625,9 @@ kcTypeExpr tcEnv p what doc _ (ArrowType ty1 ty2) = do
   kcValueType tcEnv p what doc ty2
   return KindStar
 kcTypeExpr tcEnv p what doc n (ParenType ty) = kcTypeExpr tcEnv p what doc n ty
+kcTypeExpr tcEnv p what doc n (ForallType vs ty) = do
+  tcEnv' <- foldM bindFreshKind tcEnv $ vs
+  kcTypeExpr tcEnv' p what doc n ty
 
 kcArrow :: Position -> String -> Doc -> Kind -> KCM (Kind, Kind)
 kcArrow p what doc k = do

@@ -58,6 +58,8 @@ expandType' _ _     tc@(TypeConstrained _ _) tys = applyType tc tys
 expandType' m tcEnv (TypeArrow      ty1 ty2) tys =
   applyType (TypeArrow (expandType m tcEnv ty1) (expandType m tcEnv ty2)) tys
 expandType' _ _     ts@(TypeSkolem        _) tys = applyType ts tys
+expandType' m tcEnv (TypeForall      tvs ty) tys =
+  applyType (TypeForall tvs (expandType m tcEnv ty)) tys
 
 expandPred :: ModuleIdent -> TCEnv -> Pred -> Pred
 expandPred m tcEnv (Pred qcls ty) = case qualLookupTypeInfo qcls tcEnv of

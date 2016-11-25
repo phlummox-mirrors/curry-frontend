@@ -230,6 +230,9 @@ instance Rename TypeExpr where
   rename (ListType ty) = ListType <$> rename ty
   rename (ArrowType ty1 ty2) = ArrowType <$> rename ty1 <*> rename ty2
   rename (ParenType ty) = ParenType <$> rename ty
+  rename (ForallType vs ty) = do
+    bindVars vs
+    ForallType <$> mapM rename vs <*> rename ty
 
 instance Rename (Equation a) where
   rename (Equation p lhs rhs) = Equation p lhs <$> rename rhs
@@ -562,6 +565,7 @@ checkType (TupleType     tys) = TupleType  <$> mapM checkType tys
 checkType (ListType       ty) = ListType   <$> checkType ty
 checkType (ArrowType ty1 ty2) = ArrowType  <$> checkType ty1 <*> checkType ty2
 checkType (ParenType      ty) = ParenType  <$> checkType ty
+checkType (ForallType  vs ty) = ForallType vs <$> checkType ty
 
 checkClosed :: [Ident] -> TypeExpr -> TSCM ()
 checkClosed _   (ConstructorType _) = ok
@@ -572,6 +576,7 @@ checkClosed tvs (TupleType     tys) = mapM_ (checkClosed tvs) tys
 checkClosed tvs (ListType       ty) = checkClosed tvs ty
 checkClosed tvs (ArrowType ty1 ty2) = mapM_ (checkClosed tvs) [ty1, ty2]
 checkClosed tvs (ParenType      ty) = checkClosed tvs ty
+checkClosed tvs (ForallType  vs ty) = checkClosed (tvs ++ vs) ty
 
 checkUsedExtension :: Position -> String -> KnownExtension -> TSCM ()
 checkUsedExtension pos msg ext = do

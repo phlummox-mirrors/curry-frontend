@@ -179,8 +179,14 @@ instance QualExpr (Pattern a) where
 instance Expr Constraint where
   fv (Constraint _ ty) = fv ty
 
+instance QuantExpr Constraint where
+  bv _ = []
+
 instance Expr QualTypeExpr where
   fv (QualTypeExpr _ ty) = fv ty
+
+instance QuantExpr QualTypeExpr where
+  bv (QualTypeExpr _ ty) = bv ty
 
 instance Expr TypeExpr where
   fv (ConstructorType     _) = []
@@ -190,6 +196,17 @@ instance Expr TypeExpr where
   fv (ListType           ty) = fv ty
   fv (ArrowType     ty1 ty2) = fv ty1 ++ fv ty2
   fv (ParenType          ty) = fv ty
+  fv (ForallType      vs ty) = filter (`notElem` vs) $ fv ty
+
+instance QuantExpr TypeExpr where
+  bv (ConstructorType     _) = []
+  bv (ApplyType     ty1 ty2) = bv ty1 ++ bv ty2
+  bv (VariableType        _) = []
+  bv (TupleType         tys) = bv tys
+  bv (ListType           ty) = bv ty
+  bv (ArrowType     ty1 ty2) = bv ty1 ++ bv ty2
+  bv (ParenType          ty) = bv ty
+  bv (ForallType     tvs ty) = tvs ++ bv ty
 
 filterBv :: QuantExpr e => e -> [Ident] -> [Ident]
 filterBv e = filter (`Set.notMember` Set.fromList (bv e))

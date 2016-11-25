@@ -46,10 +46,11 @@ import Base.Expr
 import Base.Messages (internalError)
 import Base.Types
 
-enumTypeVars :: Expr a => [Ident] -> a -> Map.Map Ident Int
+enumTypeVars :: (Expr a, QuantExpr a) => [Ident] -> a -> Map.Map Ident Int
 enumTypeVars tvs ty = Map.fromList $ zip (tvs ++ tvs') [0..]
   where
-    tvs' = [tv | tv <- nub (fv ty), tv `notElem` tvs]
+    tvs' = [tv | tv <- nub (fv ty), tv `notElem` tvs] ++
+             [tv | tv <- nub (bv ty), tv `notElem` tvs]
 
 toType :: [Ident] -> CS.TypeExpr -> Type
 toType tvs ty = toType' (enumTypeVars tvs ty) ty []
@@ -61,9 +62,8 @@ toType' :: Map.Map Ident Int -> CS.TypeExpr -> [Type] -> Type
 toType' _   (CS.ConstructorType tc) tys = applyType (TypeConstructor tc) tys
 toType' tvs (CS.ApplyType  ty1 ty2) tys =
   toType' tvs ty1 (toType' tvs ty2 [] : tys)
-toType' tvs (CS.VariableType    tv) tys = case Map.lookup tv tvs of
-  Just tv' -> applyType (TypeVariable tv') tys
-  Nothing  -> internalError "Base.CurryTypes.toType': unknown type variable"
+toType' tvs (CS.VariableType    tv) tys =
+  applyType (TypeVariable (toVar tvs tv)) tys
 toType' tvs (CS.TupleType      tys) tys'
   | null tys  = internalError "Base.CurryTypes.toType': zero-element tuple"
   | null tys' = tupleType $ map ((flip $ toType' tvs) []) tys
@@ -75,6 +75,15 @@ toType' tvs (CS.ArrowType  ty1 ty2) tys
   | null tys = TypeArrow (toType' tvs ty1 []) (toType' tvs ty2 [])
   | otherwise = internalError "Base.CurryTypes.toType': arrow type application"
 toType' tvs (CS.ParenType       ty) tys = toType' tvs ty tys
+toType' tvs (CS.ForallType tvs' ty) tys
+  | null tvs' = toType' tvs ty tys
+  | otherwise = applyType (TypeForall (map (toVar tvs) tvs') (toType' tvs ty []))
+                          tys
+
+toVar :: Map.Map Ident Int -> Ident -> Int
+toVar tvs tv = case Map.lookup tv tvs of
+  Just tv' -> tv'
+  Nothing  -> internalError "Base.CurryTypes.toVar: unknown type variable"
 
 toQualType :: ModuleIdent -> [Ident] -> CS.TypeExpr -> Type
 toQualType m tvs = qualifyType m . toType tvs
@@ -151,14 +160,20 @@ fromType' _   (TypeConstructor    tc) tys
 fromType' tvs (TypeApply     ty1 ty2) tys =
   fromType' tvs ty1 (fromType tvs ty2 : tys)
 fromType' tvs (TypeVariable       tv) tys =
-  foldl CS.ApplyType (CS.VariableType tv') tys
-  where
-    tv' = if tv >= 0 then tvs !! tv else mkIdent ('_' : show (-tv))
+  foldl CS.ApplyType (CS.VariableType (fromVar tvs tv)) tys
 fromType' tvs (TypeArrow     ty1 ty2) tys =
   foldl CS.ApplyType (CS.ArrowType (fromType tvs ty1) (fromType tvs ty2)) tys
 fromType' tvs (TypeConstrained tys _) tys' = fromType' tvs (head tys) tys'
 fromType' _   (TypeSkolem          k) tys =
   foldl CS.ApplyType (CS.VariableType $ mkIdent $ "_?" ++ show k) tys
+fromType' tvs (TypeForall    tvs' ty) tys
+  | null tvs' = fromType' tvs ty tys
+  | otherwise = foldl CS.ApplyType
+                      (CS.ForallType (map (fromVar tvs) tvs') (fromType tvs ty))
+                      tys
+
+fromVar :: [Ident] -> Int -> Ident
+fromVar tvs tv = if tv >= 0 then tvs !! tv else mkIdent ('_' : show (-tv))
 
 fromQualType :: ModuleIdent -> [Ident] -> Type -> CS.TypeExpr
 fromQualType m tvs = fromType tvs . unqualifyType m

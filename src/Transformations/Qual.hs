@@ -118,6 +118,7 @@ qTypeExpr (ListType           ty) = ListType  <$> qTypeExpr ty
 qTypeExpr (ArrowType     ty1 ty2) = ArrowType <$> qTypeExpr ty1
                                               <*> qTypeExpr ty2
 qTypeExpr (ParenType          ty) = ParenType <$> qTypeExpr ty
+qTypeExpr (ForallType      vs ty) = ForallType vs <$> qTypeExpr ty
 
 qQualTypeExpr :: Qual QualTypeExpr
 qQualTypeExpr (QualTypeExpr cx ty) = QualTypeExpr <$> qContext cx

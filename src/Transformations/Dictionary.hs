@@ -369,13 +369,12 @@ createClassDictDecl cls tv ds = do
 createClassDictConstrDecl :: QualIdent -> Ident -> [Decl a] -> DTM ConstrDecl
 createClassDictConstrDecl cls tv ds = do
   clsEnv <- getClassEnv
-  let evs   = filter (tv /=) (nub $ fv mtys)
-      sclss = superClasses cls clsEnv
+  let sclss = superClasses cls clsEnv
       cx    = [Constraint scls (VariableType tv) | scls <- sclss]
       tvs   = tv : filter (unRenameIdent tv /=) identSupply
-      mtys  = map (fromType tvs . transformMethodPredType)
+      mtys  = map (fromType tvs . generalizeMethodType . transformMethodPredType)
                 [toMethodType cls tv qty | TypeSig _ fs qty <- ds, _ <- fs]
-  return $ ConstrDecl NoPos evs cx (dictConstrId cls) mtys
+  return $ ConstrDecl NoPos [] cx (dictConstrId cls) mtys
 
 classDictConstrPredType :: ValueEnv -> ClassEnv -> QualIdent -> PredType
 classDictConstrPredType vEnv clsEnv cls = PredType ps $ foldr TypeArrow ty mtys
@@ -384,7 +383,7 @@ classDictConstrPredType vEnv clsEnv cls = PredType ps $ foldr TypeArrow ty mtys
         fs    = classMethods cls clsEnv
         mptys = map (classMethodType vEnv cls) fs
         ty    = dictType $ Pred cls $ TypeVariable 0
-        mtys  = map transformMethodPredType mptys
+        mtys  = map (generalizeMethodType . transformMethodPredType) mptys
 
 createInstDictDecl :: PredSet -> QualIdent -> Type -> DTM (Decl PredType)
 createInstDictDecl ps cls ty = do
@@ -552,7 +551,7 @@ bindDictType m clsEnv (TypeClass cls k ms) = bindEntity m tc ti
         c     = DataConstr (dictConstrId cls) 0 ps tys
         sclss = superClasses cls clsEnv
         ps    = Set.fromList [Pred scls (TypeVariable 0) | scls <- sclss]
-        tys   = map (transformMethodPredType . methodType) ms
+        tys   = map (generalizeMethodType . transformMethodPredType . methodType) ms
 bindDictType _ _      _                    = id
 
 bindClassDecls :: ModuleIdent -> TCEnv -> ClassEnv -> ValueEnv -> ValueEnv
@@ -579,7 +578,7 @@ bindClassDict m clsEnv cls vEnv = bindEntity m c dc vEnv
         dc = DataConstructor c a (replicate a anonId) tySc
         a  = Set.size ps + arrowArity ty
         pty@(PredType ps ty) = classDictConstrPredType vEnv clsEnv cls
-        tySc = ForAllExist 1 (pred $ length $ nub $ typeVars pty) pty
+        tySc = ForAllExist 1 0 pty
 
 bindDefaultMethods :: ModuleIdent -> QualIdent -> [(Ident, Int)] -> ValueEnv
                    -> ValueEnv
@@ -787,9 +786,10 @@ instance DictTrans Decl where
     internalError $ "Dictionary.dictTrans: " ++ show d
 
 dictTransConstrDecl :: [Ident] -> ConstrDecl -> DataConstr -> ConstrDecl
-dictTransConstrDecl tvs (ConstrDecl p evs _ c _) dc =
-  ConstrDecl p evs [] c $ map (fromType $ tvs ++ evs) tys
+dictTransConstrDecl tvs (ConstrDecl p evs _ c tes) dc =
+  ConstrDecl p evs [] c $ map (fromType $ tvs ++ evs ++ bvs) tys
   where DataConstr _ _ _ tys = dictTransDataConstr dc
+        bvs = nub $ bv tes
 dictTransConstrDecl tvs (ConOpDecl p evs cx ty1 op ty2) dc =
   dictTransConstrDecl tvs (ConstrDecl p evs cx op [ty1, ty2]) dc
 dictTransConstrDecl _ d _ = internalError $ "Dictionary.dictTrans: " ++ show d
@@ -1244,6 +1244,15 @@ transformPredType (PredType ps ty) =
 transformMethodPredType :: PredType -> Type
 transformMethodPredType (PredType ps ty) =
   transformPredType $ PredType (Set.deleteMin ps) ty
+
+-- The function 'generalizeMethodType' generalizes an already transformed
+-- method type to a forall type by quantifying all occuring type variables
+-- except for the class variable whose index is 0.
+generalizeMethodType :: Type -> Type
+generalizeMethodType ty
+  | null tvs  = ty
+  | otherwise = TypeForall tvs ty
+  where tvs = nub $ filter (/= 0) $ typeVars ty
 
 instType :: Type -> Type
 instType (TypeConstructor tc) = TypeConstructor tc

@@ -56,6 +56,8 @@ subst' sigma (TypeConstrained tys tv) = case substVar sigma tv of
   TypeVariable tv' -> foldl TypeApply (TypeConstrained tys tv')
   ty               -> foldl TypeApply ty
 subst' _     ts@(TypeSkolem        _) = foldl TypeApply ts
+subst' sigma (TypeForall      tvs ty) =
+  applyType (TypeForall tvs (subst sigma ty))
 
 instance SubstType Pred where
   subst sigma (Pred qcls ty) = Pred qcls (subst sigma ty)
@@ -106,6 +108,8 @@ expandAliasType' _   tc@(TypeConstrained _ _) = applyType tc
 expandAliasType' tys (TypeArrow      ty1 ty2) =
   applyType (TypeArrow (expandAliasType tys ty1) (expandAliasType tys ty2))
 expandAliasType' _   ts@(TypeSkolem        _) = applyType ts
+expandAliasType' tys (TypeForall      tvs ty) =
+  applyType (TypeForall tvs (expandAliasType tys ty))
 
 instance ExpandAliasType Pred where
   expandAliasType tys (Pred qcls ty) = Pred qcls (expandAliasType tys ty)

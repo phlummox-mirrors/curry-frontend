@@ -182,6 +182,7 @@ trTypeExpr (ListType       ty) =
   trTypeExpr $ ApplyType (ConstructorType qListId) ty
 trTypeExpr (ArrowType ty1 ty2) = CFuncType <$> trTypeExpr ty1 <*> trTypeExpr ty2
 trTypeExpr (ParenType      ty) = trTypeExpr ty
+trTypeExpr (ForallType    _ _) = internalError "GenAbstractCurry.trTypeExpr"
 
 trConstraint :: Constraint -> GAC CConstraint
 trConstraint (Constraint q ty) = (,) <$> trQual q <*> trTypeExpr ty

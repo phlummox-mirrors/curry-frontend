@@ -393,6 +393,8 @@ idsTypeExpr (TupleType       tys) = concatMap idsTypeExpr tys
 idsTypeExpr (ListType         ty) = idsTypeExpr ty
 idsTypeExpr (ArrowType   ty1 ty2) = concatMap idsTypeExpr [ty1, ty2]
 idsTypeExpr (ParenType        ty) = idsTypeExpr ty
+idsTypeExpr (ForallType    vs ty) =
+  map (Identifier IdDeclare False . qualify) vs ++ idsTypeExpr ty
 
 idsFieldDecl :: FieldDecl -> [Code]
 idsFieldDecl (FieldDecl _ ls ty) =

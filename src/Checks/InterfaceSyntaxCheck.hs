@@ -247,6 +247,7 @@ checkType (TupleType      tys) = liftM TupleType (mapM checkType tys)
 checkType (ListType        ty) = liftM ListType (checkType ty)
 checkType (ArrowType  ty1 ty2) = liftM2 ArrowType (checkType ty1) (checkType ty2)
 checkType (ParenType       ty) = liftM ParenType (checkType ty)
+checkType (ForallType   vs ty) = liftM (ForallType vs) (checkType ty)
 
 checkClosed :: [Ident] -> TypeExpr -> ISC ()
 checkClosed _   (ConstructorType _) = return ()
@@ -257,6 +258,7 @@ checkClosed tvs (TupleType     tys) = mapM_ (checkClosed tvs) tys
 checkClosed tvs (ListType       ty) = checkClosed tvs ty
 checkClosed tvs (ArrowType ty1 ty2) = mapM_ (checkClosed tvs) [ty1, ty2]
 checkClosed tvs (ParenType      ty) = checkClosed tvs ty
+checkClosed tvs (ForallType  vs ty) = checkClosed (tvs ++ vs) ty
 
 checkTypeConstructor :: QualIdent -> ISC TypeExpr
 checkTypeConstructor tc = do
@@ -285,6 +287,7 @@ typeVars (TupleType           tys) = concatMap typeVars tys
 typeVars (ListType             ty) = typeVars ty
 typeVars (ArrowType       ty1 ty2) = typeVars ty1 ++ typeVars ty2
 typeVars (ParenType            ty) = typeVars ty
+typeVars (ForallType        vs ty) = vs ++ typeVars ty
 
 isTypeSyn :: QualIdent -> TypeEnv -> Bool
 isTypeSyn tc tEnv = case qualLookupTypeKind tc tEnv of
