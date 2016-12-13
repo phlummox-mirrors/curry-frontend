@@ -146,7 +146,6 @@ data TargetType
   = Tokens                -- ^ Source code tokens
   | Parsed                -- ^ Parsed source code
   | FlatCurry             -- ^ FlatCurry
-  | ExtendedFlatCurry     -- ^ Extended FlatCurry
   | AbstractCurry         -- ^ AbstractCurry
   | UntypedAbstractCurry  -- ^ Untyped AbstractCurry
   | Html                  -- ^ HTML documentation
@@ -381,8 +380,6 @@ options =
       "generate source representation"
   , targetOption FlatCurry            "flat"
       "generate FlatCurry code"
-  , targetOption ExtendedFlatCurry    "extended-flat"
-      "generate FlatCurry code with source references"
   , targetOption AbstractCurry        "acy"
       "generate typed AbstractCurry"
   , targetOption UntypedAbstractCurry "uacy"

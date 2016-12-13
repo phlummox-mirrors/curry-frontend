@@ -39,7 +39,7 @@ import Curry.Base.Monad
 import Curry.Base.Position
 import Curry.Base.Pretty
 import Curry.Base.Span
-import Curry.ExtendedFlat.InterfaceEquivalence (eqInterface)
+import Curry.FlatCurry.InterfaceEquivalence (eqInterface)
 import Curry.Files.Filenames
 import Curry.Files.PathUtils
 import Curry.Syntax.InterfaceEquivalence
@@ -51,7 +51,7 @@ import Env.Interface
 
 -- source representations
 import qualified Curry.AbstractCurry as AC
-import qualified Curry.ExtendedFlat  as EF
+import qualified Curry.FlatCurry     as FC
 import qualified Curry.Syntax        as CS
 import qualified IL                  as IL
 
@@ -99,7 +99,7 @@ compileModule opts m fn = do
     let intf' = dictTransInterface env intf
     writeFlat opts env intf' (snd mdl'') il
   where
-  withFlat = any (`elem` optTargetTypes opts) [FlatCurry, ExtendedFlatCurry]
+  withFlat = FlatCurry `elem` optTargetTypes opts
 
 loadAndCheckModule :: Options -> ModuleIdent -> FilePath
                    -> CYIO (CompEnv (CS.Module PredType))
@@ -322,24 +322,20 @@ matchInterface ifn i = do
 writeFlat :: Options -> CompilerEnv -> CS.Interface -> CS.Module Type
           -> IL.Module -> CYIO ()
 writeFlat opts env intf mdl il = do
-  when (extTarget || fcyTarget) $ do
+  when (fcyTarget) $ do
     writeFlatCurry opts env      mdl il
     writeFlatIntf  opts env intf mdl il
   where
-  extTarget = ExtendedFlatCurry `elem` optTargetTypes opts
   fcyTarget = FlatCurry         `elem` optTargetTypes opts
 
 -- |Export an 'IL.Module' into a FlatCurry file
 writeFlatCurry :: Options -> CompilerEnv -> CS.Module Type -> IL.Module
                -> CYIO ()
 writeFlatCurry opts env mdl il = do
-  (_, fc) <- dumpWith opts show EF.ppProg DumpFlatCurry (env, prog)
-  when extTarget $ liftIO
-                 $ EF.writeExtendedFlat (useSubDir $ extFlatName (filePath env)) fc
+  (_, fc) <- dumpWith opts show FC.ppProg DumpFlatCurry (env, prog)
   when fcyTarget $ liftIO
-                 $ EF.writeFlatCurry    (useSubDir $ flatName    (filePath env)) fc
+                 $ FC.writeFlatCurry    (useSubDir $ flatName    (filePath env)) fc
   where
-  extTarget = ExtendedFlatCurry `elem` optTargetTypes opts
   fcyTarget = FlatCurry         `elem` optTargetTypes opts
   useSubDir = addCurrySubdirModule (optUseSubdir opts) (moduleIdent env)
   prog      = genFlatCurry env mdl il
@@ -350,16 +346,16 @@ writeFlatIntf opts env intf mdl il
   | not (optInterface opts) = return ()
   | optForce opts           = outputInterface
   | otherwise               = do
-      mfint <- liftIO $ EF.readFlatInterface targetFile
+      mfint <- liftIO $ FC.readFlatInterface targetFile
       let oldInterface = fromMaybe emptyIntf mfint
       when (mfint == mfint) $ return () -- necessary to close file -- TODO
       unless (oldInterface `eqInterface` fint) $ outputInterface
   where
   targetFile      = flatIntName (filePath env)
-  emptyIntf       = EF.Prog "" [] [] [] []
+  emptyIntf       = FC.Prog "" [] [] [] []
   fint            = genFlatInterface env intf mdl il
   useSubDir       = addCurrySubdirModule (optUseSubdir opts) (moduleIdent env)
-  outputInterface = liftIO $ EF.writeFlatCurry (useSubDir targetFile) fint
+  outputInterface = liftIO $ FC.writeFlatCurry (useSubDir targetFile) fint
 
 writeAbstractCurry :: Options -> CompEnv (CS.Module PredType) -> CYIO ()
 writeAbstractCurry opts (env, mdl) = do

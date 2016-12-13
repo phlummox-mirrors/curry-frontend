@@ -99,14 +99,12 @@ makeCurry opts srcs = mapM_ process' (zip [1 ..] srcs)
 adjustOptions :: Bool -> Options -> Options
 adjustOptions final opts
   | final      = opts { optForce = optForce opts || isDump }
-  | otherwise  = opts { optTargetTypes = [flatTarget]
+  | otherwise  = opts { optTargetTypes = [FlatCurry]
                       , optForce       = False
                       , optDebugOpts   = defaultDebugOpts
                       }
   where
   isDump = not $ null $ dbDumpLevels $ optDebugOpts opts
-  flatTarget = if ExtendedFlatCurry `elem` optTargetTypes opts
-                  then ExtendedFlatCurry else FlatCurry
 
 
 processPragmas :: Options -> [ModulePragma] -> CYIO Options
@@ -162,7 +160,6 @@ process opts idx m fn deps
     [ (Tokens               , tgtDir . tokensName   )
     , (Parsed               , tgtDir . sourceRepName)
     , (FlatCurry            , tgtDir . flatName     )
-    , (ExtendedFlatCurry    , tgtDir . extFlatName  )
     , (AbstractCurry        , tgtDir . acyName      )
     , (UntypedAbstractCurry , tgtDir . uacyName     )
     , (Html                 , const (fromMaybe "." (optHtmlDir opts) </> htmlName m))

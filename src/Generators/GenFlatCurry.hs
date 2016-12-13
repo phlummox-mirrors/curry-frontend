@@ -28,8 +28,8 @@ import qualified Data.Set            as Set (Set, empty, insert, member)
 
 import           Curry.Base.Ident
 import           Curry.Base.Position
-import           Curry.ExtendedFlat.Goodies (funcName, opName, typeName)
-import           Curry.ExtendedFlat.Type
+import           Curry.FlatCurry.Goodies (funcName, opName, typeName)
+import           Curry.FlatCurry.Type
 import qualified Curry.Syntax as CS
 
 import Base.CurryTypes     (toType)
@@ -87,7 +87,7 @@ mkTupleType arity = Type tuple Public [0 .. arity - 1]
   where tuple = mkPreludeQName $ '(' : replicate (arity - 1) ',' ++ ")"
 
 mkPreludeQName :: String -> QName
-mkPreludeQName n = mkQName (prelude, n)
+mkPreludeQName n = (prelude, n)
 
 prelude :: String
 prelude = "Prelude"
@@ -162,14 +162,6 @@ buildValueExports _   _  = id
 getModuleIdent :: FlatState ModuleIdent
 getModuleIdent = S.gets modIdent
 
-lookupType :: QualIdent -> FlatState (Maybe TypeExpr)
-lookupType qid = S.gets tyEnv >>= \ env -> case qualLookupValue qid env of
-  Value _ _ _ (ForAll _ (PredType _ t))                  : _ ->
-    Just <$> trType (transType t)
-  DataConstructor _ _ _ (ForAllExist _ _ (PredType _ t)) : _ ->
-    Just <$> trType (transType t)
-  _                                                          -> return Nothing
-
 getArity :: QualIdent -> FlatState Int
 getArity qid = S.gets tyEnv >>= \ env -> return $ case qualLookupValue qid env of
   [DataConstructor  _ a _ _] -> a
@@ -209,11 +201,9 @@ inNestedEnv act = do
 -- Generates a new variable index for an identifier
 newVar :: Ident -> FlatState VarIndex
 newVar i = do
-  ty  <- lookupType (qualify i)
   idx <- (+1) <$> S.gets nextVar
-  let vid = VarIndex ty idx
-  S.modify $ \ s -> s { nextVar = idx, varMap = bindNestEnv i vid (varMap s) }
-  return vid
+  S.modify $ \ s -> s { nextVar = idx, varMap = bindNestEnv i idx (varMap s) }
+  return idx
 
 -- Retrieve the variable index assigned to an identifier
 getVarIndex :: Ident -> FlatState VarIndex
@@ -241,13 +231,13 @@ trInterface is (CS.Interface mid _ ds) = do
 trITypeDecl :: CS.IDecl -> FlatState [TypeDecl]
 trITypeDecl (CS.IDataDecl _ qid _ tvs cs hs) = do
   mid <- getModuleIdent
-  t'  <- trTypeIdent qid
+  t'  <- trQualIdent qid
   cs' <- mapM (trConsIDecl (fromMaybe mid $ qidModule qid) tvs)
          [c | c <- cs, CS.constrId c `notElem` hs]
   return [Type t' Public vs cs']
   where vs = [0 .. length tvs - 1]
 trITypeDecl (CS.ITypeDecl _ qid _ tvs ty) = do
-  t'  <- trTypeIdent qid
+  t'  <- trQualIdent qid
   ty' <- trType (transType $ toType tvs ty)
   return [TypeSyn t' Public vs ty']
   where vs = [0 .. length tvs - 1]
@@ -255,7 +245,7 @@ trITypeDecl _ = return []
 
 trConsIDecl :: ModuleIdent -> [Ident] -> CS.ConstrDecl -> FlatState ConsDecl
 trConsIDecl mid tvs (CS.ConstrDecl _ _ _ c tys) = do
-  c'   <- trQIdent (qualifyWith mid c)
+  c'   <- trQualIdent (qualifyWith mid c)
   tys' <- mapM (trType . transType . toType tvs) tys
   return (Cons c' (length tys) Public tys')
 trConsIDecl mid tis (CS.ConOpDecl p vs cx ty1 op ty2) =
@@ -294,15 +284,15 @@ trLabelDecl _ = return []
 -- Translate an interface function declaration
 trIFuncDecl :: CS.IDecl -> FlatState [FuncDecl]
 trIFuncDecl (CS.IFunctionDecl _ f _ a (CS.QualTypeExpr _ ty)) = do
-  f'  <- trQIdent f
+  f'  <- trQualIdent f
   ty' <- trType $ transType $ toType [] ty
-  return [Func f' a Public ty' (Rule [] (Var $ mkIdx 0))]
+  return [Func f' a Public ty' (Rule [] (Var 0))]
 trIFuncDecl _ = return []
 
 -- Translate an operator declaration
 trIOpDecl :: CS.IDecl -> FlatState [OpDecl]
 trIOpDecl (CS.IInfixDecl _ fix prec op)
-  = (\op' -> [Op op' (cvFixity fix) prec]) <$> trQIdent op
+  = (\op' -> [Op op' (cvFixity fix) prec]) <$> trQualIdent op
 trIOpDecl _ = return []
 
 -- -----------------------------------------------------------------------------
@@ -323,7 +313,7 @@ trTypeSynonym :: CS.Decl a -> FlatState [TypeDecl]
 trTypeSynonym (CS.TypeDecl _ t tvs ty) = do
   m    <- getModuleIdent
   qid  <- flip qualifyWith t <$> getModuleIdent
-  t'   <- trTypeIdent qid
+  t'   <- trQualIdent qid
   vis  <- getTypeVisibility qid
   tEnv <- S.gets tcEnv
   ty'  <- trType (transType $ expandType m tEnv $ toType tvs ty)
@@ -333,12 +323,12 @@ trTypeSynonym _                        = return []
 -- Translate a data/newtype declaration
 trTypeDecl :: IL.Decl -> FlatState [TypeDecl]
 trTypeDecl (IL.DataDecl qid a cs) = do
-  q'  <- trTypeIdent qid
+  q'  <- trQualIdent qid
   vis <-getTypeVisibility qid
   cs' <- mapM trConstrDecl cs
   return [Type q' vis [0 .. a - 1] cs']
 trTypeDecl (IL.NewtypeDecl qid a (IL.ConstrDecl _ ty)) = do
-  q'  <- trTypeIdent qid
+  q'  <- trQualIdent qid
   vis <- getTypeVisibility qid
   ty' <- trType ty
   return [TypeSyn q' vis [0 .. a - 1] ty']
@@ -347,13 +337,13 @@ trTypeDecl _ = return []
 -- Translate a constructor declaration
 trConstrDecl :: IL.ConstrDecl [IL.Type] -> FlatState ConsDecl
 trConstrDecl (IL.ConstrDecl qid tys) = flip Cons (length tys)
-  <$> trQIdent qid
+  <$> trQualIdent qid
   <*> getVisibility qid
   <*> mapM trType tys
 
 -- Translate a type expression
 trType :: IL.Type -> FlatState TypeExpr
-trType (IL.TypeConstructor t tys) = TCons <$> trTypeIdent t <*> mapM trType tys
+trType (IL.TypeConstructor t tys) = TCons <$> trQualIdent t <*> mapM trType tys
 trType (IL.TypeVariable      idx) = return $ TVar $ abs idx
 trType (IL.TypeArrow     ty1 ty2) = FuncType <$> trType ty1 <*> trType ty2
 
@@ -370,14 +360,14 @@ cvFixity CS.Infix  = InfixOp
 -- Translate a function declaration
 trFuncDecl :: IL.Decl -> FlatState [FuncDecl]
 trFuncDecl (IL.FunctionDecl f vs ty e) = do
-  f'  <- trQIdent f
+  f'  <- trQualIdent f
   a   <- getArity f
   vis <- getVisibility f
   ty' <- trType ty
   r'  <- trRule vs e
   return [Func f' a vis ty' r']
 trFuncDecl (IL.ExternalDecl  f _ e ty) = do
-  f'   <- trQIdent f
+  f'   <- trQualIdent f
   a    <- getArity f
   vis  <- getVisibility f
   ty'  <- trType ty
@@ -401,7 +391,7 @@ trExpr (IL.Variable      v) = Var <$> getVarIndex v
 trExpr (IL.Function    f _) = genCall Fun f []
 trExpr (IL.Constructor c _) = genCall Con c []
 trExpr (IL.Apply     e1 e2) = trApply e1 e2
-trExpr (IL.Case   r t e bs) = Case r (cvEval t) <$> trExpr e
+trExpr (IL.Case   _ t e bs) = Case (cvEval t) <$> trExpr e
                               <*> mapM (inNestedEnv . trAlt) bs
 trExpr (IL.Or        e1 e2) = Or <$> trExpr e1 <*> trExpr e2
 trExpr (IL.Exist       v e) = inNestedEnv $ do
@@ -423,9 +413,9 @@ trExpr (IL.Typed e ty) = Typed <$> trExpr e <*> trType ty
 
 -- Translate a literal
 trLiteral :: IL.Literal -> FlatState Literal
-trLiteral (IL.Char  rs c) = return $ Charc  rs c
-trLiteral (IL.Int   rs i) = return $ Intc   rs i
-trLiteral (IL.Float rs f) = return $ Floatc rs f
+trLiteral (IL.Char  _ c) = return $ Charc  c
+trLiteral (IL.Int   _ i) = return $ Intc   i
+trLiteral (IL.Float _ f) = return $ Floatc f
 
 -- Translate a higher-order application
 trApply :: IL.Expression -> IL.Expression -> FlatState Expr
@@ -446,7 +436,7 @@ trAlt (IL.Alt p e) = Branch <$> trPat p <*> trExpr e
 -- Translate a pattern
 trPat :: IL.ConstrTerm -> FlatState Pattern
 trPat (IL.LiteralPattern        l) = LPattern <$> trLiteral l
-trPat (IL.ConstructorPattern c vs) = Pattern  <$> trQIdent c <*> mapM newVar vs
+trPat (IL.ConstructorPattern c vs) = Pattern  <$> trQualIdent c <*> mapM newVar vs
 trPat (IL.VariablePattern       _) = internalError "GenFlatCurry.trPat"
 
 -- Convert a case type
@@ -459,7 +449,7 @@ data Call = Fun | Con
 -- Generate a function or constructor call
 genCall :: Call -> QualIdent -> [IL.Expression] -> FlatState Expr
 genCall call f es = do
-  f'    <- trQIdent f
+  f'    <- trQualIdent f
   arity <- getArity f
   case compare supplied arity of
     LT -> genComb f' es (part call (arity - supplied))
@@ -480,7 +470,7 @@ genComb qid es ct = Comb ct qid <$> mapM trExpr es
 
 genApply :: Expr -> [IL.Expression] -> FlatState Expr
 genApply e es = do
-  ap  <- trQIdent $ qApplyId
+  ap  <- trQualIdent $ qApplyId
   es' <- mapM trExpr es
   return $ foldl (\e1 e2 -> Comb FuncCall ap [e1, e2]) e es'
 
@@ -488,18 +478,10 @@ genApply e es = do
 -- Helper functions
 -- -----------------------------------------------------------------------------
 
-trQIdent :: QualIdent -> FlatState QName
-trQIdent = trQualdent True
-
--- This variant of trQIdent does not look up the type of the identifier
-trTypeIdent :: QualIdent -> FlatState QName
-trTypeIdent = trQualdent False
-
-trQualdent :: Bool -> QualIdent -> FlatState QName
-trQualdent withType qid = do
+trQualIdent :: QualIdent -> FlatState QName
+trQualIdent qid = do
   mid <- getModuleIdent
-  mty <- if withType then lookupType qid else return Nothing
-  return $ QName Nothing mty (moduleName $ fromMaybe mid mid') (idName i)
+  return $ (moduleName $ fromMaybe mid mid', idName i)
   where
   mid' | i `elem` [listId, consId, nilId, unitId] || isTupleId i
        = Just preludeMIdent
