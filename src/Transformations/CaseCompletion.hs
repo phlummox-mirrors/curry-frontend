@@ -9,7 +9,7 @@
 
     Maintainer  :  bjp@informatik.uni-kiel.de
     Stability   :  experimental
-    Portability :  non-portable (DeriveDataTypeable)
+    Portability :  portable
 
     This module expands case branches with missing constructors.
 

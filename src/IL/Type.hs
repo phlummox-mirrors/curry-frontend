@@ -3,6 +3,7 @@
     Description :  Definition of the intermediate language (IL)
     Copyright   :  (c) 1999 - 2003 Wolfgang Lux
                                    Martin Engelke
+                       2016        Finn Teegen
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
@@ -40,8 +41,6 @@
    an unlimited range of integer constants in Curry programs.
 -}
 
-{-# LANGUAGE DeriveDataTypeable #-}
-
 module IL.Type
   ( -- * Data types
     Module (..), Decl (..), ConstrDecl (..), CallConv (..), Type (..)
@@ -49,41 +48,39 @@ module IL.Type
   , Binding (..)
   ) where
 
-import Data.Generics       (Data, Typeable)
-
 import Curry.Base.Ident
 
 import Base.Expr
 
 data Module = Module ModuleIdent [ModuleIdent] [Decl]
-    deriving (Eq, Show, Data, Typeable)
+    deriving (Eq, Show)
 
 data Decl
   = DataDecl     QualIdent Int [ConstrDecl [Type]]
   | NewtypeDecl  QualIdent Int (ConstrDecl Type)
   | FunctionDecl QualIdent [Ident] Type Expression
   | ExternalDecl QualIdent CallConv String Type
-    deriving (Eq, Show, Data, Typeable)
+    deriving (Eq, Show)
 
 data ConstrDecl a = ConstrDecl QualIdent a
-    deriving (Eq, Show, Data, Typeable)
+    deriving (Eq, Show)
 
 data CallConv
   = Primitive
   | CCall
-    deriving (Eq, Show, Data, Typeable)
+    deriving (Eq, Show)
 
 data Type
   = TypeConstructor QualIdent [Type]
   | TypeVariable    Int
   | TypeArrow       Type Type
-    deriving (Eq, Show, Data, Typeable)
+    deriving (Eq, Show)
 
 data Literal
   = Char  Char
   | Int   Integer
   | Float Double
-    deriving (Eq, Show, Data, Typeable)
+    deriving (Eq, Show)
 
 data ConstrTerm
     -- |literal patterns
@@ -92,7 +89,7 @@ data ConstrTerm
   | ConstructorPattern QualIdent [Ident]
     -- |default
   | VariablePattern Ident
-  deriving (Eq, Show, Data, Typeable)
+  deriving (Eq, Show)
 
 data Expression
     -- |literal constants
@@ -117,18 +114,18 @@ data Expression
   | Letrec [Binding] Expression
     -- |typed expression
   | Typed Expression Type
-  deriving (Eq, Show, Data, Typeable)
+  deriving (Eq, Show)
 
 data Eval
   = Rigid
   | Flex
-    deriving (Eq, Show, Data, Typeable)
+    deriving (Eq, Show)
 
 data Alt = Alt ConstrTerm Expression
-    deriving (Eq, Show, Data, Typeable)
+    deriving (Eq, Show)
 
 data Binding = Binding Ident Expression
-    deriving (Eq, Show, Data, Typeable)
+    deriving (Eq, Show)
 
 instance Expr Expression where
   fv (Variable            v) = [v]

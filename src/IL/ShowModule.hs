@@ -2,6 +2,7 @@
     Module      :  $Header$
     Description :  Custom Show implementation for IL
     Copyright   :  (c) 2015 Björn Peemöller
+                       2016 Finn Teegen
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
@@ -15,58 +16,224 @@
 
 module IL.ShowModule (showModule) where
 
-import Data.Char     (ord)
-import Data.Generics (Data, extQ, ext1Q, ext2Q, gmapQ, toConstr, showConstr)
-import Data.List     (intersperse)
-
 import Curry.Base.Ident
+import Curry.Base.Position
+
 import IL.Type
 
+-- |Show a IL module like by an devired 'Show' instance
 showModule :: Module -> String
-showModule m = gshowsPrec m []
+showModule m = showsModule m "\n"
 
-gshowsPrec :: Data a => a -> ShowS
-gshowsPrec
-  =       genericShowsPrec
-  `ext1Q` showsList
-  `ext2Q` showsTuple
-  `extQ`  (shows :: String -> ShowS)
-  `extQ`  showsEscape
-  `extQ`  showsModuleIdent
-  `extQ`  showsIdent
-  `extQ`  showsQualIdent
-  where
+showsModule :: Module -> ShowS
+showsModule (Module mident imps decls)
+  = showsString "Module "
+  . showsModuleIdent mident . newline
+  . showsList (\i -> showsModuleIdent i . newline) imps
+  . showsList (\d -> showsDecl d . newline) decls
 
-  genericShowsPrec :: Data a => a -> ShowS
-  genericShowsPrec t
-    = showParen (not (null args))
-    $ showString (showConstr (toConstr t))
-    . (if null args then id else showChar ' ')
-    . foldr (.) id args
-    where args = intersperse (showChar ' ') (gmapQ gshowsPrec t)
+showsDecl :: Decl -> ShowS
+showsDecl (DataDecl qident arity constrdecls)
+  = showsString "(DataDecl "
+  . showsQualIdent qident . space
+  . shows arity . space
+  . showsList (showsConstrDecl (showsList showsType)) constrdecls
+  . showsString ")"
+showsDecl (NewtypeDecl qident arity constrdecl)
+  = showsString "(NewtypeDecl "
+  . showsQualIdent qident . space
+  . shows arity . space
+  . showsConstrDecl showsType constrdecl
+  . showsString ")"
+showsDecl (FunctionDecl qident idents typ expr)
+  = showsString "(FunctionDecl "
+  . showsQualIdent qident . space
+  . showsList showsIdent idents . space
+  . showsType typ . space
+  . showsExpression expr
+  . showsString ")"
+showsDecl (ExternalDecl qident cconv str typ)
+  = showsString "(ExternalDecl "
+  . showsQualIdent qident . space
+  . shows cconv . space
+  . shows str . space
+  . showsType typ
+  . showsString ")"
 
-  showsList :: Data a => [a] -> ShowS
-  showsList xs = showChar '['
-               . foldr (.) (showChar ']')
-                           (intersperse (showChar ',') (map gshowsPrec xs))
+showsConstrDecl :: (a -> ShowS) -> ConstrDecl a -> ShowS
+showsConstrDecl s (ConstrDecl qident a)
+  = showsString "(ConstrDecl "
+  . showsQualIdent qident . space
+  . s a
+  . showsString ")"
 
-  showsTuple :: (Data a, Data b) => (a, b) -> ShowS
-  showsTuple (x, y)
-    = showChar '(' . gshowsPrec x . showChar ',' . gshowsPrec y . showChar ')'
+showsType :: Type -> ShowS
+showsType (TypeConstructor qident types)
+  = showsString "(TypeConstructor "
+  . showsQualIdent qident . space
+  . showsList showsType types
+  . showsString ")"
+showsType (TypeVariable int)
+  = showsString "(TypeVariable "
+  . shows int
+  . showsString ")"
+showsType (TypeArrow type1 type2)
+  = showsString "(TypeArrow "
+  . showsType type1 . space
+  . showsType type2
+  . showsString ")"
 
-  showsEscape :: Char -> ShowS
-  showsEscape c
-    | o <   10  = showString "'\\00" . shows o . showChar '\''
-    | o <   32  = showString "'\\0"  . shows o . showChar '\''
-    | o == 127  = showString "'\\127'"
-    | otherwise = shows c
-    where o = ord c
+showsLiteral :: Literal -> ShowS
+showsLiteral (Char c)
+  = showsString "(Char "
+  . shows c
+  . showsString ")"
+showsLiteral (Int n)
+  = showsString "(Int "
+  . shows n
+  . showsString ")"
+showsLiteral (Float x)
+  = showsString "(Float "
+  . shows x
+  . showsString ")"
 
-  showsModuleIdent :: ModuleIdent -> ShowS
-  showsModuleIdent m = showString (moduleName m)
+showsConstrTerm :: ConstrTerm -> ShowS
+showsConstrTerm (LiteralPattern lit)
+  = showsString "(LiteralPattern "
+  . showsLiteral lit
+  . showsString ")"
+showsConstrTerm (ConstructorPattern qident idents)
+  = showsString "(ConstructorPattern "
+  . showsQualIdent qident . space
+  . showsList showsIdent idents
+  . showsString ")"
+showsConstrTerm (VariablePattern ident)
+  = showsString "(VariablePattern "
+  . showsIdent ident
+  . showsString ")"
 
-  showsIdent :: Ident -> ShowS
-  showsIdent i = showString (showIdent i)
+showsExpression :: Expression -> ShowS
+showsExpression (Literal lit)
+  = showsString "(Literal "
+  . showsLiteral lit
+  . showsString ")"
+showsExpression (Variable ident)
+  = showsString "(Variable "
+  . showsIdent ident
+  . showsString ")"
+showsExpression (Function qident int)
+  = showsString "(Function "
+  . showsQualIdent qident . space
+  . shows int
+  . showsString ")"
+showsExpression (Constructor qident int)
+  = showsString "(Constructor "
+  . showsQualIdent qident . space
+  . shows int
+  . showsString ")"
+showsExpression (Apply exp1 exp2)
+  = showsString "(Apply "
+  . showsExpression exp1 . space
+  . showsExpression exp2
+  . showsString ")"
+showsExpression (Case eval expr alts)
+  = showsString "(Case "
+  . showsEval eval . space
+  . showsExpression expr . space
+  . showsList showsAlt alts
+  . showsString ")"
+showsExpression (Or exp1 exp2)
+  = showsString "(Or "
+  . showsExpression exp1 . space
+  . showsExpression exp2
+  . showsString ")"
+showsExpression (Exist ident expr)
+  = showsString "(Exist "
+  . showsIdent ident . space
+  . showsExpression expr
+  . showsString ")"
+showsExpression (Let bind expr)
+  = showsString "(Let "
+  . showsBinding bind . space
+  . showsExpression expr
+  . showsString ")"
+showsExpression (Letrec binds expr)
+  = showsString "(Letrec "
+  . showsList showsBinding binds . space
+  . showsExpression expr
+  . showsString ")"
+showsExpression (Typed expr typ)
+  = showsString "(Typed "
+  . showsExpression expr . space
+  . showsType typ
+  . showsString ")"
 
-  showsQualIdent :: QualIdent -> ShowS
-  showsQualIdent q = showString (qualName q)
+showsEval :: Eval -> ShowS
+showsEval Rigid = showsString "Rigid"
+showsEval Flex  = showsString "Flex"
+
+showsAlt :: Alt -> ShowS
+showsAlt (Alt constr expr)
+  = showsString "(Alt "
+  . showsConstrTerm constr . space
+  . showsExpression expr
+  . showsString ")"
+
+showsBinding :: Binding -> ShowS
+showsBinding (Binding ident expr)
+  = showsString "(Binding "
+  . showsIdent ident . space
+  . showsExpression expr
+  . showsString ")"
+
+showsPosition :: Position -> ShowS
+showsPosition Position { line = l, column = c } = showsPair shows shows (l, c)
+showsPosition _ = showsString "(0,0)"
+
+showsString :: String -> ShowS
+showsString = (++)
+
+space :: ShowS
+space = showsString " "
+
+newline :: ShowS
+newline = showsString "\n"
+
+showsMaybe :: (a -> ShowS) -> Maybe a -> ShowS
+showsMaybe shs = maybe (showsString "Nothing")
+                       (\x -> showsString "(Just " . shs x . showsString ")")
+
+showsList :: (a -> ShowS) -> [a] -> ShowS
+showsList _   [] = showsString "[]"
+showsList shs (x:xs)
+  = showsString "["
+  . foldl (\sys y -> sys . showsString "," . shs y) (shs x) xs
+  . showsString "]"
+
+showsPair :: (a -> ShowS) -> (b -> ShowS) -> (a,b) -> ShowS
+showsPair sa sb (a,b)
+  = showsString "(" . sa a . showsString "," . sb b . showsString ")"
+
+showsIdent :: Ident -> ShowS
+showsIdent (Ident p x n)
+  = showsString "(Ident " . showsPosition p . space
+  . shows x . space . shows n . showsString ")"
+
+showsQualIdent :: QualIdent -> ShowS
+showsQualIdent (QualIdent mident ident)
+  = showsString "(QualIdent "
+  . showsMaybe showsModuleIdent mident
+  . space
+  . showsIdent ident
+  . showsString ")"
+
+showsModuleIdent :: ModuleIdent -> ShowS
+showsModuleIdent (ModuleIdent pos ss)
+  = showsString "(ModuleIdent "
+  . showsPosition pos . space
+  . showsList (showsQuotes showsString) ss
+  . showsString ")"
+
+showsQuotes :: (a -> ShowS) -> a -> ShowS
+showsQuotes sa a
+  = showsString "\"" . sa a . showsString "\""
