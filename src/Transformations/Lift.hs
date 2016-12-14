@@ -240,7 +240,7 @@ absExpr _   _   c@(Constructor _ _) = return c
 absExpr pre lvs (Apply       e1 e2) = Apply         <$> absExpr pre lvs e1
                                                     <*> absExpr pre lvs e2
 absExpr pre lvs (Let          ds e) = absDeclGroup pre lvs ds e
-absExpr pre lvs (Case    r ct e bs) = Case r ct     <$> absExpr pre lvs e
+absExpr pre lvs (Case      ct e bs) = Case ct       <$> absExpr pre lvs e
                                                     <*> mapM (absAlt pre lvs) bs
 absExpr pre lvs (Typed        e ty) = flip Typed ty <$> absExpr pre lvs e
 absExpr _   _   e                   = internalError $ "Lift.absExpr: " ++ show e
@@ -290,9 +290,9 @@ liftExpr (Apply       e1 e2) = (Apply e1' e2', ds1 ++ ds2)
 liftExpr (Let          ds e) = (mkLet ds' e', ds1 ++ ds2)
   where (ds', ds1) = liftDeclGroup ds
         (e' , ds2) = liftExpr e
-liftExpr (Case  r ct e alts) = (Case r ct e' alts', concat $ ds' : dss')
-  where (e'   ,ds' ) = liftExpr e
-        (alts',dss') = unzip $ map liftAlt alts
+liftExpr (Case    ct e alts) = (Case ct e' alts', concat $ ds' : dss')
+  where (e'   , ds' ) = liftExpr e
+        (alts', dss') = unzip $ map liftAlt alts
 liftExpr (Typed        e ty) = (Typed e' ty, ds) where (e', ds) = liftExpr e
 liftExpr _ = internalError "Lift.liftExpr"
 

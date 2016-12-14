@@ -418,7 +418,7 @@ idsCondExpr (CondExpr _ e1 e2) = idsExpr e1 ++ idsExpr e2
 
 idsPat :: Pattern a -> [Code]
 idsPat (LiteralPattern          _ _) = []
-idsPat (NegativePattern       _ _ _) = []
+idsPat (NegativePattern         _ _) = []
 idsPat (VariablePattern         _ v) = [Identifier IdDeclare False (qualify v)]
 idsPat (ConstructorPattern _ qid ps) =
   DataCons ConsPattern False qid : concatMap idsPat ps
@@ -427,11 +427,11 @@ idsPat (InfixPattern    _ p1 qid p2) =
 idsPat (ParenPattern              p) = idsPat p
 idsPat (RecordPattern      _ qid fs) =
   DataCons ConsPattern False qid : concatMap (idsField idsPat) fs
-idsPat (TuplePattern           _ ps) = concatMap idsPat ps
-idsPat (ListPattern          _ _ ps) = concatMap idsPat ps
+idsPat (TuplePattern            ps) = concatMap idsPat ps
+idsPat (ListPattern            _ ps) = concatMap idsPat ps
 idsPat (AsPattern               v p) =
   Identifier IdDeclare False (qualify v) : idsPat p
-idsPat (LazyPattern             _ p) = idsPat p
+idsPat (LazyPattern               p) = idsPat p
 idsPat (FunctionPattern    _ qid ps) =
   Function FuncCall False qid : concatMap idsPat ps
 idsPat (InfixFuncPattern  _ p1 f p2) =
@@ -450,23 +450,23 @@ idsExpr (Record          _ qid fs) =
   DataCons ConsCall False qid : concatMap (idsField idsExpr) fs
 idsExpr (RecordUpdate        e fs) =
   idsExpr e ++ concatMap (idsField idsExpr) fs
-idsExpr (Tuple               _ es) = concatMap idsExpr es
-idsExpr (List              _ _ es) = concatMap idsExpr es
-idsExpr (ListCompr      _ e stmts) = idsExpr e ++ concatMap idsStmt stmts
+idsExpr (Tuple                 es) = concatMap idsExpr es
+idsExpr (List                _ es) = concatMap idsExpr es
+idsExpr (ListCompr        e stmts) = idsExpr e ++ concatMap idsStmt stmts
 idsExpr (EnumFrom               e) = idsExpr e
 idsExpr (EnumFromThen       e1 e2) = concatMap idsExpr [e1, e2]
 idsExpr (EnumFromTo         e1 e2) = concatMap idsExpr [e1, e2]
 idsExpr (EnumFromThenTo  e1 e2 e3) = concatMap idsExpr [e1, e2, e3]
-idsExpr (UnaryMinus           _ e) = Symbol "-" : idsExpr e
+idsExpr (UnaryMinus             e) = Symbol "-" : idsExpr e
 idsExpr (Apply              e1 e2) = idsExpr e1 ++ idsExpr e2
 idsExpr (InfixApply      e1 op e2) = idsExpr e1 ++ idsInfix op ++ idsExpr e2
 idsExpr (LeftSection         e op) = idsExpr e ++ idsInfix op
 idsExpr (RightSection        op e) = idsInfix op ++ idsExpr e
-idsExpr (Lambda            _ ps e) = concatMap idsPat ps ++ idsExpr e
+idsExpr (Lambda              ps e) = concatMap idsPat ps ++ idsExpr e
 idsExpr (Let                 ds e) = concatMap idsDecl ds ++ idsExpr e
 idsExpr (Do               stmts e) = concatMap idsStmt stmts ++ idsExpr e
-idsExpr (IfThenElse    _ e1 e2 e3) = concatMap idsExpr [e1, e2, e3]
-idsExpr (Case          _ _ e alts) = idsExpr e ++ concatMap idsAlt alts
+idsExpr (IfThenElse      e1 e2 e3) = concatMap idsExpr [e1, e2, e3]
+idsExpr (Case            _ e alts) = idsExpr e ++ concatMap idsAlt alts
 
 idsField :: (a -> [Code]) -> Field a -> [Code]
 idsField f (Field _ l x) = Function FuncCall False l : f x
@@ -476,9 +476,9 @@ idsInfix (InfixOp     _ qid) = [Function FuncInfix False qid]
 idsInfix (InfixConstr _ qid) = [DataCons ConsInfix False qid]
 
 idsStmt :: Statement a -> [Code]
-idsStmt (StmtExpr   _ e) = idsExpr e
-idsStmt (StmtDecl    ds) = concatMap idsDecl ds
-idsStmt (StmtBind _ p e) = idsPat p ++ idsExpr e
+idsStmt (StmtExpr   e) = idsExpr e
+idsStmt (StmtDecl  ds) = concatMap idsDecl ds
+idsStmt (StmtBind p e) = idsPat p ++ idsExpr e
 
 idsAlt :: Alt a -> [Code]
 idsAlt (Alt _ p rhs) = idsPat p ++ idsRhs rhs

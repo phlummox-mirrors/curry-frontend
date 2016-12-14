@@ -134,7 +134,7 @@ qLhs (ApLhs   lhs ts) = ApLhs         <$> qLhs lhs <*> mapM qPattern ts
 
 qPattern :: Qual (Pattern a)
 qPattern l@(LiteralPattern        _ _) = return l
-qPattern n@(NegativePattern     _ _ _) = return n
+qPattern n@(NegativePattern       _ _) = return n
 qPattern v@(VariablePattern       _ _) = return v
 qPattern (ConstructorPattern   a c ts) = ConstructorPattern a
                                          <$> qIdent c <*> mapM qPattern ts
@@ -144,10 +144,10 @@ qPattern (InfixPattern     a t1 op t2) = InfixPattern a <$> qPattern t1
 qPattern (ParenPattern              t) = ParenPattern <$> qPattern t
 qPattern (RecordPattern        a c fs) = RecordPattern a <$> qIdent c
                                          <*> mapM (qField qPattern) fs
-qPattern (TuplePattern           p ts) = TuplePattern p <$> mapM qPattern ts
-qPattern (ListPattern          a p ts) = ListPattern a p <$> mapM qPattern ts
+qPattern (TuplePattern             ts) = TuplePattern <$> mapM qPattern ts
+qPattern (ListPattern            a ts) = ListPattern a <$> mapM qPattern ts
 qPattern (AsPattern               v t) = AsPattern v <$> qPattern t
-qPattern (LazyPattern             p t) = LazyPattern p <$> qPattern t
+qPattern (LazyPattern               t) = LazyPattern <$> qPattern t
 qPattern (FunctionPattern      a f ts) = FunctionPattern a <$> qIdent f
                                                            <*> mapM qPattern ts
 qPattern (InfixFuncPattern a t1 op t2) = InfixFuncPattern a <$> qPattern t1
@@ -172,31 +172,31 @@ qExpr (Record           a c fs) =
   Record a <$> qIdent c <*> mapM (qField qExpr) fs
 qExpr (RecordUpdate       e fs) = RecordUpdate   <$> qExpr e
                                                  <*> mapM (qField qExpr) fs
-qExpr (Tuple              p es) = Tuple p        <$> mapM qExpr es
-qExpr (List             a p es) = List a p       <$> mapM qExpr es
-qExpr (ListCompr        p e qs) = ListCompr p    <$> qExpr e <*> mapM qStmt qs
+qExpr (Tuple                es) = Tuple          <$> mapM qExpr es
+qExpr (List               a es) = List a         <$> mapM qExpr es
+qExpr (ListCompr          e qs) = ListCompr      <$> qExpr e <*> mapM qStmt qs
 qExpr (EnumFrom              e) = EnumFrom       <$> qExpr e
 qExpr (EnumFromThen      e1 e2) = EnumFromThen   <$> qExpr e1 <*> qExpr e2
 qExpr (EnumFromTo        e1 e2) = EnumFromTo     <$> qExpr e1 <*> qExpr e2
 qExpr (EnumFromThenTo e1 e2 e3) = EnumFromThenTo <$> qExpr e1 <*> qExpr e2
                                                               <*> qExpr e3
-qExpr (UnaryMinus         op e) = UnaryMinus op  <$> qExpr e
+qExpr (UnaryMinus            e) = UnaryMinus     <$> qExpr e
 qExpr (Apply             e1 e2) = Apply          <$> qExpr e1 <*> qExpr e2
 qExpr (InfixApply     e1 op e2) = InfixApply     <$> qExpr e1 <*> qInfixOp op
                                                               <*> qExpr e2
 qExpr (LeftSection        e op) = LeftSection  <$> qExpr e <*> qInfixOp op
 qExpr (RightSection       op e) = RightSection <$> qInfixOp op <*> qExpr e
-qExpr (Lambda           r ts e) = Lambda r     <$> mapM qPattern ts <*> qExpr e
+qExpr (Lambda             ts e) = Lambda       <$> mapM qPattern ts <*> qExpr e
 qExpr (Let                ds e) = Let <$> mapM qDecl ds  <*> qExpr e
-qExpr (Do                sts e) = Do <$>  mapM qStmt sts <*> qExpr e
-qExpr (IfThenElse   r e1 e2 e3) = IfThenElse r <$> qExpr e1 <*> qExpr e2
-                                                            <*> qExpr e3
-qExpr (Case          r ct e as) = Case r ct    <$> qExpr e <*> mapM qAlt as
+qExpr (Do                sts e) = Do  <$> mapM qStmt sts <*> qExpr e
+qExpr (IfThenElse     e1 e2 e3) = IfThenElse <$> qExpr e1 <*> qExpr e2
+                                                          <*> qExpr e3
+qExpr (Case            ct e as) = Case ct    <$> qExpr e <*> mapM qAlt as
 
 qStmt :: Qual (Statement a)
-qStmt (StmtExpr p   e) = StmtExpr p <$> qExpr e
-qStmt (StmtBind p t e) = StmtBind p <$> qPattern t <*> qExpr e
-qStmt (StmtDecl    ds) = StmtDecl   <$> mapM qDecl ds
+qStmt (StmtExpr   e) = StmtExpr <$> qExpr e
+qStmt (StmtBind t e) = StmtBind <$> qPattern t <*> qExpr e
+qStmt (StmtDecl  ds) = StmtDecl <$> mapM qDecl ds
 
 qAlt :: Qual (Alt a)
 qAlt (Alt p t rhs) = Alt p <$> qPattern t <*> qRhs rhs

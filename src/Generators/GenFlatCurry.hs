@@ -391,7 +391,7 @@ trExpr (IL.Variable      v) = Var <$> getVarIndex v
 trExpr (IL.Function    f _) = genCall Fun f []
 trExpr (IL.Constructor c _) = genCall Con c []
 trExpr (IL.Apply     e1 e2) = trApply e1 e2
-trExpr (IL.Case   _ t e bs) = Case (cvEval t) <$> trExpr e
+trExpr (IL.Case     t e bs) = Case (cvEval t) <$> trExpr e
                               <*> mapM (inNestedEnv . trAlt) bs
 trExpr (IL.Or        e1 e2) = Or <$> trExpr e1 <*> trExpr e2
 trExpr (IL.Exist       v e) = inNestedEnv $ do
@@ -413,9 +413,9 @@ trExpr (IL.Typed e ty) = Typed <$> trExpr e <*> trType ty
 
 -- Translate a literal
 trLiteral :: IL.Literal -> FlatState Literal
-trLiteral (IL.Char  _ c) = return $ Charc  c
-trLiteral (IL.Int   _ i) = return $ Intc   i
-trLiteral (IL.Float _ f) = return $ Floatc f
+trLiteral (IL.Char  c) = return $ Charc  c
+trLiteral (IL.Int   i) = return $ Intc   i
+trLiteral (IL.Float f) = return $ Floatc f
 
 -- Translate a higher-order application
 trApply :: IL.Expression -> IL.Expression -> FlatState Expr

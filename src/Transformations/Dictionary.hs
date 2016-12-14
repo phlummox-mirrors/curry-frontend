@@ -288,10 +288,10 @@ instance Augment Expression where
   augment c@(Constructor _ _) = return c
   augment (Typed       e qty) = flip Typed qty <$> augment e
   augment (Apply       e1 e2) = Apply <$> augment e1 <*> augment e2
-  augment (Lambda     p ts e) = Lambda p ts <$> augment e
+  augment (Lambda       ts e) = Lambda ts <$> augment e
   augment (Let          ds e) =
     Let <$> mapM (augmentDecl Nothing) ds <*> augment e
-  augment (Case  ref ct e as) = Case ref ct <$> augment e <*> mapM augment as
+  augment (Case      ct e as) = Case ct <$> augment e <*> mapM augment as
   augment e                   = internalError $ "Dictionary.augment: " ++ show e
 
 instance Augment Alt where
@@ -839,15 +839,15 @@ instance DictTrans Expression where
     Apply <$> dictTrans e1 <*> dictTrans e2
   dictTrans (Typed       e qty) =
     Typed <$> dictTrans e <*> dictTransQualTypeExpr qty
-  dictTrans (Lambda     p ts e) = withLocalValueEnv $ withLocalDictEnv $ do
+  dictTrans (Lambda       ts e) = withLocalValueEnv $ withLocalDictEnv $ do
     ts' <- mapM dictTrans ts
     modifyValueEnv $ bindPatterns ts'
-    Lambda p ts' <$> dictTrans e
+    Lambda ts' <$> dictTrans e
   dictTrans (Let          ds e) = withLocalValueEnv $ do
     modifyValueEnv $ bindDecls ds
     Let <$> mapM dictTrans ds <*> dictTrans e
-  dictTrans (Case  ref ct e as) =
-    Case ref ct <$> dictTrans e <*> mapM dictTrans as
+  dictTrans (Case      ct e as) =
+    Case ct <$> dictTrans e <*> mapM dictTrans as
   dictTrans e                   =
     internalError $ "Dictionary.dictTrans: " ++ show e
 
@@ -1014,17 +1014,17 @@ specialize' (Typed       e qty) es = do
 specialize' (Apply       e1 e2) es = do
   e2' <- specialize e2
   specialize' e1 $ e2' : es
-specialize' (Lambda     p ts e) es = do
+specialize' (Lambda       ts e) es = do
   e' <- specialize e
-  return $ apply (Lambda p ts e') es
+  return $ apply (Lambda ts e') es
 specialize' (Let          ds e) es = do
   ds' <- mapM specialize ds
   e' <- specialize e
   return $ apply (Let ds' e') es
-specialize' (Case  ref ct e as) es = do
+specialize' (Case      ct e as) es = do
   e' <- specialize e
   as' <- mapM specialize as
-  return $ apply (Case ref ct e' as') es
+  return $ apply (Case ct e' as') es
 specialize' e                   _  =
   internalError $ "Dictionary.specialize': " ++ show e
 
@@ -1276,7 +1276,7 @@ preludeError a =
   Apply (Variable (predType (TypeArrow stringType a)) qErrorId) . stringExpr
 
 stringExpr :: String -> Expression PredType
-stringExpr = foldr (consExpr . Literal (predType charType) . Char noRef) nilExpr
+stringExpr = foldr (consExpr . Literal (predType charType) . Char) nilExpr
   where
   nilExpr = Constructor (predType stringType) qNilId
   consExpr = Apply . Apply (Constructor (predType $ consType charType) qConsId)

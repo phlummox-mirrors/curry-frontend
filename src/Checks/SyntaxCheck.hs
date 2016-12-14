@@ -708,7 +708,7 @@ checkLhs p (ApLhs   lhs ts) =
 
 checkParenPattern :: (Maybe QualIdent) -> Pattern a -> [(QualIdent, QualIdent)]
 checkParenPattern _ (LiteralPattern          _ _) = []
-checkParenPattern _ (NegativePattern       _ _ _) = []
+checkParenPattern _ (NegativePattern         _ _) = []
 checkParenPattern _ (VariablePattern         _ _) = []
 checkParenPattern _ (ConstructorPattern   _ _ cs) =
   concatMap (checkParenPattern Nothing) cs
@@ -719,13 +719,13 @@ checkParenPattern _ (ParenPattern              t) =
   checkParenPattern Nothing t
 checkParenPattern _ (RecordPattern        _ _ fs) =
   concatMap (\(Field _ _ t) -> checkParenPattern Nothing t) fs
-checkParenPattern _ (TuplePattern           _ ts) =
+checkParenPattern _ (TuplePattern             ts) =
   concatMap (checkParenPattern Nothing) ts
-checkParenPattern _ (ListPattern          _ _ ts) =
+checkParenPattern _ (ListPattern            _ ts) =
   concatMap (checkParenPattern Nothing) ts
 checkParenPattern o (AsPattern               _ t) =
   checkParenPattern o t
-checkParenPattern o (LazyPattern             _ t) =
+checkParenPattern o (LazyPattern               t) =
   checkParenPattern o t
 checkParenPattern _ (FunctionPattern      _ _ ts) =
   concatMap (checkParenPattern Nothing) ts
@@ -736,8 +736,8 @@ checkParenPattern o (InfixFuncPattern _ t1 op t2) =
 checkPattern :: Position -> Pattern () -> SCM (Pattern ())
 checkPattern _ (LiteralPattern        a l) =
   return $ LiteralPattern a l
-checkPattern _ (NegativePattern   a ref l) =
-  return $ NegativePattern a ref l
+checkPattern _ (NegativePattern       a l) =
+  return $ NegativePattern a l
 checkPattern p (VariablePattern       a v)
   | isAnonId v = (VariablePattern a . renameIdent v) <$> newId
   | otherwise  = checkConstructorPattern p (qualify v) []
@@ -749,16 +749,16 @@ checkPattern p (ParenPattern            t) =
   ParenPattern <$> checkPattern p t
 checkPattern p (RecordPattern      _ c fs) =
   checkRecordPattern p c fs
-checkPattern p (TuplePattern       pos ts) =
-  TuplePattern pos <$> mapM (checkPattern p) ts
-checkPattern p (ListPattern      a pos ts) =
-  ListPattern a pos <$> mapM (checkPattern p) ts
+checkPattern p (TuplePattern           ts) =
+  TuplePattern <$> mapM (checkPattern p) ts
+checkPattern p (ListPattern          a ts) =
+  ListPattern a <$> mapM (checkPattern p) ts
 checkPattern p (AsPattern             v t) = do
   AsPattern <$> checkVar "@ pattern" v <*> checkPattern p t
-checkPattern p (LazyPattern         pos t) = do
+checkPattern p (LazyPattern             t) = do
   t' <- checkPattern p t
   banFPTerm "lazy pattern" p t'
-  return (LazyPattern pos t')
+  return (LazyPattern t')
 checkPattern _ (FunctionPattern     _ _ _) = internalError $
   "SyntaxCheck.checkPattern: function pattern not defined"
 checkPattern _ (InfixFuncPattern  _ _ _ _) = internalError $
@@ -878,12 +878,11 @@ checkExpr p (Paren           e) = Paren         <$> checkExpr p e
 checkExpr p (Typed        e ty) = flip Typed ty <$> checkExpr p e
 checkExpr p (Record     _ c fs) = checkRecordExpr p c fs
 checkExpr p (RecordUpdate e fs) = checkRecordUpdExpr p e fs
-checkExpr p (Tuple      pos es) = Tuple pos     <$> mapM (checkExpr p) es
-checkExpr p (List     a pos es) = List a pos    <$> mapM (checkExpr p) es
-checkExpr p (ListCompr      pos e qs)
- = withLocalEnv $ flip (ListCompr pos) <$>
-    -- Note: must be flipped to insert qs into RenameEnv first
-    mapM (checkStatement "list comprehension" p) qs <*> checkExpr p e
+checkExpr p (Tuple          es) = Tuple <$> mapM (checkExpr p) es
+checkExpr p (List         a es) = List a <$> mapM (checkExpr p) es
+checkExpr p (ListCompr    e qs) = withLocalEnv $ flip ListCompr <$>
+  -- Note: must be flipped to insert qs into RenameEnv first
+  mapM (checkStatement "list comprehension" p) qs <*> checkExpr p e
 checkExpr p (EnumFrom              e) = EnumFrom <$> checkExpr p e
 checkExpr p (EnumFromThen      e1 e2) =
   EnumFromThen <$> checkExpr p e1 <*> checkExpr p e2
@@ -891,7 +890,7 @@ checkExpr p (EnumFromTo        e1 e2) =
   EnumFromTo <$> checkExpr p e1 <*> checkExpr p e2
 checkExpr p (EnumFromThenTo e1 e2 e3) =
   EnumFromThenTo <$> checkExpr p e1 <*> checkExpr p e2 <*> checkExpr p e3
-checkExpr p (UnaryMinus        ref e) = UnaryMinus ref <$> checkExpr p e
+checkExpr p (UnaryMinus            e) = UnaryMinus <$> checkExpr p e
 checkExpr p (Apply             e1 e2) =
   Apply <$> checkExpr p e1 <*> checkExpr p e2
 checkExpr p (InfixApply     e1 op e2) =
@@ -900,28 +899,26 @@ checkExpr p (LeftSection        e op) =
   LeftSection <$> checkExpr p e <*> checkOp op
 checkExpr p (RightSection       op e) =
   RightSection <$> checkOp op <*> checkExpr p e
-checkExpr p (Lambda           r ts e) = inNestedScope $
-  checkLambda p r ts e
+checkExpr p (Lambda             ts e) = inNestedScope $ checkLambda p ts e
 checkExpr p (Let                ds e) = inNestedScope $
   Let <$> checkDeclGroup bindVarDecl ds <*> checkExpr p e
 checkExpr p (Do                sts e) = withLocalEnv $
   Do <$> mapM (checkStatement "do sequence" p) sts <*> checkExpr p e
-checkExpr p (IfThenElse r e1 e2 e3) =
-  IfThenElse r <$> checkExpr p e1 <*> checkExpr p e2 <*> checkExpr p e3
-checkExpr p (Case r ct e alts) =
-  Case r ct <$> checkExpr p e <*> mapM checkAlt alts
+checkExpr p (IfThenElse     e1 e2 e3) =
+  IfThenElse <$> checkExpr p e1 <*> checkExpr p e2 <*> checkExpr p e3
+checkExpr p (Case          ct e alts) =
+  Case ct <$> checkExpr p e <*> mapM checkAlt alts
 
-checkLambda :: Position -> SrcRef -> [Pattern ()] -> Expression ()
-            -> SCM (Expression ())
-checkLambda p r ts e = case findMultiples (bvNoAnon ts) of
+checkLambda :: Position -> [Pattern ()] -> Expression () -> SCM (Expression ())
+checkLambda p ts e = case findMultiples (bvNoAnon ts) of
   []      -> do
     ts' <- mapM (bindPattern "lambda expression" p) ts
-    Lambda r ts' <$> checkExpr p e
+    Lambda ts' <$> checkExpr p e
   errVars -> do
     mapM_ (report . errDuplicateVariables) errVars
     let nubTs = nubBy (\t1 t2 -> (not . null) (on intersect bvNoAnon t1 t2)) ts
     mapM_ (bindPattern "lambda expression" p) nubTs
-    Lambda r ts <$> checkExpr p e
+    Lambda ts <$> checkExpr p e
   where
     bvNoAnon t = filter (not . isAnonId) $ bv t
 
@@ -986,10 +983,10 @@ checkRecordUpdExpr p e fs = do
 -- * Because statements are processed list-wise, inNestedEnv can not be
 --   used as this nesting must be visible to following statements.
 checkStatement :: String -> Position -> Statement () -> SCM (Statement ())
-checkStatement _ p (StmtExpr   pos e) = StmtExpr pos <$> checkExpr p e
-checkStatement s p (StmtBind pos t e) =
-  flip (StmtBind pos) <$> checkExpr p e <*> (incNesting >> bindPattern s p t)
-checkStatement _ _ (StmtDecl      ds) =
+checkStatement _ p (StmtExpr   e) = StmtExpr <$> checkExpr p e
+checkStatement s p (StmtBind t e) =
+  flip StmtBind <$> checkExpr p e <*> (incNesting >> bindPattern s p t)
+checkStatement _ _ (StmtDecl  ds) =
   StmtDecl <$> (incNesting >> checkDeclGroup bindVarDecl ds)
 
 bindPattern :: String -> Position -> Pattern () -> SCM (Pattern ())
@@ -1000,17 +997,17 @@ bindPattern s p t = do
 
 banFPTerm :: String -> Position -> Pattern a -> SCM ()
 banFPTerm _ _ (LiteralPattern           _ _) = ok
-banFPTerm _ _ (NegativePattern        _ _ _) = ok
+banFPTerm _ _ (NegativePattern          _ _) = ok
 banFPTerm _ _ (VariablePattern          _ _) = ok
 banFPTerm s p (ConstructorPattern    _ _ ts) = mapM_ (banFPTerm s p) ts
 banFPTerm s p (InfixPattern       _ t1 _ t2) = mapM_ (banFPTerm s p) [t1, t2]
 banFPTerm s p (ParenPattern               t) = banFPTerm s p t
 banFPTerm s p (RecordPattern         _ _ fs) = mapM_ banFPTermField fs
   where banFPTermField (Field _ _ x) = banFPTerm s p x
-banFPTerm s p (TuplePattern            _ ts) = mapM_ (banFPTerm s p) ts
-banFPTerm s p (ListPattern           _ _ ts) = mapM_ (banFPTerm s p) ts
+banFPTerm s p (TuplePattern              ts) = mapM_ (banFPTerm s p) ts
+banFPTerm s p (ListPattern             _ ts) = mapM_ (banFPTerm s p) ts
 banFPTerm s p (AsPattern                _ t) = banFPTerm s p t
-banFPTerm s p (LazyPattern              _ t) = banFPTerm s p t
+banFPTerm s p (LazyPattern                t) = banFPTerm s p t
 banFPTerm s p pat@(FunctionPattern    _ _ _)
  = report $ errUnsupportedFuncPattern s p pat
 banFPTerm s p pat@(InfixFuncPattern _ _ _ _)
@@ -1201,15 +1198,15 @@ genFuncPattAppl term (t:ts)
 
 checkFPTerm :: Position -> Pattern a -> SCM ()
 checkFPTerm _ (LiteralPattern        _ _) = ok
-checkFPTerm _ (NegativePattern     _ _ _) = ok
+checkFPTerm _ (NegativePattern       _ _) = ok
 checkFPTerm _ (VariablePattern       _ _) = ok
 checkFPTerm p (ConstructorPattern _ _ ts) = mapM_ (checkFPTerm p) ts
 checkFPTerm p (InfixPattern    _ t1 _ t2) = mapM_ (checkFPTerm p) [t1, t2]
 checkFPTerm p (ParenPattern            t) = checkFPTerm p t
-checkFPTerm p (TuplePattern         _ ts) = mapM_ (checkFPTerm p) ts
-checkFPTerm p (ListPattern        _ _ ts) = mapM_ (checkFPTerm p) ts
+checkFPTerm p (TuplePattern           ts) = mapM_ (checkFPTerm p) ts
+checkFPTerm p (ListPattern          _ ts) = mapM_ (checkFPTerm p) ts
 checkFPTerm p (AsPattern             _ t) = checkFPTerm p t
-checkFPTerm p t@(LazyPattern         _ _) = report $ errUnsupportedFPTerm "Lazy" p t
+checkFPTerm p t@(LazyPattern           _) = report $ errUnsupportedFPTerm "Lazy" p t
 checkFPTerm p (RecordPattern      _ _ fs) = mapM_ (checkFPTerm p)
                                             [ t | Field _ _ t <- fs ]
 checkFPTerm _ (FunctionPattern     _ _ _) = ok -- do not check again

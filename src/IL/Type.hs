@@ -52,7 +52,6 @@ module IL.Type
 import Data.Generics       (Data, Typeable)
 
 import Curry.Base.Ident
-import Curry.Base.Position (SrcRef(..), SrcRefOf (..))
 
 import Base.Expr
 
@@ -81,9 +80,9 @@ data Type
     deriving (Eq, Show, Data, Typeable)
 
 data Literal
-  = Char  SrcRef Char
-  | Int   SrcRef Integer
-  | Float SrcRef Double
+  = Char  Char
+  | Int   Integer
+  | Float Double
     deriving (Eq, Show, Data, Typeable)
 
 data ConstrTerm
@@ -107,7 +106,7 @@ data Expression
     -- |applications
   | Apply Expression Expression
     -- |case expressions
-  | Case SrcRef Eval Expression [Alt]
+  | Case Eval Expression [Alt]
     -- |non-deterministic or
   | Or Expression Expression
     -- |exist binding (introduction of a free variable)
@@ -134,7 +133,7 @@ data Binding = Binding Ident Expression
 instance Expr Expression where
   fv (Variable            v) = [v]
   fv (Apply           e1 e2) = fv e1 ++ fv e2
-  fv (Case       _ _ e alts) = fv e  ++ fv alts
+  fv (Case         _ e alts) = fv e  ++ fv alts
   fv (Or              e1 e2) = fv e1 ++ fv e2
   fv (Exist             v e) = filter (/= v) (fv e)
   fv (Let (Binding v e1) e2) = fv e1 ++ filter (/= v) (fv e2)
@@ -146,13 +145,3 @@ instance Expr Alt where
   fv (Alt (ConstructorPattern _ vs) e) = filter (`notElem` vs) (fv e)
   fv (Alt (VariablePattern       v) e) = filter (v /=) (fv e)
   fv (Alt _                         e) = fv e
-
-instance SrcRefOf ConstrTerm where
-  srcRefOf (LiteralPattern       l) = srcRefOf l
-  srcRefOf (ConstructorPattern i _) = srcRefOf i
-  srcRefOf (VariablePattern      i) = srcRefOf i
-
-instance SrcRefOf Literal where
-  srcRefOf (Char  s _) = s
-  srcRefOf (Int   s _) = s
-  srcRefOf (Float s _) = s

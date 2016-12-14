@@ -41,7 +41,6 @@ import           Data.List                  (find)
 import           Data.Maybe                 (fromMaybe, listToMaybe)
 
 import           Curry.Base.Ident
-import           Curry.Base.Position        (SrcRef)
 import qualified Curry.Syntax        as CS
 
 import Base.Expr
@@ -101,10 +100,10 @@ ccExpr v@(Variable      _) = return v
 ccExpr f@(Function    _ _) = return f
 ccExpr c@(Constructor _ _) = return c
 ccExpr (Apply       e1 e2) = Apply <$> ccExpr e1 <*> ccExpr e2
-ccExpr (Case    r ea e bs) = do
+ccExpr (Case      ea e bs) = do
   e'  <- ccExpr e
   bs' <- mapM ccAlt bs
-  ccCase r ea e' bs'
+  ccCase ea e' bs'
 ccExpr (Or          e1 e2) = Or <$> ccExpr e1 <*> ccExpr e2
 ccExpr (Exist         v e) = Exist v <$> ccExpr e
 ccExpr (Let           b e) = Let <$> ccBinding b <*> ccExpr e
@@ -120,15 +119,15 @@ ccBinding (Binding v e) = Binding v <$> ccExpr e
 -- ---------------------------------------------------------------------------
 -- Functions for completing case alternatives
 -- ---------------------------------------------------------------------------
-ccCase :: SrcRef -> Eval -> Expression -> [Alt] -> CCM Expression
+ccCase :: Eval -> Expression -> [Alt] -> CCM Expression
 -- flexible cases are not completed
-ccCase r Flex  e alts     = return $ Case r Flex e alts
-ccCase _ Rigid _ []       = internalError $ "CaseCompletion.ccCase: "
-                                         ++ "empty alternative list"
-ccCase r Rigid e as@(Alt p _:_) = case p of
-  ConstructorPattern _ _ -> completeConsAlts r Rigid e as
-  LiteralPattern     _   -> completeLitAlts  r Rigid e as
-  VariablePattern    _   -> completeVarAlts          e as
+ccCase Flex  e alts     = return $ Case Flex e alts
+ccCase Rigid _ []       = internalError $ "CaseCompletion.ccCase: "
+                                       ++ "empty alternative list"
+ccCase Rigid e as@(Alt p _:_) = case p of
+  ConstructorPattern _ _ -> completeConsAlts Rigid e as
+  LiteralPattern     _   -> completeLitAlts  Rigid e as
+  VariablePattern    _   -> completeVarAlts        e as
 
 -- Completes a case alternative list which branches via constructor patterns
 -- by adding alternatives. Thus, case expressions of the form
@@ -158,8 +157,8 @@ ccCase r Rigid e as@(Alt p _:_) = case p of
 --     the binding for @y@ is avoided (see @bindDefVar@).
 --   - If the variable @<var>@ does not occur in the default expression,
 --     the binding for @x@ is avoided (see @mkCase@).
-completeConsAlts :: SrcRef -> Eval -> Expression -> [Alt] -> CCM Expression
-completeConsAlts r ea ce alts = do
+completeConsAlts :: Eval -> Expression -> [Alt] -> CCM Expression
+completeConsAlts ea ce alts = do
   mdl       <- getModule
   menv      <- getInterfaceEnv
   -- complementary constructor patterns
@@ -169,7 +168,7 @@ completeConsAlts r ea ce alts = do
   w <- freshIdent
   return $ case (complPats, defaultAlt v) of
             (_:_, Just e') -> bindDefVar v ce w e' complPats
-            _              -> Case r ea ce consAlts
+            _              -> Case ea ce consAlts
   where
   -- existing contructor pattern alternatives
   consAlts = [ a | a@(Alt (ConstructorPattern _ _) _) <- alts ]
@@ -189,9 +188,9 @@ completeConsAlts r ea ce alts = do
   -- create a binding for @w = e'@ if needed, and a case expression
   -- @case e of { consAlts ++ (ps -> w) }@
   mkCase e w e' ps = case ps of
-    [p] -> Case r ea e (consAlts ++ [Alt p e'])
+    [p] -> Case ea e (consAlts ++ [Alt p e'])
     _   -> mkBinding w e'
-         $ Case r ea e (consAlts ++ [Alt p (Variable w) | p <- ps])
+         $ Case ea e (consAlts ++ [Alt p (Variable w) | p <- ps])
 
 -- If the alternatives' branches contain literal patterns, a complementary
 -- constructor list cannot be generated because it would become potentially
@@ -214,14 +213,14 @@ completeConsAlts r ea ce alts = do
 --                                    True  -> <expr_n>
 --                                    False -> <default_expr>
 -- If the default expression is missing, @failed@ is used instead.
-completeLitAlts :: SrcRef -> Eval -> Expression -> [Alt] -> CCM Expression
-completeLitAlts r ea ce alts = do
+completeLitAlts :: Eval -> Expression -> [Alt] -> CCM Expression
+completeLitAlts ea ce alts = do
   x <- freshIdent
   return $ mkBinding x ce $ nestedCases x alts
   where
   nestedCases _ []              = failedExpr
   nestedCases x (Alt p ae : as) = case p of
-    LiteralPattern l  -> Case r ea (Variable x `eqExpr` Literal l)
+    LiteralPattern l  -> Case ea (Variable x `eqExpr` Literal l)
                           [ Alt truePatt  ae
                           , Alt falsePatt (nestedCases x as)
                           ]
@@ -263,8 +262,8 @@ replaceVar v e x@(Variable    w)
   | otherwise = x
 replaceVar v e (Apply     e1 e2)
   = Apply (replaceVar v e e1) (replaceVar v e e2)
-replaceVar v e (Case r ev e' bs)
-  = Case r ev (replaceVar v e e') (map (replaceVarInAlt v e) bs)
+replaceVar v e (Case   ev e' bs)
+  = Case ev (replaceVar v e e') (map (replaceVarInAlt v e) bs)
 replaceVar v e (Or        e1 e2)
   = Or (replaceVar v e e1) (replaceVar v e e2)
 replaceVar v e (Exist      w e')
@@ -309,9 +308,9 @@ eqExpr e1 e2 = Apply (Apply (Function eq 2) e1) e2
   where eq = qImplMethodId preludeMIdent qEqId ty $ mkIdent "=="
         ty = case e2 of
                Literal l -> case l of
-                              Char  _ _ -> charType
-                              Int   _ _ -> intType
-                              Float _ _ -> floatType
+                              Char  _ -> charType
+                              Int   _ -> intType
+                              Float _ -> floatType
                _ -> internalError "CaseCompletion.eqExpr: no literal"
 
 truePatt :: ConstrTerm

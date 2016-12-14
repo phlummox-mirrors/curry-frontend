@@ -34,7 +34,6 @@ import           Data.List                   (nub, partition)
 import qualified Data.Map             as Map (Map, empty, insert, lookup)
 import qualified Data.Set             as Set (Set, empty, insert, delete, toList)
 
-import Curry.Base.Position
 import Curry.Base.Ident
 import Curry.Syntax hiding (caseAlt)
 
@@ -78,7 +77,7 @@ mdlsExpr :: IL.Expression -> Set.Set ModuleIdent -> Set.Set ModuleIdent
 mdlsExpr (IL.Function    f _) ms = modules f ms
 mdlsExpr (IL.Constructor c _) ms = modules c ms
 mdlsExpr (IL.Apply     e1 e2) ms = mdlsExpr e1 (mdlsExpr e2 ms)
-mdlsExpr (IL.Case   _ _ e as) ms = mdlsExpr e (foldr mdlsAlt ms as)
+mdlsExpr (IL.Case     _ e as) ms = mdlsExpr e (foldr mdlsAlt ms as)
   where
   mdlsAlt     (IL.Alt               t e') = mdlsPattern t . mdlsExpr e'
   mdlsPattern (IL.ConstructorPattern c _) = modules c
@@ -145,7 +144,7 @@ trDecl :: Decl Type -> TransM [IL.Decl]
 trDecl (DataDecl     _ tc tvs cs _) = (:[]) <$> trData     tc tvs cs
 trDecl (NewtypeDecl  _ tc tvs nc _) = (:[]) <$> trNewtype  tc tvs nc
 trDecl (ForeignDecl _ cc ie ty f _) = (:[]) <$> trForeign  f cc ie ty
-trDecl (FunctionDecl    p ty f eqs) = (:[]) <$> trFunction p f ty eqs
+trDecl (FunctionDecl    _ ty f eqs) = (:[]) <$> trFunction f ty eqs
 trDecl _                            = return []
 
 trData :: Ident -> [Ident] -> [ConstrDecl] -> TransM IL.Decl
@@ -232,13 +231,12 @@ forallType' tv ty =
 -- selector function have to be renamed according to the name mapping
 -- computed for its first argument.
 
-trFunction :: Show a => Position -> Ident -> Type -> [Equation a]
-           -> TransM IL.Decl
-trFunction p f ty eqs = do
+trFunction :: Show a => Ident -> Type -> [Equation a] -> TransM IL.Decl
+trFunction f ty eqs = do
   f' <- trQualify f
   let ty' = transType ty
   alts <- mapM (trEquation vs ws) eqs
-  return $ IL.FunctionDecl f' vs ty' (flexMatch (srcRefOf p) vs alts)
+  return $ IL.FunctionDecl f' vs ty' (flexMatch vs alts)
   where
   -- vs are the variables needed for the function: _1, _2, etc.
   -- ws is an infinite list for introducing additional variables later
@@ -312,16 +310,16 @@ trExpr vs env (Let        ds e) = do
   trBinding (PatternDecl _ (VariablePattern _ v) rhs)
     = IL.Binding v <$> trRhs vs env' rhs
   trBinding p = error $ "unexpected binding: " ++ show p
-trExpr (v:vs) env (Case r ct e alts) = do
+trExpr (v:vs) env (Case ct e alts) = do
   -- the ident v is used for the case expression subject, as this could
   -- be referenced in the case alternatives by a variable pattern
   e' <- trExpr vs env e
   let matcher = if ct == Flex then flexMatch else rigidMatch
-  expr <- matcher r [v] <$> mapM (trAlt (v:vs) env) alts
+  expr <- matcher [v] <$> mapM (trAlt (v:vs) env) alts
   return $ case expr of
-    IL.Case r' mode (IL.Variable v') alts'
+    IL.Case mode (IL.Variable v') alts'
         -- subject is not referenced -> forget v and insert subject
-      | v == v' && v `notElem` fv alts' -> IL.Case r' mode e' alts'
+      | v == v' && v `notElem` fv alts' -> IL.Case mode e' alts'
     _
         -- subject is referenced -> introduce binding for v as subject
       | v `elem` fv expr                -> IL.Let (IL.Binding v e') expr
@@ -337,10 +335,10 @@ trAlt ~(v:vs) env (Alt _ t rhs) = do
   return ([trPattern v t], rhs')
 
 trLiteral :: Literal -> IL.Literal
-trLiteral (Char  p c) = IL.Char p c
-trLiteral (Int   p i) = IL.Int p i
-trLiteral (Float p f) = IL.Float p f
-trLiteral _           = internalError "CurryToIL.trLiteral"
+trLiteral (Char  c) = IL.Char c
+trLiteral (Int   i) = IL.Int i
+trLiteral (Float f) = IL.Float f
+trLiteral _         = internalError "CurryToIL.trLiteral"
 
 -- -----------------------------------------------------------------------------
 -- Translation of Patterns
@@ -407,58 +405,54 @@ type Match' = (FunList NestedTerm, [NestedTerm], IL.Expression)
 -- Functional lists
 type FunList a = [a] -> [a]
 
-flexMatch :: SrcRef       -- source reference
-         -> [Ident]       -- variables to be matched
-         -> [Match]       -- alternatives
-         -> IL.Expression -- result expression
-flexMatch _ []     alts = foldl1 IL.Or (map snd alts)
-flexMatch r (v:vs) alts
+flexMatch :: [Ident]       -- variables to be matched
+          -> [Match]       -- alternatives
+          -> IL.Expression -- result expression
+flexMatch []     alts = foldl1 IL.Or (map snd alts)
+flexMatch (v:vs) alts
   | notDemanded = varExp
   | isInductive = conExp
-  | otherwise   = optFlexMatch r (IL.Or conExp varExp) (v:) vs (map skipPat alts)
+  | otherwise   = optFlexMatch (IL.Or conExp varExp) (v:) vs (map skipPat alts)
   where
   isInductive        = null varAlts
   notDemanded        = null conAlts
   -- separate variable and constructor patterns
   (varAlts, conAlts) = partition isVarMatch (map tagAlt alts)
   -- match variables
-  varExp             = flexMatch          r      vs (map snd  varAlts)
+  varExp             = flexMatch               vs (map snd  varAlts)
   -- match constructors
-  conExp             = flexMatchInductive r id v vs (map prep conAlts)
+  conExp             = flexMatchInductive id v vs (map prep conAlts)
   prep (p, (ts, e))  = (p, (id, ts, e))
 
 -- Search for the next inductive position
-optFlexMatch :: SrcRef       -- source reference
-            -> IL.Expression -- default expression
-            -> FunList Ident -- skipped variables
-            -> [Ident]       -- next variables
-            -> [Match']      -- alternatives
-            -> IL.Expression
-optFlexMatch _ def _      []     _    = def
-optFlexMatch r def prefix (v:vs) alts
-  | isInductive = flexMatchInductive r prefix v vs alts'
-  | otherwise   = optFlexMatch r def (prefix . (v:)) vs (map skipPat' alts)
+optFlexMatch :: IL.Expression -- default expression
+             -> FunList Ident -- skipped variables
+             -> [Ident]       -- next variables
+             -> [Match']      -- alternatives
+             -> IL.Expression
+optFlexMatch def _      []     _    = def
+optFlexMatch def prefix (v:vs) alts
+  | isInductive = flexMatchInductive prefix v vs alts'
+  | otherwise   = optFlexMatch def (prefix . (v:)) vs (map skipPat' alts)
   where
   isInductive   = not (any isVarMatch alts')
   alts'         = map tagAlt' alts
 
 -- Generate a case expression matching the inductive position
-flexMatchInductive :: SrcRef                    -- source reference
-                   -> FunList Ident             -- skipped variables
+flexMatchInductive :: FunList Ident             -- skipped variables
                    -> Ident                     -- current variable
                    -> [Ident]                   -- next variables
                    -> [(IL.ConstrTerm, Match')] -- alternatives
                    -> IL.Expression
-flexMatchInductive r prefix v vs as
-  = IL.Case r IL.Flex (IL.Variable v) (flexMatchAlts as)
+flexMatchInductive prefix v vs as
+  = IL.Case IL.Flex (IL.Variable v) (flexMatchAlts as)
   where
   -- create alternatives for the different constructors
   flexMatchAlts []              = []
   flexMatchAlts ((t, e) : alts) = IL.Alt t expr : flexMatchAlts others
     where
     -- match nested patterns for same constructors
-    expr = flexMatch (srcRefOf t) (prefix (vars t ++ vs))
-                                (map expandVars (e : map snd same))
+    expr = flexMatch (prefix (vars t ++ vs)) (map expandVars (e : map snd same))
     expandVars (pref, ts1, e') = (pref ts1, e')
     -- split into same and other constructors
     (same, others) = partition ((t ==) . fst) alts
@@ -476,22 +470,20 @@ flexMatchInductive r prefix v vs as
 -- to detect total matches and immediately discard all alternatives which
 -- cannot be reached.
 
-rigidMatch :: SrcRef -> [Ident] -> [Match] -> IL.Expression
-rigidMatch r vs alts = rigidOptMatch r (snd $ head alts) id vs
-                       (map prepare alts)
+rigidMatch :: [Ident] -> [Match] -> IL.Expression
+rigidMatch vs alts = rigidOptMatch (snd $ head alts) id vs (map prepare alts)
   where prepare (ts, e) = (id, ts, e)
 
-rigidOptMatch :: SrcRef        -- source reference
-              -> IL.Expression -- default expression
+rigidOptMatch :: IL.Expression -- default expression
               -> FunList Ident -- variables to be matched next
               -> [Ident]       -- variables to be matched afterwards
               -> [Match']      -- translated equations
               -> IL.Expression
 -- if there are no variables left: return the default expression
-rigidOptMatch _ def _      []       _    = def
-rigidOptMatch r def prefix (v : vs) alts
-  | isDemanded = rigidMatchDemanded r prefix v vs alts'
-  | otherwise  = rigidOptMatch r def (prefix . (v:)) vs (map skipPat' alts)
+rigidOptMatch def _      []       _    = def
+rigidOptMatch def prefix (v : vs) alts
+  | isDemanded = rigidMatchDemanded prefix v vs alts'
+  | otherwise  = rigidOptMatch def (prefix . (v:)) vs (map skipPat' alts)
   where
   isDemanded   = not $ isVarMatch (head alts')
   alts'        = map tagAlt' alts
@@ -509,20 +501,19 @@ rigidOptMatch r def prefix (v : vs) alts
 --      []   -> []
 --      y:ys -> x
 --      x    -> x
-rigidMatchDemanded :: SrcRef                    -- source reference
-                   -> FunList Ident             -- skipped variables
+rigidMatchDemanded :: FunList Ident             -- skipped variables
                    -> Ident                     -- current variable
                    -> [Ident]                   -- next variables
                    -> [(IL.ConstrTerm, Match')] -- alternatives
                    -> IL.Expression
-rigidMatchDemanded r prefix v vs alts = IL.Case r IL.Rigid (IL.Variable v)
+rigidMatchDemanded prefix v vs alts = IL.Case IL.Rigid (IL.Variable v)
   $ map caseAlt (consPats ++ varPats)
   where
   -- N.B.: @varPats@ is either empty or a singleton list due to nub
   (varPats, consPats) = partition isVarPattern $ nub $ map fst alts
   caseAlt t           = IL.Alt t expr
     where
-    expr = rigidMatch (srcRefOf t) (prefix $ vars t ++ vs) (matchingCases alts)
+    expr = rigidMatch (prefix $ vars t ++ vs) (matchingCases alts)
     -- matchingCases selects the matching alternatives
     --  and recursively matches the remaining patterns
     matchingCases a = map (expandVars (vars t)) $ filter (matches . fst) a

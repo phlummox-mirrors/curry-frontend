@@ -220,7 +220,7 @@ deriveToEnum ty cis ps = do
 
 toEnumEquation :: Type -> Integer -> ConstrInfo -> Equation PredType
 toEnumEquation ty i (_, c, _, _) =
-  mkEquation NoPos toEnumId [LiteralPattern (predType intType) (Int noRef i)] $
+  mkEquation NoPos toEnumId [LiteralPattern (predType intType) (Int i)] $
     Constructor (predType $ instType ty) c
 
 deriveFromEnum :: Type -> [ConstrInfo] -> PredSet -> DVM (Decl PredType)
@@ -232,7 +232,7 @@ deriveFromEnum ty cis ps = do
 fromEnumEquation :: Type -> ConstrInfo -> Integer -> Equation PredType
 fromEnumEquation ty (_, c, _, _) i =
   mkEquation NoPos fromEnumId [ConstructorPattern pty c []] $
-    Literal (predType intType) $ Int noRef i
+    Literal (predType intType) $ Int i
   where pty = predType $ instType ty
 
 deriveEnumFrom :: Type -> ConstrInfo -> PredSet -> DVM (Decl PredType)
@@ -257,11 +257,11 @@ enumFromThenExpr :: (PredType, Ident) -> (PredType, Ident) -> QualIdent
                  -> QualIdent -> Expression PredType
 enumFromThenExpr v1 v2 c1 c2 =
   prelEnumFromThenTo (uncurry mkVar v1) (uncurry mkVar v2) $ boundedExpr
-  where boundedExpr = IfThenElse noRef (prelLeq
-                                         (prelFromEnum $ uncurry mkVar v1)
-                                         (prelFromEnum $ uncurry mkVar v2))
-                                       (Constructor (fst v1) c2)
-                                       (Constructor (fst v1) c1)
+  where boundedExpr = IfThenElse (prelLeq
+                                   (prelFromEnum $ uncurry mkVar v1)
+                                   (prelFromEnum $ uncurry mkVar v2))
+                                 (Constructor (fst v1) c2)
+                                 (Constructor (fst v1) c1)
 
 -- Upper and Lower Bounds:
 
@@ -317,9 +317,9 @@ readsPrecReadParenCondExpr :: ConstrInfo -> Expression PredType -> Precedence
 readsPrecReadParenCondExpr (_, c, _, tys) d p
   | null tys                        = prelFalse
   | isQInfixOp c && length tys == 2 =
-    prelLt (Literal predIntType $ Int noRef p) d
+    prelLt (Literal predIntType $ Int p) d
   | otherwise                       =
-    prelLt (Literal predIntType $ Int noRef 10) d
+    prelLt (Literal predIntType $ Int 10) d
 
 deriveReadsPrecLambdaExpr :: Type -> ConstrInfo -> Precedence
                       -> DVM (Expression PredType)
@@ -327,10 +327,10 @@ deriveReadsPrecLambdaExpr ty (_, c, ls, tys) p = do
   r <- freshArgument stringType
   (stmts, vs, s) <- deriveReadsPrecStmts (unqualify c) (p + 1) r ls tys
   let pty = predType $ foldr TypeArrow (instType ty) $ map instType tys
-      e = Tuple noRef [ apply (Constructor pty c) $ map (uncurry mkVar) vs
-                      , uncurry mkVar s
-                      ]
-  return $ Lambda noRef [uncurry VariablePattern r] $ ListCompr noRef e stmts
+      e = Tuple [ apply (Constructor pty c) $ map (uncurry mkVar) vs
+                , uncurry mkVar s
+                ]
+  return $ Lambda [uncurry VariablePattern r] $ ListCompr e stmts
 
 deriveReadsPrecStmts
   :: Ident -> Precedence -> (PredType, Ident) -> Maybe [Ident] -> [Type]
@@ -392,11 +392,11 @@ deriveReadsPrecLexStmt :: String -> (PredType, Ident)
                       -> DVM ((PredType, Ident), Statement PredType)
 deriveReadsPrecLexStmt str r = do
   s <- freshArgument $ stringType
-  let pat  = TuplePattern noRef
-               [ LiteralPattern predStringType $ mkString str
+  let pat  = TuplePattern
+               [ LiteralPattern predStringType $ String str
                , uncurry VariablePattern s
                ]
-      stmt = StmtBind noRef pat $ preludeLex $ uncurry mkVar r
+      stmt = StmtBind pat $ preludeLex $ uncurry mkVar r
   return (s, stmt)
 
 deriveReadsPrecReadsPrecStmt  :: Precedence -> (PredType, Ident) -> Type
@@ -404,8 +404,8 @@ deriveReadsPrecReadsPrecStmt  :: Precedence -> (PredType, Ident) -> Type
 deriveReadsPrecReadsPrecStmt p r ty = do
   v <- freshArgument $ instType ty
   s <- freshArgument $ stringType
-  let pat  = TuplePattern noRef $ map (uncurry VariablePattern) [v, s]
-      stmt = StmtBind noRef pat $ preludeReadsPrec (instType ty) p $
+  let pat  = TuplePattern $ map (uncurry VariablePattern) [v, s]
+      stmt = StmtBind pat $ preludeReadsPrec (instType ty) p $
                uncurry mkVar r
   return (s, (stmt, v))
 
@@ -447,7 +447,7 @@ showsPrecNullaryConstrExpr c = preludeShowString $ showsConstr c ""
 showsPrecShowParenExpr :: Expression PredType -> Precedence
                        -> Expression PredType -> Expression PredType
 showsPrecShowParenExpr d p =
-  prelShowParen $ prelLt (Literal predIntType $ Int noRef p) d
+  prelShowParen $ prelLt (Literal predIntType $ Int p) d
 
 showsPrecRecordConstrExpr :: Ident -> [Ident] -> [Expression PredType]
                           -> Expression PredType
@@ -533,10 +533,6 @@ instMethodType vEnv ps cls ty f = PredType (ps `Set.union` ps'') ty''
           _ -> internalError $ "Derive.instMethodType"
         PredType ps'' ty'' = instanceType ty $ PredType (Set.deleteMin ps') ty'
 
---TODO: Fix wrong SrcRef for String
-mkString :: String -> Literal
-mkString = String (srcRef 0)
-
 -- -----------------------------------------------------------------------------
 -- Prelude entities
 -- -----------------------------------------------------------------------------
@@ -619,7 +615,7 @@ preludeLex e = Apply (Variable pty qLexId) e
 preludeReadsPrec :: Type -> Integer -> Expression PredType
                  -> Expression PredType
 preludeReadsPrec ty p e = flip Apply e $
-  Apply (Variable pty qReadsPrecId) $ Literal predIntType $ Int noRef p
+  Apply (Variable pty qReadsPrecId) $ Literal predIntType $ Int p
   where pty = predType $ foldr1 TypeArrow [ intType, stringType
                                           , listType $ tupleType [ ty
                                                                  , stringType
@@ -628,14 +624,14 @@ preludeReadsPrec ty p e = flip Apply e $
 
 preludeShowsPrec :: Integer -> Expression PredType -> Expression PredType
 preludeShowsPrec p e = flip Apply e $
-  Apply (Variable pty qShowsPrecId) $ Literal predIntType $ Int noRef p
+  Apply (Variable pty qShowsPrecId) $ Literal predIntType $ Int p
   where pty = predType $ foldr1 TypeArrow [ intType, typeOf e
                                           , stringType, stringType
                                           ]
 
 preludeShowString :: String -> Expression PredType
 preludeShowString s = Apply (Variable pty qShowStringId) $
-  Literal predStringType $ mkString s
+  Literal predStringType $ String s
   where pty = predType $ foldr1 TypeArrow $ replicate 3 stringType
 
 preludeFailed :: Type -> Expression PredType

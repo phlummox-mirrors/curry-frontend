@@ -194,28 +194,28 @@ instance HasType (Expression a) where
   fts m (Typed              e ty) = fts m e . fts m ty
   fts m (Record           _ _ fs) = fts m fs
   fts m (RecordUpdate       e fs) = fts m e . fts m fs
-  fts m (Tuple              _ es) = fts m es
-  fts m (List             _ _ es) = fts m es
-  fts m (ListCompr      _ e stms) = fts m e . fts m stms
+  fts m (Tuple                es) = fts m es
+  fts m (List               _ es) = fts m es
+  fts m (ListCompr        e stms) = fts m e . fts m stms
   fts m (EnumFrom              e) = fts m e
   fts m (EnumFromThen      e1 e2) = fts m e1 . fts m e2
   fts m (EnumFromTo        e1 e2) = fts m e1 . fts m e2
   fts m (EnumFromThenTo e1 e2 e3) = fts m e1 . fts m e2 . fts m e3
-  fts m (UnaryMinus          _ e) = fts m e
+  fts m (UnaryMinus            e) = fts m e
   fts m (Apply             e1 e2) = fts m e1 . fts m e2
   fts m (InfixApply      e1 _ e2) = fts m e1 . fts m e2
   fts m (LeftSection         e _) = fts m e
   fts m (RightSection        _ e) = fts m e
-  fts m (Lambda            _ _ e) = fts m e
+  fts m (Lambda              _ e) = fts m e
   fts m (Let                ds e) = fts m ds . fts m e
   fts m (Do               stms e) = fts m stms . fts m e
-  fts m (IfThenElse   _ e1 e2 e3) = fts m e1 . fts m e2 . fts m e3
-  fts m (Case           _ _ e as) = fts m e . fts m as
+  fts m (IfThenElse     e1 e2 e3) = fts m e1 . fts m e2 . fts m e3
+  fts m (Case             _ e as) = fts m e . fts m as
 
 instance HasType (Statement a) where
-  fts m (StmtExpr   _ e) = fts m e
-  fts m (StmtDecl    ds) = fts m ds
-  fts m (StmtBind _ _ e) = fts m e
+  fts m (StmtExpr   e) = fts m e
+  fts m (StmtDecl  ds) = fts m ds
+  fts m (StmtBind _ e) = fts m e
 
 instance HasType (Alt a) where
   fts m (Alt _ _ rhs) = fts m rhs
@@ -517,9 +517,9 @@ kcExpr tcEnv p (Record _ _ fs) = mapM_ (kcField tcEnv p) fs
 kcExpr tcEnv p (RecordUpdate e fs) = do
   kcExpr tcEnv p e
   mapM_ (kcField tcEnv p) fs
-kcExpr tcEnv p (Tuple _ es) = mapM_ (kcExpr tcEnv p) es
-kcExpr tcEnv p (List _ _ es) = mapM_ (kcExpr tcEnv p) es
-kcExpr tcEnv p (ListCompr _ e stms) = do
+kcExpr tcEnv p (Tuple es) = mapM_ (kcExpr tcEnv p) es
+kcExpr tcEnv p (List _ es) = mapM_ (kcExpr tcEnv p) es
+kcExpr tcEnv p (ListCompr e stms) = do
   kcExpr tcEnv p e
   mapM_ (kcStmt tcEnv p) stms
 kcExpr tcEnv p (EnumFrom e) = kcExpr tcEnv p e
@@ -533,7 +533,7 @@ kcExpr tcEnv p (EnumFromThenTo e1 e2 e3) = do
   kcExpr tcEnv p e1
   kcExpr tcEnv p e2
   kcExpr tcEnv p e3
-kcExpr tcEnv p (UnaryMinus _ e) = kcExpr tcEnv p e
+kcExpr tcEnv p (UnaryMinus e) = kcExpr tcEnv p e
 kcExpr tcEnv p (Apply e1 e2) = do
   kcExpr tcEnv p e1
   kcExpr tcEnv p e2
@@ -542,25 +542,25 @@ kcExpr tcEnv p (InfixApply e1 _ e2) = do
   kcExpr tcEnv p e2
 kcExpr tcEnv p (LeftSection e _) = kcExpr tcEnv p e
 kcExpr tcEnv p (RightSection _ e) = kcExpr tcEnv p e
-kcExpr tcEnv p (Lambda _ _ e) = kcExpr tcEnv p e
+kcExpr tcEnv p (Lambda _ e) = kcExpr tcEnv p e
 kcExpr tcEnv p (Let ds e) = do
   mapM_ (kcDecl tcEnv) ds
   kcExpr tcEnv p e
 kcExpr tcEnv p (Do stms e) = do
   mapM_ (kcStmt tcEnv p) stms
   kcExpr tcEnv p e
-kcExpr tcEnv p (IfThenElse _ e1 e2 e3) = do
+kcExpr tcEnv p (IfThenElse e1 e2 e3) = do
   kcExpr tcEnv p e1
   kcExpr tcEnv p e2
   kcExpr tcEnv p e3
-kcExpr tcEnv p (Case _ _ e alts) = do
+kcExpr tcEnv p (Case _ e alts) = do
   kcExpr tcEnv p e
   mapM_ (kcAlt tcEnv) alts
 
 kcStmt :: TCEnv -> Position -> Statement a -> KCM ()
-kcStmt tcEnv p (StmtExpr _ e) = kcExpr tcEnv p e
+kcStmt tcEnv p (StmtExpr e) = kcExpr tcEnv p e
 kcStmt tcEnv _ (StmtDecl ds) = mapM_ (kcDecl tcEnv) ds
-kcStmt tcEnv p (StmtBind _ _ e) = kcExpr tcEnv p e
+kcStmt tcEnv p (StmtBind _ e) = kcExpr tcEnv p e
 
 kcAlt :: TCEnv -> Alt a -> KCM ()
 kcAlt tcEnv (Alt _ _ rhs) = kcRhs tcEnv rhs

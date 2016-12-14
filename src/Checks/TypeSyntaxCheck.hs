@@ -252,30 +252,30 @@ instance Rename (Expression a) where
   rename (Typed e qty) = Typed <$> rename e <*> renameTypeSig qty
   rename (Record a c fs) = Record a c <$> rename fs
   rename (RecordUpdate e fs) = RecordUpdate <$> rename e <*> rename fs
-  rename (Tuple ref es) = Tuple ref <$> rename es
-  rename (List a refs es) = List a refs <$> rename es
-  rename (ListCompr ref e stmts) = ListCompr ref <$> rename e <*> rename stmts
+  rename (Tuple es) = Tuple <$> rename es
+  rename (List a es) = List a <$> rename es
+  rename (ListCompr e stmts) = ListCompr <$> rename e <*> rename stmts
   rename (EnumFrom e) = EnumFrom <$> rename e
   rename (EnumFromThen e1 e2) = EnumFromThen <$> rename e1 <*> rename e2
   rename (EnumFromTo e1 e2) = EnumFromTo <$> rename e1 <*> rename e2
   rename (EnumFromThenTo e1 e2 e3) =
     EnumFromThenTo <$> rename e1 <*> rename e2 <*> rename e3
-  rename (UnaryMinus ref e) = UnaryMinus ref <$> rename e
+  rename (UnaryMinus e) = UnaryMinus <$> rename e
   rename (Apply e1 e2) = Apply <$> rename e1 <*> rename e2
   rename (InfixApply e1 op e2) = flip InfixApply op <$> rename e1 <*> rename e2
   rename (LeftSection e op) = flip LeftSection op <$> rename e
   rename (RightSection op e) = RightSection op <$> rename e
-  rename (Lambda ref ts e) = Lambda ref ts <$> rename e
+  rename (Lambda ts e) = Lambda ts <$> rename e
   rename (Let ds e) = Let <$> rename ds <*> rename e
   rename (Do stmts e) = Do <$> rename stmts <*> rename e
-  rename (IfThenElse ref c e1 e2) =
-    IfThenElse ref <$> rename c <*> rename e1 <*> rename e2
-  rename (Case ref ct e alts) = Case ref ct <$> rename e <*> rename alts
+  rename (IfThenElse c e1 e2) =
+    IfThenElse <$> rename c <*> rename e1 <*> rename e2
+  rename (Case ct e alts) = Case ct <$> rename e <*> rename alts
 
 instance Rename (Statement a) where
-  rename (StmtExpr ref e) = StmtExpr ref <$> rename e
+  rename (StmtExpr e) = StmtExpr <$> rename e
   rename (StmtDecl ds) = StmtDecl <$> rename ds
-  rename (StmtBind ref t e) = StmtBind ref t <$> rename e
+  rename (StmtBind t e) = StmtBind t <$> rename e
 
 instance Rename (Alt a) where
   rename (Alt p t rhs) = Alt p t <$> rename rhs
@@ -454,10 +454,10 @@ checkExpr (Typed             e qty) = Typed <$> checkExpr e
 checkExpr (Record           a c fs) = Record a c <$> mapM checkFieldExpr fs
 checkExpr (RecordUpdate       e fs) = RecordUpdate <$> checkExpr e
                                                    <*> mapM checkFieldExpr fs
-checkExpr (Tuple              p es) = Tuple p <$> mapM checkExpr es
-checkExpr (List             a p es) = List a p <$> mapM checkExpr es
-checkExpr (ListCompr        p e qs) = ListCompr p <$> checkExpr e
-                                                 <*> mapM checkStmt qs
+checkExpr (Tuple                es) = Tuple <$> mapM checkExpr es
+checkExpr (List               a es) = List a <$> mapM checkExpr es
+checkExpr (ListCompr          e qs) = ListCompr <$> checkExpr e
+                                                <*> mapM checkStmt qs
 checkExpr (EnumFrom              e) = EnumFrom <$> checkExpr e
 checkExpr (EnumFromThen      e1 e2) = EnumFromThen <$> checkExpr e1
                                                    <*> checkExpr e2
@@ -466,26 +466,26 @@ checkExpr (EnumFromTo        e1 e2) = EnumFromTo <$> checkExpr e1
 checkExpr (EnumFromThenTo e1 e2 e3) = EnumFromThenTo <$> checkExpr e1
                                                      <*> checkExpr e2
                                                      <*> checkExpr e3
-checkExpr (UnaryMinus         op e) = UnaryMinus op <$> checkExpr e
+checkExpr (UnaryMinus            e) = UnaryMinus <$> checkExpr e
 checkExpr (Apply             e1 e2) = Apply <$> checkExpr e1 <*> checkExpr e2
 checkExpr (InfixApply     e1 op e2) = InfixApply <$> checkExpr e1
                                                  <*> return op
                                                  <*> checkExpr e2
 checkExpr (LeftSection        e op) = flip LeftSection op <$> checkExpr e
 checkExpr (RightSection       op e) = RightSection op <$> checkExpr e
-checkExpr (Lambda           r ts e) = Lambda r ts <$> checkExpr e
+checkExpr (Lambda             ts e) = Lambda ts <$> checkExpr e
 checkExpr (Let                ds e) = Let <$> mapM checkDecl ds <*> checkExpr e
 checkExpr (Do                sts e) = Do <$> mapM checkStmt sts <*> checkExpr e
-checkExpr (IfThenElse   r e1 e2 e3) = IfThenElse r <$> checkExpr e1
-                                                   <*> checkExpr e2
-                                                   <*> checkExpr e3
-checkExpr (Case        r ct e alts) = Case r ct <$> checkExpr e
-                                                <*> mapM checkAlt alts
+checkExpr (IfThenElse     e1 e2 e3) = IfThenElse <$> checkExpr e1
+                                                 <*> checkExpr e2
+                                                 <*> checkExpr e3
+checkExpr (Case          ct e alts) = Case ct <$> checkExpr e
+                                              <*> mapM checkAlt alts
 
 checkStmt :: Statement a -> TSCM (Statement a)
-checkStmt (StmtExpr   p e) = StmtExpr p <$> checkExpr e
-checkStmt (StmtBind p t e) = StmtBind p t <$> checkExpr e
-checkStmt (StmtDecl    ds) = StmtDecl <$> mapM checkDecl ds
+checkStmt (StmtExpr   e) = StmtExpr <$> checkExpr e
+checkStmt (StmtBind t e) = StmtBind t <$> checkExpr e
+checkStmt (StmtDecl  ds) = StmtDecl <$> mapM checkDecl ds
 
 checkAlt :: Alt a -> TSCM (Alt a)
 checkAlt (Alt p t rhs) = Alt p t <$> checkRhs rhs

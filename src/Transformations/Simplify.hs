@@ -214,9 +214,9 @@ simExpr env v@(Variable   ty x)
     maybe (return v) (simExpr env . withType ty) (Map.lookup (unqualify x) env)
 -- simplification of application
 simExpr env (Apply       e1 e2) = case e1 of
-  Let ds e'       -> simExpr env (Let ds (Apply e' e2))
-  Case r ct e' bs -> simExpr env (Case r ct e' (map (applyToAlt e2) bs))
-  _               -> Apply <$> simExpr env e1 <*> simExpr env e2
+  Let ds e'     -> simExpr env (Let ds (Apply e' e2))
+  Case ct e' bs -> simExpr env (Case ct e' (map (applyToAlt e2) bs))
+  _             -> Apply <$> simExpr env e1 <*> simExpr env e2
   where
   applyToAlt e (Alt       p t rhs) = Alt p t (applyToRhs e rhs)
   applyToRhs e (SimpleRhs p e1' _) = simpleRhs p (Apply e1' e)
@@ -226,8 +226,8 @@ simExpr env (Let          ds e) = do
   m   <- getModuleIdent
   dss <- mapM sharePatternRhs ds
   simplifyLet env (scc bv (qfv m) (foldr hoistDecls [] (concat dss))) e
-simExpr env (Case    r ct e bs) = Case r ct <$> simExpr env e
-                                            <*> mapM (simplifyAlt env) bs
+simExpr env (Case      ct e bs) = Case ct <$> simExpr env e
+                                          <*> mapM (simplifyAlt env) bs
 simExpr env (Typed       e qty) = flip Typed qty <$> simExpr env e
 simExpr _   _                   = error "Simplify.simExpr: no pattern match"
 
@@ -244,7 +244,7 @@ sharePatternRhs (PatternDecl p t rhs) = case t of
   VariablePattern _ _ -> return [PatternDecl p t rhs]
   _                   -> do
     let ty = typeOf t
-    v  <- addRefId (srcRefOf p) <$> freshIdent patternId
+    v  <- freshIdent patternId
     return [ PatternDecl p t                      (simpleRhs p (mkVar ty v))
            , PatternDecl p (VariablePattern ty v) rhs
            ]

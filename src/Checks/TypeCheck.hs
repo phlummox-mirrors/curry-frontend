@@ -732,8 +732,8 @@ isNonExpansive' _ (Record       _ c fs) = do
   m <- getModuleIdent
   vEnv <- getValueEnv
   liftM ((length (constrLabels m c vEnv) == length fs) &&) (isNonExpansive fs)
-isNonExpansive' _ (Tuple          _ es) = isNonExpansive es
-isNonExpansive' _ (List         _ _ es) = isNonExpansive es
+isNonExpansive' _ (Tuple            es) = isNonExpansive es
+isNonExpansive' _ (List           _ es) = isNonExpansive es
 isNonExpansive' n (Apply           f e) =
   isNonExpansive' (n + 1) f &&^ isNonExpansive e
 isNonExpansive' n (InfixApply e1 op e2) =
@@ -741,7 +741,7 @@ isNonExpansive' n (InfixApply e1 op e2) =
     isNonExpansive e2
 isNonExpansive' n (LeftSection    e op) =
   isNonExpansive' (n + 1) (infixOp op) &&^ isNonExpansive e
-isNonExpansive' n (Lambda       _ ts e) = withLocalValueEnv $ do
+isNonExpansive' n (Lambda         ts e) = withLocalValueEnv $ do
   modifyValueEnv $ flip (foldr bindVarArity) (bv ts)
   liftM ((n < length ts) ||)
     (liftM ((all isVariablePattern ts) &&) (isNonExpansive' (n - length ts) e))
@@ -921,14 +921,14 @@ tcForeign f ty = do
 -- patterns.
 
 tcLiteral :: Bool -> Literal -> TCM (PredSet, Type)
-tcLiteral _ (Char _ _) = return (emptyPredSet, charType)
-tcLiteral poly (Int _ _)
+tcLiteral _ (Char _) = return (emptyPredSet, charType)
+tcLiteral poly (Int _)
   | poly = freshNumType
   | otherwise = liftM ((,) emptyPredSet) (freshConstrained numTypes)
-tcLiteral poly (Float _ _)
+tcLiteral poly (Float _)
   | poly = freshFractionalType
   | otherwise = liftM ((,) emptyPredSet) (freshConstrained fractionalTypes)
-tcLiteral _ (String _ _) = return (emptyPredSet, stringType)
+tcLiteral _ (String _) = return (emptyPredSet, stringType)
 
 tcLhs :: Position -> Lhs a -> TCM (PredSet, [Type], Lhs PredType)
 tcLhs p (FunLhs f ts) = do
@@ -955,9 +955,9 @@ tcPattern :: Bool -> Position -> Pattern a
 tcPattern poly _ (LiteralPattern _ l) = do
   (ps, ty) <- tcLiteral poly l
   return (ps, ty, LiteralPattern (predType ty) l)
-tcPattern poly _ (NegativePattern _ op l) = do
+tcPattern poly _ (NegativePattern _ l) = do
   (ps, ty) <- tcLiteral poly l
-  return (ps, ty, NegativePattern (predType ty) op l)
+  return (ps, ty, NegativePattern (predType ty) l)
 tcPattern _ _ (VariablePattern _ v) = do
   vEnv <- getValueEnv
   (_, ty) <- inst (varType v vEnv)
@@ -981,22 +981,22 @@ tcPattern poly _ t@(RecordPattern _ c fs) = do
   (ps, ty) <- liftM (fmap arrowBase) (skol (constrType m c vEnv))
   (ps', fs') <- mapAccumM (tcField (tcPattern poly) "pattern" (\t' -> ppPattern 0 t $-$ text "Term:" <+> ppPattern 0 t') ty) ps fs
   return (ps', ty, RecordPattern (predType ty) c fs')
-tcPattern poly p (TuplePattern ref ts) = do
+tcPattern poly p (TuplePattern ts) = do
   (pss, tys, ts') <- liftM unzip3 $ mapM (tcPattern poly p) ts
-  return (Set.unions pss, tupleType tys, TuplePattern ref ts')
-tcPattern poly p t@(ListPattern _ refs ts) = do
+  return (Set.unions pss, tupleType tys, TuplePattern ts')
+tcPattern poly p t@(ListPattern _ ts) = do
   ty <- freshTypeVar
   (ps, ts') <- mapAccumM (flip (tcPatternArg poly p "pattern" (ppPattern 0 t)) ty) emptyPredSet ts
-  return (ps, listType ty, ListPattern (predType $ listType ty) refs ts')
+  return (ps, listType ty, ListPattern (predType $ listType ty) ts')
 tcPattern poly p t@(AsPattern v t') = do
   vEnv <- getValueEnv
   (_, ty) <- inst (varType v vEnv)
   (ps, t'') <- tcPattern poly p t' >>-
     unify p "pattern" (ppPattern 0 t) emptyPredSet ty
   return (ps, ty, AsPattern v t'')
-tcPattern _ p (LazyPattern ref t) = do
+tcPattern _ p (LazyPattern t) = do
   (ps, ty, t') <- tcPattern False p t
-  return (ps, ty, LazyPattern ref t')
+  return (ps, ty, LazyPattern t')
 tcPattern poly p t@(FunctionPattern _ f ts) = do
   m <- getModuleIdent
   vEnv <- getValueEnv
@@ -1088,15 +1088,15 @@ tcExpr p e@(RecordUpdate e1 fs) = do
   (ps, ty, e1') <- tcExpr p e1
   (ps', fs') <- mapAccumM (tcField tcExpr "update" (\e' -> ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e') ty) ps fs
   return (ps', ty, RecordUpdate e1' fs')
-tcExpr p (Tuple ref es) = do
+tcExpr p (Tuple es) = do
   (pss, tys, es') <- liftM unzip3 $ mapM (tcExpr p) es
-  return (Set.unions pss, tupleType tys, Tuple ref es')
-tcExpr p e@(List _ refs es) = do
+  return (Set.unions pss, tupleType tys, Tuple es')
+tcExpr p e@(List _ es) = do
   ty <- freshTypeVar
   (ps, es') <-
     mapAccumM (flip (tcArg p "expression" (ppExpr 0 e)) ty) emptyPredSet es
-  return (ps, listType ty, List (predType $ listType ty) refs es')
-tcExpr p (ListCompr ref e qs) = do
+  return (ps, listType ty, List (predType $ listType ty) es')
+tcExpr p (ListCompr e qs) = do
   fs <- computeFsEnv
   (ps, qs', ps', ty, e') <- withLocalValueEnv $ do
     (ps, qs') <- mapAccumM (tcQual p) emptyPredSet qs
@@ -1104,7 +1104,7 @@ tcExpr p (ListCompr ref e qs) = do
     return (ps, qs', ps', ty, e')
   ps'' <- reducePredSet p "expression" (ppExpr 0 e') (ps `Set.union` ps')
   checkSkolems p "Expression" (ppExpr 0) fs ps'' (listType ty)
-    (ListCompr ref e' qs')
+    (ListCompr e' qs')
 tcExpr p e@(EnumFrom e1) = do
   (ps, ty) <- freshEnumType
   (ps', e1') <- tcArg p "arithmetic sequence" (ppExpr 0 e) ps ty e1
@@ -1125,10 +1125,10 @@ tcExpr p e@(EnumFromThenTo e1 e2 e3) = do
   (ps'', e2') <- tcArg p "arithmetic sequence" (ppExpr 0 e) ps' ty e2
   (ps''', e3') <- tcArg p "arithmetic sequence" (ppExpr 0 e) ps'' ty e3
   return (ps''', listType ty, EnumFromThenTo e1' e2' e3')
-tcExpr p e@(UnaryMinus ref e1) = do
+tcExpr p e@(UnaryMinus e1) = do
   (ps, ty) <- freshNumType
   (ps', e1') <- tcArg p "unary negation" (ppExpr 0 e) ps ty e1
-  return (ps', ty, UnaryMinus ref e1')
+  return (ps', ty, UnaryMinus e1')
 tcExpr p e@(Apply e1 e2) = do
   (ps, (alpha, beta), e1') <- tcExpr p e1 >>=-
     tcArrow p "application" (ppExpr 0 e $-$ text "Term:" <+> ppExpr 0 e1)
@@ -1150,7 +1150,7 @@ tcExpr p e@(RightSection op e1) = do
     tcBinary p "right section" (ppExpr 0 e $-$ text "Operator:" <+> ppOp op)
   (ps', e1') <- tcArg p "right section" (ppExpr 0 e) ps beta e1
   return (ps', TypeArrow alpha gamma, RightSection op' e1')
-tcExpr p (Lambda ref ts e) = do
+tcExpr p (Lambda ts e) = do
   fs <- computeFsEnv
   (pss, tys, ts', ps, ty, e')<- withLocalValueEnv $ do
     bindLambdaVars ts
@@ -1159,7 +1159,7 @@ tcExpr p (Lambda ref ts e) = do
     return (pss, tys, ts', ps, ty, e')
   ps' <- reducePredSet p "expression" (ppExpr 0 e') (Set.unions $ ps : pss)
   checkSkolems p "Expression" (ppExpr 0) fs ps' (foldr TypeArrow ty tys)
-    (Lambda ref ts' e')
+    (Lambda ts' e')
 tcExpr p (Let ds e) = do
   fs <- computeFsEnv
   (ps, ds', ps', ty, e') <- withLocalValueEnv $ do
@@ -1177,17 +1177,17 @@ tcExpr p (Do sts e) = do
     (ps', e') <- tcExpr p e >>- unify p "statement" (ppExpr 0 e) ps ty
     return (sts', ty, ps', e')
   checkSkolems p "Expression" (ppExpr 0) fs ps' ty (Do sts' e')
-tcExpr p e@(IfThenElse ref e1 e2 e3) = do
+tcExpr p e@(IfThenElse e1 e2 e3) = do
   (ps, e1') <- tcArg p "expression" (ppExpr 0 e) emptyPredSet boolType e1
   (ps', ty, e2') <- tcExpr p e2
   (ps'', e3') <- tcArg p "expression" (ppExpr 0 e) (ps `Set.union` ps') ty e3
-  return (ps'', ty, IfThenElse ref e1' e2' e3')
-tcExpr p (Case ref ct e as) = do
+  return (ps'', ty, IfThenElse e1' e2' e3')
+tcExpr p (Case ct e as) = do
   (ps, tyLhs, e') <- tcExpr p e
   tyRhs <- freshTypeVar
   fs <- computeFsEnv
   (ps', as') <- mapAccumM (tcAlt (ct == Rigid) fs tyLhs tyRhs) ps as
-  return (ps', tyRhs, Case ref ct e' as')
+  return (ps', tyRhs, Case ct e' as')
 
 tcArg :: Position -> String -> Doc -> PredSet -> Type -> Expression a
       -> TCM (PredSet, Expression PredType)
@@ -1214,38 +1214,38 @@ tcAltern poly fs tyLhs p t rhs = do
 
 tcQual :: Position -> PredSet -> Statement a
        -> TCM (PredSet, Statement PredType)
-tcQual p ps (StmtExpr ref e) = do
+tcQual p ps (StmtExpr e) = do
   (ps', e') <- tcExpr p e >>- unify p "guard" (ppExpr 0 e) ps boolType
-  return (ps', StmtExpr ref e')
+  return (ps', StmtExpr e')
 tcQual _ ps (StmtDecl ds) = do
   (ps', ds') <- tcDecls ds
   return (ps `Set.union` ps', StmtDecl ds')
-tcQual p ps q@(StmtBind ref t e) = do
+tcQual p ps q@(StmtBind t e) = do
   alpha <- freshTypeVar
   (ps', e') <- tcArg p "generator" (ppStmt q) ps (listType alpha) e
   bindLambdaVars t
   (ps'', t') <- tcPatternArg False p "generator" (ppStmt q) ps' alpha t
-  return (ps'', StmtBind ref t' e')
+  return (ps'', StmtBind t' e')
 
 tcStmt :: Position -> PredSet -> Maybe Type -> Statement a
        -> TCM ((PredSet, Maybe Type), Statement PredType)
-tcStmt p ps mTy (StmtExpr ref e) = do
+tcStmt p ps mTy (StmtExpr e) = do
   (ps', ty) <- maybe freshMonadType (return . (,) emptyPredSet) mTy
   alpha <- freshTypeVar
   (ps'', e') <- tcExpr p e >>-
     unify p "statement" (ppExpr 0 e) (ps `Set.union` ps') (applyType ty [alpha])
-  return ((ps'', Just ty), StmtExpr ref e')
+  return ((ps'', Just ty), StmtExpr e')
 tcStmt _ ps mTy (StmtDecl ds) = do
   (ps', ds') <- tcDecls ds
   return ((ps `Set.union` ps', mTy), StmtDecl ds')
-tcStmt p ps mTy st@(StmtBind ref t e) = do
+tcStmt p ps mTy st@(StmtBind t e) = do
   (ps', ty) <- maybe freshMonadType (return . (,) emptyPredSet) mTy
   alpha <- freshTypeVar
   (ps'', e') <-
     tcArg p "statement" (ppStmt st) (ps `Set.union` ps') (applyType ty [alpha]) e
   bindLambdaVars t
   (ps''', t') <- tcPatternArg False p "statement" (ppStmt st) ps'' alpha t
-  return ((ps''', Just ty), StmtBind ref t' e')
+  return ((ps''', Just ty), StmtBind t' e')
 
 tcInfixOp :: InfixOp a -> TCM (PredSet, Type, InfixOp PredType)
 tcInfixOp (InfixOp _ op) = do

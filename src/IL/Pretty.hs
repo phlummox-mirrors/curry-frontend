@@ -101,9 +101,9 @@ ppAlt (Alt pat expr) = sep
   [ppConstrTerm pat <+> text "->", nest altIndent (ppExpr 0 expr)]
 
 ppLiteral :: Literal -> Doc
-ppLiteral (Char  _ c) = text (show c)
-ppLiteral (Int   _ i) = integer i
-ppLiteral (Float _ f) = double f
+ppLiteral (Char  c) = text (show c)
+ppLiteral (Int   i) = integer i
+ppLiteral (Float f) = double f
 
 ppConstrTerm :: ConstrTerm -> Doc
 ppConstrTerm (LiteralPattern             l) = ppLiteral l
@@ -125,7 +125,7 @@ ppExpr p (Apply (Apply (Constructor c _) e1) e2)
   | isQInfixOp c = ppInfixApp p e1 c e2
 ppExpr p (Apply      e1 e2) = parenIf (p > 2) $ sep
   [ppExpr 2 e1, nest exprIndent (ppExpr 3 e2)]
-ppExpr p (Case _ ev e alts) = parenIf (p > 0) $
+ppExpr p (Case   ev e alts) = parenIf (p > 0) $
   text "case" <+> ppEval ev <+> ppExpr 0 e <+> text "of"
   $$ nest caseIndent (vcat $ map ppAlt alts)
   where ppEval Rigid = text "rigid"

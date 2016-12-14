@@ -352,10 +352,10 @@ checkPattern (InfixPattern     a p1 f p2) = checkPattern
                                             (ConstructorPattern a f [p1, p2])
 checkPattern (ParenPattern             p) = checkPattern p
 checkPattern (RecordPattern       _ _ fs) = mapM_ (checkField checkPattern) fs
-checkPattern (TuplePattern          _ ps) = mapM_ checkPattern ps
-checkPattern (ListPattern         _ _ ps) = mapM_ checkPattern ps
+checkPattern (TuplePattern            ps) = mapM_ checkPattern ps
+checkPattern (ListPattern           _ ps) = mapM_ checkPattern ps
 checkPattern (AsPattern              v p) = checkShadowing v >> checkPattern p
-checkPattern (LazyPattern            _ p) = checkPattern p
+checkPattern (LazyPattern              p) = checkPattern p
 checkPattern (FunctionPattern     _ _ ps) = mapM_ checkPattern ps
 checkPattern (InfixFuncPattern a p1 f p2) = checkPattern
                                             (FunctionPattern a f [p1, p2])
@@ -385,21 +385,21 @@ checkExpr (Record           _ _ fs) = mapM_ (checkField checkExpr) fs
 checkExpr (RecordUpdate       e fs) = do
   checkExpr e
   mapM_ (checkField checkExpr) fs
-checkExpr (Tuple              _ es) = mapM_ checkExpr es
-checkExpr (List             _ _ es) = mapM_ checkExpr es
-checkExpr (ListCompr       _ e sts) = checkStatements sts e
+checkExpr (Tuple                es) = mapM_ checkExpr es
+checkExpr (List               _ es) = mapM_ checkExpr es
+checkExpr (ListCompr         e sts) = checkStatements sts e
 checkExpr (EnumFrom              e) = checkExpr e
 checkExpr (EnumFromThen      e1 e2) = mapM_ checkExpr [e1, e2]
 checkExpr (EnumFromTo        e1 e2) = mapM_ checkExpr [e1, e2]
 checkExpr (EnumFromThenTo e1 e2 e3) = mapM_ checkExpr [e1, e2, e3]
-checkExpr (UnaryMinus          _ e) = checkExpr e
+checkExpr (UnaryMinus            e) = checkExpr e
 checkExpr (Apply             e1 e2) = mapM_ checkExpr [e1, e2]
 checkExpr (InfixApply     e1 op e2) = do
   visitQId (opName op)
   mapM_ checkExpr [e1, e2]
 checkExpr (LeftSection         e _) = checkExpr e
 checkExpr (RightSection        _ e) = checkExpr e
-checkExpr (Lambda           _ ps e) = inNestedScope $ do
+checkExpr (Lambda             ps e) = inNestedScope $ do
   mapM_ checkPattern ps
   mapM_ (insertPattern False) ps
   checkExpr e
@@ -409,8 +409,8 @@ checkExpr (Let                ds e) = inNestedScope $ do
   checkExpr e
   reportUnusedVars
 checkExpr (Do                sts e) = checkStatements sts e
-checkExpr (IfThenElse   _ e1 e2 e3) = mapM_ checkExpr [e1, e2, e3]
-checkExpr (Case        _ ct e alts) = do
+checkExpr (IfThenElse     e1 e2 e3) = mapM_ checkExpr [e1, e2, e3]
+checkExpr (Case          ct e alts) = do
   checkExpr e
   mapM_ checkAlt alts
   checkCaseAlts ct alts
@@ -423,9 +423,9 @@ checkStatements (s:ss) e = inNestedScope $ do
   reportUnusedVars
 
 checkStatement :: Statement () -> WCM ()
-checkStatement (StmtExpr   _ e) = checkExpr e
-checkStatement (StmtDecl    ds) = checkLocalDeclGroup ds
-checkStatement (StmtBind _ p e) = do
+checkStatement (StmtExpr   e) = checkExpr e
+checkStatement (StmtDecl  ds) = checkLocalDeclGroup ds
+checkStatement (StmtBind p e) = do
   checkPattern p >> insertPattern False p
   checkExpr e
 
@@ -591,13 +591,13 @@ checkPatternMatching pats = do
 -- All other patterns like as-patterns, list patterns and alike are desugared.
 simplifyPat :: Pattern () -> WCM (Pattern ())
 simplifyPat p@(LiteralPattern      _ l) = return $ case l of
-  String r s -> simplifyListPattern $ map (LiteralPattern () . Char r) s
-  _          -> p
-simplifyPat (NegativePattern     a _ l) = return $ LiteralPattern a (negateLit l)
+  String s -> simplifyListPattern $ map (LiteralPattern () . Char) s
+  _        -> p
+simplifyPat (NegativePattern       a l) = return $ LiteralPattern a (negateLit l)
   where
-  negateLit (Int   i n) = Int   i (-n)
-  negateLit (Float r d) = Float r (-d)
-  negateLit x           = x
+  negateLit (Int   n) = Int   (-n)
+  negateLit (Float d) = Float (-d)
+  negateLit x         = x
 simplifyPat v@(VariablePattern     _ _) = return v
 simplifyPat (ConstructorPattern a c ps) =
   ConstructorPattern a c `liftM` mapM simplifyPat ps
@@ -611,12 +611,12 @@ simplifyPat (RecordPattern      _ c fs) = do
   where
     getPattern fs' l' =
       fromMaybe wildPat (lookup l' [(unqualify l, p) | (l, p) <- fs'])
-simplifyPat (TuplePattern         _ ps) =
+simplifyPat (TuplePattern           ps) =
   ConstructorPattern () (qTupleId (length ps)) `liftM` mapM simplifyPat ps
-simplifyPat (ListPattern       () _ ps) =
+simplifyPat (ListPattern          _ ps) =
   simplifyListPattern `liftM` mapM simplifyPat ps
 simplifyPat (AsPattern             _ p) = simplifyPat p
-simplifyPat (LazyPattern           _ _) = return wildPat
+simplifyPat (LazyPattern             _) = return wildPat
 simplifyPat (FunctionPattern     _ _ _) = return wildPat
 simplifyPat (InfixFuncPattern  _ _ _ _) = return wildPat
 
@@ -809,9 +809,9 @@ tidyPat p@(LiteralPattern        _ _) = return p
 tidyPat p@(VariablePattern       _ _) = return p
 tidyPat p@(ConstructorPattern _ c ps)
   | isQTupleId c                      =
-    TuplePattern noRef `liftM` mapM tidyPat ps
+    TuplePattern `liftM` mapM tidyPat ps
   | c == qConsId && isFiniteList p    =
-    ListPattern () [] `liftM` mapM tidyPat (unwrapFinite p)
+    ListPattern () `liftM` mapM tidyPat (unwrapFinite p)
   | c == qConsId                      = unwrapInfinite p
   | otherwise                         =
     ConstructorPattern () c `liftM` mapM tidyPat ps
@@ -911,7 +911,7 @@ warnMissingPattern p loc pats = posMessage p
     | otherwise = ppPats <+> text "with" <+> hsep (map ppCons cs)
     where ppPats = hsep (map (ppPattern 2) ps)
   ppCons (i, lits) = ppIdent i <+> text "`notElem`"
-                 <+> ppExpr 0 (List () [] (map (Literal ()) lits))
+                 <+> ppExpr 0 (List () (map (Literal ()) lits))
 
 -- |Warning message for unreachable patterns.
 -- To shorten the output only the first 'maxPattern' are printed,
@@ -1026,10 +1026,10 @@ insertPattern fp (InfixPattern     a p1 c p2)
   = insertPattern fp (ConstructorPattern a c [p1, p2])
 insertPattern fp (ParenPattern             p) = insertPattern fp p
 insertPattern fp (RecordPattern       _ _ fs) = mapM_ (insertFieldPattern fp) fs
-insertPattern fp (TuplePattern          _ ps) = mapM_ (insertPattern fp) ps
-insertPattern fp (ListPattern         _ _ ps) = mapM_ (insertPattern fp) ps
+insertPattern fp (TuplePattern            ps) = mapM_ (insertPattern fp) ps
+insertPattern fp (ListPattern           _ ps) = mapM_ (insertPattern fp) ps
 insertPattern fp (AsPattern              v p) = insertVar v >> insertPattern fp p
-insertPattern fp (LazyPattern            _ p) = insertPattern fp p
+insertPattern fp (LazyPattern              p) = insertPattern fp p
 insertPattern _  (FunctionPattern     _ f ps) = do
   visitQId f
   mapM_ (insertPattern True) ps

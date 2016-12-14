@@ -285,13 +285,13 @@ trExpr (Record     _ c fs) = CRecConstr <$> trQual c
                                         <*> mapM (trField trExpr) fs
 trExpr (RecordUpdate e fs) = CRecUpdate <$> trExpr e
                                         <*> mapM (trField trExpr) fs
-trExpr (Tuple        _ es) =
+trExpr (Tuple          es) =
   trExpr $ apply (Variable undefined $ qTupleId $ length es) es
-trExpr (List       _ _ es) =
+trExpr (List         _ es) =
   trExpr $ foldr (Apply . Apply (Constructor undefined qConsId))
                  (Constructor undefined qNilId)
                  es
-trExpr (ListCompr  _ e ds) = inNestedScope $ flip CListComp
+trExpr (ListCompr    e ds) = inNestedScope $ flip CListComp
                              <$> mapM trStatement ds <*> trExpr e
 trExpr (EnumFrom              e) =
   trExpr $ apply (Variable undefined qEnumFromId) [e]
@@ -301,23 +301,23 @@ trExpr (EnumFromTo        e1 e2) =
   trExpr $ apply (Variable undefined qEnumFromToId) [e1, e2]
 trExpr (EnumFromThenTo e1 e2 e3) =
   trExpr $ apply (Variable undefined qEnumFromThenToId) [e1, e2, e3]
-trExpr (UnaryMinus          _ e) =
+trExpr (UnaryMinus            e) =
   trExpr $ apply (Variable undefined qNegateId) [e]
 trExpr (Apply             e1 e2) = CApply <$> trExpr e1 <*> trExpr e2
 trExpr (InfixApply     e1 op e2) = trExpr $ apply (infixOp op) [e1, e2]
 trExpr (LeftSection        e op) = trExpr $ apply (infixOp op) [e]
 trExpr (RightSection       op e) =
   trExpr $ apply (Variable undefined qFlip) [infixOp op, e]
-trExpr (Lambda           _ ps e) = inNestedScope $
+trExpr (Lambda             ps e) = inNestedScope $
                                    CLambda <$> mapM trPat ps <*> trExpr e
 trExpr (Let                ds e) = inNestedScope $
                                    CLetDecl <$> trLocalDecls ds <*> trExpr e
 trExpr (Do                 ss e) = inNestedScope $
                                    (\ss' e' -> CDoExpr (ss' ++ [CSExpr e']))
                                    <$> mapM trStatement ss <*> trExpr e
-trExpr (IfThenElse   _ e1 e2 e3) =
+trExpr (IfThenElse     e1 e2 e3) =
   trExpr $ apply (Variable undefined qIfThenElseId) [e1, e2, e3]
-trExpr (Case          _ ct e bs) = CCase (cvCaseType ct)
+trExpr (Case            ct e bs) = CCase (cvCaseType ct)
                                    <$> trExpr e <*> mapM trAlt bs
 
 cvCaseType :: CaseType -> CCaseType
@@ -325,9 +325,9 @@ cvCaseType Flex  = CFlex
 cvCaseType Rigid = CRigid
 
 trStatement :: Statement PredType -> GAC CStatement
-trStatement (StmtExpr   _ e) = CSExpr     <$> trExpr e
-trStatement (StmtDecl    ds) = CSLet      <$> trLocalDecls ds
-trStatement (StmtBind _ p e) = flip CSPat <$> trExpr e <*> trPat p
+trStatement (StmtExpr   e) = CSExpr     <$> trExpr e
+trStatement (StmtDecl  ds) = CSLet      <$> trLocalDecls ds
+trStatement (StmtBind p e) = flip CSPat <$> trExpr e <*> trPat p
 
 trAlt :: Alt PredType -> GAC (CPattern, CRhs)
 trAlt (Alt _ p rhs) = inNestedScope $ (,) <$> trPat p <*> trRhs rhs
@@ -340,15 +340,15 @@ trPat (InfixPattern    a p1 op p2) = trPat $ ConstructorPattern a op [p1, p2]
 trPat (ParenPattern             p) = trPat p
 trPat (RecordPattern       _ c fs) = CPRecord <$> trQual c
                                               <*> mapM (trField trPat) fs
-trPat (TuplePattern          _ ps) =
+trPat (TuplePattern            ps) =
   trPat $ ConstructorPattern undefined (qTupleId $ length ps) ps
-trPat (ListPattern         _ _ ps) = trPat $
+trPat (ListPattern           _ ps) = trPat $
   foldr (\x1 x2 -> ConstructorPattern undefined qConsId [x1, x2])
         (ConstructorPattern undefined qNilId [])
         ps
-trPat (NegativePattern      a _ l) = trPat $ LiteralPattern a $ negateLiteral l
+trPat (NegativePattern        a l) = trPat $ LiteralPattern a $ negateLiteral l
 trPat (AsPattern              v p) = CPAs <$> getVarIndex v<*> trPat p
-trPat (LazyPattern            _ p) = CPLazy <$> trPat p
+trPat (LazyPattern              p) = CPLazy <$> trPat p
 trPat (FunctionPattern     _ f ps) = CPFuncComb <$> trQual f <*> mapM trPat ps
 trPat (InfixFuncPattern a p1 f p2) = trPat (FunctionPattern a f [p1, p2])
 
@@ -356,15 +356,15 @@ trField :: (a -> GAC b) -> Field a -> GAC (CField b)
 trField act (Field _ l x) = (,) <$> trQual l <*> act x
 
 negateLiteral :: Literal -> Literal
-negateLiteral (Int    v i) = Int   v  (-i)
-negateLiteral (Float p' f) = Float p' (-f)
-negateLiteral _            = internalError "GenAbstractCurry.negateLiteral"
+negateLiteral (Int    i) = Int   (-i)
+negateLiteral (Float  f) = Float (-f)
+negateLiteral _          = internalError "GenAbstractCurry.negateLiteral"
 
 cvLiteral :: Literal -> CLiteral
-cvLiteral (Char   _ c) = CCharc   c
-cvLiteral (Int    _ i) = CIntc    i
-cvLiteral (Float  _ f) = CFloatc  f
-cvLiteral (String _ s) = CStringc s
+cvLiteral (Char   c) = CCharc   c
+cvLiteral (Int    i) = CIntc    i
+cvLiteral (Float  f) = CFloatc  f
+cvLiteral (String s) = CStringc s
 
 trQual :: QualIdent -> GAC QName
 trQual qid
