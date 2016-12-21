@@ -3,7 +3,7 @@
     Description :  Auxiliary functions
     Copyright   :  (c) 2001 - 2003 Wolfgang Lux
                        2011 - 2015 Björn Peemöler
-    License     :  OtherLicense
+    License     :  BSD-3-clause
 
     Maintainer  :  bjp@informatik.uni-kiel.de
     Stability   :  experimental

@@ -3,7 +3,7 @@
     Description :  Environment of type constructors
     Copyright   :  (c) 2002 - 2004, Wolfgang Lux
                        2011       , Björn Peemöller
-    License     :  OtherLicense
+    License     :  BSD-3-clause
 
     Maintainer  :  bjp@informatik.uni-kiel.de
     Stability   :  experimental

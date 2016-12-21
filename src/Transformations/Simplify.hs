@@ -4,7 +4,7 @@
     Copyright   :  (c) 2003        Wolfgang Lux
                                    Martin Engelke
                        2011 - 2015 Björn Peemöller
-    License     :  OtherLicense
+    License     :  BSD-3-clause
 
     Maintainer  :  bjp@informatik.uni-kiel.de
     Stability   :  experimental

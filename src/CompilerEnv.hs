@@ -2,7 +2,7 @@
     Module      :  $Header$
     Description :  Environment containing the module's information
     Copyright   :  (c) 2011 - 2015 Björn Peemöller
-    License     :  OtherLicense
+    License     :  BSD-3-clause
 
     Maintainer  :  bjp@informatik.uni-kiel.de
     Stability   :  experimental

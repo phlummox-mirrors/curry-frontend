@@ -3,7 +3,7 @@
     Description :  Generating HTML documentation
     Copyright   :  (c) 2011 - 2016, Björn Peemöller
                        2016       , Jan Tikovsky
-    License     :  OtherLicense
+    License     :  BSD-3-clause
 
     Maintainer  :  bjp@informatik.uni-kiel.de
     Stability   :  experimental

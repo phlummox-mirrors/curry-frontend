@@ -2,7 +2,7 @@
     Module      :  $Header$
     Description :  Type substitution
     Copyright   :  (c) 2003 Wolfgang Lux
-    License     :  OtherLicense
+    License     :  BSD-3-clause
 
     Maintainer  :  bjp@informatik.uni-kiel.de
     Stability   :  experimental

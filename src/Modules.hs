@@ -6,7 +6,7 @@
                        2007        Sebastian Fischer
                        2011 - 2015 Björn Peemöller
                        2016        Jan Tikovsky
-    License     :  OtherLicense
+    License     :  BSD-3-clause
 
     Maintainer  :  bjp@informatik.uni-kiel.de
     Stability   :  experimental

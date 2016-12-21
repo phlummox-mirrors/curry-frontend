@@ -2,7 +2,7 @@
     Module      :  $Header$
     Description :  Construction and output of compiler messages
     Copyright   :  (c) 2011 - 2016 Björn Peemöller
-    License     :  OtherLicense
+    License     :  BSD-3-clause
 
     Maintainer  :  bjp@informatik.uni-kiel.de
     Stability   :  experimental
