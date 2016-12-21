@@ -5,7 +5,7 @@
                        2005        Martin Engelke
                        2007        Sebastian Fischer
                        2011 - 2013 Björn Peemöller
-    License     :  OtherLicense
+    License     :  BSD-3-clause
 
     Maintainer  :  bjp@informatik.uni-kiel.de
     Stability   :  experimental

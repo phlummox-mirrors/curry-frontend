@@ -2,7 +2,7 @@
     Module      :  $Header$
     Description :  General substitution implementation
     Copyright   :  (c) 2002 Wolfgang Lux
-    License     :  OtherLicense
+    License     :  BSD-3-clause
 
     Maintainer  :  bjp@informatik.uni-kiel.de
     Stability   :  experimental

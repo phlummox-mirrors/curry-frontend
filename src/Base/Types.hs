@@ -4,7 +4,7 @@
     Copyright   :  (c) 2002 - 2004 Wolfgang Lux
                                    Martin Engelke
                        2015        Jan Tikovsky
-    License     :  OtherLicense
+    License     :  BSD-3-clause
 
     Maintainer  :  bjp@informatik.uni-kiel.de
     Stability   :  experimental

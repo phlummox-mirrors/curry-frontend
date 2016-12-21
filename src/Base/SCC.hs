@@ -2,7 +2,7 @@
     Module      :  $Header$
     Description :  Computation of strongly connected components
     Copyright   :  (c) 2000, 2002 - 2003 Wolfgang Lux
-    License     :  OtherLicense
+    License     :  BSD-3-clause
 
     Maintainer  :  bjp@informatik.uni-kiel.de
     Stability   :  experimental

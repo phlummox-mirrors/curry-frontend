@@ -3,7 +3,7 @@
     Description :  Type computation of Curry expressions
     Copyright   :  (c) 2003 - 2006 Wolfgang Lux
                        2014 - 2015 Jan Tikovsky
-    License     :  OtherLicense
+    License     :  BSD-3-clause
 
     Maintainer  :  bjp@informatik.uni-kiel.de
     Stability   :  experimental

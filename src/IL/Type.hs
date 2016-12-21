@@ -3,7 +3,7 @@
     Description :  Definition of the intermediate language (IL)
     Copyright   :  (c) 1999 - 2003 Wolfgang Lux
                                    Martin Engelke
-    License     :  OtherLicense
+    License     :  BSD-3-clause
 
     Maintainer  :  bjp@informatik.uni-kiel.de
     Stability   :  experimental

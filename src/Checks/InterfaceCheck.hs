@@ -3,7 +3,7 @@
     Description :  Checks consistency of interface files
     Copyright   :  (c) 2000 - 2007 Wolfgang Lux
                        2015        Jan Tikovsky
-    License     :  OtherLicense
+    License     :  BSD-3-clause
 
     Maintainer  :  bjp@informatik.uni-kiel.de
     Stability   :  experimental

@@ -10,7 +10,7 @@ Description:   The Curry Frontend consists of the executable program "cymake".
                the Muenster Curry Compiler
                (<http://danae.uni-muenster.de/~lux/curry/>)
 Category:      Language
-License:       OtherLicense
+License:       BSD-3-clause
 License-File:  LICENSE
 Author:        Wolfgang Lux, Martin Engelke, Bernd Brassel, Holger Siegel,
                Bjoern Peemoeller

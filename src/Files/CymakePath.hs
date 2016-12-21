@@ -2,7 +2,7 @@
     Module      :  $Header$
     Description :  File pathes
     Copyright   :  (c) 2011, Björn Peemöller (bjp@informatik.uni-kiel.de)
-    License     :  OtherLicense
+    License     :  BSD-3-clause
 
     Maintainer  :  bjp@informatik.uni-kiel.de
     Stability   :  experimental
