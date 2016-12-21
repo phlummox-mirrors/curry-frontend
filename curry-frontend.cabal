@@ -41,7 +41,7 @@ Library
   Build-Depends:
       base == 4.*
     , containers
-    , curry-base == 0.4.1
+    , curry-base == 0.4.2
     , directory
     , filepath
     , mtl
