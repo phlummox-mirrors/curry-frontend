@@ -3,7 +3,7 @@ Version:       0.4.2
 Cabal-Version: >= 1.10
 Synopsis:      Compile the functional logic language Curry to several
                intermediate formats
-Description:   The Curry Frontend consists of the executable program "cymake".
+Description:   The Curry Frontend consists of the executable program "curry-frontend".
                It is used by various backends to compile Curry programs to
                an intermediate representation.
                The code is a stripped-down version of an early version of
@@ -109,7 +109,7 @@ Library
     Paths_curry_frontend
   ghc-options:       -Wall
 
-Executable cymake
+Executable curry-frontend
   hs-source-dirs: src
   Main-is:        cymake.hs
   default-language:  Haskell2010
