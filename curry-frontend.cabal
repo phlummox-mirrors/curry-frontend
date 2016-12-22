@@ -3,7 +3,8 @@ Version:       0.4.2
 Cabal-Version: >= 1.10
 Synopsis:      Compile the functional logic language Curry to several
                intermediate formats
-Description:   The Curry Frontend consists of the executable program "curry-frontend".
+Description:   The Curry front end consists of the executable program
+               "curry-frontend".
                It is used by various backends to compile Curry programs to
                an intermediate representation.
                The code is a stripped-down version of an early version of
@@ -11,6 +12,8 @@ Description:   The Curry Frontend consists of the executable program "curry-fron
                (<http://danae.uni-muenster.de/curry/>)
                which has been extended to produce different intermediate
                representations.
+               For further information, please check
+               <http://currry-language.org>
 Category:      Language
 License:       BSD-3-clause
 License-File:  LICENSE
