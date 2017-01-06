@@ -15,7 +15,7 @@ Description:   The Curry front end consists of the executable program
                For further information, please check
                <http://curry-language.org>
 Category:      Language
-License:       BSD-3-clause
+License:       BSD3
 License-File:  LICENSE
 Author:        Wolfgang Lux, Martin Engelke, Bernd Brassel, Holger Siegel,
                Bjoern Peemoeller
