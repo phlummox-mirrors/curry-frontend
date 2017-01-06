@@ -13,7 +13,7 @@ Description:   The Curry front end consists of the executable program
                which has been extended to produce different intermediate
                representations.
                For further information, please check
-               <http://currry-language.org>
+               <http://curry-language.org>
 Category:      Language
 License:       BSD-3-clause
 License-File:  LICENSE
