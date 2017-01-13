@@ -26,7 +26,7 @@ import Curry.Base.Position (Position)
 import Curry.Base.Pretty
 import Curry.Files.Filenames
 import Curry.Files.PathUtils
-import Curry.Syntax (ModulePragma (..), Tool (CYMAKE))
+import Curry.Syntax (ModulePragma (..), Tool (CYMAKE, FRONTEND))
 
 import Base.Messages
 
@@ -110,8 +110,9 @@ adjustOptions final opts
 
 
 processPragmas :: Options -> [ModulePragma] -> CYIO Options
-processPragmas opts0 ps = foldM processPragma opts0
-                          [ (p, s) | OptionsPragma p (Just CYMAKE) s <- ps ]
+processPragmas opts0 ps = foldM processPragma opts0 $
+  [ (p, s) | OptionsPragma p (Just FRONTEND) s <- ps ] ++
+    [ (p, s) | OptionsPragma p (Just CYMAKE) s <- ps ]
   where
   processPragma opts (p, s)
     | not (null unknownFlags)
@@ -206,12 +207,12 @@ cancelMissing act f = liftIO (act f) >>= \res -> case res of
 
 errUnknownOptions :: Position -> [String] -> Message
 errUnknownOptions p errs = posMessage p $
-  text "Unknown flag(s) in {-# OPTIONS_CYMAKE #-} pragma:"
+  text "Unknown flag(s) in {-# OPTIONS_FRONTEND #-} pragma:"
   <+> sep (punctuate comma $ map text errs)
 
 errIllegalOption :: Position -> String -> Message
 errIllegalOption p err = posMessage p $
-  text "Illegal option in {-# OPTIONS_CYMAKE #-} pragma:" <+> text err
+  text "Illegal option in {-# OPTIONS_FRONTEND #-} pragma:" <+> text err
 
 errMissing :: String -> String -> Message
 errMissing what which = message $ sep $ map text
