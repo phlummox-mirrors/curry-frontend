@@ -154,6 +154,7 @@ data TargetType
 -- |Warnings flags
 data WarnFlag
   = WarnMultipleImports      -- ^ Warn for multiple imports
+  | WarnUnusedImports        -- ^ Warn for unused imports
   | WarnDisjoinedRules       -- ^ Warn for disjoined function rules
   | WarnUnusedGlobalBindings -- ^ Warn for unused global bindings
   | WarnUnusedBindings       -- ^ Warn for unused local bindings
@@ -176,6 +177,8 @@ warnFlags :: [(WarnFlag, String, String)]
 warnFlags =
   [ ( WarnMultipleImports     , "multiple-imports"
     , "multiple imports"           )
+  , ( WarnUnusedImports     , "unused-imports"
+    , "unused imports"             )
   , ( WarnDisjoinedRules      , "disjoined-rules"
     , "disjoined function rules"   )
   , ( WarnUnusedGlobalBindings, "unused-global-bindings"

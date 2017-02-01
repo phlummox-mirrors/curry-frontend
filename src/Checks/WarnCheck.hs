@@ -25,6 +25,8 @@ import           Data.Maybe
   (catMaybes, fromMaybe, listToMaybe)
 import           Data.List
   (intersect, intersectBy, nub, sort, unionBy)
+import qualified Data.Set            as Set    ( Set, empty, filter, insert
+                                               , notMember, null)
 
 import Curry.Base.Ident
 import Curry.Base.Position
@@ -42,7 +44,7 @@ import Base.Types
 import Base.Utils (findMultiples)
 import Env.ModuleAlias
 import Env.TypeConstructor (TCEnv, TypeInfo (..), lookupTC, qualLookupTC)
-import Env.Value (ValueEnv, ValueInfo (..), qualLookupValue)
+import Env.Value (ValueEnv, ValueInfo (..), qualLookupValue, lookupValue)
 
 import CompilerOpts
 
@@ -54,21 +56,30 @@ import CompilerOpts
 --   - idle case alternatives
 --   - overlapping case alternatives
 --   - non-adjacent function rules
+--   - unused imports
 warnCheck :: WarnOpts -> AliasEnv -> ValueEnv -> TCEnv -> Module -> [Message]
 warnCheck opts aEnv valEnv tcEnv (Module _ mid es is ds)
   = runOn (initWcState mid aEnv valEnv tcEnv (wnWarnFlags opts)) $ do
-      checkImports   is
       checkDeclGroup ds
       checkExports   es
+      checkImports   is
       checkMissingTypeSignatures ds
       checkModuleAlias is
 
 type ScopeEnv = NestEnv IdInfo
 
+-- Identifiers that have been used somewhere
+data UsedItems = UsedItems { usedVals  :: Set.Set QualIdent   -- values
+                           , usedTys   :: Set.Set QualIdent   -- types
+                           , usedMods  :: Set.Set ModuleIdent -- complete modules
+                           , usedTyAll :: Set.Set QualIdent   -- complete types
+                           }
+
 -- Current state of generating warnings
 data WcState = WcState
   { moduleId    :: ModuleIdent
   , scope       :: ScopeEnv
+  , usedItems   :: UsedItems
   , aliasEnv    :: AliasEnv
   , valueEnv    :: ValueEnv
   , tyConsEnv   :: TCEnv
@@ -83,13 +94,73 @@ type WCM = State WcState
 
 initWcState :: ModuleIdent -> AliasEnv -> ValueEnv -> TCEnv -> [WarnFlag]
             -> WcState
-initWcState mid ae ve te wf = WcState mid emptyEnv ae ve te wf []
+initWcState mid ae ve te wf
+    = WcState mid emptyEnv ui ae ve te wf []
+  where
+    ui = UsedItems Set.empty Set.empty Set.empty Set.empty
 
 getModuleIdent :: WCM ModuleIdent
 getModuleIdent = gets moduleId
 
 modifyScope :: (ScopeEnv -> ScopeEnv) -> WCM ()
 modifyScope f = modify $ \s -> s { scope = f $ scope s }
+
+modifyUsedItems :: (UsedItems -> UsedItems) -> WCM ()
+modifyUsedItems f = modify $ \s -> s { usedItems = f $ usedItems s }
+
+valQual :: QualIdent -> WCM QualIdent
+valQual qid = if isQualified qid
+              then return qid
+              else do
+    ve <- gets valueEnv
+    return $ maybe qid f $ listToMaybe (lookupValue (unqualify qid) ve)
+  where
+    f (DataConstructor vi _ _ _)  = vi
+    f (NewtypeConstructor vi _ _) = vi
+    f (Value vi _ _)              = vi
+    f (Label vi _ _)              = vi
+
+tyQual :: QualIdent -> WCM QualIdent
+tyQual qid = if isQualified qid
+              then return qid
+              else do
+    te <- gets tyConsEnv
+    return $ maybe qid f $ listToMaybe (lookupTC (unqualify qid) te)
+  where
+    f (DataType ti _ _)     = ti
+    f (RenamingType ti _ _) = ti
+    f (AliasType ti _ _)    = ti
+
+addUsedValueItem :: QualIdent -> WCM ()
+addUsedValueItem qid = do
+  qid' <- valQual qid
+  modifyUsedItems $ \u -> u { usedVals = Set.insert qid' (usedVals u) }
+
+addUsedTypeItem :: QualIdent -> WCM ()
+addUsedTypeItem qid = do
+  qid' <- tyQual qid
+  modifyUsedItems $ \u -> u { usedTys = Set.insert qid' (usedTys u) }
+
+addUsedModuleItem :: ModuleIdent -> WCM ()
+addUsedModuleItem m = modifyUsedItems $
+  \u -> u { usedMods = Set.insert m (usedMods u) }
+
+addUsedTypeAllItem :: QualIdent -> WCM ()
+addUsedTypeAllItem qid = do
+  qid' <- tyQual qid
+  modifyUsedItems $ \u -> u { usedTyAll = Set.insert qid' (usedTyAll u) }
+
+getUsedValueItems :: WCM (Set.Set QualIdent)
+getUsedValueItems = gets (usedVals . usedItems)
+
+getUsedTypeItems :: WCM (Set.Set QualIdent)
+getUsedTypeItems = gets (usedTys . usedItems)
+
+getUsedModuleItems :: WCM (Set.Set ModuleIdent)
+getUsedModuleItems = gets (usedMods . usedItems)
+
+getUsedTyAll :: WCM (Set.Set QualIdent)
+getUsedTyAll = gets (usedTyAll . usedItems)
 
 warnFor :: WarnFlag -> WCM () -> WCM ()
 warnFor f act = do
@@ -124,20 +195,30 @@ checkExports Nothing                      = ok
 checkExports (Just (Exporting _ exports)) = do
   mapM_ visitExport exports
   reportUnusedGlobalVars
+  mapM_ insertExports exports
     where
       visitExport (Export qid) = visitQId qid
       visitExport _            = ok
+
+      insertExports (Export         qid    ) = addUsedValueItem qid
+      insertExports (ExportTypeWith qid ids) = do
+        addUsedTypeItem qid
+        mapM_ (addUsedValueItem . qualifyLike qid) ids
+      insertExports (ExportModule m        ) = addUsedModuleItem m
+      insertExports (ExportTypeAll qid     ) = addUsedTypeAllItem qid
 
 -- ---------------------------------------------------------------------------
 -- checkImports
 -- ---------------------------------------------------------------------------
 
--- Check import declarations for multiply imported modules and multiply
+-- Check import declarations for multiple imported modules and multiple
 -- imported/hidden values.
 -- The function uses a map of the already imported or hidden entities to
 -- collect the entities throughout multiple import statements.
 checkImports :: [ImportDecl] -> WCM ()
-checkImports = warnFor WarnMultipleImports . foldM_ checkImport Map.empty
+checkImports importDecls = do
+    warnFor WarnMultipleImports . foldM_ checkImport Map.empty $ importDecls
+    warnFor WarnUnusedImports . mapM_ checkUnusedImport $ importDecls
   where
   checkImport env (ImportDecl pos mid _ _ spec) = case Map.lookup mid env of
     Nothing   -> setImportSpec env mid $ fromImpSpec spec
@@ -178,6 +259,39 @@ checkImports = warnFor WarnMultipleImports . foldM_ checkImport Map.empty
   impName (ImportTypeAll    t) = t
   impName (ImportTypeWith t _) = t
 
+checkUnusedImport :: ImportDecl -> WCM ()
+checkUnusedImport (ImportDecl p mid _ _ Nothing) = do
+  let ch  = Set.null . Set.filter (isLocalIdent mid)
+      pre = moduleName mid /= "Prelude"
+  vUsed <- ch <$> getUsedValueItems
+  tUsed <- ch <$> getUsedTypeItems
+  mUsed <- Set.notMember mid <$> getUsedModuleItems
+  when (vUsed && tUsed && mUsed && pre) $ report (warnUnusedImport p mid)
+checkUnusedImport (ImportDecl _ mid _ _ (Just (Importing p is))) = do
+  mUsed <- Set.notMember mid <$> getUsedModuleItems
+  when mUsed $ mapM_ (checkUnusedImportSpec p mid) is
+checkUnusedImport _ = ok
+
+checkUnusedImportSpec :: Position -> ModuleIdent -> Import -> WCM ()
+checkUnusedImportSpec p m (Import i)
+  = checkUnusedImportSpecItem p [getUsedValueItems, getUsedTypeItems] m i
+checkUnusedImportSpec p m (ImportTypeWith i [])
+  = checkUnusedImportSpecItem p [getUsedTypeItems, getUsedTyAll] m i
+checkUnusedImportSpec p m (ImportTypeWith _ is)
+  = mapM_ (checkUnusedImportSpecItem p [getUsedValueItems] m) is
+checkUnusedImportSpec p m (ImportTypeAll i)
+  = checkUnusedImportSpecItem p [getUsedTypeItems, getUsedTyAll] m i
+
+checkUnusedImportSpecItem :: Position
+                          -> [WCM (Set.Set QualIdent)]
+                          -> ModuleIdent
+                          -> Ident
+                          -> WCM ()
+checkUnusedImportSpecItem p getUsed m i = do
+  let qid = qualifyWith m i
+  used <- sequence getUsed
+  when (all (Set.notMember qid) used) $ report (warnUnusedImportSpec p qid)
+
 warnMultiplyImportedModule :: ModuleIdent -> Message
 warnMultiplyImportedModule mid = posMessage mid $ hsep $ map text
   ["Module", moduleName mid, "is imported more than once"]
@@ -192,6 +306,14 @@ warnMultiplyHiddenSymbol mid ident = posMessage ident $ hsep $ map text
   [ "Symbol", escName ident, "from module", moduleName mid
   , "is hidden more than once" ]
 
+warnUnusedImport :: Position -> ModuleIdent -> Message
+warnUnusedImport pos m = posMessage pos $ hsep $ map text
+  ["Unused import", escModuleName m]
+
+warnUnusedImportSpec :: Position -> QualIdent -> Message
+warnUnusedImportSpec pos ident = posMessage pos $ hsep $ map text
+  ["Unused import item", escName $ unqualify ident]
+
 -- ---------------------------------------------------------------------------
 -- checkDeclGroup
 -- ---------------------------------------------------------------------------
@@ -201,6 +323,7 @@ checkDeclGroup ds = do
   mapM_ insertDecl   ds
   mapM_ checkDecl    ds
   checkRuleAdjacency ds
+  mapM_ inspectDecl  ds
 
 checkLocalDeclGroup :: [Decl] -> WCM ()
 checkLocalDeclGroup ds = do
@@ -950,6 +1073,160 @@ insertPattern _ _ = ok
 
 insertFieldPattern :: Bool -> Field Pattern -> WCM ()
 insertFieldPattern fp (Field _ _ p) = insertPattern fp p
+
+-- ---------------------------------------------------------------------------
+-- For detecting unused imports, the following functions update the
+-- current check state by adding qualified identifiers occuring in declaration.
+
+inspectDecl :: Decl -> WCM ()
+inspectDecl (DataDecl     _ _  _ cs ) = mapM_ inspectConstrDecl cs
+inspectDecl (NewtypeDecl  _ _  _ nd ) = inspectNewConstrDecl nd
+inspectDecl (TypeDecl     _ _  _ ty ) = inspectTypeExpr ty
+inspectDecl (TypeSig      _ _  ty   ) = inspectTypeExpr ty
+inspectDecl (FunctionDecl   _  _ eqs) = mapM_ inspectEquation eqs
+inspectDecl (ForeignDecl _ _ _ _ ty ) = inspectTypeExpr ty
+inspectDecl (PatternDecl     _ p rh ) = do
+  inspectPattern p
+  inspectRhs rh
+inspectDecl _                         = ok
+
+inspectEquation :: Equation -> WCM ()
+inspectEquation (Equation _ lhs rhs) = do
+  inspectLhs lhs
+  inspectRhs rhs
+
+inspectLhs :: Lhs -> WCM ()
+inspectLhs (FunLhs _  ps  ) = mapM_ inspectPattern ps
+inspectLhs (OpLhs p1  _ p2) = mapM_ inspectPattern [p1, p2]
+inspectLhs (ApLhs lhs ps  ) = do
+  inspectLhs lhs
+  mapM_ inspectPattern ps
+
+inspectRhs :: Rhs -> WCM ()
+inspectRhs (SimpleRhs _ ex ds) = do
+  inspectExpression ex
+  mapM_ inspectDecl ds
+inspectRhs (GuardedRhs cs ds) = do
+  mapM_ inspectCondExpr cs
+  mapM_ inspectDecl ds
+
+inspectExpression :: Expression -> WCM ()
+inspectExpression (Literal          _     ) = ok
+inspectExpression (Variable         qid   ) = addUsedValueItem qid
+inspectExpression (Constructor      qid   ) = addUsedValueItem qid
+inspectExpression (Paren            ex    ) = inspectExpression ex
+inspectExpression (Typed            ex  ty) = do
+  inspectExpression ex
+  inspectTypeExpr ty
+inspectExpression (Record           qid fs) = do
+  addUsedValueItem qid
+  mapM_ inspectFieldExpression fs
+inspectExpression (RecordUpdate      ex fs) = do
+  inspectExpression ex
+  mapM_ inspectFieldExpression fs
+inspectExpression (Tuple          _  es   ) = mapM_ inspectExpression es
+inspectExpression (List           _  es   ) = mapM_ inspectExpression es
+inspectExpression (ListCompr      _  ex ss) = do
+  inspectExpression ex
+  mapM_ inspectStatement ss
+inspectExpression (EnumFrom       ex      ) = inspectExpression ex
+inspectExpression (EnumFromThen   e1 e2   ) = mapM_ inspectExpression [e1, e2]
+inspectExpression (EnumFromTo     e1 e2   ) = mapM_ inspectExpression [e1, e2]
+inspectExpression (EnumFromThenTo e1 e2 e3) = mapM_ inspectExpression [e1, e2, e3]
+inspectExpression (UnaryMinus     _  ex   ) = inspectExpression ex
+inspectExpression (Apply          e1 e2   ) = mapM_ inspectExpression [e1, e2]
+inspectExpression (InfixApply     e1 op e2) = do
+  mapM_ inspectExpression [e1, e2]
+  inspectInfixOp op
+inspectExpression (LeftSection    ex op   ) = do
+  inspectExpression ex
+  inspectInfixOp op
+inspectExpression (RightSection   op ex   ) = do
+  inspectInfixOp op
+  inspectExpression ex
+inspectExpression (Lambda         _  ps ex) = do
+  mapM_ inspectPattern ps
+  inspectExpression ex
+inspectExpression (Let            ds ex   ) = do
+  mapM_ inspectDecl ds
+  inspectExpression ex
+inspectExpression (Do             ss ex   ) = do
+  mapM_ inspectStatement ss
+  inspectExpression ex
+inspectExpression (IfThenElse   _ e1 e2 e3) = mapM_ inspectExpression [e1, e2, e3]
+inspectExpression (Case       _ _ ex as   ) = do
+  inspectExpression ex
+  mapM_ inspectAlt as
+
+inspectFieldExpression :: Field Expression -> WCM ()
+inspectFieldExpression (Field _ qid ex) = do
+  addUsedValueItem qid
+  inspectExpression ex
+
+inspectStatement :: Statement -> WCM ()
+inspectStatement (StmtExpr _ ex   ) = inspectExpression ex
+inspectStatement (StmtDecl   ds   ) = mapM_ inspectDecl ds
+inspectStatement (StmtBind _ p  ex) = do
+  inspectPattern p
+  inspectExpression ex
+
+inspectInfixOp :: InfixOp -> WCM ()
+inspectInfixOp (InfixOp     qid) = addUsedValueItem qid
+inspectInfixOp (InfixConstr qid) = addUsedValueItem qid
+
+inspectAlt :: Alt -> WCM ()
+inspectAlt (Alt _ p rhs) = do
+  inspectPattern p
+  inspectRhs rhs
+
+inspectCondExpr :: CondExpr -> WCM ()
+inspectCondExpr (CondExpr _ e1 e2) = mapM_ inspectExpression [e1, e2]
+
+inspectNewConstrDecl :: NewConstrDecl -> WCM ()
+inspectNewConstrDecl (NewConstrDecl _ _ _ ty     ) = inspectTypeExpr ty
+inspectNewConstrDecl (NewRecordDecl _ _ _ (_, ty)) = inspectTypeExpr ty
+
+inspectTypeExpr :: TypeExpr -> WCM ()
+inspectTypeExpr (VariableType        _  ) = ok
+inspectTypeExpr (ConstructorType qid tys) = do
+  addUsedTypeItem qid
+  mapM_ inspectTypeExpr tys
+inspectTypeExpr (TupleType           tys) = mapM_ inspectTypeExpr tys
+inspectTypeExpr (ListType             ty) = inspectTypeExpr ty
+inspectTypeExpr (ArrowType       ty1 ty2) = mapM_ inspectTypeExpr [ty1,ty2]
+inspectTypeExpr (ParenType            ty) = inspectTypeExpr ty
+
+inspectConstrDecl :: ConstrDecl -> WCM ()
+inspectConstrDecl (ConstrDecl _ _    _ tys  ) = mapM_ inspectTypeExpr tys
+inspectConstrDecl (ConOpDecl  _ _ ty1 _  ty2) = mapM_ inspectTypeExpr [ty1, ty2]
+inspectConstrDecl (RecordDecl _ _    _ fs   ) = mapM_ inspectFieldDecl fs
+
+inspectFieldDecl :: FieldDecl -> WCM ()
+inspectFieldDecl (FieldDecl _ _ ty) = inspectTypeExpr ty
+
+inspectPattern :: Pattern -> WCM ()
+inspectPattern (ConstructorPattern  _ ps)   = mapM_ inspectPattern ps
+inspectPattern (InfixPattern p1 c p2)
+  = inspectPattern (ConstructorPattern c [p1, p2])
+inspectPattern (ParenPattern             p) = inspectPattern p
+inspectPattern (RecordPattern       qid fs) = do
+  addUsedValueItem qid
+  mapM_ inspectFieldPattern fs
+inspectPattern (TuplePattern        _   ps) = mapM_ inspectPattern ps
+inspectPattern (ListPattern         _   ps) = mapM_ inspectPattern ps
+inspectPattern (AsPattern           _   p ) = inspectPattern p
+inspectPattern (LazyPattern          _  p ) = inspectPattern p
+inspectPattern (FunctionPattern     f   ps) = do
+  addUsedValueItem f
+  mapM_ inspectPattern ps
+inspectPattern (InfixFuncPattern p1 f p2)
+  = inspectPattern (FunctionPattern f [p1, p2])
+inspectPattern _                           = ok
+
+inspectFieldPattern :: Field Pattern -> WCM ()
+inspectFieldPattern (Field _ qid p) = do
+  addUsedValueItem qid
+  inspectPattern p
 
 -- ---------------------------------------------------------------------------
 
