@@ -43,7 +43,7 @@ module Base.TopEnv
   , bindTopEnv, qualBindTopEnv, rebindTopEnv
   , qualRebindTopEnv, unbindTopEnv, lookupTopEnv, qualLookupTopEnv
   , allImports, moduleImports, localBindings, allLocalBindings
-  , allEntities, qualElemTopEnv
+  , allBindings, allEntities, qualElemTopEnv
   ) where
 
 import           Control.Arrow        (second)
@@ -162,6 +162,10 @@ localBindings env = [ (x, y) | (x, (Local, y)) <- unqualBindings env ]
 allLocalBindings :: TopEnv a -> [(QualIdent, a)]
 allLocalBindings (TopEnv env) = [ (x, y) | (x, ys)    <- Map.toList env
                                          , (Local, y) <- ys ]
+
+allBindings :: TopEnv a -> [(QualIdent, a)]
+allBindings (TopEnv env) = [ (x, y) | (x, ys)    <- Map.toList env
+                                    , (_, y) <- ys ]
 
 allEntities :: TopEnv a -> [a]
 allEntities (TopEnv env) = [ y | (_, ys) <- Map.toList env, (_, y) <- ys]

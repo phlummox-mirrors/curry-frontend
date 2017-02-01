@@ -20,7 +20,7 @@ import Curry.Base.Pretty
 import Curry.Base.Span   (Span)
 import Curry.Syntax
 
-import Base.TopEnv (allLocalBindings)
+import Base.TopEnv (allBindings, allLocalBindings)
 
 import Env.Interface
 import Env.ModuleAlias (AliasEnv, initAliasEnv)
@@ -60,8 +60,8 @@ initCompilerEnv mid = CompilerEnv
   }
 
 -- |Show the 'CompilerEnv'
-showCompilerEnv :: CompilerEnv -> String
-showCompilerEnv env = show $ vcat
+showCompilerEnv :: CompilerEnv -> Bool -> Bool -> String
+showCompilerEnv env allBinds simpleEnv = show $ vcat
   [ header "Module Identifier  " $ text  $ moduleName $ moduleIdent env
   , header "FilePath"            $ text  $ filePath    env
   , header "Language Extensions" $ text  $ show $ extensions  env
@@ -69,12 +69,13 @@ showCompilerEnv env = show $ vcat
                                          $ map (text . moduleName)
                                          $ Map.keys $ interfaceEnv env
   , header "Module Aliases     " $ ppMap $ aliasEnv     env
-  , header "Precedences        " $ ppAL $ allLocalBindings $ opPrecEnv env
-  , header "Type Constructors  " $ ppAL $ allLocalBindings $ tyConsEnv env
-  , header "Values             " $ ppAL $ allLocalBindings $ valueEnv  env
+  , header "Precedences        " $ ppAL $ bindings $ opPrecEnv env
+  , header "Type Constructors  " $ ppAL $ bindings $ tyConsEnv env
+  , header "Values             " $ ppAL $ bindings $ valueEnv  env
   ]
   where
   header hdr content = hang (text hdr <+> colon) 4 content
+  bindings = if allBinds then allBindings else allLocalBindings
 
 -- |Pretty print a 'Map'
 ppMap :: (Show a, Show b) => Map.Map a b -> Doc
