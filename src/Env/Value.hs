@@ -32,7 +32,7 @@ module Env.Value
 
 import Curry.Base.Ident
 import Curry.Base.Position
-import Curry.Base.Pretty (Doc, vcat)
+import Curry.Base.Pretty (Pretty(..))
 import Curry.Syntax
 
 import Base.CurryTypes (fromQualType)
@@ -40,6 +40,8 @@ import Base.Messages (internalError)
 import Base.TopEnv
 import Base.Types
 import Base.Utils ((++!))
+
+import Text.PrettyPrint
 
 data ValueInfo
   -- |Data constructor with original name, arity, list of record labels and type
@@ -73,6 +75,18 @@ instance Entity ValueInfo where
   merge (Label l1 cs1 ty1) (Label l2 cs2 ty2)
     | l1 == l2 && cs1 == cs2 && ty1 == ty2 = Just (Label l1 cs1 ty1)
   merge _ _ = Nothing
+
+instance Pretty ValueInfo where
+  pPrint (DataConstructor qid ar _ ts)  =     text "data" <+> pPrint qid
+                                          <>  text "/" <> int ar
+                                          <+> equals <+> pPrint ts
+  pPrint (NewtypeConstructor qid _ ts) =     text "newtype" <+> pPrint qid
+                                          <+> equals <+> pPrint ts
+  pPrint (Value qid ar ts)              =     pPrint qid
+                                          <>  text "/" <> int ar
+                                          <+> equals <+> pPrint ts
+  pPrint (Label qid _ ts)               =     text "label" <+> pPrint qid
+                                          <+> equals <+> pPrint ts
 
 mergeLabel :: Ident -> Ident -> Maybe Ident
 mergeLabel l1 l2

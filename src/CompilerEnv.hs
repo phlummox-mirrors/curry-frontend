@@ -68,23 +68,42 @@ showCompilerEnv env allBinds simpleEnv = show $ vcat
   , header "Interfaces         " $ hcat  $ punctuate comma
                                          $ map (text . moduleName)
                                          $ Map.keys $ interfaceEnv env
-  , header "Module Aliases     " $ ppMap $ aliasEnv     env
-  , header "Precedences        " $ ppAL $ bindings $ opPrecEnv env
-  , header "Type Constructors  " $ ppAL $ bindings $ tyConsEnv env
-  , header "Values             " $ ppAL $ bindings $ valueEnv  env
+  , header "Module Aliases     " $ ppMap simpleEnv $ aliasEnv     env
+  , header "Precedences        " $ ppAL simpleEnv $ bindings $ opPrecEnv env
+  , header "Type Constructors  " $ ppAL simpleEnv $ bindings $ tyConsEnv env
+  , header "Values             " $ ppAL simpleEnv $ bindings $ valueEnv  env
   ]
   where
   header hdr content = hang (text hdr <+> colon) 4 content
   bindings = if allBinds then allBindings else allLocalBindings
 
 -- |Pretty print a 'Map'
-ppMap :: (Show a, Show b) => Map.Map a b -> Doc
-ppMap = ppAL . Map.toList
+ppMap :: (Show a, Pretty a, Show b, Pretty b) => Bool-> Map.Map a b -> Doc
+ppMap True  = ppMapPretty
+ppMap False = ppMapShow
+
+ppMapShow :: (Show a, Show b) => Map.Map a b -> Doc
+ppMapShow = ppALShow . Map.toList
+
+ppMapPretty :: (Pretty a, Pretty b) => Map.Map a b -> Doc
+ppMapPretty = ppALPretty . Map.toList
 
 -- |Pretty print an association list
-ppAL :: (Show a, Show b) => [(a, b)] -> Doc
-ppAL xs = vcat
+ppAL :: (Show a, Pretty a, Show b, Pretty b) => Bool -> [(a, b)] -> Doc
+ppAL True  = ppALPretty
+ppAL False = ppALShow
+
+ppALShow :: (Show a, Show b) => [(a, b)] -> Doc
+ppALShow xs = vcat
         $ map (\(a,b) -> text (pad a keyWidth) <+> equals <+> text b) showXs
   where showXs   = map (\(a,b) -> (show a, show b)) xs
         keyWidth = maximum (0 : map (length .fst) showXs)
         pad s n  = take n (s ++ repeat ' ')
+
+ppALPretty :: (Pretty a, Pretty b) => [(a, b)] -> Doc
+ppALPretty xs = vcat
+        $ map (\(a,b) -> text (pad a keyWidth) <+> equals <+> text b) showXs
+  where showXs   = map (\(a,b) -> (render (pPrint a), render (pPrint b))) xs
+        keyWidth = maximum (0 : map (length .fst) showXs)
+        pad s n  = take n (s ++ repeat ' ')
+

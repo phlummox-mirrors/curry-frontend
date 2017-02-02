@@ -19,7 +19,8 @@
 module Base.Types
   ( -- * Representation of Types
     Type (..), isArrowType, arrowArity, arrowArgs, arrowBase, arrowUnapply
-  , typeVars, typeConstrs, typeSkolems, equTypes, qualifyType, unqualifyType
+  , fromType, typeVars, typeConstrs, typeSkolems, equTypes, qualifyType
+  , unqualifyType
     -- * Representation of Data Constructors
   , DataConstr (..), constrIdent, constrTypes, recLabels, recLabelTypes
   , tupleData
@@ -31,6 +32,11 @@ module Base.Types
   ) where
 
 import Curry.Base.Ident
+import Curry.Base.Pretty   (Pretty(..))
+import qualified Curry.Syntax as CS
+import Curry.Syntax.Pretty (ppTypeExpr)
+
+import Text.PrettyPrint
 
 -- A type is either a type variable, an application of a type constructor
 -- to a list of arguments, or an arrow type. The 'TypeConstrained'
@@ -58,6 +64,25 @@ data Type
   | TypeConstrained [Type] Int
   | TypeSkolem Int
   deriving (Eq, Show)
+
+instance Pretty Type where
+  pPrint = ppTypeExpr 0 . fromType
+
+fromType :: Type -> CS.TypeExpr
+fromType (TypeConstructor tc tys)
+  | isTupleId c                    = CS.TupleType tys'
+  | c == unitId && null tys        = CS.TupleType []
+  | c == listId && length tys == 1 = CS.ListType (head tys')
+  | otherwise                      = CS.ConstructorType tc tys'
+  where c    = unqualify tc
+        tys' = map fromType tys
+fromType (TypeVariable tv)         = CS.VariableType
+   (if tv >= 0 then identSupply !! tv else mkIdent ('_' : show (-tv)))
+fromType (TypeConstrained tys _)   = fromType (head tys)
+fromType (TypeArrow     ty1 ty2)   =
+  CS.ArrowType (fromType ty1) (fromType ty2)
+fromType (TypeSkolem          k)   =
+  CS.VariableType $ mkIdent $ "_?" ++ show k
 
 -- The function 'isArrowType' checks whether a type is a function
 -- type t_1 -> t_2 -> ... -> t_n . The function 'arrowArity' computes the arity
@@ -184,6 +209,13 @@ data DataConstr = DataConstr   Ident Int [Type]
                 | RecordConstr Ident Int [Ident] [Type]
     deriving (Eq, Show)
 
+instance Pretty DataConstr where
+  pPrint (DataConstr i _ tys)      = pPrint i <+> hsep (map pPrint tys)
+  pPrint (RecordConstr i _ ls tys) =     pPrint i
+                                     <+> braces (hsep (punctuate comma pLs))
+    where
+      pLs = zipWith (\l ty -> pPrint l <+> colon <> colon <+> pPrint ty) ls tys
+
 constrIdent :: DataConstr -> Ident
 constrIdent (DataConstr     c _ _) = c
 constrIdent (RecordConstr c _ _ _) = c
@@ -213,6 +245,12 @@ recLabelTypes (RecordConstr _ _ _ tys) = tys
 
 data TypeScheme = ForAll Int Type deriving (Eq, Show)
 data ExistTypeScheme = ForAllExist Int Int Type deriving (Eq, Show)
+
+instance Pretty TypeScheme where
+  pPrint (ForAll _ ty) = pPrint ty
+
+instance Pretty ExistTypeScheme where
+  pPrint (ForAllExist _ _ ty) = pPrint ty
 
 -- The functions 'monoType' and 'polyType' translate a type tau into a
 -- monomorphic type scheme and a polymorphic type scheme, respectively.

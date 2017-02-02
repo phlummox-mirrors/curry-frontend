@@ -29,11 +29,14 @@ module Env.OpPrec
   ) where
 
 import Curry.Base.Ident
-import Curry.Syntax     (Infix (..))
+import Curry.Base.Pretty (Pretty(..))
+import Curry.Syntax      (Infix (..))
 
 import Base.TopEnv
 
-import Data.Maybe (fromMaybe)
+import Data.Maybe        (fromMaybe)
+
+import Text.PrettyPrint
 
 -- |Operator precedence.
 data OpPrec = OpPrec Infix Precedence deriving Eq
@@ -48,6 +51,9 @@ instance Show OpPrec where
     assoc InfixL = "left "
     assoc InfixR = "right "
     assoc Infix  = "non-assoc "
+
+instance Pretty OpPrec where
+  pPrint (OpPrec fix p) = pPrint fix <+> integer p
 
 -- |Default operator declaration (associativity and precedence).
 defaultP :: OpPrec
@@ -69,6 +75,9 @@ data PrecInfo = PrecInfo QualIdent OpPrec deriving (Eq, Show)
 
 instance Entity PrecInfo where
   origName (PrecInfo op _) = op
+
+instance Pretty PrecInfo where
+  pPrint (PrecInfo qid prec) = pPrint qid <+> pPrint prec
 
 -- |Environment mapping identifiers to their operator precedence.
 type OpPrecEnv = TopEnv PrecInfo

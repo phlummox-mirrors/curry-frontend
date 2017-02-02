@@ -73,22 +73,6 @@ toType' tvs (CS.ParenType           ty) = toType' tvs ty
 fromQualType :: ModuleIdent -> Type -> CS.TypeExpr
 fromQualType m = fromType . unqualifyType m
 
-fromType :: Type -> CS.TypeExpr
-fromType (TypeConstructor tc tys)
-  | isTupleId c                    = CS.TupleType tys'
-  | c == unitId && null tys        = CS.TupleType []
-  | c == listId && length tys == 1 = CS.ListType (head tys')
-  | otherwise                      = CS.ConstructorType tc tys'
-  where c    = unqualify tc
-        tys' = map fromType tys
-fromType (TypeVariable tv)         = CS.VariableType
-   (if tv >= 0 then identSupply !! tv else mkIdent ('_' : show (-tv)))
-fromType (TypeConstrained tys _)   = fromType (head tys)
-fromType (TypeArrow     ty1 ty2)   =
-  CS.ArrowType (fromType ty1) (fromType ty2)
-fromType (TypeSkolem          k)   =
-  CS.VariableType $ mkIdent $ "_?" ++ show k
-
 -- The following functions implement pretty-printing for types.
 ppType :: ModuleIdent -> Type -> Doc
 ppType m = ppTypeExpr 0 . fromQualType m

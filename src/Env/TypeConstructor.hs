@@ -44,11 +44,14 @@ module Env.TypeConstructor
   ) where
 
 import Curry.Base.Ident
+import Curry.Base.Pretty (Pretty(..))
 
-import Base.Messages (internalError)
+import Base.Messages     (internalError)
 import Base.TopEnv
 import Base.Types
-import Base.Utils ((++!))
+import Base.Utils         ((++!))
+
+import Text.PrettyPrint
 
 data TypeInfo
   = DataType     QualIdent Int [DataConstr]
@@ -73,6 +76,18 @@ instance Entity TypeInfo where
   merge l@(AliasType tc _ _) (AliasType tc' _ _)
     | tc == tc' = Just l
   merge _ _ = Nothing
+
+instance Pretty TypeInfo where
+  pPrint (DataType qid ar cs)    =     text "data" <+> pPrint qid
+                                   <>  text "/" <> int ar
+                                   <+> equals
+                                   <+> hsep (punctuate (text "|") (map pPrint cs))
+  pPrint (RenamingType qid ar c) =     text "newtype" <+> pPrint qid
+                                   <>  text "/" <> int ar
+                                   <+> equals <+> pPrint c
+  pPrint (AliasType qid ar ty)   =     text "type" <+> pPrint qid
+                                   <>  text "/" <> int ar
+                                   <+> equals <+> pPrint ty
 
 tcArity :: TypeInfo -> Int
 tcArity (DataType     _ n _) = n
