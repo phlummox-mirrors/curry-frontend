@@ -125,6 +125,7 @@ Executable curry-frontend
     , directory
     , filepath
     , mtl
+    , pretty
     , process
     , syb
     , transformers
