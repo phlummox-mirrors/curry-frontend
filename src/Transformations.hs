@@ -20,7 +20,7 @@ import Transformations.CaseCompletion as CC (completeCase)
 import Transformations.CurryToIL      as IL (ilTrans, transType)
 import Transformations.Derive         as DV (derive)
 import Transformations.Desugar        as DS (desugar)
-import Transformations.Dictionary     as DI (insertDicts, dictTransInterface)
+import Transformations.Dictionary     as DI (insertDicts)
 import Transformations.Lift           as L  (lift)
 import Transformations.Qual           as Q  (qual)
 import Transformations.Simplify       as S  (simplify)
@@ -55,9 +55,6 @@ insertDicts (env, mdl) = (env { interfaceEnv = intfEnv'
   where (mdl', intfEnv', tcEnv', vEnv', pEnv') =
           DI.insertDicts (interfaceEnv env) (tyConsEnv env) (valueEnv env)
                          (classEnv env) (instEnv env) (opPrecEnv env) mdl
-
-dictTransInterface :: CompilerEnv -> Interface -> Interface
-dictTransInterface env = DI.dictTransInterface (valueEnv env) (classEnv env)
 
 -- |Simplify the source code, changes the value environment.
 simplify :: CompEnv (Module Type) -> CompEnv (Module Type)

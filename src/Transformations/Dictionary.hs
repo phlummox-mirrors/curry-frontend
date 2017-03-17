@@ -13,7 +13,7 @@
 
 {-# LANGUAGE CPP #-}
 module Transformations.Dictionary
-  ( insertDicts, dictTransInterface
+  ( insertDicts
   , dictTypeId, qDictTypeId, dictConstrId, qDictConstrId
   , defaultMethodId, qDefaultMethodId, superDictStubId, qSuperDictStubId
   , instFunId, qInstFunId, implMethodId, qImplMethodId
