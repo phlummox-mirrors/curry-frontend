@@ -3,7 +3,7 @@
     Description :  Definition of the intermediate language (IL)
     Copyright   :  (c) 1999 - 2003 Wolfgang Lux
                                    Martin Engelke
-                       2016        Finn Teegen
+                       2016 - 2017 Finn Teegen
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
@@ -58,7 +58,7 @@ data Module = Module ModuleIdent [ModuleIdent] [Decl]
 data Decl
   = DataDecl     QualIdent Int [ConstrDecl [Type]]
   | NewtypeDecl  QualIdent Int (ConstrDecl Type)
-  | FunctionDecl QualIdent [Ident] Type Expression
+  | FunctionDecl QualIdent [(Type, Ident)] Type Expression
   | ExternalDecl QualIdent CallConv String Type
     deriving (Eq, Show)
 
@@ -84,22 +84,22 @@ data Literal
 
 data ConstrTerm
     -- |literal patterns
-  = LiteralPattern Literal
+  = LiteralPattern Type Literal
     -- |constructors
-  | ConstructorPattern QualIdent [Ident]
+  | ConstructorPattern Type QualIdent [(Type, Ident)]
     -- |default
-  | VariablePattern Ident
+  | VariablePattern Type Ident
   deriving (Eq, Show)
 
 data Expression
     -- |literal constants
-  = Literal Literal
+  = Literal Type Literal
     -- |variables
-  | Variable Ident
+  | Variable Type Ident
     -- |functions
-  | Function QualIdent Int
+  | Function Type QualIdent Int
     -- |constructors
-  | Constructor QualIdent Int
+  | Constructor Type QualIdent Int
     -- |applications
   | Apply Expression Expression
     -- |case expressions
@@ -128,7 +128,7 @@ data Binding = Binding Ident Expression
     deriving (Eq, Show)
 
 instance Expr Expression where
-  fv (Variable            v) = [v]
+  fv (Variable          _ v) = [v]
   fv (Apply           e1 e2) = fv e1 ++ fv e2
   fv (Case         _ e alts) = fv e  ++ fv alts
   fv (Or              e1 e2) = fv e1 ++ fv e2
@@ -139,6 +139,6 @@ instance Expr Expression where
   fv _                       = []
 
 instance Expr Alt where
-  fv (Alt (ConstructorPattern _ vs) e) = filter (`notElem` vs) (fv e)
-  fv (Alt (VariablePattern       v) e) = filter (v /=) (fv e)
-  fv (Alt _                         e) = fv e
+  fv (Alt (ConstructorPattern _ _ vs) e) = filter (`notElem` map snd vs) (fv e)
+  fv (Alt (VariablePattern       _ v) e) = filter (v /=) (fv e)
+  fv (Alt _                           e) = fv e

@@ -4,6 +4,7 @@
     Copyright   :  (c) 1999 - 2003 Wolfgang Lux
                                    Martin Engelke
                        2011 - 2015 Björn Peemöller
+                       2017        Finn Teegen
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
@@ -59,7 +60,7 @@ ppDecl (NewtypeDecl tc n (ConstrDecl c ty)) = sep
   [ text "newtype" <+> ppTypeLhs tc n <+> equals
   , nest dataIndent (ppConstr (ConstrDecl c [ty]))]
 ppDecl (FunctionDecl             f vs ty e) = ppTypeSig f ty $$ sep
-  [ ppQIdent f <+> hsep (map ppIdent vs) <+> equals
+  [ ppQIdent f <+> hsep (map (ppIdent . snd) vs) <+> equals
   , nest bodyIndent (ppExpr 0 e)]
 ppDecl (ExternalDecl f cc ie ty) = sep
   [ text "external" <+> ppCallConv cc <+> text (show ie)
@@ -106,39 +107,39 @@ ppLiteral (Int   i) = integer i
 ppLiteral (Float f) = double f
 
 ppConstrTerm :: ConstrTerm -> Doc
-ppConstrTerm (LiteralPattern             l) = ppLiteral l
-ppConstrTerm (ConstructorPattern c [v1,v2])
+ppConstrTerm (LiteralPattern     _                    l) = ppLiteral l
+ppConstrTerm (ConstructorPattern _ c [(_, v1), (_, v2)])
   | isQInfixOp c = ppIdent v1 <+> ppQInfixOp c <+> ppIdent v2
-ppConstrTerm (ConstructorPattern c      vs)
-  | isQTupleId c = parens $ fsep (punctuate comma $ map ppIdent vs)
-  | otherwise    = ppQIdent c <+> fsep (map ppIdent vs)
-ppConstrTerm (VariablePattern            v) = ppIdent v
+ppConstrTerm (ConstructorPattern _ c                 vs)
+  | isQTupleId c = parens $ fsep (punctuate comma $ map (ppIdent . snd) vs)
+  | otherwise    = ppQIdent c <+> fsep (map (ppIdent . snd) vs)
+ppConstrTerm (VariablePattern    _                    v) = ppIdent v
 
 ppExpr :: Int -> Expression -> Doc
-ppExpr _ (Literal        l) = ppLiteral l
-ppExpr _ (Variable       v) = ppIdent v
-ppExpr _ (Function     f _) = ppQIdent f
-ppExpr _ (Constructor  c _) = ppQIdent c
-ppExpr p (Apply (Apply (Function   f _) e1) e2)
+ppExpr _ (Literal       _ l) = ppLiteral l
+ppExpr _ (Variable      _ v) = ppIdent v
+ppExpr _ (Function    _ f _) = ppQIdent f
+ppExpr _ (Constructor _ c _) = ppQIdent c
+ppExpr p (Apply (Apply (Function    _ f _) e1) e2)
   | isQInfixOp f = ppInfixApp p e1 f e2
-ppExpr p (Apply (Apply (Constructor c _) e1) e2)
+ppExpr p (Apply (Apply (Constructor _ c _) e1) e2)
   | isQInfixOp c = ppInfixApp p e1 c e2
-ppExpr p (Apply      e1 e2) = parenIf (p > 2) $ sep
+ppExpr p (Apply       e1 e2) = parenIf (p > 2) $ sep
   [ppExpr 2 e1, nest exprIndent (ppExpr 3 e2)]
-ppExpr p (Case   ev e alts) = parenIf (p > 0) $
+ppExpr p (Case    ev e alts) = parenIf (p > 0) $
   text "case" <+> ppEval ev <+> ppExpr 0 e <+> text "of"
   $$ nest caseIndent (vcat $ map ppAlt alts)
   where ppEval Rigid = text "rigid"
         ppEval Flex  = text "flex"
-ppExpr p (Or         e1 e2) = parenIf (p > 0) $ sep
+ppExpr p (Or          e1 e2) = parenIf (p > 0) $ sep
   [nest orIndent (ppExpr 0 e1), char '|', nest orIndent (ppExpr 0 e2)]
-ppExpr p (Exist        v e) = parenIf (p > 0) $ sep
+ppExpr p (Exist         v e) = parenIf (p > 0) $ sep
   [text "let" <+> ppIdent v <+> text "free" <+> text "in", ppExpr 0 e]
-ppExpr p (Let          b e) = parenIf (p > 0) $ sep
+ppExpr p (Let           b e) = parenIf (p > 0) $ sep
   [text "let" <+> ppBinding b <+> text "in",ppExpr 0 e]
-ppExpr p (Letrec      bs e) = parenIf (p > 0) $ sep
+ppExpr p (Letrec       bs e) = parenIf (p > 0) $ sep
   [text "letrec" <+> vcat (map ppBinding bs) <+> text "in", ppExpr 0 e]
-ppExpr p (Typed       e ty) = parenIf (p > 0) $ sep
+ppExpr p (Typed        e ty) = parenIf (p > 0) $ sep
   [ppExpr 0 e, text "::", ppType 0 ty]
 
 ppInfixApp :: Int -> Expression -> QualIdent -> Expression -> Doc

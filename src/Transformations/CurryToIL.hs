@@ -5,7 +5,7 @@
                                    Martin Engelke
                        2011 - 2015 Björn Peemöller
                        2015        Jan Tikovsky
-                       2016        Finn Teegen
+                       2016 - 2017 Finn Teegen
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
@@ -41,6 +41,7 @@ import Base.CurryTypes (toType)
 import Base.Expr
 import Base.Messages (internalError)
 import Base.Types
+import Base.Typing
 import Base.Utils (foldr2)
 
 import Env.Value (ValueEnv, ValueInfo (..), qualLookupValue)
@@ -74,19 +75,19 @@ mdlsType (IL.TypeVariable         _) ms = ms
 mdlsType (IL.TypeArrow      ty1 ty2) ms = mdlsType ty1 (mdlsType ty2 ms)
 
 mdlsExpr :: IL.Expression -> Set.Set ModuleIdent -> Set.Set ModuleIdent
-mdlsExpr (IL.Function    f _) ms = modules f ms
-mdlsExpr (IL.Constructor c _) ms = modules c ms
-mdlsExpr (IL.Apply     e1 e2) ms = mdlsExpr e1 (mdlsExpr e2 ms)
-mdlsExpr (IL.Case     _ e as) ms = mdlsExpr e (foldr mdlsAlt ms as)
+mdlsExpr (IL.Function    _ f _) ms = modules f ms
+mdlsExpr (IL.Constructor _ c _) ms = modules c ms
+mdlsExpr (IL.Apply       e1 e2) ms = mdlsExpr e1 (mdlsExpr e2 ms)
+mdlsExpr (IL.Case       _ e as) ms = mdlsExpr e (foldr mdlsAlt ms as)
   where
-  mdlsAlt     (IL.Alt               t e') = mdlsPattern t . mdlsExpr e'
-  mdlsPattern (IL.ConstructorPattern c _) = modules c
-  mdlsPattern _                           = id
-mdlsExpr (IL.Or        e1 e2) ms = mdlsExpr e1 (mdlsExpr e2 ms)
-mdlsExpr (IL.Exist       _ e) ms = mdlsExpr e ms
-mdlsExpr (IL.Let         b e) ms = mdlsBinding b (mdlsExpr e ms)
-mdlsExpr (IL.Letrec     bs e) ms = foldr mdlsBinding (mdlsExpr e ms) bs
-mdlsExpr _                    ms = ms
+  mdlsAlt     (IL.Alt                 t e') = mdlsPattern t . mdlsExpr e'
+  mdlsPattern (IL.ConstructorPattern _ c _) = modules c
+  mdlsPattern _                             = id
+mdlsExpr (IL.Or          e1 e2) ms = mdlsExpr e1 (mdlsExpr e2 ms)
+mdlsExpr (IL.Exist         _ e) ms = mdlsExpr e ms
+mdlsExpr (IL.Let           b e) ms = mdlsBinding b (mdlsExpr e ms)
+mdlsExpr (IL.Letrec       bs e) ms = foldr mdlsBinding (mdlsExpr e ms) bs
+mdlsExpr _                      ms = ms
 
 mdlsBinding :: IL.Binding -> Set.Set ModuleIdent -> Set.Set ModuleIdent
 mdlsBinding (IL.Binding _ e) = mdlsExpr e
@@ -231,12 +232,13 @@ forallType' tv ty =
 -- selector function have to be renamed according to the name mapping
 -- computed for its first argument.
 
-trFunction :: Show a => Ident -> Type -> [Equation a] -> TransM IL.Decl
+trFunction :: Ident -> Type -> [Equation Type] -> TransM IL.Decl
 trFunction f ty eqs = do
   f' <- trQualify f
   let ty' = transType ty
+      vs' = zip (map transType $ arrowArgs ty) vs
   alts <- mapM (trEquation vs ws) eqs
-  return $ IL.FunctionDecl f' vs ty' (flexMatch vs alts)
+  return $ IL.FunctionDecl f' vs' ty' (flexMatch vs' alts)
   where
   -- vs are the variables needed for the function: _1, _2, etc.
   -- ws is an infinite list for introducing additional variables later
@@ -244,11 +246,10 @@ trFunction f ty eqs = do
   equationArity (Equation _ (FunLhs _ ts) _) = length ts
   equationArity _ = internalError "ILTrans - illegal equation"
 
-trEquation :: Show a
-           => [Ident]      -- identifiers for the function's parameters
-           -> [Ident]      -- infinite list of additional identifiers
-           -> Equation a   -- equation to be translated
-           -> TransM Match -- nested constructor terms + translated RHS
+trEquation :: [Ident]       -- identifiers for the function's parameters
+           -> [Ident]       -- infinite list of additional identifiers
+           -> Equation Type -- equation to be translated
+           -> TransM Match  -- nested constructor terms + translated RHS
 trEquation vs vs' (Equation _ (FunLhs _ ts) rhs) = do
   -- construct renaming of variables inside constructor terms
   let patternRenaming = foldr2 bindRenameEnv Map.empty vs ts
@@ -272,7 +273,7 @@ bindRenameEnv v (AsPattern            v' t) env
 bindRenameEnv _ _                           _
   = internalError "CurryToIL.bindRenameEnv"
 
-trRhs :: Show a => [Ident] -> RenameEnv -> Rhs a -> TransM IL.Expression
+trRhs :: [Ident] -> RenameEnv -> Rhs Type -> TransM IL.Expression
 trRhs vs env (SimpleRhs _ e _) = trExpr vs env e
 trRhs _  _   (GuardedRhs _  _) = internalError "CurryToIL.trRhs: GuardedRhs"
 
@@ -284,16 +285,16 @@ trRhs _  _   (GuardedRhs _  _) = internalError "CurryToIL.trRhs: GuardedRhs"
 -- right hand sides of the case expression. This may happen, for
 -- instance, if one of the alternatives contains an as-pattern.
 
-trExpr :: Show a => [Ident] -> RenameEnv -> Expression a -> TransM IL.Expression
-trExpr _  _   (Literal     _ l) = return $ IL.Literal (trLiteral l)
-trExpr _  env (Variable    _ v)
+trExpr :: [Ident] -> RenameEnv -> Expression Type -> TransM IL.Expression
+trExpr _  _   (Literal     ty l) = return $ IL.Literal (transType ty) (trLiteral l)
+trExpr _  env (Variable    ty v)
   | isQualified v = fun
   | otherwise     = case Map.lookup (unqualify v) env of
       Nothing -> fun
-      Just v' -> return $ IL.Variable v' -- apply renaming
-  where fun = (IL.Function v . arrowArity) <$> varType v
-trExpr _  _   (Constructor _ c)
-  = (IL.Constructor c . arrowArity) <$> constrType c
+      Just v' -> return $ IL.Variable (transType ty) v' -- apply renaming
+  where fun = (IL.Function (transType ty) v . arrowArity) <$> varType v
+trExpr _  _   (Constructor ty c)
+  = (IL.Constructor (transType ty) c . arrowArity) <$> constrType c
 trExpr vs env (Apply     e1 e2)
   = IL.Apply <$> trExpr vs env e1 <*> trExpr vs env e2
 trExpr vs env (Let        ds e) = do
@@ -315,9 +316,10 @@ trExpr (v:vs) env (Case ct e alts) = do
   -- be referenced in the case alternatives by a variable pattern
   e' <- trExpr vs env e
   let matcher = if ct == Flex then flexMatch else rigidMatch
-  expr <- matcher [v] <$> mapM (trAlt (v:vs) env) alts
+      ty'     = transType $ typeOf e
+  expr <- matcher [(ty', v)] <$> mapM (trAlt (v:vs) env) alts
   return $ case expr of
-    IL.Case mode (IL.Variable v') alts'
+    IL.Case mode (IL.Variable _ v') alts'
         -- subject is not referenced -> forget v and insert subject
       | v == v' && v `notElem` fv alts' -> IL.Case mode e' alts'
     _
@@ -329,7 +331,7 @@ trExpr  vs env (Typed e (QualTypeExpr _ ty)) =
   where ty' = transType (toType [] ty)
 trExpr _ _ _ = internalError "CurryToIL.trExpr"
 
-trAlt :: Show a => [Ident] -> RenameEnv -> Alt a -> TransM Match
+trAlt :: [Ident] -> RenameEnv -> Alt Type -> TransM Match
 trAlt ~(v:vs) env (Alt _ t rhs) = do
   rhs' <- trRhs vs (bindRenameEnv v t env) rhs
   return ([trPattern v t], rhs')
@@ -352,16 +354,18 @@ pattern (NestedTerm t _) = t
 arguments :: NestedTerm -> [NestedTerm]
 arguments (NestedTerm _ ts) = ts
 
-trPattern :: Ident -> Pattern a -> NestedTerm
-trPattern _ (LiteralPattern        _ l)
-  = NestedTerm (IL.LiteralPattern $ trLiteral l) []
-trPattern v (VariablePattern       _ _) = NestedTerm (IL.VariablePattern v) []
-trPattern v (ConstructorPattern _ c ts)
-  = NestedTerm (IL.ConstructorPattern c (take (length ts) vs))
+trPattern :: Ident -> Pattern Type -> NestedTerm
+trPattern _ (LiteralPattern        ty l)
+  = NestedTerm (IL.LiteralPattern (transType ty) $ trLiteral l) []
+trPattern v (VariablePattern       ty _)
+  = NestedTerm (IL.VariablePattern (transType ty) v) []
+trPattern v (ConstructorPattern ty c ts)
+  = NestedTerm (IL.ConstructorPattern (transType ty) c vs')
                (zipWith trPattern vs ts)
-  where vs = argNames v
-trPattern v (AsPattern             _ t) = trPattern v t
-trPattern _ _                           = internalError "CurryToIL.trPattern"
+  where vs  = argNames v
+        vs' = zip (map (transType . typeOf) ts) vs
+trPattern v (AsPattern              _ t) = trPattern v t
+trPattern _ _                            = internalError "CurryToIL.trPattern"
 
 argNames :: Ident -> [Ident]
 argNames v = [mkIdent (prefix ++ show i) | i <- [1 :: Integer ..] ]
@@ -405,9 +409,9 @@ type Match' = (FunList NestedTerm, [NestedTerm], IL.Expression)
 -- Functional lists
 type FunList a = [a] -> [a]
 
-flexMatch :: [Ident]       -- variables to be matched
-          -> [Match]       -- alternatives
-          -> IL.Expression -- result expression
+flexMatch :: [(IL.Type, Ident)] -- variables to be matched
+          -> [Match]            -- alternatives
+          -> IL.Expression      -- result expression
 flexMatch []     alts = foldl1 IL.Or (map snd alts)
 flexMatch (v:vs) alts
   | notDemanded = varExp
@@ -425,10 +429,10 @@ flexMatch (v:vs) alts
   prep (p, (ts, e))  = (p, (id, ts, e))
 
 -- Search for the next inductive position
-optFlexMatch :: IL.Expression -- default expression
-             -> FunList Ident -- skipped variables
-             -> [Ident]       -- next variables
-             -> [Match']      -- alternatives
+optFlexMatch :: IL.Expression            -- default expression
+             -> FunList (IL.Type, Ident) -- skipped variables
+             -> [(IL.Type, Ident)]       -- next variables
+             -> [Match']                 -- alternatives
              -> IL.Expression
 optFlexMatch def _      []     _    = def
 optFlexMatch def prefix (v:vs) alts
@@ -439,13 +443,13 @@ optFlexMatch def prefix (v:vs) alts
   alts'         = map tagAlt' alts
 
 -- Generate a case expression matching the inductive position
-flexMatchInductive :: FunList Ident             -- skipped variables
-                   -> Ident                     -- current variable
-                   -> [Ident]                   -- next variables
+flexMatchInductive :: FunList (IL.Type, Ident)  -- skipped variables
+                   -> (IL.Type, Ident)          -- current variable
+                   -> [(IL.Type, Ident)]        -- next variables
                    -> [(IL.ConstrTerm, Match')] -- alternatives
                    -> IL.Expression
 flexMatchInductive prefix v vs as
-  = IL.Case IL.Flex (IL.Variable v) (flexMatchAlts as)
+  = IL.Case IL.Flex (uncurry IL.Variable v) (flexMatchAlts as)
   where
   -- create alternatives for the different constructors
   flexMatchAlts []              = []
@@ -470,14 +474,14 @@ flexMatchInductive prefix v vs as
 -- to detect total matches and immediately discard all alternatives which
 -- cannot be reached.
 
-rigidMatch :: [Ident] -> [Match] -> IL.Expression
+rigidMatch :: [(IL.Type, Ident)] -> [Match] -> IL.Expression
 rigidMatch vs alts = rigidOptMatch (snd $ head alts) id vs (map prepare alts)
   where prepare (ts, e) = (id, ts, e)
 
-rigidOptMatch :: IL.Expression -- default expression
-              -> FunList Ident -- variables to be matched next
-              -> [Ident]       -- variables to be matched afterwards
-              -> [Match']      -- translated equations
+rigidOptMatch :: IL.Expression            -- default expression
+              -> FunList (IL.Type, Ident) -- variables to be matched next
+              -> [(IL.Type, Ident)]       -- variables to be matched afterwards
+              -> [Match']                 -- translated equations
               -> IL.Expression
 -- if there are no variables left: return the default expression
 rigidOptMatch def _      []       _    = def
@@ -501,12 +505,12 @@ rigidOptMatch def prefix (v : vs) alts
 --      []   -> []
 --      y:ys -> x
 --      x    -> x
-rigidMatchDemanded :: FunList Ident             -- skipped variables
-                   -> Ident                     -- current variable
-                   -> [Ident]                   -- next variables
+rigidMatchDemanded :: FunList (IL.Type, Ident)  -- skipped variables
+                   -> (IL.Type, Ident)          -- current variable
+                   -> [(IL.Type, Ident)]        -- next variables
                    -> [(IL.ConstrTerm, Match')] -- alternatives
                    -> IL.Expression
-rigidMatchDemanded prefix v vs alts = IL.Case IL.Rigid (IL.Variable v)
+rigidMatchDemanded prefix v vs alts = IL.Case IL.Rigid (uncurry IL.Variable v)
   $ map caseAlt (consPats ++ varPats)
   where
   -- N.B.: @varPats@ is either empty or a singleton list due to nub
@@ -521,22 +525,22 @@ rigidMatchDemanded prefix v vs alts = IL.Case IL.Rigid (IL.Variable v)
     expandVars vs' (p, (pref, ts1, e)) = (pref ts2, e)
       where ts2 | isVarPattern p = map var2Pattern vs' ++ ts1
                 | otherwise      = ts1
-            var2Pattern v' = NestedTerm (IL.VariablePattern v') []
+            var2Pattern v' = NestedTerm (uncurry IL.VariablePattern v') []
 
 -- -----------------------------------------------------------------------------
 -- Pattern Matching Auxiliaries
 -- -----------------------------------------------------------------------------
 
 isVarPattern :: IL.ConstrTerm -> Bool
-isVarPattern (IL.VariablePattern _) = True
-isVarPattern _                      = False
+isVarPattern (IL.VariablePattern _ _) = True
+isVarPattern _                        = False
 
 isVarMatch :: (IL.ConstrTerm, a) -> Bool
 isVarMatch = isVarPattern . fst
 
-vars :: IL.ConstrTerm -> [Ident]
-vars (IL.ConstructorPattern _ vs) = vs
-vars _                            = []
+vars :: IL.ConstrTerm -> [(IL.Type, Ident)]
+vars (IL.ConstructorPattern _ _ vs) = vs
+vars _                              = []
 
 -- tagAlt extracts the structure of the first pattern
 tagAlt :: Match -> (IL.ConstrTerm, Match)

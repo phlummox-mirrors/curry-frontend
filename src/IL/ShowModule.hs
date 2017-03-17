@@ -1,8 +1,8 @@
 {- |
     Module      :  $Header$
     Description :  Custom Show implementation for IL
-    Copyright   :  (c) 2015 Björn Peemöller
-                       2016 Finn Teegen
+    Copyright   :  (c) 2015        Björn Peemöller
+                       2016 - 2017 Finn Teegen
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
@@ -48,7 +48,7 @@ showsDecl (NewtypeDecl qident arity constrdecl)
 showsDecl (FunctionDecl qident idents typ expr)
   = showsString "(FunctionDecl "
   . showsQualIdent qident . space
-  . showsList showsIdent idents . space
+  . showsList (showsIdent . snd) idents . space
   . showsType typ . space
   . showsExpression expr
   . showsString ")"
@@ -98,35 +98,35 @@ showsLiteral (Float x)
   . showsString ")"
 
 showsConstrTerm :: ConstrTerm -> ShowS
-showsConstrTerm (LiteralPattern lit)
+showsConstrTerm (LiteralPattern _ lit)
   = showsString "(LiteralPattern "
   . showsLiteral lit
   . showsString ")"
-showsConstrTerm (ConstructorPattern qident idents)
+showsConstrTerm (ConstructorPattern _ qident idents)
   = showsString "(ConstructorPattern "
   . showsQualIdent qident . space
-  . showsList showsIdent idents
+  . showsList (showsIdent . snd) idents
   . showsString ")"
-showsConstrTerm (VariablePattern ident)
+showsConstrTerm (VariablePattern _ ident)
   = showsString "(VariablePattern "
   . showsIdent ident
   . showsString ")"
 
 showsExpression :: Expression -> ShowS
-showsExpression (Literal lit)
+showsExpression (Literal _ lit)
   = showsString "(Literal "
   . showsLiteral lit
   . showsString ")"
-showsExpression (Variable ident)
+showsExpression (Variable _ ident)
   = showsString "(Variable "
   . showsIdent ident
   . showsString ")"
-showsExpression (Function qident int)
+showsExpression (Function _ qident int)
   = showsString "(Function "
   . showsQualIdent qident . space
   . shows int
   . showsString ")"
-showsExpression (Constructor qident int)
+showsExpression (Constructor _ qident int)
   = showsString "(Constructor "
   . showsQualIdent qident . space
   . shows int
