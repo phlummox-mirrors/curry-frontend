@@ -6,7 +6,7 @@
                        2007        Sebastian Fischer
                        2011 - 2015 Björn Peemöller
                        2016        Jan Tikovsky
-                       2016        Finn Teegen
+                       2016 - 2017 Finn Teegen
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
@@ -96,10 +96,9 @@ compileModule opts m fn = do
   writeInterface opts (fst mdl') intf
   when withFlat $ do
     ((env, il), mdl'') <- transModule opts qmdl
-    let intf' = dictTransInterface env intf
-    writeFlat opts env intf' (snd mdl'') il
+    writeFlat opts env (snd mdl'') il
   where
-  withFlat = FlatCurry `elem` optTargetTypes opts
+  withFlat = any (`elem` optTargetTypes opts) [AnnotatedFlatCurry, FlatCurry]
 
 loadAndCheckModule :: Options -> ModuleIdent -> FilePath
                    -> CYIO (CompEnv (CS.Module PredType))
@@ -319,30 +318,25 @@ matchInterface ifn i = do
     Left  _  -> hClose hdl >> return False
     Right i' -> return (i `intfEquiv` fixInterface i')
 
-writeFlat :: Options -> CompilerEnv -> CS.Interface -> CS.Module Type
-          -> IL.Module -> CYIO ()
-writeFlat opts env intf mdl il = do
-  when (fcyTarget) $ do
-    writeFlatCurry opts env      mdl il
-    writeFlatIntf  opts env intf mdl il
+writeFlat :: Options -> CompilerEnv -> CS.Module Type -> IL.Module -> CYIO ()
+writeFlat opts env mdl il = do
+  (_, afc) <- dumpWith opts show (FC.ppProg . genFlatCurry) DumpAnnotatedFlatCurry (env, afcyProg)
+  when afcyTarget $ liftIO $ FC.writeFlatCurry (useSubDir afcyName) afc
+  when fcyTarget $ do
+    (_, fc) <- dumpWith opts show FC.ppProg DumpFlatCurry (env, fcyProg)
+    liftIO $ FC.writeFlatCurry (useSubDir fcyName) fc
+  writeFlatIntf opts env fcyProg
   where
-  fcyTarget = FlatCurry         `elem` optTargetTypes opts
+  afcyName   = annotatedFlatName (filePath env)
+  afcyProg   = genAnnotatedFlatCurry env mdl il
+  afcyTarget = AnnotatedFlatCurry `elem` optTargetTypes opts
+  fcyName    = flatName (filePath env)
+  fcyProg    = genFlatCurry afcyProg
+  fcyTarget  = FlatCurry `elem` optTargetTypes opts
+  useSubDir  = addCurrySubdirModule (optUseSubdir opts) (moduleIdent env)
 
--- |Export an 'IL.Module' into a FlatCurry file
-writeFlatCurry :: Options -> CompilerEnv -> CS.Module Type -> IL.Module
-               -> CYIO ()
-writeFlatCurry opts env mdl il = do
-  (_, fc) <- dumpWith opts show FC.ppProg DumpFlatCurry (env, prog)
-  when fcyTarget $ liftIO
-                 $ FC.writeFlatCurry    (useSubDir $ flatName    (filePath env)) fc
-  where
-  fcyTarget = FlatCurry         `elem` optTargetTypes opts
-  useSubDir = addCurrySubdirModule (optUseSubdir opts) (moduleIdent env)
-  prog      = genFlatCurry env mdl il
-
-writeFlatIntf :: Options -> CompilerEnv -> CS.Interface -> CS.Module Type
-              -> IL.Module -> CYIO ()
-writeFlatIntf opts env intf mdl il
+writeFlatIntf :: Options -> CompilerEnv -> FC.Prog -> CYIO ()
+writeFlatIntf opts env prog
   | not (optInterface opts) = return ()
   | optForce opts           = outputInterface
   | otherwise               = do
@@ -353,7 +347,7 @@ writeFlatIntf opts env intf mdl il
   where
   targetFile      = flatIntName (filePath env)
   emptyIntf       = FC.Prog "" [] [] [] []
-  fint            = genFlatInterface env intf mdl il
+  fint            = genFlatInterface prog
   useSubDir       = addCurrySubdirModule (optUseSubdir opts) (moduleIdent env)
   outputInterface = liftIO $ FC.writeFlatCurry (useSubDir targetFile) fint
 

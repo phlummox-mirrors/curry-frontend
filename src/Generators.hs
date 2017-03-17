@@ -1,7 +1,8 @@
 {- |
     Module      :  $Header$
     Description :  Code generators
-    Copyright   :  (c) 2011, Björn Peemöller (bjp@informatik.uni-kiel.de)
+    Copyright   :  (c) 2011        Björn Peemöller
+    Copyright   :  (c) 2017        Finn Teegen
     License     :  OtherLicense
 
     Maintainer  :  bjp@informatik.uni-kiel.de
@@ -12,17 +13,21 @@
 -}
 module Generators where
 
-import qualified Curry.AbstractCurry         as AC  (CurryProg)
-import qualified Curry.FlatCurry.Type        as FC  (Prog)
-import qualified Curry.Syntax                as CS  (Module, Interface)
+import qualified Curry.AbstractCurry              as AC   (CurryProg)
+import qualified Curry.FlatCurry.Type             as FC   (Prog)
+import qualified Curry.FlatCurry.Annotated.Type   as AFC  (AProg, TypeExpr)
+import qualified Curry.Syntax                     as CS   (Module)
 
-import qualified Generators.GenAbstractCurry as GAC (genAbstractCurry)
-import qualified Generators.GenFlatCurry     as GFC (genFlatCurry, genFlatInterface)
+import qualified Generators.GenAbstractCurry      as GAC  (genAbstractCurry)
+import qualified Generators.GenFlatCurry          as GFC  ( genFlatCurry
+                                                          , genFlatInterface
+                                                          )
+import qualified Generators.GenAnnotatedFlatCurry as GAFC (genAnnotatedFlatCurry)
 
-import           Base.Types                         (Type, PredType)
+import           Base.Types                          (Type, PredType)
 
-import           CompilerEnv                        (CompilerEnv (..))
-import qualified IL                                 (Module)
+import           CompilerEnv                         (CompilerEnv (..))
+import qualified IL                                  (Module)
 
 -- |Generate typed AbstractCurry
 genTypedAbstractCurry :: CompilerEnv -> CS.Module PredType -> AC.CurryProg
@@ -32,11 +37,15 @@ genTypedAbstractCurry = GAC.genAbstractCurry False
 genUntypedAbstractCurry :: CompilerEnv -> CS.Module PredType -> AC.CurryProg
 genUntypedAbstractCurry = GAC.genAbstractCurry True
 
+-- |Generate Annotated FlatCurry
+genAnnotatedFlatCurry :: CompilerEnv -> CS.Module Type -> IL.Module
+                      -> AFC.AProg AFC.TypeExpr
+genAnnotatedFlatCurry = GAFC.genAnnotatedFlatCurry
+
 -- |Generate FlatCurry
-genFlatCurry :: CompilerEnv -> CS.Module Type -> IL.Module -> FC.Prog
+genFlatCurry :: AFC.AProg a -> FC.Prog
 genFlatCurry = GFC.genFlatCurry
 
 -- |Generate a FlatCurry interface
-genFlatInterface :: CompilerEnv -> CS.Interface -> CS.Module Type -> IL.Module
-                 -> FC.Prog
+genFlatInterface :: FC.Prog -> FC.Prog
 genFlatInterface = GFC.genFlatInterface

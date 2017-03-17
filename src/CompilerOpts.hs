@@ -146,6 +146,7 @@ data TargetType
   = Tokens                -- ^ Source code tokens
   | Parsed                -- ^ Parsed source code
   | FlatCurry             -- ^ FlatCurry
+  | AnnotatedFlatCurry    -- ^ Annotated FlatCurry
   | AbstractCurry         -- ^ AbstractCurry
   | UntypedAbstractCurry  -- ^ Untyped AbstractCurry
   | Html                  -- ^ HTML documentation
@@ -200,48 +201,50 @@ warnFlags =
 
 -- |Dump level
 data DumpLevel
-  = DumpParsed            -- ^ dump source code after parsing
-  | DumpExtensionChecked  -- ^ dump source code after extension checking
-  | DumpTypeSyntaxChecked -- ^ dump source code after type syntax checking
-  | DumpKindChecked       -- ^ dump source code after kind checking
-  | DumpSyntaxChecked     -- ^ dump source code after syntax checking
-  | DumpPrecChecked       -- ^ dump source code after precedence checking
-  | DumpDeriveChecked     -- ^ dump source code after derive checking
-  | DumpInstanceChecked   -- ^ dump source code after instance checking
-  | DumpTypeChecked       -- ^ dump source code after type checking
-  | DumpExportChecked     -- ^ dump source code after export checking
-  | DumpQualified         -- ^ dump source  after qualification
-  | DumpDerived           -- ^ dump source  after deriving
-  | DumpDesugared         -- ^ dump source  after desugaring
-  | DumpDictionaries      -- ^ dump source  after dictionary transformation
-  | DumpSimplified        -- ^ dump source  after simplification
-  | DumpLifted            -- ^ dump source  after lambda-lifting
-  | DumpTranslated        -- ^ dump IL code after translation
-  | DumpCaseCompleted     -- ^ dump IL code after case completion
-  | DumpFlatCurry         -- ^ dump FlatCurry code (pretty-printed)
+  = DumpParsed             -- ^ dump source code after parsing
+  | DumpExtensionChecked   -- ^ dump source code after extension checking
+  | DumpTypeSyntaxChecked  -- ^ dump source code after type syntax checking
+  | DumpKindChecked        -- ^ dump source code after kind checking
+  | DumpSyntaxChecked      -- ^ dump source code after syntax checking
+  | DumpPrecChecked        -- ^ dump source code after precedence checking
+  | DumpDeriveChecked      -- ^ dump source code after derive checking
+  | DumpInstanceChecked    -- ^ dump source code after instance checking
+  | DumpTypeChecked        -- ^ dump source code after type checking
+  | DumpExportChecked      -- ^ dump source code after export checking
+  | DumpQualified          -- ^ dump source  after qualification
+  | DumpDerived            -- ^ dump source  after deriving
+  | DumpDesugared          -- ^ dump source  after desugaring
+  | DumpDictionaries       -- ^ dump source  after dictionary transformation
+  | DumpSimplified         -- ^ dump source  after simplification
+  | DumpLifted             -- ^ dump source  after lambda-lifting
+  | DumpTranslated         -- ^ dump IL code after translation
+  | DumpCaseCompleted      -- ^ dump IL code after case completion
+  | DumpAnnotatedFlatCurry -- ^ dump annotated FlatCurry code (pretty-printed)
+  | DumpFlatCurry          -- ^ dump FlatCurry code (pretty-printed)
     deriving (Eq, Bounded, Enum, Show)
 
 -- |Description and flag of dump levels
 dumpLevel :: [(DumpLevel, String, String)]
-dumpLevel = [ (DumpParsed           , "dump-parse", "parsing"                     )
-            , (DumpExtensionChecked , "dump-exc"  , "extension checking"          )
-            , (DumpTypeSyntaxChecked, "dump-tsc"  , "type syntax checking"        )
-            , (DumpKindChecked      , "dump-kc"   , "kind checking"               )
-            , (DumpSyntaxChecked    , "dump-sc"   , "syntax checking"             )
-            , (DumpPrecChecked      , "dump-pc"   , "precedence checking"         )
-            , (DumpDeriveChecked    , "dump-dc"   , "derive checking"             )
-            , (DumpInstanceChecked  , "dump-inc"  , "instance checking"           )
-            , (DumpTypeChecked      , "dump-tc"   , "type checking"               )
-            , (DumpExportChecked    , "dump-ec"   , "export checking"             )
-            , (DumpQualified        , "dump-qual" , "qualification"               )
-            , (DumpDerived          , "dump-deriv", "deriving"                    )
-            , (DumpDesugared        , "dump-ds"   , "desugaring"                  )
-            , (DumpDictionaries     , "dump-dict" , "dictionary insertion"        )
-            , (DumpLifted           , "dump-lift" , "lifting"                     )
-            , (DumpSimplified       , "dump-simpl", "simplification"              )
-            , (DumpTranslated       , "dump-trans", "pattern matching compilation")
-            , (DumpCaseCompleted    , "dump-cc"   , "case completion"             )
-            , (DumpFlatCurry        , "dump-flat" , "translation into FlatCurry"  )
+dumpLevel = [ (DumpParsed            , "dump-parse", "parsing"                             )
+            , (DumpExtensionChecked  , "dump-exc"  , "extension checking"                  )
+            , (DumpTypeSyntaxChecked , "dump-tsc"  , "type syntax checking"                )
+            , (DumpKindChecked       , "dump-kc"   , "kind checking"                       )
+            , (DumpSyntaxChecked     , "dump-sc"   , "syntax checking"                     )
+            , (DumpPrecChecked       , "dump-pc"   , "precedence checking"                 )
+            , (DumpDeriveChecked     , "dump-dc"   , "derive checking"                     )
+            , (DumpInstanceChecked   , "dump-inc"  , "instance checking"                   )
+            , (DumpTypeChecked       , "dump-tc"   , "type checking"                       )
+            , (DumpExportChecked     , "dump-ec"   , "export checking"                     )
+            , (DumpQualified         , "dump-qual" , "qualification"                       )
+            , (DumpDerived           , "dump-deriv", "deriving"                            )
+            , (DumpDesugared         , "dump-ds"   , "desugaring"                          )
+            , (DumpDictionaries      , "dump-dict" , "dictionary insertion"                )
+            , (DumpLifted            , "dump-lift" , "lifting"                             )
+            , (DumpSimplified        , "dump-simpl", "simplification"                      )
+            , (DumpTranslated        , "dump-trans", "pattern matching compilation"        )
+            , (DumpCaseCompleted     , "dump-cc"   , "case completion"                     )
+            , (DumpAnnotatedFlatCurry, "dump-aflat", "translation into annotated FlatCurry")
+            , (DumpFlatCurry         , "dump-flat" , "translation into FlatCurry"          )
             ]
 
 -- |Description and flag of language extensions
@@ -380,6 +383,8 @@ options =
       "generate source representation"
   , targetOption FlatCurry            "flat"
       "generate FlatCurry code"
+  , targetOption AnnotatedFlatCurry   "annotated-flat"
+      "generate annotated FlatCurry code"
   , targetOption AbstractCurry        "acy"
       "generate typed AbstractCurry"
   , targetOption UntypedAbstractCurry "uacy"
