@@ -28,7 +28,7 @@
    defined at the top level of a module. In addition, a type annotated
    source module is returned. Note that type annotations on the
    left hand side of a declaration hold the function or variable's
-   generalized type with the type scheme's for all qualifier left
+   generalized type with the type scheme's universal quantifier left
    implicit. Type annotations on the right hand side of a declaration
    hold the particular instance at which a polymorphic function or
    variable is used.
