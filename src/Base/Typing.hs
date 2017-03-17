@@ -96,7 +96,10 @@ instance Typeable a => Typeable (Expression a) where
   typeOf (Let _ e) = typeOf e
   typeOf (Do _ e) = typeOf e
   typeOf (IfThenElse _ e _) = typeOf e
-  typeOf (Case _ _ as) = head [typeOf rhs | Alt _ _ rhs <- as]
+  typeOf (Case _ _ as) = typeOf $ head as
+
+instance Typeable a => Typeable (Alt a) where
+  typeOf (Alt _ _ rhs) = typeOf rhs
 
 -- When inlining variable and function definitions, the compiler must
 -- eventually update the type annotations of the inlined expression. To
