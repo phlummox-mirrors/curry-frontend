@@ -8,6 +8,8 @@ Under development (0.4.2)
     (option dump-simple)
   * Added option to dump all bindings instead of just local ones
     (dump-all-bindings)
+  * Introduced annotated FlatCurry as a new output format
+    (annotated-flat)
 
 Version 0.4.1
 =============
