@@ -113,7 +113,7 @@ Library
     , Transformations.Simplify
   Other-Modules:
     Paths_curry_frontend
-  ghc-options:       -Wall
+  ghc-options:       -Wall -fno-warn-orphans
 
 Executable curry-frontend
   hs-source-dirs: src
@@ -138,7 +138,7 @@ Executable curry-frontend
     build-depends: network-uri >= 2.6
   else
     build-depends: network < 2.6
-  ghc-options: -Wall
+  ghc-options: -Wall -fno-warn-orphans
 
 Test-Suite test-frontend
   type:           detailed-0.9
