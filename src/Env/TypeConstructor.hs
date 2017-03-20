@@ -4,7 +4,7 @@
     Copyright   :  (c) 2002 - 2004 Wolfgang Lux
                        2011        Björn Peemöller
                        2016        Finn Teegen
-    License     :  OtherLicense
+    License     :  BSD-3-clause
 
     Maintainer  :  bjp@informatik.uni-kiel.de
     Stability   :  experimental
@@ -54,12 +54,17 @@ module Env.TypeConstructor
   ) where
 
 import Curry.Base.Ident
+import Curry.Base.Pretty (Pretty(..), blankLine)
 
 import Base.Kinds
 import Base.Messages (internalError)
+import Base.PrettyKinds ()
+import Base.PrettyTypes ()
 import Base.TopEnv
 import Base.Types
-import Base.Utils ((++!))
+import Base.Utils         ((++!))
+
+import Text.PrettyPrint
 
 data TypeInfo
   = DataType     QualIdent Kind [DataConstr]
@@ -92,6 +97,24 @@ instance Entity TypeInfo where
     | cls == cls' && k == k' && (null ms || null ms' || ms == ms') =
     Just $ TypeClass cls k $ if null ms then ms' else ms
   merge _ _ = Nothing
+
+instance Pretty TypeInfo where
+  pPrint (DataType qid k cs)    =      text "data" <+> pPrint qid
+                                   <>  text "/" <> pPrint k
+                                   <+> equals
+                                   <+> hsep (punctuate (text "|") (map pPrint cs))
+  pPrint (RenamingType qid k c) =      text "newtype" <+> pPrint qid
+                                   <>  text "/" <> pPrint k
+                                   <+> equals <+> pPrint c
+  pPrint (AliasType qid k ar ty)=      text "type" <+> pPrint qid
+                                   <>  text "/" <> pPrint k <> text "/" <> int ar
+                                   <+> equals <+> pPrint ty
+  pPrint (TypeClass qid k ms)   =      text "class" <+> pPrint qid
+                                   <>  text "/" <> pPrint k
+                                   <+> equals
+                                   <+> vcat (blankLine : map pPrint ms)
+  pPrint (TypeVar _)            =
+    internalError $ "Env.TypeConstructor.Pretty.TypeInfo.pPrint: type variable"
 
 tcKind :: ModuleIdent -> QualIdent -> TCEnv -> Kind
 tcKind m tc tcEnv = case qualLookupTypeInfo tc tcEnv of

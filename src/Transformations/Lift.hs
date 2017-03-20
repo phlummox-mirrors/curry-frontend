@@ -4,7 +4,7 @@
     Copyright   :  (c) 2001 - 2003 Wolfgang Lux
                        2011 - 2015 Björn Peemöller
                        2016        Finn Teegen
-    License     :  OtherLicense
+    License     :  BSD-3-clause
 
     Maintainer  :  bjp@informatik.uni-kiel.de
     Stability   :  experimental

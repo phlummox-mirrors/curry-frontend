@@ -5,7 +5,7 @@
                        2007        Sebastian Fischer
                        2011 - 2016 Björn Peemöller
                        2016        Finn Teegen
-    License     :  OtherLicense
+    License     :  BSD-3-clause
 
     Maintainer  :  bjp@informatik.uni-kiel.de
     Stability   :  experimental
@@ -74,9 +74,12 @@ data WarnOpts = WarnOpts
 
 -- |Debug options
 data DebugOpts = DebugOpts
-  { dbDumpLevels :: [DumpLevel] -- ^ dump levels
-  , dbDumpEnv :: Bool           -- ^ dump compilation environment
-  , dbDumpRaw :: Bool           -- ^ dump data structure
+  { dbDumpLevels      :: [DumpLevel] -- ^ dump levels
+  , dbDumpEnv         :: Bool        -- ^ dump compilation environment
+  , dbDumpRaw         :: Bool        -- ^ dump data structure
+  , dbDumpAllBindings :: Bool        -- ^ dump all bindings instead of just the
+                                     --   local bindings
+  , dbDumpSimple      :: Bool        -- ^ print more readable environments
   } deriving Show
 
 -- | Default compiler options
@@ -116,9 +119,11 @@ defaultWarnOpts = WarnOpts
 -- | Default dump options
 defaultDebugOpts :: DebugOpts
 defaultDebugOpts = DebugOpts
-  { dbDumpLevels = []
-  , dbDumpEnv    = False
-  , dbDumpRaw    = False
+  { dbDumpLevels      = []
+  , dbDumpEnv         = False
+  , dbDumpRaw         = False
+  , dbDumpAllBindings = False
+  , dbDumpSimple      = False
   }
 
 -- |Modus operandi of the program
@@ -449,14 +454,19 @@ warnDescriptions
 
 debugDescriptions :: OptErrTable DebugOpts
 debugDescriptions =
-  [ ( "dump-all", "dump everything"
-    , \ opts -> opts { dbDumpLevels = [minBound .. maxBound] })
-  , ( "dump-none", "dump nothing"
-    , \ opts -> opts { dbDumpLevels = []                     })
-  , ( "dump-env" , "additionally dump compiler environment"
-    , \ opts -> opts { dbDumpEnv = True                 })
-  , ( "dump-raw" , "dump as raw AST (instead of pretty printing)"
-    , \ opts -> opts { dbDumpRaw = True                 })
+  [ ( "dump-all"          , "dump everything"
+    , \ opts -> opts { dbDumpLevels = [minBound .. maxBound]    })
+  , ( "dump-none"         , "dump nothing"
+    , \ opts -> opts { dbDumpLevels = []                        })
+  , ( "dump-env"          , "additionally dump compiler environment"
+    , \ opts -> opts { dbDumpEnv = True                         })
+  , ( "dump-raw"          , "dump as raw AST (instead of pretty printing)"
+    , \ opts -> opts { dbDumpRaw = True                         })
+  , ( "dump-all-bindings" , "when dumping bindings, dump all instead of just local ones"
+    , \ opts -> opts { dbDumpAllBindings = True                 })
+  , ( "dump-simple" , "print a simplified, more readable environment"
+    , \ opts -> opts { dbDumpSimple = True                      })
+
   ] ++ map toDescr dumpLevel
   where
   toDescr (flag, name, desc)

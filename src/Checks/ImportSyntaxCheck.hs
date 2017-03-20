@@ -3,7 +3,7 @@
     Description :  Checking import specifications
     Copyright   :  (c) 2016       Jan Tikovsky
                        2016       Finn Teegen
-    License     :  OtherLicense
+    License     :  BSD-3-clause
 
     Maintainer  :  jrt@informatik.uni-kiel.de
     Stability   :  experimental

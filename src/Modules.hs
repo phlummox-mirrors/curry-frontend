@@ -7,7 +7,7 @@
                        2011 - 2015 Björn Peemöller
                        2016        Jan Tikovsky
                        2016 - 2017 Finn Teegen
-    License     :  OtherLicense
+    License     :  BSD-3-clause
 
     Maintainer  :  bjp@informatik.uni-kiel.de
     Stability   :  experimental
@@ -383,7 +383,7 @@ doDump opts (level, env, dump)
       putStrLn (heading (capitalize $ lookupHeader dumpLevel) '=')
       when (dbDumpEnv opts) $ do
         putStrLn (heading "Environment" '-')
-        putStrLn (showCompilerEnv env)
+        putStrLn (showCompilerEnv env (dbDumpAllBindings opts) (dbDumpSimple opts))
       putStrLn (heading "Source Code" '-')
       putStrLn dump
   where

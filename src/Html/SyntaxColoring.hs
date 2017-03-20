@@ -1,11 +1,10 @@
 {- |
     Module      :  $Header$
     Description :  Split module into code fragments
-    Copyright   :  (c)  ??         , someone else
-                        2014 - 2016, Björn Peemöller
+    Copyright   :  (c)  2014 - 2016, Björn Peemöller
                         2016       , Jan Tikovsky
                         2016       , Finn Teegen
-    License     :  OtherLicense
+    License     :  BSD-3-clause
 
     Maintainer  :  bjp@informatik.uni-kiel.de
     Stability   :  experimental

@@ -3,7 +3,7 @@
     Description :  Custom Show implementation for IL
     Copyright   :  (c) 2015        Björn Peemöller
                        2016 - 2017 Finn Teegen
-    License     :  OtherLicense
+    License     :  BSD-3-clause
 
     Maintainer  :  bjp@informatik.uni-kiel.de
     Stability   :  experimental

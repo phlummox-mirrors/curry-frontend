@@ -1,8 +1,16 @@
 Change log for curry-frontend
 =============================
 
-Under development (0.4.1)
+Under development (0.4.2)
 =================
+
+  * Improved readability of environment information in dumps
+    (option dump-simple)
+  * Added option to dump all bindings instead of just local ones
+    (dump-all-bindings)
+
+Version 0.4.1
+=============
 
   * Added a simple cabal test suite
   * Split import of interfaces/modules and expansion and checking of

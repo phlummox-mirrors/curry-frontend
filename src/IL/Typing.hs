@@ -2,7 +2,7 @@
     Module      :  $Header$
     Description :  TODO
     Copyright   :  (c)        2017 Finn Teegen
-    License     :  OtherLicense
+    License     :  BSD-3-clause
 
     Maintainer  :  bjp@informatik.uni-kiel.de
     Stability   :  experimental

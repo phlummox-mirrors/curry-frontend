@@ -1,16 +1,21 @@
 Name:          curry-frontend
-Version:       0.4.1
+Version:       0.4.2
 Cabal-Version: >= 1.10
 Synopsis:      Compile the functional logic language Curry to several
                intermediate formats
-Description:   The Curry Frontend consists of the executable program "cymake".
+Description:   The Curry front end consists of the executable program
+               "curry-frontend".
                It is used by various backends to compile Curry programs to
-               an internal representation.
+               an intermediate representation.
                The code is a stripped-down version of an early version of
                the Muenster Curry Compiler
-               (<http://danae.uni-muenster.de/~lux/curry/>)
+               (<http://danae.uni-muenster.de/curry/>)
+               which has been extended to produce different intermediate
+               representations.
+               For further information, please check
+               <http://curry-language.org>
 Category:      Language
-License:       OtherLicense
+License:       BSD3
 License-File:  LICENSE
 Author:        Wolfgang Lux, Martin Engelke, Bernd Brassel, Holger Siegel,
                Bjoern Peemoeller
@@ -27,7 +32,7 @@ Data-Files: currysource.css
 
 source-repository head
   type:     git
-  location: git://git-ps.informatik.uni-kiel.de/curry/curry-frontend.git
+  location: https://git.ps.informatik.uni-kiel.de/curry/curry-frontend.git
 
 Flag network-uri
    description: Get Network.URI from the network-uri package
@@ -39,12 +44,13 @@ Library
   Build-Depends:
       base == 4.*
     , containers
-    , curry-base == 0.4.1
+    , curry-base == 0.4.2
     , directory
     , extra >= 1.4.6
     , filepath
     , monadlist
     , mtl
+    , pretty
     , process
     , set-extra
     , transformers
@@ -109,20 +115,21 @@ Library
     Paths_curry_frontend
   ghc-options:       -Wall
 
-Executable cymake
+Executable curry-frontend
   hs-source-dirs: src
   Main-is:        cymake.hs
   default-language:  Haskell2010
   Build-Depends:
       base == 4.*
     , containers
-    , curry-base == 0.4.1
+    , curry-base == 0.4.2
     , curry-frontend
     , directory
     , extra >= 1.4.6
     , filepath
     , monadlist
     , mtl
+    , pretty
     , process
     , set-extra
     , syb
@@ -138,5 +145,5 @@ Test-Suite test-frontend
   hs-source-dirs: test
   default-language:  Haskell2010
   test-module:    TestFrontend
-  build-depends:  base == 4.*, Cabal >= 1.20, curry-base == 0.4.1
-    , curry-frontend == 0.4.1, filepath
+  build-depends:  base == 4.*, Cabal >= 1.20, curry-base == 0.4.2
+    , curry-frontend == 0.4.2, filepath

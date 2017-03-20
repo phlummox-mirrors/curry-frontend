@@ -3,7 +3,7 @@
     Description :  Different checks on a Curry module
     Copyright   :  (c) 2011 - 2013 Björn Peemöller
                        2016        Finn Teegen
-    License     :  OtherLicense
+    License     :  BSD-3-clause
 
     Maintainer  :  bjp@informatik.uni-kiel.de
     Stability   :  experimental

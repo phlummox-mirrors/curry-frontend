@@ -5,7 +5,7 @@
                        2011        Björn Peemöller
                        2015        Jan Tikovsky
                        2016        Finn Teegen
-    License     :  OtherLicense
+    License     :  BSD-3-clause
 
     Maintainer  :  bjp@informatik.uni-kiel.de
     Stability   :  experimental
@@ -32,11 +32,15 @@ module Env.Value
   ) where
 
 import Curry.Base.Ident
+import Curry.Base.Pretty (Pretty(..))
 
 import Base.Messages (internalError)
+import Base.PrettyTypes ()
 import Base.TopEnv
 import Base.Types
 import Base.Utils ((++!))
+
+import Text.PrettyPrint
 
 data ValueInfo
   -- |Data constructor with original name, arity, list of record labels and type
@@ -71,6 +75,18 @@ instance Entity ValueInfo where
   merge (Label l1 cs1 ty1) (Label l2 cs2 ty2)
     | l1 == l2 && cs1 == cs2 && ty1 == ty2 = Just (Label l1 cs1 ty1)
   merge _ _ = Nothing
+
+instance Pretty ValueInfo where
+  pPrint (DataConstructor qid ar _ tySc) =     text "data" <+> pPrint qid
+                                           <>  text "/" <> int ar
+                                           <+> equals <+> pPrint tySc
+  pPrint (NewtypeConstructor qid _ tySc) =     text "newtype" <+> pPrint qid
+                                           <+> equals <+> pPrint tySc
+  pPrint (Value qid _ ar tySc)           =     pPrint qid
+                                           <>  text "/" <> int ar
+                                           <+> equals <+> pPrint tySc
+  pPrint (Label qid _ tySc)              =     text "label" <+> pPrint qid
+                                           <+> equals <+> pPrint tySc
 
 mergeLabel :: Ident -> Ident -> Maybe Ident
 mergeLabel l1 l2

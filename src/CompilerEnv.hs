@@ -2,7 +2,7 @@
     Module      :  $Header$
     Description :  Environment containing the module's information
     Copyright   :  (c) 2011 - 2015 Björn Peemöller
-    License     :  OtherLicense
+    License     :  BSD-3-clause
 
     Maintainer  :  bjp@informatik.uni-kiel.de
     Stability   :  experimental
@@ -20,7 +20,7 @@ import Curry.Base.Pretty
 import Curry.Base.Span   (Span)
 import Curry.Syntax
 
-import Base.TopEnv (allLocalBindings)
+import Base.TopEnv (allBindings, allLocalBindings)
 
 import Env.Class
 import Env.Instance
@@ -66,32 +66,52 @@ initCompilerEnv mid = CompilerEnv
   }
 
 -- |Show the 'CompilerEnv'
-showCompilerEnv :: CompilerEnv -> String
-showCompilerEnv env = show $ vcat
+showCompilerEnv :: CompilerEnv -> Bool -> Bool -> String
+showCompilerEnv env allBinds simpleEnv = show $ vcat
   [ header "Module Identifier  " $ text  $ moduleName $ moduleIdent env
   , header "FilePath"            $ text  $ filePath    env
   , header "Language Extensions" $ text  $ show $ extensions  env
   , header "Interfaces         " $ hcat  $ punctuate comma
                                          $ map (text . moduleName)
                                          $ Map.keys $ interfaceEnv env
-  , header "Module Aliases     " $ ppMap $ aliasEnv env
-  , header "Precedences        " $ ppAL $ allLocalBindings $ opPrecEnv env
-  , header "Type Constructors  " $ ppAL $ allLocalBindings $ tyConsEnv env
-  , header "Classes            " $ ppMap $ classEnv env
-  , header "Instances          " $ ppMap $ instEnv env
-  , header "Values             " $ ppAL $ allLocalBindings $ valueEnv  env
+  , header "Module Aliases     " $ ppMap simpleEnv $ aliasEnv env
+  , header "Precedences        " $ ppAL simpleEnv $ bindings $ opPrecEnv env
+  , header "Type Constructors  " $ ppAL simpleEnv $ bindings $ tyConsEnv env
+  , header "Classes            " $ ppMap simpleEnv $ classEnv env
+  , header "Instances          " $ ppMap simpleEnv $ instEnv env
+  , header "Values             " $ ppAL simpleEnv $ bindings $ valueEnv  env
   ]
   where
   header hdr content = hang (text hdr <+> colon) 4 content
+  bindings = if allBinds then allBindings else allLocalBindings
 
 -- |Pretty print a 'Map'
-ppMap :: (Show a, Show b) => Map.Map a b -> Doc
-ppMap = ppAL . Map.toList
+ppMap :: (Show a, Pretty a, Show b, Pretty b) => Bool-> Map.Map a b -> Doc
+ppMap True  = ppMapPretty
+ppMap False = ppMapShow
+
+ppMapShow :: (Show a, Show b) => Map.Map a b -> Doc
+ppMapShow = ppALShow . Map.toList
+
+ppMapPretty :: (Pretty a, Pretty b) => Map.Map a b -> Doc
+ppMapPretty = ppALPretty . Map.toList
 
 -- |Pretty print an association list
-ppAL :: (Show a, Show b) => [(a, b)] -> Doc
-ppAL xs = vcat
+ppAL :: (Show a, Pretty a, Show b, Pretty b) => Bool -> [(a, b)] -> Doc
+ppAL True  = ppALPretty
+ppAL False = ppALShow
+
+ppALShow :: (Show a, Show b) => [(a, b)] -> Doc
+ppALShow xs = vcat
         $ map (\(a,b) -> text (pad a keyWidth) <+> equals <+> text b) showXs
   where showXs   = map (\(a,b) -> (show a, show b)) xs
         keyWidth = maximum (0 : map (length .fst) showXs)
         pad s n  = take n (s ++ repeat ' ')
+
+ppALPretty :: (Pretty a, Pretty b) => [(a, b)] -> Doc
+ppALPretty xs = vcat
+        $ map (\(a,b) -> text (pad a keyWidth) <+> equals <+> text b) showXs
+  where showXs   = map (\(a,b) -> (render (pPrint a), render (pPrint b))) xs
+        keyWidth = maximum (0 : map (length .fst) showXs)
+        pad s n  = take n (s ++ repeat ' ')
+

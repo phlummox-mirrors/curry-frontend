@@ -2,7 +2,7 @@
     Module      :  $Header$
     Description :  Environment of type identifiers
     Copyright   :  (c) 2016        Finn Teegen
-    License     :  OtherLicense
+    License     :  BSD-3-clause
 
     Maintainer  :  bjp@informatik.uni-kiel.de
     Stability   :  experimental

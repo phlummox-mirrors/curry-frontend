@@ -2,7 +2,7 @@
     Module      :  $Header$
     Description :  Generation of annotated FlatCurry program terms
     Copyright   :  (c) 2017        Finn Teegen
-    License     :  OtherLicense
+    License     :  BSD-3-clause
 
     Maintainer  :  bjp@informatik.uni-kiel.de
     Stability   :  experimental

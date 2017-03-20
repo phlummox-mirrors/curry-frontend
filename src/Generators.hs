@@ -2,8 +2,8 @@
     Module      :  $Header$
     Description :  Code generators
     Copyright   :  (c) 2011        Björn Peemöller
-    Copyright   :  (c) 2017        Finn Teegen
-    License     :  OtherLicense
+                       2017        Finn Teegen
+    License     :  BSD-3-clause
 
     Maintainer  :  bjp@informatik.uni-kiel.de
     Stability   :  experimental

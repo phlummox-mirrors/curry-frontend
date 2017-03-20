@@ -5,7 +5,7 @@
                        2011 - 2016 Björn Peemöller
                        2015 - 2016 Yannik Potdevin
                        2016        Finn Teegen
-    License     :  OtherLicense
+    License     :  BSD-3-clause
 
     Maintainer  :  bjp@informatik.uni-kiel.de
     Stability   :  experimental
