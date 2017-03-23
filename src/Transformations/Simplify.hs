@@ -152,7 +152,7 @@ inlineFun :: InlineEnv -> Position -> Lhs Type -> Rhs Type
 inlineFun env p lhs rhs = do
   m <- getModuleIdent
   case rhs of
-    SimpleRhs _ (Let [FunctionDecl _ ty f' eqs'] e) _
+    SimpleRhs _ (Let [FunctionDecl _ _ f' eqs'] e) _
       | -- @f'@ is not recursive
         f' `notElem` qfv m eqs'
         -- @f'@ does not perform any pattern matching
@@ -161,7 +161,7 @@ inlineFun env p lhs rhs = do
         let a = eqnArity $ head eqs'
             (n, vs', e') = etaReduce 0 [] (reverse (snd $ flatLhs lhs)) e
         if  -- the eta-reduced rhs of @f@ is a call to @f'@
-            e' == Variable ty (qualify f')
+            e' == Variable (typeOf e') (qualify f')
             -- @f'@ was fully applied before eta-reduction
             && n  == a
           then mapM (mergeEqns p vs') eqs'
