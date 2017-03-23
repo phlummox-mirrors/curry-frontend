@@ -259,6 +259,8 @@ transModule opts mdl = do
   ilCaseComp <- dumpIL DumpCaseCompleted $ completeCase il
   return (ilCaseComp, dicts)
   where
+  dumpCS :: Show a => DumpLevel -> CompEnv (CS.Module a)
+         -> CYIO (CompEnv (CS.Module a))
   dumpCS = dumpWith opts CS.showModule CS.ppModule
   dumpIL = dumpWith opts IL.showModule IL.ppModule
 
@@ -282,7 +284,7 @@ writeTokens opts env = when tokTarget $ liftIO $
   useSubDir  = addCurrySubdirModule (optUseSubdir opts) (moduleIdent env)
 
 -- |Output the parsed 'Module' on request
-writeParsed :: Options -> CompEnv (CS.Module a) -> CYIO ()
+writeParsed :: Show a => Options -> CompEnv (CS.Module a) -> CYIO ()
 writeParsed opts (env, mdl) = when srcTarget $ liftIO $
   writeModule (useSubDir $ sourceRepName (filePath env)) (CS.showModule mdl)
   where
