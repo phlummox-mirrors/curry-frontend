@@ -516,11 +516,12 @@ fp2Expr (NegativePattern         pty l) = (Literal pty (negateLiteral l), [])
 fp2Expr (VariablePattern         pty v) = (mkVar pty v, [])
 fp2Expr (ConstructorPattern   pty c ts) =
   let (ts', ess) = unzip $ map fp2Expr ts
-  in  (apply (Constructor pty c) ts', concat ess)
+      pty' = predType $ foldr TypeArrow (unpredType pty) $ map typeOf ts
+  in  (apply (Constructor pty' c) ts', concat ess)
 fp2Expr (InfixPattern   pty t1 op t2) =
   let (t1', es1) = fp2Expr t1
       (t2', es2) = fp2Expr t2
-      pty' = predType $ TypeArrow (typeOf t1') $ TypeArrow (typeOf t2') $ unpredType pty
+      pty' = predType $ foldr TypeArrow (unpredType pty) [typeOf t1, typeOf t2]
   in  (InfixApply t1' (InfixConstr pty' op) t2', es1 ++ es2)
 fp2Expr (ParenPattern                t) = first Paren (fp2Expr t)
 fp2Expr (TuplePattern               ts) =
@@ -531,11 +532,12 @@ fp2Expr (ListPattern            pty ts) =
   in  (List pty ts', concat ess)
 fp2Expr (FunctionPattern      pty f ts) =
   let (ts', ess) = unzip $ map fp2Expr ts
-  in  (apply (Variable pty f) ts', concat ess)
+      pty' = predType $ foldr TypeArrow (unpredType pty) $ map typeOf ts
+  in  (apply (Variable pty' f) ts', concat ess)
 fp2Expr (InfixFuncPattern pty t1 op t2) =
   let (t1', es1) = fp2Expr t1
       (t2', es2) = fp2Expr t2
-      pty' = predType $ TypeArrow (typeOf t1') $ TypeArrow (typeOf t2') $ unpredType pty
+      pty' = predType $ foldr TypeArrow (unpredType pty) $ map typeOf [t1, t2]
   in  (InfixApply t1' (InfixOp pty' op) t2', es1 ++ es2)
 fp2Expr (AsPattern                 v t) =
   let (t', es) = fp2Expr t
