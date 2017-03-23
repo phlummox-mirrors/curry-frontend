@@ -98,36 +98,43 @@ showsLiteral (Float x)
   . showsString ")"
 
 showsConstrTerm :: ConstrTerm -> ShowS
-showsConstrTerm (LiteralPattern _ lit)
+showsConstrTerm (LiteralPattern ty lit)
   = showsString "(LiteralPattern "
+  . showsType ty
   . showsLiteral lit
   . showsString ")"
-showsConstrTerm (ConstructorPattern _ qident idents)
+showsConstrTerm (ConstructorPattern ty qident idents)
   = showsString "(ConstructorPattern "
+  . showsType ty
   . showsQualIdent qident . space
   . showsList (showsIdent . snd) idents
   . showsString ")"
-showsConstrTerm (VariablePattern _ ident)
+showsConstrTerm (VariablePattern ty ident)
   = showsString "(VariablePattern "
+  . showsType ty
   . showsIdent ident
   . showsString ")"
 
 showsExpression :: Expression -> ShowS
-showsExpression (Literal _ lit)
+showsExpression (Literal ty lit)
   = showsString "(Literal "
+  . showsType ty
   . showsLiteral lit
   . showsString ")"
-showsExpression (Variable _ ident)
+showsExpression (Variable ty ident)
   = showsString "(Variable "
+  . showsType ty
   . showsIdent ident
   . showsString ")"
-showsExpression (Function _ qident int)
+showsExpression (Function ty qident int)
   = showsString "(Function "
+  . showsType ty
   . showsQualIdent qident . space
   . shows int
   . showsString ")"
-showsExpression (Constructor _ qident int)
+showsExpression (Constructor ty qident int)
   = showsString "(Constructor "
+  . showsType ty
   . showsQualIdent qident . space
   . shows int
   . showsString ")"
