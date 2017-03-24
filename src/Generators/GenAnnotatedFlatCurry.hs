@@ -18,10 +18,12 @@ module Generators.GenAnnotatedFlatCurry (genAnnotatedFlatCurry) where
 import           Control.Applicative        ((<$>), (<*>))
 #endif
 import           Control.Monad.Extra        (concatMapM)
-import qualified Control.Monad.State as S   (State, evalState, gets, modify)
+import qualified Control.Monad.State as S   ( State, evalState, get, gets
+                                            , modify, put )
 import           Data.Function              (on)
 import           Data.List                  (nub, sortBy)
 import           Data.Maybe                 (fromMaybe)
+import qualified Data.Map            as Map (Map, empty, insert, lookup)
 import qualified Data.Set            as Set (Set, empty, insert, member)
 
 import           Curry.Base.Ident
@@ -224,7 +226,7 @@ trModule (IL.Module mid is ds) = do
   is' <- getImports is
   sns <- getTypeSynonyms >>= concatMapM trTypeSynonym
   tds <- concatMapM trTypeDecl ds
-  fds <- concatMapM trAFuncDecl ds
+  fds <- concatMapM (fmap (map runNormalization) . trAFuncDecl) ds
   ops <- getFixities     >>= concatMapM trIOpDecl
   return $ AProg (moduleName mid) is' (sns ++ tds) fds ops
 
@@ -279,13 +281,14 @@ cvFixity CS.Infix  = InfixOp
 
 -- Translate a function declaration
 trAFuncDecl :: IL.Decl -> FlatState [AFuncDecl TypeExpr]
-trAFuncDecl (IL.FunctionDecl f vs ty e) = do
+trAFuncDecl (IL.FunctionDecl f vs _ e) = do
   f'  <- trQualIdent f
   a   <- getArity f
   vis <- getVisibility f
   ty' <- trType ty
-  r'  <- trARule vs e
+  r'  <- trARule ty vs e
   return [AFunc f' a vis ty' r']
+  where ty = foldr IL.TypeArrow (IL.typeOf e) $ map fst vs
 trAFuncDecl (IL.ExternalDecl  f _ e ty) = do
   f'   <- trQualIdent f
   a    <- getArity f
@@ -297,11 +300,11 @@ trAFuncDecl _                           = return []
 
 -- Translate a function rule.
 -- Resets variable index so that for every rule variables start with index 1
-trARule :: [(IL.Type, Ident)] -> IL.Expression -> FlatState (ARule TypeExpr)
-trARule vs e = withFreshEnv $ ARule <$> trType ty
+trARule :: IL.Type -> [(IL.Type, Ident)] -> IL.Expression
+        -> FlatState (ARule TypeExpr)
+trARule ty vs e = withFreshEnv $ ARule <$> trType ty
                                     <*> mapM (uncurry newVar) vs
                                     <*> trAExpr e
-  where ty = foldr IL.TypeArrow (IL.typeOf e) $ map fst vs
 
 trAExternal :: IL.Type -> String -> FlatState (ARule TypeExpr)
 trAExternal ty e = do mid <- getModuleIdent
@@ -336,8 +339,8 @@ trAExpr (IL.Letrec   bs e) = inNestedEnv $ do
   ALet <$> trType (IL.typeOf e)
        <*> (zip <$> mapM (uncurry newVar) vs <*> mapM trAExpr es)
        <*> trAExpr e
-trAExpr (IL.Typed e ty) = ATyped <$> ty' <*> trAExpr e <*> ty'
-  where ty' = trType ty
+trAExpr (IL.Typed e _) = ATyped <$> ty' <*> trAExpr e <*> ty'
+  where ty' = trType $ IL.typeOf e
 
 -- Translate a literal
 trLiteral :: IL.Literal -> FlatState Literal
@@ -412,7 +415,69 @@ genApply e es = do
   es' <- mapM trAExpr es
   return $ foldl (\e1 e2 -> let FuncType ty1 ty2 = typeOf e1 in AComb ty2 FuncCall (ap, FuncType (FuncType ty1 ty2) (FuncType ty1 ty2)) [e1, e2]) e es'
 
-  -- -----------------------------------------------------------------------------
+-- -----------------------------------------------------------------------------
+-- Normalization
+-- -----------------------------------------------------------------------------
+
+runNormalization :: Normalize a => a -> a
+runNormalization x = S.evalState (normalize x) (0, Map.empty)
+
+type NormState a = S.State (Int, Map.Map Int Int) a
+
+class Normalize a where
+  normalize :: a -> NormState a
+
+instance Normalize TypeExpr where
+  normalize (TVar        i) = do
+    (n, m) <- S.get
+    case Map.lookup i m of
+      Nothing -> do
+        S.put (n + 1, Map.insert i n m)
+        return $ TVar n
+      Just n' -> return $ TVar n'
+  normalize (TCons   q tys) = TCons q <$> mapM normalize tys
+  normalize (FuncType  a b) = FuncType <$> normalize a <*> normalize b
+
+instance Normalize b => Normalize (a, b) where
+  normalize (x, y) = ((,) x) <$> normalize y
+
+instance Normalize a => Normalize (AFuncDecl a) where
+  normalize (AFunc f a v ty r) = AFunc f a v <$> normalize ty <*> normalize r
+
+instance Normalize a => Normalize (ARule a) where
+  normalize (ARule     ty vs e) = ARule <$> normalize ty
+                                        <*> mapM normalize vs
+                                        <*> normalize e
+  normalize (AExternal ty    s) = flip AExternal s <$> normalize ty
+
+instance Normalize a => Normalize (AExpr a) where
+  normalize (AVar  ty       v) = flip AVar  v  <$> normalize ty
+  normalize (ALit  ty       l) = flip ALit  l  <$> normalize ty
+  normalize (AComb ty ct f es) = flip AComb ct <$> normalize ty
+                                               <*> normalize f
+                                               <*> mapM normalize es
+  normalize (ALet  ty    ds e) = ALet <$> normalize ty
+                                      <*> mapM normalizeBinding ds
+                                      <*> normalize e
+    where normalizeBinding (v, b) = (,) <$> normalize v <*> normalize b
+  normalize (AOr   ty     a b) = AOr <$> normalize ty <*> normalize a
+                                     <*> normalize b
+  normalize (ACase ty ct e bs) = flip ACase ct <$> normalize ty <*> normalize e
+                                               <*> mapM normalize bs
+  normalize (AFree  ty   vs e) = AFree <$> normalize ty <*> mapM normalize vs
+                                       <*> normalize e
+  normalize (ATyped ty  e ty') = ATyped <$> normalize ty <*> normalize e
+                                        <*> normalize ty'
+
+instance Normalize a => Normalize (ABranchExpr a) where
+  normalize (ABranch p e) = ABranch <$> normalize p <*> normalize e
+
+instance Normalize a => Normalize (APattern a) where
+  normalize (APattern  ty c vs) = APattern <$> normalize ty <*> normalize c
+                                           <*> mapM normalize vs
+  normalize (ALPattern ty    l) = flip ALPattern l <$> normalize ty
+
+-- -----------------------------------------------------------------------------
 -- Helper functions
 -- -----------------------------------------------------------------------------
 
