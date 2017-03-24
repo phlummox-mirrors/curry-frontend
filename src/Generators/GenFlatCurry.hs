@@ -26,7 +26,7 @@ genFlatCurry = trAProg
 
 genFlatFuncDecl :: AFuncDecl a -> FuncDecl
 genFlatFuncDecl = trAFunc
-  (\name arity vis t rule -> Func name arity vis t $ genFlatRule rule)
+  (\name arity vis ty rule -> Func name arity vis ty $ genFlatRule rule)
 
 genFlatRule :: ARule a -> Rule
 genFlatRule = trARule
