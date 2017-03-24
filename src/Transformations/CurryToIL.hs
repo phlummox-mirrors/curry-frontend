@@ -145,7 +145,7 @@ trDecl :: Decl Type -> TransM [IL.Decl]
 trDecl (DataDecl     _ tc tvs cs _) = (:[]) <$> trData     tc tvs cs
 trDecl (NewtypeDecl  _ tc tvs nc _) = (:[]) <$> trNewtype  tc tvs nc
 trDecl (ForeignDecl _ cc ie ty f _) = (:[]) <$> trForeign  f cc ie ty
-trDecl (FunctionDecl    _ ty f eqs) = (:[]) <$> trFunction f eqs
+trDecl (FunctionDecl    _ ty f eqs) = (:[]) <$> trFunction f ty eqs
 trDecl _                            = return []
 
 trData :: Ident -> [Ident] -> [ConstrDecl] -> TransM IL.Decl
@@ -232,18 +232,17 @@ forallType' tv ty =
 -- selector function have to be renamed according to the name mapping
 -- computed for its first argument.
 
-trFunction :: Ident -> [Equation Type] -> TransM IL.Decl
-trFunction f eqs = do
+trFunction :: Ident -> Type -> [Equation Type] -> TransM IL.Decl
+trFunction f ty eqs = do
   f' <- trQualify f
-  let ty  = foldr TypeArrow (typeOf rhs) $ map typeOf ts
-      ty' = transType ty
+  let ty' = transType ty
       vs' = zip (map (transType . typeOf) ts) vs
   alts <- mapM (trEquation vs ws) eqs
   return $ IL.FunctionDecl f' vs' ty' (flexMatch vs' alts)
   where
   -- vs are the variables needed for the function: _1, _2, etc.
   -- ws is an infinite list for introducing additional variables later
-  eq@(Equation _ lhs rhs) = head eqs
+  Equation _ lhs _ = head eqs
   (_, ts) = flatLhs lhs
   (vs, ws) = splitAt (length ts) (argNames (mkIdent ""))
 

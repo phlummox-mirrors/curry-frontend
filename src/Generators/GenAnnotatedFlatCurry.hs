@@ -284,7 +284,7 @@ trAFuncDecl (IL.FunctionDecl f vs ty e) = do
   a   <- getArity f
   vis <- getVisibility f
   ty' <- trType ty
-  r'  <- trARule ty vs e
+  r'  <- trARule vs e
   return [AFunc f' a vis ty' r']
 trAFuncDecl (IL.ExternalDecl  f _ e ty) = do
   f'   <- trQualIdent f
@@ -297,10 +297,11 @@ trAFuncDecl _                           = return []
 
 -- Translate a function rule.
 -- Resets variable index so that for every rule variables start with index 1
-trARule :: IL.Type -> [(IL.Type, Ident)] -> IL.Expression -> FlatState (ARule TypeExpr)
-trARule ty vs e = withFreshEnv $ ARule <$> trType ty
-                                       <*> mapM (uncurry newVar) vs
-                                       <*> trAExpr e
+trARule :: [(IL.Type, Ident)] -> IL.Expression -> FlatState (ARule TypeExpr)
+trARule vs e = withFreshEnv $ ARule <$> trType ty
+                                    <*> mapM (uncurry newVar) vs
+                                    <*> trAExpr e
+  where ty = foldr IL.TypeArrow (IL.typeOf e) $ map fst vs
 
 trAExternal :: IL.Type -> String -> FlatState (ARule TypeExpr)
 trAExternal ty e = do mid <- getModuleIdent
