@@ -1254,11 +1254,15 @@ generalizeMethodType ty
   | otherwise = TypeForall tvs ty
   where tvs = nub $ filter (/= 0) $ typeVars ty
 
+instTypeVar :: Int -> Int
+instTypeVar tv = -1 - tv
+
 instType :: Type -> Type
 instType (TypeConstructor tc) = TypeConstructor tc
-instType (TypeVariable    tv) = TypeVariable (-1 - tv)
+instType (TypeVariable    tv) = TypeVariable (instTypeVar tv)
 instType (TypeApply  ty1 ty2) = TypeApply (instType ty1) (instType ty2)
 instType (TypeArrow  ty1 ty2) = TypeArrow (instType ty1) (instType ty2)
+instType (TypeForall  tvs ty) = TypeForall (map instTypeVar tvs) (instType ty)
 instType ty = ty
 
 instPred :: Pred -> Pred
