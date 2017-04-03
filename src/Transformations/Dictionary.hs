@@ -687,9 +687,9 @@ dictTransValueInfo (DataConstructor c a ls (ForAllExist n n' pty)) =
         ty  = transformPredType pty
 dictTransValueInfo (NewtypeConstructor c l (ForAllExist n n' pty)) =
   NewtypeConstructor c l (ForAllExist n n' (predType (unpredType pty)))
-dictTransValueInfo (Value f _ a (ForAll n pty)) =
+dictTransValueInfo (Value f cm a (ForAll n pty)) =
   Value f False a' $ ForAll n $ predType ty
-  where a' = a + arrowArity ty - arrowArity (unpredType pty)
+  where a' = a + if cm then 1 else arrowArity ty - arrowArity (unpredType pty)
         ty = transformPredType pty
 dictTransValueInfo (Label l cs (ForAll n pty)) =
   Label l cs $ ForAll n $ predType $ unpredType pty
