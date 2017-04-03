@@ -942,6 +942,7 @@ qualMatch pls1 ty1 pls2 ty2 = case predListMatch pls2 ty2 of
 predListMatch :: [Pred] -> Type -> Maybe Type
 predListMatch []      ty = Just ty
 predListMatch (p:pls) ty = case ty of
+  TypeForall _ ty -> predListMatch (p:pls) ty
   TypeArrow ty1 ty2 | ty1 == dictType (instPred p) -> predListMatch pls ty2
   _ -> Nothing
 
