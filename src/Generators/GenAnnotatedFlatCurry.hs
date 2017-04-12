@@ -328,7 +328,7 @@ trAExpr (IL.Exist          v e) = inNestedEnv $ do
   return $ case e' of AFree ty'' vs e'' -> AFree ty'' (v' : vs) e''
                       _                 -> AFree ty'  (v' : []) e'
 trAExpr (IL.Let (IL.Binding v b) e) = inNestedEnv $ do
-  v' <- newVar (IL.typeOf e) v
+  v' <- newVar (IL.typeOf b) v
   b' <- trAExpr b
   e' <- trAExpr e
   ty' <- trType $ IL.typeOf e
