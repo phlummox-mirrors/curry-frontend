@@ -412,7 +412,11 @@ createClassMethodDecl cls =
 defaultClassMethodDecl :: QualIdent -> Ident -> DTM (Decl PredType)
 defaultClassMethodDecl cls f = do
   pty@(PredType _ ty) <- getClassMethodType cls f
-  return $ funDecl NoPos pty f [] $ preludeError (instType ty) $
+  augEnv <- getAugEnv
+  let pats = if isAugmented augEnv (qualifyLike cls f)
+               then [ConstructorPattern predUnitType qUnitId []]
+               else []
+  return $ funDecl NoPos pty f pats $ preludeError (instType ty) $
     "No instance or default method for class operation " ++ escName f
 
 getClassMethodType :: QualIdent -> Ident -> DTM PredType
