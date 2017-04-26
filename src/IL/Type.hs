@@ -136,6 +136,7 @@ instance Expr Expression where
   fv (Let (Binding v e1) e2) = fv e1 ++ filter (/= v) (fv e2)
   fv (Letrec          bds e) = filter (`notElem` vs) (fv es ++ fv e)
     where (vs, es) = unzip [(v, e') | Binding v e' <- bds]
+  fv (Typed             e _) = fv e
   fv _                       = []
 
 instance Expr Alt where
