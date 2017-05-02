@@ -188,8 +188,8 @@ completeConsAlts ea ce alts = do
     mapM (\ty' -> freshIdent >>= \v -> return (ty', v)) (subst tySubst tys)
 
   -- default alternative, if there is one
-  defaultAlt v = listToMaybe [ replaceVar x (Variable (typeOf e) v) e
-                             | Alt (VariablePattern _ x) e <- alts ]
+  defaultAlt v = listToMaybe [ replaceVar x (Variable ty v) e
+                             | Alt (VariablePattern ty x) e <- alts ]
 
   -- create a binding for @v = e@ if needed
   bindDefVar v e w e' ps
