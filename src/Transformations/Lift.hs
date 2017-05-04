@@ -3,7 +3,7 @@
     Description :  Lifting of lambda-expressions and local functions
     Copyright   :  (c) 2001 - 2003 Wolfgang Lux
                        2011 - 2015 Björn Peemöller
-                       2016        Finn Teegen
+                       2016 - 2017 Finn Teegen
     License     :  BSD-3-clause
 
     Maintainer  :  bjp@informatik.uni-kiel.de
@@ -28,11 +28,12 @@ import           Control.Arrow              (first)
 import qualified Control.Monad.State as S   (State, runState, gets, modify)
 import           Data.List
 import qualified Data.Map            as Map (Map, empty, insert, lookup)
-import qualified Data.Set            as Set (fromList, member, unions)
-
+import           Data.Maybe                 (catMaybes, fromJust)
+import qualified Data.Set            as Set (fromList, toList, unions)
 import Curry.Base.Ident
 import Curry.Syntax
 
+import Base.AnnotExpr
 import Base.Expr
 import Base.Messages                        (internalError)
 import Base.SCC
@@ -60,9 +61,13 @@ lift vEnv (Module ps m es is ds) = (lifted, valueEnv s')
 -- state monad transformer in order to pass the type environment
 -- through. The environment constructed in the abstraction phase maps
 -- each local function declaration onto its replacement expression,
--- i.e. the function applied to its free variables.
+-- i.e. the function applied to its free variables. In order to generate
+-- correct type annotations for an inserted replacement expression, we also
+-- save a function's original type. The original type is later unified with
+-- the concrete type of the replaced expression to obtain a type substitution
+-- which is then applied to the replacement expression.
 
-type AbstractEnv = Map.Map Ident (Expression Type)
+type AbstractEnv = Map.Map Ident (Expression Type, Type)
 
 data LiftState = LiftState
   { moduleIdent :: ModuleIdent
@@ -92,20 +97,20 @@ withLocalAbstractEnv ae act = do
   S.modify $ \s -> s { abstractEnv = old }
   return res
 
-absDecl :: String -> [(Type, Ident)] -> Decl Type -> LiftM (Decl Type)
+absDecl :: String -> [Ident] -> Decl Type -> LiftM (Decl Type)
 absDecl _   lvs (FunctionDecl p ty f eqs) = FunctionDecl p ty f
                                             <$> mapM (absEquation lvs) eqs
 absDecl pre lvs (PatternDecl     p t rhs) = PatternDecl p t
                                             <$> absRhs pre lvs rhs
 absDecl _   _   d                         = return d
 
-absEquation :: [(Type, Ident)] -> Equation Type -> LiftM (Equation Type)
+absEquation :: [Ident] -> Equation Type -> LiftM (Equation Type)
 absEquation lvs (Equation p lhs@(FunLhs f ts) rhs) =
   Equation p lhs <$> absRhs (idName f ++ ".") lvs' rhs
-  where lvs' = lvs `addVars` concatMap patternVars ts
+  where lvs' = lvs ++ bv ts
 absEquation _ _ = error "Lift.absEquation: no pattern match"
 
-absRhs :: String -> [(Type, Ident)] -> Rhs Type -> LiftM (Rhs Type)
+absRhs :: String -> [Ident] -> Rhs Type -> LiftM (Rhs Type)
 absRhs pre lvs (SimpleRhs p e _) = simpleRhs p <$> absExpr pre lvs e
 absRhs _   _   _                 = error "Lift.absRhs: no simple RHS"
 
@@ -158,15 +163,15 @@ absRhs _   _   _                 = error "Lift.absRhs: no simple RHS"
 -- checking whether an entry for its transformed name is present
 -- in the value environment.
 
-absDeclGroup :: String -> [(Type, Ident)] -> [Decl Type] -> Expression Type
+absDeclGroup :: String -> [Ident] -> [Decl Type] -> Expression Type
              -> LiftM (Expression Type)
 absDeclGroup pre lvs ds e = do
   m <- getModuleIdent
   absFunDecls pre lvs' (scc bv (qfv m) fds) vds e
-  where lvs' = lvs `addVars` concatMap declVars vds
+  where lvs' = lvs ++ bv vds
         (fds, vds) = partition isFunDecl ds
 
-absFunDecls :: String -> [(Type, Ident)] -> [[Decl Type]] -> [Decl Type]
+absFunDecls :: String -> [Ident] -> [[Decl Type]] -> [Decl Type]
             -> Expression Type -> LiftM (Expression Type)
 absFunDecls pre lvs []         vds e = do
   vds' <- mapM (absDecl pre lvs) vds
@@ -177,18 +182,53 @@ absFunDecls pre lvs (fds:fdss) vds e = do
   env <- getAbstractEnv
   vEnv <- getValueEnv
   let -- defined functions
-      fs     = bv fds
-      -- free variables on the right-hand sides
-      fvsRhs = Set.unions
-                [ Set.fromList (maybe [v] (qfv m) (Map.lookup v env))
-                | v <- qfv m fds ]
+      fs      = bv fds
+      -- function types
+      ftys    = map extractFty fds
+      extractFty (FunctionDecl _ _ f ((Equation _ (FunLhs _ ts) rhs):_)) =
+        (f, foldr TypeArrow (typeOf rhs) $ map typeOf ts)
+      extractFty _                                                       =
+        internalError "Lift.absFunDecls.extractFty"
+      -- typed free variables on the right-hand sides
+      fvsRhs  = Set.unions
+                  [ Set.fromList (filter (not . isDummyType . fst)
+                                         (maybe [(ty, v)]
+                                                (qafv' ty)
+                                                (Map.lookup v env)))
+                  | (ty, v) <- concatMap (qafv m) fds ]
+      -- !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+      -- !!! HACK: When calculating the typed free variables on the     !!!
+      -- !!! right-hand side, we have to filter out the ones annotated  !!!
+      -- !!! with dummy types (see below). Additionally, we have to be  !!!
+      -- !!! careful when we calculate the typed free variables in a    !!!
+      -- !!! replacement expression: We have to unify the original      !!!
+      -- !!! function type with the instantiated function type in order !!!
+      -- !!! to obtain a type substitution that can then be applied to  !!!
+      -- !!! the typed free variables in the replacement expression.    !!!
+      -- !!! This is analogous to the procedure when inserting a        !!!
+      -- !!! replacement expression with a correct type annotation      !!!
+      -- !!! (see 'absType' in 'absExpr' below).                        !!!
+      -- !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+      qafv' ty (re, fty) =
+        let unifier = matchType fty ty idSubst
+        in  map (\(ty', v) -> (subst unifier ty', v)) $ qafv m re
       -- free variables that are local
-      fvs    = filter ((`Set.member` fvsRhs) . snd) lvs
+      fvs     = filter ((`elem` lvs) . snd) (Set.toList fvsRhs)
       -- extended abstraction environment
-      env'   = foldr (bindF (map (uncurry mkVar) fvs)) env fs
-      bindF fvs' f = Map.insert f (apply (mkFun m pre undefined f) fvs')
+      env'    = foldr bindF env fs
+      -- !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+      -- !!! HACK: Since we do not know how to annotate the function    !!!
+      -- !!! call within the replacement expression until the replace-  !!!                          !!!
+      -- !!! ment expression is actually inserted (see 'absType' in     !!!
+      -- !!! 'absExpr' below), we use a dummy type for this. In turn,   !!!
+      -- !!! this dummy type has to be filtered out when calculating    !!!
+      -- !!! the typed free variables on right-hand sides (see above).  !!!                                             !!!
+      -- !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+      bindF f =
+        Map.insert f ( apply (mkFun m pre dummyType f) (map (uncurry mkVar) fvs)
+                     , fromJust $ lookup f ftys )
       -- newly abstracted functions
-      fs'    = filter (\f -> null $ lookupValue (liftIdent pre f) vEnv) fs
+      fs'     = filter (\f -> null $ lookupValue (liftIdent pre f) vEnv) fs
   withLocalAbstractEnv env' $ do
     -- add variables to functions
     fds' <- mapM (absFunDecl pre fvs lvs) [d | d <- fds, any (`elem` fs') (bv d)]
@@ -199,22 +239,25 @@ absFunDecls pre lvs (fds:fdss) vds e = do
 -- When the free variables of a function are abstracted, the type of the
 -- function must be changed as well.
 
-absFunDecl :: String -> [(Type, Ident)] -> [(Type, Ident)] -> Decl Type
+absFunDecl :: String -> [(Type, Ident)] -> [Ident] -> Decl Type
            -> LiftM (Decl Type)
-absFunDecl pre fvs lvs (FunctionDecl p ty f eqs) = do
+absFunDecl pre fvs lvs (FunctionDecl p _ f eqs) = do
   m <- getModuleIdent
+  FunctionDecl _ _ _ eqs'' <- absDecl pre lvs $ FunctionDecl p undefined f' eqs'
   modifyValueEnv $ bindGlobalInfo
-    (\qf tySc -> Value qf False (eqnArity $ head eqs') tySc) m f' $ polyType ty'
-  absDecl pre lvs $ FunctionDecl p ty' f' eqs'
+    (\qf tySc -> Value qf False (eqnArity $ head eqs') tySc) m f' $ polyType ty''
+  return $ FunctionDecl p ty'' f' eqs''
   where f' = liftIdent pre f
-        ty' = genType (foldr (TypeArrow . fst) ty fvs)
-        eqs' = map (addVars' f') eqs
-        genType ty'' = subst (foldr2 bindSubst idSubst tvs tvs') ty''
-          where tvs = nub (typeVars ty'')
+        ty' = foldr TypeArrow (typeOf rhs') (map typeOf ts')
+          where Equation _ (FunLhs _ ts') rhs' = head eqs'
+        ty'' = genType ty'
+        eqs' = map addVars eqs
+        genType ty''' = subst (foldr2 bindSubst idSubst tvs tvs') ty'''
+          where tvs = nub (typeVars ty''')
                 tvs' = map TypeVariable [0 ..]
-        addVars' f1 (Equation p1 (FunLhs _ ts) rhs) =
-          Equation p1 (FunLhs f1 (map (uncurry VariablePattern) fvs ++ ts)) rhs
-        addVars' _ _ = error "Lift.absFunDecl.addVars': no pattern match"
+        addVars (Equation p' (FunLhs _ ts) rhs) =
+          Equation p' (FunLhs f' (map (uncurry VariablePattern) fvs ++ ts)) rhs
+        addVars _ = error "Lift.absFunDecl.addVars: no pattern match"
 absFunDecl pre _ _ (ForeignDecl p cc ie ty f ty') = do
   m <- getModuleIdent
   modifyValueEnv $ bindGlobalInfo
@@ -223,16 +266,23 @@ absFunDecl pre _ _ (ForeignDecl p cc ie ty f ty') = do
   where f' = liftIdent pre f
 absFunDecl _ _ _ _ = error "Lift.absFunDecl: no pattern match"
 
-absExpr :: String -> [(Type, Ident)] -> Expression Type
-        -> LiftM (Expression Type)
+absExpr :: String -> [Ident] -> Expression Type -> LiftM (Expression Type)
 absExpr _   _   l@(Literal     _ _) = return l
 absExpr pre lvs var@(Variable ty v)
   | isQualified v = return var
   | otherwise     = do
     getAbstractEnv >>= \env -> case Map.lookup (unqualify v) env of
-      Nothing -> return var
-      Just e  -> absExpr pre lvs $ absType ty e
-  where absType ty' (Variable _ v') = Variable ty' v'
+      Nothing       -> return var
+      Just (e, fty) -> let unifier = matchType fty ty idSubst
+                       in  absExpr pre lvs $ fmap (subst unifier) $ absType ty e
+  where -- !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        -- !!! HACK: When inserting the replacement expression for an     !!!
+        -- !!! abstracted function, we have to unify the original         !!!
+        -- !!! function type with the instantiated function type in order !!!
+        -- !!! to obtain a type substitution that can then be applied to  !!!
+        -- !!! the type annotations in the replacement expression.        !!!
+        -- !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        absType ty' (Variable _ v') = Variable ty' v'
         absType ty' (Apply   e1 e2) =
           Apply (absType (TypeArrow (typeOf e2) ty') e1) e2
         absType _ _ = internalError "Lift.absExpr.absType"
@@ -245,9 +295,9 @@ absExpr pre lvs (Case      ct e bs) = Case ct       <$> absExpr pre lvs e
 absExpr pre lvs (Typed        e ty) = flip Typed ty <$> absExpr pre lvs e
 absExpr _   _   e                   = internalError $ "Lift.absExpr: " ++ show e
 
-absAlt :: String -> [(Type, Ident)] -> Alt Type -> LiftM (Alt Type)
+absAlt :: String -> [Ident] -> Alt Type -> LiftM (Alt Type)
 absAlt pre lvs (Alt p t rhs) = Alt p t <$> absRhs pre lvs' rhs
-  where lvs' = lvs `addVars` patternVars t
+  where lvs' = lvs ++ bv t
 
 -- -----------------------------------------------------------------------------
 -- Lifting
@@ -256,31 +306,32 @@ absAlt pre lvs (Alt p t rhs) = Alt p t <$> absRhs pre lvs' rhs
 -- After the abstraction pass, all local function declarations are lifted
 -- to the top-level.
 
-liftFunDecl :: Decl a -> [Decl a]
-liftFunDecl (FunctionDecl p a f eqs) = FunctionDecl p a f eqs' : concat dss'
+liftFunDecl :: Eq a => Decl a -> [Decl a]
+liftFunDecl (FunctionDecl p a f eqs) =
+  FunctionDecl p a f eqs' : map renameFunDecl (concat dss')
   where (eqs', dss') = unzip $ map liftEquation eqs
 liftFunDecl d                        = [d]
 
-liftVarDecl :: Decl a -> (Decl a, [Decl a])
+liftVarDecl :: Eq a => Decl a -> (Decl a, [Decl a])
 liftVarDecl (PatternDecl   p t rhs) = (PatternDecl p t rhs', ds')
   where (rhs', ds') = liftRhs rhs
 liftVarDecl ex@(FreeDecl       _ _) = (ex, [])
 liftVarDecl _ = error "Lift.liftVarDecl: no pattern match"
 
-liftEquation :: Equation a -> (Equation a, [Decl a])
+liftEquation :: Eq a => Equation a -> (Equation a, [Decl a])
 liftEquation (Equation p lhs rhs) = (Equation p lhs rhs', ds')
   where (rhs', ds') = liftRhs rhs
 
-liftRhs :: Rhs a -> (Rhs a, [Decl a])
+liftRhs :: Eq a => Rhs a -> (Rhs a, [Decl a])
 liftRhs (SimpleRhs p e _) = first (simpleRhs p) (liftExpr e)
 liftRhs _                 = error "Lift.liftRhs: no pattern match"
 
-liftDeclGroup :: [Decl a] -> ([Decl a], [Decl a])
+liftDeclGroup :: Eq a => [Decl a] -> ([Decl a], [Decl a])
 liftDeclGroup ds = (vds', concat (map liftFunDecl fds ++ dss'))
   where (fds , vds ) = partition isFunDecl ds
         (vds', dss') = unzip $ map liftVarDecl vds
 
-liftExpr :: Expression a -> (Expression a, [Decl a])
+liftExpr :: Eq a => Expression a -> (Expression a, [Decl a])
 liftExpr l@(Literal     _ _) = (l, [])
 liftExpr v@(Variable    _ _) = (v, [])
 liftExpr c@(Constructor _ _) = (c, [])
@@ -296,8 +347,68 @@ liftExpr (Case    ct e alts) = (Case ct e' alts', concat $ ds' : dss')
 liftExpr (Typed        e ty) = (Typed e' ty, ds) where (e', ds) = liftExpr e
 liftExpr _ = internalError "Lift.liftExpr"
 
-liftAlt :: Alt a -> (Alt a, [Decl a])
+liftAlt :: Eq a => Alt a -> (Alt a, [Decl a])
 liftAlt (Alt p t rhs) = (Alt p t rhs', ds') where (rhs', ds') = liftRhs rhs
+
+-- -----------------------------------------------------------------------------
+-- Renaming
+-- -----------------------------------------------------------------------------
+
+-- After all local function declarations have been lifted to top-level, we
+-- may have to rename duplicate function arguments. Due to polymorphic let
+-- declarations it could happen that an argument was added multiple times
+-- instantiated with different types during the abstraction pass beforehand.
+
+type RenameMap a = [((a, Ident), Ident)]
+
+renameFunDecl :: Eq a => Decl a -> Decl a
+renameFunDecl (FunctionDecl p a f eqs) =
+  FunctionDecl p a f (map renameEquation eqs)
+renameFunDecl d                        = d
+
+renameEquation :: Eq a => Equation a -> Equation a
+renameEquation (Equation p lhs rhs) = Equation p lhs' (renameRhs rm rhs)
+  where (rm, lhs') = renameLhs lhs
+
+renameLhs :: Eq a => Lhs a -> (RenameMap a, Lhs a)
+renameLhs (FunLhs f ts) = (rm, FunLhs f ts')
+  where (rm, ts') = foldr renamePattern ([], []) ts
+renameLhs _             = error "Lift.renameLhs"
+
+renamePattern :: Eq a => Pattern a -> (RenameMap a, [Pattern a])
+              -> (RenameMap a, [Pattern a])
+renamePattern (VariablePattern a v) (rm, ts)
+  | v `elem` varPatNames ts =
+    let v' = updIdentName (++ ("." ++ show (length rm))) v
+    in  (((a, v), v') : rm, VariablePattern a v' : ts)
+renamePattern t                     (rm, ts) = (rm, t : ts)
+
+renameRhs :: Eq a => RenameMap a -> Rhs a -> Rhs a
+renameRhs rm (SimpleRhs p e _) = simpleRhs p (renameExpr rm e)
+renameRhs _  _                 = error "Lift.renameRhs"
+
+renameExpr :: Eq a => RenameMap a -> Expression a -> Expression a
+renameExpr _  l@(Literal     _ _) = l
+renameExpr rm v@(Variable   a v')
+  | isQualified v' = v
+  | otherwise      = case lookup (a, unqualify v') rm of
+                       Just v'' -> Variable a (qualify v'')
+                       _        -> v
+renameExpr _  c@(Constructor _ _) = c
+renameExpr rm (Typed        e ty) = Typed (renameExpr rm e) ty
+renameExpr rm (Apply       e1 e2) = Apply (renameExpr rm e1) (renameExpr rm e2)
+renameExpr rm (Let          ds e) =
+  Let (map (renameDecl rm) ds) (renameExpr rm e)
+renameExpr rm (Case    ct e alts) =
+  Case ct (renameExpr rm e) (map (renameAlt rm) alts)
+renameExpr _  _                   = error "Lift.renameExpr"
+
+renameDecl :: Eq a => RenameMap a -> Decl a -> Decl a
+renameDecl rm (PatternDecl p t rhs) = PatternDecl p t (renameRhs rm rhs)
+renameDecl _  d                     = d
+
+renameAlt :: Eq a => RenameMap a -> Alt a -> Alt a
+renameAlt rm (Alt p t rhs) = Alt p t (renameRhs rm rhs)
 
 -- ---------------------------------------------------------------------------
 -- Auxiliary definitions
@@ -311,9 +422,19 @@ isFunDecl _                         = False
 mkFun :: ModuleIdent -> String -> a -> Ident -> Expression a
 mkFun m pre a = Variable a . qualifyWith m . liftIdent pre
 
-addVars :: [(a, Ident)] -> [(Ident, b, a)] -> [(a, Ident)]
-addVars vs lvs = vs ++ [(ty, v) | (v, _, ty) <- lvs, v `notElem` vs']
-  where vs' = map snd vs
-
 liftIdent :: String -> Ident -> Ident
 liftIdent prefix x = renameIdent (mkIdent $ prefix ++ showIdent x) $ idUnique x
+
+varPatNames :: [Pattern a] -> [Ident]
+varPatNames = catMaybes . map varPatName
+
+varPatName :: Pattern a -> Maybe Ident
+varPatName (VariablePattern _ i) = Just i
+varPatName _                     = Nothing
+
+dummyType :: Type
+dummyType = TypeForall [] undefined
+
+isDummyType :: Type -> Bool
+isDummyType (TypeForall [] _) = True
+isDummyType _                 = False
