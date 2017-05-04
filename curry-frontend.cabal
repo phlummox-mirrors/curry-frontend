@@ -59,7 +59,8 @@ Library
   else
     build-depends: network < 2.6
   Exposed-Modules:
-      Base.CurryTypes
+      Base.AnnotExpr
+    , Base.CurryTypes
     , Base.Expr
     , Base.Messages
     , Base.NestEnv
