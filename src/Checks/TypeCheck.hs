@@ -5,7 +5,7 @@
                                    Martin Engelke
                        2011 - 2015 Björn Peemöller
                        2014 - 2015 Jan Tikovsky
-                       2016        Finn Teegen
+                       2016 - 2017 Finn Teegen
     License     :  BSD-3-clause
 
     Maintainer  :  bjp@informatik.uni-kiel.de
@@ -658,7 +658,45 @@ checkTypeSig :: PredType -> TypeScheme -> TCM Bool
 checkTypeSig (PredType sigPs sigTy) (ForAll _ (PredType ps ty)) = do
   clsEnv <- getClassEnv
   return $
-    sigTy == ty && all (`Set.member` maxPredSet clsEnv sigPs) (Set.toList ps)
+    sigTy `eqTypes` ty && all (`Set.member` maxPredSet clsEnv sigPs) (Set.toList ps)
+
+-- The function 'equTypes' computes whether two types are equal modulo
+-- renaming of type variables.
+eqTypes :: Type -> Type -> Bool
+eqTypes t1 t2 = fst (eq [] t1 t2)
+ where
+ -- @is@ is an AssocList of type variable indices
+ eq is (TypeConstructor   qid1) (TypeConstructor   qid2) = (qid1 == qid2, is)
+ eq is (TypeVariable        i1) (TypeVariable        i2) = eqVar is i1 i2
+ eq is (TypeConstrained ts1 i1) (TypeConstrained ts2 i2)
+   = let (res , is1) = eqs   is  ts1 ts2
+         (res2, is2) = eqVar is1 i1  i2
+     in  (res && res2, is2)
+ eq is (TypeSkolem          i1) (TypeSkolem          i2) = eqVar is i1 i2
+ eq is (TypeApply      tf1 tt1) (TypeApply      tf2 tt2)
+   = let (res1, is1) = eq is  tf1 tf2
+         (res2, is2) = eq is1 tt1 tt2
+     in  (res1 && res2, is2)
+ eq is (TypeArrow      tf1 tt1) (TypeArrow      tf2 tt2)
+   = let (res1, is1) = eq is  tf1 tf2
+         (res2, is2) = eq is1 tt1 tt2
+     in  (res1 && res2, is2)
+ eq is (TypeForall     is1 tt1) (TypeForall     is2 tt2)
+   = let (res1, is') = eqs [] (map TypeVariable is1) (map TypeVariable is2)
+         (res2, _  ) = eq is' tt1 tt2
+     in  (res1 && res2, is)
+ eq is _                        _                        = (False, is)
+
+ eqVar is i1 i2 = case lookup i1 is of
+   Nothing  -> (True, (i1, i2) : is)
+   Just i2' -> (i2 == i2', is)
+
+ eqs is []        []        = (True , is)
+ eqs is (t1':ts1) (t2':ts2)
+    = let (res1, is1) = eq  is t1'  t2'
+          (res2, is2) = eqs is1 ts1 ts2
+      in  (res1 && res2, is2)
+ eqs is _         _         = (False, is)
 
 -- In Curry, a non-expansive expression is either
 --
@@ -692,9 +730,11 @@ instance Binding (Decl a) where
   isNonExpansive (FunctionDecl    _ _ _ _) = return True
   isNonExpansive (ForeignDecl _ _ _ _ _ _) = return True
   isNonExpansive (ExternalDecl        _ _) = return True
-  isNonExpansive (PatternDecl     _ t rhs) = case t of
+  isNonExpansive (PatternDecl       _ _ _) = return False
+    -- TODO: Uncomment when polymorphic let declarations are fully supported
+  {-isNonExpansive (PatternDecl     _ t rhs) = case t of
     VariablePattern _ _ -> isNonExpansive rhs
-    _                   -> return False
+    _                   -> return False-}
   isNonExpansive (FreeDecl            _ _) = return False
   isNonExpansive _                         =
     internalError "TypeCheck.isNonExpansive: declaration"
