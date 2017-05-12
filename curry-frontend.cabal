@@ -60,34 +60,47 @@ Library
     build-depends: network < 2.6
   Exposed-Modules:
       Base.AnnotExpr
+    , Base.CurryKinds
     , Base.CurryTypes
     , Base.Expr
+    , Base.KindSubst
+    , Base.Kinds
     , Base.Messages
     , Base.NestEnv
+    , Base.PrettyKinds
+    , Base.PrettyTypes
     , Base.SCC
     , Base.Subst
     , Base.TopEnv
-    , Base.Types
+    , Base.TypeExpansion
     , Base.TypeSubst
+    , Base.Types
     , Base.Typing
     , Base.Utils
     , Checks
+    , Checks.DeriveCheck
     , Checks.ExportCheck
+    , Checks.ExtensionCheck
+    , Checks.ImportSyntaxCheck
+    , Checks.InstanceCheck
     , Checks.InterfaceCheck
     , Checks.InterfaceSyntaxCheck
-    , Checks.ImportSyntaxCheck
     , Checks.KindCheck
     , Checks.PrecCheck
     , Checks.SyntaxCheck
     , Checks.TypeCheck
+    , Checks.TypeSyntaxCheck
     , Checks.WarnCheck
     , CompilerEnv
     , CompilerOpts
     , CurryBuilder
     , CurryDeps
+    , Env.Class
+    , Env.Instance
     , Env.Interface
     , Env.ModuleAlias
     , Env.OpPrec
+    , Env.Type
     , Env.TypeConstructor
     , Env.Value
     , Exports
@@ -95,12 +108,14 @@ Library
     , Generators
     , Generators.GenAbstractCurry
     , Generators.GenFlatCurry
+    , Generators.GenTypedFlatCurry
     , Html.CurryHtml
     , Html.SyntaxColoring
     , IL
     , IL.Pretty
     , IL.ShowModule
     , IL.Type
+    , IL.Typing
     , Imports
     , Interfaces
     , Modules
@@ -108,7 +123,9 @@ Library
     , Transformations
     , Transformations.CaseCompletion
     , Transformations.CurryToIL
+    , Transformations.Derive
     , Transformations.Desugar
+    , Transformations.Dictionary
     , Transformations.Lift
     , Transformations.Qual
     , Transformations.Simplify
