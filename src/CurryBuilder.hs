@@ -158,13 +158,13 @@ process opts idx m fn deps
 
   destFiles = [ gen fn | (t, gen) <- nameGens, t `elem` optTargetTypes opts]
   nameGens  =
-    [ (Tokens               , tgtDir . tokensName       )
-    , (Parsed               , tgtDir . sourceRepName    )
-    , (FlatCurry            , tgtDir . flatName         )
-    , (AnnotatedFlatCurry   , tgtDir . annotatedFlatName)
-    , (AbstractCurry        , tgtDir . acyName          )
-    , (UntypedAbstractCurry , tgtDir . uacyName         )
-    , (Html                 , const (fromMaybe "." (optHtmlDir opts) </> htmlName m))
+    [ (Tokens              , tgtDir . tokensName   )
+    , (Parsed              , tgtDir . sourceRepName)
+    , (FlatCurry           , tgtDir . flatName     )
+    , (TypedFlatCurry      , tgtDir . typedFlatName)
+    , (AbstractCurry       , tgtDir . acyName      )
+    , (UntypedAbstractCurry, tgtDir . uacyName     )
+    , (Html                , const (fromMaybe "." (optHtmlDir opts) </> htmlName m))
     ]
 
 -- |Create a status message like

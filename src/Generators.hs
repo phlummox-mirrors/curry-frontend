@@ -22,7 +22,7 @@ import qualified Generators.GenAbstractCurry      as GAC  (genAbstractCurry)
 import qualified Generators.GenFlatCurry          as GFC  ( genFlatCurry
                                                           , genFlatInterface
                                                           )
-import qualified Generators.GenAnnotatedFlatCurry as GAFC (genAnnotatedFlatCurry)
+import qualified Generators.GenTypedFlatCurry     as GTFC (genTypedFlatCurry)
 
 import           Base.Types                          (Type, PredType)
 
@@ -37,10 +37,10 @@ genTypedAbstractCurry = GAC.genAbstractCurry False
 genUntypedAbstractCurry :: CompilerEnv -> CS.Module PredType -> AC.CurryProg
 genUntypedAbstractCurry = GAC.genAbstractCurry True
 
--- |Generate Annotated FlatCurry
-genAnnotatedFlatCurry :: CompilerEnv -> CS.Module Type -> IL.Module
-                      -> AFC.AProg AFC.TypeExpr
-genAnnotatedFlatCurry = GAFC.genAnnotatedFlatCurry
+-- |Generate typed FlatCurry
+genTypedFlatCurry :: CompilerEnv -> CS.Module Type -> IL.Module
+                  -> AFC.AProg AFC.TypeExpr
+genTypedFlatCurry = GTFC.genTypedFlatCurry
 
 -- |Generate FlatCurry
 genFlatCurry :: AFC.AProg a -> FC.Prog

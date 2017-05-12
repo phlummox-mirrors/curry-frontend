@@ -1,6 +1,6 @@
 {- |
     Module      :  $Header$
-    Description :  Generation of annotated FlatCurry program terms
+    Description :  Generation of typed FlatCurry program terms
     Copyright   :  (c) 2017        Finn Teegen
     License     :  BSD-3-clause
 
@@ -8,11 +8,11 @@
     Stability   :  experimental
     Portability :  portable
 
-    This module contains the generation of a 'Annotated FlatCurry' program term
+    This module contains the generation of a typed 'FlatCurry' program term
     for a given module in the intermediate language.
 -}
 {-# LANGUAGE CPP #-}
-module Generators.GenAnnotatedFlatCurry (genAnnotatedFlatCurry) where
+module Generators.GenTypedFlatCurry (genTypedFlatCurry) where
 
 #if __GLASGOW_HASKELL__ < 710
 import           Control.Applicative        ((<$>), (<*>))
@@ -47,10 +47,10 @@ import Env.Value           (ValueEnv, ValueInfo (..), qualLookupValue)
 import qualified IL as IL
 import Transformations     (transType)
 
--- transforms intermediate language code (IL) to annotated FlatCurry code
-genAnnotatedFlatCurry :: CompilerEnv -> CS.Module Type -> IL.Module
-                      -> AProg TypeExpr
-genAnnotatedFlatCurry env mdl il = patchPrelude $ run env mdl (trModule il)
+-- transforms intermediate language code (IL) to typed FlatCurry code
+genTypedFlatCurry :: CompilerEnv -> CS.Module Type -> IL.Module
+                  -> AProg TypeExpr
+genTypedFlatCurry env mdl il = patchPrelude $ run env mdl (trModule il)
 
 -- -----------------------------------------------------------------------------
 -- Addition of primitive types for lists and tuples to the Prelude
