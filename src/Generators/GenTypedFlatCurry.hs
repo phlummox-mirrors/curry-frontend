@@ -164,7 +164,7 @@ getArity qid = S.gets tyEnv >>= \ env -> return $ case qualLookupValue qid env o
   [Value            _ _ a _] -> a
   [Label              _ _ _] -> 1
   _                          -> internalError
-                                ("GenAnnotatedFlatCurry.getArity: " ++ qualName qid)
+                                ("GenTypedFlatCurry.getArity: " ++ qualName qid)
 
 getFixities :: FlatState [CS.IDecl]
 getFixities = S.gets fixities
@@ -370,7 +370,7 @@ trPat (IL.LiteralPattern        ty l) = ALPattern <$> trType ty <*> trLiteral l
 trPat (IL.ConstructorPattern ty c vs) = do
   qty <- trType $ foldr IL.TypeArrow ty $ map fst vs
   APattern  <$> trType ty <*> ((\q -> (q, qty)) <$> trQualIdent c) <*> mapM (uncurry newVar) vs
-trPat (IL.VariablePattern        _ _) = internalError "GenAnnotatedFlatCurry.trPat"
+trPat (IL.VariablePattern        _ _) = internalError "GenTypedFlatCurry.trPat"
 
 -- Convert a case type
 cvEval :: IL.Eval -> CaseType
@@ -407,7 +407,7 @@ genAComb ty qid es ct = do
   where
   defunc t               0 = t
   defunc (FuncType _ t2) n = defunc t2 (n - 1)
-  defunc _               _ = internalError "GenAnnotatedFlatCurry.genAComb.defunc"
+  defunc _               _ = internalError "GenTypedFlatCurry.genAComb.defunc"
 
 genApply :: AExpr TypeExpr -> [IL.Expression] -> FlatState (AExpr TypeExpr)
 genApply e es = do
