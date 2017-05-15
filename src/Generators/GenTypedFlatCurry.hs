@@ -268,6 +268,7 @@ trType :: IL.Type -> FlatState TypeExpr
 trType (IL.TypeConstructor t tys) = TCons <$> trQualIdent t <*> mapM trType tys
 trType (IL.TypeVariable      idx) = return $ TVar $ abs idx
 trType (IL.TypeArrow     ty1 ty2) = FuncType <$> trType ty1 <*> trType ty2
+trType (IL.TypeForall    idxs ty) = ForallType (map abs idxs) <$> trType ty
 
 -- Convert a fixity
 cvFixity :: CS.Infix -> Fixity
@@ -427,16 +428,21 @@ type NormState a = S.State (Int, Map.Map Int Int) a
 class Normalize a where
   normalize :: a -> NormState a
 
-instance Normalize TypeExpr where
-  normalize (TVar        i) = do
+instance Normalize Int where
+  normalize i = do
     (n, m) <- S.get
     case Map.lookup i m of
       Nothing -> do
         S.put (n + 1, Map.insert i n m)
-        return $ TVar n
-      Just n' -> return $ TVar n'
-  normalize (TCons   q tys) = TCons q <$> mapM normalize tys
-  normalize (FuncType  a b) = FuncType <$> normalize a <*> normalize b
+        return n
+      Just n' -> return n'
+
+instance Normalize TypeExpr where
+  normalize (TVar           i) = TVar <$> normalize i
+  normalize (TCons      q tys) = TCons q <$> mapM normalize tys
+  normalize (FuncType ty1 ty2) = FuncType <$> normalize ty1 <*> normalize ty2
+  normalize (ForallType is ty) =
+    ForallType <$> mapM normalize is <*> normalize ty
 
 instance Normalize b => Normalize (a, b) where
   normalize (x, y) = ((,) x) <$> normalize y

@@ -82,6 +82,11 @@ showsType (TypeArrow type1 type2)
   . showsType type1 . space
   . showsType type2
   . showsString ")"
+showsType (TypeForall ints typ)
+  = showsString "(TypeForall "
+  . showsList shows ints . space
+  . showsType typ
+  . showsString ")"
 
 showsLiteral :: Literal -> ShowS
 showsLiteral (Char c)

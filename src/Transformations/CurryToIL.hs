@@ -73,6 +73,7 @@ mdlsType :: IL.Type -> Set.Set ModuleIdent -> Set.Set ModuleIdent
 mdlsType (IL.TypeConstructor tc tys) ms = modules tc (foldr mdlsType ms tys)
 mdlsType (IL.TypeVariable         _) ms = ms
 mdlsType (IL.TypeArrow      ty1 ty2) ms = mdlsType ty1 (mdlsType ty2 ms)
+mdlsType (IL.TypeForall        _ ty) ms = mdlsType ty ms
 
 mdlsExpr :: IL.Expression -> Set.Set ModuleIdent -> Set.Set ModuleIdent
 mdlsExpr (IL.Function    _ f _) ms = modules f ms
@@ -201,16 +202,11 @@ transType' (TypeSkolem          k) =
 transType' (TypeArrow     ty1 ty2) =
   foldl applyType' (IL.TypeArrow (transType ty1) (transType ty2))
 transType' (TypeForall     tvs ty) =
-  foldl applyType' (foldr forallType' (transType ty) tvs)
+  foldl applyType' (IL.TypeForall tvs (transType ty))
 
 applyType' :: IL.Type -> IL.Type -> IL.Type
 applyType' ty1 ty2 =
   IL.TypeConstructor (qualifyWith preludeMIdent (mkIdent "Apply")) [ty1, ty2]
-
-forallType' :: Int -> IL.Type -> IL.Type
-forallType' tv ty =
-  IL.TypeConstructor (qualifyWith preludeMIdent (mkIdent "Forall")) [tv', ty]
-  where tv' = IL.TypeVariable tv
 
 -- Each function in the program is translated into a function of the
 -- intermediate language. The arguments of the function are renamed such

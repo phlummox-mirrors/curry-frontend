@@ -74,6 +74,7 @@ data Type
   = TypeConstructor QualIdent [Type]
   | TypeVariable    Int
   | TypeArrow       Type Type
+  | TypeForall      [Int] Type
     deriving (Eq, Show)
 
 data Literal

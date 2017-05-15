@@ -84,14 +84,25 @@ ppType p (TypeConstructor tc tys)
   | tc == qListId && length tys == 1 = brackets (ppType 0 (head tys))
   | otherwise                        = parenIf (p > 1 && not (null tys))
     (ppQIdent tc <+> fsep (map (ppType 2) tys))
-ppType _ (TypeVariable    n)
-  | n >= 0    = text (typeVars !! n)
-  | otherwise = text ('_':show (-n))
+ppType _ (TypeVariable    n) = ppTypeVar n
 ppType p (TypeArrow ty1 ty2) = parenIf (p > 0)
                                (fsep (ppArrow (TypeArrow ty1 ty2)))
   where
   ppArrow (TypeArrow ty1' ty2') = ppType 1 ty1' <+> text "->" : ppArrow ty2'
   ppArrow ty                    = [ppType 0 ty]
+ppType p (TypeForall ns ty)
+  | null ns   = ppType p ty
+  | otherwise = parenIf (p > 0) $ ppQuantifiedTypeVars ns <+> ppType 0 ty
+
+ppTypeVar :: Int -> Doc
+ppTypeVar n
+  | n >= 0    = text (typeVars !! n)
+  | otherwise = text ('_':show (-n))
+
+ppQuantifiedTypeVars :: [Int] -> Doc
+ppQuantifiedTypeVars ns
+  | null ns = empty
+  | otherwise = text "forall" <+> hsep (map ppTypeVar ns) <+> char '.'
 
 ppBinding :: Binding -> Doc
 ppBinding (Binding v expr) = sep
