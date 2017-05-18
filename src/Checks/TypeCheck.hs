@@ -658,10 +658,12 @@ checkTypeSig :: PredType -> TypeScheme -> TCM Bool
 checkTypeSig (PredType sigPs sigTy) (ForAll _ (PredType ps ty)) = do
   clsEnv <- getClassEnv
   return $
-    sigTy `eqTypes` ty && all (`Set.member` maxPredSet clsEnv sigPs) (Set.toList ps)
+    ty `eqTypes` sigTy && all (`Set.member` maxPredSet clsEnv sigPs) (Set.toList ps)
 
 -- The function 'equTypes' computes whether two types are equal modulo
 -- renaming of type variables.
+-- WARNING: This operation is not reflexive and expects the second type to be
+-- the type signature provided by the programmer.
 eqTypes :: Type -> Type -> Bool
 eqTypes t1 t2 = fst (eq [] t1 t2)
  where
@@ -669,21 +671,21 @@ eqTypes t1 t2 = fst (eq [] t1 t2)
  eq is (TypeConstructor   qid1) (TypeConstructor   qid2) = (qid1 == qid2, is)
  eq is (TypeVariable        i1) (TypeVariable        i2) = eqVar is i1 i2
  eq is (TypeConstrained ts1 i1) (TypeConstrained ts2 i2)
-   = let (res , is1) = eqs   is  ts1 ts2
+   = let (res1, is1) = eqs   is  ts1 ts2
          (res2, is2) = eqVar is1 i1  i2
-     in  (res && res2, is2)
+     in  (res1 && res2, is2)
  eq is (TypeSkolem          i1) (TypeSkolem          i2) = eqVar is i1 i2
- eq is (TypeApply      tf1 tt1) (TypeApply      tf2 tt2)
-   = let (res1, is1) = eq is  tf1 tf2
-         (res2, is2) = eq is1 tt1 tt2
+ eq is (TypeApply      ta1 tb1) (TypeApply      ta2 tb2)
+   = let (res1, is1) = eq is  ta1 ta2
+         (res2, is2) = eq is1 tb1 tb2
      in  (res1 && res2, is2)
  eq is (TypeArrow      tf1 tt1) (TypeArrow      tf2 tt2)
    = let (res1, is1) = eq is  tf1 tf2
          (res2, is2) = eq is1 tt1 tt2
      in  (res1 && res2, is2)
- eq is (TypeForall     is1 tt1) (TypeForall     is2 tt2)
+ eq is (TypeForall     is1 t1') (TypeForall     is2 t2')
    = let (res1, is') = eqs [] (map TypeVariable is1) (map TypeVariable is2)
-         (res2, _  ) = eq is' tt1 tt2
+         (res2, _  ) = eq is' t1' t2'
      in  (res1 && res2, is)
  eq is _                        _                        = (False, is)
 
