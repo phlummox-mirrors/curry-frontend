@@ -1206,8 +1206,10 @@ checkCaseModeDecl (ClassDecl    _ _ _ id2 decls)   = checkCaseModeID isClassDecl
 checkCaseModeDecl (FunctionDecl _ _ ident eqs  )   = checkCaseModeID isFuncName      ident >> mapM_ checkCaseModeEquation       eqs
 checkCaseModeDecl (InstanceDecl _ _ _ itype decls) = checkCaseModeTypeExpr           itype >> mapM_ checkCaseModeDecl           decls
 checkCaseModeDecl (PatternDecl  _ pat   r      )   = checkCaseModePattern    pat   >> checkCaseModeRhs r
-checkCaseModeDecl (FreeDecl     _ vars         )   = mapM_ ((checkCaseModeID isVarName) . getVarIdent) vars
+checkCaseModeDecl (FreeDecl     _ vars         )   = mapM_ ((checkCaseModeID isVarName ) . getVarIdent) vars
+checkCaseModeDecl (ExternalDecl _ vars         )   = mapM_ ((checkCaseModeID isFuncName) . getVarIdent) vars
 checkCaseModeDecl (TypeSig      _ _ (QualTypeExpr _ texpr)) = checkCaseModeTypeExpr   texpr
+checkCaseModeDecl (DefaultDecl  _ texprs) = mapM_ checkTypeExpr texprs
 checkCaseModeDecl _ = return ()
 
 getVarIdent :: Var a -> Ident
