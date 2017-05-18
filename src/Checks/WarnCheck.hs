@@ -27,7 +27,7 @@ import           Data.Maybe
 import           Data.List
   ((\\), intersect, intersectBy, nub, sort, unionBy)
 import           Data.Char
-  (isLower, isUpper, toLower, toUpper)
+  (isLower, isUpper, toLower, toUpper, isAlpha)
 
 import Curry.Base.Ident
 import Curry.Base.Position
@@ -1202,7 +1202,8 @@ checkCaseModeDecl (DataDecl    _ name ids constr _) = do checkCaseModeID isDataD
                                                          mapM_ checkCaseModeConstr constr
 checkCaseModeDecl (NewtypeDecl  _   name  ids _ _) = checkCaseModeID isDataDeclName  name  >> mapM_ (checkCaseModeID isVarName) ids
 checkCaseModeDecl (TypeDecl     _   name  ids _)   = checkCaseModeID isDataDeclName  name  >> mapM_ (checkCaseModeID isVarName) ids
-checkCaseModeDecl (ClassDecl    _ _ _ id2 decls)   = checkCaseModeID isClassDeclName id2   >> mapM_ checkCaseModeDecl           decls
+-- other ids in ClassDecl should occurr in decls
+checkCaseModeDecl (ClassDecl    _ _ id1 _ decls)   = checkCaseModeID isClassDeclName id1   >> mapM_ checkCaseModeDecl decls
 checkCaseModeDecl (FunctionDecl _ _ ident eqs  )   = checkCaseModeID isFuncName      ident >> mapM_ checkCaseModeEquation       eqs
 checkCaseModeDecl (InstanceDecl _ _ _ itype decls) = checkCaseModeTypeExpr           itype >> mapM_ checkCaseModeDecl           decls
 checkCaseModeDecl (PatternDecl  _ pat   r      )   = checkCaseModePattern    pat   >> checkCaseModeRhs r
@@ -1267,8 +1268,9 @@ checkCaseModePattern (RecordPattern      _ _ fields) = mapM_ checkCaseModeFieldP
 checkCaseModePattern (TuplePattern           pats  ) = mapM_ checkCaseModePattern pats
 checkCaseModePattern (ListPattern        _   pats  ) = mapM_ checkCaseModePattern pats
 checkCaseModePattern (FunctionPattern  _ _   pats  ) = mapM_ checkCaseModePattern pats
-checkCaseModePattern (InfixPattern     _ p1 _ p2) = checkCaseModePattern p1 >> checkCaseModePattern p2
-checkCaseModePattern (InfixFuncPattern _ p1 _ p2) = checkCaseModePattern p1 >> checkCaseModePattern p2
+checkCaseModePattern (InfixPattern     _ p1  _ p2  ) = checkCaseModePattern p1 >> checkCaseModePattern p2
+checkCaseModePattern (InfixFuncPattern _ p1  _ p2  ) = checkCaseModePattern p1 >> checkCaseModePattern p2
+checkCaseModePattern (AsPattern          ident pat ) = checkCaseModeID isVarName ident >> checkCaseModePattern pat
 checkCaseModePattern _ = return ()
 
 checkCaseModeFieldPattern :: Field (Pattern a) -> WCM ()
@@ -1297,22 +1299,23 @@ checkCaseModeConstr (ConOpDecl  _ _ _ _ ident _) = checkCaseModeID isConstrName 
 checkCaseModeConstr (RecordDecl _ _ _   ident _) = checkCaseModeID isConstrName ident
 
 checkCaseModeNewConstr :: NewConstrDecl -> WCM ()
-checkCaseModeNewConstr (NewConstrDecl _ ident texpr)      = checkCaseModeID isConstrName ident >> checkCaseModeTypeExpr texpr
-checkCaseModeNewConstr (NewRecordDecl _ ident (_, texpr)) = checkCaseModeID isConstrName ident >> checkCaseModeTypeExpr texpr
+checkCaseModeNewConstr (NewConstrDecl _ ident texpr)         = checkCaseModeID isConstrName ident >> checkCaseModeTypeExpr texpr
+checkCaseModeNewConstr (NewRecordDecl _ ident (name, texpr)) = checkCaseModeID isConstrName ident >> checkCaseModeTypeExpr texpr >>
+                                                               checkCaseModeID isVarName    ident
 
 checkCaseModeID :: (CaseModeOpts -> String -> Bool) -> Ident -> WCM ()
 checkCaseModeID f i@(Ident _ n _) = getCaseMode >>= \c -> unless (f c n) (reportCaseMode i) 
                                       
 isVarName :: CaseModeOpts -> String -> Bool
-isVarName CaseModeProlog  (x:_) = isUpper x
-isVarName CaseModeGoedel  (x:_) = isLower x
-isVarName CaseModeHaskell (x:_) = isLower x
+isVarName CaseModeProlog  (x:_) | isAlpha x = isUpper x
+isVarName CaseModeGoedel  (x:_) | isAlpha x = isLower x
+isVarName CaseModeHaskell (x:_) | isAlpha x = isLower x
 isVarName _               _     = True
 
 isFuncName :: CaseModeOpts -> String -> Bool
-isFuncName CaseModeHaskell (x:_) = isLower x
-isFuncName CaseModeGoedel  (x:_) = isUpper x
-isFuncName CaseModeProlog  (x:_) = isLower x
+isFuncName CaseModeHaskell (x:_) | isAlpha x = isLower x
+isFuncName CaseModeGoedel  (x:_) | isAlpha x = isUpper x
+isFuncName CaseModeProlog  (x:_) | isAlpha x = isLower x
 isFuncName _               _     = True
 
 isConstrName :: CaseModeOpts -> String -> Bool
@@ -1322,9 +1325,9 @@ isClassDeclName :: CaseModeOpts -> String -> Bool
 isClassDeclName = isDataDeclName
 
 isDataDeclName :: CaseModeOpts -> String -> Bool
-isDataDeclName CaseModeProlog  (x:_) = isLower x
-isDataDeclName CaseModeGoedel  (x:_) = isUpper x
-isDataDeclName CaseModeHaskell (x:_) = isUpper x
+isDataDeclName CaseModeProlog  (x:_) | isAlpha x = isLower x
+isDataDeclName CaseModeGoedel  (x:_) | isAlpha x = isUpper x
+isDataDeclName CaseModeHaskell (x:_) | isAlpha x = isUpper x
 isDataDeclName _               _     = True
 
 getCaseMode :: WCM CaseModeOpts
