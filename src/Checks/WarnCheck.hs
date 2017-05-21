@@ -1202,7 +1202,7 @@ checkCaseModeDecl (DataDecl    _ name ids constr _) = do checkCaseModeID isDataD
                                                          mapM_ checkCaseModeConstr constr
 checkCaseModeDecl (NewtypeDecl  _   name  ids _ _) = checkCaseModeID isDataDeclName  name  >> mapM_ (checkCaseModeID isVarName) ids
 checkCaseModeDecl (TypeDecl     _   name  ids _)   = checkCaseModeID isDataDeclName  name  >> mapM_ (checkCaseModeID isVarName) ids
--- other ids in ClassDecl should occurr in decls
+-- other ids in ClassDecl should also occurr in decls
 checkCaseModeDecl (ClassDecl    _ _ id1 _ decls)   = checkCaseModeID isClassDeclName id1   >> mapM_ checkCaseModeDecl decls
 checkCaseModeDecl (FunctionDecl _ _ ident eqs  )   = checkCaseModeID isFuncName      ident >> mapM_ checkCaseModeEquation       eqs
 checkCaseModeDecl (InstanceDecl _ _ _ itype decls) = checkCaseModeTypeExpr           itype >> mapM_ checkCaseModeDecl           decls
@@ -1237,7 +1237,7 @@ checkCaseModeExpr (EnumFromThen e1    e2) = checkCaseModeExpr e1 >> checkCaseMod
 checkCaseModeExpr (EnumFromTo   e1    e2) = checkCaseModeExpr e1 >> checkCaseModeExpr e2
 checkCaseModeExpr (Apply        e1    e2) = checkCaseModeExpr e1 >> checkCaseModeExpr e2
 checkCaseModeExpr (InfixApply   e1 _  e2) = checkCaseModeExpr e1 >> checkCaseModeExpr e2
-checkCaseModeExpr (Typed     expr (QualTypeExpr _ typed)) = checkCaseModeExpr expr >> checkCaseModeTypeExpr typed
+checkCaseModeExpr (Typed        expr (QualTypeExpr _ typed)) = checkCaseModeExpr expr >> checkCaseModeTypeExpr typed
 checkCaseModeExpr (RecordUpdate expr  fields) = mapM_ checkCaseModeFieldExpr fields >> checkCaseModeExpr expr
 checkCaseModeExpr (ListCompr    expr  stats)  = mapM_ checkCaseModeStatement stats  >> checkCaseModeExpr expr
 checkCaseModeExpr (Lambda       pats  expr)   = mapM_ checkCaseModePattern   pats   >> checkCaseModeExpr expr
